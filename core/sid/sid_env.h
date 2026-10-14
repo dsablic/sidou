@@ -528,6 +528,32 @@ static inline void sid_env_advance_slow(sid_env* e, uint32_t cycles) {
     sid_env_run(e, cycles, 1);
 }
 
+/* For tests: 0 if the resting-mode invariants hold, else the number of the first that
+ * fails. Nothing on the device calls it. */
+static inline int sid_env_check(const sid_env* e) {
+    if (e->linear && e->dormant) {
+        return 1; /* one resting mode at a time */
+    }
+    int resting = e->idle || e->linear || e->dormant;
+    if (resting && (e->state_pipeline | e->envelope_pipeline | e->exponential_pipeline |
+                    e->reset_lfsr | e->new_exp_period)) {
+        return 2; /* every rest starts quiet, and nothing at rest touches the pipelines */
+    }
+    if ((e->linear || e->dormant) && !e->idle) {
+        return 3; /* the countdown never reaches 0 at rest */
+    }
+    if (e->linear && (!e->lin_steps || e->idle > e->lin_span)) {
+        return 4; /* a run has a step to come, at most one step interval away */
+    }
+    if (e->dormant && !sid_env_is_steady(e)) {
+        return 5;
+    }
+    if (e->lfsr_pos >= SID_ENV_LFSR_PERIOD) {
+        return 6;
+    }
+    return 0;
+}
+
 /* Same result as `cycles` calls of sid_env_clock. At rest it costs a compare and a
  * subtraction, inline; otherwise sid_env_advance_slow does the work. */
 static inline void sid_env_advance(sid_env* e, uint32_t cycles) {

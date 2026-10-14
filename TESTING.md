@@ -152,10 +152,11 @@ The M0 decision gate. It runs the pi32v2 benchmark programs
 (`sid_bench_1` and `sid_bench_2`) in fm1-emu, used as a library, once per
 workload scenario (`bench/workload.h`): the triad, plus envelope worst cases
 at the fastest rate on all three voices (holding sustain 0xff and 0xaa, gates
-toggled every frame, and an idle chip). For each it:
+toggled every frame or every 128-sample block, and an idle chip). For each it:
 - counts the instructions per output sample, and fails if one chip needs
   more than 900, or two chips more than 1,800 (design document, section 8),
-  on average or in any 128-sample block;
+  on average or in any 128-sample block (a block's window also holds the
+  next block's register writes, which errs on the expensive side);
 - renders the same scenario on the host build of the same C code, and fails
   if any sample differs by more than 1 LSB (at M0 they are identical);
 - writes `sid_budget_1.json` and `sid_budget_2.json` into the fm1 build

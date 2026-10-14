@@ -33,6 +33,13 @@ fn gated(ad: u8, sr: u8) -> sid_env {
 
 fn advance(e: &mut sid_env, cycles: u32) {
     unsafe { sid_env_advance(e, cycles) }
+    check(e);
+}
+
+/// The resting-mode invariants (sid_env_check names the one that fails).
+fn check(e: &sid_env) {
+    let failed = unsafe { sid_env_check(e) };
+    assert_eq!(failed, 0, "sid_env_check: invariant {failed} fails: {e:?}");
 }
 
 /// Cycles until the counter next changes, at most `limit`.
@@ -472,6 +479,7 @@ impl RefEnv {
 /// Compares a settled copy, so `e` itself may stay at rest across steps. The counter
 /// and ENV3 must be current even at rest: the audio path and $1C read them directly.
 fn assert_same(e: &sid_env, r: &RefEnv, pos: &[u32], step: usize) {
+    check(e);
     assert_eq!(
         e.counter, r.envelope_counter,
         "counter at rest, step {step}"
@@ -623,6 +631,47 @@ fn resting_steady_states_match_per_cycle_reference() {
                 assert_same(&e, &r, &pos, step);
             }
             assert_eq!(e.counter, (sr >> 4) * 0x11, "sr {sr:#04x}, decay {decay}");
+        }
+    }
+}
+
+/// Rests longer than `idle` can count (2^32 cycles): frozen, and holding sustain at
+/// every divider period. The state after T cycles must equal the state after
+/// T mod (rate period * divider period), the length of one whole pattern.
+#[test]
+fn rests_longer_than_2_to_the_32_cycles() {
+    for (sr, divider) in [(0x00u8, 1u64), (0xf0, 1), (0x50, 2), (0x30, 4), (0x10, 8)] {
+        for decay in [0u8, 9] {
+            let mut start = gated(decay, sr);
+            advance(&mut start, 2_000_000);
+            assert_eq!(start.counter, (sr >> 4) * 0x11, "sr {sr:#04x}");
+            let pattern = u64::from(unsafe { sid_env_rate_pos(decay) } + 1) * divider;
+            for total in [(1u64 << 32) + 12_345, (3u64 << 32) + 7, 5u64 << 31] {
+                let mut long = start;
+                let mut left = total;
+                while left > 0 {
+                    let step = left.min(1 << 30) as u32;
+                    advance(&mut long, step);
+                    left -= u64::from(step);
+                }
+                let mut short = start;
+                advance(&mut short, (total % pattern) as u32);
+                unsafe {
+                    sid_env_settle(&mut long);
+                    sid_env_settle(&mut short);
+                }
+                let at = format!("sr {sr:#04x}, decay {decay}, {total} cycles");
+                assert_eq!(long.counter, short.counter, "{at}");
+                assert_eq!(long.env3, short.env3, "{at}");
+                assert_eq!(long.lfsr_pos, short.lfsr_pos, "{at}");
+                assert_eq!(long.exp_counter, short.exp_counter, "{at}");
+                assert_eq!(long.reset_lfsr, short.reset_lfsr, "{at}");
+                assert_eq!(long.envelope_pipeline, short.envelope_pipeline, "{at}");
+                assert_eq!(
+                    long.exponential_pipeline, short.exponential_pipeline,
+                    "{at}"
+                );
+            }
         }
     }
 }

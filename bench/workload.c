@@ -53,25 +53,42 @@ static const reg_write GATE_EVERY_FRAME[] = {
  * frozen there. */
 static const reg_write IDLE[] = {{0, 0x18, 0x0f}};
 
+/* ADSR 0000 as in GATE_EVERY_FRAME, but the gates toggle at the start of every block
+ * (128 samples, about 2.9 ms; see gate_every_block below), so the envelopes never
+ * settle: attack and release at rate 0, over and over. */
+static const reg_write GATE_EVERY_BLOCK[] = {{0, 0x18, 0x0f}, NOTES(0x00, 0x00, 0x20)};
+
 typedef struct {
     const char* name;
     const reg_write* writes;
     uint32_t count;
+    /* Called with each chip and the block number before every block, or NULL. */
+    void (*per_block)(sid* s, uint32_t block);
 } scenario;
 
-#define SCENARIO(name, w) {name, w, sizeof w / sizeof w[0]}
+static void gate_every_block(sid* s, uint32_t block) {
+    uint8_t control = block & 1u ? 0x20 : 0x21;
+    sid_write(s, 0x04, control);
+    sid_write(s, 0x0b, control);
+    sid_write(s, 0x12, control);
+}
+
+#define SCENARIO(name, w) {name, w, sizeof w / sizeof w[0], 0}
 static const scenario SCENARIOS[WORKLOAD_SCENARIOS] = {
     SCENARIO("triad", TRIAD),
     SCENARIO("sustain_ff", SUSTAIN_FF),
     SCENARIO("sustain_aa", SUSTAIN_AA),
     SCENARIO("gate_every_frame", GATE_EVERY_FRAME),
     SCENARIO("idle", IDLE),
+    {"gate_every_block", GATE_EVERY_BLOCK, sizeof GATE_EVERY_BLOCK / sizeof GATE_EVERY_BLOCK[0],
+     gate_every_block},
 };
 
 static sid chips[WORKLOAD_MAX_CHIPS];
 static uint32_t chip_count;
 static uint32_t position;
 static uint32_t next_write;
+static uint32_t blocks;
 static const scenario* current = &SCENARIOS[WORKLOAD_TRIAD];
 
 void workload_begin(uint32_t count, sid_model model) {
@@ -82,6 +99,7 @@ void workload_begin_scenario(uint32_t count, sid_model model, uint32_t which) {
     current = &SCENARIOS[which < WORKLOAD_SCENARIOS ? which : WORKLOAD_TRIAD];
     chip_count = count < 1u ? 1u : count > WORKLOAD_MAX_CHIPS ? WORKLOAD_MAX_CHIPS : count;
     position = 0;
+    blocks = 0;
     next_write = 0;
     for (uint32_t c = 0; c < chip_count; ++c) {
         sid_init(&chips[c], model, SID_CLOCK_PAL, WORKLOAD_SAMPLE_RATE);
@@ -103,6 +121,12 @@ void workload_render_samples(int16_t* out, uint32_t n) {
             }
             ++next_write;
         }
+        if (current->per_block) {
+            for (uint32_t c = 0; c < chip_count; ++c) {
+                current->per_block(&chips[c], blocks);
+            }
+        }
+        ++blocks;
         uint32_t len = SAMPLES_PER_FRAME - position % SAMPLES_PER_FRAME;
         if (len > BLOCK) {
             len = BLOCK;
