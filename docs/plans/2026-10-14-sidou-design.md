@@ -233,7 +233,7 @@ parameters, and the macro controls below move several at once.
 - **Themes:** a C64 nostalgia theme (PETSCII-style font, C64 palette, border
   colour flashes on screen) and a clean modern theme.
 - **Browser:** starter pack, user songs, user `.sid` files. RIP option.
-- **SCENE view** (performance, M5): small pixel-art scenes that animate in
+- **SCENE view** (performance, M2): small pixel-art scenes that animate in
   time with the music, like the Pocket Operator screens. There are no game
   mechanics.
   - **Voice gates** trigger a character or element per voice, which stops when
@@ -252,6 +252,35 @@ parameters, and the macro controls below move several at once.
   Scenes run on the UI core from the same timed events as the audio, so they
   stay in sync and never touch the audio budget. They need a few KB of sprite
   data each. Scene footage also goes into the release videos.
+
+### Look and feel
+
+Fun is a requirement. SIDOU should feel like an 80s machine and play like
+an instrument.
+
+- **Art direction:** a C64/80s look with our own 8×8 PETSCII-style font,
+  the C64 palette, PETSCII frames and icons, and a blinking block cursor.
+  An art direction page (`docs/art/`) fixes the palette, font, layout grid
+  and motion rules before screens multiply.
+- **Boot:** `LOAD"SIDOU",8,1` → `SEARCHING…` → `READY.` with raster-bar
+  border flashes. It can be skipped and is short on later boots.
+- **Menus** in C64 BASIC/KERNAL style. An "About" page works as a
+  cracktro: sine scroller, starfield, credits, music on the SID.
+- **Visualisations in the play views:**
+  - per-voice oscilloscopes coloured by waveform;
+  - envelope bars from ENV3;
+  - a live filter-curve display;
+  - VU meter and spectrum (possibly on the hardware FFT engine);
+  - the SCENE view's music-driven pixel vignettes.
+- **Optional UI sounds played on the SID itself** (blips, a drive "chunk"
+  on save).
+- **Budget rules:**
+  - A full LCD redraw takes about 77 ms over SPI, so animation uses small
+    dirty strips at about 25 fps.
+  - Everything runs in the main loop and never touches the audio budget.
+  - The emulator tests measure main-loop load, including a "busiest screen"
+    scenario.
+- **Original art only** (section 11).
 
 ## 8. Performance budget
 
@@ -457,14 +486,21 @@ Each kind of document has one job:
    - full SID core and the chip profiles;
    - character layer and post-chip effects;
    - live view on the device (playable instrument with knobs);
-   - MIDI: parser, live mode, CC map, MIDI learn (section 16).
+   - MIDI: parser, live mode, CC map, MIDI learn (section 16);
+   - **M1e, look and feel:**
+     - art direction page;
+     - our own font;
+     - UI widget and transition framework within the strip budget;
+     - boot intro, themed menus, About cracktro;
+     - scopes, envelope bars and VU in the LIVE view.
 3. **M2, songs:**
    - native format and player;
    - STEP and TRACKER views;
    - storage;
    - GT2 import, with the register-match tests;
    - MIDI: clock and transport, multitimbral and whole-chip modes, program
-     change, SysEx dumps.
+     change, SysEx dumps;
+   - SCENE view, with one prototype scene first.
 4. **M3, `.sid` files:**
    - 6502 and PSID playback;
    - mute and solo;
@@ -477,8 +513,7 @@ Each kind of document has one job:
    - release-video pipeline (demo scripts, emulator capture, composition);
    - 0.1 release, followed by the nightly channel.
 6. **M5:** RIP, SID-Wizard import, chip B song tracks, MIDI extras (NRPN,
-   poly aftertouch, sequencer MIDI out), SCENE view (one prototype scene
-   first).
+   poly aftertouch, sequencer MIDI out), more SCENE scenes.
 7. **After M5 (optional):** BLE MIDI feasibility spike for the user-built
    wireless variant (section 17).
 
