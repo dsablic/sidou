@@ -12,9 +12,9 @@ namespace {
 
 constexpr size_t kWindow = 882; /* 20 ms; noise has no period to align to */
 /* Windows 0-2 (the first 60 ms) are not compared; window 0 holds the click of
- * the 0 -> 15 volume step and is the loudest of all. Each curve is normalised to its loudest *compared* window, so the
- * baseline tracks the filtered noise, not the click; the -40 dB floor stays
- * relative to that peak. */
+ * the 0 -> 15 volume step and is the loudest of all. Each curve is normalised
+ * to its loudest *compared* window, so the baseline tracks the filtered noise,
+ * not the click; the -40 dB floor stays relative to that peak. */
 constexpr size_t kFirstWindow = 3;
 constexpr double kFloorDb = -40.0;
 
