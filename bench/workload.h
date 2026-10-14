@@ -16,7 +16,7 @@ extern "C" {
 #define WORKLOAD_MAX_CHIPS 2u
 
 /* Chips beyond the first replay the same register writes, except that voice
- * 1's frequency is raised by 0x0400 (about a major third) so the mix is not
+ * 1's frequency is raised by 0x0400 (about 3.6 semitones) so the mix is not
  * just a copy of chip 0; the cost per chip is unchanged. Chips are mixed in at
  * equal level. The chip count is clamped to [1, WORKLOAD_MAX_CHIPS].
  *
