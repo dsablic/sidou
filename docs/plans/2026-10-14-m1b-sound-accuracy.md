@@ -41,6 +41,16 @@ Cost: 366 instructions per sample per chip, out of a budget of 900.
   a table) is measured from reSIDfp itself by the generator, which then fits
   our SVF parameters.
 
+**Design requirement from M1c (added 2026-10-14):** the analogue model's
+parameters must later be controllable live (M1c Task 3: filter curves and
+non-linearity, DAC kink and leakage, combined-waveform strength, voice DC,
+external filter). So the tables and fits M1b generates must be
+**parameterised**: a function of these parameters, generated over a grid,
+with the device interpolating between grid points. They must not be frozen
+per chip model. At minimum, keep the generator and the C data layout ready
+for that, with the reSIDfp default point as one grid point. M1b's tests run
+at the default point.
+
 **Rules:**
 - The same conventions as M0 and M1a: SPDX headers, the Co-Authored-By
   trailer, stage only your own files, and host commands run from `host/` with
