@@ -4,6 +4,8 @@
 //! Instructions are not cycles: pi32v2 mostly issues one per cycle, but XIP loads
 //! and divides take longer, so treat the result as a lower bound.
 
+use std::path::{Path, PathBuf};
+
 use fm1_core::{Bus, Cpu};
 use fm1_soc::{Soc, RAM_BASE, XIP_BASE};
 use object::{Object, ObjectSymbol};
@@ -20,11 +22,19 @@ struct Run {
     init: u64,
     render: u64,
     samples: Vec<i16>,
+    /// Instructions run by `step_block_load_dec` instead of fm1-core.
+    emulated_block_loads: u64,
 }
 
-fn build_dir() -> String {
-    std::env::var("SIDOU_FM1_BUILD")
-        .expect("set SIDOU_FM1_BUILD to the fm1 build directory (e.g. $PWD/build/fm1)")
+/// The fm1 build directory, made absolute, or None to skip the gate.
+fn build_dir() -> Option<PathBuf> {
+    let dir = std::env::var_os("SIDOU_FM1_BUILD").filter(|d| !d.is_empty())?;
+    Some(std::path::absolute(&dir).expect("resolve SIDOU_FM1_BUILD"))
+}
+
+fn read(path: &Path, what: &str) -> Vec<u8> {
+    std::fs::read(path)
+        .unwrap_or_else(|e| panic!("read {what} {}: {e}; build the fm1 preset", path.display()))
 }
 
 fn read_u32(soc: &Soc, addr: u32) -> u32 {
@@ -67,12 +77,13 @@ fn step_block_load_dec(cpu: &mut Cpu, soc: &mut Soc) -> bool {
     true
 }
 
-fn run(chips: u32) -> Run {
-    let dir = format!("{}/bench/fm1", build_dir());
-    let elf = std::fs::read(format!("{dir}/sid_bench_{chips}.elf"))
-        .expect("bench ELF; build the fm1 preset");
-    let bin = std::fs::read(format!("{dir}/sid_bench_{chips}.bin")).expect("bench image");
-    let file = object::File::parse(&*elf).expect("valid ELF");
+fn run(build: &Path, chips: u32) -> Run {
+    let dir = build.join("bench/fm1");
+    let elf_path = dir.join(format!("sid_bench_{chips}.elf"));
+    let elf = read(&elf_path, "bench ELF");
+    let bin = read(&dir.join(format!("sid_bench_{chips}.bin")), "bench image");
+    let file = object::File::parse(&*elf)
+        .unwrap_or_else(|e| panic!("parse ELF {}: {e}", elf_path.display()));
     let mark = file
         .symbols()
         .find(|s| s.name() == Ok("bench_mark"))
@@ -83,12 +94,15 @@ fn run(chips: u32) -> Run {
     let mut cpu = Cpu::new(XIP_BASE);
     let mut marks = Vec::new();
     let mut steps: u64 = 0;
+    let mut emulated_block_loads: u64 = 0;
     while read_u32(&soc, RESULT_ADDR) != RESULT_MAGIC {
         if cpu.pc == mark {
             marks.push(steps);
         }
         let pc = cpu.pc;
-        if !step_block_load_dec(&mut cpu, &mut soc) {
+        if step_block_load_dec(&mut cpu, &mut soc) {
+            emulated_block_loads += 1;
+        } else {
             cpu.step(&mut soc)
                 .unwrap_or_else(|e| panic!("cpu fault at {pc:#010x}: {e:?}"));
         }
@@ -118,13 +132,27 @@ fn run(chips: u32) -> Run {
         init: marks[1] - marks[0],
         render: marks[2] - marks[1],
         samples,
+        emulated_block_loads,
     }
 }
 
 fn check(chips: u32) {
-    let r = run(chips);
-    let host = sidou_target_tests::render_host(chips);
+    let Some(build) = build_dir() else {
+        println!(
+            "skipping the emulator gate: set SIDOU_FM1_BUILD to the fm1 build directory \
+             (e.g. $PWD/../build/fm1 from host/) after building the fm1 preset"
+        );
+        return;
+    };
+    let r = run(&build, chips);
+    let host = emu_gate::render_host(chips);
     assert_eq!(r.samples.len(), host.len());
+    // Equal outputs prove nothing if both are silent.
+    let host_peak = host.iter().map(|&s| i32::from(s).abs()).max().unwrap_or(0);
+    assert!(
+        host_peak > 1000,
+        "host output peaks at {host_peak}; the comparison would be vacuous"
+    );
     let diffs: Vec<i32> = r
         .samples
         .iter()
@@ -137,14 +165,17 @@ fn check(chips: u32) {
     let pct_core = per_sample * SAMPLE_RATE / CORE_HZ * 100.0;
     let report = serde_json::json!({
         "chips": chips,
+        "metric": "instructions (lower bound on cycles; assumes 1 IPC)",
         "instructions_per_sample": per_sample,
         "percent_of_240mhz_core": pct_core,
         "init_instructions": r.init,
         "max_sample_diff_vs_host": worst,
+        "emulated_block_loads": r.emulated_block_loads,
     });
     println!("{report}");
-    let out = format!("{}/sid_budget_{chips}.json", build_dir());
-    std::fs::write(&out, report.to_string()).expect("write report");
+    let out = build.join(format!("sid_budget_{chips}.json"));
+    std::fs::write(&out, report.to_string())
+        .unwrap_or_else(|e| panic!("write report {}: {e}", out.display()));
 
     if let Some(i) = diffs.iter().position(|&d| d > 1) {
         panic!(

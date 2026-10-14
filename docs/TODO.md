@@ -21,7 +21,8 @@ Follow-ups that aren't tied to a milestone task yet.
   bit-exact host match confirms): the registers load in ascending order from
   `base - 4 * count`, and the base is not written back.
 - **Our workaround:** `step_block_load_dec` in
-  `tests/target/tests/sid_budget.rs` (it moves with the emulator gate in
-  Task 13b). Remove it once upstream supports the instruction.
+  `host/crates/emu-gate/tests/sid_budget.rs` (moved there with the
+  emulator gate in Task 13b). Remove it once upstream supports the
+  instruction.
 - **Action:** open an issue (and possibly a PR) upstream with the above, then
   bump the pinned rev.

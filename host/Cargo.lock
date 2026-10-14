@@ -204,10 +204,42 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 
 [[package]]
+name = "emu-gate"
+version = "0.0.0"
+dependencies = [
+ "fm1-core",
+ "fm1-soc",
+ "object",
+ "serde_json",
+ "sidou-sys",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aedcfb3409746eddb02b9e19ebda1c3394f759a152e48ee875a0844d1b955484"
+
+[[package]]
+name = "fm1-core"
+version = "0.0.0"
+source = "git+https://github.com/joakimeriksson/fm1-emu?rev=e52f4640157f490f8c3af778dd044e9d33e989e8#e52f4640157f490f8c3af778dd044e9d33e989e8"
+dependencies = [
+ "fm1-isa",
+]
+
+[[package]]
+name = "fm1-isa"
+version = "0.0.0"
+source = "git+https://github.com/joakimeriksson/fm1-emu?rev=e52f4640157f490f8c3af778dd044e9d33e989e8#e52f4640157f490f8c3af778dd044e9d33e989e8"
+
+[[package]]
+name = "fm1-soc"
+version = "0.0.0"
+source = "git+https://github.com/joakimeriksson/fm1-emu?rev=e52f4640157f490f8c3af778dd044e9d33e989e8#e52f4640157f490f8c3af778dd044e9d33e989e8"
+dependencies = [
+ "fm1-core",
+]
 
 [[package]]
 name = "glob"
@@ -292,6 +324,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "object"
+version = "0.36.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62948e14d923ea95ea2c7c86c71013138b66525b86bdc08d2dcc262bdb497b87"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
