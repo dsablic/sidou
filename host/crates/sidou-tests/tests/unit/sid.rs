@@ -169,7 +169,7 @@ fn envelopes_and_accumulators_power_up_like_the_chip() {
         let s = new_sid(model);
         for v in 0..3 {
             assert_eq!(s.env[v].counter, 0xaa, "voice {v}");
-            assert_eq!(s.env[v].hold_zero, 0, "voice {v}");
+            assert_eq!(s.env[v].counter_enabled, 1, "voice {v}");
             assert_eq!(s.env[v].state, SID_ENV_RELEASE, "voice {v}");
             assert_eq!(s.osc[v].acc, 0x555555, "voice {v}");
         }
@@ -183,17 +183,22 @@ fn power_on_envelopes_release_to_zero_and_freeze() {
     clock(&mut s, 10_000);
     for v in 0..3 {
         assert_eq!(s.env[v].counter, 0, "voice {v}");
-        assert_eq!(s.env[v].hold_zero, 1, "voice {v}");
+        assert_eq!(s.env[v].counter_enabled, 0, "voice {v}");
     }
 }
 
 #[test]
-fn env3_reads_the_voice_3_envelope_counter() {
+fn env3_reads_the_voice_3_envelope_counter_one_cycle_late() {
     let mut s = new_sid(SID_MODEL_8580);
+    // reSIDfp latches ENV3 at the start of each cycle; nothing is latched before the first.
+    assert_eq!(read(&mut s, 0x1c), 0x00);
+    clock(&mut s, 1);
     assert_eq!(read(&mut s, 0x1c), 0xaa);
-    s.env[2].counter = 0x5a;
-    s.env[1].counter = 0x11;
-    assert_eq!(read(&mut s, 0x1c), 0x5a);
+    clock(&mut s, 2); // the first power-on release step lands in the third cycle
+    assert_eq!(s.env[2].counter, 0xa9);
+    assert_eq!(read(&mut s, 0x1c), 0xaa);
+    clock(&mut s, 1);
+    assert_eq!(read(&mut s, 0x1c), 0xa9);
 }
 
 #[test]
@@ -237,6 +242,7 @@ fn write_only_registers_read_the_last_bus_value() {
     write(&mut s, 0x18, 0x0f);
     assert_eq!(read(&mut s, 0x05), 0x0f);
     // A read of a readable register drives the bus too, as in reSIDfp.
+    clock(&mut s, 1);
     assert_eq!(read(&mut s, 0x1c), 0xaa);
     assert_eq!(read(&mut s, 0x1d), 0xaa);
     assert_eq!(read(&mut s, 0x19), 0xff);
@@ -246,7 +252,7 @@ fn write_only_registers_read_the_last_bus_value() {
 #[test]
 fn register_numbers_wrap_at_0x20() {
     let mut s = new_sid(SID_MODEL_8580);
-    s.env[2].counter = 0x42;
+    s.env[2].env3 = 0x42;
     assert_eq!(read(&mut s, 0x3c), 0x42);
     assert_eq!(read(&mut s, 0xf9), 0xff);
 }
@@ -288,7 +294,8 @@ fn clock_leaves_the_chip_where_render_would() {
         assert_eq!(clocked.osc[v].lfsr, rendered.osc[v].lfsr, "voice {v}");
         assert_eq!(clocked.env[v].counter, rendered.env[v].counter, "voice {v}");
         assert_eq!(
-            clocked.env[v].rate_counter, rendered.env[v].rate_counter,
+            unsafe { sid_env_lfsr_pos(&clocked.env[v]) },
+            unsafe { sid_env_lfsr_pos(&rendered.env[v]) },
             "voice {v}"
         );
     }

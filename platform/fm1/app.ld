@@ -53,6 +53,7 @@ SECTIONS
         *(.text.reg_ring_drain .text.reg_ring_pop .text.reg_ring_chip)   /* app/reg_ring.c */
         *(.text.sid_render .text.sid_write)         /* core/sid/sid.c (sid_svf_set is inline) */
         *(.text.sid_read .text.read_osc3 .text.clock_voices)    /* sid.c */
+        *(.text.sid_env_advance_slow .text.sid_env_settle)    /* sid_env.h */
         /* The effect slots (core/fx/fx_slots.c): the render, the settings, the switch path
          * (slot_start, slot_copy; distinctive names, so no other file's function matches),
          * every algorithm tick and LFO the compiler kept out of line, and the inits slot_start

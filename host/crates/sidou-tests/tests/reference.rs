@@ -21,11 +21,12 @@ const MAX_PITCH_CENTS: f64 = 0.1;
  * the release-slope difference below has grown largest. Changing the floor
  * means re-checking this tolerance. */
 /* Measured at M0: 0.44 (in the release, at -20 dB); since both engines power up
- * alike, without the old pre-roll that released reSIDfp's envelopes (M1b): 0.39. */
+ * alike, without the old pre-roll that released reSIDfp's envelopes (M1b): 0.39;
+ * with ENV3 bit-exact (M1b Task 2): 0.40. The rest is the output path (Task 4). */
 const MAX_ENVELOPE_DB_8580: f64 = 0.75;
 /* reSIDfp models the 6581's non-linear envelope DAC, which M0 does not; the
  * release tail drifts ~2 dB apart by -20 dB. M1 adds the DAC and tightens this. */
-const MAX_ENVELOPE_DB_6581: f64 = 2.5; /* measured at M0: 2.04; M1b power-on: 2.07 */
+const MAX_ENVELOPE_DB_6581: f64 = 2.5; /* measured at M0: 2.04; M1b: 2.07 */
 /* M1 investigation item: on the 8580 our release falls ~5.5% steeper than
  * reSIDfp's (55.9 vs 53.0 dB/s at M0), 1.8 dB apart by -30 dB; below
  * ENVELOPE_FLOOR_DB, so this test does not see it yet. The ENV3 test

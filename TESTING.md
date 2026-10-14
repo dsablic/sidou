@@ -109,12 +109,14 @@ unless a decision record in `docs/decisions/` explains why.
 
 `register_reads` runs scripts of register writes on SIDOU and reSIDfp and reads
 `$1C` (ENV3) or `$1B` (OSC3) from both at the same chip cycles, once per PAL
-frame or once every 100 cycles. The reads must be equal:
+frame, or every 100 (ENV3) or 7 (OSC3) cycles over a shorter run. The reads
+must be equal:
 - **ENV3**: every attack, decay and release rate, gate changes in the middle
   of each phase, the ADSR delay bug, sustain changes during decay, and the
   power-on release from 0xaa;
 - **OSC3**: triangle, sawtooth, pulse (three widths) and noise, each at four
-  frequencies.
+  frequencies; with no waveform selected, SIDOU reads 0 where reSIDfp holds
+  the last value, and a test pins both.
 
 Neither engine renders audio here: SIDOU advances with `sid_clock`, reSIDfp
 with `clockSilent`, so a read can land on any cycle.

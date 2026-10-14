@@ -728,9 +728,11 @@ fn stealing_a_sustained_voice_restarts_its_envelope_attack() {
 
     // Gate off and on with no chip cycles in between: the edge must still latch.
     unsafe { live_note_on(&mut *c.live, 72, 100) };
+    assert_eq!(c.chip.env[0].gate, 1);
+    // The state follows the gate two cycles later, as on the chip (reSIDfp's pipeline).
+    unsafe { sid_clock(&mut *c.chip, 2) };
     let env = c.chip.env[0];
     assert_eq!(env.state, SID_ENV_ATTACK);
-    assert_eq!(env.gate, 1);
     assert_eq!(c.chip.osc[0].freq, u32::from(freq_table()[72]));
     assert_eq!(
         c.chip.env[1].state, SID_ENV_DECAY_SUSTAIN,

@@ -4,7 +4,8 @@
 //! back exactly the same values at the same chip cycles, for both chip models.
 //!
 //! Each case runs a script of register writes on both engines and reads once per PAL
-//! frame, or once every 100 cycles where the timing inside a frame matters. A read at
+//! frame, or every 100 (ENV3) or 7 (OSC3) cycles where the timing inside a frame
+//! matters. A read at
 //! the start of frame N comes after frame N's writes; messages give its cycle and N. Cases that
 //! fail for a known reason a later M1b task fixes are `#[ignore]`d with that reason;
 //! `cargo test -- --ignored` shows where they stand.
@@ -209,7 +210,10 @@ macro_rules! env3_cases {
 
 const FREQS: [u16; 4] = [0x0123, 0x1d45, 0x7531, 0xfedc];
 
-fn single_waveform(control: u8, pw: u16, freq: u16) -> Script {
+/* Once per frame over 100 frames, or every 7 cycles over one frame: 7 is prime to
+ * every frequency's step pattern, so the reads land on every phase of the one- and
+ * two-cycle OSC3 delays. */
+fn single_waveform(control: u8, pw: u16, freq: u16, interval: u64) -> Script {
     Script {
         writes: vec![
             at(0, FREQ_LO, freq as u8),
@@ -218,28 +222,56 @@ fn single_waveform(control: u8, pw: u16, freq: u16) -> Script {
             at(0, PW_HI, (pw >> 8) as u8),
             at(0, CONTROL, control),
         ],
-        frames: 100,
-        interval: CYCLES_PER_FRAME,
+        frames: if interval == CYCLES_PER_FRAME { 100 } else { 1 },
+        interval,
     }
 }
 
-fn assert_osc3_matches(model: sid_model, control: u8, pw: u16) {
+fn assert_osc3_matches(model: sid_model, control: u8, pw: u16, interval: u64) {
     let failures: Vec<String> = FREQS
         .iter()
         .filter_map(|&freq| {
-            reads_mismatch(model, OSC3, &single_waveform(control, pw, freq))
+            reads_mismatch(model, OSC3, &single_waveform(control, pw, freq, interval))
                 .map(|m| format!("control {control:#04x}, pw {pw:#05x}, freq {freq:#06x}: {m}"))
         })
         .collect();
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+/* With no waveform selected, SIDOU's OSC3 reads 0. reSIDfp holds the last waveform
+ * output on its floating DAC input and fades it bit by bit only after 54,000 (6581)
+ * or 800,000 (8580) cycles. Programs rarely read OSC3 with the waveform off, so
+ * SIDOU keeps 0 (M1b Task 2 decision); this pins both behaviours. */
+#[test]
+fn osc3_with_no_waveform_reads_0_where_residfp_holds_the_last_value() {
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        let writes = [
+            at(0, FREQ_LO, 0x45),
+            at(0, FREQ_HI, 0x1d),
+            at(0, CONTROL, 0x20),
+            at(1, CONTROL, 0x00),
+        ];
+        let total = 2 * CYCLES_PER_FRAME;
+        let ours = probe(&mut Sidou::new(model), &writes, OSC3, 100, total);
+        let reference = probe(&mut Residfp::new(model), &writes, OSC3, 100, total);
+        let off = (CYCLES_PER_FRAME / 100) as usize; // the first read after the write
+        assert!(ours[off..].iter().all(|&v| v == 0), "{}", model_name(model));
+        let held = reference[off];
+        assert_ne!(held, 0, "{}", model_name(model));
+        assert!(
+            reference[off..].iter().all(|&v| v == held),
+            "{}",
+            model_name(model)
+        );
+    }
+}
+
 macro_rules! osc3_cases {
-    ($($(#[$attr:meta])* $name:ident: $model:expr, $control:expr, $pw:expr;)*) => {$(
+    ($($(#[$attr:meta])* $name:ident: $model:expr, $control:expr, $pw:expr, $interval:expr;)*) => {$(
         #[test]
         $(#[$attr])*
         fn $name() {
-            assert_osc3_matches($model, $control, $pw);
+            assert_osc3_matches($model, $control, $pw, $interval);
         }
     )*};
 }
@@ -281,39 +313,23 @@ env3_cases! {
     env3_release_1_mos6581: SID_MODEL_6581, release(1);
     env3_release_2_mos6581: SID_MODEL_6581, release(2);
     env3_release_3_mos6581: SID_MODEL_6581, release(3);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_4_mos6581: SID_MODEL_6581, release(4);
-    #[ignore = "M1b Task 2: one step apart mid-release (first at frame 4: 0xa6 vs 0xa5)"]
     env3_release_5_mos6581: SID_MODEL_6581, release(5);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_6_mos6581: SID_MODEL_6581, release(6);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_7_mos6581: SID_MODEL_6581, release(7);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_8_mos6581: SID_MODEL_6581, release(8);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_9_mos6581: SID_MODEL_6581, release(9);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_10_mos6581: SID_MODEL_6581, release(10);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_11_mos6581: SID_MODEL_6581, release(11);
-    #[ignore = "M1b Task 2: power-on release one step ahead, then one step apart through the release"]
     env3_release_12_mos6581: SID_MODEL_6581, release(12);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_13_mos6581: SID_MODEL_6581, release(13);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_14_mos6581: SID_MODEL_6581, release(14);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_15_mos6581: SID_MODEL_6581, release(15);
-    #[ignore = "M1b Task 2: one step apart from the power-on release on and around gate changes"]
     env3_gate_toggles_per_frame_mos6581: SID_MODEL_6581, gate_toggles(CYCLES_PER_FRAME);
-    #[ignore = "M1b Task 2: one step apart from the power-on release on and around gate changes"]
     env3_gate_toggles_per_100_cycles_mos6581: SID_MODEL_6581, gate_toggles(100);
     env3_adsr_delay_bug_per_frame_mos6581: SID_MODEL_6581, adsr_delay_bug(CYCLES_PER_FRAME);
-    #[ignore = "M1b Task 2: power-on release one step ahead; one step apart after the delay-bug wrap"]
     env3_adsr_delay_bug_per_100_cycles_mos6581: SID_MODEL_6581, adsr_delay_bug(100);
     env3_sustain_changes_mos6581: SID_MODEL_6581, sustain_changes();
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_power_on_release_mos6581: SID_MODEL_6581, power_on();
     env3_attack_0_csg8580: SID_MODEL_8580, attack(0);
     env3_attack_1_csg8580: SID_MODEL_8580, attack(1);
@@ -351,53 +367,45 @@ env3_cases! {
     env3_release_1_csg8580: SID_MODEL_8580, release(1);
     env3_release_2_csg8580: SID_MODEL_8580, release(2);
     env3_release_3_csg8580: SID_MODEL_8580, release(3);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_4_csg8580: SID_MODEL_8580, release(4);
-    #[ignore = "M1b Task 2: one step apart mid-release (first at frame 4: 0xa6 vs 0xa5)"]
     env3_release_5_csg8580: SID_MODEL_8580, release(5);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_6_csg8580: SID_MODEL_8580, release(6);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_7_csg8580: SID_MODEL_8580, release(7);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_8_csg8580: SID_MODEL_8580, release(8);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_9_csg8580: SID_MODEL_8580, release(9);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_10_csg8580: SID_MODEL_8580, release(10);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_11_csg8580: SID_MODEL_8580, release(11);
-    #[ignore = "M1b Task 2: power-on release one step ahead, then one step apart through the release"]
     env3_release_12_csg8580: SID_MODEL_8580, release(12);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_13_csg8580: SID_MODEL_8580, release(13);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_14_csg8580: SID_MODEL_8580, release(14);
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_release_15_csg8580: SID_MODEL_8580, release(15);
-    #[ignore = "M1b Task 2: one step apart from the power-on release on and around gate changes"]
     env3_gate_toggles_per_frame_csg8580: SID_MODEL_8580, gate_toggles(CYCLES_PER_FRAME);
-    #[ignore = "M1b Task 2: one step apart from the power-on release on and around gate changes"]
     env3_gate_toggles_per_100_cycles_csg8580: SID_MODEL_8580, gate_toggles(100);
     env3_adsr_delay_bug_per_frame_csg8580: SID_MODEL_8580, adsr_delay_bug(CYCLES_PER_FRAME);
-    #[ignore = "M1b Task 2: power-on release one step ahead; one step apart after the delay-bug wrap"]
     env3_adsr_delay_bug_per_100_cycles_csg8580: SID_MODEL_8580, adsr_delay_bug(100);
     env3_sustain_changes_csg8580: SID_MODEL_8580, sustain_changes();
-    #[ignore = "M1b Task 2: reSIDfp's power-on release runs one step ahead (rate-counter phase after reset)"]
     env3_power_on_release_csg8580: SID_MODEL_8580, power_on();
 }
 
 osc3_cases! {
-    osc3_triangle_mos6581: SID_MODEL_6581, 0x10, 0x000;
-    osc3_sawtooth_mos6581: SID_MODEL_6581, 0x20, 0x000;
-    osc3_pulse_narrow_mos6581: SID_MODEL_6581, 0x40, 0x080;
-    osc3_pulse_square_mos6581: SID_MODEL_6581, 0x40, 0x800;
-    osc3_pulse_wide_mos6581: SID_MODEL_6581, 0x40, 0xf00;
-    osc3_noise_mos6581: SID_MODEL_6581, 0x80, 0x000;
-    osc3_triangle_csg8580: SID_MODEL_8580, 0x10, 0x000;
-    osc3_sawtooth_csg8580: SID_MODEL_8580, 0x20, 0x000;
-    osc3_pulse_narrow_csg8580: SID_MODEL_8580, 0x40, 0x080;
-    osc3_pulse_square_csg8580: SID_MODEL_8580, 0x40, 0x800;
-    osc3_pulse_wide_csg8580: SID_MODEL_8580, 0x40, 0xf00;
-    osc3_noise_csg8580: SID_MODEL_8580, 0x80, 0x000;
+    osc3_triangle_mos6581: SID_MODEL_6581, 0x10, 0x000, CYCLES_PER_FRAME;
+    osc3_sawtooth_mos6581: SID_MODEL_6581, 0x20, 0x000, CYCLES_PER_FRAME;
+    osc3_pulse_narrow_mos6581: SID_MODEL_6581, 0x40, 0x080, CYCLES_PER_FRAME;
+    osc3_pulse_square_mos6581: SID_MODEL_6581, 0x40, 0x800, CYCLES_PER_FRAME;
+    osc3_pulse_wide_mos6581: SID_MODEL_6581, 0x40, 0xf00, CYCLES_PER_FRAME;
+    osc3_noise_mos6581: SID_MODEL_6581, 0x80, 0x000, CYCLES_PER_FRAME;
+    osc3_triangle_csg8580: SID_MODEL_8580, 0x10, 0x000, CYCLES_PER_FRAME;
+    osc3_sawtooth_csg8580: SID_MODEL_8580, 0x20, 0x000, CYCLES_PER_FRAME;
+    osc3_pulse_narrow_csg8580: SID_MODEL_8580, 0x40, 0x080, CYCLES_PER_FRAME;
+    osc3_pulse_square_csg8580: SID_MODEL_8580, 0x40, 0x800, CYCLES_PER_FRAME;
+    osc3_pulse_wide_csg8580: SID_MODEL_8580, 0x40, 0xf00, CYCLES_PER_FRAME;
+    osc3_noise_csg8580: SID_MODEL_8580, 0x80, 0x000, CYCLES_PER_FRAME;
+    osc3_sawtooth_every_7_cycles_mos6581: SID_MODEL_6581, 0x20, 0x000, 7;
+    osc3_pulse_narrow_every_7_cycles_mos6581: SID_MODEL_6581, 0x40, 0x080, 7;
+    osc3_pulse_square_every_7_cycles_mos6581: SID_MODEL_6581, 0x40, 0x800, 7;
+    osc3_noise_every_7_cycles_mos6581: SID_MODEL_6581, 0x80, 0x000, 7;
+    osc3_sawtooth_every_7_cycles_csg8580: SID_MODEL_8580, 0x20, 0x000, 7;
+    osc3_pulse_narrow_every_7_cycles_csg8580: SID_MODEL_8580, 0x40, 0x080, 7;
+    osc3_pulse_square_every_7_cycles_csg8580: SID_MODEL_8580, 0x40, 0x800, 7;
+    osc3_noise_every_7_cycles_csg8580: SID_MODEL_8580, 0x80, 0x000, 7;
 }

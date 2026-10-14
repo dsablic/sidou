@@ -8,7 +8,11 @@
 #define OUTPUT_GAIN (0.1f * 32767.0f) /* leaves headroom for the 6581 DC offset and filter peaks */
 #define DC_BLOCK_HZ 16.0f
 #define DRIVE_6581 2.0f
-/* sid_clock's step: sid_osc_advance needs freq * cycles < 2^24, so at most 256. */
+/* sid_clock's step. sid_osc_advance needs freq * cycles < 2^24, so at most 256.
+ * Within that, the step only matters for hard sync, which is approximated once per
+ * step (see sid_osc_sync); 16 is no longer than sid_render's step at any PAL rate up
+ * to 61.5 kHz, so sid_clock is never coarser than rendering. The loop's cost does not
+ * matter: sid_clock is for tests and register-accurate seeking, not the audio path. */
 #define CLOCK_STEP 16u
 
 static void update_filter(sid* s) {
@@ -28,7 +32,7 @@ void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) 
         s->osc[v].acc = SID_OSC_POWER_ON_ACC;
         s->env[v].counter = SID_ENV_POWER_ON;
         sid_osc_reset(&s->osc[v]);
-        sid_env_reset(&s->env[v]);
+        sid_env_reset_settled(&s->env[v]); /* zeroed above: nothing to settle */
     }
     float limit = 0.45f * (float)sample_rate;
     for (uint32_t fc = 0; fc < SID_FC_STEPS; ++fc) {
@@ -98,7 +102,18 @@ static inline uint32_t acc_one_cycle_ago(const sid_osc* o) {
  * - the pulse comparison is one cycle late on both models;
  * - the noise LFSR shifts two cycles after accumulator bit 19 rises, while
  *   sid_osc_advance shifts it at once, so a shift from the last two cycles is undone.
- * The cycle before a hard sync or a TEST release is not reconstructed exactly. */
+ * The previous cycles are reconstructed from the current state (acc - freq), which is
+ * wrong for a read within one or two cycles of:
+ * - a frequency write (the old frequency drove those cycles);
+ * - on the 8580, a TEST or control write (reSIDfp's latched triangle/saw value comes
+ *   from the old setting);
+ * - a hard sync of voice 3 (its accumulator restarted mid-step);
+ * - a TEST release with noise selected: SIDOU reloads the LFSR where reSIDfp shifts
+ *   it, a noise difference that outlasts the read (M1b Task 3).
+ * With no waveform selected OSC3 reads 0. reSIDfp instead holds the last output on its
+ * floating DAC input and fades it after 54,000 (6581) or 800,000 (8580) cycles; SIDOU
+ * keeps 0 because programs rarely read OSC3 with the waveform off, and holding the
+ * value would cost state on the audio path. */
 static uint8_t read_osc3(const sid* s) {
     const sid_osc* o = &s->osc[2];
     const sid_osc* src = &s->osc[1];
@@ -138,7 +153,7 @@ uint8_t sid_read(sid* s, uint8_t reg) {
     case 0x19:
     case 0x1a: s->bus = 0xff; break; /* paddles: nothing connected */
     case 0x1b: s->bus = read_osc3(s); break;
-    case 0x1c: s->bus = s->env[2].counter; break;
+    case 0x1c: s->bus = s->env[2].env3; break;
     default: break;
     }
     return s->bus;

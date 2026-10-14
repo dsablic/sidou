@@ -42,14 +42,16 @@ typedef struct {
  * clock_hz / 256, about 3849 Hz for PAL and 3995 Hz for NTSC. The upper bound
  * keeps the Q16 cycle step in range.
  * The chip powers up as reSIDfp's does: each envelope counter at 0xaa, releasing at
- * rate 0 to 0 within 671 rate periods (6039 cycles, about 6 ms), and each accumulator
- * at 0x555555. */
+ * rate 0 to 0 (the first step on the third cycle, then every 9 cycles, through the
+ * exponential divider: about 6 ms), and each accumulator at 0x555555. Until M1b Task 2
+ * that release ran one step behind reSIDfp's; it is now cycle-exact. */
 void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate);
 void sid_write(sid* s, uint8_t reg, uint8_t value);
 void sid_render(sid* s, int16_t* out, uint32_t frames);
 
 /* Reads a register. $19/$1A (paddles) read 0xFF, $1B is OSC3 (the top 8 bits of voice
- * 3's waveform output), $1C is ENV3 (voice 3's envelope counter). Like the chip, every
+ * 3's waveform output, as reSIDfp latches it; 0 with no waveform selected), $1C is
+ * ENV3 (voice 3's envelope counter at the start of the last cycle). Like the chip, every
  * read or write leaves its value on the data bus, and the write-only registers read
  * back whatever is there. On the chip that value fades after a while; that is not
  * modelled. */
@@ -57,8 +59,10 @@ uint8_t sid_read(sid* s, uint8_t reg);
 
 /* Advances the oscillators and envelopes by exactly `cycles` chip cycles, without
  * producing output; the filter and the output stage do not run. sid_render advances
- * the same way, a sample's worth of cycles at a time. For reading OSC3 and ENV3 at
- * exact cycles, as the reference tests do. */
+ * the same code a sample's worth of cycles at a time, and both reach the same state,
+ * except with hard sync: sync is approximated once per step, and the steps differ
+ * (16 cycles here). For reading OSC3 and ENV3 at exact cycles, as the reference tests
+ * do. */
 void sid_clock(sid* s, uint32_t cycles);
 
 #ifdef __cplusplus

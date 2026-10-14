@@ -64,7 +64,9 @@ static inline void sid_osc_write_control(sid_osc* o, uint8_t v) {
 }
 
 /* freq is a 16-bit SID register value (sid_write guarantees it) and cycles is at
- * most ~23, so freq * cycles < 2^24 and at most one MSB rise can occur. */
+ * most 256 (sid_render: clock_hz / sample_rate rounded up, at most 256 by sid_init's
+ * rate bounds; sid_clock: CLOCK_STEP), so freq * cycles < 2^24 and at most one MSB
+ * rise can occur. */
 static inline void sid_osc_advance(sid_osc* o, uint32_t cycles) {
     o->msb_rose = 0;
     if (o->control & SID_CTRL_TEST) {
