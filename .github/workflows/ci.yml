@@ -110,7 +110,26 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: host
-      - name: Emulator gate and boot test
+      # The package's inputs that are not ours (two AC79 SDK files, M-VAVE's V15 package for its
+      # flash head), pinned by SHA-256 in inputs.toml: cached, so a run need not reach gitee and
+      # M-VAVE's server; sidou-pack downloads and checks them on a miss.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            build/ac79
+            build/stock
+          key: sidou-pack-inputs-${{ hashFiles('host/crates/sidou-pack/inputs.toml') }}
+      - name: Package sidou.fwsc
+        working-directory: host
+        run: >-
+          cargo run --locked --release -p sidou-pack --
+          --app ../build/fm1/platform/fm1/sidou_app.bin
+          --loader ../build/fm1/platform/fm1/sidou_loader.bin
+          -o ../build/fm1/sidou.fwsc
+      - name: Packager tests (with the inputs)
+        working-directory: host
+        run: cargo test --locked --release -p sidou-pack -- --nocapture
+      - name: Emulator gate, boot, live, MIDI, SRAM, boot-guard and package tests
         working-directory: host
         env:
           SIDOU_FM1_BUILD: ${{ github.workspace }}/build/fm1
@@ -126,6 +145,9 @@ jobs:
           f=build/fm1/sidou_boot.json
           test -s "$f" || { echo "::error::$f missing: the boot test did not run"; exit 1; }
           jq -e '.f0_hz | numbers' "$f"
+          f=build/fm1/sidou_package.json
+          test -s "$f" || { echo "::error::$f missing: the package boot test did not run"; exit 1; }
+          jq -e '.first_difference_from_bare_image == null' "$f"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -133,4 +155,15 @@ jobs:
           path: |
             build/fm1/sid_budget_*.json
             build/fm1/sidou_boot.json
+            build/fm1/sidou_package.json
           if-no-files-found: warn
+      # The package, with the licence of the AC79 SDK files in it (and SIDOU's). Internal: the
+      # package carries M-VAVE's flash head (docs/TODO.md).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sidou-fwsc
+          path: |
+            build/fm1/sidou.fwsc
+            LICENSES/Apache-2.0.txt
+            LICENSES/GPL-3.0-only.txt
+          if-no-files-found: error

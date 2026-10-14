@@ -283,7 +283,7 @@ request:
 | `asan` (Ubuntu, nightly Rust) | the tests with `SIDOU_SANITIZE=address` |
 | `msrv` (Ubuntu, Rust 1.87) | `cargo check` |
 | `reuse` | `reuse lint` |
-| `fm1` (Ubuntu) | the `fm1` build in Docker, the emulator gate, a check that both JSON reports exist; the reports are uploaded as the `sid-budget` artifact |
+| `fm1` (Ubuntu) | the `fm1` build in Docker; `sidou-pack` makes `sidou.fwsc` (its inputs cached by `inputs.toml`'s hash) and its tests run with the inputs; the emulator tests (gate, boot, live, MIDI, SRAM, boot guard, package boot); a check that the JSON reports exist. The reports are uploaded as the `sid-budget` artifact, the package with `LICENSES/Apache-2.0.txt` and `LICENSES/GPL-3.0-only.txt` as `sidou-fwsc` |
 
 Before opening a pull request, run at least:
 

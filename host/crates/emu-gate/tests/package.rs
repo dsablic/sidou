@@ -7,6 +7,7 @@
 //!
 //! The package is `$SIDOU_FWSC`, else `sidou.fwsc` in the fm1 build directory (CI:
 //! `cargo run -p sidou-pack -- ... -o build/fm1/sidou.fwsc`); without it the test skips.
+//! It writes `sidou_package.json` into the fm1 build directory.
 
 mod common;
 
@@ -59,6 +60,17 @@ fn the_package_boots_and_plays_as_the_bare_image() {
         b.len(),
         peak(&tail)
     );
+    let report = serde_json::json!({
+        "package": path.display().to_string(),
+        "package_bytes": pkg.len(),
+        "frames": a.len(),
+        "f0_hz": f0,
+        "peak": peak(&tail),
+        "first_difference_from_bare_image": first_diff,
+    });
+    let out = build.join("sidou_package.json");
+    std::fs::write(&out, report.to_string())
+        .unwrap_or_else(|e| panic!("write report {}: {e}", out.display()));
     assert!(
         a.len() > 15_000,
         "the package boot played {} frames",
