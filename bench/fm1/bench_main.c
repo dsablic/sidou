@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* Runs the shared workload between bench_mark() calls. The emulator test counts
  * instructions between the marks and reads the samples from RESULT_ADDR. It picks the
- * scenario by writing its number to SCENARIO_ADDR before starting (0, the triad, if
- * it does not). */
+ * scenario by writing its number to SCENARIO_ADDR, and the 8580 by writing 1 to
+ * MODEL_ADDR, before starting (the triad on a 6581 if it does not). */
 #include <stdint.h>
 
 #include "workload.h"
@@ -11,6 +11,7 @@
 #define RESULT_ADDR 0x01C80000u
 #define RESULT_MAGIC 0x53494442u /* "SIDB" */
 #define SCENARIO_ADDR (RESULT_ADDR + 8u)
+#define MODEL_ADDR (RESULT_ADDR + 12u)
 
 extern uint32_t __data_start[], __data_end[], __data_load[], __bss_start[], __bss_end[];
 
@@ -27,9 +28,10 @@ int main(void) {
     int16_t* samples = (int16_t*)(RESULT_ADDR + 0x40u);
 
     uint32_t scenario = *(volatile uint32_t*)SCENARIO_ADDR;
+    sid_model model = *(volatile uint32_t*)MODEL_ADDR ? SID_MODEL_8580 : SID_MODEL_6581;
 
     bench_mark();
-    workload_begin_scenario(BENCH_CHIPS, SID_MODEL_6581, scenario);
+    workload_begin_scenario(BENCH_CHIPS, model, scenario);
     bench_mark();
     workload_render_samples(samples, WORKLOAD_SAMPLES);
     bench_mark();

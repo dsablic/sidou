@@ -178,13 +178,14 @@ the measure.
 
 The M0 decision gate. It runs the pi32v2 benchmark programs
 (`sid_bench_1` and `sid_bench_2`) in fm1-emu, used as a library, once per
-workload scenario (`bench/workload.h`): the triad, plus envelope worst cases
+workload scenario (`bench/workload.h`) on each model (6581 and 8580): the triad, plus envelope worst cases
 at the fastest rate on all three voices (holding sustain 0xff and 0xaa, gates
 toggled every frame or every 128-sample block, and an idle chip), a
 combined-waveform scenario (pulse+saw, saw+triangle, and noise+pulse retriggered
 through TEST), and noise combined with other waveforms on all three voices
-(TEST held, steady until lock-up, and retriggered through TEST every other
-frame or every block). For each it:
+(TEST held, steady until lock-up, retriggered through TEST every other frame
+or every block, and from power-on at the highest and a low frequency, with
+triangle, sawtooth, ring modulation and sync). For each it:
 - counts the instructions per output sample, and fails if one chip needs
   more than 900, or two chips more than 1,800 (design document, section 8),
   on average or in any 128-sample block (a block's window also holds the
@@ -192,8 +193,8 @@ frame or every block). For each it:
 - renders the same scenario on the host build of the same C code, and fails
   if any sample differs by more than 1 LSB (at M0 they are identical);
 - writes `sid_budget_1.json` and `sid_budget_2.json` into the fm1 build
-  directory. The top-level fields are the triad's, comparable with earlier
-  milestones; `scenarios` lists every scenario and
+  directory. The top-level fields are the triad's on the 6581, comparable
+  with earlier milestones; `scenarios` lists every scenario and
   `max_instructions_per_sample` the most expensive.
 
 `SIDOU_GATE_PROFILE=1` also counts the render instructions per function and

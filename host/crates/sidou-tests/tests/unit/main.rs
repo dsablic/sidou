@@ -9,6 +9,7 @@ mod sid_env;
 mod sid_filter;
 mod sid_noise;
 mod sid_osc;
+mod sid_osc_fuzz;
 mod sid_sync;
 mod slots;
 mod slots_dist;

@@ -35,7 +35,6 @@ typedef struct {
     uint8_t osc3_held; /* a write since the last cycle: OSC3 is osc3_latch */
     uint8_t osc3_latch;
     uint8_t control_age;   /* cycles since voice 3's last control write, up to 2 */
-    uint32_t tri_saw_latch; /* 8580: voice 3's triangle/saw, latched with the old waveform */
     float volume;
     float dc_r, dc_x1, dc_y1;
     float cutoff_g[SID_FC_STEPS];

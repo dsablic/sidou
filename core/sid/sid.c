@@ -31,6 +31,7 @@ void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) 
     for (int v = 0; v < 3; ++v) {
         s->osc[v].acc = SID_OSC_POWER_ON_ACC;
         sid_osc_set_model(&s->osc[v], model == SID_MODEL_6581);
+        s->osc[v].tri_saw = 0x555u; /* reSIDfp's power-on latch; reset keeps it */
         s->env[v].counter = SID_ENV_POWER_ON;
         sid_osc_reset(&s->osc[v]);
         sid_env_reset_settled(&s->env[v]); /* zeroed above: nothing to settle */
@@ -63,21 +64,18 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
         s->osc3_held = 1;
     }
     if (reg == 0x12) {
-        /* The 8580 latches triangle/saw for OSC3 a cycle late, from the old waveform. */
-        const sid_osc* o = &s->osc[2];
-        uint32_t ix = sid_wave_index(o->control, sid_osc_acc_last(o), sid_osc_acc_last(&s->osc[1]));
-        s->tri_saw_latch = sid_wave_ramp((uint32_t)o->control >> 4, ix);
         s->control_age = 0;
     }
     if (reg < 21) {
         sid_osc* o = &s->osc[reg / 7];
         sid_env* e = &s->env[reg / 7];
         switch (reg % 7) {
-        case 0: o->freq = (o->freq & 0xff00u) | v; break;
-        case 1: o->freq = (o->freq & 0x00ffu) | ((uint32_t)v << 8); break;
-        case 2: o->pw = (o->pw & 0xf00u) | v; break;
-        case 3: o->pw = (o->pw & 0x0ffu) | ((uint32_t)(v & 0x0f) << 8); break;
+        case 0: o->freq = (o->freq & 0xff00u) | v; o->quiet = 0; break;
+        case 1: o->freq = (o->freq & 0x00ffu) | ((uint32_t)v << 8); o->quiet = 0; break;
+        case 2: sid_osc_write_pw(o, (o->pw & 0xf00u) | v); break;
+        case 3: sid_osc_write_pw(o, (o->pw & 0x0ffu) | ((uint32_t)(v & 0x0f) << 8)); break;
         case 4:
+            sid_osc_latch_ramp(o, sid_osc_acc_last(&s->osc[reg >= 7 ? reg / 7 - 1 : 2]));
             sid_osc_write_control(o, v);
             sid_env_set_gate(e, v & SID_CTRL_GATE);
             break;
@@ -118,7 +116,8 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
  * cycle or two later is wrong after:
  * - a frequency or pulse width write (the old values drove those cycles);
  * - a control write: the pulse comparison from before a TEST change (the 8580's
- *   triangle/saw latched from the old waveform is kept, for the one cycle it lasts);
+ *   triangle/saw latch, tri_saw, is exact: it holds the last triangle/saw value,
+ *   0x555 from power-on, and is used for the one cycle after the write);
  * - a hard sync of voice 3 or voice 2 (with ring modulation), whose accumulator
  *   restarted mid-step.
  * With no waveform selected OSC3 reads 0. reSIDfp instead holds the last output on its
@@ -140,7 +139,7 @@ static uint8_t read_osc3(const sid* s) {
     uint32_t out;
     if (s->model == SID_MODEL_8580 && (wf & 3u)) {
         uint32_t ramp = s->control_age == 1
-                            ? s->tri_saw_latch
+                            ? o->tri_saw
                             : sid_wave_ramp(wf, sid_wave_index(o->control, before,
                                                                sid_osc_acc_before(src)));
         out = sid_osc_combine_ramp(o, ramp, pulse, o->noise);

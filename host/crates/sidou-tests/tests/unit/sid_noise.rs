@@ -235,17 +235,21 @@ fn combined_noise_bulk_steps_match_cycle_by_cycle() {
                         0
                     };
                 unsafe {
+                    sid_osc_latch_ramp(&mut fast, src_acc);
+                    sid_osc_latch_ramp(&mut slow, src_acc);
                     sid_osc_write_control(&mut fast, control);
                     sid_osc_write_control(&mut slow, control);
                 }
             } else if op < 6 {
                 let pw = rng.next() % 0x1000;
-                fast.pw = pw;
-                slow.pw = pw;
+                unsafe { sid_osc_write_pw(&mut fast, pw) };
+                unsafe { sid_osc_write_pw(&mut slow, pw) };
             } else if op < 7 {
                 let freq = [0x0123u32, 0x1167, 0x4000, 0xfedc][(rng.next() % 4) as usize];
                 fast.freq = freq;
+                fast.quiet = 0; // as sid_write does
                 slow.freq = freq;
+                slow.quiet = 0; // as sid_write does
             } else {
                 let cycles = if rng.next().is_multiple_of(4) {
                     1 + rng.next() % 3

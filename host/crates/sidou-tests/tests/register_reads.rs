@@ -528,6 +528,11 @@ osc3_script_cases! {
     osc3_noise_locks_up_combined_with_pulse: [(0, 0x80), (F, 0xc0), (5 * F, 0x80), (6 * F, 0x88), (7 * F, 0x80)], 9, 7;
     osc3_noise_locks_up_combined_with_saw: [(0, 0x80), (F, 0xa0), (5 * F, 0x80), (6 * F, 0x88), (7 * F, 0x80)], 9, 7;
     osc3_noise_locks_up_combined_with_triangle: [(0, 0x80), (F, 0x90), (3 * F, 0xf0), (5 * F, 0x80), (6 * F, 0x88), (7 * F, 0x80)], 9, 7;
+    /* The 8580's triangle/saw latch, one cycle after switching into triangle or saw:
+     * from power-on (it holds 0x555), and from waveforms without triangle or saw (it
+     * holds the last triangle/saw value). Read every cycle. */
+    osc3_latch_from_power_on: [(100, 0x10)], 1, 1;
+    osc3_latch_from_other_waveforms: [(0, 0x20), (3000, 0x40), (5000, 0x10), (9000, 0x80), (12000, 0x20), (15000, 0xc0), (17000, 0x30)], 1, 1;
     /* Releasing TEST into another waveform: the write-back rules of shift_phase2. */
     osc3_test_release_into_combined_waveforms: [(0, 0x80), (F, 0xb8), (2 * F, 0xa0), (3 * F, 0xd8), (4 * F, 0xe0), (5 * F, 0x98), (6 * F, 0x80), (7 * F, 0xf8), (8 * F, 0xc0)], 10, 7;
 }

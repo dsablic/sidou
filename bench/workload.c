@@ -100,6 +100,22 @@ static const reg_write NOISE_RETRIGGER3[] = {
     RETRIGGER3(5),   RETRIGGER3(7),              RETRIGGER3(9), RETRIGGER3(11),
 };
 
+/* From the second review: every voice the same control from power-on, the register
+ * still full, at the given frequency (voices 2 and 3 slightly detuned). */
+#define FREQS(c, lo, hi)                                                                    \
+    {0, 0x00, lo}, {0, 0x01, hi}, {0, 0x02, 0x00}, {0, 0x03, 0x08}, {0, 0x05, 0x09},        \
+        {0, 0x06, 0xa9}, {0, 0x04, c}, {0, 0x07, (lo) ^ 0x35}, {0, 0x08, hi},               \
+        {0, 0x09, 0x00}, {0, 0x0a, 0x08}, {0, 0x0c, 0x09}, {0, 0x0d, 0xa9}, {0, 0x0b, c},   \
+        {0, 0x0e, (lo) ^ 0x5a}, {0, 0x0f, hi}, {0, 0x10, 0x00}, {0, 0x11, 0x08},            \
+        {0, 0x13, 0x09}, {0, 0x14, 0xa9}, {0, 0x12, c}
+static const reg_write NOISE_TRI_FFFF[] = {{0, 0x18, 0x0f}, FREQS(0x91, 0xff, 0xff)};
+static const reg_write NOISE_TRI_RING_FFFF[] = {{0, 0x18, 0x0f}, FREQS(0x95, 0xff, 0xff)};
+static const reg_write NOISE_TRI_0800[] = {{0, 0x18, 0x0f}, FREQS(0x91, 0x00, 0x08)};
+static const reg_write NOISE_SAW_0800[] = {{0, 0x18, 0x0f}, FREQS(0xa1, 0x00, 0x08)};
+static const reg_write NOISE_TRI_RING_0800[] = {{0, 0x18, 0x0f}, FREQS(0x95, 0x00, 0x08)};
+static const reg_write NOISE_SAW_FFFF[] = {{0, 0x18, 0x0f}, FREQS(0xa1, 0xff, 0xff)};
+static const reg_write NOISE_SAW_SYNC_FFFF[] = {{0, 0x18, 0x0f}, FREQS(0xa3, 0xff, 0xff)};
+
 /* TEST set and released on alternate blocks. */
 static void noise_test_every_block(sid* s, uint32_t block) {
     sid_write(s, 0x04, block & 1u ? 0xc1 : 0xc9);
@@ -146,6 +162,13 @@ static const scenario SCENARIOS[WORKLOAD_SCENARIOS] = {
      noise_test_every_block},
     {"noise_test_every_block_b", NOISE_MIX, sizeof NOISE_MIX / sizeof NOISE_MIX[0],
      noise_test_every_block_b},
+    SCENARIO("noise_tri_ffff", NOISE_TRI_FFFF),
+    SCENARIO("noise_tri_ring_ffff", NOISE_TRI_RING_FFFF),
+    SCENARIO("noise_tri_0800", NOISE_TRI_0800),
+    SCENARIO("noise_saw_0800", NOISE_SAW_0800),
+    SCENARIO("noise_tri_ring_0800", NOISE_TRI_RING_0800),
+    SCENARIO("noise_saw_ffff", NOISE_SAW_FFFF),
+    SCENARIO("noise_saw_sync_ffff", NOISE_SAW_SYNC_FFFF),
 };
 
 static sid chips[WORKLOAD_MAX_CHIPS];

@@ -347,3 +347,27 @@ fn combined_profile_selects_tables_and_falls_back_to_average() {
         assert_eq!(s.osc[0].pulldown, average, "profile {profile}");
     }
 }
+
+/// The 8580's OSC3 a cycle after switching into a triangle: from power-on its latch
+/// holds 0x555 (reSIDfp's initial value); after a waveform without triangle or saw, the
+/// last triangle/saw value.
+#[test]
+fn osc3_on_the_8580_uses_the_latched_triangle_saw_for_one_cycle() {
+    let mut s = new_sid(SID_MODEL_8580);
+    clock(&mut s, 100);
+    write(&mut s, 0x12, 0x10);
+    clock(&mut s, 1);
+    assert_eq!(read(&mut s, 0x1b), 0x55);
+    // Saw for a while, then pulse (no triangle or saw), then triangle again: the latch
+    // holds the saw's last value through the pulse.
+    write(&mut s, 0x0e, 0x00);
+    write(&mut s, 0x0f, 0x10);
+    write(&mut s, 0x12, 0x20);
+    clock(&mut s, 1000);
+    let saw_ramp = (s.osc[2].acc >> 12) & 0xfff;
+    write(&mut s, 0x12, 0x40);
+    clock(&mut s, 500);
+    write(&mut s, 0x12, 0x10);
+    clock(&mut s, 1);
+    assert_eq!(u32::from(read(&mut s, 0x1b)), saw_ramp >> 4);
+}

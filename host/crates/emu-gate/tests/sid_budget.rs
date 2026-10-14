@@ -13,11 +13,14 @@ use fm1_core::Cpu;
 use fm1_soc::{Soc, RAM_BASE, XIP_BASE};
 use object::{Object, ObjectSymbol};
 use serde_json::Value;
+use sidou_sys::{sid_model, SID_MODEL_6581, SID_MODEL_8580};
 
 const RESULT_ADDR: u32 = 0x01C8_0000;
 const RESULT_MAGIC: u32 = 0x5349_4442;
 /// bench_main.c reads the scenario number here before it starts.
 const SCENARIO_ADDR: u32 = RESULT_ADDR + 8;
+/// And the model here: 0 for the 6581, 1 for the 8580.
+const MODEL_ADDR: u32 = RESULT_ADDR + 12;
 const CORE_HZ: f64 = 240e6;
 const SAMPLE_RATE: f64 = 44_100.0;
 /// Design doc section 8: at most 900 instructions per sample per chip.
@@ -54,7 +57,7 @@ fn read_u32(soc: &Soc, addr: u32) -> u32 {
     ])
 }
 
-fn run(build: &Path, chips: u32, scenario: u32) -> Run {
+fn run(build: &Path, chips: u32, model: sid_model, scenario: u32) -> Run {
     let dir = build.join("bench/fm1");
     let elf_path = dir.join(format!("sid_bench_{chips}.elf"));
     let elf = read(&elf_path, "bench ELF");
@@ -89,6 +92,8 @@ fn run(build: &Path, chips: u32, scenario: u32) -> Run {
 
     let mut soc = Soc::new(1 << 20, bin);
     soc.ram.write32(SCENARIO_ADDR - RAM_BASE, scenario);
+    soc.ram
+        .write32(MODEL_ADDR - RAM_BASE, u32::from(model == SID_MODEL_8580));
     let mut cpu = Cpu::new(XIP_BASE);
     let mut marks = Vec::new();
     let mut steps: u64 = 0;
@@ -176,15 +181,27 @@ fn run(build: &Path, chips: u32, scenario: u32) -> Run {
 }
 
 /// Runs one scenario; returns its report and any failure.
-fn check_scenario(build: &Path, chips: u32, scenario: u32, name: &str) -> (Value, Vec<String>) {
-    let r = run(build, chips, scenario);
-    let host = emu_gate::render_host(chips, scenario);
+fn check_scenario(
+    build: &Path,
+    chips: u32,
+    model: sid_model,
+    scenario: u32,
+    scenario_name: &str,
+) -> (Value, Vec<String>) {
+    let model_name = if model == SID_MODEL_8580 {
+        "8580"
+    } else {
+        "6581"
+    };
+    let name = &format!("{scenario_name} ({model_name})");
+    let r = run(build, chips, model, scenario);
+    let host = emu_gate::render_host(chips, model, scenario);
     let mut failures = Vec::new();
     assert_eq!(r.samples.len(), host.len());
     // Equal outputs prove nothing if both are silent. The idle scenario is near-silent
     // by design; it is there for its cost.
     let host_peak = host.iter().map(|&s| i32::from(s).abs()).max().unwrap_or(0);
-    if name != "idle" && host_peak <= 1000 {
+    if scenario_name != "idle" && host_peak <= 1000 {
         failures.push(format!(
             "{name}: host output peaks at {host_peak}; the comparison would be vacuous"
         ));
@@ -221,7 +238,8 @@ fn check_scenario(build: &Path, chips: u32, scenario: u32, name: &str) -> (Value
         ));
     }
     let mut report = serde_json::json!({
-        "scenario": name,
+        "scenario": scenario_name,
+        "model": model_name,
         "instructions_per_sample": per_sample,
         "instructions_per_sample_per_chip": per_chip,
         "worst_block_instructions_per_sample": r.worst_block,
@@ -243,8 +261,9 @@ fn check_scenario(build: &Path, chips: u32, scenario: u32, name: &str) -> (Value
     (report, failures)
 }
 
-/// Runs every scenario with `chips` chips. The top-level fields of the JSON report are
-/// the triad's, comparable with earlier milestones; "scenarios" has them all.
+/// Runs every scenario on both models with `chips` chips. The top-level fields of the
+/// JSON report are the triad's on the 6581, comparable with earlier milestones;
+/// "scenarios" has them all.
 fn check(chips: u32) {
     let Some(build) = build_dir() else {
         common::skip_message("the emulator gate");
@@ -252,11 +271,13 @@ fn check(chips: u32) {
     };
     let mut reports = Vec::new();
     let mut failures = Vec::new();
-    for (scenario, name) in emu_gate::scenarios() {
-        let (report, f) = check_scenario(&build, chips, scenario, &name);
-        println!("{report}");
-        reports.push(report);
-        failures.extend(f);
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        for (scenario, name) in emu_gate::scenarios() {
+            let (report, f) = check_scenario(&build, chips, model, scenario, &name);
+            println!("{report}");
+            reports.push(report);
+            failures.extend(f);
+        }
     }
     let worst = reports
         .iter()
