@@ -26,10 +26,7 @@ void sid_slots_init(sid_slots* s, uint32_t sample_rate, uint32_t seed, int16_t* 
     s->sample_rate = sample_rate;
     s->seed = seed;
     s->clock = 0;
-    float k = sid_fx_smooth_coef(SID_FX_SMOOTH_MS, sample_rate);
-    float k2 = k * (2.0f - k);
-    s->smooth_coef = k;
-    s->smooth_coef4 = k2 * (2.0f - k2); /* 1 - (1 - k)^4: four samples' worth */
+    s->smooth_coef = sid_fx_smooth_coef(SID_FX_SMOOTH_MS, sample_rate);
     float fade_samples = SID_SLOT_FADE_MS * 0.001f * (float)sample_rate;
     s->fade_step = 1.0f / fade_samples;
     s->clear_per_sample = SID_SLOT_POOL_LEN / (uint32_t)(int32_t)fade_samples + 1u;
@@ -60,6 +57,8 @@ static void dist_start(sid_slots* s, uint32_t alg) {
     sid_slot_dist_state* d = &s->dist;
     switch (alg) {
     case SID_DIST_TAPE: sid_fx_tape_init(&d->tape, s->sample_rate); break;
+    case SID_DIST_OVERDRIVE: sid_fx_overdrive_init(&d->overdrive, s->sample_rate); break;
+    case SID_DIST_FUZZ: sid_fx_fuzz_init(&d->fuzz, s->sample_rate); break;
     case SID_DIST_CRUSH: sid_fx_crush_init(&d->crush, s->sample_rate); break;
     case SID_DIST_LOFI:
         sid_fx_crt_init(&d->lofi.crt, s->sample_rate);
@@ -73,6 +72,9 @@ static float dist_tick(sid_slots* s, const sid_slot* sl, float x) {
     sid_slot_dist_state* d = &s->dist;
     switch (sl->algorithm) {
     case SID_DIST_TAPE: return sid_fx_tape_tick(&d->tape, x, sl->amount);
+    case SID_DIST_OVERDRIVE:
+        return sid_fx_overdrive_tick(&d->overdrive, x, sl->amount, sl->a, sl->b);
+    case SID_DIST_FUZZ: return sid_fx_fuzz_tick(&d->fuzz, x, sl->amount, sl->a, sl->b);
     case SID_DIST_CRUSH: return sid_fx_crush_tick(&d->crush, x, sl->a, sl->amount);
     case SID_DIST_LOFI: {
         float y = sid_fx_crt_tick(&d->lofi.crt, x, sl->amount, sl->a);
@@ -188,13 +190,10 @@ static float step_switch(sid_slots* s, uint32_t k) {
 
 /* ---- the frame ---- */
 
-static void smooth_ab(sid_slot* sl, float k) {
+static void smooth_controls(sid_slot* sl, float k) {
+    sid_fx_smooth_step(&sl->amount, sl->target.amount, k);
     sid_fx_smooth_step(&sl->a, sl->target.a, k);
     sid_fx_smooth_step(&sl->b, sl->target.b, k);
-}
-
-static void smooth_amount_mix(sid_slot* sl, float k) {
-    sid_fx_smooth_step(&sl->amount, sl->target.amount, k);
     sid_fx_smooth_step(&sl->mix, sl->target.mix, k);
 }
 
@@ -240,16 +239,12 @@ void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n
     sid_slot* mod = &s->slot[SID_SLOT_MOD];
     sid_slot* fx = &s->slot[SID_SLOT_FX];
     for (uint32_t i = 0; i < n; ++i) {
-        uint32_t phase = s->clock & 3u;
-        if (phase < SID_SLOT_COUNT && (live >> phase & 1u)) {
-            smooth_ab(&s->slot[phase], s->smooth_coef4);
-        }
         float x = (float)in[i] * (1.0f / 32768.0f);
         float l = x;
         float r = x;
 
         if (live & 1u) {
-            smooth_amount_mix(dist, s->smooth_coef);
+            smooth_controls(dist, s->smooth_coef);
             float g = step_switch(s, SID_SLOT_DIST);
             float wet = g > 0.0f ? dist_tick(s, dist, x) : x;
             x += dist->mix * g * (wet - x);
@@ -257,7 +252,7 @@ void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n
             r = x;
         }
         if (live & 2u) {
-            smooth_amount_mix(mod, s->smooth_coef);
+            smooth_controls(mod, s->smooth_coef);
             float g = step_switch(s, SID_SLOT_MOD);
             float wl = x;
             float wr = x;
@@ -269,7 +264,7 @@ void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n
             r = x + m * (wr - x);
         }
         if (live & 4u) {
-            smooth_amount_mix(fx, s->smooth_coef);
+            smooth_controls(fx, s->smooth_coef);
             float g = step_switch(s, SID_SLOT_FX);
             float wl = l;
             float wr = r;

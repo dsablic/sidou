@@ -11,6 +11,7 @@ mod sid_noise;
 mod sid_osc;
 mod sid_sync;
 mod slots;
+mod slots_dist;
 
 /// |a - b| <= tolerance, like GoogleTest's EXPECT_NEAR (NaN fails).
 #[macro_export]

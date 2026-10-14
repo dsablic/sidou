@@ -9,10 +9,9 @@
  *
  * - Mono up to Modulation; Modulation makes stereo; FX feeds its wet path (L + R) / 2 and
  *   keeps the dry path stereo.
- * - Amount, A, B and Mix are smoothed (SID_FX_SMOOTH_MS): Amount and Mix on every sample
- *   (they drive gains and dry/wet blends, where coarser steps are audible), A and B every
- *   4 samples (one slot per sample, round robin), and each snaps onto its target on a
- *   32-sample grid that restarts whenever the slots start from rest.
+ * - Amount, A, B and Mix are smoothed (SID_FX_SMOOTH_MS) on every sample (all four can
+ *   drive gains or blends, where coarser steps are audible), and each snaps onto its
+ *   target on a 32-sample grid that restarts whenever the slots start from rest.
  * - Switching algorithm fades the old wet path out over SID_SLOT_FADE_MS, starts the new
  *   one from rest (the FX slot first clears its share of the pool, a little per sample),
  *   and fades it in: the dry path never stops, so there is no click.
@@ -27,7 +26,9 @@
 
 #include "fx_crt.h"
 #include "fx_crush.h"
+#include "fx_fuzz.h"
 #include "fx_noise.h"
+#include "fx_overdrive.h"
 #include "fx_tape.h"
 #include "fx_wow.h"
 
@@ -94,6 +95,8 @@ typedef struct {
 
 typedef union {
     sid_fx_tape tape;
+    sid_fx_overdrive overdrive;
+    sid_fx_fuzz fuzz;
     sid_fx_crush crush;
     struct {
         sid_fx_crt crt;
@@ -115,7 +118,7 @@ typedef struct {
     uint32_t sample_rate;
     uint32_t seed;
     uint32_t clock; /* samples processed since the slots last started from rest */
-    float smooth_coef, smooth_coef4, fade_step;
+    float smooth_coef, fade_step;
     uint32_t clear_per_sample;
     int16_t* pool; /* SID_SLOT_POOL_LEN samples, owned by the caller */
     sid_slot_dist_state dist;

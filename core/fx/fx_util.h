@@ -78,6 +78,18 @@ static inline float sid_fx_smoothstep(float p) {
     return p * p * (3.0f - 2.0f * p);
 }
 
+/* *r tracks 1/x: one Newton step while x has moved by under 1 % since (each squares
+ * the relative error, and smoothed values move far less per sample), a division on a
+ * larger jump. */
+static inline void sid_fx_recip_track(float* r, float x) {
+    float e = 1.0f - x * *r;
+    if (e < 0.01f && e > -0.01f) {
+        *r += *r * e;
+    } else {
+        *r = 1.0f / x;
+    }
+}
+
 /* Phase increment of an LFO at `hz`: a full turn is 2^32. */
 static inline uint32_t sid_fx_phase_inc(float hz, uint32_t sample_rate) {
     return (uint32_t)(int32_t)(hz / (float)sample_rate * 2147483648.0f) << 1;

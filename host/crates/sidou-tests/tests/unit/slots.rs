@@ -67,6 +67,10 @@ pub fn params(algorithm: u32, amount: f32, a: f32, b: f32, mix: f32) -> sid_slot
     }
 }
 
+pub fn off() -> sid_slot_params {
+    params(0, 0.0, 0.0, 0.0, 0.0)
+}
+
 pub fn sine(hz: f64, amp: f64, n: usize) -> Vec<i16> {
     (0..n)
         .map(|i| (amp * 32767.0 * (2.0 * PI * hz * i as f64 / FSF).sin()).round() as i16)
@@ -90,6 +94,29 @@ pub fn left(x: &[i16]) -> Vec<i16> {
 
 pub fn right(x: &[i16]) -> Vec<i16> {
     x.iter().skip(1).step_by(2).copied().collect()
+}
+
+pub fn tone_amp(x: &[i16], hz: f64) -> f64 {
+    let w = 2.0 * PI * hz / FSF;
+    let (mut re, mut im) = (0.0, 0.0);
+    for (i, &v) in x.iter().enumerate() {
+        re += f64::from(v) * (w * i as f64).cos();
+        im += f64::from(v) * (w * i as f64).sin();
+    }
+    2.0 * (re * re + im * im).sqrt() / x.len() as f64
+}
+
+pub fn rms(x: &[i16]) -> f64 {
+    let mean = x.iter().map(|&v| f64::from(v)).sum::<f64>() / x.len() as f64;
+    (x.iter()
+        .map(|&v| (f64::from(v) - mean).powi(2))
+        .sum::<f64>()
+        / x.len() as f64)
+        .sqrt()
+}
+
+pub fn db(r: f64) -> f64 {
+    20.0 * r.log10()
 }
 
 /// Largest 2nd difference per channel of interleaved stereo.
@@ -136,6 +163,7 @@ pub const RESIDUAL_MAX: i32 = 30;
 pub enum Control {
     Amount,
     A,
+    B,
     Mix,
 }
 
@@ -151,13 +179,15 @@ pub fn slot_residual(
     from: f32,
     to: f32,
     click: Option<usize>,
+    amp: f64,
 ) -> i32 {
-    let input = sine(110.0, 0.5, T_END);
+    let input = sine(110.0, amp, T_END);
     let with = |v: f32| {
         let mut p = base;
         match control {
             Control::Amount => p.amount = v,
             Control::A => p.a = v,
+            Control::B => p.b = v,
             Control::Mix => p.mix = v,
         }
         p
@@ -196,8 +226,20 @@ pub fn slot_residual(
 /// Asserts the residual metric for every listed control of an algorithm, and that it
 /// would see a CLICK-sized step at a jump.
 pub fn assert_click_free(slot: u32, base: sid_slot_params, moves: &[(Control, f32, f32)]) {
+    assert_click_free_at(0.5, slot, base, moves);
+}
+
+/// The same with the 110 Hz input at `amp` full scale: the drives are tested below their
+/// hard-clipping level, where J and R are smooth (clipped near-squares at slightly
+/// different gains differ by whole edges, which no click metric can see past).
+pub fn assert_click_free_at(
+    amp: f64,
+    slot: u32,
+    base: sid_slot_params,
+    moves: &[(Control, f32, f32)],
+) {
     for &(control, from, to) in moves {
-        let m = slot_residual(slot, base, control, from, to, None);
+        let m = slot_residual(slot, base, control, from, to, None, amp);
         println!(
             "slot {slot} algorithm {}: {control:?} {from} -> {to}: residual {m} LSB",
             base.algorithm
@@ -209,7 +251,7 @@ pub fn assert_click_free(slot: u32, base: sid_slot_params, moves: &[(Control, f3
         );
     }
     let (control, from, to) = moves[0];
-    let c = slot_residual(slot, base, control, from, to, Some(T_ON + 10));
+    let c = slot_residual(slot, base, control, from, to, Some(T_ON + 10), amp);
     assert!(c > RESIDUAL_MAX, "a {CLICK} LSB click shows only {c}");
 }
 
@@ -241,6 +283,9 @@ pub fn switch_steps(slot: u32, algorithms: &[u32], amount: f32, a: f32, b: f32) 
 #[test]
 fn all_off_is_exact_and_touches_nothing() {
     let mut s = Slots::new(1);
+    for slot in [DIST, MOD, FX] {
+        s.set(slot, off());
+    }
     let before = s.bytes();
     let mut input = test_noise(4096, 3);
     input.extend([i16::MIN, i16::MAX, 0, -1, 1]);

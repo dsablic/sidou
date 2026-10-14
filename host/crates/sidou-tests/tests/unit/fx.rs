@@ -276,22 +276,30 @@ fn tape_compresses_highs_before_lows() {
     // ADAA lags the linear part by half a sample; see fx_tape.h): at 0.7 full scale the
     // 8 kHz gain is about that of 200 Hz.
     let n = FS as usize;
-    let gain = |hz: f64| {
-        let input = sine(hz, 0.3, 2 * n);
+    let gain = |hz: f64, amp: f64| {
+        let input = sine(hz, amp, 2 * n);
         let mut fx = Fx::new(1);
         fx.set(only("tape_drive", 1.0));
         let out = fx.run(&input);
         tone_amp(&out[n..], hz) / tone_amp(&input[n..], hz)
     };
-    let low = gain(200.0);
+    let low = gain(200.0, 0.3);
     for hz in [3000.0, 6000.0, 8000.0] {
-        let high = gain(hz);
+        let high = gain(hz, 0.3);
         println!("tape fundamental gain at 0.3 FS: 200 Hz {low:.3}, {hz} Hz {high:.3}");
         assert!(
             high < low * 0.9,
             "{hz} Hz ({high}) is not compressed more than 200 Hz ({low})"
         );
     }
+    // The documented inversion for far hotter tones: at 0.7 full scale 8 kHz is no longer
+    // compressed more than 200 Hz.
+    let (low7, high7) = (gain(200.0, 0.7), gain(8000.0, 0.7));
+    println!("tape fundamental gain at 0.7 FS: 200 Hz {low7:.3}, 8 kHz {high7:.3}");
+    assert!(
+        high7 >= low7,
+        "the hot-signal inversion in fx_tape.h no longer holds"
+    );
 }
 
 /// Pitch deviation in cents of a 1 kHz tone through the chain, one value per cycle.
