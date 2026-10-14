@@ -233,7 +233,8 @@ parameters, and the macro controls below move several at once.
 - **Themes:** a C64 nostalgia theme (PETSCII-style font, C64 palette, border
   colour flashes on screen) and a clean modern theme.
 - **Browser:** starter pack, user songs, user `.sid` files. RIP option.
-- **SCENE view** (performance, M2): small pixel-art scenes that animate in
+- **SCENE view** (performance, M2): generative PETSCII-grid scenes (see
+  "Look and feel") rather than drawn pixel art. Small scenes that animate in
   time with the music, like the Pocket Operator screens. There are no game
   mechanics.
   - **Voice gates** trigger a character or element per voice, which stops when
@@ -258,6 +259,21 @@ parameters, and the macro controls below move several at once.
 Fun is a requirement. SIDOU should feel like an 80s machine and play like
 an instrument.
 
+- **Generative, not illustrated.** Visuals are computed character-grid
+  pieces, not static images or generated artwork. The 240×240 LCD with an
+  8×8 font is a 30×30 cell grid, the same medium as the C64's 40×25 PETSCII
+  screen. Pieces are small algorithms in C, such as:
+  - Doom fire, plasma and starfields;
+  - Rule 30 and Langton's ant;
+  - reaction-diffusion and a Lorenz attractor;
+  - raster bars, scrollers and split-flap type.
+
+  They react to the music: voice gates step automata, envelopes heat the
+  fire, cutoff drives plasma speed. Only changed cells are sent over SPI,
+  which suits the LCD bandwidth.
+
+  Inspiration: [ascii.rest](https://ascii.rest/#pieces) (236 animated
+  text-grid pieces, MIT). We write our own C and credit any piece we adapt.
 - **Art direction:** a C64/80s look with our own 8×8 PETSCII-style font,
   the C64 palette, PETSCII frames and icons, and a blinking block cursor.
   An art direction page (`docs/art/`) fixes the palette, font, layout grid
