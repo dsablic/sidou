@@ -367,10 +367,25 @@ Layers (all run in CI):
   we build on or learn from (reSID/reSIDfp authors, Felucca and its forks,
   fm1-emu, GoatTracker, SID-Wizard, HVSC). It also credits contributors and
   the users whose requests shaped features.
-- **Music:**
-  - Each starter-pack tune has a metadata file recording composer, licence or
-    written permission, and source.
-  - No HVSC tunes ship with the firmware; users load them from their own copy.
+- **Music:** C64 game music is still under copyright, held by composers or
+  publishers. HVSC is tolerated by the scene, but it is not a licence we can
+  pass on. So music is split into three tiers:
+  - **In the firmware (starter pack):** only openly licensed tunes (e.g.
+    Creative Commons, from modern SID composers) and tunes we commission in
+    the native format, written to show off SIDOU's features. Each tune has a
+    metadata file recording composer, licence or written permission, and
+    source.
+    - Licences must allow redistribution, including commercial
+      redistribution, because GPL firmware can be sold pre-flashed. A
+    "non-commercial only" licence does not qualify.
+  - **Classics pack (separate, not in the firmware):** the browser companion
+    loads tunes from the user's own HVSC copy or GoatTracker/SID-Wizard files
+    onto the device, with curated playlists ("Hubbard essentials"). It
+    contains references to the tunes, not the tunes themselves.
+  - **Permission outreach (background, from M3):** ask well-known composers
+    to let a few signature tunes ship in the firmware. Record who holds the
+    rights (composer or publisher) and what the permission covers. A named,
+    approved tune doubles as release news.
 - **Fonts and graphics:**
   - We draw our own PETSCII-style font, released CC0 or GPL. The Commodore
     character ROM font is not used.
@@ -430,7 +445,9 @@ Each kind of document has one job:
    - 6502 and PSID playback;
    - mute and solo;
    - browser;
-   - starter pack.
+   - starter pack (openly licensed and commissioned tunes);
+   - classics pack loader in the companion;
+   - composer outreach started.
 5. **M4, showcase and release:**
    - WASM demo, installer, manual;
    - release-video pipeline (demo scripts, emulator capture, composition);
