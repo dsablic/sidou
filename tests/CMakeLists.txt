@@ -16,7 +16,8 @@ add_executable(sidou_unit_tests
     unit/sid_filter_test.cpp
     unit/sid_noise_test.cpp
     unit/sid_osc_test.cpp
-    unit/sid_sync_test.cpp)
+    unit/sid_sync_test.cpp
+    unit/sid_test.cpp)
 target_link_libraries(sidou_unit_tests PRIVATE sidou_core GTest::gtest_main)
 target_compile_options(sidou_unit_tests PRIVATE -Wall -Wextra)
 gtest_discover_tests(sidou_unit_tests)
