@@ -212,6 +212,7 @@ dependencies = [
  "object",
  "serde_json",
  "sidou-sys",
+ "sidou-tests",
 ]
 
 [[package]]

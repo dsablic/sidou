@@ -48,6 +48,14 @@ Not vendored: `fm1_cpu1.{h,S}` (we don't use the second core) and
 - `hal_check.c` (target `fm1_hal_check`) compiles every header and both
   `.S` files in the fm1 build.
 
+### Adapted from Felucca (not vendored)
+
+`crt0.S` and `app.ld` follow Felucca's `firmware/crt0.S` and
+`firmware/app.ld` at the same commit and keep its licence (GPL-3.0-only)
+and copyright next to ours. Changes: `app.ld` drops the second core's
+`.c1_text`, collects `.init_array`, and adds `ASSERT`s for the image layout
+and region overlaps.
+
 ### Updating
 
 Copy the files above from the new commit, update the commit here and in

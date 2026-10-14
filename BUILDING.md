@@ -8,8 +8,9 @@ SIDOU has two builds:
 - **Firmware** (`fm1` CMake preset): cross-compiles the C core for the FM-1's
   pi32v2 CPU with JieLi's toolchain, inside a pinned Docker image.
 
-In M0 the firmware build produces a bare-metal benchmark program, not an
-installable image.
+The firmware build produces the app image and a bare-metal benchmark
+program. The image is not installable yet: packaging it as an update comes
+later in M1.
 
 ## Get the source
 
@@ -67,8 +68,11 @@ tools/fm1-docker cmake --build --preset fm1
 
 `tools/fm1-docker` builds the image (`sidou-pi32v2`) if needed and runs the
 command in it, with the repository mounted at the same path. The output goes
-to `build/fm1/`. The benchmark programs are
-`build/fm1/bench/fm1/sid_bench_{1,2}.{elf,bin,dis}`, for one and two chips.
+to `build/fm1/`:
+- `platform/fm1/sidou_app.{elf,bin,dis}`: the firmware. The `.bin` is what
+  the FM-1's SPL maps at XIP address `0x02000120`.
+- `bench/fm1/sid_bench_{1,2}.{elf,bin,dis}`: the benchmark programs, for one
+  and two chips.
 
 The toolchain file is `cmake/pi32v2.cmake`. It passes `-mcpu=r3 -mfprev1`,
 which turns on the hardware single-precision FPU. Without `-mcpu=r3`, clang

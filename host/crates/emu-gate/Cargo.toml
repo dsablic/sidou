@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 [package]
 name = "emu-gate"
-description = "M0 decision gate: the pi32v2 SID benchmark in fm1-emu, against budget and the host build"
+description = "Emulator tests: the M0 SID budget gate and the firmware boot test, in fm1-emu"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -20,3 +20,4 @@ fm1-core = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "e52f46401
 fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "e52f4640157f490f8c3af778dd044e9d33e989e8" }
 object = { version = "0.36", default-features = false, features = ["read", "elf", "std"] }
 serde_json = "1"
+sidou-tests = { path = "../sidou-tests" }

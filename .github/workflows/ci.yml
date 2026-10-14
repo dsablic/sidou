@@ -110,7 +110,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: host
-      - name: Emulator benchmark gate
+      - name: Emulator gate and boot test
         working-directory: host
         env:
           SIDOU_FM1_BUILD: ${{ github.workspace }}/build/fm1
@@ -123,9 +123,14 @@ jobs:
             test -s "$f" || { echo "::error::$f missing: the emulator gate did not run"; exit 1; }
             jq -e '.instructions_per_sample | numbers' "$f"
           done
+          f=build/fm1/sidou_boot.json
+          test -s "$f" || { echo "::error::$f missing: the boot test did not run"; exit 1; }
+          jq -e '.f0_hz | numbers' "$f"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: sid-budget
-          path: build/fm1/sid_budget_*.json
+          path: |
+            build/fm1/sid_budget_*.json
+            build/fm1/sidou_boot.json
           if-no-files-found: warn

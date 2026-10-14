@@ -17,7 +17,7 @@ lists the prerequisites.
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
-| Emulator gate | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/sid_budget.rs` |
+| Emulator tests (gate and boot) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
 profile sets `opt-level = 3`), but the reference tests do a lot of Rust-side
@@ -122,13 +122,27 @@ instruction per cycle, but code fetched from flash (XIP) and divides take
 longer.
 
 fm1-emu at the pinned revision cannot execute one instruction that clang
-emits (`{R*4} = [-R]`). The gate steps it itself; see
-[docs/TODO.md](docs/TODO.md).
+emits (`{R*4} = [-R]`). The emulator tests step it themselves
+(`crates/emu-gate/tests/common/mod.rs`); see [docs/TODO.md](docs/TODO.md).
 
 **A failure means** one of three things: the core got too slow for the
 budget, the target and host builds no longer compute the same thing (look
 for float flags or undefined behaviour), or the gate could not run the
 program (the message names the file or the faulting address).
+
+### Boot test
+
+`crates/emu-gate/tests/boot.rs` boots the firmware image
+(`platform/fm1/sidou_app.bin`) in fm1-emu the way the FM-1's SPL starts it:
+mapped at `0x02000120`, entered in user mode with `r0` pointing at a
+boot-parameter block. It runs 500 ms of emulated time and checks that:
+- the audio interrupt delivers about 500 ms of frames;
+- left and right are equal;
+- the SID test tone is not silent and its pitch is 440 Hz within 0.5 %.
+
+It writes `sidou_boot.json` (frames, peak, measured pitch, instructions in
+and out of interrupts) into the fm1 build directory. Like the gate, it skips
+without `SIDOU_FM1_BUILD`.
 
 ## Sanitizers
 

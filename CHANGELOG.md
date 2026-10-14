@@ -26,3 +26,6 @@ All notable changes are documented here. The format follows
   and the firmware build with the emulator gate.
 - Building and testing guides, and decision records for the host tooling
   and the M0 SID cost.
+- FM-1 platform (`platform/fm1/`): Felucca's HAL (GPL-3.0-only), startup
+  code and memory map, and a firmware image that boots, runs the audio
+  interrupt and plays a SID test tone; an fm1-emu boot test checks it.
