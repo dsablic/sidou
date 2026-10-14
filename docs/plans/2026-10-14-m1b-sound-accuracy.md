@@ -140,6 +140,22 @@ at the default point.
   - the drift test (tablegen output equals the checked-in headers).
 - Commit: `feat(sid): combined waveforms and noise write-back from reSIDfp tables`.
 
+**Decisions after the Task 3 review** (2026-10-14, made by the controller
+while the user was away; revisit if needed):
+- **Combined-waveform "strength" is a discrete three-way profile choice**
+  (reSIDfp's WEAK, AVERAGE and STRONG). These are separately sampled chips,
+  not points on a scale, so they are not exposed as a continuous knob. M1c's
+  analogue-parameter page lists it as a selector.
+- **Flash:** only AVERAGE is compiled by default (61,440 B, within the
+  64 KB target). WEAK and STRONG sit behind a build option, with the same
+  `[POINTS][5][6144]` layout. If M1c needs live switching between all
+  three, move to 16-entry block dedup (about 56 KB for everything) at that
+  point.
+- **Determinism:** the checked-in generated headers are the source of
+  truth, and the generator is a documented tool. A drift-test failure on a
+  new platform means a libm difference (the default 8580 table has a
+  threshold gap of exactly 0), not stale tables.
+
 ### Task 4: DACs (waveform and envelope)
 
 - Shim: `residfp_dac_table(model, bits, out)` using `Dac::kinkedDac(model)`,
