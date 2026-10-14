@@ -1,0 +1,131 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  host:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: host
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install libclang (bindgen)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev clang
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host
+      - run: cargo fmt --all --check
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Tests (emulator gate skips itself without SIDOU_FM1_BUILD)
+        run: cargo test --locked --workspace --release
+      - name: Tests with UBSan on the C/C++ code
+        env:
+          SIDOU_SANITIZE: undefined
+        run: cargo test --locked --workspace
+
+  asan:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: host
+    env:
+      # One compiler family for the instrumented C/C++ objects and the ASan runtime Rust links.
+      CC: clang
+      CXX: clang++
+      SIDOU_SANITIZE: address
+      RUSTFLAGS: -Zsanitizer=address
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install clang and libclang
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev clang
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host
+      - run: cargo +nightly test --locked --workspace -Zbuild-std --target x86_64-unknown-linux-gnu
+
+  msrv:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: host
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install libclang (bindgen)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev clang
+      - uses: dtolnay/rust-toolchain@1.87
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host
+      - run: cargo check --locked --workspace --all-targets
+
+  reuse:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: fsfe/reuse-action@v5
+
+  fm1:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install libclang (bindgen)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev clang
+      - name: Configure (pinned pi32v2 toolchain in Docker)
+        run: tools/fm1-docker cmake --preset fm1
+      - name: Build
+        run: tools/fm1-docker cmake --build --preset fm1
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host
+      - name: Emulator benchmark gate
+        working-directory: host
+        env:
+          SIDOU_FM1_BUILD: ${{ github.workspace }}/build/fm1
+        run: cargo test --locked --release -p emu-gate -- --nocapture --test-threads=1
+      - name: Check the gate actually ran
+        # Without SIDOU_FM1_BUILD the gate skips and passes; the reports prove it ran.
+        run: |
+          for n in 1 2; do
+            f=build/fm1/sid_budget_$n.json
+            test -s "$f" || { echo "::error::$f missing: the emulator gate did not run"; exit 1; }
+            jq -e '.instructions_per_sample | numbers' "$f"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sid-budget
+          path: build/fm1/sid_budget_*.json
+          if-no-files-found: warn
