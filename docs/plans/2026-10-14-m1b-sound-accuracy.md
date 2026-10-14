@@ -73,16 +73,19 @@ Cost: 366 instructions per sample per chip, out of a budget of 900.
   - **ENV3 sequence test:** for a set of ADSR scripts (all 16 attack, decay
     and release rates, gate toggles mid-phase, an ADSR-bug case), read
     `$1C` from both engines once per frame (and once per 100 cycles for one
-    script) and require exact equality. This test is what will expose the
-    8580 release slope (Task 2).
+    script) and require exact equality.
   - **OSC3 test:** for single waveforms (tri, saw, pulse, noise) at a few
     frequencies, `$1B` matches reSIDfp exactly once per frame.
 - Commit: `feat(sid): register reads (OSC3/ENV3) and 0xaa envelope power-on state`.
 
 ### Task 2: Envelope timing equal to reSIDfp
 
-- Use the ENV3 test to find every place where our envelope differs, starting
-  with the 8580 release being about 5.5% steep.
+- Use the ENV3 test to find every place where our envelope differs. Task 1
+  found that all 32 mismatches are a constant one-step phase offset:
+  reSIDfp takes its first step a few cycles after a reset or state change,
+  where ours waits a full rate period. Attack and decay rates already match.
+  The 8580's 5.5% steeper release is *not* envelope timing (the counters fall
+  at the same rate). It comes from the output path, and Task 4 owns it.
 - Look at reSIDfp's `EnvelopeGenerator` for the differences against
   reSID 0.16 that we copied: the pipeline delays on state changes and on
   exponential period changes, how `counter_enabled`/freeze works, and the
@@ -90,9 +93,22 @@ Cost: 366 instructions per sample per chip, out of a budget of 900.
 - Implement the differences in `sid_env.h`, keeping `sid_env_advance`'s jump
   ahead (extend the per-cycle reference model in the tests to match the new
   semantics first).
-- **Target:** ENV3 sequences equal to reSIDfp for every script. The envelope
-  shape test then tightens (8580 below 0.2 dB, and the 6581 bound is
-  re-measured after Task 4).
+- **Target:** ENV3 sequences equal to reSIDfp for every script, with all 32
+  ignored cases un-ignored. Envelope shape tolerances are re-measured, but
+  their targets move to Task 4.
+- **Task 1 review follow-ups** (in the same task):
+  - say in `sid_env.h`/`sid_init` docs that the power-on rate-counter phase
+    was approximate until this fix;
+  - document that OSC3 with no waveform selected returns 0, while reSIDfp
+    fades the last value (keep 0 or match; decide and test);
+  - list all OSC3 reconstruction edge cases in the comment (freq write in
+    the last 1–2 cycles, 8580 TEST/control write in the last cycle, hard
+    sync, TEST release);
+  - justify `CLOCK_STEP`;
+  - fix the `sid.h` "advances the same way" note for hard sync;
+  - fix the stale "cycles is at most ~23" comment in `sid_osc.h`;
+  - add a dense OSC3 pulse/noise script (a read every 7 cycles over a
+    frame).
 - Commit: `fix(sid): envelope timing matches reSIDfp (ENV3 bit-exact)`.
 
 ### Task 3: Combined waveforms and noise write-back
@@ -125,7 +141,9 @@ Cost: 366 instructions per sample per chip, out of a budget of 900.
   levels stay similar, and check against reSIDfp's mixer output level.
 - Tests:
   - DAC tables against reSIDfp's;
-  - the 6581 envelope shape test tightens (target ≤ 0.5 dB);
+  - the envelope shape test tightens: 6581 ≤ 0.5 dB and 8580 ≤ 0.2 dB. The
+    8580 release slope is an output-path difference, investigated here
+    (envelope DAC, voice DC, mixer/external filter);
   - the golden hashes are re-recorded.
 - Commit: `feat(sid): kinked waveform and envelope DACs from reSIDfp`.
 
