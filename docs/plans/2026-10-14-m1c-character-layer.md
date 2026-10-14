@@ -169,6 +169,27 @@ bypassed exactly. The slot order is fixed.
 | Modulation | Chorus/ensemble, Flanger, Phaser, Tremolo/auto-pan, Wow & flutter |
 | FX | Delay (mono or ping-pong; free or tempo-synced once M2's clock exists), Reverb (light and lush variants) |
 
+- **Step 0: research (before any code).** Produce
+  `docs/decisions/0004-effect-algorithms.md`, covering:
+  - **Sources:** Dattorro "Effect Design" 1–3 (JAES 1997); J. O. Smith,
+    *Physical Audio Signal Processing* (CCRMA); Zölzer, *DAFX*; Pirkle,
+    *Designing Audio Effect Plugins in C++*; Zavalishin, *The Art of VA
+    Filter Design*; Valhalla DSP blog; Signalsmith "Let's Write a Reverb";
+    ADAA papers (Parker/Esqueda/Bilbao/Välimäki, DAFx 2016 on);
+    Chowdhury's tape (DAFx 2019) and `chowdsp` wave-digital pedal work.
+  - **Open code, for reference or reuse:** Mutable Instruments
+    (Clouds/Rings/Elements/Plaits fx), DaisySP, Airwindows, Freeverb,
+    CloudSeed. Verify each licence and whether it is compatible with
+    GPL-3.0 before taking anything.
+  - **One choice per slot entry:** the algorithm, its source, whether we
+    port code or implement from the description, the expected cost on
+    pi32v2 (instructions per sample) and its memory, and why it suits a
+    SID.
+  - **Distortion design:** ADAA waveshapers; a tape model in the Chowdhury
+    style, or a cheaper approximation if the budget demands it.
+  - **FX design:** the reverb is based on an embedded-grade design
+    (Mutable Instruments or a Dattorro plate).
+  - **Attribution:** what goes in `CREDITS.md` and `LICENSING.md`.
 - **Reuse Task 1's blocks:** tape, crush, Lo-fi, and wow & flutter are
   rearranged into slots, not rewritten. Task 1 keeps each effect as a
   separate block with its own state and parameters.
