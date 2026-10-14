@@ -12,6 +12,7 @@ include(GoogleTest)
 
 add_executable(sidou_unit_tests
     unit/sid_defs_test.cpp
+    unit/sid_env_test.cpp
     unit/sid_noise_test.cpp
     unit/sid_osc_test.cpp
     unit/sid_sync_test.cpp)
