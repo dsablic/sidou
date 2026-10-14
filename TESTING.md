@@ -18,7 +18,8 @@ lists the prerequisites.
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
-| Emulator tests (gate, boot, live instrument, MIDI, SRAM audio) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
+| Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/` and `build/stock/`, which `sidou-pack` fills, and skip without them) | `crates/sidou-pack/` |
+| Emulator tests (gate, boot, live instrument, MIDI, SRAM audio, package) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
 profile sets `opt-level = 3`), but the reference tests do a lot of Rust-side
@@ -195,6 +196,31 @@ fm1-emu does not emulate USB (see [docs/TODO.md](docs/TODO.md)), so USB
 MIDI is covered by the host tests of the packet conversion
 (`tests/app/midi_usb.rs`), the ring (`midi_ring.rs`) and the input logic
 (`midi_rx.rs`), and by hardware testing.
+
+### Package tests
+
+`crates/sidou-pack/tests/`:
+- `ota_step1.rs` runs the firmware's step 1 of the update protocol
+  (Felucca's `ota.c`, built for the host with test hooks) against packages
+  from `sidou-pack`, the test acting as the installer (`fm1_install.py`'s
+  side), on a simulated NOR flash: the identity request is answered with
+  `FM-1_900`; a package's loader is staged at `0xE0000` with its head, the
+  update record is written and committed after the host's "success", and
+  nothing else is written; another board's package (flash.bin of another
+  size) and a loader without the marker are refused before any erase; the
+  next boot clears the staging area. It needs no downloads (a synthetic
+  head carries the chip key). fm1-emu has no USB, so this is where the
+  protocol and the package format meet before hardware.
+- `pack.rs` reads a package back with fm1-emu's reader (`fm1_soc::fwsc`): the
+  head is stock V15's byte for byte, the app is at `0x02000120` in the
+  unscrambled app area, the directory, the container and the loader's image
+  match; and a golden SHA-256 of a fixed tiny package, which Felucca's
+  `fm1pkg_make.py` reproduced byte for byte once (with the stock head swapped
+  in).
+
+`crates/emu-gate/tests/package.rs` boots `sidou.fwsc` as fm1-emu boots a
+package (`stock_from_package` + `stock_boot`) with the A4 key held: it plays
+440 Hz, sample for sample as the bare image does.
 
 ### Boot-guard test
 

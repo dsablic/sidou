@@ -74,6 +74,8 @@ pub fn step(cpu: &mut Cpu, soc: &mut Soc) -> bool {
 pub const APP_BASE: u32 = 0x0200_0120;
 /// The SPL's boot-parameter block (Felucca's crt0.S: inside the vector table at 0x01C7FE00).
 const BOOT_PARAMS: u32 = 0x01C7_FE08;
+/// Where fm1-emu's CLI builds the SPL's boot parameters for a package boot (RAM_BASE + 0x7fc00).
+const PACKAGE_PARAMS: u32 = 0x01C7_FC00;
 const RAM_SIZE: usize = 1 << 20;
 const IRQ_ALNK0: u8 = 11;
 
@@ -162,15 +164,30 @@ impl Machine {
         let mut xip = vec![0u8; (APP_BASE - fm1_soc::XIP_BASE) as usize];
         xip.extend_from_slice(image);
         let mut soc = Soc::new(RAM_SIZE, xip);
-        // The firmware's main loop sleeps in `idle`; skip ahead to the next interrupt.
-        soc.periph.skip_idle = true;
-        let mut cpu = Cpu::new(APP_BASE);
-        // The SPL hands cpu0 over in user mode (fm1-emu main.rs).
-        cpu.user = true;
         // Placeholder contents (the CLI's): the firmware only saves r0, and fm1_irq_init then
         // overwrites the block with the vector table.
         soc.write32(BOOT_PARAMS, BOOT_PARAMS + 0x40);
-        cpu.regs[0] = BOOT_PARAMS;
+        Self::start(soc, APP_BASE, BOOT_PARAMS)
+    }
+
+    /// An update package (.fwsc) booted as fm1-emu's `--fwsc` boots one
+    /// (fm1_soc::stock_from_package and stock_boot): the XIP window shows the package's app
+    /// area unscrambled, the flash chip holds its flash.bin, r0 points at the SPL's boot
+    /// parameters built from its flash header.
+    pub fn boot_package(package: &[u8]) -> Self {
+        let stock = fm1_soc::stock_from_package(package, None).expect("an FM-1 package");
+        let mut soc = Soc::new(RAM_SIZE, stock.xip.clone());
+        let r0 = fm1_soc::stock_boot(&mut soc, &stock.flash, PACKAGE_PARAMS);
+        Self::start(soc, stock.entry, r0)
+    }
+
+    fn start(mut soc: Soc, entry: u32, r0: u32) -> Self {
+        // The firmware's main loop sleeps in `idle`; skip ahead to the next interrupt.
+        soc.periph.skip_idle = true;
+        let mut cpu = Cpu::new(entry);
+        // The SPL hands cpu0 over in user mode (fm1-emu main.rs).
+        cpu.user = true;
+        cpu.regs[0] = r0;
         Machine {
             soc,
             cpu,

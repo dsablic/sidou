@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# The files sidou-pack fetches on first use (never committed), pinned by SHA-256.
+#
+# JieLi's AC79 SDK (Apache-2.0), tag AC79NN_SDK_V1.2.1_2023-12-13, as Felucca's
+# tools/build.py pins them: cfg_tool.bin and the default EQ table go into every package's
+# app area. Cached in build/ac79/. Ship LICENSES/Apache-2.0.txt with every package.
+#
+# M-VAVE's official FM-1 V15 package (FM-1.fwsc, the SHA-256 Felucca's installer knows):
+# only its flash head [0, 0x4000) is used, verbatim, so the package's head is byte-identical
+# to stock V15 (a safety rule: a tool that writes the whole flash.bin leaves the head as it
+# was). Cached in build/stock/. The head's own SHA-256 is pinned too.
+
+ac79_base = "https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK/raw/AC79NN_SDK_V1.2.1_2023-12-13/cpu/wl82/tools/"
+cfg_tool = "cfg_tool.bin 276579954f076886a6a7694f65dc71c034a63a2c204b76749065c0ac7b010d1b"
+eq_cfg_hw = "cfg/eq_cfg_hw.bin 41167491bffed4651750719c973d2758adeb9021a5670d02d6a53c85ed80ea7d"
+
+stock_url = "https://yms-file-store.oss-cn-hongkong.aliyuncs.com/software/firmware/FM-1.fwsc"
+stock_sha256 = "db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a"
+stock_head_sha256 = "d9f43191777656de01c7bed4f9e9ba2e34e94832c5d2ed02c3fc7ab7a6d9bd67"
