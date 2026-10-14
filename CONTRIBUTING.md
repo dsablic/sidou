@@ -9,7 +9,7 @@
   the public roadmap.
 - **Pull requests:**
   - keep each PR to one change;
-  - add tests, and run CI checks locally (`TESTING.md`, once it exists);
+  - add tests, and run CI checks locally (see [TESTING.md](TESTING.md));
   - list any new third-party component in `LICENSING.md`;
   - add an SPDX header to every new file;
   - add an entry to `CHANGELOG.md`.

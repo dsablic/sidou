@@ -8,6 +8,10 @@ SIDOU builds on, or learns from, the work of these people and projects.
 - **reSID**: Dag Lem
 - **reSIDfp**: Antti S. Lankila, Leandro Nini and contributors
 
+## Signal processing
+- **State-variable filter**: Andrew Simper (Cytomic), whose
+  "SvfLinearTrapOptimised2" paper defines the filter in SIDOU's SID core
+
 ## FM-1 community
 - **Felucca**: Leo Kuroshita / Hügelton Instruments, and the many forks
   built on it (SLOOP, Melodee, X0X, FoMni and others)
