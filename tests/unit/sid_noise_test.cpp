@@ -7,17 +7,50 @@ extern "C" {
 }
 
 TEST(SidNoise, ClocksOnEveryRisingEdgeOfBit19) {
+    const uint32_t freq = 0xffff;
+    const uint32_t cycles = 23;
     sid_osc o;
     sid_osc_reset(&o);
     sid_osc_write_control(&o, SID_CTRL_NOISE);
-    o.freq = 0x80000; // bit 19 toggles every cycle, so it rises every 2 cycles
+    o.freq = freq;
+    o.acc = 0xf00000; // the first step crosses the 24-bit wrap
 
     sid_osc reference = o;
-    for (int i = 0; i < 10; ++i) {
-        sid_lfsr_clock(&reference);
+    int clocks = 0;
+    for (int step = 0; step < 200; ++step) {
+        for (uint32_t i = 0; i < cycles; ++i) {
+            uint32_t prev = reference.acc;
+            reference.acc = (prev + freq) & 0xffffffu;
+            if (!(prev & 0x80000u) && (reference.acc & 0x80000u)) {
+                sid_lfsr_clock(&reference);
+                ++clocks;
+            }
+        }
+        sid_osc_advance(&o, cycles);
+        ASSERT_EQ(o.acc, reference.acc) << "step " << step;
+        ASSERT_EQ(o.lfsr, reference.lfsr) << "step " << step;
     }
-    sid_osc_advance(&o, 20);
-    EXPECT_EQ(o.lfsr, reference.lfsr);
+    EXPECT_GT(clocks, 200);
+}
+
+TEST(SidNoise, TestBitClearsLfsrSoNoiseIsSilent) {
+    sid_osc o;
+    sid_osc_reset(&o);
+    sid_osc_write_control(&o, SID_CTRL_NOISE);
+    o.freq = 0xffff;
+    sid_osc_advance(&o, 23);
+    sid_osc_write_control(&o, SID_CTRL_NOISE | SID_CTRL_TEST);
+    sid_osc_advance(&o, 23);
+    EXPECT_EQ(o.lfsr, 0u);
+    EXPECT_EQ(sid_osc_output(&o, &o), 0u);
+}
+
+TEST(SidNoise, ReleasingTestBitReloadsLfsr) {
+    sid_osc o;
+    sid_osc_reset(&o);
+    sid_osc_write_control(&o, SID_CTRL_NOISE | SID_CTRL_TEST);
+    sid_osc_write_control(&o, SID_CTRL_NOISE);
+    EXPECT_EQ(o.lfsr, SID_LFSR_RESET);
 }
 
 TEST(SidNoise, FirstClockFromResetShiftsInZero) {

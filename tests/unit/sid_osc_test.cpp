@@ -25,11 +25,38 @@ TEST(SidOsc, AccumulatorAddsFrequencyEveryCycle) {
 }
 
 TEST(SidOsc, AccumulatorWrapsAt24BitsAndReportsMsbRise) {
-    sid_osc o = make_osc(SID_CTRL_SAW, 0x100000);
-    sid_osc_advance(&o, 16);
-    EXPECT_EQ(o.acc, 0u);
-    EXPECT_EQ(o.msb_rose, 1);
-    EXPECT_EQ(o.overshoot, 0x800000u); // crossed 0x800000 eight cycles ago
+    const uint32_t freq = 0xffff;
+    const uint32_t cycles = 23;
+    sid_osc o = make_osc(SID_CTRL_SAW, freq);
+    o.acc = 0xf00000; // the first step crosses the 24-bit wrap
+    int wraps = 0;
+    int rises = 0;
+    for (int step = 0; step < 200; ++step) {
+        uint32_t acc = o.acc;
+        uint8_t rose = 0;
+        uint32_t overshoot = 0;
+        for (uint32_t i = 0; i < cycles; ++i) {
+            uint32_t prev = acc;
+            acc = (prev + freq) & 0xffffffu;
+            overshoot += freq;
+            if (!(prev & 0x800000u) && (acc & 0x800000u)) {
+                rose = 1;
+                overshoot = acc - 0x800000u;
+            }
+            if (acc < prev) {
+                ++wraps;
+            }
+        }
+        sid_osc_advance(&o, cycles);
+        ASSERT_EQ(o.acc, acc) << "step " << step;
+        ASSERT_EQ(o.msb_rose, rose) << "step " << step;
+        if (rose) {
+            ASSERT_EQ(o.overshoot, overshoot) << "step " << step;
+            ++rises;
+        }
+    }
+    EXPECT_GT(wraps, 0);
+    EXPECT_GT(rises, 0);
 }
 
 TEST(SidOsc, SawIsTheTop12Bits) {

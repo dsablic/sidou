@@ -47,15 +47,20 @@ static inline uint32_t sid_noise_output(uint32_t r) {
            ((r & 0x000010u) << 1) | ((r & 0x000004u) << 2);
 }
 
+/* As in reSID 0.16: setting TEST zeroes the accumulator and the LFSR (silencing
+ * noise); releasing it reloads the LFSR. */
 static inline void sid_osc_write_control(sid_osc* o, uint8_t v) {
     if ((v & SID_CTRL_TEST) && !(o->control & SID_CTRL_TEST)) {
         o->acc = 0;
+        o->lfsr = 0;
+    } else if (!(v & SID_CTRL_TEST) && (o->control & SID_CTRL_TEST)) {
         o->lfsr = SID_LFSR_RESET;
     }
     o->control = v;
 }
 
-/* cycles is at most ~23, so freq * cycles < 2^24 and at most one MSB rise can occur. */
+/* freq is a 16-bit SID register value (sid_write guarantees it) and cycles is at
+ * most ~23, so freq * cycles < 2^24 and at most one MSB rise can occur. */
 static inline void sid_osc_advance(sid_osc* o, uint32_t cycles) {
     o->msb_rose = 0;
     if (o->control & SID_CTRL_TEST) {
@@ -74,7 +79,11 @@ static inline void sid_osc_advance(sid_osc* o, uint32_t cycles) {
     o->acc = next & 0xffffffu;
 }
 
-/* Hard sync: restart o as if it had been reset at the moment src's MSB rose. */
+/* Hard sync: restart o as if it had been reset at the moment src's MSB rose.
+ * Call only when src->msb_rose is set, which implies src->freq != 0.
+ * Known simplifications, deliberate for M0 (inaudible): o's own noise clocks and
+ * msb_rose from the discarded part of the step are not recomputed, and reSID's
+ * special case of a sync source that is itself being synced is not modelled. */
 static inline void sid_osc_sync(sid_osc* o, const sid_osc* src) {
     uint32_t cycles_after = src->overshoot / src->freq;
     o->acc = (o->freq * cycles_after) & 0xffffffu;
