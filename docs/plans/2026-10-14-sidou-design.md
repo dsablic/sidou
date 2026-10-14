@@ -32,6 +32,8 @@ Non-goals (for now)
 
 - RSID tunes (these need full CIA/VIC timing), digi/sample playback tricks.
 - More than two chips, or one chip per note.
+- Wireless in the published firmware. BLE MIDI and Wi-Fi are only an
+  optional, user-built variant (section 17).
 - A new circuit-level 6581 model. It may come later as one more chip profile.
 
 ## 2. Hardware constraints (from the reference repos)
@@ -462,6 +464,8 @@ Each kind of document has one job:
 6. **M5:** RIP, SID-Wizard import, chip B song tracks, MIDI extras (NRPN,
    poly aftertouch, sequencer MIDI out), SCENE view (one prototype scene
    first).
+7. **After M5 (optional):** BLE MIDI feasibility spike for the user-built
+   wireless variant (section 17).
 
 ## 15. Language choice
 
@@ -567,7 +571,54 @@ can sequence other gear as a SID tracker.
 | M4 | Implementation chart in the manual. |
 | M5 | NRPN high resolution, poly aftertouch, sequencer MIDI out. |
 
-## 17. Open risks and questions
+## 17. Optional wireless (user-built)
+
+The FM-1 ships with BLE MIDI, and its AC791N SoC also has a Wi-Fi radio.
+Published SIDOU firmware uses neither. Wireless can be an opt-in variant that
+users build themselves, at their own risk.
+
+**Why it can't be in the published firmware:**
+- **Closed stacks.** JieLi's Bluetooth and Wi-Fi stacks exist only as
+  closed binary libraries in its SDK. Distributing a binary that links them
+  with SIDOU's GPL-3.0-only code (vendored from Felucca) would break the
+  licence, commercial or not.
+- **Private builds are allowed.** GPL does not restrict a user who builds
+  the combination for themselves without distributing it.
+- **Certification.** The device is certified as using BLE. Wi-Fi is a
+  transmitter mode it was never certified for.
+
+**Model:**
+- **Source only:** we publish the integration source and an opt-in build
+  setting (`SIDOU_WIRELESS=ble`, later `=wifi`).
+- **Local build:** the build downloads JieLi's SDK libraries on the user's
+  machine and links them locally.
+- **Never published:** CI never builds, tests or publishes the wireless
+  variant, and no release artefact contains vendor libraries.
+- **Opt-in and warned:** it is off by default. The docs explain the licence
+  reason and the user's responsibility, and Wi-Fi carries an explicit
+  regulatory warning. Not legal advice.
+
+**Engineering risk:**
+- **Runtime:** the vendor stacks expect the SDK's RTOS runtime, memory layout
+  and interrupt setup, while SIDOU is bare-metal.
+- **RAM:** the BLE stack takes a large share of about 430 KB, competing
+  with two SIDs, the sequencer and the UI.
+- **Interrupts:** radio interrupts must not disturb the audio deadline.
+
+M-VAVE's `fm1_open` already implements BLE MIDI on this SDK and is the
+reference.
+
+**Plan:**
+1. **BLE feasibility spike (time-boxed, after M5):** build `fm1_open`'s BLE
+   MIDI path, then measure RAM, flash and interrupt latency next to SIDOU's
+   audio engine. Write a decision record: go or no-go, and how
+   (embed the SDK runtime or port SIDOU onto it).
+2. **If go:** BLE MIDI as a user-built variant. BLE MIDI messages feed the
+   same timestamped MIDI path (section 16).
+3. **Wi-Fi only after BLE works:** network installs, companion-app sync and
+   RTP-MIDI, with the regulatory warning.
+
+## 18. Open risks and questions
 
 - How well core 1 works on real units, and the exact clock speed, need
   checking on hardware.
