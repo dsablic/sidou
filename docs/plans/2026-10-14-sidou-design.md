@@ -303,6 +303,22 @@ Layers (all run in CI):
   - a link to fm1-emu running the real image.
 - **USB identity:** do not ship with the pid.codes test VID/PID. Apply for a
   proper pid.codes ID before 1.0.
+- **Release videos, generated from the emulator.** Other FM-1 projects
+  promote releases with emulator-captured demo videos. We generate ours in CI
+  so they always match the shipped firmware:
+  1. **Demo scripts** (`demos/*.keys`): fm1-emu key scripts with timing, one
+     per feature. Each changelog entry names the demo that shows it. The
+     scripts also run as end-to-end tests.
+  2. **Capture:** fm1-emu runs the release `.fwsc` headless and records screen
+     frames (`--snap` at video rate) and audio (`--wav`) for each script.
+     Same script, same footage.
+  3. **Composition:** HyperFrames (HTML/GSAP) or Remotion (React) renders the
+     footage inside an FM-1 frame. It adds an on-screen key and knob overlay
+     driven by the script, captions from the changelog, and a C64-style
+     title card. The choice between the two tools is made in M4.
+  4. **Output:** a "what's new" video per release, plus a short clip per
+     feature, attached to the GitHub release and embedded in the manual.
+     Uploading to YouTube is a manual step.
 
 ## 11. Licensing and attribution
 
@@ -398,6 +414,7 @@ Each kind of document has one job:
    - starter pack.
 5. **M4, showcase and release:**
    - WASM demo, installer, manual;
+   - release-video pipeline (demo scripts, emulator capture, composition);
    - 0.1 release, followed by the nightly channel.
 6. **M5:** RIP, SID-Wizard import, chip B song tracks, MIDI polish.
 
