@@ -27,3 +27,5 @@ target_link_libraries(sidou_golden_tests PRIVATE sidou_workload GTest::gtest_mai
 target_compile_definitions(sidou_golden_tests PRIVATE
     SIDOU_GOLDEN_FILE="${CMAKE_CURRENT_SOURCE_DIR}/golden/hashes.txt")
 gtest_discover_tests(sidou_golden_tests)
+
+add_subdirectory(reference)
