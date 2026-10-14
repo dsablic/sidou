@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `sidou-pack --app sidou_app.bin --loader sidou_loader.bin -o sidou.fwsc`
+//! `sidou-pack --app sidou_app.bin --loader loader/loader.bin -o sidou.fwsc`
 //!
 //! Packs the firmware image and the update loader's RAM image (both from the fm1 build) into
 //! an FM-1 update package. Downloads the inputs that are not SIDOU's on first use into the

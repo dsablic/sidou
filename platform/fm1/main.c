@@ -182,6 +182,8 @@ void fm1_cstart(void) {
     /* First, before anything that may crash: the third boot in a row that dies before it is
      * stable goes to UBOOT, which still accepts updates (not the 7D soft key: a direct entry). */
     if (bootguard_boot(&boot_guard)) {
+        /* The watchdog armed above would reset the chip out of UBOOT while a host installs. */
+        fm1_wdt_stop();
         fm1_enter_uboot();
     }
     fm1_irq_init();

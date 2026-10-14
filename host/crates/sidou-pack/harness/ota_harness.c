@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* Felucca's ota.c (platform/fm1/usb/ota.c, GPL-3.0-only), step 1 of the update protocol as the
+/* Felucca's ota.c (platform/fm1/src/ota.c, GPL-3.0-only), step 1 of the update protocol as the
  * firmware runs it, built for the host with test hooks: the host side of the protocol is the
  * test's (callbacks), the flash is a RAM array with NOR semantics (erase to 0xFF, program
  * clears bits), time advances one millisecond per idle call. */

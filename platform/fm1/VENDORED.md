@@ -52,13 +52,14 @@ Not vendored: `fm1_cpu1.{h,S}` (we don't use the second core) and
   - `midi.c`: `fm1_sys.h`, `fm1_time.h` and `fm1_flash.h` (the update
     protocol's flash access), and `fm1_usb.h` and `fm1_uart.h` through the
     vendored `usb/usb.c` and `usb/midi_uart.c`, which it includes with
-    `usb/ota.c` (see below). The TIMER5 interrupt in `main.c` calls their
+    `src/ota.c` and its flash hooks `ota_flash.h` (see below). The TIMER5 interrupt in `main.c` calls their
     polls through `midi_usb_isr` and `midi_uart_isr`. `fm1_flash.h`'s
     `RAMFN` code lands in `.ram_text` (`app.ld` keeps it), and is called
     through `FL_FAR` pointers: flash and SRAM code are out of each other's
     branch reach ([docs/hardware.md](../../docs/hardware.md));
-  - the loader (`loader/loader.c`, its own image): `fm1_time.h`,
-    `fm1_sys.h`, `fm1_flash.h`, and `usb/usb.c` and `usb/ota.c`.
+  - the loader (`loader/loader.c`, its own image, Felucca's unmodified):
+    `fm1_time.h`, `fm1_sys.h`, `fm1_flash.h`, and Felucca's own
+    `src/libc.c`, `src/usb.c` and `src/ota.c`.
 
   None of `input.c`'s, `lcd.c`'s or `midi.c`'s headers includes `fm1_irq.h`;
   `fm1_time.h` holds only `static inline` helpers and no state, so several
@@ -142,16 +143,15 @@ carry the changes over onto SIDOU's versions.
   loop (`app/midi_usb.c`, `app/midi_rx.c`). `ep1_take`'s back-pressure test
   uses `midi_in_room()`.
 - **Update protocol:** `sysex_byte` and the SysEx part of
-  `midi_in_event` are only built with `FELUCCA_OTA`, which `midi.c` and
-  the loader turn on. The rest of the `FELUCCA_OTA` code (the received
-  frame, the SysEx TX queue, `ota_wire_send`, `ota_frame_get`,
-  `ota_frame_done`, the upgrade request `F0 22 24 35 7F F7`) is unchanged,
-  and so is the `FELUCCA_LOADER` code but for the loader's product string,
-  "SIDOU Update".
+  `midi_in_event` are only built with `FELUCCA_OTA`, which `midi.c` turns
+  on. The rest of the `FELUCCA_OTA` code (the received frame, the SysEx TX
+  queue, `ota_wire_send`, `ota_frame_get`, `ota_frame_done`, the upgrade
+  request `F0 22 24 35 7F F7`) is unchanged, and so is the `FELUCCA_LOADER`
+  code, which this copy never builds: the loader builds from Felucca's own
+  `src/usb.c` (below).
 - **`usb_detach`:** in the app it masks interrupts around `usb.up = 0` and
   `fm1_usb_off`, so no TIMER5 `usb_poll` that already passed its `usb.up`
-  check talks to a controller going off; the loader (interrupts off
-  throughout) is unchanged.
+  check talks to a controller going off.
 - **Retry without blocking:** `usb_start` is split into the reset and
   `usb_attach_now`. `usb_start` (boot, interrupts off) still waits 25 ms
   between them; `usb_retry` (main loop, once a second while USB is off)
@@ -176,39 +176,40 @@ carry the changes over onto SIDOU's versions.
   parser's state and setting `midi_in_overflow`; `um.msgs` is gone.
 - The header comment describes the SIDOU version.
 
-### `ota.c`: the update protocol, step 1 (unchanged)
+## Felucca's sources for the update path (`src/`, `loader/`), unmodified
 
-- **Source:** Felucca's `firmware/src/ota.c` (406 lines) at the same commit,
-  byte for byte. `midi.c` includes it after `usb/usb.c` and supplies its
-  hooks, adapted from Felucca's `src/ota_hw.c`: the clock (TIMER4), the
-  watchdog, erases and writes inside the staging area only (`0xE0000`..
-  `0xE5000`, `FL_RANGE_OK`), in interrupt-off windows and only while the
-  audio is stopped (else -16), the progress on the screen (`ui_update`),
-  and the commit (the boot guard told, USB detached, `fm1_enter_update`).
-  `FELUCCA_ID` is SIDOU's identity, `SIDOU_PRODUCT` (`FM-1_900` for
-  development builds).
-- Its check that a package's loader is Felucca's looks for the marker
-  `FELUCCA-LOADER-1`, which SIDOU's loader keeps (below).
+Laid out as in Felucca's `firmware/` tree, so the loader's relative includes
+(`../src/…`, `../hal/…`) resolve as there.
 
-## The update loader (`loader/`)
-
-- **Source:** Felucca's `firmware/loader/` at the same commit:
-  `crt0_ldr.S`, `ldr_core.c` and `loader.ld` byte for byte, `loader.c`
-  adapted.
+- **Source:** Felucca's `firmware/src/usb.c`, `src/ota.c`, `src/libc.c` and
+  `firmware/loader/` (`crt0_ldr.S`, `ldr_core.c`, `loader.c`, `loader.ld`)
+  at the same commit, byte for byte.
 - **Licence:** GPL-3.0-only, © 2026 Leo Kuroshita, Hügelton Instruments.
-- **Build:** the target `sidou_loader` (`-Os`, `loader.ld`: one RAM image at
-  `0x01C0A800`, at most `0x14000` bytes) makes `sidou_loader.bin`, the raw
-  image; `sidou-pack` wraps it into the package's `ota.bin`.
-- **Changes in `loader.c`:** our paths (`../usb/usb.c`, `../usb/ota.c`,
-  `../libc_min.c` instead of Felucca's `libc.c`); a `midi_enqueue` that
-  drops USB MIDI (Felucca's in ring is gone from `usb.c`); no stock UBOOT
-  soft key (the `usb.uboot_req` branch is gone); a header note. The USB
-  product string is "SIDOU Update" (in `usb.c`); the PID stays 0x0002, the
-  identity `ota-FM-1_900` (installers find a loader by `ota-`).
-- **The marker stays `FELUCCA-LOADER-1`:** Felucca, sloop and melodee
-  accept a package's loader by it (their `ota.c` and `fm1_install.py`), so
-  a SIDOU package installs from any of them and with their installers. The
-  plan's `SIDOU-LOADER-1` would break that.
+- **The update loader** is built from them unmodified, with exactly the
+  commands of Felucca's `tools/build.py` `build_loader()` (CMake target
+  `felucca_loader`; no SIDOU toolchain flags): `loader/loader.bin` in the
+  build, the RAM image for `0x01C0A800`, which `sidou-pack` wraps into the
+  package's `ota.bin` with Felucca's own LZ4 compressor. Once step 1
+  commits, the SPL runs this loader at every power-on until an install
+  completes, so it is the loader proven on hardware: built from Felucca's
+  own tree at this commit with the same toolchain, its `loader.bin` and the
+  wrapped `ota.bin` are byte-identical to ours. It is Felucca's loader in
+  every respect: USB "Felucca Update", 1209:0002, identity `ota-FM-1_900`,
+  the marker `FELUCCA-LOADER-1` (which Felucca, sloop and melodee look for),
+  and its own fallback to UBOOT on the stock soft key (the app never sends
+  that SysEx, and never handles it).
+- **`src/ota.c`, step 1 of the update protocol,** is also the app's:
+  `midi.c` includes it after `usb/usb.c` and supplies its hooks, adapted
+  from Felucca's `src/ota_hw.c`: the clock (TIMER4), the watchdog, the
+  flash hooks in `ota_flash.h` (erases and writes inside the staging area
+  `0xE0000..0xE5000` only, in interrupt-off windows and only while the
+  audio is stopped, else -16; host-tested), the progress on the screen
+  (`ui_update`), and the commit (the boot guard told, USB detached,
+  `fm1_enter_update`). `FELUCCA_ID` is SIDOU's identity, `SIDOU_PRODUCT`
+  (`FM-1_900` for development builds, the same as Felucca's development
+  builds; distinct digits are for later, with the community).
+- `src/usb.c` is the loader's only: the app uses the adapted copy in
+  `usb/usb.c`.
 
 ## font8x8 (`font/`)
 

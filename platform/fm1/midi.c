@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* MIDI in (midi.h) and the update protocol's step 1 (update.h). This file includes Felucca's
- * USB stack, TRS UART driver and update protocol (usb/usb.c, usb/midi_uart.c, usb/ota.c,
+ * USB stack, TRS UART driver and update protocol (usb/usb.c, usb/midi_uart.c, src/ota.c,
  * GPL-3.0-only): like the HAL, they are static code for one translation unit, and they call
  * back into the hooks defined here before them; ota.c talks through usb.c's static SysEx
  * plumbing. Only this file includes fm1_usb.h, fm1_uart.h and fm1_flash.h
@@ -73,7 +73,7 @@ static void midi_lost(uint32_t n) {
 /* clang-format off */
 #include "usb/usb.c"
 #include "usb/midi_uart.c"
-#include "usb/ota.c"
+#include "src/ota.c"
 /* clang-format on */
 
 _Static_assert(MIDI_SRC_USB == 1u && MIDI_SRC_TRS == 2u, "usb.c and midi_uart.c push 1 and 2");
@@ -142,7 +142,6 @@ void midi_service(uint32_t now_ms) {
 /* ---- ota.c's hooks (Felucca's ota_hw.c, adapted) ---- */
 
 static uint8_t flash_ok;           /* the JEDEC id matched at boot */
-static uint32_t flash_refused;     /* writes refused because the audio ran (a bug if not 0) */
 static void (*commit_hook)(void);  /* update_session's before_reset */
 
 /* Monotonic milliseconds from TIMER4, across its wrap (178.9 s); as the loader's ldr_ms. */
@@ -161,65 +160,8 @@ static void ota_idle(void) {
     fm1_wdt_feed();
 }
 
-static int ota_in_area(uint32_t off, uint32_t n) {
-    return FL_IN(off, n, OTA_AREA, OTA_AREA + OTA_AREA_LEN);
-}
-
-/* Erases and writes run with XIP off and interrupts masked (fl_*_ram, .ram_text): the audio
- * must be stopped first (the DMA would loop a stale buffer, and the audio path reads .rodata
- * from flash), and the TIMER5 interrupt (input scan, USB and UART polls) is masked with the
- * rest. A fault while XIP is off cannot reach the fatal stubs, which are in flash: the
- * watchdog resets the chip then. */
-static int flash_write_allowed(void) {
-    if (audio_running()) {
-        flash_refused++;
-        return 0;
-    }
-    return 1;
-}
-
-static int ota_erase(uint32_t off) {
-    uint32_t took, f;
-    int rc;
-    if (!ota_in_area(off, 0x1000u) || (off & 0xFFFu)) {
-        return -8;
-    }
-    if (!flash_write_allowed()) {
-        return -16;
-    }
-    f = irq_save();
-    input_leds_dark();
-    rc = FL_FAR(fl_erase4k_ram)(off, &took);
-    irq_restore(f);
-    return rc;
-}
-
-static int ota_prog(uint32_t off, const void* p, uint32_t n) {
-    if (!ota_in_area(off, n)) {
-        return -8;
-    }
-    if (!flash_write_allowed()) {
-        return -16;
-    }
-    return fl_write(off, p, n); /* p is RAM: ota.c's buffers */
-}
-
-/* In 256-byte windows with interrupts off (XIP is off meanwhile). */
-static int ota_fread(uint32_t off, void* p, uint32_t n) {
-    uint8_t* d = p;
-    while (n) {
-        uint32_t k = n > 256u ? 256u : n, f = irq_save();
-        int rc = FL_FAR(fl_read_ram)(off, d, k);
-        irq_restore(f);
-        if (rc) {
-            return rc;
-        }
-        off += k;
-        d += k;
-        n -= k;
-    }
-    return 0;
-}
+/* ota_in_area, flash_write_allowed, ota_erase, ota_prog, ota_fread (host-tested). */
+#include "ota_flash.h"
 
 static void ota_show(uint32_t step, int32_t code) {
     ui_update(step, code);

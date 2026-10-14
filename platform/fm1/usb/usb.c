@@ -19,10 +19,12 @@
  * - usb_retry does the 25 ms reset without blocking the main loop, and an attach gives up
  *   at the third SIE timeout instead of timing out every write;
  * - usb_detach masks interrupts in the app;
- * - the strings name SIDOU (the update loader: "SIDOU Update").
+ * - the app's strings name SIDOU.
+ * The update loader is not built from this copy: it builds, unmodified, from Felucca's own
+ * src/usb.c (platform/fm1/src/), so its FELUCCA_LOADER code here is unused.
  * The includer includes fm1_time.h and defines RING_PUBLISH(), FELUCCA_OTA,
  * midi_enqueue(pkt, source) and midi_in_room() first. The update protocol's SysEx frames
- * and SysEx TX queue (FELUCCA_OTA, which the app and the loader turn on) are as they were. */
+ * and SysEx TX queue (FELUCCA_OTA, which the app turns on) are as they were. */
 #include "../hal/fm1_usb.h"   /* registers; relative, so the loader and the host tests find it too */
 enum { S_FADDR = 0, S_POWER = 1, S_INTRTX1 = 2, S_INTRTX2 = 3, S_INTRRX1 = 4, S_INTRRX2 = 5, S_INTRUSB = 6,
        S_INTRTX1E = 7, S_INTRTX2E = 8, S_INTRRX1E = 9, S_INTRRX2E = 10, S_INTRUSBE = 11, S_FRAME1 = 12,
@@ -115,8 +117,8 @@ static const uint8_t STR0[4] = {4, 3, 0x09, 0x04};
 static const uint8_t STR1[] = {38, 3, 'S', 0, 'I', 0, 'D', 0, 'O', 0, 'U', 0, ' ', 0, 'c', 0, 'o', 0, 'n', 0, 't', 0,
                                'r', 0, 'i', 0, 'b', 0, 'u', 0, 't', 0, 'o', 0, 'r', 0, 's', 0};
 #ifdef FELUCCA_LOADER
-static const uint8_t STR2[] = {26, 3, 'S', 0, 'I', 0, 'D', 0, 'O', 0, 'U', 0, ' ', 0, 'U', 0, 'p', 0, 'd', 0, 'a', 0,
-                               't', 0, 'e', 0};
+static const uint8_t STR2[] = {30, 3, 'F', 0, 'e', 0, 'l', 0, 'u', 0, 'c', 0, 'c', 0, 'a', 0, ' ', 0, 'U', 0, 'p', 0,
+                               'd', 0, 'a', 0, 't', 0, 'e', 0};
 #else
 static const uint8_t STR2[] = {12, 3, 'S', 0, 'I', 0, 'D', 0, 'O', 0, 'U', 0};
 #endif

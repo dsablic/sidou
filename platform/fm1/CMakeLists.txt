@@ -47,20 +47,28 @@ add_custom_command(TARGET ${t} POST_BUILD
     COMMAND ${CMAKE_OBJDUMP} -d $<TARGET_FILE:${t}> > ${t}.dis
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
-# The update loader (loader/, Felucca's, GPL-3.0-only): one RAM image the SPL decompresses to
-# 0x01C0A800 and runs, at most 0x14000 bytes (loader.ld), starting with crt0_ldr.S's marker.
-# sidou_loader.bin is the raw image; sidou-pack wraps it (LZ4 blocks and heads) into the
-# package's ota.bin. -Os as Felucca builds it: it must stay small.
-set(l sidou_loader)
-add_executable(${l} loader/crt0_ldr.S loader/loader.c)
-set_target_properties(${l} PROPERTIES SUFFIX ".elf")
-target_include_directories(${l} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/hal)
-target_compile_options(${l} PRIVATE $<$<COMPILE_LANGUAGE:C>:-Os -Wall -Wno-unused-function>)
-target_link_options(${l} PRIVATE -T ${CMAKE_CURRENT_SOURCE_DIR}/loader/loader.ld -e _start
-    --gc-sections)
-set_property(TARGET ${l} APPEND PROPERTY LINK_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/loader/loader.ld)
-add_custom_command(TARGET ${l} POST_BUILD
-    COMMAND ${CMAKE_OBJCOPY} -O binary -j .text $<TARGET_FILE:${l}> ${l}.bin
-    COMMAND ${CMAKE_OBJDUMP} -d $<TARGET_FILE:${l}> > ${l}.dis
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+# The update loader: Felucca's (loader/ and the src/ files it includes, GPL-3.0-only),
+# unmodified, built with exactly the commands of Felucca's tools/build.py build_loader():
+# once step 1 commits, the SPL runs this loader at every power-on until an install completes,
+# so it must be the bytes proven on hardware (VENDORED.md). Not through our toolchain flags:
+# no -mcpu, -O2 or -std, as build.py. loader/loader.bin is the RAM image for 0x01C0A800;
+# sidou-pack wraps it into the package's ota.bin.
+set(ldr ${CMAKE_CURRENT_BINARY_DIR}/loader)
+set(ldr_src ${CMAKE_CURRENT_SOURCE_DIR}/loader)
+set(ldr_flags -Os -ffunction-sections -fno-builtin -Wall -Wno-unused-function
+    -I${CMAKE_CURRENT_SOURCE_DIR}/hal -I${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_custom_command(
+    OUTPUT ${ldr}/loader.bin ${ldr}/loader.elf ${ldr}/loader.dis
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${ldr}
+    COMMAND ${CMAKE_C_COMPILER} -target pi32v2 -c ${ldr_src}/crt0_ldr.S -o ${ldr}/crt0_ldr.o
+    COMMAND ${CMAKE_C_COMPILER} -target pi32v2 ${ldr_flags} -c ${ldr_src}/loader.c
+        -o ${ldr}/loader.o
+    COMMAND ${CMAKE_LINKER} --gc-sections -e _start -T ${ldr_src}/loader.ld ${ldr}/crt0_ldr.o
+        ${ldr}/loader.o -o ${ldr}/loader.elf
+    COMMAND ${CMAKE_OBJCOPY} -O binary -j .text ${ldr}/loader.elf ${ldr}/loader.bin
+    COMMAND ${CMAKE_OBJDUMP} -d ${ldr}/loader.elf > ${ldr}/loader.dis
+    DEPENDS ${ldr_src}/crt0_ldr.S ${ldr_src}/loader.c ${ldr_src}/ldr_core.c ${ldr_src}/loader.ld
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/usb.c ${CMAKE_CURRENT_SOURCE_DIR}/src/ota.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/libc.c
+    VERBATIM)
+add_custom_target(felucca_loader ALL DEPENDS ${ldr}/loader.bin)

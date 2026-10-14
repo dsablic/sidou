@@ -184,6 +184,24 @@ These follow from the facts above. Each needs measuring before it's adopted.
    oversampled, and **SRC** if a native SID rate is worth it.
 6. **The FFT engine** for a spectrum or scope view.
 
+## Updates and recovery
+
+- **The update path is Felucca's.** Step 1 of the community update
+  protocol runs in SIDOU (Felucca's `ota.c`); the update loader is
+  Felucca's, unmodified and byte-identical to Felucca's own build. Once
+  step 1 commits, the SPL runs that loader at every power-on until an
+  install completes. It writes only the app area `[0x4000, 0x93000)`, never
+  the flash head: a device keeps its own (M-VAVE's SPL and isd_config).
+- **Identity:** SIDOU development builds answer `FM-1_900`, the same as
+  Felucca's development builds (docs/TODO.md).
+- **Boot-loop guard:** two early deaths in a row send the third boot to
+  UBOOT, with the watchdog stopped first.
+- **Recovery paths** if a unit no longer boots: FM-1-transporter
+  (<https://github.com/kurogedelic/FM-1-transporter>), and MvaveFM1Unbricker
+  with jl-uboot-tool, both community tools, to be confirmed on a unit
+  (the M1a Task 7 hardware checklist); back to stock with M-VAVE's
+  updater or "Return to official V15".
+
 ## Open checks on a real unit
 
 | Check | Why it matters | How |

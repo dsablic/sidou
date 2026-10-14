@@ -4,16 +4,8 @@
  * an update record, with interrupts off: USB is polled from the main loop.
  * It is a USB-MIDI device "Felucca Update" (1209:0002) that answers the
  * M-UPGRADE update protocol as "ota-FM-1_900" (hosts look for "ota-"), and
- * writes the app area only (ldr_core.c). (SIDOU: not the UBOOT soft key, below.)
- * Single compilation unit.
- *
- * SIDOU: adapted (platform/fm1/VENDORED.md): our tree's paths (../usb/usb.c, ../usb/ota.c,
- * ../libc_min.c for the compiler's memset/memcpy), a midi_enqueue that drops USB MIDI (the
- * loader only wants SysEx; usb.c no longer keeps Felucca's ring), the USB product string
- * "SIDOU Update" (usb.c), and no stock UBOOT soft key (F0 22 24 35 7D F7): SIDOU never
- * handles it. The identity "ota-FM-1_900" and crt0_ldr.S's marker "FELUCCA-LOADER-1" stay:
- * installers find a loader by the "ota-" prefix, and Felucca, sloop and melodee accept a
- * package's loader by the marker (their ota.c and fm1_install.py). */
+ * writes the app area only (ldr_core.c). The UBOOT soft key works here too.
+ * Single compilation unit. */
 #include <stdint.h>
 #define FELUCCA_LOADER 1
 #define FELUCCA_CDC 0
@@ -28,15 +20,8 @@
  * [0x97000, 0xE0000) (user data, never a record: ldr_core.c) */
 #define FL_RANGE_OK(off, n) (FL_IN(off, n, 0x4000u, 0x97000u) || FL_IN(off, n, 0xE0000u, 0xFC000u))
 #include "fm1_flash.h"
-#include "../libc_min.c"
-/* usb.c's hook: USB MIDI is dropped (the loader wants SysEx only, which usb.c assembles). */
-static int midi_enqueue(uint32_t pkt, uint32_t source)
-{
-    (void)pkt;
-    (void)source;
-    return 1;
-}
-#include "../usb/usb.c"
+#include "../src/libc.c"
+#include "../src/usb.c"
 
 static uint32_t ldr_ms(void)   /* monotonic ms; survives the TIMER4 wrap (178.9 s) */
 {
@@ -69,7 +54,7 @@ static int ota_prog(uint32_t off, const void *p, uint32_t n) { (void)off; (void)
 static int ota_fread(uint32_t off, void *p, uint32_t n) { return fl_read_ram(off, p, n); }
 static void ota_show(uint32_t step, int32_t code) { (void)step; (void)code; }
 static void ota_commit(const uint8_t *parm) { (void)parm; }
-#include "../usb/ota.c"
+#include "../src/ota.c"
 
 /* ---- ldr_core.c hooks: interrupts are off for the whole loader ---- */
 static int ldr_fread(uint32_t off, void *p, uint32_t n) { return fl_read_ram(off, p, n); }
@@ -100,6 +85,11 @@ void ldr_main(void)
     for (;;) {
         ldr_poll();
         usb_retry(ldr_ms());
+        if (usb.uboot_req) {                        /* soft key: mask-ROM UBOOT, as in Felucca */
+            usb_detach();
+            fm1_delay_ms(30);
+            fm1_enter_uboot();
+        }
         ota_service();                              /* handshake */
         if (usb.ota_req) {
             usb.ota_req = 0;

@@ -138,7 +138,7 @@ jobs:
         run: >-
           cargo run --locked --release -p sidou-pack --
           --app ../build/fm1/platform/fm1/sidou_app.bin
-          --loader ../build/fm1/platform/fm1/sidou_loader.bin
+          --loader ../build/fm1/platform/fm1/loader/loader.bin
           -o ../build/fm1/sidou.fwsc
       - name: Packager tests (with the inputs and the V15 package)
         working-directory: host

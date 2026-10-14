@@ -71,8 +71,8 @@ command in it, with the repository mounted at the same path. The output goes
 to `build/fm1/`:
 - `platform/fm1/sidou_app.{elf,bin,dis}`: the firmware. The `.bin` is what
   the FM-1's SPL maps at XIP address `0x02000120`.
-- `platform/fm1/sidou_loader.{elf,bin,dis}`: the update loader, a RAM image
-  for `0x01C0A800`.
+- `platform/fm1/loader/loader.{elf,bin,dis}`: the update loader, Felucca's,
+  unmodified and built as Felucca builds it: a RAM image for `0x01C0A800`.
 - `bench/fm1/sid_bench_{1,2}.{elf,bin,dis}`: the benchmark programs, for one
   and two chips.
 
@@ -82,7 +82,7 @@ take), from `host/`:
 ```sh
 cargo run --release -p sidou-pack -- \
     --app ../build/fm1/platform/fm1/sidou_app.bin \
-    --loader ../build/fm1/platform/fm1/sidou_loader.bin \
+    --loader ../build/fm1/platform/fm1/loader/loader.bin \
     -o ../build/fm1/sidou.fwsc
 ```
 

@@ -415,3 +415,28 @@ fn the_way_back_to_stock_v15_stays_open() {
     assert_eq!(dev.session(), -5);
     assert!(dev.flash == before, "flash written");
 }
+
+/// Felucca's loader as the fm1 build makes it (`platform/fm1/loader/loader.bin`), if built.
+fn built_loader() -> Option<Vec<u8>> {
+    let dir = std::env::var_os("SIDOU_FM1_BUILD")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| default_cache().join("fm1"));
+    let path = dir.join("platform/fm1/loader/loader.bin");
+    let l = std::fs::read(&path).ok();
+    if l.is_none() {
+        println!("skipping: no {} (build the fm1 preset)", path.display());
+    }
+    l
+}
+
+#[test]
+fn the_built_loader_is_staged() {
+    let _one = exclusive();
+    let Some(l) = built_loader() else {
+        return;
+    };
+    let pkg = sidou_pack::package(&inputs(), &app(), &l, PRODUCT).unwrap();
+    let mut inst = Installer::new(&pkg);
+    let mut dev = Device::new(&synthetic_head(), &mut inst);
+    assert_eq!((dev.session(), dev.host.committed), (0, 1));
+}

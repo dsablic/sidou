@@ -31,6 +31,8 @@ use std::process::Command;
 
 use sha2::{Digest, Sha256};
 
+pub mod lz4blk;
+
 /// The app slot in the app area (Felucca's APP_SLOT): the firmware image is padded to it.
 pub const APP_SLOT: usize = 0x8DFBC;
 /// flash.bin: the head and this board's app area, up to the PRCT end.
@@ -415,8 +417,8 @@ fn ldr_head(dcrc: u16, a: u32, b: u32, attr: u8) -> [u8; 32] {
 
 /// ota.bin from the loader's RAM image (Felucca's build.py `ldr_wrap`): an outer JLFS head,
 /// an inner head with the load address, then `[clen u32][dlen u32][LZ4 block]` per 4096
-/// bytes. The blocks are lz4_flex's (Felucca uses its own compressor: other bytes, the same
-/// LZ4 block format).
+/// bytes, compressed with Felucca's own compressor (lz4blk), so ota.bin is byte for byte the
+/// one Felucca's packer makes from the same loader image.
 pub fn wrap_loader(image: &[u8]) -> Result<Vec<u8>> {
     if image.is_empty() || image.len() > LOADER_MAX {
         return err(format!(
@@ -432,9 +434,8 @@ pub fn wrap_loader(image: &[u8]) -> Result<Vec<u8>> {
     }
     let mut blocks = Vec::new();
     for raw in image.chunks(4096) {
-        let c = lz4_flex::block::compress(raw);
-        let back = lz4_flex::block::decompress(&c, raw.len()).map_err(|e| Error(e.to_string()))?;
-        if c.len() > 4096 || back != raw {
+        let c = lz4blk::compress(raw);
+        if c.len() > 4096 || lz4blk::decompress(&c).as_deref() != Some(raw) {
             return err("a loader block does not compress below 4096 bytes");
         }
         blocks.extend_from_slice(&len32(c.len()).to_le_bytes());
@@ -468,7 +469,11 @@ pub fn unwrap_loader(ota: &[u8]) -> Result<Vec<u8>> {
         let c = ota
             .get(at + 8..at + 8 + clen)
             .ok_or(Error("truncated ota.bin".into()))?;
-        image.extend(lz4_flex::block::decompress(c, dlen).map_err(|e| Error(e.to_string()))?);
+        let d = lz4blk::decompress(c).ok_or(Error("a damaged LZ4 block".into()))?;
+        if d.len() != dlen {
+            return err("an LZ4 block of the wrong size");
+        }
+        image.extend(d);
         at += 8 + clen;
     }
     Ok(image)
@@ -737,7 +742,28 @@ pub mod harness {
         pub shown_code: i32,
     }
 
+    /// harness/flash_hooks.c's counters.
+    #[repr(C)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct FhCounters {
+        pub refused: u32,
+        pub leds_dark: u32,
+        pub unmasked_driver_calls: u32,
+        pub read_windows: u32,
+        pub oversized_windows: u32,
+        pub erases: u32,
+        pub writes: u32,
+        pub area: u32,
+        pub area_len: u32,
+    }
+
     extern "C" {
+        pub fn fh_reset(audio: i32);
+        pub fn fh_flash() -> *mut u8;
+        pub fn fh_counts() -> FhCounters;
+        pub fn fh_erase(off: u32) -> i32;
+        pub fn fh_prog(off: u32, p: *const u8, n: u32) -> i32;
+        pub fn fh_fread(off: u32, p: *mut u8, n: u32) -> i32;
         pub fn ota_h_service(h: *mut OtaHost);
         pub fn ota_h_session(h: *mut OtaHost) -> i32;
         pub fn ota_h_boot_cleanup(h: *mut OtaHost) -> i32;

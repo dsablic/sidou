@@ -22,15 +22,15 @@ component. "Use" says whether a component ends up in the firmware image.
 | reSID 0.16 filter cutoff points (`core/sid/sid_curves_resid016.h`) | reSID 0.16, © 2004 Dag Lem | GPL-2.0-or-later | data compiled into the firmware | M0 stand-in, replaced in M1 |
 | Felucca HAL @ `a53ecf42` (`platform/fm1/hal/`, see [VENDORED.md](platform/fm1/VENDORED.md)) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | linked into the firmware | in use |
 | Felucca USB stack, TRS MIDI driver and update protocol @ `a53ecf42` (`platform/fm1/usb/`, adapted, see [VENDORED.md](platform/fm1/VENDORED.md)) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | linked into the firmware | in use |
-| `host/crates/sidou-pack` (`.fwsc` format, loader wrapping) | a port of Felucca's `tools/fm1pkg_make.py` and `tools/build.py` @ `a53ecf42`, © 2026 Leo Kuroshita | GPL-3.0-only | host tool | in use |
+| `host/crates/sidou-pack` (`.fwsc` format, loader wrapping, LZ4 compressor) | a port of Felucca's `tools/fm1pkg_make.py`, `tools/build.py` and `tools/lz4blk.py` @ `a53ecf42`, © 2026 Leo Kuroshita | GPL-3.0-only | host tool | in use |
 | JieLi AC79 SDK `uboot.boot`, `cfg_tool.bin`, `cfg/eq_cfg_hw.bin` @ `AC79NN_SDK_V1.2.1_2023-12-13` | JieLi Technology | Apache-2.0 (`LICENSES/Apache-2.0.txt`, ship it with every package) | in every `.fwsc` package (the SPL in the head, the other two in the app area); fetched by `sidou-pack` into `build/ac79/`, never committed | in use |
-| Felucca update loader @ `a53ecf42` (`platform/fm1/loader/`, adapted, see [VENDORED.md](platform/fm1/VENDORED.md)) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | the package's update loader (`ota.bin`) | in use |
+| Felucca update loader and the sources it includes @ `a53ecf42` (`platform/fm1/loader/`, `platform/fm1/src/`, unmodified, see [VENDORED.md](platform/fm1/VENDORED.md)) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | the package's update loader (`ota.bin`), byte-identical to Felucca's | in use |
 | `platform/fm1/crt0.S`, `platform/fm1/app.ld`, `platform/fm1/lcd.c` | adapted from Felucca's `firmware/crt0.S`, `firmware/app.ld` and `firmware/src/lcd.c` @ `a53ecf42`, © 2026 Leo Kuroshita | GPL-3.0-only | linked into the firmware | in use |
 | font8x8_basic @ `8e279d2d` (`platform/fm1/font/font8x8_basic.h`) | font8x8, Daniel Hepper, after Marcel Sondaar and IBM's VGA fonts | public domain | compiled into the firmware | placeholder until our own font |
 | `bench/fm1/crt0.S`, `bench/fm1/bench.ld` | adapted from fm1-sid, © 2026 Joakim Eriksson | BSD-2-Clause | benchmark program only | in use |
 | libresidfp @ `c1791383` (`third_party/libresidfp`) | libsidplayfp project | GPL-2.0-or-later | host tests only; git submodule, never linked into firmware | in use |
 | fm1-emu crates `fm1-core`, `fm1-soc`, `fm1-isa` @ `e52f4640` | Joakim Eriksson | MIT | emulator gate only; fetched by cargo | in use |
-| Rust crates `cc`, `criterion`, `object`, `serde_json` | crates.io | MIT OR Apache-2.0 | host build, tests and benchmark only; fetched by cargo | in use |
+| Rust crates `cc`, `criterion`, `object`, `serde_json`, `sha2` | crates.io | MIT OR Apache-2.0 | host build, tests and benchmark only; fetched by cargo | in use |
 | Rust crate `bindgen` | crates.io | BSD-3-Clause | host build only; fetched by cargo | in use |
 | JieLi pi32v2 toolchain (`jieli-linux-toolchains-20260730.1`) | Zhuhai JieLi Technology | proprietary, freely downloadable | build tool; downloaded into the build image, not redistributed | in use |
 

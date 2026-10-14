@@ -85,17 +85,31 @@ Follow-ups that aren't tied to a milestone task yet.
   (`crates/sidou-pack/tests/ota_step1.rs`).
 - **Action:** none; any future SIDOU tool must keep the head unwritten.
 
-## The SPL must decode lz4_flex's LZ4 blocks
+## Recovery paths, if an FM-1 stops booting
 
-- **Where:** `host/crates/sidou-pack` (`wrap_loader`).
-- **Problem:** the update loader's blocks come from `lz4_flex` (the plan's
-  choice). Felucca's packages, proven on hardware, use Felucca's own greedy
-  compressor: the same LZ4 block format, other bytes (35 bytes longer for
-  the M1a loader). Felucca's decoder reads `lz4_flex`'s blocks back exactly,
-  but the SPL's decoder has not seen them.
-- **Action:** on hardware, install a `sidou.fwsc` (M1a Task 7) and check
-  that the loader starts. If it does not, port Felucca's `lz4blk.py`
-  compressor.
+- **Where:** the hardware checklist (M1a Task 7), before any
+  hardware flash.
+- **Note:** the boot guard enters UBOOT after two early deaths, and the
+  update loader (Felucca's) stays in place until an install completes. If
+  the device is still stuck, these community recovery paths exist:
+  FM-1-transporter (<https://github.com/kurogedelic/FM-1-transporter>),
+  and MvaveFM1Unbricker with jl-uboot-tool. How each is used, and in which
+  device state it works, is still to be confirmed on a real unit. Return to
+  stock with M-VAVE's updater or the installer's "Return to official V15".
+- **Action:** check that each recovery path works on a real unit before
+  SIDOU packages are offered to anyone (M1a Task 7).
+
+## The identity FM-1_900 is shared with Felucca's development builds
+
+- **Where:** `SIDOU_PRODUCT` (`platform/fm1/CMakeLists.txt`) and
+  `sidou-pack --product`.
+- **Problem:** installers take the identity as `FM-1_<digits>` and use it
+  to check an install; Felucca, sloop and melodee development builds all
+  answer `FM-1_900` (releases `FM-1_9XY`), and so does SIDOU. An installer
+  cannot tell them apart, only that the install reports what the package
+  carries.
+- **Action:** agree distinct digits with the community before SIDOU
+  releases (e.g. a range for SIDOU), and use them in release builds.
 
 ## Report fm1-emu: decrementing register block load is not executed
 

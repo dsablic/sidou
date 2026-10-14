@@ -215,7 +215,15 @@ MIDI is covered by the host tests of the packet conversion
   written, and the way back works: V15's own package passes `ota.c`'s
   head-identity check and is staged, while a device whose head had been
   changed would refuse it before any erase. fm1-emu has no USB, so this is
-  where the protocol and the package format meet before hardware.
+  where the protocol and the package format meet before hardware. With the
+  fm1 build there, the loader it built (Felucca's) is staged too.
+- `flash_hooks.rs` runs the firmware's flash hooks for the update protocol
+  (`platform/fm1/ota_flash.h`) with stand-ins for the flash driver, the
+  interrupt mask, the audio and the LEDs: erases and writes only inside the
+  staging area (misaligned, outside or wrapping requests get -8), never
+  while the audio runs (-16, counted), the driver always called with
+  interrupts masked and the LED rows dark for an erase, reads in 256-byte
+  windows; and that the harness's copy of `FL_IN` is the HAL's.
 - `pack.rs` reads a package back with fm1-emu's reader (`fm1_soc::fwsc`): the
   head is the SDK-default one with the SDK's SPL and the chip key, the app
   is at `0x02000120` in the unscrambled app area, the directory, the

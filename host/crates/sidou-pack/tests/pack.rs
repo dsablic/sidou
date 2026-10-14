@@ -11,7 +11,7 @@ use sidou_pack::{
 
 /// The package of `tiny_app` and `tiny_loader` with the pinned inputs.
 /// Checked once against Felucca's fm1pkg_make.py on the same inputs: byte-identical.
-const GOLDEN_SHA256: &str = "43507c9a5f0ea8b6d4c3203a00fa49a33212423ac7ae2b97f229f0a9da406ce3";
+const GOLDEN_SHA256: &str = "03fbd6443eff4b337a8d737f3286aa297264cdf33fc9c6d3681fd82d21b1bafb";
 
 fn cached() -> Option<Inputs> {
     match inputs(&default_cache(), false) {

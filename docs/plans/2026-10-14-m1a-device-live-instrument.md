@@ -337,7 +337,8 @@ LCD code compete for the same I-cache.
 - `host/crates/sidou-pack` (Rust): a port of Felucca's `tools/fm1pkg_make.py`
   (flash head with CRC16 and JLFS entries, ENC/SFC scrambling with key
   0x980F, the `ufw` container with marker insertion), the loader wrapping
-  (two 32-byte heads plus LZ4 blocks; use the `lz4_flex` block API) and the
+  (two 32-byte heads plus LZ4 blocks, compressed with a Rust port of Felucca's
+  `tools/lz4blk.py`, so `ota.bin` is byte-identical to Felucca's) and the
   AC79 blob fetch.
   - **AC79 blobs:** downloaded on first use into `build/ac79/` and checked
     against the pinned SHA-256s. They are never committed, and
@@ -388,7 +389,7 @@ LCD code compete for the same I-cache.
   install on hardware at your own risk with the community tools), with clear
   warnings.
 - `CHANGELOG.md`, `LICENSING.md` (vendored files, font8x8, AC79 blobs,
-  `lz4_flex`), `docs/TODO.md` (VID/PID, hardware results).
+  `sha2`), `docs/TODO.md` (VID/PID, hardware results).
 
 **Commit:** `docs: M1a hardware checklist and how to try the live instrument`.
 
