@@ -2440,7 +2440,11 @@ Expected: everything passes. A pre-check of this plan measured:
 > at 0xaa, while ours starts at 0, so the harness releases reSIDfp's envelopes
 > to 0 first. Envelopes are now compared from 9 ms on, including the attack:
 > 0.44 dB (8580, tolerance tightened to 0.75) and 2.04 dB (6581).
-> The pre-roll also shifts the `sidou_compare` figures in Step 6.
+> The `sidou_compare` figures in Step 6 are superseded too. Each curve used to
+> be normalised to its loudest window, which was window 0 with the start-up
+> click of the volume step, outside the compared range. Normalising over the
+> compared windows fixes that and makes the table independent of the pre-roll:
+> 6581 7.0 (LP), 5.2 (BP) and 2.0 (HP) dB; 8580 1.3 (LP), 1.5 (BP) and 2.8 (HP) dB.
 
 The 6581's gap is reSIDfp's non-linear envelope DAC, which M0 doesn't model.
 It's an M1 item ("6581 DAC curve").

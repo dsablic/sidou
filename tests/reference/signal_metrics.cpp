@@ -87,11 +87,12 @@ std::vector<double> rms_envelope_db(const std::vector<float>& x, size_t w) {
     return db;
 }
 
-std::vector<double> normalized(std::vector<double> env, size_t index) {
-    if (env.empty()) {
-        throw std::invalid_argument("normalized: empty envelope");
+std::vector<double> normalized_to_max(std::vector<double> env, size_t first, size_t last) {
+    if (first >= last || last > env.size()) {
+        throw std::invalid_argument("normalized_to_max: bad window range");
     }
-    const double ref = index == SIZE_MAX ? *std::max_element(env.begin(), env.end()) : env.at(index);
+    const double ref =
+        *std::max_element(env.begin() + (std::ptrdiff_t)first, env.begin() + (std::ptrdiff_t)last);
     for (double& v : env) {
         v -= ref;
     }

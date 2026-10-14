@@ -15,6 +15,9 @@ namespace {
 /* Measured at M0: sidou 0.0014 cents from theory and from reSIDfp; reSIDfp
  * < 0.0001 cents from theory. */
 constexpr double kMaxPitchCents = 0.1;
+/* Coupled to kEnvelopeFloorDb: the 8580's worst window sits at the floor, where
+ * the release-slope difference below has grown largest. Changing the floor
+ * means re-checking this tolerance. */
 constexpr double kMaxEnvelopeDb8580 = 0.75; /* measured at M0: 0.44 (in the release, at -20 dB) */
 /* reSIDfp models the 6581's non-linear envelope DAC, which M0 does not; the
  * release tail drifts ~2 dB apart by -20 dB. M1 adds the DAC and tightens this. */

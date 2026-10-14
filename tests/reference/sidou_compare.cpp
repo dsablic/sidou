@@ -11,6 +11,17 @@
 namespace {
 
 constexpr size_t kWindow = 882; /* 20 ms; noise has no period to align to */
+/* Windows 0-2 (the first 60 ms) are not compared; window 0 holds the click of
+ * the 0 -> 15 volume step and is the loudest of all. Each curve is normalised to its loudest *compared* window, so the
+ * baseline tracks the filtered noise, not the click; the -40 dB floor stays
+ * relative to that peak. */
+constexpr size_t kFirstWindow = 3;
+constexpr double kFloorDb = -40.0;
+
+std::vector<double> envelope(const std::vector<float>& x) {
+    auto env = rms_envelope_db(x, kWindow);
+    return normalized_to_max(env, kFirstWindow, env.size());
+}
 
 struct Scenario {
     const char* name;
@@ -51,8 +62,7 @@ int main(int argc, char** argv) {
                     return 1;
                 }
             }
-            double d = max_envelope_diff_db(normalized(rms_envelope_db(ours, kWindow), SIZE_MAX),
-                                            normalized(rms_envelope_db(ref, kWindow), SIZE_MAX), -40, 3);
+            double d = max_envelope_diff_db(envelope(ours), envelope(ref), kFloorDb, kFirstWindow);
             std::printf("%-16s %-8s %.1f\n", s.name, tag, d);
         }
     }

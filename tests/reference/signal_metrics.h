@@ -19,8 +19,8 @@ double estimate_f0(const std::vector<float>& x, double fs, double f_lo, double f
  * with the phase at which each window starts. */
 std::vector<double> rms_envelope_db(const std::vector<float>& x, size_t window);
 
-/* Shift an envelope so that window `index` is 0 dB; SIZE_MAX means the loudest window. */
-std::vector<double> normalized(std::vector<double> env, size_t index);
+/* Shift an envelope so that the loudest of windows [first, last) is 0 dB. */
+std::vector<double> normalized_to_max(std::vector<double> env, size_t first, size_t last);
 
 /* Shift an envelope so that the mean of windows [first, last) is 0 dB. */
 std::vector<double> normalized_to_mean(std::vector<double> env, size_t first, size_t last);
