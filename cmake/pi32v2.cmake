@@ -21,7 +21,9 @@ set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 # clang only searches its own resource headers; newlib's (string.h etc.) ship beside it.
 set(CMAKE_C_STANDARD_INCLUDE_DIRECTORIES "${JIELI_TOOLCHAIN}/pi32v2/include")
-set(CMAKE_C_FLAGS_INIT "-ffreestanding -fno-builtin")
+# -mcpu=r3 turns on the single-precision FPU (the default CPU calls soft-float helpers);
+# -mfprev1 lets the compiler dual-issue FPU ops (flags per fm1-emu's docs/isa-notes.md).
+set(CMAKE_C_FLAGS_INIT "-mcpu=r3 -mfprev1 -ffreestanding -fno-builtin")
 # A cache entry: CMake would otherwise append its Clang default -O3 to an _INIT value.
 set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG" CACHE STRING "C flags for Release builds")
 set(CMAKE_C_LINK_EXECUTABLE "<CMAKE_LINKER> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>")
