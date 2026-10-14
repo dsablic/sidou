@@ -9,7 +9,10 @@ use std::cell::Cell;
 use std::marker::PhantomData;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use crate::{sid_model, workload_begin, workload_render_samples, workload_sample_count};
+use crate::{
+    sid_model, workload_begin, workload_begin_scenario, workload_render_samples,
+    workload_sample_count, workload_scenario_name, WORKLOAD_SCENARIOS,
+};
 
 static LOCK: Mutex<()> = Mutex::new(());
 
@@ -38,6 +41,11 @@ impl Workload {
         unsafe { workload_begin(chips, model) }
     }
 
+    /// Start a run of one of the scenarios in `workload.h` (an unknown one plays the triad).
+    pub fn begin_scenario(&self, chips: u32, model: sid_model, scenario: u32) {
+        unsafe { workload_begin_scenario(chips, model, scenario) }
+    }
+
     pub fn render_samples(&self, out: &mut [i16]) {
         let n = u32::try_from(out.len()).expect("block fits in u32");
         unsafe { workload_render_samples(out.as_mut_ptr(), n) }
@@ -51,4 +59,23 @@ pub fn render(chips: u32, model: sid_model) -> Vec<i16> {
     w.begin(chips, model);
     w.render_samples(&mut out);
     out
+}
+
+/// One whole run of a scenario.
+pub fn render_scenario(chips: u32, model: sid_model, scenario: u32) -> Vec<i16> {
+    let w = Workload::lock();
+    let mut out = vec![0i16; w.sample_count()];
+    w.begin_scenario(chips, model, scenario);
+    w.render_samples(&mut out);
+    out
+}
+
+/// Every scenario's number and name, in order.
+pub fn scenarios() -> Vec<(u32, String)> {
+    (0..WORKLOAD_SCENARIOS)
+        .map(|i| {
+            let name = unsafe { std::ffi::CStr::from_ptr(workload_scenario_name(i)) };
+            (i, name.to_string_lossy().into_owned())
+        })
+        .collect()
 }

@@ -293,11 +293,13 @@ fn clock_leaves_the_chip_where_render_would() {
         assert_eq!(clocked.osc[v].acc, rendered.osc[v].acc, "voice {v}");
         assert_eq!(clocked.osc[v].lfsr, rendered.osc[v].lfsr, "voice {v}");
         assert_eq!(clocked.env[v].counter, rendered.env[v].counter, "voice {v}");
-        assert_eq!(
-            unsafe { sid_env_lfsr_pos(&clocked.env[v]) },
-            unsafe { sid_env_lfsr_pos(&rendered.env[v]) },
-            "voice {v}"
-        );
+        let (mut a, mut b) = (clocked.env[v], rendered.env[v]);
+        unsafe {
+            sid_env_settle(&mut a);
+            sid_env_settle(&mut b);
+        }
+        assert_eq!(a.lfsr_pos, b.lfsr_pos, "voice {v}");
+        assert_eq!(a.exp_counter, b.exp_counter, "voice {v}");
     }
     assert_eq!(read(&mut clocked, 0x1b), read(&mut rendered, 0x1b));
     assert_eq!(read(&mut clocked, 0x1c), read(&mut rendered, 0x1c));

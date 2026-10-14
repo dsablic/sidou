@@ -180,6 +180,42 @@ fn gate_on_after_freeze_restarts_the_attack() {
     assert!(e.counter > 0);
 }
 
+#[test]
+fn a_frozen_envelope_rests_until_the_next_write() {
+    let mut e = silent();
+    advance(&mut e, 23);
+    assert_eq!(e.dormant, 1);
+    let before = e.idle;
+    advance(&mut e, 23);
+    assert_eq!(e.idle, before - 23);
+    unsafe { sid_env_write_sr(&mut e, 0x00) };
+    assert_eq!(e.dormant, 0);
+    assert_eq!(e.idle, 0);
+}
+
+#[test]
+fn a_fast_attack_rests_in_linear_runs_between_thresholds() {
+    let mut e = gated(0x00, 0xf0);
+    advance(&mut e, 23);
+    assert_eq!(e.linear, 1);
+    let mut r = e;
+    unsafe { sid_env_settle(&mut r) };
+    assert_eq!(r.linear, 0);
+    assert_eq!(r.counter, e.counter);
+}
+
+#[test]
+fn an_envelope_holding_sustain_rests_until_the_next_write() {
+    for sr in [0xf0u8, 0xa0, 0x50, 0x10] {
+        let mut e = gated(0x00, sr);
+        advance(&mut e, 40_000);
+        assert_eq!(e.state, SID_ENV_DECAY_SUSTAIN);
+        assert_eq!(e.counter, (sr >> 4) * 0x11);
+        advance(&mut e, 23);
+        assert_eq!(e.dormant, 1, "sustain {sr:#04x}");
+    }
+}
+
 /// reSIDfp's rate table: the LFSR value that ends each rate's period.
 const ADSRTABLE: [u16; 16] = [
     0x007f, 0x3000, 0x1e00, 0x0660, 0x0182, 0x5573, 0x000e, 0x3805, 0x2424, 0x2220, 0x090c, 0x0ecd,
@@ -433,16 +469,22 @@ impl RefEnv {
     }
 }
 
+/// Compares a settled copy, so `e` itself may stay at rest across steps. The counter
+/// and ENV3 must be current even at rest: the audio path and $1C read them directly.
 fn assert_same(e: &sid_env, r: &RefEnv, pos: &[u32], step: usize) {
+    assert_eq!(
+        e.counter, r.envelope_counter,
+        "counter at rest, step {step}"
+    );
+    assert_eq!(e.env3, r.env3, "env3 at rest, step {step}");
+    let mut e = *e;
+    unsafe { sid_env_settle(&mut e) };
+    let e = &e;
     let at = format!("step {step}");
     assert_eq!(e.counter, r.envelope_counter, "counter, {at}");
     assert_eq!(e.env3, r.env3, "env3, {at}");
     assert_eq!(e.state, r.state, "state, {at}");
-    assert_eq!(
-        unsafe { sid_env_lfsr_pos(e) },
-        pos[r.lfsr as usize],
-        "LFSR, {at}"
-    );
+    assert_eq!(e.lfsr_pos, pos[r.lfsr as usize], "LFSR, {at}");
     assert_eq!(e.rate_pos, pos[r.rate as usize], "rate, {at}");
     assert_eq!(e.reset_lfsr != 0, r.reset_lfsr, "LFSR reset, {at}");
     assert_eq!(e.exp_counter, r.exponential_counter, "exp counter, {at}");
@@ -507,10 +549,25 @@ fn jump_ahead_matches_per_cycle_reference() {
                 let v = rng.next() as u8;
                 unsafe { sid_env_write_sr(&mut e, v) };
                 r.write_sr(v);
-            } else if op <= 4 {
+            } else if op <= 3 {
                 let g = !r.gate;
                 unsafe { sid_env_set_gate(&mut e, u8::from(g)) };
                 r.write_control(u8::from(g));
+            } else if op == 4 {
+                // A reset, half the time right after a gate change, with its state and
+                // envelope pipelines still pending.
+                if rng.next().is_multiple_of(2) {
+                    let g = !r.gate;
+                    unsafe { sid_env_set_gate(&mut e, u8::from(g)) };
+                    r.write_control(u8::from(g));
+                    let cycles = rng.next() % 3;
+                    advance(&mut e, cycles);
+                    for _ in 0..cycles {
+                        r.clock();
+                    }
+                }
+                unsafe { sid_env_reset(&mut e) };
+                r.reset();
             } else {
                 let cycles = match op {
                     5 => rng.next() % 70_001,
@@ -524,6 +581,48 @@ fn jump_ahead_matches_per_cycle_reference() {
                 }
             }
             assert_same(&e, &r, &pos, step);
+        }
+    }
+}
+
+/// Steady states rest across calls; waking them (here: settling a copy after every
+/// call, and a write now and then) must land where reSIDfp's per-cycle clock does,
+/// at every divider period a held sustain level can have (1, 2, 4, 8) and when frozen.
+#[test]
+fn resting_steady_states_match_per_cycle_reference() {
+    let pos = lfsr_positions();
+    for sr in [0xf0u8, 0x50, 0x30, 0x10, 0x00] {
+        for decay in [0u8, 3, 9] {
+            let mut e = powered_on();
+            let mut r = RefEnv::new(0xaa);
+            unsafe {
+                sid_env_write_ad(&mut e, decay);
+                sid_env_write_sr(&mut e, sr);
+                sid_env_set_gate(&mut e, 1);
+            }
+            r.write_ad(decay);
+            r.write_sr(sr);
+            r.write_control(1);
+            let mut rng = Lcg {
+                x: u32::from(sr) << 8 | u32::from(decay),
+            };
+            for step in 0..3_000 {
+                let cycles = match rng.next() % 8 {
+                    0 => rng.next() % 50_000,
+                    1 => {
+                        unsafe { sid_env_write_sr(&mut e, sr) };
+                        r.write_sr(sr);
+                        0
+                    }
+                    _ => 1 + rng.next() % 40,
+                };
+                advance(&mut e, cycles);
+                for _ in 0..cycles {
+                    r.clock();
+                }
+                assert_same(&e, &r, &pos, step);
+            }
+            assert_eq!(e.counter, (sr >> 4) * 0x11, "sr {sr:#04x}, decay {decay}");
         }
     }
 }

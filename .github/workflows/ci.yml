@@ -155,6 +155,7 @@ jobs:
             f=build/fm1/sid_budget_$n.json
             test -s "$f" || { echo "::error::$f missing: the emulator gate did not run"; exit 1; }
             jq -e '.instructions_per_sample | numbers' "$f"
+            jq -e '.scenarios | length > 1' "$f"
           done
           f=build/fm1/sidou_boot.json
           test -s "$f" || { echo "::error::$f missing: the boot test did not run"; exit 1; }

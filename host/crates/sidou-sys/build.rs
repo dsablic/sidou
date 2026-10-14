@@ -90,7 +90,7 @@ fn main() {
             "SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*",
         )
         // A `static const` table private to sid_env.h; it has no symbol to link to.
-        .blocklist_item("SID_ENV_RATE_POS")
+        .blocklist_item("SID_ENV_RATE_POS|SID_ENV_THRESHOLDS")
         .prepend_enum_name(false)
         .derive_default(true)
         .derive_debug(true)

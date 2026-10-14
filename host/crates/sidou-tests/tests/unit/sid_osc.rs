@@ -125,9 +125,11 @@ fn combined_waveforms_are_anded_for_now() {
 #[test]
 fn reset_keeps_the_accumulator() {
     // reSIDfp: "accumulator is not changed on reset".
-    let mut o = sid_osc::default();
-    o.acc = 0x555555;
-    o.freq = 0x1234;
+    let mut o = sid_osc {
+        acc: 0x555555,
+        freq: 0x1234,
+        ..Default::default()
+    };
     unsafe { sid_osc_reset(&mut o) };
     assert_eq!(o.acc, 0x555555);
     assert_eq!(o.freq, 0);

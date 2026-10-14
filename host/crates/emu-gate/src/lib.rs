@@ -4,10 +4,12 @@
 
 use sidou_sys::{workload, SID_MODEL_6581};
 
+pub use sidou_sys::workload::scenarios;
+
 /// The workload keeps global state and is not thread-safe; tests run in parallel by default.
 /// `workload::render` holds sidou-sys's workload Mutex for the whole run.
-pub fn render_host(chips: u32) -> Vec<i16> {
-    workload::render(chips, SID_MODEL_6581)
+pub fn render_host(chips: u32, scenario: u32) -> Vec<i16> {
+    workload::render_scenario(chips, SID_MODEL_6581, scenario)
 }
 
 /// Host build of the effects scenario: the workload's output through the post-chip chain

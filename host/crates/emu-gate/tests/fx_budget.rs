@@ -26,7 +26,7 @@ fn check(chips: u32, worst: bool) {
     let r = common::run(&build, &format!("sid_bench_{name}_{chips}"), 4);
     let host = emu_gate::render_host_fx(chips, worst);
     assert_eq!(r.samples.len(), host.len());
-    let dry = emu_gate::render_host(chips);
+    let dry = emu_gate::render_host(chips, sidou_sys::WORKLOAD_TRIAD);
     let changed = dry.iter().zip(&host).filter(|(a, b)| a != b).count();
     assert!(
         changed > host.len() / 2,

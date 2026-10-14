@@ -149,13 +149,23 @@ the measure.
 ### Emulator gate
 
 The M0 decision gate. It runs the pi32v2 benchmark programs
-(`sid_bench_1` and `sid_bench_2`) in fm1-emu, used as a library, and:
+(`sid_bench_1` and `sid_bench_2`) in fm1-emu, used as a library, once per
+workload scenario (`bench/workload.h`): the triad, plus envelope worst cases
+at the fastest rate on all three voices (holding sustain 0xff and 0xaa, gates
+toggled every frame, and an idle chip). For each it:
 - counts the instructions per output sample, and fails if one chip needs
-  more than 900, or two chips more than 1,800 (design document, section 8);
-- renders the same workload on the host build of the same C code, and fails
+  more than 900, or two chips more than 1,800 (design document, section 8),
+  on average or in any 128-sample block;
+- renders the same scenario on the host build of the same C code, and fails
   if any sample differs by more than 1 LSB (at M0 they are identical);
 - writes `sid_budget_1.json` and `sid_budget_2.json` into the fm1 build
-  directory.
+  directory. The top-level fields are the triad's, comparable with earlier
+  milestones; `scenarios` lists every scenario and
+  `max_instructions_per_sample` the most expensive.
+
+`SIDOU_GATE_PROFILE=1` also counts the render instructions per function and
+adds the top ones to each scenario's report (`profile_instructions_per_sample`).
+It slows the gate down.
 
 The effects scenarios (`fx_budget.rs`) run the same workload, then the
 post-chip chain (`core/fx`) over its output:

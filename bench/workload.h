@@ -22,7 +22,23 @@ extern "C" {
  *
  * The workload lives in global state: these functions are not reentrant and
  * not thread-safe, so callers must serialise them. */
+/* What the chips play. The triad is the benchmark workload; the others are envelope
+ * worst cases for the emulator gate (see workload.c). */
+enum {
+    WORKLOAD_TRIAD,
+    WORKLOAD_SUSTAIN_FF,
+    WORKLOAD_SUSTAIN_AA,
+    WORKLOAD_GATE_EVERY_FRAME,
+    WORKLOAD_IDLE,
+    WORKLOAD_SCENARIOS
+};
+
+/* The triad. */
 void workload_begin(uint32_t chips, sid_model model);
+/* An unknown scenario plays the triad. */
+void workload_begin_scenario(uint32_t chips, sid_model model, uint32_t scenario);
+/* NULL for an unknown scenario. */
+const char* workload_scenario_name(uint32_t scenario);
 void workload_render_samples(int16_t* out, uint32_t n);
 uint32_t workload_sample_count(void);
 
