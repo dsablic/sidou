@@ -246,6 +246,39 @@ fn a_gap_restarts_the_parsers_at_the_first_entry_after_it() {
 }
 
 #[test]
+fn a_gap_inside_a_sysex_leaves_nothing_behind() {
+    let mut m = Midi::new();
+    m.trs(&[0x90, C4, 100]);
+    // A SysEx (which also cancels running status) cut by a gap.
+    m.trs(&[0xF0, 0x7D, 0x01]);
+    m.usb(0x4, [0xF0, 0x7E, 0x00]);
+    m.rig.clear();
+    m.epoch = 1;
+    // Its tail after the gap: data bytes, then F7, on both sources. None of it may be read
+    // as channel data (with no running status left, nothing can play), and the gap releases
+    // the note.
+    m.trs(&[E4, 100, 0x7F, 0xF7]);
+    m.usb(0x7, [E4, 100, 0xF7]);
+    m.trs(&[67, 100]);
+    assert_eq!(m.rx.restarts, 1);
+    assert_eq!(m.held(), [] as [u8; 0]);
+    assert!(
+        m.rig
+            .log()
+            .iter()
+            .all(|&(reg, value)| reg % 7 == 4 && value & 1 == 0),
+        "writes other than gate releases: {:?}",
+        m.rig.log()
+    );
+    // The parsers work afterwards.
+    m.trs(&[0x90, C4, 100]);
+    m.usb(0x9, [0x90, E4, 100]);
+    let mut held = m.held();
+    held.sort_unstable();
+    assert_eq!(held, [C4, E4]);
+}
+
+#[test]
 fn a_gap_after_the_last_entry_releases_the_notes_at_once() {
     let mut m = Midi::new();
     m.trs(&[0x90, C4, 100]);

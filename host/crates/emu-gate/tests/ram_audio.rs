@@ -1,8 +1,15 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The audio path runs from SRAM (`.ram_text`, placed by `platform/fm1/app.ld`): the boot
-//! copies it there, the ALNK0 interrupt executes nothing else, and no direct call crosses
-//! between flash and SRAM code (out of the pi32v2's call range).
+//! copies it there, the ALNK0 interrupt executes nothing else, and no direct branch crosses
+//! between flash and SRAM code (at the edge of the pi32v2's branch reach).
+//!
+//! What catches what: a function the audio path calls directly but the `.ram_text` rules
+//! miss stays in `.text`, at least 0x400158 bytes from SRAM, and the link fails with
+//! "relocation truncated to fit" (R_PI32V2_LONG_JUMP_23M2). The relocation test below also
+//! rejects crossings that happen to be in reach. Only code entered through an absolute
+//! address (the ISR vector, a future callback through a pointer) can run from flash with
+//! everything linking; the interrupt test catches that.
 //!
 //! fm1-emu does not model the I-cache, so the timing benefit is left to hardware
 //! (docs/hardware.md, open checks).
@@ -95,70 +102,80 @@ fn the_audio_interrupt_runs_only_from_sram() {
     );
 }
 
-/// A direct `call` or `goto` between flash (XIP, 0x02000000..) and SRAM code (0x01C00000..)
-/// may be out of reach (R_PI32V2_LONG_JUMP_23M2): the link fails, or links only while the
-/// code happens to lie close enough, and breaks with an unrelated change. So there are none:
-/// such calls go through a pointer (audio.c `far_drain`). Scans the build's disassembly.
+/// pi32v2 ELF relocation types (JieLi's binutils; the numbers checked against
+/// `objdump -r` names on the build's objects).
+const R_LONG_JUMP_23M2: u32 = 2; // call and goto: PC-relative, about +-4 MB
+const R_MOV_ABS32: u32 = 5; // a 32-bit address loaded into a register
+const R_ABS32: u32 = 8; // a 32-bit address in data (tables, vectors)
+
+/// No direct `call` or `goto` crosses between flash (XIP, 0x02000000..) and SRAM
+/// (`.ram_text`) code: SRAM is about 4 MB below XIP, the edge of a branch's reach, so such a
+/// branch either fails the link ("relocation truncated to fit") or links only while the code
+/// happens to lie close enough, and breaks with an unrelated change. The linker is the
+/// authority: the firmware links with --emit-relocs, and every branch relocation's site and
+/// target must lie in the same region. Address loads (`MOV_ABS32`, `ABS32`) may cross: that
+/// is how flash code calls SRAM code through a pointer (audio.c `far_drain`) and how the
+/// vector table reaches `isr_alnk0`. Any other relocation type fails the test until it is
+/// classified here.
 #[test]
-fn no_direct_call_crosses_between_flash_and_sram() {
-    let Some((build, _)) = fixture("the SRAM audio test") else {
+fn no_direct_branch_crosses_between_flash_and_sram() {
+    use object::{
+        Object, ObjectSection, ObjectSymbol, RelocationFlags, RelocationTarget, SectionIndex,
+    };
+    let Some((_, fw)) = fixture("the SRAM audio test") else {
         return;
     };
-    let dis = common::read(
-        &build.join("platform/fm1/sidou_app.dis"),
-        "firmware disassembly",
-    );
-    let text = String::from_utf8_lossy(&dis);
-    let lines: Vec<&str> = text.lines().collect();
-    let in_sram = |a: u32| a < 0x0200_0000;
-    let (mut function, mut scanned, mut crossing) = ("", 0, Vec::new());
-    for (i, line) in lines.iter().enumerate() {
-        if !line.starts_with(' ') && line.ends_with(':') && !line.contains(' ') {
-            function = &line[..line.len() - 1];
-            continue;
-        }
-        let Some((addr, rest)) = line.trim_start().split_once(':') else {
-            continue;
-        };
-        let Ok(src) = u32::from_str_radix(addr, 16) else {
-            continue;
-        };
-        // Direct ones only, `call 2712 <...>` or `if (...) goto -40 <...>`; `call r3` goes
-        // through a register.
-        let words: Vec<&str> = rest.split_whitespace().collect();
-        let direct = words
-            .windows(2)
-            .any(|w| (w[0] == "call" || w[0] == "goto") && w[1].parse::<i64>().is_ok());
-        if !direct {
-            continue;
-        }
-        // The target, `<name : address >`, is on this line or, inside a predicated block,
-        // on one of the next few.
-        let target = lines[i..lines.len().min(i + 4)].iter().find_map(|l| {
-            let t = &l[l.find('<')? + 1..];
-            let (name, addr) = t[..t.find('>')?].split_once(':')?;
-            Some((
-                name.trim().to_owned(),
-                u32::from_str_radix(addr.trim(), 16).ok()?,
-            ))
-        });
-        let (name, dst) =
-            target.unwrap_or_else(|| panic!("no target for {function}: {}", line.trim()));
-        scanned += 1;
-        if in_sram(src) != in_sram(dst) {
-            crossing.push(format!("{function} -> {name}"));
+    let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
+    let ram_text = file
+        .section_by_name(".ram_text")
+        .expect("no .ram_text section")
+        .index();
+    let in_sram = |i: SectionIndex| i == ram_text;
+    let (mut branches, mut addresses, mut crossing) = (0, 0, Vec::new());
+    for section in file.sections() {
+        let site_in_sram = in_sram(section.index());
+        for (offset, rel) in section.relocations() {
+            let RelocationFlags::Elf { r_type } = rel.flags() else {
+                panic!("not an ELF relocation");
+            };
+            match r_type {
+                R_MOV_ABS32 | R_ABS32 => {
+                    addresses += 1;
+                    continue;
+                }
+                R_LONG_JUMP_23M2 => branches += 1,
+                t => panic!(
+                    "relocation type {t} at {:#x} in {}: classify it in this test",
+                    offset,
+                    section.name().unwrap_or("?")
+                ),
+            }
+            let RelocationTarget::Symbol(sym) = rel.target() else {
+                panic!("a branch at {offset:#x} without a symbol");
+            };
+            let sym = file.symbol_by_index(sym).expect("relocation symbol");
+            let Some(target) = sym.section_index() else {
+                panic!("a branch at {offset:#x} to {:?}, in no section", sym.name());
+            };
+            if site_in_sram != in_sram(target) {
+                crossing.push(format!(
+                    "{} -> {}",
+                    fw.function_at(offset as u32),
+                    sym.name().unwrap_or("?")
+                ));
+            }
         }
     }
     println!(
-        "{scanned} direct calls and jumps, {} crossing",
+        "{branches} branch relocations, {addresses} address relocations, {} crossing",
         crossing.len()
     );
     assert!(
-        scanned > 500,
-        "only {scanned} calls found: the disassembly format changed?"
+        branches > 100,
+        "only {branches} branch relocations: is the firmware linked with --emit-relocs?"
     );
     assert!(
         crossing.is_empty(),
-        "direct calls between flash and SRAM code: {crossing:?}"
+        "direct branches between flash and SRAM code: {crossing:?}"
     );
 }

@@ -16,8 +16,10 @@
 
 /* The register writes one MIDI entry can cause at most. A program change writes every register
  * (live_set_preset, 25). A TRS byte completes at most one message; a USB packet up to three,
- * through running status (app/midi_usb.h), e.g. CIN 3 with three data bytes after C0. */
-#define MIDI_ENTRY_WRITES (3u * 25u)
+ * through running status (app/midi_usb.h), e.g. CIN 3 with three data bytes after C0. An entry
+ * after a gap of lost input first restarts the parsers and releases every voice
+ * (live_all_notes_off: one gate write per voice). */
+#define MIDI_ENTRY_WRITES (3u * 25u + LIVE_VOICES)
 
 static midi_ring in_ring;
 static midi_rx rx;

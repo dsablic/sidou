@@ -30,12 +30,15 @@ SECTIONS
      * The audio path, one section per function (the device build uses -ffunction-sections):
      * the ALNK0 entry and its C body, the render, the register-ring drain, and what they call.
      * No attributes in the portable C: these rules are the only place that says what runs
-     * from SRAM. A function the audio interrupt reaches and these rules miss runs from flash;
-     * the emulator test (emu-gate tests/ram_audio.rs) then fails and names it, so a new
-     * helper, for example a non-inlined envelope or oscillator function, must be added here.
-     * No direct call may cross between this code and flash code: the pi32v2's call reach
-     * (about 4 MB) does not span SRAM to XIP. Share code by static inline, or call through a
-     * pointer (audio.c far_drain); tests/ram_audio.rs checks the disassembly.
+     * from SRAM. No direct call may cross between this code and flash code: the pi32v2's
+     * branch reach (about 4 MB) does not span SRAM to XIP. So a function the audio path calls
+     * directly and these rules miss (a new non-inlined envelope or oscillator helper, say)
+     * fails the link with "relocation truncated to fit": add its section here. Code shared
+     * with flash callers is static inline, or they call through a pointer (audio.c
+     * far_drain). The emulator tests (emu-gate tests/ram_audio.rs) check the linker's
+     * relocations for crossings that happen to be in reach (the firmware links with
+     * --emit-relocs), and that the ALNK0 interrupt runs only from here, which also covers
+     * code entered through an absolute address (the vector, a future callback).
      * Constant tables stay in .rodata in flash (XIP data reads go through the D-cache), unless
      * a measurement shows one is hot. docs/hardware.md, "Code in SRAM", has the rules. */
     .ram_text : {

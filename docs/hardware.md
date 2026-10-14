@@ -145,15 +145,21 @@ the time). The rules for keeping it that way:
 - **Every function the audio interrupt reaches is in `.ram_text`.** Static
   helpers that the compiler inlines need nothing. A new non-inlined helper
   (in `sid_env`, `sid_osc` or a new `.c` file) needs its section added to the
-  rules. The emulator test `emu-gate tests/ram_audio.rs` fails and names any
-  function the interrupt runs from flash.
+  rules: if it is missed, it stays in `.text`, at least 0x400158 bytes from
+  SRAM, and the **link fails** with "relocation truncated to fit" against
+  it.
 - **No direct call crosses between flash and SRAM** (see "Call range"
   above). Code shared by both sides is `static inline` (as `sid_svf_set`),
   or the flash side calls through a pointer. The firmware links with
   `--gc-sections`, so host-only functions (as `live_sid_sink`) do not count.
-  A crossing either fails the link ("relocation truncated to fit") or links
-  only while the code happens to lie close enough; `tests/ram_audio.rs`
-  rejects every direct crossing in the disassembly.
+- **The tests** (`emu-gate tests/ram_audio.rs`): the firmware links with
+  `--emit-relocs`, and every branch relocation must have its site and its
+  target in the same region, which catches a crossing that happens to be in
+  reach. An emulator run checks that the ALNK0 interrupt executes only
+  `.ram_text`: that is the only check for code entered through an absolute
+  address (the vector, a future callback through a pointer), which links
+  wherever it lies. (The disassembly is no authority: JieLi's objdump does
+  not decode the FPU instructions and misreads the halfwords after them.)
 - **Constant tables stay in flash** (`.rodata`): XIP data reads go through
   the D-cache. Move one only when a device measurement shows it's hot. The
   audio path therefore still needs XIP: it can't run while the flash is

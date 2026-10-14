@@ -206,9 +206,12 @@ Checks of where the audio path runs, in
 - with a key held, every instruction the ALNK0 interrupt runs at its own
   level (interrupts nested in it aside) lies in `.ram_text`; a failure names
   the functions that ran from flash;
-- the build's disassembly (`sidou_app.dis`) has no direct `call` or `goto`
-  between flash and SRAM code, which would be out of the pi32v2's call range
-  ([docs/hardware.md](docs/hardware.md), "Code in SRAM").
+- no direct `call` or `goto` crosses between flash and SRAM code, which
+  would be at the edge of the pi32v2's branch reach: the firmware links with
+  `--emit-relocs`, and every branch relocation's site and target must lie in
+  the same region ([docs/hardware.md](docs/hardware.md), "Code in SRAM").
+  A function the audio path calls but `app.ld` leaves in flash fails the
+  link before any test runs.
 
 fm1-emu does not model the I-cache, so the benefit is a hardware
 measurement (docs/hardware.md, open checks).
