@@ -9,12 +9,17 @@ set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_subdirectory(core)
-add_subdirectory(bench)
 
 if(NOT CMAKE_CROSSCOMPILING)
     enable_language(CXX)
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     enable_testing()
+endif()
+
+# After enable_language(CXX): the host benchmark under bench/ is C++.
+add_subdirectory(bench)
+
+if(NOT CMAKE_CROSSCOMPILING)
     add_subdirectory(tests)
 endif()
