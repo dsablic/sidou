@@ -3,6 +3,7 @@
 # The portable live-instrument logic, front-panel mapping, register ring, MIDI parser and MIDI input. Its headers are included bare
 # ("live.h"); the SID core's as "sid/sid.h".
 add_library(sidou_live STATIC
+    bootguard.c
     live.c
     live_freq.c
     midi_in.c

@@ -23,6 +23,10 @@ uint32_t input_frame(void);
 void input_poll(panel* p, live* l);
 /* Main loop: the MASTER pot, 0..1023, or -1 on an ADC timeout. */
 int32_t input_master(void);
+/* With interrupts off, before a flash erase (~17 ms without the scan): all LED rows dark, so
+ * the column the scan left on does not stay lit at full duty (Felucca's storage_hw.c, #236).
+ * The scan lights them again at its next pass. */
+void input_leds_dark(void);
 /* Main loop: held keys, the octave and the chip model on the LEDs. */
 void input_leds(const panel* p, const live* l);
 

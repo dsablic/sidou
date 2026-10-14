@@ -195,3 +195,29 @@ void ui_poll(const live* l, uint32_t now_ms) {
         }
     }
 }
+
+void ui_update(uint32_t step, int32_t code) {
+    static const char* const STEP[6] = {"", "PACKAGE", "CHECK HEAD", "LOADER", "CONFIRM",
+                                        "RESTART"};
+    for (uint32_t r = 19; r <= 21u; r++) {
+        put(r, 1, "                            ");
+    }
+    put(19, 2, "UPDATE");
+    if (step < 9u) {
+        put(20, 2, STEP[step < 6u ? step : 0u]);
+    } else if (code == 1) {
+        put(20, 2, "DRY RUN OK");
+    } else {
+        put(20, 2, "FAILED");
+        put_num(20, 9, 3, code, 1);
+    }
+    put(26, 2, "      ");
+    mark_dirty();
+    for (uint32_t s = 0; s < LCD_STRIPS; s++) {
+        if (dirty & (1u << s)) {
+            dirty &= ~(1u << s);
+            draw_strip(s);
+        }
+    }
+    lcd_sync();
+}

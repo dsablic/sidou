@@ -8,6 +8,7 @@
 #include "sid/sid_math.h"
 #include "sid/sid_osc.h"
 #include "workload.h"
+#include "bootguard.h"
 #include "live.h"
 #include "midi_in.h"
 #include "midi_ring.h"

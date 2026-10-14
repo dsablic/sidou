@@ -23,5 +23,9 @@ void ui_init(const live* l);
 /* Main loop. Every UI_PERIOD_MS it composes the screen; strips that changed go out one per
  * call, and only while the panel is not busy with the last one. */
 void ui_poll(const live* l, uint32_t now_ms);
+/* The update protocol's progress (Felucca's ota_show steps: 1 package, 2 head, 3 loader,
+ * 4 confirm, 5 restart; 9 the result, code < 0 a failure). Draws at once (blocking): the main
+ * loop is inside the update session and does not call ui_poll. */
+void ui_update(uint32_t step, int32_t code);
 
 #endif

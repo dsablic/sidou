@@ -196,6 +196,19 @@ MIDI is covered by the host tests of the packet conversion
 (`tests/app/midi_usb.rs`), the ring (`midi_ring.rs`) and the input logic
 (`midi_rx.rs`), and by hardware testing.
 
+### Boot-guard test
+
+`crates/emu-gate/tests/bootguard.rs` checks the boot-loop guard
+(`app/bootguard.c`, `boot_guard` in `platform/fm1/main.c`). fm1-emu does
+not model a reset, so each reset is a fresh machine that keeps the guard's
+`.noinit` words, and a boot dies by being cut off after 600 ms:
+- after two such boots the third enters UBOOT: the boot-state mailbox holds
+  `usb_update_mode`, the guard is cleared, and the audio never starts;
+- a boot that runs past `BOOTGUARD_STABLE_MS` (10 s) clears an earlier
+  death.
+
+The guard's rules are host-tested too (`tests/app/bootguard.rs`).
+
 ### SRAM audio test
 
 Checks of where the audio path runs, in

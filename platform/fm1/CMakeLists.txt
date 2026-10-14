@@ -21,7 +21,11 @@ add_executable(${t} crt0.S main.c audio.c input.c lcd.c midi.c ui.c libc_min.c h
 set_target_properties(${t} PROPERTIES SUFFIX ".elf")
 target_link_libraries(${t} PRIVATE fm1_hal sidou_live sidou_core)
 target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_definitions(${t} PRIVATE SIDOU_VERSION="${PROJECT_VERSION}")
+# The identity the update protocol answers and the package carries (sidou-pack --product):
+# FM-1_900 for development builds, as every community firmware's; releases FM-1_9XY.
+set(SIDOU_PRODUCT "FM-1_900" CACHE STRING "Update-protocol identity, FM-1_<digits>")
+target_compile_definitions(${t} PRIVATE SIDOU_VERSION="${PROJECT_VERSION}"
+    SIDOU_PRODUCT="${SIDOU_PRODUCT}")
 target_compile_options(${t} PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wshadow>)
 # --gc-sections drops functions nothing calls (e.g. live_sid_sink, which only the host uses):
 # besides the size, an unused call between flash and SRAM code would otherwise have to link.
@@ -41,4 +45,22 @@ add_custom_command(TARGET ${t} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E cat ${t}.entry.bin ${t}.ram_text.bin ${t}.text.bin ${t}.data.bin
         > ${t}.bin
     COMMAND ${CMAKE_OBJDUMP} -d $<TARGET_FILE:${t}> > ${t}.dis
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+# The update loader (loader/, Felucca's, GPL-3.0-only): one RAM image the SPL decompresses to
+# 0x01C0A800 and runs, at most 0x14000 bytes (loader.ld), starting with crt0_ldr.S's marker.
+# sidou_loader.bin is the raw image; sidou-pack wraps it (LZ4 blocks and heads) into the
+# package's ota.bin. -Os as Felucca builds it: it must stay small.
+set(l sidou_loader)
+add_executable(${l} loader/crt0_ldr.S loader/loader.c)
+set_target_properties(${l} PROPERTIES SUFFIX ".elf")
+target_include_directories(${l} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/hal)
+target_compile_options(${l} PRIVATE $<$<COMPILE_LANGUAGE:C>:-Os -Wall -Wno-unused-function>)
+target_link_options(${l} PRIVATE -T ${CMAKE_CURRENT_SOURCE_DIR}/loader/loader.ld -e _start
+    --gc-sections)
+set_property(TARGET ${l} APPEND PROPERTY LINK_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/loader/loader.ld)
+add_custom_command(TARGET ${l} POST_BUILD
+    COMMAND ${CMAKE_OBJCOPY} -O binary -j .text $<TARGET_FILE:${l}> ${l}.bin
+    COMMAND ${CMAKE_OBJDUMP} -d $<TARGET_FILE:${l}> > ${l}.dis
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})

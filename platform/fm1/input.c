@@ -63,3 +63,7 @@ void input_leds(const panel* p, const live* l) {
     update(now.notes, shown.notes, PANEL_NOTE_KEYS, PANEL_KEY_ID0);
     shown = now;
 }
+
+void input_leds_dark(void) {
+    fm1__led_lines(0);
+}

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Unit tests of the portable app logic (`app/`) through FFI.
 
+mod bootguard;
 mod live_freq;
 mod live_instrument;
 mod midi_in;

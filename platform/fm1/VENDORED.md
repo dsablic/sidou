@@ -49,10 +49,16 @@ Not vendored: `fm1_cpu1.{h,S}` (we don't use the second core) and
     there, so the TIMER5 interrupt in `main.c` reaches `fm1_input_tick`
     through `input_tick_isr`;
   - `lcd.c`: `fm1_lcd_hw.h` and `fm1_time.h`;
-  - `midi.c`: `fm1_time.h`, and `fm1_usb.h` and `fm1_uart.h` through the
-    vendored `usb/usb.c` and `usb/midi_uart.c`, which it includes (see
-    below). The TIMER5 interrupt in `main.c` calls their polls through
-    `midi_usb_isr` and `midi_uart_isr`.
+  - `midi.c`: `fm1_sys.h`, `fm1_time.h` and `fm1_flash.h` (the update
+    protocol's flash access), and `fm1_usb.h` and `fm1_uart.h` through the
+    vendored `usb/usb.c` and `usb/midi_uart.c`, which it includes with
+    `usb/ota.c` (see below). The TIMER5 interrupt in `main.c` calls their
+    polls through `midi_usb_isr` and `midi_uart_isr`. `fm1_flash.h`'s
+    `RAMFN` code lands in `.ram_text` (`app.ld` keeps it), and is called
+    through `FL_FAR` pointers: flash and SRAM code are out of each other's
+    branch reach ([docs/hardware.md](../../docs/hardware.md));
+  - the loader (`loader/loader.c`, its own image): `fm1_time.h`,
+    `fm1_sys.h`, `fm1_flash.h`, and `usb/usb.c` and `usb/ota.c`.
 
   None of `input.c`'s, `lcd.c`'s or `midi.c`'s headers includes `fm1_irq.h`;
   `fm1_time.h` holds only `static inline` helpers and no state, so several
@@ -135,16 +141,17 @@ carry the changes over onto SIDOU's versions.
   only channel messages and four real-time bytes: SIDOU parses in the main
   loop (`app/midi_usb.c`, `app/midi_rx.c`). `ep1_take`'s back-pressure test
   uses `midi_in_room()`.
-- **Update protocol kept, built out:** `sysex_byte` and the SysEx part of
-  `midi_in_event` are now only built with `FELUCCA_OTA`, which `midi.c`
-  sets to 0 (TODO(Task 6)). The rest of the `FELUCCA_OTA` code (the
-  received frame, the SysEx TX queue, `ota_wire_send`, `ota_frame_get`,
-  `ota_frame_done`, the upgrade request `F0 22 24 35 7F F7`) is unchanged.
-  `FELUCCA_LOADER` code is unchanged too; its product string carries a
-  TODO(Task 6). The SysEx state in `usb` (`sysex`, `sx_len`, `sx_on`,
-  `ota_req`) is dead with `FELUCCA_OTA` off and is kept on purpose for
-  Task 6, as are the `FELUCCA_OTA` blocks in `usb_poll`'s bus reset and in
-  `ep1_tx`.
+- **Update protocol:** `sysex_byte` and the SysEx part of
+  `midi_in_event` are only built with `FELUCCA_OTA`, which `midi.c` and
+  the loader turn on. The rest of the `FELUCCA_OTA` code (the received
+  frame, the SysEx TX queue, `ota_wire_send`, `ota_frame_get`,
+  `ota_frame_done`, the upgrade request `F0 22 24 35 7F F7`) is unchanged,
+  and so is the `FELUCCA_LOADER` code but for the loader's product string,
+  "SIDOU Update".
+- **`usb_detach`:** in the app it masks interrupts around `usb.up = 0` and
+  `fm1_usb_off`, so no TIMER5 `usb_poll` that already passed its `usb.up`
+  check talks to a controller going off; the loader (interrupts off
+  throughout) is unchanged.
 - **Retry without blocking:** `usb_start` is split into the reset and
   `usb_attach_now`. `usb_start` (boot, interrupts off) still waits 25 ms
   between them; `usb_retry` (main loop, once a second while USB is off)
@@ -154,8 +161,7 @@ carry the changes over onto SIDOU's versions.
   20000 polls apiece.
 - **Strings:** manufacturer "SIDOU contributors" and product "SIDOU"
   instead of "Hügelton Instruments" and "Felucca".
-- `midi_out_event` and `usb_detach` are marked unused: nothing sends MIDI
-  out or detaches yet.
+- `midi_out_event` is marked unused: nothing sends MIDI out yet.
 - The header comment describes the SIDOU build, and `SET_INTERFACE`'s
   comment no longer mentions the audio stream.
 
@@ -169,6 +175,40 @@ carry the changes over onto SIDOU's versions.
   loop restarts its parser and releases the notes) instead of clearing the
   parser's state and setting `midi_in_overflow`; `um.msgs` is gone.
 - The header comment describes the SIDOU version.
+
+### `ota.c`: the update protocol, step 1 (unchanged)
+
+- **Source:** Felucca's `firmware/src/ota.c` (406 lines) at the same commit,
+  byte for byte. `midi.c` includes it after `usb/usb.c` and supplies its
+  hooks, adapted from Felucca's `src/ota_hw.c`: the clock (TIMER4), the
+  watchdog, erases and writes inside the staging area only (`0xE0000`..
+  `0xE5000`, `FL_RANGE_OK`), in interrupt-off windows and only while the
+  audio is stopped (else -16), the progress on the screen (`ui_update`),
+  and the commit (the boot guard told, USB detached, `fm1_enter_update`).
+  `FELUCCA_ID` is SIDOU's identity, `SIDOU_PRODUCT` (`FM-1_900` for
+  development builds).
+- Its check that a package's loader is Felucca's looks for the marker
+  `FELUCCA-LOADER-1`, which SIDOU's loader keeps (below).
+
+## The update loader (`loader/`)
+
+- **Source:** Felucca's `firmware/loader/` at the same commit:
+  `crt0_ldr.S`, `ldr_core.c` and `loader.ld` byte for byte, `loader.c`
+  adapted.
+- **Licence:** GPL-3.0-only, © 2026 Leo Kuroshita, Hügelton Instruments.
+- **Build:** the target `sidou_loader` (`-Os`, `loader.ld`: one RAM image at
+  `0x01C0A800`, at most `0x14000` bytes) makes `sidou_loader.bin`, the raw
+  image; `sidou-pack` wraps it into the package's `ota.bin`.
+- **Changes in `loader.c`:** our paths (`../usb/usb.c`, `../usb/ota.c`,
+  `../libc_min.c` instead of Felucca's `libc.c`); a `midi_enqueue` that
+  drops USB MIDI (Felucca's in ring is gone from `usb.c`); no stock UBOOT
+  soft key (the `usb.uboot_req` branch is gone); a header note. The USB
+  product string is "SIDOU Update" (in `usb.c`); the PID stays 0x0002, the
+  identity `ota-FM-1_900` (installers find a loader by `ota-`).
+- **The marker stays `FELUCCA-LOADER-1`:** Felucca, sloop and melodee
+  accept a package's loader by it (their `ota.c` and `fm1_install.py`), so
+  a SIDOU package installs from any of them and with their installers. The
+  plan's `SIDOU-LOADER-1` would break that.
 
 ## font8x8 (`font/`)
 

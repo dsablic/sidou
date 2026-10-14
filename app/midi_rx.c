@@ -22,10 +22,9 @@ static void on_msg(void* ctx, const midi_msg* msg) {
     midi_rx_live(ctx, msg);
 }
 
-/* SysEx is skipped (no midi_sysex_fn) on both sources for now.
- * TODO(Task 6): the update protocol's step 1 (identity request, upgrade request). Its USB
- * frames are assembled in the vendored USB stack (platform/fm1/usb/usb.c, FELUCCA_OTA, off
- * in M1a); TRS SysEx would arrive here, through a midi_sysex_fn on rx->trs. */
+/* SysEx is skipped (no midi_sysex_fn) on both sources. The update protocol takes its frames
+ * from USB inside the vendored USB stack (platform/fm1/update.h): over USB only, because it
+ * needs replies and the TRS jack is MIDI IN only. */
 static void parsers_init(midi_rx* rx) {
     midi_in_init(&rx->trs, on_msg, 0, rx->l);
     midi_in_init(&rx->usb, on_msg, 0, rx->l);

@@ -7,10 +7,11 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 11] = [
+const SOURCES: [&str; 12] = [
     "core/sid/sid.c",
     "core/sid/sid_filter.c",
     "bench/workload.c",
+    "app/bootguard.c",
     "app/live.c",
     "app/live_freq.c",
     "app/midi_in.c",
@@ -65,9 +66,13 @@ fn main() {
         .header(wrapper.to_str().unwrap())
         .clang_args(INCLUDES.map(|dir| format!("-I{}", root.join(dir).display())))
         .clang_arg("-std=c11")
-        .allowlist_function("sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*")
-        .allowlist_type("sid.*|live.*|midi_.*|panel.*|reg_ring.*")
-        .allowlist_var("SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|live_.*")
+        .allowlist_function(
+            "sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*",
+        )
+        .allowlist_type("sid.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard")
+        .allowlist_var(
+            "SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*",
+        )
         // A `static const` table private to sid_env.h; it has no symbol to link to.
         .blocklist_item("SID_RATE_PERIOD")
         .prepend_enum_name(false)

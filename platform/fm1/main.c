@@ -4,7 +4,8 @@
  * Felucca's src/main.c: watchdog first, fatal vectors, memory, then the LCD, the live
  * instrument, the key matrix and MIDI in (TRS UART, USB), audio (ALNK0 IRQ) and the 10 kHz
  * tick (TIMER5 IRQ, which also polls MIDI), interrupts on, and a main loop that plays MIDI
- * and the panel into the instrument, redraws the screen and feeds the watchdog.
+ * and the panel into the instrument, redraws the screen, answers the update protocol and
+ * feeds the watchdog. The boot-loop guard comes first of all (fm1_cstart).
  *
  * This file includes the HAL's interrupt, audio and timer headers; input.c and lcd.c include
  * the input and LCD ones (platform/fm1/VENDORED.md). */
@@ -18,6 +19,7 @@
 #include "fm1_timer.h"
 
 #include "audio.h"
+#include "bootguard.h"
 #include "input.h"
 #include "lcd.h"
 #include "live.h"
@@ -25,6 +27,7 @@
 #include "panel.h"
 #include "reg_ring.h"
 #include "ui.h"
+#include "update.h"
 
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
@@ -48,6 +51,8 @@ void fm1_cstart(void);
 #define TICK_CATCH_UP 2u
 
 static int32_t abuf[2u * AUDIO_HALF_WORDS] __attribute__((aligned(4)));
+/* Survives resets (.noinit): boots that die early in a row end in UBOOT (app/bootguard.h). */
+static bootguard boot_guard __attribute__((section(".noinit")));
 static volatile uint32_t uptime_ms;
 static live instrument;
 static panel front;
@@ -118,6 +123,22 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
     input_leds(&front, &instrument);
 }
 
+/* Before an intentional reset: not a failed boot. */
+static void leave_on_purpose(void) {
+    bootguard_leave(&boot_guard);
+}
+
+/* The host asked to upgrade (update.h): the audio stops for good, step 1 runs, and on success
+ * the chip restarts into the update loader. If nothing was committed (refused, failed), the
+ * firmware restarts the same way it booted. */
+static void upgrade(void) {
+    fm1_audio_stop();
+    audio_halted();
+    update_session(leave_on_purpose);
+    leave_on_purpose();
+    fm1_reboot();
+}
+
 static void sidou_main(void) {
     /* Interrupts are still off: lcd_init and input_init write port A, which carries PA2. */
     lcd_init();
@@ -127,6 +148,7 @@ static void sidou_main(void) {
     input_init();
     panel_master(&front, &instrument, input_master());
     midi_init(&instrument);
+    update_boot();
     audio_start();
     ui_init(&instrument);
     fm1_audio_init(abuf, AUDIO_HALF_WORDS, isr_alnk0, PRIO_ALNK0);
@@ -144,6 +166,10 @@ static void sidou_main(void) {
         play(now, &next_tick, &last_frame);
         ui_poll(&instrument, now);
         midi_service(now);
+        bootguard_poll(&boot_guard, now);
+        if (update_poll()) {
+            upgrade();
+        }
         /* Sleep until the next interrupt: saves power, and fm1-emu skips ahead. */
         __asm__ volatile("idle");
     }
@@ -153,6 +179,11 @@ void fm1_cstart(void) {
     uint32_t *d, *s;
     fm1_time_init();
     fm1_wdt_arm(WDT_TIMEOUT);
+    /* First, before anything that may crash: the third boot in a row that dies before it is
+     * stable goes to UBOOT, which still accepts updates (not the 7D soft key: a direct entry). */
+    if (bootguard_boot(&boot_guard)) {
+        fm1_enter_uboot();
+    }
     fm1_irq_init();
     for (d = _bss_start; d < _bss_end; d++) {
         *d = 0;

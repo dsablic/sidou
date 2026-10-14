@@ -31,6 +31,12 @@ void audio_start(void);
  * waiting for room sleeps until the next interrupt. Between audio_start and this call
  * nothing may write to live (the ISR may already drain, and a wait would drain too). */
 void audio_irqs_on(void);
+/* After main.c has stopped the I2S DMA (fm1_audio_stop) for good: flash erases and writes
+ * check audio_running first (midi.c), since the audio path reads flash (.rodata) and the DMA
+ * would loop a stale buffer while interrupts are off. */
+void audio_halted(void);
+/* 1 between audio_irqs_on and audio_halted. */
+int audio_running(void);
 /* AUDIO_HALF_WORDS words: the SID's mono output on both channels, 24-bit left-justified
  * ((int32)sample << 8). Called from the ALNK0 interrupt. */
 void audio_fill(int32_t* out);

@@ -12,8 +12,8 @@ Follow-ups that aren't tied to a milestone task yet.
   id, as Felucca does. It is meant for the bench only, and hosts may mix
   SIDOU up with Felucca or anything else that uses it.
 - **Action:** apply for a pid.codes PID before 1.0 (an open-source project
-  qualifies) and set it in the descriptor. The update loader (Task 6) needs
-  its own PID too.
+  qualifies) and set it in the descriptor. The update loader enumerates as
+  0x1209:0x0002 (as Felucca's loader) and needs its own PID too.
 
 ## fm1-emu does not emulate USB
 
@@ -23,7 +23,9 @@ Follow-ups that aren't tied to a milestone task yet.
   at boot, leaves USB off and retries once a second. No USB MIDI reaches
   the firmware, and the cost of `usb_poll` with a host attached cannot be
   measured. The emulator tests play MIDI through the TRS jack only; the
-  USB packet conversion and the MIDI ring are host-tested.
+  USB packet conversion and the MIDI ring are host-tested. The update
+  protocol runs over USB only, so it cannot be driven in fm1-emu either; an
+  install is a hardware check (M1a Task 7).
 - **Action:** test USB MIDI on hardware (the M1a hardware checklist), and
   measure `usb_poll` there: three SIE round trips per poll at 2 kHz with
   no traffic. Ask upstream whether a USB device model is planned.
@@ -65,29 +67,6 @@ Follow-ups that aren't tied to a milestone task yet.
   host suspends, and watch for audio dropouts. If the SIE can die while up,
   shorten the in-interrupt timeout or give up after the first timeout of a
   poll.
-
-## Task 6: `usb_detach` must mask interrupts around `usb.up = 0`
-
-- **Where:** `platform/fm1/usb/usb.c`, `usb_detach` (unused in M1a; the
-  update protocol will call it before a reset).
-- **Problem:** `usb_poll` runs in TIMER5 and checks `usb.up` only on entry.
-  A main-loop `usb_detach` that clears `usb.up` and then switches the
-  controller off can be preempted by a poll already past that check, which
-  then talks to a controller being turned off.
-- **Action:** in Task 6, clear `usb.up` and call `fm1_usb_off` with
-  interrupts off (or at least TIMER5 masked), as Felucca's own
-  `usb_cdc_switch` orders it with `RING_PUBLISH`.
-
-## Task 6: the audio path still needs XIP
-
-- **Where:** `platform/fm1/app.ld` (`.ram_text`), the update protocol's
-  flash writes.
-- **Problem:** the audio interrupt's code runs from SRAM, but it reads
-  constant tables from flash (`.rodata`, e.g. the envelope rate periods),
-  and TIMER5's code is in flash. Neither interrupt may run while the SFC
-  (XIP) is off.
-- **Action:** in Task 6, stop the audio and mask interrupts around flash
-  erase and program, as Felucca's flash driver requires.
 
 ## Report fm1-emu: decrementing register block load is not executed
 

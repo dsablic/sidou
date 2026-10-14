@@ -61,6 +61,14 @@ void audio_irqs_on(void) {
     running = 1;
 }
 
+void audio_halted(void) {
+    running = 0;
+}
+
+int audio_running(void) {
+    return running;
+}
+
 void audio_fill(int32_t* buf) {
     int16_t s[AUDIO_HALF_FRAMES];
     reg_ring_drain(&ring, &chips);
