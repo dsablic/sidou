@@ -87,6 +87,11 @@ static float dist_tick(sid_slots* s, const sid_slot* sl, float x) {
 static void mod_start(sid_slots* s, uint32_t alg) {
     sid_slot_mod_state* m = &s->mod;
     switch (alg) {
+    case SID_MOD_CHORUS: sid_fx_chorus_init(&m->chorus, s->sample_rate); break;
+    case SID_MOD_FLANGER: sid_fx_flanger_init(&m->flanger, s->sample_rate); break;
+    case SID_MOD_PHASER: sid_fx_phaser_init(&m->phaser, s->sample_rate); break;
+    case SID_MOD_TREMOLO:
+    case SID_MOD_AUTOPAN: sid_fx_tremolo_init(&m->tremolo, s->sample_rate); break;
     case SID_MOD_WOW: sid_fx_wow_init(&m->wow, s->sample_rate, s->seed * 0x9e3779b9u + 1u); break;
     default: break;
     }
@@ -95,6 +100,21 @@ static void mod_start(sid_slots* s, uint32_t alg) {
 static void mod_tick(sid_slots* s, const sid_slot* sl, float x, float* l, float* r) {
     sid_slot_mod_state* m = &s->mod;
     switch (sl->algorithm) {
+    case SID_MOD_CHORUS:
+        sid_fx_chorus_tick(&m->chorus, x, sl->amount, sl->a, sl->b, l, r);
+        return;
+    case SID_MOD_FLANGER:
+        sid_fx_flanger_tick(&m->flanger, x, sl->amount, sl->a, sl->b, l, r);
+        return;
+    case SID_MOD_PHASER:
+        sid_fx_phaser_tick(&m->phaser, x, sl->amount, sl->a, sl->b, l, r);
+        return;
+    case SID_MOD_TREMOLO:
+        sid_fx_tremolo_tick(&m->tremolo, x, sl->amount, sl->a, sl->b, l, r);
+        return;
+    case SID_MOD_AUTOPAN:
+        sid_fx_autopan_tick(&m->tremolo, x, sl->amount, sl->a, sl->b, l, r);
+        return;
     case SID_MOD_WOW: x = sid_fx_wow_tick(&m->wow, x, sl->amount, sl->a); break;
     default: break;
     }
@@ -120,7 +140,19 @@ static void fx_tick(sid_slots* s, const sid_slot* sl, float* l, float* r) {
     (void)r;
 }
 
+/* Samples an algorithm must run before it is heard: its longest tap delay. */
+static uint32_t warm_up(const sid_slots* s, uint32_t k, uint32_t alg) {
+    float ms = 0.0f;
+    if (k == SID_SLOT_MOD && alg == SID_MOD_CHORUS) {
+        ms = SID_FX_CHORUS_CENTRE_MS + SID_FX_CHORUS_SLOW_MS + SID_FX_CHORUS_FAST_MS;
+    } else if (k == SID_SLOT_MOD && alg == SID_MOD_FLANGER) {
+        ms = SID_FX_FLANGER_MAX_MS;
+    }
+    return (uint32_t)(int32_t)(ms * 0.001f * (float)s->sample_rate) + 4u;
+}
+
 static void start(sid_slots* s, uint32_t k, uint32_t alg) {
+    s->slot[k].warm = warm_up(s, k, alg);
     switch (k) {
     case SID_SLOT_DIST: dist_start(s, alg); break;
     case SID_SLOT_MOD: mod_start(s, alg); break;
@@ -177,6 +209,10 @@ static float step_switch(sid_slots* s, uint32_t k) {
         return 0.0f;
     }
     default: /* FADE_IN: completes before any new switch, so the fade never reverses */
+        if (sl->warm > 0) {
+            --sl->warm;
+            return 0.0f;
+        }
         sl->fade += s->fade_step;
         if (sl->fade >= 1.0f) {
             sl->fade = 1.0f;
@@ -246,7 +282,7 @@ void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n
         if (live & 1u) {
             smooth_controls(dist, s->smooth_coef);
             float g = step_switch(s, SID_SLOT_DIST);
-            float wet = g > 0.0f ? dist_tick(s, dist, x) : x;
+            float wet = dist->phase != SID_SLOT_CLEAR ? dist_tick(s, dist, x) : x;
             x += dist->mix * g * (wet - x);
             l = x;
             r = x;
@@ -256,7 +292,7 @@ void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n
             float g = step_switch(s, SID_SLOT_MOD);
             float wl = x;
             float wr = x;
-            if (g > 0.0f) {
+            if (mod->phase != SID_SLOT_CLEAR) {
                 mod_tick(s, mod, x, &wl, &wr);
             }
             float m = mod->mix * g;
@@ -268,7 +304,7 @@ void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n
             float g = step_switch(s, SID_SLOT_FX);
             float wl = l;
             float wr = r;
-            if (g > 0.0f) {
+            if (fx->phase != SID_SLOT_CLEAR) {
                 fx_tick(s, fx, &wl, &wr);
             }
             float m = fx->mix * g;
