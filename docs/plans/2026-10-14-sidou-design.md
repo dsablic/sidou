@@ -369,7 +369,7 @@ Layers (all run in CI):
   the users whose requests shaped features.
 - **Music:** C64 game music is still under copyright, held by composers or
   publishers. HVSC is tolerated by the scene, but it is not a licence we can
-  pass on. So music is split into three tiers:
+  pass on. So music is split into two tiers:
   - **In the firmware (starter pack):** only openly licensed tunes (e.g.
     Creative Commons, from modern SID composers) and tunes we commission in
     the native format, written to show off SIDOU's features. Each tune has a
@@ -378,14 +378,10 @@ Layers (all run in CI):
     - Licences must allow redistribution, including commercial
       redistribution, because GPL firmware can be sold pre-flashed. A
     "non-commercial only" licence does not qualify.
-  - **Classics pack (separate, not in the firmware):** the browser companion
-    loads tunes from the user's own HVSC copy or GoatTracker/SID-Wizard files
-    onto the device, with curated playlists ("Hubbard essentials"). It
-    contains references to the tunes, not the tunes themselves.
-  - **Permission outreach (background, from M3):** ask well-known composers
-    to let a few signature tunes ship in the firmware. Record who holds the
-    rights (composer or publisher) and what the permission covers. A named,
-    approved tune doubles as release news.
+  - **User import (not in the firmware):** people bring their own chiptunes.
+    The browser companion loads `.sid`, GoatTracker and SID-Wizard files, or
+    tunes from the user's own HVSC copy, onto the device. Optional playlists
+    ("Hubbard essentials") are lists of references, not tunes.
 - **Fonts and graphics:**
   - We draw our own PETSCII-style font, released CC0 or GPL. The Commodore
     character ROM font is not used.
@@ -446,8 +442,8 @@ Each kind of document has one job:
    - mute and solo;
    - browser;
    - starter pack (openly licensed and commissioned tunes);
-   - classics pack loader in the companion;
-   - composer outreach started.
+   - user import of chiptunes (`.sid`, `.sng`, SID-Wizard) through the
+     companion, with optional playlists for the user's own HVSC copy.
 5. **M4, showcase and release:**
    - WASM demo, installer, manual;
    - release-video pipeline (demo scripts, emulator capture, composition);
