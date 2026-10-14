@@ -44,9 +44,9 @@ static void emit(midi_in* m, midi_kind kind, uint8_t channel, uint8_t d1, uint8_
     m->on_msg(m->ctx, &msg);
 }
 
-static void sysex(midi_in* m, uint8_t byte) {
+static void sysex(midi_in* m, midi_sysex_event event, uint8_t byte) {
     if (m->on_sysex) {
-        m->on_sysex(m->ctx, byte);
+        m->on_sysex(m->ctx, event, byte);
     }
 }
 
@@ -75,12 +75,12 @@ void midi_in_byte(midi_in* m, uint8_t byte) {
         return;
     }
     if (byte & 0x80u) {
-        if (m->in_sysex && byte == 0xf7) {
-            sysex(m, byte);
+        if (m->in_sysex) {
+            sysex(m, byte == 0xf7 ? MIDI_SYSEX_END : MIDI_SYSEX_ABORT, byte);
         }
         m->in_sysex = byte == 0xf0;
         if (m->in_sysex) {
-            sysex(m, byte);
+            sysex(m, MIDI_SYSEX_START, byte);
         }
         m->count = 0;
         m->status = byte;
@@ -90,7 +90,7 @@ void midi_in_byte(midi_in* m, uint8_t byte) {
         return;
     }
     if (m->in_sysex) {
-        sysex(m, byte);
+        sysex(m, MIDI_SYSEX_DATA, byte);
         return;
     }
     if (!m->status) {

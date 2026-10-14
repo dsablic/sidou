@@ -16,10 +16,19 @@ enum Ev {
     RealTime(u8),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Sx {
+    Start,
+    Data(u8),
+    End,
+    Abort(u8),
+}
+use Sx::{Abort, Data, End, Start};
+
 #[derive(Default)]
 struct Out {
     events: Vec<Ev>,
-    sysex: Vec<u8>,
+    sysex: Vec<Sx>,
     raw: Vec<midi_msg>,
 }
 
@@ -41,8 +50,27 @@ unsafe extern "C" fn on_msg(ctx: *mut c_void, m: *const midi_msg) {
     });
 }
 
-unsafe extern "C" fn on_sysex(ctx: *mut c_void, byte: u8) {
-    unsafe { &mut *ctx.cast::<Out>() }.sysex.push(byte);
+unsafe extern "C" fn on_sysex(ctx: *mut c_void, event: midi_sysex_event, byte: u8) {
+    let ev = match event {
+        MIDI_SYSEX_START => {
+            assert_eq!(byte, 0xf0);
+            Start
+        }
+        MIDI_SYSEX_DATA => {
+            assert!(byte < 0x80);
+            Data(byte)
+        }
+        MIDI_SYSEX_END => {
+            assert_eq!(byte, 0xf7);
+            End
+        }
+        MIDI_SYSEX_ABORT => {
+            assert!((0x80..0xf7).contains(&byte));
+            Abort(byte)
+        }
+        e => panic!("unknown SysEx event {e}"),
+    };
+    unsafe { &mut *ctx.cast::<Out>() }.sysex.push(ev);
 }
 
 struct Parser {
@@ -165,7 +193,7 @@ fn sysex_is_forwarded_and_otherwise_ignored() {
     let mut p = Parser::new();
     p.feed(&[0x90, 60, 100, 0xf0, 0x7e, 0x01, 0x90, 0x02]);
     assert_eq!(p.take(), [Ev::On(0, 60, 100)]);
-    assert_eq!(p.out.sysex, [0xf0, 0x7e, 0x01]);
+    assert_eq!(p.out.sysex, [Start, Data(0x7e), Data(0x01), Abort(0x90)]);
     p.out.sysex.clear();
 
     // 0x90 above ended the SysEx: the note-on that follows is a message.
@@ -179,7 +207,10 @@ fn sysex_end_cancels_running_status() {
     let mut p = Parser::new();
     p.feed(&[0x90, 60, 100, 0xf0, 0x7d, 0x10, 0x20, 0xf7, 62, 100]);
     assert_eq!(p.take(), [Ev::On(0, 60, 100)]);
-    assert_eq!(p.out.sysex, [0xf0, 0x7d, 0x10, 0x20, 0xf7]);
+    assert_eq!(
+        p.out.sysex,
+        [Start, Data(0x7d), Data(0x10), Data(0x20), End]
+    );
 }
 
 #[test]
@@ -187,7 +218,42 @@ fn real_time_inside_sysex_is_not_part_of_it() {
     let mut p = Parser::new();
     p.feed(&[0xf0, 0x01, 0xf8, 0x02, 0xfe, 0xf7]);
     assert_eq!(p.take(), [Ev::RealTime(0xf8), Ev::RealTime(0xfe)]);
-    assert_eq!(p.out.sysex, [0xf0, 0x01, 0x02, 0xf7]);
+    assert_eq!(p.out.sysex, [Start, Data(0x01), Data(0x02), End]);
+}
+
+#[test]
+fn f0_inside_a_sysex_aborts_it_and_starts_another() {
+    let mut p = Parser::new();
+    p.feed(&[0xf0, 0x01, 0x02, 0xf0, 0x03, 0xf7]);
+    assert!(p.take().is_empty());
+    assert_eq!(
+        p.out.sysex,
+        [Start, Data(1), Data(2), Abort(0xf0), Start, Data(3), End]
+    );
+}
+
+#[test]
+fn any_other_status_byte_aborts_a_sysex() {
+    for status in [
+        0x80u8, 0x9f, 0xb0, 0xc5, 0xe0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6,
+    ] {
+        let mut p = Parser::new();
+        p.feed(&[0xf0, 0x7d, status, 0x01, 0x02, 0x03, 0xf7]);
+        assert_eq!(
+            p.out.sysex,
+            [Start, Data(0x7d), Abort(status)],
+            "status {status:#x}"
+        );
+    }
+}
+
+#[test]
+fn real_time_bytes_do_not_abort_a_sysex() {
+    for rt in 0xf8..=0xffu8 {
+        let mut p = Parser::new();
+        p.feed(&[0xf0, 0x01, rt, 0x02, 0xf7]);
+        assert_eq!(p.out.sysex, [Start, Data(1), Data(2), End], "{rt:#x}");
+    }
 }
 
 #[test]
@@ -259,6 +325,7 @@ fn random_streams_never_produce_out_of_range_data() {
     let mut rng = Rng(0x5eed_51d0_u64);
     let mut p = Parser::new();
     let mut total = 0usize;
+    let mut sysex_open = false;
     for round in 0..2000 {
         let len = (rng.next() % 512) as usize;
         // Every few rounds bias towards status bytes, otherwise towards data.
@@ -266,7 +333,7 @@ fn random_streams_never_produce_out_of_range_data() {
         let bytes: Vec<u8> = (0..len)
             .map(|_| {
                 let r = rng.next();
-                if r % status_odds == 0 {
+                if r.is_multiple_of(status_odds) {
                     0x80 | (r >> 8) as u8
                 } else {
                     (r >> 8) as u8 & 0x7f
@@ -288,11 +355,22 @@ fn random_streams_never_produce_out_of_range_data() {
                 assert!(m.data2 > 0, "{m:?}");
             }
         }
-        assert!(p
-            .out
-            .sysex
-            .iter()
-            .all(|&b| b < 0x80 || b == 0xf0 || b == 0xf7));
+        // Every SysEx is a Start, data, and then exactly one End or Abort.
+        let mut open = sysex_open;
+        for &e in &p.out.sysex {
+            match e {
+                Start => {
+                    assert!(!open, "a Start without an End or Abort first");
+                    open = true;
+                }
+                Data(_) => assert!(open, "data outside a SysEx"),
+                End | Abort(_) => {
+                    assert!(open, "an End or Abort without a Start");
+                    open = false;
+                }
+            }
+        }
+        sysex_open = open;
         p.out.sysex.clear();
         p.out.events.clear();
     }

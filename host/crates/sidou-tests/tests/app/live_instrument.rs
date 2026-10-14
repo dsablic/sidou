@@ -385,7 +385,7 @@ fn sync_lead_is_one_voice_synced_to_a_silent_voice_3() {
     assert_eq!(u32::from(rig.voice_freq(2)), base);
     assert_eq!(
         u32::from(rig.voice_freq(0)),
-        (base * u32::from(p.sync_ratio_q8) >> 8).min(0xffff)
+        ((base * u32::from(p.sync_ratio_q8)) >> 8).min(0xffff)
     );
     assert_eq!(rig.control(0), p.control | 1);
     assert_eq!(
@@ -699,4 +699,47 @@ fn the_sid_sink_reinitialises_with_the_new_model_and_keeps_parameters() {
     assert_eq!(c.chip.osc[0].freq, 0x1d45);
     assert_eq!(c.chip.wave_zero, 0x800, "8580 constants after re-init");
     assert!(peak(&c.render(4410)) > 1000, "the held note sounds again");
+}
+
+#[test]
+fn stealing_a_sustained_voice_restarts_its_envelope_attack() {
+    let mut c = Chip::new(SID_MODEL_8580);
+    for n in [60, 64, 67] {
+        unsafe { live_note_on(&mut *c.live, n, 100) };
+    }
+    c.render(22050);
+    let sustain = preset(SAW_LEAD).sustain_release >> 4;
+    let env = c.chip.env[0];
+    assert_eq!(env.state, SID_ENV_DECAY_SUSTAIN);
+    assert_eq!(
+        env.counter,
+        sustain * 0x11,
+        "voice 1 sits at its sustain level"
+    );
+
+    // Gate off and on with no chip cycles in between: the edge must still latch.
+    unsafe { live_note_on(&mut *c.live, 72, 100) };
+    let env = c.chip.env[0];
+    assert_eq!(env.state, SID_ENV_ATTACK);
+    assert_eq!(env.gate, 1);
+    assert_eq!(c.chip.osc[0].freq, u32::from(freq_table()[72]));
+    assert_eq!(
+        c.chip.env[1].state, SID_ENV_DECAY_SUSTAIN,
+        "others untouched"
+    );
+}
+
+#[test]
+fn a_preset_change_counts_as_releasing_the_held_notes_now() {
+    let mut rig = Rig::new(SID_MODEL_8580);
+    rig.note_on(60); // voice 0
+    rig.note_on(64); // voice 1
+    rig.note_off(60); // voice 0 released first
+    rig.set_preset(PULSE_BASS); // voice 1 released by the switch, after voice 0
+    rig.note_on(48);
+    assert_eq!(voice_of(&rig, 48), 2, "voice 3 never played");
+    rig.note_on(50);
+    assert_eq!(voice_of(&rig, 50), 0);
+    rig.note_on(52);
+    assert_eq!(voice_of(&rig, 52), 1);
 }

@@ -134,7 +134,9 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model);
 void live_note_on(live* l, uint8_t note, uint8_t velocity);
 void live_note_off(live* l, uint8_t note);
 void live_all_notes_off(live* l);
-/* The MIDI note for a key whose note at octave 0 is base_note, or LIVE_NO_NOTE. */
+/* The MIDI note for a key whose note at octave 0 is base_note, or LIVE_NO_NOTE.
+ * The device must keep the note it got at key-down and send that same note at key-up:
+ * the octave may change while the key is held. */
 uint8_t live_key_note(const live* l, uint8_t base_note);
 void live_knob(live* l, live_knob_id knob, int32_t delta);
 void live_button(live* l, live_button_id button);

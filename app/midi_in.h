@@ -5,9 +5,11 @@
  * - Running status: channel messages may omit their status byte.
  * - Real-time bytes (0xF8..0xFF) are reported where they occur, even inside another
  *   message or a SysEx, and change no state.
- * - SysEx (0xF0 .. 0xF7) is passed byte by byte, F0 and F7 included, to the SysEx
- *   callback and is otherwise ignored. A SysEx ended by any other status byte ends
- *   without an F7.
+ * - SysEx (0xF0 .. 0xF7) is passed byte by byte to the SysEx callback and is otherwise
+ *   ignored: MIDI_SYSEX_START (F0), MIDI_SYSEX_DATA for each data byte, then exactly one
+ *   of MIDI_SYSEX_END (F7) or MIDI_SYSEX_ABORT (the status byte that cut it short; an F0
+ *   inside a SysEx aborts it and starts a new one). Real-time bytes inside it are not
+ *   part of it. A consumer discards what it collected on ABORT.
  * - System common messages (0xF1..0xF7) cancel running status; their data is skipped.
  * - An incomplete message is dropped when a new status byte arrives.
  * - Note-on with velocity 0 is reported as note-off. */
@@ -40,12 +42,19 @@ typedef struct {
     uint16_t bend;
 } midi_msg;
 
+typedef enum {
+    MIDI_SYSEX_START = 0, /* byte is F0 */
+    MIDI_SYSEX_DATA = 1,  /* byte is 0x00..0x7F */
+    MIDI_SYSEX_END = 2,   /* byte is F7 */
+    MIDI_SYSEX_ABORT = 3  /* byte is the status byte (0x80..0xF6) that ended it */
+} midi_sysex_event;
+
 typedef void (*midi_msg_fn)(void* ctx, const midi_msg* msg);
-typedef void (*midi_sysex_fn)(void* ctx, uint8_t byte);
+typedef void (*midi_sysex_fn)(void* ctx, midi_sysex_event event, uint8_t byte);
 
 typedef struct {
-    midi_msg_fn on_msg;
-    midi_sysex_fn on_sysex; /* may be NULL */
+    midi_msg_fn on_msg;     /* must not be NULL */
+    midi_sysex_fn on_sysex; /* may be NULL: SysEx is then skipped */
     void* ctx;
     uint8_t status; /* the message being assembled; 0 if none */
     uint8_t count;  /* its data bytes so far */
@@ -53,6 +62,7 @@ typedef struct {
     uint8_t in_sysex;
 } midi_in;
 
+/* on_msg must not be NULL; on_sysex may be. */
 void midi_in_init(midi_in* m, midi_msg_fn on_msg, midi_sysex_fn on_sysex, void* ctx);
 void midi_in_byte(midi_in* m, uint8_t byte);
 void midi_in_feed(midi_in* m, const uint8_t* bytes, size_t n);

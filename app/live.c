@@ -185,7 +185,10 @@ static void load_preset(live* l, uint8_t index) {
     l->lfo_phase = LFO_CENTRE;
     l->pw_out = pw_effective(l);
     for (int v = 0; v < LIVE_VOICES; ++v) {
-        l->voice[v].gate = 0;
+        if (l->voice[v].gate) {
+            l->voice[v].gate = 0;
+            l->voice[v].stamp = ++l->clock; /* released now, like a note-off */
+        }
     }
 }
 
@@ -288,9 +291,16 @@ uint8_t live_key_note(const live* l, uint8_t base_note) {
     return base_note <= 127 && n >= 0 && n <= 127 ? (uint8_t)n : LIVE_NO_NOTE;
 }
 
-/* now + delta * step, saturated to [0, max]. */
+/* now + delta * step, saturated to [0, max]. delta is clamped first so the int32
+ * arithmetic cannot overflow (and needs no 64-bit helpers): every range is at most
+ * 4095 steps wide, so 4096 detents always reach the far end. */
 static uint16_t step_clamped(uint16_t now, int32_t delta, int32_t step, uint16_t max) {
-    int64_t x = (int64_t)now + (int64_t)delta * step;
+    if (delta > 4096) {
+        delta = 4096;
+    } else if (delta < -4096) {
+        delta = -4096;
+    }
+    int32_t x = (int32_t)now + delta * step;
     if (x < 0) {
         return 0;
     }
