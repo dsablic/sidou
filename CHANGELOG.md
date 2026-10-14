@@ -22,7 +22,7 @@ All notable changes are documented here. The format follows
 - Emulator benchmark gate: runs the pi32v2 build in fm1-emu, enforces 900
   instructions per sample per chip, and checks the output against the host
   build.
-- CI: host tests on Linux and macOS with UBSan, ASan, MSRV check, REUSE lint,
+- CI: host tests on Linux and macOS with UBSan; ASan on Linux; MSRV check, REUSE lint,
   and the firmware build with the emulator gate.
 - Building and testing guides, and decision records for the host tooling
   and the M0 SID cost.

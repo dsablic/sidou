@@ -85,7 +85,7 @@ unless a decision record in `docs/decisions/` explains why.
 ### Filter comparison (`sidou-compare`)
 
 `sidou-compare` renders low-, band- and high-pass noise sweeps on both
-engines, writes each pair as 16-bit WAV files into `<dir>` (default: the
+engines, writes each pair as 16-bit WAV files into `<dir>`, which must exist (default: the
 current directory) and prints the largest envelope difference per scenario
 and model. It has no pass/fail threshold: it is for listening and for
 tracking the filter's distance from reSIDfp between milestones. The

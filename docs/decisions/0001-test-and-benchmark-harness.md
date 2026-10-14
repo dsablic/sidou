@@ -36,7 +36,7 @@ next to the C core.
   files with the `cc` crate and generates bindings with bindgen, so the
   tests exercise the code that runs on the device.
 - **reSIDfp is a test-only reference,** a git submodule compiled by `cc`.
-  Our only C++ is a ~30-line `extern "C"` shim around its class API
+  Our only C++ is a small (~60-line) `extern "C"` shim around its class API
   (`host/crates/residfp-sys/shim.cpp`). It is never linked into firmware.
 - **No Python** in the build or the tests. (`reuse lint` is a third-party
   tool, run as-is.)

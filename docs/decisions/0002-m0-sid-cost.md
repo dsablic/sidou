@@ -55,7 +55,7 @@ output at commit `4a0cf71`.
   soft-float library call; with it, the image calls no float helpers at all.
 - **Target and host agree bit for bit,** so host tests are valid for the
   device build. Both compile with `-ffp-contract=off`.
-- Init takes under 1 ms at 240 MHz, most of it in building the cutoff
+- Init takes under 1 ms per chip at 240 MHz, most of it in building the cutoff
   table.
 
 ### Host benchmark
