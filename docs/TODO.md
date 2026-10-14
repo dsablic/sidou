@@ -70,22 +70,20 @@ Follow-ups that aren't tied to a milestone task yet.
   shorten the in-interrupt timeout or give up after the first timeout of a
   poll.
 
-## Packages carry M-VAVE's flash head: clear it before a public release
+## The device's flash head is never written
 
-- **Where:** `host/crates/sidou-pack` (`inputs.toml`, `flash_image`).
-- **Problem:** a safety rule says the package's flash head is byte-identical
-  to stock V15, so a tool that writes the whole flash.bin leaves the head
-  as it was (M-VAVE's isd_config: the 360 MHz clock setting, the chip key).
-  `sidou-pack` therefore copies the first 0x4000 bytes of M-VAVE's official
-  `FM-1.fwsc` (fetched, SHA-256 pinned, never committed) into every package.
-  Felucca, sloop and melodee packages carry a head generated from SDK
-  defaults instead (15,031 of its 16,384 bytes differ from stock V15's),
-  which their loaders never write. The stock head holds JieLi's SPL
-  (Apache-2.0) and M-VAVE's configuration, whose licence M-VAVE does not
-  state.
-- **Action:** before publishing packages (releases, a web installer), get
-  M-VAVE's permission or decide on another head; the CI artifact is
-  internal.
+- **Where:** the update loader (`platform/fm1/loader/ldr_core.c`) and
+  `host/crates/sidou-pack`.
+- **Note:** the loader writes only the app area `[0x4000, 0x93000)`, as
+  Felucca's does, so an FM-1 keeps its own head (M-VAVE's SPL and
+  isd_config, with the 360 MHz clock setting) whatever a package carries.
+  SIDOU's packages carry an SDK-default head built as Felucca's
+  `fm1pkg_make.py` builds it (the SDK's SPL, Apache-2.0); no byte of
+  M-VAVE's firmware is in them. The way back to stock V15 keeps `ota.c`'s
+  head-identity check (V15's official loader rewrites the head, so its
+  package must carry the device's head), host-tested with the V15 package
+  (`crates/sidou-pack/tests/ota_step1.rs`).
+- **Action:** none; any future SIDOU tool must keep the head unwritten.
 
 ## The SPL must decode lz4_flex's LZ4 blocks
 

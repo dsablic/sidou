@@ -3,13 +3,16 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! SIDOU's FM-1 update package (`.fwsc`): a port of Felucca's `tools/fm1pkg_make.py` and the
 //! loader wrapping in its `tools/build.py` (Felucca a53ecf42, GPL-3.0-only, © 2026 Leo
-//! Kuroshita), with one difference: the flash head is M-VAVE's stock V15 head, verbatim.
+//! Kuroshita). Its output is byte for byte what fm1pkg_make.py makes from the same inputs.
 //!
 //! The package (Felucca's layout, the JieLi SDK's file formats):
 //! - `flash.bin`, the flash from 0 to the PRCT end (0x93000):
-//!   - the head `[0, 0x4000)`: stock V15's, byte for byte (flash header, JLFS entries, the
-//!     SPL, M-VAVE's isd_config). Neither Felucca's loader nor SIDOU's writes it; a tool that
-//!     writes the whole flash.bin leaves the head as it was;
+//!   - the head `[0, 0x4000)`: the JieLi SDK's default flash header, the JLFS entries, the
+//!     SDK's SPL (`uboot.boot`) and an isd_config blob that decodes to the chip key. It only
+//!     has to look like a package head: the update loader (Felucca's, SIDOU's) writes the
+//!     app area only, so a device keeps its own head (M-VAVE's isd_config) whatever this
+//!     one holds; the stock V15 package, on the way back, is checked against the device's
+//!     head by ota.c;
 //!   - the app area from 0x4000: `app_area_head`, `app.bin` (the firmware, padded to its
 //!     slot), the SDK's `cfg_tool.bin`, the region descriptors, and a `cfg` directory with
 //!     the SDK's default EQ table, scrambled per 32 bytes with the chip key (SFC);
@@ -18,9 +21,9 @@
 //! - in a `ufw` container whose first 20 blocks of 0x2F bytes are each followed by one marker
 //!   byte: together they spell the package identity (`FM-1_900`).
 //!
-//! Inputs that are not ours (two AC79 SDK files, Apache-2.0; the stock package) are fetched on
-//! first use into a cache, checked against pinned SHA-256s (`inputs.toml`), and never
-//! committed.
+//! The inputs that are not ours, three AC79 SDK files (Apache-2.0), are fetched on first use
+//! into a cache, checked against pinned SHA-256s (`inputs.toml`), and never committed. No
+//! byte of M-VAVE's firmware goes into a package.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -34,7 +37,7 @@ pub const APP_SLOT: usize = 0x8DFBC;
 pub const FLASH_SIZE: usize = 0x93000;
 /// The flash head.
 pub const HEAD_SIZE: usize = 0x4000;
-/// The FM-1's chip key (the stock head's isd_config decodes to it).
+/// The FM-1's chip key (the device head's isd_config decodes to it).
 pub const CHIP_KEY: u16 = 0x980F;
 /// Where the SPL loads the update loader (its loader.ld), and its largest size.
 pub const LOADER_LOAD: u32 = 0x01C0_A800;
@@ -50,6 +53,13 @@ pub const DEFAULT_PRODUCT: &str = "FM-1_900";
 /// The file name the SPL looks for in the update record.
 const LOADER_NAME: &[u8; 16] = b"usb_hid_ota.bin\0";
 const UFW_CHIP: &[u8] = b"AC791N";
+/// The flash header: JieLi SDK defaults (burner size 544, VID "0.01", flash size 0xFF000,
+/// fs_ver 0x10, PID "AC791N_STORY"), plain, without its CRC (fm1pkg_make.py FLASH_HDR).
+const FLASH_HDR: &str = "20022f104cc900f00f001010a4ff4e5d0b41e0cd781dc856417fb367cf9f";
+/// After the key blob in isd_config.ini, as Felucca's packages carry it.
+const ISD_TAIL: &[u8] = b"[FELUCCA]\r\n";
+/// Where the SPL goes in the head.
+const SPL_OFF: usize = 0xA0;
 const MARK_BLOCKS: usize = 20;
 const MARK_KEEP: usize = 0x2F;
 const MARK_UNUSED: u8 = 0x7D;
@@ -169,31 +179,102 @@ fn len32(n: usize) -> u32 {
     u32::try_from(n).expect("fits 32 bits")
 }
 
-/// The inputs that are not SIDOU's.
+/// The inputs that are not SIDOU's: three files of JieLi's AC79 SDK (Apache-2.0).
 pub struct Inputs {
-    /// Stock V15's flash head, `HEAD_SIZE` bytes.
-    pub head: Vec<u8>,
+    /// `cpu/wl82/tools/uboot.boot`: the SPL.
+    pub uboot: Vec<u8>,
     /// The AC79 SDK's `cpu/wl82/tools/cfg_tool.bin`.
     pub cfg_tool: Vec<u8>,
     /// The AC79 SDK's `cpu/wl82/tools/cfg/eq_cfg_hw.bin`.
     pub eq_cfg_hw: Vec<u8>,
 }
 
-/// flash.bin: the head as given, then the app area as Felucca's fm1pkg_make.py builds it.
-pub fn flash_image(inputs: &Inputs, app: &[u8]) -> Result<Vec<u8>> {
-    if inputs.head.len() != HEAD_SIZE {
-        return err(format!(
-            "the head is {} bytes, not {HEAD_SIZE}",
-            inputs.head.len()
-        ));
+/// 32 bytes that `chip_key` turns into `key`, then their CRC-16 (fm1pkg_make.py `key_blob`).
+pub fn key_blob(key: u16) -> [u8; 34] {
+    let mut d = [0u8; 34];
+    d[..16].fill(0x10); // sum 0 (mod 256): the threshold 0x55
+    for i in 0..16 {
+        d[16 + i] = d[15 - i] ^ if key >> i & 1 != 0 { 0x00 } else { 0xFF };
     }
+    let crc = crc16(&d[..32], 0);
+    d[32..].copy_from_slice(&crc.to_le_bytes());
+    d
+}
+
+/// The head (fm1pkg_make.py `flash_image`'s first part): the flash header and four JLFS
+/// entries (each ENC 0xFFFF), the SPL at 0xA0, isd_config right after it.
+pub fn head(uboot: &[u8], key: u16) -> Result<Vec<u8>> {
+    let mut isd = key_blob(key).to_vec();
+    isd.extend_from_slice(ISD_TAIL);
+    let isd_off = SPL_OFF + uboot.len();
+    if isd_off + isd.len() > HEAD_SIZE {
+        return err("the SPL does not fit in the head");
+    }
+    let mut h = vec![0xFFu8; HEAD_SIZE];
+    h[SPL_OFF..isd_off].copy_from_slice(uboot);
+    h[isd_off..isd_off + isd.len()].copy_from_slice(&isd);
+    let fh = (0..FLASH_HDR.len() / 2)
+        .map(|i| u8::from_str_radix(&FLASH_HDR[2 * i..2 * i + 2], 16).expect("hex"))
+        .collect::<Vec<u8>>();
+    let mut top = crc16(&fh, 0).to_le_bytes().to_vec();
+    top.extend_from_slice(&fh);
+    for e in [
+        entry(
+            crc16(uboot, 0),
+            len32(SPL_OFF),
+            len32(uboot.len()),
+            0x00,
+            0x00,
+            0,
+            Name::Text("uboot.boot"),
+        ),
+        entry(
+            crc16(&isd, 0),
+            len32(isd_off),
+            len32(isd.len()),
+            0x02,
+            0x80,
+            0,
+            Name::Text("isd_config.ini"),
+        ),
+        entry(
+            0xFFFF,
+            0x4000,
+            0xFFFF_FFFF,
+            0x81,
+            0xFF,
+            0,
+            Name::Text("app_dir_head"),
+        ),
+        entry(
+            0xFFFF,
+            0xFF000,
+            0x1000,
+            0x12,
+            0x01,
+            0xFFFF,
+            Name::Text("key_mac"),
+        ),
+    ] {
+        top.extend_from_slice(&e);
+    }
+    for block in top.chunks_mut(32) {
+        enc(block, 0xFFFF);
+    }
+    h[..top.len()].copy_from_slice(&top);
+    Ok(h)
+}
+
+/// flash.bin as Felucca's fm1pkg_make.py builds it: the head, then the app area.
+pub fn flash_image(inputs: &Inputs, app: &[u8]) -> Result<Vec<u8>> {
     if app.len() > APP_SLOT {
         return err(format!(
             "app is {} bytes, the slot is {APP_SLOT}",
             app.len()
         ));
     }
-    let key = head_chip_key(&inputs.head)?;
+    let key = CHIP_KEY;
+    let flash_head = head(&inputs.uboot, key)?;
     let (cfg_tool, eq) = (&inputs.cfg_tool, &inputs.eq_cfg_hw);
     let mut slot = app.to_vec();
     slot.resize(APP_SLOT, 0xFF);
@@ -290,7 +371,7 @@ pub fn flash_image(inputs: &Inputs, app: &[u8]) -> Result<Vec<u8>> {
         return err("the app area overflows flash.bin");
     }
     let mut flash = vec![0xFFu8; FLASH_SIZE];
-    flash[..HEAD_SIZE].copy_from_slice(&inputs.head);
+    flash[..HEAD_SIZE].copy_from_slice(&flash_head);
     flash[HEAD_SIZE..HEAD_SIZE + region.len()].copy_from_slice(&region);
     Ok(flash)
 }
@@ -537,11 +618,9 @@ pub fn sha256_hex(data: &[u8]) -> String {
 pub struct Pins {
     pub ac79_base: String,
     /// (path under the SDK's tools directory and the cache, SHA-256)
+    pub uboot: (String, String),
     pub cfg_tool: (String, String),
     pub eq_cfg_hw: (String, String),
-    pub stock_url: String,
-    pub stock_sha256: String,
-    pub stock_head_sha256: String,
 }
 
 impl Pins {
@@ -560,17 +639,15 @@ impl Pins {
         };
         Pins {
             ac79_base: val("ac79_base"),
+            uboot: pair("uboot"),
             cfg_tool: pair("cfg_tool"),
             eq_cfg_hw: pair("eq_cfg_hw"),
-            stock_url: val("stock_url"),
-            stock_sha256: val("stock_sha256"),
-            stock_head_sha256: val("stock_head_sha256"),
         }
     }
 }
 
 /// `path` if it holds the pinned bytes, else a fresh download from `url` (curl), checked.
-fn fetched(path: &Path, url: &str, sha: &str, fetch: bool) -> Result<Vec<u8>> {
+pub fn fetched(path: &Path, url: &str, sha: &str, fetch: bool) -> Result<Vec<u8>> {
     if let Ok(d) = std::fs::read(path) {
         if sha256_hex(&d) == sha {
             return Ok(d);
@@ -616,28 +693,12 @@ fn fetched(path: &Path, url: &str, sha: &str, fetch: bool) -> Result<Vec<u8>> {
     Ok(d)
 }
 
-/// The stock V15 head from the official package: its flash.bin's first `HEAD_SIZE` bytes.
-pub fn stock_head(fwsc: &[u8], pins: &Pins) -> Result<Vec<u8>> {
-    if sha256_hex(fwsc) != pins.stock_sha256 {
-        return err("not the unmodified official FM-1 V15 package");
-    }
-    let (_, flash) = ufw_file(fwsc, 0)?;
-    let head = flash
-        .get(..HEAD_SIZE)
-        .ok_or(Error("flash.bin too short".into()))?;
-    if sha256_hex(head) != pins.stock_head_sha256 {
-        return err("the V15 head is not the pinned one");
-    }
-    Ok(head.to_vec())
-}
-
 /// The repository's `build/` directory, the default cache.
 pub fn default_cache() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../build")
 }
 
-/// The inputs from the cache (`build/ac79/`, `build/stock/`), downloading what is missing when
-/// `fetch` is set.
+/// The inputs from the cache (`build/ac79/`), downloading what is missing when `fetch` is set.
 pub fn inputs(cache: &Path, fetch: bool) -> Result<Inputs> {
     let pins = Pins::get();
     let sdk = |(rel, sha): &(String, String)| {
@@ -648,22 +709,10 @@ pub fn inputs(cache: &Path, fetch: bool) -> Result<Inputs> {
             fetch,
         )
     };
-    let cfg_tool = sdk(&pins.cfg_tool)?;
-    let eq_cfg_hw = sdk(&pins.eq_cfg_hw)?;
-    let fwsc = fetched(
-        &cache.join("stock/FM-1.fwsc"),
-        &pins.stock_url,
-        &pins.stock_sha256,
-        fetch,
-    )?;
-    let head = stock_head(&fwsc, &pins)?;
-    if head_chip_key(&head)? != CHIP_KEY {
-        return err("the stock head's chip key is not the FM-1's");
-    }
     Ok(Inputs {
-        head,
-        cfg_tool,
-        eq_cfg_hw,
+        uboot: sdk(&pins.uboot)?,
+        cfg_tool: sdk(&pins.cfg_tool)?,
+        eq_cfg_hw: sdk(&pins.eq_cfg_hw)?,
     })
 }
 
@@ -717,6 +766,17 @@ mod tests {
         assert_ne!(x, plain);
         sfc(&mut x, CHIP_KEY);
         assert_eq!(x, plain);
+    }
+
+    #[test]
+    fn the_head_carries_the_chip_key() {
+        assert_eq!(chip_key(&key_blob(CHIP_KEY)), CHIP_KEY);
+        let h = head(&[0x5A; 1000], CHIP_KEY).unwrap();
+        assert_eq!(head_chip_key(&h).unwrap(), CHIP_KEY);
+        assert!(
+            head(&[0; 0x4000], CHIP_KEY).is_err(),
+            "an SPL too big for the head"
+        );
     }
 
     #[test]

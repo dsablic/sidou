@@ -89,11 +89,12 @@ cargo run --release -p sidou-pack -- \
 On first use it downloads the inputs that are not SIDOU's into `build/`,
 checked against the SHA-256s in `host/crates/sidou-pack/inputs.toml` (`curl`
 must be installed); `--offline` uses only what is there:
-- `build/ac79/`: two files of JieLi's AC79 SDK (Apache-2.0) that go into the
-  app area, from gitee;
-- `build/stock/FM-1.fwsc`: M-VAVE's official V15 package, from M-VAVE's
-  server. Only its flash head is used, verbatim: the package's head is
-  byte-identical to stock V15's (see [LICENSING.md](LICENSING.md)).
+- `build/ac79/`: three files of JieLi's AC79 SDK (Apache-2.0), from gitee:
+  the SPL for the package's head, built from SDK defaults as Felucca's
+  packages are, and two files for the app area.
+
+The update loader never writes the flash head, so a device keeps its own;
+no byte of M-VAVE's firmware goes into a package.
 
 Ship `LICENSES/Apache-2.0.txt` with every package. The package's identity is
 `FM-1_900` (`--product`; it must be the firmware's `SIDOU_PRODUCT`).

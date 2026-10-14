@@ -1,18 +1,17 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Packages with the real inputs: read back with fm1-emu's reader (`fm1_soc::fwsc`), and a
-//! golden hash. They need the cache (`build/ac79/`, `build/stock/`, which `sidou-pack`
-//! fills on first use) and skip without it.
+//! golden hash. They need the cache (`build/ac79/`, which `sidou-pack` fills on first use)
+//! and skip without it.
 
 use sidou_pack::{
-    default_cache, inputs, package, product_of, sha256_hex, ufw_file, unwrap_loader, Inputs,
-    APP_SLOT, DEFAULT_PRODUCT, FLASH_SIZE, HEAD_SIZE, LOADER_LOAD,
+    default_cache, head, head_chip_key, inputs, package, product_of, sha256_hex, ufw_file,
+    unwrap_loader, Inputs, APP_SLOT, CHIP_KEY, DEFAULT_PRODUCT, FLASH_SIZE, HEAD_SIZE, LOADER_LOAD,
 };
 
 /// The package of `tiny_app` and `tiny_loader` with the pinned inputs.
-/// Checked once against Felucca's fm1pkg_make.py on the same inputs (the stock head swapped in):
-/// byte-identical.
-const GOLDEN_SHA256: &str = "a696fc1710cada0ab0ebe1cef4c9e86363ac956eb56ec4cf15c34182d14660c2";
+/// Checked once against Felucca's fm1pkg_make.py on the same inputs: byte-identical.
+const GOLDEN_SHA256: &str = "43507c9a5f0ea8b6d4c3203a00fa49a33212423ac7ae2b97f229f0a9da406ce3";
 
 fn cached() -> Option<Inputs> {
     match inputs(&default_cache(), false) {
@@ -45,13 +44,14 @@ fn a_package_reads_back_with_fm1_emus_reader() {
     let (app, loader) = (tiny_app(), tiny_loader());
     let pkg = package(&inp, &app, &loader, DEFAULT_PRODUCT).unwrap();
     let u = fm1_soc::fwsc::unpack(&pkg).expect("fm1-emu reads the package");
-    // flash.bin: the stock head byte for byte, then the app area.
+    // flash.bin: the SDK-default head with the SDK's SPL and the chip key, then the app area.
     assert_eq!(u.raw.len(), FLASH_SIZE);
     assert_eq!(
         &u.raw[..HEAD_SIZE],
-        inp.head.as_slice(),
-        "the head is not stock V15's"
+        head(&inp.uboot, CHIP_KEY).unwrap().as_slice()
     );
+    assert_eq!(head_chip_key(&u.raw[..HEAD_SIZE]).unwrap(), CHIP_KEY);
+    assert_eq!(&u.raw[0xA0..0xA0 + inp.uboot.len()], inp.uboot.as_slice());
     assert_eq!(u.area, HEAD_SIZE);
     // The app area unscrambled: the directory and the app where the SPL maps it (0x02000120).
     let entry = u.entry("app.bin").expect("app.bin in the app area");
@@ -76,10 +76,6 @@ fn a_package_reads_back_with_fm1_emus_reader() {
         u32::from_le_bytes(ota[40..44].try_into().unwrap()),
         LOADER_LOAD
     );
-    // The stock V15 package reads the same way, and its head is the one we carry.
-    let stock = std::fs::read(default_cache().join("stock/FM-1.fwsc")).unwrap();
-    let s = fm1_soc::fwsc::unpack(&stock).unwrap();
-    assert_eq!(&s.raw[..HEAD_SIZE], &u.raw[..HEAD_SIZE]);
 }
 
 #[test]

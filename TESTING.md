@@ -18,7 +18,7 @@ lists the prerequisites.
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
-| Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/` and `build/stock/`, which `sidou-pack` fills, and skip without them) | `crates/sidou-pack/` |
+| Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
 | Emulator tests (gate, boot, live instrument, MIDI, SRAM audio, package) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
@@ -209,14 +209,19 @@ MIDI is covered by the host tests of the packet conversion
   nothing else is written; another board's package (flash.bin of another
   size) and a loader without the marker are refused before any erase; the
   next boot clears the staging area. It needs no downloads (a synthetic
-  head carries the chip key). fm1-emu has no USB, so this is where the
-  protocol and the package format meet before hardware.
+  device head carries the chip key). With M-VAVE's V15 package in
+  `build/stock/` (SHA-256 checked; read by the tests only, never packed), a
+  device with V15's head takes SIDOU's package without its head being
+  written, and the way back works: V15's own package passes `ota.c`'s
+  head-identity check and is staged, while a device whose head had been
+  changed would refuse it before any erase. fm1-emu has no USB, so this is
+  where the protocol and the package format meet before hardware.
 - `pack.rs` reads a package back with fm1-emu's reader (`fm1_soc::fwsc`): the
-  head is stock V15's byte for byte, the app is at `0x02000120` in the
-  unscrambled app area, the directory, the container and the loader's image
-  match; and a golden SHA-256 of a fixed tiny package, which Felucca's
-  `fm1pkg_make.py` reproduced byte for byte once (with the stock head swapped
-  in).
+  head is the SDK-default one with the SDK's SPL and the chip key, the app
+  is at `0x02000120` in the unscrambled app area, the directory, the
+  container and the loader's image match; and a golden SHA-256 of a fixed
+  tiny package, which Felucca's `fm1pkg_make.py` reproduced byte for byte
+  once.
 
 `crates/emu-gate/tests/package.rs` boots `sidou.fwsc` as fm1-emu boots a
 package (`stock_from_package` + `stock_boot`) with the A4 key held: it plays
@@ -283,7 +288,7 @@ request:
 | `asan` (Ubuntu, nightly Rust) | the tests with `SIDOU_SANITIZE=address` |
 | `msrv` (Ubuntu, Rust 1.87) | `cargo check` |
 | `reuse` | `reuse lint` |
-| `fm1` (Ubuntu) | the `fm1` build in Docker; `sidou-pack` makes `sidou.fwsc` (its inputs cached by `inputs.toml`'s hash) and its tests run with the inputs; the emulator tests (gate, boot, live, MIDI, SRAM, boot guard, package boot); a check that the JSON reports exist. The reports are uploaded as the `sid-budget` artifact, the package with `LICENSES/Apache-2.0.txt` and `LICENSES/GPL-3.0-only.txt` as `sidou-fwsc` |
+| `fm1` (Ubuntu) | the `fm1` build in Docker; `sidou-pack` makes `sidou.fwsc` (its inputs cached by `inputs.toml`'s hash) and its tests run with the inputs and with M-VAVE's V15 package (fetched and SHA-checked for the stock-return tests only); the emulator tests (gate, boot, live, MIDI, SRAM, boot guard, package boot); a check that the JSON reports exist. The reports are uploaded as the `sid-budget` artifact, the package with `LICENSES/Apache-2.0.txt` and `LICENSES/GPL-3.0-only.txt` as `sidou-fwsc` |
 
 Before opening a pull request, run at least:
 

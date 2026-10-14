@@ -69,7 +69,9 @@
 
 **Safety rules (these never change):**
 - Never send `F0 22 24 35 7D F7` (it drops the device into mask ROM mode).
-- The package's flash head must be byte-identical to stock V15.
+- Our update loader never writes the flash head: the device keeps its own.
+  Packages use SDK-default heads, as Felucca's do, and carry no M-VAVE
+  bytes. The stock V15 return path keeps its head-identity check.
 - Code that runs while XIP is off lives in `.ram_text`.
 - PB1 (battery) is only ever an analog input.
 - PA2 (backlight and the key matrix `/OE`) is only touched with interrupts

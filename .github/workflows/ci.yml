@@ -110,15 +110,29 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: host
-      # The package's inputs that are not ours (two AC79 SDK files, M-VAVE's V15 package for its
-      # flash head), pinned by SHA-256 in inputs.toml: cached, so a run need not reach gitee and
-      # M-VAVE's server; sidou-pack downloads and checks them on a miss.
+      # The package's inputs that are not ours (three AC79 SDK files), pinned by SHA-256 in
+      # inputs.toml: cached, so a run need not reach gitee; sidou-pack downloads and checks them
+      # on a miss.
       - uses: actions/cache@v4
         with:
-          path: |
-            build/ac79
-            build/stock
+          path: build/ac79
           key: sidou-pack-inputs-${{ hashFiles('host/crates/sidou-pack/inputs.toml') }}
+      # M-VAVE's official V15 package, for the packager's stock-return tests only (it never goes
+      # into a package): the SHA-256 Felucca's installer pins.
+      - uses: actions/cache@v4
+        with:
+          path: build/stock
+          key: fm1-stock-v15-db1642b2
+      - name: Fetch the V15 package for the tests
+        run: |
+          f=build/stock/FM-1.fwsc
+          sum=db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a
+          if ! echo "$sum  $f" | sha256sum -c --status 2>/dev/null; then
+            mkdir -p build/stock
+            curl -sSfL --retry 3 --connect-timeout 20 --max-time 300 -o "$f" \
+              https://yms-file-store.oss-cn-hongkong.aliyuncs.com/software/firmware/FM-1.fwsc
+            echo "$sum  $f" | sha256sum -c
+          fi
       - name: Package sidou.fwsc
         working-directory: host
         run: >-
@@ -126,7 +140,7 @@ jobs:
           --app ../build/fm1/platform/fm1/sidou_app.bin
           --loader ../build/fm1/platform/fm1/sidou_loader.bin
           -o ../build/fm1/sidou.fwsc
-      - name: Packager tests (with the inputs)
+      - name: Packager tests (with the inputs and the V15 package)
         working-directory: host
         run: cargo test --locked --release -p sidou-pack -- --nocapture
       - name: Emulator gate, boot, live, MIDI, SRAM, boot-guard and package tests
@@ -157,8 +171,7 @@ jobs:
             build/fm1/sidou_boot.json
             build/fm1/sidou_package.json
           if-no-files-found: warn
-      # The package, with the licence of the AC79 SDK files in it (and SIDOU's). Internal: the
-      # package carries M-VAVE's flash head (docs/TODO.md).
+      # The package, with the licence of the AC79 SDK files in it (and SIDOU's).
       - uses: actions/upload-artifact@v4
         with:
           name: sidou-fwsc

@@ -5,15 +5,20 @@
 //! (fm1_install.py's side: identity, read requests, "success"). fm1-emu has no USB, so this
 //! is where the protocol and the package format meet before hardware.
 //!
-//! Offline: the packages carry a synthetic head (the chip key in an isd_config blob, as
-//! Felucca's fm1pkg_make.py `key_blob` builds it) and stand-in SDK files.
+//! Offline, with stand-in SDK files; the device's own head is a synthetic one (the chip key
+//! in an isd_config blob). With M-VAVE's V15 package in the cache (`build/stock/FM-1.fwsc`,
+//! SHA-256 checked; only ever read by these tests, never put into a package), the device
+//! carries V15's head as a real FM-1 does, and the way back to stock is tested too.
 
 use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::sync::{Mutex, MutexGuard};
 
 use sidou_pack::harness::{ota_h_boot_cleanup, ota_h_service, ota_h_session, OtaHost};
-use sidou_pack::{crc16, enc, logical_image, ufw, ufw_file, wrap_loader, Inputs, CHIP_KEY};
+use sidou_pack::{
+    crc16, default_cache, enc, logical_image, sha256_hex, ufw, ufw_file, wrap_loader, Inputs,
+    CHIP_KEY, HEAD_SIZE,
+};
 
 const FLASH: usize = 1 << 20;
 const OTA_AREA: usize = 0xE0000;
@@ -220,7 +225,7 @@ fn synthetic_head() -> Vec<u8> {
 
 fn inputs() -> Inputs {
     Inputs {
-        head: synthetic_head(),
+        uboot: vec![0x33; 14536],
         cfg_tool: vec![0x11; 383],
         eq_cfg_hw: vec![0x22; 655],
     }
@@ -237,6 +242,28 @@ fn loader() -> Vec<u8> {
     let mut l = b"\x04\x88FELUCCA-LOADER-1".to_vec();
     l.extend((0..6000u32).map(|i| (i * 31 % 253) as u8));
     l
+}
+
+/// M-VAVE's official V15 package (the SHA-256 Felucca's installer pins), if the cache has it.
+const STOCK_V15_SHA256: &str = "db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a";
+
+fn stock_v15() -> Option<Vec<u8>> {
+    let path = default_cache().join("stock/FM-1.fwsc");
+    match std::fs::read(&path) {
+        Ok(d) if sha256_hex(&d) == STOCK_V15_SHA256 => Some(d),
+        _ => {
+            println!(
+                "skipping: no V15 package at {} (CI fetches it)",
+                path.display()
+            );
+            None
+        }
+    }
+}
+
+/// The head a real FM-1 carries: V15's (no package of ours ever writes it).
+fn device_head(stock: &[u8]) -> Vec<u8> {
+    ufw_file(stock, 0).unwrap().1[..HEAD_SIZE].to_vec()
 }
 
 fn package() -> Vec<u8> {
@@ -339,5 +366,52 @@ fn a_loader_without_the_marker_is_refused() {
     let mut dev = Device::new(&synthetic_head(), &mut inst);
     let before = dev.flash.clone();
     assert_eq!(dev.session(), -7);
+    assert!(dev.flash == before, "flash written");
+}
+
+#[test]
+fn a_device_with_the_stock_head_takes_our_package() {
+    let _one = exclusive();
+    let Some(stock) = stock_v15() else {
+        return;
+    };
+    let pkg = package();
+    let mut inst = Installer::new(&pkg);
+    let mut dev = Device::new(&device_head(&stock), &mut inst);
+    assert_eq!(dev.session(), 0);
+    assert_eq!(
+        &dev.flash[..HEAD_SIZE],
+        device_head(&stock).as_slice(),
+        "the head was written"
+    );
+}
+
+#[test]
+fn the_way_back_to_stock_v15_stays_open() {
+    let _one = exclusive();
+    let Some(stock) = stock_v15() else {
+        return;
+    };
+    // V15's package carries the official loader, which rewrites the head: ota.c lets it in only
+    // when its head is the device's, which ours never changed.
+    let mut inst = Installer::new(&stock);
+    let mut dev = Device::new(&device_head(&stock), &mut inst);
+    let rc = dev.session();
+    println!(
+        "V15 from SIDOU: ota.c code {rc}, {} read requests",
+        inst.reads.len()
+    );
+    assert_eq!(
+        (rc, dev.host.committed),
+        (0, 1),
+        "the return to V15 was refused"
+    );
+    // Had a tool written another head (say an SDK-default one), V15 would be refused before
+    // anything is erased.
+    let mut inst = Installer::new(&stock);
+    let other = sidou_pack::head(&[0x33; 14536], CHIP_KEY).unwrap();
+    let mut dev = Device::new(&other, &mut inst);
+    let before = dev.flash.clone();
+    assert_eq!(dev.session(), -5);
     assert!(dev.flash == before, "flash written");
 }
