@@ -3,6 +3,7 @@
 /* Everything the host tooling reaches through FFI. The include roots are core/, bench/
  * and app/. */
 #include "fx/fx.h"
+#include "fx/fx_slots.h"
 #include "sid/sid.h"
 #include "sid/sid_env.h"
 #include "sid/sid_filter.h"
