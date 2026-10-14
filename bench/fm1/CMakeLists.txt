@@ -7,7 +7,8 @@ foreach(chips 1 2)
     set_target_properties(${t} PROPERTIES SUFFIX ".elf")
     target_compile_definitions(${t} PRIVATE BENCH_CHIPS=${chips})
     target_link_libraries(${t} PRIVATE sidou_workload)
-    target_link_options(${t} PRIVATE -T ${CMAKE_CURRENT_SOURCE_DIR}/bench.ld -e _start)
+    target_link_options(${t} PRIVATE -T ${CMAKE_CURRENT_SOURCE_DIR}/bench.ld -e _start
+        --orphan-handling=error)
     # JieLi's objcopy takes one -j per run. bench.ld loads .data right after .text, and
     # main() copies it from there, so the image is the two concatenated.
     add_custom_command(TARGET ${t} POST_BUILD

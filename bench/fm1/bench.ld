@@ -15,3 +15,6 @@ SECTIONS
     .bss (NOLOAD) : { . = ALIGN(4); __bss_start = .; *(.bss*) *(.sbss*) *(COMMON) . = ALIGN(4); __bss_end = .; } > RAM
     /DISCARD/ : { *(.comment) *(.note*) }
 }
+/* The .bin is .text and .data joined (bench/fm1/CMakeLists.txt); main() copies .data from
+ * here. Any other section is an error, not an orphan: the link uses --orphan-handling=error. */
+ASSERT(LOADADDR(.data) == ADDR(.text) + SIZEOF(.text), "bench.ld: .data must load right after .text")
