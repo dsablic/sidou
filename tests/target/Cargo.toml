@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "sidou-target-tests"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "GPL-3.0-or-later"
+
+[dependencies]
+
+[dev-dependencies]
+fm1-core = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "e52f4640157f490f8c3af778dd044e9d33e989e8" }
+fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "e52f4640157f490f8c3af778dd044e9d33e989e8" }
+object = { version = "0.36", default-features = false, features = ["read", "elf", "std"] }
+serde_json = "1"
+
+[build-dependencies]
+cc = "1"
+
+[profile.test]
+opt-level = 3
