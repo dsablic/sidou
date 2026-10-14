@@ -23,9 +23,12 @@ void audio_init(void);
 void* audio_sink_ctx(void);
 /* Makes the main loop's writes so far visible to the interrupt (once per pass). */
 void audio_commit(void);
-/* Applies everything queued so far; from then on only audio_fill drains. Before the audio
- * interrupt is enabled. */
+/* Applies everything queued so far. Before the audio interrupt is enabled. */
 void audio_start(void);
+/* Right after interrupts are enabled: from then on only audio_fill drains, and a producer
+ * waiting for room sleeps until the next interrupt. Between audio_start and this call
+ * nothing may write to live (the ISR may already drain, and a wait would drain too). */
+void audio_irqs_on(void);
 /* AUDIO_HALF_WORDS words: the SID's mono output on both channels, 24-bit left-justified
  * ((int32)sample << 8). Called from the ALNK0 interrupt. */
 void audio_fill(int32_t* out);

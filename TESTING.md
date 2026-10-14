@@ -164,7 +164,12 @@ panel (keys, encoders, the MASTER pot) and checks:
   changes, and a held note redraws one strip;
 - the 6581/8580 toggle: `sid_init` runs in the main loop only (the test counts
   its instructions per call), no audio block gets near the block's
-  instruction budget, no block is silent, and the FX LED lights.
+  instruction budget, no block is silent, and the FX LED lights; the device's
+  `chips` state, read from emulated RAM through its ELF symbol, shows the
+  active chip flipping on each FX press with the right spare model and no lost
+  reset;
+- the main loop stays under 5M instructions/s (about 2 % of the core) idle and
+  with a key held.
 
 ## Sanitizers
 

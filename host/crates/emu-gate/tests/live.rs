@@ -5,7 +5,11 @@
 
 mod common;
 
+use std::mem::offset_of;
+
 use common::{build_dir, Firmware, Machine};
+use fm1_core::Bus;
+use sidou_sys::{reg_ring_chips, SID_MODEL_6581, SID_MODEL_8580};
 use sidou_tests::signal_metrics::estimate_f0;
 
 /// 24 MHz / 544, the I2S frame rate.
@@ -85,6 +89,27 @@ fn power_above(x: &[f32], hz: f64) -> f64 {
         }
     }
     above / total
+}
+
+/// The device's two chips (platform/fm1/audio.c `chips`), read from emulated RAM. The
+/// struct has no pointers, so the host build's layout (sidou-sys) is the device's.
+#[derive(Debug, PartialEq)]
+struct Chips {
+    active: u8,
+    spare_ready: u8,
+    spare_model: u8,
+    lost_resets: u32,
+}
+
+fn chips(m: &mut Machine, fw: &Firmware) -> Chips {
+    let base = fw.symbol("chips");
+    let at = |o: usize| base + o as u32;
+    Chips {
+        active: m.soc.read8(at(offset_of!(reg_ring_chips, active))),
+        spare_ready: m.soc.read8(at(offset_of!(reg_ring_chips, spare_ready))),
+        spare_model: m.soc.read8(at(offset_of!(reg_ring_chips, spare_model))),
+        lost_resets: m.soc.read32(at(offset_of!(reg_ring_chips, lost_resets))),
+    }
 }
 
 fn peak(x: &[f32]) -> f32 {
@@ -243,6 +268,16 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
     let blocks_before = m.alnk_blocks.len();
     let quiet_before = m.alnk_blocks.iter().copied().max().unwrap_or(0);
 
+    // live_init's reset at boot took chip 1, initialised for the 6581.
+    let boot_state = chips(&mut m, &fw);
+    let expect = |active, model| Chips {
+        active,
+        spare_ready: 0,
+        spare_model: model as u8,
+        lost_resets: 0,
+    };
+    assert_eq!(boot_state, expect(1, SID_MODEL_6581), "after boot");
+
     let from = m.soc.periph.audio.len() / 2;
     tap(&mut m, FX);
     m.run_ms(200);
@@ -250,6 +285,12 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
     m.soc.periph.led_take();
     m.run_ms(50);
     let fx_led = m.soc.periph.led_take()[usize::from(FX)];
+    let first = chips(&mut m, &fw);
+    assert_eq!(first, expect(0, SID_MODEL_8580), "after the first FX");
+    tap(&mut m, FX);
+    m.run_ms(100);
+    let second = chips(&mut m, &fw);
+    assert_eq!(second, expect(1, SID_MODEL_6581), "after the second FX");
 
     let toggle_blocks = &m.alnk_blocks[blocks_before..];
     let worst = toggle_blocks.iter().copied().max().unwrap_or(0);
@@ -267,15 +308,16 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
         "silent_blocks_across_toggle": silent_blocks,
         "f0_after_hz": f0,
         "fx_led": fx_led,
+        "chips_after_boot_fx_fx": format!("{boot_state:?} {first:?} {second:?}"),
     });
     println!("{report}");
 
-    // At boot reg_ring_chips_init and live_init's reset, then the toggle: all three in the
-    // main loop (the watch counts main-loop calls only), and the blocks stay small, so none
-    // ran in the interrupt.
+    // At boot reg_ring_chips_init and live_init's reset, then the two toggles: all four in
+    // the main loop (the watch counts main-loop calls only), and the blocks stay small, so
+    // none ran in the interrupt.
     assert_eq!(
         calls.len(),
-        3,
+        4,
         "sid_init calls from the main loop: {calls:?}"
     );
     assert!(
@@ -307,4 +349,39 @@ fn master_turns_the_volume_down() {
         soft < loud * 0.6,
         "MASTER 900 -> 300 left the peak at {soft} (was {loud})"
     );
+}
+
+/// Main-loop instructions per second of emulated time over `ms`.
+fn main_rate(m: &mut Machine, ms: u64) -> f64 {
+    let before = m.main_steps;
+    m.run_ms(ms);
+    (m.main_steps - before) as f64 * 1000.0 / ms as f64
+}
+
+#[test]
+fn the_main_loop_is_cheap_when_idle() {
+    let Some((_, fw)) = fixture("the live test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    let idle = main_rate(&mut m, 500);
+    m.key(key_id(A4), true);
+    m.run_ms(100);
+    let held = main_rate(&mut m, 500);
+    println!(
+        "main loop: {:.2}M instructions/s idle, {:.2}M with a held key ({:.1} % and {:.1} % of 240 MHz)",
+        idle / 1e6,
+        held / 1e6,
+        idle / 2.4e6,
+        held / 2.4e6
+    );
+    // 52.5M/s (22 % of the core) before the main loop was paced by the key scan's frames
+    // and the screen by a dirty-strip mask; 1.4M/s after.
+    for (what, rate) in [("idle", idle), ("with a held key", held)] {
+        assert!(
+            rate < 5e6,
+            "the main loop runs {:.2}M instructions/s {what}",
+            rate / 1e6
+        );
+    }
 }

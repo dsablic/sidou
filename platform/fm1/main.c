@@ -82,8 +82,16 @@ static void fm1_fault(const fm1_crash_t* c) {
 }
 
 /* One main-loop pass: the panel into the instrument, the 100 Hz work, then the queued
- * register writes go to the audio interrupt in one batch. */
-static void play(uint32_t now, uint32_t* next_tick) {
+ * register writes go to the audio interrupt in one batch. The panel only changes when the
+ * key scan finishes a frame (~1.1 ms), so a wake-up from the 10 kHz tick in between does
+ * nothing here. */
+static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
+    uint32_t frame = input_frame();
+    int tick_due = (int32_t)(now - *next_tick) >= 0;
+    if (frame == *last_frame && !tick_due) {
+        return;
+    }
+    *last_frame = frame;
     input_poll(&front, &instrument);
     for (uint32_t n = 0; n < TICK_CATCH_UP && (int32_t)(now - *next_tick) >= 0; n++) {
         *next_tick += TICK_MS;
@@ -110,11 +118,13 @@ static void sidou_main(void) {
     fm1_audio_init(abuf, AUDIO_HALF_WORDS, isr_alnk0, PRIO_ALNK0);
     fm1_timer5_start(isr_timer5, PRIO_TIMER5);
     fm1_irq_enable_all();
+    audio_irqs_on();
     uint32_t next_tick = uptime_ms + TICK_MS;
+    uint32_t last_frame = input_frame();
     for (;;) {
         fm1_wdt_feed();
         uint32_t now = uptime_ms;
-        play(now, &next_tick);
+        play(now, &next_tick, &last_frame);
         ui_poll(&instrument, now);
         /* Sleep until the next interrupt: saves power, and fm1-emu skips ahead. */
         __asm__ volatile("idle");

@@ -14,7 +14,12 @@
 void input_init(void);
 /* From the 10 kHz TIMER5 interrupt: one matrix column. */
 void input_tick_isr(void);
-/* Main loop: button, note-key and encoder changes since the last call into live. */
+/* The key scan's frame count (one frame = 11 TIMER5 ticks, ~1.1 ms): the debounced state
+ * and the edges only change when it does. */
+uint32_t input_frame(void);
+/* Main loop: button, note-key and encoder changes since the last call into live.
+ * Only once interrupts are on: its critical sections end with fm1__unlock, which always
+ * re-enables interrupts (sti), whatever the state before. */
 void input_poll(panel* p, live* l);
 /* Main loop: the MASTER pot, 0..1023, or -1 on an ADC timeout. */
 int32_t input_master(void);

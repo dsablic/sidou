@@ -130,7 +130,8 @@ pub struct Machine {
     pub watched_calls: Vec<u64>,
     watch: Option<u32>,
     open_call: Option<OpenCall>,
-    main_steps: u64,
+    /// Instructions run outside interrupts (the main loop).
+    pub main_steps: u64,
 }
 
 impl Machine {

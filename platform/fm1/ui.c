@@ -27,6 +27,7 @@
 static uint8_t want[ROWS][COLS];  /* the screen as it should be */
 static uint8_t shown[ROWS][COLS]; /* the screen as the panel has it */
 static uint32_t last_compose;
+static uint32_t dirty; /* bit s: strip s differs from what the panel has */
 
 static const char* const NOTE_NAMES[12] = {"C",  "C#", "D",  "D#", "E",  "F",
                                            "F#", "G",  "G#", "A",  "A#", "B"};
@@ -159,6 +160,15 @@ static int strip_dirty(uint32_t s) {
     return 0;
 }
 
+/* After compose: the strips whose cells changed. */
+static void mark_dirty(void) {
+    for (uint32_t s = 0; s < LCD_STRIPS; s++) {
+        if (strip_dirty(s)) {
+            dirty |= 1u << s;
+        }
+    }
+}
+
 void ui_init(const live* l) {
     compose(l);
     for (uint32_t s = 0; s < LCD_STRIPS; s++) {
@@ -172,12 +182,14 @@ void ui_poll(const live* l, uint32_t now_ms) {
     if (now_ms - last_compose >= UI_PERIOD_MS) {
         last_compose = now_ms;
         compose(l);
+        mark_dirty();
     }
-    if (lcd_busy()) {
+    if (!dirty || lcd_busy()) {
         return;
     }
     for (uint32_t s = 0; s < LCD_STRIPS; s++) {
-        if (strip_dirty(s)) {
+        if (dirty & (1u << s)) {
+            dirty &= ~(1u << s);
             draw_strip(s);
             return;
         }

@@ -20,6 +20,10 @@ void input_tick_isr(void) {
     fm1_input_tick();
 }
 
+uint32_t input_frame(void) {
+    return fm1_in.frames;
+}
+
 int32_t input_master(void) {
     return fm1_adc_read(FM1_ADC_MASTER);
 }

@@ -11,7 +11,8 @@ static reg_ring ring;
 static reg_ring_out out;
 static volatile uint8_t running;
 
-/* reg_ring_out.wait: the producer needs the interrupt to drain. */
+/* reg_ring_out.wait: the producer needs the interrupt to drain. Before audio_irqs_on the
+ * interrupts are off, and an idle would never wake: drain here instead. */
 static void wait_for_drain(void* ctx) {
     (void)ctx;
     if (!running) {
@@ -42,6 +43,9 @@ void audio_commit(void) {
 void audio_start(void) {
     reg_ring_commit(&ring);
     reg_ring_drain(&ring, &chips);
+}
+
+void audio_irqs_on(void) {
     running = 1;
 }
 

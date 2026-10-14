@@ -399,3 +399,33 @@ fn a_full_ring_of_gate_writes_ends_with_the_last_gate() {
     });
     assert_same_sound(&mut dev, &mut direct);
 }
+
+#[test]
+fn the_documented_worst_pass_fits_exactly_without_waiting() {
+    // REG_RING_WORST_PASS entries in one pass, as the sink sees them: a model change (the
+    // reset waits for an empty ring) and every register after it, then single writes.
+    let mut dev = Device::new(SID_MODEL_6581);
+    let mut direct = Direct::new(SID_MODEL_6581);
+    dev.block();
+    let sink = |reg: u8, value: u8, dev: &mut Device, direct: &mut Direct| {
+        let o: *mut reg_ring_out = &mut *dev.out;
+        unsafe { reg_ring_sink(o.cast(), reg, value) };
+        let t = direct.live.sink_ctx;
+        unsafe { live_sid_sink(t, reg, value) };
+    };
+    sink(RESET, SID_MODEL_8580 as u8, &mut dev, &mut direct);
+    for i in 1..REG_RING_WORST_PASS {
+        // cycle through every SID register with changing values
+        sink((i % 25) as u8, (i * 7) as u8, &mut dev, &mut direct);
+    }
+    assert_eq!(unsafe { reg_ring_used(&*dev.ring) }, REG_RING_WORST_PASS);
+    assert_eq!(
+        dev.out.full_waits, 0,
+        "the documented worst pass waited for room"
+    );
+    assert_eq!(dev.out.reset_waits, 0);
+    dev.block();
+    assert_eq!(dev.chips.lost_resets, 0);
+    assert_eq!(dev.chip().model, SID_MODEL_8580);
+    assert_same_sound(&mut dev, &mut direct);
+}
