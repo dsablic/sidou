@@ -408,4 +408,162 @@ osc3_cases! {
     osc3_pulse_narrow_every_7_cycles_csg8580: SID_MODEL_8580, 0x40, 0x080, 7;
     osc3_pulse_square_every_7_cycles_csg8580: SID_MODEL_8580, 0x40, 0x800, 7;
     osc3_noise_every_7_cycles_csg8580: SID_MODEL_8580, 0x80, 0x000, 7;
+    osc3_combined_st_mos6581: SID_MODEL_6581, 0x30, 0x000, CYCLES_PER_FRAME;
+    osc3_combined_st_every_7_cycles_mos6581: SID_MODEL_6581, 0x30, 0x000, 7;
+    osc3_combined_pt_mos6581: SID_MODEL_6581, 0x50, 0x800, CYCLES_PER_FRAME;
+    osc3_combined_pt_every_7_cycles_mos6581: SID_MODEL_6581, 0x50, 0x800, 7;
+    osc3_combined_pt_narrow_mos6581: SID_MODEL_6581, 0x50, 0x100, CYCLES_PER_FRAME;
+    osc3_combined_pt_narrow_every_7_cycles_mos6581: SID_MODEL_6581, 0x50, 0x100, 7;
+    osc3_combined_ps_mos6581: SID_MODEL_6581, 0x60, 0x800, CYCLES_PER_FRAME;
+    osc3_combined_ps_every_7_cycles_mos6581: SID_MODEL_6581, 0x60, 0x800, 7;
+    osc3_combined_ps_narrow_mos6581: SID_MODEL_6581, 0x60, 0x100, CYCLES_PER_FRAME;
+    osc3_combined_ps_narrow_every_7_cycles_mos6581: SID_MODEL_6581, 0x60, 0x100, 7;
+    osc3_combined_pst_mos6581: SID_MODEL_6581, 0x70, 0x800, CYCLES_PER_FRAME;
+    osc3_combined_pst_every_7_cycles_mos6581: SID_MODEL_6581, 0x70, 0x800, 7;
+    osc3_combined_pst_narrow_mos6581: SID_MODEL_6581, 0x70, 0x100, CYCLES_PER_FRAME;
+    osc3_combined_pst_narrow_every_7_cycles_mos6581: SID_MODEL_6581, 0x70, 0x100, 7;
+    osc3_combined_nt_mos6581: SID_MODEL_6581, 0x90, 0x000, CYCLES_PER_FRAME;
+    osc3_combined_nt_every_7_cycles_mos6581: SID_MODEL_6581, 0x90, 0x000, 7;
+    osc3_combined_ns_mos6581: SID_MODEL_6581, 0xa0, 0x000, CYCLES_PER_FRAME;
+    osc3_combined_ns_every_7_cycles_mos6581: SID_MODEL_6581, 0xa0, 0x000, 7;
+    osc3_combined_nst_mos6581: SID_MODEL_6581, 0xb0, 0x000, CYCLES_PER_FRAME;
+    osc3_combined_nst_every_7_cycles_mos6581: SID_MODEL_6581, 0xb0, 0x000, 7;
+    osc3_combined_np_mos6581: SID_MODEL_6581, 0xc0, 0x800, CYCLES_PER_FRAME;
+    osc3_combined_np_every_7_cycles_mos6581: SID_MODEL_6581, 0xc0, 0x800, 7;
+    osc3_combined_np_narrow_mos6581: SID_MODEL_6581, 0xc0, 0x100, CYCLES_PER_FRAME;
+    osc3_combined_np_narrow_every_7_cycles_mos6581: SID_MODEL_6581, 0xc0, 0x100, 7;
+    osc3_combined_npt_mos6581: SID_MODEL_6581, 0xd0, 0x800, CYCLES_PER_FRAME;
+    osc3_combined_npt_every_7_cycles_mos6581: SID_MODEL_6581, 0xd0, 0x800, 7;
+    osc3_combined_nps_mos6581: SID_MODEL_6581, 0xe0, 0x100, CYCLES_PER_FRAME;
+    osc3_combined_nps_every_7_cycles_mos6581: SID_MODEL_6581, 0xe0, 0x100, 7;
+    osc3_combined_npst_mos6581: SID_MODEL_6581, 0xf0, 0x100, CYCLES_PER_FRAME;
+    osc3_combined_npst_every_7_cycles_mos6581: SID_MODEL_6581, 0xf0, 0x100, 7;
+    osc3_combined_st_csg8580: SID_MODEL_8580, 0x30, 0x000, CYCLES_PER_FRAME;
+    osc3_combined_st_every_7_cycles_csg8580: SID_MODEL_8580, 0x30, 0x000, 7;
+    osc3_combined_pt_csg8580: SID_MODEL_8580, 0x50, 0x800, CYCLES_PER_FRAME;
+    osc3_combined_pt_every_7_cycles_csg8580: SID_MODEL_8580, 0x50, 0x800, 7;
+    osc3_combined_pt_narrow_csg8580: SID_MODEL_8580, 0x50, 0x100, CYCLES_PER_FRAME;
+    osc3_combined_pt_narrow_every_7_cycles_csg8580: SID_MODEL_8580, 0x50, 0x100, 7;
+    osc3_combined_ps_csg8580: SID_MODEL_8580, 0x60, 0x800, CYCLES_PER_FRAME;
+    osc3_combined_ps_every_7_cycles_csg8580: SID_MODEL_8580, 0x60, 0x800, 7;
+    osc3_combined_ps_narrow_csg8580: SID_MODEL_8580, 0x60, 0x100, CYCLES_PER_FRAME;
+    osc3_combined_ps_narrow_every_7_cycles_csg8580: SID_MODEL_8580, 0x60, 0x100, 7;
+    osc3_combined_pst_csg8580: SID_MODEL_8580, 0x70, 0x800, CYCLES_PER_FRAME;
+    osc3_combined_pst_every_7_cycles_csg8580: SID_MODEL_8580, 0x70, 0x800, 7;
+    osc3_combined_pst_narrow_csg8580: SID_MODEL_8580, 0x70, 0x100, CYCLES_PER_FRAME;
+    osc3_combined_pst_narrow_every_7_cycles_csg8580: SID_MODEL_8580, 0x70, 0x100, 7;
+    osc3_combined_nt_csg8580: SID_MODEL_8580, 0x90, 0x000, CYCLES_PER_FRAME;
+    osc3_combined_nt_every_7_cycles_csg8580: SID_MODEL_8580, 0x90, 0x000, 7;
+    osc3_combined_ns_csg8580: SID_MODEL_8580, 0xa0, 0x000, CYCLES_PER_FRAME;
+    osc3_combined_ns_every_7_cycles_csg8580: SID_MODEL_8580, 0xa0, 0x000, 7;
+    osc3_combined_nst_csg8580: SID_MODEL_8580, 0xb0, 0x000, CYCLES_PER_FRAME;
+    osc3_combined_nst_every_7_cycles_csg8580: SID_MODEL_8580, 0xb0, 0x000, 7;
+    osc3_combined_np_csg8580: SID_MODEL_8580, 0xc0, 0x800, CYCLES_PER_FRAME;
+    osc3_combined_np_every_7_cycles_csg8580: SID_MODEL_8580, 0xc0, 0x800, 7;
+    osc3_combined_np_narrow_csg8580: SID_MODEL_8580, 0xc0, 0x100, CYCLES_PER_FRAME;
+    osc3_combined_np_narrow_every_7_cycles_csg8580: SID_MODEL_8580, 0xc0, 0x100, 7;
+    osc3_combined_npt_csg8580: SID_MODEL_8580, 0xd0, 0x800, CYCLES_PER_FRAME;
+    osc3_combined_npt_every_7_cycles_csg8580: SID_MODEL_8580, 0xd0, 0x800, 7;
+    osc3_combined_nps_csg8580: SID_MODEL_8580, 0xe0, 0x100, CYCLES_PER_FRAME;
+    osc3_combined_nps_every_7_cycles_csg8580: SID_MODEL_8580, 0xe0, 0x100, 7;
+    osc3_combined_npst_csg8580: SID_MODEL_8580, 0xf0, 0x100, CYCLES_PER_FRAME;
+    osc3_combined_npst_every_7_cycles_csg8580: SID_MODEL_8580, 0xf0, 0x100, 7;
+}
+
+/* Noise through TEST and combined waveforms, read every 7 cycles where it matters.
+ * Voice 3 at 0x7531, which clocks the LFSR every 35 or 36 cycles (accumulator bit 19
+ * rises at cycles 6, 41, 76, ... from power-on, and 18 cycles after a TEST release). */
+fn noise_script(model_writes: &[(u64, u8)], frames: u64, interval: u64) -> Script {
+    let mut writes = vec![
+        at(0, FREQ_LO, 0x31),
+        at(0, FREQ_HI, 0x75),
+        at(0, PW_LO, 0x00),
+        at(0, PW_HI, 0x01),
+    ];
+    for &(cycle, control) in model_writes {
+        writes.push(TimedWrite {
+            cycle,
+            reg: CONTROL,
+            value: control,
+        });
+    }
+    writes.sort_by_key(|w| w.cycle);
+    Script {
+        writes,
+        frames,
+        interval,
+    }
+}
+
+const F: u64 = CYCLES_PER_FRAME;
+
+fn osc3_script_matches(model: sid_model, script: &Script) {
+    if let Some(m) = reads_mismatch(model, OSC3, script) {
+        panic!("{m}");
+    }
+}
+
+macro_rules! osc3_script_cases {
+    ($($name:ident: $writes:expr, $frames:expr, $interval:expr;)*) => {$(
+        #[test]
+        fn $name() {
+            for model in [SID_MODEL_6581, SID_MODEL_8580] {
+                osc3_script_matches(model, &noise_script(&$writes, $frames, $interval));
+            }
+        }
+    )*};
+}
+
+osc3_script_cases! {
+    /* The power-on LFSR, then TEST for less than the reset time, and for longer
+     * (on the 6581 the register then fades towards all ones). */
+    osc3_noise_from_power_on_every_7_cycles: [(0, 0x80)], 1, 7;
+    osc3_noise_through_short_test: [(0, 0x80), (2 * F, 0x88), (3 * F, 0x80)], 6, 7;
+    osc3_noise_through_long_test: [(0, 0x80), (F, 0x88), (40 * F, 0x80)], 45, 101;
+    /* A TEST set one cycle (42) or right (78) after bit 19 rises flushes the pending
+     * shift. */
+    osc3_noise_test_right_after_a_clock: [(0, 0x80), (42, 0x88), (60, 0x80), (78, 0x88), (100, 0x80)], 1, 1;
+    /* Combined with noise, the output pulls the LFSR bits down until it locks up;
+     * TEST brings it back. */
+    osc3_noise_locks_up_combined_with_pulse: [(0, 0x80), (F, 0xc0), (5 * F, 0x80), (6 * F, 0x88), (7 * F, 0x80)], 9, 7;
+    osc3_noise_locks_up_combined_with_saw: [(0, 0x80), (F, 0xa0), (5 * F, 0x80), (6 * F, 0x88), (7 * F, 0x80)], 9, 7;
+    osc3_noise_locks_up_combined_with_triangle: [(0, 0x80), (F, 0x90), (3 * F, 0xf0), (5 * F, 0x80), (6 * F, 0x88), (7 * F, 0x80)], 9, 7;
+    /* Releasing TEST into another waveform: the write-back rules of shift_phase2. */
+    osc3_test_release_into_combined_waveforms: [(0, 0x80), (F, 0xb8), (2 * F, 0xa0), (3 * F, 0xd8), (4 * F, 0xe0), (5 * F, 0x98), (6 * F, 0x80), (7 * F, 0xf8), (8 * F, 0xc0)], 10, 7;
+}
+
+/* Switching between sawtooth combinations every 997 cycles lands some switches with the
+ * accumulator in its upper half, where the 6581 pulls the MSB down only once the new
+ * output's top bit is low. */
+fn saw_switches() -> Vec<(u64, u8)> {
+    let controls = [0x20u8, 0x60, 0x30, 0x20, 0x70, 0x60, 0x40, 0x30];
+    (0..20u64)
+        .map(|i| (i * 997, controls[i as usize % controls.len()]))
+        .collect()
+}
+
+/* Ring modulation by voice 2, alone and with noise combinations (cycle by cycle). */
+fn ring_script(control: u8) -> Script {
+    let mut script = noise_script(&[(0, control)], 1, 7);
+    script.writes.push(at(0, 0x07, 0x89));
+    script.writes.push(at(0, 0x08, 0x2b));
+    script.writes.sort_by_key(|w| w.cycle);
+    script
+}
+
+#[test]
+fn osc3_switching_saw_combinations_every_7_cycles() {
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        osc3_script_matches(model, &noise_script(&saw_switches(), 1, 7));
+    }
+}
+
+#[test]
+fn osc3_ring_modulation_every_7_cycles() {
+    for control in [0x14u8, 0x54, 0x94, 0xd4] {
+        for model in [SID_MODEL_6581, SID_MODEL_8580] {
+            let m = reads_mismatch(model, OSC3, &ring_script(control));
+            assert!(m.is_none(), "control {control:#04x}: {}", m.unwrap());
+        }
+    }
 }

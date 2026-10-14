@@ -18,4 +18,12 @@ mod bindings {
 
 pub use bindings::*;
 
+/// Field offsets and sizes of the core's and the app's structs as the pi32v2 firmware lays
+/// them out (ILP32), for reading them from an emulated device's RAM: `ilp32::sid::fc`,
+/// `ilp32::sid::SIZE`. The host's layout differs wherever a struct holds a pointer.
+pub mod ilp32 {
+    #![allow(non_snake_case, non_upper_case_globals, dead_code)]
+    include!(concat!(env!("OUT_DIR"), "/ilp32.rs"));
+}
+
 pub mod workload;

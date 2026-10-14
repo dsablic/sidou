@@ -99,6 +99,9 @@ fn main() {
         // don't: the reference should follow strict IEEE semantics like our own core.
         .warnings(false)
         .flag("-w")
+        // No fused multiply-add, so the tables sidou-tablegen takes from reSIDfp come out
+        // the same on every host (arm64 compilers contract by default, x86-64 ones don't).
+        .flag("-ffp-contract=off")
         .files(SOURCES.iter().map(|s| src.join(s)))
         .file(manifest.join("shim.cpp"));
     sanitize::apply_sanitizer(&mut build);

@@ -571,6 +571,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sidou-tablegen"
+version = "0.0.0"
+dependencies = [
+ "residfp-sys",
+]
+
+[[package]]
 name = "sidou-tests"
 version = "0.0.0"
 dependencies = [

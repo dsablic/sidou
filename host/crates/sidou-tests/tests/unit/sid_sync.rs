@@ -21,7 +21,7 @@ fn setup() -> (sid_osc, sid_osc) {
 #[test]
 fn resets_target_when_source_msb_rises_on_the_last_cycle() {
     let (mut target, mut src) = setup();
-    unsafe { sid_osc_advance(&mut src, 1) }; // 0x7ff000 -> 0x801000: rose this cycle
+    unsafe { sid_osc_advance(&mut src, 1, 0, 0) }; // 0x7ff000 -> 0x801000: rose this cycle
     assert_eq!(src.msb_rose, 1);
     unsafe { sid_osc_sync(&mut target, &src) };
     assert_eq!(target.acc, 0);
@@ -30,7 +30,7 @@ fn resets_target_when_source_msb_rises_on_the_last_cycle() {
 #[test]
 fn target_keeps_cycles_that_elapsed_after_the_rise() {
     let (mut target, mut src) = setup();
-    unsafe { sid_osc_advance(&mut src, 2) }; // rose one full cycle before the end of the step
+    unsafe { sid_osc_advance(&mut src, 2, 0, 0) }; // rose one full cycle before the end of the step
     assert_eq!(src.msb_rose, 1);
     unsafe { sid_osc_sync(&mut target, &src) };
     assert_eq!(target.acc, 0x1000);
@@ -40,6 +40,6 @@ fn target_keeps_cycles_that_elapsed_after_the_rise() {
 fn no_rise_no_reset() {
     let (_target, mut src) = setup();
     src.acc = 0;
-    unsafe { sid_osc_advance(&mut src, 2) };
+    unsafe { sid_osc_advance(&mut src, 2, 0, 0) };
     assert_eq!(src.msb_rose, 0);
 }

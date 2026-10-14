@@ -17,6 +17,7 @@ lists the prerequisites.
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Register reads (OSC3, ENV3) | `cargo test --release -p sidou-tests --test register_reads` | `crates/sidou-tests/tests/register_reads.rs` |
+| Generated tables (drift) | `cargo test --release -p sidou-tablegen` | `crates/sidou-tablegen/`, `core/sid/gen/` |
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
 | Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
@@ -114,8 +115,12 @@ must be equal:
 - **ENV3**: every attack, decay and release rate, gate changes in the middle
   of each phase, the ADSR delay bug, sustain changes during decay, and the
   power-on release from 0xaa;
-- **OSC3**: triangle, sawtooth, pulse (three widths) and noise, each at four
-  frequencies; with no waveform selected, SIDOU reads 0 where reSIDfp holds
+- **OSC3**: triangle, sawtooth, pulse (three widths) and noise, and every
+  combined waveform with and without noise, each at four frequencies; noise
+  through TEST (short and long enough to fade), a TEST right after an LFSR
+  clock, lock-up when combined with other waveforms, TEST releases into
+  combined waveforms, switches between sawtooth combinations, and ring
+  modulation. With no waveform selected, SIDOU reads 0 where reSIDfp holds
   the last value, and a test pins both.
 
 Neither engine renders audio here: SIDOU advances with `sid_clock`, reSIDfp
@@ -125,6 +130,20 @@ with `clockSilent`, so a read can land on any cycle.
 message gives the cycle and the first differing values. Cases that a later
 milestone task fixes are `#[ignore]`d with the task and the reason; run them
 with `-- --ignored`.
+
+### Generated tables
+
+`core/sid/gen/` holds tables generated from reSIDfp by `sidou-tablegen`: the
+combined-waveform pulldown tables for each model at each point of the
+combined-waveform strength grid (`gen/grid.h`). After changing the generator
+or the reSIDfp submodule, regenerate them from `host/`:
+
+```sh
+cargo run --release -p sidou-tablegen
+```
+
+The drift test (`checked_in_tables_match_the_generator`) fails when the
+checked-in files differ from what the generator produces now.
 
 ### Filter comparison (`sidou-compare`)
 
@@ -152,7 +171,9 @@ The M0 decision gate. It runs the pi32v2 benchmark programs
 (`sid_bench_1` and `sid_bench_2`) in fm1-emu, used as a library, once per
 workload scenario (`bench/workload.h`): the triad, plus envelope worst cases
 at the fastest rate on all three voices (holding sustain 0xff and 0xaa, gates
-toggled every frame or every 128-sample block, and an idle chip). For each it:
+toggled every frame or every 128-sample block, and an idle chip), and a
+combined-waveform scenario (pulse+saw, saw+triangle, and noise+pulse retriggered
+through TEST). For each it:
 - counts the instructions per output sample, and fails if one chip needs
   more than 900, or two chips more than 1,800 (design document, section 8),
   on average or in any 128-sample block (a block's window also holds the

@@ -9,11 +9,9 @@
 
 mod common;
 
-use std::mem::{offset_of, size_of};
-
 use common::{build_dir, peak, pitch, power_above, record, Firmware, Machine};
 use fm1_core::Bus;
-use sidou_sys::{live_freq_table, reg_ring_chips, sid, sid_env, sid_osc};
+use sidou_sys::{ilp32, live_freq_table};
 
 /// Past the LCD's reset delays and the first audio blocks.
 const BOOT_MS: u64 = 500;
@@ -50,27 +48,25 @@ struct Voice1 {
 }
 
 fn active_sid(m: &mut Machine, fw: &Firmware) -> u32 {
-    let base = fw.symbol("chips");
-    let active = m
-        .soc
-        .read8(base + offset_of!(reg_ring_chips, active) as u32);
-    base + (offset_of!(reg_ring_chips, chip) + usize::from(active) * size_of::<sid>()) as u32
+    let base = fw.chips();
+    let active = m.soc.read8(base + ilp32::reg_ring_chips::active as u32);
+    base + (ilp32::reg_ring_chips::chip + usize::from(active) * ilp32::sid::SIZE) as u32
 }
 
 fn voice1(m: &mut Machine, fw: &Firmware) -> Voice1 {
     let s = active_sid(m, fw);
-    let osc = s + offset_of!(sid, osc) as u32;
-    let env = s + offset_of!(sid, env) as u32;
+    let osc = s + ilp32::sid::osc as u32;
+    let env = s + ilp32::sid::env as u32;
     Voice1 {
-        control: m.soc.read8(osc + offset_of!(sid_osc, control) as u32),
-        freq: m.soc.read32(osc + offset_of!(sid_osc, freq) as u32),
-        env_gate: m.soc.read8(env + offset_of!(sid_env, gate) as u32),
+        control: m.soc.read8(osc + ilp32::sid_osc::control as u32),
+        freq: m.soc.read32(osc + ilp32::sid_osc::freq as u32),
+        env_gate: m.soc.read8(env + ilp32::sid_env::gate as u32),
     }
 }
 
 fn cutoff(m: &mut Machine, fw: &Firmware) -> u32 {
     let s = active_sid(m, fw);
-    m.soc.read32(s + offset_of!(sid, fc) as u32)
+    m.soc.read32(s + ilp32::sid::fc as u32)
 }
 
 /// platform/fm1/midi.c `midi_stats`: six uint32_t.

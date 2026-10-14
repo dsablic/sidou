@@ -5,11 +5,9 @@
 
 mod common;
 
-use std::mem::offset_of;
-
 use common::{build_dir, peak, pitch, power_above, record, Firmware, Machine};
 use fm1_core::Bus;
-use sidou_sys::{reg_ring_chips, SID_MODEL_6581, SID_MODEL_8580};
+use sidou_sys::{ilp32, SID_MODEL_6581, SID_MODEL_8580};
 
 /// Past the LCD's reset delays and the first audio blocks.
 const BOOT_MS: u64 = 500;
@@ -65,13 +63,13 @@ struct Chips {
 }
 
 fn chips(m: &mut Machine, fw: &Firmware) -> Chips {
-    let base = fw.symbol("chips");
+    let base = fw.chips();
     let at = |o: usize| base + o as u32;
     Chips {
-        active: m.soc.read8(at(offset_of!(reg_ring_chips, active))),
-        spare_ready: m.soc.read8(at(offset_of!(reg_ring_chips, spare_ready))),
-        spare_model: m.soc.read8(at(offset_of!(reg_ring_chips, spare_model))),
-        lost_resets: m.soc.read32(at(offset_of!(reg_ring_chips, lost_resets))),
+        active: m.soc.read8(at(ilp32::reg_ring_chips::active)),
+        spare_ready: m.soc.read8(at(ilp32::reg_ring_chips::spare_ready)),
+        spare_model: m.soc.read8(at(ilp32::reg_ring_chips::spare_model)),
+        lost_resets: m.soc.read32(at(ilp32::reg_ring_chips::lost_resets)),
     }
 }
 

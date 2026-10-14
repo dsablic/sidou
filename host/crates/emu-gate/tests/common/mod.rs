@@ -121,6 +121,23 @@ impl Firmware {
             .unwrap_or_else(|| panic!("no symbol {name} in the firmware ELF"));
         sym.address() as u32
     }
+
+    /// The firmware's `chips` (platform/fm1/audio.c), checked against the pi32v2 layout
+    /// the tests read it with (sidou_sys::ilp32).
+    pub fn chips(&self) -> u32 {
+        use object::{Object, ObjectSymbol};
+        let file = object::File::parse(&*self.elf).expect("parse the firmware ELF");
+        let sym = file
+            .symbols()
+            .find(|s| s.name() == Ok("chips"))
+            .expect("no symbol chips in the firmware ELF");
+        assert_eq!(
+            sym.size(),
+            sidou_sys::ilp32::reg_ring_chips::SIZE as u64,
+            "the firmware's reg_ring_chips is not laid out as sidou_sys::ilp32 says"
+        );
+        sym.address() as u32
+    }
 }
 
 /// A call being measured: where it returns to and the stack pointer at its entry.

@@ -30,6 +30,7 @@ void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) 
                                (((clock_hz % sample_rate) << 16) / sample_rate);
     for (int v = 0; v < 3; ++v) {
         s->osc[v].acc = SID_OSC_POWER_ON_ACC;
+        sid_osc_set_model(&s->osc[v], model == SID_MODEL_6581);
         s->env[v].counter = SID_ENV_POWER_ON;
         sid_osc_reset(&s->osc[v]);
         sid_env_reset_settled(&s->env[v]); /* zeroed above: nothing to settle */
@@ -50,9 +51,24 @@ void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) 
     update_filter(s);
 }
 
+static uint8_t read_osc3(const sid* s);
+
 void sid_write(sid* s, uint8_t reg, uint8_t v) {
     s->bus = v;
     reg &= 0x1f;
+    /* OSC3 latched in the last cycle, before a write to voice 2 (the ring source) or
+     * voice 3 changes what read_osc3 would reconstruct it from. */
+    if (reg >= 0x07 && reg <= 0x12 && !s->osc3_held) {
+        s->osc3_latch = read_osc3(s);
+        s->osc3_held = 1;
+    }
+    if (reg == 0x12) {
+        /* The 8580 latches triangle/saw for OSC3 a cycle late, from the old waveform. */
+        const sid_osc* o = &s->osc[2];
+        uint32_t ix = sid_wave_index(o->control, sid_osc_acc_last(o), sid_osc_acc_last(&s->osc[1]));
+        s->tri_saw_latch = sid_wave_ramp((uint32_t)o->control >> 4, ix);
+        s->control_age = 0;
+    }
     if (reg < 21) {
         sid_osc* o = &s->osc[reg / 7];
         sid_env* e = &s->env[reg / 7];
@@ -92,24 +108,19 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
     }
 }
 
-static inline uint32_t acc_one_cycle_ago(const sid_osc* o) {
-    return o->control & SID_CTRL_TEST ? o->acc : (o->acc - o->freq) & 0xffffffu;
-}
-
-/* OSC3 as reSIDfp latches it, which differs from the waveform output by up to two
- * cycles (all "verified by sampling OSC3" there):
- * - the 8580's triangle and sawtooth reach OSC3 one cycle late;
- * - the pulse comparison is one cycle late on both models;
- * - the noise LFSR shifts two cycles after accumulator bit 19 rises, while
- *   sid_osc_advance shifts it at once, so a shift from the last two cycles is undone.
- * The previous cycles are reconstructed from the current state (acc - freq), which is
- * wrong for a read within one or two cycles of:
- * - a frequency write (the old frequency drove those cycles);
- * - on the 8580, a TEST or control write (reSIDfp's latched triangle/saw value comes
- *   from the old setting);
- * - a hard sync of voice 3 (its accumulator restarted mid-step);
- * - a TEST release with noise selected: SIDOU reloads the LFSR where reSIDfp shifts
- *   it, a noise difference that outlasts the read (M1b Task 3).
+/* OSC3 as reSIDfp latches it. On the 6581 that is the waveform output of the last
+ * cycle. On the 8580 the triangle and sawtooth reach it a cycle late: it combines the
+ * previous cycle's triangle/saw with the pulse and noise of the last one (whose pulse
+ * comparison is itself a cycle late on both models). Noise combined with other
+ * waveforms runs cycle by cycle and keeps its OSC3. Otherwise the previous cycle is
+ * reconstructed from the current state. A read right after a write to voice 2 or 3,
+ * before any cycle, returns the value latched before the write (sid_write). A read a
+ * cycle or two later is wrong after:
+ * - a frequency or pulse width write (the old values drove those cycles);
+ * - a control write: the pulse comparison from before a TEST change (the 8580's
+ *   triangle/saw latched from the old waveform is kept, for the one cycle it lasts);
+ * - a hard sync of voice 3 or voice 2 (with ring modulation), whose accumulator
+ *   restarted mid-step.
  * With no waveform selected OSC3 reads 0. reSIDfp instead holds the last output on its
  * floating DAC input and fades it after 54,000 (6581) or 800,000 (8580) cycles; SIDOU
  * keeps 0 because programs rarely read OSC3 with the waveform off, and holding the
@@ -117,42 +128,48 @@ static inline uint32_t acc_one_cycle_ago(const sid_osc* o) {
 static uint8_t read_osc3(const sid* s) {
     const sid_osc* o = &s->osc[2];
     const sid_osc* src = &s->osc[1];
-    uint32_t c = o->control;
-    if (!(c & 0xf0u)) {
+    uint32_t wf = (uint32_t)o->control >> 4;
+    if (!wf) {
         return 0;
     }
-    uint32_t out = 0xfffu;
-    if (c & (SID_CTRL_TRI | SID_CTRL_SAW)) {
-        sid_osc ramp = *o;
-        sid_osc ring = *src;
-        ramp.control = (uint8_t)(c & ~(SID_CTRL_PULSE | SID_CTRL_NOISE));
-        if (s->model == SID_MODEL_8580) {
-            ramp.acc = acc_one_cycle_ago(o);
-            ring.acc = acc_one_cycle_ago(src);
-        }
-        out &= sid_osc_output(&ramp, &ring);
+    if (o->cycle_mode) {
+        return (uint8_t)(o->osc3 >> 4);
     }
-    if (c & SID_CTRL_PULSE) {
-        out &= ((c & SID_CTRL_TEST) || (acc_one_cycle_ago(o) >> 12) >= o->pw) ? 0xfffu : 0u;
-    }
-    if (c & SID_CTRL_NOISE) {
-        uint32_t lfsr = o->lfsr;
-        uint32_t before = (o->acc - 2u * o->freq) & 0xffffffu;
-        uint32_t now = o->acc < before ? o->acc + 0x1000000u : o->acc;
-        if (!(c & SID_CTRL_TEST) && ((now + 0x80000u) >> 20) != ((before + 0x80000u) >> 20)) {
-            /* Shift back: old bit 22 = new bit 0 ^ old bit 17 (= new bit 18). */
-            lfsr = (lfsr >> 1) | (((lfsr ^ (lfsr >> 18)) & 1u) << 22);
-        }
-        out &= sid_noise_output(lfsr);
+    uint32_t before = sid_osc_acc_before(o);
+    uint32_t pulse = sid_osc_pulse(o, before);
+    uint32_t out;
+    if (s->model == SID_MODEL_8580 && (wf & 3u)) {
+        uint32_t ramp = s->control_age == 1
+                            ? s->tri_saw_latch
+                            : sid_wave_ramp(wf, sid_wave_index(o->control, before,
+                                                               sid_osc_acc_before(src)));
+        out = sid_osc_combine_ramp(o, ramp, pulse, o->noise);
+    } else {
+        uint32_t ix = sid_wave_index(o->control, sid_osc_acc_last(o), sid_osc_acc_last(src));
+        out = sid_osc_combine(o, ix, pulse, o->noise);
     }
     return (uint8_t)(out >> 4);
+}
+
+void sid_set_combined_strength(sid* s, float strength) {
+    uint32_t best = 0;
+    for (uint32_t i = 1; i < SID_STRENGTH_POINTS; ++i) {
+        float d = strength - SID_STRENGTH_GRID[i];
+        float b = strength - SID_STRENGTH_GRID[best];
+        if (d * d < b * b) {
+            best = i;
+        }
+    }
+    for (int v = 0; v < 3; ++v) {
+        sid_osc_set_strength(&s->osc[v], best);
+    }
 }
 
 uint8_t sid_read(sid* s, uint8_t reg) {
     switch (reg & 0x1f) {
     case 0x19:
     case 0x1a: s->bus = 0xff; break; /* paddles: nothing connected */
-    case 0x1b: s->bus = read_osc3(s); break;
+    case 0x1b: s->bus = s->osc3_held ? s->osc3_latch : read_osc3(s); break;
     case 0x1c: s->bus = s->env[2].env3; break;
     default: break;
     }
@@ -160,15 +177,27 @@ uint8_t sid_read(sid* s, uint8_t reg) {
 }
 
 static inline void clock_voices(sid* s, uint32_t cycles) {
+    s->osc3_held = 0;
+    s->control_age = (uint8_t)(s->control_age + cycles > 2u ? 2u : s->control_age + cycles);
+    sid_osc* o = s->osc;
+    /* Each voice's sync and ring modulation source is the voice before it. */
+    uint32_t acc2 = o[2].acc;
+    sid_osc_advance(&o[2], cycles, o[1].acc, o[1].freq);
+    sid_osc_advance(&o[1], cycles, o[0].acc, o[0].freq);
+    sid_osc_advance(&o[0], cycles, acc2, o[2].freq);
     for (int v = 0; v < 3; ++v) {
-        sid_osc_advance(&s->osc[v], cycles);
-    }
-    for (int v = 0; v < 3; ++v) {
-        const sid_osc* src = &s->osc[(v + 2) % 3];
-        if ((s->osc[v].control & SID_CTRL_SYNC) && src->msb_rose) {
-            sid_osc_sync(&s->osc[v], src);
+        const sid_osc* src = &o[v ? v - 1 : 2];
+        if ((o[v].control & SID_CTRL_SYNC) && src->msb_rose) {
+            sid_osc_sync(&o[v], src);
         }
         sid_env_advance(&s->env[v], cycles);
+    }
+    /* The output feeds the voice DAC (and, cycle by cycle, the noise write-back, which
+     * sid_osc_cycle keeps itself). With the envelope at 0 the DAC ignores it. */
+    for (int v = 0; v < 3; ++v) {
+        if (s->env[v].counter) {
+            o[v].out = sid_osc_output(&o[v], &o[v ? v - 1 : 2]);
+        }
     }
 }
 
@@ -181,7 +210,7 @@ void sid_clock(sid* s, uint32_t cycles) {
 }
 
 static inline float voice_out(const sid* s, int v) {
-    uint32_t wave = sid_osc_output(&s->osc[v], &s->osc[(v + 2) % 3]);
+    uint32_t wave = s->osc[v].out;
     int32_t x = ((int32_t)wave - s->wave_zero) * (int32_t)s->env[v].counter + s->voice_dc;
     return (float)x * VOICE_SCALE;
 }

@@ -20,12 +20,61 @@ extern "C" {
     fn residfp_read(s: *mut RawSid, reg: u8) -> i32;
     fn residfp_clock(s: *mut RawSid, cycles: u32, buf: *mut i16) -> i32;
     fn residfp_clock_silent(s: *mut RawSid, cycles: u32) -> i32;
+    fn residfp_pulldown_table(csg8580: i32, cws: i32, out: *mut i16) -> i32;
+    fn residfp_wave_table(out: *mut i16) -> i32;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Model {
     Mos6581,
     Csg8580,
+}
+
+/// reSIDfp's combined-waveform strength profiles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CombinedWaveforms {
+    Average = 0,
+    Weak = 1,
+    Strong = 2,
+}
+
+/// Rows of reSIDfp's pulldown table, in its order.
+pub const PULLDOWN_ROWS: [&str; 5] = ["ST", "PT", "PS", "PST", "NP"];
+
+/// reSIDfp's combined-waveform pulldown tables, `PULLDOWN_ROWS` by 4096 inputs (12-bit
+/// waveform outputs before pulldown). Each entry is the 12-bit output after it.
+pub fn pulldown_table(model: Model, cws: CombinedWaveforms) -> Vec<[u16; 4096]> {
+    let mut flat = vec![0i16; 5 * 4096];
+    let status = unsafe {
+        residfp_pulldown_table(
+            i32::from(model == Model::Csg8580),
+            cws as i32,
+            flat.as_mut_ptr(),
+        )
+    };
+    assert_eq!(status, 0, "reSIDfp buildPulldownTable threw");
+    rows(&flat)
+}
+
+/// reSIDfp's waveform table: rows none (0xfff), triangle, sawtooth and ST (saw & saw << 1),
+/// each indexed by the accumulator's top 12 bits.
+pub fn wave_table() -> Vec<[u16; 4096]> {
+    let mut flat = vec![0i16; 4 * 4096];
+    let status = unsafe { residfp_wave_table(flat.as_mut_ptr()) };
+    assert_eq!(status, 0, "reSIDfp getWaveTable threw");
+    rows(&flat)
+}
+
+fn rows(flat: &[i16]) -> Vec<[u16; 4096]> {
+    flat.chunks(4096)
+        .map(|c| {
+            let mut row = [0u16; 4096];
+            for (r, &v) in row.iter_mut().zip(c) {
+                *r = u16::try_from(v).expect("12-bit table entry");
+            }
+            row
+        })
+        .collect()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

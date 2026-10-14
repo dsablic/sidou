@@ -58,6 +58,21 @@ static const reg_write IDLE[] = {{0, 0x18, 0x0f}};
  * settle: attack and release at rate 0, over and over. */
 static const reg_write GATE_EVERY_BLOCK[] = {{0, 0x18, 0x0f}, NOTES(0x00, 0x00, 0x20)};
 
+/* Combined waveforms: pulse+saw and saw+triangle, and on voice 3 noise+pulse, reset
+ * with TEST every other frame so its output keeps writing back into a live register
+ * (cycle by cycle) until it locks up again. */
+#define NOISE_RETRIGGER(f) {f, 0x12, 0x89}, {f + 1, 0x12, 0xc1}
+static const reg_write COMBINED[] = {
+    {0, 0x18, 0x0f},
+    {0, 0x00, 0x67}, {0, 0x01, 0x11}, {0, 0x02, 0x00}, {0, 0x03, 0x08}, {0, 0x05, 0x09},
+    {0, 0x06, 0xa9}, {0, 0x04, 0x61},
+    {0, 0x07, 0xed}, {0, 0x08, 0x15}, {0, 0x0c, 0x09}, {0, 0x0d, 0xa9}, {0, 0x0b, 0x31},
+    {0, 0x0e, 0x13}, {0, 0x0f, 0x1a}, {0, 0x10, 0x00}, {0, 0x11, 0x04}, {0, 0x13, 0x09},
+    {0, 0x14, 0xa9}, {0, 0x12, 0xc1},
+    NOISE_RETRIGGER(1), NOISE_RETRIGGER(3), NOISE_RETRIGGER(5), NOISE_RETRIGGER(7),
+    NOISE_RETRIGGER(9), NOISE_RETRIGGER(11),
+};
+
 typedef struct {
     const char* name;
     const reg_write* writes;
@@ -80,6 +95,7 @@ static const scenario SCENARIOS[WORKLOAD_SCENARIOS] = {
     SCENARIO("sustain_aa", SUSTAIN_AA),
     SCENARIO("gate_every_frame", GATE_EVERY_FRAME),
     SCENARIO("idle", IDLE),
+    SCENARIO("combined", COMBINED),
     {"gate_every_block", GATE_EVERY_BLOCK, sizeof GATE_EVERY_BLOCK / sizeof GATE_EVERY_BLOCK[0],
      gate_every_block},
 };

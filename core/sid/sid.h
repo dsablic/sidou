@@ -32,6 +32,10 @@ typedef struct {
     uint8_t routing;
     uint8_t mode_vol;
     uint8_t bus; /* last value on the data bus, returned by reads of write-only registers */
+    uint8_t osc3_held; /* a write since the last cycle: OSC3 is osc3_latch */
+    uint8_t osc3_latch;
+    uint8_t control_age;   /* cycles since voice 3's last control write, up to 2 */
+    uint32_t tri_saw_latch; /* 8580: voice 3's triangle/saw, latched with the old waveform */
     float volume;
     float dc_r, dc_x1, dc_y1;
     float cutoff_g[SID_FC_STEPS];
@@ -56,6 +60,12 @@ void sid_render(sid* s, int16_t* out, uint32_t frames);
  * back whatever is there. On the chip that value fades after a while; that is not
  * modelled. */
 uint8_t sid_read(sid* s, uint8_t reg);
+
+/* Combined-waveform strength, 0 (weak) to 1 (strong); 0.5 is reSIDfp's AVERAGE, the
+ * default. It picks the nearest point of the generated grid (gen/grid.h): pulldown
+ * tables are bit patterns, so there is nothing to interpolate between points. Cheap
+ * enough to call between sid_render calls. */
+void sid_set_combined_strength(sid* s, float strength);
 
 /* Advances the oscillators and envelopes by exactly `cycles` chip cycles, without
  * producing output; the filter and the output stage do not run. sid_render advances

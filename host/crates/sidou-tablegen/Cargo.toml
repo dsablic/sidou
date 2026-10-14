@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "sidou-tablegen"
+description = "Generates SIDOU's checked-in C tables (core/sid/gen/) from reSIDfp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+residfp-sys = { path = "../residfp-sys" }

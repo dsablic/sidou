@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "SID.h"
+#include "WaveformCalculator.h"
 
 using reSIDfp::SID;
 
@@ -61,6 +62,39 @@ int residfp_write(SID* s, uint8_t reg, uint8_t value) {
 int residfp_read(SID* s, uint8_t reg) {
     try {
         return s->read(reg);
+    } catch (...) {
+        return -1;
+    }
+}
+
+// reSIDfp's combined-waveform pulldown tables for a chip model and strength (AVERAGE,
+// WEAK, STRONG = 0, 1, 2): 5 rows of 4096 entries (ST, PT, PS, PST, NP), row-major.
+int residfp_pulldown_table(int csg8580, int cws, int16_t* out) {
+    try {
+        const auto model = csg8580 ? reSIDfp::CSG8580 : reSIDfp::MOS6581;
+        const auto strength = static_cast<reSIDfp::CombinedWaveforms>(cws);
+        const auto table = reSIDfp::WaveformCalculator::buildPulldownTable(model, strength);
+        for (unsigned row = 0; row < 5; ++row) {
+            for (unsigned i = 0; i < 4096; ++i) {
+                out[row * 4096 + i] = (*table)[row][i];
+            }
+        }
+        return 0;
+    } catch (...) {
+        return -1;
+    }
+}
+
+// reSIDfp's waveform table: 4 rows of 4096 (none, triangle, sawtooth, ST before pulldown).
+int residfp_wave_table(int16_t* out) {
+    try {
+        const auto table = reSIDfp::WaveformCalculator::getInstance()->getWaveTable();
+        for (unsigned row = 0; row < 4; ++row) {
+            for (unsigned i = 0; i < 4096; ++i) {
+                out[row * 4096 + i] = (*table)[row][i];
+            }
+        }
+        return 0;
     } catch (...) {
         return -1;
     }

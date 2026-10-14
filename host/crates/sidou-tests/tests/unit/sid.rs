@@ -159,6 +159,13 @@ fn read(s: &mut sid, reg: u8) -> u8 {
     unsafe { sid_read(s, reg) }
 }
 
+/// A voice 3 control write, then forget the OSC3 latched before it: these tests poke
+/// the accumulators directly instead of running cycles.
+fn write_control(s: &mut sid, value: u8) {
+    write(s, 0x12, value);
+    s.osc3_held = 0;
+}
+
 fn clock(s: &mut sid, cycles: u32) {
     unsafe { sid_clock(s, cycles) }
 }
@@ -204,25 +211,43 @@ fn env3_reads_the_voice_3_envelope_counter_one_cycle_late() {
 #[test]
 fn osc3_reads_the_top_8_bits_of_the_voice_3_waveform() {
     let mut s = new_sid(SID_MODEL_6581);
-    write(&mut s, 0x12, 0x20); // saw
+    write_control(&mut s, 0x20); // saw
     s.osc[2].acc = 0xabcdef;
     assert_eq!(read(&mut s, 0x1b), 0xab);
-    write(&mut s, 0x12, 0x10); // triangle: the MSB folds the ramp
+    write_control(&mut s, 0x10); // triangle: the MSB folds the ramp
     s.osc[2].acc = 0x400000;
     assert_eq!(read(&mut s, 0x1b), 0x80);
     s.osc[2].acc = 0xc00000;
     assert_eq!(read(&mut s, 0x1b), 0x7f);
-    write(&mut s, 0x12, 0x00); // no waveform
+    write_control(&mut s, 0x00); // no waveform
     assert_eq!(read(&mut s, 0x1b), 0x00);
 }
 
 #[test]
 fn osc3_follows_voice_3_ring_modulation_by_voice_2() {
     let mut s = new_sid(SID_MODEL_6581);
-    write(&mut s, 0x12, 0x14); // triangle, ring modulated
+    write_control(&mut s, 0x14); // triangle, ring modulated
     s.osc[2].acc = 0x400000;
-    s.osc[1].acc = 0x800000; // flips voice 3's MSB
+    s.osc[1].acc = 0x800000;
+    assert_eq!(read(&mut s, 0x1b), 0x80);
+    s.osc[1].acc = 0x000000; // voice 2's MSB low: voice 3's MSB is inverted
     assert_eq!(read(&mut s, 0x1b), 0x7f);
+}
+
+#[test]
+fn osc3_reads_the_value_latched_before_a_write_until_the_next_cycle() {
+    let mut s = new_sid(SID_MODEL_6581);
+    write(&mut s, 0x12, 0x20); // saw
+    clock(&mut s, 1);
+    s.osc[2].acc = 0xabc000;
+    clock(&mut s, 1);
+    let saw = read(&mut s, 0x1b);
+    write(&mut s, 0x12, 0x40); // pulse
+    assert_eq!(read(&mut s, 0x1b), saw);
+    write(&mut s, 0x0e, 0x12); // further writes keep the first latch
+    assert_eq!(read(&mut s, 0x1b), saw);
+    clock(&mut s, 1);
+    assert_ne!(read(&mut s, 0x1b), saw);
 }
 
 #[test]
@@ -291,7 +316,7 @@ fn clock_leaves_the_chip_where_render_would() {
     clock(&mut clocked, u32::try_from(cycles).unwrap());
     for v in 0..3 {
         assert_eq!(clocked.osc[v].acc, rendered.osc[v].acc, "voice {v}");
-        assert_eq!(clocked.osc[v].lfsr, rendered.osc[v].lfsr, "voice {v}");
+        assert_eq!(clocked.osc[v].sr, rendered.osc[v].sr, "voice {v}");
         assert_eq!(clocked.env[v].counter, rendered.env[v].counter, "voice {v}");
         let (mut a, mut b) = (clocked.env[v], rendered.env[v]);
         unsafe {
