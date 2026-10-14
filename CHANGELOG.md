@@ -50,3 +50,7 @@ All notable changes are documented here. The format follows
 - The M1a hardware checklist (`docs/hardware-test.md`), checklist builds that
   die early on purpose while OCT- is held at power-on (`SIDOU_TEST_DEATH`),
   and a package SIDOU refuses (`sidou-pack --test-wrong-size`).
+- Post-chip colour chain (`core/fx/`): bit-crush, tape saturation, wow and
+  flutter, CRT/TV low-pass with mains hum, and a noise floor, as separate
+  blocks with smoothed parameters and an exact bypass; an emulator gate
+  scenario with every effect at full.

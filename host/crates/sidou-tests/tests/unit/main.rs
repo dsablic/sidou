@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Unit tests of the C core through FFI, one module per area of `core/sid`.
 
+mod fx;
 mod sid;
 mod sid_defs;
 mod sid_env;

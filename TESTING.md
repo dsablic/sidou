@@ -20,6 +20,7 @@ lists the prerequisites.
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
 | Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
 | Emulator tests (gate, boot, live instrument, MIDI, SRAM audio, package) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
+| Emulator gate | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/sid_budget.rs`, `crates/emu-gate/tests/fx_budget.rs` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
 profile sets `opt-level = 3`), but the reference tests do a lot of Rust-side
@@ -114,6 +115,13 @@ The M0 decision gate. It runs the pi32v2 benchmark programs
   if any sample differs by more than 1 LSB (at M0 they are identical);
 - writes `sid_budget_1.json` and `sid_budget_2.json` into the fm1 build
   directory.
+
+The effects scenario (`fx_budget.rs`) runs `sid_bench_fx_1` and
+`sid_bench_fx_2`: the same workload, then the post-chip chain (`core/fx`)
+with every effect at full over its output. It fails if the effects cost more
+than 500 instructions per sample, if two chips plus the effects cost more
+than 2,300, or if any sample differs from the host build at all. It writes
+`fx_budget_1.json` and `fx_budget_2.json`.
 
 Build the `fm1` preset first (see [BUILDING.md](BUILDING.md)). Without
 `SIDOU_FM1_BUILD`, the gate prints a message and passes without running,

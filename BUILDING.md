@@ -113,6 +113,9 @@ refuses (for the checklist's refused-install item).
 
 Ship `LICENSES/Apache-2.0.txt` with every package. The package's identity is
 `FM-1_900` (`--product`; it must be the firmware's `SIDOU_PRODUCT`).
+to `build/fm1/`. The benchmark programs are
+`build/fm1/bench/fm1/sid_bench_{1,2}.{elf,bin,dis}`, for one and two chips,
+and `sid_bench_fx_{1,2}`, the same with the post-chip effects at full.
 
 The toolchain file is `cmake/pi32v2.cmake`. It passes `-mcpu=r3 -mfprev1`,
 which turns on the hardware single-precision FPU. Without `-mcpu=r3`, clang

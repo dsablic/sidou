@@ -2,6 +2,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 /* Everything the host tooling reaches through FFI. The include roots are core/, bench/
  * and app/. */
+#include "fx/fx.h"
 #include "sid/sid.h"
 #include "sid/sid_env.h"
 #include "sid/sid_filter.h"
@@ -16,3 +17,4 @@
 #include "midi_usb.h"
 #include "panel.h"
 #include "reg_ring.h"
+#include "workload_fx.h"

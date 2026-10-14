@@ -358,3 +358,85 @@ pub fn power_above(x: &[f32], hz: f64) -> f64 {
 pub fn peak(x: &[f32]) -> f32 {
     x.iter().fold(0.0, |m, &s| m.max(s.abs()))
 }
+
+// ---- benchmark images (bench/fm1): the effects gates ----
+
+const BENCH_RESULT_ADDR: u32 = 0x01C8_0000;
+const BENCH_RESULT_MAGIC: u32 = 0x5349_4442;
+const BENCH_MAX_STEPS: u64 = 2_000_000_000;
+
+/// A benchmark image run to completion.
+pub struct Run {
+    /// Instructions between consecutive `bench_mark` calls.
+    pub phases: Vec<u64>,
+    pub samples: Vec<i16>,
+    /// Instructions run by `step_block_load_dec` instead of fm1-core.
+    pub emulated_block_loads: u64,
+}
+
+fn bench_u32(soc: &Soc, addr: u32) -> u32 {
+    let o = addr - fm1_soc::RAM_BASE;
+    u32::from_le_bytes([
+        soc.ram.read8(o),
+        soc.ram.read8(o + 1),
+        soc.ram.read8(o + 2),
+        soc.ram.read8(o + 3),
+    ])
+}
+
+/// Runs `bench/fm1/<name>.bin` to completion; it must call `bench_mark` `marks` times. The
+/// samples it leaves at the result address come back with the instruction counts.
+pub fn run(build: &Path, name: &str, marks: usize) -> Run {
+    use object::{Object, ObjectSymbol};
+    let dir = build.join("bench/fm1");
+    let elf_path = dir.join(format!("{name}.elf"));
+    let elf = read(&elf_path, "bench ELF");
+    let bin = read(&dir.join(format!("{name}.bin")), "bench image");
+    let file = object::File::parse(&*elf)
+        .unwrap_or_else(|e| panic!("parse ELF {}: {e}", elf_path.display()));
+    let mark = file
+        .symbols()
+        .find(|s| s.name() == Ok("bench_mark"))
+        .expect("bench_mark symbol")
+        .address() as u32;
+
+    let mut soc = Soc::new(1 << 20, bin);
+    let mut cpu = Cpu::new(fm1_soc::XIP_BASE);
+    let mut seen = Vec::new();
+    let mut steps: u64 = 0;
+    let mut emulated_block_loads: u64 = 0;
+    while bench_u32(&soc, BENCH_RESULT_ADDR) != BENCH_RESULT_MAGIC {
+        if cpu.pc == mark {
+            seen.push(steps);
+        }
+        if step(&mut cpu, &mut soc) {
+            emulated_block_loads += 1;
+        }
+        steps += 1;
+        assert!(
+            steps < BENCH_MAX_STEPS,
+            "benchmark did not finish (pc {:#010x})",
+            cpu.pc
+        );
+    }
+    assert_eq!(
+        seen.len(),
+        marks,
+        "expected {marks} bench_mark calls, saw {}",
+        seen.len()
+    );
+
+    let n = bench_u32(&soc, BENCH_RESULT_ADDR + 4) as usize;
+    let base = BENCH_RESULT_ADDR + 0x40 - fm1_soc::RAM_BASE;
+    let samples = (0..n)
+        .map(|i| {
+            let o = base + 2 * i as u32;
+            i16::from_le_bytes([soc.ram.read8(o), soc.ram.read8(o + 1)])
+        })
+        .collect();
+    Run {
+        phases: seen.windows(2).map(|w| w[1] - w[0]).collect(),
+        samples,
+        emulated_block_loads,
+    }
+}
