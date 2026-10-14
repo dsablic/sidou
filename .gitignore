@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+/build/
+/tests/target/target/
+*.wav
+.DS_Store
