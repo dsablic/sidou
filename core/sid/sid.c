@@ -129,10 +129,16 @@ void sid_render(sid* s, int16_t* out, uint32_t frames) {
 
         float x = (direct + filtered) * s->volume;
         float y = x - s->dc_x1 + s->dc_r * s->dc_y1;
+        /* Same reason as sid_svf_tick: on constant input y decays into denormals. */
+        if (y < 1e-15f && y > -1e-15f) {
+            y = 0.0f;
+        }
         s->dc_x1 = x;
         s->dc_y1 = y;
 
+        /* Round half away from zero, clamped so the cast stays in range. */
         float o = y * OUTPUT_GAIN;
+        o += o >= 0.0f ? 0.5f : -0.5f;
         if (o > 32767.0f) {
             o = 32767.0f;
         } else if (o < -32768.0f) {

@@ -36,7 +36,10 @@ typedef struct {
     float cutoff_g[SID_FC_STEPS];
 } sid;
 
-/* sample_rate must be <= 65535. */
+/* sample_rate must be in [4000, 65535]. The oscillator step needs
+ * freq * cycles < 2^24, so at most 256 chip cycles per sample: the minimum is
+ * clock_hz / 256, about 3849 Hz for PAL and 3995 Hz for NTSC. The upper bound
+ * keeps the Q16 cycle step in range. */
 void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate);
 void sid_write(sid* s, uint8_t reg, uint8_t value);
 void sid_render(sid* s, int16_t* out, uint32_t frames);

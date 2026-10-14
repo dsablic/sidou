@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <vector>
 
@@ -98,4 +99,61 @@ TEST(Sid, LowPassFilterRemovesTopEnd) {
         return e;
     };
     EXPECT_LT(hf_energy(wet), hf_energy(dry) * 0.1);
+}
+
+namespace {
+
+void expect_dc_blocker_never_subnormal(sid* s, int seconds) {
+    std::vector<int16_t> block(4410);
+    for (int i = 0; i < seconds * 10; ++i) {
+        sid_render(s, block.data(), (uint32_t)block.size());
+        ASSERT_NE(std::fpclassify(s->dc_x1), FP_SUBNORMAL) << "block " << i;
+        ASSERT_NE(std::fpclassify(s->dc_y1), FP_SUBNORMAL) << "block " << i;
+    }
+}
+
+} // namespace
+
+TEST(Sid, DcBlockerOnA6581VolumeStepNeverGoesSubnormal) {
+    static sid s;
+    sid_init(&s, SID_MODEL_6581, SID_CLOCK_PAL, 44100);
+    sid_write(&s, 0x18, 0x0f);
+    expect_dc_blocker_never_subnormal(&s, 20);
+}
+
+TEST(Sid, DcBlockerAfterAn8580NoteNeverGoesSubnormal) {
+    static sid s;
+    sid_init(&s, SID_MODEL_8580, SID_CLOCK_PAL, 44100);
+    saw_a4(&s);
+    render(&s, 4410);
+    sid_write(&s, 0x04, 0x20);
+    expect_dc_blocker_never_subnormal(&s, 20);
+}
+
+TEST(Sid, Voice3OffKeepsAFilteredVoice3) {
+    static sid s;
+    sid_init(&s, SID_MODEL_8580, SID_CLOCK_PAL, 44100);
+    sid_write(&s, 0x0e, 0x45);
+    sid_write(&s, 0x0f, 0x1d);
+    sid_write(&s, 0x14, 0xf0);
+    sid_write(&s, 0x16, 0xff);
+    sid_write(&s, 0x17, 0x04);
+    sid_write(&s, 0x18, 0x9f);
+    sid_write(&s, 0x12, 0x21);
+    EXPECT_GT(peak(render(&s, 4410)), 1000);
+}
+
+TEST(Sid, CutoffLowBitsComeFromRegister15) {
+    static sid a, b;
+    for (sid* s : {&a, &b}) {
+        sid_init(s, SID_MODEL_8580, SID_CLOCK_PAL, 44100);
+        saw_a4(s);
+        sid_write(s, 0x16, 0x02);
+        sid_write(s, 0x17, 0x01);
+        sid_write(s, 0x18, 0x1f);
+    }
+    sid_write(&b, 0x15, 0x07);
+    EXPECT_EQ(a.fc, 0x010u);
+    EXPECT_EQ(b.fc, 0x017u);
+    EXPECT_NE(render(&a, 4410), render(&b, 4410));
 }
