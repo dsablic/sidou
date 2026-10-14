@@ -34,3 +34,18 @@ All notable changes are documented here. The format follows
   a status screen on the LCD. Register writes reach the audio interrupt
   through a ring that never drops; a model change swaps to a chip prepared in
   the main loop. fm1-emu tests play it end to end.
+- MIDI in over the TRS jack and USB (Felucca's USB stack, adapted: USB-MIDI
+  only): notes on every channel, CC 74/71/1/7, program change; a lock-free
+  ring from the 2 kHz polls to the main loop, one parser per source, exact
+  recovery from lost input.
+- The audio path (the ALNK0 interrupt, the render, the register drain) runs
+  from SRAM; tests check that the interrupt runs nowhere else and that no
+  call crosses between flash and SRAM code.
+- The community SysEx update protocol, step 1 (Felucca's `ota.c`), and
+  Felucca's update loader, unmodified and byte-identical to Felucca's own
+  build; a boot-loop guard that sends a third early death in a row to UBOOT.
+- `sidou-pack`: the `.fwsc` packager (a port of Felucca's), byte-identical to
+  Felucca's packer on the same inputs; CI builds `sidou.fwsc`, boots it in
+  fm1-emu and uploads it.
+- The M1a hardware checklist (`docs/hardware-test.md`) and checklist builds
+  that die early on purpose (`SIDOU_TEST_DEATH`).

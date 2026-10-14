@@ -24,8 +24,21 @@ target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # The identity the update protocol answers and the package carries (sidou-pack --product):
 # FM-1_900 for development builds, as every community firmware's; releases FM-1_9XY.
 set(SIDOU_PRODUCT "FM-1_900" CACHE STRING "Update-protocol identity, FM-1_<digits>")
+# Hardware-checklist builds only (docs/hardware-test.md), never released: the firmware dies
+# SIDOU_TEST_DEATH_MS after boot, by a hang ("hang": the watchdog resets) or a P33 reboot
+# ("reboot"), to check the boot guard, .noinit across resets and the watchdog in UBOOT.
+set(SIDOU_TEST_DEATH "" CACHE STRING "Checklist builds: hang or reboot early; empty: off")
+set(SIDOU_TEST_DEATH_MS "1000" CACHE STRING "When SIDOU_TEST_DEATH strikes, ms after boot")
 target_compile_definitions(${t} PRIVATE SIDOU_VERSION="${PROJECT_VERSION}"
     SIDOU_PRODUCT="${SIDOU_PRODUCT}")
+if(SIDOU_TEST_DEATH STREQUAL "hang" OR SIDOU_TEST_DEATH STREQUAL "reboot")
+    message(WARNING "SIDOU_TEST_DEATH=${SIDOU_TEST_DEATH}: a checklist build that dies early")
+    string(COMPARE EQUAL "${SIDOU_TEST_DEATH}" "reboot" death_reboot)
+    target_compile_definitions(${t} PRIVATE SIDOU_TEST_DEATH_MS=${SIDOU_TEST_DEATH_MS}u
+        SIDOU_TEST_DEATH_REBOOT=$<BOOL:${death_reboot}>)
+elseif(NOT SIDOU_TEST_DEATH STREQUAL "")
+    message(FATAL_ERROR "SIDOU_TEST_DEATH is hang, reboot or empty")
+endif()
 target_compile_options(${t} PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wshadow>)
 # --gc-sections drops functions nothing calls (e.g. live_sid_sink, which only the host uses):
 # besides the size, an unused call between flash and SRAM code would otherwise have to link.

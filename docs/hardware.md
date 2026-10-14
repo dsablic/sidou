@@ -199,7 +199,7 @@ These follow from the facts above. Each needs measuring before it's adopted.
 - **Recovery paths** if a unit no longer boots: FM-1-transporter
   (<https://github.com/kurogedelic/FM-1-transporter>), and MvaveFM1Unbricker
   with jl-uboot-tool, both community tools, to be confirmed on a unit
-  (the M1a Task 7 hardware checklist); back to stock with M-VAVE's
+  ([hardware-test.md](hardware-test.md)); back to stock with M-VAVE's
   updater or "Return to official V15".
 
 ## Open checks on a real unit
@@ -213,4 +213,5 @@ These follow from the facts above. Each needs measuring before it's adopted.
 | Unknown latencies | Divide latency, IRQ entry latency, `IPMASK` semantics, and whether IRQ priorities have 4 or 8 levels | Microbenchmarks on the device. |
 | Second core RAM issue | Some units misread RAM on core 1. | Felucca's core-1 self-test, before SIDOU ever uses core 1. |
 
-`docs/hardware-test.md` (M1a Task 7) turns these into checklist items.
+[hardware-test.md](hardware-test.md), section 11, turns these into checklist
+items; its other sections cover installing, recovery and the instrument.

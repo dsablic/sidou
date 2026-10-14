@@ -233,7 +233,11 @@ MIDI is covered by the host tests of the packet conversion
 
 `crates/emu-gate/tests/package.rs` boots `sidou.fwsc` as fm1-emu boots a
 package (`stock_from_package` + `stock_boot`) with the A4 key held: it plays
-440 Hz, sample for sample as the bare image does.
+440 Hz, sample for sample as the bare image does. It writes the audio as
+`sidou_package.wav` into the fm1 build directory.
+
+The hardware checklist, for a real FM-1, is
+[docs/hardware-test.md](docs/hardware-test.md).
 
 ### Boot-guard test
 

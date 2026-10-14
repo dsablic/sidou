@@ -123,6 +123,25 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
     input_leds(&front, &instrument);
 }
 
+#if defined(SIDOU_TEST_DEATH_MS)
+/* Hardware-checklist builds only (docs/hardware-test.md; CMake SIDOU_TEST_DEATH): die
+ * SIDOU_TEST_DEATH_MS after boot as an early crash would, before the boot is stable, so the
+ * boot guard sends the third boot to UBOOT. A hang with interrupts off lets the watchdog reset
+ * the chip; SIDOU_TEST_DEATH_REBOOT resets it through P33 as the fault handler does. */
+static void test_death(uint32_t now) {
+    if (now < SIDOU_TEST_DEATH_MS) {
+        return;
+    }
+#if SIDOU_TEST_DEATH_REBOOT
+    fm1_reboot();
+#else
+    __asm__ volatile("cli" ::: "memory");
+    for (;;) {
+    }
+#endif
+}
+#endif
+
 /* Before an intentional reset: not a failed boot. */
 static void leave_on_purpose(void) {
     bootguard_leave(&boot_guard);
@@ -167,6 +186,9 @@ static void sidou_main(void) {
         ui_poll(&instrument, now);
         midi_service(now);
         bootguard_poll(&boot_guard, now);
+#if defined(SIDOU_TEST_DEATH_MS)
+        test_death(now);
+#endif
         if (update_poll()) {
             upgrade();
         }

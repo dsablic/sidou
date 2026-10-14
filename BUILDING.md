@@ -96,6 +96,18 @@ must be installed); `--offline` uses only what is there:
 The update loader never writes the flash head, so a device keeps its own;
 no byte of M-VAVE's firmware goes into a package.
 
+**Checklist builds** (only for [docs/hardware-test.md](docs/hardware-test.md),
+never to be handed out): a firmware that dies one second after boot, by a
+hang the watchdog resets (`hang`) or a P33 reboot (`reboot`), to check the
+boot guard on a real unit:
+
+```sh
+tools/fm1-docker cmake --preset fm1 -B build/fm1-death -DSIDOU_TEST_DEATH=hang
+tools/fm1-docker cmake --build build/fm1-death
+```
+
+Package its `platform/fm1/sidou_app.bin` with the normal loader.
+
 Ship `LICENSES/Apache-2.0.txt` with every package. The package's identity is
 `FM-1_900` (`--product`; it must be the firmware's `SIDOU_PRODUCT`).
 

@@ -27,8 +27,9 @@ Follow-ups that aren't tied to a milestone task yet.
   protocol runs over USB only, so it cannot be driven in fm1-emu either: its
   step 1 (`ota.c`) is host-tested against packages from `sidou-pack`
   (`crates/sidou-pack/tests/ota_step1.rs`), and an install is a hardware
-  check (M1a Task 7).
-- **Action:** test USB MIDI on hardware (the M1a hardware checklist), and
+  check ([hardware-test.md](hardware-test.md)).
+- **Action:** test USB MIDI on hardware ([hardware-test.md](hardware-test.md),
+  section 8), and
   measure `usb_poll` there: three SIE round trips per poll at 2 kHz with
   no traffic. Ask upstream whether a USB device model is planned.
 
@@ -87,7 +88,7 @@ Follow-ups that aren't tied to a milestone task yet.
 
 ## Recovery paths, if an FM-1 stops booting
 
-- **Where:** the hardware checklist (M1a Task 7), before any
+- **Where:** the hardware checklist ([hardware-test.md](hardware-test.md)), before any
   hardware flash.
 - **Note:** the boot guard enters UBOOT after two early deaths, and the
   update loader (Felucca's) stays in place until an install completes. If
@@ -97,7 +98,8 @@ Follow-ups that aren't tied to a milestone task yet.
   device state it works, is still to be confirmed on a real unit. Return to
   stock with M-VAVE's updater or the installer's "Return to official V15".
 - **Action:** check that each recovery path works on a real unit before
-  SIDOU packages are offered to anyone (M1a Task 7).
+  SIDOU packages are offered to anyone ([hardware-test.md](hardware-test.md),
+  sections 0, 2 and 10).
 
 ## The identity FM-1_900 is shared with Felucca's development builds
 
@@ -110,6 +112,22 @@ Follow-ups that aren't tied to a milestone task yet.
   carries.
 - **Action:** agree distinct digits with the community before SIDOU
   releases (e.g. a range for SIDOU), and use them in release builds.
+
+## Hardware results
+
+- **Where:** [hardware-test.md](hardware-test.md), filled in and attached to
+  an issue.
+- **Status:** none recorded yet; no FM-1 has run SIDOU. Hardware flashing
+  waits until a tester with the recovery tools at hand has run sections 0
+  to 2, 9 and 10.
+- **Open hardware-only checks it collects:** install and resume (the loader
+  appearing as Felucca's), the way back to V15, the boot guard ending in
+  UBOOT, `.noinit` across watchdog and P33 resets, the watchdog in UBOOT,
+  quick power cycles and brownouts, USB MIDI and its edge cases (no cable,
+  unplug, host sleep, the SIE timeouts above), the TRS adapter type, the
+  LCD at 12 MHz SPI, the button labels, and the measurements of
+  docs/hardware.md's open checks (CPU clock, cycles against instructions,
+  the SRAM audio path's gain, latencies, the part number).
 
 ## Report fm1-emu: decrementing register block load is not executed
 
@@ -128,8 +146,9 @@ Follow-ups that aren't tied to a milestone task yet.
   bit-exact host match confirms): the registers load in ascending order from
   `base - 4 * count`, and the base is not written back.
 - **Our workaround:** `step_block_load_dec` in
-  `host/crates/emu-gate/tests/common/mod.rs`, shared by the emulator gate
-  and the boot test. Remove it once upstream supports the instruction.
+  `host/crates/emu-gate/tests/common/mod.rs`, shared by the emulator tests.
+  fm1-emu's own command line has no workaround: it stops SIDOU in
+  `sid_cutoff_hz` during boot (`fm1-emu --fwsc build/fm1/sidou.fwsc`). Remove it once upstream supports the instruction.
 - **Action:** open an issue (and possibly a PR) upstream with the above, then
   bump the pinned rev.
 

@@ -177,6 +177,7 @@ jobs:
           name: sidou-fwsc
           path: |
             build/fm1/sidou.fwsc
+            build/fm1/sidou_package.wav
             LICENSES/Apache-2.0.txt
             LICENSES/GPL-3.0-only.txt
           if-no-files-found: error
