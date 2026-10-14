@@ -283,6 +283,15 @@
 
   This is vendored from Felucca's `ota.c` with minimal changes. It includes
   the head-identity check that allows V15.
+- **Boot-loop guard.** This is a safety requirement, and it must land before
+  any hardware flash. Felucca's `fm1_cstart` (`firmware/src/main.c:336-349`)
+  keeps a `bootguard` in `.noinit` and calls `fm1_enter_uboot()` after 2
+  failed boots. SIDOU needs the same, so a crash early in boot, or a
+  watchdog reset loop, ends in UBOOT (which still accepts updates) instead of
+  looping forever. The counter is cleared once the main loop has run stably
+  for N seconds. Test it in the emulator: force an early fault twice, then
+  check that the code enters UBOOT. If fm1-emu can't model the reset, test
+  the counter logic on the host instead.
 - `host/crates/sidou-pack` (Rust): a port of Felucca's `tools/fm1pkg_make.py`
   (flash head with CRC16 and JLFS entries, ENC/SFC scrambling with key
   0x980F, the `ufw` container with marker insertion), the loader wrapping
