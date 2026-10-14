@@ -15,12 +15,12 @@ namespace {
 /* Measured at M0: sidou 0.0014 cents from theory and from reSIDfp; reSIDfp
  * < 0.0001 cents from theory. */
 constexpr double kMaxPitchCents = 0.1;
-constexpr double kMaxEnvelopeDb8580 = 1.0; /* measured at M0: 0.55 (at 82 ms, in the decay) */
+constexpr double kMaxEnvelopeDb8580 = 0.75; /* measured at M0: 0.44 (in the release, at -20 dB) */
 /* reSIDfp models the 6581's non-linear envelope DAC, which M0 does not; the
  * release tail drifts ~2 dB apart by -20 dB. M1 adds the DAC and tightens this. */
-constexpr double kMaxEnvelopeDb6581 = 2.5; /* measured at M0: 2.05 */
+constexpr double kMaxEnvelopeDb6581 = 2.5; /* measured at M0: 2.04 */
 /* M1 investigation item, envelope timing rather than the DAC: on the 8580 our
- * release falls ~5.5% steeper than reSIDfp's (55.9 vs 53.0 dB/s), 1.9 dB apart
+ * release falls ~5.5% steeper than reSIDfp's (55.9 vs 53.0 dB/s), 1.8 dB apart
  * by -30 dB; below kEnvelopeFloorDb, so this test does not see it yet. */
 constexpr double kEnvelopeFloorDb = -20.0;
 
@@ -30,7 +30,9 @@ constexpr double kSawA4Hz = 0x1d45 * (double)SID_CLOCK_PAL / 16777216.0;
 /* Envelope windows are 4 periods of kSawA4Hz (400.9 samples at 44.1 kHz), so
  * the RMS does not ripple with the phase each window starts at. */
 constexpr size_t kEnvelopeWindow = 401;
-constexpr size_t kSkipWindows = 6;    /* first 54.6 ms: start-up transients */
+/* First 9.1 ms: start-up transient. The attack is compared from window 1 on;
+ * in window 0 reSIDfp's 6581 is 6.3 dB quieter than ours, the 8580 0.48 dB apart. */
+constexpr size_t kSkipWindows = 1;
 constexpr size_t kSustainFirst = 17;  /* sustain plateau from 154.6 ms ... */
 constexpr size_t kSustainLast = 43;   /* ... to 391.0 ms (exclusive); gate off at 400 ms */
 

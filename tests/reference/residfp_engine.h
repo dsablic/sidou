@@ -31,6 +31,8 @@ public:
     void render_cycles(unsigned cycles, std::vector<int16_t>& out);
 
 private:
+    void release_power_on_envelopes();
+
     std::unique_ptr<reSIDfp::SID> sid_;
     double sample_rate_;
 };

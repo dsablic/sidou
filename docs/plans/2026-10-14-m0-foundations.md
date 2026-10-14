@@ -2436,6 +2436,11 @@ Expected: everything passes. A pre-check of this plan measured:
 > ~44100.80 Hz, not 44100 Hz. With both corrected, the code measured: pitch
 > 0.0014 cents; envelope 0.55 dB (8580) and 2.05 dB (6581). It also found that
 > the 8580's release is ~5.5% steeper than reSIDfp's, which is an M1 item.
+> A follow-up aligned the start state: reSIDfp powers each envelope counter up
+> at 0xaa, while ours starts at 0, so the harness releases reSIDfp's envelopes
+> to 0 first. Envelopes are now compared from 9 ms on, including the attack:
+> 0.44 dB (8580, tolerance tightened to 0.75) and 2.04 dB (6581).
+> The pre-roll also shifts the `sidou_compare` figures in Step 6.
 
 The 6581's gap is reSIDfp's non-linear envelope DAC, which M0 doesn't model.
 It's an M1 item ("6581 DAC curve").
