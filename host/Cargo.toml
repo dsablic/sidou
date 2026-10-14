@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Host tooling for SIDOU: FFI to the C core, tests, benchmark and the emulator gate.
+# The firmware itself is C and is cross-built with CMake (preset fm1).
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+publish = false
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+
+# The C code is built by cc at the profile's opt-level; the slow tests need it optimised.
+[profile.test]
+opt-level = 3

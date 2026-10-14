@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+# reSIDfp (GPL-2.0-or-later) is a test-only reference. It is never linked into firmware.
+[package]
+name = "residfp-sys"
+description = "Minimal FFI to reSIDfp (third_party/libresidfp), the reference for SIDOU's tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+links = "residfp"
+
+[lints]
+workspace = true
+
+[build-dependencies]
+cc = "1"
