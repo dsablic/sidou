@@ -12,6 +12,7 @@ include(GoogleTest)
 
 add_executable(sidou_unit_tests
     unit/sid_defs_test.cpp
+    unit/sid_noise_test.cpp
     unit/sid_osc_test.cpp)
 target_link_libraries(sidou_unit_tests PRIVATE sidou_core GTest::gtest_main)
 target_compile_options(sidou_unit_tests PRIVATE -Wall -Wextra)
