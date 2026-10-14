@@ -37,3 +37,11 @@ Follow-ups that aren't tied to a milestone task yet.
 - **Action:** ask upstream for a P33 model with a watchdog that resets the
   emulated chip when it is not fed; until then, check watchdog behaviour on
   the device.
+
+## Possible fm1-emu contributions (only if profiling needs them)
+
+fm1-emu still stops on some pi32v2 instruction classes: saturating `R += R`
+variants, register `&=`/`^=` masks, and some FPU and accumulator classes. If
+a profiled hot spot needs one of them in hand-written assembly, add support
+upstream first, so the emulator gate's bit-exact host-vs-target check keeps
+working.
