@@ -285,6 +285,23 @@
 
 **Commit:** `feat(fm1): TRS and USB MIDI input driving the live instrument`.
 
+### Task 5b: Hot audio code in SRAM
+
+Background is in `docs/hardware.md`. Code normally runs XIP from flash
+through the I-cache, and a miss is estimated at 400–600 cycles. The UI and
+LCD code compete for the same I-cache.
+
+- **Place the code:** use `app.ld` input-section rules (not attributes in the
+  portable C) to put the audio ISR body, `sid_render` and its clocking/voice
+  helpers, the ring drain, and the filter and envelope code into `.ram_text`.
+  RAMTEXT is 24 KB, so add an `ASSERT` that it fits.
+- **Copy at boot:** the existing `.ram_text` copy in `fm1_cstart` loads it.
+  Verify that the copy path now really runs, since it was empty until now.
+- **Tests:** the emulator gate must stay bit-exact. fm1-emu doesn't model
+  cache cost, so record the RAMTEXT usage and leave the timing benefit to
+  hardware measurement (a TODO in `docs/hardware.md`'s open checks).
+- **Commit:** `perf(fm1): run the audio path from SRAM`.
+
 ### Task 6: Update protocol, loader and packaging (`sidou-pack`)
 
 **Files:**
