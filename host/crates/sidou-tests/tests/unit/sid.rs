@@ -68,6 +68,9 @@ fn volume_write_on_a_6581_clicks_then_settles() {
 #[test]
 fn voice_3_off_mutes_an_unfiltered_voice_3() {
     let mut s = new_sid(SID_MODEL_8580);
+    // Let the power-on envelopes of the silent voices 1 and 2 release to 0 first: with no
+    // waveform selected, an 8580 voice outputs its DAC's zero level times the envelope.
+    clock(&mut s, 10_000);
     write(&mut s, 0x0e, 0x45);
     write(&mut s, 0x0f, 0x1d);
     write(&mut s, 0x14, 0xf0);
@@ -150,4 +153,145 @@ fn cutoff_low_bits_come_from_register_15() {
     assert_eq!(a.fc, 0x010);
     assert_eq!(b.fc, 0x017);
     assert_ne!(render(&mut a, 4410), render(&mut b, 4410));
+}
+
+fn read(s: &mut sid, reg: u8) -> u8 {
+    unsafe { sid_read(s, reg) }
+}
+
+fn clock(s: &mut sid, cycles: u32) {
+    unsafe { sid_clock(s, cycles) }
+}
+
+#[test]
+fn envelopes_and_accumulators_power_up_like_the_chip() {
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        let s = new_sid(model);
+        for v in 0..3 {
+            assert_eq!(s.env[v].counter, 0xaa, "voice {v}");
+            assert_eq!(s.env[v].hold_zero, 0, "voice {v}");
+            assert_eq!(s.env[v].state, SID_ENV_RELEASE, "voice {v}");
+            assert_eq!(s.osc[v].acc, 0x555555, "voice {v}");
+        }
+    }
+}
+
+#[test]
+fn power_on_envelopes_release_to_zero_and_freeze() {
+    let mut s = new_sid(SID_MODEL_8580);
+    // Release rate 0 from 0xaa: well under 10,000 cycles (reSIDfp: ~7 ms).
+    clock(&mut s, 10_000);
+    for v in 0..3 {
+        assert_eq!(s.env[v].counter, 0, "voice {v}");
+        assert_eq!(s.env[v].hold_zero, 1, "voice {v}");
+    }
+}
+
+#[test]
+fn env3_reads_the_voice_3_envelope_counter() {
+    let mut s = new_sid(SID_MODEL_8580);
+    assert_eq!(read(&mut s, 0x1c), 0xaa);
+    s.env[2].counter = 0x5a;
+    s.env[1].counter = 0x11;
+    assert_eq!(read(&mut s, 0x1c), 0x5a);
+}
+
+#[test]
+fn osc3_reads_the_top_8_bits_of_the_voice_3_waveform() {
+    let mut s = new_sid(SID_MODEL_6581);
+    write(&mut s, 0x12, 0x20); // saw
+    s.osc[2].acc = 0xabcdef;
+    assert_eq!(read(&mut s, 0x1b), 0xab);
+    write(&mut s, 0x12, 0x10); // triangle: the MSB folds the ramp
+    s.osc[2].acc = 0x400000;
+    assert_eq!(read(&mut s, 0x1b), 0x80);
+    s.osc[2].acc = 0xc00000;
+    assert_eq!(read(&mut s, 0x1b), 0x7f);
+    write(&mut s, 0x12, 0x00); // no waveform
+    assert_eq!(read(&mut s, 0x1b), 0x00);
+}
+
+#[test]
+fn osc3_follows_voice_3_ring_modulation_by_voice_2() {
+    let mut s = new_sid(SID_MODEL_6581);
+    write(&mut s, 0x12, 0x14); // triangle, ring modulated
+    s.osc[2].acc = 0x400000;
+    s.osc[1].acc = 0x800000; // flips voice 3's MSB
+    assert_eq!(read(&mut s, 0x1b), 0x7f);
+}
+
+#[test]
+fn paddles_read_0xff() {
+    let mut s = new_sid(SID_MODEL_8580);
+    assert_eq!(read(&mut s, 0x19), 0xff);
+    assert_eq!(read(&mut s, 0x1a), 0xff);
+}
+
+#[test]
+fn write_only_registers_read_the_last_bus_value() {
+    let mut s = new_sid(SID_MODEL_8580);
+    assert_eq!(read(&mut s, 0x00), 0x00);
+    write(&mut s, 0x05, 0x3c);
+    assert_eq!(read(&mut s, 0x00), 0x3c);
+    assert_eq!(read(&mut s, 0x18), 0x3c);
+    write(&mut s, 0x18, 0x0f);
+    assert_eq!(read(&mut s, 0x05), 0x0f);
+    // A read of a readable register drives the bus too, as in reSIDfp.
+    assert_eq!(read(&mut s, 0x1c), 0xaa);
+    assert_eq!(read(&mut s, 0x1d), 0xaa);
+    assert_eq!(read(&mut s, 0x19), 0xff);
+    assert_eq!(read(&mut s, 0x1f), 0xff);
+}
+
+#[test]
+fn register_numbers_wrap_at_0x20() {
+    let mut s = new_sid(SID_MODEL_8580);
+    s.env[2].counter = 0x42;
+    assert_eq!(read(&mut s, 0x3c), 0x42);
+    assert_eq!(read(&mut s, 0xf9), 0xff);
+}
+
+#[test]
+fn clock_advances_an_exact_number_of_cycles() {
+    let mut s = new_sid(SID_MODEL_8580);
+    write(&mut s, 0x0e, 0x00);
+    write(&mut s, 0x0f, 0x10); // voice 3 freq 0x1000
+    clock(&mut s, 1);
+    assert_eq!(s.osc[2].acc, 0x556555);
+    clock(&mut s, 99_999);
+    assert_eq!(s.osc[2].acc, (0x555555 + 100_000 * 0x1000) & 0xffffff);
+    assert_eq!(s.osc[0].acc, 0x555555);
+}
+
+#[test]
+fn clock_leaves_the_chip_where_render_would() {
+    let setup = |s: &mut sid| {
+        write(s, 0x0e, 0x45);
+        write(s, 0x0f, 0x1d);
+        write(s, 0x07, 0x77);
+        write(s, 0x08, 0x2a);
+        write(s, 0x13, 0x26);
+        write(s, 0x14, 0x84);
+        write(s, 0x12, 0x81); // voice 3 noise, gated
+        write(s, 0x0b, 0x41);
+    };
+    let mut rendered = new_sid(SID_MODEL_6581);
+    let mut clocked = new_sid(SID_MODEL_6581);
+    setup(&mut rendered);
+    setup(&mut clocked);
+    const SAMPLES: u32 = 4410;
+    render(&mut rendered, SAMPLES);
+    let cycles = (u64::from(SAMPLES) * u64::from(rendered.cycles_per_sample_q16)) >> 16;
+    clock(&mut clocked, u32::try_from(cycles).unwrap());
+    for v in 0..3 {
+        assert_eq!(clocked.osc[v].acc, rendered.osc[v].acc, "voice {v}");
+        assert_eq!(clocked.osc[v].lfsr, rendered.osc[v].lfsr, "voice {v}");
+        assert_eq!(clocked.env[v].counter, rendered.env[v].counter, "voice {v}");
+        assert_eq!(
+            clocked.env[v].rate_counter, rendered.env[v].rate_counter,
+            "voice {v}"
+        );
+    }
+    assert_eq!(read(&mut clocked, 0x1b), read(&mut rendered, 0x1b));
+    assert_eq!(read(&mut clocked, 0x1c), read(&mut rendered, 0x1c));
 }

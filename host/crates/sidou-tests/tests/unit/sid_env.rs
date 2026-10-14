@@ -323,3 +323,19 @@ fn jump_ahead_matches_per_cycle_reference() {
         assert_eq!(e.hold_zero != 0, r.hold_zero, "step {step}");
     }
 }
+
+#[test]
+fn reset_keeps_the_counter_and_releases_from_it() {
+    // reSIDfp: "counter is not changed on reset".
+    let mut e = sid_env::default();
+    e.counter = 0xaa;
+    unsafe { sid_env_reset(&mut e) };
+    assert_eq!(e.counter, 0xaa);
+    assert_eq!(e.hold_zero, 0);
+    assert_eq!(e.state, SID_ENV_RELEASE);
+    advance(&mut e, 9);
+    assert_eq!(e.counter, 0xa9);
+    advance(&mut e, 100_000);
+    assert_eq!(e.counter, 0);
+    assert_eq!(e.hold_zero, 1);
+}

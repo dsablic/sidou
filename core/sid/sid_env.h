@@ -23,16 +23,22 @@ typedef struct {
     uint8_t hold_zero;
 } sid_env;
 
+/* The envelope counter at power-on, as in reSIDfp. The real chip's counter starts at
+ * whatever its cells settle to; reSIDfp's 0xaa is a value sampled from one. */
+#define SID_ENV_POWER_ON 0xaau
+
+/* Like the chip's reset, this keeps the counter ("counter is not changed on reset",
+ * reSIDfp) and leaves the envelope releasing from it at rate 0, so a nonzero counter
+ * falls to 0 and freezes there. sid_init sets SID_ENV_POWER_ON first. */
 static inline void sid_env_reset(sid_env* e) {
     e->rate_counter = 0;
     e->rate_period = SID_RATE_PERIOD[0];
     e->exp_counter = 0;
     e->exp_period = 1;
     e->state = SID_ENV_RELEASE;
-    e->counter = 0;
     e->attack = e->decay = e->sustain = e->release = 0;
     e->gate = 0;
-    e->hold_zero = 1;
+    e->hold_zero = e->counter == 0;
 }
 
 static inline void sid_env_set_gate(sid_env* e, uint8_t gate) {

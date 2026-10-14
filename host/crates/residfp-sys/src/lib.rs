@@ -19,6 +19,7 @@ extern "C" {
     fn residfp_write(s: *mut RawSid, reg: u8, value: u8) -> i32;
     fn residfp_read(s: *mut RawSid, reg: u8) -> i32;
     fn residfp_clock(s: *mut RawSid, cycles: u32, buf: *mut i16) -> i32;
+    fn residfp_clock_silent(s: *mut RawSid, cycles: u32) -> i32;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -125,6 +126,14 @@ impl Sid {
             buf.len()
         );
         n
+    }
+
+    /// Runs `cycles` chip cycles without producing output: reSIDfp's `clockSilent`. It
+    /// clocks the three waveform generators and voice 3's envelope only, which is all
+    /// that OSC3 (`$1B`) and ENV3 (`$1C`) read. Voices 1 and 2's envelopes stand still.
+    pub fn clock_silent(&mut self, cycles: u32) {
+        let status = unsafe { residfp_clock_silent(self.raw.as_ptr(), cycles) };
+        assert_eq!(status, 0, "reSIDfp clockSilent threw");
     }
 }
 

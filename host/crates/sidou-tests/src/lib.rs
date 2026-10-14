@@ -3,6 +3,7 @@
 //! Reference harness: renders SIDOU and reSIDfp from the same register writes and measures
 //! the difference. Used by the reference tests and by `sidou-compare`.
 
+pub mod register_probe;
 pub mod render;
 pub mod residfp_engine;
 pub mod signal_metrics;

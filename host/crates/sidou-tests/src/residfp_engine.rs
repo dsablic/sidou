@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! reSIDfp set up as SIDOU's reference: PAL clock, chosen sampling, envelopes released.
+//! reSIDfp set up as SIDOU's reference: PAL clock and the chosen sampling.
 
 use residfp_sys::{Model, Sampling, Sid};
 use sidou_sys::{sid_model, SID_CLOCK_PAL, SID_MODEL_6581};
@@ -37,37 +37,25 @@ impl ResidfpEngine {
         sid.set_chip_model(model).expect("reSIDfp chip model");
         sid.set_sampling_parameters(f64::from(SID_CLOCK_PAL), sampling, sample_rate)
             .expect("reSIDfp sampling parameters");
+        // reset() keeps each envelope counter at its power-on 0xaa and each accumulator
+        // at 0x555555, as on the chip; SIDOU's sid_init powers up in the same state, so
+        // both engines start the scripted writes alike.
         sid.reset();
-        let mut engine = Self { sid };
-        engine.release_power_on_envelopes();
-        engine
-    }
-
-    /// reSIDfp, like the real chip, powers up each envelope counter at 0xaa and keeps
-    /// it across reset; our core starts at 0. Release all three to 0 so both engines
-    /// start the scripted writes from the same state (M1 decides whether our core
-    /// should mimic 0xaa). With AD = SR = 0 the release from 0xaa takes 671 rate
-    /// periods of 9 cycles (~7 ms measured); 50 ms is plenty. clockSilent() would only clock
-    /// voice 3's envelope, so this clocks into a discarded buffer. Every register
-    /// written here ends up 0, the same as after reset.
-    fn release_power_on_envelopes(&mut self) {
-        for v in 0..3u8 {
-            self.sid.write(v * 7 + 4, 0x00);
-            self.sid.write(v * 7 + 5, 0x00);
-            self.sid.write(v * 7 + 6, 0x00);
-        }
-        let mut discard = Vec::new();
-        self.render_cycles(SID_CLOCK_PAL / 20, &mut discard);
-        // ENV3 is the only readable counter; voices 1 and 2 ran the same release.
-        assert_eq!(
-            self.sid.read(0x1c),
-            0,
-            "reSIDfp envelope did not release to 0"
-        );
+        Self { sid }
     }
 
     pub fn write(&mut self, reg: u8, value: u8) {
         self.sid.write(reg, value);
+    }
+
+    /// Reads a register, e.g. OSC3 (`$1B`) or ENV3 (`$1C`).
+    pub fn read(&mut self, reg: u8) -> u8 {
+        self.sid.read(reg)
+    }
+
+    /// Advances `cycles` without producing samples; see [`Sid::clock_silent`].
+    pub fn clock_silent(&mut self, cycles: u32) {
+        self.sid.clock_silent(cycles);
     }
 
     pub fn render_cycles(&mut self, cycles: u32, out: &mut Vec<i16>) {

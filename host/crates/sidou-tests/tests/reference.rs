@@ -14,18 +14,23 @@ use sidou_tests::signal_metrics::{
 /* M0 tolerances. Tighten them in M1; never loosen them to make a failure pass
  * without writing down why. */
 /* Measured at M0: sidou 0.0014 cents from theory and from reSIDfp; reSIDfp
- * < 0.0001 cents from theory. */
+ * < 0.0001 cents from theory. Since both engines power up alike (M1b): sidou
+ * 0.0002 cents from theory and from reSIDfp. */
 const MAX_PITCH_CENTS: f64 = 0.1;
 /* Coupled to ENVELOPE_FLOOR_DB: the 8580's worst window sits at the floor, where
  * the release-slope difference below has grown largest. Changing the floor
  * means re-checking this tolerance. */
-const MAX_ENVELOPE_DB_8580: f64 = 0.75; /* measured at M0: 0.44 (in the release, at -20 dB) */
+/* Measured at M0: 0.44 (in the release, at -20 dB); since both engines power up
+ * alike, without the old pre-roll that released reSIDfp's envelopes (M1b): 0.39. */
+const MAX_ENVELOPE_DB_8580: f64 = 0.75;
 /* reSIDfp models the 6581's non-linear envelope DAC, which M0 does not; the
  * release tail drifts ~2 dB apart by -20 dB. M1 adds the DAC and tightens this. */
-const MAX_ENVELOPE_DB_6581: f64 = 2.5; /* measured at M0: 2.04 */
-/* M1 investigation item, envelope timing rather than the DAC: on the 8580 our
- * release falls ~5.5% steeper than reSIDfp's (55.9 vs 53.0 dB/s), 1.8 dB apart
- * by -30 dB; below ENVELOPE_FLOOR_DB, so this test does not see it yet. */
+const MAX_ENVELOPE_DB_6581: f64 = 2.5; /* measured at M0: 2.04; M1b power-on: 2.07 */
+/* M1 investigation item: on the 8580 our release falls ~5.5% steeper than
+ * reSIDfp's (55.9 vs 53.0 dB/s at M0), 1.8 dB apart by -30 dB; below
+ * ENVELOPE_FLOOR_DB, so this test does not see it yet. The ENV3 test
+ * (register_reads.rs) shows both engines' envelope counters releasing at the
+ * same rate, so the cause is in the output path rather than the envelope timing. */
 const ENVELOPE_FLOOR_DB: f64 = -20.0;
 
 /* A4 from the register value 0x1d45, not 440 Hz. */
@@ -35,7 +40,8 @@ const SAW_A4_HZ: f64 = 0x1d45 as f64 * SID_CLOCK_PAL as f64 / 16777216.0;
  * the RMS does not ripple with the phase each window starts at. */
 const ENVELOPE_WINDOW: usize = 401;
 /* First 9.1 ms: start-up transient. The attack is compared from window 1 on;
- * in window 0 reSIDfp's 6581 is 6.3 dB quieter than ours, the 8580 0.48 dB apart. */
+ * in window 0 reSIDfp's 6581 is 2.2 dB quieter than ours, the 8580 0.24 dB apart
+ * (6.3 and 0.48 dB at M0, when the engines powered up differently). */
 const SKIP_WINDOWS: usize = 1;
 const SUSTAIN_FIRST: usize = 17; /* sustain plateau from 154.6 ms ... */
 const SUSTAIN_LAST: usize = 43; /* ... to 391.0 ms (exclusive); gate off at 400 ms */

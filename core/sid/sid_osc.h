@@ -26,8 +26,12 @@ typedef struct {
     uint8_t msb_rose;
 } sid_osc;
 
+/* The accumulator at power-on, as in reSIDfp: its even bits come up high. */
+#define SID_OSC_POWER_ON_ACC 0x555555u
+
+/* Like the chip's reset, this keeps the accumulator ("accumulator is not changed on
+ * reset", reSIDfp). sid_init sets SID_OSC_POWER_ON_ACC first. */
 static inline void sid_osc_reset(sid_osc* o) {
-    o->acc = 0;
     o->freq = 0;
     o->pw = 0;
     o->lfsr = SID_LFSR_RESET;

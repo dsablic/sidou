@@ -66,6 +66,15 @@ int residfp_read(SID* s, uint8_t reg) {
     }
 }
 
+int residfp_clock_silent(SID* s, unsigned cycles) {
+    try {
+        s->clockSilent(cycles);
+        return 0;
+    } catch (...) {
+        return -1;
+    }
+}
+
 int residfp_clock(SID* s, unsigned cycles, int16_t* buf) {
     try {
         return s->clock(cycles, buf);

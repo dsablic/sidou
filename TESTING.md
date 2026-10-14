@@ -16,6 +16,7 @@ lists the prerequisites.
 | App logic (live instrument, MIDI parser, MIDI ring and input) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
+| Register reads (OSC3, ENV3) | `cargo test --release -p sidou-tests --test register_reads` | `crates/sidou-tests/tests/register_reads.rs` |
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
 | Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
@@ -103,6 +104,25 @@ should agree on. The 6581 tolerance is looser because M0 does not model the
 
 **Tolerances only get tighter.** Never loosen one to make a failure pass,
 unless a decision record in `docs/decisions/` explains why.
+
+### Register reads against reSIDfp
+
+`register_reads` runs scripts of register writes on SIDOU and reSIDfp and reads
+`$1C` (ENV3) or `$1B` (OSC3) from both at the same chip cycles, once per PAL
+frame or once every 100 cycles. The reads must be equal:
+- **ENV3**: every attack, decay and release rate, gate changes in the middle
+  of each phase, the ADSR delay bug, sustain changes during decay, and the
+  power-on release from 0xaa;
+- **OSC3**: triangle, sawtooth, pulse (three widths) and noise, each at four
+  frequencies.
+
+Neither engine renders audio here: SIDOU advances with `sid_clock`, reSIDfp
+with `clockSilent`, so a read can land on any cycle.
+
+**A failure means** a register reads back differently from reSIDfp; the
+message gives the cycle and the first differing values. Cases that a later
+milestone task fixes are `#[ignore]`d with the task and the reason; run them
+with `-- --ignored`.
 
 ### Filter comparison (`sidou-compare`)
 
