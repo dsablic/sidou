@@ -3,6 +3,10 @@
 #ifndef SIDOU_SID_MATH_H
 #define SIDOU_SID_MATH_H
 
+#if defined(__FAST_MATH__)
+#error "SIDOU needs host and pi32v2 float results to be bit-identical; build without -ffast-math."
+#endif
+
 #define SIDOU_PI 3.14159265358979f
 
 /* tan for 0 <= x < ~1.4 without libm (the firmware has none). Taylor series of sin and

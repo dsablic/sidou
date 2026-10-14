@@ -1097,7 +1097,7 @@ static inline void sid_svf_tick(sid_svf* f, float v0) {
 
 `core/sid/sid_curves_resid016.h`:
 ```c
-// SPDX-FileCopyrightText: 1998-2004 Dag Lem <resid@nimrod.no>
+// SPDX-FileCopyrightText: 2004 Dag Lem <resid@nimrod.no>
 // SPDX-License-Identifier: GPL-2.0-or-later
 /* Filter cutoff measurements (FC register -> Hz) from reSID 0.16 filter.cc,
  * with its duplicated spline end points removed. */

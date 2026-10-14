@@ -26,12 +26,21 @@ static inline void sid_svf_tick(sid_svf* f, float v0) {
     float v2 = f->ic2 + f->a2 * f->ic1 + f->a3 * v3;
     f->ic1 = 2.0f * v1 - f->ic1;
     f->ic2 = 2.0f * v2 - f->ic2;
+    /* Only ic1 is clipped, so bp (v1) can briefly exceed 1/drive: a deliberate M0 stand-in. */
     if (f->drive > 0.0f) {
         f->ic1 = sidou_soft_clip(f->ic1 * f->drive) * f->inv_drive;
     }
     f->lp = v2;
     f->bp = v1;
     f->hp = v0 - f->k * v1 - v2;
+    /* On silence the state decays into subnormals, which may be slow or trap on the pi32v2
+     * FPU. Flush explicitly rather than relying on an FPU flush-to-zero mode. */
+    if (f->ic1 < 1e-15f && f->ic1 > -1e-15f) {
+        f->ic1 = 0.0f;
+    }
+    if (f->ic2 < 1e-15f && f->ic2 > -1e-15f) {
+        f->ic2 = 0.0f;
+    }
 }
 
 #endif
