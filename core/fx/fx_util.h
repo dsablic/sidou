@@ -127,6 +127,22 @@ static inline float sid_fx_exp2(float e) {
     return (float)(1u << i) * (1.0f + f * (0.6565f + 0.3435f * f));
 }
 
+/* e^x for |x| <= 8, to about 1e-7 relative: for init-time tables, not the audio path.
+ * x / 16 by Taylor series, then squared four times. */
+static inline float sid_fx_exp_init(float x) {
+    float y = x * (1.0f / 16.0f);
+    float term = 1.0f;
+    float sum = 1.0f;
+    for (int k = 1; k <= 8; ++k) {
+        term *= y / (float)k;
+        sum += term;
+    }
+    for (int k = 0; k < 4; ++k) {
+        sum *= sum;
+    }
+    return sum;
+}
+
 /* Normalised float [-1, 1) to int16 with the convention of sid_render: round half away
  * from zero, then clamp. */
 static inline int16_t sid_fx_to_i16(float x) {

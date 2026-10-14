@@ -12,7 +12,13 @@ void sid_fx_init(sid_fx* fx, uint32_t sample_rate, uint32_t seed) {
     sid_fx_params zero = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     fx->target = zero;
     fx->cur = zero;
-    fx->smooth_coef = sid_fx_smooth_coef(SID_FX_SMOOTH_MS, sample_rate);
+    /* CRT's amount is smoothed on every sample; the others, whose blocks respond to it
+     * smoothly enough (the click tests check), on every other sample, with the
+     * coefficient for two steps: 1 - (1 - k)^2. That halves the smoothing and the
+     * coefficient updates while parameters move. */
+    float k = sid_fx_smooth_coef(SID_FX_SMOOTH_MS, sample_rate);
+    fx->smooth_coef = k;
+    fx->smooth_coef2 = k * (2.0f - k);
     fx->active = 0;
     fx->clock = 0;
     sid_fx_crush_init(&fx->crush, sample_rate);
@@ -47,13 +53,15 @@ static int idle(const sid_fx* fx) {
 static void smooth(sid_fx* fx) {
     const sid_fx_params* t = &fx->target;
     sid_fx_params* c = &fx->cur;
-    float k = fx->smooth_coef;
-    sid_fx_smooth_step(&c->tape_drive, t->tape_drive, k);
-    sid_fx_smooth_step(&c->wow, t->wow, k);
-    sid_fx_smooth_step(&c->flutter, t->flutter, k);
-    sid_fx_smooth_step(&c->noise, t->noise, k);
-    sid_fx_smooth_step(&c->crt, t->crt, k);
-    sid_fx_smooth_step(&c->crush, t->crush, k);
+    sid_fx_smooth_step(&c->crt, t->crt, fx->smooth_coef);
+    if ((fx->clock & 1u) == 0) {
+        float k = fx->smooth_coef2;
+        sid_fx_smooth_step(&c->tape_drive, t->tape_drive, k);
+        sid_fx_smooth_step(&c->wow, t->wow, k);
+        sid_fx_smooth_step(&c->flutter, t->flutter, k);
+        sid_fx_smooth_step(&c->noise, t->noise, k);
+        sid_fx_smooth_step(&c->crush, t->crush, k);
+    }
     if ((fx->clock & SNAP_MASK) == 0) {
         sid_fx_smooth_snap(&c->tape_drive, t->tape_drive);
         sid_fx_smooth_snap(&c->wow, t->wow);
@@ -71,6 +79,11 @@ void sid_fx_process(sid_fx* fx, int16_t* io, uint32_t n) {
     const sid_fx_params* c = &fx->cur;
     const sid_fx_params* t = &fx->target;
     uint32_t active = fx->active;
+    if (active == 0) {
+        /* Starting from rest (just initialised, or after the bypass): restart the snap
+         * grid here, so where it falls does not depend on how earlier calls were split. */
+        fx->clock = 0;
+    }
     int settled = c->tape_drive == t->tape_drive && c->wow == t->wow &&
                   c->flutter == t->flutter && c->noise == t->noise && c->crt == t->crt &&
                   c->crush == t->crush;
@@ -104,6 +117,11 @@ void sid_fx_process(sid_fx* fx, int16_t* io, uint32_t n) {
                 active |= ON_WOW;
             }
             x = sid_fx_wow_tick(&fx->wow, x, c->wow, c->flutter);
+            /* It can finish fading out on this very sample, maybe the last before the
+             * bypass: leave the path now, so the next start resets it. */
+            if (c->wow == 0.0f && c->flutter == 0.0f && !sid_fx_wow_busy(&fx->wow)) {
+                active &= ~ON_WOW;
+            }
         } else {
             active &= ~ON_WOW;
         }

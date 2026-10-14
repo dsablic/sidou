@@ -8,11 +8,15 @@
  * - Tone (amount t): two cascaded one-pole low-passes y += a (x - y), each with its pole
  *   at f_lp = LP_MIN_HZ (LP_MAX_HZ / LP_MIN_HZ)^(1 - t) (log-frequency: equal knob
  *   travel, equal musical interval), into a one-pole high-pass at
- *   f_hp = HP_MIN_HZ (HP_MAX_HZ / HP_MIN_HZ)^t, the thin TV-speaker low end. The filtered
- *   signal is mixed in over the first 1/8 of travel (wet = min(1, 8 t)), so the tone is
- *   the identity at t = 0 although the filters are not. Each pole uses backward Euler,
- *   a = w / (1 + w) with w = 2 pi f / fs, so the cascade's -3 dB point sits below f_lp:
- *   about 2.1 kHz at t = 1 and 44.1 kHz.
+ *   f_hp = HP_MIN_HZ (HP_MAX_HZ / HP_MIN_HZ)^t, the thin TV-speaker low end. Each pole
+ *   is matched, a = 1 - e^-w (low-pass) and r = e^-w (high-pass) with w = 2 pi f / fs,
+ *   so a pole sits at f; the low-pass cascade's -3 dB point is at 0.64 f_lp (about
+ *   2.6 kHz at t = 1). The filtered signal is mixed in over the first WET_SPAN of
+ *   travel (a smoothstep, no corner), so the tone is the identity at t = 0 although the
+ *   filters are not. (Pulling the coefficients to 1 instead does not work: the high-pass
+ *   then integrates and holds an offset that steps out when the block leaves.) The mix
+ *   is the part most sensitive to how finely the tone moves, so the chain smooths this
+ *   amount on every sample.
  * - Hum (amount h): 50 Hz with its 2nd and 3rd harmonics, fundamental at h HUM_LEVEL,
  *   read from a one-period wavetable built at init.
  *
@@ -30,11 +34,11 @@ extern "C" {
 
 #define SID_FX_CRT_LP_MIN_HZ 4000.0f
 #define SID_FX_CRT_LP_MAX_HZ 18000.0f
-#define SID_FX_CRT_LP_OCTAVES 2.169925f /* log2(18000 / 4000) */
+#define SID_FX_CRT_LP_LN_RANGE 1.5040774f /* ln(18000 / 4000) */
 #define SID_FX_CRT_HP_MIN_HZ 20.0f
 #define SID_FX_CRT_HP_MAX_HZ 150.0f
-#define SID_FX_CRT_HP_OCTAVES 2.906891f /* log2(150 / 20) */
-#define SID_FX_CRT_WET_SLOPE 8.0f
+#define SID_FX_CRT_HP_LN_RANGE 2.0149030f /* ln(150 / 20) */
+#define SID_FX_CRT_WET_SPAN 0.25f /* tone over which the filtered signal fades in */
 #define SID_FX_CRT_STEPS 32u /* table intervals over the tone range */
 #define SID_FX_HUM_STEPS 64u /* hum wavetable points per period */
 #define SID_FX_HUM_HZ 50.0f
@@ -63,10 +67,8 @@ static inline void sid_fx_crt_set_tone(sid_fx_crt* c, float tone) {
     float f = pos - (float)i;
     c->a_lp = sid_fx_lerp(c->a_lp_table[i], c->a_lp_table[i + 1], f);
     c->r_hp = sid_fx_lerp(c->r_hp_table[i], c->r_hp_table[i + 1], f);
-    c->wet = tone * SID_FX_CRT_WET_SLOPE;
-    if (c->wet > 1.0f) {
-        c->wet = 1.0f;
-    }
+    float w = tone * (1.0f / SID_FX_CRT_WET_SPAN);
+    c->wet = w < 1.0f ? sid_fx_smoothstep(w) : 1.0f;
 }
 
 /* Re-entry: the filters start settled on the current input x, so nothing jumps. */
@@ -84,14 +86,14 @@ static inline void sid_fx_crt_init(sid_fx_crt* c, uint32_t sample_rate) {
     float lp_limit_hz = 0.45f * (float)sample_rate;
     for (uint32_t i = 0; i <= SID_FX_CRT_STEPS; ++i) {
         float tone = (float)i / (float)SID_FX_CRT_STEPS;
-        float f_lp = SID_FX_CRT_LP_MIN_HZ * sid_fx_exp2(SID_FX_CRT_LP_OCTAVES * (1.0f - tone));
+        float f_lp =
+            SID_FX_CRT_LP_MIN_HZ * sid_fx_exp_init(SID_FX_CRT_LP_LN_RANGE * (1.0f - tone));
         if (f_lp > lp_limit_hz) {
             f_lp = lp_limit_hz;
         }
-        float w = w_scale * f_lp;
-        c->a_lp_table[i] = w / (1.0f + w);
-        float f_hp = SID_FX_CRT_HP_MIN_HZ * sid_fx_exp2(SID_FX_CRT_HP_OCTAVES * tone);
-        c->r_hp_table[i] = 1.0f / (1.0f + w_scale * f_hp);
+        c->a_lp_table[i] = 1.0f - sid_fx_exp_init(-w_scale * f_lp);
+        float f_hp = SID_FX_CRT_HP_MIN_HZ * sid_fx_exp_init(SID_FX_CRT_HP_LN_RANGE * tone);
+        c->r_hp_table[i] = sid_fx_exp_init(-w_scale * f_hp);
     }
     for (uint32_t i = 0; i <= SID_FX_HUM_STEPS; ++i) {
         /* sin 2t = 2 s c, sin 3t = 3 s - 4 s^3 */

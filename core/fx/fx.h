@@ -9,7 +9,9 @@
  * amounts in [0, 1] on any sample; this chain drives crush's rate and bits from `crush`,
  * and CRT's tone and hum from `crt`.
  *
- * Every parameter is smoothed with a one-pole (SID_FX_SMOOTH_MS). A block whose smoothed
+ * Every parameter is smoothed with a one-pole (SID_FX_SMOOTH_MS): crt on every sample,
+ * the others on every other sample (see sid_fx_init), and each snaps onto its target on a
+ * 32-sample grid that restarts whenever the chain starts from rest. A block whose smoothed
  * parameter is 0 is out of the signal path. When every target and smoothed value is 0
  * (and wow has glided back to no delay) sid_fx_process returns at once without touching
  * the samples or the state, so the bypass is exact. */
@@ -38,7 +40,7 @@ typedef struct {
 /* Fields are private to fx.c; the struct is public so callers can allocate it. */
 typedef struct {
     sid_fx_params target, cur;
-    float smooth_coef;
+    float smooth_coef, smooth_coef2; /* per sample (CRT), per two samples (the rest) */
     uint32_t active; /* blocks in the path on the last sample, one bit each */
     uint32_t clock;  /* samples processed, for the smoothing's snap grid */
     sid_fx_crush crush;
