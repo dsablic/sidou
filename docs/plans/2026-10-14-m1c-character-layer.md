@@ -9,9 +9,10 @@
 
 1. A post-chip colour chain: tape saturation, wow and flutter, noise floor,
    CRT/TV low-pass with hum, and bit-crush. It runs after the SID mixer.
-2. Named chip profiles with in-chip character controls: age/heat, DAC
-   sloppiness, output thump and filter bleed. These are built on M1b's
-   generated tables.
+2. The SID analogue model's own parameters (filter curves and
+   non-linearity, DACs, combined-waveform strength, output stage) as live,
+   continuous controls. Named chip profiles become presets of them, and
+   macro knobs move several at once (Task 3).
 3. All of these can be changed live (knobs and MIDI), with smoothing.
 
 **Constraints:**
@@ -100,30 +101,51 @@ Do this after M1a has merged to `main` and this branch has been rebased.
   spectrum change. The idle and worst-case main-loop and ISR costs still
   pass.
 
-### Task 3: Chip profiles and in-chip character
+### Task 3: The SID analogue model as live parameters
 
-Do this after M1b has merged.
+Do this after M1b has merged. The user's intent is direct control over the
+analogue modelling parameters, not just named presets. So:
 
-- `sid_profile`: per-model tables and parameters from M1b (DAC, cutoff
-  curve, 6581 non-linearity), plus named profiles that `sidou-tablegen`
-  generates from reSIDfp settings:
-  - 6581 R2, 6581 R3, 6581 R4AR, 8580 R5 and "worn 6581";
-  - they use `setFilter6581Curve`/`Range`, `setFilter8580Curve`,
-    combined-waveform strength and DAC leakage where reSIDfp exposes them.
-- **Live character controls:**
-  - **Age/heat:** filter curve drift plus non-linearity amount.
-  - **DAC sloppiness:** blends towards a leakier DAC table.
-  - **Output thump:** the size of the volume-register DC step.
-  - **Filter bleed:** unfiltered voices leaking into the filter.
-
-  Each control blends between neighbouring precomputed tables or parameters.
-  Nothing is rebuilt on the audio thread.
+- **`sid_analog` parameter set** (per chip, continuous, documented ranges).
+  At minimum:
+  - **filter:** 6581 curve and range, 8580 curve, resonance mapping,
+    6581 non-linearity amount (opamp/VCR), voice-DC bias into the
+    filter, filter bleed;
+  - **DACs:** waveform and envelope DAC non-linearity (kink factor) and
+    leakage;
+  - **waveforms:** combined-waveform strength (continuous between
+    reSIDfp's WEAK, AVERAGE and STRONG) and noise write-back on/off;
+  - **output stage:** voice DC offsets (the volume "thump"), external
+    filter corner frequencies, mixer saturation.
+- **Where the values come from:** `sidou-tablegen` generates the tables over
+  a grid of these parameters from reSIDfp's own settings
+  (`setFilter6581Curve`/`Range`, `setFilter8580Curve`,
+  `setCombinedWaveforms`, DAC leakage and so on). Parameters that reSIDfp
+  doesn't expose are modelled directly.
+- **How the device applies a change:** the main loop interpolates the
+  affected tables and coefficients and swaps them in at a block boundary,
+  the same pattern as the chip-model toggle. Nothing heavy runs on the audio
+  thread. Changes are smoothed or crossfaded, so they don't click.
+- **Three layers of control:**
+  1. *Expert:* every parameter directly, as panel entries and MIDI
+     NRPN/CC (in the M1d map).
+  2. *Profiles:* 6581 R2, R3, R4AR, 8580 R5 and "worn 6581" are named
+     presets of the parameter set. Users can also save their own.
+  3. *Macros:* age/heat, DAC sloppiness, thump and bleed each move
+     several parameters along curated paths.
 - **Tests:**
-  - each profile at zero character matches reSIDfp for that chip setting,
-    within the M1b tolerances;
-  - each control's effect is measurable and its direction is right;
-  - the blends are click-free.
-- **Gate:** worst-case SID + profile + effects within budget.
+  - each profile at default settings matches reSIDfp for that chip setting,
+    within M1b's tolerances;
+  - each parameter's effect is measurable, goes the right way, and stays
+    monotonic over its range;
+  - interpolation between grid points is smooth (no discontinuity at grid
+    boundaries);
+  - parameter sweeps don't click;
+  - the bypass and default paths stay bit-exact with the golden hashes.
+- **Gate:** the worst case of SID + parameter changes + effects stays within
+  budget. Also budget the main-loop cost of recomputing tables.
+- **Memory:** report the flash cost of the grids and the RAM cost of the
+  active and staging tables per chip.
 
 ### Task 4: CHIP view
 
