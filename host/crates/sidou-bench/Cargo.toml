@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "sidou-bench"
+description = "Host benchmark of the shared SIDOU workload"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sidou-sys = { path = "../sidou-sys" }
+
+[dev-dependencies]
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+
+[lib]
+bench = false
+
+[[bench]]
+name = "workload"
+harness = false
