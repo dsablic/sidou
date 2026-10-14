@@ -10,6 +10,12 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+if(CMAKE_CROSSCOMPILING)
+    # One section per function, so platform/fm1/app.ld can place single functions (the audio
+    # path in SRAM) with input-section rules instead of attributes in the portable C.
+    add_compile_options(-ffunction-sections)
+endif()
+
 add_subdirectory(core)
 add_subdirectory(app)
 add_subdirectory(bench)

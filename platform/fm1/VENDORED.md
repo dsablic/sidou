@@ -73,7 +73,11 @@ Not vendored: `fm1_cpu1.{h,S}` (we don't use the second core) and
 `firmware/app.ld` at the same commit and keep its licence (GPL-3.0-only)
 and copyright next to ours. Changes: `app.ld` drops the second core's
 `.c1_text`, collects `.init_array`, and adds `ASSERT`s for the image layout
-and region overlaps.
+and region overlaps. Since M1a Task 5b it also puts crt0 alone in `.entry`
+at the image's start and fills `.ram_text` with the audio path, by
+function section, ahead of `.text`; the image is `.entry`, `.ram_text`,
+`.text` and `.data` back to back ([docs/hardware.md](../../docs/hardware.md),
+"Code in SRAM").
 
 `lcd.c` is adapted the same way from Felucca's `firmware/src/lcd.c`: the
 ST7789 init sequence and the strip transfer left running until the next

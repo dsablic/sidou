@@ -5,6 +5,14 @@
 #include "reg_ring.h"
 #include "sid/sid.h"
 
+/* reg_ring_drain runs from SRAM (app.ld): beyond the direct call range of this file's
+ * main-loop code in flash, so those calls go through a pointer the compiler cannot fold back
+ * into a direct call (as Felucca's FL_FAR). audio_fill, in SRAM too, calls it directly. */
+static uint32_t far_drain(reg_ring* r, reg_ring_chips* c) {
+    uint32_t (*volatile fn)(reg_ring*, reg_ring_chips*) = reg_ring_drain;
+    return fn(r, c);
+}
+
 /* Two chips of ~8.5 KB each: the big zero-initialised pool, not .bss. */
 static reg_ring_chips chips __attribute__((section(".pool")));
 static reg_ring ring;
@@ -16,7 +24,7 @@ static volatile uint8_t running;
 static void wait_for_drain(void* ctx) {
     (void)ctx;
     if (!running) {
-        reg_ring_drain(&ring, &chips);
+        far_drain(&ring, &chips);
         return;
     }
     /* Sleep until the next interrupt (TIMER5 within 100 us, the block within 2.9 ms). */
@@ -46,7 +54,7 @@ uint32_t audio_queued(void) {
 
 void audio_start(void) {
     reg_ring_commit(&ring);
-    reg_ring_drain(&ring, &chips);
+    far_drain(&ring, &chips);
 }
 
 void audio_irqs_on(void) {

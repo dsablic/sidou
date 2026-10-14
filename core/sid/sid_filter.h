@@ -17,8 +17,17 @@ typedef struct {
 } sid_svf;
 
 void sid_svf_reset(sid_svf* f, float drive);
-void sid_svf_set(sid_svf* f, float g, float k);
 float sid_cutoff_hz(sid_model model, uint32_t fc);
+
+/* Inline: sid_write (the audio path, in SRAM on the device) and sid_init (in flash) both call
+ * it, and a call between flash and SRAM is out of the pi32v2's direct call range
+ * (platform/fm1/app.ld). */
+static inline void sid_svf_set(sid_svf* f, float g, float k) {
+    f->k = k;
+    f->a1 = 1.0f / (1.0f + g * (g + k));
+    f->a2 = g * f->a1;
+    f->a3 = g * f->a2;
+}
 
 static inline void sid_svf_tick(sid_svf* f, float v0) {
     float v3 = v0 - f->ic2;

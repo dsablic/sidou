@@ -69,8 +69,13 @@ copyrighted, so we link to them rather than copy them into this repo.
 - **Execution from flash:** code runs XIP from the in-package flash through
   the I-cache, over dual-I/O SPI with the SFC at about 90 MHz (at a 360 MHz
   system clock). An I-cache miss is estimated at **400–600 CPU cycles**.
-  Hot audio code should therefore run from SRAM (`.ram_text`, a 24 KB region
-  in `app.ld`).
+  Hot audio code therefore runs from SRAM (`.ram_text`, a 24 KB region in
+  `app.ld`; see "Code in SRAM" below).
+- **Call range:** a direct `call` or `goto` reaches about ±4 MB
+  (relocation `R_PI32V2_LONG_JUMP_23M2`), and SRAM code at 0x01C0xxxx is
+  about 4 MB from XIP code at 0x0200xxxx: calls between the two must go
+  through a pointer (Felucca's `FL_FAR`, SIDOU's `far_drain` in `audio.c`).
+  This clang has no long-calls option.
 - **No overlay or cache-lock facility.** The stock firmware's copy to
   0x04000120 is the SDK's SDRAM data slot. On this chip it copies nothing.
 - **In-package memory:** flash only, 8 Mbit. The AC7911B8 has **no SDRAM
@@ -126,13 +131,42 @@ reasonable reading not yet verified.
 Also present but not relevant to SIDOU: SBC codec, JPEG, camera ISP, RGB LCD
 interface, PDM microphone inputs (PLNK) and SPDIF receive.
 
+## Code in SRAM
+
+Since M1a Task 5b the audio path runs from SRAM: the ALNK0 entry
+(`isr_alnk0`) and its C body (`fm1_alnk0_irq`), `audio_fill`, the register
+ring's drain, `sid_render` and `sid_write` (2240 bytes of RAMTEXT's 24 KB at
+the time). The rules for keeping it that way:
+- **Placement is in `platform/fm1/app.ld` only**, by input-section rules on
+  function sections (the device build compiles with `-ffunction-sections`).
+  The portable C carries no attributes. The `.ram_text` statement comes
+  before `.text` in the script, because the first rule that matches an input
+  section wins.
+- **Every function the audio interrupt reaches is in `.ram_text`.** Static
+  helpers that the compiler inlines need nothing. A new non-inlined helper
+  (in `sid_env`, `sid_osc` or a new `.c` file) needs its section added to the
+  rules. The emulator test `emu-gate tests/ram_audio.rs` fails and names any
+  function the interrupt runs from flash.
+- **No direct call crosses between flash and SRAM** (see "Call range"
+  above). Code shared by both sides is `static inline` (as `sid_svf_set`),
+  or the flash side calls through a pointer. The firmware links with
+  `--gc-sections`, so host-only functions (as `live_sid_sink`) do not count.
+  A crossing either fails the link ("relocation truncated to fit") or links
+  only while the code happens to lie close enough; `tests/ram_audio.rs`
+  rejects every direct crossing in the disassembly.
+- **Constant tables stay in flash** (`.rodata`): XIP data reads go through
+  the D-cache. Move one only when a device measurement shows it's hot. The
+  audio path therefore still needs XIP: it can't run while the flash is
+  being written.
+
 ## Opportunities, ranked
 
 These follow from the facts above. Each needs measuring before it's adopted.
 
 1. **Run the audio ISR and `sid_render` from SRAM** (`.ram_text`): this
    removes the risk of I-cache misses on flash. It is cheap, and it is the
-   biggest determinism win.
+   biggest determinism win. Done in M1a Task 5b; the gain is still to be
+   measured (open checks).
 2. **Profile on the device** with the performance counters and TIMER4:
    cycles and misses per audio block, and the real clock.
 3. **Hand-written assembly** using the memory-operand MAC, `rep` and rounding
@@ -151,6 +185,7 @@ These follow from the facts above. Each needs measuring before it's adopted.
 | Legible part-number line | Confirms AC7911B8 beyond the pin and photo evidence. | A sharper photo of the chip (6 screws, one under the sticker). |
 | Actual CPU clock | Melodee measured 360 MHz; the budget assumes 240. | Time a dependent-add loop against TIMER4, or read the `TL_CKCNT` counter. |
 | Cycles vs instructions | The emulator counts instructions, not cycles. Flash (XIP) fetches and divides cost more. | Read the per-core counters around an audio block; compare `.text` with `.ram_text`. |
+| The audio path from SRAM | fm1-emu doesn't model the I-cache, so Task 5b's benefit is unmeasured. | Cycles per audio block (TIMER4 or `TL_CKCNT`) and fetch misses (`IF_UACNT`), with the LCD redrawing, in a build with `.ram_text`'s audio rules and one without. |
 | Unknown latencies | Divide latency, IRQ entry latency, `IPMASK` semantics, and whether IRQ priorities have 4 or 8 levels | Microbenchmarks on the device. |
 | Second core RAM issue | Some units misread RAM on core 1. | Felucca's core-1 self-test, before SIDOU ever uses core 1. |
 

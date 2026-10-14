@@ -23,15 +23,20 @@ target_link_libraries(${t} PRIVATE fm1_hal sidou_live sidou_core)
 target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(${t} PRIVATE SIDOU_VERSION="${PROJECT_VERSION}")
 target_compile_options(${t} PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wshadow>)
+# --gc-sections drops functions nothing calls (e.g. live_sid_sink, which only the host uses):
+# besides the size, an unused call between flash and SRAM code would otherwise have to link.
 target_link_options(${t} PRIVATE -T ${CMAKE_CURRENT_SOURCE_DIR}/app.ld -e _start
-    --orphan-handling=error)
+    --orphan-handling=error --gc-sections)
 set_property(TARGET ${t} APPEND PROPERTY LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/app.ld)
-# JieLi's objcopy takes one -j per run. app.ld loads .ram_text and .data right after .text,
-# and fm1_cstart copies them from there, so the image is the three concatenated.
+# JieLi's objcopy takes one -j per run. app.ld loads crt0 (.entry), .ram_text, .text and
+# .data back to back from XIP's origin, and fm1_cstart copies .ram_text and .data from there,
+# so the image is the four concatenated.
 add_custom_command(TARGET ${t} POST_BUILD
-    COMMAND ${CMAKE_OBJCOPY} -O binary -j .text $<TARGET_FILE:${t}> ${t}.text.bin
+    COMMAND ${CMAKE_OBJCOPY} -O binary -j .entry $<TARGET_FILE:${t}> ${t}.entry.bin
     COMMAND ${CMAKE_OBJCOPY} -O binary -j .ram_text $<TARGET_FILE:${t}> ${t}.ram_text.bin
+    COMMAND ${CMAKE_OBJCOPY} -O binary -j .text $<TARGET_FILE:${t}> ${t}.text.bin
     COMMAND ${CMAKE_OBJCOPY} -O binary -j .data $<TARGET_FILE:${t}> ${t}.data.bin
-    COMMAND ${CMAKE_COMMAND} -E cat ${t}.text.bin ${t}.ram_text.bin ${t}.data.bin > ${t}.bin
+    COMMAND ${CMAKE_COMMAND} -E cat ${t}.entry.bin ${t}.ram_text.bin ${t}.text.bin ${t}.data.bin
+        > ${t}.bin
     COMMAND ${CMAKE_OBJDUMP} -d $<TARGET_FILE:${t}> > ${t}.dis
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})

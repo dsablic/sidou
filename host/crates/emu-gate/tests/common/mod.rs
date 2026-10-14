@@ -92,6 +92,23 @@ impl Firmware {
         }
     }
 
+    /// The function symbol whose bytes hold `addr`, as `name+offset`.
+    pub fn function_at(&self, addr: u32) -> String {
+        use object::{Object, ObjectSymbol, SymbolKind};
+        let file = object::File::parse(&*self.elf).expect("parse the firmware ELF");
+        file.symbols()
+            .filter(|s| s.kind() == SymbolKind::Text && s.size() > 0)
+            .find(|s| (s.address()..s.address() + s.size()).contains(&u64::from(addr)))
+            .map(|s| {
+                format!(
+                    "{}+{:#x}",
+                    s.name().unwrap_or("?"),
+                    u64::from(addr) - s.address()
+                )
+            })
+            .unwrap_or_else(|| format!("{addr:#010x}"))
+    }
+
     /// The address of a function in the ELF.
     pub fn symbol(&self, name: &str) -> u32 {
         use object::{Object, ObjectSymbol};
@@ -133,6 +150,11 @@ pub struct Machine {
     open_call: Option<OpenCall>,
     /// Instructions run outside interrupts (the main loop).
     pub main_steps: u64,
+    /// With `watch_alnk_pcs`: instructions run at the ALNK0 interrupt's own level (not in
+    /// interrupts nested in it) inside the watched range, and the distinct PCs outside it.
+    pub alnk_pcs_inside: u64,
+    pub alnk_pcs_outside: std::collections::BTreeSet<u32>,
+    alnk_pc_range: Option<std::ops::Range<u32>>,
 }
 
 impl Machine {
@@ -161,12 +183,21 @@ impl Machine {
             watch: None,
             open_call: None,
             main_steps: 0,
+            alnk_pcs_inside: 0,
+            alnk_pcs_outside: std::collections::BTreeSet::new(),
+            alnk_pc_range: None,
         }
     }
 
     /// Counts the instructions of every call of the function at `entry` from the main loop.
     pub fn watch_calls(&mut self, entry: u32) {
         self.watch = Some(entry);
+    }
+
+    /// Sorts every instruction the ALNK0 interrupt runs at its own level by whether its PC
+    /// is in `range`.
+    pub fn watch_alnk_pcs(&mut self, range: std::ops::Range<u32>) {
+        self.alnk_pc_range = Some(range);
     }
 
     pub fn ms(&self) -> u64 {
@@ -197,6 +228,15 @@ impl Machine {
                 }
             }
             let in_isr = !cpu.irq_levels.is_empty();
+            if let (Some(range), Some((depth, _))) = (&self.alnk_pc_range, self.alnk_open) {
+                if cpu.irq_levels.len() == depth + 1 {
+                    if range.contains(&cpu.pc) {
+                        self.alnk_pcs_inside += 1;
+                    } else {
+                        self.alnk_pcs_outside.insert(cpu.pc);
+                    }
+                }
+            }
             if in_isr {
                 self.isr_steps += 1;
             } else {

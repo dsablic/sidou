@@ -18,7 +18,7 @@ lists the prerequisites.
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
-| Emulator tests (gate, boot, live instrument, MIDI) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
+| Emulator tests (gate, boot, live instrument, MIDI, SRAM audio) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
 profile sets `opt-level = 3`), but the reference tests do a lot of Rust-side
@@ -195,6 +195,23 @@ fm1-emu does not emulate USB (see [docs/TODO.md](docs/TODO.md)), so USB
 MIDI is covered by the host tests of the packet conversion
 (`tests/app/midi_usb.rs`), the ring (`midi_ring.rs`) and the input logic
 (`midi_rx.rs`), and by hardware testing.
+
+### SRAM audio test
+
+Checks of where the audio path runs, in
+`crates/emu-gate/tests/ram_audio.rs`:
+- the boot copies `.ram_text` (the audio path, `platform/fm1/app.ld`) from
+  the image to SRAM: emulated RAM at `_rt_start.._rt_end` equals the image
+  at `_rt_load`;
+- with a key held, every instruction the ALNK0 interrupt runs at its own
+  level (interrupts nested in it aside) lies in `.ram_text`; a failure names
+  the functions that ran from flash;
+- the build's disassembly (`sidou_app.dis`) has no direct `call` or `goto`
+  between flash and SRAM code, which would be out of the pi32v2's call range
+  ([docs/hardware.md](docs/hardware.md), "Code in SRAM").
+
+fm1-emu does not model the I-cache, so the benefit is a hardware
+measurement (docs/hardware.md, open checks).
 
 ## Sanitizers
 

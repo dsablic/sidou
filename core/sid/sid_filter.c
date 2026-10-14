@@ -16,13 +16,6 @@ void sid_svf_reset(sid_svf* f, float drive) {
     f->inv_drive = drive > 0.0f ? 1.0f / drive : 0.0f;
 }
 
-void sid_svf_set(sid_svf* f, float g, float k) {
-    f->k = k;
-    f->a1 = 1.0f / (1.0f + g * (g + k));
-    f->a2 = g * f->a1;
-    f->a3 = g * f->a2;
-}
-
 static float interpolate(const float (*points)[2], uint32_t n, uint32_t fc) {
     for (uint32_t i = 1; i < n; ++i) {
         float x0 = points[i - 1][0], x1 = points[i][0];

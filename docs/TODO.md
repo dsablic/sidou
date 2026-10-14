@@ -78,6 +78,17 @@ Follow-ups that aren't tied to a milestone task yet.
   interrupts off (or at least TIMER5 masked), as Felucca's own
   `usb_cdc_switch` orders it with `RING_PUBLISH`.
 
+## Task 6: the audio path still needs XIP
+
+- **Where:** `platform/fm1/app.ld` (`.ram_text`), the update protocol's
+  flash writes.
+- **Problem:** the audio interrupt's code runs from SRAM, but it reads
+  constant tables from flash (`.rodata`, e.g. the envelope rate periods),
+  and TIMER5's code is in flash. Neither interrupt may run while the SFC
+  (XIP) is off.
+- **Action:** in Task 6, stop the audio and mask interrupts around flash
+  erase and program, as Felucca's flash driver requires.
+
 ## Report fm1-emu: decrementing register block load is not executed
 
 - **Where:** fm1-emu (github.com/joakimeriksson/fm1-emu) at rev
