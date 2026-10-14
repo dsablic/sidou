@@ -38,6 +38,9 @@ Non-goals (for now)
 
 ## 2. Hardware constraints (from the reference repos)
 
+The full reference, with datasheet links, the inferred AC7916A package and
+the open hardware checks, is in `docs/hardware.md`.
+
 | Item | Fact | Source |
 |---|---|---|
 | SoC | JieLi AC791N, 2 × pi32v2, ~240 MHz (a 320 MHz variant exists) | fm1-emu README, Melodee CI |
