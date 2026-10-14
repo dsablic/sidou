@@ -35,6 +35,7 @@ void fm1_cstart(void);
 #define WDT_TIMEOUT 0x0Du
 
 static int32_t abuf[2u * AUDIO_HALF_WORDS] __attribute__((aligned(4)));
+/* Placeholder: nothing reads it yet; the UI and MIDI timing will. */
 static volatile uint32_t uptime_ms;
 
 void fm1_alnk0_irq(void) {

@@ -13,6 +13,7 @@ mod common;
 use common::{build_dir, read, step};
 use fm1_core::{Bus, Cpu};
 use fm1_soc::{Soc, VEC_BASE, XIP_BASE};
+use sidou_sys::{sid, sid_init, sid_render, sid_write, SID_CLOCK_PAL, SID_MODEL_6581};
 use sidou_tests::signal_metrics::estimate_f0;
 
 /// Where the SPL maps app.bin, and enters it.
@@ -25,6 +26,20 @@ const RUN_MS: u64 = 500;
 const FS: f64 = 24e6 / 544.0;
 /// The firmware's test tone (platform/fm1/audio.c): voice 1 sawtooth, A4.
 const TONE_HZ: f64 = 440.0;
+/// platform/fm1/audio.h AUDIO_SAMPLE_RATE and AUDIO_HALF_FRAMES.
+const SAMPLE_RATE: u32 = 44_118;
+const HALF_FRAMES: usize = 128;
+/// audio_init's register writes (platform/fm1/audio.c), in order.
+const TONE_WRITES: [(u8, u8); 6] = [
+    (0x00, 0x45),
+    (0x01, 0x1D),
+    (0x05, 0x00),
+    (0x06, 0xF0),
+    (0x18, 0x0F),
+    (0x04, 0x21),
+];
+/// The DMA plays the zeroed buffer before the first half the interrupt filled.
+const MAX_SILENT_HALVES: usize = 4;
 /// The tone is checked after this much output, once the attack and DC blocker settled.
 const SETTLE_MS: f64 = 100.0;
 
@@ -46,6 +61,8 @@ fn boot(image: &[u8], ms: u64) -> Boot {
     let mut cpu = Cpu::new(APP_BASE);
     // The SPL hands cpu0 over in user mode (fm1-emu main.rs).
     cpu.user = true;
+    // Placeholder contents (the CLI's): the firmware only saves r0, and fm1_irq_init then
+    // overwrites the block with the vector table.
     soc.write32(BOOT_PARAMS, BOOT_PARAMS + 0x40);
     cpu.regs[0] = BOOT_PARAMS;
 
@@ -83,6 +100,24 @@ fn boot(image: &[u8], ms: u64) -> Boot {
     }
 }
 
+/// The same chip and writes as the firmware, rendered by the host build of the core.
+fn render_host(frames: usize) -> Vec<i16> {
+    let mut s = Box::<sid>::default();
+    let mut out = vec![0i16; frames];
+    // SAFETY: `s` is a valid, exclusively borrowed chip, and `out` holds `frames` samples.
+    unsafe {
+        sid_init(&mut *s, SID_MODEL_6581, SID_CLOCK_PAL, SAMPLE_RATE);
+        for (reg, val) in TONE_WRITES {
+            sid_write(&mut *s, reg, val);
+        }
+        // In half buffers, as the interrupt renders them.
+        for half in out.chunks_mut(HALF_FRAMES) {
+            sid_render(&mut *s, half.as_mut_ptr(), half.len() as u32);
+        }
+    }
+    out
+}
+
 #[test]
 fn boots_and_plays_the_test_tone() {
     let Some(build) = build_dir() else {
@@ -102,6 +137,25 @@ fn boots_and_plays_the_test_tone() {
     let (left, right): (Vec<i16>, Vec<i16>) = r.audio.chunks_exact(2).map(|f| (f[0], f[1])).unzip();
     assert_eq!(left, right, "the test tone is mono: L and R must match");
 
+    // Sample-exact against the host: the emulator turns each int32 word back into the int16
+    // the firmware rendered (>> 8), so after the silent start the two must be identical.
+    let silent = left
+        .chunks(HALF_FRAMES)
+        .take_while(|h| h.iter().all(|&s| s == 0))
+        .count();
+    assert!(
+        silent <= MAX_SILENT_HALVES,
+        "{silent} silent half buffers before the first rendered one"
+    );
+    let played = &left[silent * HALF_FRAMES..];
+    let host = render_host(played.len());
+    let diffs: Vec<i32> = played
+        .iter()
+        .zip(&host)
+        .map(|(&a, &b)| (i32::from(a) - i32::from(b)).abs())
+        .collect();
+    let max_diff = diffs.iter().copied().max().unwrap_or(0);
+
     let tail = &left[(SETTLE_MS / 1000.0 * FS) as usize..];
     let peak = tail.iter().map(|&s| i32::from(s).abs()).max().unwrap_or(0);
     let x: Vec<f32> = tail.iter().map(|&s| f32::from(s)).collect();
@@ -113,6 +167,8 @@ fn boots_and_plays_the_test_tone() {
         "instructions": r.steps,
         "isr_instructions": r.isr_steps,
         "emulated_block_loads": r.emulated_block_loads,
+        "silent_halves": silent,
+        "max_sample_diff_vs_host": max_diff,
         "peak": peak,
         "f0_hz": f0,
         "expected_hz": TONE_HZ,
@@ -122,6 +178,13 @@ fn boots_and_plays_the_test_tone() {
     std::fs::write(&out, report.to_string())
         .unwrap_or_else(|e| panic!("write report {}: {e}", out.display()));
 
+    if let Some(i) = diffs.iter().position(|&d| d > 0) {
+        panic!(
+            "the firmware's audio differs from the host render by up to {max_diff} LSB; \
+             first at frame {i} after the silent start: target {} host {}",
+            played[i], host[i]
+        );
+    }
     assert!(peak > 2000, "the output is silent (peak {peak})");
     assert!(
         (f0 / TONE_HZ - 1.0).abs() < 0.005,
