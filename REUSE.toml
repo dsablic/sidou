@@ -6,6 +6,6 @@ SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
 [[annotations]]
-path = ["CMakePresets.json", "tests/golden/hashes.txt"]
+path = ["CMakePresets.json", "tests/golden/hashes.txt", "tools/docker/toolchain.sha256"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"

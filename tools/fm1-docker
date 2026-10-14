@@ -1,0 +1,12 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Run a command in the pinned pi32v2 build image, e.g.  tools/fm1-docker cmake --preset fm1
+# The repo is mounted at the same path, so CMake caches and paths stay valid outside.
+set -eu
+root=$(cd "$(dirname "$0")/.." && pwd)
+docker build --quiet --platform linux/amd64 -t sidou-pi32v2 \
+    --build-arg TOOLCHAIN_SHA256="$(cat "$root/tools/docker/toolchain.sha256")" \
+    "$root/tools/docker" >/dev/null
+exec docker run --rm --platform linux/amd64 -u "$(id -u):$(id -g)" \
+    -v "$root:$root" -w "$root" sidou-pi32v2 "$@"
