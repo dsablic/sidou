@@ -2,3 +2,6 @@
 -Icore
 -Ibench
 -Iapp
+-Iplatform/fm1
+-Iplatform/fm1/hal
+-Iplatform/fm1/usb
