@@ -21,6 +21,7 @@ constexpr double kRefSampleRate = 44100.0;
  * float samples in [-1, 1]. */
 std::vector<float> render_sidou(sid_model model, const std::vector<RegWrite>& writes,
                                 uint32_t frames);
-/* exact_rate: see ResidfpEngine. Use it when timing or pitch is measured. */
+/* decimate: see ResidfpEngine. Use it when timing or pitch is measured; the
+ * true output rate is then residfp_decimate_rate(kRefSampleRate). */
 std::vector<float> render_residfp(sid_model model, const std::vector<RegWrite>& writes,
-                                  uint32_t frames, bool exact_rate = false);
+                                  uint32_t frames, bool decimate = false);

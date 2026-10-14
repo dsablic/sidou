@@ -6,12 +6,17 @@
 #include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <limits>
+#include <numeric>
+#include <stdexcept>
 
 namespace {
 
+constexpr double kPi = 3.14159265358979323846;
+
 double dft_magnitude(const std::vector<float>& x, const std::vector<double>& window, double f,
                      double fs) {
-    const double w = 2.0 * M_PI * f / fs;
+    const double w = 2.0 * kPi * f / fs;
     double re = 0, im = 0;
     for (size_t i = 0; i < x.size(); ++i) {
         re += window[i] * x[i] * std::cos(w * (double)i);
@@ -23,9 +28,12 @@ double dft_magnitude(const std::vector<float>& x, const std::vector<double>& win
 } // namespace
 
 double estimate_f0(const std::vector<float>& x, double fs, double f_lo, double f_hi) {
+    if (x.size() < 2) {
+        throw std::invalid_argument("estimate_f0: need at least 2 samples");
+    }
     std::vector<double> window(x.size());
     for (size_t i = 0; i < x.size(); ++i) {
-        window[i] = 0.5 - 0.5 * std::cos(2.0 * M_PI * (double)i / (double)(x.size() - 1));
+        window[i] = 0.5 - 0.5 * std::cos(2.0 * kPi * (double)i / (double)(x.size() - 1));
     }
     // Coarse scan, then golden-section search around the best bin.
     const double step = fs / (double)x.size() / 4.0;
@@ -59,8 +67,10 @@ double estimate_f0(const std::vector<float>& x, double fs, double f_lo, double f
     return 0.5 * (a + b);
 }
 
-std::vector<double> rms_envelope_db(const std::vector<float>& x, double fs, double window_ms) {
-    const size_t w = (size_t)(fs * window_ms / 1000.0);
+std::vector<double> rms_envelope_db(const std::vector<float>& x, size_t w) {
+    if (w == 0) {
+        throw std::invalid_argument("rms_envelope_db: window must not be empty");
+    }
     std::vector<double> db;
     for (size_t start = 0; start + w <= x.size(); start += w) {
         double mean = 0;
@@ -78,7 +88,23 @@ std::vector<double> rms_envelope_db(const std::vector<float>& x, double fs, doub
 }
 
 std::vector<double> normalized(std::vector<double> env, size_t index) {
+    if (env.empty()) {
+        throw std::invalid_argument("normalized: empty envelope");
+    }
     const double ref = index == SIZE_MAX ? *std::max_element(env.begin(), env.end()) : env.at(index);
+    for (double& v : env) {
+        v -= ref;
+    }
+    return env;
+}
+
+std::vector<double> normalized_to_mean(std::vector<double> env, size_t first, size_t last) {
+    if (first >= last || last > env.size()) {
+        throw std::invalid_argument("normalized_to_mean: bad window range");
+    }
+    const double ref =
+        std::accumulate(env.begin() + (std::ptrdiff_t)first, env.begin() + (std::ptrdiff_t)last, 0.0) /
+        (double)(last - first);
     for (double& v : env) {
         v -= ref;
     }
@@ -89,6 +115,9 @@ double max_envelope_diff_db(const std::vector<double>& a, const std::vector<doub
                             double floor_db, size_t first) {
     double worst = 0;
     for (size_t i = first; i < std::min(a.size(), b.size()); ++i) {
+        if (std::isnan(a[i]) || std::isnan(b[i])) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
         if (b[i] > floor_db) {
             worst = std::max(worst, std::fabs(a[i] - b[i]));
         }
@@ -96,7 +125,7 @@ double max_envelope_diff_db(const std::vector<double>& a, const std::vector<doub
     return worst;
 }
 
-void write_wav16(const std::string& path, const std::vector<float>& x, int fs) {
+bool write_wav16(const std::string& path, const std::vector<float>& x, int fs) {
     std::ofstream f(path, std::ios::binary);
     auto u32 = [&](uint32_t v) { f.write(reinterpret_cast<const char*>(&v), 4); };
     auto u16 = [&](uint16_t v) { f.write(reinterpret_cast<const char*>(&v), 2); };
@@ -116,4 +145,6 @@ void write_wav16(const std::string& path, const std::vector<float>& x, int fs) {
     for (float s : x) {
         u16((uint16_t)(int16_t)std::clamp(s * 32767.0f, -32768.0f, 32767.0f));
     }
+    f.close();
+    return !f.fail();
 }

@@ -48,8 +48,8 @@ std::vector<float> render_sidou(sid_model model, const std::vector<RegWrite>& wr
 }
 
 std::vector<float> render_residfp(sid_model model, const std::vector<RegWrite>& writes,
-                                  uint32_t frames, bool exact_rate) {
-    ResidfpEngine e(model, kRefSampleRate, exact_rate);
+                                  uint32_t frames, bool decimate) {
+    ResidfpEngine e(model, kRefSampleRate, decimate);
     std::vector<int16_t> out;
     size_t next = 0;
     for (uint32_t f = 0; f < frames; ++f) {

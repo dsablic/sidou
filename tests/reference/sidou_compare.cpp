@@ -1,12 +1,16 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include <cstdint>
 #include <cstdio>
 #include <string>
+#include <utility>
 
 #include "render.h"
 #include "signal_metrics.h"
 
 namespace {
+
+constexpr size_t kWindow = 882; /* 20 ms; noise has no period to align to */
 
 struct Scenario {
     const char* name;
@@ -39,10 +43,16 @@ int main(int argc, char** argv) {
             const char* tag = m == SID_MODEL_6581 ? "6581" : "8580";
             auto ours = render_sidou(m, s.writes, s.frames);
             auto ref = render_residfp(m, s.writes, s.frames);
-            write_wav16(dir + "/" + s.name + "_" + tag + "_sidou.wav", ours, 44100);
-            write_wav16(dir + "/" + s.name + "_" + tag + "_residfp.wav", ref, 44100);
-            double d = max_envelope_diff_db(normalized(rms_envelope_db(ours, 44100, 20), SIZE_MAX),
-                                            normalized(rms_envelope_db(ref, 44100, 20), SIZE_MAX), -40, 3);
+            const std::string stem = dir + "/" + s.name + "_" + tag;
+            for (const auto& [path, x] : {std::pair{stem + "_sidou.wav", &ours},
+                                          std::pair{stem + "_residfp.wav", &ref}}) {
+                if (!write_wav16(path, *x, 44100)) {
+                    std::fprintf(stderr, "cannot write %s\n", path.c_str());
+                    return 1;
+                }
+            }
+            double d = max_envelope_diff_db(normalized(rms_envelope_db(ours, kWindow), SIZE_MAX),
+                                            normalized(rms_envelope_db(ref, kWindow), SIZE_MAX), -40, 3);
             std::printf("%-16s %-8s %.1f\n", s.name, tag, d);
         }
     }

@@ -26,7 +26,9 @@ add_library(residfp STATIC
     ${RFP}/FilterModelConfig6581.cpp ${RFP}/FilterModelConfig8580.cpp ${RFP}/Integrator6581.cpp
     ${RFP}/Integrator8580.cpp ${RFP}/OpAmp.cpp ${RFP}/SID.cpp ${RFP}/Spline.cpp ${RFP}/State.cpp
     ${RFP}/WaveformCalculator.cpp ${RFP}/WaveformGenerator.cpp ${RFP}/resample/SincResampler.cpp)
-target_include_directories(residfp PUBLIC ${RFP} ${RFP_GEN})
+target_include_directories(residfp SYSTEM PUBLIC ${RFP} ${RFP_GEN})
+# Upstream builds with -ffast-math -fno-unsafe-math-optimizations. We deliberately
+# don't: the reference should follow strict IEEE semantics like our own core.
 target_compile_options(residfp PRIVATE -w)
 find_package(Threads REQUIRED)
 target_link_libraries(residfp PUBLIC Threads::Threads)
@@ -34,10 +36,16 @@ target_link_libraries(residfp PUBLIC Threads::Threads)
 add_library(sidou_reference STATIC residfp_engine.cpp render.cpp signal_metrics.cpp)
 target_include_directories(sidou_reference PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(sidou_reference PUBLIC residfp sidou_core)
+target_compile_options(sidou_reference PRIVATE -Wall -Wextra)
 
 add_executable(sidou_reference_tests reference_test.cpp)
 target_link_libraries(sidou_reference_tests PRIVATE sidou_reference GTest::gtest_main)
+target_compile_options(sidou_reference_tests PRIVATE -Wall -Wextra)
 gtest_discover_tests(sidou_reference_tests)
 
 add_executable(sidou_compare sidou_compare.cpp)
 target_link_libraries(sidou_compare PRIVATE sidou_reference)
+target_compile_options(sidou_compare PRIVATE -Wall -Wextra)
+# Smoke test: the compare tool runs and writes its WAV pairs.
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/compare)
+add_test(NAME sidou_compare_smoke COMMAND sidou_compare ${CMAKE_CURRENT_BINARY_DIR}/compare)

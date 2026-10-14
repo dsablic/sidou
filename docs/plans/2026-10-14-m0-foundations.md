@@ -2428,6 +2428,15 @@ Expected: everything passes. A pre-check of this plan measured:
 - **envelope:** 0.64 dB for the 8580 (tolerance 1.0) and 2.26 dB for the
   6581 (tolerance 2.5).
 
+> **Superseded in code review.** The repository code under `tests/reference/`
+> is the reference, not the blocks above. Code review found two measurement
+> artefacts. First, 10 ms envelope windows aren't a whole number of periods,
+> which gives ±0.5 dB phase ripple; they are now 4-period windows, normalised to
+> the mean of the sustain plateau. Second, DECIMATE's true output rate is
+> ~44100.80 Hz, not 44100 Hz. With both corrected, the code measured: pitch
+> 0.0014 cents; envelope 0.55 dB (8580) and 2.05 dB (6581). It also found that
+> the 8580's release is ~5.5% steeper than reSIDfp's, which is an M1 item.
+
 The 6581's gap is reSIDfp's non-linear envelope DAC, which M0 doesn't model.
 It's an M1 item ("6581 DAC curve").
 
