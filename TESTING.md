@@ -134,16 +134,25 @@ with `-- --ignored`.
 ### Generated tables
 
 `core/sid/gen/` holds tables generated from reSIDfp by `sidou-tablegen`: the
-combined-waveform pulldown tables for each model at each point of the
-combined-waveform strength grid (`gen/grid.h`). After changing the generator
-or the reSIDfp submodule, regenerate them from `host/`:
+combined-waveform pulldown tables for each model and combined-waveform
+profile (`gen/grid.h`). Only AVERAGE, reSIDfp's default, is compiled by
+default: 30,720 bytes per model, 61,440 for both. Building with
+`SIDOU_ALL_COMBINED_PROFILES` (CMake option of the same name) adds WEAK and
+STRONG: 184,320 bytes in all. The host tests build with all three.
+
+The checked-in headers are the source of truth; the generator is a
+documented tool. After changing the generator or the reSIDfp submodule,
+regenerate them from `host/`:
 
 ```sh
 cargo run --release -p sidou-tablegen
 ```
 
 The drift test (`checked_in_tables_match_the_generator`) fails when the
-checked-in files differ from what the generator produces now.
+checked-in files differ from what the generator produces. If it fails on a
+new platform with nothing changed, that is a libm difference (reSIDfp builds
+the tables with `pow`, and some entries sit on a threshold), not stale
+tables: keep the checked-in headers.
 
 ### Filter comparison (`sidou-compare`)
 
@@ -171,9 +180,11 @@ The M0 decision gate. It runs the pi32v2 benchmark programs
 (`sid_bench_1` and `sid_bench_2`) in fm1-emu, used as a library, once per
 workload scenario (`bench/workload.h`): the triad, plus envelope worst cases
 at the fastest rate on all three voices (holding sustain 0xff and 0xaa, gates
-toggled every frame or every 128-sample block, and an idle chip), and a
+toggled every frame or every 128-sample block, and an idle chip), a
 combined-waveform scenario (pulse+saw, saw+triangle, and noise+pulse retriggered
-through TEST). For each it:
+through TEST), and noise combined with other waveforms on all three voices
+(TEST held, steady until lock-up, and retriggered through TEST every other
+frame or every block). For each it:
 - counts the instructions per output sample, and fails if one chip needs
   more than 900, or two chips more than 1,800 (design document, section 8),
   on average or in any 128-sample block (a block's window also holds the

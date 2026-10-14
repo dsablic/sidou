@@ -149,21 +149,17 @@ fn combined_with_pulse_the_output_locks_the_register_at_zero() {
     }
     assert_eq!(o.sr, 0);
     assert_eq!(o.noise, 0);
-    assert_eq!(
-        o.cycle_mode, 0,
-        "locked up, it leaves the cycle-by-cycle path"
-    );
 }
 
-/// sid_osc_pull_msb relies on this: on the 6581, at every strength, a sawtooth
+/// sid_osc_pull_msb relies on this: on the 6581, in every profile, a sawtooth
 /// combination's output has its top bit low in the cycle the accumulator enters its
 /// upper half (top 12 bits 0x800 to 0x80f), with the pulse high or low.
 #[test]
 fn saw_combinations_output_a_low_top_bit_entering_the_upper_half() {
     let mut o = sid_osc::default();
     unsafe { sid_osc_set_model(&mut o, 1) };
-    for point in 0..SID_STRENGTH_POINTS {
-        unsafe { sid_osc_set_strength(&mut o, point) };
+    for profile in 0..SID_PROFILES {
+        unsafe { sid_osc_set_profile(&mut o, profile) };
         for control in [0x30u8, 0x60, 0x70] {
             o.control = control;
             unsafe { sid_osc_update_mode(&mut o) };
@@ -173,8 +169,102 @@ fn saw_combinations_output_a_low_top_bit_entering_the_upper_half() {
                     assert_eq!(
                         out & 0x800,
                         0,
-                        "strength point {point}, control {control:#04x}, ix {ix:#x}"
+                        "profile {profile}, control {control:#04x}, ix {ix:#x}"
                     );
+                }
+            }
+        }
+    }
+}
+
+struct Rng(u32);
+
+impl Rng {
+    fn next(&mut self) -> u32 {
+        self.0 = self.0.wrapping_mul(1664525).wrapping_add(1013904223);
+        self.0 >> 8
+    }
+}
+
+fn assert_same_osc(a: &sid_osc, b: &sid_osc, at: &str) {
+    assert_eq!(a.acc, b.acc, "acc, {at}");
+    assert_eq!(a.sr, b.sr, "sr, {at}");
+    assert_eq!(a.noise, b.noise, "noise, {at}");
+    assert_eq!(a.out, b.out, "out, {at}");
+    if a.cycle_mode == 1 {
+        // Kept only while running cycle by cycle (locked up, OSC3 is computed instead).
+        assert_eq!(a.osc3, b.osc3, "osc3, {at}");
+        assert_eq!(a.pulse, b.pulse, "pulse, {at}");
+        if a.is6581 == 0 {
+            // The 8580's OSC3 latch; the 6581 does not use it.
+            assert_eq!(a.tri_saw, b.tri_saw, "tri_saw, {at}");
+        }
+    }
+    assert_eq!(a.shift_pipeline, b.shift_pipeline, "pipeline, {at}");
+    assert_eq!(a.test_or_reset, b.test_or_reset, "test_or_reset, {at}");
+    assert_eq!(a.sr_reset, b.sr_reset, "sr_reset, {at}");
+    assert_eq!(a.msb_rose, b.msb_rose, "msb_rose, {at}");
+    assert_eq!(a.pulled_last, b.pulled_last, "pulled_last, {at}");
+    if a.shift_pipeline == 1 {
+        assert_eq!(a.latch, b.latch, "latch, {at}");
+    }
+}
+
+/// Noise combined with other waveforms, with TEST, ring modulation and pulse width
+/// changes: sid_osc_advance's bulk steps against cycle by cycle.
+#[test]
+fn combined_noise_bulk_steps_match_cycle_by_cycle() {
+    for (is6581, seed) in [(1, 1u32), (0, 2), (1, 3), (0, 4)] {
+        let mut rng = Rng(seed);
+        let mut fast = noise_osc(is6581 == 1);
+        let mut slow = fast;
+        let mut src_acc = 0x123456u32;
+        for step in 0..150_000 {
+            let op = rng.next() % 64;
+            if op < 4 {
+                let wf = [0x9u8, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf, 0x8][(rng.next() % 8) as usize];
+                let control = (wf << 4)
+                    | if rng.next().is_multiple_of(4) {
+                        SID_CTRL_TEST as u8
+                    } else {
+                        0
+                    }
+                    | if rng.next().is_multiple_of(4) {
+                        SID_CTRL_RING as u8
+                    } else {
+                        0
+                    };
+                unsafe {
+                    sid_osc_write_control(&mut fast, control);
+                    sid_osc_write_control(&mut slow, control);
+                }
+            } else if op < 6 {
+                let pw = rng.next() % 0x1000;
+                fast.pw = pw;
+                slow.pw = pw;
+            } else if op < 7 {
+                let freq = [0x0123u32, 0x1167, 0x4000, 0xfedc][(rng.next() % 4) as usize];
+                fast.freq = freq;
+                slow.freq = freq;
+            } else {
+                let cycles = if rng.next().is_multiple_of(4) {
+                    1 + rng.next() % 3
+                } else {
+                    1 + rng.next() % 23
+                };
+                let src_freq = 0x2b89;
+                unsafe {
+                    if fast.control >> 4 > 8 {
+                        sid_osc_advance(&mut fast, cycles, src_acc, src_freq);
+                        sid_osc_advance_cycles(&mut slow, cycles, src_acc, src_freq);
+                    } else {
+                        sid_osc_advance(&mut fast, cycles, src_acc, src_freq);
+                        sid_osc_advance(&mut slow, cycles, src_acc, src_freq);
+                    }
+                }
+                src_acc = (src_acc + cycles * src_freq) & 0xffffff;
+                if fast.control >> 4 > 8 {
+                    assert_same_osc(&fast, &slow, &format!("model {is6581}, step {step}"));
                 }
             }
         }

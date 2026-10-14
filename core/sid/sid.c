@@ -151,17 +151,10 @@ static uint8_t read_osc3(const sid* s) {
     return (uint8_t)(out >> 4);
 }
 
-void sid_set_combined_strength(sid* s, float strength) {
-    uint32_t best = 0;
-    for (uint32_t i = 1; i < SID_STRENGTH_POINTS; ++i) {
-        float d = strength - SID_STRENGTH_GRID[i];
-        float b = strength - SID_STRENGTH_GRID[best];
-        if (d * d < b * b) {
-            best = i;
-        }
-    }
+void sid_set_combined_profile(sid* s, int profile) {
+    uint32_t p = profile >= 0 && profile < SID_PROFILES ? (uint32_t)profile : SID_PROFILE_AVERAGE;
     for (int v = 0; v < 3; ++v) {
-        sid_osc_set_strength(&s->osc[v], best);
+        sid_osc_set_profile(&s->osc[v], p);
     }
 }
 
@@ -192,10 +185,11 @@ static inline void clock_voices(sid* s, uint32_t cycles) {
         }
         sid_env_advance(&s->env[v], cycles);
     }
-    /* The output feeds the voice DAC (and, cycle by cycle, the noise write-back, which
-     * sid_osc_cycle keeps itself). With the envelope at 0 the DAC ignores it. */
+    /* The output feeds the voice DAC, which ignores it with the envelope at 0, and the
+     * noise write-back on a TEST release (sid_noise_shift_phase2), so it is kept
+     * current whenever noise is selected. */
     for (int v = 0; v < 3; ++v) {
-        if (s->env[v].counter) {
+        if (s->env[v].counter || (o[v].control & SID_CTRL_NOISE)) {
             o[v].out = sid_osc_output(&o[v], &o[v ? v - 1 : 2]);
         }
     }

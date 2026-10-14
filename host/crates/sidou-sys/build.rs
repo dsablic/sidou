@@ -80,6 +80,9 @@ fn c_build(root: &Path) -> cc::Build {
         .flag("-std=c11")
         // Float results must be identical on host and pi32v2 so their outputs can be compared.
         .flag("-ffp-contract=off")
+        // The host tests check every combined-waveform profile; the default build (and
+        // the firmware) has AVERAGE only, which gives the same output.
+        .define("SIDOU_ALL_COMBINED_PROFILES", None)
         .warnings(true)
         .extra_warnings(true)
         .flag("-Wshadow")
@@ -119,6 +122,7 @@ fn main() {
         .header(wrapper.to_str().unwrap())
         .clang_args(INCLUDES.map(|dir| format!("-I{}", root.join(dir).display())))
         .clang_arg("-std=c11")
+        .clang_arg("-DSIDOU_ALL_COMBINED_PROFILES")
         .allowlist_function(
             "sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|fx_live.*",
         )

@@ -125,7 +125,7 @@ fn test_bit_resets_and_holds_the_accumulator() {
     assert_eq!(o.acc, 0);
 }
 
-/// Every combination of waveforms, at every strength point and on both models, goes
+/// Every combination of waveforms, in every profile and on both models, goes
 /// through reSIDfp's pulldown table: the AND of the waveforms, then the table.
 #[test]
 fn combined_waveforms_match_re_sid_fp_tables() {
@@ -135,9 +135,9 @@ fn combined_waveforms_match_re_sid_fp_tables() {
         CombinedWaveforms::Average,
         CombinedWaveforms::Strong,
     ];
-    assert_eq!(grid.len() as u32, SID_STRENGTH_POINTS);
+    assert_eq!(grid.len() as u32, SID_PROFILES);
     for (is6581, model) in [(1, Model::Mos6581), (0, Model::Csg8580)] {
-        for (point, cws) in grid.into_iter().enumerate() {
+        for (profile, cws) in grid.into_iter().enumerate() {
             let table = pulldown_table(model, cws);
             for row in &table {
                 // A locked-up noise register relies on this: an output of 0 stays 0.
@@ -146,13 +146,13 @@ fn combined_waveforms_match_re_sid_fp_tables() {
             let mut o = make_osc(0, 0);
             unsafe {
                 sid_osc_set_model(&mut o, is6581);
-                sid_osc_set_strength(&mut o, point as u32);
+                sid_osc_set_profile(&mut o, profile as u32);
             }
             for (control, row) in [(0x30u8, 0usize), (0x50, 1), (0x60, 2), (0x70, 3)] {
                 o.control = control;
                 unsafe { sid_osc_update_mode(&mut o) };
                 o.pw = 0x100;
-                for ix in (0..0x1000u32).step_by(7) {
+                for ix in 0..0x1000u32 {
                     o.acc = ix << 12;
                     let saw = ix;
                     let tri = (if ix & 0x800 != 0 { ix ^ 0xfff } else { ix } << 1) & 0xfff;
@@ -189,4 +189,17 @@ fn reset_keeps_the_accumulator() {
     unsafe { sid_osc_reset(&mut o) };
     assert_eq!(o.acc, 0x555555);
     assert_eq!(o.freq, 0);
+}
+
+/// sid_wave_ramp is reSIDfp's waveform table, all 4 x 4096 entries (so the triangle's
+/// bit 0 is always 0).
+#[test]
+fn wave_ramp_is_re_sid_fp_wave_table() {
+    let table = residfp_sys::wave_table();
+    for (kind, row) in table.iter().enumerate() {
+        for (ix, &want) in row.iter().enumerate() {
+            let got = unsafe { sid_wave_ramp(kind as u32, ix as u32) };
+            assert_eq!(got, u32::from(want), "kind {kind}, ix {ix:#x}");
+        }
+    }
 }

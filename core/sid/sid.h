@@ -60,12 +60,19 @@ void sid_render(sid* s, int16_t* out, uint32_t frames);
  * back whatever is there. On the chip that value fades after a while; that is not
  * modelled. */
 uint8_t sid_read(sid* s, uint8_t reg);
+/* sid_write latches OSC3 (read_osc3, a few dozen instructions) before the first write
+ * to voice 2 or 3 after each cycle, so a read before the next cycle sees the old value.
+ * On the device that runs wherever writes are applied (the audio ISR draining the
+ * register ring). */
 
-/* Combined-waveform strength, 0 (weak) to 1 (strong); 0.5 is reSIDfp's AVERAGE, the
- * default. It picks the nearest point of the generated grid (gen/grid.h): pulldown
- * tables are bit patterns, so there is nothing to interpolate between points. Cheap
- * enough to call between sid_render calls. */
-void sid_set_combined_strength(sid* s, float strength);
+/* Combined-waveform profile: SID_PROFILE_WEAK, SID_PROFILE_AVERAGE (reSIDfp's default,
+ * and ours) or SID_PROFILE_STRONG, reSIDfp's three sampled chips (gen/grid.h). They
+ * are discrete, not points on a scale. Anything else gets AVERAGE, and so do WEAK and
+ * STRONG unless the core is built with SIDOU_ALL_COMBINED_PROFILES (61,440 bytes of
+ * tables for both models by default, 184,320 with it). On the device, call it where
+ * register writes are applied, through the register ring, never concurrently with
+ * sid_render. */
+void sid_set_combined_profile(sid* s, int profile);
 
 /* Advances the oscillators and envelopes by exactly `cycles` chip cycles, without
  * producing output; the filter and the output stage do not run. sid_render advances

@@ -73,6 +73,46 @@ static const reg_write COMBINED[] = {
     NOISE_RETRIGGER(9), NOISE_RETRIGGER(11),
 };
 
+/* Worst cases for noise combined with other waveforms, all three voices (from the
+ * Task 3 review): the triad's notes with the given controls. */
+#define CONTROLS(c1, c2, c3)                                                                \
+    {0, 0x00, 0x67}, {0, 0x01, 0x11}, {0, 0x02, 0x00}, {0, 0x03, 0x08}, {0, 0x05, 0x09},    \
+        {0, 0x06, 0xa9}, {0, 0x04, c1}, {0, 0x07, 0xed}, {0, 0x08, 0x15}, {0, 0x09, 0x00},  \
+        {0, 0x0a, 0x08}, {0, 0x0c, 0x09}, {0, 0x0d, 0xa9}, {0, 0x0b, c2}, {0, 0x0e, 0x13},  \
+        {0, 0x0f, 0x1a}, {0, 0x10, 0x00}, {0, 0x11, 0x08}, {0, 0x13, 0x09}, {0, 0x14, 0xa9}, \
+        {0, 0x12, c3}
+
+/* TEST held with noise+triangle, noise+saw and noise+pulse+triangle. */
+static const reg_write NOISE_TEST_HELD[] = {{0, 0x18, 0x0f}, CONTROLS(0x99, 0xa9, 0xd9)};
+
+/* Noise+saw on every voice, until it locks up. */
+static const reg_write NOISE_SAW[] = {{0, 0x18, 0x0f}, CONTROLS(0xa1, 0xa1, 0xa1)};
+
+/* Noise+triangle, noise+saw+triangle and noise+pulse+triangle. */
+static const reg_write NOISE_MIX[] = {{0, 0x18, 0x0f}, CONTROLS(0x91, 0xb1, 0xd1)};
+
+/* All three retriggered through TEST every other frame. */
+#define RETRIGGER3(f)                                                                       \
+    {f, 0x04, 0xc9}, {f, 0x0b, 0x99}, {f, 0x12, 0xa9}, {f + 1, 0x04, 0xc1}, {f + 1, 0x0b, 0x91}, \
+        {f + 1, 0x12, 0xa1}
+static const reg_write NOISE_RETRIGGER3[] = {
+    {0, 0x18, 0x0f}, CONTROLS(0xc1, 0x91, 0xa1), RETRIGGER3(1), RETRIGGER3(3),
+    RETRIGGER3(5),   RETRIGGER3(7),              RETRIGGER3(9), RETRIGGER3(11),
+};
+
+/* TEST set and released on alternate blocks. */
+static void noise_test_every_block(sid* s, uint32_t block) {
+    sid_write(s, 0x04, block & 1u ? 0xc1 : 0xc9);
+    sid_write(s, 0x0b, block & 1u ? 0x91 : 0x99);
+    sid_write(s, 0x12, block & 1u ? 0xa1 : 0xa9);
+}
+
+static void noise_test_every_block_b(sid* s, uint32_t block) {
+    sid_write(s, 0x04, block & 1u ? 0xc1 : 0xc9);
+    sid_write(s, 0x0b, block & 1u ? 0xb1 : 0xb9);
+    sid_write(s, 0x12, block & 1u ? 0xe1 : 0xe9);
+}
+
 typedef struct {
     const char* name;
     const reg_write* writes;
@@ -98,6 +138,14 @@ static const scenario SCENARIOS[WORKLOAD_SCENARIOS] = {
     SCENARIO("combined", COMBINED),
     {"gate_every_block", GATE_EVERY_BLOCK, sizeof GATE_EVERY_BLOCK / sizeof GATE_EVERY_BLOCK[0],
      gate_every_block},
+    SCENARIO("noise_test_held", NOISE_TEST_HELD),
+    SCENARIO("noise_saw", NOISE_SAW),
+    SCENARIO("noise_mix", NOISE_MIX),
+    SCENARIO("noise_retrigger3", NOISE_RETRIGGER3),
+    {"noise_test_every_block", NOISE_MIX, sizeof NOISE_MIX / sizeof NOISE_MIX[0],
+     noise_test_every_block},
+    {"noise_test_every_block_b", NOISE_MIX, sizeof NOISE_MIX / sizeof NOISE_MIX[0],
+     noise_test_every_block_b},
 };
 
 static sid chips[WORKLOAD_MAX_CHIPS];

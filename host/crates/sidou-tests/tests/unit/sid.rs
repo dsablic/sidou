@@ -329,3 +329,21 @@ fn clock_leaves_the_chip_where_render_would() {
     assert_eq!(read(&mut clocked, 0x1b), read(&mut rendered, 0x1b));
     assert_eq!(read(&mut clocked, 0x1c), read(&mut rendered, 0x1c));
 }
+
+#[test]
+fn combined_profile_selects_tables_and_falls_back_to_average() {
+    let mut s = new_sid(SID_MODEL_6581);
+    let average = s.osc[0].pulldown;
+    for (profile, differs) in [
+        (SID_PROFILE_WEAK as i32, true),
+        (SID_PROFILE_STRONG as i32, true),
+    ] {
+        unsafe { sid_set_combined_profile(&mut *s, profile) };
+        assert_eq!(s.osc[0].pulldown != average, differs, "profile {profile}");
+        assert_eq!(s.osc[2].pulldown, s.osc[0].pulldown);
+    }
+    for profile in [SID_PROFILE_AVERAGE as i32, -1, 3, i32::MAX] {
+        unsafe { sid_set_combined_profile(&mut *s, profile) };
+        assert_eq!(s.osc[0].pulldown, average, "profile {profile}");
+    }
+}

@@ -11,3 +11,10 @@ target_include_directories(sidou_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # Float results must be identical on host and pi32v2 so their outputs can be compared.
 target_compile_options(sidou_core PUBLIC -ffp-contract=off)
 target_compile_options(sidou_core PRIVATE -Wall -Wextra -Wshadow)
+
+# Combined-waveform profiles (gen/grid.h): AVERAGE only by default, 30,720 bytes of
+# tables per model; ON adds reSIDfp's WEAK and STRONG (92,160 bytes per model).
+option(SIDOU_ALL_COMBINED_PROFILES "Compile all three combined-waveform profiles" OFF)
+if(SIDOU_ALL_COMBINED_PROFILES)
+    target_compile_definitions(sidou_core PUBLIC SIDOU_ALL_COMBINED_PROFILES)
+endif()
