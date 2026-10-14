@@ -210,6 +210,29 @@
   `live` logic writes into this ring through a `sid_write` sink on the
   device. The host tests keep calling `sid_write` directly; abstract it as a
   function pointer in `live` or as a small `reg_sink` interface.
+- **Carry-overs from the Task 3 review.** These are required.
+  - **Ring drain:** the drain switches on `reg & 0x80`. `LIVE_REG_RESET`
+    (0x80, value = model) must never reach `sid_write`, which would mask it
+    to register 0x00. Add a host test that feeds the device drain function a
+    0x80 entry.
+  - **Model toggle cost:** a `sid_init` from inside the audio ISR (2048
+    `tanf` today) must not overrun a block. Pick one and measure it in the
+    emulator:
+    1. precompute both models' cutoff tables;
+    2. build the new chip in the main loop and swap a pointer at a block
+       boundary;
+    3. explicitly accept and mute a one-block gap.
+
+    M1b Task 5 replaces runtime `tanf` with generated tables, which makes
+    option 1 natural.
+  - **Ring size and overflow:** a single `write_all` is 26 entries, and FX,
+    preset, notes and tick can stack up in one loop iteration. Size the ring
+    for the worst case and make overflow block or retry, never drop: a
+    dropped write means a stuck gate or the wrong model. Test the worst-case
+    burst.
+  - **Key note-off:** each physical key remembers the note it sent at
+    key-down and releases that note, so an octave change while a key is held
+    can't leave a note stuck.
 - `platform/fm1/lcd.c`:
   - ST7789 init (Felucca's sequence) through `fm1_lcd_hw_*`;
   - a 240 × 24-pixel strip renderer with dirty rows, so there is no full
