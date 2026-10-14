@@ -15,17 +15,30 @@ copyrighted, so we link to them rather than copy them into this repo.
 | AC79 SDK `cpu/wl82` headers | Register definitions. There is no public register manual. |
 | [fm1-emu](https://github.com/joakimeriksson/fm1-emu) `docs/recon.md`, `docs/isa-notes.md` | SoC identification, pi32v2 instruction set, peripheral behaviour as modelled |
 | Felucca HAL (`platform/fm1/hal/`, see `VENDORED.md`) | Pin assignments and peripheral use, proven on hardware |
+| [aroum/fm1-custom-fw](https://github.com/aroum/fm1-custom-fw) `photos/`, `REVERSE_ENGINEERING.md` | Teardown photos of the board (`DX7 MB V07`), recovery notes |
 
 ## The chip
 
 - **Family:** JieLi AC791N ("WL82" in the SDK). fm1-emu identified it from
   the firmware package, the SPL and the SDK the stock firmware came from.
-- **Package variant (inferred, not confirmed): AC7916A (QFN76).**
-  - It is the only AC791N package that brings out every pin the FM-1
-    firmware uses. In particular PB6 is the MASTER pot (ADC channel 4) and
-    PB7 is a key-matrix row (`fm1_input.h`).
-  - AC7911B and AC7915A lack PB6 and PB7. AC7913A0 and AC7913A6 lack PC6,
-    which the codec control uses.
+- **Package variant: AC7911B8 (QFN48), with 8 Mbit (1 MiB) flash in the
+  package.** This is strongly supported, though the part-number line itself
+  is not legible:
+  - **Teardown photo** (aroum/fm1-custom-fw `photos/photo_01.png`): a 48-pin
+    QFN with the JL logo and lot code `C156211-…`. The part-number line isn't
+    readable at that resolution.
+  - **Pins:** the AC7911B8 datasheet (in the SDK's
+    `schematic/AC7911B0_AC7911B8参考原理图/`) lists every external pin the
+    firmware uses, including PB6 (the MASTER pot) and PB7 (a key-matrix row).
+    The plain AC7911B and the AC7911BA lack PB6/PB7; the AC7913A variants
+    lack PC6.
+  - **Flash:** the only pin the firmware uses that the AC7911B8 doesn't
+    bring out is PD0, which is the flash chip-select (`fm1_flash.h`).
+    That fits flash inside the package, and the "8" suffix means 8 Mbit
+    flash, which matches the FM-1's 1 MiB.
+  - **Earlier mistake:** this document first inferred AC7916A (QFN76) from
+    the plain AC7911B datasheet, before the photo and the AC7911B8
+    datasheet were checked.
 - **CPU:** two 32-bit RISC cores (pi32v2) with a single-precision FPU, rated
   DC–320 MHz, 128 vectored interrupts, 4 priority levels.
   - fm1-emu and SIDOU's budget assume **240 MHz**. That is unconfirmed (see
@@ -34,10 +47,8 @@ copyrighted, so we link to them rather than copy them into this repo.
   the datasheet, and 32 KB according to the SDK README.
 - **On-chip SRAM:** 578 KB (SDK documentation). SIDOU's linker script uses
   the same regions as Felucca (`platform/fm1/app.ld`).
-- **In-package memory:** the part-number suffix encodes it: none, 2–128 Mbit
-  flash, 1M×16 or 4M×16 SDRAM, or 16/64 Mbit PSRAM (datasheet ordering
-  information). The FM-1's 1 MiB flash suggests the 8 Mbit-flash variant,
-  which would have no SDRAM or PSRAM. This is unconfirmed.
+- **In-package memory:** flash only, 8 Mbit. The AC7911B8 has **no SDRAM
+  or PSRAM**, so the on-chip SRAM is all there is.
 - **Radio:** Bluetooth 5.0 BR/EDR + BLE (the stock firmware uses BLE MIDI)
   and Wi-Fi 4. SIDOU's published firmware uses neither (design doc section
   17).
@@ -64,7 +75,7 @@ fm1-emu does not yet execute every class (see `docs/TODO.md`).
 
 | Check | Why it matters | How |
 |---|---|---|
-| Full SoC marking (photo) | Confirms the package and whether there is SDRAM or PSRAM in the package. Extra RAM would change the memory budget a lot. | Open the case and photograph the chip. |
+| Legible part-number line | Confirms AC7911B8 beyond the pin and photo evidence. | A sharper photo of the chip (6 screws, one under the sticker). |
 | Actual CPU clock | The budget assumes 240 MHz. At 320 MHz there is a third more headroom. | Read the PLL configuration the SPL leaves (SDK `cpu/wl82` clock registers), or time a known loop against TIMER4. |
 | Cycles vs instructions | The emulator counts instructions, not cycles. Flash (XIP) fetches and divides cost more. | Time `sid_render` blocks with TIMER4 on the device. |
 | Second core RAM issue | Some units misread RAM on core 1. | Felucca's core-1 self-test, before SIDOU ever uses core 1. |
