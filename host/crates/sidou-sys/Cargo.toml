@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 [package]
 name = "sidou-sys"
-description = "FFI bindings to the SIDOU C core (core/sid) and the shared benchmark workload"
+description = "FFI bindings to the SIDOU C core (core/sid), the shared benchmark workload and the app logic (app/)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

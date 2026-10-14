@@ -1,25 +1,32 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Compiles the C core and the workload with `cc` and generates their FFI with bindgen.
+//! Compiles the C core, the workload and the portable app logic (`app/`) with `cc` and generates their FFI with bindgen.
 //! `wrap_static_fns` makes the header-only `static inline` functions callable: bindgen writes
 //! an extern wrapper for each into a C file, which is compiled with the rest.
 
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 3] = [
+const SOURCES: [&str; 6] = [
     "core/sid/sid.c",
     "core/sid/sid_filter.c",
     "bench/workload.c",
+    "app/live.c",
+    "app/live_freq.c",
+    "app/midi_in.c",
 ];
+
+/// Include roots, relative to the repository: core headers are "sid/...", the others bare.
+const INCLUDES: [&str; 3] = ["core", "bench", "app"];
 
 include!("../../build-support/sanitize.rs");
 
 fn c_build(root: &Path) -> cc::Build {
     let mut build = cc::Build::new();
+    for dir in INCLUDES {
+        build.include(root.join(dir));
+    }
     build
-        .include(root.join("core"))
-        .include(root.join("bench"))
         .flag("-std=c11")
         // Float results must be identical on host and pi32v2 so their outputs can be compared.
         .flag("-ffp-contract=off")
@@ -43,6 +50,7 @@ fn main() {
         "cargo:rerun-if-changed={}",
         root.join("bench/workload.h").display()
     );
+    println!("cargo:rerun-if-changed={}", root.join("app").display());
     for s in SOURCES {
         println!("cargo:rerun-if-changed={}", root.join(s).display());
     }
@@ -50,12 +58,11 @@ fn main() {
     let static_fns = out.join("static_fns");
     let bindings = bindgen::Builder::default()
         .header(wrapper.to_str().unwrap())
-        .clang_arg(format!("-I{}", root.join("core").display()))
-        .clang_arg(format!("-I{}", root.join("bench").display()))
+        .clang_args(INCLUDES.map(|dir| format!("-I{}", root.join(dir).display())))
         .clang_arg("-std=c11")
-        .allowlist_function("sid_.*|sidou_.*|workload_.*")
-        .allowlist_type("sid.*")
-        .allowlist_var("SID_.*|SIDOU_.*|WORKLOAD_.*")
+        .allowlist_function("sid_.*|sidou_.*|workload_.*|live_.*|midi_.*")
+        .allowlist_type("sid.*|live.*|midi_.*")
+        .allowlist_var("SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|live_.*")
         // A `static const` table private to sid_env.h; it has no symbol to link to.
         .blocklist_item("SID_RATE_PERIOD")
         .prepend_enum_name(false)

@@ -1,0 +1,300 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+use std::ffi::c_void;
+
+use sidou_sys::*;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ev {
+    Off(u8, u8, u8),
+    On(u8, u8, u8),
+    PolyPressure(u8, u8, u8),
+    Cc(u8, u8, u8),
+    Program(u8, u8),
+    Pressure(u8, u8),
+    Bend(u8, u16),
+    RealTime(u8),
+}
+
+#[derive(Default)]
+struct Out {
+    events: Vec<Ev>,
+    sysex: Vec<u8>,
+    raw: Vec<midi_msg>,
+}
+
+unsafe extern "C" fn on_msg(ctx: *mut c_void, m: *const midi_msg) {
+    let out = unsafe { &mut *ctx.cast::<Out>() };
+    let m = unsafe { *m };
+    out.raw.push(m);
+    let (c, a, b) = (m.channel, m.data1, m.data2);
+    out.events.push(match m.kind {
+        MIDI_NOTE_OFF => Ev::Off(c, a, b),
+        MIDI_NOTE_ON => Ev::On(c, a, b),
+        MIDI_POLY_PRESSURE => Ev::PolyPressure(c, a, b),
+        MIDI_CC => Ev::Cc(c, a, b),
+        MIDI_PROGRAM => Ev::Program(c, a),
+        MIDI_CHANNEL_PRESSURE => Ev::Pressure(c, a),
+        MIDI_PITCH_BEND => Ev::Bend(c, m.bend),
+        MIDI_REALTIME => Ev::RealTime(a),
+        k => panic!("unknown kind {k}"),
+    });
+}
+
+unsafe extern "C" fn on_sysex(ctx: *mut c_void, byte: u8) {
+    unsafe { &mut *ctx.cast::<Out>() }.sysex.push(byte);
+}
+
+struct Parser {
+    m: Box<midi_in>,
+    out: Box<Out>,
+}
+
+impl Parser {
+    fn new() -> Self {
+        let mut out = Box::<Out>::default();
+        let mut m = Box::<midi_in>::default();
+        let ctx: *mut Out = &mut *out;
+        unsafe { midi_in_init(&mut *m, Some(on_msg), Some(on_sysex), ctx.cast()) };
+        Parser { m, out }
+    }
+
+    fn feed(&mut self, bytes: &[u8]) -> &mut Self {
+        unsafe { midi_in_feed(&mut *self.m, bytes.as_ptr(), bytes.len()) };
+        self
+    }
+
+    fn take(&mut self) -> Vec<Ev> {
+        std::mem::take(&mut self.out.events)
+    }
+}
+
+fn parse(bytes: &[u8]) -> Vec<Ev> {
+    Parser::new().feed(bytes).take()
+}
+
+#[test]
+fn channel_messages() {
+    assert_eq!(
+        parse(&[
+            0x93, 60, 100, 0x83, 60, 64, 0xa2, 61, 33, 0xb5, 74, 127, 0xc9, 7, 0xdf, 99, 0xe0,
+            0x00, 0x40
+        ]),
+        [
+            Ev::On(3, 60, 100),
+            Ev::Off(3, 60, 64),
+            Ev::PolyPressure(2, 61, 33),
+            Ev::Cc(5, 74, 127),
+            Ev::Program(9, 7),
+            Ev::Pressure(15, 99),
+            Ev::Bend(0, 8192),
+        ]
+    );
+}
+
+#[test]
+fn pitch_bend_is_14_bit_lsb_first() {
+    assert_eq!(
+        parse(&[0xe1, 0x7f, 0x7f, 0x00, 0x00, 0x01, 0x02]),
+        [Ev::Bend(1, 16383), Ev::Bend(1, 0), Ev::Bend(1, 0x101)]
+    );
+}
+
+#[test]
+fn velocity_zero_note_on_is_note_off() {
+    assert_eq!(
+        parse(&[0x90, 60, 0, 61, 1]),
+        [Ev::Off(0, 60, 0), Ev::On(0, 61, 1)]
+    );
+}
+
+#[test]
+fn running_status() {
+    assert_eq!(
+        parse(&[0x90, 60, 100, 64, 100, 67, 0, 0xb0, 1, 2, 3, 4, 0xc0, 5, 6]),
+        [
+            Ev::On(0, 60, 100),
+            Ev::On(0, 64, 100),
+            Ev::Off(0, 67, 0),
+            Ev::Cc(0, 1, 2),
+            Ev::Cc(0, 3, 4),
+            Ev::Program(0, 5),
+            Ev::Program(0, 6),
+        ]
+    );
+}
+
+#[test]
+fn running_status_survives_split_feeds() {
+    let mut p = Parser::new();
+    p.feed(&[0x91, 60]);
+    assert!(p.take().is_empty());
+    p.feed(&[100, 62]);
+    assert_eq!(p.take(), [Ev::On(1, 60, 100)]);
+    p.feed(&[90]);
+    assert_eq!(p.take(), [Ev::On(1, 62, 90)]);
+}
+
+#[test]
+fn real_time_bytes_inside_a_message_change_nothing() {
+    assert_eq!(
+        parse(&[0x90, 0xf8, 60, 0xfe, 100, 0xfa, 62, 0xff, 0xf9, 90]),
+        [
+            Ev::RealTime(0xf8),
+            Ev::RealTime(0xfe),
+            Ev::On(0, 60, 100),
+            Ev::RealTime(0xfa),
+            Ev::RealTime(0xff),
+            Ev::RealTime(0xf9),
+            Ev::On(0, 62, 90),
+        ]
+    );
+}
+
+#[test]
+fn real_time_bytes_alone() {
+    assert_eq!(
+        parse(&[0xf8, 0xfc, 60, 100]),
+        [Ev::RealTime(0xf8), Ev::RealTime(0xfc)],
+        "no running status yet, so the data is dropped"
+    );
+}
+
+#[test]
+fn sysex_is_forwarded_and_otherwise_ignored() {
+    let mut p = Parser::new();
+    p.feed(&[0x90, 60, 100, 0xf0, 0x7e, 0x01, 0x90, 0x02]);
+    assert_eq!(p.take(), [Ev::On(0, 60, 100)]);
+    assert_eq!(p.out.sysex, [0xf0, 0x7e, 0x01]);
+    p.out.sysex.clear();
+
+    // 0x90 above ended the SysEx: the note-on that follows is a message.
+    p.feed(&[0x40, 0x64]);
+    assert_eq!(p.take(), [Ev::On(0, 0x02, 0x40)]);
+    assert!(p.out.sysex.is_empty());
+}
+
+#[test]
+fn sysex_end_cancels_running_status() {
+    let mut p = Parser::new();
+    p.feed(&[0x90, 60, 100, 0xf0, 0x7d, 0x10, 0x20, 0xf7, 62, 100]);
+    assert_eq!(p.take(), [Ev::On(0, 60, 100)]);
+    assert_eq!(p.out.sysex, [0xf0, 0x7d, 0x10, 0x20, 0xf7]);
+}
+
+#[test]
+fn real_time_inside_sysex_is_not_part_of_it() {
+    let mut p = Parser::new();
+    p.feed(&[0xf0, 0x01, 0xf8, 0x02, 0xfe, 0xf7]);
+    assert_eq!(p.take(), [Ev::RealTime(0xf8), Ev::RealTime(0xfe)]);
+    assert_eq!(p.out.sysex, [0xf0, 0x01, 0x02, 0xf7]);
+}
+
+#[test]
+fn a_stray_sysex_end_is_not_forwarded() {
+    let mut p = Parser::new();
+    p.feed(&[0xf7, 0x01]);
+    assert!(p.take().is_empty());
+    assert!(p.out.sysex.is_empty());
+}
+
+#[test]
+fn sysex_without_a_callback_is_skipped() {
+    let mut out = Box::<Out>::default();
+    let mut m = Box::<midi_in>::default();
+    let ctx: *mut Out = &mut *out;
+    let bytes = [0xf0, 1, 2, 0xf7, 0x90, 60, 1];
+    unsafe {
+        midi_in_init(&mut *m, Some(on_msg), None, ctx.cast());
+        midi_in_feed(&mut *m, bytes.as_ptr(), bytes.len());
+    }
+    assert_eq!(out.events, [Ev::On(0, 60, 1)]);
+}
+
+#[test]
+fn system_common_cancels_running_status_and_skips_its_data() {
+    // F1 (1 byte), F2 (2 bytes), F3 (1 byte), F6 (none), F4/F5 (undefined, none).
+    for (sc, data) in [
+        (0xf1, &[0x10][..]),
+        (0xf2, &[0x10, 0x20]),
+        (0xf3, &[0x05]),
+        (0xf6, &[]),
+        (0xf4, &[]),
+        (0xf5, &[]),
+    ] {
+        let mut bytes = vec![0x90, 60, 100, sc];
+        bytes.extend_from_slice(data);
+        bytes.extend_from_slice(&[62, 100, 64]);
+        assert_eq!(parse(&bytes), [Ev::On(0, 60, 100)], "status {sc:#x}");
+    }
+}
+
+#[test]
+fn truncated_messages_are_dropped() {
+    assert_eq!(
+        parse(&[0x90, 60, 0xb0, 7, 100, 0xe0, 0x10, 0x91, 61, 62, 0xc0]),
+        [Ev::Cc(0, 7, 100), Ev::On(1, 61, 62)]
+    );
+}
+
+#[test]
+fn data_before_any_status_is_ignored() {
+    assert_eq!(parse(&[1, 2, 3, 0x80, 4, 5]), [Ev::Off(0, 4, 5)]);
+}
+
+/// xorshift64*: deterministic, no dependencies.
+struct Rng(u64);
+
+impl Rng {
+    fn next(&mut self) -> u64 {
+        self.0 ^= self.0 >> 12;
+        self.0 ^= self.0 << 25;
+        self.0 ^= self.0 >> 27;
+        self.0.wrapping_mul(0x2545_f491_4f6c_dd1d)
+    }
+}
+
+#[test]
+fn random_streams_never_produce_out_of_range_data() {
+    let mut rng = Rng(0x5eed_51d0_u64);
+    let mut p = Parser::new();
+    let mut total = 0usize;
+    for round in 0..2000 {
+        let len = (rng.next() % 512) as usize;
+        // Every few rounds bias towards status bytes, otherwise towards data.
+        let status_odds = [2u64, 8, 32][round % 3];
+        let bytes: Vec<u8> = (0..len)
+            .map(|_| {
+                let r = rng.next();
+                if r % status_odds == 0 {
+                    0x80 | (r >> 8) as u8
+                } else {
+                    (r >> 8) as u8 & 0x7f
+                }
+            })
+            .collect();
+        p.feed(&bytes);
+        for m in p.out.raw.drain(..) {
+            total += 1;
+            if m.kind == MIDI_REALTIME {
+                assert!(m.data1 >= 0xf8 && m.channel == 0, "{m:?}");
+                continue;
+            }
+            assert!(m.kind <= MIDI_PITCH_BEND, "{m:?}");
+            assert!(m.channel <= 15, "{m:?}");
+            assert!(m.data1 <= 127 && m.data2 <= 127, "{m:?}");
+            assert!(m.bend <= 16383, "{m:?}");
+            if m.kind == MIDI_NOTE_ON {
+                assert!(m.data2 > 0, "{m:?}");
+            }
+        }
+        assert!(p
+            .out
+            .sysex
+            .iter()
+            .all(|&b| b < 0x80 || b == 0xf0 || b == 0xf7));
+        p.out.sysex.clear();
+        p.out.events.clear();
+    }
+    assert!(total > 10_000, "the streams produced {total} messages");
+}

@@ -1,3 +1,4 @@
 -std=c11
 -Icore
 -Ibench
+-Iapp
