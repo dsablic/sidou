@@ -21,6 +21,9 @@ Goals
 - Content: a starter pack of cleared tunes, `.sid` (PSID) playback with
   per-voice mute and solo, GoatTracker `.sng` and SID-Wizard import, and a
   "rip" that turns a playing `.sid` into an editable song.
+- MIDI as a first-class citizen: everything on the panel is reachable over
+  MIDI, the sequencer syncs to external clock, and each SID voice can be
+  played as its own instrument from a DAW (section 16).
 - Showcase: the same core runs in the browser as a demo and companion app.
 - Built to last: tested, documented, properly licensed, and able to handle a
   stream of user requests and releases.
@@ -78,6 +81,7 @@ What this means for the design:
 │   player/        song engine (GT2-style tables & patterns)  │
 │   import/        psid, gt2 .sng, SID-Wizard, register rip   │
 │   format/        song file format, versioned + migrations   │
+│   midi/          parser, router, clock follower, SysEx      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -98,8 +102,10 @@ Rules
   - runs chip A and chip B, then the post-chip effects, then mixes;
   - in `.sid` mode, the 6502 runs here too, for exactly the number of cycles in
     the block, so its register writes land on the right samples.
-- **Main loop**: UI, screen drawing, encoders and keys, MIDI parsing, the
-  sequencer clock, and flash input/output.
+- **Main loop**: UI, screen drawing, encoders and keys, MIDI parsing and
+  routing, the sequencer clock, and flash input/output. MIDI bytes are
+  timestamped where they arrive (UART DMA, USB poll), so parsing in the main
+  loop does not add timing jitter (section 16).
 - **Between them**: a single-producer single-consumer ring buffer of
   time-stamped events (`{sample_offset, chip, reg, value}` plus
   character-parameter events). Parameter changes are smoothed on the audio side.
@@ -311,8 +317,8 @@ Layers (all run in CI):
   - the release workflow attaches the `.fwsc`, SHA256SUMS and licence
     bundle;
   - the firmware identity string encodes the version.
-- **Installer:** a WebMIDI web installer plus a `tools/sidou_install.py`
-  command-line tool, using the community's two-step SysEx loader protocol.
+- **Installer:** a WebMIDI web installer plus a `sidou-install` command-line
+  tool in the host workspace, using the community's two-step SysEx loader protocol.
   - Back up user songs before flashing.
   - A "return to stock" path that accepts only the stock image with a known
     SHA-256.
@@ -433,12 +439,15 @@ Each kind of document has one job:
 2. **M1, sound:**
    - full SID core and the chip profiles;
    - character layer and post-chip effects;
-   - live view on the device (playable instrument with knobs).
+   - live view on the device (playable instrument with knobs);
+   - MIDI: parser, live mode, CC map, MIDI learn (section 16).
 3. **M2, songs:**
    - native format and player;
    - STEP and TRACKER views;
    - storage;
-   - GT2 import, with the register-match tests.
+   - GT2 import, with the register-match tests;
+   - MIDI: clock and transport, multitimbral and whole-chip modes, program
+     change, SysEx dumps.
 4. **M3, `.sid` files:**
    - 6502 and PSID playback;
    - mute and solo;
@@ -450,8 +459,9 @@ Each kind of document has one job:
    - WASM demo, installer, manual;
    - release-video pipeline (demo scripts, emulator capture, composition);
    - 0.1 release, followed by the nightly channel.
-6. **M5:** RIP, SID-Wizard import, chip B song tracks, MIDI polish, SCENE
-   view (one prototype scene first).
+6. **M5:** RIP, SID-Wizard import, chip B song tracks, MIDI extras (NRPN,
+   poly aftertouch, sequencer MIDI out), SCENE view (one prototype scene
+   first).
 
 ## 15. Language choice
 
@@ -468,7 +478,96 @@ modification or better performance.
 Revisit if a modern LLVM or GCC backend for pi32v2 appears. In that case,
 Rust or Zig for `app/` would be the first candidate.
 
-## 16. Open risks and questions
+## 16. MIDI
+
+MIDI is first-class: everything on the panel can be done over MIDI, and the
+sequencer fits into a MIDI setup as easily as it plays alone.
+
+**Ports.** USB MIDI (class-compliant, in and out) and TRS MIDI in. The FM-1
+has no TRS out, so all MIDI output goes over USB. Both inputs merge into one
+stream.
+
+**Architecture.**
+- `core/midi/` is portable C. It handles:
+  - **the parser:** running status, real-time bytes inside other messages,
+    and SysEx streaming without buffering a whole dump;
+  - **the router:** channel to voice or chip, CC to parameter;
+  - **the clock follower;**
+  - **SysEx handlers.**
+
+  It is unit-tested on the host and fuzzed like the importers.
+- **Timestamps:** each byte is stamped on arrival in the HAL (UART DMA, USB
+  poll), converted to a sample position, and put on the same event queue the
+  sequencer uses. MIDI is sample-accurate.
+- **Latency target:** at most one audio block (2.9 ms) plus the USB poll
+  interval, from note-on to sound. This is measured in fm1-emu as part of
+  the tests.
+
+**Modes**, saved per song:
+- **Live:** one channel plays chip B. It is three-voice polyphonic with voice
+  stealing, or mono/legato.
+- **Multitimbral:** chip A's voices on channels N, N+1, N+2, each its own
+  instrument, and chip B on a fourth. This is how a DAW plays or sequences
+  the SID directly.
+- **Whole-chip:** one channel plays all three voices of a chip, with chord
+  and arpeggio options (the classic one-voice "chord" arpeggio included).
+- **Omni** is available for quick setups.
+
+**Expression.**
+- **Velocity, pitch bend** (range per instrument), **mod wheel,** and
+  **channel and polyphonic aftertouch** are all assignable. Typical targets
+  are pulse width, cutoff, resonance, character controls and envelope
+  scaling.
+- **The CC map is fixed and published:** every engine and character
+  parameter has a CC. 11-bit cutoff and 12-bit pulse width also have NRPNs
+  for full resolution.
+- **MIDI learn** remaps knobs.
+- **Knob moves are sent out over USB** as CCs, so a DAW can record them as
+  automation.
+
+**Clock and transport.**
+- **Clock in:** follows external MIDI clock, smoothed so it doesn't jitter.
+- **Clock out** over USB.
+- **Start, stop, continue** and **song position pointer**, in both directions.
+- **`.sid` playback:** start and stop follow transport. Tempo lock applies
+  when the tune's player runs at frame rate. Tunes that set their own timer
+  are start/stop only.
+
+**Program change** (with bank select) switches songs and instruments.
+
+**SysEx.** The protocol is documented in `docs/reference/`. It covers:
+- device inquiry (identity);
+- instrument and song dump and load;
+- the companion app's transfers;
+- installer and backup messages, kept compatible with the FM-1 community
+  loader protocol where possible.
+
+During development we use the non-commercial ID 0x7D; we'll look at a proper
+manufacturer ID before 1.0.
+
+**Sequencer MIDI out:** tracks can send notes and CCs out over USB, so SIDOU
+can sequence other gear as a SID tracker.
+
+**Documentation and tests.**
+- `docs/reference/` gets a MIDI implementation chart and the CC/NRPN map.
+- Tests cover:
+  - the parser (unit and fuzz);
+  - the router modes;
+  - clock following with jittered input;
+  - end-to-end in fm1-emu (MIDI events in `--keys` scripts, including a
+    note-on-to-audio latency check).
+
+**By milestone:**
+
+| Milestone | MIDI work |
+|---|---|
+| M1 | Parser, live mode, velocity, bend, the CC map, MIDI learn, latency test. |
+| M2 | Clock in and out, transport, multitimbral and whole-chip modes, program change, instrument and song SysEx. |
+| M3 | Transport during `.sid` playback. |
+| M4 | Implementation chart in the manual. |
+| M5 | NRPN high resolution, poly aftertouch, sequencer MIDI out. |
+
+## 17. Open risks and questions
 
 - How well core 1 works on real units, and the exact clock speed, need
   checking on hardware.
@@ -476,5 +575,5 @@ Rust or Zig for `app/` would be the first candidate.
   The benchmark in M0 decides this.
 - The SID-Wizard format documentation is thin, so we may need to read the
   original source.
-- The starter pack needs us to contact composers for permission.
+- The starter pack needs openly licensed tunes found or commissioned.
 - The PETSCII-style font and theme need someone to design them.
