@@ -21,3 +21,9 @@ add_executable(sidou_unit_tests
 target_link_libraries(sidou_unit_tests PRIVATE sidou_core GTest::gtest_main)
 target_compile_options(sidou_unit_tests PRIVATE -Wall -Wextra)
 gtest_discover_tests(sidou_unit_tests)
+
+add_executable(sidou_golden_tests golden/golden_test.cpp)
+target_link_libraries(sidou_golden_tests PRIVATE sidou_workload GTest::gtest_main)
+target_compile_definitions(sidou_golden_tests PRIVATE
+    SIDOU_GOLDEN_FILE="${CMAKE_CURRENT_SOURCE_DIR}/golden/hashes.txt")
+gtest_discover_tests(sidou_golden_tests)
