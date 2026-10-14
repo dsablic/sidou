@@ -13,17 +13,7 @@ const SOURCES: [&str; 3] = [
     "bench/workload.c",
 ];
 
-/// SIDOU_SANITIZE=undefined traps on UB without a runtime library, so it works on macOS
-/// and with stable Rust. SIDOU_SANITIZE=address needs the Rust side built with
-/// -Zsanitizer=address (nightly), which provides the ASan runtime.
-fn sanitize_flags() -> Vec<&'static str> {
-    match env::var("SIDOU_SANITIZE").as_deref() {
-        Err(_) | Ok("") => vec![],
-        Ok("undefined") => vec!["-fsanitize=undefined", "-fsanitize-trap=undefined"],
-        Ok("address") => vec!["-fsanitize=address", "-fno-omit-frame-pointer"],
-        Ok(other) => panic!("SIDOU_SANITIZE={other}: expected undefined or address"),
-    }
-}
+include!("../../build-support/sanitize.rs");
 
 fn c_build(root: &Path) -> cc::Build {
     let mut build = cc::Build::new();
@@ -37,9 +27,7 @@ fn c_build(root: &Path) -> cc::Build {
         .extra_warnings(true)
         .flag("-Wshadow")
         .warnings_into_errors(true);
-    for flag in sanitize_flags() {
-        build.flag(flag);
-    }
+    sanitize::apply_sanitizer(&mut build);
     build
 }
 
@@ -49,7 +37,6 @@ fn main() {
     let out = PathBuf::from(env::var("OUT_DIR").unwrap());
     let wrapper = manifest.join("wrapper.h");
 
-    println!("cargo:rerun-if-env-changed=SIDOU_SANITIZE");
     println!("cargo:rerun-if-changed={}", wrapper.display());
     println!("cargo:rerun-if-changed={}", root.join("core/sid").display());
     println!(

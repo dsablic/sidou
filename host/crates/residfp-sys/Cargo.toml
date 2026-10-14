@@ -6,6 +6,7 @@ name = "residfp-sys"
 description = "Minimal FFI to reSIDfp (third_party/libresidfp), the reference for SIDOU's tests"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 links = "residfp"

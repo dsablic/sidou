@@ -6,6 +6,8 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+include!("../../build-support/sanitize.rs");
+
 const SOURCES: [&str; 18] = [
     "Dac.cpp",
     "EnvelopeGenerator.cpp",
@@ -75,7 +77,6 @@ fn main() {
         .expect("third_party/libresidfp is missing; run: git submodule update --init");
     let gen = PathBuf::from(env::var("OUT_DIR").unwrap()).join("residfp-gen");
 
-    println!("cargo:rerun-if-env-changed=SIDOU_SANITIZE");
     println!(
         "cargo:rerun-if-changed={}",
         manifest.join("shim.cpp").display()
@@ -100,18 +101,6 @@ fn main() {
         .flag("-w")
         .files(SOURCES.iter().map(|s| src.join(s)))
         .file(manifest.join("shim.cpp"));
-    match env::var("SIDOU_SANITIZE").as_deref() {
-        Ok("undefined") => {
-            build
-                .flag("-fsanitize=undefined")
-                .flag("-fsanitize-trap=undefined");
-        }
-        Ok("address") => {
-            build
-                .flag("-fsanitize=address")
-                .flag("-fno-omit-frame-pointer");
-        }
-        _ => {}
-    }
+    sanitize::apply_sanitizer(&mut build);
     build.compile("residfp");
 }

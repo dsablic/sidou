@@ -5,6 +5,7 @@ name = "sidou-sys"
 description = "FFI bindings to the SIDOU C core (core/sid) and the shared benchmark workload"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 links = "sidou"

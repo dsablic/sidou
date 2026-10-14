@@ -15,9 +15,9 @@ extern "C" {
     fn residfp_free(s: *mut RawSid);
     fn residfp_set_model(s: *mut RawSid, csg8580: i32) -> i32;
     fn residfp_set_sampling(s: *mut RawSid, clock_hz: f64, decimate: i32, sample_rate: f64) -> i32;
-    fn residfp_reset(s: *mut RawSid);
-    fn residfp_write(s: *mut RawSid, reg: u8, value: u8);
-    fn residfp_read(s: *mut RawSid, reg: u8) -> u8;
+    fn residfp_reset(s: *mut RawSid) -> i32;
+    fn residfp_write(s: *mut RawSid, reg: u8, value: u8) -> i32;
+    fn residfp_read(s: *mut RawSid, reg: u8) -> i32;
     fn residfp_clock(s: *mut RawSid, cycles: u32, buf: *mut i16) -> i32;
 }
 
@@ -86,15 +86,18 @@ impl Sid {
     }
 
     pub fn reset(&mut self) {
-        unsafe { residfp_reset(self.raw.as_ptr()) }
+        let status = unsafe { residfp_reset(self.raw.as_ptr()) };
+        assert_eq!(status, 0, "reSIDfp reset threw");
     }
 
     pub fn write(&mut self, reg: u8, value: u8) {
-        unsafe { residfp_write(self.raw.as_ptr(), reg, value) }
+        let status = unsafe { residfp_write(self.raw.as_ptr(), reg, value) };
+        assert_eq!(status, 0, "reSIDfp write threw");
     }
 
     pub fn read(&mut self, reg: u8) -> u8 {
-        unsafe { residfp_read(self.raw.as_ptr(), reg) }
+        let value = unsafe { residfp_read(self.raw.as_ptr(), reg) };
+        u8::try_from(value).expect("reSIDfp read threw")
     }
 
     /// A buffer size that holds every sample `cycles` chip cycles can produce.
@@ -115,7 +118,7 @@ impl Sid {
             buf.len()
         );
         let n = unsafe { residfp_clock(self.raw.as_ptr(), cycles, buf.as_mut_ptr()) };
-        let n = usize::try_from(n).expect("reSIDfp returned a negative count");
+        let n = usize::try_from(n).expect("reSIDfp clock threw");
         assert!(
             n <= buf.len(),
             "reSIDfp overran a {}-sample buffer",

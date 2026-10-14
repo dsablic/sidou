@@ -5,6 +5,7 @@ name = "emu-gate"
 description = "M0 decision gate: the pi32v2 SID benchmark in fm1-emu, against budget and the host build"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 

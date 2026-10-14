@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// extern "C" face of reSIDfp for Rust. No exception crosses it: failures return -1.
+// extern "C" face of reSIDfp for Rust. Every entry point that calls into reSIDfp catches
+// all exceptions, so none crosses into Rust: on failure residfp_new returns nullptr and
+// the others return -1. residfp_free only runs a destructor, which cannot throw.
 #include <cstdint>
-#include <new>
 
 #include "SID.h"
 
@@ -10,7 +11,13 @@ using reSIDfp::SID;
 
 extern "C" {
 
-SID* residfp_new(void) { return new (std::nothrow) SID(); }
+SID* residfp_new(void) {
+    try {
+        return new SID();
+    } catch (...) {
+        return nullptr;
+    }
+}
 
 void residfp_free(SID* s) { delete s; }
 
@@ -33,11 +40,37 @@ int residfp_set_sampling(SID* s, double clock_hz, int decimate, double sample_ra
     }
 }
 
-void residfp_reset(SID* s) { s->reset(); }
+int residfp_reset(SID* s) {
+    try {
+        s->reset();
+        return 0;
+    } catch (...) {
+        return -1;
+    }
+}
 
-void residfp_write(SID* s, uint8_t reg, uint8_t value) { s->write(reg, value); }
+int residfp_write(SID* s, uint8_t reg, uint8_t value) {
+    try {
+        s->write(reg, value);
+        return 0;
+    } catch (...) {
+        return -1;
+    }
+}
 
-uint8_t residfp_read(SID* s, uint8_t reg) { return s->read(reg); }
+int residfp_read(SID* s, uint8_t reg) {
+    try {
+        return s->read(reg);
+    } catch (...) {
+        return -1;
+    }
+}
 
-int residfp_clock(SID* s, unsigned cycles, int16_t* buf) { return s->clock(cycles, buf); }
+int residfp_clock(SID* s, unsigned cycles, int16_t* buf) {
+    try {
+        return s->clock(cycles, buf);
+    } catch (...) {
+        return -1;
+    }
+}
 }
