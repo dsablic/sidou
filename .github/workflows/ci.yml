@@ -162,8 +162,8 @@ jobs:
           f=build/fm1/sidou_package.json
           test -s "$f" || { echo "::error::$f missing: the package boot test did not run"; exit 1; }
           jq -e '.first_difference_from_bare_image == null' "$f"
-          for n in 1 2; do
-            f=build/fm1/fx_budget_$n.json
+          for f in build/fm1/fx_budget_1.json build/fm1/fx_budget_2.json \
+                   build/fm1/fx_worst_budget_1.json build/fm1/fx_worst_budget_2.json; do
             test -s "$f" || { echo "::error::$f missing: the effects gate did not run"; exit 1; }
             jq -e '.fx_instructions_per_sample | numbers' "$f"
           done
@@ -176,6 +176,7 @@ jobs:
             build/fm1/sidou_boot.json
             build/fm1/sidou_package.json
             build/fm1/fx_budget_*.json
+            build/fm1/fx_worst_budget_*.json
           if-no-files-found: warn
       # The package, with the licence of the AC79 SDK files in it (and SIDOU's).
       - uses: actions/upload-artifact@v4

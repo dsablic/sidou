@@ -130,13 +130,6 @@ fn peak(x: &[i16]) -> i32 {
     x.iter().map(|&v| i32::from(v).abs()).max().unwrap_or(0)
 }
 
-fn max_step(x: &[i16]) -> i32 {
-    x.windows(2)
-        .map(|w| (i32::from(w[1]) - i32::from(w[0])).abs())
-        .max()
-        .unwrap_or(0)
-}
-
 /// Total harmonic distortion of a tone at `hz` (harmonics 2 to 10, amplitude ratio).
 fn thd(x: &[i16], hz: f64) -> f64 {
     let h: f64 = (2..=10)
@@ -368,29 +361,46 @@ fn cascade_corner(a: f64) -> f64 {
     cos_w.acos() * FSF / (2.0 * PI)
 }
 
+/// Pole frequency of a backward-Euler one-pole with coefficient a = w / (1 + w).
+fn pole_hz(a: f64) -> f64 {
+    a / (1.0 - a) * FSF / (2.0 * PI)
+}
+
 #[test]
-fn crt_low_pass_corner_is_where_the_filter_says() {
+fn crt_tone_corner_is_where_the_filter_says() {
     let n = FS as usize;
     let mut corners = Vec::new();
     for amount in [0.5f32, 1.0] {
         let mut fx = Fx::new(1);
         fx.set(only("crt", amount));
         fx.run(&vec![0; n]); // settle
-        let a = 1.0 - f64::from(amount) * (1.0 - f64::from(fx.0.crt.a_min));
-        let fc = cascade_corner(a);
+        let fc = cascade_corner(f64::from(fx.0.crt.a_lp));
         let mut gain = |hz: f64| {
             let input = sine(hz, 0.5, n);
             let out = fx.run(&input);
             db(tone_amp(&out[n / 2..], hz) / tone_amp(&input[n / 2..], hz))
         };
         let at_corner = gain(fc);
-        let low = gain(fc / 8.0);
-        println!("crt {amount}: corner {fc:.0} Hz, {at_corner:.2} dB there, {low:.2} dB at fc/8");
+        let mid = gain(fc / 4.0);
+        let low = gain(40.0);
+        println!(
+            "crt {amount}: corner {fc:.0} Hz, {at_corner:.2} dB there, {mid:.2} dB at fc/4, \
+             {low:.2} dB at 40 Hz"
+        );
+        // The high-pass is far below the corner: under 0.05 dB of the -3 dB there.
         assert!(
             (at_corner + 3.0).abs() < 0.3,
             "{at_corner} dB at the corner"
         );
-        assert!(low > -0.5, "{low} dB an octave-ish below");
+        // At full tone the 150 Hz high-pass and the low-pass leave a band; mid-band is
+        // where they overlap least.
+        assert!(mid > -1.0, "{mid} dB at fc/4");
+        if amount == 1.0 {
+            assert!(
+                low < -10.0,
+                "the TV-speaker high-pass passes {low} dB at 40 Hz"
+            );
+        }
         corners.push(fc);
     }
     assert!(
@@ -399,9 +409,40 @@ fn crt_low_pass_corner_is_where_the_filter_says() {
     );
     let full = corners[1];
     assert!(
-        (2000.0..=5000.0).contains(&full),
+        (2000.0..=3500.0).contains(&full),
         "full CRT corner at {full} Hz"
     );
+}
+
+#[test]
+fn crt_amount_maps_to_log_frequency() {
+    let mut crt = sid_fx_crt::default();
+    unsafe { sid_fx_crt_init(&mut crt, FS) };
+    let poles: Vec<(f64, f64)> = (0..=8)
+        .map(|i| {
+            let t = i as f32 / 8.0;
+            unsafe { sid_fx_crt_set_tone(&mut crt, t) };
+            (
+                pole_hz(f64::from(crt.a_lp)).log2(),
+                (1.0 / f64::from(crt.r_hp) - 1.0) * FSF / (2.0 * PI),
+            )
+        })
+        .collect();
+    let lp_oct = SID_FX_CRT_LP_OCTAVES;
+    for (i, &(lp, hp)) in poles.iter().enumerate() {
+        let t = i as f64 / 8.0;
+        let lp_expect = SID_FX_CRT_LP_MIN_HZ.log2() + lp_oct * (1.0 - t);
+        let hp_expect =
+            SID_FX_CRT_HP_MIN_HZ * (SID_FX_CRT_HP_MAX_HZ / SID_FX_CRT_HP_MIN_HZ).powf(t);
+        assert!(
+            (lp - lp_expect).abs() < 0.01,
+            "tone {t}: low-pass at 2^{lp}"
+        );
+        assert!(
+            (hp / hp_expect - 1.0).abs() < 0.01,
+            "tone {t}: high-pass at {hp} Hz"
+        );
+    }
 }
 
 #[test]
@@ -555,13 +596,14 @@ fn extreme_settings_stay_stable() {
         f.tape.deemph,
         f.crt.lp1,
         f.crt.lp2,
-        f.wow.delay,
+        f.crt.hp_y,
         f.wow.drift1,
         f.wow.drift2,
     ] {
         assert!(v.is_finite() && v.abs() < 100.0, "state value {v}");
     }
     assert!(f.wow.buf.iter().all(|v| v.is_finite()));
+    assert!((0.0..SID_FX_WOW_LEN as f32 - 2.0).contains(&f.wow.delay));
 
     // Everything but the additive noise and hum, all at full: silence in gives silence out.
     fx.set(sid_fx_params {
@@ -595,34 +637,6 @@ fn smoothing_takes_about_10_ms() {
 }
 
 #[test]
-fn parameter_jumps_are_zipper_free() {
-    let n = FS as usize / 2;
-    let input = sine(440.0, 0.5, 4 * n);
-    for name in PARAMS {
-        let mut fx = Fx::new(1);
-        let seg = |fx: &mut Fx, v: f32, k: usize| {
-            fx.set(only(name, v));
-            fx.run(&input[k * n..(k + 1) * n])
-        };
-        // Steady off, jump on (transition + steady on), jump off (transition + steady off).
-        let a = seg(&mut fx, 0.0, 0);
-        let b = seg(&mut fx, 1.0, 1);
-        let c = seg(&mut fx, 0.0, 2);
-        let d = seg(&mut fx, 0.0, 3);
-        let settle = 6000; // > 5 smoothing time constants
-        let steady_on = max_step(&b[settle..]);
-        let steady_off = max_step(&a).max(max_step(&d));
-        let allowed = (f64::from(steady_on.max(steady_off)) * 1.1) as i32 + 32;
-        let join = |x: &[i16], y: &[i16]| max_step(&[x[x.len() - 1], y[0]]);
-        let on = max_step(&b[..settle]).max(join(&a, &b));
-        let offs = max_step(&c[..settle]).max(join(&b, &c)).max(join(&c, &d));
-        println!("{name}: steady {steady_off}/{steady_on}, jumps {on}/{offs}, allowed {allowed}");
-        assert!(on <= allowed, "{name}: step {on} on the jump on");
-        assert!(offs <= allowed, "{name}: step {offs} on the jump off");
-    }
-}
-
-#[test]
 fn same_seed_same_output_and_block_size_does_not_matter() {
     let input = sine(330.0, 0.6, FS as usize);
     let render = |seed: u32, block: usize| {
@@ -641,17 +655,439 @@ fn same_seed_same_output_and_block_size_does_not_matter() {
     assert_ne!(render(43, 128), reference);
 }
 
+/// Round half away from zero and clamp, as sid_fx_to_i16.
+fn to_i16(x: f32) -> i16 {
+    let mut o = x * 32768.0;
+    o += if o >= 0.0 { 0.5 } else { -0.5 };
+    o.clamp(-32768.0, 32767.0) as i16
+}
+
+/// 2nd difference of `x`: a step of h shows as h, a one-sample spike of h as 2h, while a
+/// tone of amplitude A at f only reaches A (2 pi f / fs)^2.
+fn max_second_diff(x: &[i32]) -> i32 {
+    x.windows(3)
+        .map(|w| (w[2] - 2 * w[1] + w[0]).abs())
+        .max()
+        .unwrap_or(0)
+}
+
+const T_ON: usize = FS as usize / 4;
+const T_OFF: usize = 3 * FS as usize / 2;
+const T_END: usize = 3 * FS as usize;
+const RAMP: usize = FS as usize / 5;
+const CLICK: i32 = 100;
+/// Residual threshold for the deterministic blocks; a CLICK-sized step must exceed it.
+const SMOOTH_RESIDUAL_MAX: i32 = 40;
+
+/// Click metric for a smoothly varying block: the parameter `name` jumps 0 -> 1 at T_ON
+/// and back at T_OFF (J), against a reference that ramps it over RAMP instead (R). Both
+/// trace the same path at different speeds, so J - R is a slowly changing difference of
+/// two smooth outputs; a 110 Hz input keeps its 2nd difference to a few LSB. A click in
+/// either run shows up at full size. `click` adds a synthetic step to J.
+fn smooth_residual(name: &str, click: Option<usize>) -> i32 {
+    let input = sine(110.0, 0.5, T_END);
+    let run = |ramp: bool| {
+        let mut fx = Fx::new(1);
+        let mut out = Vec::with_capacity(T_END);
+        for (b, block) in input.chunks(16).enumerate() {
+            let t = b * 16;
+            let v = if ramp {
+                if t < T_OFF {
+                    (t.saturating_sub(T_ON) as f32 / RAMP as f32).min(1.0)
+                } else {
+                    1.0 - ((t - T_OFF) as f32 / RAMP as f32).min(1.0)
+                }
+            } else if (T_ON..T_OFF).contains(&t) {
+                1.0
+            } else {
+                0.0
+            };
+            if t >= T_ON {
+                fx.set(only(name, v));
+            }
+            let mut io = block.to_vec();
+            fx.process(&mut io);
+            out.extend(io);
+        }
+        out
+    };
+    let j = run(false);
+    let r = run(true);
+    let mut diff: Vec<i32> = j
+        .iter()
+        .zip(&r)
+        .map(|(a, b)| i32::from(*a) - i32::from(*b))
+        .collect();
+    if let Some(at) = click {
+        for d in &mut diff[at..] {
+            *d += CLICK;
+        }
+    }
+    max_second_diff(&diff)
+}
+
+#[test]
+fn parameter_jumps_leave_no_click_in_tape_wow_flutter_and_crt() {
+    for name in ["tape_drive", "wow", "flutter", "crt"] {
+        let m = smooth_residual(name, None);
+        println!("{name}: residual 2nd difference {m} LSB");
+        assert!(m <= SMOOTH_RESIDUAL_MAX, "{name}: residual {m} LSB");
+        // The metric would see a CLICK-sized step right at either jump.
+        for at in [T_ON + 10, T_OFF + 10] {
+            let c = smooth_residual(name, Some(at));
+            assert!(
+                c > SMOOTH_RESIDUAL_MAX,
+                "{name}: a {CLICK} LSB click shows only {c}"
+            );
+        }
+    }
+}
+
+/// One sample at a time through `fx`, recording each output and the smoothed amounts
+/// used for it; `schedule` sets targets before the sample.
+fn per_sample(
+    fx: &mut Fx,
+    input: &[i16],
+    mut schedule: impl FnMut(&mut Fx, usize),
+    mut probe: impl FnMut(&Fx, usize, i16, bool),
+) {
+    for (n, &x) in input.iter().enumerate() {
+        schedule(fx, n);
+        let before = (fx.0.active, fx.0.crush.phase);
+        let mut io = [x];
+        fx.process(&mut io);
+        // A capture: crush just entered the path, or its phase wrapped.
+        let captured = before.0 & 1 == 0 || fx.0.crush.phase < before.1;
+        probe(fx, n, io[0], captured);
+    }
+}
+
+fn jump(name: &'static str) -> impl FnMut(&mut Fx, usize) {
+    move |fx, n| {
+        if n == T_ON {
+            fx.set(only(name, 1.0));
+        } else if n == T_OFF {
+            fx.set(off());
+        }
+    }
+}
+
+#[test]
+fn noise_jumps_leave_no_click() {
+    // The hiss at amount 1 from the same sample on: H.
+    let silence = vec![0i16; T_END];
+    let mut h = Vec::new();
+    let mut fx = Fx::new(9);
+    per_sample(
+        &mut fx,
+        &silence,
+        |fx, n| {
+            if n == T_ON {
+                fx.0.target.noise = 1.0;
+                fx.0.cur.noise = 1.0;
+            }
+        },
+        |_, _, y, _| h.push(i32::from(y)),
+    );
+    // The jump: on silence, every output must be the smoothed amount times H.
+    let mut quiet = Vec::new();
+    let mut amounts = Vec::new();
+    let mut fx = Fx::new(9);
+    per_sample(&mut fx, &silence, jump("noise"), |fx, _, y, _| {
+        quiet.push(i32::from(y));
+        amounts.push(f64::from(fx.0.cur.noise));
+    });
+    let model = (0..T_END)
+        .map(|n| (quiet[n] - (amounts[n] * f64::from(h[n])).round() as i32).abs())
+        .max()
+        .unwrap();
+    // And on a tone, the output is the tone plus that same hiss.
+    let tone = sine(440.0, 0.5, T_END);
+    let mut loud = Vec::new();
+    let mut fx = Fx::new(9);
+    per_sample(&mut fx, &tone, jump("noise"), |_, _, y, _| {
+        loud.push(i32::from(y))
+    });
+    let superposition = (0..T_END)
+        .map(|n| (loud[n] - quiet[n] - i32::from(tone[n])).abs())
+        .max()
+        .unwrap();
+    println!("noise: residual vs amount x hiss {model} LSB, superposition {superposition} LSB");
+    assert!(model <= 1, "noise: {model} LSB off the smoothed hiss");
+    assert!(
+        superposition <= 1,
+        "noise: the tone is off by {superposition} LSB"
+    );
+    assert!(amounts[T_ON + 441] > 0.6 && amounts[T_ON + 441] < 0.66);
+}
+
+/// crush_tick's quantiser, operation for operation, in f32.
+fn crush_model(x: f32, bits: f32) -> f32 {
+    let e = bits * (16 - SID_FX_CRUSH_MIN_BITS) as f32;
+    let i = e as i32;
+    let f = e - i as f32;
+    let step = (1u32 << i) as f32 * (1.0 + f * (0.6565 + 0.3435 * f)) * (1.0 / 32768.0);
+    let inv = (32768u32 >> i) as f32 * (1.0 - f * (0.6564 - 0.1564 * f));
+    let mut v = x * inv;
+    v += if v >= 0.0 { 0.5 } else { -0.5 };
+    (v as i32) as f32 * step
+}
+
+#[test]
+fn crush_jumps_leave_no_click() {
+    // Every output is the quantised input at the last capture, exactly: nothing else
+    // (no reset glitch, no stale hold) can reach the output.
+    let tone = sine(440.0, 0.5, T_END);
+    let mut hold = 0.0f32;
+    let mut worst = 0;
+    let mut fx = Fx::new(1);
+    per_sample(&mut fx, &tone, jump("crush"), |fx, n, y, captured| {
+        let bits = fx.0.cur.crush;
+        let expect = if bits == 0.0 {
+            tone[n]
+        } else {
+            if captured {
+                hold = crush_model(f32::from(tone[n]) / 32768.0, bits);
+            }
+            to_i16(hold)
+        };
+        worst = worst.max((i32::from(y) - i32::from(expect)).abs());
+    });
+    println!("crush: residual vs the sample-and-hold model {worst} LSB");
+    assert_eq!(worst, 0, "crush: {worst} LSB off the sample-and-hold model");
+}
+
+#[test]
+fn wow_switched_off_or_changed_does_not_swoop() {
+    let n = FS as usize;
+    let tone = sine(1000.0, 0.5, 6 * n);
+    let mut fx = Fx::new(3);
+    fx.set(sid_fx_params {
+        wow: 1.0,
+        flutter: 1.0,
+        ..off()
+    });
+    let mut out = fx.run(&tone[..3 * n]);
+    fx.set(sid_fx_params {
+        wow: 0.3,
+        flutter: 1.0,
+        ..off()
+    });
+    out.extend(fx.run(&tone[3 * n..4 * n]));
+    fx.set(off());
+    out.extend(fx.run(&tone[4 * n..]));
+    let trace: Vec<(f64, f64)> = cycle_frequencies(&out)
+        .into_iter()
+        .map(|(t, f)| (t, cents(f, 1000.0)))
+        .collect();
+    let window = |from: f64, to: f64| -> Vec<f64> {
+        trace
+            .iter()
+            .filter(|&&(t, _)| t >= from && t < to)
+            .map(|&(_, c)| c)
+            .collect()
+    };
+    let mean = |c: &[f64]| c.iter().sum::<f64>() / c.len() as f64;
+    let max = |c: &[f64]| c.iter().fold(0.0f64, |m, &v| m.max(v.abs()));
+
+    let changed = window(3.0, 3.5);
+    let off_c = window(4.0, 4.5);
+    let off_far = window(4.25, 6.0);
+    let off_wild = off_c.iter().filter(|c| c.abs() > 15.0).count();
+    println!(
+        "wow 1 -> 0.3: mean {:.2}, peak {:.1} cents; off: mean {:.2}, peak {:.1} cents, \
+         {off_wild} cycles over 15 cents, then peak {:.3}",
+        mean(&changed),
+        max(&changed),
+        mean(&off_c),
+        max(&off_c),
+        max(&off_far)
+    );
+    // The block slews the depth over SID_FX_WOW_DEPTH_S: a bounded, gentle disturbance.
+    assert!(
+        mean(&changed).abs() < 6.0,
+        "a depth change shifts the pitch"
+    );
+    assert!(max(&changed) < 30.0, "a depth change swoops");
+    assert!(mean(&off_c).abs() < 3.0, "switching off shifts the pitch");
+    assert!(off_wild <= 20, "{off_wild} ms over 15 cents switching off");
+    assert!(max(&off_far) < 0.5, "not dry 0.25 s after switching off");
+}
+
+#[test]
+fn blocks_accept_any_amount_on_any_sample() {
+    let mut s = 12345u32;
+    let mut rnd = move || {
+        s ^= s << 13;
+        s ^= s >> 17;
+        s ^= s << 5;
+        s
+    };
+    // Mostly the extremes, which jump the furthest.
+    let mut amount = || match rnd() % 4 {
+        0 => 0.0f32,
+        1 => 1.0,
+        _ => (rnd() >> 8) as f32 / 16_777_216.0,
+    };
+    let mut xs = test_noise(200_000, 77)
+        .into_iter()
+        .map(|v| f32::from(v) / 32768.0);
+    let mut x = || xs.next().unwrap();
+    let ok = |y: f32| y.is_finite() && y.abs() < 4.0;
+
+    let mut tape = sid_fx_tape::default();
+    let mut crush = sid_fx_crush::default();
+    let mut wow = Box::<sid_fx_wow>::default();
+    let mut crt = sid_fx_crt::default();
+    let mut noise = sid_fx_noise::default();
+    unsafe {
+        sid_fx_tape_init(&mut tape, FS);
+        // A reset straight into full drive (once NaN with Newton-tracked reciprocals).
+        sid_fx_tape_reset(&mut tape);
+        assert!(ok(sid_fx_tape_tick(&mut tape, 0.9, 1.0)));
+        sid_fx_crush_init(&mut crush, FS);
+        sid_fx_wow_init(&mut *wow, FS, 5);
+        sid_fx_crt_init(&mut crt, FS);
+        sid_fx_noise_init(&mut noise, 5);
+        for i in 0..40_000 {
+            let y = sid_fx_tape_tick(&mut tape, x(), amount());
+            assert!(ok(y), "tape {y} at sample {i}");
+            assert!((tape.makeup * tape.drive - 1.0).abs() < 1e-6);
+            assert!((tape.deemph * (1.0 + tape.g) - 1.0).abs() < 1e-6);
+            let y = sid_fx_crush_tick(&mut crush, x(), amount(), amount());
+            assert!(ok(y), "crush {y} at sample {i}");
+            let y = sid_fx_wow_tick(&mut *wow, x(), amount(), amount());
+            assert!(ok(y), "wow {y} at sample {i}");
+            assert!(wow.delay >= 0.0 && wow.delay <= (SID_FX_WOW_LEN - 2) as f32);
+            let y = sid_fx_crt_tick(&mut crt, x(), amount(), amount());
+            assert!(ok(y), "crt {y} at sample {i}");
+            let y = sid_fx_noise_tick(&mut noise, x(), amount());
+            assert!(ok(y), "noise {y} at sample {i}");
+        }
+    }
+}
+
+/// Aliases of an 8 kHz half-scale tone through the tape at `drive`: (4.1 kHz, worst,
+/// total), in dBc. Every harmonic from the 3rd folds back.
+fn tape_aliases(drive: f32) -> (f64, f64, f64) {
+    let n = FS as usize;
+    let mut fx = Fx::new(1);
+    fx.set(only("tape_drive", drive));
+    let out = fx.run(&sine(8000.0, 0.5, 2 * n));
+    let t = &out[n..];
+    let f1 = tone_amp(t, 8000.0);
+    let mut power = 0.0;
+    let mut worst = -300.0f64;
+    for k in 3..=40 {
+        let mut f = (8000.0 * k as f64) % FSF;
+        if f > FSF / 2.0 {
+            f = FSF - f;
+        }
+        let a = tone_amp(t, f);
+        power += a * a;
+        worst = worst.max(db(a / f1));
+    }
+    (db(tone_amp(t, 4100.0) / f1), worst, db(power.sqrt() / f1))
+}
+
+#[test]
+fn tape_aliasing_is_held_down() {
+    for drive in [0.5, 1.0] {
+        let (at_4k1, worst, total) = tape_aliases(drive);
+        println!(
+            "tape drive {drive}: 4.1 kHz {at_4k1:.1} dBc, worst {worst:.1} dBc, total {total:.1} dBc"
+        );
+        // b19a9f9 at full drive (no ADAA): 4.1 kHz -16.8, worst -10.9, total -9.7 dBc. What
+        // remains is mostly the cubic's own 3rd harmonic (24 kHz, folding to 20.1 kHz),
+        // which first-order ADAA only partly removes.
+        assert!(
+            at_4k1 < -50.0,
+            "drive {drive}: 4.1 kHz alias at {at_4k1} dBc"
+        );
+        assert!(total < -14.0, "drive {drive}: aliases total {total} dBc");
+    }
+}
+
+/// A 3 kHz tone at half scale pushed through a delay line of each kind, read at
+/// fractional delays; the worst error against the exact tone.
+fn delay_errors() -> [f64; 4] {
+    const LEN: usize = 1024;
+    let hz = 3000.0;
+    let tone = |t: f64| 0.5 * (2.0 * PI * hz * t / FSF).sin();
+    let mut fbuf = [0.0f32; LEN];
+    let mut ibuf = [0i16; LEN];
+    let mut fd = sid_fx_delay::default();
+    let mut id = sid_fx_delay::default();
+    let mut err = [0.0f64; 4];
+    unsafe {
+        sid_fx_delay_init(&mut fd, LEN as u32);
+        sid_fx_delay_init(&mut id, LEN as u32);
+        for i in 0..2000 {
+            let x = tone(i as f64) as f32;
+            sid_fx_delay_push(&mut fd, fbuf.as_mut_ptr(), x);
+            sid_fx_delay16_push(&mut id, ibuf.as_mut_ptr(), x);
+            if i < LEN {
+                continue;
+            }
+            for k in 0..20 {
+                let d = 5.0 + k as f32 * 0.05 + (i % 7) as f32;
+                let want = tone(i as f64 - f64::from(d));
+                let got = [
+                    sid_fx_delay_read(&fd, fbuf.as_ptr(), d),
+                    sid_fx_delay_read_hermite(&fd, fbuf.as_ptr(), d),
+                    sid_fx_delay16_read(&id, ibuf.as_ptr(), d),
+                    sid_fx_delay16_read_hermite(&id, ibuf.as_ptr(), d),
+                ];
+                for (e, g) in err.iter_mut().zip(got) {
+                    *e = e.max((f64::from(g) - want).abs());
+                }
+            }
+        }
+    }
+    err
+}
+
 #[test]
 fn delay_line_reads_integer_and_fractional_delays() {
     let mut buf = [0.0f32; 16];
+    let mut ibuf = [0i16; 16];
     let mut d = sid_fx_delay::default();
-    unsafe { sid_fx_delay_init(&mut d, 16) };
-    for i in 0..20 {
-        unsafe { sid_fx_delay_push(&mut d, buf.as_mut_ptr(), i as f32) };
+    let mut di = sid_fx_delay::default();
+    unsafe {
+        sid_fx_delay_init(&mut d, 16);
+        sid_fx_delay_init(&mut di, 16);
+        for i in 0..20 {
+            sid_fx_delay_push(&mut d, buf.as_mut_ptr(), i as f32);
+            sid_fx_delay16_push(&mut di, ibuf.as_mut_ptr(), i as f32 / 1024.0);
+        }
     }
     let read = |delay: f32| unsafe { sid_fx_delay_read(&d, buf.as_ptr(), delay) };
+    let hermite = |delay: f32| unsafe { sid_fx_delay_read_hermite(&d, buf.as_ptr(), delay) };
+    let read16 = |delay: f32| unsafe { sid_fx_delay16_read(&di, ibuf.as_ptr(), delay) };
     assert_eq!(read(0.0), 19.0);
     assert_eq!(read(3.0), 16.0);
     assert_eq!(read(2.25), 16.75);
     assert_eq!(read(14.0), 5.0);
+    // Hermite is exact on a ramp and at integer delays.
+    assert_eq!(hermite(3.0), 16.0);
+    assert_eq!(hermite(2.25), 16.75);
+    assert_eq!(hermite(13.0), 6.0);
+    assert_eq!(read16(2.5) * 1024.0, 16.5);
+
+    let [lin, her, lin16, her16] = delay_errors();
+    let lsb = 1.0 / 32768.0;
+    println!(
+        "3 kHz delay read error: linear {:.1} LSB, hermite {:.2} LSB, int16 linear {:.1} LSB, \
+         int16 hermite {:.2} LSB",
+        lin / lsb,
+        her / lsb,
+        lin16 / lsb,
+        her16 / lsb
+    );
+    assert!(
+        her < lin / 10.0,
+        "hermite {her} is not far better than linear {lin}"
+    );
+    assert!(her < 32.0 * lsb, "hermite error {her}");
+    assert!(lin16 < lin + 1.5 * lsb && her16 < her + 1.5 * lsb);
 }

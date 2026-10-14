@@ -17,6 +17,10 @@ extern "C" {
  * silence through it until the smoothing has settled, so workload_fx_process measures
  * the steady all-on cost. */
 void workload_fx_begin(void);
+/* The worst case: every target alternates between two values on every block, so the
+ * smoothing never settles (each block recomputes its coefficients on every sample),
+ * and crush sits just above 0, so it captures (quantises) on nearly every sample. */
+void workload_fx_begin_worst(void);
 /* Runs the chain over `io` in place, in blocks of 128 like the firmware. */
 void workload_fx_process(int16_t* io, uint32_t n);
 

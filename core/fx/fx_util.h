@@ -27,15 +27,25 @@ static inline float sid_fx_smooth_coef(float ms, uint32_t sample_rate) {
     return 1000.0f / (ms * (float)sample_rate);
 }
 
-/* One step of a one-pole smoother from *cur towards target; returns the new value. */
-static inline float sid_fx_smooth(float* cur, float target, float coef) {
-    float c = *cur + coef * (target - *cur);
-    float d = target - c;
+/* One step of a one-pole smoother from *cur towards target, snapping onto the target
+ * once within SID_FX_SMOOTH_SNAP. */
+static inline void sid_fx_smooth(float* cur, float target, float coef) {
+    float d = target - *cur;
+    *cur = (d < SID_FX_SMOOTH_SNAP && d > -SID_FX_SMOOTH_SNAP) ? target : *cur + coef * d;
+}
+
+/* The same in two parts, for many parameters at once: a step without the snap every
+ * sample, and the snap every few samples (on a fixed sample grid, so the result does not
+ * depend on how the caller splits its blocks). */
+static inline void sid_fx_smooth_step(float* cur, float target, float coef) {
+    *cur += coef * (target - *cur);
+}
+
+static inline void sid_fx_smooth_snap(float* cur, float target) {
+    float d = target - *cur;
     if (d < SID_FX_SMOOTH_SNAP && d > -SID_FX_SMOOTH_SNAP) {
-        c = target;
+        *cur = target;
     }
-    *cur = c;
-    return c;
 }
 
 /* Clamps a parameter to [0, 1]; NaN gives 0. */
@@ -46,20 +56,26 @@ static inline float sid_fx_unit(float v) {
     return v > 1.0f ? 1.0f : v;
 }
 
-/* Values below ~6e-35 become 0, so recursive filters never decay into denormals (which
- * are slow, and may be flushed on the target but not on the host). */
+/* Adding and removing 1e-18 rounds x to a multiple of ulp(1e-18) = 2^-83 (~1e-25) when
+ * |x| is below about 1e-18, so anything under ~5e-26 becomes exactly 0 and recursive
+ * filters never decay into denormals (slow, and possibly flushed on the target but not
+ * on the host). Audio-range values (|x| > 1e-7) pass unchanged. */
 static inline float sid_fx_flush(float x) {
     return (x + 1e-18f) - 1e-18f;
+}
+
+static inline float sid_fx_lerp(float a, float b, float frac) {
+    return a + frac * (b - a);
 }
 
 static inline float sid_fx_abs(float x) {
     return x < 0.0f ? -x : x;
 }
 
-/* One Newton step towards 1/x from the estimate r. Tracks a slowly moving reciprocal
- * with three operations and no division; converges while 0 < x r < 2. */
-static inline float sid_fx_recip_step(float r, float x) {
-    return r * (2.0f - x * r);
+/* p^2 (3 - 2p) for p in [0, 1]: a crossfade curve with zero slope at both ends, so a
+ * fade has no corner in its envelope. */
+static inline float sid_fx_smoothstep(float p) {
+    return p * p * (3.0f - 2.0f * p);
 }
 
 /* Phase increment of an LFO at `hz`: a full turn is 2^32. */

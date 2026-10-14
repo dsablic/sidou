@@ -116,12 +116,18 @@ The M0 decision gate. It runs the pi32v2 benchmark programs
 - writes `sid_budget_1.json` and `sid_budget_2.json` into the fm1 build
   directory.
 
-The effects scenario (`fx_budget.rs`) runs `sid_bench_fx_1` and
-`sid_bench_fx_2`: the same workload, then the post-chip chain (`core/fx`)
-with every effect at full over its output. It fails if the effects cost more
-than 500 instructions per sample, if two chips plus the effects cost more
-than 2,300, or if any sample differs from the host build at all. It writes
-`fx_budget_1.json` and `fx_budget_2.json`.
+The effects scenarios (`fx_budget.rs`) run the same workload, then the
+post-chip chain (`core/fx`) over its output:
+- `sid_bench_fx_{1,2}`: every effect at full, settled;
+- `sid_bench_fx_worst_{1,2}`: the worst case, where every target alternates
+  on every block so the smoothing never settles (each effect recomputes its
+  coefficients on every sample) and bit-crush captures on nearly every
+  sample.
+
+Each fails if the effects cost more than 500 instructions per sample, if two
+chips plus the effects cost more than 2,300, or if any sample differs from
+the host build at all. They write `fx_budget_{1,2}.json` and
+`fx_worst_budget_{1,2}.json`.
 
 Build the `fm1` preset first (see [BUILDING.md](BUILDING.md)). Without
 `SIDOU_FM1_BUILD`, the gate prints a message and passes without running,

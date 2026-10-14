@@ -3,10 +3,11 @@
 #ifndef SIDOU_FX_CRUSH_H
 #define SIDOU_FX_CRUSH_H
 
-/* Bit-crush: sample-and-hold decimation plus a coarser quantiser, both continuous in the
- * amount. At amount a the hold rate is fs (1 - (1 - MIN_RATE / fs) a) and the step is
- * 2^(a (16 - MIN_BITS)) LSB of int16, so amount 1 leaves MIN_BITS bits at MIN_RATE Hz.
- * There is no anti-alias filter: the aliasing is the sound. */
+/* Bit-crush: sample-and-hold decimation plus a coarser quantiser, each continuous in its
+ * own amount. At rate amount r the hold rate is fs (1 - (1 - MIN_RATE / fs) r); at bits
+ * amount b the step is 2^(b (16 - MIN_BITS)) LSB of int16. Both at 1 leave MIN_BITS bits
+ * at MIN_RATE Hz; both at 0 is the identity on int16 input. There is no anti-alias
+ * filter: the aliasing is the sound. Any amounts in [0, 1] may arrive on any sample. */
 
 #include <stdint.h>
 
@@ -38,14 +39,14 @@ static inline void sid_fx_crush_init(sid_fx_crush* c, uint32_t sample_rate) {
     sid_fx_crush_reset(c);
 }
 
-/* x is normalised to [-1, 1); amount is in (0, 1]. */
-static inline float sid_fx_crush_tick(sid_fx_crush* c, float x, float amount) {
-    c->phase += 1.0f - c->rate_depth * amount;
+/* x is normalised to [-1, 1); rate and bits are amounts in [0, 1]. */
+static inline float sid_fx_crush_tick(sid_fx_crush* c, float x, float rate, float bits) {
+    c->phase += 1.0f - c->rate_depth * rate;
     if (c->phase >= 1.0f) {
         c->phase -= 1.0f;
         /* Step 2^e LSB = 2^(e - 15) full scale; its inverse from the exact power of two
          * of the integer part and a second fit for 2^-f, so no division. */
-        float e = amount * (float)(16 - SID_FX_CRUSH_MIN_BITS);
+        float e = bits * (float)(16 - SID_FX_CRUSH_MIN_BITS);
         int32_t i = (int32_t)e;
         float f = e - (float)i;
         float step = sid_fx_exp2(e) * (1.0f / 32768.0f);

@@ -4,8 +4,10 @@
 #define SIDOU_FX_H
 
 /* The post-chip colour chain, in a fixed order: crush -> tape -> wow and flutter -> CRT
- * -> noise. A thin composition of the blocks in fx_*.h, each with its own state and tick
- * function, so other chains can reuse and reorder them.
+ * -> noise. A thin composition of the blocks in fx_*.h, each with its own state, reset
+ * and tick function, so other chains can reuse and reorder them. Every block accepts any
+ * amounts in [0, 1] on any sample; this chain drives crush's rate and bits from `crush`,
+ * and CRT's tone and hum from `crt`.
  *
  * Every parameter is smoothed with a one-pole (SID_FX_SMOOTH_MS). A block whose smoothed
  * parameter is 0 is out of the signal path. When every target and smoothed value is 0
@@ -37,7 +39,8 @@ typedef struct {
 typedef struct {
     sid_fx_params target, cur;
     float smooth_coef;
-    uint32_t active; /* SID_FX_ON_* bits: blocks in the path on the last sample */
+    uint32_t active; /* blocks in the path on the last sample, one bit each */
+    uint32_t clock;  /* samples processed, for the smoothing's snap grid */
     sid_fx_crush crush;
     sid_fx_tape tape;
     sid_fx_wow wow;

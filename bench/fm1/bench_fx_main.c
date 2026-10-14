@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* The effects scenario: the workload's SID output, then the post-chip chain with every
- * effect at full over it. The emulator test counts instructions between the four
+ * effect at full over it (BENCH_FX_WORST: the worst case of workload_fx.h). The emulator test counts instructions between the four
  * bench_mark() calls (setup, SID render, effects) and reads the samples from
  * RESULT_ADDR. */
 #include <stdint.h>
@@ -28,7 +28,11 @@ int main(void) {
 
     bench_mark();
     workload_begin(BENCH_CHIPS, SID_MODEL_6581);
+#ifdef BENCH_FX_WORST
+    workload_fx_begin_worst();
+#else
     workload_fx_begin();
+#endif
     bench_mark();
     workload_render_samples(samples, WORKLOAD_SAMPLES);
     bench_mark();

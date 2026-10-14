@@ -11,12 +11,19 @@ pub fn render_host(chips: u32) -> Vec<i16> {
 }
 
 /// Host build of the effects scenario: the workload's output through the post-chip chain
-/// with every effect at full, as `bench_fx_main.c` runs it on the target.
-pub fn render_host_fx(chips: u32) -> Vec<i16> {
+/// with every effect at full (or the worst case of `workload_fx.h`), as `bench_fx_main.c`
+/// runs it on the target.
+pub fn render_host_fx(chips: u32, worst: bool) -> Vec<i16> {
     let w = workload::Workload::lock();
     let mut out = vec![0i16; w.sample_count()];
     w.begin(chips, SID_MODEL_6581);
-    unsafe { sidou_sys::workload_fx_begin() };
+    unsafe {
+        if worst {
+            sidou_sys::workload_fx_begin_worst();
+        } else {
+            sidou_sys::workload_fx_begin();
+        }
+    }
     w.render_samples(&mut out);
     let n = u32::try_from(out.len()).expect("run fits in u32");
     unsafe { sidou_sys::workload_fx_process(out.as_mut_ptr(), n) };

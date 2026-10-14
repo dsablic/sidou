@@ -14,6 +14,7 @@ void sid_fx_init(sid_fx* fx, uint32_t sample_rate, uint32_t seed) {
     fx->cur = zero;
     fx->smooth_coef = sid_fx_smooth_coef(SID_FX_SMOOTH_MS, sample_rate);
     fx->active = 0;
+    fx->clock = 0;
     sid_fx_crush_init(&fx->crush, sample_rate);
     sid_fx_tape_init(&fx->tape, sample_rate);
     /* Different streams for the drift and the hiss. */
@@ -40,27 +41,26 @@ static int idle(const sid_fx* fx) {
            !sid_fx_wow_busy(&fx->wow);
 }
 
+/* Every 32 samples of the chain's own clock. */
+#define SNAP_MASK 31u
+
 static void smooth(sid_fx* fx) {
     const sid_fx_params* t = &fx->target;
     sid_fx_params* c = &fx->cur;
     float k = fx->smooth_coef;
-    if (c->tape_drive != t->tape_drive) {
-        sid_fx_smooth(&c->tape_drive, t->tape_drive, k);
-    }
-    if (c->wow != t->wow) {
-        sid_fx_smooth(&c->wow, t->wow, k);
-    }
-    if (c->flutter != t->flutter) {
-        sid_fx_smooth(&c->flutter, t->flutter, k);
-    }
-    if (c->noise != t->noise) {
-        sid_fx_smooth(&c->noise, t->noise, k);
-    }
-    if (c->crt != t->crt) {
-        sid_fx_smooth(&c->crt, t->crt, k);
-    }
-    if (c->crush != t->crush) {
-        sid_fx_smooth(&c->crush, t->crush, k);
+    sid_fx_smooth_step(&c->tape_drive, t->tape_drive, k);
+    sid_fx_smooth_step(&c->wow, t->wow, k);
+    sid_fx_smooth_step(&c->flutter, t->flutter, k);
+    sid_fx_smooth_step(&c->noise, t->noise, k);
+    sid_fx_smooth_step(&c->crt, t->crt, k);
+    sid_fx_smooth_step(&c->crush, t->crush, k);
+    if ((fx->clock & SNAP_MASK) == 0) {
+        sid_fx_smooth_snap(&c->tape_drive, t->tape_drive);
+        sid_fx_smooth_snap(&c->wow, t->wow);
+        sid_fx_smooth_snap(&c->flutter, t->flutter);
+        sid_fx_smooth_snap(&c->noise, t->noise);
+        sid_fx_smooth_snap(&c->crt, t->crt);
+        sid_fx_smooth_snap(&c->crush, t->crush);
     }
 }
 
@@ -69,9 +69,15 @@ void sid_fx_process(sid_fx* fx, int16_t* io, uint32_t n) {
         return;
     }
     const sid_fx_params* c = &fx->cur;
+    const sid_fx_params* t = &fx->target;
     uint32_t active = fx->active;
+    int settled = c->tape_drive == t->tape_drive && c->wow == t->wow &&
+                  c->flutter == t->flutter && c->noise == t->noise && c->crt == t->crt &&
+                  c->crush == t->crush;
     for (uint32_t i = 0; i < n; ++i) {
-        smooth(fx);
+        if (!settled) {
+            smooth(fx);
+        }
         float x = (float)io[i] * (1.0f / 32768.0f);
         /* A block entering the path starts from its rest state. */
         if (c->crush > 0.0f) {
@@ -79,7 +85,7 @@ void sid_fx_process(sid_fx* fx, int16_t* io, uint32_t n) {
                 sid_fx_crush_reset(&fx->crush);
                 active |= ON_CRUSH;
             }
-            x = sid_fx_crush_tick(&fx->crush, x, c->crush);
+            x = sid_fx_crush_tick(&fx->crush, x, c->crush, c->crush);
         } else {
             active &= ~ON_CRUSH;
         }
@@ -103,10 +109,10 @@ void sid_fx_process(sid_fx* fx, int16_t* io, uint32_t n) {
         }
         if (c->crt > 0.0f) {
             if (!(active & ON_CRT)) {
-                sid_fx_crt_reset(&fx->crt);
+                sid_fx_crt_reset(&fx->crt, x);
                 active |= ON_CRT;
             }
-            x = sid_fx_crt_tick(&fx->crt, x, c->crt);
+            x = sid_fx_crt_tick(&fx->crt, x, c->crt, c->crt);
         } else {
             active &= ~ON_CRT;
         }
@@ -120,6 +126,7 @@ void sid_fx_process(sid_fx* fx, int16_t* io, uint32_t n) {
             active &= ~ON_NOISE;
         }
         io[i] = sid_fx_to_i16(x);
+        ++fx->clock;
     }
     fx->active = active;
 }

@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The effects scenario in fm1-emu: the triad workload, then the post-chip chain with every
-//! effect at full. Enforces the M1c budgets (design doc section 8) and bit-exactness with
+//! The effects scenarios in fm1-emu: the triad workload, then the post-chip chain with every
+//! effect at full, steady or in the worst case (targets alternating every block so the
+//! smoothing never settles, crush capturing nearly every sample). Enforces the M1c budgets (design doc section 8) and bit-exactness with
 //! the host build. Instructions are a lower bound on cycles, as in sid_budget.rs.
 
 mod common;
@@ -13,7 +14,7 @@ const FX_BUDGET: f64 = 500.0;
 /// Two chips plus the effects (M1c plan).
 const TWO_CHIPS_PLUS_FX_BUDGET: f64 = 2300.0;
 
-fn check(chips: u32) {
+fn check(chips: u32, worst: bool) {
     let Some(build) = common::build_dir() else {
         println!(
             "skipping the emulator gate: set SIDOU_FM1_BUILD to the fm1 build directory \
@@ -21,8 +22,9 @@ fn check(chips: u32) {
         );
         return;
     };
-    let r = common::run(&build, &format!("sid_bench_fx_{chips}"), 4);
-    let host = emu_gate::render_host_fx(chips);
+    let name = if worst { "fx_worst" } else { "fx" };
+    let r = common::run(&build, &format!("sid_bench_{name}_{chips}"), 4);
+    let host = emu_gate::render_host_fx(chips, worst);
     assert_eq!(r.samples.len(), host.len());
     let dry = emu_gate::render_host(chips);
     let changed = dry.iter().zip(&host).filter(|(a, b)| a != b).count();
@@ -44,6 +46,7 @@ fn check(chips: u32) {
     let total = sid + fx;
     let report = serde_json::json!({
         "chips": chips,
+        "scenario": name,
         "metric": "instructions (lower bound on cycles; assumes 1 IPC)",
         "sid_instructions_per_sample": sid,
         "fx_instructions_per_sample": fx,
@@ -55,7 +58,7 @@ fn check(chips: u32) {
         "emulated_block_loads": r.emulated_block_loads,
     });
     println!("{report}");
-    let out = build.join(format!("fx_budget_{chips}.json"));
+    let out = build.join(format!("{name}_budget_{chips}.json"));
     std::fs::write(&out, report.to_string())
         .unwrap_or_else(|e| panic!("write report {}: {e}", out.display()));
 
@@ -80,10 +83,20 @@ fn check(chips: u32) {
 
 #[test]
 fn fx_one_chip_fits_budget_and_matches_host() {
-    check(1);
+    check(1, false);
 }
 
 #[test]
 fn fx_two_chips_fit_budget_and_match_host() {
-    check(2);
+    check(2, false);
+}
+
+#[test]
+fn fx_worst_case_one_chip_fits_budget_and_matches_host() {
+    check(1, true);
+}
+
+#[test]
+fn fx_worst_case_two_chips_fit_budget_and_match_host() {
+    check(2, true);
 }
