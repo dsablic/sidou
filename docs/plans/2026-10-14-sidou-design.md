@@ -210,6 +210,25 @@ Rules
 - **Themes:** a C64 nostalgia theme (PETSCII-style font, C64 palette, border
   colour flashes on screen) and a clean modern theme.
 - **Browser:** starter pack, user songs, user `.sid` files. RIP option.
+- **SCENE view** (performance, M5): small pixel-art scenes that animate in
+  time with the music, like the Pocket Operator screens. There are no game
+  mechanics.
+  - **Voice gates** trigger a character or element per voice, which stops when
+    the voice is muted.
+  - **Pitch** sets height or position.
+  - **Filter cutoff and resonance** set the mood (light, fog, glow).
+  - **Tempo and step** loop the scene with the pattern.
+  - **Chip B** has its own soloist.
+  - **Chip character** controls show up visually (scanlines, colour bleed,
+    wobble).
+
+  Scenes use only original art evoking C64 culture, such as a demo-scene
+  raster stage, a cassette deck, or a bedroom coder whose screen shows the
+  live pattern. No characters, sprites or names from existing games.
+
+  Scenes run on the UI core from the same timed events as the audio, so they
+  stay in sync and never touch the audio budget. They need a few KB of sprite
+  data each. Scene footage also goes into the release videos.
 
 ## 8. Performance budget
 
@@ -416,7 +435,8 @@ Each kind of document has one job:
    - WASM demo, installer, manual;
    - release-video pipeline (demo scripts, emulator capture, composition);
    - 0.1 release, followed by the nightly channel.
-6. **M5:** RIP, SID-Wizard import, chip B song tracks, MIDI polish.
+6. **M5:** RIP, SID-Wizard import, chip B song tracks, MIDI polish, SCENE
+   view (one prototype scene first).
 
 ## 15. Language choice
 
