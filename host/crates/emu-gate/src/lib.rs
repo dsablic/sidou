@@ -29,3 +29,26 @@ pub fn render_host_fx(chips: u32, worst: bool) -> Vec<i16> {
     unsafe { sidou_sys::workload_fx_process(out.as_mut_ptr(), n) };
     out
 }
+
+/// Host build of the effect-slot scenarios (`bench_slots_main.c`): the workload's output
+/// through each scenario of `workload_slots.h`, their stereo outputs one after another.
+pub fn render_host_slots(chips: u32) -> Vec<i16> {
+    let w = workload::Workload::lock();
+    let mut sid = vec![0i16; w.sample_count()];
+    w.begin(chips, SID_MODEL_6581);
+    w.render_samples(&mut sid);
+    let frames = sidou_sys::WORKLOAD_SLOTS_FRAMES as usize;
+    let count = unsafe { sidou_sys::workload_slots_count() } as usize;
+    let mut out = vec![0i16; 2 * frames * count];
+    for (s, chunk) in out.chunks_mut(2 * frames).enumerate() {
+        unsafe {
+            sidou_sys::workload_slots_begin(s as u32, sid.as_ptr(), frames as u32);
+            sidou_sys::workload_slots_process(
+                sid[frames..].as_ptr(),
+                chunk.as_mut_ptr(),
+                frames as u32,
+            );
+        }
+    }
+    out
+}

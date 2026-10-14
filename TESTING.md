@@ -21,6 +21,7 @@ lists the prerequisites.
 | Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
 | Emulator tests (gate, boot, live instrument, MIDI, SRAM audio, package) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
 | Emulator gate | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/sid_budget.rs`, `crates/emu-gate/tests/fx_budget.rs` |
+| Emulator gate | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/sid_budget.rs`, `fx_budget.rs`, `slots_budget.rs` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
 profile sets `opt-level = 3`), but the reference tests do a lot of Rust-side
@@ -39,6 +40,26 @@ as the ADSR delay bug, the noise LFSR taps or hard-sync timing.
 respect. Fix the code, unless the test itself pinned the wrong behaviour; in
 that case, say in the commit which source (reSID, a measurement, a datasheet)
 shows the new expectation is right.
+
+The effects have their own modules: `fx` (the Task 1 chain and its blocks)
+and `slots`, `slots_dist`, `slots_mod` and `slots_fx` (the effect slots and
+their algorithms). Each algorithm is tested for:
+- its characteristic: THD, level and aliasing for the drives; LFO rate,
+  depth and phase between sides for the modulations; echo time and
+  feedback decay for the delays; RT60, damping and stability for the
+  reverbs;
+- exact bypass, and stereo where it makes stereo (L/R correlation, equal
+  power);
+- clicks, two ways:
+  - a parameter jump against the same move ramped over 0.2 s: the 2nd
+    difference of the two runs' difference must stay within 30 LSB (a 100
+    LSB step must show);
+  - an algorithm switch, whose 2nd difference must stay within 30 LSB of the
+    steady state's.
+
+The drives, delays and reverbs run their click tests at low input levels.
+At full level their outputs saturate, or carry broadband tails, that differ
+between two runs by more than any click. The tests say where.
 
 ### Golden renders
 
@@ -128,6 +149,24 @@ Each fails if the effects cost more than 500 instructions per sample, if two
 chips plus the effects cost more than 2,300, or if any sample differs from
 the host build at all. They write `fx_budget_{1,2}.json` and
 `fx_worst_budget_{1,2}.json`.
+
+The effect-slot scenarios (`slots_budget.rs`) run `sid_bench_slots_1` and
+`sid_bench_slots_2`: the workload, then 17 scenarios over 4,096 samples of
+its output, all with every control alternating on every block:
+- the slot frame alone (three slots, algorithm NONE);
+- each algorithm alone;
+- every slot's heaviest together.
+
+They fail if:
+- any algorithm costs more than its slot's budget in
+  [decision record 0004](docs/decisions/0004-effect-algorithms.md)
+  (Distortion 150, Modulation 200, FX 450, the frame 100);
+- the heaviest together cost more than 900, or two chips plus them more
+  than 2,300;
+- the heaviest per slot is not the one the last scenario runs;
+- any sample differs from the host build.
+
+They write `slots_budget_{1,2}.json` with every algorithm's cost.
 
 Build the `fm1` preset first (see [BUILDING.md](BUILDING.md)). Without
 `SIDOU_FM1_BUILD`, the gate prints a message and passes without running,

@@ -7,7 +7,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 17] = [
+const SOURCES: [&str; 18] = [
     "core/sid/sid.c",
     "core/fx/fx.c",
     "core/fx/fx_slots.c",
@@ -25,6 +25,7 @@ const SOURCES: [&str; 17] = [
     "app/panel.c",
     "app/reg_ring.c",
     "bench/workload_fx.c",
+    "bench/workload_slots.c",
 ];
 
 /// Include roots, relative to the repository: core headers are "sid/...", the others bare.
@@ -66,6 +67,10 @@ fn main() {
     println!(
         "cargo:rerun-if-changed={}",
         root.join("bench/workload_fx.h").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        root.join("bench/workload_slots.h").display()
     );
     for s in SOURCES {
         println!("cargo:rerun-if-changed={}", root.join(s).display());

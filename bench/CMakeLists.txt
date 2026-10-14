@@ -10,6 +10,11 @@ add_library(sidou_workload_fx STATIC workload_fx.c)
 target_link_libraries(sidou_workload_fx PUBLIC sidou_workload)
 target_compile_options(sidou_workload_fx PRIVATE -Wall -Wextra -Wshadow)
 
+# The effect-slot scenarios (workload_slots.h).
+add_library(sidou_workload_slots STATIC workload_slots.c)
+target_link_libraries(sidou_workload_slots PUBLIC sidou_workload)
+target_compile_options(sidou_workload_slots PRIVATE -Wall -Wextra -Wshadow)
+
 if(CMAKE_CROSSCOMPILING AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/fm1)
     add_subdirectory(fm1)
 endif()

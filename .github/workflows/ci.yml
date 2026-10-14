@@ -167,6 +167,11 @@ jobs:
             test -s "$f" || { echo "::error::$f missing: the effects gate did not run"; exit 1; }
             jq -e '.fx_instructions_per_sample | numbers' "$f"
           done
+          for n in 1 2; do
+            f=build/fm1/slots_budget_$n.json
+            test -s "$f" || { echo "::error::$f missing: the slots gate did not run"; exit 1; }
+            jq -e '.all_heaviest_slots_instructions_per_sample | numbers' "$f"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -177,6 +182,7 @@ jobs:
             build/fm1/sidou_package.json
             build/fm1/fx_budget_*.json
             build/fm1/fx_worst_budget_*.json
+            build/fm1/slots_budget_*.json
           if-no-files-found: warn
       # The package, with the licence of the AC79 SDK files in it (and SIDOU's).
       - uses: actions/upload-artifact@v4

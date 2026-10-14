@@ -245,3 +245,69 @@ the rest goes to UI, MIDI and the sequencer.
     by search);
   - whether chowdsp's and ChowTape's "GPLv3" is -only or -or-later. This
     doesn't matter, because we take no code from them.
+
+## Measured (Task 5)
+
+The emulator gate (`slots_budget.rs`, pi32v2 in fm1-emu, every control
+moving all the time) replaces the estimates above. Instructions per sample:
+
+| Entry | Slot | Measured | Estimate | Budget |
+|---|---|---|---|---|
+| Tape | Distortion | 116 | ≈110 | 150 |
+| Overdrive | Distortion | 148 | ≈100 | 150 |
+| Fuzz | Distortion | 107 | ≈120 | 150 |
+| Crush | Distortion | 52 | ≈30 | 150 |
+| Lo-fi | Distortion | 115 | ≈110 | 150 |
+| Chorus/ensemble | Modulation | 183 | ≈130 | 200 |
+| Flanger | Modulation | 158 | ≈100 | 200 |
+| Phaser | Modulation | 154 | ≈110 | 200 |
+| Tremolo | Modulation | 101 | ≈40 | 200 |
+| Auto-pan | Modulation | 155 | ≈40 | 200 |
+| Wow & flutter | Modulation | 143 | ≈120 | 200 |
+| Delay | FX | 144 | ≈90 | 450 |
+| Ping-pong | FX | 161 | ≈90 | 450 |
+| Reverb light | FX | 373 | ≈260 | 450 |
+| Reverb lush | FX | 421 | ≈380 | 450 |
+| Slot frame | — | 83 | — | 100 |
+| Heaviest of each together (overdrive, chorus, lush) | — | 836 | ≈730 | 900 |
+
+- One chip plus the slots: 1,202 (22 % of a 240 MHz core).
+- Two chips plus the slots: 1,576 (29 %), within Task 1's 2,300.
+- RAM: 136,328 bytes. That is the 128 KiB pool plus 5,256 bytes of slot
+  state (the Modulation union is the largest part, at 4.1 KiB).
+
+How the frame and the modulations got within budget (the first build
+measured a 256 frame, chorus 289 and lush 829):
+- the frame runs in 16-sample chunks on its own clock, controls following
+  their one-pole as straight lines between chunk starts;
+- each algorithm has its own loop in the steady state;
+- the modulations evaluate their LFOs every 16 samples and interpolate.
+
+Deviations from the decision above:
+- **Overdrive and fuzz use ADAA of the whole clip, not of its residual.**
+  - The residual form adds u back undelayed. Far past the knee, u and the
+    residual's half-sample lag no longer cancel, and the output approaches
+    1 + (u - p) / 2: at 25-100x gain, garbage.
+  - The tape keeps the residual form (its drive is 3x at most), so small
+    signals stay flat.
+- **The alias target of -60 dB is not reachable at full drive.**
+  - Measured with an 8 kHz sine and a 5 kHz band-limited saw at half scale:
+    overdrive's worst alias below 15 kHz is -28.9 / -27.7 dBc, fuzz's
+    -28.5 / -31.0 dBc.
+  - An f64 model of the hard clip at these gains gives -14 to -22 dBc
+    without ADAA, and -36 to -54 dBc with 2x oversampling (63-tap
+    half-bands) on top, well over Fuzz's budget.
+  - The tests pin -25 dBc.
+- **Lush stores floats.**
+  - Its lines are float in the 128 KiB pool (32,768 samples), scaled
+    x1.48 then x0.98 as planned.
+  - int16 conversions and clamps made it 829. Float costs 421.
+  - There is no room for a pre-delay, so B is the input bandwidth.
+- **Both reverbs are capped at an RT60 of about 8 s.**
+  - Clouds' time goes to 0.98 (tails of minutes); light is capped at 0.82.
+  - Dattorro's decay is capped at 0.85.
+- **The delay reads linearly.** Its time glides at most 0.5 samples per
+  sample (half that in ping-pong), so no Hermite read is needed.
+- **The light reverb's LFOs** are this project's phase-accumulator cosine,
+  stepped every 32 samples like the original, instead of stmlib's
+  oscillator.

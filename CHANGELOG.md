@@ -54,3 +54,10 @@ All notable changes are documented here. The format follows
   flutter, CRT/TV low-pass with mains hum, and a noise floor, as separate
   blocks with smoothed parameters and an exact bypass; an emulator gate
   scenario with every effect at full.
+- Effect slots after the chip mix (`core/fx/fx_slots.h`): Distortion (tape,
+  overdrive, fuzz, crush, lo-fi), Modulation (chorus/ensemble, flanger,
+  phaser, tremolo, auto-pan, wow and flutter) and FX (delay, ping-pong, a
+  light reverb ported from Emilie Gillet's Rings/Clouds reverb (MIT), and
+  a Dattorro plate), each with Amount, A, B and Mix, smoothed and with
+  crossfaded algorithm switches; stereo output; an emulator gate per
+  algorithm and slot.

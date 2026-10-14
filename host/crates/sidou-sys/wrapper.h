@@ -19,3 +19,4 @@
 #include "panel.h"
 #include "reg_ring.h"
 #include "workload_fx.h"
+#include "workload_slots.h"
