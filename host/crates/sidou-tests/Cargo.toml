@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "sidou-tests"
+description = "Unit, golden and reSIDfp reference tests for the SIDOU core, and sidou-compare"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+residfp-sys = { path = "../residfp-sys" }
+sidou-sys = { path = "../sidou-sys" }
+
+[[bin]]
+name = "sidou-compare"
+path = "src/bin/sidou_compare.rs"
+
+[[test]]
+name = "unit"
+path = "tests/unit/main.rs"
