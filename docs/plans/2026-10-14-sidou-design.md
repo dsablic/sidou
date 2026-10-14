@@ -141,6 +141,18 @@ Rules
 
 ### Character layer (amp-modeller style)
 
+The SID's analogue model is itself under the player's control. Its
+parameters are live, continuous controls:
+- **filter:** curves and range, resonance mapping, 6581 non-linearity, DC
+  bias and bleed;
+- **DACs:** kink and leakage;
+- **waveforms:** combined-waveform strength;
+- **output stage:** voice DC and the external filter.
+
+The tables behind them are generated over a parameter grid from reSIDfp and
+interpolated on the device. Named chip profiles are presets of these
+parameters, and the macro controls below move several at once.
+
 - **Chip profiles:** 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, and a "worn 6581".
   Each profile is a small set of curves, generated offline by `tools/` from
   reSIDfp settings or measurements and baked into the firmware.
