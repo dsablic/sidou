@@ -2995,7 +2995,78 @@ git commit -m "test: fm1-emu benchmark gate for SID cost and host/target equival
 
 ---
 
+### Task 13b: Host tooling in Rust (added 2026-10-14)
+
+**Decision:** C on the device, Rust for all host tooling. One cargo workspace
+replaces the CMake host build, GoogleTest, Google Benchmark and the C++ test
+code. CMake stays only for the cross-compiled fm1 build. Tasks 14 and 15
+below are revised to match (see the notes at their headings).
+
+**Workspace layout** (`host/`):
+
+| Crate | Contents |
+|---|---|
+| `host/Cargo.toml` | Workspace root (resolver 2), shared lints, `[profile.test] opt-level = 3`. |
+| `crates/sidou-sys` | `build.rs` compiles `core/sid/sid.c`, `core/sid/sid_filter.c` and `bench/workload.c` with `cc`, using `-std=c11 -ffp-contract=off -Wall -Wextra -Wshadow`, with warnings as errors. bindgen generates the FFI from a wrapper header covering `sid/sid.h`, `sid/sid_osc.h`, `sid/sid_env.h`, `sid/sid_filter.h`, `sid/sid_math.h` and `workload.h`. It uses `wrap_static_fns` so the header-only `static inline` functions are callable, and the generated wrappers are compiled too. Setting `SIDOU_SANITIZE=undefined` builds the C code with `-fsanitize=undefined -fsanitize-trap=undefined`, which needs no runtime and works on macOS. `SIDOU_SANITIZE=address` is used by the nightly CI job (Task 14). |
+| `crates/residfp-sys` | Test-only. libresidfp is a git submodule at `third_party/libresidfp`, pinned to `c1791383ca843a855e5d4366da6a7277e34e801d`. `build.rs` writes `siddefs-fp.h` and `residfp/sidversion.h` from the `.in` templates, using the same placeholder values as `tests/reference/CMakeLists.txt`. It compiles the same source list with `cc` (`.cpp(true)`, C++17, upstream warnings off) plus `shim.cpp`: a ~30-line `extern "C"` wrapper with new/free, model, sampling (decimate flag), reset, write, read, and `clock(cycles, buf) -> n`. That shim is our only C++. |
+| `crates/sidou-tests` | Integration tests that port `tests/unit/*.cpp`, `tests/golden/golden_test.cpp` and `tests/reference/*` one-to-one, with the same test names in `snake_case`. The same assertions, tolerances, constants and comments carry over. The metrics module (`signal_metrics`) and the render helpers become Rust modules. `sidou-compare` becomes a `[[bin]]`, plus a smoke test that runs it into a temporary directory. The golden test keeps reading and writing `tests/golden/hashes.txt` with the same FNV-1a 64 and zero-padded hex. `SIDOU_GOLDEN_UPDATE=1` still rewrites the file, and still fails if the write fails. |
+| `crates/sidou-bench` | A criterion benchmark of the workload: {1, 2} chips × {6581, 8580}. Throughput is `Elements(samples × chips)` so results are per chip, and `workload_begin` is excluded from timing (`iter_batched`). |
+| `crates/emu-gate` | Task 13's crate (`tests/target`) moved into the workspace. It uses `sidou-sys` instead of its own `build.rs`, and keeps its `Mutex`, budget and equivalence checks. It is skipped with a clear message if `SIDOU_FM1_BUILD` is not set. |
+
+**The port is done in this order**, so that nothing is lost along the way:
+1. **Build the workspace next to the existing C++ suite.**
+2. **Prove the two suites are equivalent:**
+   - the Rust test count is at least the C++ test count;
+   - the golden hashes are byte-identical;
+   - each reference measurement (pitch in cents, envelope dB, the
+     `sidou-compare` table) matches the C++ harness. Print the numbers from
+     both and record them in the commit message.
+3. **Only then delete the C++ side:**
+   - `tests/` C++ sources and CMake files, and `bench/host/`;
+   - the GoogleTest, Google Benchmark and FetchContent parts;
+   - in the top-level `CMakeLists.txt`, `enable_language(CXX)` and `tests`;
+   - the `host` and `host-asan` presets (`fm1` stays).
+4. **Clean up:**
+   - Replace `.clangd` with a root `compile_flags.txt` (`-std=c11`,
+     `-Icore`, `-Ibench`) so editors still understand the C code.
+   - Update `REUSE.toml` and `.gitignore` (`host/target/`).
+
+**Commits:**
+- `build(host): cargo workspace with sidou-sys and residfp-sys`
+- `test: port unit, golden and reference tests to Rust`
+- `bench: criterion workload benchmark`
+- `test: move emulator gate into the workspace`
+- `build: remove C++ host build`
+
+Each ends with the Co-Authored-By trailer.
+
+**Verify:**
+- `cargo test --workspace --release` from `host/` passes, and so does
+  `cargo clippy --workspace -- -D warnings`.
+- `cargo fmt --check` passes, and so does `SIDOU_SANITIZE=undefined cargo test
+  --workspace`.
+- `cargo bench` runs.
+- The emulator gate passes, with `SIDOU_FM1_BUILD` set, unchanged from Task 13.
+- `python3 -m reuse lint` passes. REUSE skips the submodule.
+
+---
+
 ### Task 14: Continuous integration
+
+> Revised by Task 13b. The jobs are:
+> - **host** (ubuntu-24.04 and macos-14): `cargo fmt --check`,
+>   `cargo clippy -D warnings`, and `cargo test --workspace --release`, with
+>   the emulator gate skipping itself. Plus `SIDOU_SANITIZE=undefined cargo
+>   test`.
+> - **asan** (ubuntu, nightly Rust): `SIDOU_SANITIZE=address
+>   RUSTFLAGS=-Zsanitizer=address cargo +nightly test -Zbuild-std
+>   --target x86_64-unknown-linux-gnu`.
+> - **reuse.**
+> - **fm1:** Docker build, then the emulator gate, uploading
+>   `sid_budget_*.json`.
+>
+> Use `Swatinem/rust-cache` with `workspaces: host`. The YAML below
+> predates the revision and should be adapted to it.
 
 **Files:**
 - Create: `.github/workflows/ci.yml`
@@ -3073,6 +3144,15 @@ git commit -m "ci: host tests on Linux/macOS with sanitizers, REUSE lint, fm1 em
 ---
 
 ### Task 15: Documentation, licensing and the M0 decision record
+
+> Revised by Task 13b:
+> - `BUILDING.md` and `TESTING.md` describe the cargo workspace, with CMake
+>   for fm1 only.
+> - Decision record 0001 records the C-on-device / Rust-for-host decision and
+>   why: fm1-emu is Rust; one harness; the C core is tested through FFI.
+> - The `LICENSING.md` table changes: GoogleTest and Google Benchmark are
+>   removed. criterion, bindgen and cc are added (MIT/Apache-2.0, host-only),
+>   and libresidfp becomes a git submodule (test-only).
 
 **Files:**
 - Create: `BUILDING.md`, `TESTING.md`
