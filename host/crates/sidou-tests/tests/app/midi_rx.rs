@@ -16,6 +16,8 @@ const E4: u8 = 64;
 struct Midi {
     rig: Rig,
     rx: Box<midi_rx>,
+    /// The ring epoch the next entries carry.
+    epoch: u8,
 }
 
 impl Midi {
@@ -23,7 +25,7 @@ impl Midi {
         let mut rig = Rig::new(SID_MODEL_6581);
         let mut rx = Box::<midi_rx>::default();
         unsafe { midi_rx_init(&mut *rx, &mut *rig.live, 0) };
-        Midi { rig, rx }
+        Midi { rig, rx, epoch: 0 }
     }
 
     fn entry(&mut self, source: u8, data: u32) {
@@ -31,6 +33,7 @@ impl Midi {
             stamp: 0,
             data,
             source,
+            epoch: self.epoch,
         };
         unsafe { midi_rx_entry(&mut *self.rx, &e) };
     }
@@ -216,26 +219,82 @@ fn entries_of_an_unknown_source_are_ignored() {
 }
 
 #[test]
-fn lost_input_restarts_the_parsers_and_releases_every_note() {
+fn a_gap_restarts_the_parsers_at_the_first_entry_after_it() {
     let mut m = Midi::new();
-    assert_eq!(unsafe { midi_rx_check_lost(&mut *m.rx, 0) }, 0);
-    m.trs(&[0x90, C4, 100, 0x90, E4]);
+    m.trs(&[0x90, E4, 100]);
     m.usb(0x9, [0x90, 67, 100]);
-    assert_eq!(m.held(), [C4, 67]);
-    assert_eq!(unsafe { midi_rx_check_lost(&mut *m.rx, 3) }, 1);
-    assert_eq!(m.held(), [] as [u8; 0]);
+    // The tail before the gap is taken whole: this note-on starts before it, ends after it.
+    m.trs(&[0x90, C4]);
+    assert_eq!(m.held(), [E4, 67]);
+    assert_eq!(m.rx.restarts, 0);
+    m.epoch = 1; // input lost here
+    m.trs(&[100]);
     assert_eq!(m.rx.restarts, 1);
-    // The cut-off TRS note-on is not completed by the next byte, nor is running status kept.
-    m.trs(&[100, C4, 100]);
+    assert_eq!(
+        m.held(),
+        [] as [u8; 0],
+        "notes released, and the cut note-on is not completed across the gap"
+    );
+    m.trs(&[C4, 100]);
+    assert_eq!(m.held(), [] as [u8; 0], "no running status across the gap");
+    m.trs(&[0x90, C4, 100]);
+    m.usb(0x9, [0x90, E4, 100]);
+    let mut held = m.held();
+    held.sort_unstable();
+    assert_eq!(held, [C4, E4]);
+    assert_eq!(m.rx.restarts, 1, "one restart per gap");
+}
+
+#[test]
+fn a_gap_after_the_last_entry_releases_the_notes_at_once() {
+    let mut m = Midi::new();
+    m.trs(&[0x90, C4, 100]);
+    assert_eq!(unsafe { midi_rx_check_lost(&mut *m.rx, 0) }, 0, "no gap");
+    assert_eq!(m.held(), [C4]);
+    // The note-off may be among what was lost: nothing comes after it yet.
+    assert_eq!(unsafe { midi_rx_check_lost(&mut *m.rx, 1) }, 1);
     assert_eq!(m.held(), [] as [u8; 0]);
+    // The entries after the gap carry its epoch: no second restart.
+    m.epoch = 1;
     m.trs(&[0x90, C4, 100]);
     assert_eq!(m.held(), [C4]);
+    assert_eq!(m.rx.restarts, 1);
+}
+
+#[test]
+fn an_epoch_that_is_not_newer_never_restarts() {
+    let mut m = Midi::new();
+    // The drain read epoch 0, then took an entry from epoch 1 that came in meanwhile.
+    m.epoch = 1;
+    m.trs(&[0x90, C4, 100]);
+    assert_eq!(m.rx.restarts, 1);
     assert_eq!(
-        unsafe { midi_rx_check_lost(&mut *m.rx, 3) },
+        unsafe { midi_rx_check_lost(&mut *m.rx, 0) },
         0,
-        "no new loss"
+        "restarted backwards"
     );
+    assert_eq!(unsafe { midi_rx_check_lost(&mut *m.rx, 1) }, 0);
     assert_eq!(m.held(), [C4]);
+}
+
+#[test]
+fn epochs_wrap() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    let mut rx = Box::<midi_rx>::default();
+    unsafe { midi_rx_init(&mut *rx, &mut *rig.live, 250) };
+    assert_eq!(unsafe { midi_rx_check_lost(&mut *rx, 250) }, 0);
+    assert_eq!(unsafe { midi_rx_check_lost(&mut *rx, 255) }, 1);
+    assert_eq!(
+        unsafe { midi_rx_check_lost(&mut *rx, 3) },
+        1,
+        "255 -> 3 is newer"
+    );
+    assert_eq!(
+        unsafe { midi_rx_check_lost(&mut *rx, 255) },
+        0,
+        "3 -> 255 is older"
+    );
+    assert_eq!(rx.restarts, 2);
 }
 
 #[test]

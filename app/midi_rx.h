@@ -15,6 +15,12 @@
  * first, so both sources share the one parser implementation with its running status,
  * real-time and SysEx rules.
  *
+ * Lost input (midi_ring.h): the parsers restart and every note is released exactly where the
+ * gap is, so what came before it is taken whole, what was cut by it is dropped (a message is
+ * never completed with bytes from after the gap), and a note-off that may be among the lost
+ * cannot leave a note hanging. midi_rx_entry finds a gap from the epochs of the entries;
+ * midi_rx_check_lost finds one at the end of the ring (no entry after it yet).
+ *
  * Portable C with no hardware access; the main loop owns it. */
 #ifndef SIDOU_MIDI_RX_H
 #define SIDOU_MIDI_RX_H
@@ -33,19 +39,21 @@ typedef struct {
     live* l;
     midi_in trs;
     midi_in usb;
-    uint32_t lost_seen; /* midi_ring_lost when last checked */
-    uint32_t restarts;  /* times lost input restarted the parsers */
+    uint8_t epoch;     /* the ring's epoch the parsers are in */
+    uint32_t restarts; /* times lost input restarted the parsers */
 } midi_rx;
 
-/* lost: the ring's midi_ring_lost now, so input lost before this is not held against it. */
-void midi_rx_init(midi_rx* rx, live* l, uint32_t lost);
-/* One entry, through its source's parser; entries of an unknown source are ignored. */
+/* epoch: the ring's midi_ring_epoch now, so losses before this are not held against it. */
+void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch);
+/* One entry, through its source's parser; entries of an unknown source are ignored. An entry
+ * from a later epoch than the parsers' first restarts them (a gap lies before it). */
 void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e);
-/* lost: the ring's midi_ring_lost. If it moved, input was dropped and a note-off may be among
- * it: both parsers restart (a message cut short is not completed with later bytes) and every
- * note is released. Call before taking the entries that came after the loss. Returns 1 if it
- * restarted. */
-int midi_rx_check_lost(midi_rx* rx, uint32_t lost);
+/* epoch: the ring's midi_ring_epoch, read once the consumer has taken every entry (the ring
+ * was empty). If it is ahead of the parsers' (by 1..127, wrapping), input was lost after the
+ * last entry: restart now. An epoch that is not ahead changes nothing: an entry taken after
+ * the caller read it may already have moved the parsers on. (With entries left in the ring,
+ * the next one's epoch says it instead.) Returns 1 if it restarted. */
+int midi_rx_check_lost(midi_rx* rx, uint8_t epoch);
 /* The mapping alone: one parsed message onto live. */
 void midi_rx_live(live* l, const midi_msg* msg);
 

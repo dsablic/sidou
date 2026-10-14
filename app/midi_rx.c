@@ -31,14 +31,24 @@ static void parsers_init(midi_rx* rx) {
     midi_in_init(&rx->usb, on_msg, 0, rx->l);
 }
 
-void midi_rx_init(midi_rx* rx, live* l, uint32_t lost) {
+static void restart(midi_rx* rx, uint8_t epoch) {
+    rx->epoch = epoch;
+    rx->restarts++;
+    parsers_init(rx);
+    live_all_notes_off(rx->l);
+}
+
+void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch) {
     rx->l = l;
-    rx->lost_seen = lost;
+    rx->epoch = epoch;
     rx->restarts = 0;
     parsers_init(rx);
 }
 
 void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e) {
+    if (e->epoch != rx->epoch) {
+        restart(rx, e->epoch);
+    }
     if (e->source == MIDI_SRC_TRS) {
         midi_in_byte(&rx->trs, (uint8_t)e->data);
     } else if (e->source == MIDI_SRC_USB) {
@@ -48,13 +58,10 @@ void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e) {
     }
 }
 
-int midi_rx_check_lost(midi_rx* rx, uint32_t lost) {
-    if (lost == rx->lost_seen) {
-        return 0;
+int midi_rx_check_lost(midi_rx* rx, uint8_t epoch) {
+    if ((int8_t)(uint8_t)(epoch - rx->epoch) <= 0) {
+        return 0; /* not newer: an entry taken since the caller read it may be ahead already */
     }
-    rx->lost_seen = lost;
-    rx->restarts++;
-    parsers_init(rx);
-    live_all_notes_off(rx->l);
+    restart(rx, epoch);
     return 1;
 }

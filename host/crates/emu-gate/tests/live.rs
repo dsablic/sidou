@@ -323,10 +323,12 @@ fn the_main_loop_is_cheap_when_idle() {
         return;
     };
     let mut m = booted(&fw);
-    let idle = main_rate(&mut m, 500);
+    // Past the first USB retry (once a second while no host answers, platform/fm1/usb/usb.c),
+    // and whole seconds from then on, so each window holds exactly one retry.
+    m.run_ms(1000);
+    let idle = main_rate(&mut m, 1000);
     m.key(key_id(A4), true);
-    m.run_ms(100);
-    let held = main_rate(&mut m, 500);
+    let held = main_rate(&mut m, 1000);
     println!(
         "main loop: {:.2}M instructions/s idle, {:.2}M with a held key ({:.1} % and {:.1} % of 240 MHz)",
         idle / 1e6,
@@ -335,7 +337,8 @@ fn the_main_loop_is_cheap_when_idle() {
         held / 2.4e6
     );
     // 52.5M/s (22 % of the core) before the main loop was paced by the key scan's frames
-    // and the screen by a dirty-strip mask; 1.4M/s after.
+    // and the screen by a dirty-strip mask; 1.4M/s after; 2.0M/s with MIDI in, 0.4M/s of it
+    // the USB retry's SIE timeouts while no host answers.
     for (what, rate) in [("idle", idle), ("with a held key", held)] {
         assert!(
             rate < 5e6,

@@ -23,7 +23,13 @@
  *
  * A channel message (CIN 0x8..0xE) whose status does not match its CIN is malformed and
  * gives no bytes. Everything else is passed on as it is: midi_in copes with stray bytes, as
- * it must for the TRS jack. The cable number is ignored: SIDOU has one MIDI IN jack. */
+ * it must for the TRS jack. The cable number is ignored: SIDOU has one MIDI IN jack.
+ *
+ * Passed on as it is, one packet can complete more than one message: data bytes in a CIN 2,
+ * 3, 4 or 0xF packet outside a SysEx continue the running status of the packet before, so
+ * CIN 3 with 05 06 07 after a C0 is three program changes. That is what a byte stream would
+ * do with the same bytes; a well-formed host never sends it. A consumer that budgets work per
+ * packet counts three messages (platform/fm1/midi.c does). */
 #ifndef SIDOU_MIDI_USB_H
 #define SIDOU_MIDI_USB_H
 

@@ -299,7 +299,7 @@ static void ep0_service(void)
     case 0x8200:
         e0_send(zero2, 2, wlength);
         return;
-    case 0x010B:                                        /* SET_INTERFACE: alt 0 (alt 1 for the audio stream) */
+    case 0x010B:                                        /* SET_INTERFACE: alt 0 only (SIDOU: no audio stream) */
         if (wvalue == 0)
             goto ack;
         goto stall;

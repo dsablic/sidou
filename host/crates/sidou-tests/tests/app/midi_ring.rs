@@ -23,6 +23,16 @@ fn pop(r: &mut midi_ring) -> Option<(u8, u32, u32)> {
     (unsafe { midi_ring_pop(r, &mut e) } != 0).then_some((e.source, e.data, e.stamp))
 }
 
+/// The next entry's epoch.
+fn pop_epoch(r: &mut midi_ring) -> Option<u8> {
+    let mut e = midi_ring_entry::default();
+    (unsafe { midi_ring_pop(r, &mut e) } != 0).then_some(e.epoch)
+}
+
+fn epoch(r: &midi_ring) -> u8 {
+    unsafe { midi_ring_epoch(r) }
+}
+
 fn room(r: &midi_ring) -> u32 {
     unsafe { midi_ring_room(r) }
 }
@@ -74,6 +84,41 @@ fn input_lost_before_the_ring_is_counted() {
     unsafe { midi_ring_lose(&mut *r, 5) };
     assert_eq!(lost(&r), 5);
     assert_eq!(pop(&mut r), None, "a loss is not an entry");
+}
+
+#[test]
+fn each_gap_of_losses_starts_one_new_epoch_and_entries_carry_theirs() {
+    let mut r = ring();
+    assert!(push(&mut r, TRS, 1, 0));
+    for i in 1..SIZE {
+        assert!(push(&mut r, TRS, i, i));
+    }
+    assert_eq!(epoch(&r), 0);
+    // Two losses in a row: one gap.
+    assert!(!push(&mut r, TRS, 0, 0));
+    assert!(!push(&mut r, TRS, 0, 0));
+    assert_eq!(epoch(&r), 1);
+    assert_eq!(pop_epoch(&mut r), Some(0));
+    assert!(push(&mut r, USB, 0, 0), "the gap ends");
+    assert!(!push(&mut r, TRS, 0, 0), "a new gap");
+    assert_eq!(epoch(&r), 2);
+    // Losses before the ring join the gap they fall into, and start one after a push.
+    unsafe { midi_ring_lose(&mut *r, 7) };
+    assert_eq!(epoch(&r), 2);
+    for _ in 0..SIZE - 1 {
+        assert_eq!(pop_epoch(&mut r), Some(0));
+    }
+    assert_eq!(pop_epoch(&mut r), Some(1), "pushed after the first gap");
+    assert_eq!(pop_epoch(&mut r), None);
+    assert!(push(&mut r, TRS, 0, 0));
+    unsafe { midi_ring_lose(&mut *r, 0) };
+    assert_eq!(epoch(&r), 2, "losing nothing is no gap");
+    unsafe { midi_ring_lose(&mut *r, 300) };
+    assert_eq!(epoch(&r), 3, "one gap however many were lost");
+    assert!(push(&mut r, TRS, 0, 0));
+    assert_eq!(pop_epoch(&mut r), Some(2));
+    assert_eq!(pop_epoch(&mut r), Some(3));
+    assert_eq!(lost(&r), 3 + 7 + 300);
 }
 
 #[test]

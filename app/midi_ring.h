@@ -13,11 +13,19 @@
  * fences keep an entry's stores before the index store that publishes it, and its loads
  * before the index store that hands its slot back.
  *
- * A full ring drops the new entry and counts it in `lost`; so does the producer for input it
- * lost before the ring (midi_ring_lose: the UART's DMA ring overran). The consumer compares
- * the count with what it saw before and recovers (midi_rx_check_lost). The USB side never
- * gets there: it leaves a packet in the endpoint (the host is NAKed and retries) while the
- * ring has less room than a packet's events. */
+ * Losses: a full ring drops the new entry and counts it in `lost`; so does the producer for
+ * input it lost before the ring (midi_ring_lose: the UART's DMA ring overran). Each run of
+ * losses with no successful push between them is one gap, and starts a new `epoch`; every
+ * entry carries the epoch it was pushed in. So the consumer sees exactly where input went
+ * missing: between two entries whose epochs differ (by 1: a gap needs a push to end it), or
+ * after the last entry if the ring's epoch is ahead of it (midi_rx.h). The USB side never
+ * loses: it leaves a packet in the endpoint (the host is NAKed and retries) while the ring
+ * has less room than a packet's events.
+ *
+ * Stamps are diagnostic for now (the device records the longest wait in the ring); M1d's
+ * clock and timing will use them. A stamp is the time of the poll that pushed the entry: a USB
+ * packet the endpoint held back (the ring was too full) gets the stamp of the poll that
+ * finally takes it, not of its arrival. */
 #ifndef SIDOU_MIDI_RING_H
 #define SIDOU_MIDI_RING_H
 
@@ -38,6 +46,7 @@ typedef struct {
     uint32_t stamp; /* when the poll took it in: fm1_ticks() on the device (24 MHz) */
     uint32_t data;
     uint8_t source; /* MIDI_SRC_* */
+    uint8_t epoch;  /* the ring's epoch when it was pushed */
 } midi_ring_entry;
 
 typedef struct {
@@ -45,19 +54,24 @@ typedef struct {
     volatile uint32_t head; /* producer: entries before it are visible to the consumer */
     volatile uint32_t tail; /* consumer: entries before it have been taken */
     volatile uint32_t lost; /* producer: inputs dropped, by a full ring or before it */
+    volatile uint8_t epoch; /* producer: gaps of lost input so far (wraps) */
+    uint8_t in_gap;         /* producer only: the last thing that happened was a loss */
 } midi_ring;
 
 void midi_ring_init(midi_ring* r);
-/* Producer. 1 on success; 0 when the ring is full: nothing is written and `lost` counts it. */
+/* Producer. 1 on success; 0 when the ring is full: nothing is written, `lost` counts it and
+ * the epoch moves on unless the last push was lost too. */
 int midi_ring_push(midi_ring* r, uint8_t source, uint32_t data, uint32_t stamp);
 /* Producer: free entries. */
 uint32_t midi_ring_room(const midi_ring* r);
-/* Producer: n inputs were lost before they reached the ring. */
+/* Producer: n inputs were lost before they reached the ring (a gap, as for a full ring). */
 void midi_ring_lose(midi_ring* r, uint32_t n);
 /* Consumer. 1 and the oldest entry, or 0 when there is none. */
 int midi_ring_pop(midi_ring* r, midi_ring_entry* out);
-/* Either side: inputs lost so far (wraps). */
+/* Either side: inputs lost so far (wraps). Diagnostic. */
 uint32_t midi_ring_lost(const midi_ring* r);
+/* Either side: the current epoch. */
+uint8_t midi_ring_epoch(const midi_ring* r);
 
 #ifdef __cplusplus
 }

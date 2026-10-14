@@ -137,7 +137,10 @@ carry the changes over onto SIDOU's versions.
   received frame, the SysEx TX queue, `ota_wire_send`, `ota_frame_get`,
   `ota_frame_done`, the upgrade request `F0 22 24 35 7F F7`) is unchanged.
   `FELUCCA_LOADER` code is unchanged too; its product string carries a
-  TODO(Task 6).
+  TODO(Task 6). The SysEx state in `usb` (`sysex`, `sx_len`, `sx_on`,
+  `ota_req`) is dead with `FELUCCA_OTA` off and is kept on purpose for
+  Task 6, as are the `FELUCCA_OTA` blocks in `usb_poll`'s bus reset and in
+  `ep1_tx`.
 - **Retry without blocking:** `usb_start` is split into the reset and
   `usb_attach_now`. `usb_start` (boot, interrupts off) still waits 25 ms
   between them; `usb_retry` (main loop, once a second while USB is off)
@@ -149,7 +152,8 @@ carry the changes over onto SIDOU's versions.
   instead of "Hügelton Instruments" and "Felucca".
 - `midi_out_event` and `usb_detach` are marked unused: nothing sends MIDI
   out or detaches yet.
-- The header comment describes the SIDOU build.
+- The header comment describes the SIDOU build, and `SET_INTERFACE`'s
+  comment no longer mentions the audio stream.
 
 ### Local changes in `midi_uart.c` (50 lines left)
 

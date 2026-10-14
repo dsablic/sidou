@@ -14,9 +14,10 @@
 #include "midi_rx.h"
 #include "reg_ring.h"
 
-/* The register writes one MIDI entry can cause at most: a program change writes every
- * register (live_set_preset). */
-#define MIDI_ENTRY_WRITES 25u
+/* The register writes one MIDI entry can cause at most. A program change writes every register
+ * (live_set_preset, 25). A TRS byte completes at most one message; a USB packet up to three,
+ * through running status (app/midi_usb.h), e.g. CIN 3 with three data bytes after C0. */
+#define MIDI_ENTRY_WRITES (3u * 25u)
 
 static midi_ring in_ring;
 static midi_rx rx;
@@ -26,7 +27,7 @@ static uint32_t poll_stamp;
 /* Diagnostics, read by the emulator tests through the ELF symbol: six uint32_t, in this order. */
 static struct {
     uint32_t entries;        /* ring entries taken onto live */
-    uint32_t lost;           /* midi_ring_lost at the last drain */
+    uint32_t lost;           /* midi_ring_lost at the last drain that saw a loss */
     uint32_t restarts;       /* parser restarts after lost input */
     uint32_t max_wait_ticks; /* the longest an entry waited in the ring, 24 MHz ticks */
     uint32_t usb_polls;      /* USB polls with the controller up */
@@ -66,7 +67,7 @@ _Static_assert(MIDI_SRC_USB == 1u && MIDI_SRC_TRS == 2u, "usb.c and midi_uart.c 
 
 void midi_init(live* l) {
     midi_ring_init(&in_ring);
-    midi_rx_init(&rx, l, midi_ring_lost(&in_ring));
+    midi_rx_init(&rx, l, midi_ring_epoch(&in_ring));
     uart_midi_init();
     usb_start();
 }
@@ -85,16 +86,14 @@ void midi_uart_isr(void) {
     uart_midi_poll();
 }
 
-uint32_t midi_drain(void) {
+int midi_drain(void) {
     midi_ring_entry e;
     uint32_t n = 0;
-    uint32_t lost = in_ring.lost;
-    if (in_ring.head == in_ring.tail && lost == rx.lost_seen) {
+    uint32_t restarts = rx.restarts;
+    /* The epoch first, then the emptiness: a gap after this read is caught next time. */
+    uint8_t epoch = in_ring.epoch;
+    if (in_ring.head == in_ring.tail && epoch == rx.epoch) {
         return 0; /* the main loop wakes at 10 kHz: keep the usual case to a few loads */
-    }
-    if (midi_rx_check_lost(&rx, lost)) {
-        midi_stats.lost = lost;
-        midi_stats.restarts++;
     }
     /* Leave the rest of the pass its worst case, so it never waits for the audio ISR on its
      * own account; what stays in the ring is taken after the next audio block. */
@@ -107,8 +106,18 @@ uint32_t midi_drain(void) {
         midi_rx_entry(&rx, &e);
         n++;
     }
+    if (in_ring.head == in_ring.tail) {
+        /* All taken: a gap after the last entry, with nothing behind it yet. Its epoch was
+         * read before the ring was seen empty, so every entry before it has been taken. */
+        midi_rx_check_lost(&rx, epoch);
+    }
     midi_stats.entries += n;
-    return n;
+    if (rx.restarts != restarts) {
+        midi_stats.lost = midi_ring_lost(&in_ring);
+        midi_stats.restarts = rx.restarts;
+        return 1; /* the restart released the notes: there are writes to commit */
+    }
+    return n != 0;
 }
 
 void midi_service(uint32_t now_ms) {

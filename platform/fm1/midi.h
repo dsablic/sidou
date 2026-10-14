@@ -20,9 +20,9 @@ void midi_init(live* l);
 void midi_usb_isr(void);
 void midi_uart_isr(void);
 /* Main loop: takes what came in onto live, leaving the register ring room for the rest of
- * the pass (reg_ring.h's worst pass). Returns the entries taken; if any, the caller commits
- * the register writes (audio_commit). */
-uint32_t midi_drain(void);
+ * the pass (reg_ring.h's worst pass), and recovers from lost input (app/midi_rx.h). Returns
+ * 1 if it may have written registers: the caller then commits them (audio_commit). */
+int midi_drain(void);
 /* Main loop: a USB retry while no host answers (once a second). */
 void midi_service(uint32_t now_ms);
 

@@ -10,12 +10,22 @@ void midi_ring_init(midi_ring* r) {
     r->head = 0;
     r->tail = 0;
     r->lost = 0;
+    r->epoch = 0;
+    r->in_gap = 0;
+}
+
+static void lose(midi_ring* r, uint32_t n) {
+    r->lost += n;
+    if (!r->in_gap) {
+        r->in_gap = 1;
+        r->epoch++;
+    }
 }
 
 int midi_ring_push(midi_ring* r, uint8_t source, uint32_t data, uint32_t stamp) {
     uint32_t h = r->head;
     if (h - r->tail >= MIDI_RING_SIZE) {
-        r->lost++;
+        lose(r, 1u);
         return 0;
     }
     COMPILER_FENCE(); /* the tail before the slot it handed back */
@@ -23,6 +33,8 @@ int midi_ring_push(midi_ring* r, uint8_t source, uint32_t data, uint32_t stamp) 
     e->stamp = stamp;
     e->data = data;
     e->source = source;
+    e->epoch = r->epoch;
+    r->in_gap = 0;
     COMPILER_FENCE(); /* the entry before the index that publishes it */
     r->head = h + 1u;
     return 1;
@@ -33,7 +45,9 @@ uint32_t midi_ring_room(const midi_ring* r) {
 }
 
 void midi_ring_lose(midi_ring* r, uint32_t n) {
-    r->lost += n;
+    if (n) {
+        lose(r, n);
+    }
 }
 
 int midi_ring_pop(midi_ring* r, midi_ring_entry* out) {
@@ -50,4 +64,8 @@ int midi_ring_pop(midi_ring* r, midi_ring_entry* out) {
 
 uint32_t midi_ring_lost(const midi_ring* r) {
     return r->lost;
+}
+
+uint8_t midi_ring_epoch(const midi_ring* r) {
+    return r->epoch;
 }

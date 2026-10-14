@@ -28,6 +28,56 @@ Follow-ups that aren't tied to a milestone task yet.
   measure `usb_poll` there: three SIE round trips per poll at 2 kHz with
   no traffic. Ask upstream whether a USB device model is planned.
 
+## USB retry without a host costs main-loop time on hardware too
+
+- **Where:** `platform/fm1/usb/usb.c`, `usb_retry` and `usb_attach_now`.
+- **Problem:** Felucca found that the SIE does not answer without a cable,
+  which is also how a battery-powered FM-1 runs. While USB is off,
+  `usb_retry` runs once a second: `fm1_usb_reset` (controller off, pads
+  detached), then 25 ms later `usb_attach_now`, whose `fm1_usb_attach`
+  turns on the PLL48 USB clock, the PHY and the D+ pull-up, and whose SIE
+  writes then time out three times at 20000 polls each. Nothing turns the
+  controller off after that failed attach, so the clock, PHY and pull-up
+  stay on until the next retry's reset: on for about 975 ms of every
+  second, off for 25 ms. The cost in fm1-emu, which behaves the same way:
+  the main loop went from 1.4M to 2.0M instructions/s idle with MIDI in,
+  0.4M/s of it these timeouts (about 1.75 ms of blocked main loop a second
+  at 240 MHz on hardware, if the hardware's timeouts are as long) and the
+  rest the per-wake MIDI drain check. The supply current with the PHY on
+  and no cable is unmeasured.
+- **Action:** on hardware without a cable, measure the main loop's blocked
+  time and the supply current across a retry. If either matters, back the
+  retry off (e.g. after a few failures, retry every 10 s, or only when VBUS
+  is seen, if the chip reports it) and shorten the attach's timeout.
+
+## SIE timeouts spin inside the TIMER5 interrupt
+
+- **Where:** `platform/fm1/usb/usb.c`, `sie_wr` and `sie_rd` (inherited
+  from Felucca), called by `usb_poll` from TIMER5 at 2 kHz.
+- **Problem:** each SIE access waits for the controller for up to 20000
+  polls. If the SIE stops answering while USB is up (a dead clock, an
+  unplug the stack does not notice), every `usb_poll` spends several
+  timeouts (each about 0.6 ms at 240 MHz, longer than the 0.5 ms poll
+  period) inside TIMER5, which outranks the audio interrupt, until 50
+  consecutive timeouts set `usb.up = 0`. That can starve the audio render
+  for tens of milliseconds and drop blocks.
+- **Action:** on hardware, unplug the cable during playback and while the
+  host suspends, and watch for audio dropouts. If the SIE can die while up,
+  shorten the in-interrupt timeout or give up after the first timeout of a
+  poll.
+
+## Task 6: `usb_detach` must mask interrupts around `usb.up = 0`
+
+- **Where:** `platform/fm1/usb/usb.c`, `usb_detach` (unused in M1a; the
+  update protocol will call it before a reset).
+- **Problem:** `usb_poll` runs in TIMER5 and checks `usb.up` only on entry.
+  A main-loop `usb_detach` that clears `usb.up` and then switches the
+  controller off can be preempted by a poll already past that check, which
+  then talks to a controller being turned off.
+- **Action:** in Task 6, clear `usb.up` and call `fm1_usb_off` with
+  interrupts off (or at least TIMER5 masked), as Felucca's own
+  `usb_cdc_switch` orders it with `RING_PUBLISH`.
+
 ## Report fm1-emu: decrementing register block load is not executed
 
 - **Where:** fm1-emu (github.com/joakimeriksson/fm1-emu) at rev
