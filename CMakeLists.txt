@@ -12,3 +12,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_subdirectory(core)
 add_subdirectory(bench)
+if(CMAKE_CROSSCOMPILING)
+    add_subdirectory(platform/fm1)
+endif()

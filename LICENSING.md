@@ -8,8 +8,9 @@ or is covered by [REUSE.toml](REUSE.toml). Full licence texts live in
 [LICENSES/](LICENSES/). We follow the [REUSE](https://reuse.software/)
 specification, and CI runs `reuse lint`.
 
-Firmware images may include GPL-3.0-only code from other FM-1 projects. Those
-images are distributed under GPL-3.0.
+The firmware image links Felucca's GPL-3.0-only HAL (`platform/fm1/hal/`),
+so the firmware image as a whole is distributed under **GPL-3.0-only**. Our
+own files keep their GPL-3.0-or-later licence.
 
 ## Third-party components
 
@@ -19,6 +20,7 @@ component. "Use" says whether a component ends up in the firmware image.
 | Component | Origin | Licence | Use | Status |
 |---|---|---|---|---|
 | reSID 0.16 filter cutoff points (`core/sid/sid_curves_resid016.h`) | reSID 0.16, © 2004 Dag Lem | GPL-2.0-or-later | data compiled into the firmware | M0 stand-in, replaced in M1 |
+| Felucca HAL @ `a53ecf42` (`platform/fm1/hal/`, see [VENDORED.md](platform/fm1/VENDORED.md)) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | linked into the firmware | in use |
 | `bench/fm1/crt0.S`, `bench/fm1/bench.ld` | adapted from fm1-sid, © 2026 Joakim Eriksson | BSD-2-Clause | benchmark program only | in use |
 | libresidfp @ `c1791383` (`third_party/libresidfp`) | libsidplayfp project | GPL-2.0-or-later | host tests only; git submodule, never linked into firmware | in use |
 | fm1-emu crates `fm1-core`, `fm1-soc`, `fm1-isa` @ `e52f4640` | Joakim Eriksson | MIT | emulator gate only; fetched by cargo | in use |
