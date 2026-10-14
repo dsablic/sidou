@@ -156,3 +156,43 @@ analogue modelling parameters, not just named presets. So:
 - **Tests:** e2e LCD snapshots and control round trips.
 
 <!-- REUSE-IgnoreEnd -->
+
+### Task 5: Effect slots: Distortion, Modulation, FX (stereo)
+
+**Signal chain:** chip (with its character) → **Distortion** → **Modulation**
+→ **FX** → stereo out. Each slot runs one algorithm at a time and can be
+bypassed exactly. The slot order is fixed.
+
+| Slot | Algorithms |
+|---|---|
+| Distortion | Tape saturation, Overdrive, Fuzz, Bit-crush/decimate, Lo-fi (CRT/TV low-pass + hum + noise) |
+| Modulation | Chorus/ensemble, Flanger, Phaser, Tremolo/auto-pan, Wow & flutter |
+| FX | Delay (mono or ping-pong; free or tempo-synced once M2's clock exists), Reverb (light and lush variants) |
+
+- **Reuse Task 1's blocks:** tape, crush, Lo-fi, and wow & flutter are
+  rearranged into slots, not rewritten. Task 1 keeps each effect as a
+  separate block with its own state and parameters.
+- **Parameters per slot:** algorithm, Amount, Param A, Param B, Mix. All are
+  smoothed, and switching algorithm crossfades (no click).
+- **Stereo:** the chip path stays mono up to Modulation. Chorus, auto-pan,
+  ping-pong delay and reverb produce stereo. The audio ISR writes true
+  L and R.
+- **Memory:** delay and reverb buffers live in SRAM pools sized from a
+  documented budget (for example 1 s of mono delay is 88 KB at 16-bit).
+  Report the total. Reverb's light variant must fit two-chip worst-case
+  budgets. Lush is allowed only if its measured cost leaves headroom.
+- **Tests** for each algorithm:
+  - its characteristic (THD for drives, modulation rate and depth,
+    delay time and feedback decay, reverb RT60 and stability);
+  - exact bypass;
+  - click-free algorithm switches and parameter jumps;
+  - stereo correctness (mono input gives the expected L/R decorrelation);
+  - the same output on host and target.
+- **Emulator gate:** worst-case scenarios with every slot on (heaviest
+  algorithm per slot), for one and two chips. Assert the budgets and report
+  the cost of each algorithm.
+- **Controls:** the device maps the selected slot to K1–K4 (Amount, A, B,
+  Mix), with a button to choose the slot and algorithm. There are MIDI
+  CC/NRPN in the M1d map. The slot states are saved in presets and songs
+  (M2 adds per-step parameter locks).
+- **Commit:** `feat(fx): distortion, modulation and FX slots with stereo output`.
