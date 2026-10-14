@@ -274,8 +274,9 @@ Layers (all run in CI):
 4. **Golden renders:** an FNV-1a hash of every preset, demo song and starter
    tune. `GOLDEN_UPDATE=1` is the deliberate way to accept new output.
    Sanity checks for clipping and DC.
-5. **Fuzzing:** libFuzzer with ASan and UBSan on every importer and on the
-   song loader. A seed corpus comes from the reference tunes.
+5. **Fuzzing:** `cargo fuzz` (libFuzzer) on every importer and on the song
+   loader, with the C code built under ASan and UBSan. A seed corpus comes
+   from the reference tunes.
 6. **UI snapshots:** the host renders every view to PNG, plus a layout lint
    (text overflow, contrast).
 7. **End-to-end in fm1-emu:** boot the real `.fwsc` headless and run:
@@ -289,14 +290,15 @@ Layers (all run in CI):
 ## 10. Tooling and release engineering
 
 - **Build:**
-  - one `build.sh` / `tools/build.py`;
+  - CMake (cross-compiling only), driven through `tools/fm1-docker`;
   - the JieLi pi32v2 toolchain, fetched by script and checked by SHA-256;
   - the toolchain runs in Docker (`linux/amd64`) on anything except Linux
     x86-64;
   - the AC79 SDK is pinned to a commit, and its blobs are checked by SHA-256;
   - the build is reproducible: same source, same `.fwsc`.
-- **Host and web builds:** CMake for host tools and tests; Emscripten for the
-  WASM build.
+- **Host and web builds:** a cargo workspace (`host/`) for every host tool,
+  test and benchmark, building the C core through the `cc` crate;
+  Emscripten for the WASM build.
 - **CI (GitHub Actions)** on every pull request:
   - firmware build, host tests, fuzz smoke (short), CPU budgets;
   - fm1-emu end-to-end;
@@ -459,10 +461,9 @@ modification or better performance.
 | Part | Language | Why |
 |---|---|---|
 | `core/`, `app/`, `platform/fm1` | C11 | The only pi32v2 compiler is JieLi's clang 4.0.1, a proprietary LLVM 4 fork. Rust needs a modern LLVM backend for the target, and none exists. Zig's C backend produces bulky, extension-heavy C that runs DSP loops slower and is harder to debug. Both fail all three tests. C also gives one codebase for firmware, host and WASM. |
-| Build and table generators (`tools/`) | Python 3 | Same as the rest of the FM-1 ecosystem (`build.py`, `fm1pkg_make.py`, installer tools can be adapted). Easy to change. |
-| reSIDfp reference harness | C++ | reSIDfp is C++. Used only in tests. |
+| All host tooling: tests, benchmarks, reference comparisons, emulator gate, table generators, packaging (`host/`) | Rust (cargo workspace) | One host language and one harness (`cargo test`, criterion). Rust is needed anyway because fm1-emu is a Rust library. It calls the C core through FFI (`cc` crate), so the code that runs on the device is tested directly. Third-party C++ (reSIDfp) is compiled by `cc` as a dependency; we write no C++. Decided 2026-10-14, replacing C++ tests and Python tools. |
 | Web showcase and installer UI | TypeScript (no framework), Emscripten for the core | Type safety for the WebMIDI/SysEx code that can brick a device. |
-| fm1-emu | Rust (upstream) | Used as an external tool; not our code. |
+| fm1-emu | Rust (upstream) | Used as a library by the emulator gate; not our code. |
 
 Revisit if a modern LLVM or GCC backend for pi32v2 appears. In that case,
 Rust or Zig for `app/` would be the first candidate.
