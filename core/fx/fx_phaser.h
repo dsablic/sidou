@@ -13,10 +13,12 @@
  * - Amount: depth, the sweep around the middle of MIN_HZ .. MAX_HZ (log);
  * - A: rate, 0.05 .. 5 Hz (log);
  * - B: feedback, 0 .. 0.7.
- * Any amounts in [0, 1] may arrive on any sample. */
+ * Any amounts in [0, 1] may arrive on any sample. The LFO and rate are evaluated every
+ * SID_FX_MOD_SEGMENT samples and the coefficients move linearly in between. */
 
 #include <stdint.h>
 
+#include "fx_chorus.h"
 #include "fx_util.h"
 #include "sid/sid_math.h"
 
@@ -37,12 +39,13 @@ typedef struct {
     float s_l[SID_FX_PHASER_STAGES], s_r[SID_FX_PHASER_STAGES];
     float fb_l, fb_r;
     uint32_t phase, inc;
-    float hz_inc, rate;
-    float a_l, a_r; /* last coefficients */
+    float hz_inc;
+    float a_l, a_r;       /* coefficients */
+    float step_l, step_r; /* their change per sample in this segment */
+    uint32_t left;        /* samples left in the segment */
 } sid_fx_phaser;
 
 static inline void sid_fx_phaser_set_rate(sid_fx_phaser* p, float rate) {
-    p->rate = rate;
     float hz = SID_FX_PHASER_MIN_RATE_HZ * sid_fx_exp2(SID_FX_PHASER_RATE_OCTAVES * rate);
     p->inc = (uint32_t)(int32_t)(hz * p->hz_inc) << 1;
 }
@@ -65,6 +68,9 @@ static inline void sid_fx_phaser_init(sid_fx_phaser* p, uint32_t sample_rate) {
     p->hz_inc = 2147483648.0f / fs;
     p->a_l = p->table[SID_FX_PHASER_STEPS / 2u];
     p->a_r = p->a_l;
+    p->step_l = 0.0f;
+    p->step_r = 0.0f;
+    p->left = 0;
     sid_fx_phaser_set_rate(p, 0.5f);
 }
 
@@ -90,13 +96,18 @@ static inline float sid_fx_phaser_chain(float* s, float a, float x) {
 /* x is normalised; depth, rate and feedback are in [0, 1]. */
 static inline void sid_fx_phaser_tick(sid_fx_phaser* p, float x, float depth, float rate,
                                       float feedback, float* l, float* r) {
-    if (rate != p->rate) {
+    if (p->left == 0) {
         sid_fx_phaser_set_rate(p, rate);
+        p->phase += p->inc * SID_FX_MOD_SEGMENT;
+        float half = 0.5f * depth;
+        const float seg = 1.0f / (float)SID_FX_MOD_SEGMENT;
+        p->step_l = (sid_fx_phaser_coef(p, 0.5f + half * sid_fx_sin(p->phase)) - p->a_l) * seg;
+        p->step_r = (sid_fx_phaser_coef(p, 0.5f + half * sid_fx_cos(p->phase)) - p->a_r) * seg;
+        p->left = SID_FX_MOD_SEGMENT;
     }
-    float half = 0.5f * depth;
-    p->a_l = sid_fx_phaser_coef(p, 0.5f + half * sid_fx_sin(p->phase));
-    p->a_r = sid_fx_phaser_coef(p, 0.5f + half * sid_fx_cos(p->phase));
-    p->phase += p->inc;
+    --p->left;
+    p->a_l += p->step_l;
+    p->a_r += p->step_r;
     float fb = SID_FX_PHASER_FEEDBACK * feedback;
     p->fb_l = sid_fx_phaser_chain(p->s_l, p->a_l, x + fb * p->fb_l);
     p->fb_r = sid_fx_phaser_chain(p->s_r, p->a_r, x + fb * p->fb_r);

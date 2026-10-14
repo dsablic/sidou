@@ -227,7 +227,9 @@ fn reverbs_are_stable_and_never_denormal() {
                 vec![s.s.fx.reverb.lp_decay_1, s.s.fx.reverb.lp_decay_2]
             } else {
                 let p = &s.s.fx.plate;
-                vec![p.bw, p.damp_l, p.damp_r, p.tank_l, p.tank_r]
+                let mut v = vec![p.bw, p.damp_l, p.damp_r, p.tank_l, p.tank_r];
+                v.extend(s.pool.f32_.iter().copied());
+                v
             }
         };
         for v in states {

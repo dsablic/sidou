@@ -8,7 +8,7 @@
 static const uint32_t ALGORITHMS[SID_SLOT_COUNT] = {SID_DIST_COUNT, SID_MOD_COUNT,
                                                     SID_FXSLOT_COUNT};
 
-void sid_slots_init(sid_slots* s, uint32_t sample_rate, uint32_t seed, int16_t* pool) {
+void sid_slots_init(sid_slots* s, uint32_t sample_rate, uint32_t seed, sid_slot_pool* pool) {
     sid_slot_params off = {0, 0.0f, 0.0f, 0.0f, 0.0f};
     for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
         sid_slot* sl = &s->slot[k];
@@ -22,11 +22,19 @@ void sid_slots_init(sid_slots* s, uint32_t sample_rate, uint32_t seed, int16_t* 
         sl->awake = 0;
         sl->clear_pos = 0;
         sl->fade = 1.0f;
+        for (int i = 0; i < 4; ++i) {
+            sl->inc[i] = 0.0f;
+        }
     }
     s->sample_rate = sample_rate;
     s->seed = seed;
     s->clock = 0;
-    s->smooth_coef = sid_fx_smooth_coef(SID_FX_SMOOTH_MS, sample_rate);
+    float k = sid_fx_smooth_coef(SID_FX_SMOOTH_MS, sample_rate);
+    float ahead = 1.0f;
+    for (uint32_t i = 0; i < 16u; ++i) {
+        ahead *= 1.0f - k; /* (1 - k)^CHUNK: the one-pole CHUNK samples on */
+    }
+    s->smooth_ahead = ahead;
     float fade_samples = SID_SLOT_FADE_MS * 0.001f * (float)sample_rate;
     s->fade_step = 1.0f / fade_samples;
     s->clear_per_sample = SID_SLOT_POOL_LEN / (uint32_t)(int32_t)fade_samples + 1u;
@@ -68,17 +76,16 @@ static void dist_start(sid_slots* s, uint32_t alg) {
     }
 }
 
-static float dist_tick(sid_slots* s, const sid_slot* sl, float x) {
+static float dist_tick(sid_slots* s, uint32_t alg, float x, float amount, float a, float b) {
     sid_slot_dist_state* d = &s->dist;
-    switch (sl->algorithm) {
-    case SID_DIST_TAPE: return sid_fx_tape_tick(&d->tape, x, sl->amount);
-    case SID_DIST_OVERDRIVE:
-        return sid_fx_overdrive_tick(&d->overdrive, x, sl->amount, sl->a, sl->b);
-    case SID_DIST_FUZZ: return sid_fx_fuzz_tick(&d->fuzz, x, sl->amount, sl->a, sl->b);
-    case SID_DIST_CRUSH: return sid_fx_crush_tick(&d->crush, x, sl->a, sl->amount);
+    switch (alg) {
+    case SID_DIST_TAPE: return sid_fx_tape_tick(&d->tape, x, amount);
+    case SID_DIST_OVERDRIVE: return sid_fx_overdrive_tick(&d->overdrive, x, amount, a, b);
+    case SID_DIST_FUZZ: return sid_fx_fuzz_tick(&d->fuzz, x, amount, a, b);
+    case SID_DIST_CRUSH: return sid_fx_crush_tick(&d->crush, x, a, amount);
     case SID_DIST_LOFI: {
-        float y = sid_fx_crt_tick(&d->lofi.crt, x, sl->amount, sl->a);
-        return sid_fx_noise_tick(&d->lofi.noise, y, sl->b);
+        float y = sid_fx_crt_tick(&d->lofi.crt, x, amount, a);
+        return sid_fx_noise_tick(&d->lofi.noise, y, b);
     }
     default: return x;
     }
@@ -97,25 +104,26 @@ static void mod_start(sid_slots* s, uint32_t alg) {
     }
 }
 
-static void mod_tick(sid_slots* s, const sid_slot* sl, float x, float* l, float* r) {
+static void mod_tick(sid_slots* s, uint32_t alg, float x, float amount, float a, float b,
+                     float* l, float* r) {
     sid_slot_mod_state* m = &s->mod;
-    switch (sl->algorithm) {
+    switch (alg) {
     case SID_MOD_CHORUS:
-        sid_fx_chorus_tick(&m->chorus, x, sl->amount, sl->a, sl->b, l, r);
+        sid_fx_chorus_tick(&m->chorus, x, amount, a, b, l, r);
         return;
     case SID_MOD_FLANGER:
-        sid_fx_flanger_tick(&m->flanger, x, sl->amount, sl->a, sl->b, l, r);
+        sid_fx_flanger_tick(&m->flanger, x, amount, a, b, l, r);
         return;
     case SID_MOD_PHASER:
-        sid_fx_phaser_tick(&m->phaser, x, sl->amount, sl->a, sl->b, l, r);
+        sid_fx_phaser_tick(&m->phaser, x, amount, a, b, l, r);
         return;
     case SID_MOD_TREMOLO:
-        sid_fx_tremolo_tick(&m->tremolo, x, sl->amount, sl->a, sl->b, l, r);
+        sid_fx_tremolo_tick(&m->tremolo, x, amount, a, b, l, r);
         return;
     case SID_MOD_AUTOPAN:
-        sid_fx_autopan_tick(&m->tremolo, x, sl->amount, sl->a, sl->b, l, r);
+        sid_fx_autopan_tick(&m->tremolo, x, amount, a, b, l, r);
         return;
-    case SID_MOD_WOW: x = sid_fx_wow_tick(&m->wow, x, sl->amount, sl->a); break;
+    case SID_MOD_WOW: x = sid_fx_wow_tick(&m->wow, x, amount, a); break;
     default: break;
     }
     *l = x;
@@ -142,19 +150,20 @@ static void fx_start(sid_slots* s, uint32_t alg) {
 
 /* Wet output from the stereo input in *l, *r (which stays the wet when NONE). `in` scales
  * the wet path's input. */
-static void fx_tick(sid_slots* s, const sid_slot* sl, float in, float* l, float* r) {
+static void fx_tick(sid_slots* s, uint32_t alg, float in, float amount, float a, float b,
+                    float* l, float* r) {
     sid_slot_fx_state* f = &s->fx;
     float m = 0.5f * in * (*l + *r);
-    switch (sl->algorithm) {
+    switch (alg) {
     case SID_FXSLOT_DELAY:
     case SID_FXSLOT_PINGPONG:
-        sid_fx_echo_tick(&f->echo, s->pool, m, sl->amount, sl->a, sl->b, l, r);
+        sid_fx_echo_tick(&f->echo, s->pool->s16, m, amount, a, b, l, r);
         break;
     case SID_FXSLOT_REVERB_LIGHT:
-        sid_fx_reverb_tick(&f->reverb, s->pool, m, sl->amount, sl->a, sl->b, l, r);
+        sid_fx_reverb_tick(&f->reverb, s->pool->s16, m, amount, a, b, l, r);
         break;
     case SID_FXSLOT_REVERB_LUSH:
-        sid_fx_plate_tick(&f->plate, s->pool, m, sl->amount, sl->a, sl->b, l, r);
+        sid_fx_plate_tick(&f->plate, s->pool->f32, m, amount, a, b, l, r);
         break;
     default: break;
     }
@@ -219,7 +228,7 @@ static float step_switch(sid_slots* s, uint32_t k) {
             end = SID_SLOT_POOL_LEN;
         }
         for (uint32_t i = sl->clear_pos; i < end; ++i) {
-            s->pool[i] = 0;
+            s->pool->s16[i] = 0;
         }
         sl->clear_pos = end;
         if (end == SID_SLOT_POOL_LEN) {
@@ -244,20 +253,215 @@ static float step_switch(sid_slots* s, uint32_t k) {
     return sid_fx_smoothstep(sl->fade);
 }
 
-/* ---- the frame ---- */
+/* ---- the frame ----
+ *
+ * Samples go through in chunks of up to CHUNK, cut on the slots' own clock (so the result
+ * does not depend on how calls split the stream). At each chunk start every control's
+ * one-pole is evaluated CHUNK samples ahead and the chunk follows it as a straight line:
+ * one add per control per sample instead of a full one-pole step. */
 
-static void smooth_controls(sid_slot* sl, float k) {
-    sid_fx_smooth_step(&sl->amount, sl->target.amount, k);
-    sid_fx_smooth_step(&sl->a, sl->target.a, k);
-    sid_fx_smooth_step(&sl->b, sl->target.b, k);
-    sid_fx_smooth_step(&sl->mix, sl->target.mix, k);
+#define CHUNK 16u
+
+/* At a chunk start: snap (on the 32-sample grid) and set the controls' slopes. */
+static void plan_controls(sid_slots* s, sid_slot* sl) {
+    float* cur[4] = {&sl->amount, &sl->a, &sl->b, &sl->mix};
+    const float tgt[4] = {sl->target.amount, sl->target.a, sl->target.b, sl->target.mix};
+    for (int i = 0; i < 4; ++i) {
+        if ((s->clock & SNAP_MASK) == 0) {
+            sid_fx_smooth_snap(cur[i], tgt[i]);
+        }
+        float end = tgt[i] + (*cur[i] - tgt[i]) * s->smooth_ahead;
+        sl->inc[i] = (end - *cur[i]) * (1.0f / (float)CHUNK);
+    }
 }
 
-static void snap(sid_slot* sl) {
-    sid_fx_smooth_snap(&sl->amount, sl->target.amount);
-    sid_fx_smooth_snap(&sl->a, sl->target.a);
-    sid_fx_smooth_snap(&sl->b, sl->target.b);
-    sid_fx_smooth_snap(&sl->mix, sl->target.mix);
+/* Is the slot running its algorithm undisturbed (no switch under way or pending)? */
+static int steady(const sid_slot* sl) {
+    return sl->phase == SID_SLOT_RUN && sl->algorithm == sl->target.algorithm;
+}
+
+/* The per-sample ticks for the switching path, kept out of line so that the steady
+ * path's per-algorithm loops below stay small (fm1-emu does not decode the long-range
+ * conditional branches clang emits for one loop holding every algorithm). */
+__attribute__((noinline)) static float dist_tick_any(sid_slots* s, uint32_t alg, float x,
+                                                     float amount, float a, float b) {
+    return dist_tick(s, alg, x, amount, a, b);
+}
+
+__attribute__((noinline)) static void mod_tick_any(sid_slots* s, uint32_t alg, float x,
+                                                   float amount, float a, float b, float* l,
+                                                   float* r) {
+    mod_tick(s, alg, x, amount, a, b, l, r);
+}
+
+__attribute__((noinline)) static void fx_tick_any(sid_slots* s, uint32_t alg, float in,
+                                                  float amount, float a, float b, float* l,
+                                                  float* r) {
+    fx_tick(s, alg, in, amount, a, b, l, r);
+}
+
+/* Loads a slot's controls and slopes into locals; SAVE writes them back. */
+#define LOAD(sl)                                                                      \
+    float amount = (sl)->amount, a = (sl)->a, b = (sl)->b, mix = (sl)->mix;           \
+    const float ia = (sl)->inc[0], ib = (sl)->inc[1], ic = (sl)->inc[2], im = (sl)->inc[3]
+#define ADVANCE() (amount += ia, a += ib, b += ic, mix += im)
+#define SAVE(sl) ((sl)->amount = amount, (sl)->a = a, (sl)->b = b, (sl)->mix = mix)
+
+/* Steady distortion: one loop per algorithm. */
+#define DIST_LOOP(expr)                              \
+    for (uint32_t i = 0; i < len; ++i) {             \
+        ADVANCE();                                   \
+        float xi = x[i];                             \
+        float wet = (expr);                          \
+        x[i] = xi + mix * (wet - xi);                \
+    }
+
+static void dist_run(sid_slots* s, float* x, uint32_t len) {
+    sid_slot* sl = &s->slot[SID_SLOT_DIST];
+    sid_slot_dist_state* d = &s->dist;
+    LOAD(sl);
+    if (!steady(sl)) {
+        for (uint32_t i = 0; i < len; ++i) {
+            ADVANCE();
+            float g = step_switch(s, SID_SLOT_DIST);
+            if (sl->phase != SID_SLOT_CLEAR) {
+                float wet = dist_tick_any(s, sl->algorithm, x[i], amount, a, b);
+                x[i] += mix * g * (wet - x[i]);
+            }
+        }
+        SAVE(sl);
+        return;
+    }
+    switch (sl->algorithm) {
+    case SID_DIST_TAPE: DIST_LOOP(sid_fx_tape_tick(&d->tape, xi, amount)) break;
+    case SID_DIST_OVERDRIVE:
+        DIST_LOOP(sid_fx_overdrive_tick(&d->overdrive, xi, amount, a, b))
+        break;
+    case SID_DIST_FUZZ: DIST_LOOP(sid_fx_fuzz_tick(&d->fuzz, xi, amount, a, b)) break;
+    case SID_DIST_CRUSH: DIST_LOOP(sid_fx_crush_tick(&d->crush, xi, a, amount)) break;
+    case SID_DIST_LOFI:
+        DIST_LOOP(sid_fx_noise_tick(&d->lofi.noise, sid_fx_crt_tick(&d->lofi.crt, xi, amount, a),
+                                    b))
+        break;
+    default:
+        for (uint32_t i = 0; i < len; ++i) {
+            ADVANCE();
+        }
+        break;
+    }
+    SAVE(sl);
+}
+
+/* Steady modulation: one loop per algorithm. */
+#define MOD_LOOP(call)                                  \
+    for (uint32_t i = 0; i < len; ++i) {                \
+        ADVANCE();                                      \
+        float xi = x[i], wl, wr;                        \
+        call;                                           \
+        l[i] = xi + mix * (wl - xi);                    \
+        r[i] = xi + mix * (wr - xi);                    \
+    }
+
+static void mod_run(sid_slots* s, const float* x, float* l, float* r, uint32_t len) {
+    sid_slot* sl = &s->slot[SID_SLOT_MOD];
+    sid_slot_mod_state* m = &s->mod;
+    LOAD(sl);
+    if (!steady(sl)) {
+        for (uint32_t i = 0; i < len; ++i) {
+            ADVANCE();
+            float g = step_switch(s, SID_SLOT_MOD);
+            float wl = x[i];
+            float wr = x[i];
+            mod_tick_any(s, sl->algorithm, x[i], amount, a, b, &wl, &wr);
+            float k = mix * g;
+            l[i] = x[i] + k * (wl - x[i]);
+            r[i] = x[i] + k * (wr - x[i]);
+        }
+        SAVE(sl);
+        return;
+    }
+    switch (sl->algorithm) {
+    case SID_MOD_CHORUS:
+        MOD_LOOP(sid_fx_chorus_tick(&m->chorus, xi, amount, a, b, &wl, &wr))
+        break;
+    case SID_MOD_FLANGER:
+        MOD_LOOP(sid_fx_flanger_tick(&m->flanger, xi, amount, a, b, &wl, &wr))
+        break;
+    case SID_MOD_PHASER:
+        MOD_LOOP(sid_fx_phaser_tick(&m->phaser, xi, amount, a, b, &wl, &wr))
+        break;
+    case SID_MOD_TREMOLO:
+        MOD_LOOP(sid_fx_tremolo_tick(&m->tremolo, xi, amount, a, b, &wl, &wr))
+        break;
+    case SID_MOD_AUTOPAN:
+        MOD_LOOP(sid_fx_autopan_tick(&m->tremolo, xi, amount, a, b, &wl, &wr))
+        break;
+    case SID_MOD_WOW: MOD_LOOP(wl = wr = sid_fx_wow_tick(&m->wow, xi, amount, a)) break;
+    default:
+        for (uint32_t i = 0; i < len; ++i) {
+            ADVANCE();
+            l[i] = x[i];
+            r[i] = x[i];
+        }
+        break;
+    }
+    SAVE(sl);
+}
+
+/* Steady FX: one loop per algorithm; the wet path takes (L + R) / 2. */
+#define FX_LOOP(call)                                   \
+    for (uint32_t i = 0; i < len; ++i) {                \
+        ADVANCE();                                      \
+        float li = l[i], ri = r[i], wl, wr;             \
+        float mono = 0.5f * (li + ri);                  \
+        call;                                           \
+        l[i] = li + mix * (wl - li);                    \
+        r[i] = ri + mix * (wr - ri);                    \
+    }
+
+static void fx_run(sid_slots* s, float* l, float* r, uint32_t len) {
+    sid_slot* sl = &s->slot[SID_SLOT_FX];
+    sid_slot_fx_state* f = &s->fx;
+    int16_t* pool = s->pool->s16;
+    float* fpool = s->pool->f32;
+    LOAD(sl);
+    if (!steady(sl)) {
+        for (uint32_t i = 0; i < len; ++i) {
+            ADVANCE();
+            float g = step_switch(s, SID_SLOT_FX);
+            if (sl->phase != SID_SLOT_CLEAR) {
+                float wl = l[i];
+                float wr = r[i];
+                /* A fresh line records from the switch on: fading its input in with the
+                 * wet path makes the first echo start smoothly, not mid-waveform. */
+                fx_tick_any(s, sl->algorithm, sl->phase == SID_SLOT_FADE_IN ? g : 1.0f, amount,
+                            a, b, &wl, &wr);
+                float k = mix * g;
+                l[i] += k * (wl - l[i]);
+                r[i] += k * (wr - r[i]);
+            }
+        }
+        SAVE(sl);
+        return;
+    }
+    switch (sl->algorithm) {
+    case SID_FXSLOT_DELAY:
+    case SID_FXSLOT_PINGPONG:
+        FX_LOOP(sid_fx_echo_tick(&f->echo, pool, mono, amount, a, b, &wl, &wr))
+        break;
+    case SID_FXSLOT_REVERB_LIGHT:
+        FX_LOOP(sid_fx_reverb_tick(&f->reverb, pool, mono, amount, a, b, &wl, &wr))
+        break;
+    case SID_FXSLOT_REVERB_LUSH:
+        FX_LOOP(sid_fx_plate_tick(&f->plate, fpool, mono, amount, a, b, &wl, &wr))
+        break;
+    default:
+        for (uint32_t i = 0; i < len; ++i) {
+            ADVANCE();
+        }
+        break;
+    }
+    SAVE(sl);
 }
 
 void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n) {
@@ -281,72 +485,60 @@ void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n
         return;
     }
     if (!awake) {
-        /* From rest: restart the snap grid, so where it falls does not depend on how
-         * earlier calls were split. */
+        /* From rest: restart the clock, so where the chunks and the snap grid fall does
+         * not depend on how earlier calls were split. */
         s->clock = 0;
     }
     for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
         if ((live >> k & 1u) && !s->slot[k].awake) {
             enter(s, k); /* back from rest: start clean */
+            for (int i = 0; i < 4; ++i) {
+                s->slot[k].inc[i] = 0.0f; /* held until the next chunk start plans them */
+            }
         }
     }
 
-    sid_slot* dist = &s->slot[SID_SLOT_DIST];
-    sid_slot* mod = &s->slot[SID_SLOT_MOD];
-    sid_slot* fx = &s->slot[SID_SLOT_FX];
-    for (uint32_t i = 0; i < n; ++i) {
-        float x = (float)in[i] * (1.0f / 32768.0f);
-        float l = x;
-        float r = x;
-
-        if (live & 1u) {
-            smooth_controls(dist, s->smooth_coef);
-            float g = step_switch(s, SID_SLOT_DIST);
-            float wet = dist->phase != SID_SLOT_CLEAR ? dist_tick(s, dist, x) : x;
-            x += dist->mix * g * (wet - x);
-            l = x;
-            r = x;
-        }
-        if (live & 2u) {
-            smooth_controls(mod, s->smooth_coef);
-            float g = step_switch(s, SID_SLOT_MOD);
-            float wl = x;
-            float wr = x;
-            if (mod->phase != SID_SLOT_CLEAR) {
-                mod_tick(s, mod, x, &wl, &wr);
-            }
-            float m = mod->mix * g;
-            l = x + m * (wl - x);
-            r = x + m * (wr - x);
-        }
-        if (live & 4u) {
-            smooth_controls(fx, s->smooth_coef);
-            float g = step_switch(s, SID_SLOT_FX);
-            float wl = l;
-            float wr = r;
-            if (fx->phase != SID_SLOT_CLEAR) {
-                /* A fresh line records from the switch on: fading its input in with the
-                 * wet path makes the first echo start smoothly, not mid-waveform. */
-                fx_tick(s, fx, fx->phase == SID_SLOT_FADE_IN ? g : 1.0f, &wl, &wr);
-            }
-            float m = fx->mix * g;
-            l += m * (wl - l);
-            r += m * (wr - r);
-        }
-        out[2 * i] = sid_fx_to_i16(l);
-        out[2 * i + 1] = sid_fx_to_i16(r);
-
-        if ((s->clock & SNAP_MASK) == 0) {
+    float x[CHUNK], l[CHUNK], r[CHUNK];
+    uint32_t done = 0;
+    while (done < n) {
+        uint32_t pos = s->clock & (CHUNK - 1u);
+        if (pos == 0) {
             for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
                 if (live >> k & 1u) {
-                    snap(&s->slot[k]);
-                    if (resting(&s->slot[k])) {
-                        live &= ~(1u << k); /* out of the path from the next sample */
+                    plan_controls(s, &s->slot[k]);
+                    if ((s->clock & SNAP_MASK) == 0 && resting(&s->slot[k])) {
+                        live &= ~(1u << k); /* out of the path from here */
                     }
                 }
             }
         }
-        ++s->clock;
+        uint32_t len = CHUNK - pos;
+        if (len > n - done) {
+            len = n - done;
+        }
+        for (uint32_t i = 0; i < len; ++i) {
+            x[i] = (float)in[done + i] * (1.0f / 32768.0f);
+        }
+        if (live & 1u) {
+            dist_run(s, x, len);
+        }
+        if (live & 2u) {
+            mod_run(s, x, l, r, len);
+        } else {
+            for (uint32_t i = 0; i < len; ++i) {
+                l[i] = x[i];
+                r[i] = x[i];
+            }
+        }
+        if (live & 4u) {
+            fx_run(s, l, r, len);
+        }
+        for (uint32_t i = 0; i < len; ++i) {
+            out[2 * (done + i)] = sid_fx_to_i16(l[i]);
+            out[2 * (done + i) + 1] = sid_fx_to_i16(r[i]);
+        }
+        done += len;
+        s->clock += len;
     }
     for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
         s->slot[k].awake = live >> k & 1u;

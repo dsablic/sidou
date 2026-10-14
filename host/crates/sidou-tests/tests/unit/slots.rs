@@ -16,15 +16,16 @@ pub const FX: u32 = SID_SLOT_FX;
 /// The slots and the pool they borrow (boxed, so the pointer the C side keeps is stable).
 pub struct Slots {
     pub s: Box<sid_slots>,
-    pub pool: Box<[i16]>,
+    pub pool: Box<sid_slot_pool>,
 }
 
 impl Slots {
     pub fn new(seed: u32) -> Self {
         // Garbage in the pool: the FX slot must clear it before use.
-        let mut pool = vec![0x5a5au16 as i16; SID_SLOT_POOL_LEN as usize].into_boxed_slice();
+        let mut pool = Box::<sid_slot_pool>::default();
+        unsafe { pool.s16.fill(0x5a5au16 as i16) };
         let mut s = Box::<sid_slots>::default();
-        unsafe { sid_slots_init(&mut *s, FS, seed, pool.as_mut_ptr()) };
+        unsafe { sid_slots_init(&mut *s, FS, seed, &mut *pool) };
         Self { s, pool }
     }
 
@@ -52,7 +53,11 @@ impl Slots {
     pub fn bytes(&self) -> Vec<u8> {
         let p = (&*self.s as *const sid_slots).cast::<u8>();
         let mut b = unsafe { std::slice::from_raw_parts(p, size_of::<sid_slots>()) }.to_vec();
-        b.extend(self.pool.iter().flat_map(|v| v.to_le_bytes()));
+        b.extend(
+            unsafe { self.pool.s16 }
+                .iter()
+                .flat_map(|v| v.to_le_bytes()),
+        );
         b
     }
 }

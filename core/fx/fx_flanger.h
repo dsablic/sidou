@@ -11,12 +11,13 @@
  * - Amount: depth, the sweep from MIN_MS up to MIN_MS + (MAX_MS - MIN_MS) depth;
  * - A: rate, 0.05 .. 5 Hz (log);
  * - B: feedback, -0.9 (B = 0) through 0 (B = 0.5) to +0.9 (B = 1).
- * Any amounts in [0, 1] may arrive on any sample. The depth goes through one more
- * one-pole here (SID_FX_SMOOTH_MS), so even a smoothed jump moves the read speed (the
- * pitch) gradually instead of all at once. */
+ * Any amounts in [0, 1] may arrive on any sample. As in the chorus, the LFO, depth and
+ * rate are evaluated every SID_FX_MOD_SEGMENT samples and the read delays move linearly
+ * in between; the depth gets one more one-pole (per segment). */
 
 #include <stdint.h>
 
+#include "fx_chorus.h"
 #include "fx_delay.h"
 #include "fx_util.h"
 #include "sid/sid_math.h"
@@ -37,13 +38,13 @@ typedef struct {
     sid_fx_delay line;
     uint32_t phase, inc;
     float min_delay, range, hz_inc; /* samples; base increment as a float */
-    float rate;
     float depth, depth_coef; /* depth after the block's own smoothing */
-    float delay_l, delay_r;  /* last read delays */
+    float delay_l, delay_r;  /* read delays */
+    float step_l, step_r;    /* their change per sample in this segment */
+    uint32_t left;           /* samples left in the segment */
 } sid_fx_flanger;
 
 static inline void sid_fx_flanger_set_rate(sid_fx_flanger* f, float rate) {
-    f->rate = rate;
     float hz = SID_FX_FLANGER_MIN_HZ * sid_fx_exp2(SID_FX_FLANGER_RATE_OCTAVES * rate);
     f->inc = (uint32_t)(int32_t)(hz * f->hz_inc) << 1;
 }
@@ -67,23 +68,36 @@ static inline void sid_fx_flanger_init(sid_fx_flanger* f, uint32_t sample_rate) 
     f->range = max_delay - f->min_delay;
     f->delay_l = f->min_delay;
     f->delay_r = f->min_delay;
+    f->step_l = 0.0f;
+    f->step_r = 0.0f;
     f->depth = 0.0f;
-    f->depth_coef = sid_fx_smooth_coef(SID_FX_SMOOTH_MS, sample_rate);
+    float k = sid_fx_smooth_coef(SID_FX_SMOOTH_MS, sample_rate);
+    float keep = 1.0f;
+    for (uint32_t i = 0; i < SID_FX_MOD_SEGMENT; ++i) {
+        keep *= 1.0f - k;
+    }
+    f->depth_coef = 1.0f - keep;
+    f->left = 0;
     sid_fx_flanger_set_rate(f, 0.5f);
 }
 
 /* x is normalised; depth, rate and feedback are in [0, 1]. */
 static inline void sid_fx_flanger_tick(sid_fx_flanger* f, float x, float depth, float rate,
                                        float feedback, float* l, float* r) {
-    if (rate != f->rate) {
+    if (f->left == 0) {
         sid_fx_flanger_set_rate(f, rate);
+        f->phase += f->inc * SID_FX_MOD_SEGMENT;
+        f->depth += f->depth_coef * (depth - f->depth);
+        float sweep = f->depth * f->range * 0.5f;
+        float centre = f->min_delay + sweep;
+        const float seg = 1.0f / (float)SID_FX_MOD_SEGMENT;
+        f->step_l = (centre - sweep * sid_fx_cos(f->phase) - f->delay_l) * seg;
+        f->step_r = (centre + sweep * sid_fx_sin(f->phase) - f->delay_r) * seg;
+        f->left = SID_FX_MOD_SEGMENT;
     }
-    f->depth += f->depth_coef * (depth - f->depth);
-    float sweep = f->depth * f->range * 0.5f;
-    float centre = f->min_delay + sweep;
-    f->delay_l = centre - sweep * sid_fx_cos(f->phase);
-    f->delay_r = centre + sweep * sid_fx_sin(f->phase);
-    f->phase += f->inc;
+    --f->left;
+    f->delay_l += f->step_l;
+    f->delay_r += f->step_r;
     float tl = sid_fx_delay_read_hermite(&f->line, f->buf, f->delay_l);
     float tr = sid_fx_delay_read_hermite(&f->line, f->buf, f->delay_r);
     float fb = SID_FX_FLANGER_FEEDBACK * (2.0f * feedback - 1.0f);

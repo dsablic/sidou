@@ -9,9 +9,10 @@
  *
  * - Mono up to Modulation; Modulation makes stereo; FX feeds its wet path (L + R) / 2 and
  *   keeps the dry path stereo.
- * - Amount, A, B and Mix are smoothed (SID_FX_SMOOTH_MS) on every sample (all four can
- *   drive gains or blends, where coarser steps are audible), and each snaps onto its
- *   target on a 32-sample grid that restarts whenever the slots start from rest.
+ * - Amount, A, B and Mix are smoothed (SID_FX_SMOOTH_MS) on every sample: the one-pole is
+ *   evaluated every 16 samples (on the slots' own clock) and followed as a straight line
+ *   in between; each snaps onto its target on a 32-sample grid. The clock restarts
+ *   whenever the slots start from rest, so block sizes never change the result.
  * - Switching algorithm fades the old wet path out over SID_SLOT_FADE_MS, starts the new
  *   one from rest (the FX slot first clears its share of the pool, a little per sample),
  *   runs it silently until its delay line holds its longest delay (so no tap reads the
@@ -46,8 +47,9 @@ extern "C" {
 #endif
 
 #define SID_SLOT_FADE_MS 20.0f
-/* The FX pool: delay and both reverbs share it (one runs at a time). 128 KiB. */
-#define SID_SLOT_POOL_LEN 65536u
+/* The FX pool: delay and both reverbs share it (one runs at a time). 128 KiB, seen as
+ * int16 samples (delay, light reverb) or floats (lush reverb). */
+#define SID_SLOT_POOL_LEN 65536u /* int16 samples */
 
 enum { SID_SLOT_DIST, SID_SLOT_MOD, SID_SLOT_FX, SID_SLOT_COUNT };
 
@@ -80,7 +82,7 @@ enum {
     SID_FXSLOT_DELAY,         /* Amount feedback, A time, B damping */
     SID_FXSLOT_PINGPONG,      /* Amount feedback, A time, B damping */
     SID_FXSLOT_REVERB_LIGHT,  /* Amount decay, A damping, B diffusion */
-    SID_FXSLOT_REVERB_LUSH,   /* Amount decay, A damping, B pre-delay */
+    SID_FXSLOT_REVERB_LUSH,   /* Amount decay, A damping, B bandwidth (input brightness) */
     SID_FXSLOT_COUNT
 };
 
@@ -92,9 +94,15 @@ typedef struct {
 /* Switch phases. */
 enum { SID_SLOT_RUN, SID_SLOT_FADE_OUT, SID_SLOT_CLEAR, SID_SLOT_FADE_IN };
 
+typedef union {
+    int16_t s16[SID_SLOT_POOL_LEN];
+    float f32[SID_SLOT_POOL_LEN / 2u];
+} sid_slot_pool;
+
 typedef struct {
     sid_slot_params target; /* target.algorithm is the one asked for */
     float amount, a, b, mix; /* smoothed */
+    float inc[4];            /* their slopes over the current chunk */
     uint32_t algorithm;      /* the one running */
     uint32_t phase;
     uint32_t awake;     /* in the path on the last sample processed */
@@ -134,17 +142,17 @@ typedef struct {
     uint32_t sample_rate;
     uint32_t seed;
     uint32_t clock; /* samples processed since the slots last started from rest */
-    float smooth_coef, fade_step;
+    float smooth_ahead, fade_step; /* (1 - k)^16 for the chunked smoothing */
     uint32_t clear_per_sample;
-    int16_t* pool; /* SID_SLOT_POOL_LEN samples, owned by the caller */
+    sid_slot_pool* pool; /* owned by the caller */
     sid_slot_dist_state dist;
     sid_slot_mod_state mod;
     sid_slot_fx_state fx;
 } sid_slots;
 
-/* sample_rate in [8000, 96000]. `pool` holds SID_SLOT_POOL_LEN int16 samples and must
- * stay valid; it need not be cleared. Every slot starts off (algorithm NONE, Mix 0). */
-void sid_slots_init(sid_slots* s, uint32_t sample_rate, uint32_t seed, int16_t* pool);
+/* sample_rate in [8000, 96000]. `pool` must stay valid; it need not be cleared. Every
+ * slot starts off (algorithm NONE, Mix 0). */
+void sid_slots_init(sid_slots* s, uint32_t sample_rate, uint32_t seed, sid_slot_pool* pool);
 /* New targets for one slot: the algorithm (clamped to the slot's range) and the four
  * controls (clamped to [0, 1]; NaN gives 0). */
 void sid_slots_set(sid_slots* s, uint32_t slot, const sid_slot_params* p);
