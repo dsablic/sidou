@@ -21,6 +21,8 @@ static void BM_Workload(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations() * (int64_t)out.size());
     state.counters["chips"] = (double)chips;
+    state.counters["chip_samples_per_second"] = benchmark::Counter(
+        (double)state.iterations() * (double)out.size() * chips, benchmark::Counter::kIsRate);
 }
 BENCHMARK(BM_Workload)
     ->ArgsProduct({{1, 2}, {SID_MODEL_6581, SID_MODEL_8580}})

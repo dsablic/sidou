@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
+#include <iomanip>
 #include <map>
 #include <sstream>
 #include <string>
@@ -59,7 +60,7 @@ std::map<std::string, std::string> load(const char* path) {
 
 std::string hex(uint64_t v) {
     std::ostringstream s;
-    s << std::hex << v;
+    s << std::hex << std::setw(16) << std::setfill('0') << v;
     return s.str();
 }
 
@@ -75,6 +76,10 @@ TEST(Golden, RendersMatchRecordedHashes) {
         std::ofstream out(SIDOU_GOLDEN_FILE);
         for (const Case& c : kCases) {
             out << c.name << ' ' << hex(fnv1a(render(c))) << '\n';
+        }
+        out.close();
+        if (!out) {
+            FAIL() << "could not write " << SIDOU_GOLDEN_FILE;
         }
         GTEST_SKIP() << "rewrote " << SIDOU_GOLDEN_FILE;
     }

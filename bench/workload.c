@@ -32,7 +32,7 @@ static uint32_t position;
 static uint32_t next_write;
 
 void workload_begin(uint32_t count, sid_model model) {
-    chip_count = count > WORKLOAD_MAX_CHIPS ? WORKLOAD_MAX_CHIPS : count;
+    chip_count = count < 1u ? 1u : count > WORKLOAD_MAX_CHIPS ? WORKLOAD_MAX_CHIPS : count;
     position = 0;
     next_write = 0;
     for (uint32_t c = 0; c < chip_count; ++c) {
@@ -45,8 +45,13 @@ void workload_render_samples(int16_t* out, uint32_t n) {
     while (n) {
         uint32_t frame = position / SAMPLES_PER_FRAME;
         while (next_write < sizeof WRITES / sizeof WRITES[0] && WRITES[next_write].frame <= frame) {
+            const reg_write* w = &WRITES[next_write];
             for (uint32_t c = 0; c < chip_count; ++c) {
-                sid_write(&chips[c], WRITES[next_write].reg, WRITES[next_write].value);
+                uint8_t value = w->value;
+                if (c > 0 && w->reg == 0x01) {
+                    value = (uint8_t)(value + 0x04u);
+                }
+                sid_write(&chips[c], w->reg, value);
             }
             ++next_write;
         }

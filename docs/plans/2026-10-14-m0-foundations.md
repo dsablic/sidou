@@ -1807,8 +1807,10 @@ Run: `SIDOU_GOLDEN_UPDATE=1 ./build/host/tests/sidou_golden_tests`
 Run: `ctest --preset host -R Golden && cmake --build --preset host-asan && ctest --preset host-asan -R Golden`
 Expected: PASS on both presets. The pre-check (Apple clang, arm64) recorded
 `workload_6581_1chip bc496c58a4b660eb` and `workload_8580_1chip 95bafea914fe070a`.
-The 2-chip hash equals the 1-chip one, because both chips replay the same
-writes. If yours differ on another compiler or architecture, that is a
+Those hashes are superseded: review fixes made after the pre-check (output
+rounding, denormal flushes) changed the output, so `tests/golden/hashes.txt` is
+the reference. The 2-chip hash differs from the 1-chip one, because chip 1
+plays voice 1 at a raised frequency. If yours differ on another compiler or architecture, that is a
 determinism bug worth chasing. If the Debug and RelWithDebInfo hashes
 differ, float evaluation isn't deterministic. Find out why (check
 `-ffp-contract=off` is on the compile line in

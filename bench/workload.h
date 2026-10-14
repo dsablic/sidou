@@ -15,8 +15,13 @@ extern "C" {
 #define WORKLOAD_SAMPLES 11025u
 #define WORKLOAD_MAX_CHIPS 2u
 
-/* Chips beyond the first replay the same register writes and are mixed in at
- * equal level. */
+/* Chips beyond the first replay the same register writes, except that voice
+ * 1's frequency is raised by 0x0400 (about a major third) so the mix is not
+ * just a copy of chip 0; the cost per chip is unchanged. Chips are mixed in at
+ * equal level. The chip count is clamped to [1, WORKLOAD_MAX_CHIPS].
+ *
+ * The workload lives in global state: these functions are not reentrant and
+ * not thread-safe, so callers must serialise them. */
 void workload_begin(uint32_t chips, sid_model model);
 void workload_render_samples(int16_t* out, uint32_t n);
 uint32_t workload_sample_count(void);
