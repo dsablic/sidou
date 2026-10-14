@@ -86,7 +86,8 @@ copyrighted, so we link to them rather than copy them into this repo.
   - UART1 for TRS MIDI (PH8, 31250 baud);
   - USB0 for USB MIDI and updates;
   - the 10-bit SARADC for the MASTER pot and battery sense;
-  - TIMER4 as a 24 MHz tick and TIMER5 for the 10 kHz key scan.
+  - TIMER4 as a 24 MHz tick and TIMER5 for the 10 kHz key scan and the
+    2 kHz USB and UART polls.
 
 ## Instruction set features
 

@@ -40,6 +40,10 @@ void audio_commit(void) {
     reg_ring_commit(&ring);
 }
 
+uint32_t audio_queued(void) {
+    return reg_ring_used(&ring);
+}
+
 void audio_start(void) {
     reg_ring_commit(&ring);
     reg_ring_drain(&ring, &chips);

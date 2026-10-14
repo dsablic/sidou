@@ -13,12 +13,12 @@ lists the prerequisites.
 |---|---|---|
 | Everything except the emulator gate | `cargo test --workspace --release` | all crates |
 | Unit tests | `cargo test --release -p sidou-tests --test unit` | `crates/sidou-tests/tests/unit/` |
-| App logic (live instrument, MIDI parser) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c` |
+| App logic (live instrument, MIDI parser, MIDI ring and input) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
-| Emulator tests (gate and boot) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
+| Emulator tests (gate, boot, live instrument, MIDI) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
 profile sets `opt-level = 3`), but the reference tests do a lot of Rust-side
@@ -170,6 +170,31 @@ panel (keys, encoders, the MASTER pot) and checks:
   reset;
 - the main loop stays under 5M instructions/s (about 2 % of the core) idle and
   with a key held.
+
+### MIDI test
+
+`crates/emu-gate/tests/midi.rs` plays the firmware through fm1-emu's TRS
+MIDI jack (UART1, one byte per 320 us) and checks the audio and the
+rendered chip's state, read from emulated RAM through the `chips` symbol:
+- `90 3C 64` plays C4 (261.63 Hz within 0.5 %) on a gated voice at the
+  frequency table's value; `80 3C 00` clears the gate, the note releases
+  (still audible 20 ms later) and is silent 0.8 s on;
+- CC 74 at 0 sets the cutoff to 0 and cuts the share of the power above
+  2 kHz at least fourfold; at 127 it sets 2047;
+- program change 1 switches to PWM BASS (pulse wave, cutoff 700), which
+  plays C4 at its pitch, and program change 0 back to SAW LEAD;
+- 3000 bytes at full speed arrive with nothing lost (`midi_stats` in RAM:
+  entries, losses, parser restarts, the longest wait in the ring under
+  2 ms), and USB was never polled with the controller up;
+- the cost: the main loop stays under 5M instructions/s idle and with the
+  jack at full speed, and full-speed TRS MIDI adds under 2M interrupt
+  instructions/s. This test reads no firmware symbol, so it also runs on a
+  build from before MIDI input, for the difference.
+
+fm1-emu does not emulate USB (see [docs/TODO.md](docs/TODO.md)), so USB
+MIDI is covered by the host tests of the packet conversion
+(`tests/app/midi_usb.rs`), the ring (`midi_ring.rs`) and the input logic
+(`midi_rx.rs`), and by hardware testing.
 
 ## Sanitizers
 

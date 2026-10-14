@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* SIDOU boot and main loop. Init order after fm1-sid's firmware/main.c (fm1-emu) and
  * Felucca's src/main.c: watchdog first, fatal vectors, memory, then the LCD, the live
- * instrument and the key matrix, audio (ALNK0 IRQ) and the 10 kHz tick (TIMER5 IRQ),
- * interrupts on, and a main loop that plays the panel into the instrument, redraws the
- * screen and feeds the watchdog.
+ * instrument, the key matrix and MIDI in (TRS UART, USB), audio (ALNK0 IRQ) and the 10 kHz
+ * tick (TIMER5 IRQ, which also polls MIDI), interrupts on, and a main loop that plays MIDI
+ * and the panel into the instrument, redraws the screen and feeds the watchdog.
  *
  * This file includes the HAL's interrupt, audio and timer headers; input.c and lcd.c include
  * the input and LCD ones (platform/fm1/VENDORED.md). */
@@ -21,6 +21,7 @@
 #include "input.h"
 #include "lcd.h"
 #include "live.h"
+#include "midi.h"
 #include "panel.h"
 #include "reg_ring.h"
 #include "ui.h"
@@ -60,11 +61,23 @@ void fm1_alnk0_irq(void) {
     }
 }
 
+/* Every 5th tick (2 kHz) each, on different ticks, as Felucca does: USB on tick 0, the TRS
+ * UART on tick 2. Nested in the audio ISR too: neither touches what the render does. */
+#define MIDI_POLL_TICKS 5u
+
 void fm1_timer5_irq(void) {
-    static uint32_t last, acc;
+    static uint32_t last, acc, sub;
     uint32_t now = fm1_ticks();
     fm1_timer5_ack();
     input_tick_isr();
+    if (sub == 0u) {
+        midi_usb_isr();
+    } else if (sub == 2u) {
+        midi_uart_isr();
+    }
+    if (++sub == MIDI_POLL_TICKS) {
+        sub = 0;
+    }
     acc += now - last;
     last = now;
     while (acc >= 1000u * FM1_TICKS_PER_US) {
@@ -113,6 +126,7 @@ static void sidou_main(void) {
     panel_init(&front);
     input_init();
     panel_master(&front, &instrument, input_master());
+    midi_init(&instrument);
     audio_start();
     ui_init(&instrument);
     fm1_audio_init(abuf, AUDIO_HALF_WORDS, isr_alnk0, PRIO_ALNK0);
@@ -124,8 +138,12 @@ static void sidou_main(void) {
     for (;;) {
         fm1_wdt_feed();
         uint32_t now = uptime_ms;
+        if (midi_drain()) {
+            audio_commit();
+        }
         play(now, &next_tick, &last_frame);
         ui_poll(&instrument, now);
+        midi_service(now);
         /* Sleep until the next interrupt: saves power, and fm1-emu skips ahead. */
         __asm__ volatile("idle");
     }

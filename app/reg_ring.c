@@ -15,7 +15,9 @@
  *   note-off 1                           27 * 7 = 189
  *                                             262
  * An upper bound: a key's note-off leaves the gate off, so the next note-on writes 5. The
- * host tests push this pass (223 entries) and check that it needs no wait. */
+ * host tests push this pass (223 entries) and check that it needs no wait.
+ * MIDI input comes on top, first in the pass: the device's drain (platform/fm1/midi.c) stops
+ * taking MIDI while fewer than this plus one MIDI message's worst case (25) are free. */
 
 /* Orders memory accesses against an interrupt on the same core; emits no instruction.
  * (The pi32v2 compiler lowers __atomic_signal_fence to a __sync_synchronize call, which has

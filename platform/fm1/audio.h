@@ -23,6 +23,8 @@ void audio_init(void);
 void* audio_sink_ctx(void);
 /* Makes the main loop's writes so far visible to the interrupt (once per pass). */
 void audio_commit(void);
+/* Register writes queued and not yet applied by the interrupt (reg_ring_used). */
+uint32_t audio_queued(void);
 /* Applies everything queued so far. Before the audio interrupt is enabled. */
 void audio_start(void);
 /* Right after interrupts are enabled: from then on only audio_fill drains, and a producer

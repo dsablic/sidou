@@ -523,7 +523,7 @@ fn ccs_drive_the_parameters() {
     rig.cc(LIVE_CC_ALL_SOUND_OFF, 0);
     assert_eq!(gates(&rig), [false; 3]);
     rig.clear();
-    rig.cc(1, 64);
+    rig.cc(2, 64);
     rig.cc(200, 64);
     rig.cc(LIVE_CC_CUTOFF, 200);
     assert!(

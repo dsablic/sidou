@@ -7,13 +7,10 @@ mod common;
 
 use std::mem::offset_of;
 
-use common::{build_dir, Firmware, Machine};
+use common::{build_dir, peak, pitch, power_above, record, Firmware, Machine};
 use fm1_core::Bus;
 use sidou_sys::{reg_ring_chips, SID_MODEL_6581, SID_MODEL_8580};
-use sidou_tests::signal_metrics::estimate_f0;
 
-/// 24 MHz / 544, the I2S frame rate.
-const FS: f64 = 24e6 / 544.0;
 /// Past the LCD's reset delays and the first audio blocks.
 const BOOT_MS: u64 = 500;
 /// Felucca's button ids.
@@ -57,40 +54,6 @@ fn tap(m: &mut Machine, id: u8) {
     m.run_ms(30);
 }
 
-/// The left channel played during the next `ms`, as floats.
-fn record(m: &mut Machine, ms: u64) -> Vec<f32> {
-    let from = m.soc.periph.audio.len() / 2;
-    m.run_ms(ms);
-    m.left()[from..].iter().map(|&s| f32::from(s)).collect()
-}
-
-fn pitch(x: &[f32]) -> f64 {
-    estimate_f0(x, FS, 60.0, 4000.0)
-}
-
-/// The share of the signal's power above `hz` (a DFT of the first 4096 samples, mean removed).
-fn power_above(x: &[f32], hz: f64) -> f64 {
-    let n = 4096.min(x.len());
-    let mean = x[..n].iter().map(|&v| f64::from(v)).sum::<f64>() / n as f64;
-    let v: Vec<f64> = x[..n].iter().map(|&s| f64::from(s) - mean).collect();
-    let (mut above, mut total) = (0.0, 0.0);
-    for k in 1..n / 2 {
-        let w = 2.0 * std::f64::consts::PI * k as f64 / n as f64;
-        let (mut re, mut im) = (0.0, 0.0);
-        for (i, &s) in v.iter().enumerate() {
-            let a = w * i as f64;
-            re += s * a.cos();
-            im -= s * a.sin();
-        }
-        let p = re * re + im * im;
-        total += p;
-        if k as f64 * FS / n as f64 > hz {
-            above += p;
-        }
-    }
-    above / total
-}
-
 /// The device's two chips (platform/fm1/audio.c `chips`), read from emulated RAM. The
 /// struct has no pointers, so the host build's layout (sidou-sys) is the device's.
 #[derive(Debug, PartialEq)]
@@ -110,10 +73,6 @@ fn chips(m: &mut Machine, fw: &Firmware) -> Chips {
         spare_model: m.soc.read8(at(offset_of!(reg_ring_chips, spare_model))),
         lost_resets: m.soc.read32(at(offset_of!(reg_ring_chips, lost_resets))),
     }
-}
-
-fn peak(x: &[f32]) -> f32 {
-    x.iter().fold(0.0, |m, &s| m.max(s.abs()))
 }
 
 #[test]

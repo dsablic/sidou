@@ -4,6 +4,30 @@
 
 Follow-ups that aren't tied to a milestone task yet.
 
+## Apply for a pid.codes PID before 1.0
+
+- **Where:** `platform/fm1/usb/usb.c`, the device descriptor
+  (`FELUCCA_USB_PID`).
+- **Problem:** SIDOU enumerates as VID/PID 0x1209:0x0001, pid.codes' test
+  id, as Felucca does. It is meant for the bench only, and hosts may mix
+  SIDOU up with Felucca or anything else that uses it.
+- **Action:** apply for a pid.codes PID before 1.0 (an open-source project
+  qualifies) and set it in the descriptor. The update loader (Task 6) needs
+  its own PID too.
+
+## fm1-emu does not emulate USB
+
+- **Where:** fm1-emu at rev `e52f4640157f490f8c3af778dd044e9d33e989e8`.
+- **Problem:** the USB0 registers (`0x11800..0x1183F`) are plain storage:
+  the SIE never reports a finished access, so SIDOU's USB stack times out
+  at boot, leaves USB off and retries once a second. No USB MIDI reaches
+  the firmware, and the cost of `usb_poll` with a host attached cannot be
+  measured. The emulator tests play MIDI through the TRS jack only; the
+  USB packet conversion and the MIDI ring are host-tested.
+- **Action:** test USB MIDI on hardware (the M1a hardware checklist), and
+  measure `usb_poll` there: three SIE round trips per poll at 2 kHz with
+  no traffic. Ask upstream whether a USB device model is planned.
+
 ## Report fm1-emu: decrementing register block load is not executed
 
 - **Where:** fm1-emu (github.com/joakimeriksson/fm1-emu) at rev

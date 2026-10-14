@@ -48,9 +48,13 @@ Not vendored: `fm1_cpu1.{h,S}` (we don't use the second core) and
     `fm1_led_anim.h`) and `fm1_adc.h`. The scan state `fm1_in` is static
     there, so the TIMER5 interrupt in `main.c` reaches `fm1_input_tick`
     through `input_tick_isr`;
-  - `lcd.c`: `fm1_lcd_hw.h` and `fm1_time.h`.
+  - `lcd.c`: `fm1_lcd_hw.h` and `fm1_time.h`;
+  - `midi.c`: `fm1_time.h`, and `fm1_usb.h` and `fm1_uart.h` through the
+    vendored `usb/usb.c` and `usb/midi_uart.c`, which it includes (see
+    below). The TIMER5 interrupt in `main.c` calls their polls through
+    `midi_usb_isr` and `midi_uart_isr`.
 
-  None of `input.c`'s or `lcd.c`'s headers includes `fm1_irq.h`;
+  None of `input.c`'s, `lcd.c`'s or `midi.c`'s headers includes `fm1_irq.h`;
   `fm1_time.h` holds only `static inline` helpers and no state, so several
   files may include it.
 - Include `fm1_sys.h` before `fm1_irq.h`: `fm1_irq.h` uses its
@@ -81,7 +85,82 @@ layers.
 
 Copy the HAL files above from the new commit, update the commit here and in
 [LICENSING.md](../../LICENSING.md), and describe any local change in this
-file.
+file. For `usb/`, diff the new upstream files against this commit's and
+carry the changes over onto SIDOU's versions.
+
+## Felucca USB stack and TRS MIDI driver (`usb/`)
+
+- **Source:** <https://github.com/hugelton/Felucca>, `firmware/src/usb.c`
+  (1379 lines) and `firmware/src/midi_uart.c` (90 lines)
+- **Commit:** `a53ecf428c29c780108fd70a31b71a32a6b5c313`, as the HAL.
+- **Licence:** GPL-3.0-only, © 2026 Leo Kuroshita (@kurogedelic), Hügelton
+  Instruments. Both files keep their original header; each starts with a
+  comment that lists its SIDOU changes.
+- **Use:** like Felucca's `felucca.c` and the update loader, `midi.c`
+  defines the hooks and then includes both files into one translation unit:
+  `RING_PUBLISH()`, `FELUCCA_OTA`, `midi_enqueue(data, source)`,
+  `midi_in_room()` and `midi_lost(n)`, after `fm1_time.h`. Their own
+  `#include "../hal/..."` lines reach `hal/`. Felucca's `libc.c` is not
+  needed: neither file calls it, and `libc_min.c` has the `memset` and
+  `memcpy` the compiler may call.
+
+### Local changes in `usb.c` (663 lines left)
+
+- **Stripped:** the CDC-ACM console (`FELUCCA_CDC`: EP2 and EP3, line
+  coding, `usb_cdc_switch`, the IAD layouts of `FELUCCA_USB_LAYOUT`) and the
+  USB audio input (`FELUCCA_UAC`, `FELUCCA_UAC_48K`, `FELUCCA_UAC_AS_FIRST`:
+  EP4, the sample ring and its 48 kHz resampler, the rate requests, the
+  audio streaming interface). Felucca does not build an editor endpoint into
+  `usb.c`: its editor shares the SysEx frames of the update protocol (below).
+  The conditionals were resolved with `unifdef -DFELUCCA_CDC=0
+  -DFELUCCA_UAC=0 -DFELUCCA_UAC_48K=0 -DFELUCCA_UAC_AS_FIRST=0
+  -DFELUCCA_UAC_TONE=0`, then the descriptor macros left over were reduced
+  by hand to what that build sends: device class 0, audio control
+  (interface 0) and MIDI streaming (interface 1) on EP1, bcdDevice 3.00,
+  VID/PID 0x1209:0x0001 (the pid.codes test id; see
+  [docs/TODO.md](../../docs/TODO.md)). `get_desc` and `CLEAR_FEATURE` lose
+  their CDC cases.
+- **UBOOT soft key removed:** `sysex_byte` no longer compares a SysEx with
+  `F0 22 24 35 7D F7`, and `usb.uboot_req` is gone. Felucca's main loop
+  enters mask-ROM UBOOT on it; SIDOU never sends or handles it (a safety
+  rule of the M1a plan).
+- **MIDI in:** Felucca's in ring (`midi_in_q`, `midi_in_ms`,
+  `midi_in_source`, `mi_w`, `mi_r`, `midi_in_overflow`, its own `fm1_ms`)
+  and its `midi_enqueue` are gone. `midi_in_event` passes every event packet
+  as it is to the includer's `midi_enqueue(pkt, 1)`, where Felucca kept
+  only channel messages and four real-time bytes: SIDOU parses in the main
+  loop (`app/midi_usb.c`, `app/midi_rx.c`). `ep1_take`'s back-pressure test
+  uses `midi_in_room()`.
+- **Update protocol kept, built out:** `sysex_byte` and the SysEx part of
+  `midi_in_event` are now only built with `FELUCCA_OTA`, which `midi.c`
+  sets to 0 (TODO(Task 6)). The rest of the `FELUCCA_OTA` code (the
+  received frame, the SysEx TX queue, `ota_wire_send`, `ota_frame_get`,
+  `ota_frame_done`, the upgrade request `F0 22 24 35 7F F7`) is unchanged.
+  `FELUCCA_LOADER` code is unchanged too; its product string carries a
+  TODO(Task 6).
+- **Retry without blocking:** `usb_start` is split into the reset and
+  `usb_attach_now`. `usb_start` (boot, interrupts off) still waits 25 ms
+  between them; `usb_retry` (main loop, once a second while USB is off)
+  starts the reset and attaches on a later call, 25 ms on. The attach stops
+  writing at the third consecutive SIE timeout (the point where Felucca
+  leaves USB off anyway) instead of timing out each of its six writes at
+  20000 polls apiece.
+- **Strings:** manufacturer "SIDOU contributors" and product "SIDOU"
+  instead of "Hügelton Instruments" and "Felucca".
+- `midi_out_event` and `usb_detach` are marked unused: nothing sends MIDI
+  out or detaches yet.
+- The header comment describes the SIDOU build.
+
+### Local changes in `midi_uart.c` (50 lines left)
+
+- Felucca's parser into USB-MIDI packets (`um_len`, the running status,
+  the SysEx skip, the real-time filter) is gone: `um_byte` passes every
+  byte as it is to `midi_enqueue(b, 2)`, and `app/midi_in.c` parses it in
+  the main loop (with SysEx and every real-time byte).
+- A DMA ring overrun reports the bytes lost to `midi_lost(n)` (the main
+  loop restarts its parser and releases the notes) instead of clearing the
+  parser's state and setting `midi_in_overflow`; `um.msgs` is gone.
+- The header comment describes the SIDOU version.
 
 ## font8x8 (`font/`)
 

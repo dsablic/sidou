@@ -41,9 +41,10 @@ extern "C" {
 /* live_tick is called this often; the PWM rates in the presets assume it. */
 #define LIVE_TICK_HZ 100u
 
-/* MIDI CCs live_cc understands. */
+/* MIDI CCs live_cc understands: M1a's default mapping (the plan's Task 5). The pulse width
+ * is on CC 1, the modulation wheel most keyboards have. */
+#define LIVE_CC_PULSE_WIDTH 1u
 #define LIVE_CC_VOLUME 7u
-#define LIVE_CC_PULSE_WIDTH 70u
 #define LIVE_CC_RESONANCE 71u
 #define LIVE_CC_CUTOFF 74u
 #define LIVE_CC_ALL_SOUND_OFF 120u

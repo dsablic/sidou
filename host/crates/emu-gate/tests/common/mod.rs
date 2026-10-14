@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use fm1_core::{Bus, Cpu};
 use fm1_soc::Soc;
+use sidou_tests::signal_metrics::estimate_f0;
 
 /// The fm1 build directory, made absolute, or None to skip the emulator tests.
 pub fn build_dir() -> Option<PathBuf> {
@@ -246,8 +247,57 @@ impl Machine {
             .apply(&fm1_soc::Action::Adc { ch: 4, value });
     }
 
+    /// Bytes into the TRS MIDI IN jack; fm1-emu delivers one per 31250-baud byte time.
+    pub fn midi(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.soc.periph.apply(&fm1_soc::Action::Midi { b });
+        }
+    }
+
     /// The left channel of everything played so far (the firmware plays mono).
     pub fn left(&self) -> Vec<i16> {
         self.soc.periph.audio.iter().step_by(2).copied().collect()
     }
+}
+
+/// 24 MHz / 544, the I2S frame rate.
+pub const FS: f64 = 24e6 / 544.0;
+
+/// The left channel played during the next `ms`, as floats.
+pub fn record(m: &mut Machine, ms: u64) -> Vec<f32> {
+    let from = m.soc.periph.audio.len() / 2;
+    m.run_ms(ms);
+    m.left()[from..].iter().map(|&s| f32::from(s)).collect()
+}
+
+pub fn pitch(x: &[f32]) -> f64 {
+    estimate_f0(x, FS, 60.0, 4000.0)
+}
+
+/// The share of the signal's power above `hz` (a DFT of the first 4096 samples, mean removed).
+pub fn power_above(x: &[f32], hz: f64) -> f64 {
+    let n = 4096.min(x.len());
+    let mean = x[..n].iter().map(|&v| f64::from(v)).sum::<f64>() / n as f64;
+    let v: Vec<f64> = x[..n].iter().map(|&s| f64::from(s) - mean).collect();
+    let (mut above, mut total) = (0.0, 0.0);
+    for k in 1..n / 2 {
+        let w = 2.0 * std::f64::consts::PI * k as f64 / n as f64;
+        let (mut re, mut im) = (0.0, 0.0);
+        for (i, &s) in v.iter().enumerate() {
+            let a = w * i as f64;
+            re += s * a.cos();
+            im -= s * a.sin();
+        }
+        let p = re * re + im * im;
+        total += p;
+        if k as f64 * FS / n as f64 > hz {
+            above += p;
+        }
+    }
+    above / total
+}
+
+/// The largest absolute sample.
+pub fn peak(x: &[f32]) -> f32 {
+    x.iter().fold(0.0, |m, &s| m.max(s.abs()))
 }
