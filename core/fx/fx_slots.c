@@ -128,16 +128,36 @@ static int fx_uses_pool(uint32_t alg) {
 }
 
 static void fx_start(sid_slots* s, uint32_t alg) {
-    (void)s;
-    (void)alg;
+    sid_slot_fx_state* f = &s->fx;
+    switch (alg) {
+    case SID_FXSLOT_DELAY: sid_fx_echo_init(&f->echo, s->sample_rate, SID_SLOT_POOL_LEN, 0); break;
+    case SID_FXSLOT_PINGPONG:
+        sid_fx_echo_init(&f->echo, s->sample_rate, SID_SLOT_POOL_LEN, 1);
+        break;
+    case SID_FXSLOT_REVERB_LIGHT: sid_fx_reverb_init(&f->reverb, s->sample_rate); break;
+    case SID_FXSLOT_REVERB_LUSH: sid_fx_plate_init(&f->plate, s->sample_rate); break;
+    default: break;
+    }
 }
 
-/* Wet output from the stereo input. */
-static void fx_tick(sid_slots* s, const sid_slot* sl, float* l, float* r) {
-    (void)s;
-    (void)sl;
-    (void)l;
-    (void)r;
+/* Wet output from the stereo input in *l, *r (which stays the wet when NONE). `in` scales
+ * the wet path's input. */
+static void fx_tick(sid_slots* s, const sid_slot* sl, float in, float* l, float* r) {
+    sid_slot_fx_state* f = &s->fx;
+    float m = 0.5f * in * (*l + *r);
+    switch (sl->algorithm) {
+    case SID_FXSLOT_DELAY:
+    case SID_FXSLOT_PINGPONG:
+        sid_fx_echo_tick(&f->echo, s->pool, m, sl->amount, sl->a, sl->b, l, r);
+        break;
+    case SID_FXSLOT_REVERB_LIGHT:
+        sid_fx_reverb_tick(&f->reverb, s->pool, m, sl->amount, sl->a, sl->b, l, r);
+        break;
+    case SID_FXSLOT_REVERB_LUSH:
+        sid_fx_plate_tick(&f->plate, s->pool, m, sl->amount, sl->a, sl->b, l, r);
+        break;
+    default: break;
+    }
 }
 
 /* Samples an algorithm must run before it is heard: its longest tap delay. */
@@ -305,7 +325,9 @@ void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n
             float wl = l;
             float wr = r;
             if (fx->phase != SID_SLOT_CLEAR) {
-                fx_tick(s, fx, &wl, &wr);
+                /* A fresh line records from the switch on: fading its input in with the
+                 * wet path makes the first echo start smoothly, not mid-waveform. */
+                fx_tick(s, fx, fx->phase == SID_SLOT_FADE_IN ? g : 1.0f, &wl, &wr);
             }
             float m = fx->mix * g;
             l += m * (wl - l);

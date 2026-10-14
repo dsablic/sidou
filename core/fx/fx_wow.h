@@ -130,25 +130,14 @@ static inline int sid_fx_wow_busy(const sid_fx_wow* w) {
     return w->fade != 0.0f;
 }
 
-static inline float sid_fx_wow_slew(float cur, float target, float step) {
-    float d = target - cur;
-    if (d > step) {
-        return cur + step;
-    }
-    if (d < -step) {
-        return cur - step;
-    }
-    return target;
-}
-
 /* x is normalised to [-1, 1); wow and flutter are depths in [0, 1]. */
 static inline float sid_fx_wow_tick(sid_fx_wow* w, float x, float wow, float flutter) {
     sid_fx_delay_push(&w->line, w->buf, x);
     if (w->filled < w->centre_samples) {
         ++w->filled;
     }
-    w->wow = sid_fx_wow_slew(w->wow, wow, w->wow_slew);
-    w->flutter = sid_fx_wow_slew(w->flutter, flutter, w->flutter_slew);
+    w->wow = sid_fx_slew(w->wow, wow, w->wow_slew);
+    w->flutter = sid_fx_slew(w->flutter, flutter, w->flutter_slew);
 
     float slow = sid_fx_sin(w->wow_phase);
     float fast = sid_fx_sin(w->flutter_phase);
@@ -165,7 +154,7 @@ static inline float sid_fx_wow_tick(sid_fx_wow* w, float x, float wow, float flu
     int on = wow > 0.0f || flutter > 0.0f;
     if (!(on && w->fade == 1.0f)) {
         float v = on && w->filled >= w->centre_samples ? w->fade_step : -w->fade_step;
-        w->fade_v = sid_fx_wow_slew(w->fade_v, v, w->fade_accel);
+        w->fade_v = sid_fx_slew(w->fade_v, v, w->fade_accel);
         w->fade += w->fade_v;
         if (w->fade >= 1.0f) {
             w->fade = 1.0f;

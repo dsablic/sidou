@@ -8,7 +8,7 @@
  * structs that embed both stay plain copyable values.
  *
  * Two buffer types: float, and int16 (half the memory, for long delays; samples are
- * normalised floats at the interface and stored with sid_fx_to_i16's rounding). Two
+ * normalised floats at the interface, stored truncated towards zero). Two
  * reads: linear interpolation (cheap; a gentle low-pass at fractional delays) and 4-point
  * 3rd-order Hermite (Catmull-Rom; flat to a much higher frequency, for chorus and
  * flanger sweeps). */
@@ -67,9 +67,18 @@ static inline float sid_fx_delay_read_hermite(const sid_fx_delay* d, const float
 
 /* ---- int16 buffer ---- */
 
+/* Stored with truncation towards zero (clamped to the int16 range), not rounding: in a
+ * feedback loop each pass then shrinks small values, so a decaying loop reaches exact
+ * silence instead of settling into a limit cycle of a few LSB. */
 static inline void sid_fx_delay16_push(sid_fx_delay* d, int16_t* buf, float x) {
     d->last = (d->last + 1u) & d->mask;
-    buf[d->last] = sid_fx_to_i16(x);
+    float v = x * 32768.0f;
+    if (v > 32767.0f) {
+        v = 32767.0f;
+    } else if (v < -32768.0f) {
+        v = -32768.0f;
+    }
+    buf[d->last] = (int16_t)(int32_t)v;
 }
 
 static inline float sid_fx_delay16_at(const sid_fx_delay* d, const int16_t* buf, uint32_t p) {

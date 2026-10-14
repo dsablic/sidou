@@ -12,6 +12,7 @@ mod sid_osc;
 mod sid_sync;
 mod slots;
 mod slots_dist;
+mod slots_fx;
 mod slots_mod;
 
 /// |a - b| <= tolerance, like GoogleTest's EXPECT_NEAR (NaN fails).

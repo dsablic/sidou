@@ -29,11 +29,14 @@
 #include "fx_chorus.h"
 #include "fx_crt.h"
 #include "fx_crush.h"
+#include "fx_echo.h"
 #include "fx_flanger.h"
 #include "fx_fuzz.h"
 #include "fx_noise.h"
 #include "fx_overdrive.h"
 #include "fx_phaser.h"
+#include "fx_plate.h"
+#include "fx_reverb.h"
 #include "fx_tape.h"
 #include "fx_tremolo.h"
 #include "fx_wow.h"
@@ -120,7 +123,9 @@ typedef union {
 } sid_slot_mod_state;
 
 typedef union {
-    uint32_t none;
+    sid_fx_echo echo;
+    sid_fx_reverb reverb;
+    sid_fx_plate plate;
 } sid_slot_fx_state;
 
 /* Fields are private to fx_slots.c; the struct is public so callers can allocate it. */

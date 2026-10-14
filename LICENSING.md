@@ -27,6 +27,7 @@ component. "Use" says whether a component ends up in the firmware image.
 | Felucca update loader and the sources it includes @ `a53ecf42` (`platform/fm1/loader/`, `platform/fm1/src/`, unmodified, see [VENDORED.md](platform/fm1/VENDORED.md)) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | the package's update loader (`ota.bin`), byte-identical to Felucca's | in use |
 | `platform/fm1/crt0.S`, `platform/fm1/app.ld`, `platform/fm1/lcd.c` | adapted from Felucca's `firmware/crt0.S`, `firmware/app.ld` and `firmware/src/lcd.c` @ `a53ecf42`, © 2026 Leo Kuroshita | GPL-3.0-only | linked into the firmware | in use |
 | font8x8_basic @ `8e279d2d` (`platform/fm1/font/font8x8_basic.h`) | font8x8, Daniel Hepper, after Marcel Sondaar and IBM's VGA fonts | public domain | compiled into the firmware | placeholder until our own font |
+| Light reverb (`core/fx/fx_reverb.h`, `core/fx/fx_reverb.c`), a C port of `rings/dsp/fx/reverb.h` and `fx_engine.h` | [pichenettes/eurorack](https://github.com/pichenettes/eurorack) @ `f4cfa769`, © 2014 Emilie Gillet | MIT | compiled into the firmware | in use |
 | `bench/fm1/crt0.S`, `bench/fm1/bench.ld` | adapted from fm1-sid, © 2026 Joakim Eriksson | BSD-2-Clause | benchmark program only | in use |
 | libresidfp @ `c1791383` (`third_party/libresidfp`) | libsidplayfp project | GPL-2.0-or-later | host tests only; git submodule, never linked into firmware | in use |
 | fm1-emu crates `fm1-core`, `fm1-soc`, `fm1-isa` @ `e52f4640` | Joakim Eriksson | MIT | emulator gate only; fetched by cargo | in use |

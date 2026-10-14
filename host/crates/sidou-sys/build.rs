@@ -7,10 +7,12 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 15] = [
+const SOURCES: [&str; 17] = [
     "core/sid/sid.c",
     "core/fx/fx.c",
     "core/fx/fx_slots.c",
+    "core/fx/fx_reverb.c",
+    "core/fx/fx_plate.c",
     "core/sid/sid_filter.c",
     "bench/workload.c",
     "app/bootguard.c",

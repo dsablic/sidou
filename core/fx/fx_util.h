@@ -64,6 +64,18 @@ static inline float sid_fx_flush(float x) {
     return (x + 1e-18f) - 1e-18f;
 }
 
+/* cur moved towards target by at most step. */
+static inline float sid_fx_slew(float cur, float target, float step) {
+    float d = target - cur;
+    if (d > step) {
+        return cur + step;
+    }
+    if (d < -step) {
+        return cur - step;
+    }
+    return target;
+}
+
 static inline float sid_fx_lerp(float a, float b, float frac) {
     return a + frac * (b - a);
 }
