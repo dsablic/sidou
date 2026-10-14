@@ -5,6 +5,8 @@
 mod live_freq;
 mod live_instrument;
 mod midi_in;
+mod panel;
+mod reg_ring;
 
 use std::ffi::c_void;
 

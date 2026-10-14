@@ -36,15 +36,30 @@ Not vendored: `fm1_cpu1.{h,S}` (we don't use the second core) and
 
 ### Using the HAL
 
-- The headers define `static` functions and are meant to be included by one
-  translation unit (the firmware's `main.c`). `fm1_irq.h` also defines two
+- The headers define `static` functions and state and are meant to be
+  included by one translation unit each. `fm1_irq.h` also defines two
   non-static symbols, `fm1_crash` and `fm1_fault_c`, so a second
-  translation unit that includes it (directly or through `fm1_audio.h`,
-  `fm1_timer.h` or `fm1_input.h`) fails to link.
+  translation unit that includes it (directly or through `fm1_audio.h`
+  or `fm1_timer.h`) fails to link.
+- Who includes what:
+  - `main.c`: `fm1_sys.h`, `fm1_irq.h`, `fm1_audio.h`, `fm1_time.h`,
+    `fm1_timer.h`;
+  - `input.c`: `fm1_input.h` (with `fm1_time.h`, `fm1_gpio.h` and
+    `fm1_led_anim.h`) and `fm1_adc.h`. The scan state `fm1_in` is static
+    there, so the TIMER5 interrupt in `main.c` reaches `fm1_input_tick`
+    through `input_tick_isr`;
+  - `lcd.c`: `fm1_lcd_hw.h` and `fm1_time.h`.
+
+  None of `input.c`'s or `lcd.c`'s headers includes `fm1_irq.h`;
+  `fm1_time.h` holds only `static inline` helpers and no state, so several
+  files may include it.
 - Include `fm1_sys.h` before `fm1_irq.h`: `fm1_irq.h` uses its
   `FM1_RESET_PREP`.
 - The including file defines `static void fm1_fault(const fm1_crash_t *)`.
 - `fm1_isr.S` calls the C bodies `fm1_timer5_irq` and `fm1_alnk0_irq`.
+- PA2 is the LCD backlight and the key matrix's `/OE`, and the TIMER5 scan
+  writes port A: `lcd_init` and `input_init` run before interrupts are
+  enabled, and nothing else writes port A from the main loop.
 - `hal_check.c` (target `fm1_hal_check`) compiles every header and both
   `.S` files in the fm1 build.
 
@@ -56,8 +71,24 @@ and copyright next to ours. Changes: `app.ld` drops the second core's
 `.c1_text`, collects `.init_array`, and adds `ASSERT`s for the image layout
 and region overlaps.
 
+`lcd.c` is adapted the same way from Felucca's `firmware/src/lcd.c`: the
+ST7789 init sequence and the strip transfer left running until the next
+access. Changes: delays from TIMER4 instead of spin loops, no fill, DISPON
+left to the UI's first picture, and one strip buffer instead of Felucca's
+layers.
+
 ### Updating
 
-Copy the files above from the new commit, update the commit here and in
+Copy the HAL files above from the new commit, update the commit here and in
 [LICENSING.md](../../LICENSING.md), and describe any local change in this
 file.
+
+## font8x8 (`font/`)
+
+- **Source:** <https://github.com/dhepper/font8x8>, `font8x8_basic.h`
+- **Commit:** `8e279d2d864e79128e96188a6b9526cfa3fbfef9` (2019-07-08)
+- **Licence:** public domain (Daniel Hepper, after Marcel Sondaar and IBM's
+  VGA fonts); see `REUSE.toml` and `LICENSES/LicenseRef-PublicDomain.txt`.
+- **Local changes:** none. The array is not `const`, so its 1 KiB lands in
+  `.data` (RAM). Only `ui.c` includes it: the header defines the array.
+- A placeholder until our own PETSCII-style font.

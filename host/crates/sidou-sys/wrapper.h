@@ -10,3 +10,5 @@
 #include "workload.h"
 #include "live.h"
 #include "midi_in.h"
+#include "panel.h"
+#include "reg_ring.h"

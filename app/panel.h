@@ -1,0 +1,74 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+/* The FM-1 front panel played into live: note keys, buttons, encoders, the MASTER pot and
+ * the LEDs.
+ *
+ * Portable C with no hardware access. The device's input code reads the matrix (Felucca's
+ * fm1_input.h) and hands the debounced state here; the host tests drive it directly.
+ *
+ * Ids are Felucca's (platform/fm1/VENDORED.md): buttons 0..13, note keys 14..40 (F3..G5,
+ * here as note-key indexes 0..26), encoders 0..6. */
+#ifndef SIDOU_PANEL_H
+#define SIDOU_PANEL_H
+
+#include <stdint.h>
+
+#include "live.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define PANEL_NOTE_KEYS 27u
+/* Note key 0 plays F3 at octave 0. */
+#define PANEL_BASE_NOTE 53u
+#define PANEL_VELOCITY 100u
+
+/* Button ids (fm1_in.buttons bits). */
+#define PANEL_BTN_OCT_DOWN 0u
+#define PANEL_BTN_OCT_UP 1u
+#define PANEL_BTN_FX 2u
+/* The LED id of note key k is PANEL_KEY_ID0 + k; buttons are their own ids. */
+#define PANEL_KEY_ID0 14u
+
+/* Encoder ids (fm1_enc_take). */
+#define PANEL_ENC_K1 2u
+#define PANEL_ENC_K4 5u
+#define PANEL_ENCODERS 7u
+
+/* The MASTER pot moves the volume only when it changed by at least this much (ADC noise). */
+#define PANEL_MASTER_HYSTERESIS 4
+
+typedef struct {
+    /* The note each key sent at key-down, LIVE_NO_NOTE while it is up: key-up releases that
+     * note even when the octave changed in between. */
+    uint8_t key_note[PANEL_NOTE_KEYS];
+    int16_t master_raw; /* the last pot value applied, -1 for none */
+} panel;
+
+/* The LEDs, as Felucca's input state lays out the keys. */
+typedef struct {
+    uint32_t buttons; /* bit i: button i */
+    uint32_t notes;   /* bit k: note key k */
+} panel_leds;
+
+void panel_init(panel* p);
+/* down: the debounced note keys (bit k = key k); pressed: keys that went down since the last
+ * call (Felucca's note edges), which catches a press and release between two calls. A key
+ * that goes down plays live_key_note of its base note; a key that goes up releases the note
+ * it played; a key pressed again while held retriggers. */
+void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed);
+/* Button press edges: OCT-, OCT+ and FX (the 6581/8580 toggle); the others do nothing yet. */
+void panel_buttons(panel* p, live* l, uint32_t pressed);
+/* Detent steps of encoder enc (+ = clockwise): K1..K4 turn live's knobs. */
+void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps);
+/* A MASTER pot reading, 0..1023 (a negative reading, an ADC timeout, is ignored). */
+void panel_master(panel* p, live* l, int32_t raw);
+/* Held keys, the octave on OCT- (below 0) or OCT+ (above 0), and FX while the 8580 plays. */
+panel_leds panel_get_leds(const panel* p, const live* l);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

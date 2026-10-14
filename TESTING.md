@@ -136,14 +136,35 @@ program (the message names the file or the faulting address).
 `crates/emu-gate/tests/boot.rs` boots the firmware image
 (`platform/fm1/sidou_app.bin`) in fm1-emu the way the FM-1's SPL starts it:
 mapped at `0x02000120`, entered in user mode with `r0` pointing at a
-boot-parameter block. It runs 500 ms of emulated time and checks that:
-- the audio interrupt delivers about 500 ms of frames;
+boot-parameter block. The A4 key is held from power-on. It runs 900 ms of
+emulated time and checks that:
+- the audio interrupt delivers the frames of at least the 500 ms after the
+  LCD's start-up delays;
 - left and right are equal;
-- the SID test tone is not silent and its pitch is 440 Hz within 0.5 %.
+- the output is sample for sample what the host build of the same code renders
+  for the same instrument (`live_init`, the MASTER pot, then the A4 note-on,
+  which the test finds in one of the first 16 blocks);
+- the note is not silent and its pitch is 440 Hz within 0.5 %.
 
-It writes `sidou_boot.json` (frames, peak, measured pitch, instructions in
-and out of interrupts) into the fm1 build directory. Like the gate, it skips
-without `SIDOU_FM1_BUILD`.
+It writes `sidou_boot.json` (frames, peak, measured pitch, the note-on's
+block, instructions in and out of interrupts, the largest audio block) into the
+fm1 build directory. Like the gate, it skips without `SIDOU_FM1_BUILD`.
+
+### Live instrument test
+
+`crates/emu-gate/tests/live.rs` plays the firmware through fm1-emu's front
+panel (keys, encoders, the MASTER pot) and checks:
+- a key plays its pitch (A4 and E4, within 0.5 %), and nothing plays before;
+- OCT+ doubles the pitch and lights its LED; a held key lights its LED;
+- turning K1 down by 40 detents cuts the share of the power above 2 kHz at
+  least fourfold;
+- MASTER turned down lowers the peak;
+- the LCD after boot: the C64 blue at a fixed background pixel, the light blue
+  border, text inside, no other colours; nothing is sent while nothing
+  changes, and a held note redraws one strip;
+- the 6581/8580 toggle: `sid_init` runs in the main loop only (the test counts
+  its instructions per call), no audio block gets near the block's
+  instruction budget, no block is silent, and the FX LED lights.
 
 ## Sanitizers
 

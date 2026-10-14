@@ -2,28 +2,56 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "audio.h"
 
+#include "reg_ring.h"
 #include "sid/sid.h"
 
-static sid chip;
+/* Two chips of ~8.5 KB each: the big zero-initialised pool, not .bss. */
+static reg_ring_chips chips __attribute__((section(".pool")));
+static reg_ring ring;
+static reg_ring_out out;
+static volatile uint8_t running;
 
-void audio_init(void) {
-    sid_init(&chip, SID_MODEL_6581, SID_CLOCK_PAL, AUDIO_SAMPLE_RATE);
-    /* The boot test tone: voice 1 sawtooth at A4, 0x1D45 * 985248 / 2^24 = 440.03 Hz,
-     * instant attack, full sustain, filter off, full volume. */
-    sid_write(&chip, 0x00, 0x45);
-    sid_write(&chip, 0x01, 0x1D);
-    sid_write(&chip, 0x05, 0x00);
-    sid_write(&chip, 0x06, 0xF0);
-    sid_write(&chip, 0x18, 0x0F);
-    sid_write(&chip, 0x04, 0x21);
+/* reg_ring_out.wait: the producer needs the interrupt to drain. */
+static void wait_for_drain(void* ctx) {
+    (void)ctx;
+    if (!running) {
+        reg_ring_drain(&ring, &chips);
+        return;
+    }
+    /* Sleep until the next interrupt (TIMER5 within 100 us, the block within 2.9 ms). */
+    __asm__ volatile("idle" ::: "memory");
 }
 
-void audio_fill(int32_t* out) {
+void audio_init(void) {
+    reg_ring_init(&ring);
+    reg_ring_chips_init(&chips, SID_MODEL_6581, SID_CLOCK_PAL, AUDIO_SAMPLE_RATE);
+    out.ring = &ring;
+    out.chips = &chips;
+    out.wait = wait_for_drain;
+    out.wait_ctx = 0;
+}
+
+void* audio_sink_ctx(void) {
+    return &out;
+}
+
+void audio_commit(void) {
+    reg_ring_commit(&ring);
+}
+
+void audio_start(void) {
+    reg_ring_commit(&ring);
+    reg_ring_drain(&ring, &chips);
+    running = 1;
+}
+
+void audio_fill(int32_t* buf) {
     int16_t s[AUDIO_HALF_FRAMES];
-    sid_render(&chip, s, AUDIO_HALF_FRAMES);
+    reg_ring_drain(&ring, &chips);
+    sid_render(reg_ring_chip(&chips), s, AUDIO_HALF_FRAMES);
     for (uint32_t i = 0; i < AUDIO_HALF_FRAMES; i++) {
         int32_t v = (int32_t)s[i] * 256;
-        out[2 * i] = v;
-        out[2 * i + 1] = v;
+        buf[2 * i] = v;
+        buf[2 * i + 1] = v;
     }
 }

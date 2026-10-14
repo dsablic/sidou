@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 [package]
 name = "emu-gate"
-description = "Emulator tests: the M0 SID budget gate and the firmware boot test, in fm1-emu"
+description = "Emulator tests: the M0 SID budget gate, the firmware boot test and the live instrument, in fm1-emu"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

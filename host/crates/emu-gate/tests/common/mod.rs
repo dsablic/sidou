@@ -68,3 +68,185 @@ pub fn step(cpu: &mut Cpu, soc: &mut Soc) -> bool {
         .unwrap_or_else(|e| panic!("cpu fault at {pc:#010x}: {e:?}"));
     false
 }
+
+/// Where the SPL maps app.bin, and enters it.
+pub const APP_BASE: u32 = 0x0200_0120;
+/// The SPL's boot-parameter block (Felucca's crt0.S: inside the vector table at 0x01C7FE00).
+const BOOT_PARAMS: u32 = 0x01C7_FE08;
+const RAM_SIZE: usize = 1 << 20;
+const IRQ_ALNK0: u8 = 11;
+
+/// The firmware image (`sidou_app.bin`) and its ELF, from the fm1 build.
+pub struct Firmware {
+    pub image: Vec<u8>,
+    pub elf: Vec<u8>,
+}
+
+impl Firmware {
+    pub fn load(build: &Path) -> Self {
+        let dir = build.join("platform/fm1");
+        Firmware {
+            image: read(&dir.join("sidou_app.bin"), "firmware image"),
+            elf: read(&dir.join("sidou_app.elf"), "firmware ELF"),
+        }
+    }
+
+    /// The address of a function in the ELF.
+    pub fn symbol(&self, name: &str) -> u32 {
+        use object::{Object, ObjectSymbol};
+        let file = object::File::parse(&*self.elf).expect("parse the firmware ELF");
+        let sym = file
+            .symbols()
+            .find(|s| s.name() == Ok(name))
+            .unwrap_or_else(|| panic!("no symbol {name} in the firmware ELF"));
+        sym.address() as u32
+    }
+}
+
+/// A call being measured: where it returns to and the stack pointer at its entry.
+struct OpenCall {
+    rets: u32,
+    sp: u32,
+    start: u64,
+}
+
+/// The firmware booted in fm1-emu the way its CLI boots a bare app.bin
+/// (`fm1-emu --bin <image padded to 0x02000120> --entry 0x02000120`): the SPL maps app.bin at
+/// XIP 0x02000120 and enters its first byte in user mode with r0 pointing at a
+/// boot-parameter block. No update package and no stock flash are involved.
+pub struct Machine {
+    pub soc: Soc,
+    pub cpu: Cpu,
+    pub steps: u64,
+    /// Instructions run inside interrupts.
+    pub isr_steps: u64,
+    /// Instructions run by `step_block_load_dec` instead of fm1-core.
+    pub emulated_block_loads: u64,
+    /// The instructions of each ALNK0 interrupt (one audio block), nested ones included.
+    pub alnk_blocks: Vec<u64>,
+    alnk_open: Option<(usize, u64)>,
+    /// Calls of the watched function outside interrupts: instructions each, its callees and
+    /// nothing from interrupts included.
+    pub watched_calls: Vec<u64>,
+    watch: Option<u32>,
+    open_call: Option<OpenCall>,
+    main_steps: u64,
+}
+
+impl Machine {
+    pub fn boot(image: &[u8]) -> Self {
+        let mut xip = vec![0u8; (APP_BASE - fm1_soc::XIP_BASE) as usize];
+        xip.extend_from_slice(image);
+        let mut soc = Soc::new(RAM_SIZE, xip);
+        // The firmware's main loop sleeps in `idle`; skip ahead to the next interrupt.
+        soc.periph.skip_idle = true;
+        let mut cpu = Cpu::new(APP_BASE);
+        // The SPL hands cpu0 over in user mode (fm1-emu main.rs).
+        cpu.user = true;
+        // Placeholder contents (the CLI's): the firmware only saves r0, and fm1_irq_init then
+        // overwrites the block with the vector table.
+        soc.write32(BOOT_PARAMS, BOOT_PARAMS + 0x40);
+        cpu.regs[0] = BOOT_PARAMS;
+        Machine {
+            soc,
+            cpu,
+            steps: 0,
+            isr_steps: 0,
+            emulated_block_loads: 0,
+            alnk_blocks: Vec::new(),
+            alnk_open: None,
+            watched_calls: Vec::new(),
+            watch: None,
+            open_call: None,
+            main_steps: 0,
+        }
+    }
+
+    /// Counts the instructions of every call of the function at `entry` from the main loop.
+    pub fn watch_calls(&mut self, entry: u32) {
+        self.watch = Some(entry);
+    }
+
+    pub fn ms(&self) -> u64 {
+        self.soc.periph.ms()
+    }
+
+    /// Runs `ms` milliseconds of emulated time.
+    pub fn run_ms(&mut self, ms: u64) {
+        let end = self.soc.periph.cycles + self.soc.periph.cycle_of_ms(ms);
+        // fm1_soc::machine::run_blocks, one instruction at a time so `step` can stand in for
+        // the instruction fm1-core lacks.
+        while self.soc.periph.cycles < end {
+            let soc = &mut self.soc;
+            let cpu = &mut self.cpu;
+            if soc.periph.tick() {
+                soc.advance(0);
+            }
+            soc.periph.in_isr = !cpu.irq_levels.is_empty();
+            if soc.periph.any_pending() {
+                if let Some((irq, prio)) = soc.pending_irq() {
+                    if cpu.irq_ready(prio) {
+                        let handler = soc.read32(fm1_soc::VEC_BASE + 4 * u32::from(irq));
+                        if irq == IRQ_ALNK0 && self.alnk_open.is_none() {
+                            self.alnk_open = Some((cpu.irq_levels.len(), self.steps));
+                        }
+                        cpu.interrupt(handler, prio);
+                    }
+                }
+            }
+            let in_isr = !cpu.irq_levels.is_empty();
+            if in_isr {
+                self.isr_steps += 1;
+            } else {
+                if let Some(entry) = self.watch {
+                    if cpu.pc == entry && self.open_call.is_none() {
+                        self.open_call = Some(OpenCall {
+                            rets: cpu.rets,
+                            sp: cpu.sp,
+                            start: self.main_steps,
+                        });
+                    }
+                }
+                if let Some(c) = &self.open_call {
+                    if cpu.pc == c.rets && cpu.sp >= c.sp {
+                        self.watched_calls.push(self.main_steps - c.start);
+                        self.open_call = None;
+                    }
+                }
+                self.main_steps += 1;
+            }
+            if step(cpu, soc) {
+                self.emulated_block_loads += 1;
+            }
+            self.steps += 1;
+            if let Some((depth, start)) = self.alnk_open {
+                if self.cpu.irq_levels.len() <= depth {
+                    self.alnk_blocks.push(self.steps - start);
+                    self.alnk_open = None;
+                }
+            }
+        }
+    }
+
+    /// Key or button `id` (Felucca's ids: buttons 0..13, note keys 14..40) down or up.
+    pub fn key(&mut self, id: u8, down: bool) {
+        self.soc.periph.apply(&fm1_soc::Action::Key { id, down });
+    }
+
+    /// Turns encoder `enc` (K1..K4 = 2..5) by `clicks` detents, + = clockwise.
+    pub fn turn(&mut self, enc: u8, clicks: i32) {
+        self.soc.periph.apply(&fm1_soc::Action::Enc { enc, clicks });
+    }
+
+    /// The MASTER pot, 0..1023.
+    pub fn pot(&mut self, value: u16) {
+        self.soc
+            .periph
+            .apply(&fm1_soc::Action::Adc { ch: 4, value });
+    }
+
+    /// The left channel of everything played so far (the firmware plays mono).
+    pub fn left(&self) -> Vec<i16> {
+        self.soc.periph.audio.iter().step_by(2).copied().collect()
+    }
+}

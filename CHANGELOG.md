@@ -29,3 +29,8 @@ All notable changes are documented here. The format follows
 - FM-1 platform (`platform/fm1/`): Felucca's HAL (GPL-3.0-only), startup
   code and memory map, and a firmware image that boots, runs the audio
   interrupt and plays a SID test tone; an fm1-emu boot test checks it.
+- The firmware plays the live instrument from the FM-1's keys, K1-K4, MASTER,
+  OCT-/OCT+ and FX (6581/8580), lights the held keys and the octave, and shows
+  a status screen on the LCD. Register writes reach the audio interrupt
+  through a ring that never drops; a model change swaps to a chip prepared in
+  the main loop. fm1-emu tests play it end to end.

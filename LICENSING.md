@@ -21,7 +21,8 @@ component. "Use" says whether a component ends up in the firmware image.
 |---|---|---|---|---|
 | reSID 0.16 filter cutoff points (`core/sid/sid_curves_resid016.h`) | reSID 0.16, © 2004 Dag Lem | GPL-2.0-or-later | data compiled into the firmware | M0 stand-in, replaced in M1 |
 | Felucca HAL @ `a53ecf42` (`platform/fm1/hal/`, see [VENDORED.md](platform/fm1/VENDORED.md)) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | linked into the firmware | in use |
-| `platform/fm1/crt0.S`, `platform/fm1/app.ld` | adapted from Felucca's `firmware/crt0.S` and `firmware/app.ld` @ `a53ecf42`, © 2026 Leo Kuroshita | GPL-3.0-only | linked into the firmware | in use |
+| `platform/fm1/crt0.S`, `platform/fm1/app.ld`, `platform/fm1/lcd.c` | adapted from Felucca's `firmware/crt0.S`, `firmware/app.ld` and `firmware/src/lcd.c` @ `a53ecf42`, © 2026 Leo Kuroshita | GPL-3.0-only | linked into the firmware | in use |
+| font8x8_basic @ `8e279d2d` (`platform/fm1/font/font8x8_basic.h`) | font8x8, Daniel Hepper, after Marcel Sondaar and IBM's VGA fonts | public domain | compiled into the firmware | placeholder until our own font |
 | `bench/fm1/crt0.S`, `bench/fm1/bench.ld` | adapted from fm1-sid, © 2026 Joakim Eriksson | BSD-2-Clause | benchmark program only | in use |
 | libresidfp @ `c1791383` (`third_party/libresidfp`) | libsidplayfp project | GPL-2.0-or-later | host tests only; git submodule, never linked into firmware | in use |
 | fm1-emu crates `fm1-core`, `fm1-soc`, `fm1-isa` @ `e52f4640` | Joakim Eriksson | MIT | emulator gate only; fetched by cargo | in use |

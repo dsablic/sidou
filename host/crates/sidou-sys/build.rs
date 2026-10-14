@@ -7,13 +7,15 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 6] = [
+const SOURCES: [&str; 8] = [
     "core/sid/sid.c",
     "core/sid/sid_filter.c",
     "bench/workload.c",
     "app/live.c",
     "app/live_freq.c",
     "app/midi_in.c",
+    "app/panel.c",
+    "app/reg_ring.c",
 ];
 
 /// Include roots, relative to the repository: core headers are "sid/...", the others bare.
@@ -60,9 +62,9 @@ fn main() {
         .header(wrapper.to_str().unwrap())
         .clang_args(INCLUDES.map(|dir| format!("-I{}", root.join(dir).display())))
         .clang_arg("-std=c11")
-        .allowlist_function("sid_.*|sidou_.*|workload_.*|live_.*|midi_.*")
-        .allowlist_type("sid.*|live.*|midi_.*")
-        .allowlist_var("SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|live_.*")
+        .allowlist_function("sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*")
+        .allowlist_type("sid.*|live.*|midi_.*|panel.*|reg_ring.*")
+        .allowlist_var("SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|live_.*")
         // A `static const` table private to sid_env.h; it has no symbol to link to.
         .blocklist_item("SID_RATE_PERIOD")
         .prepend_enum_name(false)
