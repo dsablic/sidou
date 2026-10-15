@@ -168,13 +168,23 @@ which printed control did it.
 | SCL (button 3) | selects the next effect slot (the `>` on the screen's EFFECTS lines moves) | | [ ] |
 | ENV (button 4) | the selected slot's next algorithm (the name on the screen changes) | | [ ] |
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the screen); EDIT lit while the slot is on | | [ ] |
+| HOME (button 8) | from the status screen, the menu (a wipe down from the top); in the menu, back to the status screen (a wipe up from the bottom) | | [ ] |
+| SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, PRESET, OCTAVE and CHARSET | | [ ] |
+| ALGORITHM (encoder 1), in the menu | changes the item under the cursor (CHIP toggles 6581/8580, PRESET, OCTAVE -3..+3); clockwise on CHARSET opens the glyph sheet, and HOME goes back to the menu | | [ ] |
 
 - [ ] A held note keeps its pitch when the octave changes, and stops when
   the key is released.
 - [ ] OVERDRIVE with Amount and Mix up distorts audibly; REVERB or LUSH with
   Mix up adds a stereo tail (listen on headphones); switching algorithms
   while a note plays crossfades without a click.
-- [ ] The other buttons and encoders do nothing (record anything they do).
+- [ ] In the menu and on the glyph sheet, the keys, K1..K4, OCT-/OCT+, FX
+  and the EDIT layer play as on the status screen.
+- [ ] OCT+, SCL and ENV show a toast on the bottom line ("OCTAVE +1",
+  "SLOT MOD", "MOD CHORUS") that goes after about 1.5 s; FX shows
+  "CHIP 8580" and sweeps colour bands down the border for about half a
+  second.
+- [ ] The other buttons and encoders do nothing (record anything they do);
+  SELECT and ALGORITHM do nothing outside the menu.
 
 Notes:
 
@@ -186,6 +196,8 @@ The panel runs at 12 MHz SPI (Felucca's setting).
 - [ ] Only what changes is redrawn: no flicker while idle, none while
   turning K1 fast or playing fast notes.
 - [ ] Nothing goes wrong on screen while the audio plays (no clicks either).
+- [ ] The wipes and the border raster run smoothly, with no tearing or
+  stray cells left behind, and no click in the sound while they run.
 
 Notes:
 

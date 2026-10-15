@@ -70,3 +70,9 @@ All notable changes are documented here. The format follows
   sheet, replaces the font8x8 placeholder. A cell-grid renderer sends only
   changed cells, in runs; the status screen runs on it, and fm1-emu tests
   compare the screen with golden images and bound what drawing costs.
+- A view framework on the cell grid (`app/screen.h`, `app/widget.h`): a
+  stack of views with focus, panel events routed to the view on top, PETSCII
+  frames, menus with a blinking block cursor, a toast line, and wipe and
+  raster transitions inside the SPI budget. HOME opens a menu (chip, preset,
+  octave, the glyph sheet); every other control plays as before in every
+  view. The overlay pool grows to 255 cells for LIVE's scopes.

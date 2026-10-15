@@ -7,6 +7,19 @@ fm1-emu's and Felucca's ids (`platform/fm1/VENDORED.md`); the printed labels may
 see [hardware-test.md](../hardware-test.md). The effect-slot layer is **temporary**: the
 CHIP view (M1c Task 4) replaces it.
 
+## Routing
+
+Each button press and encoder turn goes, in this order (`app/views.h`):
+
+1. **global:** HOME opens the menu from the status screen and goes back one view anywhere
+   else;
+2. **the view on top:** the menu takes SELECT and ALGORITHM; the status screen and the
+   glyph sheet take nothing;
+3. **the panel:** everything else plays the instrument as below, in every view.
+
+The note keys and MASTER always play, whichever view shows. The effect-slot layer (EDIT,
+SCL, ENV) is global until the CHIP view takes the slots over.
+
 ## Panel
 
 | Control (id) | Does |
@@ -22,8 +35,12 @@ CHIP view (M1c Task 4) replaces it.
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end); K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last) |
+| **HOME (button 8)** | the menu, from the status screen; back one view from any other (the menu, the glyph sheet) |
+| **SELECT (encoder 0)**, in the menu | moves the blinking cursor up and down the items |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: CHIP, PRESET, OCTAVE; turned clockwise on CHARSET, opens the glyph sheet |
 
-The other buttons (LFO, GLO, HOME, SAVE, ARP, SEQ, PLAY, REC) and encoders do nothing yet.
+The other buttons (LFO, GLO, SAVE, ARP, SEQ, PLAY, REC) and PRESETS (encoder 6) do
+nothing yet; SELECT and ALGORITHM do nothing outside the menu.
 
 ## Presets
 
@@ -83,3 +100,11 @@ range.
 The status screen shows the chip, preset, octave, cutoff, resonance, pulse width,
 volume and the held notes, and under EFFECTS each slot's algorithm and Mix (`>` marks the
 selected slot) with the selected slot's Amount, A and B.
+
+The menu (HOME) lists CHIP, PRESET and OCTAVE with their values, and CHARSET, the glyph
+sheet (the font and the palette). A view opens with a wipe from the top and closes with
+one from the bottom.
+
+A change of octave, selected slot or algorithm shows a toast on the bottom line for
+1.5 s ("OCTAVE +1", "SLOT MOD", "MOD CHORUS"), whatever made it: a button, the menu or
+MIDI. A chip change shows "CHIP 8580" and sweeps raster colours down the border.

@@ -13,7 +13,7 @@ lists the prerequisites.
 |---|---|---|
 | Everything except the emulator gate | `cargo test --workspace --release` | all crates |
 | Unit tests | `cargo test --release -p sidou-tests --test unit` | `crates/sidou-tests/tests/unit/` |
-| App logic (live instrument, MIDI parser, MIDI ring and input, screen font) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt` |
+| App logic (live instrument, MIDI parser, MIDI ring and input, screen font, cell grid, views and widgets) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Register reads (OSC3, ENV3) | `cargo test --release -p sidou-tests --test register_reads` | `crates/sidou-tests/tests/register_reads.rs` |
@@ -329,19 +329,34 @@ panel (keys, encoders, the MASTER pot) and checks:
 ### Screen test
 
 `crates/emu-gate/tests/screen.rs` checks what the LCD shows and what drawing
-it costs:
-- **snapshots:** the status screen after boot and with a note held, and the
-  glyph sheet (`UI_CHARSET`: every glyph, the palette and a pixel overlay)
-  match the golden images in `tests/golden/lcd/`, pixel for pixel, and every
-  pixel is one of the 16 palette colours. The status screen's version cells
-  are left out. Switching back from the glyph sheet restores the status
-  screen exactly. The goldens are 4-bit indexed PNGs in the art palette;
+it costs. It reaches each view through the panel, as a player would (HOME,
+SELECT, ALGORITHM):
+- **snapshots:** the status screen after boot, with a note held and with the
+  toast OCT+ shows, the menu, and the glyph sheet (every glyph, the palette
+  and a pixel overlay) match the golden images in `tests/golden/lcd/`, pixel
+  for pixel, and every pixel is one of the 16 palette colours. The status
+  screen's version cells and the menu's cursor cell are left out; the cursor
+  is checked to blink. Going back from the glyph sheet restores the menu and
+  then the status screen exactly, and the toast goes after 1.5 s. The goldens
+  are 4-bit indexed PNGs in the art palette;
+- **transitions:** sampled every frame, a wipe shows the new view over the
+  old one with at most a white edge row between them, the edge moving down
+  (opening) or up (closing); a chip change sweeps ramp colours down the
+  border in bands, and the border comes back;
 - **cost:** the instructions `ui_poll` spends (its callees included) and the
-  windows and SPI bytes `lcd.c` counts, idle, for one note and for a change
-  of every cell. It prints them as JSON, with the SPI time at 12 MHz, and
-  bounds them: nothing is sent idle, one note is one window under 1 ms of
-  SPI, a full screen is 30 windows (77 ms of SPI) and no single pass of the
+  windows and SPI bytes `lcd.c` counts in each 40 ms frame: idle, for one
+  note, the menu idle, a wipe each way and a raster. It prints them as JSON,
+  with the SPI time at 12 MHz, and bounds them: nothing is sent idle, one
+  note is one window under 1 ms of SPI, every frame of a transition stays
+  under the 20 ms SPI budget, a wipe sends no more than a full screen and its
+  edge rows, the raster sends every other frame, and no single pass of the
   main loop renders more than two runs.
+
+The host tests cover the same machinery without the device:
+`tests/app/screen.rs` (the view stack, focus, routing, the capture, the
+toast, the cursor blink, and the wipe and raster frame by frame against the
+SPI budget), `widget.rs` (frames, numbers, bars, the menu) and `views.rs`
+(HOME and the menu, the panel playing as before in every view, the toasts).
 
 **A failure means** the screen looks different or costs more. If you meant
 the change (a new glyph, a moved label), look at the

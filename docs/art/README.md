@@ -63,7 +63,9 @@ top; a cell is at pixel (8 × column, 8 × row).
 - Text is upper case. Lower case codes show as upper case.
 - Pixel art beyond the font (oscilloscopes, the logo) is drawn as **pixel
   overlays** on cells: an 8×8 one-colour mask over the cell's glyph
-  (`grid_overlay`, at most `GRID_OVERLAYS` cells at once).
+  (`grid_overlay`, at most `GRID_OVERLAYS` = 255 cells at once, enough for
+  LIVE's three scopes of about 80 cells each; the pool costs 2.5 KB of RAM).
+  A view switch clears them all.
 
 ## Font
 
@@ -82,8 +84,9 @@ The sheet draws 159 glyphs (lower case reuses upper case). The face is
 chamfered capitals with 2-pixel stems, 7×7 pixels in the top-left of the
 cell, so text keeps a one-pixel gap to the right and below.
 Graphics glyphs fill the whole cell, so they join up. The firmware's glyph
-sheet screen (`UI_CHARSET` in `platform/fm1/ui.h`) shows them all, with the
-palette; its fm1-emu snapshot is `tests/golden/lcd/charset.png`.
+sheet (the CHARSET view in `app/views.c`, opened from the menu) shows them
+all, with the palette; its fm1-emu snapshot is
+`tests/golden/lcd/charset.png`.
 
 | Codes | Glyphs |
 |---|---|
@@ -144,9 +147,10 @@ font ships with the firmware under the same terms.
   At the LCD's 12 MHz SPI a cell is 128 bytes, 85 µs; a window adds 11
   command bytes (7 µs) and the CPU's command turnaround. 20 ms is about
   230 cells per frame. A full screen is 115,200 bytes, 77 ms.
-- **CPU:** composing a screen costs about 20k instructions a frame, and
-  rendering about 580 instructions a cell, so a full screen is 2.2 ms of CPU
-  at 240 MHz (fm1-emu, `host/crates/emu-gate/tests/screen.rs`).
+- **CPU:** composing the status screen and the empty main-loop passes between
+  frames cost about 37k instructions a frame, and rendering about 580
+  instructions a cell, so a full screen is 2.2 ms of CPU at 240 MHz (fm1-emu,
+  `host/crates/emu-gate/tests/screen.rs`).
 - **Pieces over budget** drop their frame rate, shrink their area or use a
   coarser palette. A transition may spend a full redraw once, not every
   frame.
@@ -155,6 +159,45 @@ font ships with the firmware under the same terms.
   UI touches the audio interrupt or its budget.
 - Each screen gets fm1-emu LCD snapshot tests; each animated piece gets a
   busiest-frame cost test (main-loop instructions and SPI bytes).
+
+## Views, menus and transitions
+
+The screen is a stack of **views** (`app/screen.h`): each is a table of
+enter, exit, input and compose functions, and the one on top has the focus.
+It composes every cell each frame and gets the panel's events first; what it
+does not take plays the instrument (`app/views.h`,
+[controls](../reference/controls.md)).
+
+- **Frames:** PETSCII box glyphs with the title set into the top edge,
+  between spaces (`widget_frame`). A screen keeps the full-block border on
+  the outer ring.
+- **Menus:** a list of items, each a label and a value right-aligned against
+  the frame (an arrow for an item that opens a view). The cursor is a
+  **blinking block** in front of the selected item, 8 frames on and 8 off
+  (320 ms each). SELECT moves it, ALGORITHM changes the value.
+- **Toast:** a line of reverse-video text (blue on light blue) on row 27 for
+  1.5 s, saying what changed.
+- **Wipe:** a view opens top first and closes bottom first, 4 rows a frame
+  behind a white edge row, so the full redraw a view switch needs spreads
+  over 8 frames (about 320 ms). The rows not reached yet keep the old view
+  on the panel.
+- **Raster:** colour bands in the raster ramp's order run down the border,
+  one row every other frame, then the border gets its own colour back. A chip
+  change runs it once round the ramp (7 steps, 14 frames). It waits while a
+  wipe runs.
+
+Measured in fm1-emu (`screen_changes_and_transitions_stay_within_the_budgets`):
+
+| Change | Frames | Windows | SPI bytes | Worst frame |
+|---|---|---|---|---|
+| Wipe down to the menu | 8 | 51 | 78,513 | 11.2 ms |
+| Wipe up to the status screen | 8 | 54 | 77,906 | 10.9 ms |
+| Raster and toast (chip change) | 15, every other one | 451 | 123,105 | 10.5 ms |
+| Menu idle (the cursor) | 1 in 8 | 1 | 139 | 0.1 ms |
+
+A wipe sends only the rows that differ, once each, and its edge row once
+more; a raster step recolours the 116 border cells in 58 windows. Every frame
+stays inside the 20 ms budget.
 
 ## Logo
 
