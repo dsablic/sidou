@@ -28,6 +28,11 @@ SID, 2 the character layer, 3..5 the effect slots.
   CC 38 the LSB (with the MSB of the last CC 6, or, if none came since the selection or
   the last step, the current value's). CC 96 and 97 step the value by one (their data byte
   is ignored).
+- **NRPN, parameters up to 0..127:** the value is all in the LSB, with an MSB of 0. CC 6
+  only stores the MSB and CC 38 applies the value, so a sender's 6 = 0, 38 = v goes
+  straight to v and never through 0 (which would reset the chip for the chip model, or
+  silence the waveform). A controller that sends CC 6 alone ("7-bit NRPN") changes
+  nothing here: use CC 38, or the parameter's plain CC.
 - **Null and RPN:** NRPN 127/127 and RPN 127/127 select nothing. An RPN (CC 101, 100)
   takes data entry away from the NRPN until CC 99 or 98 comes again; no RPN is
   implemented yet. CC 121 (reset all controllers) and a gap in the input select nothing.

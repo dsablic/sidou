@@ -185,6 +185,9 @@ static void data(midi_map_port* p, midi_map_channel* c, uint8_t cc, uint8_t valu
     switch (cc) {
     case CC_DATA_MSB:
         c->data_msb = value;
+        if (e->max < 128u) {
+            return; /* a small parameter's value is in the LSB: CC 38 applies it */
+        }
         v = (uint32_t)value << 7;
         break;
     case CC_DATA_LSB: {

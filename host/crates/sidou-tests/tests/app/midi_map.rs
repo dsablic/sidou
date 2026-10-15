@@ -481,7 +481,11 @@ struct Midi {
 
 impl Midi {
     fn new() -> Self {
-        let mut rig = Rig::new(SID_MODEL_6581);
+        Self::with_model(SID_MODEL_6581)
+    }
+
+    fn with_model(model: sid_model) -> Self {
+        let mut rig = Rig::new(model);
         let mut rx = Box::<midi_rx>::default();
         unsafe { midi_rx_init(&mut *rx, &mut *rig.live, 0) };
         Midi { rig, rx, epoch: 0 }
@@ -718,6 +722,98 @@ fn the_pulse_width_nrpn_sets_12_bits() {
     assert_eq!(m.rig.voice_pw(2), 129);
 }
 
+fn select(m: &mut Midi, param: u32) {
+    let r = row_for(param);
+    m.trs(&[0xB0, 99, (r.nrpn >> 7) as u8, 98, (r.nrpn & 0x7f) as u8]);
+}
+
+fn resets(rig: &Rig) -> usize {
+    rig.log()
+        .iter()
+        .filter(|w| w.0 == LIVE_REG_RESET as u8)
+        .count()
+}
+
+#[test]
+fn a_small_parameter_takes_the_value_at_the_lsb_without_passing_through_0() {
+    // A standard 14-bit sender: 99, 98, then 6 = 0 and 38 = 1 for the value 1.
+    let mut m = Midi::with_model(SID_MODEL_8580);
+    select(&mut m, LIVE_PARAM_MODEL);
+    m.rig.clear();
+    m.trs(&[6, 0]);
+    m.rig.tick();
+    m.trs(&[38, 1]);
+    m.rig.tick();
+    assert_eq!(m.rig.live.model, SID_MODEL_8580);
+    assert_eq!(get(&m.rig, LIVE_PARAM_MODEL), 1);
+    assert_eq!(resets(&m.rig), 0, "writes: {:?}", m.rig.log());
+    assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
+}
+
+#[test]
+fn the_waveform_by_nrpn_never_passes_through_silence() {
+    let mut m = Midi::new();
+    select(&mut m, LIVE_PARAM_WAVEFORM);
+    m.rig.clear();
+    for (cc, value) in [(6, 0), (38, 4), (6, 0), (38, 1), (6, 0), (38, 8)] {
+        m.trs(&[cc, value]);
+        assert_ne!(
+            get(&m.rig, LIVE_PARAM_WAVEFORM),
+            0,
+            "after CC {cc} = {value}"
+        );
+    }
+    assert_eq!(get(&m.rig, LIVE_PARAM_WAVEFORM), 8);
+    for &(reg, value) in m.rig.log() {
+        if reg % 7 == 4 && reg < 21 {
+            assert_ne!(value & 0xf0, 0, "control {reg} written silent");
+        }
+    }
+}
+
+#[test]
+fn an_msb_alone_leaves_a_small_parameter_alone() {
+    let mut m = Midi::new();
+    select(&mut m, LIVE_PARAM_RESONANCE);
+    m.rig.clear();
+    m.trs(&[6, 0, 6, 1, 6, 127]);
+    assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
+    // The stored MSB still counts for the LSB that completes it.
+    m.trs(&[6, 0, 38, 9]);
+    assert_eq!(m.rig.live.resonance, 9);
+    m.trs(&[6, 1, 38, 0]);
+    assert_eq!(
+        u32::from(m.rig.live.resonance),
+        LIVE_RESONANCE_MAX,
+        "128 clamps"
+    );
+}
+
+#[test]
+fn an_nrpn_reaches_a_slot_field() {
+    let mut m = Midi::new();
+    let amount = LIVE_PARAM_SLOT + LIVE_SLOT_FIELDS + LIVE_SLOT_AMOUNT; // Modulation's
+    set(&mut m.rig, amount, 50);
+    select(&mut m, amount);
+    m.rig.clear();
+    m.trs(&[6, 0, 38, 100]);
+    assert_eq!(m.rig.live.slot[1][LIVE_SLOT_AMOUNT as usize], 100);
+    let reg = (LIVE_REG_SLOT_BASE | 1 << 3 | LIVE_SLOT_AMOUNT) as u8;
+    assert_eq!(m.rig.log(), &[(reg, 100)], "one write, no 0 on the way");
+}
+
+#[test]
+fn an_nrpn_reaches_the_chip_model() {
+    let mut m = Midi::new();
+    select(&mut m, LIVE_PARAM_MODEL);
+    m.rig.clear();
+    m.trs(&[6, 0, 38, 1]);
+    m.rig.tick();
+    assert_eq!(m.rig.live.model, SID_MODEL_8580);
+    assert_eq!(resets(&m.rig), 1);
+    assert_eq!(m.rig.log()[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
+}
+
 // --- the published reference ---
 
 // The generated file's own licence header; reuse must not read it as this file's.
@@ -756,6 +852,11 @@ SID, 2 the character layer, 3..5 the effect slots.
   CC 38 the LSB (with the MSB of the last CC 6, or, if none came since the selection or
   the last step, the current value's). CC 96 and 97 step the value by one (their data byte
   is ignored).
+- **NRPN, parameters up to 0..127:** the value is all in the LSB, with an MSB of 0. CC 6
+  only stores the MSB and CC 38 applies the value, so a sender's 6 = 0, 38 = v goes
+  straight to v and never through 0 (which would reset the chip for the chip model, or
+  silence the waveform). A controller that sends CC 6 alone (\"7-bit NRPN\") changes
+  nothing here: use CC 38, or the parameter's plain CC.
 - **Null and RPN:** NRPN 127/127 and RPN 127/127 select nothing. An RPN (CC 101, 100)
   takes data entry away from the NRPN until CC 99 or 98 comes again; no RPN is
   implemented yet. CC 121 (reset all controllers) and a gap in the input select nothing.
