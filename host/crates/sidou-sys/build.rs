@@ -151,8 +151,8 @@ fn main() {
         .allowlist_var(
             "SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*|LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*",
         )
-        // A `static const` table private to sid_env.h; it has no symbol to link to.
-        .blocklist_item("SID_ENV_RATE_POS|SID_ENV_THRESHOLDS|SID_PULLDOWN_.*")
+        // `static const` tables private to the headers; they have no symbol to link to.
+        .blocklist_item("SID_ENV_RATE_POS|SID_ENV_THRESHOLDS|SID_PULLDOWN_.*|SID_NOISE_WB")
         .prepend_enum_name(false)
         .derive_default(true)
         .derive_debug(true)

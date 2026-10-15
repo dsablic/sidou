@@ -128,8 +128,9 @@ static inline uint32_t sid_noise_output(uint32_t sr) {
 }
 
 /* The register bits an output pulls down: the inverse of sid_noise_output, a nibble at a
- * time. Not const, so the device keeps them in RAM, not in flash read through the cache
- * (the audio path runs this every cycle while noise is combined). */
+ * time. On the device in .data (RAM), not with the other constant tables in flash
+ * (platform/fm1/app.ld): the audio path reads it every cycle while noise is combined,
+ * which makes the SID's most expensive block (decision record 0004, "Worst blocks"). */
 #define SID_WB_LO(n)                                                                       \
     ((((n) & 8u) ? 1u << 13 : 0u) | (((n) & 4u) ? 1u << 17 : 0u) |                          \
      (((n) & 2u) ? 1u << 20 : 0u) | (((n) & 1u) ? 1u << 22 : 0u))
@@ -139,8 +140,10 @@ static inline uint32_t sid_noise_output(uint32_t sr) {
 #define SID_WB_ROW(f)                                                                      \
     {f(0u), f(1u), f(2u),  f(3u),  f(4u),  f(5u),  f(6u),  f(7u),                            \
      f(8u), f(9u), f(10u), f(11u), f(12u), f(13u), f(14u), f(15u)}
-__attribute__((unused)) static uint32_t SID_NOISE_WB[2][16] = {SID_WB_ROW(SID_WB_LO),
-                                                                SID_WB_ROW(SID_WB_HI)};
+#ifdef __PI32V2__
+__attribute__((section(".data.sid_noise_wb")))
+#endif
+static const uint32_t SID_NOISE_WB[2][16] = {SID_WB_ROW(SID_WB_LO), SID_WB_ROW(SID_WB_HI)};
 
 static inline uint32_t sid_noise_writeback(uint32_t out) {
     return SID_NOISE_WB[0][(out >> 4) & 15u] | SID_NOISE_WB[1][(out >> 8) & 15u];
