@@ -322,7 +322,9 @@ starfield, another ramp line, and a sine scroller. HOME goes back.
 
 - **Credits** come from `CREDITS.md`: `host/crates/sidou-tests/src/credits.rs` generates
   `app/credits.c` (a page per section, more when it runs over 8 lines, wrapped at 26
-  characters, accents dropped for the font). A test fails when it falls behind the file;
+  characters with names kept whole, accents dropped for the font). A credit longer than a
+  page starts a page and goes on under `<SECTION> (CONT.)`, cut between who and what; no
+  other credit shares a page with its tail, so no sentence runs into the next credit. A test fails when it falls behind the file;
   `SIDOU_CREDITS_UPDATE=1` rewrites it. A page shows 4.8 s; a first page names SIDOU, its
   version and licence.
 - **The trim**, from the prototype's 240 cells a frame to 93: the bars are 5 bands of 4

@@ -4,7 +4,9 @@
  * from CREDITS.md by host/crates/sidou-tests/src/credits.rs (the test tests/app/credits.rs,
  * with SIDOU_CREDITS_UPDATE=1): a page per section, or more when it does not fit, each line
  * wrapped to CREDITS_COLS characters in upper case and the screen font's ASCII (accented
- * letters lose their accents, other characters become '?'). */
+ * letters lose their accents, other characters become '?'), names between names. A credit
+ * longer than a page starts one and goes on under "<SECTION> (CONT.)"; nothing shares a page
+ * with its tail. */
 #ifndef SIDOU_CREDITS_H
 #define SIDOU_CREDITS_H
 
