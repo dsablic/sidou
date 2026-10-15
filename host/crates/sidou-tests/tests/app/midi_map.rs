@@ -1199,6 +1199,57 @@ jack, which is MIDI IN only.
     )
 }
 
+/// The CCs below the channel mode messages (120..127) that MIDI learn leaves to the NRPN and
+/// RPN receiver, from app/midi_learn.c.
+fn unlearnable() -> Vec<u32> {
+    (0..120)
+        .filter(|&cc| unsafe { midi_learn_learnable(cc) } == 0)
+        .collect()
+}
+
+fn list(v: &[u32]) -> String {
+    let s: Vec<String> = v.iter().map(u32::to_string).collect();
+    match s.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+        _ => s.join(""),
+    }
+}
+
+fn learn_section() -> String {
+    format!(
+        "\
+## MIDI learn
+
+Any knob's parameter can also follow a CC of your choice: hold SAVE, turn the knob (EDIT held
+for the effect-slot layer), then send the CC ([controls.md](controls.md), MIDI learn, has
+the gesture, how to cancel and how to clear). What is learned:
+
+- **Which CCs:** 0..119, except {unlearnable}, which carry NRPN and RPN data entry and
+  selection; 120..127 are channel mode messages. A CC from either port (TRS or USB) and on
+  any channel: like the map, a learned CC is omni.
+- **Added, and it wins:** the parameter's own CC and NRPN still work. If the learned CC was
+  another parameter's, it now moves the learned parameter only; the other keeps its NRPN,
+  and gets its CC back when the binding is forgotten. CC 1 learned for a parameter no longer
+  moves the modulation wheel.
+- **One each way:** a parameter has at most one learned CC and a CC at most one parameter;
+  learning again moves the binding. So there are at most {params} bindings, one per
+  parameter.
+- **Values:** through the parameter's curve and range in the map below, as its own CC.
+- **Output:** a panel change to a learned parameter goes out on the learned CC, so a DAW
+  records what the controller sends and plays it back onto the same parameter. A parameter
+  whose own CC another parameter learned goes out as its NRPN. A learned CC from MIDI is
+  never echoed, as any other.
+- **Kept:** in RAM, across program changes and gaps in the input, until power-off; saving
+  them comes with M2's settings storage. An armed learn with no step for {timeout} s is
+  cancelled.
+
+",
+        unlearnable = list(&unlearnable()),
+        params = LIVE_PARAM_COUNT,
+        timeout = MIDI_LEARN_TIMEOUT_MS / 1000,
+    )
+}
+
 fn cc_text(r: &Row) -> String {
     if r.has_cc() {
         r.cc.to_string()
@@ -1227,6 +1278,7 @@ fn doc() -> String {
     let rows = rows();
     let mut s = String::from(HEADER);
     s.push_str(&intro());
+    s.push_str(&learn_section());
     s.push_str("## The map\n\nIn NRPN order.\n\n");
     s.push_str("| Group | Parameter | CC | NRPN (MSB/LSB) | Range | Curve | Default | Values |\n");
     s.push_str("|---|---|---|---|---|---|---|---|\n");
@@ -1287,6 +1339,26 @@ fn the_reference_is_up_to_date() {
         "{} is stale; rerun with SIDOU_MIDI_DOC_UPDATE=1",
         path.display()
     );
+}
+
+#[test]
+fn midi_learn_leaves_alone_exactly_the_ccs_the_nrpn_receiver_takes() {
+    assert_eq!(unlearnable(), [6, 38, 96, 97, 98, 99, 100, 101]);
+    // Each of them changes the receiver's state; a learnable one goes to live_cc.
+    for cc in 0..128u8 {
+        let mut m = Midi::new();
+        let before = m.rx.trs_map.ch[0];
+        m.trs(&[0xB0, cc, 5]);
+        let after = m.rx.trs_map.ch[0];
+        let selection = (
+            before.nrpn_msb != after.nrpn_msb || before.nrpn_lsb != after.nrpn_lsb,
+            before.rpn_msb != after.rpn_msb || before.rpn_lsb != after.rpn_lsb,
+        );
+        if unlearnable().contains(&u32::from(cc)) && ![6, 38, 96, 97].contains(&cc) {
+            assert!(selection.0 || selection.1, "CC {cc} selects nothing");
+        }
+    }
+    assert!(learn_section().contains("except 6, 38, 96, 97, 98, 99, 100 and 101"));
 }
 
 #[test]

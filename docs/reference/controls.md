@@ -22,7 +22,7 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
 1. **a capture:** a view waiting for one control (M1d's MIDI learn, the boot animation) sees
    everything first, HOME included, so HOME can cancel it; it ends when its view closes;
 2. **global:** HOME opens the menu from the status screen and goes back one view anywhere
-   else;
+   else; SAVE opens MIDI learn over any view;
 3. **the view on top:** the menu takes SELECT and ALGORITHM; the status screen, the glyph
    sheet and About take nothing;
 4. **the panel:** everything else plays the instrument as below, in every view.
@@ -46,10 +46,11 @@ SCL, ENV) is global until the CHIP view takes the slots over.
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last) |
 | **HOME (button 8)** | the menu, from the status screen; back one view from any other (the menu, the glyph sheet, About) |
+| **SAVE (button 9)** | MIDI learn (below): hold it and turn a knob, then send a CC |
 | **SELECT (encoder 0)**, in the menu | moves the blinking cursor up and down the items |
 | **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: CHIP (clockwise the 8580, counter-clockwise the 6581; turning on past either changes nothing), PRESET, OCTAVE; turned clockwise on CHARSET, opens the glyph sheet, on ABOUT the credits |
 
-The other buttons (LFO, GLO, SAVE, ARP, SEQ, PLAY, REC) and PRESETS (encoder 6) do
+The other buttons (LFO, GLO, ARP, SEQ, PLAY, REC) and PRESETS (encoder 6) do
 nothing yet; SELECT and ALGORITHM do nothing outside the menu.
 
 ## Presets
@@ -136,6 +137,52 @@ An algorithm CC picks the algorithm in order (above) by dividing 0..127 evenly
 among the slot's algorithms: for the FX slot's five, 0..25 OFF, 26..51 DELAY, 52..76
 PING-PONG, 77..102 REVERB, 103..127 LUSH. A control CC (0..127) is the control's whole
 range.
+
+## MIDI learn
+
+Any knob's parameter can follow a CC of your choice, from a controller on TRS or USB:
+
+1. **Hold SAVE** (button 9) **and turn a knob.** A frame, MIDI LEARN, opens over the screen
+   on the press and says TURN A KNOB; the knob turned names its parameter (CUTOFF
+   &larr; SEND A CC) and does not move it. The knob is the parameter it turns on the panel:
+   K1..K3 the cutoff, resonance and pulse width; with **EDIT held**, K1..K4 the selected
+   effect slot's Amount, A, B and Mix (SCL first to pick the slot; it works while the frame
+   shows). K4 alone is the preset, which has no CC (program changes select it). Letting go of
+   SAVE once the frame shows changes nothing: it keeps waiting.
+2. **Send the CC** (move the controller's knob). The frame closes with LEARNED CC 21 &rarr;
+   CUTOFF, the parameter jumps to the controller's value, and from then on follows it.
+
+While the frame shows, the note keys, OCT-/OCT+, FX, SCL, ENV and EDIT work as usual.
+
+- **Cancel:** HOME (it closes the frame and opens nothing), or 10 s without a step (each
+  step restarts the time). A cancelled learn changes nothing.
+- **Forget one:** SAVE, turn the knob, then SAVE again instead of sending a CC: the
+  parameter's learned CC is forgotten (CUTOFF: CC 21 FORGOTTEN), and its own CC is its own
+  again. The frame shows SAVE: FORGET CC 21 when there is one.
+- **Clear all:** SAVE, SAVE (CLEAR ALL MAPPINGS?), SAVE: MIDI LEARN CLEARED. HOME instead of
+  the third press keeps them.
+
+What learning means for MIDI in and out ([midi.md](midi.md), MIDI learn): a learned CC
+works on every channel and on both ports, like the map; the parameter's own CC keeps
+working; if the learned CC was another parameter's, it now moves the learned one only (the
+other keeps its NRPN); learning a parameter again moves it to the new CC, and a CC learned
+for another parameter moves to it. The panel's changes to a learned parameter go out over
+USB on the learned CC. Data entry and NRPN/RPN selection (6, 38, 96..101) and the channel
+mode messages (120..127) cannot be learned.
+
+The mappings are kept in RAM until power-off; saving them comes with M2's storage.
+
+**Why SAVE.** The holds in use are EDIT (the effect-slot layer while it is held), OCT- at
+power-on (the test-death builds) and HOME at power-on (the full boot); HOME's press is the
+menu's. Of the buttons that do nothing yet, the ones a player hits while playing are
+taken by the design for M2's performance features (REC, PLAY, SEQ and ARP for the
+sequencer, LFO and GLO for the sound); SAVE is about keeping what you set, which a
+mapping is, and M2 will store the mappings with the settings it saves. Hold SAVE and turn
+a knob is also a chord no other control uses: if M2 gives SAVE's plain press a job of its
+own, arming can move to the knob turn while SAVE is held, and the gesture stays the same.
+SAVE's id (9) follows the design's button order (FX SCL ENV LFO EDIT GLO HOME SAVE ...),
+which matches the ids known so far (FX 2, SCL 3, ENV 4, EDIT 6, HOME 8); the hardware
+checklist confirms it.
 
 ## Screen
 

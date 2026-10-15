@@ -104,3 +104,9 @@ All notable changes are documented here. The format follows
   gate edge and skips the ADSR delay, for the attack at a note-on and the
   release at a note-off. The live instrument turns it on by default: INSTANT.
   AUTHENTIC is the chip's timing.
+- MIDI learn: hold SAVE, turn a knob (EDIT held for the effect slots), send a
+  CC, and the knob's parameter follows that CC on every channel and both ports,
+  besides its own; HOME or 10 s cancel, SAVE instead of the CC forgets one,
+  SAVE three times clears all. A learned CC wins over the map's, panel changes
+  go out on it, and a learned CC from MIDI is never echoed. In RAM until M2's
+  storage; `docs/reference/midi.md` documents it from the code.

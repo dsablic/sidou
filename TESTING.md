@@ -403,7 +403,8 @@ panel (keys, encoders, the MASTER pot) and checks:
 it costs. It reaches each view through the panel, as a player would (HOME,
 SELECT, ALGORITHM):
 - **snapshots:** the status screen after boot, with a note held and with the
-  toast OCT+ shows, the menu, and the glyph sheet (every glyph, the palette
+  toast OCT+ shows, MIDI learn's frame asking for a knob and for a CC and its
+  LEARNED toast, the menu, and the glyph sheet (every glyph, the palette
   and a pixel overlay) match the golden images in `tests/golden/lcd/`, pixel
   for pixel, and every pixel is one of the 16 palette colours. The status
   screen's version cells and the menu's cursor cell are left out; the cursor
@@ -426,8 +427,10 @@ SELECT, ALGORITHM):
 The host tests cover the same machinery without the device:
 `tests/app/screen.rs` (the view stack, focus, routing, the capture, the
 toast, the cursor blink, and the wipe and raster frame by frame against the
-SPI budget), `widget.rs` (frames, numbers, bars, the menu) and `views.rs`
-(HOME and the menu, the panel playing as before in every view, the toasts).
+SPI budget), `widget.rs` (frames, numbers, bars, the menu), `views.rs`
+(HOME and the menu, the panel playing as before in every view, the toasts) and
+`learn_view.rs` (MIDI learn's frame, gesture, cancel, timeout and clearing);
+`midi_learn.rs` has learn's state machine and its bindings through MIDI in and out.
 
 **A failure means** the screen looks different or costs more. If you meant
 the change (a new glyph, a moved label), look at the
@@ -485,7 +488,12 @@ rendered chip's state, read from emulated RAM through the `chips` symbol:
 - floods of chip-model CCs, pitch bends and program changes neither stall the main
   loop nor lose input;
 - MIDI out: the panel's changes go out as USB-MIDI packets, MIDI input is not echoed,
-  and a tick of MIDI out costs little at its worst.
+  and a tick of MIDI out costs little at its worst, with every parameter learned too;
+- MIDI learn: SAVE held, K1 turned and CC 21 sent over TRS bind CC 21 to the cutoff
+  (`learned` and `instrument` read from RAM), which then follows CC 21 on any channel
+  while CC 74 still works; HOME cancels a second learn and SAVE three times clears; a
+  flood of the learned CC at the jack's full speed costs the main loop no more than a
+  flood of a map CC.
 
 ### Latency test
 

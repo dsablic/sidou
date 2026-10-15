@@ -184,6 +184,7 @@ which printed control did it.
 | ENV (button 4) | the selected slot's next algorithm (the name on the screen changes) | | [ ] |
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the screen); EDIT lit while the slot is on | | [ ] |
 | HOME (button 8) | from the status screen, the menu (a wipe down from the top); in the menu, back to the status screen (a wipe up from the bottom) | | [ ] |
+| SAVE (button 9) | a MIDI LEARN frame at the bottom of the screen, TURN A KNOB (section 7, MIDI learn); HOME closes it | | [ ] |
 | SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, PRESET, OCTAVE, CHARSET and ABOUT | | [ ] |
 | ALGORITHM (encoder 1), in the menu | changes the item under the cursor (CHIP: clockwise 8580, counter-clockwise 6581, and a further turn the same way changes nothing; PRESET; OCTAVE -3..+3); clockwise on CHARSET opens the glyph sheet, on ABOUT the credits (raster bars, the logo, the credits pages fading, stars, a sine scroller), and HOME goes back to the menu | | [ ] |
 
@@ -231,6 +232,29 @@ record the one that works.
   ([controls.md](reference/controls.md)); CC 116 = 0 back to dry.
 - [ ] A dense part from a sequencer (running status, clock on) plays without
   hanging notes. Latency feels:
+
+**MIDI learn (M1d)** ([controls.md](reference/controls.md), MIDI learn), with a controller
+that sends a CC the map leaves free (e.g. CC 21) on the TRS jack:
+
+- [ ] Hold SAVE: the MIDI LEARN frame says TURN A KNOB. Turn K1: CUTOFF &larr; SEND A CC,
+  and the cutoff does not move. Let SAVE go and move the controller's knob: LEARNED CC 21
+  &rarr; CUTOFF, the frame closes, and the controller's knob now sweeps the cutoff (the
+  bar and the sound) on any channel. CC 74 still moves it too.
+- [ ] The same over USB from a DAW, and the other way: learn K2 from USB, then move it
+  from a TRS controller on CC 21's neighbour: both ports drive what either learned.
+- [ ] EDIT held + K4 while learning, then a CC: the selected slot's Mix follows it
+  (LEARNED CC n &rarr; DIST MIX; SCL first for MOD or FX).
+- [ ] Learn the resonance on CC 74: CC 74 now moves the resonance, not the cutoff (the
+  cutoff's NRPN 0/0 still does).
+- [ ] With a DAW monitoring SIDOU's USB output, turn K1 after learning CC 21 for it: the
+  monitor shows CC 21, not CC 74. Moving the controller's knob sends nothing back.
+- [ ] HOME while the frame shows: LEARN CANCELLED, no menu, nothing learned. Leave the
+  frame alone for 10 s: LEARN TIMED OUT.
+- [ ] SAVE, K1, SAVE: CUTOFF: CC 21 FORGOTTEN, and CC 21 does nothing. SAVE, SAVE, SAVE:
+  MIDI LEARN CLEARED.
+- [ ] The note keys play while the frame shows, and the sound has no gap when it opens or
+  closes.
+- [ ] Power off and on: nothing is learned any more (RAM only until M2).
 
 Notes:
 

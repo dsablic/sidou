@@ -148,6 +148,31 @@ jack, which is MIDI IN only.
   slots or a bend range set by RPN 0) that the panel also changes in the same tick as the
   preset counts as loaded by it and is not sent.
 
+## MIDI learn
+
+Any knob's parameter can also follow a CC of your choice: hold SAVE, turn the knob (EDIT held
+for the effect-slot layer), then send the CC ([controls.md](controls.md), MIDI learn, has
+the gesture, how to cancel and how to clear). What is learned:
+
+- **Which CCs:** 0..119, except 6, 38, 96, 97, 98, 99, 100 and 101, which carry NRPN and RPN data entry and
+  selection; 120..127 are channel mode messages. A CC from either port (TRS or USB) and on
+  any channel: like the map, a learned CC is omni.
+- **Added, and it wins:** the parameter's own CC and NRPN still work. If the learned CC was
+  another parameter's, it now moves the learned parameter only; the other keeps its NRPN,
+  and gets its CC back when the binding is forgotten. CC 1 learned for a parameter no longer
+  moves the modulation wheel.
+- **One each way:** a parameter has at most one learned CC and a CC at most one parameter;
+  learning again moves the binding. So there are at most 37 bindings, one per
+  parameter.
+- **Values:** through the parameter's curve and range in the map below, as its own CC.
+- **Output:** a panel change to a learned parameter goes out on the learned CC, so a DAW
+  records what the controller sends and plays it back onto the same parameter. A parameter
+  whose own CC another parameter learned goes out as its NRPN. A learned CC from MIDI is
+  never echoed, as any other.
+- **Kept:** in RAM, across program changes and gaps in the input, until power-off; saving
+  them comes with M2's settings storage. An armed learn with no step for 10 s is
+  cancelled.
+
 ## The map
 
 In NRPN order.
