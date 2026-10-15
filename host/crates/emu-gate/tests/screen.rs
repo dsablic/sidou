@@ -275,6 +275,36 @@ fn the_menu_matches_its_golden_image_and_its_cursor_blinks() {
     );
 }
 
+/// app/panel.h PANEL_BTN_SAVE and K1.
+const SAVE: u8 = 9;
+const K1: u8 = 2;
+
+/// MIDI learn's frame (app/learn_view.h) over the status screen as it asks for a knob, then
+/// for a CC, and the toast once CC 21 came over TRS.
+#[test]
+fn midi_learn_prompts_match_their_golden_images() {
+    let Some((build, fw)) = fixture("the screen test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    m.key(SAVE, true);
+    settle(&mut m, &fw);
+    compare_golden(&build, "learn-knob", &m.soc.lcd.fb, &[VERSION_CELLS]);
+    m.turn(K1, 1);
+    settle(&mut m, &fw);
+    compare_golden(&build, "learn-cc", &m.soc.lcd.fb, &[VERSION_CELLS]);
+    m.key(SAVE, false);
+    m.midi(&[0xB0, 21, 64]);
+    m.run_ms(200);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "learn-learned", &m.soc.lcd.fb, &[VERSION_CELLS]);
+    assert_eq!(
+        common::top_view(&mut m, &fw),
+        fw.symbol("views_status"),
+        "the frame did not close"
+    );
+}
+
 #[test]
 fn the_glyph_sheet_opens_from_the_menu_and_home_goes_back() {
     let Some((build, fw)) = fixture("the screen test") else {

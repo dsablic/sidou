@@ -11,12 +11,13 @@
  * - CHARSET: the font and the palette, the art reference.
  * - ABOUT: the credits, as a cracktro (app/about.h).
  * - BOOT: the boot sequence (app/boot.h), over STATUS at power-on (views_boot).
+ * - LEARN: MIDI learn (app/learn_view.h), a frame over any view, from SAVE (views_learn).
  *
  * Routing, for each button press and encoder turn:
  * 1. the capture (screen_capture), if a view set one: it sees HOME too, so it can take HOME
  *    as "cancel";
  * 2. global (screen_global): HOME opens the menu on the root view, and goes back one view
- *    anywhere else;
+ *    anywhere else; SAVE opens LEARN over any view;
  * 3. the view on top;
  * 4. the panel (app/panel.h): what nobody consumed plays the instrument as in M1a and M1c,
  *    in every view: OCT-/OCT+, FX, K1..K4, and the effect slots' EDIT layer (EDIT held + K1..K4,
@@ -41,6 +42,7 @@
 #include "about.h"
 #include "boot.h"
 #include "grid.h"
+#include "learn_view.h"
 #include "live.h"
 #include "panel.h"
 #include "screen.h"
@@ -78,6 +80,7 @@ typedef struct {
     uint8_t drawn[VIEWS_LOOK];
     boot boot;
     about about;
+    learn_view learn;
 } views;
 
 extern const view views_status;
@@ -89,13 +92,16 @@ void views_init(views* v, grid* g, live* l, const char* version);
 /* The boot sequence over it from the next frame on: the full one if HOME was held at
  * power-on (home_held), whose first HOME press edge is then part of the hold (app/boot.h). */
 void views_boot(views* v, int home_held);
+/* SAVE arms MIDI learn over ml's bindings from now on (app/learn_view.h); NULL: SAVE does
+ * nothing (views_init's default). */
+void views_learn(views* v, midi_learn* ml);
 /* Button press edges and the held buttons, as panel_buttons takes them: routed as above, and
  * what nobody consumed goes on to panel_buttons. */
 void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held);
 /* Detent steps of encoder enc, as panel_encoder takes them. */
 void views_encoder(views* v, panel* p, uint32_t enc, int32_t steps);
-/* One frame: the boot's progress, the toasts and raster of what changed, then
- * screen_frame. */
+/* One frame: the boot's progress, the toasts and raster of what changed, MIDI learn's end
+ * (learn_view_frame), then screen_frame. */
 void views_frame(views* v, uint32_t now_ms);
 /* The update protocol's progress (Felucca's ota_show steps: 1 package, 2 head, 3 loader,
  * 4 confirm, 5 restart; 9 the result, code 1 a dry run, < 0 a failure) in a frame over the

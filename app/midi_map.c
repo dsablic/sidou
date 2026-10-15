@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 #include "fx/fx_slots.h"
+#include "midi_learn.h"
 
 #define CC_DATA_MSB 6u
 #define CC_DATA_LSB 38u
@@ -202,6 +203,7 @@ static void deselect(midi_map_channel* c) {
 
 void midi_map_port_init(midi_map_port* p, live* l) {
     p->l = l;
+    p->learn = NULL;
     for (uint32_t i = 0; i < 16u; ++i) {
         deselect(&p->ch[i]);
     }
@@ -303,6 +305,15 @@ void midi_map_cc(midi_map_port* p, uint8_t channel, uint8_t cc, uint8_t value) {
         deselect(c);
         live_cc(p->l, cc, value); /* the controllers */
         break;
-    default: live_cc(p->l, cc, value); break;
+    default: {
+        /* A learned CC wins over the map's (midi_learn.h), CC 1's wheel included. */
+        const midi_map_entry* e = p->learn ? midi_learn_route(p->learn, cc) : NULL;
+        if (e) {
+            live_param_set(p->l, e->param, midi_map_from_cc(e, value));
+        } else {
+            live_cc(p->l, cc, value);
+        }
+        break;
+    }
     }
 }

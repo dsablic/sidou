@@ -36,6 +36,11 @@
  * midi_map_cc applies at full resolution and, for a small parameter, at the LSB. No null NRPN
  * follows.
  *
+ * MIDI learn (midi_learn.h, midi_out_learn): a parameter bound to a CC goes out on that CC,
+ * whatever the above says (the CC the player's controller sends is the one a DAW should
+ * record, and it plays back onto the same parameter); and a parameter whose own CC another
+ * parameter learned goes as its NRPN, so what it sends never lands on the other one.
+ *
  * Packets (midi_usb.h): the 32-bit word read little-endian, CIN in bits 0..3, cable
  * MIDI_OUT_CABLE in bits 4..7, the status and data bytes above.
  *
@@ -46,6 +51,7 @@
 #include <stdint.h>
 
 #include "live.h"
+#include "midi_learn.h"
 #include "midi_map.h"
 
 #ifdef __cplusplus
@@ -72,11 +78,14 @@ typedef struct {
     uint32_t packets;       /* packets written */
     uint32_t deferred;      /* ticks that left something pending for lack of room or budget */
     uint32_t dropped;       /* pending changes midi_out_drop forgot */
+    const midi_learn* learn; /* MIDI learn's bindings (midi_out_learn), or NULL */
 } midi_out;
 
 /* Nothing pending: the instrument's state now is what the other side is taken to have.
- * channel 0..15 (masked), hires 0 or 1. */
+ * channel 0..15 (masked), hires 0 or 1. No MIDI learn. */
 void midi_out_init(midi_out* o, const live* l, uint8_t channel, uint8_t hires);
+/* Sends by MIDI learn's bindings from now on ("MIDI learn" above); NULL: the map's alone. */
+void midi_out_learn(midi_out* o, const midi_learn* learn);
 /* The changes since the last look are the panel's: pending. */
 void midi_out_local(midi_out* o, const live* l);
 /* The changes since the last look came from MIDI input: never echoed. */

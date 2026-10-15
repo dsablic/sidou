@@ -53,13 +53,34 @@ void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held) {
     }
 }
 
+uint32_t panel_knob_param(const live* l, uint32_t held, uint32_t enc) {
+    static const uint8_t KNOBS[] = {LIVE_PARAM_CUTOFF, LIVE_PARAM_RESONANCE,
+                                    LIVE_PARAM_PULSE_WIDTH, LIVE_PARAM_COUNT};
+    if (enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4) {
+        return LIVE_PARAM_COUNT;
+    }
+    if (held & (1u << PANEL_BTN_EDIT)) {
+        /* K1..K4: Amount, A, B, Mix */
+        return LIVE_PARAM_SLOT + (l->fx_select % LIVE_SLOTS) * LIVE_SLOT_FIELDS +
+               LIVE_SLOT_AMOUNT + (enc - PANEL_ENC_K1);
+    }
+    return KNOBS[enc - PANEL_ENC_K1];
+}
+
+/* live_knob's knobs are K1..K4 in order: the cutoff, resonance and pulse width that
+ * panel_knob_param names, then the preset. */
+_Static_assert(LIVE_KNOB_CUTOFF == 0 && LIVE_KNOB_RESONANCE == 1 && LIVE_KNOB_PULSE_WIDTH == 2 &&
+                   LIVE_KNOB_PRESET == 3 && PANEL_ENC_K4 - PANEL_ENC_K1 == 3,
+               "K1..K4 are live_knob's knobs");
+
 void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps) {
     if (steps == 0 || enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4) {
         return;
     }
-    if (p->held & (1u << PANEL_BTN_EDIT)) {
-        /* K1..K4: Amount, A, B, Mix */
-        live_slot_turn(l, l->fx_select, LIVE_SLOT_AMOUNT + (enc - PANEL_ENC_K1), steps);
+    uint32_t param = panel_knob_param(l, p->held, enc);
+    if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {
+        uint32_t i = param - LIVE_PARAM_SLOT;
+        live_slot_turn(l, i / LIVE_SLOT_FIELDS, i % LIVE_SLOT_FIELDS, steps);
     } else {
         live_knob(l, (live_knob_id)(enc - PANEL_ENC_K1), steps);
     }

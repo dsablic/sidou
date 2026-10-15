@@ -38,6 +38,8 @@ extern "C" {
 #define PANEL_BTN_EDIT 6u
 /* The views (app/views.h): opens the menu, and goes back. */
 #define PANEL_BTN_HOME 8u
+/* MIDI learn (app/learn_view.h, docs/reference/controls.md): arms it, and clears. */
+#define PANEL_BTN_SAVE 9u
 /* The LED id of note key k is PANEL_KEY_ID0 + k; buttons are their own ids. */
 #define PANEL_KEY_ID0 14u
 
@@ -74,8 +76,14 @@ void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed);
 /* Button press edges: OCT-, OCT+, FX (the 6581/8580 toggle), SCL and ENV (the effect slots);
  * held: the debounced buttons, which says whether EDIT is held for panel_encoder. */
 void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held);
+/* The parameter encoder enc turns with the buttons held (bit i: button i): K1..K3 the
+ * cutoff, resonance and pulse width; with EDIT held, K1..K4 the selected slot's Amount, A, B
+ * and Mix; LIVE_PARAM_COUNT for K4 without EDIT (the preset, which is no parameter) and every
+ * other encoder. panel_encoder turns what this names, and MIDI learn picks the knob's
+ * parameter here, so the two cannot disagree. */
+uint32_t panel_knob_param(const live* l, uint32_t held, uint32_t enc);
 /* Detent steps of encoder enc (+ = clockwise): K1..K4 turn live's knobs, or with EDIT held
- * the selected slot's Amount, A, B and Mix. */
+ * the selected slot's Amount, A, B and Mix (panel_knob_param). */
 void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps);
 /* A MASTER pot reading, 0..1023 (a negative reading, an ADC timeout, is ignored). */
 void panel_master(panel* p, live* l, int32_t raw);

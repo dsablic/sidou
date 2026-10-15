@@ -33,15 +33,25 @@ static uint32_t packet(uint32_t cin, uint32_t status, uint32_t d1, uint32_t d2) 
     return MIDI_OUT_CABLE << 4 | cin | status << 8 | d1 << 16 | d2 << 24;
 }
 
-/* 1: the parameter goes as its NRPN (midi_out.h, "Encoding"). */
-static int as_nrpn(const midi_out* o, const live* l, const midi_map_entry* e) {
+/* The CC parameter p goes out on, or MIDI_MAP_NO_CC for its NRPN (midi_out.h, "Encoding" and
+ * "MIDI learn"). */
+static uint32_t wire_cc(const midi_out* o, const live* l, uint32_t p, const midi_map_entry* e) {
+    if (o->learn) { /* the bytes directly: this runs for every parameter in a tick */
+        uint8_t learned = o->learn->param_cc[p];
+        if (learned != MIDI_MAP_NO_CC) {
+            return learned;
+        }
+        if (e->cc < 128u && o->learn->cc_row[e->cc] != MIDI_LEARN_NONE) {
+            return MIDI_MAP_NO_CC; /* another parameter learned its CC */
+        }
+    }
     if (e->cc == MIDI_MAP_NO_CC) {
-        return 1;
+        return MIDI_MAP_NO_CC;
     }
     if (e->cc == LIVE_CC_MOD_WHEEL && l->mod_target != LIVE_MOD_PULSE_WIDTH) {
-        return 1; /* CC 1 moves the wheel, not the pulse width */
+        return MIDI_MAP_NO_CC; /* CC 1 moves the wheel, not the pulse width */
     }
-    return o->hires && e->max > 127u;
+    return o->hires && e->max > 127u ? MIDI_MAP_NO_CC : e->cc;
 }
 
 static void resync(midi_out* o, const live* l) {
@@ -97,6 +107,11 @@ void midi_out_init(midi_out* o, const live* l, uint8_t channel, uint8_t hires) {
     o->packets = 0;
     o->deferred = 0;
     o->dropped = 0;
+    o->learn = 0;
+}
+
+void midi_out_learn(midi_out* o, const midi_learn* learn) {
+    o->learn = learn;
 }
 
 void midi_out_local(midi_out* o, const live* l) {
@@ -113,7 +128,12 @@ static int send(midi_out* o, const live* l, uint32_t p, uint32_t budget, uint32_
                 uint32_t* n) {
     const midi_map_entry* e = o->row[p]; /* midi_map_for_param searches the table */
     uint32_t v = o->seen[p]; /* the latest: look just ran */
-    int nrpn = e && as_nrpn(o, l, e);
+    if (v == o->wire[p]) {
+        o->pending[p] = 0; /* back where it was: nothing new however it would go */
+        return 1;
+    }
+    uint32_t on = e ? wire_cc(o, l, p, e) : MIDI_MAP_NO_CC;
+    int nrpn = on == MIDI_MAP_NO_CC;
     if (!e || (nrpn && e->nrpn == MIDI_MAP_NO_NRPN) ||
         (nrpn ? v == o->wire[p] : midi_map_to_cc(e, v) == midi_map_to_cc(e, o->wire[p]))) {
         o->pending[p] = 0; /* nothing to send it as, or nothing new on the wire */
@@ -129,7 +149,7 @@ static int send(midi_out* o, const live* l, uint32_t p, uint32_t budget, uint32_
         out[(*n)++] = packet(CIN_CC, cc, CC_DATA_MSB, v >> 7);
         out[(*n)++] = packet(CIN_CC, cc, CC_DATA_LSB, v & 0x7fu);
     } else {
-        out[(*n)++] = packet(CIN_CC, cc, e->cc, midi_map_to_cc(e, v));
+        out[(*n)++] = packet(CIN_CC, cc, on, midi_map_to_cc(e, v));
     }
     o->wire[p] = (uint16_t)v;
     o->pending[p] = 0;

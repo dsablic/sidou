@@ -342,9 +342,12 @@ static void remember(views* v) {
     }
 }
 
-/* HOME: the menu from the root view, back one view from any other. */
+/* HOME: the menu from the root view, back one view from any other. SAVE: MIDI learn. */
 static int global(void* ctx, const screen_event* e) {
     views* v = ctx;
+    if (e->kind == SCREEN_PRESS && e->id == LEARN_VIEW_BUTTON) {
+        return learn_view_open(&v->learn, &v->s) == 0;
+    }
     if (e->kind != SCREEN_PRESS || e->id != PANEL_BTN_HOME) {
         return 0;
     }
@@ -359,8 +362,13 @@ void views_init(views* v, grid* g, live* l, const char* version) {
     v->version = version;
     menu_init(&v->home, MENU_ITEMS, VIEWS_MENU_ITEMS, VIEWS_MENU_ITEMS, v);
     remember(v);
+    learn_view_init(&v->learn, l, NULL);
     screen_init(&v->s, g, &views_status, v);
     screen_global(&v->s, global, v);
+}
+
+void views_learn(views* v, midi_learn* ml) {
+    learn_view_init(&v->learn, v->l, ml);
 }
 
 void views_boot(views* v, int home_held) {
@@ -452,6 +460,7 @@ void views_frame(views* v, uint32_t now_ms) {
     } else {
         tell(v);
     }
+    learn_view_frame(&v->learn, &v->s, now_ms);
     screen_frame(&v->s, now_ms);
 }
 

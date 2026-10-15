@@ -65,8 +65,8 @@ typedef struct {
 
 #define MIDI_MAP_ROWS 42u
 
-/* Row i in table order, or NULL past the last. midi_map_row has no caller on the device;
- * --gc-sections drops it there. */
+/* Row i in table order, or NULL past the last (MIDI learn keeps its bindings as row indexes,
+ * midi_learn.h). */
 const midi_map_entry* midi_map_row(uint32_t i);
 /* The row of a parameter, a CC or an NRPN (reserved rows included), or NULL. */
 const midi_map_entry* midi_map_for_param(uint32_t param);
@@ -90,17 +90,23 @@ typedef struct {
 
 #define MIDI_MAP_NO_DATA 0xffu
 
+struct midi_learn; /* midi_learn.h */
+
 /* One input's CCs onto a live instrument. */
 typedef struct {
     live* l;
     midi_map_channel ch[16];
+    /* The bindings MIDI learn made (midi_learn.h), shared by the inputs, or NULL: none. */
+    struct midi_learn* learn;
 } midi_map_port;
 
-/* Nothing selected on any channel. */
+/* Nothing selected on any channel; no learn. */
 void midi_map_port_init(midi_map_port* p, live* l);
 /* A CC on a channel (0..15): selection, data entry, increment and decrement by the channel's
  * state (RPN 0 the bend range, other RPNs nothing), CC 121 (reset all controllers) deselects
- * and resets live's controllers, everything else through live_cc. */
+ * and resets live's controllers; everything else through MIDI learn first
+ * (midi_learn_route: a CC bound to a parameter sets it through the parameter's row, and a
+ * parameter waiting to be learned takes the CC), then live_cc. */
 void midi_map_cc(midi_map_port* p, uint8_t channel, uint8_t cc, uint8_t value);
 
 #ifdef __cplusplus

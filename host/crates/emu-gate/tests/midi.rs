@@ -822,8 +822,8 @@ fn a_tick_of_midi_out_costs_little_at_worst() {
     m.run_ms(50);
     m.watch_calls(fw.symbol("midi_send"));
     let idle = worst_send(&mut m, &fw, |_, _, _| {});
-    // Every parameter pending with nothing new on the wire: each is looked up, encoded and
-    // dropped in the one tick.
+    // Every parameter pending with nothing new on the wire: each is dropped in the one tick
+    // (back at its value on the wire, before it is looked up or encoded).
     let pending = |m: &mut Machine, base: u32, p: u32| {
         m.soc.write8(base + ilp32::midi_out::pending as u32 + p, 1);
     };
@@ -837,11 +837,33 @@ fn a_tick_of_midi_out_costs_little_at_worst() {
         m.soc
             .write16(base + ilp32::midi_out::wire as u32 + 2 * p, wire);
     });
+    // The same with every parameter bound by MIDI learn (platform/fm1/midi.c `learned`) to a
+    // CC: 0..37 are all learnable but 6, so CC p below 6 and p + 1 from there.
+    let learned = fw.symbol("learned");
+    for p in 0..sidou_sys::LIVE_PARAM_COUNT {
+        let cc = if p < 6 { p } else { p + 1 };
+        m.soc
+            .write8(learned + ilp32::midi_learn::param_cc as u32 + p, cc as u8);
+        let row = unsafe { sidou_sys::midi_map_for_param(p) };
+        let index = (row as usize - unsafe { sidou_sys::midi_map_row(0) } as usize)
+            / size_of::<sidou_sys::midi_map_entry>();
+        m.soc
+            .write8(learned + ilp32::midi_learn::cc_row as u32 + cc, index as u8);
+    }
+    let changed_learned = worst_send(&mut m, &fw, |m, base, p| {
+        pending(m, base, p);
+        let seen = m.soc.read16(base + ilp32::midi_out::seen as u32 + 2 * p);
+        let max = unsafe { sidou_sys::live_param_max(p) } as u16;
+        let wire = if seen == 0 { max } else { 0 };
+        m.soc
+            .write16(base + ilp32::midi_out::wire as u32 + 2 * p, wire);
+    });
     let (packets, _, _) = out_counters(&mut m, &fw);
     let report = serde_json::json!({
         "midi_send_instructions_idle": idle,
         "midi_send_instructions_all_deduplicated": deduplicated,
         "midi_send_instructions_all_changed": changed,
+        "midi_send_instructions_all_changed_and_learned": changed_learned,
         "packets": packets,
     });
     println!("{report}");
@@ -849,12 +871,13 @@ fn a_tick_of_midi_out_costs_little_at_worst() {
         packets >= sidou_sys::MIDI_OUT_TICK_PACKETS,
         "{packets} packets"
     );
-    // 1.1k idle (the look at 36 parameters); at worst 3.1k, every parameter within one CC
-    // step of the value on the wire (7.1k before the rows were cached).
+    // 1.2k idle (the look at 37 parameters); 2.1k with every parameter back at its value on
+    // the wire; at worst 2.9k, every parameter changed, and as much with each bound by MIDI
+    // learn (7.1k before the rows were cached).
     assert!(
-        idle < 1_300 && deduplicated < 3_500 && changed < 3_500,
+        idle < 1_300 && deduplicated < 3_500 && changed < 3_500 && changed_learned < 3_500,
         "a tick of MIDI out: {idle} instructions idle, {deduplicated} with every parameter \
-         deduplicated, {changed} with every parameter changed"
+         deduplicated, {changed} with every parameter changed, {changed_learned} also learned"
     );
 }
 
@@ -935,5 +958,197 @@ fn a_usb_cc_burst_costs_one_look_a_drain_pass() {
         main_flood < 12e6,
         "the main loop runs {:.2}M/s with 16k CCs a second over USB",
         main_flood / 1e6
+    );
+}
+
+// --- MIDI learn ---
+
+/// app/panel.h PANEL_BTN_SAVE: arms MIDI learn (docs/reference/controls.md).
+const SAVE: u8 = 9;
+const HOME: u8 = 8;
+/// A CC the map leaves free (docs/reference/midi.md).
+const CC_FREE: u8 = 21;
+
+/// platform/fm1/main.c `instrument`, a `live`, at the device's layout.
+fn live_cutoff(m: &mut Machine, fw: &Firmware) -> u32 {
+    u32::from(
+        m.soc
+            .read16(fw.symbol("instrument") + ilp32::live::cutoff as u32),
+    )
+}
+
+/// platform/fm1/midi.c `learned`: the state and CC 21's bound row.
+fn learned(m: &mut Machine, fw: &Firmware) -> (u8, u8, u8) {
+    let base = fw.symbol("learned");
+    (
+        m.soc.read8(base + ilp32::midi_learn::state as u32),
+        m.soc.read8(base + ilp32::midi_learn::count as u32),
+        m.soc
+            .read8(base + ilp32::midi_learn::cc_row as u32 + u32::from(CC_FREE)),
+    )
+}
+
+/// Hold SAVE, turn K1, let SAVE go, send CC 21 over TRS: CC 21 drives the cutoff from then
+/// on, on any channel, through the map's linear curve, and the map's CC 74 still does too.
+/// HOME then cancels a second learn and SAVE three times clears the binding.
+#[test]
+fn midi_learn_over_trs_binds_cc_21_to_k1s_cutoff() {
+    let Some(fw) = fixture("the MIDI learn test") else {
+        return;
+    };
+    let mut m = booted_for_the_panel(&fw);
+    let status = fw.symbol("views_status");
+    let learn = fw.symbol("learn_view_view");
+    let cutoff_row = unsafe { sidou_sys::midi_map_for_param(sidou_sys::LIVE_PARAM_CUTOFF) };
+    let row_index = (cutoff_row as usize - unsafe { sidou_sys::midi_map_row(0) } as usize)
+        / size_of::<sidou_sys::midi_map_entry>();
+    let from_cc = |v: u8| unsafe { sidou_sys::midi_map_from_cc(cutoff_row, v) };
+
+    // Hold SAVE and turn K1.
+    m.key(SAVE, true);
+    m.run_ms(50);
+    assert_eq!(
+        common::top_view(&mut m, &fw),
+        learn,
+        "SAVE did not open learn"
+    );
+    m.turn(K1, 2);
+    m.run_ms(50);
+    m.key(SAVE, false);
+    m.run_ms(50);
+    assert_eq!(
+        live_cutoff(&mut m, &fw),
+        SAW_LEAD_CUTOFF,
+        "K1 picks the cutoff, it does not turn it"
+    );
+    assert_eq!(
+        learned(&mut m, &fw),
+        (
+            sidou_sys::MIDI_LEARN_CC as u8,
+            0,
+            sidou_sys::MIDI_LEARN_NONE as u8
+        )
+    );
+    // CC 21 over TRS binds it, and its value sets the cutoff.
+    m.midi(&[0xB0, CC_FREE, 32]);
+    m.run_ms(100);
+    let after = learned(&mut m, &fw);
+    let top = common::top_view(&mut m, &fw);
+    let mut follow = Vec::new();
+    for (ch, v) in [(0u8, 0u8), (5, 127), (15, 64), (9, 1)] {
+        m.midi(&[0xB0 | ch, CC_FREE, v]);
+        m.run_ms(20);
+        follow.push((v, live_cutoff(&mut m, &fw), cutoff(&mut m, &fw)));
+    }
+    m.midi(&[0xB0, CC_CUTOFF, 100]);
+    m.run_ms(20);
+    let map_cc = cutoff(&mut m, &fw);
+    println!("learned {after:?}; CC 21 (value, live, chip): {follow:?}; CC 74 = 100: {map_cc}");
+    assert_eq!(
+        after,
+        (sidou_sys::MIDI_LEARN_IDLE as u8, 1, row_index as u8),
+        "CC 21 is not bound to the cutoff's row"
+    );
+    assert_eq!(top, status, "the learn frame did not close");
+    for (v, l, chip) in follow {
+        assert_eq!((l, chip), (from_cc(v), from_cc(v)), "CC 21 = {v}");
+    }
+    assert_eq!(map_cc, from_cc(100), "the map's CC 74 stopped working");
+
+    // A second learn, cancelled by HOME: nothing changes, HOME does not open the menu.
+    press(&mut m, SAVE);
+    m.turn(K1, 1);
+    m.run_ms(50);
+    press(&mut m, HOME);
+    m.run_ms(50);
+    assert_eq!(common::top_view(&mut m, &fw), status);
+    m.midi(&[0xB0, 22, 127]);
+    m.run_ms(20);
+    assert_eq!(learned(&mut m, &fw).1, 1, "a cancelled learn bound CC 22");
+    // SAVE three times clears: CC 21 does nothing again.
+    for _ in 0..3 {
+        press(&mut m, SAVE);
+    }
+    m.run_ms(50);
+    let cleared = learned(&mut m, &fw);
+    m.midi(&[0xB0, CC_FREE, 0]);
+    m.run_ms(20);
+    assert_eq!(
+        cleared,
+        (
+            sidou_sys::MIDI_LEARN_IDLE as u8,
+            0,
+            sidou_sys::MIDI_LEARN_NONE as u8
+        )
+    );
+    assert_eq!(
+        cutoff(&mut m, &fw),
+        from_cc(100),
+        "a cleared CC 21 still sets the cutoff"
+    );
+    assert_eq!(common::top_view(&mut m, &fw), status);
+}
+
+/// A learned CC costs a lookup: a flood of it at full TRS speed costs the main loop what a
+/// flood of a map CC does, with MIDI out watching (no echo). The absolute bound is
+/// `midi_out_costs_little_and_waits_for_no_one`'s, whose map-CC flood also goes through
+/// learn's lookup now; this one feeds the jack as it takes the bytes, so the flood lasts the
+/// whole 2 s (fm1-emu drops a backlog past one second).
+#[test]
+fn a_learned_cc_flood_costs_what_a_map_cc_flood_does() {
+    let Some(fw) = fixture("the MIDI learn test") else {
+        return;
+    };
+    let mut m = booted_for_the_panel(&fw);
+    attach_host(&mut m, &fw);
+    press(&mut m, SAVE);
+    m.turn(K1, 1);
+    m.run_ms(50);
+    m.midi(&[0xB0, CC_FREE, 0]);
+    m.run_ms(1500); // past a USB retry
+                    // 10 CCs every 10 ms for 2 s, fed as the jack takes them (fm1-emu holds at most a
+                    // second's backlog): 1000 CCs a second, 96% of the jack's speed.
+    let flood = |m: &mut Machine, cc: u8| {
+        let main = m.main_steps;
+        for t in 0..200u32 {
+            let mut s = vec![0xB0];
+            for i in 0..10 {
+                s.extend([cc, ((t * 10 + i) % 128) as u8]);
+            }
+            m.midi(&s);
+            m.run_ms(10);
+        }
+        m.run_ms(20); // the last bytes through the UART and the ring
+        (m.main_steps - main) as f64 / 2.02
+    };
+    let main_map = flood(&mut m, CC_CUTOFF);
+    let main_learned = flood(&mut m, CC_FREE);
+    let s = stats(&mut m, &fw);
+    let (echoed, _) = queued(&mut m, &fw, 0);
+    let report = serde_json::json!({
+        "main_instructions_per_s_trs_cc_flood_map": main_map,
+        "main_instructions_per_s_trs_cc_flood_learned": main_learned,
+    });
+    println!("{report}; {s:?}");
+    assert_eq!(
+        m.soc.periph.midi_queued(),
+        0,
+        "the jack has not delivered all"
+    );
+    assert_eq!(m.soc.periph.midi_dropped(), 0, "the jack dropped bytes");
+    assert_eq!((s.lost, s.restarts), (0, 0));
+    assert_eq!(learned(&mut m, &fw).1, 1);
+    assert_eq!(cutoff(&mut m, &fw), unsafe {
+        sidou_sys::midi_map_from_cc(
+            sidou_sys::midi_map_for_param(sidou_sys::LIVE_PARAM_CUTOFF),
+            (1999 % 128) as u8,
+        )
+    });
+    assert!(echoed.is_empty(), "MIDI in echoed: {echoed:08x?}");
+    assert!(
+        main_learned < main_map * 1.01,
+        "the main loop runs {:.3}M/s in a map CC flood, {:.3}M/s in a learned CC flood",
+        main_map / 1e6,
+        main_learned / 1e6
     );
 }

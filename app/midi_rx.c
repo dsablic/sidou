@@ -24,9 +24,10 @@ void midi_rx_live(midi_map_port* port, const midi_msg* msg) {
 
 /* 0: the message cannot change a parameter (live_param_get), so MIDI out need not look
  * around it: the NRPN and RPN selection, the notes off, the controllers' reset (bend, wheel,
- * pressure) and the wheel on a target other than the pulse width. Data entry (6, 38, 96, 97)
- * can. */
-static int edits(const live* l, const midi_msg* msg) {
+ * pressure) and the wheel on a target other than the pulse width, unless MIDI learn takes
+ * CC 1 (bound, or binding now). Data entry (6, 38, 96, 97) can. */
+static int edits(const midi_rx* rx, const midi_msg* msg) {
+    const live* l = rx->l;
     if (msg->kind == MIDI_PROGRAM) {
         return msg->data1 < LIVE_PRESET_COUNT;
     }
@@ -41,7 +42,9 @@ static int edits(const live* l, const midi_msg* msg) {
     case LIVE_CC_ALL_SOUND_OFF:
     case LIVE_CC_RESET_ALL:
     case LIVE_CC_ALL_NOTES_OFF: return 0;
-    case LIVE_CC_MOD_WHEEL: return l->mod_target == LIVE_MOD_PULSE_WIDTH;
+    case LIVE_CC_MOD_WHEEL:
+        return l->mod_target == LIVE_MOD_PULSE_WIDTH ||
+               (rx->learn && midi_learn_takes(rx->learn, LIVE_CC_MOD_WHEEL));
     default: return 1;
     }
 }
@@ -50,7 +53,7 @@ static int edits(const live* l, const midi_msg* msg) {
  * pass, MIDI out takes what changed until then as the panel's; midi_rx_settle takes the rest
  * as MIDI's. */
 static void take(midi_rx* rx, midi_map_port* port, const midi_msg* msg) {
-    if (rx->out && !rx->looked && edits(rx->l, msg)) {
+    if (rx->out && !rx->looked && edits(rx, msg)) {
         midi_out_local(rx->out, rx->l);
         rx->looked = 1;
     }
@@ -73,6 +76,8 @@ static void on_usb(void* ctx, const midi_msg* msg) {
 static void parsers_init(midi_rx* rx) {
     midi_map_port_init(&rx->trs_map, rx->l);
     midi_map_port_init(&rx->usb_map, rx->l);
+    rx->trs_map.learn = rx->learn;
+    rx->usb_map.learn = rx->learn;
     midi_in_init(&rx->trs, on_trs, 0, rx);
     midi_in_init(&rx->usb, on_usb, 0, rx);
 }
@@ -91,7 +96,14 @@ void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch) {
     rx->restarts = 0;
     rx->out = 0;
     rx->looked = 0;
+    rx->learn = 0;
     parsers_init(rx);
+}
+
+void midi_rx_learn(midi_rx* rx, midi_learn* learn) {
+    rx->learn = learn;
+    rx->trs_map.learn = learn;
+    rx->usb_map.learn = learn;
 }
 
 void midi_rx_watch(midi_rx* rx, midi_out* out) {

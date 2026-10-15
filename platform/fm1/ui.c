@@ -4,6 +4,7 @@
 
 #include "grid.h"
 #include "lcd.h"
+#include "midi.h"
 #include "views.h"
 
 #ifndef SIDOU_VERSION
@@ -60,6 +61,7 @@ void ui_init(live* l, uint32_t now_ms, int home_held) {
     }
     grid_init(&cells, ' ', VIEWS_TEXT);
     views_init(&ui, &cells, l, "V" SIDOU_VERSION);
+    views_learn(&ui, midi_learned()); /* midi_init ran before */
     views_boot(&ui, home_held);
     last_compose = now_ms;
     views_frame(&ui, now_ms);

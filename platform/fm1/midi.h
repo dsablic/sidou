@@ -12,10 +12,14 @@
 #include <stdint.h>
 
 #include "live.h"
+#include "midi_learn.h"
 
 /* Interrupts off, before TIMER5 starts: the UART (a port H read-modify-write) and USB (which
  * waits 25 ms for the controller's reset). l receives the messages. */
 void midi_init(live* l);
+/* MIDI learn's bindings (app/midi_learn.h), which both inputs and MIDI out use: the screen
+ * arms learn on them (platform/fm1/ui.c). In RAM, empty at power-on. */
+midi_learn* midi_learned(void);
 /* TIMER5 interrupt, each at 2 kHz, on different ticks. */
 void midi_usb_isr(void);
 void midi_uart_isr(void);

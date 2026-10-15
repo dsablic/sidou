@@ -31,6 +31,7 @@
 
 #include "live.h"
 #include "midi_in.h"
+#include "midi_learn.h"
 #include "midi_map.h"
 #include "midi_out.h"
 #include "midi_ring.h"
@@ -49,20 +50,25 @@ typedef struct {
     uint32_t restarts; /* times lost input restarted the parsers */
     midi_out* out;     /* told which changes are MIDI's (midi_rx_watch), or NULL */
     uint8_t looked;    /* midi_out_local ran this pass: midi_rx_settle owes midi_out_remote */
+    midi_learn* learn; /* MIDI learn's bindings, both ports' (midi_rx_learn), or NULL */
 } midi_rx;
 
 /* epoch: the ring's midi_ring_epoch now, so losses before this are not held against it.
- * No midi_out watches. */
+ * No midi_out watches, no MIDI learn. */
 void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch);
 /* MIDI out learns which changes are MIDI input's, so it never echoes them. Once a pass, not
  * once a message: before the first message of a pass that can change a parameter (a program
  * change, a CC other than the NRPN and RPN selection, 120, 121, 123 and the wheel on a target
- * other than the pulse width) the parsers call midi_out_local, and midi_rx_settle, at the end
+ * other than the pulse width, unless MIDI learn takes CC 1) the parsers call midi_out_local, and midi_rx_settle, at the end
  * of the pass, calls midi_out_remote. That needs nothing but MIDI input to change a parameter
  * between the two (the caller's to keep): every change in the pass is taken as MIDI's. So a
  * burst costs MIDI out two looks however long it is, and notes, bend and aftertouch cost it
  * nothing. out may be NULL: none. */
 void midi_rx_watch(midi_rx* rx, midi_out* out);
+/* Both ports' CCs go through MIDI learn's bindings (midi_learn.h; midi_map_port), and a
+ * parameter waiting to be learned takes the next learnable CC from either. A restart after
+ * lost input keeps them. learn may be NULL: none. */
+void midi_rx_learn(midi_rx* rx, midi_learn* learn);
 /* One entry, through its source's parser; entries of an unknown source are ignored. An entry
  * from a later epoch than the parsers' first restarts them (a gap lies before it). */
 void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e);
