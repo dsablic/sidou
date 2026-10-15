@@ -280,6 +280,64 @@ fn a_slot_reused_by_another_cell_resends_both() {
 }
 
 #[test]
+fn the_overlay_pool_holds_three_scopes() {
+    // LIVE (M1e Task 4): three scopes of 10 x 8 cells each; a slot index fits the u8 per cell.
+    const { assert!(GRID_OVERLAYS >= 240 && GRID_OVERLAYS <= 255) };
+    let mut s = Screen::new();
+    for i in 0..240 {
+        let mask = [(i as u8).wrapping_mul(37) | 1; 8];
+        assert_eq!(
+            s.overlay(i % 30, 2 + i / 30, mask, 1 + i % 15),
+            0,
+            "cell {i}"
+        );
+    }
+    s.drain();
+    assert_eq!(s.panel, s.expected());
+}
+
+#[test]
+fn clearing_every_overlay_frees_the_slots_and_resends_those_cells() {
+    let mut s = Screen::new();
+    for i in 0..GRID_OVERLAYS {
+        assert_eq!(s.overlay(i % 30, i / 30, [0x81; 8], 2), 0);
+    }
+    s.drain();
+    unsafe { grid_overlay_clear_all(&mut *s.g) };
+    let rows = GRID_OVERLAYS.div_ceil(30) as usize;
+    let sent: usize = s.runs().iter().map(|r| usize::from(r.2)).sum();
+    assert_eq!(sent, GRID_OVERLAYS as usize, "{rows} rows of overlays");
+    assert_eq!(s.panel, s.expected());
+    for i in 0..GRID_OVERLAYS {
+        assert_eq!(
+            s.overlay(29 - i % 30, 29 - i / 30, [0x18; 8], 3),
+            0,
+            "slot {i}"
+        );
+    }
+    s.drain();
+    assert_eq!(s.panel, s.expected());
+}
+
+#[test]
+fn held_rows_wait_until_they_are_released() {
+    let mut s = Screen::new();
+    s.text(0, 3, "AB", attr(1, 0));
+    s.text(5, 10, "CD", attr(1, 0));
+    s.text(5, 29, "E", attr(1, 0));
+    unsafe { grid_hold(&mut *s.g, (1 << 10) | (1 << 29)) };
+    assert_eq!(s.runs(), vec![(3, 0, 2)]);
+    // Changes go on composing into held rows.
+    s.text(0, 10, "X", attr(1, 0));
+    assert_eq!(s.runs(), vec![]);
+    unsafe { grid_hold(&mut *s.g, 1 << 29) };
+    assert_eq!(s.runs(), vec![(10, 0, 1), (10, 5, 2)]);
+    unsafe { grid_hold(&mut *s.g, 0) };
+    assert_eq!(s.runs(), vec![(29, 5, 1)]);
+    assert_eq!(s.panel, s.expected());
+}
+
+#[test]
 fn box_frames_use_the_frame_glyphs() {
     let mut s = Screen::new();
     let f = font::load();

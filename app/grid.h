@@ -7,7 +7,8 @@
  * differ go out: grid_next_run hands out the changed cells one run at a time, a run being
  * horizontally adjacent changed cells on one row (one LCD window), and counts them as shown;
  * grid_render_run turns a run into pixels. A cell can carry a pixel overlay, a one-colour
- * 8 x 8 mask drawn over its glyph (oscilloscopes, the logo).
+ * 8 x 8 mask drawn over its glyph (oscilloscopes, the logo). Rows can be held: their changes
+ * wait until they are released (the screen's wipe transition, app/screen.h).
  *
  * Portable C with no hardware access: platform/fm1/ui.c sends the runs, the host tests
  * drive it directly. */
@@ -24,8 +25,10 @@ extern "C" {
 #define GRID_ROWS 30u
 #define GRID_CELLS (GRID_COLS * GRID_ROWS)
 #define GRID_CELL_PX 8u
-/* Cells that can carry a pixel overlay at once. */
-#define GRID_OVERLAYS 32u
+/* Cells that can carry a pixel overlay at once: LIVE's three scopes (M1e Task 4) take about
+ * 240. 255 keeps a slot index (plus 1) in the cell's byte. A slot costs 10 bytes of RAM
+ * (mask, colour, free-list entry): 2,550 bytes, 2.3 KB more than M1e Task 1's 32 slots. */
+#define GRID_OVERLAYS 255u
 /* A run's pixels: at most a full row of cells. */
 #define GRID_RUN_PIXELS (GRID_COLS * GRID_CELL_PX * GRID_CELL_PX)
 
@@ -73,10 +76,14 @@ typedef struct {
     uint8_t stale[(GRID_CELLS + 7u) / 8u];
     uint8_t ovl_mask[GRID_OVERLAYS][8]; /* bit 7 the leftmost pixel, as the font */
     uint8_t ovl_color[GRID_OVERLAYS];
-    uint16_t ovl_cell[GRID_OVERLAYS]; /* GRID_CELLS: the slot is free */
+    /* The free slots, a stack: ovl_free[0 .. ovl_nfree) */
+    uint8_t ovl_free[GRID_OVERLAYS];
+    uint8_t ovl_nfree;
     /* Bit r: row r may differ from the panel. Set by every change, cleared once a scan of the
      * whole row finds nothing to send, so a frame that changes nothing costs nothing. */
     uint32_t rows;
+    /* Bit r: row r is held (grid_hold). */
+    uint32_t hold;
     /* Where grid_next_run goes on. */
     uint8_t scan_row;
     uint8_t scan_col;
@@ -105,10 +112,16 @@ void grid_box(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint8
  * when all GRID_OVERLAYS slots are taken (the cell keeps its glyph alone). */
 int grid_overlay(grid* g, uint32_t col, uint32_t row, const uint8_t mask[8], uint8_t color);
 void grid_overlay_clear(grid* g, uint32_t col, uint32_t row);
+/* Every overlay (a view switch). */
+void grid_overlay_clear_all(grid* g);
+
+/* Holds the rows in mask (bit r: row r) and releases the others: grid_next_run passes over held
+ * rows, and their changes go out once they are released. */
+void grid_hold(grid* g, uint32_t mask);
 
 /* The next run of changed cells, in screen order from where the last call stopped (wrapping
  * to the top for cells that changed behind it), counted as shown from now on. 0 when the
- * panel shows the composed frame. */
+ * panel shows the composed frame, held rows aside. */
 int grid_next_run(grid* g, grid_run* run);
 /* A run's pixels into px: 8 rows of run->len * 8 pixels, top row first, as one LCD window
  * takes them. pal maps the 16 colours to the panel's pixel format. */

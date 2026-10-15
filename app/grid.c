@@ -35,9 +35,12 @@ void grid_init(grid* g, uint8_t ch, uint8_t attr) {
         g->attr[i] = g->shown_attr[i] = attr;
         g->ovl[i] = 0;
     }
+    /* Slot 0 on top. */
     for (uint32_t s = 0; s < GRID_OVERLAYS; s++) {
-        g->ovl_cell[s] = GRID_CELLS;
+        g->ovl_free[s] = (uint8_t)(GRID_OVERLAYS - 1u - s);
     }
+    g->ovl_nfree = (uint8_t)GRID_OVERLAYS;
+    g->hold = 0;
     g->scan_row = 0;
     g->scan_col = 0;
     grid_invalidate(g);
@@ -119,12 +122,10 @@ int grid_overlay(grid* g, uint32_t col, uint32_t row, const uint8_t mask[8], uin
             return 0;
         }
     } else {
-        for (s = 0; s < GRID_OVERLAYS && g->ovl_cell[s] != GRID_CELLS; s++) {
-        }
-        if (s == GRID_OVERLAYS) {
+        if (g->ovl_nfree == 0) {
             return -1;
         }
-        g->ovl_cell[s] = (uint16_t)i;
+        s = g->ovl_free[--g->ovl_nfree];
         g->ovl[i] = (uint8_t)(s + 1u);
     }
     for (uint32_t y = 0; y < 8u; y++) {
@@ -135,28 +136,43 @@ int grid_overlay(grid* g, uint32_t col, uint32_t row, const uint8_t mask[8], uin
     return 0;
 }
 
+static void overlay_free(grid* g, uint32_t i) {
+    g->ovl_free[g->ovl_nfree++] = (uint8_t)(g->ovl[i] - 1u);
+    g->ovl[i] = 0;
+    mark_stale(g, i);
+}
+
 void grid_overlay_clear(grid* g, uint32_t col, uint32_t row) {
     if (col >= GRID_COLS || row >= GRID_ROWS) {
         return;
     }
     uint32_t i = row * GRID_COLS + col;
-    if (!g->ovl[i]) {
-        return;
+    if (g->ovl[i]) {
+        overlay_free(g, i);
     }
-    g->ovl_cell[g->ovl[i] - 1u] = GRID_CELLS;
-    g->ovl[i] = 0;
-    mark_stale(g, i);
+}
+
+void grid_overlay_clear_all(grid* g) {
+    for (uint32_t i = 0; i < GRID_CELLS && g->ovl_nfree < GRID_OVERLAYS; i++) {
+        if (g->ovl[i]) {
+            overlay_free(g, i);
+        }
+    }
+}
+
+void grid_hold(grid* g, uint32_t mask) {
+    g->hold = mask & ALL_ROWS;
 }
 
 int grid_next_run(grid* g, grid_run* run) {
-    while (g->rows) {
+    while (g->rows & ~g->hold) {
         if (g->scan_row >= GRID_ROWS) {
             g->scan_row = 0;
             g->scan_col = 0;
         }
         uint32_t row = g->scan_row;
         uint32_t bit = 1u << row;
-        if (!(g->rows & bit)) {
+        if (!(g->rows & bit) || (g->hold & bit)) {
             g->scan_row++;
             g->scan_col = 0;
             continue;
