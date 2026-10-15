@@ -25,6 +25,17 @@ CHIP view (M1c Task 4) replaces it.
 
 The other buttons (LFO, GLO, HOME, SAVE, ARP, SEQ, PLAY, REC) and encoders do nothing yet.
 
+## Presets
+
+SAW LEAD, PWM BASS, SYNC LEAD and NOISE PERC (K4; program change 0..3). SYNC LEAD plays
+one note at a time: voice 3 runs silently at the note's pitch and voice 1, hard-synced to
+it, 2.75 times higher, so voice 3 sets the pitch and the ratio the timbre.
+
+**Known limit:** voice 1's frequency register tops out (0xFFFF, 3.85 kHz) from note 90
+(F#6), and from lower notes bent or with vibrato upward (note 88 at a bend of +2
+semitones, lower at wider bend ranges). Voice 1 then stays there: the pitch is still
+right, but the ratio falls, and the timbre thins, toward the top.
+
 ## Effect slots
 
 Distortion, Modulation and FX run after the chip, in that order, in stereo

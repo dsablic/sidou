@@ -197,6 +197,11 @@ static uint16_t voice_freq(const live* l, int v) {
     uint32_t f = live_freq_at(note, pitch_offset(l, src));
     if (p->mono_sync && v == 0) {
         f = (f * p->sync_ratio_q8) >> 8;
+        /* A known limit (docs/reference/controls.md, Presets): at 2.75 times the pitch the
+         * register is full from note 90 (F#6) at rest, from lower notes bent or vibrato'd up
+         * (88 at +2 semitones). Voice 3 still sets the pitch; the ratio, and the timbre,
+         * shrink toward the top. Dropping voice 1 an octave instead would jump the timbre
+         * mid-bend, so it saturates. */
         if (f > 0xffffu) {
             f = 0xffffu;
         }

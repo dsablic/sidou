@@ -670,3 +670,27 @@ fn a_tick_writes_at_most_14() {
     }
     assert_eq!(most, 14);
 }
+
+/// controls.md, Presets: the sync lead's voice 1 (2.75 times the pitch) tops out at 0xffff
+/// from note 90 at rest and from note 88 bent up 2 semitones; voice 3 keeps the pitch.
+#[test]
+fn the_sync_leads_voice_1_tops_out_where_the_reference_says() {
+    let voice_1 = |note: u8, value: u16| {
+        let mut rig = Rig::new(SID_MODEL_8580);
+        rig.set_preset(SYNC_LEAD);
+        bend(&mut rig, value);
+        rig.note_on(note);
+        rig.tick();
+        (rig.voice_freq(0), rig.voice_freq(2))
+    };
+    assert!(voice_1(89, CENTRE).0 < 0xffff);
+    assert_eq!(voice_1(90, CENTRE).0, 0xffff);
+    assert!(voice_1(87, LIVE_BEND_MAX as u16).0 < 0xffff);
+    let (top, pitch) = voice_1(88, LIVE_BEND_MAX as u16);
+    assert_eq!(top, 0xffff);
+    assert_eq!(
+        pitch,
+        unsafe { live_freq_at(88, bend_offset(LIVE_BEND_MAX as u16, 2)) },
+        "voice 3 still follows the bend"
+    );
+}

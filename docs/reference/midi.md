@@ -74,7 +74,8 @@ controllers (bend, wheel, aftertouch) are one set for every channel, like the no
   frequency between the notes is computed with integers from generated tables, within 0.6
   of a register step of the exact value. Every sounding voice bends, released ones too, and
   a note starts at the current bend. The sync lead's two oscillators take the same bend
-  and vibrato, so their ratio, and the timbre, holds.
+  and vibrato, so their ratio, and the timbre, holds, up to the top of voice 1's register
+  (from note 90, or lower bent up: [controls.md](controls.md), Presets).
 - **Control rate:** bend, aftertouch, the wheel (on a target other than the pulse width)
   and the vibrato apply at the instrument's 100 Hz tick: up to 10 ms after the message,
   twice a C64 player's frame rate. A flood of messages costs one update per tick.
