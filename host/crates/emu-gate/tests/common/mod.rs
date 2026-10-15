@@ -140,6 +140,16 @@ impl Firmware {
     }
 }
 
+/// The audio DMA buffer after an ALNK0 interrupt (`Machine::snapshot_buffer`).
+pub struct BufferSnapshot {
+    /// The cycles at which the interrupt was taken and returned.
+    pub entry: u64,
+    pub exit: u64,
+    pub words: Vec<i16>,
+    /// The bytes at `Machine::snapshot_bytes`, in order.
+    pub bytes: Vec<u8>,
+}
+
 /// A call being measured: where it returns to and the stack pointer at its entry.
 struct OpenCall {
     rets: u32,
@@ -165,6 +175,8 @@ pub struct Machine {
     /// Calls of the watched function outside interrupts: instructions each, its callees and
     /// nothing from interrupts included.
     pub watched_calls: Vec<u64>,
+    /// The cycle at which each of those calls began.
+    pub watched_starts: Vec<u64>,
     watch: Option<u32>,
     open_call: Option<OpenCall>,
     /// Instructions run outside interrupts (the main loop).
@@ -174,6 +186,17 @@ pub struct Machine {
     pub alnk_pcs_inside: u64,
     pub alnk_pcs_outside: std::collections::BTreeSet<u32>,
     alnk_pc_range: Option<std::ops::Range<u32>>,
+    /// The cycle at which each audio half went to the DAC's output (`soc.periph.audio`):
+    /// half `h` (samples `h * HALF_FRAMES..`, per channel) finished playing at
+    /// `half_played[h]`.
+    pub half_played: Vec<u64>,
+    /// With `snapshot_buffer`: after each ALNK0 interrupt, its entry and exit cycles and the
+    /// DMA buffer's words (both halves, interleaved L/R) as fm1-emu plays them (>> 8 to i16).
+    pub buffer_snapshots: Vec<BufferSnapshot>,
+    snapshot: Option<(u32, u32)>,
+    /// Bytes read into each buffer snapshot as well (e.g. the voices' gates).
+    pub snapshot_bytes: Vec<u32>,
+    alnk_entry: u64,
 }
 
 impl Machine {
@@ -214,12 +237,18 @@ impl Machine {
             alnk_blocks: Vec::new(),
             alnk_open: None,
             watched_calls: Vec::new(),
+            watched_starts: Vec::new(),
             watch: None,
             open_call: None,
             main_steps: 0,
             alnk_pcs_inside: 0,
             alnk_pcs_outside: std::collections::BTreeSet::new(),
             alnk_pc_range: None,
+            half_played: Vec::new(),
+            buffer_snapshots: Vec::new(),
+            snapshot: None,
+            snapshot_bytes: Vec::new(),
+            alnk_entry: 0,
         }
     }
 
@@ -238,16 +267,32 @@ impl Machine {
         self.soc.periph.ms()
     }
 
+    /// Snapshots `words` 32-bit words at `addr` (the audio DMA buffer) after every ALNK0
+    /// interrupt into `buffer_snapshots`; None stops.
+    pub fn snapshot_buffer(&mut self, buffer: Option<(u32, u32)>) {
+        self.snapshot = buffer;
+    }
+
     /// Runs `ms` milliseconds of emulated time.
     pub fn run_ms(&mut self, ms: u64) {
-        let end = self.soc.periph.cycles + self.soc.periph.cycle_of_ms(ms);
+        let n = self.soc.periph.cycle_of_ms(ms);
+        self.run_cycles(n);
+    }
+
+    /// Runs `n` CPU cycles of emulated time (fm1-emu: one instruction a cycle).
+    pub fn run_cycles(&mut self, n: u64) {
+        let end = self.soc.periph.cycles + n;
         // fm1_soc::machine::run_blocks, one instruction at a time so `step` can stand in for
         // the instruction fm1-core lacks.
         while self.soc.periph.cycles < end {
             let soc = &mut self.soc;
             let cpu = &mut self.cpu;
             if soc.periph.tick() {
+                let halves = soc.periph.audio_halves;
                 soc.advance(0);
+                if soc.periph.audio_halves != halves {
+                    self.half_played.push(soc.periph.cycles);
+                }
             }
             soc.periph.in_isr = !cpu.irq_levels.is_empty();
             if soc.periph.any_pending() {
@@ -256,6 +301,7 @@ impl Machine {
                         let handler = soc.read32(fm1_soc::VEC_BASE + 4 * u32::from(irq));
                         if irq == IRQ_ALNK0 && self.alnk_open.is_none() {
                             self.alnk_open = Some((cpu.irq_levels.len(), self.steps));
+                            self.alnk_entry = soc.periph.cycles;
                         }
                         cpu.interrupt(handler, prio);
                     }
@@ -276,6 +322,7 @@ impl Machine {
             } else {
                 if let Some(entry) = self.watch {
                     if cpu.pc == entry && self.open_call.is_none() {
+                        self.watched_starts.push(soc.periph.cycles);
                         self.open_call = Some(OpenCall {
                             rets: cpu.rets,
                             sp: cpu.sp,
@@ -299,6 +346,21 @@ impl Machine {
                 if self.cpu.irq_levels.len() <= depth {
                     self.alnk_blocks.push(self.steps - start);
                     self.alnk_open = None;
+                    if let Some((addr, words)) = self.snapshot {
+                        let w = (0..words)
+                            .map(|i| (self.soc.read32(addr + 4 * i) as i32 >> 8) as i16)
+                            .collect();
+                        self.buffer_snapshots.push(BufferSnapshot {
+                            entry: self.alnk_entry,
+                            exit: self.soc.periph.cycles,
+                            words: w,
+                            bytes: self
+                                .snapshot_bytes
+                                .iter()
+                                .map(|&a| self.soc.read8(a))
+                                .collect(),
+                        });
+                    }
                 }
             }
         }
