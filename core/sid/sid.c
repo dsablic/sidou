@@ -223,8 +223,18 @@ int sid_set_filter_blend(sid* s, uint32_t curve, uint32_t toward, float t) {
     return 0;
 }
 
+/* sid_init zeroes the chip but its filter tables, which build_filter_tables writes whole:
+ * they are half the struct, and the device's memset goes a byte at a time. */
+_Static_assert(offsetof(sid, res_k) == offsetof(sid, cutoff_g) + sizeof(float) * SID_FC_STEPS &&
+                   offsetof(sid, cutoff_x_to) == offsetof(sid, res_k) + sizeof(float) * 16u &&
+                   offsetof(sid, res_k_to) ==
+                       offsetof(sid, cutoff_x_to) + sizeof(float) * SID_FC_STEPS &&
+                   offsetof(sid, filter_t) == offsetof(sid, res_k_to) + sizeof(float) * 16u,
+               "the filter tables lie together, from cutoff_g to filter_t");
+
 void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) {
-    memset(s, 0, sizeof *s);
+    memset(s, 0, offsetof(sid, cutoff_g));
+    memset(&s->filter_t, 0, sizeof *s - offsetof(sid, filter_t));
     s->model = model;
     s->dac = sid_dac_default(model == SID_MODEL_6581);
     s->output_gain = OUTPUT_GAIN * (model == SID_MODEL_6581 ? LEVEL_6581 : LEVEL_8580);
@@ -475,6 +485,8 @@ __attribute__((always_inline))
 #endif
 static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t every,
                                sid_tap tap, void* ctx, const int bleed_on) {
+    /* In a local, as render_6581_body keeps it: nothing writes the chip during a render. */
+    const float bleed = s->bleed;
     int16_t* const last = out + frames;
     while (out < last) {
         int16_t* const stop = last - out > (ptrdiff_t)every ? out + every : last;
@@ -495,7 +507,7 @@ static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t e
                 }
             }
             if (bleed_on) {
-                filt_in += s->bleed * direct;
+                filt_in += bleed * direct;
             }
             sid_svf_tick(&s->svf, filt_in);
             float filtered = 0.0f;

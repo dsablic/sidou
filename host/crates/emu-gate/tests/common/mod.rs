@@ -465,9 +465,11 @@ impl Machine {
 /// The SID's most expensive scenario per chip, on average, in instructions per sample: the
 /// SID gate's max_instructions_per_sample (sid_budget.rs fails above it). M1b measures 556.3
 /// (two chips, gate_every_block on the 6581, since Task 6's non-linear 6581 filter; 526.8
-/// before) and 552.2 (one chip); M1c Task 3 556.40 and 552.33. The effect gates no longer
-/// pair it with the slots (they take the worst block, below); it stays as the SID's guard.
-pub const SID_WORST_PER_CHIP: f64 = 557.0;
+/// before) and 552.2 (one chip); M1c Task 3 549.37 and 545.30 (the 6581 render's clamps as
+/// fmax and fmin, and its struct's layout: decision record 0006, Cost). The effect gates no
+/// longer pair it with the slots (they take the worst block, below); it stays as the SID's
+/// guard.
+pub const SID_WORST_PER_CHIP: f64 = 550.0;
 
 /// The SID's most expensive block (128 samples) in instructions per sample, for one chip
 /// and for two together, as sid_budget.rs measures it (it fails above these). The audio
@@ -475,17 +477,14 @@ pub const SID_WORST_PER_CHIP: f64 = 557.0;
 /// with a scenario's average. Both are the first block of a combined-noise scenario from
 /// power-on while the register runs through its shifts until it locks up (decision record
 /// 0004, "Worst blocks"), on the 6581 since M1b Task 6's non-linear filter: noise_tri_ffff
-/// for one chip (717.49) and noise_tri_ring_0800 for two (1,439.67). The 8580's are 691.16
-/// and 1,409.87 (690.85 and 1,409.24 before Task 6, when they were the worst).
-/// Since M1c Task 3 the same scenarios with the chip's character at its costliest
-/// (character_noise_*: the worn 6581 profile and the filter bleed at 127, the one control
-/// with a per-sample cost): 724.21 and 1,453.96. Of that the worn profile (its STRONG
-/// combined waveforms, its non-linearity) is 1.07 and 2.19, the bleed 5.55 and 11.91 (its
-/// multiply-add, and the filter's data-dependent work on the voices it now gets); without
-/// the bleed the render has no copy of it, so the default chip measures 717.59 and
-/// 1,439.86.
-pub const SID_WORST_BLOCK_ONE_CHIP: f64 = 725.0;
-pub const SID_WORST_BLOCK_TWO_CHIPS: f64 = 1454.0;
+/// for one chip (717.49 in M1b) and noise_tri_ring_0800 for two (1,439.67). The 8580's are
+/// 691.16 and 1,409.87 (690.85 and 1,409.24 before Task 6, when they were the worst).
+/// M1c Task 3 added the chip's character (character_noise_*: the worn 6581 profile and the
+/// filter bleed at 127, the one control with a per-sample cost), which first measured 724.21
+/// and 1,453.96; with sid_nl_tick's clamps as the FPU's fmax and fmin the worst are again
+/// the default chip's: 710.48 and 1,425.66 (the character's 709.94 and 1,424.80).
+pub const SID_WORST_BLOCK_ONE_CHIP: f64 = 711.0;
+pub const SID_WORST_BLOCK_TWO_CHIPS: f64 = 1426.0;
 
 /// Instructions a sample the LIVE view's tap (app/scope.h) adds to the audio interrupt
 /// (ram_audio.rs fails above it). LIVE is the view at power-on, so the tap runs by default

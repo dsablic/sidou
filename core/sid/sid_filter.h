@@ -155,21 +155,17 @@ static inline sid_nl_coefs sid_nl_coefs_of(const sid_svf* f, const sid_nonlin* n
  * times v1; it costs the tick's one divide. */
 static inline void sid_nl_tick(float* ic1, float* ic2, float* lp, float* bp, float* hp,
                                float* bpn, float v0, const sid_nl_coefs* c) {
-    float u = c->a - c->b * *ic2;
-    if (u < c->u_lo) {
-        u = c->u_lo;
-    } else if (u > c->u_hi) {
-        u = c->u_hi;
-    }
+    /* The clamps as fmax and fmin, which the pi32v2's FPU has as instructions (fm1-emu's
+     * fm1-isa, fpu.rs): the same values as comparisons but for a tie of +0 and -0, which
+     * returns either (no NaN reaches them; floor and a1_min are above 0 at any amount but 0,
+     * and at 0 a g of 0 divides by zero below anyway). The host matches. In the emulator gate
+     * they make the worst blocks 5.7 instructions a sample cheaper with one chip, 12.2 with
+     * two (the bleed's render copy), and the default render 1.0 dearer; a fabs for the swing
+     * made it 17 dearer (M1c Task 3). */
+    float u = __builtin_fminf(__builtin_fmaxf(c->a - c->b * *ic2, c->u_lo), c->u_hi);
     float swing = *hp < 0.0f ? -*hp : *hp;
-    float g = u + c->level * swing;
-    if (g < c->floor) {
-        g = c->floor;
-    }
-    float a1 = c->p - c->q * (g * (g + c->k));
-    if (a1 < c->a1_min) {
-        a1 = c->a1_min;
-    }
+    float g = __builtin_fmaxf(u + c->level * swing, c->floor);
+    float a1 = __builtin_fmaxf(c->p - c->q * (g * (g + c->k)), c->a1_min);
     float a2 = g * a1;
     float a3 = g * a2;
     float c1 = *ic1, c2 = *ic2;
