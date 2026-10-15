@@ -683,17 +683,63 @@ fn an_rpn_takes_data_entry_away_from_the_nrpn() {
     let mut m = Midi::new();
     select_cutoff(&mut m, 0xB0);
     m.trs(&[6, 5]);
-    // RPN 0/0, pitch-bend range: parsed, not applied (yet), and not the cutoff's.
+    // RPN 0/0, pitch-bend sensitivity: the bend range, not the cutoff.
     m.trs(&[101, 0, 100, 0]);
     m.rig.clear();
     m.trs(&[6, 12, 38, 0, 96, 0, 97, 0]);
     assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
+    assert_eq!(m.cutoff(), 5 << 7);
     // Selecting the NRPN's MSB again brings it back, with the LSB it had.
     m.trs(&[99, 0, 6, 7]);
     assert_eq!(m.cutoff(), 7 << 7);
     // The null RPN does not select the NRPN either.
     m.trs(&[101, 127, 100, 127, 6, 3]);
     assert_eq!(m.cutoff(), 7 << 7);
+}
+
+fn bend_range(m: &Midi) -> u32 {
+    get(&m.rig, LIVE_PARAM_BEND_RANGE)
+}
+
+#[test]
+fn rpn_0_sets_the_bend_range_in_semitones_at_the_msb() {
+    let mut m = Midi::new();
+    m.trs(&[0xB0, 101, 0, 100, 0, 6, 12]);
+    assert_eq!(bend_range(&m), 12, "CC 6 is the semitones");
+    m.trs(&[38, 50]);
+    assert_eq!(bend_range(&m), 12, "CC 38, the cents, is ignored");
+    m.trs(&[96, 0, 96, 0]);
+    assert_eq!(bend_range(&m), 14);
+    m.trs(&[97, 0]);
+    assert_eq!(bend_range(&m), 13);
+    m.trs(&[6, 100]);
+    assert_eq!(bend_range(&m), LIVE_BEND_RANGE_MAX, "clamped");
+    m.trs(&[6, 0, 97, 0]);
+    assert_eq!(bend_range(&m), 0);
+    // The range is the expression row's NRPN too, its value at the LSB.
+    let r = row_for(LIVE_PARAM_BEND_RANGE);
+    m.trs(&[
+        99,
+        (r.nrpn >> 7) as u8,
+        98,
+        (r.nrpn & 0x7f) as u8,
+        6,
+        0,
+        38,
+        7,
+    ]);
+    assert_eq!(bend_range(&m), 7);
+}
+
+#[test]
+fn other_rpns_and_half_selected_ones_change_nothing() {
+    let mut m = Midi::new();
+    // fine tuning (0/1), coarse tuning (0/2), and RPN MSB 0 with the LSB still null
+    for sel in [[0u8, 1], [0, 2], [1, 0]] {
+        m.trs(&[0xB0, 101, sel[0], 100, sel[1], 6, 9, 38, 9, 96, 0]);
+    }
+    m.trs(&[121, 0, 101, 0, 6, 9]);
+    assert_eq!(bend_range(&m), LIVE_BEND_RANGE_DEFAULT);
 }
 
 #[test]
@@ -889,19 +935,21 @@ edit. SIDOU_MIDI_DOC_UPDATE=1 regenerates it. -->
 Every parameter of the live instrument has a CC (7-bit) and an NRPN (14-bit, full
 resolution). The map is fixed: the same numbers on every channel, on TRS and USB. Notes
 play on every channel (omni); program change 0..{last} selects the preset. A program change
-loads the preset's cutoff, resonance, pulse width and SID settings (waveform, ring, sync,
-the envelope, filter routing and mode) over any edits, even when it selects the preset
-already playing; volume, the chip model and the effect slots are kept.
+loads the preset's cutoff, resonance, pulse width, SID settings (waveform, ring, sync,
+the envelope, filter routing and mode) and expression settings (bend range, the targets,
+the vibrato) over any edits, even when it selects the preset already playing; volume, the
+chip model, the effect slots and the controllers (bend, wheel, aftertouch) are kept.
 
 **How the numbers were chosen.** CCs that MIDI gives a meaning are kept for it:
-General MIDI's where they fit (1 modulation wheel: pulse width; 7 volume; 71 resonance;
-74 cutoff, i.e. brightness; 72, 73 and 75 release, attack and decay time) and left alone
-where they do not (0 and 32 bank select, 6 and 38 data entry, 64..69 the pedals, 88
+General MIDI's where they fit (1 modulation wheel: the pulse width by default, see
+Expression; 7 volume; 71 resonance; 74 cutoff, i.e. brightness; 72, 73 and 75 release,
+attack and decay time; 76, 77 and 78 vibrato rate, depth and delay) and left alone where
+they do not (0 and 32 bank select, 6 and 38 data entry, 64..69 the pedals, 88
 high-resolution velocity, 96..101 increment, decrement, NRPN and RPN, 120..127 channel
-mode). 76..78 (vibrato) stay free for expression. The rest is in blocks MIDI leaves
-undefined: the SID's patch in 20..25 and 79, the character layer in 85..87 and 89..90,
-the effect slots in 102..116. NRPNs are grouped by MSB: 0 the performance controls, 1 the
-SID, 2 the character layer, 3..5 the effect slots.
+mode). The rest is in blocks MIDI leaves undefined: the SID's patch in 20..25 and 79, the
+character layer in 85..87 and 89..90, the effect slots in 102..116. NRPNs are grouped by
+MSB: 0 the performance controls, 1 the SID, 2 the character layer, 3..5 the effect slots,
+6 expression.
 
 CC 71..75 are absolute here, like every CC of the map: the value sets the parameter
 across its range. General MIDI 2 makes its sound controllers relative instead, moving the
@@ -926,13 +974,56 @@ patch's value up or down around 64; SIDOU does not.
   CC 6 alone (\"7-bit NRPN\") changes nothing here: use CC 38, or the parameter's plain
   CC.
 - **Null and RPN:** NRPN 127/127 and RPN 127/127 select nothing. An RPN (CC 101, 100)
-  takes data entry away from the NRPN until CC 99 or 98 comes again; no RPN is
-  implemented yet. CC 121 (reset all controllers) and a gap in the input select nothing.
+  takes data entry away from the NRPN until CC 99 or 98 comes again. RPN 0/0 (pitch-bend
+  sensitivity) sets the bend range: CC 6 the semitones, at once (0..24), CC 96 and 97 a
+  semitone up or down; CC 38 (the cents) is ignored. Other RPNs do nothing. CC 121 (reset
+  all controllers) and a gap in the input select nothing.
 - **Chip model:** a change resets the chip, so it waits for the next 10 ms tick and takes
   the last value received: a stream of changes resets it at most 100 times a second, and
   the FX button changes it at once.
 - The selection is kept per channel and per input (TRS, USB).
 - CC 120 and 123 release every note.
+
+## Expression
+
+The expression settings are per preset (NRPN group 6, the vibrato also on CC 76..78); the
+controllers (bend, wheel, aftertouch) are one set for every channel, like the notes.
+
+- **Pitch bend:** all 14 bits, +-the bend range (2 semitones on every preset; RPN 0 or
+  NRPN 6/0 change it). At +-2 one bend step is 0.024 cents. The SID's frequency register
+  is coarser than that at every pitch (one step is 0.39 cents at C4, 1.6 cents at C2), so
+  the bend moves the pitch one register step at a time, with no larger jumps. The
+  frequency between the notes is computed with integers from generated tables, within 0.6
+  of a register step of the exact value. Every sounding voice bends, released ones too, and
+  a note starts at the current bend. The sync lead's two oscillators take the same bend
+  and vibrato, so their ratio, and the timbre, holds.
+- **Control rate:** bend, aftertouch, the wheel (on a target other than the pulse width)
+  and the vibrato apply at the instrument's 100 Hz tick: up to 10 ms after the message,
+  twice a C64 player's frame rate. A flood of messages costs one update per tick.
+- **Vibrato:** a triangle per voice, from 0 at each note-on once its delay is over. Rate
+  CC 76 (0.1 Hz steps, up to 12.7 Hz), depth CC 77 (127 is +-99 cents), delay CC 78
+  (10 ms steps). The wheel and aftertouch add to the depth where they are assigned to the
+  vibrato, up to 127. Updated at 100 Hz, a triangle of +-d cents at f Hz moves 4 * d * f /
+  100 cents a tick: 6 cents at +-25 cents and 6 Hz, 24 cents at the full depth. Above
+  about 8 Hz a cycle has fewer than 12 steps and the vibrato starts to sound stepped.
+- **Modulation wheel (CC 1):** by default it sets the pulse width across its range, as
+  M1a did and the map's row says. The mod wheel target (NRPN 6/2) moves it to the vibrato
+  depth (it adds) or to the cutoff (it opens the filter above the cutoff that is set, 8
+  steps per value). A new target starts the wheel at 0.
+- **Aftertouch:** channel and polyphonic. A voice's pressure is the larger of the
+  channel's and its note's, and a note-on starts its own at 0. The target (NRPN 6/3): off
+  (the default), the vibrato depth (it adds), the pulse width (it raises the voice's, 16
+  steps per value) or the cutoff (it opens the filter 8 steps per value of the most
+  pressed voice: the SID has one filter).
+- **Velocity:** the SID has no amplifier per voice, so velocity sets one of three things,
+  per preset (NRPN 6/1): off (the default, full level), the sustain level (scaled by
+  velocity / 127, written before the gate; the attack still peaks at the full level), the
+  cutoff (8 steps lower per velocity below 127, by the last note: one filter) or the pulse
+  width (the voice's pulse narrowed by velocity / 127; heard on the pulse waveform only).
+  127 always sounds as off does. The panel's keys play velocity 100.
+- **Reset:** CC 121 centres the bend and sets the wheel and aftertouch to 0 (the pulse
+  width is a parameter, not the wheel's position, and is kept). A gap in the input does
+  the same, so a lost return to the centre cannot leave the pitch bent.
 
 ",
         last = LIVE_PRESET_COUNT - 1

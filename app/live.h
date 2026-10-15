@@ -38,22 +38,41 @@ extern "C" {
 #define LIVE_PULSE_WIDTH_MAX 4095u
 #define LIVE_PULSE_WIDTH_DETENT 32
 #define LIVE_MASTER_MAX 1023u
-/* live_tick is called this often; the PWM rates in the presets assume it. */
+/* live_tick is called this often; the PWM and vibrato rates assume it. */
 #define LIVE_TICK_HZ 100u
 
+/* Pitch offsets are in 1/8192 semitone (Q13): a 14-bit pitch bend times the range in
+ * semitones is exact at every range. */
+#define LIVE_PITCH_SEMITONE 8192
+#define LIVE_BEND_CENTRE 8192u
+#define LIVE_BEND_MAX 16383u
+#define LIVE_BEND_RANGE_MAX 24u
+#define LIVE_BEND_RANGE_DEFAULT 2u
+/* The expression controls: 0..127 each. */
+#define LIVE_EXPRESSION_MAX 127u
+/* The vibrato rate's default, 6.0 Hz (the rate is in 0.1 Hz). */
+#define LIVE_VIBRATO_RATE_DEFAULT 60u
+
 /* CC numbers of the published map (midi_map.h, docs/reference/midi.md) that M1a and M1c
- * fixed, and the channel-mode messages live_cc handles. The pulse width is on CC 1, the
- * modulation wheel most keyboards have. */
+ * fixed, and the channel-mode messages live_cc handles. CC 1 is the modulation wheel: by
+ * default (LIVE_MOD_PULSE_WIDTH) it sets the pulse width, as in M1a and the map's row; with
+ * another target (LIVE_PARAM_MOD_TARGET) it drives that target instead. */
 #define LIVE_CC_PULSE_WIDTH 1u
+#define LIVE_CC_MOD_WHEEL 1u
 #define LIVE_CC_VOLUME 7u
 #define LIVE_CC_RESONANCE 71u
 #define LIVE_CC_CUTOFF 74u
+/* General MIDI 2's sound controllers 7..9. */
+#define LIVE_CC_VIBRATO_RATE 76u
+#define LIVE_CC_VIBRATO_DEPTH 77u
+#define LIVE_CC_VIBRATO_DELAY 78u
 /* The effect slots (core/fx/fx_slots.h, app/fx_live.h): CC 102 + 5 slot + field, slot 0
  * Distortion, 1 Modulation, 2 FX; field 0 algorithm (the value scaled over the slot's
  * algorithms), 1 Amount, 2 A, 3 B, 4 Mix. In General MIDI's undefined block 102..119. */
 #define LIVE_CC_SLOT_FIRST 102u
 #define LIVE_CC_SLOT_LAST 116u
 #define LIVE_CC_ALL_SOUND_OFF 120u
+#define LIVE_CC_RESET_ALL 121u
 #define LIVE_CC_ALL_NOTES_OFF 123u
 
 /* Effect slots: three, each with an algorithm and four controls 0..LIVE_SLOT_MAX. */
@@ -70,6 +89,31 @@ typedef enum {
     LIVE_SLOT_B = 3,
     LIVE_SLOT_MIX = 4
 } live_slot_field;
+
+/* What velocity sets, per preset. The SID has no per-voice VCA: these stand in for one. A
+ * velocity of 127 sounds as OFF does; lower ones lower the target. */
+typedef enum {
+    LIVE_VELOCITY_OFF = 0,
+    LIVE_VELOCITY_SUSTAIN = 1,    /* the voice's sustain level, scaled by velocity / 127 */
+    LIVE_VELOCITY_CUTOFF = 2,     /* the filter, 8 steps lower per velocity below 127 */
+    LIVE_VELOCITY_PULSE_WIDTH = 3 /* the voice's pulse, narrower by velocity / 127 */
+} live_velocity_target;
+
+/* What the modulation wheel (CC 1) drives, per preset. */
+typedef enum {
+    LIVE_MOD_PULSE_WIDTH = 0, /* CC 1 sets the pulse width across its range (M1a) */
+    LIVE_MOD_VIBRATO = 1,     /* adds to the vibrato depth */
+    LIVE_MOD_CUTOFF = 2       /* opens the filter above its cutoff, 8 steps per value */
+} live_mod_target;
+
+/* What channel and polyphonic aftertouch drive, per preset: a voice's pressure is the larger
+ * of the channel's and its note's. */
+typedef enum {
+    LIVE_PRESSURE_OFF = 0,
+    LIVE_PRESSURE_VIBRATO = 1,     /* adds to the voice's vibrato depth */
+    LIVE_PRESSURE_PULSE_WIDTH = 2, /* raises the voice's pulse width, 16 steps per value */
+    LIVE_PRESSURE_CUTOFF = 3       /* opens the filter, 8 steps per value of the most pressed */
+} live_pressure_target;
 
 typedef void (*live_sink_fn)(void* ctx, uint8_t reg, uint8_t value);
 
@@ -116,6 +160,14 @@ typedef struct {
     uint16_t sync_ratio_q8;
     uint16_t pwm_depth; /* pulse-width LFO depth in pulse-width steps; 0 = off */
     uint16_t pwm_rate;  /* LFO phase step per tick; 65536 = one cycle */
+    /* Expression (live_param): */
+    uint8_t bend_range;      /* semitones each way, 0..LIVE_BEND_RANGE_MAX */
+    uint8_t velocity_target; /* a live_velocity_target */
+    uint8_t mod_target;      /* a live_mod_target */
+    uint8_t pressure_target; /* a live_pressure_target */
+    uint8_t vibrato_rate;    /* 0..127, in 0.1 Hz */
+    uint8_t vibrato_depth;   /* 0..127, 127 = +-8128/8192 semitone */
+    uint8_t vibrato_delay;   /* 0..127 ticks after the note-on */
 } live_preset;
 
 #define LIVE_PRESET_COUNT 4u
@@ -126,11 +178,28 @@ const live_preset* live_preset_get(uint8_t index);
  * Notes above 106 do not fit in 16 bits and are folded down by whole octaves.
  * Generated (live_freq.c) and checked by the host tests. */
 extern const uint16_t live_freq_table[128];
+/* For pitches between the notes (live_freq_at), also generated: notes 95..106, the top
+ * octave that fits 16 bits, as round(f * 2^24 / SID_CLOCK_PAL * 16); and
+ * round(2^20 * 2^(j / 768)) - 2^20 for j = 0..64, 64 steps across one semitone. */
+extern const uint32_t live_freq_top_q4[12];
+extern const uint32_t live_freq_fine_q20[65];
+
+/* The frequency register for note (0..127; above 106 folded down by octaves, as
+ * live_freq_table) moved by offset (LIVE_PITCH_SEMITONE per semitone): the table's value at
+ * offset 0, otherwise within 0.6 of the exact value, rising with the offset and by at most 1
+ * for each 1/8192 semitone. Clamped to note 0 and 0xffff. Integers only (32-bit). */
+uint16_t live_freq_at(uint8_t note, int32_t offset);
 
 typedef struct {
-    uint8_t note;   /* the last note it played, LIVE_NO_NOTE if none */
-    uint8_t gate;   /* 1 while the note is held */
-    uint32_t stamp; /* when it was last gated or released, for the allocator */
+    uint8_t note;           /* the last note it played, LIVE_NO_NOTE if none */
+    uint8_t gate;           /* 1 while the note is held */
+    uint8_t velocity;       /* the note's, 1..127 */
+    uint8_t pressure;       /* its polyphonic aftertouch, 0..127; 0 at the note-on */
+    uint32_t stamp;         /* when it was last gated or released, for the allocator */
+    uint16_t vibrato_phase; /* its vibrato LFO: 65536 = one cycle, from 0 at the note-on */
+    uint8_t vibrato_wait;   /* ticks until its vibrato starts (the delay) */
+    uint16_t freq_out;      /* the frequency register last written */
+    uint16_t pw_out;        /* the pulse width last written */
 } live_voice;
 
 /* The whole instrument; fields are read-only for callers (the UI shows them). */
@@ -146,7 +215,7 @@ typedef struct {
     uint16_t pulse_width; /* 0..4095, before PWM */
     uint16_t master;      /* 0..1023 */
     uint8_t volume;       /* 0..15, from master */
-    uint16_t pw_out;      /* the pulse width last written, after PWM */
+    uint16_t cutoff_out;  /* the cutoff last written, after expression */
     uint16_t lfo_phase;
     uint32_t clock;
     live_voice voice[LIVE_VOICES];
@@ -158,6 +227,19 @@ typedef struct {
     uint8_t sustain_release; /* $d406 */
     uint8_t filter_voices;   /* $d417 bits 0..2 */
     uint8_t filter_mode;     /* $d418 bits 4..6 */
+    /* The preset's expression settings as edited (live_param); loading a preset resets them. */
+    uint8_t bend_range;
+    uint8_t velocity_target;
+    uint8_t mod_target;
+    uint8_t pressure_target;
+    uint8_t vibrato_rate;
+    uint8_t vibrato_depth;
+    uint8_t vibrato_delay;
+    /* The controllers (omni: one set for every channel); live_tick applies them. */
+    uint16_t bend;            /* 0..16383, LIVE_BEND_CENTRE at rest */
+    uint8_t mod_wheel;        /* CC 1, when the wheel has a target other than the pulse width */
+    uint8_t channel_pressure; /* 0..127 */
+    uint8_t last_velocity;    /* the last note-on's: LIVE_VELOCITY_CUTOFF's (one filter) */
 } live;
 
 /* The instrument's parameters, each an integer 0..live_param_max: what MIDI reaches through
@@ -179,14 +261,26 @@ typedef enum {
     LIVE_PARAM_MODEL = 13,        /* 0 6581, 1 8580: a reset, at the next live_tick */
     /* The effect slots: LIVE_PARAM_SLOT + slot * LIVE_SLOT_FIELDS + field (live_slot_set). */
     LIVE_PARAM_SLOT = 14,
-    LIVE_PARAM_COUNT = 29
+    LIVE_PARAM_SLOT_END = 29,
+    /* Expression, per preset: recorded, and live_tick writes what they change; the velocity
+     * target rewrites the envelopes at once. */
+    LIVE_PARAM_BEND_RANGE = 29,      /* 0..24 semitones each way; also RPN 0 */
+    LIVE_PARAM_VELOCITY_TARGET = 30, /* a live_velocity_target, 0..3 */
+    LIVE_PARAM_MOD_TARGET = 31,      /* a live_mod_target, 0..2; a change restarts the wheel at 0 */
+    LIVE_PARAM_PRESSURE_TARGET = 32, /* a live_pressure_target, 0..3 */
+    LIVE_PARAM_VIBRATO_RATE = 33,    /* 0..127, in 0.1 Hz */
+    LIVE_PARAM_VIBRATO_DEPTH = 34,   /* 0..127 */
+    LIVE_PARAM_VIBRATO_DELAY = 35,   /* 0..127 ticks */
+    LIVE_PARAM_COUNT = 36
 } live_param;
 
 /* Preset 0, octave 0, full volume, every effect slot off. Sends LIVE_REG_RESET(model), then
  * every register, then every slot setting (fx_live.h). */
 void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model);
 /* Absolute MIDI notes; the octave is not applied here (see live_key_note). Velocity 0
- * is a note-off. A note that is already held is retriggered on its voice. */
+ * is a note-off. A note that is already held is retriggered on its voice. The note starts at
+ * the current bend, with its pressure at 0 and its vibrato at the start of the delay; its
+ * velocity applies at once (the sustain level before the gate). */
 void live_note_on(live* l, uint8_t note, uint8_t velocity);
 void live_note_off(live* l, uint8_t note);
 void live_all_notes_off(live* l);
@@ -197,9 +291,23 @@ uint8_t live_key_note(const live* l, uint8_t base_note);
 void live_knob(live* l, live_knob_id knob, int32_t delta);
 void live_button(live* l, live_button_id button);
 /* A CC through the published map (midi_map.h): the parameter's value from the CC's by its
- * curve. CC 120 and 123 release every note. Unmapped and reserved CCs, and values past 127,
- * do nothing. NRPNs need state per channel: midi_map_cc. */
+ * curve. CC 1 is the modulation wheel: the pulse width's row while that is its target, else
+ * the wheel's position for its target. CC 120 and 123 release every note; CC 121 resets the
+ * controllers (live_reset_controllers). Unmapped and reserved CCs, and values past 127, do
+ * nothing. NRPNs need state per channel: midi_map_cc. */
 void live_cc(live* l, uint8_t cc, uint8_t value);
+
+/* The controllers are only recorded: live_tick applies them, so a flood of 14-bit bends or
+ * pressure costs no register writes beyond one tick's. */
+/* Pitch bend, 0..16383 (clamped), LIVE_BEND_CENTRE at rest: +-bend_range semitones. */
+void live_bend(live* l, uint16_t bend);
+/* Channel aftertouch, 0..127 (clamped). */
+void live_pressure(live* l, uint8_t pressure);
+/* Polyphonic aftertouch, 0..127 (clamped), for the voices holding note. */
+void live_poly_pressure(live* l, uint8_t note, uint8_t pressure);
+/* Bend to the centre, the wheel and every pressure to 0 (MIDI's reset all controllers). The
+ * pulse width is a parameter, not the wheel's position: it is kept. */
+void live_reset_controllers(live* l);
 /* The largest value of a parameter; 0 for an unknown one. */
 uint32_t live_param_max(uint32_t param);
 /* Sets a parameter, clamped to 0..live_param_max; writes only on a change. Unknown
@@ -211,16 +319,19 @@ void live_param_set(live* l, uint32_t param, uint32_t value);
 /* A parameter's value; 0 for an unknown one. For the chip model, the one last asked for
  * (model_req), so a set reads back at once; the chip's is the model field. */
 uint32_t live_param_get(const live* l, uint32_t param);
-/* Loads a preset: releases every voice and resets cutoff, resonance and pulse width, and
- * the five SID settings the parameters edit (waveform with ring and sync, attack/decay,
- * sustain/release, filter routing, filter mode), to the preset's. Loading the preset already
- * loaded does the same, so it discards those edits. Volume, octave, chip model and the
- * effect slots are kept. An index past the last is clamped. */
+/* Loads a preset: releases every voice and resets cutoff, resonance and pulse width, the
+ * five SID settings the parameters edit (waveform with ring and sync, attack/decay,
+ * sustain/release, filter routing, filter mode) and the expression settings (bend range,
+ * targets, vibrato), to the preset's. Loading the preset already loaded does the same, so it
+ * discards those edits. Volume, octave, chip model, the effect slots and the controllers
+ * (bend, wheel, pressure) are kept. An index past the last is clamped. */
 void live_set_preset(live* l, uint8_t index);
 /* The MASTER pot, 0..1023 (clamped); the chip's volume is its top 4 bits, rounded. */
 void live_set_master(live* l, uint16_t value);
-/* Applies a chip model asked for since the last tick (live_param_set), then advances the
- * pulse-width LFO; call at LIVE_TICK_HZ. */
+/* Applies a chip model asked for since the last tick (live_param_set), advances the
+ * pulse-width LFO and each voice's vibrato, then writes every frequency, pulse width and the
+ * cutoff that the controllers, the vibrato or the LFO changed (nothing that did not change);
+ * call at LIVE_TICK_HZ. At most 14 writes besides a model change. */
 void live_tick(live* l);
 
 /* Effect slots. The number of algorithms slot has (its NONE included). */

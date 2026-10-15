@@ -193,7 +193,7 @@ fn program_change_selects_the_preset() {
 }
 
 #[test]
-fn sysex_real_time_bend_and_pressure_are_ignored() {
+fn sysex_and_real_time_are_ignored_bend_and_pressure_wait_for_the_tick() {
     let mut m = Midi::new();
     m.trs(&[0x90, C4, 100]);
     m.rig.clear();
@@ -203,12 +203,38 @@ fn sysex_real_time_bend_and_pressure_are_ignored() {
     ]);
     m.usb(0x4, [0xF0, 0x7E, 0x7F]);
     m.usb(0x7, [0x06, 0x01, 0xF7]);
+    assert_eq!(m.live().bend, 0x7F << 7);
+    assert_eq!(m.live().channel_pressure, 0x40);
+    assert_eq!(m.live().voice[0].pressure, 0x40);
     m.usb(0xE, [0xE0, 0, 0x40]);
+    assert_eq!(m.live().bend, LIVE_BEND_CENTRE as u16);
     m.usb(0x0, [0x90, E4, 100]);
     assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
     assert_eq!(m.held(), [C4]);
     m.trs(&[0x80, C4, 0]);
     assert_eq!(m.held(), [] as [u8; 0], "the parser still works after them");
+}
+
+#[test]
+fn a_bend_over_trs_reaches_the_frequency_at_the_tick() {
+    let mut m = Midi::new();
+    m.trs(&[0x90, C4, 100, 0xE0, 0x00, 0x00]);
+    unsafe { live_tick(&mut *m.rig.live) };
+    assert_eq!(m.rig.voice_freq(0), crate::freq_table()[58]);
+    m.trs(&[0x7F, 0x7F]); // running status
+    unsafe { live_tick(&mut *m.rig.live) };
+    assert_eq!(m.rig.voice_freq(0), unsafe { live_freq_at(C4, 8191 * 2) });
+}
+
+#[test]
+fn a_gap_resets_the_controllers() {
+    let mut m = Midi::new();
+    m.trs(&[0x90, C4, 100, 0xE0, 0x00, 0x00, 0xD0, 50]);
+    m.epoch = 1; // the bend's return to the centre may be among the lost
+    m.trs(&[0xFE]);
+    assert_eq!(m.rx.restarts, 1);
+    assert_eq!(m.live().bend, LIVE_BEND_CENTRE as u16);
+    assert_eq!(m.live().channel_pressure, 0);
 }
 
 #[test]

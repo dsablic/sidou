@@ -316,6 +316,15 @@ fn worst_pass(l: &mut live, p: &mut panel, fx: bool) {
         panel_buttons(p, l, 1 << PANEL_BTN_ENV, 0);
         // the sync lead: every note-on also sets the sync voice's frequency
         panel_encoder(p, l, PANEL_ENC_K4, 1);
+        // Expression MIDI set earlier (here after K4, so the preset does not reset it): the
+        // velocity lowers the cutoff, aftertouch raises the pulse width and starts again at 0
+        // with each note, the vibrato and the bend move every frequency at the ticks.
+        live_param_set(l, LIVE_PARAM_VELOCITY_TARGET, LIVE_VELOCITY_CUTOFF);
+        live_param_set(l, LIVE_PARAM_PRESSURE_TARGET, LIVE_PRESSURE_PULSE_WIDTH);
+        live_param_set(l, LIVE_PARAM_VIBRATO_DEPTH, 127);
+        live_poly_pressure(l, 60, 90);
+        live_pressure(l, 30);
+        live_bend(l, 12000);
         // every key pressed and let go within the pass, each retriggering voice 1
         panel_note_keys(p, l, 0, (1 << PANEL_NOTE_KEYS) - 1);
         panel_encoder(p, l, PANEL_ENC_K1, -3);

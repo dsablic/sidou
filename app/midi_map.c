@@ -25,6 +25,11 @@
 #define NRPN_SID 1u
 #define NRPN_CHARACTER 2u
 #define NRPN_SLOT 3u /* + slot: Distortion 3, Modulation 4, FX 5; the LSB is the field */
+#define NRPN_EXPRESSION 6u
+#define NO_CC MIDI_MAP_NO_CC
+
+/* RPN 0/0: pitch-bend sensitivity, CC 6 the semitones and CC 38 the cents. */
+#define RPN_BEND_RANGE 0u
 
 #ifdef SIDOU_MIDI_MAP_DOC
 #define DOC(g, n, v) .group = g, .name = n, .values = v,
@@ -54,7 +59,9 @@ static const midi_map_entry rows[MIDI_MAP_ROWS] = {
         LIVE_CC_CUTOFF, NRPN(NRPN_LIVE, 0), LIVE_CUTOFF_MAX, 1200, LINEAR),
     ROW("Live", "Resonance", "0..15", LIVE_PARAM_RESONANCE,
         LIVE_CC_RESONANCE, NRPN(NRPN_LIVE, 1), LIVE_RESONANCE_MAX, 6, STEPS),
-    ROW("Live", "Pulse width", "0..4095, the SID's 12 bits; the PWM presets move around it",
+    ROW("Live", "Pulse width",
+        "0..4095, the SID's 12 bits; the PWM presets move around it; CC 1 while it is the mod "
+        "wheel's target (the default)",
         LIVE_PARAM_PULSE_WIDTH, LIVE_CC_PULSE_WIDTH, NRPN(NRPN_LIVE, 2), LIVE_PULSE_WIDTH_MAX,
         2048, LINEAR),
     ROW("Live", "Volume", "0..1023 as the MASTER pot; the chip's volume is its top 4 bits",
@@ -99,6 +106,32 @@ static const midi_map_entry rows[MIDI_MAP_ROWS] = {
               "0 OFF, 1 CHORUS, 2 FLANGER, 3 PHASER, 4 TREMOLO, 5 AUTO-PAN, 6 WOW",
               SID_MOD_COUNT),
     SLOT_ROWS(2, "FX", "0 OFF, 1 DELAY, 2 PING-PONG, 3 REVERB, 4 LUSH", SID_FXSLOT_COUNT),
+
+    ROW("Expression", "Bend range",
+        "semitones each way; also RPN 0 (CC 101/100 = 0/0, then CC 6 the semitones)",
+        LIVE_PARAM_BEND_RANGE, NO_CC, NRPN(NRPN_EXPRESSION, 0), LIVE_BEND_RANGE_MAX,
+        LIVE_BEND_RANGE_DEFAULT, STEPS),
+    ROW("Expression", "Velocity target",
+        "0 off (full level), 1 sustain level, 2 cutoff (lower), 3 pulse width (narrower)",
+        LIVE_PARAM_VELOCITY_TARGET, NO_CC, NRPN(NRPN_EXPRESSION, 1), LIVE_VELOCITY_PULSE_WIDTH,
+        LIVE_VELOCITY_OFF, STEPS),
+    ROW("Expression", "Mod wheel target",
+        "0 pulse width (CC 1 sets it), 1 vibrato depth (adds), 2 cutoff (opens)",
+        LIVE_PARAM_MOD_TARGET, NO_CC, NRPN(NRPN_EXPRESSION, 2), LIVE_MOD_CUTOFF,
+        LIVE_MOD_PULSE_WIDTH, STEPS),
+    ROW("Expression", "Aftertouch target",
+        "0 off, 1 vibrato depth (adds), 2 pulse width (raises), 3 cutoff (opens)",
+        LIVE_PARAM_PRESSURE_TARGET, NO_CC, NRPN(NRPN_EXPRESSION, 3), LIVE_PRESSURE_CUTOFF,
+        LIVE_PRESSURE_OFF, STEPS),
+    ROW("Expression", "Vibrato rate", "0..12.7 Hz in 0.1 Hz steps", LIVE_PARAM_VIBRATO_RATE,
+        LIVE_CC_VIBRATO_RATE, NRPN(NRPN_EXPRESSION, 4), LIVE_EXPRESSION_MAX,
+        LIVE_VIBRATO_RATE_DEFAULT, LINEAR),
+    ROW("Expression", "Vibrato depth", "0 off .. 127 +-99 cents, a triangle",
+        LIVE_PARAM_VIBRATO_DEPTH, LIVE_CC_VIBRATO_DEPTH, NRPN(NRPN_EXPRESSION, 5),
+        LIVE_EXPRESSION_MAX, 0, LINEAR),
+    ROW("Expression", "Vibrato delay", "0..1.27 s after each note-on, in 10 ms",
+        LIVE_PARAM_VIBRATO_DELAY, LIVE_CC_VIBRATO_DELAY, NRPN(NRPN_EXPRESSION, 6),
+        LIVE_EXPRESSION_MAX, 0, LINEAR),
 };
 /* clang-format on */
 
@@ -170,8 +203,8 @@ void midi_map_port_init(midi_map_port* p, live* l) {
     }
 }
 
-/* The parameter data entry goes to: none for an RPN (none is implemented yet), the null
- * NRPN, an unmapped or a reserved one. */
+/* The parameter data entry goes to: none for an RPN (RPN 0 is rpn_data's), the null NRPN,
+ * an unmapped or a reserved one. */
 static const midi_map_entry* selected(const midi_map_channel* c) {
     if (c->rpn) {
         return NULL;
@@ -180,7 +213,26 @@ static const midi_map_entry* selected(const midi_map_channel* c) {
     return e && e->param != MIDI_MAP_RESERVED ? e : NULL;
 }
 
+/* RPN 0, the bend range in semitones: CC 6 sets it at once (the standard's MSB), CC 38 (the
+ * cents) is ignored, CC 96 and 97 step a semitone. Other RPNs do nothing. */
+static void rpn_data(midi_map_port* p, const midi_map_channel* c, uint8_t cc, uint8_t value) {
+    if (c->rpn_msb != 0u || c->rpn_lsb != RPN_BEND_RANGE) {
+        return;
+    }
+    uint32_t now = live_param_get(p->l, LIVE_PARAM_BEND_RANGE);
+    switch (cc) {
+    case CC_DATA_MSB: live_param_set(p->l, LIVE_PARAM_BEND_RANGE, value); break;
+    case CC_INCREMENT: live_param_set(p->l, LIVE_PARAM_BEND_RANGE, now + 1u); break;
+    case CC_DECREMENT: live_param_set(p->l, LIVE_PARAM_BEND_RANGE, now ? now - 1u : 0u); break;
+    default: break; /* CC_DATA_LSB */
+    }
+}
+
 static void data(midi_map_port* p, midi_map_channel* c, uint8_t cc, uint8_t value) {
+    if (c->rpn) {
+        rpn_data(p, c, cc, value);
+        return;
+    }
     const midi_map_entry* e = selected(c);
     if (!e) {
         return;
@@ -242,7 +294,10 @@ void midi_map_cc(midi_map_port* p, uint8_t channel, uint8_t cc, uint8_t value) {
     case CC_DATA_LSB:
     case CC_INCREMENT:
     case CC_DECREMENT: data(p, c, cc, value); break;
-    case CC_RESET_ALL: deselect(c); break;
+    case CC_RESET_ALL:
+        deselect(c);
+        live_cc(p->l, cc, value); /* the controllers */
+        break;
     default: live_cc(p->l, cc, value); break;
     }
 }

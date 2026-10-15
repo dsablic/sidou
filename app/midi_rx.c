@@ -15,7 +15,10 @@ void midi_rx_live(midi_map_port* port, const midi_msg* msg) {
             live_set_preset(l, msg->data1);
         }
         break;
-    default: break; /* pressure, pitch bend, real time: not mapped yet */
+    case MIDI_PITCH_BEND: live_bend(l, msg->bend); break;
+    case MIDI_CHANNEL_PRESSURE: live_pressure(l, msg->data1); break;
+    case MIDI_POLY_PRESSURE: live_poly_pressure(l, msg->data1, msg->data2); break;
+    default: break; /* real time: nothing yet */
     }
 }
 
@@ -38,6 +41,7 @@ static void restart(midi_rx* rx, uint8_t epoch) {
     rx->restarts++;
     parsers_init(rx);
     live_all_notes_off(rx->l);
+    live_reset_controllers(rx->l); /* a bend back to the centre may be among the lost */
 }
 
 void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch) {

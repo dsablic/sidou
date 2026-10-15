@@ -6,7 +6,9 @@
  * - CCs and NRPNs through the published map (midi_map.h, docs/reference/midi.md), with the
  *   NRPN state per channel and per source; CC 120 and 123 release every note;
  * - program change n selects preset n; programs past the last preset are ignored;
- * - everything else (pitch bend, pressure, real time, system common, SysEx) is ignored.
+ * - pitch bend, channel and polyphonic aftertouch go to live (live_bend, live_pressure,
+ *   live_poly_pressure), which applies them at its next tick;
+ * - everything else (real time, system common, SysEx) is ignored.
  *
  * One parser per source, because the sources interleave: a TRS message arrives a byte per
  * 320 us, so USB messages can come between its bytes, and a parser shared by both would take
@@ -14,10 +16,11 @@
  * first, so both sources share the one parser implementation with its running status,
  * real-time and SysEx rules.
  *
- * Lost input (midi_ring.h): the parsers restart and every note is released exactly where the
- * gap is, so what came before it is taken whole, what was cut by it is dropped (a message is
- * never completed with bytes from after the gap), and a note-off that may be among the lost
- * cannot leave a note hanging. midi_rx_entry finds a gap from the epochs of the entries;
+ * Lost input (midi_ring.h): the parsers restart, every note is released and the controllers
+ * reset (bend centred, wheel and pressure 0) exactly where the gap is, so what came before it
+ * is taken whole, what was cut by it is dropped (a message is never completed with bytes from
+ * after the gap), and a note-off or a bend back to the centre that may be among the lost
+ * cannot leave a note hanging or bent. midi_rx_entry finds a gap from the epochs of the entries;
  * midi_rx_check_lost finds one at the end of the ring (no entry after it yet).
  *
  * Portable C with no hardware access; the main loop owns it. */

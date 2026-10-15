@@ -38,10 +38,10 @@
 extern "C" {
 #endif
 
-/* Entries in the ring, a power of two. The worst case of one main-loop pass is 263 entries
+/* Entries in the ring, a power of two. The worst case of one main-loop pass is 387 entries
  * (reg_ring.c, REG_RING_WORST_PASS), so a pass never waits for room on its own account. */
 #define REG_RING_SIZE 512u
-#define REG_RING_WORST_PASS 263u
+#define REG_RING_WORST_PASS 387u
 
 typedef struct {
     uint8_t reg; /* a SID register 0x00..0x18, or a live pseudo-register (bit 7 set) */

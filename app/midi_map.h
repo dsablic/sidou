@@ -61,7 +61,7 @@ typedef struct {
     uint8_t curve;      /* a midi_map_curve, for the CC */
 } midi_map_entry;
 
-#define MIDI_MAP_ROWS 34u
+#define MIDI_MAP_ROWS 41u
 
 /* Row i in table order, or NULL past the last. midi_map_row, midi_map_for_param and
  * midi_map_to_cc have no caller on the device yet; --gc-sections drops them there. */
@@ -97,7 +97,8 @@ typedef struct {
 /* Nothing selected on any channel. */
 void midi_map_port_init(midi_map_port* p, live* l);
 /* A CC on a channel (0..15): selection, data entry, increment and decrement by the channel's
- * state, CC 121 (reset all controllers) deselects, everything else through live_cc. */
+ * state (RPN 0 the bend range, other RPNs nothing), CC 121 (reset all controllers) deselects
+ * and resets live's controllers, everything else through live_cc. */
 void midi_map_cc(midi_map_port* p, uint8_t channel, uint8_t cc, uint8_t value);
 
 #ifdef __cplusplus

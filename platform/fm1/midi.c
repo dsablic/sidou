@@ -26,12 +26,15 @@
 
 /* The register writes one MIDI entry can cause at most. A program change writes every register
  * (live_set_preset, 25). A CC writes at most 6 (the pulse width or the envelopes on every
- * voice): the chip model is only recorded here and live_tick applies it, inside the main
- * loop's own budget (reg_ring.c, REG_RING_WORST_PASS). A TRS byte completes at most one
- * message; a USB packet up to three, through running status (app/midi_usb.h), e.g. CIN 3 with
- * three data bytes after C0, so three program changes (75) are the worst; two CCs fit in a
- * packet (12), three note-ons (18). An entry after a gap of lost input first restarts the
- * parsers and releases every voice (live_all_notes_off: one gate write per voice). */
+ * voice, the latter also for the velocity target): the chip model is only recorded here and
+ * live_tick applies it, inside the main loop's own budget (reg_ring.c, REG_RING_WORST_PASS), as
+ * it applies pitch bend, aftertouch, the wheel on a target other than the pulse width and RPN 0,
+ * which write nothing here, so a flood of 14-bit bends costs one tick's writes. A note-on writes
+ * at most 10 (reg_ring.c). A TRS byte completes at most one message; a USB packet up to three,
+ * through running status (app/midi_usb.h), e.g. CIN 3 with three data bytes after C0, so three
+ * program changes (75) are the worst; two CCs fit in a packet (12), three note-ons (30). An
+ * entry after a gap of lost input first restarts the parsers and releases every voice
+ * (live_all_notes_off: one gate write per voice). */
 #define MIDI_ENTRY_WRITES (3u * 25u + LIVE_VOICES)
 
 static midi_ring in_ring;
