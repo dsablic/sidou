@@ -124,6 +124,49 @@ compiles every float operation to a soft-float library call.
 To run the firmware benchmark in the emulator, see "Emulator gate" in
 [TESTING.md](TESTING.md).
 
+## Browser demo (`tools/web-demo`)
+
+One command builds the working tree's firmware into
+[fm1-emu](https://github.com/joakimeriksson/fm1-emu)'s web page and serves it:
+
+```sh
+tools/web-demo                  # build, then serve http://localhost:8642/ (Ctrl-C stops)
+tools/web-demo --port 9000      # another port
+tools/web-demo --skip-firmware  # reuse build/fm1's firmware (no Docker); the rest is redone
+tools/web-demo --no-serve       # build only
+tools/web-demo --check          # build, then the headless smoke test (TESTING.md)
+```
+
+**Prerequisites:** those of the firmware build and the host build, Python 3,
+and git. `--check` also needs Node.js 20 or later. The wasm needs Rust's
+`wasm32-unknown-unknown` target; with rustup the script adds it.
+
+**What it does:**
+1. builds the `fm1` firmware in Docker and packages it (`sidou-pack`), as
+   above, into `build/fm1/sidou.fwsc`;
+2. fetches fm1-emu into `build/fm1-emu` at the revision
+   `host/crates/emu-gate/Cargo.toml` pins (one pin for the emulator tests
+   and the demo: bump it there) and runs fm1-emu's own `web/build.sh`,
+   which builds the `fm1-web` crate to wasm and copies the page's files
+   (`main.js`, `worklet.js`, `jit.js`, `fwsc.js`) into `build/web/`;
+3. puts SIDOU's layer from `web/` on top: `index.html` (the SIDOU page, in
+   place of upstream's), `sidou.js`, `firmwares.json` (a catalog of SIDOU
+   alone, the package served next to the page), the logo, the licence
+   texts the package and the emulator need, and `version.json` (the commit,
+   its date, whether the tree had local changes);
+4. patches upstream's `main.js` with `web/patch-main.sh` (two lines: a
+   package URL relative to the page, and a default clock of 240 MHz; each
+   edit must apply exactly once, so a new upstream revision that moves them
+   stops the build);
+5. serves `build/web/` on 127.0.0.1 with `web/serve.py` (no caching, so a
+   rebuild shows on reload).
+
+Upstream's files are copied at build time, never committed: they stay at
+the pinned revision and under fm1-emu's MIT licence. SIDOU's own files for
+the page live in `web/` (`platform/web` in the design document is kept for
+a future native wasm build of the core). `.github/workflows/pages.yml`
+runs `tools/web-demo --check` and deploys `build/web/` to GitHub Pages.
+
 ## The pinned toolchain
 
 The image downloads JieLi's Linux toolchain

@@ -23,6 +23,7 @@ lists the prerequisites.
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
 | Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
 | Emulator tests (gates incl. effects, boot, live instrument, screen, MIDI, latency, SRAM audio, package) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
+| Browser demo smoke test (from the repository root) | `tools/web-demo --check` | `web/check.mjs`, `web/check.sh` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
 profile sets `opt-level = 3`), but the reference tests do a lot of Rust-side
@@ -682,6 +683,26 @@ Checks of where the audio path runs, in
 fm1-emu does not model the I-cache, so the benefit is a hardware
 measurement (docs/hardware.md, open checks).
 
+### Browser demo smoke test
+
+`tools/web-demo --check` builds the browser demo (BUILDING.md, "Browser
+demo"), serves it on a free localhost port and runs `web/check.mjs` in
+headless Chromium (Playwright, pinned in `web/check.sh` and installed with
+its browser into `build/web-check/` on first use). It fails when:
+- the page logs a console error, throws, or a request fails;
+- the audio thread reports an error, or the emulated CPU halts;
+- after Start, 3 s of emulated time do not pass within 60 s;
+- the LCD has fewer than 5,000 lit pixels, or the screen at 3 s is the
+  title card's (0.5 s) unchanged: the boot did not get past it;
+- the canvas's LCD area is nearly black;
+- holding a note key (H, A4) does not change the screen, or the output's
+  RMS (an analyser on the AudioWorklet's output) does not rise above four
+  times its level before the key.
+
+It saves a screenshot with the note held to
+`build/web-check/screenshot.png` (`SIDOU_WEB_SCREENSHOT` overrides). The
+Pages workflow runs it before every deploy.
+
 ## Sanitizers
 
 The C and C++ code can be built with sanitizers through `SIDOU_SANITIZE`:
@@ -702,7 +723,8 @@ line.
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push to `main` and every pull
-request:
+request (`.github/workflows/pages.yml`, on every push to `main`, builds,
+smoke-tests and deploys the browser demo):
 
 | Job | What it runs |
 |---|---|

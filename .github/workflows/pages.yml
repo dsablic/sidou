@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The browser demo on GitHub Pages: tools/web-demo builds the site (the firmware, its package,
+# fm1-emu's web frontend at the pinned revision) and smoke-tests it in headless Chromium;
+# only a build that passes is deployed. Pages must be enabled with "GitHub Actions" as its
+# source (docs/TODO.md).
+name: pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install libclang (bindgen)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev clang
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            host
+            build/fm1-emu -> target/wasm
+      # sidou-pack's inputs (three AC79 SDK files), as in ci.yml
+      - uses: actions/cache@v4
+        with:
+          path: build/ac79
+          key: sidou-pack-inputs-${{ hashFiles('host/crates/sidou-pack/inputs.toml') }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the site and smoke-test it (tools/web-demo --check)
+        run: tools/web-demo --check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-demo-screenshot
+          path: build/web-check/screenshot.png
+          if-no-files-found: ignore
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

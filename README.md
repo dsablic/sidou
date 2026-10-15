@@ -18,6 +18,21 @@ the host only: **no FM-1 has run it yet**, and it is not ready to be
 installed on hardware (see below). See the
 [design document](docs/plans/2026-10-14-sidou-design.md) for where it's going.
 
+## Try it in your browser
+
+**<https://dsablic.github.io/sidou/>** will play the latest build from
+`main` once this work is pushed and GitHub Pages is enabled: SIDOU running in
+[fm1-emu](https://github.com/joakimeriksson/fm1-emu)'s emulated FM-1, played
+from the computer keyboard, the mouse or touch, or a MIDI keyboard (Web
+MIDI, through the emulated TRS jack).
+
+To run your working tree's firmware the same way (Docker, Rust and Python 3
+needed; [BUILDING.md](BUILDING.md), "Browser demo"):
+
+```sh
+tools/web-demo          # builds everything, then serves http://localhost:8642/
+```
+
 ## Try M1a
 
 **In the emulator** (no hardware needed). Build the firmware and the package
