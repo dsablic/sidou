@@ -207,13 +207,34 @@ int grid_overlay_same(const grid* g, uint32_t col, uint32_t row, const uint8_t m
     return 1;
 }
 
+/* Cells [a, b) in screen order to be sent again, eight a store where it can (a view switch
+ * clears a full-screen region in the same frame as the next view's first compose). The
+ * caller marks their rows. */
+static void stale_range(grid* g, uint32_t a, uint32_t b) {
+    for (; a < b && (a & 7u); a++) {
+        g->stale[a >> 3] |= (uint8_t)(1u << (a & 7u));
+    }
+    for (; a + 8u <= b; a += 8u) {
+        g->stale[a >> 3] = 0xFFu;
+    }
+    for (; a < b; a++) {
+        g->stale[a >> 3] |= (uint8_t)(1u << (a & 7u));
+    }
+}
+
 /* The region's cells, to be sent again. */
 static void region_stale(grid* g) {
-    for (uint32_t r = g->region_row; r < (uint32_t)g->region_row + g->region_h; r++) {
-        for (uint32_t c = g->region_col; c < (uint32_t)g->region_col + g->region_w; c++) {
-            mark_stale(g, r * GRID_COLS + c);
+    uint32_t r0 = g->region_row;
+    uint32_t r1 = r0 + g->region_h;
+    if (g->region_w == GRID_COLS) {
+        stale_range(g, r0 * GRID_COLS, r1 * GRID_COLS); /* whole rows: one range */
+    } else {
+        for (uint32_t r = r0; r < r1; r++) {
+            uint32_t i = r * GRID_COLS + g->region_col;
+            stale_range(g, i, i + g->region_w);
         }
     }
+    g->rows |= ((1u << g->region_h) - 1u) << r0;
 }
 
 int grid_region(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
@@ -281,24 +302,6 @@ void grid_bitmap_row(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t n, u
     }
 }
 
-/* As grid_bitmap_row, as the panel's pixels. */
-static void bitmap_pixels(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t n,
-                          const uint16_t pal[16], uint16_t* out) {
-    uint32_t left;
-    const uint8_t* p = bitmap_seek(b, x, y, &left);
-    for (;;) {
-        uint16_t c = pal[*p & 15u];
-        uint32_t k = left < n ? left : n;
-        n -= k;
-        while (k--) {
-            *out++ = c;
-        }
-        if (!n) {
-            return;
-        }
-        left = (uint32_t)(*++p >> 4) + 1u;
-    }
-}
 
 uint32_t grid_pending(const grid* g) {
     uint32_t n = 0;
@@ -369,6 +372,34 @@ typedef uint32_t __attribute__((may_alias)) pixel_pair;
 #else
 #define PAIR(left, right) ((uint32_t)(right) << 16 | (uint32_t)(left))
 #endif
+
+/* As grid_bitmap_row, as the panel's pixels from an even pixel of a run's buffer (4-byte
+ * aligned): a run fills two pixels a store, with one more at either end when it starts or
+ * ends between a pair. */
+static void bitmap_pixels(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t n,
+                          const uint16_t pal[16], uint16_t* out) {
+    uint32_t left;
+    const uint8_t* p = bitmap_seek(b, x, y, &left);
+    uint32_t at = 0; /* pixels written */
+    for (;;) {
+        uint32_t c = pal[*p & 15u];
+        uint32_t end = at + (left < n - at ? left : n - at);
+        if ((at & 1u) && at < end) {
+            out[at++] = (uint16_t)c;
+        }
+        pixel_pair pc = PAIR(c, c);
+        for (; at + 2u <= end; at += 2u) {
+            *(pixel_pair*)(void*)(out + at) = pc;
+        }
+        if (at < end) {
+            out[at++] = (uint16_t)c;
+        }
+        if (at == n) {
+            return;
+        }
+        left = (uint32_t)(*++p >> 4) + 1u;
+    }
+}
 
 /* A pair's two bits (the left one the higher) as which of its pixels are set. */
 static const uint32_t PAIR_MASK[4] = {PAIR(0u, 0u), PAIR(0u, 0xFFFFu), PAIR(0xFFFFu, 0u),
