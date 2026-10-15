@@ -248,29 +248,11 @@ fn the_audio_path_reads_no_data_from_flash() {
 
 /// Instructions a sample the LIVE view's tap (app/scope.h) may add to the audio interrupt.
 /// docs/plans/2026-10-15-m1e-look-and-feel.md asks for under about 10; M1e Task 4 measures
-/// 4.8 (a point every 16 samples, the peaks of every 8th frame).
+/// 4.8 (368.15 against 363.33: a point every 16 samples, the peaks of every 8th frame).
 const TAP_PER_SAMPLE: f64 = 6.0;
 /// A chord's note keys (14 + note - 53): A3, E4, E5.
 const CHORD: [u8; 3] = [18, 25, 37];
 const HOME: u8 = 8;
-
-/// The tap's `on` (platform/fm1/audio.c `tap`), checked against the pi32v2 layout.
-fn tap_on(m: &mut Machine, fw: &Firmware) -> bool {
-    use object::{Object, ObjectSymbol};
-    let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
-    let sym = file
-        .symbols()
-        .find(|s| s.name() == Ok("tap"))
-        .expect("no symbol tap in the firmware ELF");
-    assert_eq!(
-        sym.size(),
-        sidou_sys::ilp32::scope::SIZE as u64,
-        "the tap's layout moved"
-    );
-    m.soc
-        .read8(sym.address() as u32 + sidou_sys::ilp32::scope::on as u32)
-        != 0
-}
 
 /// The audio interrupt's mean instructions a sample over `ms`.
 fn per_sample(m: &mut Machine, ms: u64) -> (f64, usize) {
@@ -299,13 +281,13 @@ fn the_live_view_tap_costs_the_audio_interrupt_little() {
     m.run_ms(1500); // to the sustain level: the chip's cost steady
     let (mut on, mut off) = (Vec::new(), Vec::new());
     for _ in 0..3 {
-        assert!(tap_on(&mut m, &fw), "the tap is off under LIVE");
+        assert!(common::tap_on(&mut m, &fw), "the tap is off under LIVE");
         on.push(per_sample(&mut m, 400));
         m.key(HOME, true);
         m.run_ms(30);
         m.key(HOME, false);
         m.run_ms(400);
-        assert!(!tap_on(&mut m, &fw), "the tap runs under the menu");
+        assert!(!common::tap_on(&mut m, &fw), "the tap runs under the menu");
         off.push(per_sample(&mut m, 400));
         m.key(HOME, true);
         m.run_ms(30);

@@ -461,6 +461,16 @@ pub const ISR_OVERHEAD: f64 = 100.0;
 /// Two chips plus the effects (M1c plan Task 1's cap).
 pub const TWO_CHIPS_PLUS_EFFECTS: f64 = 2300.0;
 
+/// fm1-emu's CPU clock, one instruction a cycle (latency.rs checks it).
+pub const CPU_HZ: u64 = 240_000_000;
+/// The TRS UART poll's rate (platform/fm1/main.c: every 5th 10 kHz tick).
+pub const POLL_HZ: u64 = 2000;
+/// The latency gate's poll allowance in main-loop instructions (latency.rs: a note-on is in
+/// the block that starts within a block and a poll of its arrival, 3.40 ms): 0.5 ms at
+/// CPU_HZ. The main loop drains MIDI between ui_poll calls, so a longer ui_poll would eat
+/// into it: every view's worst ui_poll bound stays within it (screen.rs).
+pub const POLL_INSTRUCTIONS: u64 = CPU_HZ / POLL_HZ;
+
 /// 24 MHz / 544, the I2S frame rate.
 pub const FS: f64 = 24e6 / 544.0;
 
@@ -726,6 +736,24 @@ pub fn open_status(m: &mut Machine, fw: &Firmware) {
         "the menu's STATUS did not open the status screen"
     );
     to_mid_frame(m, fw);
+}
+
+/// The tap's `on` (platform/fm1/audio.c `tap`), checked against the pi32v2 layout.
+pub fn tap_on(m: &mut Machine, fw: &Firmware) -> bool {
+    use object::{Object, ObjectSymbol};
+    let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
+    let sym = file
+        .symbols()
+        .find(|s| s.name() == Ok("tap"))
+        .expect("no symbol tap in the firmware ELF");
+    assert_eq!(
+        sym.size(),
+        sidou_sys::ilp32::scope::SIZE as u64,
+        "the tap's layout moved"
+    );
+    m.soc
+        .read8(sym.address() as u32 + sidou_sys::ilp32::scope::on as u32)
+        != 0
 }
 
 /// Longer than the full boot (app/boot.h: the title card ends 10 s in) and its wipe.

@@ -91,13 +91,14 @@ SPI):
     power-on; the status screen moves to the menu (STATUS), which M2's STEP
     view will join. The tap is a point every 16 samples (each voice's waveform
     output and oscillator phase) and the output's peaks of every 8th frame,
-    only while LIVE shows: 4.9 instructions a sample. The scopes are folded by
+    only while LIVE shows: 4.8 instructions a sample. The scopes are folded by
     the oscillator's phase rather than drawn on a time base, so a held note
     stands still at any pitch. Three voices of noise move about 240 cells a
     frame, over the 20 ms budget: LIVE holds itself to 200 cells a frame and
-    the scopes take turns. A held chord costs about 58k instructions a frame,
-    three voices of noise about 206k (most of it sending their cells), which
-    is over the 70-90k expected; the reading of the tap runs half way between
+    the scopes take turns. A held chord costs about 48k instructions a frame,
+    three voices of noise about 141k (206k before the canvas was drawn a part
+    at a time and the pixels two at a store), which is over the 70-90k
+    expected; the reading of the tap runs half way between
     frames, so no main-loop pass grows long enough to delay MIDI (the M1d
     latency gate). docs/art/README.md, "LIVE", has the numbers.
 

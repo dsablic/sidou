@@ -241,6 +241,12 @@ fn the_slots_on_the_device_match_the_host_sample_exact() {
     m.run_ms(400);
     let audio = m.soc.periph.audio.clone();
     assert!(m.left() != m.right(), "the reverb's output is mono");
+    // LIVE, the root, on top all along: the audio interrupt rendered through the tap
+    // (app/scope.h), which must change nothing in the audio.
+    assert!(
+        common::tap_on(&mut m, &fw),
+        "the tap is off: the match says nothing about it"
+    );
 
     // The blocks the CCs and the note-on reached the interrupt in depend on the MIDI drain
     // and the key scan: search a few blocks after each was sent. The chip plays before the

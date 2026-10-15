@@ -202,10 +202,13 @@ The animated screens compose every frame (`the_boot_and_about_stay_within_their_
 
 | Screen | Cells a frame (average, most) | Windows a frame | SPI a frame (average, worst) | Main loop a frame (average, busiest `ui_poll`) |
 |---|---|---|---|---|
-| Full boot | 29, 150 | 9.6 | 2.5 ms, 12.8 ms | 50k, 62k instructions |
-| About | 94, 148 | 24.5 | 8.2 ms, 12.8 ms | 161k, 106k instructions |
+| Full boot | 29, 150 | 9.6 | 2.5 ms, 12.8 ms | 46k, 37k instructions |
+| About | 94, 148 | 24.5 | 8.2 ms, 12.8 ms | 144k, 91k instructions |
 
-About costs 4.0M instructions a second (1.7 % of the core at 240 MHz).
+About costs 3.6M instructions a second (1.5 % of the core at 240 MHz). A run's pixels are
+written two at a 32-bit store, a cell row from two 4-entry tables (the glyph's colours, and
+the overlay over the background for a blank glyph row): About was 161k and 105k, the boot
+50k and 64k, with a pixel a store.
 
 A wipe sends only the rows that differ, once each, and its edge row once
 more; a raster step recolours the 116 border cells in 58 windows. Every frame
@@ -396,16 +399,16 @@ bits) and its oscillator's phase (the accumulator's top 8 bits). Once a block it
 voice's ENV3, envelope state and sustain level, and raises the left and right peaks with
 every 8th frame of the output. Rendering in chunks gives the samples one call gives, so the
 audio is unchanged (the device's output matches the host's sample for sample with LIVE
-showing). It runs only while LIVE is on top. Single producer, single consumer, lock-free: the
+showing). It runs only while LIVE shows: on top, or under MIDI learn's frame. Single producer, single consumer, lock-free: the
 interrupt overwrites the oldest points and publishes its head once a block; the main loop
 copies the newest 224 and drops the copy if the interrupt came round to it meanwhile.
 
 | Tap | Measured (fm1-emu, `the_live_view_tap_costs_the_audio_interrupt_little`) |
 |---|---|
 | Points | 2,757 a second (a frame: 110; a read: 224, 81 ms) |
-| Audio interrupt | +4.8 instructions a sample (368.2 against 363.3, a chord held, LIVE against the menu), bounded at 6 |
+| Audio interrupt | +4.8 instructions a sample (368.15 against 363.33, a chord held, LIVE against the menu), bounded at 6 |
 | Code in `.ram_text` | 32,472 of 49,152 bytes (+308: `scope_render`, `scope_peaks` and their calls) |
-| RAM | the ring and envelopes 1,560 bytes; LIVE's state 4,228 (its traces, the points it reads, its canvas) |
+| RAM | the ring and envelopes 1,560 bytes; LIVE's state 6,152 (its traces and their columns, the points it reads, its canvas) |
 
 **The scopes are folded by phase** (an equivalent-time display): each point lands in the
 column its oscillator's phase belongs to, two to four periods across (more for higher
@@ -419,9 +422,14 @@ held chord sends about 5 cells a frame.
 **The budget.** Each trace is an overlay per cell it crosses (at most 240 of the pool's 255).
 Three voices of noise change about 240 cells a frame, 20.5 ms of SPI: over the budget. LIVE
 holds itself to 200 cells a frame (`LIVE_VIEW_FRAME_CELLS`, about 17.5 ms with the windows):
-the scopes get what the rest of the frame left, and a trace that does not fit keeps its last
-look and goes first next frame, so the voices take turns. The canvas (everything but the
-scopes) is composed off the grid and written only when what it shows changed. The tap is
+the scopes get what the rest of the frame and the screen's toast and raster leave
+(`screen_layer_cells`), and a trace that does not fit keeps its last look and goes first next
+frame, so the voices take turns. The canvas (everything but the scopes) is composed off the
+grid, built whole once and then a part at a time: the header, a voice's box, FILTER, VU and
+the slots are drawn again only when what they show changes, an envelope bar or a meter only
+its own cells, and a toast's frames put back only the toast's row. Going back to the menu
+leaves the traces flat and the envelopes and meters empty, so LIVE comes back at rest rather
+than showing what it showed when it went. The tap is
 read half way between frames (`views_prepare`), so no main-loop pass is long enough to hold
 up MIDI (the M1d latency gate). While a wipe or a raster runs LIVE holds still, redrawing the
 overlays a view switch cleared one voice a frame, ahead of the wipe.
@@ -430,10 +438,18 @@ Measured in fm1-emu (`live_stays_within_its_budgets`):
 
 | LIVE | Cells a frame (average, most) | Windows a frame | SPI a frame (average, worst) | Main loop a frame (average, busiest `ui_poll`) |
 |---|---|---|---|---|
-| At rest | 0, 0 | 0 | 0, 0 | 13.9k, 4.4k instructions |
-| A chord of saws, from the note-ons (75 frames) | 4.5, 160 | 1.8 | 0.4 ms, 13.9 ms | 57.8k, 79.9k |
-| Three voices of noise (75 frames) | 146, 161 | 23.7 | 12.6 ms, 14.0 ms | 206k, 89.1k |
+| At rest | 0, 0 | 0 | 0, 0 | 13.7k, 4.2k instructions |
+| A chord of saws, from the note-ons (75 frames) | 4.5, 160 | 1.8 | 0.4 ms, 13.9 ms | 47.5k, 59.1k |
+| Three voices of noise (75 frames) | 146, 161 | 23.7 | 12.6 ms, 14.0 ms | 141k, 60.5k |
 
-The noise case costs 5.1M instructions a second (2.1 % of the core at 240 MHz), most of it
-rendering the cells it sends; the plan's 70-90k a frame holds for a held chord, not for
-noise. The status screen, idle, still composes nothing: 7.4k a frame (7.3k before LIVE).
+The noise case costs 3.5M instructions a second (1.5 % of the core at 240 MHz). Where a
+frame of it goes (each function with its callees): rendering the 146 cells 33k, finding
+the runs 16k, LIVE's compose 52k (setting the scope cells' overlays 27k of it), reading and
+folding the tap half way between frames 30k. Before the canvas was drawn a part at a time
+and the pixels two at a store it was 206k (the compose 84k, the rendering 64k), and the
+busiest `ui_poll` 89k. The plan's 70-90k a frame holds for a held chord, not for noise;
+the busiest `ui_poll` is half the latency gate's poll allowance (0.5 ms, 120k instructions,
+which `screen.rs` holds every view's worst to). With the TRS jack at full speed (a note-on
+and its note-off every 1.92 ms, `midi.rs`), LIVE's frames cost 84k (115k before) and the
+main loop runs 5.7M instructions a second, 2.4 % of the core. The status screen, idle,
+still composes nothing: 7.4k a frame (7.3k before LIVE).

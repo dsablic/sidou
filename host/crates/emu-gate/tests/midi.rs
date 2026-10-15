@@ -576,25 +576,27 @@ fn jack_busy_throughout(m: &Machine) {
     );
 }
 
-/// Needs no firmware symbol, so it also measures a build from before MIDI input for the
-/// difference.
+/// The jack's full speed in `paced_rates`: a note-on and its note-off every 1.92 ms, across
+/// two octaves.
+fn note_on_off(i: u32) -> Vec<u8> {
+    let note = 48 + (i % 24) as u8;
+    vec![0x90, note, 0x64, 0x80, note, 0x00]
+}
+
+/// What MIDI input adds, measured on the status screen: LIVE, the root, draws every note it
+/// plays (bounded in `live_under_a_full_speed_midi_flood_stays_within_its_budget` below and
+/// in screen.rs), the status screen only its note names. The increment, busy minus idle, is
+/// the drain, the parser and `live`.
 #[test]
 fn midi_input_costs_little() {
     let Some(fw) = fixture("the MIDI test") else {
         return;
     };
-    let mut m = booted(&fw);
-    // On the status screen: LIVE, the root, redraws its scopes for every note, and its own
-    // cost is bounded in screen.rs (live_stays_within_its_budgets); this measures MIDI's.
-    common::run_past_boot(&mut m, &fw);
+    let mut m = booted_for_the_panel(&fw);
     common::open_status(&mut m, &fw);
     m.run_ms(1500); // past a USB retry (once a second while no host answers)
     let (isr_idle, main_idle) = rates(&mut m, 2000);
-    // The jack at full speed for 2 s: a note-on and its note-off every 1.92 ms.
-    let (isr_busy, main_busy) = paced_rates(&mut m, 2000, |i| {
-        let note = 48 + (i % 24) as u8;
-        vec![0x90, note, 0x64, 0x80, note, 0x00]
-    });
+    let (isr_busy, main_busy) = paced_rates(&mut m, 2000, note_on_off);
     let report = serde_json::json!({
         "isr_instructions_per_s_idle": isr_idle,
         "main_instructions_per_s_idle": main_idle,
@@ -605,10 +607,10 @@ fn midi_input_costs_little() {
     println!("{report}");
     jack_busy_throughout(&m);
     assert!(
-        main_idle < 5e6 && main_busy < 5e6,
-        "the main loop runs {:.2}M/s idle, {:.2}M/s with TRS MIDI at full speed",
-        main_idle / 1e6,
-        main_busy / 1e6
+        main_busy - main_idle < MIDI_MAIN_INCREMENT,
+        "TRS MIDI at full speed adds {:.2}M main-loop instructions/s ({:.2}M/s idle)",
+        (main_busy - main_idle) / 1e6,
+        main_idle / 1e6
     );
     assert!(
         isr_busy - isr_idle < 2e6,
@@ -616,6 +618,47 @@ fn midi_input_costs_little() {
         (isr_busy - isr_idle) / 1e6
     );
 }
+
+/// The main-loop instructions a second MIDI input at the jack's full speed may add: 1.33M
+/// at M1e Task 4 (2.11M/s idle on the status screen, 3.44M/s busy), 0.55 % of 240 MHz.
+const MIDI_MAIN_INCREMENT: f64 = 1.5e6;
+
+/// LIVE, the power-on root, with the jack at its full speed: every note moves a voice's
+/// scope, envelope, note name and meter. The main loop's whole rate, LIVE and MIDI together.
+#[test]
+fn live_under_a_full_speed_midi_flood_stays_within_its_budget() {
+    let Some(fw) = fixture("the MIDI test") else {
+        return;
+    };
+    let mut m = booted_for_the_panel(&fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("live_view_view"));
+    m.run_ms(1500); // past a USB retry (once a second while no host answers)
+    let (_, main_idle) = rates(&mut m, 2000);
+    let (_, main_busy) = paced_rates(&mut m, 2000, note_on_off);
+    println!(
+        "{}",
+        serde_json::json!({
+            "main_instructions_per_s_idle": main_idle,
+            "main_instructions_per_s_trs_full_speed": main_busy,
+        })
+    );
+    jack_busy_throughout(&m);
+    assert!(
+        main_busy < LIVE_MIDI_FLOOD_MAIN,
+        "LIVE with TRS MIDI at full speed: the main loop runs {:.2}M/s",
+        main_busy / 1e6
+    );
+}
+
+/// The main loop's instructions a second on LIVE with the jack at its full speed: 5.73M at
+/// M1e Task 4 (2.27M/s idle). Over the 5M/s the status screen was held to before LIVE: the
+/// scopes, envelope bars, note names and meters of a note-on and a note-off every 1.92 ms
+/// cost about 84k instructions a frame (LIVE's compose, the tap's reading half way between
+/// frames, the runs), against 14k at rest, on top of MIDI's own 1.3M/s. 6.3M/s is 2.6 % of
+/// 240 MHz; what matters for playing is bounded elsewhere: the longest ui_poll (screen.rs
+/// LIVE_WORST_POLL, within the latency gate's poll allowance) and no byte lost or late
+/// (`a_full_speed_stream_loses_nothing`, the flood tests above).
+const LIVE_MIDI_FLOOD_MAIN: f64 = 6.3e6;
 
 #[test]
 fn a_full_speed_stream_loses_nothing() {

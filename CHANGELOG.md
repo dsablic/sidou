@@ -87,7 +87,7 @@ All notable changes are documented here. The format follows
 - LIVE, the screen at power-on (`app/live_view.h`): an oscilloscope per voice,
   envelope bars, the filter's curve, VU meters and the effect slots, after the
   prototype's. The audio interrupt taps the voices every 16 samples into a
-  lock-free ring (`app/scope.h`), only while LIVE shows (4.9 instructions a
+  lock-free ring (`app/scope.h`), only while LIVE shows (4.8 instructions a
   sample), and the scopes fold the points by the oscillator's phase, so a held
   note stands still. LIVE holds itself to 200 cells a frame; the status screen
   moves to the menu (STATUS).

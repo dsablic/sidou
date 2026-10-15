@@ -1050,13 +1050,14 @@ fn every_wipe_into_an_animated_view_sends_only_its_rows() {
     );
 }
 
-/// Main-loop instructions in ui_poll (fm1-emu). About at M1e Task 3: its busiest ui_poll (a
-/// compose and a run) 105k, 161k a frame with the rendering of its 93 cells, 4.0M a second
-/// (1.7 % of 240 MHz). The full boot: 64k and 50k.
-const ABOUT_WORST_POLL: u64 = 120_000;
-const ABOUT_PER_FRAME: f64 = 180_000.0;
-const BOOT_WORST_POLL: u64 = 75_000;
-const BOOT_PER_FRAME: f64 = 60_000.0;
+/// Main-loop instructions in ui_poll (fm1-emu). About at M1e Task 4, a run's pixels two at a
+/// store (app/grid.c grid_render_run): its busiest ui_poll (a compose and a run) 91k, 144k a
+/// frame with the rendering of its 94 cells, 3.6M a second (1.5 % of 240 MHz); 105k and 161k
+/// at Task 3. The full boot: 37k and 46k (64k and 50k).
+const ABOUT_WORST_POLL: u64 = 105_000;
+const ABOUT_PER_FRAME: f64 = 160_000.0;
+const BOOT_WORST_POLL: u64 = 45_000;
+const BOOT_PER_FRAME: f64 = 52_000.0;
 
 /// Note keys (key id = 14 + note - 53) of a chord over three octaves, one per voice: A3, E4
 /// and E5, so the scopes show 2, 3 and 4 periods (app/live_view.c).
@@ -1215,10 +1216,18 @@ fn live_stays_within_its_budgets() {
 }
 
 /// Main-loop instructions in ui_poll (fm1-emu) on LIVE, at M1e Task 4 (docs/art/README.md,
-/// "LIVE"): at rest 13.9k a frame (it composes, sends nothing); a chord of saws 57.8k (5 cells
-/// a frame once it holds still); three voices of noise 206k (146 cells a frame). The busiest
-/// ui_poll, 89k, is a frame of noise's compose; the tap is read half way between frames.
-const LIVE_WORST_POLL: u64 = 100_000;
-const LIVE_IDLE_PER_FRAME: f64 = 16_000.0;
-const LIVE_CHORD_PER_FRAME: f64 = 65_000.0;
-const LIVE_NOISE_PER_FRAME: f64 = 225_000.0;
+/// "LIVE"), each part of the canvas drawn again only when it changes: at rest 13.7k a frame
+/// (it composes, sends nothing); a chord of saws 47.5k (5 cells a frame once it holds still);
+/// three voices of noise 141.2k (146 cells a frame). The busiest ui_poll, 60.5k, is a frame of
+/// noise's compose; the tap is read half way between frames.
+const LIVE_WORST_POLL: u64 = 68_000;
+const LIVE_IDLE_PER_FRAME: f64 = 15_500.0;
+const LIVE_CHORD_PER_FRAME: f64 = 53_000.0;
+const LIVE_NOISE_PER_FRAME: f64 = 155_000.0;
+
+// A ui_poll holds MIDI's drain for as long as it runs: every view's worst stays within the
+// latency gate's poll allowance (common::POLL_INSTRUCTIONS, 120k), so a compose that grows
+// past it fails here, not as a late note somewhere else.
+const _: () = assert!(LIVE_WORST_POLL <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(ABOUT_WORST_POLL <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(BOOT_WORST_POLL <= common::POLL_INSTRUCTIONS);

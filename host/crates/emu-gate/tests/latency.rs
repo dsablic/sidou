@@ -75,7 +75,9 @@
 
 mod common;
 
-use common::{build_dir, skip_message, Firmware, Machine, AUDIO_TARGET, HALF_FRAMES};
+use common::{
+    build_dir, skip_message, Firmware, Machine, AUDIO_TARGET, CPU_HZ, HALF_FRAMES, POLL_HZ,
+};
 use fm1_core::Bus;
 use sidou_sys::ilp32;
 
@@ -98,8 +100,6 @@ const SILENCE_MARGIN: i32 = 8;
 const NOTE_LEVEL: f64 = 1.0 / 31.6;
 /// Felucca's ids: K1..K3 (cutoff, resonance, pulse width).
 const KNOBS: [u8; 3] = [2, 3, 4];
-/// The TRS UART poll's rate (platform/fm1/main.c: every 5th 10 kHz tick).
-const POLL_HZ: u64 = 2000;
 /// 31250 baud, 10 bits a byte.
 const BYTE_BITS: u64 = 10;
 const BAUD: u64 = 31_250;
@@ -441,6 +441,9 @@ fn measure(scenario: Scenario, envelope: Envelope, default_trials: usize) {
     let c = Clock {
         hz: Machine::boot(&fw.image).soc.periph.hz,
     };
+    // common::POLL_INSTRUCTIONS, which screen.rs holds the views' worst ui_poll to, is this
+    // gate's poll at this clock.
+    assert_eq!(c.hz, CPU_HZ, "fm1-emu's clock is not common::CPU_HZ");
     let mut rng = Rng(0x5EED_0000 + scenario as u64);
     // The note-on's last byte lands in the window [from, from + span) after `boot`.
     let (from, span, attach) = if scenario == Scenario::UsbRetry {
