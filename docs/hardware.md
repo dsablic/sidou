@@ -148,7 +148,10 @@ bytes. Growing the slots further needs one of:
 - RAMTEXT into the 8 KB RAM-run debug area at 0x01C06000 (owner's call);
 - moving the flash driver out of RAMTEXT (it only runs with the audio
   stopped, so it could be copied into the slots' pool for an update), which
-  touches the vendored update path.
+  touches the vendored update path. It also needs POOL to be executable:
+  `platform/fm1/app.ld` declares it `(rw)` today, so the linker would have
+  to declare it `(rwx)` (and nothing on the chip may forbid fetching from
+  it).
 
 The rules for keeping it that way:
 - **Placement is in `platform/fm1/app.ld` only**, by input-section rules on

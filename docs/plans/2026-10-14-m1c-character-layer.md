@@ -90,16 +90,24 @@ branch `m1c-character`, which starts from `main`.
 
 Do this after M1a has merged to `main` and this branch has been rebased.
 
-- `live` holds the effect parameters. The device audio ISR runs
-  `sid_fx_process` after `sid_render`. Parameter changes cross the register
-  ring as pseudo-register entries (as `LIVE_REG_RESET` already does) or
-  through a separate small parameter mailbox; pick one and justify it.
+*Amended during implementation:* Task 5's three slots replaced the single
+colour chain, so this task wires the slots, not `sid_fx_process`, and its
+tests use OVERDRIVE and the reverb, not tape and CRT.
+
+- `live` holds each slot's algorithm and Amount/A/B/Mix. The device audio
+  ISR runs `sid_slots_process` after `sid_render` and writes true L/R.
+  Parameter changes cross the register ring as pseudo-register entries
+  (`0xA0 | slot << 3 | field`, as `LIVE_REG_RESET` already does), so they
+  arrive in order with the same pass's SID writes and are never dropped; the
+  drain hands them to `fx_live`.
 - **Controls:** a temporary panel mapping until the CHIP view exists in Task
-  4, for example a SHIFT-style layer on K1–K4. Also CC numbers in the M1d
-  CC map's range, documented.
-- **Tests:** an e2e test in fm1-emu turns tape and CRT up and checks the
-  spectrum change. The idle and worst-case main-loop and ISR costs still
-  pass.
+  4: EDIT held turns K1–K4 into the selected slot's Amount, A, B and Mix, SCL
+  selects the slot, ENV steps its algorithm. Also CC 102–116 (slot × field)
+  in the M1d CC map's range, documented in `docs/reference/controls.md`.
+- **Tests:** fm1-emu e2e tests: the panel turns OVERDRIVE on and the wave
+  clips; CCs turn the reverb on in stereo with a tail; every slot's heaviest
+  algorithm fits the audio budget and runs only from SRAM. The idle and
+  worst-case main-loop and ISR costs still pass.
 
 ### Task 3: The SID analogue model as live parameters
 

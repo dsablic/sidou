@@ -165,7 +165,6 @@ which printed control did it.
 | K3 (encoder 4) | PULSE (audible on PWM BASS) | | [ ] |
 | K4 (encoder 5) | PRESET: SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC | | [ ] |
 | MASTER (pot) | VOLUME 0..15, quieter turned down | | [ ] |
-
 | SCL (button 3) | selects the next effect slot (the `>` on the screen's EFFECTS lines moves) | | [ ] |
 | ENV (button 4) | the selected slot's next algorithm (the name on the screen changes) | | [ ] |
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the screen); EDIT lit while the slot is on | | [ ] |

@@ -18,7 +18,7 @@ static uint32_t far_drain(reg_ring* r, reg_ring_chips* c) {
     return fn(r, c);
 }
 
-/* Two chips of ~8.5 KB each, the effect slots (~5 KB) and their 128 KiB delay/reverb pool:
+/* Two chips of ~8.5 KB each, the effect slots (~6.9 KB) and their 128 KiB delay/reverb pool:
  * the big zero-initialised pool, not .bss. */
 static reg_ring_chips chips __attribute__((section(".pool")));
 static sid_slots slots __attribute__((section(".pool")));

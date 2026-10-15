@@ -223,7 +223,9 @@ the rest goes to UI, MIDI and the sequencer.
   "compiled into the firmware". That ported file:
   - keeps Emilie Gillet's copyright line and the MIT notice in its header,
     as dual `SPDX-FileCopyrightText` lines;
+<!-- REUSE-IgnoreStart -->
   - carries `SPDX-License-Identifier: MIT`;
+<!-- REUSE-IgnoreEnd -->
   - adds the MIT text to `LICENSES/MIT.txt` (REUSE).
 - **Not under the MI name:** the reverb is never called by the MI module's
   name in the UI (the README asks this).

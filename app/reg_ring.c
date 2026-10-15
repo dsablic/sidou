@@ -18,7 +18,7 @@
  *   note-off 1                           27 * 7 = 189
  *                                             263
  * An upper bound: a key's note-off leaves the gate off, so the next note-on writes 5. The
- * host tests push this pass (223 entries) and check that it needs no wait.
+ * host tests push this pass (224 entries) and check that it needs no wait.
  * MIDI input comes on top, first in the pass: the device's drain (platform/fm1/midi.c) stops
  * taking MIDI while fewer than this plus one MIDI message's worst case (25) are free. */
 
