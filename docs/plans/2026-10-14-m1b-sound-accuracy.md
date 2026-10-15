@@ -356,6 +356,30 @@ while the user was away; revisit if needed):
   its render is a separate function without the old clip's test. The constants rose to
   726 and 1,455 (`SID_WORST_PER_CHIP` 530 -> 564); 1,455 + 838 = 2,293 <= 2,300, 1,455 +
   100 + 964 = 2,519 <= 2,700; the 6502's headroom fell from 227 to 181.
+- **After review** (2026-10-15, rebased on M1d and M1e):
+  - *The LIVE view's tap.* LIVE is the view at power-on, and its tap called
+    `sid_render` eight times a block, so the 6581 render's per-call setup (its state in
+    locals, about 70 instructions) took the tap from 4.8 to 9.09 instructions a sample.
+    `sid_render_tap` now renders a block in one call, with a callback every 16 samples,
+    and both renders iterate by pointer. The tap adds 4.44 (the bound,
+    `TAP_PER_SAMPLE`, is 4.5), and the effect gates count it.
+  - *The tick rearranged.* What is fixed between register writes is computed once a
+    render (`sid_nl_coefs`): u = clamp(A - B lp state, 0.35 g0 - lo, 1.3 g0 - lo), g =
+    max(u + level |hp|, floor), a1 = max(P - Q g (g + k), 0.1 a10), with lo = level
+    level_ref. It is the same model up to rounding: the workload moves by at most 1 LSB
+    in 8 samples, and the sweeps by at most 0.01 dB (small 4.83 / 2.45 / 1.01, full 1.88 /
+    1.88 / 1.49, loud noise 2.44 / 1.91 / 2.81, chord 2.32 / 4.37 / 2.83). The worst
+    blocks fall to 717.49 and 1,439.67, and the constants to 718 and 1,440
+    (`SID_WORST_PER_CHIP` 557).
+  - *The gates with the tap:* 1,440 + 4.5 + 100 + 964 = 2,508.78 <= 2,700, and 1,440
+    + 4.5 + 838.97 = 2,283.47 <= 2,300 (16.53 to spare). The 6502's headroom is
+    **191**.
+  - `sid_set_filter_nonlinearity` clamps to [0, 2] (NaN is 0); the band-pass mix
+    follows every damping write; the Newton step's damping is pinned by a test (k' 1.705
+    against 1.582 at FC 1024 with three voices routed).
+  - The two emulator checks loosened at Task 6 are restated instead: the overdrive's
+    crest factor against the slot at no drive, at the original 0.8, on a chord; the
+    latency test's held note against half a host render of the same note.
 
 ### Task 7: Accuracy decision record
 
@@ -374,13 +398,24 @@ while the user was away; revisit if needed):
       write of PW 0x800 at cycle 100, reSIDfp reads 255 at cycle 101 and
       SIDOU 0, on both models: `read_osc3` ignores `pulse_held`, the
       comparison `sid_write` latched;
-  - the filter misses and gaps after Task 5 (and what Task 6 changed):
+  - the filter misses and gaps after Task 6 (Task 6 fixed the 6581's
+    full-scale HP regression and its passband gain, and added the output
+    one-pole for the 6581, fitted at 13.2 kHz):
     - the 8580's sweep target missed (1.62 / 2.02 / 1.70 dB), with the
       causes above; the near-cutoff transfer metric within 1 dB;
-    - the full-scale regressions: the 6581's HP (2.1 -> 6.10) and the
-      8580's BP (1.7 -> 2.04), record-only ceilings;
-    - the 6581's passband gain, 1.7 to 6.5 dB above reSIDfp's;
-    - the output one-pole, measured and not added (Task 6's gaps);
+    - the 8580's full-scale BP regression (1.7 -> 2.04), a record-only
+      ceiling;
+    - the 6581's loud chord band-pass, 4.37 dB (target 3): reSIDfp's stays
+      louder with the cutoff above the chord;
+    - the volume register's DC step and the mixer's compression, deferred
+      together: the step alone, without the compression, clips three loud
+      voices;
+    - reSIDfp's 1.6 Hz output high-pass against SIDOU's 16 Hz DC blocker
+      (which the DC tests rely on): why the 6581's small-signal LP sweep
+      stays at 4.83;
+    - the two emulator thresholds Task 6 loosened (the overdrive's crest
+      factor, the latency test's held note) and how they were restated
+      after review (the plan's Task 6 results, "After review");
     - the RMS over windows next to each largest window;
   - the audio interrupt's flash reads: none named by the audio code
     (`ram_audio.rs` checks the relocations), but the combined waveforms'

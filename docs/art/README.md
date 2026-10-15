@@ -442,7 +442,7 @@ copies the newest 224 and drops the copy if the interrupt came round to it meanw
 | Tap | Measured (fm1-emu, `the_live_view_tap_costs_the_audio_interrupt_little`) |
 |---|---|
 | Points | 2,757 a second (a frame: 110; a read: 224, 81 ms) |
-| Audio interrupt | +4.8 instructions a sample (368.15 against 363.33, a chord held, LIVE against the menu), bounded at 6 |
+| Audio interrupt | +4.44 instructions a sample (406.71 against 402.27, a chord held, LIVE against the menu, since M1b Task 6's 6581 filter and the points from inside one render a block, `sid_render_tap`; 4.8 at M1e), bounded at 4.5 (`TAP_PER_SAMPLE`, which the effect gates count) |
 | Code in `.ram_text` | 32,472 of 49,152 bytes (+308: `scope_render`, `scope_peaks` and their calls) |
 | RAM | the ring and envelopes 1,560 bytes; LIVE's state 6,152 (its traces and their columns, the points it reads, its canvas) |
 

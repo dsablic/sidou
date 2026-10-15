@@ -12,7 +12,10 @@ All notable changes are documented here. The format follows
 - SID core in C11 (`core/sid/`): oscillators, noise, hard sync and ring
   modulation, envelope generator with the ADSR delay bug, a
   zero-delay-feedback state-variable filter (its cutoff and resonance fitted
-  to reSIDfp's filter since M1b),
+  to reSIDfp's filter since M1b; on the 6581 non-linear since M1b Task 6, its
+  cutoff moving with the swing and the DC load, with reSIDfp's mix of the
+  outputs and an output low-pass, scaled per chip by
+  `sid_set_filter_nonlinearity`, 0 to 2),
   mixer and DC blocker, for the 6581 and the 8580.
 - Rust host workspace (`host/`): FFI to the C core, unit and golden-render
   tests, and a criterion benchmark.
@@ -96,8 +99,9 @@ All notable changes are documented here. The format follows
 - LIVE, the screen at power-on (`app/live_view.h`): an oscilloscope per voice,
   envelope bars, the filter's curve, VU meters and the effect slots, after the
   prototype's. The audio interrupt taps the voices every 16 samples into a
-  lock-free ring (`app/scope.h`), only while LIVE shows (4.8 instructions a
-  sample), and the scopes fold the points by the oscillator's phase, so a held
+  lock-free ring (`app/scope.h`), from inside one render a block
+  (`sid_render_tap`), only while LIVE shows (4.44 instructions a sample, which
+  the effect gates count), and the scopes fold the points by the oscillator's phase, so a held
   note stands still. LIVE holds itself to 200 cells a frame; the status screen
   moves to the menu (STATUS).
 - MIDI, M1d: every live, SID and effect-slot parameter in one CC/NRPN map

@@ -332,10 +332,10 @@ below). The steady budget stays 900.
 
 The audio ISR has a hard deadline per 128-sample block (2.9 ms), so the honest pairing
 for the gates is the SID's most expensive *block*, not its most expensive scenario on
-average (530 per chip at M1b, 564 since M1b Task 6). The SID gate now measures both
-and holds the worst block to `SID_WORST_BLOCK_ONE_CHIP` (726) and
-`SID_WORST_BLOCK_TWO_CHIPS` (1,455) in `tests/common/mod.rs`; the effect gates take the
-latter.
+average (530 per chip at M1b, 557 since M1b Task 6). The SID gate now measures both
+and holds the worst block to `SID_WORST_BLOCK_ONE_CHIP` (718) and
+`SID_WORST_BLOCK_TWO_CHIPS` (1,440) in `tests/common/mod.rs`; the effect gates take the
+latter, with the LIVE view's tap (`TAP_PER_SAMPLE`, 4.5).
 
 **Where the worst block comes from.** Always the first block of a scenario with noise
 combined with another waveform, from power-on: the register starts full, the output
@@ -359,15 +359,16 @@ From block 2 on the same scenario costs about 345 per sample. `noise_tri_ffff` (
 688) and `noise_tri_0800` (8580, 652; its block 1 still 476 from quiet-stretch calls)
 come close.
 
-**Decision.** The 2,700 target stays. The gates pair what exists today:
-- the worst switching block + two chips at the SID's worst block + ISR overhead (100)
-  ≤ 2,700: 964 + 1,455 + 100 = 2,519;
-- two chips at the SID's worst block + every slot's heaviest ≤ 2,300: 1,455 + 838 =
-  2,293 (and + the post-chip effects, 1,455 + 455).
+**Decision.** The 2,700 target stays. The gates pair what exists today, with the LIVE
+view's tap (on at power-on, 4.5; below):
+- the worst switching block + two chips at the SID's worst block + the tap + ISR
+  overhead (100) ≤ 2,700: 964.28 + 1,440 + 4.5 + 100 = 2,508.78;
+- two chips at the SID's worst block + the tap + every slot's heaviest ≤ 2,300:
+  1,440 + 4.5 + 838.97 = 2,283.47 (and + the post-chip effects, 1,444.5 + 455.20).
 
 The former 400 for the 6502 is no longer in the sum: it does not exist yet (M3). The
-gate prints what is left of 2,700 instead, the 6502's headroom: **181** per sample
-(227 before M1b Task 6, below). docs/TODO.md tracks what to do if the 6502 needs more.
+gate prints what is left of 2,700 instead, the 6502's headroom: **191** per sample
+(227 before M1b Task 6, below, without the tap). docs/TODO.md tracks what to do if the 6502 needs more.
 
 **M1b Task 6 (2026-10-15): the 6581's non-linear filter.** The 6581's filter now moves
 its cutoff with the signal and with the DC load of the voices routed into it, mixes its
@@ -377,8 +378,18 @@ That costs the 6581 about 45 instructions per sample per chip (the triad 362.46 
 and `noise_tri_ring_0800`, 1,454.80 for two (the 8580's went down, to 687.95 and
 1,403.43: its render lost the old 6581 clip's test and runs in its own function). The
 constants were raised to those (726, 1,455; `SID_WORST_PER_CHIP` 530 -> 564), the two
-sums above still hold, and the 6502's headroom fell from 227 to 181. The 2,300 sum has
-7 left; another 6581 instruction per sample per chip in the worst block takes 2 of it.
+sums above still held, and the 6502's headroom fell from 227 to 181.
+
+After review, merged with M1e's LIVE view: LIVE is the view at power-on, and its tap
+rendered a block as eight `sid_render` calls, each paying the 6581 render's setup (its
+state in locals), 9.09 instructions a sample. `sid_render_tap` now renders a block in
+one call and calls the tap every 16 samples; the tap adds 4.44, and the gates count it
+(`TAP_PER_SAMPLE`, 4.5). The 6581's tick computes what is fixed between register writes
+once a render (`sid_nl_coefs`; the same model up to rounding), about 6.8 instructions a
+sample per chip less: the worst blocks are 717.49 and 1,439.67 (constants 718, 1,440;
+`SID_WORST_PER_CHIP` 557), and the 8580's 691.16 and 1,409.87. With the tap, the 2,300
+sum has 16.53 left; another 6581 instruction per sample per chip in the worst block
+takes 2 of it. The 6502's headroom is 191.
 
 (Since M1c Task 2 the algorithms' expensive inits run in `sid_slots_init` as templates
 that a switch copies, to fit the device's SRAM code region: the figures above are with

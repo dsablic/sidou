@@ -403,6 +403,17 @@ you can.
   Expected, from `cargo test --release -p sidou-tests --test unit --
   the_default_tables_crc --nocapture` in `host/`: 8580 `0xfde1a3ba`, 6581
   `0x748fe138`. Record the device's values:
+- [ ] The 6581's filter on the device (M1b Task 6). Each 6581 sample does one
+  FPU divide in the audio interrupt (the band-pass's damping, `sid_nl_tick`),
+  which fm1-emu counts as one instruction. A measuring build renders the
+  golden `workload_6581_1chip` (`bench/workload.c`, one chip, the 6581) on
+  the device and compares its FNV-1a 64 hash with `tests/golden/hashes.txt`:
+  a match shows the divide (and the rest of the float path) rounds as IEEE
+  single precision does on the host. It also measures the cycles of the
+  6581's render loop against the 8580's on the same workload, which shows the
+  divide's real cost (in fm1-emu the workload's triad costs 400.50
+  instructions a sample on the 6581 and 347.37 on the 8580). Record the hash
+  and the cycles:
 - [ ] Core 1 is not used by SIDOU; its RAM self-test (Felucca's) is for a
   later milestone.
 

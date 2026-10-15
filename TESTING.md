@@ -291,11 +291,13 @@ post-chip chain (`core/fx`) over its output:
   sample.
 
 Each fails if the effects cost more than 500 instructions per sample, if two
-chips at the SID's worst block plus the effects cost more than 2,300, or if
-any sample differs from the host build at all. The SID's worst block is
-`SID_WORST_BLOCK_TWO_CHIPS` in `tests/common/mod.rs`, 1,455 for two chips:
-the SID gate's most expensive 128-sample block (1,454.80 since M1b Task 6's
-6581 filter), which the SID gate holds it to. The audio interrupt has a deadline per block, so a
+chips at the SID's worst block and the LIVE view's tap plus the effects cost
+more than 2,300, or if any sample differs from the host build at all. The
+SID's worst block is `SID_WORST_BLOCK_TWO_CHIPS` in `tests/common/mod.rs`,
+1,440 for two chips: the SID gate's most expensive 128-sample block (1,439.67
+since M1b Task 6's 6581 filter), which the SID gate holds it to. The tap is
+`TAP_PER_SAMPLE` there, 4.5: LIVE is the view at power-on, so its tap runs by
+default, and `ram_audio.rs` holds it to that. The audio interrupt has a deadline per block, so a
 block, not a scenario's average, is what the effects must fit beside. They
 write `fx_budget_{1,2}.json` and
 `fx_worst_budget_{1,2}.json`.
@@ -312,7 +314,7 @@ They fail if:
   [decision record 0004](docs/decisions/0004-effect-algorithms.md)
   (Distortion 150, Modulation 200, FX 450, the frame 100);
 - the heaviest together cost more than 900, or two chips at the SID's worst
-  block plus them more than 2,300;
+  block and the tap plus them more than 2,300;
 - the heaviest per slot is not the one the last scenario runs;
 - any sample differs from the host build (including the switch scenario's).
 
@@ -322,10 +324,10 @@ second change the Modulation slot wakes from rest during the FX switch. It fails
 - a block costs more than 1,000;
 - more than 80 blocks cost more than 900;
 - the worst block plus what else exists today exceeds 2,700: two chips at the
-  SID's worst block and 100 of interrupt overhead. The gate prints what is
-  left, the headroom for the future 6502 (M3), as
-  `headroom_for_6502_instructions_per_sample` (181 since M1b Task 6; 227
-  before).
+  SID's worst block, the LIVE view's tap and 100 of interrupt overhead. The
+  gate prints what is left, the headroom for the future 6502 (M3), as
+  `headroom_for_6502_instructions_per_sample` (191 since M1b Task 6, the tap
+  counted; 227 before Task 6, without it).
 
 This is 0004's transient allowance. Its output is part of the host comparison.
 
