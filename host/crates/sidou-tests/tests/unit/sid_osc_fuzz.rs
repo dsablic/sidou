@@ -246,3 +246,66 @@ fn reviewer_fuzz_bulk_vs_strict() {
     }
     assert!(total > 0);
 }
+
+/// Directed (from the M1b review, which found the fuzz misses it): with the accumulator
+/// standing still, a pulse width written above it turns the pulse off after the first
+/// cycle (the first compares as latched, the rest with the accumulator), so the bulk
+/// window for pulse combined with noise must end there (`sid_osc_bulk_limit`'s
+/// `lim = 1`). Both models and every combined-waveform profile, waveforms 0xc to 0xf,
+/// registers whose noise survives the pulldown for some of them (only those reach the
+/// bulk window: 0xff0, 0xf80, 0xfe0 and 0x3f0).
+#[test]
+fn zero_frequency_pulse_width_write_above_the_accumulator() {
+    let registers = [0x52_2914u32, 0x00_2914, 0x12_2914, 0x52_2900];
+    let accumulators = [0x10_0000u32, 0x7f_f000, 0x80_0000, 0xc0_0123, 0xff_e000];
+    let mut checked = 0;
+    for (is6581, profile) in [1, 0]
+        .into_iter()
+        .flat_map(|m| (0..SID_PROFILES).map(move |p| (m, p)))
+    {
+        for wf in 0xcu8..=0xf {
+            for sr in registers {
+                for acc in accumulators {
+                    let mut o = sid_osc::default();
+                    unsafe {
+                        sid_osc_set_model(&mut o, is6581);
+                        sid_osc_set_profile(&mut o, profile);
+                        sid_osc_reset(&mut o);
+                        sid_osc_write_control(&mut o, 0x80);
+                        sid_osc_write_freq(&mut o, 0);
+                    }
+                    o.acc = acc;
+                    o.sr = sr;
+                    o.latch = sr;
+                    o.noise = unsafe { sid_noise_output(sr) };
+                    o.test_or_reset = 0;
+                    assert_ne!(o.noise, 0, "register {sr:#x}");
+                    unsafe {
+                        sid_osc_write_pw(&mut o, 0);
+                        sid_osc_latch_ramp(&mut o, 0);
+                        sid_osc_write_control(&mut o, wf << 4);
+                    }
+                    o.pulse_held = 0;
+                    // The pulse is on (PW 0); now a width above the accumulator.
+                    unsafe { sid_osc_write_pw(&mut o, (acc >> 12) + 1) };
+                    let (mut fast, mut slow) = (o, o);
+                    for cycles in [16u32, 1, 7] {
+                        unsafe {
+                            sid_osc_advance(&mut fast, cycles, 0, 0);
+                            sid_osc_advance_cycles(&mut slow, cycles, 0, 0);
+                        }
+                        fast.pulse_held = 0;
+                        slow.pulse_held = 0;
+                        same(
+                            &fast,
+                            &slow,
+                            &format!("model {is6581} profile {profile} wf {wf:#x} sr {sr:#x} acc {acc:#x}"),
+                        );
+                        checked += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(checked, 2 * SID_PROFILES * 4 * 4 * 5 * 3);
+}
