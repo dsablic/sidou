@@ -879,14 +879,19 @@ const HEADER: &str = "<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->\n
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->\n";
 // REUSE-IgnoreEnd
 
-const INTRO: &str = "\
+fn intro() -> String {
+    format!(
+        "\
 <!-- Generated from app/midi_map.c by host/crates/sidou-tests/tests/app/midi_map.rs; do not \
 edit. SIDOU_MIDI_DOC_UPDATE=1 regenerates it. -->
 # MIDI: the CC and NRPN map
 
 Every parameter of the live instrument has a CC (7-bit) and an NRPN (14-bit, full
 resolution). The map is fixed: the same numbers on every channel, on TRS and USB. Notes
-play on every channel (omni); program change 0..3 selects the preset.
+play on every channel (omni); program change 0..{last} selects the preset. A program change
+loads the preset's cutoff, resonance, pulse width and SID settings (waveform, ring, sync,
+the envelope, filter routing and mode) over any edits, even when it selects the preset
+already playing; volume, the chip model and the effect slots are kept.
 
 **How the numbers were chosen.** CCs that MIDI gives a meaning are kept for it:
 General MIDI's where they fit (1 modulation wheel: pulse width; 7 volume; 71 resonance;
@@ -897,6 +902,10 @@ mode). 76..78 (vibrato) stay free for expression. The rest is in blocks MIDI lea
 undefined: the SID's patch in 20..25 and 79, the character layer in 85..87 and 89..90,
 the effect slots in 102..116. NRPNs are grouped by MSB: 0 the performance controls, 1 the
 SID, 2 the character layer, 3..5 the effect slots.
+
+CC 71..75 are absolute here, like every CC of the map: the value sets the parameter
+across its range. General MIDI 2 makes its sound controllers relative instead, moving the
+patch's value up or down around 64; SIDOU does not.
 
 ## Receiving values
 
@@ -909,11 +918,13 @@ SID, 2 the character layer, 3..5 the effect slots.
   CC 38 the LSB (with the MSB of the last CC 6, or, if none came since the selection or
   the last step, the current value's). CC 96 and 97 step the value by one (their data byte
   is ignored).
-- **NRPN, parameters up to 0..127:** the value is all in the LSB, with an MSB of 0. CC 6
-  only stores the MSB and CC 38 applies the value, so a sender's 6 = 0, 38 = v goes
-  straight to v and never through 0 (which would reset the chip for the chip model, or
-  silence the waveform). A controller that sends CC 6 alone (\"7-bit NRPN\") changes
-  nothing here: use CC 38, or the parameter's plain CC.
+- **NRPN, parameters up to 0..127** (the 0..15 envelope rates, sustain, resonance and
+  waveform, the switches and modes, the effect slots): the value is all in the LSB, with
+  an MSB of 0, e.g. 6 = 0, 38 = 9 for 9. CC 6 only stores the MSB and CC 38 applies the
+  value, so a sender's 6 = 0, 38 = v goes straight to v and never through 0 (which would
+  reset the chip for the chip model, or silence the waveform). A controller that sends
+  CC 6 alone (\"7-bit NRPN\") changes nothing here: use CC 38, or the parameter's plain
+  CC.
 - **Null and RPN:** NRPN 127/127 and RPN 127/127 select nothing. An RPN (CC 101, 100)
   takes data entry away from the NRPN until CC 99 or 98 comes again; no RPN is
   implemented yet. CC 121 (reset all controllers) and a gap in the input select nothing.
@@ -923,7 +934,10 @@ SID, 2 the character layer, 3..5 the effect slots.
 - The selection is kept per channel and per input (TRS, USB).
 - CC 120 and 123 release every note.
 
-";
+",
+        last = LIVE_PRESET_COUNT - 1
+    )
+}
 
 fn cc_text(r: &Row) -> String {
     if r.has_cc() {
@@ -952,7 +966,7 @@ fn curve_text(r: &Row) -> &'static str {
 fn doc() -> String {
     let rows = rows();
     let mut s = String::from(HEADER);
-    s.push_str(INTRO);
+    s.push_str(&intro());
     s.push_str("## The map\n\nIn NRPN order.\n\n");
     s.push_str("| Group | Parameter | CC | NRPN (MSB/LSB) | Range | Curve | Default | Values |\n");
     s.push_str("|---|---|---|---|---|---|---|---|\n");

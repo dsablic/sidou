@@ -42,7 +42,10 @@ at power-on.
 
 ## MIDI
 
-Notes on every channel; program change 0..3 selects the preset. Every parameter has a CC
+Notes on every channel; program change 0..3 selects the preset. A program change loads
+the preset's cutoff, resonance, pulse width and SID settings (waveform, ring, sync, the
+envelope, filter routing and mode) over any edits, even when it selects the preset already
+playing; volume, octave, chip and effects are kept. Every parameter has a CC
 and an NRPN: the map, generated from the code, is [midi.md](midi.md). The numbers M1a
 and M1c set are kept: 1 pulse width, 7 volume, 71 resonance, 74 cutoff, and the effect
 slots on 102..116 (Distortion 102..106, Modulation 107..111, FX 112..116: algorithm,

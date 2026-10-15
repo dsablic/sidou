@@ -211,8 +211,11 @@ void live_param_set(live* l, uint32_t param, uint32_t value);
 /* A parameter's value; 0 for an unknown one. For the chip model, the one last asked for
  * (model_req), so a set reads back at once; the chip's is the model field. */
 uint32_t live_param_get(const live* l, uint32_t param);
-/* Loads a preset: releases every voice and resets cutoff, resonance and pulse width to
- * the preset's. An index past the last is clamped. */
+/* Loads a preset: releases every voice and resets cutoff, resonance and pulse width, and
+ * the five SID settings the parameters edit (waveform with ring and sync, attack/decay,
+ * sustain/release, filter routing, filter mode), to the preset's. Loading the preset already
+ * loaded does the same, so it discards those edits. Volume, octave, chip model and the
+ * effect slots are kept. An index past the last is clamped. */
 void live_set_preset(live* l, uint8_t index);
 /* The MASTER pot, 0..1023 (clamped); the chip's volume is its top 4 bits, rounded. */
 void live_set_master(live* l, uint16_t value);
