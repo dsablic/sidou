@@ -538,7 +538,7 @@ pub fn render_host(
 ) -> Vec<i16> {
     use sidou_sys::*;
     let mut chip = Box::<sid>::default();
-    let mut dac = Box::<sid_dac>::default();
+    let mut dacs = Box::<[sid_dac; 2]>::default();
     let mut pool = Box::<sid_slot_pool>::default();
     let mut slots = Box::<sid_slots>::default();
     let mut fx = Box::<fx_live>::default();
@@ -547,7 +547,7 @@ pub fn render_host(
             chip: &mut *chip,
             clock_hz: SID_CLOCK_PAL,
             sample_rate: SAMPLE_RATE,
-            dac: &mut *dac,
+            dacs: dacs.as_mut_ptr(),
             ..Default::default()
         },
         fx: &mut *fx,

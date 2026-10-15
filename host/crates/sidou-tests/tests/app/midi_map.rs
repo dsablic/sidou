@@ -1112,9 +1112,10 @@ patch's value up or down around 64; SIDOU does not.
 - **Character:** the profile (CC 85) is a chip and a model: a change resets the chip as a
   model change does, and the model follows it. The model (CC 25, the FX button) selects
   the 8580 R5 profile, or goes back to the last 6581 profile. Age/heat, DAC sloppiness,
-  output thump and filter bleed change the playing chip without a reset; they too apply
-  at the next tick, the last value received, at most 100 times a second. The profiles,
-  their sources and what each control does: docs/decisions/0006-chip-profiles.md.
+  output thump and filter bleed change the playing chip without a reset; they too go from
+  the next tick, the last value received, and glide there so a jump does not click (age,
+  thump and bleed 0 to 127 in 0.32 s, the DACs in 0.16 s). The profiles, their sources and
+  what each control does: docs/decisions/0006-chip-profiles.md.
 - **Envelope mode:** 0 INSTANT (the default) restarts each voice's envelope rate counter at
   each gate edge, so a note's attack, and its release at the note-off, take their first
   step within one rate period and 3 chip cycles (12 cycles at attack 0). 1 AUTHENTIC is

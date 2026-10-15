@@ -59,19 +59,31 @@ void sid_character_build_dac(const sid* s, const sid_character* c, sid_dac* d) {
     sid_dac_build(d, s->model == SID_MODEL_6581, kink, leakage);
 }
 
+void sid_character_dac_job(const sid* s, const sid_character* c, sid_dac* d, sid_dac_job* j) {
+    float kink, leakage;
+    dac_params(s, c, &kink, &leakage);
+    sid_dac_job_start(j, d, s->model == SID_MODEL_6581, kink, leakage);
+}
+
 void sid_character_filter(sid* s, const sid_character* c) {
     const sid_chip_profile* p = profile_of(s, c);
-    sid_set_filter_blend(s, p->curve, p->hot_curve, amount(c->age));
+    if (p->curve != s->filter_curve) {
+        sid_set_filter_blend(s, p->curve, p->hot_curve, s->filter_t);
+    } else {
+        sid_set_filter_toward(s, p->hot_curve);
+    }
 }
 
 void sid_character_stage_for(const sid* s, const sid_character* c, const sid_dac* dac,
                              sid_character_stage* out) {
     const sid_chip_profile* p = profile_of(s, c);
-    float nl = p->nonlinearity * (1.0f + amount(c->age));
-    sid_nonlin_for(s, nl, &out->nl); /* clamped to 2 there */
+    float age = amount(c->age);
+    float nl = p->nonlinearity * (1.0f + age);
+    sid_nonlin_for(s, nl, age, &out->nl); /* clamped to 2 there */
     out->dac = dac ? dac : sid_dac_default(s->model == SID_MODEL_6581);
     out->thump = amount(c->thump) * SID_CHARACTER_THUMP;
     out->bleed = amount(c->bleed) * SID_CHARACTER_BLEED;
+    out->filter_t = age;
     /* The thump's headroom: full scale moves out by the thump, which is the largest step a
      * volume write can add (from 0 to 15), so a signal that peaked at full scale and that
      * step together still do. At 0 the gain is sid_init's exactly. */
@@ -79,9 +91,10 @@ void sid_character_stage_for(const sid* s, const sid_character* c, const sid_dac
     out->output_gain = out->thump > 0.0f ? 32767.0f / (32767.0f / base + out->thump) : base;
 }
 
-/* The filter tables, DACs and stage for the character, on a chip that is not rendering. */
-static void change(sid* s, const sid_character* c, sid_dac* dac) {
-    sid_filter_refresh(s);
+/* The filter tables, DACs and stage for the character, on a chip that is not rendering;
+ * the DAC table it got (NULL: the model's default). */
+static const sid_dac* change(sid* s, const sid_character* c, sid_dac* dac) {
+    sid_character_filter(s, c);
     const sid_dac* table = NULL;
     if (dac && sid_character_dac_custom(s, c)) {
         sid_character_build_dac(s, c, dac);
@@ -89,20 +102,74 @@ static void change(sid* s, const sid_character* c, sid_dac* dac) {
     }
     sid_character_stage st;
     sid_character_stage_for(s, c, table, &st);
-    sid_character_commit(s, &st);
+    sid_character_commit(s, &st); /* the filter's coefficients too */
+    return table;
 }
 
-void sid_character_apply(sid* s, const sid_character* c, sid_dac* dac) {
+const sid_dac* sid_character_apply(sid* s, const sid_character* c, sid_dac* dac) {
     const sid_chip_profile* p = profile_of(s, c);
     sid_set_combined_profile(s, p->combined);
-    /* sid_init built the default curve's tables: the default profile at age 0 keeps them. */
-    if (p->curve != 0u || c->age != 0u) {
-        sid_character_filter(s, c);
-    }
-    change(s, c, dac);
+    return change(s, c, dac);
 }
 
 void sid_character_change(sid* s, const sid_character* c, sid_dac* dac) {
-    sid_character_filter(s, c);
     change(s, c, dac);
+}
+
+void sid_character_ramp_reset(sid_character_ramp* r, const sid_character* c,
+                              const sid_dac* table) {
+    r->target = *c;
+    r->now = *c;
+    r->table = table;
+    r->building = 0;
+    r->next_dac = c->dac;
+}
+
+/* v moved towards to by at most step. */
+static uint8_t toward(uint8_t v, uint8_t to, uint32_t step) {
+    if (v < to) {
+        return (uint8_t)((uint32_t)(to - v) > step ? v + step : to);
+    }
+    return (uint8_t)((uint32_t)(v - to) > step ? v - step : to);
+}
+
+/* A control's setting as the ramp takes it: clamped, as amount() reads it. */
+static uint8_t clamped(uint8_t v) {
+    return v > SID_CHARACTER_MAX ? (uint8_t)SID_CHARACTER_MAX : v;
+}
+
+int sid_character_ramp_tick(sid_character_ramp* r, const sid* s, sid_dac* free_table,
+                            sid_character_stage* out) {
+    sid_character* now = &r->now;
+    const sid_character* want = &r->target;
+    sid_character was = *now;
+    now->age = toward(now->age, clamped(want->age), SID_CHARACTER_RAMP);
+    now->thump = toward(now->thump, clamped(want->thump), SID_CHARACTER_RAMP);
+    now->bleed = toward(now->bleed, clamped(want->bleed), SID_CHARACTER_RAMP);
+    int changed = now->age != was.age || now->thump != was.thump || now->bleed != was.bleed;
+    if (r->building) {
+        if (sid_dac_job_step(&r->job)) {
+            r->building = 0;
+            now->dac = r->next_dac;
+            r->table = r->job.d;
+            changed = 1;
+        }
+    } else if (now->dac != clamped(want->dac)) {
+        sid_character next = *now;
+        next.dac = toward(now->dac, clamped(want->dac), SID_CHARACTER_DAC_RAMP);
+        if (!sid_character_dac_custom(s, &next)) {
+            now->dac = next.dac;
+            r->table = NULL;
+            changed = 1;
+        } else if (free_table) {
+            sid_character_dac_job(s, &next, free_table, &r->job);
+            r->next_dac = next.dac;
+            r->building = 1;
+            sid_dac_job_step(&r->job); /* the first step now: the table in SID_DAC_BUILD_STEPS */
+        }
+    }
+    if (changed) {
+        sid_character_stage_for(s, now, r->table, out);
+    }
+    return changed;
 }

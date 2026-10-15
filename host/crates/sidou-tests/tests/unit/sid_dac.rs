@@ -134,3 +134,36 @@ fn the_default_tables_crc() {
     assert_eq!(crc8580, CRC_8580, "8580 table changed: {crc8580:#010x}");
     assert_eq!(crc6581, CRC_6581, "6581 table changed: {crc6581:#010x}");
 }
+
+/// sid_dac_job builds sid_dac_build's table in SID_DAC_BUILD_STEPS steps, for a main loop that
+/// must not stall (M1c Task 3's ramp): done only after the last, and the same table bit for
+/// bit, whatever was in it before (the steps write every entry). A step after the last does
+/// nothing.
+#[test]
+fn a_dac_job_builds_the_same_table_in_steps() {
+    for (is6581, kink, leakage) in [(1, 2.5f32, 0.045f32), (0, 2.1, 0.0035), (1, 2.2, 0.0075)] {
+        let mut want = Box::<sid_dac>::default();
+        unsafe { sid_dac_build(&mut *want, is6581, kink, leakage) };
+        let mut d = Box::<sid_dac>::default();
+        d.wave.fill(f32::NAN);
+        d.env.fill(f32::NAN);
+        let mut job = sid_dac_job::default();
+        unsafe { sid_dac_job_start(&mut job, &mut *d, is6581, kink, leakage) };
+        let done: Vec<i32> = (0..SID_DAC_BUILD_STEPS + 1)
+            .map(|_| unsafe { sid_dac_job_step(&mut job) })
+            .collect();
+        let mut expect = vec![0; SID_DAC_BUILD_STEPS as usize - 1];
+        expect.extend([1, 1]);
+        assert_eq!(done, expect);
+        assert!(d
+            .wave
+            .iter()
+            .zip(&want.wave)
+            .all(|(a, b)| a.to_bits() == b.to_bits()));
+        assert!(d
+            .env
+            .iter()
+            .zip(&want.env)
+            .all(|(a, b)| a.to_bits() == b.to_bits()));
+    }
+}

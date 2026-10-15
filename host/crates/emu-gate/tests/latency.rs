@@ -69,6 +69,16 @@
 //! note-on around the main loop's longest stall, `usb_retry`'s attach once a second while USB
 //! is off (docs/hardware.md), which fm1-emu, with no USB controller, always has.
 //!
+//! The sweep case plays a stream of the chip's character CCs (M1c Task 3) all through the
+//! trial: age/heat (CC 86) and DAC sloppiness (CC 87) sweeping up and down, so the sink's ramp
+//! never rests and builds a DAC table a step a tick (sid_character_ramp_tick). The CCs go into
+//! the jack only while it is idle before the note-on and the note-off (their bytes never
+//! delay the note's). The changing DACs change what the silent voices leak, so this case
+//! measures against the same run without the notes, sample for sample (fm1-emu is
+//! deterministic), not against a baseline's mean. It also bounds every main-loop pass
+//! (midi_drain to midi_service) by the poll allowance, common::POLL_INSTRUCTIONS: a pass that
+//! long would hold a note-on back by as much.
+//!
 //! The cases' trial counts keep CI short; `SIDOU_LATENCY_TRIALS` sets every case's (64
 //! reproduces decision record 0005's run). Each case writes its report into the fm1 build
 //! directory as `latency_<case>_<envelope>.json`.
@@ -77,6 +87,7 @@ mod common;
 
 use common::{
     build_dir, skip_message, Firmware, Machine, AUDIO_TARGET, CPU_HZ, HALF_FRAMES, POLL_HZ,
+    POLL_INSTRUCTIONS,
 };
 use fm1_core::Bus;
 use sidou_sys::ilp32;
@@ -159,6 +170,55 @@ enum Scenario {
     Busy,
     /// The note-on lands around `usb_retry`'s attach.
     UsbRetry,
+    /// The character's CCs sweeping all the while (the module's doc).
+    CharacterSweep,
+}
+
+/// The sweep: a CC every SWEEP_MS, CC 86 and CC 87 in turn, each value SWEEP_STEP from its
+/// last, up to 127 and back down to 0.
+const SWEEP_MS: u64 = 5;
+const SWEEP_STEP: i32 = 24;
+const CC_AGE: u8 = 86;
+const CC_DAC: u8 = 87;
+
+struct Sweep {
+    next: u64,
+    sent: u32,
+}
+
+impl Sweep {
+    fn new() -> Self {
+        Sweep { next: 0, sent: 0 }
+    }
+
+    /// The next CC: a triangle 0..127 in SWEEP_STEPs, per controller.
+    fn message(&mut self) -> [u8; 3] {
+        let cc = if self.sent & 1 == 0 { CC_AGE } else { CC_DAC };
+        let step = (self.sent / 2) as i32 * SWEEP_STEP;
+        let period = 2 * 127;
+        let phase = step % period;
+        let value = if phase <= 127 { phase } else { period - phase };
+        self.sent += 1;
+        [0xB0, cc, value as u8]
+    }
+
+    /// Runs `cycles`, a CC every SWEEP_MS, none whose bytes would still be on the wire at the
+    /// end (where a note goes in).
+    fn run(&mut self, m: &mut Machine, c: &Clock, cycles: u64) {
+        let end = m.soc.periph.cycles + cycles;
+        let on_the_wire = 3 * c.byte() + c.byte() / 2;
+        while m.soc.periph.cycles < end {
+            let now = m.soc.periph.cycles;
+            if now >= self.next {
+                if end - now > on_the_wire {
+                    let msg = self.message();
+                    m.midi(&msg);
+                }
+                self.next = now + c.of_ms(SWEEP_MS);
+            }
+            m.run_cycles(self.next.min(end) - now);
+        }
+    }
 }
 
 /// One trial, in cycles from the note-on's last byte (the note-off's for `off_*` and
@@ -182,6 +242,8 @@ struct Trial {
     ui_poll_max: u64,
     /// The longest audio interrupt of the trial, entry to return, cycles.
     isr_max: u64,
+    /// The longest main-loop pass (midi_drain to midi_service), instructions.
+    pass_max: u64,
 }
 
 /// xorshift64*: reproducible phases.
@@ -293,6 +355,87 @@ fn host_held_peak() -> i32 {
         .unwrap()
 }
 
+/// What a trial's samples are measured against: the 20 ms before the note-on (its mean, and
+/// the threshold SILENCE_MARGIN past its largest deviation), or the same run without the notes
+/// (the sweep case), sample for sample and snapshot for snapshot, SILENCE_MARGIN past it.
+enum Baseline {
+    Mean {
+        mean: i32,
+        threshold: i32,
+    },
+    Run {
+        audio: Vec<i16>,
+        words: Vec<Vec<i16>>,
+    },
+}
+
+impl Baseline {
+    fn threshold(&self) -> i32 {
+        match self {
+            Baseline::Mean { threshold, .. } => *threshold,
+            Baseline::Run { .. } => SILENCE_MARGIN,
+        }
+    }
+    /// The deviation of played sample `i`.
+    fn audio(&self, i: usize, s: i16) -> i32 {
+        match self {
+            Baseline::Mean { mean, .. } => (i32::from(s) - mean).abs(),
+            Baseline::Run { audio, .. } => (i32::from(s) - i32::from(audio[i])).abs(),
+        }
+    }
+    /// The deviation of word `w` of buffer snapshot `k`.
+    fn word(&self, k: usize, w: usize, s: i16) -> i32 {
+        match self {
+            Baseline::Mean { mean, .. } => (i32::from(s) - mean).abs(),
+            Baseline::Run { words, .. } => (i32::from(s) - i32::from(words[k][w])).abs(),
+        }
+    }
+}
+
+/// A trial's run: after `boot`, `offset` cycles, the note-on (if `notes`), NOTE_MS, `off_offset`
+/// cycles, the note-off (if `notes`), RELEASE_MS. With the sweep case, its CCs throughout.
+/// Returns the machine and, from the note-on's injection: the cycle it went in, the buffer
+/// snapshots' count at the note-off's run and the played samples' count then, and the cycle
+/// the note-off went in.
+fn run_trial(
+    fw: &Firmware,
+    offset: u64,
+    off_offset: u64,
+    scenario: Scenario,
+    envelope: Envelope,
+    notes: bool,
+    before: impl FnOnce(&mut Machine),
+) -> (Machine, u64, usize, usize, u64) {
+    let mut m = boot(fw, scenario, envelope);
+    let c = Clock {
+        hz: m.soc.periph.hz,
+    };
+    let mut sweep = (scenario == Scenario::CharacterSweep).then(Sweep::new);
+    let mut run = |m: &mut Machine, cycles: u64| match &mut sweep {
+        Some(s) => s.run(m, &c, cycles),
+        None => m.run_cycles(cycles),
+    };
+    m.watch_calls(fw.symbol("ui_poll"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    run(&mut m, offset);
+    before(&mut m);
+    let injected = m.soc.periph.cycles;
+    if notes {
+        m.midi(&[0x90, C4, 100]);
+    }
+    run(&mut m, c.of_ms(NOTE_MS));
+    let held_until = m.buffer_snapshots.len();
+    let held_len = played(&m).len();
+    run(&mut m, off_offset);
+    let off_injected = m.soc.periph.cycles;
+    if notes {
+        m.midi(&[0x80, C4, 0]);
+    }
+    run(&mut m, c.of_ms(RELEASE_MS));
+    m.snapshot_buffer(None);
+    (m, injected, held_until, held_len, off_injected)
+}
+
 fn trial(
     fw: &Firmware,
     offset: u64,
@@ -300,55 +443,64 @@ fn trial(
     scenario: Scenario,
     envelope: Envelope,
 ) -> Trial {
-    let mut m = boot(fw, scenario, envelope);
+    let abuf = fw.symbol("abuf");
+    let words = 2 * 2 * HALF_FRAMES as u32;
+    // Before the note-on: the baseline, the buffer silent, then the snapshots start.
+    let mut base = None;
+    let mut played_before = 0;
+    let mut start = |m: &mut Machine| {
+        let samples: Vec<i32> = played(m)
+            .iter()
+            .rev()
+            .take(2 * (BASELINE_MS * 44_100 / 1000) as usize)
+            .map(|&s| i32::from(s))
+            .collect();
+        let mean = samples.iter().sum::<i32>() / samples.len() as i32;
+        let threshold = samples.iter().map(|s| (s - mean).abs()).max().unwrap() + SILENCE_MARGIN;
+        let buffer: Vec<i16> = (0..words)
+            .map(|i| (m.soc.read32(abuf + 4 * i) as i32 >> 8) as i16)
+            .collect();
+        base = Some((mean, threshold, buffer));
+        // The voices' gates, then their envelope counters.
+        m.snapshot_bytes = env_addresses(m, fw, ilp32::sid_env::gate);
+        let counters = env_addresses(m, fw, ilp32::sid_env::counter);
+        m.snapshot_bytes.extend(counters);
+        m.snapshot_buffer(Some((abuf, words)));
+        played_before = m.half_played.len();
+    };
+    let (mut m, injected, held_until, held_len, off_injected) =
+        run_trial(fw, offset, off_offset, scenario, envelope, true, &mut start);
+    let (mean, threshold, buffer) = base.unwrap();
+    let baseline = if scenario == Scenario::CharacterSweep {
+        let (r, ..) = run_trial(fw, offset, off_offset, scenario, envelope, false, |m| {
+            m.snapshot_bytes.clear();
+            m.snapshot_buffer(Some((abuf, words)));
+        });
+        Baseline::Run {
+            audio: played(&r).to_vec(),
+            words: r.buffer_snapshots.iter().map(|s| s.words.clone()).collect(),
+        }
+    } else {
+        assert!(
+            buffer
+                .iter()
+                .all(|&s| (i32::from(s) - mean).abs() <= threshold),
+            "the buffer sounds before the note-on"
+        );
+        Baseline::Mean { mean, threshold }
+    };
+    let threshold = baseline.threshold();
     let c = Clock {
         hz: m.soc.periph.hz,
     };
-    m.watch_calls(fw.symbol("ui_poll"));
-    m.run_cycles(offset);
-    let base: Vec<i32> = played(&m)
-        .iter()
-        .rev()
-        .take(2 * (BASELINE_MS * 44_100 / 1000) as usize)
-        .map(|&s| i32::from(s))
-        .collect();
-    let mean = base.iter().sum::<i32>() / base.len() as i32;
-    let threshold = base.iter().map(|s| (s - mean).abs()).max().unwrap() + SILENCE_MARGIN;
-    let dev = |s: i16| (i32::from(s) - mean).abs();
-
-    let abuf = fw.symbol("abuf");
-    let words = 2 * 2 * HALF_FRAMES as u32;
-    let before: Vec<i16> = (0..words)
-        .map(|i| (m.soc.read32(abuf + 4 * i) as i32 >> 8) as i16)
-        .collect();
-    assert!(
-        before.iter().all(|&s| dev(s) <= threshold),
-        "the buffer sounds before the note-on"
-    );
-    // The voices' gates, then their envelope counters.
-    m.snapshot_bytes = env_addresses(&mut m, fw, ilp32::sid_env::gate);
-    let counters = env_addresses(&mut m, fw, ilp32::sid_env::counter);
-    m.snapshot_bytes.extend(counters);
-    m.snapshot_buffer(Some((abuf, words)));
-    let played_before = m.half_played.len();
-    let injected = m.soc.periph.cycles;
-    m.midi(&[0x90, C4, 100]);
     let arrived = injected + 3 * c.byte();
-    m.run_ms(NOTE_MS);
-    let held_until = m.buffer_snapshots.len();
-    let held_len = played(&m).len();
-    m.run_cycles(off_offset);
-    let off_injected = m.soc.periph.cycles;
-    m.midi(&[0x80, C4, 0]);
     let off_arrived = off_injected + 3 * c.byte();
-    m.run_ms(RELEASE_MS);
-    m.snapshot_buffer(None);
 
     assert_eq!(played(&m).len(), m.half_played.len() * HALF_FRAMES * 2);
     // Up to the note-off: the note held.
     let audio = &played(&m)[..held_len];
     let held = (audio.len() - 2 * (HELD_MS * 44_100 / 1000) as usize..audio.len())
-        .map(|i| dev(audio[i]))
+        .map(|i| baseline.audio(i, audio[i]))
         .max()
         .unwrap();
     // At least half the held note's peak on the host core: clearly a note, whatever level
@@ -365,12 +517,18 @@ fn trial(
     let snaps = &m.buffer_snapshots;
     let gated = snaps
         .iter()
-        .position(|s| s.bytes.iter().any(|&g| g != 0))
+        .position(|s| s.bytes.iter().take(3).any(|&g| g != 0))
         .expect("no voice was gated");
     let first_over = |t: i32| {
         snaps
             .iter()
-            .position(|s| s.words.iter().any(|&x| dev(x) > t))
+            .enumerate()
+            .position(|(k, s)| {
+                s.words
+                    .iter()
+                    .enumerate()
+                    .any(|(w, &x)| baseline.word(k, w, x) > t)
+            })
             .expect("the note never reached the buffer")
     };
     let (sounds, note) = (first_over(threshold), first_over(level));
@@ -386,7 +544,10 @@ fn trial(
     // When the first sample past a threshold left the DAC.
     let plays = |t: i32| {
         let first = (played_before * HALF_FRAMES..audio.len() / 2)
-            .find(|&i| dev(audio[2 * i]) > t || dev(audio[2 * i + 1]) > t)
+            .find(|&i| {
+                baseline.audio(2 * i, audio[2 * i]) > t
+                    || baseline.audio(2 * i + 1, audio[2 * i + 1]) > t
+            })
             .expect("the note never played");
         m.half_played[first / HALF_FRAMES] - c.block() + (first % HALF_FRAMES) as u64 * c.frame()
     };
@@ -431,6 +592,7 @@ fn trial(
         ring_wait_us: f64::from(wait_ticks) / 24.0,
         ui_poll_max: m.watched_calls.iter().copied().max().unwrap_or(0),
         isr_max: snaps.iter().map(|s| s.exit - s.entry).max().unwrap(),
+        pass_max: m.passes.iter().copied().max().unwrap_or(0),
     }
 }
 
@@ -542,6 +704,8 @@ fn measure(scenario: Scenario, envelope: Envelope, default_trials: usize) {
         "usb_attach_instructions": attach,
         "max_midi_ring_wait_us": trials.iter().map(|t| t.ring_wait_us).fold(0.0, f64::max),
         "max_ui_poll_instructions": trials.iter().map(|t| t.ui_poll_max).max(),
+        "max_main_loop_pass_instructions": trials.iter().map(|t| t.pass_max).max(),
+        "poll_instructions": POLL_INSTRUCTIONS,
     });
     println!("{report}");
     let name = format!(
@@ -555,6 +719,14 @@ fn measure(scenario: Scenario, envelope: Envelope, default_trials: usize) {
     let bound = block_plus_poll + attach.unwrap_or(0);
     let lfsr = (LFSR_PERIOD + 2) * c.hz / SID_HZ;
     let adsr = lfsr + c.of_ms(ATTACK_MS);
+    if scenario == Scenario::CharacterSweep {
+        let pass = trials.iter().map(|t| t.pass_max).max().unwrap();
+        assert!(
+            pass <= POLL_INSTRUCTIONS,
+            "a main-loop pass took {pass} instructions with the character sweeping, over the \
+             poll allowance ({POLL_INSTRUCTIONS})"
+        );
+    }
     for t in &trials {
         // The note is in the block that starts within a block and a poll of its arrival...
         assert!(
@@ -641,4 +813,12 @@ fn a_usb_retry_stalls_a_note_on_by_its_attach_at_most() {
 #[test]
 fn an_authentic_envelope_waits_for_the_adsr_delay_at_most() {
     measure(Scenario::Idle, Envelope::Authentic, 16);
+}
+
+/// A note-on while the chip's character CCs sweep (the module's doc): the ramp's table
+/// building in the main loop holds no note back past the bounds, and no pass exceeds the poll
+/// allowance.
+#[test]
+fn a_note_on_keeps_its_bounds_while_the_character_sweeps() {
+    measure(Scenario::CharacterSweep, Envelope::Instant, 24);
 }

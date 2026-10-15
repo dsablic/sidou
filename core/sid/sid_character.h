@@ -8,13 +8,15 @@
  * combined-waveform strength, the voice DACs' ladder (2R/R ratio, leakage) and the 6581
  * filter's non-linearity amount. At zero character a profile is those settings exactly.
  *
- * Controls, each 0..SID_CHARACTER_MAX (MIDI's 0..127), each a blend between precomputed
- * tables or parameters, made in the main loop:
+ * Controls, each 0..SID_CHARACTER_MAX (MIDI's 0..127):
  * - age/heat: the filter's cutoff and damping drift from the profile's curve setting
- *   towards a darker one (the profile's hot_curve; at 127 that one), and the 6581's
- *   non-linearity rises to twice the profile's (clamped to 2);
+ *   towards a darker one (the profile's hot_curve; at 127 that one): the chip holds both
+ *   rows' tables and blends their coefficients at each filter write (sid.h,
+ *   sid_set_filter_blend), so a change is a number, no table; and the 6581's non-linearity
+ *   rises to twice the profile's (clamped to 2);
  * - DAC sloppiness: the voice DACs' 2R/R ratio up by SID_CHARACTER_KINK at 127 and their
- *   leakage up to SID_CHARACTER_LEAK times the profile's: a leakier, more kinked table;
+ *   leakage up to SID_CHARACTER_LEAK times the profile's: a leakier, more kinked table,
+ *   built in the main loop;
  * - output thump: a DC the volume register scales (sid.h, thump), up to
  *   SID_CHARACTER_THUMP voice DAC units, so a volume write steps the output as the 6581's
  *   operating point does; the output gain falls by as much, so the step never takes a
@@ -22,10 +24,16 @@
  * - filter bleed: up to SID_CHARACTER_BLEED of the unfiltered voices also reaches the
  *   filter's input (sid.h, bleed).
  *
- * Nothing here runs in the audio path. The chip's tables are rebuilt in the main loop
- * (sid_character_filter, sid_character_build_dac), and what the audio interrupt reads
- * changes in one place, sid_character_commit, which the register ring's drain runs at a
- * block boundary (app/reg_ring.h). */
+ * Nothing here runs in the audio path but the commit. What the audio interrupt reads that a
+ * control sets is a stage (sid_character_stage: a dozen words and a DAC table pointer), made
+ * in the main loop, and it changes in one place, sid_character_commit, which the register
+ * ring's drain runs at a block boundary (app/reg_ring.h).
+ *
+ * Changes are ramped, so a jump does not click (sid_character_ramp): every 10 ms tick the
+ * age, the thump and the bleed move SID_CHARACTER_RAMP towards what was asked (0 to 127 in
+ * 32 ticks), and the DACs SID_CHARACTER_DAC_RAMP a table, each table built over
+ * SID_DAC_BUILD_STEPS ticks (sid_dac_job; 0 to 127 in 16), so no tick's work stalls the main
+ * loop. A profile is not ramped: it changes with a chip reset. */
 #ifndef SIDOU_SID_CHARACTER_H
 #define SIDOU_SID_CHARACTER_H
 
@@ -45,6 +53,10 @@ extern "C" {
 #define SID_CHARACTER_LEAK 6.0f   /* times the profile's DAC leakage */
 #define SID_CHARACTER_THUMP 1.0f  /* voice DAC units of DC at volume 15 (sid_dac.h) */
 #define SID_CHARACTER_BLEED 0.5f  /* of the unfiltered voices into the filter */
+/* The ramp (sid_character_ramp_tick): age, thump and bleed move at most this a tick, the
+ * DACs at most SID_CHARACTER_DAC_RAMP a table (one table every SID_DAC_BUILD_STEPS ticks). */
+#define SID_CHARACTER_RAMP 4u
+#define SID_CHARACTER_DAC_RAMP 32u
 
 /* One profile (gen/profiles.h, SID_CHIP_PROFILE_ROWS). */
 typedef struct {
@@ -83,6 +95,7 @@ typedef struct {
     sid_nonlin nl;
     const sid_dac* dac;
     float thump, bleed, output_gain;
+    float filter_t; /* age/heat: the filter's blend towards the hot row (sid.h) */
 } sid_character_stage;
 
 /* 1 if the character's DACs differ from the model's defaults (sid_dac_default): a table
@@ -91,17 +104,22 @@ int sid_character_dac_custom(const sid* s, const sid_character* c);
 /* Builds the character's DACs for the chip's model into d (main context; never into a
  * table a rendering chip points at, sid.h sid_set_dac). */
 void sid_character_build_dac(const sid* s, const sid_character* c, sid_dac* d);
-/* Rebuilds the chip's cutoff and damping tables for the profile and the age (main context:
- * sid_set_filter_blend's contract; the coefficients follow at the next $15-$17 write). */
+/* The same in SID_DAC_BUILD_STEPS steps (sid_dac_job): starts the job. */
+void sid_character_dac_job(const sid* s, const sid_character* c, sid_dac* d, sid_dac_job* j);
+/* Builds the chip's filter tables for the profile, its curve setting and the hot row age
+ * drifts towards, unless the chip has them (main context, on a chip that is not rendering:
+ * sid_set_filter_blend's contract). The age itself is the stage's (filter_t). */
 void sid_character_filter(sid* s, const sid_character* c);
 /* The stage for the character on the chip, with dac its DAC table (NULL: the model's
- * default). Reads the chip, changes nothing. */
+ * default). Reads the chip's model, rate and filter tables (which only the main loop
+ * writes), changes nothing. */
 void sid_character_stage_for(const sid* s, const sid_character* c, const sid_dac* dac,
                              sid_character_stage* out);
 
-/* Copies the stage into the chip: a dozen words, no table, so it is safe where register
- * writes are applied (the audio interrupt draining the register ring). Inline: called from
- * the drain's SRAM code (platform/fm1/app.ld) and from flash. */
+/* Copies the stage into the chip and recomputes the filter's coefficients for its age
+ * (sid_update_filter): a dozen words and a coefficient update, no table, so it is safe where
+ * register writes are applied (the audio interrupt draining the register ring). Inline:
+ * called from the drain's SRAM code (platform/fm1/app.ld) and from flash. */
 static inline void sid_character_commit(sid* s, const sid_character_stage* st) {
     s->nl.level = st->nl.level;
     s->nl.level_off = st->nl.level_off;
@@ -111,18 +129,47 @@ static inline void sid_character_commit(sid* s, const sid_character_stage* st) {
     s->thump = st->thump;
     s->bleed = st->bleed;
     s->output_gain = st->output_gain;
+    s->filter_t = st->filter_t;
+    sid_update_filter(s);
 }
 
 /* Everything at once, on a chip fresh from sid_init and not rendering (the spare chip before
- * a swap, the host's reset): the combined waveforms, the filter tables (left as sid_init
- * built them for the default profile at age 0) and coefficients, the DACs (built into dac
- * when they are custom; NULL leaves the model's default) and the stage. */
-void sid_character_apply(sid* s, const sid_character* c, sid_dac* dac);
-/* The controls changed on a chip that is not rendering (the host's sink, where a change and
- * the render never overlap): the filter tables and coefficients, the DACs and the stage,
- * as sid_character_apply but for the combined waveforms, which only a profile changes, and
- * whatever the tables were. */
+ * a swap, the host's reset): the combined waveforms, the filter tables and coefficients, the
+ * DACs (built into dac when they are custom; NULL leaves the model's default) and the stage.
+ * Not ramped. Returns the DAC table the chip got, dac or NULL for the model's default (for
+ * sid_character_ramp_reset). */
+const sid_dac* sid_character_apply(sid* s, const sid_character* c, sid_dac* dac);
+/* The controls changed on a chip that is not rendering, at once (no ramp): the filter
+ * tables, the DACs and the stage, as sid_character_apply but for the combined waveforms,
+ * which only a profile changes. For tests and tools; the sinks ramp (below). */
 void sid_character_change(sid* s, const sid_character* c, sid_dac* dac);
+
+/* The ramp from what the chip has to what was asked, a tick at a time: the register ring's
+ * sink (app/reg_ring.c) and the host's (app/live.c, live_sid_sink) run the same one, so
+ * their chips change at the same ticks to the same stages. */
+typedef struct {
+    sid_character target; /* the settings as asked for (live_char_store) */
+    sid_character now;    /* what the last stage made has */
+    const sid_dac* table; /* now's DAC table (NULL: the model's default) */
+    sid_dac_job job;      /* the DAC table being built, while building */
+    uint8_t building;     /* 1 while a table is being built */
+    uint8_t next_dac;     /* the DAC setting it is for */
+} sid_character_ramp;
+
+/* After a reset that applied c to a chip whose DAC table is table (sid_character_apply):
+ * nothing to ramp, no table being built. */
+void sid_character_ramp_reset(sid_character_ramp* r, const sid_character* c,
+                              const sid_dac* table);
+/* One tick on the chip the stage is for: age, thump and bleed move up to SID_CHARACTER_RAMP
+ * towards the target; the DACs, if they differ, run the next step of the table being built,
+ * or start the next one (up to SID_CHARACTER_DAC_RAMP on, into free_table, a table no chip
+ * and no queued stage points at; NULL: none is free, the DACs wait), or, if the next setting
+ * is the model's default, take it at once. Returns 1 with the stage in *out when anything
+ * the chip has changed (commit it: sid_character_commit), else 0. The profile is not ramped:
+ * the target's is what the chip was reset with. Main context; at most one table step (about
+ * a quarter of sid_dac_build's 94k instructions) and a stage (about 300) a tick. */
+int sid_character_ramp_tick(sid_character_ramp* r, const sid* s, sid_dac* free_table,
+                            sid_character_stage* out);
 
 #ifdef __cplusplus
 }

@@ -750,7 +750,7 @@ fn fx_toggles_the_model_and_keeps_every_parameter() {
 struct Chip {
     chip: Box<sid>,
     target: Box<live_sid_target>,
-    _dac: Box<sid_dac>,
+    _dacs: Box<[sid_dac; 2]>,
     live: Box<live>,
 }
 
@@ -758,12 +758,12 @@ impl Chip {
     fn new(model: sid_model) -> Self {
         let mut chip = Box::<sid>::default();
         unsafe { sid_init(&mut *chip, model, SID_CLOCK_PAL, 44100) };
-        let mut dac = Box::<sid_dac>::default();
+        let mut dacs = Box::<[sid_dac; 2]>::default();
         let mut target = Box::new(live_sid_target {
             chip: &mut *chip,
             clock_hz: SID_CLOCK_PAL,
             sample_rate: 44100,
-            dac: &mut *dac,
+            dacs: dacs.as_mut_ptr(),
             ..Default::default()
         });
         let mut l = Box::<live>::default();
@@ -772,7 +772,7 @@ impl Chip {
         Chip {
             chip,
             target,
-            _dac: dac,
+            _dacs: dacs,
             live: l,
         }
     }
@@ -993,14 +993,14 @@ fn get_param(rig: &Rig, p: u32) -> u32 {
     unsafe { live_param_get(&*rig.live, p) }
 }
 
-const CHAR_APPLY: u8 = LIVE_REG_CHAR_APPLY as u8;
-
-/// The controls are recorded and the tick sends what changed, once: the settings, apply, and
-/// $17 after an age change (the filter's coefficients follow its tables). No reset.
+/// The controls are recorded and the tick sends what changed, once, then the character's tick
+/// (LIVE_REG_CHAR_TICK, which the Recorder counts), every tick: the sink ramps the chip
+/// towards them. No reset, and no $17: the stage's commit sets the filter's coefficients.
 #[test]
 fn the_character_controls_change_the_chip_at_the_tick_without_a_reset() {
     let mut rig = Rig::new(SID_MODEL_6581);
     rig.clear();
+    let ticks = rig.rec.char_ticks;
     set_param(&mut rig, LIVE_PARAM_AGE, 40);
     set_param(&mut rig, LIVE_PARAM_BLEED, 9);
     set_param(&mut rig, LIVE_PARAM_BLEED, 10); // the last one wins
@@ -1009,6 +1009,7 @@ fn the_character_controls_change_the_chip_at_the_tick_without_a_reset() {
         "applied before the tick: {:?}",
         rig.log()
     );
+    assert_eq!(rig.rec.char_ticks, ticks, "a tick before live_tick");
     assert_eq!(
         get_param(&rig, LIVE_PARAM_BLEED),
         10,
@@ -1017,26 +1018,16 @@ fn the_character_controls_change_the_chip_at_the_tick_without_a_reset() {
     rig.tick();
     let age = (LIVE_REG_CHAR_FIRST + 1) as u8;
     let bleed = (LIVE_REG_CHAR_FIRST + 4) as u8;
-    assert_eq!(
-        rig.log(),
-        &[
-            (age, 40),
-            (bleed, 10),
-            (CHAR_APPLY, 0),
-            (0x17, rig.reg(0x17))
-        ]
-    );
+    assert_eq!(rig.log(), &[(age, 40), (bleed, 10)]);
+    assert_eq!(rig.rec.char_ticks, ticks + 1);
     rig.clear();
     rig.tick();
-    assert!(rig.log().is_empty(), "applied twice: {:?}", rig.log());
+    assert!(rig.log().is_empty(), "sent twice: {:?}", rig.log());
+    assert_eq!(rig.rec.char_ticks, ticks + 2, "the tick goes every tick");
     set_param(&mut rig, LIVE_PARAM_THUMP, 5);
     rig.tick();
     let thump = (LIVE_REG_CHAR_FIRST + 3) as u8;
-    assert_eq!(
-        rig.log(),
-        &[(thump, 5), (CHAR_APPLY, 0)],
-        "no $17 without an age change"
-    );
+    assert_eq!(rig.log(), &[(thump, 5)]);
     assert_eq!(rig.live.model, SID_MODEL_6581);
 }
 
@@ -1063,10 +1054,6 @@ fn a_profile_resets_the_chip_and_the_model_follows_it() {
         (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8)
     );
     assert_eq!(rig.live.model, SID_MODEL_8580);
-    assert!(
-        !rig.log().iter().any(|&(r, _)| r == CHAR_APPLY),
-        "the reset gives the new chip its controls"
-    );
     // Worn, then the model to the 8580 and back: worn again.
     set_param(&mut rig, LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN);
     rig.tick();

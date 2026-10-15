@@ -25,7 +25,9 @@
  *   all 27 note keys pressed and released within the pass, a key's note-on and note-off
  *   11 together (below)
  *                                              27 * 11 = 297
- *                                             389
+ *   each tick's REG_RING_CHARACTER (the character's tick, below)
+ *                                               2
+ *                                             391
  * A note-on writes at most 11: a retrigger's gate-off (the sync lead steals its one voice) 1,
  * the velocity's sustain level 1, the voice's pulse width 2 (aftertouch MIDI changed since the
  * last write; the voice's own pressure starts again at 0), the cutoff 2 (the wheel MIDI moved
@@ -36,10 +38,9 @@
  * share one velocity. So each voice's pulse width is written by at most 3 of the pass's
  * note-ons and the cutoff by at most 3; every other note-on writes at most 7, and 27 keys at
  * most 27 * 7 + 3 * 3 * 2 + 3 * 2 + 27 = 240 <= 297.
- * The character (live.h, LIVE_REG_CHAR) adds nothing to it: its settings never reach the
- * ring (the sink keeps them), a profile change is a model change above, and a tick's
- * control change (LIVE_REG_CHAR_APPLY) waits for the ring to empty, then queues two entries
- * (REG_RING_CHARACTER and $17), far fewer than the pass's entries it drained.
+ * The character (live.h, LIVE_REG_CHAR) adds one entry a tick: its settings never reach the
+ * ring (the sink keeps them), a profile change is a model change above, and each tick's
+ * LIVE_REG_CHAR_TICK queues one REG_RING_CHARACTER (the stage the ramp made, or none).
  * The host tests push this pass and check that it needs no wait. Bend, aftertouch and the
  * wheel (on a target other than the pulse width) only record their value: live_tick writes
  * it. MIDI input comes on top, first in the pass: the device's drain (platform/fm1/midi.c)
@@ -100,8 +101,12 @@ void reg_ring_chips_init(reg_ring_chips* c, sid_model model, uint32_t clock_hz,
     c->pseudo = 0;
     c->pseudo_ctx = 0;
     sid_init(&c->chip[0], model, clock_hz, sample_rate);
-    sid_character_init(&c->character);
-    c->applied = c->character;
+    sid_character first;
+    sid_character_init(&first);
+    sid_character_ramp_reset(&c->ramp, &first, NULL);
+    c->next = 0;
+    c->stage_pending[0] = c->stage_pending[1] = 0;
+    c->ticks = 0;
 }
 
 sid* reg_ring_chip(reg_ring_chips* c) {
@@ -118,7 +123,12 @@ static void apply(reg_ring_chips* c, reg_ring_entry e) {
         return;
     }
     if (e.reg == REG_RING_CHARACTER) {
-        sid_character_commit(&c->chip[c->active], &c->stage);
+        if (e.value < 2u) {
+            sid_character_commit(&c->chip[c->active], &c->stage[e.value]);
+            COMPILER_FENCE(); /* the stage is read before the producer may write it again */
+            c->stage_pending[e.value] = 0;
+        }
+        c->ticks++;
         return;
     }
     if (e.reg != LIVE_REG_RESET) {
@@ -145,48 +155,55 @@ uint32_t reg_ring_drain(reg_ring* r, reg_ring_chips* c) {
     return n;
 }
 
-/* The character's DAC table not in use: the one the rendered chip does not point at. With
- * the ring empty nothing queued points at either. */
+/* A character DAC table nothing renders from or will: not the chip the queued entries end on
+ * (next), not the active one while a swap to next is queued, not a queued stage's. NULL when
+ * both are taken. The drain only ever frees a table (a swap, a commit), so a stale read of
+ * `active` or a flag errs on the safe side. */
 static sid_dac* free_dac(reg_ring_chips* c) {
-    return c->chip[c->active].dac == &c->dac[0] ? &c->dac[1] : &c->dac[0];
+    uint8_t active = c->active;
+    for (uint32_t i = 0; i < 2u; ++i) {
+        const sid_dac* d = &c->dac[i];
+        int used = c->chip[c->next].dac == d || (active != c->next && c->chip[active].dac == d);
+        for (uint32_t k = 0; k < 2u; ++k) {
+            used |= c->stage_pending[k] && c->stage[k].dac == d;
+        }
+        if (!used) {
+            return &c->dac[i];
+        }
+    }
+    return NULL;
 }
 
-/* Initialises the spare chip for model with the character (sid_init resets it); the ring
- * must be empty (no swap pending). */
+/* Initialises the spare chip for model with the character, at once (sid_init resets it);
+ * the ring must be empty (no swap or stage queued). Any ramp still running ends there: the
+ * spare has every control as asked. */
 static void prepare_spare(reg_ring_chips* c, uint8_t model) {
     sid_model m = model == SID_MODEL_8580 ? SID_MODEL_8580 : SID_MODEL_6581;
-    sid* spare = &c->chip[c->active ^ 1u];
-    sid_init(spare, m, c->clock_hz, c->sample_rate);
-    sid_character_apply(spare, &c->character, free_dac(c));
-    c->applied = c->character;
+    uint8_t spare = (uint8_t)(c->active ^ 1u);
+    sid* s = &c->chip[spare];
+    sid_init(s, m, c->clock_hz, c->sample_rate);
+    const sid_dac* table = sid_character_apply(s, &c->ramp.target, free_dac(c));
+    sid_character_ramp_reset(&c->ramp, &c->ramp.target, table);
+    c->next = spare;
     c->spare_model = (uint8_t)m;
     COMPILER_FENCE(); /* the chip is ready before the flag says so */
     c->spare_ready = 1;
 }
 
-/* What changed in the character since the rendered chip's, onto it, from the main loop; the
- * ring must be empty. The filter tables are rebuilt in place: with nothing queued no
- * sid_write reads them before the $17 write live sends after an age change, and the render
- * reads its coefficients, not the tables. The stage waits in c->stage for the drain. */
-static void apply_character(reg_ring_chips* c) {
-    sid* s = &c->chip[c->active];
-    const sid_character* want = &c->character;
-    sid_character* had = &c->applied;
-    int profile = want->profile != had->profile;
-    if (profile || want->age != had->age) {
-        sid_character_filter(s, want);
+/* The character's tick (LIVE_REG_CHAR_TICK), on the chip the queued entries end on: the
+ * ramp's next step into a stage that is not queued. The REG_RING_CHARACTER value. */
+static uint8_t character_tick(reg_ring_out* o) {
+    reg_ring_chips* c = o->chips;
+    uint32_t k = !c->stage_pending[0] ? 0u : !c->stage_pending[1] ? 1u : 2u;
+    if (k == 2u) {
+        o->character_defers++;
+        return REG_RING_NO_STAGE;
     }
-    const sid_dac* table = s->dac;
-    if (profile || want->dac != had->dac) {
-        table = NULL; /* the model's default */
-        if (sid_character_dac_custom(s, want)) {
-            sid_dac* d = free_dac(c);
-            sid_character_build_dac(s, want, d);
-            table = d;
-        }
+    if (!sid_character_ramp_tick(&c->ramp, &c->chip[c->next], free_dac(c), &c->stage[k])) {
+        return REG_RING_NO_STAGE;
     }
-    sid_character_stage_for(s, want, table, &c->stage);
-    *had = *want;
+    c->stage_pending[k] = 1;
+    return (uint8_t)k;
 }
 
 /* Commits the pass so far and waits until the interrupt has applied all of it. */
@@ -202,14 +219,12 @@ void reg_ring_sink(void* ctx, uint8_t reg, uint8_t value) {
     reg_ring_out* o = ctx;
     reg_ring* r = o->ring;
     if (reg >= LIVE_REG_CHAR(0) && reg < LIVE_REG_CHAR(LIVE_CHAR_FIELDS)) {
-        live_char_store(&o->chips->character, reg, value);
+        live_char_store(&o->chips->ramp.target, reg, value);
         return;
     }
-    if (reg == LIVE_REG_CHAR_APPLY) {
-        wait_empty(o, &o->character_waits);
-        apply_character(o->chips);
+    if (reg == LIVE_REG_CHAR_TICK) {
+        value = character_tick(o);
         reg = REG_RING_CHARACTER;
-        value = 0;
     }
     if (reg == LIVE_REG_RESET) {
         wait_empty(o, &o->reset_waits);

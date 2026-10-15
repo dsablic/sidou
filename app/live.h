@@ -19,12 +19,13 @@
  * - LIVE_REG_CHAR(field) (value: the setting) gives the chip's character (sid_character.h):
  *   field 0 the profile (a SID_CHIP_*), 1 age/heat, 2 DAC sloppiness, 3 output thump, 4
  *   filter bleed (0..127 each). A sink keeps them and applies them to every chip a later
- *   reset makes (sid_init resets the character), and to the playing chip at
- *   LIVE_REG_CHAR_APPLY. A profile only ever changes with a reset after it.
+ *   reset makes (sid_init resets the character), at once, and ramps the playing chip
+ *   towards the controls at each LIVE_REG_CHAR_TICK (sid_character_ramp_tick). A profile
+ *   only ever changes with a reset after it.
+ * - LIVE_REG_CHAR_TICK (value 0), once every live_tick, after the settings that changed.
  * live_init and a model or profile change send the character's settings, a reset, the gate
  * reset, then every register; a change of the envelope mode sends the gate reset alone; a
- * change of the character's controls sends the settings that changed, LIVE_REG_CHAR_APPLY,
- * and after an age/heat change $17 (the filter's coefficients follow its new tables). */
+ * tick sends the character's controls that changed and LIVE_REG_CHAR_TICK. */
 #ifndef SIDOU_LIVE_H
 #define SIDOU_LIVE_H
 
@@ -42,11 +43,12 @@ extern "C" {
 /* Outside the SID's 5-bit address space; sid_write would alias them, so sinks catch them. */
 #define LIVE_REG_RESET 0x80u
 #define LIVE_REG_GATE_RESET 0x81u
-/* The character (above): LIVE_REG_CHAR(0..LIVE_CHAR_FIELDS - 1) is 0x82..0x86, then apply. */
+/* The character (above): LIVE_REG_CHAR(0..LIVE_CHAR_FIELDS - 1) is 0x82..0x86, then the
+ * tick. */
 #define LIVE_CHAR_FIELDS 5u
 #define LIVE_REG_CHAR_FIRST 0x82u
 #define LIVE_REG_CHAR(field) (LIVE_REG_CHAR_FIRST + (field))
-#define LIVE_REG_CHAR_APPLY 0x87u
+#define LIVE_REG_CHAR_TICK 0x87u
 
 #define LIVE_OCTAVE_MIN (-3)
 #define LIVE_OCTAVE_MAX 3
@@ -150,22 +152,24 @@ typedef enum {
 typedef void (*live_sink_fn)(void* ctx, uint8_t reg, uint8_t value);
 
 /* The context of live_sid_sink: a chip and the clock and rate it was initialised with, the
- * character's settings as the sink last got them (zero-initialised: the model's default
- * profile, every control at 0), and a table for the character's DACs: NULL plays the
- * model's default DACs whatever the character says. */
+ * character's ramp (sid_character.h; zero-initialised: the model's default profile, every
+ * control at 0, the settings as the sink last got them in ramp.target), and two tables for
+ * the character's DACs (dacs[0] and dacs[1]; the ramp builds into the one the chip does not
+ * point at): NULL plays the model's default DACs whatever the character says. */
 typedef struct {
     sid* chip;
     uint32_t clock_hz;
     uint32_t sample_rate;
-    sid_character character;
-    sid_dac* dac;
+    sid_character_ramp ramp;
+    sid_dac* dacs;
 } live_sid_target;
 
 /* Applies writes to ctx (a live_sid_target*) at once: sid_write for registers, sid_init and
  * then the character (sid_character_apply) for LIVE_REG_RESET, sid_set_gate_reset for
- * LIVE_REG_GATE_RESET, the character's settings kept for LIVE_REG_CHAR and applied for
- * LIVE_REG_CHAR_APPLY; other pseudo-registers (the slots') are ignored. For the host and
- * for code that already runs in the audio context. */
+ * LIVE_REG_GATE_RESET, the character's settings kept for LIVE_REG_CHAR, and at
+ * LIVE_REG_CHAR_TICK the ramp's tick (sid_character_ramp_tick) and its stage committed;
+ * other pseudo-registers (the slots') are ignored. For the host and for code that already
+ * runs in the audio context. */
 void live_sid_sink(void* ctx, uint8_t reg, uint8_t value);
 /* A LIVE_REG_CHAR(field) write into the settings it changes (any other reg: nothing). For
  * the sinks. */
@@ -414,8 +418,8 @@ void live_bend_range_rpn(live* l, uint32_t semitones);
 void live_set_preset(live* l, uint8_t index);
 /* The MASTER pot, 0..1023 (clamped); the chip's volume is its top 4 bits, rounded. */
 void live_set_master(live* l, uint16_t value);
-/* Applies a chip model or profile asked for since the last tick (live_param_set) and the
- * character's controls that changed (their settings, LIVE_REG_CHAR_APPLY and $17), advances
+/* Applies a chip model or profile asked for since the last tick (live_param_set), sends the
+ * character's controls that changed and LIVE_REG_CHAR_TICK, advances
  * the pulse-width LFO and each voice's vibrato, then writes every frequency, pulse width and
  * the cutoff that the controllers, the vibrato or the LFO changed (nothing that did not
  * change); call at LIVE_TICK_HZ. At most 14 writes besides a model change and the

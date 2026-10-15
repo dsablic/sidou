@@ -213,31 +213,37 @@ fn sound(c: &sid_character, n: usize) -> Vec<i16> {
     render(&mut s, n)
 }
 
-/// Age/heat: the filter drifts darker (its cutoff table falls, and the chord's brightness
-/// with it) and the 6581's non-linearity rises, step by step.
+/// Age/heat: the filter drifts darker (its cutoff falls at every step of the control, and the
+/// chord's brightness with it, measured at five) and the 6581's non-linearity rises.
 #[test]
 fn age_darkens_the_filter_and_raises_the_non_linearity() {
     for profile in 0..SID_CHIPS {
         let model = model_of(profile);
-        let mut last: Option<(f32, f64, f32)> = None;
-        for age in [0u8, 32, 64, 96, 127] {
+        let mut last: Option<(f32, f32)> = None;
+        for age in 0..=127u8 {
             let mut dac = Box::<sid_dac>::default();
             let s = with_character(&character(profile, age, 0, 0, 0), &mut dac);
-            let g = s.cutoff_g[1024];
-            let b = brightness(&sound(&character(profile, age, 0, 0, 0), 8820));
+            let g = s.svf.g; // the chord's FC 1024, blended
             let level = s.nl.level;
-            println!("profile {profile} age {age}: g {g:.4}, brightness {b:.4}, nl {level:.5}");
-            if let Some((g0, b0, l0)) = last {
+            if let Some((g0, l0)) = last {
                 assert!(
                     g < g0,
                     "profile {profile} age {age}: the cutoff did not fall"
                 );
-                assert!(b < b0, "profile {profile} age {age}: no darker");
                 if model == SID_MODEL_6581 {
                     assert!(level >= l0, "profile {profile} age {age}");
                 }
             }
-            last = Some((g, b, level));
+            last = Some((g, level));
+        }
+        let mut last = None;
+        for age in [0u8, 32, 64, 96, 127] {
+            let b = brightness(&sound(&character(profile, age, 0, 0, 0), 8820));
+            println!("profile {profile} age {age}: brightness {b:.4}");
+            if let Some(b0) = last {
+                assert!(b < b0, "profile {profile} age {age}: no darker");
+            }
+            last = Some(b);
         }
         if model == SID_MODEL_6581 {
             let mut dac = Box::<sid_dac>::default();
@@ -255,7 +261,7 @@ fn age_darkens_the_filter_and_raises_the_non_linearity() {
 fn dac_sloppiness_leaks_more_of_a_released_voice() {
     for profile in [SID_CHIP_6581_R4AR, SID_CHIP_8580_R5, SID_CHIP_6581_WORN] {
         let mut last = None;
-        for dac_amount in [0u8, 42, 85, 127] {
+        for dac_amount in 0..=127u8 {
             let mut dac = Box::<sid_dac>::default();
             let c = character(profile, 0, dac_amount, 0, 0);
             let mut s = with_character(&c, &mut dac);
@@ -263,7 +269,9 @@ fn dac_sloppiness_leaks_more_of_a_released_voice() {
             write(&mut s, &[(0x04, 0x20), (0x0b, 0x20), (0x12, 0x40)]);
             render(&mut s, 4410);
             let leak = rms(&render(&mut s, 8820));
-            println!("profile {profile} DAC {dac_amount}: released voices at {leak:.2} rms");
+            if dac_amount % 42 == 0 || dac_amount == 127 {
+                println!("profile {profile} DAC {dac_amount}: released voices at {leak:.2} rms");
+            }
             if let Some(l) = last {
                 assert!(
                     leak > l,
@@ -275,35 +283,37 @@ fn dac_sloppiness_leaks_more_of_a_released_voice() {
     }
 }
 
-/// Output thump: a volume write steps the output, more with more thump; at 0 the 8580 (no
-/// voice DC: only its silent voices' DAC offset times the envelope DAC's leakage) barely
-/// steps. Measured in silence, the step's peak after the DC blocker.
+/// Output thump: a volume write steps the output, more with more thump, at every step of the
+/// control; at 0 the 8580 (no voice DC: only its silent voices' DAC offset times the envelope
+/// DAC's leakage) barely steps. Measured in silence after the DC blocker: the step's signed
+/// area (the 6581's own step at 0 points the other way, so its size first falls), and its
+/// peak.
 #[test]
 fn thump_steps_the_output_at_a_volume_write() {
     for profile in [SID_CHIP_6581_R4AR, SID_CHIP_8580_R5] {
         let mut last = None;
-        for thump in [0u8, 42, 85, 127] {
+        for thump in 0..=127u8 {
             let mut dac = Box::<sid_dac>::default();
             let mut s = chip(model_of(profile));
             unsafe { sid_character_apply(&mut *s, &character(profile, 0, 0, thump, 0), &mut *dac) };
             write(&mut s, &[(0x18, 0x00)]);
             render(&mut s, 44100); // the power-on release and the DC blocker settle
             write(&mut s, &[(0x18, 0x0f)]);
-            let step = render(&mut s, 2205)
-                .iter()
-                .map(|&v| i32::from(v).abs())
-                .max()
-                .unwrap();
-            println!("profile {profile} thump {thump}: step {step}");
+            let after = render(&mut s, 2205);
+            let area: i64 = after.iter().map(|&v| i64::from(v)).sum();
+            let step = after.iter().map(|&v| i32::from(v).abs()).max().unwrap();
+            if thump % 42 == 0 || thump == 127 {
+                println!("profile {profile} thump {thump}: step {step}, area {area}");
+            }
             if let Some(l) = last {
                 assert!(
-                    step > l + 100,
-                    "profile {profile} thump {thump}: {step} after {l}"
+                    area > l,
+                    "profile {profile} thump {thump}: {area} after {l}"
                 );
             } else if profile == SID_CHIP_8580_R5 {
                 assert!(step < 100, "the 8580 has hardly a step of its own: {step}");
             }
-            last = Some(step);
+            last = Some(area);
         }
     }
 }
@@ -343,7 +353,7 @@ fn bleed_feeds_unfiltered_voices_into_the_filter() {
         };
         let dry = render_with(0);
         let mut last = 0.0;
-        for bleed in [42u8, 85, 127] {
+        for bleed in 1..=127u8 {
             let wet = render_with(bleed);
             let diff: Vec<i16> = wet
                 .iter()
@@ -351,8 +361,10 @@ fn bleed_feeds_unfiltered_voices_into_the_filter() {
                 .map(|(a, b)| a.wrapping_sub(*b))
                 .collect();
             let added = rms(&diff);
-            println!("profile {profile} bleed {bleed}: the filter adds {added:.1} rms");
-            assert!(added > last + 10.0, "profile {profile} bleed {bleed}");
+            if bleed % 42 == 0 || bleed == 127 {
+                println!("profile {profile} bleed {bleed}: the filter adds {added:.1} rms");
+            }
+            assert!(added > last, "profile {profile} bleed {bleed}");
             last = added;
         }
     }
@@ -399,16 +411,86 @@ fn the_settings_clamp() {
     }
 }
 
-/// A control swept from 0 to 127 a step per block (128 samples), applied between blocks as
-/// a sink does, never steps the chord's output by more than it steps held anywhere along
-/// the way (every 16 values): no click. Each step is a blend of tables made outside the
-/// render.
+/// The live instrument's tick (LIVE_TICK_HZ) in samples at the test's rate.
+const TICK: usize = (FS / 100) as usize;
+/// The ticks rendered before a jump, and after it: the ramp's 16 and some.
+const BEFORE: usize = 30;
+const AFTER: usize = 30;
+
+/// One voice of triangle at 110 Hz (frequency 0x0751 at PAL), held at full sustain, and the
+/// filter as a control needs it to be heard: age/heat moves the cutoff of the voice routed
+/// through the low-pass; the bleed sends the unrouted voice into the high-pass; the DACs and
+/// the thump need no filter.
+fn triangle(control: usize) -> Vec<(u8, u8)> {
+    let (route, mode) = match control {
+        0 => (0xf1, 0x1f), // resonance 15, voice 1 into the low-pass
+        3 => (0xf0, 0x4f), // nothing routed, the high-pass
+        _ => (0x00, 0x0f), // no filter
+    };
+    vec![
+        (0x15, 0x00),
+        (0x16, 0x30), // FC 384
+        (0x17, route),
+        (0x18, mode),
+        (0x00, 0x51),
+        (0x01, 0x07),
+        (0x05, 0x00),
+        (0x06, 0xf0),
+        (0x04, 0x11),
+    ]
+}
+
+/// A chip behind the host's sink (live_sid_sink), driven as the live instrument drives it:
+/// the profile and a reset, the triangle, then LIVE_REG_CHAR_TICK every tick, with control
+/// sent from 0 to `to` before tick JUMP_TICK. With `at_once` the jump skips the ramp
+/// (sid_character_change at that tick, as the sinks did before the ramp). The output from a
+/// tick before the jump.
+fn jump(profile: u32, control: usize, to: u8, at_once: bool, at: usize) -> Vec<i16> {
+    let model = model_of(profile);
+    let mut chip = Box::<sid>::default();
+    let mut dacs = Box::<[sid_dac; 2]>::default();
+    let mut target = Box::new(live_sid_target {
+        chip: &mut *chip,
+        clock_hz: SID_CLOCK_PAL,
+        sample_rate: FS,
+        dacs: dacs.as_mut_ptr(),
+        ..Default::default()
+    });
+    let t: *mut live_sid_target = &mut *target;
+    let sink = move |reg: u32, value: u8| unsafe { live_sid_sink(t.cast(), reg as u8, value) };
+    sink(LIVE_REG_CHAR_FIRST, profile as u8);
+    sink(LIVE_REG_RESET, model as u8);
+    for (r, v) in triangle(control) {
+        sink(u32::from(r), v);
+    }
+    let mut out = Vec::new();
+    for tick in 0..at + AFTER {
+        if tick == at && to > 0 {
+            sink(LIVE_REG_CHAR_FIRST + 1 + control as u32, to);
+            if at_once {
+                let c = unsafe { (*t).ramp.target };
+                let table = unsafe { &mut *dacs.as_mut_ptr().add(1) };
+                unsafe { sid_character_change(&mut *chip, &c, table) };
+                unsafe { sid_character_ramp_reset(&mut (*t).ramp, &c, chip.dac) };
+            }
+        }
+        sink(LIVE_REG_CHAR_TICK, 0);
+        out.extend(render(&mut chip, TICK));
+    }
+    out[(at - 1) * TICK..].to_vec()
+}
+
+/// A jump of any control from 0 to 127 does not click: the ramp (sid_character_ramp_tick)
+/// takes it in steps a tick apart (32 for age, thump and bleed, four tables for the DACs), so
+/// the triangle's largest sample step stays within RAMP_STEP_BOUND of its own slope, held at
+/// either end. The same jump at once (as the sinks made it before the ramp) steps past the
+/// bound for the thump and the bleed, which change the output at once (the output gain, the
+/// filter's input); age and the DACs change its shape, and the worn DACs step at once too.
 #[test]
-fn sweeping_a_control_does_not_click() {
-    const BLOCK: usize = 128;
+fn a_jump_of_any_control_is_ramped_and_does_not_click() {
     for profile in [SID_CHIP_6581_R4AR, SID_CHIP_8580_R5, SID_CHIP_6581_WORN] {
         for control in 0..4usize {
-            let at = |v: u8| {
+            let held = |v: u8| {
                 let mut c = character(profile, 0, 0, 0, 0);
                 match control {
                     0 => c.age = v,
@@ -416,32 +498,44 @@ fn sweeping_a_control_does_not_click() {
                     2 => c.thump = v,
                     _ => c.bleed = v,
                 }
-                c
-            };
-            let held = |v: u8| {
                 let mut dac = Box::<sid_dac>::default();
-                let mut s = with_character(&at(v), &mut dac);
-                render(&mut s, 4410);
-                max_step(&render(&mut s, 128 * BLOCK))
+                let mut s = chip(model_of(profile));
+                unsafe { sid_character_apply(&mut *s, &c, &mut *dac) };
+                write(&mut s, &triangle(control));
+                render(&mut s, 30 * TICK);
+                max_step(&render(&mut s, 30 * TICK))
             };
-            let still = (0..=8u8).map(|i| held((16 * i).min(127))).max().unwrap();
-            let mut dac = Box::<sid_dac>::default();
-            let mut s = with_character(&at(0), &mut dac);
-            render(&mut s, 4410);
-            let mut swept = Vec::new();
-            for v in 0..=127u8 {
-                unsafe { sid_character_change(&mut *s, &at(v), &mut *dac) };
-                swept.extend(render(&mut s, BLOCK));
-            }
-            let sweep = max_step(&swept);
-            println!("profile {profile} control {control}: {sweep} swept, {still} held");
-            assert!(
-                f64::from(sweep) <= 1.05 * f64::from(still),
-                "profile {profile} control {control}: a step of {sweep} sweeping, {still} held"
+            let slope = held(0).max(held(127));
+            // At ten ticks in a row: the triangle (a period of 401 samples, a tick 441) meets
+            // the jump at ten phases a tenth of its period apart, its peaks among them.
+            let worst = |at_once: bool| {
+                (BEFORE..BEFORE + 10)
+                    .map(|at| max_step(&jump(profile, control, 127, at_once, at)))
+                    .max()
+                    .unwrap()
+            };
+            let (ramped, at_once) = (worst(false), worst(true));
+            let bound = RAMP_STEP_BOUND * f64::from(slope);
+            println!(
+                "profile {profile} control {control}: ramped {ramped}, at once {at_once}, the \
+                 triangle's own {slope} (bound {bound:.0})"
             );
+            assert!(
+                f64::from(ramped) <= bound,
+                "profile {profile} control {control}: a step of {ramped} against {slope}"
+            );
+            if control >= 2 {
+                assert!(
+                    f64::from(at_once) > bound,
+                    "profile {profile} control {control}: the test misses the jump at once"
+                );
+            }
         }
     }
 }
+
+/// How far the largest step of a ramped jump may exceed the signal's own (its slope).
+const RAMP_STEP_BOUND: f64 = 1.25;
 
 /// sid_character_change, the host sink's apply, rebuilds the tables whatever they were:
 /// the age back to 0 is the profile's own tables again. (sid_character_apply, for a chip

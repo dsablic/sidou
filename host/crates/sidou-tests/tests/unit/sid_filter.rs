@@ -333,9 +333,11 @@ fn a_filter_curve_rebuilds_the_tables_and_applies_at_the_next_filter_write() {
     }
 }
 
-/// sid_set_filter_blend: each cutoff in Hz and each damping (1 - t) of one curve setting's
-/// plus t of another's, through the same clamp and tangent; t 0 is sid_set_filter_curve's
-/// tables bit for bit, t 1 the other curve's, and t is clamped.
+/// sid_set_filter_blend: the tables for both curve settings (the first's bit for bit
+/// sid_set_filter_curve's g, the second's their angles, whose tangents are another chip's g),
+/// and at each filter write the cutoff's angle and the damping (1 - t) of the first's plus t
+/// of the second's; t 0 is the first curve's coefficients exactly, t is clamped, and a curve
+/// the model lacks changes nothing.
 #[test]
 fn a_filter_blend_runs_between_two_curve_settings() {
     for model in [SID_MODEL_6581, SID_MODEL_8580] {
@@ -343,6 +345,10 @@ fn a_filter_blend_runs_between_two_curve_settings() {
         let mut a = chip(model);
         let mut b = chip(model);
         let mut s = chip(model);
+        let filter = |c: &mut sid| unsafe {
+            sid_write(c, 0x16, 0x80); // FC 1024
+            sid_write(c, 0x17, 0xf1);
+        };
         unsafe {
             sid_set_filter_curve(&mut *a, 0);
             sid_set_filter_curve(&mut *b, last);
@@ -350,36 +356,99 @@ fn a_filter_blend_runs_between_two_curve_settings() {
         }
         assert_eq!(s.cutoff_g, a.cutoff_g);
         assert_eq!(s.res_k, a.res_k);
-        // t 1: the other curve's, to a rounding of a + (b - a).
-        let same_as_b = |s: &sid| {
-            s.cutoff_g
-                .iter()
-                .zip(&b.cutoff_g)
-                .all(|(x, y)| (x - y).abs() <= 1e-6 * y)
+        let tangents: Vec<f32> = s.cutoff_x_to.iter().map(|&x| tanf(x)).collect();
+        assert_eq!(
+            tangents, b.cutoff_g,
+            "the second tables are the other's angles"
+        );
+        assert_eq!(s.res_k_to, b.res_k);
+        assert_eq!((s.filter_curve, s.filter_toward), (0, last as u8));
+        filter(&mut a);
+        filter(&mut b);
+        filter(&mut s);
+        assert_eq!(
+            format!("{:?}", s.svf),
+            format!("{:?}", a.svf),
+            "t 0 is the first's"
+        );
+        let x_to = s.cutoff_x_to[1024];
+        let blend = |t: f32| unsafe {
+            let x = sidou_atanf(a.svf.g);
+            sidou_tanf_fast(x + t * (x_to - x))
         };
-        unsafe { sid_set_filter_blend(&mut *s, 0, last, 1.0) };
-        assert!(same_as_b(&s));
-        assert_eq!(s.filter_curve, 0, "the blend keeps its first curve");
-        unsafe { sid_set_filter_blend(&mut *s, 0, 0, 0.0) };
-        unsafe { sid_set_filter_blend(&mut *s, 0, last, 7.0) };
-        assert!(same_as_b(&s), "t clamped to 1");
-        unsafe { sid_set_filter_blend(&mut *s, 0, last, f32::NAN) };
-        assert_eq!(s.cutoff_g, a.cutoff_g, "NaN is 0");
-        unsafe { sid_set_filter_blend(&mut *s, 0, last, 0.5) };
-        for fc in [256usize, 1024, 1500] {
-            let hz = |m: u32| unsafe { sid_cutoff_hz(model, m, fc as u32) };
-            let mid = 0.5 * (hz(0) + hz(last));
-            let g = tanf(PI * mid.clamp(30.0, 0.45 * FS) / FS);
-            assert_float_eq(s.cutoff_g[fc], g);
+        let k = |t: f32| a.svf.k + t * (b.svf.k - a.svf.k);
+        for (t, want) in [(1.0f32, 1.0f32), (7.0, 1.0), (f32::NAN, 0.0), (0.5, 0.5)] {
+            unsafe { sid_set_filter_blend(&mut *s, 0, last, t) };
+            assert_eq!(s.filter_t, want, "t {t} clamps to {want}");
+            filter(&mut s);
+            let g = if want == 0.0 { a.svf.g } else { blend(want) };
+            assert_eq!(s.svf.g, g, "t {t}");
+            assert_eq!(s.svf.k, k(want), "t {t}");
         }
-        let k = |m: u32| unsafe { sid_resonance_k(model, m, 15) };
-        assert_float_eq(s.res_k[15], 0.5 * (k(0) + k(last)));
+        unsafe { sid_set_filter_blend(&mut *s, 0, last, 1.0) };
+        filter(&mut s);
+        assert!(
+            (s.svf.g / b.svf.g - 1.0).abs() < 1e-6,
+            "t 1 is the other's: {} against {}",
+            s.svf.g,
+            b.svf.g
+        );
+        // Not applied until a filter write.
+        unsafe { sid_set_filter_blend(&mut *s, 0, last, 0.0) };
+        assert_eq!(s.svf.g, blend(1.0));
         let past = last + 1;
         s.cutoff_g[5] = 0.25;
         assert_eq!(unsafe { sid_set_filter_blend(&mut *s, 0, past, 0.5) }, -1);
         assert_eq!(unsafe { sid_set_filter_blend(&mut *s, past, 0, 0.5) }, -1);
+        assert_eq!(unsafe { sid_set_filter_toward(&mut *s, past) }, -1);
         assert_eq!(s.cutoff_g[5], 0.25);
+        // sid_set_filter_toward builds the second tables alone.
+        let mut u = chip(model);
+        assert_eq!(unsafe { sid_set_filter_toward(&mut *u, last) }, 0);
+        assert_eq!(u.cutoff_g, a.cutoff_g);
+        assert_eq!(u.cutoff_x_to, s.cutoff_x_to);
+        assert_eq!(u.filter_t, 0.0);
     }
+}
+
+/// The blend is of the cutoff in Hz (sid.h, sid_set_filter_blend: of the angles, each end
+/// clamped to the tables' range): over every 8th FC of every profile's curve and hot row
+/// (age/heat's two ends) at every 4th age, the cutoff the chip's filter takes is the Hz blend
+/// of the two ends' table cutoffs, to the approximants' and float's rounding.
+#[test]
+fn the_blend_is_of_the_cutoff_in_hz() {
+    let mut worst = (0.0f64, 0u32, 0u32, 0u32);
+    for id in 0..SID_CHIPS {
+        let p = unsafe { &*sid_chip_profile_get(id) };
+        let model = p.model as sid_model;
+        let (a, b) = (u32::from(p.curve), u32::from(p.hot_curve));
+        let mut s = chip(model);
+        for age in (1..127u32).step_by(4) {
+            let t = age as f32 / 127.0;
+            unsafe { sid_set_filter_blend(&mut *s, a, b, t) };
+            for fc in (0..2048u32).step_by(8) {
+                unsafe {
+                    sid_write(&mut *s, 0x15, (fc & 7) as u8);
+                    sid_write(&mut *s, 0x16, (fc >> 3) as u8);
+                }
+                let hz = |c: u32| {
+                    let f = f64::from(unsafe { sid_cutoff_hz(model, c, fc) });
+                    f.clamp(30.0, 0.45 * f64::from(FS))
+                };
+                let want = hz(a) + f64::from(t) * (hz(b) - hz(a));
+                let got = f64::from(s.svf.g).atan() * f64::from(FS) / std::f64::consts::PI;
+                let off = (got / want - 1.0).abs();
+                if off > worst.0 {
+                    worst = (off, id, fc, age);
+                }
+            }
+        }
+    }
+    println!(
+        "the blended cutoff is the Hz blend's within {:.2e} (profile {}, FC {}, age {})",
+        worst.0, worst.1, worst.2, worst.3
+    );
+    assert!(worst.0 < 1e-5, "{worst:?}");
 }
 
 /// The 6581's coefficients come from one Newton step for 1 / (1 + g (g + k)), and the step's

@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! End to end: the chip's character (M1c Task 3) from TRS MIDI CCs on the firmware. The
-//! profile CC resets the chip into the worn 6581, the four controls change it without a
-//! reset, the rendered chip in emulated RAM has them all (the spare got them before the
-//! swap), and the audio matches the host build sample for sample.
+//! profile CC resets the chip into the worn 6581, the four controls ramp it there without a
+//! reset, a tick at a time, the rendered chip in emulated RAM has them all (the spare got them
+//! before the swap), and the audio matches the host build sample for sample, its ticks where
+//! the device's were (each tick's REG_RING_CHARACTER counted by the drain, read after every
+//! block).
 
 mod common;
 
@@ -55,12 +57,12 @@ fn schedules(first: usize) -> Vec<Vec<usize>> {
 }
 
 /// The firmware's instrument at boot rendered by the host build (common::render_host), with
-/// CC i taking effect before block blocks[i] (live_cc, then live_tick, which applies the
-/// character and the profile), and the note on before `note_block`.
-fn render_host(frames: usize, blocks: &[usize], note_block: usize) -> Vec<i16> {
+/// CC i sent to live before block blocks[i] (live_cc), ticks[i] live_ticks before block i
+/// (the device's), and the note on before `note_block`.
+fn render_host(frames: usize, blocks: &[usize], note_block: usize, ticks: &[u32]) -> Vec<i16> {
     use sidou_sys::*;
     let mut chip = Box::<sid>::default();
-    let mut dac = Box::<sid_dac>::default();
+    let mut dacs = Box::<[sid_dac; 2]>::default();
     let mut pool = Box::<sid_slot_pool>::default();
     let mut slots = Box::<sid_slots>::default();
     let mut fx = Box::<fx_live>::default();
@@ -69,7 +71,7 @@ fn render_host(frames: usize, blocks: &[usize], note_block: usize) -> Vec<i16> {
             chip: &mut *chip,
             clock_hz: SID_CLOCK_PAL,
             sample_rate: SAMPLE_RATE,
-            dac: &mut *dac,
+            dacs: dacs.as_mut_ptr(),
             ..Default::default()
         },
         fx: &mut *fx,
@@ -95,8 +97,10 @@ fn render_host(frames: usize, blocks: &[usize], note_block: usize) -> Vec<i16> {
                     live_cc(&mut *l, cc, value);
                 }
             }
-            // Preset 0 has no LFO or vibrato: a tick writes only what MIDI asked for.
-            live_tick(&mut *l);
+            // Preset 0 has no LFO or vibrato: a tick writes only the character's.
+            for _ in 0..ticks.get(i).copied().unwrap_or(0) {
+                live_tick(&mut *l);
+            }
             if i == note_block {
                 live_note_on(&mut *l, A4, 100);
             }
@@ -125,6 +129,10 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
         return;
     };
     let mut m = Machine::boot(&fw.image);
+    // After every block, the drain's tick count (its low byte): the ticks before each block.
+    let base = fw.chips();
+    m.snapshot_bytes = vec![base + ilp32::reg_ring_chips::ticks as u32];
+    m.snapshot_buffer(Some((fw.symbol("abuf"), 1)));
     common::run_past_boot(&mut m, &fw);
     let halves = |m: &Machine| m.soc.periph.audio.len() / (2 * HALF_FRAMES);
     let cc_sent = halves(&m);
@@ -138,8 +146,25 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
     m.key(A4_KEY, true);
     m.run_ms(300);
 
+    // Each block's ticks, from the counts after each block (one ALNK0 interrupt a block).
+    let mut ticks = Vec::new();
+    let mut count = 0u8;
+    for snap in &m.buffer_snapshots {
+        ticks.push(u32::from(snap.bytes[0].wrapping_sub(count)));
+        count = snap.bytes[0];
+    }
+    assert!(
+        ticks.iter().all(|&n| n <= 2),
+        "more than two ticks a block: {ticks:?}"
+    );
+    assert_eq!(
+        m.soc
+            .read32(base + ilp32::reg_ring_chips::ticks as u32)
+            .wrapping_sub(u32::from(count))
+            % 256,
+        0
+    );
     // The chip the interrupt renders has the profile and every control.
-    let base = fw.chips();
     assert_eq!(
         m.soc
             .read32(base + ilp32::reg_ring_chips::lost_resets as u32),
@@ -155,12 +180,12 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
         3,
         "worn's filter row"
     );
-    let applied = base + ilp32::reg_ring_chips::applied as u32;
-    let settings: Vec<u8> = (0..5).map(|i| m.soc.read8(applied + i)).collect();
+    let now = base + (ilp32::reg_ring_chips::ramp + ilp32::sid_character_ramp::now) as u32;
+    let settings: Vec<u8> = (0..5).map(|i| m.soc.read8(now + i)).collect();
     assert_eq!(
         settings,
         [SID_CHIP_6581_WORN as u8 + 1, 100, 127, 64, 90],
-        "the sink applied the settings"
+        "the ramp got to the settings"
     );
     let dac = m.soc.read32(s + ilp32::sid::dac as u32);
     let tables = base + ilp32::reg_ring_chips::dac as u32;
@@ -193,6 +218,7 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
         ("bleed", ilp32::sid::bleed, want.bleed),
         ("output_gain", ilp32::sid::output_gain, want.output_gain),
         ("nl.level", ilp32::sid::nl, want.nl.level),
+        ("filter_t", ilp32::sid::filter_t, want.filter_t),
     ] {
         assert_eq!(read_f32(&mut m, s + offset as u32), value, "{name}");
     }
@@ -211,12 +237,12 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
         let before_note = (key_sent - silent) * HALF_FRAMES;
         for first in (cc_sent - silent..).take(LATE_BLOCKS) {
             for blocks in schedules(first) {
-                let host = render_host(before_note, &blocks, usize::MAX);
+                let host = render_host(before_note, &blocks, usize::MAX, &ticks);
                 if max_diff(&played[..2 * before_note], &host) != 0 {
                     continue;
                 }
                 for note_block in (key_sent - silent..).take(LATE_BLOCKS) {
-                    let host = render_host(played.len() / 2, &blocks, note_block);
+                    let host = render_host(played.len() / 2, &blocks, note_block, &ticks);
                     let d = max_diff(played, &host);
                     min_diff = min_diff.min(d);
                     if d == 0 {

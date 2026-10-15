@@ -37,15 +37,21 @@ use std::ffi::c_void;
 
 use sidou_sys::*;
 
-/// A register sink that records every write and mirrors the register file.
+/// A register sink that records every write and mirrors the register file. The character's
+/// tick (LIVE_REG_CHAR_TICK, sent every live_tick) is counted, not logged.
 #[derive(Default)]
 pub struct Recorder {
     pub log: Vec<(u8, u8)>,
     pub regs: [u8; 0x19],
+    pub char_ticks: u32,
 }
 
 unsafe extern "C" fn record(ctx: *mut c_void, reg: u8, value: u8) {
     let r = unsafe { &mut *ctx.cast::<Recorder>() };
+    if u32::from(reg) == LIVE_REG_CHAR_TICK {
+        r.char_ticks += 1;
+        return;
+    }
     r.log.push((reg, value));
     if usize::from(reg) < r.regs.len() {
         r.regs[usize::from(reg)] = value;

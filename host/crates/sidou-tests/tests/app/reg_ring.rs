@@ -251,19 +251,19 @@ impl Device {
 struct Direct {
     chip: Box<sid>,
     _target: Box<live_sid_target>,
-    _dac: Box<sid_dac>,
+    _dacs: Box<[sid_dac; 2]>,
     live: Box<live>,
 }
 
 impl Direct {
     fn new(model: sid_model) -> Self {
         let mut chip = Box::<sid>::default();
-        let mut dac = Box::<sid_dac>::default();
+        let mut dacs = Box::<[sid_dac; 2]>::default();
         let mut target = Box::new(live_sid_target {
             chip: &mut *chip,
             clock_hz: SID_CLOCK_PAL,
             sample_rate: RATE,
-            dac: &mut *dac,
+            dacs: dacs.as_mut_ptr(),
             ..Default::default()
         });
         let mut l = Box::<live>::default();
@@ -272,7 +272,7 @@ impl Direct {
         Direct {
             chip,
             _target: target,
-            _dac: dac,
+            _dacs: dacs,
             live: l,
         }
     }
@@ -360,42 +360,66 @@ fn the_model_toggle_swaps_chips_and_keeps_the_sound_parameters() {
     assert_same_sound(&mut dev, &mut direct);
 }
 
-/// The character (live.h, LIVE_REG_CHAR): its controls change the playing chip at a block
-/// boundary, a profile resets it, and every reset keeps them, through the ring exactly as
-/// live_sid_sink applies them at once.
+/// The character (live.h, LIVE_REG_CHAR): its controls ramp the playing chip a tick at a time
+/// (sid_character_ramp_tick), a profile resets it, and every reset keeps them, through the
+/// ring exactly as live_sid_sink makes them at once, tick for tick. Nothing waits for the
+/// interrupt, and no table a chip plays from changes under it.
 #[test]
 fn the_character_reaches_the_chip_through_the_ring_and_across_model_changes() {
     let mut dev = Device::new(SID_MODEL_6581);
     let mut direct = Direct::new(SID_MODEL_6581);
     dev.block();
     let default_dac = |model| unsafe { sid_dac_default(i32::from(model == SID_MODEL_6581)) };
-    // The controls, a note held: one apply, after the ring emptied.
+    let waits = (dev.out.full_waits, dev.out.reset_waits);
+    // The controls, a note held, then a tick a block until the ramp is done: 32 ticks for
+    // age, thump and bleed, 16 for the DACs (four tables, each over SID_DAC_BUILD_STEPS).
     both(&mut dev, &mut direct, |l| unsafe {
         live_note_on(l, 60, 100);
         live_param_set(l, LIVE_PARAM_AGE, 90);
         live_param_set(l, LIVE_PARAM_DAC, 127);
         live_param_set(l, LIVE_PARAM_THUMP, 64);
         live_param_set(l, LIVE_PARAM_BLEED, 100);
-        live_tick(l);
     });
-    assert!(dev.out.character_waits > 0, "the note's writes were queued");
-    dev.block();
-    let first = dev.chip().dac;
-    assert!(
-        first != default_dac(SID_MODEL_6581),
-        "a sloppy DAC is its own table"
+    let mut tables: Vec<*const sid_dac> = Vec::new();
+    let mut playing: Option<(*const sid_dac, Vec<f32>)> = None;
+    let ticks = dev.chips.ticks;
+    for tick in 0..40 {
+        both(&mut dev, &mut direct, |l| unsafe { live_tick(l) });
+        dev.block();
+        let d = dev.chip().dac;
+        let wave = unsafe { (*d).wave.to_vec() };
+        if let Some((p, w)) = &playing {
+            if *p == d {
+                assert_eq!(
+                    *w, wave,
+                    "tick {tick}: the playing chip's DACs changed under it"
+                );
+            }
+        }
+        if !tables.contains(&d) {
+            tables.push(d);
+        }
+        playing = Some((d, wave));
+        assert_same_sound(&mut dev, &mut direct);
+    }
+    assert_eq!(dev.chips.ticks, ticks + 40, "a REG_RING_CHARACTER a tick");
+    let s = dev.chip();
+    assert_eq!(
+        (s.thump, s.bleed, s.filter_t),
+        (64.0 / 127.0, 0.5 * 100.0 / 127.0, 90.0 / 127.0),
+        "the ramp got there"
     );
-    assert!(dev.chip().thump > 0.0 && dev.chip().bleed > 0.0);
-    assert_same_sound(&mut dev, &mut direct);
-    // Another DAC change goes to the other table: the playing chip's is never rebuilt.
-    both(&mut dev, &mut direct, |l| unsafe {
-        live_param_set(l, LIVE_PARAM_DAC, 40);
-        live_tick(l);
-    });
-    dev.block();
-    assert!(dev.chip().dac != first && dev.chip().dac != default_dac(SID_MODEL_6581));
-    assert_same_sound(&mut dev, &mut direct);
-    // A profile is a reset: the spare gets it and the controls before the swap.
+    assert!(
+        tables.len() == 3 && tables[0] == default_dac(SID_MODEL_6581),
+        "the DACs went from the default through both character tables: {tables:?}"
+    );
+    assert_eq!(
+        (dev.out.full_waits, dev.out.reset_waits),
+        waits,
+        "a tick waited"
+    );
+    assert_eq!(dev.out.character_defers, 0);
+    // A profile is a reset: the spare gets it and the controls before the swap, at once.
     both(&mut dev, &mut direct, |l| unsafe {
         live_param_set(l, LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN);
         live_tick(l);
@@ -404,6 +428,11 @@ fn the_character_reaches_the_chip_through_the_ring_and_across_model_changes() {
     dev.block();
     assert_eq!(dev.chips.lost_resets, 0);
     assert_eq!(dev.chip().filter_curve, 3, "worn's filter row");
+    assert_eq!(
+        dev.chip().thump,
+        64.0 / 127.0,
+        "the reset keeps the controls"
+    );
     assert_same_sound(&mut dev, &mut direct);
     // To the 8580 and back: the 8580 R5 profile, then worn again, the controls kept.
     for (model, curve) in [(SID_MODEL_8580, 0u8), (SID_MODEL_6581, 3)] {
@@ -436,6 +465,35 @@ fn the_character_reaches_the_chip_through_the_ring_and_across_model_changes() {
     assert_eq!(dev.chip().dac, default_dac(SID_MODEL_6581));
     assert_eq!((dev.chip().thump, dev.chip().bleed), (0.0, 0.0));
     assert_same_sound(&mut dev, &mut direct);
+}
+
+/// Two ticks in one pass (the main loop catching up) queue both stages; a third before the
+/// interrupt took either finds neither free and waits a tick (character_defers) rather than
+/// write a queued stage or wait for the interrupt. The drain commits them in order.
+#[test]
+fn a_tick_with_both_stages_queued_waits_its_turn() {
+    let mut dev = Device::new(SID_MODEL_6581);
+    dev.block();
+    let ticks = dev.chips.ticks;
+    unsafe { live_param_set(&mut *dev.live, LIVE_PARAM_THUMP, 127) };
+    for _ in 0..3 {
+        unsafe { live_tick(&mut *dev.live) };
+    }
+    assert_eq!(dev.out.character_defers, 1);
+    assert_eq!(dev.chips.stage_pending, [1, 1]);
+    let step = |n: f32| n * SID_CHARACTER_RAMP as f32 / 127.0;
+    assert_eq!(
+        [dev.chips.stage[0].thump, dev.chips.stage[1].thump],
+        [step(1.0), step(2.0)]
+    );
+    assert_eq!(dev.out.full_waits + dev.out.reset_waits, 0);
+    dev.block();
+    assert_eq!(dev.chips.stage_pending, [0, 0]);
+    assert_eq!(dev.chip().thump, step(2.0), "the later stage last");
+    assert_eq!(dev.chips.ticks, ticks + 3);
+    unsafe { live_tick(&mut *dev.live) };
+    dev.block();
+    assert_eq!(dev.chip().thump, step(3.0), "the ramp goes on");
 }
 
 /// One main-loop pass at its worst (reg_ring.c, REG_RING_WORST_PASS), in the order the

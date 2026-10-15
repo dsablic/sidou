@@ -254,7 +254,7 @@ fn slot_settings_cross_the_register_ring_in_order() {
         wait_ctx: std::ptr::null_mut(),
         full_waits: 0,
         reset_waits: 0,
-        character_waits: 0,
+        character_defers: 0,
     });
     let out_ptr: *mut reg_ring_out = &mut *out;
     out.wait_ctx = out_ptr.cast();

@@ -75,23 +75,55 @@ static float saturate(float v) {
     return SAT_GAIN * v + (1.0f - SAT_GAIN) * SAT * v * v * v;
 }
 
-void sid_dac_build(sid_dac* d, int is6581, float kink, float leakage) {
-    float w[12];
-    ladder(w, 12, kink, !is6581);
-    outputs(d->wave, w, 12, leakage);
-    if (is6581) {
-        for (uint32_t i = 0; i < 4096u; ++i) {
-            d->wave[i] = saturate(d->wave[i]);
+void sid_dac_job_start(sid_dac_job* j, sid_dac* d, int is6581, float kink, float leakage) {
+    j->d = d;
+    j->kink = kink;
+    j->leakage = leakage;
+    j->zero = 0.0f;
+    j->is6581 = (uint8_t)(is6581 != 0);
+    j->step = 0;
+}
+
+/* The waveform DAC entries a finishing step takes (steps 1.. of SID_DAC_BUILD_STEPS). */
+#define FINISH_SHARE ((4096u + SID_DAC_BUILD_STEPS - 2u) / (SID_DAC_BUILD_STEPS - 1u))
+
+int sid_dac_job_step(sid_dac_job* j) {
+    sid_dac* d = j->d;
+    const int is6581 = j->is6581;
+    if (j->step >= SID_DAC_BUILD_STEPS) {
+        return 1;
+    }
+    if (j->step == 0u) {
+        /* The ladders and the raw outputs; the voice's zero, as the 6581's saturation leaves
+         * it (the same value the finished table subtracts from every entry). */
+        float w[12];
+        ladder(w, 12, j->kink, !is6581);
+        outputs(d->wave, w, 12, j->leakage);
+        float z = d->wave[is6581 ? ZERO_6581 : ZERO_8580];
+        j->zero = is6581 ? saturate(z) : z;
+        ladder(w, 8, j->kink, !is6581);
+        outputs(d->env, w, 8, j->leakage);
+    } else {
+        /* Saturated (the 6581), twice reSIDfp's scale, the voice DC added (riding on the
+         * envelope DAC). */
+        const float zero = j->zero;
+        const float dc = is6581 ? VOICE_DC_6581 : 0.0f;
+        uint32_t from = (j->step - 1u) * FINISH_SHARE;
+        uint32_t to = from + FINISH_SHARE < 4096u ? from + FINISH_SHARE : 4096u;
+        for (uint32_t i = from; i < to; ++i) {
+            float v = is6581 ? saturate(d->wave[i]) : d->wave[i];
+            d->wave[i] = 2.0f * (v - zero + dc);
         }
     }
-    /* Twice reSIDfp's scale, the voice DC added (riding on the envelope DAC). */
-    float zero = d->wave[is6581 ? ZERO_6581 : ZERO_8580];
-    float dc = is6581 ? VOICE_DC_6581 : 0.0f;
-    for (uint32_t i = 0; i < 4096u; ++i) {
-        d->wave[i] = 2.0f * (d->wave[i] - zero + dc);
+    j->step++;
+    return j->step >= SID_DAC_BUILD_STEPS;
+}
+
+void sid_dac_build(sid_dac* d, int is6581, float kink, float leakage) {
+    sid_dac_job j;
+    sid_dac_job_start(&j, d, is6581, kink, leakage);
+    while (!sid_dac_job_step(&j)) {
     }
-    ladder(w, 8, kink, !is6581);
-    outputs(d->env, w, 8, leakage);
 }
 
 /* The shared default tables: 0 unbuilt, 1 being built, 2 ready. On hosts, tests build

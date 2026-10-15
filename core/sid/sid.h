@@ -37,11 +37,21 @@ typedef struct {
     uint8_t osc3_latch;
     uint8_t control_age;   /* cycles since voice 3's last control write, up to 2 */
     uint8_t filter_curve;  /* the curve setting cutoff_g and res_k come from (gen/filter.h) */
+    uint8_t filter_toward; /* the one cutoff_x_to and res_k_to come from */
     float volume;
     float output_gain; /* to int16, at reSIDfp's level for the model */
     float dc_r, dc_x1, dc_y1;
+    /* The filter's tables, in RAM for sid_write, for two curve settings, and how far the
+     * filter is from the first towards the second (filter_t, 0..1; sid_set_filter_blend):
+     * the first's cutoff per FC value as the SVF's g, tan(pi f / fs), the second's as the
+     * angle, x = pi f / fs (cutoff_g = tan x; the blend is of x, so of Hz), and each's damping
+     * per resonance value (sid_resonance_k). sid_init sets both to the default curve setting
+     * and filter_t to 0. */
     float cutoff_g[SID_FC_STEPS];
-    float res_k[16]; /* damping per resonance value (sid_resonance_k), in RAM for sid_write */
+    float res_k[16];
+    float cutoff_x_to[SID_FC_STEPS];
+    float res_k_to[16];
+    float filter_t;
     const sid_dac* dac; /* shared between chips: sid_dac_default, or sid_set_dac */
     /* The 6581's output path (M1b Task 6; the 8580 does not use these): its filter's
      * non-linearity (sid_filter.h), the mix of the filter's outputs as $18 and $17 set it
@@ -59,6 +69,48 @@ typedef struct {
      * of the render that runs only while it is not 0). */
     float thump, bleed;
 } sid;
+
+/* The 6581's band-pass mix gain (sid.c: its filter outputs against its unfiltered voices). */
+#define SID_MIX_GAIN_BP 0.8125f
+
+/* The cutoff at an FC value, as the SVF's g, t of the way from the first curve setting's
+ * towards the second's in Hz (sid_set_filter_blend): at t 0 the first's table entry exactly,
+ * else tan of the angles' blend (sidou_atanf, sidou_tanf_fast: about 40 instructions). */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+static inline float sid_blended_cutoff(const sid* s, uint32_t fc, float t) {
+    float g = s->cutoff_g[fc];
+    if (t != 0.0f) {
+        float x = sidou_atanf(g);
+        g = sidou_tanf_fast(x + t * (s->cutoff_x_to[fc] - x));
+    }
+    return g;
+}
+
+/* The filter's coefficients from its tables at the chip's FC and resonance, filter_t of the
+ * way from the first curve setting's towards the second's (the cutoff in Hz and the damping
+ * blended; at 0 the first's exactly), and the 6581's band-pass mix, which follows the
+ * damping: what a write to $15-$17 recomputes. Inline: sid_write (the audio path, in SRAM on
+ * the device), the main context and sid_character_commit in the register ring's drain (SRAM)
+ * all call it, and no direct call may cross between SRAM and flash (platform/fm1/app.ld). */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+static inline void sid_update_filter(sid* s) {
+    const float t = s->filter_t;
+    float g = sid_blended_cutoff(s, s->fc, t), k = s->res_k[s->res];
+    if (t != 0.0f) {
+        k += t * (s->res_k_to[s->res] - k);
+    }
+    if (s->model == SID_MODEL_6581) {
+        sid_svf_set_6581(&s->svf, &s->nl, g, k, s->dc_in);
+        float bp = (s->mode_vol & 0x20u) ? 1.0f : 0.0f;
+        s->mix_bpn = SID_MIX_GAIN_BP * bp / s->svf.k;
+    } else {
+        sid_svf_set(&s->svf, g, k);
+    }
+}
 
 /* sample_rate must be in [4000, 65535]. The oscillator step needs
  * freq * cycles < 2^24, so at most 256 chip cycles per sample: the minimum is
@@ -117,7 +169,8 @@ void sid_set_combined_profile(sid* s, int profile);
 void sid_set_gate_reset(sid* s, int on);
 
 /* Selects the chip's filter curve setting (sid_filter_curves; 0, reSIDfp's default, is
- * what sid_init sets): rebuilds its cutoff and damping tables, about 2048 tangents. Returns
+ * what sid_init sets): rebuilds its cutoff and damping tables, about 2048 tangents, as
+ * sid_set_filter_blend(s, curve, curve, 0) (the second tables a copy). Returns
  * 0, or -1 for a curve the model does not have, changing nothing. Never from the audio
  * path (on the device it is in flash, and too slow for the interrupt): call it from the
  * main loop. It changes only the chip's tables, one float at a time, which sid_write reads
@@ -126,13 +179,26 @@ void sid_set_gate_reset(sid* s, int on);
  * rewrite one (through the register ring on the device) to apply the curve. */
 int sid_set_filter_curve(sid* s, uint32_t curve);
 
-/* sid_set_filter_curve between two curve settings: each FC value's cutoff in Hz, and each
- * resonance value's damping, (1 - t) of curve's plus t of toward's (t clamped to [0, 1]),
- * then the same tables as sid_set_filter_curve builds (t 0 is curve's exactly). The chip
- * keeps curve as its filter_curve. Returns 0, or -1 for a curve the model does not have,
- * changing nothing. The same contract as sid_set_filter_curve: main loop only, the
- * coefficients follow at the next write to $15-$17 (or sid_filter_refresh). */
+/* sid_set_filter_curve between two curve settings: builds the tables for curve (2048
+ * tangents) and for toward (its angles: no tangent) and sets how far the filter is from the
+ * first towards the second, t (clamped to [0, 1]; NaN is 0). At each write to $15-$17 the
+ * cutoff in Hz and the damping are then (1 - t) of curve's plus t of toward's
+ * (sid_update_filter, which blends the angles, pi f / fs, each end clamped to the tables'
+ * 30 Hz .. 0.45 fs): t 0 is curve's table entries exactly, so the reSIDfp comparisons at a
+ * profile's own setting hold bit for bit. M1c Task 3's age/heat moves t alone, a number in
+ * the chip's stage, as it plays (sid_character_commit): no table is built. The chip
+ * keeps curve as its filter_curve and toward as its filter_toward. Returns 0, or -1 for a
+ * curve the model does not have, changing nothing. The same contract as
+ * sid_set_filter_curve: main loop only, the coefficients follow at the next write to $15-$17
+ * (or sid_filter_refresh). */
 int sid_set_filter_blend(sid* s, uint32_t curve, uint32_t toward, float t);
+
+/* Builds the chip's second tables (sid_set_filter_blend's toward: angles, no tangent) for
+ * toward, unless they are toward's already (filter_toward), and keeps the first and
+ * filter_t: for a chip whose first curve setting is right (sid_character_filter after
+ * sid_init). Returns 0, or -1 for a curve the model does not have, changing nothing.
+ * sid_set_filter_blend's contract. */
+int sid_set_filter_toward(sid* s, uint32_t toward);
 
 /* Recomputes the filter's coefficients and the 6581's output mix from the tables and the
  * registers, as a write to $17 would, without touching the data bus. Main context, on a
@@ -143,9 +209,11 @@ void sid_filter_refresh(sid* s);
  * sid_character scales for the thump's headroom. */
 float sid_base_output_gain(const sid* s);
 
-/* The non-linearity sid_set_filter_nonlinearity would give the chip for an amount, without
- * changing the chip: for code that applies it later (sid_character_stage_for). */
-void sid_nonlin_for(const sid* s, float amount, sid_nonlin* out);
+/* The non-linearity sid_set_filter_nonlinearity would give the chip for an amount with its
+ * filter blended t of the way (filter_t's, sid_set_filter_blend; the lowest cutoff follows
+ * the blended cutoff at FC 0), without changing the chip: for code that applies it later
+ * (sid_character_stage_for). */
+void sid_nonlin_for(const sid* s, float amount, float t, sid_nonlin* out);
 
 /* Scales the 6581 filter's non-linearity (sid_filter.h, sid_nonlin): its cutoff's
  * rise with the swing in the threshold region, its fall under the DC load of the voices

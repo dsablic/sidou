@@ -28,9 +28,26 @@ typedef struct {
 } sid_dac;
 
 /* Builds both DACs for a model, from the ladder's 2R/R ratio and leakage. Pure
- * arithmetic, about 13k float operations. Never into a table an active chip points at
- * (sid_set_dac, sid.h). */
+ * arithmetic, about 13k float operations (94k instructions on the pi32v2). Never into a
+ * table an active chip points at (sid_set_dac, sid.h). */
 void sid_dac_build(sid_dac* d, int is6581, float kink, float leakage);
+
+/* sid_dac_build in SID_DAC_BUILD_STEPS calls of about equal cost (the first builds the
+ * ladders, the waveform DAC's raw outputs and the envelope DAC; each later one finishes a
+ * share of the waveform DAC), for a main loop that must not stall: start, then step until it
+ * returns 1. The table is then sid_dac_build's, bit for bit (sid_dac_build is these steps);
+ * until then it is half built, so the same rule holds: no chip points at it. */
+#define SID_DAC_BUILD_STEPS 4u
+typedef struct {
+    sid_dac* d;
+    float kink, leakage;
+    float zero; /* the waveform DAC's output at the voice's zero, saturated */
+    uint8_t is6581;
+    uint8_t step; /* the next step, 0..SID_DAC_BUILD_STEPS */
+} sid_dac_job;
+void sid_dac_job_start(sid_dac_job* j, sid_dac* d, int is6581, float kink, float leakage);
+/* Runs the next step: 1 once the table is done (and for every call after). */
+int sid_dac_job_step(sid_dac_job* j);
 
 /* The DACs at reSIDfp's defaults for a model, built on first use and shared by every
  * chip of that model (17,408 bytes each). Call from one context at a time on the

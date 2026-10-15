@@ -89,8 +89,8 @@ static const live_preset presets[LIVE_PRESET_COUNT] = {
 
 _Static_assert(LIVE_PARAM_BLEED - LIVE_PARAM_AGE + 2u == LIVE_CHAR_FIELDS,
                "a parameter per character control, in the fields' order");
-_Static_assert(LIVE_REG_CHAR(LIVE_CHAR_FIELDS) == LIVE_REG_CHAR_APPLY,
-               "the settings, then apply");
+_Static_assert(LIVE_REG_CHAR(LIVE_CHAR_FIELDS) == LIVE_REG_CHAR_TICK,
+               "the settings, then the tick");
 
 void live_char_store(sid_character* c, uint8_t reg, uint8_t value) {
     switch (reg) {
@@ -103,16 +103,29 @@ void live_char_store(sid_character* c, uint8_t reg, uint8_t value) {
     }
 }
 
+/* The host's DAC table the chip does not point at (it renders only between the sink's
+ * calls, so nothing else can), or NULL without tables. */
+static sid_dac* host_free_dac(const live_sid_target* t) {
+    if (!t->dacs) {
+        return NULL;
+    }
+    return t->chip->dac == &t->dacs[0] ? &t->dacs[1] : &t->dacs[0];
+}
+
 void live_sid_sink(void* ctx, uint8_t reg, uint8_t value) {
     live_sid_target* t = ctx;
     if (reg == LIVE_REG_RESET) {
         sid_model model = value == SID_MODEL_8580 ? SID_MODEL_8580 : SID_MODEL_6581;
         sid_init(t->chip, model, t->clock_hz, t->sample_rate);
-        sid_character_apply(t->chip, &t->character, t->dac);
+        const sid_dac* table = sid_character_apply(t->chip, &t->ramp.target, host_free_dac(t));
+        sid_character_ramp_reset(&t->ramp, &t->ramp.target, table);
     } else if (reg >= LIVE_REG_CHAR(0) && reg < LIVE_REG_CHAR(LIVE_CHAR_FIELDS)) {
-        live_char_store(&t->character, reg, value);
-    } else if (reg == LIVE_REG_CHAR_APPLY) {
-        sid_character_change(t->chip, &t->character, t->dac);
+        live_char_store(&t->ramp.target, reg, value);
+    } else if (reg == LIVE_REG_CHAR_TICK) {
+        sid_character_stage st;
+        if (sid_character_ramp_tick(&t->ramp, t->chip, host_free_dac(t), &st)) {
+            sid_character_commit(t->chip, &st);
+        }
     } else if (reg == LIVE_REG_GATE_RESET) {
         sid_set_gate_reset(t->chip, value);
     } else if (!(reg & 0x80u)) {
@@ -691,23 +704,16 @@ static void set_model(live* l, sid_model model) {
     set_profile(l, model_profile(l, model));
 }
 
-/* The character's controls that changed since they were last sent, then apply, then $17
- * after an age change (its filter tables changed; the coefficients follow a $17 write). */
+/* The character's controls that changed since they were last sent, then the tick, every
+ * tick: the sink ramps the chip towards them a tick at a time (sid_character_ramp_tick). */
 static void update_character(live* l) {
-    int changed = 0;
     for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
         if (l->character[f] != l->character_sent[f]) {
             put(l, (uint8_t)LIVE_REG_CHAR(f + 1u), l->character[f]);
-            changed |= 1 << f;
             l->character_sent[f] = l->character[f];
         }
     }
-    if (changed) {
-        put(l, LIVE_REG_CHAR_APPLY, 0);
-        if (changed & 1) { /* field 1, age/heat */
-            write_res_filt(l);
-        }
-    }
+    put(l, LIVE_REG_CHAR_TICK, 0);
 }
 
 void live_button(live* l, live_button_id button) {
