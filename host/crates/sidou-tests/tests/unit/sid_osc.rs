@@ -13,7 +13,7 @@ fn make_osc(control: u32, freq: u32) -> sid_osc {
 }
 
 fn output(o: &sid_osc, src: &sid_osc) -> u32 {
-    unsafe { sid_osc_output(o, src) }
+    unsafe { sid_osc_output(o, src.acc) }
 }
 
 #[test]

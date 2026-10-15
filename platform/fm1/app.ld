@@ -54,7 +54,7 @@ SECTIONS
         *(.text.sid_render .text.sid_write)         /* core/sid/sid.c (sid_svf_set is inline) */
         *(.text.sid_read .text.read_osc3 .text.clock_voices)    /* sid.c */
         *(.text.sid_osc_advance_slow .text.sid_osc_cycle .text.sid_osc_run_combined)   /* sid_osc.h */
-        *(.text.sid_osc_combined_bulk)              /* sid_osc.h, when not inlined */
+        *(.text.sid_osc_combined_bulk .text.sid_osc_pull_msb)   /* sid_osc.h, when not inlined */
         *(.text.sid_noise_clock .text.sid_noise_fade)  /* sid_osc.h */
         *(.text.sid_env_advance_slow .text.sid_env_run .text.sid_env_settle)    /* sid_env.h */
         /* The effect slots (core/fx/fx_slots.c): the render, the settings, the switch path

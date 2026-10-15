@@ -572,3 +572,94 @@ fn osc3_ring_modulation_every_7_cycles() {
         }
     }
 }
+
+/* Locked up with noise+pulse, switched to a waveform with a nonzero output, then back to
+ * a noise combination at every offset across a shift: the pending shift's write-back
+ * takes the old waveform's output (from the second review). */
+#[test]
+fn osc3_relock_after_a_nonzero_output_writes_back() {
+    let f = CYCLES_PER_FRAME;
+    let mut bad = Vec::new();
+    for (into, back) in [
+        (0x20u8, 0xa0u8),
+        (0x20, 0xc0),
+        (0x10, 0x90),
+        (0x40, 0xc0),
+        (0x20, 0xe0),
+    ] {
+        for off in 0..40u64 {
+            // lock with noise+pulse, switch to `into` (output nonzero), back to a noise combo
+            let w = vec![(0, 0x80), (f, 0xc0), (3 * f, into), (4 * f + off, back)];
+            let mut s = noise_script(&w, 6, 1);
+            s.frames = 6;
+            for model in [SID_MODEL_6581, SID_MODEL_8580] {
+                if let Some(m) = reads_mismatch(model, OSC3, &s) {
+                    bad.push(format!(
+                        "{into:#04x}->{back:#04x} off {off}: {}",
+                        &m[..m.len().min(200)]
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "{} mismatches:\n{}",
+        bad.len(),
+        bad.iter().take(6).cloned().collect::<Vec<_>>().join("\n")
+    );
+}
+
+/* Ring modulation from a 6581 voice 2 whose sawtooth combination pulls its MSB low:
+ * voice 3 sees the source's accumulator after the pull (from the second review). */
+#[test]
+fn osc3_ring_from_a_6581_source_with_its_msb_pulled() {
+    let mut bad = Vec::new();
+    for c2 in [0x61u8, 0x31, 0x71, 0x21] {
+        for c3 in [0x94u8, 0xd4, 0x14] {
+            for interval in [1u64, 7, 22] {
+                let mut w = vec![
+                    at(0, 0x07, 0x00),
+                    at(0, 0x08, 0x90),
+                    at(0, 0x09, 0x00),
+                    at(0, 0x0a, 0x08),
+                    at(0, 0x0b, c2),
+                    at(0, 0x12, c3),
+                ];
+                w.extend([
+                    at(0, 0x0e, 0x31),
+                    at(0, 0x0f, 0x07),
+                    at(0, 0x10, 0x00),
+                    at(0, 0x11, 0x08),
+                ]);
+                // keep voice 3's noise alive: TEST pulse every frame
+                for f in 1..3u64 {
+                    w.push(at(f, 0x12, c3 | 0x08));
+                    w.push(TimedWrite {
+                        cycle: f * CYCLES_PER_FRAME + 50,
+                        reg: 0x12,
+                        value: c3,
+                    });
+                }
+                w.sort_by_key(|x| x.cycle);
+                let s = Script {
+                    writes: w,
+                    frames: 3,
+                    interval,
+                };
+                if let Some(m) = reads_mismatch(SID_MODEL_6581, OSC3, &s) {
+                    bad.push(format!(
+                        "c2 {c2:#04x} c3 {c3:#04x} iv {interval}: {}",
+                        &m[..m.len().min(220)]
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "{} mismatches:\n{}",
+        bad.len(),
+        bad.join("\n")
+    );
+}

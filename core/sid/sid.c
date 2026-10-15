@@ -67,6 +67,7 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
         s->control_age = 0;
     }
     if (reg < 21) {
+        s->written = 1;
         sid_osc* o = &s->osc[reg / 7];
         sid_env* e = &s->env[reg / 7];
         switch (reg % 7) {
@@ -74,11 +75,19 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
         case 1: o->freq = (o->freq & 0x00ffu) | ((uint32_t)v << 8); o->quiet = 0; break;
         case 2: sid_osc_write_pw(o, (o->pw & 0xf00u) | v); break;
         case 3: sid_osc_write_pw(o, (o->pw & 0x0ffu) | ((uint32_t)(v & 0x0f) << 8)); break;
-        case 4:
-            sid_osc_latch_ramp(o, sid_osc_acc_last(&s->osc[reg >= 7 ? reg / 7 - 1 : 2]));
+        case 4: {
+            /* The ring source as this voice's output sees it (sid_osc_output). */
+            uint32_t src_acc = reg >= 7 ? s->osc[reg / 7 - 1].acc : sid_osc_acc_last(&s->osc[2]);
+            /* A shift's write-back after this write takes the old waveform's last output,
+             * which clock_voices skips at envelope 0: bring it up to date. With no
+             * waveform selected that output is 0 here; reSIDfp would write back its
+             * floating DAC value instead, which SIDOU does not keep (see read_osc3). */
+            o->out = sid_osc_output(o, src_acc);
+            sid_osc_latch_ramp(o, src_acc);
             sid_osc_write_control(o, v);
             sid_env_set_gate(e, v & SID_CTRL_GATE);
             break;
+        }
         case 5: sid_env_write_ad(e, v); break;
         case 6: sid_env_write_sr(e, v); break;
         }
@@ -144,7 +153,7 @@ static uint8_t read_osc3(const sid* s) {
                                                                sid_osc_acc_before(src)));
         out = sid_osc_combine_ramp(o, ramp, pulse, o->noise);
     } else {
-        uint32_t ix = sid_wave_index(o->control, sid_osc_acc_last(o), sid_osc_acc_last(src));
+        uint32_t ix = sid_wave_index(o->control, sid_osc_acc_last(o), src->acc);
         out = sid_osc_combine(o, ix, pulse, o->noise);
     }
     return (uint8_t)(out >> 4);
@@ -174,6 +183,9 @@ static inline void clock_voices(sid* s, uint32_t cycles) {
     sid_osc* o = s->osc;
     /* Each voice's sync and ring modulation source is the voice before it. */
     uint32_t acc2 = o[2].acc;
+    /* Voices 2 and 3 see their source after its MSB pull (reSIDfp's output order). */
+    o[2].src_mask = o[1].pull_low ? 0x7fffffu : 0xffffffu;
+    o[1].src_mask = o[0].pull_low ? 0x7fffffu : 0xffffffu;
     sid_osc_advance(&o[2], cycles, o[1].acc, o[1].freq);
     sid_osc_advance(&o[1], cycles, o[0].acc, o[0].freq);
     sid_osc_advance(&o[0], cycles, acc2, o[2].freq);
@@ -187,10 +199,20 @@ static inline void clock_voices(sid* s, uint32_t cycles) {
     /* The output feeds the voice DAC, which ignores it with the envelope at 0, and the
      * noise write-back on a TEST release (sid_noise_shift_phase2), so it is kept
      * current whenever noise is selected. */
-    for (int v = 0; v < 3; ++v) {
-        if (s->env[v].counter || (o[v].control & SID_CTRL_NOISE)) {
-            o[v].out = sid_osc_output(&o[v], &o[v ? v - 1 : 2]);
-        }
+    if (s->written) {
+        /* Pulse comparisons latched by writes (sid_osc_write_pw/_control) last until
+         * after the step that follows them. */
+        o[0].pulse_held = o[1].pulse_held = o[2].pulse_held = 0;
+        s->written = 0;
+    }
+    if (s->env[0].counter || (o[0].control & SID_CTRL_NOISE)) {
+        o[0].out = sid_osc_output(&o[0], sid_osc_acc_last(&o[2]));
+    }
+    if (s->env[1].counter || (o[1].control & SID_CTRL_NOISE)) {
+        o[1].out = sid_osc_output(&o[1], o[0].acc);
+    }
+    if (s->env[2].counter || (o[2].control & SID_CTRL_NOISE)) {
+        o[2].out = sid_osc_output(&o[2], o[1].acc);
     }
 }
 

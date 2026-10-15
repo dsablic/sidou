@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Adversarial fuzz (from the Task 3 review): noise combined with other waveforms,
+//! Adversarial fuzz (from the Task 3 reviews): noise combined with other waveforms,
 //! sid_osc_advance's bulk steps against strictly cycle by cycle, every field after every
-//! step, including long TEST holds through fade events and rich register refills.
-//! FUZZ_OPS and FUZZ_SEEDS scale it up.
+//! step: long TEST holds through fade events, rich register refills, every waveform,
+//! the output updated as clock_voices does, random hard syncs and ring sources that
+//! leave their linear course. FUZZ_OPS and FUZZ_SEEDS scale it up.
 use sidou_sys::*;
 
 struct Rng(u64);
@@ -67,7 +68,7 @@ fn run(seed: u64, is6581: i32, profile: u32, ops: u32) -> (u64, u64) {
     let mut held = 0u32;
     for step in 0..ops {
         let op = r.below(100);
-        if op < 6 {
+        if op < 6 && fast.pulse_held == 0 {
             let wf = r.below(16) as u8;
             let mut c = (wf << 4) | (r.below(16) as u8 & 0x0e);
             if r.below(3) != 0 {
@@ -84,7 +85,7 @@ fn run(seed: u64, is6581: i32, profile: u32, ops: u32) -> (u64, u64) {
                 sid_osc_write_control(&mut fast, c);
                 sid_osc_write_control(&mut slow, c);
             }
-        } else if op < 8 {
+        } else if op < 8 && fast.pulse_held == 0 {
             let pw = [0u32, 0xfff, 0x800, r.below(0x1000)][r.below(4) as usize];
             unsafe { sid_osc_write_pw(&mut fast, pw) };
             unsafe { sid_osc_write_pw(&mut slow, pw) };
@@ -103,6 +104,20 @@ fn run(seed: u64, is6581: i32, profile: u32, ops: u32) -> (u64, u64) {
             fast.quiet = 0; // as sid_write does
             slow.freq = f;
             slow.quiet = 0; // as sid_write does
+        } else if op < 12 && r.below(2) == 0 {
+            let mut src = sid_osc::default();
+            src.freq = 1 + r.below(0xffff);
+            src.overshoot = r.below(src.freq * 23);
+            src.msb_rose = 1;
+            if fast.control & SID_CTRL_TEST as u8 == 0 && fast.shift_pipeline == 0 {
+                unsafe {
+                    sid_osc_sync(&mut fast, &src);
+                    sid_osc_sync(&mut slow, &src);
+                }
+            }
+        } else if op < 12 && r.below(2) == 0 {
+            // the source deviates slightly from its linear course (as a pulled MSB or sync would)
+            src_acc = (src_acc ^ 0x800000) & 0xffffff;
         } else if op < 12 {
             src_freq = [0u32, 0xffff, r.below(0x10000)][r.below(3) as usize];
             src_acc = r.below(1 << 24);
@@ -143,16 +158,18 @@ fn run(seed: u64, is6581: i32, profile: u32, ops: u32) -> (u64, u64) {
                     cycles = cycles.min(max).max(1);
                 }
                 unsafe {
-                    if fast.control >> 4 > 8 {
-                        combined_cycles += u64::from(cycles);
-                        sid_osc_advance(&mut fast, cycles, src_acc, src_freq);
-                        sid_osc_advance_cycles(&mut slow, cycles, src_acc, src_freq);
-                    } else {
-                        sid_osc_advance(&mut fast, cycles, src_acc, src_freq);
-                        sid_osc_advance(&mut slow, cycles, src_acc, src_freq);
-                    }
+                    combined_cycles += u64::from(cycles);
+                    sid_osc_advance(&mut fast, cycles, src_acc, src_freq);
+                    sid_osc_advance_cycles(&mut slow, cycles, src_acc, src_freq);
                 }
                 src_acc = (src_acc + cycles * src_freq) & 0xffffff;
+                // As clock_voices does after each step.
+                fast.pulse_held = 0;
+                slow.pulse_held = 0;
+                if fast.control >> 4 != 0 {
+                    // As clock_voices does with the envelope nonzero.
+                    fast.out = unsafe { sid_osc_output(&fast, src_acc) };
+                }
                 if fast.control >> 4 > 8 {
                     same(
                         &fast,

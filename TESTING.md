@@ -248,7 +248,16 @@ which is why the CI job checks that the JSON files exist.
 
 Instruction counts are a lower bound on cycles: the pi32v2 mostly issues one
 instruction per cycle, but code fetched from flash (XIP) and divides take
-longer.
+longer. Noise combined with other waveforms leans on divides: each call of
+`sid_osc_bulk_limit` makes a few (up to about 20 when it walks far), one
+instruction each in the count but more cycles on the device.
+
+The noise worst cases start from the power-on register (0x3fffff, nearly all
+ones), the fullest state a workload reaches in its quarter second: the
+all-ones register (0x7fffff) needs TEST held through the fade, 0.4 s on the
+6581 and about 8 s on the 8580, and otherwise turns up about once in 8.4
+million shifts. Only that state at the start of a block takes a block over
+the budget (accepted in the M1b review).
 
 fm1-emu at the pinned revision cannot execute one instruction that clang
 emits (`{R*4} = [-R]`). The emulator tests step it themselves

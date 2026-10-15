@@ -33,6 +33,7 @@ typedef struct {
     uint8_t mode_vol;
     uint8_t bus; /* last value on the data bus, returned by reads of write-only registers */
     uint8_t osc3_held; /* a write since the last cycle: OSC3 is osc3_latch */
+    uint8_t written;   /* a voice write since the last step: clear the pulse latches */
     uint8_t osc3_latch;
     uint8_t control_age;   /* cycles since voice 3's last control write, up to 2 */
     float volume;

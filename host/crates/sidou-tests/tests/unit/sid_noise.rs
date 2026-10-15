@@ -267,6 +267,9 @@ fn combined_noise_bulk_steps_match_cycle_by_cycle() {
                     }
                 }
                 src_acc = (src_acc + cycles * src_freq) & 0xffffff;
+                // As clock_voices does after each step.
+                fast.pulse_held = 0;
+                slow.pulse_held = 0;
                 if fast.control >> 4 > 8 {
                     assert_same_osc(&fast, &slow, &format!("model {is6581}, step {step}"));
                 }
