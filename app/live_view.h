@@ -22,9 +22,9 @@
  * The trace's height is the waveform times the voice's envelope: flat at rest.
  *
  * It composes every frame (no changed function), within a budget of LIVE_VIEW_FRAME_CELLS
- * cells: the scopes get what the rest of the frame and the screen's toast and raster
- * (screen_layer_cells) leave, and a trace that does not fit waits for a later frame (three
- * voices of noise take turns). The canvas is built whole once; after that each part (the
+ * cells: the scopes get what the rest of the frame and the screen's toast, raster and cover
+ * (screen_layer_cells: MIDI learn's frame over it) leave, and a trace that does not fit waits
+ * for a later frame (three voices of noise take turns). The canvas is built whole once; after that each part (the
  * header, a voice's box, FILTER, VU, the slots) is drawn again only when what it shows
  * changed, and an envelope bar or a meter only its own cells: a frame of moving meters costs
  * a few cells, not the 900 of the canvas. While a wipe or a raster runs it draws

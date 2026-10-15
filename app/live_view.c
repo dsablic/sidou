@@ -456,14 +456,15 @@ static void redraw_voice(live_view* lv, grid* g, uint32_t v) {
  * switch frees them all. When they are not, every voice is marked to be drawn again whole.
  *
  * Fresh traces (pend) take the cells the frame has left of LIVE_VIEW_FRAME_CELLS once
- * everything else is composed and `reserved` (what the screen's layers add after the
- * compose, screen_layer_cells) is set aside: a voice whose changes do not fit keeps its last
- * trace and goes first next frame, so the voices take turns when they all move (noise). Without pend (a wipe
- * or a raster runs) the drawn traces stay; voices to draw again go one a frame, top first,
- * which keeps ahead of a wipe (it reveals voice 1's scope in its first frame, voice 2's in its
- * second, voice 3's in its fourth) and keeps the wipe's first frame cheap. */
-static void scopes(live_view* lv, grid* g, uint8_t pend[SCOPE_VOICES][SCOPE_W],
-                   uint32_t reserved) {
+ * everything else is composed, and what it sends (screen_pending: not what a toast or MIDI
+ * learn's frame covers) and what the screen's layers and the cover add after the compose
+ * (screen_layer_cells) are set aside: a voice whose changes do not fit keeps its last trace
+ * and goes first next frame, so the voices take turns when they all move (noise). Without
+ * pend (a wipe or a raster runs) the drawn traces stay; voices to draw again go one a frame,
+ * top first, which keeps ahead of a wipe (it reveals voice 1's scope in its first frame,
+ * voice 2's in its second, voice 3's in its fourth) and keeps the wipe's first frame cheap. */
+static void scopes(live_view* lv, const screen* s, grid* g,
+                   uint8_t pend[SCOPE_VOICES][SCOPE_W]) {
     uint32_t w[SCOPE_W];
     uint32_t cells[3];
     if (!lv->drawn || g->ovl_nfree != lv->ovl_free) {
@@ -481,7 +482,7 @@ static void scopes(live_view* lv, grid* g, uint8_t pend[SCOPE_VOICES][SCOPE_W],
         lv->ovl_free = g->ovl_nfree;
         return;
     }
-    uint32_t used = grid_pending(g) + reserved;
+    uint32_t used = screen_pending(s) + screen_layer_cells(s);
     uint32_t left = used < LIVE_VIEW_FRAME_CELLS ? LIVE_VIEW_FRAME_CELLS - used : 0u;
     uint32_t first = lv->next_voice % SCOPE_VOICES;
     uint32_t skipped = SCOPE_VOICES;
@@ -854,7 +855,7 @@ static void live_compose(screen* s, void* state, grid* g) {
         }
     }
     memcpy(lv->drawn_look, now, sizeof now);
-    scopes(lv, g, fresh ? lv->pend : NULL, screen_layer_cells(s));
+    scopes(lv, s, g, fresh ? lv->pend : NULL);
 }
 
 /* Composed every frame (no changed function). */

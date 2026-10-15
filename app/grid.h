@@ -165,6 +165,8 @@ void grid_bitmap_row(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t n, u
 /* Cells that differ from the panel (grid_next_run would send them), held rows included: what
  * a view that holds itself to a budget has spent of it so far. */
 uint32_t grid_pending(const grid* g);
+/* The same in the w x h cells from (col, row), clipped to the grid. */
+uint32_t grid_pending_in(const grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h);
 
 /* Holds the rows in mask (bit r: row r) and releases the others: grid_next_run passes over held
  * rows, and their changes go out once they are released. */

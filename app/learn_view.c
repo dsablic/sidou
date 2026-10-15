@@ -98,11 +98,23 @@ static void look(const learn_view* lv, uint8_t out[3]) {
     out[2] = midi_learn_cc_of(lv->ml, lv->ml->param);
 }
 
+/* The rows of the frame. */
+#define FRAME_ROWS (((1u << LEARN_VIEW_H) - 1u) << LEARN_VIEW_ROW)
+
 /* The view under it, as it composes; then the frame over it, clear of the overlays the view
- * under it draws there (About's scroller, the glyph sheet's wave). */
+ * under it draws there (About's scroller, the glyph sheet's wave). The frame covers its cells
+ * (screen_cover): a view under it that holds to a budget (LIVE, SCENE) leaves them alone and
+ * counts what the frame sends this frame: all of it when its text changes or the screen drew
+ * over its rows (a switch, the raster), nothing otherwise (it draws the same cells again). */
 static void compose(screen* s, void* state, grid* g) {
     learn_view* lv = state;
     const screen_entry* below = &s->stack[s->depth - 2u];
+    uint8_t now[3];
+    look(lv, now);
+    int fresh = now[0] != lv->drawn[0] || now[1] != lv->drawn[1] || now[2] != lv->drawn[2] ||
+                (s->redraw && (s->redraw_rows & FRAME_ROWS));
+    screen_cover(s, LEARN_VIEW_COL, LEARN_VIEW_ROW, LEARN_VIEW_W, LEARN_VIEW_H,
+                 fresh ? LEARN_VIEW_W * LEARN_VIEW_H : 0u);
     below->v->compose(s, below->state, g);
     for (uint32_t r = LEARN_VIEW_ROW; r < LEARN_VIEW_ROW + LEARN_VIEW_H; ++r) {
         for (uint32_t c = LEARN_VIEW_COL; c < LEARN_VIEW_COL + LEARN_VIEW_W; ++c) {
@@ -171,7 +183,7 @@ static void finish(learn_view* lv) {
     default: append(t, LINE, "LEARN CANCELLED"); break;
     }
     screen_toast(lv->s, t, SCREEN_TOAST_MS);
-    screen_pop(lv->s, SCREEN_CUT);
+    screen_pop(lv->s, SCREEN_OVER);
     lv->s = NULL;
 }
 
@@ -209,7 +221,7 @@ static int capture(void* ctx, const screen_event* e) {
 }
 
 int learn_view_open(learn_view* lv, screen* s) {
-    if (!lv->ml || screen_push(s, &learn_view_view, lv, SCREEN_CUT) != 0) {
+    if (!lv->ml || screen_push(s, &learn_view_view, lv, SCREEN_OVER) != 0) {
         return -1;
     }
     lv->s = s;

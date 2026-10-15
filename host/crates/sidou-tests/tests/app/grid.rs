@@ -484,6 +484,16 @@ fn pending_counts_the_cells_the_next_runs_would_send() {
     assert_eq!(pending(&s), 0);
     s.put(3, 4, b'A', attr(GRID_WHITE, GRID_BLUE));
     assert_eq!(pending(&s), 0, "the same cell again");
+    // In a block of cells: its edges included, clipped to the grid.
+    s.text(3, 4, "XYZ", attr(GRID_WHITE, GRID_BLUE));
+    s.put(29, 29, b'y', attr(GRID_WHITE, GRID_BLUE));
+    let within =
+        |s: &Screen, c: u32, r: u32, w: u32, h: u32| unsafe { grid_pending_in(&*s.g, c, r, w, h) };
+    assert_eq!(within(&s, 4, 4, 2, 1), 2);
+    assert_eq!(within(&s, 0, 0, 4, 5), 1);
+    assert_eq!(within(&s, 3, 5, 3, 1), 0);
+    assert_eq!(within(&s, 28, 28, 5, 5), 1, "clipped");
+    assert_eq!(within(&s, 0, 0, GRID_COLS, GRID_ROWS), pending(&s));
 }
 
 #[test]

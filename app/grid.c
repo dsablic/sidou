@@ -316,6 +316,21 @@ uint32_t grid_pending(const grid* g) {
     return n;
 }
 
+uint32_t grid_pending_in(const grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h) {
+    uint32_t n = 0;
+    uint32_t c1 = col + w < GRID_COLS ? col + w : GRID_COLS;
+    uint32_t r1 = row + h < GRID_ROWS ? row + h : GRID_ROWS;
+    for (uint32_t r = row; r < r1; r++) {
+        if (!(g->rows >> r & 1u)) {
+            continue;
+        }
+        for (uint32_t c = col; c < c1; c++) {
+            n += (uint32_t)dirty(g, r * GRID_COLS + c);
+        }
+    }
+    return n;
+}
+
 void grid_hold(grid* g, uint32_t mask) {
     g->hold = mask & ALL_ROWS;
 }

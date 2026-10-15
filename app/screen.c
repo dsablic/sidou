@@ -34,10 +34,14 @@ static void call(screen* s, void (*fn)(screen*, void*)) {
     }
 }
 
-/* The view on top changed: the old one's overlays and pixel region go, a capture set above
- * the stack goes, and the new view comes in. */
+/* The view on top changed: the old one's overlays (unless it shows on, SCREEN_OVER) and pixel
+ * region go, a capture set above the stack goes, and the new view comes in. */
 static void switched(screen* s, screen_wipe w) {
-    grid_overlay_clear_all(s->g);
+    if (w == SCREEN_OVER) {
+        w = SCREEN_CUT;
+    } else {
+        grid_overlay_clear_all(s->g);
+    }
     grid_region_clear(s->g);
     if (s->depth < s->capture_depth) {
         screen_capture(s, NULL, NULL);
@@ -206,12 +210,58 @@ static void wipe(screen* s) {
     redraw(s, ALL_ROWS);
 }
 
-uint32_t screen_layer_cells(const screen* s) {
-    uint32_t n = 0;
+/* The toast draws this frame (toast() below, at s->now): from its first frame to its last. */
+static int toast_shows(const screen* s) {
     if (s->toast_on == TOAST_WAITING) {
-        for (uint32_t c = SCREEN_TOAST_COL; c < GRID_COLS && s->toast[c - SCREEN_TOAST_COL]; c++) {
-            n++;
+        return (int32_t)(0u - s->toast_until) < 0; /* its length: 0 ends it at once */
+    }
+    return s->toast_on == TOAST_SHOWING && (int32_t)(s->now - s->toast_until) < 0;
+}
+
+/* Columns of the toast's text. */
+static uint32_t toast_len(const screen* s) {
+    uint32_t n = 0;
+    while (n < SCREEN_TOAST_CHARS && s->toast[n]) {
+        n++;
+    }
+    return n;
+}
+
+void screen_cover(screen* s, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint32_t cells) {
+    s->cover_col = (uint8_t)(col < GRID_COLS ? col : GRID_COLS);
+    s->cover_row = (uint8_t)(row < GRID_ROWS ? row : GRID_ROWS);
+    s->cover_w = (uint8_t)(w < GRID_COLS - s->cover_col ? w : GRID_COLS - s->cover_col);
+    s->cover_h = (uint8_t)(h < GRID_ROWS - s->cover_row ? h : GRID_ROWS - s->cover_row);
+    s->cover_cells = (uint16_t)(cells < GRID_CELLS ? cells : GRID_CELLS);
+}
+
+static int in_cover(const screen* s, uint32_t col, uint32_t row) {
+    return col - s->cover_col < s->cover_w && row - s->cover_row < s->cover_h;
+}
+
+int screen_covered(const screen* s, uint32_t col, uint32_t row) {
+    return in_cover(s, col, row) || (row == SCREEN_TOAST_ROW &&
+                                     col - SCREEN_TOAST_COL < toast_len(s) && toast_shows(s));
+}
+
+uint32_t screen_pending(const screen* s) {
+    uint32_t n = grid_pending(s->g) -
+                 grid_pending_in(s->g, s->cover_col, s->cover_row, s->cover_w, s->cover_h);
+    if (toast_shows(s)) {
+        uint32_t end = SCREEN_TOAST_COL + toast_len(s);
+        for (uint32_t c = SCREEN_TOAST_COL; c < end; c++) {
+            if (!in_cover(s, c, SCREEN_TOAST_ROW)) {
+                n -= grid_pending_in(s->g, c, SCREEN_TOAST_ROW, 1, 1);
+            }
         }
+    }
+    return n;
+}
+
+uint32_t screen_layer_cells(const screen* s) {
+    uint32_t n = s->cover_cells;
+    if (s->toast_on == TOAST_WAITING) {
+        n += toast_len(s);
     }
     if (s->raster_frames && s->wipe == SCREEN_CUT) {
         n += RASTER_CELLS;
@@ -229,6 +279,7 @@ void screen_frame(screen* s, uint32_t now_ms) {
     }
     s->redraw = 0;
     s->redraw_rows = 0;
+    screen_cover(s, 0, 0, 0, 0, 0);
     toast(s);
     raster(s);
     wipe(s);

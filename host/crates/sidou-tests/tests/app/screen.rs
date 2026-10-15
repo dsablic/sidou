@@ -493,6 +493,31 @@ fn a_switch_clears_the_old_views_overlays() {
     assert_eq!(r.g.ovl_nfree, GRID_OVERLAYS as u8);
 }
 
+/// A view pushed over the one on top (SCREEN_OVER: MIDI learn's frame, which composes the
+/// view under it) comes in at once, and the overlays of the view under it stay on the grid,
+/// there and back: that view goes on showing, and a switch that cleared them would send every
+/// cell they were on.
+#[test]
+fn a_view_pushed_over_another_keeps_its_overlays() {
+    let (root, a) = (probe_view(c"ROOT"), probe_view(c"A"));
+    let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));
+    rs.overlay = true;
+    let mut r = Rig::new(&root, &mut rs);
+    assert_eq!(r.g.ovl[5 * COLS + 5], 1);
+    assert_eq!(r.push(&a, &mut as_, SCREEN_OVER), 0);
+    assert!(!r.animating(), "no wipe");
+    assert_eq!(r.g.ovl[5 * COLS + 5], 1, "the push cleared the overlays");
+    assert_eq!(r.g.hold, 0, "nothing held");
+    r.frame();
+    assert_eq!(r.pop(SCREEN_OVER), 0);
+    assert_eq!(r.g.ovl[5 * COLS + 5], 1, "the pop cleared the overlays");
+    assert_eq!(
+        r.frame().cells,
+        CELLS - BORDER_CELLS,
+        "A's cells, back to the root's"
+    );
+}
+
 #[test]
 fn the_raster_sweeps_the_border_every_other_frame_and_gives_it_back() {
     let root = probe_view(c"ROOT");
@@ -963,4 +988,53 @@ fn a_toast_during_a_wipe_shows_once_its_row_is_revealed() {
     // Then it goes, and the panel shows A alone.
     unsafe { screen_toast(&mut *r.s, c"".as_ptr(), 0) };
     finish(&mut r, &as_, 0);
+}
+
+/// What the view on top draws over the view under it (screen_cover) and the toast's text while
+/// it shows are covered: a view holding to a budget leaves them alone and does not count them
+/// (screen_pending); the cover's cells count with the layers' (screen_layer_cells) for the
+/// frame it was set in.
+#[test]
+fn the_cover_and_a_showing_toast_are_left_out_of_a_views_budget() {
+    let root = probe_view(c"ROOT");
+    let mut rs = Probe::new(b'R');
+    let mut r = Rig::new(&root, &mut rs);
+    let covered = |r: &Rig, c: u32, row: u32| unsafe { screen_covered(&*r.s, c, row) } != 0;
+    assert!(!covered(&r, 5, 20));
+    unsafe { screen_cover(&mut *r.s, 2, 20, 4, 3, 7) };
+    for (c, row, want) in [(2, 20, true), (5, 22, true), (6, 20, false), (2, 23, false)] {
+        assert_eq!(covered(&r, c, row), want, "({c}, {row})");
+    }
+    let layers = unsafe { screen_layer_cells(&*r.s) };
+    assert_eq!(layers, 7, "the cover's cells count with the layers'");
+    // What the view drew under the cover is not pending.
+    unsafe {
+        grid_put(&mut *r.g, 3, 21, b'X', 0x12);
+        grid_put(&mut *r.g, 9, 21, b'X', 0x12);
+    }
+    assert_eq!(unsafe { grid_pending(&*r.g) }, 2);
+    assert_eq!(unsafe { screen_pending(&*r.s) }, 1);
+    // A frame clears the cover.
+    r.frame();
+    assert!(!covered(&r, 2, 20), "the cover outlived its frame");
+    assert_eq!(unsafe { screen_layer_cells(&*r.s) }, 0);
+    // The toast's text, from its first frame to its last, and not past its text.
+    let row = SCREEN_TOAST_ROW;
+    let col = SCREEN_TOAST_COL;
+    unsafe { screen_toast(&mut *r.s, c"HELLO".as_ptr(), 120) };
+    assert!(covered(&r, col, row) && covered(&r, col + 4, row));
+    assert!(!covered(&r, col + 5, row) && !covered(&r, col - 1, row));
+    assert!(!covered(&r, col, row - 1));
+    r.frame(); // its first frame: it shows until 120 ms from now
+    let first = r.now;
+    r.s.now = first + 80;
+    assert!(covered(&r, col, row), "the toast's last frame");
+    r.s.now = first + 120;
+    assert!(
+        !covered(&r, col, row),
+        "the frame it ends in: the view draws there again"
+    );
+    // A toast of no time never shows.
+    unsafe { screen_toast(&mut *r.s, c"HELLO".as_ptr(), 0) };
+    assert!(!covered(&r, col, row));
 }

@@ -18,7 +18,9 @@
  * toast says how: LEARNED CC 21 -> CUTOFF, and so on. A CC ends learn in the main loop, so the
  * view closes at the next frame, or at the panel's next event if that comes first: a knob then
  * turns as usual, and SAVE or HOME do nothing more (the toast stays).
- * The frame hides the overlays the view under it draws on its cells.
+ * The frame hides the overlays the view under it draws on its cells; the others stay, there
+ * and back (SCREEN_OVER). It covers its cells (screen_cover), so a view under it that holds to
+ * a budget of cells (LIVE, SCENE) leaves them alone and counts what the frame sends.
  *
  * Portable C with no hardware access and no allocation. */
 #ifndef SIDOU_LEARN_VIEW_H

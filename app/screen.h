@@ -104,7 +104,10 @@ typedef struct {
 typedef enum {
     SCREEN_CUT = 0,       /* at once: the whole screen in one frame */
     SCREEN_WIPE_DOWN = 1, /* top row first: a view opens */
-    SCREEN_WIPE_UP = 2    /* bottom row first: back to the view below */
+    SCREEN_WIPE_UP = 2,   /* bottom row first: back to the view below */
+    /* At once, to or from a view drawn over the one under it, which it composes (MIDI learn's
+     * frame, app/learn_view.h): that one keeps showing, so its overlays stay. */
+    SCREEN_OVER = 3
 } screen_wipe;
 
 /* 1: consumed. The capture and the global handler. */
@@ -132,6 +135,9 @@ struct screen {
      * layer); a view that keeps its own canvas puts those rows back and no others. */
     uint32_t redraw_rows;
     uint32_t toast_until;  /* toast_on 2: its length in ms */
+    /* screen_cover's, for the frame it was set in: w 0, none. */
+    uint8_t cover_col, cover_row, cover_w, cover_h;
+    uint16_t cover_cells;
     char toast[SCREEN_TOAST_CHARS + 1u];
     screen_capture_fn capture;
     void* capture_ctx;
@@ -173,11 +179,25 @@ void screen_raster(screen* s, uint32_t steps);
 int screen_blink(const screen* s);
 /* 1 while a wipe or a raster runs. */
 int screen_animating(const screen* s);
-/* Cells the toast and the raster may change after the view on top composes this frame: what
- * a view holding a frame to a budget of cells (LIVE) leaves them. The toast counts on its
- * first frame only: on the frames after, the view composes under it (redraw), so its cells
- * are the view's to send already when the view counts them. */
+/* Cells the toast, the raster and the cover (screen_cover) may change after the view on top
+ * composes this frame: what a view holding a frame to a budget of cells (LIVE, SCENE) leaves
+ * them. The toast counts on its first frame only: on the frames after, its text is on the
+ * grid already and the view leaves it alone (screen_covered). */
 uint32_t screen_layer_cells(const screen* s);
+/* What the view on top draws over the view under it once that one composes (MIDI learn's
+ * frame over LIVE or SCENE, app/learn_view.h): the w x h cells from (col, row), `cells` of
+ * which it may change this frame. Its compose sets it every frame, before it composes the
+ * view under it; the frame's end clears it. screen_layer_cells counts `cells`, and a view
+ * holding to a budget leaves the cells alone (screen_covered) and does not count what it
+ * drew there (screen_pending). */
+void screen_cover(screen* s, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint32_t cells);
+/* 1 if something draws over the cell after the view on top composes this frame: the cover, or
+ * the toast's text if it shows this frame (its last one included, not the one it ends in).
+ * A view holding to a budget spends none of it there: what it drew would not be sent. */
+int screen_covered(const screen* s, uint32_t col, uint32_t row);
+/* The grid's pending cells (grid_pending) less the covered ones: what a view holding to a
+ * budget has drawn so far that this frame sends. */
+uint32_t screen_pending(const screen* s);
 /* One frame at now_ms: compose (if needed, above), toast, raster, wipe. */
 void screen_frame(screen* s, uint32_t now_ms);
 
