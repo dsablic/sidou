@@ -218,3 +218,36 @@ pub fn grid_row(g: &sidou_sys::grid, row: usize) -> String {
         })
         .collect()
 }
+
+/// A wipe's frames: each sends its SCREEN_WIPE_ROWS new rows and its edge row at most
+/// (app/screen.h), so the view under it must hold still. Runs frames with `frame` until a wipe
+/// has started and ended (at most 40 frames), and returns what each frame of it sent.
+pub fn wipe_frames(frame: &mut dyn FnMut() -> (Sent, bool)) -> Vec<Sent> {
+    let mut out = Vec::new();
+    let mut was = false;
+    for _ in 0..40 {
+        let (sent, wiping) = frame();
+        if wiping || was {
+            out.push(sent);
+        }
+        if was && !wiping {
+            return out;
+        }
+        was = wiping;
+    }
+    panic!("no wipe ran and ended in 40 frames: {out:?}");
+}
+
+/// Asserts every frame of a wipe sends its rows and nothing else, inside the SPI budget.
+pub fn assert_wipe_holds_still(what: &str, frames: &[Sent]) {
+    let most = (SCREEN_WIPE_ROWS as usize + 1) * GRID_COLS as usize;
+    assert!(frames.len() >= 6, "{what}: {} wipe frames", frames.len());
+    for (k, s) in frames.iter().enumerate() {
+        assert!(
+            s.cells <= most && s.spi_ms() <= SPI_BUDGET_MS,
+            "{what}: wipe frame {k} sent {} cells, {:.1} ms ({s:?}); at most {most}",
+            s.cells,
+            s.spi_ms()
+        );
+    }
+}

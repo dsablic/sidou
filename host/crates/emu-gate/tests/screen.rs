@@ -827,6 +827,91 @@ fn the_boot_and_about_stay_within_their_budgets() {
     );
 }
 
+/// app/screen.h SCREEN_WIPE_ROWS and the edge row: what a wipe frame sends at most.
+const WIPE_CELLS: u32 = (4 + 1) * 30;
+
+/// 40 ms windows from now until a wipe has run and ended, as `measure` counts them: those
+/// during which a wipe ran (read from the screen's state at each window's start and end).
+fn wipe_windows(m: &mut Machine, fw: &Firmware, act: impl FnOnce(&mut Machine)) -> Vec<Sent> {
+    act(m);
+    let mut out = Vec::new();
+    let mut was = common::screen_wiping(m, fw);
+    for _ in 0..30 {
+        let before = sent(m, fw);
+        m.run_ms(UI_PERIOD_MS);
+        let after = sent(m, fw);
+        let wiping = common::screen_wiping(m, fw);
+        if was || wiping {
+            out.push(Sent {
+                windows: after.windows - before.windows,
+                bytes: after.bytes - before.bytes,
+            });
+        }
+        if was && !wiping {
+            return out;
+        }
+        was = wiping;
+    }
+    panic!("no wipe ran and ended in 30 frames");
+}
+
+fn assert_wipe_holds_still(what: &str, frames: &[Sent]) {
+    assert!(frames.len() >= 6, "{what}: {} wipe frames", frames.len());
+    for (k, f) in frames.iter().enumerate() {
+        assert!(
+            cells(f) <= WIPE_CELLS && f.spi_ms() <= SPI_BUDGET_MS,
+            "{what}: 40 ms {k} of the wipe sent {} cells, {:.1} ms of SPI ({f:?})",
+            cells(f),
+            f.spi_ms()
+        );
+    }
+}
+
+/// Every wipe into an animated view sends its rows and nothing more, inside the SPI budget:
+/// the wipe into About, started at every phase against the firmware's frames, and the full
+/// boot's wipe into the title card (the view under a wipe holds still, app/screen.h).
+#[test]
+fn every_wipe_into_an_animated_view_sends_only_its_rows() {
+    let Some((_, fw)) = fixture("the wipe budget test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_menu(&mut m);
+    m.turn(SELECT, MENU_ABOUT);
+    m.run_ms(SETTLE_MS);
+    let mut worst = Sent::default();
+    let mut most = 0;
+    for phase in (0..UI_PERIOD_MS).step_by(5) {
+        m.run_ms(phase + 1);
+        let frames = wipe_windows(&mut m, &fw, |m| m.turn(ALGORITHM, 1));
+        assert_wipe_holds_still(&format!("About at phase {phase} ms"), &frames);
+        for f in &frames {
+            most = most.max(cells(f));
+            if f.bytes > worst.bytes {
+                worst = *f;
+            }
+        }
+        press(&mut m, HOME);
+        m.run_ms(SETTLE_MS);
+    }
+    println!(
+        "wipe into About: at most {most} cells, worst 40 ms {:.2} ms of SPI",
+        worst.spi_ms()
+    );
+
+    let mut m = Machine::boot(&fw.image);
+    hold_home_through_power_on(&mut m);
+    // The title card wipes in 7.0 s after the full boot's first frame.
+    m.run_ms(6800 - 600);
+    let frames = wipe_windows(&mut m, &fw, |_| {});
+    assert_wipe_holds_still("the title card", &frames);
+    let title = frames.iter().map(|f| f.spi_ms()).fold(0.0, f64::max);
+    println!(
+        "wipe into the title card: at most {} cells, worst 40 ms {title:.2} ms of SPI",
+        frames.iter().map(cells).max().unwrap_or(0)
+    );
+}
+
 /// Main-loop instructions in ui_poll (fm1-emu). About at M1e Task 3: its busiest ui_poll (a
 /// compose and a run) 105k, 161k a frame with the rendering of its 93 cells, 4.0M a second
 /// (1.7 % of 240 MHz). The full boot: 64k and 50k.

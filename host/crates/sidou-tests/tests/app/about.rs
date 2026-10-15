@@ -8,7 +8,7 @@ use std::ffi::CStr;
 use sidou_sys::*;
 
 use crate::views::Ui;
-use crate::{drain, pixels, Sent, SPI_BUDGET_MS};
+use crate::{assert_wipe_holds_still, drain, pixels, wipe_frames, Sent, SPI_BUDGET_MS};
 
 const COLS: usize = GRID_COLS as usize;
 const PAGE: usize = ABOUT_PAGE_FRAMES as usize;
@@ -194,6 +194,39 @@ fn every_cell_is_composed_every_frame() {
     a.frame();
     b.frame();
     assert!(pixels(&a.g) == pixels(&b.g), "a cell kept what was there");
+}
+
+/// The wipe into About: the cracktro holds still under it, so each frame sends the wipe's rows
+/// and nothing else (app/screen.h sizes a wipe for a view that does not move), after any time
+/// in the menu.
+#[test]
+fn the_wipe_into_about_sends_only_its_rows() {
+    let mut worst = Sent::default();
+    for warm in 0..24 {
+        let mut ui = Ui::new();
+        ui.press(PANEL_BTN_HOME);
+        ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_ABOUT as i32);
+        ui.settle();
+        for _ in 0..warm {
+            ui.frame();
+        }
+        drain(&mut ui.g);
+        ui.turn(PANEL_ENC_ALGORITHM, 1);
+        assert_eq!(ui.top(), "ABOUT");
+        let frames = wipe_frames(&mut || {
+            ui.frame();
+            (drain(&mut ui.g), ui.v.s.wipe != 0)
+        });
+        worst = frames
+            .iter()
+            .copied()
+            .fold(worst, |w, s| if s.cells > w.cells { s } else { w });
+        assert_wipe_holds_still(&format!("About after {warm} frames"), &frames);
+    }
+    println!(
+        "wipe into About: worst frame {worst:?} {:.2} ms",
+        worst.spi_ms()
+    );
 }
 
 /// How the cracktro spends the SPI: the averages and worst frames over a full round of the

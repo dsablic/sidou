@@ -16,7 +16,10 @@
  *   across the cells, bobbing a whole cell row at a time on a sine;
  * - the stars are one-pixel overlays in three layers, moving a pixel every 4, 2 or 1 frames.
  *
- * It composes every frame. Portable C with no hardware access and no allocation. */
+ * It composes every frame, and holds still while a wipe or a raster runs (screen_animating):
+ * the wipe that opens it sends its own rows and nothing else.
+ *
+ * Portable C with no hardware access and no allocation. */
 #ifndef SIDOU_ABOUT_H
 #define SIDOU_ABOUT_H
 
@@ -42,7 +45,7 @@ extern "C" {
 
 typedef struct {
     const char* version;     /* "V" and the version, on the first page */
-    uint32_t frame;          /* frames composed since it opened */
+    uint32_t frame;          /* frames of the animation shown since it opened */
     uint8_t bar[ABOUT_BARS]; /* each bar's centre, in half cell rows */
 } about;
 

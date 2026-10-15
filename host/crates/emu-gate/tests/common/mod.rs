@@ -549,3 +549,63 @@ pub fn run(build: &Path, name: &str, marks: usize) -> Run {
         emulated_block_loads,
     }
 }
+
+// ---- the screen's state in emulated RAM ----
+
+/// platform/fm1/ui.c `ui`, an app/views.h `views` whose first field is its `screen`
+/// (app/screen.h), at the device's 32-bit layout: `g` (a pointer), `stack` (4 entries of two
+/// pointers), then `depth`, `wipe`, `wipe_rows` and `raster_frames`, a byte each.
+const SCREEN_STACK: u32 = 4;
+const SCREEN_DEPTH: u32 = 36;
+const SCREEN_WIPE: u32 = 37;
+const SCREEN_RASTER: u32 = 39;
+/// app/screen.h SCREEN_DEPTH.
+const SCREEN_MAX_DEPTH: u8 = 4;
+
+/// The view on top of the screen's stack (the address of its `view` table), checked against
+/// the layout above: the stack's depth in range and the status view at its bottom.
+pub fn top_view(m: &mut Machine, fw: &Firmware) -> u32 {
+    let ui = fw.symbol("ui");
+    let depth = m.soc.read8(ui + SCREEN_DEPTH);
+    assert!(
+        (1..=SCREEN_MAX_DEPTH).contains(&depth),
+        "the screen's depth reads {depth}: platform/fm1/ui.c ui's layout moved"
+    );
+    assert_eq!(
+        m.soc.read32(ui + SCREEN_STACK),
+        fw.symbol("views_status"),
+        "the stack's bottom is not the status view: platform/fm1/ui.c ui's layout moved"
+    );
+    m.soc.read32(ui + SCREEN_STACK + 8 * u32::from(depth - 1))
+}
+
+/// 1 while a wipe or a raster runs (app/screen.h screen_animating).
+pub fn screen_animating(m: &mut Machine, fw: &Firmware) -> bool {
+    let ui = fw.symbol("ui");
+    m.soc.read8(ui + SCREEN_WIPE) != 0 || m.soc.read8(ui + SCREEN_RASTER) != 0
+}
+
+/// 1 while a wipe runs.
+pub fn screen_wiping(m: &mut Machine, fw: &Firmware) -> bool {
+    let ui = fw.symbol("ui");
+    m.soc.read8(ui + SCREEN_WIPE) != 0
+}
+
+/// Longer than the full boot (app/boot.h: the title card ends 10 s in) and its wipe.
+pub const BOOT_TIMEOUT_MS: u64 = 12_000;
+
+/// Runs a frame (40 ms) at a time until the boot view (app/boot.h) is gone and its wipe has
+/// ended; panics after `BOOT_TIMEOUT_MS` from power-on. Returns the time, ms from power-on.
+pub fn run_past_boot(m: &mut Machine, fw: &Firmware) -> u64 {
+    let boot = fw.symbol("boot_view");
+    while m.ms() < BOOT_TIMEOUT_MS {
+        // The screen exists once ui_init has run; before, `ui` is zero.
+        let ui = fw.symbol("ui");
+        let started = m.soc.read8(ui + SCREEN_DEPTH) != 0;
+        if started && top_view(m, fw) != boot && !screen_animating(m, fw) {
+            return m.ms();
+        }
+        m.run_ms(40);
+    }
+    panic!("the boot was still on the screen {BOOT_TIMEOUT_MS} ms after power-on");
+}

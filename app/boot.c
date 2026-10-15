@@ -80,6 +80,7 @@ boot_step boot_update(boot* b, uint32_t now_ms) {
     uint8_t title = (uint8_t)(p == BOOT_TITLE);
     if (title != b->title) {
         b->title = title;
+        b->logo_frame = 0;
         return BOOT_REVEAL;
     }
     return BOOT_GO_ON;
@@ -231,12 +232,11 @@ static void ramp_line(grid* g, uint32_t row) {
 }
 
 static void title(boot* b, grid* g, int blink) {
-    uint32_t from = b->full ? BOOT_TITLE_MS : 0u;
-    uint32_t frame = (b->at - from) / 40u; /* the logo's animation: 25 fps */
     grid_fill(g, 0, 0, GRID_COLS, GRID_ROWS, ' ', TITLE_ATTR);
     ramp_line(g, TITLE_LINE_TOP);
     ramp_line(g, TITLE_LINE_BOTTOM);
-    logo_draw(logo_default, g, logo_center_col(logo_default), TITLE_LOGO_ROW, frame, GRID_BLACK);
+    logo_draw(logo_default, g, logo_center_col(logo_default), TITLE_LOGO_ROW, b->logo_frame,
+              GRID_BLACK);
     center(g, TITLE_NAME_ROW, "SID FOR THE FM-1", TITLE_ATTR);
     char line[32];
     uint32_t n = 0;
@@ -263,6 +263,11 @@ static void boot_compose(screen* s, void* state, grid* g) {
     boot* b = state;
     if (b->title) {
         title(b, g, screen_blink(s));
+        /* The logo holds still while the wipe into the card runs (app/screen.h sizes a wipe
+         * for a view that does not move). */
+        if (!screen_animating(s)) {
+            b->logo_frame++;
+        }
     } else {
         prompt(b, g, screen_blink(s));
     }

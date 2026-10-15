@@ -76,7 +76,8 @@ typedef struct {
     uint8_t started;
     uint8_t full;
     uint8_t skip;
-    uint8_t title; /* the look shown: 1 the title card, 0 the prompt */
+    uint8_t title;       /* the look shown: 1 the title card, 0 the prompt */
+    uint32_t logo_frame; /* the title card's logo: its frame, still while a wipe runs */
 } boot;
 
 extern const view boot_view;

@@ -60,7 +60,9 @@ extern "C" {
 /* The block cursor is on for this many frames, then off as long (320 ms at 25 fps). */
 #define SCREEN_BLINK_FRAMES 8u
 /* Rows a wipe reveals per frame. Each frame sends at most these rows and the edge: 5 rows of
- * 30 cells, 19.3 KB, 12.8 ms of SPI at 12 MHz, inside the 20 ms budget. */
+ * 30 cells, 19.3 KB, 12.8 ms of SPI at 12 MHz, inside the 20 ms budget. That holds only while
+ * the rows already revealed stay as they are: an animated view holds still while
+ * screen_animating (app/about.h, app/boot.h). */
 #define SCREEN_WIPE_ROWS 4u
 /* The raster moves every other frame: a step recolours the 116 border cells, 15.5 KB and
  * 10.3 ms of SPI, so 5.2 ms a frame on average. */

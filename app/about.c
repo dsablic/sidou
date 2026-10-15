@@ -281,10 +281,14 @@ static void scroller(grid* g, uint32_t f) {
 }
 
 static void about_compose(screen* s, void* state, grid* g) {
-    (void)s;
     about* a = state;
-    uint32_t f = a->frame++;
-    move_bars(a, f);
+    uint32_t f = a->frame;
+    /* Still while a wipe or a raster runs: they are sized for a view that does not move
+     * (app/screen.h), and the cracktro's own cells on top would overrun the SPI budget. */
+    if (!screen_animating(s)) {
+        a->frame++;
+        move_bars(a, f);
+    }
     grid_fill(g, 0, 0, GRID_COLS, GRID_ROWS, ' ', BLACK);
     bars(a, g);
     logo_draw(logo_default, g, logo_center_col(logo_default), LOGO_ROW, f, GRID_BLACK);

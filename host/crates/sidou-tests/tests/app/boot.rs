@@ -7,7 +7,7 @@
 use sidou_sys::*;
 
 use crate::views::Ui;
-use crate::{drain, grid_row, Sent, SPI_BUDGET_MS};
+use crate::{assert_wipe_holds_still, drain, grid_row, wipe_frames, Sent, SPI_BUDGET_MS};
 
 const COLS: usize = GRID_COLS as usize;
 
@@ -321,6 +321,35 @@ fn every_frame_of_the_boot_fits_the_spi_budget() {
             sent.iter().skip(1).map(|s| s.spi_ms()).fold(0.0, f64::max)
         );
     }
+}
+
+/// The wipe from the prompt into the title card: the logo holds still under it, so each frame
+/// sends the wipe's rows and nothing else, whatever the boot's start time against the frames.
+#[test]
+fn the_wipe_into_the_title_card_sends_only_its_rows() {
+    let mut worst = Sent::default();
+    for offset in 0..40 {
+        let mut ui = Ui::new();
+        ui.now += offset;
+        drain(&mut ui.g);
+        unsafe { views_boot(&mut *ui.v, 1) };
+        let start = ui.now + 40;
+        run_to(&mut ui, start, BOOT_TITLE_MS - 200);
+        let frames = wipe_frames(&mut || {
+            ui.frame();
+            (drain(&mut ui.g), ui.v.s.wipe != 0)
+        });
+        assert_eq!(ui.top(), "BOOT");
+        worst = frames
+            .iter()
+            .copied()
+            .fold(worst, |w, s| if s.cells > w.cells { s } else { w });
+        assert_wipe_holds_still(&format!("the title card, {offset} ms late"), &frames);
+    }
+    println!(
+        "wipe into the title card: worst frame {worst:?} {:.2} ms",
+        worst.spi_ms()
+    );
 }
 
 #[test]

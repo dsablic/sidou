@@ -201,7 +201,7 @@ The animated screens compose every frame (`the_boot_and_about_stay_within_their_
 
 | Screen | Cells a frame (average, most) | Windows a frame | SPI a frame (average, worst) | Main loop a frame (average, busiest `ui_poll`) |
 |---|---|---|---|---|
-| Full boot | 30, 192 | 9.7 | 2.7 ms, 16.6 ms | 50k, 64k instructions |
+| Full boot | 30, 151 | 9.6 | 2.6 ms, 12.9 ms | 50k, 63k instructions |
 | About | 93, 148 | 25.6 | 8.1 ms, 12.8 ms | 161k, 105k instructions |
 
 About costs 4.0M instructions a second (1.7 % of the core at 240 MHz).
@@ -209,6 +209,15 @@ About costs 4.0M instructions a second (1.7 % of the core at 240 MHz).
 A wipe sends only the rows that differ, once each, and its edge row once
 more; a raster step recolours the 116 border cells in 58 windows. Every frame
 stays inside the 20 ms budget.
+
+A wipe is sized for a view that holds still: the rows it has revealed must not change
+under it. The animated views (About, the boot's title card) hold their animation while a
+wipe or a raster runs (`screen_animating`), so a wipe into them sends its 150 cells a frame
+at most, 12.8 ms. Before, About's bars, logo and scroller moving in the revealed rows made
+a frame of the wipe into it 243 cells, 21.0 ms, and the title card's stripes 192 cells,
+16.6 ms (`every_wipe_into_an_animated_view_sends_only_its_rows` in fm1-emu, and
+`the_wipe_into_about_sends_only_its_rows` and `the_wipe_into_the_title_card_sends_only_its_rows`
+on the host, at every phase).
 
 ## Logo
 
