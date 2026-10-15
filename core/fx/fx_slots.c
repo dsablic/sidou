@@ -522,9 +522,17 @@ void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n
     }
     for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
         if ((live >> k & 1u) && !s->slot[k].awake) {
-            enter(s, k); /* back from rest: start clean */
+            /* Back from rest: start clean, but in turn like any switch (a start-up on top
+             * of another slot's switch would exceed the switching allowance). Until its
+             * turn the slot runs no algorithm (WAKING: the dry path passes); then, with
+             * nothing to fade out, it enters at once. */
+            sid_slot* sl = &s->slot[k];
+            sl->algorithm = SID_SLOT_WAKING;
+            sl->phase = SID_SLOT_RUN;
+            sl->fade = 0.0f;
+            sl->may_switch = 0;
             for (int i = 0; i < 4; ++i) {
-                s->slot[k].inc[i] = 0.0f; /* held until the next chunk start plans them */
+                sl->inc[i] = 0.0f; /* held until the next chunk start plans them */
             }
         }
     }

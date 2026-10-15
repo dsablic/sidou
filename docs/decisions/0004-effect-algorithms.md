@@ -303,12 +303,18 @@ and back. Per sample:
   sizes never change the result). A preset change then costs at most one switching
   slot's overhead at a time, and takes up to three switch times (about 150 ms) instead
   of one.
-- **Measured: worst block 954, 29 blocks above 900** (about 21 ms in all, over two
-  preset changes).
-  - Most of those blocks come as the lush reverb fades in, at about 908.
+- **Slots coming back from rest also take turns.** In the gate's second preset change,
+  the Modulation slot (at Mix 0, so at rest) wakes while FX switches into lush. Waking
+  out of turn put the chorus's start-up on top of lush's fade-in: 1,066 per sample at
+  worst. In turn, the waking slot passes the dry signal until the FX switch is done.
+- **Measured: worst block 954, 45 blocks above 900** (about 33 ms in all, over two
+  preset changes, one with the wake).
+  - Most of those blocks are lush fading in (about 908) or the chorus starting after it
+    (about 915).
   - The single worst is the one-off setup when the chorus starts (clearing its line).
-  - For scale, the steady state alone measures about 880 per block at this block size,
-    against 835 at 128.
+  - For scale, the steady state after the switches measures about 840 per 32-sample
+    block, against 835 per sample at 128. (The higher figures early in the scenario are
+    the distortion fading out, not the steady state.)
 
 **Decision:** an explicit transient allowance, asserted by the gate:
 - a switching block may cost up to 1,000 per sample;

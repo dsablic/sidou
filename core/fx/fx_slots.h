@@ -22,7 +22,8 @@
  * - Exact bypass: a slot whose Mix is 0 and settled, with no switch pending, is out of
  *   the path and its state is not touched. With every slot out, sid_slots_process
  *   writes the input to both channels unchanged and touches no state.
- * - A slot coming back from rest starts its algorithm from rest too (no stale tails).
+ * - A slot coming back from rest starts its algorithm from rest too (no stale tails), in
+ *   turn with the switches (until then it passes the dry signal).
  *
  * What Amount, A and B do per algorithm is listed with the enums below. */
 
@@ -91,6 +92,9 @@ typedef struct {
     uint32_t algorithm;
     float amount, a, b, mix; /* each 0..1 */
 } sid_slot_params;
+
+/* The algorithm of a slot back from rest until its turn to start (no algorithm runs). */
+#define SID_SLOT_WAKING 0xffffffffu
 
 /* Switch phases. */
 enum { SID_SLOT_RUN, SID_SLOT_FADE_OUT, SID_SLOT_CLEAR, SID_SLOT_FADE_IN };

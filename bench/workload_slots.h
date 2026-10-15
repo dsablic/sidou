@@ -30,6 +30,11 @@ extern "C" {
  * SWITCH_BLOCKS / 2, with the controls alternating as above; measured per block. */
 #define WORKLOAD_SLOTS_SWITCH_BLOCK 32u
 #define WORKLOAD_SLOTS_SWITCH_BLOCKS 512u
+/* In the second half the Modulation slot's Mix is 0 (so after its switch it comes to
+ * rest), rising again at this block, while the FX slot is in the middle of its switch
+ * into the lush reverb: a slot waking from rest starts without waiting its turn, so its
+ * start-up lands on top of another slot's switch. */
+#define WORKLOAD_SLOTS_SWITCH_WAKE 445u
 
 uint32_t workload_slots_count(void);
 /* Starts scenario `s` and runs `warm` (n samples) through it, so the switch-in (pool

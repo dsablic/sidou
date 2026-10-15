@@ -167,7 +167,8 @@ They fail if:
 - any sample differs from the host build (including the switch scenario's).
 
 Then a switch scenario, measured per 32-sample block: from every slot's heaviest to
-fuzz, flanger and light and back, every slot switching (they take turns). It fails if:
+fuzz, flanger and light and back, every slot switching (they take turns). In the
+second change the Modulation slot wakes from rest during the FX switch. It fails if:
 - a block costs more than 1,000;
 - more than 80 blocks cost more than 900;
 - the worst block plus the rest of the audio budget at its worst exceeds 2,700.

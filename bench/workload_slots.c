@@ -93,6 +93,10 @@ static void set_switch_targets(uint32_t b) {
     for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
         sid_slot_params p = {alg[k], hi ? 1.0f : 0.6f, hi ? 1.0f : 0.6f, hi ? 1.0f : 0.6f,
                              hi ? 1.0f : 0.8f};
+        if (k == SID_SLOT_MOD && b >= WORKLOAD_SLOTS_SWITCH_BLOCKS / 2u &&
+            b < WORKLOAD_SLOTS_SWITCH_WAKE) {
+            p.mix = 0.0f;
+        }
         sid_slots_set(&slots, k, &p);
     }
 }
