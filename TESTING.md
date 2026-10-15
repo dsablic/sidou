@@ -92,6 +92,8 @@ test-only) and compare them:
 - **pitch**: an unfiltered sawtooth at A4 must be within 0.1 cents of the
   theoretical frequency and of reSIDfp, for both models (a reSIDfp result off
   from theory points at the harness, not the core);
+- **level**: one unfiltered voice (sawtooth, triangle, pulse, at two pitches)
+  must be within 0.2 dB of reSIDfp's RMS level, for both models;
 - **envelope shape**: the RMS envelope of a note through attack, decay,
   sustain and release, normalised to the sustain level and compared down to
   -20 dB, must be within 0.2 dB of reSIDfp on the 8580, and 0.5 dB on the

@@ -121,8 +121,17 @@ fn workload_never_clips_and_has_no_dc_offset() {
             }
         }
         let mean = sum / (out.len() - SETTLE) as f64;
-        if mean.abs().partial_cmp(&200.0) != Some(std::cmp::Ordering::Less) {
-            failures.push(format!("{}: mean {mean}", c.name));
+        let rms = (out[SETTLE..]
+            .iter()
+            .map(|&s| (f64::from(s) - mean).powi(2))
+            .sum::<f64>()
+            / (out.len() - SETTLE) as f64)
+            .sqrt();
+        // Relative to the signal, so the output level does not move the bound: 7% of the
+        // RMS (M1b: the 6581's is 5.6%, from its voice DC that follows the envelopes; it
+        // was 200 LSB until the output was scaled to reSIDfp's level, 7-8% then).
+        if (mean / rms).abs().partial_cmp(&0.07) != Some(std::cmp::Ordering::Less) {
+            failures.push(format!("{}: mean {mean:.1}, RMS {rms:.1}", c.name));
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));

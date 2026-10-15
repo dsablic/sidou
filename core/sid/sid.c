@@ -5,6 +5,12 @@
 #include <string.h>
 
 #define OUTPUT_GAIN (0.1f * 32767.0f) /* leaves headroom for the 6581 DC offset and filter peaks */
+/* reSIDfp's output level relative to OUTPUT_GAIN: the RMS of one unfiltered voice at
+ * volume 15 (sawtooth, triangle, 25% and 50% pulse, at 0x08d6 and 0x1d45), measured
+ * through its mixer and output stages: 3.37 dB louder on the 6581, 1.05 dB on the 8580
+ * (reference.rs asserts the match). */
+#define LEVEL_6581 1.4736f
+#define LEVEL_8580 1.1288f
 #define DC_BLOCK_HZ 16.0f
 #define DRIVE_6581 2.0f
 /* sid_clock's step. sid_osc_advance needs freq * cycles < 2^24, so at most 256.
@@ -23,6 +29,7 @@ void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) 
     memset(s, 0, sizeof *s);
     s->model = model;
     s->dac = sid_dac_default(model == SID_MODEL_6581);
+    s->output_gain = OUTPUT_GAIN * (model == SID_MODEL_6581 ? LEVEL_6581 : LEVEL_8580);
     s->cycles_per_sample_q16 = ((clock_hz / sample_rate) << 16) |
                                (((clock_hz % sample_rate) << 16) / sample_rate);
     for (int v = 0; v < 3; ++v) {
@@ -280,7 +287,7 @@ void sid_render(sid* s, int16_t* out, uint32_t frames) {
         s->dc_y1 = y;
 
         /* Round half away from zero, clamped so the cast stays in range. */
-        float o = y * OUTPUT_GAIN;
+        float o = y * s->output_gain;
         o += o >= 0.0f ? 0.5f : -0.5f;
         if (o > 32767.0f) {
             o = 32767.0f;

@@ -35,6 +35,14 @@ const MAX_ENVELOPE_DB_6581: f64 = 0.5;
  * floor and drift apart (1.5 dB at -40 dB), so the floor stays at -20 dB. */
 const ENVELOPE_FLOOR_DB: f64 = -20.0;
 
+/* One unfiltered voice's RMS level against reSIDfp's, sawtooth, triangle and 50% pulse
+ * at A4 (0x1d45) and A2 (0x08d6): measured within 0.12 dB on both models once the
+ * output is scaled to reSIDfp's level (M1b). The 0.2 dB margin covers the spread
+ * between waveforms and pitches: reSIDfp's output stage rolls off the top harmonics a
+ * little (0.25 dB less for a bright wave at 0x4000), and its 6581 mixer compresses
+ * louder mixes (three voices: 0.5-2 dB, a Task 6 item), so only one voice is compared. */
+const MAX_LEVEL_DB: f64 = 0.2;
+
 /* A4 from the register value 0x1d45, not 440 Hz. */
 const SAW_A4_HZ: f64 = 0x1d45 as f64 * SID_CLOCK_PAL as f64 / 16777216.0;
 
@@ -139,6 +147,61 @@ fn envelope_shape_matches(model: sid_model) {
         below(diff, tolerance),
         "{diff} dB, tolerance {tolerance} dB"
     );
+}
+
+fn rms(x: &[f32]) -> f64 {
+    let mean = x.iter().map(|&v| f64::from(v)).sum::<f64>() / x.len() as f64;
+    let power = x
+        .iter()
+        .map(|&v| (f64::from(v) - mean).powi(2))
+        .sum::<f64>()
+        / x.len() as f64;
+    power.sqrt()
+}
+
+fn unfiltered_level_matches(model: sid_model) {
+    let w = |frame, reg, value| RegWrite { frame, reg, value };
+    let mut failures = Vec::new();
+    for (wave, control, pw_hi) in [
+        ("saw", 0x21u8, 0u8),
+        ("triangle", 0x11, 0),
+        ("pulse", 0x41, 8),
+    ] {
+        for (lo, hi) in [(0x45u8, 0x1du8), (0xd6, 0x08)] {
+            let writes = [
+                w(0, 0x18, 0x0f),
+                w(0, 0x00, lo),
+                w(0, 0x01, hi),
+                w(0, 0x03, pw_hi),
+                w(0, 0x05, 0x00),
+                w(0, 0x06, 0xf0),
+                w(0, 0x04, control),
+            ];
+            // From 0.4 s, past the attack and the DC blockers' settling, for 0.8 s.
+            let range = 17640..52920;
+            let ours = rms(&render_sidou(model, &writes, 60)[range.clone()]);
+            let reference = rms(&render_residfp(model, &writes, 60, /*decimate=*/ false)[range]);
+            let db = 20.0 * (ours / reference).log10();
+            println!(
+                "{}: {wave} at {hi:02x}{lo:02x}: {db:+.3} dB",
+                model_name(model)
+            );
+            if !below(db.abs(), MAX_LEVEL_DB) {
+                failures.push(format!("{wave} at {hi:02x}{lo:02x}: {db:+.3} dB"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn unfiltered_level_matches_mos6581() {
+    unfiltered_level_matches(SID_MODEL_6581);
+}
+
+#[test]
+fn unfiltered_level_matches_csg8580() {
+    unfiltered_level_matches(SID_MODEL_8580);
 }
 
 #[test]

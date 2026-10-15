@@ -36,6 +36,7 @@ typedef struct {
     uint8_t osc3_latch;
     uint8_t control_age;   /* cycles since voice 3's last control write, up to 2 */
     float volume;
+    float output_gain; /* to int16, at reSIDfp's level for the model */
     float dc_r, dc_x1, dc_y1;
     float cutoff_g[SID_FC_STEPS];
     const sid_dac* dac; /* shared between chips: sid_dac_default, or sid_set_dac */

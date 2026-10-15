@@ -212,6 +212,18 @@ while the user was away; revisit if needed):
   - 6581 LP and BP noise sweeps ≤ 2.0 dB at the M0 workload levels;
   - a new loud-signal test (three voices into the filter) ≤ 3 dB;
   - the emulator gate stays ≤ 900 instructions per sample per chip.
+- **Gaps carried over from Task 4** (measured against reSIDfp once the output
+  level matched, single unfiltered voices within 0.12 dB):
+  - *6581 volume-register DC step:* dropping the volume from 15 to 0 with
+    gated sawtooths steps reSIDfp's output 2.65× as far as ours with one voice,
+    1.39× with three. Our 6581 voice DC follows the envelope DAC only;
+    reSIDfp's mixer adds an operating-point shift.
+  - *`VF_TR_RATIO`:* reSIDfp's 6581 mixer takes unfiltered voices at 1.07×
+    (+0.59 dB) the level the filter gets; we feed both paths alike.
+  - *6581 mixer compression:* three voices come out 0.4 to 2.0 dB quieter in
+    reSIDfp than one voice predicts (a 25% pulse most); ours add linearly.
+  - *Output-stage roll-off:* reSIDfp's external filter takes up to 0.25 dB
+    off bright waves near 1 kHz; we have no low-pass there.
 - Commit: `feat(sid): calibrated 6581 filter non-linearity`.
 
 ### Task 7: Accuracy decision record
