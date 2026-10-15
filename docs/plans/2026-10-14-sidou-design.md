@@ -191,6 +191,23 @@ parameters, and the macro controls below move several at once.
   - Readers skip chunks they don't recognise.
   - Every format change gets a migration and a fixture test, so files from
     older versions keep loading as the project grows.
+- **Amended (M2 plan, 2026-10-15): GoatTracker 2's `.sng` is the song file.**
+  The user decided that SIDOU reads and writes GT2 `.sng` (GTS5) directly
+  instead of a format "close to GT2" with an importer: the GT2 part is
+  lossless by construction, and songs move freely between SIDOU and
+  GoatTracker. SIDOU's additions above (locks, chip B's setup, the chip
+  profile and character, the effect slots, and the playroutine options GT2
+  keeps outside the file) go in a chunked, versioned trailer after the last
+  pattern, which GoatTracker's loader ignores; readers still skip unknown
+  chunks, and the migration-and-fixture rule applies to the trailer. Decision
+  record 0007 and `docs/reference/song-format.md` (M2c Task 1) have the
+  details and exactly what round-trips.
+- **Amended (M2 plan, 2026-10-15): where the player runs.** The native
+  player is C and runs in the audio interrupt at sample-exact frame
+  boundaries (the block is split at the frame), as the 6502 will in M3, so a
+  song renders on the device bit for bit as on the host. Main-loop code
+  talks to it through a command ring and hears its rows and notes through an
+  event ring (M2c Task 6).
 - **Playback modes:**
   1. *Native song*: our player engine writes chip registers once per frame
      (50 Hz PAL, or multispeed).
@@ -212,6 +229,9 @@ parameters, and the macro controls below move several at once.
 | PSID `.sid` | Play in the 6502 | Exact (bounded by the SID model) |
 | PSID → song ("RIP") | Log register writes per frame, then: detect notes from frequency; group ADSR, waveform and pulse settings into instruments; turn waveform/pulse/filter sweeps into tables; split into patterns | Approximate. Shown as "ripped". The original `.sid` stays linked so you can A/B compare. |
 
+- **Amended (M2 plan, 2026-10-15):** the GT2 row is no longer an import:
+  `.sng` is SIDOU's own song file (section 5). SID-Wizard stays in M5, as
+  section 14 has it.
 - Every importer is a parser of untrusted input. Each one is fuzzed (section
   9) and fails with a clear message on the screen, never a crash.
 - `.sid` support is PSID v1–v4 only. RSID files, and tunes that need CIA
@@ -225,10 +245,19 @@ parameters, and the macro controls below move several at once.
     parameter lock. Turn the encoder to page through a 64-step pattern. Three
     voice lanes, plus a lane for chip B.
   - **TRACKER**: a hex grid with three columns and GT2-style commands.
+    - **Amended (M2 plan, 2026-10-15):** by default the rows stand still and
+      a bar moves down them, a page at a time, because GoatTracker's
+      scrolling changes most of the screen every row (about 725 cells, more
+      than the SPI budget at fast tempos, as the prototype's two modes
+      showed); scrolling is an option (M2d Task 2).
   - **LIVE**: keys play an instrument; the knobs control filter, pulse width
     and character; REC records loops.
   - **CHIP**: profile picker, character controls and post-chip effects, set
     separately for chip A and chip B.
+    - **Amended (M2 plan, 2026-10-15):** the effect slots stay one chain on
+      the mix of both chips. A second chain's delay and reverb pool (128 KiB)
+      does not fit the SRAM next to chip B and a song (M2 overview, RAM).
+      Profiles and character are per chip.
 - **Always available:** mute and solo per voice; play and stop; the browser.
 - **Themes:** a C64 nostalgia theme (PETSCII-style font, C64 palette, border
   colour flashes on screen) and a clean modern theme.
@@ -249,6 +278,17 @@ parameters, and the macro controls below move several at once.
   Scenes use only original art evoking C64 culture, such as a demo-scene
   raster stage, a cassette deck, or a bedroom coder whose screen shows the
   live pattern. No characters, sprites or names from existing games.
+
+  - **Amended (M2 plan, 2026-10-15):** besides the generative PETSCII
+    pieces (M1e), SCENE gets drawn pixel-art vignettes in late-C64 style,
+    homages to game genres with original characters: the first is RED MOON
+    RITE (a barbarian duel under a blood moon, driven by the drums, bass,
+    arp, fill and cutoff), the second, optional, DUSK DUEL (a karate duel at
+    sunset). Their art is drawn by code (the prototype's painter and puppet),
+    exported to indexed PNGs and converted to run-length sprites; the device
+    composites changed tiles on demand, with no frame buffer (M2f). The
+    rule above holds: no game's characters, sprites, layouts or names, and no
+    gore; each vignette gets an originality review.
 
   Scenes run on the UI core from the same timed events as the audio, so they
   stay in sync and never touch the audio budget. They need a few KB of sprite
@@ -339,6 +379,12 @@ Layers (all run in CI):
    - Run GoatTracker's own packed player for a song in our 6502, and our
      native player for the imported `.sng`.
    - The register writes must match frame for frame.
+   - **Amended (M2 plan, 2026-10-15):** in M2 "our 6502" is a host-only
+     one, the `mos6502` crate (BSD-3-Clause), behind a trait, with
+     GoatTracker's `gt2reloc` packing the song (test-only, GPL-2.0-or-later,
+     never in the firmware). M3's device 6502 is later checked against it.
+     "Frame for frame" means each frame's ordered list of SID writes
+     (decision record 0007).
 4. **Golden renders:** an FNV-1a hash of every preset, demo song and starter
    tune. `GOLDEN_UPDATE=1` is the deliberate way to accept new output.
    Sanity checks for clipping and DC.
@@ -432,6 +478,8 @@ Layers (all run in CI):
 | fm1-emu | MIT | test tool only |
 | JieLi AC79 SDK blobs (`uboot.boot`, `cfg_tool.bin`, eq cfg) | Apache-2.0 | packaged |
 | Klaus Dormann / Tom Harte 6502 test suites | own licences | test data |
+| GoatTracker 2 (`gt2reloc`, `player.s`, example songs) (amended, M2) | GPL-2.0-or-later | test-only reference; SIDOU's player follows `player.s` and credits it |
+| `mos6502` crate (amended, M2) | BSD-3-Clause | test-only (the host 6502 for the register-match tests) |
 
 - **Attribution:** `CREDITS.md` credits the people and projects whose work
   we build on or learn from (reSID/reSIDfp authors, Felucca and its forks,
@@ -509,14 +557,19 @@ Each kind of document has one job:
      - UI widget and transition framework within the strip budget;
      - boot intro, themed menus, About cracktro;
      - scopes, envelope bars and VU in the LIVE view.
-3. **M2, songs:**
-   - native format and player;
+3. **M2, songs** (amended by the M2 plan, 2026-10-15; the plans are
+   `docs/plans/2026-10-15-m2-overview.md` and its m2a-m2f files):
+   - GoatTracker 2 `.sng` as the native song file (read and written, with
+     SIDOU's trailer), and the player, with the register-match tests against
+     GoatTracker's own player (was: "native format and player" and "GT2
+     import, with the register-match tests");
    - STEP and TRACKER views;
    - storage;
-   - GT2 import, with the register-match tests;
+   - chip B, the CHIP view's B tab, the character's expert layer and UI
+     sounds (moved from M1);
    - MIDI: clock and transport, multitimbral and whole-chip modes, program
      change, SysEx dumps;
-   - SCENE view, with one prototype scene first.
+   - SCENE view, with one vignette first: RED MOON RITE (DUSK DUEL optional).
 4. **M3, `.sid` files:**
    - 6502 and PSID playback;
    - mute and solo;
