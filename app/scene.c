@@ -299,8 +299,9 @@ static void plasma_row(scene* s, uint32_t y, const int32_t* across, const int32_
     }
 }
 
-/* The rows of parity `odd` (both: 2). */
-static void plasma_rows(scene* s, const scene_music* m, uint32_t odd) {
+/* Rows from, from + by, .. below to. */
+static void plasma_rows(scene* s, const scene_music* m, uint32_t from, uint32_t to,
+                        uint32_t by) {
     const scene_plasma* p = &s->u.plasma;
     int32_t across[GRID_COLS];
     int32_t diag[2u * GRID_COLS - 1u];
@@ -318,16 +319,16 @@ static void plasma_rows(scene* s, const scene_music* m, uint32_t odd) {
             rip[ripples++] = p->rip[k];
         }
     }
-    for (uint32_t y = odd & 1u; y < GRID_ROWS; y += odd > 1u ? 1u : 2u) {
+    for (uint32_t y = from; y < to; y += by) {
         plasma_row(s, y, across, diag, rip, ripples);
     }
 }
 
-static void plasma_start(scene* s, const scene_music* m) {
+/* No rows: the start is drawn as scene_fill asks for it. */
+static void plasma_start(scene* s) {
     for (uint32_t k = 0; k < SCENE_VOICES; k++) {
         s->u.plasma.rip[k].age = SCENE_RIPPLE_FRAMES;
     }
-    plasma_rows(s, m, 2u);
 }
 
 /* The cutoff sets the speed (0.1 to 0.8 rad a second, on its square: the prototype's 3.7 at
@@ -365,7 +366,7 @@ static void plasma_step(scene* s, const scene_music* m) {
             r->amp = (uint8_t)(r->amp * RIPPLE_FALL >> 8);
         }
     }
-    plasma_rows(s, m, s->frame & 1u);
+    plasma_rows(s, m, s->frame & 1u, GRID_ROWS, 2u);
 }
 
 /* ---- RULE 30 ---- */
@@ -632,23 +633,43 @@ static void ant_step(scene* s, const scene_music* m) {
 
 /* ---- the pieces ---- */
 
-void scene_start(scene* s, uint32_t piece, const scene_music* m) {
-    static const scene_music rest = {
-        {0}, {0}, {SCENE_NO_NOTE, SCENE_NO_NOTE, SCENE_NO_NOTE}, {0}, {0}, 0, 0};
+static const scene_music REST = {
+    {0}, {0}, {SCENE_NO_NOTE, SCENE_NO_NOTE, SCENE_NO_NOTE}, {0}, {0}, 0, 0};
+
+void scene_begin(scene* s, uint32_t piece) {
     memset(&s->u, 0, sizeof s->u);
     s->piece = (uint8_t)(piece % SCENE_PIECES);
     s->frame = 0;
     s->rng = 0x9E3779B9u * (s->piece + 1u);
+    s->filled = GRID_ROWS;
     switch (s->piece) {
     case SCENE_FIRE: fire_start(s); break;
-    case SCENE_PLASMA: plasma_start(s, m ? m : &rest); break;
+    case SCENE_PLASMA:
+        plasma_start(s);
+        s->filled = 0;
+        break;
     case SCENE_RULE30: r30_start(s); break;
     case SCENE_STARS: stars_start(s); break;
     default: ant_start(s); break;
     }
 }
 
+void scene_fill(scene* s, const scene_music* m, uint32_t rows) {
+    rows = rows < GRID_ROWS ? rows : GRID_ROWS;
+    if (s->filled >= rows) {
+        return;
+    }
+    plasma_rows(s, m ? m : &REST, s->filled, rows, 1u); /* the only piece that fills */
+    s->filled = (uint8_t)rows;
+}
+
+void scene_start(scene* s, uint32_t piece, const scene_music* m) {
+    scene_begin(s, piece);
+    scene_fill(s, m, GRID_ROWS);
+}
+
 void scene_step(scene* s, const scene_music* m) {
+    scene_fill(s, m, GRID_ROWS);
     switch (s->piece) {
     case SCENE_FIRE: fire_step(s, m); break;
     case SCENE_PLASMA: plasma_step(s, m); break;

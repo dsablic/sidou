@@ -1430,11 +1430,21 @@ fn band(m: &mut Machine, f: u64) {
 
 /// `frames` frames of the band, as `measure` counts them.
 fn measure_band(m: &mut Machine, fw: &Firmware, frames: u64) -> Cost {
+    measure_frames(m, fw, frames, band)
+}
+
+/// `frames` frames, as `measure` counts them, `act(m, f)` at the start of frame `f`.
+fn measure_frames(
+    m: &mut Machine,
+    fw: &Firmware,
+    frames: u64,
+    mut act: impl FnMut(&mut Machine, u64),
+) -> Cost {
     common::to_mid_frame(m, fw);
     let from = m.watched_calls.len();
     let mut per = Vec::new();
     for f in 0..frames {
-        band(m, f);
+        act(m, f);
         let before = sent(m, fw);
         m.run_ms(UI_PERIOD_MS);
         let after = sent(m, fw);
@@ -1520,6 +1530,74 @@ fn scene_stays_within_its_budgets() {
     println!("{}", serde_json::Value::Object(report));
 }
 
+/// MIDI learn's frame (SAVE) over each SCENE piece and over LIVE, the band playing and the
+/// filter wide open, until HOME closes it: the frame comes in at once over a view that composes
+/// every frame within its budget, so the view leaves it the cells it covers (app/screen.h
+/// screen_cover) and its overlays stay (SCREEN_OVER), and no frame, the frame's first and the
+/// one after it closes included, sends more than SCENE_VIEW_FRAME_CELLS (LIVE_VIEW_FRAME_CELLS)
+/// cells or the SPI budget.
+#[test]
+fn midi_learn_over_scene_and_live_stays_within_the_budget() {
+    let Some((_, fw)) = fixture("the learn budget test") else {
+        return;
+    };
+    let mut over = Vec::new();
+    let shown = SCENE_PIECES.iter().map(|&n| Some(n)).chain([None]);
+    for (piece, name) in shown.enumerate() {
+        let mut m = booted(&fw);
+        if name.is_some() {
+            open_scene(&mut m, &fw, piece);
+        }
+        let name = name.unwrap_or("LIVE");
+        m.turn(K1_CUTOFF, 64);
+        m.run_ms(1000);
+        let mut opened = 0;
+        let c = measure_frames(&mut m, &fw, 120, |m, f| {
+            band(m, f);
+            match f {
+                10 => m.key(SAVE, true),
+                13 => m.key(SAVE, false),
+                90 => {
+                    opened = common::top_view(m, &fw);
+                    m.key(HOME, true);
+                }
+                93 => m.key(HOME, false),
+                _ => {}
+            }
+        });
+        assert_eq!(
+            opened,
+            fw.symbol("learn_view_view"),
+            "{name}: SAVE did not open learn"
+        );
+        assert_ne!(
+            common::top_view(&mut m, &fw),
+            fw.symbol("learn_view_view"),
+            "{name}: HOME did not close learn"
+        );
+        let per = cells_sent(&c);
+        let most = per.iter().copied().max().unwrap_or(0);
+        println!(
+            "learn over {name}: at most {most} cells, worst {:.2} ms of SPI; the frames before \
+             SAVE {:?}, from it {:?}, from HOME {:?}",
+            c.worst_frame_ms(),
+            &per[4..10],
+            &per[10..18],
+            &per[90..96]
+        );
+        if most > sidou_sys::SCENE_VIEW_FRAME_CELLS || most > sidou_sys::LIVE_VIEW_FRAME_CELLS {
+            over.push(format!("learn over {name}: a frame sent {most} cells"));
+        }
+        if c.worst_frame_ms() > SPI_BUDGET_MS {
+            over.push(format!(
+                "learn over {name}: a frame took {:.2} ms of SPI",
+                c.worst_frame_ms()
+            ));
+        }
+    }
+    assert!(over.is_empty(), "{over:#?}");
+}
+
 /// SCENE with the band playing and the filter wide open, 150 frames a piece (fm1-emu, M1e Task
 /// 5; docs/art/README.md, "SCENE"), bounded about 10 % above what was measured: each piece's
 /// cells a frame on average and at most, and its main-loop instructions a frame (ui_poll), and
@@ -1541,32 +1619,80 @@ const SCENE_BOUNDS: [(f64, u32, f64); 5] = [
     (3.0, 10, 30_000.0),     // ant
 ];
 const SCENE_WORST_POLL: u64 = 62_000;
-/// SELECT's turn to the next piece starts it, its canvas drawn whole, in the main loop's input
-/// (ui_encoder), not in a ui_poll: PLASMA's, 48.8k, is the most.
-const SCENE_SELECT: u64 = 54_000;
+/// A piece starts in the compose of the first frame of the wipe that brings it in (SELECT, or
+/// the menu's ALGORITHM on SCENE), inside ui_poll, not in the input's call (ui_encoder). The
+/// input and a frame can fall in one main-loop pass, between two drains of MIDI: the busiest
+/// input (SCENE_INPUT) and the busiest pass after it (SCENE_START_PASS, from midi_drain to
+/// midi_service: the drain, play() and ui_poll's frame with the start) stay within the latency
+/// gate's poll allowance together. Measured (fm1-emu, M1e Task 5), the busiest of every piece,
+/// bounded about 10 % above:
+///
+/// | | Input (ui_encoder) | Busiest pass after it |
+/// |---|---|---|
+/// | SELECT | 203 (to RULE 30) | 60.7k (to FIRE: a frame of its burns) |
+/// | The menu's ALGORITHM | 170 | 60.7k (into FIRE) |
+///
+/// The start of the costliest piece, PLASMA, was 48.8k in the input's call when it drew its
+/// whole canvas there; the busiest pass after SELECT to PLASMA is now 32.7k.
+const SCENE_INPUT: u64 = 230;
+const SCENE_START_PASS: u64 = 67_000;
 
-/// Stepping round the pieces with SELECT: each start, in the input's call, within SCENE_SELECT.
+/// What `act` costs over the next 1.6 s: the busiest ui_encoder call and the busiest
+/// main-loop pass (`Machine::passes`).
+fn start_cost(m: &mut Machine, act: impl FnOnce(&mut Machine)) -> (u64, u64) {
+    let (calls, passes) = (m.watched_calls.len(), m.passes.len());
+    act(m);
+    m.run_ms(1600);
+    let input = m.watched_calls[calls..].iter().copied().max().unwrap_or(0);
+    let pass = m.passes[passes..].iter().copied().max().unwrap_or(0);
+    (input, pass)
+}
+
+/// Stepping round the pieces with SELECT, and into each piece from the menu's ALGORITHM: the
+/// input's call within SCENE_INPUT, every pass after it within SCENE_START_PASS.
 #[test]
-fn selecting_a_piece_costs_the_main_loop_little() {
+fn starting_a_piece_holds_the_main_loop_within_the_poll_allowance() {
     let Some((_, fw)) = fixture("the SCENE input test") else {
         return;
     };
     let mut m = booted(&fw);
     open_scene(&mut m, &fw, 0);
     m.watch_calls(fw.symbol("ui_encoder"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let mut costs = Vec::new();
     for name in SCENE_PIECES.iter().cycle().skip(1).take(SCENE_PIECES.len()) {
-        let from = m.watched_calls.len();
-        m.turn(SELECT, 1);
-        m.run_ms(1600);
-        let calls = &m.watched_calls[from..];
-        let worst = calls.iter().copied().max().unwrap_or(0);
-        println!("SELECT to {name}: {calls:?} instructions");
-        assert_eq!(calls.len(), 1, "{name}: one detent, one call");
-        assert!(
-            worst < SCENE_SELECT,
-            "SELECT to {name}: {worst} instructions"
-        );
+        let c = start_cost(&mut m, |m| m.turn(SELECT, 1));
+        costs.push((format!("SELECT to {name}"), c));
     }
+    for (piece, name) in SCENE_PIECES.iter().enumerate() {
+        if piece > 0 {
+            m.turn(SELECT, 1);
+            m.run_ms(1600);
+        }
+        press(&mut m, HOME);
+        settle(&mut m, &fw);
+        assert_eq!(common::top_view(&mut m, &fw), fw.symbol("views_menu"));
+        let c = start_cost(&mut m, |m| m.turn(ALGORITHM, 1));
+        assert_eq!(
+            common::top_view(&mut m, &fw),
+            fw.symbol("scene_view_view"),
+            "{name}: the menu's SCENE did not open SCENE"
+        );
+        costs.push((format!("the menu into {name}"), c));
+    }
+    let mut over = Vec::new();
+    for (what, (input, pass)) in &costs {
+        println!(
+            "{what}: the input {input}, the busiest pass {pass}, together {} instructions",
+            input + pass
+        );
+        if *input >= SCENE_INPUT || *pass >= SCENE_START_PASS {
+            over.push(format!(
+                "{what}: the input {input}, the busiest pass {pass}"
+            ));
+        }
+    }
+    assert!(over.is_empty(), "{over:#?}");
 }
 
 // A ui_poll holds MIDI's drain for as long as it runs: every view's worst stays within the
@@ -1574,6 +1700,6 @@ fn selecting_a_piece_costs_the_main_loop_little() {
 // past it fails here, not as a late note somewhere else.
 const _: () = assert!(LIVE_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(SCENE_WORST_POLL <= common::POLL_INSTRUCTIONS);
-const _: () = assert!(SCENE_SELECT <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(SCENE_INPUT + SCENE_START_PASS <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(ABOUT_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(BOOT_WORST_POLL <= common::POLL_INSTRUCTIONS);

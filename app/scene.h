@@ -155,6 +155,7 @@ typedef struct {
     uint8_t piece;   /* SCENE_FIRE .. SCENE_ANT */
     uint32_t frame;  /* frames stepped since it started */
     uint32_t rng;    /* scene_random's state */
+    uint8_t filled;  /* the canvas's rows of the start drawn (scene_fill), from the top */
     union {
         scene_fire fire;
         scene_plasma plasma;
@@ -174,7 +175,16 @@ extern const char* const scene_names[SCENE_PIECES];
 /* Starts piece (wrapped into 0..SCENE_PIECES - 1) from its first frame, the canvas drawn
  * whole as the music m (NULL: none playing) shows it: the same piece always starts the same. */
 void scene_start(scene* s, uint32_t piece, const scene_music* m);
-/* One frame of the piece with the music m: the canvas changes where the piece moved. */
+/* scene_start with the canvas left to scene_fill: for a start that a wipe reveals
+ * SCREEN_WIPE_ROWS rows a frame (app/scene_view.c). PLASMA, whose rows are costly, draws none
+ * of them here; the other pieces draw the canvas whole. */
+void scene_begin(scene* s, uint32_t piece);
+/* The start's canvas rows above `rows` (up to GRID_ROWS) not drawn yet, as the music m
+ * (NULL: none playing) shows them: scene_start is scene_begin and scene_fill of every row.
+ * Rows drawn already cost nothing. */
+void scene_fill(scene* s, const scene_music* m, uint32_t rows);
+/* One frame of the piece with the music m: the canvas changes where the piece moved. The
+ * start's rows not drawn yet (scene_begin) are drawn first, with m. */
 void scene_step(scene* s, const scene_music* m);
 /* The next number of the xorshift (nonzero state). */
 uint32_t scene_random(uint32_t* state);

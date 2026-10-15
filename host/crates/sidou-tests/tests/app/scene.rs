@@ -810,6 +810,49 @@ fn a_piece_starts_and_plays_the_same_every_time() {
     assert_eq!(new_scene(SCENE_PIECES + 2).piece, 2);
 }
 
+/// A piece begun (scene_begin) and drawn a wipe's rows at a time (scene_fill) is the piece
+/// started whole (scene_start), and plays on the same; PLASMA, the costliest start, draws no
+/// row before it is asked for it. A step draws what is left first.
+#[test]
+fn a_piece_begun_and_filled_by_rows_is_the_piece_started_whole() {
+    let mut m = quiet();
+    m.resonance = 11;
+    m.cutoff = 1900;
+    for piece in 0..SCENE_PIECES {
+        let mut whole = Box::<scene>::default();
+        unsafe { scene_start(&mut *whole, piece, &m) };
+        let mut part = Box::<scene>::default();
+        part.cv.ch = [[b'X'; COLS]; ROWS];
+        unsafe { scene_begin(&mut *part, piece) };
+        if piece == SCENE_PLASMA {
+            assert_eq!(part.filled, 0);
+            assert!(part.cv.ch.iter().all(|r| r.iter().all(|&c| c == b'X')));
+        }
+        for rows in (4..ROWS).step_by(4).chain([ROWS]) {
+            unsafe { scene_fill(&mut *part, &m, rows as u32) };
+            for r in 0..rows {
+                assert_eq!(part.cv.ch[r], whole.cv.ch[r], "piece {piece}, row {r}");
+                assert_eq!(part.cv.attr[r], whole.cv.attr[r], "piece {piece}, row {r}");
+            }
+        }
+        assert_eq!(u32::from(part.filled), GRID_ROWS);
+        let mut lazy = Box::<scene>::default();
+        unsafe { scene_begin(&mut *lazy, piece) };
+        for f in 0..20 {
+            let mf = if f % 5 == 0 {
+                hit(m, f % 3, 60 + f as u8, 200)
+            } else {
+                m
+            };
+            step(&mut part, &mf);
+            step(&mut lazy, &mf);
+            step(&mut whole, &mf);
+            assert_eq!(changed(&part.cv, &whole.cv), 0, "piece {piece}, frame {f}");
+            assert_eq!(changed(&lazy.cv, &whole.cv), 0, "piece {piece}, frame {f}");
+        }
+    }
+}
+
 // ---- the view ----
 
 fn piece_name(k: u32) -> String {
@@ -841,13 +884,15 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
     let mut ui = Ui::new();
     open_scene(&mut ui);
     assert_eq!(ui.top(), "SCENE");
+    assert_eq!(u32::from(ui.v.scene.which), SCENE_FIRE);
     assert_eq!(u32::from(ui.v.scene.piece.piece), SCENE_FIRE);
     assert!(grid_is_canvas(&ui), "the grid is not the fire's canvas");
     // SELECT: the next piece wipes in, and a toast names it; round and back.
     for k in 1..=SCENE_PIECES {
         ui.turn(PANEL_ENC_SELECT, 1);
-        assert_eq!(u32::from(ui.v.scene.piece.piece), k % SCENE_PIECES);
+        assert_eq!(u32::from(ui.v.scene.which), k % SCENE_PIECES);
         ui.frame();
+        assert_eq!(u32::from(ui.v.scene.piece.piece), k % SCENE_PIECES);
         assert_ne!(ui.v.s.wipe, 0, "piece {k}: no wipe");
         assert_eq!(
             ui.toast().as_deref(),
@@ -856,7 +901,7 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
         ui.settle();
     }
     ui.turn(PANEL_ENC_SELECT, -2);
-    assert_eq!(u32::from(ui.v.scene.piece.piece), SCENE_PIECES - 2);
+    assert_eq!(u32::from(ui.v.scene.which), SCENE_PIECES - 2);
     // Every other control plays: K1 the cutoff, the octave.
     let cutoff = ui.live().cutoff;
     ui.turn(PANEL_ENC_K1, 3);
@@ -1102,5 +1147,200 @@ fn the_wipes_into_scene_send_only_their_rows() {
             (drain(&mut ui.g), ui.v.s.wipe != 0)
         });
         assert_wipe_holds_still(&format!("from {}", piece_name(piece)), &frames);
+    }
+}
+
+/// MIDI learn's frame (SAVE) over each piece and over LIVE while the band plays: the frame
+/// comes in at once, over a view that composes every frame within its budget, so the view
+/// leaves the frame's cells alone and counts what the frame sends (app/screen.h
+/// screen_cover); no frame sends more than the budget, and the frame shows whole.
+#[test]
+fn learns_frame_over_every_piece_and_over_live_stays_within_the_budget() {
+    for piece in 0..=SCENE_PIECES {
+        let (mut ui, name) = if piece < SCENE_PIECES {
+            (scene_on(piece), piece_name(piece))
+        } else {
+            let mut ui = Ui::new();
+            ui.turn(PANEL_ENC_K1, 64);
+            ui.settle();
+            drain(&mut ui.g);
+            (ui, "LIVE".to_string())
+        };
+        let mut ml = Box::<midi_learn>::default();
+        unsafe {
+            midi_learn_init(&mut *ml);
+            views_learn(&mut *ui.v, &mut *ml);
+        }
+        let mut band = Band::new();
+        for _ in 0..20 {
+            band.frame(&mut ui, true);
+        }
+        ui.press(LEARN_VIEW_BUTTON);
+        let sent: Vec<usize> = (0..60).map(|_| band.frame(&mut ui, true).cells).collect();
+        assert_eq!(ui.top(), "LEARN", "{name}");
+        let most = sent.iter().copied().max().unwrap();
+        println!(
+            "learn over {name}: at most {most} cells; the first frames {:?}",
+            &sent[..6]
+        );
+        assert!(
+            most <= SCENE_VIEW_FRAME_CELLS as usize && most <= LIVE_VIEW_FRAME_CELLS as usize,
+            "learn over {name}: a frame sent {most} cells"
+        );
+        assert!(
+            ui.row(LEARN_VIEW_ROW as usize + 1).contains("TURN A KNOB"),
+            "learn over {name}: {:?}",
+            ui.row(LEARN_VIEW_ROW as usize + 1)
+        );
+    }
+}
+
+/// A toast's text is the toast's while it shows: the copy spends none of the budget on the
+/// cells under it, so a canvas changed whole catches up as fast as without it.
+#[test]
+fn the_copy_leaves_a_showing_toast_alone() {
+    let mut ui = scene_on(SCENE_ANT);
+    let text = c"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let n = text.to_bytes().len();
+    unsafe { screen_toast(&mut ui.v.s, text.as_ptr(), 4000) };
+    ui.frame();
+    drain(&mut ui.g);
+    let cv = &mut ui.v.scene.piece.cv;
+    for r in 0..ROWS {
+        for c in 0..COLS {
+            cv.ch[r][c] = FONT_PIP as u8;
+            cv.attr[r][c] = attr(GRID_CYAN, GRID_BLACK);
+        }
+    }
+    let mut sent = Vec::new();
+    loop {
+        ui.frame();
+        let s = drain(&mut ui.g);
+        if s.cells == 0 {
+            break;
+        }
+        sent.push(s.cells);
+        assert!(sent.len() < 10, "still sending: {sent:?}");
+    }
+    let toast_row = SCREEN_TOAST_ROW as usize;
+    let toast_col = SCREEN_TOAST_COL as usize;
+    let cv = &ui.v.scene.piece.cv;
+    let under_toast =
+        |r: usize, c: usize| r == toast_row && (toast_col..toast_col + n).contains(&c);
+    assert!(
+        (0..ROWS * COLS).all(|i| {
+            let (r, c) = (i / COLS, i % COLS);
+            under_toast(r, c) || (ui.g.ch[i] == cv.ch[r][c] && ui.g.attr[i] == cv.attr[r][c])
+        }),
+        "the canvas did not catch up"
+    );
+    assert!(
+        sent[..sent.len() - 1]
+            .iter()
+            .all(|&c| c == SCENE_VIEW_FRAME_CELLS as usize),
+        "every frame but the last spends the whole budget: {sent:?}"
+    );
+    assert_eq!(
+        ui.row(toast_row)[toast_col..toast_col + n],
+        *"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    );
+}
+
+/// SELECT, and the menu's ALGORITHM on SCENE, only pick the piece: it starts in the compose of
+/// the wipe's first frame (ui_poll's), not in the input's call (ui_encoder's, in the same
+/// main-loop pass as that ui_poll), and that frame reveals the start's top rows.
+#[test]
+fn a_piece_starts_in_the_wipes_first_frame_not_in_the_input() {
+    let mut ui = scene_on(SCENE_FIRE);
+    let before = ui.v.scene.piece.cv;
+    ui.turn(PANEL_ENC_SELECT, 1);
+    assert_eq!(u32::from(ui.v.scene.which), SCENE_PLASMA);
+    assert_eq!(
+        u32::from(ui.v.scene.piece.piece),
+        SCENE_FIRE,
+        "started in the input"
+    );
+    assert_eq!(
+        changed(&ui.v.scene.piece.cv, &before),
+        0,
+        "drawn in the input"
+    );
+    ui.frame();
+    assert_eq!(u32::from(ui.v.scene.piece.piece), SCENE_PLASMA);
+    let mut fresh = Box::<scene>::default();
+    unsafe { scene_start(&mut *fresh, SCENE_PLASMA, &ui.v.scene.music) };
+    for r in 0..SCREEN_WIPE_ROWS as usize {
+        let shown: Vec<(u8, u8)> = (0..COLS)
+            .map(|c| (ui.g.ch[r * COLS + c], ui.g.attr[r * COLS + c]))
+            .collect();
+        let start: Vec<(u8, u8)> = (0..COLS)
+            .map(|c| (fresh.cv.ch[r][c], fresh.cv.attr[r][c]))
+            .collect();
+        assert_eq!(shown, start, "row {r}");
+    }
+    ui.settle();
+    // From the menu.
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    let before = ui.v.scene.piece.cv;
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(ui.top(), "SCENE");
+    assert_eq!(
+        changed(&ui.v.scene.piece.cv, &before),
+        0,
+        "drawn in the input"
+    );
+    ui.frame();
+    unsafe { scene_start(&mut *fresh, SCENE_PLASMA, &ui.v.scene.music) };
+    assert_eq!(ui.v.scene.piece.cv.ch[..4], fresh.cv.ch[..4]);
+}
+
+/// SYNC LEAD makes sound on voice 1 alone (voices 2 and 3 have no waveform: they clock the
+/// sync): SCENE hears them as silent, so their parts of a piece stay still while the band
+/// plays, and voice 1's moves.
+#[test]
+fn sync_leads_silent_voices_stop_their_parts() {
+    let sync = (0..4u8)
+        .find(|&i| crate::preset_name(crate::preset(i)) == "SYNC LEAD")
+        .expect("a SYNC LEAD preset");
+    for piece in [SCENE_FIRE, SCENE_ANT] {
+        let mut ui = scene_on(piece);
+        ui.rig.set_preset(sync);
+        let mut band = Band::new();
+        let ants = unsafe { ui.v.scene.piece.u.ant.a };
+        let mut heard = [0u32; 3];
+        for _ in 0..200 {
+            band.frame(&mut ui, true);
+            let m = &ui.v.scene.music;
+            for (v, h) in heard.iter_mut().enumerate() {
+                *h += u32::from(m.gate[v]) + u32::from(m.env[v]) + u32::from(m.trig[v]);
+            }
+        }
+        assert!(heard[0] > 0, "{}: voice 1 is not heard", piece_name(piece));
+        assert_eq!(
+            heard[1..],
+            [0, 0],
+            "{}: voices 2 and 3 heard",
+            piece_name(piece)
+        );
+        if piece == SCENE_FIRE {
+            let s = &ui.v.scene.piece;
+            assert!(flame_height(s, 0) > 0, "voice 1's flame is out");
+            assert_eq!((flame_height(s, 1), flame_height(s, 2)), (0, 0));
+        } else {
+            let now = unsafe { ui.v.scene.piece.u.ant.a };
+            assert_ne!(
+                (now[0].x, now[0].y),
+                (ants[0].x, ants[0].y),
+                "voice 1's ant stood still"
+            );
+            for v in 1..3 {
+                assert_eq!(
+                    (now[v].x, now[v].y),
+                    (ants[v].x, ants[v].y),
+                    "ant {v} walked"
+                );
+            }
+        }
     }
 }

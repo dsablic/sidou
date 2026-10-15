@@ -182,6 +182,11 @@ pub struct Machine {
     open_call: Option<OpenCall>,
     /// Instructions run outside interrupts (the main loop).
     pub main_steps: u64,
+    /// With `watch_passes`: the main-loop instructions of each stretch from an entry of its
+    /// first function to the next entry of its second, outside interrupts.
+    pub passes: Vec<u64>,
+    pass_watch: Option<(u32, u32)>,
+    pass_start: Option<u64>,
     /// With `watch_alnk_pcs`: instructions run at the ALNK0 interrupt's own level (not in
     /// interrupts nested in it) inside the watched range, and the distinct PCs outside it.
     pub alnk_pcs_inside: u64,
@@ -246,6 +251,9 @@ impl Machine {
             watch: None,
             open_call: None,
             main_steps: 0,
+            passes: Vec::new(),
+            pass_watch: None,
+            pass_start: None,
             alnk_pcs_inside: 0,
             alnk_pcs_outside: std::collections::BTreeSet::new(),
             alnk_pc_range: None,
@@ -260,6 +268,14 @@ impl Machine {
     /// Counts the instructions of every call of the function at `entry` from the main loop.
     pub fn watch_calls(&mut self, entry: u32) {
         self.watch = Some(entry);
+    }
+
+    /// Counts the main loop's instructions from each entry of the function at `from` to the
+    /// next entry of the one at `to` (`passes`): with midi_drain and midi_service, what a
+    /// main-loop pass runs between draining MIDI and its other services (play(), ui_poll).
+    pub fn watch_passes(&mut self, from: u32, to: u32) {
+        self.pass_watch = Some((from, to));
+        self.pass_start = None;
     }
 
     /// Sorts every instruction the ALNK0 interrupt runs at its own level by whether its PC
@@ -325,6 +341,15 @@ impl Machine {
             if in_isr {
                 self.isr_steps += 1;
             } else {
+                if let Some((from, to)) = self.pass_watch {
+                    if cpu.pc == from {
+                        self.pass_start = Some(self.main_steps);
+                    } else if cpu.pc == to {
+                        if let Some(start) = self.pass_start.take() {
+                            self.passes.push(self.main_steps - start);
+                        }
+                    }
+                }
                 if let Some(entry) = self.watch {
                     if cpu.pc == entry && self.open_call.is_none() {
                         self.watched_starts.push(soc.periph.cycles);

@@ -58,18 +58,17 @@ static void step(scene_view* sv) {
 }
 
 void scene_view_prepare(scene_view* sv) {
-    if (sv->on) {
+    if (sv->on && !sv->starting) {
         step(sv);
         sv->prepared = 1;
     }
 }
 
-/* The piece from its start, as the music now shows it. */
+/* The piece from its start, at the next compose (compose): not here, in the input's call. */
 static void enter(screen* s, void* state) {
     (void)s;
     scene_view* sv = state;
-    listen(sv, &sv->music);
-    scene_start(&sv->piece, sv->which, &sv->music);
+    sv->starting = 1;
     sv->prepared = 0;
     sv->cursor = 0;
 }
@@ -90,10 +89,21 @@ static int input(screen* s, void* state, const screen_event* e) {
 
 /* The canvas onto the grid: the changed cells from where the last frame stopped, until the
  * frame's budget is spent; what the screen drew over (a toast, the raster) is put back the
- * same way. Under a wipe, every row whole: the wipe holds the rows it has not reached, and the
- * ones it reveals must be SCENE's. */
+ * same way. What is covered this frame (a toast that shows, MIDI learn's frame:
+ * screen_covered) stays as it is and costs nothing. Under a wipe, every row whole: the wipe
+ * holds the rows it has not reached, and the ones it reveals must be SCENE's. */
 static void compose(screen* s, void* state, grid* g) {
     scene_view* sv = state;
+    /* The piece picked (enter) starts as the music now shows it, its canvas drawn as far as
+     * the wipe reveals it this frame (scene_fill; PLASMA's rows are costly): whole once no wipe
+     * from the top runs. */
+    if (sv->starting) {
+        sv->starting = 0;
+        listen(sv, &sv->music);
+        scene_begin(&sv->piece, sv->which);
+    }
+    scene_fill(&sv->piece, &sv->music,
+               s->wipe == SCREEN_WIPE_DOWN ? s->wipe_rows + SCREEN_WIPE_ROWS : GRID_ROWS);
     /* Still while a wipe or a raster runs (app/screen.h). */
     if (!screen_animating(s)) {
         if (!sv->prepared) {
@@ -108,13 +118,14 @@ static void compose(screen* s, void* state, grid* g) {
             grid_row(g, r, cv->ch[r], cv->attr[r]);
         }
     }
-    uint32_t used = grid_pending(g) + screen_layer_cells(s);
+    uint32_t used = screen_pending(s) + screen_layer_cells(s);
     uint32_t left = used < SCENE_VIEW_FRAME_CELLS ? SCENE_VIEW_FRAME_CELLS - used : 0u;
     uint32_t i = sv->cursor;
     for (uint32_t n = 0; n < GRID_CELLS; n++, i = i + 1u < GRID_CELLS ? i + 1u : 0u) {
         uint32_t r = i / GRID_COLS;
         uint32_t c = i % GRID_COLS;
-        if ((whole >> r & 1u) || (g->ch[i] == cv->ch[r][c] && g->attr[i] == cv->attr[r][c])) {
+        if ((whole >> r & 1u) || (g->ch[i] == cv->ch[r][c] && g->attr[i] == cv->attr[r][c]) ||
+            screen_covered(s, c, r)) {
             continue;
         }
         if (!left) {

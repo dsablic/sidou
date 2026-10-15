@@ -11,19 +11,28 @@
  * from the instrument (a voice's stamp changes at each note-on and note-off), their waveforms'
  * colours (LIVE's), the cutoff and resonance, and each voice's envelope (ENV3) from the audio's
  * tap (app/scope.h), which runs while SCENE shows as it does for LIVE. A voice that makes no
- * sound (no waveform: SYNC LEAD's voice 3, which only clocks the sync) counts as silent.
+ * sound (no waveform: SYNC LEAD's voices 2 and 3, which only clock the sync) counts as
+ * silent.
  *
  * The budget: a frame sends at most SCENE_VIEW_FRAME_CELLS cells. The piece draws into its
  * canvas; the compose copies the canvas's changed cells onto the grid until the frame has spent
- * what the screen's toast and raster leave (screen_layer_cells), and goes on from that cell the
- * next frame, so a frame that changes more than the budget spreads over the next ones. What
- * the screen drew over (a toast, the raster, another view) differs from the canvas, so it is
- * put back the same way, within the budget; only under a wipe are the rows copied whole (the
+ * what the screen's toast, raster and cover leave (screen_layer_cells), and goes on from that
+ * cell the next frame, so a frame that changes more than the budget spreads over the next ones.
+ * The copy goes round the screen that way, so a changed cell waits at most about 900 / left
+ * frames for its turn (left: the cells the budget leaves the copy that frame; 5 frames at the
+ * whole 200). What the screen drew over (a toast gone, the raster, another view) differs from
+ * the canvas, so it is put back the same way, within the budget; what is drawn over the canvas
+ * after the compose this frame (a toast that shows, MIDI learn's frame: screen_covered) is
+ * left alone and costs the copy nothing. Only under a wipe are the rows copied whole (the
  * wipe holds the ones it has not reached). While a wipe or a raster runs the piece holds
  * still, as LIVE and About do.
  *
  * The piece steps half way between two frames (scene_view_prepare, from views_prepare), so a
- * frame's compose is the copy alone; a compose with nothing prepared steps itself.
+ * frame's compose is the copy alone; a compose with nothing prepared steps itself. A piece
+ * picked (SELECT, or the menu's ALGORITHM on SCENE) starts in the compose of the wipe's first
+ * frame, not in the input: the main loop runs the input and a frame in the same pass between
+ * two drains of MIDI, and a start and that frame together would hold the drain too long.
+ * PLASMA's start draws only the rows the wipe reveals each frame (scene_begin, scene_fill).
  *
  * Portable C with no hardware access and no allocation. */
 #ifndef SIDOU_SCENE_VIEW_H
@@ -50,6 +59,7 @@ typedef struct {
     uint8_t on;       /* the tap is on for SCENE */
     uint8_t which;    /* the piece it shows (its index), kept between visits */
     uint8_t prepared; /* the piece stepped for the next frame (scene_view_prepare) */
+    uint8_t starting; /* the piece picked starts at the next compose */
     uint32_t stamp[SCENE_VOICES]; /* each voice's stamp at the last frame */
     uint16_t cursor;  /* the cell the copy goes on from */
     uint32_t held;    /* frames whose copy the budget cut short (diagnostic) */
