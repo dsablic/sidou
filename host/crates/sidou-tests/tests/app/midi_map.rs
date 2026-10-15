@@ -458,7 +458,7 @@ fn the_sid_parameters_survive_a_model_change() {
     assert_eq!(
         rig.log().len(),
         27,
-        "a reset, the attack mode and every register"
+        "a reset, the envelope mode and every register"
     );
     assert_eq!(rig.control(0), 0x80);
     assert_eq!(rig.reg(5) >> 4, 7);
@@ -492,7 +492,7 @@ fn the_chip_model_changes_at_most_once_a_tick_and_the_last_request_wins() {
     assert_eq!(
         m.rig.log().len(),
         27,
-        "a reset, the attack mode and every register"
+        "a reset, the envelope mode and every register"
     );
     assert_eq!(m.rig.live.model, SID_MODEL_8580);
     m.rig.clear();
@@ -1000,24 +1000,30 @@ fn an_nrpn_reaches_the_chip_model() {
 }
 
 #[test]
-fn the_attack_mode_is_cc_26_and_nrpn_1_10() {
+fn the_envelope_mode_is_cc_26_and_nrpn_1_10() {
     // Next to the chip model (CC 25, NRPN 1/5) in the SID's block: like it, a setting of the
     // chip rather than of the preset. CC 26 is in 20..31, which MIDI leaves undefined.
-    let r = row_for(LIVE_PARAM_ATTACK_MODE);
+    let r = row_for(LIVE_PARAM_ENVELOPE_MODE);
     assert_eq!((r.cc, r.nrpn), (26, nrpn(1, 10)));
-    assert_eq!((r.max, r.def), (1, LIVE_ATTACK_INSTANT as u16));
+    assert_eq!((r.max, r.def), (1, LIVE_ENVELOPE_INSTANT as u16));
     assert!(r.steps());
     let mut m = Midi::new();
     m.rig.clear();
     m.usb_cc(3, 26, 64); // steps: on from 64
-    assert_eq!(get(&m.rig, LIVE_PARAM_ATTACK_MODE), LIVE_ATTACK_AUTHENTIC);
+    assert_eq!(
+        get(&m.rig, LIVE_PARAM_ENVELOPE_MODE),
+        LIVE_ENVELOPE_AUTHENTIC
+    );
     assert_eq!(m.rig.log(), &[(LIVE_REG_GATE_RESET as u8, 0)]);
     m.usb_cc(3, 26, 63);
-    assert_eq!(get(&m.rig, LIVE_PARAM_ATTACK_MODE), LIVE_ATTACK_INSTANT);
-    select(&mut m, LIVE_PARAM_ATTACK_MODE);
+    assert_eq!(get(&m.rig, LIVE_PARAM_ENVELOPE_MODE), LIVE_ENVELOPE_INSTANT);
+    select(&mut m, LIVE_PARAM_ENVELOPE_MODE);
     m.rig.clear();
     m.trs(&[6, 0, 38, 1]);
-    assert_eq!(get(&m.rig, LIVE_PARAM_ATTACK_MODE), LIVE_ATTACK_AUTHENTIC);
+    assert_eq!(
+        get(&m.rig, LIVE_PARAM_ENVELOPE_MODE),
+        LIVE_ENVELOPE_AUTHENTIC
+    );
     assert_eq!(
         m.rig.log(),
         &[(LIVE_REG_GATE_RESET as u8, 0)],
@@ -1046,7 +1052,7 @@ play on every channel (omni); program change 0..{last} selects the preset. A pro
 loads the preset's cutoff, resonance, pulse width, SID settings (waveform, ring, sync,
 the envelope, filter routing and mode) and expression settings (bend range, the targets,
 the vibrato) over any edits, even when it selects the preset already playing; volume, the
-chip model, the attack mode, the effect slots, the controllers (bend, wheel, aftertouch) and
+chip model, the envelope mode, the effect slots, the controllers (bend, wheel, aftertouch) and
 a bend range set by RPN 0 are kept.
 
 **How the numbers were chosen.** CCs that MIDI gives a meaning are kept for it:
@@ -1096,11 +1102,13 @@ patch's value up or down around 64; SIDOU does not.
 - **Chip model:** a change resets the chip, so it waits for the next 10 ms tick and takes
   the last value received: a stream of changes resets it at most 100 times a second, and
   the FX button changes it at once.
-- **Attack mode:** 0 INSTANT (the default) restarts each voice's envelope rate counter at
-  the gate, so every note's attack starts within 12 chip cycles. 1 AUTHENTIC is the chip's
-  ADSR delay bug, as reSIDfp has it: after a release slower than the attack, most notes
-  wait up to 33 ms. A change counts from the next note-on; a sounding note keeps its
-  attack. [controls.md](controls.md) has the why.
+- **Envelope mode:** 0 INSTANT (the default) restarts each voice's envelope rate counter at
+  each gate edge, so a note's attack, and its release at the note-off, take their first
+  step within one rate period and 3 chip cycles (12 cycles at attack 0). 1 AUTHENTIC is
+  the chip's ADSR delay bug, as reSIDfp has it: after a slower rate (a release before the
+  attack, a decay before the release), most notes and note-offs wait up to 33 ms. A change
+  counts from the next gate edge, so a sounding note's release follows it.
+  [controls.md](controls.md) has the why.
 - The selection is kept per channel and per input (TRS, USB).
 - CC 120 and 123 release every note.
 

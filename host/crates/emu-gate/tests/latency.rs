@@ -96,7 +96,7 @@ const LFSR_PERIOD: u64 = 32_767;
 /// Attack 0 from 0 to the note level: 2 ms to the top.
 const ATTACK_MS: u64 = 2;
 /// The map's attack mode (docs/reference/midi.md): CC 26, steps, on from 64.
-const CC_ATTACK_MODE: u8 = 26;
+const CC_ENVELOPE_MODE: u8 = 26;
 /// fm1-emu runs one instruction a cycle; the audio budget is in instructions.
 const INSTRUCTIONS_PER_CYCLE: f64 = 1.0;
 
@@ -126,7 +126,7 @@ impl Clock {
     }
 }
 
-/// The live instrument's attack mode (LIVE_PARAM_ATTACK_MODE).
+/// The live instrument's attack mode (LIVE_PARAM_ENVELOPE_MODE).
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Attack {
     /// The default: the gate restarts the envelope's rate counter.
@@ -196,7 +196,7 @@ fn boot(fw: &Firmware, scenario: Scenario, attack: Attack) -> Machine {
     m.run_ms(BOOT_MS);
     if attack == Attack::Authentic {
         // 1 ms on the wire, then a main-loop pass; the window starts well after.
-        m.midi(&[0xB0, CC_ATTACK_MODE, 127]);
+        m.midi(&[0xB0, CC_ENVELOPE_MODE, 127]);
         m.run_ms(5);
     }
     if scenario == Scenario::Busy {

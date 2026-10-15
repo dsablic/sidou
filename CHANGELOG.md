@@ -97,8 +97,9 @@ All notable changes are documented here. The format follows
   a program change, rate-limited, deduplicated and never echoing MIDI input.
 - A note-on-to-sound latency test over emulated TRS MIDI, and decision record
   0005 (notes stay at block starts).
-- ATTACK: INSTANT / AUTHENTIC (CC 26, NRPN 1/10). The SID core has a gate
+- ENVELOPE: INSTANT / AUTHENTIC (CC 26, NRPN 1/10). The SID core has a gate
   reset option, `sid_set_gate_reset` (off by default, so the core stays
-  bit-exact with reSIDfp), that restarts the envelope's rate counter at the
-  gate and skips the ADSR delay. The live instrument turns it on by default:
-  INSTANT. AUTHENTIC is the chip's timing.
+  bit-exact with reSIDfp), that restarts the envelope's rate counter at each
+  gate edge and skips the ADSR delay, for the attack at a note-on and the
+  release at a note-off. The live instrument turns it on by default: INSTANT.
+  AUTHENTIC is the chip's timing.

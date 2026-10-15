@@ -83,7 +83,7 @@ at power-on.
 Notes on every channel; program change 0..3 selects the preset. A program change loads
 the preset's cutoff, resonance, pulse width and SID settings (waveform, ring, sync, the
 envelope, filter routing and mode) and expression settings over any edits, even when it
-selects the preset already playing; volume, octave, chip, attack mode, effects and a bend
+selects the preset already playing; volume, octave, chip, envelope mode, effects and a bend
 range set by RPN 0 are kept. Every parameter has an NRPN, and all but the bend range and the
 expression targets a CC: the map, generated from the code, is [midi.md](midi.md). The
 numbers M1a and M1c set are kept: 1 pulse width, 7 volume, 71 resonance, 74 cutoff, and
@@ -92,25 +92,32 @@ algorithm, Amount, A, B, Mix). CC 120 and 123 release every note. The chip model
 NRPN 1/5) changes at the next 10 ms tick, to the last value received, so a stream of
 changes resets the chip at most 100 times a second; the FX button changes it at once.
 
-**Attack: INSTANT / AUTHENTIC** (CC 26, NRPN 1/10; INSTANT at power-on). The real SID
+**Envelope: INSTANT / AUTHENTIC** (CC 26, NRPN 1/10; INSTANT at power-on). The real SID
 has a quirk known as the ADSR delay bug. Each voice's envelope steps when a 15-bit rate
 counter reaches the current rate's period, and only that match restarts the counter: a
-new note does not. If a note starts while the counter is already past the attack's (shorter)
-period, the counter has to run all the way round first: up to 32767 chip cycles, about
-33 ms, before the attack's first step. The factory presets release slower than they
-attack (SAW LEAD: release 6, attack 0), so with the chip's behaviour about 97% of the
-notes you play start 33 ms late, and the rest at once. That is the chip, and reSIDfp
-behaves the same way. C64 music works around it with a "hard restart" (setting the rates
-to 0 a few frames before each note), which a player at a keyboard cannot do.
+gate change does not. If a note starts while the counter is already past the attack's
+(shorter) period, the counter has to run all the way round first: up to 32767 chip
+cycles, about 33 ms, before the attack's first step. The factory presets release slower
+than they attack (SAW LEAD: release 6, attack 0), so with the chip's behaviour about 97%
+of the notes you play start 33 ms late, and the rest at once. A note-off meets the same
+delay when the release is faster than the decay before it: about 73% of note-offs on SAW
+LEAD (decay 9, release 6), 80% on SYNC LEAD and 32% on PWM BASS hold the note at its
+sustain level for up to 33 ms more, so a staccato note comes out 33 ms long at random.
+That is the chip, and reSIDfp behaves the same way. C64 music works around it with a
+"hard restart" (setting the rates to 0 a few frames before each note), which a player at
+a keyboard cannot do.
 
-- **INSTANT** (0, the default for the live instrument): the gate also restarts the rate
-  counter, so every note's attack starts within 12 chip cycles. The sound is otherwise
-  the chip's: the same envelope, rates and DACs. This is the departure from the chip,
-  behind a setting, because a live instrument that is late on most notes is hard to play.
+- **INSTANT** (0, the default for the live instrument): each gate edge also restarts the
+  rate counter, so a note's attack, and its release at the note-off, take their first
+  step within one rate period and 3 chip cycles: 12 cycles at attack 0, 270 at release 6.
+  The sound is otherwise the chip's: the same envelope, rates, exponential release curve
+  and DACs. This is the departure from the chip, behind a setting, because a live
+  instrument that is late on most notes, and on most note-offs, is hard to play.
 - **AUTHENTIC** (1): the chip's behaviour, bit for bit as reSIDfp. Use it to hear or
   test the real timing.
 
-A change counts from the next note-on; a sounding note keeps its attack. The setting
+A change counts from the next gate edge: a sounding note keeps the attack it had, and its
+release follows the new setting. The setting
 is the instrument's, not the preset's: program changes and the chip model keep it. Song
 and `.sid` playback (M2, M3) will default to AUTHENTIC: their music was written for the
 chip and handles the delay itself, with hard restarts, so its timing is part of how it

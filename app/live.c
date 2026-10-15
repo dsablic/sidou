@@ -278,10 +278,10 @@ static void write_controls(live* l) {
 }
 
 static void write_gate_reset(live* l) {
-    put(l, LIVE_REG_GATE_RESET, l->attack_mode == LIVE_ATTACK_INSTANT ? 1u : 0u);
+    put(l, LIVE_REG_GATE_RESET, l->envelope_mode == LIVE_ENVELOPE_INSTANT ? 1u : 0u);
 }
 
-/* A chip reset with the model, then the attack mode, which sid_init turned off: before any
+/* A chip reset with the model, then the envelope mode, which sid_init turned off: before any
  * register, so before any gate. */
 static void reset_chip(live* l) {
     put(l, LIVE_REG_RESET, (uint8_t)l->model);
@@ -447,7 +447,7 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->last_velocity = LIVE_EXPRESSION_MAX;
     l->mod_target = LIVE_MOD_PULSE_WIDTH;
     l->bend_range_rpn = 0;
-    l->attack_mode = LIVE_ATTACK_INSTANT;
+    l->envelope_mode = LIVE_ENVELOPE_INSTANT;
     load_preset(l, 0);
     reset_chip(l);
     write_all(l);
@@ -731,7 +731,7 @@ uint32_t live_param_max(uint32_t param) {
     case LIVE_PARAM_RING:
     case LIVE_PARAM_SYNC:
     case LIVE_PARAM_MODEL:
-    case LIVE_PARAM_ATTACK_MODE: return 1u;
+    case LIVE_PARAM_ENVELOPE_MODE: return 1u;
     case LIVE_PARAM_FILTER_MODE:
     case LIVE_PARAM_FILTER_VOICES: return 7u;
     case LIVE_PARAM_BEND_RANGE: return LIVE_BEND_RANGE_MAX;
@@ -844,9 +844,9 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
     case LIVE_PARAM_VIBRATO_RATE: l->vibrato_rate = (uint8_t)value; break;
     case LIVE_PARAM_VIBRATO_DEPTH: l->vibrato_depth = (uint8_t)value; break;
     case LIVE_PARAM_VIBRATO_DELAY: l->vibrato_delay = (uint8_t)value; break;
-    case LIVE_PARAM_ATTACK_MODE: /* for the gates from now on; a held note keeps its attack */
-        if (l->attack_mode != value) {
-            l->attack_mode = (uint8_t)value;
+    case LIVE_PARAM_ENVELOPE_MODE: /* for the gate edges from now on: a held note's release too */
+        if (l->envelope_mode != value) {
+            l->envelope_mode = (uint8_t)value;
             write_gate_reset(l);
         }
         break;
@@ -880,7 +880,7 @@ uint32_t live_param_get(const live* l, uint32_t param) {
     case LIVE_PARAM_VIBRATO_RATE: return l->vibrato_rate;
     case LIVE_PARAM_VIBRATO_DEPTH: return l->vibrato_depth;
     case LIVE_PARAM_VIBRATO_DELAY: return l->vibrato_delay;
-    case LIVE_PARAM_ATTACK_MODE: return l->attack_mode;
+    case LIVE_PARAM_ENVELOPE_MODE: return l->envelope_mode;
     default:
         if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {
             return l->slot[(param - LIVE_PARAM_SLOT) / LIVE_SLOT_FIELDS]

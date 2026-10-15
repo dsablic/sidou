@@ -301,16 +301,16 @@ fn live_init_through_the_ring_matches_the_direct_chip() {
 }
 
 #[test]
-fn the_attack_mode_reaches_the_chip_through_the_ring_and_across_model_changes() {
+fn the_envelope_mode_reaches_the_chip_through_the_ring_and_across_model_changes() {
     let mut dev = Device::new(SID_MODEL_6581);
     let mut direct = Direct::new(SID_MODEL_6581);
     let gate_reset = |s: &sid| s.env.map(|e| e.gate_reset);
     dev.block();
     assert_eq!(gate_reset(dev.chip()), [1; 3], "instant by default");
     assert_eq!(gate_reset(&direct.chip), [1; 3]);
-    for (mode, want) in [(LIVE_ATTACK_AUTHENTIC, 0u8), (LIVE_ATTACK_INSTANT, 1)] {
+    for (mode, want) in [(LIVE_ENVELOPE_AUTHENTIC, 0u8), (LIVE_ENVELOPE_INSTANT, 1)] {
         both(&mut dev, &mut direct, |l| unsafe {
-            live_param_set(l, LIVE_PARAM_ATTACK_MODE, mode);
+            live_param_set(l, LIVE_PARAM_ENVELOPE_MODE, mode);
             live_button(l, LIVE_BUTTON_FX);
             live_note_on(l, 60, 100);
         });

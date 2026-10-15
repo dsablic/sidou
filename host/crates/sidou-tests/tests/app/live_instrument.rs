@@ -39,7 +39,7 @@ fn init_resets_the_chip_then_writes_every_register_once() {
     let rig = Rig::new(SID_MODEL_8580);
     let log = rig.log();
     assert_eq!(log[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
-    // The attack is instant by default: the chip's gate reset on, before any gate.
+    // The envelope is instant by default: the chip's gate reset on, before any gate.
     assert_eq!(log[1], (GATE_RESET, 1));
     let regs: Vec<u8> = log[2..27].iter().map(|&(r, _)| r).collect();
     let set: BTreeSet<u8> = regs.iter().copied().collect();
@@ -57,19 +57,19 @@ fn init_resets_the_chip_then_writes_every_register_once() {
 }
 
 #[test]
-fn the_attack_mode_is_instant_at_init_and_kept_across_presets() {
+fn the_envelope_mode_is_instant_at_init_and_kept_across_presets() {
     let mut rig = Rig::new(SID_MODEL_6581);
-    assert_eq!(rig.live.attack_mode, LIVE_ATTACK_INSTANT as u8);
-    let get = |rig: &Rig| unsafe { live_param_get(&*rig.live, LIVE_PARAM_ATTACK_MODE) };
-    assert_eq!(get(&rig), LIVE_ATTACK_INSTANT);
-    assert_eq!(unsafe { live_param_max(LIVE_PARAM_ATTACK_MODE) }, 1);
+    assert_eq!(rig.live.envelope_mode, LIVE_ENVELOPE_INSTANT as u8);
+    let get = |rig: &Rig| unsafe { live_param_get(&*rig.live, LIVE_PARAM_ENVELOPE_MODE) };
+    assert_eq!(get(&rig), LIVE_ENVELOPE_INSTANT);
+    assert_eq!(unsafe { live_param_max(LIVE_PARAM_ENVELOPE_MODE) }, 1);
 
     rig.clear();
     unsafe {
         live_param_set(
             &mut *rig.live,
-            LIVE_PARAM_ATTACK_MODE,
-            LIVE_ATTACK_AUTHENTIC,
+            LIVE_PARAM_ENVELOPE_MODE,
+            LIVE_ENVELOPE_AUTHENTIC,
         )
     };
     assert_eq!(
@@ -77,30 +77,36 @@ fn the_attack_mode_is_instant_at_init_and_kept_across_presets() {
         &[(GATE_RESET, 0)],
         "one write: the chip's option off"
     );
-    assert_eq!(get(&rig), LIVE_ATTACK_AUTHENTIC);
+    assert_eq!(get(&rig), LIVE_ENVELOPE_AUTHENTIC);
     rig.clear();
-    unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_ATTACK_MODE, 5) }; // clamped to 1
+    unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_ENVELOPE_MODE, 5) }; // clamped to 1
     assert!(rig.log().is_empty(), "no change, no write");
 
     for p in 0..LIVE_PRESET_COUNT as u8 {
         rig.set_preset(p);
-        assert_eq!(get(&rig), LIVE_ATTACK_AUTHENTIC, "preset {p} kept it");
+        assert_eq!(get(&rig), LIVE_ENVELOPE_AUTHENTIC, "preset {p} kept it");
     }
     assert!(rig.log().iter().all(|&(r, _)| r != GATE_RESET));
 
     rig.clear();
-    unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_ATTACK_MODE, LIVE_ATTACK_INSTANT) };
+    unsafe {
+        live_param_set(
+            &mut *rig.live,
+            LIVE_PARAM_ENVELOPE_MODE,
+            LIVE_ENVELOPE_INSTANT,
+        )
+    };
     assert_eq!(rig.log(), &[(GATE_RESET, 1)]);
 }
 
 #[test]
-fn every_chip_reset_is_followed_by_the_attack_mode_before_any_register() {
+fn every_chip_reset_is_followed_by_the_envelope_mode_before_any_register() {
     let mut rig = Rig::new(SID_MODEL_6581);
     unsafe {
         live_param_set(
             &mut *rig.live,
-            LIVE_PARAM_ATTACK_MODE,
-            LIVE_ATTACK_AUTHENTIC,
+            LIVE_PARAM_ENVELOPE_MODE,
+            LIVE_ENVELOPE_AUTHENTIC,
         )
     };
     rig.note_on(60);
@@ -699,7 +705,7 @@ fn fx_toggles_the_model_and_keeps_every_parameter() {
     assert_eq!(
         log.len(),
         27,
-        "a reset, the attack mode, then every register"
+        "a reset, the envelope mode, then every register"
     );
     assert_eq!(rig.rec.regs, regs_before, "the same register values");
     assert!(rig.gated(voice_of(&rig, 48)), "held notes sound again");
@@ -757,7 +763,7 @@ fn pitch(v: &[i16], rate: f64) -> f64 {
 /// the samples until its envelope leaves 0, at most `limit`.
 fn retrigger_samples(mode: u32, phase: usize, limit: usize) -> Option<usize> {
     let mut c = Chip::new(SID_MODEL_6581);
-    unsafe { live_param_set(&mut *c.live, LIVE_PARAM_ATTACK_MODE, mode) };
+    unsafe { live_param_set(&mut *c.live, LIVE_PARAM_ENVELOPE_MODE, mode) };
     unsafe { live_note_on(&mut *c.live, 60, 100) };
     c.render(4410);
     unsafe { live_note_off(&mut *c.live, 60) };
@@ -776,15 +782,60 @@ fn an_instant_attack_starts_every_retrigger_at_once_and_authentic_waits() {
     let phases = 0..24;
     let instant: Vec<_> = phases
         .clone()
-        .map(|k| retrigger_samples(LIVE_ATTACK_INSTANT, k, 2000).unwrap())
+        .map(|k| retrigger_samples(LIVE_ENVELOPE_INSTANT, k, 2000).unwrap())
         .collect();
     assert!(instant.iter().all(|&n| n <= 1), "{instant:?}");
     // The ADSR delay: most phases wait for the rate LFSR, about 33 ms.
     let authentic: Vec<_> = phases
-        .map(|k| retrigger_samples(LIVE_ATTACK_AUTHENTIC, k, 2000).unwrap())
+        .map(|k| retrigger_samples(LIVE_ENVELOPE_AUTHENTIC, k, 2000).unwrap())
         .collect();
     let waited = authentic.iter().filter(|&&n| n > 1400).count();
     assert!(waited >= 20, "{authentic:?}");
+}
+
+/// SAW LEAD's note held into sustain, then let go `phase` samples later: the samples until
+/// its envelope leaves the sustain level, at most `limit`.
+fn release_samples(mode: u32, phase: usize, limit: usize) -> Option<usize> {
+    let mut c = Chip::new(SID_MODEL_6581);
+    unsafe { live_param_set(&mut *c.live, LIVE_PARAM_ENVELOPE_MODE, mode) };
+    unsafe { live_note_on(&mut *c.live, 60, 100) };
+    c.render(22050 + phase); // decay 9 to the sustain level: under 100 ms
+    let v = c.chip.env.iter().position(|e| e.gate != 0).unwrap();
+    let sustain = c.chip.env[v].counter;
+    assert_eq!(
+        (c.chip.env[v].state, sustain),
+        (SID_ENV_DECAY_SUSTAIN, c.chip.env[v].sustain),
+        "holding sustain"
+    );
+    unsafe { live_note_off(&mut *c.live, 60) };
+    (1..=limit).find(|_| {
+        c.render(1);
+        c.chip.env[v].counter != sustain
+    })
+}
+
+#[test]
+fn an_instant_envelope_releases_every_note_off_at_once_and_authentic_waits() {
+    // Decay 9's period is 977 cycles, about 44 samples: a note-off at each of its phases.
+    // Release 6's first step comes 267 + 3 cycles after a restarted rate counter: 13
+    // samples at most.
+    let phases = 0..44;
+    let instant: Vec<_> = phases
+        .clone()
+        .map(|k| release_samples(LIVE_ENVELOPE_INSTANT, k, 2000).unwrap())
+        .collect();
+    assert!(instant.iter().all(|&n| n <= 13), "{instant:?}");
+    // The ADSR delay on release: a note-off that finds the rate LFSR past release 6's
+    // position (710 of the 977 phases) waits for it to come round, about 33 ms.
+    let authentic: Vec<_> = phases
+        .map(|k| release_samples(LIVE_ENVELOPE_AUTHENTIC, k, 2000).unwrap())
+        .collect();
+    let waited = authentic.iter().filter(|&&n| n > 1400).count();
+    assert_eq!(waited, 32, "{authentic:?}"); // 73 %, as 710 / 977
+    assert!(
+        authentic.iter().all(|&n| n <= 13 || n > 1400),
+        "{authentic:?}"
+    );
 }
 
 #[test]

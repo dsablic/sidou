@@ -44,11 +44,18 @@ The envelope tests compare the batched envelope (`sid_env_advance`: rests, linea
 runs, whole rate periods) with a per-cycle Rust port of reSIDfp's
 `EnvelopeGenerator`, over random writes at random times. They also cover the gate reset
 (`sid_set_gate_reset`), the one option where SIDOU departs from the chip on purpose:
-- the fuzz runs again with it on, the reference's LFSR restarting at each rising gate;
+- the fuzz runs again with it on, the reference's LFSR restarting at each gate edge, and
+  counts the falling edges it meets in a pipeline, past divider period 1 and frozen at 0;
 - a release-6-then-attack-0 retrigger at each of the release period's 267 phases starts
-  within 12 cycles with it on (ENV3 within 13);
-- with it off, 8 phases start at once and the rest wait over 32000 cycles, as on the
-  chip.
+  within 12 cycles with it on (ENV3 within 13); with it off, 8 phases start at once and
+  the rest wait over 32000 cycles, as on the chip;
+- a note-off at each phase of the decay's period, for SAW LEAD, SYNC LEAD and PWM BASS,
+  starts the release within one release period and 3 cycles with it on (SAW LEAD's ENV3
+  within 271); with it off, one release period of the phases starts at once and the rest
+  wait for the LFSR to come round, as on the chip;
+- below sustain 0x5d the release's first step still waits for the exponential divider,
+  within its remaining periods, and a counter frozen at 0 stays frozen, the same with it
+  on and off.
 
 **A failure means** the core no longer behaves like the chip in that
 respect. Fix the code, unless the test itself pinned the wrong behaviour; in
@@ -393,11 +400,12 @@ SIDOU_LCD_GOLDEN_UPDATE=1 SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release
   register level.
 - `midi_out.rs`: the outgoing USB-MIDI stream: packets, the rate limit, deduplication,
   no echo of MIDI input, and program changes for the panel's presets.
-- `live_instrument.rs` and `reg_ring.rs`: the attack mode. It is INSTANT at power-on,
+- `live_instrument.rs` and `reg_ring.rs`: the envelope mode. It is INSTANT at power-on,
   one write on a change, kept across presets, and sent after every chip reset before any
   register. Through the register ring it reaches the active chip, and the chip after a
   model change; a retrigger after a slow release starts at once with INSTANT, and waits
-  for the ADSR delay with AUTHENTIC.
+  for the ADSR delay with AUTHENTIC, and so does a note-off after a slower decay (SAW
+  LEAD's, at each phase of the decay's period: 32 of 44 wait with AUTHENTIC).
 
 ### MIDI test
 
