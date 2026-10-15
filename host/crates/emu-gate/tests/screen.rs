@@ -436,6 +436,9 @@ fn the_glyph_sheet_opens_from_the_menu_and_home_goes_back() {
         return;
     };
     let mut m = booted(&fw);
+    // LIVE whole: the boot can end with its last rows still to go out (a frame sends at
+    // most LIVE_VIEW_FRAME_CELLS), so the reference waits for them like the views after it.
+    settle(&mut m, &fw);
     let live = m.soc.lcd.fb.clone();
     open_charset(&mut m, &fw);
     compare_golden(&build, "charset", &m.soc.lcd.fb, &[]);

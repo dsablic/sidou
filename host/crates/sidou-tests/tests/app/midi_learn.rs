@@ -610,7 +610,7 @@ fn a_cc_neither_the_map_nor_learn_takes_costs_midi_out_no_look() {
     };
     assert_eq!(looked(&mut m, 64), 0, "CC 64");
     assert_eq!(looked(&mut m, 14), 0, "CC 14, free and not learned");
-    assert_eq!(looked(&mut m, 85), 0, "CC 85, a reserved row's");
+    assert_eq!(looked(&mut m, 85), 1, "CC 85, the character's profile");
     assert_eq!(looked(&mut m, LIVE_CC_CUTOFF as u8), 1, "the map's CC 74");
     unsafe {
         midi_learn_button(&mut *m.ml, 0);
@@ -679,4 +679,25 @@ fn the_knobs_parameters_are_the_ones_the_panel_turns() {
         knob_param(&l.live, edit, PANEL_ENC_K1),
         LIVE_PARAM_SLOT + LIVE_SLOT_AMOUNT
     );
+}
+
+/// The character's parameters (M1c Task 3) are learnable through their map rows like any
+/// other: a CC bound to one routes to its row.
+#[test]
+fn the_character_parameters_can_be_learned() {
+    let mut ml = learn();
+    let character = [
+        LIVE_PARAM_PROFILE,
+        LIVE_PARAM_AGE,
+        LIVE_PARAM_DAC,
+        LIVE_PARAM_THUMP,
+        LIVE_PARAM_BLEED,
+    ];
+    for (i, &p) in character.iter().enumerate() {
+        assert_ne!(unsafe { midi_learn_param(p) }, 0, "parameter {p}");
+        let cc = 14 + i as u32;
+        assert_eq!(unsafe { midi_learn_bind(&mut *ml, cc, p) }, 1);
+        assert_eq!(routed(&ml, cc), Some(p));
+        assert_eq!(u32::from(row(p).param), p);
+    }
 }

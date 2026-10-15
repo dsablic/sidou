@@ -465,8 +465,8 @@ impl Machine {
 /// The SID's most expensive scenario per chip, on average, in instructions per sample: the
 /// SID gate's max_instructions_per_sample (sid_budget.rs fails above it). M1b measures 556.3
 /// (two chips, gate_every_block on the 6581, since Task 6's non-linear 6581 filter; 526.8
-/// before) and 552.2 (one chip). The effect gates no longer pair it with the slots (they take
-/// the worst block, below); it stays as the SID's guard.
+/// before) and 552.2 (one chip); M1c Task 3 556.40 and 552.33. The effect gates no longer
+/// pair it with the slots (they take the worst block, below); it stays as the SID's guard.
 pub const SID_WORST_PER_CHIP: f64 = 557.0;
 
 /// The SID's most expensive block (128 samples) in instructions per sample, for one chip
@@ -477,8 +477,15 @@ pub const SID_WORST_PER_CHIP: f64 = 557.0;
 /// 0004, "Worst blocks"), on the 6581 since M1b Task 6's non-linear filter: noise_tri_ffff
 /// for one chip (717.49) and noise_tri_ring_0800 for two (1,439.67). The 8580's are 691.16
 /// and 1,409.87 (690.85 and 1,409.24 before Task 6, when they were the worst).
-pub const SID_WORST_BLOCK_ONE_CHIP: f64 = 718.0;
-pub const SID_WORST_BLOCK_TWO_CHIPS: f64 = 1440.0;
+/// Since M1c Task 3 the same scenarios with the chip's character at its costliest
+/// (character_noise_*: the worn 6581 profile and the filter bleed at 127, the one control
+/// with a per-sample cost): 724.21 and 1,453.96. Of that the worn profile (its STRONG
+/// combined waveforms, its non-linearity) is 1.07 and 2.19, the bleed 5.55 and 11.91 (its
+/// multiply-add, and the filter's data-dependent work on the voices it now gets); without
+/// the bleed the render has no copy of it, so the default chip measures 717.59 and
+/// 1,439.86.
+pub const SID_WORST_BLOCK_ONE_CHIP: f64 = 725.0;
+pub const SID_WORST_BLOCK_TWO_CHIPS: f64 = 1454.0;
 
 /// Instructions a sample the LIVE view's tap (app/scope.h) adds to the audio interrupt
 /// (ram_audio.rs fails above it). LIVE is the view at power-on, so the tap runs by default
@@ -531,6 +538,7 @@ pub fn render_host(
 ) -> Vec<i16> {
     use sidou_sys::*;
     let mut chip = Box::<sid>::default();
+    let mut dac = Box::<sid_dac>::default();
     let mut pool = Box::<sid_slot_pool>::default();
     let mut slots = Box::<sid_slots>::default();
     let mut fx = Box::<fx_live>::default();
@@ -539,6 +547,8 @@ pub fn render_host(
             chip: &mut *chip,
             clock_hz: SID_CLOCK_PAL,
             sample_rate: SAMPLE_RATE,
+            dac: &mut *dac,
+            ..Default::default()
         },
         fx: &mut *fx,
     });

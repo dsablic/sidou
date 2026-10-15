@@ -227,14 +227,14 @@ fn every_parameter_reaches_a_second_instrument_through_its_stream() {
     for hires in [0u8, 1] {
         let mut o = Out::with(0, hires);
         let mut far = Out::new();
-        let mut want = Vec::new();
         for p in 0..LIVE_PARAM_COUNT {
             let max = unsafe { live_param_max(p) };
             // Away from the default, to a value the CC curve keeps (max for switches).
             let v = if max <= 15 { max } else { max * 2 / 3 };
             o.set(p, v);
-            want.push(o.get(p));
         }
+        // Read back after them all: the profile (worn 6581) sets the model back to the 6581.
+        let want: Vec<u32> = (0..LIVE_PARAM_COUNT).map(|p| o.get(p)).collect();
         let stream = o.drain();
         far.usb(&stream);
         for p in 0..LIVE_PARAM_COUNT {
@@ -379,11 +379,13 @@ fn a_panel_change_back_to_the_value_midi_set_sends_nothing() {
 
 #[test]
 fn the_fx_button_sends_the_chip_model() {
+    // And the profile, which follows the model: the 8580 R5, then back to the 6581 R4AR.
+    let profile = |p: u32| cc_packet(0, 85, to_cc(LIVE_PARAM_PROFILE, p));
     let mut o = Out::new();
     o.rig.button(LIVE_BUTTON_FX);
-    assert_eq!(o.tick(), [cc_packet(0, 25, 127)]);
+    assert_eq!(o.tick(), [cc_packet(0, 25, 127), profile(SID_CHIP_8580_R5)]);
     o.rig.button(LIVE_BUTTON_FX);
-    assert_eq!(o.tick(), [cc_packet(0, 25, 0)]);
+    assert_eq!(o.tick(), [cc_packet(0, 25, 0), profile(SID_CHIP_6581_R4AR)]);
 }
 
 #[test]
@@ -454,13 +456,14 @@ fn the_rate_is_bounded_and_nothing_starves() {
         o.rig.knob(LIVE_KNOB_RESONANCE, -1);
         assert!(ticks < 20);
     }
-    // Every parameter but the volume and the filter routing (at their maximum already): the
-    // cutoff, the pulse width (the wheel now drives the cutoff), the bend range and the three
-    // targets as NRPNs, the other 28 as CCs: 24 + 28 = 52 packets, 16 a tick.
+    // Every parameter but the volume and the filter routing (at their maximum already) and the
+    // chip model (the worn 6581 profile, set after it, takes the 6581 back): the cutoff, the
+    // pulse width (the wheel now drives the cutoff), the bend range and the three targets as
+    // NRPNs, the other 33 as CCs: 24 + 33 = 57 packets, 16 a tick.
     assert!(ticks >= 4, "{ticks} ticks");
     assert!(o.out.deferred >= 3);
     for cc in [
-        20u8, 21, 22, 23, 25, 71, 72, 73, 75, 76, 77, 78, 79, 102, 116,
+        20u8, 21, 22, 23, 71, 72, 73, 75, 76, 77, 78, 79, 85, 86, 87, 89, 90, 102, 116,
     ] {
         assert!(seen.contains_key(&cc), "CC {cc} never went out");
     }
@@ -552,6 +555,7 @@ fn a_panel_change_the_preset_does_not_load_survives_a_program_change_from_midi()
     let mut want = vec![
         cc_packet(0, 7, to_cc(LIVE_PARAM_VOLUME, 500)),
         cc_packet(0, 25, 127),
+        cc_packet(0, 85, to_cc(LIVE_PARAM_PROFILE, SID_CHIP_8580_R5)),
     ];
     want.sort_unstable();
     assert_eq!(
@@ -652,4 +656,26 @@ fn a_burst_in_one_pass_is_all_midi_and_the_panel_change_before_it_still_goes() {
         [cc_packet(0, 7, to_cc(LIVE_PARAM_VOLUME, 500))],
         "only the panel's volume"
     );
+}
+
+/// The character's parameters (M1c Task 3) go out on their map rows' CCs, like the others.
+#[test]
+fn the_character_goes_out_on_its_ccs() {
+    let mut o = Out::new();
+    o.set(LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN);
+    o.set(LIVE_PARAM_AGE, 100);
+    o.set(LIVE_PARAM_DAC, 127);
+    o.set(LIVE_PARAM_THUMP, 64);
+    o.set(LIVE_PARAM_BLEED, 1);
+    let mut got = o.tick();
+    got.sort_unstable();
+    let mut want = vec![
+        cc_packet(0, 85, to_cc(LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN)),
+        cc_packet(0, 86, 100),
+        cc_packet(0, 87, 127),
+        cc_packet(0, 89, 64),
+        cc_packet(0, 90, 1),
+    ];
+    want.sort_unstable();
+    assert_eq!(got, want);
 }

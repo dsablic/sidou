@@ -22,6 +22,7 @@ extern "C" {
     fn residfp_clock_silent(s: *mut RawSid, cycles: u32) -> i32;
     fn residfp_set_filter_curve(s: *mut RawSid, csg8580: i32, curve: f64) -> i32;
     fn residfp_set_filter6581_range(s: *mut RawSid, range: f64) -> i32;
+    fn residfp_set_combined_waveforms(s: *mut RawSid, cws: i32) -> i32;
     fn residfp_filter6581_dac(curve: f64, out: *mut u16) -> i32;
     fn residfp_pulldown_table(csg8580: i32, cws: i32, out: *mut i16) -> i32;
     fn residfp_wave_table(out: *mut i16) -> i32;
@@ -204,6 +205,13 @@ impl Sid {
     pub fn set_filter6581_range(&mut self, range: f64) {
         let status = unsafe { residfp_set_filter6581_range(self.raw.as_ptr(), range) };
         assert_eq!(status, 0, "reSIDfp setFilter6581Range threw");
+    }
+
+    /// The combined-waveform strength (`setCombinedWaveforms`; AVERAGE by default). Set it
+    /// after the chip model: it rebuilds that model's pulldown tables.
+    pub fn set_combined_waveforms(&mut self, cws: CombinedWaveforms) {
+        let status = unsafe { residfp_set_combined_waveforms(self.raw.as_ptr(), cws as i32) };
+        assert_eq!(status, 0, "reSIDfp setCombinedWaveforms threw");
     }
 
     /// A buffer size that holds every sample `cycles` chip cycles can produce.

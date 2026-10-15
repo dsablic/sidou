@@ -160,6 +160,17 @@ int residfp_filter6581_dac(double curve, uint16_t* out) {
     }
 }
 
+// The combined-waveform strength (SID::setCombinedWaveforms; AVERAGE, WEAK, STRONG = 0, 1,
+// 2): it rebuilds the chip's pulldown tables for its model.
+int residfp_set_combined_waveforms(SID* s, int cws) {
+    try {
+        s->setCombinedWaveforms(static_cast<reSIDfp::CombinedWaveforms>(cws));
+        return 0;
+    } catch (...) {
+        return -1;
+    }
+}
+
 int residfp_clock_silent(SID* s, unsigned cycles) {
     try {
         s->clockSilent(cycles);

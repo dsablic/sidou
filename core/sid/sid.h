@@ -51,6 +51,13 @@ typedef struct {
     sid_nonlin nl;
     float mix_lp, mix_bp, mix_bpn, mix_hp, dc_in;
     float out_c, out_lp;
+    /* The character's output stage (sid_character.h; both models, 0 from sid_init): thump,
+     * a DC the volume register scales (in voice DAC units, sid_dac.h), so a volume change
+     * steps the output (sid_write puts the step into the DC blocker: nothing per sample, and
+     * the 6581's 13 kHz output pole does not smooth it); bleed, the share of the unfiltered
+     * voices that also reaches the filter's input (a multiply and an add per sample, in a copy
+     * of the render that runs only while it is not 0). */
+    float thump, bleed;
 } sid;
 
 /* sample_rate must be in [4000, 65535]. The oscillator step needs
@@ -117,11 +124,35 @@ void sid_set_gate_reset(sid* s, int on);
  * rewrite one (through the register ring on the device) to apply the curve. */
 int sid_set_filter_curve(sid* s, uint32_t curve);
 
+/* sid_set_filter_curve between two curve settings: each FC value's cutoff in Hz, and each
+ * resonance value's damping, (1 - t) of curve's plus t of toward's (t clamped to [0, 1]),
+ * then the same tables as sid_set_filter_curve builds (t 0 is curve's exactly). The chip
+ * keeps curve as its filter_curve. Returns 0, or -1 for a curve the model does not have,
+ * changing nothing. The same contract as sid_set_filter_curve: main loop only, the
+ * coefficients follow at the next write to $15-$17 (or sid_filter_refresh). */
+int sid_set_filter_blend(sid* s, uint32_t curve, uint32_t toward, float t);
+
+/* Recomputes the filter's coefficients and the 6581's output mix from the tables and the
+ * registers, as a write to $17 would, without touching the data bus. Main context, on a
+ * chip that is not rendering (sid_character_apply after sid_init); in flash on the device. */
+void sid_filter_refresh(sid* s);
+
+/* The output gain sid_init sets for the chip's model (int16 per unit of the mix): what
+ * sid_character scales for the thump's headroom. */
+float sid_base_output_gain(const sid* s);
+
+/* The non-linearity sid_set_filter_nonlinearity would give the chip for an amount, without
+ * changing the chip: for code that applies it later (sid_character_stage_for). */
+void sid_nonlin_for(const sid* s, float amount, sid_nonlin* out);
+
 /* Scales the 6581 filter's non-linearity (sid_filter.h, sid_nonlin): its cutoff's
  * rise with the swing in the threshold region, its fall under the DC load of the voices
  * routed into it, and its lowest cutoff. 1 is reSIDfp's, what sid_init sets; 0 makes the
  * filter linear; between and beyond scale it (M1c Task 3's chip profiles and its age/heat
- * control blend it). The amount is clamped to [0, 2], and NaN is 0: below about -0.5 the
+ * control blend it), except the lowest cutoff, which the amount scales only up to 1 and
+ * which follows the chip's cutoff table at FC 0 (against the default curve setting's:
+ * reSIDfp's lowest cutoff moves with its curve and range), so set the filter curve first.
+ * The amount is clamped to [0, 2], and NaN is 0: below about -0.5 the
  * filter runs to inf and NaN at low cutoffs, and from about 3 the band-pass saturates at
  * FC 0. The 8580 ignores it.
  * It writes four floats (nl.level, level_off, load, floor), one at a time. A render takes

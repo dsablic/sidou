@@ -9,7 +9,7 @@ play on every channel (omni); program change 0..3 selects the preset. A program 
 loads the preset's cutoff, resonance, pulse width, SID settings (waveform, ring, sync,
 the envelope, filter routing and mode) and expression settings (bend range, the targets,
 the vibrato) over any edits, even when it selects the preset already playing; volume, the
-chip model, the envelope mode, the effect slots, the controllers (bend, wheel, aftertouch) and
+chip model and character, the envelope mode, the effect slots, the controllers (bend, wheel, aftertouch) and
 a bend range set by RPN 0 are kept.
 
 **How the numbers were chosen.** CCs that MIDI gives a meaning are kept for it:
@@ -59,6 +59,12 @@ patch's value up or down around 64; SIDOU does not.
 - **Chip model:** a change resets the chip, so it waits for the next 10 ms tick and takes
   the last value received: a stream of changes resets it at most 100 times a second, and
   the FX button changes it at once.
+- **Character:** the profile (CC 85) is a chip and a model: a change resets the chip as a
+  model change does, and the model follows it. The model (CC 25, the FX button) selects
+  the 8580 R5 profile, or goes back to the last 6581 profile. Age/heat, DAC sloppiness,
+  output thump and filter bleed change the playing chip without a reset; they too apply
+  at the next tick, the last value received, at most 100 times a second. The profiles,
+  their sources and what each control does: docs/decisions/0006-chip-profiles.md.
 - **Envelope mode:** 0 INSTANT (the default) restarts each voice's envelope rate counter at
   each gate edge, so a note's attack, and its release at the note-off, take their first
   step within one rate period and 3 chip cycles (12 cycles at attack 0). 1 AUTHENTIC is
@@ -195,6 +201,11 @@ In NRPN order.
 | SID | Sustain | 79 | 1/8 (136) | 0..15 | steps | 10 | 0..15, the level |
 | SID | Release | 72 | 1/9 (137) | 0..15 | steps | 6 | 0..15, the SID's rates |
 | SID | Envelope mode | 26 | 1/10 (138) | 0..1 | steps | 0 | 0 instant (the rate counter restarts at each gate edge), 1 authentic (the chip's ADSR delay: an attack or release up to 33 ms late after a slower rate) |
+| Character | Profile | 85 | 2/0 (256) | 0..4 | steps | 2 | 0 6581 R2, 1 6581 R3, 2 6581 R4AR (reSIDfp's default), 3 8580 R5, 4 worn 6581 (artistic); sets the chip model too (a chip reset) |
+| Character | Age/heat | 86 | 2/1 (257) | 0..127 | linear | 0 | 0 the profile .. 127: the filter's cutoff drifts darker, the 6581's non-linearity doubles |
+| Character | DAC sloppiness | 87 | 2/2 (258) | 0..127 | linear | 0 | 0 the profile .. 127: the voice DACs leak up to 6 times as much and kink more |
+| Character | Output thump | 89 | 2/3 (259) | 0..127 | linear | 0 | 0 none .. 127: a volume change steps the output (the 6581's operating point) |
+| Character | Filter bleed | 90 | 2/4 (260) | 0..127 | linear | 0 | 0 none .. 127: half the unfiltered voices also reach the filter |
 | Distortion | Algorithm | 102 | 3/0 (384) | 0..5 | steps | 0 | 0 OFF, 1 TAPE, 2 OVERDRIVE, 3 FUZZ, 4 CRUSH, 5 LO-FI |
 | Distortion | Amount | 103 | 3/1 (385) | 0..127 | linear | 0 | 0..127 |
 | Distortion | A | 104 | 3/2 (386) | 0..127 | linear | 0 | 0..127 |
@@ -218,18 +229,6 @@ In NRPN order.
 | Expression | Vibrato depth | 77 | 6/5 (773) | 0..127 | linear | 0 | 0 off .. 127 +-99 cents, a triangle |
 | Expression | Vibrato delay | 78 | 6/6 (774) | 0..127 | linear | 0 | 0..1.27 s after each note-on, in 10 ms |
 
-## Reserved: not yet implemented
-
-These numbers are kept for the character layer (M1c Task 3) and do nothing yet; a CC or NRPN sent to them is ignored.
-
-| Group | Parameter | CC | NRPN (MSB/LSB) | Range | Values |
-|---|---|---|---|---|---|
-| Character | Profile | 85 | 2/0 (256) | 0..4 | 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, worn 6581 |
-| Character | Age/heat | 86 | 2/1 (257) | 0..127 | 0..127 |
-| Character | DAC sloppiness | 87 | 2/2 (258) | 0..127 | 0..127 |
-| Character | Output thump | 89 | 2/3 (259) | 0..127 | 0..127 |
-| Character | Filter bleed | 90 | 2/4 (260) | 0..127 | 0..127 |
-
 ## By CC
 
 | CC | Parameter |
@@ -252,11 +251,11 @@ These numbers are kept for the character layer (M1c Task 3) and do nothing yet; 
 | 77 | Expression Vibrato depth |
 | 78 | Expression Vibrato delay |
 | 79 | SID Sustain |
-| 85 | Character Profile (reserved) |
-| 86 | Character Age/heat (reserved) |
-| 87 | Character DAC sloppiness (reserved) |
-| 89 | Character Output thump (reserved) |
-| 90 | Character Filter bleed (reserved) |
+| 85 | Character Profile |
+| 86 | Character Age/heat |
+| 87 | Character DAC sloppiness |
+| 89 | Character Output thump |
+| 90 | Character Filter bleed |
 | 102 | Distortion Algorithm |
 | 103 | Distortion Amount |
 | 104 | Distortion A |

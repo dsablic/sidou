@@ -254,6 +254,7 @@ fn slot_settings_cross_the_register_ring_in_order() {
         wait_ctx: std::ptr::null_mut(),
         full_waits: 0,
         reset_waits: 0,
+        character_waits: 0,
     });
     let out_ptr: *mut reg_ring_out = &mut *out;
     out.wait_ctx = out_ptr.cast();
@@ -322,6 +323,7 @@ fn the_host_sink_never_writes_a_slot_register_to_the_chip() {
         chip: &mut *chip,
         clock_hz: SID_CLOCK_PAL,
         sample_rate: 44100,
+        ..Default::default()
     };
     // 0xA1 would alias to register 0x01 (voice 1's frequency high byte).
     unsafe {

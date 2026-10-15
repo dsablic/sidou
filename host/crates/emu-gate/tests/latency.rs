@@ -271,6 +271,7 @@ fn host_held_peak() -> i32 {
         chip: &mut *chip,
         clock_hz: SID_CLOCK_PAL,
         sample_rate: FS as u32,
+        ..Default::default()
     });
     let mut l = Box::<live>::default();
     let ctx: *mut live_sid_target = &mut *target;

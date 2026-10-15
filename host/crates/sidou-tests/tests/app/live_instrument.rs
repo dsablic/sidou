@@ -33,11 +33,24 @@ fn gates(rig: &Rig) -> [bool; 3] {
 // --- init and registers ---
 
 const GATE_RESET: u8 = LIVE_REG_GATE_RESET as u8;
+/* A reset comes after the character's settings (live.h): the profile, then its four
+ * controls. */
+const CHARACTER: usize = LIVE_CHAR_FIELDS as usize;
+
+/// The character's settings live sends before a reset: the profile, the controls at 0.
+fn character_log(profile: u32) -> Vec<(u8, u8)> {
+    let mut v = vec![(LIVE_REG_CHAR_FIRST as u8, profile as u8)];
+    v.extend((1..LIVE_CHAR_FIELDS).map(|f| ((LIVE_REG_CHAR_FIRST + f) as u8, 0)));
+    v
+}
 
 #[test]
 fn init_resets_the_chip_then_writes_every_register_once() {
     let rig = Rig::new(SID_MODEL_8580);
     let log = rig.log();
+    // The character first: the model's default profile, every control at 0.
+    assert_eq!(log[..CHARACTER], character_log(SID_CHIP_8580_R5)[..]);
+    let log = &log[CHARACTER..];
     assert_eq!(log[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
     // The envelope is instant by default: the chip's gate reset on, before any gate.
     assert_eq!(log[1], (GATE_RESET, 1));
@@ -112,17 +125,28 @@ fn every_chip_reset_is_followed_by_the_envelope_mode_before_any_register() {
     rig.note_on(60);
     rig.clear();
     rig.button(LIVE_BUTTON_FX); // at once
-    assert_eq!(rig.log()[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
+    assert_eq!(rig.log()[..CHARACTER], character_log(SID_CHIP_8580_R5)[..]);
     assert_eq!(
-        rig.log()[1],
+        rig.log()[CHARACTER],
+        (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8)
+    );
+    assert_eq!(
+        rig.log()[CHARACTER + 1],
         (GATE_RESET, 0),
         "the new chip is authentic too"
     );
     rig.clear();
     unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_MODEL, 0) };
     rig.tick(); // a model MIDI asked for
-    assert_eq!(rig.log()[0], (LIVE_REG_RESET as u8, SID_MODEL_6581 as u8));
-    assert_eq!(rig.log()[1], (GATE_RESET, 0));
+    assert_eq!(
+        rig.log()[..CHARACTER],
+        character_log(SID_CHIP_6581_R4AR)[..]
+    );
+    assert_eq!(
+        rig.log()[CHARACTER],
+        (LIVE_REG_RESET as u8, SID_MODEL_6581 as u8)
+    );
+    assert_eq!(rig.log()[CHARACTER + 1], (GATE_RESET, 0));
     assert_eq!(
         rig.log().iter().filter(|&&(r, _)| r == GATE_RESET).count(),
         1
@@ -700,19 +724,25 @@ fn fx_toggles_the_model_and_keeps_every_parameter() {
         )
     );
     let log = rig.log();
-    assert_eq!(log[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
-    assert_eq!(log[1], (GATE_RESET, 1));
+    assert_eq!(log[..CHARACTER], character_log(SID_CHIP_8580_R5)[..]);
+    assert_eq!(log[CHARACTER], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
+    assert_eq!(log[CHARACTER + 1], (GATE_RESET, 1));
     assert_eq!(
         log.len(),
-        27,
-        "a reset, the envelope mode, then every register"
+        CHARACTER + 27,
+        "the character, a reset, the envelope mode, then every register"
     );
     assert_eq!(rig.rec.regs, regs_before, "the same register values");
     assert!(rig.gated(voice_of(&rig, 48)), "held notes sound again");
 
     rig.button(LIVE_BUTTON_FX);
     assert_eq!(rig.live.model, SID_MODEL_6581);
-    assert_eq!(rig.log()[27], (LIVE_REG_RESET as u8, SID_MODEL_6581 as u8));
+    let back = &rig.log()[CHARACTER + 27..];
+    assert_eq!(back[..CHARACTER], character_log(SID_CHIP_6581_R4AR)[..]);
+    assert_eq!(
+        back[CHARACTER],
+        (LIVE_REG_RESET as u8, SID_MODEL_6581 as u8)
+    );
 }
 
 // --- with a real chip ---
@@ -720,6 +750,7 @@ fn fx_toggles_the_model_and_keeps_every_parameter() {
 struct Chip {
     chip: Box<sid>,
     target: Box<live_sid_target>,
+    _dac: Box<sid_dac>,
     live: Box<live>,
 }
 
@@ -727,10 +758,13 @@ impl Chip {
     fn new(model: sid_model) -> Self {
         let mut chip = Box::<sid>::default();
         unsafe { sid_init(&mut *chip, model, SID_CLOCK_PAL, 44100) };
+        let mut dac = Box::<sid_dac>::default();
         let mut target = Box::new(live_sid_target {
             chip: &mut *chip,
             clock_hz: SID_CLOCK_PAL,
             sample_rate: 44100,
+            dac: &mut *dac,
+            ..Default::default()
         });
         let mut l = Box::<live>::default();
         let ctx: *mut live_sid_target = &mut *target;
@@ -738,6 +772,7 @@ impl Chip {
         Chip {
             chip,
             target,
+            _dac: dac,
             live: l,
         }
     }
@@ -946,4 +981,109 @@ fn live_params_reads_every_parameter_as_live_param_get_does() {
             .collect();
         assert_eq!(all.to_vec(), each, "round {round}, after parameter {p}");
     }
+}
+
+// --- the character (M1c Task 3) ---
+
+fn set_param(rig: &mut Rig, p: u32, v: u32) {
+    unsafe { live_param_set(&mut *rig.live, p, v) };
+}
+
+fn get_param(rig: &Rig, p: u32) -> u32 {
+    unsafe { live_param_get(&*rig.live, p) }
+}
+
+const CHAR_APPLY: u8 = LIVE_REG_CHAR_APPLY as u8;
+
+/// The controls are recorded and the tick sends what changed, once: the settings, apply, and
+/// $17 after an age change (the filter's coefficients follow its tables). No reset.
+#[test]
+fn the_character_controls_change_the_chip_at_the_tick_without_a_reset() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    rig.clear();
+    set_param(&mut rig, LIVE_PARAM_AGE, 40);
+    set_param(&mut rig, LIVE_PARAM_BLEED, 9);
+    set_param(&mut rig, LIVE_PARAM_BLEED, 10); // the last one wins
+    assert!(
+        rig.log().is_empty(),
+        "applied before the tick: {:?}",
+        rig.log()
+    );
+    assert_eq!(
+        get_param(&rig, LIVE_PARAM_BLEED),
+        10,
+        "the request reads back"
+    );
+    rig.tick();
+    let age = (LIVE_REG_CHAR_FIRST + 1) as u8;
+    let bleed = (LIVE_REG_CHAR_FIRST + 4) as u8;
+    assert_eq!(
+        rig.log(),
+        &[
+            (age, 40),
+            (bleed, 10),
+            (CHAR_APPLY, 0),
+            (0x17, rig.reg(0x17))
+        ]
+    );
+    rig.clear();
+    rig.tick();
+    assert!(rig.log().is_empty(), "applied twice: {:?}", rig.log());
+    set_param(&mut rig, LIVE_PARAM_THUMP, 5);
+    rig.tick();
+    let thump = (LIVE_REG_CHAR_FIRST + 3) as u8;
+    assert_eq!(
+        rig.log(),
+        &[(thump, 5), (CHAR_APPLY, 0)],
+        "no $17 without an age change"
+    );
+    assert_eq!(rig.live.model, SID_MODEL_6581);
+}
+
+/// A profile is a chip and a model: it resets the chip at the tick, the model follows it, and
+/// the model goes back to the last 6581 profile asked for.
+#[test]
+fn a_profile_resets_the_chip_and_the_model_follows_it() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    assert_eq!(get_param(&rig, LIVE_PARAM_PROFILE), SID_CHIP_6581_R4AR);
+    set_param(&mut rig, LIVE_PARAM_AGE, 7);
+    set_param(&mut rig, LIVE_PARAM_PROFILE, SID_CHIP_8580_R5);
+    assert_eq!(
+        get_param(&rig, LIVE_PARAM_MODEL),
+        1,
+        "the model follows the request"
+    );
+    rig.clear();
+    rig.tick();
+    let mut want = character_log(SID_CHIP_8580_R5);
+    want[1].1 = 7; // the age, sent with the reset
+    assert_eq!(rig.log()[..CHARACTER], want[..]);
+    assert_eq!(
+        rig.log()[CHARACTER],
+        (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8)
+    );
+    assert_eq!(rig.live.model, SID_MODEL_8580);
+    assert!(
+        !rig.log().iter().any(|&(r, _)| r == CHAR_APPLY),
+        "the reset gives the new chip its controls"
+    );
+    // Worn, then the model to the 8580 and back: worn again.
+    set_param(&mut rig, LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN);
+    rig.tick();
+    set_param(&mut rig, LIVE_PARAM_MODEL, 1);
+    rig.tick();
+    assert_eq!(get_param(&rig, LIVE_PARAM_PROFILE), SID_CHIP_8580_R5);
+    set_param(&mut rig, LIVE_PARAM_MODEL, 0);
+    rig.tick();
+    assert_eq!(get_param(&rig, LIVE_PARAM_PROFILE), SID_CHIP_6581_WORN);
+    assert_eq!(rig.live.profile, SID_CHIP_6581_WORN as u8);
+    // The FX button too.
+    rig.button(LIVE_BUTTON_FX);
+    assert_eq!(rig.live.profile, SID_CHIP_8580_R5 as u8);
+    rig.button(LIVE_BUTTON_FX);
+    assert_eq!(rig.live.profile, SID_CHIP_6581_WORN as u8);
+    // A preset keeps the character.
+    rig.set_preset(1);
+    assert_eq!(get_param(&rig, LIVE_PARAM_PROFILE), SID_CHIP_6581_WORN);
+    assert_eq!(get_param(&rig, LIVE_PARAM_AGE), 7);
 }

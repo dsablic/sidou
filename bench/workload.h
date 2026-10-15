@@ -49,6 +49,13 @@ enum {
     WORKLOAD_SAW_E000,
     WORKLOAD_PULSE_SAW_FFFF,
     WORKLOAD_PULSE_SAW_E000,
+    /* The chip's character (sid_character.h): the worn 6581 profile on the 6581, the 8580
+     * R5 on the 8580, and every 8th block the stage swapped between the controls at 127 and
+     * at 64 (sid_character_commit, as the register ring's drain does). On the triad every
+     * control; on the two worst blocks' scenarios the bleed alone, the costliest. */
+    WORKLOAD_CHARACTER_TRIAD,
+    WORKLOAD_CHARACTER_NOISE_TRI_FFFF,
+    WORKLOAD_CHARACTER_NOISE_TRI_RING_0800,
     WORKLOAD_SCENARIOS
 };
 

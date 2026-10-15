@@ -670,12 +670,19 @@ fn geomean(v: impl Iterator<Item = f64>) -> Option<f64> {
 
 /// Measures a curve setting and fits SIDOU's filter to it. Takes about half a minute of
 /// CPU time per model; it runs on every core.
-pub fn fit_setting(setting: &CurveSetting) -> FilterFit {
+/// Sets reSIDfp's 6581 filter range for `setting` (its default when None), which reSIDfp
+/// keeps once per process: before measuring a 6581 setting, and never while another 6581
+/// measurement with another range runs. Nothing for the 8580.
+pub fn apply_range(setting: &CurveSetting) {
     if setting.model == Model::Mos6581 {
         // reSIDfp's default is never calling it: uCox 20e-6, which (1 + 39 r) 1e-6 gives
         // at r = 19 / 39 (it ignores changes under 1e-12).
         Sid::new().set_filter6581_range(setting.range6581.unwrap_or(19.0 / 39.0));
     }
+}
+
+pub fn fit_setting(setting: &CurveSetting) -> FilterFit {
+    apply_range(setting);
     let direct = direct_spectra(setting);
     let jobs: Vec<(u32, u8)> = fc_grid(setting.model)
         .into_iter()

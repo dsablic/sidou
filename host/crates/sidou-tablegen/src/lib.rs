@@ -8,11 +8,12 @@
 //! fails when the checked-in files differ from what this produces.
 
 pub mod filter_fit;
+pub mod profiles;
 
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
-use filter_fit::{CurveSetting, FilterFit};
+use filter_fit::FilterFit;
 use residfp_sys::{pulldown_table, CombinedWaveforms, Model, PULLDOWN_ROWS};
 
 /// The libresidfp revision the tables come from (the third_party/libresidfp submodule).
@@ -233,11 +234,8 @@ fn noise_jump_header() -> Generated {
 }
 
 /// The filter curve settings fitted, in table order per model (index 0 is the one
-/// sid_init uses): reSIDfp's defaults. M1c Task 3 adds its profiles here.
-pub const FILTER_CURVES: [CurveSetting; 2] = [
-    CurveSetting::default_for(Model::Mos6581),
-    CurveSetting::default_for(Model::Csg8580),
-];
+/// sid_init uses, reSIDfp's default): the chip profiles' (profiles.rs).
+pub use profiles::FILTER_CURVES;
 
 /// Measures and fits every filter curve setting (filter_fit.rs), in FILTER_CURVES order.
 /// Each 6581 range setting must be measured on its own (reSIDfp keeps the range once per
@@ -336,6 +334,7 @@ pub fn generate_computed() -> Vec<Generated> {
     vec![
         grid_header(),
         noise_jump_header(),
+        profiles::profiles_header(),
         wave_header(Model::Mos6581),
         wave_header(Model::Csg8580),
     ]

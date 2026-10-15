@@ -275,11 +275,13 @@ fn the_chip_takes_cutoff_and_damping_from_the_tables() {
     }
 }
 
-/// One curve setting per model until M1c Task 3 adds profiles (gen/filter.h).
+/// The curve settings of M1c Task 3's chip profiles (gen/filter.h; sidou-tablegen's
+/// FILTER_CURVES): five on the 6581 (reSIDfp's default, R2, R3, worn, age/heat's), two on
+/// the 8580 (the default, age/heat's).
 #[test]
 fn each_model_has_its_filter_curves() {
-    for model in [SID_MODEL_6581, SID_MODEL_8580] {
-        assert_eq!(unsafe { sid_filter_curves(model) }, 1);
+    for (model, curves) in [(SID_MODEL_6581, 5), (SID_MODEL_8580, 2)] {
+        assert_eq!(unsafe { sid_filter_curves(model) }, curves);
         // Out of range: the default curve, row 0.
         for fc in [0u32, 1023, 2047] {
             assert_eq!(unsafe { sid_cutoff_hz(model, 7, fc) }, cutoff(model, fc));
@@ -324,9 +326,59 @@ fn a_filter_curve_rebuilds_the_tables_and_applies_at_the_next_filter_write() {
         assert_eq!(format!("{:?}", s.svf), format!("{:?}", expect.svf));
         // A curve the model does not have changes nothing.
         s.cutoff_g[5] = 0.25;
-        assert_eq!(unsafe { sid_set_filter_curve(&mut *s, 1) }, -1);
+        let past = unsafe { sid_filter_curves(model) };
+        assert_eq!(unsafe { sid_set_filter_curve(&mut *s, past) }, -1);
         assert_eq!(s.cutoff_g[5], 0.25);
         assert_eq!(s.filter_curve, 0);
+    }
+}
+
+/// sid_set_filter_blend: each cutoff in Hz and each damping (1 - t) of one curve setting's
+/// plus t of another's, through the same clamp and tangent; t 0 is sid_set_filter_curve's
+/// tables bit for bit, t 1 the other curve's, and t is clamped.
+#[test]
+fn a_filter_blend_runs_between_two_curve_settings() {
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        let last = unsafe { sid_filter_curves(model) } - 1;
+        let mut a = chip(model);
+        let mut b = chip(model);
+        let mut s = chip(model);
+        unsafe {
+            sid_set_filter_curve(&mut *a, 0);
+            sid_set_filter_curve(&mut *b, last);
+            assert_eq!(sid_set_filter_blend(&mut *s, 0, last, 0.0), 0);
+        }
+        assert_eq!(s.cutoff_g, a.cutoff_g);
+        assert_eq!(s.res_k, a.res_k);
+        // t 1: the other curve's, to a rounding of a + (b - a).
+        let same_as_b = |s: &sid| {
+            s.cutoff_g
+                .iter()
+                .zip(&b.cutoff_g)
+                .all(|(x, y)| (x - y).abs() <= 1e-6 * y)
+        };
+        unsafe { sid_set_filter_blend(&mut *s, 0, last, 1.0) };
+        assert!(same_as_b(&s));
+        assert_eq!(s.filter_curve, 0, "the blend keeps its first curve");
+        unsafe { sid_set_filter_blend(&mut *s, 0, 0, 0.0) };
+        unsafe { sid_set_filter_blend(&mut *s, 0, last, 7.0) };
+        assert!(same_as_b(&s), "t clamped to 1");
+        unsafe { sid_set_filter_blend(&mut *s, 0, last, f32::NAN) };
+        assert_eq!(s.cutoff_g, a.cutoff_g, "NaN is 0");
+        unsafe { sid_set_filter_blend(&mut *s, 0, last, 0.5) };
+        for fc in [256usize, 1024, 1500] {
+            let hz = |m: u32| unsafe { sid_cutoff_hz(model, m, fc as u32) };
+            let mid = 0.5 * (hz(0) + hz(last));
+            let g = tanf(PI * mid.clamp(30.0, 0.45 * FS) / FS);
+            assert_float_eq(s.cutoff_g[fc], g);
+        }
+        let k = |m: u32| unsafe { sid_resonance_k(model, m, 15) };
+        assert_float_eq(s.res_k[15], 0.5 * (k(0) + k(last)));
+        let past = last + 1;
+        s.cutoff_g[5] = 0.25;
+        assert_eq!(unsafe { sid_set_filter_blend(&mut *s, 0, past, 0.5) }, -1);
+        assert_eq!(unsafe { sid_set_filter_blend(&mut *s, past, 0, 0.5) }, -1);
+        assert_eq!(s.cutoff_g[5], 0.25);
     }
 }
 

@@ -116,44 +116,79 @@ static float exp_neg(float x) {
     return e;
 }
 
-void sid_set_filter_nonlinearity(sid* s, float amount) {
+/* A cutoff in Hz as the SVF's g, clamped to 30 Hz .. 0.45 fs: the filter tables' entries. */
+static float cutoff_g(const sid* s, float hz) {
+    float limit = 0.45f * (float)s->sample_rate;
+    if (hz < 30.0f) {
+        hz = 30.0f;
+    }
+    if (hz > limit) {
+        hz = limit;
+    }
+    return sidou_tanf(SIDOU_PI * hz / (float)s->sample_rate);
+}
+
+void sid_nonlin_for(const sid* s, float amount, sid_nonlin* out) {
     if (!(amount >= 0.0f)) { /* NaN too */
         amount = 0.0f;
     } else if (amount > 2.0f) {
         amount = 2.0f;
     }
     float fs = (float)s->sample_rate;
-    s->nl.level = amount * NL_LEVEL * (44100.0f / fs);
-    s->nl.level_off = -s->nl.level * s->nl.level_ref;
-    s->nl.load = amount * NL_LOAD;
-    s->nl.floor = amount * sidou_tanf(SIDOU_PI * NL_FLOOR_HZ / fs);
+    *out = s->nl;
+    out->level = amount * NL_LEVEL * (44100.0f / fs);
+    out->level_off = -out->level * out->level_ref;
+    out->load = amount * NL_LOAD;
+    /* The lowest cutoff is the chip's, not the non-linearity's: it follows the cutoff table
+     * at FC 0 against the default curve setting's (1 exactly at the default), and the amount
+     * scales it only up to 1 (0: none, the filter linear). */
+    float scale = amount < 1.0f ? amount : 1.0f;
+    float table = s->cutoff_g[0] / cutoff_g(s, sid_cutoff_hz(s->model, 0, 0));
+    out->floor = scale * sidou_tanf(SIDOU_PI * NL_FLOOR_HZ / fs) * table;
+}
+
+void sid_set_filter_nonlinearity(sid* s, float amount) {
+    sid_nonlin n;
+    sid_nonlin_for(s, amount, &n);
+    s->nl.level = n.level;
+    s->nl.level_off = n.level_off;
+    s->nl.load = n.load;
+    s->nl.floor = n.floor;
+}
+
+float sid_base_output_gain(const sid* s) {
+    return OUTPUT_GAIN * (s->model == SID_MODEL_6581 ? LEVEL_6581 : LEVEL_8580);
 }
 
 /* The chip's cutoff (as the SVF's g, clamped to 30 Hz .. 0.45 fs) and damping tables for
- * a curve setting. */
-static void build_filter_tables(sid* s, uint32_t curve) {
-    float limit = 0.45f * (float)s->sample_rate;
+ * a curve setting, or (1 - t) of it and t of another's (t = 0: curve's exactly). */
+static void build_filter_tables(sid* s, uint32_t curve, uint32_t toward, float t) {
     for (uint32_t fc = 0; fc < SID_FC_STEPS; ++fc) {
-        float hz = sid_cutoff_hz(s->model, curve, fc);
-        if (hz < 30.0f) {
-            hz = 30.0f;
-        }
-        if (hz > limit) {
-            hz = limit;
-        }
-        s->cutoff_g[fc] = sidou_tanf(SIDOU_PI * hz / (float)s->sample_rate);
+        float a = sid_cutoff_hz(s->model, curve, fc);
+        s->cutoff_g[fc] = cutoff_g(s, a + t * (sid_cutoff_hz(s->model, toward, fc) - a));
     }
     for (uint32_t r = 0; r < 16u; ++r) {
-        s->res_k[r] = sid_resonance_k(s->model, curve, r);
+        float a = sid_resonance_k(s->model, curve, r);
+        s->res_k[r] = a + t * (sid_resonance_k(s->model, toward, r) - a);
     }
     s->filter_curve = (uint8_t)curve;
 }
 
 int sid_set_filter_curve(sid* s, uint32_t curve) {
-    if (curve >= sid_filter_curves(s->model)) {
+    return sid_set_filter_blend(s, curve, curve, 0.0f);
+}
+
+int sid_set_filter_blend(sid* s, uint32_t curve, uint32_t toward, float t) {
+    uint32_t n = sid_filter_curves(s->model);
+    if (curve >= n || toward >= n) {
         return -1;
     }
-    build_filter_tables(s, curve);
+    if (!(t > 0.0f)) { /* NaN too */
+        t = 0.0f;
+    } else if (t > 1.0f) {
+        t = 1.0f;
+    }
+    build_filter_tables(s, curve, toward, t);
     return 0;
 }
 
@@ -173,13 +208,18 @@ void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) 
         sid_env_reset_settled(&s->env[v]); /* zeroed above: nothing to settle */
     }
     s->sample_rate = sample_rate;
-    build_filter_tables(s, 0);
+    build_filter_tables(s, 0, 0, 0.0f);
     sid_svf_reset(&s->svf);
     s->dc_r = 1.0f - 2.0f * SIDOU_PI * DC_BLOCK_HZ / (float)sample_rate;
     s->nl.level_ref = NL_LEVEL_REF;
     s->nl.load_ref = NL_LOAD_REF;
     sid_set_filter_nonlinearity(s, 1.0f);
     s->out_c = 1.0f - exp_neg(2.0f * SIDOU_PI * OUT_LP_HZ / (float)sample_rate);
+    update_filter(s);
+    update_mix(s);
+}
+
+void sid_filter_refresh(sid* s) {
     update_filter(s);
     update_mix(s);
 }
@@ -235,11 +275,21 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
         update_filter(s);
         update_mix(s);
         break;
-    case 0x18:
+    case 0x18: {
+        float volume = (float)(v & 0x0f) / 15.0f;
+        if (s->thump != 0.0f) {
+            /* The thump (sid.h): a DC the volume scales, which the output's DC blocker
+             * removes again, so all it ever does is step the output as the volume changes.
+             * That step is the DC blocker's own response to it, so it is put straight into
+             * the blocker's state (its last input, as if it had carried the DC all along)
+             * here, at the write, and costs the render nothing. */
+            s->dc_x1 -= s->thump * (volume - s->volume);
+        }
         s->mode_vol = v;
-        s->volume = (float)(v & 0x0f) / 15.0f;
+        s->volume = volume;
         update_mix(s);
         break;
+    }
     default: break;
     }
 }
@@ -386,12 +436,14 @@ void sid_clock(sid* s, uint32_t cycles) {
 }
 
 /* render_8580's loop, in chunks of `every` samples with a tap after each (sid_render_tap;
- * sid_render's is one chunk and no tap): M0's linear filter and mix, unchanged. */
+ * sid_render's is one chunk and no tap): M0's linear filter and mix, unchanged. With
+ * bleed_on (a constant: each model's render has a copy with it and one without, so a chip
+ * with no bleed pays nothing for it) the unfiltered voices also reach the filter (sid.h). */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
 static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t every,
-                               sid_tap tap, void* ctx) {
+                               sid_tap tap, void* ctx, const int bleed_on) {
     int16_t* const last = out + frames;
     while (out < last) {
         int16_t* const stop = last - out > (ptrdiff_t)every ? out + every : last;
@@ -410,6 +462,9 @@ static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t e
                 } else if (!(v == 2 && (s->mode_vol & 0x80u))) {
                     direct += x;
                 }
+            }
+            if (bleed_on) {
+                filt_in += s->bleed * direct;
             }
             sid_svf_tick(&s->svf, filt_in);
             float filtered = 0.0f;
@@ -453,12 +508,12 @@ static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t e
  * (sid_nl_tick) and its output path (sid.h), and keeps what it reads every sample in
  * locals: nothing writes the chip during a render (sid_write runs between them), and the
  * compiler cannot know that through the pointer. The tap (sid_render_tap) sees its voices;
- * its filter's state is stored back once, at the end. */
+ * its filter's state is stored back once, at the end. bleed_on as render_loop's. */
 #if defined(__GNUC__) || defined(__clang__)
-__attribute__((noinline))
+__attribute__((always_inline))
 #endif
-static void render_6581(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_tap tap,
-                        void* ctx) {
+static inline void render_6581_body(sid* s, int16_t* out, uint32_t frames, uint32_t every,
+                                    sid_tap tap, void* ctx, const int bleed_on) {
     const sid_nl_coefs c = sid_nl_coefs_of(&s->svf, &s->nl);
     float ic1 = s->svf.ic1, ic2 = s->svf.ic2, lp = s->svf.lp, bp = s->svf.bp, hp = s->svf.hp;
     float bpn = s->svf.bpn;
@@ -466,6 +521,7 @@ static void render_6581(sid* s, int16_t* out, uint32_t frames, uint32_t every, s
     const float vol_c = s->volume * s->out_c, out_c = s->out_c;
     float out_lp = s->out_lp, dc_x1 = s->dc_x1, dc_y1 = s->dc_y1;
     const float dc_r = s->dc_r, gain = s->output_gain;
+    const float bleed = s->bleed;
     int16_t* const last = out + frames;
     while (out < last) {
         int16_t* const stop = last - out > (ptrdiff_t)every ? out + every : last;
@@ -484,6 +540,9 @@ static void render_6581(sid* s, int16_t* out, uint32_t frames, uint32_t every, s
                 } else if (!(v == 2 && (s->mode_vol & 0x80u))) {
                     direct += x;
                 }
+            }
+            if (bleed_on) {
+                filt_in += bleed * direct;
             }
             sid_nl_tick(&ic1, &ic2, &lp, &bp, &hp, &bpn, filt_in, &c);
             float filtered = mix_lp * lp + mix_bpn * bpn + mix_bp * bp + mix_hp * hp;
@@ -528,9 +587,33 @@ static void render_6581(sid* s, int16_t* out, uint32_t frames, uint32_t every, s
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((noinline))
 #endif
+static void render_6581(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_tap tap,
+                        void* ctx) {
+    render_6581_body(s, out, frames, every, tap, ctx, 0);
+}
+
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline, unused))
+#endif
+static void render_6581_bleed(sid* s, int16_t* out, uint32_t frames, uint32_t every,
+                              sid_tap tap, void* ctx) {
+    render_6581_body(s, out, frames, every, tap, ctx, 1);
+}
+
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline))
+#endif
 static void render_8580(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_tap tap,
                         void* ctx) {
-    render_loop(s, out, frames, every, tap, ctx);
+    render_loop(s, out, frames, every, tap, ctx, 0);
+}
+
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline, unused))
+#endif
+static void render_8580_bleed(sid* s, int16_t* out, uint32_t frames, uint32_t every,
+                              sid_tap tap, void* ctx) {
+    render_loop(s, out, frames, every, tap, ctx, 1);
 }
 
 void sid_render(sid* s, int16_t* out, uint32_t frames) {
@@ -540,8 +623,15 @@ void sid_render(sid* s, int16_t* out, uint32_t frames) {
 void sid_render_tap(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_tap tap,
                     void* ctx) {
     fold_owed(s);
+    int bleed = s->bleed != 0.0f;
     if (s->model == SID_MODEL_6581) {
-        render_6581(s, out, frames, every, tap, ctx);
+        if (bleed) {
+            render_6581_bleed(s, out, frames, every, tap, ctx);
+        } else {
+            render_6581(s, out, frames, every, tap, ctx);
+        }
+    } else if (bleed) {
+        render_8580_bleed(s, out, frames, every, tap, ctx);
     } else {
         render_8580(s, out, frames, every, tap, ctx);
     }

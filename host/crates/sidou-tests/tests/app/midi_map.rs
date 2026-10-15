@@ -252,23 +252,33 @@ fn defaults_are_the_power_on_values() {
     }
 }
 
+/// The Character rows, reserved until M1c Task 3, are the character's parameters, on the
+/// numbers they kept: CC 85, 86, 87, 89, 90 and NRPN 2/0..4.
 #[test]
-fn reserved_rows_are_the_character_parameters() {
-    let reserved: Vec<Row> = rows().into_iter().filter(Row::reserved).collect();
-    let names: Vec<&str> = reserved.iter().map(|r| r.name.as_str()).collect();
+fn the_character_rows_are_the_character_parameters() {
+    let character: Vec<Row> = rows()
+        .into_iter()
+        .filter(|r| r.group == "Character")
+        .collect();
+    let got: Vec<(&str, u32, u8, u16)> = character
+        .iter()
+        .map(|r| (r.name.as_str(), u32::from(r.param), r.cc, r.nrpn))
+        .collect();
+    let nrpn = |lsb: u16| (2 << 7) | lsb;
     assert_eq!(
-        names,
+        got,
         [
-            "Profile",
-            "Age/heat",
-            "DAC sloppiness",
-            "Output thump",
-            "Filter bleed"
+            ("Profile", LIVE_PARAM_PROFILE, 85, nrpn(0)),
+            ("Age/heat", LIVE_PARAM_AGE, 86, nrpn(1)),
+            ("DAC sloppiness", LIVE_PARAM_DAC, 87, nrpn(2)),
+            ("Output thump", LIVE_PARAM_THUMP, 89, nrpn(3)),
+            ("Filter bleed", LIVE_PARAM_BLEED, 90, nrpn(4)),
         ]
     );
-    for r in &reserved {
-        assert_eq!(r.group, "Character");
-    }
+    assert!(
+        rows().iter().all(|r| !r.reserved()),
+        "no row is reserved now"
+    );
 }
 
 #[test]
@@ -365,21 +375,9 @@ fn each_entry_round_trips_through_its_nrpn_at_full_resolution() {
     }
 }
 
-#[test]
-fn reserved_rows_do_nothing_yet() {
-    let mut m = Midi::new();
-    m.rig.clear();
-    for r in rows().iter().filter(|r| r.reserved()) {
-        if r.has_cc() {
-            m.trs(&[0xB0, r.cc, 100]);
-        }
-        if r.has_nrpn() {
-            let (msb, lsb) = ((r.nrpn >> 7) as u8, (r.nrpn & 0x7f) as u8);
-            m.trs(&[0xB0, 99, msb, 98, lsb, 6, 1, 38, 2, 96, 0, 97, 0]);
-        }
-    }
-    assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
-}
+/// The character's settings live sends before every reset (live.h): the profile and its four
+/// controls.
+const CHARACTER: usize = LIVE_CHAR_FIELDS as usize;
 
 // --- the live parameters ---
 
@@ -453,12 +451,15 @@ fn the_sid_parameters_survive_a_model_change() {
     set(&mut rig, LIVE_PARAM_MODEL, 1);
     rig.tick();
     assert_eq!(rig.live.model, SID_MODEL_8580);
-    assert_eq!(rig.log()[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
-    assert_eq!(rig.log()[1], (LIVE_REG_GATE_RESET as u8, 1));
+    assert_eq!(
+        rig.log()[CHARACTER],
+        (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8)
+    );
+    assert_eq!(rig.log()[CHARACTER + 1], (LIVE_REG_GATE_RESET as u8, 1));
     assert_eq!(
         rig.log().len(),
-        27,
-        "a reset, the envelope mode and every register"
+        CHARACTER + 27,
+        "the character, a reset, the envelope mode and every register"
     );
     assert_eq!(rig.control(0), 0x80);
     assert_eq!(rig.reg(5) >> 4, 7);
@@ -491,8 +492,8 @@ fn the_chip_model_changes_at_most_once_a_tick_and_the_last_request_wins() {
     assert_eq!(resets(&m.rig), 1);
     assert_eq!(
         m.rig.log().len(),
-        27,
-        "a reset, the envelope mode and every register"
+        CHARACTER + 27,
+        "the character, a reset, the envelope mode and every register"
     );
     assert_eq!(m.rig.live.model, SID_MODEL_8580);
     m.rig.clear();
@@ -518,7 +519,10 @@ fn the_fx_button_toggles_the_chip_at_once_over_a_pending_request() {
         m.rig.live.model, SID_MODEL_8580,
         "the button flips the chip heard"
     );
-    assert_eq!(m.rig.log()[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
+    assert_eq!(
+        m.rig.log()[CHARACTER],
+        (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8)
+    );
     assert_eq!(get(&m.rig, LIVE_PARAM_MODEL), 1);
     m.rig.clear();
     m.rig.tick();
@@ -996,7 +1000,10 @@ fn an_nrpn_reaches_the_chip_model() {
     m.rig.tick();
     assert_eq!(m.rig.live.model, SID_MODEL_8580);
     assert_eq!(resets(&m.rig), 1);
-    assert_eq!(m.rig.log()[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
+    assert_eq!(
+        m.rig.log()[CHARACTER],
+        (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8)
+    );
 }
 
 #[test]
@@ -1052,7 +1059,7 @@ play on every channel (omni); program change 0..{last} selects the preset. A pro
 loads the preset's cutoff, resonance, pulse width, SID settings (waveform, ring, sync,
 the envelope, filter routing and mode) and expression settings (bend range, the targets,
 the vibrato) over any edits, even when it selects the preset already playing; volume, the
-chip model, the envelope mode, the effect slots, the controllers (bend, wheel, aftertouch) and
+chip model and character, the envelope mode, the effect slots, the controllers (bend, wheel, aftertouch) and
 a bend range set by RPN 0 are kept.
 
 **How the numbers were chosen.** CCs that MIDI gives a meaning are kept for it:
@@ -1102,6 +1109,12 @@ patch's value up or down around 64; SIDOU does not.
 - **Chip model:** a change resets the chip, so it waits for the next 10 ms tick and takes
   the last value received: a stream of changes resets it at most 100 times a second, and
   the FX button changes it at once.
+- **Character:** the profile (CC 85) is a chip and a model: a change resets the chip as a
+  model change does, and the model follows it. The model (CC 25, the FX button) selects
+  the 8580 R5 profile, or goes back to the last 6581 profile. Age/heat, DAC sloppiness,
+  output thump and filter bleed change the playing chip without a reset; they too apply
+  at the next tick, the last value received, at most 100 times a second. The profiles,
+  their sources and what each control does: docs/decisions/0006-chip-profiles.md.
 - **Envelope mode:** 0 INSTANT (the default) restarts each voice's envelope rate counter at
   each gate edge, so a note's attack, and its release at the note-off, take their first
   step within one rate period and 3 chip cycles (12 cycles at attack 0). 1 AUTHENTIC is
@@ -1298,14 +1311,17 @@ fn doc() -> String {
             r.values
         ));
     }
-    s.push_str(
-        "\n## Reserved: not yet implemented\n\n\
-         These numbers are kept for the character layer (M1c Task 3) and do nothing yet; \
-         a CC or NRPN sent to them is ignored.\n\n",
-    );
-    s.push_str("| Group | Parameter | CC | NRPN (MSB/LSB) | Range | Values |\n");
-    s.push_str("|---|---|---|---|---|---|\n");
-    for r in rows.iter().filter(|r| r.reserved()) {
+    let reserved: Vec<&Row> = rows.iter().filter(|r| r.reserved()).collect();
+    if !reserved.is_empty() {
+        s.push_str(
+            "\n## Reserved: not yet implemented\n\n\
+             These numbers are kept for parameters to come and do nothing yet; a CC or NRPN \
+             sent to them is ignored.\n\n",
+        );
+        s.push_str("| Group | Parameter | CC | NRPN (MSB/LSB) | Range | Values |\n");
+        s.push_str("|---|---|---|---|---|---|\n");
+    }
+    for r in reserved {
         s.push_str(&format!(
             "| {} | {} | {} | {} | 0..{} | {} |\n",
             r.group,

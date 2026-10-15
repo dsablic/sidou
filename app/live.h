@@ -16,14 +16,22 @@
  * - LIVE_REG_GATE_RESET (value 0 or 1) sets the chip's gate reset (sid_set_gate_reset), the
  *   envelope mode (LIVE_PARAM_ENVELOPE_MODE). sid_init turns it off, so it follows every
  *   reset.
- * live_init and a model change send a reset, the gate reset, then every register; a change
- * of the envelope mode sends the gate reset alone. */
+ * - LIVE_REG_CHAR(field) (value: the setting) gives the chip's character (sid_character.h):
+ *   field 0 the profile (a SID_CHIP_*), 1 age/heat, 2 DAC sloppiness, 3 output thump, 4
+ *   filter bleed (0..127 each). A sink keeps them and applies them to every chip a later
+ *   reset makes (sid_init resets the character), and to the playing chip at
+ *   LIVE_REG_CHAR_APPLY. A profile only ever changes with a reset after it.
+ * live_init and a model or profile change send the character's settings, a reset, the gate
+ * reset, then every register; a change of the envelope mode sends the gate reset alone; a
+ * change of the character's controls sends the settings that changed, LIVE_REG_CHAR_APPLY,
+ * and after an age/heat change $17 (the filter's coefficients follow its new tables). */
 #ifndef SIDOU_LIVE_H
 #define SIDOU_LIVE_H
 
 #include <stdint.h>
 
 #include "sid/sid.h"
+#include "sid/sid_character.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,6 +42,11 @@ extern "C" {
 /* Outside the SID's 5-bit address space; sid_write would alias them, so sinks catch them. */
 #define LIVE_REG_RESET 0x80u
 #define LIVE_REG_GATE_RESET 0x81u
+/* The character (above): LIVE_REG_CHAR(0..LIVE_CHAR_FIELDS - 1) is 0x82..0x86, then apply. */
+#define LIVE_CHAR_FIELDS 5u
+#define LIVE_REG_CHAR_FIRST 0x82u
+#define LIVE_REG_CHAR(field) (LIVE_REG_CHAR_FIRST + (field))
+#define LIVE_REG_CHAR_APPLY 0x87u
 
 #define LIVE_OCTAVE_MIN (-3)
 #define LIVE_OCTAVE_MAX 3
@@ -136,18 +149,27 @@ typedef enum {
 
 typedef void (*live_sink_fn)(void* ctx, uint8_t reg, uint8_t value);
 
-/* The context of live_sid_sink: a chip and the clock and rate it was initialised with. */
+/* The context of live_sid_sink: a chip and the clock and rate it was initialised with, the
+ * character's settings as the sink last got them (zero-initialised: the model's default
+ * profile, every control at 0), and a table for the character's DACs: NULL plays the
+ * model's default DACs whatever the character says. */
 typedef struct {
     sid* chip;
     uint32_t clock_hz;
     uint32_t sample_rate;
+    sid_character character;
+    sid_dac* dac;
 } live_sid_target;
 
-/* Applies writes to ctx (a live_sid_target*) at once: sid_write for registers, sid_init
- * for LIVE_REG_RESET, sid_set_gate_reset for LIVE_REG_GATE_RESET; other pseudo-registers
- * (the slots') are ignored. For the host and for
- * code that already runs in the audio context. */
+/* Applies writes to ctx (a live_sid_target*) at once: sid_write for registers, sid_init and
+ * then the character (sid_character_apply) for LIVE_REG_RESET, sid_set_gate_reset for
+ * LIVE_REG_GATE_RESET, the character's settings kept for LIVE_REG_CHAR and applied for
+ * LIVE_REG_CHAR_APPLY; other pseudo-registers (the slots') are ignored. For the host and
+ * for code that already runs in the audio context. */
 void live_sid_sink(void* ctx, uint8_t reg, uint8_t value);
+/* A LIVE_REG_CHAR(field) write into the settings it changes (any other reg: nothing). For
+ * the sinks. */
+void live_char_store(sid_character* c, uint8_t reg, uint8_t value);
 
 typedef enum {
     LIVE_KNOB_CUTOFF = 0,      /* K1: one detent = LIVE_CUTOFF_DETENT steps of 0..2047 */
@@ -159,7 +181,8 @@ typedef enum {
 typedef enum {
     LIVE_BUTTON_OCT_DOWN = 0,
     LIVE_BUTTON_OCT_UP = 1,
-    LIVE_BUTTON_FX = 2 /* toggles the chip 6581/8580 at once, keeping every parameter */
+    LIVE_BUTTON_FX = 2 /* toggles the chip 6581/8580 at once, keeping every parameter: the
+                        * 8580 R5 profile, or back to the last 6581 profile */
 } live_button_id;
 
 /* A preset is data. The knobs start from its cutoff, resonance and pulse width, and the SID
@@ -266,6 +289,15 @@ typedef struct {
     uint8_t last_velocity;    /* the last note-on's: LIVE_VELOCITY_CUTOFF's (one filter) */
     uint32_t note_ons; /* note-ons played (wraps): a note shorter than a look still shows */
     uint8_t envelope_mode; /* a live_envelope_mode */
+    /* The chip's character (LIVE_PARAM_PROFILE..LIVE_PARAM_BLEED), for the whole instrument
+     * like the model. The profile as the chip has it, as asked for (live_tick applies it,
+     * with a reset), and the last 6581 profile asked for (the FX button and the model go back
+     * to it). The controls as asked for, and as last sent; live_tick sends them. */
+    uint8_t profile;
+    uint8_t profile_req;
+    uint8_t profile_6581;
+    uint8_t character[LIVE_CHAR_FIELDS - 1u];
+    uint8_t character_sent[LIVE_CHAR_FIELDS - 1u];
 } live;
 
 /* The instrument's parameters, each an integer 0..live_param_max: what MIDI reaches through
@@ -299,7 +331,17 @@ typedef enum {
     LIVE_PARAM_VIBRATO_DELAY = 35,   /* 0..127 ticks */
     /* A live_envelope_mode, 0..1: one write (LIVE_REG_GATE_RESET), for the gates after it. */
     LIVE_PARAM_ENVELOPE_MODE = 36,
-    LIVE_PARAM_COUNT = 37
+    /* The chip's character (sid_character.h), recorded; live_tick applies it. The profile,
+     * 0..SID_CHIPS - 1 (6581 R2, 6581 R3, 6581 R4AR, 8580 R5, worn 6581), sets the chip
+     * model too (a reset, as LIVE_PARAM_MODEL); the model sets the 8580 R5 profile, or back
+     * to the last 6581 one. The controls, 0..127 each, change the playing chip without a
+     * reset. */
+    LIVE_PARAM_PROFILE = 37,
+    LIVE_PARAM_AGE = 38,
+    LIVE_PARAM_DAC = 39,
+    LIVE_PARAM_THUMP = 40,
+    LIVE_PARAM_BLEED = 41,
+    LIVE_PARAM_COUNT = 42
 } live_param;
 
 /* One past the last slot parameter, i.e. LIVE_PARAM_BEND_RANGE (live.c asserts it). A macro,
@@ -307,9 +349,10 @@ typedef enum {
  * meet the same value under two case labels. */
 #define LIVE_PARAM_SLOT_END (LIVE_PARAM_SLOT + LIVE_SLOTS * LIVE_SLOT_FIELDS)
 
-/* Preset 0, octave 0, full volume, every effect slot off, the envelope instant. Sends
- * LIVE_REG_RESET(model), LIVE_REG_GATE_RESET, then every register, then every slot setting
- * (fx_live.h). */
+/* Preset 0, octave 0, full volume, every effect slot off, the envelope instant, the model's
+ * default profile (6581 R4AR, 8580 R5) and every character control at 0. Sends the
+ * character's settings, LIVE_REG_RESET(model), LIVE_REG_GATE_RESET, then every register,
+ * then every slot setting (fx_live.h). */
 void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model);
 /* Absolute MIDI notes; the octave is not applied here (see live_key_note). Velocity 0
  * is a note-off. A note that is already held is retriggered on its voice. The note starts at
@@ -371,10 +414,12 @@ void live_bend_range_rpn(live* l, uint32_t semitones);
 void live_set_preset(live* l, uint8_t index);
 /* The MASTER pot, 0..1023 (clamped); the chip's volume is its top 4 bits, rounded. */
 void live_set_master(live* l, uint16_t value);
-/* Applies a chip model asked for since the last tick (live_param_set), advances the
- * pulse-width LFO and each voice's vibrato, then writes every frequency, pulse width and the
- * cutoff that the controllers, the vibrato or the LFO changed (nothing that did not change);
- * call at LIVE_TICK_HZ. At most 14 writes besides a model change. */
+/* Applies a chip model or profile asked for since the last tick (live_param_set) and the
+ * character's controls that changed (their settings, LIVE_REG_CHAR_APPLY and $17), advances
+ * the pulse-width LFO and each voice's vibrato, then writes every frequency, pulse width and
+ * the cutoff that the controllers, the vibrato or the LFO changed (nothing that did not
+ * change); call at LIVE_TICK_HZ. At most 14 writes besides a model change and the
+ * character's. */
 void live_tick(live* l);
 
 /* Effect slots. The number of algorithms slot has (its NONE included). */

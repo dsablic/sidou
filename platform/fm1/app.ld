@@ -54,7 +54,8 @@ SECTIONS
         *(.text.audio_fill)                         /* audio.c */
         *(.text.reg_ring_drain .text.reg_ring_pop .text.reg_ring_chip)   /* app/reg_ring.c */
         *(.text.sid_render .text.sid_render_tap .text.sid_write)   /* core/sid/sid.c (sid_svf_set is inline) */
-        *(.text.render_6581 .text.render_8580)     /* sid.c, from sid_render_tap */
+        *(.text.render_6581 .text.render_8580)     /* sid.c, from sid_render_tap; and with */
+        *(.text.render_6581_bleed .text.render_8580_bleed)  /* the bleed (sid.h) */
         *(.text.sid_set_gate_reset)                 /* sid.c, from reg_ring_drain */
         *(.text.sid_read .text.read_osc3 .text.clock_voices .text.fold_owed)    /* sid.c */
         *(.text.sid_osc_advance_slow .text.sid_osc_cycle .text.sid_osc_run_combined)   /* sid_osc.h */

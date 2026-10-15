@@ -18,7 +18,8 @@
  *   101/100) and data entry state (CC 6/38, increment 96, decrement 97) per channel, for one
  *   input (a midi_map_port each).
  * - Reserved rows (param MIDI_MAP_RESERVED) keep their numbers for parameters that do not
- *   exist yet (the character layer) and do nothing. A new parameter is a new row.
+ *   exist yet and do nothing; there are none now (M1c Task 3 gave the character layer's
+ *   theirs). A new parameter is a new row.
  *
  * Portable C with no hardware access; it runs in the main loop (flash on the device). */
 #ifndef SIDOU_MIDI_MAP_H

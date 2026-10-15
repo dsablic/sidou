@@ -3,6 +3,7 @@
 #include "workload.h"
 
 #include "sid/sid.h"
+#include "sid/sid_character.h"
 
 #define SAMPLES_PER_FRAME (WORKLOAD_SAMPLE_RATE / 50u)
 #define BLOCK 128u
@@ -142,7 +143,33 @@ typedef struct {
     uint32_t count;
     /* Called with each chip and the block number before every block, or NULL. */
     void (*per_block)(sid* s, uint32_t block);
+    uint8_t character; /* the character (workload.h): 0 none, 1 every control, 2 the bleed */
 } scenario;
+
+static sid chips[WORKLOAD_MAX_CHIPS];
+
+/* The character scenarios' DAC tables and the two stages each chip swaps between. */
+static sid_dac character_dac[WORKLOAD_MAX_CHIPS][2];
+static sid_character_stage character_stage[WORKLOAD_MAX_CHIPS][2];
+
+static void character_every_8_blocks(sid* s, uint32_t block) {
+    if ((block & 7u) == 7u) {
+        sid_character_commit(s, &character_stage[s - chips][(block >> 3) & 1u]);
+    }
+}
+
+/* The model's heaviest profile with every control at `level` (which 1), or the bleed alone
+ * (which 2): the bleed is the one control with a per-sample cost (sid.h), and in the
+ * worst blocks the others at 127 make it no dearer (M1c Task 3 measured them: 0.88
+ * instructions a sample cheaper with all four than with the bleed alone, one chip). */
+static sid_character heaviest(sid_model model, uint8_t level, uint8_t which) {
+    sid_character c = {0, level, level, level, level};
+    if (which == 2u) {
+        c.age = c.dac = c.thump = 0;
+    }
+    c.profile = (uint8_t)(1u + (model == SID_MODEL_6581 ? SID_CHIP_6581_WORN : SID_CHIP_8580_R5));
+    return c;
+}
 
 static void gate_every_block(sid* s, uint32_t block) {
     uint8_t control = block & 1u ? 0x20 : 0x21;
@@ -151,7 +178,8 @@ static void gate_every_block(sid* s, uint32_t block) {
     sid_write(s, 0x12, control);
 }
 
-#define SCENARIO(name, w) {name, w, sizeof w / sizeof w[0], 0}
+#define SCENARIO(name, w) {name, w, sizeof w / sizeof w[0], 0, 0}
+#define CHARACTER(name, w, which) {name, w, sizeof w / sizeof w[0], character_every_8_blocks, which}
 static const scenario SCENARIOS[WORKLOAD_SCENARIOS] = {
     SCENARIO("triad", TRIAD),
     SCENARIO("sustain_ff", SUSTAIN_FF),
@@ -160,15 +188,15 @@ static const scenario SCENARIOS[WORKLOAD_SCENARIOS] = {
     SCENARIO("idle", IDLE),
     SCENARIO("combined", COMBINED),
     {"gate_every_block", GATE_EVERY_BLOCK, sizeof GATE_EVERY_BLOCK / sizeof GATE_EVERY_BLOCK[0],
-     gate_every_block},
+     gate_every_block, 0},
     SCENARIO("noise_test_held", NOISE_TEST_HELD),
     SCENARIO("noise_saw", NOISE_SAW),
     SCENARIO("noise_mix", NOISE_MIX),
     SCENARIO("noise_retrigger3", NOISE_RETRIGGER3),
     {"noise_test_every_block", NOISE_MIX, sizeof NOISE_MIX / sizeof NOISE_MIX[0],
-     noise_test_every_block},
+     noise_test_every_block, 0},
     {"noise_test_every_block_b", NOISE_MIX, sizeof NOISE_MIX / sizeof NOISE_MIX[0],
-     noise_test_every_block_b},
+     noise_test_every_block_b, 0},
     SCENARIO("noise_tri_ffff", NOISE_TRI_FFFF),
     SCENARIO("noise_tri_ring_ffff", NOISE_TRI_RING_FFFF),
     SCENARIO("noise_tri_0800", NOISE_TRI_0800),
@@ -180,9 +208,11 @@ static const scenario SCENARIOS[WORKLOAD_SCENARIOS] = {
     SCENARIO("saw_e000", SAW_E000),
     SCENARIO("pulse_saw_ffff", PULSE_SAW_FFFF),
     SCENARIO("pulse_saw_e000", PULSE_SAW_E000),
+    CHARACTER("character_triad", TRIAD, 1),
+    CHARACTER("character_noise_tri_ffff", NOISE_TRI_FFFF, 2),
+    CHARACTER("character_noise_tri_ring_0800", NOISE_TRI_RING_0800, 2),
 };
 
-static sid chips[WORKLOAD_MAX_CHIPS];
 static uint32_t chip_count;
 static uint32_t position;
 static uint32_t next_write;
@@ -201,6 +231,15 @@ void workload_begin_scenario(uint32_t count, sid_model model, uint32_t which) {
     next_write = 0;
     for (uint32_t c = 0; c < chip_count; ++c) {
         sid_init(&chips[c], model, SID_CLOCK_PAL, WORKLOAD_SAMPLE_RATE);
+        if (current->character) {
+            sid_character full = heaviest(model, SID_CHARACTER_MAX, current->character);
+            sid_character half = heaviest(model, 64, current->character);
+            sid_character_apply(&chips[c], &full, &character_dac[c][0]);
+            sid_character_stage_for(&chips[c], &full, chips[c].dac, &character_stage[c][0]);
+            sid_character_build_dac(&chips[c], &half, &character_dac[c][1]);
+            sid_character_stage_for(&chips[c], &half, &character_dac[c][1],
+                                    &character_stage[c][1]);
+        }
     }
 }
 

@@ -251,16 +251,20 @@ impl Device {
 struct Direct {
     chip: Box<sid>,
     _target: Box<live_sid_target>,
+    _dac: Box<sid_dac>,
     live: Box<live>,
 }
 
 impl Direct {
     fn new(model: sid_model) -> Self {
         let mut chip = Box::<sid>::default();
+        let mut dac = Box::<sid_dac>::default();
         let mut target = Box::new(live_sid_target {
             chip: &mut *chip,
             clock_hz: SID_CLOCK_PAL,
             sample_rate: RATE,
+            dac: &mut *dac,
+            ..Default::default()
         });
         let mut l = Box::<live>::default();
         let t: *mut live_sid_target = &mut *target;
@@ -268,6 +272,7 @@ impl Direct {
         Direct {
             chip,
             _target: target,
+            _dac: dac,
             live: l,
         }
     }
@@ -352,6 +357,84 @@ fn the_model_toggle_swaps_chips_and_keeps_the_sound_parameters() {
     dev.block();
     assert_eq!(dev.chip().model, SID_MODEL_6581);
     assert_eq!(dev.chips.lost_resets, 0);
+    assert_same_sound(&mut dev, &mut direct);
+}
+
+/// The character (live.h, LIVE_REG_CHAR): its controls change the playing chip at a block
+/// boundary, a profile resets it, and every reset keeps them, through the ring exactly as
+/// live_sid_sink applies them at once.
+#[test]
+fn the_character_reaches_the_chip_through_the_ring_and_across_model_changes() {
+    let mut dev = Device::new(SID_MODEL_6581);
+    let mut direct = Direct::new(SID_MODEL_6581);
+    dev.block();
+    let default_dac = |model| unsafe { sid_dac_default(i32::from(model == SID_MODEL_6581)) };
+    // The controls, a note held: one apply, after the ring emptied.
+    both(&mut dev, &mut direct, |l| unsafe {
+        live_note_on(l, 60, 100);
+        live_param_set(l, LIVE_PARAM_AGE, 90);
+        live_param_set(l, LIVE_PARAM_DAC, 127);
+        live_param_set(l, LIVE_PARAM_THUMP, 64);
+        live_param_set(l, LIVE_PARAM_BLEED, 100);
+        live_tick(l);
+    });
+    assert!(dev.out.character_waits > 0, "the note's writes were queued");
+    dev.block();
+    let first = dev.chip().dac;
+    assert!(
+        first != default_dac(SID_MODEL_6581),
+        "a sloppy DAC is its own table"
+    );
+    assert!(dev.chip().thump > 0.0 && dev.chip().bleed > 0.0);
+    assert_same_sound(&mut dev, &mut direct);
+    // Another DAC change goes to the other table: the playing chip's is never rebuilt.
+    both(&mut dev, &mut direct, |l| unsafe {
+        live_param_set(l, LIVE_PARAM_DAC, 40);
+        live_tick(l);
+    });
+    dev.block();
+    assert!(dev.chip().dac != first && dev.chip().dac != default_dac(SID_MODEL_6581));
+    assert_same_sound(&mut dev, &mut direct);
+    // A profile is a reset: the spare gets it and the controls before the swap.
+    both(&mut dev, &mut direct, |l| unsafe {
+        live_param_set(l, LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN);
+        live_tick(l);
+        live_note_on(l, 64, 100);
+    });
+    dev.block();
+    assert_eq!(dev.chips.lost_resets, 0);
+    assert_eq!(dev.chip().filter_curve, 3, "worn's filter row");
+    assert_same_sound(&mut dev, &mut direct);
+    // To the 8580 and back: the 8580 R5 profile, then worn again, the controls kept.
+    for (model, curve) in [(SID_MODEL_8580, 0u8), (SID_MODEL_6581, 3)] {
+        both(&mut dev, &mut direct, |l| unsafe {
+            live_button(l, LIVE_BUTTON_FX);
+            live_note_on(l, 67, 100);
+        });
+        dev.block();
+        assert_eq!(dev.chip().model, model);
+        assert_eq!(dev.chip().filter_curve, curve);
+        assert!(dev.chip().thump > 0.0, "the controls survive the reset");
+        assert_same_sound(&mut dev, &mut direct);
+    }
+    assert_eq!(dev.live.profile, SID_CHIP_6581_WORN as u8);
+    // Back to zero: the profile's own DACs and output stage.
+    both(&mut dev, &mut direct, |l| unsafe {
+        for p in [
+            LIVE_PARAM_AGE,
+            LIVE_PARAM_DAC,
+            LIVE_PARAM_THUMP,
+            LIVE_PARAM_BLEED,
+        ] {
+            live_param_set(l, p, 0);
+        }
+        live_param_set(l, LIVE_PARAM_PROFILE, SID_CHIP_6581_R4AR);
+        live_tick(l);
+        live_note_on(l, 60, 100);
+    });
+    dev.block();
+    assert_eq!(dev.chip().dac, default_dac(SID_MODEL_6581));
+    assert_eq!((dev.chip().thump, dev.chip().bleed), (0.0, 0.0));
     assert_same_sound(&mut dev, &mut direct);
 }
 

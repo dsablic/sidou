@@ -1,0 +1,108 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include "sid_character.h"
+
+#include <stddef.h>
+
+static const sid_chip_profile profiles[SID_CHIPS] = SID_CHIP_PROFILE_ROWS;
+
+_Static_assert(sizeof profiles / sizeof profiles[0] == SID_CHIPS, "a row per profile");
+
+const sid_chip_profile* sid_chip_profile_get(uint32_t id) {
+    return id < SID_CHIPS ? &profiles[id] : NULL;
+}
+
+uint32_t sid_chip_default(sid_model model) {
+    return model == SID_MODEL_8580 ? SID_CHIP_8580_R5 : SID_CHIP_6581_R4AR;
+}
+
+void sid_character_init(sid_character* c) {
+    c->profile = 0;
+    c->age = 0;
+    c->dac = 0;
+    c->thump = 0;
+    c->bleed = 0;
+}
+
+/* The character's profile for the chip: its own, or the chip's model's default. */
+static const sid_chip_profile* profile_of(const sid* s, const sid_character* c) {
+    const sid_chip_profile* p = c->profile ? sid_chip_profile_get(c->profile - 1u) : NULL;
+    if (!p || p->model != (uint8_t)s->model) {
+        p = &profiles[sid_chip_default(s->model)];
+    }
+    return p;
+}
+
+/* A control as 0..1. */
+static float amount(uint8_t v) {
+    return (float)(v > SID_CHARACTER_MAX ? SID_CHARACTER_MAX : v) / (float)SID_CHARACTER_MAX;
+}
+
+static void dac_params(const sid* s, const sid_character* c, float* kink, float* leakage) {
+    const sid_chip_profile* p = profile_of(s, c);
+    float a = amount(c->dac);
+    *kink = p->kink + a * SID_CHARACTER_KINK;
+    *leakage = p->leakage * (1.0f + a * (SID_CHARACTER_LEAK - 1.0f));
+}
+
+int sid_character_dac_custom(const sid* s, const sid_character* c) {
+    float kink, leakage;
+    dac_params(s, c, &kink, &leakage);
+    int is6581 = s->model == SID_MODEL_6581;
+    return kink != (is6581 ? SID_DAC_KINK_6581 : SID_DAC_KINK_8580) ||
+           leakage != (is6581 ? SID_DAC_LEAKAGE_6581 : SID_DAC_LEAKAGE_8580);
+}
+
+void sid_character_build_dac(const sid* s, const sid_character* c, sid_dac* d) {
+    float kink, leakage;
+    dac_params(s, c, &kink, &leakage);
+    sid_dac_build(d, s->model == SID_MODEL_6581, kink, leakage);
+}
+
+void sid_character_filter(sid* s, const sid_character* c) {
+    const sid_chip_profile* p = profile_of(s, c);
+    sid_set_filter_blend(s, p->curve, p->hot_curve, amount(c->age));
+}
+
+void sid_character_stage_for(const sid* s, const sid_character* c, const sid_dac* dac,
+                             sid_character_stage* out) {
+    const sid_chip_profile* p = profile_of(s, c);
+    float nl = p->nonlinearity * (1.0f + amount(c->age));
+    sid_nonlin_for(s, nl, &out->nl); /* clamped to 2 there */
+    out->dac = dac ? dac : sid_dac_default(s->model == SID_MODEL_6581);
+    out->thump = amount(c->thump) * SID_CHARACTER_THUMP;
+    out->bleed = amount(c->bleed) * SID_CHARACTER_BLEED;
+    /* The thump's headroom: full scale moves out by the thump, which is the largest step a
+     * volume write can add (from 0 to 15), so a signal that peaked at full scale and that
+     * step together still do. At 0 the gain is sid_init's exactly. */
+    float base = sid_base_output_gain(s);
+    out->output_gain = out->thump > 0.0f ? 32767.0f / (32767.0f / base + out->thump) : base;
+}
+
+/* The filter tables, DACs and stage for the character, on a chip that is not rendering. */
+static void change(sid* s, const sid_character* c, sid_dac* dac) {
+    sid_filter_refresh(s);
+    const sid_dac* table = NULL;
+    if (dac && sid_character_dac_custom(s, c)) {
+        sid_character_build_dac(s, c, dac);
+        table = dac;
+    }
+    sid_character_stage st;
+    sid_character_stage_for(s, c, table, &st);
+    sid_character_commit(s, &st);
+}
+
+void sid_character_apply(sid* s, const sid_character* c, sid_dac* dac) {
+    const sid_chip_profile* p = profile_of(s, c);
+    sid_set_combined_profile(s, p->combined);
+    /* sid_init built the default curve's tables: the default profile at age 0 keeps them. */
+    if (p->curve != 0u || c->age != 0u) {
+        sid_character_filter(s, c);
+    }
+    change(s, c, dac);
+}
+
+void sid_character_change(sid* s, const sid_character* c, sid_dac* dac) {
+    sid_character_filter(s, c);
+    change(s, c, dac);
+}

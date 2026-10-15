@@ -94,16 +94,23 @@ static const midi_map_entry rows[MIDI_MAP_ROWS] = {
         "ADSR delay: an attack or release up to 33 ms late after a slower rate)",
         LIVE_PARAM_ENVELOPE_MODE, 26, NRPN(NRPN_SID, 10), 1, LIVE_ENVELOPE_INSTANT, STEPS),
 
-    ROW("Character", "Profile", "6581 R2, 6581 R3, 6581 R4AR, 8580 R5, worn 6581",
-        MIDI_MAP_RESERVED, 85, NRPN(NRPN_CHARACTER, 0), 4, 0, STEPS),
-    ROW("Character", "Age/heat", "0..127", MIDI_MAP_RESERVED,
-        86, NRPN(NRPN_CHARACTER, 1), 127, 0, LINEAR),
-    ROW("Character", "DAC sloppiness", "0..127", MIDI_MAP_RESERVED,
-        87, NRPN(NRPN_CHARACTER, 2), 127, 0, LINEAR),
-    ROW("Character", "Output thump", "0..127", MIDI_MAP_RESERVED,
-        89, NRPN(NRPN_CHARACTER, 3), 127, 0, LINEAR),
-    ROW("Character", "Filter bleed", "0..127", MIDI_MAP_RESERVED,
-        90, NRPN(NRPN_CHARACTER, 4), 127, 0, LINEAR),
+    ROW("Character", "Profile",
+        "0 6581 R2, 1 6581 R3, 2 6581 R4AR (reSIDfp's default), 3 8580 R5, 4 worn 6581 "
+        "(artistic); sets the chip model too (a chip reset)",
+        LIVE_PARAM_PROFILE, 85, NRPN(NRPN_CHARACTER, 0), SID_CHIPS - 1, SID_CHIP_6581_R4AR,
+        STEPS),
+    ROW("Character", "Age/heat",
+        "0 the profile .. 127: the filter's cutoff drifts darker, the 6581's non-linearity "
+        "doubles", LIVE_PARAM_AGE, 86, NRPN(NRPN_CHARACTER, 1), SID_CHARACTER_MAX, 0, LINEAR),
+    ROW("Character", "DAC sloppiness",
+        "0 the profile .. 127: the voice DACs leak up to 6 times as much and kink more",
+        LIVE_PARAM_DAC, 87, NRPN(NRPN_CHARACTER, 2), SID_CHARACTER_MAX, 0, LINEAR),
+    ROW("Character", "Output thump",
+        "0 none .. 127: a volume change steps the output (the 6581's operating point)",
+        LIVE_PARAM_THUMP, 89, NRPN(NRPN_CHARACTER, 3), SID_CHARACTER_MAX, 0, LINEAR),
+    ROW("Character", "Filter bleed",
+        "0 none .. 127: half the unfiltered voices also reach the filter",
+        LIVE_PARAM_BLEED, 90, NRPN(NRPN_CHARACTER, 4), SID_CHARACTER_MAX, 0, LINEAR),
 
     SLOT_ROWS(0, "Distortion", "0 OFF, 1 TAPE, 2 OVERDRIVE, 3 FUZZ, 4 CRUSH, 5 LO-FI",
               SID_DIST_COUNT),
@@ -176,7 +183,7 @@ static const uint8_t cc_rows[128] = {
     [79] = 13u, /* sustain */
     [72] = 14u, /* release */
     [26] = 15u, /* envelope mode */
-    [85] = 16u, /* the reserved Character rows */
+    [85] = 16u, /* the Character rows */
     [86] = 17u,
     [87] = 18u,
     [89] = 19u,

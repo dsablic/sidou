@@ -87,11 +87,32 @@ static const live_preset presets[LIVE_PRESET_COUNT] = {
     },
 };
 
+_Static_assert(LIVE_PARAM_BLEED - LIVE_PARAM_AGE + 2u == LIVE_CHAR_FIELDS,
+               "a parameter per character control, in the fields' order");
+_Static_assert(LIVE_REG_CHAR(LIVE_CHAR_FIELDS) == LIVE_REG_CHAR_APPLY,
+               "the settings, then apply");
+
+void live_char_store(sid_character* c, uint8_t reg, uint8_t value) {
+    switch (reg) {
+    case LIVE_REG_CHAR(0): c->profile = value < SID_CHIPS ? (uint8_t)(value + 1u) : 0u; break;
+    case LIVE_REG_CHAR(1): c->age = value; break;
+    case LIVE_REG_CHAR(2): c->dac = value; break;
+    case LIVE_REG_CHAR(3): c->thump = value; break;
+    case LIVE_REG_CHAR(4): c->bleed = value; break;
+    default: break;
+    }
+}
+
 void live_sid_sink(void* ctx, uint8_t reg, uint8_t value) {
     live_sid_target* t = ctx;
     if (reg == LIVE_REG_RESET) {
         sid_model model = value == SID_MODEL_8580 ? SID_MODEL_8580 : SID_MODEL_6581;
         sid_init(t->chip, model, t->clock_hz, t->sample_rate);
+        sid_character_apply(t->chip, &t->character, t->dac);
+    } else if (reg >= LIVE_REG_CHAR(0) && reg < LIVE_REG_CHAR(LIVE_CHAR_FIELDS)) {
+        live_char_store(&t->character, reg, value);
+    } else if (reg == LIVE_REG_CHAR_APPLY) {
+        sid_character_change(t->chip, &t->character, t->dac);
     } else if (reg == LIVE_REG_GATE_RESET) {
         sid_set_gate_reset(t->chip, value);
     } else if (!(reg & 0x80u)) {
@@ -281,9 +302,20 @@ static void write_gate_reset(live* l) {
     put(l, LIVE_REG_GATE_RESET, l->envelope_mode == LIVE_ENVELOPE_INSTANT ? 1u : 0u);
 }
 
-/* A chip reset with the model, then the envelope mode, which sid_init turned off: before any
- * register, so before any gate. */
+/* The character's settings: the profile and each control, as sent from now on. */
+static void write_character(live* l) {
+    put(l, LIVE_REG_CHAR(0), l->profile);
+    for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
+        put(l, (uint8_t)LIVE_REG_CHAR(f + 1u), l->character[f]);
+        l->character_sent[f] = l->character[f];
+    }
+}
+
+/* A chip reset with the model, after the character's settings (the sink gives them to the
+ * new chip), then the envelope mode, which sid_init turned off: before any register, so
+ * before any gate. */
 static void reset_chip(live* l) {
+    write_character(l);
     put(l, LIVE_REG_RESET, (uint8_t)l->model);
     write_gate_reset(l);
 }
@@ -448,6 +480,12 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->mod_target = LIVE_MOD_PULSE_WIDTH;
     l->bend_range_rpn = 0;
     l->envelope_mode = LIVE_ENVELOPE_INSTANT;
+    l->profile = (uint8_t)sid_chip_default(model);
+    l->profile_req = l->profile;
+    l->profile_6581 = (uint8_t)sid_chip_default(SID_MODEL_6581);
+    for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
+        l->character[f] = 0;
+    }
     load_preset(l, 0);
     reset_chip(l);
     write_all(l);
@@ -620,13 +658,56 @@ void live_knob(live* l, live_knob_id knob, int32_t delta) {
     }
 }
 
-/* A reset of the chip with the model, then every register: every parameter is kept. It
- * also settles any pending request (model_req). */
-static void set_model(live* l, sid_model model) {
-    l->model = model;
-    l->model_req = model;
+static sid_model profile_model(uint32_t profile) {
+    return (sid_model)sid_chip_profile_get(profile)->model;
+}
+
+/* Records a profile asked for: the model follows it, and a 6581 one is the one to go back
+ * to. */
+static void request_profile(live* l, uint32_t profile) {
+    l->profile_req = (uint8_t)profile;
+    l->model_req = profile_model(profile);
+    if (l->model_req == SID_MODEL_6581) {
+        l->profile_6581 = (uint8_t)profile;
+    }
+}
+
+/* The profile for a model: the 8580's, or the last 6581 one asked for. */
+static uint32_t model_profile(const live* l, sid_model model) {
+    return model == SID_MODEL_8580 ? sid_chip_default(SID_MODEL_8580) : l->profile_6581;
+}
+
+/* A reset of the chip with the profile and its model, then every register: every parameter
+ * is kept. It also settles any pending request (profile_req, model_req). */
+static void set_profile(live* l, uint32_t profile) {
+    request_profile(l, profile);
+    l->profile = (uint8_t)profile;
+    l->model = l->model_req;
     reset_chip(l);
     write_all(l);
+}
+
+static void set_model(live* l, sid_model model) {
+    set_profile(l, model_profile(l, model));
+}
+
+/* The character's controls that changed since they were last sent, then apply, then $17
+ * after an age change (its filter tables changed; the coefficients follow a $17 write). */
+static void update_character(live* l) {
+    int changed = 0;
+    for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
+        if (l->character[f] != l->character_sent[f]) {
+            put(l, (uint8_t)LIVE_REG_CHAR(f + 1u), l->character[f]);
+            changed |= 1 << f;
+            l->character_sent[f] = l->character[f];
+        }
+    }
+    if (changed) {
+        put(l, LIVE_REG_CHAR_APPLY, 0);
+        if (changed & 1) { /* field 1, age/heat */
+            write_res_filt(l);
+        }
+    }
 }
 
 void live_button(live* l, live_button_id button) {
@@ -741,6 +822,11 @@ uint32_t live_param_max(uint32_t param) {
     case LIVE_PARAM_VIBRATO_RATE:
     case LIVE_PARAM_VIBRATO_DEPTH:
     case LIVE_PARAM_VIBRATO_DELAY: return LIVE_EXPRESSION_MAX;
+    case LIVE_PARAM_PROFILE: return SID_CHIPS - 1u;
+    case LIVE_PARAM_AGE:
+    case LIVE_PARAM_DAC:
+    case LIVE_PARAM_THUMP:
+    case LIVE_PARAM_BLEED: return SID_CHARACTER_MAX;
     default:
         if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {
             uint32_t slot = (param - LIVE_PARAM_SLOT) / LIVE_SLOT_FIELDS;
@@ -820,7 +906,14 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
         }
         break;
     case LIVE_PARAM_MODEL: /* only recorded: live_tick applies it */
-        l->model_req = value ? SID_MODEL_8580 : SID_MODEL_6581;
+        request_profile(l, model_profile(l, value ? SID_MODEL_8580 : SID_MODEL_6581));
+        break;
+    case LIVE_PARAM_PROFILE: request_profile(l, value); break; /* the same */
+    case LIVE_PARAM_AGE:
+    case LIVE_PARAM_DAC:
+    case LIVE_PARAM_THUMP:
+    case LIVE_PARAM_BLEED: /* recorded: live_tick sends them */
+        l->character[param - LIVE_PARAM_AGE] = (uint8_t)value;
         break;
     /* Expression: recorded; live_tick writes what they change, except the velocity target,
      * which rewrites the envelopes at once (each voice keeps its velocity). */
@@ -881,6 +974,11 @@ uint32_t live_param_get(const live* l, uint32_t param) {
     case LIVE_PARAM_VIBRATO_DEPTH: return l->vibrato_depth;
     case LIVE_PARAM_VIBRATO_DELAY: return l->vibrato_delay;
     case LIVE_PARAM_ENVELOPE_MODE: return l->envelope_mode;
+    case LIVE_PARAM_PROFILE: return l->profile_req;
+    case LIVE_PARAM_AGE:
+    case LIVE_PARAM_DAC:
+    case LIVE_PARAM_THUMP:
+    case LIVE_PARAM_BLEED: return l->character[param - LIVE_PARAM_AGE];
     default:
         if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {
             return l->slot[(param - LIVE_PARAM_SLOT) / LIVE_SLOT_FIELDS]
@@ -918,6 +1016,10 @@ void live_params(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
     out[LIVE_PARAM_VIBRATO_DEPTH] = l->vibrato_depth;
     out[LIVE_PARAM_VIBRATO_DELAY] = l->vibrato_delay;
     out[LIVE_PARAM_ENVELOPE_MODE] = l->envelope_mode;
+    out[LIVE_PARAM_PROFILE] = l->profile_req;
+    for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
+        out[LIVE_PARAM_AGE + f] = l->character[f];
+    }
 }
 
 uint32_t live_slot_algorithms(uint32_t slot) {
@@ -957,9 +1059,10 @@ void live_fx_select_next(live* l) {
 }
 
 void live_tick(live* l) {
-    if (l->model_req != l->model) {
-        set_model(l, l->model_req);
+    if (l->profile_req != l->profile) {
+        set_profile(l, l->profile_req);
     }
+    update_character(l);
     const live_preset* p = cur(l);
     if (p->pwm_depth) {
         l->lfo_phase = (uint16_t)(l->lfo_phase + p->pwm_rate);

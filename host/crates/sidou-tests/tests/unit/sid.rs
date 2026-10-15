@@ -832,3 +832,38 @@ fn the_6581_band_pass_mix_follows_the_damping_at_every_filter_write() {
         assert_eq!(s.mix_bpn, 0.8125 / s.svf.k, "after ${reg:02x}");
     }
 }
+
+/// The 6581's lowest cutoff (sid_nonlin's floor) is the chip's: it follows the cutoff table
+/// at FC 0 as a filter curve setting or a blend moves it (the darker settings reach lower, as
+/// reSIDfp's do), and an amount above 1 does not raise it. At the default curve and amounts up
+/// to 1 it is what M1b fitted, bit for bit.
+#[test]
+fn the_6581_lowest_cutoff_follows_the_filter_table() {
+    let floor = |curve: u32, amount: f32| {
+        let mut s = new_sid(SID_MODEL_6581);
+        unsafe {
+            sid_set_filter_curve(&mut *s, curve);
+            sid_set_filter_nonlinearity(&mut *s, amount);
+        }
+        (s.nl.floor, s.cutoff_g[0])
+    };
+    let (f0, g0) = floor(0, 1.0);
+    assert_eq!(
+        f0,
+        new_sid(SID_MODEL_6581).nl.floor,
+        "the default, unchanged"
+    );
+    assert_eq!(floor(0, 0.5).0, 0.5 * f0);
+    assert_eq!(
+        floor(0, 2.0).0,
+        f0,
+        "a stronger non-linearity keeps the chip's floor"
+    );
+    let last = unsafe { sid_filter_curves(SID_MODEL_6581) } - 1;
+    let (f, g) = floor(last, 1.0);
+    assert!(g < g0 && f < f0, "a darker curve setting: {f} against {f0}");
+    assert!(
+        (f / f0 - g / g0).abs() < 1e-6,
+        "in proportion to the table at FC 0"
+    );
+}

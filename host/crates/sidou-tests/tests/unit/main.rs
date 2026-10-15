@@ -4,6 +4,7 @@
 
 mod fx;
 mod sid;
+mod sid_character;
 mod sid_dac;
 mod sid_defs;
 mod sid_env;

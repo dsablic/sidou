@@ -782,11 +782,17 @@ fn the_panel_goes_out_over_usb_and_midi_in_is_not_echoed() {
     assert_eq!(cutoff(&mut m, &fw), (10 * 2047 + 63) / 127);
     let (p, w) = queued(&mut m, &fw, w);
     assert!(p.is_empty(), "MIDI in echoed: {p:08x?}");
-    // The FX button: the chip model on CC 25. K4: a program change, without the parameters
-    // the preset loads.
+    // The FX button: the chip model on CC 25, and the profile that follows it on CC 85 (the
+    // 8580 R5). K4: a program change, without the parameters the preset loads.
     press(&mut m, FX_BUTTON);
     let (p, w) = queued(&mut m, &fw, w);
-    assert_eq!(p, [cc_packet(25, 127)]);
+    let r5 = unsafe {
+        sidou_sys::midi_map_to_cc(
+            sidou_sys::midi_map_for_param(sidou_sys::LIVE_PARAM_PROFILE),
+            sidou_sys::SID_CHIP_8580_R5,
+        )
+    };
+    assert_eq!(p, [cc_packet(25, 127), cc_packet(85, r5)]);
     m.turn(K4, 1);
     m.run_ms(50);
     let (p, w) = queued(&mut m, &fw, w);
@@ -902,10 +908,12 @@ fn a_tick_of_midi_out_costs_little_at_worst() {
             .write16(base + ilp32::midi_out::wire as u32 + 2 * p, wire);
     });
     // The same with every parameter bound by MIDI learn (platform/fm1/midi.c `learned`) to a
-    // CC: 0..37 are all learnable but 6, so CC p below 6 and p + 1 from there.
+    // CC: 0..43 are all learnable but 6 and 38, so CC p below 6, p + 1 from there, p + 2 from
+    // 37.
     let learned = fw.symbol("learned");
     for p in 0..sidou_sys::LIVE_PARAM_COUNT {
-        let cc = if p < 6 { p } else { p + 1 };
+        let cc = p + u32::from(p >= 6) + u32::from(p >= 37);
+        assert_ne!(unsafe { sidou_sys::midi_learn_learnable(cc) }, 0, "CC {cc}");
         m.soc
             .write8(learned + ilp32::midi_learn::param_cc as u32 + p, cc as u8);
         let row = unsafe { sidou_sys::midi_map_for_param(p) };
@@ -938,9 +946,15 @@ fn a_tick_of_midi_out_costs_little_at_worst() {
     // 0.8k idle (the look at 37 parameters, one live_params snapshot: 1.2k with a
     // live_param_get each); 1.7k with every parameter back at its value on the wire; at worst
     // 2.6k, every parameter changed, and less with each bound by MIDI learn (7.1k before the
-    // rows were cached).
+    // rows were cached). The idle and deduplicated bounds are per parameter: M1c Task 3's
+    // character made 42 (906 and 1,914 measured, 21.6 and 45.6 a parameter, against the
+    // bounds' 24.3 and 54.1); a tick of changes is bounded by its packets, not the count.
+    let per_param = |x: u64| x as f64 / f64::from(sidou_sys::LIVE_PARAM_COUNT);
     assert!(
-        idle < 900 && deduplicated < 2_000 && changed < 3_000 && changed_learned < 3_000,
+        per_param(idle) < 900.0 / 37.0
+            && per_param(deduplicated) < 2_000.0 / 37.0
+            && changed < 3_000
+            && changed_learned < 3_000,
         "a tick of MIDI out: {idle} instructions idle, {deduplicated} with every parameter \
          deduplicated, {changed} with every parameter changed, {changed_learned} also learned"
     );

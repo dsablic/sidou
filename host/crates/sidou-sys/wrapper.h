@@ -5,6 +5,7 @@
 #include "fx/fx.h"
 #include "fx/fx_slots.h"
 #include "sid/sid.h"
+#include "sid/sid_character.h"
 #include "sid/sid_env.h"
 #include "sid/sid_filter.h"
 #include "sid/sid_math.h"
