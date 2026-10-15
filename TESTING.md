@@ -35,7 +35,10 @@ One module per part of the core: oscillator (`sid_osc`), noise (`sid_noise`),
 hard sync (`sid_sync`), envelope (`sid_env`), voice DACs (`sid_dac`, against
 reSIDfp's tables), filter (`sid_filter`), the chip (`sid`) and constants
 (`sid_defs`). Most pin a documented SID behaviour, such
-as the ADSR delay bug, the noise LFSR taps or hard-sync timing.
+as the ADSR delay bug, the noise LFSR taps or hard-sync timing. `sid` also
+measures the output's worst case (three voices at maximum resonance: the 8580
+clips by about 1 dB, as reSIDfp does), and `sid_dac` pins the default tables'
+CRC-32s, which the hardware checklist compares with the device's.
 
 **A failure means** the core no longer behaves like the chip in that
 respect. Fix the code, unless the test itself pinned the wrong behaviour; in

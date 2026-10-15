@@ -6,9 +6,11 @@
 
 #define OUTPUT_GAIN (0.1f * 32767.0f) /* leaves headroom for the 6581 DC offset and filter peaks */
 /* reSIDfp's output level relative to OUTPUT_GAIN: the RMS of one unfiltered voice at
- * volume 15 (sawtooth, triangle, 25% and 50% pulse, at 0x08d6 and 0x1d45), measured
+ * volume 15 (sawtooth, triangle and 50% pulse, at 0x08d6 and 0x1d45), measured
  * through its mixer and output stages: 3.37 dB louder on the 6581, 1.05 dB on the 8580
- * (reference.rs asserts the match). */
+ * (reference.rs asserts the match). At this level three voices at maximum resonance
+ * clip the 8580 by up to about 1 dB, as they clip reSIDfp; the 6581 keeps 0.35 dB of
+ * headroom (unit/sid.rs, three_voices_at_maximum_resonance_headroom). */
 #define LEVEL_6581 1.4736f
 #define LEVEL_8580 1.1288f
 #define DC_BLOCK_HZ 16.0f

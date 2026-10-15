@@ -401,3 +401,94 @@ fn render_folds_deferred_shift_counts_by_the_noise_period() {
     }
     assert_eq!(folded.sr, unfolded.sr);
 }
+
+/// The loudest the chip gets: three voices in phase at maximum resonance, filtered in every
+/// mode and unfiltered, swept over the cutoff, for pulse and sawtooth at two pitches.
+/// Returns the peak magnitude at the given volume and the case it came from. The volume
+/// scales the output after the filter, so the peak at volume 7 times 15/7 is volume 15's
+/// before the int16 clamp.
+fn worst_case_peak(model: sid_model, volume: u8) -> (i32, String) {
+    let mut worst = (0, String::new());
+    for (wave, control) in [("pulse", 0x41u8), ("saw", 0x21)] {
+        for (lo, hi) in [(0x00u8, 0x08u8), (0x45, 0x1d)] {
+            for (mode, mode_bits, routing) in [
+                ("unfiltered", 0x00u8, 0x00u8),
+                ("LP", 0x10, 0x07),
+                ("BP", 0x20, 0x07),
+                ("HP", 0x40, 0x07),
+                ("LP+BP+HP", 0x70, 0x07),
+            ] {
+                for fc_hi in [0x00u8, 0x08, 0x20, 0x40, 0x80, 0xc0, 0xff] {
+                    let mut s = new_sid(model);
+                    for v in 0..3u8 {
+                        let base = 7 * v;
+                        write(&mut s, base, lo);
+                        write(&mut s, base + 1, hi);
+                        write(&mut s, base + 2, 0x00);
+                        write(&mut s, base + 3, 0x08);
+                        write(&mut s, base + 5, 0x00);
+                        write(&mut s, base + 6, 0xf0);
+                    }
+                    write(&mut s, 0x15, 0x07);
+                    write(&mut s, 0x16, fc_hi);
+                    write(&mut s, 0x17, 0xf0 | routing);
+                    write(&mut s, 0x18, mode_bits | volume);
+                    for v in 0..3u8 {
+                        write(&mut s, 7 * v + 4, control);
+                    }
+                    let p = peak(&render(&mut s, 22050));
+                    if p > worst.0 {
+                        let at = format!("{wave} at {hi:02x}{lo:02x}, {mode}, FC hi {fc_hi:#04x}");
+                        worst = (p, at);
+                    }
+                }
+            }
+        }
+    }
+    worst
+}
+
+/* The output's worst case, at reSIDfp's level (LEVEL_6581/LEVEL_8580 in sid.c): three
+ * voices at volume 15 and maximum resonance. The 6581 stays below full scale (measured
+ * 0.4 dB of headroom). The 8580 clips, by design: its peak before the int16 clamp is about
+ * 1.0 dB over full scale (an 8580 pulse at 0x1d45 through the high pass at FC hi 0x08),
+ * where reSIDfp's own output saturates too. The bounds hold those numbers. */
+#[test]
+fn three_voices_at_maximum_resonance_headroom() {
+    for (name, model, max_db) in [
+        ("6581", SID_MODEL_6581, -0.2),
+        ("8580", SID_MODEL_8580, 1.2),
+    ] {
+        let (p, at) = worst_case_peak(model, 7);
+        let peak15 = f64::from(p) * 15.0 / 7.0;
+        let db = 20.0 * (peak15 / 32767.0).log10();
+        println!("{name}: worst peak at volume 15 before the clamp {peak15:.0} ({at}): {db:+.2} dB re full scale");
+        assert!(
+            db < max_db,
+            "{name}: {db:+.2} dB re full scale ({at}), over {max_db:+.1}"
+        );
+    }
+    // reSIDfp saturates in the 8580's worst case too.
+    use sidou_tests::render::{render_residfp, RegWrite};
+    let r = |reg, value| RegWrite {
+        frame: 0,
+        reg,
+        value,
+    };
+    let mut writes = Vec::new();
+    for v in 0..3u8 {
+        let b = 7 * v;
+        writes.extend([
+            r(b, 0x45),
+            r(b + 1, 0x1d),
+            r(b + 3, 0x08),
+            r(b + 5, 0x00),
+            r(b + 6, 0xf0),
+        ]);
+    }
+    writes.extend([r(0x15, 0x07), r(0x16, 0x08), r(0x17, 0xf7), r(0x18, 0x4f)]);
+    writes.extend((0..3u8).map(|v| r(7 * v + 4, 0x41)));
+    let reference = render_residfp(SID_MODEL_8580, &writes, 25, false);
+    let peak = reference.iter().fold(0.0f32, |m, &v| m.max(v.abs())) * 32768.0;
+    assert!(peak >= 32700.0, "reSIDfp's 8580 peaks at {peak:.0} here");
+}

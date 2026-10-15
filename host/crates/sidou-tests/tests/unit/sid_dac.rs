@@ -102,3 +102,35 @@ fn sid_set_dac_swaps_the_tables() {
     }
     assert!(std::ptr::eq(s.dac, &*d));
 }
+
+/// CRC-32 (IEEE 802.3, as zlib's crc32) of a table's floats, each as its IEEE-754 bit
+/// pattern in little-endian bytes, `wave` then `env`: how the device holds sid_dac in
+/// memory, so a device-side CRC over the struct gives the same value.
+fn table_crc(d: &sid_dac) -> u32 {
+    let mut crc = !0u32;
+    for v in d.wave.iter().chain(d.env.iter()) {
+        for b in v.to_bits().to_le_bytes() {
+            crc ^= u32::from(b);
+            for _ in 0..8 {
+                crc = (crc >> 1) ^ (0xedb8_8320 & (crc & 1).wrapping_neg());
+            }
+        }
+    }
+    !crc
+}
+
+/* The default tables' CRCs, for comparing with the device's (docs/hardware-test.md):
+ * sid_dac_build runs in float on both, but the device's float division need not round
+ * as the host's or fm1-emu's soft FPU do. Pinned, so a change shows here first. */
+const CRC_8580: u32 = 0xfde1_a3ba;
+const CRC_6581: u32 = 0x748f_e138;
+
+#[test]
+fn the_default_tables_crc() {
+    let crc8580 = table_crc(built(false));
+    let crc6581 = table_crc(built(true));
+    println!("sid_dac_default(0) (8580): CRC-32 {crc8580:#010x}");
+    println!("sid_dac_default(1) (6581): CRC-32 {crc6581:#010x}");
+    assert_eq!(crc8580, CRC_8580, "8580 table changed: {crc8580:#010x}");
+    assert_eq!(crc6581, CRC_6581, "6581 table changed: {crc6581:#010x}");
+}

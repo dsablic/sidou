@@ -287,6 +287,16 @@ you can.
 - [ ] USB poll cost with a host attached (three SIE round trips per poll at
   2 kHz).
 - [ ] Divide and IRQ-entry latencies.
+- [ ] The voice DAC tables the device builds at boot match the host's. The
+  core computes them in float (`sid_dac_build`), and the device's float
+  division may round differently from the host and from fm1-emu's soft FPU,
+  which the emulator tests compare against. A measuring build computes the
+  CRC-32 of `sid_dac_default(0)` (8580) and `sid_dac_default(1)` (6581), each
+  over the struct's bytes as it lies in memory (`wave`, then `env`), and
+  shows them on the status screen (or, later, answers them over SysEx).
+  Expected, from `cargo test --release -p sidou-tests --test unit --
+  the_default_tables_crc --nocapture` in `host/`: 8580 `0xfde1a3ba`, 6581
+  `0x748fe138`. Record the device's values:
 - [ ] Core 1 is not used by SIDOU; its RAM self-test (Felucca's) is for a
   later milestone.
 
