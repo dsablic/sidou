@@ -6,7 +6,7 @@
  * The views:
  * - LIVE, the root (app/live_view.h): the voices' oscilloscopes and envelopes, the filter's
  *   curve, the VU meters and the effect slots. What the screen shows from power-on; the tap
- *   on the audio runs only while it is on top.
+ *   on the audio runs only while it shows: on top, or under MIDI learn's frame.
  * - MENU (HOME): CHIP, PRESET, OCTAVE and the views to open, in a frame. SELECT moves the
  *   cursor, ALGORITHM changes the value under it or opens the view.
  * - STATUS (from the menu): chip, preset, octave, the sound parameters, the notes and the
@@ -108,8 +108,8 @@ void views_learn(views* v, midi_learn* ml);
 void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held);
 /* Detent steps of encoder enc, as panel_encoder takes them. */
 void views_encoder(views* v, panel* p, uint32_t enc, int32_t steps);
-/* Half way between two frames: LIVE, on top and still, prepares its next frame
- * (live_view_prepare). */
+/* Half way between two frames: LIVE, showing (on top or under MIDI learn's frame) and still,
+ * prepares its next frame (live_view_prepare). */
 void views_prepare(views* v);
 /* One frame: the boot's progress, the toasts and raster of what changed, MIDI learn's end
  * (learn_view_frame), then screen_frame. */

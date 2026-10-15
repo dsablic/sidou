@@ -517,3 +517,43 @@ fn a_toast_over_three_voices_of_noise_stays_within_the_frame_budget() {
     }
     assert!(most > 150, "{most} cells at most: the scopes are not busy");
 }
+
+#[test]
+fn the_tap_runs_while_live_is_under_midi_learns_frame() {
+    let mut ui = Ui::new();
+    let mut chip = Chip::new();
+    let mut ml = Box::<midi_learn>::default();
+    unsafe {
+        midi_learn_init(&mut *ml);
+        views_learn(&mut *ui.v, &mut *ml);
+    }
+    settle(&mut ui);
+    ui.press(LEARN_VIEW_BUTTON);
+    assert_eq!(ui.top(), "LEARN");
+    ui.rig.note_on(69);
+    for _ in 0..4 {
+        chip.play(&mut ui, 14);
+    }
+    assert_eq!(ui.sc.on, 1, "the tap is off under learn's frame over LIVE");
+    // LIVE composes under the frame: its scope follows the note (at the sustain level by now;
+    // flat, it spans none).
+    let rows = trace_rows(&scope_masks(&ui, 0));
+    let span = rows.last().unwrap() - rows.first().unwrap();
+    assert!(
+        span >= 12,
+        "voice 1 under learn: the trace spans {span} pixel rows"
+    );
+    ui.rig.note_off(69);
+    // Learn over the menu: LIVE does not show, the tap is off.
+    ui.press(PANEL_BTN_HOME); // learn cancelled: LIVE
+    ui.settle();
+    ui.press(PANEL_BTN_HOME); // the menu
+    ui.settle();
+    ui.press(LEARN_VIEW_BUTTON);
+    assert_eq!(ui.top(), "LEARN");
+    ui.frame();
+    assert_eq!(
+        ui.sc.on, 0,
+        "the tap runs under learn's frame over the menu"
+    );
+}

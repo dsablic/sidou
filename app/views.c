@@ -465,8 +465,18 @@ static void tell(views* v) {
     remember(v);
 }
 
+/* LIVE shows: on top, or under MIDI learn's frame, which composes it every frame. */
+static int live_shows(const views* v) {
+    const screen* s = &v->s;
+    const view* top = screen_top(s);
+    if (top == &learn_view_view && s->depth >= 2u) {
+        top = s->stack[s->depth - 2u].v;
+    }
+    return top == &live_view_view;
+}
+
 void views_prepare(views* v) {
-    if (screen_top(&v->s) == &live_view_view && !screen_animating(&v->s)) {
+    if (live_shows(v) && !screen_animating(&v->s)) {
         live_view_prepare(&v->live);
     }
 }
@@ -479,7 +489,7 @@ void views_frame(views* v, uint32_t now_ms) {
         tell(v);
     }
     learn_view_frame(&v->learn, &v->s, now_ms);
-    live_view_tap(&v->live, screen_top(&v->s) == &live_view_view);
+    live_view_tap(&v->live, live_shows(v));
     screen_frame(&v->s, now_ms);
 }
 
