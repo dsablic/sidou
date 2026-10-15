@@ -257,6 +257,41 @@ fn usb_attach(fw: &Firmware, envelope: Envelope) -> (u64, u64) {
 
 /// One trial: the note-on's bytes start `offset` cycles after `boot`, the note-off's
 /// `NOTE_MS` and `off_offset` cycles after the note-on's.
+/// The held note's peak on the host core: the live instrument as it boots (SAW LEAD, the
+/// 6581) into a host chip, C4 at velocity 100 for `NOTE_MS`, its largest deviation in the
+/// last `HELD_MS` from the mean of the `BASELINE_MS` before the note, as trial measures it.
+fn host_held_peak() -> i32 {
+    use sidou_sys::{
+        live, live_init, live_note_on, live_sid_sink, live_sid_target, sid, SID_CLOCK_PAL,
+        SID_MODEL_6581,
+    };
+    const FS: u64 = 44_118; // platform/fm1/audio.h, AUDIO_SAMPLE_RATE
+    let mut chip = Box::<sid>::default();
+    let mut target = Box::new(live_sid_target {
+        chip: &mut *chip,
+        clock_hz: SID_CLOCK_PAL,
+        sample_rate: FS as u32,
+    });
+    let mut l = Box::<live>::default();
+    let ctx: *mut live_sid_target = &mut *target;
+    let mut render = |ms: u64| {
+        let mut out = vec![0i16; (ms * FS / 1000) as usize];
+        unsafe { sidou_sys::sid_render(&mut *chip, out.as_mut_ptr(), out.len() as u32) };
+        out
+    };
+    unsafe { live_init(&mut *l, Some(live_sid_sink), ctx.cast(), SID_MODEL_6581) };
+    render(1000); // the chip's power-on release and the DC blocker settle
+    let base = render(BASELINE_MS);
+    let mean = base.iter().map(|&s| i32::from(s)).sum::<i32>() / base.len() as i32;
+    unsafe { live_note_on(&mut *l, C4, 100) };
+    let note = render(NOTE_MS);
+    note[note.len() - (HELD_MS * FS / 1000) as usize..]
+        .iter()
+        .map(|&s| (i32::from(s) - mean).abs())
+        .max()
+        .unwrap()
+}
+
 fn trial(
     fw: &Firmware,
     offset: u64,
@@ -315,9 +350,13 @@ fn trial(
         .map(|i| dev(audio[i]))
         .max()
         .unwrap();
-    // SAW LEAD peaks at about 2,500 since M1b Task 6 put the 6581's filter at reSIDfp's level
-    // (about 4,000 before, 2.4 dB over reSIDfp's): half of that is clearly a note.
-    assert!(held > 1250, "the note is silent: {held}");
+    // At least half the held note's peak on the host core: clearly a note, whatever level
+    // the preset and the filter give it.
+    let reference = host_held_peak();
+    assert!(
+        2 * held > reference,
+        "the note is silent: {held}, against {reference} on the host"
+    );
     let level = (f64::from(held) * NOTE_LEVEL) as i32;
     assert!(level > threshold, "the note level is within the baseline");
 

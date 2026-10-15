@@ -119,7 +119,12 @@ fn the_edit_layer_turns_on_overdrive_and_the_wave_clips() {
         return;
     };
     let mut m = booted(&fw);
-    m.key(A4_KEY, true);
+    // A4, C#5, E5: a chord, so the slot's input is about as loud as one SAW LEAD note was
+    // before M1b Task 6 put the 6581's filter at reSIDfp's level, 3.3 dB lower (one note
+    // now clips to 0.82 of its undriven crest factor, short of the 0.8 below).
+    for k in [A4_KEY, 34, 37] {
+        m.key(k, true);
+    }
     m.run_ms(200);
     m.soc.periph.led_take();
     let (dry, dry_r) = record_lr(&mut m, 300);
@@ -128,9 +133,11 @@ fn the_edit_layer_turns_on_overdrive_and_the_wave_clips() {
     tap(&mut m, ENV);
     tap(&mut m, ENV);
     // fm1-emu turns a knob one click at a time: hold EDIT until every click has landed.
+    // First the slot on at no drive, with the tone and mix the driven take has: what the
+    // slot does besides the drive (its tone filter, its mix) is in both takes.
     m.key(EDIT, true);
     m.run_ms(30);
-    m.turn(K1, 32); // Amount (drive) to the top
+    m.turn(K1, -32); // Amount (drive) to the bottom
     m.run_ms(400);
     m.turn(K1 + 1, 32); // A (tone) to the brightest
     m.run_ms(400);
@@ -138,13 +145,20 @@ fn the_edit_layer_turns_on_overdrive_and_the_wave_clips() {
     m.run_ms(400);
     m.key(EDIT, false);
     m.run_ms(200); // past the switch (20 ms) and the smoothing
+    let (undriven, _) = record_lr(&mut m, 300);
+    m.key(EDIT, true);
+    m.run_ms(30);
+    m.turn(K1, 32); // Amount to the top
+    m.run_ms(400);
+    m.key(EDIT, false);
+    m.run_ms(200);
     let (wet, wet_r) = record_lr(&mut m, 300);
     // Clipping squares the wave off: the crest factor (peak / rms) falls, the level rises.
     let crest = |x: &[f32]| f64::from(peak(x)) / rms(x);
-    let (cd, cw) = (crest(&dry), crest(&wet));
+    let (cd, c0, cw) = (crest(&dry), crest(&undriven), crest(&wet));
     println!(
-        "overdrive from the panel: crest factor {cd:.2} -> {cw:.2}, rms {:.0} -> {:.0}, \
-         power above 2 kHz {:.3} -> {:.3}",
+        "overdrive from the panel: crest factor {cd:.2} dry, {c0:.2} at no drive -> {cw:.2}, \
+         rms {:.0} -> {:.0}, power above 2 kHz {:.3} -> {:.3}",
         rms(&dry),
         rms(&wet),
         power_above(&dry, 2000.0),
@@ -152,9 +166,9 @@ fn the_edit_layer_turns_on_overdrive_and_the_wave_clips() {
     );
     assert_eq!(dry, dry_r, "dry is mono");
     assert_eq!(wet, wet_r, "the distortion slot is mono");
-    // 0.85: SAW LEAD drives the slot 3.3 dB less since M1b Task 6 put the 6581's filter at
-    // reSIDfp's level (2.01 -> 1.63 measured then; 0.8 was set on the louder M1a filter).
-    assert!(cw < 0.85 * cd, "no clipping: crest factor {cd} -> {cw}");
+    // Against the slot at no drive, so the drive alone counts, whatever the source's level
+    // and the tone filter do to the crest factor.
+    assert!(cw < 0.8 * c0, "no clipping: crest factor {c0} -> {cw}");
     assert!(rms(&wet) > 2.0 * rms(&dry), "the drive did not come up");
     // EDIT's LED shows the selected slot is on (the LEDs are multiplexed: lit is above 0).
     m.soc.periph.led_take();
