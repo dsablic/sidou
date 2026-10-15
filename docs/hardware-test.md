@@ -225,6 +225,17 @@ Notes:
 - [ ] With the DAW's MIDI thru (input monitoring) on, send CC 74 to SIDOU over USB and
   over TRS: nothing comes back from SIDOU, so no feedback loop, no runaway messages.
 - [ ] Notes from the keys are not sent (M1: parameters only).
+- [ ] **MIDI out across a host sleep:** with the monitor open, put the computer to
+  sleep, turn K1 and K2 while it sleeps, then wake it: SIDOU still shows up, no burst of
+  the values from the sleep arrives, and the next K1 turn shows CC 74 again within a
+  second. Record what the monitor shows right after the wake:
+- [ ] **MIDI out across a replug:** turn K1 continuously, unplug the USB cable mid-turn
+  (on battery), keep turning a few seconds, plug it back in and keep turning: the sound
+  never stops, the unit enumerates again, and CC 74 follows the knob again without a
+  stale burst. Repeat with the cable pulled and replugged quickly (under a second).
+- [ ] *(Optional, a build configured with `-DSIDOU_MIDI_OUT_NRPN=ON`.)* K1 sends NRPN
+  0/0 as four CCs (99 0, 98 0, 6 and 38) at full 11-bit resolution, K3 NRPN 0/2; K2
+  still sends CC 71. Record K1 at both ends (0 and 2047):
 - [ ] With the DAW closed (the port open by no application), turn the knobs for a
   minute: the sound and the panel stay responsive; opening the DAW afterwards gets no
   burst of old values beyond at most 64 messages.
