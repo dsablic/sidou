@@ -171,9 +171,11 @@ analogue modelling parameters, not just named presets. So:
   active and staging tables per chip.
 
 **Results after Task 3** (2026-10-15; decision record
-[0006](../decisions/0006-chip-profiles.md) has the detail). As scoped for this round: the
-profiles and the four macro controls; the expert layer (every analogue parameter as its
-own control) and user-saved profiles are not done.
+[0006](../decisions/0006-chip-profiles.md) has the detail; revised after review the same
+day). As scoped for this round: the profiles and the four macro controls. Deferred: the
+expert layer (every analogue parameter as its own control), to the CHIP view's panel
+entries (Task 4) and the M1d map's NRPN rows after 2/4; user-saved profiles, which need
+storage, to M2.
 - **Profiles** (`sidou-tablegen` `profiles.rs` -> `gen/profiles.h`, and their filter rows
   in `gen/filter.h`): 6581 R4AR and 8580 R5 are reSIDfp's defaults; 6581 R2 (curve 0.58,
   WEAK combined waveforms, sampled from an R2) and R3 (curve 0.42, AVERAGE, sampled from
@@ -181,8 +183,9 @@ own control) and user-saved profiles are not done.
   documented; "worn 6581" is artistic (curve 0.35 at range 0.4, STRONG, a 2.30 ladder with
   three times the leakage, non-linearity 1.5). Age/heat drifts towards a 6581 row at curve
   0.25, range 0.3, and an 8580 row at curve 0.75 (the 8580's cutoff rises as its curve
-  falls, against reSIDfp's header). All three combined-waveform profiles are now compiled
-  by default.
+  falls, against reSIDfp's header). All three of the 6581's combined-waveform profiles are
+  now compiled by default (the R3 and the R4AR share AVERAGE, sampled from an R3); the
+  8580's WEAK and STRONG, which no profile plays, stay out.
 - **"Worn 6581" defined** as above, and the 6581 range's process-global state handled:
   `filter_fit::apply_range` before every 6581 measurement, `tests/profiles.rs` in its own
   binary with a lock.
@@ -197,15 +200,30 @@ own control) and user-saved profiles are not done.
   reSIDfp's extra step (0.33 to 0.47) is thump 42 to 60. The output gain falls by the
   thump's share, so the step never takes a full-scale signal past full scale (the clipping
   that kept the step out of M1b). 0 is M1b's behaviour.
+  Thump only approximates that step (the same for any voice count, and its headroom puts
+  the 6581 0.41 to 0.59 dB under reSIDfp's level there), so at the default the gap stays
+  open; with thump on, the MASTER pot clicks at each of its volume steps.
+- **Smoothed, without stalling:** a control's jump ramps, a tick at a time (age, thump and
+  bleed 0 to 127 in 0.32 s, the DACs in four tables over 0.16 s), through two alternating
+  stages the drain commits at a block boundary; age is a blend of two filter rows at each
+  filter write, no table, and a DAC table builds over four ticks. A tick's character work
+  is at most 28k instructions (from 0.20 M plus a wait for the ring to empty); a note-on
+  while CC 86 and 87 sweep stays within ADR 0005's bounds, every main-loop pass within the
+  poll allowance. A jump of any control on a triangle steps it at most 1.25 times its own
+  slope (the test the plan asks for: the earlier sweep's saw chord hid any step).
+- **Monotonic:** each control's measure at every one of its 128 values (brightness at
+  five ages).
 - **Cost:** nothing per sample but the bleed, a multiply-add in a copy of each render used
-  only while it is on. Worst blocks with the costliest character: 724.21 and 1,453.96 (one
-  and two chips; `SID_WORST_BLOCK_*` 725 and 1,454); 2,297.47 of 2,300 (2.53 to spare)
-  and about 177 left for the 6502. Flash 362,412 bytes (from 193,848; the combined-waveform
-  tables are most of it), RAM +34,884 bytes of POOL (two DAC tables).
+  only while it is on. Worst blocks 710.48 and 1,425.66 (one and two chips, the default
+  chip's again since `sid_nl_tick`'s clamps became the FPU's fmax and fmin;
+  `SID_WORST_BLOCK_*` 711 and 1,426); 2,269.47 of 2,300 (30.53 to spare) and 205 left for
+  the 6502. Flash 352,044 bytes on main (241,512 without this task; the 6581's combined-
+  waveform tables and the filter rows are most of it; the 8580's WEAK and STRONG left out),
+  RAM +51,488 bytes of POOL (two DAC tables, a second filter row per chip).
 - **Live:** `LIVE_PARAM_PROFILE`, `_AGE`, `_DAC`, `_THUMP`, `_BLEED` on the reserved rows,
-  recorded and applied at the tick; the sink keeps the settings, gives them to the spare
-  before every swap and to the playing chip at a block boundary. MIDI only; panel access
-  with Task 4.
+  recorded and sent at the tick; the sink keeps the settings, gives them to the spare
+  before every swap and ramps the playing chip towards them. MIDI only; panel access with
+  Task 4.
 
 ### Task 4: CHIP view
 

@@ -253,21 +253,22 @@ working.
 - **Where:** `host/crates/emu-gate/tests/slots_budget.rs` (it prints
   `headroom_for_6502_instructions_per_sample`), `tests/common/mod.rs`,
   [decision record 0004](decisions/0004-effect-algorithms.md), "Worst blocks".
-- **Problem:** the switch gate holds two chips at the SID's worst block (1,440),
+- **Problem:** the switch gate holds two chips at the SID's worst block (1,426),
   the LIVE view's tap (4.5; on at power-on), the ISR (100) and the slots' worst
-  switching block (964) to the 2,700 audio target, which leaves **191 per
-  sample** for the 6502 (M3; 227 before M1b Task 6's non-linear 6581 filter,
-  about 38 per sample per chip, and without the tap). The old budget reserved
+  switching block (964) to the 2,700 audio target, which leaves **205 per
+  sample** for the 6502 (M3; 191 after M1b, 227 before M1b Task 6's non-linear
+  6581 filter, about 38 per sample per chip, and without the tap; M1c Task 3's
+  fmax/fmin clamps in the 6581 filter gave back 14). The old budget reserved
   400. The SID's worst block is the power-on transient of noise combined with
   another waveform (the register shifting until it locks up), in a scenario's
-  first block, now on the 6581 (`noise_tri_ring_0800`, 1,439.67; the 8580's is
-  1,409.87). Its profile (`noise_tri_ring_0800`, 8580, one
+  first block, now on the 6581 (`noise_tri_ring_0800`, 1,425.66, 1,439.67 after
+  M1b; the 8580's is 1,410.05). Its profile (`noise_tri_ring_0800`, 8580, one
   chip, block 0, 88.4k instructions): `sid_osc_run_combined` 24,690,
   `sid_osc_advance_slow` 10,114 (the quiet-stretch step, ~60 per call),
   `sid_osc_cycle` 5,004, `sid_noise_clock` 777, envelope attack from 0xaa
   8,052, baseline 39,731 (measured on the 8580 before M1b Task 6). Two chips at
   1,237 or less would give back the 400 (1,232.5 with the tap); the 6581's
-  filter is about 38 of each chip's share.
+  filter was about 38 of each chip's share in M1b.
 - **Action:** when the 6502 lands, measure its per-sample worst. If it does not
   fit the headroom, one or more of:
   1. rewrite the combined-noise path (`sid_osc_run_combined`,

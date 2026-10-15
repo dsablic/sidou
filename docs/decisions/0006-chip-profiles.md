@@ -52,6 +52,10 @@ filter rows of `core/sid/gen/filter.h` (`FILTER_CURVES`); the drift tests keep b
 | 3 | 8580 R5 | curve 0.5 | AVERAGE (R5 1088) | reSIDfp's | n/a | reSIDfp's defaults |
 | 4 | worn 6581 | curve 0.35, range 0.4 | STRONG (R2 0384) | 2R/R 2.30, leakage 0.0225 | 1.5 | **artistic** |
 
+The R3 and the R4AR share their combined waveforms: reSIDfp's AVERAGE, sampled from a 6581
+R3 0486S. reSIDfp has no R4AR sample, so the R4AR profile plays the R3's; what tells the two
+apart is the filter curve.
+
 "Worn 6581" is defined as an aged, abused chip, not a measured one: a darker and narrower
 filter (lower curve and range), the strongest combined waveforms, a ladder further from
 2R = 2R/R and three times reSIDfp's leakage (beyond what `setDacLeakage` can do), and half
@@ -70,31 +74,85 @@ and amounts up to 1 it is M1b's, bit for bit.
 
 ## The controls
 
-Each is 0..127 (MIDI CC 86, 87, 89, 90; NRPN 2/1..4), recorded and applied at the next
-10 ms tick:
-- **Age/heat:** the cutoff and damping tables blend linearly in Hz from the profile's row
-  towards its hot row (127: the hot row), and the 6581 non-linearity rises to twice the
-  profile's (clamped to 2).
+Each is 0..127 (MIDI CC 86, 87, 89, 90; NRPN 2/1..4), recorded and sent at the next 10 ms
+tick, and ramped there (below):
+- **Age/heat:** the cutoff and damping move linearly in Hz from the profile's row towards
+  its hot row (127: the hot row), and the 6581 non-linearity rises to twice the profile's
+  (clamped to 2). The chip holds both rows (`cutoff_g`, the profile's as the SVF's g, and
+  `cutoff_x_to`, the hot row's as angles, pi f / fs) and blends them at each `$15`-`$17`
+  write and at a commit (`sid_update_filter`: the angle's blend, then its tangent, a Pade
+  approximant, and the first row's angle an arctangent one, about 40 instructions; at age
+  0 the first row's entry exactly, so the reSIDfp comparisons and the golden hashes hold
+  bit for bit). The blended cutoff is the Hz blend of the two rows' entries to 1.5e-6
+  (`unit/sid_filter.rs`). So an age change is a number in the stage, no table: the first
+  build of this task rebuilt 2,048 tangents for it (0.20 M instructions) and blended in Hz
+  first; a blend of g instead would have been up to 49 % off the Hz blend near the top
+  rows.
 - **DAC sloppiness:** the voice DACs' 2R/R ratio rises by 0.3 and their leakage to six
-  times the profile's at 127; a new table is built.
+  times the profile's at 127; a new table is built, over four ticks (`sid_dac_job`: the
+  ladders and raw outputs, then a third of the waveform DAC each; `sid_dac_build` is the
+  same steps, so the table is bit for bit).
 - **Output thump:** a DC the volume register scales, up to 1.0 voice-DAC unit at volume
-  15, so a volume write steps the output. M1b left the 6581's volume-register DC step as a
-  gap: reSIDfp's step is 2.65 times SIDOU's with one voice, 1.39 times with three; the
-  extra is 0.33 to 0.47 units, so thump 42 to 60 is about reSIDfp's. The step goes
-  straight into the DC blocker's state at the `$18` write (the blocker's own response to
-  a DC step), so it costs nothing per sample. Headroom: the output gain falls so that full
-  scale moves out by the thump, the largest step a volume write can add (6581 at 127:
-  -1.20 dB), so a signal that reached full scale plus the step still does: the clipping M1b
-  saw, matching the step alone, cannot happen.
+  15, so a volume write steps the output. The step goes straight into the DC blocker's
+  state at the `$18` write (the blocker's own response to a DC step), so it costs nothing
+  per sample. Headroom: the output gain falls so that full scale moves out by the thump,
+  the largest step a volume write can add (6581 at 127: -1.20 dB), so a signal that reached
+  full scale plus the step still does: the clipping M1b saw, matching the step alone,
+  cannot happen. What it is not:
+  - **Not M1b's volume step, closed.** M1b left the 6581's volume-register DC step as a gap:
+    reSIDfp's step is 2.65 times SIDOU's with one voice, 1.39 times with three; the extra is
+    0.33 to 0.47 units, so thump 42 to 60 is about reSIDfp's step, but only about: the
+    thump's step is the same for any voice count, where reSIDfp's grows with the voices'
+    DC, and its headroom puts the 6581 0.41 to 0.59 dB below reSIDfp's level there (M1b's
+    single-voice level tolerance is 0.2 dB). At the default, 0, the gap stays open, as
+    M1b left it.
+  - **The MASTER pot clicks with it.** MASTER writes the volume register, so with thump
+    on each of its 15 steps steps the output: about 280 LSB a step at 127 on the 6581
+    (4,191 for 0 to 15, `unit/sid_character.rs`), as reSIDfp's chip does at every volume
+    write. Scaling MASTER digitally while thump is on (the output gain, at no per-sample
+    cost) was considered and not done: the live instrument's only volume writes are
+    MASTER's, so thump would go silent until M3's player writes `$18`. Thump 0, the
+    default, keeps MASTER clean. `docs/reference/controls.md` says so.
 - **Filter bleed:** up to half the unfiltered voices also reach the filter's input.
 
-Profiles go through a chip reset (the spare-chip swap). The register ring's sink keeps the
-settings and applies them all to the spare in `prepare_spare` before the swap, since
-`sid_init` resets them; the controls change the playing chip with the ring empty: the
-filter tables rebuilt in place (nothing reads them before the `$17` write live sends),
-the DACs built into whichever of two tables the playing chip does not use, and what the
-render reads (the non-linearity, the DAC pointer, thump, bleed, the output gain) copied in
-by the drain at one block boundary (`REG_RING_CHARACTER`, `sid_character_commit`).
+### Ramped, and never in the way of the main loop
+
+A jump of a control is not applied at once: every tick (live sends `LIVE_REG_CHAR_TICK`
+after the settings that changed) the sink's ramp (`sid_character_ramp_tick`) moves age,
+thump and bleed up to 4 towards the target (0 to 127 in 32 ticks, 0.32 s) and the DACs up
+to 32 a table (four tables, 16 ticks). The register ring's sink and the host's
+(`live_sid_sink`) run the same ramp at the same ticks.
+
+The first build of this task waited, at each tick with a change, for the register ring to
+empty (up to a block, 2.9 ms), then rebuilt in place (age 0.20 M instructions, a DAC table
+0.09 M, about 1.1 ms at full character): turning age while playing held key and MIDI
+handling back by up to about 4 ms a tick. Now nothing waits:
+- the ramp's stage goes into whichever of two stages is not queued, and the sink pushes
+  `REG_RING_CHARACTER` with its index; the drain copies it into the rendered chip at the
+  block boundary (`sid_character_commit`, which also sets the filter's coefficients for the
+  age) and clears its pending flag, after a compiler fence. The producer writes a stage
+  only while its flag is clear: on one core the interrupt runs to its end before the
+  producer resumes, so neither sees the other's half-written stage. With both queued (two
+  ticks in one pass, then a third before a block) the tick waits its turn
+  (`character_defers`), which a main loop on time never meets;
+- a DAC table goes into whichever of the two tables neither the chip the queued entries
+  end on, nor the rendered one while a swap is queued, nor a queued stage points at; with
+  none free the DACs wait a tick;
+- the drain counts every tick's entry (`ticks`), so the emulator test replays the device's
+  ticks block for block on the host (`character.rs`, sample-exact).
+
+Measured in fm1-emu: a tick's character work is at most 28,334 instructions (the DAC
+table's first step; the others about 18k, a stage 373), from up to 0.20 M and the wait. A
+note-on while CC 86 and CC 87 sweep all the while (`latency.rs`, 24 trials, the DACs
+building a step a tick): taken by the audio interrupt within 3.26 ms of its arrival
+(bound 3.40, a block and a poll), its first sample in the buffer within 3.50 ms (bound
+3.65 with the render), the note-off within 3.12 ms, as the busy screen's case without the
+sweep (3.26 and 3.50); the longest main-loop pass (midi_drain to midi_service) 47,348
+instructions, against the poll allowance of 120,000.
+
+A profile is a reset and is not ramped: the sink waits for the ring to empty (as for any
+model change) and gives the spare chip the whole character before the swap
+(`prepare_spare`).
 
 ## Results
 
@@ -121,49 +179,85 @@ ceilings (M1b's where met, else the measured value rounded up to 0.01 dB).
 for ST, PT, PS and PST at two pulse widths, once a frame and every 7 cycles, and the reads
 tell the profile's strength from the other two.
 
-**Controls** (`tests/unit/sid_character.rs`): each moves its measure monotonically
-(age: the cutoff at FC 1024 and the chord's brightness fall, the non-linearity rises;
-DAC: a released voice's leakage, 6581 R4AR 31 to 177 RMS; thump: the step at a volume
-write, 23 to 4,191 LSB on the 6581; bleed: the filter's added output, 294 to 894 RMS),
-clamps (past 127 is 127, a bad profile is the model's default), and a sweep of any control
-a step per block never steps the output more than the sound held anywhere along the way.
+**Controls** (`tests/unit/sid_character.rs`): each moves its measure monotonically at every
+one of its 128 values (age: the cutoff at FC 1024 falls and the non-linearity rises, and
+the chord's brightness falls at five; DAC: a released voice's leakage, 6581 R4AR 31 to 177
+RMS; thump: the step at a volume write, its signed area, the peak 23 to 4,191 LSB on the
+6581; bleed: the filter's added output, 294 to 894 RMS), and clamps (past 127 is 127, a
+bad profile is the model's default).
+
+**No clicks:** a jump of each control from 0 to 127, through the host's sink and its ramp,
+on a 110 Hz triangle (the filter as the control needs it: age through the low-pass, the
+bleed into the high-pass), at ten phases of the triangle: the largest sample step stays
+within 1.25 times the triangle's own slope held at either end. The same jump at once, as
+the first build applied it, steps past that for the thump (6581 R4AR 564 LSB against a
+slope of 205; 8580 R5 354 against 48; worn 539 against 315) and the bleed (1,698, 1,405,
+1,642), and for worn's DACs (1,005 against 539); age and the R4AR's and R5's DACs change
+the shape, not the level, at once. The previous test swept a chord of saws, whose own
+edges hid any step.
+
+**Age's rows against reSIDfp** (`tests/profiles.rs`, recorded, not bounded: they are
+artistic targets): the 6581's (curve 0.25 at range 0.3) 5.04 / 4.81 / 4.40 dB in shape,
+passband gain -1.77..-0.29, -1.03..0.98, -0.40..0.05 dB, as far from SIDOU's fit as worn's
+row (the model was fitted at the default range); the 8580's (curve 0.75) 0.23 / 0.16 /
+0.21 dB, -0.09..-0.01, -0.09..-0.03, -0.05..0.02 dB, within M1b's tolerances.
 
 ## Cost
 
-- **Flash:** 310,088 bytes of image on main with SCENE (300,972 on M1b's tip, from
-  193,848): the 6581's WEAK and STRONG combined waveforms (`SIDOU_ALL_COMBINED_PROFILES`,
-  on by default, +61,440 bytes; R2 and worn need them), five 6581 filter rows and two 8580
-  rows (8,256 bytes a row: 57,792 bytes, from M1b's 16,512), and the code. The 8580's WEAK
-  and STRONG stay out (`SIDOU_ALL_COMBINED_PROFILES_8580`, off): its one profile, the R5,
-  plays AVERAGE, and the first build of this task carried them, 61,440 bytes no profile
-  read (362,412 then). emu-gate's `character.rs` checks the tables the image holds. The
-  app slot holds 581,564 bytes: 53 % used. If M2 or M3 need the flash, the active
+- **Flash:** 352,044 bytes of image on main with M1e's logo and title cards (main alone
+  241,512; the first build of this task 410,076), 60.5 % of the app slot's 581,564: the
+  6581's WEAK and STRONG combined waveforms (`SIDOU_ALL_COMBINED_PROFILES`, on by default,
+  +61,440 bytes; R2 and worn need them), five 6581 filter rows and two 8580 rows (8,256
+  bytes a row: 57,792 bytes, from M1b's 16,512), and the code. The 8580's WEAK and STRONG
+  stay out (`SIDOU_ALL_COMBINED_PROFILES_8580`, off): its one profile, the R5, plays
+  AVERAGE, and the first build carried them, 61,440 bytes no profile read. emu-gate's
+  `character.rs` checks the tables the image holds. If M2 or M3 need the flash, the active
   profile's rows can be generated into POOL instead (docs/TODO.md).
-- **RAM:** `chips` (POOL) grew from 17,880 to 52,764 bytes: two 17,408-byte DAC tables for
-  the character and its settings and stage. `.ram_text` grew from 33,924 to 35,596 bytes
-  (72.4 % of 48 KB), most of it the renders' copies with the bleed.
+- **RAM:** `chips` (POOL) grew from 17,880 to 69,368 bytes: two 17,408-byte DAC tables,
+  each chip's second filter row (8,256 bytes), the ramp and the two stages. POOL keeps
+  99,248 bytes free. `.ram_text` grew from 33,924 to 36,820 bytes (74.9 % of 48 KB): the
+  renders' copies with the bleed, and the age's blend in `sid_write` and the drain.
 - **Per sample:** nothing for profile, age, DAC or thump (tables and parameters made in the
-  main loop; thump at the `$18` write). The bleed costs a multiply-add in a copy of each
-  model's render that runs only while it is not 0, so the default chip measures as before
-  (717.59 and 1,439.86 worst blocks, one and two chips). Worst blocks with the costliest
-  character (worn, bleed 127): 724.21 and 1,453.96 (worn's profile 1.07 and 2.19, the
-  bleed 5.55 and 11.91, with the filter's data-dependent work on the voices it now gets).
-  `SID_WORST_BLOCK_*` rise to 725 and 1,454.
-- **Gates:** 1,454 + 4.5 (tap) + 838.97 = 2,297.47 of 2,300 (2.53 to spare, from 16.53);
-  the 2,700 target leaves the 6502 about 177 (from 191).
+  main loop; thump at the `$18` write). The bleed runs in a copy of each model's render
+  used only while it is not 0; its floor is its multiply-add, about 2 instructions a
+  sample a chip. The first build measured it at 5.55 and 11.91 (one and two chips) in the
+  worst blocks: the rest was `sid_nl_tick`'s clamps, data-dependent branches meeting the
+  bled voices. They are now fmax and fmin, which the pi32v2's FPU has as instructions
+  (fm1-isa's `fpu.rs`; clang lowers `__builtin_fmaxf` to one): the same values but for a
+  tie of +0 and -0, which no bound here makes. In the emulator gate that makes the
+  bleed's copy 6.0 a sample cheaper, the worst blocks 5.7 (one chip) and 12.2 (two)
+  cheaper, and the default render 1.0 dearer on average (register allocation); a `fabs`
+  for the swing made the render 17 dearer and is not used. The chip's grown struct also
+  moved the 6581 render's addressing (its loop reads the fields after the tables): with the
+  clamps, every 6581 scenario measures 7.0 a sample under main's, the 8580's 0.1 over (the
+  render's choice of copy), the output bit for bit the same. Worst blocks now: 710.48 and
+  1,425.66 (one and two chips: the default chip's noise_tri_ffff and noise_tri_ring_0800;
+  the costliest character's 709.94 and 1,424.80), from the first build's 724.21 and
+  1,453.96 and M1b's 717.49 and 1,439.67. `SID_WORST_BLOCK_*` tighten to 711 and 1,426
+  (from 725 and 1,454), `SID_WORST_PER_CHIP` to 550 (549.37 measured, from 557).
+- **Gates:** 1,426 + 4.5 (tap) + 838.97 = 2,269.47 of 2,300 (30.53 to spare, from 2.53 in
+  the first build and 16.53 in M1b); the 2,700 target leaves the 6502 205 (from 177; M1b
+  191).
 - **Main loop:** MIDI out's look and live's snapshot cover 42 parameters instead of 37
-  (MIDI out idle 906 instructions a tick; its emulator bound is now per parameter, the
-  same 24.3 a parameter). The extra main-loop work moves when the LCD test's chord keys
-  are scanned, so the LIVE chord's golden image (`tests/golden/lcd/live-chord.png`) was
-  re-recorded: the same notes, E-4 and E-5 on swapped voices.
-- **Main loop, the character:** a profile change is a reset (sid_init and the character: 0.70 M
-  instructions for the worn profile at full character, where sid_init alone is 0.31 M);
-  a control change waits for the ring to empty and
-  rebuilds what changed (2,048 tangents for age, a DAC table for sloppiness), at most once
-  a tick.
+  (MIDI out idle 906 instructions a tick, deduplicated 1,914: 21.6 and 45.6 a parameter,
+  its emulator bounds now 22.0 and 46.0). The LIVE view's chord golden
+  (`tests/golden/lcd/live-chord.png`) depended on where the chord's three presses fell
+  against the key scan, which the extra main-loop work moved; the test now presses the
+  keys 5 ms apart, more than a scan frame, so the voices follow the keys whatever the
+  main loop costs.
+- **Main loop, the character:** a control tick at most 28,334 instructions (above). A
+  profile change is a reset: 0.50 M instructions for worn at full character (`sid_init`
+  0.16 M, the filter's two rows 0.23 M, the DAC table 0.08 M), from 0.70 M. `sid_init`
+  itself, 147,391 instructions in M1b on the 6581 (204,473 on the 8580), grew to 217,834
+  in the first build (this record said 0.31 M: that was the SID gate's whole set-up, the
+  default DAC tables included, 241,053 in M1b and 312k then) and is now 160,057 (225,505):
+  one pass builds both rows for one curve setting, and the tables, which it writes whole,
+  are no longer zeroed first (the device's `memset` goes a byte at a time). The gate's
+  set-up is 241,591 again.
 
 ## Not done here
 
 Panel access (the CHIP view) is Task 4; until then the character is MIDI only. The plan's
-expert layer (every analogue parameter as its own control) and user-saved profiles are not
-in this task.
+expert layer (every analogue parameter as its own control) goes with the CHIP view's panel
+entries (Task 4) and the M1d map's NRPN rows after 2/4; user-saved profiles need storage
+and go with M2.

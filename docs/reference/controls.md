@@ -134,9 +134,16 @@ and measurements: [decision record 0006](../decisions/0006-chip-profiles.md)):
 A profile is a chip and a model: changing it resets the chip (held notes are released, as
 a model change does), and the model follows it. The model (CC 25, the FX button) selects
 the 8580 R5, or goes back to the last 6581 profile chosen. The four controls change the
-playing chip without a reset. All of them apply at the next 10 ms tick, the last value
-received, and survive preset and model changes. Every control at 0 is the profile as
-reSIDfp has it (the worn 6581 aside, which goes beyond reSIDfp on purpose).
+playing chip without a reset, and glide there rather than jump, so they don't click: from
+the next 10 ms tick, age, thump and bleed take 0.32 s from 0 to 127, the DACs 0.16 s. A
+profile applies at the next tick, at once. All of them keep the last value received and
+survive preset and model changes. Every control at 0 is the profile as reSIDfp has it (the
+worn 6581 aside, which goes beyond reSIDfp on purpose).
+
+**Thump and the MASTER pot:** MASTER sets the chip's volume register, in 15 steps. With
+output thump above 0 each step thumps, as a real 6581 does at every volume write: up to
+about 280 LSB a step at thump 127 on a 6581, so turning MASTER clicks. Keep thump at 0 (the
+default) for a clean MASTER.
 
 ## MIDI
 
