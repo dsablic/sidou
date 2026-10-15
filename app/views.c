@@ -75,12 +75,59 @@ static void put_param(grid* g, uint32_t row, const char* label, uint32_t value, 
     widget_bar(g, BAR_COL, row, BAR_CELLS, value, max, TEXT);
 }
 
+/* ---- what the views show ---- */
+
+/* The fields STATUS and MENU show, as bytes, with the menu's blink phase (0 for STATUS). */
+static void look(const views* v, uint32_t blink, uint8_t out[VIEWS_LOOK]) {
+    const live* l = v->l;
+    uint32_t n = 0;
+    out[n++] = (uint8_t)l->model;
+    out[n++] = l->preset;
+    out[n++] = (uint8_t)l->octave;
+    out[n++] = (uint8_t)l->cutoff;
+    out[n++] = (uint8_t)(l->cutoff >> 8);
+    out[n++] = l->resonance;
+    out[n++] = (uint8_t)l->pulse_width;
+    out[n++] = (uint8_t)(l->pulse_width >> 8);
+    out[n++] = l->volume;
+    out[n++] = l->fx_select;
+    for (uint32_t k = 0; k < LIVE_VOICES; k++) {
+        out[n++] = l->voice[k].gate ? l->voice[k].note : LIVE_NO_NOTE;
+    }
+    for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
+        for (uint32_t f = 0; f < LIVE_SLOT_FIELDS; f++) {
+            out[n++] = l->slot[k][f];
+        }
+    }
+    out[n++] = v->home.cursor;
+    out[n++] = v->home.top;
+    out[n] = (uint8_t)blink;
+}
+
+/* 1 when the view on top would show other fields than at its last compose. */
+static int looks_changed(const views* v, uint32_t blink) {
+    uint8_t now[VIEWS_LOOK];
+    look(v, blink, now);
+    for (uint32_t i = 0; i < VIEWS_LOOK; i++) {
+        if (now[i] != v->drawn[i]) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* ---- STATUS ---- */
+
+static int status_changed(screen* s, void* state) {
+    (void)s;
+    return looks_changed(state, 0);
+}
 
 static void status_compose(screen* s, void* state, grid* g) {
     (void)s;
-    const views* v = state;
+    views* v = state;
     const live* l = v->l;
+    look(v, 0, v->drawn);
     widget_screen(g, FONT_FULL, TEXT);
     put(g, 2, 2, "SIDOU");
     put(g, 2, VERSION_END_COL - length(v->version), v->version);
@@ -139,7 +186,7 @@ static void status_compose(screen* s, void* state, grid* g) {
     put(g, 26, 2, "READY.");
 }
 
-const view views_status = {"STATUS", NULL, NULL, NULL, status_compose};
+const view views_status = {"STATUS", NULL, NULL, NULL, status_compose, status_changed};
 
 /* ---- MENU ---- */
 
@@ -148,11 +195,12 @@ static void chip_value(void* ctx, char* buf) {
     join(buf, MENU_VALUE_CHARS, v->l->model == SID_MODEL_8580 ? "8580" : "6581", "");
 }
 
-/* Each detent toggles the model. */
+/* Clockwise the 8580, counter-clockwise the 6581; turning on past either does nothing. */
 static void chip_turn(void* ctx, int32_t steps) {
     views* v = ctx;
-    if (steps & 1) {
-        live_button(v->l, LIVE_BUTTON_FX);
+    sid_model want = steps > 0 ? SID_MODEL_8580 : SID_MODEL_6581;
+    if (steps != 0 && v->l->model != want) {
+        live_button(v->l, LIVE_BUTTON_FX); /* the toggle */
     }
 }
 
@@ -210,8 +258,13 @@ static int menu_input(screen* s, void* state, const screen_event* e) {
     return 0;
 }
 
+static int menu_changed(screen* s, void* state) {
+    return looks_changed(state, (uint32_t)screen_blink(s));
+}
+
 static void menu_compose(screen* s, void* state, grid* g) {
     views* v = state;
+    look(v, (uint32_t)screen_blink(s), v->drawn);
     widget_screen(g, FONT_FULL, TEXT);
     put(g, 2, 2, "SIDOU");
     put(g, 2, VERSION_END_COL - length(v->version), v->version);
@@ -223,7 +276,7 @@ static void menu_compose(screen* s, void* state, grid* g) {
     put(g, 26, 2, "READY.");
 }
 
-const view views_menu = {"MENU", NULL, NULL, menu_input, menu_compose};
+const view views_menu = {"MENU", NULL, NULL, menu_input, menu_compose, menu_changed};
 
 /* ---- CHARSET ---- */
 
@@ -261,7 +314,14 @@ static void charset_compose(screen* s, void* state, grid* g) {
     grid_text(g, 2, 26, "OVL", label);
 }
 
-const view views_charset = {"CHARSET", NULL, NULL, NULL, charset_compose};
+/* The sheet never changes: composed when the screen needs it only. */
+static int charset_changed(screen* s, void* state) {
+    (void)s;
+    (void)state;
+    return 0;
+}
+
+const view views_charset = {"CHARSET", NULL, NULL, NULL, charset_compose, charset_changed};
 
 /* ---- routing ---- */
 
@@ -275,16 +335,9 @@ static void remember(views* v) {
     }
 }
 
-void views_init(views* v, grid* g, live* l, const char* version) {
-    v->l = l;
-    v->version = version;
-    menu_init(&v->home, MENU_ITEMS, VIEWS_MENU_ITEMS, VIEWS_MENU_ITEMS, v);
-    remember(v);
-    screen_init(&v->s, g, &views_status, v);
-}
-
 /* HOME: the menu from the root view, back one view from any other. */
-static int global(views* v, const screen_event* e) {
+static int global(void* ctx, const screen_event* e) {
+    views* v = ctx;
     if (e->kind != SCREEN_PRESS || e->id != PANEL_BTN_HOME) {
         return 0;
     }
@@ -294,14 +347,23 @@ static int global(views* v, const screen_event* e) {
     return 1;
 }
 
+void views_init(views* v, grid* g, live* l, const char* version) {
+    v->l = l;
+    v->version = version;
+    menu_init(&v->home, MENU_ITEMS, VIEWS_MENU_ITEMS, VIEWS_MENU_ITEMS, v);
+    remember(v);
+    screen_init(&v->s, g, &views_status, v);
+    screen_global(&v->s, global, v);
+}
+
 void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
     uint32_t rest = pressed;
-    for (uint32_t b = 0; pressed >> b; b++) {
+    for (uint32_t b = 0; b < 32u && pressed >> b; b++) {
         if (!((pressed >> b) & 1u)) {
             continue;
         }
         screen_event e = {SCREEN_PRESS, (uint8_t)b, 0, held};
-        if (global(v, &e) || screen_input(&v->s, &e)) {
+        if (screen_input(&v->s, &e)) {
             rest &= ~(1u << b);
         }
     }
@@ -357,4 +419,22 @@ static void tell(views* v) {
 void views_frame(views* v, uint32_t now_ms) {
     tell(v);
     screen_frame(&v->s, now_ms);
+}
+
+void views_update(views* v, uint32_t step, int32_t code) {
+    static const char* const STEP[6] = {"", "PACKAGE", "CHECK HEAD", "LOADER", "CONFIRM",
+                                        "RESTART"};
+    grid* g = v->s.g;
+    widget_frame(g, 2, 18, 26, 5, TEXT, "UPDATE");
+    grid_fill(g, 3, 19, 24, 3, ' ', TEXT);
+    if (step < 9u) {
+        grid_text(g, 4, 20, STEP[step < 6u ? step : 0u], TEXT);
+    } else if (code == 1) {
+        grid_text(g, 4, 20, "DRY RUN OK", TEXT);
+    } else {
+        grid_text(g, 4, 20, "FAILED", TEXT);
+        widget_number(g, 11, 20, 3, code, 1, TEXT);
+    }
+    grid_fill(g, 2, 26, 6, 1, ' ', TEXT); /* READY. */
+    screen_redraw(&v->s);
 }

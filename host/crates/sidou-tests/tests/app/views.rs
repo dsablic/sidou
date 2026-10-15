@@ -306,8 +306,8 @@ fn a_change_of_octave_slot_or_algorithm_shows_a_toast() {
         ui.row(SCREEN_TOAST_ROW as usize)[2..9].to_string(),
         "FX LUSH"
     );
-    // It goes after SCREEN_TOAST_MS.
-    for _ in 0..SCREEN_TOAST_MS / 40 {
+    // It goes SCREEN_TOAST_MS after its first frame.
+    for _ in 0..SCREEN_TOAST_MS.div_ceil(40) {
         ui.frame();
     }
     assert_eq!(ui.toast(), None);
@@ -321,10 +321,10 @@ fn a_chip_change_shows_a_toast_and_runs_the_raster() {
     assert_eq!(ui.toast().as_deref(), Some("CHIP 8580"));
     assert!(unsafe { screen_animating(&ui.v.s) } != 0, "no raster");
     ui.settle();
-    // From the menu as well.
+    // From the menu as well: counter-clockwise, the 6581.
     ui.press(PANEL_BTN_HOME);
     ui.settle();
-    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, -1);
     ui.frame();
     assert_eq!(ui.toast().as_deref(), Some("CHIP 6581"));
     assert!(ui.v.s.raster_frames > 0);
@@ -344,4 +344,155 @@ fn the_status_view_shows_the_instrument() {
     ui.frame();
     assert_eq!(&ui.row(19)[2..12], ">DIST TAPE");
     assert_eq!(&ui.row(26)[2..8], "READY.");
+}
+
+/// A cell compose draws as a space on every view (inside the border, below the toast row).
+const PROBE_CELL: usize = 28 * COLS + 20;
+
+/// Marks a cell the views draw, so a frame that composes shows by putting it back.
+fn mark(ui: &mut Ui) {
+    ui.g.ch[PROBE_CELL] = b'@';
+}
+
+fn composed(ui: &Ui) -> bool {
+    ui.g.ch[PROBE_CELL] != b'@'
+}
+
+#[test]
+fn an_idle_view_is_not_composed_and_a_change_is() {
+    let mut ui = Ui::new();
+    ui.settle();
+    mark(&mut ui);
+    for _ in 0..30 {
+        ui.frame();
+    }
+    assert!(!composed(&ui), "the idle status screen was composed");
+    // Whatever the status screen shows: a note, a knob, a slot field.
+    type Change = fn(&mut Ui);
+    let changes: [(&str, Change); 4] = [
+        ("note on", |ui| ui.rig.note_on(60)),
+        ("note off", |ui| ui.rig.note_off(60)),
+        ("cutoff", |ui| ui.turn(PANEL_ENC_K1, -1)),
+        ("slot amount", |ui| ui.rig.cc(LIVE_CC_SLOT_FIRST + 1, 99)),
+    ];
+    for (what, change) in changes {
+        ui.settle();
+        mark(&mut ui);
+        change(&mut ui);
+        ui.frame();
+        assert!(composed(&ui), "{what}: not composed");
+        mark(&mut ui);
+        ui.frame();
+        assert!(!composed(&ui), "{what}: composed again with nothing new");
+    }
+}
+
+#[test]
+fn the_menu_composes_when_its_cursor_blinks_or_moves() {
+    let mut ui = Ui::new();
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    let mut composes = 0;
+    for _ in 0..4 * SCREEN_BLINK_FRAMES {
+        mark(&mut ui);
+        ui.frame();
+        composes += usize::from(composed(&ui));
+    }
+    assert!(
+        (3..=5).contains(&composes),
+        "{composes} composes in 4 blinks"
+    );
+    mark(&mut ui);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.frame();
+    assert!(
+        composed(&ui),
+        "the cursor moved and the menu was not composed"
+    );
+    // The glyph sheet never changes.
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_ITEMS as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.settle();
+    ui.g.ch[PROBE_CELL] = b'@';
+    for _ in 0..20 {
+        ui.frame();
+    }
+    assert_eq!(
+        ui.g.ch[PROBE_CELL], b'@',
+        "the glyph sheet was composed idle"
+    );
+}
+
+/// A capture that takes every event.
+unsafe extern "C" fn capture_all(_ctx: *mut std::ffi::c_void, _e: *const screen_event) -> i32 {
+    1
+}
+
+#[test]
+fn a_capture_takes_home_before_the_views() {
+    let mut ui = Ui::new();
+    unsafe { screen_capture(&mut ui.v.s, Some(capture_all), std::ptr::null_mut()) };
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "STATUS", "HOME opened the menu past the capture");
+    unsafe { screen_capture(&mut ui.v.s, None, std::ptr::null_mut()) };
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "MENU");
+}
+
+#[test]
+fn a_press_of_the_top_button_is_routed_without_running_past_it() {
+    let mut ui = Ui::new();
+    unsafe { views_buttons(&mut *ui.v, &mut *ui.p, 1 << 31, 1 << 31) };
+    assert_eq!(ui.top(), "STATUS");
+}
+
+#[test]
+fn chip_in_the_menu_turns_clockwise_to_8580_and_back_to_6581() {
+    let mut ui = Ui::new();
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    for (steps, model) in [
+        (1, SID_MODEL_8580),
+        (1, SID_MODEL_8580),
+        (3, SID_MODEL_8580),
+        (-1, SID_MODEL_6581),
+        (-2, SID_MODEL_6581),
+        (2, SID_MODEL_8580),
+    ] {
+        ui.turn(PANEL_ENC_ALGORITHM, steps);
+        assert_eq!(ui.live().model, model, "after {steps}");
+    }
+    // A turn that changes nothing runs no raster.
+    ui.settle();
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.frame();
+    assert_eq!(ui.v.s.raster_frames, 0);
+}
+
+/// The update box's text line, trimmed.
+fn update_line(ui: &Ui) -> String {
+    ui.row(20)[4..27].trim_end().to_string()
+}
+
+#[test]
+fn the_update_box_shows_each_step_and_the_result() {
+    let mut ui = Ui::new();
+    for (step, code, text) in [
+        (1, 0, "PACKAGE"),
+        (2, 0, "CHECK HEAD"),
+        (3, 0, "LOADER"),
+        (4, 0, "CONFIRM"),
+        (5, 0, "RESTART"),
+        (9, 1, "DRY RUN OK"),
+        (9, -15, "FAILED -15"),
+    ] {
+        unsafe { views_update(&mut *ui.v, step, code) };
+        assert_eq!(update_line(&ui), text, "step {step}, code {code}");
+        assert_eq!(&ui.row(18)[2..12], "# UPDATE #");
+        assert_eq!(&ui.row(26)[2..8], "      ", "READY. under the box");
+    }
+    // Back in the main loop the next frame puts the view back.
+    ui.frame();
+    assert_eq!(&ui.row(26)[2..8], "READY.");
+    assert_eq!(&ui.row(20)[3..6], "MOD");
 }

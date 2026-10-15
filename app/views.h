@@ -11,12 +11,19 @@
  * - CHARSET: the font and the palette, the art reference.
  *
  * Routing, for each button press and encoder turn:
- * 1. global: HOME opens the menu on the root view, and goes back one view anywhere else;
- * 2. the screen: the capture, then the view on top (screen_input);
- * 3. the panel (app/panel.h): what nobody consumed plays the instrument as in M1a and M1c,
+ * 1. the capture (screen_capture), if a view set one: it sees HOME too, so it can take HOME
+ *    as "cancel";
+ * 2. global (screen_global): HOME opens the menu on the root view, and goes back one view
+ *    anywhere else;
+ * 3. the view on top;
+ * 4. the panel (app/panel.h): what nobody consumed plays the instrument as in M1a and M1c,
  *    in every view: OCT-/OCT+, FX, K1..K4, and the effect slots' EDIT layer (EDIT held + K1..K4,
  *    SCL, ENV). The layer stays here, global, until the CHIP view takes the slots over.
  * The note keys and MASTER do not pass through here: they always play.
+ *
+ * The views compose only when what they show changed (app/screen.h): STATUS and MENU keep a
+ * copy of the instrument's fields they show, MENU its cursor and blink as well, and CHARSET
+ * never changes. An idle screen costs a comparison a frame.
  *
  * Every frame the instrument's state is compared with the last frame's: a change of octave,
  * effect slot or algorithm shows a toast, whatever made it (panel, menu or MIDI), and a chip
@@ -44,6 +51,10 @@ extern "C" {
 #define VIEWS_MENU_ITEMS 4u
 /* Raster steps for a chip model change: the ramp once round. */
 #define VIEWS_RASTER_STEPS SCREEN_RAMP
+/* What the views show, as bytes (app/views.c look): the instrument's model, preset, octave,
+ * cutoff (2), resonance, pulse width (2), volume and selected slot, each voice's sounding
+ * note, every slot field, and the menu's cursor, first row and blink. */
+#define VIEWS_LOOK (13u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
 
 typedef struct {
     screen s;
@@ -55,6 +66,9 @@ typedef struct {
     int8_t octave;
     uint8_t fx_select;
     uint8_t algorithm[LIVE_SLOTS];
+    /* What the view on top showed at its last compose: it composes again when this changes
+     * (the views' changed functions). */
+    uint8_t drawn[VIEWS_LOOK];
 } views;
 
 extern const view views_status;
@@ -70,6 +84,11 @@ void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held);
 void views_encoder(views* v, panel* p, uint32_t enc, int32_t steps);
 /* One frame: the toasts and raster of what changed, then screen_frame. */
 void views_frame(views* v, uint32_t now_ms);
+/* The update protocol's progress (Felucca's ota_show steps: 1 package, 2 head, 3 loader,
+ * 4 confirm, 5 restart; 9 the result, code 1 a dry run, < 0 a failure) in a frame over the
+ * view, straight onto the grid: the main loop is inside the update session and runs no
+ * frames. The next frame composes the view again. */
+void views_update(views* v, uint32_t step, int32_t code);
 
 #ifdef __cplusplus
 }

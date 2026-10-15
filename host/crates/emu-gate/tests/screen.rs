@@ -533,10 +533,11 @@ fn screen_changes_and_transitions_stay_within_the_budgets() {
             .saturating_sub(idle.instructions_per_frame() as u64 * c.frames.len() as u64)
     };
     assert_eq!(idle.total().windows, 0, "an unchanged screen was sent");
-    // Composing an unchanged status screen (about 30k) and the empty polls between frames
-    // (about 390, one per wake-up) find nothing to send: 37k at M1e Task 2.
+    // An idle frame composes nothing (app/screen.h): the views compare what they show with
+    // their last compose, and the polls between frames (about 390, one per wake-up) return at
+    // once with nothing to send. 6.6k at M1e Task 2, from 37k when every frame composed.
     assert!(
-        idle.instructions_per_frame() < 40_000.0,
+        idle.instructions_per_frame() < 7_500.0,
         "{:.0} instructions per idle frame",
         idle.instructions_per_frame()
     );
@@ -551,8 +552,9 @@ fn screen_changes_and_transitions_stay_within_the_budgets() {
         "one note took {:.2} ms of SPI",
         note.total().spi_ms()
     );
+    // Above idle: one compose of the status screen (about 26k) and the run.
     assert!(
-        extra(&note) < 10_000,
+        extra(&note) < 30_000,
         "one note cost {} instructions",
         extra(&note)
     );

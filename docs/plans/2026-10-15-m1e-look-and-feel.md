@@ -76,6 +76,12 @@ SPI):
   the filter curve, a VU meter, and slot indicators.
 - Pick the decimation and tap so the audio ISR cost stays below about 10
   instructions per sample. Assert it in the gate.
+- LIVE changes every frame (the scopes, the meters), so it composes every
+  frame and does not live under the idle bound of
+  `screen_changes_and_transitions_stay_within_the_budgets` (an idle status
+  screen composes nothing: about 6.6k instructions a frame, bounded at 7.5k).
+  It gets its own busiest-frame bound in the gate, expected at about 70-90k
+  instructions a frame.
 
 ### Task 5: First SCENE pieces (prototype for M2)
 - Rule 30, Langton's ant and the starfield: cheap, and reacting to gates,

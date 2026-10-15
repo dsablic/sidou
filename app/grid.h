@@ -29,6 +29,9 @@ extern "C" {
  * 240. 255 keeps a slot index (plus 1) in the cell's byte. A slot costs 10 bytes of RAM
  * (mask, colour, free-list entry): 2,550 bytes, 2.3 KB more than M1e Task 1's 32 slots. */
 #define GRID_OVERLAYS 255u
+#ifndef __cplusplus
+_Static_assert(GRID_OVERLAYS <= 255u, "a cell's byte holds 1 + its overlay slot, ovl_nfree the count");
+#endif
 /* A run's pixels: at most a full row of cells. */
 #define GRID_RUN_PIXELS (GRID_COLS * GRID_CELL_PX * GRID_CELL_PX)
 

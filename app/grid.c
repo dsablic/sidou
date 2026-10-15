@@ -54,7 +54,7 @@ void grid_put(grid* g, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr) {
     /* Marks against the composed cell, not the shown one. Comparing with shown_ch/shown_attr
      * saves nothing while a screen clears before it redraws (compose_status): the clear
      * differs from the panel on every text row either way. It measured 1 % more main-loop
-     * instructions per idle frame (host/crates/emu-gate/tests/screen.rs). */
+     * instructions per composed frame (host/crates/emu-gate/tests/screen.rs). */
     if (g->ch[i] != ch || g->attr[i] != attr) {
         g->ch[i] = ch;
         g->attr[i] = attr;

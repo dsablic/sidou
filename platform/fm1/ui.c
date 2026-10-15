@@ -5,7 +5,6 @@
 #include "grid.h"
 #include "lcd.h"
 #include "views.h"
-#include "widget.h"
 
 #ifndef SIDOU_VERSION
 #define SIDOU_VERSION "0.0.0"
@@ -69,6 +68,9 @@ void ui_poll(uint32_t now_ms) {
         last_compose = now_ms;
         views_frame(&ui, now_ms);
     }
+    if (!pending && !(cells.rows & ~cells.hold)) {
+        return; /* nothing to send: most calls, between frames and on an idle screen */
+    }
     if (prepare() && !lcd_busy()) {
         send();
         prepare(); /* rendered while this one transfers */
@@ -84,20 +86,7 @@ void ui_encoder(panel* p, uint32_t enc, int32_t steps) {
 }
 
 void ui_update(uint32_t step, int32_t code) {
-    static const char* const STEP[6] = {"", "PACKAGE", "CHECK HEAD", "LOADER", "CONFIRM",
-                                        "RESTART"};
-    const uint8_t text = VIEWS_TEXT;
     grid_hold(&cells, 0); /* a wipe's held rows go out too */
-    widget_frame(&cells, 2, 18, 26, 5, text, "UPDATE");
-    grid_fill(&cells, 3, 19, 24, 3, ' ', text);
-    if (step < 9u) {
-        grid_text(&cells, 4, 20, STEP[step < 6u ? step : 0u], text);
-    } else if (code == 1) {
-        grid_text(&cells, 4, 20, "DRY RUN OK", text);
-    } else {
-        grid_text(&cells, 4, 20, "FAILED", text);
-        widget_number(&cells, 11, 20, 3, code, 1, text);
-    }
-    grid_fill(&cells, 2, 26, 6, 1, ' ', text);
+    views_update(&ui, step, code);
     flush();
 }

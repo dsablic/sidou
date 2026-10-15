@@ -11,11 +11,13 @@ CHIP view (M1c Task 4) replaces it.
 
 Each button press and encoder turn goes, in this order (`app/views.h`):
 
-1. **global:** HOME opens the menu from the status screen and goes back one view anywhere
+1. **a capture:** a view waiting for one control (M1d's MIDI learn) sees everything first,
+   HOME included, so HOME can cancel it; it ends when its view closes;
+2. **global:** HOME opens the menu from the status screen and goes back one view anywhere
    else;
-2. **the view on top:** the menu takes SELECT and ALGORITHM; the status screen and the
+3. **the view on top:** the menu takes SELECT and ALGORITHM; the status screen and the
    glyph sheet take nothing;
-3. **the panel:** everything else plays the instrument as below, in every view.
+4. **the panel:** everything else plays the instrument as below, in every view.
 
 The note keys and MASTER always play, whichever view shows. The effect-slot layer (EDIT,
 SCL, ENV) is global until the CHIP view takes the slots over.
@@ -37,7 +39,7 @@ SCL, ENV) is global until the CHIP view takes the slots over.
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last) |
 | **HOME (button 8)** | the menu, from the status screen; back one view from any other (the menu, the glyph sheet) |
 | **SELECT (encoder 0)**, in the menu | moves the blinking cursor up and down the items |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: CHIP, PRESET, OCTAVE; turned clockwise on CHARSET, opens the glyph sheet |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: CHIP (clockwise the 8580, counter-clockwise the 6581; turning on past either changes nothing), PRESET, OCTAVE; turned clockwise on CHARSET, opens the glyph sheet |
 
 The other buttons (LFO, GLO, SAVE, ARP, SEQ, PLAY, REC) and PRESETS (encoder 6) do
 nothing yet; SELECT and ALGORITHM do nothing outside the menu.
