@@ -1,0 +1,182 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- SIDOU's page around fm1-emu's web frontend (MIT, Joakim Eriksson): main.js, worklet.js, jit.js,
+     fwsc.js and fm1_web.wasm are upstream's, copied at the pinned revision by tools/web-demo.
+     main.js finds its elements by id (title, status, fw, mhz, midi, midich, midiact, midiin, open,
+     bank, bankname, about, panel, start, fwlist) and observes <header> and .bar: keep them all. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SIDOU in the browser</title>
+<meta name="description" content="SIDOU, a C64 SID instrument firmware for the M-VAVE FM-1, running in the fm1-emu emulator in your browser.">
+<link rel="icon" href="data:,">
+<style>
+  /* the C64 palette (docs/art/README.md): blue, light blue, cyan, light green, yellow, light red */
+  :root { --room: #0f0c22; --well: #1b1640; --card: #161236; --line: #352879; --rule: #241d55;
+          --ink: #e8e6f4; --dim: #9a94c4; --accent: #70a4b2; --lb: #6c5eb5; --ok: #9ad284; --warn: #9a6759;
+          --yellow: #b8c76f; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--room); color: var(--ink); font: 14px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 1280px; margin: 0 auto; padding: 16px 16px 24px; display: grid; gap: 12px; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .brand img { width: 229px; height: auto; image-rendering: pixelated; display: block; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--dim); }
+  #status { color: var(--dim); font-variant-numeric: tabular-nums; }
+  .stage { position: relative; }
+  /* the whole synth in view on a laptop (upstream's rule; --above and --aspect come from main.js) */
+  canvas { display: block; width: 100%; height: auto; touch-action: none; user-select: none; margin: 0 auto;
+           max-width: max(560px, calc((100svh - var(--above, 140px) - 52px) * var(--aspect, 1.56))); }
+  #start { position: absolute; inset: 0; margin: auto; width: clamp(110px, 30%, 220px); height: clamp(36px, 9vw, 56px);
+           border: 0; border-radius: 28px; background: var(--accent); color: #0f0c22; font-size: clamp(14px, 3.5vw, 17px);
+           font-weight: 700; letter-spacing: .04em; cursor: pointer; }
+  #start:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  #start[disabled] { opacity: .7; cursor: wait; }
+  @media (orientation: landscape) and (max-height: 560px) {
+    main { padding-block: 8px 16px; gap: 8px; }
+    canvas { width: auto; max-width: 100%; height: calc(100svh - 12px); }
+  }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+  .bar label { display: flex; gap: 8px; align-items: center; color: var(--dim); }
+  .bar [hidden] { display: none; }
+  select { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; max-width: 100%; }
+  select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .file { cursor: pointer; color: var(--ink) !important; background: var(--well); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
+  .file:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .file input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  #about { color: var(--dim); flex: 1 1 320px; min-width: 0; }
+  #about b { color: var(--ink); font-weight: 600; }
+  #midiact { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+  #midiact.on { background: var(--ok); }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  kbd { display: inline-block; min-width: 1.7em; padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px;
+        background: var(--well); color: var(--ink); font: 600 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: center; }
+  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .hint { margin: 0; color: var(--dim); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .hint span { white-space: nowrap; }
+  .guide { margin-top: 12px; border-top: 1px solid var(--rule); padding-top: 20px; display: grid; gap: 24px 40px;
+           grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+  .guide > * { min-width: 0; }
+  section h2 { margin: 0 0 10px; font-size: 12px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--yellow); }
+  section p, section li { color: #c4c0de; max-width: 72ch; }
+  section p { margin: 0 0 10px; }
+  section b { color: var(--ink); }
+  section ul { margin: 0 0 10px; padding-left: 20px; }
+  section li { margin: 3px 0; }
+  table { border-collapse: collapse; font-size: 13px; }
+  td { padding: 3px 12px 3px 0; vertical-align: top; color: #c4c0de; }
+  td:first-child { white-space: nowrap; }
+  #build { font-variant-numeric: tabular-nums; }
+  footer { color: var(--dim); font-size: 12.5px; border-top: 1px solid var(--rule); padding-top: 12px; margin-top: 8px; }
+  @media (max-width: 600px) { .brand img { width: 160px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">
+      <img src="logo.png" width="458" height="122" alt="SIDOU">
+      <h1 id="title">SIDOU (emulated)</h1>
+    </div>
+    <span id="status">click Start to boot</span>
+  </header>
+  <div class="bar">
+    <label hidden>Firmware <select id="fw" aria-label="Firmware"></select></label>
+    <label>Clock <select id="mhz" aria-label="Emulated clock"></select></label>
+    <label id="midiin">MIDI in <select id="midi" aria-label="MIDI input"><option value="">off</option><option value="*">all inputs</option></select>
+      <span id="midiact" aria-hidden="true"></span></label>
+    <label id="midichl" title="SIDOU plays notes on every channel">Channel
+      <select id="midich" aria-label="MIDI channel"><option value="0">as sent</option></select></label>
+    <label class="file" title="Boot another SIDOU build, e.g. build/fm1/sidou.fwsc">Open .fwsc… <input type="file" id="open"></label>
+    <label class="file" hidden>DX7 bank… <input type="file" id="bank"></label>
+    <span id="bankname" hidden></span>
+    <span id="about"></span>
+  </div>
+  <div class="stage">
+    <canvas id="panel" aria-label="FM-1 front panel"></canvas>
+    <button id="start">Start</button>
+  </div>
+  <p class="hint">
+    <span><kbd>A</kbd>…<kbd>'</kbd> play C4–F5</span>
+    <span><kbd>Z</kbd> <kbd>X</kbd> octave</span>
+    <span><kbd>1</kbd> 6581 / 8580</span>
+    <span><kbd>7</kbd> menu</span>
+    <span>drag or scroll K1–K4: cutoff, resonance, pulse width, preset</span>
+  </p>
+
+  <div class="guide">
+    <section>
+      <h2>What this is</h2>
+      <p><b>SIDOU</b> is free firmware that turns the M-VAVE FM-1 pocket synth into a Commodore 64 SID
+        instrument: an emulated SID chip (6581 or 8580) played from the FM-1's keys and knobs and over MIDI,
+        with three effect slots after the chip. A step sequencer, a tracker and <code>.sid</code> playback are
+        planned.</p>
+      <p>This page runs the <b>latest build from main</b> in <a href="https://github.com/joakimeriksson/fm1-emu">fm1-emu</a>,
+        an emulator of the FM-1's chip, in WebAssembly: the same update package (<code>sidou.fwsc</code>) a
+        real FM-1 would take. SIDOU has not run on a real FM-1 yet.</p>
+      <p id="build">Build: loading…</p>
+      <p><a href="https://github.com/dsablic/sidou">Source, docs and status: github.com/dsablic/sidou</a></p>
+    </section>
+
+    <section>
+      <h2>How to play</h2>
+      <p>Press <b>Start</b> (a browser plays sound only after a click). The title card shows for about a
+        second; any key skips it.</p>
+      <table aria-label="Keyboard and panel controls">
+        <tr><td><kbd>A</kbd> <kbd>W</kbd> <kbd>S</kbd> … <kbd>;</kbd> <kbd>'</kbd></td><td>the note keys, C4 to F5 (a piano row: <kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd> <kbd>O</kbd> <kbd>P</kbd> are the sharps)</td></tr>
+        <tr><td><kbd>Z</kbd> <kbd>X</kbd></td><td>OCT− / OCT+</td></tr>
+        <tr><td><kbd>1</kbd></td><td>FX: the chip, 6581 or 8580</td></tr>
+        <tr><td>K1 K2 K3 K4</td><td>cutoff, resonance, pulse width, preset (drag up / down or scroll; no keys)</td></tr>
+        <tr><td><kbd>5</kbd> held + K1–K4</td><td>EDIT: the selected effect slot's Amount, A, B, Mix</td></tr>
+        <tr><td><kbd>2</kbd> / <kbd>3</kbd></td><td>SCL: the next effect slot / ENV: its next algorithm</td></tr>
+        <tr><td><kbd>7</kbd></td><td>HOME: the menu (<kbd>←</kbd> <kbd>→</kbd> SELECT moves, <kbd>,</kbd> <kbd>.</kbd> ALGORITHM changes)</td></tr>
+        <tr><td><kbd>8</kbd></td><td>SAVE: MIDI learn</td></tr>
+        <tr><td>MASTER</td><td>volume (drag the knob at the top left)</td></tr>
+      </table>
+      <p>The mouse or a touch screen plays the panel directly. All controls:
+        <a href="https://github.com/dsablic/sidou/blob/main/docs/reference/controls.md">docs/reference/controls.md</a>.</p>
+      <p><b>MIDI in:</b> pick a keyboard under <b>MIDI in</b> (Chrome, Edge, Firefox; Safari has no Web MIDI).
+        SIDOU plays notes on every channel; CC 74 cutoff, 71 resonance, 1 pulse width, 7 volume, program
+        change 0–3 the presets (<a href="https://github.com/dsablic/sidou/blob/main/docs/reference/midi.md">MIDI map</a>).</p>
+    </section>
+
+    <section>
+      <h2>The emulator's limits</h2>
+      <ul>
+        <li><b>No USB.</b> fm1-emu has no USB device, so no USB-MIDI in or out: MIDI from this page reaches
+          SIDOU through the emulated TRS MIDI IN jack, and the panel's MIDI out goes nowhere.</li>
+        <li><b>No watchdog or P33.</b> The power and reset block is not modelled, so a hang is not reset as
+          it would be on the chip.</li>
+        <li><b>Instructions, not cycles.</b> The emulator counts instructions; the clock setting is
+          instructions per second. A real FM-1's timing can differ. The page starts at 240 MHz, the clock
+          SIDOU's audio budget is checked at. If the status line's count of short audio quanta keeps
+          climbing, your computer is behind: pick a lower clock (SIDOU may then run short of time itself,
+          heavy effects first).</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Credits</h2>
+      <p>The emulator and this page's player (<code>main.js</code>, the audio worklet, the wasm) are
+        <a href="https://github.com/joakimeriksson/fm1-emu">fm1-emu</a> by Joakim Eriksson, under the
+        <a href="licenses/fm1-emu-MIT.txt">MIT licence</a>, unchanged but for two lines
+        (<a href="https://github.com/dsablic/sidou/blob/main/web/patch-main.sh">web/patch-main.sh</a>).</p>
+      <p>SIDOU's firmware image is GPL-3.0-only (<a href="licenses/GPL-3.0-only.txt">text</a>); the package
+        carries three files of JieLi's AC79 SDK under Apache-2.0 (<a href="licenses/Apache-2.0.txt">text</a>).
+        Everyone SIDOU builds on: <a href="https://github.com/dsablic/sidou/blob/main/CREDITS.md">CREDITS.md</a>.</p>
+      <p class="dim">SIDOU is an independent project, not affiliated with M-VAVE or Commodore trademark holders.</p>
+    </section>
+  </div>
+  <ul id="fwlist" hidden></ul>
+  <footer>
+    SIDOU · <a href="https://github.com/dsablic/sidou">github.com/dsablic/sidou</a> · emulated by
+    <a href="https://github.com/joakimeriksson/fm1-emu">fm1-emu</a> (MIT, Joakim Eriksson)
+  </footer>
+</main>
+<script type="module" src="sidou.js"></script>
+<script type="module" src="main.js"></script>
+</body>
+</html>

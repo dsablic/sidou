@@ -33,6 +33,7 @@ component. "Use" says whether a component ends up in the firmware image.
 | font8x8_basic @ `8e279d2d` (`host/crates/sidou-tests/tests/data/font8x8_basic.h`) | font8x8, Daniel Hepper, after Marcel Sondaar and IBM's VGA fonts | public domain (`LICENSES/LicenseRef-PublicDomain.txt`) | host tests only: the reference SIDOU's own font must not copy; never built into the firmware | in use |
 | libresidfp @ `c1791383` (`third_party/libresidfp`) | libsidplayfp project | GPL-2.0-or-later | host tests and the table generator (`sidou-tablegen`) only; git submodule, never linked into firmware (the tables generated from it are listed above) | in use |
 | fm1-emu crates `fm1-core`, `fm1-soc`, `fm1-isa` @ `e52f4640` | Joakim Eriksson | MIT | emulator gate only; fetched by cargo | in use |
+| fm1-emu `fm1-web` crate and web frontend (`web/main.js`, `worklet.js`, `jit.js`, `fwsc.js`, `fm1-emu-report.pdf`) @ `e52f4640` | Joakim Eriksson | MIT (its `LICENSE` ships with the site as `licenses/fm1-emu-MIT.txt`) | browser demo only (`tools/web-demo`, GitHub Pages); fetched into `build/fm1-emu` at build time, `main.js` patched there by `web/patch-main.sh`, never committed | in use |
 | Rust crates `cc`, `criterion`, `object`, `png`, `serde_json`, `sha2` | crates.io | MIT OR Apache-2.0 | host build, tests and benchmark only; fetched by cargo | in use |
 | Rust crate `bindgen` | crates.io | BSD-3-Clause | host build only; fetched by cargo | in use |
 | Rust crate `libm` | crates.io | MIT | table generator (`sidou-tablegen`) only; fetched by cargo | in use |

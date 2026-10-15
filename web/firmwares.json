@@ -1,0 +1,10 @@
+{
+  "note": "SIDOU's catalog for fm1-emu's web page (replaces upstream's web/firmwares.json; tools/web-demo fills in the version). The package is the one tools/web-demo built, served next to the page.",
+  "default": "sidou",
+  "firmwares": [
+    { "id": "sidou", "name": "SIDOU", "version": "@VERSION@", "author": "SIDOU contributors", "license": "GPL-3.0-only (the firmware image)",
+      "about": "A C64 SID instrument for the FM-1: the latest build from main.",
+      "repo": "https://github.com/dsablic/sidou",
+      "package": "sidou.fwsc" }
+  ]
+}

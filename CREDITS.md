@@ -28,7 +28,9 @@ SIDOU builds on, or learns from, the work of these people and projects.
 ## FM-1 community
 - **Felucca**: Leo Kuroshita / Hügelton Instruments, and the many forks
   built on it (SLOOP, Melodee, X0X, FoMni and others)
-- **fm1-emu / fm1-sid**: Joakim Eriksson
+- **fm1-emu / fm1-sid**: Joakim Eriksson. fm1-emu (MIT) runs SIDOU's
+  emulator tests, and its web frontend (the wasm build, the page's player,
+  audio worklet and package unpacker) is the browser demo
 - **fm1-custom-fw resource hub**: aroum and contributors
 - **M-VAVE** for publishing the official open firmware
 
