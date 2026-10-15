@@ -615,3 +615,56 @@ fn without_the_gate_reset_most_note_offs_wait_for_the_lfsr() {
     assert_eq!(waits.iter().filter(|&&w| w <= 271).count(), 38, "{waits:?}");
     assert!(waits.iter().all(|&w| w <= 271 || w > 32_000), "{waits:?}");
 }
+
+/// What a tap saw: the oscillators' accumulators each time it ran.
+unsafe extern "C" fn record_tap(ctx: *mut std::ffi::c_void, s: *const sid) {
+    let seen = unsafe { &mut *ctx.cast::<Vec<[u32; 3]>>() };
+    let o = unsafe { &(*s).osc };
+    seen.push([o[0].acc, o[1].acc, o[2].acc]);
+}
+
+/// sid_render_tap renders exactly sid_render's samples, on both models, and runs the tap
+/// after every `every` samples and after the last, short chunk, with the voices as those
+/// samples left them.
+#[test]
+fn a_tapped_render_is_the_plain_render_with_the_voices_at_each_chunk() {
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        let (mut a, mut b, mut c) = (new_sid(model), new_sid(model), new_sid(model));
+        for s in [&mut a, &mut b, &mut c] {
+            saw_a4(s);
+            write(s, 0x17, 0xf1);
+            write(s, 0x16, 0x40);
+            write(s, 0x18, 0x1f);
+        }
+        let mut seen: Vec<[u32; 3]> = Vec::new();
+        let mut expect: Vec<[u32; 3]> = Vec::new();
+        for frames in [128u32, 40, 128] {
+            let plain = render(&mut a, frames);
+            let mut tapped = vec![0i16; frames as usize];
+            unsafe {
+                sid_render_tap(
+                    &mut *b,
+                    tapped.as_mut_ptr(),
+                    frames,
+                    16,
+                    Some(record_tap),
+                    (&raw mut seen).cast(),
+                );
+            }
+            assert_eq!(plain, tapped, "model {model}, {frames} frames");
+            let mut k = 0;
+            while k < frames {
+                let n = (frames - k).min(16);
+                render(&mut c, n);
+                expect.push([c.osc[0].acc, c.osc[1].acc, c.osc[2].acc]);
+                k += n;
+            }
+        }
+        assert_eq!(seen.len(), 8 + 3 + 8);
+        assert_eq!(seen, expect, "model {model}");
+        assert!(
+            peak(&render(&mut b, 128)) > 1000,
+            "silent: the test would be vacuous"
+        );
+    }
+}

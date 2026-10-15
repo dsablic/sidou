@@ -57,6 +57,17 @@ void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate);
 void sid_write(sid* s, uint8_t reg, uint8_t value);
 void sid_render(sid* s, int16_t* out, uint32_t frames);
 
+/* A tap on a render (sid_render_tap), with the chip as the samples so far left it: its
+ * voices (osc, env) are current; its filter and output stage may not be stored back yet. */
+typedef void (*sid_tap)(void* ctx, const sid* s);
+/* sid_render, calling tap after every `every` samples (every >= 1) and after the last,
+ * shorter chunk: the samples are exactly sid_render's. One call for a block, however many
+ * taps, so a tap costs its own work and nothing of a render's per-call setup (app/scope.c,
+ * the LIVE view's tap). The tap runs inside the render: on the device, in the audio
+ * interrupt, so it is short and in SRAM (platform/fm1/app.ld). */
+void sid_render_tap(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_tap tap,
+                    void* ctx);
+
 /* Reads a register. $19/$1A (paddles) read 0xFF, $1B is OSC3 (the top 8 bits of voice
  * 3's waveform output, as reSIDfp latches it; 0 with no waveform selected), $1C is
  * ENV3 (voice 3's envelope counter at the start of the last cycle). Like the chip, every

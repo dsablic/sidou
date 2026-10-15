@@ -276,53 +276,76 @@ void sid_clock(sid* s, uint32_t cycles) {
     }
 }
 
+/* sid_render's loop, in chunks of `every` samples with a tap after each (sid_render_tap);
+ * sid_render's is one chunk and no tap. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t every,
+                               sid_tap tap, void* ctx) {
+    uint32_t i = 0;
+    while (i < frames) {
+        uint32_t end = frames - i > every ? i + every : frames;
+        for (; i < end; ++i) {
+            s->cycle_frac_q16 += s->cycles_per_sample_q16;
+            uint32_t cycles = s->cycle_frac_q16 >> 16;
+            s->cycle_frac_q16 &= 0xffffu;
+
+            clock_voices(s, cycles);
+
+            float filt_in = 0.0f, direct = 0.0f;
+            for (int v = 0; v < 3; ++v) {
+                float x = voice_out(s, v);
+                if (s->routing & (1u << v)) {
+                    filt_in += x;
+                } else if (!(v == 2 && (s->mode_vol & 0x80u))) {
+                    direct += x;
+                }
+            }
+            sid_svf_tick(&s->svf, filt_in);
+            float filtered = 0.0f;
+            if (s->mode_vol & 0x10u) {
+                filtered += s->svf.lp;
+            }
+            if (s->mode_vol & 0x20u) {
+                filtered += s->svf.bp;
+            }
+            if (s->mode_vol & 0x40u) {
+                filtered += s->svf.hp;
+            }
+
+            float x = (direct + filtered) * s->volume;
+            float y = x - s->dc_x1 + s->dc_r * s->dc_y1;
+            /* Same reason as sid_svf_tick: on constant input y decays into denormals. */
+            if (y < 1e-15f && y > -1e-15f) {
+                y = 0.0f;
+            }
+            s->dc_x1 = x;
+            s->dc_y1 = y;
+
+            /* Round half away from zero, clamped so the cast stays in range. */
+            float o = y * s->output_gain;
+            o += o >= 0.0f ? 0.5f : -0.5f;
+            if (o > 32767.0f) {
+                o = 32767.0f;
+            } else if (o < -32768.0f) {
+                o = -32768.0f;
+            }
+            out[i] = (int16_t)o;
+        }
+        if (tap) {
+            tap(ctx, s);
+        }
+    }
+}
+
 void sid_render(sid* s, int16_t* out, uint32_t frames) {
     fold_owed(s);
-    for (uint32_t i = 0; i < frames; ++i) {
-        s->cycle_frac_q16 += s->cycles_per_sample_q16;
-        uint32_t cycles = s->cycle_frac_q16 >> 16;
-        s->cycle_frac_q16 &= 0xffffu;
+    render_loop(s, out, frames, frames, 0, 0);
+}
 
-        clock_voices(s, cycles);
-
-        float filt_in = 0.0f, direct = 0.0f;
-        for (int v = 0; v < 3; ++v) {
-            float x = voice_out(s, v);
-            if (s->routing & (1u << v)) {
-                filt_in += x;
-            } else if (!(v == 2 && (s->mode_vol & 0x80u))) {
-                direct += x;
-            }
-        }
-        sid_svf_tick(&s->svf, filt_in);
-        float filtered = 0.0f;
-        if (s->mode_vol & 0x10u) {
-            filtered += s->svf.lp;
-        }
-        if (s->mode_vol & 0x20u) {
-            filtered += s->svf.bp;
-        }
-        if (s->mode_vol & 0x40u) {
-            filtered += s->svf.hp;
-        }
-
-        float x = (direct + filtered) * s->volume;
-        float y = x - s->dc_x1 + s->dc_r * s->dc_y1;
-        /* Same reason as sid_svf_tick: on constant input y decays into denormals. */
-        if (y < 1e-15f && y > -1e-15f) {
-            y = 0.0f;
-        }
-        s->dc_x1 = x;
-        s->dc_y1 = y;
-
-        /* Round half away from zero, clamped so the cast stays in range. */
-        float o = y * s->output_gain;
-        o += o >= 0.0f ? 0.5f : -0.5f;
-        if (o > 32767.0f) {
-            o = 32767.0f;
-        } else if (o < -32768.0f) {
-            o = -32768.0f;
-        }
-        out[i] = (int16_t)o;
-    }
+void sid_render_tap(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_tap tap,
+                    void* ctx) {
+    fold_owed(s);
+    render_loop(s, out, frames, every, tap, ctx);
 }

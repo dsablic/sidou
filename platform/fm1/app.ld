@@ -53,7 +53,7 @@ SECTIONS
         *(.text.fm1_alnk0_irq)                      /* main.c */
         *(.text.audio_fill)                         /* audio.c */
         *(.text.reg_ring_drain .text.reg_ring_pop .text.reg_ring_chip)   /* app/reg_ring.c */
-        *(.text.sid_render .text.sid_write)         /* core/sid/sid.c (sid_svf_set is inline) */
+        *(.text.sid_render .text.sid_render_tap .text.sid_write)   /* core/sid/sid.c (sid_svf_set is inline) */
         *(.text.sid_set_gate_reset)                 /* sid.c, from reg_ring_drain */
         *(.text.sid_read .text.read_osc3 .text.clock_voices .text.fold_owed)    /* sid.c */
         *(.text.sid_osc_advance_slow .text.sid_osc_cycle .text.sid_osc_run_combined)   /* sid_osc.h */
@@ -73,8 +73,9 @@ SECTIONS
         *(.text.sid_fx_crush_init .text.sid_fx_noise_init .text.sid_fx_chorus_init)
         *(.text.sid_fx_flanger_init .text.sid_fx_tremolo_init .text.sid_fx_wow_init)
         *(.text.fx_live_pseudo .text.fx_live_apply)
-        /* The LIVE view's tap (app/scope.c): the chunked render and the output's peaks. */
-        *(.text.scope_render .text.scope_peaks)
+        /* The LIVE view's tap (app/scope.c): the tapped render, its points (called through a
+         * pointer from sid_render_tap: no branch check sees it) and the output's peaks. */
+        *(.text.scope_render .text.scope_tap_point .text.scope_peaks)
         . = ALIGN(4);
         _rt_end = .;
     } > RAMTEXT AT > XIP

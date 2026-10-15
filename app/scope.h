@@ -4,12 +4,12 @@
  * from the audio interrupt to the main loop (app/live_view.h draws them).
  *
  * The producer is the audio interrupt (platform/fm1/audio.c): scope_render renders a block
- * of the chip in chunks of SCOPE_DECIMATE samples and, after each chunk, writes a point: each
- * voice's waveform output and its oscillator's phase. Once a block it copies each voice's
- * envelope (ENV3, its state and sustain level), and scope_peaks raises the peaks of the
- * block's stereo output after the effect slots. Rendering in chunks gives exactly the samples
- * one call gives (sid_render keeps its state across calls), so the tap changes nothing in the
- * audio. It runs only while the consumer asks for it (`on`): nothing is added to the
+ * of the chip in one sid_render_tap, which calls it back after every SCOPE_DECIMATE samples
+ * to write a point: each voice's waveform output and its oscillator's phase. Once a block it
+ * copies each voice's envelope (ENV3, its state and sustain level), and scope_peaks raises
+ * the peaks of the block's stereo output after the effect slots. A tapped render gives
+ * exactly sid_render's samples, so the tap changes nothing in the audio; one render a block
+ * keeps a render's per-call setup out of the tap's cost. It runs only while the consumer asks for it (`on`): nothing is added to the
  * interrupt while LIVE is not showing.
  *
  * The consumer is the main loop: scope_read copies the newest points, oldest first.

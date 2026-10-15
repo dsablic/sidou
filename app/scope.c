@@ -14,27 +14,36 @@ void scope_init(scope* sc) {
     memset(sc, 0, sizeof *sc); /* not a const template: 1.5 KB of zeros in flash */
 }
 
-/* The audio interrupt (SRAM on the device, platform/fm1/app.ld): kept short. The interrupt
- * cannot be preempted by the consumer, so the head is published once, after the block's
- * points. */
+/* A point after each SCOPE_DECIMATE samples (sid_render_tap): each voice's waveform output
+ * and phase. h is the producer's own count, published once a block (scope_render). */
+typedef struct {
+    scope* sc;
+    uint32_t h;
+} tap_at;
+
+static void scope_tap_point(void* ctx, const sid* chip) {
+    tap_at* t = ctx;
+    scope_point* p = &t->sc->point[t->h++ & MASK];
+    const sid_osc* o = chip->osc;
+    p->wave[0] = (uint8_t)(o[0].out >> 4);
+    p->wave[1] = (uint8_t)(o[1].out >> 4);
+    p->wave[2] = (uint8_t)(o[2].out >> 4);
+    p->phase[0] = (uint8_t)(o[0].acc >> 16);
+    p->phase[1] = (uint8_t)(o[1].acc >> 16);
+    p->phase[2] = (uint8_t)(o[2].acc >> 16);
+}
+
+/* The audio interrupt (SRAM on the device, platform/fm1/app.ld): kept short. One render a
+ * block, the points from inside it, so the tap adds none of a render's per-call setup. The
+ * interrupt cannot be preempted by the consumer, so the head is published once, after the
+ * block's points. */
 void scope_render(scope* sc, sid* chip, int16_t* out, uint32_t frames) {
     if (!sc->on) {
         sid_render(chip, out, frames);
         return;
     }
-    uint32_t h = sc->head;
-    for (uint32_t k = 0; k < frames; k += SCOPE_DECIMATE) {
-        uint32_t n = frames - k < SCOPE_DECIMATE ? frames - k : SCOPE_DECIMATE;
-        sid_render(chip, out + k, n);
-        scope_point* p = &sc->point[h++ & MASK];
-        const sid_osc* o = chip->osc;
-        p->wave[0] = (uint8_t)(o[0].out >> 4);
-        p->wave[1] = (uint8_t)(o[1].out >> 4);
-        p->wave[2] = (uint8_t)(o[2].out >> 4);
-        p->phase[0] = (uint8_t)(o[0].acc >> 16);
-        p->phase[1] = (uint8_t)(o[1].acc >> 16);
-        p->phase[2] = (uint8_t)(o[2].acc >> 16);
-    }
+    tap_at t = {sc, sc->head};
+    sid_render_tap(chip, out, frames, SCOPE_DECIMATE, scope_tap_point, &t);
     for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
         const sid_env* e = &chip->env[v];
         sc->env[v] = e->env3;
@@ -42,7 +51,7 @@ void scope_render(scope* sc, sid* chip, int16_t* out, uint32_t frames) {
         sc->sustain[v] = e->sustain;
     }
     COMPILER_FENCE(); /* the points before the head that publishes them */
-    sc->head = h;
+    sc->head = t.h;
 }
 
 void scope_peaks(scope* sc, const int16_t* lr, uint32_t frames) {
