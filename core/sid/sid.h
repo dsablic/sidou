@@ -75,10 +75,11 @@ uint8_t sid_read(sid* s, uint8_t reg);
  * sid_render. */
 void sid_set_combined_profile(sid* s, int profile);
 
-/* Gate reset, an option the real chip does not have: with it on, a gate's rising edge
- * restarts the voice's envelope rate counter, so the attack begins within one attack period
- * (12 cycles at attack 0) instead of waiting up to 32767 cycles for the counter to come round
- * past a shorter period (the ADSR delay bug; sid_env.h). Any nonzero `on` is on. Off is the
+/* Gate reset, an option the real chip does not have: with it on, each gate edge restarts
+ * the voice's envelope rate counter, so the attack (rising) or the release (falling) takes
+ * its first step one rate period and 3 cycles after the edge (12 cycles at attack 0) instead
+ * of waiting up to 32767 cycles for the counter to come round past a shorter period (the
+ * ADSR delay bug; sid_env.h). Any nonzero `on` is on. Off is the
  * chip and reSIDfp, bit for bit; sid_init turns it off, so set it again after every
  * sid_init. Applies to all three voices. On the device, call it where register writes are
  * applied (the audio interrupt draining the register ring). */

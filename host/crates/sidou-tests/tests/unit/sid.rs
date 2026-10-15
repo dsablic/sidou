@@ -561,3 +561,56 @@ fn without_the_gate_reset_most_phases_wait_for_the_lfsr() {
     assert_eq!(waits.iter().filter(|&&w| w <= 13).count(), 8, "{waits:?}");
     assert!(waits.iter().all(|&w| w <= 13 || w > 32_000), "{waits:?}");
 }
+
+/// Voice 3 as SAW LEAD plays it (attack 0, decay 9, sustain 10, release 6), held into
+/// sustain: ENV3 at 0xaa, the rate LFSR running at the decay's period (977 cycles).
+fn held_voice_3(gate_reset: i32) -> Box<sid> {
+    let mut s = new_sid(SID_MODEL_6581);
+    unsafe { sid_set_gate_reset(&mut *s, gate_reset) };
+    write(&mut s, 0x13, 0x09);
+    write(&mut s, 0x14, 0xa6);
+    write(&mut s, 0x12, 0x21);
+    clock(&mut s, 200_000);
+    assert_eq!(read(&mut s, 0x1c), 0xaa);
+    s
+}
+
+/// Cycles from the gate's falling edge until ENV3 reads below 0xaa, at most `limit`.
+fn env3_falls_after(s: &mut sid, limit: u32) -> Option<u32> {
+    write(s, 0x12, 0x20);
+    (1..=limit).find(|_| {
+        clock(s, 1);
+        read(s, 0x1c) < 0xaa
+    })
+}
+
+#[test]
+fn with_the_gate_reset_env3_falls_within_a_release_period_at_every_phase() {
+    // A note-off at each phase of the decay's period. ENV3 shows the step one cycle after
+    // the counter takes it: release 6's 267 + 3 + 1 cycles at most.
+    let held = held_voice_3(1);
+    for phase in 0..977 {
+        let mut s = Box::new(*held);
+        clock(&mut s, phase);
+        let fall = env3_falls_after(&mut s, 1000).expect("ENV3 never fell");
+        assert!(fall <= 271, "phase {phase}: {fall} cycles");
+    }
+}
+
+#[test]
+fn without_the_gate_reset_most_note_offs_wait_for_the_lfsr() {
+    // The ADSR delay on release, as reSIDfp has it: the 267 phases that find the LFSR at or
+    // before release 6's position start at once, the 710 past it wait for it to come round
+    // (every 7th phase here: 38 of 140 at once).
+    let held = held_voice_3(0);
+    let waits: Vec<u32> = (0..977)
+        .step_by(7)
+        .map(|phase| {
+            let mut s = Box::new(*held);
+            clock(&mut s, phase);
+            env3_falls_after(&mut s, 40_000).expect("ENV3 never fell")
+        })
+        .collect();
+    assert_eq!(waits.iter().filter(|&&w| w <= 271).count(), 38, "{waits:?}");
+    assert!(waits.iter().all(|&w| w <= 271 || w > 32_000), "{waits:?}");
+}
