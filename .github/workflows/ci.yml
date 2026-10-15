@@ -41,6 +41,13 @@ jobs:
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Tests (emulator gate skips itself without SIDOU_FM1_BUILD)
         run: cargo test --locked --workspace --release
+      - name: The filter tables against a fresh reSIDfp measurement (ignored elsewhere)
+        # Half a minute of reSIDfp: one job is enough. Only this ignored test: the others
+        # are ignored because they fail (known gaps; TESTING.md).
+        if: runner.os == 'Linux'
+        run: >-
+          cargo test --locked --release -p sidou-tablegen --test drift --
+          --ignored checked_in_filter_tables_match_the_measurement
       - name: Tests with UBSan on the C/C++ code
         env:
           SIDOU_SANITIZE: undefined

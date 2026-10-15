@@ -13,4 +13,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+# The fit's transcendental functions, the same on every platform (the platform libm's
+# may differ in the last digit).
+libm = "0.2"
 residfp-sys = { path = "../residfp-sys" }

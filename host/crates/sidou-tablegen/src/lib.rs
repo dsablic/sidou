@@ -328,20 +328,87 @@ pub fn filter_header(fits: &[FilterFit]) -> Generated {
     }
 }
 
-/// Every generated file. The filter tables are measured (about half a minute of CPU).
-pub fn generate() -> Vec<Generated> {
+/// The generated files that are computed, not measured: integer tables, exact on every
+/// platform, and cheap to make.
+pub fn generate_computed() -> Vec<Generated> {
     vec![
         grid_header(),
         noise_jump_header(),
         wave_header(Model::Mos6581),
         wave_header(Model::Csg8580),
-        filter_header(&filter_fits()),
     ]
+}
+
+/// Every generated file. The filter tables are measured (about half a minute of CPU).
+pub fn generate() -> Vec<Generated> {
+    let mut all = generate_computed();
+    all.push(filter_header(&filter_fits()));
+    all
+}
+
+/// The number of decimals of a C float literal as filter_header writes them (`-12.5f`), or
+/// None for any other token.
+fn float_decimals(token: &str) -> Option<(f64, usize)> {
+    let body = token.strip_suffix('f')?;
+    let (int, frac) = body.split_once('.')?;
+    let digits = |t: &str| !t.is_empty() && t.bytes().all(|b| b.is_ascii_digit());
+    if !digits(int.strip_prefix('-').unwrap_or(int)) || !digits(frac) {
+        return None;
+    }
+    Some((body.parse().ok()?, frac.len()))
+}
+
+/// The first difference between two generated texts beyond the last printed digit of a
+/// float literal: the texts must agree token by token (split at whitespace and commas),
+/// except that two float literals with the same number of decimals may differ by one unit
+/// in their last place. reSIDfp builds its filter model with the platform's libm (`pow`,
+/// `exp`, `log`), and its output resampler too, so a measurement can land on the other
+/// side of a rounding boundary on another platform. None if they agree.
+pub fn differs_beyond_last_digit(a: &str, b: &str) -> Option<String> {
+    let (la, lb): (Vec<&str>, Vec<&str>) = (a.lines().collect(), b.lines().collect());
+    if la.len() != lb.len() {
+        return Some(format!("{} lines against {}", la.len(), lb.len()));
+    }
+    for (n, (x, y)) in la.iter().zip(&lb).enumerate() {
+        let tx: Vec<&str> = x.split([' ', ',']).filter(|t| !t.is_empty()).collect();
+        let ty: Vec<&str> = y.split([' ', ',']).filter(|t| !t.is_empty()).collect();
+        let same = tx.len() == ty.len()
+            && tx.iter().zip(&ty).all(|(p, q)| {
+                p == q
+                    || matches!(
+                        (float_decimals(p), float_decimals(q)),
+                        (Some((u, d)), Some((v, e)))
+                            if d == e && (u - v).abs() <= 10f64.powi(-(d as i32)) * 1.000_001
+                    )
+            });
+        if !same {
+            return Some(format!("line {}: {x:?} against {y:?}", n + 1));
+        }
+    }
+    None
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn float_tables_compare_up_to_the_last_digit() {
+        let a = "    /* 0: x */ {\n        440.1f, 2.0000f, -0.5f,\n";
+        assert_eq!(differs_beyond_last_digit(a, a), None);
+        let last = "    /* 0: x */ {\n        440.2f, 1.9999f, -0.4f,\n";
+        assert_eq!(differs_beyond_last_digit(a, last), None);
+        for b in [
+            "    /* 0: x */ {\n        440.3f, 2.0000f, -0.5f,\n",
+            "    /* 0: x */ {\n        440.1f, 2.0002f, -0.5f,\n",
+            "    /* 0: x */ {\n        440.1f, 2.000f, -0.5f,\n",
+            "    /* 1: x */ {\n        440.1f, 2.0000f, -0.5f,\n",
+            "    /* 0: x */ {\n        440.1f, 2.0000f,\n",
+            "    /* 0: x */ {\n        440.1f, 2.0000f, -0.5f,\n\n",
+        ] {
+            assert!(differs_beyond_last_digit(a, b).is_some(), "{b:?}");
+        }
+    }
 
     #[test]
     fn pack12_round_trips() {

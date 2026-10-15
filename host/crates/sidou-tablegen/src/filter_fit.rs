@@ -77,10 +77,10 @@ impl Mode {
         let d = (1.0 - w * w).powi(2) + (k * w).powi(2);
         let num = match self {
             Mode::Lp => 0.0,
-            Mode::Bp => 20.0 * w.log10(),
-            Mode::Hp => 40.0 * w.log10(),
+            Mode::Bp => 20.0 * libm::log10(w),
+            Mode::Hp => 40.0 * libm::log10(w),
         };
-        num - 10.0 * d.log10()
+        num - 10.0 * libm::log10(d)
     }
 }
 
@@ -228,11 +228,11 @@ pub fn spectra(x: &[f64]) -> Spectra {
     let twiddle: Vec<(f64, f64)> = (0..SEGMENT / 2)
         .map(|k| {
             let a = -2.0 * PI * k as f64 / SEGMENT as f64;
-            (a.cos(), a.sin())
+            (libm::cos(a), libm::sin(a))
         })
         .collect();
     let window: Vec<f64> = (0..SEGMENT)
-        .map(|i| 0.5 - 0.5 * (2.0 * PI * i as f64 / SEGMENT as f64).cos())
+        .map(|i| 0.5 - 0.5 * libm::cos(2.0 * PI * i as f64 / SEGMENT as f64))
         .collect();
     Spectra(
         (0..SEGMENTS)
@@ -260,12 +260,12 @@ fn bands() -> Vec<(f64, usize, usize)> {
     let mut out = Vec::new();
     let mut i = 0;
     loop {
-        let centre = BAND_LO_HZ * 2f64.powf(f64::from(i) / 12.0);
+        let centre = BAND_LO_HZ * libm::pow(2.0, f64::from(i) / 12.0);
         if centre > BAND_HI_HZ {
             return out;
         }
-        let lo = (centre * 2f64.powf(-1.0 / 24.0) / bin).ceil() as usize;
-        let hi = (centre * 2f64.powf(1.0 / 24.0) / bin).ceil() as usize;
+        let lo = (centre * libm::pow(2.0, -1.0 / 24.0) / bin).ceil() as usize;
+        let hi = (centre * libm::pow(2.0, 1.0 / 24.0) / bin).ceil() as usize;
         if hi > lo {
             out.push((centre, lo, hi));
         }
@@ -288,7 +288,7 @@ pub fn transfer(filtered: &Spectra, direct: &Spectra) -> Response {
         }
         if p > 0.0 {
             hz.push(centre);
-            db.push(10.0 * ((cr * cr + ci * ci) / (p * p)).log10());
+            db.push(10.0 * libm::log10((cr * cr + ci * ci) / (p * p)));
         }
     }
     Response { hz, db }
@@ -362,17 +362,17 @@ fn cost(data: &[(Mode, Vec<(f64, f64)>)], f0: f64, k: f64) -> (f64, [f64; 3], [f
 /// fixed): a grid (sixteenth octaves; k in eighth octaves from 0.02), then a pattern
 /// search.
 fn minimise(data: &[(Mode, Vec<(f64, f64)>)], around: f64, k_fixed: Option<f64>) -> (f64, f64) {
-    let c = |lf: f64, lk: f64| cost(data, lf.exp(), lk.exp()).0;
-    let (mut lf, mut lk) = (around.ln(), 0.0f64);
+    let c = |lf: f64, lk: f64| cost(data, libm::exp(lf), libm::exp(lk)).0;
+    let (mut lf, mut lk) = (libm::log(around), 0.0f64);
     let mut best = f64::INFINITY;
     let ks: Vec<f64> = match k_fixed {
-        Some(k) => vec![k.ln()],
+        Some(k) => vec![libm::log(k)],
         None => (0..64)
-            .map(|i| (0.02f64).ln() + f64::from(i) * 2f64.ln() / 8.0)
+            .map(|i| libm::log(0.02) + f64::from(i) * libm::log(2.0) / 8.0)
             .collect(),
     };
     for i in -16..=16 {
-        let f = around.ln() + f64::from(i) * 2f64.ln() / 16.0;
+        let f = libm::log(around) + f64::from(i) * libm::log(2.0) / 16.0;
         for &k in &ks {
             let v = c(f, k);
             if v < best {
@@ -387,7 +387,7 @@ fn minimise(data: &[(Mode, Vec<(f64, f64)>)], around: f64, k_fixed: Option<f64>)
     } else {
         &[(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)]
     };
-    let mut step = 2f64.ln() / 16.0;
+    let mut step = libm::log(2.0) / 16.0;
     while step > 1e-7 {
         let mut moved = false;
         for &(df, dk) in dirs {
@@ -403,7 +403,7 @@ fn minimise(data: &[(Mode, Vec<(f64, f64)>)], around: f64, k_fixed: Option<f64>)
             step /= 2.0;
         }
     }
-    (lf.exp(), lk.exp())
+    (libm::exp(lf), libm::exp(lk))
 }
 
 /// The band-pass response's peak: where the fit starts.
@@ -610,14 +610,14 @@ fn interpolate(setting: &CurveSetting, grid_hz: &[(u32, Option<f64>)]) -> Vec<f6
     let x_of = |fc: u32| {
         let c = control[fc as usize];
         if setting.model == Model::Csg8580 {
-            c.ln()
+            libm::log(c)
         } else {
             c
         }
     };
     let mut pts: Vec<(f64, f64)> = grid_hz
         .iter()
-        .filter_map(|&(fc, hz)| hz.map(|h| (x_of(fc), h.ln())))
+        .filter_map(|&(fc, hz)| hz.map(|h| (x_of(fc), libm::log(h))))
         .collect();
     pts.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
     let ys = isotonic(&pts.iter().map(|p| p.1).collect::<Vec<_>>());
@@ -654,7 +654,7 @@ fn interpolate(setting: &CurveSetting, grid_hz: &[(u32, Option<f64>)]) -> Vec<f6
                 let (a, b) = (xs[i - 1], xs[i]);
                 a.1 + (b.1 - a.1) * (x - a.0) / (b.0 - a.0)
             };
-            y.exp()
+            libm::exp(y)
         })
         .collect()
 }
@@ -662,10 +662,10 @@ fn interpolate(setting: &CurveSetting, grid_hz: &[(u32, Option<f64>)]) -> Vec<f6
 fn geomean(v: impl Iterator<Item = f64>) -> Option<f64> {
     let (mut s, mut n) = (0.0, 0);
     for x in v {
-        s += x.ln();
+        s += libm::log(x);
         n += 1;
     }
-    (n > 0).then(|| (s / f64::from(n)).exp())
+    (n > 0).then(|| libm::exp(s / f64::from(n)))
 }
 
 /// Measures a curve setting and fits SIDOU's filter to it. Takes about half a minute of
@@ -879,7 +879,7 @@ mod tests {
         let twiddle: Vec<(f64, f64)> = (0..n / 2)
             .map(|k| {
                 let a = -2.0 * PI * k as f64 / n as f64;
-                (a.cos(), a.sin())
+                (libm::cos(a), libm::sin(a))
             })
             .collect();
         let (mut re, mut im) = (x.clone(), vec![0.0; n]);
@@ -888,8 +888,8 @@ mod tests {
             let (mut r, mut i) = (0.0, 0.0);
             for (j, &v) in x.iter().enumerate() {
                 let a = -2.0 * PI * (k * j) as f64 / n as f64;
-                r += v * a.cos();
-                i += v * a.sin();
+                r += v * libm::cos(a);
+                i += v * libm::sin(a);
             }
             assert!(
                 (re[k] - r).abs() < 1e-9 && (im[k] - i).abs() < 1e-9,
@@ -903,7 +903,7 @@ mod tests {
     fn fit_recovers_a_state_variable_filter() {
         let (f0, k) = (1234.5, 0.6);
         let hz: Vec<f64> = (0..120)
-            .map(|i| 20.0 * 2f64.powf(f64::from(i) / 12.0))
+            .map(|i| 20.0 * libm::pow(2.0, f64::from(i) / 12.0))
             .collect();
         let responses: Vec<(Mode, Response)> = MODES
             .iter()

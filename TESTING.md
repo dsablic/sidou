@@ -18,7 +18,7 @@ lists the prerequisites.
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Filter against reSIDfp (transfer functions, sweeps) | `cargo test --release -p sidou-tests --test filter` | `crates/sidou-tests/tests/filter.rs`, `src/filter_sweeps.rs` |
 | Register reads (OSC3, ENV3) | `cargo test --release -p sidou-tests --test register_reads` | `crates/sidou-tests/tests/register_reads.rs` |
-| Generated tables (drift) | `cargo test --release -p sidou-tablegen` (measures reSIDfp's filter: about 20 s on every core) | `crates/sidou-tablegen/`, `core/sid/gen/` |
+| Generated tables (drift) | `cargo test --release -p sidou-tablegen`; the filter tables with `--test drift -- --ignored` (measures reSIDfp's filter: about 20 s on every core) | `crates/sidou-tablegen/`, `core/sid/gen/` |
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
 | Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
@@ -208,13 +208,22 @@ cargo run --release -p sidou-tablegen               # every table
 cargo run --release -p sidou-tablegen -- fit-filter  # gen/filter.h, with the fit report
 ```
 
-The drift test (`checked_in_tables_match_the_generator`) fails when the
-checked-in files differ from what the generator produces. If it fails on a
-new platform with nothing changed, that is a libm difference (reSIDfp builds
-the tables with `pow`, and some entries sit on a threshold), not stale
-tables: keep the checked-in headers. The filter tables follow reSIDfp's
-output to 0.1 Hz and 0.0001 in k, so a libm difference in its filter model
-would show there first.
+The drift tests (`tests/drift.rs`) fail when the checked-in files differ
+from what the generator produces:
+- `checked_in_tables_match_the_generator`, in every job: the computed tables
+  (`grid.h`, `noise_jump.h`, `wave_*.h`), exactly. If it fails on a new
+  platform with nothing changed, that is a libm difference (reSIDfp builds
+  the pulldown tables with `pow`, and some entries sit on a threshold), not
+  stale tables: keep the checked-in headers.
+- `checked_in_filter_tables_match_the_measurement`, `#[ignore]`d: it
+  re-measures reSIDfp's filter (about 20 s on 8 cores), so CI runs it in the
+  Linux host job only (`cargo test --release -p sidou-tablegen --test drift
+  -- --ignored checked_in_filter_tables_match_the_measurement`). It compares
+  `filter.h` up to one unit in the last printed digit (0.1 Hz of cutoff,
+  0.0001 of k): the fit's own maths uses the `libm` crate, the same on every
+  platform, but reSIDfp builds its filter model and resampler with the
+  platform's libm, so a value can round the other way elsewhere. Run it after
+  changing the fitter or the reSIDfp submodule.
 
 ### Filter comparison (`sidou-compare`)
 
@@ -639,7 +648,7 @@ request:
 
 | Job | What it runs |
 |---|---|
-| `host` (Ubuntu and macOS) | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --release`, and the tests again with `SIDOU_SANITIZE=undefined` |
+| `host` (Ubuntu and macOS) | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --release`, and the tests again with `SIDOU_SANITIZE=undefined`; on Ubuntu also the filter tables' drift test (ignored elsewhere) |
 | `asan` (Ubuntu, nightly Rust) | the tests with `SIDOU_SANITIZE=address` |
 | `msrv` (Ubuntu, Rust 1.87) | `cargo check` |
 | `reuse` | `reuse lint` |
