@@ -271,7 +271,14 @@ void live_view_tap(live_view* lv, int on) {
         }
     }
     lv->on = (uint8_t)(on != 0);
-    lv->sc->on = lv->on;
+}
+
+uint8_t live_view_voice_control(const live* l, uint32_t v) {
+    return voice_control(l, v);
+}
+
+uint8_t live_view_wave_color(uint8_t control) {
+    return wave_color(control);
 }
 
 /* ---- drawing ---- */

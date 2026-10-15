@@ -202,7 +202,7 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
     let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
-    let rows: Vec<String> = (4..12).map(|r| ui.row(r)).collect();
+    let rows: Vec<String> = (4..13).map(|r| ui.row(r)).collect();
     let body: Vec<String> = rows.iter().map(|r| r[3..27].to_string()).collect();
     assert_eq!(rows[0][2..10].to_string(), "# MENU #");
     // Labels after the cursor cell, values right-aligned against the frame, an arrow for a view.
@@ -210,9 +210,10 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
     assert_eq!(body[2], format!(" {:<15}SAW LEAD", "PRESET"));
     assert_eq!(body[3], format!(" {:<21}+0", "OCTAVE"));
     assert_eq!(body[4][..23], format!(" {:<22}", "STATUS"));
-    assert_eq!(body[5][..23], format!(" {:<22}", "CHARSET"));
-    assert_eq!(body[6][..23], format!(" {:<22}", "ABOUT"));
-    for row in 8..11 {
+    assert_eq!(body[5][..23], format!(" {:<22}", "SCENE"));
+    assert_eq!(body[6][..23], format!(" {:<22}", "CHARSET"));
+    assert_eq!(body[7][..23], format!(" {:<22}", "ABOUT"));
+    for row in 8..12 {
         assert_eq!(
             ui.g.ch[row * COLS + 26],
             FONT_ARROW_RIGHT as u8,
@@ -220,7 +221,7 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
         );
     }
     assert_eq!(
-        rows[7][2..26].chars().filter(|&c| c == '#').count(),
+        rows[8][2..26].chars().filter(|&c| c == '#').count(),
         24,
         "the frame's bottom"
     );

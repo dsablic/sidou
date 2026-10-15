@@ -29,8 +29,8 @@
  * changed, and an envelope bar or a meter only its own cells: a frame of moving meters costs
  * a few cells, not the 900 of the canvas. While a wipe or a raster runs it draws
  * what it drew last (screen_animating), as About does: the transitions are sized for a still
- * view. The tap runs only while LIVE is on top (live_view_tap): the audio interrupt pays for
- * it only then.
+ * view. The tap runs only while LIVE (or SCENE) shows (live_view_tap): the audio interrupt
+ * pays for it only then.
  *
  * Portable C with no hardware access and no allocation. */
 #ifndef SIDOU_LIVE_VIEW_H
@@ -119,11 +119,18 @@ extern const view live_view_view;
 
 /* Shows l, and the tap sc (may be NULL). Flat scopes until the tap has points. */
 void live_view_init(live_view* lv, const live* l, scope* sc);
-/* The tap on or off; on: only points written from now on are used. Every frame, before the
- * screen's (views_frame): on while LIVE shows (on top, or under MIDI learn's frame). Off, the
+/* The tap is LIVE's or not; on: only points written from now on are used. Every frame, before
+ * the screen's (views_frame): on while LIVE shows (on top, or under MIDI learn's frame); the
+ * tap itself (scope.on) is switched by views_frame, for SCENE as well. Off, the
  * traces go flat and the envelopes and meters to zero: what LIVE shows when it comes back,
  * until the tap has points, is the instrument at rest, not what it was when it went. */
 void live_view_tap(live_view* lv, int on);
+/* The control register voice v plays with, without the gate: 0 for a voice that makes no sound
+ * (SYNC LEAD's voices 2 and 3, voice 3 only clocking the sync). */
+uint8_t live_view_voice_control(const live* l, uint32_t v);
+/* A control register's waveform colour (docs/art/README.md): pulse cyan, saw yellow, triangle
+ * light green, noise light grey, combined white, none light blue. */
+uint8_t live_view_wave_color(uint8_t control);
 /* Reads the tap and works out the next frame's traces and meters now, half way between two
  * frames, so that the frame's compose is short: the main loop drains MIDI between the two
  * (docs/decisions/0005). Only while the tap is on; a compose with nothing prepared does it

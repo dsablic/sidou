@@ -11,6 +11,8 @@
  *   cursor, ALGORITHM changes the value under it or opens the view.
  * - STATUS (from the menu): chip, preset, octave, the sound parameters, the notes and the
  *   effect slots with every control, in numbers.
+ * - SCENE (from the menu): generative pieces that react to the voices (app/scene_view.h);
+ *   SELECT steps between them. The tap on the audio runs while it shows, as for LIVE.
  * - CHARSET: the font and the palette, the art reference.
  * - ABOUT: the credits, as a cracktro (app/about.h).
  * - BOOT: the boot sequence (app/boot.h), over LIVE at power-on (views_boot).
@@ -29,8 +31,8 @@
  *
  * The views compose only when what they show changed (app/screen.h): STATUS and MENU keep a
  * copy of the instrument's fields they show, MENU its cursor and blink as well, and CHARSET
- * never changes. An idle screen costs a comparison a frame. LIVE and ABOUT move every frame
- * and compose every frame.
+ * never changes. An idle screen costs a comparison a frame. LIVE, SCENE and ABOUT move every
+ * frame and compose every frame.
  *
  * Every frame the instrument's state is compared with the last frame's: a change of octave,
  * effect slot or algorithm shows a toast, whatever made it (panel, menu or MIDI), and a chip
@@ -50,6 +52,7 @@
 #include "live.h"
 #include "live_view.h"
 #include "panel.h"
+#include "scene_view.h"
 #include "scope.h"
 #include "screen.h"
 #include "widget.h"
@@ -61,10 +64,11 @@ extern "C" {
 /* The status screen's colours: light blue on blue. */
 #define VIEWS_TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
 /* The menu's items and the rows it shows, and the items that open a view. */
-#define VIEWS_MENU_ITEMS 6u
+#define VIEWS_MENU_ITEMS 7u
 #define VIEWS_MENU_STATUS 3u
-#define VIEWS_MENU_CHARSET 4u
-#define VIEWS_MENU_ABOUT 5u
+#define VIEWS_MENU_SCENE 4u
+#define VIEWS_MENU_CHARSET 5u
+#define VIEWS_MENU_ABOUT 6u
 /* Raster steps for a chip model change: the ramp once round. */
 #define VIEWS_RASTER_STEPS SCREEN_RAMP
 /* What the views show, as bytes (app/views.c look): the instrument's model, preset, octave,
@@ -75,6 +79,7 @@ extern "C" {
 typedef struct {
     screen s;
     live* l;
+    scope* sc; /* the audio's tap, NULL: none; on while LIVE or SCENE shows */
     const char* version; /* "V" and the version, at most 14 characters */
     menu home;
     /* The instrument as the last frame saw it, for the toasts. */
@@ -89,6 +94,7 @@ typedef struct {
     about about;
     learn_view learn;
     live_view live;
+    scene_view scene;
 } views;
 
 extern const view views_status;
@@ -108,8 +114,8 @@ void views_learn(views* v, midi_learn* ml);
 void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held);
 /* Detent steps of encoder enc, as panel_encoder takes them. */
 void views_encoder(views* v, panel* p, uint32_t enc, int32_t steps);
-/* Half way between two frames: LIVE, showing (on top or under MIDI learn's frame) and still,
- * prepares its next frame (live_view_prepare). */
+/* Half way between two frames: LIVE or SCENE, showing (on top or under MIDI learn's frame) and
+ * still, prepares its next frame (live_view_prepare, scene_view_prepare). */
 void views_prepare(views* v);
 /* One frame: the boot's progress, the toasts and raster of what changed, MIDI learn's end
  * (learn_view_frame), then screen_frame. */

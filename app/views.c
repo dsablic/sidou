@@ -238,6 +238,12 @@ static void status_open(void* ctx, int32_t steps) {
     screen_push(&v->s, &views_status, v, SCREEN_WIPE_DOWN);
 }
 
+static void scene_open(void* ctx, int32_t steps) {
+    views* v = ctx;
+    (void)steps;
+    screen_push(&v->s, &scene_view_view, &v->scene, SCREEN_WIPE_DOWN);
+}
+
 static void charset_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
@@ -254,10 +260,14 @@ static void about_open(void* ctx, int32_t steps) {
 static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"CHIP", chip_value, chip_turn},       {"PRESET", preset_value, preset_turn},
     {"OCTAVE", octave_value, octave_turn}, {"STATUS", NULL, status_open},
-    {"CHARSET", NULL, charset_open},       {"ABOUT", NULL, about_open},
+    {"SCENE", NULL, scene_open},           {"CHARSET", NULL, charset_open},
+    {"ABOUT", NULL, about_open},
 };
-_Static_assert(VIEWS_MENU_STATUS == 3u && VIEWS_MENU_CHARSET == 4u && VIEWS_MENU_ABOUT == 5u,
+_Static_assert(VIEWS_MENU_STATUS == 3u && VIEWS_MENU_SCENE == 4u && VIEWS_MENU_CHARSET == 5u &&
+                   VIEWS_MENU_ABOUT == 6u,
                "the menu's view items");
+/* The help below the menu's frame. */
+#define MENU_HELP_ROW (MENU_ROW + VIEWS_MENU_ITEMS + 2u)
 
 static int menu_input(screen* s, void* state, const screen_event* e) {
     (void)s;
@@ -288,9 +298,9 @@ static void menu_compose(screen* s, void* state, grid* g) {
     put(g, 2, VERSION_END_COL - length(v->version), v->version);
     widget_frame(g, MENU_COL, MENU_ROW, MENU_W, VIEWS_MENU_ITEMS + 2u, TEXT, "MENU");
     menu_draw(&v->home, g, MENU_COL + 1u, MENU_ROW + 1u, MENU_W - 2u, TEXT, screen_blink(s));
-    put(g, 12, 2, "SELECT     MOVE");
-    put(g, 13, 2, "ALGORITHM  CHANGE");
-    put(g, 14, 2, "HOME       BACK");
+    put(g, MENU_HELP_ROW, 2, "SELECT     MOVE");
+    put(g, MENU_HELP_ROW + 1u, 2, "ALGORITHM  CHANGE");
+    put(g, MENU_HELP_ROW + 2u, 2, "HOME       BACK");
     put(g, 26, 2, "READY.");
 }
 
@@ -370,11 +380,13 @@ static int global(void* ctx, const screen_event* e) {
 
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->l = l;
+    v->sc = sc;
     v->version = version;
     menu_init(&v->home, MENU_ITEMS, VIEWS_MENU_ITEMS, VIEWS_MENU_ITEMS, v);
     remember(v);
     learn_view_init(&v->learn, l, NULL);
     live_view_init(&v->live, l, sc);
+    scene_view_init(&v->scene, l, sc);
     screen_init(&v->s, g, &live_view_view, &v->live);
     screen_global(&v->s, global, v);
 }
@@ -465,19 +477,26 @@ static void tell(views* v) {
     remember(v);
 }
 
-/* LIVE shows: on top, or under MIDI learn's frame, which composes it every frame. */
-static int live_shows(const views* v) {
+/* The view that shows: the one on top, or the one under MIDI learn's frame, which composes it
+ * every frame. */
+static const view* shows(const views* v) {
     const screen* s = &v->s;
     const view* top = screen_top(s);
     if (top == &learn_view_view && s->depth >= 2u) {
         top = s->stack[s->depth - 2u].v;
     }
-    return top == &live_view_view;
+    return top;
 }
 
 void views_prepare(views* v) {
-    if (live_shows(v) && !screen_animating(&v->s)) {
+    if (screen_animating(&v->s)) {
+        return;
+    }
+    const view* top = shows(v);
+    if (top == &live_view_view) {
         live_view_prepare(&v->live);
+    } else if (top == &scene_view_view) {
+        scene_view_prepare(&v->scene);
     }
 }
 
@@ -489,7 +508,13 @@ void views_frame(views* v, uint32_t now_ms) {
         tell(v);
     }
     learn_view_frame(&v->learn, &v->s, now_ms);
-    live_view_tap(&v->live, live_shows(v));
+    /* The tap runs while LIVE or SCENE shows: the audio interrupt pays for it only then. */
+    const view* top = shows(v);
+    live_view_tap(&v->live, top == &live_view_view);
+    scene_view_tap(&v->scene, top == &scene_view_view);
+    if (v->sc) {
+        v->sc->on = (uint8_t)(top == &live_view_view || top == &scene_view_view);
+    }
     screen_frame(&v->s, now_ms);
 }
 

@@ -25,6 +25,7 @@ mod midi_rx;
 mod midi_usb;
 mod panel;
 mod reg_ring;
+mod scene;
 mod scope;
 mod screen;
 mod views;

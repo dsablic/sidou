@@ -30,6 +30,8 @@
 #include "midi_usb.h"
 #include "panel.h"
 #include "reg_ring.h"
+#include "scene.h"
+#include "scene_view.h"
 #include "scope.h"
 #include "screen.h"
 #include "sine.h"

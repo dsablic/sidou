@@ -7,7 +7,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 37] = [
+const SOURCES: [&str; 39] = [
     "core/sid/sid.c",
     "core/sid/sid_dac.c",
     "core/fx/fx.c",
@@ -38,6 +38,8 @@ const SOURCES: [&str; 37] = [
     "app/midi_usb.c",
     "app/panel.c",
     "app/reg_ring.c",
+    "app/scene.c",
+    "app/scene_view.c",
     "app/scope.c",
     "app/screen.c",
     "app/sine.c",
@@ -148,13 +150,13 @@ fn main() {
         .clang_arg("-DSIDOU_ALL_COMBINED_PROFILES")
         .clang_arg(format!("-D{MIDI_MAP_DOC}"))
         .allowlist_function(
-            "sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|learn_view_.*|scope_.*",
+            "sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|learn_view_.*|scope_.*|scene_.*",
         )
         .allowlist_type(
-            "sid.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*",
+            "sid.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*",
         )
         .allowlist_var(
-            "SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*|LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*|LEARN_VIEW_.*|SCOPE_.*",
+            "SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*|LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*|LEARN_VIEW_.*|SCOPE_.*|SCENE_.*|scene_.*",
         )
         // `static const` tables private to the headers; they have no symbol to link to.
         .blocklist_item("SID_ENV_RATE_POS|SID_ENV_THRESHOLDS|SID_PULLDOWN_.*|SID_NOISE_WB")
