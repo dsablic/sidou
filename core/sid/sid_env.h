@@ -388,9 +388,9 @@ static inline uint32_t sid_env_run_linear(sid_env* e, uint32_t cycles) {
  * period changes one at a time. With may_rest, it ends with the envelope at rest
  * (`idle` or `dormant` set) when it can; without, it ends settled. */
 #if defined(__GNUC__) || defined(__clang__)
-__attribute__((noinline))
+__attribute__((noinline, unused))
 #endif
-static inline void sid_env_run(sid_env* e, uint32_t cycles, int may_rest) {
+static void sid_env_run(sid_env* e, uint32_t cycles, int may_rest) {
     for (;;) {
         if (!(e->state_pipeline | e->envelope_pipeline | e->exponential_pipeline |
               e->reset_lfsr | e->new_exp_period)) {
@@ -514,9 +514,9 @@ static inline void sid_env_settle(sid_env* e) {
 
 /* sid_env_advance's work when the envelope is not at rest, out of line. */
 #if defined(__GNUC__) || defined(__clang__)
-__attribute__((noinline))
+__attribute__((noinline, unused))
 #endif
-static inline void sid_env_advance_slow(sid_env* e, uint32_t cycles) {
+static void sid_env_advance_slow(sid_env* e, uint32_t cycles) {
     if (e->linear) {
         cycles = sid_env_run_linear(e, cycles);
         if (e->linear) {
