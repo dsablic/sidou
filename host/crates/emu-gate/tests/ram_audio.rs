@@ -18,7 +18,7 @@ mod common;
 
 use std::path::PathBuf;
 
-use common::{build_dir, Firmware, Machine, APP_BASE};
+use common::{build_dir, Firmware, Machine, APP_BASE, TAP_PER_SAMPLE};
 use fm1_core::Bus;
 
 /// RAMTEXT's size in app.ld.
@@ -246,12 +246,6 @@ fn the_audio_path_reads_no_data_from_flash() {
     );
 }
 
-/// Instructions a sample the LIVE view's tap (app/scope.h) may add to the audio interrupt.
-/// docs/plans/2026-10-15-m1e-look-and-feel.md asks for under about 10; M1e Task 4 measures
-/// 4.8 (368.15 against 363.33: a point every 16 samples, the peaks of every 8th frame), and
-/// 5.11 with the points taken inside one render a block (sid_render_tap; 367.53 against
-/// 362.42), which keeps a render's per-call setup out of the tap.
-const TAP_PER_SAMPLE: f64 = 6.0;
 /// A chord's note keys (14 + note - 53): A3, E4, E5.
 const CHORD: [u8; 3] = [18, 25, 37];
 const HOME: u8 = 8;

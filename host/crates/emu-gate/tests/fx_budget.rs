@@ -11,9 +11,10 @@ const CORE_HZ: f64 = 240e6;
 const SAMPLE_RATE: f64 = 44_100.0;
 /// The post-chip effects, everything on.
 const FX_BUDGET: f64 = 500.0;
-/// Two chips plus the effects (M1c plan), with the chips at the SID's worst block.
+/// Two chips plus the effects (M1c plan), with the chips at the SID's worst block and the
+/// LIVE view's tap (on at power-on).
 const TWO_CHIPS_PLUS_FX_BUDGET: f64 = common::TWO_CHIPS_PLUS_EFFECTS;
-const TWO_CHIPS_AT_WORST: f64 = common::SID_WORST_BLOCK_TWO_CHIPS;
+const TWO_CHIPS_AT_WORST: f64 = common::SID_WORST_BLOCK_TWO_CHIPS + common::TAP_PER_SAMPLE;
 
 fn check(chips: u32, worst: bool) {
     let Some(build) = common::build_dir() else {
@@ -75,10 +76,11 @@ fn check(chips: u32, worst: bool) {
         fx <= FX_BUDGET,
         "the effects cost {fx:.0} instructions/sample, over the budget of {FX_BUDGET}"
     );
-    // Two chips at the SID's worst block plus the effects (the workload's chips cost less).
+    // Two chips at the SID's worst block and the tap plus the effects (the workload's chips cost
+    // less).
     assert!(
         TWO_CHIPS_AT_WORST + fx <= TWO_CHIPS_PLUS_FX_BUDGET,
-        "two chips at the SID's worst block plus effects cost {:.0} instructions/sample, over \
+        "two chips at the SID's worst block and the tap plus effects cost {:.0} instructions/sample, over \
          {TWO_CHIPS_PLUS_FX_BUDGET}",
         TWO_CHIPS_AT_WORST + fx
     );
