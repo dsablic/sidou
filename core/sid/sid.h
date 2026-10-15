@@ -76,7 +76,11 @@ uint8_t sid_read(sid* s, uint8_t reg);
 void sid_set_combined_profile(sid* s, int profile);
 
 /* Points the chip at other voice DACs (sid_dac_build), which must outlive it; sid_init
- * sets reSIDfp's defaults for the model (sid_dac_default), shared by every chip. */
+ * sets reSIDfp's defaults for the model (sid_dac_default), shared by every chip. Never
+ * rebuild a table (sid_dac_build) while an active chip points at it: sid_render reads it
+ * without a lock, so it would play a half-built table. Build a new table and point the
+ * chip at it here (through the register ring on the device); reuse the old one only
+ * once no chip points at it. */
 void sid_set_dac(sid* s, const sid_dac* dac);
 
 /* Advances the oscillators and envelopes by exactly `cycles` chip cycles, without

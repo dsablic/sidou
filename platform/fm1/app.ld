@@ -82,7 +82,8 @@ SECTIONS
     .data : ALIGN(4) { _data_start = .; *(.data*) *(.sdata*) . = ALIGN(4); _data_end = .; } > RAM AT > XIP
     _data_load = LOADADDR(.data);
     /* The core's shared voice DAC tables (core/sid/sid_dac.c, 17,408 bytes per chip model)
-     * are big zero-initialised buffers: POOL, not RAM. */
+     * are big zero-initialised buffers: POOL, not RAM. The pattern depends on CMake's object
+     * naming (sid_dac.c.obj); an assert below catches the tables falling back into .bss. */
     .bss (NOLOAD) : {
         _bss_start = .;
         *(EXCLUDE_FILE(*sid_dac.c.obj) .bss*) *(.sbss*) *(COMMON)
@@ -92,7 +93,9 @@ SECTIONS
     .pool (NOLOAD) : {
         _pool_start = .;
         *(.pool*)
+        _pool_dac_start = .;
         *sid_dac.c.obj(.bss*)
+        _pool_dac_end = .;
         . = ALIGN(4);
         _pool_end = .;
     } > POOL
@@ -113,6 +116,7 @@ ASSERT(_data_start == ADDR(.data) && _data_end == ADDR(.data) + SIZEOF(.data), "
 ASSERT(_rt_end <= 0x01C0C000, "app.ld: .ram_text runs into the RAM-run debug area")
 ASSERT(SIZEOF(.ram_text) <= 48K, "app.ld: .ram_text is over RAMTEXT's 48 KB")
 ASSERT(ADDR(.ram_text) == ORIGIN(RAMTEXT), "app.ld: .ram_text must start at RAMTEXT")
+ASSERT(_pool_dac_end - _pool_dac_start >= 2 * 17408, "app.ld: the DAC tables (sid_dac.c's .bss) are not in POOL: does *sid_dac.c.obj still match its object?")
 /* The region lengths already keep each section inside its region; these guard the constants
  * above against an edit that moves a region or a stack into its neighbour. */
 ASSERT(ORIGIN(RAM) + LENGTH(RAM) <= ORIGIN(POOL), "app.ld: RAM overlaps POOL")

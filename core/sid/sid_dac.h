@@ -28,7 +28,8 @@ typedef struct {
 } sid_dac;
 
 /* Builds both DACs for a model, from the ladder's 2R/R ratio and leakage. Pure
- * arithmetic, about 13k float operations. */
+ * arithmetic, about 13k float operations. Never into a table an active chip points at
+ * (sid_set_dac, sid.h). */
 void sid_dac_build(sid_dac* d, int is6581, float kink, float leakage);
 
 /* The DACs at reSIDfp's defaults for a model, built on first use and shared by every
