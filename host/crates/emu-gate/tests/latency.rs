@@ -483,6 +483,11 @@ fn measure(scenario: Scenario, envelope: Envelope, default_trials: usize) {
         "note_off_taken_by_the_audio_interrupt": json(&ms(|t| t.off_taken)),
         "release_first_step_in_the_dma_buffer": json(&ms(|t| t.release_buffer)),
         "release_adsr_delay": json(&ms(|t| t.release_buffer - t.off_buffer)),
+        "attack_in_the_taking_block": trials.iter().filter(|t| t.note_buffer == t.buffer).count(),
+        "release_in_the_taking_block": trials
+            .iter()
+            .filter(|t| t.release_buffer == t.off_buffer)
+            .count(),
         "block_ms": c.ms(c.block()),
         "poll_ms": c.ms(c.poll()),
         "block_plus_poll_ms": c.ms(block_plus_poll),
