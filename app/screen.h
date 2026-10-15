@@ -127,6 +127,9 @@ struct screen {
     uint8_t capture_depth; /* the stack's depth when the capture was set */
     uint32_t frame;        /* frames run */
     uint32_t now;          /* the last frame's time, ms */
+    /* With redraw, bit r: row r may show something else than the view drew (a switch, a
+     * layer); a view that keeps its own canvas puts those rows back and no others. */
+    uint32_t redraw_rows;
     uint32_t toast_until;  /* toast_on 2: its length in ms */
     char toast[SCREEN_TOAST_CHARS + 1u];
     screen_capture_fn capture;
@@ -169,6 +172,11 @@ void screen_raster(screen* s, uint32_t steps);
 int screen_blink(const screen* s);
 /* 1 while a wipe or a raster runs. */
 int screen_animating(const screen* s);
+/* Cells the toast and the raster may change after the view on top composes this frame: what
+ * a view holding a frame to a budget of cells (LIVE) leaves them. The toast counts on its
+ * first frame only: on the frames after, the view composes under it (redraw), so its cells
+ * are the view's to send already when the view counts them. */
+uint32_t screen_layer_cells(const screen* s);
 /* One frame at now_ms: compose (if needed, above), toast, raster, wipe. */
 void screen_frame(screen* s, uint32_t now_ms);
 

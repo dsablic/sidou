@@ -387,3 +387,133 @@ fn a_frame_prepared_half_way_draws_as_one_composed_whole() {
     unsafe { views_prepare(&mut *a.v) };
     assert_eq!(a.v.live.updates, prepared, "prepared under a wipe");
 }
+
+/// Noise on every voice at full sustain, a note each: every scope cell its trace crosses
+/// moves every frame.
+fn noise_chord(ui: &mut Ui) {
+    ui.rig.cc(20, 64); // noise
+    ui.rig.cc(79, 127); // sustain 15
+    for n in [57, 64, 76] {
+        ui.rig.note_on(n);
+    }
+}
+
+#[test]
+fn meters_envelopes_notes_and_a_toast_redraw_their_cells_not_the_canvas() {
+    let mut ui = Ui::new();
+    let mut chip = Chip::new();
+    settle(&mut ui);
+    let built = ui.v.live.rebuilds;
+    assert!(built > 0, "never built");
+    // The meters jump and fall back.
+    ui.sc.peak = [32767, 20000];
+    for _ in 0..10 {
+        frame(&mut ui);
+    }
+    // A note: the envelope bar, its stage and the note's name.
+    ui.rig.note_on(69);
+    chip.play(&mut ui, 30);
+    ui.rig.note_off(69);
+    ui.rig.note_on(72);
+    chip.play(&mut ui, 30);
+    // A toast for a while: the screen asks for a redraw every frame it shows.
+    unsafe { screen_toast(&mut ui.v.s, c"OCTAVE +1".as_ptr(), 400) };
+    for _ in 0..12 {
+        chip.play(&mut ui, 14);
+    }
+    assert_eq!(
+        ui.v.live.rebuilds, built,
+        "the whole canvas was built again for a meter, an envelope, a note or a toast"
+    );
+}
+
+#[test]
+fn what_changed_draws_as_the_whole_canvas_built_again() {
+    // Two instruments playing the same: one drawing only what changed, the other building
+    // its whole canvas every frame; the same grid either way.
+    let mut a = Ui::new();
+    let mut b = Ui::new();
+    let (mut ca, mut cb) = (Chip::new(), Chip::new());
+    settle(&mut a);
+    settle(&mut b);
+    let steps: [&dyn Fn(&mut Ui); 12] = [
+        &|ui| ui.rig.note_on(69),
+        &|ui| ui.rig.note_on(49),
+        &|ui| ui.rig.note_off(69),
+        &|ui| ui.rig.knob(LIVE_KNOB_CUTOFF, -30),
+        &|ui| ui.rig.set_preset(1), // PWM BASS: a pulse, its width shown
+        &|ui| ui.rig.note_on(30),
+        &|ui| ui.press(PANEL_BTN_SCL), // the slot selected
+        &|ui| ui.rig.cc(20, 64),       // noise
+        &|ui| unsafe { screen_toast(&mut ui.v.s, c"SOMETHING".as_ptr(), 200) },
+        &|ui| ui.rig.button(LIVE_BUTTON_OCT_UP),
+        &|ui| ui.rig.note_off(49),
+        &|ui| ui.rig.note_off(30),
+    ];
+    for step in steps {
+        for (ui, chip, whole) in [(&mut a, &mut ca, false), (&mut b, &mut cb, true)] {
+            step(ui);
+            for _ in 0..6 {
+                if whole {
+                    ui.v.live.built = 0;
+                }
+                chip.play(ui, 14);
+            }
+        }
+        assert!(a.g.ch == b.g.ch && a.g.attr == b.g.attr, "the grids differ");
+        assert_eq!(a.g.ovl, b.g.ovl);
+    }
+}
+
+#[test]
+fn back_from_the_menu_the_scopes_and_envelopes_start_flat() {
+    let mut ui = Ui::new();
+    let mut chip = Chip::new();
+    settle(&mut ui);
+    ui.rig.note_on(69);
+    chip.play(&mut ui, 30);
+    assert!(ui.v.live.env[0] > 0);
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    ui.rig.note_off(69);
+    ui.press(PANEL_BTN_HOME); // back: the wipe's frames draw what LIVE last saw
+    ui.frame();
+    let mid = (LIVE_VIEW_SCOPE_PX / 2) as u8;
+    assert!(
+        ui.v.live.y.iter().flatten().all(|&y| y == mid),
+        "the trace from before the menu came back"
+    );
+    assert_eq!(ui.v.live.env, [0; 3], "the envelope from before the menu");
+    let bars: Vec<u8> = (2..6).map(|r| ui.g.ch[r * COLS + 22]).collect();
+    assert_eq!(bars, [FONT_V0 as u8; 4], "voice 1's envelope bar");
+}
+
+#[test]
+fn a_toast_over_three_voices_of_noise_stays_within_the_frame_budget() {
+    let mut ui = Ui::new();
+    let mut chip = Chip::new();
+    settle(&mut ui);
+    noise_chord(&mut ui);
+    let mut most = 0;
+    // A toast every 7 frames: its first frames meet the scopes at every phase of their turns.
+    // The header's and the bottom slot's rows to go out again every frame (as after
+    // grid_invalidate): 60 cells the scopes' share comes after, so the budget binds.
+    for f in 0..420 {
+        for i in (0..COLS).chain(29 * COLS..30 * COLS) {
+            ui.g.stale[i >> 3] |= 1 << (i & 7);
+        }
+        ui.g.rows |= 1 | 1 << 29;
+        if f % 7 == 3 {
+            // As long as a toast gets, and on the slots' row: every cell of it changes.
+            unsafe { screen_toast(&mut ui.v.s, c"ABCDEFGHIJKLMNOPQRSTUVWXYZ".as_ptr(), 80) };
+        }
+        let sent = chip.play(&mut ui, 14);
+        most = most.max(sent.cells);
+        assert!(
+            sent.cells <= LIVE_VIEW_FRAME_CELLS as usize,
+            "frame {f}: {} cells",
+            sent.cells
+        );
+    }
+    assert!(most > 150, "{most} cells at most: the scopes are not busy");
+}

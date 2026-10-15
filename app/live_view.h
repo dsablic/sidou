@@ -22,8 +22,12 @@
  * The trace's height is the waveform times the voice's envelope: flat at rest.
  *
  * It composes every frame (no changed function), within a budget of LIVE_VIEW_FRAME_CELLS
- * cells: the scopes get what the rest of the frame leaves, and a trace that does not fit waits
- * for a later frame (three voices of noise take turns). While a wipe or a raster runs it draws
+ * cells: the scopes get what the rest of the frame and the screen's toast and raster
+ * (screen_layer_cells) leave, and a trace that does not fit waits for a later frame (three
+ * voices of noise take turns). The canvas is built whole once; after that each part (the
+ * header, a voice's box, FILTER, VU, the slots) is drawn again only when what it shows
+ * changed, and an envelope bar or a meter only its own cells: a frame of moving meters costs
+ * a few cells, not the 900 of the canvas. While a wipe or a raster runs it draws
  * what it drew last (screen_animating), as About does: the transitions are sized for a still
  * view. The tap runs only while LIVE is on top (live_view_tap): the audio interrupt pays for
  * it only then.
@@ -61,8 +65,10 @@ extern "C" {
 #define LIVE_VIEW_FALL 3u
 /* VU rows: the voices, then left and right. */
 #define LIVE_VIEW_METERS (SCOPE_VOICES + 2u)
-/* What the canvas shows besides the scopes, as bytes (live_view.c look). */
-#define LIVE_VIEW_LOOK 40u
+/* What the canvas shows besides the scopes, as bytes (live_view.c look): the header 3, each
+ * voice's box 5 and envelope 1, FILTER 1, VU 3 and the meters, the slots 1 + 2 each. */
+#define LIVE_VIEW_LOOK                                                                         \
+    (3u + 6u * SCOPE_VOICES + 1u + SCOPE_VOICES + LIVE_VIEW_METERS + 1u + 2u * LIVE_SLOTS)
 
 /* A frame composed off the grid, each cell then written to it once (live_view.c). */
 typedef struct {
@@ -77,6 +83,7 @@ typedef struct {
     uint8_t on;     /* the tap is on */
     /* What the last update saw, drawn every frame. */
     uint8_t y[SCOPE_VOICES][SCOPE_W]; /* the traces, pixel rows of the scope (0 the top) */
+    uint32_t cols[SCOPE_VOICES][SCOPE_W]; /* the traces as columns (live_view.c columns) */
     uint8_t env[SCOPE_VOICES];
     uint8_t state[SCOPE_VOICES];
     uint8_t sustain[SCOPE_VOICES];
@@ -89,6 +96,7 @@ typedef struct {
     uint8_t curve_resonance;
     uint8_t curve_mode;
     uint8_t curve_model;
+    uint8_t curve_serial;             /* counts the curve's computations */
     uint16_t curve_hz;                /* the cutoff in Hz */
     uint8_t color[SCOPE_VOICES];      /* each drawn trace's colour */
     uint8_t drawn;                    /* the traces have been drawn once */
@@ -97,6 +105,7 @@ typedef struct {
     uint8_t next_voice; /* the scope that goes first in the next frame's budget */
     uint32_t updates;   /* frames that read the tap (not held by a transition) */
     uint32_t held;      /* traces held back by the budget, voice by frame (diagnostic) */
+    uint32_t rebuilds;  /* the whole canvas built: once, when nothing was (diagnostic) */
     uint8_t prepared;   /* pend and the meters are this frame's (live_view_prepare) */
     uint8_t built;      /* the canvas has been built */
     uint8_t drawn_look[LIVE_VIEW_LOOK]; /* what it was built from */
@@ -111,7 +120,9 @@ extern const view live_view_view;
 /* Shows l, and the tap sc (may be NULL). Flat scopes until the tap has points. */
 void live_view_init(live_view* lv, const live* l, scope* sc);
 /* The tap on or off; on: only points written from now on are used. Every frame, before the
- * screen's (views_frame): on while LIVE is on top. */
+ * screen's (views_frame): on while LIVE shows (on top, or under MIDI learn's frame). Off, the
+ * traces go flat and the envelopes and meters to zero: what LIVE shows when it comes back,
+ * until the tap has points, is the instrument at rest, not what it was when it went. */
 void live_view_tap(live_view* lv, int on);
 /* Reads the tap and works out the next frame's traces and meters now, half way between two
  * frames, so that the frame's compose is short: the main loop drains MIDI between the two

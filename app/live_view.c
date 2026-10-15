@@ -116,6 +116,7 @@ static void curve(live_view* lv, const live* l) {
         return;
     }
     lv->curve_valid = 1;
+    lv->curve_serial++;
     lv->curve_cutoff = l->cutoff_out;
     lv->curve_resonance = l->resonance;
     lv->curve_mode = mode;
@@ -143,6 +144,18 @@ static void curve(live_view* lv, const live* l) {
             lv->mark = (uint8_t)i;
             marked = 1;
         }
+    }
+}
+
+static void columns(const uint8_t y[SCOPE_W], uint32_t w[SCOPE_W]);
+
+/* Every trace flat, as drawn at rest. */
+static void flat(live_view* lv) {
+    for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
+        for (uint32_t x = 0; x < SCOPE_W; x++) {
+            lv->y[v][x] = MID;
+        }
+        columns(lv->y[v], lv->cols[v]);
     }
 }
 
@@ -229,14 +242,10 @@ void live_view_prepare(live_view* lv) {
 }
 
 void live_view_init(live_view* lv, const live* l, scope* sc) {
-    memset(lv, 0, sizeof *lv); /* not a const template: 4 KB of zeros in flash */
+    memset(lv, 0, sizeof *lv); /* not a const template: 6 KB of zeros in flash */
     lv->l = l;
     lv->sc = sc;
-    for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
-        for (uint32_t x = 0; x < SCOPE_W; x++) {
-            lv->y[v][x] = MID;
-        }
-    }
+    flat(lv);
 }
 
 void live_view_tap(live_view* lv, int on) {
@@ -248,6 +257,18 @@ void live_view_tap(live_view* lv, int on) {
     }
     if (on && !lv->on) {
         lv->since = lv->sc->head;
+    }
+    if (!on && lv->on) {
+        /* Rest, until the tap has points again (live_view.h). */
+        flat(lv);
+        for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
+            lv->env[v] = 0;
+            lv->state[v] = 0;
+            lv->sustain[v] = 0;
+        }
+        for (uint32_t m = 0; m < LIVE_VIEW_METERS; m++) {
+            lv->meter[m] = 0;
+        }
     }
     lv->on = (uint8_t)(on != 0);
     lv->sc->on = lv->on;
@@ -328,9 +349,8 @@ static void columns(const uint8_t y[SCOPE_W], uint32_t w[SCOPE_W]) {
         prev = y[x];
         hi = hi < LIVE_VIEW_SCOPE_PX ? hi : LIVE_VIEW_SCOPE_PX - 1u;
         lo = lo < hi ? lo : hi;
-        uint32_t n = hi - lo + 1u;
-        uint32_t bits = n >= 32u ? 0xFFFFFFFFu : (1u << n) - 1u;
-        w[x] = bits << (31u - hi);
+        /* Bits 31 - lo down to 31 - hi. */
+        w[x] = (0xFFFFFFFFu >> lo) & (0xFFFFFFFFu << (31u - hi));
     }
 }
 
@@ -376,15 +396,13 @@ static void cell_apply(grid* g, uint32_t v, uint32_t c, uint32_t r, const uint32
 
 /* Bit c * 4 + r of the result (cells of columns 0..7 in the first word, and so on): the
  * cells of voice v whose overlay differs from w's. With `known`, the overlays are the drawn
- * trace's (lv->y, in its colour), and only the cells where the columns differ are compared. */
+ * trace's (lv->cols, in its colour), and only the cells where the columns differ are
+ * compared. */
 static uint32_t changed_cells(const live_view* lv, const grid* g, uint32_t v,
                               const uint32_t w[SCOPE_W], uint8_t color, int known,
                               uint32_t out[3]) {
     uint32_t n = 0;
-    uint32_t old[SCOPE_W];
-    if (known) {
-        columns(lv->y[v], old);
-    }
+    const uint32_t* old = lv->cols[v];
     out[0] = out[1] = out[2] = 0;
     for (uint32_t c = 0; c < LIVE_VIEW_SCOPE_COLS; c++) {
         uint32_t diff = 0;
@@ -414,9 +432,8 @@ static uint32_t changed_cells(const live_view* lv, const grid* g, uint32_t v,
 
 /* Voice v's drawn trace (lv->y) onto every cell of its scope. */
 static void redraw_voice(live_view* lv, grid* g, uint32_t v) {
-    uint32_t w[SCOPE_W];
+    uint32_t* w = lv->cols[v];
     uint8_t color = wave_color(voice_control(lv->l, v));
-    columns(lv->y[v], w);
     for (uint32_t c = 0; c < LIVE_VIEW_SCOPE_COLS; c++) {
         for (uint32_t r = 0; r < LIVE_VIEW_SCOPE_ROWS; r++) {
             cell_apply(g, v, c, r, w, color);
@@ -432,12 +449,14 @@ static void redraw_voice(live_view* lv, grid* g, uint32_t v) {
  * switch frees them all. When they are not, every voice is marked to be drawn again whole.
  *
  * Fresh traces (pend) take the cells the frame has left of LIVE_VIEW_FRAME_CELLS once
- * everything else is composed: a voice whose changes do not fit keeps its last trace and goes
- * first next frame, so the voices take turns when they all move (noise). Without pend (a wipe
+ * everything else is composed and `reserved` (what the screen's layers add after the
+ * compose, screen_layer_cells) is set aside: a voice whose changes do not fit keeps its last
+ * trace and goes first next frame, so the voices take turns when they all move (noise). Without pend (a wipe
  * or a raster runs) the drawn traces stay; voices to draw again go one a frame, top first,
  * which keeps ahead of a wipe (it reveals voice 1's scope in its first frame, voice 2's in its
  * second, voice 3's in its fourth) and keeps the wipe's first frame cheap. */
-static void scopes(live_view* lv, grid* g, uint8_t pend[SCOPE_VOICES][SCOPE_W]) {
+static void scopes(live_view* lv, grid* g, uint8_t pend[SCOPE_VOICES][SCOPE_W],
+                   uint32_t reserved) {
     uint32_t w[SCOPE_W];
     uint32_t cells[3];
     if (!lv->drawn || g->ovl_nfree != lv->ovl_free) {
@@ -455,7 +474,7 @@ static void scopes(live_view* lv, grid* g, uint8_t pend[SCOPE_VOICES][SCOPE_W]) 
         lv->ovl_free = g->ovl_nfree;
         return;
     }
-    uint32_t used = grid_pending(g);
+    uint32_t used = grid_pending(g) + reserved;
     uint32_t left = used < LIVE_VIEW_FRAME_CELLS ? LIVE_VIEW_FRAME_CELLS - used : 0u;
     uint32_t first = lv->next_voice % SCOPE_VOICES;
     uint32_t skipped = SCOPE_VOICES;
@@ -485,8 +504,9 @@ static void scopes(live_view* lv, grid* g, uint8_t pend[SCOPE_VOICES][SCOPE_W]) 
                 cell_apply(g, v, bit / LIVE_VIEW_SCOPE_ROWS, bit % LIVE_VIEW_SCOPE_ROWS, w, color);
             }
         }
-        for (uint32_t x = 0; x < SCOPE_W; x++) {
+        for (uint32_t x = 0; x < SCOPE_W; x++) { /* not memcpy: the device's copies bytes */
             lv->y[v][x] = pend[v][x];
+            lv->cols[v][x] = w[x];
         }
         lv->color[v] = color;
         lv->stale &= (uint8_t)~(1u << v);
@@ -508,6 +528,29 @@ static const char* stage_name(uint8_t state, uint8_t env, uint8_t sustain) {
     return env == sustain ? "SUS" : "DEC";
 }
 
+/* A cell into the canvas and, with g, onto the grid as well: a part drawn on its own, with
+ * the rows around it as they are. */
+static void cell(canvas* cv, grid* g, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr) {
+    put(cv, col, row, ch, attr);
+    if (g) {
+        grid_put(g, col, row, ch, attr);
+    }
+}
+
+/* Voice v's envelope: 32 eighths over the 4 rows, ENV3 / 8. */
+static void env_bar(const live_view* lv, canvas* cv, grid* g, uint32_t v) {
+    uint32_t row = LIVE_VIEW_BOX_ROW + v * LIVE_VIEW_BOX_ROWS;
+    uint8_t attr = GRID_ATTR(wave_color(voice_control(lv->l, v)), GRID_BLACK);
+    uint32_t level = ((uint32_t)lv->env[v] + 4u) >> 3;
+    for (uint32_t j = 0; j < LIVE_VIEW_SCOPE_ROWS; j++) {
+        uint32_t below = (LIVE_VIEW_SCOPE_ROWS - 1u - j) * 8u;
+        uint32_t fill8 = level > below ? level - below : 0u;
+        fill8 = fill8 > 8u ? 8u : fill8;
+        cell(cv, g, ENV_COL, row + 1u + j, (uint8_t)(FONT_V0 + fill8), attr);
+        cell(cv, g, ENV_COL + 1u, row + 1u + j, (uint8_t)(FONT_V0 + fill8), attr);
+    }
+}
+
 static void voice(const live_view* lv, canvas* cv, uint32_t v) {
     const live* l = lv->l;
     uint32_t row = LIVE_VIEW_BOX_ROW + v * LIVE_VIEW_BOX_ROWS;
@@ -524,16 +567,7 @@ static void voice(const live_view* lv, canvas* cv, uint32_t v) {
     fill(cv, LIVE_VIEW_SCOPE_COL, scope_top(v) + MID / 8u, LIVE_VIEW_SCOPE_COLS, 1,
          FONT_SCOPE_MID, TEXT);
 
-    /* The envelope: 32 eighths over the 4 rows, ENV3 / 8. */
-    uint32_t level = ((uint32_t)lv->env[v] + 4u) >> 3;
-    for (uint32_t j = 0; j < LIVE_VIEW_SCOPE_ROWS; j++) {
-        uint32_t below = (LIVE_VIEW_SCOPE_ROWS - 1u - j) * 8u;
-        uint32_t fill8 = level > below ? level - below : 0u;
-        fill8 = fill8 > 8u ? 8u : fill8;
-        uint8_t attr = GRID_ATTR(color, GRID_BLACK);
-        put(cv, ENV_COL, row + 1u + j, (uint8_t)(FONT_V0 + fill8), attr);
-        put(cv, ENV_COL + 1u, row + 1u + j, (uint8_t)(FONT_V0 + fill8), attr);
-    }
+    env_bar(lv, cv, NULL, v);
 
     const live_voice* x = &l->voice[v];
     char note[5] = "---";
@@ -632,21 +666,28 @@ static void filter(const live_view* lv, canvas* cv) {
     text(cv, 1, LOWER_ROW + LOWER_ROWS - 1u, line, TEXT);
 }
 
+static const uint8_t METER_ROWS[LIVE_VIEW_METERS] = {1, 2, 3, 5, 6};
+
+/* Meter m's bar. */
+static void meter_bar(const live_view* lv, canvas* cv, grid* g, uint32_t m) {
+    uint32_t row = LOWER_ROW + METER_ROWS[m];
+    uint32_t px = lv->meter[m];
+    for (uint32_t c = 0; c < VU_METER_CELLS; c++) {
+        uint32_t fill8 = px >= 8u ? 8u : px;
+        px -= fill8;
+        uint8_t fg = c < 5u ? GRID_LIGHT_GREEN : c < 7u ? GRID_YELLOW : GRID_LIGHT_RED;
+        cell(cv, g, VU_METER_COL + c, row, (uint8_t)(FONT_BAR0 + fill8), GRID_ATTR(fg, GRID_BLACK));
+    }
+}
+
 static void meters(const live_view* lv, canvas* cv) {
     static const char LABELS[LIVE_VIEW_METERS] = {'1', '2', '3', 'L', 'R'};
-    static const uint8_t ROWS[LIVE_VIEW_METERS] = {1, 2, 3, 5, 6};
     box(cv, VU_COL, LOWER_ROW, VU_W, LOWER_ROWS, "VU");
     for (uint32_t m = 0; m < LIVE_VIEW_METERS; m++) {
-        uint32_t row = LOWER_ROW + ROWS[m];
+        uint32_t row = LOWER_ROW + METER_ROWS[m];
         uint8_t color = m < SCOPE_VOICES ? wave_color(voice_control(lv->l, m)) : GRID_WHITE;
         put(cv, VU_COL + 1u, row, (uint8_t)LABELS[m], GRID_ATTR(color, GRID_BLUE));
-        uint32_t px = lv->meter[m];
-        for (uint32_t c = 0; c < VU_METER_CELLS; c++) {
-            uint32_t fill8 = px >= 8u ? 8u : px;
-            px -= fill8;
-            uint8_t fg = c < 5u ? GRID_LIGHT_GREEN : c < 7u ? GRID_YELLOW : GRID_LIGHT_RED;
-            put(cv, VU_METER_COL + c, row, (uint8_t)(FONT_BAR0 + fill8), GRID_ATTR(fg, GRID_BLACK));
-        }
+        meter_bar(lv, cv, NULL, m);
     }
 }
 
@@ -671,38 +712,90 @@ static void slots(const live_view* lv, canvas* cv) {
     }
 }
 
-/* Everything the canvas shows besides the scopes, as bytes: the canvas is built again only
- * when this changes (or the screen asks for a redraw). */
+/* What each part of the canvas shows, as bytes (LIVE_VIEW_LOOK of them): a part is drawn
+ * again when its bytes change. */
+#define KEY_HEADER 0u
+#define KEY_VOICE 3u /* 5 a voice */
+#define KEY_ENV (KEY_VOICE + 5u * SCOPE_VOICES)
+#define KEY_FILTER (KEY_ENV + SCOPE_VOICES)
+#define KEY_VU (KEY_FILTER + 1u)
+#define KEY_METER (KEY_VU + SCOPE_VOICES)
+#define KEY_SLOTS (KEY_METER + LIVE_VIEW_METERS)
+#define KEY_END (KEY_SLOTS + 1u + 2u * LIVE_SLOTS)
+_Static_assert(KEY_END == LIVE_VIEW_LOOK, "LIVE_VIEW_LOOK holds every part's bytes");
+
 static void look(const live_view* lv, uint8_t out[LIVE_VIEW_LOOK]) {
     const live* l = lv->l;
-    uint32_t n = 0;
-    out[n++] = (uint8_t)l->model;
-    out[n++] = l->preset;
-    out[n++] = (uint8_t)l->octave;
-    out[n++] = l->control;
-    out[n++] = l->filter_mode;
-    out[n++] = l->resonance;
-    out[n++] = (uint8_t)l->cutoff_out;
-    out[n++] = (uint8_t)(l->cutoff_out >> 8);
-    out[n++] = l->fx_select;
+    out[KEY_HEADER] = (uint8_t)l->model;
+    out[KEY_HEADER + 1u] = l->preset;
+    out[KEY_HEADER + 2u] = (uint8_t)l->octave;
     for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
-        out[n++] = l->voice[v].note;
-        out[n++] = l->voice[v].gate;
-        out[n++] = (uint8_t)l->voice[v].pw_out;
-        out[n++] = (uint8_t)(l->voice[v].pw_out >> 8);
-        out[n++] = (uint8_t)((lv->env[v] + 4u) >> 3);
-        out[n++] = (uint8_t)stage_name(lv->state[v], lv->env[v], lv->sustain[v])[0];
+        uint8_t ctrl = voice_control(l, v);
+        const live_voice* x = &l->voice[v];
+        uint8_t* k = &out[KEY_VOICE + 5u * v];
+        k[0] = ctrl;
+        k[1] = ctrl ? x->note : LIVE_NO_NOTE;
+        k[2] = (uint8_t)(ctrl && x->gate);
+        k[3] = (ctrl & 0x40u) ? (uint8_t)(((uint32_t)x->pw_out * 99u + 2047u) / 4095u) : 0xFFu;
+        k[4] = (uint8_t)stage_name(lv->state[v], lv->env[v], lv->sustain[v])[0];
+        out[KEY_ENV + v] = (uint8_t)((lv->env[v] + 4u) >> 3);
+        out[KEY_VU + v] = wave_color(ctrl);
     }
+    out[KEY_FILTER] = lv->curve_serial; /* the mode, cutoff and resonance (curve) */
     for (uint32_t m = 0; m < LIVE_VIEW_METERS; m++) {
-        out[n++] = lv->meter[m];
+        out[KEY_METER + m] = lv->meter[m];
     }
+    out[KEY_SLOTS] = l->fx_select;
     for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
-        out[n++] = l->slot[k][LIVE_SLOT_ALGORITHM];
-        out[n++] = l->slot[k][LIVE_SLOT_MIX];
+        out[KEY_SLOTS + 1u + 2u * k] = l->slot[k][LIVE_SLOT_ALGORITHM];
+        out[KEY_SLOTS + 2u + 2u * k] = l->slot[k][LIVE_SLOT_MIX];
     }
-    while (n < LIVE_VIEW_LOOK) {
-        out[n++] = 0;
+}
+
+/* now[from .. from + n) differs from what was drawn. */
+static int differs(const live_view* lv, const uint8_t* now, uint32_t from, uint32_t n) {
+    for (uint32_t i = from; i < from + n; i++) {
+        if (now[i] != lv->drawn_look[i]) {
+            return 1;
+        }
     }
+    return 0;
+}
+
+#define ALL_ROWS ((1u << GRID_ROWS) - 1u)
+#define LOWER_MASK (((1u << LOWER_ROWS) - 1u) << LOWER_ROW)
+
+/* The parts whose bytes changed, drawn again into the canvas: the rows they cover. */
+static uint32_t parts(live_view* lv, canvas* cv, const uint8_t now[LIVE_VIEW_LOOK]) {
+    uint32_t rows = 0;
+    if (differs(lv, now, KEY_HEADER, 3u)) {
+        header(lv, cv); /* fills its row */
+        rows |= 1u;
+    }
+    for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
+        if (differs(lv, now, KEY_VOICE + 5u * v, 5u)) {
+            uint32_t row = LIVE_VIEW_BOX_ROW + v * LIVE_VIEW_BOX_ROWS;
+            fill(cv, 0, row, GRID_COLS, LIVE_VIEW_BOX_ROWS, ' ', TEXT);
+            voice(lv, cv, v);
+            rows |= ((1u << LIVE_VIEW_BOX_ROWS) - 1u) << row;
+        }
+    }
+    if (differs(lv, now, KEY_FILTER, 1u)) {
+        fill(cv, 0, LOWER_ROW, FILTER_W, LOWER_ROWS, ' ', TEXT);
+        filter(lv, cv);
+        rows |= LOWER_MASK;
+    }
+    if (differs(lv, now, KEY_VU, SCOPE_VOICES)) {
+        fill(cv, VU_COL, LOWER_ROW, VU_W, LOWER_ROWS, ' ', TEXT);
+        meters(lv, cv);
+        rows |= LOWER_MASK;
+    }
+    if (differs(lv, now, KEY_SLOTS, 1u + 2u * LIVE_SLOTS)) {
+        fill(cv, 0, SLOT_ROW, GRID_COLS, LIVE_SLOTS, ' ', TEXT);
+        slots(lv, cv);
+        rows |= ((1u << LIVE_SLOTS) - 1u) << SLOT_ROW;
+    }
+    return rows;
 }
 
 static void live_compose(screen* s, void* state, grid* g) {
@@ -720,15 +813,10 @@ static void live_compose(screen* s, void* state, grid* g) {
     }
     uint8_t now[LIVE_VIEW_LOOK];
     look(lv, now);
-    int same = lv->built && !s->redraw;
-    for (uint32_t i = 0; i < LIVE_VIEW_LOOK && same; i++) {
-        same = now[i] == lv->drawn_look[i];
-    }
-    if (!same) {
-        for (uint32_t i = 0; i < LIVE_VIEW_LOOK; i++) {
-            lv->drawn_look[i] = now[i];
-        }
+    uint32_t rows;
+    if (!lv->built) {
         lv->built = 1;
+        lv->rebuilds++;
         fill(cv, 0, 0, GRID_COLS, GRID_ROWS, ' ', TEXT);
         header(lv, cv);
         for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
@@ -737,11 +825,29 @@ static void live_compose(screen* s, void* state, grid* g) {
         filter(lv, cv);
         meters(lv, cv);
         slots(lv, cv);
-        for (uint32_t r = 0; r < GRID_ROWS; r++) {
+        rows = ALL_ROWS;
+    } else {
+        /* The rows the screen drew over (a switch, a toast, a raster) are the canvas's again. */
+        rows = parts(lv, cv, now) | (s->redraw ? s->redraw_rows : 0u);
+    }
+    for (uint32_t r = 0; r < GRID_ROWS; r++) {
+        if (rows >> r & 1u) {
             grid_row(g, r, cv->ch[r], cv->attr[r]);
         }
     }
-    scopes(lv, g, fresh ? lv->pend : NULL);
+    /* The envelope bars and the meters, cell by cell where only they changed. */
+    for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
+        if (now[KEY_ENV + v] != lv->drawn_look[KEY_ENV + v]) {
+            env_bar(lv, cv, g, v);
+        }
+    }
+    for (uint32_t m = 0; m < LIVE_VIEW_METERS; m++) {
+        if (now[KEY_METER + m] != lv->drawn_look[KEY_METER + m]) {
+            meter_bar(lv, cv, g, m);
+        }
+    }
+    memcpy(lv->drawn_look, now, sizeof now);
+    scopes(lv, g, fresh ? lv->pend : NULL, screen_layer_cells(s));
 }
 
 /* Composed every frame (no changed function). */

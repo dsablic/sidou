@@ -15,6 +15,15 @@ const uint8_t screen_ramp[SCREEN_RAMP] = {GRID_WHITE, GRID_YELLOW,     GRID_LIGH
 #define RASTER_MAX 255u
 #define TOAST_SHOWING 1u
 #define TOAST_WAITING 2u
+#define ALL_ROWS ((1u << GRID_ROWS) - 1u)
+/* The border: the top and bottom rows and the end cells of the rows between. */
+#define RASTER_CELLS (2u * GRID_COLS + 2u * (GRID_ROWS - 2u))
+
+/* The next frame composes, with the rows in mask to put back. */
+static void redraw(screen* s, uint32_t mask) {
+    s->redraw = 1;
+    s->redraw_rows |= mask;
+}
 
 /* The top view's enter or exit, with push and pop refused while it runs. */
 static void call(screen* s, void (*fn)(screen*, void*)) {
@@ -34,7 +43,7 @@ static void switched(screen* s, screen_wipe w) {
     }
     s->wipe = (uint8_t)w;
     s->wipe_rows = 0;
-    s->redraw = 1;
+    redraw(s, ALL_ROWS);
     /* A wipe holds every row until it reveals it (the next frame on): the panel keeps the old
      * view meanwhile, overlays included, which the clear above would otherwise send away. */
     grid_hold(s->g, w == SCREEN_CUT ? 0u : (1u << GRID_ROWS) - 1u);
@@ -47,7 +56,7 @@ void screen_init(screen* s, grid* g, const view* root, void* state) {
     s->stack[0].v = root;
     s->stack[0].state = state;
     s->depth = 1;
-    s->redraw = 1;
+    redraw(s, ALL_ROWS);
     call(s, root->enter);
 }
 
@@ -106,7 +115,7 @@ int screen_input(screen* s, const screen_event* e) {
 }
 
 void screen_redraw(screen* s) {
-    s->redraw = 1;
+    redraw(s, ALL_ROWS);
 }
 
 void screen_toast(screen* s, const char* text, uint32_t ms) {
@@ -117,13 +126,13 @@ void screen_toast(screen* s, const char* text, uint32_t ms) {
     s->toast[n] = 0;
     s->toast_on = TOAST_WAITING;
     s->toast_until = ms;
-    s->redraw = 1;
+    redraw(s, 1u << SCREEN_TOAST_ROW);
 }
 
 void screen_raster(screen* s, uint32_t steps) {
     uint32_t frames = steps * SCREEN_RASTER_FRAMES;
     s->raster_frames = (uint8_t)(frames < RASTER_MAX ? frames : RASTER_MAX);
-    s->redraw = 1;
+    redraw(s, ALL_ROWS);
 }
 
 int screen_blink(const screen* s) {
@@ -146,7 +155,7 @@ static void toast(screen* s) {
     }
     if (s->toast_on) {
         grid_text(s->g, SCREEN_TOAST_COL, SCREEN_TOAST_ROW, s->toast, TOAST_ATTR);
-        s->redraw = 1;
+        redraw(s, 1u << SCREEN_TOAST_ROW);
     }
 }
 
@@ -158,7 +167,7 @@ static void raster(screen* s) {
     grid* g = s->g;
     uint32_t phase = (s->raster_frames + SCREEN_RASTER_FRAMES - 1u) / SCREEN_RASTER_FRAMES;
     s->raster_frames--;
-    s->redraw = 1;
+    redraw(s, ALL_ROWS);
     for (uint32_t r = 0; r < GRID_ROWS; r++) {
         uint32_t fg = screen_ramp[(r + phase) % SCREEN_RAMP];
         uint32_t i = r * GRID_COLS;
@@ -193,7 +202,20 @@ static void wipe(screen* s) {
     }
     grid_fill(s->g, 0, edge, GRID_COLS, 1, FONT_FULL, EDGE_ATTR);
     grid_hold(s->g, hold);
-    s->redraw = 1;
+    redraw(s, ALL_ROWS);
+}
+
+uint32_t screen_layer_cells(const screen* s) {
+    uint32_t n = 0;
+    if (s->toast_on == TOAST_WAITING) {
+        for (uint32_t c = SCREEN_TOAST_COL; c < GRID_COLS && s->toast[c - SCREEN_TOAST_COL]; c++) {
+            n++;
+        }
+    }
+    if (s->raster_frames && s->wipe == SCREEN_CUT) {
+        n += RASTER_CELLS;
+    }
+    return n;
 }
 
 /* The layers set redraw when they draw: the next frame composes over what they drew. */
@@ -205,6 +227,7 @@ void screen_frame(screen* s, uint32_t now_ms) {
         top->v->compose(s, top->state, s->g);
     }
     s->redraw = 0;
+    s->redraw_rows = 0;
     toast(s);
     raster(s);
     wipe(s);
