@@ -15,6 +15,31 @@ Follow-ups that aren't tied to a milestone task yet.
   qualifies) and set it in the descriptor. The update loader enumerates as
   0x1209:0x0002 (as Felucca's loader) and needs its own PID too.
 
+## USB audio out, so a computer can record SIDOU over the cable
+
+- **Where:** `platform/fm1/usb/usb.c` (SIDOU's USB-MIDI-only copy) and
+  `platform/fm1/audio.c`.
+- **Problem:** SIDOU's USB is MIDI only. Felucca's USB audio input
+  (`FELUCCA_UAC`) was left out of SIDOU's copy, so a DAW can't record the
+  FM-1 without an audio interface. Felucca's original
+  (`platform/fm1/src/usb.c`, which the update loader builds from) has it,
+  tested on units: class compliant UAC1, the master output as 16-bit stereo
+  at 44.1 kHz on an isochronous asynchronous IN endpoint (EP4), 48 kHz
+  through a polyphase resampler, one packet per USB frame from the TIMER5
+  ISR, and a sample ring filled by the audio render.
+- **Action:** bring the UAC path back into SIDOU's copy as a composite
+  device with USB-MIDI, record the change in `VENDORED.md`, and tap the
+  post-slot stereo output.
+  - **Audio budget:** measure the ring tap and the packet ISR against the
+    audio budget gates (the tap adds to the 2,700 sum, as the scope tap does).
+  - **RAM:** account for the ring.
+  - **Testing:** fm1-emu has no USB (see below), so host-test the ring and
+    resampler, and add hardware checks to
+    [hardware-test.md](hardware-test.md): enumeration as a class-compliant
+    audio device on macOS, Windows, Linux and iPad; 44.1 and 48 kHz;
+    recording in a DAW with no dropouts while the LCD redraws; USB-MIDI
+    still working alongside.
+
 ## The full boot sequence once after an install (M2 storage)
 
 - **Where:** `app/boot.h`, `views_boot` in `platform/fm1/ui.c`.
