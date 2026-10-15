@@ -13,22 +13,31 @@
  *   (with EDIT held K1-K4 move effect-slot controls instead of the knobs, one write each:
  *   fewer than the knobs' below, so the knob layer is the worst case)
  *   K4 to another preset, every register       25
- *   K1 cutoff 2, K2 resonance 1, K3 pulse width 6, MASTER volume 1
- *                                              10
- *   two live_tick catch-ups, each the three frequencies (bend, vibrato), the three pulse
- *   widths (the PWM LFO, pressure) and the cutoff (wheel, pressure)    2 * 14 = 28
- *   all 27 note keys pressed and released within the pass: a note-on is at most 10 (a
- *   retrigger's gate-off; the velocity's sustain, pulse width or cutoff and the pressure's
- *   pulse width or cutoff, the pressure starting again at 0: 4 at most; the frequency; the
- *   sync voice's frequency; the gate), a note-off 1                   27 * 11 = 297
- *                                             387
- * An upper bound: a key's note-off leaves the gate off, so the next note-on writes one less,
- * and the panel's notes share one velocity, so the cutoff moves with the first only. The
- * host tests push this pass and check that it needs no wait. Bend, aftertouch and the wheel
- * (on a target other than the pulse width) only record their value: live_tick writes it.
- * MIDI input comes on top, first in the pass: the device's drain (platform/fm1/midi.c) stops
- * taking MIDI while fewer than this plus one MIDI entry's worst case are free
- * (MIDI_ENTRY_WRITES). */
+ *   K1 cutoff 2, K2 resonance 1, K3 pulse width 6
+ *                                               9
+ *   two live_tick catch-ups (platform/fm1/main.c, TICK_CATCH_UP), each after a MASTER
+ *   reading (the volume, 1) and writing the three frequencies (bend, vibrato), the three
+ *   pulse widths (the PWM LFO, pressure) and the cutoff (wheel, pressure)
+ *                                               2 * (1 + 14) = 30
+ *   all 27 note keys pressed and released within the pass, a key's note-on and note-off
+ *   11 together (below)
+ *                                              27 * 11 = 297
+ *                                             388
+ * A note-on writes at most 11: a retrigger's gate-off (the sync lead steals its one voice) 1,
+ * the velocity's sustain level 1, the voice's pulse width 2 (aftertouch MIDI changed since the
+ * last write; the voice's own pressure starts again at 0), the cutoff 2 (the wheel MIDI moved
+ * since the last tick), the frequency 2, the sync voice's frequency 2, the gate 1. A note-off
+ * writes 1. 27 * (11 + 1) would be 324, but 27 * 11 still bounds the keys: the pulse width
+ * and the cutoff are stale only after MIDI (before the panel in the pass), a preset or a model
+ * change (write_all: 2 in a pass at most) or a note of another velocity, and the panel's notes
+ * share one velocity. So each voice's pulse width is written by at most 3 of the pass's
+ * note-ons and the cutoff by at most 3; every other note-on writes at most 7, and 27 keys at
+ * most 27 * 7 + 3 * 3 * 2 + 3 * 2 + 27 = 240 <= 297.
+ * The host tests push this pass and check that it needs no wait. Bend, aftertouch and the
+ * wheel (on a target other than the pulse width) only record their value: live_tick writes
+ * it. MIDI input comes on top, first in the pass: the device's drain (platform/fm1/midi.c)
+ * stops taking MIDI while fewer than this plus one MIDI entry's worst case and a later gap's
+ * releases are free (MIDI_DRAIN_RESERVE). */
 
 /* Orders memory accesses against an interrupt on the same core; emits no instruction.
  * (The pi32v2 compiler lowers __atomic_signal_fence to a __sync_synchronize call, which has

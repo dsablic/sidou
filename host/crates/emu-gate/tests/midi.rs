@@ -447,6 +447,52 @@ fn a_pitch_bend_flood_neither_stalls_the_main_loop_nor_loses_input() {
     );
 }
 
+/// Program changes at the jack's full speed, with running status: one a byte (0.32 ms), each
+/// writing every register (25). The main loop leaves the register ring room for its own worst
+/// pass, so the MIDI drain takes only what fits after it; the ring must still keep up, or the
+/// MIDI ring overflows, the parsers restart and the notes are released.
+#[test]
+fn a_program_change_flood_neither_stalls_the_main_loop_nor_loses_input() {
+    let Some(fw) = fixture("the MIDI test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    // 1000 program changes alternating presets 0 and 1, ending on 1: 1001 bytes, 320 ms.
+    let mut stream = vec![0xC0];
+    for i in 0..1000u32 {
+        stream.push((i % 2) as u8);
+    }
+    let before = stats(&mut m, &fw).entries;
+    m.midi(&stream);
+    m.run_ms(500);
+    let s = stats(&mut m, &fw);
+    let after = (voice1(&mut m, &fw).control, cutoff(&mut m, &fw));
+    println!(
+        "{} program changes in {} bytes: voice 1 control {:02x}, cutoff {}; {s:?}",
+        1000,
+        stream.len(),
+        after.0,
+        after.1
+    );
+    assert_eq!(
+        m.soc.periph.midi_queued(),
+        0,
+        "the jack has not delivered all"
+    );
+    assert_eq!((s.lost, s.restarts), (0, 0), "the MIDI ring overflowed");
+    assert_eq!(s.entries - before, stream.len() as u32);
+    assert!(
+        s.max_wait_us < 10_000.0,
+        "a byte waited {:.0} us in the ring: the main loop fell behind",
+        s.max_wait_us
+    );
+    assert_eq!(
+        after,
+        (PULSE, PWM_BASS_CUTOFF),
+        "the last program change did not win"
+    );
+}
+
 /// Instructions per second of emulated time over `ms`: in interrupts and in the main loop.
 fn rates(m: &mut Machine, ms: u64) -> (f64, f64) {
     let (isr, main) = (m.isr_steps, m.main_steps);

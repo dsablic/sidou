@@ -38,10 +38,15 @@
 extern "C" {
 #endif
 
-/* Entries in the ring, a power of two. The worst case of one main-loop pass is 387 entries
- * (reg_ring.c, REG_RING_WORST_PASS), so a pass never waits for room on its own account. */
-#define REG_RING_SIZE 512u
-#define REG_RING_WORST_PASS 387u
+/* Entries in the ring, a power of two. The worst case of one main-loop pass is 388 entries
+ * (reg_ring.c, REG_RING_WORST_PASS), so a pass never waits for room on its own account. The
+ * rest is MIDI's: the device's drain (platform/fm1/midi.c) takes an entry only while the
+ * pass's worst case and the entry's still fit (at most 555 entries queued before it): between
+ * two audio blocks (2.9 ms) it takes up to 23 program changes, 25 writes each, where the TRS
+ * jack delivers 9. At 512 it took 2, and a flood overflowed the MIDI ring in about 150 ms.
+ * 2 bytes an entry: 2 KiB of .bss. */
+#define REG_RING_SIZE 1024u
+#define REG_RING_WORST_PASS 388u
 
 typedef struct {
     uint8_t reg; /* a SID register 0x00..0x18, or a live pseudo-register (bit 7 set) */

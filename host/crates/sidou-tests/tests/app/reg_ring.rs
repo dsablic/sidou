@@ -305,7 +305,8 @@ fn the_model_toggle_swaps_chips_and_keeps_the_sound_parameters() {
 }
 
 /// One main-loop pass at its worst (reg_ring.c, REG_RING_WORST_PASS), in the order the
-/// device's input code calls live: buttons, note keys, encoders, MASTER, ticks.
+/// device's input code calls live: buttons, note keys, encoders, then each tick catch-up
+/// after a MASTER reading (platform/fm1/main.c).
 /// Without `fx` the pass skips the model toggle, whose sink waits for an empty ring.
 fn worst_pass(l: &mut live, p: &mut panel, fx: bool) {
     unsafe {
@@ -332,6 +333,7 @@ fn worst_pass(l: &mut live, p: &mut panel, fx: bool) {
         panel_encoder(p, l, PANEL_ENC_K1 + 2, 5);
         panel_master(p, l, 300);
         live_tick(l);
+        panel_master(p, l, 600);
         live_tick(l);
     }
 }
@@ -374,9 +376,10 @@ fn a_burst_past_the_ring_waits_and_drops_nothing() {
     let mut dev = Device::new(SID_MODEL_6581);
     let mut direct = Direct::new(SID_MODEL_6581);
     let (mut pd, mut pr) = (panel_box(), panel_box());
-    // Four worst passes with no block in between: over 800 entries into 512 slots. Only
-    // the first toggles the model (a toggle waits for an empty ring anyway).
-    for i in 0..4 {
+    // Worst passes with no block in between until they fill the ring: over 200 entries each
+    // (the test above), so twice the ring's size in passes is more than enough. Only the
+    // first toggles the model (a toggle waits for an empty ring anyway).
+    for i in 0..2 * SIZE / 200 {
         worst_pass(&mut dev.live, &mut pd, i == 0);
         worst_pass(&mut direct.live, &mut pr, i == 0);
     }
@@ -394,10 +397,11 @@ fn a_burst_past_the_ring_waits_and_drops_nothing() {
 
 #[test]
 fn a_full_ring_of_gate_writes_ends_with_the_last_gate() {
-    // Without waiting, the 513th write would be lost; with it, the final gate state holds.
+    // Without waiting, the write past the ring's size would be lost; with it, the final gate
+    // state holds.
     let mut dev = Device::new(SID_MODEL_8580);
     let mut direct = Direct::new(SID_MODEL_8580);
-    for i in 0..400u32 {
+    for i in 0..SIZE {
         let n = 40 + (i % 30) as u8;
         both(&mut dev, &mut direct, |l| unsafe {
             live_note_on(l, n, 100);

@@ -30,12 +30,19 @@
  * live_tick applies it, inside the main loop's own budget (reg_ring.c, REG_RING_WORST_PASS), as
  * it applies pitch bend, aftertouch, the wheel on a target other than the pulse width and RPN 0,
  * which write nothing here, so a flood of 14-bit bends costs one tick's writes. A note-on writes
- * at most 10 (reg_ring.c). A TRS byte completes at most one message; a USB packet up to three,
+ * at most 11 (reg_ring.c). A TRS byte completes at most one message; a USB packet up to three,
  * through running status (app/midi_usb.h), e.g. CIN 3 with three data bytes after C0, so three
- * program changes (75) are the worst; two CCs fit in a packet (12), three note-ons (30). An
+ * program changes (75) are the worst; two CCs fit in a packet (12), three note-ons (33). An
  * entry after a gap of lost input first restarts the parsers and releases every voice
- * (live_all_notes_off: one gate write per voice). */
+ * (live_all_notes_off: one gate write per voice): 75 + 3 = 78. */
 #define MIDI_ENTRY_WRITES (3u * 25u + LIVE_VOICES)
+/* After the last entry, midi_rx_check_lost may find a gap that came behind it and release
+ * every voice again: 3 writes beyond any entry's. */
+#define MIDI_LOST_WRITES LIVE_VOICES
+/* The drain takes an entry only while this many are free after it (1024 - 469 = 555 queued
+ * at most), so the rest of the pass never waits for the audio ISR on its own account. */
+#define MIDI_DRAIN_RESERVE (MIDI_ENTRY_WRITES + MIDI_LOST_WRITES + REG_RING_WORST_PASS)
+_Static_assert(MIDI_DRAIN_RESERVE < REG_RING_SIZE, "the ring leaves MIDI no room");
 
 static midi_ring in_ring;
 static midi_rx rx;
@@ -116,9 +123,9 @@ int midi_drain(void) {
     if (in_ring.head == in_ring.tail && epoch == rx.epoch) {
         return 0; /* the main loop wakes at 10 kHz: keep the usual case to a few loads */
     }
-    /* Leave the rest of the pass its worst case, so it never waits for the audio ISR on its
-     * own account; what stays in the ring is taken after the next audio block. */
-    while (audio_queued() + MIDI_ENTRY_WRITES + REG_RING_WORST_PASS <= REG_RING_SIZE &&
+    /* Leave the entry, a later gap and the rest of the pass their worst cases
+     * (MIDI_DRAIN_RESERVE); what stays in the ring is taken after the next audio block. */
+    while (audio_queued() + MIDI_DRAIN_RESERVE <= REG_RING_SIZE &&
            midi_ring_pop(&in_ring, &e)) {
         uint32_t wait = fm1_ticks() - e.stamp;
         if (wait > midi_stats.max_wait_ticks) {
