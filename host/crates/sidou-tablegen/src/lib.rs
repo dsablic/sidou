@@ -241,7 +241,9 @@ pub const FILTER_CURVES: [CurveSetting; 2] = [
 
 /// Measures and fits every filter curve setting (filter_fit.rs), in FILTER_CURVES order.
 /// Each 6581 range setting must be measured on its own (reSIDfp keeps the range once per
-/// process), so this runs the settings one after another.
+/// process), so this runs the settings one after another. The same holds across threads:
+/// no other 6581 measurement with another range may run in the process meanwhile (tests in
+/// one binary run in parallel threads), unless they share a lock.
 pub fn filter_fits() -> Vec<FilterFit> {
     FILTER_CURVES.iter().map(filter_fit::fit_setting).collect()
 }

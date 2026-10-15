@@ -26,6 +26,7 @@ typedef struct {
     sid_model model;
     uint32_t cycles_per_sample_q16;
     uint32_t cycle_frac_q16;
+    uint32_t sample_rate;
     uint32_t fc;
     uint8_t res;
     uint8_t routing;
@@ -35,6 +36,7 @@ typedef struct {
     uint8_t written;   /* a voice write since the last step: clear the pulse latches */
     uint8_t osc3_latch;
     uint8_t control_age;   /* cycles since voice 3's last control write, up to 2 */
+    uint8_t filter_curve;  /* the curve setting cutoff_g and res_k come from (gen/filter.h) */
     float volume;
     float output_gain; /* to int16, at reSIDfp's level for the model */
     float dc_r, dc_x1, dc_y1;
@@ -85,6 +87,16 @@ void sid_set_combined_profile(sid* s, int profile);
  * sid_init. Applies to all three voices. On the device, call it where register writes are
  * applied (the audio interrupt draining the register ring). */
 void sid_set_gate_reset(sid* s, int on);
+
+/* Selects the chip's filter curve setting (sid_filter_curves; 0, reSIDfp's default, is
+ * what sid_init sets): rebuilds its cutoff and damping tables, about 2048 tangents. Returns
+ * 0, or -1 for a curve the model does not have, changing nothing. Never from the audio
+ * path (on the device it is in flash, and too slow for the interrupt): call it from the
+ * main loop. It changes only the chip's tables, one float at a time, which sid_write reads
+ * (in the audio interrupt on the device) one entry per write, so a write meanwhile takes
+ * an old or a new entry. The filter's coefficients follow at the next write to $15-$17:
+ * rewrite one (through the register ring on the device) to apply the curve. */
+int sid_set_filter_curve(sid* s, uint32_t curve);
 
 /* Points the chip at other voice DACs (sid_dac_build), which must outlive it; sid_init
  * sets reSIDfp's defaults for the model (sid_dac_default), shared by every chip. Never

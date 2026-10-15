@@ -210,7 +210,7 @@ while the user was away; revisit if needed):
   W/L), so it is monotonic where reSIDfp is. Out of the measurement's reach
   (8580 FC 0, 6581 above about 15 kHz) it is extrapolated; the device clamps
   to 30 Hz and 0.45 fs anyway.
-- **Placement:** 16,512 bytes in flash, read by `sid_init` only. Each chip
+- **Placement:** 16,512 bytes in flash, read by `sid_init` (and `sid_set_filter_curve`) only. Each chip
   keeps its 16 damping values in its own struct (RAM), so `sid_write` reads no
   flash. Instructions per sample unchanged (worst block 690.83 for one chip,
   1,409.20 for two); `sid_init` is 54k instructions cheaper.

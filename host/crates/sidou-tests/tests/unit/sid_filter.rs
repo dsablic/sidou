@@ -31,7 +31,7 @@ fn linear_svf(hz: f32, q: f32) -> sid_svf {
 }
 
 fn cutoff(model: sid_model, fc: u32) -> f32 {
-    unsafe { sid_cutoff_hz(model, fc) }
+    unsafe { sid_cutoff_hz(model, 0, fc) }
 }
 
 #[test]
@@ -118,7 +118,7 @@ fn silence_never_leaves_subnormal_state() {
 }
 
 fn damping(model: sid_model, res: u32) -> f32 {
-    unsafe { sid_resonance_k(model, res) }
+    unsafe { sid_resonance_k(model, 0, res) }
 }
 
 #[test]
@@ -177,5 +177,60 @@ fn the_chip_takes_cutoff_and_damping_from_the_tables() {
         let fc = (0x60 << 3) | 5;
         let g = tanf(PI * cutoff(model, fc) / FS);
         assert_float_eq(s.svf.a2, g / (1.0 + g * (g + s.svf.k)));
+    }
+}
+
+/// One curve setting per model until M1c Task 3 adds profiles (gen/filter.h).
+#[test]
+fn each_model_has_its_filter_curves() {
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        assert_eq!(unsafe { sid_filter_curves(model) }, 1);
+        // Out of range: the default curve, row 0.
+        for fc in [0u32, 1023, 2047] {
+            assert_eq!(unsafe { sid_cutoff_hz(model, 7, fc) }, cutoff(model, fc));
+        }
+        assert_eq!(unsafe { sid_resonance_k(model, 7, 15) }, damping(model, 15));
+    }
+}
+
+fn chip(model: sid_model) -> Box<sid> {
+    let mut s = Box::<sid>::default();
+    unsafe { sid_init(&mut *s, model, SID_CLOCK_PAL, 44100) };
+    s
+}
+
+/// sid_set_filter_curve rebuilds the chip's cutoff and damping tables (outside the audio
+/// path) and they apply at the next filter register write, as sid_init's do.
+#[test]
+fn a_filter_curve_rebuilds_the_tables_and_applies_at_the_next_filter_write() {
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        let fresh = chip(model);
+        let mut s = chip(model);
+        unsafe {
+            sid_write(&mut *s, 0x16, 0x40);
+            sid_write(&mut *s, 0x17, 0xf1);
+        }
+        let svf = s.svf;
+        s.cutoff_g.fill(0.25);
+        s.res_k.fill(1.5);
+        assert_eq!(unsafe { sid_set_filter_curve(&mut *s, 0) }, 0);
+        assert_eq!(s.cutoff_g, fresh.cutoff_g);
+        assert_eq!(s.res_k, fresh.res_k);
+        assert_eq!(s.filter_curve, 0);
+        // Not applied yet: the audio path's coefficients are the old ones.
+        assert_eq!(format!("{:?}", s.svf), format!("{svf:?}"));
+        let mut expect = chip(model);
+        unsafe {
+            sid_write(&mut *expect, 0x16, 0x40);
+            sid_write(&mut *expect, 0x17, 0xf1);
+            s.svf.k = 9.0; // whatever the coefficients were
+            sid_write(&mut *s, 0x17, 0xf1);
+        }
+        assert_eq!(format!("{:?}", s.svf), format!("{:?}", expect.svf));
+        // A curve the model does not have changes nothing.
+        s.cutoff_g[5] = 0.25;
+        assert_eq!(unsafe { sid_set_filter_curve(&mut *s, 1) }, -1);
+        assert_eq!(s.cutoff_g[5], 0.25);
+        assert_eq!(s.filter_curve, 0);
     }
 }

@@ -27,6 +27,34 @@ static void update_filter(sid* s) {
     sid_svf_set(&s->svf, s->cutoff_g[s->fc], s->res_k[s->res]);
 }
 
+/* The chip's cutoff (as the SVF's g, clamped to 30 Hz .. 0.45 fs) and damping tables for
+ * a curve setting. */
+static void build_filter_tables(sid* s, uint32_t curve) {
+    float limit = 0.45f * (float)s->sample_rate;
+    for (uint32_t fc = 0; fc < SID_FC_STEPS; ++fc) {
+        float hz = sid_cutoff_hz(s->model, curve, fc);
+        if (hz < 30.0f) {
+            hz = 30.0f;
+        }
+        if (hz > limit) {
+            hz = limit;
+        }
+        s->cutoff_g[fc] = sidou_tanf(SIDOU_PI * hz / (float)s->sample_rate);
+    }
+    for (uint32_t r = 0; r < 16u; ++r) {
+        s->res_k[r] = sid_resonance_k(s->model, curve, r);
+    }
+    s->filter_curve = (uint8_t)curve;
+}
+
+int sid_set_filter_curve(sid* s, uint32_t curve) {
+    if (curve >= sid_filter_curves(s->model)) {
+        return -1;
+    }
+    build_filter_tables(s, curve);
+    return 0;
+}
+
 void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) {
     memset(s, 0, sizeof *s);
     s->model = model;
@@ -42,20 +70,8 @@ void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) 
         sid_osc_reset(&s->osc[v]);
         sid_env_reset_settled(&s->env[v]); /* zeroed above: nothing to settle */
     }
-    float limit = 0.45f * (float)sample_rate;
-    for (uint32_t fc = 0; fc < SID_FC_STEPS; ++fc) {
-        float hz = sid_cutoff_hz(model, fc);
-        if (hz < 30.0f) {
-            hz = 30.0f;
-        }
-        if (hz > limit) {
-            hz = limit;
-        }
-        s->cutoff_g[fc] = sidou_tanf(SIDOU_PI * hz / (float)sample_rate);
-    }
-    for (uint32_t r = 0; r < 16u; ++r) {
-        s->res_k[r] = sid_resonance_k(model, r);
-    }
+    s->sample_rate = sample_rate;
+    build_filter_tables(s, 0);
     sid_svf_reset(&s->svf, model == SID_MODEL_6581 ? DRIVE_6581 : 0.0f);
     s->dc_r = 1.0f - 2.0f * SIDOU_PI * DC_BLOCK_HZ / (float)sample_rate;
     update_filter(s);

@@ -130,6 +130,21 @@ analogue modelling parameters, not just named presets. So:
   (`setFilter6581Curve`/`Range`, `setFilter8580Curve`,
   `setCombinedWaveforms`, DAC leakage and so on). Parameters that reSIDfp
   doesn't expose are modelled directly.
+  - *Filter curves (from M1b):* `gen/filter.h` holds one row per curve
+    setting (`FILTER_CURVES` in `sidou-tablegen`; reSIDfp's defaults are
+    row 0), and `sid_set_filter_curve(chip, curve)` (`sid.h`) selects one
+    per chip: it rebuilds the chip's cutoff and damping tables in the main
+    loop, never in the audio interrupt, and the curve applies at the next
+    `$15`-`$17` write. Continuous control interpolates between rows or
+    replaces this with the swap below.
+  - *reSIDfp's 6581 range is process-global* (`setFilter6581Range` changes
+    every 6581 in the process): measure 6581 settings one after another,
+    never in concurrent test threads, unless the tests share a lock or run in
+    their own binaries; `filter_fit::fit_setting` sets the range explicitly
+    each time.
+  - *"Worn 6581" needs defining* before it can be generated: which reSIDfp
+    settings (curve, range, DAC leakage) or SIDOU-only parameters it is, and
+    from what reference.
 - **How the device applies a change:** the main loop interpolates the
   affected tables and coefficients and swaps them in at a block boundary,
   the same pattern as the chip-model toggle. Nothing heavy runs on the audio
