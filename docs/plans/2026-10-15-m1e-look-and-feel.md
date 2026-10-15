@@ -120,5 +120,7 @@ SPI):
 ### Task 6: Optional SID UI sounds
 - Blips and a "drive chunk" played on chip B's spare voice when it's idle.
   Off by default, and never steals a playing voice.
+- **Moved to M2** (2026-10-15): it needs chip B's spare voice, and chip B arrives with M2.
+  M1e is complete without it; M2 takes it up with chip B.
 
 <!-- REUSE-IgnoreEnd -->

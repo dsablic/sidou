@@ -2,6 +2,9 @@
 
 <!-- REUSE-IgnoreStart -->
 
+**Status: complete** (2026-10-15). Tasks 1-5 are on `main`; Task 4, the CHIP view, closed it.
+What moved on is listed under each task's results and in CHANGELOG.md, "M1 status".
+
 > **For Claude:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development
 > to implement this plan task by task.
 

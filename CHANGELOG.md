@@ -208,3 +208,24 @@ All notable changes are documented here. The format follows
 - The EDIT layer (EDIT + K1..K4, SCL, ENV) is no longer a stopgap: it stays in every view as a
   shortcut to the selected effect slot, the one the CHIP view's slot focus shows.
 - The fm1-emu credit is reworded so that it fits one About page.
+
+### M1 status
+M1 (design doc section 14: sound) is done on `main`, with these exceptions.
+- **Done:** the SID core against reSIDfp and the five chip profiles (M1b, M1c Task 3); the
+  character layer and the post-chip effects, as three stereo slots (M1c Tasks 1, 2 and 5), with
+  the CHIP view on the panel (Task 4); the live instrument on the device, playable from the
+  keys, knobs and MASTER (M1a); MIDI in on TRS and USB, the CC/NRPN map, expression, MIDI out
+  and MIDI learn (M1d); and M1e's art direction page, font, widget and transition framework,
+  boot, menus, About cracktro, LIVE's scopes, envelopes and VU, the title cards and SCENE's
+  first five pieces (ahead of M2's SCENE view).
+- **Moved to M2:** chip B, and with it the CHIP view's B half and M1e Task 6's UI sounds on its
+  spare voice; the character's expert layer (every analogue parameter as its own control and
+  NRPN); everything that needs storage: user-saved profiles, MIDI learn's mappings, the CARDS
+  option, and the full boot once after an install; and About's music on the SID (design doc
+  section 7), which M1e's plan left out and needs M2's song player.
+- **On hardware only:** the whole checklist in `docs/hardware-test.md` is still to be run on a
+  unit (install and recovery, the printed labels against the ids, SAVE's id among them, the
+  LCD, the audio, TRS and USB MIDI, MIDI out, the latency's feel, the boot guard), and the open
+  checks in `docs/hardware.md` (the real CPU clock, cycles against fm1-emu's instructions, the
+  audio path from SRAM, the combined waveforms read from flash, the USB retry's stall, the
+  interrupt latencies, the second core's RAM).
