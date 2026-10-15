@@ -38,7 +38,7 @@ void input_poll(panel* p, live* l) {
     fm1_in.notes_pressed = 0;
     fm1__unlock(k);
 
-    panel_buttons(p, l, pressed);
+    panel_buttons(p, l, pressed, fm1_in.buttons);
     panel_note_keys(p, l, down, note_pressed);
     for (uint32_t e = 0; e < PANEL_ENCODERS; e++) {
         int32_t steps = fm1_enc_take(e);

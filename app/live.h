@@ -47,8 +47,29 @@ extern "C" {
 #define LIVE_CC_VOLUME 7u
 #define LIVE_CC_RESONANCE 71u
 #define LIVE_CC_CUTOFF 74u
+/* The effect slots (core/fx/fx_slots.h, app/fx_live.h): CC 102 + 5 slot + field, slot 0
+ * Distortion, 1 Modulation, 2 FX; field 0 algorithm (the value scaled over the slot's
+ * algorithms), 1 Amount, 2 A, 3 B, 4 Mix. In General MIDI's undefined block 102..119 until
+ * M1d publishes the CC map (docs/reference/controls.md). */
+#define LIVE_CC_SLOT_FIRST 102u
+#define LIVE_CC_SLOT_LAST 116u
 #define LIVE_CC_ALL_SOUND_OFF 120u
 #define LIVE_CC_ALL_NOTES_OFF 123u
+
+/* Effect slots: three, each with an algorithm and four controls 0..LIVE_SLOT_MAX. */
+#define LIVE_SLOTS 3u
+#define LIVE_SLOT_FIELDS 5u
+#define LIVE_SLOT_MAX 127u
+/* A knob detent moves a slot control this many steps: 32 detents end to end. */
+#define LIVE_SLOT_DETENT 4
+
+typedef enum {
+    LIVE_SLOT_ALGORITHM = 0,
+    LIVE_SLOT_AMOUNT = 1,
+    LIVE_SLOT_A = 2,
+    LIVE_SLOT_B = 3,
+    LIVE_SLOT_MIX = 4
+} live_slot_field;
 
 typedef void (*live_sink_fn)(void* ctx, uint8_t reg, uint8_t value);
 
@@ -60,7 +81,8 @@ typedef struct {
 } live_sid_target;
 
 /* Applies writes to ctx (a live_sid_target*) at once: sid_write for registers, sid_init
- * for LIVE_REG_RESET. For the host and for code that already runs in the audio context. */
+ * for LIVE_REG_RESET; other pseudo-registers (the slots') are ignored. For the host and for
+ * code that already runs in the audio context. */
 void live_sid_sink(void* ctx, uint8_t reg, uint8_t value);
 
 typedef enum {
@@ -126,9 +148,12 @@ typedef struct {
     uint16_t lfo_phase;
     uint32_t clock;
     live_voice voice[LIVE_VOICES];
+    uint8_t slot[LIVE_SLOTS][LIVE_SLOT_FIELDS]; /* each slot's algorithm and controls */
+    uint8_t fx_select;                          /* the slot the panel edits */
 } live;
 
-/* Preset 0, octave 0, full volume. Sends LIVE_REG_RESET(model) and then every register. */
+/* Preset 0, octave 0, full volume, every effect slot off. Sends LIVE_REG_RESET(model), then
+ * every register, then every slot setting (fx_live.h). */
 void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model);
 /* Absolute MIDI notes; the octave is not applied here (see live_key_note). Velocity 0
  * is a note-off. A note that is already held is retriggered on its voice. */
@@ -149,6 +174,18 @@ void live_set_preset(live* l, uint8_t index);
 void live_set_master(live* l, uint16_t value);
 /* Advances the pulse-width LFO; call at LIVE_TICK_HZ. */
 void live_tick(live* l);
+
+/* Effect slots. The number of algorithms slot has (its NONE included). */
+uint32_t live_slot_algorithms(uint32_t slot);
+/* Sets a slot's field: an algorithm clamped to the slot's, a control to 0..LIVE_SLOT_MAX.
+ * Sends it when it changed. */
+void live_slot_set(live* l, uint32_t slot, uint32_t field, int32_t value);
+/* Turns a slot control by detents (LIVE_SLOT_DETENT steps each), clamped at both ends. */
+void live_slot_turn(live* l, uint32_t slot, uint32_t field, int32_t detents);
+/* The slot's next algorithm, wrapping from the last to NONE. */
+void live_slot_next_algorithm(live* l, uint32_t slot);
+/* The panel's slot: the next one, wrapping. */
+void live_fx_select_next(live* l);
 
 #ifdef __cplusplus
 }

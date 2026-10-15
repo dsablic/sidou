@@ -154,7 +154,10 @@ fn ccs_follow_the_default_mapping() {
 fn other_ccs_change_nothing() {
     let mut m = Midi::new();
     m.rig.clear();
-    for cc in (0..128u8).filter(|c| ![1, 7, 71, 74, 120, 123].contains(c)) {
+    // The effect slots' CCs (102..116) are tested in fx_live.rs.
+    for cc in
+        (0..128u8).filter(|c| ![1, 7, 71, 74, 120, 123].contains(c) && !(102..=116).contains(c))
+    {
         m.trs(&[0xB0, cc, 99]);
     }
     assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());

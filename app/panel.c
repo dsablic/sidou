@@ -7,6 +7,7 @@ void panel_init(panel* p) {
         p->key_note[k] = LIVE_NO_NOTE;
     }
     p->master_raw = -1;
+    p->held = 0;
 }
 
 static void key_up(panel* p, live* l, uint32_t k) {
@@ -33,8 +34,14 @@ void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed) {
     }
 }
 
-void panel_buttons(panel* p, live* l, uint32_t pressed) {
-    (void)p;
+void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held) {
+    p->held = held;
+    if (pressed & (1u << PANEL_BTN_SCL)) {
+        live_fx_select_next(l);
+    }
+    if (pressed & (1u << PANEL_BTN_ENV)) {
+        live_slot_next_algorithm(l, l->fx_select);
+    }
     if (pressed & (1u << PANEL_BTN_OCT_DOWN)) {
         live_button(l, LIVE_BUTTON_OCT_DOWN);
     }
@@ -47,8 +54,13 @@ void panel_buttons(panel* p, live* l, uint32_t pressed) {
 }
 
 void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps) {
-    (void)p;
-    if (steps != 0 && enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4) {
+    if (steps == 0 || enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4) {
+        return;
+    }
+    if (p->held & (1u << PANEL_BTN_EDIT)) {
+        /* K1..K4: Amount, A, B, Mix */
+        live_slot_turn(l, l->fx_select, LIVE_SLOT_AMOUNT + (enc - PANEL_ENC_K1), steps);
+    } else {
         live_knob(l, (live_knob_id)(enc - PANEL_ENC_K1), steps);
     }
 }
@@ -84,6 +96,9 @@ panel_leds panel_get_leds(const panel* p, const live* l) {
     }
     if (l->model == SID_MODEL_8580) {
         o.buttons |= 1u << PANEL_BTN_FX;
+    }
+    if (l->slot[l->fx_select][LIVE_SLOT_ALGORITHM] != 0) {
+        o.buttons |= 1u << PANEL_BTN_EDIT;
     }
     return o;
 }

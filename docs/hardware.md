@@ -136,7 +136,21 @@ interface, PDM microphone inputs (PLNK) and SPDIF receive.
 Since M1a Task 5b the audio path runs from SRAM: the ALNK0 entry
 (`isr_alnk0`) and its C body (`fm1_alnk0_irq`), `audio_fill`, the register
 ring's drain, `sid_render` and `sid_write` (2240 bytes of RAMTEXT's 24 KB at
-the time). The rules for keeping it that way:
+the time). M1c Task 2 added the effect slots (`sid_slots_process`, the switch
+path and every algorithm's tick, the two reverbs' ticks, and `fx_live`'s
+pseudo-register handler): **22,280 of 24,576 bytes** with M1a's flash driver
+(`fl_*_ram`, ~2.8 KB). They fit because the expensive algorithm inits (tables,
+reverb layouts) run once in `sid_slots_init`, in flash, as templates that the
+interrupt only copies; with those inits in the interrupt it was 26,920
+bytes. Growing the slots further needs one of:
+- `-Os` for `core/fx` (about 3.3 KB smaller, at a cycle cost not yet
+  measured);
+- RAMTEXT into the 8 KB RAM-run debug area at 0x01C06000 (owner's call);
+- moving the flash driver out of RAMTEXT (it only runs with the audio
+  stopped, so it could be copied into the slots' pool for an update), which
+  touches the vendored update path.
+
+The rules for keeping it that way:
 - **Placement is in `platform/fm1/app.ld` only**, by input-section rules on
   function sections (the device build compiles with `-ffunction-sections`).
   The portable C carries no attributes. The `.ram_text` statement comes

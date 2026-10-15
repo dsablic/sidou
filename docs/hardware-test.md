@@ -166,8 +166,15 @@ which printed control did it.
 | K4 (encoder 5) | PRESET: SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC | | [ ] |
 | MASTER (pot) | VOLUME 0..15, quieter turned down | | [ ] |
 
+| SCL (button 3) | selects the next effect slot (the `>` on the screen's EFFECTS lines moves) | | [ ] |
+| ENV (button 4) | the selected slot's next algorithm (the name on the screen changes) | | [ ] |
+| EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the screen); EDIT lit while the slot is on | | [ ] |
+
 - [ ] A held note keeps its pitch when the octave changes, and stops when
   the key is released.
+- [ ] OVERDRIVE with Amount and Mix up distorts audibly; REVERB or LUSH with
+  Mix up adds a stereo tail (listen on headphones); switching algorithms
+  while a note plays crossfades without a click.
 - [ ] The other buttons and encoders do nothing (record anything they do).
 
 Notes:
@@ -194,6 +201,8 @@ record the one that works.
   sound and the bars.
 - [ ] Program change 0..3 selects the preset; 4 and above change nothing.
 - [ ] CC 123 (all notes off) and CC 120 release held notes.
+- [ ] CC 112 = 90 and CC 116 = 127 turn the FX slot's REVERB on
+  ([controls.md](reference/controls.md)); CC 116 = 0 back to dry.
 - [ ] A dense part from a sequencer (running status, clock on) plays without
   hanging notes. Latency feels:
 

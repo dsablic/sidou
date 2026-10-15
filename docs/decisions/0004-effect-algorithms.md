@@ -268,8 +268,8 @@ moving all the time) replaces the estimates above. Instructions per sample:
 | Ping-pong | FX | 174 | ≈90 | 450 |
 | Reverb light | FX | 373 | ≈260 | 450 |
 | Reverb lush | FX | 421 | ≈380 | 450 |
-| Slot frame | — | 87 | — | 100 |
-| Heaviest of each together (overdrive, chorus, lush) | — | 835 | ≈730 | 900 |
+| Slot frame | — | 91 | — | 100 |
+| Heaviest of each together (overdrive, chorus, lush) | — | 839 | ≈730 | 900 |
 
 - One chip plus the slots: 1,201 (22 % of a 240 MHz core).
 - Two chips plus the slots: 1,576 (29 %), within Task 1's 2,300.
@@ -307,7 +307,7 @@ and back. Per sample:
   the Modulation slot (at Mix 0, so at rest) wakes while FX switches into lush. Waking
   out of turn put the chorus's start-up on top of lush's fade-in: 1,066 per sample at
   worst. In turn, the waking slot passes the dry signal until the FX switch is done.
-- **Measured: worst block 954, 45 blocks above 900** (about 33 ms in all, over two
+- **Measured: worst block 963, 45 blocks above 900** (about 33 ms in all, over two
   preset changes, one with the wake).
   - Most of those blocks are lush fading in (about 908) or the chorus starting after it
     (about 915).
@@ -321,8 +321,12 @@ and back. Per sample:
 - at most 80 of the scenario's 32-sample blocks may be above the 900 budget.
 
 With two chips at the SID's measured worst (2 × 600), the future 6502 (400) and ISR
-overhead (100), the worst switching block makes 1,700 + 954 = 2,654, within the 2,700
+overhead (100), the worst switching block makes 1,700 + 963 = 2,663, within the 2,700
 audio target. The gate asserts that sum too. The steady budget stays 900.
+
+(Since M1c Task 2 the algorithms' expensive inits run in `sid_slots_init` as templates
+that a switch copies, to fit the device's SRAM code region: the figures above are with
+that change.)
 
 ### Moved out of Task 5
 

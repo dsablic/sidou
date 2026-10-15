@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "live.h"
 
+#include "fx_live.h"
+
 #include <stddef.h>
 
 #define CTRL_GATE 0x01u
@@ -67,7 +69,7 @@ void live_sid_sink(void* ctx, uint8_t reg, uint8_t value) {
     if (reg == LIVE_REG_RESET) {
         sid_model model = value == SID_MODEL_8580 ? SID_MODEL_8580 : SID_MODEL_6581;
         sid_init(t->chip, model, t->clock_hz, t->sample_rate);
-    } else {
+    } else if (!(reg & 0x80u)) {
         sid_write(t->chip, reg, value);
     }
 }
@@ -208,6 +210,13 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     load_preset(l, 0);
     put(l, LIVE_REG_RESET, (uint8_t)model);
     write_all(l);
+    l->fx_select = 0;
+    for (uint32_t k = 0; k < LIVE_SLOTS; ++k) {
+        for (uint32_t f = 0; f < LIVE_SLOT_FIELDS; ++f) {
+            l->slot[k][f] = 0;
+            put(l, (uint8_t)LIVE_REG_SLOT(k, f), 0);
+        }
+    }
 }
 
 /* a happened before b; stamps wrap. */
@@ -414,8 +423,54 @@ void live_cc(live* l, uint8_t cc, uint8_t value) {
     case LIVE_CC_CUTOFF: set_cutoff(l, scale7(value, LIVE_CUTOFF_MAX)); break;
     case LIVE_CC_ALL_SOUND_OFF:
     case LIVE_CC_ALL_NOTES_OFF: live_all_notes_off(l); break;
-    default: break;
+    default:
+        if (cc >= LIVE_CC_SLOT_FIRST && cc <= LIVE_CC_SLOT_LAST) {
+            uint32_t slot = (cc - LIVE_CC_SLOT_FIRST) / LIVE_SLOT_FIELDS;
+            uint32_t field = (cc - LIVE_CC_SLOT_FIRST) % LIVE_SLOT_FIELDS;
+            int32_t v = value;
+            if (field == LIVE_SLOT_ALGORITHM) {
+                v = (int32_t)(value * live_slot_algorithms(slot) / 128u);
+            }
+            live_slot_set(l, slot, field, v);
+        }
+        break;
     }
+}
+
+uint32_t live_slot_algorithms(uint32_t slot) {
+    static const uint8_t COUNT[LIVE_SLOTS] = {SID_DIST_COUNT, SID_MOD_COUNT, SID_FXSLOT_COUNT};
+    return slot < LIVE_SLOTS ? COUNT[slot] : 0u;
+}
+
+void live_slot_set(live* l, uint32_t slot, uint32_t field, int32_t value) {
+    if (slot >= LIVE_SLOTS || field >= LIVE_SLOT_FIELDS) {
+        return;
+    }
+    int32_t max = field == LIVE_SLOT_ALGORITHM ? (int32_t)live_slot_algorithms(slot) - 1
+                                               : (int32_t)LIVE_SLOT_MAX;
+    value = value < 0 ? 0 : value > max ? max : value;
+    if (l->slot[slot][field] != (uint8_t)value) {
+        l->slot[slot][field] = (uint8_t)value;
+        put(l, (uint8_t)LIVE_REG_SLOT(slot, field), (uint8_t)value);
+    }
+}
+
+void live_slot_turn(live* l, uint32_t slot, uint32_t field, int32_t detents) {
+    if (slot < LIVE_SLOTS && field < LIVE_SLOT_FIELDS && field != LIVE_SLOT_ALGORITHM) {
+        live_slot_set(l, slot, field, l->slot[slot][field] + detents * LIVE_SLOT_DETENT);
+    }
+}
+
+void live_slot_next_algorithm(live* l, uint32_t slot) {
+    if (slot < LIVE_SLOTS) {
+        uint32_t next = l->slot[slot][LIVE_SLOT_ALGORITHM] + 1u;
+        live_slot_set(l, slot, LIVE_SLOT_ALGORITHM,
+                      next < live_slot_algorithms(slot) ? (int32_t)next : 0);
+    }
+}
+
+void live_fx_select_next(live* l) {
+    l->fx_select = (uint8_t)((l->fx_select + 1u) % LIVE_SLOTS);
 }
 
 void live_tick(live* l) {

@@ -49,6 +49,17 @@ SECTIONS
         *(.text.audio_fill)                         /* audio.c */
         *(.text.reg_ring_drain .text.reg_ring_pop .text.reg_ring_chip)   /* app/reg_ring.c */
         *(.text.sid_render .text.sid_write)         /* core/sid/sid.c (sid_svf_set is inline) */
+        /* The effect slots (core/fx/fx_slots.c): the render, the settings, the switch path
+         * (start), every algorithm tick and LFO the compiler kept out of line, and the inits
+         * start still runs (the cheap ones; sid_slots_init, in flash, builds the others'
+         * templates). The two reverbs' ticks. live's way in: the drain's pseudo-register
+         * handler (app/fx_live.c). */
+        *(.text.sid_slots_process .text.sid_slots_set .text.start .text.step_switch .text.copy)
+        *(.text.dist_tick_any .text.mod_tick_any .text.fx_tick_any)
+        *(.text.sid_fx_*_tick .text.sid_fx_*_lfo)
+        *(.text.sid_fx_crush_init .text.sid_fx_noise_init .text.sid_fx_chorus_init)
+        *(.text.sid_fx_flanger_init .text.sid_fx_tremolo_init .text.sid_fx_wow_init)
+        *(.text.fx_live_pseudo .text.fx_live_apply)
         . = ALIGN(4);
         _rt_end = .;
     } > RAMTEXT AT > XIP

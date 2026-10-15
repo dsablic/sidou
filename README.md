@@ -46,7 +46,10 @@ Entirely at your own risk: SIDOU comes with no warranty.
 BASS, SYNC LEAD, NOISE PERC); K1 cutoff, K2 resonance, K3 pulse width, K4
 preset, MASTER volume, OCT-/OCT+, FX for the 6581/8580; MIDI notes on every
 channel, CC 74 cutoff, CC 71 resonance, CC 1 pulse width, CC 7 volume,
-program change 0-3 for the presets.
+program change 0-3 for the presets. Since M1c, three effect slots
+(Distortion, Modulation, FX) after the chip, in stereo, on a temporary
+EDIT + K1-K4 layer and CC 102-116: see
+[docs/reference/controls.md](docs/reference/controls.md).
 
 ## For contributors
 

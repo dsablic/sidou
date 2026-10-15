@@ -292,6 +292,19 @@ MIDI is covered by the host tests of the packet conversion
   tiny package, which Felucca's `fm1pkg_make.py` reproduced byte for byte
   once.
 
+`crates/emu-gate/tests/fx_live.rs` plays the effect slots through the firmware:
+- the panel's EDIT layer turns OVERDRIVE on: the wave clips (its crest factor
+  falls) and EDIT lights up;
+- TRS MIDI CCs turn the light reverb on: the output turns stereo and a tail
+  follows the note;
+- every slot's heaviest (overdrive, chorus, lush) switched in by CC while a
+  chord plays: every audio block, switching included, stays within the
+  2,700-per-sample audio target; the interrupt runs only from `.ram_text`;
+  the main loop stays under 5M instructions/s.
+
+`boot.rs`'s host reference goes through the same slots (all off at boot), and
+compares both channels sample for sample.
+
 `crates/emu-gate/tests/package.rs` boots `sidou.fwsc` as fm1-emu boots a
 package (`stock_from_package` + `stock_boot`) with the A4 key held: it plays
 440 Hz, sample for sample as the bare image does. It writes the audio as

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* The audio render, without hardware access: main.c's ALNK0 interrupt calls audio_fill for
- * each free half of the I2S DMA buffer.
+ * each free half of the I2S DMA buffer: the chip, then the effect slots, in stereo.
  *
  * The main loop changes the chip only through audio_sink (app/reg_ring.h): its writes queue
  * up in a ring that audio_fill drains before each block. */
@@ -37,8 +37,9 @@ void audio_irqs_on(void);
 void audio_halted(void);
 /* 1 between audio_irqs_on and audio_halted. */
 int audio_running(void);
-/* AUDIO_HALF_WORDS words: the SID's mono output on both channels, 24-bit left-justified
- * ((int32)sample << 8). Called from the ALNK0 interrupt. */
+/* AUDIO_HALF_WORDS words: the SID's output through the effect slots (core/fx/fx_slots.h),
+ * interleaved L and R, 24-bit left-justified ((int32)sample << 8); with every slot off, the
+ * chip's output on both sides. Called from the ALNK0 interrupt. */
 void audio_fill(int32_t* out);
 
 #endif

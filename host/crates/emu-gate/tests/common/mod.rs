@@ -311,9 +311,22 @@ impl Machine {
         }
     }
 
-    /// The left channel of everything played so far (the firmware plays mono).
+    /// The left channel of everything played so far (mono unless an effect slot makes
+    /// stereo).
     pub fn left(&self) -> Vec<i16> {
         self.soc.periph.audio.iter().step_by(2).copied().collect()
+    }
+
+    /// The right channel of everything played so far.
+    pub fn right(&self) -> Vec<i16> {
+        self.soc
+            .periph
+            .audio
+            .iter()
+            .skip(1)
+            .step_by(2)
+            .copied()
+            .collect()
     }
 }
 

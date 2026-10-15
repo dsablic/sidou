@@ -2,8 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "audio.h"
 
+#include "fx/fx_slots.h"
+#include "fx_live.h"
 #include "reg_ring.h"
 #include "sid/sid.h"
+
+/* The effect slots' seed (their noise and drift generators). */
+#define SLOTS_SEED 0x51D0u
 
 /* reg_ring_drain runs from SRAM (app.ld): beyond the direct call range of this file's
  * main-loop code in flash, so those calls go through a pointer the compiler cannot fold back
@@ -13,8 +18,14 @@ static uint32_t far_drain(reg_ring* r, reg_ring_chips* c) {
     return fn(r, c);
 }
 
-/* Two chips of ~8.5 KB each: the big zero-initialised pool, not .bss. */
+/* Two chips of ~8.5 KB each, the effect slots (~5 KB) and their 128 KiB delay/reverb pool:
+ * the big zero-initialised pool, not .bss. */
 static reg_ring_chips chips __attribute__((section(".pool")));
+static sid_slots slots __attribute__((section(".pool")));
+static sid_slot_pool slot_pool __attribute__((section(".pool")));
+/* The slots' settings as live sent them; the drain applies them (in the interrupt). */
+static fx_live fx;
+
 static reg_ring ring;
 static reg_ring_out out;
 static volatile uint8_t running;
@@ -34,6 +45,10 @@ static void wait_for_drain(void* ctx) {
 void audio_init(void) {
     reg_ring_init(&ring);
     reg_ring_chips_init(&chips, SID_MODEL_6581, SID_CLOCK_PAL, AUDIO_SAMPLE_RATE);
+    sid_slots_init(&slots, AUDIO_SAMPLE_RATE, SLOTS_SEED, &slot_pool);
+    fx_live_init(&fx, &slots);
+    chips.pseudo = fx_live_pseudo;
+    chips.pseudo_ctx = &fx;
     out.ring = &ring;
     out.chips = &chips;
     out.wait = wait_for_drain;
@@ -71,11 +86,12 @@ int audio_running(void) {
 
 void audio_fill(int32_t* buf) {
     int16_t s[AUDIO_HALF_FRAMES];
+    int16_t lr[2u * AUDIO_HALF_FRAMES];
     reg_ring_drain(&ring, &chips);
     sid_render(reg_ring_chip(&chips), s, AUDIO_HALF_FRAMES);
-    for (uint32_t i = 0; i < AUDIO_HALF_FRAMES; i++) {
-        int32_t v = (int32_t)s[i] * 256;
-        buf[2 * i] = v;
-        buf[2 * i + 1] = v;
+    /* With every slot off this writes the chip's output to both sides unchanged. */
+    sid_slots_process(&slots, s, lr, AUDIO_HALF_FRAMES);
+    for (uint32_t i = 0; i < 2u * AUDIO_HALF_FRAMES; i++) {
+        buf[i] = (int32_t)lr[i] * 256;
     }
 }

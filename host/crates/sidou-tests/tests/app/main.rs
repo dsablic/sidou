@@ -3,6 +3,7 @@
 //! Unit tests of the portable app logic (`app/`) through FFI.
 
 mod bootguard;
+mod fx_live;
 mod live_freq;
 mod live_instrument;
 mod midi_in;

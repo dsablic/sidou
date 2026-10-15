@@ -29,6 +29,18 @@ static uint8_t shown[ROWS][COLS]; /* the screen as the panel has it */
 static uint32_t last_compose;
 static uint32_t dirty; /* bit s: strip s differs from what the panel has */
 
+/* The effect slots (core/fx/fx_slots.h), as the screen names them (at most 9 cells). */
+static const char* const SLOT_NAMES[LIVE_SLOTS] = {"DIST", "MOD", "FX"};
+static const char* const DIST_NAMES[] = {"OFF", "TAPE", "OVERDRIVE", "FUZZ", "CRUSH", "LO-FI"};
+static const char* const MOD_NAMES[] = {"OFF",     "CHORUS",   "FLANGER", "PHASER",
+                                        "TREMOLO", "AUTO-PAN", "WOW"};
+static const char* const FX_NAMES[] = {"OFF", "DELAY", "PING-PONG", "REVERB", "LUSH"};
+
+static const char* algorithm_name(uint32_t slot, uint32_t alg) {
+    static const char* const* const NAMES[LIVE_SLOTS] = {DIST_NAMES, MOD_NAMES, FX_NAMES};
+    return alg < live_slot_algorithms(slot) ? NAMES[slot][alg] : "?";
+}
+
 static const char* const NOTE_NAMES[12] = {"C",  "C#", "D",  "D#", "E",  "F",
                                            "F#", "G",  "G#", "A",  "A#", "B"};
 
@@ -125,6 +137,26 @@ static void compose(const live* l) {
         }
         col += 5u;
     }
+
+    /* The effect slots: '>' marks the one EDIT + K1-K4 and ENV act on (SCL moves it). */
+    put(18, 2, "EFFECTS");
+    for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
+        uint32_t row = 19u + k;
+        if (k == l->fx_select) {
+            put(row, 2, ">");
+        }
+        put(row, 3, SLOT_NAMES[k]);
+        put(row, 8, algorithm_name(k, l->slot[k][LIVE_SLOT_ALGORITHM]));
+        put(row, 19, "MIX");
+        put_num(row, 23, 3, l->slot[k][LIVE_SLOT_MIX], 0);
+    }
+    const uint8_t* sel = l->slot[l->fx_select];
+    put(22, 3, "AMT");
+    put_num(22, 7, 3, sel[LIVE_SLOT_AMOUNT], 0);
+    put(22, 12, "A");
+    put_num(22, 14, 3, sel[LIVE_SLOT_A], 0);
+    put(22, 19, "B");
+    put_num(22, 21, 3, sel[LIVE_SLOT_B], 0);
 
     put(26, 2, "READY.");
 }

@@ -1,0 +1,268 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! The effect slots in the live instrument (`app/fx_live.c`, live's slot settings, the
+//! panel's EDIT layer and the slot CCs).
+
+use std::ffi::c_void;
+
+use sidou_sys::*;
+
+use crate::Rig;
+
+const fn slot_reg(slot: u32, field: u32) -> u8 {
+    (LIVE_REG_SLOT_BASE | slot << 3 | field) as u8
+}
+
+#[test]
+fn slot_settings_are_clamped_and_sent_once_per_change() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    rig.clear();
+    unsafe {
+        live_slot_set(&mut *rig.live, 1, LIVE_SLOT_AMOUNT, 200);
+        live_slot_set(&mut *rig.live, 1, LIVE_SLOT_AMOUNT, 127);
+        live_slot_set(&mut *rig.live, 2, LIVE_SLOT_ALGORITHM, 99);
+        live_slot_set(&mut *rig.live, 0, LIVE_SLOT_MIX, -5);
+        live_slot_set(&mut *rig.live, 3, LIVE_SLOT_MIX, 10);
+    }
+    assert_eq!(
+        rig.log(),
+        &[
+            (slot_reg(1, LIVE_SLOT_AMOUNT), 127),
+            (
+                slot_reg(2, LIVE_SLOT_ALGORITHM),
+                (SID_FXSLOT_COUNT - 1) as u8
+            )
+        ],
+        "clamped, sent only on change, nothing for a slot that does not exist"
+    );
+    assert_eq!(rig.live.slot[1][LIVE_SLOT_AMOUNT as usize], 127);
+}
+
+#[test]
+fn algorithms_cycle_and_controls_turn_by_detents() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    for _ in 0..SID_MOD_COUNT {
+        unsafe { live_slot_next_algorithm(&mut *rig.live, 1) };
+    }
+    assert_eq!(rig.live.slot[1][0], 0, "wraps from the last to NONE");
+    unsafe { live_slot_next_algorithm(&mut *rig.live, 1) };
+    assert_eq!(rig.live.slot[1][0], SID_MOD_CHORUS as u8);
+    unsafe { live_slot_turn(&mut *rig.live, 1, LIVE_SLOT_A, 3) };
+    assert_eq!(
+        rig.live.slot[1][LIVE_SLOT_A as usize],
+        (3 * LIVE_SLOT_DETENT) as u8
+    );
+    unsafe { live_slot_turn(&mut *rig.live, 1, LIVE_SLOT_A, 100) };
+    assert_eq!(rig.live.slot[1][LIVE_SLOT_A as usize], LIVE_SLOT_MAX as u8);
+    // The algorithm is not a knob.
+    unsafe { live_slot_turn(&mut *rig.live, 1, LIVE_SLOT_ALGORITHM, 3) };
+    assert_eq!(rig.live.slot[1][0], SID_MOD_CHORUS as u8);
+}
+
+#[test]
+fn slot_ccs_map_slot_and_field() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    rig.clear();
+    rig.cc(103, 64); // Distortion Amount
+    rig.cc(102, 127); // Distortion algorithm: the last
+    rig.cc(112, 80); // FX algorithm: 80 * 5 / 128 = 3, the light reverb
+    rig.cc(116, 127); // FX Mix
+    rig.cc(110, 33); // Modulation B
+    assert_eq!(
+        rig.log(),
+        &[
+            (slot_reg(0, LIVE_SLOT_AMOUNT), 64),
+            (slot_reg(0, LIVE_SLOT_ALGORITHM), (SID_DIST_COUNT - 1) as u8),
+            (
+                slot_reg(2, LIVE_SLOT_ALGORITHM),
+                SID_FXSLOT_REVERB_LIGHT as u8
+            ),
+            (slot_reg(2, LIVE_SLOT_MIX), 127),
+            (slot_reg(1, LIVE_SLOT_B), 33),
+        ]
+    );
+    // Every algorithm of every slot is reachable by CC.
+    for slot in 0..LIVE_SLOTS {
+        let count = unsafe { live_slot_algorithms(slot) };
+        let reached: std::collections::BTreeSet<u8> = (0..128u8)
+            .map(|v| {
+                rig.cc(LIVE_CC_SLOT_FIRST + slot * LIVE_SLOT_FIELDS, v);
+                rig.live.slot[slot as usize][0]
+            })
+            .collect();
+        assert_eq!(reached.len() as u32, count, "slot {slot}");
+    }
+}
+
+struct Panel {
+    rig: Rig,
+    p: Box<panel>,
+}
+
+impl Panel {
+    fn new() -> Self {
+        let mut p = Box::<panel>::default();
+        unsafe { panel_init(&mut *p) };
+        let mut rig = Rig::new(SID_MODEL_6581);
+        rig.clear();
+        Panel { rig, p }
+    }
+
+    fn buttons(&mut self, pressed: u32, held: u32) {
+        unsafe { panel_buttons(&mut *self.p, &mut *self.rig.live, pressed, held) }
+    }
+
+    fn enc(&mut self, enc: u32, steps: i32) {
+        unsafe { panel_encoder(&mut *self.p, &mut *self.rig.live, enc, steps) }
+    }
+
+    fn leds(&self) -> panel_leds {
+        unsafe { panel_get_leds(&*self.p, &*self.rig.live) }
+    }
+}
+
+#[test]
+fn edit_held_turns_k1_k4_into_the_selected_slots_controls() {
+    let mut pn = Panel::new();
+    let edit = 1 << PANEL_BTN_EDIT;
+    // SCL twice: the FX slot; ENV: its first algorithm.
+    pn.buttons(1 << PANEL_BTN_SCL, 0);
+    pn.buttons(1 << PANEL_BTN_SCL, 0);
+    pn.buttons(1 << PANEL_BTN_ENV, 0);
+    assert_eq!(pn.rig.live.fx_select, 2);
+    assert_eq!(pn.rig.live.slot[2][0], SID_FXSLOT_DELAY as u8);
+    assert!(
+        pn.leds().buttons & edit != 0,
+        "EDIT lit: the selected slot has an algorithm"
+    );
+    let cutoff = pn.rig.live.cutoff;
+    pn.buttons(0, edit);
+    for (i, enc) in (PANEL_ENC_K1..=PANEL_ENC_K4).enumerate() {
+        pn.enc(enc, i as i32 + 1);
+    }
+    let s = pn.rig.live.slot[2];
+    let d = LIVE_SLOT_DETENT as u8;
+    assert_eq!(&s[1..], &[d, 2 * d, 3 * d, 4 * d], "Amount, A, B, Mix");
+    assert_eq!(pn.rig.live.cutoff, cutoff, "K1 did not move the cutoff");
+    // Let go of EDIT: K1 is the cutoff again.
+    pn.buttons(0, 0);
+    pn.enc(PANEL_ENC_K1, -1);
+    assert_ne!(pn.rig.live.cutoff, cutoff);
+    assert_eq!(pn.rig.live.slot[2][1], d);
+    // SCL wraps back to Distortion, which is off: EDIT dark.
+    pn.buttons(1 << PANEL_BTN_SCL, 0);
+    assert_eq!(pn.rig.live.fx_select, 0);
+    assert_eq!(pn.leds().buttons & edit, 0);
+}
+
+fn slots_box() -> (Box<sid_slots>, Box<sid_slot_pool>) {
+    let mut pool = Box::<sid_slot_pool>::default();
+    let mut s = Box::<sid_slots>::default();
+    unsafe { sid_slots_init(&mut *s, 44100, 1, &mut *pool) };
+    (s, pool)
+}
+
+#[test]
+fn fx_live_applies_slot_registers_and_nothing_else() {
+    let (mut s, _pool) = slots_box();
+    let mut f = Box::<fx_live>::default();
+    unsafe { fx_live_init(&mut *f, &mut *s) };
+    let apply = |f: &mut fx_live, reg: u8, v: u8| unsafe { fx_live_apply(f, reg, v) };
+    assert_eq!(
+        apply(
+            &mut f,
+            slot_reg(1, LIVE_SLOT_ALGORITHM),
+            SID_MOD_FLANGER as u8
+        ),
+        1
+    );
+    assert_eq!(apply(&mut f, slot_reg(1, LIVE_SLOT_A), 127), 1);
+    assert_eq!(apply(&mut f, slot_reg(1, LIVE_SLOT_MIX), 64), 1);
+    let t = s.slot[1].target;
+    assert_eq!(t.algorithm, SID_MOD_FLANGER);
+    assert_eq!(t.a, 1.0);
+    assert!((t.mix - 64.0 / 127.0).abs() < 1e-6);
+    // Not slot registers: a SID register, the reset, a field past Mix, a slot past FX.
+    for reg in [0x11u8, LIVE_REG_RESET as u8, slot_reg(0, 5), slot_reg(3, 0)] {
+        assert_eq!(apply(&mut f, reg, 1), 0, "reg {reg:#x}");
+    }
+}
+
+/// The device's path: live -> reg_ring_sink -> ring -> drain -> pseudo handler -> slots.
+#[test]
+fn slot_settings_cross_the_register_ring_in_order() {
+    let (mut s, _pool) = slots_box();
+    let mut f = Box::<fx_live>::default();
+    unsafe { fx_live_init(&mut *f, &mut *s) };
+    let mut ring = Box::<reg_ring>::default();
+    let mut chips = Box::<reg_ring_chips>::default();
+    unsafe {
+        reg_ring_init(&mut *ring);
+        reg_ring_chips_init(&mut *chips, SID_MODEL_6581, SID_CLOCK_PAL, 44100);
+    }
+    chips.pseudo = Some(fx_live_pseudo);
+    chips.pseudo_ctx = (&mut *f as *mut fx_live).cast::<c_void>();
+    unsafe extern "C" fn drain_now(ctx: *mut c_void) {
+        let o = unsafe { &mut *ctx.cast::<reg_ring_out>() };
+        unsafe { reg_ring_drain(o.ring, o.chips) };
+    }
+    let mut out = Box::new(reg_ring_out {
+        ring: &mut *ring,
+        chips: &mut *chips,
+        wait: Some(drain_now),
+        wait_ctx: std::ptr::null_mut(),
+        full_waits: 0,
+        reset_waits: 0,
+    });
+    let out_ptr: *mut reg_ring_out = &mut *out;
+    out.wait_ctx = out_ptr.cast();
+    let mut l = Box::<live>::default();
+    unsafe {
+        live_init(&mut *l, Some(reg_ring_sink), out_ptr.cast(), SID_MODEL_6581);
+        reg_ring_commit(&mut *ring);
+        reg_ring_drain(&mut *ring, &mut *chips);
+        live_slot_set(
+            &mut *l,
+            2,
+            LIVE_SLOT_ALGORITHM,
+            SID_FXSLOT_REVERB_LUSH as i32,
+        );
+        live_slot_set(&mut *l, 2, LIVE_SLOT_MIX, 127);
+    }
+    let fc_before = chips.chip[usize::from(chips.active)].fc;
+    unsafe { live_cc(&mut *l, 74, 127) }; // a SID write in the same batch
+    assert_eq!(s.slot[2].target.algorithm, 0, "nothing before the drain");
+    unsafe {
+        reg_ring_commit(&mut *ring);
+        reg_ring_drain(&mut *ring, &mut *chips);
+    }
+    assert_eq!(s.slot[2].target.algorithm, SID_FXSLOT_REVERB_LUSH);
+    assert_eq!(s.slot[2].target.mix, 1.0);
+    assert_eq!(chips.lost_resets, 0);
+    assert_ne!(
+        chips.chip[usize::from(chips.active)].fc,
+        fc_before,
+        "the SID write landed too"
+    );
+}
+
+#[test]
+fn the_host_sink_never_writes_a_slot_register_to_the_chip() {
+    let mut chip = Box::<sid>::default();
+    unsafe { sid_init(&mut *chip, SID_MODEL_6581, SID_CLOCK_PAL, 44100) };
+    let before = format!("{:?}", chip.osc[0]);
+    let mut t = live_sid_target {
+        chip: &mut *chip,
+        clock_hz: SID_CLOCK_PAL,
+        sample_rate: 44100,
+    };
+    // 0xA1 would alias to register 0x01 (voice 1's frequency high byte).
+    unsafe {
+        live_sid_sink(
+            (&mut t as *mut live_sid_target).cast(),
+            slot_reg(0, 1),
+            0xff,
+        )
+    };
+    assert_eq!(format!("{:?}", chip.osc[0]), before);
+}

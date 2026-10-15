@@ -12,8 +12,9 @@ use std::ffi::c_void;
 
 use common::{build_dir, Firmware, Machine};
 use sidou_sys::{
-    live, live_init, live_note_on, live_set_master, live_sid_sink, live_sid_target, sid,
-    sid_render, SID_CLOCK_PAL, SID_MODEL_6581,
+    fx_live, fx_live_init, fx_live_sid_sink, fx_live_target, live, live_init, live_note_on,
+    live_set_master, live_sid_target, sid, sid_render, sid_slot_pool, sid_slots, sid_slots_init,
+    sid_slots_process, SID_CLOCK_PAL, SID_MODEL_6581,
 };
 use sidou_tests::signal_metrics::estimate_f0;
 
@@ -38,33 +39,48 @@ const MAX_NOTE_BLOCK: usize = 16;
 /// The tone is checked after this much output, once the attack and DC blocker settled.
 const SETTLE_MS: f64 = 100.0;
 
+/// platform/fm1/audio.c SLOTS_SEED.
+const SLOTS_SEED: u32 = 0x51D0;
+
 /// The firmware's instrument at boot (platform/fm1/main.c: live_init, then the MASTER pot),
-/// rendered by the host build in blocks, with the A4 note-on before block `note_block`.
+/// rendered by the host build in blocks as audio_fill does (the chip, then the effect
+/// slots), with the A4 note-on before block `note_block`. Interleaved L, R.
 fn render_host(frames: usize, note_block: usize) -> Vec<i16> {
     let mut chip = Box::<sid>::default();
-    let mut target = Box::new(live_sid_target {
-        chip: &mut *chip,
-        clock_hz: SID_CLOCK_PAL,
-        sample_rate: SAMPLE_RATE,
+    let mut pool = Box::<sid_slot_pool>::default();
+    let mut slots = Box::<sid_slots>::default();
+    let mut fx = Box::<fx_live>::default();
+    let mut target = Box::new(fx_live_target {
+        sid: live_sid_target {
+            chip: &mut *chip,
+            clock_hz: SID_CLOCK_PAL,
+            sample_rate: SAMPLE_RATE,
+        },
+        fx: &mut *fx,
     });
     let mut l = Box::<live>::default();
-    let t: *mut live_sid_target = &mut *target;
-    let mut out = vec![0i16; frames];
-    // SAFETY: the chip, its target and live are boxed and outlive the calls; `out` holds
-    // `frames` samples.
+    let t: *mut fx_live_target = &mut *target;
+    let mut out = vec![0i16; 2 * frames];
+    let mut mono = vec![0i16; HALF_FRAMES];
+    // SAFETY: everything C keeps a pointer to is boxed and outlives the calls; the buffers
+    // hold the samples asked for.
     unsafe {
+        sid_slots_init(&mut *slots, SAMPLE_RATE, SLOTS_SEED, &mut *pool);
+        fx_live_init(&mut *fx, &mut *slots);
         live_init(
             &mut *l,
-            Some(live_sid_sink),
+            Some(fx_live_sid_sink),
             t.cast::<c_void>(),
             SID_MODEL_6581,
         );
         live_set_master(&mut *l, POT);
-        for (i, half) in out.chunks_mut(HALF_FRAMES).enumerate() {
+        for (i, half) in out.chunks_mut(2 * HALF_FRAMES).enumerate() {
             if i == note_block {
                 live_note_on(&mut *l, A4, 100);
             }
-            sid_render(&mut *chip, half.as_mut_ptr(), half.len() as u32);
+            let n = half.len() / 2;
+            sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
+            sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
         }
     }
     out
@@ -90,20 +106,23 @@ fn boots_and_plays_a_held_key_sample_exact() {
          the audio interrupt is not running"
     );
     let (left, right): (Vec<i16>, Vec<i16>) = audio.chunks_exact(2).map(|f| (f[0], f[1])).unzip();
-    assert_eq!(left, right, "the instrument is mono: L and R must match");
+    assert_eq!(
+        left, right,
+        "every effect slot is off at boot: L and R must match"
+    );
 
-    // Sample-exact against the host: the emulator turns each int32 word back into the int16
-    // the firmware rendered (>> 8). The block the note-on reached the chip in depends on
-    // the key scan, so find it.
+    // Sample-exact against the host, both channels: the emulator turns each int32 word back
+    // into the int16 the firmware rendered (>> 8). The block the note-on reached the chip in
+    // depends on the key scan, so find it.
     let mut best: Option<(usize, usize)> = None;
     let mut min_diff = i32::MAX;
     'search: for silent in 0..=MAX_SILENT_HALVES {
-        if left[..silent * HALF_FRAMES].iter().any(|&s| s != 0) {
+        if audio[..2 * silent * HALF_FRAMES].iter().any(|&s| s != 0) {
             break; // the DMA's zeros only come before the first rendered half
         }
-        let played = &left[silent * HALF_FRAMES..];
+        let played = &audio[2 * silent * HALF_FRAMES..];
         for k in 0..MAX_NOTE_BLOCK {
-            let host = render_host(played.len(), k);
+            let host = render_host(played.len() / 2, k);
             let d = played
                 .iter()
                 .zip(&host)

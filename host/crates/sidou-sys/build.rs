@@ -7,7 +7,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 18] = [
+const SOURCES: [&str; 19] = [
     "core/sid/sid.c",
     "core/fx/fx.c",
     "core/fx/fx_slots.c",
@@ -16,6 +16,7 @@ const SOURCES: [&str; 18] = [
     "core/sid/sid_filter.c",
     "bench/workload.c",
     "app/bootguard.c",
+    "app/fx_live.c",
     "app/live.c",
     "app/live_freq.c",
     "app/midi_in.c",
@@ -82,9 +83,9 @@ fn main() {
         .clang_args(INCLUDES.map(|dir| format!("-I{}", root.join(dir).display())))
         .clang_arg("-std=c11")
         .allowlist_function(
-            "sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*",
+            "sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|fx_live.*",
         )
-        .allowlist_type("sid.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard")
+        .allowlist_type("sid.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*")
         .allowlist_var(
             "SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*",
         )

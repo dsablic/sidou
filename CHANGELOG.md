@@ -61,3 +61,7 @@ All notable changes are documented here. The format follows
   a Dattorro plate), each with Amount, A, B and Mix, smoothed and with
   crossfaded algorithm switches; stereo output; an emulator gate per
   algorithm and slot.
+- The firmware runs the effect slots after the chip with true stereo output.
+  Their settings ride the register ring as pseudo-registers; a temporary panel
+  layer (EDIT + K1-K4, SCL, ENV) and CC 102-116 control them, and the status
+  screen shows them (`docs/reference/controls.md`).

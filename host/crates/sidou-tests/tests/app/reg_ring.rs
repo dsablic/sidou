@@ -310,8 +310,10 @@ fn the_model_toggle_swaps_chips_and_keeps_the_sound_parameters() {
 fn worst_pass(l: &mut live, p: &mut panel, fx: bool) {
     unsafe {
         if fx {
-            panel_buttons(p, l, 1 << PANEL_BTN_FX);
+            panel_buttons(p, l, 1 << PANEL_BTN_FX, 0);
         }
+        // the selected effect slot's next algorithm (EDIT not held: the knobs stay knobs)
+        panel_buttons(p, l, 1 << PANEL_BTN_ENV, 0);
         // the sync lead: every note-on also sets the sync voice's frequency
         panel_encoder(p, l, PANEL_ENC_K4, 1);
         // every key pressed and let go within the pass, each retriggering voice 1

@@ -38,10 +38,10 @@
 extern "C" {
 #endif
 
-/* Entries in the ring, a power of two. The worst case of one main-loop pass is 262 entries
+/* Entries in the ring, a power of two. The worst case of one main-loop pass is 263 entries
  * (reg_ring.c, REG_RING_WORST_PASS), so a pass never waits for room on its own account. */
 #define REG_RING_SIZE 512u
-#define REG_RING_WORST_PASS 262u
+#define REG_RING_WORST_PASS 263u
 
 typedef struct {
     uint8_t reg; /* a SID register 0x00..0x18, or a live pseudo-register (bit 7 set) */
@@ -65,6 +65,10 @@ uint32_t reg_ring_used(const reg_ring* r);
 /* Consumer. 1 and the oldest committed entry, or 0 when there is none. */
 int reg_ring_pop(reg_ring* r, reg_ring_entry* out);
 
+/* Gets the pseudo-registers the drain does not handle itself (the effect slots',
+ * app/fx_live.h), from the audio interrupt. */
+typedef void (*reg_ring_pseudo_fn)(void* ctx, uint8_t reg, uint8_t value);
+
 /* Two chips, one of them rendered. The drain swaps them at a LIVE_REG_RESET entry once the
  * producer has initialised the spare for that model. */
 typedef struct {
@@ -75,9 +79,11 @@ typedef struct {
     volatile uint32_t lost_resets; /* resets that found no spare ready (a bug if not 0) */
     uint32_t clock_hz;
     uint32_t sample_rate;
+    reg_ring_pseudo_fn pseudo; /* NULL: other pseudo-registers are ignored */
+    void* pseudo_ctx;
 } reg_ring_chips;
 
-/* chip[active] is chip 0, initialised for model; chip 1 is left zeroed. */
+/* chip[active] is chip 0, initialised for model; chip 1 is left zeroed; no pseudo handler. */
 void reg_ring_chips_init(reg_ring_chips* c, sid_model model, uint32_t clock_hz,
                          uint32_t sample_rate);
 /* The chip to render. */
@@ -85,8 +91,8 @@ sid* reg_ring_chip(reg_ring_chips* c);
 
 /* Consumer: applies every committed entry in order. A SID register goes to sid_write on the
  * active chip; a LIVE_REG_RESET swaps to the spare (it never reaches sid_write, which would
- * alias it to register 0x00); any other pseudo-register is ignored. Returns the entries
- * applied. */
+ * alias it to register 0x00); any other pseudo-register goes to the pseudo handler, if
+ * there is one. Returns the entries applied. */
 uint32_t reg_ring_drain(reg_ring* r, reg_ring_chips* c);
 
 /* The producer's side, the context of reg_ring_sink. */

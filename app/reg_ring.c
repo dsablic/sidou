@@ -6,6 +6,9 @@
 
 /* REG_RING_WORST_PASS, the most one main-loop pass can push (live.c's writes per call):
  *   FX, a reset and every register         1 + 25
+ *   ENV, the selected effect slot's next algorithm  1
+ *   (with EDIT held K1-K4 move effect-slot controls instead of the knobs, one write each:
+ *   fewer than the knobs' below, so the knob layer is the worst case)
  *   K4 to another preset, every register       25
  *   K1 cutoff 2, K2 resonance 1, K3 pulse width 6, MASTER volume 1
  *                                              10
@@ -13,7 +16,7 @@
  *   all 27 note keys pressed and released within the pass: a note-on is at most 6 (a
  *   retrigger's gate-off, the frequency, the sync voice's frequency, the gate), a
  *   note-off 1                           27 * 7 = 189
- *                                             262
+ *                                             263
  * An upper bound: a key's note-off leaves the gate off, so the next note-on writes 5. The
  * host tests push this pass (223 entries) and check that it needs no wait.
  * MIDI input comes on top, first in the pass: the device's drain (platform/fm1/midi.c) stops
@@ -70,6 +73,8 @@ void reg_ring_chips_init(reg_ring_chips* c, sid_model model, uint32_t clock_hz,
     c->spare_ready = 0;
     c->spare_model = 0;
     c->lost_resets = 0;
+    c->pseudo = 0;
+    c->pseudo_ctx = 0;
     sid_init(&c->chip[0], model, clock_hz, sample_rate);
 }
 
@@ -83,6 +88,9 @@ static void apply(reg_ring_chips* c, reg_ring_entry e) {
         return;
     }
     if (e.reg != LIVE_REG_RESET) {
+        if (c->pseudo) {
+            c->pseudo(c->pseudo_ctx, e.reg, e.value);
+        }
         return;
     }
     if (c->spare_ready && c->spare_model == e.value) {

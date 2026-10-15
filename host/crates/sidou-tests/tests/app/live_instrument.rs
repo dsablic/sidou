@@ -37,10 +37,19 @@ fn init_resets_the_chip_then_writes_every_register_once() {
     let rig = Rig::new(SID_MODEL_8580);
     let log = rig.log();
     assert_eq!(log[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
-    let regs: Vec<u8> = log[1..].iter().map(|&(r, _)| r).collect();
+    let regs: Vec<u8> = log[1..26].iter().map(|&(r, _)| r).collect();
     let set: BTreeSet<u8> = regs.iter().copied().collect();
     assert_eq!(regs.len(), 25);
     assert_eq!(set, (0..=0x18).collect());
+    // Then every effect slot's five settings, all off.
+    let slots: BTreeSet<(u8, u8)> = log[26..].iter().copied().collect();
+    let want: BTreeSet<(u8, u8)> = (0..LIVE_SLOTS)
+        .flat_map(|k| {
+            (0..LIVE_SLOT_FIELDS).map(move |f| ((LIVE_REG_SLOT_BASE | k << 3 | f) as u8, 0))
+        })
+        .collect();
+    assert_eq!(log.len(), 26 + 15);
+    assert_eq!(slots, want);
 }
 
 #[test]

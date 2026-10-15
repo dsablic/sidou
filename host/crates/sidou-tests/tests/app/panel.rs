@@ -25,7 +25,7 @@ impl Panel {
     }
 
     fn buttons(&mut self, pressed: u32) {
-        unsafe { panel_buttons(&mut *self.p, &mut *self.rig.live, pressed) }
+        unsafe { panel_buttons(&mut *self.p, &mut *self.rig.live, pressed, 0) }
     }
 
     fn enc(&mut self, enc: u32, steps: i32) {

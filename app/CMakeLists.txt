@@ -4,6 +4,7 @@
 # ("live.h"); the SID core's as "sid/sid.h".
 add_library(sidou_live STATIC
     bootguard.c
+    fx_live.c
     live.c
     live_freq.c
     midi_in.c

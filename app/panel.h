@@ -28,6 +28,12 @@ extern "C" {
 #define PANEL_BTN_OCT_DOWN 0u
 #define PANEL_BTN_OCT_UP 1u
 #define PANEL_BTN_FX 2u
+/* The effect slots' temporary layer (until the CHIP view; docs/reference/controls.md):
+ * EDIT held turns K1-K4 into the selected slot's Amount, A, B and Mix; SCL selects the next
+ * slot (Distortion, Modulation, FX); ENV steps the selected slot's algorithm. */
+#define PANEL_BTN_SCL 3u
+#define PANEL_BTN_ENV 4u
+#define PANEL_BTN_EDIT 6u
 /* The LED id of note key k is PANEL_KEY_ID0 + k; buttons are their own ids. */
 #define PANEL_KEY_ID0 14u
 
@@ -44,6 +50,7 @@ typedef struct {
      * note even when the octave changed in between. */
     uint8_t key_note[PANEL_NOTE_KEYS];
     int16_t master_raw; /* the last pot value applied, -1 for none */
+    uint32_t held;      /* the debounced buttons (bit i: button i), for the EDIT layer */
 } panel;
 
 /* The LEDs, as Felucca's input state lays out the keys. */
@@ -58,13 +65,16 @@ void panel_init(panel* p);
  * that goes down plays live_key_note of its base note; a key that goes up releases the note
  * it played; a key pressed again while held retriggers. */
 void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed);
-/* Button press edges: OCT-, OCT+ and FX (the 6581/8580 toggle); the others do nothing yet. */
-void panel_buttons(panel* p, live* l, uint32_t pressed);
-/* Detent steps of encoder enc (+ = clockwise): K1..K4 turn live's knobs. */
+/* Button press edges: OCT-, OCT+, FX (the 6581/8580 toggle), SCL and ENV (the effect slots);
+ * held: the debounced buttons, which says whether EDIT is held for panel_encoder. */
+void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held);
+/* Detent steps of encoder enc (+ = clockwise): K1..K4 turn live's knobs, or with EDIT held
+ * the selected slot's Amount, A, B and Mix. */
 void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps);
 /* A MASTER pot reading, 0..1023 (a negative reading, an ADC timeout, is ignored). */
 void panel_master(panel* p, live* l, int32_t raw);
-/* Held keys, the octave on OCT- (below 0) or OCT+ (above 0), and FX while the 8580 plays. */
+/* Held keys, the octave on OCT- (below 0) or OCT+ (above 0), FX while the 8580 plays, and
+ * EDIT while the selected slot has an algorithm. */
 panel_leds panel_get_leds(const panel* p, const live* l);
 
 #ifdef __cplusplus
