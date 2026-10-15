@@ -238,6 +238,26 @@ static void region_stale(grid* g) {
     g->rows |= ((1u << g->region_h) - 1u) << r0;
 }
 
+/* The cells in one of the region and the w x h cells from (col, row) but not in both, to be
+ * sent again. */
+static void region_moved(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h) {
+    uint32_t oc = g->region_col;
+    uint32_t orow = g->region_row;
+    uint32_t c0 = col < oc ? col : oc;
+    uint32_t r0 = row < orow ? row : orow;
+    uint32_t c1 = col + w > oc + g->region_w ? col + w : oc + g->region_w;
+    uint32_t r1 = row + h > orow + g->region_h ? row + h : orow + g->region_h;
+    for (uint32_t r = r0; r < r1; r++) {
+        for (uint32_t c = c0; c < c1; c++) {
+            int in_new = c - col < w && r - row < h;
+            int in_old = c - oc < g->region_w && r - orow < g->region_h;
+            if (in_new != in_old) {
+                mark_stale(g, r * GRID_COLS + c);
+            }
+        }
+    }
+}
+
 int grid_region(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
                 const grid_bitmap* b, uint32_t bx, uint32_t by) {
     uint32_t bw = b ? b->w / GRID_CELL_PX : 0u;
@@ -251,7 +271,14 @@ int grid_region(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
         g->region_w == w && g->region_h == h && g->region_bx == bx && g->region_by == by) {
         return 0;
     }
-    if (g->region_bitmap) {
+    /* Over the same bitmap cells (each cell in both shows the same cell of it): only the cells
+     * it adds or leaves change. */
+    int same = g->region_bitmap == b &&
+               (int32_t)col - (int32_t)bx == (int32_t)g->region_col - (int32_t)g->region_bx &&
+               (int32_t)row - (int32_t)by == (int32_t)g->region_row - (int32_t)g->region_by;
+    if (same) {
+        region_moved(g, col, row, w, h);
+    } else if (g->region_bitmap) {
         region_stale(g);
     }
     g->region_bitmap = b;
@@ -261,7 +288,9 @@ int grid_region(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
     g->region_h = (uint8_t)h;
     g->region_bx = (uint8_t)bx;
     g->region_by = (uint8_t)by;
-    region_stale(g);
+    if (!same) {
+        region_stale(g);
+    }
     return 0;
 }
 

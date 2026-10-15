@@ -713,6 +713,48 @@ fn a_region_is_sent_when_it_changes_and_only_then() {
     assert_eq!(unsafe { grid_pending(&*s.g) }, 0);
 }
 
+/// A region that grows or shrinks over the same cells of its bitmap (each cell showing the same
+/// bitmap cell as before) sends only the cells it adds or leaves: a picture revealed a few
+/// columns a frame (a title card's wipe, app/title_card.h) sends each cell once.
+#[test]
+fn a_region_grown_over_the_same_bitmap_cells_sends_only_what_it_adds() {
+    let mut s = Screen::new();
+    assert_eq!(region(&mut s, (0, 0), (3, 30), scene(), (0, 0)), 0);
+    let cols = |c: u8, n: u8| (0..30).map(|r| (r, c, n)).collect::<Vec<(u8, u8, u8)>>();
+    assert_eq!(s.runs(), cols(0, 3));
+    for w in [6u8, 9, 30] {
+        assert_eq!(
+            region(&mut s, (0, 0), (u32::from(w), 30), scene(), (0, 0)),
+            0
+        );
+        let mut runs = s.runs();
+        runs.sort_unstable();
+        let prev = match w {
+            6 => 3,
+            9 => 6,
+            _ => 9,
+        };
+        assert_eq!(runs, cols(prev, w - prev), "grown to {w} columns");
+        assert!(s.panel == s.expected());
+    }
+    // Shrunk: the cells it leaves.
+    assert_eq!(region(&mut s, (0, 2), (30, 26), scene(), (0, 2)), 0);
+    let mut runs = s.runs();
+    runs.sort_unstable();
+    assert_eq!(runs, [0u8, 1, 28, 29].map(|r| (r, 0, 30)).to_vec());
+    assert!(s.panel == s.expected());
+    // The same rectangle on other cells of the bitmap: every cell again.
+    assert_eq!(region(&mut s, (0, 2), (30, 26), scene(), (0, 3)), 0);
+    assert_eq!(s.runs().len(), 26);
+    assert!(s.panel == s.expected());
+    // Grown with another bitmap: every cell again.
+    let mut rng = Rng(3);
+    let other = TestBitmap::random(&mut rng, 30, 30);
+    assert_eq!(region(&mut s, (0, 2), (30, 26), &other.b, (0, 2)), 0);
+    assert_eq!(s.runs().len(), 26);
+    assert!(s.panel == s.expected());
+}
+
 #[test]
 fn a_region_outside_the_grid_or_its_bitmap_is_refused() {
     let mut rng = Rng(7);
@@ -767,6 +809,36 @@ fn random_regions_text_and_overlays_end_on_the_composed_frame() {
                     );
                 }
                 1 => unsafe { grid_region_clear(&mut *s.g) },
+                // The region grown or shrunk over the same cells of its bitmap, when it has one
+                // (only the cells it adds or leaves are sent).
+                11 if !s.g.region_bitmap.is_null() => {
+                    let g = &*s.g;
+                    let b = unsafe { &*g.region_bitmap };
+                    let (bw, bh) = (i64::from(b.w) / 8, i64::from(b.h) / 8);
+                    // The bitmap's cell at screen cell (0, 0), maybe off the bitmap.
+                    let dx = i64::from(g.region_bx) - i64::from(g.region_col);
+                    let dy = i64::from(g.region_by) - i64::from(g.region_row);
+                    let (c, r) = (i64::from(c), i64::from(r));
+                    let w = 1 + i64::from(rng.below(30 - c as u32));
+                    let h = 1 + i64::from(rng.below(30 - r as u32));
+                    let (bx, by) = (c + dx, r + dy);
+                    let ok = bx >= 0 && by >= 0 && bx + w <= bw && by + h <= bh;
+                    let got = unsafe {
+                        grid_region(
+                            &mut *s.g,
+                            c as u32,
+                            r as u32,
+                            w as u32,
+                            h as u32,
+                            b,
+                            bx.max(0) as u32,
+                            by.max(0) as u32,
+                        )
+                    };
+                    if ok {
+                        assert_eq!(got, 0);
+                    }
+                }
                 2 => {
                     let m = rng.next().to_le_bytes();
                     let _ = s.overlay(

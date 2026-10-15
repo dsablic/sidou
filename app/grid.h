@@ -153,7 +153,8 @@ int grid_overlay_same(const grid* g, uint32_t col, uint32_t row, const uint8_t m
  * glyphs' foreground and their overlays draw over it as anywhere else, so text and overlays
  * stay possible on it; a blank glyph shows the bitmap alone. One region at a time: a new one
  * replaces the last, and the cells either covers are sent again; the same one again sends
- * nothing. Returns 0, or -1 when the rectangle is empty or leaves the grid or the bitmap
+ * nothing, and one over the same cells of the same bitmap (grown or shrunk, as a picture
+ * revealed a few columns a frame) sends only the cells it adds or leaves. Returns 0, or -1 when the rectangle is empty or leaves the grid or the bitmap
  * (nothing changes). */
 int grid_region(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
                 const grid_bitmap* b, uint32_t bx, uint32_t by);
