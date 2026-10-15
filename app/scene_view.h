@@ -46,15 +46,15 @@ extern "C" {
 
 typedef struct {
     const live* l;
-    scope* sc;   /* NULL: no tap, every envelope 0 */
-    uint8_t on;  /* the tap is on for SCENE */
-    uint8_t piece;    /* the piece it shows, kept between visits */
+    scope* tap;       /* NULL: no tap, every envelope 0 */
+    uint8_t on;       /* the tap is on for SCENE */
+    uint8_t which;    /* the piece it shows (its index), kept between visits */
     uint8_t prepared; /* the piece stepped for the next frame (scene_view_prepare) */
     uint32_t stamp[SCENE_VOICES]; /* each voice's stamp at the last frame */
     uint16_t cursor;  /* the cell the copy goes on from */
     uint32_t held;    /* frames whose copy the budget cut short (diagnostic) */
     scene_music music; /* what the last step heard */
-    scene sc_scene;
+    scene piece;       /* the piece running */
 } scene_view;
 
 extern const view scene_view_view;

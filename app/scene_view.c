@@ -15,8 +15,8 @@ _Static_assert(SCOPE_VOICES == SCENE_VOICES, "an envelope per voice");
 void scene_view_init(scene_view* sv, const live* l, scope* sc) {
     memset(sv, 0, sizeof *sv); /* not a const template: 3 KB of zeros in flash */
     sv->l = l;
-    sv->sc = sc;
-    scene_start(&sv->sc_scene, sv->piece, NULL);
+    sv->tap = sc;
+    scene_start(&sv->piece, sv->which, NULL);
 }
 
 void scene_view_tap(scene_view* sv, int on) {
@@ -36,7 +36,7 @@ static void listened(scene_view* sv) {
 /* What the music does this frame. */
 static void listen(scene_view* sv, scene_music* m) {
     const live* l = sv->l;
-    int tap = sv->sc && sv->on;
+    int heard = sv->tap && sv->on;
     for (uint32_t v = 0; v < SCENE_VOICES; v++) {
         const live_voice* x = &l->voice[v];
         uint8_t ctrl = live_view_voice_control(l, v);
@@ -44,7 +44,7 @@ static void listen(scene_view* sv, scene_music* m) {
         m->gate[v] = gate;
         m->trig[v] = (uint8_t)(gate && x->stamp != sv->stamp[v]); /* a note-off changes it too */
         m->note[v] = ctrl ? x->note : SCENE_NO_NOTE;
-        m->env[v] = tap && ctrl ? sv->sc->env[v] : 0u;
+        m->env[v] = heard && ctrl ? sv->tap->env[v] : 0u;
         m->color[v] = live_view_wave_color(ctrl);
     }
     m->cutoff = l->cutoff_out;
@@ -54,7 +54,7 @@ static void listen(scene_view* sv, scene_music* m) {
 
 static void step(scene_view* sv) {
     listen(sv, &sv->music);
-    scene_step(&sv->sc_scene, &sv->music);
+    scene_step(&sv->piece, &sv->music);
 }
 
 void scene_view_prepare(scene_view* sv) {
@@ -69,7 +69,7 @@ static void enter(screen* s, void* state) {
     (void)s;
     scene_view* sv = state;
     listen(sv, &sv->music);
-    scene_start(&sv->sc_scene, sv->piece, &sv->music);
+    scene_start(&sv->piece, sv->which, &sv->music);
     sv->prepared = 0;
     sv->cursor = 0;
 }
@@ -80,11 +80,11 @@ static int input(screen* s, void* state, const screen_event* e) {
     if (e->kind != SCREEN_TURN || e->id != PANEL_ENC_SELECT) {
         return 0;
     }
-    int32_t k = ((int32_t)sv->piece + e->steps) % (int32_t)SCENE_PIECES;
-    sv->piece = (uint8_t)(k < 0 ? k + (int32_t)SCENE_PIECES : k);
+    int32_t k = ((int32_t)sv->which + e->steps) % (int32_t)SCENE_PIECES;
+    sv->which = (uint8_t)(k < 0 ? k + (int32_t)SCENE_PIECES : k);
     enter(s, sv);
     screen_reveal(s, SCREEN_WIPE_DOWN);
-    screen_toast(s, scene_names[sv->piece], SCREEN_TOAST_MS);
+    screen_toast(s, scene_names[sv->which], SCREEN_TOAST_MS);
     return 1;
 }
 
@@ -101,7 +101,7 @@ static void compose(screen* s, void* state, grid* g) {
         }
         sv->prepared = 0;
     }
-    const scene_canvas* cv = &sv->sc_scene.cv;
+    const scene_canvas* cv = &sv->piece.cv;
     uint32_t whole = s->redraw && s->wipe != SCREEN_CUT ? s->redraw_rows : 0u;
     for (uint32_t r = 0; r < GRID_ROWS; r++) {
         if (whole >> r & 1u) {

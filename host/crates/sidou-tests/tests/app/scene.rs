@@ -829,7 +829,7 @@ pub(crate) fn open_scene(ui: &mut Ui) {
 
 /// The grid's composed cells as the canvas has them.
 fn grid_is_canvas(ui: &Ui) -> bool {
-    let cv = &ui.v.scene.sc_scene.cv;
+    let cv = &ui.v.scene.piece.cv;
     (0..ROWS * COLS).all(|i| {
         let (r, c) = (i / COLS, i % COLS);
         ui.g.ch[i] == cv.ch[r][c] && ui.g.attr[i] == cv.attr[r][c]
@@ -841,12 +841,12 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
     let mut ui = Ui::new();
     open_scene(&mut ui);
     assert_eq!(ui.top(), "SCENE");
-    assert_eq!(u32::from(ui.v.scene.sc_scene.piece), SCENE_FIRE);
+    assert_eq!(u32::from(ui.v.scene.piece.piece), SCENE_FIRE);
     assert!(grid_is_canvas(&ui), "the grid is not the fire's canvas");
     // SELECT: the next piece wipes in, and a toast names it; round and back.
     for k in 1..=SCENE_PIECES {
         ui.turn(PANEL_ENC_SELECT, 1);
-        assert_eq!(u32::from(ui.v.scene.sc_scene.piece), k % SCENE_PIECES);
+        assert_eq!(u32::from(ui.v.scene.piece.piece), k % SCENE_PIECES);
         ui.frame();
         assert_ne!(ui.v.s.wipe, 0, "piece {k}: no wipe");
         assert_eq!(
@@ -856,7 +856,7 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
         ui.settle();
     }
     ui.turn(PANEL_ENC_SELECT, -2);
-    assert_eq!(u32::from(ui.v.scene.sc_scene.piece), SCENE_PIECES - 2);
+    assert_eq!(u32::from(ui.v.scene.piece.piece), SCENE_PIECES - 2);
     // Every other control plays: K1 the cutoff, the octave.
     let cutoff = ui.live().cutoff;
     ui.turn(PANEL_ENC_K1, 3);
@@ -870,7 +870,7 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
     assert_eq!(ui.top(), "SCENE");
-    assert_eq!(u32::from(ui.v.scene.sc_scene.piece), SCENE_PIECES - 2);
+    assert_eq!(u32::from(ui.v.scene.piece.piece), SCENE_PIECES - 2);
 }
 
 #[test]
@@ -1035,7 +1035,7 @@ fn the_grid_catches_up_with_the_canvas_within_a_few_frames() {
     // The ant draws only the cells it changes: a canvas changed whole (as its board clearing
     // at SCENE_ANT_RESET changes it) is far more than a frame's budget.
     let mut ui = scene_on(SCENE_ANT);
-    let cv = &mut ui.v.scene.sc_scene.cv;
+    let cv = &mut ui.v.scene.piece.cv;
     for r in 0..ROWS {
         for c in 0..COLS {
             cv.ch[r][c] = FONT_PIP as u8;
