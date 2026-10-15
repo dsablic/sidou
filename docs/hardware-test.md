@@ -96,15 +96,16 @@ Notes:
 - [ ] The title card appears: the SIDOU logo on black with its stripes
   rolling and its pulse wave moving, "SID FOR THE FM-1", the version, and
   "PRESS ANY KEY" blinking. Time from power-on to it:
-- [ ] About 1.2 s later the status screen wipes in from the top: C64 blue
-  with a light blue border, "SIDOU V0.0.0", CHIP 6581, PRESET SAW LEAD,
-  OCTAVE 0, four bars, "READY.".
-- [ ] A note key on the title card: it plays at once, and the status
-  screen wipes in.
-- [ ] OCT+ on the title card: the status screen wipes in, and OCTAVE stays
-  +0 (the press only skipped). The same with FX: CHIP stays 6581.
-- [ ] Tap HOME as soon as the title card shows: the status screen wipes in
-  (not the full boot, and not the menu).
+- [ ] About 1.2 s later LIVE wipes in from the top: C64 blue, a light blue
+  header line "LIVE ... 6581 SAW LEAD ... OCT+0", three voice boxes "V1 SAW"..
+  "V3 SAW" with a flat yellow line each, FILTER LP and VU boxes, and the
+  DIST, MOD and FX lines at the bottom.
+- [ ] A note key on the title card: it plays at once, LIVE wipes in, and
+  voice 1's scope shows the saw.
+- [ ] OCT+ on the title card: LIVE wipes in, and the header stays OCT+0
+  (the press only skipped). The same with FX: the header stays 6581.
+- [ ] Tap HOME as soon as the title card shows: LIVE wipes in (not the full
+  boot, and not the menu).
 - [ ] Hold HOME while powering on, then let it go: the full boot plays
   ("READY.", `LOAD"SIDOU",8,1` typed, "SEARCHING FOR SIDOU", "LOADING" with
   colour stripes running in the border, "READY.", "RUN", then the title
@@ -180,21 +181,21 @@ which printed control did it.
 | K3 (encoder 4) | PULSE (audible on PWM BASS) | | [ ] |
 | K4 (encoder 5) | PRESET: SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC | | [ ] |
 | MASTER (pot) | VOLUME 0..15, quieter turned down | | [ ] |
-| SCL (button 3) | selects the next effect slot (the `>` on the screen's EFFECTS lines moves) | | [ ] |
-| ENV (button 4) | the selected slot's next algorithm (the name on the screen changes) | | [ ] |
-| EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the screen); EDIT lit while the slot is on | | [ ] |
-| HOME (button 8) | from the status screen, the menu (a wipe down from the top); in the menu, back to the status screen (a wipe up from the bottom) | | [ ] |
+| SCL (button 3) | selects the next effect slot (the play mark on LIVE's DIST, MOD and FX lines moves) | | [ ] |
+| ENV (button 4) | the selected slot's next algorithm (the name on LIVE's slot line changes) | | [ ] |
+| EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the status screen; Mix as LIVE's bar); EDIT lit while the slot is on | | [ ] |
+| HOME (button 8) | from LIVE, the menu (a wipe down from the top); in the menu, back to LIVE (a wipe up from the bottom) | | [ ] |
 | SAVE (button 9) | a MIDI LEARN frame at the bottom of the screen, TURN A KNOB (section 7, MIDI learn); HOME closes it | | [ ] |
-| SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, PRESET, OCTAVE, CHARSET and ABOUT | | [ ] |
-| ALGORITHM (encoder 1), in the menu | changes the item under the cursor (CHIP: clockwise 8580, counter-clockwise 6581, and a further turn the same way changes nothing; PRESET; OCTAVE -3..+3); clockwise on CHARSET opens the glyph sheet, on ABOUT the credits (raster bars, the logo, the credits pages fading, stars, a sine scroller), and HOME goes back to the menu | | [ ] |
+| SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, PRESET, OCTAVE, STATUS, CHARSET and ABOUT | | [ ] |
+| ALGORITHM (encoder 1), in the menu | changes the item under the cursor (CHIP: clockwise 8580, counter-clockwise 6581, and a further turn the same way changes nothing; PRESET; OCTAVE -3..+3); clockwise on STATUS opens the status screen (the numbers), on CHARSET the glyph sheet, on ABOUT the credits (raster bars, the logo, the credits pages fading, stars, a sine scroller), and HOME goes back to the menu | | [ ] |
 
 - [ ] A held note keeps its pitch when the octave changes, and stops when
   the key is released.
 - [ ] OVERDRIVE with Amount and Mix up distorts audibly; REVERB or LUSH with
   Mix up adds a stereo tail (listen on headphones); switching algorithms
   while a note plays crossfades without a click.
-- [ ] In the menu and on the glyph sheet, the keys, K1..K4, OCT-/OCT+, FX
-  and the EDIT layer play as on the status screen.
+- [ ] In the menu, on the status screen and on the glyph sheet, the keys,
+  K1..K4, OCT-/OCT+, FX and the EDIT layer play as on LIVE.
 - [ ] OCT+, SCL and ENV show a toast on the bottom line ("OCTAVE +1",
   "SLOT MOD", "MOD CHORUS") that goes after about 1.5 s; FX shows
   "CHIP 8580" and sweeps colour bands down the border for about half a
@@ -214,6 +215,26 @@ The panel runs at 12 MHz SPI (Felucca's setting).
 - [ ] Nothing goes wrong on screen while the audio plays (no clicks either).
 - [ ] The wipes and the border raster run smoothly, with no tearing or
   stray cells left behind, and no click in the sound while they run.
+
+LIVE (the screen at power-on):
+
+- [ ] At rest the three scopes are flat lines, the envelope bars and the
+  VU meters empty, and nothing flickers.
+- [ ] A held key: its voice's scope shows the waveform (SAW LEAD a sawtooth,
+  PWM BASS a pulse whose width moves, SYNC LEAD voice 1's synced saw, NOISE
+  PERC noise), standing still while the note holds; its envelope bar rises
+  and falls with ATK, DEC, SUS and REL beside it; its VU meter moves. Higher
+  notes show more periods.
+- [ ] Released, the scope goes flat again once the release has faded.
+- [ ] A three-note chord: all three scopes move; with noise on all three
+  (CC 20 = 64) they keep moving, taking turns, with no tearing.
+- [ ] K1 and K2 move the FILTER curve (the yellow column is the cutoff),
+  and the FC and RES numbers under it; MIDI CC 23 changes its mode (LP, BP,
+  HP, NOTCH...).
+- [ ] The L and R meters follow the output; with REVERB on, the tail shows
+  on them after the note.
+- [ ] No click or crackle in the sound while LIVE shows, against the menu
+  (LIVE taps the audio interrupt; the menu does not).
 
 Notes:
 

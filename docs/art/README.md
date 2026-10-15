@@ -80,7 +80,7 @@ run, from `host/`:
 SIDOU_FONT_UPDATE=1 cargo test --release -p sidou-tests --test app font
 ```
 
-The sheet draws 162 glyphs (lower case reuses upper case). The face is
+The sheet draws 163 glyphs (lower case reuses upper case). The face is
 chamfered capitals with 2-pixel stems, 7×7 pixels in the top-left of the
 cell, so text keeps a one-pixel gap to the right and below.
 Graphics glyphs fill the whole cell, so they join up. The firmware's glyph
@@ -100,7 +100,8 @@ all, with the palette; its fm1-emu snapshot is
 | `0xBC`–`0xCA` | frames: `BOX_H`, `BOX_V`, square and `ROUND_` corners, tees, `CROSS` |
 | `0xCB`–`0xD8` | icons: dots, star, ball, pip, arrows, play, note, square |
 | `0xD9`–`0xDB` | `SLOT_L`, `SLOT_R`, `SLOT_LR`: the logo's slotted raster bands, a top half's quadrants 3 rows deep |
-| `0x00`–`0x1F`, `0xDC`–`0xFF` | blank, free for later glyphs |
+| `0xDC` | `SCOPE_MID`: LIVE's dotted scope centre line, a pixel every 4 on the top row |
+| `0x00`–`0x1F`, `0xDD`–`0xFF` | blank, free for later glyphs |
 
 **Provenance and licence.** The font is drawn for SIDOU. Its letters and
 digits came from the browser prototype, and the rest of ASCII, the bar
@@ -191,8 +192,8 @@ Measured in fm1-emu (`screen_changes_and_transitions_stay_within_the_budgets`):
 
 | Change | Frames | Windows | SPI bytes | Worst frame |
 |---|---|---|---|---|
-| Wipe down to the menu | 8 | 51 | 78,513 | 11.2 ms |
-| Wipe up to the status screen | 8 | 54 | 77,906 | 10.9 ms |
+| Wipe up from the status screen to the menu | 8 | 52 | 78,908 | 11.6 ms |
+| Wipe down from the menu to the status screen | 8 | 48 | 77,200 | 10.4 ms |
 | Raster and toast (chip change) | 15, every other one | 451 | 123,105 | 10.5 ms |
 | Menu idle (the cursor) | 1 in 8 | 1 | 139 | 0.1 ms |
 
@@ -375,3 +376,64 @@ starfield, another ramp line, and a sine scroller. HOME goes back.
 **Naming:** the instrument is **SIDOU**, always in capitals, in the font or
 the logo's own letters. "SID" refers to the chip only when describing what
 SIDOU emulates.
+
+## LIVE
+
+LIVE (`app/live_view.h`) is the root view, what the screen shows from power-on, after the
+prototype's: a header line in reverse video (chip, preset, octave); each voice in a box
+(rows 1-6, 7-12, 13-18) with its oscilloscope, 160 x 32 pixels, its envelope as two columns
+of lower eighths (ENV3, 32 levels), and its note, waveform, pulse width and envelope stage;
+FILTER, the response of the mode at the cutoff and resonance in 16 columns of lower eighths
+(30 Hz..12 kHz, -36..+12 dB, the cutoff's column yellow, recomputed only when they change,
+from the core's fitted filter tables); VU, each voice's level and the output's left and
+right peaks after the effect slots, 6 dB a cell; and the three effect slots with their
+algorithm and Mix. The status screen moves to the menu (STATUS). M2's STEP view will be the
+default then.
+
+**The tap.** The audio interrupt renders a block in chunks of 16 samples and after each
+writes a point into a ring of 256 (`app/scope.h`): each voice's waveform output (its top 8
+bits) and its oscillator's phase (the accumulator's top 8 bits). Once a block it copies each
+voice's ENV3, envelope state and sustain level, and raises the left and right peaks with
+every 8th frame of the output. Rendering in chunks gives the samples one call gives, so the
+audio is unchanged (the device's output matches the host's sample for sample with LIVE
+showing). It runs only while LIVE is on top. Single producer, single consumer, lock-free: the
+interrupt overwrites the oldest points and publishes its head once a block; the main loop
+copies the newest 224 and drops the copy if the interrupt came round to it meanwhile.
+
+| Tap | Measured (fm1-emu, `the_live_view_tap_costs_the_audio_interrupt_little`) |
+|---|---|
+| Points | 2,757 a second (a frame: 110; a read: 224, 81 ms) |
+| Audio interrupt | +4.8 instructions a sample (368.2 against 363.3, a chord held, LIVE against the menu), bounded at 6 |
+| Code in `.ram_text` | 32,472 of 49,152 bytes (+308: `scope_render`, `scope_peaks` and their calls) |
+| RAM | the ring and envelopes 1,560 bytes; LIVE's state 4,228 (its traces, the points it reads, its canvas) |
+
+**The scopes are folded by phase** (an equivalent-time display): each point lands in the
+column its oscillator's phase belongs to, two to four periods across (more for higher
+notes), a column showing the mean of its points and the empty ones a line between their
+neighbours. A held note's trace stands still at any pitch, and 110 points a frame draw it
+whole where a time base would need 20 times as many. A hard-synced voice is folded by its
+sync source's phase, so the sync shape shows. The height is the waveform times the envelope:
+flat at rest. A trace that moved by a pixel at most stays as drawn (the fold's wobble), so a
+held chord sends about 5 cells a frame.
+
+**The budget.** Each trace is an overlay per cell it crosses (at most 240 of the pool's 255).
+Three voices of noise change about 240 cells a frame, 20.5 ms of SPI: over the budget. LIVE
+holds itself to 200 cells a frame (`LIVE_VIEW_FRAME_CELLS`, about 17.5 ms with the windows):
+the scopes get what the rest of the frame left, and a trace that does not fit keeps its last
+look and goes first next frame, so the voices take turns. The canvas (everything but the
+scopes) is composed off the grid and written only when what it shows changed. The tap is
+read half way between frames (`views_prepare`), so no main-loop pass is long enough to hold
+up MIDI (the M1d latency gate). While a wipe or a raster runs LIVE holds still, redrawing the
+overlays a view switch cleared one voice a frame, ahead of the wipe.
+
+Measured in fm1-emu (`live_stays_within_its_budgets`):
+
+| LIVE | Cells a frame (average, most) | Windows a frame | SPI a frame (average, worst) | Main loop a frame (average, busiest `ui_poll`) |
+|---|---|---|---|---|
+| At rest | 0, 0 | 0 | 0, 0 | 13.9k, 4.4k instructions |
+| A chord of saws, from the note-ons (75 frames) | 4.5, 160 | 1.8 | 0.4 ms, 13.9 ms | 57.8k, 79.9k |
+| Three voices of noise (75 frames) | 146, 161 | 23.7 | 12.6 ms, 14.0 ms | 206k, 89.1k |
+
+The noise case costs 5.1M instructions a second (2.1 % of the core at 240 MHz), most of it
+rendering the cells it sends; the plan's 70-90k a frame holds for a held chord, not for
+noise. The status screen, idle, still composes nothing: 7.4k a frame (7.3k before LIVE).

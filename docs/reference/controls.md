@@ -9,8 +9,8 @@ CHIP view (M1c Task 4) replaces it.
 
 ## At power-on
 
-The boot animation (the title card, about 1.2 s) plays over the status screen while the
-instrument already plays. **Any button or encoder** skips it and does nothing else; **a
+The boot animation (the title card, about 1.2 s) plays over LIVE while the instrument
+already plays. **Any button or encoder** skips it and does nothing else; **a
 note** (from the keys or MIDI) skips it and plays. **HOME held while powering on** plays the
 full boot sequence instead (about 10 s); letting HOME go does not skip it, and anything after
 that does. Without HOME held, a HOME press on the title card skips it like any button.
@@ -21,10 +21,10 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
 
 1. **a capture:** a view waiting for one control (M1d's MIDI learn, the boot animation) sees
    everything first, HOME included, so HOME can cancel it; it ends when its view closes;
-2. **global:** HOME opens the menu from the status screen and goes back one view anywhere
-   else; SAVE opens MIDI learn over any view;
-3. **the view on top:** the menu takes SELECT and ALGORITHM; the status screen, the glyph
-   sheet and About take nothing;
+2. **global:** HOME opens the menu from LIVE and goes back one view anywhere else; SAVE
+   opens MIDI learn over any view;
+3. **the view on top:** the menu takes SELECT and ALGORITHM; LIVE, the status screen, the
+   glyph sheet and About take nothing;
 4. **the panel:** everything else plays the instrument as below, in every view.
 
 The note keys and MASTER always play, whichever view shows. The effect-slot layer (EDIT,
@@ -45,10 +45,10 @@ SCL, ENV) is global until the CHIP view takes the slots over.
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end); K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last) |
-| **HOME (button 8)** | the menu, from the status screen; back one view from any other (the menu, the glyph sheet, About) |
+| **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, the status screen, the glyph sheet, About) |
 | **SAVE (button 9)** | MIDI learn (below): press it, turn a knob, then send a CC |
 | **SELECT (encoder 0)**, in the menu | moves the blinking cursor up and down the items |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: CHIP (clockwise the 8580, counter-clockwise the 6581; turning on past either changes nothing), PRESET, OCTAVE; turned clockwise on CHARSET, opens the glyph sheet, on ABOUT the credits |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: CHIP (clockwise the 8580, counter-clockwise the 6581; turning on past either changes nothing), PRESET, OCTAVE; turned clockwise on STATUS, opens the status screen, on CHARSET the glyph sheet, on ABOUT the credits |
 
 The other buttons (LFO, GLO, ARP, SEQ, PLAY, REC) and PRESETS (encoder 6) do
 nothing yet; SELECT and ALGORITHM do nothing outside the menu.
@@ -187,13 +187,23 @@ checklist confirms it.
 
 ## Screen
 
-The status screen shows the chip, preset, octave, cutoff, resonance, pulse width,
-volume and the held notes, and under EFFECTS each slot's algorithm and Mix (`>` marks the
-selected slot) with the selected slot's Amount, A and B.
+**LIVE** is what the screen shows from power-on (the root view, `app/live_view.h`): a header
+line with the chip, preset and octave; each voice in a box with its oscilloscope, its
+envelope as a bar (ENV3), its note, waveform, pulse width and envelope stage (ATK, DEC, SUS,
+REL); the filter's response at its mode, cutoff and resonance; VU meters for each voice and
+for the left and right output after the effect slots; and the three effect slots with their
+algorithm and Mix (the play mark at the one the panel edits). The scopes are flat at rest
+and draw each sounding voice's waveform, still while a note holds, over two to four periods
+(more for higher notes). The trace is the waveform's colour: pulse cyan, saw yellow,
+triangle light green, noise light grey.
 
-The menu (HOME) lists CHIP, PRESET and OCTAVE with their values, and CHARSET, the glyph
-sheet (the font and the palette). A view opens with a wipe from the top and closes with
-one from the bottom.
+The **status screen** (STATUS in the menu) shows the numbers: the chip, preset, octave,
+cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS each slot's
+algorithm and Mix (`>` marks the selected slot) with the selected slot's Amount, A and B.
+
+The menu (HOME) lists CHIP, PRESET and OCTAVE with their values, then STATUS, CHARSET (the
+glyph sheet: the font and the palette) and ABOUT. A view opens with a wipe from the top and
+closes with one from the bottom. M2's STEP view will be the default then; for M1 LIVE is.
 
 A change of octave, selected slot or algorithm shows a toast on the bottom line for
 1.5 s ("OCTAVE +1", "SLOT MOD", "MOD CHORUS"), whatever made it: a button, the menu or

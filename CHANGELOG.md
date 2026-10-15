@@ -84,6 +84,13 @@ All notable changes are documented here. The format follows
   cracktro with raster bars, stars, a sine scroller and the credits,
   generated from CREDITS.md. The logo is a pluggable asset (`app/logo.h`),
   Pulse Train for now.
+- LIVE, the screen at power-on (`app/live_view.h`): an oscilloscope per voice,
+  envelope bars, the filter's curve, VU meters and the effect slots, after the
+  prototype's. The audio interrupt taps the voices every 16 samples into a
+  lock-free ring (`app/scope.h`), only while LIVE shows (4.9 instructions a
+  sample), and the scopes fold the points by the oscillator's phase, so a held
+  note stands still. LIVE holds itself to 200 cells a frame; the status screen
+  moves to the menu (STATUS).
 - MIDI, M1d: every live, SID and effect-slot parameter in one CC/NRPN map
   (`app/midi_map.c`), with NRPNs at full resolution (11-bit cutoff, 12-bit
   pulse width), running NRPN/RPN state per channel and input, and the

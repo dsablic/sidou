@@ -87,6 +87,19 @@ SPI):
   screen composes nothing: about 6.6k instructions a frame, bounded at 7.5k).
   It gets its own busiest-frame bound in the gate, expected at about 70-90k
   instructions a frame.
+  - **Amended (Task 4):** LIVE is the root view, what the screen shows from
+    power-on; the status screen moves to the menu (STATUS), which M2's STEP
+    view will join. The tap is a point every 16 samples (each voice's waveform
+    output and oscillator phase) and the output's peaks of every 8th frame,
+    only while LIVE shows: 4.9 instructions a sample. The scopes are folded by
+    the oscillator's phase rather than drawn on a time base, so a held note
+    stands still at any pitch. Three voices of noise move about 240 cells a
+    frame, over the 20 ms budget: LIVE holds itself to 200 cells a frame and
+    the scopes take turns. A held chord costs about 58k instructions a frame,
+    three voices of noise about 206k (most of it sending their cells), which
+    is over the 70-90k expected; the reading of the tap runs half way between
+    frames, so no main-loop pass grows long enough to delay MIDI (the M1d
+    latency gate). docs/art/README.md, "LIVE", has the numbers.
 
 ### Task 5: First SCENE pieces (prototype for M2)
 - Rule 30, Langton's ant and the starfield: cheap, and reacting to gates,
