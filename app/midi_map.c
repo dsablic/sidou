@@ -214,16 +214,17 @@ static const midi_map_entry* selected(const midi_map_channel* c) {
 }
 
 /* RPN 0, the bend range in semitones: CC 6 sets it at once (the standard's MSB), CC 38 (the
- * cents) is ignored, CC 96 and 97 step a semitone. Other RPNs do nothing. */
+ * cents) is ignored, CC 96 and 97 step a semitone. Program changes keep it
+ * (live_bend_range_rpn). Other RPNs do nothing. */
 static void rpn_data(midi_map_port* p, const midi_map_channel* c, uint8_t cc, uint8_t value) {
     if (c->rpn_msb != 0u || c->rpn_lsb != RPN_BEND_RANGE) {
         return;
     }
     uint32_t now = live_param_get(p->l, LIVE_PARAM_BEND_RANGE);
     switch (cc) {
-    case CC_DATA_MSB: live_param_set(p->l, LIVE_PARAM_BEND_RANGE, value); break;
-    case CC_INCREMENT: live_param_set(p->l, LIVE_PARAM_BEND_RANGE, now + 1u); break;
-    case CC_DECREMENT: live_param_set(p->l, LIVE_PARAM_BEND_RANGE, now ? now - 1u : 0u); break;
+    case CC_DATA_MSB: live_bend_range_rpn(p->l, value); break;
+    case CC_INCREMENT: live_bend_range_rpn(p->l, now + 1u); break;
+    case CC_DECREMENT: live_bend_range_rpn(p->l, now ? now - 1u : 0u); break;
     default: break; /* CC_DATA_LSB */
     }
 }

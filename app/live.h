@@ -227,8 +227,12 @@ typedef struct {
     uint8_t sustain_release; /* $d406 */
     uint8_t filter_voices;   /* $d417 bits 0..2 */
     uint8_t filter_mode;     /* $d418 bits 4..6 */
-    /* The preset's expression settings as edited (live_param); loading a preset resets them. */
+    /* The preset's expression settings as edited (live_param); loading a preset resets them,
+     * except a bend range set by RPN 0 (bend_range_rpn). */
     uint8_t bend_range;
+    /* 1 while the bend range is RPN 0's: the channel's setting (RP-015), kept across program
+     * changes until power-off or an NRPN 6/0 edit (live_bend_range_rpn). */
+    uint8_t bend_range_rpn;
     uint8_t velocity_target;
     uint8_t mod_target;
     uint8_t pressure_target;
@@ -264,7 +268,8 @@ typedef enum {
     LIVE_PARAM_SLOT_END = 29,
     /* Expression, per preset: recorded, and live_tick writes what they change; the velocity
      * target rewrites the envelopes at once. */
-    LIVE_PARAM_BEND_RANGE = 29,      /* 0..24 semitones each way; also RPN 0 */
+    LIVE_PARAM_BEND_RANGE = 29,      /* 0..24 semitones each way: a preset edit (RPN 0's is
+                                      * live_bend_range_rpn) */
     LIVE_PARAM_VELOCITY_TARGET = 30, /* a live_velocity_target, 0..3 */
     LIVE_PARAM_MOD_TARGET = 31,      /* a live_mod_target, 0..2; a change restarts the wheel at 0 */
     LIVE_PARAM_PRESSURE_TARGET = 32, /* a live_pressure_target, 0..3 */
@@ -319,12 +324,18 @@ void live_param_set(live* l, uint32_t param, uint32_t value);
 /* A parameter's value; 0 for an unknown one. For the chip model, the one last asked for
  * (model_req), so a set reads back at once; the chip's is the model field. */
 uint32_t live_param_get(const live* l, uint32_t param);
+/* RPN 0, pitch-bend sensitivity: sets the bend range (clamped to 0..LIVE_BEND_RANGE_MAX) as
+ * the channel's setting, which program changes keep (RP-015 makes RPN values channel state)
+ * until power-off. Setting LIVE_PARAM_BEND_RANGE (NRPN 6/0) is a preset edit and ends that:
+ * of RPN 0 and NRPN 6/0 the last one wins, and only RPN 0's survives a program change. */
+void live_bend_range_rpn(live* l, uint32_t semitones);
 /* Loads a preset: releases every voice and resets cutoff, resonance and pulse width, the
  * five SID settings the parameters edit (waveform with ring and sync, attack/decay,
  * sustain/release, filter routing, filter mode) and the expression settings (bend range,
  * targets, vibrato), to the preset's. Loading the preset already loaded does the same, so it
- * discards those edits. Volume, octave, chip model, the effect slots and the controllers
- * (bend, wheel, pressure) are kept. An index past the last is clamped. */
+ * discards those edits. Volume, octave, chip model, the effect slots, the controllers (bend,
+ * wheel, pressure) and a bend range set by RPN 0 are kept. An index past the last is
+ * clamped. */
 void live_set_preset(live* l, uint8_t index);
 /* The MASTER pot, 0..1023 (clamped); the chip's volume is its top 4 bits, rounded. */
 void live_set_master(live* l, uint16_t value);

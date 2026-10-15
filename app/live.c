@@ -384,7 +384,9 @@ static void load_preset(live* l, uint8_t index) {
     l->sustain_release = p->sustain_release;
     l->filter_voices = p->filter_voices;
     l->filter_mode = p->filter_mode;
-    l->bend_range = p->bend_range;
+    if (!l->bend_range_rpn) {
+        l->bend_range = p->bend_range; /* RPN 0's is the channel's: kept */
+    }
     l->velocity_target = p->velocity_target;
     if (l->mod_target != p->mod_target) {
         l->mod_wheel = 0; /* a new target starts from 0 */
@@ -426,6 +428,7 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->channel_pressure = 0;
     l->last_velocity = LIVE_EXPRESSION_MAX;
     l->mod_target = LIVE_MOD_PULSE_WIDTH;
+    l->bend_range_rpn = 0;
     load_preset(l, 0);
     put(l, LIVE_REG_RESET, (uint8_t)model);
     write_all(l);
@@ -680,6 +683,11 @@ void live_poly_pressure(live* l, uint8_t note, uint8_t pressure) {
     }
 }
 
+void live_bend_range_rpn(live* l, uint32_t semitones) {
+    l->bend_range = (uint8_t)(semitones > LIVE_BEND_RANGE_MAX ? LIVE_BEND_RANGE_MAX : semitones);
+    l->bend_range_rpn = 1;
+}
+
 void live_reset_controllers(live* l) {
     l->bend = LIVE_BEND_CENTRE;
     l->mod_wheel = 0;
@@ -795,7 +803,10 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
         break;
     /* Expression: recorded; live_tick writes what they change, except the velocity target,
      * which rewrites the envelopes at once (each voice keeps its velocity). */
-    case LIVE_PARAM_BEND_RANGE: l->bend_range = (uint8_t)value; break;
+    case LIVE_PARAM_BEND_RANGE: /* a preset edit: RPN 0's no longer holds */
+        l->bend_range = (uint8_t)value;
+        l->bend_range_rpn = 0;
+        break;
     case LIVE_PARAM_VELOCITY_TARGET:
         if (l->velocity_target != value) {
             l->velocity_target = (uint8_t)value;

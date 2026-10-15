@@ -731,6 +731,79 @@ fn rpn_0_sets_the_bend_range_in_semitones_at_the_msb() {
     assert_eq!(bend_range(&m), 7);
 }
 
+/// NRPN 6/0, the bend range's row.
+fn nrpn_bend_range(m: &mut Midi, semitones: u8) {
+    let r = row_for(LIVE_PARAM_BEND_RANGE);
+    m.trs(&[
+        0xB0,
+        99,
+        (r.nrpn >> 7) as u8,
+        98,
+        (r.nrpn & 0x7f) as u8,
+        6,
+        0,
+        38,
+        semitones,
+    ]);
+}
+
+#[test]
+fn rpn_0_keeps_the_bend_range_across_program_changes() {
+    // RP-015: RPN values are the channel's state, so a DAW's pitch-bend sensitivity, sent
+    // once before its program change, holds.
+    let mut m = Midi::new();
+    m.trs(&[0xB0, 101, 0, 100, 0, 6, 12]);
+    m.trs(&[0xC0, 1]);
+    assert_eq!(bend_range(&m), 12, "the program change kept RPN 0's range");
+    m.trs(&[0xC0, 0]);
+    assert_eq!(bend_range(&m), 12, "and the next");
+    // Neither reset all controllers nor a gap in the input resets it.
+    m.trs(&[0xB0, 121, 0]);
+    m.epoch = m.epoch.wrapping_add(1);
+    m.trs(&[0xC0, 2]);
+    assert_eq!(bend_range(&m), 12);
+    // It bends the notes of the new preset.
+    m.trs(&[0x90, 60, 100, 0xE0, 0, 0]);
+    m.rig.tick();
+    assert_eq!(
+        m.rig.live.voice[0].freq_out,
+        ((u32::from(unsafe { live_freq_at(60, -8192 * 12) }) * 704) >> 8) as u16,
+        "the sync lead's voice 1, 12 semitones down"
+    );
+    // The increment and decrement are RPN 0's data entry too.
+    m.trs(&[0xB0, 101, 0, 100, 0, 97, 0, 0xC0, 0]);
+    assert_eq!(bend_range(&m), 11);
+}
+
+#[test]
+fn the_bend_range_nrpn_edits_the_preset_and_the_last_of_rpn_and_nrpn_wins() {
+    let mut m = Midi::new();
+    // NRPN 6/0 alone is a preset edit, like every NRPN: a program change discards it.
+    nrpn_bend_range(&mut m, 7);
+    assert_eq!(bend_range(&m), 7);
+    m.trs(&[0xC0, 1]);
+    assert_eq!(bend_range(&m), LIVE_BEND_RANGE_DEFAULT);
+    // RPN 0 then NRPN 6/0: the NRPN wins, and as an edit it ends RPN 0's hold.
+    m.trs(&[0xB0, 101, 0, 100, 0, 6, 12]);
+    nrpn_bend_range(&mut m, 5);
+    assert_eq!(bend_range(&m), 5);
+    m.trs(&[0xC0, 0]);
+    assert_eq!(
+        bend_range(&m),
+        LIVE_BEND_RANGE_DEFAULT,
+        "back to the preset's"
+    );
+    // NRPN 6/0 then RPN 0: the RPN wins and holds again.
+    nrpn_bend_range(&mut m, 5);
+    m.trs(&[0xB0, 101, 0, 100, 0, 6, 9]);
+    assert_eq!(bend_range(&m), 9);
+    m.trs(&[0xC0, 1]);
+    assert_eq!(bend_range(&m), 9);
+    // Power-on forgets it.
+    let m = Midi::new();
+    assert_eq!(bend_range(&m), LIVE_BEND_RANGE_DEFAULT);
+}
+
 #[test]
 fn other_rpns_and_half_selected_ones_change_nothing() {
     let mut m = Midi::new();
@@ -938,7 +1011,8 @@ play on every channel (omni); program change 0..{last} selects the preset. A pro
 loads the preset's cutoff, resonance, pulse width, SID settings (waveform, ring, sync,
 the envelope, filter routing and mode) and expression settings (bend range, the targets,
 the vibrato) over any edits, even when it selects the preset already playing; volume, the
-chip model, the effect slots and the controllers (bend, wheel, aftertouch) are kept.
+chip model, the effect slots, the controllers (bend, wheel, aftertouch) and a bend range set
+by RPN 0 are kept.
 
 **How the numbers were chosen.** CCs that MIDI gives a meaning are kept for it:
 General MIDI's where they fit (1 modulation wheel: the pulse width by default, see
@@ -978,6 +1052,12 @@ patch's value up or down around 64; SIDOU does not.
   sensitivity) sets the bend range: CC 6 the semitones, at once (0..24), CC 96 and 97 a
   semitone up or down; CC 38 (the cents) is ignored. Other RPNs do nothing. CC 121 (reset
   all controllers) and a gap in the input select nothing.
+- **Bend range, RPN 0 and NRPN 6/0:** RPN 0 is the channel's setting, as RP-015 has it, so
+  program changes keep it until power-off: a sequencer may send it once, before its
+  program change. NRPN 6/0 is the preset's, like every NRPN: a program change replaces it
+  with the new preset's. Of the two the last one received wins, and NRPN 6/0 ends RPN 0's
+  hold: after it, the next program change loads the preset's range again. Neither CC 121
+  nor a gap in the input changes the range.
 - **Chip model:** a change resets the chip, so it waits for the next 10 ms tick and takes
   the last value received: a stream of changes resets it at most 100 times a second, and
   the FX button changes it at once.
@@ -990,7 +1070,7 @@ The expression settings are per preset (NRPN group 6, the vibrato also on CC 76.
 controllers (bend, wheel, aftertouch) are one set for every channel, like the notes.
 
 - **Pitch bend:** all 14 bits, +-the bend range (2 semitones on every preset; RPN 0 or
-  NRPN 6/0 change it). At +-2 one bend step is 0.024 cents. The SID's frequency register
+  NRPN 6/0 change it, see above). At +-2 one bend step is 0.024 cents. The SID's frequency register
   is coarser than that at every pitch (one step is 0.39 cents at C4, 1.6 cents at C2), so
   the bend moves the pitch one register step at a time, with no larger jumps. The
   frequency between the notes is computed with integers from generated tables, within 0.6
