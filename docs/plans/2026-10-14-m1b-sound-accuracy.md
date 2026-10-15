@@ -218,11 +218,39 @@ while the user was away; revisit if needed):
   reach): 8580 within 0.14 / 0.87 for every mode and resonance; 6581 0.37 to
   1.45 / 1.45 to 6.6, the largest on the high-pass in its threshold region
   (FC up to about 600), where its damping drifts with FC.
-- **Asserted (`tests/filter.rs`):** transfer functions near the cutoff,
-  8580 within 1.0 dB (target met); the sweeps' envelopes, 8580 1.62 / 2.02 /
-  1.70 dB (the 1.0 dB target missed: not cutoff or damping but SIDOU's
-  trapezoidal filter near Nyquist, reSIDfp's 15.9 kHz output low-pass, and
-  voices sampled at 44.1 kHz; Task 7 records it), 6581 5.16 / 6.22 / 1.04.
+- **Asserted (`tests/filter.rs`):** the sweep target is missed (8580 1.62 /
+  2.02 / 1.70 dB, LP / BP / HP, largest window); a new near-cutoff transfer
+  metric is within 1 dB (FC 64-512, up to 7 kHz, level-normalised per mode).
+  The 6581's sweeps are 5.16 / 6.22 / 1.04. Each sweep also reports the RMS
+  over its windows (8580 0.53 / 0.79 / 0.87, 6581 1.19 / 2.92 / 0.45), and
+  the ceilings sit at the measured values, rounded up to 0.01 dB.
+- **Why the 8580's sweeps miss 1.0 dB** (from the review; not the cutoff or
+  damping tables):
+  - the LP's largest window is a normalisation artefact at low FC;
+  - the BP's comes from frequency warping in SIDOU's trapezoidal SVF near
+    Nyquist;
+  - the HP lacks reSIDfp's output low-pass;
+  - the output one-pole was measured (below, Task 6's gaps): it helps LP
+    and HP but worsens BP and the 6581, so it is not the fix;
+  - fitting the warped response instead trades BP for LP and HP;
+  - the fit errors above are against the analogue prototype, not the
+    digital filter SIDOU runs.
+- **Full scale (sustain 15), largest window, LP / BP / HP**, record only
+  (`full_scale_filter_sweeps_*`, ceilings at the measured values):
+
+  | Full scale | Before Task 5 | After Task 5 |
+  |---|---|---|
+  | 6581 | 7.1 / 5.1 / 2.1 | 4.93 / 4.64 / **6.10** |
+  | 8580 | 1.3 / 1.7 / 2.8 | 0.83 / **2.04** / 1.26 |
+
+  Two regressed: the 6581's HP, level-dependent, at FC ≥ 1,760 around the
+  0.45 fs cutoff clamp (a Task 6 target), and the 8580's BP. RMS over the
+  windows: 6581 1.39 / 2.35 / 2.99, 8580 0.38 / 0.69 / 0.48.
+- **Passband gain** (the same transfer functions, SIDOU minus reSIDfp,
+  level-matched; LP f0/8 to f0/3, BP within 1.2x of f0, HP 3 f0 to 9 f0):
+  the 8580 within 0.2 dB; the 6581's filter 1.7 to 5.0 dB louder on the LP,
+  -1.6 to +3.0 dB on the BP and 5.6 to 6.5 dB on the HP, more than
+  `VF_TR_RATIO`'s 0.59 dB explains. Held at those ranges; a gap for Task 6.
 
 ### Task 6: 6581 filter non-linearity
 
@@ -239,6 +267,11 @@ while the user was away; revisit if needed):
   numbers.
 - **Target:**
   - 6581 LP and BP noise sweeps ≤ 2.0 dB at the M0 workload levels;
+  - the 6581's full-scale HP sweep back to ≤ 2.1 dB (Task 5 took it from 2.1
+    to 6.10): it is level-dependent, at FC ≥ 1,760, around SIDOU's 0.45 fs
+    cutoff clamp;
+  - the 6581's passband gain against reSIDfp (1.7 to 6.5 dB louder after
+    Task 5; `tests/filter.rs`);
   - a new loud-signal test (three voices into the filter) ≤ 3 dB;
   - the emulator gate stays ≤ 900 instructions per sample per chip.
 - **Gaps carried over from Task 4** (measured against reSIDfp once the output
@@ -252,7 +285,15 @@ while the user was away; revisit if needed):
   - *6581 mixer compression:* three voices come out 0.4 to 2.0 dB quieter in
     reSIDfp than one voice predicts (a 25% pulse most); ours add linearly.
   - *Output-stage roll-off:* reSIDfp's external filter takes up to 0.25 dB
-    off bright waves near 1 kHz; we have no low-pass there.
+    off bright waves near 1 kHz; we have no low-pass there. Measured after
+    Task 5: a 15.92 kHz impulse-invariant one-pole after the DC blocker
+    (largest window, LP / BP / HP, without -> with) moves the small-signal
+    sweeps to 8580 1.62 / 2.02 / 1.70 -> 1.32 / 2.35 / 0.85 and 6581 5.15 /
+    6.22 / 1.04 -> 4.91 / 7.18 / 2.19, and the full-scale ones to 8580 0.83 /
+    2.04 / 1.26 -> 0.53 / 2.37 / 0.79 and 6581 4.93 / 4.64 / 6.10 -> 4.72 /
+    5.63 / 7.54. It helps the 8580's LP and HP but worsens its BP and the
+    6581, so it is not added; it belongs with the 6581's filter level and the
+    BP's warping, not on its own.
 - Commit: `feat(sid): calibrated 6581 filter non-linearity`.
 
 ### Task 7: Accuracy decision record
@@ -272,9 +313,21 @@ while the user was away; revisit if needed):
       write of PW 0x800 at cycle 100, reSIDfp reads 255 at cycle 101 and
       SIDOU 0, on both models: `read_osc3` ignores `pulse_held`, the
       comparison `sid_write` latched;
+  - the filter misses and gaps after Task 5 (and what Task 6 changed):
+    - the 8580's sweep target missed (1.62 / 2.02 / 1.70 dB), with the
+      causes above; the near-cutoff transfer metric within 1 dB;
+    - the full-scale regressions: the 6581's HP (2.1 -> 6.10) and the
+      8580's BP (1.7 -> 2.04), record-only ceilings;
+    - the 6581's passband gain, 1.7 to 6.5 dB above reSIDfp's;
+    - the output one-pole, measured and not added (Task 6's gaps);
+    - the RMS over windows next to each largest window;
+  - the audio interrupt's flash reads: none named by the audio code
+    (`ram_audio.rs` checks the relocations), but the combined waveforms'
+    pulldown rows, read through a pointer, stay in flash by design (a
+    hardware open check);
   - which reSIDfp defaults we matched (combined-waveform strength, 6581 filter
     range/curve). These become the default "6581 R4AR"/"8580 R5" profiles
-    for M1c.
+    for M1c (`sid_set_filter_curve` selects a row of `gen/filter.h`).
 - Update `LICENSING.md` (generated tables are GPL-2.0-or-later, derived from
   reSIDfp; reSID 0.16 points removed), `CREDITS.md`, `CHANGELOG.md` and
   `TESTING.md` (the new tests and the drift check).
