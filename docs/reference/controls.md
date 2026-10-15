@@ -12,7 +12,8 @@ CHIP view (M1c Task 4) replaces it.
 The boot animation (the title card, about 1.2 s) plays over the status screen while the
 instrument already plays. **Any button or encoder** skips it and does nothing else; **a
 note** (from the keys or MIDI) skips it and plays. **HOME held while powering on** plays the
-full boot sequence instead (about 10 s), skippable the same way.
+full boot sequence instead (about 10 s); letting HOME go does not skip it, and anything after
+that does. Without HOME held, a HOME press on the title card skips it like any button.
 
 ## Routing
 
