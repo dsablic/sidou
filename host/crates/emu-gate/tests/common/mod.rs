@@ -719,13 +719,12 @@ pub fn screen_wiping(m: &mut Machine, fw: &Firmware) -> bool {
     m.soc.read8(ui + SCREEN_WIPE) != 0
 }
 
-/// app/panel.h HOME and the menu's encoders; app/views.h the STATUS item.
+/// app/panel.h HOME and the menu's encoders; app/views.h the STATUS item and the items.
 const HOME: u8 = 8;
 const SELECT: u8 = 0;
 const ALGORITHM: u8 = 1;
-const MENU_STATUS: i32 = 3;
-/// app/views.h VIEWS_MENU_ITEMS.
-const MENU_ITEMS: i32 = 6;
+const MENU_STATUS: i32 = sidou_sys::VIEWS_MENU_STATUS as i32;
+const MENU_ITEMS: i32 = sidou_sys::VIEWS_MENU_ITEMS as i32;
 
 /// The status screen from LIVE, through the menu (HOME, SELECT to STATUS, ALGORITHM
 /// clockwise), its wipe over, and on to half way between two frames (to_mid_frame).

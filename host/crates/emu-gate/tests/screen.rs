@@ -33,10 +33,12 @@ const FX: u8 = 2;
 const HOME: u8 = 8;
 const SELECT: u8 = 0;
 const ALGORITHM: u8 = 1;
-/// app/views.h: the menu's view items (STATUS, 3, is common::open_status's), and its cursor
+/// app/views.h: the menu's view items (STATUS is common::open_status's), and its cursor
 /// cell on the first item.
-const MENU_CHARSET: i32 = 4;
-const MENU_ABOUT: i32 = 5;
+const MENU_SCENE: i32 = sidou_sys::VIEWS_MENU_SCENE as i32;
+const MENU_CHARSET: i32 = sidou_sys::VIEWS_MENU_CHARSET as i32;
+const MENU_ABOUT: i32 = sidou_sys::VIEWS_MENU_ABOUT as i32;
+const MENU_ITEMS: i32 = sidou_sys::VIEWS_MENU_ITEMS as i32;
 const MENU_CURSOR: (usize, usize, usize) = (3, 5, 1);
 /// app/screen.h: the toast's row.
 const TOAST_ROW: usize = 27;
@@ -109,8 +111,8 @@ fn open_menu(m: &mut Machine, fw: &Firmware) {
 /// The menu's cursor on item `item`: to the top, then down. fm1-emu turns an encoder a
 /// detent every 8 ms, so each turn is waited out before the next.
 fn select(m: &mut Machine, item: i32) {
-    m.turn(SELECT, -MENU_ABOUT);
-    m.run_ms(10 * MENU_ABOUT as u64);
+    m.turn(SELECT, -MENU_ITEMS);
+    m.run_ms(10 * MENU_ITEMS as u64);
     m.turn(SELECT, item);
     m.run_ms(10 * item as u64);
 }
@@ -1297,9 +1299,281 @@ const LIVE_IDLE_PER_FRAME: f64 = 15_500.0;
 const LIVE_CHORD_PER_FRAME: f64 = 53_000.0;
 const LIVE_NOISE_PER_FRAME: f64 = 155_000.0;
 
+/// SCENE's pieces (app/scene.h), in SELECT's order, as their goldens are named.
+const SCENE_PIECES: [&str; 5] = ["fire", "plasma", "rule30", "stars", "ant"];
+/// app/panel.h K1: the cutoff.
+const K1_CUTOFF: u8 = 2;
+
+/// SCENE, from the menu, on piece `piece` (SELECT from FIRE, the first), each piece's toast
+/// gone (1.5 s), and on to half way between two frames.
+fn open_scene(m: &mut Machine, fw: &Firmware, piece: usize) {
+    open_menu(m, fw);
+    select(m, MENU_SCENE);
+    m.run_ms(100);
+    m.turn(ALGORITHM, 1);
+    settle(m, fw);
+    assert_eq!(
+        common::top_view(m, fw),
+        fw.symbol("scene_view_view"),
+        "the menu's SCENE did not open SCENE"
+    );
+    for _ in 0..piece {
+        m.turn(SELECT, 1);
+        m.run_ms(1600);
+    }
+    common::to_mid_frame(m, fw);
+}
+
+/// Each piece after a chord held for a second (its note-ons, then its envelopes), from the
+/// piece's start: a fixed frame with a known audio state.
+#[test]
+fn scene_matches_its_golden_images() {
+    let Some((build, fw)) = fixture("the SCENE test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_scene(&mut m, &fw, 0);
+    assert!(common::tap_on(&mut m, &fw), "the tap is off under SCENE");
+    for (k, name) in SCENE_PIECES.iter().enumerate() {
+        if k > 0 {
+            m.turn(SELECT, 1);
+            m.run_ms(1600);
+            common::to_mid_frame(&mut m, &fw);
+        }
+        for key in CHORD {
+            m.key(key, true);
+        }
+        m.run_ms(1000);
+        common::to_mid_frame(&mut m, &fw);
+        compare_golden(&build, &format!("scene-{name}"), &m.soc.lcd.fb, &[]);
+        for key in CHORD {
+            m.key(key, false);
+        }
+        m.run_ms(1500);
+    }
+    // HOME goes back to the menu, and the tap goes off.
+    press(&mut m, HOME);
+    settle(&mut m, &fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("views_menu"));
+    assert!(!common::tap_on(&mut m, &fw), "the tap runs under the menu");
+}
+
+/// Cells each 40 ms of `frames` sent.
+fn cells_sent(c: &Cost) -> Vec<u32> {
+    c.frames.iter().map(cells).collect()
+}
+
+/// A chord's note-ons move every piece at once, and once it has died away the piece calms:
+/// what silence sends before and after, against the chord's frames.
+#[test]
+fn a_note_moves_every_piece_and_silence_calms_it() {
+    let Some((_, fw)) = fixture("the SCENE test") else {
+        return;
+    };
+    for (piece, name) in SCENE_PIECES.iter().enumerate() {
+        let mut m = booted(&fw);
+        open_scene(&mut m, &fw, piece);
+        let quiet = cells_sent(&measure(&mut m, &fw, 25, |_| {}));
+        let chord = cells_sent(&measure(&mut m, &fw, 25, |m| {
+            for key in CHORD {
+                m.key(key, true);
+            }
+        }));
+        for key in CHORD {
+            m.key(key, false);
+        }
+        m.run_ms(3000);
+        let after = cells_sent(&measure(&mut m, &fw, 25, |_| {}));
+        let sum = |v: &[u32]| v.iter().sum::<u32>();
+        println!(
+            "SCENE {name}: cells in 25 frames: quiet {}, the chord {} (its first frames {:?}), \
+             after {}",
+            sum(&quiet),
+            sum(&chord),
+            &chord[..4],
+            sum(&after)
+        );
+        // The note-ons show within two frames (the key scan's debounce, then a frame).
+        assert!(
+            chord[..3].iter().any(|&n| n > 0),
+            "{name}: nothing changed on the note-ons"
+        );
+        assert!(
+            sum(&chord) > 3 * sum(&quiet).max(10) && sum(&chord) > 3 * sum(&after).max(10),
+            "{name}: quiet {}, the chord {}, after {}",
+            sum(&quiet),
+            sum(&chord),
+            sum(&after)
+        );
+    }
+}
+
+/// A band on the keys, frame by frame: an arpeggio note every 4 frames, let go after 3, and a
+/// bass note every 8, let go after 6.
+fn band(m: &mut Machine, f: u64) {
+    const ARP: [u8; 6] = [57, 60, 64, 69, 72, 76];
+    const BASS: [u8; 2] = [53, 55];
+    let key = |note: u8| 14 + note - 53;
+    let arp = key(ARP[(f / 4 % 6) as usize]);
+    let bass = key(BASS[(f / 8 % 2) as usize]);
+    match f % 4 {
+        0 => m.key(arp, true),
+        3 => m.key(arp, false),
+        _ => {}
+    }
+    match f % 8 {
+        0 => m.key(bass, true),
+        6 => m.key(bass, false),
+        _ => {}
+    }
+}
+
+/// `frames` frames of the band, as `measure` counts them.
+fn measure_band(m: &mut Machine, fw: &Firmware, frames: u64) -> Cost {
+    common::to_mid_frame(m, fw);
+    let from = m.watched_calls.len();
+    let mut per = Vec::new();
+    for f in 0..frames {
+        band(m, f);
+        let before = sent(m, fw);
+        m.run_ms(UI_PERIOD_MS);
+        let after = sent(m, fw);
+        per.push(Sent {
+            windows: after.windows - before.windows,
+            bytes: after.bytes - before.bytes,
+        });
+    }
+    let calls = &m.watched_calls[from..];
+    Cost {
+        polls: calls.len(),
+        instructions: calls.iter().sum(),
+        worst_poll: calls.iter().copied().max().unwrap_or(0),
+        frames: per,
+    }
+}
+
+/// Each piece with the band playing and the filter wide open (the busiest plasma, the hottest
+/// fire), and the wipe from it to the next piece with a chord held: every frame inside the
+/// SPI budget and SCENE's cells (app/scene_view.h SCENE_VIEW_FRAME_CELLS), and the main loop's
+/// cost a frame and its busiest ui_poll within the bounds below.
+#[test]
+fn scene_stays_within_its_budgets() {
+    let Some((_, fw)) = fixture("the SCENE budget test") else {
+        return;
+    };
+    let mut report = serde_json::Map::new();
+    for (piece, name) in SCENE_PIECES.iter().enumerate() {
+        let mut m = Machine::boot(&fw.image);
+        m.watch_calls(fw.symbol("ui_poll"));
+        common::run_past_boot(&mut m, &fw);
+        open_scene(&mut m, &fw, piece);
+        m.turn(K1_CUTOFF, 64);
+        m.run_ms(1000);
+        let c = measure_band(&mut m, &fw, 150);
+        for k in 0..30 {
+            band(&mut m, k); // into the wipe with notes playing
+        }
+        for key in CHORD {
+            m.key(key, true);
+        }
+        m.run_ms(200);
+        let from = m.watched_calls.len();
+        let wipe = wipe_windows(&mut m, &fw, |m| m.turn(SELECT, 1));
+        let (wipe_poll, _) = wipe_instructions(&m.watched_calls[from..], wipe.len());
+        assert_wipe_holds_still(&format!("the wipe from {name}"), &wipe);
+        let per = cells_sent(&c);
+        let avg = f64::from(per.iter().sum::<u32>()) / per.len() as f64;
+        let most = per.iter().copied().max().unwrap_or(0);
+        report.insert(name.to_string(), animated_json(&c));
+        println!(
+            "SCENE {name}: {avg:.1} cells a frame, at most {most}; SPI {:.2} ms a frame, worst \
+             {:.2} ms; {:.0} instructions a frame, busiest ui_poll {}; the wipe to the next \
+             piece: busiest ui_poll {wipe_poll}",
+            c.total().spi_ms() / per.len() as f64,
+            c.worst_frame_ms(),
+            c.instructions_per_frame(),
+            c.worst_poll
+        );
+        let (cells_bound, most_bound, per_frame_bound) = SCENE_BOUNDS[piece];
+        assert!(
+            c.worst_frame_ms() <= SPI_BUDGET_MS,
+            "{name}: a frame took {:.1} ms of SPI",
+            c.worst_frame_ms()
+        );
+        assert!(
+            most <= sidou_sys::SCENE_VIEW_FRAME_CELLS,
+            "{name}: a frame sent {most} cells"
+        );
+        assert!(avg <= cells_bound, "{name}: {avg:.1} cells a frame");
+        assert!(most <= most_bound, "{name}: {most} cells in a frame");
+        assert!(
+            c.worst_poll < SCENE_WORST_POLL && wipe_poll < SCENE_WORST_POLL,
+            "{name}: a ui_poll took {} instructions ({wipe_poll} in the wipe)",
+            c.worst_poll
+        );
+        assert!(
+            c.instructions_per_frame() < per_frame_bound,
+            "{name}: {:.0} instructions a frame",
+            c.instructions_per_frame()
+        );
+    }
+    println!("{}", serde_json::Value::Object(report));
+}
+
+/// SCENE with the band playing and the filter wide open, 150 frames a piece (fm1-emu, M1e Task
+/// 5; docs/art/README.md, "SCENE"), bounded about 10 % above what was measured: each piece's
+/// cells a frame on average and at most, and its main-loop instructions a frame (ui_poll), and
+/// the busiest ui_poll of any piece (FIRE's, 56.8k: its two burns, half way between frames).
+/// Measured:
+///
+/// | Piece | Cells a frame (average, most) | SPI a frame (average, worst) | Instructions a frame | Busiest ui_poll |
+/// |---|---|---|---|---|
+/// | FIRE | 146.6, 180 | 12.75 ms, 15.57 ms | 97.8k | 56.8k |
+/// | PLASMA | 138.4, 200 | 12.29 ms, 17.64 ms | 137.9k | 53.9k |
+/// | RULE 30 | 18.9, 76 | 1.65 ms, 6.60 ms | 30.5k | 18.0k |
+/// | STARS | 39.5, 68 | 3.59 ms, 6.16 ms | 71.6k | 17.9k |
+/// | ANT | 2.7, 9 | 0.25 ms, 0.80 ms | 27.5k | 16.9k |
+const SCENE_BOUNDS: [(f64, u32, f64); 5] = [
+    (161.0, 198, 108_000.0), // fire
+    (152.0, 200, 152_000.0), // plasma: the most is SCENE_VIEW_FRAME_CELLS
+    (21.0, 84, 33_500.0),    // rule 30
+    (44.0, 75, 79_000.0),    // stars
+    (3.0, 10, 30_000.0),     // ant
+];
+const SCENE_WORST_POLL: u64 = 62_000;
+/// SELECT's turn to the next piece starts it, its canvas drawn whole, in the main loop's input
+/// (ui_encoder), not in a ui_poll: PLASMA's, 48.8k, is the most.
+const SCENE_SELECT: u64 = 54_000;
+
+/// Stepping round the pieces with SELECT: each start, in the input's call, within SCENE_SELECT.
+#[test]
+fn selecting_a_piece_costs_the_main_loop_little() {
+    let Some((_, fw)) = fixture("the SCENE input test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_scene(&mut m, &fw, 0);
+    m.watch_calls(fw.symbol("ui_encoder"));
+    for name in SCENE_PIECES.iter().cycle().skip(1).take(SCENE_PIECES.len()) {
+        let from = m.watched_calls.len();
+        m.turn(SELECT, 1);
+        m.run_ms(1600);
+        let calls = &m.watched_calls[from..];
+        let worst = calls.iter().copied().max().unwrap_or(0);
+        println!("SELECT to {name}: {calls:?} instructions");
+        assert_eq!(calls.len(), 1, "{name}: one detent, one call");
+        assert!(
+            worst < SCENE_SELECT,
+            "SELECT to {name}: {worst} instructions"
+        );
+    }
+}
+
 // A ui_poll holds MIDI's drain for as long as it runs: every view's worst stays within the
 // latency gate's poll allowance (common::POLL_INSTRUCTIONS, 120k), so a compose that grows
 // past it fails here, not as a late note somewhere else.
 const _: () = assert!(LIVE_WORST_POLL <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(SCENE_WORST_POLL <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(SCENE_SELECT <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(ABOUT_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(BOOT_WORST_POLL <= common::POLL_INSTRUCTIONS);
