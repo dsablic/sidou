@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Cracktro Chrome, SIDOU's logo: the source of its art (docs/art/README.md "Logo").
+// Cracktro Chrome, SIDOU's logo before Metal Chrome and now an alternative: the source of its
+// art (docs/art/README.md "Logo").
 // Original art made for SIDOU, drawn in code pixel by pixel on a 240 x 240 grid in the
 // 16 C64 colours (Pepto's palette, docs/art/README.md "Palette"), and nothing else.
 //
@@ -20,7 +21,8 @@
 // - assets/logo/cracktro-chrome-lettering.png and -lettering-2x.png: the lettering and its
 //   shadow alone, cropped, on transparency (palette index 16), for the README; the 2x is
 //   scaled by nearest neighbour.
-// - docs/art/avatar.png: the avatar, 48 x 48.
+// - assets/logo/cracktro-chrome-avatar.png: the avatar, 48 x 48 (docs/art/avatar.png until
+//   Metal Chrome).
 // Its pixels were checked against Chromium's canvas drawing the logo page (all equal).
 
 const C={k:'#000000',w:'#ffffff',r:'#68372b',c:'#70a4b2',p:'#6f3d86',g:'#588d43',b:'#352879',y:'#b8c76f',o:'#6f4f25',n:'#433900',R:'#9a6759',d:'#444444',m:'#6c6c6c',G:'#9ad284',B:'#6c5eb5',l:'#959595'};
@@ -94,5 +96,5 @@ function png(img){const zlib=require('zlib');const clear=img.px.includes(255);co
 if(typeof module!=='undefined'&&require.main===module){const fs=require('fs'),path=require('path');const here=__dirname,root=path.join(here,'../..');
   const word=crop(draw(lettering,240,240));
   const out={[path.join(here,'cracktro-chrome.png')]:draw(()=>v2(false),240,240),[path.join(here,'cracktro-chrome-lettering.png')]:word,
-    [path.join(here,'cracktro-chrome-lettering-2x.png')]:scale(word,2),[path.join(root,'docs/art/avatar.png')]:draw(a2,48,48)};
+    [path.join(here,'cracktro-chrome-lettering-2x.png')]:scale(word,2),[path.join(here,'cracktro-chrome-avatar.png')]:draw(a2,48,48)};
   for(const[file,img]of Object.entries(out)){fs.writeFileSync(file,png(img));console.log(`${path.relative(root,file)}: ${img.w} x ${img.h}`)}}

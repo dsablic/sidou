@@ -10,8 +10,9 @@ path = [".gitmodules", "CMakePresets.json", "compile_flags.txt", "host/Cargo.loc
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
-# SIDOU's logo, Cracktro Chrome: original art made for SIDOU, exported from its source,
-# assets/logo/cracktro-chrome.js (docs/art/README.md "Logo").
+# SIDOU's logos, Metal Chrome (the logo, and its title cards) and Cracktro Chrome (an
+# alternative): original art made for SIDOU, exported from their sources,
+# assets/logo/metal-chrome.js and assets/logo/cracktro-chrome.js (docs/art/README.md "Logo").
 [[annotations]]
 path = ["assets/logo/*.png", "docs/art/avatar.png"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
