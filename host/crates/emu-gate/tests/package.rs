@@ -8,11 +8,12 @@
 //! The package is `$SIDOU_FWSC`, else `sidou.fwsc` in the fm1 build directory (CI:
 //! `cargo run -p sidou-pack -- ... -o build/fm1/sidou.fwsc`); without it the test skips.
 //! It writes `sidou_package.json` and the audio, `sidou_package.wav` (A4 held from power-on),
-//! into the fm1 build directory.
+//! into the fm1 build directory. A package older than the build's `sidou_app.bin` fails the
+//! test: it holds an earlier build, so it would be compared with an image it was not made from.
 
 mod common;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use common::{build_dir, peak, pitch, Firmware, Machine};
 
@@ -25,6 +26,45 @@ fn package_path() -> Option<PathBuf> {
         return Some(PathBuf::from(p));
     }
     Some(build_dir()?.join("sidou.fwsc"))
+}
+
+/// Why `package` cannot stand for `image`: it was written before the image was, so it holds an
+/// earlier build. None when it is at least as new.
+fn stale(package: &Path, image: &Path) -> Option<String> {
+    let modified = |p: &Path| {
+        std::fs::metadata(p)
+            .and_then(|m| m.modified())
+            .unwrap_or_else(|e| panic!("{}: {e}", p.display()))
+    };
+    (modified(package) < modified(image)).then(|| {
+        format!(
+            "{} is older than {}: it holds an earlier build. Run sidou-pack again (TESTING.md, \
+             Package tests)",
+            package.display(),
+            image.display()
+        )
+    })
+}
+
+#[test]
+fn a_package_older_than_the_image_is_stale() {
+    let dir = std::env::temp_dir().join(format!("sidou-package-stale-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (package, image) = (dir.join("sidou.fwsc"), dir.join("sidou_app.bin"));
+    let at = |p: &Path, secs: u64| {
+        let f = std::fs::File::create(p).unwrap();
+        f.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs))
+            .unwrap();
+    };
+    at(&image, 2_000_000);
+    at(&package, 1_000_000);
+    let why = stale(&package, &image).expect("an older package is stale");
+    assert!(why.contains("sidou.fwsc is older than") && why.contains("sidou-pack"));
+    at(&package, 2_000_000);
+    assert_eq!(stale(&package, &image), None, "as new is fresh");
+    at(&package, 3_000_000);
+    assert_eq!(stale(&package, &image), None);
+    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]
@@ -40,6 +80,9 @@ fn the_package_boots_and_plays_as_the_bare_image() {
         );
         return;
     };
+    if let Some(why) = stale(&path, &build.join("platform/fm1/sidou_app.bin")) {
+        panic!("{why}");
+    }
     let fw = Firmware::load(&build);
     let mut from_pkg = Machine::boot_package(&pkg);
     from_pkg.key(A4_KEY, true);

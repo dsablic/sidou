@@ -42,8 +42,8 @@ int fx_live_apply(fx_live* f, uint8_t reg, uint8_t value);
 /* fx_live_apply as a reg_ring_pseudo_fn (ctx: an fx_live*). */
 void fx_live_pseudo(void* ctx, uint8_t reg, uint8_t value);
 
-/* The host's sink: SID registers and LIVE_REG_RESET as live_sid_sink, slot registers to
- * fx_live_apply. ctx is an fx_live_target. */
+/* The host's sink: SID registers, LIVE_REG_RESET and LIVE_REG_GATE_RESET as live_sid_sink,
+ * slot registers to fx_live_apply. ctx is an fx_live_target. */
 typedef struct {
     live_sid_target sid;
     fx_live* fx;
