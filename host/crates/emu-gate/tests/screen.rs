@@ -1599,20 +1599,21 @@ fn midi_learn_over_scene_and_live_stays_within_the_budget() {
 }
 
 /// SCENE with the band playing and the filter wide open, 150 frames a piece (fm1-emu, M1e Task
-/// 5; docs/art/README.md, "SCENE"), bounded about 10 % above what was measured: each piece's
-/// cells a frame on average and at most, and its main-loop instructions a frame (ui_poll), and
-/// the busiest ui_poll of any piece (FIRE's, 56.8k: its two burns, half way between frames).
-/// Measured:
+/// 5; docs/art/README.md, "SCENE"), bounded about 10 % above what was measured (never looser
+/// than at first): each piece's cells a frame on average and at most, and its main-loop
+/// instructions a frame (ui_poll), and the busiest ui_poll of any piece (FIRE's, 58.9k: its two
+/// burns, half way between frames). Measured after the review (FIRE's new look, the covered
+/// cells left out of the copy, M1b Task 6's tap):
 ///
 /// | Piece | Cells a frame (average, most) | SPI a frame (average, worst) | Instructions a frame | Busiest ui_poll |
 /// |---|---|---|---|---|
-/// | FIRE | 146.6, 180 | 12.75 ms, 15.57 ms | 97.8k | 56.8k |
-/// | PLASMA | 138.4, 200 | 12.29 ms, 17.64 ms | 137.9k | 53.9k |
-/// | RULE 30 | 18.9, 76 | 1.65 ms, 6.60 ms | 30.5k | 18.0k |
-/// | STARS | 39.5, 68 | 3.59 ms, 6.16 ms | 71.6k | 17.9k |
-/// | ANT | 2.7, 9 | 0.25 ms, 0.80 ms | 27.5k | 16.9k |
+/// | FIRE | 125.0, 159 | 10.93 ms, 13.85 ms | 101.6k | 58.9k |
+/// | PLASMA | 138.4, 200 | 12.29 ms, 17.64 ms | 141.4k | 53.0k |
+/// | RULE 30 | 18.9, 76 | 1.65 ms, 6.60 ms | 32.7k | 21.3k |
+/// | STARS | 39.5, 68 | 3.59 ms, 6.16 ms | 74.1k | 21.1k |
+/// | ANT | 2.7, 9 | 0.25 ms, 0.80 ms | 29.3k | 18.9k |
 const SCENE_BOUNDS: [(f64, u32, f64); 5] = [
-    (161.0, 198, 108_000.0), // fire
+    (138.0, 175, 108_000.0), // fire
     (152.0, 200, 152_000.0), // plasma: the most is SCENE_VIEW_FRAME_CELLS
     (21.0, 84, 33_500.0),    // rule 30
     (44.0, 75, 79_000.0),    // stars

@@ -15,8 +15,10 @@
  * - FIRE: three flames, a voice each (columns 0-9, 10-19, 20-29), in the bottom
  *   SCENE_FIRE_ROWS rows, two heat rows a cell (an upper-half glyph). A voice's envelope heats
  *   its flame, a note-on flares it, its pitch sets how high it burns (higher notes cool
- *   slower), the cutoff how hot (orange to white), the resonance lowers the cooling. A silent
- *   voice's flame dies down to the ember bed, which holds still. The fire burns every other
+ *   slower), the cutoff how hot it looks (red, up to yellow and white near the bed), the
+ *   resonance lowers the cooling. The fuel sways along the bed and a cell in eight cools hard,
+ *   so the flames break into tongues. A silent voice's flame dies down to the brown ember bed,
+ *   which holds still. The fire burns every other
  *   frame, two steps at once (12.5 fps, rising as fast as at 25), and each frame draws half
  *   its rows, alternately, so a frame sends at most half the area.
  * - PLASMA: four sines over the screen in a dither ramp. The cutoff sets its speed, the
@@ -104,6 +106,7 @@ typedef struct {
     uint8_t heat[SCENE_FIRE_H][GRID_COLS]; /* 0..255, row 0 the top */
     uint8_t hot[SCENE_VOICES];             /* each flame's fuel, 0..255 */
     uint8_t flare[SCENE_VOICES];           /* a note-on waiting for the next step */
+    uint16_t burns;                        /* steps burnt: the tongues' sway */
 } scene_fire;
 
 typedef struct {

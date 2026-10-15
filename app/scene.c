@@ -152,17 +152,46 @@ static int32_t clamp(int32_t x, int32_t lo, int32_t hi) {
 #define FIRE_EMBER 38u
 #define FIRE_DARK 48u
 
-static const uint8_t FIRE_COLORS[7] = {GRID_BLACK,     GRID_BROWN,  GRID_RED,  GRID_ORANGE,
-                                       GRID_LIGHT_RED, GRID_YELLOW, GRID_WHITE};
+/* The flame's ramp: red from just above FIRE_DARK, light red from FIRE_LIGHT, then a thin band
+ * of yellow (lime on this palette) FIRE_YELLOW below the white. The cutoff sets where the
+ * white starts (FIRE_WHITE_OPEN open, FIRE_WHITE_SHUT shut, past any heat): it moves the top of
+ * the ramp, not the heat, so an open filter burns yellow and white near the bed and a shut one
+ * red. The ember bed, in silence, is brown. */
+#define FIRE_LIGHT 135u
+#define FIRE_YELLOW 16u
+#define FIRE_WHITE_OPEN 196u
+#define FIRE_WHITE_SHUT 300u
 
-/* Cell row k of the fire: the upper half the heat row 2k, the lower half 2k + 1. */
-static void fire_row(scene* s, uint32_t k) {
+/* Heat 0..255 as a colour, white from white_at. */
+static uint8_t fire_color(uint32_t heat, uint32_t white_at) {
+    return heat >= white_at                ? GRID_WHITE
+           : heat + FIRE_YELLOW >= white_at ? GRID_YELLOW
+           : heat >= FIRE_LIGHT             ? GRID_LIGHT_RED
+           : heat > FIRE_DARK               ? GRID_RED
+                                            : GRID_BLACK;
+}
+
+/* Cell row k of the fire: the upper half the heat row 2k, the lower half 2k + 1; the bottom
+ * heat row, the bed, brown where it only glows. */
+static void fire_row(scene* s, uint32_t k, uint32_t white_at) {
     const scene_fire* f = &s->u.fire;
+    const uint8_t* up = f->heat[2u * k];
+    const uint8_t* low = f->heat[2u * k + 1u];
+    int bed = 2u * k + 1u == SCENE_FIRE_H - 1u;
     for (uint32_t c = 0; c < GRID_COLS; c++) {
-        uint8_t top = FIRE_COLORS[f->heat[2u * k][c] * 7u >> 8];
-        uint8_t bottom = FIRE_COLORS[f->heat[2u * k + 1u][c] * 7u >> 8];
+        uint8_t top = fire_color(up[c], white_at);
+        uint8_t bottom = bed && low[c] && low[c] <= FIRE_DARK ? GRID_BROWN
+                                                               : fire_color(low[c], white_at);
         put(s, c, FIRE_TOP + k, FONT_Q3, GRID_ATTR(top, bottom));
     }
+}
+
+/* Where the white starts for the cutoff (0..2047), on a curve that rises fast and flattens
+ * (c (2 - c), c the cutoff's fraction): the preset's 1200 already burns yellow at the bed. */
+static uint32_t fire_white(const scene_music* m) {
+    uint32_t c = m->cutoff;
+    uint32_t k = c * (4094u - c) / 2047u; /* 0..2047 */
+    return FIRE_WHITE_SHUT - k * (FIRE_WHITE_SHUT - FIRE_WHITE_OPEN) / 2047u;
 }
 
 /* One step of the fire: the fuel follows the envelopes, the bottom row burns it, and every row
@@ -182,17 +211,19 @@ static void fire_burn(scene* s, const scene_music* m) {
         }
         f->hot[v] = (uint8_t)hot;
     }
-    /* The cutoff: how hot it burns, from orange (a closed filter) to white. */
-    uint32_t scale = 128u + (uint32_t)m->cutoff * 128u / 2047u;
     uint8_t* bed = f->heat[SCENE_FIRE_H - 1u];
     for (uint32_t x = 0; x < GRID_COLS; x++) {
         uint32_t v = x / FIRE_W;
         uint32_t r = scene_random(&s->rng);
-        uint32_t heat = f->flare[v] ? 255u : f->hot[v] * (192u + (r >> 4 & 63u)) >> 8;
-        heat = heat * scale >> 8;
+        /* The fuel sways along the bed, two sines drifting apart: tongues that rise and move. */
+        int32_t sway = sin8(x * 23u + f->burns * 5u) + sin8(x * 61u - f->burns * 7u);
+        uint32_t fuel = (uint32_t)(184 + (sway * 88 >> 8)) + (r >> 4 & 31u);
+        fuel = fuel > 255u ? 255u : fuel;
+        uint32_t heat = f->flare[v] ? 255u : f->hot[v] * fuel >> 8;
         uint32_t ember = FIRE_EMBER + (r & 7u);
         bed[x] = (uint8_t)(heat > ember ? heat : ember);
     }
+    f->burns++;
     /* The pitch: higher notes cool slower and burn higher; the resonance lowers the cooling. */
     uint32_t cool[SCENE_VOICES];
     for (uint32_t v = 0; v < SCENE_VOICES; v++) {
@@ -202,25 +233,42 @@ static void fire_burn(scene* s, const scene_music* m) {
         cool[v] = (uint32_t)(c < 2 ? 2 : c) + 1u;
         f->flare[v] = 0;
     }
-    for (uint32_t y = 0; y + 1u < SCENE_FIRE_H; y++) {
-        const uint8_t* below = f->heat[y + 1u];
-        uint8_t* row = f->heat[y];
-        for (uint32_t x = 0; x < GRID_COLS; x++) {
-            uint32_t v = x / FIRE_W;
-            uint32_t r = scene_random(&s->rng);
-            int32_t dx = (int32_t)x + (int32_t)((r & 255u) * 3u >> 8) - 1;
-            uint32_t to =
-                (uint32_t)clamp(dx, (int32_t)(v * FIRE_W), (int32_t)(v * FIRE_W + FIRE_W - 1u));
-            uint32_t c = (r >> 8 & 255u) * cool[v] >> 8;
-            row[to] = (uint8_t)(below[x] > c + FIRE_DARK ? below[x] - c : 0u);
+    /* Flame by flame, the xorshift's state in a register (scene_random's sequence): the burn
+     * runs twice every other frame, 840 cells each. */
+    uint32_t rng = s->rng;
+    for (uint32_t v = 0; v < SCENE_VOICES; v++) {
+        uint32_t lo = v * FIRE_W;
+        uint32_t hi = lo + FIRE_W - 1u;
+        uint32_t k = cool[v];
+        for (uint32_t y = 0; y + 1u < SCENE_FIRE_H; y++) {
+            const uint8_t* below = f->heat[y + 1u];
+            uint8_t* row = f->heat[y];
+            for (uint32_t x = lo; x <= hi; x++) {
+                rng ^= rng << 13;
+                rng ^= rng >> 17;
+                rng ^= rng << 5;
+                uint32_t r = rng;
+                /* A cell in four drifts a column either way: the columns hold, tongues rise. */
+                uint32_t to = x;
+                if ((r & 3u) == 0u && x > lo) {
+                    to--;
+                } else if ((r & 3u) == 1u && x < hi) {
+                    to++;
+                }
+                /* Cooled by up to cool a row, and one cell in eight by 3 cool more: the flames
+                 * break into tongues. */
+                uint32_t c = ((r >> 8 & 255u) * k >> 8) + ((r >> 16 & 7u) ? 0u : 3u * k);
+                row[to] = (uint8_t)(below[x] > c + FIRE_DARK ? below[x] - c : 0u);
+            }
         }
     }
+    s->rng = rng;
 }
 
 static void fire_start(scene* s) {
     blank_rows(s, 0, FIRE_TOP);
     for (uint32_t k = 0; k < SCENE_FIRE_ROWS; k++) {
-        fire_row(s, k);
+        fire_row(s, k, FIRE_WHITE_SHUT); /* no heat yet: black */
     }
 }
 
@@ -238,7 +286,7 @@ static void fire_step(scene* s, const scene_music* m) {
         fire_burn(s, m);
     }
     for (uint32_t k = odd; k < SCENE_FIRE_ROWS; k += 2u) {
-        fire_row(s, k);
+        fire_row(s, k, fire_white(m));
     }
 }
 

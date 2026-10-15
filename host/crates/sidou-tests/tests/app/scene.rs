@@ -559,17 +559,19 @@ fn fire(s: &scene) -> scene_fire {
 }
 
 const FIRE_TOP: usize = ROWS - SCENE_FIRE_ROWS as usize;
-const FIRE_COLORS: [u32; 7] = [
+/// The fire's ramp, coolest first: brown only in the ember bed, and no orange (olive-brown on
+/// this palette).
+const FIRE_COLORS: [u32; 6] = [
     GRID_BLACK,
     GRID_BROWN,
     GRID_RED,
-    GRID_ORANGE,
     GRID_LIGHT_RED,
     GRID_YELLOW,
     GRID_WHITE,
 ];
+const FIRE_WHITE: usize = 5;
 
-/// The fire's level (0..6) of a cell row's half: top or bottom.
+/// The fire's level (0..5) of a cell row's half: top or bottom.
 fn fire_levels(s: &scene) -> Vec<Vec<usize>> {
     (FIRE_TOP..ROWS)
         .flat_map(|r| {
@@ -587,7 +589,7 @@ fn fire_levels(s: &scene) -> Vec<Vec<usize>> {
 }
 
 /// How many heat rows (half cells) up from the bottom the flame of voice v reaches: the
-/// highest with a cell of level 3 (orange) or more.
+/// highest with a cell of level 3 (light red) or more.
 fn flame_height(s: &scene, v: usize) -> usize {
     let lv = fire_levels(s);
     let h = lv.len();
@@ -657,7 +659,79 @@ fn the_cutoff_sets_how_hot_the_fire_burns() {
         most
     };
     assert!(hottest(0) <= 3, "a closed filter burns at {}", hottest(0));
-    assert_eq!(hottest(2047), 6, "an open filter burns white");
+    assert_eq!(hottest(2047), FIRE_WHITE, "an open filter burns white");
+    assert_eq!(
+        hottest(1200),
+        FIRE_WHITE,
+        "the preset's cutoff burns white at the bed"
+    );
+    // The cutoff moves the top of the ramp, not the heat: the flames burn the same.
+    let heat = |cutoff: u16| {
+        let mut s = new_scene(SCENE_FIRE);
+        for _ in 0..40 {
+            let mut m = held(quiet(), 0, 60, 255);
+            m.cutoff = cutoff;
+            step(&mut s, &m);
+        }
+        fire(&s).heat
+    };
+    assert_eq!(heat(0), heat(2047));
+}
+
+/// The ramp: brown only in the ember bed (the bottom heat row), and there only where it just
+/// glows; yellow a thin band between light red and white; the hottest near the bed; and the
+/// flames break into tongues (columns of differing height), not one mound.
+#[test]
+fn the_fire_burns_up_its_ramp_in_tongues() {
+    let mut s = new_scene(SCENE_FIRE);
+    for _ in 0..30 {
+        step(&mut s, &quiet());
+    }
+    let lv = fire_levels(&s);
+    let bed = lv.len() - 1;
+    assert!(
+        lv[bed].iter().all(|&l| l == 1),
+        "the bed in silence: {:?}",
+        lv[bed]
+    );
+    let mut count = [0usize; 6];
+    let mut heights = Vec::new();
+    for f in 0..200 {
+        let mut m = quiet();
+        m.cutoff = 2047;
+        for v in 0..3 {
+            m = held(m, v, 48 + 12 * v as u8, 230);
+        }
+        step(&mut s, &m);
+        let lv = fire_levels(&s);
+        for (y, row) in lv.iter().enumerate() {
+            for &l in row {
+                count[l] += 1;
+                assert!(l != 1 || y == bed, "brown above the bed, frame {f}");
+            }
+        }
+        // Each column's flame top (level 2, red, or more).
+        heights
+            .extend((0..COLS).map(|x| (0..lv.len()).find(|&y| lv[y][x] >= 2).unwrap_or(lv.len())));
+    }
+    println!("levels {count:?}");
+    assert!(
+        count[4] > 0 && count[4] < count[3] / 2,
+        "yellow is a thin band: {count:?}"
+    );
+    assert!(count[5] > 0, "no white: {count:?}");
+    let mean = heights.iter().sum::<usize>() as f64 / heights.len() as f64;
+    let spread = (heights
+        .iter()
+        .map(|&h| (h as f64 - mean).powi(2))
+        .sum::<f64>()
+        / heights.len() as f64)
+        .sqrt();
+    println!("flame tops: mean {mean:.1} half cells down, spread {spread:.1}");
+    assert!(
+        spread >= 3.0,
+        "the flames are one mound: spread {spread:.1}"
+    );
 }
 
 #[test]
