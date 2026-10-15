@@ -7,8 +7,10 @@
  * differ go out: grid_next_run hands out the changed cells one run at a time, a run being
  * horizontally adjacent changed cells on one row (one LCD window), and counts them as shown;
  * grid_render_run turns a run into pixels. A cell can carry a pixel overlay, a one-colour
- * 8 x 8 mask drawn over its glyph (oscilloscopes, the logo). Rows can be held: their changes
- * wait until they are released (the screen's wipe transition, app/screen.h).
+ * 8 x 8 mask drawn over its glyph (oscilloscopes, the logo). A rectangle of cells can be a
+ * pixel region, taking its background pixel for pixel from a bitmap in flash (a pixel-art
+ * logo, app/logo.h). Rows can be held: their changes wait until they are released (the
+ * screen's wipe transition, app/screen.h).
  *
  * Portable C with no hardware access: platform/fm1/ui.c sends the runs, the host tests
  * drive it directly. */
@@ -59,6 +61,18 @@ _Static_assert(GRID_OVERLAYS <= 255u, "a cell's byte holds 1 + its overlay slot,
 /* The palette as RGB565 (red in the top 5 bits), in flash. */
 extern const uint16_t grid_palette[16];
 
+/* A bitmap of w x h pixels (whole cells), each a colour (0..15), in flash, run-length coded
+ * row by row so that any row decodes on its own: row y's runs start at data[rows[y]], each a
+ * byte, ((length - 1) << 4) | colour for 1..16 pixels, and they add up to w exactly. Rows
+ * alike may share their runs. host/crates/sidou-tests/src/logo.rs writes them from indexed
+ * PNGs (app/logo_bitmap.c). */
+typedef struct {
+    uint16_t w;
+    uint16_t h;
+    const uint16_t* rows;
+    const uint8_t* data;
+} grid_bitmap;
+
 /* Changed cells [col, col + len) of row. */
 typedef struct {
     uint8_t row;
@@ -90,10 +104,19 @@ typedef struct {
     /* Where grid_next_run goes on. */
     uint8_t scan_row;
     uint8_t scan_col;
+    /* The pixel region (grid_region): region_w x region_h cells from (region_col, region_row)
+     * show the bitmap's cells from (region_bx, region_by). NULL: none. */
+    const grid_bitmap* region_bitmap;
+    uint8_t region_col;
+    uint8_t region_row;
+    uint8_t region_w;
+    uint8_t region_h;
+    uint8_t region_bx;
+    uint8_t region_by;
 } grid;
 
-/* Every cell ch in attr, no overlays, and all of it to be sent: what the panel shows is
- * unknown. */
+/* Every cell ch in attr, no overlays, no region, and all of it to be sent: what the panel
+ * shows is unknown. */
 void grid_init(grid* g, uint8_t ch, uint8_t attr);
 /* Sends everything again on the next runs (e.g. after the panel was drawn by someone else). */
 void grid_invalidate(grid* g);
@@ -125,6 +148,20 @@ void grid_overlay_clear_all(grid* g);
  * the grid: 1. */
 int grid_overlay_same(const grid* g, uint32_t col, uint32_t row, const uint8_t mask[8],
                       uint8_t color);
+/* A pixel region: the w x h cells from (col, row) take their background, pixel for pixel,
+ * from the bitmap's cells from (bx, by) (in cells), instead of their background colour. Their
+ * glyphs' foreground and their overlays draw over it as anywhere else, so text and overlays
+ * stay possible on it; a blank glyph shows the bitmap alone. One region at a time: a new one
+ * replaces the last, and the cells either covers are sent again; the same one again sends
+ * nothing. Returns 0, or -1 when the rectangle is empty or leaves the grid or the bitmap
+ * (nothing changes). */
+int grid_region(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
+                const grid_bitmap* b, uint32_t bx, uint32_t by);
+/* No region: its cells are sent again in their background colour. */
+void grid_region_clear(grid* g);
+/* Pixels [x, x + n) of the bitmap's row y, as colours, into out (x + n <= b->w, y < b->h). */
+void grid_bitmap_row(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t n, uint8_t* out);
+
 /* Cells that differ from the panel (grid_next_run would send them), held rows included: what
  * a view that holds itself to a budget has spent of it so far. */
 uint32_t grid_pending(const grid* g);
@@ -139,7 +176,8 @@ void grid_hold(grid* g, uint32_t mask);
 int grid_next_run(grid* g, grid_run* run);
 /* A run's pixels into px: 8 rows of run->len * 8 pixels, top row first, as one LCD window
  * takes them. pal maps the 16 colours to the panel's pixel format. px is 4-byte aligned: two
- * pixels go in a 32-bit store. */
+ * pixels go in a 32-bit store. The region's cells in the run decode the bitmap's runs a pixel
+ * row at a time. */
 void grid_render_run(const grid* g, const grid_run* run, const uint16_t pal[16], uint16_t* px);
 
 #ifdef __cplusplus

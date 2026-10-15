@@ -17,6 +17,7 @@ add_library(sidou_live STATIC
     live_freq.c
     live_view.c
     logo.c
+    logo_bitmap.c
     midi_in.c
     midi_learn.c
     midi_map.c

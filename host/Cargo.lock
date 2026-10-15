@@ -657,6 +657,7 @@ dependencies = [
 name = "sidou-tests"
 version = "0.0.0"
 dependencies = [
+ "png",
  "residfp-sys",
  "sidou-sys",
  "sidou-tablegen",

@@ -55,6 +55,10 @@ typedef struct {
  * duty cycle sweeps every 4 frames (frames 4, 8, ...): odd frames change nothing. */
 extern const logo logo_pulse_train;
 
+/* Cracktro Chrome's scene, 240 x 240 pixels (app/logo_bitmap.c, generated from
+ * assets/logo/cracktro-chrome.png). */
+extern const grid_bitmap logo_cracktro_chrome_bitmap;
+
 /* The logo the boot and About show: Pulse Train until the user picks one. */
 extern const logo* const logo_default;
 

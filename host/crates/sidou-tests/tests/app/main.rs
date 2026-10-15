@@ -15,6 +15,7 @@ mod live_freq;
 mod live_instrument;
 mod live_view;
 mod logo;
+mod logo_bitmap;
 mod midi_in;
 mod midi_learn;
 mod midi_map;
@@ -146,29 +147,27 @@ pub fn freq_table() -> [u16; 128] {
     unsafe { live_freq_table }
 }
 
-/// The panel as palette indexes, 240 x 240, from the composed grid: each cell's glyph in its
-/// colours and its overlay over it, as grid_render_run draws it.
+/// The panel as palette indexes, 240 x 240, from the composed grid: each row of cells as
+/// grid_render_run draws it (glyphs, overlays and the pixel region), with the palette mapping
+/// each colour to itself.
 pub fn pixels(g: &sidou_sys::grid) -> Vec<u8> {
     let cols = GRID_COLS as usize;
     let w = cols * 8;
+    let pal: [u16; 16] = std::array::from_fn(|c| c as u16);
     let mut out = vec![0u8; w * w];
-    for i in 0..cols * cols {
-        let (cx, cy) = (i % cols, i / cols);
-        let glyph = unsafe { font_glyphs }[usize::from(g.ch[i])];
-        let (fg, bg) = (g.attr[i] & 15, g.attr[i] >> 4);
-        let ovl = usize::from(g.ovl[i]);
-        for y in 0..8 {
-            for x in 0..8 {
-                let bit = 0x80 >> x;
-                let c = if ovl != 0 && g.ovl_mask[ovl - 1][y] & bit != 0 {
-                    g.ovl_color[ovl - 1]
-                } else if glyph[y] & bit != 0 {
-                    fg
-                } else {
-                    bg
-                };
-                out[(cy * 8 + y) * w + cx * 8 + x] = c;
-            }
+    // 4-byte aligned, as grid_render_run takes it.
+    let mut buf = vec![0u32; GRID_RUN_PIXELS as usize / 2];
+    for row in 0..cols {
+        let run = grid_run {
+            row: row as u8,
+            col: 0,
+            len: cols as u8,
+        };
+        let px = buf.as_mut_ptr().cast::<u16>();
+        unsafe { grid_render_run(g, &run, pal.as_ptr(), px) };
+        let px = unsafe { std::slice::from_raw_parts(px, GRID_RUN_PIXELS as usize) };
+        for (o, &p) in out[row * 8 * w..(row + 1) * 8 * w].iter_mut().zip(px) {
+            *o = p as u8;
         }
     }
     out

@@ -95,6 +95,8 @@ impl Screen {
                     let a = g.attr[i];
                     let mut c = if f.pixel(g.ch[i], x, y) {
                         pal[usize::from(a & 15)]
+                    } else if let Some((bx, by)) = in_region(g, col, row) {
+                        pal[usize::from(bitmap_px(g.region_bitmap, bx * 8 + x, by * 8 + y))]
                     } else {
                         pal[usize::from(a >> 4)]
                     };
@@ -106,6 +108,36 @@ impl Screen {
             }
         }
         out
+    }
+}
+
+/// The bitmap cell under (col, row), if the grid's pixel region covers it.
+fn in_region(g: &grid, col: usize, row: usize) -> Option<(usize, usize)> {
+    let (c0, r0) = (usize::from(g.region_col), usize::from(g.region_row));
+    let inside = !g.region_bitmap.is_null()
+        && (c0..c0 + usize::from(g.region_w)).contains(&col)
+        && (r0..r0 + usize::from(g.region_h)).contains(&row);
+    inside.then(|| {
+        (
+            usize::from(g.region_bx) + col - c0,
+            usize::from(g.region_by) + row - r0,
+        )
+    })
+}
+
+/// Pixel (x, y) of a grid_bitmap, decoded here from its runs rather than by app/grid.c.
+fn bitmap_px(b: *const grid_bitmap, x: usize, y: usize) -> u8 {
+    let b = unsafe { &*b };
+    assert!(x < usize::from(b.w) && y < usize::from(b.h));
+    let mut p = unsafe { b.data.add(usize::from(*b.rows.add(y))) };
+    let mut at = 0;
+    loop {
+        let run = unsafe { *p };
+        at += usize::from(run >> 4) + 1;
+        if x < at {
+            return run & 15;
+        }
+        p = unsafe { p.add(1) };
     }
 }
 
@@ -517,4 +549,239 @@ fn every_glyph_in_every_colour_renders_with_and_without_an_overlay() {
         s.drain();
         assert!(s.panel == s.expected(), "pass {pass}: the panel differs");
     }
+}
+
+/// A bitmap the tests make: its runs, kept alive as long as the grid_bitmap pointing at them.
+struct TestBitmap {
+    enc: Box<sidou_tests::logo::Encoded>,
+    b: Box<grid_bitmap>,
+}
+
+impl TestBitmap {
+    fn new(img: &sidou_tests::logo::Image) -> Self {
+        let enc = Box::new(sidou_tests::logo::encode(img));
+        let b = Box::new(grid_bitmap {
+            w: img.w as u16,
+            h: img.h as u16,
+            rows: enc.rows.as_ptr(),
+            data: enc.data.as_ptr(),
+        });
+        TestBitmap { enc, b }
+    }
+
+    /// w x h cells of random colours in random runs.
+    fn random(rng: &mut Rng, w: usize, h: usize) -> Self {
+        let mut px = Vec::with_capacity(w * h * 64);
+        while px.len() < w * h * 64 {
+            let c = rng.below(16) as u8;
+            px.extend(std::iter::repeat_n(c, 1 + rng.below(40) as usize));
+        }
+        px.truncate(w * h * 64);
+        Self::new(&sidou_tests::logo::Image {
+            w: w * 8,
+            h: h * 8,
+            px,
+        })
+    }
+}
+
+fn region(
+    s: &mut Screen,
+    at: (u32, u32),
+    size: (u32, u32),
+    b: &grid_bitmap,
+    from: (u32, u32),
+) -> i32 {
+    unsafe { grid_region(&mut *s.g, at.0, at.1, size.0, size.1, b, from.0, from.1) }
+}
+
+fn scene() -> &'static grid_bitmap {
+    unsafe { &logo_cracktro_chrome_bitmap }
+}
+
+#[test]
+fn a_full_screen_region_shows_its_bitmap_pixel_for_pixel() {
+    let mut s = Screen::new();
+    assert_eq!(region(&mut s, (0, 0), (30, 30), scene(), (0, 0)), 0);
+    s.drain();
+    let img = sidou_tests::logo::load();
+    let pal = unsafe { grid_palette };
+    let want: Vec<u16> = img.px.iter().map(|&c| pal[usize::from(c)]).collect();
+    assert!(
+        s.panel == want,
+        "the panel is not assets/logo/cracktro-chrome.png"
+    );
+}
+
+#[test]
+fn a_region_shows_any_cells_of_its_bitmap_and_the_grid_around_it() {
+    let mut s = Screen::new();
+    s.text(0, 12, "BELOW THE REGION", attr(GRID_WHITE, GRID_RED));
+    assert_eq!(region(&mut s, (3, 5), (20, 6), scene(), (7, 10)), 0);
+    s.drain();
+    assert!(s.panel == s.expected());
+    let img = sidou_tests::logo::load();
+    let pal = unsafe { grid_palette };
+    for y in 0..48 {
+        for x in 0..160 {
+            assert_eq!(
+                s.panel[(40 + y) * W + 24 + x],
+                pal[usize::from(img.px[(80 + y) * 240 + 56 + x])],
+                "({x}, {y}) of the region"
+            );
+        }
+    }
+    // Below it, the row's own text on red.
+    assert_eq!(s.panel[(12 * 8 + 7) * W], pal[GRID_RED as usize]); // text leaves row 7 blank
+}
+
+#[test]
+fn text_and_overlays_draw_over_a_region() {
+    let mut s = Screen::new();
+    assert_eq!(region(&mut s, (0, 0), (30, 30), scene(), (0, 0)), 0);
+    s.drain();
+    // The glyph's foreground over the bitmap; its background colour does not show.
+    s.text(2, 28, "V1.2.3", attr(GRID_WHITE, GRID_RED));
+    assert_eq!(
+        s.overlay(15, 12, [0xff, 0, 0x81, 0, 0x18, 0, 0x3c, 0], GRID_GREEN),
+        0
+    );
+    assert_eq!(s.runs(), vec![(12, 15, 1), (28, 2, 6)]);
+    assert!(s.panel == s.expected());
+    let pal = unsafe { grid_palette };
+    let f = font::load();
+    // Red, the text's background colour, only where the scene has it.
+    let img = sidou_tests::logo::load();
+    let red = pal[GRID_RED as usize];
+    assert!((0..W * W).all(|i| s.panel[i] != red || img.px[i] == GRID_RED as u8));
+    for y in 0..8 {
+        for x in 0..8 {
+            let p = s.panel[(28 * 8 + y) * W + 2 * 8 + x];
+            if f.pixel(b'V', x, y) {
+                assert_eq!(p, pal[GRID_WHITE as usize]);
+            }
+        }
+    }
+}
+
+#[test]
+fn a_region_is_sent_when_it_changes_and_only_then() {
+    let mut s = Screen::new();
+    assert_eq!(region(&mut s, (4, 10), (20, 8), scene(), (0, 9)), 0);
+    let rows: Vec<(u8, u8, u8)> = (10..18).map(|r| (r, 4, 20)).collect();
+    assert_eq!(s.runs(), rows, "each row of it one run");
+    assert_eq!(region(&mut s, (4, 10), (20, 8), scene(), (0, 9)), 0);
+    assert_eq!(s.runs(), vec![], "the same region again");
+    // Its cells as they were (a view composing over it every frame).
+    s.put(4, 10, b' ', attr(GRID_LIGHT_BLUE, GRID_BLUE));
+    assert_eq!(s.runs(), vec![]);
+    // Other cells of the bitmap: every cell again.
+    assert_eq!(region(&mut s, (4, 10), (20, 8), scene(), (1, 9)), 0);
+    assert_eq!(s.runs(), rows);
+    assert!(s.panel == s.expected());
+    // Moved: the cells it left and the cells it covers.
+    assert_eq!(region(&mut s, (6, 11), (20, 8), scene(), (1, 9)), 0);
+    let mut runs = s.runs();
+    runs.sort_unstable(); // the scan goes on from where it stopped
+    let moved: Vec<(u8, u8, u8)> = (10..19)
+        .map(|r| match r {
+            10 => (r, 4, 20),
+            18 => (r, 6, 20),
+            _ => (r, 4, 22),
+        })
+        .collect();
+    assert_eq!(runs, moved);
+    assert!(s.panel == s.expected());
+    // Gone: its cells show the grid again.
+    unsafe { grid_region_clear(&mut *s.g) };
+    let mut runs = s.runs();
+    runs.sort_unstable();
+    assert_eq!(runs, (11..19).map(|r| (r, 6, 20)).collect::<Vec<_>>());
+    assert!(s.panel == s.expected());
+    unsafe { grid_region_clear(&mut *s.g) };
+    assert_eq!(s.runs(), vec![], "no region to clear");
+    assert_eq!(unsafe { grid_pending(&*s.g) }, 0);
+}
+
+#[test]
+fn a_region_outside_the_grid_or_its_bitmap_is_refused() {
+    let mut rng = Rng(7);
+    let small = TestBitmap::random(&mut rng, 4, 3);
+    let mut s = Screen::new();
+    for (at, size, from) in [
+        ((27, 0), (4, 3), (0, 0)),  // past the grid's right edge
+        ((0, 28), (4, 3), (0, 0)),  // past its bottom
+        ((0, 0), (5, 3), (0, 0)),   // wider than the bitmap
+        ((0, 0), (4, 3), (0, 1)),   // past the bitmap's bottom
+        ((0, 0), (0, 3), (0, 0)),   // empty
+        ((30, 30), (1, 1), (0, 0)), // outside
+    ] {
+        assert_eq!(
+            region(&mut s, at, size, &small.b, from),
+            -1,
+            "{at:?} {size:?} {from:?}"
+        );
+        assert_eq!(s.runs(), vec![]);
+    }
+    assert_eq!(region(&mut s, (26, 27), (4, 3), &small.b, (0, 0)), 0);
+    assert_eq!(s.runs().len(), 3);
+    assert!(s.panel == s.expected());
+    // A refused region leaves the one in place.
+    assert_eq!(region(&mut s, (27, 27), (4, 3), &small.b, (0, 0)), -1);
+    assert_eq!(s.runs(), vec![]);
+    assert!(s.panel == s.expected());
+}
+
+#[test]
+fn random_regions_text_and_overlays_end_on_the_composed_frame() {
+    let mut rng = Rng(0xb17_3a95);
+    let bitmaps = [
+        TestBitmap::random(&mut rng, 30, 30),
+        TestBitmap::random(&mut rng, 7, 5),
+        TestBitmap::random(&mut rng, 1, 1),
+    ];
+    let mut s = Screen::new();
+    for frame in 0..300 {
+        for _ in 0..rng.below(40) {
+            let (c, r) = (rng.below(30), rng.below(30));
+            match rng.below(12) {
+                0 => {
+                    let b = &bitmaps[rng.below(3) as usize];
+                    let (bw, bh) = (u32::from(b.b.w) / 8, u32::from(b.b.h) / 8);
+                    let (w, h) = (1 + rng.below(bw), 1 + rng.below(bh));
+                    let from = (rng.below(bw - w + 1), rng.below(bh - h + 1));
+                    let ok = c + w <= 30 && r + h <= 30;
+                    assert_eq!(
+                        region(&mut s, (c, r), (w, h), &b.b, from),
+                        if ok { 0 } else { -1 }
+                    );
+                }
+                1 => unsafe { grid_region_clear(&mut *s.g) },
+                2 => {
+                    let m = rng.next().to_le_bytes();
+                    let _ = s.overlay(
+                        c,
+                        r,
+                        [m[0], m[1], m[2], m[3], m[3], m[2], m[1], m[0]],
+                        rng.below(16),
+                    );
+                }
+                3 => s.clear_overlay(c, r),
+                4 => s.put(c, r, b' ', rng.below(256) as u8),
+                _ => s.put(c, r, (rng.below(64) as u8) + b' ', rng.below(256) as u8),
+            }
+        }
+        for _ in 0..rng.below(20) {
+            if s.next().is_none() {
+                break;
+            }
+        }
+        if frame % 50 == 49 {
+            s.drain();
+            assert!(s.panel == s.expected(), "frame {frame}");
+        }
+    }
+    s.drain();
+    assert!(s.panel == s.expected());
+    let _ = &bitmaps[0].enc;
 }

@@ -13,6 +13,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+png = "0.18"
 residfp-sys = { path = "../residfp-sys" }
 sidou-sys = { path = "../sidou-sys" }
 sidou-tablegen = { path = "../sidou-tablegen" }

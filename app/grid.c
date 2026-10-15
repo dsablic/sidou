@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "grid.h"
 
+#include <stddef.h>
+
 #include "font.h"
 
 /* docs/art/README.md: the C64 colours after Pepto's measurements, as RGB565. */
@@ -43,6 +45,9 @@ void grid_init(grid* g, uint8_t ch, uint8_t attr) {
     g->hold = 0;
     g->scan_row = 0;
     g->scan_col = 0;
+    g->region_bitmap = NULL;
+    g->region_col = g->region_row = g->region_w = g->region_h = 0;
+    g->region_bx = g->region_by = 0;
     grid_invalidate(g);
 }
 
@@ -202,6 +207,99 @@ int grid_overlay_same(const grid* g, uint32_t col, uint32_t row, const uint8_t m
     return 1;
 }
 
+/* The region's cells, to be sent again. */
+static void region_stale(grid* g) {
+    for (uint32_t r = g->region_row; r < (uint32_t)g->region_row + g->region_h; r++) {
+        for (uint32_t c = g->region_col; c < (uint32_t)g->region_col + g->region_w; c++) {
+            mark_stale(g, r * GRID_COLS + c);
+        }
+    }
+}
+
+int grid_region(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
+                const grid_bitmap* b, uint32_t bx, uint32_t by) {
+    uint32_t bw = b ? b->w / GRID_CELL_PX : 0u;
+    uint32_t bh = b ? b->h / GRID_CELL_PX : 0u;
+    if (!b || w == 0 || h == 0 || col >= GRID_COLS || row >= GRID_ROWS ||
+        w > GRID_COLS - col || h > GRID_ROWS - row || bx > bw || w > bw - bx || by > bh ||
+        h > bh - by) {
+        return -1;
+    }
+    if (g->region_bitmap == b && g->region_col == col && g->region_row == row &&
+        g->region_w == w && g->region_h == h && g->region_bx == bx && g->region_by == by) {
+        return 0;
+    }
+    if (g->region_bitmap) {
+        region_stale(g);
+    }
+    g->region_bitmap = b;
+    g->region_col = (uint8_t)col;
+    g->region_row = (uint8_t)row;
+    g->region_w = (uint8_t)w;
+    g->region_h = (uint8_t)h;
+    g->region_bx = (uint8_t)bx;
+    g->region_by = (uint8_t)by;
+    region_stale(g);
+    return 0;
+}
+
+void grid_region_clear(grid* g) {
+    if (g->region_bitmap) {
+        region_stale(g);
+        g->region_bitmap = NULL;
+    }
+}
+
+/* The run that holds pixel x of row y, and how many pixels of it are left from x on. */
+static const uint8_t* bitmap_seek(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t* left) {
+    const uint8_t* p = b->data + b->rows[y];
+    uint32_t end = (uint32_t)(*p >> 4) + 1u; /* the pixel after the run */
+    while (x >= end) {
+        end += (uint32_t)(*++p >> 4) + 1u;
+    }
+    *left = end - x;
+    return p;
+}
+
+void grid_bitmap_row(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t n, uint8_t* out) {
+    if (!n) {
+        return;
+    }
+    uint32_t left;
+    const uint8_t* p = bitmap_seek(b, x, y, &left);
+    for (;;) {
+        uint8_t c = *p & 15u;
+        uint32_t k = left < n ? left : n;
+        n -= k;
+        while (k--) {
+            *out++ = c;
+        }
+        if (!n) {
+            return;
+        }
+        left = (uint32_t)(*++p >> 4) + 1u;
+    }
+}
+
+/* As grid_bitmap_row, as the panel's pixels. */
+static void bitmap_pixels(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t n,
+                          const uint16_t pal[16], uint16_t* out) {
+    uint32_t left;
+    const uint8_t* p = bitmap_seek(b, x, y, &left);
+    for (;;) {
+        uint16_t c = pal[*p & 15u];
+        uint32_t k = left < n ? left : n;
+        n -= k;
+        while (k--) {
+            *out++ = c;
+        }
+        if (!n) {
+            return;
+        }
+        left = (uint32_t)(*++p >> 4) + 1u;
+    }
+}
+
 uint32_t grid_pending(const grid* g) {
     uint32_t n = 0;
     for (uint32_t r = 0; r < GRID_ROWS; r++) {
@@ -276,11 +374,71 @@ typedef uint32_t __attribute__((may_alias)) pixel_pair;
 static const uint32_t PAIR_MASK[4] = {PAIR(0u, 0u), PAIR(0u, 0xFFFFu), PAIR(0xFFFFu, 0u),
                                       PAIR(0xFFFFu, 0xFFFFu)};
 
+/* The region's cells [k0, k1) of a run (k counted from the run's first cell): the bitmap's
+ * pixels, then the glyphs' foreground and the overlays over them. */
+static void render_region(const grid* g, const grid_run* run, uint32_t k0, uint32_t k1,
+                          const uint16_t pal[16], uint16_t* px) {
+    const grid_bitmap* b = g->region_bitmap;
+    uint32_t w = run->len * GRID_CELL_PX; /* pixels a row */
+    uint32_t x = (g->region_bx + run->col + k0 - g->region_col) * GRID_CELL_PX;
+    uint32_t y = (g->region_by + run->row - g->region_row) * GRID_CELL_PX;
+    for (uint32_t r = 0; r < 8u; r++) {
+        bitmap_pixels(b, x, y + r, (k1 - k0) * GRID_CELL_PX, pal, px + r * w + k0 * GRID_CELL_PX);
+    }
+    uint32_t i = run->row * GRID_COLS + run->col + k0;
+    for (uint32_t k = k0; k < k1; k++, i++) {
+        const uint8_t* glyph = font_glyphs[g->ch[i]];
+        uint16_t fg = pal[g->attr[i] & 15u];
+        static const uint8_t none[8];
+        const uint8_t* mask = none;
+        uint16_t oc = 0;
+        if (g->ovl[i]) {
+            uint32_t s = g->ovl[i] - 1u;
+            mask = g->ovl_mask[s];
+            oc = pal[g->ovl_color[s] & 15u];
+        }
+        uint16_t* o = px + k * GRID_CELL_PX;
+        for (uint32_t r = 0; r < 8u; r++, o += w) {
+            uint32_t bits = glyph[r];
+            uint32_t over = mask[r];
+            if (!(bits | over)) {
+                continue; /* the bitmap alone: most of a picture's cells */
+            }
+            for (uint32_t j = 0; j < 8u; j++) {
+                uint32_t bit = 0x80u >> j;
+                if (over & bit) {
+                    o[j] = oc;
+                } else if (bits & bit) {
+                    o[j] = fg;
+                }
+            }
+        }
+    }
+}
+
 void grid_render_run(const grid* g, const grid_run* run, const uint16_t pal[16], uint16_t* px) {
     uint32_t stride = run->len * GRID_CELL_PX / 2u; /* pairs a pixel row */
     uint32_t i = run->row * GRID_COLS + run->col;
     pixel_pair* out = (pixel_pair*)(void*)px;
+    /* The region's cells in the run, [k0, k1), counted from its first cell: none if k0 == k1. */
+    uint32_t k0 = 0;
+    uint32_t k1 = 0;
+    if (g->region_bitmap && run->row >= g->region_row &&
+        run->row < (uint32_t)g->region_row + g->region_h) {
+        uint32_t c0 = g->region_col;
+        uint32_t c1 = c0 + g->region_w;
+        uint32_t a = run->col > c0 ? run->col : c0;
+        uint32_t e = (uint32_t)run->col + run->len < c1 ? (uint32_t)run->col + run->len : c1;
+        if (a < e) {
+            k0 = a - run->col;
+            k1 = e - run->col;
+            render_region(g, run, k0, k1, pal, px);
+        }
+    }
     for (uint32_t k = 0; k < run->len; k++, i++) {
+        if (k >= k0 && k < k1) {
+            continue;
+        }
         const uint8_t* glyph = font_glyphs[g->ch[i]];
         uint32_t fg = pal[g->attr[i] & 15u];
         uint32_t bg = pal[g->attr[i] >> 4];
