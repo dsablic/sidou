@@ -139,10 +139,12 @@ static uint32_t length(const char* s) {
     return n;
 }
 
-/* s right-aligned to end before column end. */
+/* s right-aligned to end before column end; a text longer than end starts at column 0 (put
+ * drops what falls past the grid). */
 static void text_right(chip_view_canvas* c, uint32_t end, uint32_t row, const char* s,
                        uint8_t attr) {
-    text(c, end - length(s), row, s, attr);
+    uint32_t n = length(s);
+    text(c, n <= end ? end - n : 0u, row, s, attr);
 }
 
 /* value (0..999) right-aligned in the 3 cells before column end. */

@@ -1979,11 +1979,20 @@ const CHIP_WORST_POLL: u64 = 38_000;
 const CHIP_INPUT: u64 = 220;
 const CHIP_PASS: u64 = 49_000;
 /// ALGORITHM on the chip steps the profile: its pass is the chip reset (the live tick prepares
-/// the spare chip, decision record 0006, "Cost": up to 0.50 M instructions for WORN at full
-/// character), as the FX button's and CC 85's are. It is the one input on CHIP over the poll
-/// allowance, by design: a reset releases the held notes anyway. Measured 362.6k for a step
-/// clockwise with the page's character and 313.5k back; bounded about 10 % above.
+/// the spare chip, decision record 0006, "Cost"), as the FX button's and CC 85's are. A reset
+/// is the one input over the poll allowance, by design: it is a deliberate step the player
+/// takes, at most one a 10 ms tick (requests in between coalesce), MIDI waits in its buffer
+/// rather than being dropped, and the FX button and CC 85 have always cost the same. A note
+/// arriving during the pass waits for it (about 2 ms) and the drain after it: about 5 ms,
+/// against decision record 0005's 3.4 ms, only while the profile or model steps.
+/// docs/TODO.md: split the spare chip's preparation over ticks (M2).
+///
+/// CHIP_PROFILE_PASS: R4AR to the 8580 and back at the page's character (CHIP_STATE), measured
+/// 362.6k and 313.5k. CHIP_RESET_PASS: every reset at full character (age, DAC, thump and
+/// bleed 127), measured onto WORN 471.5k by ALGORITHM, 471.4k by CC 85, 470.7k by FX (R2 and
+/// R3 471.2k, R4AR 313.5k, the 8580 362.6k): the worst case. Both about 10 % above.
 const CHIP_PROFILE_PASS: u64 = 400_000;
+const CHIP_RESET_PASS: u64 = 520_000;
 
 /// The CHIP view idle, a knob's detent, and the busiest frames: every frame within
 /// CHIP_VIEW_FRAME_CELLS and the SPI budget, the main loop's cost a frame and its busiest
@@ -2105,6 +2114,79 @@ fn chip_input_holds_the_main_loop_within_the_poll_allowance() {
             ));
         }
     }
+    assert!(over.is_empty(), "{over:#?}");
+}
+
+/// The profile live has (live.profile, a SID_CHIP_*).
+fn profile(m: &mut Machine, fw: &Firmware) -> u8 {
+    let l = m
+        .soc
+        .read32(fw.symbol("ui") + sidou_sys::ilp32::views::l as u32);
+    m.soc.read8(l + sidou_sys::ilp32::live::profile as u32)
+}
+
+/// Every way to reset the chip, at full character (age, DAC, thump and bleed at 127, settled):
+/// ALGORITHM on CHIP onto every profile, the FX button both ways, and CC 85 onto every profile;
+/// the busiest main-loop pass after each within CHIP_RESET_PASS.
+#[test]
+fn chip_resets_at_full_character_stay_within_their_bound() {
+    use sidou_sys::{SID_CHIP_6581_R2, SID_CHIP_6581_R4AR, SID_CHIP_6581_WORN, SID_CHIP_8580_R5};
+    let Some((_, fw)) = fixture("the chip reset test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    m.midi(&[0xB0, 86, 127, 0xB0, 87, 127, 0xB0, 89, 127, 0xB0, 90, 127]);
+    m.run_ms(2500); // the DACs' ramp, the longest, takes 1.72 s
+    open_chip(&mut m, &fw);
+    assert_eq!(character(&mut m, &fw), [127; 4]);
+    assert_eq!(u32::from(profile(&mut m, &fw)), SID_CHIP_6581_R4AR);
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let mut costs: Vec<(String, u64)> = Vec::new();
+    let mut run = |m: &mut Machine, what: String, want: u32, act: &dyn Fn(&mut Machine)| {
+        let (_, pass) = start_cost(m, 500, act);
+        assert_eq!(u32::from(profile(m, &fw)), want, "{what}");
+        println!("chip reset, {what}: the busiest pass {pass}");
+        costs.push((what, pass));
+    };
+    let r3 = SID_CHIP_6581_R4AR - 1;
+    // ALGORITHM: R4AR up to WORN, then down to R2.
+    for (steps, want) in [
+        (1, SID_CHIP_8580_R5),
+        (1, SID_CHIP_6581_WORN),
+        (-1, SID_CHIP_8580_R5),
+        (-1, SID_CHIP_6581_R4AR),
+        (-1, r3),
+        (-1, SID_CHIP_6581_R2),
+    ] {
+        run(
+            &mut m,
+            format!("ALGORITHM {steps:+} to profile {want}"),
+            want,
+            &|m| m.turn(ALGORITHM, steps),
+        );
+    }
+    // CC 85 (0..4 over 0..127): onto each profile, ending on WORN.
+    for want in [
+        r3,
+        SID_CHIP_6581_R4AR,
+        SID_CHIP_8580_R5,
+        SID_CHIP_6581_R2,
+        SID_CHIP_6581_WORN,
+    ] {
+        let v = (want * 127).div_ceil(4) as u8;
+        run(&mut m, format!("CC 85 {v} to profile {want}"), want, &|m| {
+            m.midi(&[0xB0, 85, v])
+        });
+    }
+    // FX: from WORN to the 8580, and back to the last 6581 profile, WORN.
+    for want in [SID_CHIP_8580_R5, SID_CHIP_6581_WORN] {
+        run(&mut m, format!("FX to profile {want}"), want, &|m| {
+            press(m, FX)
+        });
+    }
+    let worst = costs.iter().max_by_key(|c| c.1).unwrap();
+    println!("chip reset, the worst: {} ({})", worst.1, worst.0);
+    let over: Vec<_> = costs.iter().filter(|c| c.1 >= CHIP_RESET_PASS).collect();
     assert!(over.is_empty(), "{over:#?}");
 }
 

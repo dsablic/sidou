@@ -198,9 +198,10 @@ All notable changes are documented here. The format follows
   focus between the chip and the slots, ALGORITHM steps the profile or the slot's algorithm,
   K1..K4 turn the focused section's four values. `panel_knob_param` follows the view that
   shows, so MIDI learn binds the knob the CHIP view turns (AGE for K1 on the chip) and MIDI out
-  sends its CC. MIDI's changes show at the next frame. The page is built in a canvas and copied
-  within 200 cells a frame (idle 6.3k instructions a frame, nothing sent; the busiest frame
-  17.6 ms of SPI).
+  sends its CC. MIDI's changes show at the next frame. While MIDI learn's frame shows over it,
+  SELECT and ALGORITHM still move the focus and step its choice, so K1..K4 pick on the page
+  the focus gives. The page is built in a canvas and copied within 200 cells a frame (idle
+  6.3k instructions a frame, nothing sent; the busiest frame 17.6 ms of SPI).
 
 ### Changed
 - The menu's CHIP item opens the CHIP view; the 6581/8580 choice it held is the view's profile
@@ -218,11 +219,17 @@ M1 (design doc section 14: sound) is done on `main`, with these exceptions.
   and MIDI learn (M1d); and M1e's art direction page, font, widget and transition framework,
   boot, menus, About cracktro, LIVE's scopes, envelopes and VU, the title cards and SCENE's
   first five pieces (ahead of M2's SCENE view).
-- **Moved to M2:** chip B, and with it the CHIP view's B half and M1e Task 6's UI sounds on its
-  spare voice; the character's expert layer (every analogue parameter as its own control and
-  NRPN); everything that needs storage: user-saved profiles, MIDI learn's mappings, the CARDS
-  option, and the full boot once after an install; and About's music on the SID (design doc
-  section 7), which M1e's plan left out and needs M2's song player.
+- **Deferred to M2 with chip B:** chip B was never in the design's M1 list; the CHIP view's B
+  half and M1e Task 6's UI sounds on its spare voice wait for it.
+- **Moved to M2:** the character's expert layer (every analogue parameter as its own control
+  and NRPN); everything that needs storage: user-saved profiles, MIDI learn's mappings, the
+  CARDS option, and the full boot once after an install; and About's music on the SID (design
+  doc section 7), which M1e's plan left out and needs M2's song player.
+- **Kept as an exception:** a chip reset (a profile or model step: the CHIP view's ALGORITHM,
+  the FX button, CC 25, CC 85) runs in one main-loop pass of up to 471.5k instructions (worn
+  at full character), about four times the latency gate's poll allowance: a note arriving
+  then waits about 5 ms instead of 3.4. It is a deliberate step, at most one a tick, and
+  MIDI waits in its buffer meanwhile; splitting it over ticks is in `docs/TODO.md` for M2.
 - **On hardware only:** the whole checklist in `docs/hardware-test.md` is still to be run on a
   unit (install and recovery, the printed labels against the ids, SAVE's id among them, the
   LCD, the audio, TRS and USB MIDI, MIDI out, the latency's feel, the boot guard), and the open

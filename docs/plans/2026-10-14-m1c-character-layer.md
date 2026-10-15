@@ -251,8 +251,10 @@ THE CHIP's title card:
 - **Budget:** built in a canvas and copied within 200 cells a frame, as SCENE; idle 6.3k
   instructions a frame and nothing sent; the busiest frames 17.6 ms of SPI, the busiest
   `ui_poll` 34.2k; an input at most 198 instructions, the busiest pass after one 44.5k
-  (docs/art/README.md, "CHIP"). A profile step's pass is the chip reset, 362.6k, as the FX
-  button's: bounded on its own, outside the 120k poll allowance.
+  (docs/art/README.md, "CHIP"). A profile step's pass is the chip reset, as the FX button's
+  and CC 85's: 362.6k at the page's character, 471.5k at worst (onto worn at full
+  character), bounded at 520k outside the 120k poll allowance, an exception recorded in
+  decision record 0006 ("Cost"); splitting it over ticks is in docs/TODO.md for M2.
 - **Tests:** host state-machine and round-trip tests (`tests/app/chip_view.rs`), fm1-emu
   goldens of the four pages and THE CHIP, a CC and K1 there and back, the costs, and K1 on the
   device turning the chip's age, the audio bit-exact with the host (`character.rs`).

@@ -14,7 +14,8 @@
  * - HOME: cancels.
  * Everything else goes on as usual: the note keys play, SCL selects the slot whose controls
  * EDIT + K1..K4 then pick, OCT and FX work; on the CHIP view, SELECT moves the focus and
- * ALGORITHM steps its choice under the frame.
+ * ALGORITHM steps its choice under the frame (the view's input passes them on to CHIP, and to
+ * no other view: the menu's ALGORITHM would open a view over the frame).
  * The frame says what to do next: TURN A KNOB, then <PARAM> <- SEND A CC. When learn ends (a
  * CC came over MIDI, the button cleared or forgot, HOME, the timeout) the view closes and a
  * toast says how: LEARNED CC 21 -> CUTOFF, and so on. A CC ends learn in the main loop, so the

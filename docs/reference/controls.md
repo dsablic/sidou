@@ -26,7 +26,8 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
 2. **global:** HOME opens the menu from LIVE and goes back one view anywhere else; SAVE
    opens MIDI learn over any view;
 3. **the view on top:** the menu and CHIP take SELECT and ALGORITHM, SCENE takes SELECT;
-   LIVE, the status screen, the glyph sheet and About take nothing;
+   LIVE, the status screen, the glyph sheet and About take nothing; MIDI learn's frame passes
+   them to the CHIP view under it, and to no other;
 4. **the panel:** everything else plays the instrument as below, in every view. K1..K4 turn
    the page of the view that shows: CHIP's focused section on the CHIP view (on top or under
    MIDI learn's frame), LIVE's knobs in every other view.
@@ -102,7 +103,8 @@ frames show it.
 The slot in focus is the selected slot, the one SCL selects and the EDIT shortcut turns:
 SELECT onto a slot selects it (and the toast says so, SLOT MOD), and SCL on a slot moves the
 focus with it. A profile changes at the next 10 ms tick, as its CC does (a chip reset: held
-notes are released); the model follows it, and the FX button still toggles the model. The
+notes attack again on the new chip); the model follows it, and the FX button still toggles the
+model. The
 character's controls glide, as from MIDI ([Chip character](#chip-character)). Everything else
 plays as on LIVE: the note keys, MASTER, OCT-/OCT+, FX, SAVE (MIDI learn, which picks the
 parameter K1..K4 turn on the page: AGE for K1 on the chip), and HOME back to the menu. A change
@@ -177,8 +179,8 @@ and measurements: [decision record 0006](../decisions/0006-chip-profiles.md)):
 | Output thump | 89 | 2/3 | 0..127: a volume change steps the output, as the 6581's operating point does |
 | Filter bleed | 90 | 2/4 | 0..127: the unfiltered voices also reach the filter, up to half |
 
-A profile is a chip and a model: changing it resets the chip (held notes are released, as
-a model change does), and the model follows it. The model (CC 25, the FX button) selects
+A profile is a chip and a model: changing it resets the chip (held notes attack again on the
+new chip, as at a model change), and the model follows it. The model (CC 25, the FX button) selects
 the 8580 R5, or goes back to the last 6581 profile chosen. The four controls change the
 playing chip without a reset, and glide there rather than jump, so they don't click: from
 the next 10 ms tick, age and thump take 0.32 s from 0 to 127, the bleed 1.27 s, the DACs
@@ -269,7 +271,8 @@ Any knob's parameter can follow a CC of your choice, from a controller on TRS or
    CUTOFF, the parameter jumps to the controller's value, and from then on follows it.
 
 While the frame shows, the note keys, OCT-/OCT+, FX, SCL, ENV and EDIT work as usual, and on
-the CHIP view SELECT and ALGORITHM.
+the CHIP view SELECT and ALGORITHM (K1..K4 then pick on the page the focus gives). Over the menu
+and SCENE, SELECT and ALGORITHM do nothing while it shows.
 
 - **Cancel:** HOME (it closes the frame and opens nothing), or 10 s without a step (each
   step restarts the time). A cancelled learn changes nothing.

@@ -557,9 +557,10 @@ The busiest `ui_poll` is a build of the page and the scan of its 900 cells. SELE
 ALGORITHM and a knob cost the input's call at most 198 instructions, and the busiest main-loop
 pass after one 44.5k (SELECT from FX to the chip, three frames changing colour), within the
 latency gate's 120k poll allowance together. ALGORITHM on the chip, a profile step, is the
-exception: its pass is the chip reset (362.6k, decision record 0006, "Cost"), as the FX
-button's and CC 85's are, bounded on its own at 400k. RAM: the view's state 1,840 bytes, most
-of it the canvas.
+exception: its pass is the chip reset (decision record 0006, "Cost"), as the FX button's and
+CC 85's are. At the page's character a step to the 8580 costs 362.6k (bounded at 400k); the
+worst, onto WORN at full character, 471.5k (ALGORITHM; CC 85 471.4k, FX 470.7k), bounded at
+520k for all three. RAM: the view's state 1,840 bytes, most of it the canvas.
 
 ## SCENE
 

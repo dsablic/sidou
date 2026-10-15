@@ -503,8 +503,11 @@ SELECT, ALGORITHM):
   chip change), keeps every frame within 200 cells and the SPI budget and is
   bounded in instructions a frame and in its busiest `ui_poll`; SELECT,
   ALGORITHM and a knob on it, with the busiest main-loop pass after each,
-  stay within the poll allowance (compile-time ties); a CC changes the page's
-  row and K1 turns it back to its golden.
+  stay within the poll allowance (compile-time ties), but a profile step, whose
+  pass is the chip reset (bounded on its own); every chip reset at full
+  character (ALGORITHM onto each profile, the FX button both ways, CC 85 onto
+  each profile) stays within its bound, the worst onto worn; a CC changes the
+  page's row and K1 turns it back to its golden.
 
 The host tests cover the same machinery without the device:
 `tests/app/screen.rs` (the view stack, focus, routing, the capture, the
@@ -522,8 +525,8 @@ either logo, the SPI budget a frame and under the wipes), `widget.rs`
 `chip_view.rs` (the CHIP view: its page, the focus, the profile picker and the
 slots' algorithms, K1..K4 on the focused section through the view-aware
 `panel_knob_param` against what the panel turns, the EDIT shortcut in every view,
-MIDI learn binding a CHIP knob, MIDI out sending its CCs, MIDI's changes on the
-page, and a burst within the budget) and
+MIDI learn binding a CHIP knob, SELECT and ALGORITHM under learn's frame, MIDI
+out sending its CCs, MIDI's changes on the page, and a burst within the budget) and
 `learn_view.rs` (MIDI learn's frame, gesture, cancel, timeout and clearing),
 `scene.rs` (SCENE's pieces against models of their rules: rule 30, Langton's
 ants, the starfield's flight, the fire's and the plasma's bounds and

@@ -291,6 +291,23 @@ fn learn_opens_over_the_menu_and_closes_back_to_it() {
     assert_eq!(t.ui.top(), "MENU");
 }
 
+/// Over the menu, SELECT and ALGORITHM reach nothing: the menu's ALGORITHM would open a view
+/// over the frame (only the CHIP view takes them under it, `chip_view.rs`).
+#[test]
+fn select_and_algorithm_reach_nothing_over_the_menu() {
+    let mut t = Learn::new();
+    t.ui.press(PANEL_BTN_HOME);
+    t.ui.settle();
+    let cursor = t.ui.v.home.cursor;
+    t.ui.press(SAVE);
+    t.ui.turn(PANEL_ENC_SELECT, 1);
+    t.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(t.ui.top(), "LEARN");
+    assert_eq!(t.ui.v.home.cursor, cursor);
+    t.ui.press(PANEL_BTN_HOME);
+    assert_eq!(t.ui.top(), "MENU");
+}
+
 /// The frame's cells that carry an overlay (a pixel drawing over the glyph).
 fn overlays_on_the_frame(ui: &Ui) -> usize {
     let cols = GRID_COLS as usize;

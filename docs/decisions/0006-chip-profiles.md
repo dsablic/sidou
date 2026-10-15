@@ -273,7 +273,18 @@ row (the model was fitted at the default range); the 8580's (curve 0.75) 0.23 / 
   main loop costs.
 - **Main loop, the character:** a control tick at most 28,334 instructions (above). A
   profile change is a reset: 0.50 M instructions for worn at full character (`sid_init`
-  0.16 M, the filter's two rows 0.23 M, the DAC table 0.08 M), from 0.70 M. `sid_init`
+  0.16 M, the filter's two rows 0.23 M, the DAC table 0.08 M), from 0.70 M. The main-loop
+  pass that runs it (midi_drain to midi_service, emu-gate's
+  `chip_resets_at_full_character_stay_within_their_bound`) measured 471.5k onto worn by the
+  CHIP view's ALGORITHM, 471.4k by CC 85 and 470.7k by the FX button (R2 and R3 471.2k, R4AR
+  313.5k, the 8580 362.6k), bounded at 520k. It is the one pass over the latency gate's poll
+  allowance (120k), an exception kept on purpose: a profile or model step is a deliberate
+  act of the player, applied at most once a 10 ms tick (requests in between coalesce), MIDI
+  waits in its buffer meanwhile rather than being dropped, and the FX button and CC 85 have
+  always cost the same. A note arriving during the pass waits for it (about 2 ms) and for
+  the drain after it: about 5 ms against decision record 0005's 3.4 ms, only when the
+  player steps the profile or model. Splitting the spare chip's preparation over ticks is
+  in docs/TODO.md for M2. `sid_init`
   itself, 147,391 instructions in M1b on the 6581 (204,473 on the 8580), grew to 217,834
   in the first build (this record said 0.31 M: that was the SID gate's whole set-up, the
   default DAC tables included, 241,053 in M1b and 312k then) and is now 160,057 (225,505):

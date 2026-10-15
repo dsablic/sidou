@@ -553,6 +553,48 @@ fn midi_learn_binds_a_chip_view_knob() {
     assert_eq!(ui.top(), "CHIP", "HOME cancelled learn and stayed");
 }
 
+/// Under MIDI learn's frame the CHIP view keeps SELECT and ALGORITHM: SELECT moves the focus
+/// off the chip to DIST, so K4 then learns DIST's Mix, not the bleed; ALGORITHM steps DIST's
+/// algorithm. The knobs stay learn's: they pick and do not turn.
+#[test]
+fn select_and_algorithm_work_under_the_learn_frame() {
+    let mut ui = chip_ui();
+    let mut ml = Box::<midi_learn>::default();
+    unsafe {
+        midi_learn_init(&mut *ml);
+        views_learn(&mut *ui.v, &mut *ml);
+    }
+    assert_eq!(focus(&ui), CHIP_VIEW_CHIP);
+    assert_eq!(ui.live().fx_select, 0);
+    ui.press(SAVE);
+    step(&mut ui);
+    assert_eq!(ui.top(), "LEARN");
+    ui.turn(PANEL_ENC_SELECT, 1);
+    assert_eq!(focus(&ui), 1, "SELECT moved the focus under the frame");
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(
+        ui.live().slot[0][LIVE_SLOT_ALGORITHM as usize],
+        1,
+        "ALGORITHM stepped DIST's"
+    );
+    assert_eq!(ui.top(), "LEARN", "the frame stays");
+    let mix = ui.live().slot[0][LIVE_SLOT_MIX as usize];
+    ui.turn(K1 + 3, 1);
+    assert_eq!(u32::from(ml.state), MIDI_LEARN_CC);
+    assert_eq!(
+        u32::from(ml.param),
+        LIVE_PARAM_SLOT + LIVE_SLOT_MIX,
+        "K4 learns DIST's Mix, not the bleed"
+    );
+    assert_eq!(
+        ui.live().slot[0][LIVE_SLOT_MIX as usize],
+        mix,
+        "the knob picked, not turned"
+    );
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "CHIP");
+}
+
 /// The page's names for the learn frame and its toasts: the character's controls.
 #[test]
 fn the_character_parameters_have_names() {

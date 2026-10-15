@@ -64,8 +64,11 @@ BASS, SYNC LEAD, NOISE PERC); K1 cutoff, K2 resonance, K3 pulse width, K4
 preset, MASTER volume, OCT-/OCT+, FX for the 6581/8580; MIDI notes on every
 channel, CC 74 cutoff, CC 71 resonance, CC 1 pulse width, CC 7 volume,
 program change 0-3 for the presets. Since M1c, three effect slots
-(Distortion, Modulation, FX) after the chip, in stereo, on a temporary
-EDIT + K1-K4 layer and CC 102-116: see
+(Distortion, Modulation, FX) after the chip, in stereo, and the chip
+profiles and character (age, DAC, thump, bleed): on the panel in the CHIP
+view (menu, CHIP: SELECT picks the chip or a slot, ALGORITHM its profile or
+algorithm, K1-K4 its controls; EDIT + K1-K4 stays a shortcut to the selected
+slot in every view), over MIDI on CC 85-87, 89-90 and 102-116: see
 [docs/reference/controls.md](docs/reference/controls.md).
 
 ## For contributors

@@ -4,6 +4,7 @@
 
 #include <stddef.h>
 
+#include "chip_view.h"
 #include "font.h"
 #include "widget.h"
 
@@ -150,7 +151,16 @@ static int changed(screen* s, void* state) {
     return now[0] != lv->drawn[0] || now[1] != lv->drawn[1] || now[2] != lv->drawn[2];
 }
 
-const view learn_view_view = {"LEARN", NULL, NULL, NULL, compose, changed};
+/* What the capture leaves goes to the CHIP view under the frame, as if the frame were not
+ * there: SELECT moves its focus, ALGORITHM steps its choice. Only to CHIP: the menu's
+ * ALGORITHM would open a view over the frame, SCENE's SELECT wipe in a piece under it. */
+static int input(screen* s, void* state, const screen_event* e) {
+    (void)state;
+    const screen_entry* below = &s->stack[s->depth - 2u];
+    return below->v == &chip_view_view ? below->v->input(s, below->state, e) : 0;
+}
+
+const view learn_view_view = {"LEARN", NULL, NULL, input, compose, changed};
 
 void learn_view_init(learn_view* lv, live* l, midi_learn* ml) {
     lv->l = l;

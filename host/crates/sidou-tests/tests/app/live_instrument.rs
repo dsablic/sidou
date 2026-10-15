@@ -910,6 +910,30 @@ fn the_sid_sink_reinitialises_with_the_new_model_and_keeps_parameters() {
     assert!(peak(&c.render(4410)) > 1000, "the held note sounds again");
 }
 
+/// A profile step is a chip reset, as a model change: the held note's gate is written again on
+/// the new chip, so it attacks again rather than stopping.
+#[test]
+fn a_profile_change_reattacks_the_held_notes_on_the_new_chip() {
+    let mut c = Chip::new(SID_MODEL_6581);
+    unsafe { live_note_on(&mut *c.live, 69, 100) };
+    c.render(4410);
+    unsafe {
+        live_param_set(&mut *c.live, LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN);
+        live_tick(&mut *c.live);
+    }
+    assert_eq!(u32::from(c.live.profile), SID_CHIP_6581_WORN);
+    assert_ne!(c.chip.env[0].gate, 0, "its gate is set on the new chip");
+    c.render(10);
+    assert_eq!(
+        c.chip.env[0].state, SID_ENV_ATTACK,
+        "the held note attacks again"
+    );
+    assert!(
+        peak(&c.render(4410)) > 1000,
+        "the held note sounds on the new chip"
+    );
+}
+
 #[test]
 fn stealing_a_sustained_voice_restarts_its_envelope_attack() {
     let mut c = Chip::new(SID_MODEL_8580);

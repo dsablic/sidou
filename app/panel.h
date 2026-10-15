@@ -68,7 +68,10 @@ typedef struct {
     uint8_t key_note[PANEL_NOTE_KEYS];
     int16_t master_raw; /* the last pot value applied, -1 for none */
     uint32_t held;      /* the debounced buttons (bit i: button i), for the EDIT layer */
-    uint8_t page;       /* a PANEL_PAGE_*: PANEL_PAGE_LIVE from panel_init */
+    /* A PANEL_PAGE_*, PANEL_PAGE_LIVE from panel_init. Derived, not state: the views
+     * (views_buttons, views_encoder) set it from the view that shows before every event and
+     * again before the panel reads it; nothing else should rely on it between events. */
+    uint8_t page;
 } panel;
 
 /* The LEDs, as Felucca's input state lays out the keys. */

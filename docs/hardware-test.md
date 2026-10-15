@@ -191,8 +191,8 @@ which printed control did it.
 | SAVE (button 9) | a MIDI LEARN frame at the bottom of the screen, TURN A KNOB (section 7, MIDI learn); HOME closes it | | [ ] |
 | SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, PRESET, OCTAVE, CARDS, STATUS, SCENE, CHARSET and ABOUT | | [ ] |
 | ALGORITHM (encoder 1), in the menu | changes the item under the cursor (PRESET; OCTAVE -3..+3; CARDS: counter-clockwise OFF, clockwise ON); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
-| SELECT (encoder 0), on CHIP | the focus (a play mark and white frames) moves CHIP, DIST, MOD, FX and stops at either end; onto a slot, the toast says SLOT DIST (or MOD, FX) | | [ ] |
-| ALGORITHM (encoder 1), on CHIP | on CHIP the PROFILE steps 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581 (MODEL follows; held notes stop, as at a model change); on a slot its algorithm, OFF to the last, named in the slot's frame | | [ ] |
+| SELECT (encoder 0), on CHIP | the focus (a play mark and white frames) moves CHIP, DIST, MOD, FX and stops at either end; onto a slot that was not the selected one, the toast says SLOT DIST (or MOD, FX); onto the slot already selected (DIST at power-on), no toast | | [ ] |
+| ALGORITHM (encoder 1), on CHIP | on CHIP the PROFILE steps 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581 (MODEL follows; held notes attack again on the new chip, as at a model change); on a slot its algorithm, OFF to the last, named in the slot's frame | | [ ] |
 | K1..K4, on CHIP | on CHIP AGE, DAC, THUMP, BLEED (bars and values; the sound darkens with AGE, a released note whispers with DAC); on a slot its four controls, named for the algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX) | | [ ] |
 
 - [ ] A held note keeps its pitch when the octave changes, and stops when
@@ -270,9 +270,15 @@ Title cards ([controls](reference/controls.md#title-cards)):
 
 CHIP (menu, CHIP; [controls](reference/controls.md#chip)):
 
-- [ ] The page as `tests/golden/lcd/chip.png` with the character and slots at 0: the A
-  tab in reverse, B M2 greyed, the CHIP and CHARACTER frames white with the play mark,
-  the slot frames light blue and their controls greyed while the slots are OFF.
+- [ ] The page as `tests/golden/lcd/chip.png`, its state set over MIDI (the emulator test's
+  CCs): AGE 100, DAC 40, THUMP 64, BLEED 20; DIST OVERDRIVE, MOD CHORUS, FX REVERB, every
+  slot on with its controls named and lit. The A tab in reverse, B M2 greyed, the CHIP and
+  CHARACTER frames white with the play mark, the slot frames light blue.
+- [ ] With every slot OFF (ALGORITHM counter-clockwise on each), a slot's controls are
+  greyed under their generic names (AMT, A, B, MIX).
+- [ ] ALGORITHM on CHIP between two 6581 profiles (R2 and R3, R3 and R4AR, either way) shows
+  no toast and no raster, by design: only a model change (to or from 8580 R5) says CHIP 6581
+  or CHIP 8580 and sweeps the border. The PROFILE line changes either way.
 - [ ] Turning K1 fast end to end on CHIP: the AGE bar follows without lag or torn cells,
   and the sound darkens smoothly, with no click.
 - [ ] MIDI CCs for every slot and character control at once (a controller's snapshot,
@@ -341,6 +347,10 @@ pedal, binds that instead. Stop the transport and keep pedals still while learni
   (LEARNED CC n &rarr; DIST MIX; SCL first for MOD or FX).
 - [ ] On the CHIP view with the focus on CHIP, SAVE and K1: AGE &larr; SEND A CC; the CC
   then moves AGE's bar and the sound. On a slot, SAVE and K4: that slot's MIX.
+- [ ] On the CHIP view with the focus on CHIP, SAVE, then SELECT one step clockwise while the
+  frame shows: the focus moves to DIST under the frame, and K4 then learns DIST MIX (not
+  BLEED). ALGORITHM under the frame steps DIST's algorithm. In the menu, SELECT and
+  ALGORITHM do nothing while the frame shows.
 - [ ] Learn the resonance on CC 74: CC 74 now moves the resonance, not the cutoff (the
   cutoff's NRPN 0/0 still does).
 - [ ] With a DAW monitoring SIDOU's USB output, turn K1 after learning CC 14 for it: the
