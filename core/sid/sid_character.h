@@ -11,7 +11,7 @@
  * Controls, each 0..SID_CHARACTER_MAX (MIDI's 0..127):
  * - age/heat: the filter's cutoff and damping drift from the profile's curve setting
  *   towards a darker one (the profile's hot_curve; at 127 that one): the chip holds both
- *   rows' tables and blends their coefficients at each filter write (sid.h,
+ *   rows' tables and blends their coefficients after each filter write (sid.h,
  *   sid_set_filter_blend), so a change is a number, no table; and the 6581's non-linearity
  *   rises to twice the profile's (clamped to 2);
  * - DAC sloppiness: the voice DACs' 2R/R ratio up by SID_CHARACTER_KINK at 127 and their

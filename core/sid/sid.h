@@ -38,11 +38,12 @@ typedef struct {
     uint8_t control_age;   /* cycles since voice 3's last control write, up to 2 */
     uint8_t filter_curve;  /* the curve setting cutoff_g and res_k come from (gen/filter.h) */
     uint8_t filter_toward; /* the one cutoff_x_to and res_k_to come from */
+    uint8_t filter_dirty;  /* a write to $15-$17 since the coefficients were computed */
     float volume;
     float output_gain; /* to int16, at reSIDfp's level for the model */
     float dc_r, dc_x1, dc_y1;
-    /* The filter's tables, in RAM for sid_write, for two curve settings, and how far the
-     * filter is from the first towards the second (filter_t, 0..1; sid_set_filter_blend):
+    /* The filter's tables, in RAM for sid_update_filter, for two curve settings, and how far
+     * the filter is from the first towards the second (filter_t, 0..1; sid_set_filter_blend):
      * the first's cutoff per FC value as the SVF's g, tan(pi f / fs), the second's as the
      * angle, x = pi f / fs (cutoff_g = tan x; the blend is of x, so of Hz), and each's damping
      * per resonance value (sid_resonance_k). sid_init sets both to the default curve setting
@@ -91,9 +92,14 @@ static inline float sid_blended_cutoff(const sid* s, uint32_t fc, float t) {
 /* The filter's coefficients from its tables at the chip's FC and resonance, filter_t of the
  * way from the first curve setting's towards the second's (the cutoff in Hz and the damping
  * blended; at 0 the first's exactly), and the 6581's band-pass mix, which follows the
- * damping: what a write to $15-$17 recomputes. Inline: sid_write (the audio path, in SRAM on
- * the device), the main context and sid_character_commit in the register ring's drain (SRAM)
- * all call it, and no direct call may cross between SRAM and flash (platform/fm1/app.ld). */
+ * damping. A write to $15-$17 only sets filter_dirty, and sid_render_tap runs this once
+ * before the block's first sample: up to about 70 instructions at an age/heat blend (an atan
+ * and a tan), so a flood of filter writes costs the audio interrupt one, not one a write.
+ * That is what recomputing at every write would play, bit for bit: the coefficients depend
+ * only on the registers and tables, a render reads them only at its start, and the drain
+ * applies a block's writes before it. Inline: sid_render_tap (the audio path, in SRAM on the
+ * device), the main context and sid_character_commit in the register ring's drain (SRAM) all
+ * call it, and no direct call may cross between SRAM and flash (platform/fm1/app.ld). */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
@@ -173,9 +179,10 @@ void sid_set_gate_reset(sid* s, int on);
  * sid_set_filter_blend(s, curve, curve, 0) (the second tables a copy). Returns
  * 0, or -1 for a curve the model does not have, changing nothing. Never from the audio
  * path (on the device it is in flash, and too slow for the interrupt): call it from the
- * main loop. It changes only the chip's tables, one float at a time, which sid_write reads
- * (in the audio interrupt on the device) one entry per write, so a write meanwhile takes
- * an old or a new entry. The filter's coefficients follow at the next write to $15-$17:
+ * main loop. It changes only the chip's tables, one float at a time, which the render reads
+ * (in the audio interrupt on the device) one entry after a filter write, so an update
+ * meanwhile takes an old or a new entry. The filter's coefficients follow at the next write
+ * to $15-$17 (from the render after it):
  * rewrite one (through the register ring on the device) to apply the curve. */
 int sid_set_filter_curve(sid* s, uint32_t curve);
 

@@ -26,7 +26,7 @@ static inline float sidou_tanf(float x) {
 /* tan for 0 <= x <= 0.45 pi (the filter tables' range, sid.c) without a series: its Pade
  * approximant of order [7/6], within 4e-9 relative there in exact arithmetic (float rounding
  * dominates). One divide, for where sidou_tanf's twelve are too dear (sid_update_filter, the
- * age/heat blend at each filter write). */
+ * age/heat blend after each filter write). */
 static inline float sidou_tanf_fast(float x) {
     float x2 = x * x;
     float x4 = x2 * x2;

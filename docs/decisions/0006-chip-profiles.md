@@ -204,7 +204,7 @@ row (the model was fitted at the default range); the 8580's (curve 0.75) 0.23 / 
 
 ## Cost
 
-- **Flash:** 352,044 bytes of image on main with M1e's logo and title cards (main alone
+- **Flash:** 351,600 bytes of image on main with M1e's logo and title cards (main alone
   241,512; the first build of this task 410,076), 60.5 % of the app slot's 581,564: the
   6581's WEAK and STRONG combined waveforms (`SIDOU_ALL_COMBINED_PROFILES`, on by default,
   +61,440 bytes; R2 and worn need them), five 6581 filter rows and two 8580 rows (8,256
@@ -215,8 +215,18 @@ row (the model was fitted at the default range); the 8580's (curve 0.75) 0.23 / 
   profile's rows can be generated into POOL instead (docs/TODO.md).
 - **RAM:** `chips` (POOL) grew from 17,880 to 69,368 bytes: two 17,408-byte DAC tables,
   each chip's second filter row (8,256 bytes), the ramp and the two stages. POOL keeps
-  99,248 bytes free. `.ram_text` grew from 33,924 to 36,820 bytes (74.9 % of 48 KB): the
-  renders' copies with the bleed, and the age's blend in `sid_write` and the drain.
+  99,248 bytes free. `.ram_text` grew from 33,924 to 36,376 bytes (74.0 % of 48 KB): the
+  renders' copies with the bleed, and the age's blend in `sid_render_tap` and the drain.
+- **Audio interrupt, filter writes:** the age's blend is an atan (up to 3 divides) and a
+  tan, about 70 instructions. The first build ran it at every `$15`-`$17` write in the
+  drain, so dense automation (16 USB CCs a millisecond, emu-gate's `midi.rs`) added 58
+  instructions a sample to the interrupt for the cutoff at age 0, 108 at age 127 (over the
+  ISR's 100), and 44 and 70 for the resonance. A write now only marks the filter
+  (`filter_dirty`), and `sid_render_tap` recomputes it once before the block, from the
+  registers as the block's writes left them: what the per-write updates played, bit for bit
+  (a render reads the coefficients only at its start). The same floods measure 34.1 and
+  34.6 (cutoff, age 0 and 127), 31.9 and 32.5 (resonance): the entries' own pops and
+  writes; the gate holds them to the ISR's 100 and age 127 within 2 of age 0.
 - **Per sample:** nothing for profile, age, DAC or thump (tables and parameters made in the
   main loop; thump at the `$18` write). The bleed runs in a copy of each model's render
   used only while it is not 0; its floor is its multiply-add, about 2 instructions a

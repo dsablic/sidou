@@ -261,6 +261,7 @@ void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) 
 }
 
 void sid_filter_refresh(sid* s) {
+    s->filter_dirty = 0;
     update_filter(s);
     update_mix(s);
 }
@@ -302,18 +303,20 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
         return;
     }
     switch (reg) {
+    /* $15-$17 only mark the filter: sid_render_tap recomputes its coefficients once, from
+     * the registers as the block's writes left them (sid.h, sid_update_filter). */
     case 0x15:
         s->fc = (s->fc & 0x7f8u) | (v & 0x07u);
-        update_filter(s);
+        s->filter_dirty = 1;
         break;
     case 0x16:
         s->fc = (s->fc & 0x007u) | ((uint32_t)v << 3);
-        update_filter(s);
+        s->filter_dirty = 1;
         break;
     case 0x17:
         s->res = v >> 4;
         s->routing = v & 0x0f;
-        update_filter(s);
+        s->filter_dirty = 1;
         update_mix(s);
         break;
     case 0x18: {
@@ -666,6 +669,10 @@ void sid_render(sid* s, int16_t* out, uint32_t frames) {
 void sid_render_tap(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_tap tap,
                     void* ctx) {
     fold_owed(s);
+    if (s->filter_dirty) {
+        s->filter_dirty = 0;
+        update_filter(s);
+    }
     int bleed = s->bleed != 0.0f;
     if (s->model == SID_MODEL_6581) {
         if (bleed) {

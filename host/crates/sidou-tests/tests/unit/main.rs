@@ -36,6 +36,14 @@ macro_rules! assert_near {
     }};
 }
 
+/// The filter's coefficients as the next render takes them: a write to $15-$17 only marks
+/// the filter (sid.c, sid_write), and a render recomputes it before its first sample. This
+/// one renders no sample, so the chip's voices and output stage are as they were.
+pub fn settle(s: &mut sidou_sys::sid) {
+    let mut none = [0i16; 1];
+    unsafe { sidou_sys::sid_render(s, none.as_mut_ptr(), 0) };
+}
+
 /// Within 4 ULPs, like GoogleTest's EXPECT_FLOAT_EQ.
 pub fn assert_float_eq(a: f32, b: f32) {
     fn biased(x: f32) -> u32 {

@@ -268,6 +268,7 @@ fn the_chip_takes_cutoff_and_damping_from_the_tables() {
             sid_write(&mut *s, 0x15, 0x05);
             sid_write(&mut *s, 0x16, 0x60);
         }
+        crate::settle(&mut s);
         assert_eq!(s.svf.k, damping(model, 10));
         let fc = (0x60 << 3) | 5;
         let g = tanf(PI * cutoff(model, fc) / FS);
@@ -307,6 +308,7 @@ fn a_filter_curve_rebuilds_the_tables_and_applies_at_the_next_filter_write() {
             sid_write(&mut *s, 0x16, 0x40);
             sid_write(&mut *s, 0x17, 0xf1);
         }
+        crate::settle(&mut s);
         let svf = s.svf;
         s.cutoff_g.fill(0.25);
         s.res_k.fill(1.5);
@@ -323,6 +325,8 @@ fn a_filter_curve_rebuilds_the_tables_and_applies_at_the_next_filter_write() {
             s.svf.k = 9.0; // whatever the coefficients were
             sid_write(&mut *s, 0x17, 0xf1);
         }
+        crate::settle(&mut s);
+        crate::settle(&mut expect);
         assert_eq!(format!("{:?}", s.svf), format!("{:?}", expect.svf));
         // A curve the model does not have changes nothing.
         s.cutoff_g[5] = 0.25;
@@ -345,9 +349,12 @@ fn a_filter_blend_runs_between_two_curve_settings() {
         let mut a = chip(model);
         let mut b = chip(model);
         let mut s = chip(model);
-        let filter = |c: &mut sid| unsafe {
-            sid_write(c, 0x16, 0x80); // FC 1024
-            sid_write(c, 0x17, 0xf1);
+        let filter = |c: &mut sid| {
+            unsafe {
+                sid_write(c, 0x16, 0x80); // FC 1024
+                sid_write(c, 0x17, 0xf1);
+            }
+            crate::settle(c);
         };
         unsafe {
             sid_set_filter_curve(&mut *a, 0);
@@ -431,6 +438,7 @@ fn the_blend_is_of_the_cutoff_in_hz() {
                     sid_write(&mut *s, 0x15, (fc & 7) as u8);
                     sid_write(&mut *s, 0x16, (fc >> 3) as u8);
                 }
+                crate::settle(&mut s);
                 let hz = |c: u32| {
                     let f = f64::from(unsafe { sid_cutoff_hz(model, c, fc) });
                     f.clamp(30.0, 0.45 * f64::from(FS))
@@ -466,6 +474,7 @@ fn the_6581_newton_step_is_the_load_damping() {
         sid_write(&mut *s, 0x17, 0x07); // resonance 0, voices 1-3 into the filter
         sid_write(&mut *s, 0x18, 0x1f);
     }
+    crate::settle(&mut s);
     let n = s.nl;
     let mut f = s.svf;
     let (g0, k) = (s.cutoff_g[1024], s.res_k[0]);

@@ -107,10 +107,11 @@ typedef void (*reg_ring_pseudo_fn)(void* ctx, uint8_t reg, uint8_t value);
  *
  * The filter tables (sid.h: cutoff_g, res_k and the hot row's) never change on a chip that
  * renders: age/heat is the stage's filter_t, and a profile's tables are built on the spare
- * before the swap. The render never reads them; only sid_update_filter does, at a $15-$17
- * write and at a commit, both applied by the drain; and each entry is an aligned 32-bit
- * store, so even sid_set_filter_curve on a playing chip (sid.h allows it from the main
- * loop) would give such a write an old or a new entry, never a torn one. That rests on
+ * before the swap. Only sid_update_filter reads them: at a commit, which the drain applies,
+ * and at the start of the render after a $15-$17 write (which only marks the filter), both
+ * in the audio interrupt; and each entry is an aligned 32-bit store, so even
+ * sid_set_filter_curve on a playing chip (sid.h allows it from the main loop) would give
+ * such an update an old or a new entry, never a torn one. That rests on
  * every register write reaching a chip through this drain, on one core: M3's 6502 player,
  * if it writes registers from the audio interrupt or from core 1, must revisit it (a write
  * applied outside the drain races its commits and the main loop's spare). */

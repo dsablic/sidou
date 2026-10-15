@@ -80,6 +80,7 @@ fn with_character(c: &sid_character, dac: &mut sid_dac) -> Box<sid> {
     let mut s = chip(model);
     unsafe { sid_character_apply(&mut *s, c, dac) };
     write(&mut s, &CHORD);
+    crate::settle(&mut s);
     s
 }
 

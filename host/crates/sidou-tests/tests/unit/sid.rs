@@ -824,10 +824,12 @@ fn the_6581_band_pass_mix_follows_the_damping_at_every_filter_write() {
     let mut s = new_sid(SID_MODEL_6581);
     write(&mut s, 0x17, 0xf1);
     write(&mut s, 0x18, 0x2f);
+    crate::settle(&mut s);
     assert_eq!(s.mix_bpn, 0.8125 / s.svf.k);
     for reg in [0x15u8, 0x16] {
         s.res_k.fill(1.5 + f32::from(reg - 0x15)); // as a new curve's tables would
         write(&mut s, reg, 0x40);
+        crate::settle(&mut s);
         assert_eq!(s.svf.k, 1.5 + f32::from(reg - 0x15));
         assert_eq!(s.mix_bpn, 0.8125 / s.svf.k, "after ${reg:02x}");
     }

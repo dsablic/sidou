@@ -1045,6 +1045,77 @@ fn a_usb_cc_burst_costs_one_look_a_drain_pass() {
     );
 }
 
+/// CC 86 (docs/reference/midi.md): age/heat. CC 71: the resonance.
+const CC_AGE: u8 = 86;
+const CC_RESONANCE: u8 = 71;
+
+/// What a flood of filter writes adds to the audio interrupt, in instructions a sample: 16
+/// USB CCs every millisecond of `cc` for a second (each value differs from the last, so every
+/// one reaches the chip: CC 74 writes $15 and $16, CC 71 $17), against a second with no
+/// input, a note held and age/heat at `age` (the chip's filter blended, filter_t, at 127).
+fn filter_flood_isr(fw: &Firmware, cc: u8, age: u8) -> f64 {
+    let mut m = booted(fw);
+    m.run_ms(1500); // past a USB retry
+    m.midi(&[0x90, C4, 0x64, 0xB0, CC_AGE, age]);
+    m.run_ms(600); // the ramp: 0 to 127 in 0.32 s
+    let s = active_sid(&mut m, fw);
+    let t = f32::from_bits(m.soc.read32(s + ilp32::sid::filter_t as u32));
+    assert_eq!(
+        t,
+        f32::from(age) / 127.0,
+        "age/heat {age} is not on the chip"
+    );
+    let (idle, _) = rates(&mut m, 1000);
+    let isr0 = m.isr_steps;
+    let mut fed = 0;
+    for ms in 0..1000u32 {
+        let burst: Vec<u32> = (0..16u32)
+            .map(|i| cc_packet(cc, ((ms * 16 + i) * 37 % 128) as u8))
+            .collect();
+        fed += usb_in(&mut m, fw, &burst);
+        m.run_ms(1);
+    }
+    let flood = (m.isr_steps - isr0) as f64;
+    assert_eq!(fed, 16_000, "the MIDI in ring refused CCs");
+    (flood - idle) / f64::from(common::SAMPLE_RATE)
+}
+
+/// Dense filter automation (16 USB CCs a millisecond, as `a_usb_cc_burst_costs_one_look_a_drain_pass`)
+/// costs the audio interrupt's drain no more than the ISR's allowance (common::ISR_OVERHEAD),
+/// with age/heat at 127, where each cutoff is an atan and a tan from the blended filter rows:
+/// sid_write only marks the filter, and the render recomputes it once a block.
+#[test]
+fn a_filter_cc_flood_fits_the_isr_overhead_at_any_age() {
+    let Some(fw) = fixture("the filter flood test") else {
+        return;
+    };
+    let mut report = serde_json::Map::new();
+    let mut worst: f64 = 0.0;
+    let mut aged: f64 = 0.0;
+    for (cc, name) in [(CC_CUTOFF, "cutoff"), (CC_RESONANCE, "resonance")] {
+        let [young, old] = [0u8, 127].map(|age| {
+            let c = filter_flood_isr(&fw, cc, age);
+            report.insert(format!("isr_per_sample_{name}_age_{age}"), c.into());
+            c
+        });
+        worst = worst.max(young).max(old);
+        aged = aged.max(old - young);
+    }
+    println!("{}", serde_json::Value::Object(report));
+    // The blend's atan and tan once a block, not once a write: about 70 instructions in 128
+    // samples. Per write they cost 50 a sample (108 against 58 at the cutoff).
+    assert!(
+        aged <= 2.0,
+        "age/heat at 127 adds {aged:.1} instructions a sample to a filter CC flood"
+    );
+    assert!(
+        worst <= common::ISR_OVERHEAD,
+        "a filter CC flood adds {worst:.1} instructions a sample to the audio interrupt, over \
+         the ISR's {} allowance",
+        common::ISR_OVERHEAD
+    );
+}
+
 // --- MIDI learn ---
 
 /// app/panel.h PANEL_BTN_SAVE: arms MIDI learn (docs/reference/controls.md).

@@ -575,6 +575,10 @@ rendered chip's state, read from emulated RAM through the `chips` symbol:
   pitch, and the sync lead keeps its ratio while it bends;
 - floods of chip-model CCs, pitch bends and program changes neither stall the main
   loop nor lose input;
+- a flood of filter CCs over USB (16 a millisecond, put straight into the MIDI in ring:
+  fm1-emu has no USB controller) of CC 74 and of CC 71, at age/heat 0 and 127, adds no
+  more to the audio interrupt than the ISR's allowance (100 instructions a sample), and
+  age 127 no more than 2 a sample over age 0 (the filter is recomputed once a block);
 - MIDI out: the panel's changes go out as USB-MIDI packets, MIDI input is not echoed,
   and a tick of MIDI out costs little at its worst, with every parameter learned too;
 - MIDI learn: SAVE pressed, K1 turned and CC 14 (a CC the map leaves free) sent over TRS
