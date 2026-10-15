@@ -22,6 +22,13 @@ extern "C" {
     fn residfp_clock_silent(s: *mut RawSid, cycles: u32) -> i32;
     fn residfp_pulldown_table(csg8580: i32, cws: i32, out: *mut i16) -> i32;
     fn residfp_wave_table(out: *mut i16) -> i32;
+    fn residfp_dac_table(
+        csg8580: i32,
+        bits: u32,
+        leak_level: f64,
+        saturate: i32,
+        out: *mut f64,
+    ) -> i32;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -63,6 +70,26 @@ pub fn wave_table() -> Vec<[u16; 4096]> {
     let status = unsafe { residfp_wave_table(flat.as_mut_ptr()) };
     assert_eq!(status, 0, "reSIDfp getWaveTable threw");
     rows(&flat)
+}
+
+/// reSIDfp's DAC output for every input below `2^bits`, as `SID::setChipModel` builds
+/// it: `Dac(bits).kinkedDac(model, leak_level)`, then `getOutput(i, saturate)`. reSIDfp
+/// uses 12 bits for the waveform DAC (saturating on the 6581) and 8 for the envelope's,
+/// with `leak_level` 1 by default.
+pub fn dac_table(model: Model, bits: u32, leak_level: f64, saturate: bool) -> Vec<f64> {
+    assert!((1..=12).contains(&bits));
+    let mut out = vec![0f64; 1 << bits];
+    let status = unsafe {
+        residfp_dac_table(
+            i32::from(model == Model::Csg8580),
+            bits,
+            leak_level,
+            i32::from(saturate),
+            out.as_mut_ptr(),
+        )
+    };
+    assert_eq!(status, 0, "reSIDfp kinkedDac threw");
+    out
 }
 
 fn rows(flat: &[i16]) -> Vec<[u16; 4096]> {

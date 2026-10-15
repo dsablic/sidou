@@ -4,7 +4,6 @@
 
 #include <string.h>
 
-#define VOICE_SCALE (1.0f / (2048.0f * 255.0f))
 #define OUTPUT_GAIN (0.1f * 32767.0f) /* leaves headroom for the 6581 DC offset and filter peaks */
 #define DC_BLOCK_HZ 16.0f
 #define DRIVE_6581 2.0f
@@ -23,9 +22,7 @@ static void update_filter(sid* s) {
 void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) {
     memset(s, 0, sizeof *s);
     s->model = model;
-    /* reSID 0.16 voice DAC zero level and DC offset per chip revision. */
-    s->wave_zero = model == SID_MODEL_6581 ? 0x380 : 0x800;
-    s->voice_dc = model == SID_MODEL_6581 ? 0x800 * 0xff : 0;
+    sid_dac_build_default(&s->dac, model == SID_MODEL_6581);
     s->cycles_per_sample_q16 = ((clock_hz / sample_rate) << 16) |
                                (((clock_hz % sample_rate) << 16) / sample_rate);
     for (int v = 0; v < 3; ++v) {
@@ -78,11 +75,6 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
         case 4: {
             /* The ring source as this voice's output sees it (sid_osc_output). */
             uint32_t src_acc = reg >= 7 ? s->osc[reg / 7 - 1].acc : sid_osc_acc_last(&s->osc[2]);
-            /* A shift's write-back after this write takes the old waveform's last output,
-             * which clock_voices skips at envelope 0: bring it up to date. With no
-             * waveform selected that output is 0 here; reSIDfp would write back its
-             * floating DAC value instead, which SIDOU does not keep (see read_osc3). */
-            o->out = sid_osc_output(o, src_acc);
             sid_osc_latch_ramp(o, src_acc);
             sid_osc_write_control(o, v);
             sid_env_set_gate(e, v & SID_CTRL_GATE);
@@ -196,24 +188,19 @@ static inline void clock_voices(sid* s, uint32_t cycles) {
         }
         sid_env_advance(&s->env[v], cycles);
     }
-    /* The output feeds the voice DAC, which ignores it with the envelope at 0, and the
-     * noise write-back on a TEST release (sid_noise_shift_phase2), so it is kept
-     * current whenever noise is selected. */
     if (s->written) {
         /* Pulse comparisons latched by writes (sid_osc_write_pw/_control) last until
          * after the step that follows them. */
         o[0].pulse_held = o[1].pulse_held = o[2].pulse_held = 0;
         s->written = 0;
     }
-    if (s->env[0].counter || (o[0].control & SID_CTRL_NOISE)) {
-        o[0].out = sid_osc_output(&o[0], sid_osc_acc_last(&o[2]));
-    }
-    if (s->env[1].counter || (o[1].control & SID_CTRL_NOISE)) {
-        o[1].out = sid_osc_output(&o[1], o[0].acc);
-    }
-    if (s->env[2].counter || (o[2].control & SID_CTRL_NOISE)) {
-        o[2].out = sid_osc_output(&o[2], o[1].acc);
-    }
+    /* The output feeds the voice DAC, which leaks it even with the envelope at 0, and
+     * the noise write-back (a shift's after a control write takes the old waveform's
+     * last output). With no waveform selected it is 0; reSIDfp holds its floating DAC
+     * value instead, which SIDOU does not keep (see read_osc3). */
+    o[0].out = sid_osc_output(&o[0], sid_osc_acc_last(&o[2]));
+    o[1].out = sid_osc_output(&o[1], o[0].acc);
+    o[2].out = sid_osc_output(&o[2], o[1].acc);
 }
 
 void sid_clock(sid* s, uint32_t cycles) {
@@ -225,9 +212,7 @@ void sid_clock(sid* s, uint32_t cycles) {
 }
 
 static inline float voice_out(const sid* s, int v) {
-    uint32_t wave = s->osc[v].out;
-    int32_t x = ((int32_t)wave - s->wave_zero) * (int32_t)s->env[v].counter + s->voice_dc;
-    return (float)x * VOICE_SCALE;
+    return s->dac.wave[s->osc[v].out] * s->dac.env[s->env[v].counter];
 }
 
 /* Deferred noise shifts repeat with the register's period (2^23 - 1): fold the count

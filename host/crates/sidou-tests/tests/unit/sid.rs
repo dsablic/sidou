@@ -67,16 +67,21 @@ fn volume_write_on_a_6581_clicks_then_settles() {
 
 #[test]
 fn voice_3_off_mutes_an_unfiltered_voice_3() {
-    let mut s = new_sid(SID_MODEL_8580);
-    // Let the power-on envelopes of the silent voices 1 and 2 release to 0 first: with no
-    // waveform selected, an 8580 voice outputs its DAC's zero level times the envelope.
-    clock(&mut s, 10_000);
-    write(&mut s, 0x0e, 0x45);
-    write(&mut s, 0x0f, 0x1d);
-    write(&mut s, 0x14, 0xf0);
-    write(&mut s, 0x18, 0x8f);
-    write(&mut s, 0x12, 0x21);
-    assert_eq!(peak(&render(&mut s, 4410)), 0);
+    // The same chip with voice 3 playing and silent: with voice 3 off, they must not
+    // differ. (Silent voices are not exactly 0: the DACs leak, as reSIDfp's do.)
+    let setup = |play: bool, mode_vol: u8| {
+        let mut s = new_sid(SID_MODEL_8580);
+        write(&mut s, 0x0e, 0x45);
+        write(&mut s, 0x0f, 0x1d);
+        write(&mut s, 0x14, 0xf0);
+        write(&mut s, 0x18, mode_vol);
+        if play {
+            write(&mut s, 0x12, 0x21);
+        }
+        render(&mut s, 4410)
+    };
+    assert_eq!(setup(true, 0x8f), setup(false, 0x8f));
+    assert_ne!(setup(true, 0x0f), setup(false, 0x0f), "voice 3 on is heard");
 }
 
 #[test]

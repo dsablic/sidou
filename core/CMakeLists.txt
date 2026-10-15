@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 add_library(sidou_core STATIC
     sid/sid.c
+    sid/sid_dac.c
     sid/sid_filter.c
     fx/fx.c
     fx/fx_slots.c

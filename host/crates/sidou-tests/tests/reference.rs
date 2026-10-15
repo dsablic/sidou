@@ -17,21 +17,22 @@ use sidou_tests::signal_metrics::{
  * < 0.0001 cents from theory. Since both engines power up alike (M1b): sidou
  * 0.0002 cents from theory and from reSIDfp. */
 const MAX_PITCH_CENTS: f64 = 0.1;
-/* Coupled to ENVELOPE_FLOOR_DB: the 8580's worst window sits at the floor, where
- * the release-slope difference below has grown largest. Changing the floor
- * means re-checking this tolerance. */
+/* Coupled to ENVELOPE_FLOOR_DB: the 8580's worst window sat at the floor, where the
+ * release-slope difference below had grown largest. Changing the floor means
+ * re-checking this tolerance. */
 /* Measured at M0: 0.44 (in the release, at -20 dB); since both engines power up
  * alike, without the old pre-roll that released reSIDfp's envelopes (M1b): 0.39;
- * with ENV3 bit-exact (M1b Task 2): 0.40. The rest is the output path (Task 4). */
-const MAX_ENVELOPE_DB_8580: f64 = 0.75;
-/* reSIDfp models the 6581's non-linear envelope DAC, which M0 does not; the
- * release tail drifts ~2 dB apart by -20 dB. M1 adds the DAC and tightens this. */
-const MAX_ENVELOPE_DB_6581: f64 = 2.5; /* measured at M0: 2.04; M1b: 2.07 */
-/* M1 investigation item: on the 8580 our release falls ~5.5% steeper than
- * reSIDfp's (55.9 vs 53.0 dB/s at M0), 1.8 dB apart by -30 dB; below
- * ENVELOPE_FLOOR_DB, so this test does not see it yet. The ENV3 test
- * (register_reads.rs) shows both engines' envelope counters releasing at the
- * same rate, so the cause is in the output path rather than the envelope timing. */
+ * with ENV3 bit-exact (M1b Task 2): 0.40; with reSIDfp's DACs (M1b Task 4): 0.030. */
+const MAX_ENVELOPE_DB_8580: f64 = 0.2;
+/* Measured at M0, without the 6581's kinked envelope DAC: 2.04; M1b: 2.07; with
+ * reSIDfp's DACs and envelope-following voice DC (M1b Task 4): 0.31. */
+const MAX_ENVELOPE_DB_6581: f64 = 0.5;
+/* The 8580's release used to fall ~5.5% steeper than reSIDfp's (55.9 vs 53.0 dB/s
+ * at M0), with both envelope counters releasing alike (register_reads.rs): an
+ * output-path difference. It was the envelope DAC's leakage, which keeps an off bit
+ * conducting (0.35% of its weight on the 8580): with it, 53.2 vs 52.8 dB/s (M1b
+ * Task 4), and 0.14 dB apart at -30 dB. Below that both engines near the leakage
+ * floor and drift apart (1.5 dB at -40 dB), so the floor stays at -20 dB. */
 const ENVELOPE_FLOOR_DB: f64 = -20.0;
 
 /* A4 from the register value 0x1d45, not 440 Hz. */
@@ -41,8 +42,8 @@ const SAW_A4_HZ: f64 = 0x1d45 as f64 * SID_CLOCK_PAL as f64 / 16777216.0;
  * the RMS does not ripple with the phase each window starts at. */
 const ENVELOPE_WINDOW: usize = 401;
 /* First 9.1 ms: start-up transient. The attack is compared from window 1 on;
- * in window 0 reSIDfp's 6581 is 2.2 dB quieter than ours, the 8580 0.24 dB apart
- * (6.3 and 0.48 dB at M0, when the engines powered up differently). */
+ * in window 0 the 6581s are 0.29 dB apart, the 8580s 0.25 dB (6.3 and 0.48 dB at
+ * M0, when the engines powered up differently; 2.2 and 0.24 dB before M1b's DACs). */
 const SKIP_WINDOWS: usize = 1;
 const SUSTAIN_FIRST: usize = 17; /* sustain plateau from 154.6 ms ... */
 const SUSTAIN_LAST: usize = 43; /* ... to 391.0 ms (exclusive); gate off at 400 ms */

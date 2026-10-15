@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 
+#include "sid_dac.h"
 #include "sid_defs.h"
 #include "sid_env.h"
 #include "sid_filter.h"
@@ -25,8 +26,6 @@ typedef struct {
     sid_model model;
     uint32_t cycles_per_sample_q16;
     uint32_t cycle_frac_q16;
-    int32_t wave_zero;
-    int32_t voice_dc;
     uint32_t fc;
     uint8_t res;
     uint8_t routing;
@@ -39,6 +38,7 @@ typedef struct {
     float volume;
     float dc_r, dc_x1, dc_y1;
     float cutoff_g[SID_FC_STEPS];
+    sid_dac dac;
 } sid;
 
 /* sample_rate must be in [4000, 65535]. The oscillator step needs

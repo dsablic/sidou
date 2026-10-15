@@ -32,8 +32,9 @@ signal analysis.
 ### Unit tests
 
 One module per part of the core: oscillator (`sid_osc`), noise (`sid_noise`),
-hard sync (`sid_sync`), envelope (`sid_env`), filter (`sid_filter`), the chip
-(`sid`) and constants (`sid_defs`). Most pin a documented SID behaviour, such
+hard sync (`sid_sync`), envelope (`sid_env`), voice DACs (`sid_dac`, against
+reSIDfp's tables), filter (`sid_filter`), the chip (`sid`) and constants
+(`sid_defs`). Most pin a documented SID behaviour, such
 as the ADSR delay bug, the noise LFSR taps or hard-sync timing.
 
 **A failure means** the core no longer behaves like the chip in that
@@ -93,7 +94,7 @@ test-only) and compare them:
   from theory points at the harness, not the core);
 - **envelope shape**: the RMS envelope of a note through attack, decay,
   sustain and release, normalised to the sustain level and compared down to
-  -20 dB, must be within 0.75 dB of reSIDfp on the 8580, and 2.5 dB on the
+  -20 dB, must be within 0.2 dB of reSIDfp on the 8580, and 0.5 dB on the
   6581.
 
 The tests print the measured values. The M0 values are in
@@ -134,9 +135,11 @@ with `-- --ignored`.
 ### Generated tables
 
 `core/sid/gen/` holds tables generated from reSIDfp by `sidou-tablegen`: the
-combined-waveform pulldown tables for each model and combined-waveform
-profile (`gen/grid.h`). Only AVERAGE, reSIDfp's default, is compiled by
-default: 30,720 bytes per model, 61,440 for both. Building with
+voice DACs' ladder weights over a grid of their 2R/R ratio (`gen/dac.h`, 1,440
+bytes; `sid_dac_build` makes the 4096- and 256-entry DAC tables from them at
+init, in each chip's RAM: 17,408 bytes), and the combined-waveform pulldown
+tables for each model and combined-waveform profile (`gen/grid.h`). Only
+AVERAGE, reSIDfp's default, is compiled by default: 30,720 bytes per model, 61,440 for both. Building with
 `SIDOU_ALL_COMBINED_PROFILES` (CMake option of the same name) adds WEAK and
 STRONG: 184,320 bytes in all. The host tests build with all three.
 

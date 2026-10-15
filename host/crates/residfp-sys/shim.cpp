@@ -5,6 +5,7 @@
 // the others return -1. residfp_free only runs a destructor, which cannot throw.
 #include <cstdint>
 
+#include "Dac.h"
 #include "SID.h"
 #include "WaveformCalculator.h"
 
@@ -93,6 +94,23 @@ int residfp_wave_table(int16_t* out) {
             for (unsigned i = 0; i < 4096; ++i) {
                 out[row * 4096 + i] = (*table)[row][i];
             }
+        }
+        return 0;
+    } catch (...) {
+        return -1;
+    }
+}
+
+// reSIDfp's DAC as SID::setChipModel builds it: Dac(bits).kinkedDac(model, leak_level), then
+// getOutput(i, saturate) for every input i < 2^bits (the waveform DAC saturates on the
+// 6581, the envelope DAC never).
+int residfp_dac_table(int csg8580, unsigned bits, double leak_level, int saturate,
+                      double* out) {
+    try {
+        reSIDfp::Dac dac(bits);
+        dac.kinkedDac(csg8580 ? reSIDfp::CSG8580 : reSIDfp::MOS6581, leak_level);
+        for (unsigned i = 0; i < (1u << bits); ++i) {
+            out[i] = dac.getOutput(i, saturate != 0);
         }
         return 0;
     } catch (...) {
