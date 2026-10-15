@@ -436,24 +436,39 @@ rendered chip's state, read from emulated RAM through the `chips` symbol:
 ### Latency test
 
 `crates/emu-gate/tests/latency.rs` injects a note-on into the emulated TRS jack at a
-random cycle, 64 trials a case, each from a fresh boot. It measures, from the note-on's
-last byte: when the audio interrupt takes it, when its first non-silent sample is in the
-DMA buffer, when that sample leaves the DAC, and when the note's envelope comes up
-(-30 dB of the held note's peak). The cases: the status screen idle, the screen
-redrawing (K1-K3 turning), and the note-on around the USB retry's attach. Each runs with
-the attack INSTANT (the default) and AUTHENTIC (CC 26 = 127 after the boot). It asserts
-for every trial:
+random cycle, each trial from a fresh boot past the title card and its wipe, so the
+instrument is idle as a player finds it. It measures, from the note-on's last byte: when
+the audio interrupt takes it, when its first non-silent sample is in the DMA buffer, when
+that sample leaves the DAC, and when the note's envelope comes up (-30 dB of the held
+note's peak). Then, once the note holds its sustain level, a note-off: when the audio
+interrupt takes it and when the release's first step (the voice's envelope counter, read
+from the rendered chip) is in the buffer. The cases and their trials:
+- the status screen idle: 64 trials with the envelope INSTANT (the default), 16 with
+  AUTHENTIC (CC 26 = 127 after the boot, checked on the rendered chip's gate reset);
+- the screen redrawing (K1-K3 turning): 64, INSTANT;
+- the note-on around the USB retry's attach: 32, INSTANT.
+
+It asserts for every trial:
 - taken within one block and one poll (2.9 + 0.5 ms), plus the USB attach's stall when
   the note lands around it;
 - in the buffer within that, plus the render allowance: the run's longest audio
-  interrupt, measured and held to the audio budget's block (2700 instructions a sample);
+  interrupt, measured and held to the audio budget's block (2700 instructions a sample).
+  This follows from the bound above, as the taking interrupt is one of the run's; it is
+  kept as the plan's statement;
 - audible within two blocks of being taken;
 - INSTANT: the envelope is up in the block that takes the note; AUTHENTIC: within the
-  ADSR delay's longest (32767 cycles) and the attack.
+  ADSR delay's longest (32767 cycles) and the attack;
+- the note-off taken within the note-on's bound; INSTANT: the release's first step in the
+  block that takes it; AUTHENTIC: within the ADSR delay's longest.
 
-It prints a JSON report per case (the distributions as min, median, mean and max);
-[decision record 0005](docs/decisions/0005-midi-note-timing.md) has the numbers.
+It prints a JSON report per case (the distributions as min, median, mean and max) and
+writes it into the fm1 build directory as `latency_<case>_<envelope>.json`.
+`SIDOU_LATENCY_TRIALS=<n>` runs every case with n trials; 64 reproduces the run
+[decision record 0005](docs/decisions/0005-midi-note-timing.md) has the numbers of:
 
+```sh
+SIDOU_LATENCY_TRIALS=64 SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test latency -- --nocapture --test-threads=1
+```
 
 fm1-emu does not emulate USB (see [docs/TODO.md](docs/TODO.md)), so USB
 MIDI is covered by the host tests of the packet conversion

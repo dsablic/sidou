@@ -173,6 +173,12 @@ jobs:
             test -s "$f" || { echo "::error::$f missing: the slots gate did not run"; exit 1; }
             jq -e '.all_heaviest_slots_instructions_per_sample | numbers' "$f"
           done
+          for c in idle_instant busy_instant usbretry_instant idle_authentic; do
+            f=build/fm1/latency_$c.json
+            test -s "$f" || { echo "::error::$f missing: the latency test did not run"; exit 1; }
+            jq -e '.trials > 0' "$f"
+            jq -e '.release_first_step_in_the_dma_buffer.max_ms | numbers' "$f"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -184,6 +190,7 @@ jobs:
             build/fm1/fx_budget_*.json
             build/fm1/fx_worst_budget_*.json
             build/fm1/slots_budget_*.json
+            build/fm1/latency_*.json
           if-no-files-found: warn
       # The package, with the licence of the AC79 SDK files in it (and SIDOU's).
       - uses: actions/upload-artifact@v4
