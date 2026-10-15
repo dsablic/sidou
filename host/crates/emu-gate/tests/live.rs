@@ -9,10 +9,6 @@ use common::{build_dir, peak, pitch, power_above, record, Firmware, Machine};
 use fm1_core::Bus;
 use sidou_sys::{ilp32, SID_MODEL_6581, SID_MODEL_8580};
 
-/// Past the LCD's reset delays, the first audio blocks and the short boot animation
-/// (app/boot.h), which a control would skip instead of playing; a whole number of frames
-/// after the 500 ms of before it, so that the screen's frames fall as they did.
-const BOOT_MS: u64 = 2020;
 /// Felucca's button ids.
 const OCT_UP: u8 = 1;
 const FX: u8 = 2;
@@ -40,9 +36,11 @@ fn fixture(what: &str) -> Option<(std::path::PathBuf, Firmware)> {
     Some((build, fw))
 }
 
+/// Past the boot animation (app/boot.h), which a control would skip instead of playing:
+/// until the boot view is gone from the screen (common::run_past_boot).
 fn booted(fw: &Firmware) -> Machine {
     let mut m = Machine::boot(&fw.image);
-    m.run_ms(BOOT_MS);
+    common::run_past_boot(&mut m, fw);
     m
 }
 
@@ -221,7 +219,7 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
     };
     let mut m = Machine::boot(&fw.image);
     m.watch_calls(fw.symbol("sid_init"));
-    m.run_ms(BOOT_MS);
+    common::run_past_boot(&mut m, &fw);
     m.key(key_id(A4), true);
     m.run_ms(200);
     let blocks_before = m.alnk_blocks.len();

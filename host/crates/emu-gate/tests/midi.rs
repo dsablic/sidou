@@ -16,10 +16,10 @@ use common::{build_dir, peak, pitch, power_above, record, Firmware, Machine};
 use fm1_core::Bus;
 use sidou_sys::{ilp32, live_freq_at, live_freq_table, SID_MODEL_8580};
 
-/// Past the LCD's reset delays, the first audio blocks and the short boot animation
-/// (app/boot.h), which a control would skip instead of playing; a whole number of frames
-/// after the 500 ms of before it, so that the screen's frames fall as they did.
-const BOOT_MS: u64 = 2020;
+/// Past the LCD's reset delays and the first audio blocks. MIDI plays through the boot
+/// animation (app/boot.h), so the tests that play only MIDI start inside it; the ones that
+/// touch a panel control wait for it to go (`booted_for_the_panel`).
+const BOOT_MS: u64 = 500;
 const C4: u8 = 60;
 const C4_HZ: f64 = 261.626;
 const CC_CUTOFF: u8 = 74;
@@ -40,6 +40,14 @@ fn fixture(what: &str) -> Option<Firmware> {
 fn booted(fw: &Firmware) -> Machine {
     let mut m = Machine::boot(&fw.image);
     m.run_ms(BOOT_MS);
+    m
+}
+
+/// Booted until the boot view is gone (common::run_past_boot): a control during the boot
+/// would skip it instead of doing what the test wants.
+fn booted_for_the_panel(fw: &Firmware) -> Machine {
+    let mut m = Machine::boot(&fw.image);
+    common::run_past_boot(&mut m, fw);
     m
 }
 
@@ -106,6 +114,45 @@ fn stats(m: &mut Machine, fw: &Firmware) -> Stats {
         usb_polls: w[4],
         uart_polls: w[5],
     }
+}
+
+/// A TRS note-on while the boot's title card shows (app/boot.h: from about 0.4 s to 1.6 s)
+/// plays at once and ends the boot: the status screen wipes in, with the note on it.
+#[test]
+fn a_trs_note_on_during_the_title_card_plays_and_ends_the_boot() {
+    let Some(fw) = fixture("the MIDI test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    m.run_ms(600);
+    let boot = fw.symbol("boot_view");
+    assert_eq!(
+        common::top_view(&mut m, &fw),
+        boot,
+        "the title card is not up at 600 ms"
+    );
+    m.midi(&[0x90, C4, 0x64]);
+    let x = record(&mut m, 200);
+    let gone = common::run_past_boot(&mut m, &fw);
+    println!(
+        "C4 over TRS during the title card: peak {}, the boot gone at {gone} ms",
+        peak(&x)
+    );
+    assert!(
+        peak(&x) > 1000.0,
+        "the note did not play: peak {}",
+        peak(&x)
+    );
+    // A frame to see the note, 8 to wipe: well before the short boot's own end (1.6 s).
+    assert!(
+        gone < 1200,
+        "the note did not end the boot: it went on until {gone} ms"
+    );
+    assert_eq!(
+        common::top_view(&mut m, &fw),
+        fw.symbol("views_status"),
+        "not the status screen"
+    );
 }
 
 #[test]
@@ -639,7 +686,7 @@ fn the_panel_goes_out_over_usb_and_midi_in_is_not_echoed() {
     let Some(fw) = fixture("the MIDI out test") else {
         return;
     };
-    let mut m = booted(&fw);
+    let mut m = booted_for_the_panel(&fw);
     // No host: a knob's change is dropped, nothing is queued.
     m.turn(K1, 1);
     m.run_ms(50);
@@ -689,7 +736,7 @@ fn midi_out_costs_little_and_waits_for_no_one() {
     let Some(fw) = fixture("the MIDI out test") else {
         return;
     };
-    let mut m = booted(&fw);
+    let mut m = booted_for_the_panel(&fw);
     m.run_ms(1500); // past a USB retry (once a second while no host answers)
     let (_, main_no_host) = rates(&mut m, 2000);
     attach_host(&mut m, &fw);
