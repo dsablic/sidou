@@ -9,7 +9,8 @@
  *   input): they are pending. midi_out_remote takes them as MIDI input's: the sender has the
  *   value already, so they are never echoed, on whichever port they came in (TRS or USB), and
  *   a pending panel change of the same parameter is dropped (the last change was MIDI's). The
- *   caller looks locally before taking MIDI input and remotely right after it.
+ *   caller looks locally before taking MIDI input and remotely right after it, once for a
+ *   whole pass of input when nothing else changes a parameter meanwhile (midi_rx_watch).
  * - midi_out_tick, once per 10 ms tick, takes a local look, then sends what is pending with
  *   each parameter's value at that moment: at most one message per parameter per tick, the
  *   latest value winning, at most MIDI_OUT_TICK_PACKETS packets a tick, round robin over the

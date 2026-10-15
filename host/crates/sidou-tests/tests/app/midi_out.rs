@@ -47,14 +47,29 @@ impl Out {
         unsafe { midi_rx_entry(&mut *self.rx, &e) };
     }
 
+    /// The end of a drain pass (midi_rx_settle), as the device's midi_drain ends one.
+    fn settle(&mut self) {
+        unsafe { midi_rx_settle(&mut *self.rx) };
+    }
+
+    /// TRS bytes in one drain pass.
     fn trs(&mut self, bytes: &[u8]) {
         for &b in bytes {
             self.entry(TRS, u32::from(b));
         }
+        self.settle();
+    }
+
+    /// USB-MIDI packets in one drain pass.
+    fn usb(&mut self, packets: &[u32]) {
+        for &p in packets {
+            self.entry(USB, p);
+        }
+        self.settle();
     }
 
     fn usb_cc(&mut self, cc: u8, value: u8) {
-        self.entry(USB, u32::from_le_bytes([0xB, 0xB0, cc, value]));
+        self.usb(&[u32::from_le_bytes([0xB, 0xB0, cc, value])]);
     }
 
     fn set(&mut self, param: u32, value: u32) {
@@ -221,9 +236,7 @@ fn every_parameter_reaches_a_second_instrument_through_its_stream() {
             want.push(o.get(p));
         }
         let stream = o.drain();
-        for &pkt in &stream {
-            far.entry(USB, pkt);
-        }
+        far.usb(&stream);
         for p in 0..LIVE_PARAM_COUNT {
             let r = row(p);
             // The pulse width goes as its NRPN too: the wheel drives the cutoff by now.
@@ -532,7 +545,7 @@ fn a_panel_change_the_preset_does_not_load_survives_a_program_change_from_midi()
     o.set(LIVE_PARAM_VOLUME, 500);
     o.rig.button(LIVE_BUTTON_FX);
     // A program change over USB before the tick: it loads neither the volume nor the model.
-    o.entry(USB, u32::from_le_bytes([0x0C, 0xC0, 2, 0]));
+    o.usb(&[u32::from_le_bytes([0x0C, 0xC0, 2, 0])]);
     assert_eq!(o.rig.live.preset, 2);
     let mut got = o.tick();
     got.sort_unstable();
@@ -541,7 +554,10 @@ fn a_panel_change_the_preset_does_not_load_survives_a_program_change_from_midi()
         cc_packet(0, 25, 127),
     ];
     want.sort_unstable();
-    assert_eq!(got, want, "the program change is MIDI's, the panel's changes go");
+    assert_eq!(
+        got, want,
+        "the program change is MIDI's, the panel's changes go"
+    );
 }
 
 #[test]
@@ -561,7 +577,10 @@ fn a_deferred_panel_change_the_preset_does_not_load_goes_after_the_program_chang
         cc_packet(0, row(slot).cc, to_cc(slot, o.get(slot))),
     ];
     want.sort_unstable();
-    assert_eq!(rest, want, "kept by the preset, so still the panel's to send");
+    assert_eq!(
+        rest, want,
+        "kept by the preset, so still the panel's to send"
+    );
 }
 
 #[test]
@@ -585,4 +604,52 @@ fn the_mod_target_goes_before_a_pulse_width_that_depends_on_it() {
     let mut want = nrpn_packets(0, row(LIVE_PARAM_MOD_TARGET).nrpn, LIVE_MOD_PULSE_WIDTH);
     want.push(cc_packet(0, 1, to_cc(LIVE_PARAM_PULSE_WIDTH, pw)));
     assert_eq!(o.tick(), want);
+}
+
+#[test]
+fn nrpn_data_entry_alone_is_midi_input_and_not_echoed() {
+    let mut o = Out::new();
+    o.trs(&[0xB0, 99, 0, 98, 0]); // the selection: it changes no parameter
+    o.trs(&[0xB0, 6, 5, 38, 1]);
+    assert_eq!(o.get(LIVE_PARAM_CUTOFF), 5 << 7 | 1);
+    o.trs(&[0xB0, 96, 0]);
+    o.trs(&[0xB0, 97, 0]);
+    o.trs(&[0xB0, 97, 0]);
+    assert_eq!(o.get(LIVE_PARAM_CUTOFF), 5 << 7);
+    // The wheel on the pulse width is its CC 1.
+    o.trs(&[0xB0, 1, 99]);
+    assert_eq!(o.get(LIVE_PARAM_PULSE_WIDTH), unsafe {
+        midi_map_from_cc(row(LIVE_PARAM_PULSE_WIDTH), 99)
+    });
+    assert_eq!(o.drain(), []);
+}
+
+#[test]
+fn a_burst_in_one_pass_is_all_midi_and_the_panel_change_before_it_still_goes() {
+    let mut o = Out::new();
+    o.set(LIVE_PARAM_VOLUME, 500); // the preset below keeps it
+                                   // One pass: notes and selection first (no look), then edits of other parameters, the
+                                   // wheel on another target, a preset and edits after it.
+    let mut pass = vec![
+        u32::from_le_bytes([0x09, 0x90, 60, 100]),
+        u32::from_le_bytes([0x0B, 0xB0, 99, 6]),
+        u32::from_le_bytes([0x0B, 0xB0, 98, 2]),
+        u32::from_le_bytes([0x0B, 0xB0, 6, 0]),
+        u32::from_le_bytes([0x0B, 0xB0, 38, LIVE_MOD_VIBRATO as u8]),
+        u32::from_le_bytes([0x0B, 0xB0, 1, 64]),
+    ];
+    for v in 0..16u8 {
+        pass.push(u32::from_le_bytes([0x0B, 0xB0, 74, v * 8]));
+    }
+    pass.push(u32::from_le_bytes([0x0C, 0xC0, 3, 0]));
+    pass.push(u32::from_le_bytes([0x0B, 0xB0, 25, 127]));
+    pass.push(u32::from_le_bytes([0x0B, 0xB0, 73, 127]));
+    o.usb(&pass);
+    assert_eq!(o.rig.live.preset, 3);
+    assert_eq!(o.get(LIVE_PARAM_MODEL), 1);
+    assert_eq!(
+        o.drain(),
+        [cc_packet(0, 7, to_cc(LIVE_PARAM_VOLUME, 500))],
+        "only the panel's volume"
+    );
 }

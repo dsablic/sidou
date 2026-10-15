@@ -155,7 +155,7 @@ fn main() {
 
     // Field offsets and sizes of the structs as the pi32v2 lays them out (ILP32: 4-byte
     // pointers and ints; no 64-bit fields in them), for the emulator tests, which read
-    // the firmware's chips and MIDI out's state from its RAM. The host's own layout differs wherever a struct
+    // the firmware's chips, MIDI out's state and its MIDI in ring from its RAM. The host's own layout differs wherever a struct
     // holds a pointer. bindgen's layout assertions carry clang's numbers for the target.
     let ilp32 = bindgen::Builder::default()
         .header(wrapper.to_str().unwrap())
@@ -163,7 +163,7 @@ fn main() {
         .clang_arg("-std=c11")
         .clang_arg("--target=i686-unknown-none")
         .clang_arg("-ffreestanding")
-        .allowlist_type("sid|sid_osc|sid_env|reg_ring_chips|midi_out")
+        .allowlist_type("sid|sid_osc|sid_env|reg_ring_chips|midi_out|midi_ring|midi_ring_entry")
         .generate()
         .expect("bindgen (ILP32 layout) failed")
         .to_string();

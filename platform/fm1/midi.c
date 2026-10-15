@@ -150,6 +150,11 @@ int midi_drain(void) {
         midi_rx_entry(&rx, &e);
         n++;
     }
+    /* MIDI out's second look, once a pass (midi_rx_watch). Since the first, nothing but this
+     * loop changed a parameter: midi_drain runs to completion in the main loop, the panel
+     * changes parameters only in main.c's play(), after it (ui_poll only reads live), and the
+     * interrupts (key scan, MIDI polls, audio render) change none. */
+    midi_rx_settle(&rx);
     if (in_ring.head == in_ring.tail) {
         /* All taken: a gap after the last entry, with nothing behind it yet. Its epoch was
          * read before the ring was seen empty, so every entry before it has been taken. */

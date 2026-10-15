@@ -22,16 +22,39 @@ void midi_rx_live(midi_map_port* port, const midi_msg* msg) {
     }
 }
 
-/* One message from a source's parser, with MIDI out told what it changed. */
+/* 0: the message cannot change a parameter (live_param_get), so MIDI out need not look
+ * around it: the NRPN and RPN selection, the notes off, the controllers' reset (bend, wheel,
+ * pressure) and the wheel on a target other than the pulse width. Data entry (6, 38, 96, 97)
+ * can. */
+static int edits(const live* l, const midi_msg* msg) {
+    if (msg->kind == MIDI_PROGRAM) {
+        return msg->data1 < LIVE_PRESET_COUNT;
+    }
+    if (msg->kind != MIDI_CC) {
+        return 0; /* notes, bend and aftertouch */
+    }
+    switch (msg->data1) {
+    case 98:
+    case 99:
+    case 100:
+    case 101:
+    case LIVE_CC_ALL_SOUND_OFF:
+    case LIVE_CC_RESET_ALL:
+    case LIVE_CC_ALL_NOTES_OFF: return 0;
+    case LIVE_CC_MOD_WHEEL: return l->mod_target == LIVE_MOD_PULSE_WIDTH;
+    default: return 1;
+    }
+}
+
+/* One message from a source's parser. Before the first that can change a parameter in a
+ * pass, MIDI out takes what changed until then as the panel's; midi_rx_settle takes the rest
+ * as MIDI's. */
 static void take(midi_rx* rx, midi_map_port* port, const midi_msg* msg) {
-    int edit = rx->out && (msg->kind == MIDI_CC || msg->kind == MIDI_PROGRAM);
-    if (edit) {
-        midi_out_local(rx->out, rx->l); /* what changed before this was the panel's */
+    if (rx->out && !rx->looked && edits(rx->l, msg)) {
+        midi_out_local(rx->out, rx->l);
+        rx->looked = 1;
     }
     midi_rx_live(port, msg);
-    if (edit) {
-        midi_out_remote(rx->out, rx->l);
-    }
 }
 
 static void on_trs(void* ctx, const midi_msg* msg) {
@@ -67,6 +90,7 @@ void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch) {
     rx->epoch = epoch;
     rx->restarts = 0;
     rx->out = 0;
+    rx->looked = 0;
     parsers_init(rx);
 }
 
@@ -84,6 +108,13 @@ void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e) {
         uint8_t b[3];
         uint32_t n = midi_usb_bytes(e->data, b);
         midi_in_feed(&rx->usb, b, n);
+    }
+}
+
+void midi_rx_settle(midi_rx* rx) {
+    if (rx->looked) {
+        midi_out_remote(rx->out, rx->l);
+        rx->looked = 0;
     }
 }
 

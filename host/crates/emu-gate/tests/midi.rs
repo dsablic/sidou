@@ -808,3 +808,83 @@ fn a_tick_of_midi_out_costs_little_at_worst() {
          deduplicated, {changed} with every parameter changed"
     );
 }
+
+/// USB-MIDI packets straight into platform/fm1/midi.c's MIDI in ring (`in_ring`), as usb.c's
+/// poll pushes them: fm1-emu has no USB controller. Returns how many fit.
+fn usb_in(m: &mut Machine, fw: &Firmware, packets: &[u32]) -> usize {
+    use ilp32::{midi_ring as r, midi_ring_entry as e};
+    let ring = fw.symbol("in_ring");
+    let size = sidou_sys::MIDI_RING_SIZE;
+    let head = m.soc.read32(ring + r::head as u32);
+    let tail = m.soc.read32(ring + r::tail as u32);
+    let epoch = m.soc.read8(ring + r::epoch as u32);
+    let n = packets.len().min((size - (head - tail)) as usize);
+    for (i, &p) in packets[..n].iter().enumerate() {
+        let at = ring + r::e as u32 + ((head + i as u32) % size) * e::SIZE as u32;
+        m.soc.write32(at + e::stamp as u32, 0);
+        m.soc.write32(at + e::data as u32, p);
+        m.soc
+            .write8(at + e::source as u32, sidou_sys::MIDI_SRC_USB as u8);
+        m.soc.write8(at + e::epoch as u32, epoch);
+    }
+    m.soc.write32(ring + r::head as u32, head + n as u32);
+    n
+}
+
+#[test]
+fn a_usb_cc_burst_costs_one_look_a_drain_pass() {
+    let Some(fw) = fixture("the MIDI out test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    attach_host(&mut m, &fw);
+    m.run_ms(1500); // past a USB retry
+    m.watch_calls(fw.symbol("midi_drain"));
+    // 16 CCs in one pass: the cutoff, the resonance and the attack, alternating.
+    let burst: Vec<u32> = (0..16u8)
+        .map(|i| cc_packet([CC_CUTOFF, 71, 73][usize::from(i % 3)], i * 8))
+        .collect();
+    let mut passes = Vec::new();
+    for _ in 0..20 {
+        assert_eq!(usb_in(&mut m, &fw, &burst), burst.len());
+        m.watched_calls.clear();
+        m.run_ms(5);
+        passes.push(*m.watched_calls.iter().max().expect("midi_drain ran"));
+    }
+    let entries = stats(&mut m, &fw).entries;
+    let worst_pass = *passes.iter().max().unwrap();
+    // Dense DAW automation: 16 CCs every millisecond (16k a second, USB is not
+    // baud-limited) for a second.
+    let (isr0, main0) = (m.isr_steps, m.main_steps);
+    for _ in 0..1000 {
+        usb_in(&mut m, &fw, &burst);
+        m.run_ms(1);
+    }
+    let main_flood = (m.main_steps - main0) as f64;
+    let isr_flood = (m.isr_steps - isr0) as f64;
+    let (echoed, _) = queued(&mut m, &fw, 0);
+    let report = serde_json::json!({
+        "midi_drain_instructions_16_ccs": worst_pass,
+        "main_instructions_per_s_usb_16k_cc": main_flood,
+        "isr_instructions_per_s_usb_16k_cc": isr_flood,
+        "entries": entries,
+    });
+    println!("{report}");
+    assert_eq!(entries, 20 * 16);
+    assert!(echoed.is_empty(), "MIDI in echoed: {echoed:08x?}");
+    // MIDI out's two looks (2.2k) and 16 CCs onto live (0.4k each): 8.2k. With a look before
+    // and after every CC it was 31.5k.
+    assert!(
+        worst_pass < 9_000,
+        "a drain pass of 16 CCs costs {worst_pass} instructions"
+    );
+    // 10.5M/s, past the 5M/s of the other floods: the CCs themselves cost 6M/s at this rate
+    // (MIDI out 2.2M/s). USB holds what the ring has no room for in the endpoint and the host
+    // retries, so input this dense slows down rather than stalling the main loop. 33.7M/s
+    // with the looks around every CC.
+    assert!(
+        main_flood < 12e6,
+        "the main loop runs {:.2}M/s with 16k CCs a second over USB",
+        main_flood / 1e6
+    );
+}

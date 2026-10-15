@@ -48,19 +48,28 @@ typedef struct {
     uint8_t epoch;     /* the ring's epoch the parsers are in */
     uint32_t restarts; /* times lost input restarted the parsers */
     midi_out* out;     /* told which changes are MIDI's (midi_rx_watch), or NULL */
+    uint8_t looked;    /* midi_out_local ran this pass: midi_rx_settle owes midi_out_remote */
 } midi_rx;
 
 /* epoch: the ring's midi_ring_epoch now, so losses before this are not held against it.
  * No midi_out watches. */
 void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch);
-/* MIDI out learns which changes are MIDI input's, so it never echoes them: around every CC
- * and program change (the messages that can change a parameter) the parsers call
- * midi_out_local before and midi_out_remote after. Notes, bend and aftertouch, which change
- * no parameter, cost MIDI out nothing. out may be NULL: none. */
+/* MIDI out learns which changes are MIDI input's, so it never echoes them. Once a pass, not
+ * once a message: before the first message of a pass that can change a parameter (a program
+ * change, a CC other than the NRPN and RPN selection, 120, 121, 123 and the wheel on a target
+ * other than the pulse width) the parsers call midi_out_local, and midi_rx_settle, at the end
+ * of the pass, calls midi_out_remote. That needs nothing but MIDI input to change a parameter
+ * between the two (the caller's to keep): every change in the pass is taken as MIDI's. So a
+ * burst costs MIDI out two looks however long it is, and notes, bend and aftertouch cost it
+ * nothing. out may be NULL: none. */
 void midi_rx_watch(midi_rx* rx, midi_out* out);
 /* One entry, through its source's parser; entries of an unknown source are ignored. An entry
  * from a later epoch than the parsers' first restarts them (a gap lies before it). */
 void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e);
+/* The end of a pass of entries: MIDI out takes the changes since the pass's first edit as
+ * MIDI's (midi_rx_watch). Call it before anything but MIDI input can change a parameter
+ * again, and before midi_out_tick. Nothing to do if no message of the pass could edit. */
+void midi_rx_settle(midi_rx* rx);
 /* epoch: the ring's midi_ring_epoch, read once the consumer has taken every entry (the ring
  * was empty). If it is ahead of the parsers' (by 1..127, wrapping), input was lost after the
  * last entry: restart now. An epoch that is not ahead changes nothing: an entry taken after
