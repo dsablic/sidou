@@ -135,7 +135,8 @@ A profile is a chip and a model: changing it resets the chip (held notes are rel
 a model change does), and the model follows it. The model (CC 25, the FX button) selects
 the 8580 R5, or goes back to the last 6581 profile chosen. The four controls change the
 playing chip without a reset, and glide there rather than jump, so they don't click: from
-the next 10 ms tick, age, thump and bleed take 0.32 s from 0 to 127, the DACs 0.16 s. A
+the next 10 ms tick, age and thump take 0.32 s from 0 to 127, the bleed 1.27 s, the DACs
+1.72 s. A
 profile applies at the next tick, at once. All of them keep the last value received and
 survive preset and model changes. Every control at 0 is the profile as reSIDfp has it (the
 worn 6581 aside, which goes beyond reSIDfp on purpose).

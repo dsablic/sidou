@@ -88,14 +88,6 @@ fn rms(x: &[i16]) -> f64 {
     (x.iter().map(|&v| f64::from(v).powi(2)).sum::<f64>() / x.len() as f64).sqrt()
 }
 
-/// The largest sample-to-sample step.
-fn max_step(x: &[i16]) -> i32 {
-    x.windows(2)
-        .map(|w| (i32::from(w[1]) - i32::from(w[0])).abs())
-        .max()
-        .unwrap_or(0)
-}
-
 /// The energy above `hz` against the total: a first difference, a crude high-pass that is
 /// enough to rank brightness.
 fn brightness(x: &[i16]) -> f64 {
@@ -414,14 +406,22 @@ fn the_settings_clamp() {
 
 /// The live instrument's tick (LIVE_TICK_HZ) in samples at the test's rate.
 const TICK: usize = (FS / 100) as usize;
-/// The ticks rendered before a jump, and after it: the ramp's 16 and some.
+/// The ticks rendered before a jump, and after it: the longest ramp's (the DACs': 43 tables,
+/// each over SID_DAC_BUILD_STEPS ticks) and some.
 const BEFORE: usize = 30;
-const AFTER: usize = 30;
+const AFTER: usize = 190;
+/// The click test's reference ramps the control over 0.2 s (TESTING.md, the effect slots'
+/// click tests), one step of 127 at a time.
+const RAMP: usize = FS as usize / 5;
+/// The residual's bound, and a step it must see (the effect slots' RESIDUAL_MAX and CLICK).
+const RESIDUAL_MAX: i32 = 30;
+const CLICK: i32 = 100;
 
 /// One voice of triangle at 110 Hz (frequency 0x0751 at PAL), held at full sustain, and the
 /// filter as a control needs it to be heard: age/heat moves the cutoff of the voice routed
-/// through the low-pass; the bleed sends the unrouted voice into the high-pass; the DACs and
-/// the thump need no filter.
+/// through the low-pass at resonance 15, at FC 1536 (lower, where the coefficients' step is
+/// small, its jump at once measures 10 to 20 LSB: no click to see); the bleed sends the
+/// unrouted voice into the high-pass at FC 384; the DACs and the thump need no filter.
 fn triangle(control: usize) -> Vec<(u8, u8)> {
     let (route, mode) = match control {
         0 => (0xf1, 0x1f), // resonance 15, voice 1 into the low-pass
@@ -430,7 +430,7 @@ fn triangle(control: usize) -> Vec<(u8, u8)> {
     };
     vec![
         (0x15, 0x00),
-        (0x16, 0x30), // FC 384
+        (0x16, if control == 0 { 0xc0 } else { 0x30 }), // FC 1536 for age/heat, else 384
         (0x17, route),
         (0x18, mode),
         (0x00, 0x51),
@@ -441,12 +441,40 @@ fn triangle(control: usize) -> Vec<(u8, u8)> {
     ]
 }
 
+/// How a run takes control from 0 to 127.
+#[derive(Clone, Copy)]
+enum Jump<'a> {
+    /// Sent to the host's sink, which ramps it a tick at a time (sid_character_ramp_tick).
+    Ramped,
+    /// The same, applied at once (sid_character_change, as the sinks did before the ramp).
+    AtOnce,
+    /// The reference: the control at value(sample) at every sample, between the settings'
+    /// stages (and DAC tables, every 16 samples) by linear interpolation.
+    Smooth(&'a dyn Fn(usize) -> f64),
+}
+
+/// The character with `control` at v.
+fn with(profile: u32, control: usize, v: u8) -> sid_character {
+    let mut c = character(profile, 0, 0, 0, 0);
+    match control {
+        0 => c.age = v,
+        1 => c.dac = v,
+        2 => c.thump = v,
+        _ => c.bleed = v,
+    }
+    c
+}
+
+/// a + t (b - a), field by field.
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + t * (b - a)
+}
+
 /// A chip behind the host's sink (live_sid_sink), driven as the live instrument drives it:
 /// the profile and a reset, the triangle, then LIVE_REG_CHAR_TICK every tick, with control
-/// sent from 0 to `to` before tick JUMP_TICK. With `at_once` the jump skips the ramp
-/// (sid_character_change at that tick, as the sinks did before the ramp). The output from a
-/// tick before the jump.
-fn jump(profile: u32, control: usize, to: u8, at_once: bool, at: usize) -> Vec<i16> {
+/// taken from 0 to 127 from tick `at` as `how` says. The output from a tick before, and the
+/// sink's ramp's value of the control at each tick.
+fn jump(profile: u32, control: usize, how: Jump, at: usize, ticks: usize) -> (Vec<i16>, Vec<u8>) {
     let model = model_of(profile);
     let mut chip = Box::<sid>::default();
     let mut dacs = Box::<[sid_dac; 2]>::default();
@@ -464,11 +492,33 @@ fn jump(profile: u32, control: usize, to: u8, at_once: bool, at: usize) -> Vec<i
     for (r, v) in triangle(control) {
         sink(u32::from(r), v);
     }
+    // The reference's stages and DAC tables at each setting, made as they are needed.
+    let mut stages: Vec<Option<sid_character_stage>> = vec![None; 128];
+    let mut tables: Vec<Option<Box<sid_dac>>> = (0..128).map(|_| None).collect();
+    let mut between = Box::<sid_dac>::default();
+    let mut stage = |chip: &sid, v: usize, tables: &mut Vec<Option<Box<sid_dac>>>| {
+        *stages[v].get_or_insert_with(|| {
+            let c = with(profile, control, v as u8);
+            let mut st = sid_character_stage::default();
+            unsafe {
+                let d: *const sid_dac = if sid_character_dac_custom(chip, &c) != 0 {
+                    let d = tables[v].get_or_insert_with(Box::default);
+                    sid_character_build_dac(chip, &c, &mut **d);
+                    &**d
+                } else {
+                    sid_dac_default(i32::from(model == SID_MODEL_6581))
+                };
+                sid_character_stage_for(chip, &c, d, &mut st);
+            }
+            st
+        })
+    };
     let mut out = Vec::new();
-    for tick in 0..at + AFTER {
-        if tick == at && to > 0 {
-            sink(LIVE_REG_CHAR_FIRST + 1 + control as u32, to);
-            if at_once {
+    let mut now = Vec::new();
+    for tick in 0..ticks {
+        if tick == at && !matches!(how, Jump::Smooth(_)) {
+            sink(LIVE_REG_CHAR_FIRST + 1 + control as u32, 127);
+            if matches!(how, Jump::AtOnce) {
                 let c = unsafe { (*t).ramp.target };
                 let table = unsafe { &mut *dacs.as_mut_ptr().add(1) };
                 unsafe { sid_character_change(&mut *chip, &c, table) };
@@ -476,71 +526,180 @@ fn jump(profile: u32, control: usize, to: u8, at_once: bool, at: usize) -> Vec<i
             }
         }
         sink(LIVE_REG_CHAR_TICK, 0);
-        out.extend(render(&mut chip, TICK));
+        let n = unsafe { (*t).ramp.now };
+        now.push([n.age, n.dac, n.thump, n.bleed][control]);
+        let Jump::Smooth(value) = how else {
+            out.extend(render(&mut chip, TICK));
+            continue;
+        };
+        for i in tick * TICK..(tick + 1) * TICK {
+            let v = value(i).clamp(0.0, 127.0);
+            if v > 0.0 && (control != 1 || i % 16 == 0) {
+                let lo = v.floor() as usize;
+                let f = (v - lo as f64) as f32;
+                let a = stage(&chip, lo, &mut tables);
+                let b = if f > 0.0 {
+                    stage(&chip, lo + 1, &mut tables)
+                } else {
+                    a
+                };
+                let mut st = a;
+                st.nl.level = lerp(a.nl.level, b.nl.level, f);
+                st.nl.level_off = lerp(a.nl.level_off, b.nl.level_off, f);
+                st.nl.load = lerp(a.nl.load, b.nl.load, f);
+                st.nl.floor = lerp(a.nl.floor, b.nl.floor, f);
+                st.thump = lerp(a.thump, b.thump, f);
+                st.bleed = lerp(a.bleed, b.bleed, f);
+                st.output_gain = lerp(a.output_gain, b.output_gain, f);
+                st.filter_t = lerp(a.filter_t, b.filter_t, f);
+                if a.dac != b.dac {
+                    let (da, db) = unsafe { (&*a.dac, &*b.dac) };
+                    for (x, (p, q)) in between.wave.iter_mut().zip(da.wave.iter().zip(&db.wave)) {
+                        *x = lerp(*p, *q, f);
+                    }
+                    for (x, (p, q)) in between.env.iter_mut().zip(da.env.iter().zip(&db.env)) {
+                        *x = lerp(*p, *q, f);
+                    }
+                    st.dac = &*between;
+                }
+                unsafe { sid_character_commit(&mut *chip, &st) };
+            }
+            out.extend(render(&mut chip, 1));
+        }
     }
-    out[(at - 1) * TICK..].to_vec()
+    let mut there = sid_character_stage::default();
+    unsafe { sid_character_stage_for(&*chip, &with(profile, control, 127), chip.dac, &mut there) };
+    let s = &*chip;
+    assert_eq!(
+        (s.filter_t, s.thump, s.bleed, s.output_gain),
+        (there.filter_t, there.thump, there.bleed, there.output_gain),
+        "profile {profile} control {control}: the jump did not get there"
+    );
+    if control == 1 {
+        let mut d = Box::<sid_dac>::default();
+        unsafe { sid_character_build_dac(s, &with(profile, 1, 127), &mut *d) };
+        assert_eq!(
+            unsafe { (*s.dac).wave },
+            d.wave,
+            "profile {profile}: the DACs"
+        );
+    }
+    (out[(at - 1) * TICK..].to_vec(), now)
 }
 
-/// A jump of any control from 0 to 127 does not click: the ramp (sid_character_ramp_tick)
-/// takes it in steps a tick apart (32 for age, thump and bleed, four tables for the DACs), so
-/// the triangle's largest sample step stays within RAMP_STEP_BOUND of its own slope, held at
-/// either end. The same jump at once (as the sinks made it before the ramp) steps past the
-/// bound for the thump and the bleed, which change the output at once (the output gain, the
-/// filter's input); age and the DACs change its shape, and the worn DACs step at once too.
+/// The ramp's path at its speed, smoothly: from the sink's value of the control at each tick,
+/// the line through the middle of each of its risers (from half a step before the first to
+/// half a step after the last), in samples.
+fn path(now: &[u8]) -> impl Fn(usize) -> f64 {
+    let risers: Vec<usize> = (1..now.len()).filter(|&i| now[i] != now[i - 1]).collect();
+    let mut points: Vec<(f64, f64)> = risers
+        .iter()
+        .map(|&i| {
+            (
+                (i * TICK) as f64,
+                (f64::from(now[i]) + f64::from(now[i - 1])) / 2.0,
+            )
+        })
+        .collect();
+    let (first, last) = (risers[0], risers[risers.len() - 1]);
+    let half = |a: usize, b: usize| (b - a) as f64 * TICK as f64 / 2.0;
+    let (h0, h1) = match risers.len() {
+        1 => (TICK as f64 / 2.0, TICK as f64 / 2.0),
+        n => (
+            half(risers[0], risers[1]),
+            half(risers[n - 2], risers[n - 1]),
+        ),
+    };
+    points.insert(0, (points[0].0 - h0, f64::from(now[first - 1])));
+    points.push((points[points.len() - 1].0 + h1, f64::from(now[last])));
+    move |s: usize| {
+        let x = s as f64;
+        let k = points.partition_point(|p| p.0 <= x);
+        if k == 0 {
+            return points[0].1;
+        }
+        if k == points.len() {
+            return points[k - 1].1;
+        }
+        let ((x0, y0), (x1, y1)) = (points[k - 1], points[k]);
+        y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+    }
+}
+
+/// The ticks from the first change of a ramp's value to its last.
+fn ramp_ticks(now: &[u8]) -> usize {
+    let changes: Vec<usize> = (1..now.len()).filter(|&i| now[i] != now[i - 1]).collect();
+    changes[changes.len() - 1] - changes[0] + 1
+}
+
+/// The largest 2nd difference of a - b: a step of s in either shows as s.
+fn residual(a: &[i16], b: &[i16]) -> i32 {
+    let d: Vec<i32> = a
+        .iter()
+        .zip(b)
+        .map(|(&x, &y)| i32::from(x) - i32::from(y))
+        .collect();
+    d.windows(3)
+        .map(|w| (w[2] - 2 * w[1] + w[0]).abs())
+        .max()
+        .unwrap_or(0)
+}
+
+/// A jump of any control from 0 to 127 does not click, by the effect slots' measure
+/// (TESTING.md): the run through the sink's ramp against the same move taken a step of 1 at a
+/// time over 0.2 s keeps the 2nd difference of their difference within RESIDUAL_MAX, on a
+/// triangle the jump meets at ten phases. The measure would see a CLICK-sized step, and sees
+/// the same jump at once for every control: age at resonance 15, the DACs, the thump (the 8580's
+/// too) and the bleed.
 #[test]
 fn a_jump_of_any_control_is_ramped_and_does_not_click() {
     for profile in [SID_CHIP_6581_R4AR, SID_CHIP_8580_R5, SID_CHIP_6581_WORN] {
         for control in 0..4usize {
-            let held = |v: u8| {
-                let mut c = character(profile, 0, 0, 0, 0);
-                match control {
-                    0 => c.age = v,
-                    1 => c.dac = v,
-                    2 => c.thump = v,
-                    _ => c.bleed = v,
-                }
-                let mut dac = Box::<sid_dac>::default();
-                let mut s = chip(model_of(profile));
-                unsafe { sid_character_apply(&mut *s, &c, &mut *dac) };
-                write(&mut s, &triangle(control));
-                render(&mut s, 30 * TICK);
-                max_step(&render(&mut s, 30 * TICK))
-            };
-            let slope = held(0).max(held(127));
+            let (mut ramped, mut at_once, mut click, mut long) = (0, 0, i32::MAX, usize::MAX);
             // At ten ticks in a row: the triangle (a period of 401 samples, a tick 441) meets
             // the jump at ten phases a tenth of its period apart, its peaks among them.
-            let worst = |at_once: bool| {
-                (BEFORE..BEFORE + 10)
-                    .map(|at| max_step(&jump(profile, control, 127, at_once, at)))
-                    .max()
-                    .unwrap()
-            };
-            let (ramped, at_once) = (worst(false), worst(true));
-            let bound = RAMP_STEP_BOUND * f64::from(slope);
+            for at in BEFORE..BEFORE + 10 {
+                let ticks = at + AFTER;
+                let (mut j, now) = jump(profile, control, Jump::Ramped, at, ticks);
+                long = long.min(ramp_ticks(&now));
+                let value = path(&now);
+                let (r, _) = jump(profile, control, Jump::Smooth(&value), at, ticks);
+                ramped = ramped.max(residual(&j, &r));
+                let (a, _) = jump(profile, control, Jump::AtOnce, at, ticks);
+                at_once = at_once.max(residual(&a, &r));
+                for v in &mut j[TICK + TICK / 2..] {
+                    *v = v.saturating_add(CLICK as i16);
+                }
+                click = click.min(residual(&j, &r));
+            }
             println!(
-                "profile {profile} control {control}: ramped {ramped}, at once {at_once}, the \
-                 triangle's own {slope} (bound {bound:.0})"
+                "profile {profile} control {control}: residual ramped {ramped} LSB, at once \
+                 {at_once}, a {CLICK} LSB click {click}; the ramp {long} ticks"
             );
             assert!(
-                f64::from(ramped) <= bound,
-                "profile {profile} control {control}: a step of {ramped} against {slope}"
+                ramped <= RESIDUAL_MAX,
+                "profile {profile} control {control}: the ramped jump's residual is {ramped} LSB"
             );
-            if control >= 2 {
-                assert!(
-                    f64::from(at_once) > bound,
-                    "profile {profile} control {control}: the test misses the jump at once"
-                );
-            }
+            assert!(
+                at_once > RESIDUAL_MAX,
+                "profile {profile} control {control}: the test misses the jump at once ({at_once})"
+            );
+            assert!(
+                click > RESIDUAL_MAX,
+                "a {CLICK} LSB click shows only {click}"
+            );
+            assert!(
+                long * TICK >= RAMP,
+                "profile {profile} control {control}: a ramp of {long} ticks"
+            );
         }
     }
 }
 
-/// How far the largest step of a ramped jump may exceed the signal's own (its slope).
-const RAMP_STEP_BOUND: f64 = 1.25;
-
-/// sid_character_change, the host sink's apply, rebuilds the tables whatever they were:
-/// the age back to 0 is the profile's own tables again. (sid_character_apply, for a chip
-/// fresh from sid_init, keeps sid_init's tables for the default profile at age 0.)
+/// sid_character_change, the host sink's apply at once, from every control at 127 back to 0:
+/// the profile's own chip again. Age moves only the stage's filter_t (the tables, the
+/// profile's curve and its hot row, stay), so the first row's tables are sid_init's
+/// throughout; the non-linearity, the DACs and the output stage are sid_init's again.
 #[test]
 fn a_change_back_to_zero_restores_the_profile() {
     for model in [SID_MODEL_6581, SID_MODEL_8580] {

@@ -30,10 +30,13 @@
  * ring's drain runs at a block boundary (app/reg_ring.h).
  *
  * Changes are ramped, so a jump does not click (sid_character_ramp): every 10 ms tick the
- * age, the thump and the bleed move SID_CHARACTER_RAMP towards what was asked (0 to 127 in
- * 32 ticks), and the DACs SID_CHARACTER_DAC_RAMP a table, each table built over
- * SID_DAC_BUILD_STEPS ticks (sid_dac_job; 0 to 127 in 16), so no tick's work stalls the main
- * loop. A profile is not ramped: it changes with a chip reset. */
+ * age and the thump move SID_CHARACTER_RAMP towards what was asked (0 to 127 in 32 ticks),
+ * the bleed SID_CHARACTER_BLEED_RAMP (in 127), and the DACs SID_CHARACTER_DAC_RAMP a table,
+ * each table built over SID_DAC_BUILD_STEPS ticks (sid_dac_job; 0 to 127 in 172), so no
+ * tick's work stalls the main loop. Each step is as large as the click test allows
+ * (tests/unit/sid_character.rs: within 30 LSB of the same move made smoothly; the bleed's
+ * and the DACs' steps change the output itself, so theirs are the smallest). A profile is
+ * not ramped: it changes with a chip reset. */
 #ifndef SIDOU_SID_CHARACTER_H
 #define SIDOU_SID_CHARACTER_H
 
@@ -53,10 +56,12 @@ extern "C" {
 #define SID_CHARACTER_LEAK 6.0f   /* times the profile's DAC leakage */
 #define SID_CHARACTER_THUMP 1.0f  /* voice DAC units of DC at volume 15 (sid_dac.h) */
 #define SID_CHARACTER_BLEED 0.5f  /* of the unfiltered voices into the filter */
-/* The ramp (sid_character_ramp_tick): age, thump and bleed move at most this a tick, the
- * DACs at most SID_CHARACTER_DAC_RAMP a table (one table every SID_DAC_BUILD_STEPS ticks). */
+/* The ramp (sid_character_ramp_tick): age and thump move at most SID_CHARACTER_RAMP a tick,
+ * the bleed SID_CHARACTER_BLEED_RAMP, the DACs SID_CHARACTER_DAC_RAMP a table (one table
+ * every SID_DAC_BUILD_STEPS ticks). */
 #define SID_CHARACTER_RAMP 4u
-#define SID_CHARACTER_DAC_RAMP 32u
+#define SID_CHARACTER_BLEED_RAMP 1u
+#define SID_CHARACTER_DAC_RAMP 3u
 
 /* One profile (gen/profiles.h, SID_CHIP_PROFILE_ROWS). */
 typedef struct {
@@ -160,8 +165,8 @@ typedef struct {
  * nothing to ramp, no table being built. */
 void sid_character_ramp_reset(sid_character_ramp* r, const sid_character* c,
                               const sid_dac* table);
-/* One tick on the chip the stage is for: age, thump and bleed move up to SID_CHARACTER_RAMP
- * towards the target; the DACs, if they differ, run the next step of the table being built,
+/* One tick on the chip the stage is for: age and thump move up to SID_CHARACTER_RAMP towards
+ * the target, the bleed up to SID_CHARACTER_BLEED_RAMP; the DACs, if they differ, run the next step of the table being built,
  * or start the next one (up to SID_CHARACTER_DAC_RAMP on, into free_table, a table no chip
  * and no queued stage points at; NULL: none is free, the DACs wait), or, if the next setting
  * is the model's default, take it at once. Returns 1 with the stage in *out when anything

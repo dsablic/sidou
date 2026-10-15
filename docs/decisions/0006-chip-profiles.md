@@ -118,10 +118,12 @@ tick, and ramped there (below):
 ### Ramped, and never in the way of the main loop
 
 A jump of a control is not applied at once: every tick (live sends `LIVE_REG_CHAR_TICK`
-after the settings that changed) the sink's ramp (`sid_character_ramp_tick`) moves age,
-thump and bleed up to 4 towards the target (0 to 127 in 32 ticks, 0.32 s) and the DACs up
-to 32 a table (four tables, 16 ticks). The register ring's sink and the host's
-(`live_sid_sink`) run the same ramp at the same ticks.
+after the settings that changed) the sink's ramp (`sid_character_ramp_tick`) moves age and
+thump up to 4 towards the target (0 to 127 in 32 ticks, 0.32 s), the bleed up to 1 (127
+ticks, 1.27 s) and the DACs up to 3 a table (43 tables, 172 ticks, 1.72 s). The register
+ring's sink and the host's (`live_sid_sink`) run the same ramp at the same ticks. The first
+build moved the bleed 4 a tick and the DACs 32 a table (four tables, 0.16 s); the click
+test (below) heard both steps.
 
 The first build of this task waited, at each tick with a change, for the register ring to
 empty (up to a block, 2.9 ms), then rebuilt in place (age 0.20 M instructions, a DAC table
@@ -190,15 +192,24 @@ RMS; thump: the step at a volume write, its signed area, the peak 23 to 4,191 LS
 6581; bleed: the filter's added output, 294 to 894 RMS), and clamps (past 127 is 127, a
 bad profile is the model's default).
 
-**No clicks:** a jump of each control from 0 to 127, through the host's sink and its ramp,
-on a 110 Hz triangle (the filter as the control needs it: age through the low-pass, the
-bleed into the high-pass), at ten phases of the triangle: the largest sample step stays
-within 1.25 times the triangle's own slope held at either end. The same jump at once, as
-the first build applied it, steps past that for the thump (6581 R4AR 564 LSB against a
-slope of 205; 8580 R5 354 against 48; worn 539 against 315) and the bleed (1,698, 1,405,
-1,642), and for worn's DACs (1,005 against 539); age and the R4AR's and R5's DACs change
-the shape, not the level, at once. The previous test swept a chord of saws, whose own
-edges hid any step.
+**No clicks:** the effect slots' measure (TESTING.md): a jump of each control from 0 to 127
+through the host's sink and its ramp, against the same move made smoothly, must keep the
+2nd difference of the two runs' difference within 30 LSB, which a 100 LSB step exceeds.
+On a 110 Hz triangle (the filter as the control needs it: age through the low-pass at
+resonance 15 and FC 1536, the bleed into the high-pass), at ten phases of the triangle.
+The smooth run takes the ramp's own path at its speed (the line through the middle of each
+of its steps), the control interpolated between its settings' stages at every sample (the
+DAC tables every 16 samples). A reference ramped over a fixed 0.2 s, as the slots' tests
+use, measures the DACs' path instead of their steps: two runs at different DAC settings at
+the same moment differ by the tables' kinks wherever the triangle crosses them, so the
+first build's DAC ramp read 126 LSB on the R4AR against it, and slower ramps read more
+(213 at 8 a table, 263 at 4). Against the ramp's own path the first build's ramps measured
+(6581 R4AR, 8580 R5, worn): age 5, 3, 3 (at FC 384), thump 19, 12, 19, but bleed 55, 61,
+53 and the DACs 125, 52, 269. Now: age 11, 4, 5; DACs 14, 9, 27; thump 19, 12, 19; bleed
+15, 17, 15; each ramp at least 0.2 s. At once: age 226, 65, 170 (at FC 384 only 13 to 20,
+which is why the test sits at 1536), DACs 465, 335, 990, thump 529, 313, 517, bleed
+1,672, 1,859, 1,626. The first click test bounded the largest sample step by 1.25 times
+the triangle's own slope, which age and the DACs at once passed.
 
 **Age's rows against reSIDfp** (`tests/profiles.rs`, recorded, not bounded: they are
 artistic targets): the 6581's (curve 0.25 at range 0.3) 5.04 / 4.81 / 4.40 dB in shape,

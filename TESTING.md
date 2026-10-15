@@ -180,15 +180,16 @@ at the profile's strength. reSIDfp keeps the 6581 filter range once per process,
 file is its own test binary and its measurements take a lock. It also records, without a
 bound, age/heat's two target rows against reSIDfp at their settings. The character's
 controls are unit tests (`tests/unit/sid_character.rs`): each one's direction and
-measurability at every value, clamping, and clicks: a jump of each control from 0 to 127
-through the host's sink and its ramp, on a triangle at ten phases, must keep the largest
-sample step within 1.25 times the triangle's own slope, and the test checks that the same
-jump at once breaks that bound for the controls that step the level. The age's blend of two
-filter rows (`tests/unit/sid_filter.rs`) is held to the Hz blend of their cutoffs. The
-register ring's handling (the ramp tick for tick against the host's sink, the two stages,
-a tick that finds both queued, and the interrupt committing a stage in the middle of the
-choice of a free DAC table, through a hook only the host build has), live's and the map's are app tests;
-`crates/emu-gate/tests/character.rs` sends the CCs to the firmware, checks the chip in
+measurability at every value, clamping, and clicks, by the effect slots' measure: a jump of
+each control from 0 to 127 through the host's sink and its ramp, on a triangle at ten
+phases, against the same move made smoothly (the ramp's path at its speed, interpolated at
+every sample), keeps the 2nd difference of their difference within 30 LSB; a 100 LSB step
+and the same jump at once, for every control, exceed it. The age's blend of two filter
+rows (`tests/unit/sid_filter.rs`) is held to the Hz blend of their cutoffs. The register
+ring's handling (the ramp tick for tick against the host's sink, the two stages, a tick
+that finds both queued, and the interrupt committing a stage in the middle of the choice
+of a free DAC table, through a hook only the host build has), live's and the map's are app
+tests; `crates/emu-gate/tests/character.rs` sends the CCs to the firmware, checks the chip in
 emulated RAM and the audio against the host build, sample for sample, the host replaying
 the device's ticks block by block (the drain counts them), and checks that the image holds
 only the combined-waveform tables the profiles play; `latency.rs`'s sweep case plays a

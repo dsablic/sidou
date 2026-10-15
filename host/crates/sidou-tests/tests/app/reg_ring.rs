@@ -372,7 +372,8 @@ fn the_character_reaches_the_chip_through_the_ring_and_across_model_changes() {
     let default_dac = |model| unsafe { sid_dac_default(i32::from(model == SID_MODEL_6581)) };
     let waits = (dev.out.full_waits, dev.out.reset_waits);
     // The controls, a note held, then a tick a block until the ramp is done: 32 ticks for
-    // age, thump and bleed, 16 for the DACs (four tables, each over SID_DAC_BUILD_STEPS).
+    // age and thump, 100 for the bleed, 172 for the DACs (43 tables of 3 steps, each over
+    // SID_DAC_BUILD_STEPS ticks).
     both(&mut dev, &mut direct, |l| unsafe {
         live_note_on(l, 60, 100);
         live_param_set(l, LIVE_PARAM_AGE, 90);
@@ -380,10 +381,11 @@ fn the_character_reaches_the_chip_through_the_ring_and_across_model_changes() {
         live_param_set(l, LIVE_PARAM_THUMP, 64);
         live_param_set(l, LIVE_PARAM_BLEED, 100);
     });
+    const TICKS: u32 = 180;
     let mut tables: Vec<*const sid_dac> = Vec::new();
     let mut playing: Option<(*const sid_dac, Vec<f32>)> = None;
     let ticks = dev.chips.ticks;
-    for tick in 0..40 {
+    for tick in 0..TICKS {
         both(&mut dev, &mut direct, |l| unsafe { live_tick(l) });
         dev.block();
         let d = dev.chip().dac;
@@ -402,7 +404,11 @@ fn the_character_reaches_the_chip_through_the_ring_and_across_model_changes() {
         playing = Some((d, wave));
         assert_same_sound(&mut dev, &mut direct);
     }
-    assert_eq!(dev.chips.ticks, ticks + 40, "a REG_RING_CHARACTER a tick");
+    assert_eq!(
+        dev.chips.ticks,
+        ticks + TICKS,
+        "a REG_RING_CHARACTER a tick"
+    );
     let s = dev.chip();
     assert_eq!(
         (s.thump, s.bleed, s.filter_t),

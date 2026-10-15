@@ -145,7 +145,7 @@ int sid_character_ramp_tick(sid_character_ramp* r, const sid* s, sid_dac* free_t
     sid_character was = *now;
     now->age = toward(now->age, clamped(want->age), SID_CHARACTER_RAMP);
     now->thump = toward(now->thump, clamped(want->thump), SID_CHARACTER_RAMP);
-    now->bleed = toward(now->bleed, clamped(want->bleed), SID_CHARACTER_RAMP);
+    now->bleed = toward(now->bleed, clamped(want->bleed), SID_CHARACTER_BLEED_RAMP);
     int changed = now->age != was.age || now->thump != was.thump || now->bleed != was.bleed;
     if (r->building) {
         if (sid_dac_job_step(&r->job)) {
