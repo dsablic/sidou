@@ -16,7 +16,8 @@
 //! - **taken**: the audio interrupt that applies the note's writes is entered. The chip's
 //!   voice is gated from that block's first sample.
 //! - **buffer**: that interrupt returns, its block with the note's first non-silent sample
-//!   written into the DMA buffer: taken plus the render (about 0.2 ms).
+//!   written into the DMA buffer: taken plus the render (about 0.2 ms), because `audio_fill`
+//!   writes the block's samples at its end.
 //! - **audible**: that sample leaves the DAC (fm1-emu plays a half at 44.1 kHz from the
 //!   moment the DMA switches to it): one more block.
 //!
@@ -26,12 +27,24 @@
 //! threshold is `SILENCE_MARGIN` LSB past its largest deviation. The first sample past it
 //! comes a few dozen samples into the gated block, but it is not yet the note: it is the
 //! gated voice's oscillator leaking through the DAC at envelope 0 (about 40 LSB). The note's
-//! envelope is measured as well (`note_*`: past `NOTE_LEVEL` of the held note's peak), and it
-//! comes up to 33 ms later: the SID's ADSR delay bug, which the core emulates as reSIDfp does.
-//! A release rate's period (267 cycles at SAW LEAD's release 6) is longer than attack 0's (9),
-//! so a gate that finds the rate LFSR past 8 waits for it to come round, 32767 cycles, before
-//! the attack takes its first step (core/sid/sid_env.h). That is the chip, not the firmware's
-//! pipeline; docs/decisions/0005-midi-note-timing.md has the numbers.
+//! envelope is measured as well (`note_*`: past `NOTE_LEVEL` of the held note's peak). With the
+//! attack AUTHENTIC it comes up to 33 ms later: the SID's ADSR delay bug, which the core
+//! emulates as reSIDfp does. A release rate's period (267 cycles at SAW LEAD's release 6) is
+//! longer than attack 0's (9), so a gate that finds the rate LFSR past 8 waits for it to come
+//! round, 32767 cycles, before the attack takes its first step (core/sid/sid_env.h). With the
+//! attack INSTANT, the live instrument's default, the gate restarts the LFSR and the envelope
+//! is up in the block that takes the note. docs/decisions/0005-midi-note-timing.md has the
+//! numbers.
+//!
+//! The bounds, for every trial:
+//! - taken <= block + poll (+ the USB attach's stall around it);
+//! - buffer <= block + poll (+ the stall) + the render allowance: the longest audio interrupt
+//!   of the run, entry to return. The plan's "buffer <= block + poll" left out the render;
+//!   0005 has the amendment. The allowance is measured, not a margin, and is itself held to
+//!   the audio budget (`common::AUDIO_TARGET` instructions a sample, a block's worth);
+//! - audible <= taken + two blocks;
+//! - INSTANT: the envelope is up in the block that takes the note (note buffer == buffer);
+//!   AUTHENTIC: within the ADSR delay's longest and the attack, a block's granularity on top.
 //!
 //! Each trial boots afresh (fm1-emu's state cannot be cloned) and injects the note-on at a
 //! random cycle in a 40 ms window, so its phase against the audio block (2.9 ms), the UART
@@ -45,7 +58,7 @@
 
 mod common;
 
-use common::{build_dir, skip_message, Firmware, Machine, HALF_FRAMES};
+use common::{build_dir, skip_message, Firmware, Machine, AUDIO_TARGET, HALF_FRAMES};
 use fm1_core::Bus;
 use sidou_sys::ilp32;
 
@@ -82,6 +95,10 @@ const SID_HZ: u64 = 985_248;
 const LFSR_PERIOD: u64 = 32_767;
 /// Attack 0 from 0 to the note level: 2 ms to the top.
 const ATTACK_MS: u64 = 2;
+/// The map's attack mode (docs/reference/midi.md): CC 26, steps, on from 64.
+const CC_ATTACK_MODE: u8 = 26;
+/// fm1-emu runs one instruction a cycle; the audio budget is in instructions.
+const INSTRUCTIONS_PER_CYCLE: f64 = 1.0;
 
 /// Cycles of one audio block (a DMA half), one frame, one poll period and one MIDI byte.
 struct Clock {
@@ -109,6 +126,15 @@ impl Clock {
     }
 }
 
+/// The live instrument's attack mode (LIVE_PARAM_ATTACK_MODE).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Attack {
+    /// The default: the gate restarts the envelope's rate counter.
+    Instant,
+    /// The chip's ADSR delay; set over TRS (CC 26 = 127) after the boot.
+    Authentic,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Scenario {
     /// The status screen at rest.
@@ -132,6 +158,8 @@ struct Trial {
     ring_wait_us: f64,
     /// The longest `ui_poll` call, instructions.
     ui_poll_max: u64,
+    /// The longest audio interrupt of the trial, entry to return, cycles.
+    isr_max: u64,
 }
 
 /// xorshift64*: reproducible phases.
@@ -161,10 +189,16 @@ fn gate_addresses(m: &mut Machine, fw: &Firmware) -> Vec<u32> {
         .collect()
 }
 
-/// The firmware booted to `BOOT_MS`, the screen busy for the busy case.
-fn boot(fw: &Firmware, scenario: Scenario) -> Machine {
+/// The firmware booted to `BOOT_MS`, with the attack mode, the screen busy for the busy
+/// case.
+fn boot(fw: &Firmware, scenario: Scenario, attack: Attack) -> Machine {
     let mut m = Machine::boot(&fw.image);
     m.run_ms(BOOT_MS);
+    if attack == Attack::Authentic {
+        // 1 ms on the wire, then a main-loop pass; the window starts well after.
+        m.midi(&[0xB0, CC_ATTACK_MODE, 127]);
+        m.run_ms(5);
+    }
     if scenario == Scenario::Busy {
         // 400 ms of turning (a detent per 8 ms), past the window and the measurement.
         for k in KNOBS {
@@ -177,8 +211,8 @@ fn boot(fw: &Firmware, scenario: Scenario) -> Machine {
 
 /// The first `usb_attach_now` after `boot`: its start, in cycles after `boot`, and its
 /// instructions.
-fn usb_attach(fw: &Firmware) -> (u64, u64) {
-    let mut m = boot(fw, Scenario::UsbRetry);
+fn usb_attach(fw: &Firmware, attack: Attack) -> (u64, u64) {
+    let mut m = boot(fw, Scenario::UsbRetry, attack);
     let from = m.soc.periph.cycles;
     m.watch_calls(fw.symbol("usb_attach_now"));
     m.run_ms(1100);
@@ -189,8 +223,8 @@ fn usb_attach(fw: &Firmware) -> (u64, u64) {
     (m.watched_starts[0] - from, m.watched_calls[0])
 }
 
-fn trial(fw: &Firmware, offset: u64, scenario: Scenario) -> Trial {
-    let mut m = boot(fw, scenario);
+fn trial(fw: &Firmware, offset: u64, scenario: Scenario, attack: Attack) -> Trial {
+    let mut m = boot(fw, scenario, attack);
     let c = Clock {
         hz: m.soc.periph.hz,
     };
@@ -275,6 +309,7 @@ fn trial(fw: &Firmware, offset: u64, scenario: Scenario) -> Trial {
         note_audible: note_audible - arrived,
         ring_wait_us: f64::from(wait_ticks) / 24.0,
         ui_poll_max: m.watched_calls.iter().copied().max().unwrap_or(0),
+        isr_max: snaps.iter().map(|s| s.exit - s.entry).max().unwrap(),
     }
 }
 
@@ -306,7 +341,7 @@ fn json(s: &Summary) -> serde_json::Value {
     })
 }
 
-fn measure(scenario: Scenario) {
+fn measure(scenario: Scenario, attack: Attack) {
     let Some(build) = build_dir() else {
         skip_message("the latency test");
         return;
@@ -319,7 +354,7 @@ fn measure(scenario: Scenario) {
     // The note-on's last byte lands in the window [from, from + span) after `boot`.
     let (from, span, attach) = if scenario == Scenario::UsbRetry {
         // From a millisecond and a poll before the attach to its end.
-        let (start, instructions) = usb_attach(&fw);
+        let (start, instructions) = usb_attach(&fw, attack);
         let lead = c.poll() + c.of_ms(1);
         (start - lead, lead + instructions, Some(instructions))
     } else {
@@ -328,13 +363,21 @@ fn measure(scenario: Scenario) {
     let trials: Vec<Trial> = (0..TRIALS)
         .map(|_| {
             let arrive = from + rng.below(span);
-            trial(&fw, arrive - 3 * c.byte(), scenario)
+            trial(&fw, arrive - 3 * c.byte(), scenario, attack)
         })
         .collect();
     let ms = |f: fn(&Trial) -> u64| summary(trials.iter().map(|t| c.ms(f(t))).collect());
     let block_plus_poll = c.block() + c.poll();
+    // The render allowance: the run's longest audio interrupt, within a block of the budget.
+    let render = trials.iter().map(|t| t.isr_max).max().unwrap();
+    let budget = (AUDIO_TARGET * HALF_FRAMES as f64 / INSTRUCTIONS_PER_CYCLE) as u64;
+    assert!(
+        render <= budget,
+        "an audio interrupt took {render} cycles, over the audio budget's block ({budget})"
+    );
     let report = serde_json::json!({
         "scenario": format!("{scenario:?}"),
+        "attack": format!("{attack:?}"),
         "trials": TRIALS,
         "from": "the note-on's last byte in the UART (its 3 bytes take 0.96 ms before)",
         "taken_by_the_audio_interrupt": json(&ms(|t| t.taken)),
@@ -347,6 +390,9 @@ fn measure(scenario: Scenario) {
         "block_ms": c.ms(c.block()),
         "poll_ms": c.ms(c.poll()),
         "block_plus_poll_ms": c.ms(block_plus_poll),
+        "render_allowance_ms": c.ms(render),
+        "render_allowance_cycles": render,
+        "longest_audio_interrupt_per_trial": json(&ms(|t| t.isr_max)),
         "usb_attach_instructions": attach,
         "max_midi_ring_wait_us": trials.iter().map(|t| t.ring_wait_us).fold(0.0, f64::max),
         "max_ui_poll_instructions": trials.iter().map(|t| t.ui_poll_max).max(),
@@ -356,13 +402,21 @@ fn measure(scenario: Scenario) {
     let bound = block_plus_poll + attach.unwrap_or(0);
     let adsr = (LFSR_PERIOD + 2) * c.hz / SID_HZ + c.of_ms(ATTACK_MS);
     for t in &trials {
-        // The note is in the block that starts within a block and a poll of its arrival,
-        // and its first sample is in the buffer once that block is rendered...
+        // The note is in the block that starts within a block and a poll of its arrival...
         assert!(
             t.taken <= bound,
             "a note-on waited {:.3} ms for its block, over {:.3} ms: {t:?}",
             c.ms(t.taken),
             c.ms(bound)
+        );
+        // ...and its first sample is in the buffer once that block is rendered...
+        assert!(
+            t.buffer <= bound + render,
+            "a note-on's first sample reached the buffer {:.3} ms after it arrived, over \
+             {:.3} ms and a {:.3} ms render: {t:?}",
+            c.ms(t.buffer),
+            c.ms(bound),
+            c.ms(render)
         );
         // ...which plays one block later.
         assert!(
@@ -370,27 +424,51 @@ fn measure(scenario: Scenario) {
             "a note-on's first sample played {:.3} ms after its block was taken: {t:?}",
             c.ms(t.audible - t.taken)
         );
-        // The envelope rises within the ADSR delay's longest and the attack, a block's
-        // granularity on top.
-        assert!(
-            t.note_buffer - t.buffer <= adsr + c.block(),
-            "the note's envelope came {:.3} ms after its first sample: {t:?}",
-            c.ms(t.note_buffer - t.buffer)
-        );
+        match attack {
+            // The envelope is up in the block that takes the note.
+            Attack::Instant => assert_eq!(
+                t.note_buffer,
+                t.buffer,
+                "the note's envelope came {:.3} ms after its first sample: {t:?}",
+                c.ms(t.note_buffer - t.buffer)
+            ),
+            // The envelope rises within the ADSR delay's longest and the attack, a block's
+            // granularity on top.
+            Attack::Authentic => assert!(
+                t.note_buffer - t.buffer <= adsr + c.block(),
+                "the note's envelope came {:.3} ms after its first sample: {t:?}",
+                c.ms(t.note_buffer - t.buffer)
+            ),
+        }
     }
 }
 
 #[test]
 fn a_note_on_reaches_the_buffer_within_a_block_and_a_poll() {
-    measure(Scenario::Idle);
+    measure(Scenario::Idle, Attack::Instant);
 }
 
 #[test]
 fn a_note_on_reaches_the_buffer_within_a_block_and_a_poll_while_the_screen_redraws() {
-    measure(Scenario::Busy);
+    measure(Scenario::Busy, Attack::Instant);
 }
 
 #[test]
 fn a_usb_retry_stalls_a_note_on_by_its_attach_at_most() {
-    measure(Scenario::UsbRetry);
+    measure(Scenario::UsbRetry, Attack::Instant);
+}
+
+#[test]
+fn an_authentic_attack_waits_for_the_adsr_delay_at_most() {
+    measure(Scenario::Idle, Attack::Authentic);
+}
+
+#[test]
+fn an_authentic_attack_waits_for_the_adsr_delay_at_most_while_the_screen_redraws() {
+    measure(Scenario::Busy, Attack::Authentic);
+}
+
+#[test]
+fn an_authentic_attack_and_a_usb_retry() {
+    measure(Scenario::UsbRetry, Attack::Authentic);
 }

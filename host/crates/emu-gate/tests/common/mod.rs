@@ -416,6 +416,10 @@ impl Machine {
 /// chip); sid_budget.rs fails if a scenario exceeds this.
 pub const SID_WORST_PER_CHIP: f64 = 530.0;
 
+/// The audio target, instructions per sample for everything the audio interrupt does (design
+/// doc section 8): slots_budget.rs splits it, latency.rs holds the render allowance to it.
+pub const AUDIO_TARGET: f64 = 2700.0;
+
 /// 24 MHz / 544, the I2S frame rate.
 pub const FS: f64 = 24e6 / 544.0;
 

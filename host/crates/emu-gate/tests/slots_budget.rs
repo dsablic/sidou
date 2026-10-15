@@ -27,7 +27,7 @@ const SWITCH_BLOCKS_OVER_BUDGET: usize = 80;
 /// The audio target (design doc section 8), and what the rest of it holds at worst: two
 /// chips at the SID's measured worst (0004: ~600 each at M1a; M1b's in
 /// common::SID_WORST_PER_CHIP), the future 6502 and ISR overhead.
-const AUDIO_TARGET: f64 = 2700.0;
+const AUDIO_TARGET: f64 = common::AUDIO_TARGET;
 const AUDIO_REST_AT_WORST: f64 = 2.0 * common::SID_WORST_PER_CHIP + 400.0 + 100.0;
 /// Two chips at the SID's measured worst.
 const TWO_CHIPS_AT_WORST: f64 = 2.0 * common::SID_WORST_PER_CHIP;

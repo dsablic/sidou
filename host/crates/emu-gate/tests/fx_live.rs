@@ -20,7 +20,7 @@ const K4: u8 = 5;
 const A4_KEY: u8 = 30;
 const A4: u8 = 69;
 /// The audio target (design doc section 8), per sample, and a block of 128 frames.
-const AUDIO_TARGET: f64 = 2700.0;
+const AUDIO_TARGET: f64 = common::AUDIO_TARGET;
 const BLOCK_FRAMES: f64 = 128.0;
 /// The DMA plays the zeroed buffer before the first half the interrupt filled.
 const MAX_SILENT_HALVES: usize = 4;
