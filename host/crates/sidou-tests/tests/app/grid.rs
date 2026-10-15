@@ -56,7 +56,11 @@ impl Screen {
         }
         assert!(r.len >= 1 && usize::from(r.col) + usize::from(r.len) <= COLS);
         assert!(usize::from(r.row) < ROWS);
-        let mut px = vec![0u16; GRID_RUN_PIXELS as usize];
+        // 4-byte aligned, as grid_render_run takes it.
+        let mut buf = vec![0u32; GRID_RUN_PIXELS as usize / 2];
+        let px = unsafe {
+            std::slice::from_raw_parts_mut(buf.as_mut_ptr().cast::<u16>(), GRID_RUN_PIXELS as usize)
+        };
         unsafe { grid_render_run(&*self.g, &r, grid_palette.as_ptr(), px.as_mut_ptr()) };
         let w = usize::from(r.len) * 8;
         for y in 0..8 {
@@ -489,4 +493,28 @@ fn a_row_is_written_whole_and_marked_only_when_it_changed() {
     assert_eq!(s.panel, s.expected());
     unsafe { grid_row(&mut *s.g, 30, ch.as_ptr(), at2.as_ptr()) }; // outside: ignored
     assert_eq!(s.runs(), vec![]);
+}
+
+#[test]
+fn every_glyph_in_every_colour_renders_with_and_without_an_overlay() {
+    let mut s = Screen::new();
+    let mut rng = Rng(0x0dd_ba11);
+    for pass in 0..4u32 {
+        for i in 0..COLS * ROWS {
+            let (c, r) = ((i % COLS) as u32, (i / COLS) as u32);
+            let ch = ((i as u32 + pass * 128) % 256) as u8;
+            s.put(c, r, ch, rng.below(256) as u8);
+            // A quarter of the cells an overlay of random pixels (the pool holds 255).
+            if (i as u32 + pass).is_multiple_of(4) {
+                let m = rng.next().to_le_bytes();
+                let n = rng.next().to_le_bytes();
+                let mask = [m[0], m[1], m[2], m[3], n[0], n[1], n[2], n[3]];
+                assert_eq!(s.overlay(c, r, mask, rng.below(16)), 0);
+            } else {
+                s.clear_overlay(c, r);
+            }
+        }
+        s.drain();
+        assert!(s.panel == s.expected(), "pass {pass}: the panel differs");
+    }
 }

@@ -263,30 +263,61 @@ int grid_next_run(grid* g, grid_run* run) {
     return 0;
 }
 
+/* Two pixels a 32-bit store, the left one at the lower address (PAIR): a cell row is four
+ * stores. The pairs alias the uint16_t pixels (may_alias). */
+typedef uint32_t __attribute__((may_alias)) pixel_pair;
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#define PAIR(left, right) ((uint32_t)(left) << 16 | (uint32_t)(right))
+#else
+#define PAIR(left, right) ((uint32_t)(right) << 16 | (uint32_t)(left))
+#endif
+
+/* A pair's two bits (the left one the higher) as which of its pixels are set. */
+static const uint32_t PAIR_MASK[4] = {PAIR(0u, 0u), PAIR(0u, 0xFFFFu), PAIR(0xFFFFu, 0u),
+                                      PAIR(0xFFFFu, 0xFFFFu)};
+
 void grid_render_run(const grid* g, const grid_run* run, const uint16_t pal[16], uint16_t* px) {
-    uint32_t stride = run->len * GRID_CELL_PX;
+    uint32_t stride = run->len * GRID_CELL_PX / 2u; /* pairs a pixel row */
     uint32_t i = run->row * GRID_COLS + run->col;
+    pixel_pair* out = (pixel_pair*)(void*)px;
     for (uint32_t k = 0; k < run->len; k++, i++) {
         const uint8_t* glyph = font_glyphs[g->ch[i]];
-        uint16_t fg = pal[g->attr[i] & 15u];
-        uint16_t bg = pal[g->attr[i] >> 4];
-        uint16_t* o = px + k * GRID_CELL_PX;
+        uint32_t fg = pal[g->attr[i] & 15u];
+        uint32_t bg = pal[g->attr[i] >> 4];
+        /* The cell's colours by a pair's two glyph bits. */
+        const uint32_t lut[4] = {PAIR(bg, bg), PAIR(bg, fg), PAIR(fg, bg), PAIR(fg, fg)};
+        pixel_pair* o = out + k * (GRID_CELL_PX / 2u);
         if (!g->ovl[i]) {
             for (uint32_t y = 0; y < 8u; y++, o += stride) {
                 uint32_t bits = glyph[y];
-                for (uint32_t x = 0; x < 8u; x++, bits <<= 1) {
-                    o[x] = (bits & 0x80u) ? fg : bg;
-                }
+                o[0] = lut[bits >> 6];
+                o[1] = lut[bits >> 4 & 3u];
+                o[2] = lut[bits >> 2 & 3u];
+                o[3] = lut[bits & 3u];
             }
             continue;
         }
         uint32_t s = g->ovl[i] - 1u;
-        uint16_t oc = pal[g->ovl_color[s] & 15u];
+        const uint8_t* mask = g->ovl_mask[s];
+        uint32_t c = pal[g->ovl_color[s] & 15u];
+        uint32_t oc = PAIR(c, c);
+        /* A row of the glyph's background alone (a scope's cells are mostly blank): the
+         * overlay over the background, by a pair's two mask bits. */
+        const uint32_t olut[4] = {PAIR(bg, bg), PAIR(bg, c), PAIR(c, bg), oc};
         for (uint32_t y = 0; y < 8u; y++, o += stride) {
             uint32_t bits = glyph[y];
-            uint32_t over = g->ovl_mask[s][y];
-            for (uint32_t x = 0; x < 8u; x++, bits <<= 1, over <<= 1) {
-                o[x] = (over & 0x80u) ? oc : (bits & 0x80u) ? fg : bg;
+            uint32_t over = mask[y];
+            if (!bits) {
+                o[0] = olut[over >> 6];
+                o[1] = olut[over >> 4 & 3u];
+                o[2] = olut[over >> 2 & 3u];
+                o[3] = olut[over & 3u];
+                continue;
+            }
+            for (uint32_t j = 0; j < 4u; j++) {
+                uint32_t sh = 6u - 2u * j;
+                uint32_t m = PAIR_MASK[over >> sh & 3u];
+                o[j] = (lut[bits >> sh & 3u] & ~m) | (oc & m);
             }
         }
     }

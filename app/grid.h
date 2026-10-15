@@ -138,7 +138,8 @@ void grid_hold(grid* g, uint32_t mask);
  * panel shows the composed frame, held rows aside. */
 int grid_next_run(grid* g, grid_run* run);
 /* A run's pixels into px: 8 rows of run->len * 8 pixels, top row first, as one LCD window
- * takes them. pal maps the 16 colours to the panel's pixel format. */
+ * takes them. pal maps the 16 colours to the panel's pixel format. px is 4-byte aligned: two
+ * pixels go in a 32-bit store. */
 void grid_render_run(const grid* g, const grid_run* run, const uint16_t pal[16], uint16_t* px);
 
 #ifdef __cplusplus

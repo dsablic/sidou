@@ -74,9 +74,11 @@ uint32_t scope_read(const scope* sc, uint32_t since, scope_point* out, uint32_t 
     }
     uint32_t oldest = h - n;
     COMPILER_FENCE(); /* the head before the points it publishes */
-    for (uint32_t i = 0; i < n; i++) {
-        out[i] = sc->point[(oldest + i) & MASK];
-    }
+    /* The ring's points from oldest, in two pieces where they wrap round its end. */
+    uint32_t at = oldest & MASK;
+    uint32_t first = n < SCOPE_RING - at ? n : SCOPE_RING - at;
+    memcpy(out, &sc->point[at], first * sizeof *out);
+    memcpy(out + first, &sc->point[0], (n - first) * sizeof *out);
     COMPILER_FENCE(); /* the copy before the head that says whether it held */
     return scope_intact(oldest, sc->head) ? n : 0u;
 }
