@@ -5,7 +5,6 @@
 #include <stddef.h>
 
 #include "font.h"
-#include "logo.h"
 #include "panel.h"
 #include "widget.h"
 
@@ -13,7 +12,8 @@
 #define TEXT_COL 2u
 #define LOAD_ROW 8u
 #define RUN_ROW 13u
-/* The title card: on black, the logo between two ramp lines (app/boot.h). */
+/* The title card for a logo without a scene: on black, the logo between two ramp lines
+ * (app/boot.h). */
 #define TITLE_ATTR GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLACK)
 #define TITLE_NAME_ROW 16u
 #define TITLE_VERSION_ROW 18u
@@ -22,6 +22,8 @@
 _Static_assert(BOOT_LOGO_ROW > BOOT_TITLE_LINE_TOP &&
                    BOOT_LOGO_ROW + BOOT_LOGO_ROWS <= BOOT_TITLE_LINE_BOTTOM,
                "the logo's slot is between the title card's ramp lines");
+_Static_assert(BOOT_SCENE_VERSION_ROW < GRID_ROWS && BOOT_SCENE_KEY_ROW < GRID_ROWS,
+               "the card's text over the scene is on the screen");
 
 static const char LOAD_CMD[] = "LOAD\"SIDOU\",8,1";
 static const char RUN_CMD[] = "RUN";
@@ -42,6 +44,7 @@ void boot_init(boot* b, const live* l, const char* version, int home_held) {
     b->full = (uint8_t)(home_held != 0);
     b->home_edge = b->full;
     b->title = (uint8_t)!b->full;
+    b->logo = logo_default;
 }
 
 boot_phase boot_phase_at(const boot* b, uint32_t ms) {
@@ -225,12 +228,21 @@ static void ramp_line(grid* g, uint32_t row) {
 }
 
 static void title(boot* b, grid* g, int blink) {
-    grid_fill(g, 0, 0, GRID_COLS, GRID_ROWS, ' ', TITLE_ATTR);
-    ramp_line(g, BOOT_TITLE_LINE_TOP);
-    ramp_line(g, BOOT_TITLE_LINE_BOTTOM);
-    logo_draw(logo_default, g, logo_center_col(logo_default), BOOT_LOGO_ROW, b->logo_frame,
-              GRID_BLACK);
-    center(g, TITLE_NAME_ROW, "SID FOR THE FM-1", TITLE_ATTR);
+    const logo* l = b->logo;
+    uint32_t version_row = BOOT_SCENE_VERSION_ROW;
+    uint32_t key_row = BOOT_SCENE_KEY_ROW;
+    if (l->scene) {
+        /* The scene has its own line under the name ("A NEW VOICE FOR THE FM-1"). */
+        l->scene(g, b->logo_frame);
+    } else {
+        grid_fill(g, 0, 0, GRID_COLS, GRID_ROWS, ' ', TITLE_ATTR);
+        ramp_line(g, BOOT_TITLE_LINE_TOP);
+        ramp_line(g, BOOT_TITLE_LINE_BOTTOM);
+        logo_draw(l, g, logo_center_col(l), BOOT_LOGO_ROW, b->logo_frame, GRID_BLACK);
+        center(g, TITLE_NAME_ROW, "SID FOR THE FM-1", TITLE_ATTR);
+        version_row = TITLE_VERSION_ROW;
+        key_row = TITLE_KEY_ROW;
+    }
     char line[32];
     uint32_t n = 0;
     for (const char* s = b->version; *s && n < 16u;) {
@@ -240,9 +252,9 @@ static void title(boot* b, grid* g, int blink) {
         line[n++] = *s++;
     }
     line[n] = 0;
-    center(g, TITLE_VERSION_ROW, line, GRID_ATTR(GRID_GREY, GRID_BLACK));
+    center(g, version_row, line, GRID_ATTR(GRID_GREY, GRID_BLACK));
     if (blink) {
-        center(g, TITLE_KEY_ROW, "PRESS ANY KEY", GRID_ATTR(GRID_WHITE, GRID_BLACK));
+        center(g, key_row, "PRESS ANY KEY", GRID_ATTR(GRID_WHITE, GRID_BLACK));
     }
 }
 

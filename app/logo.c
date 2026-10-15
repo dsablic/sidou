@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "logo.h"
 
+#include <stddef.h>
+
 #include "font.h"
 #include "screen.h"
 #include "sine.h"
@@ -80,6 +82,8 @@ static void pt_wave(uint8_t col[PT_W], uint32_t shift, uint32_t duty) {
 }
 
 static void pt_draw(grid* g, uint32_t col, uint32_t row, uint32_t frame, uint8_t bg) {
+    /* The grid's pixel region is the logo's (Cracktro Chrome's): this one has none. */
+    grid_region_clear(g);
     uint32_t stripe = (frame + 2u) / PT_STEP % PT_BANDS;
     uint32_t pulse = frame / PT_STEP;
     uint32_t shift = pulse * PT_MOVE % PT_PERIOD;
@@ -135,9 +139,53 @@ static void pt_draw(grid* g, uint32_t col, uint32_t row, uint32_t frame, uint8_t
 
 /* Measured by host/crates/sidou-tests/tests/app/logo.rs: at most 42 cells on a stripe frame
  * and 30 on a pulse frame; 55 overlays. */
-const logo logo_pulse_train = {"PULSE TRAIN", PT_COLS, PT_ROWS, 55, 42, pt_draw};
+const logo logo_pulse_train = {"PULSE TRAIN", PT_COLS, PT_ROWS, 55, 42, pt_draw, NULL};
 
-const logo* const logo_default = &logo_pulse_train;
+/* ---- Cracktro Chrome ----
+ *
+ * The scene (assets/logo/cracktro-chrome.png) in the pixel region, its cells blank (white on
+ * the background, no overlay) so that the bitmap shows alone; what the caller writes in them
+ * afterwards draws over it. The
+ * lettering and its shadow take pixel rows 75..135, inside cell rows 9..16. */
+
+#define CC_BAND_ROWS 8u
+
+/* The footprint blank and without overlays, for the bitmap alone. Composed every frame, so
+ * the cells are only looked at while some overlay is in use. */
+static void cc_blank(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint8_t bg) {
+    grid_fill(g, col, row, w, h, ' ', GRID_ATTR(GRID_WHITE, bg));
+    if (g->ovl_nfree == GRID_OVERLAYS) {
+        return;
+    }
+    uint32_t c1 = col + w < GRID_COLS ? col + w : GRID_COLS;
+    uint32_t r1 = row + h < GRID_ROWS ? row + h : GRID_ROWS;
+    for (uint32_t r = row; r < r1; r++) {
+        for (uint32_t c = col; c < c1; c++) {
+            if (g->ovl[r * GRID_COLS + c]) {
+                grid_overlay_clear(g, c, r);
+            }
+        }
+    }
+}
+
+static void cc_draw(grid* g, uint32_t col, uint32_t row, uint32_t frame, uint8_t bg) {
+    (void)frame;
+    cc_blank(g, col, row, GRID_COLS, CC_BAND_ROWS, bg);
+    grid_region(g, col, row, GRID_COLS, CC_BAND_ROWS, &logo_cracktro_chrome_bitmap, 0,
+                LOGO_CHROME_BAND_ROW);
+}
+
+static void cc_scene(grid* g, uint32_t frame) {
+    (void)frame;
+    cc_blank(g, 0, 0, GRID_COLS, GRID_ROWS, GRID_BLACK);
+    grid_region(g, 0, 0, GRID_COLS, GRID_ROWS, &logo_cracktro_chrome_bitmap, 0, 0);
+}
+
+/* Still: no overlays, and no cell changes after the first frame. */
+const logo logo_cracktro_chrome = {"CRACKTRO CHROME", GRID_COLS, CC_BAND_ROWS, 0, 0, cc_draw,
+                                   cc_scene};
+
+const logo* const logo_default = &logo_cracktro_chrome;
 
 void logo_draw(const logo* l, grid* g, uint32_t col, uint32_t row, uint32_t frame, uint8_t bg) {
     l->draw(g, col, row, frame, bg);

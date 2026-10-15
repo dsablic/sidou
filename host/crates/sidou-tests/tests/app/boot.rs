@@ -7,9 +7,29 @@
 use sidou_sys::*;
 
 use crate::views::Ui;
-use crate::{assert_wipe_holds_still, drain, grid_row, wipe_frames, Sent, SPI_BUDGET_MS};
+use crate::{assert_wipe_holds_still, drain, grid_row, pixels, wipe_frames, Sent, SPI_BUDGET_MS};
 
 const COLS: usize = GRID_COLS as usize;
+const W: usize = COLS * 8;
+
+/// The title card is Cracktro Chrome's scene, pixel for pixel, but for the card's text over it:
+/// the version line and PRESS ANY KEY (app/boot.h BOOT_SCENE_*_ROW).
+fn assert_title_card_is_the_scene(ui: &Ui) {
+    let img = sidou_tests::logo::load();
+    let px = pixels(&ui.g);
+    let text = [BOOT_SCENE_VERSION_ROW as usize, BOOT_SCENE_KEY_ROW as usize];
+    for y in (0..W).filter(|y| !text.contains(&(y / 8))) {
+        assert_eq!(
+            px[y * W..(y + 1) * W],
+            img.px[y * W..(y + 1) * W],
+            "pixel row {y} of the title card"
+        );
+    }
+    // The text rows are black in the scene: the text reads as on any black row.
+    for r in text {
+        assert!(img.px[r * 8 * W..(r + 1) * 8 * W].iter().all(|&c| c == 0));
+    }
+}
 
 fn booting(full: bool) -> Ui {
     let mut ui = Ui::new();
@@ -94,19 +114,15 @@ fn the_full_boot_types_loads_and_runs_then_shows_the_title_and_the_status_screen
     assert_eq!(&ui.row(12)[2..8], "READY.");
     assert_eq!(&ui.row(13)[2..5], "RUN");
     assert_eq!(ui.top(), "BOOT");
-    // The title card wipes in: black, the logo, the name and the version.
+    // The title card wipes in: the logo's scene, the version over it.
     run_to(&mut ui, start, 7000 + 8 * 40);
-    assert_eq!(
-        ui.g.attr[0] >> 4,
-        GRID_BLACK as u8,
-        "the title card is on black"
-    );
-    assert!(ui.row(16).contains("SID FOR THE FM-1"), "{}", ui.row(16));
-    assert!(ui.row(18).contains("V1.2.3  GPL-3.0"), "{}", ui.row(18));
+    let version = BOOT_SCENE_VERSION_ROW as usize;
     assert!(
-        (8..13).all(|r| (7..22).any(|c| ui.g.ovl[r * COLS + c] != 0)),
-        "no logo on rows 8-12"
+        ui.row(version).contains("V1.2.3  GPL-3.0"),
+        "{}",
+        ui.row(version)
     );
+    assert_title_card_is_the_scene(&ui);
     run_to(&mut ui, start, 9960);
     assert_eq!(ui.top(), "BOOT");
     run_to(&mut ui, start, 10_000);
@@ -124,6 +140,42 @@ fn the_full_boot_types_loads_and_runs_then_shows_the_title_and_the_status_screen
         (0..COLS * COLS).all(|i| ui.g.ovl[i] == 0 || scope_cell(i)),
         "the logo's overlays stayed"
     );
+    assert!(ui.g.region_bitmap.is_null(), "the logo's scene stayed");
+}
+
+#[test]
+fn press_any_key_blinks_under_the_scene() {
+    let mut ui = booting(false);
+    let start = ui.now + 40;
+    let key = BOOT_SCENE_KEY_ROW as usize;
+    let mut shown = Vec::new();
+    while ui.now < start + 1100 {
+        ui.frame();
+        shown.push(ui.row(key).contains("PRESS ANY KEY"));
+        assert_title_card_is_the_scene(&ui);
+    }
+    assert!(shown.contains(&true) && shown.contains(&false), "{shown:?}");
+}
+
+/// A logo without a scene (Pulse Train, the alternative) gets the card's slot between two
+/// ramp lines, with the name and the version below.
+#[test]
+fn a_logo_without_a_scene_gets_the_cards_slot() {
+    let mut ui = booting(false);
+    ui.v.boot.logo = unsafe { &logo_pulse_train };
+    let start = ui.now + 40;
+    run_to(&mut ui, start, 200);
+    assert!(ui.row(16).contains("SID FOR THE FM-1"), "{}", ui.row(16));
+    assert!(ui.row(18).contains("V1.2.3  GPL-3.0"), "{}", ui.row(18));
+    assert!(
+        (8..13).all(|r| (7..22).any(|c| ui.g.ovl[r * COLS + c] != 0)),
+        "no logo on rows 8-12"
+    );
+    assert!(ui.g.region_bitmap.is_null(), "a pixel region on the card");
+    for r in [BOOT_TITLE_LINE_TOP, BOOT_TITLE_LINE_BOTTOM] {
+        let r = r as usize;
+        assert!((0..COLS).all(|c| ui.g.ch[r * COLS + c] == FONT_BOX_H as u8));
+    }
 }
 
 #[test]
@@ -132,7 +184,10 @@ fn the_short_boot_is_the_title_card_alone() {
     let start = ui.now + 40;
     run_to(&mut ui, start, 0);
     assert_eq!(ui.top(), "BOOT");
-    assert!(ui.row(16).contains("SID FOR THE FM-1"));
+    assert!(ui
+        .row(BOOT_SCENE_VERSION_ROW as usize)
+        .contains("V1.2.3  GPL-3.0"));
+    assert_title_card_is_the_scene(&ui);
     assert!(!(0..30).any(|r| ui.row(r).contains("LOAD")));
     run_to(&mut ui, start, 1160);
     assert_eq!(ui.top(), "BOOT");
@@ -197,7 +252,7 @@ fn holding_home_later_is_not_a_press() {
     ui.hold(PANEL_BTN_HOME, true);
     ui.frame();
     assert_eq!(ui.top(), "BOOT");
-    assert!(ui.row(16).contains("SID FOR THE FM-1"), "the boot changed");
+    assert_title_card_is_the_scene(&ui);
 }
 
 #[test]

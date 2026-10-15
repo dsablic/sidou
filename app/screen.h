@@ -31,7 +31,8 @@
  * - wipe: a view switch reveals the new view SCREEN_WIPE_ROWS rows a frame (top first on a
  *   push, bottom first on a pop) behind a one-row white edge; the rows not reached yet are
  *   held (grid_hold), so the panel keeps the old view there. A full screen is spread over
- *   8 frames instead of the 77 ms of SPI of one.
+ *   8 frames instead of the 77 ms of SPI of one; so is a full-screen bitmap in the grid's
+ *   pixel region (a logo's scene), which a switch clears with the overlays.
  * - raster: the border (the outer ring of cells) takes the raster ramp's colours in bands
  *   that move one row every SCREEN_RASTER_FRAMES frames, then gets the view's own colours
  *   back. It waits while a wipe runs.

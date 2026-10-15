@@ -5,8 +5,8 @@
  *
  * The full sequence, after the browser prototype's: the banner and READY., then
  * LOAD"SIDOU",8,1 typed, SEARCHING FOR SIDOU, LOADING with raster stripes in the border,
- * READY. and RUN, then the title card: the logo (app/logo.h) on black. The short one is the
- * title card alone. Then the status screen wipes in.
+ * READY. and RUN, then the title card: the logo's scene (app/logo.h), the version and PRESS ANY
+ * KEY. The short one is the title card alone. Then the status screen wipes in.
  *
  * Short is the default: without storage (M2) the firmware cannot tell the first boot after
  * an install from the others. HOME held while powering on plays the full one instead:
@@ -35,15 +35,21 @@
 
 #include "grid.h"
 #include "live.h"
+#include "logo.h"
 #include "screen.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* The title card: the logo (app/logo.h) between two ramp lines, a blank row from each: its
- * slot is BOOT_LOGO_ROWS rows from BOOT_LOGO_ROW, centred. A logo taller than that, a
- * 240 x 240 bitmap say, needs a title layout of its own. */
+/* The title card is the logo's full-screen scene (app/logo.h, Cracktro Chrome's) with the
+ * version line and PRESS ANY KEY over it, on rows that are black in the scene, above its top
+ * raster bar and below its bottom one. */
+#define BOOT_SCENE_VERSION_ROW 1u
+#define BOOT_SCENE_KEY_ROW 28u
+/* For a logo without a scene (Pulse Train), the card puts it between two ramp lines, a blank
+ * row from each: its slot is BOOT_LOGO_ROWS rows from BOOT_LOGO_ROW, centred, with the name
+ * and the version below. */
 #define BOOT_TITLE_LINE_TOP 6u
 #define BOOT_LOGO_ROW 8u
 #define BOOT_LOGO_ROWS 5u
@@ -93,6 +99,7 @@ typedef struct {
     uint8_t home_edge; /* HOME held at power-on: its press edge is still to come */
     uint8_t title;       /* the look shown: 1 the title card, 0 the prompt */
     uint32_t logo_frame; /* the title card's logo: its frame, still while a wipe runs */
+    const logo* logo;    /* the title card's: logo_default */
 } boot;
 
 extern const view boot_view;

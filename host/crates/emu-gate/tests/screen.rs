@@ -716,9 +716,35 @@ fn screen_changes_and_transitions_stay_within_the_budgets() {
 }
 
 /// The boot's version text, left out as the status screen's: the prompt's banner (row 3) and
-/// the title card's version line (row 18), inside the border.
+/// the title card's version line (app/boot.h BOOT_SCENE_VERSION_ROW), inside the border.
 const BANNER: (usize, usize, usize) = (1, 3, 28);
-const TITLE_VERSION: (usize, usize, usize) = (1, 18, 28);
+const TITLE_VERSION: (usize, usize, usize) = (1, sidou_sys::BOOT_SCENE_VERSION_ROW as usize, 28);
+
+/// The panel's pixel rows `rows` against the logo's source, assets/logo/cracktro-chrome.png,
+/// from its pixel row `from`: the firmware shows the art pixel for pixel.
+fn assert_shows_the_logo_source(what: &str, fb: &[u16], rows: std::ops::Range<usize>, from: usize) {
+    let src = sidou_tests::logo::load();
+    let got = indexed(fb);
+    for (k, y) in rows.clone().enumerate() {
+        let want = &src.px[(from + k) * W..(from + k + 1) * W];
+        if let Some(x) = (0..W).find(|&x| got[y * W + x] != want[x]) {
+            panic!(
+                "{what}: pixel ({x}, {y}) is colour {} where the logo's source has {}",
+                got[y * W + x],
+                want[x]
+            );
+        }
+    }
+}
+
+/// The title card is Cracktro Chrome's scene but for the card's two lines of text over it.
+fn assert_title_card_is_the_logo_source(fb: &[u16]) {
+    let version = sidou_sys::BOOT_SCENE_VERSION_ROW as usize * 8;
+    let key = sidou_sys::BOOT_SCENE_KEY_ROW as usize * 8;
+    assert_shows_the_logo_source("the title card", fb, 0..version, 0);
+    assert_shows_the_logo_source("the title card", fb, version + 8..key, version + 8);
+    assert_shows_the_logo_source("the title card", fb, key + 8..W, key + 8);
+}
 /// app/boot.c: the prompt's cursor after RUN.
 const RUN_CURSOR: (usize, usize, usize) = (5, 13, 1);
 
@@ -731,6 +757,7 @@ fn the_short_boot_shows_the_title_card_then_live() {
     m.run_ms(700);
     assert!(m.soc.lcd.display_on, "DISPON was not sent");
     compare_golden(&build, "boot-title", &m.soc.lcd.fb, &[TITLE_VERSION]);
+    assert_title_card_is_the_logo_source(&m.soc.lcd.fb);
     let gone = common::run_past_boot(&mut m, &fw);
     // The title card shows 1.2 s from about 0.4 s in, then the 8-frame wipe.
     assert!(
@@ -777,6 +804,7 @@ fn home_held_at_power_on_plays_the_full_boot() {
     compare_golden(&build, "boot-ready", &m.soc.lcd.fb, &[BANNER, RUN_CURSOR]);
     m.run_ms(8000 - 7200);
     compare_golden(&build, "boot-title-full", &m.soc.lcd.fb, &[TITLE_VERSION]);
+    assert_title_card_is_the_logo_source(&m.soc.lcd.fb);
     m.run_ms(11_200 - 8000);
     compare_golden(&build, "live", &m.soc.lcd.fb, &[]);
 }
@@ -850,8 +878,8 @@ fn open_about(m: &mut Machine, fw: &Firmware) {
     settle(m, fw);
 }
 
-/// The first credits page names SIDOU and its version (row 12).
-const ABOUT_VERSION: (usize, usize, usize) = (1, 12, 28);
+/// The first credits page names SIDOU and its version (app/about.h ABOUT_HEADING_ROW).
+const ABOUT_VERSION: (usize, usize, usize) = (1, sidou_sys::ABOUT_HEADING_ROW as usize, 28);
 
 #[test]
 fn about_opens_from_the_menu_and_home_goes_back() {
@@ -861,6 +889,10 @@ fn about_opens_from_the_menu_and_home_goes_back() {
     let mut m = booted(&fw);
     open_about(&mut m, &fw);
     compare_golden(&build, "about", &m.soc.lcd.fb, &[ABOUT_VERSION]);
+    // The logo at the top: the scene's lettering band (app/logo.h LOGO_CHROME_BAND_ROW).
+    let band = sidou_sys::LOGO_CHROME_BAND_ROW as usize * 8;
+    let top = sidou_sys::ABOUT_LOGO_ROW as usize * 8;
+    assert_shows_the_logo_source("About", &m.soc.lcd.fb, top..top + 64, band);
     // The cracktro moves every frame.
     let before = m.soc.lcd.fb.clone();
     m.run_ms(UI_PERIOD_MS);
@@ -966,6 +998,11 @@ fn the_boot_and_about_stay_within_their_budgets() {
 
 /// app/screen.h SCREEN_WIPE_ROWS and the edge row: what a wipe frame sends at most.
 const WIPE_CELLS: u32 = (4 + 1) * 30;
+/// What a wipe into an animated view costs the main loop: its busiest ui_poll, and its
+/// instructions per 40 ms frame. Measured with Cracktro Chrome: About 65k and 118k, the title
+/// card (4 rows of its scene and the edge a frame) 30k and 134k.
+const WIPE_WORST_POLL: u64 = 72_000;
+const WIPE_PER_FRAME: f64 = 150_000.0;
 
 /// 40 ms windows from now until a wipe has run and ended, as `measure` counts them: those
 /// during which a wipe ran (read from the screen's state at each window's start and end).
@@ -1014,14 +1051,18 @@ fn every_wipe_into_an_animated_view_sends_only_its_rows() {
         return;
     };
     let mut m = booted(&fw);
+    m.watch_calls(fw.symbol("ui_poll"));
     open_menu(&mut m, &fw);
     m.turn(SELECT, MENU_ABOUT);
     settle(&mut m, &fw);
     let mut worst = Sent::default();
     let mut most = 0;
+    let mut about_polls = Vec::new();
     for phase in (0..UI_PERIOD_MS).step_by(5) {
         m.run_ms(phase + 1);
+        let from = m.watched_calls.len();
         let frames = wipe_windows(&mut m, &fw, |m| m.turn(ALGORITHM, 1));
+        about_polls.push(wipe_instructions(&m.watched_calls[from..], frames.len()));
         assert_wipe_holds_still(&format!("About at phase {phase} ms"), &frames);
         for f in &frames {
             most = most.max(cells(f));
@@ -1032,32 +1073,63 @@ fn every_wipe_into_an_animated_view_sends_only_its_rows() {
         press(&mut m, HOME);
         settle(&mut m, &fw);
     }
+    let about = about_polls
+        .iter()
+        .fold((0, 0.0), |a, w| (a.0.max(w.0), f64::max(a.1, w.1)));
     println!(
-        "wipe into About: at most {most} cells, worst 40 ms {:.2} ms of SPI",
-        worst.spi_ms()
+        "wipe into About: at most {most} cells, worst 40 ms {:.2} ms of SPI; busiest ui_poll \
+         {}, {:.0} instructions a frame at most",
+        worst.spi_ms(),
+        about.0,
+        about.1
     );
 
     let mut m = Machine::boot(&fw.image);
+    m.watch_calls(fw.symbol("ui_poll"));
     hold_home_through_power_on(&mut m);
     // The title card wipes in 7.0 s after the full boot's first frame.
     m.run_ms(6800 - 600);
+    let from = m.watched_calls.len();
     let frames = wipe_windows(&mut m, &fw, |_| {});
+    let title_polls = wipe_instructions(&m.watched_calls[from..], frames.len());
     assert_wipe_holds_still("the title card", &frames);
     let title = frames.iter().map(|f| f.spi_ms()).fold(0.0, f64::max);
     println!(
-        "wipe into the title card: at most {} cells, worst 40 ms {title:.2} ms of SPI",
-        frames.iter().map(cells).max().unwrap_or(0)
+        "wipe into the title card: at most {} cells, worst 40 ms {title:.2} ms of SPI; busiest \
+         ui_poll {}, {:.0} instructions a frame",
+        frames.iter().map(cells).max().unwrap_or(0),
+        title_polls.0,
+        title_polls.1
     );
+    // Revealing a bitmap (Cracktro Chrome's scene, all of the title card; its lettering band,
+    // the top of About) a few rows a frame costs no more than revealing cells.
+    for (what, (poll, per_frame)) in [("About", about), ("the title card", title_polls)] {
+        assert!(
+            poll < WIPE_WORST_POLL,
+            "the wipe into {what}: a ui_poll took {poll} instructions"
+        );
+        assert!(
+            per_frame < WIPE_PER_FRAME,
+            "the wipe into {what}: {per_frame:.0} instructions a frame"
+        );
+    }
 }
 
-/// Main-loop instructions in ui_poll (fm1-emu). About at M1e Task 4, a run's pixels two at a
-/// store (app/grid.c grid_render_run): its busiest ui_poll (a compose and a run) 91k, 144k a
-/// frame with the rendering of its 94 cells, 3.6M a second (1.5 % of 240 MHz); 105k and 161k
-/// at Task 3. The full boot: 37k and 46k (64k and 50k).
-const ABOUT_WORST_POLL: u64 = 105_000;
-const ABOUT_PER_FRAME: f64 = 160_000.0;
-const BOOT_WORST_POLL: u64 = 45_000;
-const BOOT_PER_FRAME: f64 = 52_000.0;
+/// A wipe's busiest ui_poll and its instructions per 40 ms frame.
+fn wipe_instructions(calls: &[u64], frames: usize) -> (u64, f64) {
+    let worst = calls.iter().copied().max().unwrap_or(0);
+    (worst, calls.iter().sum::<u64>() as f64 / frames as f64)
+}
+
+/// Main-loop instructions in ui_poll (fm1-emu). About with Cracktro Chrome (a still bitmap
+/// at the top, the bars behind the scroller): its busiest ui_poll (a compose and a run) 72k,
+/// 118k a frame with the rendering of its 87 cells, 3.0M a second (1.2 % of 240 MHz); with
+/// Pulse Train (M1e Task 4) 91k and 144k, at Task 3 105k and 161k. The full boot: 33k and 37k
+/// (Pulse Train 37k and 46k; Task 3 64k and 50k).
+const ABOUT_WORST_POLL: u64 = 80_000;
+const ABOUT_PER_FRAME: f64 = 130_000.0;
+const BOOT_WORST_POLL: u64 = 38_000;
+const BOOT_PER_FRAME: f64 = 42_000.0;
 
 /// Note keys (key id = 14 + note - 53) of a chord over three octaves, one per voice: A3, E4
 /// and E5, so the scopes show 2, 3 and 4 periods (app/live_view.c).

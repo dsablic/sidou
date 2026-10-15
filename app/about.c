@@ -6,32 +6,28 @@
 
 #include "credits.h"
 #include "font.h"
-#include "logo.h"
 #include "sine.h"
 
 #define BLACK GRID_ATTR(GRID_WHITE, GRID_BLACK)
 
-/* The rows. */
-#define RAMP_TOP ABOUT_BAR_ROWS
-#define HEADING_ROW 12u
-#define LINES_ROW 14u
-#define RAMP_BOTTOM 22u
-#define STAR_Y0 88u /* pixel rows 88..175: cell rows 11..21 */
-#define STAR_H 88u
-#define SCROLL_ROW 25u /* the scroller's middle row; it bobs 2 rows up and down */
+/* The stars: pixel rows between the ramp lines. The scroller bobs SCROLL_AMP rows. */
+#define STAR_Y0 ((ABOUT_RAMP_TOP + 1u) * 8u)
+#define STAR_H ((ABOUT_RAMP_BOTTOM - ABOUT_RAMP_TOP - 1u) * 8u)
 #define SCROLL_AMP 2
-#define SCROLL_ROWS 5u
 
-/* The bars: 5 bands of 4 pixels (half a cell row), centred between half rows 2 and 17. */
+/* The bars: 5 bands of 4 pixels (half a cell row), their centres between half rows 3 and 15
+ * of their band's 18. */
 #define BAR_BANDS 5u
-#define BAR_MID 10
-#define BAR_AMP 7
+#define BAR_MID 9
+#define BAR_AMP 6
 /* A turn is 256: 3 a frame is 1.8 rad/s; the second bar runs 98 behind (2.4 rad). */
 #define BAR_SPEED 3u
 #define BAR_OFFSET 98u
+/* The logo's scene's two raster bars, the cold and the warm one, with no white: the
+ * scroller's white letters read over every band. */
 static const uint8_t BARS[ABOUT_BARS][BAR_BANDS] = {
-    {GRID_LIGHT_BLUE, GRID_CYAN, GRID_WHITE, GRID_CYAN, GRID_LIGHT_BLUE},
-    {GRID_RED, GRID_LIGHT_RED, GRID_YELLOW, GRID_LIGHT_RED, GRID_RED},
+    {GRID_BLUE, GRID_LIGHT_BLUE, GRID_CYAN, GRID_LIGHT_BLUE, GRID_BLUE},
+    {GRID_BROWN, GRID_ORANGE, GRID_LIGHT_RED, GRID_ORANGE, GRID_BROWN},
 };
 
 /* The credits' fade, dark to full: the heading, a line naming someone, the other lines. */
@@ -42,9 +38,8 @@ static const uint8_t FADE_TEXT[4] = {GRID_DARK_GREY, GRID_DARK_GREY, GRID_GREY, 
 /* The stars' layers, far to near. */
 static const uint8_t STAR_COLOR[3] = {GRID_DARK_GREY, GRID_GREY, GRID_WHITE};
 
-/* The scroller's colour by row, top to bottom. */
-static const uint8_t SCROLL_COLOR[SCROLL_ROWS] = {GRID_LIGHT_RED, GRID_YELLOW, GRID_LIGHT_GREEN,
-                                                  GRID_CYAN, GRID_LIGHT_BLUE};
+/* The scroller's letters, over the bars. */
+#define SCROLL_COLOR GRID_WHITE
 
 static const char SCROLL[] =
     "SIDOU ... THE FM-1 PLAYS LIKE A SID CHIP ... THREE VOICES, FOUR WAVES, ONE FILTER, "
@@ -56,8 +51,19 @@ static const char SCROLL[] =
 static const char* const FIRST_LINES[CREDITS_LINES] = {
     "SID SOUNDS FOR THE FM-1", "", "FREE SOFTWARE", "GPL-3.0-OR-LATER", NULL, NULL, NULL, NULL};
 
-_Static_assert(ABOUT_LOGO_ROW + ABOUT_LOGO_ROWS <= ABOUT_BAR_ROWS,
-               "the logo's slot is in the band of bars, above the first ramp line");
+_Static_assert(ABOUT_LOGO_ROW + ABOUT_LOGO_ROWS <= ABOUT_RAMP_TOP,
+               "the logo's slot is above the first ramp line");
+_Static_assert(ABOUT_RAMP_TOP < ABOUT_HEADING_ROW && ABOUT_HEADING_ROW < ABOUT_LINES_ROW &&
+                   ABOUT_LINES_ROW + CREDITS_LINES <= ABOUT_RAMP_BOTTOM,
+               "the credits are between the ramp lines");
+_Static_assert(ABOUT_RAMP_BOTTOM < ABOUT_BAR_ROW && ABOUT_BAR_ROW + ABOUT_BAR_ROWS <= GRID_ROWS,
+               "the bars are below the second ramp line");
+_Static_assert(ABOUT_SCROLL_ROW - SCROLL_AMP >= ABOUT_BAR_ROW &&
+                   ABOUT_SCROLL_ROW + SCROLL_AMP < ABOUT_BAR_ROW + ABOUT_BAR_ROWS,
+               "the scroller bobs over the bars");
+_Static_assert(BAR_MID - BAR_AMP - (int)(BAR_BANDS / 2u) >= 0 &&
+                   BAR_MID + BAR_AMP + (int)(BAR_BANDS / 2u) < (int)(2u * ABOUT_BAR_ROWS),
+               "the bars stay in their band");
 _Static_assert(ABOUT_ROW_FRAMES + CREDITS_LINES * ABOUT_ROW_DELAY <= ABOUT_PAGE_FRAMES,
                "a page's last row is gone before the next page");
 _Static_assert(ABOUT_ROW_DELAY % 4u == 0u && ABOUT_ROW_FRAMES % 2u == 0u,
@@ -83,6 +89,7 @@ static uint8_t bar_target(uint32_t b, uint32_t frame) {
 void about_init(about* a, const char* version) {
     a->version = version;
     a->frame = 0;
+    a->logo = logo_default;
     for (uint32_t b = 0; b < ABOUT_BARS; b++) {
         a->bar[b] = bar_target(b, 0);
     }
@@ -119,7 +126,7 @@ static void bars(const about* a, grid* g) {
     for (uint32_t r = 0; r < ABOUT_BAR_ROWS; r++) {
         uint8_t top = bar_color(a, 2u * r);
         uint8_t bottom = bar_color(a, 2u * r + 1u);
-        grid_fill(g, 0, r, GRID_COLS, 1, FONT_V4, GRID_ATTR(bottom, top));
+        grid_fill(g, 0, ABOUT_BAR_ROW + r, GRID_COLS, 1, FONT_V4, GRID_ATTR(bottom, top));
     }
 }
 
@@ -171,13 +178,13 @@ static void credits(const about* a, grid* g, uint32_t f) {
     }
     int32_t level = level_at(0, k);
     if (level >= 0) {
-        center(g, HEADING_ROW, heading, GRID_ATTR(FADE_HEADING[level], GRID_BLACK));
+        center(g, ABOUT_HEADING_ROW, heading, GRID_ATTR(FADE_HEADING[level], GRID_BLACK));
     }
     for (uint32_t i = 0; i < CREDITS_LINES && lines[i]; i++) {
         level = level_at(i + 1u, k);
         if (level >= 0) {
             const uint8_t* fade = names >> i & 1u ? FADE_NAME : FADE_TEXT;
-            center(g, LINES_ROW + i, lines[i], GRID_ATTR(fade[level], GRID_BLACK));
+            center(g, ABOUT_LINES_ROW + i, lines[i], GRID_ATTR(fade[level], GRID_BLACK));
         }
     }
 }
@@ -257,14 +264,14 @@ static void scroller(grid* g, uint32_t f) {
     uint8_t row[GRID_COLS + 1u];
     for (uint32_t j = 0; j <= GRID_COLS; j++) {
         uint32_t x = j * 8u + 8u - shift; /* the letter's screen x, plus 8 */
-        row[j] = (uint8_t)(SCROLL_ROW + sine_scaled(x * 4u / 7u + f * 4u, SCROLL_AMP));
+        row[j] = (uint8_t)(ABOUT_SCROLL_ROW + sine_scaled(x * 4u / 7u + f * 4u, SCROLL_AMP));
     }
-    for (uint32_t r = SCROLL_ROW - (uint32_t)SCROLL_AMP; r <= SCROLL_ROW + (uint32_t)SCROLL_AMP;
-         r++) {
+    for (uint32_t r = ABOUT_SCROLL_ROW - (uint32_t)SCROLL_AMP;
+         r <= ABOUT_SCROLL_ROW + (uint32_t)SCROLL_AMP; r++) {
         uint8_t mask[GRID_COLS][8] = {{0}};
         uint8_t color[GRID_COLS];
         for (uint32_t c = 0; c < GRID_COLS; c++) {
-            color[c] = SCROLL_COLOR[r - (SCROLL_ROW - (uint32_t)SCROLL_AMP)];
+            color[c] = SCROLL_COLOR;
             const uint8_t* left = font_glyphs[(uint8_t)SCROLL[(first + c) % SCROLL_CHARS]];
             const uint8_t* right = font_glyphs[(uint8_t)SCROLL[(first + c + 1u) % SCROLL_CHARS]];
             for (uint32_t y = 0; y < 8u; y++) {
@@ -290,12 +297,14 @@ static void about_compose(screen* s, void* state, grid* g) {
         move_bars(a, f);
     }
     grid_fill(g, 0, 0, GRID_COLS, GRID_ROWS, ' ', BLACK);
-    bars(a, g);
-    logo_draw(logo_default, g, logo_center_col(logo_default), ABOUT_LOGO_ROW, f, GRID_BLACK);
-    ramp_line(g, RAMP_TOP, 0);
-    ramp_line(g, RAMP_BOTTOM, 1);
+    const logo* l = a->logo;
+    logo_draw(l, g, logo_center_col(l), ABOUT_LOGO_ROW + (ABOUT_LOGO_ROWS - l->rows) / 2u, f,
+              GRID_BLACK);
+    ramp_line(g, ABOUT_RAMP_TOP, 0);
+    ramp_line(g, ABOUT_RAMP_BOTTOM, 1);
     credits(a, g, f);
     stars(g, f);
+    bars(a, g);
     scroller(g, f);
 }
 

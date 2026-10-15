@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The logo (app/logo.c): Pulse Train drawn on the cell grid, what it covers and what each
-//! frame of its animation costs.
+//! The logos (app/logo.c): Cracktro Chrome, the default, a bitmap in the renderer's pixel
+//! region, and Pulse Train, drawn on the cell grid; what each covers and what each frame of its
+//! animation costs.
 
 use std::ffi::CStr;
 
@@ -59,16 +60,83 @@ const FACE: [[&str; 7]; 5] = [
     ],
 ];
 
+fn chrome() -> &'static logo {
+    unsafe { &logo_cracktro_chrome }
+}
+
+fn name(l: &logo) -> &str {
+    unsafe { CStr::from_ptr(l.name) }.to_str().unwrap()
+}
+
+/// The scene's cell rows that hold its lettering whole (app/logo.c), 64 pixel rows.
+const BAND: std::ops::Range<usize> = 9..17;
+
 #[test]
-fn the_default_logo_is_pulse_train_and_fits_the_screen() {
+fn the_default_logo_is_cracktro_chrome_and_pulse_train_the_alternative() {
     let l = unsafe { &*logo_default };
-    assert!(std::ptr::eq(l, pulse()));
-    assert_eq!(
-        unsafe { CStr::from_ptr(l.name) }.to_str(),
-        Ok("PULSE TRAIN")
+    assert!(std::ptr::eq(l, chrome()));
+    assert_eq!(name(l), "CRACKTRO CHROME");
+    assert_eq!((l.cols, l.rows), (30, 8));
+    assert_eq!(unsafe { logo_center_col(l) }, 0);
+    assert!(l.scene.is_some(), "a full-screen scene for the title card");
+    let p = pulse();
+    assert_eq!(name(p), "PULSE TRAIN");
+    assert_eq!((p.cols, p.rows), (15, 5));
+    assert_eq!(unsafe { logo_center_col(p) }, 7);
+    assert!(p.scene.is_none());
+}
+
+#[test]
+fn cracktro_chrome_is_the_scenes_lettering_band_pixel_for_pixel() {
+    let img = sidou_tests::logo::load();
+    let mut g = fresh();
+    unsafe { logo_draw(chrome(), &mut *g, 0, ROW, 0, BG) };
+    let px = pixels(&g);
+    let y0 = ROW as usize * 8;
+    for y in 0..64 {
+        assert_eq!(
+            px[(y0 + y) * W..(y0 + y + 1) * W],
+            img.px[(BAND.start * 8 + y) * W..(BAND.start * 8 + y + 1) * W],
+            "pixel row {y}"
+        );
+    }
+    // The band holds the lettering whole: its colours (the bands, the purple shadow) appear
+    // nowhere else in the scene's sky, above or below it.
+    let lettering = [
+        GRID_PURPLE,
+        GRID_BROWN,
+        GRID_ORANGE,
+        GRID_LIGHT_RED,
+        GRID_YELLOW,
+    ];
+    for y in 40..168 {
+        let inside = (BAND.start * 8..BAND.end * 8).contains(&y);
+        let has = img.px[y * W..(y + 1) * W]
+            .iter()
+            .any(|&c| lettering.contains(&u32::from(c)));
+        assert!(
+            inside || !has,
+            "lettering on pixel row {y}, outside the band"
+        );
+    }
+    // Its pixel rows 76..135 (row 75 is its black outline, on black) are inside the band.
+    assert!((76..136).all(|y| img.px[y * W..(y + 1) * W].iter().any(|&c| c != BG)));
+}
+
+#[test]
+fn cracktro_chromes_scene_is_the_png_whole() {
+    let img = sidou_tests::logo::load();
+    let mut g = fresh();
+    unsafe { chrome().scene.unwrap()(&mut *g, 0) };
+    assert!(
+        pixels(&g) == img.px,
+        "the scene is not assets/logo/cracktro-chrome.png"
     );
-    assert_eq!((l.cols, l.rows), (15, 5));
-    assert_eq!(unsafe { logo_center_col(l) }, 7);
+    assert_eq!(drain(&mut g).cells, 900);
+    for f in 1..50 {
+        unsafe { chrome().scene.unwrap()(&mut *g, f) };
+        assert_eq!(drain(&mut g).cells, 0, "frame {f}: the scene is still");
+    }
 }
 
 #[test]
@@ -107,42 +175,61 @@ fn the_still_is_slotted_raster_letters_over_a_pulse_wave() {
 }
 
 #[test]
-fn it_draws_only_its_footprint() {
-    let mut g = fresh();
-    let before = (g.ch, g.attr);
-    for f in 0..40 {
-        draw(&mut g, f);
-    }
-    let cols = GRID_COLS as usize;
-    for i in 0..cols * cols {
-        let (c, r) = ((i % cols) as u32, (i / cols) as u32);
-        let inside = (COL..COL + 15).contains(&c) && (ROW..ROW + 5).contains(&r);
-        if !inside {
-            assert_eq!(
-                (g.ch[i], g.attr[i], g.ovl[i]),
-                (before.0[i], before.1[i], 0)
-            );
+fn each_draws_only_its_footprint() {
+    for l in [pulse(), chrome()] {
+        let mut g = fresh();
+        let before = (g.ch, g.attr);
+        let col = unsafe { logo_center_col(l) };
+        for f in 0..40 {
+            unsafe { logo_draw(l, &mut *g, col, ROW, f, BG) };
         }
+        let cols = GRID_COLS as usize;
+        let (w, h) = (u32::from(l.cols), u32::from(l.rows));
+        let px = pixels(&g);
+        let mut clean = fresh();
+        let blank = pixels(&clean);
+        for i in 0..cols * cols {
+            let (c, r) = ((i % cols) as u32, (i / cols) as u32);
+            let inside = (col..col + w).contains(&c) && (ROW..ROW + h).contains(&r);
+            if !inside {
+                assert_eq!(
+                    (g.ch[i], g.attr[i], g.ovl[i]),
+                    (before.0[i], before.1[i], 0),
+                    "{}",
+                    name(l)
+                );
+                let (x, y) = (c as usize * 8, r as usize * 8);
+                assert_eq!(px[y * W + x], blank[y * W + x], "{}: ({c}, {r})", name(l));
+            }
+        }
+        let _ = drain(&mut clean);
     }
 }
 
 #[test]
 fn every_cell_of_the_footprint_is_redrawn_whatever_was_there() {
-    // Compose draws every cell: over garbage and stray overlays the logo looks as on a clear
+    // Compose draws every cell: over garbage and stray overlays a logo looks as on a clear
     // grid.
-    let mut clean = fresh();
-    draw(&mut clean, 6);
-    let mut g = fresh();
-    for r in 0..30 {
-        for c in 0..30 {
-            unsafe {
-                grid_put(&mut *g, c, r, b'X', 0x52);
-                grid_overlay(&mut *g, c, r, [0xff; 8].as_ptr(), 9);
+    for l in [pulse(), chrome()] {
+        let mut clean = fresh();
+        unsafe { logo_draw(l, &mut *clean, 0, ROW, 6, BG) };
+        let mut g = fresh();
+        for r in 0..30 {
+            for c in 0..30 {
+                unsafe {
+                    grid_put(&mut *g, c, r, b'X', 0x52);
+                    grid_overlay(&mut *g, c, r, [0xff; 8].as_ptr(), 9);
+                }
             }
         }
+        unsafe { logo_draw(l, &mut *g, 0, ROW, 6, BG) };
+        let rows = ROW as usize * 8 * W..(ROW as usize + usize::from(l.rows)) * 8 * W;
+        let w = usize::from(l.cols) * 8;
+        let (a, b) = (pixels(&g), pixels(&clean));
+        for y in rows.clone().step_by(W) {
+            assert_eq!(a[y..y + w], b[y..y + w], "{}", name(l));
+        }
     }
-    draw(&mut g, 6);
-    assert_eq!(image(&g), image(&clean));
 }
 
 #[test]
@@ -192,45 +279,54 @@ fn the_stripes_roll_and_the_wave_moves_every_four_frames() {
 }
 
 #[test]
-fn its_declared_cost_and_overlays_are_what_it_takes() {
-    let mut g = fresh();
-    draw(&mut g, 0);
-    drain(&mut g);
-    let (mut worst, mut overlays) = ([0usize; 4], 0usize);
-    // Two full cycles of the stripes (7 rolls) and more than one of the duty sweep.
-    for f in 1..=200u32 {
-        draw(&mut g, f);
-        let k = f as usize % 4;
-        worst[k] = worst[k].max(drain(&mut g).cells);
-        overlays = overlays.max(GRID_OVERLAYS as usize - usize::from(g.ovl_nfree));
+fn each_ones_declared_cost_and_overlays_are_what_it_takes() {
+    for l in [pulse(), chrome()] {
+        let mut g = fresh();
+        unsafe { logo_draw(l, &mut *g, 0, ROW, 0, BG) };
+        drain(&mut g);
+        let (mut worst, mut overlays) = ([0usize; 4], 0usize);
+        // Pulse Train: two full cycles of the stripes (7 rolls) and more than one of the duty
+        // sweep.
+        for f in 1..=200u32 {
+            unsafe { logo_draw(l, &mut *g, 0, ROW, f, BG) };
+            let k = f as usize % 4;
+            worst[k] = worst[k].max(drain(&mut g).cells);
+            overlays = overlays.max(GRID_OVERLAYS as usize - usize::from(g.ovl_nfree));
+        }
+        println!(
+            "{}: worst cells by frame mod 4 {worst:?}, {overlays} overlays",
+            name(l)
+        );
+        let worst = *worst.iter().max().unwrap();
+        assert_eq!(usize::from(l.cells_per_frame), worst, "{}", name(l));
+        assert_eq!(usize::from(l.overlays), overlays, "{}", name(l));
     }
-    println!("pulse train: worst cells by frame mod 4 {worst:?}, {overlays} overlays");
-    let worst = *worst.iter().max().unwrap();
-    assert_eq!(usize::from(pulse().cells_per_frame), worst);
-    assert_eq!(usize::from(pulse().overlays), overlays);
 }
 
-/// logo_default fits each place that shows it: the boot's title card, between its ramp lines
-/// (app/boot.h BOOT_LOGO_*), and About's band of raster bars above its first ramp line
+/// Each logo fits each place that shows it: the boot's title card (its scene, or else its
+/// slot between the card's ramp lines, app/boot.h BOOT_LOGO_*) and About's band at the top
 /// (app/about.h ABOUT_LOGO_*), centred, with its overlays beside what else each draws.
 #[test]
-fn the_default_logo_fits_each_consumers_slot() {
-    let l = unsafe { &*logo_default };
-    let (cols, rows) = (u32::from(l.cols), u32::from(l.rows));
-    for (what, max_rows) in [
-        ("the title card", BOOT_LOGO_ROWS),
-        ("About's band", ABOUT_LOGO_ROWS),
-    ] {
-        assert!(cols <= GRID_COLS, "{what}: {cols} columns");
-        assert!(
-            rows <= max_rows,
-            "{what}: {rows} rows, the slot has {max_rows}"
-        );
+fn each_logo_fits_each_consumers_slot() {
+    for l in [pulse(), chrome()] {
+        let (cols, rows) = (u32::from(l.cols), u32::from(l.rows));
+        let mut slots = vec![("About's band", ABOUT_LOGO_ROWS)];
+        if l.scene.is_none() {
+            slots.push(("the title card", BOOT_LOGO_ROWS));
+        }
+        for (what, max_rows) in slots {
+            assert!(cols <= GRID_COLS, "{}: {what}: {cols} columns", name(l));
+            assert!(
+                rows <= max_rows,
+                "{}: {what}: {rows} rows, the slot has {max_rows}",
+                name(l)
+            );
+        }
+        // The slots themselves sit between the ramp lines: app/boot.c and app/about.c assert
+        // it. About's stars (one cell each at most) and scroller (two overlays a column at
+        // most) share the pool with it.
+        let about = u32::from(l.overlays) + ABOUT_STARS + 2 * GRID_COLS;
+        assert!(about < GRID_OVERLAYS, "About: {about} overlays");
+        assert!(u32::from(l.overlays) < GRID_OVERLAYS, "the title card");
     }
-    // The slots themselves sit between the ramp lines: app/boot.c and app/about.c assert it.
-    // About's stars (one cell each at most) and scroller (two overlays a column at most)
-    // share the pool with it.
-    let about = u32::from(l.overlays) + ABOUT_STARS + 2 * GRID_COLS;
-    assert!(about < GRID_OVERLAYS, "About: {about} overlays");
-    assert!(u32::from(l.overlays) < GRID_OVERLAYS, "the title card");
 }

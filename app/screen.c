@@ -34,10 +34,11 @@ static void call(screen* s, void (*fn)(screen*, void*)) {
     }
 }
 
-/* The view on top changed: the old one's overlays go, a capture set above the stack goes,
- * and the new view comes in. */
+/* The view on top changed: the old one's overlays and pixel region go, a capture set above
+ * the stack goes, and the new view comes in. */
 static void switched(screen* s, screen_wipe w) {
     grid_overlay_clear_all(s->g);
+    grid_region_clear(s->g);
     if (s->depth < s->capture_depth) {
         screen_capture(s, NULL, NULL);
     }
