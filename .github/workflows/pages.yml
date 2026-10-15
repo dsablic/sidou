@@ -5,9 +5,10 @@
 # only a build that passes is deployed. Pages must be enabled with "GitHub Actions" as its
 # source (docs/TODO.md).
 name: pages
+# Only on a release tag (v1.2.3) or when started by hand (Actions, Run workflow).
 on:
   push:
-    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 permissions:
   contents: read

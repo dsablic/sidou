@@ -722,9 +722,10 @@ line.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push to `main` and every pull
-request (`.github/workflows/pages.yml`, on every push to `main`, builds,
-smoke-tests and deploys the browser demo):
+`.github/workflows/ci.yml` runs only on a release tag (`v*`) or when started by
+hand from the Actions tab, never on ordinary pushes or pull requests. Run the
+suite locally before tagging. `.github/workflows/pages.yml` has the same
+triggers; it builds, smoke-tests and deploys the browser demo:
 
 | Job | What it runs |
 |---|---|
