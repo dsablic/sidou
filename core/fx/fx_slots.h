@@ -142,6 +142,20 @@ typedef union {
     sid_fx_plate plate;
 } sid_slot_fx_state;
 
+/* Algorithms whose initial state takes real computing (tables, line layouts), initialised
+ * once by sid_slots_init in the caller's context; starting one copies its template, so the
+ * audio context never runs those inits. */
+typedef struct {
+    sid_fx_tape tape;
+    sid_fx_overdrive overdrive;
+    sid_fx_fuzz fuzz;
+    sid_fx_crt crt;
+    sid_fx_phaser phaser;
+    sid_fx_echo delay, pingpong;
+    sid_fx_reverb reverb;
+    sid_fx_plate plate;
+} sid_slot_templates;
+
 /* Fields are private to fx_slots.c; the struct is public so callers can allocate it. */
 typedef struct {
     sid_slot slot[SID_SLOT_COUNT];
@@ -154,6 +168,7 @@ typedef struct {
     sid_slot_dist_state dist;
     sid_slot_mod_state mod;
     sid_slot_fx_state fx;
+    sid_slot_templates tpl;
 } sid_slots;
 
 /* sample_rate in [8000, 96000]. `pool` must stay valid; it need not be cleared. Every
