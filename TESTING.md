@@ -277,7 +277,7 @@ Each fails if the effects cost more than 500 instructions per sample, if two
 chips at the SID's worst block plus the effects cost more than 2,300, or if
 any sample differs from the host build at all. The SID's worst block is
 `SID_WORST_BLOCK_TWO_CHIPS` in `tests/common/mod.rs`, 1,410 for two chips:
-the SID gate's most expensive 128-sample block (1,408.8 at M1b), which the
+the SID gate's most expensive 128-sample block (1,409.20 at M1b), which the
 SID gate holds it to. The audio interrupt has a deadline per block, so a
 block, not a scenario's average, is what the effects must fit beside. They
 write `fx_budget_{1,2}.json` and

@@ -212,8 +212,8 @@ while the user was away; revisit if needed):
   to 30 Hz and 0.45 fs anyway.
 - **Placement:** 16,512 bytes in flash, read by `sid_init` only. Each chip
   keeps its 16 damping values in its own struct (RAM), so `sid_write` reads no
-  flash. Instructions per sample unchanged (worst block 1,408.8 for two
-  chips); `sid_init` is 54k instructions cheaper.
+  flash. Instructions per sample unchanged (worst block 690.83 for one chip,
+  1,409.20 for two); `sid_init` is 54k instructions cheaper.
 - **Fit errors** (dB around the cutoff, RMS / largest over the FC values in
   reach): 8580 within 0.14 / 0.87 for every mode and resonance; 6581 0.37 to
   1.45 / 1.45 to 6.6, the largest on the high-pass in its threshold region

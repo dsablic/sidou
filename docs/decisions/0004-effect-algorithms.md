@@ -340,8 +340,8 @@ block to `SID_WORST_BLOCK_ONE_CHIP` (691) and `SID_WORST_BLOCK_TWO_CHIPS` (1,410
 combined with another waveform, from power-on: the register starts full, the output
 writes back into it every cycle, and it runs through about 25 shifts (16 cycles apart
 at 0xffff, 256 at 0x0800) before it locks up at 0. Those cycles run in short bulk
-windows between single cycles. The worst is `noise_tri_ring_0800` on the 8580: 690.6
-per sample for one chip, 1,408.8 for two (M1b, after "perf(sid): cheaper combined-noise
+windows between single cycles. The worst is `noise_tri_ring_0800` on the 8580: 690.83
+per sample for one chip, 1,409.20 for two (M1b, after "perf(sid): cheaper combined-noise
 lock-up transient" took them from 752 and 1,492). Its block 0, one chip, 88.4k
 instructions (`SIDOU_GATE_PROFILE=1`):
 
