@@ -75,7 +75,7 @@ static int resting(const sid_slot* sl) {
 
 /* A template's bytes into the running state. char copies: well defined whatever the
  * types (and a byte loop, so no library call, which the audio context could not reach). */
-static void copy(void* dst, const void* src, uint32_t n) {
+static void slot_copy(void* dst, const void* src, uint32_t n) {
     unsigned char* d = dst;
     const unsigned char* q = src;
     for (uint32_t i = 0; i < n; ++i) {
@@ -87,12 +87,12 @@ static void dist_start(sid_slots* s, uint32_t alg) {
     sid_slot_dist_state* d = &s->dist;
     const sid_slot_templates* t = &s->tpl;
     switch (alg) {
-    case SID_DIST_TAPE: copy(&d->tape, &t->tape, sizeof d->tape); break;
-    case SID_DIST_OVERDRIVE: copy(&d->overdrive, &t->overdrive, sizeof d->overdrive); break;
-    case SID_DIST_FUZZ: copy(&d->fuzz, &t->fuzz, sizeof d->fuzz); break;
+    case SID_DIST_TAPE: slot_copy(&d->tape, &t->tape, sizeof d->tape); break;
+    case SID_DIST_OVERDRIVE: slot_copy(&d->overdrive, &t->overdrive, sizeof d->overdrive); break;
+    case SID_DIST_FUZZ: slot_copy(&d->fuzz, &t->fuzz, sizeof d->fuzz); break;
     case SID_DIST_CRUSH: sid_fx_crush_init(&d->crush, s->sample_rate); break;
     case SID_DIST_LOFI:
-        copy(&d->lofi.crt, &t->crt, sizeof d->lofi.crt);
+        slot_copy(&d->lofi.crt, &t->crt, sizeof d->lofi.crt);
         sid_fx_noise_init(&d->lofi.noise, s->seed);
         break;
     default: break;
@@ -119,7 +119,7 @@ static void mod_start(sid_slots* s, uint32_t alg) {
     switch (alg) {
     case SID_MOD_CHORUS: sid_fx_chorus_init(&m->chorus, s->sample_rate); break;
     case SID_MOD_FLANGER: sid_fx_flanger_init(&m->flanger, s->sample_rate); break;
-    case SID_MOD_PHASER: copy(&m->phaser, &s->tpl.phaser, sizeof m->phaser); break;
+    case SID_MOD_PHASER: slot_copy(&m->phaser, &s->tpl.phaser, sizeof m->phaser); break;
     case SID_MOD_TREMOLO:
     case SID_MOD_AUTOPAN: sid_fx_tremolo_init(&m->tremolo, s->sample_rate); break;
     case SID_MOD_WOW: sid_fx_wow_init(&m->wow, s->sample_rate, s->seed * 0x9e3779b9u + 1u); break;
@@ -162,10 +162,10 @@ static void fx_start(sid_slots* s, uint32_t alg) {
     sid_slot_fx_state* f = &s->fx;
     const sid_slot_templates* t = &s->tpl;
     switch (alg) {
-    case SID_FXSLOT_DELAY: copy(&f->echo, &t->delay, sizeof f->echo); break;
-    case SID_FXSLOT_PINGPONG: copy(&f->echo, &t->pingpong, sizeof f->echo); break;
-    case SID_FXSLOT_REVERB_LIGHT: copy(&f->reverb, &t->reverb, sizeof f->reverb); break;
-    case SID_FXSLOT_REVERB_LUSH: copy(&f->plate, &t->plate, sizeof f->plate); break;
+    case SID_FXSLOT_DELAY: slot_copy(&f->echo, &t->delay, sizeof f->echo); break;
+    case SID_FXSLOT_PINGPONG: slot_copy(&f->echo, &t->pingpong, sizeof f->echo); break;
+    case SID_FXSLOT_REVERB_LIGHT: slot_copy(&f->reverb, &t->reverb, sizeof f->reverb); break;
+    case SID_FXSLOT_REVERB_LUSH: slot_copy(&f->plate, &t->plate, sizeof f->plate); break;
     default: break;
     }
 }
@@ -202,7 +202,7 @@ static uint32_t warm_up(const sid_slots* s, uint32_t k, uint32_t alg) {
     return (uint32_t)(int32_t)(ms * 0.001f * (float)s->sample_rate) + 4u;
 }
 
-static void start(sid_slots* s, uint32_t k, uint32_t alg) {
+static void slot_start(sid_slots* s, uint32_t k, uint32_t alg) {
     s->slot[k].warm = warm_up(s, k, alg);
     switch (k) {
     case SID_SLOT_DIST: dist_start(s, alg); break;
@@ -222,7 +222,7 @@ static void enter(sid_slots* s, uint32_t k) {
         sl->phase = SID_SLOT_CLEAR;
         sl->clear_pos = 0;
     } else {
-        start(s, k, sl->algorithm);
+        slot_start(s, k, sl->algorithm);
         sl->phase = SID_SLOT_FADE_IN;
     }
 }
@@ -254,7 +254,7 @@ static float step_switch(sid_slots* s, uint32_t k) {
         }
         sl->clear_pos = end;
         if (end == SID_SLOT_POOL_LEN) {
-            start(s, k, sl->algorithm);
+            slot_start(s, k, sl->algorithm);
             sl->phase = SID_SLOT_FADE_IN;
         }
         return 0.0f;
