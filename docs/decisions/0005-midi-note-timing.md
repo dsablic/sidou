@@ -27,16 +27,23 @@ M1d Task 5 asks two things:
    buffer. That half plays once the other half has finished.
 
 **How it was measured:** `host/crates/emu-gate/tests/latency.rs`, in fm1-emu
-at `e52f4640`, 64 trials per case. Each trial boots afresh and injects a
-note-on (C4, SAW LEAD) at a random cycle, so its phase against the block,
-the poll, the 10 ms tick and the screen's 40 ms compose is random. Times
-run from the note-on's last byte in the UART; its three bytes take
-0.96 ms on the wire before that.
+at `9baf604`, with `SIDOU_LATENCY_TRIALS=64`: 64 trials per case (CI runs
+fewer; TESTING.md has the command). Each trial boots afresh, past the boot's
+title card and its wipe, so the instrument is idle as a player finds it. It
+injects a note-on (C4, SAW LEAD) at a random cycle, so its phase against the
+block, the poll, the 10 ms tick and the screen's 40 ms compose is random.
+Once the note holds its sustain level (140 ms later), a note-off goes in at
+a random cycle in a block. Times run from the message's last byte in the
+UART; its three bytes take 0.96 ms on the wire before that.
 - **Taken:** the audio interrupt that applies the note is entered (the
   voice's envelope gate is set in that block).
 - **Buffer:** that interrupt returns, with the note's first non-silent
   sample in the DMA buffer.
 - **Audible:** that sample leaves the DAC.
+- **Off taken:** the audio interrupt that clears the gate is entered.
+- **Release in buffer:** the block with the release's first step returns.
+  It is read from the voice's envelope counter in the rendered chip, a
+  block at a time, as one step down is one level in 170 of the audio.
 
 "Non-silent" means a deviation from the 20 ms before the note-on, by more
 than the baseline's own largest deviation plus 8 LSB. A nonzero test would
@@ -44,55 +51,76 @@ fail on the DC level and on the waveforms that voices leak with their gate
 off. The note's envelope is measured separately: a deviation past -30 dB of
 the held note's peak.
 
+The envelope mode (amendment below) is INSTANT by default; AUTHENTIC, the
+chip's timing, is set by CC 26 after the boot, and the test checks that it
+reached the rendered chip.
+
 ## Measured
 
-Milliseconds from the note-on's last byte: min / median / mean / max.
+Milliseconds from the message's last byte: min / median / mean / max.
 
-| Case | Taken | Buffer | Audible | Envelope audible |
-|---|---|---|---|---|
-| Idle (status screen) | 0.25 / 1.95 / 1.88 / 3.25 | 0.44 / 2.14 / 2.07 / 3.45 | 3.65 / 5.32 / 5.25 / 6.65 | 3.98 / 38.2 / 36.3 / 39.9 |
-| Busy (K1-K3 turning, the screen redrawing) | 0.26 / 1.91 / 1.87 / 3.17 | 0.46 / 2.11 / 2.07 / 3.37 | 3.66 / 5.30 / 5.27 / 6.59 | 4.58 / 38.4 / 37.3 / 39.8 |
-| USB retry (the note-on around `usb_attach_now`) | 0.15 / 1.83 / 1.66 / 2.95 | 0.34 / 2.02 / 1.85 / 3.15 | 3.55 / 5.23 / 5.06 / 6.35 | 36.8 / 37.8 / 37.8 / 38.9 |
+| Case | Envelope | Taken | Buffer | Audible | Envelope audible |
+|---|---|---|---|---|---|
+| Idle (status screen) | INSTANT | 0.17 / 1.66 / 1.57 / 3.28 | 0.40 / 1.89 / 1.79 / 3.50 | 3.10 / 4.59 / 4.49 / 6.20 | 3.19 / 4.68 / 4.58 / 6.29 |
+| Busy (K1-K3 turning, the screen redrawing) | INSTANT | 0.07 / 1.43 / 1.60 / 3.28 | 0.30 / 1.66 / 1.83 / 3.50 | 3.00 / 4.36 / 4.52 / 6.20 | 3.07 / 4.42 / 4.59 / 6.27 |
+| USB retry (the note-on around `usb_attach_now`) | INSTANT | 0.11 / 1.46 / 1.44 / 2.91 | 0.33 / 1.68 / 1.67 / 3.13 | 3.03 / 4.38 / 4.37 / 5.83 | 3.12 / 4.47 / 4.46 / 5.92 |
+| Idle (status screen) | AUTHENTIC | 0.17 / 1.53 / 1.53 / 3.28 | 0.36 / 1.72 / 1.73 / 3.50 | 3.57 / 4.93 / 4.89 / 6.68 | 3.86 / 37.7 / 35.3 / 39.9 |
+
+| Case | Envelope | Off taken | Release in buffer |
+|---|---|---|---|
+| Idle | INSTANT | 0.13 / 1.64 / 1.66 / 3.24 | 0.34 / 1.84 / 1.86 / 3.44 |
+| Busy | INSTANT | 0.13 / 1.71 / 1.73 / 3.05 | 0.34 / 1.91 / 1.93 / 3.25 |
+| USB retry | INSTANT | 0.17 / 1.47 / 1.60 / 3.07 | 0.38 / 1.68 / 1.80 / 3.28 |
+| Idle | AUTHENTIC | 0.14 / 1.87 / 1.72 / 3.25 | 0.64 / 33.9 / 31.3 / 35.4 |
 
 **What the numbers show:**
-- **The pipeline.** In every case, the block that takes the note starts
-  within one block and one poll (3.40 ms) of the note's arrival. The test
-  asserts this for every trial.
+- **The pipeline.** In every case, the block that takes the note, or the
+  note-off, starts within one block and one poll (3.40 ms) of its arrival.
+  The test asserts this for every trial.
 - **The render.** The block's samples are in the buffer when the interrupt
-  returns, 0.19 to 0.23 ms after it is taken, because `audio_fill` converts
+  returns, 0.20 to 0.23 ms after it is taken, because `audio_fill` converts
   them at its end. So the plan's bound on the buffer, read literally, is
-  missed by up to that render: the idle maximum is 3.45 ms against 3.40 ms.
-  The bound leaves out the render. The test asserts "taken" against it, and
-  "buffer" is "taken" plus one render.
-- **Audible.** One more block after the buffer: 3.5 to 6.7 ms.
+  missed by up to that render: the idle maximum is 3.50 ms against 3.40 ms.
+  The bound leaves out the render (amendment below).
+- **Audible.** One more block after the buffer: 3.0 to 6.7 ms.
 - **The screen.** The busy screen changes nothing measurable:
-  - the longest `ui_poll` is 41.5k instructions (one strip drawn, about
-    0.17 ms);
-  - the longest wait in the MIDI ring is 117 us idle and 124 us busy.
+  - the longest `ui_poll` is 28.4k instructions (about 0.12 ms);
+  - the longest wait in the MIDI ring is 194 us idle and 189 us busy.
 
   The audio interrupt's render (0.2 ms), which holds off the main loop,
   matters as much as the screen.
 - **The USB retry.** While USB is off, `usb_retry`'s attach stalls one
   main-loop pass a second for 300,085 instructions (about 1.25 ms;
   docs/hardware.md). A note-on that arrives just before it waits in the ring
-  for up to 1.0 ms. That stall overlaps the wait for the next block, so the
-  worst "taken" was 2.95 ms, inside the bound. The worst it can be is the
+  for up to 0.8 ms. That stall overlaps the wait for the next block, so the
+  worst "taken" was 2.91 ms, inside the bound. The worst it can be is the
   bound plus the whole stall, 4.65 ms; the test asserts that.
-- **The SID's ADSR delay.** For most notes, the envelope comes about 32 ms
-  (11 blocks) after the first sample, so the audible onset is at 36 to
-  40 ms. The first non-silent sample is not yet the note: it is the gated
-  voice's oscillator leaking through the DAC at envelope 0 (about 40 LSB,
-  -58 dBFS). The real chip behaves the same way, and so does reSIDfp:
+- **The SID's ADSR delay (AUTHENTIC).** For most notes the envelope comes
+  about 32 ms (11 blocks) after the first sample, so the audible onset is
+  at 36 to 40 ms; most note-offs hold the sustain level as long before the
+  release's first step. The first non-silent sample is not yet the note: it
+  is the gated voice's oscillator leaking through the DAC at envelope 0
+  (about 40 LSB, -58 dBFS). The real chip behaves the same way, and so does
+  reSIDfp:
   - The envelope's rate counter is a 15-bit LFSR with a period of 32767
-    cycles. In release at SAW LEAD's rate 6, it resets every 267 cycles.
+    cycles. In release at SAW LEAD's rate 6, it resets every 267 cycles; in
+    decay at rate 9, every 977.
   - Attack 0 needs the LFSR at position 8. A gate that finds it further on
     waits for the LFSR to come round, up to 32,772 cycles (33.3 ms), before
-    the attack takes its first step.
-  - On the host, SIDOU and reSIDfp agree exactly: 13 of 400 phases (3.3%)
-    start at once, and the rest wait 33.0 to 33.3 ms. Every one of release 6's
-    267 phases, tried in turn, gives 8 at once (3.0%; `sid_env.rs`).
-  - In fm1-emu, 6 of the 192 trials (3.1%) started at once, audible from
-    4.0 ms. The rest waited.
+    the attack takes its first step. Release 6 needs it at 266: a note-off
+    that finds it further on, held at the decay's rate, waits the same way.
+  - On the host, SIDOU and reSIDfp agree exactly: of release 6's 267 phases,
+    tried in turn, 8 start the attack at once (3.0%); of decay 9's 977, 267
+    start the release at once (27%; `sid_env.rs`, `sid.rs`).
+  - In fm1-emu, 5 of the 64 trials (7.8%) started the attack at once,
+    audible from 3.9 ms, and 5 the release. Both gate edges land on block
+    starts, so a trial's note-off phase follows its note-on's: the host's
+    per-phase figures are the ones a player meets.
+- **INSTANT.** The envelope is up in the block that takes the note, and the
+  release's first step is in the block that takes the note-off, in all 192
+  trials. The envelope's audible onset is the buffer's latency plus one
+  block, 3.1 to 6.3 ms; the release's first step is in the buffer 0.34 to
+  3.44 ms after the note-off, and audible one block later.
 
 ## Timestamps
 
@@ -132,9 +160,9 @@ So the best placement the stamps allow is to within one poll, 0.5 ms.
 **The cost to the audio interrupt is small.** Each split adds one
 `sid_render` call: an out-of-line `fold_owed` and the loop's setup. That is
 tens of instructions, an estimate from the code that was not measured. A
-block costs about 47k instructions (0.197 ms at 240 MHz) and is gated at
+block costs about 53k instructions (0.22 ms at 240 MHz) and is gated at
 `SID_WORST_PER_CHIP` = 530 per sample per chip. A few splits a block cost
-under 0.5%, and `.ram_text` (32,048 of 49,152 bytes) has room for the
+under 0.5%, and `.ram_text` (32,352 of 49,152 bytes) has room for the
 marker handling. **It fits the budget.**
 
 **It does not fit cleanly:**
@@ -151,17 +179,16 @@ marker handling. **It fits the budget.**
   would wait behind a MIDI note's marker too). All of that would need
   redoing.
 - **It trades latency for jitter.** Every note would take today's worst
-  case, 6.5 to 7.6 ms from the stamp, against 3.5 to 6.7 ms (mean 5.25 ms)
+  case, 6.5 to 7.6 ms from the stamp, against 3.0 to 6.3 ms (mean 4.5 ms)
   now. Its jitter would fall from about 3 ms (one block plus the poll) to
   the 0.5 ms of the poll's stamp. A live player feels the extra mean latency on
   every note; the jitter matters most to sequenced, clock-synced parts,
   which are M2's.
-- **The chip's ADSR delay dwarfs it.** With the factory presets (attack 0
-  after a slower release), about 97% of notes start their attack about
-  33 ms after the gate, and the rest at once. The gate's exact cycle within
-  the block sets the LFSR phase, so placing gates sample-accurately leaves
-  that 0-or-33 ms choice as random as before. Removing 2.9 ms of block
-  jitter changes nothing audible while a 33 ms one remains.
+
+When this record was first written, the chip's ADSR delay (most notes 33 ms
+late with the factory presets) also made the block's jitter moot. The
+envelope option (amendment below) removed that delay, so it is no longer a
+reason: the decline rests on the two above.
 
 ## Decision
 
@@ -172,87 +199,83 @@ The latency test (`latency.rs`) asserts the following for every trial:
 - the block that takes the note starts within one block and one poll of the
   note's arrival (plus the USB attach's stall when it lands around one);
 - the note's first sample plays one block after that;
-- its envelope rises within the ADSR delay's longest plus the attack.
+- the note-off is taken within the same bound;
+- with the envelope INSTANT, the envelope rises in the block that takes the
+  note and the release steps in the block that takes the note-off; with
+  AUTHENTIC, within the ADSR delay's longest (plus the attack).
 
-## Amendment: the bound, and the attack option (2026-10-15)
+## Amendment: the bound, and the envelope option (2026-10-15)
 
 **The bound.** The plan's "first non-silent sample in the DMA buffer within one
 block and one poll" leaves out the render. `audio_fill` writes the block's
 samples at its end, so "buffer" is "taken" plus one audio interrupt, and the
-idle maximum above missed it by 0.05 ms. `latency.rs` now asserts both bounds:
+idle maximum above misses it by 0.10 ms. `latency.rs` asserts both bounds:
 - taken <= block + poll (+ the USB attach's stall around it);
 - buffer <= block + poll (+ the stall) + the render allowance.
 
-The allowance is the run's longest audio interrupt, from entry to return. It is
-measured, not a margin, and is itself held to the audio budget's block: 2700
-instructions a sample times 128 samples (design doc section 8). Measured, it is
-52,081 to 54,452 cycles (0.217 to 0.227 ms).
+The second follows from the first, as the taking interrupt is one of the run's;
+it is kept as the plan's statement. The allowance is the run's longest audio
+interrupt, from entry to return. It is measured, not a margin, and is itself
+held to the audio budget's block: 2700 instructions a sample times 128 samples
+(design doc section 8). Measured, it is 53,912 to 54,441 cycles (0.225 to
+0.227 ms).
 
 **The ADSR delay** follow-up is decided: an option, not a behaviour change.
-- The core has a gate reset, `sid_set_gate_reset`. With it on, a rising gate
-  restarts the envelope's rate LFSR, so attack 0 steps 12 cycles after the gate.
-  It is off by default, so the core stays bit-exact with reSIDfp.
-- The live instrument has ATTACK: INSTANT / AUTHENTIC (CC 26, NRPN 1/10),
+- The core has a gate reset, `sid_set_gate_reset`. With it on, each gate edge
+  restarts the envelope's rate LFSR, so the attack, or the release, takes its
+  first step one rate period and 3 cycles after the edge: 12 cycles at
+  attack 0, 270 at release 6. The exponential divider's count is left as it
+  is, so a release from a low sustain level still waits for it, as on the
+  chip. It is off by default, so the core stays bit-exact with reSIDfp.
+- The live instrument has ENVELOPE: INSTANT / AUTHENTIC (CC 26, NRPN 1/10),
   INSTANT by default.
 - Song and `.sid` playback (M2, M3) will default to AUTHENTIC.
 
 `docs/reference/controls.md` explains it to players.
 
-Measured again at the same seeds, 64 trials a case. AUTHENTIC is set by CC 26
-after the boot, which shifts the trials' phases. Milliseconds, min / median /
-mean / max:
-
-| Case | Attack | Taken | Buffer | Audible | Envelope in buffer | Envelope audible |
-|---|---|---|---|---|---|---|
-| Idle | INSTANT | 0.25 / 1.95 / 1.88 / 3.25 | 0.47 / 2.17 / 2.10 / 3.48 | 3.17 / 4.87 / 4.80 / 6.17 | 0.47 / 2.17 / 2.10 / 3.48 | 3.28 / 4.98 / 4.91 / 6.29 |
-| Busy | INSTANT | 0.26 / 1.91 / 1.87 / 3.17 | 0.48 / 2.14 / 2.10 / 3.40 | 3.18 / 4.83 / 4.79 / 6.09 | 0.48 / 2.14 / 2.10 / 3.40 | 3.27 / 4.93 / 4.89 / 6.21 |
-| USB retry | INSTANT | 0.15 / 1.83 / 1.66 / 2.95 | 0.37 / 2.05 / 1.88 / 3.17 | 3.07 / 4.75 / 4.58 / 5.87 | 0.37 / 2.05 / 1.88 / 3.17 | 3.19 / 4.86 / 4.69 / 5.99 |
-| Idle | AUTHENTIC | 0.25 / 1.72 / 1.72 / 3.26 | 0.45 / 1.92 / 1.92 / 3.45 | 3.59 / 5.12 / 5.09 / 6.66 | 0.89 / 33.7 / 31.4 / 35.4 | 3.68 / 38.1 / 35.5 / 39.9 |
-| Busy | AUTHENTIC | 0.06 / 1.67 / 1.67 / 3.16 | 0.26 / 1.86 / 1.87 / 3.35 | 3.46 / 5.08 / 5.07 / 6.56 | 1.09 / 33.8 / 32.8 / 35.3 | 3.88 / 38.3 / 37.1 / 39.8 |
-| USB retry | AUTHENTIC | 0.15 / 1.83 / 1.66 / 2.95 | 0.34 / 2.02 / 1.85 / 3.15 | 3.55 / 5.23 / 5.06 / 6.35 | 32.3 / 34.0 / 33.8 / 35.1 | 36.8 / 37.8 / 37.8 / 38.9 |
-
-- **INSTANT:** the envelope is up in the block that takes the note, in every
-  trial, so the audible onset collapses to the buffer's latency plus one block:
-  3.2 to 6.3 ms, against 36 to 40 ms for most notes before. The test asserts
-  that.
-- **AUTHENTIC:** unchanged from above. The envelope is up within the ADSR
-  delay's longest and the attack.
+What it changes, from the tables above:
+- **INSTANT:** the audible onset is the buffer's latency plus one block, 3.1
+  to 6.3 ms, against 36 to 40 ms for most notes with AUTHENTIC; the release
+  starts in the note-off's block instead of up to 33 ms later. The test
+  asserts both.
 - **The render** is 0.22 to 0.23 ms with INSTANT against 0.20 to 0.22 ms with
   AUTHENTIC. The attack runs in the block that takes the note instead of 33 ms
   later: the same envelope work, sooner. The run's longest interrupt is the same
-  within noise either way (54,088 against 53,913 cycles idle, +0.3%).
+  within noise either way (54,078 against 53,912 cycles idle, +0.3%).
 - With INSTANT, the first non-silent sample comes earlier within its block (the
-  envelope, not only the leak). So "audible" falls by about 0.4 ms.
+  envelope, not only the leak), so "audible" falls by about 0.3 ms (median).
 
 ## Consequences
 
 - **Measured latency:** the note-on's first sample reaches the buffer in
-  0.34 to 3.45 ms and the DAC in 3.5 to 6.7 ms. These figures exclude the
-  envelope. With the factory presets, the envelope's audible onset is 36 to
-  40 ms, or 4 to 7 ms for the 3% of notes that escape the ADSR delay.
+  0.30 to 3.50 ms and the DAC in 3.0 to 6.7 ms. With the envelope INSTANT
+  (the default), the envelope's audible onset is 3.1 to 6.3 ms and the
+  release starts in the note-off's block. With AUTHENTIC, both are 36 to
+  40 ms for most notes, as on the chip.
 - **Revisit sample-accurate placement:**
   - with M2's clock and transport, where sequenced notes want the jitter
     gone and can take a fixed delay;
   - if the UART is read per byte (an RX interrupt) or the stamps get finer
-    than a poll;
-  - once the ADSR delay has a decision (below).
+    than a poll.
 - **Follow-ups:**
-  - **The ADSR delay is a playability question, for its own decision.**
-    Decided: the attack option (amendment above). A
-    synth that answers 3% of notes at once and the rest 33 ms late is the
+  - **The ADSR delay** was a playability question, for its own decision.
+    A synth that answers 3% of notes at once and the rest 33 ms late is the
     real chip's behaviour, and the reason SID music uses a hard restart.
-    Options include:
+    The options were:
     - a hard restart at note-off (rates 0 while the voice rests, which costs
       the release tail);
     - presets whose release is no slower than their attack;
     - an "immediate attack" option that resets the rate LFSR at the gate.
-      The chip cannot do that, so it would be a departure from reSIDfp
-      behind a setting.
+      The chip cannot do that, so it is a departure from reSIDfp behind a
+      setting.
+
+    The third was taken, at both gate edges, since a note-off meets the same
+    delay: the envelope option (amendment above).
   - **The USB retry's stall** adds up to 1.25 ms to a note in one main-loop
     pass a second while USB is off. It is already open in docs/hardware.md
     ("The USB retry's stall"): time it on a unit first.
-  - **The About page** (m1e-look) composes every frame, about 161k
-    instructions (0.67 ms), several times the status screen's longest
-    `ui_poll`. Measure it with `latency.rs` on that branch. If a stall then
-    pushes "taken" past the bound, drain MIDI between compose chunks, or
-    before and after `ui_poll`.
+  - **The About page** composes every frame, about 161k instructions
+    (0.67 ms), several times the status screen's longest `ui_poll`.
+    `latency.rs` does not open it yet. If a stall there pushes "taken" past
+    the bound, drain MIDI between compose chunks, or before and after
+    `ui_poll`.
