@@ -53,6 +53,14 @@ impl Ui {
         ui
     }
 
+    /// As new(), with the title cards off (the menu's CARDS): for the tests of the views'
+    /// routing and transitions, which the cards would sit over (title_card.rs tests them).
+    pub(crate) fn without_cards() -> Self {
+        let mut ui = Self::new();
+        ui.v.cards = 0;
+        ui
+    }
+
     /// Presses button b (and lets it go, unless it is held with hold()).
     pub(crate) fn press(&mut self, b: u32) {
         let held = self.held | (1 << b);
@@ -142,7 +150,7 @@ pub(crate) fn open_charset(ui: &mut Ui) {
 
 #[test]
 fn home_opens_the_menu_and_goes_back_one_view() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::without_cards();
     assert_eq!(ui.top(), "LIVE");
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.top(), "MENU");
@@ -165,7 +173,7 @@ fn home_opens_the_menu_and_goes_back_one_view() {
 
 #[test]
 fn the_views_open_with_a_wipe_down_and_close_with_a_wipe_up() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::without_cards();
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.v.s.wipe, SCREEN_WIPE_DOWN as u8);
     ui.settle();
@@ -202,18 +210,19 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
     let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
-    let rows: Vec<String> = (4..13).map(|r| ui.row(r)).collect();
+    let rows: Vec<String> = (4..14).map(|r| ui.row(r)).collect();
     let body: Vec<String> = rows.iter().map(|r| r[3..27].to_string()).collect();
     assert_eq!(rows[0][2..10].to_string(), "# MENU #");
     // Labels after the cursor cell, values right-aligned against the frame, an arrow for a view.
     assert_eq!(body[1][1..], format!("{:<19}6581", "CHIP"));
     assert_eq!(body[2], format!(" {:<15}SAW LEAD", "PRESET"));
     assert_eq!(body[3], format!(" {:<21}+0", "OCTAVE"));
-    assert_eq!(body[4][..23], format!(" {:<22}", "STATUS"));
-    assert_eq!(body[5][..23], format!(" {:<22}", "SCENE"));
-    assert_eq!(body[6][..23], format!(" {:<22}", "CHARSET"));
-    assert_eq!(body[7][..23], format!(" {:<22}", "ABOUT"));
-    for row in 8..12 {
+    assert_eq!(body[4], format!(" {:<21}ON", "CARDS"));
+    assert_eq!(body[5][..23], format!(" {:<22}", "STATUS"));
+    assert_eq!(body[6][..23], format!(" {:<22}", "SCENE"));
+    assert_eq!(body[7][..23], format!(" {:<22}", "CHARSET"));
+    assert_eq!(body[8][..23], format!(" {:<22}", "ABOUT"));
+    for row in 9..13 {
         assert_eq!(
             ui.g.ch[row * COLS + 26],
             FONT_ARROW_RIGHT as u8,
@@ -221,7 +230,7 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
         );
     }
     assert_eq!(
-        rows[8][2..26].chars().filter(|&c| c == '#').count(),
+        rows[9][2..26].chars().filter(|&c| c == '#').count(),
         24,
         "the frame's bottom"
     );
@@ -242,7 +251,7 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
 
 #[test]
 fn select_and_algorithm_do_nothing_outside_the_menu() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::without_cards();
     for view in ["LIVE", "STATUS", "CHARSET"] {
         if view == "STATUS" {
             open_status(&mut ui);

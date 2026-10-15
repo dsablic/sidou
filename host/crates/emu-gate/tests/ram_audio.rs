@@ -263,7 +263,7 @@ fn per_sample(m: &mut Machine, ms: u64) -> (f64, usize) {
 
 /// The tap runs while LIVE shows and costs the audio interrupt at most TAP_PER_SAMPLE
 /// instructions a sample: the same build with the menu on top (the tap off), against LIVE on
-/// top, a chord held throughout, by turns.
+/// top (after its title card), a chord held throughout, by turns.
 #[test]
 fn the_live_view_tap_costs_the_audio_interrupt_little() {
     let Some((_, fw)) = fixture("the tap cost test") else {
@@ -288,6 +288,15 @@ fn the_live_view_tap_costs_the_audio_interrupt_little() {
         m.key(HOME, true);
         m.run_ms(30);
         m.key(HOME, false);
+        // Back to LIVE behind THE OSCILLATOR's title card (app/title_card.h), which the held
+        // chord does not end: the tap is off under it.
+        let back = m.ms();
+        while common::top_view(&mut m, &fw) != fw.symbol("live_view_view")
+            || common::screen_animating(&mut m, &fw)
+        {
+            assert!(m.ms() < back + 4000, "the card did not end");
+            m.run_ms(40);
+        }
         m.run_ms(400);
     }
     let mean = |v: &[(f64, usize)]| v.iter().map(|x| x.0).sum::<f64>() / v.len() as f64;

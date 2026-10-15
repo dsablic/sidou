@@ -33,8 +33,9 @@ const FX: u8 = 2;
 const HOME: u8 = 8;
 const SELECT: u8 = 0;
 const ALGORITHM: u8 = 1;
-/// app/views.h: the menu's view items (STATUS is common::open_status's), and its cursor
-/// cell on the first item.
+/// app/views.h: the menu's title cards option and view items (STATUS is
+/// common::open_status's), and its cursor cell on the first item.
+const MENU_CARDS: i32 = sidou_sys::VIEWS_MENU_CARDS as i32;
 const MENU_SCENE: i32 = sidou_sys::VIEWS_MENU_SCENE as i32;
 const MENU_CHARSET: i32 = sidou_sys::VIEWS_MENU_CHARSET as i32;
 const MENU_ABOUT: i32 = sidou_sys::VIEWS_MENU_ABOUT as i32;
@@ -124,6 +125,74 @@ fn open_charset(m: &mut Machine, fw: &Firmware) {
     m.run_ms(100);
     m.turn(ALGORITHM, 1);
     settle(m, fw);
+}
+
+/// A byte of the views (platform/fm1/ui.c `ui`) at `offset` in the device's layout
+/// (sidou_sys::ilp32::views), the symbol's size checked against it.
+fn ui_byte(m: &mut Machine, fw: &Firmware, offset: usize) -> u8 {
+    use object::{Object, ObjectSymbol};
+    let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
+    let sym = file
+        .symbols()
+        .find(|s| s.name() == Ok("ui"))
+        .expect("no symbol ui in the firmware ELF");
+    assert_eq!(
+        sym.size(),
+        sidou_sys::ilp32::views::SIZE as u64,
+        "the views' layout moved"
+    );
+    m.soc.read8(sym.address() as u32 + offset as u32)
+}
+
+/// A field of the views' title card (app/title_card.h), e.g. ilp32::title_card::phase.
+fn card_byte(m: &mut Machine, fw: &Firmware, field: usize) -> u8 {
+    ui_byte(m, fw, sidou_sys::ilp32::views::card + field)
+}
+
+/// The instrument's octave and chip model (app/live.h), through the views' pointer to it.
+fn octave_and_model(m: &mut Machine, fw: &Firmware) -> (u8, u8) {
+    let l = m
+        .soc
+        .read32(fw.symbol("ui") + sidou_sys::ilp32::views::l as u32);
+    (
+        m.soc.read8(l + sidou_sys::ilp32::live::octave as u32),
+        m.soc.read8(l + sidou_sys::ilp32::live::model as u32),
+    )
+}
+
+fn showing_card(m: &mut Machine, fw: &Firmware) -> bool {
+    common::top_view(m, fw) == fw.symbol("title_card_view")
+}
+
+/// Longer than a title card from its start to the end of the cut under it (about 2.4 s).
+const CARD_TIMEOUT_MS: u64 = 4000;
+
+/// A frame at a time until the title card on top is gone and the cut under it has ended;
+/// returns how long that took.
+fn past_card(m: &mut Machine, fw: &Firmware) -> u64 {
+    let from = m.ms();
+    while showing_card(m, fw) || common::screen_animating(m, fw) {
+        assert!(
+            m.ms() < from + CARD_TIMEOUT_MS,
+            "the title card did not end"
+        );
+        m.run_ms(UI_PERIOD_MS);
+    }
+    m.ms() - from
+}
+
+/// The menu's CARDS off (ALGORITHM counter-clockwise on it), and back to LIVE with no card.
+fn cards_off(m: &mut Machine, fw: &Firmware) {
+    open_menu(m, fw);
+    select(m, MENU_CARDS);
+    m.turn(ALGORITHM, -1);
+    m.run_ms(100);
+    assert_eq!(ui_byte(m, fw, sidou_sys::ilp32::views::cards), 0);
+    m.turn(SELECT, -MENU_ITEMS); // the cursor back on the first item
+    m.run_ms(10 * MENU_ITEMS as u64);
+    press(m, HOME);
+    settle(m, fw);
+    assert_eq!(common::top_view(m, fw), fw.symbol("live_view_view"));
 }
 
 /// The 30 cell rows of a screen, each as its 8 pixel rows.
@@ -382,7 +451,10 @@ fn the_glyph_sheet_opens_from_the_menu_and_home_goes_back() {
         &m.soc.lcd.fb,
         &[VERSION_CELLS, MENU_CURSOR, on_charset],
     );
+    // Back to LIVE behind THE OSCILLATOR's card.
     press(&mut m, HOME);
+    assert!(showing_card(&mut m, &fw), "no card back to LIVE");
+    past_card(&mut m, &fw);
     settle(&mut m, &fw);
     assert!(m.soc.lcd.fb == live, "LIVE differs after the glyph sheet");
 }
@@ -435,6 +507,9 @@ fn a_wipe_opens_the_menu_from_the_top_and_closes_it_from_the_bottom() {
         return;
     };
     let mut m = booted(&fw);
+    // Back from the menu to LIVE is a wipe up with the title cards off (with them on, THE
+    // OSCILLATOR's card cuts in: title_cards_match_their_goldens_and_their_sources).
+    cards_off(&mut m, &fw);
     let status = m.soc.lcd.fb.clone();
     open_menu(&mut m, &fw);
     let menu = m.soc.lcd.fb.clone();
@@ -1305,13 +1380,16 @@ const SCENE_PIECES: [&str; 5] = ["fire", "plasma", "rule30", "stars", "ant"];
 /// app/panel.h K1: the cutoff.
 const K1_CUTOFF: u8 = 2;
 
-/// SCENE, from the menu, on piece `piece` (SELECT from FIRE, the first), each piece's toast
-/// gone (1.5 s), and on to half way between two frames.
+/// SCENE, from the menu and past THE SCENE's card, on piece `piece` (SELECT from FIRE, the
+/// first), each piece's toast gone (1.5 s), and on to half way between two frames.
 fn open_scene(m: &mut Machine, fw: &Firmware, piece: usize) {
     open_menu(m, fw);
     select(m, MENU_SCENE);
     m.run_ms(100);
     m.turn(ALGORITHM, 1);
+    m.run_ms(100);
+    assert!(showing_card(m, fw), "no card into SCENE");
+    past_card(m, fw);
     settle(m, fw);
     assert_eq!(
         common::top_view(m, fw),
@@ -1634,24 +1712,28 @@ const SCENE_WORST_POLL: u64 = 62_000;
 /// | SELECT | 203 (to RULE 30) | 60.7k (to FIRE: a frame of its burns) |
 /// | The menu's ALGORITHM | 170 | 60.7k (into FIRE) |
 ///
+/// With the title cards (on by default) the menu's ALGORITHM pushes THE SCENE's card over
+/// SCENE as well: 350, within TITLE_CARD_INPUT; the piece starts in the cut after the card.
+///
 /// The start of the costliest piece, PLASMA, was 48.8k in the input's call when it drew its
 /// whole canvas there; the busiest pass after SELECT to PLASMA is now 32.7k.
 const SCENE_INPUT: u64 = 230;
 const SCENE_START_PASS: u64 = 67_000;
 
-/// What `act` costs over the next 1.6 s: the busiest ui_encoder call and the busiest
-/// main-loop pass (`Machine::passes`).
-fn start_cost(m: &mut Machine, act: impl FnOnce(&mut Machine)) -> (u64, u64) {
+/// What `act` costs over the next `ms`: the busiest ui_encoder call and the busiest main-loop
+/// pass (`Machine::passes`).
+fn start_cost(m: &mut Machine, ms: u64, act: impl FnOnce(&mut Machine)) -> (u64, u64) {
     let (calls, passes) = (m.watched_calls.len(), m.passes.len());
     act(m);
-    m.run_ms(1600);
+    m.run_ms(ms);
     let input = m.watched_calls[calls..].iter().copied().max().unwrap_or(0);
     let pass = m.passes[passes..].iter().copied().max().unwrap_or(0);
     (input, pass)
 }
 
-/// Stepping round the pieces with SELECT, and into each piece from the menu's ALGORITHM: the
-/// input's call within SCENE_INPUT, every pass after it within SCENE_START_PASS.
+/// Stepping round the pieces with SELECT, and into each piece from the menu's ALGORITHM (THE
+/// SCENE's card, then the piece's start in the cut after it, SCREEN_BANDS): the input's call
+/// within SCENE_INPUT, every pass after it within SCENE_START_PASS.
 #[test]
 fn starting_a_piece_holds_the_main_loop_within_the_poll_allowance() {
     let Some((_, fw)) = fixture("the SCENE input test") else {
@@ -1662,8 +1744,9 @@ fn starting_a_piece_holds_the_main_loop_within_the_poll_allowance() {
     m.watch_calls(fw.symbol("ui_encoder"));
     m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
     let mut costs = Vec::new();
+    let mut over_input = Vec::new();
     for name in SCENE_PIECES.iter().cycle().skip(1).take(SCENE_PIECES.len()) {
-        let c = start_cost(&mut m, |m| m.turn(SELECT, 1));
+        let c = start_cost(&mut m, 1600, |m| m.turn(SELECT, 1));
         costs.push((format!("SELECT to {name}"), c));
     }
     for (piece, name) in SCENE_PIECES.iter().enumerate() {
@@ -1674,21 +1757,39 @@ fn starting_a_piece_holds_the_main_loop_within_the_poll_allowance() {
         press(&mut m, HOME);
         settle(&mut m, &fw);
         assert_eq!(common::top_view(&mut m, &fw), fw.symbol("views_menu"));
-        let c = start_cost(&mut m, |m| m.turn(ALGORITHM, 1));
+        // Behind THE SCENE's card, the piece starts in the cut after it (app/title_card.h):
+        // the input is the turn, the passes from the card's hold (its own passes are
+        // title_cards_stay_within_their_budgets').
+        let calls = m.watched_calls.len();
+        m.turn(ALGORITHM, 1);
+        m.run_ms(100);
+        let input = m.watched_calls[calls..].iter().copied().max().unwrap_or(0);
+        to_held(&mut m, &fw);
+        let (_, pass) = start_cost(&mut m, CARD_TIMEOUT_MS, |_| {});
+        let c = (input, pass);
         assert_eq!(
             common::top_view(&mut m, &fw),
             fw.symbol("scene_view_view"),
             "{name}: the menu's SCENE did not open SCENE"
         );
         costs.push((format!("the menu into {name}"), c));
+        // The menu's ALGORITHM on SCENE pushes the card over it too: its own bound.
+        if input >= TITLE_CARD_INPUT {
+            over_input.push(format!("the menu into {name}: the input {input}"));
+        }
     }
-    let mut over = Vec::new();
+    let mut over = over_input;
     for (what, (input, pass)) in &costs {
         println!(
             "{what}: the input {input}, the busiest pass {pass}, together {} instructions",
             input + pass
         );
-        if *input >= SCENE_INPUT || *pass >= SCENE_START_PASS {
+        let input_bound = if what.starts_with("SELECT") {
+            SCENE_INPUT
+        } else {
+            TITLE_CARD_INPUT
+        };
+        if *input >= input_bound || *pass >= SCENE_START_PASS {
             over.push(format!(
                 "{what}: the input {input}, the busiest pass {pass}"
             ));
@@ -1696,6 +1797,313 @@ fn starting_a_piece_holds_the_main_loop_within_the_poll_allowance() {
     }
     assert!(over.is_empty(), "{over:#?}");
 }
+
+// ---- the title cards (app/title_card.h) ----
+
+/// The menu's ALGORITHM on SCENE, from LIVE: THE SCENE's card.
+fn into_scene_card(m: &mut Machine, fw: &Firmware) {
+    open_menu(m, fw);
+    select(m, MENU_SCENE);
+    m.run_ms(100);
+    common::to_mid_frame(m, fw);
+    m.turn(ALGORITHM, 1);
+}
+
+/// HOME from the menu, from LIVE: THE OSCILLATOR's card.
+fn into_oscillator_card(m: &mut Machine, fw: &Firmware) {
+    open_menu(m, fw);
+    common::to_mid_frame(m, fw);
+    press(m, HOME);
+}
+
+/// A frame at a time until the card holds (TITLE_CARD_HOLD), then a frame more, and on to half
+/// way between two frames: the held frame whole on the panel.
+fn to_held(m: &mut Machine, fw: &Firmware) {
+    let from = m.ms();
+    while card_byte(m, fw, sidou_sys::ilp32::title_card::phase) != sidou_sys::TITLE_CARD_HOLD as u8
+    {
+        assert!(showing_card(m, fw), "the card ended before it held");
+        assert!(
+            m.ms() < from + CARD_TIMEOUT_MS,
+            "the card did not reach its hold"
+        );
+        m.run_ms(UI_PERIOD_MS);
+    }
+    m.run_ms(UI_PERIOD_MS);
+    common::to_mid_frame(m, fw);
+    assert!(showing_card(m, fw));
+}
+
+/// The panel against a card's source, assets/logo/title-<name>.png, pixel for pixel.
+fn assert_shows_the_card_source(name: &str, fb: &[u16]) {
+    let src = sidou_tests::logo::load(&format!("title-{name}"));
+    let got = indexed(fb);
+    if let Some(i) = (0..W * W).find(|&i| got[i] != src.px[i]) {
+        panic!(
+            "THE {}: pixel ({}, {}) is colour {} where title-{name}.png has {}",
+            name.to_uppercase(),
+            i % W,
+            i / W,
+            got[i],
+            src.px[i]
+        );
+    }
+}
+
+/// THE SCENE into SCENE from the menu, THE OSCILLATOR back to LIVE from the menu: each held
+/// frame against its golden and against its source PNG, and the view under it after.
+/// THE CHIP (no view to enter yet) is checked against its PNG on the host (title_card.rs).
+#[test]
+fn title_cards_match_their_goldens_and_their_sources() {
+    let Some((build, fw)) = fixture("the title card test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    into_scene_card(&mut m, &fw);
+    m.run_ms(UI_PERIOD_MS);
+    assert!(showing_card(&mut m, &fw), "no card into SCENE");
+    assert_eq!(
+        card_byte(&mut m, &fw, sidou_sys::ilp32::title_card::id),
+        sidou_sys::TITLE_CARD_SCENE as u8
+    );
+    to_held(&mut m, &fw);
+    compare_golden(&build, "title-scene", &m.soc.lcd.fb, &[]);
+    assert_shows_the_card_source("scene", &m.soc.lcd.fb);
+    past_card(&mut m, &fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("scene_view_view"));
+    // SCENE back to the menu: no card; the menu back to LIVE: THE OSCILLATOR.
+    press(&mut m, HOME);
+    settle(&mut m, &fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("views_menu"));
+    press(&mut m, HOME);
+    m.run_ms(UI_PERIOD_MS);
+    assert!(showing_card(&mut m, &fw), "no card back to LIVE");
+    assert_eq!(
+        card_byte(&mut m, &fw, sidou_sys::ilp32::title_card::id),
+        sidou_sys::TITLE_CARD_OSCILLATOR as u8
+    );
+    to_held(&mut m, &fw);
+    compare_golden(&build, "title-oscillator", &m.soc.lcd.fb, &[]);
+    assert_shows_the_card_source("oscillator", &m.soc.lcd.fb);
+    past_card(&mut m, &fw);
+    settle(&mut m, &fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("live_view_view"));
+    compare_golden(&build, "live", &m.soc.lcd.fb, &[]);
+}
+
+/// Any button or knob on a card ends it at the next frame and does nothing else: FX would
+/// toggle the chip, OCT+ step the octave, SELECT pick a piece; the view under it cuts in.
+#[test]
+fn a_control_skips_a_title_card_and_does_nothing_else() {
+    let Some((_, fw)) = fixture("the title card test") else {
+        return;
+    };
+    for what in ["FX", "OCT+", "SELECT", "HOME"] {
+        let mut m = booted(&fw);
+        into_scene_card(&mut m, &fw);
+        m.run_ms(300);
+        assert!(showing_card(&mut m, &fw), "{what}: no card");
+        let which = sidou_sys::ilp32::views::scene + sidou_sys::ilp32::scene_view::which;
+        let before = (octave_and_model(&mut m, &fw), ui_byte(&mut m, &fw, which));
+        match what {
+            "FX" => press(&mut m, FX),
+            "OCT+" => press(&mut m, OCT_UP),
+            "SELECT" => {
+                m.turn(SELECT, 1);
+                m.run_ms(60);
+            }
+            _ => press(&mut m, HOME),
+        }
+        assert!(!showing_card(&mut m, &fw), "{what} did not skip the card");
+        settle(&mut m, &fw);
+        assert_eq!(
+            common::top_view(&mut m, &fw),
+            fw.symbol("scene_view_view"),
+            "{what}: not SCENE after the card"
+        );
+        assert_eq!(
+            (octave_and_model(&mut m, &fw), ui_byte(&mut m, &fw, which)),
+            before,
+            "{what} did something"
+        );
+    }
+}
+
+/// A note on a card plays at once, from the keys or MIDI, and ends the card.
+#[test]
+fn a_note_plays_through_a_title_card_and_ends_it() {
+    let Some((_, fw)) = fixture("the title card test") else {
+        return;
+    };
+    for midi in [false, true] {
+        let mut m = booted(&fw);
+        into_oscillator_card(&mut m, &fw);
+        m.run_ms(200);
+        assert!(showing_card(&mut m, &fw), "no card");
+        let from = m.soc.periph.audio.len() / 2;
+        if midi {
+            m.midi(&[0x90, 69, 100]);
+        } else {
+            m.key(A4_KEY, true);
+        }
+        m.run_ms(60);
+        let peak = m.left()[from..]
+            .iter()
+            .map(|s| s.unsigned_abs())
+            .max()
+            .unwrap_or(0);
+        assert!(
+            peak > 1000,
+            "midi {midi}: the note did not play: peak {peak}"
+        );
+        assert!(
+            !showing_card(&mut m, &fw),
+            "midi {midi}: the note did not end the card"
+        );
+        settle(&mut m, &fw);
+        assert_eq!(common::top_view(&mut m, &fw), fw.symbol("live_view_view"));
+    }
+}
+
+/// Each card from its start to the end of the cut under it, nothing played: every frame within
+/// TITLE_CARD_FRAME_CELLS (and the cut's 180) and the SPI budget, the main loop's cost a frame
+/// and its busiest ui_poll within the bounds below; and the input that brings it in (ui_encoder
+/// for SCENE, ui_buttons for HOME) with the busiest main-loop pass of the card within the poll
+/// allowance together.
+#[test]
+fn title_cards_stay_within_their_budgets() {
+    let Some((_, fw)) = fixture("the title card budget test") else {
+        return;
+    };
+    let mut report = serde_json::Map::new();
+    for (name, input) in [("scene", "ui_encoder"), ("oscillator", "ui_buttons")] {
+        let enter = |m: &mut Machine| {
+            if name == "scene" {
+                into_scene_card(m, &fw)
+            } else {
+                into_oscillator_card(m, &fw)
+            }
+        };
+        // The frames and ui_poll, with the passes.
+        let mut m = booted(&fw);
+        m.watch_calls(fw.symbol("ui_poll"));
+        m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+        enter(&mut m);
+        let from = (m.watched_calls.len(), m.passes.len());
+        let mut frames = Vec::new();
+        let t0 = m.ms();
+        loop {
+            let before = sent(&mut m, &fw);
+            m.run_ms(UI_PERIOD_MS);
+            let after = sent(&mut m, &fw);
+            frames.push(Sent {
+                windows: after.windows - before.windows,
+                bytes: after.bytes - before.bytes,
+            });
+            if !showing_card(&mut m, &fw) && !common::screen_animating(&mut m, &fw) {
+                break;
+            }
+            assert!(
+                m.ms() < t0 + CARD_TIMEOUT_MS,
+                "THE {name}: the card did not end"
+            );
+        }
+        let calls = &m.watched_calls[from.0..];
+        let c = Cost {
+            polls: calls.len(),
+            instructions: calls.iter().sum(),
+            worst_poll: calls.iter().copied().max().unwrap_or(0),
+            frames,
+        };
+        let pass = m.passes[from.1..].iter().copied().max().unwrap_or(0);
+        // The input, alone.
+        let mut m = booted(&fw);
+        m.watch_calls(fw.symbol(input));
+        if name == "scene" {
+            open_menu(&mut m, &fw);
+            select(&mut m, MENU_SCENE);
+            m.run_ms(100);
+            let n = m.watched_calls.len();
+            m.turn(ALGORITHM, 1);
+            m.run_ms(100);
+            assert!(showing_card(&mut m, &fw));
+            report.insert(
+                format!("{name}_input"),
+                serde_json::json!(m.watched_calls[n..].iter().max()),
+            );
+        } else {
+            open_menu(&mut m, &fw);
+            let n = m.watched_calls.len();
+            press(&mut m, HOME);
+            assert!(showing_card(&mut m, &fw));
+            report.insert(
+                format!("{name}_input"),
+                serde_json::json!(m.watched_calls[n..].iter().max()),
+            );
+        }
+        let input_cost = report[&format!("{name}_input")].as_u64().unwrap_or(0);
+        let per = cells_sent(&c);
+        let most = per.iter().copied().max().unwrap_or(0);
+        println!(
+            "THE {}: {} frames, {:.1} cells a frame, at most {most}; worst {:.2} ms of SPI; \
+             {:.0} instructions a frame, busiest ui_poll {}; the input {input_cost}, the busiest \
+             pass {pass}, together {}",
+            name.to_uppercase(),
+            per.len(),
+            f64::from(per.iter().sum::<u32>()) / per.len() as f64,
+            c.worst_frame_ms(),
+            c.instructions_per_frame(),
+            c.worst_poll,
+            input_cost + pass
+        );
+        report.insert(name.to_string(), animated_json(&c));
+        assert!(
+            c.worst_frame_ms() <= SPI_BUDGET_MS,
+            "THE {name}: a frame took {:.1} ms of SPI",
+            c.worst_frame_ms()
+        );
+        assert!(
+            most <= sidou_sys::TITLE_CARD_FRAME_CELLS,
+            "THE {name}: a frame sent {most} cells"
+        );
+        assert!(
+            c.worst_poll < TITLE_CARD_WORST_POLL,
+            "THE {name}: a ui_poll took {} instructions",
+            c.worst_poll
+        );
+        assert!(
+            c.instructions_per_frame() < TITLE_CARD_PER_FRAME,
+            "THE {name}: {:.0} instructions a frame",
+            c.instructions_per_frame()
+        );
+        assert!(
+            input_cost < TITLE_CARD_INPUT && pass < TITLE_CARD_PASS,
+            "THE {name}: the input {input_cost}, the busiest pass {pass}"
+        );
+        // From the input to the view under it cut in: the glow, the wipe, the 1 s hold, the cut.
+        assert!(
+            (60..=72).contains(&per.len()),
+            "THE {name}: {} frames",
+            per.len()
+        );
+    }
+    println!("{}", serde_json::Value::Object(report));
+}
+
+/// The title cards in fm1-emu (title_cards_stay_within_their_budgets), bounded about 10 %
+/// above what was measured (M1e, the cards' first version):
+///
+/// | Card | Frames | Cells a frame (average, most) | Worst SPI | Instructions a frame | Busiest ui_poll | Input | Busiest pass |
+/// |---|---|---|---|---|---|---|---|
+/// | THE SCENE | 66 | 72.4, 200 | 17.14 ms | 56.0k | 71.6k | 350 (ui_encoder) | 73.1k |
+/// | THE OSCILLATOR | 64 | 68.7, 200 | 17.14 ms | 55.1k | 71.3k | 387 (ui_buttons) | 72.8k |
+///
+/// The busiest frames are the glow's first level (200 cells, the most a frame) and its scan
+/// of the screen's 900 cells for those that differ.
+const TITLE_CARD_WORST_POLL: u64 = 79_000;
+const TITLE_CARD_PER_FRAME: f64 = 62_000.0;
+const TITLE_CARD_INPUT: u64 = 430;
+const TITLE_CARD_PASS: u64 = 80_000;
 
 // A ui_poll holds MIDI's drain for as long as it runs: every view's worst stays within the
 // latency gate's poll allowance (common::POLL_INSTRUCTIONS, 120k), so a compose that grows
@@ -1705,3 +2113,5 @@ const _: () = assert!(SCENE_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(SCENE_INPUT + SCENE_START_PASS <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(ABOUT_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(BOOT_WORST_POLL <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(TITLE_CARD_WORST_POLL <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(TITLE_CARD_INPUT + TITLE_CARD_PASS <= common::POLL_INSTRUCTIONS);

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # The portable live-instrument logic, front-panel mapping, register ring, MIDI parser and MIDI input,
 # MIDI learn, the screen font, the cell-grid renderer, the screen's views, widgets and transitions, the boot
-# sequence, the logo, the About cracktro with its credits and SCENE's pieces. Its
+# sequence, the logo, the About cracktro with its credits, SCENE's pieces and the title cards. Its
 # headers are included bare ("live.h"); the SID core's as "sid/sid.h".
 add_library(sidou_live STATIC
     about.c
@@ -32,6 +32,8 @@ add_library(sidou_live STATIC
     scope.c
     screen.c
     sine.c
+    title_card.c
+    title_card_bitmap.c
     views.c
     widget.c)
 target_include_directories(sidou_live PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

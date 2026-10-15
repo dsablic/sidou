@@ -82,7 +82,7 @@ fn trace_rows(masks: &[[u8; 8]]) -> std::collections::BTreeSet<usize> {
 
 #[test]
 fn live_is_the_root_and_the_tap_runs_only_while_it_shows() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::without_cards();
     assert_eq!(ui.top(), "LIVE");
     assert_eq!(ui.sc.on, 1, "the tap is off under LIVE");
     ui.press(PANEL_BTN_HOME);
@@ -288,7 +288,7 @@ fn the_filter_curve_follows_mode_cutoff_and_resonance() {
 
 #[test]
 fn live_holds_still_under_a_transition() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::without_cards();
     ui.settle();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
@@ -467,7 +467,7 @@ fn what_changed_draws_as_the_whole_canvas_built_again() {
 
 #[test]
 fn back_from_the_menu_the_scopes_and_envelopes_start_flat() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::without_cards();
     let mut chip = Chip::new();
     settle(&mut ui);
     ui.rig.note_on(69);

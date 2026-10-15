@@ -7,8 +7,8 @@
  * - LIVE, the root (app/live_view.h): the voices' oscilloscopes and envelopes, the filter's
  *   curve, the VU meters and the effect slots. What the screen shows from power-on; the tap
  *   on the audio runs only while it shows: on top, or under MIDI learn's frame.
- * - MENU (HOME): CHIP, PRESET, OCTAVE and the views to open, in a frame. SELECT moves the
- *   cursor, ALGORITHM changes the value under it or opens the view.
+ * - MENU (HOME): CHIP, PRESET, OCTAVE, CARDS and the views to open, in a frame. SELECT moves
+ *   the cursor, ALGORITHM changes the value under it or opens the view.
  * - STATUS (from the menu): chip, preset, octave, the sound parameters, the notes and the
  *   effect slots with every control, in numbers.
  * - SCENE (from the menu): generative pieces that react to the voices (app/scene_view.h);
@@ -17,6 +17,11 @@
  * - ABOUT: the credits, as a cracktro (app/about.h).
  * - BOOT: the boot sequence (app/boot.h), over LIVE at power-on (views_boot).
  * - LEARN: MIDI learn (app/learn_view.h), a frame over any view, from SAVE (views_learn).
+ * - TITLE: a title card (app/title_card.h) over a major view entered from the menu: THE SCENE
+ *   over SCENE, THE OSCILLATOR over LIVE when HOME goes back to it from the menu (not at
+ *   power-on, after the boot, nor when MIDI learn's frame closes). It ends by itself, on any
+ *   control (which does nothing else) or on a note (which plays), and the view under it cuts
+ *   in (SCREEN_BANDS). The menu's CARDS item turns the cards off and on (on at power-on).
  *
  * Routing, for each button press and encoder turn:
  * 1. the capture (screen_capture), if a view set one: it sees HOME too, so it can take HOME
@@ -55,6 +60,7 @@
 #include "scene_view.h"
 #include "scope.h"
 #include "screen.h"
+#include "title_card.h"
 #include "widget.h"
 
 #ifdef __cplusplus
@@ -63,18 +69,21 @@ extern "C" {
 
 /* The status screen's colours: light blue on blue. */
 #define VIEWS_TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
-/* The menu's items and the rows it shows, and the items that open a view. */
-#define VIEWS_MENU_ITEMS 7u
-#define VIEWS_MENU_STATUS 3u
-#define VIEWS_MENU_SCENE 4u
-#define VIEWS_MENU_CHARSET 5u
-#define VIEWS_MENU_ABOUT 6u
+/* The menu's items and the rows it shows, the title cards' option, and the items that open a
+ * view. */
+#define VIEWS_MENU_ITEMS 8u
+#define VIEWS_MENU_CARDS 3u
+#define VIEWS_MENU_STATUS 4u
+#define VIEWS_MENU_SCENE 5u
+#define VIEWS_MENU_CHARSET 6u
+#define VIEWS_MENU_ABOUT 7u
 /* Raster steps for a chip model change: the ramp once round. */
 #define VIEWS_RASTER_STEPS SCREEN_RAMP
 /* What the views show, as bytes (app/views.c look): the instrument's model, preset, octave,
  * cutoff (2), resonance, pulse width (2), volume and selected slot, each voice's sounding
- * note, every slot field, and the menu's cursor, first row and blink. */
-#define VIEWS_LOOK (13u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
+ * note, every slot field, the title cards' option, and the menu's cursor, first row and
+ * blink. */
+#define VIEWS_LOOK (14u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
 
 typedef struct {
     screen s;
@@ -95,6 +104,8 @@ typedef struct {
     learn_view learn;
     live_view live;
     scene_view scene;
+    title_card card;
+    uint8_t cards; /* 1: title cards on (the menu's CARDS) */
 } views;
 
 extern const view views_status;
@@ -117,8 +128,8 @@ void views_encoder(views* v, panel* p, uint32_t enc, int32_t steps);
 /* Half way between two frames: LIVE or SCENE, showing (on top or under MIDI learn's frame) and
  * still, prepares its next frame (live_view_prepare, scene_view_prepare). */
 void views_prepare(views* v);
-/* One frame: the boot's progress, the toasts and raster of what changed, MIDI learn's end
- * (learn_view_frame), then screen_frame. */
+/* One frame: the boot's progress, a title card's end, the toasts and raster of what changed,
+ * MIDI learn's end (learn_view_frame), then screen_frame. */
 void views_frame(views* v, uint32_t now_ms);
 /* The effect slots' names as the screens show them (at most 9 characters); "?" for an unknown
  * slot or algorithm. */

@@ -35,6 +35,7 @@
 #include "scope.h"
 #include "screen.h"
 #include "sine.h"
+#include "title_card.h"
 #include "views.h"
 #include "widget.h"
 #include "workload_fx.h"

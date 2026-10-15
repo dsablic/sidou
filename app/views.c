@@ -103,6 +103,7 @@ static void look(const views* v, uint32_t blink, uint8_t out[VIEWS_LOOK]) {
             out[n++] = l->slot[k][f];
         }
     }
+    out[n++] = v->cards;
     out[n++] = v->home.cursor;
     out[n++] = v->home.top;
     out[n] = (uint8_t)blink;
@@ -232,6 +233,28 @@ static void octave_turn(void* ctx, int32_t steps) {
     }
 }
 
+static void cards_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    join(buf, MENU_VALUE_CHARS, v->cards ? "ON" : "OFF", "");
+}
+
+/* Clockwise on, counter-clockwise off. */
+static void cards_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    if (steps != 0) {
+        v->cards = (uint8_t)(steps > 0);
+    }
+}
+
+/* Title card id over the view on top, if the cards are on: from the views' input only (a push
+ * from the frame would draw a frame of the view first). */
+static void show_card(views* v, title_card_id id) {
+    if (v->cards) {
+        title_card_init(&v->card, id, v->l);
+        screen_push(&v->s, &title_card_view, &v->card, SCREEN_CUT);
+    }
+}
+
 static void status_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
@@ -242,6 +265,7 @@ static void scene_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
     screen_push(&v->s, &scene_view_view, &v->scene, SCREEN_WIPE_DOWN);
+    show_card(v, TITLE_CARD_SCENE);
 }
 
 static void charset_open(void* ctx, int32_t steps) {
@@ -259,13 +283,13 @@ static void about_open(void* ctx, int32_t steps) {
 
 static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"CHIP", chip_value, chip_turn},       {"PRESET", preset_value, preset_turn},
-    {"OCTAVE", octave_value, octave_turn}, {"STATUS", NULL, status_open},
-    {"SCENE", NULL, scene_open},           {"CHARSET", NULL, charset_open},
-    {"ABOUT", NULL, about_open},
+    {"OCTAVE", octave_value, octave_turn}, {"CARDS", cards_value, cards_turn},
+    {"STATUS", NULL, status_open},         {"SCENE", NULL, scene_open},
+    {"CHARSET", NULL, charset_open},       {"ABOUT", NULL, about_open},
 };
-_Static_assert(VIEWS_MENU_STATUS == 3u && VIEWS_MENU_SCENE == 4u && VIEWS_MENU_CHARSET == 5u &&
-                   VIEWS_MENU_ABOUT == 6u,
-               "the menu's view items");
+_Static_assert(VIEWS_MENU_CARDS == 3u && VIEWS_MENU_STATUS == 4u && VIEWS_MENU_SCENE == 5u &&
+                   VIEWS_MENU_CHARSET == 6u && VIEWS_MENU_ABOUT == 7u,
+               "the menu's items");
 /* The help below the menu's frame. */
 #define MENU_HELP_ROW (MENU_ROW + VIEWS_MENU_ITEMS + 2u)
 
@@ -363,7 +387,8 @@ static void remember(views* v) {
     }
 }
 
-/* HOME: the menu from the root view, back one view from any other. SAVE: MIDI learn. */
+/* HOME: the menu from the root view, back one view from any other: from the menu to LIVE,
+ * behind THE OSCILLATOR's card. SAVE: MIDI learn. */
 static int global(void* ctx, const screen_event* e) {
     views* v = ctx;
     if (e->kind == SCREEN_PRESS && e->id == LEARN_VIEW_BUTTON) {
@@ -372,8 +397,11 @@ static int global(void* ctx, const screen_event* e) {
     if (e->kind != SCREEN_PRESS || e->id != PANEL_BTN_HOME) {
         return 0;
     }
+    const view* from = screen_top(&v->s);
     if (screen_pop(&v->s, SCREEN_WIPE_UP) != 0) {
         screen_push(&v->s, &views_menu, v, SCREEN_WIPE_DOWN);
+    } else if (from == &views_menu && screen_top(&v->s) == &live_view_view) {
+        show_card(v, TITLE_CARD_OSCILLATOR);
     }
     return 1;
 }
@@ -382,6 +410,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->l = l;
     v->sc = sc;
     v->version = version;
+    v->cards = 1;
     menu_init(&v->home, MENU_ITEMS, VIEWS_MENU_ITEMS, VIEWS_MENU_ITEMS, v);
     remember(v);
     learn_view_init(&v->learn, l, NULL);
@@ -414,6 +443,13 @@ static void boot_frame(views* v, uint32_t now_ms) {
         break;
     default:
         break;
+    }
+}
+
+/* A title card on top that is over: the view under it cuts in. */
+static void card_frame(views* v) {
+    if (screen_top(&v->s) == &title_card_view && title_card_done(&v->card)) {
+        screen_pop(&v->s, SCREEN_BANDS);
     }
 }
 
@@ -502,14 +538,18 @@ void views_prepare(views* v) {
 
 void views_frame(views* v, uint32_t now_ms) {
     boot_frame(v, now_ms);
-    if (screen_top(&v->s) == &boot_view) {
-        remember(v); /* nothing over the boot (app/boot.h), and nothing of it after */
+    card_frame(v);
+    const view* top = screen_top(&v->s);
+    if (top == &boot_view || top == &title_card_view) {
+        /* Nothing over the boot or a card (app/boot.h, app/title_card.h), and nothing of what
+         * changed meanwhile after them. */
+        remember(v);
     } else {
         tell(v);
     }
     learn_view_frame(&v->learn, &v->s, now_ms);
     /* The tap runs while LIVE or SCENE shows: the audio interrupt pays for it only then. */
-    const view* top = shows(v);
+    top = shows(v);
     live_view_tap(&v->live, top == &live_view_view);
     scene_view_tap(&v->scene, top == &scene_view_view);
     if (v->sc) {

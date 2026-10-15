@@ -28,6 +28,8 @@ mod reg_ring;
 mod scene;
 mod scope;
 mod screen;
+mod title_card;
+mod title_card_bitmap;
 mod views;
 mod widget;
 
