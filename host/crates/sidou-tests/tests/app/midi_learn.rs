@@ -294,6 +294,79 @@ fn every_parameter_can_hold_a_binding_at_once() {
     );
 }
 
+/// The bindings' two tables agree: `count` is the bound CCs and the bound parameters alike,
+/// and each table is the other's inverse.
+fn assert_consistent(ml: &midi_learn, step: usize) {
+    let none = MIDI_LEARN_NONE as u8;
+    let ccs = ml.cc_row.iter().filter(|&&r| r != none).count();
+    let params = ml.param_cc.iter().filter(|&&c| c != NO_CC).count();
+    assert_eq!(
+        (usize::from(ml.count), params),
+        (ccs, ccs),
+        "step {step}: count, bound CCs and bound parameters"
+    );
+    for (cc, &r) in ml.cc_row.iter().enumerate() {
+        if r != none {
+            let p = unsafe { &*midi_map_row(u32::from(r)) }.param;
+            assert_eq!(
+                usize::from(ml.param_cc[usize::from(p)]),
+                cc,
+                "step {step}: CC {cc}'s parameter {p}"
+            );
+        }
+    }
+    for (p, &cc) in ml.param_cc.iter().enumerate() {
+        if cc != NO_CC {
+            assert_eq!(
+                routed(ml, u32::from(cc)),
+                Some(p as u32),
+                "step {step}: parameter {p}'s CC {cc}"
+            );
+        }
+    }
+}
+
+/// Random binds, forgets, clears and routed CCs (armed or not, learnable or not, parameters
+/// past the last included) keep the two tables each other's inverse.
+#[test]
+fn random_binds_forgets_clears_and_routes_keep_the_tables_inverse() {
+    let mut ml = learn();
+    let mut seed = 0x1ea2_7a11_u32;
+    let mut next = move |n: u32| {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        seed % n
+    };
+    let mut most = 0;
+    for step in 0..20_000 {
+        let cc = next(128);
+        let param = next(LIVE_PARAM_COUNT + 3);
+        match next(100) {
+            0..=44 => {
+                unsafe { midi_learn_bind(&mut *ml, cc, param) };
+            }
+            45..=64 => unsafe { midi_learn_forget(&mut *ml, param) },
+            65 => unsafe { midi_learn_clear(&mut *ml) },
+            66..=89 => unsafe {
+                midi_learn_button(&mut *ml, 0);
+                midi_learn_knob(&mut *ml, param, 0);
+                midi_learn_route(&mut *ml, cc as u8);
+                midi_learn_cancel(&mut *ml);
+            },
+            _ => {
+                unsafe { midi_learn_route(&mut *ml, cc as u8) };
+            }
+        }
+        assert_consistent(&ml, step);
+        most = most.max(ml.count);
+    }
+    assert!(
+        most > 20,
+        "the tables never filled: at most {most} bindings"
+    );
+}
+
 // --- through the map and MIDI input ---
 
 /// A live instrument fed through a `midi_rx` and watched by MIDI out, with learn wired in as
