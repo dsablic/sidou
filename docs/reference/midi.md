@@ -36,6 +36,9 @@ SID, 2 the character layer, 3..5 the effect slots.
 - **Null and RPN:** NRPN 127/127 and RPN 127/127 select nothing. An RPN (CC 101, 100)
   takes data entry away from the NRPN until CC 99 or 98 comes again; no RPN is
   implemented yet. CC 121 (reset all controllers) and a gap in the input select nothing.
+- **Chip model:** a change resets the chip, so it waits for the next 10 ms tick and takes
+  the last value received: a stream of changes resets it at most 100 times a second, and
+  the FX button changes it at once.
 - The selection is kept per channel and per input (TRS, USB).
 - CC 120 and 123 release every note.
 

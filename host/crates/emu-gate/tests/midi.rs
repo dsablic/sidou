@@ -11,7 +11,7 @@ mod common;
 
 use common::{build_dir, peak, pitch, power_above, record, Firmware, Machine};
 use fm1_core::Bus;
-use sidou_sys::{ilp32, live_freq_table};
+use sidou_sys::{ilp32, live_freq_table, SID_MODEL_8580};
 
 /// Past the LCD's reset delays and the first audio blocks.
 const BOOT_MS: u64 = 500;
@@ -243,6 +243,61 @@ fn an_nrpn_sets_the_cutoff_at_full_resolution() {
     assert_eq!(fc_lsb, 9 << 7);
     assert_eq!(fc_null, 9 << 7);
     assert_eq!((s.lost, s.restarts), (0, 0));
+}
+
+/// CC 25 (docs/reference/midi.md): the chip model, off below 64 (6581), on from 64 (8580).
+const CC_MODEL: u8 = 25;
+
+#[test]
+fn a_chip_model_cc_flood_neither_stalls_the_main_loop_nor_loses_input() {
+    let Some(fw) = fixture("the MIDI test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    m.watch_calls(fw.symbol("sid_init"));
+    m.run_ms(BOOT_MS);
+    m.midi(&[0x90, C4, 0x64]);
+    m.run_ms(50);
+    let boot_inits = m.watched_calls.len();
+    // 201 toggles with running status at full speed, ending on the 8580: 128 ms of input.
+    let mut stream = vec![0xB0];
+    for i in 0..201u32 {
+        stream.extend([CC_MODEL, if i % 2 == 0 { 64 } else { 63 }]);
+    }
+    let start = m.ms();
+    m.midi(&stream);
+    m.run_ms(300);
+    let span_ms = m.ms() - start;
+    let s = stats(&mut m, &fw);
+    let inits = m.watched_calls.len() - boot_inits;
+    let chip = active_sid(&mut m, &fw);
+    let model = m.soc.read8(chip + ilp32::sid::model as u32);
+    let v = voice1(&mut m, &fw);
+    println!(
+        "{} CC 25 toggles in {} bytes: {inits} chip re-inits in {span_ms} ms, model {model}; \
+         voice 1 {v:?}; {s:?}",
+        201,
+        stream.len()
+    );
+    assert_eq!(
+        m.soc.periph.midi_queued(),
+        0,
+        "the jack has not delivered all"
+    );
+    assert_eq!((s.lost, s.restarts), (0, 0), "the MIDI ring overflowed");
+    assert_eq!(s.entries, stream.len() as u32 + 3);
+    assert!(
+        s.max_wait_us < 5000.0,
+        "a byte waited {:.0} us in the ring: the main loop stalled",
+        s.max_wait_us
+    );
+    // live_tick applies the model at most once per 10 ms tick.
+    assert!(
+        inits as u64 <= span_ms / 10 + 1,
+        "{inits} chip re-inits in {span_ms} ms"
+    );
+    assert_eq!(model, SID_MODEL_8580 as u8, "the last request did not win");
+    assert_eq!(v.control & 1, 1, "the held note was released");
 }
 
 /// Instructions per second of emulated time over `ms`: in interrupts and in the main loop.

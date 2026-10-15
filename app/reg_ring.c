@@ -5,7 +5,10 @@
 #include "live.h"
 
 /* REG_RING_WORST_PASS, the most one main-loop pass can push (live.c's writes per call):
- *   FX, a reset and every register         1 + 25
+ *   a model change, a reset and every register   1 + 25
+ *   (the FX button, or live_tick applying the model MIDI asked for: one per pass at most.
+ *   MIDI only records the request; the panel runs before the ticks and the button settles
+ *   any request, and a tick applies one only if it differs from the chip's.)
  *   ENV, the selected effect slot's next algorithm  1
  *   (with EDIT held K1-K4 move effect-slot controls instead of the knobs, one write each:
  *   fewer than the knobs' below, so the knob layer is the worst case)

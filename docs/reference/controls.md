@@ -46,7 +46,9 @@ Notes on every channel; program change 0..3 selects the preset. Every parameter 
 and an NRPN: the map, generated from the code, is [midi.md](midi.md). The numbers M1a
 and M1c set are kept: 1 pulse width, 7 volume, 71 resonance, 74 cutoff, and the effect
 slots on 102..116 (Distortion 102..106, Modulation 107..111, FX 112..116: algorithm,
-Amount, A, B, Mix). CC 120 and 123 release every note.
+Amount, A, B, Mix). CC 120 and 123 release every note. The chip model (CC 25, NRPN 1/5)
+changes at the next 10 ms tick, to the last value received, so a stream of changes resets
+the chip at most 100 times a second; the FX button changes it at once.
 
 An algorithm CC picks the algorithm in order (above) by dividing 0..127 evenly
 among the slot's algorithms: for the FX slot's five, 0..25 OFF, 26..51 DELAY, 52..76

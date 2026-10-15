@@ -13,7 +13,7 @@
  * Besides the SID registers 0x00..0x18 a sink receives one pseudo-register,
  * LIVE_REG_RESET (value: a sid_model). It asks for the chip to be re-initialised with
  * that model at its current clock and sample rate, before any write that follows it.
- * live_init and the model toggle send it, each followed by a write of every register. */
+ * live_init and a model change send it, each followed by a write of every register. */
 #ifndef SIDOU_LIVE_H
 #define SIDOU_LIVE_H
 
@@ -95,7 +95,7 @@ typedef enum {
 typedef enum {
     LIVE_BUTTON_OCT_DOWN = 0,
     LIVE_BUTTON_OCT_UP = 1,
-    LIVE_BUTTON_FX = 2 /* toggles 6581/8580 and keeps every parameter */
+    LIVE_BUTTON_FX = 2 /* toggles the chip 6581/8580 at once, keeping every parameter */
 } live_button_id;
 
 /* A preset is data. The knobs start from its cutoff, resonance and pulse width, and the SID
@@ -137,7 +137,8 @@ typedef struct {
 typedef struct {
     live_sink_fn sink;
     void* sink_ctx;
-    sid_model model;
+    sid_model model;     /* the chip's, as last reset */
+    sid_model model_req; /* asked for by LIVE_PARAM_MODEL; live_tick applies it */
     uint8_t preset;
     int8_t octave;
     uint16_t cutoff;      /* 0..2047 */
@@ -175,7 +176,7 @@ typedef enum {
     LIVE_PARAM_RELEASE = 10,      /* 0..15 */
     LIVE_PARAM_FILTER_MODE = 11,  /* 0..7, $d418 bits 4..6: 1 low-, 2 band-, 4 high-pass */
     LIVE_PARAM_FILTER_VOICES = 12, /* 0..7, $d417 bits 0..2: voices 1, 2, 3 into the filter */
-    LIVE_PARAM_MODEL = 13,        /* 0 6581, 1 8580: a reset, as the FX button */
+    LIVE_PARAM_MODEL = 13,        /* 0 6581, 1 8580: a reset, at the next live_tick */
     /* The effect slots: LIVE_PARAM_SLOT + slot * LIVE_SLOT_FIELDS + field (live_slot_set). */
     LIVE_PARAM_SLOT = 14,
     LIVE_PARAM_COUNT = 29
@@ -202,16 +203,21 @@ void live_cc(live* l, uint8_t cc, uint8_t value);
 /* The largest value of a parameter; 0 for an unknown one. */
 uint32_t live_param_max(uint32_t param);
 /* Sets a parameter, clamped to 0..live_param_max; writes only on a change. Unknown
- * parameters are ignored. */
+ * parameters are ignored. The chip model is only recorded here: re-initialising the chip
+ * waits for the audio interrupt to empty the register ring and runs sid_init in the main
+ * loop, too slow for every CC of a stream. live_tick applies the last model asked for, at
+ * most once a tick and only when it differs from the chip's; the FX button applies at once. */
 void live_param_set(live* l, uint32_t param, uint32_t value);
-/* A parameter's value; 0 for an unknown one. */
+/* A parameter's value; 0 for an unknown one. For the chip model, the one last asked for
+ * (model_req), so a set reads back at once; the chip's is the model field. */
 uint32_t live_param_get(const live* l, uint32_t param);
 /* Loads a preset: releases every voice and resets cutoff, resonance and pulse width to
  * the preset's. An index past the last is clamped. */
 void live_set_preset(live* l, uint8_t index);
 /* The MASTER pot, 0..1023 (clamped); the chip's volume is its top 4 bits, rounded. */
 void live_set_master(live* l, uint16_t value);
-/* Advances the pulse-width LFO; call at LIVE_TICK_HZ. */
+/* Applies a chip model asked for since the last tick (live_param_set), then advances the
+ * pulse-width LFO; call at LIVE_TICK_HZ. */
 void live_tick(live* l);
 
 /* Effect slots. The number of algorithms slot has (its NONE included). */

@@ -219,6 +219,7 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->sink = sink;
     l->sink_ctx = sink_ctx;
     l->model = model;
+    l->model_req = model;
     l->octave = 0;
     l->master = LIVE_MASTER_MAX;
     l->volume = 15;
@@ -395,9 +396,11 @@ void live_knob(live* l, live_knob_id knob, int32_t delta) {
     }
 }
 
-/* A reset of the chip with the model, then every register: every parameter is kept. */
+/* A reset of the chip with the model, then every register: every parameter is kept. It
+ * also settles any pending request (model_req). */
 static void set_model(live* l, sid_model model) {
     l->model = model;
+    l->model_req = model;
     put(l, LIVE_REG_RESET, (uint8_t)l->model);
     write_all(l);
 }
@@ -414,7 +417,7 @@ void live_button(live* l, live_button_id button) {
             ++l->octave;
         }
         break;
-    case LIVE_BUTTON_FX:
+    case LIVE_BUTTON_FX: /* at once, at a human's pace; over any request still pending */
         set_model(l, l->model == SID_MODEL_6581 ? SID_MODEL_8580 : SID_MODEL_6581);
         break;
     default: break;
@@ -546,13 +549,9 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
             write_res_filt(l);
         }
         break;
-    case LIVE_PARAM_MODEL: {
-        sid_model model = value ? SID_MODEL_8580 : SID_MODEL_6581;
-        if (model != l->model) {
-            set_model(l, model);
-        }
+    case LIVE_PARAM_MODEL: /* only recorded: live_tick applies it */
+        l->model_req = value ? SID_MODEL_8580 : SID_MODEL_6581;
         break;
-    }
     default:
         live_slot_set(l, (param - LIVE_PARAM_SLOT) / LIVE_SLOT_FIELDS,
                       (param - LIVE_PARAM_SLOT) % LIVE_SLOT_FIELDS, (int32_t)value);
@@ -575,7 +574,7 @@ uint32_t live_param_get(const live* l, uint32_t param) {
     case LIVE_PARAM_RELEASE: return l->sustain_release & 0x0fu;
     case LIVE_PARAM_FILTER_MODE: return (l->filter_mode >> 4) & 7u;
     case LIVE_PARAM_FILTER_VOICES: return l->filter_voices & 7u;
-    case LIVE_PARAM_MODEL: return l->model == SID_MODEL_8580 ? 1u : 0u;
+    case LIVE_PARAM_MODEL: return l->model_req == SID_MODEL_8580 ? 1u : 0u;
     default:
         if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_COUNT) {
             return l->slot[(param - LIVE_PARAM_SLOT) / LIVE_SLOT_FIELDS]
@@ -622,6 +621,9 @@ void live_fx_select_next(live* l) {
 }
 
 void live_tick(live* l) {
+    if (l->model_req != l->model) {
+        set_model(l, l->model_req);
+    }
     const live_preset* p = cur(l);
     if (!p->pwm_depth) {
         return;

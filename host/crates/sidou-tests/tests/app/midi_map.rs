@@ -14,6 +14,8 @@ use crate::Rig;
 
 const TRS: u8 = MIDI_SRC_TRS as u8;
 const USB: u8 = MIDI_SRC_USB as u8;
+/// The chip model's CC (docs/reference/midi.md).
+const CC_MODEL: u8 = 25;
 
 /// One row of the table, read through FFI.
 #[derive(Debug, Clone)]
@@ -449,14 +451,69 @@ fn the_sid_parameters_survive_a_model_change() {
     set(&mut rig, LIVE_PARAM_ATTACK, 7);
     rig.clear();
     set(&mut rig, LIVE_PARAM_MODEL, 1);
+    rig.tick();
     assert_eq!(rig.live.model, SID_MODEL_8580);
     assert_eq!(rig.log()[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
     assert_eq!(rig.log().len(), 26, "a reset and every register");
     assert_eq!(rig.control(0), 0x80);
     assert_eq!(rig.reg(5) >> 4, 7);
     set(&mut rig, LIVE_PARAM_MODEL, 0);
+    rig.tick();
     assert_eq!(rig.live.model, SID_MODEL_6581);
     assert_eq!(get(&rig, LIVE_PARAM_WAVEFORM), 8);
+}
+
+#[test]
+fn the_chip_model_changes_at_most_once_a_tick_and_the_last_request_wins() {
+    let mut m = Midi::new();
+    m.rig.clear();
+    // 101 toggles at MIDI rate within one tick, ending on the 8580.
+    m.trs(&[0xB0]);
+    for i in 0..101 {
+        m.trs(&[CC_MODEL, if i % 2 == 0 { 64 } else { 63 }]);
+    }
+    assert!(
+        m.rig.log().is_empty(),
+        "applied before the tick: {:?}",
+        m.rig.log()
+    );
+    assert_eq!(
+        m.rig.live.model, SID_MODEL_6581,
+        "the chip is the one applied"
+    );
+    assert_eq!(get(&m.rig, LIVE_PARAM_MODEL), 1, "the request reads back");
+    m.rig.tick();
+    assert_eq!(resets(&m.rig), 1);
+    assert_eq!(m.rig.log().len(), 26, "a reset and every register");
+    assert_eq!(m.rig.live.model, SID_MODEL_8580);
+    m.rig.clear();
+    m.rig.tick();
+    assert!(m.rig.log().is_empty(), "applied twice: {:?}", m.rig.log());
+
+    // Toggles that end on the model already applied change nothing at all.
+    for i in 0..100 {
+        m.trs(&[CC_MODEL, if i % 2 == 0 { 63 } else { 64 }]);
+    }
+    m.rig.tick();
+    assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
+    assert_eq!(m.rig.live.model, SID_MODEL_8580);
+}
+
+#[test]
+fn the_fx_button_toggles_the_chip_at_once_over_a_pending_request() {
+    let mut m = Midi::new();
+    m.trs(&[0xB0, CC_MODEL, 127]); // 8580 asked for, not applied yet
+    m.rig.clear();
+    m.rig.button(LIVE_BUTTON_FX);
+    assert_eq!(
+        m.rig.live.model, SID_MODEL_8580,
+        "the button flips the chip heard"
+    );
+    assert_eq!(m.rig.log()[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
+    assert_eq!(get(&m.rig, LIVE_PARAM_MODEL), 1);
+    m.rig.clear();
+    m.rig.tick();
+    assert!(m.rig.log().is_empty(), "applied twice: {:?}", m.rig.log());
 }
 
 #[test]
@@ -860,6 +917,9 @@ SID, 2 the character layer, 3..5 the effect slots.
 - **Null and RPN:** NRPN 127/127 and RPN 127/127 select nothing. An RPN (CC 101, 100)
   takes data entry away from the NRPN until CC 99 or 98 comes again; no RPN is
   implemented yet. CC 121 (reset all controllers) and a gap in the input select nothing.
+- **Chip model:** a change resets the chip, so it waits for the next 10 ms tick and takes
+  the last value received: a stream of changes resets it at most 100 times a second, and
+  the FX button changes it at once.
 - The selection is kept per channel and per input (TRS, USB).
 - CC 120 and 123 release every note.
 
