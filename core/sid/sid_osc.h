@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "gen/grid.h"
+#include "gen/noise_jump.h"
 #include "gen/wave_6581.h"
 #include "gen/wave_8580.h"
 
@@ -48,6 +49,7 @@ typedef struct {
     uint32_t latch;    /* noise shift latch */
     uint32_t overshoot; /* accumulator units past the last MSB rise, for hard sync */
     uint32_t out;      /* waveform output of the last cycle (12-bit) */
+    uint32_t owed;     /* defer: bit-19 rises not yet applied to the noise register */
     /* Derived from control and the pulldown tables (sid_osc_update_mode). */
     uint32_t no_pulse; /* 0xfff without pulse, else 0 */
     uint32_t no_noise; /* 0xfff without noise, else 0 */
@@ -67,6 +69,9 @@ typedef struct {
     uint8_t ramp_kind; /* control bits 4-5: none, triangle, sawtooth, both */
     uint8_t control;
     uint8_t is6581;
+    uint8_t defer;     /* noise not selected, or the register locked up at 0: shifts are
+                        * counted in `owed`, and sr, latch, noise, test_or_reset and
+                        * shift_pipeline are stale until sid_noise_settle */
     /* Mostly for noise combined with other waveforms. */
     uint32_t osc3;     /* combined with noise: OSC3 of the last cycle */
     uint32_t pulse;    /* the pulse comparison of the last cycle: kept cycle by cycle
@@ -217,6 +222,8 @@ static inline void sid_osc_reset(sid_osc* o) {
     o->cycle_mode = 0;
     o->shift_pipeline = 0;
     o->sr_reset = 0;
+    o->defer = 0;
+    o->owed = 0;
     o->sr = 0x7fffffu;
     o->test_or_reset = 1;
     o->latch = o->sr;
@@ -285,6 +292,71 @@ static inline uint32_t sid_osc_acc_before(const sid_osc* o) {
     return o->control & SID_CTRL_TEST ? o->acc : (sid_osc_acc_last(o) - o->freq) & 0xffffffu;
 }
 
+/* The noise register after `n` plain shifts (no TEST): a loop for a few, else the
+ * 2^k-shift matrices of gen/noise_jump.h for the set bits of n mod 2^23 - 1, the
+ * register's period. */
+static inline uint32_t sid_noise_jump(uint32_t sr, uint32_t n) {
+    if (n <= 32u) {
+        while (n--) {
+            sr = (sr >> 1) | (((sr ^ (sr >> 5)) & 1u) << 22);
+        }
+        return sr;
+    }
+    n %= 0x7fffffu;
+    for (uint32_t k = 0; n; ++k, n >>= 1) {
+        if (n & 1u) {
+            uint32_t r = 0;
+            for (uint32_t i = 0; i < 23u; ++i) {
+                if (sr >> i & 1u) {
+                    r ^= SID_NOISE_JUMP[k][i];
+                }
+            }
+            sr = r;
+        }
+    }
+    return sr;
+}
+
+/* With noise not selected, or the register locked up at 0, sid_osc_advance only counts
+ * bit-19 rises (`defer`). This applies them: every counted rise is a shift, except one
+ * in the last two cycles, which is still in the pipeline (found from the accumulator
+ * and frequency of those cycles, which nothing has changed: writes and hard sync
+ * settle first). Exact, because nothing writes back into the register meanwhile (a
+ * locked-up register's output is 0, and so is all it would write back). */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline))
+#endif
+static inline void sid_noise_settle_deferred(sid_osc* o) {
+    o->defer = 0;
+    uint32_t a0 = sid_osc_acc_last(o) + 0x2000000u; /* unwrapped, with headroom */
+    uint32_t a1 = a0 - o->freq;
+    uint32_t a2 = a1 - o->freq;
+    uint32_t pending = 0;
+    if (((a0 + 0x80000u) >> 20) != ((a1 + 0x80000u) >> 20)) {
+        pending = 2; /* rose in the last cycle */
+    } else if (((a1 + 0x80000u) >> 20) != ((a2 + 0x80000u) >> 20)) {
+        pending = 1; /* rose in the cycle before: the first phase ran */
+    }
+    uint32_t shifts = o->owed - (pending ? 1u : 0u);
+    o->owed = 0;
+    if (shifts) {
+        o->sr = sid_noise_jump(o->sr, shifts);
+        o->test_or_reset = 0;
+        o->noise = sid_noise_output(o->sr);
+    }
+    if (pending == 1) {
+        o->test_or_reset = 0;
+        o->latch = o->sr;
+    }
+    o->shift_pipeline = (uint8_t)pending;
+}
+
+static inline void sid_noise_settle(sid_osc* o) {
+    if (o->defer) {
+        sid_noise_settle_deferred(o);
+    }
+}
+
 /* The 8580's triangle/saw latch for OSC3 (reSIDfp's tri_saw_pipeline): every cycle
  * with triangle or saw selected it takes that cycle's value, and it holds otherwise.
  * Call before a control write, with the ring source's accumulator in the last cycle:
@@ -294,6 +366,13 @@ static inline void sid_osc_latch_ramp(sid_osc* o, uint32_t src_acc) {
     if (!o->is6581 && (wf & 3u)) {
         o->tri_saw = sid_wave_ramp(wf, sid_wave_index(o->control, sid_osc_acc_last(o), src_acc));
     }
+}
+
+/* A frequency write: the deferred noise shifts were timed with the old frequency. */
+static inline void sid_osc_write_freq(sid_osc* o, uint32_t freq) {
+    sid_noise_settle(o);
+    o->freq = freq & 0xffffu;
+    o->quiet = 0;
 }
 
 /* A pulse width write, after latching the comparison made with the old width. */
@@ -310,6 +389,7 @@ static inline void sid_osc_write_pw(sid_osc* o, uint32_t pw) {
  * shift, latches the register and starts its fade delay; releasing TEST runs the
  * second phase of a shift, with the new bit forced to 1. */
 static inline void sid_osc_write_control(sid_osc* o, uint8_t v) {
+    sid_noise_settle(o);
     uint32_t wf_old = o->control >> 4;
     uint32_t test_old = o->control & SID_CTRL_TEST;
     if (!o->pulse_held) {
@@ -459,43 +539,47 @@ static inline uint32_t sid_osc_pull_msb(sid_osc* o, uint32_t a, uint32_t cycles,
 __attribute__((noinline))
 #endif
 static inline void sid_noise_clock(sid_osc* o, uint32_t prev, uint32_t next, uint32_t cycles) {
-    if (!cycles) {
-        return;
+    uint32_t f = o->freq;
+    /* A pending shift's phases, cycle by cycle: a rise in one of them restarts the
+     * pipeline and drops the pending phase (possible only right after a hard sync). */
+    while (o->shift_pipeline && cycles) {
+        uint32_t a = prev + f;
+        if (((a + 0x80000u) ^ (prev + 0x80000u)) >> 20) {
+            o->shift_pipeline = 2;
+        } else if (o->shift_pipeline == 2) {
+            o->test_or_reset = 0; /* phase 1 */
+            o->latch = o->sr;
+            o->shift_pipeline = 1;
+        } else {
+            uint32_t l = o->latch; /* phase 2: nothing writes back without noise */
+            o->sr = (l >> 1) | (((l ^ (l >> 5)) & 1u) << 22);
+            o->noise = sid_noise_output(o->sr);
+            o->shift_pipeline = 0;
+        }
+        prev = a;
+        --cycles;
     }
-    if (o->shift_pipeline == 2 && cycles == 1) {
-        o->test_or_reset = 0; /* phase 1 */
-        o->latch = o->sr;
-        o->shift_pipeline = 1;
-        return;
-    }
-    uint32_t shifts = o->shift_pipeline ? 1u : 0u;
-    uint32_t pending = 0;
     uint32_t rises = ((next + 0x80000u) >> 20) - ((prev + 0x80000u) >> 20);
+    if (!cycles || !rises) {
+        return;
+    }
+    /* Each further rise shifts two cycles later; one in the last cycle or the one
+     * before stays pending. */
+    uint32_t pending = 0;
+    uint32_t last = next - f;
+    if (((next + 0x80000u) >> 20) != ((last + 0x80000u) >> 20)) {
+        pending = 2;
+    } else if (cycles >= 2 && ((last + 0x80000u) >> 20) != ((last - f + 0x80000u) >> 20)) {
+        pending = 1;
+    }
+    uint32_t shifts = rises - (pending ? 1u : 0u);
     if (!(o->sr | o->latch | o->noise | o->test_or_reset)) {
         /* All zero: shifts move in 0s and change nothing but the pipeline. */
-        if (rises) {
-            uint32_t last = next - o->freq;
-            if (((next + 0x80000u) ^ (last + 0x80000u)) >> 20) {
-                pending = 2;
-            } else if (cycles >= 2 && (((last + 0x80000u) ^ (last - o->freq + 0x80000u)) >> 20)) {
-                pending = 1;
-            }
-        }
         o->shift_pipeline = (uint8_t)pending;
         return;
     }
-    if (rises) {
-        uint32_t last = next - o->freq;
-        if (((next + 0x80000u) >> 20) != ((last + 0x80000u) >> 20)) {
-            pending = 2;
-        } else if (cycles >= 2 &&
-                   ((last + 0x80000u) >> 20) != ((last - o->freq + 0x80000u) >> 20)) {
-            pending = 1;
-        }
-        shifts += rises - (pending ? 1u : 0u);
-    }
     if (shifts) {
-        uint32_t sr = o->shift_pipeline == 1 ? o->latch : o->sr;
+        uint32_t sr = o->sr;
         do {
             sr = (sr >> 1) | (((sr ^ (sr >> 5)) & 1u) << 22);
         } while (--shifts);
@@ -888,6 +972,7 @@ __attribute__((noinline))
 static inline void sid_osc_advance_slow(sid_osc* o, uint32_t cycles, uint32_t src_acc,
                                         uint32_t src_freq) {
     uint32_t wf = (uint32_t)o->control >> 4;
+    sid_noise_settle(o);
     o->msb_rose = 0;
     if (wf > 8u) {
         /* Noise combined with other waveforms writes the output back into the register
@@ -976,41 +1061,8 @@ static inline void sid_osc_advance_slow(sid_osc* o, uint32_t cycles, uint32_t sr
     uint32_t prev = o->acc;
     uint32_t next = prev + o->freq * cycles; /* not wrapped */
 
-    /* The noise register. A pending shift finishes first (rises are at least 16 cycles
-     * apart, so none can interfere); then each rise of bit 19 shifts it two cycles
-     * later, and a rise in the last cycle or the one before stays pending. */
-    if (o->shift_pipeline == 2) {
-        o->test_or_reset = 0;
-        o->latch = o->sr;
-        o->shift_pipeline = 1;
-        if (cycles >= 2) {
-            sid_noise_shift_phase2(o, wf, wf);
-            o->shift_pipeline = 0;
-        }
-    } else if (o->shift_pipeline == 1) {
-        sid_noise_shift_phase2(o, wf, wf);
-        o->shift_pipeline = 0;
-    }
-    uint32_t rises = ((next + 0x80000u) >> 20) - ((prev + 0x80000u) >> 20);
-    if (rises) {
-        uint32_t last = next - o->freq; /* the accumulator a cycle before the end */
-        uint32_t pending = 0;
-        if (((next + 0x80000u) >> 20) != ((last + 0x80000u) >> 20)) {
-            pending = 2;
-        } else if (cycles >= 2 &&
-                   ((last + 0x80000u) >> 20) != ((last - o->freq + 0x80000u) >> 20)) {
-            pending = 1;
-        }
-        for (uint32_t i = rises - (pending ? 1u : 0u); i; --i) {
-            o->test_or_reset = 0;
-            o->latch = o->sr;
-            sid_noise_shift_phase2(o, wf, wf);
-        }
-        if (pending == 1) {
-            o->test_or_reset = 0;
-            o->latch = o->sr;
-        }
-        o->shift_pipeline = (uint8_t)pending;
+    if (o->shift_pipeline || ((next + 0x80000u) ^ (prev + 0x80000u)) >> 20) {
+        sid_noise_clock(o, prev, next, cycles); /* no noise combined: no write-back */
     }
 
     if (o->is6581 && (wf & 2u) && wf != 2u) {
@@ -1049,22 +1101,18 @@ static inline void sid_osc_advance(sid_osc* o, uint32_t cycles, uint32_t src_acc
         sid_osc_advance_slow(o, cycles, src_acc, src_freq);
         return;
     }
-    if (o->shift_pipeline || ((next + 0x80000u) ^ (prev + 0x80000u)) >> 20) {
-        if (o->sr | o->latch | o->noise | o->test_or_reset) {
-            sid_noise_clock(o, prev, next, cycles);
+    uint32_t rises = ((next + 0x80000u) >> 20) - ((prev + 0x80000u) >> 20);
+    if (rises | o->shift_pipeline) {
+        if (o->defer) {
+            o->owed += rises; /* count now, apply when needed (sid_noise_settle) */
+        } else if (!o->shift_pipeline &&
+                   (o->no_noise || !(o->sr | o->latch | o->noise | o->test_or_reset))) {
+            /* Noise not selected, or a locked-up (all-zero) register: nothing reads or
+             * writes back into the register until a write, so defer the shifts. */
+            o->defer = 1;
+            o->owed = rises;
         } else {
-            /* All zero (locked up): shifts move 0s; only the pipeline, which a later
-             * write-back can still see, moves on (as sid_noise_clock would). */
-            uint32_t last = next - o->freq;
-            uint32_t pending = 0;
-            if (o->shift_pipeline == 2 && cycles == 1) {
-                pending = 1;
-            } else if (((next + 0x80000u) ^ (last + 0x80000u)) >> 20) {
-                pending = 2;
-            } else if (cycles >= 2 && (((last + 0x80000u) ^ (last - o->freq + 0x80000u)) >> 20)) {
-                pending = 1;
-            }
-            o->shift_pipeline = (uint8_t)pending;
+            sid_noise_clock(o, prev, next, cycles);
         }
     }
     o->msb_rose = 0;
@@ -1121,6 +1169,7 @@ static inline void sid_osc_sync(sid_osc* o, const sid_osc* src) {
     if (o->control & SID_CTRL_TEST) {
         return; /* TEST holds the accumulator at 0 (reSIDfp skips it too) */
     }
+    sid_noise_settle(o); /* while the accumulator still says when bit 19 rose */
     uint32_t cycles_after = src->overshoot / src->freq;
     o->acc = (o->freq * cycles_after) & 0xffffffu;
     o->pulled_last = 0;

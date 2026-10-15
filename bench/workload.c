@@ -116,6 +116,13 @@ static const reg_write NOISE_TRI_RING_0800[] = {{0, 0x18, 0x0f}, FREQS(0x95, 0x0
 static const reg_write NOISE_SAW_FFFF[] = {{0, 0x18, 0x0f}, FREQS(0xa1, 0xff, 0xff)};
 static const reg_write NOISE_SAW_SYNC_FFFF[] = {{0, 0x18, 0x0f}, FREQS(0xa3, 0xff, 0xff)};
 
+/* Without noise, near the top pitch (third review): the noise register still shifts
+ * for every voice, every 16 to 19 cycles. */
+static const reg_write SAW_FFFF[] = {{0, 0x18, 0x0f}, FREQS(0x21, 0xff, 0xff)};
+static const reg_write SAW_E000[] = {{0, 0x18, 0x0f}, FREQS(0x21, 0x00, 0xe0)};
+static const reg_write PULSE_SAW_FFFF[] = {{0, 0x18, 0x0f}, FREQS(0x61, 0xff, 0xff)};
+static const reg_write PULSE_SAW_E000[] = {{0, 0x18, 0x0f}, FREQS(0x61, 0x00, 0xe0)};
+
 /* TEST set and released on alternate blocks. */
 static void noise_test_every_block(sid* s, uint32_t block) {
     sid_write(s, 0x04, block & 1u ? 0xc1 : 0xc9);
@@ -169,6 +176,10 @@ static const scenario SCENARIOS[WORKLOAD_SCENARIOS] = {
     SCENARIO("noise_tri_ring_0800", NOISE_TRI_RING_0800),
     SCENARIO("noise_saw_ffff", NOISE_SAW_FFFF),
     SCENARIO("noise_saw_sync_ffff", NOISE_SAW_SYNC_FFFF),
+    SCENARIO("saw_ffff", SAW_FFFF),
+    SCENARIO("saw_e000", SAW_E000),
+    SCENARIO("pulse_saw_ffff", PULSE_SAW_FFFF),
+    SCENARIO("pulse_saw_e000", PULSE_SAW_E000),
 };
 
 static sid chips[WORKLOAD_MAX_CHIPS];

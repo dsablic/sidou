@@ -71,8 +71,8 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
         sid_osc* o = &s->osc[reg / 7];
         sid_env* e = &s->env[reg / 7];
         switch (reg % 7) {
-        case 0: o->freq = (o->freq & 0xff00u) | v; o->quiet = 0; break;
-        case 1: o->freq = (o->freq & 0x00ffu) | ((uint32_t)v << 8); o->quiet = 0; break;
+        case 0: sid_osc_write_freq(o, (o->freq & 0xff00u) | v); break;
+        case 1: sid_osc_write_freq(o, (o->freq & 0x00ffu) | ((uint32_t)v << 8)); break;
         case 2: sid_osc_write_pw(o, (o->pw & 0xf00u) | v); break;
         case 3: sid_osc_write_pw(o, (o->pw & 0x0ffu) | ((uint32_t)(v & 0x0f) << 8)); break;
         case 4: {
@@ -230,7 +230,22 @@ static inline float voice_out(const sid* s, int v) {
     return (float)x * VOICE_SCALE;
 }
 
+/* Deferred noise shifts repeat with the register's period (2^23 - 1): fold the count
+ * before it can wrap (after about 19 hours at the top pitch). Out of line, so it does
+ * not crowd sid_render's loop. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline))
+#endif
+static void fold_owed(sid* s) {
+    for (int v = 0; v < 3; ++v) {
+        if (s->osc[v].owed >= 0x80000000u) {
+            s->osc[v].owed -= 0x7fffffu * 0x100u;
+        }
+    }
+}
+
 void sid_render(sid* s, int16_t* out, uint32_t frames) {
+    fold_owed(s);
     for (uint32_t i = 0; i < frames; ++i) {
         s->cycle_frac_q16 += s->cycles_per_sample_q16;
         uint32_t cycles = s->cycle_frac_q16 >> 16;

@@ -533,6 +533,10 @@ osc3_script_cases! {
      * holds the last triangle/saw value). Read every cycle. */
     osc3_latch_from_power_on: [(100, 0x10)], 1, 1;
     osc3_latch_from_other_waveforms: [(0, 0x20), (3000, 0x40), (5000, 0x10), (9000, 0x80), (12000, 0x20), (15000, 0xc0), (17000, 0x30)], 1, 1;
+    /* Long stretches without noise (SIDOU defers the shifts), then noise again: the
+     * register must come back where it would have shifted to. */
+    osc3_noise_after_long_saw_and_pulse: [(0, 0x80), (F, 0x20), (30 * F, 0x80), (31 * F, 0x40), (60 * F, 0x80), (61 * F, 0x10), (61 * F + 333, 0x80)], 62, 13;
+    osc3_noise_back_from_triangle_every_cycle: [(0, 0x80), (100, 0x10), (5000, 0x80), (5017, 0x20), (9001, 0x80)], 1, 1;
     /* Releasing TEST into another waveform: the write-back rules of shift_phase2. */
     osc3_test_release_into_combined_waveforms: [(0, 0x80), (F, 0xb8), (2 * F, 0xa0), (3 * F, 0xd8), (4 * F, 0xe0), (5 * F, 0x98), (6 * F, 0x80), (7 * F, 0xf8), (8 * F, 0xc0)], 10, 7;
 }

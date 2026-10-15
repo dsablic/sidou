@@ -187,6 +187,12 @@ impl Rng {
 }
 
 fn assert_same_osc(a: &sid_osc, b: &sid_osc, at: &str) {
+    // Deferred shifts (a locked-up register) are applied before comparing.
+    let (mut a, mut b) = (*a, *b);
+    unsafe {
+        sid_noise_settle(&mut a);
+        sid_noise_settle(&mut b);
+    }
     assert_eq!(a.acc, b.acc, "acc, {at}");
     assert_eq!(a.sr, b.sr, "sr, {at}");
     assert_eq!(a.noise, b.noise, "noise, {at}");
@@ -246,10 +252,10 @@ fn combined_noise_bulk_steps_match_cycle_by_cycle() {
                 unsafe { sid_osc_write_pw(&mut slow, pw) };
             } else if op < 7 {
                 let freq = [0x0123u32, 0x1167, 0x4000, 0xfedc][(rng.next() % 4) as usize];
-                fast.freq = freq;
-                fast.quiet = 0; // as sid_write does
-                slow.freq = freq;
-                slow.quiet = 0; // as sid_write does
+                unsafe {
+                    sid_osc_write_freq(&mut fast, freq);
+                    sid_osc_write_freq(&mut slow, freq);
+                }
             } else {
                 let cycles = if rng.next().is_multiple_of(4) {
                     1 + rng.next() % 3
@@ -276,4 +282,67 @@ fn combined_noise_bulk_steps_match_cycle_by_cycle() {
             }
         }
     }
+}
+
+/// sid_noise_jump is that many plain shifts, across the table's range and past the
+/// register's period.
+#[test]
+fn noise_jump_equals_repeated_shifts() {
+    let mut sr = 0x5a5a5au32;
+    let mut stepped = sr;
+    let mut done = 0u32;
+    for n in [0u32, 1, 31, 32, 33, 100, 4_096, 65_537, 1_000_003] {
+        while done < n {
+            stepped = shift(stepped);
+            done += 1;
+        }
+        assert_eq!(unsafe { sid_noise_jump(sr, n) }, stepped, "{n} shifts");
+    }
+    // The period: 2^23 - 1 shifts bring every nonzero register back.
+    sr = 0x123456;
+    assert_eq!(unsafe { sid_noise_jump(sr, 0x7fffff) }, sr);
+    assert_eq!(unsafe { sid_noise_jump(sr, 0x7fffff + 5) }, unsafe {
+        sid_noise_jump(sr, 5)
+    });
+}
+
+/// Without noise selected the shifts are only counted; settling applies them exactly.
+#[test]
+fn deferred_shifts_settle_to_the_stepped_register() {
+    for freq in [0x0123u32, 0x7531, 0xffff] {
+        let mut o = noise_osc(true);
+        unsafe { sid_osc_write_control(&mut o, SID_CTRL_SAW as u8) };
+        o.freq = freq;
+        let mut r = o;
+        let mut x = 99u32;
+        for step in 0..4000 {
+            x = x.wrapping_mul(1664525).wrapping_add(1013904223);
+            let cycles = 1 + (x >> 24) % 23;
+            advance(&mut o, cycles);
+            unsafe { sid_osc_advance_cycles(&mut r, cycles, 0, 0) };
+            let mut settled = o;
+            unsafe { sid_noise_settle(&mut settled) };
+            assert_eq!(settled.sr, r.sr, "freq {freq:#x}, step {step}");
+            assert_eq!(
+                settled.shift_pipeline, r.shift_pipeline,
+                "freq {freq:#x}, step {step}"
+            );
+        }
+        assert_eq!(o.defer, 1, "the saw voice defers its shifts");
+    }
+}
+
+#[test]
+fn a_locked_up_register_defers_and_stays_locked() {
+    let mut o = noise_osc(false);
+    o.sr = 0;
+    o.latch = 0;
+    o.noise = 0;
+    o.shift_pipeline = 0;
+    o.test_or_reset = 0;
+    unsafe { sid_osc_write_freq(&mut o, 0xffff) };
+    advance(&mut o, 5000);
+    assert_eq!(o.defer, 1, "nothing to shift: deferred");
+    unsafe { sid_noise_settle(&mut o) };
+    assert_eq!((o.sr, o.noise), (0, 0));
 }

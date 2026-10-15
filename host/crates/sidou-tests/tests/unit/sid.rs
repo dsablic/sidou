@@ -316,7 +316,12 @@ fn clock_leaves_the_chip_where_render_would() {
     clock(&mut clocked, u32::try_from(cycles).unwrap());
     for v in 0..3 {
         assert_eq!(clocked.osc[v].acc, rendered.osc[v].acc, "voice {v}");
-        assert_eq!(clocked.osc[v].sr, rendered.osc[v].sr, "voice {v}");
+        let (mut co, mut ro) = (clocked.osc[v], rendered.osc[v]);
+        unsafe {
+            sid_noise_settle(&mut co);
+            sid_noise_settle(&mut ro);
+        }
+        assert_eq!(co.sr, ro.sr, "voice {v}");
         assert_eq!(clocked.env[v].counter, rendered.env[v].counter, "voice {v}");
         let (mut a, mut b) = (clocked.env[v], rendered.env[v]);
         unsafe {
@@ -370,4 +375,24 @@ fn osc3_on_the_8580_uses_the_latched_triangle_saw_for_one_cycle() {
     write(&mut s, 0x12, 0x10);
     clock(&mut s, 1);
     assert_eq!(u32::from(read(&mut s, 0x1b)), saw_ramp >> 4);
+}
+
+#[test]
+fn render_folds_deferred_shift_counts_by_the_noise_period() {
+    let mut s = new_sid(SID_MODEL_8580);
+    write(&mut s, 0x00, 0xff);
+    write(&mut s, 0x01, 0xff);
+    write(&mut s, 0x04, 0x21); // saw: the noise register's shifts are deferred
+    render(&mut s, 64);
+    assert_eq!(s.osc[0].defer, 1);
+    s.osc[0].owed = 0x8000_0123;
+    let mut unfolded = s.osc[0];
+    render(&mut s, 0);
+    assert!(s.osc[0].owed < 0x8000_0000);
+    let mut folded = s.osc[0];
+    unsafe {
+        sid_noise_settle(&mut unfolded);
+        sid_noise_settle(&mut folded);
+    }
+    assert_eq!(folded.sr, unfolded.sr);
 }

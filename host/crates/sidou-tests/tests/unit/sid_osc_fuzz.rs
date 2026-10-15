@@ -21,6 +21,9 @@ impl Rng {
 }
 
 fn same(a: &sid_osc, b: &sid_osc, at: &str) {
+    // A locked-up register defers its (no-op) shifts: compare it settled.
+    let mut a = *a;
+    unsafe { sid_noise_settle(&mut a) };
     let fields = [
         ("acc", a.acc, b.acc),
         ("sr", a.sr, b.sr),
@@ -52,6 +55,30 @@ fn same(a: &sid_osc, b: &sid_osc, at: &str) {
     }
 }
 
+fn same_settled(a: &sid_osc, b: &sid_osc, at: &str) {
+    let mut a = *a;
+    unsafe { sid_noise_settle(&mut a) };
+    let fields = [
+        ("acc", a.acc, b.acc),
+        ("sr", a.sr, b.sr),
+        ("noise", a.noise, b.noise),
+        ("pipeline", a.shift_pipeline as u32, b.shift_pipeline as u32),
+        ("tor", a.test_or_reset as u32, b.test_or_reset as u32),
+        ("sr_reset", a.sr_reset, b.sr_reset),
+        ("msb_rose", a.msb_rose as u32, b.msb_rose as u32),
+        ("pulled_last", a.pulled_last as u32, b.pulled_last as u32),
+    ];
+    for (n, x, y) in fields {
+        assert_eq!(x, y, "{n} differs (settled), {at}: fast {a:?}\nslow {b:?}");
+    }
+    if a.shift_pipeline == 1 {
+        assert_eq!(a.latch, b.latch, "latch (settled), {at}");
+    }
+    if a.msb_rose != 0 {
+        assert_eq!(a.overshoot, b.overshoot, "overshoot (settled), {at}");
+    }
+}
+
 fn run(seed: u64, is6581: i32, profile: u32, ops: u32) -> (u64, u64) {
     let mut r = Rng(seed);
     let mut o = sid_osc::default();
@@ -77,6 +104,10 @@ fn run(seed: u64, is6581: i32, profile: u32, ops: u32) -> (u64, u64) {
             if r.below(40) == 0 {
                 c |= SID_CTRL_TEST as u8;
                 held = 2000;
+            } else if wf < 8 && r.below(10) == 0 {
+                // A long stretch without noise (its shifts deferred), then whatever
+                // the next write selects.
+                held = 500;
             }
             unsafe {
                 // As sid_write: latch the 8580's triangle/saw, then write.
@@ -100,10 +131,10 @@ fn run(seed: u64, is6581: i32, profile: u32, ops: u32) -> (u64, u64) {
                 r.below(0x10000),
                 r.below(0x10000),
             ][r.below(8) as usize];
-            fast.freq = f;
-            fast.quiet = 0; // as sid_write does
-            slow.freq = f;
-            slow.quiet = 0; // as sid_write does
+            unsafe {
+                sid_osc_write_freq(&mut fast, f);
+                sid_osc_write_freq(&mut slow, f);
+            }
         } else if op < 12 && r.below(2) == 0 {
             let mut src = sid_osc::default();
             src.freq = 1 + r.below(0xffff);
@@ -123,7 +154,11 @@ fn run(seed: u64, is6581: i32, profile: u32, ops: u32) -> (u64, u64) {
             src_acc = r.below(1 << 24);
         } else if op < 13
             && fast.control >> 4 > 8
-            && fast.shift_pipeline == 0
+            && {
+                // Poked below behind the core's back: apply any deferred shifts first.
+                unsafe { sid_noise_settle(&mut fast) };
+                fast.shift_pipeline == 0
+            }
             && slow.shift_pipeline == 0
         {
             // refill the register with a rich, consistent state
@@ -172,6 +207,14 @@ fn run(seed: u64, is6581: i32, profile: u32, ops: u32) -> (u64, u64) {
                 }
                 if fast.control >> 4 > 8 {
                     same(
+                        &fast,
+                        &slow,
+                        &format!("seed {seed} model {is6581} profile {profile} step {step}"),
+                    );
+                } else {
+                    // Without noise combined: the register as it is once its deferred
+                    // shifts are applied (as a control write or a hard sync would).
+                    same_settled(
                         &fast,
                         &slow,
                         &format!("seed {seed} model {is6581} profile {profile} step {step}"),

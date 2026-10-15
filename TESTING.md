@@ -185,7 +185,10 @@ combined-waveform scenario (pulse+saw, saw+triangle, and noise+pulse retriggered
 through TEST), and noise combined with other waveforms on all three voices
 (TEST held, steady until lock-up, retriggered through TEST every other frame
 or every block, and from power-on at the highest and a low frequency, with
-triangle, sawtooth, ring modulation and sync). For each it:
+triangle, sawtooth, ring modulation and sync), and sawtooth and pulse+sawtooth
+on all three voices at the top two pitches (0xffff and 0xe000), where the noise
+register shifts most often without being heard (the core defers those shifts).
+For each it:
 - counts the instructions per output sample, and fails if one chip needs
   more than 900, or two chips more than 1,800 (design document, section 8),
   on average or in any 128-sample block (a block's window also holds the
