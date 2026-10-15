@@ -496,6 +496,66 @@ fn a_tick_with_both_stages_queued_waits_its_turn() {
     assert_eq!(dev.chip().thump, step(3.0), "the ramp goes on");
 }
 
+/// The audio interrupt once, inside the producer's choice of a free DAC table
+/// (reg_ring_set_race_hook): the drain of what was committed.
+unsafe extern "C" fn interrupt_once(ctx: *mut c_void) {
+    unsafe {
+        reg_ring_set_race_hook(None, std::ptr::null_mut());
+        drain_now(ctx);
+    }
+}
+
+/// A stage that names table A is queued while the chip plays B, and the interrupt commits it
+/// in the middle of the next tick's choice of a free table (free_dac): the choice must not be
+/// A, which the chip now plays, or the ramp would build its next table over it. The DACs from
+/// 0 to 127 build four tables, into dac[0], dac[1], dac[0] and dac[1]: the third is queued
+/// while the chip plays the second, and the fourth is the choice.
+#[test]
+fn a_commit_during_the_choice_of_a_free_table_never_frees_the_one_it_plays() {
+    let mut dev = Device::new(SID_MODEL_6581);
+    dev.block();
+    let dacs = dev.chips.dac.as_ptr();
+    let (first, second) = (dacs, unsafe { dacs.add(1) });
+    unsafe { live_param_set(&mut *dev.live, LIVE_PARAM_DAC, 127) };
+    let mut queued = false;
+    for _ in 0..40 {
+        unsafe { live_tick(&mut *dev.live) };
+        commit(&mut dev.ring); // the pass ends; the interrupt has not come yet
+        let k = (0..2).find(|&k| dev.chips.stage_pending[k] != 0);
+        if let Some(k) = k {
+            if dev.chips.stage[k].dac == first && dev.chip().dac == second {
+                queued = true;
+                break;
+            }
+        }
+        dev.block();
+    }
+    assert!(
+        queued,
+        "the third table was never queued while the chip played the second"
+    );
+    let o: *mut reg_ring_out = &mut *dev.out;
+    unsafe {
+        reg_ring_set_race_hook(Some(interrupt_once), o.cast());
+        live_tick(&mut *dev.live);
+        reg_ring_set_race_hook(None, std::ptr::null_mut());
+    }
+    assert_eq!(
+        dev.chip().dac,
+        first,
+        "the interrupt did not commit the stage"
+    );
+    assert_eq!(
+        dev.chips.ramp.building, 1,
+        "the tick did not start the fourth table"
+    );
+    assert_eq!(
+        dev.chips.ramp.job.d.cast_const(),
+        second,
+        "the fourth table is being built over the one the chip plays"
+    );
+}
+
 /// One main-loop pass at its worst (reg_ring.c, REG_RING_WORST_PASS), in the order the
 /// device's input code calls live: buttons, note keys, encoders, then each tick catch-up
 /// after a MASTER reading (platform/fm1/main.c).

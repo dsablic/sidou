@@ -185,8 +185,9 @@ through the host's sink and its ramp, on a triangle at ten phases, must keep the
 sample step within 1.25 times the triangle's own slope, and the test checks that the same
 jump at once breaks that bound for the controls that step the level. The age's blend of two
 filter rows (`tests/unit/sid_filter.rs`) is held to the Hz blend of their cutoffs. The
-register ring's handling (the ramp tick for tick against the host's sink, the two stages
-and a tick that finds both queued), live's and the map's are app tests;
+register ring's handling (the ramp tick for tick against the host's sink, the two stages,
+a tick that finds both queued, and the interrupt committing a stage in the middle of the
+choice of a free DAC table, through a hook only the host build has), live's and the map's are app tests;
 `crates/emu-gate/tests/character.rs` sends the CCs to the firmware, checks the chip in
 emulated RAM and the audio against the host build, sample for sample, the host replaying
 the device's ticks block by block (the drain counts them), and checks that the image holds

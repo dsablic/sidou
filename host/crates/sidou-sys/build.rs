@@ -59,6 +59,10 @@ const INCLUDES: [&str; 3] = ["core", "bench", "app"];
 /// out.
 const MIDI_MAP_DOC: &str = "SIDOU_MIDI_MAP_DOC";
 
+/// The register ring's test hook (app/reg_ring.h): the tests play the audio interrupt inside
+/// the producer's choice of a free DAC table. The device leaves it out.
+const RACE_HOOK: &str = "SIDOU_REG_RING_RACE_HOOK";
+
 include!("../../build-support/sanitize.rs");
 
 /// `pub mod <struct> { pub const SIZE: usize; pub const <field>: usize; }` for every
@@ -116,6 +120,7 @@ fn c_build(root: &Path) -> cc::Build {
         .extra_warnings(true)
         .flag("-Wshadow")
         .define(MIDI_MAP_DOC, None)
+        .define(RACE_HOOK, None)
         .warnings_into_errors(true);
     sanitize::apply_sanitizer(&mut build);
     build
@@ -155,6 +160,7 @@ fn main() {
         .clang_arg("-DSIDOU_ALL_COMBINED_PROFILES")
         .clang_arg("-DSIDOU_ALL_COMBINED_PROFILES_8580")
         .clang_arg(format!("-D{MIDI_MAP_DOC}"))
+        .clang_arg(format!("-D{RACE_HOOK}"))
         .allowlist_function(
             "sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|learn_view_.*|scope_.*|scene_.*|title_card_.*",
         )

@@ -167,6 +167,13 @@ typedef struct {
  * initialises the spare with the model and the character. */
 void reg_ring_sink(void* ctx, uint8_t reg, uint8_t value);
 
+#ifdef SIDOU_REG_RING_RACE_HOOK
+/* Host tests only (the device never defines it): hook(ctx) runs where the audio interrupt
+ * can split the producer's choice of a free DAC table (reg_ring.c, free_dac): between its
+ * reads of the queued stages and of the chips. Per thread; NULL turns it off. */
+void reg_ring_set_race_hook(void (*hook)(void* ctx), void* ctx);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

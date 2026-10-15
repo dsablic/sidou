@@ -137,7 +137,11 @@ handling back by up to about 4 ms a tick. Now nothing waits:
   (`character_defers`), which a main loop on time never meets;
 - a DAC table goes into whichever of the two tables neither the chip the queued entries
   end on, nor the rendered one while a swap is queued, nor a queued stage points at; with
-  none free the DACs wait a tick;
+  none free the DACs wait a tick. The choice reads the queued stages before the chips,
+  against the drain's order (a commit sets the chip's table, then clears the stage's flag),
+  so a commit between the reads cannot make the table it hands the chip look free; the
+  first build read the chips first, and an app test that plays the interrupt there caught
+  the fourth table of a 0 to 127 sweep being built over the one the chip played;
 - the drain counts every tick's entry (`ticks`), so the emulator test replays the device's
   ticks block for block on the host (`character.rs`, sample-exact).
 

@@ -52,6 +52,25 @@
  * no implementation there; an empty asm with a memory clobber is the same compiler barrier.) */
 #define COMPILER_FENCE() __asm__ volatile("" ::: "memory")
 
+#ifdef SIDOU_REG_RING_RACE_HOOK
+static _Thread_local void (*race_hook)(void* ctx);
+static _Thread_local void* race_ctx;
+
+void reg_ring_set_race_hook(void (*hook)(void* ctx), void* ctx) {
+    race_hook = hook;
+    race_ctx = ctx;
+}
+
+#define RACE_POINT()                                                                         \
+    do {                                                                                     \
+        if (race_hook) {                                                                     \
+            race_hook(race_ctx);                                                             \
+        }                                                                                    \
+    } while (0)
+#else
+#define RACE_POINT() ((void)0)
+#endif
+
 void reg_ring_init(reg_ring* r) {
     r->head = 0;
     r->tail = 0;
@@ -157,17 +176,28 @@ uint32_t reg_ring_drain(reg_ring* r, reg_ring_chips* c) {
 
 /* A character DAC table nothing renders from or will: not the chip the queued entries end on
  * (next), not the active one while a swap to next is queued, not a queued stage's. NULL when
- * both are taken. The drain only ever frees a table (a swap, a commit), so a stale read of
- * `active` or a flag errs on the safe side. */
+ * both are taken. The drain frees a table (a swap, a commit) or hands one from a queued stage
+ * to the chip (a commit), so the reads go against the drain's order. A commit writes the
+ * chip's dac, then clears the stage's flag (apply): read the queued stages first, then the
+ * chips, and a commit between the two leaves its table taken in either read (still queued
+ * when the stages were read, or the chip's when the chips were). The other way round, a
+ * commit between them would hide it from both (the chip read before it, the flag after), and
+ * a table the chip plays would come back free (app test reg_ring.rs plays that interrupt). A
+ * swap after the stages were read only frees the old active chip's table, which then reads
+ * as taken or free, both safe. */
 static sid_dac* free_dac(reg_ring_chips* c) {
+    const sid_dac* staged[2];
+    for (uint32_t k = 0; k < 2u; ++k) {
+        staged[k] = c->stage_pending[k] ? c->stage[k].dac : NULL;
+    }
+    COMPILER_FENCE(); /* the stages before the chips (above) */
+    RACE_POINT();
     uint8_t active = c->active;
+    uint8_t next = c->next;
+    const sid_dac* playing[2] = {c->chip[next].dac, active != next ? c->chip[active].dac : NULL};
     for (uint32_t i = 0; i < 2u; ++i) {
         const sid_dac* d = &c->dac[i];
-        int used = c->chip[c->next].dac == d || (active != c->next && c->chip[active].dac == d);
-        for (uint32_t k = 0; k < 2u; ++k) {
-            used |= c->stage_pending[k] && c->stage[k].dac == d;
-        }
-        if (!used) {
+        if (d != staged[0] && d != staged[1] && d != playing[0] && d != playing[1]) {
             return &c->dac[i];
         }
     }
