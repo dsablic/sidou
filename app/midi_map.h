@@ -9,14 +9,14 @@
  *   value * max / 127 rounded; STEPS divides 0..127 evenly among the values,
  *   value * (max + 1) / 128.
  * - An NRPN carries the parameter's own value, MSB * 128 + LSB, clamped to its range: the
- *   full 11 bits of the cutoff and 12 of the pulse width. For a parameter of 128 values or
- *   more CC 6 applies the MSB at once (the LSB taken as 0) and CC 38 refines it. For a
- *   smaller one (max < 128: the value is all in the LSB) CC 6 only stores the MSB and CC 38
- *   applies the value, so a sender's 6 = 0, 38 = v never passes through 0 (a chip model
- *   reset, a silent waveform, a cut envelope). CC 6 alone does not change such a parameter:
- *   send CC 38, or the plain CC. midi_map_cc keeps the selection
- *   (CC 99/98, RPN 101/100) and data entry state (CC 6/38, increment 96, decrement 97) per
- *   channel, for one input (a midi_map_port each).
+ *   full 11 bits of the cutoff and 12 of the pulse width. For a parameter of more than 128
+ *   values (max >= 128) CC 6 applies the MSB at once (the LSB taken as 0) and CC 38 refines
+ *   it. For a smaller one (max < 128: the value is all in the LSB) CC 6 only stores the MSB
+ *   and CC 38 applies the value, so a sender's 6 = 0, 38 = v never passes through 0 (a chip
+ *   model reset, a silent waveform, a cut envelope). CC 6 alone does not change such a
+ *   parameter: send CC 38, or the plain CC. midi_map_cc keeps the selection (CC 99/98, RPN
+ *   101/100) and data entry state (CC 6/38, increment 96, decrement 97) per channel, for one
+ *   input (a midi_map_port each).
  * - Reserved rows (param MIDI_MAP_RESERVED) keep their numbers for parameters that do not
  *   exist yet (the character layer) and do nothing. A new parameter is a new row.
  *
@@ -46,7 +46,9 @@ typedef enum {
 } midi_map_curve;
 
 /* The reference's text is only for the host tests that generate docs/reference/midi.md:
- * sidou-sys defines SIDOU_MIDI_MAP_DOC, and the device build leaves the strings out. */
+ * sidou-sys defines SIDOU_MIDI_MAP_DOC, and the device build leaves the strings out. So the
+ * layout differs between the host and the device: emulator tests must not read the device's
+ * rows (midi_map.c) through sidou-sys's midi_map_entry. */
 typedef struct {
 #ifdef SIDOU_MIDI_MAP_DOC
     const char* group;  /* "Live", "SID", "Character", "Distortion", ... */
