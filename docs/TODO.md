@@ -204,16 +204,20 @@ working.
 - **Where:** `host/crates/emu-gate/tests/slots_budget.rs` (it prints
   `headroom_for_6502_instructions_per_sample`), `tests/common/mod.rs`,
   [decision record 0004](decisions/0004-effect-algorithms.md), "Worst blocks".
-- **Problem:** the switch gate holds two chips at the SID's worst block (1,410),
-  the ISR (100) and the slots' worst switching block (963) to the 2,700 audio
-  target, which leaves **227 per sample** for the 6502 (M3). The old budget
+- **Problem:** the switch gate holds two chips at the SID's worst block (1,455),
+  the ISR (100) and the slots' worst switching block (964) to the 2,700 audio
+  target, which leaves **181 per sample** for the 6502 (M3; 227 before M1b
+  Task 6's non-linear 6581 filter, about 45 per sample per chip). The old budget
   reserved 400. The SID's worst block is the power-on transient of noise
   combined with another waveform (the register shifting until it locks up), in
-  a scenario's first block. Its profile (`noise_tri_ring_0800`, 8580, one
+  a scenario's first block, now on the 6581 (`noise_tri_ring_0800`, 1,454.80;
+  the 8580's is 1,403.43). Its profile (`noise_tri_ring_0800`, 8580, one
   chip, block 0, 88.4k instructions): `sid_osc_run_combined` 24,690,
   `sid_osc_advance_slow` 10,114 (the quiet-stretch step, ~60 per call),
   `sid_osc_cycle` 5,004, `sid_noise_clock` 777, envelope attack from 0xaa
-  8,052, baseline 39,731. Two chips at 1,237 or less would give back the 400.
+  8,052, baseline 39,731 (measured on the 8580 before M1b Task 6). Two chips at
+  1,237 or less would give back the 400; the 6581's filter is about 45 of each
+  chip's share.
 - **Action:** when the 6502 lands, measure its per-sample worst. If it does not
   fit the headroom, one or more of:
   1. rewrite the combined-noise path (`sid_osc_run_combined`,

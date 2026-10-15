@@ -332,9 +332,10 @@ below). The steady budget stays 900.
 
 The audio ISR has a hard deadline per 128-sample block (2.9 ms), so the honest pairing
 for the gates is the SID's most expensive *block*, not its most expensive scenario on
-average (530 per chip at M1b). The SID gate now measures both and holds the worst
-block to `SID_WORST_BLOCK_ONE_CHIP` (691) and `SID_WORST_BLOCK_TWO_CHIPS` (1,410) in
-`tests/common/mod.rs`; the effect gates take the latter.
+average (530 per chip at M1b, 564 since M1b Task 6). The SID gate now measures both
+and holds the worst block to `SID_WORST_BLOCK_ONE_CHIP` (726) and
+`SID_WORST_BLOCK_TWO_CHIPS` (1,455) in `tests/common/mod.rs`; the effect gates take the
+latter.
 
 **Where the worst block comes from.** Always the first block of a scenario with noise
 combined with another waveform, from power-on: the register starts full, the output
@@ -360,13 +361,24 @@ come close.
 
 **Decision.** The 2,700 target stays. The gates pair what exists today:
 - the worst switching block + two chips at the SID's worst block + ISR overhead (100)
-  ≤ 2,700: 963 + 1,410 + 100 = 2,473;
-- two chips at the SID's worst block + every slot's heaviest ≤ 2,300: 1,410 + 838 =
-  2,248 (and + the post-chip effects, 1,410 + 455).
+  ≤ 2,700: 964 + 1,455 + 100 = 2,519;
+- two chips at the SID's worst block + every slot's heaviest ≤ 2,300: 1,455 + 838 =
+  2,293 (and + the post-chip effects, 1,455 + 455).
 
 The former 400 for the 6502 is no longer in the sum: it does not exist yet (M3). The
-gate prints what is left of 2,700 instead, the 6502's headroom: **227** per sample.
-docs/TODO.md tracks what to do if the 6502 needs more.
+gate prints what is left of 2,700 instead, the 6502's headroom: **181** per sample
+(227 before M1b Task 6, below). docs/TODO.md tracks what to do if the 6502 needs more.
+
+**M1b Task 6 (2026-10-15): the 6581's non-linear filter.** The 6581's filter now moves
+its cutoff with the signal and with the DC load of the voices routed into it, mixes its
+outputs as reSIDfp's does, and has an output low-pass (`sid_filter.h`, `sid_nl_tick`).
+That costs the 6581 about 45 instructions per sample per chip (the triad 362.46 ->
+408.05), so the worst blocks are now the 6581's: `noise_tri_ffff`, 725.05 for one chip,
+and `noise_tri_ring_0800`, 1,454.80 for two (the 8580's went down, to 687.95 and
+1,403.43: its render lost the old 6581 clip's test and runs in its own function). The
+constants were raised to those (726, 1,455; `SID_WORST_PER_CHIP` 530 -> 564), the two
+sums above still hold, and the 6502's headroom fell from 227 to 181. The 2,300 sum has
+7 left; another 6581 instruction per sample per chip in the worst block takes 2 of it.
 
 (Since M1c Task 2 the algorithms' expensive inits run in `sid_slots_init` as templates
 that a switch copies, to fit the device's SRAM code region: the figures above are with

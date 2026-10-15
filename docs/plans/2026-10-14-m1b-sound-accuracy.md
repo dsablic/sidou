@@ -297,6 +297,66 @@ while the user was away; revisit if needed):
     BP's warping, not on its own.
 - Commit: `feat(sid): calibrated 6581 filter non-linearity`.
 
+**Results and decisions after Task 6** (2026-10-15):
+- **Measured in reSIDfp** (transfer functions as in Task 5, one to three noise voices
+  at envelope 0x44 and 0xff, plus constant-output voices for DC alone):
+  - in the threshold region (FC up to about 600) the cutoff rises with the swing, 239 ->
+    391 Hz at FC 128 from envelope 0x44 to full, 604 -> 1,114 Hz at FC 384;
+  - the DC the routed voices put on the filter lowers the cutoff everywhere and widens
+    it: three full voices take FC 1024 from 8.6 to 3.9 kHz and k from 1.0 to 2.2, while
+    the band-pass keeps its peak level; two constant voices at full DC stall the filter;
+  - the low-pass and high-pass come out inverted against the unfiltered voices, the
+    band-pass not; the passbands sit about 2.5 (LP), 2.5 (BP) and 6 dB (HP) under the
+    unfiltered level; the band-pass and high-pass level off about 17 and 31 dB down
+    (lossy integrators, op-amp gain about 3.4);
+  - most of it is coherent (linear at a given operating point), not distortion.
+- **Options tried** (6581 sweeps, largest window, LP / BP / HP; full = sustain 15,
+  loud = three noise voices / the chord; Task 5's model first):
+  | Option | Small | Full | Loud noise | Loud chord |
+  |---|---|---|---|---|
+  | Task 5 (soft clip on the band-pass, drive 2) | 5.15 / 6.22 / 1.04 | 4.93 / 4.64 / 6.10 | 9.4 / 7.8 / 14.9 | 16.5 / 14.9 / 23.3 |
+  | 1. soft clip, best drive (0: none) | 5.03 / 5.78 / 1.86 | 2.72 / 5.74 / 2.53 | 6.1 / 10.0 / 8.0 | 6.1 / 22.6 / 20.1 |
+  | 1. other drives and places (BP, LP state, input; 0.5-4) | | LP 2.7-21.7, BP 4.3-7.1, HP 2.5-9.4 | | |
+  | + leaky-integrator mix (A = 5) | 5.03 / 3.29 / 2.11 | 2.72 / 3.56 / 2.13 | 6.1 / 6.2 / 7.6 | 6.1 / 8.5 / 17.0 |
+  | 2. + cutoff shift with swing and DC load, output pole, BP normalised (chosen) | 4.83 / 2.45 / 1.01 | 1.88 / 1.88 / 1.49 | 2.44 / 1.91 / 2.81 | 2.32 / 4.37 / 2.83 |
+
+  Option 1 cannot meet the targets at any drive. Option 3 (a 2D g[fc][level] table)
+  was not built: the level dependence is mostly the DC load, which one per-sample term
+  on the low-pass state follows, and the threshold region's rise is additive in g, so
+  it fades with FC by itself. A version with the damping also following the load (one
+  more term, 4 instructions per chip) had loud noise 3.82 / 2.54 / 2.54 and chord
+  1.20 / 3.49 / 3.92 (three misses instead of one); not taken.
+- **The model** (`sid_filter.h` `sid_nl_tick`, `sid.c` `render_6581`): per sample,
+  m = clamp(1 + load (load_ref - dc - lp state), 0.35, 1.3), g = max(g0 m + level |hp| -
+  level level_ref, floor 240.7 Hz); a1 from one Newton step from the table's a1 (no
+  divide; it underestimates, which damps the filter under load as reSIDfp's does, and
+  keeps it stable); the band-pass times its effective damping over k (the one divide);
+  the mix: -0.6875 LP, 0.8125 BP (+ LP / 3.375), -0.5 HP (+ 2 BP / 3.375 + LP / 3.375^2);
+  a 13.2 kHz output one-pole (reSIDfp's external filter and resampler). The DC each
+  routed input brings (1.156) enters the load term only: through the resonant low-pass
+  as a signal it rang past full scale where reSIDfp's op-amps saturate. The bound on m
+  (0.35) is what keeps three voices at full resonance under full scale (the headroom
+  test, -0.53 dB); 0.3 clipped. `sid_set_filter_nonlinearity(chip, amount)` scales level,
+  load and floor per chip (1 = reSIDfp's, 0 = linear) for M1c's profiles and age/heat.
+- **Targets:** full-scale LP and BP 1.88 and 1.89 (target 2.0), HP 1.49 (target 2.1):
+  met. Loud (three voices): five of six within 3 dB; the chord's band-pass 4.37 missed.
+  Passband gain against reSIDfp: LP -1.74 to 1.78, BP -2.01 to 2.06, HP -0.40 to 0.52
+  dB (from 1.7 to 6.5 dB louder). Small-signal sweeps 4.83 / 2.45 / 1.01 (from 5.15 /
+  6.22 / 1.04); transfer functions 3.31 / 3.12 / 2.88 (from 3.34 / 3.69 / 3.45). The
+  8580 is bit for bit unchanged (its golden hash).
+- **Carried-over gaps:** `VF_TR_RATIO` is in the per-mode gains (the passbands above).
+  The output-stage roll-off is in for the 6581 (13.2 kHz pole; 8580 unchanged). The
+  volume-register DC step is not: per-input mixer DC matched reSIDfp's steps within
+  10%, but without the mixer's compression three loud voices then clipped (the
+  headroom test); left with the mixer compression for Task 7. reSIDfp's 1.6 Hz output
+  high-pass (SIDOU's DC blocker is 16 Hz, which the DC tests rely on) is what keeps the
+  small low-pass sweep's early windows apart (4.83 there).
+- **Cost:** 6581 triad 362.46 -> 408.05 instructions per sample; worst blocks now the
+  6581's, 725.05 (one chip) and 1,454.80 (two). The 8580's went down (687.95, 1,403.43):
+  its render is a separate function without the old clip's test. The constants rose to
+  726 and 1,455 (`SID_WORST_PER_CHIP` 530 -> 564); 1,455 + 838 = 2,293 <= 2,300, 1,455 +
+  100 + 964 = 2,519 <= 2,700; the 6502's headroom fell from 227 to 181.
+
 ### Task 7: Accuracy decision record
 
 - Write `docs/decisions/0003-m1b-accuracy.md`. It records:
