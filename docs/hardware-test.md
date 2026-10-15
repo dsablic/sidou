@@ -93,9 +93,20 @@ Notes:
 
 ## 3. Boot
 
-- [ ] The status screen appears: C64 blue with a light blue border,
-  "SIDOU V0.0.0", CHIP 6581, PRESET SAW LEAD, OCTAVE 0, four bars, "READY.".
-  Time from power-on to the screen:
+- [ ] The title card appears: the SIDOU logo on black with its stripes
+  rolling and its pulse wave moving, "SID FOR THE FM-1", the version, and
+  "PRESS ANY KEY" blinking. Time from power-on to it:
+- [ ] About 1.2 s later the status screen wipes in from the top: C64 blue
+  with a light blue border, "SIDOU V0.0.0", CHIP 6581, PRESET SAW LEAD,
+  OCTAVE 0, four bars, "READY.".
+- [ ] A note key on the title card: it plays at once, and the status
+  screen wipes in.
+- [ ] OCT+ on the title card: the status screen wipes in, and OCTAVE stays
+  +0 (the press only skipped). The same with FX: CHIP stays 6581.
+- [ ] Hold HOME while powering on, then let it go: the full boot plays
+  ("READY.", `LOAD"SIDOU",8,1` typed, "SEARCHING FOR SIDOU", "LOADING" with
+  colour stripes running in the border, "READY.", "RUN", then the title
+  card), about 10 s, and a note key played during it sounds.
 - [ ] No sound, click or hum before a key is played.
 - [ ] Power on and off ten times: it boots every time.
 
@@ -169,8 +180,8 @@ which printed control did it.
 | ENV (button 4) | the selected slot's next algorithm (the name on the screen changes) | | [ ] |
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the screen); EDIT lit while the slot is on | | [ ] |
 | HOME (button 8) | from the status screen, the menu (a wipe down from the top); in the menu, back to the status screen (a wipe up from the bottom) | | [ ] |
-| SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, PRESET, OCTAVE and CHARSET | | [ ] |
-| ALGORITHM (encoder 1), in the menu | changes the item under the cursor (CHIP: clockwise 8580, counter-clockwise 6581, and a further turn the same way changes nothing; PRESET; OCTAVE -3..+3); clockwise on CHARSET opens the glyph sheet, and HOME goes back to the menu | | [ ] |
+| SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, PRESET, OCTAVE, CHARSET and ABOUT | | [ ] |
+| ALGORITHM (encoder 1), in the menu | changes the item under the cursor (CHIP: clockwise 8580, counter-clockwise 6581, and a further turn the same way changes nothing; PRESET; OCTAVE -3..+3); clockwise on CHARSET opens the glyph sheet, on ABOUT the credits (raster bars, the logo, the credits pages fading, stars, a sine scroller), and HOME goes back to the menu | | [ ] |
 
 - [ ] A held note keeps its pitch when the octave changes, and stops when
   the key is released.

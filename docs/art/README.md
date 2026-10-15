@@ -80,7 +80,7 @@ run, from `host/`:
 SIDOU_FONT_UPDATE=1 cargo test --release -p sidou-tests --test app font
 ```
 
-The sheet draws 159 glyphs (lower case reuses upper case). The face is
+The sheet draws 162 glyphs (lower case reuses upper case). The face is
 chamfered capitals with 2-pixel stems, 7×7 pixels in the top-left of the
 cell, so text keeps a one-pixel gap to the right and below.
 Graphics glyphs fill the whole cell, so they join up. The firmware's glyph
@@ -99,7 +99,8 @@ all, with the palette; its fm1-emu snapshot is
 | `0xAB`–`0xBB` | ordered-dither levels `D0`–`D16` (4×4 Bayer, 4 × n pixels set) |
 | `0xBC`–`0xCA` | frames: `BOX_H`, `BOX_V`, square and `ROUND_` corners, tees, `CROSS` |
 | `0xCB`–`0xD8` | icons: dots, star, ball, pip, arrows, play, note, square |
-| `0x00`–`0x1F`, `0xD9`–`0xFF` | blank, free for later glyphs |
+| `0xD9`–`0xDB` | `SLOT_L`, `SLOT_R`, `SLOT_LR`: the logo's slotted raster bands, a top half's quadrants 3 rows deep |
+| `0x00`–`0x1F`, `0xDC`–`0xFF` | blank, free for later glyphs |
 
 **Provenance and licence.** The font is drawn for SIDOU. Its letters and
 digits came from the browser prototype, and the rest of ASCII, the bar
@@ -195,23 +196,133 @@ Measured in fm1-emu (`screen_changes_and_transitions_stay_within_the_budgets`):
 | Raster and toast (chip change) | 15, every other one | 451 | 123,105 | 10.5 ms |
 | Menu idle (the cursor) | 1 in 8 | 1 | 139 | 0.1 ms |
 
+The animated screens compose every frame (`the_boot_and_about_stay_within_their_budgets`,
+260 frames of the full boot and 300 of About):
+
+| Screen | Cells a frame (average, most) | Windows a frame | SPI a frame (average, worst) | Main loop a frame (average, busiest `ui_poll`) |
+|---|---|---|---|---|
+| Full boot | 30, 192 | 9.7 | 2.7 ms, 16.6 ms | 50k, 64k instructions |
+| About | 93, 148 | 25.6 | 8.1 ms, 12.8 ms | 161k, 105k instructions |
+
+About costs 4.0M instructions a second (1.7 % of the core at 240 MHz).
+
 A wipe sends only the rows that differ, once each, and its edge row once
 more; a raster step recolours the 116 border cells in 58 windows. Every frame
 stays inside the 20 ms budget.
 
 ## Logo
 
+The logo is a **pluggable asset** (`app/logo.h`): the boot's title card and About draw
+whichever logo `logo_default` names, through a table in flash:
+
+| Field | Pulse Train |
+|---|---|
+| `cols`, `rows`: the footprint in cells | 15 x 5 (120 x 40 pixels) |
+| `overlays`: overlay cells at most | 55 |
+| `cells_per_frame`: the most cells one frame changes | 42 |
+| `draw(grid, col, row, frame, bg)` | frame `frame` of the animation (25 fps, 0 the still) |
+
+`draw` paints every cell of the footprint, glyph, colours and overlay (it clears an overlay
+it does not need), so a view composes it like the rest of its screen. The declared cost and
+overlays are measured (`host/crates/sidou-tests/tests/app/logo.rs`), so a test fails when a
+logo's drawing and its table disagree.
+
 Four concepts from the prototype, all drawn in code on the cell grid:
 
 | Concept | Idea |
 |---|---|
-| **Pulse Train** (default) | Slotted raster letters on a pulse wave: the SID's signature waveform is the underline. In motion the stripes roll through the raster ramp and the duty cycle sweeps; the boot screen uses the moving version. |
+| **Pulse Train** (default, built) | Slotted raster letters on a pulse wave: the SID's signature waveform is the underline. In motion the stripes roll through the raster ramp and the duty cycle sweeps; the boot screen uses the moving version. |
 | Three Voices | Triangle, saw and pulse traces weave over and under the letters, one per voice. |
 | READY. | The name typed at the prompt in quadrant blocks, with a blinking cursor; it lives on the cell grid, so animating it costs one cell. |
 | 28 Pin | SIDOU where the part number would be on a 28-pin chip; the pins light with the voice gates. |
 
-**Decision to confirm with the user:** Pulse Train is the default logo
-until the user picks one of the four.
+**Pulse Train** on the grid: the letters are a 5 x 7 face at 4x, so each letter pixel is a
+cell quadrant. Their 28 pixel rows are seven bands of 3 rows and a slot, coloured through the
+raster ramp. A cell row holds two bands: the top one as a `SLOT_*` glyph in its colour, the
+bottom one as an overlay in the next band's. The pulse wave (2 pixels thick, cyan) is an
+overlay on the two rows below. The stripes roll one band every 4 frames (frames 2, 6, ...),
+the wave moves 4 pixels and its duty cycle sweeps every 4 frames (frames 0, 4, ...), and odd
+frames change nothing, which leaves them to About's raster bars.
+
+**Decision to confirm with the user:** Pulse Train is the default logo until the user picks
+one. Richer pixel-art variants are under consideration too (a chip mascot, cracktro chrome, a
+cassette, keycaps, a scope trace, a desk scene, a sprite sheet, a badge), some of them full
+240 x 240 bitmaps; changing `logo_default` swaps the logo everywhere.
+
+### Logo bitmaps
+
+A cell holds three colours at most (background, glyph, overlay), so a pixel-art logo in the
+16 colours cannot be drawn with glyphs. It would be supplied like the font, and drawn
+through a direct pixel region of the renderer. Neither is built yet.
+
+- **Source:** an indexed PNG in `assets/logo/` (e.g. `assets/logo/<name>.png`), at most
+  240 x 240, whose palette entries are art palette colours (the table above, exactly); a
+  colour outside it is an error. A width and height in whole cells keep the footprint exact.
+- **Conversion:** a generator in `host/crates/sidou-tests` (as `src/font.rs` is for the
+  font) writes `app/logo_<name>.c`: 4 bits a pixel, each pixel row run-length coded (a run of
+  one colour as a count and an index), with a table of row offsets so that any 8-pixel cell
+  row can be decoded on its own. A full-screen logo is 28.8 KB unpacked; the runs of flat
+  colour in pixel art usually cut that by half or more. A test checks the generated file
+  against the PNG and fails when it falls behind (`SIDOU_LOGO_UPDATE=1` rewrites it, as
+  `SIDOU_FONT_UPDATE` and `SIDOU_CREDITS_UPDATE` do), and a placeholder PNG of a few cells
+  keeps the path tested before a real logo exists.
+- **Drawing:** the grid gets a pixel region, a rectangle of cells whose pixels
+  `grid_render_run` takes from a callback (here: decode the bitmap's rows for the run's cell
+  row) instead of glyphs and overlays. The logo's `draw` sets the region over its footprint
+  and marks its cells to be sent when its frame changes. A still bitmap costs its cells once:
+  a full screen is 77 ms of SPI, so it goes out under a wipe (8 frames), as a view switch does.
+  An animated one (a palette cycle, a blinking part) resends only the cells that change.
+- **Small logos** of up to three colours a cell (a mono or two-tone mark) need no region:
+  overlays carry them, one cell each, as Pulse Train's bands do.
+
+## Boot
+
+The boot sequence (`app/boot.h`) is a view over the status screen at power-on, after the
+prototype's `Boot`:
+
+| From | Shows |
+|---|---|
+| 0 s | `*** SIDOU V<version> ***`, the chip and voices, `READY.` and the cursor |
+| 0.8 s | `LOAD"SIDOU",8,1` typed, 70 ms a character |
+| 2.2 s | `SEARCHING FOR SIDOU` |
+| 3.0 s | `LOADING`, and raster stripes in the border, new every other frame |
+| 5.6 s | `READY.`, then `RUN` typed from 6.2 s |
+| 7.0 s | the title card: the logo between two ramp lines, `SID FOR THE FM-1`, the version and licence, `PRESS ANY KEY` blinking |
+| 10.0 s | the status screen wipes in |
+
+The stripes split each border cell row in two colours at a random height (a lower-eighths
+glyph): the 116 border cells, about 10 ms of SPI, every other frame. Every other change goes
+out within the budget; the first frame is drawn whole before the display is on.
+
+- **Short by default:** the title card alone, 1.2 s, then the status screen. Without storage
+  the firmware cannot tell the first boot after an install from the others, so it does not
+  pretend to. **HOME held while powering on** plays the full sequence. With M2's storage the
+  full sequence will play once after an install (a flag in flash), and short after that
+  ([TODO](../TODO.md)).
+- **Skippable by anything:** a button or an encoder ends it at the next frame and does nothing
+  else (the boot's capture takes it: no octave step, no chip toggle); a note from the keys or
+  MIDI ends it and plays.
+- **It holds nothing up:** audio and MIDI start before the screen, and the main loop plays the
+  keys and MIDI all through it.
+
+## About
+
+ABOUT, the menu's last item (`app/about.h`), is the prototype's cracktro trimmed to the SPI
+budget, on black: two raster bars sweep behind the logo, a ramp line, the credits over a
+starfield, another ramp line, and a sine scroller. HOME goes back.
+
+- **Credits** come from `CREDITS.md`: `host/crates/sidou-tests/src/credits.rs` generates
+  `app/credits.c` (a page per section, more when it runs over 8 lines, wrapped at 26
+  characters, accents dropped for the font). A test fails when it falls behind the file;
+  `SIDOU_CREDITS_UPDATE=1` rewrites it. A page shows 4.8 s; a first page names SIDOU, its
+  version and licence.
+- **The trim**, from the prototype's 240 cells a frame to 93: the bars are 5 bands of 4
+  pixels (two a cell, with a lower-half glyph) and move one band at a time, one bar on each odd
+  frame; the logo moves on even frames; the credits' rows cascade in and out 4 frames apart,
+  fading through 4 colours a level every other frame, so at most two text rows change in a
+  frame; the scroller's letters are overlays shifted 2 pixels a frame, each bobbing a whole cell
+  row on a sine two screens long; the stars are one-pixel overlays in three layers moving a
+  pixel every 4, 2 or 1 frames, on blank cells only. Measured above (Motion rules).
 
 **Naming:** the instrument is **SIDOU**, always in capitals, in the font or
 the logo's own letters. "SID" refers to the chip only when describing what

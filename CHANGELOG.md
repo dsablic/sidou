@@ -76,3 +76,10 @@ All notable changes are documented here. The format follows
   raster transitions inside the SPI budget. HOME opens a menu (chip, preset,
   octave, the glyph sheet); every other control plays as before in every
   view. The overlay pool grows to 255 cells for LIVE's scopes.
+- A boot sequence and an About screen (`app/boot.h`, `app/about.h`): the
+  logo's title card at power-on, or with HOME held the full
+  `LOAD"SIDOU",8,1` sequence with loading stripes; any control skips it
+  without its action, and a note skips it and plays. ABOUT in the menu is a
+  cracktro with raster bars, stars, a sine scroller and the credits,
+  generated from CREDITS.md. The logo is a pluggable asset (`app/logo.h`),
+  Pulse Train for now.

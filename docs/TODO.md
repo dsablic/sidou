@@ -15,6 +15,28 @@ Follow-ups that aren't tied to a milestone task yet.
   qualifies) and set it in the descriptor. The update loader enumerates as
   0x1209:0x0002 (as Felucca's loader) and needs its own PID too.
 
+## The full boot sequence once after an install (M2 storage)
+
+- **Where:** `app/boot.h`, `views_boot` in `platform/fm1/ui.c`.
+- **Problem:** the plan asks for a boot that is short after the first boot.
+  Without storage the firmware cannot tell the first boot after an install
+  from the others: RAM is no help (whether `.noinit` survives a power cut is
+  unknown, and a brownout may keep it; hardware-test.md section 10), so the
+  boot is short every time and HOME held at power-on plays the full one.
+- **Action:** with M2's flash storage, keep a "seen" flag (or the version
+  last booted): play the full sequence when it is missing or differs, then
+  set it. HOME held at power-on keeps playing the full one.
+
+## Pick the logo; bitmap logos need a pixel region
+
+- **Where:** `app/logo.h` (`logo_default`), docs/art/README.md "Logo".
+- **Problem:** Pulse Train is the default until the user picks a logo. Some
+  candidates are full-colour bitmaps (up to 240 x 240), which the cell grid
+  cannot draw with glyphs and overlays (three colours a cell).
+- **Action:** once picked, if it is a bitmap: the converter from
+  `assets/logo/*.png` with its drift test, and a direct pixel region in
+  `app/grid.c`, as docs/art/README.md "Logo bitmaps" describes.
+
 ## fm1-emu does not emulate USB
 
 - **Where:** fm1-emu at rev `e52f4640157f490f8c3af778dd044e9d33e989e8`.
