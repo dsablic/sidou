@@ -12,9 +12,7 @@
 #define BLACK GRID_ATTR(GRID_WHITE, GRID_BLACK)
 
 /* The rows. */
-#define BAR_ROWS 10u /* rows 0..9: the bars, the logo over them */
-#define LOGO_ROW 2u
-#define RAMP_TOP 10u
+#define RAMP_TOP ABOUT_BAR_ROWS
 #define HEADING_ROW 12u
 #define LINES_ROW 14u
 #define RAMP_BOTTOM 22u
@@ -58,6 +56,8 @@ static const char SCROLL[] =
 static const char* const FIRST_LINES[CREDITS_LINES] = {
     "SID SOUNDS FOR THE FM-1", "", "FREE SOFTWARE", "GPL-3.0-OR-LATER", NULL, NULL, NULL, NULL};
 
+_Static_assert(ABOUT_LOGO_ROW + ABOUT_LOGO_ROWS <= ABOUT_BAR_ROWS,
+               "the logo's slot is in the band of bars, above the first ramp line");
 _Static_assert(ABOUT_ROW_FRAMES + CREDITS_LINES * ABOUT_ROW_DELAY <= ABOUT_PAGE_FRAMES,
                "a page's last row is gone before the next page");
 _Static_assert(ABOUT_ROW_DELAY % 4u == 0u && ABOUT_ROW_FRAMES % 2u == 0u,
@@ -116,7 +116,7 @@ static uint8_t bar_color(const about* a, uint32_t h) {
 }
 
 static void bars(const about* a, grid* g) {
-    for (uint32_t r = 0; r < BAR_ROWS; r++) {
+    for (uint32_t r = 0; r < ABOUT_BAR_ROWS; r++) {
         uint8_t top = bar_color(a, 2u * r);
         uint8_t bottom = bar_color(a, 2u * r + 1u);
         grid_fill(g, 0, r, GRID_COLS, 1, FONT_V4, GRID_ATTR(bottom, top));
@@ -291,7 +291,7 @@ static void about_compose(screen* s, void* state, grid* g) {
     }
     grid_fill(g, 0, 0, GRID_COLS, GRID_ROWS, ' ', BLACK);
     bars(a, g);
-    logo_draw(logo_default, g, logo_center_col(logo_default), LOGO_ROW, f, GRID_BLACK);
+    logo_draw(logo_default, g, logo_center_col(logo_default), ABOUT_LOGO_ROW, f, GRID_BLACK);
     ramp_line(g, RAMP_TOP, 0);
     ramp_line(g, RAMP_BOTTOM, 1);
     credits(a, g, f);

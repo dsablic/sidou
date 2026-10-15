@@ -41,6 +41,14 @@
 extern "C" {
 #endif
 
+/* The title card: the logo (app/logo.h) between two ramp lines, a blank row from each: its
+ * slot is BOOT_LOGO_ROWS rows from BOOT_LOGO_ROW, centred. A logo taller than that, a
+ * 240 x 240 bitmap say, needs a title layout of its own. */
+#define BOOT_TITLE_LINE_TOP 6u
+#define BOOT_LOGO_ROW 8u
+#define BOOT_LOGO_ROWS 5u
+#define BOOT_TITLE_LINE_BOTTOM 14u
+
 /* The full sequence (the prototype's timing). */
 #define BOOT_TYPE_MS 800u     /* LOAD"SIDOU",8,1 starts */
 #define BOOT_TYPE_CHAR_MS 70u /* a character typed */

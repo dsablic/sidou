@@ -9,6 +9,17 @@
  * cleared), so the caller composes it like any other part of the screen, every frame or once.
  * Its animation runs on the caller's frame count (25 fps); frame 0 is the still.
  *
+ * Its background is one colour: no transparent one. A cell holds three colours (background,
+ * glyph, overlay), and Pulse Train's letter cells use all three (the background, the top band
+ * as a glyph, the bottom band as an overlay), so About's raster bars, two colours a cell of
+ * their own, cannot pass behind them: tried, the bar's lower half took its upper half's colour
+ * in every letter cell, and the letters' bottom bands and the cyan wave vanished into bars of
+ * the same ramp colours, for 15 more cells a frame (docs/art/README.md "Logo").
+ *
+ * Where it goes: the boot's title card gives it rows BOOT_LOGO_ROW.. (BOOT_LOGO_ROWS of them,
+ * app/boot.h) and About ABOUT_LOGO_ROW.. (ABOUT_LOGO_ROWS, app/about.h), centred
+ * (logo_center_col); a host test checks logo_default fits both.
+ *
  * The first logo, Pulse Train, is drawn in code with font glyphs and overlays. A pixel-art
  * logo (an indexed bitmap of up to 240 x 240 pixels, 4 bits a pixel, in flash) fits the same
  * table: its draw would hand the footprint to a direct pixel region of the renderer instead of
@@ -32,9 +43,9 @@ typedef struct {
     uint8_t cols;
     uint8_t rows;
     /* Overlay cells (GRID_OVERLAYS) it takes at most in a frame. */
-    uint8_t overlays;
+    uint16_t overlays;
     /* Its cost: the most footprint cells one frame changes from the frame before. */
-    uint8_t cells_per_frame;
+    uint16_t cells_per_frame;
     /* Frame frame of the animation, its top-left cell at (col, row), on colour bg. */
     void (*draw)(grid* g, uint32_t col, uint32_t row, uint32_t frame, uint8_t bg);
 } logo;

@@ -13,14 +13,15 @@
 #define TEXT_COL 2u
 #define LOAD_ROW 8u
 #define RUN_ROW 13u
-/* The title card: on black, the logo between two ramp lines. */
+/* The title card: on black, the logo between two ramp lines (app/boot.h). */
 #define TITLE_ATTR GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLACK)
-#define TITLE_LINE_TOP 6u
-#define TITLE_LOGO_ROW 8u
-#define TITLE_LINE_BOTTOM 14u
 #define TITLE_NAME_ROW 16u
 #define TITLE_VERSION_ROW 18u
 #define TITLE_KEY_ROW 25u
+
+_Static_assert(BOOT_LOGO_ROW > BOOT_TITLE_LINE_TOP &&
+                   BOOT_LOGO_ROW + BOOT_LOGO_ROWS <= BOOT_TITLE_LINE_BOTTOM,
+               "the logo's slot is between the title card's ramp lines");
 
 static const char LOAD_CMD[] = "LOAD\"SIDOU\",8,1";
 static const char RUN_CMD[] = "RUN";
@@ -225,9 +226,9 @@ static void ramp_line(grid* g, uint32_t row) {
 
 static void title(boot* b, grid* g, int blink) {
     grid_fill(g, 0, 0, GRID_COLS, GRID_ROWS, ' ', TITLE_ATTR);
-    ramp_line(g, TITLE_LINE_TOP);
-    ramp_line(g, TITLE_LINE_BOTTOM);
-    logo_draw(logo_default, g, logo_center_col(logo_default), TITLE_LOGO_ROW, b->logo_frame,
+    ramp_line(g, BOOT_TITLE_LINE_TOP);
+    ramp_line(g, BOOT_TITLE_LINE_BOTTOM);
+    logo_draw(logo_default, g, logo_center_col(logo_default), BOOT_LOGO_ROW, b->logo_frame,
               GRID_BLACK);
     center(g, TITLE_NAME_ROW, "SID FOR THE FM-1", TITLE_ATTR);
     char line[32];

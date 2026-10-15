@@ -234,7 +234,22 @@ whichever logo `logo_default` names, through a table in flash:
 `draw` paints every cell of the footprint, glyph, colours and overlay (it clears an overlay
 it does not need), so a view composes it like the rest of its screen. The declared cost and
 overlays are measured (`host/crates/sidou-tests/tests/app/logo.rs`), so a test fails when a
-logo's drawing and its table disagree.
+logo's drawing and its table disagree. `overlays` and `cells_per_frame` are 16-bit, room for
+a logo up to the whole screen (900 cells).
+
+Each place that shows it gives it a slot, and a test checks `logo_default` fits both
+(`the_default_logo_fits_each_consumers_slot`): the title card 5 rows from row 8, between its
+ramp lines (`BOOT_LOGO_ROW`, `BOOT_LOGO_ROWS`), and About 8 rows from row 2, in its band of
+raster bars (`ABOUT_LOGO_ROW`, `ABOUT_LOGO_ROWS`), both centred.
+
+**No transparent background.** About's bars stop at the logo's footprint, a black box. A
+cell holds three colours (background, glyph, overlay); Pulse Train's letter cells use all
+three, and a bar takes two a cell of its own (a lower-half glyph), so the bars cannot pass
+behind the letters. Tried with the letter cells taking the bar's colour as their
+background: the bar's lower half took its upper half's colour in every letter cell, the
+letters' bottom bands and the cyan wave vanished into bars of the same ramp colours, and
+About sent 110 cells a frame instead of 95 (14.3 ms at worst). The gaps between the letters
+are 4 pixels, inside cells that hold letter pixels too, so no bar shows between them either.
 
 Four concepts from the prototype, all drawn in code on the cell grid:
 
@@ -280,7 +295,19 @@ through a direct pixel region of the renderer. Neither is built yet.
   row) instead of glyphs and overlays. The logo's `draw` sets the region over its footprint
   and marks its cells to be sent when its frame changes. A still bitmap costs its cells once:
   a full screen is 77 ms of SPI, so it goes out under a wipe (8 frames), as a view switch does.
-  An animated one (a palette cycle, a blinking part) resends only the cells that change.
+  An animated one (a blinking part) resends only the cells that change.
+
+What works, and what does not, on this panel and budget:
+
+- **A still logo, or a full-screen splash, works.** It goes out once, under a wipe, and costs
+  nothing after that; the decoder runs only for the cells being sent.
+- **A 240 x 240 logo needs a title layout of its own.** It is the whole screen: no room for
+  the title card's ramp lines, name, version and PRESS ANY KEY (a 5-row slot), nor for About's
+  credits and scroller (an 8-row band). It replaces the card rather than filling its slot.
+- **Palette cycling is not free.** The panel takes RGB565 pixels, not indexes into a palette
+  it keeps: changing a colour means resending every cell that shows it. A cycle over a whole
+  screen of that colour is a full screen of SPI (77 ms) per step, so it is only affordable
+  over a few cells, or a step every several frames.
 - **Small logos** of up to three colours a cell (a mono or two-tone mark) need no region:
   overlays carry them, one cell each, as Pulse Train's bands do.
 

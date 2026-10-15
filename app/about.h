@@ -10,7 +10,8 @@
  * What it costs is planned frame by frame, so that no frame sends much more than the average:
  * - the bars are 5 bands of 4 pixels (a lower-half glyph gives a cell two bands); one of them
  *   moves a band on each odd frame, so each moves at most every 4 frames;
- * - the logo's stripes and wave move on even frames (logo_pulse_train);
+ * - the logo's stripes and wave move on even frames (logo_pulse_train), on black: the bars
+ *   stop at its footprint (app/logo.h says why they cannot pass behind it);
  * - the credits fade on even frames, two text rows at most at a time;
  * - the scroller moves ABOUT_SCROLL_PX pixels a frame: each letter is an overlay shifted
  *   across the cells, bobbing a whole cell row at a time on a sine;
@@ -40,6 +41,11 @@ extern "C" {
 #define ABOUT_ROW_FRAMES 86u
 #define ABOUT_STARS 24u
 #define ABOUT_BARS 2u
+/* The band of raster bars, rows 0 .. ABOUT_BAR_ROWS - 1, and the logo's slot in it (app/logo.h):
+ * ABOUT_LOGO_ROWS rows from ABOUT_LOGO_ROW, centred, on black. */
+#define ABOUT_BAR_ROWS 10u
+#define ABOUT_LOGO_ROW 2u
+#define ABOUT_LOGO_ROWS 8u
 /* The scroller's speed. */
 #define ABOUT_SCROLL_PX 2u
 

@@ -209,3 +209,28 @@ fn its_declared_cost_and_overlays_are_what_it_takes() {
     assert_eq!(usize::from(pulse().cells_per_frame), worst);
     assert_eq!(usize::from(pulse().overlays), overlays);
 }
+
+/// logo_default fits each place that shows it: the boot's title card, between its ramp lines
+/// (app/boot.h BOOT_LOGO_*), and About's band of raster bars above its first ramp line
+/// (app/about.h ABOUT_LOGO_*), centred, with its overlays beside what else each draws.
+#[test]
+fn the_default_logo_fits_each_consumers_slot() {
+    let l = unsafe { &*logo_default };
+    let (cols, rows) = (u32::from(l.cols), u32::from(l.rows));
+    for (what, max_rows) in [
+        ("the title card", BOOT_LOGO_ROWS),
+        ("About's band", ABOUT_LOGO_ROWS),
+    ] {
+        assert!(cols <= GRID_COLS, "{what}: {cols} columns");
+        assert!(
+            rows <= max_rows,
+            "{what}: {rows} rows, the slot has {max_rows}"
+        );
+    }
+    // The slots themselves sit between the ramp lines: app/boot.c and app/about.c assert it.
+    // About's stars (one cell each at most) and scroller (two overlays a column at most)
+    // share the pool with it.
+    let about = u32::from(l.overlays) + ABOUT_STARS + 2 * GRID_COLS;
+    assert!(about < GRID_OVERLAYS, "About: {about} overlays");
+    assert!(u32::from(l.overlays) < GRID_OVERLAYS, "the title card");
+}
