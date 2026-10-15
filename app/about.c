@@ -23,7 +23,7 @@
 /* A turn is 256: 3 a frame is 1.8 rad/s; the second bar runs 98 behind (2.4 rad). */
 #define BAR_SPEED 3u
 #define BAR_OFFSET 98u
-/* The logo's scene's two raster bars, the cold and the warm one, with no white: the
+/* Cracktro Chrome's two raster bars, the cold and the warm one, with no white: the
  * scroller's white letters read over every band. */
 static const uint8_t BARS[ABOUT_BARS][BAR_BANDS] = {
     {GRID_BLUE, GRID_LIGHT_BLUE, GRID_CYAN, GRID_LIGHT_BLUE, GRID_BLUE},

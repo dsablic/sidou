@@ -198,17 +198,21 @@ Measured in fm1-emu (`screen_changes_and_transitions_stay_within_the_budgets`):
 | Menu idle (the cursor) | 1 in 8 | 1 | 139 | 0.1 ms |
 
 The animated screens compose every frame (`the_boot_and_about_stay_within_their_budgets`,
-260 frames of the full boot and 1920 of About, a full round of its 16 pages), with Cracktro
+260 frames of the full boot and 1920 of About, a full round of its 16 pages), with Metal
 Chrome:
 
 | Screen | Cells a frame (average, most) | Windows a frame | SPI a frame (average, worst) | Main loop a frame (average, busiest `ui_poll`) |
 |---|---|---|---|---|
-| Full boot | 24, 150 | 8.1 | 2.1 ms, 12.8 ms | 37k, 33k instructions |
-| About | 87, 163 | 15.9 | 7.5 ms, 14.0 ms | 118k, 72k instructions |
+| Full boot | 24, 150 | 8.1 | 2.1 ms, 12.8 ms | 37.3k, 33.5k instructions |
+| About | 86, 163 | 15.9 | 7.5 ms, 14.0 ms | 117k, 71k instructions |
 
-About costs 3.0M instructions a second (1.2 % of the core at 240 MHz). With Pulse Train
+About costs 2.9M instructions a second (1.2 % of the core at 240 MHz). With Cracktro Chrome
+it was 87 cells a frame, 118k and 72k, and the boot 37k and 33k. With Pulse Train
 (M1e Task 4) it was 94 cells a frame (148 at most, 12.8 ms), 144k and 91k, and the boot
-46k and 37k: the logo was animated, and Cracktro Chrome is still. A run's pixels are
+46k and 37k: the logo was animated, and the chrome logos are still. Metal Chrome's glow is
+dithered, mostly runs of one and two pixels: with the decoder's loop over each run, a wipe
+frame of its scene took the boot's busiest `ui_poll` to 41.4k; a run of one or two pixels is
+now two stores, with no clamp while the longest run still fits (33.5k). A run's pixels are
 written two at a 32-bit store, a cell row from two 4-entry tables (the glyph's colours, and
 the overlay over the background for a blank glyph row): About was 161k and 105k, the boot
 50k and 64k, with a pixel a store. A bitmap's run fills two pixels a store as well.
@@ -220,9 +224,10 @@ stays inside the 20 ms budget.
 A wipe is sized for a view that holds still: the rows it has revealed must not change
 under it. The animated views (About, the boot's title card) hold their animation while a
 wipe or a raster runs (`screen_animating`), so a wipe into them sends its 150 cells a frame
-at most, 12.8 ms. Revealing Cracktro Chrome's bitmap costs the main loop no more than cells:
-the wipe into the title card (its whole scene, 4 rows a frame) 134k instructions a frame and
-30k in its busiest `ui_poll`, into About 118k and 65k. Before, About's bars, logo and
+at most, 12.8 ms. Revealing Metal Chrome's bitmap costs the main loop little more than cells:
+the wipe into the title card (its whole scene, 4 rows a frame) 138k instructions a frame and
+33k in its busiest `ui_poll`, into About 124k and 64k (Cracktro Chrome's: 134k and 30k,
+118k and 65k). Before, About's bars, logo and
 scroller moving in the revealed rows made
 a frame of the wipe into it 243 cells, 21.0 ms, and the title card's stripes 192 cells,
 16.6 ms (`every_wipe_into_an_animated_view_sends_only_its_rows` in fm1-emu, and
@@ -231,32 +236,42 @@ on the host, at every phase).
 
 ## Logo
 
-**Cracktro Chrome, chosen by the user**, is SIDOU's logo: chunky bevelled SIDOU letters in
-raster bands (white, light grey, cyan, light blue and blue over brown, orange, light red and
-yellow), a black outline and a 4-pixel purple extruded shadow, in a frozen demo-scene intro:
-stars, a cold and a warm raster bar and a perspective grid floor, on black, in the 16
-colours only. It is original art made for SIDOU, drawn pixel by pixel in code.
+**Metal Chrome, chosen by the user (replacing Cracktro Chrome)**, is SIDOU's logo: spiked,
+blade-cut SIDOU letters (horn serifs, a sharp angled S, diamond counters in the D and O,
+fangs on the U) with a chrome bevel running red, light red, orange, yellow and white, a black
+outline and a 3-pixel purple extruded shadow, on a dithered purple and red glow (an airbrush
+ellipse and a 13-pixel halo round the letters, in the 4 x 4 Bayer order), between warm raster
+bars, with stars, a cross-flare glint on the U and the tagline "FORGED IN SILICON FOR THE
+FM-1", on black, in the 16 colours only. It is original art made for SIDOU, drawn pixel by
+pixel in code: the logo page's variant M1.
 
-![Cracktro Chrome on the panel](../../assets/logo/cracktro-chrome.png)
+![Metal Chrome on the panel](../../assets/logo/metal-chrome.png)
 
 | Asset | What |
 |---|---|
-| `assets/logo/cracktro-chrome.js` | The source: the logo page's drawing code (variant V2), verbatim. `node assets/logo/cracktro-chrome.js` writes the PNGs below; they match Chromium's canvas drawing the page pixel for pixel. |
-| `assets/logo/cracktro-chrome.png` | The scene, 240 x 240, 4 bits a pixel in the art palette's order: what the firmware shows. |
-| `assets/logo/cracktro-chrome-lettering.png`, `-lettering-2x.png` | The lettering and its shadow alone, 229 x 61, on transparency (palette index 16); the 2x, by nearest neighbour, heads the project README. |
-| `docs/art/avatar.png` | The avatar, 48 x 48: the S on stars over two bars. |
-| `app/logo_bitmap.c` | The scene as a `grid_bitmap`, generated (below). |
+| `assets/logo/metal-chrome.js` | The source: the logo page's drawing code (variant M1), verbatim. `node assets/logo/metal-chrome.js` writes the PNGs below; they match Chromium's canvas drawing the page pixel for pixel. |
+| `assets/logo/metal-chrome.png` | The scene, 240 x 240, 4 bits a pixel in the art palette's order: what the firmware shows. |
+| `assets/logo/metal-chrome-lettering.png`, `-lettering-2x.png` | The lettering, its outline and its shadow alone, 226 x 63, on transparency (palette index 16); the 2x, by nearest neighbour, heads the project README. |
+| `docs/art/avatar.png` | The avatar, 48 x 48: the S in its glow, between two stars. |
+| `assets/logo/cracktro-chrome.js`, `cracktro-chrome*.png` | Cracktro Chrome (variant V2), exported the same way; its avatar is `cracktro-chrome-avatar.png`. |
+| `app/logo_bitmap.c` | Both scenes as `grid_bitmap`s, generated (below). |
+
+**Cracktro Chrome**, the logo until the user chose Metal Chrome and now an alternative:
+chunky bevelled SIDOU letters in raster bands (white, light grey, cyan, light blue and blue
+over brown, orange, light red and yellow), a black outline and a 4-pixel purple extruded
+shadow, in a frozen demo-scene intro: stars, a cold and a warm raster bar and a perspective
+grid floor.
 
 The logo is a **pluggable asset** (`app/logo.h`): the boot's title card and About draw
 whichever logo `logo_default` names, through a table in flash:
 
-| Field | Cracktro Chrome (default) | Pulse Train |
-|---|---|---|
-| `cols`, `rows`: the footprint in cells | 30 x 8 (240 x 64 pixels, the scene's lettering band) | 15 x 5 (120 x 40 pixels) |
-| `overlays`: overlay cells at most | 0 | 55 |
-| `cells_per_frame`: the most cells one frame changes | 0 (still) | 42 |
-| `draw(grid, col, row, frame, bg)` | the band in the pixel region | frame `frame` of the animation (25 fps, 0 the still) |
-| `scene(grid, frame)`: the title card's full screen | the whole scene in the pixel region | none (NULL) |
+| Field | Metal Chrome (default) | Cracktro Chrome | Pulse Train |
+|---|---|---|---|
+| `cols`, `rows`: the footprint in cells | 30 x 9 (240 x 72 pixels, the scene's lettering band) | 30 x 8 (240 x 64) | 15 x 5 (120 x 40 pixels) |
+| `overlays`: overlay cells at most | 0 | 0 | 55 |
+| `cells_per_frame`: the most cells one frame changes | 0 (still) | 0 (still) | 42 |
+| `draw(grid, col, row, frame, bg)` | the band in the pixel region | the band in the pixel region | frame `frame` of the animation (25 fps, 0 the still) |
+| `scene(grid, frame)`: the title card's full screen | the whole scene in the pixel region | the whole scene in the pixel region | none (NULL) |
 
 `draw` paints every cell of the footprint, glyph, colours, overlay and pixel region (it clears
 an overlay it does not need), so a view composes it like the rest of its screen. The declared
@@ -266,21 +281,27 @@ room for a logo up to the whole screen (900 cells).
 
 Where it goes, and a test checks each logo fits (`each_logo_fits_each_consumers_slot`):
 - **The title card** shows the logo's scene when it has one, with the version on row 1 and
-  PRESS ANY KEY on row 28, both rows black in the scene (`BOOT_SCENE_VERSION_ROW`,
+  PRESS ANY KEY on row 28, both rows black in both chrome scenes (`BOOT_SCENE_VERSION_ROW`,
   `BOOT_SCENE_KEY_ROW`). A logo without a scene gets the old card: a slot 5 rows from row 8,
   between two ramp lines (`BOOT_LOGO_ROW`, `BOOT_LOGO_ROWS`), the name and the version below.
-- **About** gives it 8 rows from row 0 (`ABOUT_LOGO_ROW`, `ABOUT_LOGO_ROWS`), centred:
-  Cracktro Chrome's lettering band whole, Pulse Train on rows 1-5.
+- **About** gives it 9 rows from row 0 (`ABOUT_LOGO_ROW`, `ABOUT_LOGO_ROWS`), centred:
+  Metal Chrome's lettering band whole, Cracktro Chrome's on rows 0-7, Pulse Train on rows 2-6.
 
-The emulator checks both against `assets/logo/cracktro-chrome.png` pixel for pixel: the
+The emulator checks both against `assets/logo/metal-chrome.png` pixel for pixel: the
 title card everywhere but its two text rows, and About's band against the scene's pixel
-rows 72-135.
+rows 80-151.
 
-**The lettering band** is the scene's cell rows 9-16 (`LOGO_CHROME_BAND_ROW`): the lettering
-takes pixel rows 76-135 (75 is its black outline, on black) and columns 5-233, and nothing
-of the scene's text or floor reaches into the band; its stars come with it.
+**The lettering band** is the scene's cell rows 10-18 (`LOGO_METAL_BAND_ROW`): the letters'
+chrome takes pixel rows 83-141, their black outline and purple shadow 81-145, and nothing of
+the letters' red, orange or yellow reaches outside the band; its stars and glow come with it.
+The glow spreads beyond the band, so About shows it cut at the band's foot, against its
+ramp line (the band's top is the screen's). The lettering is 65
+pixel rows with its outline and shadow, one more than Cracktro Chrome's 64-row band holds:
+About's band grew from 8 rows to 9, its first ramp line moved to row 9, and the stars between
+the ramp lines lost a row; the credits keep theirs. Cracktro Chrome's band is its scene's cell
+rows 9-16 (`LOGO_CHROME_BAND_ROW`).
 
-**Pulse Train**, the alternative (built), on the grid: the letters are a 5 x 7 face at 4x, so
+**Pulse Train**, the other alternative (built), on the grid: the letters are a 5 x 7 face at 4x, so
 each letter pixel is a cell quadrant. Their 28 pixel rows are seven bands of 3 rows and a
 slot, coloured through the raster ramp. A cell row holds two bands: the top one as a `SLOT_*`
 glyph in its colour, the bottom one as an overlay in the next band's. The pulse wave (2 pixels
@@ -296,11 +317,10 @@ frame instead of 95 (14.3 ms at worst).
 The other concepts from the prototype, drawn in code on the cell grid, were Three Voices
 (triangle, saw and pulse traces weaving through the letters), READY. (the name typed at the
 prompt in quadrant blocks) and 28 Pin (SIDOU on a 28-pin chip whose pins light with the
-gates). The logo page also has the **metal variants**, explorations only: Metal Chrome
-(blade-cut letters with horn serifs on a dithered glow), Blood Chrome (the same in cold steel
-with a red underglow) and Metal Emblem (a chrome shield with horns, bolts and the spiked
-lettering), and **chapter cards** in the Metal Chrome lettering, full-screen title cards for
-switching into views such as SCENE or performance mode.
+gates). The logo page's other **metal variants** stay explorations: Blood Chrome (Metal
+Chrome's letters in cold steel with a red underglow) and Metal Emblem (a chrome shield with
+horns, bolts and the spiked lettering). Its **chapter cards**, full-screen title cards in the
+Metal Chrome lettering, became the views' title cards (below).
 
 ### Logo bitmaps
 
@@ -312,23 +332,26 @@ renderer's pixel region.
   whose pixels are art palette colours exactly (its palette in any order); anything else is
   an error.
 - **Conversion:** `host/crates/sidou-tests/src/logo.rs` (as `src/font.rs` is for the font)
-  writes `app/logo_bitmap.c`, a `grid_bitmap` (`app/grid.h`): each pixel row run-length coded,
-  a byte a run of 1..16 pixels (`(length - 1) << 4 | colour`), with a table of where each
-  row's runs start so any row decodes on its own; rows alike share their runs. A test fails
-  when the file falls behind the PNG (`SIDOU_LOGO_UPDATE=1` rewrites it, as
+  writes `app/logo_bitmap.c`, a `grid_bitmap` (`app/grid.h`) for each logo: each pixel row
+  run-length coded, a byte a run of 1..16 pixels (`(length - 1) << 4 | colour`), with a table
+  of where each row's runs start so any row decodes on its own; rows alike share their runs,
+  within a scene and across the scenes (one array of runs). A test fails
+  when the file falls behind the PNGs (`SIDOU_LOGO_UPDATE=1` rewrites it, as
   `SIDOU_FONT_UPDATE` and `SIDOU_CREDITS_UPDATE` do), and others check the round trip and
   that the compiled table decodes to the PNG pixel for pixel.
-- **Size:** the whole scene is **4,526 bytes** of flash: 4,046 of runs and 480 of row
-  offsets, 15.7 % of its 28,800 bytes at 4 bits a pixel (6,739 without sharing rows; the
-  black rows and the 2-pixel bars repeat). The firmware image grew 6.2 KB in all. So the
-  whole scene goes on the device, and About takes its band from the same bitmap.
+- **Size:** Metal Chrome's whole scene is **9,753 bytes** of flash: 9,273 of runs and 480
+  of row offsets, 33.9 % of its 28,800 bytes at 4 bits a pixel; its glow's dither makes runs
+  of one and two pixels. Cracktro Chrome's is 4,526 bytes (4,046 and 480, 15.7 %; 6,739
+  without sharing rows: the black rows and the 2-pixel bars repeat). Together, sharing their
+  black rows, 14,234. So the whole scene goes on the device, and About takes its band from
+  the same bitmap.
 - **Drawing:** `grid_region(g, col, row, w, h, bitmap, bx, by)` makes w x h cells take their
   background, pixel for pixel, from the bitmap's cells from (bx, by). Their glyphs'
   foreground and their overlays still draw over it, so text and overlays work on a picture
   (the title card's version and PRESS ANY KEY); a blank glyph shows the bitmap alone.
   `grid_render_run` decodes the run's part of each of its 8 pixel rows straight into the
-  panel's pixels, two a store, then draws the glyph and overlay pixels of the cells that have
-  any. One region at a time: setting it marks the cells it leaves and covers to be sent, the
+  panel's pixels, two a store (a run of one or two pixels two plain stores), then draws the
+  glyph and overlay pixels of the cells that have any. One region at a time: setting it marks the cells it leaves and covers to be sent, the
   same region again sends nothing, and a logo drawn in cells or a view switch clears it.
 
 What works, and what does not, on this panel and budget:
@@ -359,7 +382,7 @@ prototype's `Boot`:
 | 2.2 s | `SEARCHING FOR SIDOU` |
 | 3.0 s | `LOADING`, and raster stripes in the border, new every other frame |
 | 5.6 s | `READY.`, then `RUN` typed from 6.2 s |
-| 7.0 s | the title card: the logo's scene (Cracktro Chrome's), the version and licence above it, `PRESS ANY KEY` blinking below |
+| 7.0 s | the title card: the logo's scene (Metal Chrome's), the version and licence above it, `PRESS ANY KEY` blinking below |
 | 10.0 s | the status screen wipes in |
 
 The stripes split each border cell row in two colours at a random height (a lower-eighths
@@ -390,11 +413,12 @@ out within the budget; the first frame is drawn whole before the display is on.
 ## About
 
 ABOUT, the menu's last item (`app/about.h`), is the prototype's cracktro trimmed to the SPI
-budget, on black, laid out around Cracktro Chrome's lettering band: the logo at the top
-(rows 0-7), a ramp line, the credits over a starfield (heading on row 10, lines from row 12),
-another ramp line, and two raster bars sweeping behind a sine scroller (rows 21-29). The bars
-are the scene's cold and warm ones (blue, light blue, cyan; brown, orange, light red), with
-no white, and the scroller is white, so its letters read over every band. HOME goes back.
+budget, on black, laid out around Metal Chrome's lettering band: the logo at the top
+(rows 0-8), a ramp line (row 9), the credits over a starfield (heading on row 10, lines from
+row 12), another ramp line, and two raster bars sweeping behind a sine scroller (rows 21-29).
+The bars are Cracktro Chrome's cold and warm ones (blue, light blue, cyan; brown, orange,
+light red), with no white, and the scroller is white, so its letters read over every band.
+HOME goes back.
 
 - **Credits** come from `CREDITS.md`: `host/crates/sidou-tests/src/credits.rs` generates
   `app/credits.c` (a page per section, more when it runs over 8 lines, wrapped at 26

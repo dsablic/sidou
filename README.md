@@ -1,6 +1,6 @@
 <!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-<p align="center"><img src="assets/logo/cracktro-chrome-lettering-2x.png" alt="SIDOU, in chunky bevelled chrome letters with raster bands and a purple shadow" width="458" height="122"></p>
+<p align="center"><img src="assets/logo/metal-chrome-lettering-2x.png" alt="SIDOU, in spiked metal letters with a red to white chrome bevel and a purple shadow" width="452" height="126"></p>
 
 # SIDOU
 

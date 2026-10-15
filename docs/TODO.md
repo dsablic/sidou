@@ -59,9 +59,9 @@ Follow-ups that aren't tied to a milestone task yet.
 - **Problem:** neither can be set from the repository: GitHub shows a
   generic preview and the owner's own picture until someone uploads them.
 - **Action:** the owner sets them manually: the avatar from
-  `docs/art/avatar.png` (48 x 48, Cracktro Chrome's S; scale it up by nearest
+  `docs/art/avatar.png` (48 x 48, Metal Chrome's S; scale it up by nearest
   neighbour if a larger upload is wanted), and a social preview from
-  Cracktro Chrome (`assets/logo/cracktro-chrome.png` or the 2x lettering on
+  Metal Chrome (`assets/logo/metal-chrome.png` or the 2x lettering on
   black, padded to GitHub's 1280 x 640). Redo both if the logo changes.
 
 ## fm1-emu does not emulate USB

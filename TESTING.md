@@ -13,7 +13,7 @@ lists the prerequisites.
 |---|---|---|
 | Everything except the emulator gate | `cargo test --workspace --release` | all crates |
 | Unit tests | `cargo test --release -p sidou-tests --test unit` | `crates/sidou-tests/tests/unit/` |
-| App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_LOGO_UPDATE=1` `app/logo_bitmap.c` from `assets/logo/cracktro-chrome.png`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
+| App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_LOGO_UPDATE=1` `app/logo_bitmap.c` from `assets/logo/metal-chrome.png` and `cracktro-chrome.png`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Filter against reSIDfp (transfer functions, sweeps) | `cargo test --release -p sidou-tests --test filter` | `crates/sidou-tests/tests/filter.rs`, `src/filter_sweeps.rs` |
@@ -423,9 +423,9 @@ SELECT, ALGORITHM):
   each SCENE piece a second into a held chord
   match the golden images in `tests/golden/lcd/`, pixel
   for pixel, and every pixel is one of the 16 palette colours. The title
-  card (but for its version and PRESS ANY KEY rows) and About's top 64 pixel
+  card (but for its version and PRESS ANY KEY rows) and About's top 72 pixel
   rows are also checked against the logo's source,
-  `assets/logo/cracktro-chrome.png`, pixel for pixel. The status
+  `assets/logo/metal-chrome.png`, pixel for pixel. The status
   screen's version cells and the menu's cursor cell are left out; the cursor
   is checked to blink. Going back from the glyph sheet restores the menu and
   then the status screen exactly, and the toast goes after 1.5 s. The goldens
@@ -463,7 +463,7 @@ pixel for pixel against the logo's PNG, text and overlays over it, which
 cells it sends when, refusals, and random regions mixed with edits),
 `logo_bitmap.rs` (the converter: its round trip, the drift test, the compiled
 table against the PNG, the palette and size checks), `logo.rs` (each logo's
-footprint, cost and overlays as declared, Cracktro Chrome's band and scene
+footprint, cost and overlays as declared, Metal Chrome's and Cracktro Chrome's bands and scenes
 against the PNG), `boot.rs` and `about.rs` (the sequences, the layouts with
 either logo, the SPI budget a frame and under the wipes), `widget.rs`
 (frames, numbers, bars, the menu), `views.rs`

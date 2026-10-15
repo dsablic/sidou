@@ -112,6 +112,17 @@ All notable changes are documented here. The format follows
   out around its lettering band, with the bars behind a white scroller, and
   costs less than with Pulse Train, which stays as the alternative. The
   README carries the lettering, and `docs/art/avatar.png` the avatar.
+- Metal Chrome, chosen by the user (replacing Cracktro Chrome), is SIDOU's
+  logo: spiked, blade-cut metal letters with a red to white chrome bevel and a
+  purple shadow on a dithered purple and red glow, with raster bars, stars, a
+  cross-flare glint and a tagline (`assets/logo/metal-chrome.js` and its
+  PNGs, pixel for pixel Chromium's drawing of the logo page). It is the boot's
+  title card and About's lettering band (9 rows now), the README's lettering
+  and the avatar; Cracktro Chrome and Pulse Train stay as alternatives. Its
+  scene is 9.8 KB of flash (its glow's dither makes short runs), 14.2 KB with
+  Cracktro Chrome's in one generated `app/logo_bitmap.c`; the decoder stores
+  a run of one or two pixels without a loop, so the boot's busiest `ui_poll`
+  stays at 33.5k instructions.
 - LIVE, the screen at power-on (`app/live_view.h`): an oscilloscope per voice,
   envelope bars, the filter's curve, VU meters and the effect slots, after the
   prototype's. The audio interrupt taps the voices every 16 samples into a

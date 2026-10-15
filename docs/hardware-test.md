@@ -93,10 +93,11 @@ Notes:
 
 ## 3. Boot
 
-- [ ] The title card appears: Cracktro Chrome's scene, the chrome SIDOU
-  letters with their purple shadow over stars, raster bars and a grid floor
-  (as `assets/logo/cracktro-chrome.png`; look for wrong colours, a shifted
-  row or torn cells), the version at the top and "PRESS ANY KEY" blinking at
+- [ ] The title card appears: Metal Chrome's scene, the spiked SIDOU letters
+  with their red to white chrome and purple shadow on a dithered purple glow,
+  between raster bars, with stars, a glint on the U and the tagline "FORGED IN
+  SILICON FOR THE FM-1" (as `assets/logo/metal-chrome.png`; look for wrong
+  colours, a shifted row, torn cells or a dither that shimmers), the version at the top and "PRESS ANY KEY" blinking at
   the bottom. Time from power-on to it:
 - [ ] About 1.2 s later LIVE wipes in from the top: C64 blue, a light blue
   header line "LIVE ... 6581 SAW LEAD ... OCT+0", three voice boxes "V1 SAW"..
