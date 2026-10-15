@@ -55,22 +55,22 @@ static void resync(midi_out* o, const live* l) {
 
 /* What changed since the last look: the panel's (remote 0) or MIDI input's (remote 1). */
 static void look(midi_out* o, const live* l, int remote) {
-    int preset = 0;
     if (l->preset != o->preset_seen) {
         /* A preset change: the program change carries every parameter it loaded. The rest
-         * are diffed as usual, so a pending change of one survives it. */
+         * are diffed as usual below, so a pending change of one survives it. */
         o->preset_seen = l->preset;
         o->preset_pending = remote ? 0u : 1u;
-        preset = 1;
+        for (uint32_t p = 0; p < LIVE_PARAM_COUNT; ++p) {
+            if (PRESET_LOADS >> p & 1u) {
+                uint16_t v = (uint16_t)live_param_get(l, p);
+                o->seen[p] = v;
+                o->wire[p] = v;
+                o->pending[p] = 0;
+            }
+        }
     }
     for (uint32_t p = 0; p < LIVE_PARAM_COUNT; ++p) {
         uint16_t v = (uint16_t)live_param_get(l, p);
-        if (preset && (PRESET_LOADS >> p & 1u)) {
-            o->seen[p] = v;
-            o->wire[p] = v;
-            o->pending[p] = 0;
-            continue;
-        }
         if (v == o->seen[p]) {
             continue;
         }
