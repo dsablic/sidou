@@ -11,7 +11,7 @@ CHIP view (M1c Task 4) replaces it.
 
 | Control (id) | Does |
 |---|---|
-| Note keys (14..40) | play F3..G5 at the current octave |
+| Note keys (14..40) | play F3..G5 at the current octave, at velocity 127: they sound as velocity off does, whatever the preset's velocity target |
 | OCT- / OCT+ (buttons 0, 1) | octave -1 / +1 (-3..+3); their LEDs show the direction |
 | FX (button 2) | chip 6581 / 8580; lit for the 8580 |
 | K1 (encoder 2) | cutoff |

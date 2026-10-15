@@ -241,3 +241,27 @@ fn leds_show_held_keys_the_octave_and_the_8580() {
     p.keys(key(26), 0);
     assert_eq!(p.leds().notes, key(26));
 }
+
+/// The panel has no velocity, so its keys play 127, which sounds as velocity off whatever
+/// the target: the full sustain level, pulse width and cutoff.
+#[test]
+fn panel_notes_sound_as_velocity_off_on_every_target() {
+    let off = {
+        let mut p = Panel::new();
+        p.keys(key(0), key(0));
+        p.rig.tick();
+        (p.rig.reg(6), p.rig.voice_pw(0), p.rig.live.cutoff_out)
+    };
+    for target in [
+        LIVE_VELOCITY_SUSTAIN,
+        LIVE_VELOCITY_CUTOFF,
+        LIVE_VELOCITY_PULSE_WIDTH,
+    ] {
+        let mut p = Panel::new();
+        unsafe { live_param_set(&mut *p.rig.live, LIVE_PARAM_VELOCITY_TARGET, target) };
+        p.keys(key(0), key(0));
+        p.rig.tick();
+        let got = (p.rig.reg(6), p.rig.voice_pw(0), p.rig.live.cutoff_out);
+        assert_eq!(got, off, "velocity target {target}");
+    }
+}

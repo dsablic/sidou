@@ -22,7 +22,9 @@ extern "C" {
 #define PANEL_NOTE_KEYS 27u
 /* Note key 0 plays F3 at octave 0. */
 #define PANEL_BASE_NOTE 53u
-#define PANEL_VELOCITY 100u
+/* The keys have no velocity: 127 sounds as velocity off does, whatever the preset's velocity
+ * target (docs/reference/controls.md). */
+#define PANEL_VELOCITY 127u
 
 /* Button ids (fm1_in.buttons bits). */
 #define PANEL_BTN_OCT_DOWN 0u

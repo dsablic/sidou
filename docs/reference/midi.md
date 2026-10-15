@@ -98,7 +98,8 @@ controllers (bend, wheel, aftertouch) are one set for every channel, like the no
   velocity / 127, written before the gate; the attack still peaks at the full level), the
   cutoff (8 steps lower per velocity below 127, by the last note: one filter) or the pulse
   width (the voice's pulse narrowed by velocity / 127; heard on the pulse waveform only).
-  127 always sounds as off does. The panel's keys play velocity 100.
+  127 always sounds as off does. The panel's keys play velocity 127, so they sound as off
+  does whatever the target.
 - **Reset:** CC 121 centres the bend and sets the wheel and aftertouch to 0 (the pulse
   width is a parameter, not the wheel's position, and is kept). A gap in the input does
   the same, so a lost return to the centre cannot leave the pitch bent.
