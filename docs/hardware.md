@@ -93,6 +93,18 @@ copyrighted, so we link to them rather than copy them into this repo.
   - the 10-bit SARADC for the MASTER pot and battery sense;
   - TIMER4 as a 24 MHz tick and TIMER5 for the 10 kHz key scan and the
     2 kHz USB and UART polls.
+- **A main-loop stall once a second while USB is off.** With no cable at
+  power-on the SIE does not answer, and `usb_retry` (platform/fm1/usb/usb.c)
+  attaches again every second. Each SIE write in the attach polls for up to
+  20000 iterations, and the attach gives up at the third timeout. That is
+  about 300k instructions in one main-loop pass. fm1-emu, whose SIE never
+  answers, shows it: `usb_attach_now` takes 300,085 instructions, so one
+  10 ms window a second runs 316k main-loop instructions against 17k in the
+  others. At 240 MHz that is about 1.3 ms, longer if the register reads are
+  slow. Meanwhile MIDI input waits in its ring and the tick catches up
+  (`TICK_CATCH_UP`). MIDI out is not involved. Polling less, or giving up at
+  the first timeout, would change Felucca's hardware-tested attach, so this
+  waits for a measurement on a unit (below).
 
 ## Instruction set features
 
@@ -245,6 +257,7 @@ These follow from the facts above. Each needs measuring before it's adopted.
 | Actual CPU clock | Melodee measured 360 MHz; the budget assumes 240. | Time a dependent-add loop against TIMER4, or read the `TL_CKCNT` counter. |
 | Cycles vs instructions | The emulator counts instructions, not cycles. Flash (XIP) fetches and divides cost more. | Read the per-core counters around an audio block; compare `.text` with `.ram_text`. |
 | The audio path from SRAM | fm1-emu doesn't model the I-cache, so Task 5b's benefit is unmeasured. | Cycles per audio block (TIMER4 or `TL_CKCNT`) and fetch misses (`IF_UACNT`), with the LCD redrawing, in a build with `.ram_text`'s audio rules and one without. |
+| The USB retry's stall | Without a cable, the attach `usb_retry` runs once a second times out three SIE writes in one main-loop pass (300k instructions in fm1-emu). | Time `usb_attach_now` against TIMER4 on a unit powered on without a cable. If it is well over a millisecond, poll less or stop at the first timeout. |
 | Unknown latencies | Divide latency, IRQ entry latency, `IPMASK` semantics, and whether IRQ priorities have 4 or 8 levels | Microbenchmarks on the device. |
 | Second core RAM issue | Some units misread RAM on core 1. | Felucca's core-1 self-test, before SIDOU ever uses core 1. |
 
