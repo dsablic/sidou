@@ -45,10 +45,14 @@ typedef enum {
     MIDI_CURVE_STEPS = 1   /* value * (max + 1) / 128: needs max < 128 */
 } midi_map_curve;
 
+/* The reference's text is only for the host tests that generate docs/reference/midi.md:
+ * sidou-sys defines SIDOU_MIDI_MAP_DOC, and the device build leaves the strings out. */
 typedef struct {
+#ifdef SIDOU_MIDI_MAP_DOC
     const char* group;  /* "Live", "SID", "Character", "Distortion", ... */
     const char* name;
     const char* values; /* what the values mean, for the reference */
+#endif
     uint16_t nrpn;      /* MIDI_MAP_NRPN(msb, lsb), or MIDI_MAP_NO_NRPN */
     uint16_t max;       /* the range is 0..max */
     uint16_t def;       /* the power-on value (preset 0's where a preset sets it) */
@@ -59,7 +63,8 @@ typedef struct {
 
 #define MIDI_MAP_ROWS 34u
 
-/* Row i in table order, or NULL past the last. */
+/* Row i in table order, or NULL past the last. midi_map_row, midi_map_for_param and
+ * midi_map_to_cc have no caller on the device yet; --gc-sections drops them there. */
 const midi_map_entry* midi_map_row(uint32_t i);
 /* The row of a parameter, a CC or an NRPN (reserved rows included), or NULL. */
 const midi_map_entry* midi_map_for_param(uint32_t param);

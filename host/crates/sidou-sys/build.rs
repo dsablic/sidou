@@ -34,6 +34,10 @@ const SOURCES: [&str; 21] = [
 /// Include roots, relative to the repository: core headers are "sid/...", the others bare.
 const INCLUDES: [&str; 3] = ["core", "bench", "app"];
 
+/// The CC/NRPN map's text for the generated reference (app/midi_map.h); the device leaves it
+/// out.
+const MIDI_MAP_DOC: &str = "SIDOU_MIDI_MAP_DOC";
+
 include!("../../build-support/sanitize.rs");
 
 /// `pub mod <struct> { pub const SIZE: usize; pub const <field>: usize; }` for every
@@ -88,6 +92,7 @@ fn c_build(root: &Path) -> cc::Build {
         .warnings(true)
         .extra_warnings(true)
         .flag("-Wshadow")
+        .define(MIDI_MAP_DOC, None)
         .warnings_into_errors(true);
     sanitize::apply_sanitizer(&mut build);
     build
@@ -125,6 +130,7 @@ fn main() {
         .clang_args(INCLUDES.map(|dir| format!("-I{}", root.join(dir).display())))
         .clang_arg("-std=c11")
         .clang_arg("-DSIDOU_ALL_COMBINED_PROFILES")
+        .clang_arg(format!("-D{MIDI_MAP_DOC}"))
         .allowlist_function(
             "sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|fx_live.*",
         )

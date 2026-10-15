@@ -26,9 +26,14 @@
 #define NRPN_CHARACTER 2u
 #define NRPN_SLOT 3u /* + slot: Distortion 3, Modulation 4, FX 5; the LSB is the field */
 
+#ifdef SIDOU_MIDI_MAP_DOC
+#define DOC(g, n, v) .group = g, .name = n, .values = v,
+#else
+#define DOC(g, n, v) /* the device keeps no text (midi_map.h) */
+#endif
+
 #define ROW(g, n, v, p, c, nr, mx, d, cv)                                                          \
-    {.group = g, .name = n, .values = v, .param = p, .cc = c, .nrpn = nr, .max = mx, .def = d,    \
-     .curve = cv}
+    {DOC(g, n, v).param = p, .cc = c, .nrpn = nr, .max = mx, .def = d, .curve = cv}
 
 /* One field of an effect slot: parameter, CC and NRPN all follow from slot and field. */
 #define SLOT_ROW(slot, g, field, n, v, mx, cv)                                                     \
