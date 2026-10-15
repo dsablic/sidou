@@ -11,7 +11,7 @@ mod common;
 
 use common::{build_dir, peak, pitch, power_above, record, Firmware, Machine};
 use fm1_core::Bus;
-use sidou_sys::{ilp32, live_freq_table, SID_MODEL_8580};
+use sidou_sys::{ilp32, live_freq_at, live_freq_table, SID_MODEL_8580};
 
 /// Past the LCD's reset delays and the first audio blocks.
 const BOOT_MS: u64 = 500;
@@ -62,6 +62,13 @@ fn voice1(m: &mut Machine, fw: &Firmware) -> Voice1 {
         freq: m.soc.read32(osc + ilp32::sid_osc::freq as u32),
         env_gate: m.soc.read8(env + ilp32::sid_env::gate as u32),
     }
+}
+
+/// Oscillator v's frequency register (0..2) on the rendered chip.
+fn osc_freq(m: &mut Machine, fw: &Firmware, v: u32) -> u32 {
+    let s = active_sid(m, fw);
+    let osc = s + (ilp32::sid::osc + v as usize * ilp32::sid_osc::SIZE) as u32;
+    m.soc.read32(osc + ilp32::sid_osc::freq as u32)
 }
 
 fn cutoff(m: &mut Machine, fw: &Firmware) -> u32 {
@@ -298,6 +305,146 @@ fn a_chip_model_cc_flood_neither_stalls_the_main_loop_nor_loses_input() {
     );
     assert_eq!(model, SID_MODEL_8580 as u8, "the last request did not win");
     assert_eq!(v.control & 1, 1, "the held note was released");
+}
+
+/// A 14-bit pitch bend: status E0, LSB, MSB.
+fn bend(value: u16) -> [u8; 3] {
+    [0xE0, (value & 0x7f) as u8, (value >> 7) as u8]
+}
+
+/// The frequency register live plays for a note bent by `value` at the default +-2 semitones.
+fn bent(note: u8, value: u16) -> u32 {
+    u32::from(unsafe { live_freq_at(note, (i32::from(value) - 8192) * 2) })
+}
+
+fn semitones(ratio: f64) -> f64 {
+    12.0 * ratio.log2()
+}
+
+#[test]
+fn a_pitch_bend_over_trs_shifts_the_measured_pitch() {
+    let Some(fw) = fixture("the MIDI test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    m.midi(&[0x90, C4, 0x64]);
+    m.run_ms(100);
+    let f0 = pitch(&record(&mut m, 300));
+    let mut steps = Vec::new();
+    for value in [16383u16, 0, 8192] {
+        m.midi(&bend(value));
+        m.run_ms(30); // a byte per 320 us, then the next 10 ms tick
+        let reg = voice1(&mut m, &fw).freq;
+        let f = pitch(&record(&mut m, 300));
+        steps.push((value, reg, f));
+    }
+    let s = stats(&mut m, &fw);
+    println!("C4 {f0:.2} Hz; bends (value, register, Hz): {steps:?}; {s:?}");
+    assert!((f0 / C4_HZ - 1.0).abs() < 0.005, "C4 plays {f0:.2} Hz");
+    for (value, reg, f) in steps {
+        assert_eq!(reg, bent(C4, value), "bend {value}");
+        let want = 2.0 * (f64::from(value) - 8192.0) / 8192.0;
+        let got = semitones(f / C4_HZ);
+        assert!(
+            (got - want).abs() < 0.05,
+            "bend {value}: {f:.2} Hz is {got:+.3} semitones from C4, expected {want:+.3}"
+        );
+    }
+    assert_eq!((s.lost, s.restarts), (0, 0));
+}
+
+/// The sync lead: voice 3 sets the pitch, voice 1 runs 2.75 times higher, hard-synced to it.
+/// A bend moves both, so the ratio (the timbre) holds and the pitch follows the bend.
+#[test]
+fn the_sync_lead_bends_with_its_ratio_kept() {
+    let Some(fw) = fixture("the MIDI test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    m.midi(&[0xC0, 2, 0x90, C4, 0x64]);
+    m.run_ms(100);
+    let f0 = pitch(&record(&mut m, 300));
+    let before = (osc_freq(&mut m, &fw, 0), osc_freq(&mut m, &fw, 2));
+    m.midi(&bend(16383));
+    m.run_ms(30);
+    let after = (osc_freq(&mut m, &fw, 0), osc_freq(&mut m, &fw, 2));
+    let f1 = pitch(&record(&mut m, 300));
+    println!(
+        "sync lead: voices 1 and 3 {before:?} -> {after:?}; {f0:.2} Hz -> {f1:.2} Hz, \
+         {:+.3} semitones",
+        semitones(f1 / f0)
+    );
+    assert_eq!(
+        before.1,
+        u32::from(unsafe { live_freq_table }[usize::from(C4)])
+    );
+    assert_eq!(after.1, bent(C4, 16383));
+    for (slave, master) in [before, after] {
+        assert_eq!(slave, (master * 704) >> 8, "the ratio is 2.75");
+    }
+    assert!(
+        (semitones(f1 / f0) - 2.0).abs() < 0.05,
+        "the sync lead bent {:+.3} semitones",
+        semitones(f1 / f0)
+    );
+}
+
+/// A bend sweep at the jack's full speed: every message is taken, none waits long, the
+/// frequency is written at most once a tick, and the last value wins.
+#[test]
+fn a_pitch_bend_flood_neither_stalls_the_main_loop_nor_loses_input() {
+    let Some(fw) = fixture("the MIDI test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    m.midi(&[0x90, C4, 0x64]);
+    m.run_ms(1500); // past a USB retry (once a second while no host answers)
+    let (isr_idle, main_idle) = rates(&mut m, 1000);
+    // 1500 bends with running status, 0 up to 16383: 3001 bytes, 0.96 s of input.
+    let mut stream = vec![0xE0];
+    for i in 0..1500u32 {
+        let v = (i * 16383 / 1499) as u16;
+        stream.extend([(v & 0x7f) as u8, (v >> 7) as u8]);
+    }
+    let before = stats(&mut m, &fw).entries;
+    m.midi(&stream);
+    let (isr_busy, main_busy) = rates(&mut m, 900);
+    m.run_ms(200);
+    let s = stats(&mut m, &fw);
+    let v = voice1(&mut m, &fw);
+    let report = serde_json::json!({
+        "bends": 1500,
+        "isr_instructions_per_s_idle": isr_idle,
+        "main_instructions_per_s_idle": main_idle,
+        "isr_instructions_per_s_bend_flood": isr_busy,
+        "main_instructions_per_s_bend_flood": main_busy,
+        "max_wait_us": s.max_wait_us,
+    });
+    println!("{report}; voice 1 {v:?}; {s:?}");
+    assert_eq!(
+        m.soc.periph.midi_queued(),
+        0,
+        "the jack has not delivered all"
+    );
+    assert_eq!((s.lost, s.restarts), (0, 0), "the MIDI ring overflowed");
+    assert_eq!(s.entries - before, stream.len() as u32);
+    assert!(
+        s.max_wait_us < 2000.0,
+        "a byte waited {:.0} us in the ring: the main loop stalled",
+        s.max_wait_us
+    );
+    assert_eq!(v.freq, bent(C4, 16383), "the last bend did not win");
+    assert_eq!(v.control & 1, 1, "the held note was released");
+    assert!(
+        main_busy < 5e6,
+        "the main loop runs {:.2}M/s during the flood",
+        main_busy / 1e6
+    );
+    assert!(
+        isr_busy - isr_idle < 2e6,
+        "the flood adds {:.2}M interrupt instructions/s",
+        (isr_busy - isr_idle) / 1e6
+    );
 }
 
 /// Instructions per second of emulated time over `ms`: in interrupts and in the main loop.
