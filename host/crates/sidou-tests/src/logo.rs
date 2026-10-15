@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The logo's bitmap: the indexed PNG `assets/logo/cracktro-chrome.png` (drawn by
-//! `assets/logo/cracktro-chrome.js`) and the C it generates, `app/logo_bitmap.c`, a
-//! `grid_bitmap` (app/grid.h) for the renderer's pixel region. `tests/app/logo_bitmap.rs`
-//! keeps the generated file in step with the PNG.
+//! The logos' bitmaps: the indexed PNGs `assets/logo/metal-chrome.png` and
+//! `assets/logo/cracktro-chrome.png` (drawn by `assets/logo/<name>.js`) and the C they
+//! generate, `app/logo_bitmap.c`, a `grid_bitmap` (app/grid.h) each for the renderer's pixel
+//! region. `tests/app/logo_bitmap.rs` keeps the generated file in step with the PNGs.
 //!
 //! The encoding: each pixel row run-length coded, a byte a run of 1..16 pixels
 //! (`(length - 1) << 4 | colour`), and a table of where each row's runs start, so that any
@@ -52,17 +52,42 @@ pub struct Encoded {
 /// The longest run a byte holds.
 const RUN: usize = 16;
 
-pub fn png_path() -> PathBuf {
-    repo_root().join("assets/logo/cracktro-chrome.png")
+/// A logo's scene: `assets/logo/<name>.png`, compiled into `app/logo_bitmap.c` as `symbol`.
+#[derive(Clone, Copy, Debug)]
+pub struct Logo {
+    pub name: &'static str,
+    pub title: &'static str,
+    pub symbol: &'static str,
+}
+
+/// The logos with a bitmap, the default first (app/logo.h).
+pub const LOGOS: [Logo; 2] = [
+    Logo {
+        name: "metal-chrome",
+        title: "Metal Chrome",
+        symbol: "logo_metal_chrome_bitmap",
+    },
+    Logo {
+        name: "cracktro-chrome",
+        title: "Cracktro Chrome",
+        symbol: "logo_cracktro_chrome_bitmap",
+    },
+];
+
+/// The default logo's name (app/logo.h logo_default).
+pub const DEFAULT: &str = "metal-chrome";
+
+pub fn png_path(name: &str) -> PathBuf {
+    repo_root().join(format!("assets/logo/{name}.png"))
 }
 
 pub fn generated_path() -> PathBuf {
     repo_root().join("app/logo_bitmap.c")
 }
 
-/// Reads and checks the PNG.
-pub fn load() -> Image {
-    let path = png_path();
+/// Reads and checks `assets/logo/<name>.png`.
+pub fn load(name: &str) -> Image {
+    let path = png_path(name);
     let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     parse_png(&bytes).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }
@@ -126,23 +151,35 @@ fn row_runs(row: &[u8]) -> Vec<u8> {
 }
 
 pub fn encode(img: &Image) -> Encoded {
-    let mut rows = Vec::with_capacity(img.h);
-    let mut data: Vec<u8> = Vec::new();
-    let mut seen: Vec<(Vec<u8>, u16)> = Vec::new();
-    for row in img.px.chunks(img.w) {
-        let runs = row_runs(row);
-        let at = match seen.iter().find(|(r, _)| *r == runs) {
-            Some(&(_, at)) => at,
-            None => {
-                let at = u16::try_from(data.len()).expect("runs past 64 KB");
-                data.extend_from_slice(&runs);
-                seen.push((runs, at));
-                at
-            }
-        };
-        rows.push(at);
+    let (mut rows, data) = encode_shared(&[img]);
+    Encoded {
+        rows: rows.remove(0),
+        data,
     }
-    Encoded { rows, data }
+}
+
+/// Several images into one array of runs: each image's row offsets, and the runs, which rows
+/// alike share within an image and across them.
+pub fn encode_shared(imgs: &[&Image]) -> (Vec<Vec<u16>>, Vec<u8>) {
+    let mut data: Vec<u8> = Vec::new();
+    let mut seen: std::collections::HashMap<Vec<u8>, u16> = std::collections::HashMap::new();
+    let rows = imgs
+        .iter()
+        .map(|img| {
+            img.px
+                .chunks(img.w)
+                .map(|row| {
+                    let runs = row_runs(row);
+                    *seen.entry(runs).or_insert_with_key(|runs| {
+                        let at = u16::try_from(data.len()).expect("runs past 64 KB");
+                        data.extend_from_slice(runs);
+                        at
+                    })
+                })
+                .collect()
+        })
+        .collect();
+    (rows, data)
 }
 
 pub fn decode(enc: &Encoded, w: usize, h: usize) -> Vec<u8> {
@@ -164,12 +201,16 @@ pub fn decode(enc: &Encoded, w: usize, h: usize) -> Vec<u8> {
 
 // The generated file's own licence header; reuse must not read it as this file's.
 // REUSE-IgnoreStart
-const SPDX: &str = "// SPDX-FileCopyrightText: 2026 SIDOU contributors\n\
-                    // SPDX-License-Identifier: GPL-3.0-or-later\n";
+pub(crate) const SPDX: &str = "// SPDX-FileCopyrightText: 2026 SIDOU contributors\n\
+                               // SPDX-License-Identifier: GPL-3.0-or-later\n";
 // REUSE-IgnoreEnd
 
 /// Numbers as C initialisers, `per` to a line.
-fn table<T: std::fmt::Display>(items: &[T], per: usize, fmt: impl Fn(&T) -> String) -> String {
+pub(crate) fn table<T: std::fmt::Display>(
+    items: &[T],
+    per: usize,
+    fmt: impl Fn(&T) -> String,
+) -> String {
     let mut s = String::new();
     for chunk in items.chunks(per) {
         let line: Vec<String> = chunk.iter().map(&fmt).collect();
@@ -178,44 +219,89 @@ fn table<T: std::fmt::Display>(items: &[T], per: usize, fmt: impl Fn(&T) -> Stri
     s
 }
 
-/// `app/logo_bitmap.c`.
-pub fn c_source(img: &Image) -> String {
+/// What an image costs alone: its runs and row offsets, in bytes.
+pub fn size(img: &Image) -> (usize, usize) {
     let enc = encode(img);
+    (enc.data.len(), 2 * enc.rows.len())
+}
+
+/// `app/logo_bitmap.c`, from the logos' PNGs.
+pub fn c_source() -> String {
+    let imgs: Vec<Image> = LOGOS.iter().map(|l| load(l.name)).collect();
+    let (rows, data) = encode_shared(&imgs.iter().collect::<Vec<_>>());
     let mut s = String::from(SPDX);
+    let files: Vec<String> = LOGOS
+        .iter()
+        .map(|l| format!("assets/logo/{}.png", l.name))
+        .collect();
+    let files = files.join(" and\n * ");
     let _ = write!(
         s,
-        "/* Generated by host/crates/sidou-tests/src/logo.rs from assets/logo/cracktro-chrome.png;\n \
+        "/* Generated by host/crates/sidou-tests/src/logo.rs from {};\n \
          * do not edit.\n \
-         * Cracktro Chrome's scene (app/logo.h), {w} x {h} pixels: {runs} bytes of runs and {offs} of\n \
-         * row offsets, {total} in all; 4 bits a pixel unpacked would be {raw}. A run is a byte,\n \
-         * (length - 1) << 4 | colour (app/grid.h grid_bitmap); rows alike share their runs. */\n\
-         #include \"logo.h\"\n\n\
-         static const uint16_t ROWS[{h}] = {{\n{rows}}};\n\n\
-         static const uint8_t RUNS[{runs}] = {{\n{data}}};\n\n\
-         const grid_bitmap logo_cracktro_chrome_bitmap = {{{w}, {h}, ROWS, RUNS}};\n",
-        w = img.w,
-        h = img.h,
-        runs = enc.data.len(),
-        offs = 2 * enc.rows.len(),
-        total = enc.data.len() + 2 * enc.rows.len(),
-        raw = img.w * img.h / 2,
-        rows = table(&enc.rows, 12, |v| format!("{v:5}")),
-        data = table(&enc.data, 16, |v| format!("0x{v:02x}")),
+         * The logos' scenes (app/logo.h), each a grid_bitmap (app/grid.h): a pixel row's runs, a\n \
+         * byte each, (length - 1) << 4 | colour, and a table of where each row's runs start.\n \
+         * Rows alike share their runs, within a scene and across them.\n",
+        files
     );
+    for (l, img) in LOGOS.iter().zip(&imgs) {
+        let (runs, offs) = size(img);
+        let _ = writeln!(
+            s,
+            " * {}: {} x {} pixels, {runs} bytes of runs and {offs} of row offsets alone,\n \
+             *   {} in all; 4 bits a pixel unpacked would be {}.",
+            l.title,
+            img.w,
+            img.h,
+            runs + offs,
+            img.w * img.h / 2
+        );
+    }
+    let offs: usize = rows.iter().map(|r| 2 * r.len()).sum();
+    let _ = write!(
+        s,
+        " * Together: {} bytes of runs and {offs} of row offsets, {} in all. */\n\
+         #include \"logo.h\"\n\n\
+         static const uint8_t RUNS[{}] = {{\n{}}};\n",
+        data.len(),
+        data.len() + offs,
+        data.len(),
+        table(&data, 16, |v| format!("0x{v:02x}")),
+    );
+    for ((l, img), r) in LOGOS.iter().zip(&imgs).zip(&rows) {
+        let rows_name = l.name.replace('-', "_").to_uppercase();
+        let _ = write!(
+            s,
+            "\nstatic const uint16_t {rows_name}[{}] = {{\n{}}};\n\n\
+             const grid_bitmap {} = {{{}, {}, {rows_name}, RUNS}};\n",
+            img.h,
+            table(r, 12, |v| format!("{v:5}")),
+            l.symbol,
+            img.w,
+            img.h,
+        );
+    }
     s
 }
 
 /// Writes `app/logo_bitmap.c` if `update`, else returns it if it is stale.
-pub fn check_or_write(img: &Image, update: bool) -> Vec<PathBuf> {
-    let path = generated_path();
-    let want = c_source(img);
+pub fn check_or_write(update: bool) -> Vec<PathBuf> {
+    check_or_write_file(&generated_path(), &c_source(), update)
+}
+
+/// Writes `want` to `path` if `update`, else returns `path` if it holds something else.
+pub(crate) fn check_or_write_file(
+    path: &std::path::Path,
+    want: &str,
+    update: bool,
+) -> Vec<PathBuf> {
     if update {
-        std::fs::write(&path, &want).unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
+        std::fs::write(path, want).unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
         return Vec::new();
     }
-    if std::fs::read_to_string(&path).ok().as_deref() == Some(want.as_str()) {
+    if std::fs::read_to_string(path).ok().as_deref() == Some(want) {
         Vec::new()
     } else {
-        vec![path]
+        vec![path.to_path_buf()]
     }
 }

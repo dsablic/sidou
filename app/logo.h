@@ -10,15 +10,15 @@
  * caller composes it like any other part of the screen, every frame or once. Its animation
  * runs on the caller's frame count (25 fps); frame 0 is the still.
  *
- * Cracktro Chrome, the default, is a bitmap (app/logo_bitmap.c, generated from
- * assets/logo/cracktro-chrome.png): its draw hands its footprint to the renderer's pixel
- * region (grid_region), which shows the bitmap's cells pixel for pixel. The grid has one
- * region and it is the logo's: a screen shows one bitmap logo at a time, a logo drawn in cells
- * clears it, and so does a view switch (app/screen.h).
+ * Metal Chrome, the default, and Cracktro Chrome are bitmaps (app/logo_bitmap.c, generated
+ * from assets/logo/metal-chrome.png and cracktro-chrome.png): their draw hands the footprint
+ * to the renderer's pixel region (grid_region), which shows the bitmap's cells pixel for
+ * pixel. The grid has one region and it is the logo's: a screen shows one bitmap logo at a
+ * time, a logo drawn in cells clears it, and so does a view switch (app/screen.h).
  * Pulse Train is drawn in code with font glyphs and overlays.
  *
- * Its background is the logo's own: no transparent one. Cracktro Chrome's is its scene's sky
- * (black and stars). Pulse Train's letter cells use all three colours a cell holds
+ * Its background is the logo's own: no transparent one. The chrome logos' is their scene's
+ * sky (black, stars and Metal Chrome's dithered glow). Pulse Train's letter cells use all three colours a cell holds
  * (background, the top band as a glyph, the bottom band as an overlay), so raster bars, two
  * colours a cell of their own, cannot pass behind them: tried in About, the bar's lower half
  * took its upper half's colour in every letter cell, and the letters' bottom bands and the
@@ -63,18 +63,29 @@ typedef struct {
  * duty cycle sweeps every 4 frames (frames 4, 8, ...): odd frames change nothing. */
 extern const logo logo_pulse_train;
 
-/* Cracktro Chrome, chosen by the user: chunky bevelled chrome letters in raster bands with a
- * purple extruded shadow. Its draw is the scene's lettering band, 30 x 8 cells (the scene's
- * cell rows LOGO_CHROME_BAND_ROW..); its scene the whole 240 x 240 picture, the lettering over
- * stars, raster bars and a grid floor. Still: nothing changes after its first frame. */
+/* Metal Chrome, chosen by the user (replacing Cracktro Chrome): spiked, blade-cut metal letters
+ * with a red to white chrome bevel and a purple extruded shadow, on a dithered purple and red
+ * glow. Its draw is the scene's lettering band, 30 x 9 cells (the scene's cell rows
+ * LOGO_METAL_BAND_ROW..: the letters, their outline and their shadow, pixel rows 81..145, with
+ * the glow and stars around them); its scene the whole 240 x 240 picture, the lettering over
+ * stars, raster bars and a cross-flare glint, with a tagline. Still: nothing changes after
+ * its first frame. */
+extern const logo logo_metal_chrome;
+#define LOGO_METAL_BAND_ROW 10u
+
+/* Cracktro Chrome, the logo before Metal Chrome: chunky bevelled chrome letters in raster
+ * bands with a purple extruded shadow. Its draw is the scene's lettering band, 30 x 8 cells
+ * (the scene's cell rows LOGO_CHROME_BAND_ROW..); its scene the whole 240 x 240 picture, the
+ * lettering over stars, raster bars and a grid floor. Still. */
 extern const logo logo_cracktro_chrome;
 #define LOGO_CHROME_BAND_ROW 9u
 
-/* Cracktro Chrome's scene, 240 x 240 pixels (app/logo_bitmap.c, generated from
- * assets/logo/cracktro-chrome.png). */
+/* The scenes, 240 x 240 pixels each (app/logo_bitmap.c, generated from
+ * assets/logo/metal-chrome.png and cracktro-chrome.png). */
+extern const grid_bitmap logo_metal_chrome_bitmap;
 extern const grid_bitmap logo_cracktro_chrome_bitmap;
 
-/* The logo the boot and About show: Cracktro Chrome. */
+/* The logo the boot and About show: Metal Chrome. */
 extern const logo* const logo_default;
 
 /* l's frame frame at (col, row) on bg. */

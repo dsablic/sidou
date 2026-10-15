@@ -614,7 +614,7 @@ fn a_full_screen_region_shows_its_bitmap_pixel_for_pixel() {
     let mut s = Screen::new();
     assert_eq!(region(&mut s, (0, 0), (30, 30), scene(), (0, 0)), 0);
     s.drain();
-    let img = sidou_tests::logo::load();
+    let img = sidou_tests::logo::load("cracktro-chrome");
     let pal = unsafe { grid_palette };
     let want: Vec<u16> = img.px.iter().map(|&c| pal[usize::from(c)]).collect();
     assert!(
@@ -630,7 +630,7 @@ fn a_region_shows_any_cells_of_its_bitmap_and_the_grid_around_it() {
     assert_eq!(region(&mut s, (3, 5), (20, 6), scene(), (7, 10)), 0);
     s.drain();
     assert!(s.panel == s.expected());
-    let img = sidou_tests::logo::load();
+    let img = sidou_tests::logo::load("cracktro-chrome");
     let pal = unsafe { grid_palette };
     for y in 0..48 {
         for x in 0..160 {
@@ -661,7 +661,7 @@ fn text_and_overlays_draw_over_a_region() {
     let pal = unsafe { grid_palette };
     let f = font::load();
     // Red, the text's background colour, only where the scene has it.
-    let img = sidou_tests::logo::load();
+    let img = sidou_tests::logo::load("cracktro-chrome");
     let red = pal[GRID_RED as usize];
     assert!((0..W * W).all(|i| s.panel[i] != red || img.px[i] == GRID_RED as u8));
     for y in 0..8 {

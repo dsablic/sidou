@@ -232,7 +232,7 @@ static void title(boot* b, grid* g, int blink) {
     uint32_t version_row = BOOT_SCENE_VERSION_ROW;
     uint32_t key_row = BOOT_SCENE_KEY_ROW;
     if (l->scene) {
-        /* The scene has its own line under the name ("A NEW VOICE FOR THE FM-1"). */
+        /* The scene has its own tagline ("FORGED IN SILICON FOR THE FM-1"). */
         l->scene(g, b->logo_frame);
     } else {
         grid_fill(g, 0, 0, GRID_COLS, GRID_ROWS, ' ', TITLE_ATTR);

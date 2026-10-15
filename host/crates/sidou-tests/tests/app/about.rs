@@ -167,17 +167,17 @@ fn the_logo_bars_stars_and_scroller_are_where_they_belong() {
     open_about(&mut ui);
     run_to(&mut ui, 60);
     let ovl = |r: usize| (0..COLS).filter(|&c| ui.g.ovl[r * COLS + c] != 0).count();
-    // The logo: Cracktro Chrome's lettering band, pixel for pixel, at the top.
+    // The logo: Metal Chrome's lettering band, pixel for pixel, at the top.
     assert_eq!(
         (ABOUT_LOGO_ROW, ABOUT_LOGO_ROWS),
-        (0, 8),
-        "the band is 240 x 64 at the top"
+        (0, 9),
+        "the band is 240 x 72 at the top"
     );
-    let img = sidou_tests::logo::load();
+    let img = sidou_tests::logo::load("metal-chrome");
     let px = pixels(&ui.g);
-    let band = LOGO_CHROME_BAND_ROW as usize * 8 * W;
+    let band = LOGO_METAL_BAND_ROW as usize * 8 * W;
     assert!(
-        px[..64 * W] == img.px[band..band + 64 * W],
+        px[..72 * W] == img.px[band..band + 72 * W],
         "the logo is not the scene's lettering band"
     );
     // The scroller: overlays on its five rows, one or two a column (over the bars: app/about.c
@@ -189,7 +189,7 @@ fn the_logo_bars_stars_and_scroller_are_where_they_belong() {
     assert!((8..=24).contains(&stars), "{stars} star cells");
     // Bars behind the scroller: at least one bar's 20 pixel rows of colour at the left edge,
     // all of them in the bars' rows.
-    let coloured: Vec<usize> = (64..W)
+    let coloured: Vec<usize> = (72..W)
         .filter(|&y| {
             let c = px[y * W + 4];
             c != GRID_BLACK as u8 && c != GRID_WHITE as u8 // not a letter of the scroller
@@ -246,9 +246,24 @@ fn a_logo_drawn_in_cells_fits_the_band() {
     run_to(&mut ui, 20);
     assert!(ui.g.region_bitmap.is_null(), "the bitmap stayed");
     let ovl = |r: usize| (7..22).filter(|&c| ui.g.ovl[r * COLS + c] != 0).count();
-    // 5 rows centred in 8: rows 1-5.
-    assert!((1..6).all(|r| ovl(r) > 0), "no logo on rows 1-5");
-    assert!([0, 6, 7].iter().all(|&r| ovl(r) == 0));
+    // 5 rows centred in 9: rows 2-6.
+    assert!((2..7).all(|r| ovl(r) > 0), "no logo on rows 2-6");
+    assert!([0, 1, 7, 8].iter().all(|&r| ovl(r) == 0));
+}
+
+/// Cracktro Chrome, an alternative, fits the band: its 8 rows of lettering from the top, and
+/// a black row under them.
+#[test]
+fn cracktro_chrome_fits_the_band() {
+    let mut ui = Ui::new();
+    open_about(&mut ui);
+    ui.v.about.logo = unsafe { &logo_cracktro_chrome };
+    run_to(&mut ui, 20);
+    let img = sidou_tests::logo::load("cracktro-chrome");
+    let px = pixels(&ui.g);
+    let band = LOGO_CHROME_BAND_ROW as usize * 8 * W;
+    assert!(px[..64 * W] == img.px[band..band + 64 * W]);
+    assert!(px[64 * W..72 * W].iter().all(|&c| c == GRID_BLACK as u8));
 }
 
 #[test]

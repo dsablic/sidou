@@ -141,14 +141,16 @@ static void pt_draw(grid* g, uint32_t col, uint32_t row, uint32_t frame, uint8_t
  * and 30 on a pulse frame; 55 overlays. */
 const logo logo_pulse_train = {"PULSE TRAIN", PT_COLS, PT_ROWS, 55, 42, pt_draw, NULL};
 
-/* ---- Cracktro Chrome ----
+/* ---- the chrome logos: Metal Chrome and Cracktro Chrome ----
  *
- * The scene (assets/logo/cracktro-chrome.png) in the pixel region, its cells blank (white on
- * the background, no overlay) so that the bitmap shows alone; what the caller writes in them
- * afterwards draws over it. The
- * lettering and its shadow take pixel rows 75..135, inside cell rows 9..16. */
+ * The scene (assets/logo/<name>.png) in the pixel region, its cells blank (white on the
+ * background, no overlay) so that the bitmap shows alone; what the caller writes in them
+ * afterwards draws over it. Cracktro Chrome's lettering and its shadow take pixel rows
+ * 75..135, inside cell rows 9..16; Metal Chrome's, with their outline, 81..145, inside cell
+ * rows 10..18. */
 
 #define CC_BAND_ROWS 8u
+#define MC_BAND_ROWS 9u
 
 /* The footprint blank and without overlays, for the bitmap alone. Composed every frame, so
  * the cells are only looked at while some overlay is in use. */
@@ -181,11 +183,26 @@ static void cc_scene(grid* g, uint32_t frame) {
     grid_region(g, 0, 0, GRID_COLS, GRID_ROWS, &logo_cracktro_chrome_bitmap, 0, 0);
 }
 
+static void mc_draw(grid* g, uint32_t col, uint32_t row, uint32_t frame, uint8_t bg) {
+    (void)frame;
+    cc_blank(g, col, row, GRID_COLS, MC_BAND_ROWS, bg);
+    grid_region(g, col, row, GRID_COLS, MC_BAND_ROWS, &logo_metal_chrome_bitmap, 0,
+                LOGO_METAL_BAND_ROW);
+}
+
+static void mc_scene(grid* g, uint32_t frame) {
+    (void)frame;
+    cc_blank(g, 0, 0, GRID_COLS, GRID_ROWS, GRID_BLACK);
+    grid_region(g, 0, 0, GRID_COLS, GRID_ROWS, &logo_metal_chrome_bitmap, 0, 0);
+}
+
 /* Still: no overlays, and no cell changes after the first frame. */
 const logo logo_cracktro_chrome = {"CRACKTRO CHROME", GRID_COLS, CC_BAND_ROWS, 0, 0, cc_draw,
                                    cc_scene};
+const logo logo_metal_chrome = {"METAL CHROME", GRID_COLS, MC_BAND_ROWS, 0, 0, mc_draw,
+                                mc_scene};
 
-const logo* const logo_default = &logo_cracktro_chrome;
+const logo* const logo_default = &logo_metal_chrome;
 
 void logo_draw(const logo* l, grid* g, uint32_t col, uint32_t row, uint32_t frame, uint8_t bg) {
     l->draw(g, col, row, frame, bg);

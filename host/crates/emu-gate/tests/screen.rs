@@ -722,10 +722,10 @@ fn screen_changes_and_transitions_stay_within_the_budgets() {
 const BANNER: (usize, usize, usize) = (1, 3, 28);
 const TITLE_VERSION: (usize, usize, usize) = (1, sidou_sys::BOOT_SCENE_VERSION_ROW as usize, 28);
 
-/// The panel's pixel rows `rows` against the logo's source, assets/logo/cracktro-chrome.png,
+/// The panel's pixel rows `rows` against the logo's source, assets/logo/metal-chrome.png,
 /// from its pixel row `from`: the firmware shows the art pixel for pixel.
 fn assert_shows_the_logo_source(what: &str, fb: &[u16], rows: std::ops::Range<usize>, from: usize) {
-    let src = sidou_tests::logo::load();
+    let src = sidou_tests::logo::load(sidou_tests::logo::DEFAULT);
     let got = indexed(fb);
     for (k, y) in rows.clone().enumerate() {
         let want = &src.px[(from + k) * W..(from + k + 1) * W];
@@ -739,7 +739,7 @@ fn assert_shows_the_logo_source(what: &str, fb: &[u16], rows: std::ops::Range<us
     }
 }
 
-/// The title card is Cracktro Chrome's scene but for the card's two lines of text over it.
+/// The title card is Metal Chrome's scene but for the card's two lines of text over it.
 fn assert_title_card_is_the_logo_source(fb: &[u16]) {
     let version = sidou_sys::BOOT_SCENE_VERSION_ROW as usize * 8;
     let key = sidou_sys::BOOT_SCENE_KEY_ROW as usize * 8;
@@ -891,10 +891,11 @@ fn about_opens_from_the_menu_and_home_goes_back() {
     let mut m = booted(&fw);
     open_about(&mut m, &fw);
     compare_golden(&build, "about", &m.soc.lcd.fb, &[ABOUT_VERSION]);
-    // The logo at the top: the scene's lettering band (app/logo.h LOGO_CHROME_BAND_ROW).
-    let band = sidou_sys::LOGO_CHROME_BAND_ROW as usize * 8;
+    // The logo at the top: the scene's lettering band (app/logo.h LOGO_METAL_BAND_ROW).
+    let band = sidou_sys::LOGO_METAL_BAND_ROW as usize * 8;
     let top = sidou_sys::ABOUT_LOGO_ROW as usize * 8;
-    assert_shows_the_logo_source("About", &m.soc.lcd.fb, top..top + 64, band);
+    let rows = sidou_sys::ABOUT_LOGO_ROWS as usize * 8;
+    assert_shows_the_logo_source("About", &m.soc.lcd.fb, top..top + rows, band);
     // The cracktro moves every frame.
     let before = m.soc.lcd.fb.clone();
     m.run_ms(UI_PERIOD_MS);

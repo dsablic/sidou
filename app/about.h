@@ -3,7 +3,7 @@
 /* ABOUT, from the menu: the credits as a cracktro, after the browser prototype's, trimmed to
  * the SPI budget (docs/art/README.md "About").
  *
- * Top to bottom on black: the logo (app/logo.h; Cracktro Chrome's lettering band, 240 x 64
+ * Top to bottom on black: the logo (app/logo.h; Metal Chrome's lettering band, 240 x 72
  * pixels), a ramp line, the credits pages from CREDITS.md (app/credits.h) fading in and out
  * over a starfield, another ramp line, and two raster bars sweeping behind a sine scroller.
  *
@@ -47,8 +47,8 @@ extern "C" {
  * ABOUT_BAR_ROWS rows from ABOUT_BAR_ROW, with the scroller over it, bobbing two rows up and
  * down from ABOUT_SCROLL_ROW. */
 #define ABOUT_LOGO_ROW 0u
-#define ABOUT_LOGO_ROWS 8u
-#define ABOUT_RAMP_TOP 8u
+#define ABOUT_LOGO_ROWS 9u
+#define ABOUT_RAMP_TOP 9u
 #define ABOUT_HEADING_ROW 10u
 #define ABOUT_LINES_ROW 12u
 #define ABOUT_RAMP_BOTTOM 20u

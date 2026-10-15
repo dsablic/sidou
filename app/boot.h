@@ -42,7 +42,7 @@
 extern "C" {
 #endif
 
-/* The title card is the logo's full-screen scene (app/logo.h, Cracktro Chrome's) with the
+/* The title card is the logo's full-screen scene (app/logo.h, Metal Chrome's) with the
  * version line and PRESS ANY KEY over it, on rows that are black in the scene, above its top
  * raster bar and below its bottom one. */
 #define BOOT_SCENE_VERSION_ROW 1u

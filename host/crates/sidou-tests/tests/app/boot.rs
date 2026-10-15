@@ -12,10 +12,10 @@ use crate::{assert_wipe_holds_still, drain, grid_row, pixels, wipe_frames, Sent,
 const COLS: usize = GRID_COLS as usize;
 const W: usize = COLS * 8;
 
-/// The title card is Cracktro Chrome's scene, pixel for pixel, but for the card's text over it:
+/// The title card is Metal Chrome's scene, pixel for pixel, but for the card's text over it:
 /// the version line and PRESS ANY KEY (app/boot.h BOOT_SCENE_*_ROW).
 fn assert_title_card_is_the_scene(ui: &Ui) {
-    let img = sidou_tests::logo::load();
+    let img = sidou_tests::logo::load("metal-chrome");
     let px = pixels(&ui.g);
     let text = [BOOT_SCENE_VERSION_ROW as usize, BOOT_SCENE_KEY_ROW as usize];
     for y in (0..W).filter(|y| !text.contains(&(y / 8))) {

@@ -1,28 +1,62 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! The logo's bitmap: app/logo_bitmap.c is generated from assets/logo/cracktro-chrome.png
-//! (sidou_tests::logo). SIDOU_LOGO_UPDATE=1 rewrites it.
+//! The logos' bitmaps: app/logo_bitmap.c is generated from assets/logo/metal-chrome.png and
+//! assets/logo/cracktro-chrome.png (sidou_tests::logo). SIDOU_LOGO_UPDATE=1 rewrites it.
 
 use sidou_sys::*;
 use sidou_tests::logo::{self, Image};
 
 fn scene() -> Image {
-    logo::load()
+    logo::load("cracktro-chrome")
+}
+
+fn metal() -> Image {
+    logo::load("metal-chrome")
+}
+
+/// Each logo's compiled bitmap, by its PNG's name.
+fn compiled(name: &str) -> &'static grid_bitmap {
+    match name {
+        "metal-chrome" => unsafe { &logo_metal_chrome_bitmap },
+        "cracktro-chrome" => unsafe { &logo_cracktro_chrome_bitmap },
+        _ => panic!("no bitmap for {name}"),
+    }
 }
 
 #[test]
 fn the_generated_file_is_up_to_date() {
     let update = std::env::var("SIDOU_LOGO_UPDATE").as_deref() == Ok("1");
-    let stale = logo::check_or_write(&scene(), update);
+    let stale = logo::check_or_write(update);
     assert!(
         stale.is_empty(),
         "{stale:?} is stale; rerun with SIDOU_LOGO_UPDATE=1"
     );
-    for line in logo::c_source(&scene()).lines() {
+    assert_eq!(logo::LOGOS[0].name, logo::DEFAULT, "the default first");
+    for line in logo::c_source().lines() {
         assert!(
             line.len() <= 100,
             "generated line over 100 columns: {line:?}"
         );
+    }
+}
+
+#[test]
+fn metal_chromes_scene_is_a_full_screen_in_the_art_palette() {
+    let img = metal();
+    assert_eq!((img.w, img.h), (240, 240));
+    assert!(img.px.iter().all(|&c| c < 16));
+    // The chrome ramp (red, light red, orange, yellow, white), the purple shadow and the glow's
+    // blue are all there.
+    for c in [
+        GRID_RED,
+        GRID_LIGHT_RED,
+        GRID_ORANGE,
+        GRID_YELLOW,
+        GRID_WHITE,
+        GRID_PURPLE,
+        GRID_BLUE,
+    ] {
+        assert!(img.px.contains(&(c as u8)), "colour {c} missing");
     }
 }
 
@@ -83,14 +117,31 @@ fn encoding_round_trips_every_kind_of_row() {
         enc.data[usize::from(enc.rows[0])..][..3],
         [0xf5, 0xf5, 0x75]
     );
-    let img = scene();
-    assert_eq!(logo::decode(&logo::encode(&img), img.w, img.h), img.px);
+    let imgs: Vec<Image> = logo::LOGOS.iter().map(|l| logo::load(l.name)).collect();
+    for img in &imgs {
+        assert_eq!(logo::decode(&logo::encode(img), img.w, img.h), img.px);
+    }
+    // Encoded together, each image decodes to itself from the shared runs.
+    let (rows, data) = logo::encode_shared(&imgs.iter().collect::<Vec<_>>());
+    for (img, rows) in imgs.iter().zip(rows) {
+        let enc = logo::Encoded {
+            rows,
+            data: data.clone(),
+        };
+        assert_eq!(logo::decode(&enc, img.w, img.h), img.px);
+    }
 }
 
 #[test]
-fn the_compiled_bitmap_is_the_png_pixel_for_pixel() {
-    let img = scene();
-    let b = unsafe { &logo_cracktro_chrome_bitmap };
+fn the_compiled_bitmaps_are_the_pngs_pixel_for_pixel() {
+    for l in logo::LOGOS {
+        compiled_is_png(l.name);
+    }
+}
+
+fn compiled_is_png(name: &str) {
+    let img = logo::load(name);
+    let b = compiled(name);
     assert_eq!((usize::from(b.w), usize::from(b.h)), (img.w, img.h));
     for y in 0..img.h {
         let want = &img.px[y * img.w..(y + 1) * img.w];
@@ -108,20 +159,32 @@ fn the_compiled_bitmap_is_the_png_pixel_for_pixel() {
     }
 }
 
-/// What the scene costs in flash: its runs and row offsets, against 4 bits a pixel raw.
+/// What each scene costs in flash: its runs and row offsets, against 4 bits a pixel raw.
+/// Cracktro Chrome is a quarter of raw; Metal Chrome's dithered glow (single pixels of blue,
+/// purple and light red over black) makes short runs: a third.
 #[test]
-fn the_bitmap_is_a_quarter_of_its_raw_size() {
-    let img = scene();
-    let enc = logo::encode(&img);
-    let bytes = enc.data.len() + 2 * enc.rows.len();
-    let raw = img.w * img.h / 2;
-    println!(
-        "cracktro chrome: {} bytes of runs + {} of row offsets = {bytes}, raw {raw} ({:.1} %)",
-        enc.data.len(),
-        2 * enc.rows.len(),
-        100.0 * bytes as f64 / raw as f64
+fn the_bitmaps_are_a_quarter_and_a_third_of_their_raw_size() {
+    let mut total = 0;
+    for (name, most) in [("cracktro-chrome", 4526), ("metal-chrome", 9753)] {
+        let img = logo::load(name);
+        let (runs, offs) = logo::size(&img);
+        let bytes = runs + offs;
+        let raw = img.w * img.h / 2;
+        println!(
+            "{name}: {runs} bytes of runs + {offs} of row offsets = {bytes}, raw {raw} ({:.1} %)",
+            100.0 * bytes as f64 / raw as f64
+        );
+        assert!(bytes <= most, "{name}: {bytes} bytes");
+        total += bytes;
+    }
+    let imgs: Vec<Image> = logo::LOGOS.iter().map(|l| logo::load(l.name)).collect();
+    let (rows, data) = logo::encode_shared(&imgs.iter().collect::<Vec<_>>());
+    let together = data.len() + rows.iter().map(|r| 2 * r.len()).sum::<usize>();
+    println!("together: {together} bytes ({total} apart)");
+    assert!(
+        together <= total,
+        "sharing rows across the scenes costs nothing"
     );
-    assert!(bytes * 4 <= raw, "{bytes} bytes");
 }
 
 fn png_bytes(w: u32, h: u32, palette: &[[u8; 3]], px: &[u8]) -> Vec<u8> {
