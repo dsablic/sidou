@@ -515,9 +515,42 @@ fn a_learned_cc_from_midi_is_never_echoed_even_on_cc_1() {
         assert_eq!(m.get(LIVE_PARAM_CUTOFF), from_cc(LIVE_PARAM_CUTOFF, v));
         assert_eq!(m.tick(), [], "{v} echoed");
     }
-    // A panel change in the same pass's look still goes.
+    // A panel change after the passes still goes, the tick's look finds it: on CC 1, the
+    // cutoff's learned CC.
     m.set(LIVE_PARAM_CUTOFF, 0);
     assert_eq!(m.tick(), [cc_packet(1, 0)]);
+}
+
+/// A CC neither the map nor learn takes changes no parameter, so a pass of it costs MIDI out no
+/// look (midi_rx_watch): CC 64, a free CC nobody learned, a reserved row's CC. Once learn takes
+/// one, waiting for a CC or bound to it, it does.
+#[test]
+fn a_cc_neither_the_map_nor_learn_takes_costs_midi_out_no_look() {
+    let mut m = Learned::new();
+    let looked = |m: &mut Learned, cc: u8| {
+        for b in [0xB0, cc, 64] {
+            m.entry(TRS, u32::from(b), m.rx.epoch);
+        }
+        let looked = m.rx.looked;
+        unsafe { midi_rx_settle(&mut *m.rx) };
+        looked
+    };
+    assert_eq!(looked(&mut m, 64), 0, "CC 64");
+    assert_eq!(looked(&mut m, 14), 0, "CC 14, free and not learned");
+    assert_eq!(looked(&mut m, 85), 0, "CC 85, a reserved row's");
+    assert_eq!(looked(&mut m, LIVE_CC_CUTOFF as u8), 1, "the map's CC 74");
+    unsafe {
+        midi_learn_button(&mut *m.ml, 0);
+        midi_learn_knob(&mut *m.ml, LIVE_PARAM_RESONANCE, 0);
+    }
+    assert_eq!(looked(&mut m, 64), 1, "CC 64 while a parameter waits");
+    assert_eq!(take(&mut m.ml), MIDI_LEARN_LEARNED);
+    assert_eq!(looked(&mut m, 64), 1, "CC 64 learned");
+    assert_eq!(
+        m.get(LIVE_PARAM_RESONANCE),
+        from_cc(LIVE_PARAM_RESONANCE, 64)
+    );
+    assert_eq!(m.tick(), [], "nothing echoed");
 }
 
 // --- the panel's knobs ---

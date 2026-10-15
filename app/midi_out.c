@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "midi_out.h"
 
+#include <stddef.h>
+
 /* Code Index Numbers (midi_usb.h). */
 #define CIN_CC 0x0Bu
 #define CIN_PROGRAM 0x0Cu
@@ -55,16 +57,19 @@ static uint32_t wire_cc(const midi_out* o, const live* l, uint32_t p, const midi
 }
 
 static void resync(midi_out* o, const live* l) {
+    live_params(l, o->seen);
     for (uint32_t p = 0; p < LIVE_PARAM_COUNT; ++p) {
-        uint16_t v = (uint16_t)live_param_get(l, p);
-        o->seen[p] = v;
-        o->wire[p] = v;
+        o->wire[p] = o->seen[p];
         o->pending[p] = 0;
     }
 }
 
-/* What changed since the last look: the panel's (remote 0) or MIDI input's (remote 1). */
+/* What changed since the last look: the panel's (remote 0) or MIDI input's (remote 1). Every
+ * parameter in one snapshot (live_params), not a live_param_get each: a CC flood pays for two
+ * looks a pass. */
 static void look(midi_out* o, const live* l, int remote) {
+    uint16_t now[LIVE_PARAM_COUNT];
+    live_params(l, now);
     if (l->preset != o->preset_seen) {
         /* A preset change: the program change carries every parameter it loaded. The rest
          * are diffed as usual below, so a pending change of one survives it. */
@@ -72,15 +77,14 @@ static void look(midi_out* o, const live* l, int remote) {
         o->preset_pending = remote ? 0u : 1u;
         for (uint32_t p = 0; p < LIVE_PARAM_COUNT; ++p) {
             if (PRESET_LOADS >> p & 1u) {
-                uint16_t v = (uint16_t)live_param_get(l, p);
-                o->seen[p] = v;
-                o->wire[p] = v;
+                o->seen[p] = now[p];
+                o->wire[p] = now[p];
                 o->pending[p] = 0;
             }
         }
     }
     for (uint32_t p = 0; p < LIVE_PARAM_COUNT; ++p) {
-        uint16_t v = (uint16_t)live_param_get(l, p);
+        uint16_t v = now[p];
         if (v == o->seen[p]) {
             continue;
         }
@@ -107,7 +111,7 @@ void midi_out_init(midi_out* o, const live* l, uint8_t channel, uint8_t hires) {
     o->packets = 0;
     o->deferred = 0;
     o->dropped = 0;
-    o->learn = 0;
+    o->learn = NULL;
 }
 
 void midi_out_learn(midi_out* o, const midi_learn* learn) {

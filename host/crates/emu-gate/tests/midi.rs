@@ -556,6 +556,26 @@ fn rates(m: &mut Machine, ms: u64) -> (f64, f64) {
     )
 }
 
+/// `rates` with the jack at its full speed throughout (`Machine::midi_paced`).
+fn paced_rates(m: &mut Machine, ms: u64, message: impl FnMut(u32) -> Vec<u8>) -> (f64, f64) {
+    let (isr, main) = (m.isr_steps, m.main_steps);
+    m.midi_paced(ms, message);
+    let per_s = 1000.0 / ms as f64;
+    (
+        (m.isr_steps - isr) as f64 * per_s,
+        (m.main_steps - main) as f64 * per_s,
+    )
+}
+
+/// After `midi_paced`: nothing dropped and bytes still waiting, so the jack never stopped.
+fn jack_busy_throughout(m: &Machine) {
+    assert_eq!(m.soc.periph.midi_dropped(), 0, "the jack dropped bytes");
+    assert!(
+        m.soc.periph.midi_queued() > 0,
+        "the jack ran dry: the window was not at full speed"
+    );
+}
+
 /// Needs no firmware symbol, so it also measures a build from before MIDI input for the
 /// difference.
 #[test]
@@ -567,13 +587,10 @@ fn midi_input_costs_little() {
     m.run_ms(1500); // past a USB retry (once a second while no host answers)
     let (isr_idle, main_idle) = rates(&mut m, 2000);
     // The jack at full speed for 2 s: a note-on and its note-off every 1.92 ms.
-    let mut stream = Vec::new();
-    for i in 0..1042u32 {
+    let (isr_busy, main_busy) = paced_rates(&mut m, 2000, |i| {
         let note = 48 + (i % 24) as u8;
-        stream.extend([0x90, note, 0x64, 0x80, note, 0x00]);
-    }
-    m.midi(&stream);
-    let (isr_busy, main_busy) = rates(&mut m, 2000);
+        vec![0x90, note, 0x64, 0x80, note, 0x00]
+    });
     let report = serde_json::json!({
         "isr_instructions_per_s_idle": isr_idle,
         "main_instructions_per_s_idle": main_idle,
@@ -582,6 +599,7 @@ fn midi_input_costs_little() {
         "midi_bytes_left_in_the_jack": m.soc.periph.midi_queued(),
     });
     println!("{report}");
+    jack_busy_throughout(&m);
     assert!(
         main_idle < 5e6 && main_busy < 5e6,
         "the main loop runs {:.2}M/s idle, {:.2}M/s with TRS MIDI at full speed",
@@ -742,13 +760,12 @@ fn midi_out_costs_little_and_waits_for_no_one() {
     attach_host(&mut m, &fw);
     let (_, main_idle) = rates(&mut m, 2000);
     // A CC at full TRS speed for 2 s, 1042 a second: MIDI out looks before and after each
-    // (midi_rx_watch), and echoes none.
-    let mut stream = Vec::new();
-    for i in 0..2084u32 {
-        stream.extend([0xB0, CC_CUTOFF, (i % 128) as u8]);
-    }
-    m.midi(&stream);
-    let (_, main_cc_flood) = rates(&mut m, 2000);
+    // (midi_rx_watch), and echoes none. 4.54M/s, 2.3k instructions a CC (5.37M/s when each
+    // look read the 37 parameters through live_param_get; this window was half idle before
+    // the stream was paced, since fm1-emu drops a backlog past 3125 bytes).
+    let (_, main_cc_flood) = paced_rates(&mut m, 2000, |i| vec![0xB0, CC_CUTOFF, (i % 128) as u8]);
+    jack_busy_throughout(&m);
+    m.run_ms(1000);
     assert_eq!(
         m.soc.periph.midi_queued(),
         0,
@@ -871,11 +888,12 @@ fn a_tick_of_midi_out_costs_little_at_worst() {
         packets >= sidou_sys::MIDI_OUT_TICK_PACKETS,
         "{packets} packets"
     );
-    // 1.2k idle (the look at 37 parameters); 2.1k with every parameter back at its value on
-    // the wire; at worst 2.9k, every parameter changed, and as much with each bound by MIDI
-    // learn (7.1k before the rows were cached).
+    // 0.8k idle (the look at 37 parameters, one live_params snapshot: 1.2k with a
+    // live_param_get each); 1.7k with every parameter back at its value on the wire; at worst
+    // 2.6k, every parameter changed, and less with each bound by MIDI learn (7.1k before the
+    // rows were cached).
     assert!(
-        idle < 1_300 && deduplicated < 3_500 && changed < 3_500 && changed_learned < 3_500,
+        idle < 900 && deduplicated < 2_000 && changed < 3_000 && changed_learned < 3_000,
         "a tick of MIDI out: {idle} instructions idle, {deduplicated} with every parameter \
          deduplicated, {changed} with every parameter changed, {changed_learned} also learned"
     );
@@ -944,18 +962,18 @@ fn a_usb_cc_burst_costs_one_look_a_drain_pass() {
     println!("{report}");
     assert_eq!(entries, 20 * 16);
     assert!(echoed.is_empty(), "MIDI in echoed: {echoed:08x?}");
-    // MIDI out's two looks (2.2k) and 16 CCs onto live (0.4k each): 8.2k. With a look before
-    // and after every CC it was 31.5k.
+    // MIDI out's two looks and 16 CCs onto live: 7.5k (8.5k when a look read the parameters
+    // one live_param_get at a time). With a look before and after every CC it was 31.5k.
     assert!(
-        worst_pass < 9_000,
+        worst_pass < 8_000,
         "a drain pass of 16 CCs costs {worst_pass} instructions"
     );
-    // 10.5M/s, past the 5M/s of the other floods: the CCs themselves cost 6M/s at this rate
-    // (MIDI out 2.2M/s). USB holds what the ring has no room for in the endpoint and the host
-    // retries, so input this dense slows down rather than stalling the main loop. 33.7M/s
-    // with the looks around every CC.
+    // 9.6M/s, past the 5M/s of the other floods: the CCs themselves cost 6M/s at this rate.
+    // USB holds what the ring has no room for in the endpoint and the host retries, so input
+    // this dense slows down rather than stalling the main loop. 10.6M/s when a look read the
+    // parameters one at a time, 33.7M/s with the looks around every CC.
     assert!(
-        main_flood < 12e6,
+        main_flood < 10.5e6,
         "the main loop runs {:.2}M/s with 16k CCs a second over USB",
         main_flood / 1e6
     );
@@ -967,7 +985,9 @@ fn a_usb_cc_burst_costs_one_look_a_drain_pass() {
 const SAVE: u8 = 9;
 const HOME: u8 = 8;
 /// A CC the map leaves free (docs/reference/midi.md).
-const CC_FREE: u8 = 21;
+const CC_FREE: u8 = 14;
+/// The sustain pedal: neither the map nor learn takes it.
+const CC_SUSTAIN: u8 = 64;
 
 /// platform/fm1/main.c `instrument`, a `live`, at the device's layout.
 fn live_cutoff(m: &mut Machine, fw: &Firmware) -> u32 {
@@ -977,7 +997,7 @@ fn live_cutoff(m: &mut Machine, fw: &Firmware) -> u32 {
     )
 }
 
-/// platform/fm1/midi.c `learned`: the state and CC 21's bound row.
+/// platform/fm1/midi.c `learned`: the state and CC 14's bound row.
 fn learned(m: &mut Machine, fw: &Firmware) -> (u8, u8, u8) {
     let base = fw.symbol("learned");
     (
@@ -988,11 +1008,11 @@ fn learned(m: &mut Machine, fw: &Firmware) -> (u8, u8, u8) {
     )
 }
 
-/// Hold SAVE, turn K1, let SAVE go, send CC 21 over TRS: CC 21 drives the cutoff from then
+/// SAVE down (the press arms learn), K1 turned, SAVE up (the frame stays), CC 14 over TRS: CC 14 drives the cutoff from then
 /// on, on any channel, through the map's linear curve, and the map's CC 74 still does too.
 /// HOME then cancels a second learn and SAVE three times clears the binding.
 #[test]
-fn midi_learn_over_trs_binds_cc_21_to_k1s_cutoff() {
+fn midi_learn_over_trs_binds_cc_14_to_k1s_cutoff() {
     let Some(fw) = fixture("the MIDI learn test") else {
         return;
     };
@@ -1004,7 +1024,7 @@ fn midi_learn_over_trs_binds_cc_21_to_k1s_cutoff() {
         / size_of::<sidou_sys::midi_map_entry>();
     let from_cc = |v: u8| unsafe { sidou_sys::midi_map_from_cc(cutoff_row, v) };
 
-    // Hold SAVE and turn K1.
+    // SAVE down, and K1 turned before it comes up: the frame stays open either way.
     m.key(SAVE, true);
     m.run_ms(50);
     assert_eq!(
@@ -1029,7 +1049,7 @@ fn midi_learn_over_trs_binds_cc_21_to_k1s_cutoff() {
             sidou_sys::MIDI_LEARN_NONE as u8
         )
     );
-    // CC 21 over TRS binds it, and its value sets the cutoff.
+    // CC 14 over TRS binds it, and its value sets the cutoff.
     m.midi(&[0xB0, CC_FREE, 32]);
     m.run_ms(100);
     let after = learned(&mut m, &fw);
@@ -1043,15 +1063,15 @@ fn midi_learn_over_trs_binds_cc_21_to_k1s_cutoff() {
     m.midi(&[0xB0, CC_CUTOFF, 100]);
     m.run_ms(20);
     let map_cc = cutoff(&mut m, &fw);
-    println!("learned {after:?}; CC 21 (value, live, chip): {follow:?}; CC 74 = 100: {map_cc}");
+    println!("learned {after:?}; CC 14 (value, live, chip): {follow:?}; CC 74 = 100: {map_cc}");
     assert_eq!(
         after,
         (sidou_sys::MIDI_LEARN_IDLE as u8, 1, row_index as u8),
-        "CC 21 is not bound to the cutoff's row"
+        "CC 14 is not bound to the cutoff's row"
     );
     assert_eq!(top, status, "the learn frame did not close");
     for (v, l, chip) in follow {
-        assert_eq!((l, chip), (from_cc(v), from_cc(v)), "CC 21 = {v}");
+        assert_eq!((l, chip), (from_cc(v), from_cc(v)), "CC 14 = {v}");
     }
     assert_eq!(map_cc, from_cc(100), "the map's CC 74 stopped working");
 
@@ -1062,10 +1082,10 @@ fn midi_learn_over_trs_binds_cc_21_to_k1s_cutoff() {
     press(&mut m, HOME);
     m.run_ms(50);
     assert_eq!(common::top_view(&mut m, &fw), status);
-    m.midi(&[0xB0, 22, 127]);
+    m.midi(&[0xB0, CC_FREE + 1, 127]);
     m.run_ms(20);
-    assert_eq!(learned(&mut m, &fw).1, 1, "a cancelled learn bound CC 22");
-    // SAVE three times clears: CC 21 does nothing again.
+    assert_eq!(learned(&mut m, &fw).1, 1, "a cancelled learn bound CC 15");
+    // SAVE three times clears: CC 14 does nothing again.
     for _ in 0..3 {
         press(&mut m, SAVE);
     }
@@ -1084,16 +1104,16 @@ fn midi_learn_over_trs_binds_cc_21_to_k1s_cutoff() {
     assert_eq!(
         cutoff(&mut m, &fw),
         from_cc(100),
-        "a cleared CC 21 still sets the cutoff"
+        "a cleared CC 14 still sets the cutoff"
     );
     assert_eq!(common::top_view(&mut m, &fw), status);
 }
 
 /// A learned CC costs a lookup: a flood of it at full TRS speed costs the main loop what a
-/// flood of a map CC does, with MIDI out watching (no echo). The absolute bound is
-/// `midi_out_costs_little_and_waits_for_no_one`'s, whose map-CC flood also goes through
-/// learn's lookup now; this one feeds the jack as it takes the bytes, so the flood lasts the
-/// whole 2 s (fm1-emu drops a backlog past one second).
+/// flood of a map CC does, with MIDI out watching (no echo), and both stay within the bound
+/// of `midi_out_costs_little_and_waits_for_no_one`. So does a flood of CC 64, which neither
+/// the map nor learn takes: it skips MIDI out's looks. Each flood keeps the jack busy for
+/// the whole 2 s (`Machine::midi_paced`).
 #[test]
 fn a_learned_cc_flood_costs_what_a_map_cc_flood_does() {
     let Some(fw) = fixture("the MIDI learn test") else {
@@ -1106,28 +1126,26 @@ fn a_learned_cc_flood_costs_what_a_map_cc_flood_does() {
     m.run_ms(50);
     m.midi(&[0xB0, CC_FREE, 0]);
     m.run_ms(1500); // past a USB retry
-                    // 10 CCs every 10 ms for 2 s, fed as the jack takes them (fm1-emu holds at most a
-                    // second's backlog): 1000 CCs a second, 96% of the jack's speed.
+
+    // A CC every 0.96 ms for 2 s, the jack's full speed; then the backlog drains. The last
+    // value fed is the one that stays.
     let flood = |m: &mut Machine, cc: u8| {
         let main = m.main_steps;
-        for t in 0..200u32 {
-            let mut s = vec![0xB0];
-            for i in 0..10 {
-                s.extend([cc, ((t * 10 + i) % 128) as u8]);
-            }
-            m.midi(&s);
-            m.run_ms(10);
-        }
-        m.run_ms(20); // the last bytes through the UART and the ring
-        (m.main_steps - main) as f64 / 2.02
+        let fed = m.midi_paced(2000, |i| vec![0xB0, cc, (i % 128) as u8]);
+        let rate = (m.main_steps - main) as f64 / 2.0;
+        jack_busy_throughout(m);
+        m.run_ms(1000);
+        (rate, ((fed - 1) % 128) as u8)
     };
-    let main_map = flood(&mut m, CC_CUTOFF);
-    let main_learned = flood(&mut m, CC_FREE);
+    let (main_map, _) = flood(&mut m, CC_CUTOFF);
+    let (main_learned, learned_last) = flood(&mut m, CC_FREE);
+    let (main_unmapped, _) = flood(&mut m, CC_SUSTAIN);
     let s = stats(&mut m, &fw);
     let (echoed, _) = queued(&mut m, &fw, 0);
     let report = serde_json::json!({
         "main_instructions_per_s_trs_cc_flood_map": main_map,
         "main_instructions_per_s_trs_cc_flood_learned": main_learned,
+        "main_instructions_per_s_trs_cc_flood_unmapped": main_unmapped,
     });
     println!("{report}; {s:?}");
     assert_eq!(
@@ -1141,7 +1159,7 @@ fn a_learned_cc_flood_costs_what_a_map_cc_flood_does() {
     assert_eq!(cutoff(&mut m, &fw), unsafe {
         sidou_sys::midi_map_from_cc(
             sidou_sys::midi_map_for_param(sidou_sys::LIVE_PARAM_CUTOFF),
-            (1999 % 128) as u8,
+            learned_last,
         )
     });
     assert!(echoed.is_empty(), "MIDI in echoed: {echoed:08x?}");
@@ -1150,5 +1168,13 @@ fn a_learned_cc_flood_costs_what_a_map_cc_flood_does() {
         "the main loop runs {:.3}M/s in a map CC flood, {:.3}M/s in a learned CC flood",
         main_map / 1e6,
         main_learned / 1e6
+    );
+    assert!(
+        main_map < 5e6 && main_learned < 5e6 && main_unmapped < 5e6,
+        "the main loop runs {:.3}M/s in a map CC flood, {:.3}M/s in a learned CC flood, \
+         {:.3}M/s in a CC 64 flood",
+        main_map / 1e6,
+        main_learned / 1e6,
+        main_unmapped / 1e6
     );
 }

@@ -890,6 +890,36 @@ uint32_t live_param_get(const live* l, uint32_t param) {
     }
 }
 
+void live_params(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
+    out[LIVE_PARAM_CUTOFF] = l->cutoff;
+    out[LIVE_PARAM_RESONANCE] = l->resonance;
+    out[LIVE_PARAM_PULSE_WIDTH] = l->pulse_width;
+    out[LIVE_PARAM_VOLUME] = l->master;
+    out[LIVE_PARAM_WAVEFORM] = (uint16_t)(l->control >> 4);
+    out[LIVE_PARAM_RING] = (l->control & CTRL_RING) ? 1u : 0u;
+    out[LIVE_PARAM_SYNC] = (l->control & CTRL_SYNC) ? 1u : 0u;
+    out[LIVE_PARAM_ATTACK] = (uint16_t)(l->attack_decay >> 4);
+    out[LIVE_PARAM_DECAY] = l->attack_decay & 0x0fu;
+    out[LIVE_PARAM_SUSTAIN] = (uint16_t)(l->sustain_release >> 4);
+    out[LIVE_PARAM_RELEASE] = l->sustain_release & 0x0fu;
+    out[LIVE_PARAM_FILTER_MODE] = (l->filter_mode >> 4) & 7u;
+    out[LIVE_PARAM_FILTER_VOICES] = l->filter_voices & 7u;
+    out[LIVE_PARAM_MODEL] = l->model_req == SID_MODEL_8580 ? 1u : 0u;
+    for (uint32_t s = 0; s < LIVE_SLOTS; ++s) {
+        for (uint32_t f = 0; f < LIVE_SLOT_FIELDS; ++f) {
+            out[LIVE_PARAM_SLOT + s * LIVE_SLOT_FIELDS + f] = l->slot[s][f];
+        }
+    }
+    out[LIVE_PARAM_BEND_RANGE] = l->bend_range;
+    out[LIVE_PARAM_VELOCITY_TARGET] = l->velocity_target;
+    out[LIVE_PARAM_MOD_TARGET] = l->mod_target;
+    out[LIVE_PARAM_PRESSURE_TARGET] = l->pressure_target;
+    out[LIVE_PARAM_VIBRATO_RATE] = l->vibrato_rate;
+    out[LIVE_PARAM_VIBRATO_DEPTH] = l->vibrato_depth;
+    out[LIVE_PARAM_VIBRATO_DELAY] = l->vibrato_delay;
+    out[LIVE_PARAM_ENVELOPE_MODE] = l->envelope_mode;
+}
+
 uint32_t live_slot_algorithms(uint32_t slot) {
     static const uint8_t COUNT[LIVE_SLOTS] = {SID_DIST_COUNT, SID_MOD_COUNT, SID_FXSLOT_COUNT};
     return slot < LIVE_SLOTS ? COUNT[slot] : 0u;

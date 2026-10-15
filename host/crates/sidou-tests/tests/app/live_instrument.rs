@@ -919,3 +919,31 @@ fn a_preset_change_counts_as_releasing_the_held_notes_now() {
     rig.note_on(52);
     assert_eq!(voice_of(&rig, 52), 1);
 }
+
+/// live_params, MIDI out's snapshot of every parameter at once, reads what live_param_get
+/// does, parameter by parameter, over random settings of every parameter and preset.
+#[test]
+fn live_params_reads_every_parameter_as_live_param_get_does() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    let mut seed = 0x5eed_9a7au32;
+    let mut next = move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        seed
+    };
+    for round in 0..2000 {
+        if round % 100 == 0 {
+            rig.set_preset((next() % LIVE_PRESET_COUNT) as u8);
+        }
+        let p = next() % LIVE_PARAM_COUNT;
+        let max = unsafe { live_param_max(p) };
+        unsafe { live_param_set(&mut *rig.live, p, next() % (max + 1)) };
+        let mut all = [0u16; LIVE_PARAM_COUNT as usize];
+        unsafe { live_params(&*rig.live, all.as_mut_ptr()) };
+        let each: Vec<u16> = (0..LIVE_PARAM_COUNT)
+            .map(|p| unsafe { live_param_get(&*rig.live, p) } as u16)
+            .collect();
+        assert_eq!(all.to_vec(), each, "round {round}, after parameter {p}");
+    }
+}

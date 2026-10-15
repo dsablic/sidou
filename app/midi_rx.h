@@ -58,9 +58,9 @@ typedef struct {
 void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch);
 /* MIDI out learns which changes are MIDI input's, so it never echoes them. Once a pass, not
  * once a message: before the first message of a pass that can change a parameter (a program
- * change, a CC other than the NRPN and RPN selection, 120, 121, 123 and the wheel on a target
- * other than the pulse width, unless MIDI learn takes CC 1) the parsers call midi_out_local, and midi_rx_settle, at the end
- * of the pass, calls midi_out_remote. That needs nothing but MIDI input to change a parameter
+ * change, data entry, a CC the map gives a parameter, CC 1 while it is the pulse width's, or
+ * a CC MIDI learn takes) the parsers call midi_out_local, and midi_rx_settle, at the end of
+ * the pass, calls midi_out_remote. That needs nothing but MIDI input to change a parameter
  * between the two (the caller's to keep): every change in the pass is taken as MIDI's. So a
  * burst costs MIDI out two looks however long it is, and notes, bend and aftertouch cost it
  * nothing. out may be NULL: none. */

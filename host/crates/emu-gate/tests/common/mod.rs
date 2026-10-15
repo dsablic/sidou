@@ -200,6 +200,10 @@ pub struct Machine {
     alnk_entry: u64,
 }
 
+/// The TRS backlog `Machine::midi_paced` keeps: under a third of fm1-emu's limit, about 0.3 s
+/// of bytes.
+pub const MIDI_PACED_BACKLOG: usize = 900;
+
 impl Machine {
     pub fn boot(image: &[u8]) -> Self {
         let mut xip = vec![0u8; (APP_BASE - fm1_soc::XIP_BASE) as usize];
@@ -389,6 +393,29 @@ impl Machine {
         for &b in bytes {
             self.soc.periph.apply(&fm1_soc::Action::Midi { b });
         }
+    }
+
+    /// Runs `ms` milliseconds with the TRS jack at its full speed: `message(i)` gives message
+    /// `i` (whole messages, so the last one fed is the last one played once the jack
+    /// drains), fed as the jack takes them. fm1-emu drops what is behind a second's backlog
+    /// (`MIDI_QUEUE_MAX`, 3125 bytes), so a stream poured in at once plays half of it and
+    /// leaves the jack idle for the rest: here the backlog is topped up to
+    /// `MIDI_PACED_BACKLOG` bytes every millisecond, so it never runs dry (a byte takes 320
+    /// us) and never overflows. Returns how many messages it fed. The caller checks
+    /// `midi_dropped() == 0` and `midi_queued() > 0` at the end: the jack was busy throughout.
+    pub fn midi_paced(&mut self, ms: u64, mut message: impl FnMut(u32) -> Vec<u8>) -> u32 {
+        let mut fed = 0u32;
+        let mut top_up = |m: &mut Machine| {
+            while m.soc.periph.midi_queued() < MIDI_PACED_BACKLOG {
+                m.midi(&message(fed));
+                fed += 1;
+            }
+        };
+        for _ in 0..ms {
+            top_up(self);
+            self.run_ms(1);
+        }
+        fed
     }
 
     /// The left channel of everything played so far (mono unless an effect slot makes

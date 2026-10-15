@@ -353,6 +353,9 @@ void live_param_set(live* l, uint32_t param, uint32_t value);
 /* A parameter's value; 0 for an unknown one. For the chip model, the one last asked for
  * (model_req), so a set reads back at once; the chip's is the model field. */
 uint32_t live_param_get(const live* l, uint32_t param);
+/* Every parameter's value at once, out[p] as live_param_get(l, p): straight-line, for MIDI out,
+ * which compares them all several times a tick. */
+void live_params(const live* l, uint16_t out[LIVE_PARAM_COUNT]);
 /* RPN 0, pitch-bend sensitivity: sets the bend range (clamped to 0..LIVE_BEND_RANGE_MAX) as
  * the channel's setting, which program changes keep (RP-015 makes RPN values channel state)
  * until power-off. Setting LIVE_PARAM_BEND_RANGE (NRPN 6/0) is a preset edit and ends that:

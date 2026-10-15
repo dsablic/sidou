@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "midi_rx.h"
 
+#include <stddef.h>
+
 #include "midi_usb.h"
 
 void midi_rx_live(midi_map_port* port, const midi_msg* msg) {
@@ -24,8 +26,9 @@ void midi_rx_live(midi_map_port* port, const midi_msg* msg) {
 
 /* 0: the message cannot change a parameter (live_param_get), so MIDI out need not look
  * around it: the NRPN and RPN selection, the notes off, the controllers' reset (bend, wheel,
- * pressure) and the wheel on a target other than the pulse width, unless MIDI learn takes
- * CC 1 (bound, or binding now). Data entry (6, 38, 96, 97) can. */
+ * pressure), the wheel on a target other than the pulse width and any other CC the map does
+ * not give a parameter (CC 64, a reserved row's), unless MIDI learn takes it (bound, or
+ * binding now). Data entry (6, 38, 96, 97) can. */
 static int edits(const midi_rx* rx, const midi_msg* msg) {
     const live* l = rx->l;
     if (msg->kind == MIDI_PROGRAM) {
@@ -42,11 +45,24 @@ static int edits(const midi_rx* rx, const midi_msg* msg) {
     case LIVE_CC_ALL_SOUND_OFF:
     case LIVE_CC_RESET_ALL:
     case LIVE_CC_ALL_NOTES_OFF: return 0;
+    case 6:
+    case 38:
+    case 96:
+    case 97: return 1;
     case LIVE_CC_MOD_WHEEL:
-        return l->mod_target == LIVE_MOD_PULSE_WIDTH ||
-               (rx->learn && midi_learn_takes(rx->learn, LIVE_CC_MOD_WHEEL));
-    default: return 1;
+        if (l->mod_target == LIVE_MOD_PULSE_WIDTH) {
+            return 1;
+        }
+        break;
+    default: {
+        const midi_map_entry* e = midi_map_for_cc(msg->data1);
+        if (e && e->param != MIDI_MAP_RESERVED) {
+            return 1;
+        }
+        break;
     }
+    }
+    return rx->learn != NULL && midi_learn_takes(rx->learn, msg->data1);
 }
 
 /* One message from a source's parser. Before the first that can change a parameter in a
@@ -96,7 +112,7 @@ void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch) {
     rx->restarts = 0;
     rx->out = 0;
     rx->looked = 0;
-    rx->learn = 0;
+    rx->learn = NULL;
     parsers_init(rx);
 }
 

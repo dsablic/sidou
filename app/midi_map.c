@@ -156,13 +156,46 @@ const midi_map_entry* midi_map_for_param(uint32_t param) {
     return NULL;
 }
 
+/* Each CC's row + 1, 0 for none: midi_map_for_cc in one load, for every CC of a stream (the
+ * rows' order, which the host tests check against the table). */
+#define SLOT_CC(k) [LIVE_CC_SLOT_FIRST + (k)] = 21u + (k) /* the slots' rows from 20 */
+/* clang-format off */
+static const uint8_t cc_rows[128] = {
+    [LIVE_CC_CUTOFF] = 1u,
+    [LIVE_CC_RESONANCE] = 2u,
+    [LIVE_CC_PULSE_WIDTH] = 3u,
+    [LIVE_CC_VOLUME] = 4u,
+    [20] = 5u, /* waveform */
+    [21] = 6u, /* ring */
+    [22] = 7u, /* sync */
+    [23] = 8u, /* filter mode */
+    [24] = 9u, /* filter routing */
+    [25] = 10u, /* chip model */
+    [73] = 11u, /* attack */
+    [75] = 12u, /* decay */
+    [79] = 13u, /* sustain */
+    [72] = 14u, /* release */
+    [26] = 15u, /* envelope mode */
+    [85] = 16u, /* the reserved Character rows */
+    [86] = 17u,
+    [87] = 18u,
+    [89] = 19u,
+    [90] = 20u,
+    [LIVE_CC_VIBRATO_RATE] = 40u, /* after the Expression rows without a CC */
+    [LIVE_CC_VIBRATO_DEPTH] = 41u,
+    [LIVE_CC_VIBRATO_DELAY] = 42u,
+    SLOT_CC(0),  SLOT_CC(1),  SLOT_CC(2),  SLOT_CC(3),  SLOT_CC(4),
+    SLOT_CC(5),  SLOT_CC(6),  SLOT_CC(7),  SLOT_CC(8),  SLOT_CC(9),
+    SLOT_CC(10), SLOT_CC(11), SLOT_CC(12), SLOT_CC(13), SLOT_CC(14),
+};
+/* clang-format on */
+#undef SLOT_CC
+
+_Static_assert(LIVE_CC_SLOT_LAST - LIVE_CC_SLOT_FIRST == 14u, "SLOT_CC covers every slot CC");
+
 const midi_map_entry* midi_map_for_cc(uint8_t cc) {
-    for (uint32_t i = 0; i < MIDI_MAP_ROWS; ++i) {
-        if (rows[i].cc == cc && cc != MIDI_MAP_NO_CC) {
-            return &rows[i];
-        }
-    }
-    return NULL;
+    uint8_t r = cc < 128u ? cc_rows[cc] : 0u;
+    return r ? &rows[r - 1u] : NULL;
 }
 
 const midi_map_entry* midi_map_for_nrpn(uint16_t nrpn) {
