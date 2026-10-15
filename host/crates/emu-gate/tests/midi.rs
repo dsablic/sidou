@@ -208,6 +208,43 @@ fn program_change_switches_the_preset() {
     assert_eq!(back, (SAW, SAW_LEAD_CUTOFF));
 }
 
+#[test]
+fn an_nrpn_sets_the_cutoff_at_full_resolution() {
+    let Some(fw) = fixture("the MIDI test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    let fc_before = cutoff(&mut m, &fw);
+    // NRPN 0/0 (docs/reference/midi.md): 1234 = 9 * 128 + 82, with running status.
+    m.midi(&[0xB0, 99, 0, 98, 0, 6, 9, 38, 82]);
+    m.run_ms(20);
+    let fc_set = cutoff(&mut m, &fw);
+    m.midi(&[0xB0, 96, 0]); // increment
+    m.run_ms(10);
+    let fc_inc = cutoff(&mut m, &fw);
+    m.midi(&[97, 0, 97, 0]); // decrement twice
+    m.run_ms(10);
+    let fc_dec = cutoff(&mut m, &fw);
+    m.midi(&[38, 0]); // an LSB alone: the current value's MSB
+    m.run_ms(10);
+    let fc_lsb = cutoff(&mut m, &fw);
+    m.midi(&[99, 127, 98, 127, 6, 1]); // the null NRPN: data entry goes nowhere
+    m.run_ms(10);
+    let fc_null = cutoff(&mut m, &fw);
+    let s = stats(&mut m, &fw);
+    println!(
+        "NRPN cutoff: {fc_before} -> {fc_set}, +1 {fc_inc}, -2 {fc_dec}, LSB 0 {fc_lsb}, \
+         after the null NRPN {fc_null}; {s:?}"
+    );
+    assert_eq!(fc_before, SAW_LEAD_CUTOFF);
+    assert_eq!(fc_set, 1234, "11 bits through MSB and LSB");
+    assert_eq!(fc_inc, 1235);
+    assert_eq!(fc_dec, 1233);
+    assert_eq!(fc_lsb, 9 << 7);
+    assert_eq!(fc_null, 9 << 7);
+    assert_eq!((s.lost, s.restarts), (0, 0));
+}
+
 /// Instructions per second of emulated time over `ms`: in interrupts and in the main loop.
 fn rates(m: &mut Machine, ms: u64) -> (f64, f64) {
     let (isr, main) = (m.isr_steps, m.main_steps);
