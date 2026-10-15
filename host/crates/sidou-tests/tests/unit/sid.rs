@@ -668,3 +668,79 @@ fn a_tapped_render_is_the_plain_render_with_the_voices_at_each_chunk() {
         );
     }
 }
+
+/// sid_set_filter_nonlinearity scales the 6581's non-linearity (sid_nonlin): 1 is the
+/// default sid_init sets (reSIDfp's), 0 a linear filter; the references stay. A profile
+/// (M1c) can blend it while the chip plays: each call writes one float at a time.
+#[test]
+fn the_6581_non_linearity_is_a_per_chip_amount() {
+    let mut s = new_sid(SID_MODEL_6581);
+    let full = s.nl;
+    assert!(full.level > 0.0 && full.load > 0.0 && full.floor > 0.0);
+    unsafe { sid_set_filter_nonlinearity(&mut *s, 0.5) };
+    assert_eq!(s.nl.level, full.level * 0.5);
+    assert_eq!(s.nl.load, full.load * 0.5);
+    assert_eq!(s.nl.floor, full.floor * 0.5);
+    assert_eq!(s.nl.level_ref, full.level_ref);
+    assert_eq!(s.nl.load_ref, full.load_ref);
+    unsafe { sid_set_filter_nonlinearity(&mut *s, 0.0) };
+    assert_eq!((s.nl.level, s.nl.load, s.nl.floor), (0.0, 0.0, 0.0));
+    let other = new_sid(SID_MODEL_6581);
+    assert_eq!(other.nl.level, full.level, "per chip");
+}
+
+/// The 8580 stays linear: the 6581's non-linearity, whatever its amount, does not change a
+/// sample of it.
+#[test]
+fn the_8580_ignores_the_6581_non_linearity() {
+    let play = |amount: f32| {
+        let mut s = new_sid(SID_MODEL_8580);
+        unsafe { sid_set_filter_nonlinearity(&mut *s, amount) };
+        saw_a4(&mut s);
+        write(&mut s, 0x17, 0xf1);
+        write(&mut s, 0x16, 0x10);
+        write(&mut s, 0x18, 0x1f);
+        render(&mut s, 8820)
+    };
+    assert_eq!(play(0.0), play(1.0));
+    assert_eq!(play(1.0), play(3.0));
+}
+
+/// Correlation of a filtered voice with the same voice unfiltered, at lag 0.
+fn polarity(model: sid_model, mode: u8, fc_hi: u8) -> f64 {
+    let run = |filtered: bool| {
+        let mut s = new_sid(model);
+        write(&mut s, 0x00, 0xff);
+        write(&mut s, 0x01, 0xff);
+        write(&mut s, 0x05, 0x00);
+        write(&mut s, 0x06, 0x40);
+        write(&mut s, 0x16, fc_hi);
+        write(&mut s, 0x17, if filtered { 0x01 } else { 0x00 });
+        write(&mut s, 0x18, mode | 0x0f);
+        write(&mut s, 0x04, 0x81);
+        render(&mut s, 22050)[4410..]
+            .iter()
+            .map(|&v| f64::from(v))
+            .collect::<Vec<_>>()
+    };
+    let (d, f) = (run(false), run(true));
+    let md = d.iter().sum::<f64>() / d.len() as f64;
+    let mf = f.iter().sum::<f64>() / f.len() as f64;
+    let c: f64 = d.iter().zip(&f).map(|(a, b)| (a - md) * (b - mf)).sum();
+    let nd = d.iter().map(|a| (a - md).powi(2)).sum::<f64>().sqrt();
+    let nf = f.iter().map(|b| (b - mf).powi(2)).sum::<f64>().sqrt();
+    c / nd / nf
+}
+
+/// As in reSIDfp, the 6581's low-pass and high-pass come out inverted against the
+/// unfiltered voices and its band-pass does not (the summer and the integrators are
+/// inverting op-amps); a mixed mode such as LP+BP depends on it.
+#[test]
+fn the_6581_low_and_high_pass_are_inverted() {
+    assert!(polarity(SID_MODEL_6581, 0x10, 0xe0) < -0.5);
+    assert!(polarity(SID_MODEL_6581, 0x20, 0x30) > 0.3);
+    assert!(polarity(SID_MODEL_6581, 0x40, 0x10) < -0.5);
+    // The 8580 is unchanged (M1b): all three in phase.
+    assert!(polarity(SID_MODEL_8580, 0x10, 0xe0) > 0.5);
+    assert!(polarity(SID_MODEL_8580, 0x40, 0x10) > 0.5);
+}

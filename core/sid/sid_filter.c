@@ -4,14 +4,13 @@
 
 #include "gen/filter.h"
 
-void sid_svf_reset(sid_svf* f, float drive) {
+void sid_svf_reset(sid_svf* f) {
     f->ic1 = f->ic2 = 0.0f;
-    f->lp = f->bp = f->hp = 0.0f;
+    f->lp = f->bp = f->hp = f->bpn = 0.0f;
     f->a1 = 1.0f;
     f->a2 = f->a3 = 0.0f;
     f->k = 1.0f;
-    f->drive = drive;
-    f->inv_drive = drive > 0.0f ? 1.0f / drive : 0.0f;
+    f->g = 0.0f;
 }
 
 /* The tables (gen/filter.h) stay in flash: sid_init and sid_set_filter_curve read them,

@@ -53,6 +53,36 @@ fn envelope(x: &[f32]) -> Vec<f64> {
     normalized_to_max(env, FIRST_WINDOW, len)
 }
 
+/// The loud-signal sweeps (M1b Task 6): the same cutoff sweep with all three voices at
+/// full sustain routed into the filter, where the 6581's filter is furthest from linear.
+/// Either three noise voices (0x4000, 0x3a00, 0x3300) or a chord (C major at about
+/// 262, 330 and 392 Hz: sawtooth, 50% pulse, triangle), resonance 8.
+pub const LOUD: [(&str, bool); 2] = [("noise3", false), ("chord", true)];
+
+pub fn loud_writes(mode: u8, chord: bool) -> Vec<RegWrite> {
+    let w = |frame, reg, value| RegWrite { frame, reg, value };
+    let mut writes = vec![w(0, 0x18, mode | 0x0f), w(0, 0x17, 0x87)];
+    let voices: [(u16, u8, u16); 3] = if chord {
+        [(0x1167, 0x21, 0), (0x15ed, 0x41, 0x800), (0x1a13, 0x11, 0)]
+    } else {
+        [(0x4000, 0x81, 0), (0x3a00, 0x81, 0), (0x3300, 0x81, 0)]
+    };
+    for (v, (freq, control, pw)) in voices.into_iter().enumerate() {
+        let b = (v * 7) as u8;
+        writes.extend([
+            w(0, b, freq as u8),
+            w(0, b + 1, (freq >> 8) as u8),
+            w(0, b + 2, pw as u8),
+            w(0, b + 3, (pw >> 8) as u8),
+            w(0, b + 5, 0x00),
+            w(0, b + 6, FULL << 4),
+            w(0, b + 4, control),
+        ]);
+    }
+    writes.extend((0..FRAMES).map(|f| w(f, 0x16, (f * 4) as u8)));
+    writes
+}
+
 /// One sweep on both engines.
 pub struct Sweep {
     pub ours: Vec<f32>,
@@ -66,9 +96,17 @@ pub struct Sweep {
 /// One sweep on both engines: SIDOU's and reSIDfp's output, and their envelope
 /// differences.
 pub fn sweep(model: sid_model, mode: u8, sustain: u8) -> Sweep {
-    let w = writes(mode, sustain);
-    let ours = render_sidou(model, &w, FRAMES);
-    let reference = render_residfp(model, &w, FRAMES, false);
+    compare(model, &writes(mode, sustain))
+}
+
+/// A loud-signal sweep (loud_writes) on both engines.
+pub fn sweep_loud(model: sid_model, mode: u8, chord: bool) -> Sweep {
+    compare(model, &loud_writes(mode, chord))
+}
+
+fn compare(model: sid_model, w: &[RegWrite]) -> Sweep {
+    let ours = render_sidou(model, w, FRAMES);
+    let reference = render_residfp(model, w, FRAMES, false);
     let (a, b) = (envelope(&ours), envelope(&reference));
     Sweep {
         max_db: max_envelope_diff_db(&a, &b, FLOOR_DB, FIRST_WINDOW),

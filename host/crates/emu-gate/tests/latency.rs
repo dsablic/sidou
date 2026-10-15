@@ -315,7 +315,9 @@ fn trial(
         .map(|i| dev(audio[i]))
         .max()
         .unwrap();
-    assert!(held > 2000, "the note is silent: {held}");
+    // SAW LEAD peaks at about 2,500 since M1b Task 6 put the 6581's filter at reSIDfp's level
+    // (about 4,000 before, 2.4 dB over reSIDfp's): half of that is clearly a note.
+    assert!(held > 1250, "the note is silent: {held}");
     let level = (f64::from(held) * NOTE_LEVEL) as i32;
     assert!(level > threshold, "the note level is within the baseline");
 

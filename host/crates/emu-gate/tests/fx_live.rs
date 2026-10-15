@@ -152,7 +152,9 @@ fn the_edit_layer_turns_on_overdrive_and_the_wave_clips() {
     );
     assert_eq!(dry, dry_r, "dry is mono");
     assert_eq!(wet, wet_r, "the distortion slot is mono");
-    assert!(cw < 0.8 * cd, "no clipping: crest factor {cd} -> {cw}");
+    // 0.85: SAW LEAD drives the slot 3.3 dB less since M1b Task 6 put the 6581's filter at
+    // reSIDfp's level (2.01 -> 1.63 measured then; 0.8 was set on the louder M1a filter).
+    assert!(cw < 0.85 * cd, "no clipping: crest factor {cd} -> {cw}");
     assert!(rms(&wet) > 2.0 * rms(&dry), "the drive did not come up");
     // EDIT's LED shows the selected slot is on (the LEDs are multiplexed: lit is above 0).
     m.soc.periph.led_take();

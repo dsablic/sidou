@@ -438,20 +438,22 @@ impl Machine {
 }
 
 /// The SID's most expensive scenario per chip, on average, in instructions per sample: the
-/// SID gate's max_instructions_per_sample (sid_budget.rs fails above it). M1b measures 526.8
-/// (two chips, gate_every_block on the 6581) and 522.8 (one chip). The effect gates no longer
-/// pair it with the slots (they take the worst block, below); it stays as the SID's guard.
-pub const SID_WORST_PER_CHIP: f64 = 530.0;
+/// SID gate's max_instructions_per_sample (sid_budget.rs fails above it). M1b measures 563.9
+/// (two chips, gate_every_block on the 6581, since Task 6's non-linear 6581 filter; 526.8
+/// before) and 559.8 (one chip). The effect gates no longer pair it with the slots (they take
+/// the worst block, below); it stays as the SID's guard.
+pub const SID_WORST_PER_CHIP: f64 = 564.0;
 
 /// The SID's most expensive block (128 samples) in instructions per sample, for one chip
 /// and for two together, as sid_budget.rs measures it (it fails above these). The audio
 /// ISR has a hard per-block deadline, so the effect gates pair the slots with this, not
 /// with a scenario's average. Both are the first block of a combined-noise scenario from
-/// power-on (noise_tri_ring_0800 on the 8580: 690.85 and 1,409.24 at M1b, merged with M1d),
-/// while the register runs through its shifts until it locks up (decision record 0004,
-/// "Worst blocks").
-pub const SID_WORST_BLOCK_ONE_CHIP: f64 = 691.0;
-pub const SID_WORST_BLOCK_TWO_CHIPS: f64 = 1410.0;
+/// power-on while the register runs through its shifts until it locks up (decision record
+/// 0004, "Worst blocks"), on the 6581 since M1b Task 6's non-linear filter: noise_tri_ffff
+/// for one chip (725.05) and noise_tri_ring_0800 for two (1,454.80). The 8580's are 687.95
+/// and 1,403.43 (690.85 and 1,409.24 before Task 6, when they were the worst).
+pub const SID_WORST_BLOCK_ONE_CHIP: f64 = 726.0;
+pub const SID_WORST_BLOCK_TWO_CHIPS: f64 = 1455.0;
 
 /// The audio target, instructions per sample for everything the audio interrupt does (design
 /// doc section 8): slots_budget.rs splits it, latency.rs holds the render allowance to it.

@@ -8,15 +8,52 @@
 #include "sid_defs.h"
 #include "sid_math.h"
 
-/* Cytomic trapezoidal SVF. drive > 0 adds the 6581 band-pass saturation. */
+/* Cytomic trapezoidal SVF. The 8580 runs it linear (sid_svf_tick); the 6581 through
+ * sid_svf_tick_6581, which moves its cutoff with the signal. */
 typedef struct {
     float ic1, ic2;
     float lp, bp, hp;
     float a1, a2, a3, k;
-    float drive, inv_drive;
+    float g;   /* the cutoff from the tables, tan(pi f / fs); the 6581 moves away from it */
+    /* The 6581's: the load_ref less the DC load (sid_svf_set_6581), and the band-pass
+     * at the level it has unloaded, times the table's damping (sid_nl_tick). */
+    float load_at;
+    float bpn;
 } sid_svf;
 
-void sid_svf_reset(sid_svf* f, float drive);
+/* The 6581 filter's non-linearity (M1b Task 6), a phenomenological fit to reSIDfp's
+ * 6581, whose integrators are MOSFET resistors (VCRs) and op-amps working around an
+ * operating point:
+ * - in the threshold region (FC up to about 600, where the cutoff DAC barely turns the
+ *   VCR on) the cutoff rises with the signal's swing, nearly doubling at full scale;
+ * - the filter's DC load (the voices routed into it carry a large DC, more with louder
+ *   envelopes) lowers the cutoff everywhere and widens it, to half the cutoff and twice
+ *   the damping with three loud voices, while the band-pass keeps its peak level.
+ * Per sample, with g0 and k the tables' cutoff and damping, and dc the DC the inputs
+ * routed into the filter put on it (sid.c, DC_FILTER_INPUT):
+ *   m  = clamp(1 + load (load_ref - dc - lp state), SID_NL_M_MIN, SID_NL_M_MAX)
+ *   g  = max(g0 m + level (|hp| - level_ref), floor)
+ * and the coefficients follow from one Newton step for 1 / (1 + g (g + k)) from the
+ * table's a1, not a per-sample divide. The step underestimates, more the further the
+ * load pulls the cutoff down, which damps the filter as reSIDfp's damping grows under
+ * the load, and keeps it stable: any 0 < a1 < 1 / (1 + g^2) is. SID_NL_M_MIN bounds how
+ * far the load goes, as reSIDfp's saturating op-amps bound its output: lower, three
+ * voices at full resonance ring past full scale. Each chip keeps its
+ * own values (sid.h, sid_set_filter_nonlinearity), so a profile can blend them while the
+ * chip plays. Fitted against reSIDfp at 44.1 kHz (M1b Task 6). */
+typedef struct {
+    float level;     /* g per unit of |hp| above level_ref */
+    float level_ref; /* the swing the cutoff tables were fitted at */
+    float level_off; /* -level level_ref */
+    float load;      /* relative cutoff fall per unit of the low-pass state above load_ref */
+    float load_ref;
+    float floor;     /* the lowest g: reSIDfp's 6581 cutoff never goes below about 240 Hz */
+} sid_nonlin;
+
+#define SID_NL_M_MIN 0.35f
+#define SID_NL_M_MAX 1.3f
+
+void sid_svf_reset(sid_svf* f);
 /* reSIDfp's filter as SIDOU's fits it (gen/filter.h, sidou-tablegen fit-filter), per
  * model and curve setting (the 6581's filter range and curve, the 8580's curve): the
  * cutoff in Hz for an FC value (0..2047), and the damping k = 1/Q for a resonance value
@@ -31,9 +68,29 @@ float sid_resonance_k(sid_model model, uint32_t curve, uint32_t res);
  * (platform/fm1/app.ld). */
 static inline void sid_svf_set(sid_svf* f, float g, float k) {
     f->k = k;
+    f->g = g;
     f->a1 = 1.0f / (1.0f + g * (g + k));
     f->a2 = g * f->a1;
     f->a3 = g * f->a2;
+}
+
+/* The 6581's coefficients: sid_svf_set's, and the DC load `dc` (sid_nonlin). Like
+ * sid_svf_set, in the audio path's writes. */
+static inline void sid_svf_set_6581(sid_svf* f, const sid_nonlin* n, float g, float k,
+                                    float dc) {
+    sid_svf_set(f, g, k);
+    f->load_at = n->load_ref - dc;
+}
+
+/* On silence the state decays into subnormals, which may be slow or trap on the pi32v2
+ * FPU. Flush explicitly rather than relying on an FPU flush-to-zero mode. */
+static inline void sid_svf_flush(sid_svf* f) {
+    if (f->ic1 < 1e-15f && f->ic1 > -1e-15f) {
+        f->ic1 = 0.0f;
+    }
+    if (f->ic2 < 1e-15f && f->ic2 > -1e-15f) {
+        f->ic2 = 0.0f;
+    }
 }
 
 static inline void sid_svf_tick(sid_svf* f, float v0) {
@@ -42,21 +99,59 @@ static inline void sid_svf_tick(sid_svf* f, float v0) {
     float v2 = f->ic2 + f->a2 * f->ic1 + f->a3 * v3;
     f->ic1 = 2.0f * v1 - f->ic1;
     f->ic2 = 2.0f * v2 - f->ic2;
-    /* Only ic1 is clipped, so bp (v1) can briefly exceed 1/drive: a deliberate M0 stand-in. */
-    if (f->drive > 0.0f) {
-        f->ic1 = sidou_soft_clip(f->ic1 * f->drive) * f->inv_drive;
-    }
     f->lp = v2;
     f->bp = v1;
     f->hp = v0 - f->k * v1 - v2;
-    /* On silence the state decays into subnormals, which may be slow or trap on the pi32v2
-     * FPU. Flush explicitly rather than relying on an FPU flush-to-zero mode. */
-    if (f->ic1 < 1e-15f && f->ic1 > -1e-15f) {
-        f->ic1 = 0.0f;
+    sid_svf_flush(f);
+}
+
+/* The 6581's tick (sid_nonlin above) on its state, the integrators (ic1, ic2) and the
+ * outputs, with its coefficients from sid_svf_set_6581 (g0 = g, a10 = a1, k, load_at):
+ * sid_render keeps them all in locals for a render, sid_svf_tick_6581 in the struct. It
+ * also sets bpn: the band-pass times the damping the shifted coefficients have (over the
+ * table's damping: the mix divides by k), which keeps the band-pass peak where reSIDfp's
+ * stays as the load widens the band. Whatever a1 is, ic1 + g v3 = v1 / a1, so
+ * (ic1 - v1 + g (v3 - g v1)) / g is that damping times v1; it costs the tick's one
+ * divide. */
+static inline void sid_nl_tick(float* ic1, float* ic2, float* lp, float* bp, float* hp,
+                               float* bpn, float v0, float g0, float a10, float k,
+                               float load_at, const sid_nonlin* n) {
+    float m = 1.0f + n->load * (load_at - *ic2);
+    if (m < SID_NL_M_MIN) {
+        m = SID_NL_M_MIN;
+    } else if (m > SID_NL_M_MAX) {
+        m = SID_NL_M_MAX;
     }
-    if (f->ic2 < 1e-15f && f->ic2 > -1e-15f) {
-        f->ic2 = 0.0f;
+    float swing = *hp < 0.0f ? -*hp : *hp;
+    float g = g0 * m + n->level * swing + n->level_off;
+    if (g < n->floor) {
+        g = n->floor;
     }
+    float t = 2.0f - (1.0f + g * (g + k)) * a10;
+    if (t < 0.1f) {
+        t = 0.1f;
+    }
+    float a1 = a10 * t;
+    float a2 = g * a1;
+    float a3 = g * a2;
+    float c1 = *ic1, c2 = *ic2;
+    float v3 = v0 - c2;
+    float v1 = a1 * c1 + a2 * v3;
+    float v2 = c2 + a2 * c1 + a3 * v3;
+    *bpn = (c1 - v1 + g * (v3 - g * v1)) / g;
+    c1 = 2.0f * v1 - c1;
+    c2 = 2.0f * v2 - c2;
+    *lp = v2;
+    *bp = v1;
+    *hp = v0 - k * v1 - v2;
+    /* sid_svf_flush's reason. */
+    *ic1 = c1 < 1e-15f && c1 > -1e-15f ? 0.0f : c1;
+    *ic2 = c2 < 1e-15f && c2 > -1e-15f ? 0.0f : c2;
+}
+
+static inline void sid_svf_tick_6581(sid_svf* f, const sid_nonlin* n, float v0) {
+    sid_nl_tick(&f->ic1, &f->ic2, &f->lp, &f->bp, &f->hp, &f->bpn, v0, f->g, f->a1, f->k,
+                f->load_at, n);
 }
 
 #endif

@@ -151,21 +151,23 @@ fn transfer_errors(model: sid_model) -> TransferErrors {
  * 6581 3.34, 3.69, 3.45, at FC 384 and resonance 15, in the threshold region (FC up to
  * about 600) where reSIDfp's 6581 damping drifts with FC and one value per resonance
  * cannot follow it; elsewhere about 2 dB (its filter is no state-variable filter: away
- * from the cutoff its band-pass and high-pass level off). */
+ * from the cutoff its band-pass and high-pass level off). At M1b Task 6 (the 6581's
+ * non-linearity and output mix) 6581 3.31, 3.12, 2.88, the largest now at FC 64 and
+ * resonance 15. */
 const MAX_TRANSFER_DB_8580: [f64; 3] = [1.0, 0.55, 0.3];
-const MAX_TRANSFER_DB_6581: [f64; 3] = [3.4, 3.75, 3.5];
+const MAX_TRANSFER_DB_6581: [f64; 3] = [3.32, 3.13, 2.89];
 
 /* The passband gain, SIDOU minus reSIDfp, lowest to highest over the same settings, LP,
  * BP, HP (the high-pass only where 3 f0 is below TOP_HZ): the low-pass from f0/8 to f0/3,
  * the band-pass within 1.2x of f0, the high-pass from 3 f0 to 9 f0. Both transfer
  * functions are against their own engine's unfiltered output, so the levels are matched.
- * Measured at M1b Task 5 and held there (rounded outwards to 0.01 dB): 8580 -0.11 to 0.00,
- * -0.17 to -0.05, -0.05 to 0.03; 6581 1.66 to 4.99, -1.61 to 3.04, 5.63 to 6.47. The
- * 6581's filter is up to 6.5 dB louder than reSIDfp's at the small-signal level (its
- * high-pass by 5.6 to 6.5 dB everywhere), more than VF_TR_RATIO's 0.59 dB explains: a gap
- * for M1b Task 6 (the 6581's filter gain and its level dependence), recorded in Task 7. */
+ * Measured at M1b Task 5 (rounded outwards to 0.01 dB): 8580 -0.11 to 0.00, -0.17 to
+ * -0.05, -0.05 to 0.03; 6581 1.66 to 4.99, -1.61 to 3.04, 5.63 to 6.47 (its filter up to
+ * 6.5 dB louder than reSIDfp's). M1b Task 6 gave the 6581 reSIDfp's mix of the filter's
+ * outputs (each mode's gain, the integrators' leakage): -1.74 to 1.78, -2.01 to 2.06,
+ * -0.40 to 0.52; what is left follows the threshold region's damping drift, as above. */
 const PASSBAND_GAIN_DB_8580: [(f64, f64); 3] = [(-0.12, 0.01), (-0.17, -0.04), (-0.05, 0.03)];
-const PASSBAND_GAIN_DB_6581: [(f64, f64); 3] = [(1.66, 4.99), (-1.62, 3.05), (5.62, 6.47)];
+const PASSBAND_GAIN_DB_6581: [(f64, f64); 3] = [(-1.74, 1.79), (-2.02, 2.06), (-0.40, 0.52)];
 
 fn transfer_matches(model: sid_model, limits: [f64; 3], gain_limits: [(f64, f64); 3]) {
     let e = transfer_errors(model);
@@ -226,14 +228,18 @@ fn transfer_functions_match_mos6581() {
  * high-pass lacks reSIDfp's output low-pass (15.9 kHz; measured, adding it helps the
  * 8580's LP and HP but worsens its BP and the 6581, so it is not the fix). The 6581's
  * band-pass is furthest off at the top of the sweep, where its cutoff passes 20 kHz:
- * reSIDfp's band-pass levels off there while SIDOU's falls away (M1b Task 6). */
+ * reSIDfp's band-pass levels off there while SIDOU's falls away. M1b Task 6 (the 6581's
+ * non-linearity, its leaky integrators' mix and its output low-pass) took the 6581's to
+ * 4.84, 2.46, 1.01, RMS 1.07, 0.68, 0.43; the low-pass's largest window is the fourth,
+ * where reSIDfp's output still carries the volume write's DC step through its 1.6 Hz
+ * high-pass (SIDOU's DC blocker is at 16 Hz). */
 const SWEEP_SMALL_8580: Limits = Limits {
     max: [1.62, 2.03, 1.70],
     rms: [0.54, 0.80, 0.87],
 };
 const SWEEP_SMALL_6581: Limits = Limits {
-    max: [5.16, 6.22, 1.05],
-    rms: [1.19, 2.92, 0.46],
+    max: [4.84, 2.46, 1.01],
+    rms: [1.07, 0.68, 0.43],
 };
 
 /* At full scale (FULL), record only: SIDOU's filter is linear and the tables are fitted at
@@ -243,14 +249,15 @@ const SWEEP_SMALL_6581: Limits = Limits {
  * 6.10; 8580 0.83, 2.04, 1.26; RMS 6581 1.39, 2.35, 2.99; 8580 0.38, 0.69, 0.48. The
  * 6581's high-pass regressed (2.1 -> 6.10): level-dependent, at FC >= 1,760, around
  * SIDOU's 0.45 fs cutoff clamp (a Task 6 target); the 8580's band-pass went from 1.7 to
- * 2.04. */
+ * 2.04. M1b Task 6 met its 6581 targets (LP and BP 2.0, HP 2.1): 1.88, 1.89, 1.49, RMS
+ * 0.52, 0.58, 0.84. */
 const SWEEP_FULL_8580: Limits = Limits {
     max: [0.83, 2.05, 1.27],
     rms: [0.39, 0.70, 0.49],
 };
 const SWEEP_FULL_6581: Limits = Limits {
-    max: [4.94, 4.65, 6.10],
-    rms: [1.39, 2.36, 2.99],
+    max: [1.88, 1.89, 1.49],
+    rms: [0.52, 0.58, 0.84],
 };
 
 /// Ceilings per mode (LP, BP, HP), dB.
@@ -301,4 +308,49 @@ fn full_scale_filter_sweeps_csg8580() {
 #[test]
 fn full_scale_filter_sweeps_mos6581() {
     sweeps_match(SID_MODEL_6581, FULL, SWEEP_FULL_6581);
+}
+
+/* The loud-signal sweeps (M1b Task 6, filter_sweeps::sweep_loud): three voices at full
+ * sustain into the filter, noise and a chord, LP, BP, HP, where reSIDfp's 6581 filter is
+ * furthest from linear: its cutoff halves and its damping doubles under the voices' DC
+ * load. Target 3 dB (largest window). Before Task 6, largest: noise 9.38, 7.80, 14.93;
+ * chord 16.47, 14.85, 23.33. Measured at Task 6: noise 2.44, 1.91, 2.81; chord 2.33,
+ * 4.37, 2.84 (RMS noise 0.95, 0.74, 1.13; chord 0.73, 3.48, 1.60). The chord's band-pass
+ * misses: with the cutoff above the chord, reSIDfp's band-pass stays louder than SIDOU's
+ * (its saturating op-amps, which the bound on the load, SID_NL_M_MIN, stands in for, at
+ * the headroom the 6581 must keep). */
+const LOUD_6581: [Limits; 2] = [
+    Limits {
+        max: [2.44, 1.92, 2.81],
+        rms: [0.96, 0.74, 1.13],
+    },
+    Limits {
+        max: [2.33, 4.37, 2.84],
+        rms: [0.73, 3.49, 1.60],
+    },
+];
+
+#[test]
+fn loud_filter_sweeps_mos6581() {
+    let mut failures = Vec::new();
+    for ((what, chord), limits) in filter_sweeps::LOUD.iter().zip(&LOUD_6581) {
+        for (i, (mode_name, mode)) in filter_sweeps::MODES.iter().enumerate() {
+            let d = filter_sweeps::sweep_loud(SID_MODEL_6581, *mode, *chord);
+            println!(
+                "6581 {what} {mode_name}: max {:.4} dB, rms {:.4} dB",
+                d.max_db, d.rms_db
+            );
+            for (stat, x, limit) in [
+                ("max", d.max_db, limits.max[i]),
+                ("rms", d.rms_db, limits.rms[i]),
+            ] {
+                if !below(x, limit) {
+                    failures.push(format!(
+                        "{what} {mode_name} {stat}: {x:.4} dB, tolerance {limit} dB"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

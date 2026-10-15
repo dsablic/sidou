@@ -17,17 +17,34 @@ fn tick(f: &mut sid_svf, v0: f32) {
     unsafe { sid_svf_tick(f, v0) }
 }
 
-fn svf(drive: f32, hz: f32, q: f32) -> sid_svf {
+fn linear_svf(hz: f32, q: f32) -> sid_svf {
     let mut f = sid_svf::default();
     unsafe {
-        sid_svf_reset(&mut f, drive);
+        sid_svf_reset(&mut f);
         sid_svf_set(&mut f, tanf(PI * hz / FS), 1.0 / q);
     }
     f
 }
 
-fn linear_svf(hz: f32, q: f32) -> sid_svf {
-    svf(0.0, hz, q)
+fn tick_6581(f: &mut sid_svf, n: &sid_nonlin, v0: f32) {
+    unsafe { sid_svf_tick_6581(f, n, v0) }
+}
+
+/// A 6581 filter (sid_svf_set_6581) with no DC load.
+fn svf_6581(n: &sid_nonlin, hz: f32, q: f32) -> sid_svf {
+    let mut f = sid_svf::default();
+    unsafe {
+        sid_svf_reset(&mut f);
+        sid_svf_set_6581(&mut f, n, tanf(PI * hz / FS), 1.0 / q, 0.0);
+    }
+    f
+}
+
+/// A chip's 6581 non-linearity at the default amount (sid_set_filter_nonlinearity).
+fn default_nonlin() -> sid_nonlin {
+    let mut s = Box::<sid>::default();
+    unsafe { sid_init(&mut *s, SID_MODEL_6581, SID_CLOCK_PAL, 44100) };
+    s.nl
 }
 
 fn cutoff(model: sid_model, fc: u32) -> f32 {
@@ -68,49 +85,127 @@ fn low_pass_gain_at_cutoff_equals_q() {
     assert_near!(peak, q, 0.01);
 }
 
+/// With no non-linearity (amount 0) the 6581's tick is the linear filter, up to the
+/// rounding of its Newton step and of the band-pass it rebuilds.
 #[test]
-fn soft_clip_bounds_the_band_pass_state() {
-    let mut f = svf(2.0, 2000.0, 3.0);
-    for i in 0..4410 {
-        tick(&mut f, if (i / 20) % 2 != 0 { 10.0 } else { -10.0 });
-        assert!(f.ic1.abs() <= 1.0 / 2.0 + 1e-6);
-        assert!(
-            f.lp.is_finite() && f.bp.is_finite() && f.hp.is_finite(),
-            "i={i}"
-        );
-        assert!(f.lp.abs() < 20.0, "i={i}");
-        assert!(f.bp.abs() < 20.0, "i={i}");
-        assert!(f.hp.abs() < 20.0, "i={i}");
+fn the_6581_tick_without_non_linearity_is_the_linear_filter() {
+    let n = sid_nonlin::default();
+    for (hz, q) in [(240.0f32, 0.8f32), (2000.0, 3.0), (12000.0, 0.7)] {
+        let mut linear = linear_svf(hz, q);
+        let mut shaped = svf_6581(&n, hz, q);
+        for i in 0..4410 {
+            let x = 1.5 * (2.0 * PI * 440.0 * i as f32 / FS).sin() + 0.8;
+            tick(&mut linear, x);
+            tick_6581(&mut shaped, &n, x);
+            assert_near!(shaped.lp, linear.lp, 1e-4, "hz={hz} i={i}");
+            assert_near!(shaped.bp, linear.bp, 1e-4, "hz={hz} i={i}");
+            assert_near!(shaped.hp, linear.hp, 1e-4, "hz={hz} i={i}");
+            assert_near!(shaped.bpn / shaped.k, linear.bp, 1e-3, "hz={hz} i={i}");
+        }
     }
 }
 
+/// The RMS of the low-pass output for a 1 kHz square of the given swing around `dc`, after
+/// the filter settles, relative to the swing: how far the cutoff is from 1 kHz.
+fn lp_gain_6581(n: &sid_nonlin, hz: f32, swing: f32, dc: f32) -> f32 {
+    let mut f = svf_6581(n, hz, 1.0);
+    let mut sum = 0.0f32;
+    let mut mean = 0.0f32;
+    let mut out = Vec::new();
+    for i in 0..8820 {
+        let x = dc + if (i / 22) % 2 == 0 { swing } else { -swing };
+        tick_6581(&mut f, n, x);
+        if i >= 4410 {
+            out.push(f.lp);
+            mean += f.lp;
+        }
+    }
+    mean /= out.len() as f32;
+    for v in &out {
+        sum += (v - mean) * (v - mean);
+    }
+    (sum / out.len() as f32).sqrt() / swing
+}
+
+/// The 6581's cutoff, as reSIDfp's: in the threshold region it rises with the swing; a DC
+/// load lowers it; neither moves the 8580's, which stays linear.
 #[test]
-fn soft_clip_is_near_identity_for_small_signals() {
-    let (hz, q) = (1000.0f32, 0.707f32);
-    let mut linear = linear_svf(hz, q);
-    let mut driven = svf(2.0, hz, q);
-    for i in 0..4410 {
-        let x = 0.01 * (2.0 * PI * hz * i as f32 / FS).sin();
-        tick(&mut linear, x);
-        tick(&mut driven, x);
-        assert_near!(driven.lp, linear.lp, 1e-5, "i={i}");
-        assert_near!(driven.bp, linear.bp, 1e-5, "i={i}");
-        assert_near!(driven.hp, linear.hp, 1e-5, "i={i}");
+fn the_6581_cutoff_rises_with_swing_and_falls_with_load() {
+    let n = default_nonlin();
+    let quiet = lp_gain_6581(&n, 240.0, 0.1, 0.0);
+    let loud = lp_gain_6581(&n, 240.0, 1.0, 0.0);
+    assert!(loud > 1.5 * quiet, "threshold region: {quiet} -> {loud}");
+    let unloaded = lp_gain_6581(&n, 1000.0, 0.1, n.load_ref);
+    let loaded = lp_gain_6581(&n, 1000.0, 0.1, n.load_ref + 3.0);
+    assert!(loaded < 0.8 * unloaded, "loaded: {unloaded} -> {loaded}");
+}
+
+/// Whatever goes in (beyond any voice mix, at every cutoff and resonance) the 6581's
+/// filter stays finite and bounded: the Newton step only ever underestimates a1, and any
+/// 0 < a1 <= 1 / (1 + g (g + k)) is stable.
+#[test]
+fn the_6581_filter_stays_bounded_under_extreme_input() {
+    let n = default_nonlin();
+    let mut seed = 0x1234_5678u32;
+    for model_fc in [0u32, 200, 600, 1023, 1024, 1500, 2047] {
+        for res in [0u32, 8, 15] {
+            let mut f = sid_svf::default();
+            unsafe {
+                sid_svf_reset(&mut f);
+                let hz = cutoff(SID_MODEL_6581, model_fc).clamp(30.0, 0.45 * FS);
+                let k = damping(SID_MODEL_6581, res);
+                sid_svf_set_6581(&mut f, &n, tanf(PI * hz / FS), k, 3.5);
+            }
+            for i in 0..44100 {
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let x = match (i / 4410) % 4 {
+                    0 => 12.0,
+                    1 => -12.0,
+                    2 => (seed >> 8) as f32 / (1u32 << 24) as f32 * 24.0 - 12.0,
+                    _ => {
+                        if (i / 3) % 2 == 0 {
+                            12.0
+                        } else {
+                            -12.0
+                        }
+                    }
+                };
+                tick_6581(&mut f, &n, x);
+                for v in [f.lp, f.bp, f.hp, f.bpn, f.ic1, f.ic2] {
+                    assert!(
+                        v.is_finite() && v.abs() < 1e3,
+                        "fc {model_fc} res {res} i {i}: {v}"
+                    );
+                }
+            }
+        }
     }
 }
 
 #[test]
 fn silence_never_leaves_subnormal_state() {
+    let n = default_nonlin();
     for hz in [30.0f32, 220.0, 6000.0] {
-        for drive in [0.0f32, 2.0] {
-            let mut f = svf(drive, hz, 0.707);
+        for shaped in [false, true] {
+            let mut f = if shaped {
+                svf_6581(&n, hz, 0.707)
+            } else {
+                linear_svf(hz, 0.707)
+            };
+            let step = |f: &mut sid_svf, x: f32| {
+                if shaped {
+                    tick_6581(f, &n, x)
+                } else {
+                    tick(f, x)
+                }
+            };
             for i in 0..64 {
-                tick(&mut f, if (i / 8) % 2 != 0 { 1.0 } else { -1.0 });
+                step(&mut f, if (i / 8) % 2 != 0 { 1.0 } else { -1.0 });
             }
             for i in 0..5 * 44100 {
-                tick(&mut f, 0.0);
+                step(&mut f, 0.0);
                 for v in [f.ic1, f.ic2, f.lp, f.bp, f.hp] {
-                    assert!(!v.is_subnormal(), "hz={hz} drive={drive} i={i}");
+                    assert!(!v.is_subnormal(), "hz={hz} 6581={shaped} i={i}");
                 }
             }
         }

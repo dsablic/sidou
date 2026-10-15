@@ -43,6 +43,14 @@ typedef struct {
     float cutoff_g[SID_FC_STEPS];
     float res_k[16]; /* damping per resonance value (sid_resonance_k), in RAM for sid_write */
     const sid_dac* dac; /* shared between chips: sid_dac_default, or sid_set_dac */
+    /* The 6581's output path (M1b Task 6; the 8580 does not use these): its filter's
+     * non-linearity (sid_filter.h), the mix of the filter's outputs as $18 and $17 set it
+     * (mix_*: each mode's gain and polarity, and its op-amps' leakage between the modes),
+     * the DC load the inputs routed into the filter put on it (dc_in), and the external
+     * filter's low-pass (out_c, out_lp). */
+    sid_nonlin nl;
+    float mix_lp, mix_bp, mix_bpn, mix_hp, dc_in;
+    float out_c, out_lp;
 } sid;
 
 /* sample_rate must be in [4000, 65535]. The oscillator step needs
@@ -108,6 +116,15 @@ void sid_set_gate_reset(sid* s, int on);
  * an old or a new entry. The filter's coefficients follow at the next write to $15-$17:
  * rewrite one (through the register ring on the device) to apply the curve. */
 int sid_set_filter_curve(sid* s, uint32_t curve);
+
+/* Scales the 6581 filter's non-linearity (sid_filter.h, sid_nonlin): its cutoff's
+ * rise with the swing in the threshold region, its fall under the DC load of the voices
+ * routed into it, and its lowest cutoff. 1 is reSIDfp's, what sid_init sets; 0 makes the
+ * filter linear; between and beyond scale it (M1c Task 3's chip profiles and its age/heat
+ * control blend it). The 8580 ignores it. It writes three floats, one at a time, which the
+ * audio path reads every sample: call it from anywhere, while the chip plays; a sample
+ * may take some old and some new. */
+void sid_set_filter_nonlinearity(sid* s, float amount);
 
 /* Points the chip at other voice DACs (sid_dac_build), which must outlive it; sid_init
  * sets reSIDfp's defaults for the model (sid_dac_default), shared by every chip. Never

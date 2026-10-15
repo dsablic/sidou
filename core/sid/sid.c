@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "sid.h"
 
+#include <stddef.h>
 #include <string.h>
 
 #define OUTPUT_GAIN (0.1f * 32767.0f) /* leaves headroom for the 6581 DC offset and filter peaks */
@@ -14,7 +15,34 @@
 #define LEVEL_6581 1.4736f
 #define LEVEL_8580 1.1288f
 #define DC_BLOCK_HZ 16.0f
-#define DRIVE_6581 2.0f
+
+/* The 6581's filter and output path, fitted to reSIDfp's 6581 at 44.1 kHz (M1b Task 6:
+ * filter sweeps at small and full scale and with three loud voices, cutoffs and damping
+ * measured from reSIDfp with one to three voices at two envelope levels, passband gains
+ * and the volume register's DC steps; docs/plans/2026-10-14-m1b-sound-accuracy.md).
+ * The non-linearity (sid_filter.h, sid_nonlin), at amount 1: */
+#define NL_LEVEL 0.055f     /* g per unit |hp|, at 44.1 kHz */
+#define NL_LEVEL_REF 0.13875f
+#define NL_LOAD 0.13125f
+#define NL_LOAD_REF 1.7375f
+#define NL_FLOOR_HZ 240.7f
+/* reSIDfp's 6581 filter outputs against its unfiltered voices: the low-pass and the
+ * high-pass inverted (inverting op-amps), the band-pass not; each mode's passband gain;
+ * and its op-amps' finite gain A, which makes the integrators leak: the band-pass carries
+ * LEAK (1 / A) of the low-pass, the high-pass 2 LEAK of the band-pass and LEAK^2 of the
+ * low-pass (a state-variable filter with lossy integrators is a lossless one, retuned,
+ * with these outputs; the retuning is in the fitted tables). */
+#define MIX_GAIN_LP 0.6875f
+#define MIX_GAIN_BP 0.8125f
+#define MIX_GAIN_HP 0.5f
+#define MIX_LEAK (1.0f / 3.375f)
+/* The DC each input routed into the filter (a voice or EXT IN) brings at the operating
+ * point of reSIDfp's summer: the filter's load. It moves the cutoff only (it enters the
+ * load term, not the signal: as a step through a resonant low-pass it would ring past
+ * full scale where reSIDfp's saturating op-amps do not). */
+#define DC_FILTER_INPUT 1.15625f
+/* The external filter's low-pass with reSIDfp's resampling after it: one pole. */
+#define OUT_LP_HZ 13154.0f
 /* sid_clock's step. sid_osc_advance needs freq * cycles < 2^24, so at most 256.
  * Within that, the step only matters for hard sync: the restart is exact, but what the
  * synced voice did earlier in the step (its noise clocks, its MSB rise) is not
@@ -24,7 +52,50 @@
 #define CLOCK_STEP 16u
 
 static void update_filter(sid* s) {
-    sid_svf_set(&s->svf, s->cutoff_g[s->fc], s->res_k[s->res]);
+    if (s->model == SID_MODEL_6581) {
+        sid_svf_set_6581(&s->svf, &s->nl, s->cutoff_g[s->fc], s->res_k[s->res], s->dc_in);
+    } else {
+        sid_svf_set(&s->svf, s->cutoff_g[s->fc], s->res_k[s->res]);
+    }
+}
+
+/* The 6581's mix of the filter's outputs and its load, for $17 and $18 (sid.h). */
+static void update_mix(sid* s) {
+    if (s->model != SID_MODEL_6581) {
+        return;
+    }
+    uint32_t routed = 0;
+    for (uint32_t v = 0; v < 4u; ++v) {
+        routed += (s->routing >> v) & 1u; /* the voices and EXT IN */
+    }
+    float lp = (s->mode_vol & 0x10u) ? 1.0f : 0.0f;
+    float bp = (s->mode_vol & 0x20u) ? 1.0f : 0.0f;
+    float hp = (s->mode_vol & 0x40u) ? 1.0f : 0.0f;
+    s->mix_lp = -MIX_GAIN_LP * lp + MIX_GAIN_BP * MIX_LEAK * bp -
+                MIX_GAIN_HP * MIX_LEAK * MIX_LEAK * hp;
+    s->mix_bpn = MIX_GAIN_BP * bp / s->svf.k; /* bpn is over k (sid_svf_tick_6581) */
+    s->mix_bp = -MIX_GAIN_HP * 2.0f * MIX_LEAK * hp;
+    s->mix_hp = -MIX_GAIN_HP * hp;
+    s->dc_in = DC_FILTER_INPUT * (float)routed;
+    s->svf.load_at = s->nl.load_ref - s->dc_in;
+}
+
+/* exp(-x) for 0 <= x < ~4, without libm: (Taylor series of exp(-x / 16))^16. For sid_init. */
+static float exp_neg(float x) {
+    float y = x / 16.0f;
+    float e = 1.0f - y * (1.0f - y / 2.0f * (1.0f - y / 3.0f * (1.0f - y / 4.0f * (1.0f - y / 5.0f))));
+    for (int i = 0; i < 4; ++i) {
+        e *= e;
+    }
+    return e;
+}
+
+void sid_set_filter_nonlinearity(sid* s, float amount) {
+    float fs = (float)s->sample_rate;
+    s->nl.level = amount * NL_LEVEL * (44100.0f / fs);
+    s->nl.level_off = -s->nl.level * s->nl.level_ref;
+    s->nl.load = amount * NL_LOAD;
+    s->nl.floor = amount * sidou_tanf(SIDOU_PI * NL_FLOOR_HZ / fs);
 }
 
 /* The chip's cutoff (as the SVF's g, clamped to 30 Hz .. 0.45 fs) and damping tables for
@@ -72,9 +143,14 @@ void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) 
     }
     s->sample_rate = sample_rate;
     build_filter_tables(s, 0);
-    sid_svf_reset(&s->svf, model == SID_MODEL_6581 ? DRIVE_6581 : 0.0f);
+    sid_svf_reset(&s->svf);
     s->dc_r = 1.0f - 2.0f * SIDOU_PI * DC_BLOCK_HZ / (float)sample_rate;
+    s->nl.level_ref = NL_LEVEL_REF;
+    s->nl.load_ref = NL_LOAD_REF;
+    sid_set_filter_nonlinearity(s, 1.0f);
+    s->out_c = 1.0f - exp_neg(2.0f * SIDOU_PI * OUT_LP_HZ / (float)sample_rate);
     update_filter(s);
+    update_mix(s);
 }
 
 static uint8_t read_osc3(const sid* s);
@@ -126,10 +202,12 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
         s->res = v >> 4;
         s->routing = v & 0x0f;
         update_filter(s);
+        update_mix(s);
         break;
     case 0x18:
         s->mode_vol = v;
         s->volume = (float)(v & 0x0f) / 15.0f;
+        update_mix(s);
         break;
     default: break;
     }
@@ -276,17 +354,17 @@ void sid_clock(sid* s, uint32_t cycles) {
     }
 }
 
-/* sid_render's loop, in chunks of `every` samples with a tap after each (sid_render_tap);
- * sid_render's is one chunk and no tap. */
+/* render_8580's loop, in chunks of `every` samples with a tap after each (sid_render_tap;
+ * sid_render's is one chunk and no tap): M0's linear filter and mix, unchanged. */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
 static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t every,
                                sid_tap tap, void* ctx) {
-    uint32_t i = 0;
-    while (i < frames) {
-        uint32_t end = frames - i > every ? i + every : frames;
-        for (; i < end; ++i) {
+    int16_t* const last = out + frames;
+    while (out < last) {
+        int16_t* const stop = last - out > (ptrdiff_t)every ? out + every : last;
+        for (; out < stop; ++out) {
             s->cycle_frac_q16 += s->cycles_per_sample_q16;
             uint32_t cycles = s->cycle_frac_q16 >> 16;
             s->cycle_frac_q16 &= 0xffffu;
@@ -331,7 +409,7 @@ static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t e
             } else if (o < -32768.0f) {
                 o = -32768.0f;
             }
-            out[i] = (int16_t)o;
+            *out = (int16_t)o;
         }
         if (tap) {
             tap(ctx, s);
@@ -339,13 +417,102 @@ static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t e
     }
 }
 
+/* One function per model, so neither model's code depends on the other's, and the model
+ * test stays out of the per-sample loop. The 6581's runs its non-linear filter
+ * (sid_nl_tick) and its output path (sid.h), and keeps what it reads every sample in
+ * locals: nothing writes the chip during a render (sid_write runs between them), and the
+ * compiler cannot know that through the pointer. The tap (sid_render_tap) sees its voices;
+ * its filter's state is stored back once, at the end. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline, unused))
+#endif
+static void render_6581(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_tap tap,
+                        void* ctx) {
+    const sid_nonlin n = s->nl;
+    const float g0 = s->svf.g, a10 = s->svf.a1, k = s->svf.k, load_at = s->svf.load_at;
+    float ic1 = s->svf.ic1, ic2 = s->svf.ic2, lp = s->svf.lp, bp = s->svf.bp, hp = s->svf.hp;
+    float bpn = s->svf.bpn;
+    const float mix_lp = s->mix_lp, mix_bp = s->mix_bp, mix_bpn = s->mix_bpn, mix_hp = s->mix_hp;
+    const float vol_c = s->volume * s->out_c, out_c = s->out_c;
+    float out_lp = s->out_lp, dc_x1 = s->dc_x1, dc_y1 = s->dc_y1;
+    const float dc_r = s->dc_r, gain = s->output_gain;
+    int16_t* const last = out + frames;
+    while (out < last) {
+        int16_t* const stop = last - out > (ptrdiff_t)every ? out + every : last;
+        for (; out < stop; ++out) {
+            s->cycle_frac_q16 += s->cycles_per_sample_q16;
+            uint32_t cycles = s->cycle_frac_q16 >> 16;
+            s->cycle_frac_q16 &= 0xffffu;
+
+            clock_voices(s, cycles);
+
+            float filt_in = 0.0f, direct = 0.0f;
+            for (int v = 0; v < 3; ++v) {
+                float x = voice_out(s, v);
+                if (s->routing & (1u << v)) {
+                    filt_in += x;
+                } else if (!(v == 2 && (s->mode_vol & 0x80u))) {
+                    direct += x;
+                }
+            }
+            sid_nl_tick(&ic1, &ic2, &lp, &bp, &hp, &bpn, filt_in, g0, a10, k, load_at, &n);
+            float filtered = mix_lp * lp + mix_bpn * bpn + mix_bp * bp + mix_hp * hp;
+            /* The output low-pass. At volume 0 it decays towards 0 (sid_svf_flush's reason). */
+            float x = out_lp + (vol_c * (direct + filtered) - out_c * out_lp);
+            if (x < 1e-15f && x > -1e-15f) {
+                x = 0.0f;
+            }
+            out_lp = x;
+
+            /* render_8580's DC blocker and rounding. */
+            float y = x - dc_x1 + dc_r * dc_y1;
+            if (y < 1e-15f && y > -1e-15f) {
+                y = 0.0f;
+            }
+            dc_x1 = x;
+            dc_y1 = y;
+            float o = y * gain;
+            o += o >= 0.0f ? 0.5f : -0.5f;
+            if (o > 32767.0f) {
+                o = 32767.0f;
+            } else if (o < -32768.0f) {
+                o = -32768.0f;
+            }
+            *out = (int16_t)o;
+        }
+        if (tap) {
+            tap(ctx, s);
+        }
+    }
+    s->svf.ic1 = ic1;
+    s->svf.ic2 = ic2;
+    s->svf.lp = lp;
+    s->svf.bp = bp;
+    s->svf.hp = hp;
+    s->svf.bpn = bpn;
+    s->out_lp = out_lp;
+    s->dc_x1 = dc_x1;
+    s->dc_y1 = dc_y1;
+}
+
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline, unused))
+#endif
+static void render_8580(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_tap tap,
+                        void* ctx) {
+    render_loop(s, out, frames, every, tap, ctx);
+}
+
 void sid_render(sid* s, int16_t* out, uint32_t frames) {
-    fold_owed(s);
-    render_loop(s, out, frames, frames, 0, 0);
+    sid_render_tap(s, out, frames, frames, 0, 0);
 }
 
 void sid_render_tap(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_tap tap,
                     void* ctx) {
     fold_owed(s);
-    render_loop(s, out, frames, every, tap, ctx);
+    if (s->model == SID_MODEL_6581) {
+        render_6581(s, out, frames, every, tap, ctx);
+    } else {
+        render_8580(s, out, frames, every, tap, ctx);
+    }
 }
