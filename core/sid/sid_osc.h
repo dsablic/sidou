@@ -127,11 +127,23 @@ static inline uint32_t sid_noise_output(uint32_t sr) {
            ((sr & (1u << 20)) >> 15) | ((sr & (1u << 22)) >> 18);
 }
 
-/* The register bits an output pulls down: the inverse of sid_noise_output. */
+/* The register bits an output pulls down: the inverse of sid_noise_output, a nibble at a
+ * time. Not const, so the device keeps them in RAM, not in flash read through the cache
+ * (the audio path runs this every cycle while noise is combined). */
+#define SID_WB_LO(n)                                                                       \
+    ((((n) & 8u) ? 1u << 13 : 0u) | (((n) & 4u) ? 1u << 17 : 0u) |                          \
+     (((n) & 2u) ? 1u << 20 : 0u) | (((n) & 1u) ? 1u << 22 : 0u))
+#define SID_WB_HI(n)                                                                       \
+    ((((n) & 8u) ? 1u << 2 : 0u) | (((n) & 4u) ? 1u << 4 : 0u) | (((n) & 2u) ? 1u << 8 : 0u) | \
+     (((n) & 1u) ? 1u << 11 : 0u))
+#define SID_WB_ROW(f)                                                                      \
+    {f(0u), f(1u), f(2u),  f(3u),  f(4u),  f(5u),  f(6u),  f(7u),                            \
+     f(8u), f(9u), f(10u), f(11u), f(12u), f(13u), f(14u), f(15u)}
+__attribute__((unused)) static uint32_t SID_NOISE_WB[2][16] = {SID_WB_ROW(SID_WB_LO),
+                                                                SID_WB_ROW(SID_WB_HI)};
+
 static inline uint32_t sid_noise_writeback(uint32_t out) {
-    return ((out & (1u << 11)) >> 9) | ((out & (1u << 10)) >> 6) | ((out & (1u << 9)) >> 1) |
-           ((out & (1u << 8)) << 3) | ((out & (1u << 7)) << 6) | ((out & (1u << 6)) << 11) |
-           ((out & (1u << 5)) << 15) | ((out & (1u << 4)) << 18);
+    return SID_NOISE_WB[0][(out >> 4) & 15u] | SID_NOISE_WB[1][(out >> 8) & 15u];
 }
 
 /* reSIDfp's do_writeback: whether a shift's second phase takes the output's bits. */
@@ -463,16 +475,18 @@ static inline void sid_osc_cycle(sid_osc* o, uint32_t src_acc) {
         }
     }
     if (wf) {
+        /* The mode's fields (sid_osc_update_mode) stand for wf: pd_row its pulldown row,
+         * ramp_kind its triangle/saw, no_noise and no_pulse what it leaves out. */
         uint32_t ix = sid_wave_index(c, o->acc, src_acc);
-        uint32_t noise = wf & 8u ? o->noise : 0xfffu;
-        uint32_t pulse = wf & 4u ? o->pulse : 0xfffu;
-        int row = sid_pulldown_row(wf);
-        uint32_t x = sid_wave_ramp(wf, ix) & pulse & noise;
-        o->out = row < 0 ? x : sid_pulldown(o->pulldown[row], x);
-        if (!o->is6581 && (wf & 3u)) {
-            x = o->tri_saw & pulse & noise;
-            o->osc3 = row < 0 ? x : sid_pulldown(o->pulldown[row], x);
-            o->tri_saw = sid_wave_ramp(wf, ix);
+        uint32_t mask = (o->no_noise | o->noise) & (o->no_pulse | o->pulse);
+        uint32_t ramp = sid_wave_ramp(o->ramp_kind, ix);
+        const uint8_t* row = o->pd_row;
+        uint32_t x = ramp & mask;
+        o->out = row ? sid_pulldown(row, x) : x;
+        if (!o->is6581 && o->ramp_kind) {
+            x = o->tri_saw & mask;
+            o->osc3 = row ? sid_pulldown(row, x) : x;
+            o->tri_saw = ramp;
         } else {
             o->osc3 = o->out;
         }
@@ -594,67 +608,66 @@ static void sid_noise_clock(sid_osc* o, uint32_t prev, uint32_t next, uint32_t c
     o->shift_pipeline = (uint8_t)pending;
 }
 
-/* All the bits that differ anywhere between a and b, and every bit below them. */
-static inline uint32_t sid_span_mask(uint32_t a, uint32_t b) {
-    uint32_t m = a ^ b;
-    m |= m >> 1;
-    m |= m >> 2;
-    m |= m >> 4;
-    m |= m >> 8;
-    return m;
+/* The bit-19 segment of an (unwrapped) accumulator value: a rise moves to the next. */
+static inline uint32_t sid_osc_seg19(uint32_t a) {
+    return (a + 0x80000u) >> 20;
 }
 
-/* The AND of the triangle/saw ramp (sid_wave_ramp) over the accumulator top bits
- * lo..hi, both in the same half (lo <= hi, both < 0x800 or both >= 0x800). */
-static inline uint32_t sid_ramp_and_half(uint32_t kind, uint32_t lo, uint32_t hi) {
-    uint32_t m = sid_span_mask(lo, hi);
-    uint32_t and_ix = lo & hi & ~m;
-    switch (kind) {
-    case 0: return 0xfffu;
-    case 2: return and_ix;
-    case 3: return and_ix & (and_ix << 1) & 0xfffu;
-    default: /* triangle: rising in the lower half, falling in the upper */
-        return lo < 0x800u ? (and_ix << 1) & 0xfffu : (~(lo | hi | m) & 0x7ffu) << 1;
+/* The cycle, counted from acc, in which bit 19 next rises (0xffffffff never). */
+static inline uint32_t sid_osc_cycles_to_rise(uint32_t acc, uint32_t f) {
+    if (!f) {
+        return 0xffffffffu;
+    }
+    uint32_t rise = ((acc + 0x80000u) | 0xfffffu) + 1u - 0x80000u;
+    return (rise - acc + f - 1u) / f;
+}
+
+/* Where bit 19 rises in a window of `left` cycles from prev to next (not wrapped): 0 not
+ * at all, 2 in its last cycle, 1 in the cycle before (so the last cycle is the shift's
+ * first phase), 3 earlier (the shift's second phase is inside the window). Rises are at
+ * least 16 cycles apart. */
+static inline uint32_t sid_osc_rise_phase(uint32_t prev, uint32_t next, uint32_t f,
+                                          uint32_t left) {
+    uint32_t s = sid_osc_seg19(prev);
+    if (sid_osc_seg19(next) == s) {
+        return 0;
+    }
+    if (sid_osc_seg19(next - f) == s) {
+        return 2;
+    }
+    return left >= 2u && sid_osc_seg19(next - 2u * f) == s ? 1u : 3u;
+}
+
+/* After a window that ends with a shift pending (sid_osc_rise_phase's phase): its rise
+ * cycle is like any other but starts the pipeline, and its first phase latches the
+ * register, which writes nothing back in that cycle (the output, the noise, keeps it). */
+static inline void sid_osc_bulk_pipeline(sid_osc* o, uint32_t phase) {
+    if (phase == 2u) {
+        o->shift_pipeline = 2;
+    } else if (phase == 1u) {
+        o->shift_pipeline = 1;
+        o->test_or_reset = 0;
+        o->latch = o->sr;
     }
 }
 
-/* The same over lo..hi (lo <= hi < 0x1000), with the MSB inverted if flip. */
-static inline uint32_t sid_ramp_and(uint32_t kind, uint32_t lo, uint32_t hi, uint32_t flip) {
-    uint32_t r = 0xfffu;
-    if (lo < 0x800u) {
-        uint32_t h = hi < 0x800u ? hi : 0x7ffu;
-        r &= sid_ramp_and_half(kind, lo ^ flip, h ^ flip);
-    }
-    if (hi >= 0x800u) {
-        uint32_t l = lo > 0x800u ? lo : 0x800u;
-        r &= sid_ramp_and_half(kind, l ^ flip, hi ^ flip);
-    }
-    return r;
-}
-
-/* Noise combined with other waveforms, TEST clear: `left` cycles at once when they
- * change nothing but the accumulator (and, locked up, the shift pipeline). That holds
- * when the register and noise are 0 (locked up: every shift moves in a 0), or when no
- * shift is due and each cycle's output equals the noise: the pulldown keeps the noise
- * as it is, and the other waveforms (ANDed over the window, sid_ramp_and) and the
- * pulse cover all its bits. Returns 0 when that cannot be shown; with commit, also
- * runs the cycles; commit 2 takes the coverage as shown (by sid_osc_bulk_limit, which
- * checks each cycle's index instead of the whole range, so it can accept more). */
-static inline int sid_osc_combined_bulk(sid_osc* o, uint32_t left, uint32_t src_acc,
-                                        uint32_t src_freq, int commit) {
+/* Noise combined with other waveforms, TEST clear: runs `left` cycles at once, a window
+ * sid_osc_bulk_limit accepted, in which nothing changes but the accumulator (and, locked
+ * up, the shift pipeline). That holds when the register and noise are 0 (locked up:
+ * every shift moves in a 0), or when each cycle's output equals the noise: the pulldown
+ * keeps the noise as it is, and the other waveforms and the pulse cover all its bits. A
+ * window may end on a bit-19 rise or on the shift's first phase (sid_osc_rise_phase);
+ * the second phase changes the noise and runs as a cycle. */
+static inline void sid_osc_bulk_commit(sid_osc* o, uint32_t left, uint32_t src_acc,
+                                       uint32_t src_freq) {
     uint32_t wf = (uint32_t)o->control >> 4;
     uint32_t f = o->freq;
     uint32_t prev = o->acc;
     uint32_t next = prev + f * left;
     uint32_t n = o->noise;
     int locked = !n && !o->sr && !o->test_or_reset && !(o->shift_pipeline == 1 && o->out);
-    if (!locked && (o->shift_pipeline || (((next + 0x80000u) ^ (prev + 0x80000u)) >> 20))) {
-        return 0;
-    }
+    uint32_t phase = locked ? 0u : sid_osc_rise_phase(prev, next, f, left);
     if (!n) {
-        if (!commit) {
-            return 1;
-        }
         /* The output is 0 and writes back nothing but clearing the register's output
          * bits; the accumulator moves (the 6581 pulls its MSB at every rise), and
          * locked up, shifts move 0s (sid_noise_clock's plain shift is then exact). */
@@ -682,51 +695,8 @@ static inline int sid_osc_combined_bulk(sid_osc* o, uint32_t left, uint32_t src_
         o->pulse = (o->acc >> 12) >= o->pw ? 0xfffu : 0u;
         o->out = 0;
         o->osc3 = 0;
-        return 1;
-    }
-    if (o->pd_row && sid_pulldown(o->pd_row, n) != n) {
-        return 0;
-    }
-    if (o->is6581 && (wf & 2u) && !(n & 0x800u) && ((prev | next) & 0x1800000u)) {
-        return 0; /* the MSB may be pulled low in the window */
-    }
-    if (wf & 4u) {
-        /* The pulse must stay high: the stored comparison (cycle 1), then the
-         * accumulator from cycle 1 to the one before last, without wrapping. */
-        uint32_t before_last = next - f;
-        if (o->pulse != 0xfffu || (o->pw && before_last >= 0x1000000u) ||
-            (left >= 2 && ((prev + f) >> 12) < o->pw)) {
-            return 0;
-        }
-    }
-    uint32_t flip = 0;
-    if ((o->control & (SID_CTRL_RING | SID_CTRL_SAW)) == SID_CTRL_RING) {
-        uint32_t s1 = src_acc + src_freq;
-        uint32_t sn = src_acc + left * src_freq;
-        if (o->src_mask != 0xffffffu) {
-            flip = 0x800u; /* the source's MSB is always low here */
-        } else if ((s1 >> 23) != (sn >> 23)) {
-            return 0; /* the source's MSB changes in the window */
-        } else {
-            flip = s1 & 0x800000u ? 0u : 0x800u;
-        }
-    }
-    uint32_t lo = (prev + f) >> 12;
-    uint32_t hi = next >> 12;
-    uint32_t cover = n;
-    if (commit == 2) {
-        /* Coverage was shown cycle by cycle (sid_osc_bulk_limit). */
-    } else if (hi < 0x1000u) {
-        cover = sid_ramp_and(o->ramp_kind, lo, hi, flip);
-    } else {
-        cover = sid_ramp_and(o->ramp_kind, lo, 0xfffu, flip) &
-                sid_ramp_and(o->ramp_kind, 0, hi - 0x1000u, flip);
-    }
-    if ((cover & n) != n && commit != 2) {
-        return 0;
-    }
-    if (!commit) {
-        return 1;
+        sid_osc_bulk_pipeline(o, phase);
+        return;
     }
     /* Every cycle outputs the noise unchanged. */
     if (((next + 0x800000u) ^ (prev + 0x800000u)) >> 24) {
@@ -750,14 +720,15 @@ static inline int sid_osc_combined_bulk(sid_osc* o, uint32_t left, uint32_t src_
                                                       sid_src_at(o, src_acc, src_freq, left)));
     }
     o->pulse = (o->acc >> 12) >= o->pw ? 0xfffu : 0u;
-    return 1;
+    sid_osc_bulk_pipeline(o, phase);
 }
 
 /* How far sid_osc_run_combined looks ahead for a quiet stretch. */
 #define SID_OSC_QUIET_HORIZON 4096u
 
-/* The longest window, at most `left` cycles, that sid_osc_combined_bulk accepts, found
- * directly: the cycle of the next bit-19 rise, of the MSB rising (6581, pulled low),
+/* The longest window, at most `left` cycles, that sid_osc_bulk_commit can run, found
+ * directly: the cycle after the next bit-19 rise (the shift's first phase; its second
+ * changes the noise), of the MSB rising (6581, pulled low),
  * of the pulse wrapping or the ring source's MSB changing, and, walking from one
  * candidate to the next, of the first cycle whose waveform no longer covers the
  * noise. With the noise covered by the bits `need` of the (possibly inverted) index,
@@ -781,16 +752,26 @@ static inline uint32_t sid_osc_bulk_limit(const sid_osc* o, uint32_t left, uint3
         if (!n) {
             return left;
         }
-        if (flip_now) {
+        if (flip_now || (o->pd_row && sid_pulldown(o->pd_row, n) != n) ||
+            (o->is6581 && (wf & 2u) && !(n & 0x800u) && (prev & 0x800000u))) {
             return 0;
         }
-        return (sid_wave_ramp(o->ramp_kind, prev >> 12) & n) == n ? left : 0;
+        uint32_t lim = left;
+        if (wf & 4u) {
+            /* The first cycle compares as stored, the others with the accumulator. */
+            if (o->pulse != 0xfffu) {
+                return 0;
+            }
+            if ((prev >> 12) < o->pw && lim > 1u) {
+                lim = 1;
+            }
+        }
+        return (sid_wave_ramp(o->ramp_kind, prev >> 12) & n) == n ? lim : 0;
     }
     uint32_t lim = left;
-    uint32_t rise = ((prev + 0x80000u) | 0xfffffu) + 1u - 0x80000u;
-    uint32_t k = (rise - prev + f - 1u) / f; /* bit 19 rises in cycle k */
-    if (k - 1u < lim) {
-        lim = k - 1u;
+    uint32_t k = sid_osc_cycles_to_rise(prev, f); /* bit 19 rises in cycle k */
+    if (k + 1u < lim) {
+        lim = k + 1u; /* through the rise and the shift's first phase (sid_osc_bulk_pipeline) */
     }
     if (o->is6581 && (wf & 2u) && !(n & 0x800u)) {
         if (prev & 0x800000u) {
@@ -935,10 +916,15 @@ static void sid_osc_run_combined(sid_osc* o, uint32_t cycles, uint32_t src_acc,
              * the quiet path checks that it did. */
             uint32_t w = sid_osc_bulk_limit(o, SID_OSC_QUIET_HORIZON, s, src_freq);
             uint32_t run = w < left ? w : left;
-            if (run && sid_osc_combined_bulk(o, run, s, src_freq, 2)) {
+            if (run) {
+                sid_osc_bulk_commit(o, run, s, src_freq);
                 done = run;
-                if (w > left && !(!o->noise && !o->sr && !o->test_or_reset)) {
-                    o->quiet = w - left;
+                if (w > left && !(!o->noise && !o->sr && !o->test_or_reset) &&
+                    !o->shift_pipeline) {
+                    /* Not through the next rise, which the quiet path would not start. */
+                    uint32_t q = w - left;
+                    uint32_t to_rise = sid_osc_cycles_to_rise(o->acc, o->freq);
+                    o->quiet = q < to_rise ? q : to_rise - 1u;
                     o->quiet_src = sid_src_at(o, src_acc, src_freq, cycles);
                     o->quiet_src_freq = src_freq;
                 }
@@ -964,6 +950,46 @@ static inline void sid_osc_advance_cycles(sid_osc* o, uint32_t cycles, uint32_t 
     }
 }
 
+/* Within a quiet stretch (sid_osc_run_combined) of noise combined with other waveforms:
+ * the output stays the noise (TEST: settled), only the accumulator moves (TEST: the fade
+ * counts down). With ring modulation (and no sawtooth) only while the source keeps the
+ * course the stretch assumed. Returns 0, doing nothing, outside one. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+static inline int sid_osc_quiet_step(sid_osc* o, uint32_t cycles, uint32_t src_acc,
+                                     uint32_t src_freq) {
+    if (o->quiet < cycles ||
+        ((o->control & (SID_CTRL_RING | SID_CTRL_SAW)) == SID_CTRL_RING &&
+         (src_acc != o->quiet_src || src_freq != o->quiet_src_freq))) {
+        return 0;
+    }
+    o->quiet -= cycles;
+    o->quiet_src = sid_src_at(o, src_acc, src_freq, cycles);
+    o->pulled_last = 0;
+    o->msb_rose = 0;
+    if (o->control & SID_CTRL_TEST) {
+        if (o->sr_reset) {
+            o->sr_reset -= cycles;
+        }
+        return 1;
+    }
+    uint32_t prev = o->acc;
+    uint32_t next = prev + o->freq * cycles;
+    if (((next + 0x800000u) ^ (prev + 0x800000u)) >> 24) {
+        o->msb_rose = 1;
+        o->overshoot = (next - 0x800000u) & 0xffffffu;
+    }
+    o->acc = next & 0xffffffu;
+    o->pulse = (o->acc >> 12) >= o->pw ? 0xfffu : 0u;
+    o->osc3 = o->noise;
+    if (!o->is6581 && o->ramp_kind) {
+        o->tri_saw = sid_wave_ramp(o->ramp_kind,
+                                   sid_wave_index(o->control, o->acc, o->quiet_src));
+    }
+    return 1;
+}
+
 /* sid_osc_advance for TEST, noise combined with other waveforms and the 6581's sawtooth
  * combinations, and for steps where the noise register shifts. */
 #if defined(__GNUC__) || defined(__clang__)
@@ -971,6 +997,9 @@ __attribute__((noinline, unused))
 #endif
 static void sid_osc_advance_slow(sid_osc* o, uint32_t cycles, uint32_t src_acc,
                                         uint32_t src_freq) {
+    if (sid_osc_quiet_step(o, cycles, src_acc, src_freq)) {
+        return;
+    }
     uint32_t wf = (uint32_t)o->control >> 4;
     sid_noise_settle(o);
     o->msb_rose = 0;
@@ -980,40 +1009,13 @@ static void sid_osc_advance_slow(sid_osc* o, uint32_t cycles, uint32_t src_acc,
          * which latched the last cycle's pulse comparison and the 8580's triangle/saw
          * (sid_osc_latch_ramp). */
         o->cycle_mode = 1;
-        if (o->quiet >= cycles &&
-            ((o->control & (SID_CTRL_RING | SID_CTRL_SAW)) != SID_CTRL_RING ||
-             (src_acc == o->quiet_src && src_freq == o->quiet_src_freq))) {
-            /* Within a quiet stretch (sid_osc_run_combined): the output stays the noise
-             * (TEST: settled), only the accumulator moves (TEST: the fade counts down). */
-            o->quiet -= cycles;
-            o->quiet_src = sid_src_at(o, src_acc, src_freq, cycles);
-            o->pulled_last = 0;
-            if (o->control & SID_CTRL_TEST) {
-                if (o->sr_reset) {
-                    o->sr_reset -= cycles;
-                }
-                return;
-            }
-            uint32_t prev = o->acc;
-            uint32_t next = prev + o->freq * cycles;
-            if (((next + 0x800000u) ^ (prev + 0x800000u)) >> 24) {
-                o->msb_rose = 1;
-                o->overshoot = (next - 0x800000u) & 0xffffffu;
-            }
-            o->acc = next & 0xffffffu;
-            o->pulse = (o->acc >> 12) >= o->pw ? 0xfffu : 0u;
-            o->osc3 = o->noise;
-            if (!o->is6581 && (wf & 3u)) {
-                o->tri_saw = sid_wave_ramp(wf, sid_wave_index(o->control, o->acc, o->quiet_src));
-            }
-            return;
-        }
+        /* Not within a quiet stretch (sid_osc_quiet_step). */
         o->quiet = 0;
         if (!(o->sr | o->noise | o->test_or_reset | (o->control & SID_CTRL_TEST)) &&
             !(o->shift_pipeline == 1 && o->out)) {
             /* (A shift whose first phase ran before a control write takes the old
              * waveform's output in its second: not locked up yet.) */
-            /* Locked up: the common case, sid_osc_combined_bulk's first branch without
+            /* Locked up: the common case, sid_osc_bulk_commit's first branch without
              * its checks. */
             uint32_t prev = o->acc;
             uint32_t next = prev + o->freq * cycles;

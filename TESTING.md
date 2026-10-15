@@ -228,8 +228,10 @@ For each it:
   the effect gates' `SID_WORST_PER_CHIP` per chip.
 
 `SIDOU_GATE_PROFILE=1` also counts the render instructions per function and
-adds the top ones to each scenario's report (`profile_instructions_per_sample`).
-It slows the gate down.
+adds the top ones to each scenario's report (`profile_instructions_per_sample`),
+the same for its most expensive block alone (`worst_block_profile_instructions`)
+and every block's cost (`blocks_instructions_per_sample`). It slows the gate
+down.
 
 The effects scenarios (`fx_budget.rs`) run the same workload, then the
 post-chip chain (`core/fx`) over its output:

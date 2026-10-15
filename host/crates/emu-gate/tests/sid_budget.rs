@@ -40,6 +40,10 @@ struct Run {
     emulated_block_loads: u64,
     /// Render instructions per function, when profiling.
     profile: Vec<(String, u64)>,
+    /// The same for the most expensive block alone.
+    worst_block_profile: Vec<(String, u64)>,
+    /// Instructions per sample, block by block, when profiling.
+    blocks: Vec<f64>,
 }
 
 /// SIDOU_GATE_PROFILE=1 counts the render instructions per function (slower).
@@ -89,6 +93,8 @@ fn run(build: &Path, chips: u32, model: sid_model, scenario: u32) -> Run {
     functions.sort();
     let profile = profiling();
     let mut counts = vec![0u64; functions.len() + 1];
+    // Per block (counted in sid_render calls of the first chip), when profiling.
+    let mut block_counts: Vec<Vec<u64>> = Vec::new();
 
     let mut soc = Soc::new(1 << 20, bin);
     soc.ram.write32(SCENARIO_ADDR - RAM_BASE, scenario);
@@ -113,6 +119,13 @@ fn run(build: &Path, chips: u32, model: sid_model, scenario: u32) -> Run {
                 _ => functions.len(),
             };
             counts[slot] += 1;
+            if let Some(b) = render_calls.len().checked_sub(1) {
+                let b = b / chips as usize;
+                if block_counts.len() <= b {
+                    block_counts.resize(b + 1, vec![0u64; functions.len() + 1]);
+                }
+                block_counts[b][slot] += 1;
+            }
         }
         if step(&mut cpu, &mut soc) {
             emulated_block_loads += 1;
@@ -139,16 +152,20 @@ fn run(build: &Path, chips: u32, model: sid_model, scenario: u32) -> Run {
             i16::from_le_bytes([soc.ram.read8(o), soc.ram.read8(o + 1)])
         })
         .collect();
-    let mut profile: Vec<(String, u64)> = counts
-        .iter()
-        .enumerate()
-        .filter(|(_, &c)| c > 0)
-        .map(|(i, &c)| {
-            let name = functions.get(i).map_or("(no symbol)", |f| f.2.as_str());
-            (name.to_owned(), c)
-        })
-        .collect();
-    profile.sort_by_key(|p| std::cmp::Reverse(p.1));
+    let by_function = |counts: &[u64]| {
+        let mut p: Vec<(String, u64)> = counts
+            .iter()
+            .enumerate()
+            .filter(|(_, &c)| c > 0)
+            .map(|(i, &c)| {
+                let name = functions.get(i).map_or("(no symbol)", |f| f.2.as_str());
+                (name.to_owned(), c)
+            })
+            .collect();
+        p.sort_by_key(|p| std::cmp::Reverse(p.1));
+        p
+    };
+    let profile_all = by_function(&counts);
     // Blocks as workload_render_samples cuts them: at most 128 samples, never across a
     // frame; each block calls sid_render once per chip.
     assert_eq!(render_calls.len() % chips as usize, 0);
@@ -159,13 +176,26 @@ fn run(build: &Path, chips: u32, model: sid_model, scenario: u32) -> Run {
         .collect();
     starts.push(marks[2]);
     let mut worst_block = 0.0f64;
+    let mut worst_index = 0;
+    let mut blocks = Vec::new();
     let mut position = 0u32;
-    for w in starts.windows(2) {
+    for (i, w) in starts.windows(2).enumerate() {
         let len = (WORKLOAD_BLOCK.min(SAMPLES_PER_FRAME - position % SAMPLES_PER_FRAME))
             .min(n as u32 - position);
-        worst_block = worst_block.max((w[1] - w[0]) as f64 / f64::from(len));
+        let cost = (w[1] - w[0]) as f64 / f64::from(len);
+        if cost > worst_block {
+            worst_block = cost;
+            worst_index = i;
+        }
+        if profile {
+            blocks.push(cost);
+        }
         position += len;
     }
+    let worst_block_profile = block_counts
+        .get(worst_index)
+        .map(|c| by_function(c))
+        .unwrap_or_default();
     assert_eq!(
         position as usize, n,
         "block schedule out of step with the workload"
@@ -176,7 +206,9 @@ fn run(build: &Path, chips: u32, model: sid_model, scenario: u32) -> Run {
         render: marks[2] - marks[1],
         samples,
         emulated_block_loads,
-        profile,
+        profile: profile_all,
+        worst_block_profile,
+        blocks,
     }
 }
 
@@ -257,6 +289,14 @@ fn check_scenario(
             .map(|(f, c)| (f.clone(), Value::from(*c as f64 / n)))
             .collect::<serde_json::Map<_, _>>()
             .into();
+        report["worst_block_profile_instructions"] = r
+            .worst_block_profile
+            .iter()
+            .take(12)
+            .map(|(f, c)| (f.clone(), Value::from(*c)))
+            .collect::<serde_json::Map<_, _>>()
+            .into();
+        report["blocks_instructions_per_sample"] = r.blocks.iter().map(|&b| b.round()).collect();
     }
     (report, failures)
 }
