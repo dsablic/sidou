@@ -450,6 +450,38 @@ fn the_stars_fly_out_faster_with_the_envelope_and_steer_with_the_pitch() {
     assert_eq!(stars(&s).cx, -80);
 }
 
+/// A note-on lights its voice's stars even before its envelope rises (the tap's ENV3 is still
+/// 0 when the note-on comes before the audio has run a block): the light goes early only once
+/// the voice is let go and silent.
+#[test]
+fn a_note_on_lights_the_stars_before_its_envelope_rises() {
+    let lit = SCENE_STARS_LIT as u8;
+    let mut s = new_scene(SCENE_STARS);
+    let mut m = hit(quiet(), 0, 60, 0);
+    m.color = [GRID_CYAN as u8, GRID_YELLOW as u8, GRID_YELLOW as u8];
+    step(&mut s, &m);
+    assert_eq!(
+        stars(&s).lit[0],
+        lit,
+        "the note-on's light went with ENV3 at 0"
+    );
+    let cyan = |s: &scene| {
+        (0..ROWS).any(|r| (0..COLS).any(|c| u32::from(s.cv.attr[r][c] & 15) == GRID_CYAN))
+    };
+    assert!(cyan(&s), "no star in the voice's colour");
+    m.trig = [0; 3];
+    step(&mut s, &m); // held, ENV3 still 0
+    assert_eq!(stars(&s).lit[0], lit - 1);
+    m.gate = [0; 3];
+    m.env[0] = 30;
+    step(&mut s, &m); // let go, still sounding
+    assert_eq!(stars(&s).lit[0], lit - 2);
+    m.env[0] = 0;
+    step(&mut s, &m); // let go and silent
+    assert_eq!(stars(&s).lit[0], 0);
+    assert!(!cyan(&s));
+}
+
 /// The canvas from the stars as the piece projects them.
 fn star_canvas(s: &scene, m: &scene_music) -> Vec<(usize, usize, u8, u8)> {
     let t = stars(s);
@@ -783,6 +815,19 @@ fn the_distance_table_is_four_times_the_distance() {
 }
 
 // ---- every piece ----
+
+/// The plasma's whole-turn sine is sine_q7, byte for byte.
+#[test]
+fn the_plasmas_sine_table_is_sine_q7() {
+    for phase in 0..256u32 {
+        let want = unsafe { sine_q7(phase) };
+        assert_eq!(
+            i32::from(unsafe { scene_sin8[phase as usize] }),
+            want,
+            "phase {phase}"
+        );
+    }
+}
 
 #[test]
 fn a_piece_starts_and_plays_the_same_every_time() {

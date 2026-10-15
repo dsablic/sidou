@@ -169,6 +169,9 @@ typedef struct {
 /* round(4 * hypot(dx, dy)) for dx, dy = 0..29: distances in quarter cells, for the plasma
  * (generated; host/crates/sidou-tests checks it). */
 extern const uint8_t scene_dist4[GRID_ROWS][GRID_COLS];
+/* sine_q7 (app/sine.h) for each byte of phase, whole: the plasma looks it up for every cell,
+ * and sine_q7 works from a quarter wave (generated; host/crates/sidou-tests checks it). */
+extern const int8_t scene_sin8[256];
 /* The pieces' names, as the screen shows them. */
 extern const char* const scene_names[SCENE_PIECES];
 

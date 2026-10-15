@@ -78,8 +78,7 @@ const uint8_t scene_dist4[GRID_ROWS][GRID_COLS] = {
 
 /* ---- shared ---- */
 
-/* sine_q7 (app/sine.h) for a byte of phase, whole: the plasma looks it up for every cell. */
-static const int8_t SIN8[256] = {
+const int8_t scene_sin8[256] = {
     0, 3, 6, 9, 12, 16, 19, 22, 25, 28, 31, 34, 37, 40, 43, 46,
     49, 51, 54, 57, 60, 63, 65, 68, 71, 73, 76, 78, 81, 83, 85, 88,
     90, 92, 94, 96, 98, 100, 102, 104, 106, 107, 109, 111, 112, 113, 115, 116,
@@ -99,7 +98,7 @@ static const int8_t SIN8[256] = {
 };
 
 static int32_t sin8(uint32_t phase) {
-    return SIN8[phase & 255u];
+    return scene_sin8[phase & 255u];
 }
 
 uint32_t scene_random(uint32_t* state) {
@@ -531,8 +530,8 @@ static void stars_step(scene* s, const scene_music* m) {
         } else if (t->lit[v]) {
             t->lit[v]--;
         }
-        if (!m->env[v]) {
-            t->lit[v] = 0;
+        if (!m->gate[v] && !m->env[v]) {
+            t->lit[v] = 0; /* let go and silent; a note-on's own ENV3 may still be 0 */
         }
     }
     int32_t d = t->aim - t->cx;
