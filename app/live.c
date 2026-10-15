@@ -20,8 +20,8 @@
 #define CUTOFF_PER_VALUE 8
 #define PW_PER_VALUE 16
 
-_Static_assert(LIVE_PARAM_SLOT_END == LIVE_PARAM_SLOT + LIVE_SLOTS * LIVE_SLOT_FIELDS,
-               "every slot field is a parameter");
+_Static_assert(LIVE_PARAM_BEND_RANGE == LIVE_PARAM_SLOT_END,
+               "every slot field is a parameter, and the expression ones follow");
 _Static_assert(LIVE_PITCH_SEMITONE == 8192 && LIVE_BEND_CENTRE == 8192u,
                "a bend times the range is the offset in 1/8192 semitone");
 

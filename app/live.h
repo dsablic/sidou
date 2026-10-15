@@ -264,8 +264,7 @@ typedef enum {
     LIVE_PARAM_FILTER_VOICES = 12, /* 0..7, $d417 bits 0..2: voices 1, 2, 3 into the filter */
     LIVE_PARAM_MODEL = 13,        /* 0 6581, 1 8580: a reset, at the next live_tick */
     /* The effect slots: LIVE_PARAM_SLOT + slot * LIVE_SLOT_FIELDS + field (live_slot_set). */
-    LIVE_PARAM_SLOT = 14,
-    LIVE_PARAM_SLOT_END = 29,
+    LIVE_PARAM_SLOT = 14, /* .. LIVE_PARAM_SLOT_END - 1 */
     /* Expression, per preset: recorded, and live_tick writes what they change; the velocity
      * target rewrites the envelopes at once. */
     LIVE_PARAM_BEND_RANGE = 29,      /* 0..24 semitones each way: a preset edit (RPN 0's is
@@ -278,6 +277,11 @@ typedef enum {
     LIVE_PARAM_VIBRATO_DELAY = 35,   /* 0..127 ticks */
     LIVE_PARAM_COUNT = 36
 } live_param;
+
+/* One past the last slot parameter, i.e. LIVE_PARAM_BEND_RANGE (live.c asserts it). A macro,
+ * not an enumerator: the enum gives each value one name, so a switch over live_param cannot
+ * meet the same value under two case labels. */
+#define LIVE_PARAM_SLOT_END (LIVE_PARAM_SLOT + LIVE_SLOTS * LIVE_SLOT_FIELDS)
 
 /* Preset 0, octave 0, full volume, every effect slot off. Sends LIVE_REG_RESET(model), then
  * every register, then every slot setting (fx_live.h). */
