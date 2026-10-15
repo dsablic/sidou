@@ -207,3 +207,4 @@ All notable changes are documented here. The format follows
   picker (and the FX button, as before).
 - The EDIT layer (EDIT + K1..K4, SCL, ENV) is no longer a stopgap: it stays in every view as a
   shortcut to the selected effect slot, the one the CHIP view's slot focus shows.
+- The fm1-emu credit is reworded so that it fits one About page.
