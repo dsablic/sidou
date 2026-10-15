@@ -492,10 +492,10 @@ static int set_bits(uint8_t* field, uint32_t mask, uint32_t value) {
 }
 
 void live_param_set(live* l, uint32_t param, uint32_t value) {
-    uint32_t max = live_param_max(param);
-    if (max == 0) {
+    if (param >= LIVE_PARAM_COUNT) {
         return;
     }
+    uint32_t max = live_param_max(param);
     if (value > max) {
         value = max;
     }
