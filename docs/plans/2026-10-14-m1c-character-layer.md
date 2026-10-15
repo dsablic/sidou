@@ -170,6 +170,43 @@ analogue modelling parameters, not just named presets. So:
 - **Memory:** report the flash cost of the grids and the RAM cost of the
   active and staging tables per chip.
 
+**Results after Task 3** (2026-10-15; decision record
+[0006](../decisions/0006-chip-profiles.md) has the detail). As scoped for this round: the
+profiles and the four macro controls; the expert layer (every analogue parameter as its
+own control) and user-saved profiles are not done.
+- **Profiles** (`sidou-tablegen` `profiles.rs` -> `gen/profiles.h`, and their filter rows
+  in `gen/filter.h`): 6581 R4AR and 8580 R5 are reSIDfp's defaults; 6581 R2 (curve 0.58,
+  WEAK combined waveforms, sampled from an R2) and R3 (curve 0.42, AVERAGE, sampled from
+  an R3) have SIDOU-chosen filter curves, since no per-revision filter values are
+  documented; "worn 6581" is artistic (curve 0.35 at range 0.4, STRONG, a 2.30 ladder with
+  three times the leakage, non-linearity 1.5). Age/heat drifts towards a 6581 row at curve
+  0.25, range 0.3, and an 8580 row at curve 0.75 (the 8580's cutoff rises as its curve
+  falls, against reSIDfp's header). All three combined-waveform profiles are now compiled
+  by default.
+- **"Worn 6581" defined** as above, and the 6581 range's process-global state handled:
+  `filter_fit::apply_range` before every 6581 measurement, `tests/profiles.rs` in its own
+  binary with a lock.
+- **Against reSIDfp at zero character:** R4AR and R5 within M1b's tolerances; R2 and R3
+  up to 0.22 and 0.58 dB past M1b's passband-gain range (the 6581 mix and non-linearity
+  were fitted at the default curve); worn 5.9 / 5.7 / 5.2 dB in shape, by design. Combined
+  waveforms read for read.
+- **The 6581's lowest cutoff** now follows the cutoff table at FC 0 and stops growing with
+  the non-linearity amount above 1 (bit for bit M1b's at the default).
+- **Output thump and M1b's volume-register DC step:** a DC the volume scales, put into the
+  DC blocker's state at the `$18` write (no per-sample cost), up to 1.0 voice-DAC unit;
+  reSIDfp's extra step (0.33 to 0.47) is thump 42 to 60. The output gain falls by the
+  thump's share, so the step never takes a full-scale signal past full scale (the clipping
+  that kept the step out of M1b). 0 is M1b's behaviour.
+- **Cost:** nothing per sample but the bleed, a multiply-add in a copy of each render used
+  only while it is on. Worst blocks with the costliest character: 724.21 and 1,453.96 (one
+  and two chips; `SID_WORST_BLOCK_*` 725 and 1,454); 2,297.47 of 2,300 (2.53 to spare)
+  and about 177 left for the 6502. Flash 362,412 bytes (from 193,848; the combined-waveform
+  tables are most of it), RAM +34,884 bytes of POOL (two DAC tables).
+- **Live:** `LIVE_PARAM_PROFILE`, `_AGE`, `_DAC`, `_THUMP`, `_BLEED` on the reserved rows,
+  recorded and applied at the tick; the sink keeps the settings, gives them to the spare
+  before every swap and to the playing chip at a block boundary. MIDI only; panel access
+  with Task 4.
+
 ### Task 4: CHIP view
 
 - The design's CHIP view on the LCD: a profile picker, the character

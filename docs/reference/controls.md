@@ -117,6 +117,27 @@ Mix is dry/wet. Every control is smoothed, and changing algorithm crossfades thr
 the dry sound (slots take turns, so a full change takes up to ~150 ms). Everything is off
 at power-on.
 
+## Chip character
+
+**MIDI only for now:** the panel gets these with the CHIP view (M1c Task 4). The chip's
+profile and its four character controls (`core/sid/sid_character.h`; sources, definitions
+and measurements: [decision record 0006](../decisions/0006-chip-profiles.md)):
+
+| Control | CC | NRPN | Values |
+|---|---|---|---|
+| Profile | 85 | 2/0 | 0 6581 R2, 1 6581 R3, 2 6581 R4AR (power-on with the 6581), 3 8580 R5, 4 worn 6581 (artistic) |
+| Age/heat | 86 | 2/1 | 0..127: the filter drifts darker, the 6581's non-linearity rises |
+| DAC sloppiness | 87 | 2/2 | 0..127: leakier, more kinked voice DACs (a released voice still whispers) |
+| Output thump | 89 | 2/3 | 0..127: a volume change steps the output, as the 6581's operating point does |
+| Filter bleed | 90 | 2/4 | 0..127: the unfiltered voices also reach the filter, up to half |
+
+A profile is a chip and a model: changing it resets the chip (held notes are released, as
+a model change does), and the model follows it. The model (CC 25, the FX button) selects
+the 8580 R5, or goes back to the last 6581 profile chosen. The four controls change the
+playing chip without a reset. All of them apply at the next 10 ms tick, the last value
+received, and survive preset and model changes. Every control at 0 is the profile as
+reSIDfp has it (the worn 6581 aside, which goes beyond reSIDfp on purpose).
+
 ## MIDI
 
 Notes on every channel; program change 0..3 selects the preset. A program change loads

@@ -18,6 +18,7 @@ lists the prerequisites.
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Filter against reSIDfp (transfer functions, sweeps) | `cargo test --release -p sidou-tests --test filter` | `crates/sidou-tests/tests/filter.rs`, `src/filter_sweeps.rs` |
 | Register reads (OSC3, ENV3) | `cargo test --release -p sidou-tests --test register_reads` | `crates/sidou-tests/tests/register_reads.rs` |
+| Chip profiles against reSIDfp (each profile's filter and combined waveforms at its settings) | `cargo test --release -p sidou-tests --test profiles` | `crates/sidou-tests/tests/profiles.rs` |
 | Generated tables (drift) | `cargo test --release -p sidou-tablegen`; the filter tables with `--test drift -- --ignored` (measures reSIDfp's filter: about 20 s on every core) | `crates/sidou-tablegen/`, `core/sid/gen/` |
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
@@ -166,6 +167,22 @@ linear filter should match reSIDfp's:
 
 Every ceiling is the measured value rounded up to 0.01 dB, so nothing
 regresses unnoticed.
+
+### Chip profiles against reSIDfp
+
+`tests/profiles.rs` (M1c Task 3, [decision record 0006](docs/decisions/0006-chip-profiles.md))
+holds each chip profile, at zero character, against reSIDfp set to that profile's settings:
+the filter's transfer functions and passband gains as `tests/filter.rs` measures them, with
+reSIDfp's filter curve and range set to the profile's (each profile within M1b's
+tolerances, or its own ceiling where a profile away from reSIDfp's default curve misses
+them), and OSC3 read for read on combined waveforms with reSIDfp's `setCombinedWaveforms`
+at the profile's strength. reSIDfp keeps the 6581 filter range once per process, so the
+file is its own test binary and its measurements take a lock. The character's controls
+(direction, measurability, clamping, click-free sweeps) are unit tests
+(`tests/unit/sid_character.rs`); the register ring's handling of them, live's and the map's
+are app tests; `crates/emu-gate/tests/character.rs` sends the CCs to the firmware and
+checks the chip in emulated RAM and the audio against the host build, sample for sample;
+the SID gate's `character_*` scenarios run the costliest character on the device.
 
 ### Register reads against reSIDfp
 
