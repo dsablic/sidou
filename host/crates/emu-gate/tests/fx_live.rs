@@ -27,6 +27,30 @@ const BLOCK_FRAMES: f64 = 128.0;
 const MAX_SILENT_HALVES: usize = 4;
 /// How many blocks after it was sent a CC or a key press may reach the interrupt.
 const LATE_BLOCKS: usize = 8;
+/// How many blocks after the first a later CC of the same burst may reach the interrupt:
+/// over TRS a CC takes about 1 ms at 31,250 baud and a block 2.9 ms, and the main loop
+/// commits what has arrived, so a burst of CCs spreads over a few blocks.
+const CC_SPREAD: usize = 3;
+
+/// Every way the CCs of a burst can land: the first in `first`, each later one in the same
+/// block as the one before it or a later one, within CC_SPREAD blocks of the first.
+fn cc_schedules(first: usize, ccs: &[(u8, u8)]) -> Vec<Vec<(usize, u8, u8)>> {
+    let mut all: Vec<Vec<(usize, u8, u8)>> = vec![Vec::new()];
+    for (i, &(cc, value)) in ccs.iter().enumerate() {
+        let mut next = Vec::new();
+        for s in &all {
+            let from = s.last().map_or(first, |c| c.0);
+            let to = if i == 0 { first } else { first + CC_SPREAD };
+            for b in from..=to {
+                let mut t = s.clone();
+                t.push((b, cc, value));
+                next.push(t);
+            }
+        }
+        all = next;
+    }
+    all
+}
 
 fn fixture(what: &str) -> Option<Firmware> {
     let Some(build) = build_dir() else {
@@ -216,7 +240,9 @@ fn the_slots_on_the_device_match_the_host_sample_exact() {
     assert!(m.left() != m.right(), "the reverb's output is mono");
 
     // The blocks the CCs and the note-on reached the interrupt in depend on the MIDI drain
-    // and the key scan: search a few blocks after each was sent.
+    // and the key scan: search a few blocks after each was sent. The chip plays before the
+    // note (its silent voices leak, as reSIDfp's), so the slots' output there already shows
+    // which block each CC reached: find that from the audio before the note, then the note.
     let mut found = None;
     let mut min_diff = i32::MAX;
     'search: for silent in 0..=MAX_SILENT_HALVES {
@@ -224,20 +250,28 @@ fn the_slots_on_the_device_match_the_host_sample_exact() {
             break; // the DMA's zeros only come before the first rendered half
         }
         let played = &audio[2 * silent * HALF_FRAMES..];
-        for cc_block in (cc_sent - silent..).take(LATE_BLOCKS) {
-            for note_block in (key_sent - silent..).take(LATE_BLOCKS) {
-                let host = render_host(played.len() / 2, A4, note_block, (cc_block, &ccs));
-                let d = max_diff(played, &host);
-                min_diff = min_diff.min(d);
-                if d == 0 {
-                    found = Some((silent, cc_block, note_block));
-                    break 'search;
+        let before_note = (key_sent - silent) * HALF_FRAMES;
+        for first in (cc_sent - silent..).take(LATE_BLOCKS) {
+            for schedule in cc_schedules(first, &ccs) {
+                let host = render_host(before_note, A4, usize::MAX, &schedule);
+                if max_diff(&played[..2 * before_note], &host) != 0 {
+                    continue;
+                }
+                for note_block in (key_sent - silent..).take(LATE_BLOCKS) {
+                    let host = render_host(played.len() / 2, A4, note_block, &schedule);
+                    let d = max_diff(played, &host);
+                    min_diff = min_diff.min(d);
+                    if d == 0 {
+                        let blocks: Vec<usize> = schedule.iter().map(|c| c.0).collect();
+                        found = Some((silent, blocks, note_block));
+                        break 'search;
+                    }
                 }
             }
         }
     }
     println!(
-        "slots on the device vs host: (silent halves, CC block, note block) {found:?} \
+        "slots on the device vs host: (silent halves, CC blocks, note block) {found:?} \
          (sent before blocks {cc_sent}, {key_sent}), closest max difference {min_diff} LSB \
          over {} frames",
         audio.len() / 2

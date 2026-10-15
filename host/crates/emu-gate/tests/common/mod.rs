@@ -360,14 +360,14 @@ pub const SLOTS_SEED: u32 = 0x51D0;
 
 /// The firmware's instrument at boot (platform/fm1/main.c: live_init, then the MASTER pot),
 /// rendered by the host build in blocks as audio_fill does (the chip, then the effect
-/// slots). Before block `note_block` the note `note` goes on; before block `ccs.0` the CCs
-/// `ccs.1` go to live (as the device's drain applies a pass's entries at a block start).
-/// Interleaved L, R.
+/// slots). Before block `note_block` the note `note` goes on; each `(block, cc, value)` of
+/// `ccs` goes to live before its block (as the device's drain applies a pass's entries at a
+/// block start), in order. Interleaved L, R.
 pub fn render_host(
     frames: usize,
     note: u8,
     note_block: usize,
-    ccs: (usize, &[(u8, u8)]),
+    ccs: &[(usize, u8, u8)],
 ) -> Vec<i16> {
     use sidou_sys::*;
     let mut chip = Box::<sid>::default();
@@ -399,10 +399,8 @@ pub fn render_host(
         );
         live_set_master(&mut *l, POT);
         for (i, half) in out.chunks_mut(2 * HALF_FRAMES).enumerate() {
-            if i == ccs.0 {
-                for &(cc, value) in ccs.1 {
-                    live_cc(&mut *l, cc, value);
-                }
+            for &(_, cc, value) in ccs.iter().filter(|c| c.0 == i) {
+                live_cc(&mut *l, cc, value);
             }
             if i == note_block {
                 live_note_on(&mut *l, note, 100);

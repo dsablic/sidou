@@ -63,7 +63,7 @@ fn boots_and_plays_a_held_key_sample_exact() {
         }
         let played = &audio[2 * silent * HALF_FRAMES..];
         for k in 0..MAX_NOTE_BLOCK {
-            let host = render_host(played.len() / 2, A4, k, (0, &[]));
+            let host = render_host(played.len() / 2, A4, k, &[]);
             let d = max_diff(played, &host);
             min_diff = min_diff.min(d);
             if d == 0 {
