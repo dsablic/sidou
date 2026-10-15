@@ -148,6 +148,19 @@ int screen_animating(const screen* s) {
     return s->wipe != SCREEN_CUT || s->raster_frames != 0;
 }
 
+/* Rows a wipe from the top reveals each frame. */
+static uint32_t step_rows(const screen* s) {
+    return s->wipe == SCREEN_BANDS ? SCREEN_BAND_ROWS : SCREEN_WIPE_ROWS;
+}
+
+uint32_t screen_reach(const screen* s) {
+    if (s->wipe != SCREEN_WIPE_DOWN && s->wipe != SCREEN_BANDS) {
+        return GRID_ROWS;
+    }
+    uint32_t n = s->wipe_rows + step_rows(s);
+    return n < GRID_ROWS ? n : GRID_ROWS;
+}
+
 /* Its time runs from its first frame: a toast set before the first frame, or after a long
  * pause between frames, still shows for all of it. */
 static void toast(screen* s) {
@@ -184,18 +197,23 @@ static void raster(screen* s) {
 }
 
 /* Rows [0, n) revealed (bottom up: [GRID_ROWS - n, GRID_ROWS)), the next one the edge, the
- * rest held. */
+ * rest held; a banded cut has no edge. */
 static void wipe(screen* s) {
     if (s->wipe == SCREEN_CUT) {
         return;
     }
-    uint32_t n = s->wipe_rows + SCREEN_WIPE_ROWS;
+    uint32_t n = s->wipe_rows + step_rows(s);
     if (n >= GRID_ROWS) {
         s->wipe = SCREEN_CUT;
         grid_hold(s->g, 0);
         return;
     }
     s->wipe_rows = (uint8_t)n;
+    if (s->wipe == SCREEN_BANDS) {
+        grid_hold(s->g, ~((1u << n) - 1u));
+        redraw(s, ALL_ROWS);
+        return;
+    }
     uint32_t edge;
     uint32_t hold;
     if (s->wipe == SCREEN_WIPE_DOWN) {

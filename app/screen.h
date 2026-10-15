@@ -30,7 +30,8 @@
  * composes nothing and sends nothing. The layers:
  * - wipe: a view switch reveals the new view SCREEN_WIPE_ROWS rows a frame (top first on a
  *   push, bottom first on a pop) behind a one-row white edge; the rows not reached yet are
- *   held (grid_hold), so the panel keeps the old view there. A full screen is spread over
+ *   held (grid_hold), so the panel keeps the old view there. A banded cut (SCREEN_BANDS) does
+ *   the same SCREEN_BAND_ROWS rows a frame, top first, with no edge. A full screen is spread over
  *   8 frames instead of the 77 ms of SPI of one; so is a full-screen bitmap in the grid's
  *   pixel region (a logo's scene), which a switch clears with the overlays.
  * - raster: the border (the outer ring of cells) takes the raster ramp's colours in bands
@@ -65,6 +66,10 @@ extern "C" {
  * the rows already revealed stay as they are: an animated view holds still while
  * screen_animating (app/about.h, app/boot.h). */
 #define SCREEN_WIPE_ROWS 4u
+/* Rows a banded cut (SCREEN_BANDS) reveals per frame, with no edge: 6 rows of 30 cells, 23 KB,
+ * 15.4 ms of SPI, inside the 20 ms budget; a full screen in 5 frames (200 ms). As for a wipe,
+ * the view under it holds still while screen_animating. */
+#define SCREEN_BAND_ROWS 6u
 /* The raster moves every other frame: a step recolours the 116 border cells, 15.5 KB and
  * 10.3 ms of SPI, so 5.2 ms a frame on average. */
 #define SCREEN_RASTER_FRAMES 2u
@@ -107,7 +112,10 @@ typedef enum {
     SCREEN_WIPE_UP = 2,   /* bottom row first: back to the view below */
     /* At once, to or from a view drawn over the one under it, which it composes (MIDI learn's
      * frame, app/learn_view.h): that one keeps showing, so its overlays stay. */
-    SCREEN_OVER = 3
+    SCREEN_OVER = 3,
+    /* A cut spread over frames: SCREEN_BAND_ROWS rows a frame, top first, with no edge (the end
+     * of a title card, app/title_card.h). */
+    SCREEN_BANDS = 4
 } screen_wipe;
 
 /* 1: consumed. The capture and the global handler. */
@@ -179,6 +187,10 @@ void screen_raster(screen* s, uint32_t steps);
 int screen_blink(const screen* s);
 /* 1 while a wipe or a raster runs. */
 int screen_animating(const screen* s);
+/* The rows from the top that show the view on top once this frame's wipe has run: all of them
+ * (GRID_ROWS) unless a wipe from the top (SCREEN_WIPE_DOWN, SCREEN_BANDS) runs, which a view
+ * that draws a costly canvas a row at a time can stop at (app/scene_view.c). */
+uint32_t screen_reach(const screen* s);
 /* Cells the toast, the raster and the cover (screen_cover) may change after the view on top
  * composes this frame: what a view holding a frame to a budget of cells (LIVE, SCENE) leaves
  * them. The toast counts on its first frame only: on the frames after, its text is on the

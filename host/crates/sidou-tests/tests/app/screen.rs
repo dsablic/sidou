@@ -404,6 +404,49 @@ fn a_wipe_down_reveals_the_new_view_top_first_behind_an_edge() {
     assert_eq!(r.frame().cells, 0, "the wipe left work behind");
 }
 
+/// A banded cut (the title cards' end, app/title_card.h): the view below in bands of
+/// SCREEN_BAND_ROWS rows a frame, top first, with no edge, each frame inside the SPI budget.
+#[test]
+fn a_banded_cut_reveals_the_view_below_top_first_with_no_edge() {
+    let (root, a) = (probe_view(c"ROOT"), probe_view(c"A"));
+    let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));
+    let mut r = Rig::new(&root, &mut rs);
+    r.push(&a, &mut as_, SCREEN_CUT);
+    r.frame();
+    r.pop(SCREEN_BANDS);
+    assert!(r.animating());
+    let n = SCREEN_BAND_ROWS as usize;
+    let mut frames = 0;
+    loop {
+        let sent = r.frame();
+        frames += 1;
+        assert!(
+            sent.spi_ms() <= SPI_BUDGET_MS,
+            "a band took {:.1} ms of SPI ({sent:?})",
+            sent.spi_ms()
+        );
+        assert!(sent.windows <= n, "{sent:?}: one window a row");
+        let revealed = (frames * n).min(ROWS);
+        assert_eq!(
+            r.rows_showing(b'R'),
+            (1..revealed.min(ROWS - 1)).collect::<Vec<_>>(),
+            "frame {frames}"
+        );
+        // No edge: the rows below still show A, all of them.
+        assert_eq!(
+            r.rows_showing(b'A'),
+            (revealed.max(1)..ROWS - 1).collect::<Vec<_>>(),
+            "frame {frames}"
+        );
+        if !r.animating() {
+            break;
+        }
+    }
+    assert_eq!(frames, ROWS.div_ceil(n), "frames for the whole screen");
+    assert_eq!(r.g.hold, 0, "rows left held");
+    assert_eq!(r.frame().cells, 0, "the cut left work behind");
+}
+
 #[test]
 fn a_wipe_up_reveals_the_view_below_bottom_first() {
     let (root, a) = (probe_view(c"ROOT"), probe_view(c"A"));

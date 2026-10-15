@@ -102,8 +102,7 @@ static void compose(screen* s, void* state, grid* g) {
         listen(sv, &sv->music);
         scene_begin(&sv->piece, sv->which);
     }
-    scene_fill(&sv->piece, &sv->music,
-               s->wipe == SCREEN_WIPE_DOWN ? s->wipe_rows + SCREEN_WIPE_ROWS : GRID_ROWS);
+    scene_fill(&sv->piece, &sv->music, screen_reach(s));
     /* Still while a wipe or a raster runs (app/screen.h). */
     if (!screen_animating(s)) {
         if (!sv->prepared) {
