@@ -347,6 +347,13 @@ impl Machine {
     }
 }
 
+/// The SID's worst case per chip, in instructions per sample, that the effect gates add the
+/// slots to (fx_budget.rs, slots_budget.rs): the most expensive scenario of the SID gate
+/// (sid_budget.rs's max_instructions_per_sample), as decision record 0004 took M1a's
+/// (about 600). M1b measures 526.8 (two chips, gate_every_block on the 6581) and 522.8 (one
+/// chip); sid_budget.rs fails if a scenario exceeds this.
+pub const SID_WORST_PER_CHIP: f64 = 530.0;
+
 /// 24 MHz / 544, the I2S frame rate.
 pub const FS: f64 = 24e6 / 544.0;
 

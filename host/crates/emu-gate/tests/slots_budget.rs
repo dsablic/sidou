@@ -25,9 +25,12 @@ const SWITCH_BLOCK_ALLOWANCE: f64 = 1000.0;
 /// changes: ~30 ms each).
 const SWITCH_BLOCKS_OVER_BUDGET: usize = 80;
 /// The audio target (design doc section 8), and what the rest of it holds at worst: two
-/// chips at the SID's measured worst (0004: ~600 each), the future 6502 and ISR overhead.
+/// chips at the SID's measured worst (0004: ~600 each at M1a; M1b's in
+/// common::SID_WORST_PER_CHIP), the future 6502 and ISR overhead.
 const AUDIO_TARGET: f64 = 2700.0;
-const AUDIO_REST_AT_WORST: f64 = 2.0 * 600.0 + 400.0 + 100.0;
+const AUDIO_REST_AT_WORST: f64 = 2.0 * common::SID_WORST_PER_CHIP + 400.0 + 100.0;
+/// Two chips at the SID's measured worst.
+const TWO_CHIPS_AT_WORST: f64 = 2.0 * common::SID_WORST_PER_CHIP;
 
 /// Scenario names and slot budgets, in workload_slots.c's order (0 is the frame alone,
 /// the last every slot's heaviest).
@@ -110,6 +113,8 @@ fn check(chips: u32) {
         "switch_blocks_instructions_per_sample": switch_blocks,
         "sid_plus_slots_instructions_per_sample": sid + heaviest_all,
         "sid_plus_slots_percent_of_240mhz_core": (sid + heaviest_all) * SAMPLE_RATE / CORE_HZ * 100.0,
+        "two_chips_at_worst_plus_slots_instructions_per_sample": TWO_CHIPS_AT_WORST + heaviest_all,
+        "audio_rest_at_worst_plus_switch_instructions_per_sample": AUDIO_REST_AT_WORST + switch_worst,
         "samples_differing_from_host": diffs,
         "emulated_block_loads": r.emulated_block_loads,
     });
@@ -170,13 +175,13 @@ fn check(chips: u32) {
         "a switch with the SID at its worst would cost {:.0}, over the audio target {AUDIO_TARGET}",
         AUDIO_REST_AT_WORST + switch_worst
     );
-    if chips == 2 {
-        assert!(
-            sid + heaviest_all <= TWO_CHIPS_PLUS_EFFECTS,
-            "two chips plus the slots cost {:.0}, over {TWO_CHIPS_PLUS_EFFECTS}",
-            sid + heaviest_all
-        );
-    }
+    // Two chips at the SID's worst plus every slot's heaviest (the workload's chips, measured
+    // above, cost less).
+    assert!(
+        TWO_CHIPS_AT_WORST + heaviest_all <= TWO_CHIPS_PLUS_EFFECTS,
+        "two chips at the SID's worst plus the slots cost {:.0}, over {TWO_CHIPS_PLUS_EFFECTS}",
+        TWO_CHIPS_AT_WORST + heaviest_all
+    );
 }
 
 #[test]

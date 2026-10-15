@@ -283,6 +283,14 @@ fn check(chips: u32) {
         .iter()
         .map(|r| r["instructions_per_sample"].as_f64().unwrap())
         .fold(0.0, f64::max);
+    let worst_per_chip = worst / f64::from(chips);
+    if worst_per_chip > common::SID_WORST_PER_CHIP {
+        failures.push(format!(
+            "the worst scenario takes {worst_per_chip:.1} instructions/sample per chip, over \
+             common::SID_WORST_PER_CHIP ({}), which the effect gates assume",
+            common::SID_WORST_PER_CHIP
+        ));
+    }
     let mut report = reports[0].clone();
     report["chips"] = chips.into();
     report["metric"] = "instructions (lower bound on cycles; assumes 1 IPC)".into();

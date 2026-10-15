@@ -11,8 +11,9 @@ const CORE_HZ: f64 = 240e6;
 const SAMPLE_RATE: f64 = 44_100.0;
 /// The post-chip effects, everything on.
 const FX_BUDGET: f64 = 500.0;
-/// Two chips plus the effects (M1c plan).
+/// Two chips plus the effects (M1c plan), with the chips at the SID's measured worst.
 const TWO_CHIPS_PLUS_FX_BUDGET: f64 = 2300.0;
+const TWO_CHIPS_AT_WORST: f64 = 2.0 * common::SID_WORST_PER_CHIP;
 
 fn check(chips: u32, worst: bool) {
     let Some(build) = common::build_dir() else {
@@ -53,6 +54,7 @@ fn check(chips: u32, worst: bool) {
         "total_instructions_per_sample": total,
         "fx_percent_of_240mhz_core": fx * SAMPLE_RATE / CORE_HZ * 100.0,
         "total_percent_of_240mhz_core": total * SAMPLE_RATE / CORE_HZ * 100.0,
+        "two_chips_at_worst_plus_fx_instructions_per_sample": TWO_CHIPS_AT_WORST + fx,
         "setup_instructions": r.phases[0],
         "max_sample_diff_vs_host": worst,
         "emulated_block_loads": r.emulated_block_loads,
@@ -73,12 +75,13 @@ fn check(chips: u32, worst: bool) {
         fx <= FX_BUDGET,
         "the effects cost {fx:.0} instructions/sample, over the budget of {FX_BUDGET}"
     );
-    if chips == 2 {
-        assert!(
-            total <= TWO_CHIPS_PLUS_FX_BUDGET,
-            "two chips plus effects cost {total:.0} instructions/sample, over {TWO_CHIPS_PLUS_FX_BUDGET}"
-        );
-    }
+    // Two chips at the SID's worst plus the effects (the workload's chips cost less).
+    assert!(
+        TWO_CHIPS_AT_WORST + fx <= TWO_CHIPS_PLUS_FX_BUDGET,
+        "two chips at the SID's worst plus effects cost {:.0} instructions/sample, over \
+         {TWO_CHIPS_PLUS_FX_BUDGET}",
+        TWO_CHIPS_AT_WORST + fx
+    );
 }
 
 #[test]
