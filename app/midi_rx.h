@@ -32,6 +32,7 @@
 #include "live.h"
 #include "midi_in.h"
 #include "midi_map.h"
+#include "midi_out.h"
 #include "midi_ring.h"
 
 #ifdef __cplusplus
@@ -46,10 +47,17 @@ typedef struct {
     midi_map_port usb_map;
     uint8_t epoch;     /* the ring's epoch the parsers are in */
     uint32_t restarts; /* times lost input restarted the parsers */
+    midi_out* out;     /* told which changes are MIDI's (midi_rx_watch), or NULL */
 } midi_rx;
 
-/* epoch: the ring's midi_ring_epoch now, so losses before this are not held against it. */
+/* epoch: the ring's midi_ring_epoch now, so losses before this are not held against it.
+ * No midi_out watches. */
 void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch);
+/* MIDI out learns which changes are MIDI input's, so it never echoes them: around every CC
+ * and program change (the messages that can change a parameter) the parsers call
+ * midi_out_local before and midi_out_remote after. Notes, bend and aftertouch, which change
+ * no parameter, cost MIDI out nothing. out may be NULL: none. */
+void midi_rx_watch(midi_rx* rx, midi_out* out);
 /* One entry, through its source's parser; entries of an unknown source are ignored. An entry
  * from a later epoch than the parsers' first restarts them (a gap lies before it). */
 void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e);

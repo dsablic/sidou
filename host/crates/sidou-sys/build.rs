@@ -7,7 +7,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 21] = [
+const SOURCES: [&str; 22] = [
     "core/sid/sid.c",
     "core/sid/sid_dac.c",
     "core/fx/fx.c",
@@ -22,6 +22,7 @@ const SOURCES: [&str; 21] = [
     "app/live_freq.c",
     "app/midi_in.c",
     "app/midi_map.c",
+    "app/midi_out.c",
     "app/midi_ring.c",
     "app/midi_rx.c",
     "app/midi_usb.c",
@@ -154,7 +155,7 @@ fn main() {
 
     // Field offsets and sizes of the structs as the pi32v2 lays them out (ILP32: 4-byte
     // pointers and ints; no 64-bit fields in them), for the emulator tests, which read
-    // the firmware's chips from its RAM. The host's own layout differs wherever a struct
+    // the firmware's chips and MIDI out's state from its RAM. The host's own layout differs wherever a struct
     // holds a pointer. bindgen's layout assertions carry clang's numbers for the target.
     let ilp32 = bindgen::Builder::default()
         .header(wrapper.to_str().unwrap())
@@ -162,7 +163,7 @@ fn main() {
         .clang_arg("-std=c11")
         .clang_arg("--target=i686-unknown-none")
         .clang_arg("-ffreestanding")
-        .allowlist_type("sid|sid_osc|sid_env|reg_ring_chips")
+        .allowlist_type("sid|sid_osc|sid_env|reg_ring_chips|midi_out")
         .generate()
         .expect("bindgen (ILP32 layout) failed")
         .to_string();

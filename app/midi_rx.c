@@ -22,8 +22,26 @@ void midi_rx_live(midi_map_port* port, const midi_msg* msg) {
     }
 }
 
-static void on_msg(void* ctx, const midi_msg* msg) {
-    midi_rx_live(ctx, msg);
+/* One message from a source's parser, with MIDI out told what it changed. */
+static void take(midi_rx* rx, midi_map_port* port, const midi_msg* msg) {
+    int edit = rx->out && (msg->kind == MIDI_CC || msg->kind == MIDI_PROGRAM);
+    if (edit) {
+        midi_out_local(rx->out, rx->l); /* what changed before this was the panel's */
+    }
+    midi_rx_live(port, msg);
+    if (edit) {
+        midi_out_remote(rx->out, rx->l);
+    }
+}
+
+static void on_trs(void* ctx, const midi_msg* msg) {
+    midi_rx* rx = ctx;
+    take(rx, &rx->trs_map, msg);
+}
+
+static void on_usb(void* ctx, const midi_msg* msg) {
+    midi_rx* rx = ctx;
+    take(rx, &rx->usb_map, msg);
 }
 
 /* SysEx is skipped (no midi_sysex_fn) on both sources. The update protocol takes its frames
@@ -32,8 +50,8 @@ static void on_msg(void* ctx, const midi_msg* msg) {
 static void parsers_init(midi_rx* rx) {
     midi_map_port_init(&rx->trs_map, rx->l);
     midi_map_port_init(&rx->usb_map, rx->l);
-    midi_in_init(&rx->trs, on_msg, 0, &rx->trs_map);
-    midi_in_init(&rx->usb, on_msg, 0, &rx->usb_map);
+    midi_in_init(&rx->trs, on_trs, 0, rx);
+    midi_in_init(&rx->usb, on_usb, 0, rx);
 }
 
 static void restart(midi_rx* rx, uint8_t epoch) {
@@ -48,7 +66,12 @@ void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch) {
     rx->l = l;
     rx->epoch = epoch;
     rx->restarts = 0;
+    rx->out = 0;
     parsers_init(rx);
+}
+
+void midi_rx_watch(midi_rx* rx, midi_out* out) {
+    rx->out = out;
 }
 
 void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e) {
