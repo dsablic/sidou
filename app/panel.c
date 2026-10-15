@@ -8,6 +8,7 @@ void panel_init(panel* p) {
     }
     p->master_raw = -1;
     p->held = 0;
+    p->page = PANEL_PAGE_LIVE;
 }
 
 static void key_up(panel* p, live* l, uint32_t k) {
@@ -53,19 +54,29 @@ void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held) {
     }
 }
 
-uint32_t panel_knob_param(const live* l, uint32_t held, uint32_t enc) {
+uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t enc) {
     static const uint8_t KNOBS[] = {LIVE_PARAM_CUTOFF, LIVE_PARAM_RESONANCE,
                                     LIVE_PARAM_PULSE_WIDTH, LIVE_PARAM_COUNT};
     if (enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4) {
         return LIVE_PARAM_COUNT;
     }
-    if (held & (1u << PANEL_BTN_EDIT)) {
+    uint32_t k = enc - PANEL_ENC_K1;
+    uint32_t page = p ? p->page : PANEL_PAGE_LIVE;
+    if ((held & (1u << PANEL_BTN_EDIT)) || page == PANEL_PAGE_SLOT) {
         /* K1..K4: Amount, A, B, Mix */
         return LIVE_PARAM_SLOT + (l->fx_select % LIVE_SLOTS) * LIVE_SLOT_FIELDS +
-               LIVE_SLOT_AMOUNT + (enc - PANEL_ENC_K1);
+               LIVE_SLOT_AMOUNT + k;
     }
-    return KNOBS[enc - PANEL_ENC_K1];
+    if (page == PANEL_PAGE_CHARACTER) {
+        return LIVE_PARAM_AGE + k; /* age, DAC, thump, bleed */
+    }
+    return KNOBS[k];
 }
+
+_Static_assert(LIVE_PARAM_DAC == LIVE_PARAM_AGE + 1 && LIVE_PARAM_THUMP == LIVE_PARAM_AGE + 2 &&
+                   LIVE_PARAM_BLEED == LIVE_PARAM_AGE + 3,
+               "K1..K4 are the character's controls in order");
+_Static_assert(LIVE_SLOT_MIX == LIVE_SLOT_AMOUNT + 3, "K1..K4 are a slot's controls in order");
 
 /* live_knob's knobs are K1..K4 in order: the cutoff, resonance and pulse width that
  * panel_knob_param names, then the preset. */
@@ -77,10 +88,15 @@ void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps) {
     if (steps == 0 || enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4) {
         return;
     }
-    uint32_t param = panel_knob_param(l, p->held, enc);
+    uint32_t param = panel_knob_param(p, l, p->held, enc);
     if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {
         uint32_t i = param - LIVE_PARAM_SLOT;
         live_slot_turn(l, i / LIVE_SLOT_FIELDS, i % LIVE_SLOT_FIELDS, steps);
+    } else if (param >= LIVE_PARAM_AGE && param <= LIVE_PARAM_BLEED) {
+        int32_t d = steps > 64 ? 64 : steps < -64 ? -64 : steps; /* 0..127 end to end in 32 */
+        int32_t v = (int32_t)live_param_get(l, param) + d * PANEL_CHARACTER_DETENT;
+        int32_t max = (int32_t)live_param_max(param);
+        live_param_set(l, param, (uint32_t)(v < 0 ? 0 : v > max ? max : v));
     } else {
         live_knob(l, (live_knob_id)(enc - PANEL_ENC_K1), steps);
     }

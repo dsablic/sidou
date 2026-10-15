@@ -191,3 +191,19 @@ All notable changes are documented here. The format follows
   compiled by default (the 8580's one). With thump on, the MASTER pot clicks at each volume
   step, as the chip does. Decision record 0006 has the sources, the measurements and the
   cost.
+- The CHIP view (M1c Task 4, `app/chip_view.h`), the menu's first item, behind THE CHIP's
+  title card: chip A's profile picker and model, its age/heat, DAC sloppiness, output thump
+  and filter bleed as bars, and the three effect slots with their algorithm and four controls,
+  named for what each does in that algorithm; chip B's tab greyed until M2. SELECT moves the
+  focus between the chip and the slots, ALGORITHM steps the profile or the slot's algorithm,
+  K1..K4 turn the focused section's four values. `panel_knob_param` follows the view that
+  shows, so MIDI learn binds the knob the CHIP view turns (AGE for K1 on the chip) and MIDI out
+  sends its CC. MIDI's changes show at the next frame. The page is built in a canvas and copied
+  within 200 cells a frame (idle 6.3k instructions a frame, nothing sent; the busiest frame
+  17.6 ms of SPI).
+
+### Changed
+- The menu's CHIP item opens the CHIP view; the 6581/8580 choice it held is the view's profile
+  picker (and the FX button, as before).
+- The EDIT layer (EDIT + K1..K4, SCL, ENV) is no longer a stopgap: it stays in every view as a
+  shortcut to the selected effect slot, the one the CHIP view's slot focus shows.

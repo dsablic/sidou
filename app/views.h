@@ -7,8 +7,11 @@
  * - LIVE, the root (app/live_view.h): the voices' oscilloscopes and envelopes, the filter's
  *   curve, the VU meters and the effect slots. What the screen shows from power-on; the tap
  *   on the audio runs only while it shows: on top, or under MIDI learn's frame.
- * - MENU (HOME): CHIP, PRESET, OCTAVE, CARDS and the views to open, in a frame. SELECT moves
- *   the cursor, ALGORITHM changes the value under it or opens the view.
+ * - MENU (HOME): PRESET, OCTAVE, CARDS and the views to open (CHIP first), in a frame. SELECT
+ *   moves the cursor, ALGORITHM changes the value under it or opens the view.
+ * - CHIP (from the menu, behind THE CHIP's card): chip A's profile, character and effect slots
+ *   (app/chip_view.h); SELECT moves the focus, ALGORITHM steps its choice, K1..K4 turn its
+ *   values.
  * - STATUS (from the menu): chip, preset, octave, the sound parameters, the notes and the
  *   effect slots with every control, in numbers.
  * - SCENE (from the menu): generative pieces that react to the voices (app/scene_view.h);
@@ -17,11 +20,12 @@
  * - ABOUT: the credits, as a cracktro (app/about.h).
  * - BOOT: the boot sequence (app/boot.h), over LIVE at power-on (views_boot).
  * - LEARN: MIDI learn (app/learn_view.h), a frame over any view, from SAVE (views_learn).
- * - TITLE: a title card (app/title_card.h) over a major view entered from the menu: THE SCENE
- *   over SCENE, THE OSCILLATOR over LIVE when HOME goes back to it from the menu (not at
- *   power-on, after the boot, nor when MIDI learn's frame closes). It ends by itself, on any
- *   control (which does nothing else) or on a note (which plays), and the view under it cuts
- *   in (SCREEN_BANDS). The menu's CARDS item turns the cards off and on (on at power-on).
+ * - TITLE: a title card (app/title_card.h) over a major view entered from the menu: THE CHIP
+ *   over CHIP, THE SCENE over SCENE, THE OSCILLATOR over LIVE when HOME goes back to it from
+ *   the menu (not at power-on, after the boot, nor when MIDI learn's frame closes). It ends by
+ *   itself, on any control (which does nothing else) or on a note (which plays), and the view
+ *   under it cuts in (SCREEN_BANDS). The menu's CARDS item turns the cards off and on (on at
+ *   power-on).
  *
  * Routing, for each button press and encoder turn:
  * 1. the capture (screen_capture), if a view set one: it sees HOME too, so it can take HOME
@@ -30,12 +34,15 @@
  *    anywhere else; SAVE opens LEARN over any view;
  * 3. the view on top;
  * 4. the panel (app/panel.h): what nobody consumed plays the instrument as in M1a and M1c,
- *    in every view: OCT-/OCT+, FX, K1..K4, and the effect slots' EDIT layer (EDIT held + K1..K4,
- *    SCL, ENV). The layer stays here, global, until the CHIP view takes the slots over.
+ *    in every view: OCT-/OCT+, FX, K1..K4, and the effect slots' EDIT shortcut (EDIT held +
+ *    K1..K4, SCL, ENV), which stays global next to the CHIP view (docs/reference/controls.md
+ *    says why). K1..K4 turn the panel's page (panel.page): the CHIP view's focused section
+ *    while it shows (on top or under MIDI learn's frame), LIVE's knobs in every other view; the
+ *    views set it before each event, so the panel and MIDI learn read the same one.
  * The note keys and MASTER do not pass through here: they always play.
  *
- * The views compose only when what they show changed (app/screen.h): STATUS and MENU keep a
- * copy of the instrument's fields they show, MENU its cursor and blink as well, and CHARSET
+ * The views compose only when what they show changed (app/screen.h): STATUS, MENU and CHIP keep
+ * a copy of the instrument's fields they show, MENU its cursor and blink as well, and CHARSET
  * never changes. An idle screen costs a comparison a frame. LIVE, SCENE and ABOUT move every
  * frame and compose every frame.
  *
@@ -52,6 +59,7 @@
 
 #include "about.h"
 #include "boot.h"
+#include "chip_view.h"
 #include "grid.h"
 #include "learn_view.h"
 #include "live.h"
@@ -72,6 +80,7 @@ extern "C" {
 /* The menu's items and the rows it shows, the title cards' option, and the items that open a
  * view. */
 #define VIEWS_MENU_ITEMS 8u
+#define VIEWS_MENU_CHIP 0u
 #define VIEWS_MENU_CARDS 3u
 #define VIEWS_MENU_STATUS 4u
 #define VIEWS_MENU_SCENE 5u
@@ -99,8 +108,10 @@ typedef struct {
     /* What the view on top showed at its last compose: it composes again when this changes
      * (the views' changed functions). */
     uint8_t drawn[VIEWS_LOOK];
+    panel* p; /* the panel of the last event (views_buttons, views_encoder); NULL before */
     boot boot;
     about about;
+    chip_view chip;
     learn_view learn;
     live_view live;
     scene_view scene;

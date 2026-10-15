@@ -48,7 +48,7 @@ extern "C" {
 typedef enum {
     TITLE_CARD_OSCILLATOR = 0, /* LIVE, back from the menu */
     TITLE_CARD_SCENE = 1,      /* SCENE */
-    TITLE_CARD_CHIP = 2,       /* the CHIP view, M1c's: ready, not shown yet */
+    TITLE_CARD_CHIP = 2,       /* the CHIP view (app/chip_view.h) */
     TITLE_CARDS = 3
 } title_card_id;
 

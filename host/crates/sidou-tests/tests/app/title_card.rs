@@ -364,28 +364,21 @@ fn the_cards_option_turns_them_off_and_on() {
     assert_eq!(ui.v.cards, 1, "on stays on");
 }
 
-/// THE CHIP, for the CHIP view (M1c), is ready: driven on its own, it holds its PNG.
+/// THE CHIP before the CHIP view, from the menu's first item: its held frame is its PNG, and
+/// the CHIP view cuts in under it.
 #[test]
-fn the_chip_card_is_ready() {
+fn chip_from_the_menu_shows_its_card_then_cuts_to_chip() {
     let mut ui = at_rest();
-    // The card's state, written by the screen's compose through the pointer it was given.
-    let c: *mut title_card = Box::into_raw(Box::<title_card>::default());
-    unsafe {
-        title_card_init(c, TITLE_CARD_CHIP, &*ui.rig.live);
-        screen_push(&mut ui.v.s, &title_card_view, c.cast(), SCREEN_CUT);
-    }
-    loop {
-        if unsafe { (*c).phase } == TITLE_CARD_HOLD as u8 {
-            break;
-        }
+    open_from_menu(&mut ui, VIEWS_MENU_CHIP);
+    assert_eq!(ui.top(), "TITLE");
+    assert_eq!(u32::from(card(&ui).id), TITLE_CARD_CHIP);
+    while u32::from(card(&ui).phase) != TITLE_CARD_HOLD {
         step(&mut ui);
     }
     step(&mut ui);
     assert_shows_png(&ui, "title-chip");
-    while unsafe { title_card_done(c) } == 0 {
-        step(&mut ui);
-    }
-    assert!(unsafe { (*c).frames } > 40);
-    unsafe { screen_pop(&mut ui.v.s, SCREEN_CUT) };
-    drop(unsafe { Box::from_raw(c) });
+    let frames = run_card(&mut ui);
+    assert!(frames.len() >= TITLE_CARD_HOLD_FRAMES as usize - 2);
+    settle(&mut ui);
+    assert_eq!(ui.top(), "CHIP");
 }

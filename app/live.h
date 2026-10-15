@@ -437,6 +437,8 @@ void live_slot_turn(live* l, uint32_t slot, uint32_t field, int32_t detents);
 void live_slot_next_algorithm(live* l, uint32_t slot);
 /* The panel's slot: the next one, wrapping. */
 void live_fx_select_next(live* l);
+/* The panel's slot: slot (wrapped into 0..LIVE_SLOTS - 1). */
+void live_fx_select(live* l, uint32_t slot);
 
 #ifdef __cplusplus
 }

@@ -517,6 +517,50 @@ and its note-off every 1.92 ms, `midi.rs`), LIVE's frames cost 84k (115k before)
 main loop runs 5.7M instructions a second, 2.4 % of the core. The status screen, idle,
 still composes nothing: 7.4k a frame (7.3k before LIVE).
 
+## CHIP
+
+CHIP (`app/chip_view.h`, from the menu behind THE CHIP's card) is chip A's sound on one page,
+on the status screen's colours: light blue on blue inside the full-block border, the focus in
+white, what is off or not there yet in grey.
+
+![CHIP, the focus on the chip](../../tests/golden/lcd/chip.png)
+![CHIP, the focus on DIST](../../tests/golden/lcd/chip-dist.png)
+
+- **Row 2:** CHIP, and the chips' tabs at the right: **A** in reverse video (blue on light
+  blue), **B M2** in grey until M2 brings chip B.
+- **Frames** from column 2, 26 wide, one after the other: CHIP (rows 4-7: the profile and the
+  model, values right-aligned against the frame), CHARACTER (rows 8-13: AGE, DAC, THUMP,
+  BLEED, each a 12-cell bar of `BAR` eighths and its value), then DIST, MOD and FX (4 rows
+  each: the slot and its algorithm set into the frame's top edge, and two columns of two
+  controls, each its name for the algorithm and its value).
+- **The focus:** the focused section's frames and text in white, and a play mark (`PLAY`) in
+  the margin at column 1 on each of its frames' top rows; the chip's focus is both its frames.
+- **Grey:** a slot's control its algorithm does not use (TAPE's A and B), and every control
+  of a slot that is off, under its plain name (AMT, A, B, MIX).
+- **Row 26:** the help line, SELECT MOVE ALGORITHM STEP; the toast keeps row 27.
+
+**The budget.** The page is built in a canvas off the grid whenever what it shows changes
+(a byte each for the profile, the model, the character, every slot field, the selected slot
+and the focus), and its changed cells are copied onto the grid within 200 cells a frame
+(`CHIP_VIEW_FRAME_CELLS`) less what the toast, the raster and a cover take, as SCENE copies its
+canvas: a frame that changes more spreads over the next ones. The cells MIDI learn's frame or
+a toast covers are left alone, and the border while the raster runs. Idle it compares its
+bytes and composes nothing. Measured in fm1-emu (`chip_stays_within_its_budgets`):
+
+| CHIP | Cells a frame (average, most) | Worst SPI | Main loop a frame (average, busiest `ui_poll`) |
+|---|---|---|---|
+| Idle | 0, 0 | 0 | 6.3k, 0.3k instructions |
+| A knob's detent (25 frames) | 0.08, 2 | 0.19 ms | 7.7k, 34.2k |
+| The busiest: every control over MIDI at once, a focus move and a chip change (50 frames) | 26.9, 200 | 17.62 ms | 37.4k, 28.6k |
+
+The busiest `ui_poll` is a build of the page and the scan of its 900 cells. SELECT,
+ALGORITHM and a knob cost the input's call at most 198 instructions, and the busiest main-loop
+pass after one 44.5k (SELECT from FX to the chip, three frames changing colour), within the
+latency gate's 120k poll allowance together. ALGORITHM on the chip, a profile step, is the
+exception: its pass is the chip reset (362.6k, decision record 0006, "Cost"), as the FX
+button's and CC 85's are, bounded on its own at 400k. RAM: the view's state 1,840 bytes, most
+of it the canvas.
+
 ## SCENE
 
 SCENE (`app/scene_view.h`, the menu's item after STATUS) is M1e's prototype of M2's visuals:
@@ -606,8 +650,7 @@ the logo page's chapter cards: THE and the view's name in Metal Chrome's letteri
 dithered purple and red glow with stars, a rule under the title and a glint on its last
 letter. There is no "CHAPTER" line. **THE SCENE** comes before SCENE, **THE OSCILLATOR**
 before LIVE when HOME goes back to it from the menu (not at power-on: the boot's title card
-is enough), and **THE CHIP** is ready for M1c's CHIP view (its table entry, its bitmap and
-its tests; nothing shows it yet). The held frames are `assets/logo/title-oscillator.png`,
+is enough), and **THE CHIP** before the CHIP view. The held frames are `assets/logo/title-oscillator.png`,
 `title-scene.png` and `title-chip.png`, drawn by `assets/logo/metal-chrome.js` (`titleCard`,
 the page's `chapterCard` adapted to the cell grid) with the glow alone in `title-glow.png`:
 
@@ -666,10 +709,11 @@ end of the cut, nothing played):
 |---|---|---|---|---|---|---|
 | THE SCENE | 66 | 72.4, 200 | 17.14 ms | 56.0k, 71.6k instructions | 350 (`ui_encoder`) | 73.1k |
 | THE OSCILLATOR | 64 | 68.7, 200 | 17.14 ms | 55.1k, 71.3k | 387 (`ui_buttons`) | 72.8k |
+| THE CHIP | 66 | 72.4, 200 | 17.14 ms | 55.6k, 71.2k | 364 (`ui_encoder`) | 72.9k |
 
 The busiest frames are the glow's first level: 200 cells, and the scan of the 900 cells for
 those that differ. The input and the busiest main-loop pass (`midi_drain` to `midi_service`)
 together are 73.4k, within the latency gate's 120k poll allowance (a compile-time tie and a
 measured check, as for SCENE). The held frames are checked against their PNGs pixel for
-pixel on the host (all three) and in fm1-emu (THE SCENE and THE OSCILLATOR, also against the
-goldens `tests/golden/lcd/title-scene.png` and `title-oscillator.png`).
+pixel on the host and in fm1-emu (all three, also against the goldens
+`tests/golden/lcd/title-chip.png`, `title-scene.png` and `title-oscillator.png`).

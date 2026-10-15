@@ -1061,7 +1061,11 @@ void live_slot_next_algorithm(live* l, uint32_t slot) {
 }
 
 void live_fx_select_next(live* l) {
-    l->fx_select = (uint8_t)((l->fx_select + 1u) % LIVE_SLOTS);
+    live_fx_select(l, l->fx_select + 1u);
+}
+
+void live_fx_select(live* l, uint32_t slot) {
+    l->fx_select = (uint8_t)(slot % LIVE_SLOTS);
 }
 
 void live_tick(live* l) {

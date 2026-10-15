@@ -182,13 +182,15 @@ fn the_views_open_with_a_wipe_down_and_close_with_a_wipe_up() {
 }
 
 #[test]
-fn the_menu_changes_the_chip_preset_and_octave() {
+fn the_menu_changes_the_preset_and_octave() {
     let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
-    ui.turn(PANEL_ENC_ALGORITHM, 1);
-    assert_eq!(ui.live().model, SID_MODEL_8580);
+    // CHIP opens the CHIP view (chip_view.rs); counter-clockwise on it does nothing.
     ui.turn(PANEL_ENC_ALGORITHM, -1);
-    assert_eq!(ui.live().model, SID_MODEL_6581);
+    assert_eq!(
+        (ui.top().as_str(), ui.live().model),
+        ("MENU", SID_MODEL_6581)
+    );
     ui.turn(PANEL_ENC_SELECT, 1);
     ui.turn(PANEL_ENC_ALGORITHM, 2);
     assert_eq!(ui.live().preset, 2);
@@ -214,7 +216,7 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
     let body: Vec<String> = rows.iter().map(|r| r[3..27].to_string()).collect();
     assert_eq!(rows[0][2..10].to_string(), "# MENU #");
     // Labels after the cursor cell, values right-aligned against the frame, an arrow for a view.
-    assert_eq!(body[1][1..], format!("{:<19}6581", "CHIP"));
+    assert_eq!(body[1][..23], format!(" {:<22}", "CHIP"));
     assert_eq!(body[2], format!(" {:<15}SAW LEAD", "PRESET"));
     assert_eq!(body[3], format!(" {:<21}+0", "OCTAVE"));
     assert_eq!(body[4], format!(" {:<21}ON", "CARDS"));
@@ -222,7 +224,7 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
     assert_eq!(body[6][..23], format!(" {:<22}", "SCENE"));
     assert_eq!(body[7][..23], format!(" {:<22}", "CHARSET"));
     assert_eq!(body[8][..23], format!(" {:<22}", "ABOUT"));
-    for row in 9..13 {
+    for row in [5, 9, 10, 11, 12] {
         assert_eq!(
             ui.g.ch[row * COLS + 26],
             FONT_ARROW_RIGHT as u8,
@@ -381,10 +383,9 @@ fn a_chip_change_shows_a_toast_and_runs_the_raster() {
     assert_eq!(ui.toast().as_deref(), Some("CHIP 8580"));
     assert!(unsafe { screen_animating(&ui.v.s) } != 0, "no raster");
     ui.settle();
-    // From the menu as well: counter-clockwise, the 6581.
-    ui.press(PANEL_BTN_HOME);
-    ui.settle();
-    ui.turn(PANEL_ENC_ALGORITHM, -1);
+    // From MIDI as well: the model's CC, at the next tick.
+    ui.rig.cc(25, 0);
+    ui.rig.tick();
     ui.frame();
     assert_eq!(ui.toast().as_deref(), Some("CHIP 6581"));
     assert!(ui.v.s.raster_frames > 0);
@@ -506,29 +507,6 @@ fn a_press_of_the_top_button_is_routed_without_running_past_it() {
     let mut ui = Ui::new();
     unsafe { views_buttons(&mut *ui.v, &mut *ui.p, 1 << 31, 1 << 31) };
     assert_eq!(ui.top(), "LIVE");
-}
-
-#[test]
-fn chip_in_the_menu_turns_clockwise_to_8580_and_back_to_6581() {
-    let mut ui = Ui::new();
-    ui.press(PANEL_BTN_HOME);
-    ui.settle();
-    for (steps, model) in [
-        (1, SID_MODEL_8580),
-        (1, SID_MODEL_8580),
-        (3, SID_MODEL_8580),
-        (-1, SID_MODEL_6581),
-        (-2, SID_MODEL_6581),
-        (2, SID_MODEL_8580),
-    ] {
-        ui.turn(PANEL_ENC_ALGORITHM, steps);
-        assert_eq!(ui.live().model, model, "after {steps}");
-    }
-    // A turn that changes nothing runs no raster.
-    ui.settle();
-    ui.turn(PANEL_ENC_ALGORITHM, 1);
-    ui.frame();
-    assert_eq!(ui.v.s.raster_frames, 0);
 }
 
 /// The update box's text line, trimmed.

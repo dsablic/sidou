@@ -186,11 +186,14 @@ which printed control did it.
 | MASTER (pot) | VOLUME 0..15, quieter turned down | | [ ] |
 | SCL (button 3) | selects the next effect slot (the play mark on LIVE's DIST, MOD and FX lines moves) | | [ ] |
 | ENV (button 4) | the selected slot's next algorithm (the name on LIVE's slot line changes) | | [ ] |
-| EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the status screen; Mix as LIVE's bar); EDIT lit while the slot is on | | [ ] |
+| EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the status screen and the CHIP view; Mix as LIVE's bar), in every view; EDIT lit while the slot is on | | [ ] |
 | HOME (button 8) | from LIVE, the menu (a wipe down from the top); in the menu, back to LIVE behind THE OSCILLATOR's title card (below; with CARDS OFF, a wipe up from the bottom) | | [ ] |
 | SAVE (button 9) | a MIDI LEARN frame at the bottom of the screen, TURN A KNOB (section 7, MIDI learn); HOME closes it | | [ ] |
 | SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, PRESET, OCTAVE, CARDS, STATUS, SCENE, CHARSET and ABOUT | | [ ] |
-| ALGORITHM (encoder 1), in the menu | changes the item under the cursor (CHIP: clockwise 8580, counter-clockwise 6581, and a further turn the same way changes nothing; PRESET; OCTAVE -3..+3; CARDS: counter-clockwise OFF, clockwise ON); clockwise on STATUS opens the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
+| ALGORITHM (encoder 1), in the menu | changes the item under the cursor (PRESET; OCTAVE -3..+3; CARDS: counter-clockwise OFF, clockwise ON); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
+| SELECT (encoder 0), on CHIP | the focus (a play mark and white frames) moves CHIP, DIST, MOD, FX and stops at either end; onto a slot, the toast says SLOT DIST (or MOD, FX) | | [ ] |
+| ALGORITHM (encoder 1), on CHIP | on CHIP the PROFILE steps 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581 (MODEL follows; held notes stop, as at a model change); on a slot its algorithm, OFF to the last, named in the slot's frame | | [ ] |
+| K1..K4, on CHIP | on CHIP AGE, DAC, THUMP, BLEED (bars and values; the sound darkens with AGE, a released note whispers with DAC); on a slot its four controls, named for the algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX) | | [ ] |
 
 - [ ] A held note keeps its pitch when the octave changes, and stops when
   the key is released.
@@ -198,14 +201,18 @@ which printed control did it.
   Mix up adds a stereo tail (listen on headphones); switching algorithms
   while a note plays crossfades without a click.
 - [ ] In the menu, on the status screen, in SCENE and on the glyph sheet, the
-  keys, K1..K4, OCT-/OCT+, FX and the EDIT layer play as on LIVE.
+  keys, K1..K4, OCT-/OCT+, FX and the EDIT layer play as on LIVE. On the CHIP
+  view the keys, OCT-/OCT+, FX and the EDIT layer do too (EDIT + K1 turns the
+  selected slot's Amount, whatever the focus), and K1..K4 are the page's.
+- [ ] On the CHIP view, a character or slot CC from a controller (CC 86 for AGE,
+  CC 102..116 for the slots) moves its bar or value on the page as it plays.
 - [ ] OCT+, SCL and ENV show a toast on the bottom line ("OCTAVE +1",
   "SLOT MOD", "MOD CHORUS") that goes after about 1.5 s; FX shows
   "CHIP 8580" and sweeps colour bands down the border for about half a
   second.
 - [ ] The other buttons and encoders do nothing (record anything they do);
-  SELECT does nothing outside the menu and SCENE, ALGORITHM nothing outside
-  the menu.
+  SELECT does nothing outside the menu, CHIP and SCENE, ALGORITHM nothing
+  outside the menu and CHIP.
 
 Notes:
 
@@ -248,6 +255,8 @@ Title cards ([controls](reference/controls.md#title-cards)):
   second held, then SCENE cutting in from the top in bands. Look for wrong
   colours, torn cells, a shimmer in the dither or a step of the glow that
   flashes. Time from the turn to SCENE (about 2.6 s):
+- [ ] Menu, CHIP: THE CHIP's card (as `assets/logo/title-chip.png`), then the
+  CHIP view in bands.
 - [ ] Menu, HOME: THE OSCILLATOR's card, then LIVE. Not at power-on, not
   after the boot, and not when MIDI learn's frame closes.
 - [ ] OCT+, FX or SELECT on a card: the view comes in at once, and the
@@ -258,6 +267,17 @@ Title cards ([controls](reference/controls.md#title-cards)):
 - [ ] Menu, CARDS turned counter-clockwise: OFF; SCENE and HOME back to LIVE
   now wipe in with no card. Clockwise: ON, and the cards are back. After a
   power-cycle CARDS is ON.
+
+CHIP (menu, CHIP; [controls](reference/controls.md#chip)):
+
+- [ ] The page as `tests/golden/lcd/chip.png` with the character and slots at 0: the A
+  tab in reverse, B M2 greyed, the CHIP and CHARACTER frames white with the play mark,
+  the slot frames light blue and their controls greyed while the slots are OFF.
+- [ ] Turning K1 fast end to end on CHIP: the AGE bar follows without lag or torn cells,
+  and the sound darkens smoothly, with no click.
+- [ ] MIDI CCs for every slot and character control at once (a controller's snapshot,
+  or a DAW sending them in one go): the page catches up within a few frames, no cell
+  left stale.
 
 SCENE (menu, SCENE; [controls](reference/controls.md#scene)):
 
@@ -319,6 +339,8 @@ pedal, binds that instead. Stop the transport and keep pedals still while learni
   send CC 15 from a TRS controller: both ports drive what either learned.
 - [ ] EDIT held + K4 while learning, then a CC: the selected slot's Mix follows it
   (LEARNED CC n &rarr; DIST MIX; SCL first for MOD or FX).
+- [ ] On the CHIP view with the focus on CHIP, SAVE and K1: AGE &larr; SEND A CC; the CC
+  then moves AGE's bar and the sound. On a slot, SAVE and K4: that slot's MIX.
 - [ ] Learn the resonance on CC 74: CC 74 now moves the resonance, not the cutoff (the
   cutoff's NRPN 0/0 still does).
 - [ ] With a DAW monitoring SIDOU's USB output, turn K1 after learning CC 14 for it: the
@@ -343,7 +365,9 @@ Notes:
   CC 74 on channel 1 follows the knob, at most a message every 10 ms, and stops when
   the knob stops. K2 sends CC 71, K3 CC 1, MASTER CC 7, FX CC 25 (127 for the 8580,
   0 for the 6581), K4 a program change 0..3 and nothing else, and EDIT held with K1..K4
-  CCs 103..106 for the Distortion slot (SCL moves to 108..111 and 113..116). Record
+  CCs 103..106 for the Distortion slot (SCL moves to 108..111 and 113..116). On the CHIP
+  view K1..K4 on CHIP send CC 86, 87, 89 and 90, ALGORITHM on CHIP CC 85, on a slot its
+  algorithm's CC (102, 107, 112). Record
   what the monitor shows for one K1 turn:
 - [ ] Record K1 as automation in the DAW, then play it back into SIDOU over USB: the
   cutoff moves as recorded, and the monitor shows no CCs coming back from SIDOU while

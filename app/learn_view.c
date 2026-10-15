@@ -42,13 +42,20 @@ static void append_number(char* buf, uint32_t cap, uint32_t v) {
     buf[n] = 0;
 }
 
+_Static_assert(LIVE_PARAM_BLEED - LIVE_PARAM_PROFILE + 1 == LIVE_CHAR_FIELDS,
+               "a name per character parameter");
+
 void learn_view_param_name(uint32_t param, char* buf) {
     static const char* const KNOBS[] = {"CUTOFF", "RESO", "PULSE"};
+    static const char* const CHARACTER[LIVE_CHAR_FIELDS] = {"PROFILE", "AGE", "DAC", "THUMP",
+                                                           "BLEED"};
     static const char* const SLOTS[LIVE_SLOTS] = {"DIST ", "MOD ", "FX "};
     static const char* const FIELDS[LIVE_SLOT_FIELDS] = {"ALG", "AMT", "A", "B", "MIX"};
     buf[0] = 0;
     if (param <= LIVE_PARAM_PULSE_WIDTH) {
         append(buf, LEARN_VIEW_NAME, KNOBS[param]);
+    } else if (param >= LIVE_PARAM_PROFILE && param <= LIVE_PARAM_BLEED) {
+        append(buf, LEARN_VIEW_NAME, CHARACTER[param - LIVE_PARAM_PROFILE]);
     } else if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {
         uint32_t i = param - LIVE_PARAM_SLOT;
         append(buf, LEARN_VIEW_NAME, SLOTS[i / LIVE_SLOT_FIELDS]);
@@ -149,6 +156,7 @@ void learn_view_init(learn_view* lv, live* l, midi_learn* ml) {
     lv->l = l;
     lv->ml = ml;
     lv->s = NULL;
+    lv->p = NULL;
     lv->drawn[0] = lv->drawn[1] = lv->drawn[2] = 0;
 }
 
@@ -213,18 +221,19 @@ static int capture(void* ctx, const screen_event* e) {
     if (e->id < PANEL_ENC_K1 || e->id > PANEL_ENC_K4) {
         return 0;
     }
-    uint32_t param = panel_knob_param(lv->l, e->held, e->id);
+    uint32_t param = panel_knob_param(lv->p, lv->l, e->held, e->id);
     if (!midi_learn_knob(ml, param, lv->s->now) && !midi_learn_param(param)) {
         screen_toast(lv->s, "K4: THE PRESET, NO CC", SCREEN_TOAST_MS);
     }
     return 1; /* the knob picks, it does not turn */
 }
 
-int learn_view_open(learn_view* lv, screen* s) {
+int learn_view_open(learn_view* lv, screen* s, const panel* p) {
     if (!lv->ml || screen_push(s, &learn_view_view, lv, SCREEN_OVER) != 0) {
         return -1;
     }
     lv->s = s;
+    lv->p = p;
     screen_capture(s, capture, lv);
     midi_learn_cancel(lv->ml); /* from idle, whatever it was in */
     (void)midi_learn_take(lv->ml);

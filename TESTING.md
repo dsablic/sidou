@@ -191,7 +191,9 @@ that finds both queued, and the interrupt committing a stage in the middle of th
 of a free DAC table, through a hook only the host build has), live's and the map's are app
 tests; `crates/emu-gate/tests/character.rs` sends the CCs to the firmware, checks the chip in
 emulated RAM and the audio against the host build, sample for sample, the host replaying
-the device's ticks block by block (the drain counts them), and checks that the image holds
+the device's ticks block by block (the drain counts them), does the same for the age that
+the CHIP view's K1 turns from the panel (the host replaying the age the drain had after each
+block), and checks that the image holds
 only the combined-waveform tables the profiles play; `latency.rs`'s sweep case plays a
 note while the character's CCs sweep, against ADR 0005's bounds, and bounds every
 main-loop pass by the poll allowance; the SID gate's `character_*` scenarios run the
@@ -453,9 +455,11 @@ SELECT, ALGORITHM):
   toast OCT+ shows, MIDI learn's frame asking for a knob and for a CC and its
   LEARNED toast, the menu, the glyph sheet (every glyph, the palette
   and a pixel overlay), the boot's prompt, loading and title card, About,
-  each SCENE piece a second into a held chord, and the held frames of THE
-  SCENE's and THE OSCILLATOR's title cards (also checked against
-  `assets/logo/title-scene.png` and `title-oscillator.png` pixel for pixel)
+  each SCENE piece a second into a held chord, each CHIP page (the focus on
+  the chip, DIST, MOD and FX, the character and slots set over MIDI), and
+  the held frames of THE CHIP's, THE SCENE's and THE OSCILLATOR's title
+  cards (also checked against `assets/logo/title-chip.png`, `title-scene.png`
+  and `title-oscillator.png` pixel for pixel)
   match the golden images in `tests/golden/lcd/`, pixel
   for pixel, and every pixel is one of the 16 palette colours. The title
   card (but for its version and PRESS ANY KEY rows) and About's top 72 pixel
@@ -494,7 +498,13 @@ SELECT, ALGORITHM):
   busiest `ui_poll`; the input that brings it in and the busiest main-loop
   pass while it shows stay within the poll allowance together (compile-time
   ties); any control skips it without its action, and a note from the keys
-  or MIDI plays and ends it.
+  or MIDI plays and ends it. The CHIP view, idle, for a knob's detent and for
+  its busiest frames (every control over MIDI at once, a focus move and a
+  chip change), keeps every frame within 200 cells and the SPI budget and is
+  bounded in instructions a frame and in its busiest `ui_poll`; SELECT,
+  ALGORITHM and a knob on it, with the busiest main-loop pass after each,
+  stay within the poll allowance (compile-time ties); a CC changes the page's
+  row and K1 turns it back to its golden.
 
 The host tests cover the same machinery without the device:
 `tests/app/screen.rs` (the view stack, focus, routing, the capture, the
@@ -508,7 +518,12 @@ footprint, cost and overlays as declared, Metal Chrome's and Cracktro Chrome's b
 against the PNG), `boot.rs` and `about.rs` (the sequences, the layouts with
 either logo, the SPI budget a frame and under the wipes), `widget.rs`
 (frames, numbers, bars, the menu), `views.rs`
-(HOME and the menu, the panel playing as before in every view, the toasts) and
+(HOME and the menu, the panel playing as before in every view, the toasts),
+`chip_view.rs` (the CHIP view: its page, the focus, the profile picker and the
+slots' algorithms, K1..K4 on the focused section through the view-aware
+`panel_knob_param` against what the panel turns, the EDIT shortcut in every view,
+MIDI learn binding a CHIP knob, MIDI out sending its CCs, MIDI's changes on the
+page, and a burst within the budget) and
 `learn_view.rs` (MIDI learn's frame, gesture, cancel, timeout and clearing),
 `scene.rs` (SCENE's pieces against models of their rules: rule 30, Langton's
 ants, the starfield's flight, the fire's and the plasma's bounds and

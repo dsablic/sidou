@@ -5,6 +5,7 @@
 mod about;
 mod boot;
 mod bootguard;
+mod chip_view;
 mod credits;
 mod expression;
 mod font;

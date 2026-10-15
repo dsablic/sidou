@@ -195,20 +195,6 @@ const view views_status = {"STATUS", NULL, NULL, NULL, status_compose, status_ch
 
 /* ---- MENU ---- */
 
-static void chip_value(void* ctx, char* buf) {
-    const views* v = ctx;
-    join(buf, MENU_VALUE_CHARS, v->l->model == SID_MODEL_8580 ? "8580" : "6581", "");
-}
-
-/* Clockwise the 8580, counter-clockwise the 6581; turning on past either does nothing. */
-static void chip_turn(void* ctx, int32_t steps) {
-    views* v = ctx;
-    sid_model want = steps > 0 ? SID_MODEL_8580 : SID_MODEL_6581;
-    if (steps != 0 && v->l->model != want) {
-        live_button(v->l, LIVE_BUTTON_FX); /* the toggle */
-    }
-}
-
 static void preset_value(void* ctx, char* buf) {
     const views* v = ctx;
     const live_preset* p = live_preset_get(v->l->preset);
@@ -255,6 +241,13 @@ static void show_card(views* v, title_card_id id) {
     }
 }
 
+static void chip_open(void* ctx, int32_t steps) {
+    views* v = ctx;
+    (void)steps;
+    screen_push(&v->s, &chip_view_view, &v->chip, SCREEN_WIPE_DOWN);
+    show_card(v, TITLE_CARD_CHIP);
+}
+
 static void status_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
@@ -282,13 +275,13 @@ static void about_open(void* ctx, int32_t steps) {
 }
 
 static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
-    {"CHIP", chip_value, chip_turn},       {"PRESET", preset_value, preset_turn},
+    {"CHIP", NULL, chip_open},             {"PRESET", preset_value, preset_turn},
     {"OCTAVE", octave_value, octave_turn}, {"CARDS", cards_value, cards_turn},
     {"STATUS", NULL, status_open},         {"SCENE", NULL, scene_open},
     {"CHARSET", NULL, charset_open},       {"ABOUT", NULL, about_open},
 };
-_Static_assert(VIEWS_MENU_CARDS == 3u && VIEWS_MENU_STATUS == 4u && VIEWS_MENU_SCENE == 5u &&
-                   VIEWS_MENU_CHARSET == 6u && VIEWS_MENU_ABOUT == 7u,
+_Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_CARDS == 3u && VIEWS_MENU_STATUS == 4u &&
+                   VIEWS_MENU_SCENE == 5u && VIEWS_MENU_CHARSET == 6u && VIEWS_MENU_ABOUT == 7u,
                "the menu's items");
 /* The help below the menu's frame. */
 #define MENU_HELP_ROW (MENU_ROW + VIEWS_MENU_ITEMS + 2u)
@@ -392,7 +385,7 @@ static void remember(views* v) {
 static int global(void* ctx, const screen_event* e) {
     views* v = ctx;
     if (e->kind == SCREEN_PRESS && e->id == LEARN_VIEW_BUTTON) {
-        return learn_view_open(&v->learn, &v->s) == 0;
+        return learn_view_open(&v->learn, &v->s, v->p) == 0;
     }
     if (e->kind != SCREEN_PRESS || e->id != PANEL_BTN_HOME) {
         return 0;
@@ -413,7 +406,9 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->cards = 1;
     menu_init(&v->home, MENU_ITEMS, VIEWS_MENU_ITEMS, VIEWS_MENU_ITEMS, v);
     remember(v);
+    v->p = NULL;
     learn_view_init(&v->learn, l, NULL);
+    chip_view_init(&v->chip, l);
     live_view_init(&v->live, l, sc);
     scene_view_init(&v->scene, l, sc);
     screen_init(&v->s, g, &live_view_view, &v->live);
@@ -453,8 +448,28 @@ static void card_frame(views* v) {
     }
 }
 
+/* The view that shows: the one on top, or the one under MIDI learn's frame, which composes it
+ * every frame. */
+static const view* shows(const views* v) {
+    const screen* s = &v->s;
+    const view* top = screen_top(s);
+    if (top == &learn_view_view && s->depth >= 2u) {
+        top = s->stack[s->depth - 2u].v;
+    }
+    return top;
+}
+
+/* What K1..K4 turn (app/panel.h panel.page): the CHIP view's page while it shows, LIVE's
+ * anywhere else; and the panel MIDI learn reads it from. Before each event and after the views
+ * took it, so the panel, which turns the knob, and learn, which picks it, read the same. */
+static void knob_page(views* v, panel* p) {
+    v->p = p;
+    p->page = (uint8_t)(shows(v) == &chip_view_view ? chip_view_page(&v->chip) : PANEL_PAGE_LIVE);
+}
+
 void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
     uint32_t rest = pressed;
+    knob_page(v, p);
     for (uint32_t b = 0; b < 32u && pressed >> b; b++) {
         if (!((pressed >> b) & 1u)) {
             continue;
@@ -464,6 +479,7 @@ void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
             rest &= ~(1u << b);
         }
     }
+    knob_page(v, p);
     panel_buttons(p, v->l, rest, held);
 }
 
@@ -473,7 +489,9 @@ void views_encoder(views* v, panel* p, uint32_t enc, int32_t steps) {
     }
     int32_t clamped = steps > INT16_MAX ? INT16_MAX : steps < -INT16_MAX ? -INT16_MAX : steps;
     screen_event e = {SCREEN_TURN, (uint8_t)enc, (int16_t)clamped, p->held};
+    knob_page(v, p);
     if (!screen_input(&v->s, &e)) {
+        knob_page(v, p);
         panel_encoder(p, v->l, enc, steps);
     }
 }
@@ -511,17 +529,6 @@ static void tell(views* v) {
         screen_toast(&v->s, buf, SCREEN_TOAST_MS);
     }
     remember(v);
-}
-
-/* The view that shows: the one on top, or the one under MIDI learn's frame, which composes it
- * every frame. */
-static const view* shows(const views* v) {
-    const screen* s = &v->s;
-    const view* top = screen_top(s);
-    if (top == &learn_view_view && s->depth >= 2u) {
-        top = s->stack[s->depth - 2u].v;
-    }
-    return top;
 }
 
 void views_prepare(views* v) {

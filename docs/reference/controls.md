@@ -4,8 +4,9 @@
 
 How the live instrument is played from the FM-1's panel and over MIDI. Button names are
 fm1-emu's and Felucca's ids (`platform/fm1/VENDORED.md`); the printed labels may differ,
-see [hardware-test.md](../hardware-test.md). The effect-slot layer is **temporary**: the
-CHIP view (M1c Task 4) replaces it.
+see [hardware-test.md](../hardware-test.md). The CHIP view (below) edits the chip's profile,
+its character and the effect slots; the EDIT layer stays as a shortcut to the slots in every
+view.
 
 ## At power-on
 
@@ -24,12 +25,14 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
    view closes;
 2. **global:** HOME opens the menu from LIVE and goes back one view anywhere else; SAVE
    opens MIDI learn over any view;
-3. **the view on top:** the menu takes SELECT and ALGORITHM, SCENE takes SELECT; LIVE, the
-   status screen, the glyph sheet and About take nothing;
-4. **the panel:** everything else plays the instrument as below, in every view.
+3. **the view on top:** the menu and CHIP take SELECT and ALGORITHM, SCENE takes SELECT;
+   LIVE, the status screen, the glyph sheet and About take nothing;
+4. **the panel:** everything else plays the instrument as below, in every view. K1..K4 turn
+   the page of the view that shows: CHIP's focused section on the CHIP view (on top or under
+   MIDI learn's frame), LIVE's knobs in every other view.
 
-The note keys and MASTER always play, whichever view shows. The effect-slot layer (EDIT,
-SCL, ENV) is global until the CHIP view takes the slots over.
+The note keys and MASTER always play, whichever view shows. The effect-slot shortcut (EDIT,
+SCL, ENV) works in every view, the CHIP view included ([CHIP](#chip) says why it stays).
 
 ## Panel
 
@@ -38,38 +41,81 @@ SCL, ENV) is global until the CHIP view takes the slots over.
 | Note keys (14..40) | play F3..G5 at the current octave, at velocity 127: they sound as velocity off does, whatever the preset's velocity target |
 | OCT- / OCT+ (buttons 0, 1) | octave -1 / +1 (-3..+3); their LEDs show the direction |
 | FX (button 2) | chip 6581 / 8580; lit for the 8580 |
-| K1 (encoder 2) | cutoff |
-| K2 (encoder 3) | resonance |
-| K3 (encoder 4) | pulse width |
-| K4 (encoder 5) | preset |
+| K1 (encoder 2) | cutoff (on the CHIP view: its focused section's first value, [below](#chip)) |
+| K2 (encoder 3) | resonance (CHIP: the second) |
+| K3 (encoder 4) | pulse width (CHIP: the third) |
+| K4 (encoder 5) | preset (CHIP: the fourth) |
 | MASTER (pot) | volume |
-| **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end); K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
+| **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end), in every view; K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last) |
-| **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE behind THE OSCILLATOR's title card (below) |
+| **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, CHIP, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE behind THE OSCILLATOR's title card (below) |
 | **SAVE (button 9)** | MIDI learn (below): press it, turn a knob, then send a CC |
 | **SELECT (encoder 0)**, in the menu | moves the blinking cursor up and down the items |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: CHIP (clockwise the 8580, counter-clockwise the 6581; turning on past either changes nothing), PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF); turned clockwise on STATUS, opens the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
+| **SELECT (encoder 0)**, on CHIP | moves the focus: CHIP (the profile and the character), DIST, MOD, FX; it stops at either end |
+| **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP, the algorithm on a slot; it stops at either end |
 | **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, and round): it wipes in, and a toast names it |
 
 The other buttons (LFO, GLO, ARP, SEQ, PLAY, REC) and PRESETS (encoder 6) do
-nothing yet; SELECT does nothing outside the menu and SCENE, ALGORITHM nothing outside the
-menu.
+nothing yet; SELECT does nothing outside the menu, CHIP and SCENE, ALGORITHM nothing outside
+the menu and CHIP.
 
 ## Title cards
 
 A major view entered from the menu opens behind a short title card in the logo's metal
-lettering (`app/title_card.h`): **THE SCENE** before SCENE, and **THE OSCILLATOR** before LIVE
-when HOME goes back to it from the menu (not at power-on, after the boot, nor when MIDI
-learn's frame closes). THE CHIP is ready for M1c's CHIP view. The glow fades in, the title
+lettering (`app/title_card.h`): **THE CHIP** before CHIP, **THE SCENE** before SCENE, and
+**THE OSCILLATOR** before LIVE when HOME goes back to it from the menu (not at power-on, after
+the boot, nor when MIDI learn's frame closes). The glow fades in, the title
 wipes in, the card holds for a second and the view cuts in, about 2.6 s in all.
 
 - **Any button or encoder** ends the card at once and does nothing else (FX does not toggle
-  the chip, OCT+ does not step the octave, SELECT does not pick a piece).
+  the chip, OCT+ does not step the octave, SELECT does not pick a piece or move CHIP's focus).
 - **A note**, from the keys or MIDI, plays as ever and ends the card. The keys, MIDI and the
   audio are never held up by it.
 - **CARDS** in the menu turns the title cards off (ALGORITHM counter-clockwise on it) and on
   again (clockwise). They are on at power-on; the setting is not kept across power-off yet.
+
+## CHIP
+
+CHIP (the menu's first item) is chip A's sound on one page (`app/chip_view.h`): its profile,
+its character and the three effect slots, in PETSCII frames. Chip B comes with M2: its tab
+shows greyed, as **B M2**, and the page edits chip A only.
+
+| Rows | Section | Shows |
+|---|---|---|
+| 2 | CHIP and the tabs | **A** in reverse video, **B M2** greyed |
+| 4-7 | CHIP | the profile as asked for (6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581) and the model the chip plays |
+| 8-13 | CHARACTER | AGE, DAC, THUMP and BLEED, each a bar and its value 0..127 |
+| 14-17, 18-21, 22-25 | DIST, MOD, FX | the slot and its algorithm in the frame's title; its Amount, A, B and Mix, each named for what it does in that algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX); a control the algorithm does not use, and every control of a slot that is off, greyed under its plain name (AMT, A, B, MIX) |
+| 26 | | the help line: SELECT MOVE ALGORITHM STEP |
+
+The focus is on the chip (both its frames) or on a slot: a play mark in the margin and white
+frames show it.
+
+| Control | On the chip | On a slot |
+|---|---|---|
+| SELECT | moves the focus: CHIP, DIST, MOD, FX (it stops at either end) | the same |
+| ALGORITHM | the next profile clockwise, the one before counter-clockwise (it stops at either end) | the slot's next algorithm clockwise, the one before counter-clockwise (it stops at OFF and at the last) |
+| K1 / K2 / K3 / K4 | age / DAC sloppiness / output thump / filter bleed (32 detents end to end) | the slot's Amount / A / B / Mix (32 detents end to end) |
+
+The slot in focus is the selected slot, the one SCL selects and the EDIT shortcut turns:
+SELECT onto a slot selects it (and the toast says so, SLOT MOD), and SCL on a slot moves the
+focus with it. A profile changes at the next 10 ms tick, as its CC does (a chip reset: held
+notes are released); the model follows it, and the FX button still toggles the model. The
+character's controls glide, as from MIDI ([Chip character](#chip-character)). Everything else
+plays as on LIVE: the note keys, MASTER, OCT-/OCT+, FX, SAVE (MIDI learn, which picks the
+parameter K1..K4 turn on the page: AGE for K1 on the chip), and HOME back to the menu. A change
+from MIDI shows on the page at the next frame.
+
+**The EDIT layer stays, as a shortcut.** EDIT + K1..K4, SCL and ENV were the slots' stopgap
+until this view. They stay in every view, because they are a player's: they turn an effect
+while the scopes and the keys stay in sight, one hand on EDIT, without the three presses and
+the title card that reach CHIP; they cost nothing and conflict with nothing (EDIT is a hold
+nothing else uses, and on the CHIP view they act on the same selected slot, so the page shows
+what they turn). The CHIP view is where the slots are seen and named in full. M2 may give SCL
+and ENV the jobs their names suggest (a scale, an envelope); then the shortcut keeps EDIT +
+K1..K4 and the view keeps the rest.
 
 ## SCENE
 
@@ -119,8 +165,8 @@ at power-on.
 
 ## Chip character
 
-**MIDI only for now:** the panel gets these with the CHIP view (M1c Task 4). The chip's
-profile and its four character controls (`core/sid/sid_character.h`; sources, definitions
+On the panel they are the CHIP view's ([above](#chip)): ALGORITHM steps the profile and K1..K4
+turn the four controls. The chip's profile and its four character controls (`core/sid/sid_character.h`; sources, definitions
 and measurements: [decision record 0006](../decisions/0006-chip-profiles.md)):
 
 | Control | CC | NRPN | Values |
@@ -211,15 +257,19 @@ Any knob's parameter can follow a CC of your choice, from a controller on TRS or
 
 1. **Press SAVE** (button 9) **and turn a knob.** A frame, MIDI LEARN, opens over the screen
    on the press and says TURN A KNOB; the knob turned names its parameter (CUTOFF
-   &larr; SEND A CC) and does not move it. The knob is the parameter it turns on the panel:
-   K1..K3 the cutoff, resonance and pulse width; with **EDIT held**, K1..K4 the selected
-   effect slot's Amount, A, B and Mix (SCL first to pick the slot; it works while the frame
-   shows). K4 alone is the preset, which has no CC (program changes select it). SAVE need
+   &larr; SEND A CC) and does not move it. The knob is the parameter it turns on the panel, in
+   the view under the frame: K1..K3 the cutoff, resonance and pulse width; on the CHIP view,
+   K1..K4 its focused section's (AGE, DAC, THUMP, BLEED on the chip; a slot's Amount, A, B and
+   Mix on a slot; SELECT moves the focus while the frame shows); with **EDIT held**, K1..K4
+   the selected effect slot's Amount, A, B and Mix in any view (SCL first to pick the slot; it
+   works while the frame shows). K4 alone on LIVE's page is the preset, which has no CC
+   (program changes select it). SAVE need
    not be held: the frame waits after it comes up, and holding it changes nothing.
 2. **Send the CC** (move the controller's knob). The frame closes with LEARNED CC 21 &rarr;
    CUTOFF, the parameter jumps to the controller's value, and from then on follows it.
 
-While the frame shows, the note keys, OCT-/OCT+, FX, SCL, ENV and EDIT work as usual.
+While the frame shows, the note keys, OCT-/OCT+, FX, SCL, ENV and EDIT work as usual, and on
+the CHIP view SELECT and ALGORITHM.
 
 - **Cancel:** HOME (it closes the frame and opens nothing), or 10 s without a step (each
   step restarts the time). A cancelled learn changes nothing.
@@ -239,7 +289,7 @@ mode messages (120..127) cannot be learned.
 
 The mappings are kept in RAM until power-off; saving them comes with M2's storage.
 
-**Why SAVE.** The holds in use are EDIT (the effect-slot layer while it is held), OCT- at
+**Why SAVE.** The holds in use are EDIT (the effect-slot shortcut while it is held), OCT- at
 power-on (the test-death builds) and HOME at power-on (the full boot); HOME's press is the
 menu's. Of the buttons that do nothing yet, the ones a player hits while playing are
 taken by the design for M2's performance features (REC, PLAY, SEQ and ARP for the
@@ -268,11 +318,11 @@ The **status screen** (STATUS in the menu) shows the numbers: the chip, preset, 
 cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS each slot's
 algorithm and Mix (`>` marks the selected slot) with the selected slot's Amount, A and B.
 
-The menu (HOME) lists CHIP, PRESET, OCTAVE and CARDS (the title cards, above) with their
-values, then STATUS, SCENE (the generative pieces, above), CHARSET (the glyph sheet: the font
-and the palette) and ABOUT. A view opens with a wipe from the top and closes with one from the
-bottom; SCENE, and LIVE back from the menu, open behind a title card instead, and cut in under
-it in bands. M2's STEP view will be the default then; for M1 LIVE is.
+The menu (HOME) lists CHIP (the CHIP view, above), PRESET, OCTAVE and CARDS (the title cards,
+above) with their values, then STATUS, SCENE (the generative pieces, above), CHARSET (the
+glyph sheet: the font and the palette) and ABOUT. A view opens with a wipe from the top and
+closes with one from the bottom; CHIP, SCENE, and LIVE back from the menu, open behind a title
+card instead, and cut in under it in bands. M2's STEP view will be the default then; for M1 LIVE is.
 
 A change of octave, selected slot or algorithm shows a toast on the bottom line for
 1.5 s ("OCTAVE +1", "SLOT MOD", "MOD CHORUS"), whatever made it: a button, the menu or

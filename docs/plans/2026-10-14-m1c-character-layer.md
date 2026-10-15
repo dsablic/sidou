@@ -233,6 +233,29 @@ storage, to M2.
 - The knob and button mapping is documented in `docs/reference/controls.md`.
 - **Tests:** e2e LCD snapshots and control round trips.
 
+**Results after Task 4** (2026-10-15). `app/chip_view.h`, the menu's first item (it replaces
+the menu's 6581/8580 item: the profile picker sets the model, and FX still toggles it), behind
+THE CHIP's title card:
+- **The page:** chip A's profile and model, the four character controls as bars, and the three
+  slots with their algorithm and Amount, A, B and Mix, each control named for what it does in
+  its algorithm; the A tab, and B greyed as "B M2".
+- **Controls:** SELECT moves the focus (the chip, DIST, MOD, FX); ALGORITHM steps the profile
+  or the slot's algorithm; K1..K4 turn the focused section's four values. The slot in focus
+  is live's selected slot. `panel_knob_param` reads the panel's page, which the views set for
+  the view that shows, so the panel, MIDI learn (AGE for K1 on the chip) and MIDI out (CC 86)
+  agree. A change from MIDI shows at the next frame.
+- **The EDIT layer** stays as a shortcut in every view (controls.md, "CHIP", says why).
+- **Budget:** built in a canvas and copied within 200 cells a frame, as SCENE; idle 6.3k
+  instructions a frame and nothing sent; the busiest frames 17.6 ms of SPI, the busiest
+  `ui_poll` 34.2k; an input at most 198 instructions, the busiest pass after one 44.5k
+  (docs/art/README.md, "CHIP"). A profile step's pass is the chip reset, 362.6k, as the FX
+  button's: bounded on its own, outside the 120k poll allowance.
+- **Tests:** host state-machine and round-trip tests (`tests/app/chip_view.rs`), fm1-emu
+  goldens of the four pages and THE CHIP, a CC and K1 there and back, the costs, and K1 on the
+  device turning the chip's age, the audio bit-exact with the host (`character.rs`).
+- **Not done:** the expert layer (every analogue parameter as its own panel entry and NRPN,
+  decision record 0006) and chip B's half of the page go to M2.
+
 <!-- REUSE-IgnoreEnd -->
 
 ### Task 5: Effect slots: Distortion, Modulation, FX (stereo)

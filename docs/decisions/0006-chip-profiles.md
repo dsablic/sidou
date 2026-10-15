@@ -283,7 +283,7 @@ row (the model was fitted at the default range); the 8580's (curve 0.75) 0.23 / 
 
 ## Not done here
 
-Panel access (the CHIP view) is Task 4; until then the character is MIDI only. The plan's
-expert layer (every analogue parameter as its own control) goes with the CHIP view's panel
-entries (Task 4) and the M1d map's NRPN rows after 2/4; user-saved profiles need storage
+Panel access is the CHIP view (Task 4, done): the profile on its ALGORITHM, the four controls
+on K1..K4. The plan's expert layer (every analogue parameter as its own control) did not come
+with it and goes to M2, with the M1d map's NRPN rows after 2/4; user-saved profiles need storage
 and go with M2.

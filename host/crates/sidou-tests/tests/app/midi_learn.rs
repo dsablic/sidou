@@ -628,8 +628,11 @@ fn a_cc_neither_the_map_nor_learn_takes_costs_midi_out_no_look() {
 
 // --- the panel's knobs ---
 
+/// On LIVE's page (PANEL_PAGE_LIVE, every view but CHIP's; chip_view.rs has the CHIP view's).
 fn knob_param(l: &live, held: u32, enc: u32) -> u32 {
-    unsafe { panel_knob_param(l, held, enc) }
+    let mut p = panel::default();
+    unsafe { panel_init(&mut p) };
+    unsafe { panel_knob_param(&p, l, held, enc) }
 }
 
 #[test]

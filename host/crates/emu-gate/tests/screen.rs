@@ -3,6 +3,7 @@
 //! The screen in fm1-emu: LCD snapshots of the views against golden images
 //! (tests/golden/lcd/), reached through the panel as a player would (HOME, SELECT, ALGORITHM);
 //! the boot sequence, short and full, and skipping it; LIVE's scopes following the notes; the
+//! CHIP view's pages and what MIDI and the knobs change on them;
 //! wipe and raster transitions frame by frame; and what drawing costs the main loop in
 //! instructions and SPI time, idle, for small changes, per frame of each transition, and for
 //! the animated boot, About and LIVE.
@@ -35,6 +36,7 @@ const SELECT: u8 = 0;
 const ALGORITHM: u8 = 1;
 /// app/views.h: the menu's title cards option and view items (STATUS is
 /// common::open_status's), and its cursor cell on the first item.
+const MENU_CHIP: i32 = sidou_sys::VIEWS_MENU_CHIP as i32;
 const MENU_CARDS: i32 = sidou_sys::VIEWS_MENU_CARDS as i32;
 const MENU_SCENE: i32 = sidou_sys::VIEWS_MENU_SCENE as i32;
 const MENU_CHARSET: i32 = sidou_sys::VIEWS_MENU_CHARSET as i32;
@@ -1807,12 +1809,320 @@ fn starting_a_piece_holds_the_main_loop_within_the_poll_allowance() {
     assert!(over.is_empty(), "{over:#?}");
 }
 
+// ---- the CHIP view (app/chip_view.h) ----
+
+/// app/panel.h K1, the CHIP view's first knob (the age on the chip, Amount on a slot).
+const K1_CHIP: u8 = 2;
+
+/// The character and every slot over TRS MIDI (docs/reference/midi.md): age 100, DAC 40,
+/// thump 64, bleed 20; DIST OVERDRIVE, MOD CHORUS, FX REVERB (the algorithm CCs divide 0..127
+/// among the slot's algorithms), each slot's Amount, A, B and Mix.
+const CHIP_STATE: [u8; 19 * 3] = {
+    const CCS: [(u8, u8); 19] = [
+        (86, 100),
+        (87, 40),
+        (89, 64),
+        (90, 20),
+        (102, 50),
+        (103, 90),
+        (104, 30),
+        (105, 70),
+        (106, 127),
+        (107, 20),
+        (108, 60),
+        (109, 0),
+        (110, 10),
+        (111, 80),
+        (112, 80),
+        (113, 100),
+        (114, 50),
+        (115, 64),
+        (116, 40),
+    ];
+    let mut out = [0u8; 19 * 3];
+    let mut i = 0;
+    while i < CCS.len() {
+        out[3 * i] = 0xB0;
+        out[3 * i + 1] = CCS[i].0;
+        out[3 * i + 2] = CCS[i].1;
+        i += 1;
+    }
+    out
+};
+
+/// CHIP from the menu, past THE CHIP's card, the slot's toast gone, settled.
+fn open_chip(m: &mut Machine, fw: &Firmware) {
+    open_menu(m, fw);
+    select(m, MENU_CHIP);
+    m.run_ms(100);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(100);
+    assert!(showing_card(m, fw), "no card into CHIP");
+    past_card(m, fw);
+    settle(m, fw);
+    assert_eq!(
+        common::top_view(m, fw),
+        fw.symbol("chip_view_view"),
+        "the menu's CHIP did not open CHIP"
+    );
+}
+
+/// The CHIP view's focus (app/chip_view.h chip_view_focus): 0 the chip, 1 + the selected slot.
+fn chip_focus(m: &mut Machine, fw: &Firmware) -> u8 {
+    let on_chip = ui_byte(
+        m,
+        fw,
+        sidou_sys::ilp32::views::chip + sidou_sys::ilp32::chip_view::chip,
+    );
+    let l = m
+        .soc
+        .read32(fw.symbol("ui") + sidou_sys::ilp32::views::l as u32);
+    let slot = m.soc.read8(l + sidou_sys::ilp32::live::fx_select as u32);
+    if on_chip != 0 {
+        0
+    } else {
+        1 + slot
+    }
+}
+
+/// The instrument's character controls (app/live.h live.character: age, DAC, thump, bleed).
+fn character(m: &mut Machine, fw: &Firmware) -> [u8; 4] {
+    let l = m
+        .soc
+        .read32(fw.symbol("ui") + sidou_sys::ilp32::views::l as u32);
+    std::array::from_fn(|i| {
+        m.soc
+            .read8(l + (sidou_sys::ilp32::live::character + i) as u32)
+    })
+}
+
+/// Each CHIP page, its focus moved down by SELECT: the chip (the profile and the character),
+/// DIST, MOD and FX, with the character and the slots set over MIDI.
+#[test]
+fn chip_matches_its_golden_images() {
+    let Some((build, fw)) = fixture("the CHIP test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    m.midi(&CHIP_STATE);
+    m.run_ms(200);
+    open_chip(&mut m, &fw);
+    assert_eq!(chip_focus(&mut m, &fw), 0);
+    compare_golden(&build, "chip", &m.soc.lcd.fb, &[]);
+    for (k, name) in ["dist", "mod", "fx"].iter().enumerate() {
+        m.turn(SELECT, 1);
+        m.run_ms(1600); // the slot's toast
+        settle(&mut m, &fw);
+        assert_eq!(chip_focus(&mut m, &fw), k as u8 + 1);
+        compare_golden(&build, &format!("chip-{name}"), &m.soc.lcd.fb, &[]);
+    }
+}
+
+/// The page follows MIDI and the knobs, there and back: a CC takes the age to 0 and the page
+/// shows it; K1 turned 25 detents on the chip takes it back to 100 (4 a detent), in the
+/// instrument and on the page, which is its golden again; and SELECT past the end stays.
+#[test]
+fn chip_follows_midi_and_the_knobs_there_and_back() {
+    let Some((build, fw)) = fixture("the CHIP test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    m.midi(&CHIP_STATE);
+    m.run_ms(200);
+    open_chip(&mut m, &fw);
+    let golden = indexed(&m.soc.lcd.fb);
+    m.midi(&[0xB0, 86, 0]);
+    m.run_ms(200);
+    common::to_mid_frame(&mut m, &fw);
+    assert_eq!(character(&mut m, &fw), [0, 40, 64, 20]);
+    let row = |idx: &[u8], r: usize| idx[r * 8 * W..(r + 1) * 8 * W].to_vec();
+    let age_row = sidou_sys::CHIP_VIEW_CHARACTER_ROW as usize + 1;
+    let now = indexed(&m.soc.lcd.fb);
+    assert!(
+        row(&now, age_row) != row(&golden, age_row),
+        "the age's row did not change"
+    );
+    for r in (0..30).filter(|&r| r != age_row) {
+        assert!(row(&now, r) == row(&golden, r), "row {r} changed");
+    }
+    m.turn(K1_CHIP, 25);
+    m.run_ms(25 * 10 + 200);
+    common::to_mid_frame(&mut m, &fw);
+    assert_eq!(character(&mut m, &fw), [100, 40, 64, 20]);
+    compare_golden(&build, "chip", &m.soc.lcd.fb, &[]);
+    m.turn(SELECT, -3);
+    m.run_ms(100);
+    assert_eq!(chip_focus(&mut m, &fw), 0, "SELECT went past the chip");
+}
+
+/// Main-loop instructions in ui_poll (fm1-emu) on the CHIP view, bounded about 10 % above what
+/// was measured (docs/art/README.md, "CHIP"):
+///
+/// | CHIP | Cells a frame (average, most) | Worst SPI | Instructions a frame | Busiest ui_poll |
+/// |---|---|---|---|---|
+/// | Idle | 0, 0 | 0 | 6.3k | 0.3k |
+/// | A knob's detent (25 frames) | 0.08, 2 | 0.19 ms | 7.7k | 34.2k |
+/// | The busiest (50 frames) | 26.9, 200 | 17.62 ms | 37.4k | 28.6k |
+///
+/// Idle it composes nothing. A detent builds the page in its canvas and copies the two cells
+/// that changed (the busiest ui_poll: the build and the scan of 900 cells). The busiest is a
+/// burst of every control over MIDI with a focus move and a chip change (its raster and toast):
+/// its first frame fills the budget and the rest goes out in the frames after.
+const CHIP_IDLE_PER_FRAME: f64 = 7_000.0;
+const CHIP_KNOB_PER_FRAME: f64 = 8_500.0;
+const CHIP_BUSY_PER_FRAME: f64 = 41_000.0;
+const CHIP_WORST_POLL: u64 = 38_000;
+/// SELECT, ALGORITHM and a knob on the CHIP view: the input's call (ui_encoder) and the busiest
+/// main-loop pass after it (from midi_drain to midi_service), within the latency gate's poll
+/// allowance together. Measured: the input 198 at most (K1 on DIST), the busiest pass 44.5k
+/// (SELECT from FX back to the chip: three frames change colour).
+const CHIP_INPUT: u64 = 220;
+const CHIP_PASS: u64 = 49_000;
+/// ALGORITHM on the chip steps the profile: its pass is the chip reset (the live tick prepares
+/// the spare chip, decision record 0006, "Cost": up to 0.50 M instructions for WORN at full
+/// character), as the FX button's and CC 85's are. It is the one input on CHIP over the poll
+/// allowance, by design: a reset releases the held notes anyway. Measured 362.6k for a step
+/// clockwise with the page's character and 313.5k back; bounded about 10 % above.
+const CHIP_PROFILE_PASS: u64 = 400_000;
+
+/// The CHIP view idle, a knob's detent, and the busiest frames: every frame within
+/// CHIP_VIEW_FRAME_CELLS and the SPI budget, the main loop's cost a frame and its busiest
+/// ui_poll within the bounds above.
+#[test]
+fn chip_stays_within_its_budgets() {
+    let Some((_, fw)) = fixture("the CHIP budget test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    m.watch_calls(fw.symbol("ui_poll"));
+    common::run_past_boot(&mut m, &fw);
+    m.midi(&CHIP_STATE);
+    m.run_ms(200);
+    open_chip(&mut m, &fw);
+    let idle = measure(&mut m, &fw, 25, |_| {});
+    let knob = measure(&mut m, &fw, 25, |m| m.turn(K1_CHIP, 1));
+    // Every control changed at once, the focus moved to DIST, and the chip changed: the toast,
+    // the raster, every bar and value, three frames' colours.
+    let mut burst = CHIP_STATE;
+    for v in burst.iter_mut().skip(2).step_by(3) {
+        *v = 127 - *v;
+    }
+    let busy = measure(&mut m, &fw, 50, |m| {
+        m.midi(&burst);
+        m.turn(SELECT, 1);
+        m.key(FX, true);
+    });
+    m.key(FX, false);
+    let report = serde_json::json!({
+        "frame_ms": UI_PERIOD_MS,
+        "spi_hz": SPI_HZ,
+        "chip_idle": animated_json(&idle),
+        "chip_knob": animated_json(&knob),
+        "chip_busiest": animated_json(&busy),
+    });
+    println!("{report}");
+    assert_eq!(idle.total().windows, 0, "the idle CHIP view sent something");
+    for (what, c, per_frame) in [
+        ("idle", &idle, CHIP_IDLE_PER_FRAME),
+        ("a knob", &knob, CHIP_KNOB_PER_FRAME),
+        ("the busiest", &busy, CHIP_BUSY_PER_FRAME),
+    ] {
+        assert!(
+            c.worst_frame_ms() <= SPI_BUDGET_MS,
+            "{what}: a frame took {:.1} ms of SPI",
+            c.worst_frame_ms()
+        );
+        let most = c.frames.iter().map(cells).max().unwrap_or(0);
+        assert!(
+            most <= sidou_sys::CHIP_VIEW_FRAME_CELLS,
+            "{what}: a frame sent {most} cells"
+        );
+        assert!(
+            c.worst_poll < CHIP_WORST_POLL,
+            "{what}: a ui_poll took {} instructions",
+            c.worst_poll
+        );
+        assert!(
+            c.instructions_per_frame() < per_frame,
+            "{what}: {:.0} instructions a frame",
+            c.instructions_per_frame()
+        );
+    }
+    // A detent changes its value's cells and its bar's, a run or two.
+    let knob_cells: u32 = knob.frames.iter().map(cells).sum();
+    assert!(
+        (1..=12).contains(&knob_cells),
+        "a detent sent {knob_cells} cells"
+    );
+    // The burst changes more than a frame's budget: it spreads over frames.
+    let full = busy
+        .frames
+        .iter()
+        .filter(|f| cells(f) >= sidou_sys::CHIP_VIEW_FRAME_CELLS - 30)
+        .count();
+    assert!(full >= 1, "the burst never filled a frame");
+}
+
+/// SELECT, ALGORITHM on a slot and a knob on the CHIP view: the input within CHIP_INPUT, every
+/// pass after it within CHIP_PASS; ALGORITHM on the chip, the profile, its input within
+/// CHIP_INPUT and its pass, the chip reset's, within CHIP_PROFILE_PASS.
+#[test]
+fn chip_input_holds_the_main_loop_within_the_poll_allowance() {
+    let Some((_, fw)) = fixture("the CHIP input test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    m.midi(&CHIP_STATE);
+    m.run_ms(200);
+    open_chip(&mut m, &fw);
+    m.watch_calls(fw.symbol("ui_encoder"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let mut over = Vec::new();
+    for (what, enc, steps) in [
+        ("SELECT down", SELECT, 1),
+        ("ALGORITHM on DIST", ALGORITHM, 1),
+        ("K1 on DIST", K1_CHIP, 1),
+        ("SELECT down", SELECT, 2),
+        ("ALGORITHM on FX", ALGORITHM, -1),
+        ("SELECT to the chip", SELECT, -3),
+        ("K1 on the chip", K1_CHIP, -1),
+    ] {
+        let (input, pass) = start_cost(&mut m, 1600, |m| m.turn(enc, steps));
+        println!("CHIP {what}: the input {input}, the busiest pass {pass}");
+        if input >= CHIP_INPUT || pass >= CHIP_PASS {
+            over.push(format!(
+                "{what}: the input {input}, the busiest pass {pass}"
+            ));
+        }
+    }
+    // The profile: the input as the others', the pass the chip reset's (CHIP_PROFILE_PASS).
+    for (what, steps) in [("ALGORITHM on the chip", 1), ("ALGORITHM back", -1)] {
+        let (input, pass) = start_cost(&mut m, 1600, |m| m.turn(ALGORITHM, steps));
+        println!("CHIP {what}: the input {input}, the busiest pass {pass}");
+        if input >= CHIP_INPUT || pass >= CHIP_PROFILE_PASS {
+            over.push(format!(
+                "{what}: the input {input}, the busiest pass {pass}"
+            ));
+        }
+    }
+    assert!(over.is_empty(), "{over:#?}");
+}
+
 // ---- the title cards (app/title_card.h) ----
 
 /// The menu's ALGORITHM on SCENE, from LIVE: THE SCENE's card.
 fn into_scene_card(m: &mut Machine, fw: &Firmware) {
     open_menu(m, fw);
     select(m, MENU_SCENE);
+    m.run_ms(100);
+    common::to_mid_frame(m, fw);
+    m.turn(ALGORITHM, 1);
+}
+
+/// The menu's ALGORITHM on CHIP, from LIVE: THE CHIP's card.
+fn into_chip_card(m: &mut Machine, fw: &Firmware) {
+    open_menu(m, fw);
+    select(m, MENU_CHIP);
     m.run_ms(100);
     common::to_mid_frame(m, fw);
     m.turn(ALGORITHM, 1);
@@ -1859,15 +2169,32 @@ fn assert_shows_the_card_source(name: &str, fb: &[u16]) {
     }
 }
 
-/// THE SCENE into SCENE from the menu, THE OSCILLATOR back to LIVE from the menu: each held
-/// frame against its golden and against its source PNG, and the view under it after.
-/// THE CHIP (no view to enter yet) is checked against its PNG on the host (title_card.rs).
+/// THE CHIP into CHIP and THE SCENE into SCENE from the menu, THE OSCILLATOR back to LIVE from
+/// the menu: each held frame against its golden and against its source PNG, and the view under
+/// it after.
 #[test]
 fn title_cards_match_their_goldens_and_their_sources() {
     let Some((build, fw)) = fixture("the title card test") else {
         return;
     };
     let mut m = booted(&fw);
+    into_chip_card(&mut m, &fw);
+    m.run_ms(UI_PERIOD_MS);
+    assert!(showing_card(&mut m, &fw), "no card into CHIP");
+    assert_eq!(
+        card_byte(&mut m, &fw, sidou_sys::ilp32::title_card::id),
+        sidou_sys::TITLE_CARD_CHIP as u8
+    );
+    to_held(&mut m, &fw);
+    compare_golden(&build, "title-chip", &m.soc.lcd.fb, &[]);
+    assert_shows_the_card_source("chip", &m.soc.lcd.fb);
+    past_card(&mut m, &fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("chip_view_view"));
+    press(&mut m, HOME);
+    settle(&mut m, &fw);
+    press(&mut m, HOME);
+    past_card(&mut m, &fw);
+    settle(&mut m, &fw);
     into_scene_card(&mut m, &fw);
     m.run_ms(UI_PERIOD_MS);
     assert!(showing_card(&mut m, &fw), "no card into SCENE");
@@ -1977,21 +2304,23 @@ fn a_note_plays_through_a_title_card_and_ends_it() {
 /// Each card from its start to the end of the cut under it, nothing played: every frame within
 /// TITLE_CARD_FRAME_CELLS (and the cut's 180) and the SPI budget, the main loop's cost a frame
 /// and its busiest ui_poll within the bounds below; and the input that brings it in (ui_encoder
-/// for SCENE, ui_buttons for HOME) with the busiest main-loop pass of the card within the poll
-/// allowance together.
+/// for CHIP and SCENE, ui_buttons for HOME) with the busiest main-loop pass of the card within
+/// the poll allowance together.
 #[test]
 fn title_cards_stay_within_their_budgets() {
     let Some((_, fw)) = fixture("the title card budget test") else {
         return;
     };
     let mut report = serde_json::Map::new();
-    for (name, input) in [("scene", "ui_encoder"), ("oscillator", "ui_buttons")] {
-        let enter = |m: &mut Machine| {
-            if name == "scene" {
-                into_scene_card(m, &fw)
-            } else {
-                into_oscillator_card(m, &fw)
-            }
+    for (name, input) in [
+        ("chip", "ui_encoder"),
+        ("scene", "ui_encoder"),
+        ("oscillator", "ui_buttons"),
+    ] {
+        let enter = |m: &mut Machine| match name {
+            "chip" => into_chip_card(m, &fw),
+            "scene" => into_scene_card(m, &fw),
+            _ => into_oscillator_card(m, &fw),
         };
         // The frames and ui_poll, with the passes.
         let mut m = booted(&fw);
@@ -2028,9 +2357,16 @@ fn title_cards_stay_within_their_budgets() {
         // The input, alone.
         let mut m = booted(&fw);
         m.watch_calls(fw.symbol(input));
-        if name == "scene" {
+        if name != "oscillator" {
             open_menu(&mut m, &fw);
-            select(&mut m, MENU_SCENE);
+            select(
+                &mut m,
+                if name == "scene" {
+                    MENU_SCENE
+                } else {
+                    MENU_CHIP
+                },
+            );
             m.run_ms(100);
             let n = m.watched_calls.len();
             m.turn(ALGORITHM, 1);
@@ -2106,6 +2442,7 @@ fn title_cards_stay_within_their_budgets() {
 /// |---|---|---|---|---|---|---|---|
 /// | THE SCENE | 66 | 72.4, 200 | 17.14 ms | 56.0k | 71.6k | 350 (ui_encoder) | 73.1k |
 /// | THE OSCILLATOR | 64 | 68.7, 200 | 17.14 ms | 55.1k | 71.3k | 387 (ui_buttons) | 72.8k |
+/// | THE CHIP (M1c Task 4) | 66 | 72.4, 200 | 17.14 ms | 55.6k | 71.2k | 364 (ui_encoder) | 72.9k |
 ///
 /// The busiest frames are the glow's first level (200 cells, the most a frame) and its scan
 /// of the screen's 900 cells for those that differ.
@@ -2124,3 +2461,5 @@ const _: () = assert!(ABOUT_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(BOOT_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(TITLE_CARD_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(TITLE_CARD_INPUT + TITLE_CARD_PASS <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(CHIP_WORST_POLL <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(CHIP_INPUT + CHIP_PASS <= common::POLL_INSTRUCTIONS);
