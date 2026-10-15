@@ -420,9 +420,9 @@ pub const SID_WORST_PER_CHIP: f64 = 530.0;
 /// and for two together, as sid_budget.rs measures it (it fails above these). The audio
 /// ISR has a hard per-block deadline, so the effect gates pair the slots with this, not
 /// with a scenario's average. Both are the first block of a combined-noise scenario from
-/// power-on (noise_tri_ring_0800 on the 8580: 690.83 and 1,409.20 at M1b), while the
-/// register runs through its shifts until it locks up (decision record 0004, "Worst
-/// blocks").
+/// power-on (noise_tri_ring_0800 on the 8580: 690.85 and 1,409.24 at M1b, merged with M1d),
+/// while the register runs through its shifts until it locks up (decision record 0004,
+/// "Worst blocks").
 pub const SID_WORST_BLOCK_ONE_CHIP: f64 = 691.0;
 pub const SID_WORST_BLOCK_TWO_CHIPS: f64 = 1410.0;
 
