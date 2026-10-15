@@ -121,11 +121,12 @@ test-only) and compare them:
   6581.
 
 The tests print the measured values. The M0 values are in
-[decision record 0002](docs/decisions/0002-m0-sid-cost.md).
+[decision record 0002](docs/decisions/0002-m0-sid-cost.md), M1b's in
+[decision record 0003](docs/decisions/0003-m1b-accuracy.md).
 
 **A failure means** SIDOU moved away from reSIDfp on something both
-should agree on. The 6581 tolerance is looser because M0 does not model the
-6581's non-linear envelope DAC; M1 does and tightens it.
+should agree on. The 6581's envelope tolerance is looser: its kinked
+envelope DAC leaves 0.31 dB, against the 8580's 0.03 dB.
 
 **Tolerances only get tighter.** Never loosen one to make a failure pass,
 unless a decision record in `docs/decisions/` explains why.
@@ -141,20 +142,29 @@ linear filter should match reSIDfp's:
   resonance 0, 8 and 15, compared from half to twice reSIDfp's cutoff and
   below 7 kHz (above, SIDOU's trapezoidal filter departs from the analogue
   response whatever its tables say), each mode at its best level: the 8580
-  within 1.0, 0.55 and 0.3 dB, the 6581 within 3.4, 3.75 and 3.5 dB;
+  within 1.0, 0.55 and 0.3 dB, the 6581 within 3.32, 3.13 and 2.89 dB;
 - **passband gain**: from the same measurements, each mode's gain in its
   passband (LP f0/8 to f0/3, BP within 1.2x of f0, HP 3 f0 to 9 f0), SIDOU
-  minus reSIDfp, held to the range measured at M1b Task 5: the 8580 within
-  0.2 dB, the 6581 1.7 to 6.5 dB louder (a gap for Task 6);
+  minus reSIDfp, held to the measured range: the 8580 within 0.2 dB, the
+  6581 within -1.74 to 1.79, -2.02 to 2.06 and -0.40 to 0.52 dB (LP, BP,
+  HP; 1.7 to 6.5 dB louder before M1b Task 6);
 - **sweeps**: `sidou-compare`'s low-, band- and high-pass noise sweeps at that
   level, as RMS envelopes, the largest window and the RMS over the windows:
-  within 1.62, 2.03 and 1.70 dB (RMS 0.54, 0.80, 0.87) on the 8580 and 5.16,
-  6.22 and 1.05 dB (RMS 1.19, 2.92, 0.46) on the 6581. These also measure what
-  the tables cannot fix (the comment in `filter.rs` lists it);
-- **full-scale sweeps**, record only: the same sweeps at sustain 15, where the
-  6581's filter is level-dependent (the M1b plan's Task 6), held at the values
-  Task 5 measured (rounded up to 0.01 dB) so that they cannot regress
-  unnoticed.
+  within 1.62, 2.03 and 1.70 dB (RMS 0.54, 0.80, 0.87) on the 8580 and 4.84,
+  2.46 and 1.01 dB (RMS 1.07, 0.68, 0.43) on the 6581. These also measure what
+  the tables cannot fix (the comment in `filter.rs` lists it; the 8580 misses
+  the plan's 1.0 dB, explained in decision record 0003);
+- **full-scale sweeps**: the same sweeps at sustain 15, where the 6581's
+  filter is level-dependent: the 6581 within 1.88, 1.89 and 1.49 dB (M1b
+  Task 6's targets 2.0, 2.0 and 2.1), the 8580 record only (0.83, 2.05,
+  1.27);
+- **loud sweeps** (6581): three voices at full sustain into the filter,
+  noise and a chord, where reSIDfp's 6581 filter is furthest from linear
+  (target 3 dB): noise within 2.44, 1.92 and 2.81 dB, the chord within
+  2.33, 4.37 and 2.84 dB (its band-pass misses; decision record 0003).
+
+Every ceiling is the measured value rounded up to 0.01 dB, so nothing
+regresses unnoticed.
 
 ### Register reads against reSIDfp
 
@@ -179,9 +189,9 @@ with `clockSilent`, so a read can land on any cycle.
 **A failure means** a register reads back differently from reSIDfp; the
 message gives the cycle and the first differing values. Cases that a later
 milestone task fixes are `#[ignore]`d with the task and the reason, and so are
-two OSC3 gaps that stay (read-only and inaudible; the M1b plan's Task 7): the
+two OSC3 gaps that stay (read-only and inaudible; decision record 0003): the
 reads right after a hard sync and a cycle after a pulse-width write. Run them
-with `-- --ignored`.
+with `-- --ignored`; they fail, and they should until the gaps are fixed.
 
 ### Generated tables
 
@@ -539,6 +549,9 @@ It asserts for every trial:
   This follows from the bound above, as the taking interrupt is one of the run's; it is
   kept as the plan's statement;
 - audible within two blocks of being taken;
+- the held note is not silent: its peak is at least half what the host core
+  gives the same note (SAW LEAD on the 6581, C4 at velocity 100), with no
+  absolute number;
 - INSTANT: the envelope is up in the block that takes the note; AUTHENTIC: within the
   ADSR delay's longest (32767 cycles) and the attack;
 - the note-off taken within the note-on's bound; INSTANT: the release's first step in the
@@ -593,8 +606,9 @@ MIDI is covered by the host tests of the packet conversion
   once.
 
 `crates/emu-gate/tests/fx_live.rs` plays the effect slots through the firmware:
-- the panel's EDIT layer turns OVERDRIVE on: the wave clips (its crest factor
-  falls) and EDIT lights up;
+- the panel's EDIT layer turns OVERDRIVE on: on a chord, the wave clips (its
+  crest factor falls below 0.8 of the same chord through the slot at no
+  drive) and EDIT lights up;
 - TRS MIDI CCs turn the light reverb on: the output turns stereo and a tail
   follows the note;
 - every slot's heaviest (overdrive, chorus, lush) switched in by CC while a

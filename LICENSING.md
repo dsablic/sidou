@@ -31,7 +31,7 @@ component. "Use" says whether a component ends up in the firmware image.
 | Voice DACs (`core/sid/sid_dac.c`, `sid_dac.h`) | a port of libresidfp @ `c1791383` `Dac.cpp` (the R-2R ladder) and the constants `SID.cpp`/`FilterModelConfig6581.cpp` build the voice output from, © Leandro Nini, Antti Lankila, Dag Lem | GPL-2.0-or-later | compiled into the firmware; it builds one 17,408-byte table per chip model in RAM | in use |
 | `bench/fm1/crt0.S`, `bench/fm1/bench.ld` | adapted from fm1-sid, © 2026 Joakim Eriksson | BSD-2-Clause | benchmark program only | in use |
 | font8x8_basic @ `8e279d2d` (`host/crates/sidou-tests/tests/data/font8x8_basic.h`) | font8x8, Daniel Hepper, after Marcel Sondaar and IBM's VGA fonts | public domain (`LICENSES/LicenseRef-PublicDomain.txt`) | host tests only: the reference SIDOU's own font must not copy; never built into the firmware | in use |
-| libresidfp @ `c1791383` (`third_party/libresidfp`) | libsidplayfp project | GPL-2.0-or-later | host tests only; git submodule, never linked into firmware | in use |
+| libresidfp @ `c1791383` (`third_party/libresidfp`) | libsidplayfp project | GPL-2.0-or-later | host tests and the table generator (`sidou-tablegen`) only; git submodule, never linked into firmware (the tables generated from it are listed above) | in use |
 | fm1-emu crates `fm1-core`, `fm1-soc`, `fm1-isa` @ `e52f4640` | Joakim Eriksson | MIT | emulator gate only; fetched by cargo | in use |
 | Rust crates `cc`, `criterion`, `object`, `png`, `serde_json`, `sha2` | crates.io | MIT OR Apache-2.0 | host build, tests and benchmark only; fetched by cargo | in use |
 | Rust crate `bindgen` | crates.io | BSD-3-Clause | host build only; fetched by cargo | in use |
@@ -41,6 +41,10 @@ component. "Use" says whether a component ends up in the firmware image.
 The Rust crates above are the direct dependencies of the `host/` workspace.
 Their transitive dependencies are pinned in `host/Cargo.lock`; none of them
 ends up in the firmware.
+
+M0's filter cutoff points from reSID 0.16 (`core/sid/sid_curves_resid016.h`,
+Dag Lem, GPL-2.0-or-later) were removed in M1b: the filter tables above
+replace them ([decision record 0003](docs/decisions/0003-m1b-accuracy.md)).
 
 Candidates under evaluation are listed in section 11 of the
 [design document](docs/plans/2026-10-14-sidou-design.md).

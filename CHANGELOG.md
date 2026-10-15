@@ -21,6 +21,22 @@ All notable changes are documented here. The format follows
   tests, and a criterion benchmark.
 - reSIDfp reference harness: pitch and envelope tests, and the
   `sidou-compare` filter comparison tool.
+- M1b, the SID core against reSIDfp (decision record 0003):
+  - register reads: OSC3 (`$1B`) and ENV3 (`$1C`) bit-exact with reSIDfp,
+    the paddles at 0xFF and the last bus value for the rest; the envelopes
+    power on at 0xaa, and their timing follows reSIDfp cycle for cycle;
+  - combined waveforms from reSIDfp's pulldown tables (AVERAGE by default;
+    WEAK and STRONG with `SIDOU_ALL_COMBINED_PROFILES`), and the noise
+    register's write-back and lock-up;
+  - reSIDfp's kinked waveform and envelope DACs, the 6581's voice DC
+    following its envelope DAC, and the output at reSIDfp's level;
+  - the filter's cutoff and damping measured from reSIDfp and fitted, one
+    row per curve setting (`sid_set_filter_curve`);
+  - `sidou-tablegen`, which generates the tables in `core/sid/gen/`, with
+    drift tests in CI;
+  - tests: register reads against reSIDfp, the level of one voice, the
+    filter's transfer functions, passband gain and small-signal, full-scale
+    and loud sweeps, each held at its measured value.
 - Pinned JieLi pi32v2 toolchain in Docker, and a bare-metal pi32v2 benchmark
   program.
 - Emulator benchmark gate: runs the pi32v2 build in fm1-emu, enforces 900
@@ -28,8 +44,8 @@ All notable changes are documented here. The format follows
   build.
 - CI: host tests on Linux and macOS with UBSan; ASan on Linux; MSRV check, REUSE lint,
   and the firmware build with the emulator gate.
-- Building and testing guides, and decision records for the host tooling
-  and the M0 SID cost.
+- Building and testing guides, and decision records for the host tooling,
+  the M0 SID cost and M1b's accuracy results.
 - FM-1 platform (`platform/fm1/`): Felucca's HAL (GPL-3.0-only), startup
   code and memory map, and a firmware image that boots, runs the audio
   interrupt and plays a SID test tone; an fm1-emu boot test checks it.
