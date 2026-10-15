@@ -107,6 +107,15 @@ SPI):
   ENV3 and cutoff.
 - Fire and plasma at a reduced area or frame rate, to fit the budget.
 - **Tests:** snapshot tests, and busiest-frame cost tests.
+  - **Amended (Task 5):** SCENE is a menu item (after STATUS); SELECT steps between the five
+    pieces (FIRE, PLASMA, RULE 30, STARS, ANT), each wiping in with its name as a toast. Each
+    piece draws into a canvas of its own and the view copies it onto the grid within 200 cells
+    a frame, going on where it stopped the next frame; the pieces step half way between
+    frames. FIRE burns in the bottom 14 rows, every other frame, half its rows a frame; PLASMA
+    draws every other row a frame at about a fifth of the prototype's top speed, its ripples single
+    rings. LIVE's tap runs while SCENE shows, unchanged (the interrupt's code is the same):
+    the envelopes come from it, the gates and notes from the instrument. docs/art/README.md,
+    "SCENE", has the numbers.
 
 ### Task 6: Optional SID UI sounds
 - Blips and a "drive chunk" played on chip B's spare voice when it's idle.

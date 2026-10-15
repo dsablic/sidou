@@ -188,22 +188,23 @@ which printed control did it.
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the status screen; Mix as LIVE's bar); EDIT lit while the slot is on | | [ ] |
 | HOME (button 8) | from LIVE, the menu (a wipe down from the top); in the menu, back to LIVE (a wipe up from the bottom) | | [ ] |
 | SAVE (button 9) | a MIDI LEARN frame at the bottom of the screen, TURN A KNOB (section 7, MIDI learn); HOME closes it | | [ ] |
-| SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, PRESET, OCTAVE, STATUS, CHARSET and ABOUT | | [ ] |
-| ALGORITHM (encoder 1), in the menu | changes the item under the cursor (CHIP: clockwise 8580, counter-clockwise 6581, and a further turn the same way changes nothing; PRESET; OCTAVE -3..+3); clockwise on STATUS opens the status screen (the numbers), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
+| SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, PRESET, OCTAVE, STATUS, SCENE, CHARSET and ABOUT | | [ ] |
+| ALGORITHM (encoder 1), in the menu | changes the item under the cursor (CHIP: clockwise 8580, counter-clockwise 6581, and a further turn the same way changes nothing; PRESET; OCTAVE -3..+3); clockwise on STATUS opens the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
 
 - [ ] A held note keeps its pitch when the octave changes, and stops when
   the key is released.
 - [ ] OVERDRIVE with Amount and Mix up distorts audibly; REVERB or LUSH with
   Mix up adds a stereo tail (listen on headphones); switching algorithms
   while a note plays crossfades without a click.
-- [ ] In the menu, on the status screen and on the glyph sheet, the keys,
-  K1..K4, OCT-/OCT+, FX and the EDIT layer play as on LIVE.
+- [ ] In the menu, on the status screen, in SCENE and on the glyph sheet, the
+  keys, K1..K4, OCT-/OCT+, FX and the EDIT layer play as on LIVE.
 - [ ] OCT+, SCL and ENV show a toast on the bottom line ("OCTAVE +1",
   "SLOT MOD", "MOD CHORUS") that goes after about 1.5 s; FX shows
   "CHIP 8580" and sweeps colour bands down the border for about half a
   second.
 - [ ] The other buttons and encoders do nothing (record anything they do);
-  SELECT and ALGORITHM do nothing outside the menu.
+  SELECT does nothing outside the menu and SCENE, ALGORITHM nothing outside
+  the menu.
 
 Notes:
 
@@ -237,6 +238,32 @@ LIVE (the screen at power-on):
   on them after the note.
 - [ ] No click or crackle in the sound while LIVE shows, against the menu
   (LIVE taps the audio interrupt; the menu does not).
+
+SCENE (menu, SCENE; [controls](reference/controls.md#scene)):
+
+- [ ] It opens on FIRE: black, with a brown ember line at the bottom that
+  holds still in silence.
+- [ ] SELECT clockwise: PLASMA, RULE 30, STARS, ANT, then FIRE again, each
+  wiping in from the top with its name as a toast; counter-clockwise goes
+  back. HOME returns to the menu.
+- [ ] FIRE: a key flares and heats one flame (the first note the left
+  third); a three-note chord all three; higher notes burn higher; K1 down
+  dulls them to orange, up to white. Released, they die back to the embers.
+- [ ] PLASMA: blue and purple dithered clouds drifting slowly in silence,
+  faster with notes held and with K1 up; each note-on drops a bright ring
+  that grows from a place set by the note (higher notes higher up).
+- [ ] RULE 30: a grey triangle at the start; each note-on writes a new
+  generation in the voice's colour (SAW LEAD's yellow) on the row below the
+  last, a held note keeps it going, and it stops in silence. K1 turned well
+  down darkens the colour.
+- [ ] STARS: stars fly out of the centre, slowly in silence, faster with
+  notes; a note-on lights a third of them in its colour for a moment, and
+  high notes steer the centre right, low ones left.
+- [ ] ANT: three white balls (grey while their voice is silent) walking
+  Langton's ant trails while their voices sound, one per voice.
+- [ ] No flicker or tearing beyond the pieces' own motion, the sound stays
+  clean (SCENE taps the audio interrupt as LIVE does), and fast playing
+  (a run of notes, a chord stab) keeps the sound and the keys on time.
 
 Notes:
 

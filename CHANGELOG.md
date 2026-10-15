@@ -120,6 +120,13 @@ All notable changes are documented here. The format follows
   the effect gates count), and the scopes fold the points by the oscillator's phase, so a held
   note stands still. LIVE holds itself to 200 cells a frame; the status screen
   moves to the menu (STATUS).
+- SCENE, from the menu (`app/scene_view.h`): the prototype's five generative
+  pieces, FIRE, PLASMA, RULE 30, STARS and ANT (`app/scene.h`), reacting to
+  the voices' note-ons, envelopes (LIVE's tap, which runs while SCENE shows)
+  and pitches, and to the cutoff and resonance; SELECT steps between them.
+  FIRE and PLASMA are trimmed to the SPI budget (half their rows a frame, a
+  smaller fire, a slower plasma), and SCENE holds itself to 200 cells a
+  frame.
 - MIDI, M1d: every live, SID and effect-slot parameter in one CC/NRPN map
   (`app/midi_map.c`), with NRPNs at full resolution (11-bit cutoff, 12-bit
   pulse width), running NRPN/RPN state per channel and input, and the

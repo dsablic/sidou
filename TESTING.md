@@ -418,7 +418,8 @@ SELECT, ALGORITHM):
 - **snapshots:** the status screen after boot, with a note held and with the
   toast OCT+ shows, MIDI learn's frame asking for a knob and for a CC and its
   LEARNED toast, the menu, the glyph sheet (every glyph, the palette
-  and a pixel overlay), the boot's prompt, loading and title card, and About
+  and a pixel overlay), the boot's prompt, loading and title card, About, and
+  each SCENE piece a second into a held chord
   match the golden images in `tests/golden/lcd/`, pixel
   for pixel, and every pixel is one of the 16 palette colours. The title
   card (but for its version and PRESS ANY KEY rows) and About's top 64 pixel
@@ -442,7 +443,12 @@ SELECT, ALGORITHM):
   main loop renders more than two runs. The full boot and a round of About
   are bounded in instructions a frame and in their busiest `ui_poll`, and so
   are the wipes into the title card and About, which reveal the logo's
-  bitmap.
+  bitmap. Each SCENE piece, with a band playing on the keys and the filter
+  wide open, is bounded in cells a frame (average and most), in
+  instructions a frame and in its busiest `ui_poll` (tied at compile time to
+  the latency gate's poll allowance), and so is SELECT starting the next
+  piece; a chord's note-ons change every piece within two frames, and
+  silence calms it.
 
 The host tests cover the same machinery without the device:
 `tests/app/screen.rs` (the view stack, focus, routing, the capture, the
@@ -457,7 +463,12 @@ against the PNG), `boot.rs` and `about.rs` (the sequences, the layouts with
 either logo, the SPI budget a frame and under the wipes), `widget.rs`
 (frames, numbers, bars, the menu), `views.rs`
 (HOME and the menu, the panel playing as before in every view, the toasts) and
-`learn_view.rs` (MIDI learn's frame, gesture, cancel, timeout and clearing);
+`learn_view.rs` (MIDI learn's frame, gesture, cancel, timeout and clearing),
+`scene.rs` (SCENE's pieces against models of their rules: rule 30, Langton's
+ants, the starfield's flight, the fire's and the plasma's bounds and
+interlacing; what the music moves in each; the view's navigation, its tap,
+its budget a frame with a band playing, its wipes, and the canvas coming
+back after the screen drew over it);
 `midi_learn.rs` has learn's state machine and its bindings through MIDI in and out.
 
 **A failure means** the screen looks different or costs more. If you meant

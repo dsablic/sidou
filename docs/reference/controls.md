@@ -23,8 +23,8 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
    everything first, HOME included, so HOME can cancel it; it ends when its view closes;
 2. **global:** HOME opens the menu from LIVE and goes back one view anywhere else; SAVE
    opens MIDI learn over any view;
-3. **the view on top:** the menu takes SELECT and ALGORITHM; LIVE, the status screen, the
-   glyph sheet and About take nothing;
+3. **the view on top:** the menu takes SELECT and ALGORITHM, SCENE takes SELECT; LIVE, the
+   status screen, the glyph sheet and About take nothing;
 4. **the panel:** everything else plays the instrument as below, in every view.
 
 The note keys and MASTER always play, whichever view shows. The effect-slot layer (EDIT,
@@ -45,13 +45,35 @@ SCL, ENV) is global until the CHIP view takes the slots over.
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end); K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last) |
-| **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, the status screen, the glyph sheet, About) |
+| **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, the status screen, SCENE, the glyph sheet, About) |
 | **SAVE (button 9)** | MIDI learn (below): press it, turn a knob, then send a CC |
 | **SELECT (encoder 0)**, in the menu | moves the blinking cursor up and down the items |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: CHIP (clockwise the 8580, counter-clockwise the 6581; turning on past either changes nothing), PRESET, OCTAVE; turned clockwise on STATUS, opens the status screen, on CHARSET the glyph sheet, on ABOUT the credits |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: CHIP (clockwise the 8580, counter-clockwise the 6581; turning on past either changes nothing), PRESET, OCTAVE; turned clockwise on STATUS, opens the status screen, on SCENE the generative pieces, on CHARSET the glyph sheet, on ABOUT the credits |
+| **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, and round): it wipes in, and a toast names it |
 
 The other buttons (LFO, GLO, ARP, SEQ, PLAY, REC) and PRESETS (encoder 6) do
-nothing yet; SELECT and ALGORITHM do nothing outside the menu.
+nothing yet; SELECT does nothing outside the menu and SCENE, ALGORITHM nothing outside the
+menu.
+
+## SCENE
+
+SCENE (the menu's item after STATUS) is M1e's prototype of M2's visuals: a
+generative piece on the whole screen that reacts to what the instrument plays
+(`app/scene.h`). SELECT steps between the pieces; everything else plays as on
+LIVE, so the keys and MIDI move the piece, and K1 (cutoff) and K2 (resonance) set
+its mood. The piece starts again from its beginning each time it opens.
+
+| Piece | Note-ons | Envelopes (ENV3) | Pitch | Cutoff, resonance |
+|---|---|---|---|---|
+| FIRE | flare that voice's flame (voice 1 the left third, 2 the middle, 3 the right) | heat its flame; silent, it dies down to the embers | higher notes burn higher | the cutoff how hot (orange to white); the resonance a little taller |
+| PLASMA | drop a bright ring that grows from a place | speed it up (silence runs it at an eighth) and voice 3's warms it | the pitch class sets the ring's place across, the pitch its height | the cutoff its speed, the resonance its twist |
+| RULE 30 | step the automaton a generation in the voice's colour; voice 3's flips a cell first | a held voice keeps it stepping | voice 3's pitch picks the cell it flips | a low cutoff darkens the colours |
+| STARS | light the voice's third of the stars in its colour | speed the voice's stars | the latest note steers the centre across | the cutoff sets the cruising speed |
+| ANT | walk the voice's ant three steps | a sounding voice keeps its ant walking; silent, it stops and greys | | a low cutoff darkens the trail |
+
+A voice that makes no sound (SYNC LEAD's voices 2 and 3) counts as silent. The voices'
+colours are their waveforms' (pulse cyan, saw yellow, triangle light green, noise light
+grey), as on LIVE.
 
 ## Presets
 

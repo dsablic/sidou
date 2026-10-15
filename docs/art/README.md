@@ -489,3 +489,67 @@ which `screen.rs` holds every view's worst to). With the TRS jack at full speed 
 and its note-off every 1.92 ms, `midi.rs`), LIVE's frames cost 84k (115k before) and the
 main loop runs 5.7M instructions a second, 2.4 % of the core. The status screen, idle,
 still composes nothing: 7.4k a frame (7.3k before LIVE).
+
+## SCENE
+
+SCENE (`app/scene_view.h`, the menu's item after STATUS) is M1e's prototype of M2's visuals:
+the browser prototype's five generative pieces (`app/scene.h`), ported to the cell grid, each
+reacting to the voices. SELECT steps between them; the new one wipes in and a toast names it.
+What moves each one is in [controls](../reference/controls.md#scene); in short, a voice's
+note-ons trigger its part (a flame's flare, a ripple, a generation, lit stars, an ant's walk),
+its envelope (ENV3, from LIVE's tap, which runs while SCENE shows) keeps it going, its pitch
+sets a height or a place, a silent voice's part stops, and the cutoff and resonance set the
+mood (heat, speed, twist, darker colours). Randomness is a seeded xorshift, so the same music
+gives the same frames: the fm1-emu goldens (`tests/golden/lcd/scene-*.png`) are each piece a
+second into a held chord.
+
+**The canvas.** Each piece draws into a 30 x 30 canvas of its own (1,800 bytes); the view
+copies it onto the grid. So a piece that changes a few cells a step (the ant, RULE 30) draws
+only those, and SCENE's compose still draws every cell (`app/screen.h`). The pieces share their
+state in a union, about 1 KB; SCENE's RAM is 2,784 bytes in all.
+
+**The budget.** The copy sends at most 200 cells a frame (`SCENE_VIEW_FRAME_CELLS`, about 17.5 ms
+of SPI with their windows): changed cells from where the last frame stopped, until the frame has
+spent what the screen's toast and raster leave; a frame that changes more spreads over the next
+ones. What a toast or the raster drew over is put back the same way; only under a wipe are rows
+copied whole (the wipe holds the ones it has not reached). On top of that, the two pieces that
+change most of the screen in the prototype are trimmed to fit, so the cap rarely bites:
+
+| Piece | Prototype (cells a frame) | On the FM-1 |
+|---|---|---|
+| FIRE | 426 (the whole screen) | the bottom 14 rows, three 10-column flames; it burns every other frame (two steps at once, so the flames rise at the prototype's speed) and draws half its rows a frame, the even ones then the odd ones: 12.5 fps, at most 210 cells a frame. Heat at or below 48 goes out above the ember bed, so silence holds still |
+| PLASMA | 500 | the whole screen, every other row a frame; its top speed is 0.8 rad a second (the prototype's 3.7 changed more cells than the budget has), an eighth of it in silence; a note-on's ripple is one ring growing half a cell a frame, not a train of rings, and voice 3's warmth follows its envelope at most 4 steps a frame |
+| RULE 30 | 20 | as the prototype: a 60 x 60 ring of generations in quadrant glyphs, at most 3 generations a frame |
+| STARS | 25 | 90 stars, a glyph each, drawn far to near |
+| ANT | 3 | as the prototype |
+
+Measured in fm1-emu (`scene_stays_within_its_budgets`, 150 frames a piece of a band on the keys:
+an arpeggio note every 4 frames, a bass note every 8, the filter wide open):
+
+| SCENE | Cells a frame (average, most) | SPI a frame (average, worst) | Main loop a frame (average, busiest `ui_poll`) |
+|---|---|---|---|
+| FIRE | 146.6, 180 | 12.75 ms, 15.57 ms | 97.8k, 56.8k instructions |
+| PLASMA | 138.4, 200 | 12.29 ms, 17.64 ms | 137.9k, 53.9k |
+| RULE 30 | 18.9, 76 | 1.65 ms, 6.60 ms | 30.5k, 18.0k |
+| STARS | 39.5, 68 | 3.59 ms, 6.16 ms | 71.6k, 17.9k |
+| ANT | 2.7, 9 | 0.25 ms, 0.80 ms | 27.5k, 16.9k |
+
+The piece steps half way between frames (`views_prepare`), as LIVE reads its tap, so a frame's
+`ui_poll` is the copy alone; the busiest `ui_poll` (FIRE's two burns, 56.8k) is half the latency
+gate's poll allowance (120k). SELECT starts the next piece in the input's call (`ui_encoder`), its
+canvas drawn whole: PLASMA's, 48.8k instructions, is the most (`selecting_a_piece_costs_the_main_loop_little`).
+PLASMA costs 3.4M instructions a second (1.4 % of the core at 240 MHz). A chord's note-ons show
+within two frames, and once it has died away every piece calms
+(`a_note_moves_every_piece_and_silence_calms_it`, cells in 25 frames):
+
+| Piece | Silence before | A chord held | Silence after |
+|---|---|---|---|
+| FIRE | 0 | 1,472 | 0 |
+| PLASMA | 274 | 2,728 | 207 |
+| RULE 30 | 0 | 233 | 0 |
+| STARS | 205 | 998 | 112 |
+| ANT | 0 | 60 | 0 |
+
+The tap adds to the audio interrupt what it adds for LIVE (4.8 instructions a sample), and only
+while SCENE shows. The firmware grew 7.5 KB (the pieces' code, the plasma's distance and sine
+tables, 1.2 KB).
