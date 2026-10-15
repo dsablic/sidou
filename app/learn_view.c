@@ -98,11 +98,17 @@ static void look(const learn_view* lv, uint8_t out[3]) {
     out[2] = midi_learn_cc_of(lv->ml, lv->ml->param);
 }
 
-/* The view under it, as it composes; then the frame over it. */
+/* The view under it, as it composes; then the frame over it, clear of the overlays the view
+ * under it draws there (About's scroller, the glyph sheet's wave). */
 static void compose(screen* s, void* state, grid* g) {
     learn_view* lv = state;
     const screen_entry* below = &s->stack[s->depth - 2u];
     below->v->compose(s, below->state, g);
+    for (uint32_t r = LEARN_VIEW_ROW; r < LEARN_VIEW_ROW + LEARN_VIEW_H; ++r) {
+        for (uint32_t c = LEARN_VIEW_COL; c < LEARN_VIEW_COL + LEARN_VIEW_W; ++c) {
+            grid_overlay_clear(g, c, r);
+        }
+    }
     look(lv, lv->drawn);
     char a[LINE];
     char b[LINE];
@@ -172,6 +178,13 @@ static void finish(learn_view* lv) {
 static int capture(void* ctx, const screen_event* e) {
     learn_view* lv = ctx;
     midi_learn* ml = lv->ml;
+    if (ml->state == MIDI_LEARN_IDLE) {
+        /* A CC ended learn since the last frame (learn_view_frame would close it): it closes
+         * now, with its toast. A knob turns as if learn were not there; SAVE and HOME, meant
+         * for the frame, do nothing more (SAVE would arm learn again over the toast). */
+        finish(lv);
+        return e->kind == SCREEN_PRESS && (e->id == PANEL_BTN_HOME || e->id == LEARN_VIEW_BUTTON);
+    }
     if (e->kind == SCREEN_PRESS) {
         if (e->id == PANEL_BTN_HOME) {
             midi_learn_cancel(ml);
@@ -188,7 +201,8 @@ static int capture(void* ctx, const screen_event* e) {
     if (e->id < PANEL_ENC_K1 || e->id > PANEL_ENC_K4) {
         return 0;
     }
-    if (!midi_learn_knob(ml, panel_knob_param(lv->l, e->held, e->id), lv->s->now)) {
+    uint32_t param = panel_knob_param(lv->l, e->held, e->id);
+    if (!midi_learn_knob(ml, param, lv->s->now) && !midi_learn_param(param)) {
         screen_toast(lv->s, "K4: THE PRESET, NO CC", SCREEN_TOAST_MS);
     }
     return 1; /* the knob picks, it does not turn */

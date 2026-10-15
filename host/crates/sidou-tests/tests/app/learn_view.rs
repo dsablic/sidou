@@ -34,6 +34,12 @@ impl Learn {
 
     /// A CC from MIDI, as midi_map_cc routes it, then a frame.
     fn cc(&mut self, cc: u8, value: u8) {
+        self.cc_between_frames(cc, value);
+        self.ui.frame();
+    }
+
+    /// A CC from MIDI, as midi_map_cc routes it, before the next frame.
+    fn cc_between_frames(&mut self, cc: u8, value: u8) {
         let e = unsafe { midi_learn_route(&mut *self.ml, cc) };
         if !e.is_null() {
             let e = unsafe { &*e };
@@ -45,7 +51,6 @@ impl Learn {
                 )
             };
         }
-        self.ui.frame();
     }
 
     /// The frame's two lines of text, checked to keep a blank cell inside either edge.
@@ -174,6 +179,49 @@ fn edit_held_picks_the_selected_slots_controls() {
     assert_eq!(t.ui.live().slot[1][LIVE_SLOT_MIX as usize], 127);
 }
 
+/// A CC ends learn, and before the next frame closes it (up to 40 ms) a knob turns: the
+/// frame closes with its LEARNED toast and the knob turns what it always does.
+#[test]
+fn a_knob_turned_after_a_cc_learned_and_before_the_frame_turns() {
+    let mut t = Learn::new();
+    t.ui.press(SAVE);
+    t.ui.turn(K1, 1);
+    t.cc_between_frames(21, 64);
+    let reso = t.ui.live().resonance;
+    t.ui.turn(K1 + 1, 1);
+    assert_eq!(t.ui.live().resonance, reso + 1, "K2 was swallowed");
+    assert_eq!(t.ui.top(), "STATUS");
+    assert_eq!(
+        t.ui.toast().as_deref(),
+        Some("LEARNED CC 21 \u{fffd} CUTOFF")
+    );
+    t.ui.frame();
+    assert_eq!(t.ui.top(), "STATUS");
+    assert_eq!(t.state(), MIDI_LEARN_IDLE);
+}
+
+/// The same with SAVE or HOME, meant for the frame: it closes with its LEARNED toast, and
+/// neither arms learn again nor opens the menu.
+#[test]
+fn save_or_home_after_a_cc_learned_and_before_the_frame_keep_the_toast() {
+    for button in [SAVE, PANEL_BTN_HOME] {
+        let mut t = Learn::new();
+        t.ui.press(SAVE);
+        t.ui.turn(K1, 1);
+        t.cc_between_frames(21, 64);
+        t.ui.press(button);
+        assert_eq!(t.ui.top(), "STATUS", "button {button}");
+        assert_eq!(t.state(), MIDI_LEARN_IDLE, "button {button}");
+        assert_eq!(
+            t.ui.toast().as_deref(),
+            Some("LEARNED CC 21 \u{fffd} CUTOFF"),
+            "button {button}"
+        );
+        t.ui.frame();
+        assert_eq!(t.ui.top(), "STATUS", "button {button}");
+    }
+}
+
 #[test]
 fn k4_is_the_preset_and_has_no_cc() {
     let mut t = Learn::new();
@@ -241,6 +289,47 @@ fn learn_opens_over_the_menu_and_closes_back_to_it() {
     assert!(t.ui.row(4).contains("MENU"));
     t.ui.press(PANEL_BTN_HOME);
     assert_eq!(t.ui.top(), "MENU");
+}
+
+/// The frame's cells that carry an overlay (a pixel drawing over the glyph).
+fn overlays_on_the_frame(ui: &Ui) -> usize {
+    let cols = GRID_COLS as usize;
+    let (col, w) = (LEARN_VIEW_COL as usize, LEARN_VIEW_W as usize);
+    (ROW..ROW + LEARN_VIEW_H as usize)
+        .flat_map(|r| (col..col + w).map(move |c| r * cols + c))
+        .filter(|&i| ui.g.ovl[i] != 0)
+        .count()
+}
+
+/// Over a view that draws overlays where the frame goes (About's scroller, the glyph sheet's
+/// triangle wave), the frame is clear of them every frame, and they come back when it closes.
+#[test]
+fn the_frame_is_clear_of_the_overlays_of_the_view_under_it() {
+    for (what, open) in [
+        ("ABOUT", crate::about::open_about as fn(&mut Ui)),
+        ("CHARSET", crate::views::open_charset),
+    ] {
+        let mut t = Learn::new();
+        open(&mut t.ui);
+        for _ in 0..10 {
+            t.ui.frame();
+        }
+        assert_eq!(t.ui.top(), what);
+        let under = overlays_on_the_frame(&t.ui);
+        assert!(under > 0, "{what} draws no overlay where the frame goes");
+        t.ui.press(SAVE);
+        for f in 0..10 {
+            t.ui.frame();
+            assert_eq!(overlays_on_the_frame(&t.ui), 0, "{what}, frame {f}");
+        }
+        t.ui.press(PANEL_BTN_HOME);
+        t.ui.frame();
+        assert_eq!(t.ui.top(), what);
+        assert!(
+            overlays_on_the_frame(&t.ui) > 0,
+            "{what}'s overlays stay off"
+        );
+    }
 }
 
 #[test]

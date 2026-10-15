@@ -15,7 +15,10 @@
  * EDIT + K1..K4 then pick, OCT and FX work.
  * The frame says what to do next: TURN A KNOB, then <PARAM> <- SEND A CC. When learn ends (a
  * CC came over MIDI, the button cleared or forgot, HOME, the timeout) the view closes and a
- * toast says how: LEARNED CC 21 -> CUTOFF, and so on.
+ * toast says how: LEARNED CC 21 -> CUTOFF, and so on. A CC ends learn in the main loop, so the
+ * view closes at the next frame, or at the panel's next event if that comes first: a knob then
+ * turns as usual, and SAVE or HOME do nothing more (the toast stays).
+ * The frame hides the overlays the view under it draws on its cells.
  *
  * Portable C with no hardware access and no allocation. */
 #ifndef SIDOU_LEARN_VIEW_H
