@@ -12,8 +12,6 @@ use std::path::{Path, PathBuf};
 
 use residfp_sys::{pulldown_table, CombinedWaveforms, Model, PULLDOWN_ROWS};
 
-pub mod dac;
-
 /// The libresidfp revision the tables come from (the third_party/libresidfp submodule).
 pub const RESIDFP_REV: &str = "c1791383";
 
@@ -234,7 +232,6 @@ pub fn generate() -> Vec<Generated> {
     vec![
         grid_header(),
         noise_jump_header(),
-        dac::dac_header(),
         wave_header(Model::Mos6581),
         wave_header(Model::Csg8580),
     ]

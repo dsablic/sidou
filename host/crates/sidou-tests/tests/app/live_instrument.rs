@@ -707,7 +707,8 @@ fn the_sid_sink_reinitialises_with_the_new_model_and_keeps_parameters() {
     assert_eq!(u32::from(c.live.cutoff), fc);
     assert_eq!(c.chip.osc[0].freq, 0x1d45);
     assert_eq!(
-        c.chip.dac.wave[0x800], 0.0,
+        unsafe { (*c.chip.dac).wave[0x800] },
+        0.0,
         "8580 DACs (zero at 0x800) after re-init"
     );
     assert!(peak(&c.render(4410)) > 1000, "the held note sounds again");

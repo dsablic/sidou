@@ -38,7 +38,7 @@ typedef struct {
     float volume;
     float dc_r, dc_x1, dc_y1;
     float cutoff_g[SID_FC_STEPS];
-    sid_dac dac;
+    const sid_dac* dac; /* shared between chips: sid_dac_default, or sid_set_dac */
 } sid;
 
 /* sample_rate must be in [4000, 65535]. The oscillator step needs
@@ -73,6 +73,10 @@ uint8_t sid_read(sid* s, uint8_t reg);
  * register writes are applied, through the register ring, never concurrently with
  * sid_render. */
 void sid_set_combined_profile(sid* s, int profile);
+
+/* Points the chip at other voice DACs (sid_dac_build), which must outlive it; sid_init
+ * sets reSIDfp's defaults for the model (sid_dac_default), shared by every chip. */
+void sid_set_dac(sid* s, const sid_dac* dac);
 
 /* Advances the oscillators and envelopes by exactly `cycles` chip cycles, without
  * producing output; the filter and the output stage do not run. sid_render advances

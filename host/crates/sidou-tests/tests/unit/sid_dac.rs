@@ -10,10 +10,8 @@ const ZERO_6581: usize = 0x380;
 const ZERO_8580: usize = 0x800;
 const VOICE_DC_6581: f64 = 0.2143 / 1.5;
 
-fn built(is6581: bool) -> Box<sid_dac> {
-    let mut d = Box::<sid_dac>::default();
-    unsafe { sid_dac_build_default(&mut *d, i32::from(is6581)) };
-    d
+fn built(is6581: bool) -> &'static sid_dac {
+    unsafe { &*sid_dac_default(i32::from(is6581)) }
 }
 
 #[test]
@@ -55,22 +53,52 @@ fn silence_leaks() {
 }
 
 #[test]
-fn the_kink_is_interpolated_between_grid_points() {
-    let build = |kink: f32| {
+fn the_shared_tables_are_the_defaults_built() {
+    let mut d = Box::<sid_dac>::default();
+    unsafe {
+        sid_dac_build(
+            &mut *d,
+            1,
+            SID_DAC_KINK_6581 as f32,
+            SID_DAC_LEAKAGE_6581 as f32,
+        )
+    };
+    assert_eq!(d.wave[..], built(true).wave[..]);
+    assert_eq!(d.env[..], built(true).env[..]);
+    // Every chip of a model shares one.
+    assert!(std::ptr::eq(built(false), built(false)));
+}
+
+#[test]
+fn the_kink_bends_the_6581_and_a_linear_ladder_stays_linear() {
+    let build = |is6581: i32, kink: f32| {
         let mut d = Box::<sid_dac>::default();
-        unsafe { sid_dac_build(&mut *d, 1, kink, 0.0075) };
+        unsafe { sid_dac_build(&mut *d, is6581, kink, 0.0) };
         d
     };
-    let (a, b, mid) = (build(2.20), build(2.25), build(2.225));
-    let (lo, hi) = (
-        a.wave[0x7ff].min(b.wave[0x7ff]),
-        a.wave[0x7ff].max(b.wave[0x7ff]),
-    );
-    assert!(lo < hi, "the kink moves the 6581's midscale step");
-    assert!(mid.wave[0x7ff] > lo && mid.wave[0x7ff] < hi);
-    // Off the grid, it clamps.
-    assert_eq!(build(1.0).wave[..], build(2.0).wave[..]);
-    assert_eq!(build(9.0).wave[..], build(2.4).wave[..]);
-    // At reSIDfp's ratio it is exactly the default.
-    assert_eq!(build(2.2).wave[..], built(true).wave[..]);
+    // The 8580's terminated ladder at 2R/R = 2: equal steps.
+    let d = build(0, 2.0);
+    let step = d.wave[1] - d.wave[0];
+    for w in 1..4096 {
+        assert!(
+            (d.wave[w] - d.wave[w - 1] - step).abs() < 1e-5,
+            "step at {w}"
+        );
+    }
+    // The kink moves the 6581's midscale step.
+    let (a, b) = (build(1, 2.2), build(1, 2.3));
+    assert!((a.wave[0x800] - a.wave[0x7ff] - (b.wave[0x800] - b.wave[0x7ff])).abs() > 1e-4);
+}
+
+#[test]
+fn sid_set_dac_swaps_the_tables() {
+    let mut s = Box::<sid>::default();
+    unsafe { sid_init(&mut *s, SID_MODEL_8580, SID_CLOCK_PAL, 44100) };
+    assert!(std::ptr::eq(s.dac, built(false)));
+    let mut d = Box::<sid_dac>::default();
+    unsafe {
+        sid_dac_build(&mut *d, 0, 2.3, 0.01);
+        sid_set_dac(&mut *s, &*d);
+    }
+    assert!(std::ptr::eq(s.dac, &*d));
 }

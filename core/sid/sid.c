@@ -22,7 +22,7 @@ static void update_filter(sid* s) {
 void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) {
     memset(s, 0, sizeof *s);
     s->model = model;
-    sid_dac_build_default(&s->dac, model == SID_MODEL_6581);
+    s->dac = sid_dac_default(model == SID_MODEL_6581);
     s->cycles_per_sample_q16 = ((clock_hz / sample_rate) << 16) |
                                (((clock_hz % sample_rate) << 16) / sample_rate);
     for (int v = 0; v < 3; ++v) {
@@ -151,6 +151,10 @@ static uint8_t read_osc3(const sid* s) {
     return (uint8_t)(out >> 4);
 }
 
+void sid_set_dac(sid* s, const sid_dac* dac) {
+    s->dac = dac;
+}
+
 void sid_set_combined_profile(sid* s, int profile) {
     uint32_t p = profile >= 0 && profile < SID_PROFILES ? (uint32_t)profile : SID_PROFILE_AVERAGE;
     for (int v = 0; v < 3; ++v) {
@@ -203,29 +207,36 @@ static inline void clock_voices(sid* s, uint32_t cycles) {
     o[2].out = sid_osc_output(&o[2], o[1].acc);
 }
 
-void sid_clock(sid* s, uint32_t cycles) {
-    while (cycles) {
-        uint32_t step = cycles < CLOCK_STEP ? cycles : CLOCK_STEP;
-        clock_voices(s, step);
-        cycles -= step;
-    }
-}
 
 static inline float voice_out(const sid* s, int v) {
-    return s->dac.wave[s->osc[v].out] * s->dac.env[s->env[v].counter];
+    return s->dac->wave[s->osc[v].out] * s->dac->env[s->env[v].counter];
 }
 
 /* Deferred noise shifts repeat with the register's period (2^23 - 1): fold the count
- * before it can wrap (after about 19 hours at the top pitch). Out of line, so it does
- * not crowd sid_render's loop. */
-#if defined(__GNUC__) || defined(__clang__)
-__attribute__((noinline))
-#endif
-static void fold_owed(sid* s) {
+ * before it can wrap (after about 19 hours at the top pitch). A call adds at most one
+ * rise per 16 cycles (2^28 for sid_clock's largest), well inside the 2^31 left. */
+static inline void fold_owed_inline(sid* s) {
     for (int v = 0; v < 3; ++v) {
         if (s->osc[v].owed >= 0x80000000u) {
             s->osc[v].owed -= 0x7fffffu * 0x100u;
         }
+    }
+}
+
+/* Out of line, so it does not crowd sid_render's loop. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline))
+#endif
+static void fold_owed(sid* s) {
+    fold_owed_inline(s);
+}
+
+void sid_clock(sid* s, uint32_t cycles) {
+    fold_owed_inline(s);
+    while (cycles) {
+        uint32_t step = cycles < CLOCK_STEP ? cycles : CLOCK_STEP;
+        clock_voices(s, step);
+        cycles -= step;
     }
 }
 

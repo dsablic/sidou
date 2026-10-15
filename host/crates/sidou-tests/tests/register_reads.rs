@@ -667,3 +667,107 @@ fn osc3_ring_from_a_6581_source_with_its_msb_pulled() {
         bad.join("\n")
     );
 }
+
+fn timed_script(writes: Vec<(u64, u8, u8)>, frames: u64, interval: u64) -> Script {
+    let mut w: Vec<TimedWrite> = writes
+        .into_iter()
+        .map(|(cycle, reg, value)| TimedWrite { cycle, reg, value })
+        .collect();
+    w.sort_by_key(|x| x.cycle);
+    Script {
+        writes: w,
+        frames,
+        interval,
+    }
+}
+
+/* Deferred noise shifts (SIDOU counts them while noise is not selected or the register
+ * is locked up, and applies them when needed) against reSIDfp, read every cycle around
+ * every way back: long high-pitch saws then noise, combined noise or TEST at each
+ * phase; frequency writes mid-deferral; and long lock-ups then a TEST release or a
+ * switch. (From the M1b review.) */
+#[test]
+fn deferred_noise_shifts_survive_adversarial_switches() {
+    let f = CYCLES_PER_FRAME;
+    let mut bad = Vec::new();
+    let mut n = 0;
+    // 1. Long saw at high pitch (jump-table path), then noise / noise combo / TEST at every phase.
+    for (fhi, flo) in [(0xffu8, 0xffu8), (0x75, 0x31), (0x01, 0x23)] {
+        for target in [0x80u8, 0xa0, 0x88, 0xc0] {
+            for off in 0..40u64 {
+                let at0 = 25 * f + off * 3;
+                let w = vec![
+                    (0, 0x0e, flo),
+                    (0, 0x0f, fhi),
+                    (0, 0x10, 0),
+                    (0, 0x11, 8),
+                    (0, 0x12, 0x20),
+                    (at0, 0x12, target),
+                    (at0 + 400, 0x12, 0x80),
+                ];
+                let s = timed_script(w, 26, 1);
+                n += 2;
+                for model in [SID_MODEL_6581, SID_MODEL_8580] {
+                    if let Some(m) = reads_mismatch(model, OSC3, &s) {
+                        bad.push(format!(
+                            "long saw {fhi:02x}{flo:02x} -> {target:#04x} +{off}: {}",
+                            &m[..m.len().min(160)]
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    // 2. Frequency writes mid-deferral, then noise.
+    for off in 0..30u64 {
+        let w = vec![
+            (0, 0x0e, 0xff),
+            (0, 0x0f, 0xff),
+            (0, 0x12, 0x10),
+            (3 * f + off, 0x0f, 0x13),
+            (3 * f + off + 5, 0x0e, 0x77),
+            (5 * f + off, 0x0f, 0xfe),
+            (6 * f + off, 0x12, 0x80),
+        ];
+        let s = timed_script(w, 7, 1);
+        n += 2;
+        for model in [SID_MODEL_6581, SID_MODEL_8580] {
+            if let Some(m) = reads_mismatch(model, OSC3, &s) {
+                bad.push(format!("freq writes +{off}: {}", &m[..m.len().min(160)]));
+            }
+        }
+    }
+    // (Hard sync while deferring is left to the fuzz, sid_osc_fuzz.rs: SIDOU applies
+    // sync once per step, so OSC3 under sync is not cycle-exact to begin with.)
+    // 3. Lock up with noise+pulse, sit locked (deferred) for long, TEST release / switch, at every phase.
+    for off in 0..40u64 {
+        for (a, b) in [(0x20u8, 0xa0u8), (0x88, 0x80), (0x80, 0x80)] {
+            let w = vec![
+                (0, 0x0e, 0xff),
+                (0, 0x0f, 0xff),
+                (0, 0x10, 0),
+                (0, 0x11, 1),
+                (0, 0x12, 0xc0),
+                (20 * f + off, 0x12, a),
+                (20 * f + off + 3, 0x12, b),
+            ];
+            let s = timed_script(w, 21, 1);
+            n += 2;
+            for model in [SID_MODEL_6581, SID_MODEL_8580] {
+                if let Some(m) = reads_mismatch(model, OSC3, &s) {
+                    bad.push(format!(
+                        "locked {a:#04x}->{b:#04x} +{off}: {}",
+                        &m[..m.len().min(160)]
+                    ));
+                }
+            }
+        }
+    }
+    eprintln!("{n} scripts");
+    assert!(
+        bad.is_empty(),
+        "{} of {n} mismatch:\n{}",
+        bad.len(),
+        bad.iter().take(10).cloned().collect::<Vec<_>>().join("\n")
+    );
+}

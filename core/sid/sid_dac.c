@@ -1,75 +1,133 @@
+// SPDX-FileCopyrightText: 2011-2025 Leandro Nini <drfiemost@users.sourceforge.net>
+// SPDX-FileCopyrightText: 2007-2010 Antti Lankila
+// SPDX-FileCopyrightText: 2004,2010 Dag Lem <resid@nimrod.no>
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-2.0-or-later
+/* A port of reSIDfp's Dac (libresidfp c1791383, Dac.cpp) to float, and how SID.cpp and
+ * FilterModelConfig6581 turn it into a voice's output. */
 #include "sid_dac.h"
 
-#include "gen/dac.h"
+/* reSIDfp's cubic saturation of the 6581's waveform DAC (Dac::getOutput). */
+#define SAT_GAIN 1.1f
+#define SAT 1.1f
+/* The waveform DAC input reSIDfp takes as the voice's zero (SID::setChipModel). */
+#define ZERO_6581 0x380u
+#define ZERO_8580 0x800u
+/* The 6581's voice DC that follows the envelope DAC (FilterModelConfig6581: 0.2143 V
+ * per unit), over its voice voltage range (1.5 V). The 8580's is constant, and the
+ * output's DC blocker removes it. */
+#define VOICE_DC_6581 (0.2143f / 1.5f)
 
-/* The ladder's weights at `kink`, interpolated linearly between grid points (exactly a
- * grid point's within 1e-3 of a step). */
-static void weights(float* w, uint32_t bits, const float* grid, float kink) {
-    float t = (kink - SID_DAC_KINK_FIRST) / SID_DAC_KINK_STEP;
-    if (t < 0.0f) {
-        t = 0.0f;
-    }
-    if (t > (float)(SID_DAC_KINKS - 1)) {
-        t = (float)(SID_DAC_KINKS - 1);
-    }
-    uint32_t k = (uint32_t)(t + 0.5f);
-    float f = t - (float)k;
-    if (f < 1e-3f && f > -1e-3f) {
-        for (uint32_t i = 0; i < bits; ++i) {
-            w[i] = grid[k * bits + i];
+/* Dac::kinkedDac: the weight of each bit of a `bits`-bit R-2R ladder, unterminated (the
+ * 6581) or terminated by 2R (the 8580), normalised to sum to 1. */
+static void ladder(float* dac, uint32_t bits, float kink, int terminated) {
+    const float r_infinity = 1e6f;
+    const float r = 1.0f;
+    const float r2 = kink * r;
+    float vsum = 0.0f;
+    for (uint32_t set_bit = 0; set_bit < bits; ++set_bit) {
+        float vn = 1.0f;
+        float rn = terminated ? r2 : r_infinity;
+        uint32_t bit;
+        /* The ladder's "tail" resistance, by repeated parallel substitution. */
+        for (bit = 0; bit < set_bit; ++bit) {
+            rn = rn == r_infinity ? r + r2 : r + (r2 * rn) / (r2 + rn);
         }
-        return;
+        /* Source transformation for the bit's voltage. */
+        if (rn == r_infinity) {
+            rn = r2;
+        } else {
+            rn = (r2 * rn) / (r2 + rn);
+            vn = vn * rn / r2;
+        }
+        /* The output voltage, by repeated source transformation from the tail. */
+        for (++bit; bit < bits; ++bit) {
+            rn += r;
+            float i = vn / rn;
+            rn = (r2 * rn) / (r2 + rn);
+            vn = rn * i;
+        }
+        dac[set_bit] = vn;
+        vsum += vn;
     }
-    k = (uint32_t)t;
-    f = t - (float)k;
     for (uint32_t i = 0; i < bits; ++i) {
-        w[i] = grid[k * bits + i] * (1.0f - f) + grid[(k + 1) * bits + i] * f;
+        dac[i] /= vsum;
     }
 }
 
-/* reSIDfp's Dac::getOutput: an on bit adds its weight, an off bit its leakage. */
-static float ladder_out(const float* w, uint32_t bits, float leakage, uint32_t input) {
-    float v = 0.0f;
+/* Dac::getOutput for every input: an on bit adds its weight, an off bit its leakage.
+ * Built up a bit at a time: out[2^b + j] = out[j] + (1 - leakage) w[b]. */
+static void outputs(float* out, const float* w, uint32_t bits, float leakage) {
+    float base = 0.0f;
     for (uint32_t i = 0; i < bits; ++i) {
-        v += (input >> i & 1u) ? w[i] : w[i] * leakage;
+        base += w[i] * leakage;
     }
-    return v;
+    out[0] = base;
+    for (uint32_t b = 0; b < bits; ++b) {
+        float step = w[b] - w[b] * leakage;
+        for (uint32_t j = 0; j < (1u << b); ++j) {
+            out[(1u << b) + j] = out[j] + step;
+        }
+    }
 }
 
 static float saturate(float v) {
-    return SID_DAC_SAT_GAIN * v + (1.0f - SID_DAC_SAT_GAIN) * SID_DAC_SAT * v * v * v;
+    return SAT_GAIN * v + (1.0f - SAT_GAIN) * SAT * v * v * v;
 }
 
 void sid_dac_build(sid_dac* d, int is6581, float kink, float leakage) {
-    uint32_t m = is6581 ? 0u : 1u;
     float w[12];
-    weights(w, 12, &SID_DAC_WAVE_WEIGHTS[m][0][0], kink);
-    uint32_t zero = is6581 ? SID_DAC_ZERO_6581 : SID_DAC_ZERO_8580;
-    float z = ladder_out(w, 12, leakage, zero);
+    ladder(w, 12, kink, !is6581);
+    outputs(d->wave, w, 12, leakage);
     if (is6581) {
-        z = saturate(z);
-    }
-    /* Twice reSIDfp's scale, where the waveform DAC spans about 0 to 1. */
-    float dc = is6581 ? SID_VOICE_DC_6581 : 0.0f;
-    for (uint32_t i = 0; i < 4096u; ++i) {
-        float v = ladder_out(w, 12, leakage, i);
-        if (is6581) {
-            v = saturate(v);
+        for (uint32_t i = 0; i < 4096u; ++i) {
+            d->wave[i] = saturate(d->wave[i]);
         }
-        d->wave[i] = 2.0f * (v - z + dc);
     }
-    weights(w, 8, &SID_DAC_ENV_WEIGHTS[m][0][0], kink);
-    for (uint32_t i = 0; i < 256u; ++i) {
-        d->env[i] = ladder_out(w, 8, leakage, i);
+    /* Twice reSIDfp's scale, the voice DC added (riding on the envelope DAC). */
+    float zero = d->wave[is6581 ? ZERO_6581 : ZERO_8580];
+    float dc = is6581 ? VOICE_DC_6581 : 0.0f;
+    for (uint32_t i = 0; i < 4096u; ++i) {
+        d->wave[i] = 2.0f * (d->wave[i] - zero + dc);
     }
+    ladder(w, 8, kink, !is6581);
+    outputs(d->env, w, 8, leakage);
 }
 
-void sid_dac_build_default(sid_dac* d, int is6581) {
-    if (is6581) {
-        sid_dac_build(d, 1, SID_DAC_KINK_6581, SID_DAC_LEAKAGE_6581);
-    } else {
-        sid_dac_build(d, 0, SID_DAC_KINK_8580, SID_DAC_LEAKAGE_8580);
+/* The shared default tables: 0 unbuilt, 1 being built, 2 ready. On hosts, tests build
+ * chips from several threads; the device builds them in its main loop only, and its
+ * compiler has no inline atomics. */
+static sid_dac shared[2];
+static int shared_state[2];
+
+#ifdef __PI32V2__
+static int claim(int* s) {
+    if (*s) {
+        return 0;
     }
+    *s = 1;
+    return 1;
+}
+static int ready(const int* s) { return *s == 2; }
+static void publish(int* s) { *s = 2; }
+#else
+static int claim(int* s) {
+    int expected = 0;
+    return __atomic_compare_exchange_n(s, &expected, 1, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+}
+static int ready(const int* s) { return __atomic_load_n(s, __ATOMIC_ACQUIRE) == 2; }
+static void publish(int* s) { __atomic_store_n(s, 2, __ATOMIC_RELEASE); }
+#endif
+
+const sid_dac* sid_dac_default(int is6581) {
+    uint32_t m = is6581 ? 0u : 1u;
+    if (claim(&shared_state[m])) {
+        sid_dac_build(&shared[m], is6581, is6581 ? SID_DAC_KINK_6581 : SID_DAC_KINK_8580,
+                      is6581 ? SID_DAC_LEAKAGE_6581 : SID_DAC_LEAKAGE_8580);
+        publish(&shared_state[m]);
+    }
+    while (!ready(&shared_state[m])) {
+        /* another thread is building it */
+    }
+    return &shared[m];
 }
