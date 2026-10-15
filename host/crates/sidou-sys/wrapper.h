@@ -14,6 +14,7 @@
 #include "fx_live.h"
 #include "live.h"
 #include "midi_in.h"
+#include "midi_map.h"
 #include "midi_ring.h"
 #include "midi_rx.h"
 #include "midi_usb.h"

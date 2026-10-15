@@ -41,16 +41,16 @@ extern "C" {
 /* live_tick is called this often; the PWM rates in the presets assume it. */
 #define LIVE_TICK_HZ 100u
 
-/* MIDI CCs live_cc understands: M1a's default mapping (the plan's Task 5). The pulse width
- * is on CC 1, the modulation wheel most keyboards have. */
+/* CC numbers of the published map (midi_map.h, docs/reference/midi.md) that M1a and M1c
+ * fixed, and the channel-mode messages live_cc handles. The pulse width is on CC 1, the
+ * modulation wheel most keyboards have. */
 #define LIVE_CC_PULSE_WIDTH 1u
 #define LIVE_CC_VOLUME 7u
 #define LIVE_CC_RESONANCE 71u
 #define LIVE_CC_CUTOFF 74u
 /* The effect slots (core/fx/fx_slots.h, app/fx_live.h): CC 102 + 5 slot + field, slot 0
  * Distortion, 1 Modulation, 2 FX; field 0 algorithm (the value scaled over the slot's
- * algorithms), 1 Amount, 2 A, 3 B, 4 Mix. In General MIDI's undefined block 102..119 until
- * M1d publishes the CC map (docs/reference/controls.md). */
+ * algorithms), 1 Amount, 2 A, 3 B, 4 Mix. In General MIDI's undefined block 102..119. */
 #define LIVE_CC_SLOT_FIRST 102u
 #define LIVE_CC_SLOT_LAST 116u
 #define LIVE_CC_ALL_SOUND_OFF 120u
@@ -98,7 +98,8 @@ typedef enum {
     LIVE_BUTTON_FX = 2 /* toggles 6581/8580 and keeps every parameter */
 } live_button_id;
 
-/* A preset is data. The knobs start from its cutoff, resonance and pulse width. */
+/* A preset is data. The knobs start from its cutoff, resonance and pulse width, and the SID
+ * parameters (live_param) from its control, envelope and filter settings. */
 typedef struct {
     const char* name;
     uint8_t control;         /* waveform, ring and sync bits of $d404; never the gate */
@@ -150,7 +151,35 @@ typedef struct {
     live_voice voice[LIVE_VOICES];
     uint8_t slot[LIVE_SLOTS][LIVE_SLOT_FIELDS]; /* each slot's algorithm and controls */
     uint8_t fx_select;                          /* the slot the panel edits */
+    /* The preset's SID settings as edited (live_param); loading a preset resets them. */
+    uint8_t control;         /* waveform, ring and sync bits of $d404; never the gate */
+    uint8_t attack_decay;    /* $d405 */
+    uint8_t sustain_release; /* $d406 */
+    uint8_t filter_voices;   /* $d417 bits 0..2 */
+    uint8_t filter_mode;     /* $d418 bits 4..6 */
 } live;
+
+/* The instrument's parameters, each an integer 0..live_param_max: what MIDI reaches through
+ * the published map (midi_map.h). The SID ones apply to every voice. */
+typedef enum {
+    LIVE_PARAM_CUTOFF = 0,        /* 0..2047 */
+    LIVE_PARAM_RESONANCE = 1,     /* 0..15 */
+    LIVE_PARAM_PULSE_WIDTH = 2,   /* 0..4095, before PWM */
+    LIVE_PARAM_VOLUME = 3,        /* the master, 0..1023 (live_set_master) */
+    LIVE_PARAM_WAVEFORM = 4,      /* 0..15, $d404 bits 4..7: 1 triangle, 2 saw, 4 pulse, 8 noise */
+    LIVE_PARAM_RING = 5,          /* 0..1, $d404 bit 2 */
+    LIVE_PARAM_SYNC = 6,          /* 0..1, $d404 bit 1 */
+    LIVE_PARAM_ATTACK = 7,        /* 0..15 */
+    LIVE_PARAM_DECAY = 8,         /* 0..15 */
+    LIVE_PARAM_SUSTAIN = 9,       /* 0..15 */
+    LIVE_PARAM_RELEASE = 10,      /* 0..15 */
+    LIVE_PARAM_FILTER_MODE = 11,  /* 0..7, $d418 bits 4..6: 1 low-, 2 band-, 4 high-pass */
+    LIVE_PARAM_FILTER_VOICES = 12, /* 0..7, $d417 bits 0..2: voices 1, 2, 3 into the filter */
+    LIVE_PARAM_MODEL = 13,        /* 0 6581, 1 8580: a reset, as the FX button */
+    /* The effect slots: LIVE_PARAM_SLOT + slot * LIVE_SLOT_FIELDS + field (live_slot_set). */
+    LIVE_PARAM_SLOT = 14,
+    LIVE_PARAM_COUNT = 29
+} live_param;
 
 /* Preset 0, octave 0, full volume, every effect slot off. Sends LIVE_REG_RESET(model), then
  * every register, then every slot setting (fx_live.h). */
@@ -166,7 +195,17 @@ void live_all_notes_off(live* l);
 uint8_t live_key_note(const live* l, uint8_t base_note);
 void live_knob(live* l, live_knob_id knob, int32_t delta);
 void live_button(live* l, live_button_id button);
+/* A CC through the published map (midi_map.h): the parameter's value from the CC's by its
+ * curve. CC 120 and 123 release every note. Unmapped and reserved CCs, and values past 127,
+ * do nothing. NRPNs need state per channel: midi_map_cc. */
 void live_cc(live* l, uint8_t cc, uint8_t value);
+/* The largest value of a parameter; 0 for an unknown one. */
+uint32_t live_param_max(uint32_t param);
+/* Sets a parameter, clamped to 0..live_param_max; writes only on a change. Unknown
+ * parameters are ignored. */
+void live_param_set(live* l, uint32_t param, uint32_t value);
+/* A parameter's value; 0 for an unknown one. */
+uint32_t live_param_get(const live* l, uint32_t param);
 /* Loads a preset: releases every voice and resets cutoff, resonance and pulse width to
  * the preset's. An index past the last is clamped. */
 void live_set_preset(live* l, uint8_t index);

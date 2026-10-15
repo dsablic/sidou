@@ -8,6 +8,7 @@ add_library(sidou_live STATIC
     live.c
     live_freq.c
     midi_in.c
+    midi_map.c
     midi_ring.c
     midi_rx.c
     midi_usb.c

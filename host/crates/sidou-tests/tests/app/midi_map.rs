@@ -1,0 +1,866 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! The CC/NRPN map (`app/midi_map.c`): the table, its round trips, the NRPN receiver, the
+//! live parameters it drives, and the published reference generated from it
+//! (docs/reference/midi.md; SIDOU_MIDI_DOC_UPDATE=1 rewrites it).
+
+use std::collections::BTreeSet;
+use std::ffi::CStr;
+use std::path::PathBuf;
+
+use sidou_sys::*;
+
+use crate::Rig;
+
+const TRS: u8 = MIDI_SRC_TRS as u8;
+const USB: u8 = MIDI_SRC_USB as u8;
+
+/// One row of the table, read through FFI.
+#[derive(Debug, Clone)]
+struct Row {
+    name: String,
+    group: String,
+    values: String,
+    param: u8,
+    cc: u8,
+    nrpn: u16,
+    max: u16,
+    def: u16,
+    curve: u32,
+}
+
+impl Row {
+    fn reserved(&self) -> bool {
+        u32::from(self.param) == MIDI_MAP_RESERVED
+    }
+    fn has_cc(&self) -> bool {
+        u32::from(self.cc) != MIDI_MAP_NO_CC
+    }
+    fn has_nrpn(&self) -> bool {
+        u32::from(self.nrpn) != MIDI_MAP_NO_NRPN
+    }
+    fn steps(&self) -> bool {
+        self.curve == MIDI_CURVE_STEPS
+    }
+}
+
+fn text(p: *const std::ffi::c_char) -> String {
+    assert!(!p.is_null());
+    unsafe { CStr::from_ptr(p) }.to_str().unwrap().to_owned()
+}
+
+fn entry(i: u32) -> &'static midi_map_entry {
+    let e = unsafe { midi_map_row(i) };
+    assert!(!e.is_null(), "row {i}");
+    unsafe { &*e }
+}
+
+fn rows() -> Vec<Row> {
+    assert!(unsafe { midi_map_row(MIDI_MAP_ROWS) }.is_null());
+    (0..MIDI_MAP_ROWS)
+        .map(|i| {
+            let e = entry(i);
+            Row {
+                name: text(e.name),
+                group: text(e.group),
+                values: text(e.values),
+                param: e.param,
+                cc: e.cc,
+                nrpn: e.nrpn,
+                max: e.max,
+                def: e.def,
+                curve: u32::from(e.curve),
+            }
+        })
+        .collect()
+}
+
+fn row_for(param: u32) -> Row {
+    rows()
+        .into_iter()
+        .find(|r| u32::from(r.param) == param)
+        .unwrap_or_else(|| panic!("no row for parameter {param}"))
+}
+
+fn ptr_for(param: u32) -> *const midi_map_entry {
+    let e = unsafe { midi_map_for_param(param) };
+    assert!(!e.is_null(), "parameter {param}");
+    e
+}
+
+/// The curves as documented, computed independently of the C.
+fn expect_from_cc(r: &Row, v: u8) -> u32 {
+    let max = u32::from(r.max);
+    if r.steps() {
+        u32::from(v) * (max + 1) / 128
+    } else {
+        (f64::from(v) * f64::from(max) / 127.0).round() as u32
+    }
+}
+
+fn nrpn(msb: u8, lsb: u8) -> u16 {
+    u16::from(msb) << 7 | u16::from(lsb)
+}
+
+fn get(rig: &Rig, param: u32) -> u32 {
+    unsafe { live_param_get(&*rig.live, param) }
+}
+
+fn set(rig: &mut Rig, param: u32, value: u32) {
+    unsafe { live_param_set(&mut *rig.live, param, value) }
+}
+
+// --- the table ---
+
+#[test]
+fn every_parameter_has_exactly_one_row() {
+    let rows = rows();
+    for p in 0..LIVE_PARAM_COUNT {
+        let n = rows.iter().filter(|r| u32::from(r.param) == p).count();
+        assert_eq!(n, 1, "parameter {p}");
+        let r = row_for(p);
+        assert_eq!(unsafe { midi_map_for_param(p) }, entry(index_of(&r)));
+    }
+    assert!(unsafe { midi_map_for_param(LIVE_PARAM_COUNT) }.is_null());
+    for r in &rows {
+        assert!(
+            r.reserved() || u32::from(r.param) < LIVE_PARAM_COUNT,
+            "{}: parameter {}",
+            r.name,
+            r.param
+        );
+    }
+}
+
+fn index_of(r: &Row) -> u32 {
+    rows()
+        .iter()
+        .position(|x| x.name == r.name && x.group == r.group)
+        .unwrap() as u32
+}
+
+#[test]
+fn ccs_and_nrpns_are_unique_and_every_row_has_one() {
+    let rows = rows();
+    let mut ccs = BTreeSet::new();
+    let mut nrpns = BTreeSet::new();
+    let mut names = BTreeSet::new();
+    for r in &rows {
+        assert!(r.has_cc() || r.has_nrpn(), "{} has neither", r.name);
+        assert!(
+            names.insert((r.group.clone(), r.name.clone())),
+            "{}",
+            r.name
+        );
+        if r.has_cc() {
+            assert!(r.cc < 128, "{}: CC {}", r.name, r.cc);
+            assert!(ccs.insert(r.cc), "CC {} twice", r.cc);
+        }
+        if r.has_nrpn() {
+            assert!(
+                r.nrpn < 0x3fff,
+                "{}: NRPN {} (127/127 is null)",
+                r.name,
+                r.nrpn
+            );
+            assert!(nrpns.insert(r.nrpn), "NRPN {} twice", r.nrpn);
+        }
+    }
+}
+
+#[test]
+fn ccs_keep_clear_of_the_numbers_midi_reserves() {
+    // Bank select, data entry, the pedals, high-resolution velocity, increment/decrement,
+    // NRPN/RPN selection, channel mode.
+    let reserved: Vec<u8> = [0, 32, 6, 38, 88]
+        .into_iter()
+        .chain(64..=69)
+        .chain(96..=101)
+        .chain(120..=127)
+        .collect();
+    for r in rows().iter().filter(|r| r.has_cc()) {
+        assert!(!reserved.contains(&r.cc), "{} on CC {}", r.name, r.cc);
+    }
+}
+
+#[test]
+fn m1a_and_m1c_numbers_are_kept() {
+    let cc = |p: u32| row_for(p).cc as u32;
+    assert_eq!(cc(LIVE_PARAM_CUTOFF), 74);
+    assert_eq!(cc(LIVE_PARAM_RESONANCE), 71);
+    assert_eq!(cc(LIVE_PARAM_PULSE_WIDTH), 1);
+    assert_eq!(cc(LIVE_PARAM_VOLUME), 7);
+    assert_eq!(cc(LIVE_PARAM_CUTOFF), LIVE_CC_CUTOFF);
+    assert_eq!(cc(LIVE_PARAM_RESONANCE), LIVE_CC_RESONANCE);
+    assert_eq!(cc(LIVE_PARAM_PULSE_WIDTH), LIVE_CC_PULSE_WIDTH);
+    assert_eq!(cc(LIVE_PARAM_VOLUME), LIVE_CC_VOLUME);
+    for slot in 0..LIVE_SLOTS {
+        for field in 0..LIVE_SLOT_FIELDS {
+            let p = LIVE_PARAM_SLOT + slot * LIVE_SLOT_FIELDS + field;
+            assert_eq!(cc(p), 102 + slot * 5 + field, "slot {slot} field {field}");
+        }
+    }
+    assert_eq!(LIVE_CC_SLOT_FIRST, 102);
+    assert_eq!(LIVE_CC_SLOT_LAST, 116);
+}
+
+#[test]
+fn full_resolution_cutoff_and_pulse_width_have_nrpns() {
+    for (p, max) in [
+        (LIVE_PARAM_CUTOFF, LIVE_CUTOFF_MAX),
+        (LIVE_PARAM_PULSE_WIDTH, LIVE_PULSE_WIDTH_MAX),
+    ] {
+        let r = row_for(p);
+        assert!(r.has_nrpn(), "{}", r.name);
+        assert_eq!(u32::from(r.max), max, "{}", r.name);
+    }
+}
+
+#[test]
+fn ranges_match_the_instrument() {
+    for r in rows().iter().filter(|r| !r.reserved()) {
+        let p = u32::from(r.param);
+        assert_eq!(u32::from(r.max), unsafe { live_param_max(p) }, "{}", r.name);
+        assert!(r.max > 0, "{}", r.name);
+        assert!(r.def <= r.max, "{}: default {} > {}", r.name, r.def, r.max);
+        if r.steps() {
+            assert!(r.max < 128, "{}: too many steps for a CC", r.name);
+        } else {
+            assert_eq!(r.curve, MIDI_CURVE_LINEAR, "{}", r.name);
+            assert!(
+                r.max >= 127,
+                "{}: a linear curve needs >= 128 values",
+                r.name
+            );
+        }
+    }
+    assert_eq!(unsafe { live_param_max(LIVE_PARAM_COUNT) }, 0);
+}
+
+#[test]
+fn defaults_are_the_power_on_values() {
+    let rig = Rig::new(SID_MODEL_6581);
+    for r in rows().iter().filter(|r| !r.reserved()) {
+        assert_eq!(
+            get(&rig, u32::from(r.param)),
+            u32::from(r.def),
+            "{}",
+            r.name
+        );
+    }
+}
+
+#[test]
+fn reserved_rows_are_the_character_parameters() {
+    let reserved: Vec<Row> = rows().into_iter().filter(Row::reserved).collect();
+    let names: Vec<&str> = reserved.iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "Profile",
+            "Age/heat",
+            "DAC sloppiness",
+            "Output thump",
+            "Filter bleed"
+        ]
+    );
+    for r in &reserved {
+        assert_eq!(r.group, "Character");
+    }
+}
+
+#[test]
+fn lookups_find_each_row_by_cc_and_by_nrpn() {
+    for (i, r) in rows().iter().enumerate() {
+        let e = entry(i as u32) as *const midi_map_entry;
+        if r.has_cc() {
+            assert_eq!(unsafe { midi_map_for_cc(r.cc) }, e, "{}", r.name);
+        }
+        if r.has_nrpn() {
+            assert_eq!(unsafe { midi_map_for_nrpn(r.nrpn) }, e, "{}", r.name);
+        }
+    }
+    let used: BTreeSet<u8> = rows().iter().map(|r| r.cc).collect();
+    for cc in (0..=255u8).filter(|c| !used.contains(c)) {
+        assert!(unsafe { midi_map_for_cc(cc) }.is_null(), "CC {cc}");
+    }
+    assert!(unsafe { midi_map_for_nrpn(0x3fff) }.is_null());
+    assert!(unsafe { midi_map_for_nrpn(0xffff) }.is_null());
+}
+
+// --- round trips ---
+
+#[test]
+fn each_entry_round_trips_through_its_cc() {
+    for r in rows().iter().filter(|r| r.has_cc() && !r.reserved()) {
+        let e = ptr_for(u32::from(r.param));
+        let mut rig = Rig::new(SID_MODEL_6581);
+        for v in 0..128u8 {
+            let want = expect_from_cc(r, v);
+            assert_eq!(unsafe { midi_map_from_cc(e, v) }, want, "{} CC {v}", r.name);
+            rig.cc(u32::from(r.cc), v);
+            assert_eq!(get(&rig, u32::from(r.param)), want, "{} CC {v}", r.name);
+            if !r.steps() {
+                assert_eq!(
+                    unsafe { midi_map_to_cc(e, want) },
+                    v,
+                    "{}: CC {v} -> {want} -> CC",
+                    r.name
+                );
+            }
+        }
+        // And from the parameter's side: a value sent out as a CC comes back as itself
+        // (steps), or as the nearest value a CC can carry (linear).
+        for p in 0..=u32::from(r.max) {
+            let c = unsafe { midi_map_to_cc(e, p) };
+            assert!(c < 128, "{} {p}", r.name);
+            let back = expect_from_cc(r, c);
+            if r.steps() {
+                assert_eq!(back, p, "{}: {p} -> CC {c} -> {back}", r.name);
+            } else {
+                let step = f64::from(r.max) / 127.0;
+                assert!(
+                    (f64::from(back) - f64::from(p)).abs() <= step / 2.0 + 0.5,
+                    "{}: {p} -> CC {c} -> {back}",
+                    r.name
+                );
+            }
+        }
+        assert_eq!(unsafe { midi_map_to_cc(e, 0) }, 0, "{}", r.name);
+        assert_eq!(
+            unsafe { midi_map_to_cc(e, u32::from(r.max)) },
+            127,
+            "{}",
+            r.name
+        );
+        assert_eq!(
+            unsafe { midi_map_to_cc(e, u32::from(r.max) + 1000) },
+            127,
+            "{}: out of range",
+            r.name
+        );
+    }
+}
+
+#[test]
+fn each_entry_round_trips_through_its_nrpn_at_full_resolution() {
+    for r in rows().iter().filter(|r| r.has_nrpn() && !r.reserved()) {
+        let mut m = Midi::new();
+        let (msb, lsb) = ((r.nrpn >> 7) as u8, (r.nrpn & 0x7f) as u8);
+        m.trs(&[0xB0, 99, msb, 98, lsb]);
+        for p in (0..=r.max).rev() {
+            m.trs(&[6, (p >> 7) as u8, 38, (p & 0x7f) as u8]);
+            assert_eq!(get(&m.rig, u32::from(r.param)), u32::from(p), "{}", r.name);
+        }
+        // Past the range: clamped.
+        m.trs(&[6, 127, 38, 127]);
+        assert_eq!(
+            get(&m.rig, u32::from(r.param)),
+            u32::from(r.max),
+            "{}",
+            r.name
+        );
+    }
+}
+
+#[test]
+fn reserved_rows_do_nothing_yet() {
+    let mut m = Midi::new();
+    m.rig.clear();
+    for r in rows().iter().filter(|r| r.reserved()) {
+        if r.has_cc() {
+            m.trs(&[0xB0, r.cc, 100]);
+        }
+        if r.has_nrpn() {
+            let (msb, lsb) = ((r.nrpn >> 7) as u8, (r.nrpn & 0x7f) as u8);
+            m.trs(&[0xB0, 99, msb, 98, lsb, 6, 1, 38, 2, 96, 0, 97, 0]);
+        }
+    }
+    assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
+}
+
+// --- the live parameters ---
+
+#[test]
+fn parameters_set_clamp_and_write_only_on_a_change() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    for p in 0..LIVE_PARAM_COUNT {
+        let max = unsafe { live_param_max(p) };
+        set(&mut rig, p, max + 1000);
+        assert_eq!(get(&rig, p), max, "parameter {p} clamps");
+        rig.clear();
+        set(&mut rig, p, max);
+        assert!(rig.log().is_empty(), "parameter {p}: {:?}", rig.log());
+        set(&mut rig, p, 0);
+        assert_eq!(get(&rig, p), 0, "parameter {p}");
+    }
+    rig.clear();
+    set(&mut rig, LIVE_PARAM_COUNT, 1);
+    assert!(rig.log().is_empty());
+}
+
+#[test]
+fn the_sid_parameters_reach_their_registers() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    rig.note_on(60);
+    let v = 0u8; // the voice it took
+    assert!(rig.gated(v));
+    set(&mut rig, LIVE_PARAM_WAVEFORM, 4 | 1); // pulse + triangle
+    set(&mut rig, LIVE_PARAM_RING, 1);
+    set(&mut rig, LIVE_PARAM_SYNC, 1);
+    for voice in 0..3 {
+        assert_eq!(
+            rig.control(voice) & 0xfe,
+            0x50 | 0x04 | 0x02,
+            "voice {voice}"
+        );
+    }
+    assert!(rig.gated(v), "the gate is kept");
+    assert!(!rig.gated(1));
+    set(&mut rig, LIVE_PARAM_ATTACK, 0xc);
+    set(&mut rig, LIVE_PARAM_DECAY, 0x3);
+    set(&mut rig, LIVE_PARAM_SUSTAIN, 0xe);
+    set(&mut rig, LIVE_PARAM_RELEASE, 0x1);
+    for voice in 0..3 {
+        assert_eq!(rig.reg(voice * 7 + 5), 0xc3);
+        assert_eq!(rig.reg(voice * 7 + 6), 0xe1);
+    }
+    let vol = rig.reg(0x18) & 0x0f;
+    set(&mut rig, LIVE_PARAM_FILTER_MODE, 2 | 4); // band-pass + high-pass
+    assert_eq!(rig.reg(0x18), 0x60 | vol);
+    let res = rig.reg(0x17) & 0xf0;
+    set(&mut rig, LIVE_PARAM_FILTER_VOICES, 2);
+    assert_eq!(rig.reg(0x17), res | 2);
+
+    // A program change loads the preset's own again.
+    rig.set_preset(0);
+    let p = crate::preset(0);
+    assert_eq!(rig.control(0), p.control);
+    assert_eq!(rig.reg(5), p.attack_decay);
+    assert_eq!(rig.reg(6), p.sustain_release);
+    assert_eq!(rig.reg(0x17) & 7, p.filter_voices);
+    assert_eq!(rig.reg(0x18) & 0x70, p.filter_mode);
+}
+
+#[test]
+fn the_sid_parameters_survive_a_model_change() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    set(&mut rig, LIVE_PARAM_WAVEFORM, 8);
+    set(&mut rig, LIVE_PARAM_ATTACK, 7);
+    rig.clear();
+    set(&mut rig, LIVE_PARAM_MODEL, 1);
+    assert_eq!(rig.live.model, SID_MODEL_8580);
+    assert_eq!(rig.log()[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
+    assert_eq!(rig.log().len(), 26, "a reset and every register");
+    assert_eq!(rig.control(0), 0x80);
+    assert_eq!(rig.reg(5) >> 4, 7);
+    set(&mut rig, LIVE_PARAM_MODEL, 0);
+    assert_eq!(rig.live.model, SID_MODEL_6581);
+    assert_eq!(get(&rig, LIVE_PARAM_WAVEFORM), 8);
+}
+
+#[test]
+fn the_sync_lead_keeps_its_silent_voice_3_whatever_the_waveform() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    rig.set_preset(2);
+    rig.note_on(60);
+    set(&mut rig, LIVE_PARAM_WAVEFORM, 4);
+    assert_eq!(rig.control(0), 0x40 | 0x02 | 1);
+    assert_eq!(rig.control(1), 0);
+    assert_eq!(rig.control(2), 0);
+}
+
+// --- the NRPN receiver ---
+
+/// A live instrument (writing into a recorder) fed through a `midi_rx`.
+struct Midi {
+    rig: Rig,
+    rx: Box<midi_rx>,
+    epoch: u8,
+}
+
+impl Midi {
+    fn new() -> Self {
+        let mut rig = Rig::new(SID_MODEL_6581);
+        let mut rx = Box::<midi_rx>::default();
+        unsafe { midi_rx_init(&mut *rx, &mut *rig.live, 0) };
+        Midi { rig, rx, epoch: 0 }
+    }
+
+    fn entry(&mut self, source: u8, data: u32) {
+        let e = midi_ring_entry {
+            stamp: 0,
+            data,
+            source,
+            epoch: self.epoch,
+        };
+        unsafe { midi_rx_entry(&mut *self.rx, &e) };
+    }
+
+    fn trs(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.entry(TRS, u32::from(b));
+        }
+    }
+
+    fn usb_cc(&mut self, channel: u8, cc: u8, value: u8) {
+        self.entry(USB, u32::from_le_bytes([0xB, 0xB0 | channel, cc, value]));
+    }
+
+    fn cutoff(&self) -> u16 {
+        self.rig.live.cutoff
+    }
+}
+
+const CUTOFF_NRPN: (u8, u8) = (0, 0);
+
+fn select_cutoff(m: &mut Midi, status: u8) {
+    m.trs(&[status, 99, CUTOFF_NRPN.0, 98, CUTOFF_NRPN.1]);
+}
+
+#[test]
+fn the_cutoff_nrpn_is_where_the_reference_says() {
+    assert_eq!(
+        row_for(LIVE_PARAM_CUTOFF).nrpn,
+        nrpn(CUTOFF_NRPN.0, CUTOFF_NRPN.1)
+    );
+}
+
+#[test]
+fn data_entry_msb_then_lsb_sets_11_bits() {
+    let mut m = Midi::new();
+    select_cutoff(&mut m, 0xB0);
+    m.trs(&[6, 9]);
+    assert_eq!(m.cutoff(), 9 << 7, "an MSB alone has an LSB of 0");
+    m.trs(&[38, 82]);
+    assert_eq!(m.cutoff(), 1234);
+    assert_eq!(
+        u16::from(m.rig.reg(0x15) & 7) | u16::from(m.rig.reg(0x16)) << 3,
+        1234,
+        "the registers carry all 11 bits"
+    );
+}
+
+#[test]
+fn lsb_only_updates_keep_the_msb() {
+    let mut m = Midi::new();
+    select_cutoff(&mut m, 0xB0);
+    m.trs(&[6, 9, 38, 82]);
+    m.trs(&[38, 0]);
+    assert_eq!(m.cutoff(), 9 << 7);
+    m.trs(&[38, 127]);
+    assert_eq!(m.cutoff(), 9 << 7 | 127);
+    // The MSB of the last data entry, even when it was clamped.
+    m.trs(&[6, 127]);
+    assert_eq!(u32::from(m.cutoff()), LIVE_CUTOFF_MAX);
+    m.trs(&[38, 0]);
+    assert_eq!(u32::from(m.cutoff()), LIVE_CUTOFF_MAX);
+}
+
+#[test]
+fn an_lsb_alone_after_selecting_fine_tunes_the_current_value() {
+    let mut m = Midi::new();
+    // The preset's 1200 = 9 * 128 + 48.
+    assert_eq!(m.cutoff(), 1200);
+    select_cutoff(&mut m, 0xB0);
+    m.trs(&[38, 50]);
+    assert_eq!(m.cutoff(), 9 << 7 | 50);
+}
+
+#[test]
+fn increment_and_decrement_step_by_one_and_clamp() {
+    let mut m = Midi::new();
+    select_cutoff(&mut m, 0xB0);
+    m.trs(&[6, 9, 38, 82]);
+    m.trs(&[96, 0]);
+    assert_eq!(m.cutoff(), 1235);
+    m.trs(&[97, 0, 97, 5]);
+    assert_eq!(m.cutoff(), 1233, "the data byte is not a step count");
+    m.trs(&[38, 0]);
+    assert_eq!(
+        m.cutoff(),
+        1152,
+        "an LSB after a step: the current value's MSB"
+    );
+    m.trs(&[6, 0, 97, 0]);
+    assert_eq!(m.cutoff(), 0, "decrement stops at 0");
+    m.trs(&[6, 127, 96, 0]);
+    assert_eq!(
+        u32::from(m.cutoff()),
+        LIVE_CUTOFF_MAX,
+        "increment stops at the top"
+    );
+    // A 4-bit parameter steps by one too.
+    let r = row_for(LIVE_PARAM_RESONANCE);
+    m.trs(&[99, (r.nrpn >> 7) as u8, 98, (r.nrpn & 0x7f) as u8]);
+    let before = m.rig.live.resonance;
+    m.trs(&[96, 0]);
+    assert_eq!(m.rig.live.resonance, before + 1);
+}
+
+#[test]
+fn the_null_nrpn_deselects() {
+    let mut m = Midi::new();
+    select_cutoff(&mut m, 0xB0);
+    m.trs(&[6, 5]);
+    assert_eq!(m.cutoff(), 5 << 7);
+    m.trs(&[99, 127, 98, 127]);
+    m.rig.clear();
+    m.trs(&[6, 9, 38, 1, 96, 0, 97, 0]);
+    assert_eq!(m.cutoff(), 5 << 7);
+    assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
+    // Half of it is not null: MSB 127 with LSB 0 is a parameter number like any other.
+    m.trs(&[98, 0]);
+    m.trs(&[6, 9]);
+    assert_eq!(m.cutoff(), 5 << 7, "NRPN 127/0 is not mapped");
+    m.trs(&[99, 0, 6, 9]);
+    assert_eq!(m.cutoff(), 9 << 7, "MSB 0 again: the cutoff");
+}
+
+#[test]
+fn an_rpn_takes_data_entry_away_from_the_nrpn() {
+    let mut m = Midi::new();
+    select_cutoff(&mut m, 0xB0);
+    m.trs(&[6, 5]);
+    // RPN 0/0, pitch-bend range: parsed, not applied (yet), and not the cutoff's.
+    m.trs(&[101, 0, 100, 0]);
+    m.rig.clear();
+    m.trs(&[6, 12, 38, 0, 96, 0, 97, 0]);
+    assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
+    // Selecting the NRPN's MSB again brings it back, with the LSB it had.
+    m.trs(&[99, 0, 6, 7]);
+    assert_eq!(m.cutoff(), 7 << 7);
+    // The null RPN does not select the NRPN either.
+    m.trs(&[101, 127, 100, 127, 6, 3]);
+    assert_eq!(m.cutoff(), 7 << 7);
+}
+
+#[test]
+fn nrpn_state_is_per_channel() {
+    let mut m = Midi::new();
+    let res = row_for(LIVE_PARAM_RESONANCE).nrpn;
+    m.trs(&[0xB0, 99, 0, 98, 0]); // channel 1: cutoff
+    m.trs(&[0xB3, 99, (res >> 7) as u8, 98, (res & 0x7f) as u8]); // channel 4: resonance
+    m.trs(&[0xB0, 6, 3]);
+    m.trs(&[0xB3, 6, 0, 38, 2]);
+    assert_eq!(m.cutoff(), 3 << 7);
+    assert_eq!(m.rig.live.resonance, 2);
+    m.rig.clear();
+    m.trs(&[0xB7, 6, 1, 38, 1, 96, 0]); // channel 8 has nothing selected
+    assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
+}
+
+#[test]
+fn nrpn_state_is_per_input() {
+    let mut m = Midi::new();
+    select_cutoff(&mut m, 0xB0);
+    m.usb_cc(0, 6, 1); // USB on the same channel selected nothing
+    assert_eq!(m.cutoff(), 1200);
+    m.usb_cc(0, 99, 0);
+    m.usb_cc(0, 98, 0);
+    m.usb_cc(0, 6, 1);
+    assert_eq!(m.cutoff(), 1 << 7);
+    m.trs(&[6, 2]);
+    assert_eq!(m.cutoff(), 2 << 7);
+}
+
+#[test]
+fn reset_all_controllers_deselects() {
+    let mut m = Midi::new();
+    select_cutoff(&mut m, 0xB0);
+    m.trs(&[121, 0]);
+    m.trs(&[6, 1]);
+    assert_eq!(m.cutoff(), 1200);
+}
+
+#[test]
+fn a_gap_in_the_input_deselects() {
+    let mut m = Midi::new();
+    select_cutoff(&mut m, 0xB0);
+    m.epoch = 1; // input lost here: the selection may have changed in it
+    m.trs(&[0xB0, 6, 1]);
+    assert_eq!(m.rx.restarts, 1);
+    assert_eq!(m.cutoff(), 1200);
+}
+
+#[test]
+fn unmapped_nrpns_and_bad_channels_change_nothing() {
+    let mut m = Midi::new();
+    m.rig.clear();
+    let used: BTreeSet<u16> = rows().iter().map(|r| r.nrpn).collect();
+    for msb in 0..128u8 {
+        for lsb in [0u8, 5, 31, 64, 127] {
+            if !used.contains(&nrpn(msb, lsb)) {
+                m.trs(&[0xB0, 99, msb, 98, lsb, 6, 1, 38, 1, 96, 0]);
+            }
+        }
+    }
+    assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
+    let mut port = Box::<midi_map_port>::default();
+    unsafe {
+        midi_map_port_init(&mut *port, &mut *m.rig.live);
+        midi_map_cc(&mut *port, 16, 99, 0);
+        midi_map_cc(&mut *port, 16, 98, 0);
+        midi_map_cc(&mut *port, 16, 6, 1);
+        midi_map_cc(&mut *port, 0, 6, 200);
+    }
+    assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());
+}
+
+#[test]
+fn the_pulse_width_nrpn_sets_12_bits() {
+    let mut m = Midi::new();
+    let r = row_for(LIVE_PARAM_PULSE_WIDTH);
+    m.trs(&[0xB0, 99, (r.nrpn >> 7) as u8, 98, (r.nrpn & 0x7f) as u8]);
+    m.trs(&[6, 31, 38, 127]); // 4095
+    assert_eq!(m.rig.voice_pw(0), 4095);
+    m.trs(&[6, 1, 38, 1]);
+    assert_eq!(m.rig.voice_pw(2), 129);
+}
+
+// --- the published reference ---
+
+// The generated file's own licence header; reuse must not read it as this file's.
+// REUSE-IgnoreStart
+const HEADER: &str = "<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->\n\
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->\n";
+// REUSE-IgnoreEnd
+
+const INTRO: &str = "\
+<!-- Generated from app/midi_map.c by host/crates/sidou-tests/tests/app/midi_map.rs; do not \
+edit. SIDOU_MIDI_DOC_UPDATE=1 regenerates it. -->
+# MIDI: the CC and NRPN map
+
+Every parameter of the live instrument has a CC (7-bit) and an NRPN (14-bit, full
+resolution). The map is fixed: the same numbers on every channel, on TRS and USB. Notes
+play on every channel (omni); program change 0..3 selects the preset.
+
+**How the numbers were chosen.** CCs that MIDI gives a meaning are kept for it:
+General MIDI's where they fit (1 modulation wheel: pulse width; 7 volume; 71 resonance;
+74 cutoff, i.e. brightness; 72, 73 and 75 release, attack and decay time) and left alone
+where they do not (0 and 32 bank select, 6 and 38 data entry, 64..69 the pedals, 88
+high-resolution velocity, 96..101 increment, decrement, NRPN and RPN, 120..127 channel
+mode). 76..78 (vibrato) stay free for expression. The rest is in blocks MIDI leaves
+undefined: the SID's patch in 20..25 and 79, the character layer in 85..87 and 89..90,
+the effect slots in 102..116. NRPNs are grouped by MSB: 0 the performance controls, 1 the
+SID, 2 the character layer, 3..5 the effect slots.
+
+## Receiving values
+
+- **CC, linear curve:** 0..127 spans the whole range, value * max / 127 rounded, so 0 and
+  127 are the ends.
+- **CC, steps curve:** 0..127 is divided evenly among the parameter's values,
+  value * (max + 1) / 128: a switch is off below 64 and on from 64.
+- **NRPN:** CC 99 and 98 select the parameter (MSB, LSB). The data is the parameter's own
+  value, MSB * 128 + LSB, clamped to its range: CC 6 sets the MSB (the LSB taken as 0),
+  CC 38 the LSB (with the MSB of the last CC 6, or, if none came since the selection or
+  the last step, the current value's). CC 96 and 97 step the value by one (their data byte
+  is ignored).
+- **Null and RPN:** NRPN 127/127 and RPN 127/127 select nothing. An RPN (CC 101, 100)
+  takes data entry away from the NRPN until CC 99 or 98 comes again; no RPN is
+  implemented yet. CC 121 (reset all controllers) and a gap in the input select nothing.
+- The selection is kept per channel and per input (TRS, USB).
+- CC 120 and 123 release every note.
+
+";
+
+fn cc_text(r: &Row) -> String {
+    if r.has_cc() {
+        r.cc.to_string()
+    } else {
+        "-".into()
+    }
+}
+
+fn nrpn_text(r: &Row) -> String {
+    if r.has_nrpn() {
+        format!("{}/{} ({})", r.nrpn >> 7, r.nrpn & 0x7f, r.nrpn)
+    } else {
+        "-".into()
+    }
+}
+
+fn curve_text(r: &Row) -> &'static str {
+    if r.steps() {
+        "steps"
+    } else {
+        "linear"
+    }
+}
+
+fn doc() -> String {
+    let rows = rows();
+    let mut s = String::from(HEADER);
+    s.push_str(INTRO);
+    s.push_str("## The map\n\nIn NRPN order.\n\n");
+    s.push_str("| Group | Parameter | CC | NRPN (MSB/LSB) | Range | Curve | Default | Values |\n");
+    s.push_str("|---|---|---|---|---|---|---|---|\n");
+    let mut by_nrpn: Vec<&Row> = rows.iter().filter(|r| !r.reserved()).collect();
+    by_nrpn.sort_by_key(|r| (r.nrpn, r.cc));
+    for r in by_nrpn {
+        s.push_str(&format!(
+            "| {} | {} | {} | {} | 0..{} | {} | {} | {} |\n",
+            r.group,
+            r.name,
+            cc_text(r),
+            nrpn_text(r),
+            r.max,
+            curve_text(r),
+            r.def,
+            r.values
+        ));
+    }
+    s.push_str(
+        "\n## Reserved: not yet implemented\n\n\
+         These numbers are kept for the character layer (M1c Task 3) and do nothing yet; \
+         a CC or NRPN sent to them is ignored.\n\n",
+    );
+    s.push_str("| Group | Parameter | CC | NRPN (MSB/LSB) | Range | Values |\n");
+    s.push_str("|---|---|---|---|---|---|\n");
+    for r in rows.iter().filter(|r| r.reserved()) {
+        s.push_str(&format!(
+            "| {} | {} | {} | {} | 0..{} | {} |\n",
+            r.group,
+            r.name,
+            cc_text(r),
+            nrpn_text(r),
+            r.max,
+            r.values
+        ));
+    }
+    s.push_str("\n## By CC\n\n| CC | Parameter |\n|---|---|\n");
+    let mut by_cc: Vec<&Row> = rows.iter().filter(|r| r.has_cc()).collect();
+    by_cc.sort_by_key(|r| r.cc);
+    for r in by_cc {
+        let note = if r.reserved() { " (reserved)" } else { "" };
+        s.push_str(&format!("| {} | {} {}{} |\n", r.cc, r.group, r.name, note));
+    }
+    s
+}
+
+#[test]
+fn the_reference_is_up_to_date() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../docs/reference/midi.md");
+    let want = doc();
+    if std::env::var("SIDOU_MIDI_DOC_UPDATE").as_deref() == Ok("1") {
+        std::fs::write(&path, &want).unwrap();
+        return;
+    }
+    let got = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(
+        got == want,
+        "{} is stale; rerun with SIDOU_MIDI_DOC_UPDATE=1",
+        path.display()
+    );
+}
+
+#[test]
+fn the_reference_names_every_row() {
+    let d = doc();
+    for r in rows() {
+        assert!(d.contains(&format!("| {} |", r.name)), "{}", r.name);
+        if r.has_cc() {
+            assert!(d.contains(&format!("| {} | {} {}", r.cc, r.group, r.name)));
+        }
+    }
+}

@@ -7,6 +7,7 @@ mod fx_live;
 mod live_freq;
 mod live_instrument;
 mod midi_in;
+mod midi_map;
 mod midi_ring;
 mod midi_rx;
 mod midi_usb;

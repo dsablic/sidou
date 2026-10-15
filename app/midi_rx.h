@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* MIDI input for the live instrument (M1a): ring entries (midi_ring.h) through a parser per
- * source (midi_in.h) onto live, with the default mapping:
+/* MIDI input for the live instrument: ring entries (midi_ring.h) through a parser per
+ * source (midi_in.h) onto live, with the mapping:
  * - notes on every channel (omni) play the instrument; the octave buttons do not apply;
- * - CC 74 cutoff (0..127 scaled to 0..2047), CC 71 resonance, CC 1 pulse width, CC 7 volume,
- *   CC 120 and 123 release every note (live_cc);
+ * - CCs and NRPNs through the published map (midi_map.h, docs/reference/midi.md), with the
+ *   NRPN state per channel and per source; CC 120 and 123 release every note;
  * - program change n selects preset n; programs past the last preset are ignored;
  * - everything else (pitch bend, pressure, real time, system common, SysEx) is ignored.
- * The full CC map and MIDI learn come in M1d.
  *
  * One parser per source, because the sources interleave: a TRS message arrives a byte per
  * 320 us, so USB messages can come between its bytes, and a parser shared by both would take
@@ -29,6 +28,7 @@
 
 #include "live.h"
 #include "midi_in.h"
+#include "midi_map.h"
 #include "midi_ring.h"
 
 #ifdef __cplusplus
@@ -39,6 +39,8 @@ typedef struct {
     live* l;
     midi_in trs;
     midi_in usb;
+    midi_map_port trs_map; /* each source's NRPN state */
+    midi_map_port usb_map;
     uint8_t epoch;     /* the ring's epoch the parsers are in */
     uint32_t restarts; /* times lost input restarted the parsers */
 } midi_rx;
@@ -52,10 +54,11 @@ void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e);
  * was empty). If it is ahead of the parsers' (by 1..127, wrapping), input was lost after the
  * last entry: restart now. An epoch that is not ahead changes nothing: an entry taken after
  * the caller read it may already have moved the parsers on. (With entries left in the ring,
- * the next one's epoch says it instead.) Returns 1 if it restarted. */
+ * the next one's epoch says it instead.) Returns 1 if it restarted.
+ * A restart also forgets every NRPN selection: the gap may have changed it. */
 int midi_rx_check_lost(midi_rx* rx, uint8_t epoch);
-/* The mapping alone: one parsed message onto live. */
-void midi_rx_live(live* l, const midi_msg* msg);
+/* The mapping alone: one parsed message onto the port's live, with its NRPN state. */
+void midi_rx_live(midi_map_port* port, const midi_msg* msg);
 
 #ifdef __cplusplus
 }

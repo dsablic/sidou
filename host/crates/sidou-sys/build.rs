@@ -7,7 +7,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 20] = [
+const SOURCES: [&str; 21] = [
     "core/sid/sid.c",
     "core/sid/sid_dac.c",
     "core/fx/fx.c",
@@ -21,6 +21,7 @@ const SOURCES: [&str; 20] = [
     "app/live.c",
     "app/live_freq.c",
     "app/midi_in.c",
+    "app/midi_map.c",
     "app/midi_ring.c",
     "app/midi_rx.c",
     "app/midi_usb.c",

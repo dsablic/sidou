@@ -154,10 +154,13 @@ fn ccs_follow_the_default_mapping() {
 fn other_ccs_change_nothing() {
     let mut m = Midi::new();
     m.rig.clear();
-    // The effect slots' CCs (102..116) are tested in fx_live.rs.
-    for cc in
-        (0..128u8).filter(|c| ![1, 7, 71, 74, 120, 123].contains(c) && !(102..=116).contains(c))
-    {
+    // The CCs the published map gives a parameter (tested in midi_map.rs; the effect slots'
+    // in fx_live.rs) and the channel-mode CCs 120 and 123.
+    let mapped = |cc: u8| {
+        let e = unsafe { midi_map_for_cc(cc) };
+        !e.is_null() && u32::from(unsafe { (*e).param }) != MIDI_MAP_RESERVED
+    };
+    for cc in (0..128u8).filter(|&c| ![120, 123].contains(&c) && !mapped(c)) {
         m.trs(&[0xB0, cc, 99]);
     }
     assert!(m.rig.log().is_empty(), "writes: {:?}", m.rig.log());

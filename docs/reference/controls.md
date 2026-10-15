@@ -5,7 +5,7 @@
 How the live instrument is played from the FM-1's panel and over MIDI. Button names are
 fm1-emu's and Felucca's ids (`platform/fm1/VENDORED.md`); the printed labels may differ,
 see [hardware-test.md](../hardware-test.md). The effect-slot layer is **temporary**: the
-CHIP view (M1c Task 4) and M1d's published CC map replace it.
+CHIP view (M1c Task 4) replaces it.
 
 ## Panel
 
@@ -42,21 +42,13 @@ at power-on.
 
 ## MIDI
 
-Notes on every channel; program change 0..3 selects the preset.
+Notes on every channel; program change 0..3 selects the preset. Every parameter has a CC
+and an NRPN: the map, generated from the code, is [midi.md](midi.md). The numbers M1a
+and M1c set are kept: 1 pulse width, 7 volume, 71 resonance, 74 cutoff, and the effect
+slots on 102..116 (Distortion 102..106, Modulation 107..111, FX 112..116: algorithm,
+Amount, A, B, Mix). CC 120 and 123 release every note.
 
-| CC | Does |
-|---|---|
-| 1 | pulse width |
-| 7 | volume |
-| 71 | resonance |
-| 74 | cutoff |
-| 102..106 | Distortion: algorithm, Amount, A, B, Mix |
-| 107..111 | Modulation: algorithm, Amount, A, B, Mix |
-| 112..116 | FX: algorithm, Amount, A, B, Mix |
-| 120, 123 | all sound off, all notes off |
-
-The effect CCs are in General MIDI's undefined block 102..119 until M1d publishes the
-CC map. An algorithm CC picks the algorithm in order (above) by dividing 0..127 evenly
+An algorithm CC picks the algorithm in order (above) by dividing 0..127 evenly
 among the slot's algorithms: for the FX slot's five, 0..25 OFF, 26..51 DELAY, 52..76
 PING-PONG, 77..102 REVERB, 103..127 LUSH. A control CC (0..127) is the control's whole
 range.

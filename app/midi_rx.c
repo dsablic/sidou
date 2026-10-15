@@ -4,17 +4,18 @@
 
 #include "midi_usb.h"
 
-void midi_rx_live(live* l, const midi_msg* msg) {
+void midi_rx_live(midi_map_port* port, const midi_msg* msg) {
+    live* l = port->l;
     switch (msg->kind) {
     case MIDI_NOTE_ON: live_note_on(l, msg->data1, msg->data2); break;
     case MIDI_NOTE_OFF: live_note_off(l, msg->data1); break;
-    case MIDI_CC: live_cc(l, msg->data1, msg->data2); break;
+    case MIDI_CC: midi_map_cc(port, msg->channel, msg->data1, msg->data2); break;
     case MIDI_PROGRAM:
         if (msg->data1 < LIVE_PRESET_COUNT) {
             live_set_preset(l, msg->data1);
         }
         break;
-    default: break; /* pressure, pitch bend, real time: not in M1a's mapping */
+    default: break; /* pressure, pitch bend, real time: not mapped yet */
     }
 }
 
@@ -26,8 +27,10 @@ static void on_msg(void* ctx, const midi_msg* msg) {
  * from USB inside the vendored USB stack (platform/fm1/update.h): over USB only, because it
  * needs replies and the TRS jack is MIDI IN only. */
 static void parsers_init(midi_rx* rx) {
-    midi_in_init(&rx->trs, on_msg, 0, rx->l);
-    midi_in_init(&rx->usb, on_msg, 0, rx->l);
+    midi_map_port_init(&rx->trs_map, rx->l);
+    midi_map_port_init(&rx->usb_map, rx->l);
+    midi_in_init(&rx->trs, on_msg, 0, &rx->trs_map);
+    midi_in_init(&rx->usb, on_msg, 0, &rx->usb_map);
 }
 
 static void restart(midi_rx* rx, uint8_t epoch) {

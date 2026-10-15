@@ -3,6 +3,7 @@
 #include "live.h"
 
 #include "fx_live.h"
+#include "midi_map.h"
 
 #include <stddef.h>
 
@@ -12,6 +13,9 @@
 #define REG_RES_FILT 0x17u
 #define REG_MODE_VOL 0x18u
 #define LFO_CENTRE 16384u
+
+_Static_assert(LIVE_PARAM_COUNT == LIVE_PARAM_SLOT + LIVE_SLOTS * LIVE_SLOT_FIELDS,
+               "every slot field is a parameter");
 
 static const live_preset presets[LIVE_PRESET_COUNT] = {
     {
@@ -112,7 +116,7 @@ static uint8_t voice_control(const live* l, int v) {
     if (p->mono_sync && v != 0) {
         return 0; /* voice 3 only clocks the sync; voice 2 is unused */
     }
-    return (uint8_t)(p->control | (l->voice[v].gate ? CTRL_GATE : 0u));
+    return (uint8_t)(l->control | (l->voice[v].gate ? CTRL_GATE : 0u));
 }
 
 static void write_freq(live* l, int v) {
@@ -138,19 +142,31 @@ static void write_cutoff(live* l) {
 }
 
 static void write_res_filt(live* l) {
-    put(l, REG_RES_FILT, (uint8_t)(l->resonance << 4 | cur(l)->filter_voices));
+    put(l, REG_RES_FILT, (uint8_t)(l->resonance << 4 | l->filter_voices));
 }
 
 static void write_mode_vol(live* l) {
-    put(l, REG_MODE_VOL, (uint8_t)(cur(l)->filter_mode | l->volume));
+    put(l, REG_MODE_VOL, (uint8_t)(l->filter_mode | l->volume));
+}
+
+static void write_envelopes(live* l) {
+    for (int v = 0; v < LIVE_VOICES; ++v) {
+        put(l, (uint8_t)(v * 7 + 5), l->attack_decay);
+        put(l, (uint8_t)(v * 7 + 6), l->sustain_release);
+    }
+}
+
+static void write_controls(live* l) {
+    for (int v = 0; v < LIVE_VOICES; ++v) {
+        write_control(l, v);
+    }
 }
 
 /* Every register, envelopes before gates. */
 static void write_all(live* l) {
-    const live_preset* p = cur(l);
     for (int v = 0; v < LIVE_VOICES; ++v) {
-        put(l, (uint8_t)(v * 7 + 5), p->attack_decay);
-        put(l, (uint8_t)(v * 7 + 6), p->sustain_release);
+        put(l, (uint8_t)(v * 7 + 5), l->attack_decay);
+        put(l, (uint8_t)(v * 7 + 6), l->sustain_release);
         write_freq(l, v);
         put(l, (uint8_t)(v * 7 + 2), (uint8_t)l->pw_out);
         put(l, (uint8_t)(v * 7 + 3), (uint8_t)(l->pw_out >> 8));
@@ -184,6 +200,11 @@ static void load_preset(live* l, uint8_t index) {
     l->cutoff = p->cutoff;
     l->resonance = p->resonance;
     l->pulse_width = p->pulse_width;
+    l->control = p->control;
+    l->attack_decay = p->attack_decay;
+    l->sustain_release = p->sustain_release;
+    l->filter_voices = p->filter_voices;
+    l->filter_mode = p->filter_mode;
     l->lfo_phase = LFO_CENTRE;
     l->pw_out = pw_effective(l);
     for (int v = 0; v < LIVE_VOICES; ++v) {
@@ -374,6 +395,13 @@ void live_knob(live* l, live_knob_id knob, int32_t delta) {
     }
 }
 
+/* A reset of the chip with the model, then every register: every parameter is kept. */
+static void set_model(live* l, sid_model model) {
+    l->model = model;
+    put(l, LIVE_REG_RESET, (uint8_t)l->model);
+    write_all(l);
+}
+
 void live_button(live* l, live_button_id button) {
     switch (button) {
     case LIVE_BUTTON_OCT_DOWN:
@@ -387,17 +415,10 @@ void live_button(live* l, live_button_id button) {
         }
         break;
     case LIVE_BUTTON_FX:
-        l->model = l->model == SID_MODEL_6581 ? SID_MODEL_8580 : SID_MODEL_6581;
-        put(l, LIVE_REG_RESET, (uint8_t)l->model);
-        write_all(l);
+        set_model(l, l->model == SID_MODEL_6581 ? SID_MODEL_8580 : SID_MODEL_6581);
         break;
     default: break;
     }
-}
-
-/* value * max / 127, rounded. */
-static uint16_t scale7(uint8_t value, uint32_t max) {
-    return (uint16_t)((value * max + 63u) / 127u);
 }
 
 void live_set_master(live* l, uint16_t value) {
@@ -416,24 +437,151 @@ void live_cc(live* l, uint8_t cc, uint8_t value) {
     if (value > 127) {
         return;
     }
-    switch (cc) {
-    case LIVE_CC_VOLUME: live_set_master(l, scale7(value, LIVE_MASTER_MAX)); break;
-    case LIVE_CC_PULSE_WIDTH: set_pulse_width(l, scale7(value, LIVE_PULSE_WIDTH_MAX)); break;
-    case LIVE_CC_RESONANCE: set_resonance(l, (uint8_t)(value >> 3)); break;
-    case LIVE_CC_CUTOFF: set_cutoff(l, scale7(value, LIVE_CUTOFF_MAX)); break;
-    case LIVE_CC_ALL_SOUND_OFF:
-    case LIVE_CC_ALL_NOTES_OFF: live_all_notes_off(l); break;
+    if (cc == LIVE_CC_ALL_SOUND_OFF || cc == LIVE_CC_ALL_NOTES_OFF) {
+        live_all_notes_off(l);
+        return;
+    }
+    const midi_map_entry* e = midi_map_for_cc(cc);
+    if (e && e->param != MIDI_MAP_RESERVED) {
+        live_param_set(l, e->param, midi_map_from_cc(e, value));
+    }
+}
+
+/* The SID parameters' bits. */
+#define CTRL_WAVEFORM 0xf0u
+#define CTRL_RING 0x04u
+#define CTRL_SYNC 0x02u
+
+uint32_t live_param_max(uint32_t param) {
+    switch (param) {
+    case LIVE_PARAM_CUTOFF: return LIVE_CUTOFF_MAX;
+    case LIVE_PARAM_RESONANCE: return LIVE_RESONANCE_MAX;
+    case LIVE_PARAM_PULSE_WIDTH: return LIVE_PULSE_WIDTH_MAX;
+    case LIVE_PARAM_VOLUME: return LIVE_MASTER_MAX;
+    case LIVE_PARAM_WAVEFORM:
+    case LIVE_PARAM_ATTACK:
+    case LIVE_PARAM_DECAY:
+    case LIVE_PARAM_SUSTAIN:
+    case LIVE_PARAM_RELEASE: return 15u;
+    case LIVE_PARAM_RING:
+    case LIVE_PARAM_SYNC:
+    case LIVE_PARAM_MODEL: return 1u;
+    case LIVE_PARAM_FILTER_MODE:
+    case LIVE_PARAM_FILTER_VOICES: return 7u;
     default:
-        if (cc >= LIVE_CC_SLOT_FIRST && cc <= LIVE_CC_SLOT_LAST) {
-            uint32_t slot = (cc - LIVE_CC_SLOT_FIRST) / LIVE_SLOT_FIELDS;
-            uint32_t field = (cc - LIVE_CC_SLOT_FIRST) % LIVE_SLOT_FIELDS;
-            int32_t v = value;
-            if (field == LIVE_SLOT_ALGORITHM) {
-                v = (int32_t)(value * live_slot_algorithms(slot) / 128u);
-            }
-            live_slot_set(l, slot, field, v);
+        if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_COUNT) {
+            uint32_t slot = (param - LIVE_PARAM_SLOT) / LIVE_SLOT_FIELDS;
+            uint32_t field = (param - LIVE_PARAM_SLOT) % LIVE_SLOT_FIELDS;
+            return field == LIVE_SLOT_ALGORITHM ? live_slot_algorithms(slot) - 1u : LIVE_SLOT_MAX;
+        }
+        return 0;
+    }
+}
+
+/* Replaces the bits of mask in *field by value (already in place); 1 if that changed it. */
+static int set_bits(uint8_t* field, uint32_t mask, uint32_t value) {
+    uint8_t now = (uint8_t)((*field & ~mask) | (value & mask));
+    if (now == *field) {
+        return 0;
+    }
+    *field = now;
+    return 1;
+}
+
+void live_param_set(live* l, uint32_t param, uint32_t value) {
+    uint32_t max = live_param_max(param);
+    if (max == 0) {
+        return;
+    }
+    if (value > max) {
+        value = max;
+    }
+    switch (param) {
+    case LIVE_PARAM_CUTOFF: set_cutoff(l, (uint16_t)value); break;
+    case LIVE_PARAM_RESONANCE: set_resonance(l, (uint8_t)value); break;
+    case LIVE_PARAM_PULSE_WIDTH: set_pulse_width(l, (uint16_t)value); break;
+    case LIVE_PARAM_VOLUME: live_set_master(l, (uint16_t)value); break;
+    case LIVE_PARAM_WAVEFORM:
+        if (set_bits(&l->control, CTRL_WAVEFORM, value << 4)) {
+            write_controls(l);
         }
         break;
+    case LIVE_PARAM_RING:
+        if (set_bits(&l->control, CTRL_RING, value ? CTRL_RING : 0u)) {
+            write_controls(l);
+        }
+        break;
+    case LIVE_PARAM_SYNC:
+        if (set_bits(&l->control, CTRL_SYNC, value ? CTRL_SYNC : 0u)) {
+            write_controls(l);
+        }
+        break;
+    case LIVE_PARAM_ATTACK:
+        if (set_bits(&l->attack_decay, 0xf0u, value << 4)) {
+            write_envelopes(l);
+        }
+        break;
+    case LIVE_PARAM_DECAY:
+        if (set_bits(&l->attack_decay, 0x0fu, value)) {
+            write_envelopes(l);
+        }
+        break;
+    case LIVE_PARAM_SUSTAIN:
+        if (set_bits(&l->sustain_release, 0xf0u, value << 4)) {
+            write_envelopes(l);
+        }
+        break;
+    case LIVE_PARAM_RELEASE:
+        if (set_bits(&l->sustain_release, 0x0fu, value)) {
+            write_envelopes(l);
+        }
+        break;
+    case LIVE_PARAM_FILTER_MODE:
+        if (set_bits(&l->filter_mode, 0x70u, value << 4)) {
+            write_mode_vol(l);
+        }
+        break;
+    case LIVE_PARAM_FILTER_VOICES:
+        if (set_bits(&l->filter_voices, 0x07u, value)) {
+            write_res_filt(l);
+        }
+        break;
+    case LIVE_PARAM_MODEL: {
+        sid_model model = value ? SID_MODEL_8580 : SID_MODEL_6581;
+        if (model != l->model) {
+            set_model(l, model);
+        }
+        break;
+    }
+    default:
+        live_slot_set(l, (param - LIVE_PARAM_SLOT) / LIVE_SLOT_FIELDS,
+                      (param - LIVE_PARAM_SLOT) % LIVE_SLOT_FIELDS, (int32_t)value);
+        break;
+    }
+}
+
+uint32_t live_param_get(const live* l, uint32_t param) {
+    switch (param) {
+    case LIVE_PARAM_CUTOFF: return l->cutoff;
+    case LIVE_PARAM_RESONANCE: return l->resonance;
+    case LIVE_PARAM_PULSE_WIDTH: return l->pulse_width;
+    case LIVE_PARAM_VOLUME: return l->master;
+    case LIVE_PARAM_WAVEFORM: return l->control >> 4;
+    case LIVE_PARAM_RING: return (l->control & CTRL_RING) ? 1u : 0u;
+    case LIVE_PARAM_SYNC: return (l->control & CTRL_SYNC) ? 1u : 0u;
+    case LIVE_PARAM_ATTACK: return l->attack_decay >> 4;
+    case LIVE_PARAM_DECAY: return l->attack_decay & 0x0fu;
+    case LIVE_PARAM_SUSTAIN: return l->sustain_release >> 4;
+    case LIVE_PARAM_RELEASE: return l->sustain_release & 0x0fu;
+    case LIVE_PARAM_FILTER_MODE: return (l->filter_mode >> 4) & 7u;
+    case LIVE_PARAM_FILTER_VOICES: return l->filter_voices & 7u;
+    case LIVE_PARAM_MODEL: return l->model == SID_MODEL_8580 ? 1u : 0u;
+    default:
+        if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_COUNT) {
+            return l->slot[(param - LIVE_PARAM_SLOT) / LIVE_SLOT_FIELDS]
+                          [(param - LIVE_PARAM_SLOT) % LIVE_SLOT_FIELDS];
+        }
+        return 0;
     }
 }
 
