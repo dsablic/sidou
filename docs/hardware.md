@@ -64,12 +64,12 @@ copyrighted, so we link to them rather than copy them into this repo.
   FM-1.
 - **On-chip SRAM:** about 512 KB of general RAM (`ram0`
   0x01C00000–0x01C7FE00). The "578 KB" figure includes the cache arrays.
-  SIDOU's linker script uses the same regions as Felucca
-  (`platform/fm1/app.ld`).
+  SIDOU's linker script (`platform/fm1/app.ld`) uses Felucca's regions,
+  except that RAMTEXT is 48 KB instead of 24 KB (see "Code in SRAM").
 - **Execution from flash:** code runs XIP from the in-package flash through
   the I-cache, over dual-I/O SPI with the SFC at about 90 MHz (at a 360 MHz
   system clock). An I-cache miss is estimated at **400–600 CPU cycles**.
-  Hot audio code therefore runs from SRAM (`.ram_text`, a 24 KB region in
+  Hot audio code therefore runs from SRAM (`.ram_text`, a 48 KB region in
   `app.ld`; see "Code in SRAM" below).
 - **Call range:** a direct `call` or `goto` reaches about ±4 MB
   (relocation `R_PI32V2_LONG_JUMP_23M2`), and SRAM code at 0x01C0xxxx is
@@ -142,10 +142,27 @@ pseudo-register handler): **22,280 of 24,576 bytes** with M1a's flash driver
 (`fl_*_ram`, ~2.8 KB). They fit because the expensive algorithm inits (tables,
 reverb layouts) run once in `sid_slots_init`, in flash, as templates that the
 interrupt only copies; with those inits in the interrupt it was 26,920
-bytes. Growing the slots further needs one of:
+bytes.
+
+M1b's exact SID core (register reads, combined waveforms, the envelope
+pipeline) brings `.ram_text` to about 32 KB, so RAMTEXT is now **48 KB**
+(0x01C00000–0x01C0C000), twice Felucca's 24 KB. Nothing on the hardware set
+the 24 KB: it was Felucca's inherited layout. SRAM is not cached, the SDK
+treats all of `ram0` as rwx, and the update loader at 0x01C0A800 runs only
+from the SPL after a reset, never next to the app. The layout:
+
+| Region | Range | Size |
+|---|---|---|
+| RAMTEXT | 0x01C00000–0x01C0C000 | 48 KB |
+| RAM-run debug area (crt0.S's boot words at 0x01C0DF20) | 0x01C0C000–0x01C0E000 | 8 KB |
+| RAM | 0x01C0E000–0x01C20000 | 72 KB |
+| POOL | 0x01C20000–0x01C74000 | 336 KB |
+
+Headroom beyond 48 KB, if the audio path ever needs it:
 - `-Os` for `core/fx` (about 3.3 KB smaller, at a cycle cost not yet
   measured);
-- RAMTEXT into the 8 KB RAM-run debug area at 0x01C06000 (owner's call);
+- RAMTEXT further up, taking from POOL (RAM and the debug area move with
+  it);
 - moving the flash driver out of RAMTEXT (it only runs with the audio
   stopped, so it could be copied into the slots' pool for an update), which
   touches the vendored update path. It also needs POOL to be executable:
@@ -163,8 +180,9 @@ The rules for keeping it that way:
   helpers that the compiler inlines need nothing. A new non-inlined helper
   (in `sid_env`, `sid_osc` or a new `.c` file) needs its section added to the
   rules: if it is missed, it stays in `.text`, at least 0x400158 bytes from
-  SRAM, and the **link fails** with "relocation truncated to fit" against
-  it.
+  SRAM, and the link **usually fails** with "relocation truncated to fit"
+  against it. It may still link where the two happen to lie in reach, so the
+  link is no guarantee: the relocation test below is the guard.
 - **No direct call crosses between flash and SRAM** (see "Call range"
   above). Code shared by both sides is `static inline` (as `sid_svf_set`),
   or the flash side calls through a pointer. The firmware links with

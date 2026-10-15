@@ -1,11 +1,13 @@
 /* SPDX-FileCopyrightText: 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
  * SPDX-FileCopyrightText: 2026 SIDOU contributors
  * SPDX-License-Identifier: GPL-3.0-only
- * SIDOU memory map: Felucca's firmware/app.ld, without the second core's .c1_text.
+ * SIDOU memory map: Felucca's firmware/app.ld, without the second core's .c1_text, and with
+ * RAMTEXT at 48 KB instead of Felucca's 24 KB (RAM and the debug area moved up, POOL starts
+ * higher; docs/hardware.md, "Code in SRAM").
  * XIP    : code and constants, executed in place; app.bin offset 0 = 0x02000120.
  * RAMTEXT: .ram_text, code that runs from SRAM: the audio path (no I-cache misses on flash
  *          in the audio interrupt) and code that runs while XIP is off (the flash driver).
- *          0x01C06000..0x01C08000 stays free for RAM-run debug (crt0.S writes there).
+ *          0x01C0C000..0x01C0E000 stays free for RAM-run debug (crt0.S writes there).
  * RAM    : .data/.bss, what the interrupts touch and small variables.
  * POOL   : big zero-initialised buffers (section .pool).
  * NOINIT : survives resets (the crash record, fm1_irq.h).
@@ -14,9 +16,9 @@
 MEMORY
 {
     XIP     (rx)  : ORIGIN = 0x02000120, LENGTH = 0x8DFBC
-    RAMTEXT (rwx) : ORIGIN = 0x01C00000, LENGTH = 0x6000
-    RAM     (rwx) : ORIGIN = 0x01C08000, LENGTH = 72K
-    POOL    (rw)  : ORIGIN = 0x01C1A000, LENGTH = 0x5A000
+    RAMTEXT (rwx) : ORIGIN = 0x01C00000, LENGTH = 48K
+    RAM     (rwx) : ORIGIN = 0x01C0E000, LENGTH = 72K
+    POOL    (rw)  : ORIGIN = 0x01C20000, LENGTH = 0x54000
     NOINIT  (rw)  : ORIGIN = 0x01C7C000, LENGTH = 0x3D50
 }
 SECTIONS
@@ -30,15 +32,16 @@ SECTIONS
      * The audio path, one section per function (the device build uses -ffunction-sections):
      * the ALNK0 entry and its C body, the render, the register-ring drain, and what they call.
      * No attributes in the portable C: these rules are the only place that says what runs
-     * from SRAM. No direct call may cross between this code and flash code: the pi32v2's
-     * branch reach (about 4 MB) does not span SRAM to XIP. So a function the audio path calls
-     * directly and these rules miss (a new non-inlined envelope or oscillator helper, say)
-     * fails the link with "relocation truncated to fit": add its section here. Code shared
-     * with flash callers is static inline, or they call through a pointer (audio.c
-     * far_drain). The emulator tests (emu-gate tests/ram_audio.rs) check the linker's
-     * relocations for crossings that happen to be in reach (the firmware links with
-     * --emit-relocs), and that the ALNK0 interrupt runs only from here, which also covers
-     * code entered through an absolute address (the vector, a future callback).
+     * from SRAM. No direct call may cross between this code and flash code: SRAM is at the
+     * edge of the pi32v2's branch reach (about 4 MB) from XIP. So a function the audio path
+     * calls directly and these rules miss (a new non-inlined envelope or oscillator helper,
+     * say) usually fails the link with "relocation truncated to fit" (add its section here),
+     * but may link where the two happen to lie in reach. The guard is the emulator tests
+     * (emu-gate tests/ram_audio.rs): they check the linker's relocations for any crossing
+     * (the firmware links with --emit-relocs), and that the ALNK0 interrupt runs only from
+     * here, which also covers code entered through an absolute address (the vector, a future
+     * callback). Code shared with flash callers is static inline, or they call through a
+     * pointer (audio.c far_drain).
      * Constant tables stay in .rodata in flash (XIP data reads go through the D-cache), unless
      * a measurement shows one is hot. docs/hardware.md, "Code in SRAM", has the rules. */
     .ram_text : {
@@ -89,8 +92,8 @@ ASSERT(LOADADDR(.ram_text) == ADDR(.entry) + SIZEOF(.entry), "app.ld: .ram_text 
 ASSERT(ADDR(.text) == LOADADDR(.ram_text) + SIZEOF(.ram_text), "app.ld: .text must follow .ram_text's image")
 ASSERT(LOADADDR(.data) == ADDR(.text) + SIZEOF(.text), "app.ld: .data must load right after .text")
 ASSERT(_data_start == ADDR(.data) && _data_end == ADDR(.data) + SIZEOF(.data), "app.ld: _data_* must bound .data")
-ASSERT(_rt_end <= 0x01C06000, "app.ld: .ram_text runs into the RAM-run debug area")
-ASSERT(SIZEOF(.ram_text) <= 24K, "app.ld: .ram_text is over RAMTEXT's 24 KB")
+ASSERT(_rt_end <= 0x01C0C000, "app.ld: .ram_text runs into the RAM-run debug area")
+ASSERT(SIZEOF(.ram_text) <= 48K, "app.ld: .ram_text is over RAMTEXT's 48 KB")
 ASSERT(ADDR(.ram_text) == ORIGIN(RAMTEXT), "app.ld: .ram_text must start at RAMTEXT")
 /* The region lengths already keep each section inside its region; these guard the constants
  * above against an edit that moves a region or a stack into its neighbour. */

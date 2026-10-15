@@ -5,9 +5,9 @@
 //! between flash and SRAM code (at the edge of the pi32v2's branch reach).
 //!
 //! What catches what: a function the audio path calls directly but the `.ram_text` rules
-//! miss stays in `.text`, at least 0x400158 bytes from SRAM, and the link fails with
-//! "relocation truncated to fit" (R_PI32V2_LONG_JUMP_23M2). The relocation test below also
-//! rejects crossings that happen to be in reach. Only code entered through an absolute
+//! miss stays in `.text`, at least 0x400158 bytes from SRAM, and the link usually fails with
+//! "relocation truncated to fit" (R_PI32V2_LONG_JUMP_23M2). It need not: the relocation
+//! test below is the guard, and rejects crossings that happen to be in reach. Only code entered through an absolute
 //! address (the ISR vector, a future callback through a pointer) can run from flash with
 //! everything linking; the interrupt test catches that.
 //!
@@ -22,7 +22,7 @@ use common::{build_dir, Firmware, Machine, APP_BASE};
 use fm1_core::Bus;
 
 /// RAMTEXT's size in app.ld.
-const RAMTEXT_BYTES: u32 = 24 * 1024;
+const RAMTEXT_BYTES: u32 = 48 * 1024;
 /// A4's key id, held so the render has a voice to run.
 const A4_KEY: u8 = 30;
 
