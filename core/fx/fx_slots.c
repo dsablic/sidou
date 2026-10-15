@@ -5,6 +5,11 @@
 /* Every 32 samples of the slots' own clock. */
 #define SNAP_MASK 31u
 
+/* Read by sid_slots_set in the audio path: RAM on the device, not flash
+ * (emu-gate tests/ram_audio.rs). */
+#ifdef __PI32V2__
+__attribute__((section(".data.sid_slots_algorithms")))
+#endif
 static const uint32_t ALGORITHMS[SID_SLOT_COUNT] = {SID_DIST_COUNT, SID_MOD_COUNT,
                                                     SID_FXSLOT_COUNT};
 

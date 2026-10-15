@@ -337,6 +337,9 @@ you can.
 - [ ] Cycles per audio block against fm1-emu's instruction count, and the
   gain from running the audio path from SRAM (docs/hardware.md, open
   checks).
+- [ ] Cycles per audio block with combined waveforms on both chips against
+  single waveforms: the combined waveforms' pulldown rows are the audio
+  interrupt's only flash data reads (docs/hardware.md, open checks).
 - [ ] USB poll cost with a host attached (three SIE round trips per poll at
   2 kHz).
 - [ ] Divide and IRQ-entry latencies.

@@ -5,12 +5,16 @@
  * The noise register's shift applied 2^k times, k = 0..22, as GF(2) matrices:
  * SID_NOISE_JUMP[k][i] is the register after 2^k shifts of bit i alone, so the
  * register after 2^k shifts is the XOR of the columns of its set bits
- * (sid_noise_jump in sid_osc.h). */
+ * (sid_noise_jump in sid_osc.h). The audio path reads it (a control write after
+ * deferred shifts): RAM on the device, not flash (emu-gate tests/ram_audio.rs). */
 #ifndef SIDOU_GEN_NOISE_JUMP_H
 #define SIDOU_GEN_NOISE_JUMP_H
 
 #include <stdint.h>
 
+#ifdef __PI32V2__
+__attribute__((section(".data.sid_noise_jump")))
+#endif
 static const uint32_t SID_NOISE_JUMP[23][23] = {
     {0x400000, 0x000001, 0x000002, 0x000004, 0x000008, 0x400010, 0x000020, 0x000040,
      0x000080, 0x000100, 0x000200, 0x000400, 0x000800, 0x001000, 0x002000, 0x004000,

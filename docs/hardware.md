@@ -202,15 +202,28 @@ The rules for keeping it that way:
 - **The tests** (`emu-gate tests/ram_audio.rs`): the firmware links with
   `--emit-relocs`, and every branch relocation must have its site and its
   target in the same region, which catches a crossing that happens to be in
-  reach. An emulator run checks that the ALNK0 interrupt executes only
+  reach. No address relocation in `.ram_text` may point into XIP (flash
+  data or code). An emulator run checks that the ALNK0 interrupt executes only
   `.ram_text`: that is the only check for code entered through an absolute
   address (the vector, a future callback through a pointer), which links
   wherever it lies. (The disassembly is no authority: JieLi's objdump does
   not decode the FPU instructions and misreads the halfwords after them.)
-- **Constant tables stay in flash** (`.rodata`): XIP data reads go through
-  the D-cache. Move one only when a device measurement shows it's hot. The
-  audio path therefore still needs XIP: it can't run while the flash is
-  being written.
+- **Tables the audio path names are in RAM.** The compiler places a
+  `static const` table in `.rodata`, in flash, and a read from it in the
+  audio interrupt can miss the D-cache and wait on the flash. So a table that
+  `.ram_text` code reads goes to `.data` on the device
+  (`__attribute__((section(".data.<name>")))` under `__PI32V2__`, as
+  `SID_NOISE_WB`, `SID_NOISE_JUMP`, `SID_ENV_RATE_POS`,
+  `SID_ENV_THRESHOLDS` and the slots' `ALGORITHMS`). `ram_audio.rs` checks
+  every address the `.ram_text` code loads. Other constant tables stay in
+  flash.
+- **One flash read remains, by design:** the combined waveforms' pulldown
+  rows (`gen/wave_*.h`, 61,440 bytes for the default profile), which the
+  oscillator reads through `sid_osc.pulldown` while a combined waveform
+  plays. They are too big for RAM, and the relocation check cannot see a
+  read through a pointer. Whether they cost cache misses in the audio
+  interrupt is an open check below. The audio path therefore still needs
+  XIP: it can't run while the flash is being written.
 
 ## Opportunities, ranked
 
@@ -257,6 +270,7 @@ These follow from the facts above. Each needs measuring before it's adopted.
 | Actual CPU clock | Melodee measured 360 MHz; the budget assumes 240. | Time a dependent-add loop against TIMER4, or read the `TL_CKCNT` counter. |
 | Cycles vs instructions | The emulator counts instructions, not cycles. Flash (XIP) fetches and divides cost more. | Read the per-core counters around an audio block; compare `.text` with `.ram_text`. |
 | The audio path from SRAM | fm1-emu doesn't model the I-cache, so Task 5b's benefit is unmeasured. | Cycles per audio block (TIMER4 or `TL_CKCNT`) and fetch misses (`IF_UACNT`), with the LCD redrawing, in a build with `.ram_text`'s audio rules and one without. |
+| Combined waveforms from flash | The pulldown rows (6 KB per waveform and chip, `.rodata`) are the audio interrupt's only flash data reads. | Cycles per audio block with two chips on combined waveforms against single waveforms (TIMER4 or `TL_CKCNT`), and D-cache misses if a counter shows them. If they cost, move the default profile's rows to POOL (a loaded section, copied at boot). |
 | The USB retry's stall | Without a cable, the attach `usb_retry` runs once a second times out three SIE writes in one main-loop pass (300k instructions in fm1-emu). | Time `usb_attach_now` against TIMER4 on a unit powered on without a cable. If it is well over a millisecond, poll less or stop at the first timeout. |
 | Unknown latencies | Divide latency, IRQ entry latency, `IPMASK` semantics, and whether IRQ priorities have 4 or 8 levels | Microbenchmarks on the device. |
 | Second core RAM issue | Some units misread RAM on core 1. | Felucca's core-1 self-test, before SIDOU ever uses core 1. |

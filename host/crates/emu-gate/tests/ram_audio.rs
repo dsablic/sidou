@@ -179,3 +179,69 @@ fn no_direct_branch_crosses_between_flash_and_sram() {
         "direct branches between flash and SRAM code: {crossing:?}"
     );
 }
+
+/// The flash region the core executes and reads in place (XIP), app.ld's `XIP`.
+const XIP: std::ops::Range<u64> = 0x0200_0000..0x0300_0000;
+
+/// The audio path reads no data from flash: every address the `.ram_text` code loads
+/// (`MOV_ABS32`, `ABS32`) lies in SRAM (RAM, POOL), not in XIP, where a read in the audio
+/// interrupt can miss the cache and wait on the flash. A constant table that code inlined into
+/// the audio path reads (the compiler places `static const` in `.rodata`, in flash) goes to
+/// `.data` on the device (`__attribute__((section(".data.<name>")))` under `__PI32V2__`, as
+/// `SID_NOISE_WB`). This sees only addresses the code itself names: data reached through a
+/// pointer set up outside the audio path (the combined waveforms' pulldown rows,
+/// `sid_osc.pulldown`, in flash by design; the DAC tables, in POOL) is not checked here.
+#[test]
+fn the_audio_path_reads_no_data_from_flash() {
+    use object::{Object, ObjectSection, ObjectSymbol, RelocationFlags, RelocationTarget};
+    let Some((_, fw)) = fixture("the SRAM audio test") else {
+        return;
+    };
+    let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
+    let ram_text = file
+        .section_by_name(".ram_text")
+        .expect("no .ram_text section");
+    let (mut loads, mut in_flash) = (0, Vec::new());
+    for (offset, rel) in ram_text.relocations() {
+        let RelocationFlags::Elf { r_type } = rel.flags() else {
+            panic!("not an ELF relocation");
+        };
+        if r_type == R_LONG_JUMP_23M2 {
+            continue; // no_direct_branch_crosses_between_flash_and_sram
+        }
+        assert!(
+            matches!(r_type, R_MOV_ABS32 | R_ABS32),
+            "relocation type {r_type} at {offset:#x} in .ram_text: classify it in this test"
+        );
+        loads += 1;
+        let RelocationTarget::Symbol(sym) = rel.target() else {
+            panic!("an address at {offset:#x} without a symbol");
+        };
+        let sym = file.symbol_by_index(sym).expect("relocation symbol");
+        let target = sym.address().wrapping_add_signed(rel.addend());
+        if XIP.contains(&target) {
+            let name = file
+                .symbols()
+                .filter(|s| s.size() > 0)
+                .find(|s| (s.address()..s.address() + s.size()).contains(&target))
+                .and_then(|s| s.name().ok())
+                .unwrap_or("?");
+            in_flash.push(format!(
+                "{} -> {name} ({target:#010x})",
+                fw.function_at(offset as u32)
+            ));
+        }
+    }
+    println!(
+        "{loads} address loads in .ram_text, {} into flash",
+        in_flash.len()
+    );
+    assert!(
+        loads > 5,
+        "only {loads} address loads in .ram_text: --emit-relocs?"
+    );
+    assert!(
+        in_flash.is_empty(),
+        "the audio path reads flash (XIP) data: put these in .data on the device: {in_flash:?}"
+    );
+}

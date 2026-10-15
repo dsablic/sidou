@@ -42,8 +42,10 @@ SECTIONS
      * here, which also covers code entered through an absolute address (the vector, a future
      * callback). Code shared with flash callers is static inline, or they call through a
      * pointer (audio.c far_drain).
-     * Constant tables stay in .rodata in flash (XIP data reads go through the D-cache), unless
-     * a measurement shows one is hot. docs/hardware.md, "Code in SRAM", has the rules. */
+     * Constant tables stay in .rodata in flash (XIP data reads go through the D-cache), except
+     * those this code reads: their definitions put them in .data (RAM), and ram_audio.rs fails
+     * on any address this code loads from XIP. The pulldown rows, read through a pointer, stay
+     * in flash. docs/hardware.md, "Code in SRAM", has the rules. */
     .ram_text : {
         _rt_start = .;
         KEEP(*(.ram_text*))

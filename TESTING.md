@@ -597,7 +597,12 @@ Checks of where the audio path runs, in
   `--emit-relocs`, and every branch relocation's site and target must lie in
   the same region ([docs/hardware.md](docs/hardware.md), "Code in SRAM").
   A function the audio path calls but `app.ld` leaves in flash fails the
-  link before any test runs.
+  link before any test runs;
+- the audio path reads no data from flash: no address relocation in
+  `.ram_text` (`MOV_ABS32`, `ABS32`) points into XIP. A constant table that
+  audio code reads must be in `.data` on the device; a failure names the
+  function and the table. Data reached through a pointer set up elsewhere
+  (the combined waveforms' pulldown rows, in flash by design) is not seen.
 
 fm1-emu does not model the I-cache, so the benefit is a hardware
 measurement (docs/hardware.md, open checks).
