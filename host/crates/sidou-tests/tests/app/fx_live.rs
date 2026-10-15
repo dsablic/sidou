@@ -188,27 +188,68 @@ fn fx_live_applies_slot_registers_and_nothing_else() {
     }
 }
 
+/// What the drain delivered, in order: a pseudo-register apply, or a SID write seen as a
+/// change in the active chip's cutoff or resonance.
+#[derive(Debug, PartialEq)]
+enum Delivered {
+    Slot(u8, u8),
+    Cutoff,
+    Resonance,
+}
+
+/// Wraps fx_live_pseudo: before each apply, records the SID writes that landed since the
+/// last one (the drain has no SID-write hook, so they show as chip state changes).
+struct Recorder {
+    fx: *mut fx_live,
+    chips: *const reg_ring_chips,
+    fc: u32,
+    res: u8,
+    seen: Vec<Delivered>,
+}
+
+impl Recorder {
+    fn catch_up(&mut self) {
+        let c = unsafe { &*self.chips };
+        let chip = &c.chip[usize::from(c.active)];
+        if chip.fc != self.fc {
+            self.fc = chip.fc;
+            self.seen.push(Delivered::Cutoff);
+        }
+        if chip.res != self.res {
+            self.res = chip.res;
+            self.seen.push(Delivered::Resonance);
+        }
+    }
+}
+
+unsafe extern "C" fn record_pseudo(ctx: *mut c_void, reg: u8, value: u8) {
+    let r = unsafe { &mut *ctx.cast::<Recorder>() };
+    r.catch_up();
+    r.seen.push(Delivered::Slot(reg, value));
+    unsafe { fx_live_pseudo(r.fx.cast(), reg, value) };
+}
+
 /// The device's path: live -> reg_ring_sink -> ring -> drain -> pseudo handler -> slots.
+/// Slot settings and SID writes interleaved in one pass come out of the drain in the order
+/// live sent them.
 #[test]
 fn slot_settings_cross_the_register_ring_in_order() {
     let (mut s, _pool) = slots_box();
     let mut f = Box::<fx_live>::default();
     unsafe { fx_live_init(&mut *f, &mut *s) };
     let mut ring = Box::<reg_ring>::default();
-    let mut chips = Box::<reg_ring_chips>::default();
+    let chips: *mut reg_ring_chips = Box::into_raw(Box::<reg_ring_chips>::default());
     unsafe {
         reg_ring_init(&mut *ring);
-        reg_ring_chips_init(&mut *chips, SID_MODEL_6581, SID_CLOCK_PAL, 44100);
+        reg_ring_chips_init(chips, SID_MODEL_6581, SID_CLOCK_PAL, 44100);
     }
-    chips.pseudo = Some(fx_live_pseudo);
-    chips.pseudo_ctx = (&mut *f as *mut fx_live).cast::<c_void>();
     unsafe extern "C" fn drain_now(ctx: *mut c_void) {
         let o = unsafe { &mut *ctx.cast::<reg_ring_out>() };
         unsafe { reg_ring_drain(o.ring, o.chips) };
     }
     let mut out = Box::new(reg_ring_out {
         ring: &mut *ring,
-        chips: &mut *chips,
+        chips,
         wait: Some(drain_now),
         wait_ctx: std::ptr::null_mut(),
         full_waits: 0,
@@ -220,30 +261,56 @@ fn slot_settings_cross_the_register_ring_in_order() {
     unsafe {
         live_init(&mut *l, Some(reg_ring_sink), out_ptr.cast(), SID_MODEL_6581);
         reg_ring_commit(&mut *ring);
-        reg_ring_drain(&mut *ring, &mut *chips);
-        live_slot_set(
-            &mut *l,
-            2,
-            LIVE_SLOT_ALGORITHM,
-            SID_FXSLOT_REVERB_LUSH as i32,
-        );
-        live_slot_set(&mut *l, 2, LIVE_SLOT_MIX, 127);
+        reg_ring_drain(&mut *ring, chips);
     }
-    let fc_before = chips.chip[usize::from(chips.active)].fc;
-    unsafe { live_cc(&mut *l, 74, 127) }; // a SID write in the same batch
+    let (fc, res) = unsafe {
+        let c = &*chips;
+        let chip = &c.chip[usize::from(c.active)];
+        (chip.fc, chip.res)
+    };
+    let mut rec = Box::new(Recorder {
+        fx: &mut *f,
+        chips,
+        fc,
+        res,
+        seen: Vec::new(),
+    });
+    unsafe {
+        (*chips).pseudo = Some(record_pseudo);
+        (*chips).pseudo_ctx = (&mut *rec as *mut Recorder).cast();
+    }
+
+    let lush = SID_FXSLOT_REVERB_LUSH as u8;
+    unsafe {
+        live_slot_set(&mut *l, 2, LIVE_SLOT_ALGORITHM, i32::from(lush));
+        live_cc(&mut *l, LIVE_CC_CUTOFF as u8, 127);
+        live_slot_set(&mut *l, 2, LIVE_SLOT_MIX, 127);
+        live_cc(&mut *l, LIVE_CC_RESONANCE as u8, 127);
+        live_slot_set(&mut *l, 2, LIVE_SLOT_AMOUNT, 64);
+    }
+    assert!(rec.seen.is_empty(), "nothing before the drain");
     assert_eq!(s.slot[2].target.algorithm, 0, "nothing before the drain");
     unsafe {
         reg_ring_commit(&mut *ring);
-        reg_ring_drain(&mut *ring, &mut *chips);
+        reg_ring_drain(&mut *ring, chips);
     }
+    rec.catch_up();
+    assert_eq!(
+        rec.seen,
+        [
+            Delivered::Slot(slot_reg(2, LIVE_SLOT_ALGORITHM), lush),
+            Delivered::Cutoff,
+            Delivered::Slot(slot_reg(2, LIVE_SLOT_MIX), 127),
+            Delivered::Resonance,
+            Delivered::Slot(slot_reg(2, LIVE_SLOT_AMOUNT), 64),
+        ],
+        "delivered in the order sent"
+    );
     assert_eq!(s.slot[2].target.algorithm, SID_FXSLOT_REVERB_LUSH);
     assert_eq!(s.slot[2].target.mix, 1.0);
-    assert_eq!(chips.lost_resets, 0);
-    assert_ne!(
-        chips.chip[usize::from(chips.active)].fc,
-        fc_before,
-        "the SID write landed too"
-    );
+    assert_eq!(unsafe { (*chips).lost_resets }, 0);
+    drop(out);
+    drop(unsafe { Box::from_raw(chips) });
 }
 
 #[test]

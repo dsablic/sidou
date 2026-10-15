@@ -8,14 +8,7 @@
 
 mod common;
 
-use std::ffi::c_void;
-
-use common::{build_dir, Firmware, Machine};
-use sidou_sys::{
-    fx_live, fx_live_init, fx_live_sid_sink, fx_live_target, live, live_init, live_note_on,
-    live_set_master, live_sid_target, sid, sid_render, sid_slot_pool, sid_slots, sid_slots_init,
-    sid_slots_process, SID_CLOCK_PAL, SID_MODEL_6581,
-};
+use common::{build_dir, max_diff, render_host, Firmware, Machine, HALF_FRAMES};
 use sidou_tests::signal_metrics::estimate_f0;
 
 const RUN_MS: u64 = 900;
@@ -23,68 +16,16 @@ const RUN_MS: u64 = 900;
 const BOOT_MS_MAX: u64 = 400;
 /// 24 MHz / 544, the I2S frame rate.
 const FS: f64 = 24e6 / 544.0;
-/// platform/fm1/audio.h AUDIO_SAMPLE_RATE and AUDIO_HALF_FRAMES.
-const SAMPLE_RATE: u32 = 44_118;
-const HALF_FRAMES: usize = 128;
 /// The A4 key (note key 16 = MIDI 69, Felucca id 30) and its pitch.
 const A4_KEY: u8 = 30;
 const A4: u8 = 69;
 const TONE_HZ: f64 = 440.0;
-/// fm1-emu's MASTER pot reading at power-on.
-const POT: u16 = 900;
 /// The DMA plays the zeroed buffer before the first half the interrupt filled.
 const MAX_SILENT_HALVES: usize = 4;
 /// The note-on lands in one of the first blocks (the key debounce is ~2 ms).
 const MAX_NOTE_BLOCK: usize = 16;
 /// The tone is checked after this much output, once the attack and DC blocker settled.
 const SETTLE_MS: f64 = 100.0;
-
-/// platform/fm1/audio.c SLOTS_SEED.
-const SLOTS_SEED: u32 = 0x51D0;
-
-/// The firmware's instrument at boot (platform/fm1/main.c: live_init, then the MASTER pot),
-/// rendered by the host build in blocks as audio_fill does (the chip, then the effect
-/// slots), with the A4 note-on before block `note_block`. Interleaved L, R.
-fn render_host(frames: usize, note_block: usize) -> Vec<i16> {
-    let mut chip = Box::<sid>::default();
-    let mut pool = Box::<sid_slot_pool>::default();
-    let mut slots = Box::<sid_slots>::default();
-    let mut fx = Box::<fx_live>::default();
-    let mut target = Box::new(fx_live_target {
-        sid: live_sid_target {
-            chip: &mut *chip,
-            clock_hz: SID_CLOCK_PAL,
-            sample_rate: SAMPLE_RATE,
-        },
-        fx: &mut *fx,
-    });
-    let mut l = Box::<live>::default();
-    let t: *mut fx_live_target = &mut *target;
-    let mut out = vec![0i16; 2 * frames];
-    let mut mono = vec![0i16; HALF_FRAMES];
-    // SAFETY: everything C keeps a pointer to is boxed and outlives the calls; the buffers
-    // hold the samples asked for.
-    unsafe {
-        sid_slots_init(&mut *slots, SAMPLE_RATE, SLOTS_SEED, &mut *pool);
-        fx_live_init(&mut *fx, &mut *slots);
-        live_init(
-            &mut *l,
-            Some(fx_live_sid_sink),
-            t.cast::<c_void>(),
-            SID_MODEL_6581,
-        );
-        live_set_master(&mut *l, POT);
-        for (i, half) in out.chunks_mut(2 * HALF_FRAMES).enumerate() {
-            if i == note_block {
-                live_note_on(&mut *l, A4, 100);
-            }
-            let n = half.len() / 2;
-            sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
-            sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
-        }
-    }
-    out
-}
 
 #[test]
 fn boots_and_plays_a_held_key_sample_exact() {
@@ -122,13 +63,8 @@ fn boots_and_plays_a_held_key_sample_exact() {
         }
         let played = &audio[2 * silent * HALF_FRAMES..];
         for k in 0..MAX_NOTE_BLOCK {
-            let host = render_host(played.len() / 2, k);
-            let d = played
-                .iter()
-                .zip(&host)
-                .map(|(&a, &b)| (i32::from(a) - i32::from(b)).abs())
-                .max()
-                .unwrap_or(0);
+            let host = render_host(played.len() / 2, A4, k, (0, &[]));
+            let d = max_diff(played, &host);
             min_diff = min_diff.min(d);
             if d == 0 {
                 best = Some((silent, k));

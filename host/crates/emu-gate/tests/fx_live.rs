@@ -6,7 +6,7 @@
 
 mod common;
 
-use common::{build_dir, peak, power_above, Firmware, Machine};
+use common::{build_dir, max_diff, peak, power_above, render_host, Firmware, Machine, HALF_FRAMES};
 use sidou_sys::{
     LIVE_CC_SLOT_FIRST, LIVE_SLOT_FIELDS, SID_DIST_COUNT, SID_DIST_OVERDRIVE, SID_FXSLOT_COUNT,
     SID_FXSLOT_REVERB_LIGHT, SID_FXSLOT_REVERB_LUSH, SID_MOD_CHORUS, SID_MOD_COUNT,
@@ -23,6 +23,10 @@ const A4: u8 = 69;
 /// The audio target (design doc section 8), per sample, and a block of 128 frames.
 const AUDIO_TARGET: f64 = 2700.0;
 const BLOCK_FRAMES: f64 = 128.0;
+/// The DMA plays the zeroed buffer before the first half the interrupt filled.
+const MAX_SILENT_HALVES: usize = 4;
+/// How many blocks after it was sent a CC or a key press may reach the interrupt.
+const LATE_BLOCKS: usize = 8;
 
 fn fixture(what: &str) -> Option<Firmware> {
     let Some(build) = build_dir() else {
@@ -172,6 +176,77 @@ fn trs_ccs_turn_on_the_reverb_in_stereo_with_a_tail() {
         "no tail after the note"
     );
     assert!(correlation(&wtl, &wtr) < 0.8, "the tail is not wide");
+}
+
+/// The slot CCs of the sample-exact test: OVERDRIVE in Distortion, the light reverb in FX.
+fn overdrive_and_reverb_ccs() -> Vec<(u8, u8)> {
+    let cc = |slot: u32, field: u32| (LIVE_CC_SLOT_FIRST + slot * LIVE_SLOT_FIELDS + field) as u8;
+    vec![
+        (cc(0, 0), algorithm_cc(SID_DIST_OVERDRIVE, SID_DIST_COUNT)),
+        (cc(0, 1), 100),
+        (cc(0, 4), 127),
+        (
+            cc(2, 0),
+            algorithm_cc(SID_FXSLOT_REVERB_LIGHT, SID_FXSLOT_COUNT),
+        ),
+        (cc(2, 1), 100),
+        (cc(2, 4), 90),
+    ]
+}
+
+/// The device's audio_fill with two slots on matches the host build sample for sample on
+/// both channels: the slots switched on over TRS MIDI, then the A4 key pressed.
+#[test]
+fn the_slots_on_the_device_match_the_host_sample_exact() {
+    let Some(fw) = fixture("the effects test") else {
+        return;
+    };
+    let ccs = overdrive_and_reverb_ccs();
+    let mut m = booted(&fw);
+    let halves = |m: &Machine| m.soc.periph.audio.len() / (2 * HALF_FRAMES);
+    let cc_sent = halves(&m);
+    for &(cc, value) in &ccs {
+        m.midi(&[0xB0, cc, value]);
+    }
+    m.run_ms(100);
+    let key_sent = halves(&m);
+    m.key(A4_KEY, true);
+    m.run_ms(400);
+    let audio = m.soc.periph.audio.clone();
+    assert!(m.left() != m.right(), "the reverb's output is mono");
+
+    // The blocks the CCs and the note-on reached the interrupt in depend on the MIDI drain
+    // and the key scan: search a few blocks after each was sent.
+    let mut found = None;
+    let mut min_diff = i32::MAX;
+    'search: for silent in 0..=MAX_SILENT_HALVES {
+        if audio[..2 * silent * HALF_FRAMES].iter().any(|&s| s != 0) {
+            break; // the DMA's zeros only come before the first rendered half
+        }
+        let played = &audio[2 * silent * HALF_FRAMES..];
+        for cc_block in (cc_sent - silent..).take(LATE_BLOCKS) {
+            for note_block in (key_sent - silent..).take(LATE_BLOCKS) {
+                let host = render_host(played.len() / 2, A4, note_block, (cc_block, &ccs));
+                let d = max_diff(played, &host);
+                min_diff = min_diff.min(d);
+                if d == 0 {
+                    found = Some((silent, cc_block, note_block));
+                    break 'search;
+                }
+            }
+        }
+    }
+    println!(
+        "slots on the device vs host: (silent halves, CC block, note block) {found:?} \
+         (sent before blocks {cc_sent}, {key_sent}), closest max difference {min_diff} LSB \
+         over {} frames",
+        audio.len() / 2
+    );
+    assert!(
+        found.is_some(),
+        "the firmware's audio with OVERDRIVE and the reverb on matches no host render: \
+         closest max difference {min_diff} LSB"
+    );
 }
 
 #[test]

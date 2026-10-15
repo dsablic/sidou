@@ -333,6 +333,80 @@ impl Machine {
 /// 24 MHz / 544, the I2S frame rate.
 pub const FS: f64 = 24e6 / 544.0;
 
+/// platform/fm1/audio.h AUDIO_SAMPLE_RATE and AUDIO_HALF_FRAMES.
+pub const SAMPLE_RATE: u32 = 44_118;
+pub const HALF_FRAMES: usize = 128;
+/// fm1-emu's MASTER pot reading at power-on.
+pub const POT: u16 = 900;
+/// platform/fm1/audio.c SLOTS_SEED.
+pub const SLOTS_SEED: u32 = 0x51D0;
+
+/// The firmware's instrument at boot (platform/fm1/main.c: live_init, then the MASTER pot),
+/// rendered by the host build in blocks as audio_fill does (the chip, then the effect
+/// slots). Before block `note_block` the note `note` goes on; before block `ccs.0` the CCs
+/// `ccs.1` go to live (as the device's drain applies a pass's entries at a block start).
+/// Interleaved L, R.
+pub fn render_host(
+    frames: usize,
+    note: u8,
+    note_block: usize,
+    ccs: (usize, &[(u8, u8)]),
+) -> Vec<i16> {
+    use sidou_sys::*;
+    let mut chip = Box::<sid>::default();
+    let mut pool = Box::<sid_slot_pool>::default();
+    let mut slots = Box::<sid_slots>::default();
+    let mut fx = Box::<fx_live>::default();
+    let mut target = Box::new(fx_live_target {
+        sid: live_sid_target {
+            chip: &mut *chip,
+            clock_hz: SID_CLOCK_PAL,
+            sample_rate: SAMPLE_RATE,
+        },
+        fx: &mut *fx,
+    });
+    let mut l = Box::<live>::default();
+    let t: *mut fx_live_target = &mut *target;
+    let mut out = vec![0i16; 2 * frames];
+    let mut mono = vec![0i16; HALF_FRAMES];
+    // SAFETY: everything C keeps a pointer to is boxed and outlives the calls; the buffers
+    // hold the samples asked for.
+    unsafe {
+        sid_slots_init(&mut *slots, SAMPLE_RATE, SLOTS_SEED, &mut *pool);
+        fx_live_init(&mut *fx, &mut *slots);
+        live_init(
+            &mut *l,
+            Some(fx_live_sid_sink),
+            t.cast::<std::ffi::c_void>(),
+            SID_MODEL_6581,
+        );
+        live_set_master(&mut *l, POT);
+        for (i, half) in out.chunks_mut(2 * HALF_FRAMES).enumerate() {
+            if i == ccs.0 {
+                for &(cc, value) in ccs.1 {
+                    live_cc(&mut *l, cc, value);
+                }
+            }
+            if i == note_block {
+                live_note_on(&mut *l, note, 100);
+            }
+            let n = half.len() / 2;
+            sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
+            sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+        }
+    }
+    out
+}
+
+/// The largest difference between two interleaved renders, in LSB.
+pub fn max_diff(a: &[i16], b: &[i16]) -> i32 {
+    a.iter()
+        .zip(b)
+        .map(|(&x, &y)| (i32::from(x) - i32::from(y)).abs())
+        .max()
+        .unwrap_or(0)
+}
+
 /// The left channel played during the next `ms`, as floats.
 pub fn record(m: &mut Machine, ms: u64) -> Vec<f32> {
     let from = m.soc.periph.audio.len() / 2;
