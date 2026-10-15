@@ -21,7 +21,7 @@ installed on hardware (see below). See the
 ## Try it in your browser
 
 **<https://dsablic.github.io/sidou/>** will play the latest build from
-`main` once this work is pushed and GitHub Pages is enabled: SIDOU running in
+`main` once this work is pushed: SIDOU running in
 [fm1-emu](https://github.com/joakimeriksson/fm1-emu)'s emulated FM-1, played
 from the computer keyboard, the mouse or touch, or a MIDI keyboard (Web
 MIDI, through the emulated TRS jack).

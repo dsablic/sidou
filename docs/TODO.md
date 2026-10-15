@@ -52,17 +52,6 @@ Follow-ups that aren't tied to a milestone task yet.
   last booted): play the full sequence when it is missing or differs, then
   set it. HOME held at power-on keeps playing the full one.
 
-## Enable GitHub Pages for the browser demo
-
-- **Where:** the repository's settings on GitHub (Settings, Pages).
-- **Problem:** `.github/workflows/pages.yml` deploys the browser demo
-  (`tools/web-demo`) on every push to `main`, but the deploy fails until
-  Pages is enabled with GitHub Actions as its source. Until then
-  <https://dsablic.github.io/sidou/>, which README.md links, is not live.
-- **Action:** when this work is pushed, the owner sets Settings, Pages,
-  Build and deployment, Source: **GitHub Actions**, then re-runs the
-  `pages` workflow (or pushes to `main`).
-
 ## The GitHub avatar and social preview are set by hand
 
 - **Where:** the repository's settings on GitHub (Settings, General, Social
