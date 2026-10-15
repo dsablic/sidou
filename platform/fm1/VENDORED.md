@@ -161,7 +161,11 @@ carry the changes over onto SIDOU's versions.
   20000 polls apiece.
 - **Strings:** manufacturer "SIDOU contributors" and product "SIDOU"
   instead of "Hügelton Instruments" and "Felucca".
-- `midi_out_event` is marked unused: nothing sends MIDI out yet.
+- **MIDI out:** `midi_out_event` is called from the main loop
+  (`midi.c` `midi_send`, which checks the room first and drops nothing
+  itself), not from the audio interrupt, and is no longer marked unused;
+  its and `ep1_tx`'s comments say so. The ring, `ep1_tx` and the bus
+  reset's flush are unchanged.
 - The header comment describes the SIDOU build, and `SET_INTERFACE`'s
   comment no longer mentions the audio stream.
 

@@ -30,8 +30,13 @@ set(SIDOU_PRODUCT "FM-1_900" CACHE STRING "Update-protocol identity, FM-1_<digit
 # watchdog in UBOOT. Without the key it runs as the normal build.
 set(SIDOU_TEST_DEATH "" CACHE STRING "Checklist builds: hang or reboot early; empty: off")
 set(SIDOU_TEST_DEATH_MS "1000" CACHE STRING "When SIDOU_TEST_DEATH strikes, ms after boot")
+# MIDI out over USB (docs/reference/midi.md, "Output"), until M2 stores settings: the
+# channel, and NRPNs at full resolution for the cutoff, pulse width and volume instead of CCs.
+set(SIDOU_MIDI_OUT_CHANNEL "1" CACHE STRING "MIDI out channel, 1..16")
+option(SIDOU_MIDI_OUT_NRPN "MIDI out: 14-bit NRPNs for the high-resolution parameters" OFF)
 target_compile_definitions(${t} PRIVATE SIDOU_VERSION="${PROJECT_VERSION}"
-    SIDOU_PRODUCT="${SIDOU_PRODUCT}")
+    SIDOU_PRODUCT="${SIDOU_PRODUCT}" SIDOU_MIDI_OUT_CHANNEL=${SIDOU_MIDI_OUT_CHANNEL}
+    SIDOU_MIDI_OUT_NRPN=$<BOOL:${SIDOU_MIDI_OUT_NRPN}>)
 if(SIDOU_TEST_DEATH STREQUAL "hang" OR SIDOU_TEST_DEATH STREQUAL "reboot")
     message(WARNING "SIDOU_TEST_DEATH=${SIDOU_TEST_DEATH}: a checklist build that dies early")
     string(COMPARE EQUAL "${SIDOU_TEST_DEATH}" "reboot" death_reboot)

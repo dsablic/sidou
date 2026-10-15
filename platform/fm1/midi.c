@@ -18,6 +18,7 @@
 #include "audio.h"
 #include "input.h"
 #include "midi.h"
+#include "midi_out.h"
 #include "midi_ring.h"
 #include "midi_rx.h"
 #include "reg_ring.h"
@@ -44,8 +45,21 @@
 #define MIDI_DRAIN_RESERVE (MIDI_ENTRY_WRITES + MIDI_LOST_WRITES + REG_RING_WORST_PASS)
 _Static_assert(MIDI_DRAIN_RESERVE < REG_RING_SIZE, "the ring leaves MIDI no room");
 
+/* MIDI out's settings until M2 stores settings (CMake: SIDOU_MIDI_OUT_CHANNEL, 1..16, and
+ * SIDOU_MIDI_OUT_NRPN; docs/reference/midi.md, "Output"). */
+#ifndef SIDOU_MIDI_OUT_CHANNEL
+#define SIDOU_MIDI_OUT_CHANNEL 1
+#endif
+#ifndef SIDOU_MIDI_OUT_NRPN
+#define SIDOU_MIDI_OUT_NRPN 0
+#endif
+_Static_assert(SIDOU_MIDI_OUT_CHANNEL >= 1 && SIDOU_MIDI_OUT_CHANNEL <= 16,
+               "SIDOU_MIDI_OUT_CHANNEL is 1..16");
+
 static midi_ring in_ring;
 static midi_rx rx;
+/* Read by the emulator tests through the ELF symbol (its counters, app/midi_out.h). */
+static midi_out midi_tx __attribute__((used));
 /* fm1_ticks() at the start of the poll that is running: every entry it pushes gets it. */
 static uint32_t poll_stamp;
 
@@ -96,6 +110,8 @@ _Static_assert(MIDI_SRC_USB == 1u && MIDI_SRC_TRS == 2u, "usb.c and midi_uart.c 
 void midi_init(live* l) {
     midi_ring_init(&in_ring);
     midi_rx_init(&rx, l, midi_ring_epoch(&in_ring));
+    midi_out_init(&midi_tx, l, (uint8_t)(SIDOU_MIDI_OUT_CHANNEL - 1), SIDOU_MIDI_OUT_NRPN != 0);
+    midi_rx_watch(&rx, &midi_tx);
     uart_midi_init();
     usb_start();
 }
@@ -146,6 +162,22 @@ int midi_drain(void) {
         return 1; /* the restart released the notes: there are writes to commit */
     }
     return n != 0;
+}
+
+void midi_send(void) {
+    /* No host, or one asleep or gone (usb.c: the frame number stopped): forget the changes
+     * rather than queue them for a host that may come back much later. */
+    if (!usb.config || usb.suspended) {
+        midi_out_drop(&midi_tx, rx.l);
+        return;
+    }
+    /* The ring's room now; the TIMER5 interrupt only ever frees more (ep1_tx). */
+    uint32_t room = MQ - (mo_w - mo_r);
+    uint32_t pkt[MIDI_OUT_TICK_PACKETS];
+    uint32_t n = midi_out_tick(&midi_tx, rx.l, room, pkt);
+    for (uint32_t i = 0; i < n; i++) {
+        midi_out_event(pkt[i]);
+    }
 }
 
 void midi_service(uint32_t now_ms) {

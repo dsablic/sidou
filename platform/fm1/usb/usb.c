@@ -4,7 +4,7 @@
  * class-compliant USB-MIDI interface. All SIE traffic happens in one place,
  * usb_poll(), called from the TIMER5 ISR at 2 kHz, so INDEX is never shared
  * and no USB IRQ is needed. MIDI in goes to a ring the main loop drains;
- * MIDI out comes from a ring nothing fills yet (midi_out_event).
+ * MIDI out comes from a ring the main loop fills (midi_out_event).
  * VID 0x1209 / PID 0x0001 is the pid.codes
  * TEST id: fine for the bench, must be replaced before any release.
  *
@@ -72,7 +72,7 @@ static volatile uint32_t so_w, so_r;
 static uint32_t midi_out_q[MQ];
 static volatile uint32_t mo_w, mo_r;
 
-static __attribute__((unused)) void midi_out_event(uint32_t pkt)            /* from the audio ISR */
+static void midi_out_event(uint32_t pkt)            /* SIDOU: from the main loop (midi.c midi_send) */
 {
     if (usb.config && mo_w - mo_r < MQ) {
         midi_out_q[mo_w % MQ] = pkt;
@@ -512,7 +512,7 @@ static void ep1_tx(void)
     while (mo_r != mo_w && n < 64u) {
 #endif
         uint32_t pkt;
-        RING_PUBLISH();                                 /* the audio ISR (producer) can preempt us: */
+        RING_PUBLISH();                                 /* the producer (SIDOU: the main loop) may be mid-push: */
         pkt = midi_out_q[mo_r % MQ];                    /* slot read strictly between the index checks */
         ep1tx[n] = (uint8_t)pkt;
         ep1tx[n + 1] = (uint8_t)(pkt >> 8);

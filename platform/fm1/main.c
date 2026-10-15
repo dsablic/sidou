@@ -116,6 +116,9 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         panel_master(&front, &instrument, input_master());
         live_tick(&instrument);
     }
+    if (tick_due) {
+        midi_send(); /* once a pass at most, so at most once a tick */
+    }
     if ((int32_t)(now - *next_tick) >= 0) {
         *next_tick = now + TICK_MS; /* too far behind: skip, the LFO only slows down */
     }

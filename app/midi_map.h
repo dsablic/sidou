@@ -65,8 +65,8 @@ typedef struct {
 
 #define MIDI_MAP_ROWS 41u
 
-/* Row i in table order, or NULL past the last. midi_map_row, midi_map_for_param and
- * midi_map_to_cc have no caller on the device yet; --gc-sections drops them there. */
+/* Row i in table order, or NULL past the last. midi_map_row has no caller on the device;
+ * --gc-sections drops it there. */
 const midi_map_entry* midi_map_row(uint32_t i);
 /* The row of a parameter, a CC or an NRPN (reserved rows included), or NULL. */
 const midi_map_entry* midi_map_for_param(uint32_t param);

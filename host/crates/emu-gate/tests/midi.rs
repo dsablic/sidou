@@ -3,9 +3,12 @@
 //! End to end: MIDI into the live instrument through fm1-emu's TRS jack (UART1 at 31250
 //! baud), watched on the audio output and on the device's SID state in emulated RAM.
 //!
-//! USB MIDI is not tested here: fm1-emu does not emulate the USB controller (its registers
+//! USB MIDI in is not tested here: fm1-emu does not emulate the USB controller (its registers
 //! are plain storage, so the device sees no host and leaves USB off). The USB packet
-//! conversion and the ring are host-tested (sidou-tests, `tests/app/midi_*.rs`).
+//! conversion and the ring are host-tested (sidou-tests, `tests/app/midi_*.rs`). MIDI out is
+//! checked where it leaves the main loop: the IN endpoint's ring in usb/usb.c, with the test
+//! playing a host that configured the device (`usb.config`) but never reads (USB stays off,
+//! so nothing drains the ring).
 
 mod common;
 
@@ -573,5 +576,177 @@ fn a_full_speed_stream_loses_nothing() {
         s.max_wait_us < 2000.0,
         "a byte waited {:.0} us in the ring",
         s.max_wait_us
+    );
+}
+
+// --- MIDI out ---
+
+/// usb/usb.c's MIDI out ring, `midi_out_q[MQ]`, and its write index.
+const MQ: u32 = 64;
+/// Felucca's ids: the FX button, K1 and K4.
+const FX_BUTTON: u8 = 2;
+const K1: u8 = 2;
+const K4: u8 = 5;
+
+/// A host has configured the device: `usb.config`, the second byte of usb.c's `usb` (after
+/// `up`). USB itself stays off in fm1-emu, so the ring is never sent.
+fn attach_host(m: &mut Machine, fw: &Firmware) {
+    m.soc.write8(fw.symbol("usb") + 1, 1);
+}
+
+/// The packets queued for the host since write index `from`, and the write index now.
+fn queued(m: &mut Machine, fw: &Firmware, from: u32) -> (Vec<u32>, u32) {
+    let (q, w) = (fw.symbol("midi_out_q"), m.soc.read32(fw.symbol("mo_w")));
+    assert!(w - from <= MQ, "the ring wrapped");
+    let p = (from..w).map(|i| m.soc.read32(q + 4 * (i % MQ))).collect();
+    (p, w)
+}
+
+/// MIDI out's counters (app/midi_out.h): packets, deferred, dropped.
+fn out_counters(m: &mut Machine, fw: &Firmware) -> (u32, u32, u32) {
+    let base = fw.symbol("midi_tx");
+    (
+        m.soc.read32(base + ilp32::midi_out::packets as u32),
+        m.soc.read32(base + ilp32::midi_out::deferred as u32),
+        m.soc.read32(base + ilp32::midi_out::dropped as u32),
+    )
+}
+
+fn cc_packet(cc: u8, value: u8) -> u32 {
+    u32::from_le_bytes([0x0B, 0xB0, cc, value])
+}
+
+fn cutoff_cc(value: u32) -> u8 {
+    unsafe {
+        sidou_sys::midi_map_to_cc(
+            sidou_sys::midi_map_for_param(sidou_sys::LIVE_PARAM_CUTOFF),
+            value,
+        )
+    }
+}
+
+fn press(m: &mut Machine, id: u8) {
+    m.key(id, true);
+    m.run_ms(30);
+    m.key(id, false);
+    m.run_ms(30);
+}
+
+#[test]
+fn the_panel_goes_out_over_usb_and_midi_in_is_not_echoed() {
+    let Some(fw) = fixture("the MIDI out test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    // No host: a knob's change is dropped, nothing is queued.
+    m.turn(K1, 1);
+    m.run_ms(50);
+    assert_eq!(queued(&mut m, &fw, 0), (vec![], 0));
+    assert_eq!(out_counters(&mut m, &fw), (0, 0, 1));
+
+    attach_host(&mut m, &fw);
+    m.run_ms(50);
+    let (idle, w) = queued(&mut m, &fw, 0);
+    assert!(idle.is_empty(), "nothing changed: nothing to send");
+    // K1: CC 74, at most one a tick, ending on the latest value (fm1-emu delivers the three
+    // detents over a few key-scan frames).
+    m.turn(K1, 3);
+    m.run_ms(50);
+    let c = cutoff(&mut m, &fw);
+    assert_eq!(c, SAW_LEAD_CUTOFF + 4 * 16);
+    let (k1, w) = queued(&mut m, &fw, w);
+    assert!((1..=3).contains(&k1.len()), "{k1:08x?}");
+    assert_eq!(k1.last(), Some(&cc_packet(CC_CUTOFF, cutoff_cc(c))));
+    let values: Vec<u8> = k1.iter().map(|&x| (x >> 24) as u8).collect();
+    assert!(values.windows(2).all(|v| v[0] < v[1]), "{values:?}");
+    assert!(k1
+        .iter()
+        .all(|&x| x & 0x00ff_ffff == cc_packet(CC_CUTOFF, 0)));
+    // The cutoff from TRS MIDI: applied, not echoed.
+    m.midi(&[0xB0, CC_CUTOFF, 10]);
+    m.run_ms(50);
+    assert_eq!(cutoff(&mut m, &fw), (10 * 2047 + 63) / 127);
+    let (p, w) = queued(&mut m, &fw, w);
+    assert!(p.is_empty(), "MIDI in echoed: {p:08x?}");
+    // The FX button: the chip model on CC 25. K4: a program change, without the parameters
+    // the preset loads.
+    press(&mut m, FX_BUTTON);
+    let (p, w) = queued(&mut m, &fw, w);
+    assert_eq!(p, [cc_packet(25, 127)]);
+    m.turn(K4, 1);
+    m.run_ms(50);
+    let (p, w) = queued(&mut m, &fw, w);
+    assert_eq!(p, [u32::from_le_bytes([0x0C, 0xC0, 1, 0])]);
+    let counters = out_counters(&mut m, &fw);
+    println!("MIDI out (packets, deferred, dropped): {counters:?}, ring at {w}; K1 {k1:08x?}");
+    assert_eq!(counters, (w, 0, 1));
+}
+
+#[test]
+fn midi_out_costs_little_and_waits_for_no_one() {
+    let Some(fw) = fixture("the MIDI out test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    m.run_ms(1500); // past a USB retry (once a second while no host answers)
+    let (_, main_no_host) = rates(&mut m, 2000);
+    attach_host(&mut m, &fw);
+    let (_, main_idle) = rates(&mut m, 2000);
+    // A CC at full TRS speed for 2 s, 1042 a second: MIDI out looks before and after each
+    // (midi_rx_watch), and echoes none.
+    let mut stream = Vec::new();
+    for i in 0..2084u32 {
+        stream.extend([0xB0, CC_CUTOFF, (i % 128) as u8]);
+    }
+    m.midi(&stream);
+    let (_, main_cc_flood) = rates(&mut m, 2000);
+    assert_eq!(
+        m.soc.periph.midi_queued(),
+        0,
+        "the jack has not delivered all"
+    );
+    let (echoed, _) = queued(&mut m, &fw, 0);
+    assert!(echoed.is_empty(), "MIDI in echoed: {echoed:08x?}");
+    // K1 turned every tick for 2 s, back and forth: a CC a tick. The host never reads, so the
+    // ring fills after 64 and the rest waits, one pending value, never the main loop.
+    let start = m.main_steps;
+    for i in 0..200 {
+        m.turn(K1, if i % 40 < 20 { 2 } else { -2 });
+        m.run_ms(10);
+    }
+    let main_turning = (m.main_steps - start) as f64 / 2.0;
+    let (packets, deferred, dropped) = out_counters(&mut m, &fw);
+    let (p, w) = queued(&mut m, &fw, 0);
+    // A note plays meanwhile: the main loop never stalled.
+    m.midi(&[0x90, C4, 0x64]);
+    m.run_ms(50);
+    let v = voice1(&mut m, &fw);
+    let report = serde_json::json!({
+        "main_instructions_per_s_no_host": main_no_host,
+        "main_instructions_per_s_host_idle": main_idle,
+        "main_instructions_per_s_trs_cc_flood": main_cc_flood,
+        "main_instructions_per_s_k1_every_tick": main_turning,
+        "packets": packets,
+        "deferred": deferred,
+        "dropped": dropped,
+        "ring_write_index": w,
+    });
+    println!("{report}");
+    assert_eq!(w, MQ, "the ring is full and stays so");
+    assert!(
+        p.iter()
+            .all(|&x| x & 0xffff == 0xB00B && (x >> 16) as u8 == CC_CUTOFF),
+        "only CC 74"
+    );
+    assert_eq!(packets, MQ);
+    assert!(deferred > 100, "{deferred} ticks with no room");
+    assert_eq!(v.env_gate, 1, "the note did not start");
+    assert!(
+        main_idle < 5e6 && main_turning < 5e6 && main_cc_flood < 5e6,
+        "the main loop runs {:.2}M/s with a host, {:.2}M/s with K1 turning, {:.2}M/s in a \
+         CC flood",
+        main_idle / 1e6,
+        main_turning / 1e6,
+        main_cc_flood / 1e6
     );
 }
