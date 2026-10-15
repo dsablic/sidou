@@ -7,8 +7,9 @@
 //! frame, or every 100 (ENV3) or 7 (OSC3) cycles where the timing inside a frame
 //! matters. A read at
 //! the start of frame N comes after frame N's writes; messages give its cycle and N. Cases that
-//! fail for a known reason a later M1b task fixes are `#[ignore]`d with that reason;
-//! `cargo test -- --ignored` shows where they stand.
+//! fail for a known reason a later M1b task fixes, or that stay off by decision (the plan's
+//! Task 7), are `#[ignore]`d with that reason; `cargo test -- --ignored` shows where they
+//! stand.
 
 use sidou_sys::{sid_model, SID_MODEL_6581, SID_MODEL_8580};
 use sidou_tests::register_probe::{
@@ -737,8 +738,9 @@ fn deferred_noise_shifts_survive_adversarial_switches() {
             }
         }
     }
-    // (Hard sync while deferring is left to the fuzz, sid_osc_fuzz.rs: SIDOU applies
-    // sync once per step, so OSC3 under sync is not cycle-exact to begin with.)
+    // (Hard sync while deferring: hard_sync_while_deferring_reads_osc3_exactly, ignored,
+    // as OSC3 on the cycles right after a sync is not exact; the state is, and the fuzz,
+    // sid_osc_fuzz.rs, covers it.)
     // 3. Lock up with noise+pulse, sit locked (deferred) for long, TEST release / switch, at every phase.
     for off in 0..40u64 {
         for (a, b) in [(0x20u8, 0xa0u8), (0x88, 0x80), (0x80, 0x80)] {
@@ -770,4 +772,74 @@ fn deferred_noise_shifts_survive_adversarial_switches() {
         bad.len(),
         bad.iter().take(10).cloned().collect::<Vec<_>>().join("\n")
     );
+}
+
+/* The review's hard-sync scripts for the deferral test above: a fast voice 2 syncs voice 3
+ * while voice 3 defers its noise shifts, then voice 3 switches to noise. The restarted
+ * accumulator is exact, but OSC3 on the cycles right after each sync is not: read_osc3
+ * rebuilds the previous cycle from the current state, and the restarted accumulator has
+ * lost it. On the 6581 one read per sync differs: reSIDfp still reads the last value
+ * before the sync for one cycle (0x48, 0x49, 0x49, 0x49, 0 at cycles 316-320 of the
+ * first script), SIDOU already reads 0 (0x48, 0x49, 0x49, 0, 0). On the 8580 two
+ * differ, as its triangle/saw reach OSC3 a cycle late (reSIDfp 0x49, 0x49, then 0;
+ * SIDOU 0xff, 0). Read-only and inaudible; the plan's Task 7 lists it among what
+ * remains off. */
+#[test]
+#[ignore = "OSC3 on the cycles right after a hard sync: read_osc3 rebuilds the previous cycle from \
+            the restarted accumulator (one read per sync on the 6581, two on the 8580)"]
+fn hard_sync_while_deferring_reads_osc3_exactly() {
+    let f = CYCLES_PER_FRAME;
+    let mut bad = Vec::new();
+    let mut n = 0;
+    for off in 0..30u64 {
+        let w = vec![
+            (0, 0x07, 0x00),
+            (0, 0x08, 0xf0),
+            (0, 0x0b, 0x20),
+            (0, 0x0e, 0x31),
+            (0, 0x0f, 0x45),
+            (0, 0x12, 0x22),
+            (4 * f + off * 7, 0x12, 0x82),
+        ];
+        let s = timed_script(w, 5, 1);
+        n += 2;
+        for model in [SID_MODEL_6581, SID_MODEL_8580] {
+            if let Some(m) = reads_mismatch(model, OSC3, &s) {
+                bad.push(format!("sync +{off}: {}", &m[..m.len().min(220)]));
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "{} of {n} mismatch:\n{}",
+        bad.len(),
+        bad.iter().take(10).cloned().collect::<Vec<_>>().join("\n")
+    );
+}
+
+/* A pulse width write lands on OSC3 a cycle late on the chip, and SIDOU misses it: with
+ * pulse at PW 0 (always low), a write of PW 0x800 at cycle 100 reads 255 at cycle 101 in
+ * reSIDfp and 0 in SIDOU, on both models. read_osc3 recomputes the pulse comparison
+ * from the current pulse width and ignores pulse_held, the comparison sid_write latched
+ * before the write. Read-only and inaudible; the plan's Task 7 lists it among what
+ * remains off. */
+#[test]
+#[ignore = "OSC3 a cycle after a pulse width write: read_osc3 ignores pulse_held"]
+fn pulse_width_write_reads_osc3_exactly() {
+    let mut bad = Vec::new();
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        let w = vec![
+            (0, FREQ_LO, 0x00),
+            (0, FREQ_HI, 0x10),
+            (0, PW_LO, 0x00),
+            (0, PW_HI, 0x00),
+            (0, CONTROL, 0x40),
+            (100, PW_LO, 0x00),
+            (100, PW_HI, 0x08),
+        ];
+        if let Some(m) = reads_mismatch(model, OSC3, &timed_script(w, 1, 1)) {
+            bad.push(m);
+        }
+    }
+    assert!(bad.is_empty(), "{}", bad.join("\n"));
 }

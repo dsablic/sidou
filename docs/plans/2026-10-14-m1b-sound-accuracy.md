@@ -233,7 +233,16 @@ while the user was away; revisit if needed):
     exactness);
   - flash cost of the tables;
   - instructions per sample before and after;
-  - what remains off and why;
+  - what remains off and why, including two OSC3 read gaps (read-only and
+    inaudible; `#[ignore]`d tests in `register_reads.rs` pin them):
+    - *OSC3 right after a hard sync:* `read_osc3` rebuilds the previous
+      cycle from the current state, and the restarted accumulator has lost
+      it. One read per sync differs on the 6581 (reSIDfp still reads the last
+      value before the sync), two on the 8580;
+    - *OSC3 a cycle after a pulse-width write:* with pulse at PW 0 and a
+      write of PW 0x800 at cycle 100, reSIDfp reads 255 at cycle 101 and
+      SIDOU 0, on both models: `read_osc3` ignores `pulse_held`, the
+      comparison `sid_write` latched;
   - which reSIDfp defaults we matched (combined-waveform strength, 6581 filter
     range/curve). These become the default "6581 R4AR"/"8580 R5" profiles
     for M1c.

@@ -131,7 +131,9 @@ with `clockSilent`, so a read can land on any cycle.
 
 **A failure means** a register reads back differently from reSIDfp; the
 message gives the cycle and the first differing values. Cases that a later
-milestone task fixes are `#[ignore]`d with the task and the reason; run them
+milestone task fixes are `#[ignore]`d with the task and the reason, and so are
+two OSC3 gaps that stay (read-only and inaudible; the M1b plan's Task 7): the
+reads right after a hard sync and a cycle after a pulse-width write. Run them
 with `-- --ignored`.
 
 ### Generated tables

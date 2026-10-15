@@ -14,9 +14,10 @@
 #define DC_BLOCK_HZ 16.0f
 #define DRIVE_6581 2.0f
 /* sid_clock's step. sid_osc_advance needs freq * cycles < 2^24, so at most 256.
- * Within that, the step only matters for hard sync, which is approximated once per
- * step (see sid_osc_sync); 16 is no longer than sid_render's step at any PAL rate up
- * to 61.5 kHz, so sid_clock is never coarser than rendering. The loop's cost does not
+ * Within that, the step only matters for hard sync: the restart is exact, but what the
+ * synced voice did earlier in the step (its noise clocks, its MSB rise) is not
+ * recomputed (see sid_osc_sync); 16 is no longer than sid_render's step at any PAL rate
+ * up to 61.5 kHz, so sid_clock is never coarser than rendering. The loop's cost does not
  * matter: sid_clock is for tests and register-accurate seeking, not the audio path. */
 #define CLOCK_STEP 16u
 
@@ -122,12 +123,14 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
  * reconstructed from the current state. A read right after a write to voice 2 or 3,
  * before any cycle, returns the value latched before the write (sid_write). A read a
  * cycle or two later is wrong after:
- * - a frequency or pulse width write (the old values drove those cycles);
+ * - a frequency or pulse width write (the old values drove those cycles; the pulse
+ *   comparison sid_write latches, pulse_held, is not used here);
  * - a control write: the pulse comparison from before a TEST change (the 8580's
  *   triangle/saw latch, tri_saw, is exact: it holds the last triangle/saw value,
  *   0x555 from power-on, and is used for the one cycle after the write);
- * - a hard sync of voice 3 or voice 2 (with ring modulation), whose accumulator
- *   restarted mid-step.
+ * - a hard sync of voice 3 or voice 2 (with ring modulation): the previous cycle is
+ *   rebuilt from the restarted accumulator, which has lost it (one read per sync on the
+ *   6581, two on the 8580; register_reads.rs has both gaps as ignored tests).
  * With no waveform selected OSC3 reads 0. reSIDfp instead holds the last output on its
  * floating DAC input and fades it after 54,000 (6581) or 800,000 (8580) cycles; SIDOU
  * keeps 0 because programs rarely read OSC3 with the waveform off, and holding the

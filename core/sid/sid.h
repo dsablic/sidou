@@ -82,9 +82,11 @@ void sid_set_dac(sid* s, const sid_dac* dac);
 /* Advances the oscillators and envelopes by exactly `cycles` chip cycles, without
  * producing output; the filter and the output stage do not run. sid_render advances
  * the same code a sample's worth of cycles at a time, and both reach the same state,
- * except with hard sync: sync is approximated once per step, and the steps differ
- * (16 cycles here). For reading OSC3 and ENV3 at exact cycles, as the reference tests
- * do. */
+ * except with hard sync, and then only in what the synced voice did earlier in the step:
+ * its restart is exact (sid_osc_sync counts the source's overshoot to the end of the
+ * step), but its own noise clocks and MSB rise before the sync are not recomputed, and
+ * the steps differ (16 cycles here). For reading OSC3 and ENV3 at exact cycles, as the
+ * reference tests do; OSC3 on the cycles right after a sync is not exact (read_osc3). */
 void sid_clock(sid* s, uint32_t cycles);
 
 #ifdef __cplusplus
