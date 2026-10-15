@@ -6,7 +6,10 @@
 
 mod common;
 
-use common::{build_dir, max_diff, peak, power_above, render_host, Firmware, Machine, HALF_FRAMES};
+use common::{
+    build_dir, max_diff, peak, power_above, render_host, Firmware, Machine, AUDIO_TARGET,
+    HALF_FRAMES,
+};
 use sidou_sys::{
     LIVE_CC_SLOT_FIRST, LIVE_SLOT_FIELDS, SID_DIST_COUNT, SID_DIST_OVERDRIVE, SID_FXSLOT_COUNT,
     SID_FXSLOT_REVERB_LIGHT, SID_FXSLOT_REVERB_LUSH, SID_MOD_CHORUS, SID_MOD_COUNT,
@@ -19,8 +22,7 @@ const K1: u8 = 2;
 const K4: u8 = 5;
 const A4_KEY: u8 = 30;
 const A4: u8 = 69;
-/// The audio target (design doc section 8), per sample, and a block of 128 frames.
-const AUDIO_TARGET: f64 = common::AUDIO_TARGET;
+/// A block of 128 frames.
 const BLOCK_FRAMES: f64 = 128.0;
 /// The DMA plays the zeroed buffer before the first half the interrupt filled.
 const MAX_SILENT_HALVES: usize = 4;
