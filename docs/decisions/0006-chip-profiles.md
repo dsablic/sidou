@@ -130,10 +130,15 @@ a step per block never steps the output more than the sound held anywhere along 
 
 ## Cost
 
-- **Flash:** 362,412 bytes of image (from 193,848): every combined-waveform profile now
-  compiled (`SIDOU_ALL_COMBINED_PROFILES` on by default, +122,880 bytes; R2 and worn need
-  WEAK and STRONG), five 6581 filter rows and two 8580 rows (8,256 bytes a row: 57,792
-  bytes, from M1b's 16,512), and the code. The app slot holds 581,564 bytes: 62 % used.
+- **Flash:** 310,088 bytes of image on main with SCENE (300,972 on M1b's tip, from
+  193,848): the 6581's WEAK and STRONG combined waveforms (`SIDOU_ALL_COMBINED_PROFILES`,
+  on by default, +61,440 bytes; R2 and worn need them), five 6581 filter rows and two 8580
+  rows (8,256 bytes a row: 57,792 bytes, from M1b's 16,512), and the code. The 8580's WEAK
+  and STRONG stay out (`SIDOU_ALL_COMBINED_PROFILES_8580`, off): its one profile, the R5,
+  plays AVERAGE, and the first build of this task carried them, 61,440 bytes no profile
+  read (362,412 then). emu-gate's `character.rs` checks the tables the image holds. The
+  app slot holds 581,564 bytes: 53 % used. If M2 or M3 need the flash, the active
+  profile's rows can be generated into POOL instead (docs/TODO.md).
 - **RAM:** `chips` (POOL) grew from 17,880 to 52,764 bytes: two 17,408-byte DAC tables for
   the character and its settings and stage. `.ram_text` grew from 33,924 to 35,596 bytes
   (72.4 % of 48 KB), most of it the renders' copies with the bleed.

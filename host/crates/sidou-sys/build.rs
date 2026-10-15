@@ -107,9 +107,11 @@ fn c_build(root: &Path) -> cc::Build {
         .flag("-std=c11")
         // Float results must be identical on host and pi32v2 so their outputs can be compared.
         .flag("-ffp-contract=off")
-        // The host tests check every combined-waveform profile; the default build (and
-        // the firmware) has AVERAGE only, which gives the same output.
+        // The host tests check every combined-waveform profile of both models; the firmware
+        // has the 6581's three and the 8580's AVERAGE (core/CMakeLists.txt), and a profile
+        // not compiled in plays AVERAGE.
         .define("SIDOU_ALL_COMBINED_PROFILES", None)
+        .define("SIDOU_ALL_COMBINED_PROFILES_8580", None)
         .warnings(true)
         .extra_warnings(true)
         .flag("-Wshadow")
@@ -151,6 +153,7 @@ fn main() {
         .clang_args(INCLUDES.map(|dir| format!("-I{}", root.join(dir).display())))
         .clang_arg("-std=c11")
         .clang_arg("-DSIDOU_ALL_COMBINED_PROFILES")
+        .clang_arg("-DSIDOU_ALL_COMBINED_PROFILES_8580")
         .clang_arg(format!("-D{MIDI_MAP_DOC}"))
         .allowlist_function(
             "sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|learn_view_.*|scope_.*|scene_.*|title_card_.*",

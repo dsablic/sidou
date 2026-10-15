@@ -98,8 +98,10 @@ uint8_t sid_read(sid* s, uint8_t reg);
 /* Combined-waveform profile: SID_PROFILE_WEAK, SID_PROFILE_AVERAGE (reSIDfp's default,
  * and ours) or SID_PROFILE_STRONG, reSIDfp's three sampled chips (gen/grid.h). They
  * are discrete, not points on a scale. Anything else gets AVERAGE, and so do WEAK and
- * STRONG unless the core is built with SIDOU_ALL_COMBINED_PROFILES (61,440 bytes of
- * tables for both models by default, 184,320 with it). On the device, call it where
+ * STRONG unless the core is built with the model's flag: SIDOU_ALL_COMBINED_PROFILES for
+ * the 6581 (on by default: the chip profiles play all three), SIDOU_ALL_COMBINED_PROFILES_8580
+ * for the 8580 (off: its profile plays AVERAGE). 30,720 bytes of tables per model and
+ * profile. On the device, call it where
  * register writes are applied, through the register ring, never concurrently with
  * sid_render. */
 void sid_set_combined_profile(sid* s, int profile);

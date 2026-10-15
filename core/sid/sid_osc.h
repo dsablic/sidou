@@ -222,8 +222,8 @@ static inline void sid_osc_set_profile(sid_osc* o, uint32_t profile) {
     if (profile >= SID_PROFILES) {
         profile = SID_PROFILE_AVERAGE;
     }
-    uint32_t table = SID_COMBINED_TABLE(profile);
-    o->pulldown = o->is6581 ? SID_PULLDOWN_6581[table] : SID_PULLDOWN_8580[table];
+    o->pulldown = o->is6581 ? SID_PULLDOWN_6581[SID_COMBINED_TABLE_6581(profile)]
+                            : SID_PULLDOWN_8580[SID_COMBINED_TABLE_8580(profile)];
     sid_osc_update_mode(o);
 }
 

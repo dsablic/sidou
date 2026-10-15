@@ -218,7 +218,8 @@ The rules for keeping it that way:
   every address the `.ram_text` code loads. Other constant tables stay in
   flash.
 - **One flash read remains, by design:** the combined waveforms' pulldown
-  rows (`gen/wave_*.h`, 61,440 bytes for the default profile), which the
+  rows (`gen/wave_*.h`, 122,880 bytes since M1c's chip profiles: the 6581's
+  three strengths and the 8580's AVERAGE), which the
   oscillator reads through `sid_osc.pulldown` while a combined waveform
   plays. They are too big for RAM, and the relocation check cannot see a
   read through a pointer. Whether they cost cache misses in the audio

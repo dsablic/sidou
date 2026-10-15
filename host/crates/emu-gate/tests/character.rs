@@ -239,3 +239,37 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
          closest max difference {min_diff} LSB"
     );
 }
+
+/// The size of a data symbol in the firmware ELF.
+fn symbol_size(fw: &Firmware, name: &str) -> u64 {
+    use object::{Object, ObjectSymbol};
+    let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
+    file.symbols()
+        .find(|s| s.name() == Ok(name))
+        .unwrap_or_else(|| panic!("no symbol {name} in the firmware ELF"))
+        .size()
+}
+
+/// The device compiles the combined-waveform tables its profiles play and no others: all
+/// three 6581 strengths (R2 WEAK, R3 and R4AR AVERAGE, worn STRONG), the 8580's AVERAGE
+/// alone (the R5). The host keeps all six (sidou-sys).
+#[test]
+fn the_firmware_holds_only_the_combined_tables_its_profiles_use() {
+    use sidou_sys::{sid_chip_profile_get, SID_CHIPS, SID_MODEL_8580, SID_PROFILE_AVERAGE};
+    let Some(fw) = fixture() else {
+        return;
+    };
+    const TABLE: u64 = 5 * 6144;
+    for id in 0..SID_CHIPS {
+        let p = unsafe { &*sid_chip_profile_get(id) };
+        if u32::from(p.model) == SID_MODEL_8580 {
+            assert_eq!(
+                u32::from(p.combined),
+                SID_PROFILE_AVERAGE,
+                "an 8580 profile plays a table the device leaves out"
+            );
+        }
+    }
+    assert_eq!(symbol_size(&fw, "SID_PULLDOWN_6581"), 3 * TABLE);
+    assert_eq!(symbol_size(&fw, "SID_PULLDOWN_8580"), TABLE);
+}

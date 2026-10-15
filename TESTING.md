@@ -221,11 +221,14 @@ The filter tables are measured: `sidou-tablegen fit-filter` plays noise
 through reSIDfp's filter (LP, BP and HP, FC every 32 steps and 1023 on the
 6581, resonance 0, 8 and 15, and every resonance at six FC values mid-range),
 fits SIDOU's filter to each response around its cutoff, and prints how well
-it fits. Only
-AVERAGE, reSIDfp's default, is compiled by default: 30,720 bytes per model,
-61,440 for both. Building with
-`SIDOU_ALL_COMBINED_PROFILES` (CMake option of the same name) adds WEAK and
-STRONG: 184,320 bytes in all. The host tests build with all three.
+it fits. Each
+profile is 30,720 bytes per model. Per model, only AVERAGE, reSIDfp's default,
+is compiled unless the model's flag (a CMake option of the same name) adds WEAK
+and STRONG: `SIDOU_ALL_COMBINED_PROFILES` for the 6581, on by default since the
+chip profiles play all three; `SIDOU_ALL_COMBINED_PROFILES_8580` for the 8580,
+off, since its one profile plays AVERAGE. The firmware holds 122,880 bytes of
+them (emu-gate's `character.rs` checks it); the host tests build with all six,
+184,320 bytes.
 
 The checked-in headers are the source of truth; the generator is a
 documented tool. After changing the generator or the reSIDfp submodule,

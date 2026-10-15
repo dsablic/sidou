@@ -17,8 +17,8 @@
 
 #include "grid.h"
 
-static const uint8_t SID_PULLDOWN_8580[SID_COMBINED_TABLES][5][6144] = {
-#ifdef SIDOU_ALL_COMBINED_PROFILES
+static const uint8_t SID_PULLDOWN_8580[SID_COMBINED_TABLES_8580][5][6144] = {
+#ifdef SIDOU_ALL_COMBINED_PROFILES_8580
     /* WEAK */ {
         /* ST */ {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -4434,7 +4434,7 @@ static const uint8_t SID_PULLDOWN_8580[SID_COMBINED_TABLES][5][6144] = {
             0xf8, 0x8f, 0xff, 0xf8, 0xbf, 0xff, 0xfc, 0xdf, 0xff, 0xfe, 0xff, 0xff,
         },
     },
-#ifdef SIDOU_ALL_COMBINED_PROFILES
+#ifdef SIDOU_ALL_COMBINED_PROFILES_8580
     /* STRONG */ {
         /* ST */ {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00,

@@ -17,7 +17,7 @@
 
 #include "grid.h"
 
-static const uint8_t SID_PULLDOWN_6581[SID_COMBINED_TABLES][5][6144] = {
+static const uint8_t SID_PULLDOWN_6581[SID_COMBINED_TABLES_6581][5][6144] = {
 #ifdef SIDOU_ALL_COMBINED_PROFILES
     /* WEAK */ {
         /* ST */ {
