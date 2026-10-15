@@ -4,6 +4,7 @@
 
 mod bootguard;
 mod expression;
+mod font;
 mod fx_live;
 mod live_freq;
 mod live_instrument;

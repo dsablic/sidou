@@ -217,13 +217,3 @@ Laid out as in Felucca's `firmware/` tree, so the loader's relative includes
   builds; distinct digits are for later, with the community).
 - `src/usb.c` is the loader's only: the app uses the adapted copy in
   `usb/usb.c`.
-
-## font8x8 (`font/`)
-
-- **Source:** <https://github.com/dhepper/font8x8>, `font8x8_basic.h`
-- **Commit:** `8e279d2d864e79128e96188a6b9526cfa3fbfef9` (2019-07-08)
-- **Licence:** public domain (Daniel Hepper, after Marcel Sondaar and IBM's
-  VGA fonts); see `REUSE.toml` and `LICENSES/LicenseRef-PublicDomain.txt`.
-- **Local changes:** none. The array is not `const`, so its 1 KiB lands in
-  `.data` (RAM). Only `ui.c` includes it: the header defines the array.
-- A placeholder until our own PETSCII-style font.

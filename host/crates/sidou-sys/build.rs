@@ -7,7 +7,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 22] = [
+const SOURCES: [&str; 23] = [
     "core/sid/sid.c",
     "core/sid/sid_dac.c",
     "core/fx/fx.c",
@@ -17,6 +17,7 @@ const SOURCES: [&str; 22] = [
     "core/sid/sid_filter.c",
     "bench/workload.c",
     "app/bootguard.c",
+    "app/font.c",
     "app/fx_live.c",
     "app/live.c",
     "app/live_freq.c",
@@ -137,7 +138,7 @@ fn main() {
         )
         .allowlist_type("sid.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*")
         .allowlist_var(
-            "SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*",
+            "SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*|FONT_.*|font_.*",
         )
         // A `static const` table private to sid_env.h; it has no symbol to link to.
         .blocklist_item("SID_ENV_RATE_POS|SID_ENV_THRESHOLDS|SID_PULLDOWN_.*")

@@ -13,7 +13,7 @@ lists the prerequisites.
 |---|---|---|
 | Everything except the emulator gate | `cargo test --workspace --release` | all crates |
 | Unit tests | `cargo test --release -p sidou-tests --test unit` | `crates/sidou-tests/tests/unit/` |
-| App logic (live instrument, MIDI parser, MIDI ring and input) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c` |
+| App logic (live instrument, MIDI parser, MIDI ring and input, screen font) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Register reads (OSC3, ENV3) | `cargo test --release -p sidou-tests --test register_reads` | `crates/sidou-tests/tests/register_reads.rs` |

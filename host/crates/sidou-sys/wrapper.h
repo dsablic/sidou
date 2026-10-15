@@ -11,6 +11,7 @@
 #include "sid/sid_osc.h"
 #include "workload.h"
 #include "bootguard.h"
+#include "font.h"
 #include "fx_live.h"
 #include "live.h"
 #include "midi_in.h"

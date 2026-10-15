@@ -30,9 +30,9 @@ SIDOU builds on, or learns from, the work of these people and projects.
 - **fm1-custom-fw resource hub**: aroum and contributors
 - **M-VAVE** for publishing the official open firmware
 
-## Fonts
-- **font8x8**: Daniel Hepper, after Marcel Sondaar and IBM's VGA fonts (public
-  domain); SIDOU's placeholder screen font
+## Colours
+- **The C64 palette**: SIDOU's 16 screen colours follow Philip "Pepto"
+  Timmermann's measurements of the VIC-II colours
 
 ## Trackers and music
 - **GoatTracker**: Lasse Öörni (Cadaver)

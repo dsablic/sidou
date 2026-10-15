@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* The status screen: title and version, chip model, preset and octave, the four sound
  * parameters as numbers and bars, and the notes that sound. C64 colours: light blue on
- * blue inside a light blue border. 8 x 8 text cells from font8x8_basic, a placeholder until
- * our own PETSCII-style font. */
+ * blue inside a light blue border. 8 x 8 text cells in SIDOU's own font (app/font.h). */
 #ifndef SIDOU_FM1_UI_H
 #define SIDOU_FM1_UI_H
 

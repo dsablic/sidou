@@ -4,10 +4,7 @@
 
 #include "lcd.h"
 
-/* font/font8x8_basic.h (public domain, Daniel Hepper): the glyphs of U+0000..U+007F, one
- * byte per row, bit 0 the leftmost pixel. Vendored unchanged; it defines the array, so only
- * this file includes it. */
-#include "font/font8x8_basic.h"
+#include "font.h"
 
 #ifndef SIDOU_VERSION
 #define SIDOU_VERSION "0.0.0"
@@ -17,9 +14,9 @@
 #define ROWS (LCD_H / 8u)
 #define ROWS_PER_STRIP (LCD_STRIP_ROWS / 8u)
 
-/* Cell codes past ASCII: a bar cell filled n of 8 pixel columns (BAR0 + n), and the border. */
-#define BAR0 0x80u
-#define BORDER 0x89u
+/* Cell codes are font codes (app/font.h): a bar cell fills n of 8 pixel columns (BAR0 + n). */
+#define BAR0 FONT_BAR0
+#define BORDER FONT_FULL
 
 #define BAR_COL 14u
 #define BAR_CELLS 14u
@@ -43,21 +40,6 @@ static const char* algorithm_name(uint32_t slot, uint32_t alg) {
 
 static const char* const NOTE_NAMES[12] = {"C",  "C#", "D",  "D#", "E",  "F",
                                            "F#", "G",  "G#", "A",  "A#", "B"};
-
-static void glyph(uint8_t c, uint8_t rows[8]) {
-    for (uint32_t y = 0; y < 8u; y++) {
-        if (c < 0x80u) {
-            rows[y] = (uint8_t)font8x8_basic[c][y];
-        } else if (c == BORDER) {
-            rows[y] = 0xFFu;
-        } else if (c <= BAR0 + 8u) {
-            /* rows 1..6, the leftmost n columns */
-            rows[y] = y >= 1u && y <= 6u ? (uint8_t)((1u << (c - BAR0)) - 1u) : 0u;
-        } else {
-            rows[y] = 0;
-        }
-    }
-}
 
 static void put(uint32_t row, uint32_t col, const char* s) {
     while (*s && col < COLS - 1u) {
@@ -166,13 +148,12 @@ static void draw_strip(uint32_t s) {
     for (uint32_t cr = 0; cr < ROWS_PER_STRIP; cr++) {
         uint32_t row = s * ROWS_PER_STRIP + cr;
         for (uint32_t c = 0; c < COLS; c++) {
-            uint8_t g[8];
-            glyph(want[row][c], g);
+            const uint8_t* g = font_glyphs[want[row][c]];
             for (uint32_t y = 0; y < 8u; y++) {
                 uint16_t* o = px + (cr * 8u + y) * LCD_W + c * 8u;
                 uint32_t bits = g[y];
-                for (uint32_t x = 0; x < 8u; x++, bits >>= 1) {
-                    o[x] = (bits & 1u) ? UI_FOREGROUND : UI_BACKGROUND;
+                for (uint32_t x = 0; x < 8u; x++, bits <<= 1) {
+                    o[x] = (bits & 0x80u) ? UI_FOREGROUND : UI_BACKGROUND;
                 }
             }
             shown[row][c] = want[row][c];

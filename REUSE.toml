@@ -9,8 +9,3 @@ SPDX-License-Identifier = "GPL-3.0-or-later"
 path = [".gitmodules", "CMakePresets.json", "compile_flags.txt", "host/Cargo.lock", "tests/golden/hashes.txt", "tools/docker/toolchain.sha256"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
-
-[[annotations]]
-path = ["platform/fm1/font/font8x8_basic.h"]
-SPDX-FileCopyrightText = "Daniel Hepper <daniel@hepper.net>, after Marcel Sondaar and IBM's VGA fonts"
-SPDX-License-Identifier = "LicenseRef-PublicDomain"
