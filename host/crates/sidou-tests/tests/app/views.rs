@@ -11,17 +11,17 @@ use crate::Rig;
 
 const COLS: usize = GRID_COLS as usize;
 
-struct Ui {
-    rig: Rig,
-    p: Box<panel>,
-    g: Box<grid>,
-    v: Box<views>,
-    now: u32,
-    held: u32,
+pub(crate) struct Ui {
+    pub(crate) rig: Rig,
+    pub(crate) p: Box<panel>,
+    pub(crate) g: Box<grid>,
+    pub(crate) v: Box<views>,
+    pub(crate) now: u32,
+    pub(crate) held: u32,
 }
 
 impl Ui {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let mut rig = Rig::new(SID_MODEL_6581);
         let mut p = Box::<panel>::default();
         let mut g = Box::<grid>::default();
@@ -44,13 +44,13 @@ impl Ui {
     }
 
     /// Presses button b (and lets it go, unless it is held with hold()).
-    fn press(&mut self, b: u32) {
+    pub(crate) fn press(&mut self, b: u32) {
         let held = self.held | (1 << b);
         unsafe { views_buttons(&mut *self.v, &mut *self.p, 1 << b, held) };
         unsafe { views_buttons(&mut *self.v, &mut *self.p, 0, self.held) };
     }
 
-    fn hold(&mut self, b: u32, down: bool) {
+    pub(crate) fn hold(&mut self, b: u32, down: bool) {
         if down {
             self.held |= 1 << b;
         } else {
@@ -59,17 +59,17 @@ impl Ui {
         unsafe { views_buttons(&mut *self.v, &mut *self.p, 0, self.held) };
     }
 
-    fn turn(&mut self, enc: u32, steps: i32) {
+    pub(crate) fn turn(&mut self, enc: u32, steps: i32) {
         unsafe { views_encoder(&mut *self.v, &mut *self.p, enc, steps) };
     }
 
-    fn frame(&mut self) {
+    pub(crate) fn frame(&mut self) {
         self.now += 40;
         unsafe { views_frame(&mut *self.v, self.now) };
     }
 
     /// Frames until no transition runs.
-    fn settle(&mut self) {
+    pub(crate) fn settle(&mut self) {
         for _ in 0..40 {
             self.frame();
             if unsafe { screen_animating(&self.v.s) } == 0 {
@@ -79,14 +79,14 @@ impl Ui {
         panic!("the screen kept animating");
     }
 
-    fn top(&self) -> String {
+    pub(crate) fn top(&self) -> String {
         let v = unsafe { &*screen_top(&self.v.s) };
         unsafe { CStr::from_ptr(v.name) }
             .to_string_lossy()
             .into_owned()
     }
 
-    fn row(&self, row: usize) -> String {
+    pub(crate) fn row(&self, row: usize) -> String {
         (0..COLS)
             .map(|c| self.g.ch[row * COLS + c])
             .map(|b| {
@@ -99,7 +99,7 @@ impl Ui {
             .collect()
     }
 
-    fn toast(&self) -> Option<String> {
+    pub(crate) fn toast(&self) -> Option<String> {
         (self.v.s.toast_on != 0).then(|| {
             unsafe { CStr::from_ptr(self.v.s.toast.as_ptr()) }
                 .to_string_lossy()
@@ -107,15 +107,15 @@ impl Ui {
         })
     }
 
-    fn live(&self) -> &live {
+    pub(crate) fn live(&self) -> &live {
         &self.rig.live
     }
 }
 
 /// Opens the glyph sheet from the menu: HOME, SELECT to CHARSET, ALGORITHM clockwise.
-fn open_charset(ui: &mut Ui) {
+pub(crate) fn open_charset(ui: &mut Ui) {
     ui.press(PANEL_BTN_HOME);
-    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_ITEMS as i32);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_CHARSET as i32);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
 }
@@ -278,7 +278,7 @@ fn the_panel_plays_the_instrument_as_before_in_every_view() {
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     the_panel_plays(&mut ui, "MENU");
-    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_ITEMS as i32);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_CHARSET as i32);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
     assert_eq!(ui.top(), "CHARSET");
@@ -410,7 +410,8 @@ fn the_menu_composes_when_its_cursor_blinks_or_moves() {
         "the cursor moved and the menu was not composed"
     );
     // The glyph sheet never changes.
-    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_ITEMS as i32);
+    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_CHARSET as i32);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
     ui.g.ch[PROBE_CELL] = b'@';

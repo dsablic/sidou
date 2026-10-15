@@ -7,7 +7,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 27] = [
+const SOURCES: [&str; 32] = [
     "core/sid/sid.c",
     "core/sid/sid_dac.c",
     "core/fx/fx.c",
@@ -16,12 +16,16 @@ const SOURCES: [&str; 27] = [
     "core/fx/fx_plate.c",
     "core/sid/sid_filter.c",
     "bench/workload.c",
+    "app/about.c",
+    "app/boot.c",
     "app/bootguard.c",
+    "app/credits.c",
     "app/font.c",
     "app/fx_live.c",
     "app/grid.c",
     "app/live.c",
     "app/live_freq.c",
+    "app/logo.c",
     "app/midi_in.c",
     "app/midi_map.c",
     "app/midi_out.c",
@@ -31,6 +35,7 @@ const SOURCES: [&str; 27] = [
     "app/panel.c",
     "app/reg_ring.c",
     "app/screen.c",
+    "app/sine.c",
     "app/views.c",
     "app/widget.c",
     "bench/workload_fx.c",
@@ -138,13 +143,13 @@ fn main() {
         .clang_arg("-DSIDOU_ALL_COMBINED_PROFILES")
         .clang_arg(format!("-D{MIDI_MAP_DOC}"))
         .allowlist_function(
-            "sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*",
+            "sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*",
         )
         .allowlist_type(
-            "sid.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*",
+            "sid.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*",
         )
         .allowlist_var(
-            "SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*",
+            "SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*|LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*",
         )
         // A `static const` table private to sid_env.h; it has no symbol to link to.
         .blocklist_item("SID_ENV_RATE_POS|SID_ENV_THRESHOLDS|SID_PULLDOWN_.*")

@@ -73,6 +73,12 @@ int screen_pop(screen* s, screen_wipe w) {
     return 0;
 }
 
+void screen_reveal(screen* s, screen_wipe w) {
+    if (!s->busy) {
+        switched(s, w);
+    }
+}
+
 const view* screen_top(const screen* s) {
     return s->stack[s->depth - 1u].v;
 }

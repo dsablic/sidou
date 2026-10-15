@@ -16,8 +16,10 @@ use common::{build_dir, peak, pitch, power_above, record, Firmware, Machine};
 use fm1_core::Bus;
 use sidou_sys::{ilp32, live_freq_at, live_freq_table, SID_MODEL_8580};
 
-/// Past the LCD's reset delays and the first audio blocks.
-const BOOT_MS: u64 = 500;
+/// Past the LCD's reset delays, the first audio blocks and the short boot animation
+/// (app/boot.h), which a control would skip instead of playing; a whole number of frames
+/// after the 500 ms of before it, so that the screen's frames fall as they did.
+const BOOT_MS: u64 = 2020;
 const C4: u8 = 60;
 const C4_HZ: f64 = 261.626;
 const CC_CUTOFF: u8 = 74;

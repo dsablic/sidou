@@ -428,6 +428,41 @@ fn a_wipe_up_reveals_the_view_below_bottom_first() {
 }
 
 #[test]
+fn a_reveal_wipes_the_same_view_in_anew() {
+    // A view that changes its whole look (the boot's title card) shows it behind a wipe,
+    // as a switch would: the stack, the focus and the capture stay as they are.
+    let (root, a) = (probe_view(c"ROOT"), probe_view(c"A"));
+    let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));
+    let mut r = Rig::new(&root, &mut rs);
+    r.push(&a, &mut as_, SCREEN_CUT);
+    unsafe { screen_capture(&mut *r.s, Some(consume_all), std::ptr::null_mut()) };
+    r.frame();
+    as_.overlay = true;
+    as_.ch = b'B';
+    as_.take();
+    unsafe { screen_reveal(&mut *r.s, SCREEN_WIPE_DOWN) };
+    assert!(r.animating());
+    let rest = wipe_frames(&mut r, b'B');
+    assert_eq!(rest.len(), ROWS.div_ceil(SCREEN_WIPE_ROWS as usize));
+    assert_eq!(r.rows_showing(b'B').len(), ROWS - 2);
+    assert_eq!(r.top(), &*a as *const view);
+    assert!(
+        as_.take().iter().all(|c| c == "compose"),
+        "no enter or exit"
+    );
+    assert!(r.input(SCREEN_PRESS, 3, 0, 0), "the capture went");
+    assert_eq!(
+        r.g.ovl[5 * COLS + 5],
+        1,
+        "the overlay drawn after the reveal"
+    );
+}
+
+unsafe extern "C" fn consume_all(_ctx: *mut c_void, _e: *const screen_event) -> c_int {
+    1
+}
+
+#[test]
 fn a_cut_sends_the_whole_change_in_one_frame() {
     let (root, a) = (probe_view(c"ROOT"), probe_view(c"A"));
     let (mut rs, mut as_) = (Probe::new(b'R'), Probe::new(b'A'));

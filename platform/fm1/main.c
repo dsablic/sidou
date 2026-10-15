@@ -183,7 +183,9 @@ static void sidou_main(void) {
     midi_init(&instrument);
     update_boot();
     audio_start();
-    ui_init(&instrument);
+    /* The time uptime_ms will show: the tick's first interrupt counts every timer tick since
+     * power-on (fm1_timer5_irq). */
+    ui_init(&instrument, fm1_ticks() / (1000u * FM1_TICKS_PER_US));
     fm1_audio_init(abuf, AUDIO_HALF_WORDS, isr_alnk0, PRIO_ALNK0);
     fm1_timer5_start(isr_timer5, PRIO_TIMER5);
     fm1_irq_enable_all();

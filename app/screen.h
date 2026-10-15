@@ -152,6 +152,10 @@ void screen_capture(screen* s, screen_capture_fn fn, void* ctx);
 void screen_global(screen* s, screen_capture_fn fn, void* ctx);
 /* 1 if the capture, the global handler or the view on top consumed e. */
 int screen_input(screen* s, const screen_event* e);
+/* The view on top composes anew behind wipe w, as after a switch, and its overlays go: for a
+ * view that changes its whole look (the boot's title card, app/boot.h). The stack, the focus
+ * and the capture stay. Not from a view's enter or exit. */
+void screen_reveal(screen* s, screen_wipe w);
 /* The next frame composes, whatever the view says (someone else drew on the grid). */
 void screen_redraw(screen* s);
 /* Shows text (clipped to SCREEN_TOAST_CHARS) for ms from the next frame on, replacing a toast

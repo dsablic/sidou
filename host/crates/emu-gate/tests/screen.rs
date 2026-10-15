@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The screen in fm1-emu: LCD snapshots of the views against golden images
 //! (tests/golden/lcd/), reached through the panel as a player would (HOME, SELECT, ALGORITHM);
-//! the wipe and raster transitions frame by frame; and what drawing costs the main loop in
-//! instructions and SPI time, idle, for small changes and per frame of each transition.
+//! the boot sequence, short and full, and skipping it; the wipe and raster transitions frame
+//! by frame; and what drawing costs the main loop in instructions and SPI time, idle, for
+//! small changes, per frame of each transition, and for the animated boot and About.
 //!
 //! The goldens are 4-bit indexed PNGs in the art palette (docs/art/README.md), so every pixel
 //! must be one of the 16 colours. SIDOU_LCD_GOLDEN_UPDATE=1 rewrites them; a mismatch writes
@@ -16,7 +17,11 @@ use std::path::{Path, PathBuf};
 use common::{build_dir, Firmware, Machine};
 use fm1_core::Bus;
 
-const BOOT_MS: u64 = 500;
+/// Past the short boot (app/boot.h: the title card for 1.2 s from the first frame, then an
+/// 8-frame wipe to the status screen). 48 frames after M1e Task 2's 500 ms, a whole number of
+/// cursor blinks (16 frames), so that the measurements' frames and the menu cursor's phase
+/// fall as they did.
+const BOOT_MS: u64 = 2420;
 const W: usize = 240;
 /// platform/fm1/lcd.c: SPI1 at 60 MHz / (4 + 1).
 const SPI_HZ: f64 = 12e6;
@@ -32,8 +37,9 @@ const FX: u8 = 2;
 const HOME: u8 = 8;
 const SELECT: u8 = 0;
 const ALGORITHM: u8 = 1;
-/// app/views.c: the menu's items (CHARSET last), and its cursor cell on the first item.
-const MENU_ITEMS: i32 = 4;
+/// app/views.h: the menu's view items, and its cursor cell on the first item.
+const MENU_CHARSET: i32 = 3;
+const MENU_ABOUT: i32 = 4;
 const MENU_CURSOR: (usize, usize, usize) = (3, 5, 1);
 /// app/screen.h: the toast's row.
 const TOAST_ROW: usize = 27;
@@ -97,7 +103,7 @@ fn open_menu(m: &mut Machine) {
 /// The glyph sheet, from the menu's last item.
 fn open_charset(m: &mut Machine) {
     open_menu(m);
-    m.turn(SELECT, MENU_ITEMS);
+    m.turn(SELECT, MENU_CHARSET);
     m.run_ms(100);
     m.turn(ALGORITHM, 1);
     m.run_ms(SETTLE_MS);
@@ -606,3 +612,225 @@ fn screen_changes_and_transitions_stay_within_the_budgets() {
         );
     }
 }
+
+/// The boot's version text, left out as the status screen's: the prompt's banner (row 3) and
+/// the title card's version line (row 18), inside the border.
+const BANNER: (usize, usize, usize) = (1, 3, 28);
+const TITLE_VERSION: (usize, usize, usize) = (1, 18, 28);
+/// app/boot.c: the prompt's cursor after RUN.
+const RUN_CURSOR: (usize, usize, usize) = (5, 13, 1);
+
+#[test]
+fn the_short_boot_shows_the_title_card_then_the_status_screen() {
+    let Some((build, fw)) = fixture("the boot screen test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    m.run_ms(700);
+    assert!(m.soc.lcd.display_on, "DISPON was not sent");
+    compare_golden(&build, "boot-title", &m.soc.lcd.fb, &[TITLE_VERSION]);
+    m.run_ms(BOOT_MS - 700);
+    compare_golden(&build, "status", &m.soc.lcd.fb, &[VERSION_CELLS]);
+}
+
+/// HOME held at power-on, until the key scan has seen it (it starts with the interrupts, after
+/// the LCD's init and the boot's first frame, about 380 ms in).
+fn hold_home_through_power_on(m: &mut Machine) {
+    m.key(HOME, true);
+    m.run_ms(600);
+    m.key(HOME, false);
+}
+
+#[test]
+fn home_held_at_power_on_plays_the_full_boot() {
+    let Some((build, fw)) = fixture("the boot screen test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    hold_home_through_power_on(&mut m);
+    // app/boot.h, from the full boot's first frame (about 420 ms in): LOADING from 3.0 s to
+    // 5.6 s, RUN typed by 6.5 s, the title card from 7.0 s to 10.0 s, then the wipe.
+    m.run_ms(4300 - 600);
+    // The loading stripes: colours on the border other than the status screen's.
+    let idx = indexed(&m.soc.lcd.fb);
+    let border: std::collections::BTreeSet<u8> = (0..W).map(|y| idx[y * W + 3]).collect();
+    assert!(
+        border.len() >= 4,
+        "no loading stripes on the border: {border:?}"
+    );
+    compare_golden(&build, "boot-loading", &m.soc.lcd.fb, &[BANNER]);
+    m.run_ms(7200 - 4300);
+    // Still the prompt: its rows 7-13 hold READY., LOAD..., SEARCHING..., LOADING, READY.
+    // and RUN, where the status screen has its sound parameters.
+    let status = booted(&fw);
+    assert!(
+        cell_rows(&m.soc.lcd.fb)[7..14] != cell_rows(&status.soc.lcd.fb)[7..14],
+        "the status screen, not the boot's prompt"
+    );
+    compare_golden(&build, "boot-ready", &m.soc.lcd.fb, &[BANNER, RUN_CURSOR]);
+    m.run_ms(8000 - 7200);
+    compare_golden(&build, "boot-title-full", &m.soc.lcd.fb, &[TITLE_VERSION]);
+    m.run_ms(11_200 - 8000);
+    compare_golden(&build, "status", &m.soc.lcd.fb, &[VERSION_CELLS]);
+}
+
+#[test]
+fn a_button_skips_the_boot_and_does_nothing_else() {
+    let Some((build, fw)) = fixture("the boot screen test") else {
+        return;
+    };
+    // FX would toggle the chip and OCT+ step the octave; either shows on the status screen and
+    // as a toast.
+    // Pressed after app/boot.h BOOT_HOLD_MS, so that HOME does not mean "the full boot".
+    for button in [FX, OCT_UP, HOME] {
+        let mut m = Machine::boot(&fw.image);
+        m.run_ms(900);
+        press(&mut m, button);
+        m.run_ms(SETTLE_MS);
+        compare_golden(&build, "status", &m.soc.lcd.fb, &[VERSION_CELLS]);
+    }
+}
+
+#[test]
+fn a_note_skips_the_boot_and_plays() {
+    let Some((build, fw)) = fixture("the boot screen test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    m.run_ms(600);
+    let from = m.soc.periph.audio.len() / 2;
+    m.key(A4_KEY, true);
+    m.run_ms(SETTLE_MS);
+    compare_golden(&build, "status-a4", &m.soc.lcd.fb, &[VERSION_CELLS]);
+    let peak = m.left()[from..]
+        .iter()
+        .map(|s| s.unsigned_abs())
+        .max()
+        .unwrap_or(0);
+    assert!(peak > 1000, "the note did not play: peak {peak}");
+}
+
+/// About, from the menu's last item.
+fn open_about(m: &mut Machine) {
+    open_menu(m);
+    m.turn(SELECT, MENU_ABOUT);
+    m.run_ms(100);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(SETTLE_MS);
+}
+
+/// The first credits page names SIDOU and its version (row 12).
+const ABOUT_VERSION: (usize, usize, usize) = (1, 12, 28);
+
+#[test]
+fn about_opens_from_the_menu_and_home_goes_back() {
+    let Some((build, fw)) = fixture("the About test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_about(&mut m);
+    compare_golden(&build, "about", &m.soc.lcd.fb, &[ABOUT_VERSION]);
+    // The cracktro moves every frame.
+    let before = m.soc.lcd.fb.clone();
+    m.run_ms(UI_PERIOD_MS);
+    assert!(m.soc.lcd.fb != before, "About stood still");
+    press(&mut m, HOME);
+    m.run_ms(SETTLE_MS);
+    // The cursor is on ABOUT now, blinking in its own phase.
+    let (cc, cr, cl) = MENU_CURSOR;
+    let on_about = (cc, cr + MENU_ABOUT as usize, cl);
+    compare_golden(
+        &build,
+        "menu",
+        &m.soc.lcd.fb,
+        &[VERSION_CELLS, MENU_CURSOR, on_about],
+    );
+}
+
+/// Cells a frame sent: each a 128-byte window body, each window 11 command bytes.
+fn cells(f: &Sent) -> u32 {
+    (f.bytes - f.windows * 11) / 128
+}
+
+fn animated_json(c: &Cost) -> serde_json::Value {
+    let n = c.frames.len() as f64;
+    let per: Vec<u32> = c.frames.iter().map(cells).collect();
+    let t = c.total();
+    serde_json::json!({
+        "frames": c.frames.len(),
+        "cells_per_frame": f64::from(per.iter().sum::<u32>()) / n,
+        "max_cells": per.iter().max(),
+        "windows_per_frame": f64::from(t.windows) / n,
+        "spi_bytes_per_frame": f64::from(t.bytes) / n,
+        "spi_ms_per_frame": t.spi_ms() / n,
+        "worst_frame_spi_ms": c.worst_frame_ms(),
+        "instructions_per_frame": c.instructions_per_frame(),
+        "worst_ui_poll": c.worst_poll,
+        "per_frame": c.frames.iter().map(|f| [f.windows, f.bytes]).collect::<Vec<_>>(),
+    })
+}
+
+#[test]
+fn the_boot_and_about_stay_within_their_budgets() {
+    let Some((_, fw)) = fixture("the boot and About budget test") else {
+        return;
+    };
+    // The full boot, HOME held at power-on: every frame after the first (drawn whole before
+    // the display is on) inside the SPI budget.
+    let mut m = Machine::boot(&fw.image);
+    m.watch_calls(fw.symbol("ui_poll"));
+    hold_home_through_power_on(&mut m);
+    let boot = measure(&mut m, &fw, 260, |_| {});
+    // About: 12 s, past two pages and their fades.
+    open_about(&mut m);
+    let about = measure(&mut m, &fw, 300, |_| {});
+    let report = serde_json::json!({
+        "frame_ms": UI_PERIOD_MS,
+        "spi_hz": SPI_HZ,
+        "full_boot": animated_json(&boot),
+        "about": animated_json(&about),
+    });
+    println!("{report}");
+    for (what, c) in [("boot", &boot), ("about", &about)] {
+        assert!(
+            c.worst_frame_ms() <= SPI_BUDGET_MS,
+            "{what}: a frame took {:.1} ms of SPI",
+            c.worst_frame_ms()
+        );
+    }
+    // docs/plans/2026-10-15-m1e-look-and-feel.md: About trimmed from the prototype's 240
+    // cells a frame to about 120.
+    let n = about.frames.len() as f64;
+    let avg = f64::from(about.frames.iter().map(cells).sum::<u32>()) / n;
+    assert!(avg <= 120.0, "About sends {avg:.1} cells a frame");
+    // About composes every frame: its busiest frame is one compose and a run (ui_poll),
+    // and every frame costs about the same.
+    assert!(
+        about.worst_poll < ABOUT_WORST_POLL,
+        "About: a ui_poll took {} instructions",
+        about.worst_poll
+    );
+    assert!(
+        about.instructions_per_frame() < ABOUT_PER_FRAME,
+        "About: {:.0} instructions a frame",
+        about.instructions_per_frame()
+    );
+    assert!(
+        boot.worst_poll < BOOT_WORST_POLL,
+        "boot: a ui_poll took {} instructions",
+        boot.worst_poll
+    );
+    assert!(
+        boot.instructions_per_frame() < BOOT_PER_FRAME,
+        "boot: {:.0} instructions a frame",
+        boot.instructions_per_frame()
+    );
+}
+
+/// Main-loop instructions in ui_poll (fm1-emu). About at M1e Task 3: its busiest ui_poll (a
+/// compose and a run) 105k, 161k a frame with the rendering of its 93 cells, 4.0M a second
+/// (1.7 % of 240 MHz). The full boot: 64k and 50k.
+const ABOUT_WORST_POLL: u64 = 120_000;
+const ABOUT_PER_FRAME: f64 = 180_000.0;
+const BOOT_WORST_POLL: u64 = 75_000;
+const BOOT_PER_FRAME: f64 = 60_000.0;

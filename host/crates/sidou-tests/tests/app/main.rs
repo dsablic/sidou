@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Unit tests of the portable app logic (`app/`) through FFI.
 
+mod about;
+mod boot;
 mod bootguard;
+mod credits;
 mod expression;
 mod font;
 mod fx_live;
 mod grid;
 mod live_freq;
 mod live_instrument;
+mod logo;
 mod midi_in;
 mod midi_map;
 mod midi_out;
@@ -136,4 +140,81 @@ pub fn preset_name(p: &live_preset) -> String {
 
 pub fn freq_table() -> [u16; 128] {
     unsafe { live_freq_table }
+}
+
+/// The panel as palette indexes, 240 x 240, from the composed grid: each cell's glyph in its
+/// colours and its overlay over it, as grid_render_run draws it.
+pub fn pixels(g: &sidou_sys::grid) -> Vec<u8> {
+    let cols = GRID_COLS as usize;
+    let w = cols * 8;
+    let mut out = vec![0u8; w * w];
+    for i in 0..cols * cols {
+        let (cx, cy) = (i % cols, i / cols);
+        let glyph = unsafe { font_glyphs }[usize::from(g.ch[i])];
+        let (fg, bg) = (g.attr[i] & 15, g.attr[i] >> 4);
+        let ovl = usize::from(g.ovl[i]);
+        for y in 0..8 {
+            for x in 0..8 {
+                let bit = 0x80 >> x;
+                let c = if ovl != 0 && g.ovl_mask[ovl - 1][y] & bit != 0 {
+                    g.ovl_color[ovl - 1]
+                } else if glyph[y] & bit != 0 {
+                    fg
+                } else {
+                    bg
+                };
+                out[(cy * 8 + y) * w + cx * 8 + x] = c;
+            }
+        }
+    }
+    out
+}
+
+/// What one drain of a grid's changed runs sent.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct Sent {
+    pub windows: usize,
+    pub cells: usize,
+}
+
+/// platform/fm1/lcd.c: SPI1 at 60 MHz / (4 + 1); lcd.h: 11 command bytes a window.
+pub const SPI_HZ: f64 = 12e6;
+pub const WINDOW_BYTES: usize = 11;
+/// docs/art/README.md: at most about 20 ms of SPI per 40 ms frame.
+pub const SPI_BUDGET_MS: f64 = 20.0;
+
+impl Sent {
+    pub fn bytes(self) -> usize {
+        self.cells * 128 + self.windows * WINDOW_BYTES
+    }
+
+    pub fn spi_ms(self) -> f64 {
+        self.bytes() as f64 * 8.0 / SPI_HZ * 1e3
+    }
+}
+
+/// Every changed run of g, counted as shown, as platform/fm1/ui.c sends them.
+pub fn drain(g: &mut sidou_sys::grid) -> Sent {
+    let mut sent = Sent::default();
+    let mut run = grid_run::default();
+    while unsafe { grid_next_run(g, &mut run) } != 0 {
+        sent.windows += 1;
+        sent.cells += usize::from(run.len);
+    }
+    sent
+}
+
+/// Cell row `row` of a grid as text, '#' for codes outside printable ASCII.
+pub fn grid_row(g: &sidou_sys::grid, row: usize) -> String {
+    let cols = GRID_COLS as usize;
+    (0..cols)
+        .map(|c| g.ch[row * cols + c])
+        .map(|b| {
+            if (0x20..0x7f).contains(&b) {
+                b as char
+            } else {
+                '#'
+            }
+        })
+        .collect()
 }

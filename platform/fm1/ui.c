@@ -52,13 +52,16 @@ static void flush(void) {
     lcd_sync();
 }
 
-void ui_init(live* l) {
+void ui_init(live* l, uint32_t now_ms) {
     for (uint32_t i = 0; i < 16u; i++) {
         palette[i] = LCD_SWAP(grid_palette[i]);
     }
     grid_init(&cells, ' ', VIEWS_TEXT);
     views_init(&ui, &cells, l, "V" SIDOU_VERSION);
-    views_frame(&ui, 0);
+    /* Short; HOME held at power-on makes it the full one (app/boot.h). */
+    views_boot(&ui, 0);
+    last_compose = now_ms;
+    views_frame(&ui, now_ms);
     flush();
     lcd_on();
 }

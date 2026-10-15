@@ -12,7 +12,10 @@ use sidou_sys::{
     SID_FXSLOT_REVERB_LIGHT, SID_FXSLOT_REVERB_LUSH, SID_MOD_CHORUS, SID_MOD_COUNT,
 };
 
-const BOOT_MS: u64 = 500;
+/// Past the LCD's reset delays, the first audio blocks and the short boot animation
+/// (app/boot.h), which a control would skip instead of playing; a whole number of frames
+/// after the 500 ms of before it, so that the screen's frames fall as they did.
+const BOOT_MS: u64 = 2020;
 /// Felucca's ids: the buttons of the effect layer (app/panel.h), K1 and K4, the A4 key.
 const ENV: u8 = 4;
 const EDIT: u8 = 6;

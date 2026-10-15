@@ -234,12 +234,19 @@ static void charset_open(void* ctx, int32_t steps) {
     screen_push(&v->s, &views_charset, v, SCREEN_WIPE_DOWN);
 }
 
+static void about_open(void* ctx, int32_t steps) {
+    views* v = ctx;
+    (void)steps;
+    about_init(&v->about, v->version);
+    screen_push(&v->s, &about_view, &v->about, SCREEN_WIPE_DOWN);
+}
+
 static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
-    {"CHIP", chip_value, chip_turn},
-    {"PRESET", preset_value, preset_turn},
-    {"OCTAVE", octave_value, octave_turn},
-    {"CHARSET", NULL, charset_open},
+    {"CHIP", chip_value, chip_turn},       {"PRESET", preset_value, preset_turn},
+    {"OCTAVE", octave_value, octave_turn}, {"CHARSET", NULL, charset_open},
+    {"ABOUT", NULL, about_open},
 };
+_Static_assert(VIEWS_MENU_CHARSET == 3u && VIEWS_MENU_ABOUT == 4u, "the menu's view items");
 
 static int menu_input(screen* s, void* state, const screen_event* e) {
     (void)s;
@@ -356,6 +363,28 @@ void views_init(views* v, grid* g, live* l, const char* version) {
     screen_global(&v->s, global, v);
 }
 
+void views_boot(views* v, int full) {
+    boot_init(&v->boot, v->l, v->version, full);
+    screen_push(&v->s, &boot_view, &v->boot, SCREEN_CUT);
+}
+
+/* The boot on top: its time, and what it asks of the screen. */
+static void boot_frame(views* v, uint32_t now_ms) {
+    if (screen_top(&v->s) != &boot_view) {
+        return;
+    }
+    switch (boot_update(&v->boot, now_ms)) {
+    case BOOT_REVEAL:
+        screen_reveal(&v->s, SCREEN_WIPE_DOWN);
+        break;
+    case BOOT_END:
+        screen_pop(&v->s, SCREEN_WIPE_DOWN);
+        break;
+    default:
+        break;
+    }
+}
+
 void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
     uint32_t rest = pressed;
     for (uint32_t b = 0; b < 32u && pressed >> b; b++) {
@@ -366,6 +395,10 @@ void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
         if (screen_input(&v->s, &e)) {
             rest &= ~(1u << b);
         }
+    }
+    /* After the presses: a HOME press is the boot's capture's to judge first. */
+    if (screen_top(&v->s) == &boot_view) {
+        boot_held(&v->boot, held);
     }
     panel_buttons(p, v->l, rest, held);
 }
@@ -417,6 +450,7 @@ static void tell(views* v) {
 }
 
 void views_frame(views* v, uint32_t now_ms) {
+    boot_frame(v, now_ms);
     tell(v);
     screen_frame(&v->s, now_ms);
 }

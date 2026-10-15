@@ -1,15 +1,20 @@
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 # The portable live-instrument logic, front-panel mapping, register ring, MIDI parser and MIDI input,
-# the screen font, the cell-grid renderer, and the screen's views, widgets and transitions. Its
+# the screen font, the cell-grid renderer, the screen's views, widgets and transitions, the boot
+# sequence, the logo and the About cracktro with its credits. Its
 # headers are included bare ("live.h"); the SID core's as "sid/sid.h".
 add_library(sidou_live STATIC
+    about.c
+    boot.c
     bootguard.c
+    credits.c
     font.c
     fx_live.c
     grid.c
     live.c
     live_freq.c
+    logo.c
     midi_in.c
     midi_map.c
     midi_out.c
@@ -19,6 +24,7 @@ add_library(sidou_live STATIC
     panel.c
     reg_ring.c
     screen.c
+    sine.c
     views.c
     widget.c)
 target_include_directories(sidou_live PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
