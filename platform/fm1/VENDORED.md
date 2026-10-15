@@ -166,6 +166,9 @@ carry the changes over onto SIDOU's versions.
   itself), not from the audio interrupt, and is no longer marked unused;
   its and `ep1_tx`'s comments say so. The ring, `ep1_tx` and the bus
   reset's flush are unchanged.
+  Only a bus reset flushes the ring: a `SET_CONFIGURATION(0)` without one
+  stops `ep1_tx` but leaves what is queued (up to 64 packets) to go out
+  when the host configures the device again.
 - The header comment describes the SIDOU build, and `SET_INTERFACE`'s
   comment no longer mentions the audio stream.
 

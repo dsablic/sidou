@@ -171,12 +171,19 @@ int midi_drain(void) {
 
 void midi_send(void) {
     /* No host, or one asleep or gone (usb.c: the frame number stopped): forget the changes
-     * rather than queue them for a host that may come back much later. */
-    if (!usb.config || usb.suspended) {
+     * rather than queue them for a host that may come back much later. Both flags change in
+     * the TIMER5 interrupt, so both are read through volatile: suspended is declared so, and
+     * config is read as usb.c's ota_wire_send reads it. */
+    if (!*(volatile uint8_t*)&usb.config || usb.suspended) {
         midi_out_drop(&midi_tx, rx.l);
         return;
     }
-    /* The ring's room now; the TIMER5 interrupt only ever frees more (ep1_tx). */
+    /* The ring's room now; the TIMER5 interrupt only ever frees more (ep1_tx).
+     * A known race: a bus reset between here and midi_out_event (usb_poll, in the interrupt)
+     * sets config to 0, so midi_out_event discards the rest of this tick's packets, while MIDI
+     * out counts them as sent (its wire). It is the same as a reset one poll later, which
+     * flushes the ring with them in it (mo_r = mo_w): MIDI out's wire is what it handed to
+     * USB, never what a host received, and a host that enumerates anew starts from it. */
     uint32_t room = MQ - (mo_w - mo_r);
     uint32_t pkt[MIDI_OUT_TICK_PACKETS];
     uint32_t n = midi_out_tick(&midi_tx, rx.l, room, pkt);
