@@ -459,8 +459,7 @@ __attribute__((noinline))
 #endif
 static void render_6581(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_tap tap,
                         void* ctx) {
-    const sid_nonlin n = s->nl;
-    const float g0 = s->svf.g, a10 = s->svf.a1, k = s->svf.k, load_at = s->svf.load_at;
+    const sid_nl_coefs c = sid_nl_coefs_of(&s->svf, &s->nl);
     float ic1 = s->svf.ic1, ic2 = s->svf.ic2, lp = s->svf.lp, bp = s->svf.bp, hp = s->svf.hp;
     float bpn = s->svf.bpn;
     const float mix_lp = s->mix_lp, mix_bp = s->mix_bp, mix_bpn = s->mix_bpn, mix_hp = s->mix_hp;
@@ -486,7 +485,7 @@ static void render_6581(sid* s, int16_t* out, uint32_t frames, uint32_t every, s
                     direct += x;
                 }
             }
-            sid_nl_tick(&ic1, &ic2, &lp, &bp, &hp, &bpn, filt_in, g0, a10, k, load_at, &n);
+            sid_nl_tick(&ic1, &ic2, &lp, &bp, &hp, &bpn, filt_in, &c);
             float filtered = mix_lp * lp + mix_bpn * bpn + mix_bp * bp + mix_hp * hp;
             /* The output low-pass. At volume 0 it decays towards 0 (sid_svf_flush's reason). */
             float x = out_lp + (vol_c * (direct + filtered) - out_c * out_lp);

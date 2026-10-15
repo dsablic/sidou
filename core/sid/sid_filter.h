@@ -34,7 +34,13 @@ typedef struct {
  *   m  = clamp(1 + load (load_ref - dc - lp state), SID_NL_M_MIN, SID_NL_M_MAX)
  *   g  = max(g0 m + level (|hp| - level_ref), floor)
  * and the coefficients follow from one Newton step for 1 / (1 + g (g + k)) from the
- * table's a1, not a per-sample divide. The step's error is the load-damping model, not an
+ * table's a1 (a10), not a per-sample divide. The tick computes the same, rearranged so
+ * what is fixed for a render is computed once (sid_nl_coefs):
+ *   u  = clamp(A - B lp state, SID_NL_M_MIN g0 - lo, SID_NL_M_MAX g0 - lo)
+ *   g  = max(u + level |hp|, floor)
+ *   a1 = max(P - Q g (g + k), 0.1 a10)
+ * with lo = level level_ref, A = g0 (1 + load (load_ref - dc)) - lo, B = g0 load,
+ * P = a10 (2 - a10) and Q = a10^2. The step's error is the load-damping model, not an
  * approximation of it: the step underestimates a1, more the further the load pulls the
  * cutoff down, which raises the damping the filter runs at above the table's k as
  * reSIDfp's damping grows under the load (unit/sid_filter.rs pins it: an exact divide
@@ -112,33 +118,58 @@ static inline void sid_svf_tick(sid_svf* f, float v0) {
     sid_svf_flush(f);
 }
 
-/* The 6581's tick (sid_nonlin above) on its state, the integrators (ic1, ic2) and the
- * outputs, with its coefficients from sid_svf_set_6581 (g0 = g, a10 = a1, k, load_at):
- * sid_render keeps them all in locals for a render, sid_svf_tick_6581 in the struct. It
- * also sets bpn: the band-pass times the damping the shifted coefficients have (over the
- * table's damping: the mix divides by k), which keeps the band-pass peak where reSIDfp's
- * stays as the load widens the band. Whatever a1 is, ic1 + g v3 = v1 / a1, so
- * (ic1 - v1 + g (v3 - g v1)) / g is that damping times v1; it costs the tick's one
- * divide. */
+/* The 6581 tick's coefficients for a render (sid_nonlin above): what does not change
+ * between register writes, from sid_svf_set_6581's (g0 = g, a10 = a1, k, load_at) and the
+ * chip's non-linearity. */
+typedef struct {
+    float a, b;       /* u = a - b ic2 */
+    float u_lo, u_hi; /* u's clamp: the load's part between SID_NL_M_MIN and SID_NL_M_MAX */
+    float level, floor;
+    float p, q;   /* a1 = p - q g (g + k): the Newton step from a10 */
+    float a1_min; /* 0.1 a10 */
+    float k;
+} sid_nl_coefs;
+
+static inline sid_nl_coefs sid_nl_coefs_of(const sid_svf* f, const sid_nonlin* n) {
+    const float g0 = f->g, a10 = f->a1, off = n->level_off;
+    sid_nl_coefs c;
+    c.a = g0 * (1.0f + n->load * f->load_at) + off;
+    c.b = g0 * n->load;
+    c.u_lo = SID_NL_M_MIN * g0 + off;
+    c.u_hi = SID_NL_M_MAX * g0 + off;
+    c.level = n->level;
+    c.floor = n->floor;
+    c.p = a10 * (2.0f - a10);
+    c.q = a10 * a10;
+    c.a1_min = 0.1f * a10;
+    c.k = f->k;
+    return c;
+}
+
+/* The 6581's tick on its state, the integrators (ic1, ic2) and the outputs, with the
+ * render's coefficients (sid_nl_coefs_of): sid_render keeps them all in locals for a
+ * render, sid_svf_tick_6581 in the struct. It also sets bpn: the band-pass times the
+ * damping the shifted coefficients have (over the table's damping: the mix divides by k),
+ * which keeps the band-pass peak where reSIDfp's stays as the load widens the band.
+ * Whatever a1 is, ic1 + g v3 = v1 / a1, so (ic1 - v1 + g (v3 - g v1)) / g is that damping
+ * times v1; it costs the tick's one divide. */
 static inline void sid_nl_tick(float* ic1, float* ic2, float* lp, float* bp, float* hp,
-                               float* bpn, float v0, float g0, float a10, float k,
-                               float load_at, const sid_nonlin* n) {
-    float m = 1.0f + n->load * (load_at - *ic2);
-    if (m < SID_NL_M_MIN) {
-        m = SID_NL_M_MIN;
-    } else if (m > SID_NL_M_MAX) {
-        m = SID_NL_M_MAX;
+                               float* bpn, float v0, const sid_nl_coefs* c) {
+    float u = c->a - c->b * *ic2;
+    if (u < c->u_lo) {
+        u = c->u_lo;
+    } else if (u > c->u_hi) {
+        u = c->u_hi;
     }
     float swing = *hp < 0.0f ? -*hp : *hp;
-    float g = g0 * m + n->level * swing + n->level_off;
-    if (g < n->floor) {
-        g = n->floor;
+    float g = u + c->level * swing;
+    if (g < c->floor) {
+        g = c->floor;
     }
-    float t = 2.0f - (1.0f + g * (g + k)) * a10;
-    if (t < 0.1f) {
-        t = 0.1f;
+    float a1 = c->p - c->q * (g * (g + c->k));
+    if (a1 < c->a1_min) {
+        a1 = c->a1_min;
     }
-    float a1 = a10 * t;
     float a2 = g * a1;
     float a3 = g * a2;
     float c1 = *ic1, c2 = *ic2;
@@ -150,15 +181,15 @@ static inline void sid_nl_tick(float* ic1, float* ic2, float* lp, float* bp, flo
     c2 = 2.0f * v2 - c2;
     *lp = v2;
     *bp = v1;
-    *hp = v0 - k * v1 - v2;
+    *hp = v0 - c->k * v1 - v2;
     /* sid_svf_flush's reason. */
     *ic1 = c1 < 1e-15f && c1 > -1e-15f ? 0.0f : c1;
     *ic2 = c2 < 1e-15f && c2 > -1e-15f ? 0.0f : c2;
 }
 
 static inline void sid_svf_tick_6581(sid_svf* f, const sid_nonlin* n, float v0) {
-    sid_nl_tick(&f->ic1, &f->ic2, &f->lp, &f->bp, &f->hp, &f->bpn, v0, f->g, f->a1, f->k,
-                f->load_at, n);
+    const sid_nl_coefs c = sid_nl_coefs_of(f, n);
+    sid_nl_tick(&f->ic1, &f->ic2, &f->lp, &f->bp, &f->hp, &f->bpn, v0, &c);
 }
 
 #endif
