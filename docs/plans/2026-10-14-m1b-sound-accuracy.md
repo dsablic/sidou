@@ -195,6 +195,35 @@ while the user was away; revisit if needed):
     dependence.
 - Commit: `feat(sid): filter cutoff and resonance tables fitted to reSIDfp`.
 
+**Results and decisions after Task 5** (2026-10-15):
+- **Measurement:** noise (0xffff) at envelope 0x44 through reSIDfp's filter
+  against the same noise unfiltered gives each transfer function as a cross
+  spectrum (`sidou-tablegen`'s `filter_fit.rs`). The fit is the analogue
+  prototype of SIDOU's filter, LP, BP and HP together, within a factor of
+  three of the cutoff: reSIDfp's 6581 filter is not a state-variable filter
+  further out (its band-pass and high-pass level off about 15 and 28 dB down).
+- **Tables (`gen/filter.h`):** `SID_CUTOFF_HZ_<model>[curve][2048]` (float Hz)
+  and `SID_RES_K_<model>[curve][16]` (k = 1/Q), one row per curve setting
+  (`FILTER_CURVES` in `sidou-tablegen`; reSIDfp's defaults now, M1c Task 3
+  adds rows). Between the measured FC values the cutoff follows what the
+  chip's cutoff DAC outputs (the 6581's kinked DAC from reSIDfp, the 8580's
+  W/L), so it is monotonic where reSIDfp is. Out of the measurement's reach
+  (8580 FC 0, 6581 above about 15 kHz) it is extrapolated; the device clamps
+  to 30 Hz and 0.45 fs anyway.
+- **Placement:** 16,512 bytes in flash, read by `sid_init` only. Each chip
+  keeps its 16 damping values in its own struct (RAM), so `sid_write` reads no
+  flash. Instructions per sample unchanged (worst block 1,408.8 for two
+  chips); `sid_init` is 54k instructions cheaper.
+- **Fit errors** (dB around the cutoff, RMS / largest over the FC values in
+  reach): 8580 within 0.14 / 0.87 for every mode and resonance; 6581 0.37 to
+  1.45 / 1.45 to 6.6, the largest on the high-pass in its threshold region
+  (FC up to about 600), where its damping drifts with FC.
+- **Asserted (`tests/filter.rs`):** transfer functions near the cutoff,
+  8580 within 1.0 dB (target met); the sweeps' envelopes, 8580 1.62 / 2.02 /
+  1.70 dB (the 1.0 dB target missed: not cutoff or damping but SIDOU's
+  trapezoidal filter near Nyquist, reSIDfp's 15.9 kHz output low-pass, and
+  voices sampled at 44.1 kHz; Task 7 records it), 6581 5.16 / 6.22 / 1.04.
+
 ### Task 6: 6581 filter non-linearity
 
 - **Measure in reSIDfp:** how the 6581's effective cutoff and gain change

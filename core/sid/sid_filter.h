@@ -17,7 +17,11 @@ typedef struct {
 } sid_svf;
 
 void sid_svf_reset(sid_svf* f, float drive);
+/* reSIDfp's filter as SIDOU's fits it (gen/filter.h, sidou-tablegen fit-filter), at its
+ * default curve settings: the cutoff in Hz for an FC value (0..2047), and the damping
+ * k = 1/Q for a resonance value (0..15). */
 float sid_cutoff_hz(sid_model model, uint32_t fc);
+float sid_resonance_k(sid_model model, uint32_t res);
 
 /* Inline: sid_write (the audio path, in SRAM on the device) and sid_init (in flash) both call
  * it, and a call between flash and SRAM is out of the pi32v2's direct call range

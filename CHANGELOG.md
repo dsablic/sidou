@@ -11,7 +11,8 @@ All notable changes are documented here. The format follows
 - Design document, licensing, credits and contribution guidelines.
 - SID core in C11 (`core/sid/`): oscillators, noise, hard sync and ring
   modulation, envelope generator with the ADSR delay bug, a
-  zero-delay-feedback state-variable filter with reSID 0.16 cutoff curves,
+  zero-delay-feedback state-variable filter (its cutoff and resonance fitted
+  to reSIDfp's filter since M1b),
   mixer and DC blocker, for the 6581 and the 8580.
 - Rust host workspace (`host/`): FFI to the C core, unit and golden-render
   tests, and a criterion benchmark.

@@ -23,17 +23,21 @@ fn sidou_compare_smoke() {
     println!("{table}");
     assert_eq!(
         table.lines().count(),
-        1 + 3 * 2,
-        "one row per scenario and model"
+        1 + 2 * 3 * 2,
+        "one row per level, scenario and model"
     );
     for scenario in ["lp", "bp", "hp"] {
-        for model in ["6581", "8580"] {
-            for engine in ["sidou", "residfp"] {
-                let wav = dir.join(format!("{scenario}_noise_sweep_{model}_{engine}.wav"));
-                let len = std::fs::metadata(&wav)
-                    .unwrap_or_else(|e| panic!("{}: {e}", wav.display()))
-                    .len();
-                assert!(len > 44, "{} holds no samples", wav.display());
+        for level in ["", "_full"] {
+            for model in ["6581", "8580"] {
+                for engine in ["sidou", "residfp"] {
+                    let wav = dir.join(format!(
+                        "{scenario}_noise_sweep{level}_{model}_{engine}.wav"
+                    ));
+                    let len = std::fs::metadata(&wav)
+                        .unwrap_or_else(|e| panic!("{}: {e}", wav.display()))
+                        .len();
+                    assert!(len > 44, "{} holds no samples", wav.display());
+                }
             }
         }
     }

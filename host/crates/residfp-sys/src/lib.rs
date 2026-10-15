@@ -20,6 +20,9 @@ extern "C" {
     fn residfp_read(s: *mut RawSid, reg: u8) -> i32;
     fn residfp_clock(s: *mut RawSid, cycles: u32, buf: *mut i16) -> i32;
     fn residfp_clock_silent(s: *mut RawSid, cycles: u32) -> i32;
+    fn residfp_set_filter_curve(s: *mut RawSid, csg8580: i32, curve: f64) -> i32;
+    fn residfp_set_filter6581_range(s: *mut RawSid, range: f64) -> i32;
+    fn residfp_filter6581_dac(curve: f64, out: *mut u16) -> i32;
     fn residfp_pulldown_table(csg8580: i32, cws: i32, out: *mut i16) -> i32;
     fn residfp_wave_table(out: *mut i16) -> i32;
     fn residfp_dac_table(
@@ -89,6 +92,16 @@ pub fn dac_table(model: Model, bits: u32, leak_level: f64, saturate: bool) -> Ve
         )
     };
     assert_eq!(status, 0, "reSIDfp kinkedDac threw");
+    out
+}
+
+/// The 6581 filter's cutoff DAC for a curve setting (0..1, reSIDfp's default 0.5):
+/// `FilterModelConfig6581::getDAC(curve)`, the normalised gate voltage Vw of the filter's
+/// VCRs for each FC value. The cutoff rises with Vw.
+pub fn filter6581_dac(curve: f64) -> Vec<u16> {
+    let mut out = vec![0u16; 2048];
+    let status = unsafe { residfp_filter6581_dac(curve, out.as_mut_ptr()) };
+    assert_eq!(status, 0, "reSIDfp getDAC threw");
     out
 }
 
@@ -177,6 +190,22 @@ impl Sid {
         u8::try_from(value).expect("reSIDfp read threw")
     }
 
+    /// The filter's curve setting for `model` (0..1; reSIDfp's default 0.5). Each chip
+    /// keeps one per model.
+    pub fn set_filter_curve(&mut self, model: Model, curve: f64) {
+        let csg8580 = i32::from(model == Model::Csg8580);
+        let status = unsafe { residfp_set_filter_curve(self.raw.as_ptr(), csg8580, curve) };
+        assert_eq!(status, 0, "reSIDfp setFilterCurve threw");
+    }
+
+    /// The 6581 filter's range setting (0..1). reSIDfp keeps it once per process, so it
+    /// changes every 6581 chip, existing ones included; its default is no call at all
+    /// (uCox 20e-6, about 0.487 on this scale).
+    pub fn set_filter6581_range(&mut self, range: f64) {
+        let status = unsafe { residfp_set_filter6581_range(self.raw.as_ptr(), range) };
+        assert_eq!(status, 0, "reSIDfp setFilter6581Range threw");
+    }
+
     /// A buffer size that holds every sample `cycles` chip cycles can produce.
     pub fn max_samples(&self, cycles: u32) -> usize {
         let ratio = self
@@ -222,5 +251,49 @@ impl Default for Sid {
 impl Drop for Sid {
     fn drop(&mut self) {
         unsafe { residfp_free(self.raw.as_ptr()) }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_6581_cutoff_dac_rises_with_fc_except_at_its_kinks() {
+        let dac = filter6581_dac(0.5);
+        assert!(dac[2047] > dac[0]);
+        // The kinked ladder steps down where a high bit turns on (1023 -> 1024).
+        assert!(dac[1024] < dac[1023]);
+        // A darker curve lowers every value.
+        let dark = filter6581_dac(0.0);
+        assert!(dark.iter().zip(&dac).all(|(d, m)| d <= m));
+        assert!(dark != dac);
+    }
+
+    #[test]
+    fn the_filter_curve_changes_the_filtered_output() {
+        let render = |curve: f64| {
+            let mut s = Sid::new();
+            s.set_chip_model(Model::Csg8580).unwrap();
+            s.set_sampling_parameters(985_248.0, Sampling::Decimate, 44_100.0)
+                .unwrap();
+            s.reset();
+            s.set_filter_curve(Model::Csg8580, curve);
+            for (r, v) in [
+                (0x18, 0x1f),
+                (0x17, 0x01),
+                (0x16, 0x40),
+                (0x01, 0x40),
+                (0x06, 0xf0),
+                (0x04, 0x81),
+            ] {
+                s.write(r, v);
+            }
+            let mut buf = vec![0i16; s.max_samples(100_000)];
+            let n = s.clock(100_000, &mut buf);
+            buf.truncate(n);
+            buf
+        };
+        assert_ne!(render(0.2), render(0.8));
     }
 }

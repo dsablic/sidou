@@ -39,6 +39,7 @@ typedef struct {
     float output_gain; /* to int16, at reSIDfp's level for the model */
     float dc_r, dc_x1, dc_y1;
     float cutoff_g[SID_FC_STEPS];
+    float res_k[16]; /* damping per resonance value (sid_resonance_k), in RAM for sid_write */
     const sid_dac* dac; /* shared between chips: sid_dac_default, or sid_set_dac */
 } sid;
 

@@ -161,16 +161,19 @@ Follow-ups that aren't tied to a milestone task yet.
   `Unsupported { name: "r_4_mov_r_4" }`.
 - **Repro:** JieLi clang 4.0.1 `-mcpu=r3 -O2` emits `41 eb 0a 00`
   (`{r1, r3} = [-r1]`) when loading the previous element of a two-float
-  array, as in `interpolate()` in `core/sid/sid_filter.c`. Running our bench
-  image (`build/fm1/bench/fm1/sid_bench_1.bin`, entry `0x02000000`) faults at
-  PC `0x02000e50`.
+  array, as `interpolate()` in `core/sid/sid_filter.c` did until M1b Task 5
+  (the bench image before that, `build/fm1/bench/fm1/sid_bench_1.bin`,
+  entry `0x02000000`, faults at PC `0x02000e50`). Since Task 5 the cutoff is
+  a table lookup and no SIDOU code emits it (the gates count 0 emulated block
+  loads); the workaround stays for whatever emits it next.
 - **Expected semantics** (what our workaround implements, and what the
   bit-exact host match confirms): the registers load in ascending order from
   `base - 4 * count`, and the base is not written back.
 - **Our workaround:** `step_block_load_dec` in
   `host/crates/emu-gate/tests/common/mod.rs`, shared by the emulator tests.
-  fm1-emu's own command line has no workaround: it stops SIDOU in
-  `sid_cutoff_hz` during boot (`fm1-emu --fwsc build/fm1/sidou.fwsc`). Remove it once upstream supports the instruction.
+  fm1-emu's own command line has no workaround: until Task 5 it stopped
+  SIDOU in `sid_cutoff_hz` during boot (`fm1-emu --fwsc
+  build/fm1/sidou.fwsc`). Remove it once upstream supports the instruction.
 - **Action:** open an issue (and possibly a PR) upstream with the above, then
   bump the pinned rev.
 

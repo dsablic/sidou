@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "Dac.h"
+#include "FilterModelConfig6581.h"
 #include "SID.h"
 #include "WaveformCalculator.h"
 
@@ -112,6 +113,47 @@ int residfp_dac_table(int csg8580, unsigned bits, double leak_level, int saturat
         for (unsigned i = 0; i < (1u << bits); ++i) {
             out[i] = dac.getOutput(i, saturate != 0);
         }
+        return 0;
+    } catch (...) {
+        return -1;
+    }
+}
+
+// The filter's curve setting (SID::setFilter6581Curve or setFilter8580Curve, 0..1, reSIDfp's
+// default 0.5), for the chip's own model.
+int residfp_set_filter_curve(SID* s, int csg8580, double curve) {
+    try {
+        if (csg8580) {
+            s->setFilter8580Curve(curve);
+        } else {
+            s->setFilter6581Curve(curve);
+        }
+        return 0;
+    } catch (...) {
+        return -1;
+    }
+}
+
+// The 6581 filter's range (SID::setFilter6581Range, 0..1). It sets the VCR's uCox in the
+// 6581 filter model, which reSIDfp keeps once per process: every 6581 chip follows it.
+int residfp_set_filter6581_range(SID* s, double range) {
+    try {
+        s->setFilter6581Range(range);
+        return 0;
+    } catch (...) {
+        return -1;
+    }
+}
+
+// The 6581's cutoff DAC as Filter6581 uses it: FilterModelConfig6581::getDAC(curve), the
+// normalised VCR gate voltage Vw for each of the 2048 FC values.
+int residfp_filter6581_dac(double curve, uint16_t* out) {
+    try {
+        uint16_t* dac = reSIDfp::FilterModelConfig6581::getInstance()->getDAC(curve);
+        for (unsigned i = 0; i < 2048; ++i) {
+            out[i] = dac[i];
+        }
+        delete[] dac;
         return 0;
     } catch (...) {
         return -1;

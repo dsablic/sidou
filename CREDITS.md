@@ -5,8 +5,10 @@
 SIDOU builds on, or learns from, the work of these people and projects.
 
 ## SID emulation
-- **reSID**: Dag Lem
-- **reSIDfp**: Antti S. Lankila, Leandro Nini and contributors
+- **reSID**: Dag Lem, whose filter and DAC models live on in reSIDfp
+- **reSIDfp**: Antti S. Lankila, Leandro Nini and contributors: SIDOU's
+  reference, and the source of its generated tables (combined waveforms, DACs,
+  filter cutoff and damping)
 
 ## Signal processing
 - **State-variable filter**: Andrew Simper (Cytomic), whose

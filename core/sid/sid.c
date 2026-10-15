@@ -9,7 +9,7 @@
  * volume 15 (sawtooth, triangle and 50% pulse, at 0x08d6 and 0x1d45), measured
  * through its mixer and output stages: 3.37 dB louder on the 6581, 1.05 dB on the 8580
  * (reference.rs asserts the match). At this level three voices at maximum resonance
- * clip the 8580 by up to about 1 dB, as they clip reSIDfp; the 6581 keeps 0.35 dB of
+ * clip the 8580 by up to about 1.1 dB, as they clip reSIDfp; the 6581 keeps 0.5 dB of
  * headroom (unit/sid.rs, three_voices_at_maximum_resonance_headroom). */
 #define LEVEL_6581 1.4736f
 #define LEVEL_8580 1.1288f
@@ -24,8 +24,7 @@
 #define CLOCK_STEP 16u
 
 static void update_filter(sid* s) {
-    float q = 0.707f + (float)s->res / 15.0f;
-    sid_svf_set(&s->svf, s->cutoff_g[s->fc], 1.0f / q);
+    sid_svf_set(&s->svf, s->cutoff_g[s->fc], s->res_k[s->res]);
 }
 
 void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) {
@@ -53,6 +52,9 @@ void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) 
             hz = limit;
         }
         s->cutoff_g[fc] = sidou_tanf(SIDOU_PI * hz / (float)sample_rate);
+    }
+    for (uint32_t r = 0; r < 16u; ++r) {
+        s->res_k[r] = sid_resonance_k(model, r);
     }
     sid_svf_reset(&s->svf, model == SID_MODEL_6581 ? DRIVE_6581 : 0.0f);
     s->dc_r = 1.0f - 2.0f * SIDOU_PI * DC_BLOCK_HZ / (float)sample_rate;

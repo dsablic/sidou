@@ -5,6 +5,7 @@
 //! the screen font (`font`) and the About screen's credits (`credits`).
 
 pub mod credits;
+pub mod filter_sweeps;
 pub mod font;
 pub mod register_probe;
 pub mod render;

@@ -450,8 +450,9 @@ fn worst_case_peak(model: sid_model, volume: u8) -> (i32, String) {
 
 /* The output's worst case, at reSIDfp's level (LEVEL_6581/LEVEL_8580 in sid.c): three
  * voices at volume 15 and maximum resonance. The 6581 stays below full scale (measured
- * 0.4 dB of headroom). The 8580 clips, by design: its peak before the int16 clamp is about
- * 1.0 dB over full scale (an 8580 pulse at 0x1d45 through the high pass at FC hi 0x08),
+ * 0.4 dB of headroom; 0.53 dB with the fitted filter tables of M1b Task 5). The 8580
+ * clips, by design: its peak before the int16 clamp is about 1.0 dB over full scale (1.07
+ * since Task 5; an 8580 pulse at 0x1d45 through the high pass at FC hi 0x08),
  * where reSIDfp's own output saturates too. The bounds hold those numbers. */
 #[test]
 fn three_voices_at_maximum_resonance_headroom() {

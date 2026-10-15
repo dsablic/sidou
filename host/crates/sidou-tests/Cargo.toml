@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 residfp-sys = { path = "../residfp-sys" }
 sidou-sys = { path = "../sidou-sys" }
+sidou-tablegen = { path = "../sidou-tablegen" }
 
 [[bin]]
 name = "sidou-compare"

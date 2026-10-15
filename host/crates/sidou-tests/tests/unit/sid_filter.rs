@@ -117,14 +117,65 @@ fn silence_never_leaves_subnormal_state() {
     }
 }
 
+fn damping(model: sid_model, res: u32) -> f32 {
+    unsafe { sid_resonance_k(model, res) }
+}
+
 #[test]
-fn curves_hit_the_measured_points() {
-    assert_float_eq(cutoff(SID_MODEL_6581, 0), 220.0);
-    assert_float_eq(cutoff(SID_MODEL_6581, 1023), 6000.0);
-    assert_float_eq(cutoff(SID_MODEL_6581, 1024), 4600.0);
-    assert_float_eq(cutoff(SID_MODEL_6581, 1028), 4700.0);
-    assert_float_eq(cutoff(SID_MODEL_6581, 1022), 5700.0 + 300.0 * 6.0 / 7.0);
-    assert_float_eq(cutoff(SID_MODEL_6581, 2047), 18000.0);
-    assert_float_eq(cutoff(SID_MODEL_8580, 2047), 12500.0);
-    assert_float_eq(cutoff(SID_MODEL_8580, 64), 400.0);
+fn the_8580_cutoff_rises_with_fc() {
+    for fc in 1..2048 {
+        assert!(
+            cutoff(SID_MODEL_8580, fc) > cutoff(SID_MODEL_8580, fc - 1),
+            "fc {fc}"
+        );
+    }
+}
+
+/// The 6581's cutoff follows its kinked cutoff DAC (reSIDfp's), not FC: ordered by what
+/// the DAC outputs it never falls, and where a high bit turns on it drops with the DAC.
+#[test]
+fn the_6581_cutoff_follows_its_cutoff_dac() {
+    let dac = residfp_sys::filter6581_dac(0.5);
+    let mut order: Vec<u32> = (0..2048).collect();
+    order.sort_by_key(|&fc| (dac[fc as usize], fc));
+    for w in order.windows(2) {
+        assert!(
+            cutoff(SID_MODEL_6581, w[1]) >= cutoff(SID_MODEL_6581, w[0]),
+            "fc {} -> {}",
+            w[0],
+            w[1]
+        );
+    }
+    assert!(cutoff(SID_MODEL_6581, 1024) < cutoff(SID_MODEL_6581, 1023));
+    assert!(cutoff(SID_MODEL_6581, 2047) > cutoff(SID_MODEL_6581, 0));
+}
+
+#[test]
+fn resonance_lowers_the_damping() {
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        for res in 1..16 {
+            assert!(damping(model, res) < damping(model, res - 1), "res {res}");
+        }
+        assert!(damping(model, 15) > 0.2);
+        assert!(damping(model, 0) < 2.0);
+    }
+}
+
+/// A resonance write sets the filter's damping from the table, and an FC write its
+/// cutoff, prewarped at the sample rate.
+#[test]
+fn the_chip_takes_cutoff_and_damping_from_the_tables() {
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        let mut s = Box::<sid>::default();
+        unsafe {
+            sid_init(&mut *s, model, SID_CLOCK_PAL, 44100);
+            sid_write(&mut *s, 0x17, 0xa1);
+            sid_write(&mut *s, 0x15, 0x05);
+            sid_write(&mut *s, 0x16, 0x60);
+        }
+        assert_eq!(s.svf.k, damping(model, 10));
+        let fc = (0x60 << 3) | 5;
+        let g = tanf(PI * cutoff(model, fc) / FS);
+        assert_float_eq(s.svf.a2, g / (1.0 + g * (g + s.svf.k)));
+    }
 }

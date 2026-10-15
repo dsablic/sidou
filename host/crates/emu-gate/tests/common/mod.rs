@@ -29,9 +29,10 @@ pub fn read(path: &Path, what: &str) -> Vec<u8> {
 }
 
 /// fm1-core at the pinned rev decodes the decrement-before block load `{rA, rB, ..} = [-rN]`
-/// (`4x eb`, fm1-isa class `r_4_mov_r_4`) but has no semantics for it, and faults. clang emits
-/// it in `sid_cutoff_hz` to load a curve point. Run it here with the convention fm1-core uses
-/// for the `[rN+]` block moves: base in bits 0-3, register mask in bits 16-31, lowest register
+/// (`4x eb`, fm1-isa class `r_4_mov_r_4`) but has no semantics for it, and faults. clang
+/// emitted it in `sid_cutoff_hz` to load a curve point until M1b Task 5 made that a table
+/// lookup; nothing emits it now (the gates report emulated_block_loads). Run it here with
+/// the convention fm1-core uses for the `[rN+]` block moves: base in bits 0-3, register mask in bits 16-31, lowest register
 /// at the lowest address; `-rN` starts 4 bytes per register below the base and does not write
 /// it back (`--rN` is a separate class). The emulator gate's host comparison checks the result.
 /// Returns false, doing nothing, for any other instruction.
