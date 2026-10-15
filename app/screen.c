@@ -35,9 +35,9 @@ static void switched(screen* s, screen_wipe w) {
     s->wipe = (uint8_t)w;
     s->wipe_rows = 0;
     s->redraw = 1;
-    if (w == SCREEN_CUT) {
-        grid_hold(s->g, 0);
-    }
+    /* A wipe holds every row until it reveals it (the next frame on): the panel keeps the old
+     * view meanwhile, overlays included, which the clear above would otherwise send away. */
+    grid_hold(s->g, w == SCREEN_CUT ? 0u : (1u << GRID_ROWS) - 1u);
 }
 
 void screen_init(screen* s, grid* g, const view* root, void* state) {

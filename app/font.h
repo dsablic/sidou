@@ -107,6 +107,7 @@ extern "C" {
 #define FONT_SLOT_L 0xD9u
 #define FONT_SLOT_R 0xDAu
 #define FONT_SLOT_LR 0xDBu
+#define FONT_SCOPE_MID 0xDCu
 
 /* In flash (.rodata): read by the renderer only. */
 extern const uint8_t font_glyphs[256][8];

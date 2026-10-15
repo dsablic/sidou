@@ -62,6 +62,23 @@ void grid_put(grid* g, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr) {
     }
 }
 
+void grid_row(grid* g, uint32_t row, const uint8_t ch[GRID_COLS], const uint8_t attr[GRID_COLS]) {
+    if (row >= GRID_ROWS) {
+        return;
+    }
+    uint8_t* c = &g->ch[row * GRID_COLS];
+    uint8_t* a = &g->attr[row * GRID_COLS];
+    uint32_t changed = 0;
+    for (uint32_t i = 0; i < GRID_COLS; i++) {
+        changed |= (uint32_t)(c[i] ^ ch[i]) | (uint32_t)(a[i] ^ attr[i]);
+        c[i] = ch[i];
+        a[i] = attr[i];
+    }
+    if (changed) {
+        g->rows |= 1u << row;
+    }
+}
+
 uint32_t grid_text(grid* g, uint32_t col, uint32_t row, const char* s, uint8_t attr) {
     while (*s && col < GRID_COLS) {
         grid_put(g, col++, row, (uint8_t)*s++, attr);
@@ -158,6 +175,44 @@ void grid_overlay_clear_all(grid* g) {
             overlay_free(g, i);
         }
     }
+}
+
+int grid_overlay_same(const grid* g, uint32_t col, uint32_t row, const uint8_t mask[8],
+                      uint8_t color) {
+    if (col >= GRID_COLS || row >= GRID_ROWS) {
+        return 1;
+    }
+    uint32_t i = row * GRID_COLS + col;
+    if (!g->ovl[i]) {
+        uint32_t any = 0;
+        for (uint32_t y = 0; y < 8u; y++) {
+            any |= mask[y];
+        }
+        return !any;
+    }
+    uint32_t s = g->ovl[i] - 1u;
+    if (g->ovl_color[s] != color) {
+        return 0;
+    }
+    for (uint32_t y = 0; y < 8u; y++) {
+        if (g->ovl_mask[s][y] != mask[y]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+uint32_t grid_pending(const grid* g) {
+    uint32_t n = 0;
+    for (uint32_t r = 0; r < GRID_ROWS; r++) {
+        if (!(g->rows >> r & 1u)) {
+            continue;
+        }
+        for (uint32_t i = r * GRID_COLS; i < (r + 1u) * GRID_COLS; i++) {
+            n += (uint32_t)dirty(g, i);
+        }
+    }
+    return n;
 }
 
 void grid_hold(grid* g, uint32_t mask) {

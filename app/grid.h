@@ -100,6 +100,9 @@ void grid_invalidate(grid* g);
 
 /* Cells outside the grid are ignored. */
 void grid_put(grid* g, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr);
+/* A whole row: cell c gets ch[c] in attr[c], as grid_put on each (a view that composes into
+ * a buffer of its own writes each cell once, so a frame that changes nothing marks nothing). */
+void grid_row(grid* g, uint32_t row, const uint8_t ch[GRID_COLS], const uint8_t attr[GRID_COLS]);
 /* A NUL-terminated string from (col, row), clipped at the row's end. Returns the column after
  * it. Codes are font codes, so ASCII shows as itself. */
 uint32_t grid_text(grid* g, uint32_t col, uint32_t row, const char* s, uint8_t attr);
@@ -117,6 +120,14 @@ int grid_overlay(grid* g, uint32_t col, uint32_t row, const uint8_t mask[8], uin
 void grid_overlay_clear(grid* g, uint32_t col, uint32_t row);
 /* Every overlay (a view switch). */
 void grid_overlay_clear_all(grid* g);
+/* 1 if the cell's overlay is mask in colour already, or if it has none and mask is empty: then
+ * grid_overlay (or grid_overlay_clear, for an empty mask) would send nothing. Cells outside
+ * the grid: 1. */
+int grid_overlay_same(const grid* g, uint32_t col, uint32_t row, const uint8_t mask[8],
+                      uint8_t color);
+/* Cells that differ from the panel (grid_next_run would send them), held rows included: what
+ * a view that holds itself to a budget has spent of it so far. */
+uint32_t grid_pending(const grid* g);
 
 /* Holds the rows in mask (bit r: row r) and releases the others: grid_next_run passes over held
  * rows, and their changes go out once they are released. */

@@ -431,3 +431,62 @@ fn every_run_is_maximal_and_holds_only_changed_cells() {
     }
     assert_eq!(sent, changed);
 }
+
+#[test]
+fn pending_counts_the_cells_the_next_runs_would_send() {
+    let mut s = Screen::new();
+    let pending = |s: &Screen| unsafe { grid_pending(&*s.g) };
+    assert_eq!(pending(&s), 0);
+    s.text(3, 4, "ABC", attr(GRID_WHITE, GRID_BLUE));
+    s.put(29, 29, b'x', attr(GRID_WHITE, GRID_BLUE));
+    assert_eq!(s.overlay(10, 12, [1; 8], GRID_CYAN), 0);
+    assert_eq!(pending(&s), 5);
+    unsafe { grid_hold(&mut *s.g, 1 << 4) };
+    assert_eq!(pending(&s), 5, "held rows count too");
+    unsafe { grid_hold(&mut *s.g, 0) };
+    assert_eq!(s.runs().len(), 3);
+    assert_eq!(pending(&s), 0);
+    s.put(3, 4, b'A', attr(GRID_WHITE, GRID_BLUE));
+    assert_eq!(pending(&s), 0, "the same cell again");
+}
+
+#[test]
+fn overlay_same_says_when_setting_one_would_send_nothing() {
+    let mut s = Screen::new();
+    let same = |s: &Screen, mask: [u8; 8], color: u32| unsafe {
+        grid_overlay_same(&*s.g, 6, 9, mask.as_ptr(), color as u8) != 0
+    };
+    let sine = [0x18, 0x24, 0x42, 0x81, 0, 0, 0, 0];
+    assert!(same(&s, [0; 8], GRID_CYAN), "no overlay, an empty mask");
+    assert!(!same(&s, sine, GRID_CYAN));
+    s.overlay(6, 9, sine, GRID_CYAN);
+    assert!(same(&s, sine, GRID_CYAN));
+    assert!(!same(&s, sine, GRID_WHITE), "another colour");
+    assert!(!same(&s, [0; 8], GRID_CYAN), "clearing it would send it");
+    let mut moved = sine;
+    moved[7] = 1;
+    assert!(!same(&s, moved, GRID_CYAN));
+    assert!(
+        unsafe { grid_overlay_same(&*s.g, 30, 0, sine.as_ptr(), 3) } != 0,
+        "outside"
+    );
+}
+
+#[test]
+fn a_row_is_written_whole_and_marked_only_when_it_changed() {
+    let mut s = Screen::new();
+    let a = attr(GRID_WHITE, GRID_BLUE);
+    let mut ch = [b' '; COLS];
+    let at = [attr(GRID_LIGHT_BLUE, GRID_BLUE); COLS];
+    unsafe { grid_row(&mut *s.g, 7, ch.as_ptr(), at.as_ptr()) };
+    assert_eq!(s.runs(), vec![], "the row as it was");
+    ch[3] = b'Q';
+    ch[4] = b'R';
+    let mut at2 = at;
+    at2[20] = a;
+    unsafe { grid_row(&mut *s.g, 7, ch.as_ptr(), at2.as_ptr()) };
+    assert_eq!(s.runs(), vec![(7, 3, 2), (7, 20, 1)]);
+    assert_eq!(s.panel, s.expected());
+    unsafe { grid_row(&mut *s.g, 30, ch.as_ptr(), at2.as_ptr()) }; // outside: ignored
+    assert_eq!(s.runs(), vec![]);
+}
