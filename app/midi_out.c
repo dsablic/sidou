@@ -106,11 +106,39 @@ void midi_out_remote(midi_out* o, const live* l) {
     look(o, l, 1);
 }
 
+/* Parameter p's pending change into out[*n..], within budget. 1: done, sent or with nothing to
+ * send; 0: no room, it stays pending. */
+static int send(midi_out* o, const live* l, uint32_t p, uint32_t budget, uint32_t* out,
+                uint32_t* n) {
+    const midi_map_entry* e = midi_map_for_param(p);
+    uint32_t v = o->seen[p]; /* the latest: look just ran */
+    int nrpn = e && as_nrpn(o, l, e);
+    if (!e || (nrpn && e->nrpn == MIDI_MAP_NO_NRPN) ||
+        (nrpn ? v == o->wire[p] : midi_map_to_cc(e, v) == midi_map_to_cc(e, o->wire[p]))) {
+        o->pending[p] = 0; /* nothing to send it as, or nothing new on the wire */
+        return 1;
+    }
+    if (*n + (nrpn ? MIDI_OUT_NRPN_PACKETS : 1u) > budget) {
+        return 0;
+    }
+    uint32_t cc = STATUS_CC | o->channel;
+    if (nrpn) {
+        out[(*n)++] = packet(CIN_CC, cc, CC_NRPN_MSB, (uint32_t)e->nrpn >> 7);
+        out[(*n)++] = packet(CIN_CC, cc, CC_NRPN_LSB, e->nrpn & 0x7fu);
+        out[(*n)++] = packet(CIN_CC, cc, CC_DATA_MSB, v >> 7);
+        out[(*n)++] = packet(CIN_CC, cc, CC_DATA_LSB, v & 0x7fu);
+    } else {
+        out[(*n)++] = packet(CIN_CC, cc, e->cc, midi_map_to_cc(e, v));
+    }
+    o->wire[p] = (uint16_t)v;
+    o->pending[p] = 0;
+    return 1;
+}
+
 uint32_t midi_out_tick(midi_out* o, const live* l, uint32_t room,
                        uint32_t out[MIDI_OUT_TICK_PACKETS]) {
     look(o, l, 0);
     uint32_t budget = room < MIDI_OUT_TICK_PACKETS ? room : MIDI_OUT_TICK_PACKETS;
-    uint32_t cc = STATUS_CC | o->channel;
     uint32_t n = 0;
     if (o->preset_pending) {
         if (budget == 0) {
@@ -120,34 +148,20 @@ uint32_t midi_out_tick(midi_out* o, const live* l, uint32_t room,
         out[n++] = packet(CIN_PROGRAM, STATUS_PROGRAM | o->channel, o->preset_seen, 0);
         o->preset_pending = 0;
     }
+    /* The mod target next: it says what CC 1 is, so the receiver must have it before the
+     * pulse width goes out on CC 1 (or the wheel on another target). Nothing goes before it. */
+    if (o->pending[LIVE_PARAM_MOD_TARGET] && !send(o, l, LIVE_PARAM_MOD_TARGET, budget, out, &n)) {
+        o->deferred++;
+        o->packets += n;
+        return n;
+    }
     for (uint32_t i = 0; i < LIVE_PARAM_COUNT; ++i) {
         uint32_t p = (o->next + i) % LIVE_PARAM_COUNT;
-        if (!o->pending[p]) {
-            continue;
-        }
-        const midi_map_entry* e = midi_map_for_param(p);
-        uint32_t v = o->seen[p]; /* the latest: look just ran */
-        int nrpn = e && as_nrpn(o, l, e);
-        if (!e || (nrpn && e->nrpn == MIDI_MAP_NO_NRPN) ||
-            (nrpn ? v == o->wire[p] : midi_map_to_cc(e, v) == midi_map_to_cc(e, o->wire[p]))) {
-            o->pending[p] = 0; /* nothing to send it as, or nothing new on the wire */
-            continue;
-        }
-        if (n + (nrpn ? MIDI_OUT_NRPN_PACKETS : 1u) > budget) {
+        if (o->pending[p] && !send(o, l, p, budget, out, &n)) {
             o->next = (uint8_t)p; /* the next tick starts here */
             o->deferred++;
             break;
         }
-        if (nrpn) {
-            out[n++] = packet(CIN_CC, cc, CC_NRPN_MSB, (uint32_t)e->nrpn >> 7);
-            out[n++] = packet(CIN_CC, cc, CC_NRPN_LSB, e->nrpn & 0x7fu);
-            out[n++] = packet(CIN_CC, cc, CC_DATA_MSB, v >> 7);
-            out[n++] = packet(CIN_CC, cc, CC_DATA_LSB, v & 0x7fu);
-        } else {
-            out[n++] = packet(CIN_CC, cc, e->cc, midi_map_to_cc(e, v));
-        }
-        o->wire[p] = (uint16_t)v;
-        o->pending[p] = 0;
     }
     o->packets += n;
     return n;

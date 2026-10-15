@@ -1121,7 +1121,8 @@ jack, which is MIDI IN only.
   128 values (cutoff, pulse width, volume) as their NRPNs instead, at full resolution.
   A parameter with no CC (the bend range, the expression targets) always goes as its
   NRPN, and so does the pulse width while the mod wheel drives another target (CC 1 is
-  then the wheel). An NRPN is {nrpn} CCs, without running status: 99 and 98 its
+  then the wheel). A change of the mod target goes before the tick's other parameters
+  (after a program change), so CC 1 is never read with the old target. An NRPN is {nrpn} CCs, without running status: 99 and 98 its
   number, 6 and 38 the value's MSB and LSB (value / 128, value % 128), which is the
   order the input above takes; no null NRPN follows.
 - **Channel:** 1 by default. Until M2 stores settings, the channel and the

@@ -563,3 +563,26 @@ fn a_deferred_panel_change_the_preset_does_not_load_goes_after_the_program_chang
     want.sort_unstable();
     assert_eq!(rest, want, "kept by the preset, so still the panel's to send");
 }
+
+#[test]
+fn the_mod_target_goes_before_a_pulse_width_that_depends_on_it() {
+    let mut o = Out::new();
+    o.trs(&[0xB0, 99, 6, 98, 2, 6, 0, 38, LIVE_MOD_VIBRATO as u8]);
+    // The panel puts the wheel back on the pulse width and moves it in the same tick: the
+    // receiver must hear the target first, or it takes CC 1 as the vibrato wheel.
+    o.set(LIVE_PARAM_MOD_TARGET, LIVE_MOD_PULSE_WIDTH);
+    o.rig.knob(LIVE_KNOB_PULSE_WIDTH, 3);
+    let pw = o.get(LIVE_PARAM_PULSE_WIDTH);
+    let mut want = nrpn_packets(0, row(LIVE_PARAM_MOD_TARGET).nrpn, LIVE_MOD_PULSE_WIDTH);
+    want.push(cc_packet(0, 1, to_cc(LIVE_PARAM_PULSE_WIDTH, pw)));
+    assert_eq!(o.tick(), want);
+    // No room for the target's NRPN: nothing goes before it.
+    o.trs(&[0xB0, 99, 6, 98, 2, 6, 0, 38, LIVE_MOD_VIBRATO as u8]);
+    o.set(LIVE_PARAM_MOD_TARGET, LIVE_MOD_PULSE_WIDTH);
+    o.rig.knob(LIVE_KNOB_PULSE_WIDTH, 3);
+    let pw = o.get(LIVE_PARAM_PULSE_WIDTH);
+    assert_eq!(o.tick_room(3), []);
+    let mut want = nrpn_packets(0, row(LIVE_PARAM_MOD_TARGET).nrpn, LIVE_MOD_PULSE_WIDTH);
+    want.push(cc_packet(0, 1, to_cc(LIVE_PARAM_PULSE_WIDTH, pw)));
+    assert_eq!(o.tick(), want);
+}

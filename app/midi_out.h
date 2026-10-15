@@ -13,7 +13,8 @@
  * - midi_out_tick, once per 10 ms tick, takes a local look, then sends what is pending with
  *   each parameter's value at that moment: at most one message per parameter per tick, the
  *   latest value winning, at most MIDI_OUT_TICK_PACKETS packets a tick, round robin over the
- *   parameters so none starves. What does not fit (the budget, or the room the caller has)
+ *   parameters so none starves; the mod target first, since it says what CC 1 is (the pulse
+ *   width or the wheel), and nothing before it while it waits for room. What does not fit (the budget, or the room the caller has)
  *   stays pending, one flag per parameter: nothing queues beyond that.
  * - A value that encodes as the one last sent (or received) sends nothing: a pulse-width
  *   move within one CC step, or a knob turned there and back within a tick.
