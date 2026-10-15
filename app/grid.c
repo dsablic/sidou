@@ -3,6 +3,7 @@
 #include "grid.h"
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "font.h"
 
@@ -388,31 +389,50 @@ typedef uint32_t __attribute__((may_alias)) pixel_pair;
 #define PAIR(left, right) ((uint32_t)(right) << 16 | (uint32_t)(left))
 #endif
 
-/* As grid_bitmap_row, as the panel's pixels from an even pixel of a run's buffer (4-byte
- * aligned): a run fills two pixels a store, with one more at either end when it starts or
- * ends between a pair. */
+/* k pixels of colour c (a pair: two pixels of it) from o, two a 32-bit store where the pairs
+ * are 4-byte aligned; the pixel after them. */
+static inline uint16_t* fill_pixels(uint16_t* o, uint32_t k, uint32_t c) {
+    uint16_t* e = o + k;
+    if (((uintptr_t)o & 2u) && o < e) {
+        *o++ = (uint16_t)c;
+    }
+    for (; o + 2 <= e; o += 2) {
+        *(pixel_pair*)(void*)o = c;
+    }
+    if (o < e) {
+        *o++ = (uint16_t)c;
+    }
+    return o;
+}
+
+/* As grid_bitmap_row, as the panel's pixels into out (4-byte aligned), each colour given as a
+ * pair (pairs[c], two pixels of it). While the longest run still fits before the end, runs are
+ * taken whole with no clamp, and a run of 1 or 2 pixels (a dithered picture is mostly those)
+ * is two stores with no loop; the first run (entered part way) and the last ones are clamped. */
 static void bitmap_pixels(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t n,
-                          const uint16_t pal[16], uint16_t* out) {
+                          const uint32_t pairs[16], uint16_t* out) {
     uint32_t left;
     const uint8_t* p = bitmap_seek(b, x, y, &left);
-    uint32_t at = 0; /* pixels written */
-    for (;;) {
-        uint32_t c = pal[*p & 15u];
-        uint32_t end = at + (left < n - at ? left : n - at);
-        if ((at & 1u) && at < end) {
-            out[at++] = (uint16_t)c;
+    uint16_t* const end = out + n;
+    uint16_t* o = fill_pixels(out, left < n ? left : n, pairs[*p & 15u]);
+    uint16_t* const fast = n > 16u ? end - 16 : out;
+    while (o <= fast) {
+        uint32_t byte = *++p;
+        uint32_t c = pairs[byte & 15u];
+        uint32_t m = byte >> 4; /* the run's length - 1 */
+        if (m < 2u) {
+            o[0] = (uint16_t)c;
+            o[m] = (uint16_t)c;
+            o += m + 1u;
+        } else {
+            o = fill_pixels(o, m + 1u, c);
         }
-        pixel_pair pc = PAIR(c, c);
-        for (; at + 2u <= end; at += 2u) {
-            *(pixel_pair*)(void*)(out + at) = pc;
-        }
-        if (at < end) {
-            out[at++] = (uint16_t)c;
-        }
-        if (at == n) {
-            return;
-        }
-        left = (uint32_t)(*++p >> 4) + 1u;
+    }
+    while (o < end) {
+        uint32_t byte = *++p;
+        uint32_t k = (byte >> 4) + 1u;
+        uint32_t room = (uint32_t)(end - o);
+        o = fill_pixels(o, k < room ? k : room, pairs[byte & 15u]);
     }
 }
 
@@ -428,8 +448,13 @@ static void render_region(const grid* g, const grid_run* run, uint32_t k0, uint3
     uint32_t w = run->len * GRID_CELL_PX; /* pixels a row */
     uint32_t x = (g->region_bx + run->col + k0 - g->region_col) * GRID_CELL_PX;
     uint32_t y = (g->region_by + run->row - g->region_row) * GRID_CELL_PX;
+    uint32_t pairs[16];
+    for (uint32_t c = 0; c < 16u; c++) {
+        pairs[c] = PAIR(pal[c], pal[c]);
+    }
     for (uint32_t r = 0; r < 8u; r++) {
-        bitmap_pixels(b, x, y + r, (k1 - k0) * GRID_CELL_PX, pal, px + r * w + k0 * GRID_CELL_PX);
+        bitmap_pixels(b, x, y + r, (k1 - k0) * GRID_CELL_PX, pairs,
+                      px + r * w + k0 * GRID_CELL_PX);
     }
     uint32_t i = run->row * GRID_COLS + run->col + k0;
     for (uint32_t k = k0; k < k1; k++, i++) {
