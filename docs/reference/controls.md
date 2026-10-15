@@ -19,8 +19,9 @@ that does. Without HOME held, a HOME press on the title card skips it like any b
 
 Each button press and encoder turn goes, in this order (`app/views.h`):
 
-1. **a capture:** a view waiting for one control (M1d's MIDI learn, the boot animation) sees
-   everything first, HOME included, so HOME can cancel it; it ends when its view closes;
+1. **a capture:** a view waiting for one control (M1d's MIDI learn, the boot animation, a
+   title card) sees everything first, HOME included, so HOME can cancel it; it ends when its
+   view closes;
 2. **global:** HOME opens the menu from LIVE and goes back one view anywhere else; SAVE
    opens MIDI learn over any view;
 3. **the view on top:** the menu takes SELECT and ALGORITHM, SCENE takes SELECT; LIVE, the
@@ -45,15 +46,30 @@ SCL, ENV) is global until the CHIP view takes the slots over.
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end); K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last) |
-| **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, the status screen, SCENE, the glyph sheet, About) |
+| **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE behind THE OSCILLATOR's title card (below) |
 | **SAVE (button 9)** | MIDI learn (below): press it, turn a knob, then send a CC |
 | **SELECT (encoder 0)**, in the menu | moves the blinking cursor up and down the items |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: CHIP (clockwise the 8580, counter-clockwise the 6581; turning on past either changes nothing), PRESET, OCTAVE; turned clockwise on STATUS, opens the status screen, on SCENE the generative pieces, on CHARSET the glyph sheet, on ABOUT the credits |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: CHIP (clockwise the 8580, counter-clockwise the 6581; turning on past either changes nothing), PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF); turned clockwise on STATUS, opens the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
 | **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, and round): it wipes in, and a toast names it |
 
 The other buttons (LFO, GLO, ARP, SEQ, PLAY, REC) and PRESETS (encoder 6) do
 nothing yet; SELECT does nothing outside the menu and SCENE, ALGORITHM nothing outside the
 menu.
+
+## Title cards
+
+A major view entered from the menu opens behind a short title card in the logo's metal
+lettering (`app/title_card.h`): **THE SCENE** before SCENE, and **THE OSCILLATOR** before LIVE
+when HOME goes back to it from the menu (not at power-on, after the boot, nor when MIDI
+learn's frame closes). THE CHIP is ready for M1c's CHIP view. The glow fades in, the title
+wipes in, the card holds for a second and the view cuts in, about 2.6 s in all.
+
+- **Any button or encoder** ends the card at once and does nothing else (FX does not toggle
+  the chip, OCT+ does not step the octave, SELECT does not pick a piece).
+- **A note**, from the keys or MIDI, plays as ever and ends the card. The keys, MIDI and the
+  audio are never held up by it.
+- **CARDS** in the menu turns the title cards off (ALGORITHM counter-clockwise on it) and on
+  again (clockwise). They are on at power-on; the setting is not kept across power-off yet.
 
 ## SCENE
 
@@ -223,9 +239,11 @@ The **status screen** (STATUS in the menu) shows the numbers: the chip, preset, 
 cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS each slot's
 algorithm and Mix (`>` marks the selected slot) with the selected slot's Amount, A and B.
 
-The menu (HOME) lists CHIP, PRESET and OCTAVE with their values, then STATUS, SCENE (the
-generative pieces, above), CHARSET (the glyph sheet: the font and the palette) and ABOUT. A view opens with a wipe from the top and
-closes with one from the bottom. M2's STEP view will be the default then; for M1 LIVE is.
+The menu (HOME) lists CHIP, PRESET, OCTAVE and CARDS (the title cards, above) with their
+values, then STATUS, SCENE (the generative pieces, above), CHARSET (the glyph sheet: the font
+and the palette) and ABOUT. A view opens with a wipe from the top and closes with one from the
+bottom; SCENE, and LIVE back from the menu, open behind a title card instead, and cut in under
+it in bands. M2's STEP view will be the default then; for M1 LIVE is.
 
 A change of octave, selected slot or algorithm shows a toast on the bottom line for
 1.5 s ("OCTAVE +1", "SLOT MOD", "MOD CHORUS"), whatever made it: a button, the menu or

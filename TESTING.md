@@ -13,7 +13,7 @@ lists the prerequisites.
 |---|---|---|
 | Everything except the emulator gate | `cargo test --workspace --release` | all crates |
 | Unit tests | `cargo test --release -p sidou-tests --test unit` | `crates/sidou-tests/tests/unit/` |
-| App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_LOGO_UPDATE=1` `app/logo_bitmap.c` from `assets/logo/metal-chrome.png` and `cracktro-chrome.png`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
+| App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_LOGO_UPDATE=1` `app/logo_bitmap.c` from `assets/logo/metal-chrome.png` and `cracktro-chrome.png` and `app/title_card_bitmap.c` from `assets/logo/title-*.png`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Filter against reSIDfp (transfer functions, sweeps) | `cargo test --release -p sidou-tests --test filter` | `crates/sidou-tests/tests/filter.rs`, `src/filter_sweeps.rs` |
@@ -419,8 +419,10 @@ SELECT, ALGORITHM):
 - **snapshots:** the status screen after boot, with a note held and with the
   toast OCT+ shows, MIDI learn's frame asking for a knob and for a CC and its
   LEARNED toast, the menu, the glyph sheet (every glyph, the palette
-  and a pixel overlay), the boot's prompt, loading and title card, About, and
-  each SCENE piece a second into a held chord
+  and a pixel overlay), the boot's prompt, loading and title card, About,
+  each SCENE piece a second into a held chord, and the held frames of THE
+  SCENE's and THE OSCILLATOR's title cards (also checked against
+  `assets/logo/title-scene.png` and `title-oscillator.png` pixel for pixel)
   match the golden images in `tests/golden/lcd/`, pixel
   for pixel, and every pixel is one of the 16 palette colours. The title
   card (but for its version and PRESS ANY KEY rows) and About's top 72 pixel
@@ -453,7 +455,13 @@ SELECT, ALGORITHM):
   it, a compile-time tie and a measured check; MIDI learn's frame over each
   piece and over LIVE, the band playing, keeps every frame within 200 cells
   and the SPI budget, opening and closing; a chord's note-ons change every
-  piece within two frames, and silence calms it.
+  piece within two frames, and silence calms it. Each title card, from the
+  input to the end of the cut after it, keeps every frame within 200 cells
+  and the SPI budget, and is bounded in instructions a frame and in its
+  busiest `ui_poll`; the input that brings it in and the busiest main-loop
+  pass while it shows stay within the poll allowance together (compile-time
+  ties); any control skips it without its action, and a note from the keys
+  or MIDI plays and ends it.
 
 The host tests cover the same machinery without the device:
 `tests/app/screen.rs` (the view stack, focus, routing, the capture, the
@@ -473,7 +481,12 @@ either logo, the SPI budget a frame and under the wipes), `widget.rs`
 ants, the starfield's flight, the fire's and the plasma's bounds and
 interlacing; what the music moves in each; the view's navigation, its tap,
 its budget a frame with a band playing, its wipes, and the canvas coming
-back after the screen drew over it);
+back after the screen drew over it); `title_card.rs` (the cards' sequence
+frame by frame, the glow's levels against the art's, the held frames against
+their PNGs, the budget, skipping, notes playing through, nothing drawn over
+them, the CARDS option) and `title_card_bitmap.rs` (their converter: the drift
+test, the round trip, the compiled tables against the PNGs, the font's dither
+glyphs against the art's Bayer order, refusals and the size);
 `midi_learn.rs` has learn's state machine and its bindings through MIDI in and out.
 
 **A failure means** the screen looks different or costs more. If you meant

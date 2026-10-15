@@ -187,10 +187,10 @@ which printed control did it.
 | SCL (button 3) | selects the next effect slot (the play mark on LIVE's DIST, MOD and FX lines moves) | | [ ] |
 | ENV (button 4) | the selected slot's next algorithm (the name on LIVE's slot line changes) | | [ ] |
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the status screen; Mix as LIVE's bar); EDIT lit while the slot is on | | [ ] |
-| HOME (button 8) | from LIVE, the menu (a wipe down from the top); in the menu, back to LIVE (a wipe up from the bottom) | | [ ] |
+| HOME (button 8) | from LIVE, the menu (a wipe down from the top); in the menu, back to LIVE behind THE OSCILLATOR's title card (below; with CARDS OFF, a wipe up from the bottom) | | [ ] |
 | SAVE (button 9) | a MIDI LEARN frame at the bottom of the screen, TURN A KNOB (section 7, MIDI learn); HOME closes it | | [ ] |
-| SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, PRESET, OCTAVE, STATUS, SCENE, CHARSET and ABOUT | | [ ] |
-| ALGORITHM (encoder 1), in the menu | changes the item under the cursor (CHIP: clockwise 8580, counter-clockwise 6581, and a further turn the same way changes nothing; PRESET; OCTAVE -3..+3); clockwise on STATUS opens the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
+| SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, PRESET, OCTAVE, CARDS, STATUS, SCENE, CHARSET and ABOUT | | [ ] |
+| ALGORITHM (encoder 1), in the menu | changes the item under the cursor (CHIP: clockwise 8580, counter-clockwise 6581, and a further turn the same way changes nothing; PRESET; OCTAVE -3..+3; CARDS: counter-clockwise OFF, clockwise ON); clockwise on STATUS opens the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
 
 - [ ] A held note keeps its pitch when the octave changes, and stops when
   the key is released.
@@ -239,6 +239,25 @@ LIVE (the screen at power-on):
   on them after the note.
 - [ ] No click or crackle in the sound while LIVE shows, against the menu
   (LIVE taps the audio interrupt; the menu does not).
+
+Title cards ([controls](reference/controls.md#title-cards)):
+
+- [ ] Menu, SCENE: THE SCENE's card first (as `assets/logo/title-scene.png`):
+  a dark blue to purple dithered glow fading in over about a second in four
+  steps, THE and SCENE in the metal lettering wiping in from the left, a
+  second held, then SCENE cutting in from the top in bands. Look for wrong
+  colours, torn cells, a shimmer in the dither or a step of the glow that
+  flashes. Time from the turn to SCENE (about 2.6 s):
+- [ ] Menu, HOME: THE OSCILLATOR's card, then LIVE. Not at power-on, not
+  after the boot, and not when MIDI learn's frame closes.
+- [ ] OCT+, FX or SELECT on a card: the view comes in at once, and the
+  octave, the chip and SCENE's piece stay as they were.
+- [ ] A note key on a card, and a note over MIDI: it sounds at once (no
+  delay against playing on LIVE) and the view comes in.
+- [ ] A chord held and played through a card: no click, crackle or late note.
+- [ ] Menu, CARDS turned counter-clockwise: OFF; SCENE and HOME back to LIVE
+  now wipe in with no card. Clockwise: ON, and the cards are back. After a
+  power-cycle CARDS is ON.
 
 SCENE (menu, SCENE; [controls](reference/controls.md#scene)):
 

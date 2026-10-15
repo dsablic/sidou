@@ -183,6 +183,9 @@ does not take plays the instrument (`app/views.h`,
   behind a white edge row, so the full redraw a view switch needs spreads
   over 8 frames (about 320 ms). The rows not reached yet keep the old view
   on the panel.
+- **Bands:** a cut spread over frames, for a view that comes in under a full-screen picture
+  (the title cards, below): the view on top shows 6 rows a frame, top first, with no edge
+  row (`SCREEN_BANDS`), 5 frames (200 ms), at most 180 cells, 15.4 ms of SPI, a frame.
 - **Raster:** colour bands in the raster ramp's order run down the border,
   one row every other frame, then the border gets its own colour back. A chip
   change runs it once round the ramp (7 steps, 14 frames). It waits while a
@@ -320,7 +323,7 @@ prompt in quadrant blocks) and 28 Pin (SIDOU on a 28-pin chip whose pins light w
 gates). The logo page's other **metal variants** stay explorations: Blood Chrome (Metal
 Chrome's letters in cold steel with a red underglow) and Metal Emblem (a chrome shield with
 horns, bolts and the spiked lettering). Its **chapter cards**, full-screen title cards in the
-Metal Chrome lettering, became the views' title cards (below).
+Metal Chrome lettering, became the views' title cards ("Title cards", below).
 
 ### Logo bitmaps
 
@@ -595,3 +598,78 @@ within two frames, and once it has died away every piece calms
 The tap adds to the audio interrupt what it adds for LIVE (4.8 instructions a sample), and only
 while SCENE shows. The firmware grew 7.5 KB (the pieces' code, the plasma's distance and sine
 tables, 1.2 KB).
+
+## Title cards
+
+A major view entered from the menu opens behind a **title card** (`app/title_card.h`), after
+the logo page's chapter cards: THE and the view's name in Metal Chrome's lettering on a
+dithered purple and red glow with stars, a rule under the title and a glint on its last
+letter. There is no "CHAPTER" line. **THE SCENE** comes before SCENE, **THE OSCILLATOR**
+before LIVE when HOME goes back to it from the menu (not at power-on: the boot's title card
+is enough), and **THE CHIP** is ready for M1c's CHIP view (its table entry, its bitmap and
+its tests; nothing shows it yet). The held frames are `assets/logo/title-oscillator.png`,
+`title-scene.png` and `title-chip.png`, drawn by `assets/logo/metal-chrome.js` (`titleCard`,
+the page's `chapterCard` adapted to the cell grid) with the glow alone in `title-glow.png`:
+
+| THE OSCILLATOR | THE SCENE | THE CHIP |
+|---|---|---|
+| ![THE OSCILLATOR](../../assets/logo/title-oscillator.png) | ![THE SCENE](../../assets/logo/title-scene.png) | ![THE CHIP](../../assets/logo/title-chip.png) |
+
+**The sequence** (25 fps):
+
+1. **The glow fades in** through four ordered-dither levels. The glow is drawn a cell at a time
+   with the font's dither glyphs D0..D15 (the 4 x 4 Bayer order the art dithers with) in two
+   neighbouring stops of black, blue, purple and red, from a table of each cell's level
+   (0..47, 16 to a stop; a quarter of the screen, as the glow is symmetric about its centre).
+   Level k of 4 is the table's level times k / 4, so the fade costs no flash. Each level holds
+   2 frames once all its cells are out: 25 frames in all (1.0 s), the first level spread over
+   5 frames as it changes all 900 cells of the menu under it.
+2. **The title wipes in** from the left, 3 columns a frame (10 frames, 0.4 s): the card's
+   bitmap in the grid's pixel region, grown over the same bitmap cells, so a frame sends the
+   90 cells it adds at most.
+3. **It holds** 25 frames (1 s), sending nothing.
+4. **The view cuts in** under it in bands (5 frames, 0.2 s; it starts there, SCENE's piece
+   in the cut's first frame).
+
+About 2.6 s from the input to the view.
+
+**What ends it.** Any button or encoder ends it at the next frame and does nothing else (its
+capture takes every event); a note from the keys or MIDI plays as ever and ends it (the
+instrument's note-on count, so however short the note; a note held from before does not).
+The audio, the keys and MIDI run as always; nothing holds them up. No toast or raster draws
+over it, and what changed meanwhile is not toasted after it.
+
+**The option.** CARDS in the menu (after OCTAVE) turns the cards off (ALGORITHM
+counter-clockwise) and on (clockwise); on at power-on, not stored yet. With them off, SCENE
+and LIVE wipe in as the other views do.
+
+**The bitmaps.** A card's bitmap holds its pixels only in the cells that differ from the glow
+(the letters, their halos, the rule, the glint, the stars: 251 cells for THE OSCILLATOR, 331
+for THE SCENE, 261 for THE CHIP, a bit each in `title_card_cells`), where the firmware puts a
+blank glyph so the bitmap shows alone; in the others it holds the glow's background stop flat,
+under the dither glyph the firmware draws there. So the bitmaps compress well. The converter
+(`host/crates/sidou-tests/src/title_card.rs`) reads the glow's levels from `title-glow.png`
+(refusing a cell that is not a dither glyph of two neighbouring stops, or a glow that is not
+symmetric), finds each card's cells and writes `app/title_card_bitmap.c` (SIDOU_LOGO_UPDATE=1
+regenerates it, and a drift test fails while it is stale). In flash, the three cards are
+**27,087 bytes**: 25,062 of runs shared by the cards, 1,440 of row offsets, 360 of cell bits and
+225 of glow levels (27,128 in the firmware's `.rodata`, with their tables), and 0.7 KB of code;
+drawn into each bitmap, the glow's dither would make them 57,190. Most of it is the letters'
+dithered halos, runs of one or two pixels.
+
+**The budget.** A frame sends at most 200 cells (`TITLE_CARD_FRAME_CELLS`, about 17.5 ms of SPI
+with their windows): a step that changes more goes out in bands from where the last frame
+stopped. Measured in fm1-emu (`title_cards_stay_within_their_budgets`, from the input to the
+end of the cut, nothing played):
+
+| Card | Frames | Cells a frame (average, most) | Worst SPI | Main loop a frame (average, busiest `ui_poll`) | Input | Busiest pass |
+|---|---|---|---|---|---|---|
+| THE SCENE | 66 | 72.4, 200 | 17.14 ms | 56.0k, 71.6k instructions | 350 (`ui_encoder`) | 73.1k |
+| THE OSCILLATOR | 64 | 68.7, 200 | 17.14 ms | 55.1k, 71.3k | 387 (`ui_buttons`) | 72.8k |
+
+The busiest frames are the glow's first level: 200 cells, and the scan of the 900 cells for
+those that differ. The input and the busiest main-loop pass (`midi_drain` to `midi_service`)
+together are 73.4k, within the latency gate's 120k poll allowance (a compile-time tie and a
+measured check, as for SCENE). The held frames are checked against their PNGs pixel for
+pixel on the host (all three) and in fm1-emu (THE SCENE and THE OSCILLATOR, also against the
+goldens `tests/golden/lcd/title-scene.png` and `title-oscillator.png`).

@@ -139,6 +139,21 @@ All notable changes are documented here. The format follows
   smaller fire, a slower plasma), and SCENE holds itself to 200 cells a
   frame, leaving out what a toast or MIDI learn's frame covers (as LIVE
   does). A piece starts in the frame after SELECT, not in the input's call.
+- Title cards (`app/title_card.h`): a short card in Metal Chrome's lettering
+  on a dithered purple and red glow with stars when a major view is entered
+  from the menu: THE SCENE before SCENE, THE OSCILLATOR before LIVE back from
+  the menu (not at power-on), and THE CHIP ready for the CHIP view. The glow
+  fades in through four dither levels drawn with the font's dither glyphs,
+  the title wipes in, it holds a second, and the view cuts in in bands (a new
+  transition, `SCREEN_BANDS`); about 2.6 s. Any control skips it and does
+  nothing else, a note plays and ends it, and MIDI and the audio are never
+  held up. CARDS in the menu turns them off (on by default). The titles are
+  pre-rendered (`assets/logo/title-*.png`, from `metal-chrome.js`) and
+  converted into `app/title_card_bitmap.c`: 27.1 KB of flash for all three.
+  Each frame sends at most 200 cells (17.1 ms of SPI); the busiest `ui_poll`
+  is 71.6k instructions, the input and the busiest main-loop pass 73.4k,
+  within the 120k poll allowance. A bitmap region grown over the same cells
+  sends only what it adds.
 - MIDI, M1d: every live, SID and effect-slot parameter in one CC/NRPN map
   (`app/midi_map.c`), with NRPNs at full resolution (11-bit cutoff, 12-bit
   pulse width), running NRPN/RPN state per channel and input, and the
