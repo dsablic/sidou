@@ -409,16 +409,29 @@ impl Machine {
     }
 }
 
-/// The SID's worst case per chip, in instructions per sample, that the effect gates add the
-/// slots to (fx_budget.rs, slots_budget.rs): the most expensive scenario of the SID gate
-/// (sid_budget.rs's max_instructions_per_sample), as decision record 0004 took M1a's
-/// (about 600). M1b measures 526.8 (two chips, gate_every_block on the 6581) and 522.8 (one
-/// chip); sid_budget.rs fails if a scenario exceeds this.
+/// The SID's most expensive scenario per chip, on average, in instructions per sample: the
+/// SID gate's max_instructions_per_sample (sid_budget.rs fails above it). M1b measures 526.8
+/// (two chips, gate_every_block on the 6581) and 522.8 (one chip). The effect gates no longer
+/// pair it with the slots (they take the worst block, below); it stays as the SID's guard.
 pub const SID_WORST_PER_CHIP: f64 = 530.0;
+
+/// The SID's most expensive block (128 samples) in instructions per sample, for one chip
+/// and for two together, as sid_budget.rs measures it (it fails above these). The audio
+/// ISR has a hard per-block deadline, so the effect gates pair the slots with this, not
+/// with a scenario's average. Both are the first block of a combined-noise scenario from
+/// power-on (noise_tri_ring_0800 on the 8580: 690.6 and 1,408.8 at M1b), while the
+/// register runs through its shifts until it locks up (decision record 0004, "Worst
+/// blocks").
+pub const SID_WORST_BLOCK_ONE_CHIP: f64 = 691.0;
+pub const SID_WORST_BLOCK_TWO_CHIPS: f64 = 1410.0;
 
 /// The audio target, instructions per sample for everything the audio interrupt does (design
 /// doc section 8): slots_budget.rs splits it, latency.rs holds the render allowance to it.
 pub const AUDIO_TARGET: f64 = 2700.0;
+/// The audio ISR's own overhead around the chips and the slots (0004's estimate).
+pub const ISR_OVERHEAD: f64 = 100.0;
+/// Two chips plus the effects (M1c plan Task 1's cap).
+pub const TWO_CHIPS_PLUS_EFFECTS: f64 = 2300.0;
 
 /// 24 MHz / 544, the I2S frame rate.
 pub const FS: f64 = 24e6 / 544.0;

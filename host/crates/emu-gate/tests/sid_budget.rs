@@ -331,8 +331,24 @@ fn check(chips: u32) {
             common::SID_WORST_PER_CHIP
         ));
     }
+    let worst_block = reports
+        .iter()
+        .map(|r| r["worst_block_instructions_per_sample"].as_f64().unwrap())
+        .fold(0.0, f64::max);
+    let block_limit = if chips == 1 {
+        common::SID_WORST_BLOCK_ONE_CHIP
+    } else {
+        common::SID_WORST_BLOCK_TWO_CHIPS
+    };
+    if chips <= 2 && worst_block > block_limit {
+        failures.push(format!(
+            "the worst block takes {worst_block:.1} instructions/sample with {chips} chip(s), \
+             over {block_limit}, which the effect gates assume (common::SID_WORST_BLOCK_*)"
+        ));
+    }
     let mut report = reports[0].clone();
     report["chips"] = chips.into();
+    report["max_worst_block_instructions_per_sample"] = worst_block.into();
     report["metric"] = "instructions (lower bound on cycles; assumes 1 IPC)".into();
     report["max_instructions_per_sample"] = worst.into();
     report["scenarios"] = reports.into();

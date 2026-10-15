@@ -193,3 +193,29 @@ variants, register `&=`/`^=` masks, and some FPU and accumulator classes. If
 a profiled hot spot needs one of them in hand-written assembly, add support
 upstream first, so the emulator gate's bit-exact host-vs-target check keeps
 working.
+
+## The 6502 must fit the audio headroom the gates leave
+
+- **Where:** `host/crates/emu-gate/tests/slots_budget.rs` (it prints
+  `headroom_for_6502_instructions_per_sample`), `tests/common/mod.rs`,
+  [decision record 0004](decisions/0004-effect-algorithms.md), "Worst blocks".
+- **Problem:** the switch gate holds two chips at the SID's worst block (1,410),
+  the ISR (100) and the slots' worst switching block (963) to the 2,700 audio
+  target, which leaves **227 per sample** for the 6502 (M3). The old budget
+  reserved 400. The SID's worst block is the power-on transient of noise
+  combined with another waveform (the register shifting until it locks up), in
+  a scenario's first block. Its profile (`noise_tri_ring_0800`, 8580, one
+  chip, block 0, 88.4k instructions): `sid_osc_run_combined` 24,690,
+  `sid_osc_advance_slow` 10,114 (the quiet-stretch step, ~60 per call),
+  `sid_osc_cycle` 5,004, `sid_noise_clock` 777, envelope attack from 0xaa
+  8,052, baseline 39,731. Two chips at 1,237 or less would give back the 400.
+- **Action:** when the 6502 lands, measure its per-sample worst. If it does not
+  fit the headroom, one or more of:
+  1. rewrite the combined-noise path (`sid_osc_run_combined`,
+     `sid_osc_bulk_limit`, `sid_osc_bulk_commit`) as one tight loop with the
+     per-call constants in registers; the transient (about 40.6k above) must
+     shrink by about 27% to reach 1,237 for two chips;
+  2. give the envelope's attack from 0xaa a fast path (8.1k of every gated
+     first block);
+  3. have a slot switch wait a block when the SID's block is heavy.
+  Keep the output exact (golden hashes, the bulk-against-cycle fuzz).

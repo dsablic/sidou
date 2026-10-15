@@ -225,7 +225,10 @@ For each it:
   directory. The top-level fields are the triad's on the 6581, comparable
   with earlier milestones; `scenarios` lists every scenario and
   `max_instructions_per_sample` the most expensive, which must stay within
-  the effect gates' `SID_WORST_PER_CHIP` per chip.
+  `SID_WORST_PER_CHIP` per chip, and `max_worst_block_instructions_per_sample`
+  the most expensive block, which must stay within `SID_WORST_BLOCK_ONE_CHIP`
+  or `SID_WORST_BLOCK_TWO_CHIPS` (`tests/common/mod.rs`), what the effect
+  gates assume.
 
 `SIDOU_GATE_PROFILE=1` also counts the render instructions per function and
 adds the top ones to each scenario's report (`profile_instructions_per_sample`),
@@ -242,11 +245,13 @@ post-chip chain (`core/fx`) over its output:
   sample.
 
 Each fails if the effects cost more than 500 instructions per sample, if two
-chips at the SID's worst plus the effects cost more than 2,300, or if any
-sample differs from the host build at all. The SID's worst is
-`SID_WORST_PER_CHIP` in `tests/common/mod.rs`, 530 per chip: the SID gate's
-most expensive scenario (526.8 per chip at M1b), which the SID gate holds it
-to. They write `fx_budget_{1,2}.json` and
+chips at the SID's worst block plus the effects cost more than 2,300, or if
+any sample differs from the host build at all. The SID's worst block is
+`SID_WORST_BLOCK_TWO_CHIPS` in `tests/common/mod.rs`, 1,410 for two chips:
+the SID gate's most expensive 128-sample block (1,408.8 at M1b), which the
+SID gate holds it to. The audio interrupt has a deadline per block, so a
+block, not a scenario's average, is what the effects must fit beside. They
+write `fx_budget_{1,2}.json` and
 `fx_worst_budget_{1,2}.json`.
 
 The effect-slot scenarios (`slots_budget.rs`) run `sid_bench_slots_1` and
@@ -261,7 +266,7 @@ They fail if:
   [decision record 0004](docs/decisions/0004-effect-algorithms.md)
   (Distortion 150, Modulation 200, FX 450, the frame 100);
 - the heaviest together cost more than 900, or two chips at the SID's worst
-  plus them more than 2,300;
+  block plus them more than 2,300;
 - the heaviest per slot is not the one the last scenario runs;
 - any sample differs from the host build (including the switch scenario's).
 
@@ -270,9 +275,10 @@ fuzz, flanger and light and back, every slot switching (they take turns). In the
 second change the Modulation slot wakes from rest during the FX switch. It fails if:
 - a block costs more than 1,000;
 - more than 80 blocks cost more than 900;
-- the worst block plus the rest of the audio budget at its worst exceeds 2,700
-  (two chips at the SID's worst, the future 6502's 400 and 100 of interrupt
-  overhead).
+- the worst block plus what else exists today exceeds 2,700: two chips at the
+  SID's worst block and 100 of interrupt overhead. The gate prints what is
+  left, the headroom for the future 6502 (M3), as
+  `headroom_for_6502_instructions_per_sample` (227 at M1b).
 
 This is 0004's transient allowance. Its output is part of the host comparison.
 

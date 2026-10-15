@@ -8,6 +8,8 @@
 
 mod common;
 
+use common::{AUDIO_TARGET, TWO_CHIPS_PLUS_EFFECTS};
+
 const CORE_HZ: f64 = 240e6;
 const SAMPLE_RATE: f64 = 44_100.0;
 const FRAMES: u64 = sidou_sys::WORKLOAD_SLOTS_FRAMES as u64;
@@ -15,8 +17,6 @@ const FRAMES: u64 = sidou_sys::WORKLOAD_SLOTS_FRAMES as u64;
 /// 0004: Distortion 150, Modulation 200, FX 450, the frame 100, 900 for all slots.
 const FRAME_BUDGET: f64 = 100.0;
 const SLOTS_BUDGET: f64 = 900.0;
-/// Task 1's cap for two chips plus the effects.
-const TWO_CHIPS_PLUS_EFFECTS: f64 = 2300.0;
 /// 0004's switching allowance: while a preset change switches slots (one at a time), a
 /// 32-sample block may cost up to this much (the switching slot's per-sample path, and
 /// a new algorithm's one-off setup)...
@@ -24,13 +24,12 @@ const SWITCH_BLOCK_ALLOWANCE: f64 = 1000.0;
 /// ...for at most this many of the scenario's blocks above SLOTS_BUDGET (two preset
 /// changes: ~30 ms each).
 const SWITCH_BLOCKS_OVER_BUDGET: usize = 80;
-/// The audio target (design doc section 8), and what the rest of it holds at worst: two
-/// chips at the SID's measured worst (0004: ~600 each at M1a; M1b's in
-/// common::SID_WORST_PER_CHIP), the future 6502 and ISR overhead.
-const AUDIO_TARGET: f64 = common::AUDIO_TARGET;
-const AUDIO_REST_AT_WORST: f64 = 2.0 * common::SID_WORST_PER_CHIP + 400.0 + 100.0;
-/// Two chips at the SID's measured worst.
-const TWO_CHIPS_AT_WORST: f64 = 2.0 * common::SID_WORST_PER_CHIP;
+/// What the audio target holds today besides the slots, block by block: two chips at the
+/// SID's worst block and the ISR's overhead. What is left of the target is the headroom for
+/// the 6502 (M3), which does not exist yet (decision record 0004, "Worst blocks").
+const AUDIO_REST_AT_WORST: f64 = common::SID_WORST_BLOCK_TWO_CHIPS + common::ISR_OVERHEAD;
+/// Two chips at the SID's worst block.
+const TWO_CHIPS_AT_WORST: f64 = common::SID_WORST_BLOCK_TWO_CHIPS;
 
 /// Scenario names and slot budgets, in workload_slots.c's order (0 is the frame alone,
 /// the last every slot's heaviest).
@@ -115,6 +114,7 @@ fn check(chips: u32) {
         "sid_plus_slots_percent_of_240mhz_core": (sid + heaviest_all) * SAMPLE_RATE / CORE_HZ * 100.0,
         "two_chips_at_worst_plus_slots_instructions_per_sample": TWO_CHIPS_AT_WORST + heaviest_all,
         "audio_rest_at_worst_plus_switch_instructions_per_sample": AUDIO_REST_AT_WORST + switch_worst,
+        "headroom_for_6502_instructions_per_sample": AUDIO_TARGET - AUDIO_REST_AT_WORST - switch_worst,
         "samples_differing_from_host": diffs,
         "emulated_block_loads": r.emulated_block_loads,
     });
@@ -162,6 +162,13 @@ fn check(chips: u32) {
     );
     let over = switch_blocks.iter().filter(|&&v| v > SLOTS_BUDGET).count();
     println!("switching: worst block {switch_worst:.0}, {over} blocks above {SLOTS_BUDGET}");
+    println!(
+        "headroom for the 6502 (M3): {:.0} instructions/sample (target {AUDIO_TARGET} - two \
+         chips' worst block {} - ISR {} - worst switching block {switch_worst:.0})",
+        AUDIO_TARGET - AUDIO_REST_AT_WORST - switch_worst,
+        common::SID_WORST_BLOCK_TWO_CHIPS,
+        common::ISR_OVERHEAD
+    );
     assert!(
         switch_worst <= SWITCH_BLOCK_ALLOWANCE,
         "a switching block costs {switch_worst:.0}, over the allowance of {SWITCH_BLOCK_ALLOWANCE}"
@@ -172,14 +179,16 @@ fn check(chips: u32) {
     );
     assert!(
         AUDIO_REST_AT_WORST + switch_worst <= AUDIO_TARGET,
-        "a switch with the SID at its worst would cost {:.0}, over the audio target {AUDIO_TARGET}",
+        "a switch with two chips at their worst block and the ISR would cost {:.0}, over the \
+         audio target {AUDIO_TARGET}",
         AUDIO_REST_AT_WORST + switch_worst
     );
-    // Two chips at the SID's worst plus every slot's heaviest (the workload's chips, measured
+    // Two chips at the SID's worst block plus every slot's heaviest (the workload's chips, measured
     // above, cost less).
     assert!(
         TWO_CHIPS_AT_WORST + heaviest_all <= TWO_CHIPS_PLUS_EFFECTS,
-        "two chips at the SID's worst plus the slots cost {:.0}, over {TWO_CHIPS_PLUS_EFFECTS}",
+        "two chips at the SID's worst block plus the slots cost {:.0}, over \
+         {TWO_CHIPS_PLUS_EFFECTS}",
         TWO_CHIPS_AT_WORST + heaviest_all
     );
 }

@@ -194,7 +194,8 @@ the rest goes to UI, MIDI and the sequencer.
 - 360 MHz (8,163 per sample) would hold even the budget case at 39 %, but
   we spend that only after cycles are measured on a unit.
 - The gate asserts each slot budget separately and the 2,300 total for two
-  chips.
+  chips (since M1b with the SID's worst block, not ~600 per chip: see
+  "Worst blocks").
 
 ## SRAM budget
 
@@ -324,7 +325,48 @@ and back. Per sample:
 
 With two chips at the SID's measured worst (2 × 600), the future 6502 (400) and ISR
 overhead (100), the worst switching block makes 1,700 + 963 = 2,663, within the 2,700
-audio target. The gate asserts that sum too. The steady budget stays 900.
+audio target. The gate asserted that sum too, until M1b replaced it (see "Worst blocks"
+below). The steady budget stays 900.
+
+### Worst blocks (M1b, 2026-10-15)
+
+The audio ISR has a hard deadline per 128-sample block (2.9 ms), so the honest pairing
+for the gates is the SID's most expensive *block*, not its most expensive scenario on
+average (530 per chip at M1b). The SID gate now measures both and holds the worst
+block to `SID_WORST_BLOCK_ONE_CHIP` (691) and `SID_WORST_BLOCK_TWO_CHIPS` (1,410) in
+`tests/common/mod.rs`; the effect gates take the latter.
+
+**Where the worst block comes from.** Always the first block of a scenario with noise
+combined with another waveform, from power-on: the register starts full, the output
+writes back into it every cycle, and it runs through about 25 shifts (16 cycles apart
+at 0xffff, 256 at 0x0800) before it locks up at 0. Those cycles run in short bulk
+windows between single cycles. The worst is `noise_tri_ring_0800` on the 8580: 690.6
+per sample for one chip, 1,408.8 for two (M1b, after "perf(sid): cheaper combined-noise
+lock-up transient" took them from 752 and 1,492). Its block 0, one chip, 88.4k
+instructions (`SIDOU_GATE_PROFILE=1`):
+
+| Part | Instructions in block 0 |
+|---|---|
+| `sid_osc_run_combined` (window search, commits) | 24,690 |
+| `sid_osc_advance_slow` (mostly the quiet-stretch step, ~60 per call) | 10,114 |
+| `sid_osc_cycle` (single cycles) | 5,004 |
+| `sid_noise_clock` | 777 |
+| Envelope attack from 0xaa (`sid_env_advance_slow`, `sid_env_run`) | 8,052 |
+| Baseline (`clock_voices` 23,326, `sid_render` 16,405) | 39,731 |
+
+From block 2 on the same scenario costs about 345 per sample. `noise_tri_ffff` (6581,
+688) and `noise_tri_0800` (8580, 652; its block 1 still 476 from quiet-stretch calls)
+come close.
+
+**Decision.** The 2,700 target stays. The gates pair what exists today:
+- the worst switching block + two chips at the SID's worst block + ISR overhead (100)
+  ≤ 2,700: 963 + 1,410 + 100 = 2,473;
+- two chips at the SID's worst block + every slot's heaviest ≤ 2,300: 1,410 + 838 =
+  2,248 (and + the post-chip effects, 1,410 + 455).
+
+The former 400 for the 6502 is no longer in the sum: it does not exist yet (M3). The
+gate prints what is left of 2,700 instead, the 6502's headroom: **227** per sample.
+docs/TODO.md tracks what to do if the 6502 needs more.
 
 (Since M1c Task 2 the algorithms' expensive inits run in `sid_slots_init` as templates
 that a switch copies, to fit the device's SRAM code region: the figures above are with
