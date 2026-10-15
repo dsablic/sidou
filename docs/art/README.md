@@ -97,13 +97,41 @@ palette; its fm1-emu snapshot is `tests/golden/lcd/charset.png`.
 | `0xCB`–`0xD8` | icons: dots, star, ball, pip, arrows, play, note, square |
 | `0x00`–`0x1F`, `0xD9`–`0xFF` | blank, free for later glyphs |
 
-**Provenance and licence.** The font is original, drawn for SIDOU in the
-browser prototype and ported from it into the sheet; the missing ASCII
-glyphs (`` & @ \ ^ ` { | } ~ ``) and the bar eighths, tees and side arrows were
-drawn for the sheet in the same style. It is not derived from the Commodore
-character ROM or any other font. Licence: **GPL-3.0-or-later**, like the
-rest of SIDOU's own files, so it ships with the firmware under the same terms.
-It replaces the public-domain `font8x8_basic` placeholder of M1a.
+**Provenance and licence.** The font is drawn for SIDOU. Its letters and
+digits came from the browser prototype, and the rest of ASCII, the bar
+eighths, tees and side arrows were drawn for the sheet in the same style.
+The first version of the sheet was too close to `font8x8_basic`, the
+public-domain placeholder of M1a: 14 printable glyphs were bit-identical to it
+(`# $ & ( ) + . 1 > N W [ ] ^`) and 36 within 4 pixels by the measure below.
+Every one of them that could differ was redrawn:
+`! " # $ & ( ) + - / 0 1 4 < > @ K M N W [ \ ] ^ { }`.
+The Commodore character ROM was not copied either: the face only takes the
+C64's spirit (chunky capitals on an 8×8 cell).
+
+`glyphs_are_not_copied_from_font8x8` in
+`host/crates/sidou-tests/tests/app/font.rs` keeps it that way. It compares
+each printable glyph with `font8x8_basic` (kept as test data in
+`host/crates/sidou-tests/tests/data/`, never built into the firmware). The
+distance is the number of differing pixels, the smallest over shifts of up
+to one pixel in each direction. Every glyph must be at least 5 pixels away;
+the median is 7. The exceptions are glyphs whose shape is forced at 8×8 with
+2-pixel strokes. Any 8×8 font draws them nearly alike:
+
+| Glyph | Distance | Why it stays close |
+|---|---|---|
+| `.` | 0 | A 2×2 dot on the baseline. |
+| `,` | 0 | That dot with a one-step tail down to the left. |
+| `'` | 0 | The comma's shape, raised to the cap line. |
+| `_` | 0 | One full-width line on the bottom text row. |
+| `` ` `` | 1 | A three-row tick down to the right. |
+| `\|` | 2 | A 2-pixel vertical line; font8x8's is broken in the middle. |
+| `:` | 4 | Two 2×2 dots. |
+| `;` | 4 | The colon with the comma's tail. |
+| `I` | 4 | A 2-pixel stem between full-width bars; the 4 pixels are font8x8's narrower bars. |
+| `T` | 4 | A 2-pixel stem under a bar; the 4 pixels are font8x8's serifs. |
+
+Licence: **GPL-3.0-or-later**, like the rest of SIDOU's own files, so the
+font ships with the firmware under the same terms.
 
 ## Motion rules
 

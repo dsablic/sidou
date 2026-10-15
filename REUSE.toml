@@ -9,3 +9,10 @@ SPDX-License-Identifier = "GPL-3.0-or-later"
 path = [".gitmodules", "CMakePresets.json", "compile_flags.txt", "host/Cargo.lock", "tests/golden/hashes.txt", "tests/golden/lcd/*.png", "tools/docker/toolchain.sha256"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Test data only, never built into the firmware: the font8x8 face that SIDOU's
+# own font is checked against (host/crates/sidou-tests/tests/app/font.rs).
+[[annotations]]
+path = ["host/crates/sidou-tests/tests/data/font8x8_basic.h"]
+SPDX-FileCopyrightText = "Daniel Hepper <daniel@hepper.net>, after Marcel Sondaar and IBM's VGA fonts"
+SPDX-License-Identifier = "LicenseRef-PublicDomain"

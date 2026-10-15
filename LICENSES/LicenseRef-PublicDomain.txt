@@ -1,0 +1,13 @@
+This work has been released into the public domain by its authors.
+
+host/crates/sidou-tests/tests/data/font8x8_basic.h states, in its header:
+
+    8x8 monochrome bitmap fonts for rendering
+    Author: Daniel Hepper <daniel@hepper.net>
+
+    License: Public Domain
+
+    Based on font8x8.h by Marcel Sondaar and International Business Machines
+    (public domain VGA fonts). License: Public Domain.
+
+Source: https://github.com/dhepper/font8x8

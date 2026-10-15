@@ -18,6 +18,15 @@ fn generated_files_are_up_to_date() {
         stale.is_empty(),
         "{stale:?} are stale; rerun with SIDOU_FONT_UPDATE=1"
     );
+    let f = sheet();
+    for text in [font::c_header(&f), font::c_source(&f)] {
+        for line in text.lines() {
+            assert!(
+                line.len() <= 100,
+                "generated line over 100 columns: {line:?}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -145,5 +154,78 @@ fn the_sheet_rejects_malformed_glyphs() {
     ] {
         let e = font::parse(bad).expect_err(why);
         assert!(e.contains(why), "{e:?} does not say {why:?}");
+    }
+}
+
+/// font8x8_basic (public domain, test data only): `[code][row]`, bit 0 the leftmost pixel.
+fn font8x8_basic() -> Vec<[u8; 8]> {
+    include_str!("../data/font8x8_basic.h")
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix('{')?.split_once('}'))
+        .map(|(bytes, _)| {
+            let mut g = [0u8; 8];
+            for (row, b) in g.iter_mut().zip(bytes.split(',')) {
+                let b = b.trim().trim_start_matches("0x");
+                // Mirror into the sheet's order, bit 7 leftmost.
+                *row = u8::from_str_radix(b, 16).expect("hex byte").reverse_bits();
+            }
+            g
+        })
+        .collect()
+}
+
+/// Pixels that differ between `a` and `b` moved right by `dx` and down by `dy`.
+fn distance(a: &[u8; 8], b: &[u8; 8], dx: i32, dy: i32) -> u32 {
+    (0..8i32)
+        .map(|y| {
+            let row = usize::try_from(y - dy)
+                .ok()
+                .and_then(|r| b.get(r))
+                .copied()
+                .unwrap_or(0);
+            let row = if dx >= 0 { row >> dx } else { row << -dx };
+            (a[y as usize] ^ row).count_ones()
+        })
+        .sum()
+}
+
+/// Glyphs whose shape is forced at 8x8 with 2-pixel strokes: a dot, a tick, a bar, or a
+/// sans-serif stem whose only difference from font8x8 is font8x8's serifs. Each is
+/// justified in docs/art/README.md ("Provenance and licence").
+const FORCED: &str = ".,:;'`_|IT";
+
+/// Closer than this to font8x8_basic, a glyph would be a copy (docs/art/README.md).
+const MIN_DISTANCE: u32 = 5;
+
+#[test]
+fn glyphs_are_not_copied_from_font8x8() {
+    let f = sheet();
+    let reference = font8x8_basic();
+    assert_eq!(reference.len(), 128);
+    for c in 0x21u8..0x7f {
+        let ch = char::from(c);
+        let near = (-1..=1)
+            .flat_map(|dx| (-1..=1).map(move |dy| (dx, dy)))
+            .map(|(dx, dy)| {
+                distance(
+                    &f.glyphs[usize::from(c)],
+                    &reference[usize::from(c)],
+                    dx,
+                    dy,
+                )
+            })
+            .min()
+            .unwrap();
+        if FORCED.contains(ch) {
+            assert!(
+                near < MIN_DISTANCE,
+                "{ch:?} is {near} pixels away; drop it from FORCED"
+            );
+            continue;
+        }
+        assert!(
+            near >= MIN_DISTANCE,
+            "{ch:?} is {near} pixels from font8x8_basic (shifted up to one pixel); redraw it"
+        );
     }
 }
