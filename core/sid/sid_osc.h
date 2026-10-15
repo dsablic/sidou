@@ -10,6 +10,15 @@
 #include "gen/wave_6581.h"
 #include "gen/wave_8580.h"
 
+/* An internal invariant, checked in host builds (the tests and fuzzers trap on it, as
+ * UBSan does) and compiled out on the device and with NDEBUG. No <assert.h>: the
+ * freestanding ILP32 layout pass (sidou-sys build.rs) has no libc headers. */
+#if !defined(NDEBUG) && !defined(__PI32V2__) && (defined(__GNUC__) || defined(__clang__))
+#define SID_DEBUG_ASSERT(c) ((c) ? (void)0 : __builtin_trap())
+#else
+#define SID_DEBUG_ASSERT(c) ((void)0)
+#endif
+
 #define SID_CTRL_GATE 0x01u
 #define SID_CTRL_SYNC 0x02u
 #define SID_CTRL_RING 0x04u
@@ -645,6 +654,9 @@ static inline uint32_t sid_osc_rise_phase(uint32_t prev, uint32_t next, uint32_t
  * cycle is like any other but starts the pipeline, and its first phase latches the
  * register, which writes nothing back in that cycle (the output, the noise, keeps it). */
 static inline void sid_osc_bulk_pipeline(sid_osc* o, uint32_t phase) {
+    /* sid_osc_bulk_limit ends every window by the shift's first phase: the second (phase
+     * 3) changes the noise and must run as a cycle, which this would skip. */
+    SID_DEBUG_ASSERT(phase != 3u);
     if (phase == 2u) {
         o->shift_pipeline = 2;
     } else if (phase == 1u) {
