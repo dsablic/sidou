@@ -2,29 +2,28 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ui.h"
 
-#include "lcd.h"
-
 #include "font.h"
+#include "grid.h"
+#include "lcd.h"
 
 #ifndef SIDOU_VERSION
 #define SIDOU_VERSION "0.0.0"
 #endif
 
-#define COLS (LCD_W / 8u)
-#define ROWS (LCD_H / 8u)
-#define ROWS_PER_STRIP (LCD_STRIP_ROWS / 8u)
-
-/* Cell codes are font codes (app/font.h): a bar cell fills n of 8 pixel columns (BAR0 + n). */
-#define BAR0 FONT_BAR0
-#define BORDER FONT_FULL
-
+#define TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
 #define BAR_COL 14u
 #define BAR_CELLS 14u
 
-static uint8_t want[ROWS][COLS];  /* the screen as it should be */
-static uint8_t shown[ROWS][COLS]; /* the screen as the panel has it */
+volatile uint8_t ui_screen;
+
+static grid screen;
+static uint8_t composed = UI_STATUS; /* the screen in the grid */
+/* grid_palette in the panel's byte order. */
+static uint16_t palette[16];
 static uint32_t last_compose;
-static uint32_t dirty; /* bit s: strip s differs from what the panel has */
+/* A run rendered into lcd_buffer(), waiting for the panel. */
+static grid_run run;
+static uint8_t pending;
 
 /* The effect slots (core/fx/fx_slots.h), as the screen names them (at most 9 cells). */
 static const char* const SLOT_NAMES[LIVE_SLOTS] = {"DIST", "MOD", "FX"};
@@ -41,9 +40,10 @@ static const char* algorithm_name(uint32_t slot, uint32_t alg) {
 static const char* const NOTE_NAMES[12] = {"C",  "C#", "D",  "D#", "E",  "F",
                                            "F#", "G",  "G#", "A",  "A#", "B"};
 
+/* Text inside the border. */
 static void put(uint32_t row, uint32_t col, const char* s) {
-    while (*s && col < COLS - 1u) {
-        want[row][col++] = (uint8_t)*s++;
+    while (*s && col < GRID_COLS - 1u) {
+        grid_put(&screen, col++, row, (uint8_t)*s++, TEXT);
     }
 }
 
@@ -60,7 +60,8 @@ static void put_num(uint32_t row, uint32_t col, uint32_t width, int32_t value, i
         buf[n++] = value < 0 ? '-' : '+';
     }
     for (uint32_t i = 0; i < width; i++) {
-        want[row][col + width - 1u - i] = i < n ? (uint8_t)buf[i] : (uint8_t)' ';
+        grid_put(&screen, col + width - 1u - i, row, i < n ? (uint8_t)buf[i] : (uint8_t)' ',
+                 TEXT);
     }
 }
 
@@ -68,7 +69,7 @@ static void put_bar(uint32_t row, uint32_t value, uint32_t max) {
     uint32_t px = value * (BAR_CELLS * 8u) / max;
     for (uint32_t i = 0; i < BAR_CELLS; i++) {
         uint32_t fill = px >= 8u ? 8u : px;
-        want[row][BAR_COL + i] = (uint8_t)(BAR0 + fill);
+        grid_put(&screen, BAR_COL + i, row, (uint8_t)(FONT_BAR0 + fill), TEXT);
         px -= fill;
     }
 }
@@ -79,13 +80,13 @@ static void put_param(uint32_t row, const char* label, uint32_t value, uint32_t 
     put_bar(row, value, max);
 }
 
-static void compose(const live* l) {
-    for (uint32_t r = 0; r < ROWS; r++) {
-        for (uint32_t c = 0; c < COLS; c++) {
-            int edge = r == 0u || r == ROWS - 1u || c == 0u || c == COLS - 1u;
-            want[r][c] = edge ? (uint8_t)BORDER : (uint8_t)' ';
-        }
-    }
+static void compose_status(const live* l) {
+    const uint32_t last = GRID_COLS - 1u;
+    grid_fill(&screen, 0, 0, GRID_COLS, 1, FONT_FULL, TEXT);
+    grid_fill(&screen, 0, last, GRID_COLS, 1, FONT_FULL, TEXT);
+    grid_fill(&screen, 0, 1, 1, last - 1u, FONT_FULL, TEXT);
+    grid_fill(&screen, last, 1, 1, last - 1u, FONT_FULL, TEXT);
+    grid_fill(&screen, 1, 1, last - 1u, last - 1u, ' ', TEXT);
     put(2, 2, "SIDOU");
     put(2, 28u - (sizeof SIDOU_VERSION), "V" SIDOU_VERSION);
 
@@ -143,51 +144,87 @@ static void compose(const live* l) {
     put(26, 2, "READY.");
 }
 
-static void draw_strip(uint32_t s) {
-    uint16_t* px = lcd_strip_buffer();
-    for (uint32_t cr = 0; cr < ROWS_PER_STRIP; cr++) {
-        uint32_t row = s * ROWS_PER_STRIP + cr;
-        for (uint32_t c = 0; c < COLS; c++) {
-            const uint8_t* g = font_glyphs[want[row][c]];
-            for (uint32_t y = 0; y < 8u; y++) {
-                uint16_t* o = px + (cr * 8u + y) * LCD_W + c * 8u;
-                uint32_t bits = g[y];
-                for (uint32_t x = 0; x < 8u; x++, bits <<= 1) {
-                    o[x] = (bits & 0x80u) ? UI_FOREGROUND : UI_BACKGROUND;
-                }
-            }
-            shown[row][c] = want[row][c];
+/* The 256 glyphs in a 16 x 16 block with hex labels, the 16 colours, and a triangle wave
+ * drawn as pixel overlays over a row of line glyphs. On black, so that switching between it
+ * and the status screen changes every cell. */
+static void compose_charset(void) {
+    static const char HEX[] = "0123456789ABCDEF";
+    const uint8_t frame = GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLACK);
+    const uint8_t label = GRID_ATTR(GRID_YELLOW, GRID_BLACK);
+    grid_fill(&screen, 0, 0, GRID_COLS, GRID_ROWS, ' ', frame);
+    grid_box(&screen, 0, 0, GRID_COLS, GRID_ROWS, frame, 1);
+    grid_text(&screen, 2, 0, " CHARSET ", GRID_ATTR(GRID_WHITE, GRID_BLACK));
+    for (uint32_t i = 0; i < 16u; i++) {
+        grid_put(&screen, 7u + i, 2, (uint8_t)HEX[i], label);
+        grid_put(&screen, 4, 4u + i, (uint8_t)HEX[i], label);
+        for (uint32_t c = 0; c < 16u; c++) {
+            grid_put(&screen, 7u + c, 4u + i, (uint8_t)(i * 16u + c),
+                     GRID_ATTR(GRID_WHITE, GRID_BLACK));
         }
+        grid_put(&screen, 7u + i, 22, FONT_FULL, GRID_ATTR(i, GRID_BLACK));
+        grid_put(&screen, 7u + i, 23, FONT_D8, GRID_ATTR(i, GRID_BLACK));
+        grid_put(&screen, 7u + i, 26, FONT_BOX_H, GRID_ATTR(GRID_DARK_GREY, GRID_BLACK));
+        /* 4 pixels per cell rise or fall: a 32-pixel period, rows 1..6 */
+        uint8_t mask[8] = {0};
+        for (uint32_t x = 0; x < 8u; x++) {
+            uint32_t p = (i * 8u + x) % 32u;
+            uint32_t y = p < 16u ? 1u + p * 5u / 15u : 6u - (p - 16u) * 5u / 15u;
+            mask[y] |= (uint8_t)(0x80u >> x);
+        }
+        grid_overlay(&screen, 7u + i, 26, mask, GRID_LIGHT_GREEN);
     }
-    lcd_strip_send(s);
+    grid_text(&screen, 2, 22, "COL", label);
+    grid_text(&screen, 2, 26, "OVL", label);
 }
 
-static int strip_dirty(uint32_t s) {
-    for (uint32_t r = s * ROWS_PER_STRIP; r < (s + 1u) * ROWS_PER_STRIP; r++) {
-        for (uint32_t c = 0; c < COLS; c++) {
-            if (want[r][c] != shown[r][c]) {
-                return 1;
+static void compose(const live* l) {
+    uint8_t want = ui_screen;
+    if (want != composed) {
+        for (uint32_t r = 0; r < GRID_ROWS; r++) {
+            for (uint32_t c = 0; c < GRID_COLS; c++) {
+                grid_overlay_clear(&screen, c, r);
             }
         }
+        composed = want;
     }
-    return 0;
+    if (want == UI_CHARSET) {
+        compose_charset();
+    } else {
+        compose_status(l);
+    }
 }
 
-/* After compose: the strips whose cells changed. */
-static void mark_dirty(void) {
-    for (uint32_t s = 0; s < LCD_STRIPS; s++) {
-        if (strip_dirty(s)) {
-            dirty |= 1u << s;
-        }
+/* The next changed run rendered into the free buffer, unless one waits already. 0: nothing to
+ * send. */
+static int prepare(void) {
+    if (!pending && grid_next_run(&screen, &run)) {
+        grid_render_run(&screen, &run, palette, lcd_buffer());
+        pending = 1;
     }
+    return pending;
+}
+
+static void send(void) {
+    lcd_send(run.col * GRID_CELL_PX, run.row * GRID_CELL_PX, run.len * GRID_CELL_PX,
+             GRID_CELL_PX);
+    pending = 0;
+}
+
+/* Everything that changed, waiting for the panel (blocking). */
+static void flush(void) {
+    while (prepare()) {
+        send();
+    }
+    lcd_sync();
 }
 
 void ui_init(const live* l) {
-    compose(l);
-    for (uint32_t s = 0; s < LCD_STRIPS; s++) {
-        draw_strip(s);
+    for (uint32_t i = 0; i < 16u; i++) {
+        palette[i] = LCD_SWAP(grid_palette[i]);
     }
-    lcd_sync();
+    grid_init(&screen, ' ', TEXT);
+    compose(l);
+    flush();
     lcd_on();
 }
 
@@ -195,17 +232,10 @@ void ui_poll(const live* l, uint32_t now_ms) {
     if (now_ms - last_compose >= UI_PERIOD_MS) {
         last_compose = now_ms;
         compose(l);
-        mark_dirty();
     }
-    if (!dirty || lcd_busy()) {
-        return;
-    }
-    for (uint32_t s = 0; s < LCD_STRIPS; s++) {
-        if (dirty & (1u << s)) {
-            dirty &= ~(1u << s);
-            draw_strip(s);
-            return;
-        }
+    if (prepare() && !lcd_busy()) {
+        send();
+        prepare(); /* rendered while this one transfers */
     }
 }
 
@@ -225,12 +255,5 @@ void ui_update(uint32_t step, int32_t code) {
         put_num(20, 9, 3, code, 1);
     }
     put(26, 2, "      ");
-    mark_dirty();
-    for (uint32_t s = 0; s < LCD_STRIPS; s++) {
-        if (dirty & (1u << s)) {
-            dirty &= ~(1u << s);
-            draw_strip(s);
-        }
-    }
-    lcd_sync();
+    flush();
 }

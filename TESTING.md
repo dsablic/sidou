@@ -21,7 +21,7 @@ lists the prerequisites.
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
 | Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
-| Emulator tests (gates incl. effects, boot, live instrument, MIDI, SRAM audio, package) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
+| Emulator tests (gates incl. effects, boot, live instrument, screen, MIDI, SRAM audio, package) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
 profile sets `opt-level = 3`), but the reference tests do a lot of Rust-side
@@ -316,7 +316,7 @@ panel (keys, encoders, the MASTER pot) and checks:
 - MASTER turned down lowers the peak;
 - the LCD after boot: the C64 blue at a fixed background pixel, the light blue
   border, text inside, no other colours; nothing is sent while nothing
-  changes, and a held note redraws one strip;
+  changes, and a held note goes out as one run of cells (one LCD window);
 - the 6581/8580 toggle: `sid_init` runs in the main loop only (the test counts
   its instructions per call), no audio block gets near the block's
   instruction budget, no block is silent, and the FX LED lights; the device's
@@ -325,6 +325,32 @@ panel (keys, encoders, the MASTER pot) and checks:
   reset;
 - the main loop stays under 5M instructions/s (about 2 % of the core) idle and
   with a key held.
+
+### Screen test
+
+`crates/emu-gate/tests/screen.rs` checks what the LCD shows and what drawing
+it costs:
+- **snapshots:** the status screen after boot and with a note held, and the
+  glyph sheet (`UI_CHARSET`: every glyph, the palette and a pixel overlay)
+  match the golden images in `tests/golden/lcd/`, pixel for pixel, and every
+  pixel is one of the 16 palette colours. The status screen's version cells
+  are left out. Switching back from the glyph sheet restores the status
+  screen exactly. The goldens are 4-bit indexed PNGs in the art palette;
+- **cost:** the instructions `ui_poll` spends (its callees included) and the
+  windows and SPI bytes `lcd.c` counts, idle, for one note and for a change
+  of every cell. It prints them as JSON, with the SPI time at 12 MHz, and
+  bounds them: nothing is sent idle, one note is one window under 1 ms of
+  SPI, a full screen is 30 windows (77 ms of SPI) and no single pass of the
+  main loop renders more than two runs.
+
+**A failure means** the screen looks different or costs more. If you meant
+the change (a new glyph, a moved label), look at the
+`<name>.actual.png` the test writes into the fm1 build directory, then
+rewrite the goldens and commit them with the change:
+
+```sh
+SIDOU_LCD_GOLDEN_UPDATE=1 SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test screen
+```
 
 ### MIDI test
 

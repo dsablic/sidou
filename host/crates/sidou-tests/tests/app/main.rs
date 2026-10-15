@@ -6,6 +6,7 @@ mod bootguard;
 mod expression;
 mod font;
 mod fx_live;
+mod grid;
 mod live_freq;
 mod live_instrument;
 mod midi_in;

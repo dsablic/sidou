@@ -23,8 +23,8 @@ const A4: u8 = 69;
 const E4: u8 = 64;
 /// A block of 128 frames at 44118 Hz, in instructions at 240 MHz: 2.90 ms.
 const BLOCK_BUDGET: u64 = 128 * 240_000_000 / 44_118;
-/// platform/fm1/ui.h: the C64's blue (background) and light blue (text and border), as the
-/// panel received them (RGB565, high byte first).
+/// docs/art/README.md: the palette's blue (background) and light blue (text and border), as
+/// the panel received them (RGB565, high byte first).
 const BLUE: u16 = 0x314F;
 const LIGHT_BLUE: u16 = 0x6AF6;
 const LCD_W: usize = 240;
@@ -202,13 +202,13 @@ fn the_lcd_shows_the_status_screen_and_redraws_only_on_change() {
         "the screen was redrawn without a change"
     );
 
-    // A note changes the notes line: its strip (and only a few) go out.
+    // A note changes the notes line: only its cells go out, as one or two runs (windows).
     m.key(key_id(A4), true);
     m.run_ms(200);
     let sent = m.soc.lcd.frames - windows;
     let changed = m.soc.lcd.fb.iter().zip(&fb).filter(|(a, b)| a != b).count();
-    println!("after a key: {sent} strips sent, {changed} pixels changed");
-    assert!((1..=3).contains(&sent), "{sent} strips sent for one note");
+    println!("after a key: {sent} windows sent, {changed} pixels changed");
+    assert!((1..=2).contains(&sent), "{sent} windows sent for one note");
     assert!(changed > 0, "the held note is not shown");
 }
 
@@ -336,7 +336,8 @@ fn the_main_loop_is_cheap_when_idle() {
     );
     // 52.5M/s (22 % of the core) before the main loop was paced by the key scan's frames
     // and the screen by a dirty-strip mask; 1.4M/s after; 2.0M/s with MIDI in, 0.4M/s of it
-    // the USB retry's SIE timeouts while no host answers.
+    // the USB retry's SIE timeouts while no host answers. 2.2M/s before the cell-grid renderer,
+    // 2.5M/s with it (it composes the whole grid every 40 ms; tests/screen.rs).
     for (what, rate) in [("idle", idle), ("with a held key", held)] {
         assert!(
             rate < 5e6,

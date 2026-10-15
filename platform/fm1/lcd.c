@@ -13,9 +13,11 @@
 /* SPI1 clock = 60 MHz / (BAUD + 1): 4 = 12 MHz. */
 #define LCD_BAUD 4u
 
-static uint16_t strip[LCD_W * LCD_STRIP_ROWS] __attribute__((aligned(4)));
+static uint16_t buffers[2][LCD_BUFFER_PIXELS] __attribute__((aligned(4)));
+static uint8_t next_buffer; /* lcd_buffer's; the other one may be in transfer */
 static uint8_t small[8] __attribute__((aligned(4)));
 static uint8_t busy; /* a data transfer may still run; CS is low */
+lcd_counters lcd_count;
 
 void lcd_sync(void) {
     if (!busy) {
@@ -33,6 +35,7 @@ int lcd_busy(void) {
 static void cmd(uint8_t c) {
     lcd_sync();
     fm1_lcd_send_cmd(c);
+    lcd_count.bytes++;
     fm1_lcd_wait();
     fm1_lcd_deselect();
 }
@@ -40,6 +43,7 @@ static void cmd(uint8_t c) {
 static void data(const void* p, uint32_t n) {
     lcd_sync();
     fm1_lcd_send_data(p, n);
+    lcd_count.bytes += n;
     busy = 1;
 }
 
@@ -80,13 +84,13 @@ void lcd_on(void) {
     cmd(0x29); /* DISPON */
 }
 
-uint16_t* lcd_strip_buffer(void) {
-    lcd_sync();
-    return strip;
+uint16_t* lcd_buffer(void) {
+    return buffers[next_buffer];
 }
 
-void lcd_strip_send(uint32_t s) {
-    uint32_t y = s * LCD_STRIP_ROWS;
-    window(0, y, LCD_W - 1u, y + LCD_STRIP_ROWS - 1u);
-    data(strip, sizeof strip);
+void lcd_send(uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
+    window(x, y, x + w - 1u, y + h - 1u);
+    data(buffers[next_buffer], w * h * 2u);
+    next_buffer ^= 1u;
+    lcd_count.windows++;
 }

@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* The ST7789 240 x 240 panel, drawn in full-width strips of LCD_STRIP_ROWS rows from one
- * RAM buffer (the SPI DMA reads RAM only), so there is no framebuffer.
+/* The ST7789 240 x 240 panel, drawn in windows (rectangles) of at most LCD_BUFFER_PIXELS
+ * pixels from two RAM buffers (the SPI DMA reads RAM only), so there is no framebuffer.
  *
- * Pixels are RGB565 in the panel's byte order: the high byte first (LCD_RGB). A strip's
- * transfer is left running; lcd_strip_buffer waits for it before handing the buffer out
- * again, and lcd_busy tells the main loop whether that would wait. */
+ * Pixels are RGB565 in the panel's byte order: the high byte first (LCD_RGB). A window's
+ * transfer is left running; the other buffer can be filled meanwhile (lcd_buffer), and
+ * lcd_busy tells the main loop whether the next lcd_send would wait. */
 #ifndef SIDOU_FM1_LCD_H
 #define SIDOU_FM1_LCD_H
 
@@ -13,8 +13,10 @@
 
 #define LCD_W 240u
 #define LCD_H 240u
-#define LCD_STRIP_ROWS 24u
-#define LCD_STRIPS (LCD_H / LCD_STRIP_ROWS)
+/* One buffer: a full-width row of 8 x 8 cells. */
+#define LCD_BUFFER_PIXELS (LCD_W * 8u)
+/* SPI bytes of a window's commands besides its pixels: CASET, RASET (1 + 4 each), RAMWR. */
+#define LCD_WINDOW_COMMAND_BYTES 11u
 
 /* RGB565 from 8-bit r, g, b, byte-swapped for the panel. */
 #define LCD_RGB565(r, g, b) ((uint16_t)((((r) & 0xF8u) << 8) | (((g) & 0xFCu) << 3) | ((b) >> 3)))
@@ -27,13 +29,24 @@
 void lcd_init(void);
 /* DISPON, once the first picture is in the panel's RAM. */
 void lcd_on(void);
-/* 1 while a strip transfer is still running. */
+/* 1 while a window's transfer is still running. */
 int lcd_busy(void);
-/* The strip buffer, LCD_W * LCD_STRIP_ROWS pixels, once the last transfer from it is done. */
-uint16_t* lcd_strip_buffer(void);
-/* Sends the buffer as strip s (rows s * LCD_STRIP_ROWS ..) and leaves the transfer running. */
-void lcd_strip_send(uint32_t s);
+/* The buffer the next lcd_send takes, LCD_BUFFER_PIXELS: the one the running transfer (if any)
+ * is not reading, so it can be filled at once. */
+uint16_t* lcd_buffer(void);
+/* Sends w x h pixels from lcd_buffer()'s buffer, rows top first, to the window at (x, y), and
+ * leaves the transfer running; the other buffer is lcd_buffer()'s from then on. Waits for the
+ * transfer before, if it still runs. */
+void lcd_send(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 /* Waits for the running transfer. */
 void lcd_sync(void);
+
+/* What went out since boot: windows sent by lcd_send and SPI bytes (pixels and every command
+ * byte). The emulator tests read them to estimate the SPI time per frame. */
+typedef struct {
+    uint32_t windows;
+    uint32_t bytes;
+} lcd_counters;
+extern lcd_counters lcd_count;
 
 #endif

@@ -65,3 +65,8 @@ All notable changes are documented here. The format follows
   Their settings ride the register ring as pseudo-registers; a temporary panel
   layer (EDIT + K1-K4, SCL, ENV) and CC 102-116 control them, and the status
   screen shows them (`docs/reference/controls.md`).
+- The art direction (`docs/art/`): palette, 30x30 cell grid, motion rules and
+  logo concepts. SIDOU's own 8x8 PETSCII-style font, generated from a glyph
+  sheet, replaces the font8x8 placeholder. A cell-grid renderer sends only
+  changed cells, in runs; the status screen runs on it, and fm1-emu tests
+  compare the screen with golden images and bound what drawing costs.

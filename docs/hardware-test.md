@@ -182,7 +182,7 @@ Notes:
 
 The panel runs at 12 MHz SPI (Felucca's setting).
 
-- [ ] Text is sharp, colours right, no stray pixels or shifted strips.
+- [ ] Text is sharp, colours right, no stray pixels or shifted cells.
 - [ ] Only what changes is redrawn: no flicker while idle, none while
   turning K1 fast or playing fast notes.
 - [ ] Nothing goes wrong on screen while the audio plays (no clicks either).

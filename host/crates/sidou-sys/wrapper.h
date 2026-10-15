@@ -13,6 +13,7 @@
 #include "bootguard.h"
 #include "font.h"
 #include "fx_live.h"
+#include "grid.h"
 #include "live.h"
 #include "midi_in.h"
 #include "midi_map.h"

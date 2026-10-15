@@ -87,10 +87,11 @@ function section, ahead of `.text`; the image is `.entry`, `.ram_text`,
 "Code in SRAM").
 
 `lcd.c` is adapted the same way from Felucca's `firmware/src/lcd.c`: the
-ST7789 init sequence and the strip transfer left running until the next
-access. Changes: delays from TIMER4 instead of spin loops, no fill, DISPON
-left to the UI's first picture, and one strip buffer instead of Felucca's
-layers.
+ST7789 init sequence and the transfer left running until the next access.
+Changes: delays from TIMER4 instead of spin loops, no fill, DISPON left to
+the UI's first picture, and windows of any size from two buffers (one filled
+while the other is sent) instead of Felucca's layers, with counters of the
+windows and SPI bytes sent.
 
 ### Updating
 

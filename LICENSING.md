@@ -32,7 +32,7 @@ component. "Use" says whether a component ends up in the firmware image.
 | `bench/fm1/crt0.S`, `bench/fm1/bench.ld` | adapted from fm1-sid, © 2026 Joakim Eriksson | BSD-2-Clause | benchmark program only | in use |
 | libresidfp @ `c1791383` (`third_party/libresidfp`) | libsidplayfp project | GPL-2.0-or-later | host tests only; git submodule, never linked into firmware | in use |
 | fm1-emu crates `fm1-core`, `fm1-soc`, `fm1-isa` @ `e52f4640` | Joakim Eriksson | MIT | emulator gate only; fetched by cargo | in use |
-| Rust crates `cc`, `criterion`, `object`, `serde_json`, `sha2` | crates.io | MIT OR Apache-2.0 | host build, tests and benchmark only; fetched by cargo | in use |
+| Rust crates `cc`, `criterion`, `object`, `png`, `serde_json`, `sha2` | crates.io | MIT OR Apache-2.0 | host build, tests and benchmark only; fetched by cargo | in use |
 | Rust crate `bindgen` | crates.io | BSD-3-Clause | host build only; fetched by cargo | in use |
 | JieLi pi32v2 toolchain (`jieli-linux-toolchains-20260730.1`) | Zhuhai JieLi Technology | proprietary, freely downloadable | build tool; downloaded into the build image, not redistributed | in use |
 

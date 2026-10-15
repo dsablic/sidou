@@ -1,11 +1,13 @@
 # SPDX-FileCopyrightText: 2026 SIDOU contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-# The portable live-instrument logic, front-panel mapping, register ring, MIDI parser and MIDI input. Its headers are included bare
+# The portable live-instrument logic, front-panel mapping, register ring, MIDI parser and MIDI input,
+# the screen font and the cell-grid renderer. Its headers are included bare
 # ("live.h"); the SID core's as "sid/sid.h".
 add_library(sidou_live STATIC
     bootguard.c
     font.c
     fx_live.c
+    grid.c
     live.c
     live_freq.c
     midi_in.c
