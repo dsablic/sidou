@@ -126,7 +126,8 @@ All notable changes are documented here. The format follows
   and pitches, and to the cutoff and resonance; SELECT steps between them.
   FIRE and PLASMA are trimmed to the SPI budget (half their rows a frame, a
   smaller fire, a slower plasma), and SCENE holds itself to 200 cells a
-  frame.
+  frame, leaving out what a toast or MIDI learn's frame covers (as LIVE
+  does). A piece starts in the frame after SELECT, not in the input's call.
 - MIDI, M1d: every live, SID and effect-slot parameter in one CC/NRPN map
   (`app/midi_map.c`), with NRPNs at full resolution (11-bit cutoff, 12-bit
   pulse width), running NRPN/RPN state per channel and input, and the

@@ -247,8 +247,10 @@ SCENE (menu, SCENE; [controls](reference/controls.md#scene)):
   wiping in from the top with its name as a toast; counter-clockwise goes
   back. HOME returns to the menu.
 - [ ] FIRE: a key flares and heats one flame (the first note the left
-  third); a three-note chord all three; higher notes burn higher; K1 down
-  dulls them to orange, up to white. Released, they die back to the embers.
+  third); a three-note chord all three, in tongues of red and light red;
+  higher notes burn higher; K1 down dulls them to red and light red, up
+  burns yellow and white near the bed. Released, they die back to the
+  embers.
 - [ ] PLASMA: blue and purple dithered clouds drifting slowly in silence,
   faster with notes held and with K1 up; each note-on drops a bright ring
   that grows from a place set by the note (higher notes higher up).

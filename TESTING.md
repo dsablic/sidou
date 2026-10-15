@@ -446,9 +446,13 @@ SELECT, ALGORITHM):
   bitmap. Each SCENE piece, with a band playing on the keys and the filter
   wide open, is bounded in cells a frame (average and most), in
   instructions a frame and in its busiest `ui_poll` (tied at compile time to
-  the latency gate's poll allowance), and so is SELECT starting the next
-  piece; a chord's note-ons change every piece within two frames, and
-  silence calms it.
+  the latency gate's poll allowance); starting a piece (SELECT, or the
+  menu's ALGORITHM) costs the input's call little and the main-loop pass
+  after it (`midi_drain` to `midi_service`) stays within the allowance with
+  it, a compile-time tie and a measured check; MIDI learn's frame over each
+  piece and over LIVE, the band playing, keeps every frame within 200 cells
+  and the SPI budget, opening and closing; a chord's note-ons change every
+  piece within two frames, and silence calms it.
 
 The host tests cover the same machinery without the device:
 `tests/app/screen.rs` (the view stack, focus, routing, the capture, the

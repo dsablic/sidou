@@ -65,7 +65,7 @@ its mood. The piece starts again from its beginning each time it opens.
 
 | Piece | Note-ons | Envelopes (ENV3) | Pitch | Cutoff, resonance |
 |---|---|---|---|---|
-| FIRE | flare that voice's flame (voice 1 the left third, 2 the middle, 3 the right) | heat its flame; silent, it dies down to the embers | higher notes burn higher | the cutoff how hot (orange to white); the resonance a little taller |
+| FIRE | flare that voice's flame (voice 1 the left third, 2 the middle, 3 the right) | heat its flame; silent, it dies down to the embers | higher notes burn higher | the cutoff how hot it looks (red, up to yellow and white near the bed); the resonance a little taller |
 | PLASMA | drop a bright ring that grows from a place | speed it up (silence runs it at an eighth) and voice 3's warms it | the pitch class sets the ring's place across, the pitch its height | the cutoff its speed, the resonance its twist |
 | RULE 30 | step the automaton a generation in the voice's colour; voice 3's flips a cell first | a held voice keeps it stepping | voice 3's pitch picks the cell it flips | a low cutoff darkens the colours |
 | STARS | light the voice's third of the stars in its colour | speed the voice's stars | the latest note steers the centre across | the cutoff sets the cruising speed |
@@ -223,8 +223,8 @@ The **status screen** (STATUS in the menu) shows the numbers: the chip, preset, 
 cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS each slot's
 algorithm and Mix (`>` marks the selected slot) with the selected slot's Amount, A and B.
 
-The menu (HOME) lists CHIP, PRESET and OCTAVE with their values, then STATUS, CHARSET (the
-glyph sheet: the font and the palette) and ABOUT. A view opens with a wipe from the top and
+The menu (HOME) lists CHIP, PRESET and OCTAVE with their values, then STATUS, SCENE (the
+generative pieces, above), CHARSET (the glyph sheet: the font and the palette) and ABOUT. A view opens with a wipe from the top and
 closes with one from the bottom. M2's STEP view will be the default then; for M1 LIVE is.
 
 A change of octave, selected slot or algorithm shows a toast on the bottom line for

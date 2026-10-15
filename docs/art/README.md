@@ -503,6 +503,14 @@ mood (heat, speed, twist, darker colours). Randomness is a seeded xorshift, so t
 gives the same frames: the fm1-emu goldens (`tests/golden/lcd/scene-*.png`) are each piece a
 second into a held chord.
 
+**FIRE's look.** The flame's ramp is black, red, light red, a thin band of yellow (lime on this
+palette) and white; brown is only the ember bed's glow, and orange (olive-brown here) is not
+used: with it the fire read as dirt. The cutoff moves where the white starts (heat 196 open,
+beyond any heat shut, on a curve that rises fast, so the presets' cutoffs already burn yellow and
+white at the bed), not the heat itself, so the flames keep their shape. The fuel sways along the
+bed (two sines drifting apart), a cell drifts a column only one time in four, and one cell in
+eight cools by three times more, so the flames break into tongues instead of a mound.
+
 **The canvas.** Each piece draws into a 30 x 30 canvas of its own (1,800 bytes); the view
 copies it onto the grid. So a piece that changes a few cells a step (the ant, RULE 30) draws
 only those, and SCENE's compose still draws every cell (`app/screen.h`). The pieces share their
@@ -510,9 +518,12 @@ state in a union, about 1 KB; SCENE's RAM is 2,784 bytes in all.
 
 **The budget.** The copy sends at most 200 cells a frame (`SCENE_VIEW_FRAME_CELLS`, about 17.5 ms
 of SPI with their windows): changed cells from where the last frame stopped, until the frame has
-spent what the screen's toast and raster leave; a frame that changes more spreads over the next
-ones. What a toast or the raster drew over is put back the same way; only under a wipe are rows
-copied whole (the wipe holds the ones it has not reached). On top of that, the two pieces that
+spent what the screen's toast, raster and cover leave; a frame that changes more spreads over the
+next ones, so a changed cell waits at most about 900 / (the cells left to the copy) frames. What
+a toast or the raster drew over is put back the same way; what a toast that shows or MIDI
+learn's frame covers this frame (`screen_covered`) is left alone, and learn's frame counts what
+it sends (`screen_cover`): LIVE does the same. Only under a wipe are rows copied whole (the wipe
+holds the ones it has not reached). On top of that, the two pieces that
 change most of the screen in the prototype are trimmed to fit, so the cap rarely bites:
 
 | Piece | Prototype (cells a frame) | On the FM-1 |
@@ -528,23 +539,30 @@ an arpeggio note every 4 frames, a bass note every 8, the filter wide open):
 
 | SCENE | Cells a frame (average, most) | SPI a frame (average, worst) | Main loop a frame (average, busiest `ui_poll`) |
 |---|---|---|---|
-| FIRE | 146.6, 180 | 12.75 ms, 15.57 ms | 97.8k, 56.8k instructions |
-| PLASMA | 138.4, 200 | 12.29 ms, 17.64 ms | 137.9k, 53.9k |
-| RULE 30 | 18.9, 76 | 1.65 ms, 6.60 ms | 30.5k, 18.0k |
-| STARS | 39.5, 68 | 3.59 ms, 6.16 ms | 71.6k, 17.9k |
-| ANT | 2.7, 9 | 0.25 ms, 0.80 ms | 27.5k, 16.9k |
+| FIRE | 125.0, 159 | 10.93 ms, 13.85 ms | 101.6k, 58.9k instructions |
+| PLASMA | 138.4, 200 | 12.29 ms, 17.64 ms | 141.4k, 53.0k |
+| RULE 30 | 18.9, 76 | 1.65 ms, 6.60 ms | 32.7k, 21.3k |
+| STARS | 39.5, 68 | 3.59 ms, 6.16 ms | 74.1k, 21.1k |
+| ANT | 2.7, 9 | 0.25 ms, 0.80 ms | 29.3k, 18.9k |
 
 The piece steps half way between frames (`views_prepare`), as LIVE reads its tap, so a frame's
-`ui_poll` is the copy alone; the busiest `ui_poll` (FIRE's two burns, 56.8k) is half the latency
-gate's poll allowance (120k). SELECT starts the next piece in the input's call (`ui_encoder`), its
-canvas drawn whole: PLASMA's, 48.8k instructions, is the most (`selecting_a_piece_costs_the_main_loop_little`).
+`ui_poll` is the copy alone; the busiest `ui_poll` (FIRE's two burns, 58.9k) is half the latency
+gate's poll allowance (120k). A piece picked (SELECT, or the menu's ALGORITHM) starts in the
+compose of the wipe's first frame, not in the input's call (`ui_encoder`), which the main loop
+runs in the same pass as a frame between two drains of MIDI; PLASMA's start, 48.8k when it drew
+the whole canvas in the input, draws the 4 rows the wipe reveals each frame. The input now costs
+at most 203 instructions and the busiest pass after it (from `midi_drain` to `midi_service`)
+60.7k, 61k together against the 120k allowance
+(`starting_a_piece_holds_the_main_loop_within_the_poll_allowance`). MIDI learn's frame over
+SCENE or LIVE stays within 200 cells a frame: it sent 222 over PLASMA and 286 (24.8 ms of SPI)
+over LIVE before the views left its cells out of their budget (now at most 200 and 191).
 PLASMA costs 3.4M instructions a second (1.4 % of the core at 240 MHz). A chord's note-ons show
 within two frames, and once it has died away every piece calms
 (`a_note_moves_every_piece_and_silence_calms_it`, cells in 25 frames):
 
 | Piece | Silence before | A chord held | Silence after |
 |---|---|---|---|
-| FIRE | 0 | 1,472 | 0 |
+| FIRE | 0 | 1,580 | 0 |
 | PLASMA | 274 | 2,728 | 207 |
 | RULE 30 | 0 | 233 | 0 |
 | STARS | 205 | 998 | 112 |
