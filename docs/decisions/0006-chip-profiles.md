@@ -219,8 +219,8 @@ row (the model was fitted at the default range); the 8580's (curve 0.75) 0.23 / 
 
 ## Cost
 
-- **Flash:** 351,600 bytes of image on main with M1e's logo and title cards (main alone
-  241,512; the first build of this task 410,076), 60.5 % of the app slot's 581,564: the
+- **Flash:** 351,404 bytes of image on main with M1e's logo and title cards (main alone
+  241,512; the first build of this task 410,076), 60.4 % of the app slot's 581,564: the
   6581's WEAK and STRONG combined waveforms (`SIDOU_ALL_COMBINED_PROFILES`, on by default,
   +61,440 bytes; R2 and worn need them), five 6581 filter rows and two 8580 rows (8,256
   bytes a row: 57,792 bytes, from M1b's 16,512), and the code. The 8580's WEAK and STRONG
@@ -252,14 +252,15 @@ row (the model was fitted at the default range); the 8580's (curve 0.75) 0.23 / 
   tie of +0 and -0, which no bound here makes. In the emulator gate that makes the
   bleed's copy 6.0 a sample cheaper, the worst blocks 5.7 (one chip) and 12.2 (two)
   cheaper, and the default render 1.0 dearer on average (register allocation); a `fabs`
-  for the swing made the render 17 dearer and is not used. The chip's grown struct also
-  moved the 6581 render's addressing (its loop reads the fields after the tables): with the
-  clamps, every 6581 scenario measures 7.0 a sample under main's, the 8580's 0.1 over (the
-  render's choice of copy), the output bit for bit the same. Worst blocks now: 710.48 and
-  1,425.66 (one and two chips: the default chip's noise_tri_ffff and noise_tri_ring_0800;
-  the costliest character's 709.94 and 1,424.80), from the first build's 724.21 and
-  1,453.96 and M1b's 717.49 and 1,439.67. `SID_WORST_BLOCK_*` tighten to 711 and 1,426
-  (from 725 and 1,454), `SID_WORST_PER_CHIP` to 550 (549.37 measured, from 557).
+  for the swing made the render 17 dearer and is not used. With the clamps, every 6581
+  scenario measures 7.0 a sample under main's, from fewer spills in the register
+  allocation (`render_6581`'s frame went from main's 136 to 128 bytes, its stack accesses
+  from 107 to 86), the 8580's 0.1 over (the render's choice of copy), the output bit for
+  bit the same. Worst blocks now: 710.52 and 1,425.73 (one and two chips: the default
+  chip's noise_tri_ffff and noise_tri_ring_0800, 0.04 and 0.07 over the 710.48 and
+  1,425.66 before the filter's update moved into `sid_render_tap`; the costliest
+  character's 709.94 and 1,424.80), from the first build's 724.21 and 1,453.96 and M1b's
+  717.49 and 1,439.67. `SID_WORST_BLOCK_*` tighten to 711 and 1,426 (from 725 and 1,454), `SID_WORST_PER_CHIP` to 550 (549.37 measured, from 557).
 - **Gates:** 1,426 + 4.5 (tap) + 838.97 = 2,269.47 of 2,300 (30.53 to spare, from 2.53 in
   the first build and 16.53 in M1b); the 2,700 target leaves the 6502 205 (from 177; M1b
   191).
