@@ -1005,8 +1005,8 @@ fn intro() -> String {
 edit. SIDOU_MIDI_DOC_UPDATE=1 regenerates it. -->
 # MIDI: the CC and NRPN map
 
-Every parameter of the live instrument has a CC (7-bit) and an NRPN (14-bit, full
-resolution). The map is fixed: the same numbers on every channel, on TRS and USB. Notes
+Every parameter of the live instrument has an NRPN (14-bit, full resolution), and all but
+the bend range and the three expression targets also a CC (7-bit). The map is fixed: the same numbers on every channel, on TRS and USB. Notes
 play on every channel (omni); program change 0..{last} selects the preset. A program change
 loads the preset's cutoff, resonance, pulse width, SID settings (waveform, ring, sync,
 the envelope, filter routing and mode) and expression settings (bend range, the targets,
@@ -1025,7 +1025,7 @@ character layer in 85..87 and 89..90, the effect slots in 102..116. NRPNs are gr
 MSB: 0 the performance controls, 1 the SID, 2 the character layer, 3..5 the effect slots,
 6 expression.
 
-CC 71..75 are absolute here, like every CC of the map: the value sets the parameter
+CC 71..78 are absolute here, like every CC of the map: the value sets the parameter
 across its range. General MIDI 2 makes its sound controllers relative instead, moving the
 patch's value up or down around 64; SIDOU does not.
 
@@ -1210,4 +1210,24 @@ fn the_reference_names_every_row() {
             assert!(d.contains(&format!("| {} | {} {}", r.cc, r.group, r.name)));
         }
     }
+}
+
+#[test]
+fn the_rows_without_a_cc_are_the_ones_the_reference_names() {
+    let mut no_cc: Vec<u32> = rows()
+        .iter()
+        .filter(|r| !r.has_cc())
+        .map(|r| u32::from(r.param))
+        .collect();
+    no_cc.sort_unstable();
+    assert_eq!(
+        no_cc,
+        [
+            LIVE_PARAM_BEND_RANGE,
+            LIVE_PARAM_VELOCITY_TARGET,
+            LIVE_PARAM_MOD_TARGET,
+            LIVE_PARAM_PRESSURE_TARGET
+        ]
+    );
+    assert!(intro().contains("all but\nthe bend range and the three expression targets"));
 }
