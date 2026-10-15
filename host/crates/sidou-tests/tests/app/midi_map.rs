@@ -454,7 +454,12 @@ fn the_sid_parameters_survive_a_model_change() {
     rig.tick();
     assert_eq!(rig.live.model, SID_MODEL_8580);
     assert_eq!(rig.log()[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
-    assert_eq!(rig.log().len(), 26, "a reset and every register");
+    assert_eq!(rig.log()[1], (LIVE_REG_GATE_RESET as u8, 1));
+    assert_eq!(
+        rig.log().len(),
+        27,
+        "a reset, the attack mode and every register"
+    );
     assert_eq!(rig.control(0), 0x80);
     assert_eq!(rig.reg(5) >> 4, 7);
     set(&mut rig, LIVE_PARAM_MODEL, 0);
@@ -484,7 +489,11 @@ fn the_chip_model_changes_at_most_once_a_tick_and_the_last_request_wins() {
     assert_eq!(get(&m.rig, LIVE_PARAM_MODEL), 1, "the request reads back");
     m.rig.tick();
     assert_eq!(resets(&m.rig), 1);
-    assert_eq!(m.rig.log().len(), 26, "a reset and every register");
+    assert_eq!(
+        m.rig.log().len(),
+        27,
+        "a reset, the attack mode and every register"
+    );
     assert_eq!(m.rig.live.model, SID_MODEL_8580);
     m.rig.clear();
     m.rig.tick();
@@ -990,6 +999,32 @@ fn an_nrpn_reaches_the_chip_model() {
     assert_eq!(m.rig.log()[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
 }
 
+#[test]
+fn the_attack_mode_is_cc_26_and_nrpn_1_10() {
+    // Next to the chip model (CC 25, NRPN 1/5) in the SID's block: like it, a setting of the
+    // chip rather than of the preset. CC 26 is in 20..31, which MIDI leaves undefined.
+    let r = row_for(LIVE_PARAM_ATTACK_MODE);
+    assert_eq!((r.cc, r.nrpn), (26, nrpn(1, 10)));
+    assert_eq!((r.max, r.def), (1, LIVE_ATTACK_INSTANT as u16));
+    assert!(r.steps());
+    let mut m = Midi::new();
+    m.rig.clear();
+    m.usb_cc(3, 26, 64); // steps: on from 64
+    assert_eq!(get(&m.rig, LIVE_PARAM_ATTACK_MODE), LIVE_ATTACK_AUTHENTIC);
+    assert_eq!(m.rig.log(), &[(LIVE_REG_GATE_RESET as u8, 0)]);
+    m.usb_cc(3, 26, 63);
+    assert_eq!(get(&m.rig, LIVE_PARAM_ATTACK_MODE), LIVE_ATTACK_INSTANT);
+    select(&mut m, LIVE_PARAM_ATTACK_MODE);
+    m.rig.clear();
+    m.trs(&[6, 0, 38, 1]);
+    assert_eq!(get(&m.rig, LIVE_PARAM_ATTACK_MODE), LIVE_ATTACK_AUTHENTIC);
+    assert_eq!(
+        m.rig.log(),
+        &[(LIVE_REG_GATE_RESET as u8, 0)],
+        "no 0 on the way"
+    );
+}
+
 // --- the published reference ---
 
 // The generated file's own licence header; reuse must not read it as this file's.
@@ -1011,8 +1046,8 @@ play on every channel (omni); program change 0..{last} selects the preset. A pro
 loads the preset's cutoff, resonance, pulse width, SID settings (waveform, ring, sync,
 the envelope, filter routing and mode) and expression settings (bend range, the targets,
 the vibrato) over any edits, even when it selects the preset already playing; volume, the
-chip model, the effect slots, the controllers (bend, wheel, aftertouch) and a bend range set
-by RPN 0 are kept.
+chip model, the attack mode, the effect slots, the controllers (bend, wheel, aftertouch) and
+a bend range set by RPN 0 are kept.
 
 **How the numbers were chosen.** CCs that MIDI gives a meaning are kept for it:
 General MIDI's where they fit (1 modulation wheel: the pulse width by default, see
@@ -1020,7 +1055,7 @@ Expression; 7 volume; 71 resonance; 74 cutoff, i.e. brightness; 72, 73 and 75 re
 attack and decay time; 76, 77 and 78 vibrato rate, depth and delay) and left alone where
 they do not (0 and 32 bank select, 6 and 38 data entry, 64..69 the pedals, 88
 high-resolution velocity, 96..101 increment, decrement, NRPN and RPN, 120..127 channel
-mode). The rest is in blocks MIDI leaves undefined: the SID's patch in 20..25 and 79, the
+mode). The rest is in blocks MIDI leaves undefined: the SID in 20..26 and 79, the
 character layer in 85..87 and 89..90, the effect slots in 102..116. NRPNs are grouped by
 MSB: 0 the performance controls, 1 the SID, 2 the character layer, 3..5 the effect slots,
 6 expression.
@@ -1061,6 +1096,11 @@ patch's value up or down around 64; SIDOU does not.
 - **Chip model:** a change resets the chip, so it waits for the next 10 ms tick and takes
   the last value received: a stream of changes resets it at most 100 times a second, and
   the FX button changes it at once.
+- **Attack mode:** 0 INSTANT (the default) restarts each voice's envelope rate counter at
+  the gate, so every note's attack starts within 12 chip cycles. 1 AUTHENTIC is the chip's
+  ADSR delay bug, as reSIDfp has it: after a release slower than the attack, most notes
+  wait up to 33 ms. A change counts from the next note-on; a sounding note keeps its
+  attack. [controls.md](controls.md) has the why.
 - The selection is kept per channel and per input (TRS, USB).
 - CC 120 and 123 release every note.
 

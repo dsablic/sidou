@@ -92,6 +92,8 @@ void live_sid_sink(void* ctx, uint8_t reg, uint8_t value) {
     if (reg == LIVE_REG_RESET) {
         sid_model model = value == SID_MODEL_8580 ? SID_MODEL_8580 : SID_MODEL_6581;
         sid_init(t->chip, model, t->clock_hz, t->sample_rate);
+    } else if (reg == LIVE_REG_GATE_RESET) {
+        sid_set_gate_reset(t->chip, value);
     } else if (!(reg & 0x80u)) {
         sid_write(t->chip, reg, value);
     }
@@ -275,6 +277,17 @@ static void write_controls(live* l) {
     }
 }
 
+static void write_gate_reset(live* l) {
+    put(l, LIVE_REG_GATE_RESET, l->attack_mode == LIVE_ATTACK_INSTANT ? 1u : 0u);
+}
+
+/* A chip reset with the model, then the attack mode, which sid_init turned off: before any
+ * register, so before any gate. */
+static void reset_chip(live* l) {
+    put(l, LIVE_REG_RESET, (uint8_t)l->model);
+    write_gate_reset(l);
+}
+
 /* Every register, envelopes before gates. */
 static void write_all(live* l) {
     for (int v = 0; v < LIVE_VOICES; ++v) {
@@ -434,8 +447,9 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->last_velocity = LIVE_EXPRESSION_MAX;
     l->mod_target = LIVE_MOD_PULSE_WIDTH;
     l->bend_range_rpn = 0;
+    l->attack_mode = LIVE_ATTACK_INSTANT;
     load_preset(l, 0);
-    put(l, LIVE_REG_RESET, (uint8_t)model);
+    reset_chip(l);
     write_all(l);
     l->fx_select = 0;
     for (uint32_t k = 0; k < LIVE_SLOTS; ++k) {
@@ -611,7 +625,7 @@ void live_knob(live* l, live_knob_id knob, int32_t delta) {
 static void set_model(live* l, sid_model model) {
     l->model = model;
     l->model_req = model;
-    put(l, LIVE_REG_RESET, (uint8_t)l->model);
+    reset_chip(l);
     write_all(l);
 }
 
@@ -716,7 +730,8 @@ uint32_t live_param_max(uint32_t param) {
     case LIVE_PARAM_RELEASE: return 15u;
     case LIVE_PARAM_RING:
     case LIVE_PARAM_SYNC:
-    case LIVE_PARAM_MODEL: return 1u;
+    case LIVE_PARAM_MODEL:
+    case LIVE_PARAM_ATTACK_MODE: return 1u;
     case LIVE_PARAM_FILTER_MODE:
     case LIVE_PARAM_FILTER_VOICES: return 7u;
     case LIVE_PARAM_BEND_RANGE: return LIVE_BEND_RANGE_MAX;
@@ -829,6 +844,12 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
     case LIVE_PARAM_VIBRATO_RATE: l->vibrato_rate = (uint8_t)value; break;
     case LIVE_PARAM_VIBRATO_DEPTH: l->vibrato_depth = (uint8_t)value; break;
     case LIVE_PARAM_VIBRATO_DELAY: l->vibrato_delay = (uint8_t)value; break;
+    case LIVE_PARAM_ATTACK_MODE: /* for the gates from now on; a held note keeps its attack */
+        if (l->attack_mode != value) {
+            l->attack_mode = (uint8_t)value;
+            write_gate_reset(l);
+        }
+        break;
     default:
         live_slot_set(l, (param - LIVE_PARAM_SLOT) / LIVE_SLOT_FIELDS,
                       (param - LIVE_PARAM_SLOT) % LIVE_SLOT_FIELDS, (int32_t)value);
@@ -859,6 +880,7 @@ uint32_t live_param_get(const live* l, uint32_t param) {
     case LIVE_PARAM_VIBRATO_RATE: return l->vibrato_rate;
     case LIVE_PARAM_VIBRATO_DEPTH: return l->vibrato_depth;
     case LIVE_PARAM_VIBRATO_DELAY: return l->vibrato_delay;
+    case LIVE_PARAM_ATTACK_MODE: return l->attack_mode;
     default:
         if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {
             return l->slot[(param - LIVE_PARAM_SLOT) / LIVE_SLOT_FIELDS]

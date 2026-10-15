@@ -10,6 +10,7 @@ use sidou_sys::*;
 const RATE: u32 = 44_118;
 const SIZE: u32 = REG_RING_SIZE;
 const RESET: u8 = LIVE_REG_RESET as u8;
+const GATE_RESET: u8 = LIVE_REG_GATE_RESET as u8;
 
 fn ring() -> Box<reg_ring> {
     let mut r = Box::<reg_ring>::default();
@@ -123,12 +124,12 @@ fn a_reset_entry_never_reaches_sid_write() {
     let mut c = chips(SID_MODEL_6581);
     push(&mut r, 0x00, 0x34);
     push(&mut r, RESET, SID_MODEL_8580 as u8);
-    push(&mut r, 0x81, 0x99); // an unknown pseudo-register is ignored as well
+    push(&mut r, 0x9f, 0x99); // an unknown pseudo-register is ignored as well
     commit(&mut r);
     assert_eq!(unsafe { reg_ring_drain(&mut *r, &mut *c) }, 3);
     assert_eq!(
         c.chip[0].osc[0].freq, 0x34,
-        "0x80 and 0x81 left voice 1 alone"
+        "0x80 and 0x9f left voice 1 alone"
     );
     assert_eq!(c.chip[0].osc[1].freq, 0);
     assert_eq!(c.active, 0, "no spare was prepared: no swap");
@@ -156,6 +157,33 @@ fn a_reset_entry_swaps_to_the_prepared_spare() {
     );
     assert_eq!(c.chip[0].osc[0].freq, 0);
     assert!(std::ptr::eq(unsafe { reg_ring_chip(&mut *c) }, &c.chip[1]));
+}
+
+#[test]
+fn a_gate_reset_entry_sets_the_option_on_the_active_chip_only() {
+    let mut r = ring();
+    let mut c = chips(SID_MODEL_6581);
+    unsafe { sid_init(&mut c.chip[1], SID_MODEL_8580, SID_CLOCK_PAL, RATE) };
+    c.spare_model = SID_MODEL_8580 as u8;
+    c.spare_ready = 1;
+    push(&mut r, GATE_RESET, 1);
+    push(&mut r, 0x00, 0x12);
+    commit(&mut r);
+    assert_eq!(unsafe { reg_ring_drain(&mut *r, &mut *c) }, 2);
+    assert!(c.chip[0].env.iter().all(|e| e.gate_reset == 1));
+    assert_eq!(c.chip[0].osc[0].freq, 0x12, "it never reaches sid_write");
+    assert!(c.chip[1].env.iter().all(|e| e.gate_reset == 0));
+    // A reset swaps to a chip sid_init left authentic; the entry after it sets the new one.
+    push(&mut r, RESET, SID_MODEL_8580 as u8);
+    push(&mut r, GATE_RESET, 1);
+    commit(&mut r);
+    unsafe { reg_ring_drain(&mut *r, &mut *c) };
+    assert_eq!(c.active, 1);
+    assert!(c.chip[1].env.iter().all(|e| e.gate_reset == 1));
+    push(&mut r, GATE_RESET, 0);
+    commit(&mut r);
+    unsafe { reg_ring_drain(&mut *r, &mut *c) };
+    assert!(c.chip[1].env.iter().all(|e| e.gate_reset == 0));
 }
 
 #[test]
@@ -269,6 +297,29 @@ fn live_init_through_the_ring_matches_the_direct_chip() {
             live_note_on(l, 60, 100)
         });
         assert_same_sound(&mut dev, &mut direct);
+    }
+}
+
+#[test]
+fn the_attack_mode_reaches_the_chip_through_the_ring_and_across_model_changes() {
+    let mut dev = Device::new(SID_MODEL_6581);
+    let mut direct = Direct::new(SID_MODEL_6581);
+    let gate_reset = |s: &sid| s.env.map(|e| e.gate_reset);
+    dev.block();
+    assert_eq!(gate_reset(dev.chip()), [1; 3], "instant by default");
+    assert_eq!(gate_reset(&direct.chip), [1; 3]);
+    for (mode, want) in [(LIVE_ATTACK_AUTHENTIC, 0u8), (LIVE_ATTACK_INSTANT, 1)] {
+        both(&mut dev, &mut direct, |l| unsafe {
+            live_param_set(l, LIVE_PARAM_ATTACK_MODE, mode);
+            live_button(l, LIVE_BUTTON_FX);
+            live_note_on(l, 60, 100);
+        });
+        dev.block();
+        assert_eq!(gate_reset(dev.chip()), [want; 3], "mode {mode}");
+        assert_eq!(gate_reset(&direct.chip), [want; 3], "mode {mode}");
+        assert_eq!(dev.chips.lost_resets, 0);
+        assert_same_sound(&mut dev, &mut direct);
+        both(&mut dev, &mut direct, |l| unsafe { live_all_notes_off(l) });
     }
 }
 

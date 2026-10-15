@@ -9,8 +9,8 @@ play on every channel (omni); program change 0..3 selects the preset. A program 
 loads the preset's cutoff, resonance, pulse width, SID settings (waveform, ring, sync,
 the envelope, filter routing and mode) and expression settings (bend range, the targets,
 the vibrato) over any edits, even when it selects the preset already playing; volume, the
-chip model, the effect slots, the controllers (bend, wheel, aftertouch) and a bend range set
-by RPN 0 are kept.
+chip model, the attack mode, the effect slots, the controllers (bend, wheel, aftertouch) and
+a bend range set by RPN 0 are kept.
 
 **How the numbers were chosen.** CCs that MIDI gives a meaning are kept for it:
 General MIDI's where they fit (1 modulation wheel: the pulse width by default, see
@@ -18,7 +18,7 @@ Expression; 7 volume; 71 resonance; 74 cutoff, i.e. brightness; 72, 73 and 75 re
 attack and decay time; 76, 77 and 78 vibrato rate, depth and delay) and left alone where
 they do not (0 and 32 bank select, 6 and 38 data entry, 64..69 the pedals, 88
 high-resolution velocity, 96..101 increment, decrement, NRPN and RPN, 120..127 channel
-mode). The rest is in blocks MIDI leaves undefined: the SID's patch in 20..25 and 79, the
+mode). The rest is in blocks MIDI leaves undefined: the SID in 20..26 and 79, the
 character layer in 85..87 and 89..90, the effect slots in 102..116. NRPNs are grouped by
 MSB: 0 the performance controls, 1 the SID, 2 the character layer, 3..5 the effect slots,
 6 expression.
@@ -59,6 +59,11 @@ patch's value up or down around 64; SIDOU does not.
 - **Chip model:** a change resets the chip, so it waits for the next 10 ms tick and takes
   the last value received: a stream of changes resets it at most 100 times a second, and
   the FX button changes it at once.
+- **Attack mode:** 0 INSTANT (the default) restarts each voice's envelope rate counter at
+  the gate, so every note's attack starts within 12 chip cycles. 1 AUTHENTIC is the chip's
+  ADSR delay bug, as reSIDfp has it: after a release slower than the attack, most notes
+  wait up to 33 ms. A change counts from the next note-on; a sounding note keeps its
+  attack. [controls.md](controls.md) has the why.
 - The selection is kept per channel and per input (TRS, USB).
 - CC 120 and 123 release every note.
 
@@ -161,6 +166,7 @@ In NRPN order.
 | SID | Decay | 75 | 1/7 (135) | 0..15 | steps | 9 | 0..15, the SID's rates |
 | SID | Sustain | 79 | 1/8 (136) | 0..15 | steps | 10 | 0..15, the level |
 | SID | Release | 72 | 1/9 (137) | 0..15 | steps | 6 | 0..15, the SID's rates |
+| SID | Attack mode | 26 | 1/10 (138) | 0..1 | steps | 0 | 0 instant (the rate counter restarts at the gate), 1 authentic (the chip's ADSR delay: up to 33 ms after a slower release) |
 | Distortion | Algorithm | 102 | 3/0 (384) | 0..5 | steps | 0 | 0 OFF, 1 TAPE, 2 OVERDRIVE, 3 FUZZ, 4 CRUSH, 5 LO-FI |
 | Distortion | Amount | 103 | 3/1 (385) | 0..127 | linear | 0 | 0..127 |
 | Distortion | A | 104 | 3/2 (386) | 0..127 | linear | 0 | 0..127 |
@@ -208,6 +214,7 @@ These numbers are kept for the character layer (M1c Task 3) and do nothing yet; 
 | 23 | SID Filter mode |
 | 24 | SID Filter routing |
 | 25 | SID Chip model |
+| 26 | SID Attack mode |
 | 71 | Live Resonance |
 | 72 | SID Release |
 | 73 | SID Attack |

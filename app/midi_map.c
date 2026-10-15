@@ -88,6 +88,10 @@ static const midi_map_entry rows[MIDI_MAP_ROWS] = {
         79, NRPN(NRPN_SID, 8), 15, 10, STEPS),
     ROW("SID", "Release", "0..15, the SID's rates", LIVE_PARAM_RELEASE,
         72, NRPN(NRPN_SID, 9), 15, 6, STEPS),
+    ROW("SID", "Attack mode",
+        "0 instant (the rate counter restarts at the gate), 1 authentic (the chip's ADSR "
+        "delay: up to 33 ms after a slower release)",
+        LIVE_PARAM_ATTACK_MODE, 26, NRPN(NRPN_SID, 10), 1, LIVE_ATTACK_INSTANT, STEPS),
 
     ROW("Character", "Profile", "6581 R2, 6581 R3, 6581 R4AR, 8580 R5, worn 6581",
         MIDI_MAP_RESERVED, 85, NRPN(NRPN_CHARACTER, 0), 4, 0, STEPS),

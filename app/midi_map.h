@@ -63,7 +63,7 @@ typedef struct {
     uint8_t curve;      /* a midi_map_curve, for the CC */
 } midi_map_entry;
 
-#define MIDI_MAP_ROWS 41u
+#define MIDI_MAP_ROWS 42u
 
 /* Row i in table order, or NULL past the last. midi_map_row has no caller on the device;
  * --gc-sections drops it there. */

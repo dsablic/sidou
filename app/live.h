@@ -10,10 +10,13 @@
  * - on the host, live_sid_sink applies them to a sid at once;
  * - on the device, the sink pushes them onto a ring that the audio ISR drains, so the
  *   chip is only ever changed between two rendered blocks.
- * Besides the SID registers 0x00..0x18 a sink receives one pseudo-register,
- * LIVE_REG_RESET (value: a sid_model). It asks for the chip to be re-initialised with
- * that model at its current clock and sample rate, before any write that follows it.
- * live_init and a model change send it, each followed by a write of every register. */
+ * Besides the SID registers 0x00..0x18 a sink receives two chip pseudo-registers:
+ * - LIVE_REG_RESET (value: a sid_model) asks for the chip to be re-initialised with that
+ *   model at its current clock and sample rate, before any write that follows it;
+ * - LIVE_REG_GATE_RESET (value 0 or 1) sets the chip's gate reset (sid_set_gate_reset), the
+ *   attack mode (LIVE_PARAM_ATTACK_MODE). sid_init turns it off, so it follows every reset.
+ * live_init and a model change send a reset, the gate reset, then every register; a change
+ * of the attack mode sends the gate reset alone. */
 #ifndef SIDOU_LIVE_H
 #define SIDOU_LIVE_H
 
@@ -27,8 +30,9 @@ extern "C" {
 
 #define LIVE_VOICES 3
 #define LIVE_NO_NOTE 0xffu
-/* Outside the SID's 5-bit address space; sid_write would alias it, so sinks catch it. */
+/* Outside the SID's 5-bit address space; sid_write would alias them, so sinks catch them. */
 #define LIVE_REG_RESET 0x80u
+#define LIVE_REG_GATE_RESET 0x81u
 
 #define LIVE_OCTAVE_MIN (-3)
 #define LIVE_OCTAVE_MAX 3
@@ -99,6 +103,18 @@ typedef enum {
     LIVE_VELOCITY_PULSE_WIDTH = 3 /* the voice's pulse, narrower by velocity / 127 */
 } live_velocity_target;
 
+/* How a note's attack starts (LIVE_PARAM_ATTACK_MODE), for the whole instrument: not per
+ * preset, and kept across preset and model changes. */
+typedef enum {
+    /* The rate counter restarts at the gate (sid_set_gate_reset): the attack starts within
+     * 12 chip cycles, whatever the release before it. The default: an instrument played
+     * live wants every note on time. */
+    LIVE_ATTACK_INSTANT = 0,
+    /* The chip's ADSR delay bug, as reSIDfp has it: after a release slower than the attack,
+     * most notes wait up to 33 ms for the rate counter to come round. */
+    LIVE_ATTACK_AUTHENTIC = 1
+} live_attack_mode;
+
 /* What the modulation wheel (CC 1) drives, per preset. */
 typedef enum {
     LIVE_MOD_PULSE_WIDTH = 0, /* CC 1 sets the pulse width across its range (M1a) */
@@ -125,7 +141,8 @@ typedef struct {
 } live_sid_target;
 
 /* Applies writes to ctx (a live_sid_target*) at once: sid_write for registers, sid_init
- * for LIVE_REG_RESET; other pseudo-registers (the slots') are ignored. For the host and for
+ * for LIVE_REG_RESET, sid_set_gate_reset for LIVE_REG_GATE_RESET; other pseudo-registers
+ * (the slots') are ignored. For the host and for
  * code that already runs in the audio context. */
 void live_sid_sink(void* ctx, uint8_t reg, uint8_t value);
 
@@ -245,6 +262,7 @@ typedef struct {
     uint8_t channel_pressure; /* 0..127 */
     uint8_t last_velocity;    /* the last note-on's: LIVE_VELOCITY_CUTOFF's (one filter) */
     uint32_t note_ons; /* note-ons played (wraps): a note shorter than a look still shows */
+    uint8_t attack_mode; /* a live_attack_mode */
 } live;
 
 /* The instrument's parameters, each an integer 0..live_param_max: what MIDI reaches through
@@ -276,7 +294,9 @@ typedef enum {
     LIVE_PARAM_VIBRATO_RATE = 33,    /* 0..127, in 0.1 Hz */
     LIVE_PARAM_VIBRATO_DEPTH = 34,   /* 0..127 */
     LIVE_PARAM_VIBRATO_DELAY = 35,   /* 0..127 ticks */
-    LIVE_PARAM_COUNT = 36
+    /* A live_attack_mode, 0..1: one write (LIVE_REG_GATE_RESET), for the gates after it. */
+    LIVE_PARAM_ATTACK_MODE = 36,
+    LIVE_PARAM_COUNT = 37
 } live_param;
 
 /* One past the last slot parameter, i.e. LIVE_PARAM_BEND_RANGE (live.c asserts it). A macro,
@@ -284,8 +304,9 @@ typedef enum {
  * meet the same value under two case labels. */
 #define LIVE_PARAM_SLOT_END (LIVE_PARAM_SLOT + LIVE_SLOTS * LIVE_SLOT_FIELDS)
 
-/* Preset 0, octave 0, full volume, every effect slot off. Sends LIVE_REG_RESET(model), then
- * every register, then every slot setting (fx_live.h). */
+/* Preset 0, octave 0, full volume, every effect slot off, the attack instant. Sends
+ * LIVE_REG_RESET(model), LIVE_REG_GATE_RESET, then every register, then every slot setting
+ * (fx_live.h). */
 void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model);
 /* Absolute MIDI notes; the octave is not applied here (see live_key_note). Velocity 0
  * is a note-off. A note that is already held is retriggered on its voice. The note starts at
@@ -338,8 +359,8 @@ void live_bend_range_rpn(live* l, uint32_t semitones);
  * five SID settings the parameters edit (waveform with ring and sync, attack/decay,
  * sustain/release, filter routing, filter mode) and the expression settings (bend range,
  * targets, vibrato), to the preset's. Loading the preset already loaded does the same, so it
- * discards those edits. Volume, octave, chip model, the effect slots, the controllers (bend,
- * wheel, pressure) and a bend range set by RPN 0 are kept. An index past the last is
+ * discards those edits. Volume, octave, chip model, attack mode, the effect slots, the
+ * controllers (bend, wheel, pressure) and a bend range set by RPN 0 are kept. An index past the last is
  * clamped. */
 void live_set_preset(live* l, uint8_t index);
 /* The MASTER pot, 0..1023 (clamped); the chip's volume is its top 4 bits, rounded. */

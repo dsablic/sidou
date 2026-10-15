@@ -32,24 +32,95 @@ fn gates(rig: &Rig) -> [bool; 3] {
 
 // --- init and registers ---
 
+const GATE_RESET: u8 = LIVE_REG_GATE_RESET as u8;
+
 #[test]
 fn init_resets_the_chip_then_writes_every_register_once() {
     let rig = Rig::new(SID_MODEL_8580);
     let log = rig.log();
     assert_eq!(log[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
-    let regs: Vec<u8> = log[1..26].iter().map(|&(r, _)| r).collect();
+    // The attack is instant by default: the chip's gate reset on, before any gate.
+    assert_eq!(log[1], (GATE_RESET, 1));
+    let regs: Vec<u8> = log[2..27].iter().map(|&(r, _)| r).collect();
     let set: BTreeSet<u8> = regs.iter().copied().collect();
     assert_eq!(regs.len(), 25);
     assert_eq!(set, (0..=0x18).collect());
     // Then every effect slot's five settings, all off.
-    let slots: BTreeSet<(u8, u8)> = log[26..].iter().copied().collect();
+    let slots: BTreeSet<(u8, u8)> = log[27..].iter().copied().collect();
     let want: BTreeSet<(u8, u8)> = (0..LIVE_SLOTS)
         .flat_map(|k| {
             (0..LIVE_SLOT_FIELDS).map(move |f| ((LIVE_REG_SLOT_BASE | k << 3 | f) as u8, 0))
         })
         .collect();
-    assert_eq!(log.len(), 26 + 15);
+    assert_eq!(log.len(), 27 + 15);
     assert_eq!(slots, want);
+}
+
+#[test]
+fn the_attack_mode_is_instant_at_init_and_kept_across_presets() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    assert_eq!(rig.live.attack_mode, LIVE_ATTACK_INSTANT as u8);
+    let get = |rig: &Rig| unsafe { live_param_get(&*rig.live, LIVE_PARAM_ATTACK_MODE) };
+    assert_eq!(get(&rig), LIVE_ATTACK_INSTANT);
+    assert_eq!(unsafe { live_param_max(LIVE_PARAM_ATTACK_MODE) }, 1);
+
+    rig.clear();
+    unsafe {
+        live_param_set(
+            &mut *rig.live,
+            LIVE_PARAM_ATTACK_MODE,
+            LIVE_ATTACK_AUTHENTIC,
+        )
+    };
+    assert_eq!(
+        rig.log(),
+        &[(GATE_RESET, 0)],
+        "one write: the chip's option off"
+    );
+    assert_eq!(get(&rig), LIVE_ATTACK_AUTHENTIC);
+    rig.clear();
+    unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_ATTACK_MODE, 5) }; // clamped to 1
+    assert!(rig.log().is_empty(), "no change, no write");
+
+    for p in 0..LIVE_PRESET_COUNT as u8 {
+        rig.set_preset(p);
+        assert_eq!(get(&rig), LIVE_ATTACK_AUTHENTIC, "preset {p} kept it");
+    }
+    assert!(rig.log().iter().all(|&(r, _)| r != GATE_RESET));
+
+    rig.clear();
+    unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_ATTACK_MODE, LIVE_ATTACK_INSTANT) };
+    assert_eq!(rig.log(), &[(GATE_RESET, 1)]);
+}
+
+#[test]
+fn every_chip_reset_is_followed_by_the_attack_mode_before_any_register() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    unsafe {
+        live_param_set(
+            &mut *rig.live,
+            LIVE_PARAM_ATTACK_MODE,
+            LIVE_ATTACK_AUTHENTIC,
+        )
+    };
+    rig.note_on(60);
+    rig.clear();
+    rig.button(LIVE_BUTTON_FX); // at once
+    assert_eq!(rig.log()[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
+    assert_eq!(
+        rig.log()[1],
+        (GATE_RESET, 0),
+        "the new chip is authentic too"
+    );
+    rig.clear();
+    unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_MODEL, 0) };
+    rig.tick(); // a model MIDI asked for
+    assert_eq!(rig.log()[0], (LIVE_REG_RESET as u8, SID_MODEL_6581 as u8));
+    assert_eq!(rig.log()[1], (GATE_RESET, 0));
+    assert_eq!(
+        rig.log().iter().filter(|&&(r, _)| r == GATE_RESET).count(),
+        1
+    );
 }
 
 #[test]
@@ -624,13 +695,18 @@ fn fx_toggles_the_model_and_keeps_every_parameter() {
     );
     let log = rig.log();
     assert_eq!(log[0], (LIVE_REG_RESET as u8, SID_MODEL_8580 as u8));
-    assert_eq!(log.len(), 26, "a reset and then every register");
+    assert_eq!(log[1], (GATE_RESET, 1));
+    assert_eq!(
+        log.len(),
+        27,
+        "a reset, the attack mode, then every register"
+    );
     assert_eq!(rig.rec.regs, regs_before, "the same register values");
     assert!(rig.gated(voice_of(&rig, 48)), "held notes sound again");
 
     rig.button(LIVE_BUTTON_FX);
     assert_eq!(rig.live.model, SID_MODEL_6581);
-    assert_eq!(rig.log()[26], (LIVE_REG_RESET as u8, SID_MODEL_6581 as u8));
+    assert_eq!(rig.log()[27], (LIVE_REG_RESET as u8, SID_MODEL_6581 as u8));
 }
 
 // --- with a real chip ---
@@ -675,6 +751,40 @@ fn peak(v: &[i16]) -> i32 {
 fn pitch(v: &[i16], rate: f64) -> f64 {
     let n = v.windows(2).filter(|w| w[0] < 0 && w[1] >= 0).count();
     n as f64 * rate / v.len() as f64
+}
+
+/// SAW LEAD's note, held and released, then the same note again `phase` samples later:
+/// the samples until its envelope leaves 0, at most `limit`.
+fn retrigger_samples(mode: u32, phase: usize, limit: usize) -> Option<usize> {
+    let mut c = Chip::new(SID_MODEL_6581);
+    unsafe { live_param_set(&mut *c.live, LIVE_PARAM_ATTACK_MODE, mode) };
+    unsafe { live_note_on(&mut *c.live, 60, 100) };
+    c.render(4410);
+    unsafe { live_note_off(&mut *c.live, 60) };
+    c.render(44100 + phase); // release 6 from sustain 10: about 0.6 s to 0
+    assert!(c.chip.env.iter().all(|e| e.counter == 0), "released");
+    unsafe { live_note_on(&mut *c.live, 60, 100) };
+    (1..=limit).find(|_| {
+        c.render(1);
+        c.chip.env.iter().any(|e| e.counter != 0)
+    })
+}
+
+#[test]
+fn an_instant_attack_starts_every_retrigger_at_once_and_authentic_waits() {
+    // Release 6's period is 267 cycles, about 12 samples at 44.1 kHz: two periods of phases.
+    let phases = 0..24;
+    let instant: Vec<_> = phases
+        .clone()
+        .map(|k| retrigger_samples(LIVE_ATTACK_INSTANT, k, 2000).unwrap())
+        .collect();
+    assert!(instant.iter().all(|&n| n <= 1), "{instant:?}");
+    // The ADSR delay: most phases wait for the rate LFSR, about 33 ms.
+    let authentic: Vec<_> = phases
+        .map(|k| retrigger_samples(LIVE_ATTACK_AUTHENTIC, k, 2000).unwrap())
+        .collect();
+    let waited = authentic.iter().filter(|&&n| n > 1400).count();
+    assert!(waited >= 20, "{authentic:?}");
 }
 
 #[test]

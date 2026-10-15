@@ -52,6 +52,7 @@ SECTIONS
         *(.text.audio_fill)                         /* audio.c */
         *(.text.reg_ring_drain .text.reg_ring_pop .text.reg_ring_chip)   /* app/reg_ring.c */
         *(.text.sid_render .text.sid_write)         /* core/sid/sid.c (sid_svf_set is inline) */
+        *(.text.sid_set_gate_reset)                 /* sid.c, from reg_ring_drain */
         *(.text.sid_read .text.read_osc3 .text.clock_voices .text.fold_owed)    /* sid.c */
         *(.text.sid_osc_advance_slow .text.sid_osc_cycle .text.sid_osc_run_combined)   /* sid_osc.h */
         *(.text.sid_osc_combined_bulk .text.sid_osc_pull_msb)   /* sid_osc.h, when not inlined */

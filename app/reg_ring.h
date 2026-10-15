@@ -38,15 +38,15 @@
 extern "C" {
 #endif
 
-/* Entries in the ring, a power of two. The worst case of one main-loop pass is 388 entries
+/* Entries in the ring, a power of two. The worst case of one main-loop pass is 389 entries
  * (reg_ring.c, REG_RING_WORST_PASS), so a pass never waits for room on its own account. The
  * rest is MIDI's: the device's drain (platform/fm1/midi.c) takes an entry only while the
- * pass's worst case and the entry's still fit (at most 555 entries queued before it): between
+ * pass's worst case and the entry's still fit (at most 554 entries queued before it): between
  * two audio blocks (2.9 ms) it takes up to 23 program changes, 25 writes each, where the TRS
  * jack delivers 9. At 512 it took 2, and a flood overflowed the MIDI ring in about 150 ms.
  * 2 bytes an entry: 2 KiB of .bss. */
 #define REG_RING_SIZE 1024u
-#define REG_RING_WORST_PASS 388u
+#define REG_RING_WORST_PASS 389u
 
 typedef struct {
     uint8_t reg; /* a SID register 0x00..0x18, or a live pseudo-register (bit 7 set) */
@@ -96,8 +96,9 @@ sid* reg_ring_chip(reg_ring_chips* c);
 
 /* Consumer: applies every committed entry in order. A SID register goes to sid_write on the
  * active chip; a LIVE_REG_RESET swaps to the spare (it never reaches sid_write, which would
- * alias it to register 0x00); any other pseudo-register goes to the pseudo handler, if
- * there is one. Returns the entries applied. */
+ * alias it to register 0x00); a LIVE_REG_GATE_RESET goes to sid_set_gate_reset on the active
+ * chip, so after a reset the new one; any other pseudo-register goes to the pseudo handler,
+ * if there is one. Returns the entries applied. */
 uint32_t reg_ring_drain(reg_ring* r, reg_ring_chips* c);
 
 /* The producer's side, the context of reg_ring_sink. */

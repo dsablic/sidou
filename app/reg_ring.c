@@ -5,7 +5,8 @@
 #include "live.h"
 
 /* REG_RING_WORST_PASS, the most one main-loop pass can push (live.c's writes per call):
- *   a model change, a reset and every register   1 + 25
+ *   a model change, a reset, the gate reset and every register
+ *                                               1 + 1 + 25
  *   (the FX button, or live_tick applying the model MIDI asked for: one per pass at most.
  *   MIDI only records the request; the panel runs before the ticks and the button settles
  *   any request, and a tick applies one only if it differs from the chip's.)
@@ -22,7 +23,7 @@
  *   all 27 note keys pressed and released within the pass, a key's note-on and note-off
  *   11 together (below)
  *                                              27 * 11 = 297
- *                                             388
+ *                                             389
  * A note-on writes at most 11: a retrigger's gate-off (the sync lead steals its one voice) 1,
  * the velocity's sustain level 1, the voice's pulse width 2 (aftertouch MIDI changed since the
  * last write; the voice's own pressure starts again at 0), the cutoff 2 (the wheel MIDI moved
@@ -102,6 +103,10 @@ sid* reg_ring_chip(reg_ring_chips* c) {
 static void apply(reg_ring_chips* c, reg_ring_entry e) {
     if (!(e.reg & 0x80u)) {
         sid_write(&c->chip[c->active], e.reg, e.value);
+        return;
+    }
+    if (e.reg == LIVE_REG_GATE_RESET) {
+        sid_set_gate_reset(&c->chip[c->active], e.value);
         return;
     }
     if (e.reg != LIVE_REG_RESET) {
