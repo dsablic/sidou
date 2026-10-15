@@ -180,8 +180,8 @@ fn the_logo_bars_stars_and_scroller_are_where_they_belong() {
         px[..64 * W] == img.px[band..band + 64 * W],
         "the logo is not the scene's lettering band"
     );
-    // The scroller: overlays on its five rows, one or two a column.
-    assert!(SCROLL.start >= BARS.start && SCROLL.end <= BARS.end);
+    // The scroller: overlays on its five rows, one or two a column (over the bars: app/about.c
+    // asserts it).
     let scroll: usize = SCROLL.map(ovl).sum();
     assert!((24..=60).contains(&scroll), "{scroll} scroller cells");
     // Stars on black between the ramp lines.
