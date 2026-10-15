@@ -7,7 +7,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 24] = [
+const SOURCES: [&str; 27] = [
     "core/sid/sid.c",
     "core/sid/sid_dac.c",
     "core/fx/fx.c",
@@ -30,6 +30,9 @@ const SOURCES: [&str; 24] = [
     "app/midi_usb.c",
     "app/panel.c",
     "app/reg_ring.c",
+    "app/screen.c",
+    "app/views.c",
+    "app/widget.c",
     "bench/workload_fx.c",
     "bench/workload_slots.c",
 ];
@@ -135,11 +138,13 @@ fn main() {
         .clang_arg("-DSIDOU_ALL_COMBINED_PROFILES")
         .clang_arg(format!("-D{MIDI_MAP_DOC}"))
         .allowlist_function(
-            "sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|fx_live.*|grid_.*",
+            "sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*",
         )
-        .allowlist_type("sid.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*")
+        .allowlist_type(
+            "sid.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*",
+        )
         .allowlist_var(
-            "SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*|FONT_.*|font_.*|GRID_.*|grid_.*",
+            "SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*",
         )
         // A `static const` table private to sid_env.h; it has no symbol to link to.
         .blocklist_item("SID_ENV_RATE_POS|SID_ENV_THRESHOLDS|SID_PULLDOWN_.*")

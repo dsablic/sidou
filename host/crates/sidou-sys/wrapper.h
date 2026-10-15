@@ -23,5 +23,8 @@
 #include "midi_usb.h"
 #include "panel.h"
 #include "reg_ring.h"
+#include "screen.h"
+#include "views.h"
+#include "widget.h"
 #include "workload_fx.h"
 #include "workload_slots.h"

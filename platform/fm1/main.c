@@ -200,7 +200,7 @@ static void sidou_main(void) {
             audio_commit();
         }
         play(now, &next_tick, &last_frame);
-        ui_poll(&instrument, now);
+        ui_poll(now);
         midi_service(now);
         bootguard_poll(&boot_guard, now);
 #if defined(SIDOU_TEST_DEATH_MS)

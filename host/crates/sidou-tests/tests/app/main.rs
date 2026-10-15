@@ -17,6 +17,9 @@ mod midi_rx;
 mod midi_usb;
 mod panel;
 mod reg_ring;
+mod screen;
+mod views;
+mod widget;
 
 use std::ffi::c_void;
 

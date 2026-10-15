@@ -36,10 +36,14 @@ extern "C" {
 #define PANEL_BTN_SCL 3u
 #define PANEL_BTN_ENV 4u
 #define PANEL_BTN_EDIT 6u
+/* The views (app/views.h): opens the menu, and goes back. */
+#define PANEL_BTN_HOME 8u
 /* The LED id of note key k is PANEL_KEY_ID0 + k; buttons are their own ids. */
 #define PANEL_KEY_ID0 14u
 
-/* Encoder ids (fm1_enc_take). */
+/* Encoder ids (fm1_enc_take). SELECT and ALGORITHM drive the menus (app/views.h). */
+#define PANEL_ENC_SELECT 0u
+#define PANEL_ENC_ALGORITHM 1u
 #define PANEL_ENC_K1 2u
 #define PANEL_ENC_K4 5u
 #define PANEL_ENCODERS 7u

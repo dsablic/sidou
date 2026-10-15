@@ -17,7 +17,8 @@ void input_tick_isr(void);
 /* The key scan's frame count (one frame = 11 TIMER5 ticks, ~1.1 ms): the debounced state
  * and the edges only change when it does. */
 uint32_t input_frame(void);
-/* Main loop: button, note-key and encoder changes since the last call into live.
+/* Main loop: button, note-key and encoder changes since the last call into live; buttons and
+ * encoders through the views first (ui_buttons, ui_encoder), the note keys straight to it.
  * Only once interrupts are on: its critical sections end with fm1__unlock, which always
  * re-enables interrupts (sti), whatever the state before. */
 void input_poll(panel* p, live* l);
