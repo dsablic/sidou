@@ -20,9 +20,12 @@ use residfp_sys::{CombinedWaveforms, Model, Sampling, Sid};
 use sidou_sys::*;
 use sidou_tablegen::filter_fit::{
     apply_range, compare, direct_spectra, fit, in_reach, measure_modes, register_writes, spectra,
-    transfer, Mode, Response, CAPTURE, CLOCK_HZ, FS, MODES, SETTLE_CYCLES,
+    transfer, CurveSetting, Mode, Response, CAPTURE, CLOCK_HZ, FS, MODES, SETTLE_CYCLES,
 };
-use sidou_tablegen::profiles::{ChipProfile, PROFILES};
+use sidou_tablegen::profiles::{curve_row, ChipProfile, PROFILES};
+use sidou_tests::filter_limits::{
+    MAX_TRANSFER_DB_6581, MAX_TRANSFER_DB_8580, PASSBAND_GAIN_DB_6581, PASSBAND_GAIN_DB_8580,
+};
 use sidou_tests::register_probe::{first_mismatch, probe, Chip, TimedWrite, CYCLES_PER_FRAME};
 
 /// Held for every reSIDfp filter measurement: the 6581 range is the process's.
@@ -59,10 +62,40 @@ fn sidou_chip(p: &ChipProfile, rate: u32, dac: &mut sid_dac) -> Box<sid> {
     s
 }
 
+/// What a filter measurement plays on SIDOU's side: a profile at zero character, or one of
+/// gen/filter.h's rows on a chip of its model with the non-linearity at 1 (age/heat's rows).
+#[derive(Clone, Copy)]
+enum Target<'a> {
+    Profile(&'a ChipProfile),
+    Row(Model, u32),
+}
+
+impl Target<'_> {
+    fn chip(&self, rate: u32, dac: &mut sid_dac) -> Box<sid> {
+        match *self {
+            Target::Profile(p) => sidou_chip(p, rate, dac),
+            Target::Row(model, row) => {
+                let mut s = Box::<sid>::default();
+                let m = if model == Model::Mos6581 {
+                    SID_MODEL_6581
+                } else {
+                    SID_MODEL_8580
+                };
+                unsafe {
+                    sid_init(&mut *s, m, SID_CLOCK_PAL, rate);
+                    sid_set_filter_curve(&mut *s, row);
+                    sid_set_filter_nonlinearity(&mut *s, 1.0); // its floor follows the row
+                }
+                s
+            }
+        }
+    }
+}
+
 /// SIDOU's output for the filter measurement's register writes (tests/filter.rs's render).
-fn render(p: &ChipProfile, fc: u32, res: u8, mode: Option<Mode>) -> Vec<f64> {
+fn render(p: Target, fc: u32, res: u8, mode: Option<Mode>) -> Vec<f64> {
     let mut dac = Box::<sid_dac>::default();
-    let mut s = sidou_chip(p, FS as u32, &mut dac);
+    let mut s = p.chip(FS as u32, &mut dac);
     let settle = (f64::from(SETTLE_CYCLES) * FS / CLOCK_HZ) as usize;
     let mut out = vec![0i16; settle + CAPTURE];
     unsafe {
@@ -74,7 +107,7 @@ fn render(p: &ChipProfile, fc: u32, res: u8, mode: Option<Mode>) -> Vec<f64> {
     out[settle..].iter().map(|&v| f64::from(v)).collect()
 }
 
-fn sidou_responses(p: &ChipProfile, fc: u32, res: u8) -> Vec<(Mode, Response)> {
+fn sidou_responses(p: Target, fc: u32, res: u8) -> Vec<(Mode, Response)> {
     let direct = spectra(&render(p, fc, res, None));
     MODES
         .iter()
@@ -111,13 +144,13 @@ fn passband(mode: Mode, f0: f64) -> (f64, f64) {
     }
 }
 
-/* M1b's tolerances (tests/filter.rs, MAX_TRANSFER_DB_* and PASSBAND_GAIN_DB_*): the largest
- * shape error around the cutoff, LP, BP, HP, and the passband gain's range, SIDOU minus
- * reSIDfp, over FC 64..512 at resonance 0, 8 and 15. */
-const SHAPE_8580: [f64; 3] = [1.0, 0.55, 0.3];
-const SHAPE_6581: [f64; 3] = [3.32, 3.13, 2.89];
-const GAIN_8580: [(f64, f64); 3] = [(-0.12, 0.01), (-0.17, -0.04), (-0.05, 0.03)];
-const GAIN_6581: [(f64, f64); 3] = [(-1.74, 1.79), (-2.02, 2.06), (-0.40, 0.52)];
+/* M1b's tolerances (sidou_tests::filter_limits, tests/filter.rs's): the largest shape error
+ * around the cutoff, LP, BP, HP, and the passband gain's range, SIDOU minus reSIDfp, over FC
+ * 64..512 at resonance 0, 8 and 15. */
+const SHAPE_8580: [f64; 3] = MAX_TRANSFER_DB_8580;
+const SHAPE_6581: [f64; 3] = MAX_TRANSFER_DB_6581;
+const GAIN_8580: [(f64, f64); 3] = PASSBAND_GAIN_DB_8580;
+const GAIN_6581: [(f64, f64); 3] = PASSBAND_GAIN_DB_6581;
 
 /* Each profile's ceilings: M1b's, except where a profile away from reSIDfp's default curve
  * setting misses them, then the measured value rounded up to 0.01 dB (M1c Task 3; only ever
@@ -148,22 +181,26 @@ fn limits(p: &ChipProfile) -> ([f64; 3], [(f64, f64); 3]) {
     }
 }
 
-/// One profile's filter against reSIDfp's at its curve setting; the failures, if any.
-fn filter_failures(p: &ChipProfile) -> Vec<String> {
+/// SIDOU's filter against reSIDfp's at `setting`, over tests/filter.rs's FC and resonance
+/// values: each mode's largest shape error and its passband gain's range (dB).
+fn transfer_errors(
+    name: &str,
+    setting: &CurveSetting,
+    ours: Target,
+) -> ([f64; 3], [(f64, f64); 3]) {
     let _range = RANGE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    apply_range(&p.filter);
-    let direct = direct_spectra(&p.filter);
-    let (limits, gain_limits) = limits(p);
+    apply_range(setting);
+    let direct = direct_spectra(setting);
     let mut shape = [0.0f64; 3];
     let mut gain = [(f64::INFINITY, f64::NEG_INFINITY); 3];
     for fc in [64u32, 160, 256, 384, 512] {
         for res in [0u8, 8, 15] {
-            let reference = measure_modes(&p.filter, &direct, fc, res);
+            let reference = measure_modes(setting, &direct, fc, res);
             let f0 = fit(&reference, None).f0;
-            assert!(in_reach(f0), "{} FC {fc}: f0 {f0}", p.name);
-            let ours = sidou_responses(p, fc, res);
+            assert!(in_reach(f0), "{name} FC {fc}: f0 {f0}");
+            let ours = sidou_responses(ours, fc, res);
             let (_, max) = compare(&reference, &ours, f0 / 2.0, (2.0 * f0).min(TOP_HZ));
             for (i, ((m, r), (_, o))) in reference.iter().zip(&ours).enumerate() {
                 let (lo, hi) = passband(*m, f0);
@@ -174,6 +211,13 @@ fn filter_failures(p: &ChipProfile) -> Vec<String> {
             }
         }
     }
+    (shape, gain)
+}
+
+/// One profile's filter against reSIDfp's at its curve setting; the failures, if any.
+fn filter_failures(p: &ChipProfile) -> Vec<String> {
+    let (limits, gain_limits) = limits(p);
+    let (shape, gain) = transfer_errors(p.name, &p.filter, Target::Profile(p));
     let mut failures = Vec::new();
     for (i, m) in MODES.iter().enumerate() {
         let ((lo, hi), (min, max)) = (gain[i], gain_limits[i]);
@@ -237,7 +281,7 @@ impl Chip for Theirs {
 
 fn ours(p: &ChipProfile) -> Ours {
     let mut dac = Box::<sid_dac>::default();
-    let s = sidou_chip(p, 44100, &mut dac);
+    let s = Target::Profile(p).chip(44100, &mut dac);
     Ours(s, dac)
 }
 
@@ -329,4 +373,27 @@ fn each_profile_combined_waveforms_are_residfps_at_its_strength() {
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// Age/heat's two rows (the 6581's curve 0.25 at range 0.3, the 8580's curve 0.75: where age
+/// 127 takes the filter) against reSIDfp at those settings, at the non-linearity of 1:
+/// recorded, not held to a bound (the rows are artistic targets, and age 127 doubles the
+/// 6581's non-linearity besides). Decision record 0006 has the numbers.
+#[test]
+fn the_age_rows_against_residfp_recorded() {
+    for model in [Model::Mos6581, Model::Csg8580] {
+        let p = PROFILES.iter().find(|p| p.model == model).unwrap();
+        let row = curve_row(&p.hot) as u32;
+        let name = format!("{model:?} age row");
+        let (shape, gain) = transfer_errors(&name, &p.hot, Target::Row(model, row));
+        for (i, m) in MODES.iter().enumerate() {
+            println!(
+                "{name} {}: shape {:.3} dB, passband gain {:.3} to {:.3} dB",
+                m.name(),
+                shape[i],
+                gain[i].0,
+                gain[i].1
+            );
+        }
+    }
 }

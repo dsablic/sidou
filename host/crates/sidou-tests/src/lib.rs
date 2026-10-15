@@ -6,6 +6,7 @@
 //! (`logo`) and the title cards' (`title_card`).
 
 pub mod credits;
+pub mod filter_limits;
 pub mod filter_sweeps;
 pub mod font;
 pub mod logo;

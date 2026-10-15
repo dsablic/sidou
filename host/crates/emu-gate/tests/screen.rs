@@ -1215,6 +1215,8 @@ const BOOT_PER_FRAME: f64 = 42_000.0;
 /// Note keys (key id = 14 + note - 53) of a chord over three octaves, one per voice: A3, E4
 /// and E5, so the scopes show 2, 3 and 4 periods (app/live_view.c).
 const CHORD: [u8; 3] = [14 + 57 - 53, 14 + 64 - 53, 14 + 76 - 53];
+/// Between the chord's presses: more than a key scan frame and its debounce.
+const CHORD_STAGGER_MS: u64 = 5;
 
 /// LIVE's three scopes (app/live_view.h): 160 x 32 pixels from (8, 16), (8, 64), (8, 112).
 fn scope_pixels(fb: &[u16]) -> Vec<u16> {
@@ -1280,9 +1282,13 @@ fn live_matches_its_golden_images_and_its_scopes_follow_the_notes() {
         "the scopes are not flat after the release"
     );
 
-    // A chord: a voice each.
+    // A chord: a voice each. The presses are CHORD_STAGGER_MS apart, more than a key scan
+    // frame (~1.1 ms) and its debounce, so each is its own note-on, in order, and live's
+    // voice allocation decides the voices (E5, A3, E4 on voices 1, 2, 3, as M1b recorded
+    // them), not where the main loop's passes fall against the scan.
     for k in CHORD {
         m.key(k, true);
+        m.run_ms(CHORD_STAGGER_MS);
     }
     m.run_ms(1500);
     common::to_mid_frame(&mut m, &fw);

@@ -882,6 +882,11 @@ fn worst_send(m: &mut Machine, fw: &Firmware, poke: impl Fn(&mut Machine, u32, u
     *m.watched_calls.iter().max().expect("midi_send ran")
 }
 
+/// MIDI out's tick, instructions per parameter: idle (the look) and with every parameter
+/// back at its value on the wire (a_tick_of_midi_out_costs_little_at_worst).
+const IDLE_PER_PARAM: f64 = 22.0;
+const DEDUPLICATED_PER_PARAM: f64 = 46.0;
+
 #[test]
 fn a_tick_of_midi_out_costs_little_at_worst() {
     let Some(fw) = fixture("the MIDI out test") else {
@@ -946,13 +951,13 @@ fn a_tick_of_midi_out_costs_little_at_worst() {
     // 0.8k idle (the look at 37 parameters, one live_params snapshot: 1.2k with a
     // live_param_get each); 1.7k with every parameter back at its value on the wire; at worst
     // 2.6k, every parameter changed, and less with each bound by MIDI learn (7.1k before the
-    // rows were cached). The idle and deduplicated bounds are per parameter: M1c Task 3's
-    // character made 42 (906 and 1,914 measured, 21.6 and 45.6 a parameter, against the
-    // bounds' 24.3 and 54.1); a tick of changes is bounded by its packets, not the count.
+    // rows were cached). The idle and deduplicated bounds are per parameter, at what M1c
+    // Task 3 measured with its character's 42 (906 and 1,914: 21.6 and 45.6 a parameter);
+    // a tick of changes is bounded by its packets, not the count.
     let per_param = |x: u64| x as f64 / f64::from(sidou_sys::LIVE_PARAM_COUNT);
     assert!(
-        per_param(idle) < 900.0 / 37.0
-            && per_param(deduplicated) < 2_000.0 / 37.0
+        per_param(idle) < IDLE_PER_PARAM
+            && per_param(deduplicated) < DEDUPLICATED_PER_PARAM
             && changed < 3_000
             && changed_learned < 3_000,
         "a tick of MIDI out: {idle} instructions idle, {deduplicated} with every parameter \
