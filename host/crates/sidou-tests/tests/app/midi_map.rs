@@ -1220,7 +1220,7 @@ fn learn_section() -> String {
         "\
 ## MIDI learn
 
-Any knob's parameter can also follow a CC of your choice: hold SAVE, turn the knob (EDIT held
+Any knob's parameter can also follow a CC of your choice: press SAVE, turn the knob (EDIT held
 for the effect-slot layer), then send the CC ([controls.md](controls.md), MIDI learn, has
 the gesture, how to cancel and how to clear). What is learned:
 
@@ -1232,8 +1232,9 @@ the gesture, how to cancel and how to clear). What is learned:
   and gets its CC back when the binding is forgotten. CC 1 learned for a parameter no longer
   moves the modulation wheel.
 - **One each way:** a parameter has at most one learned CC and a CC at most one parameter;
-  learning again moves the binding. So there are at most {params} bindings, one per
-  parameter.
+  learning again moves the binding. The gesture reaches the {knobs} parameters on the knobs
+  (the cutoff, resonance and pulse width, and each effect slot's Amount, A, B and Mix), so
+  there are at most {knobs} bindings.
 - **Values:** through the parameter's curve and range in the map below, as its own CC.
 - **Output:** a panel change to a learned parameter goes out on the learned CC, so a DAW
   records what the controller sends and plays it back onto the same parameter. A parameter
@@ -1245,7 +1246,7 @@ the gesture, how to cancel and how to clear). What is learned:
 
 ",
         unlearnable = list(&unlearnable()),
-        params = LIVE_PARAM_COUNT,
+        knobs = 3 + LIVE_SLOTS * (LIVE_SLOT_FIELDS - 1),
         timeout = MIDI_LEARN_TIMEOUT_MS / 1000,
     )
 }

@@ -489,11 +489,14 @@ rendered chip's state, read from emulated RAM through the `chips` symbol:
   loop nor lose input;
 - MIDI out: the panel's changes go out as USB-MIDI packets, MIDI input is not echoed,
   and a tick of MIDI out costs little at its worst, with every parameter learned too;
-- MIDI learn: SAVE held, K1 turned and CC 21 sent over TRS bind CC 21 to the cutoff
-  (`learned` and `instrument` read from RAM), which then follows CC 21 on any channel
-  while CC 74 still works; HOME cancels a second learn and SAVE three times clears; a
-  flood of the learned CC at the jack's full speed costs the main loop no more than a
-  flood of a map CC.
+- MIDI learn: SAVE pressed, K1 turned and CC 14 (a CC the map leaves free) sent over TRS
+  bind CC 14 to the cutoff (`learned` and `instrument` read from RAM), which then follows
+  CC 14 on any channel while CC 74 still works; HOME cancels a second learn and SAVE three
+  times clears; a flood of the learned CC at the jack's full speed costs the main loop no
+  more than a flood of a map CC, and both, like a flood of CC 64, stay under 5M
+  instructions/s. The cost tests keep the jack busy for their whole window
+  (`Machine::midi_paced`: fm1-emu drops a backlog past 3125 bytes) and check that nothing
+  was dropped.
 
 ### Latency test
 

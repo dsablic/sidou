@@ -234,23 +234,26 @@ record the one that works.
   hanging notes. Latency feels:
 
 **MIDI learn (M1d)** ([controls.md](reference/controls.md), MIDI learn), with a controller
-that sends a CC the map leaves free (e.g. CC 21) on the TRS jack:
+that sends a CC the map leaves free (e.g. CC 14; [midi.md](reference/midi.md) lists the
+map's) on the TRS jack. While the frame waits for a CC, any learnable CC binds, whatever
+sends it: a DAW that sends CC 0, 32 or 64 when its transport starts, or a controller's
+pedal, binds that instead. Stop the transport and keep pedals still while learning.
 
-- [ ] Hold SAVE: the MIDI LEARN frame says TURN A KNOB. Turn K1: CUTOFF &larr; SEND A CC,
-  and the cutoff does not move. Let SAVE go and move the controller's knob: LEARNED CC 21
-  &rarr; CUTOFF, the frame closes, and the controller's knob now sweeps the cutoff (the
-  bar and the sound) on any channel. CC 74 still moves it too.
-- [ ] The same over USB from a DAW, and the other way: learn K2 from USB, then move it
-  from a TRS controller on CC 21's neighbour: both ports drive what either learned.
+- [ ] Press SAVE: the MIDI LEARN frame says TURN A KNOB, and stays after SAVE comes up.
+  Turn K1: CUTOFF &larr; SEND A CC, and the cutoff does not move. Move the controller's
+  knob: LEARNED CC 14 &rarr; CUTOFF, the frame closes, and the controller's knob now sweeps
+  the cutoff (the bar and the sound) on any channel. CC 74 still moves it too.
+- [ ] The same over USB from a DAW, and the other way: learn K2 on CC 15 from USB, then
+  send CC 15 from a TRS controller: both ports drive what either learned.
 - [ ] EDIT held + K4 while learning, then a CC: the selected slot's Mix follows it
   (LEARNED CC n &rarr; DIST MIX; SCL first for MOD or FX).
 - [ ] Learn the resonance on CC 74: CC 74 now moves the resonance, not the cutoff (the
   cutoff's NRPN 0/0 still does).
-- [ ] With a DAW monitoring SIDOU's USB output, turn K1 after learning CC 21 for it: the
-  monitor shows CC 21, not CC 74. Moving the controller's knob sends nothing back.
+- [ ] With a DAW monitoring SIDOU's USB output, turn K1 after learning CC 14 for it: the
+  monitor shows CC 14, not CC 74. Moving the controller's knob sends nothing back.
 - [ ] HOME while the frame shows: LEARN CANCELLED, no menu, nothing learned. Leave the
   frame alone for 10 s: LEARN TIMED OUT.
-- [ ] SAVE, K1, SAVE: CUTOFF: CC 21 FORGOTTEN, and CC 21 does nothing. SAVE, SAVE, SAVE:
+- [ ] SAVE, K1, SAVE: CUTOFF: CC 14 FORGOTTEN, and CC 14 does nothing. SAVE, SAVE, SAVE:
   MIDI LEARN CLEARED.
 - [ ] The note keys play while the frame shows, and the sound has no gap when it opens or
   closes.
