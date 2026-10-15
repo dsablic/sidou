@@ -13,7 +13,7 @@ lists the prerequisites.
 |---|---|---|
 | Everything except the emulator gate | `cargo test --workspace --release` | all crates |
 | Unit tests | `cargo test --release -p sidou-tests --test unit` | `crates/sidou-tests/tests/unit/` |
-| App logic (live instrument, MIDI parser, MIDI ring and input, screen font, cell grid, views and widgets) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt` |
+| App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Register reads (OSC3, ENV3) | `cargo test --release -p sidou-tests --test register_reads` | `crates/sidou-tests/tests/register_reads.rs` |
@@ -21,7 +21,7 @@ lists the prerequisites.
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
 | Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
-| Emulator tests (gates incl. effects, boot, live instrument, screen, MIDI, SRAM audio, package) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
+| Emulator tests (gates incl. effects, boot, live instrument, screen, MIDI, latency, SRAM audio, package) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
 profile sets `opt-level = 3`), but the reference tests do a lot of Rust-side
@@ -39,6 +39,16 @@ as the ADSR delay bug, the noise LFSR taps or hard-sync timing. `sid` also
 measures the output's worst case (three voices at maximum resonance: the 8580
 clips by about 1 dB, as reSIDfp does), and `sid_dac` pins the default tables'
 CRC-32s, which the hardware checklist compares with the device's.
+
+The envelope tests compare the batched envelope (`sid_env_advance`: rests, linear
+runs, whole rate periods) with a per-cycle Rust port of reSIDfp's
+`EnvelopeGenerator`, over random writes at random times. They also cover the gate reset
+(`sid_set_gate_reset`), the one option where SIDOU departs from the chip on purpose:
+- the fuzz runs again with it on, the reference's LFSR restarting at each rising gate;
+- a release-6-then-attack-0 retrigger at each of the release period's 267 phases starts
+  within 12 cycles with it on (ENV3 within 13);
+- with it off, 8 phases start at once and the rest wait over 32000 cycles, as on the
+  chip.
 
 **A failure means** the core no longer behaves like the chip in that
 respect. Fix the code, unless the test itself pinned the wrong behaviour; in
@@ -367,6 +377,28 @@ rewrite the goldens and commit them with the change:
 SIDOU_LCD_GOLDEN_UPDATE=1 SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test screen
 ```
 
+### MIDI on the host
+
+`crates/sidou-tests/tests/app/`:
+- `midi_map.rs`: the CC/NRPN map (`app/midi_map.c`). Every parameter has one row, CCs
+  and NRPNs are unique and keep clear of the numbers MIDI reserves, ranges and defaults
+  match the instrument, each row round-trips through its CC and its NRPN. NRPN parsing:
+  MSB then LSB, LSB-only updates, increment and decrement, the null NRPN, RPNs (RPN 0 the
+  bend range), state per channel and per input, a small parameter that never passes
+  through 0 on its way. `the_reference_is_up_to_date` fails when
+  `docs/reference/midi.md` differs from the table; `SIDOU_MIDI_DOC_UPDATE=1` rewrites
+  it.
+- `expression.rs`: velocity, pitch bend (smooth across all 16384 values, the sync
+  lead's two oscillators together), the wheel, aftertouch and the vibrato, at the
+  register level.
+- `midi_out.rs`: the outgoing USB-MIDI stream: packets, the rate limit, deduplication,
+  no echo of MIDI input, and program changes for the panel's presets.
+- `live_instrument.rs` and `reg_ring.rs`: the attack mode. It is INSTANT at power-on,
+  one write on a change, kept across presets, and sent after every chip reset before any
+  register. Through the register ring it reaches the active chip, and the chip after a
+  model change; a retrigger after a slow release starts at once with INSTANT, and waits
+  for the ADSR delay with AUTHENTIC.
+
 ### MIDI test
 
 `crates/emu-gate/tests/midi.rs` plays the firmware through fm1-emu's TRS
@@ -385,7 +417,35 @@ rendered chip's state, read from emulated RAM through the `chips` symbol:
 - the cost: the main loop stays under 5M instructions/s idle and with the
   jack at full speed, and full-speed TRS MIDI adds under 2M interrupt
   instructions/s. This test reads no firmware symbol, so it also runs on a
-  build from before MIDI input, for the difference.
+  build from before MIDI input, for the difference;
+- an NRPN sets the cutoff at full resolution; a pitch bend shifts the measured
+  pitch, and the sync lead keeps its ratio while it bends;
+- floods of chip-model CCs, pitch bends and program changes neither stall the main
+  loop nor lose input;
+- MIDI out: the panel's changes go out as USB-MIDI packets, MIDI input is not echoed,
+  and a tick of MIDI out costs little at its worst.
+
+### Latency test
+
+`crates/emu-gate/tests/latency.rs` injects a note-on into the emulated TRS jack at a
+random cycle, 64 trials a case, each from a fresh boot. It measures, from the note-on's
+last byte: when the audio interrupt takes it, when its first non-silent sample is in the
+DMA buffer, when that sample leaves the DAC, and when the note's envelope comes up
+(-30 dB of the held note's peak). The cases: the status screen idle, the screen
+redrawing (K1-K3 turning), and the note-on around the USB retry's attach. Each runs with
+the attack INSTANT (the default) and AUTHENTIC (CC 26 = 127 after the boot). It asserts
+for every trial:
+- taken within one block and one poll (2.9 + 0.5 ms), plus the USB attach's stall when
+  the note lands around it;
+- in the buffer within that, plus the render allowance: the run's longest audio
+  interrupt, measured and held to the audio budget's block (2700 instructions a sample);
+- audible within two blocks of being taken;
+- INSTANT: the envelope is up in the block that takes the note; AUTHENTIC: within the
+  ADSR delay's longest (32767 cycles) and the attack.
+
+It prints a JSON report per case (the distributions as min, median, mean and max);
+[decision record 0005](docs/decisions/0005-midi-note-timing.md) has the numbers.
+
 
 fm1-emu does not emulate USB (see [docs/TODO.md](docs/TODO.md)), so USB
 MIDI is covered by the host tests of the packet conversion
@@ -508,7 +568,7 @@ request:
 | `asan` (Ubuntu, nightly Rust) | the tests with `SIDOU_SANITIZE=address` |
 | `msrv` (Ubuntu, Rust 1.87) | `cargo check` |
 | `reuse` | `reuse lint` |
-| `fm1` (Ubuntu) | the `fm1` build in Docker; `sidou-pack` makes `sidou.fwsc` (its inputs cached by `inputs.toml`'s hash) and its tests run with the inputs and with M-VAVE's V15 package (fetched and SHA-checked for the stock-return tests only); the emulator tests (gate, boot, live, MIDI, SRAM, boot guard, package boot); a check that the JSON reports exist. The reports are uploaded as the `sid-budget` artifact, the package with `LICENSES/Apache-2.0.txt` and `LICENSES/GPL-3.0-only.txt` as `sidou-fwsc` |
+| `fm1` (Ubuntu) | the `fm1` build in Docker; `sidou-pack` makes `sidou.fwsc` (its inputs cached by `inputs.toml`'s hash) and its tests run with the inputs and with M-VAVE's V15 package (fetched and SHA-checked for the stock-return tests only); the emulator tests (gate, boot, live, MIDI, latency, SRAM, boot guard, package boot); a check that the JSON reports exist. The reports are uploaded as the `sid-budget` artifact, the package with `LICENSES/Apache-2.0.txt` and `LICENSES/GPL-3.0-only.txt` as `sidou-fwsc` |
 
 Before opening a pull request, run at least:
 

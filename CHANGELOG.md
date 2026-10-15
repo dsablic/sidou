@@ -83,3 +83,22 @@ All notable changes are documented here. The format follows
   cracktro with raster bars, stars, a sine scroller and the credits,
   generated from CREDITS.md. The logo is a pluggable asset (`app/logo.h`),
   Pulse Train for now.
+- MIDI, M1d: every live, SID and effect-slot parameter in one CC/NRPN map
+  (`app/midi_map.c`), with NRPNs at full resolution (11-bit cutoff, 12-bit
+  pulse width), running NRPN/RPN state per channel and input, and the
+  published chart (`docs/reference/midi.md`) generated from the table, with a
+  drift test.
+- Expression: velocity (to the sustain level, cutoff or pulse width, per
+  preset), pitch bend (+-2 semitones by default, RPN 0 or NRPN 6/0 up to
+  +-24), the modulation wheel and channel and polyphonic aftertouch (to
+  vibrato depth, pulse width or cutoff), and a per-voice vibrato with rate,
+  depth and delay.
+- MIDI out over USB: the panel's parameter changes as CCs (or NRPNs), K4 as
+  a program change, rate-limited, deduplicated and never echoing MIDI input.
+- A note-on-to-sound latency test over emulated TRS MIDI, and decision record
+  0005 (notes stay at block starts).
+- ATTACK: INSTANT / AUTHENTIC (CC 26, NRPN 1/10). The SID core has a gate
+  reset option, `sid_set_gate_reset` (off by default, so the core stays
+  bit-exact with reSIDfp), that restarts the envelope's rate counter at the
+  gate and skips the ADSR delay. The live instrument turns it on by default:
+  INSTANT. AUTHENTIC is the chip's timing.
