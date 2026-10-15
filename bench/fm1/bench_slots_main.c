@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* The effect-slot scenarios (workload_slots.h): the workload's SID output, then each
- * scenario over part of it. The emulator test counts instructions between the
- * bench_mark() calls: SID init, SID render, then per scenario its start (with warm-up) and
- * its measured run. The stereo outputs of all scenarios follow each other at
- * RESULT_ADDR. */
+ * scenario over part of it, then the switch scenario. The emulator test counts
+ * instructions between the bench_mark() calls: SID init, SID render, per scenario its
+ * start (with warm-up) and its measured run, then the switch scenario's start and each
+ * of its blocks. The stereo outputs follow each other at RESULT_ADDR. */
 #include <stdint.h>
 
 #include "workload.h"
@@ -43,7 +43,18 @@ int main(void) {
         bench_mark();
     }
 
-    result[1] = 2u * WORKLOAD_SLOTS_FRAMES * n;
+    /* The switch scenario, a mark after every block. */
+    int16_t* sw = samples + 2u * WORKLOAD_SLOTS_FRAMES * n;
+    workload_slots_switch_begin(sid_out, WORKLOAD_SLOTS_FRAMES);
+    bench_mark();
+    for (uint32_t b = 0; b < WORKLOAD_SLOTS_SWITCH_BLOCKS; ++b) {
+        workload_slots_switch_block(sid_out + WORKLOAD_SLOTS_SWITCH_INPUT(b),
+                                    sw + 2u * WORKLOAD_SLOTS_SWITCH_BLOCK * b, b);
+        bench_mark();
+    }
+
+    result[1] = 2u * WORKLOAD_SLOTS_FRAMES * n +
+                2u * WORKLOAD_SLOTS_SWITCH_BLOCK * WORKLOAD_SLOTS_SWITCH_BLOCKS;
     result[0] = RESULT_MAGIC;
     for (;;) {
     }

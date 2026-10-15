@@ -12,9 +12,12 @@
  * - Amount: feedback, 0 .. 0.95;
  * - A: time, MIN_MS .. the line (1.49 s mono, 0.74 s ping-pong at 44.1 kHz), log;
  * - B: damping, the feedback low-pass from 18 kHz (0) down to 1 kHz (1), log.
- * The time glides at most GLIDE samples per sample (a tape-style pitch bend, at most an
- * octave down or a fifth up) instead of jumping, so moving it never clicks; a fresh
- * start takes the asked time at once.
+ * The time glides instead of jumping: its speed eases up to at most GLIDE samples per
+ * sample over GLIDE_TURN samples and eases off approaching the target (a tape-style pitch
+ * bend of at most an octave down or a fifth up, which itself starts and ends smoothly),
+ * so moving it never clicks; a fresh start takes the asked time at once. The whole write
+ * (input plus feedback) goes through the soft clip, so a hot loop saturates smoothly; at
+ * ordinary levels the clip's cubic is the only colouring (under 1 % at 0.25 full scale).
  * Any amounts in [0, 1] may arrive on any sample. */
 
 #include <stdint.h>
@@ -30,6 +33,8 @@ extern "C" {
 #define SID_FX_ECHO_MIN_MS 10.0f
 #define SID_FX_ECHO_FEEDBACK 0.95f
 #define SID_FX_ECHO_GLIDE 0.5f
+#define SID_FX_ECHO_GLIDE_TURN 256.0f /* samples for the glide speed to go from 0 to full */
+#define SID_FX_ECHO_GLIDE_EASE 64.0f  /* samples: the approach slows within this of the end */
 #define SID_FX_ECHO_DAMP_MAX_HZ 18000.0f
 #define SID_FX_ECHO_DAMP_LN_RANGE 2.8903718f /* ln(18000 / 1000) */
 #define SID_FX_ECHO_DAMP_STEPS 16u
@@ -41,6 +46,7 @@ typedef struct {
     float min_time;    /* samples */
     float octaves;     /* log2(max time / min time) */
     float time;        /* the current (gliding) tap time, samples */
+    float speed;       /* its change per sample */
     float time_amount; /* the A the target was made for */
     float target;
     float damp_table[SID_FX_ECHO_DAMP_STEPS + 1u];
@@ -72,6 +78,7 @@ static inline void sid_fx_echo_init(sid_fx_echo* e, uint32_t sample_rate, uint32
     octaves += 2.8853901f * z * (1.0f + z2 * (1.0f / 3.0f + z2 * (0.2f + z2 / 7.0f)));
     e->octaves = octaves;
     e->time = e->min_time;
+    e->speed = 0.0f;
     e->target = e->min_time;
     e->time_amount = -1.0f;
     float w_scale = 2.0f * SIDOU_PI / fs;
@@ -96,11 +103,19 @@ static inline void sid_fx_echo_tick(sid_fx_echo* e, int16_t* buf, float m, float
     if (e->fresh) {
         e->fresh = 0;
         e->time = e->target;
-    } else {
-        /* Ping-pong's 2T tap moves twice as fast: halve the glide so it stays bent by at
-         * most an octave down and a fifth up too (at 1 sample per sample it would freeze). */
-        e->time = sid_fx_slew(e->time, e->target,
-                              e->pingpong ? 0.5f * SID_FX_ECHO_GLIDE : SID_FX_ECHO_GLIDE);
+    } else if (e->time != e->target || e->speed != 0.0f) {
+        /* Ping-pong's 2T tap moves twice as fast: halve its glide so it stays within the
+         * same bend (at 1 sample per sample it would freeze). */
+        float max = e->pingpong ? 0.5f * SID_FX_ECHO_GLIDE : SID_FX_ECHO_GLIDE;
+        float want = sid_fx_slew(0.0f, (e->target - e->time) * (1.0f / SID_FX_ECHO_GLIDE_EASE),
+                                 max);
+        e->speed = sid_fx_slew(e->speed, want, max * (1.0f / SID_FX_ECHO_GLIDE_TURN));
+        e->time += e->speed;
+        float d = e->target - e->time;
+        if (d < 1e-3f && d > -1e-3f && e->speed < 1e-4f && e->speed > -1e-4f) {
+            e->time = e->target;
+            e->speed = 0.0f;
+        }
     }
     if (damping != e->damp) {
         e->damp = damping;

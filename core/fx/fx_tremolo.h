@@ -8,7 +8,10 @@
  *
  * - Tremolo: gain 1 - depth (1 - lfo) / 2 on both sides.
  * - Auto-pan: equal power, pan angle pi/4 (1 + depth lfo) between the sides, scaled by
- *   sqrt 2 so the centre (depth 0) is the input on both: L^2 + R^2 = 2 x^2 always.
+ *   sqrt 2 so the centre (depth 0) is the input on both: L^2 + R^2 = 2 x^2 always. So a
+ *   side panned fully peaks at sqrt 2 times the input (+3 dB): a full-scale input can
+ *   clip there. Kept for the constant loudness and the unchanged centre; the slot's Mix
+ *   or a lower Amount (width) leaves headroom.
  *
  * - Amount: depth (tremolo) or width (auto-pan);
  * - A: rate, 0.1 .. 10 Hz (log);

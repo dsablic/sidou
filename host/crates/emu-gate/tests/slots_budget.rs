@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The effect slots in fm1-emu (`bench_slots_main.c`, `workload_slots.h`): the cost of
-//! the slot frame and of every algorithm with its controls moving all the time, and of
-//! every slot's heaviest together. Asserts the budgets of docs/decisions/0004 and
+//! the slot frame and of every algorithm with its controls moving all the time, of every
+//! slot's heaviest together, and per 32-sample block through preset changes that switch
+//! every slot. Asserts the budgets of docs/decisions/0004 and
 //! bit-exactness with the host build. Instructions are a lower bound on cycles.
 
 mod common;
@@ -16,6 +17,17 @@ const FRAME_BUDGET: f64 = 100.0;
 const SLOTS_BUDGET: f64 = 900.0;
 /// Task 1's cap for two chips plus the effects.
 const TWO_CHIPS_PLUS_EFFECTS: f64 = 2300.0;
+/// 0004's switching allowance: while a preset change switches slots (one at a time), a
+/// 32-sample block may cost up to this much (the switching slot's per-sample path, and
+/// a new algorithm's one-off setup)...
+const SWITCH_BLOCK_ALLOWANCE: f64 = 1000.0;
+/// ...for at most this many of the scenario's blocks above SLOTS_BUDGET (two preset
+/// changes: ~30 ms each).
+const SWITCH_BLOCKS_OVER_BUDGET: usize = 80;
+/// The audio target (design doc section 8), and what the rest of it holds at worst: two
+/// chips at the SID's measured worst (0004: ~600 each), the future 6502 and ISR overhead.
+const AUDIO_TARGET: f64 = 2700.0;
+const AUDIO_REST_AT_WORST: f64 = 2.0 * 600.0 + 400.0 + 100.0;
 
 /// Scenario names and slot budgets, in workload_slots.c's order (0 is the frame alone,
 /// the last every slot's heaviest).
@@ -48,7 +60,12 @@ fn check(chips: u32) {
         return;
     };
     let count = ALGORITHMS.len() + 2;
-    let r = common::run(&build, &format!("sid_bench_slots_{chips}"), 3 + 2 * count);
+    let blocks = sidou_sys::WORKLOAD_SLOTS_SWITCH_BLOCKS as usize;
+    let r = common::run(
+        &build,
+        &format!("sid_bench_slots_{chips}"),
+        3 + 2 * count + 1 + blocks,
+    );
     let host = emu_gate::render_host_slots(chips);
     assert_eq!(r.samples.len(), host.len());
     let diffs = r.samples.iter().zip(&host).filter(|(a, b)| a != b).count();
@@ -59,6 +76,12 @@ fn check(chips: u32) {
     let cost = |s: usize| r.phases[3 + 2 * s] as f64 / FRAMES as f64;
     let frame = cost(0);
     let heaviest_all = cost(count - 1);
+    // The switch scenario: per block of SWITCH_BLOCK.
+    let block = f64::from(sidou_sys::WORKLOAD_SLOTS_SWITCH_BLOCK);
+    let switch_blocks: Vec<f64> = (0..blocks)
+        .map(|b| r.phases[3 + 2 * count + b] as f64 / block)
+        .collect();
+    let switch_worst = switch_blocks.iter().fold(0.0f64, |m, &v| m.max(v));
     let mut per = serde_json::Map::new();
     let mut slot_max: [(&str, f64); 3] = [("", 0.0); 3];
     for (i, &(name, slot, _)) in ALGORITHMS.iter().enumerate() {
@@ -82,6 +105,9 @@ fn check(chips: u32) {
         "frame_instructions_per_sample": frame,
         "algorithms_above_the_frame": per,
         "all_heaviest_slots_instructions_per_sample": heaviest_all,
+        "switch_worst_block_instructions_per_sample": switch_worst,
+        "switch_blocks_over_slots_budget": switch_blocks.iter().filter(|&&v| v > SLOTS_BUDGET).count(),
+        "switch_blocks_instructions_per_sample": switch_blocks,
         "sid_plus_slots_instructions_per_sample": sid + heaviest_all,
         "sid_plus_slots_percent_of_240mhz_core": (sid + heaviest_all) * SAMPLE_RATE / CORE_HZ * 100.0,
         "samples_differing_from_host": diffs,
@@ -94,8 +120,8 @@ fn check(chips: u32) {
 
     if let Some(i) = first {
         panic!(
-            "target output differs from host build in {diffs} samples; first at {i} (scenario {}): \
-             target {} host {}",
+            "target output differs from host build in {diffs} samples; first at {i} (scenario {}, \
+             {count} is the switch): target {} host {}",
             i / (2 * FRAMES as usize),
             r.samples[i],
             host[i]
@@ -128,6 +154,21 @@ fn check(chips: u32) {
     assert!(
         heaviest_all <= SLOTS_BUDGET,
         "every slot's heaviest together costs {heaviest_all:.0}, over {SLOTS_BUDGET}"
+    );
+    let over = switch_blocks.iter().filter(|&&v| v > SLOTS_BUDGET).count();
+    println!("switching: worst block {switch_worst:.0}, {over} blocks above {SLOTS_BUDGET}");
+    assert!(
+        switch_worst <= SWITCH_BLOCK_ALLOWANCE,
+        "a switching block costs {switch_worst:.0}, over the allowance of {SWITCH_BLOCK_ALLOWANCE}"
+    );
+    assert!(
+        over <= SWITCH_BLOCKS_OVER_BUDGET,
+        "{over} switching blocks over {SLOTS_BUDGET}, more than {SWITCH_BLOCKS_OVER_BUDGET}"
+    );
+    assert!(
+        AUDIO_REST_AT_WORST + switch_worst <= AUDIO_TARGET,
+        "a switch with the SID at its worst would cost {:.0}, over the audio target {AUDIO_TARGET}",
+        AUDIO_REST_AT_WORST + switch_worst
     );
     if chips == 2 {
         assert!(

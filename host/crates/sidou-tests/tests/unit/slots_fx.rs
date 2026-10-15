@@ -274,6 +274,33 @@ fn fx_parameter_jumps_are_click_free() {
 }
 
 #[test]
+fn reverb_lines_fit_their_rings_at_any_sample_rate() {
+    for fs in [8000u32, 32000, 44100, 48000, 96000] {
+        let mut rv = sid_fx_reverb::default();
+        let mut pl = sid_fx_plate::default();
+        unsafe {
+            sid_fx_reverb_init(&mut rv, fs);
+            sid_fx_plate_init(&mut pl, fs);
+        }
+        let end_rv = rv.base[9] + rv.length[9];
+        let end_pl = pl.base[11] + pl.length[11];
+        println!("{fs} Hz: light uses {end_rv} of {SID_FX_REVERB_LEN}, lush {end_pl} of {SID_FX_PLATE_LEN}");
+        // Each line's last sample is at base + length - 1: within the ring.
+        assert!(end_rv <= SID_FX_REVERB_LEN && end_pl <= SID_FX_PLATE_LEN);
+    }
+}
+
+#[test]
+fn delay_time_glides_without_a_kink_at_musical_level() {
+    // A time jump on a 0.5 full-scale tone, no feedback (nothing saturates): the glide's
+    // speed eases in and out, so the read position never turns a corner.
+    use Control::*;
+    for alg in [SID_FXSLOT_DELAY, SID_FXSLOT_PINGPONG] {
+        assert_click_free_at(0.5, FX, params(alg, 0.0, 0.2, 0.0, 1.0), &[(A, 0.0, 1.0)]);
+    }
+}
+
+#[test]
 fn switching_fx_is_click_free() {
     let (sw, steady) = switch_steps(
         FX,
@@ -313,5 +340,77 @@ fn all_slots_together_are_deterministic_in_any_block_size() {
     let reference = render(128);
     for block in [1, 77, 1000] {
         assert!(render(block) == reference, "block size {block} differs");
+    }
+}
+
+#[test]
+fn odd_block_sizes_and_switches_at_mix_0_do_not_change_the_output() {
+    // Algorithm switches made at Mix 0 and back, all slots, cut into odd block sizes at
+    // random: a fade can end off the snap grid with Mix 0; the result must not depend on
+    // where calls end.
+    let n = 3 * FS as usize;
+    let input = sine(220.0, 0.4, n);
+    let settings: Vec<(usize, u32, sid_slot_params)> = vec![
+        (0, DIST, params(SID_DIST_OVERDRIVE, 0.6, 0.5, 0.3, 0.0)),
+        (0, MOD, params(SID_MOD_CHORUS, 0.7, 0.5, 1.0, 0.0)),
+        (0, FX, params(SID_FXSLOT_DELAY, 0.5, 0.3, 0.3, 0.0)),
+        (5000, DIST, params(SID_DIST_FUZZ, 0.6, 0.5, 0.3, 0.7)),
+        (9000, MOD, params(SID_MOD_FLANGER, 0.7, 0.5, 0.6, 0.0)),
+        (
+            13000,
+            FX,
+            params(SID_FXSLOT_REVERB_LUSH, 0.5, 0.3, 0.3, 0.6),
+        ),
+        (20000, DIST, params(SID_DIST_TAPE, 0.6, 0.5, 0.3, 0.0)),
+        (26000, MOD, params(SID_MOD_PHASER, 0.7, 0.5, 0.6, 0.8)),
+        (40000, FX, params(SID_FXSLOT_PINGPONG, 0.5, 0.3, 0.3, 0.0)),
+        (
+            60000,
+            FX,
+            params(SID_FXSLOT_REVERB_LIGHT, 0.5, 0.3, 0.3, 0.5),
+        ),
+        (90000, DIST, off()),
+        (100000, MOD, off()),
+    ];
+    let render = |blocks: &[usize]| {
+        let mut s = Slots::new(3);
+        let mut out = Vec::with_capacity(2 * n);
+        let mut pos = 0;
+        let mut k = 0;
+        while pos < n {
+            // Settings land on their sample: cut a block there if needed.
+            let next = settings
+                .iter()
+                .map(|e| e.0)
+                .filter(|&t| t > pos)
+                .min()
+                .unwrap_or(n);
+            let len = blocks[k % blocks.len()].min(next - pos).min(n - pos);
+            for &(t, slot, p) in &settings {
+                if t == pos {
+                    s.set(slot, p);
+                }
+            }
+            out.extend(s.process(&input[pos..pos + len]));
+            pos += len;
+            k += 1;
+        }
+        out
+    };
+    let reference = render(&[128]);
+    let odd: Vec<usize> = (0..65).map(|i| 2 * i + 1).chain([1000]).collect();
+    let mut rng = 0x1234_5678u32;
+    for trial in 0..4 {
+        let blocks: Vec<usize> = (0..500)
+            .map(|_| {
+                rng ^= rng << 13;
+                rng ^= rng >> 17;
+                rng ^= rng << 5;
+                odd[rng as usize % odd.len()]
+            })
+            .collect();
+        let out = render(&blocks);
+        let diff = out.iter().zip(&reference).filter(|(a, b)| a != b).count();
+        assert_eq!(diff, 0, "trial {trial}: {diff} samples differ");
     }
 }

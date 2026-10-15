@@ -13,6 +13,13 @@ enum {
 };
 static const float LENGTH_29K[SID_FX_PLATE_LINES] = {142,  107,  379, 277,  672,  4453,
                                                      1800, 3720, 908, 4217, 2656, 3163};
+/* The paper's layout at its own rate (with the modulated allpasses' swing and a sample
+ * between lines) fits the ring; init scales it to the sample rate within the ring. */
+#define LAYOUT_29K                                                                      \
+    (142 + 107 + 379 + 277 + 672 + 4453 + 1800 + 3720 + 908 + 4217 + 2656 + 3163 + 12 + \
+     2 * (16 + 2))
+_Static_assert(LAYOUT_29K <= SID_FX_PLATE_LEN, "the plate's lines do not fit its ring");
+
 /* Output taps (paper, table 2): left from the right half and right from the left. */
 static const float TAP_29K[14] = {266, 2974, 1913, 1996, 1990, 187,  1066,
                                   353, 3627, 1228, 2673, 2111, 335, 121};
@@ -26,8 +33,9 @@ void sid_fx_plate_init(sid_fx_plate* p, uint32_t sample_rate) {
     }
     float swing = 16.0f * scale;
     total += 2.0f * (swing + 2.0f);
-    if (total > (float)(SID_FX_PLATE_LEN - 8u)) {
-        scale *= (float)(SID_FX_PLATE_LEN - 8u) / total;
+    /* A margin for rounding each line up to a whole sample. */
+    if (total > (float)(SID_FX_PLATE_LEN - 16u)) {
+        scale *= (float)(SID_FX_PLATE_LEN - 16u) / total;
     }
     p->excursion = 16.0f * scale;
     uint32_t base = 0;

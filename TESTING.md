@@ -164,9 +164,18 @@ They fail if:
 - the heaviest together cost more than 900, or two chips plus them more
   than 2,300;
 - the heaviest per slot is not the one the last scenario runs;
-- any sample differs from the host build.
+- any sample differs from the host build (including the switch scenario's).
 
-They write `slots_budget_{1,2}.json` with every algorithm's cost.
+Then a switch scenario, measured per 32-sample block: from every slot's heaviest to
+fuzz, flanger and light and back, every slot switching (they take turns). It fails if:
+- a block costs more than 1,000;
+- more than 80 blocks cost more than 900;
+- the worst block plus the rest of the audio budget at its worst exceeds 2,700.
+
+This is 0004's transient allowance. Its output is part of the host comparison.
+
+They write `slots_budget_{1,2}.json` with every algorithm's cost and every switch
+block's.
 
 Build the `fm1` preset first (see [BUILDING.md](BUILDING.md)). Without
 `SIDOU_FM1_BUILD`, the gate prints a message and passes without running,

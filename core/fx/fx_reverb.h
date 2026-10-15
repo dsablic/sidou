@@ -31,7 +31,8 @@
  *
  * Changes from the original:
  * - C instead of C++ templates; the lines' bases are computed at init;
- * - delay lengths and modulation offsets scaled from 48 kHz to the sample rate (rounded);
+ * - delay lengths and modulation offsets scaled from 48 kHz to the sample rate (rounded),
+ *   up to what the ring holds (above about 70 kHz they stop growing);
  * - the LFOs are this project's phase-accumulator cosine (sid_fx_cos) instead of stmlib's
  *   CosineOscillator, still updated every 32 samples;
  * - the input is mono (FX slot: (L + R) / 2), so the input gain is doubled to match the

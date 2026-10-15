@@ -17,7 +17,8 @@
  *   one from rest (the FX slot first clears its share of the pool, a little per sample),
  *   runs it silently until its delay line holds its longest delay (so no tap reads the
  *   cleared part while audible), and fades it in: the dry path never stops, so there is
- *   no click.
+ *   no click. Slots switch one at a time (in slot order), so a preset change costs at
+ *   most one switching slot's overhead at once.
  * - Exact bypass: a slot whose Mix is 0 and settled, with no switch pending, is out of
  *   the path and its state is not touched. With every slot out, sid_slots_process
  *   writes the input to both channels unchanged and touches no state.
@@ -71,7 +72,7 @@ enum {
     SID_MOD_FLANGER, /* Amount depth, A rate, B feedback (-0.9 .. 0.9) */
     SID_MOD_PHASER,  /* Amount depth, A rate, B feedback */
     SID_MOD_TREMOLO, /* Amount depth, A rate, B shape (sine -> square) */
-    SID_MOD_AUTOPAN, /* Amount width, A rate, B shape */
+    SID_MOD_AUTOPAN, /* Amount width, A rate, B shape (a side peaks +3 dB at full width) */
     SID_MOD_WOW,     /* Amount wow, A flutter */
     SID_MOD_COUNT
 };
@@ -108,6 +109,7 @@ typedef struct {
     uint32_t awake;     /* in the path on the last sample processed */
     uint32_t clear_pos; /* FX: pool words cleared so far */
     uint32_t warm;      /* samples left to run the new algorithm silently before fading in */
+    uint32_t may_switch; /* this slot's turn to start a switch, decided per chunk */
     float fade;         /* 0 .. 1 position of the wet path's fade */
 } sid_slot;
 

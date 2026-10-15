@@ -130,7 +130,7 @@ Each choice below lists:
 |---|---|---|---|---|
 | Chorus/ensemble | One float line, 3 taps per side at 120° phases, slow (~0.6 Hz) + fast (~6 Hz) LFO sum (Solina-style); linear reads (`fx_delay.h`). Dattorro Part 2; topology as Plaits `ensemble.h` | R (Plaits MIT as reference) | ≈130 | 1,024 float = 4 KiB |
 | Flanger | Hermite read, 0.1–10 ms sweep, feedback ±0.9 through a soft clip; R tap at 90° LFO offset | R from Dattorro Part 2 | ≈100 | 512 float = 2 KiB |
-| Phaser | 6 first-order allpasses with a shared coefficient per side, coefficient from an LFO over a log-frequency table (CRT-style interpolation), feedback; L/R LFOs in quadrature | R from Zölzer, Zavalishin (TPT allpass) | ≈110 | 64 B |
+| Phaser | 6 first-order allpasses with a shared coefficient per side, coefficient from an LFO over a log-frequency table (CRT-style interpolation), feedback; L/R LFOs in quadrature | R from Zölzer (first-order allpass in transposed direct form II; Zavalishin as background) | ≈110 | 64 B |
 | Tremolo/auto-pan | `sid_fx_sin` LFO, shape (sine→square by soft clip), gain or equal-power pan via sin/cos approximations | R | ≈40 | 16 B |
 | Wow & flutter | existing `fx_wow.h`, mono to both sides | — | ≈120 | 4 KiB |
 
@@ -254,7 +254,7 @@ moving all the time) replaces the estimates above. Instructions per sample:
 | Entry | Slot | Measured | Estimate | Budget |
 |---|---|---|---|---|
 | Tape | Distortion | 116 | ≈110 | 150 |
-| Overdrive | Distortion | 148 | ≈100 | 150 |
+| Overdrive | Distortion | 144 | ≈100 | 150 |
 | Fuzz | Distortion | 107 | ≈120 | 150 |
 | Crush | Distortion | 52 | ≈30 | 150 |
 | Lo-fi | Distortion | 115 | ≈110 | 150 |
@@ -264,14 +264,14 @@ moving all the time) replaces the estimates above. Instructions per sample:
 | Tremolo | Modulation | 101 | ≈40 | 200 |
 | Auto-pan | Modulation | 155 | ≈40 | 200 |
 | Wow & flutter | Modulation | 143 | ≈120 | 200 |
-| Delay | FX | 144 | ≈90 | 450 |
-| Ping-pong | FX | 161 | ≈90 | 450 |
+| Delay | FX | 157 | ≈90 | 450 |
+| Ping-pong | FX | 174 | ≈90 | 450 |
 | Reverb light | FX | 373 | ≈260 | 450 |
 | Reverb lush | FX | 421 | ≈380 | 450 |
-| Slot frame | — | 83 | — | 100 |
-| Heaviest of each together (overdrive, chorus, lush) | — | 836 | ≈730 | 900 |
+| Slot frame | — | 87 | — | 100 |
+| Heaviest of each together (overdrive, chorus, lush) | — | 835 | ≈730 | 900 |
 
-- One chip plus the slots: 1,202 (22 % of a 240 MHz core).
+- One chip plus the slots: 1,201 (22 % of a 240 MHz core).
 - Two chips plus the slots: 1,576 (29 %), within Task 1's 2,300.
 - RAM: 136,328 bytes. That is the 128 KiB pool plus 5,256 bytes of slot
   state (the Modulation union is the largest part, at 4.1 KiB).
@@ -282,6 +282,51 @@ measured a 256 frame, chorus 289 and lush 829):
   their one-pole as straight lines between chunk starts;
 - each algorithm has its own loop in the steady state;
 - the modulations evaluate their LFOs every 16 samples and interpolate.
+
+(The delays' cost includes the eased time glide, added after review.)
+
+### Switching: a bounded transient allowance
+
+A preset change can switch every slot. While a slot switches, its old algorithm still
+runs (fading out) through the per-sample switching path, and then the new one starts
+up. The gate's switch scenario (`workload_slots.h`) measures this per 32-sample block,
+going from every slot's heaviest (overdrive, chorus, lush) to fuzz, flanger and light,
+and back. Per sample:
+
+- **Before review: 1,026.** All three slots switched at once, each through the
+  per-sample path, for the whole 20 ms fade-out.
+- **Tried: one dispatch per run of samples** instead of per sample, with gain arrays.
+  It brought nothing (about 1,010, since the old algorithms still run), and it slowed
+  the steady state (frame 99). Dropped.
+- **Chosen: slots take turns.** A slot starts a switch only while no other slot is
+  switching, decided per 16-sample chunk on the slots' clock (in slot order, so block
+  sizes never change the result). A preset change then costs at most one switching
+  slot's overhead at a time, and takes up to three switch times (about 150 ms) instead
+  of one.
+- **Measured: worst block 954, 29 blocks above 900** (about 21 ms in all, over two
+  preset changes).
+  - Most of those blocks come as the lush reverb fades in, at about 908.
+  - The single worst is the one-off setup when the chorus starts (clearing its line).
+  - For scale, the steady state alone measures about 880 per block at this block size,
+    against 835 at 128.
+
+**Decision:** an explicit transient allowance, asserted by the gate:
+- a switching block may cost up to 1,000 per sample;
+- at most 80 of the scenario's 32-sample blocks may be above the 900 budget.
+
+With two chips at the SID's measured worst (2 × 600), the future 6502 (400) and ISR
+overhead (100), the worst switching block makes 1,700 + 954 = 2,654, within the 2,700
+audio target. The gate asserts that sum too. The steady budget stays 900.
+
+### Moved out of Task 5
+
+The device parts of Task 5 move to M1c Task 2 and Task 4, after M1a merges:
+- the K1–K4 mapping (Amount, A, B, Mix) and the slot/algorithm button;
+- MIDI CC/NRPN;
+- storing slot states in presets and songs;
+- true L/R output from the audio ISR.
+
+Task 5 delivers the engine (`core/fx/fx_slots.h`) and its tests and gate.
 
 Deviations from the decision above:
 - **Overdrive and fuzz use ADAA of the whole clip, not of its residual.**

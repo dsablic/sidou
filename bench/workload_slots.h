@@ -25,12 +25,26 @@ extern "C" {
 #define WORKLOAD_SLOTS_HEAVIEST_MOD SID_MOD_CHORUS
 #define WORKLOAD_SLOTS_HEAVIEST_FX SID_FXSLOT_REVERB_LUSH
 
+/* The switch scenario: every slot's heaviest, then a preset change switching all three
+ * slots at once (to fuzz, flanger and the light reverb) at block 0, and back at block
+ * SWITCH_BLOCKS / 2, with the controls alternating as above; measured per block. */
+#define WORKLOAD_SLOTS_SWITCH_BLOCK 32u
+#define WORKLOAD_SLOTS_SWITCH_BLOCKS 512u
+
 uint32_t workload_slots_count(void);
 /* Starts scenario `s` and runs `warm` (n samples) through it, so the switch-in (pool
  * clear, warm-up, fade) is over before measuring. */
 void workload_slots_begin(uint32_t s, const int16_t* warm, uint32_t n);
 /* Mono in, interleaved stereo out, in blocks of 128. */
 void workload_slots_process(const int16_t* in, int16_t* out, uint32_t frames);
+/* The switch scenario: start (on every slot's heaviest, warmed up on `warm`), then one
+ * block of SWITCH_BLOCK frames at a time, b counting from 0. Block b's input is
+ * WORKLOAD_SLOTS_SWITCH_INPUT(b) samples into the workload's output (wrapping within its
+ * first 2 * FRAMES). */
+#define WORKLOAD_SLOTS_SWITCH_INPUT(b) \
+    (WORKLOAD_SLOTS_FRAMES + (WORKLOAD_SLOTS_SWITCH_BLOCK * (b)) % WORKLOAD_SLOTS_FRAMES)
+void workload_slots_switch_begin(const int16_t* warm, uint32_t n);
+void workload_slots_switch_block(const int16_t* in, int16_t* out, uint32_t b);
 
 #ifdef __cplusplus
 }

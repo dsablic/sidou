@@ -61,7 +61,8 @@ static inline void sid_fx_overdrive_set_amount(sid_fx_overdrive* o, float a) {
 static inline void sid_fx_overdrive_set_bias(sid_fx_overdrive* o, float b) {
     o->bias_amount = b;
     o->bias = SID_FX_OD_BIAS * b;
-    o->bias_out = sid_fx_od_clip(o->bias);
+    /* The bias (at most 0.4) is below the knee: the clip there is the cubic. */
+    o->bias_out = o->bias - (4.0f / 27.0f) * o->bias * o->bias * o->bias;
 }
 
 static inline void sid_fx_overdrive_set_tone(sid_fx_overdrive* o, float t) {

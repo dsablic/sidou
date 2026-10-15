@@ -26,10 +26,20 @@
 /* The original's lines at 48 kHz: ap1-ap4, dap1a, dap1b, del1, dap2a, dap2b, del2. */
 static const float LENGTH_48K[SID_FX_REVERB_LINES] = {150, 214, 319, 527, 2182,
                                                       2690, 4501, 2525, 2197, 6312};
+/* The original's STATIC_ASSERT(D::base + D::length <= size): its layout at 48 kHz, each
+ * line one sample apart, fits the ring. */
+#define LAYOUT_48K (150 + 214 + 319 + 527 + 2182 + 2690 + 4501 + 2525 + 2197 + 6312 + 10)
+_Static_assert(LAYOUT_48K <= SID_FX_REVERB_LEN, "the reverb's lines do not fit its ring");
 enum { AP1, AP2, AP3, AP4, DAP1A, DAP1B, DEL1, DAP2A, DAP2B, DEL2 };
 
 void sid_fx_reverb_init(sid_fx_reverb* r, uint32_t sample_rate) {
+    /* Scaled to the sample rate, but never past the ring: above about 70 kHz the lines
+     * keep their length in samples (shorter in time, a smaller room). */
     float scale = (float)sample_rate / 48000.0f;
+    float room = (float)(SID_FX_REVERB_LEN - 64u) / (float)LAYOUT_48K;
+    if (scale > room) {
+        scale = room;
+    }
     uint32_t base = 0;
     for (int i = 0; i < SID_FX_REVERB_LINES; ++i) {
         uint32_t len = (uint32_t)(int32_t)(LENGTH_48K[i] * scale + 0.5f);

@@ -21,6 +21,8 @@ void sid_slots_init(sid_slots* s, uint32_t sample_rate, uint32_t seed, sid_slot_
         sl->phase = SID_SLOT_RUN;
         sl->awake = 0;
         sl->clear_pos = 0;
+        sl->warm = 0;
+        sl->may_switch = 0;
         sl->fade = 1.0f;
         for (int i = 0; i < 4; ++i) {
             sl->inc[i] = 0.0f;
@@ -210,8 +212,8 @@ static float step_switch(sid_slots* s, uint32_t k) {
     sid_slot* sl = &s->slot[k];
     switch (sl->phase) {
     case SID_SLOT_RUN:
-        if (sl->algorithm == sl->target.algorithm) {
-            return 1.0f;
+        if (sl->algorithm == sl->target.algorithm || !sl->may_switch) {
+            return 1.0f; /* switches take turns: see plan_turns */
         }
         sl->phase = SID_SLOT_FADE_OUT;
         /* fall through */
@@ -275,9 +277,35 @@ static void plan_controls(sid_slots* s, sid_slot* sl) {
     }
 }
 
-/* Is the slot running its algorithm undisturbed (no switch under way or pending)? */
+/* Is the slot running its algorithm undisturbed (no switch under way, none it may start
+ * in this chunk)? */
 static int steady(const sid_slot* sl) {
-    return sl->phase == SID_SLOT_RUN && sl->algorithm == sl->target.algorithm;
+    return sl->phase == SID_SLOT_RUN && (sl->algorithm == sl->target.algorithm || !sl->may_switch);
+}
+
+/* At a chunk start: which slot may start a switch in this chunk. A preset change that
+ * switches every slot would otherwise run three switches at once (three old algorithms
+ * fading out, each on the per-sample switching path); taking turns bounds the extra cost
+ * to one slot's, and a full preset change takes up to three switch times. Only a slot
+ * with a switch pending may start one, only while no other is mid-switch, and the first
+ * such slot in order goes first. Decided per chunk on the slots' clock, so where calls
+ * end cannot change it. */
+static void plan_turns(sid_slots* s, uint32_t live) {
+    int busy = 0;
+    for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
+        if ((live >> k & 1u) && s->slot[k].phase != SID_SLOT_RUN) {
+            busy = 1;
+        }
+    }
+    for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
+        sid_slot* sl = &s->slot[k];
+        int pending = (live >> k & 1u) && sl->phase == SID_SLOT_RUN &&
+                      sl->algorithm != sl->target.algorithm;
+        sl->may_switch = pending && !busy;
+        if (pending && !busy) {
+            busy = 1;
+        }
+    }
 }
 
 /* The per-sample ticks for the switching path, kept out of line so that the steady
@@ -469,7 +497,10 @@ void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n
     uint32_t awake = 0;
     for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
         sid_slot* sl = &s->slot[k];
-        if (resting(sl)) {
+        /* A slot in the path leaves it only on the snap grid (where the chunk loop
+         * checks too), so where calls end cannot move that point; one already out stays
+         * out. */
+        if (resting(sl) && (!sl->awake || (s->clock & SNAP_MASK) == 0)) {
             /* At rest from here on, however the last call ended: waking up restarts it. */
             sl->awake = 0;
         } else {
@@ -503,6 +534,7 @@ void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n
     while (done < n) {
         uint32_t pos = s->clock & (CHUNK - 1u);
         if (pos == 0) {
+            plan_turns(s, live);
             for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
                 if (live >> k & 1u) {
                     plan_controls(s, &s->slot[k]);

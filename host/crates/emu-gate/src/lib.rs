@@ -50,5 +50,19 @@ pub fn render_host_slots(chips: u32) -> Vec<i16> {
             );
         }
     }
+    let block = sidou_sys::WORKLOAD_SLOTS_SWITCH_BLOCK as usize;
+    let blocks = sidou_sys::WORKLOAD_SLOTS_SWITCH_BLOCKS as usize;
+    let mut sw = vec![0i16; 2 * block * blocks];
+    unsafe { sidou_sys::workload_slots_switch_begin(sid.as_ptr(), frames as u32) };
+    for (b, chunk) in sw.chunks_mut(2 * block).enumerate() {
+        unsafe {
+            sidou_sys::workload_slots_switch_block(
+                sid[frames + (block * b) % frames..].as_ptr(),
+                chunk.as_mut_ptr(),
+                b as u32,
+            )
+        };
+    }
+    out.extend(sw);
     out
 }
