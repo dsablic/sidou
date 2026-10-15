@@ -48,6 +48,10 @@ void grid_put(grid* g, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr) {
         return;
     }
     uint32_t i = row * GRID_COLS + col;
+    /* Marks against the composed cell, not the shown one. Comparing with shown_ch/shown_attr
+     * saves nothing while a screen clears before it redraws (compose_status): the clear
+     * differs from the panel on every text row either way. It measured 1 % more main-loop
+     * instructions per idle frame (host/crates/emu-gate/tests/screen.rs). */
     if (g->ch[i] != ch || g->attr[i] != attr) {
         g->ch[i] = ch;
         g->attr[i] = attr;
@@ -70,7 +74,7 @@ void grid_fill(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint
     uint32_t c1 = w < GRID_COLS - col ? col + w : GRID_COLS;
     uint32_t r1 = h < GRID_ROWS - row ? row + h : GRID_ROWS;
     for (uint32_t r = row; r < r1; r++) {
-        uint32_t changed = 0;
+        uint32_t changed = 0; /* against the composed cells, as in grid_put */
         for (uint32_t i = r * GRID_COLS + col; i < r * GRID_COLS + c1; i++) {
             changed |= (uint32_t)(g->ch[i] ^ ch) | (uint32_t)(g->attr[i] ^ attr);
             g->ch[i] = ch;

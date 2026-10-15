@@ -168,7 +168,8 @@ fn compare_golden(build: &Path, name: &str, fb: &[u16], ignore: &[(usize, usize,
 }
 
 /// The status screen's version (row 2, right-aligned before column 28): it changes with
-/// every release, so the comparison leaves it out.
+/// every release, so the comparison leaves it out. platform/fm1/ui.c asserts at compile time
+/// that "V" and the version fit these cells.
 const VERSION_CELLS: (usize, usize, usize) = (14, 2, 14);
 
 #[test]

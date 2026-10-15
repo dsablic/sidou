@@ -10,6 +10,16 @@
 #define SIDOU_VERSION "0.0.0"
 #endif
 
+/* "V" SIDOU_VERSION is right-aligned to end before column 28 and must stay inside the 14
+ * cells from column 14 that host/crates/emu-gate/tests/screen.rs (VERSION_CELLS) leaves out
+ * of the golden images; longer, its start column would also wrap below zero. */
+#define VERSION_END_COL 28u
+#define VERSION_CELLS 14u
+_Static_assert(sizeof SIDOU_VERSION <= VERSION_CELLS, "SIDOU_VERSION is too long for row 2");
+
+/* A run (one row of up to GRID_COLS cells) is rendered into one LCD buffer. */
+_Static_assert(GRID_RUN_PIXELS <= LCD_BUFFER_PIXELS, "a grid run does not fit an LCD buffer");
+
 #define TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
 #define BAR_COL 14u
 #define BAR_CELLS 14u
@@ -88,7 +98,7 @@ static void compose_status(const live* l) {
     grid_fill(&screen, last, 1, 1, last - 1u, FONT_FULL, TEXT);
     grid_fill(&screen, 1, 1, last - 1u, last - 1u, ' ', TEXT);
     put(2, 2, "SIDOU");
-    put(2, 28u - (sizeof SIDOU_VERSION), "V" SIDOU_VERSION);
+    put(2, VERSION_END_COL - (sizeof SIDOU_VERSION), "V" SIDOU_VERSION); /* NUL counts for "V" */
 
     put(5, 2, "CHIP");
     put(5, 9, l->model == SID_MODEL_8580 ? "8580" : "6581");

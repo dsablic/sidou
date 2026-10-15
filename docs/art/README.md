@@ -16,7 +16,8 @@ from existing games.
 
 Sixteen colours, the C64's, after Philip "Pepto" Timmermann's measurements of
 the VIC-II. The firmware's table is `grid_palette` in `app/grid.c` (plain
-RGB565); the LCD driver sends it high byte first.
+RGB565). `ui_init` in `platform/fm1/ui.c` byte-swaps it once (`LCD_SWAP`), so
+pixels the SPI sends from memory reach the panel high byte first.
 
 | Index | Name (`GRID_…`) | sRGB | RGB565 |
 |---|---|---|---|

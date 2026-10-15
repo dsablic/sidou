@@ -337,7 +337,7 @@ fn the_main_loop_is_cheap_when_idle() {
     // 52.5M/s (22 % of the core) before the main loop was paced by the key scan's frames
     // and the screen by a dirty-strip mask; 1.4M/s after; 2.0M/s with MIDI in, 0.4M/s of it
     // the USB retry's SIE timeouts while no host answers. 2.2M/s before the cell-grid renderer,
-    // 2.5M/s with it (it composes the whole grid every 40 ms; tests/screen.rs).
+    // 2.59M/s with it (it composes the whole grid every 40 ms; tests/screen.rs).
     for (what, rate) in [("idle", idle), ("with a held key", held)] {
         assert!(
             rate < 5e6,
