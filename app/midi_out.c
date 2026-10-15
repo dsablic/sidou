@@ -16,6 +16,20 @@
 
 _Static_assert(LIVE_PARAM_COUNT <= 255u, "midi_out.next is a uint8_t");
 _Static_assert(MIDI_OUT_TICK_PACKETS >= MIDI_OUT_NRPN_PACKETS, "an NRPN must fit a tick");
+_Static_assert(LIVE_PARAM_COUNT <= 64u, "PRESET_LOADS is a uint64_t");
+
+#define BIT(p) ((uint64_t)1 << (p))
+/* Exactly the parameters live_set_preset sets (live.h): not the volume, the chip model or the
+ * effect slots. It keeps a bend range set by RPN 0, but then nothing can be pending for it (a
+ * panel change ends RPN 0's) and wire is its value, so taking it as loaded changes nothing. */
+static const uint64_t PRESET_LOADS =
+    BIT(LIVE_PARAM_CUTOFF) | BIT(LIVE_PARAM_RESONANCE) | BIT(LIVE_PARAM_PULSE_WIDTH) |
+    BIT(LIVE_PARAM_WAVEFORM) | BIT(LIVE_PARAM_RING) | BIT(LIVE_PARAM_SYNC) |
+    BIT(LIVE_PARAM_ATTACK) | BIT(LIVE_PARAM_DECAY) | BIT(LIVE_PARAM_SUSTAIN) |
+    BIT(LIVE_PARAM_RELEASE) | BIT(LIVE_PARAM_FILTER_MODE) | BIT(LIVE_PARAM_FILTER_VOICES) |
+    BIT(LIVE_PARAM_BEND_RANGE) | BIT(LIVE_PARAM_VELOCITY_TARGET) | BIT(LIVE_PARAM_MOD_TARGET) |
+    BIT(LIVE_PARAM_PRESSURE_TARGET) | BIT(LIVE_PARAM_VIBRATO_RATE) |
+    BIT(LIVE_PARAM_VIBRATO_DEPTH) | BIT(LIVE_PARAM_VIBRATO_DELAY);
 
 static uint32_t packet(uint32_t cin, uint32_t status, uint32_t d1, uint32_t d2) {
     return MIDI_OUT_CABLE << 4 | cin | status << 8 | d1 << 16 | d2 << 24;
@@ -43,15 +57,22 @@ static void resync(midi_out* o, const live* l) {
 
 /* What changed since the last look: the panel's (remote 0) or MIDI input's (remote 1). */
 static void look(midi_out* o, const live* l, int remote) {
+    uint64_t loaded = 0;
     if (l->preset != o->preset_seen) {
-        /* A preset change: the program change carries every parameter it loaded. */
+        /* A preset change: the program change carries every parameter it loaded. The rest
+         * are diffed as usual, so a pending change of one survives it. */
         o->preset_seen = l->preset;
         o->preset_pending = remote ? 0u : 1u;
-        resync(o, l);
-        return;
+        loaded = PRESET_LOADS;
     }
     for (uint32_t p = 0; p < LIVE_PARAM_COUNT; ++p) {
         uint16_t v = (uint16_t)live_param_get(l, p);
+        if (loaded >> p & 1u) {
+            o->seen[p] = v;
+            o->wire[p] = v;
+            o->pending[p] = 0;
+            continue;
+        }
         if (v == o->seen[p]) {
             continue;
         }

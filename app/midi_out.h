@@ -18,9 +18,12 @@
  * - A value that encodes as the one last sent (or received) sends nothing: a pulse-width
  *   move within one CC step, or a knob turned there and back within a tick.
  * - A preset change from the panel is a program change, sent before any parameter; the
- *   parameters it loads are not sent (the program change carries them). From MIDI, it is
- *   the sender's, like any other change. A known limit of diffing: a parameter the panel
- *   changed in the same look as the preset counts as loaded by it and is not sent.
+ *   parameters it loads (live_set_preset: not the volume, the chip model, the effect slots
+ *   or a bend range set by RPN 0) are not sent, the program change carries them, and their
+ *   pending changes are dropped. From MIDI, it is the sender's, like any other change. The
+ *   parameters it keeps are diffed as usual, so their pending changes still go. A known
+ *   limit of diffing: a parameter the preset loads that the panel also changed in the same
+ *   look counts as loaded and is not sent.
  *
  * Encoding (the map, midi_map.h): a parameter's CC, value midi_map_to_cc. A parameter of more
  * than 128 values (cutoff, pulse width, volume) goes as its NRPN instead, at full resolution,

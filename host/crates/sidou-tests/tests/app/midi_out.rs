@@ -525,3 +525,41 @@ fn without_a_watch_midi_in_changes_count_as_local() {
     o.trs(&[0xB0, 71, 127]);
     assert_eq!(o.tick(), [cc_packet(0, 71, 127)]);
 }
+
+#[test]
+fn a_panel_change_the_preset_does_not_load_survives_a_program_change_from_midi() {
+    let mut o = Out::new();
+    o.set(LIVE_PARAM_VOLUME, 500);
+    o.rig.button(LIVE_BUTTON_FX);
+    // A program change over USB before the tick: it loads neither the volume nor the model.
+    o.entry(USB, u32::from_le_bytes([0x0C, 0xC0, 2, 0]));
+    assert_eq!(o.rig.live.preset, 2);
+    let mut got = o.tick();
+    got.sort_unstable();
+    let mut want = vec![
+        cc_packet(0, 7, to_cc(LIVE_PARAM_VOLUME, 500)),
+        cc_packet(0, 25, 127),
+    ];
+    want.sort_unstable();
+    assert_eq!(got, want, "the program change is MIDI's, the panel's changes go");
+}
+
+#[test]
+fn a_deferred_panel_change_the_preset_does_not_load_goes_after_the_program_change() {
+    let mut o = Out::new();
+    o.set(LIVE_PARAM_VOLUME, 500);
+    unsafe { live_slot_turn(&mut *o.rig.live, 1, LIVE_SLOT_MIX, 8) };
+    assert_eq!(o.tick_room(0), [], "no room: pending");
+    o.rig.knob(LIVE_KNOB_PRESET, 1);
+    let got = o.tick();
+    assert_eq!(got[0], u32::from_le_bytes([0x0C, 0xC0, 1, 0]));
+    let mut rest = got[1..].to_vec();
+    rest.sort_unstable();
+    let slot = LIVE_PARAM_SLOT + LIVE_SLOT_FIELDS + LIVE_SLOT_MIX;
+    let mut want = vec![
+        cc_packet(0, 7, to_cc(LIVE_PARAM_VOLUME, 500)),
+        cc_packet(0, row(slot).cc, to_cc(slot, o.get(slot))),
+    ];
+    want.sort_unstable();
+    assert_eq!(rest, want, "kept by the preset, so still the panel's to send");
+}

@@ -1138,8 +1138,9 @@ jack, which is MIDI IN only.
   What does not fit waits for the next tick, still as one latest value: nothing queues
   up. With no host (no cable, or the computer asleep) the changes are dropped, so a host
   that comes later gets none stale.
-- **Limit:** a parameter the panel changes in the same tick as the preset counts as
-  loaded by it and is not sent.
+- **Limit:** a parameter the preset loads (not the volume, the chip model, the effect
+  slots or a bend range set by RPN 0) that the panel also changes in the same tick as the
+  preset counts as loaded by it and is not sent.
 
 ",
         last = LIVE_PRESET_COUNT - 1,
