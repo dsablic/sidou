@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "midi_out.h"
 
-#include "midi_map.h"
-
 /* Code Index Numbers (midi_usb.h). */
 #define CIN_CC 0x0Bu
 #define CIN_PROGRAM 0x0Cu
@@ -57,17 +55,17 @@ static void resync(midi_out* o, const live* l) {
 
 /* What changed since the last look: the panel's (remote 0) or MIDI input's (remote 1). */
 static void look(midi_out* o, const live* l, int remote) {
-    uint64_t loaded = 0;
+    int preset = 0;
     if (l->preset != o->preset_seen) {
         /* A preset change: the program change carries every parameter it loaded. The rest
          * are diffed as usual, so a pending change of one survives it. */
         o->preset_seen = l->preset;
         o->preset_pending = remote ? 0u : 1u;
-        loaded = PRESET_LOADS;
+        preset = 1;
     }
     for (uint32_t p = 0; p < LIVE_PARAM_COUNT; ++p) {
         uint16_t v = (uint16_t)live_param_get(l, p);
-        if (loaded >> p & 1u) {
+        if (preset && (PRESET_LOADS >> p & 1u)) {
             o->seen[p] = v;
             o->wire[p] = v;
             o->pending[p] = 0;
@@ -87,6 +85,9 @@ static void look(midi_out* o, const live* l, int remote) {
 }
 
 void midi_out_init(midi_out* o, const live* l, uint8_t channel, uint8_t hires) {
+    for (uint32_t p = 0; p < LIVE_PARAM_COUNT; ++p) {
+        o->row[p] = midi_map_for_param(p);
+    }
     resync(o, l);
     o->preset_seen = l->preset;
     o->preset_pending = 0;
@@ -110,7 +111,7 @@ void midi_out_remote(midi_out* o, const live* l) {
  * send; 0: no room, it stays pending. */
 static int send(midi_out* o, const live* l, uint32_t p, uint32_t budget, uint32_t* out,
                 uint32_t* n) {
-    const midi_map_entry* e = midi_map_for_param(p);
+    const midi_map_entry* e = o->row[p]; /* midi_map_for_param searches the table */
     uint32_t v = o->seen[p]; /* the latest: look just ran */
     int nrpn = e && as_nrpn(o, l, e);
     if (!e || (nrpn && e->nrpn == MIDI_MAP_NO_NRPN) ||

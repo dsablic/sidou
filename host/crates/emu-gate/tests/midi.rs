@@ -750,3 +750,61 @@ fn midi_out_costs_little_and_waits_for_no_one() {
         main_cc_flood / 1e6
     );
 }
+
+/// The instructions of the most expensive `midi_send` (one tick of MIDI out) over the next
+/// `ms`, after `poke` set MIDI out's state in emulated RAM.
+fn worst_send(m: &mut Machine, fw: &Firmware, poke: impl Fn(&mut Machine, u32, u32)) -> u64 {
+    let base = fw.symbol("midi_tx");
+    for p in 0..sidou_sys::LIVE_PARAM_COUNT {
+        poke(m, base, p);
+    }
+    m.watched_calls.clear();
+    m.run_ms(30);
+    *m.watched_calls.iter().max().expect("midi_send ran")
+}
+
+#[test]
+fn a_tick_of_midi_out_costs_little_at_worst() {
+    let Some(fw) = fixture("the MIDI out test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    attach_host(&mut m, &fw);
+    m.run_ms(50);
+    m.watch_calls(fw.symbol("midi_send"));
+    let idle = worst_send(&mut m, &fw, |_, _, _| {});
+    // Every parameter pending with nothing new on the wire: each is looked up, encoded and
+    // dropped in the one tick.
+    let pending = |m: &mut Machine, base: u32, p: u32| {
+        m.soc.write8(base + ilp32::midi_out::pending as u32 + p, 1);
+    };
+    let deduplicated = worst_send(&mut m, &fw, pending);
+    // Every parameter pending and changed: a full tick of packets, the rest deferred.
+    let changed = worst_send(&mut m, &fw, |m, base, p| {
+        pending(m, base, p);
+        let seen = m.soc.read16(base + ilp32::midi_out::seen as u32 + 2 * p);
+        let max = unsafe { sidou_sys::live_param_max(p) } as u16;
+        let wire = if seen == 0 { max } else { 0 };
+        m.soc
+            .write16(base + ilp32::midi_out::wire as u32 + 2 * p, wire);
+    });
+    let (packets, _, _) = out_counters(&mut m, &fw);
+    let report = serde_json::json!({
+        "midi_send_instructions_idle": idle,
+        "midi_send_instructions_all_deduplicated": deduplicated,
+        "midi_send_instructions_all_changed": changed,
+        "packets": packets,
+    });
+    println!("{report}");
+    assert!(
+        packets >= sidou_sys::MIDI_OUT_TICK_PACKETS,
+        "{packets} packets"
+    );
+    // 1.1k idle (the look at 36 parameters); at worst 3.1k, every parameter within one CC
+    // step of the value on the wire (7.1k before the rows were cached).
+    assert!(
+        idle < 1_300 && deduplicated < 3_500 && changed < 3_500,
+        "a tick of MIDI out: {idle} instructions idle, {deduplicated} with every parameter \
+         deduplicated, {changed} with every parameter changed"
+    );
+}

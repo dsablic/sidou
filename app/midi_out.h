@@ -45,6 +45,7 @@
 #include <stdint.h>
 
 #include "live.h"
+#include "midi_map.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,6 +59,7 @@ extern "C" {
 #define MIDI_OUT_NRPN_PACKETS 4u
 
 typedef struct {
+    const midi_map_entry* row[LIVE_PARAM_COUNT]; /* each parameter's map row, or NULL */
     uint16_t seen[LIVE_PARAM_COUNT]; /* each parameter's value at the last look */
     uint16_t wire[LIVE_PARAM_COUNT]; /* its value as last sent, or received from MIDI */
     uint8_t pending[LIVE_PARAM_COUNT];
