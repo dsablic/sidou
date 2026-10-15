@@ -1,0 +1,155 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include "scope.h"
+
+#include <string.h>
+
+/* Orders memory accesses against an interrupt on the same core; emits no instruction (as in
+ * reg_ring.c: the pi32v2 compiler has no __atomic_signal_fence). */
+#define COMPILER_FENCE() __asm__ volatile("" ::: "memory")
+
+#define MASK (SCOPE_RING - 1u)
+
+void scope_init(scope* sc) {
+    memset(sc, 0, sizeof *sc); /* not a const template: 1.5 KB of zeros in flash */
+}
+
+/* The audio interrupt (SRAM on the device, platform/fm1/app.ld): kept short. The interrupt
+ * cannot be preempted by the consumer, so the head is published once, after the block's
+ * points. */
+void scope_render(scope* sc, sid* chip, int16_t* out, uint32_t frames) {
+    if (!sc->on) {
+        sid_render(chip, out, frames);
+        return;
+    }
+    uint32_t h = sc->head;
+    for (uint32_t k = 0; k < frames; k += SCOPE_DECIMATE) {
+        uint32_t n = frames - k < SCOPE_DECIMATE ? frames - k : SCOPE_DECIMATE;
+        sid_render(chip, out + k, n);
+        scope_point* p = &sc->point[h++ & MASK];
+        const sid_osc* o = chip->osc;
+        p->wave[0] = (uint8_t)(o[0].out >> 4);
+        p->wave[1] = (uint8_t)(o[1].out >> 4);
+        p->wave[2] = (uint8_t)(o[2].out >> 4);
+        p->phase[0] = (uint8_t)(o[0].acc >> 16);
+        p->phase[1] = (uint8_t)(o[1].acc >> 16);
+        p->phase[2] = (uint8_t)(o[2].acc >> 16);
+    }
+    for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
+        const sid_env* e = &chip->env[v];
+        sc->env[v] = e->env3;
+        sc->state[v] = (uint8_t)e->state;
+        sc->sustain[v] = e->sustain;
+    }
+    COMPILER_FENCE(); /* the points before the head that publishes them */
+    sc->head = h;
+}
+
+void scope_peaks(scope* sc, const int16_t* lr, uint32_t frames) {
+    if (!sc->on) {
+        return;
+    }
+    uint32_t l = sc->peak[0];
+    uint32_t r = sc->peak[1];
+    for (uint32_t i = 0; i < 2u * frames; i += 2u * SCOPE_PEAK_STRIDE) {
+        int32_t a = lr[i];
+        int32_t b = lr[i + 1u];
+        uint32_t al = (uint32_t)(a < 0 ? -a : a);
+        uint32_t ar = (uint32_t)(b < 0 ? -b : b);
+        l = al > l ? al : l;
+        r = ar > r ? ar : r;
+    }
+    sc->peak[0] = (uint16_t)l;
+    sc->peak[1] = (uint16_t)r;
+}
+
+uint32_t scope_read(const scope* sc, uint32_t since, scope_point* out, uint32_t n) {
+    uint32_t h = sc->head;
+    uint32_t avail = h - since;
+    if (n > SCOPE_READ_MAX) {
+        n = SCOPE_READ_MAX;
+    }
+    if (n > avail) {
+        n = avail;
+    }
+    uint32_t oldest = h - n;
+    COMPILER_FENCE(); /* the head before the points it publishes */
+    for (uint32_t i = 0; i < n; i++) {
+        out[i] = sc->point[(oldest + i) & MASK];
+    }
+    COMPILER_FENCE(); /* the copy before the head that says whether it held */
+    return scope_intact(oldest, sc->head) ? n : 0u;
+}
+
+void scope_take_peaks(scope* sc, uint16_t out[2]) {
+    out[0] = sc->peak[0];
+    out[1] = sc->peak[1];
+    sc->peak[0] = 0;
+    sc->peak[1] = 0;
+}
+
+void scope_trace(const scope_point* p, uint32_t n, uint32_t voice, uint32_t by, uint32_t cycles,
+                 uint8_t out[SCOPE_W]) {
+    uint16_t sum[SCOPE_W];
+    uint8_t count[SCOPE_W];
+    uint8_t bin[SCOPE_W];
+    cycles = cycles < 1u ? 1u : cycles > 8u ? 8u : cycles;
+    uint32_t per = SCOPE_W / cycles; /* columns a period */
+    for (uint32_t b = 0; b < per; b++) {
+        sum[b] = 0;
+        count[b] = 0;
+    }
+    uint32_t first = per;
+    for (uint32_t i = 0; i < n; i++) {
+        uint32_t b = (uint32_t)p[i].phase[by] * per >> 8;
+        if (count[b] < 255u) {
+            sum[b] = (uint16_t)(sum[b] + p[i].wave[voice]);
+            count[b]++;
+        }
+        first = b < first ? b : first;
+    }
+    if (first == per) {
+        for (uint32_t x = 0; x < SCOPE_W; x++) {
+            out[x] = 128;
+        }
+        return;
+    }
+    for (uint32_t b = 0; b < per; b++) {
+        bin[b] = count[b] ? (uint8_t)((sum[b] + count[b] / 2u) / count[b]) : 0u;
+    }
+    /* From each column with points to the next one round the period, a straight line. */
+    uint32_t a = first;
+    do {
+        uint32_t d = 1;
+        while (d < per && !count[(a + d) % per]) {
+            d++;
+        }
+        uint32_t b = (a + d) % per;
+        int32_t va = bin[a];
+        int32_t vb = bin[b];
+        for (uint32_t i = 1; i < d; i++) {
+            bin[(a + i) % per] = (uint8_t)(va + (vb - va) * (int32_t)i / (int32_t)d);
+        }
+        a = b;
+    } while (a != first);
+    for (uint32_t x = 0; x < SCOPE_W; x++) {
+        out[x] = bin[x % per];
+    }
+}
+
+uint32_t scope_meter(uint32_t amplitude) {
+    if (amplitude == 0) {
+        return 0;
+    }
+    uint32_t msb = 0;
+    while (amplitude >> (msb + 1u)) {
+        msb++;
+    }
+    uint32_t frac = (msb >= 3u ? amplitude >> (msb - 3u) : amplitude << (3u - msb)) & 7u;
+    uint32_t eighths = msb * 8u + frac; /* 8 log2(amplitude), rounded down */
+    if (eighths <= 48u) {
+        return 0;
+    }
+    eighths -= 48u;
+    return eighths < SCOPE_METER_MAX ? eighths : SCOPE_METER_MAX;
+}

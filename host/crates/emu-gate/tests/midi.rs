@@ -117,7 +117,7 @@ fn stats(m: &mut Machine, fw: &Firmware) -> Stats {
 }
 
 /// A TRS note-on while the boot's title card shows (app/boot.h: from about 0.4 s to 1.6 s)
-/// plays at once and ends the boot: the status screen wipes in, with the note on it.
+/// plays at once and ends the boot: LIVE wipes in, with the note on it.
 #[test]
 fn a_trs_note_on_during_the_title_card_plays_and_ends_the_boot() {
     let Some(fw) = fixture("the MIDI test") else {
@@ -150,8 +150,8 @@ fn a_trs_note_on_during_the_title_card_plays_and_ends_the_boot() {
     );
     assert_eq!(
         common::top_view(&mut m, &fw),
-        fw.symbol("views_status"),
-        "not the status screen"
+        fw.symbol("live_view_view"),
+        "not LIVE"
     );
 }
 
@@ -584,6 +584,10 @@ fn midi_input_costs_little() {
         return;
     };
     let mut m = booted(&fw);
+    // On the status screen: LIVE, the root, redraws its scopes for every note, and its own
+    // cost is bounded in screen.rs (live_stays_within_its_budgets); this measures MIDI's.
+    common::run_past_boot(&mut m, &fw);
+    common::open_status(&mut m, &fw);
     m.run_ms(1500); // past a USB retry (once a second while no host answers)
     let (isr_idle, main_idle) = rates(&mut m, 2000);
     // The jack at full speed for 2 s: a note-on and its note-off every 1.92 ms.
@@ -1017,7 +1021,7 @@ fn midi_learn_over_trs_binds_cc_14_to_k1s_cutoff() {
         return;
     };
     let mut m = booted_for_the_panel(&fw);
-    let status = fw.symbol("views_status");
+    let root = fw.symbol("live_view_view"); // LIVE, under the frame
     let learn = fw.symbol("learn_view_view");
     let cutoff_row = unsafe { sidou_sys::midi_map_for_param(sidou_sys::LIVE_PARAM_CUTOFF) };
     let row_index = (cutoff_row as usize - unsafe { sidou_sys::midi_map_row(0) } as usize)
@@ -1069,7 +1073,7 @@ fn midi_learn_over_trs_binds_cc_14_to_k1s_cutoff() {
         (sidou_sys::MIDI_LEARN_IDLE as u8, 1, row_index as u8),
         "CC 14 is not bound to the cutoff's row"
     );
-    assert_eq!(top, status, "the learn frame did not close");
+    assert_eq!(top, root, "the learn frame did not close");
     for (v, l, chip) in follow {
         assert_eq!((l, chip), (from_cc(v), from_cc(v)), "CC 14 = {v}");
     }
@@ -1081,7 +1085,7 @@ fn midi_learn_over_trs_binds_cc_14_to_k1s_cutoff() {
     m.run_ms(50);
     press(&mut m, HOME);
     m.run_ms(50);
-    assert_eq!(common::top_view(&mut m, &fw), status);
+    assert_eq!(common::top_view(&mut m, &fw), root);
     m.midi(&[0xB0, CC_FREE + 1, 127]);
     m.run_ms(20);
     assert_eq!(learned(&mut m, &fw).1, 1, "a cancelled learn bound CC 15");
@@ -1106,7 +1110,7 @@ fn midi_learn_over_trs_binds_cc_14_to_k1s_cutoff() {
         from_cc(100),
         "a cleared CC 14 still sets the cutoff"
     );
-    assert_eq!(common::top_view(&mut m, &fw), status);
+    assert_eq!(common::top_view(&mut m, &fw), root);
 }
 
 /// A learned CC costs a lookup: a flood of it at full TRS speed costs the main loop what a

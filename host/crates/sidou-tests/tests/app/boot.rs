@@ -110,14 +110,18 @@ fn the_full_boot_types_loads_and_runs_then_shows_the_title_and_the_status_screen
     run_to(&mut ui, start, 9960);
     assert_eq!(ui.top(), "BOOT");
     run_to(&mut ui, start, 10_000);
-    assert_eq!(ui.top(), "STATUS");
-    // The status screen wipes in, and then nothing is left of the boot.
+    assert_eq!(ui.top(), "LIVE");
+    // LIVE wipes in, and then nothing is left of the boot.
     ui.settle();
-    assert_eq!(&ui.row(2)[2..7], "SIDOU");
-    assert_eq!(&ui.row(26)[2..8], "READY.");
+    assert_eq!(&ui.row(0)[1..5], "LIVE");
+    assert_eq!(&ui.row(1)[2..10], " V1 SAW ");
     assert!(ui.v.s.capture.is_none(), "the boot's capture stayed");
-    assert_eq!(
-        ui.g.ovl_nfree, GRID_OVERLAYS as u8,
+    let scope_cell = |i: usize| {
+        let (r, c) = (i / COLS, i % COLS);
+        (1..=20).contains(&c) && (1..19).contains(&r) && !matches!((r - 1) % 6, 0 | 5)
+    };
+    assert!(
+        (0..COLS * COLS).all(|i| ui.g.ovl[i] == 0 || scope_cell(i)),
         "the logo's overlays stayed"
     );
 }
@@ -133,7 +137,7 @@ fn the_short_boot_is_the_title_card_alone() {
     run_to(&mut ui, start, 1160);
     assert_eq!(ui.top(), "BOOT");
     run_to(&mut ui, start, 1200);
-    assert_eq!(ui.top(), "STATUS");
+    assert_eq!(ui.top(), "LIVE");
     assert_eq!(ui.v.s.wipe, SCREEN_WIPE_DOWN as u8);
 }
 
@@ -163,9 +167,9 @@ fn home_held_at_power_on_plays_the_full_boot_and_its_press_edge_is_part_of_the_h
         // A HOME press after that one skips, and does nothing else.
         ui.press(PANEL_BTN_HOME);
         ui.frame();
-        assert_eq!(ui.top(), "STATUS", "a second HOME did not skip");
+        assert_eq!(ui.top(), "LIVE", "a second HOME did not skip");
         ui.settle();
-        assert_eq!(ui.top(), "STATUS", "HOME also opened the menu");
+        assert_eq!(ui.top(), "LIVE", "HOME also opened the menu");
     }
 }
 
@@ -179,13 +183,9 @@ fn home_tapped_as_soon_as_the_card_shows_skips_it() {
         }
         ui.press(PANEL_BTN_HOME);
         ui.frame();
-        assert_eq!(
-            ui.top(),
-            "STATUS",
-            "HOME after {frames} frames did not skip"
-        );
+        assert_eq!(ui.top(), "LIVE", "HOME after {frames} frames did not skip");
         ui.settle();
-        assert_eq!(ui.top(), "STATUS", "HOME also opened the menu");
+        assert_eq!(ui.top(), "LIVE", "HOME also opened the menu");
     }
 }
 
@@ -224,7 +224,7 @@ fn a_button_or_a_knob_skips_and_does_nothing_else() {
         // Pressed again before the frame: still taken.
         skip(&mut ui);
         ui.frame();
-        assert_eq!(ui.top(), "STATUS", "{what} did not skip");
+        assert_eq!(ui.top(), "LIVE", "{what} did not skip");
         let after = (
             ui.live().octave,
             ui.live().model,
@@ -244,7 +244,7 @@ fn a_note_skips_and_plays() {
         run_to(&mut ui, start, 400);
         ui.rig.note_on(69);
         ui.frame();
-        assert_eq!(ui.top(), "STATUS", "full {full}: the note did not skip");
+        assert_eq!(ui.top(), "LIVE", "full {full}: the note did not skip");
         assert!(ui.live().voice.iter().any(|v| v.gate != 0 && v.note == 69));
     }
 }
@@ -260,11 +260,7 @@ fn a_note_shorter_than_a_frame_skips_the_boot_too() {
         ui.rig.note_on(69);
         ui.rig.note_off(69);
         ui.frame();
-        assert_eq!(
-            ui.top(),
-            "STATUS",
-            "full {full}: the short note did not skip"
-        );
+        assert_eq!(ui.top(), "LIVE", "full {full}: the short note did not skip");
     }
 }
 
@@ -283,7 +279,7 @@ fn changes_during_the_boot_draw_nothing_over_it() {
     assert_eq!(ui.v.s.raster_frames, 0, "a raster over the boot");
     ui.press(PANEL_BTN_FX);
     ui.frame();
-    assert_eq!(ui.top(), "STATUS");
+    assert_eq!(ui.top(), "LIVE");
     ui.settle();
     assert_eq!(ui.toast(), None, "the boot's changes showed after it");
     assert_eq!(ui.live().model, SID_MODEL_8580);
@@ -345,7 +341,7 @@ fn every_frame_of_the_boot_fits_the_spi_budget() {
         let mut ui = booting(full);
         let start = ui.now + 40;
         let sent = run_to(&mut ui, start, if full { 10_000 } else { 1200 } + 12 * 40);
-        assert_eq!(ui.top(), "STATUS");
+        assert_eq!(ui.top(), "LIVE");
         // The first frame draws the whole screen (platform/fm1/ui.c ui_init, before the
         // display is on); every other one stays inside the budget.
         for (k, s) in sent.iter().enumerate().skip(1) {

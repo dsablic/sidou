@@ -670,7 +670,7 @@ const SCREEN_RASTER: u32 = 39;
 const SCREEN_MAX_DEPTH: u8 = 4;
 
 /// The view on top of the screen's stack (the address of its `view` table), checked against
-/// the layout above: the stack's depth in range and the status view at its bottom.
+/// the layout above: the stack's depth in range and LIVE, the root, at its bottom.
 pub fn top_view(m: &mut Machine, fw: &Firmware) -> u32 {
     let ui = fw.symbol("ui");
     let depth = m.soc.read8(ui + SCREEN_DEPTH);
@@ -680,8 +680,8 @@ pub fn top_view(m: &mut Machine, fw: &Firmware) -> u32 {
     );
     assert_eq!(
         m.soc.read32(ui + SCREEN_STACK),
-        fw.symbol("views_status"),
-        "the stack's bottom is not the status view: platform/fm1/ui.c ui's layout moved"
+        fw.symbol("live_view_view"),
+        "the stack's bottom is not LIVE: platform/fm1/ui.c ui's layout moved"
     );
     m.soc.read32(ui + SCREEN_STACK + 8 * u32::from(depth - 1))
 }
@@ -696,6 +696,36 @@ pub fn screen_animating(m: &mut Machine, fw: &Firmware) -> bool {
 pub fn screen_wiping(m: &mut Machine, fw: &Firmware) -> bool {
     let ui = fw.symbol("ui");
     m.soc.read8(ui + SCREEN_WIPE) != 0
+}
+
+/// app/panel.h HOME and the menu's encoders; app/views.h the STATUS item.
+const HOME: u8 = 8;
+const SELECT: u8 = 0;
+const ALGORITHM: u8 = 1;
+const MENU_STATUS: i32 = 3;
+/// app/views.h VIEWS_MENU_ITEMS.
+const MENU_ITEMS: i32 = 6;
+
+/// The status screen from LIVE, through the menu (HOME, SELECT to STATUS, ALGORITHM
+/// clockwise), its wipe over, and on to half way between two frames (to_mid_frame).
+pub fn open_status(m: &mut Machine, fw: &Firmware) {
+    m.key(HOME, true);
+    m.run_ms(30);
+    m.key(HOME, false);
+    m.run_ms(30);
+    // fm1-emu turns an encoder a detent every 8 ms: each turn is waited out.
+    m.turn(SELECT, -MENU_ITEMS);
+    m.run_ms(10 * MENU_ITEMS as u64);
+    m.turn(SELECT, MENU_STATUS);
+    m.run_ms(10 * MENU_STATUS as u64);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(700);
+    assert_eq!(
+        top_view(m, fw),
+        fw.symbol("views_status"),
+        "the menu's STATUS did not open the status screen"
+    );
+    to_mid_frame(m, fw);
 }
 
 /// Longer than the full boot (app/boot.h: the title card ends 10 s in) and its wipe.

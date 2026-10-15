@@ -10,6 +10,8 @@
 
 #include <stdint.h>
 
+#include "scope.h"
+
 /* The I2S frame rate: 24 MHz / 544 = 44117.6 Hz. */
 #define AUDIO_SAMPLE_RATE 44118u
 /* Frames per half buffer; each frame is two int32 words, L then R. */
@@ -18,6 +20,8 @@
 
 /* Before interrupts are enabled. */
 void audio_init(void);
+/* The tap the LIVE view reads (app/scope.h); audio_fill feeds it while its `on` is set. */
+scope* audio_scope(void);
 /* The context for reg_ring_sink (a reg_ring_out*), for live. Before audio_start, a full ring
  * is drained at once; after it, the producer sleeps until the interrupt has made room. */
 void* audio_sink_ctx(void);
@@ -39,7 +43,8 @@ void audio_halted(void);
 int audio_running(void);
 /* AUDIO_HALF_WORDS words: the SID's output through the effect slots (core/fx/fx_slots.h),
  * interleaved L and R, 24-bit left-justified ((int32)sample << 8); with every slot off, the
- * chip's output on both sides. Called from the ALNK0 interrupt. */
+ * chip's output on both sides. Feeds the LIVE view's tap while it is on (scope_render,
+ * scope_peaks). Called from the ALNK0 interrupt. */
 void audio_fill(int32_t* out);
 
 #endif

@@ -26,9 +26,13 @@ static const char* const MOD_NAMES[] = {"OFF",     "CHORUS",   "FLANGER", "PHASE
                                         "TREMOLO", "AUTO-PAN", "WOW"};
 static const char* const FX_NAMES[] = {"OFF", "DELAY", "PING-PONG", "REVERB", "LUSH"};
 
-static const char* algorithm_name(uint32_t slot, uint32_t alg) {
+const char* views_algorithm_name(uint32_t slot, uint32_t alg) {
     static const char* const* const NAMES[LIVE_SLOTS] = {DIST_NAMES, MOD_NAMES, FX_NAMES};
-    return alg < live_slot_algorithms(slot) ? NAMES[slot][alg] : "?";
+    return slot < LIVE_SLOTS && alg < live_slot_algorithms(slot) ? NAMES[slot][alg] : "?";
+}
+
+const char* views_slot_name(uint32_t slot) {
+    return slot < LIVE_SLOTS ? SLOT_NAMES[slot] : "?";
 }
 
 static uint32_t length(const char* s) {
@@ -171,7 +175,7 @@ static void status_compose(screen* s, void* state, grid* g) {
             put(g, row, 2, ">");
         }
         put(g, row, 3, SLOT_NAMES[k]);
-        put(g, row, 8, algorithm_name(k, l->slot[k][LIVE_SLOT_ALGORITHM]));
+        put(g, row, 8, views_algorithm_name(k, l->slot[k][LIVE_SLOT_ALGORITHM]));
         put(g, row, 19, "MIX");
         widget_number(g, 23, row, 3, l->slot[k][LIVE_SLOT_MIX], 0, TEXT);
     }
@@ -228,6 +232,12 @@ static void octave_turn(void* ctx, int32_t steps) {
     }
 }
 
+static void status_open(void* ctx, int32_t steps) {
+    views* v = ctx;
+    (void)steps;
+    screen_push(&v->s, &views_status, v, SCREEN_WIPE_DOWN);
+}
+
 static void charset_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
@@ -243,10 +253,11 @@ static void about_open(void* ctx, int32_t steps) {
 
 static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"CHIP", chip_value, chip_turn},       {"PRESET", preset_value, preset_turn},
-    {"OCTAVE", octave_value, octave_turn}, {"CHARSET", NULL, charset_open},
-    {"ABOUT", NULL, about_open},
+    {"OCTAVE", octave_value, octave_turn}, {"STATUS", NULL, status_open},
+    {"CHARSET", NULL, charset_open},       {"ABOUT", NULL, about_open},
 };
-_Static_assert(VIEWS_MENU_CHARSET == 3u && VIEWS_MENU_ABOUT == 4u, "the menu's view items");
+_Static_assert(VIEWS_MENU_STATUS == 3u && VIEWS_MENU_CHARSET == 4u && VIEWS_MENU_ABOUT == 5u,
+               "the menu's view items");
 
 static int menu_input(screen* s, void* state, const screen_event* e) {
     (void)s;
@@ -357,13 +368,14 @@ static int global(void* ctx, const screen_event* e) {
     return 1;
 }
 
-void views_init(views* v, grid* g, live* l, const char* version) {
+void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->l = l;
     v->version = version;
     menu_init(&v->home, MENU_ITEMS, VIEWS_MENU_ITEMS, VIEWS_MENU_ITEMS, v);
     remember(v);
     learn_view_init(&v->learn, l, NULL);
-    screen_init(&v->s, g, &views_status, v);
+    live_view_init(&v->live, l, sc);
+    screen_init(&v->s, g, &live_view_view, &v->live);
     screen_global(&v->s, global, v);
 }
 
@@ -438,7 +450,7 @@ static void tell(views* v) {
         uint8_t alg = l->slot[k][LIVE_SLOT_ALGORITHM];
         if (alg != v->algorithm[k]) {
             join(buf, sizeof buf, SLOT_NAMES[k], " ");
-            append(buf, sizeof buf, algorithm_name(k, alg));
+            append(buf, sizeof buf, views_algorithm_name(k, alg));
             changed = 1;
         }
     }
@@ -453,6 +465,12 @@ static void tell(views* v) {
     remember(v);
 }
 
+void views_prepare(views* v) {
+    if (screen_top(&v->s) == &live_view_view && !screen_animating(&v->s)) {
+        live_view_prepare(&v->live);
+    }
+}
+
 void views_frame(views* v, uint32_t now_ms) {
     boot_frame(v, now_ms);
     if (screen_top(&v->s) == &boot_view) {
@@ -461,6 +479,7 @@ void views_frame(views* v, uint32_t now_ms) {
         tell(v);
     }
     learn_view_frame(&v->learn, &v->s, now_ms);
+    live_view_tap(&v->live, screen_top(&v->s) == &live_view_view);
     screen_frame(&v->s, now_ms);
 }
 

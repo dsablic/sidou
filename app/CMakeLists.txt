@@ -15,6 +15,7 @@ add_library(sidou_live STATIC
     learn_view.c
     live.c
     live_freq.c
+    live_view.c
     logo.c
     midi_in.c
     midi_learn.c
@@ -25,6 +26,7 @@ add_library(sidou_live STATIC
     midi_usb.c
     panel.c
     reg_ring.c
+    scope.c
     screen.c
     sine.c
     views.c

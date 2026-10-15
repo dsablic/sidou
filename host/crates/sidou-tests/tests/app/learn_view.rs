@@ -85,8 +85,8 @@ fn save_opens_the_frame_a_knob_picks_and_a_cc_learns() {
     t.ui.frame();
     assert!(t.ui.row(ROW).contains(" MIDI LEARN "), "{}", t.ui.row(ROW));
     assert_eq!(t.lines(), ("TURN A KNOB".into(), "SAVE: CLEAR ALL".into()));
-    // The status screen still shows under the frame.
-    assert!(t.ui.row(10).contains("CUTOFF"));
+    // LIVE still shows under the frame.
+    assert_eq!(&t.ui.row(0)[1..5], "LIVE");
     t.ui.turn(K1, 3);
     assert_eq!(
         t.ui.live().cutoff,
@@ -103,7 +103,7 @@ fn save_opens_the_frame_a_knob_picks_and_a_cc_learns() {
         )
     );
     t.cc(21, 127);
-    assert_eq!(t.ui.top(), "STATUS", "learned: the frame closes");
+    assert_eq!(t.ui.top(), "LIVE", "learned: the frame closes");
     assert_eq!(
         t.ui.toast().as_deref(),
         Some("LEARNED CC 21 \u{fffd} CUTOFF")
@@ -130,7 +130,7 @@ fn home_cancels_and_reaches_nothing_else() {
     t.ui.press(PANEL_BTN_HOME);
     assert_eq!(
         t.ui.top(),
-        "STATUS",
+        "LIVE",
         "HOME closed learn, it did not open the menu"
     );
     assert_eq!(t.ui.toast().as_deref(), Some("LEARN CANCELLED"));
@@ -154,7 +154,7 @@ fn ten_seconds_without_a_step_time_out() {
     for _ in 0..3 {
         t.ui.frame();
     }
-    assert_eq!(t.ui.top(), "STATUS");
+    assert_eq!(t.ui.top(), "LIVE");
     assert_eq!(t.ui.toast().as_deref(), Some("LEARN TIMED OUT"));
 }
 
@@ -190,13 +190,13 @@ fn a_knob_turned_after_a_cc_learned_and_before_the_frame_turns() {
     let reso = t.ui.live().resonance;
     t.ui.turn(K1 + 1, 1);
     assert_eq!(t.ui.live().resonance, reso + 1, "K2 was swallowed");
-    assert_eq!(t.ui.top(), "STATUS");
+    assert_eq!(t.ui.top(), "LIVE");
     assert_eq!(
         t.ui.toast().as_deref(),
         Some("LEARNED CC 21 \u{fffd} CUTOFF")
     );
     t.ui.frame();
-    assert_eq!(t.ui.top(), "STATUS");
+    assert_eq!(t.ui.top(), "LIVE");
     assert_eq!(t.state(), MIDI_LEARN_IDLE);
 }
 
@@ -210,7 +210,7 @@ fn save_or_home_after_a_cc_learned_and_before_the_frame_keep_the_toast() {
         t.ui.turn(K1, 1);
         t.cc_between_frames(21, 64);
         t.ui.press(button);
-        assert_eq!(t.ui.top(), "STATUS", "button {button}");
+        assert_eq!(t.ui.top(), "LIVE", "button {button}");
         assert_eq!(t.state(), MIDI_LEARN_IDLE, "button {button}");
         assert_eq!(
             t.ui.toast().as_deref(),
@@ -218,7 +218,7 @@ fn save_or_home_after_a_cc_learned_and_before_the_frame_keep_the_toast() {
             "button {button}"
         );
         t.ui.frame();
-        assert_eq!(t.ui.top(), "STATUS", "button {button}");
+        assert_eq!(t.ui.top(), "LIVE", "button {button}");
     }
 }
 
@@ -256,7 +256,7 @@ fn save_twice_asks_and_three_times_clears_every_mapping() {
         ("CLEAR ALL MAPPINGS?".into(), "SAVE: YES  HOME: NO".into())
     );
     t.ui.press(SAVE);
-    assert_eq!(t.ui.top(), "STATUS");
+    assert_eq!(t.ui.top(), "LIVE");
     assert_eq!(t.ui.toast().as_deref(), Some("MIDI LEARN CLEARED"));
     assert_eq!(t.ml.count, 0);
 }
@@ -336,12 +336,15 @@ fn the_frame_is_clear_of_the_overlays_of_the_view_under_it() {
 fn without_learn_save_does_nothing() {
     let mut ui = Ui::new();
     ui.press(SAVE);
-    assert_eq!(ui.top(), "STATUS");
+    assert_eq!(ui.top(), "LIVE");
 }
 
 #[test]
 fn an_idle_frame_composes_nothing_and_a_step_composes() {
     let mut t = Learn::new();
+    // Everything sent, as the device sends between frames: LIVE's scopes, held to a budget of
+    // what the panel has yet to get, come back in the frame that opens learn.
+    crate::drain(&mut t.ui.g);
     t.ui.press(SAVE);
     t.ui.frame();
     crate::drain(&mut t.ui.g);

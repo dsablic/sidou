@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ui.h"
 
+#include "audio.h"
 #include "grid.h"
 #include "lcd.h"
 #include "midi.h"
@@ -25,6 +26,9 @@ static views ui;
 /* grid_palette in the panel's byte order. */
 static uint16_t palette[16];
 static uint32_t last_compose;
+/* views_prepare has run since the last frame; when the next of the two is due. */
+static uint8_t prepared;
+static uint32_t next_at;
 /* A run rendered into lcd_buffer(), waiting for the panel. */
 static grid_run run;
 static uint8_t pending;
@@ -60,10 +64,11 @@ void ui_init(live* l, uint32_t now_ms, int home_held) {
         palette[i] = LCD_SWAP(grid_palette[i]);
     }
     grid_init(&cells, ' ', VIEWS_TEXT);
-    views_init(&ui, &cells, l, "V" SIDOU_VERSION);
+    views_init(&ui, &cells, l, audio_scope(), "V" SIDOU_VERSION);
     views_learn(&ui, midi_learned()); /* midi_init ran before */
     views_boot(&ui, home_held);
     last_compose = now_ms;
+    next_at = now_ms + UI_PERIOD_MS / 2u;
     views_frame(&ui, now_ms);
 }
 
@@ -77,9 +82,20 @@ static void display_on_when_drawn(void) {
 }
 
 void ui_poll(uint32_t now_ms) {
-    if (now_ms - last_compose >= UI_PERIOD_MS) {
-        last_compose = now_ms;
-        views_frame(&ui, now_ms);
+    /* A frame, half a frame later its preparation (views_prepare), and the runs: each in a
+     * call of its own, so no call is long and the main loop drains MIDI between them. */
+    if ((int32_t)(now_ms - next_at) >= 0) {
+        if (prepared || now_ms - last_compose >= UI_PERIOD_MS) {
+            last_compose = now_ms;
+            prepared = 0;
+            next_at = now_ms + UI_PERIOD_MS / 2u;
+            views_frame(&ui, now_ms);
+        } else {
+            prepared = 1;
+            next_at = last_compose + UI_PERIOD_MS;
+            views_prepare(&ui);
+        }
+        return;
     }
     if (!pending && !(cells.rows & ~cells.hold)) {
         display_on_when_drawn();

@@ -245,3 +245,85 @@ fn the_audio_path_reads_no_data_from_flash() {
         "the audio path reads flash (XIP) data: put these in .data on the device: {in_flash:?}"
     );
 }
+
+/// Instructions a sample the LIVE view's tap (app/scope.h) may add to the audio interrupt.
+/// docs/plans/2026-10-15-m1e-look-and-feel.md asks for under about 10; M1e Task 4 measures
+/// 4.8 (a point every 16 samples, the peaks of every 8th frame).
+const TAP_PER_SAMPLE: f64 = 6.0;
+/// A chord's note keys (14 + note - 53): A3, E4, E5.
+const CHORD: [u8; 3] = [18, 25, 37];
+const HOME: u8 = 8;
+
+/// The tap's `on` (platform/fm1/audio.c `tap`), checked against the pi32v2 layout.
+fn tap_on(m: &mut Machine, fw: &Firmware) -> bool {
+    use object::{Object, ObjectSymbol};
+    let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
+    let sym = file
+        .symbols()
+        .find(|s| s.name() == Ok("tap"))
+        .expect("no symbol tap in the firmware ELF");
+    assert_eq!(
+        sym.size(),
+        sidou_sys::ilp32::scope::SIZE as u64,
+        "the tap's layout moved"
+    );
+    m.soc
+        .read8(sym.address() as u32 + sidou_sys::ilp32::scope::on as u32)
+        != 0
+}
+
+/// The audio interrupt's mean instructions a sample over `ms`.
+fn per_sample(m: &mut Machine, ms: u64) -> (f64, usize) {
+    let from = m.alnk_blocks.len();
+    m.run_ms(ms);
+    let b = &m.alnk_blocks[from..];
+    (
+        b.iter().sum::<u64>() as f64 / b.len() as f64 / 128.0,
+        b.len(),
+    )
+}
+
+/// The tap runs while LIVE shows and costs the audio interrupt at most TAP_PER_SAMPLE
+/// instructions a sample: the same build with the menu on top (the tap off), against LIVE on
+/// top, a chord held throughout, by turns.
+#[test]
+fn the_live_view_tap_costs_the_audio_interrupt_little() {
+    let Some((_, fw)) = fixture("the tap cost test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    common::run_past_boot(&mut m, &fw);
+    for k in CHORD {
+        m.key(k, true);
+    }
+    m.run_ms(1500); // to the sustain level: the chip's cost steady
+    let (mut on, mut off) = (Vec::new(), Vec::new());
+    for _ in 0..3 {
+        assert!(tap_on(&mut m, &fw), "the tap is off under LIVE");
+        on.push(per_sample(&mut m, 400));
+        m.key(HOME, true);
+        m.run_ms(30);
+        m.key(HOME, false);
+        m.run_ms(400);
+        assert!(!tap_on(&mut m, &fw), "the tap runs under the menu");
+        off.push(per_sample(&mut m, 400));
+        m.key(HOME, true);
+        m.run_ms(30);
+        m.key(HOME, false);
+        m.run_ms(400);
+    }
+    let mean = |v: &[(f64, usize)]| v.iter().map(|x| x.0).sum::<f64>() / v.len() as f64;
+    let added = mean(&on) - mean(&off);
+    println!(
+        "audio interrupt, a chord held: {:.2} instructions a sample with the tap (LIVE), {:.2} \
+         without (the menu): the tap adds {added:.2} ({on:?} / {off:?})",
+        mean(&on),
+        mean(&off)
+    );
+    assert!(on.iter().chain(&off).all(|x| x.1 > 100));
+    assert!(added > 0.0, "the tap costs nothing: is it running?");
+    assert!(
+        added <= TAP_PER_SAMPLE,
+        "the tap adds {added:.2} instructions a sample"
+    );
+}

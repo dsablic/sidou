@@ -5,6 +5,7 @@
 #include "fx/fx_slots.h"
 #include "fx_live.h"
 #include "reg_ring.h"
+#include "scope.h"
 #include "sid/sid.h"
 
 /* The effect slots' seed (their noise and drift generators). */
@@ -28,6 +29,10 @@ static fx_live fx;
 
 static reg_ring ring;
 static reg_ring_out out;
+/* The LIVE view's tap (app/scope.h): the voices every SCOPE_DECIMATE samples, the envelopes
+ * and the output's peaks, while the view shows. */
+static scope tap;
+_Static_assert(AUDIO_HALF_FRAMES % SCOPE_DECIMATE == 0u, "a block is whole chunks of the tap");
 static volatile uint8_t running;
 
 /* reg_ring_out.wait: the producer needs the interrupt to drain. Before audio_irqs_on the
@@ -44,6 +49,7 @@ static void wait_for_drain(void* ctx) {
 
 void audio_init(void) {
     reg_ring_init(&ring);
+    scope_init(&tap);
     reg_ring_chips_init(&chips, SID_MODEL_6581, SID_CLOCK_PAL, AUDIO_SAMPLE_RATE);
     sid_slots_init(&slots, AUDIO_SAMPLE_RATE, SLOTS_SEED, &slot_pool);
     fx_live_init(&fx, &slots);
@@ -53,6 +59,10 @@ void audio_init(void) {
     out.chips = &chips;
     out.wait = wait_for_drain;
     out.wait_ctx = 0;
+}
+
+scope* audio_scope(void) {
+    return &tap;
 }
 
 void* audio_sink_ctx(void) {
@@ -88,9 +98,11 @@ void audio_fill(int32_t* buf) {
     int16_t s[AUDIO_HALF_FRAMES];
     int16_t lr[2u * AUDIO_HALF_FRAMES];
     reg_ring_drain(&ring, &chips);
-    sid_render(reg_ring_chip(&chips), s, AUDIO_HALF_FRAMES);
+    /* sid_render's samples, and the tap's points while LIVE shows. */
+    scope_render(&tap, reg_ring_chip(&chips), s, AUDIO_HALF_FRAMES);
     /* With every slot off this writes the chip's output to both sides unchanged. */
     sid_slots_process(&slots, s, lr, AUDIO_HALF_FRAMES);
+    scope_peaks(&tap, lr, AUDIO_HALF_FRAMES);
     for (uint32_t i = 0; i < 2u * AUDIO_HALF_FRAMES; i++) {
         buf[i] = (int32_t)lr[i] * 256;
     }

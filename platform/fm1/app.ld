@@ -73,6 +73,8 @@ SECTIONS
         *(.text.sid_fx_crush_init .text.sid_fx_noise_init .text.sid_fx_chorus_init)
         *(.text.sid_fx_flanger_init .text.sid_fx_tremolo_init .text.sid_fx_wow_init)
         *(.text.fx_live_pseudo .text.fx_live_apply)
+        /* The LIVE view's tap (app/scope.c): the chunked render and the output's peaks. */
+        *(.text.scope_render .text.scope_peaks)
         . = ALIGN(4);
         _rt_end = .;
     } > RAMTEXT AT > XIP

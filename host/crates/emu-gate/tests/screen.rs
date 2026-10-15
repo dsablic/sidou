@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The screen in fm1-emu: LCD snapshots of the views against golden images
 //! (tests/golden/lcd/), reached through the panel as a player would (HOME, SELECT, ALGORITHM);
-//! the boot sequence, short and full, and skipping it; the wipe and raster transitions frame
-//! by frame; and what drawing costs the main loop in instructions and SPI time, idle, for
-//! small changes, per frame of each transition, and for the animated boot and About.
+//! the boot sequence, short and full, and skipping it; LIVE's scopes following the notes; the
+//! wipe and raster transitions frame by frame; and what drawing costs the main loop in
+//! instructions and SPI time, idle, for small changes, per frame of each transition, and for
+//! the animated boot, About and LIVE.
 //!
 //! The goldens are 4-bit indexed PNGs in the art palette (docs/art/README.md), so every pixel
 //! must be one of the 16 colours. SIDOU_LCD_GOLDEN_UPDATE=1 rewrites them; a mismatch writes
@@ -32,9 +33,10 @@ const FX: u8 = 2;
 const HOME: u8 = 8;
 const SELECT: u8 = 0;
 const ALGORITHM: u8 = 1;
-/// app/views.h: the menu's view items, and its cursor cell on the first item.
-const MENU_CHARSET: i32 = 3;
-const MENU_ABOUT: i32 = 4;
+/// app/views.h: the menu's view items (STATUS, 3, is common::open_status's), and its cursor
+/// cell on the first item.
+const MENU_CHARSET: i32 = 4;
+const MENU_ABOUT: i32 = 5;
 const MENU_CURSOR: (usize, usize, usize) = (3, 5, 1);
 /// app/screen.h: the toast's row.
 const TOAST_ROW: usize = 27;
@@ -73,7 +75,7 @@ fn fixture(what: &str) -> Option<(PathBuf, Firmware)> {
 }
 
 /// Past the short boot (app/boot.h: the title card for 1.2 s from the first frame, then an
-/// 8-frame wipe to the status screen): until the boot view is gone (common::run_past_boot).
+/// 8-frame wipe to LIVE): until the boot view is gone (common::run_past_boot).
 fn booted(fw: &Firmware) -> Machine {
     let mut m = Machine::boot(&fw.image);
     common::run_past_boot(&mut m, fw);
@@ -104,10 +106,19 @@ fn open_menu(m: &mut Machine, fw: &Firmware) {
     settle(m, fw);
 }
 
-/// The glyph sheet, from the menu's last item.
+/// The menu's cursor on item `item`: to the top, then down. fm1-emu turns an encoder a
+/// detent every 8 ms, so each turn is waited out before the next.
+fn select(m: &mut Machine, item: i32) {
+    m.turn(SELECT, -MENU_ABOUT);
+    m.run_ms(10 * MENU_ABOUT as u64);
+    m.turn(SELECT, item);
+    m.run_ms(10 * item as u64);
+}
+
+/// The glyph sheet, from the menu.
 fn open_charset(m: &mut Machine, fw: &Firmware) {
     open_menu(m, fw);
-    m.turn(SELECT, MENU_CHARSET);
+    select(m, MENU_CHARSET);
     m.run_ms(100);
     m.turn(ALGORITHM, 1);
     settle(m, fw);
@@ -216,6 +227,29 @@ fn compare_golden(build: &Path, name: &str, fb: &[u16], ignore: &[(usize, usize,
     }
 }
 
+/// Only the cells (col, row, len) of the panel against those of a golden image.
+fn compare_golden_cells(build: &Path, name: &str, fb: &[u16], cells: &[(usize, usize, usize)]) {
+    let got = indexed(fb);
+    let want = read_png(&golden_dir().join(format!("{name}.png")));
+    for &(col, row, len) in cells {
+        for y in row * 8..row * 8 + 8 {
+            let span = y * W + col * 8..y * W + (col + len) * 8;
+            if got[span.clone()] != want[span] {
+                let actual = build.join(format!("{name}.cells.actual.png"));
+                write_png(&actual, &got);
+                panic!(
+                    "{name}: cells ({col}, {row}) x {len} differ from the golden; the screen is \
+                     in {}",
+                    actual.display()
+                );
+            }
+        }
+    }
+}
+
+/// LIVE's first voice: its note's cells (app/live_view.c, the info column).
+const VOICE1_NOTE: (usize, usize, usize) = (25, 2, 4);
+
 /// The status screen's version (row 2, right-aligned before column 28): it changes with
 /// every release, so the comparison leaves it out. platform/fm1/ui.c asserts at compile time
 /// that "V" and the version fit these cells.
@@ -228,6 +262,7 @@ fn the_status_screen_matches_its_golden_image() {
     };
     let mut m = booted(&fw);
     assert!(m.soc.lcd.display_on, "DISPON was not sent");
+    common::open_status(&mut m, &fw);
     compare_golden(&build, "status", &m.soc.lcd.fb, &[VERSION_CELLS]);
     // A held note shows on the notes line.
     m.key(A4_KEY, true);
@@ -241,6 +276,7 @@ fn a_button_change_shows_a_toast_that_goes_away() {
         return;
     };
     let mut m = booted(&fw);
+    common::open_status(&mut m, &fw);
     let boot = indexed(&m.soc.lcd.fb);
     press(&mut m, OCT_UP);
     m.run_ms(200);
@@ -318,7 +354,7 @@ fn midi_learn_prompts_match_their_golden_images() {
     );
     assert_eq!(
         common::top_view(&mut m, &fw),
-        fw.symbol("views_status"),
+        fw.symbol("live_view_view"),
         "the frame did not close"
     );
 }
@@ -329,10 +365,10 @@ fn the_glyph_sheet_opens_from_the_menu_and_home_goes_back() {
         return;
     };
     let mut m = booted(&fw);
-    let status = m.soc.lcd.fb.clone();
+    let live = m.soc.lcd.fb.clone();
     open_charset(&mut m, &fw);
     compare_golden(&build, "charset", &m.soc.lcd.fb, &[]);
-    // Back twice: the overlays are gone and the panel shows the status screen as at boot.
+    // Back twice: the sheet's overlays are gone and the panel shows LIVE as at boot.
     // The cursor is on CHARSET now, blinking in its own phase.
     press(&mut m, HOME);
     settle(&mut m, &fw);
@@ -346,14 +382,11 @@ fn the_glyph_sheet_opens_from_the_menu_and_home_goes_back() {
     );
     press(&mut m, HOME);
     settle(&mut m, &fw);
-    assert!(
-        m.soc.lcd.fb == status,
-        "the status screen differs after the glyph sheet"
-    );
+    assert!(m.soc.lcd.fb == live, "LIVE differs after the glyph sheet");
 }
 
-/// Each cell row of the panel as S (the status screen's), M (the menu's), B (both: the rows
-/// they share), E (the wipe's white edge) or ? (none of them).
+/// Each cell row of the panel as S (the view under the menu's: LIVE's), M (the menu's), B
+/// (both: the rows they share), E (the wipe's white edge) or ? (none of them).
 fn classify(fb: &[u16], status: &[u16], menu: &[u16]) -> String {
     let (cc, cr, _) = MENU_CURSOR;
     let same = |row: usize, a: &[u16], b: &[u16]| {
@@ -376,7 +409,7 @@ fn classify(fb: &[u16], status: &[u16], menu: &[u16]) -> String {
 
 /// Samples the panel every frame until it holds still (from half way between two frames,
 /// common::to_mid_frame, so that each sample sees a frame whole); checks every sample is the
-/// menu over the status screen with at most an edge between them.
+/// menu over LIVE with at most an edge between them.
 fn wipe_samples(m: &mut Machine, status: &[u16], menu: &[u16]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for _ in 0..20 {
@@ -441,6 +474,7 @@ fn a_chip_change_sweeps_the_raster_over_the_border() {
         return;
     };
     let mut m = booted(&fw);
+    common::open_status(&mut m, &fw);
     let boot = indexed(&m.soc.lcd.fb);
     // The left border column's colour per cell row, every frame.
     let border = |m: &Machine| -> Vec<u8> {
@@ -574,16 +608,19 @@ fn screen_changes_and_transitions_stay_within_the_budgets() {
     let mut m = Machine::boot(&fw.image);
     m.watch_calls(fw.symbol("ui_poll"));
     common::run_past_boot(&mut m, &fw);
+    // The status screen, from the menu: LIVE, the root, moves every frame and has its own
+    // budget (live_stays_within_its_budgets).
+    common::open_status(&mut m, &fw);
     let idle = measure(&mut m, &fw, 10, |_| {});
     let note = measure(&mut m, &fw, 10, |m| m.key(A4_KEY, true));
     m.key(A4_KEY, false);
     m.run_ms(200);
+    // HOME goes back from the status screen to the menu; ALGORITHM on STATUS opens it again.
     let menu = measure(&mut m, &fw, 16, |m| m.key(HOME, true));
     m.key(HOME, false);
     settle(&mut m, &fw);
     let menu_idle = measure(&mut m, &fw, 16, |_| {});
-    let back = measure(&mut m, &fw, 16, |m| m.key(HOME, true));
-    m.key(HOME, false);
+    let back = measure(&mut m, &fw, 16, |m| m.turn(ALGORITHM, 1));
     settle(&mut m, &fw);
     let raster = measure(&mut m, &fw, 24, |m| m.key(FX, true));
     m.key(FX, false);
@@ -592,9 +629,9 @@ fn screen_changes_and_transitions_stay_within_the_budgets() {
         "spi_hz": SPI_HZ,
         "idle": idle.json(),
         "one_note": note.json(),
-        "wipe_down_to_the_menu": menu.json(),
+        "wipe_up_to_the_menu": menu.json(),
         "menu_idle_cursor_blinking": menu_idle.json(),
-        "wipe_up_to_the_status_screen": back.json(),
+        "wipe_down_to_the_status_screen": back.json(),
         "chip_change_raster_and_toast": raster.json(),
     });
     println!("{report}");
@@ -638,8 +675,8 @@ fn screen_changes_and_transitions_stay_within_the_budgets() {
     // The transitions: every frame inside the SPI budget. A wipe sends each row that changes
     // once and its edge row once more, a raster step every other frame the 116 border cells.
     for (what, c) in [
-        ("wipe down", &menu),
-        ("wipe up", &back),
+        ("wipe up", &menu),
+        ("wipe down", &back),
         ("raster", &raster),
     ] {
         assert!(
@@ -654,7 +691,7 @@ fn screen_changes_and_transitions_stay_within_the_budgets() {
         );
     }
     let full_screen = 30 * (240 * 8 * 2 + 11);
-    for (what, c) in [("wipe down", &menu), ("wipe up", &back)] {
+    for (what, c) in [("wipe up", &menu), ("wipe down", &back)] {
         let t = c.total();
         assert!(
             t.bytes <= full_screen + 8 * (240 * 8 * 2 + 11),
@@ -686,7 +723,7 @@ const TITLE_VERSION: (usize, usize, usize) = (1, 18, 28);
 const RUN_CURSOR: (usize, usize, usize) = (5, 13, 1);
 
 #[test]
-fn the_short_boot_shows_the_title_card_then_the_status_screen() {
+fn the_short_boot_shows_the_title_card_then_live() {
     let Some((build, fw)) = fixture("the boot screen test") else {
         return;
     };
@@ -700,7 +737,7 @@ fn the_short_boot_shows_the_title_card_then_the_status_screen() {
         (1600..2200).contains(&gone),
         "the short boot ended at {gone} ms"
     );
-    compare_golden(&build, "status", &m.soc.lcd.fb, &[VERSION_CELLS]);
+    compare_golden(&build, "live", &m.soc.lcd.fb, &[]);
 }
 
 /// HOME held at power-on, until the key scan has seen it (it starts with the interrupts, after
@@ -731,17 +768,17 @@ fn home_held_at_power_on_plays_the_full_boot() {
     compare_golden(&build, "boot-loading", &m.soc.lcd.fb, &[BANNER]);
     m.run_ms(7200 - 4300);
     // Still the prompt: its rows 7-13 hold READY., LOAD..., SEARCHING..., LOADING, READY.
-    // and RUN, where the status screen has its sound parameters.
-    let status = booted(&fw);
+    // and RUN, where LIVE has its second voice.
+    let live = booted(&fw);
     assert!(
-        cell_rows(&m.soc.lcd.fb)[7..14] != cell_rows(&status.soc.lcd.fb)[7..14],
-        "the status screen, not the boot's prompt"
+        cell_rows(&m.soc.lcd.fb)[7..14] != cell_rows(&live.soc.lcd.fb)[7..14],
+        "LIVE, not the boot's prompt"
     );
     compare_golden(&build, "boot-ready", &m.soc.lcd.fb, &[BANNER, RUN_CURSOR]);
     m.run_ms(8000 - 7200);
     compare_golden(&build, "boot-title-full", &m.soc.lcd.fb, &[TITLE_VERSION]);
     m.run_ms(11_200 - 8000);
-    compare_golden(&build, "status", &m.soc.lcd.fb, &[VERSION_CELLS]);
+    compare_golden(&build, "live", &m.soc.lcd.fb, &[]);
 }
 
 #[test]
@@ -757,7 +794,7 @@ fn a_button_skips_the_boot_and_does_nothing_else() {
         m.run_ms(900);
         press(&mut m, button);
         settle(&mut m, &fw);
-        compare_golden(&build, "status", &m.soc.lcd.fb, &[VERSION_CELLS]);
+        compare_golden(&build, "live", &m.soc.lcd.fb, &[]);
     }
 }
 
@@ -771,7 +808,9 @@ fn a_note_skips_the_boot_and_plays() {
     let from = m.soc.periph.audio.len() / 2;
     m.key(A4_KEY, true);
     settle(&mut m, &fw);
-    compare_golden(&build, "status-a4", &m.soc.lcd.fb, &[VERSION_CELLS]);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("live_view_view"));
+    // LIVE names the note on voice 1, as when the note plays after the boot.
+    compare_golden_cells(&build, "live-a4", &m.soc.lcd.fb, &[VOICE1_NOTE]);
     let peak = m.left()[from..]
         .iter()
         .map(|s| s.unsigned_abs())
@@ -799,13 +838,13 @@ fn home_tapped_as_soon_as_the_card_shows_skips_it() {
         gone < shown + 600,
         "the boot went on until {gone} ms (the display came on at {shown} ms): HOME did not skip"
     );
-    compare_golden(&build, "status", &m.soc.lcd.fb, &[VERSION_CELLS]);
+    compare_golden(&build, "live", &m.soc.lcd.fb, &[]);
 }
 
 /// About, from the menu's last item.
 fn open_about(m: &mut Machine, fw: &Firmware) {
     open_menu(m, fw);
-    m.turn(SELECT, MENU_ABOUT);
+    m.turn(SELECT, MENU_ABOUT); // from the first item: the menu's first opening
     m.run_ms(100);
     m.turn(ALGORITHM, 1);
     settle(m, fw);
@@ -1018,3 +1057,168 @@ const ABOUT_WORST_POLL: u64 = 120_000;
 const ABOUT_PER_FRAME: f64 = 180_000.0;
 const BOOT_WORST_POLL: u64 = 75_000;
 const BOOT_PER_FRAME: f64 = 60_000.0;
+
+/// Note keys (key id = 14 + note - 53) of a chord over three octaves, one per voice: A3, E4
+/// and E5, so the scopes show 2, 3 and 4 periods (app/live_view.c).
+const CHORD: [u8; 3] = [14 + 57 - 53, 14 + 64 - 53, 14 + 76 - 53];
+
+/// LIVE's three scopes (app/live_view.h): 160 x 32 pixels from (8, 16), (8, 64), (8, 112).
+fn scope_pixels(fb: &[u16]) -> Vec<u16> {
+    let mut out = Vec::new();
+    for v in 0..3 {
+        let top = (2 + 6 * v) * 8;
+        for y in top..top + 32 {
+            out.extend_from_slice(&fb[y * W + 8..y * W + 168]);
+        }
+    }
+    out
+}
+
+/// The scope pixels in the trace's colours (any but the background, the centre line's and
+/// black), per voice.
+fn trace_pixels(fb: &[u16]) -> [usize; 3] {
+    let idx = indexed(fb);
+    std::array::from_fn(|v| {
+        let top = (2 + 6 * v) * 8;
+        (top..top + 32)
+            .flat_map(|y| (8..168).map(move |x| (x, y)))
+            .filter(|&(x, y)| ![BLUE, 14, 0].contains(&idx[y * W + x]))
+            .count()
+    })
+}
+
+#[test]
+fn live_matches_its_golden_images_and_its_scopes_follow_the_notes() {
+    let Some((build, fw)) = fixture("the LIVE test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("live_view_view"));
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "live", &m.soc.lcd.fb, &[]);
+    let idle = scope_pixels(&m.soc.lcd.fb);
+    let flat = trace_pixels(&m.soc.lcd.fb);
+    // At rest each trace is a flat line across the scope.
+    assert_eq!(flat, [160; 3], "the traces at rest");
+
+    // A4, held to its sustain level (SAW LEAD: decay 9).
+    m.key(A4_KEY, true);
+    m.run_ms(1500);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "live-a4", &m.soc.lcd.fb, &[]);
+    let a4 = trace_pixels(&m.soc.lcd.fb);
+    assert!(a4[0] > 200, "voice 1's trace with A4: {a4:?}");
+    assert_eq!(&a4[1..], [160, 160], "voices 2 and 3 are silent");
+    // A held note stands still: the trace is folded by the oscillator's phase.
+    let held = scope_pixels(&m.soc.lcd.fb);
+    m.run_ms(UI_PERIOD_MS);
+    assert!(
+        scope_pixels(&m.soc.lcd.fb) == held,
+        "a sustained note's trace moved"
+    );
+
+    // Released: flat again, as at rest.
+    m.key(A4_KEY, false);
+    m.run_ms(1500);
+    common::to_mid_frame(&mut m, &fw);
+    assert!(
+        scope_pixels(&m.soc.lcd.fb) == idle,
+        "the scopes are not flat after the release"
+    );
+
+    // A chord: a voice each.
+    for k in CHORD {
+        m.key(k, true);
+    }
+    m.run_ms(1500);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "live-chord", &m.soc.lcd.fb, &[]);
+    let chord = trace_pixels(&m.soc.lcd.fb);
+    assert!(
+        chord.iter().all(|&n| n > 200),
+        "the chord's traces: {chord:?}"
+    );
+    for k in CHORD {
+        m.key(k, false);
+    }
+}
+
+#[test]
+fn live_stays_within_its_budgets() {
+    let Some((_, fw)) = fixture("the LIVE budget test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    m.watch_calls(fw.symbol("ui_poll"));
+    common::run_past_boot(&mut m, &fw);
+    // At rest: composed every frame, nothing sent.
+    let idle = measure(&mut m, &fw, 25, |_| {});
+    // A chord of saws from its note-ons through the attack, decay and sustain.
+    let chord = measure(&mut m, &fw, 75, |m| {
+        for k in CHORD {
+            m.key(k, true);
+        }
+    });
+    for k in CHORD {
+        m.key(k, false);
+    }
+    m.run_ms(1500);
+    // The busiest: three voices of noise held at full sustain (the waveform and sustain CCs
+    // over TRS MIDI). Noise moves every scope cell its trace crosses, every frame.
+    m.midi(&[0xB0, 20, 64, 0xB0, 79, 127]);
+    m.run_ms(100);
+    let noise = measure(&mut m, &fw, 75, |m| {
+        for k in CHORD {
+            m.key(k, true);
+        }
+    });
+    let report = serde_json::json!({
+        "frame_ms": UI_PERIOD_MS,
+        "spi_hz": SPI_HZ,
+        "live_idle": animated_json(&idle),
+        "live_saw_chord": animated_json(&chord),
+        "live_noise_chord": animated_json(&noise),
+    });
+    println!("{report}");
+    assert_eq!(idle.total().windows, 0, "LIVE at rest sent something");
+    for (what, c, per_frame) in [
+        ("idle", &idle, LIVE_IDLE_PER_FRAME),
+        ("saw chord", &chord, LIVE_CHORD_PER_FRAME),
+        ("noise chord", &noise, LIVE_NOISE_PER_FRAME),
+    ] {
+        assert!(
+            c.worst_frame_ms() <= SPI_BUDGET_MS,
+            "{what}: a frame took {:.1} ms of SPI",
+            c.worst_frame_ms()
+        );
+        // app/live_view.h LIVE_VIEW_FRAME_CELLS.
+        let most = c.frames.iter().map(cells).max().unwrap_or(0);
+        assert!(most <= 200, "{what}: a frame sent {most} cells");
+        assert!(
+            c.worst_poll < LIVE_WORST_POLL,
+            "{what}: a ui_poll took {} instructions",
+            c.worst_poll
+        );
+        assert!(
+            c.instructions_per_frame() < per_frame,
+            "{what}: {:.0} instructions a frame",
+            c.instructions_per_frame()
+        );
+    }
+    // The voices take turns at the budget: noise moves on every scope.
+    let n = noise.frames.len() as f64;
+    let avg = f64::from(noise.frames.iter().map(cells).sum::<u32>()) / n;
+    assert!(
+        avg > 100.0,
+        "noise sent {avg:.0} cells a frame: the scopes stood still"
+    );
+}
+
+/// Main-loop instructions in ui_poll (fm1-emu) on LIVE, at M1e Task 4 (docs/art/README.md,
+/// "LIVE"): at rest 13.9k a frame (it composes, sends nothing); a chord of saws 57.8k (5 cells
+/// a frame once it holds still); three voices of noise 206k (146 cells a frame). The busiest
+/// ui_poll, 89k, is a frame of noise's compose; the tap is read half way between frames.
+const LIVE_WORST_POLL: u64 = 100_000;
+const LIVE_IDLE_PER_FRAME: f64 = 16_000.0;
+const LIVE_CHORD_PER_FRAME: f64 = 65_000.0;
+const LIVE_NOISE_PER_FRAME: f64 = 225_000.0;

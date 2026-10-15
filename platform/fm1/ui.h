@@ -14,15 +14,17 @@
 /* The screen is composed at most this often (25 fps); only cells that changed are sent. */
 #define UI_PERIOD_MS 40u
 
-/* After lcd_init: the status view of l under the boot sequence (app/boot.h), the full one if
- * home_held (HOME held at power-on), and its first frame composed at now_ms. It does not wait
+/* After lcd_init: LIVE, the root view, of l and the audio's tap (audio_scope), under the boot
+ * sequence (app/boot.h), the full one if home_held (HOME held at power-on), and its first
+ * frame composed at now_ms. It does not wait
  * on the panel: ui_poll sends that frame like any other (the whole screen, about 80 ms of
  * SPI) and turns the display on once it is out, so the main loop plays the keys and MIDI from
  * the start. now_ms is on ui_poll's clock: the main loop's uptime, which counts from TIMER4's
  * start, not from here. */
 void ui_init(live* l, uint32_t now_ms, int home_held);
 /* Main loop. Every UI_PERIOD_MS it runs a frame (views_frame: the view composes if what it
- * shows changed, app/screen.h). Changed cells go out as runs (one LCD window each), one per
+ * shows changed, app/screen.h), and half a frame later lets the view prepare the next one
+ * (views_prepare), each in a call of its own. Changed cells go out as runs (one LCD window each), one per
  * call and only while the panel is free; the next run is rendered while the last one
  * transfers, so the main loop never waits on the panel. A call with nothing to send returns
  * at once; the first one after the first frame is out turns the display on. */

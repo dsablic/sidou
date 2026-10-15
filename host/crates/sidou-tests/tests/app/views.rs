@@ -16,6 +16,7 @@ pub(crate) struct Ui {
     pub(crate) p: Box<panel>,
     pub(crate) g: Box<grid>,
     pub(crate) v: Box<views>,
+    pub(crate) sc: Box<scope>,
     pub(crate) now: u32,
     pub(crate) held: u32,
 }
@@ -26,16 +27,25 @@ impl Ui {
         let mut p = Box::<panel>::default();
         let mut g = Box::<grid>::default();
         let mut v = Box::<views>::default();
+        let mut sc = Box::<scope>::default();
         unsafe {
             panel_init(&mut *p);
             grid_init(&mut *g, b' ', ((GRID_BLUE << 4) | GRID_LIGHT_BLUE) as u8);
-            views_init(&mut *v, &mut *g, &mut *rig.live, c"V1.2.3".as_ptr());
+            scope_init(&mut *sc);
+            views_init(
+                &mut *v,
+                &mut *g,
+                &mut *rig.live,
+                &mut *sc,
+                c"V1.2.3".as_ptr(),
+            );
         }
         let mut ui = Ui {
             rig,
             p,
             g,
             v,
+            sc,
             now: 0,
             held: 0,
         };
@@ -112,9 +122,19 @@ impl Ui {
     }
 }
 
+/// Opens the status screen from the menu: HOME, SELECT to STATUS, ALGORITHM clockwise.
+pub(crate) fn open_status(ui: &mut Ui) {
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_STATUS as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.settle();
+}
+
 /// Opens the glyph sheet from the menu: HOME, SELECT to CHARSET, ALGORITHM clockwise.
 pub(crate) fn open_charset(ui: &mut Ui) {
     ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
     ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_CHARSET as i32);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
@@ -123,17 +143,23 @@ pub(crate) fn open_charset(ui: &mut Ui) {
 #[test]
 fn home_opens_the_menu_and_goes_back_one_view() {
     let mut ui = Ui::new();
-    assert_eq!(ui.top(), "STATUS");
+    assert_eq!(ui.top(), "LIVE");
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.top(), "MENU");
     ui.press(PANEL_BTN_HOME);
-    assert_eq!(ui.top(), "STATUS");
+    assert_eq!(ui.top(), "LIVE");
     open_charset(&mut ui);
     assert_eq!(ui.top(), "CHARSET");
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.top(), "MENU");
     ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "LIVE");
+    open_status(&mut ui);
     assert_eq!(ui.top(), "STATUS");
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "MENU");
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "LIVE");
     assert_eq!(ui.live().octave, 0, "HOME reached the panel");
 }
 
@@ -176,15 +202,28 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
     let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
-    let rows: Vec<String> = (4..10).map(|r| ui.row(r)).collect();
+    let rows: Vec<String> = (4..12).map(|r| ui.row(r)).collect();
     let body: Vec<String> = rows.iter().map(|r| r[3..27].to_string()).collect();
     assert_eq!(rows[0][2..10].to_string(), "# MENU #");
     // Labels after the cursor cell, values right-aligned against the frame, an arrow for a view.
     assert_eq!(body[1][1..], format!("{:<19}6581", "CHIP"));
     assert_eq!(body[2], format!(" {:<15}SAW LEAD", "PRESET"));
     assert_eq!(body[3], format!(" {:<21}+0", "OCTAVE"));
-    assert_eq!(body[4][..23], format!(" {:<22}", "CHARSET"));
-    assert_eq!(ui.g.ch[8 * COLS + 26], FONT_ARROW_RIGHT as u8);
+    assert_eq!(body[4][..23], format!(" {:<22}", "STATUS"));
+    assert_eq!(body[5][..23], format!(" {:<22}", "CHARSET"));
+    assert_eq!(body[6][..23], format!(" {:<22}", "ABOUT"));
+    for row in 8..11 {
+        assert_eq!(
+            ui.g.ch[row * COLS + 26],
+            FONT_ARROW_RIGHT as u8,
+            "row {row}"
+        );
+    }
+    assert_eq!(
+        rows[7][2..26].chars().filter(|&c| c == '#').count(),
+        24,
+        "the frame's bottom"
+    );
     // The cursor: a block on the selected row for 8 frames, then a space for 8.
     let cursor = |ui: &Ui| ui.g.ch[5 * COLS + 3];
     let mut seen = Vec::new();
@@ -203,8 +242,14 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
 #[test]
 fn select_and_algorithm_do_nothing_outside_the_menu() {
     let mut ui = Ui::new();
-    for view in ["STATUS", "CHARSET"] {
+    for view in ["LIVE", "STATUS", "CHARSET"] {
+        if view == "STATUS" {
+            open_status(&mut ui);
+        }
         if view == "CHARSET" {
+            ui.press(PANEL_BTN_HOME);
+            ui.press(PANEL_BTN_HOME);
+            ui.settle();
             open_charset(&mut ui);
         }
         ui.rig.clear();
@@ -274,11 +319,16 @@ fn the_panel_plays(ui: &mut Ui, view: &str) {
 #[test]
 fn the_panel_plays_the_instrument_as_before_in_every_view() {
     let mut ui = Ui::new();
+    the_panel_plays(&mut ui, "LIVE");
+    open_status(&mut ui);
     the_panel_plays(&mut ui, "STATUS");
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     the_panel_plays(&mut ui, "MENU");
-    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_CHARSET as i32);
+    ui.turn(
+        PANEL_ENC_SELECT,
+        (VIEWS_MENU_CHARSET - VIEWS_MENU_STATUS) as i32,
+    );
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
     assert_eq!(ui.top(), "CHARSET");
@@ -333,6 +383,7 @@ fn a_chip_change_shows_a_toast_and_runs_the_raster() {
 #[test]
 fn the_status_view_shows_the_instrument() {
     let mut ui = Ui::new();
+    open_status(&mut ui);
     assert_eq!(&ui.row(2)[2..7], "SIDOU");
     assert_eq!(
         &ui.row(2)[22..28],
@@ -361,7 +412,7 @@ fn composed(ui: &Ui) -> bool {
 #[test]
 fn an_idle_view_is_not_composed_and_a_change_is() {
     let mut ui = Ui::new();
-    ui.settle();
+    open_status(&mut ui);
     mark(&mut ui);
     for _ in 0..30 {
         ui.frame();
@@ -434,7 +485,7 @@ fn a_capture_takes_home_before_the_views() {
     let mut ui = Ui::new();
     unsafe { screen_capture(&mut ui.v.s, Some(capture_all), std::ptr::null_mut()) };
     ui.press(PANEL_BTN_HOME);
-    assert_eq!(ui.top(), "STATUS", "HOME opened the menu past the capture");
+    assert_eq!(ui.top(), "LIVE", "HOME opened the menu past the capture");
     unsafe { screen_capture(&mut ui.v.s, None, std::ptr::null_mut()) };
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.top(), "MENU");
@@ -444,7 +495,7 @@ fn a_capture_takes_home_before_the_views() {
 fn a_press_of_the_top_button_is_routed_without_running_past_it() {
     let mut ui = Ui::new();
     unsafe { views_buttons(&mut *ui.v, &mut *ui.p, 1 << 31, 1 << 31) };
-    assert_eq!(ui.top(), "STATUS");
+    assert_eq!(ui.top(), "LIVE");
 }
 
 #[test]
@@ -478,6 +529,7 @@ fn update_line(ui: &Ui) -> String {
 #[test]
 fn the_update_box_shows_each_step_and_the_result() {
     let mut ui = Ui::new();
+    open_status(&mut ui);
     for (step, code, text) in [
         (1, 0, "PACKAGE"),
         (2, 0, "CHECK HEAD"),

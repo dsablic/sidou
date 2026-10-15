@@ -163,6 +163,7 @@ fn the_lcd_shows_the_status_screen_and_redraws_only_on_change() {
         return;
     };
     let mut m = booted(&fw);
+    common::open_status(&mut m, &fw);
     let lcd = &m.soc.lcd;
     assert!(lcd.display_on, "DISPON was not sent");
     let fb = lcd.fb.clone();
