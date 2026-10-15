@@ -27,15 +27,17 @@ Follow-ups that aren't tied to a milestone task yet.
   last booted): play the full sequence when it is missing or differs, then
   set it. HOME held at power-on keeps playing the full one.
 
-## Pick the logo; bitmap logos need a pixel region
+## The GitHub avatar and social preview are set by hand
 
-- **Where:** `app/logo.h` (`logo_default`), docs/art/README.md "Logo".
-- **Problem:** Pulse Train is the default until the user picks a logo. Some
-  candidates are full-colour bitmaps (up to 240 x 240), which the cell grid
-  cannot draw with glyphs and overlays (three colours a cell).
-- **Action:** once picked, if it is a bitmap: the converter from
-  `assets/logo/*.png` with its drift test, and a direct pixel region in
-  `app/grid.c`, as docs/art/README.md "Logo bitmaps" describes.
+- **Where:** the repository's settings on GitHub (Settings, General, Social
+  preview) and the owner's account or organisation picture.
+- **Problem:** neither can be set from the repository: GitHub shows a
+  generic preview and the owner's own picture until someone uploads them.
+- **Action:** the owner sets them manually: the avatar from
+  `docs/art/avatar.png` (48 x 48, Cracktro Chrome's S; scale it up by nearest
+  neighbour if a larger upload is wanted), and a social preview from
+  Cracktro Chrome (`assets/logo/cracktro-chrome.png` or the 2x lettering on
+  black, padded to GitHub's 1280 x 640). Redo both if the logo changes.
 
 ## fm1-emu does not emulate USB
 

@@ -198,17 +198,20 @@ Measured in fm1-emu (`screen_changes_and_transitions_stay_within_the_budgets`):
 | Menu idle (the cursor) | 1 in 8 | 1 | 139 | 0.1 ms |
 
 The animated screens compose every frame (`the_boot_and_about_stay_within_their_budgets`,
-260 frames of the full boot and 1800 of About, a full round of its 15 pages):
+260 frames of the full boot and 1920 of About, a full round of its 16 pages), with Cracktro
+Chrome:
 
 | Screen | Cells a frame (average, most) | Windows a frame | SPI a frame (average, worst) | Main loop a frame (average, busiest `ui_poll`) |
 |---|---|---|---|---|
-| Full boot | 29, 150 | 9.6 | 2.5 ms, 12.8 ms | 46k, 37k instructions |
-| About | 94, 148 | 24.5 | 8.2 ms, 12.8 ms | 144k, 91k instructions |
+| Full boot | 24, 150 | 8.1 | 2.1 ms, 12.8 ms | 37k, 33k instructions |
+| About | 87, 163 | 15.9 | 7.5 ms, 14.0 ms | 118k, 72k instructions |
 
-About costs 3.6M instructions a second (1.5 % of the core at 240 MHz). A run's pixels are
+About costs 3.0M instructions a second (1.2 % of the core at 240 MHz). With Pulse Train
+(M1e Task 4) it was 94 cells a frame (148 at most, 12.8 ms), 144k and 91k, and the boot
+46k and 37k: the logo was animated, and Cracktro Chrome is still. A run's pixels are
 written two at a 32-bit store, a cell row from two 4-entry tables (the glyph's colours, and
 the overlay over the background for a blank glyph row): About was 161k and 105k, the boot
-50k and 64k, with a pixel a store.
+50k and 64k, with a pixel a store. A bitmap's run fills two pixels a store as well.
 
 A wipe sends only the rows that differ, once each, and its edge row once
 more; a raster step recolours the 116 border cells in 58 windows. Every frame
@@ -217,7 +220,10 @@ stays inside the 20 ms budget.
 A wipe is sized for a view that holds still: the rows it has revealed must not change
 under it. The animated views (About, the boot's title card) hold their animation while a
 wipe or a raster runs (`screen_animating`), so a wipe into them sends its 150 cells a frame
-at most, 12.8 ms. Before, About's bars, logo and scroller moving in the revealed rows made
+at most, 12.8 ms. Revealing Cracktro Chrome's bitmap costs the main loop no more than cells:
+the wipe into the title card (its whole scene, 4 rows a frame) 134k instructions a frame and
+30k in its busiest `ui_poll`, into About 118k and 65k. Before, About's bars, logo and
+scroller moving in the revealed rows made
 a frame of the wipe into it 243 cells, 21.0 ms, and the title card's stripes 192 cells,
 16.6 ms (`every_wipe_into_an_animated_view_sends_only_its_rows` in fm1-emu, and
 `the_wipe_into_about_sends_only_its_rows` and `the_wipe_into_the_title_card_sends_only_its_rows`
@@ -225,93 +231,119 @@ on the host, at every phase).
 
 ## Logo
 
+**Cracktro Chrome, chosen by the user**, is SIDOU's logo: chunky bevelled SIDOU letters in
+raster bands (white, light grey, cyan, light blue and blue over brown, orange, light red and
+yellow), a black outline and a 4-pixel purple extruded shadow, in a frozen demo-scene intro:
+stars, a cold and a warm raster bar and a perspective grid floor, on black, in the 16
+colours only. It is original art made for SIDOU, drawn pixel by pixel in code.
+
+![Cracktro Chrome on the panel](../../assets/logo/cracktro-chrome.png)
+
+| Asset | What |
+|---|---|
+| `assets/logo/cracktro-chrome.js` | The source: the logo page's drawing code (variant V2), verbatim. `node assets/logo/cracktro-chrome.js` writes the PNGs below; they match Chromium's canvas drawing the page pixel for pixel. |
+| `assets/logo/cracktro-chrome.png` | The scene, 240 x 240, 4 bits a pixel in the art palette's order: what the firmware shows. |
+| `assets/logo/cracktro-chrome-lettering.png`, `-lettering-2x.png` | The lettering and its shadow alone, 229 x 61, on transparency (palette index 16); the 2x, by nearest neighbour, heads the project README. |
+| `docs/art/avatar.png` | The avatar, 48 x 48: the S on stars over two bars. |
+| `app/logo_bitmap.c` | The scene as a `grid_bitmap`, generated (below). |
+
 The logo is a **pluggable asset** (`app/logo.h`): the boot's title card and About draw
 whichever logo `logo_default` names, through a table in flash:
 
-| Field | Pulse Train |
-|---|---|
-| `cols`, `rows`: the footprint in cells | 15 x 5 (120 x 40 pixels) |
-| `overlays`: overlay cells at most | 55 |
-| `cells_per_frame`: the most cells one frame changes | 42 |
-| `draw(grid, col, row, frame, bg)` | frame `frame` of the animation (25 fps, 0 the still) |
+| Field | Cracktro Chrome (default) | Pulse Train |
+|---|---|---|
+| `cols`, `rows`: the footprint in cells | 30 x 8 (240 x 64 pixels, the scene's lettering band) | 15 x 5 (120 x 40 pixels) |
+| `overlays`: overlay cells at most | 0 | 55 |
+| `cells_per_frame`: the most cells one frame changes | 0 (still) | 42 |
+| `draw(grid, col, row, frame, bg)` | the band in the pixel region | frame `frame` of the animation (25 fps, 0 the still) |
+| `scene(grid, frame)`: the title card's full screen | the whole scene in the pixel region | none (NULL) |
 
-`draw` paints every cell of the footprint, glyph, colours and overlay (it clears an overlay
-it does not need), so a view composes it like the rest of its screen. The declared cost and
-overlays are measured (`host/crates/sidou-tests/tests/app/logo.rs`), so a test fails when a
-logo's drawing and its table disagree. `overlays` and `cells_per_frame` are 16-bit, room for
-a logo up to the whole screen (900 cells).
+`draw` paints every cell of the footprint, glyph, colours, overlay and pixel region (it clears
+an overlay it does not need), so a view composes it like the rest of its screen. The declared
+cost and overlays are measured (`host/crates/sidou-tests/tests/app/logo.rs`), so a test fails
+when a logo's drawing and its table disagree. `overlays` and `cells_per_frame` are 16-bit,
+room for a logo up to the whole screen (900 cells).
 
-Each place that shows it gives it a slot, and a test checks `logo_default` fits both
-(`the_default_logo_fits_each_consumers_slot`): the title card 5 rows from row 8, between its
-ramp lines (`BOOT_LOGO_ROW`, `BOOT_LOGO_ROWS`), and About 8 rows from row 2, in its band of
-raster bars (`ABOUT_LOGO_ROW`, `ABOUT_LOGO_ROWS`), both centred.
+Where it goes, and a test checks each logo fits (`each_logo_fits_each_consumers_slot`):
+- **The title card** shows the logo's scene when it has one, with the version on row 1 and
+  PRESS ANY KEY on row 28, both rows black in the scene (`BOOT_SCENE_VERSION_ROW`,
+  `BOOT_SCENE_KEY_ROW`). A logo without a scene gets the old card: a slot 5 rows from row 8,
+  between two ramp lines (`BOOT_LOGO_ROW`, `BOOT_LOGO_ROWS`), the name and the version below.
+- **About** gives it 8 rows from row 0 (`ABOUT_LOGO_ROW`, `ABOUT_LOGO_ROWS`), centred:
+  Cracktro Chrome's lettering band whole, Pulse Train on rows 1-5.
 
-**No transparent background.** About's bars stop at the logo's footprint, a black box. A
-cell holds three colours (background, glyph, overlay); Pulse Train's letter cells use all
-three, and a bar takes two a cell of its own (a lower-half glyph), so the bars cannot pass
-behind the letters. Tried with the letter cells taking the bar's colour as their
-background: the bar's lower half took its upper half's colour in every letter cell, the
-letters' bottom bands and the cyan wave vanished into bars of the same ramp colours, and
-About sent 110 cells a frame instead of 95 (14.3 ms at worst). The gaps between the letters
-are 4 pixels, inside cells that hold letter pixels too, so no bar shows between them either.
+The emulator checks both against `assets/logo/cracktro-chrome.png` pixel for pixel: the
+title card everywhere but its two text rows, and About's band against the scene's pixel
+rows 72-135.
 
-Four concepts from the prototype, all drawn in code on the cell grid:
+**The lettering band** is the scene's cell rows 9-16 (`LOGO_CHROME_BAND_ROW`): the lettering
+takes pixel rows 76-135 (75 is its black outline, on black) and columns 5-233, and nothing
+of the scene's text or floor reaches into the band; its stars come with it.
 
-| Concept | Idea |
-|---|---|
-| **Pulse Train** (default, built) | Slotted raster letters on a pulse wave: the SID's signature waveform is the underline. In motion the stripes roll through the raster ramp and the duty cycle sweeps; the boot screen uses the moving version. |
-| Three Voices | Triangle, saw and pulse traces weave over and under the letters, one per voice. |
-| READY. | The name typed at the prompt in quadrant blocks, with a blinking cursor; it lives on the cell grid, so animating it costs one cell. |
-| 28 Pin | SIDOU where the part number would be on a 28-pin chip; the pins light with the voice gates. |
+**Pulse Train**, the alternative (built), on the grid: the letters are a 5 x 7 face at 4x, so
+each letter pixel is a cell quadrant. Their 28 pixel rows are seven bands of 3 rows and a
+slot, coloured through the raster ramp. A cell row holds two bands: the top one as a `SLOT_*`
+glyph in its colour, the bottom one as an overlay in the next band's. The pulse wave (2 pixels
+thick, cyan) is an overlay on the two rows below. The stripes roll one band every 4 frames
+(frames 2, 6, ...), the wave moves 4 pixels and its duty cycle sweeps every 4 frames (frames
+0, 4, ...), and odd frames change nothing. `logo_default = &logo_pulse_train` brings it back
+everywhere. Its letter cells use all three colours a cell holds, so raster bars cannot pass
+behind them: tried with the letter cells taking the bar's colour as their background, the
+bar's lower half took its upper half's colour in every letter cell, the letters' bottom bands
+and the cyan wave vanished into bars of the same ramp colours, and About sent 110 cells a
+frame instead of 95 (14.3 ms at worst).
 
-**Pulse Train** on the grid: the letters are a 5 x 7 face at 4x, so each letter pixel is a
-cell quadrant. Their 28 pixel rows are seven bands of 3 rows and a slot, coloured through the
-raster ramp. A cell row holds two bands: the top one as a `SLOT_*` glyph in its colour, the
-bottom one as an overlay in the next band's. The pulse wave (2 pixels thick, cyan) is an
-overlay on the two rows below. The stripes roll one band every 4 frames (frames 2, 6, ...),
-the wave moves 4 pixels and its duty cycle sweeps every 4 frames (frames 0, 4, ...), and odd
-frames change nothing, which leaves them to About's raster bars.
-
-**Decision to confirm with the user:** Pulse Train is the default logo until the user picks
-one. Richer pixel-art variants are under consideration too (a chip mascot, cracktro chrome, a
-cassette, keycaps, a scope trace, a desk scene, a sprite sheet, a badge), some of them full
-240 x 240 bitmaps; changing `logo_default` swaps the logo everywhere.
+The other concepts from the prototype, drawn in code on the cell grid, were Three Voices
+(triangle, saw and pulse traces weaving through the letters), READY. (the name typed at the
+prompt in quadrant blocks) and 28 Pin (SIDOU on a 28-pin chip whose pins light with the
+gates). The logo page also has the **metal variants**, explorations only: Metal Chrome
+(blade-cut letters with horn serifs on a dithered glow), Blood Chrome (the same in cold steel
+with a red underglow) and Metal Emblem (a chrome shield with horns, bolts and the spiked
+lettering), and **chapter cards** in the Metal Chrome lettering, full-screen title cards for
+switching into views such as SCENE or performance mode.
 
 ### Logo bitmaps
 
 A cell holds three colours at most (background, glyph, overlay), so a pixel-art logo in the
-16 colours cannot be drawn with glyphs. It would be supplied like the font, and drawn
-through a direct pixel region of the renderer. Neither is built yet.
+16 colours cannot be drawn with glyphs. It is supplied like the font and drawn through the
+renderer's pixel region.
 
-- **Source:** an indexed PNG in `assets/logo/` (e.g. `assets/logo/<name>.png`), at most
-  240 x 240, whose palette entries are art palette colours (the table above, exactly); a
-  colour outside it is an error. A width and height in whole cells keep the footprint exact.
-- **Conversion:** a generator in `host/crates/sidou-tests` (as `src/font.rs` is for the
-  font) writes `app/logo_<name>.c`: 4 bits a pixel, each pixel row run-length coded (a run of
-  one colour as a count and an index), with a table of row offsets so that any 8-pixel cell
-  row can be decoded on its own. A full-screen logo is 28.8 KB unpacked; the runs of flat
-  colour in pixel art usually cut that by half or more. A test checks the generated file
-  against the PNG and fails when it falls behind (`SIDOU_LOGO_UPDATE=1` rewrites it, as
-  `SIDOU_FONT_UPDATE` and `SIDOU_CREDITS_UPDATE` do), and a placeholder PNG of a few cells
-  keeps the path tested before a real logo exists.
-- **Drawing:** the grid gets a pixel region, a rectangle of cells whose pixels
-  `grid_render_run` takes from a callback (here: decode the bitmap's rows for the run's cell
-  row) instead of glyphs and overlays. The logo's `draw` sets the region over its footprint
-  and marks its cells to be sent when its frame changes. A still bitmap costs its cells once:
-  a full screen is 77 ms of SPI, so it goes out under a wipe (8 frames), as a view switch does.
-  An animated one (a blinking part) resends only the cells that change.
+- **Source:** an indexed PNG in `assets/logo/`, at most 240 x 240 and in whole 8 x 8 cells,
+  whose pixels are art palette colours exactly (its palette in any order); anything else is
+  an error.
+- **Conversion:** `host/crates/sidou-tests/src/logo.rs` (as `src/font.rs` is for the font)
+  writes `app/logo_bitmap.c`, a `grid_bitmap` (`app/grid.h`): each pixel row run-length coded,
+  a byte a run of 1..16 pixels (`(length - 1) << 4 | colour`), with a table of where each
+  row's runs start so any row decodes on its own; rows alike share their runs. A test fails
+  when the file falls behind the PNG (`SIDOU_LOGO_UPDATE=1` rewrites it, as
+  `SIDOU_FONT_UPDATE` and `SIDOU_CREDITS_UPDATE` do), and others check the round trip and
+  that the compiled table decodes to the PNG pixel for pixel.
+- **Size:** the whole scene is **4,526 bytes** of flash: 4,046 of runs and 480 of row
+  offsets, 15.7 % of its 28,800 bytes at 4 bits a pixel (6,739 without sharing rows; the
+  black rows and the 2-pixel bars repeat). The firmware image grew 6.2 KB in all. So the
+  whole scene goes on the device, and About takes its band from the same bitmap.
+- **Drawing:** `grid_region(g, col, row, w, h, bitmap, bx, by)` makes w x h cells take their
+  background, pixel for pixel, from the bitmap's cells from (bx, by). Their glyphs'
+  foreground and their overlays still draw over it, so text and overlays work on a picture
+  (the title card's version and PRESS ANY KEY); a blank glyph shows the bitmap alone.
+  `grid_render_run` decodes the run's part of each of its 8 pixel rows straight into the
+  panel's pixels, two a store, then draws the glyph and overlay pixels of the cells that have
+  any. One region at a time: setting it marks the cells it leaves and covers to be sent, the
+  same region again sends nothing, and a logo drawn in cells or a view switch clears it.
 
 What works, and what does not, on this panel and budget:
 
-- **A still logo, or a full-screen splash, works.** It goes out once, under a wipe, and costs
-  nothing after that; the decoder runs only for the cells being sent.
-- **A 240 x 240 logo needs a title layout of its own.** It is the whole screen: no room for
-  the title card's ramp lines, name, version and PRESS ANY KEY (a 5-row slot), nor for About's
-  credits and scroller (an 8-row band). It replaces the card rather than filling its slot.
+- **A still logo, or a full-screen splash, works.** It goes out once, under a wipe (4 rows a
+  frame, 12.8 ms of SPI at most), and costs nothing after that; the decoder runs only for the
+  cells being sent. A full 240 x 240 repaint in one frame would be about 77 ms.
+- **A 240 x 240 logo needs a title layout of its own.** The title card is the scene, with
+  only two lines of text on rows the scene leaves black, and About takes the lettering band.
 - **Palette cycling is not free.** The panel takes RGB565 pixels, not indexes into a palette
-  it keeps: changing a colour means resending every cell that shows it. A cycle over a whole
-  screen of that colour is a full screen of SPI (77 ms) per step, so it is only affordable
-  over a few cells, or a step every several frames.
+  it keeps: changing a colour means resending every cell that shows it. Rolling Cracktro
+  Chrome's raster bands through the lettering would resend its 207 lettering cells in 22
+  windows, 26.7 KB or 17.8 ms of SPI a step, on top of About's own frame (up to 163 cells):
+  over the 20 ms budget. The stripes stay still; a roll would need a frame of its own every
+  few frames, with About's other motion paused for it.
 - **Small logos** of up to three colours a cell (a mono or two-tone mark) need no region:
   overlays carry them, one cell each, as Pulse Train's bands do.
 
@@ -327,7 +359,7 @@ prototype's `Boot`:
 | 2.2 s | `SEARCHING FOR SIDOU` |
 | 3.0 s | `LOADING`, and raster stripes in the border, new every other frame |
 | 5.6 s | `READY.`, then `RUN` typed from 6.2 s |
-| 7.0 s | the title card: the logo between two ramp lines, `SID FOR THE FM-1`, the version and licence, `PRESS ANY KEY` blinking |
+| 7.0 s | the title card: the logo's scene (Cracktro Chrome's), the version and licence above it, `PRESS ANY KEY` blinking below |
 | 10.0 s | the status screen wipes in |
 
 The stripes split each border cell row in two colours at a random height (a lower-eighths
@@ -358,8 +390,11 @@ out within the budget; the first frame is drawn whole before the display is on.
 ## About
 
 ABOUT, the menu's last item (`app/about.h`), is the prototype's cracktro trimmed to the SPI
-budget, on black: two raster bars sweep behind the logo, a ramp line, the credits over a
-starfield, another ramp line, and a sine scroller. HOME goes back.
+budget, on black, laid out around Cracktro Chrome's lettering band: the logo at the top
+(rows 0-7), a ramp line, the credits over a starfield (heading on row 10, lines from row 12),
+another ramp line, and two raster bars sweeping behind a sine scroller (rows 21-29). The bars
+are the scene's cold and warm ones (blue, light blue, cyan; brown, orange, light red), with
+no white, and the scroller is white, so its letters read over every band. HOME goes back.
 
 - **Credits** come from `CREDITS.md`: `host/crates/sidou-tests/src/credits.rs` generates
   `app/credits.c` (a page per section, more when it runs over 8 lines, wrapped at 26
@@ -368,9 +403,10 @@ starfield, another ramp line, and a sine scroller. HOME goes back.
   other credit shares a page with its tail, so no sentence runs into the next credit. A test fails when it falls behind the file;
   `SIDOU_CREDITS_UPDATE=1` rewrites it. A page shows 4.8 s; a first page names SIDOU, its
   version and licence.
-- **The trim**, from the prototype's 240 cells a frame to 93: the bars are 5 bands of 4
-  pixels (two a cell, with a lower-half glyph) and move one band at a time, one bar on each odd
-  frame; the logo moves on even frames; the credits' rows cascade in and out 4 frames apart,
+- **The trim**, from the prototype's 240 cells a frame to 87: the logo is still, sent once
+  under the wipe; the bars are 5 bands of 4 pixels (two a cell, with a lower-half glyph) and
+  move one band at a time, one bar on each odd frame; the credits' rows cascade in and out 4
+  frames apart,
   fading through 4 colours a level every other frame, so at most two text rows change in a
   frame; the scroller's letters are overlays shifted 2 pixels a frame, each bobbing a whole cell
   row on a sine two screens long; the stars are one-pixel overlays in three layers moving a

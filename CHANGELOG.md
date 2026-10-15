@@ -82,8 +82,17 @@ All notable changes are documented here. The format follows
   `LOAD"SIDOU",8,1` sequence with loading stripes; any control skips it
   without its action, and a note skips it and plays. ABOUT in the menu is a
   cracktro with raster bars, stars, a sine scroller and the credits,
-  generated from CREDITS.md. The logo is a pluggable asset (`app/logo.h`),
-  Pulse Train for now.
+  generated from CREDITS.md. The logo is a pluggable asset (`app/logo.h`).
+- Cracktro Chrome, chosen by the user, is SIDOU's logo: bevelled chrome
+  letters in raster bands with a purple shadow, over stars, raster bars and a
+  grid floor (`assets/logo/`, its drawing code and indexed PNGs). The renderer
+  gets a pixel region (`grid_region`): cells that take their background from a
+  run-length coded bitmap in flash, with text and overlays still drawn over
+  it; the scene is 4.5 KB, generated into `app/logo_bitmap.c` from its PNG.
+  The title card is the whole scene, revealed under the wipe; About is laid
+  out around its lettering band, with the bars behind a white scroller, and
+  costs less than with Pulse Train, which stays as the alternative. The
+  README carries the lettering, and `docs/art/avatar.png` the avatar.
 - LIVE, the screen at power-on (`app/live_view.h`): an oscilloscope per voice,
   envelope bars, the filter's curve, VU meters and the effect slots, after the
   prototype's. The audio interrupt taps the voices every 16 samples into a

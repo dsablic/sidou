@@ -13,7 +13,7 @@ lists the prerequisites.
 |---|---|---|
 | Everything except the emulator gate | `cargo test --workspace --release` | all crates |
 | Unit tests | `cargo test --release -p sidou-tests --test unit` | `crates/sidou-tests/tests/unit/` |
-| App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
+| App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_LOGO_UPDATE=1` `app/logo_bitmap.c` from `assets/logo/cracktro-chrome.png`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Filter against reSIDfp (transfer functions, sweeps) | `cargo test --release -p sidou-tests --test filter` | `crates/sidou-tests/tests/filter.rs`, `src/filter_sweeps.rs` |
@@ -404,9 +404,13 @@ it costs. It reaches each view through the panel, as a player would (HOME,
 SELECT, ALGORITHM):
 - **snapshots:** the status screen after boot, with a note held and with the
   toast OCT+ shows, MIDI learn's frame asking for a knob and for a CC and its
-  LEARNED toast, the menu, and the glyph sheet (every glyph, the palette
-  and a pixel overlay) match the golden images in `tests/golden/lcd/`, pixel
-  for pixel, and every pixel is one of the 16 palette colours. The status
+  LEARNED toast, the menu, the glyph sheet (every glyph, the palette
+  and a pixel overlay), the boot's prompt, loading and title card, and About
+  match the golden images in `tests/golden/lcd/`, pixel
+  for pixel, and every pixel is one of the 16 palette colours. The title
+  card (but for its version and PRESS ANY KEY rows) and About's top 64 pixel
+  rows are also checked against the logo's source,
+  `assets/logo/cracktro-chrome.png`, pixel for pixel. The status
   screen's version cells and the menu's cursor cell are left out; the cursor
   is checked to blink. Going back from the glyph sheet restores the menu and
   then the status screen exactly, and the toast goes after 1.5 s. The goldens
@@ -422,12 +426,23 @@ SELECT, ALGORITHM):
   note is one window under 1 ms of SPI, every frame of a transition stays
   under the 20 ms SPI budget, a wipe sends no more than a full screen and its
   edge rows, the raster sends every other frame, and no single pass of the
-  main loop renders more than two runs.
+  main loop renders more than two runs. The full boot and a round of About
+  are bounded in instructions a frame and in their busiest `ui_poll`, and so
+  are the wipes into the title card and About, which reveal the logo's
+  bitmap.
 
 The host tests cover the same machinery without the device:
 `tests/app/screen.rs` (the view stack, focus, routing, the capture, the
 toast, the cursor blink, and the wipe and raster frame by frame against the
-SPI budget), `widget.rs` (frames, numbers, bars, the menu), `views.rs`
+SPI budget), `grid.rs` (runs, overlays, held rows, and the pixel region:
+pixel for pixel against the logo's PNG, text and overlays over it, which
+cells it sends when, refusals, and random regions mixed with edits),
+`logo_bitmap.rs` (the converter: its round trip, the drift test, the compiled
+table against the PNG, the palette and size checks), `logo.rs` (each logo's
+footprint, cost and overlays as declared, Cracktro Chrome's band and scene
+against the PNG), `boot.rs` and `about.rs` (the sequences, the layouts with
+either logo, the SPI budget a frame and under the wipes), `widget.rs`
+(frames, numbers, bars, the menu), `views.rs`
 (HOME and the menu, the panel playing as before in every view, the toasts) and
 `learn_view.rs` (MIDI learn's frame, gesture, cancel, timeout and clearing);
 `midi_learn.rs` has learn's state machine and its bindings through MIDI in and out.

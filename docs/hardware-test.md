@@ -93,9 +93,11 @@ Notes:
 
 ## 3. Boot
 
-- [ ] The title card appears: the SIDOU logo on black with its stripes
-  rolling and its pulse wave moving, "SID FOR THE FM-1", the version, and
-  "PRESS ANY KEY" blinking. Time from power-on to it:
+- [ ] The title card appears: Cracktro Chrome's scene, the chrome SIDOU
+  letters with their purple shadow over stars, raster bars and a grid floor
+  (as `assets/logo/cracktro-chrome.png`; look for wrong colours, a shifted
+  row or torn cells), the version at the top and "PRESS ANY KEY" blinking at
+  the bottom. Time from power-on to it:
 - [ ] About 1.2 s later LIVE wipes in from the top: C64 blue, a light blue
   header line "LIVE ... 6581 SAW LEAD ... OCT+0", three voice boxes "V1 SAW"..
   "V3 SAW" with a flat yellow line each, FILTER LP and VU boxes, and the
@@ -187,7 +189,7 @@ which printed control did it.
 | HOME (button 8) | from LIVE, the menu (a wipe down from the top); in the menu, back to LIVE (a wipe up from the bottom) | | [ ] |
 | SAVE (button 9) | a MIDI LEARN frame at the bottom of the screen, TURN A KNOB (section 7, MIDI learn); HOME closes it | | [ ] |
 | SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, PRESET, OCTAVE, STATUS, CHARSET and ABOUT | | [ ] |
-| ALGORITHM (encoder 1), in the menu | changes the item under the cursor (CHIP: clockwise 8580, counter-clockwise 6581, and a further turn the same way changes nothing; PRESET; OCTAVE -3..+3); clockwise on STATUS opens the status screen (the numbers), on CHARSET the glyph sheet, on ABOUT the credits (raster bars, the logo, the credits pages fading, stars, a sine scroller), and HOME goes back to the menu | | [ ] |
+| ALGORITHM (encoder 1), in the menu | changes the item under the cursor (CHIP: clockwise 8580, counter-clockwise 6581, and a further turn the same way changes nothing; PRESET; OCTAVE -3..+3); clockwise on STATUS opens the status screen (the numbers), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
 
 - [ ] A held note keeps its pitch when the octave changes, and stops when
   the key is released.

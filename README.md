@@ -1,5 +1,7 @@
 <!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<p align="center"><img src="assets/logo/cracktro-chrome-lettering-2x.png" alt="SIDOU, in chunky bevelled chrome letters with raster bands and a purple shadow" width="458" height="122"></p>
+
 # SIDOU
 
 [![CI](https://github.com/dsablic/sidou/actions/workflows/ci.yml/badge.svg)](https://github.com/dsablic/sidou/actions/workflows/ci.yml)
