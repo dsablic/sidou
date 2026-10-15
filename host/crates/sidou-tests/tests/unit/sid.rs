@@ -744,3 +744,74 @@ fn the_6581_low_and_high_pass_are_inverted() {
     assert!(polarity(SID_MODEL_8580, 0x10, 0xe0) > 0.5);
     assert!(polarity(SID_MODEL_8580, 0x40, 0x10) > 0.5);
 }
+
+/// sid_set_filter_nonlinearity clamps its amount to [0, 2] and takes NaN as 0: below -0.5
+/// the filter runs to inf and NaN at low cutoffs (and NaN to int16 is undefined), and from
+/// about 3 the band-pass saturates at FC 0.
+#[test]
+fn the_6581_non_linearity_amount_is_clamped_to_0_to_2() {
+    let nl = |amount: f32| {
+        let mut s = new_sid(SID_MODEL_6581);
+        unsafe { sid_set_filter_nonlinearity(&mut *s, amount) };
+        let n = s.nl;
+        (n.level, n.level_off, n.load, n.floor)
+    };
+    assert_eq!(nl(5.0), nl(2.0));
+    assert_eq!(nl(f32::INFINITY), nl(2.0));
+    assert_eq!(nl(-0.6), nl(0.0));
+    assert_eq!(nl(-1.0), nl(0.0));
+    assert_eq!(nl(f32::NEG_INFINITY), nl(0.0));
+    assert_eq!(nl(f32::NAN), nl(0.0));
+    assert_eq!(nl(0.0), (0.0, 0.0, 0.0, 0.0));
+    assert_ne!(nl(2.0), nl(1.0));
+    assert_eq!(nl(2.0).0, 2.0 * nl(1.0).0);
+}
+
+/// Across the amount's range, three loud voices into the filter at full resonance stay
+/// finite and bounded, at every mode and at the cutoff's ends and middle: no state runs
+/// away and the output never sits at full scale.
+#[test]
+fn the_6581_filter_is_stable_across_the_non_linearity_range() {
+    for step in 0..=8 {
+        let amount = step as f32 * 0.25;
+        for fc in [0u16, 64, 300, 1024, 2047] {
+            for mode in [0x1fu8, 0x2f, 0x4f] {
+                let mut s = new_sid(SID_MODEL_6581);
+                unsafe { sid_set_filter_nonlinearity(&mut *s, amount) };
+                for (v, (freq, wave)) in [(0x1d45u16, 0x21u8), (0x0b00, 0x81), (0x2b00, 0x41)]
+                    .into_iter()
+                    .enumerate()
+                {
+                    let b = 7 * v as u8;
+                    write(&mut s, b, (freq & 0xff) as u8);
+                    write(&mut s, b + 1, (freq >> 8) as u8);
+                    write(&mut s, b + 2, 0x00);
+                    write(&mut s, b + 3, 0x08);
+                    write(&mut s, b + 5, 0x00);
+                    write(&mut s, b + 6, 0xf0);
+                    write(&mut s, b + 4, wave);
+                }
+                write(&mut s, 0x15, (fc & 7) as u8);
+                write(&mut s, 0x16, (fc >> 3) as u8);
+                write(&mut s, 0x17, 0xf7);
+                write(&mut s, 0x18, mode);
+                let out = render(&mut s, 44_100 / 4);
+                let f = s.svf;
+                for x in [f.ic1, f.ic2, f.lp, f.bp, f.hp, f.bpn, s.out_lp] {
+                    assert!(
+                        x.is_finite() && x.abs() < 64.0,
+                        "amount {amount}, FC {fc}, mode {mode:#x}: the state is {x}"
+                    );
+                }
+                let pinned = out
+                    .iter()
+                    .filter(|&&x| x == i16::MAX || x == i16::MIN)
+                    .count();
+                assert!(
+                    pinned < out.len() / 100,
+                    "amount {amount}, FC {fc}, mode {mode:#x}: {pinned} samples at full scale"
+                );
+            }
+        }
+    }
+}

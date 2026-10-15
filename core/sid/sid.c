@@ -91,6 +91,11 @@ static float exp_neg(float x) {
 }
 
 void sid_set_filter_nonlinearity(sid* s, float amount) {
+    if (!(amount >= 0.0f)) { /* NaN too */
+        amount = 0.0f;
+    } else if (amount > 2.0f) {
+        amount = 2.0f;
+    }
     float fs = (float)s->sample_rate;
     s->nl.level = amount * NL_LEVEL * (44100.0f / fs);
     s->nl.level_off = -s->nl.level * s->nl.level_ref;

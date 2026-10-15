@@ -121,9 +121,16 @@ int sid_set_filter_curve(sid* s, uint32_t curve);
  * rise with the swing in the threshold region, its fall under the DC load of the voices
  * routed into it, and its lowest cutoff. 1 is reSIDfp's, what sid_init sets; 0 makes the
  * filter linear; between and beyond scale it (M1c Task 3's chip profiles and its age/heat
- * control blend it). The 8580 ignores it. It writes three floats, one at a time, which the
- * audio path reads every sample: call it from anywhere, while the chip plays; a sample
- * may take some old and some new. */
+ * control blend it). The amount is clamped to [0, 2], and NaN is 0: below about -0.5 the
+ * filter runs to inf and NaN at low cutoffs, and from about 3 the band-pass saturates at
+ * FC 0. The 8580 ignores it.
+ * It writes four floats (nl.level, level_off, load, floor), one at a time. A render takes
+ * them once, when it starts (sid_render, sid_render_tap), so an update that races one
+ * gives that one block some old and some new values: benign. Main context only: it and
+ * sidou_tanf are in flash on the device, so never call it from the audio interrupt or
+ * through the register ring. sid_init resets the amount to 1, so after a model switch
+ * (M1c: prepare_spare runs sid_init on the spare chip) apply the profile's amount to the
+ * spare again before the swap. */
 void sid_set_filter_nonlinearity(sid* s, float amount);
 
 /* Points the chip at other voice DACs (sid_dac_build), which must outlive it; sid_init
