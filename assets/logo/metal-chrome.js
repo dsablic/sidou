@@ -23,7 +23,13 @@
 //   the README; the 2x is scaled by nearest neighbour.
 // - docs/art/avatar.png: the avatar, 48 x 48 (Cracktro Chrome's is
 //   assets/logo/cracktro-chrome-avatar.png).
-// Its pixels were checked against Chromium's canvas drawing the logo page (all equal).
+// - assets/logo/title-<name>.png: the title cards' held frames, 240 x 240 (THE OSCILLATOR,
+//   THE SCENE, THE CHIP), and title-glow.png their glow alone: the page's chapter cards
+//   (chapterCard, verbatim) adapted to the cell grid below (titleCard). The firmware's title
+//   cards are generated from them (host/crates/sidou-tests/src/title_card.rs,
+//   app/title_card_bitmap.c).
+// Their pixels were checked against Chromium's canvas drawing the logo page, with the title
+// card code added to it (all equal).
 
 const C={k:'#000000',w:'#ffffff',r:'#68372b',c:'#70a4b2',p:'#6f3d86',g:'#588d43',b:'#352879',y:'#b8c76f',o:'#6f4f25',n:'#433900',R:'#9a6759',d:'#444444',m:'#6c6c6c',G:'#9ad284',B:'#6c5eb5',l:'#959595'};
 const R=(x,y,w,h,c)=>{X.fillStyle=C[c];X.fillRect(x,y,w,h)};
@@ -105,10 +111,61 @@ function vm(tr,s,glowStops,under,tag){const M=mmask('SIDOU',7,5,8,3),ox=Math.flo
 function v9(tr){vm(tr,HOT,['k','b','p','R'],null,'FORGED IN SILICON FOR THE FM-1')}
 function a9(){R(0,0,48,48,'k');const M=mmask('S',4,3,4,0);halo(M,14,5,7,['k','b','p','R']);metal(M,14,5,{...HOT,ext:2,inner:null});star(6,8,0);star(41,39,0)}
 
-// ---- not from the page: the lettering alone, and the export ----
+/* ---------- Chapter cards: roman line, THE, big metal title ---------- */
+const CH=[['I','OSCILLATOR'],['II','FILTER'],['III','SCENE']];
+function mfit(word,maxW){const cols=[...word].reduce((a,c)=>a+(MG[c]?MG[c][0].length:3),0);for(let cw=6;cw>=3;cw--){const gap=Math.max(3,cw-2);if(cols*cw+gap*(word.length-1)<=maxW)return{cw,gap,ch:Math.max(3,Math.round(cw*.75)),sh:Math.round(cw*1.3)}}return{cw:3,gap:2,ch:3,sh:4}}
+function chapterCard(n,o={}){const[num,word]=CH[n],g=o.glow??1,wipe=o.wipe??240;R(0,0,240,240,'k');
+  const f=mfit(word,226),W=mmask(word,f.cw,f.ch,f.sh,f.gap),T=mmask('THE',2,2,4,2),blockH=10+10+T.h+10+W.h,y0=Math.round(120-blockH/2)-4;
+  const ty=y0+20,wy=ty+T.h+10,wx=Math.floor((240-W.w)/2),tx=Math.floor((240-T.w)/2);
+  if(g>0)airbrush(120,wy+W.h/2,170,70+W.h,['k','b','p','r'],g*.62);
+  if(g>=1){[[24,34],[212,46],[34,206],[200,198],[150,24],[70,222]].forEach(([x,y],i)=>star(x,y,i<2));mstars(90+n,18,8,232)}
+  if(wipe<=0)return;
+  X.save();X.beginPath();X.rect(0,0,wipe,240);X.clip();
+  const cap=`CHAPTER ${num}`,cw2=tw(cap,1)+(cap.length-1)*2,cx0=Math.round(120-cw2/2);
+  [...cap].forEach((c,i)=>txt(c,cx0+i*6,y0,'R'));
+  [[cx0-34,cx0-8],[cx0+cw2+8,cx0+cw2+34]].forEach(([a,b])=>{R(a,y0+2,b-a,1,'r');D(a-2,y0+2,'R');D(b+1,y0+2,'R')});
+  halo(T,tx,ty,6,['k','r','p']);metal(T,tx,ty,{...HOT,ext:1,inner:null});
+  const big=f.cw>=5;halo(W,wx,wy,big?11:8,['k','r','p']);halo(W,wx,wy,big?9:6,['k','r','R'],.8,big?5:3);metal(W,wx,wy,{...HOT,ext:big?3:1,inner:big?'R':null,ramp:big?HOT.ramp:['r','R','R','y','w']});
+  const ry=wy+W.h+12;R(60,ry,120,1,'p');R(84,ry,72,1,'R');D(120,ry-1,'w');D(119,ry,'w');D(121,ry,'w');D(120,ry+1,'w');
+  flare(wx+W.w-2,wy+f.sh,10);
+  X.restore()}
+
+// ---- not from the page: the lettering alone, the title cards, and the export ----
 
 // The scene's lettering, its outline and its shadow, where the scene has them (vm's).
 function lettering(){const M=mmask('SIDOU',7,5,8,3);metal(M,Math.floor((240-M.w)/2),82,HOT)}
+
+// The title cards: chapterCard above without its chapter line, for the firmware's cell grid
+// (app/title_card.h). What differs from the page:
+// - no "CHAPTER n" line: the block (THE, the title, the rule under it) is centred on the
+//   screen instead;
+// - the glow is one for every card, centred on the screen, and drawn a cell at a time: each
+//   8 x 8 cell is the font's ordered-dither glyph D0..D15 (4 x 4 Bayer, BAY above: a pixel is
+//   set where BAY is below n) in two neighbouring stops of its colours, its level L (0..47,
+//   in 16ths of a stop) the page's airbrush at the cell's centre. So the firmware draws the
+//   glow with glyphs, and fades it in through levels k = 1..4 of 4 (floor(L * k / 4)) at no
+//   cost in flash; only the cells that differ from the glow (the letters, their halos, the
+//   rule, the glint, the stars) are pixels from a bitmap;
+// - one star field (the page's seed for chapter I) for every card;
+// - the metal alphabet gets a P (for THE CHIP), drawn after R and F.
+MG.P=['b.....','####b.','#####b','##cd##','##ba##','#####c','####c.','##....','##....','##....','dc....'];
+const TITLES=[['OSCILLATOR','oscillator'],['SCENE','scene'],['CHIP','chip']];
+const GLOW={cx:120,cy:120,rx:170,ry:130,amt:.62,stops:['k','b','p','r']};
+// A cell's glow level, 0..47.
+function glowLevel(c,r){const e=Math.hypot((8*c+4-GLOW.cx)/GLOW.rx,(8*r+4-GLOW.cy)/GLOW.ry);if(e>=1)return 0;
+  const t=GLOW.amt*(1-e)*(1-e)*1.6;return Math.min(47,Math.round(Math.min(1,t)*48))}
+// The glow at level k of 4.
+function glow(k){for(let r=0;r<30;r++)for(let c=0;c<30;c++){const L=Math.floor(glowLevel(c,r)*k/4),i=L>>4,n=L&15;
+  for(let y=0;y<8;y++)for(let x=0;x<8;x++){const col=BAY[(y&3)*4+(x&3)]<n?GLOW.stops[i+1]:GLOW.stops[i];if(col!=='k')D(8*c+x,8*r+y,col)}}}
+// A title card's held frame: the glow, the stars, THE and the title in metal, the rule, the glint.
+function titleCard(word){R(0,0,240,240,'k');glow(4);
+  [[24,34],[212,46],[34,206],[200,198],[150,24],[70,222]].forEach(([x,y],i)=>star(x,y,i<2));mstars(90,18,8,232);
+  const f=mfit(word,226),W=mmask(word,f.cw,f.ch,f.sh,f.gap),T=mmask('THE',2,2,4,2),blockH=T.h+10+W.h+12+2;
+  const ty=Math.round(120-blockH/2),wy=ty+T.h+10,wx=Math.floor((240-W.w)/2),tx=Math.floor((240-T.w)/2);
+  halo(T,tx,ty,6,['k','r','p']);metal(T,tx,ty,{...HOT,ext:1,inner:null});
+  const big=f.cw>=5;halo(W,wx,wy,big?11:8,['k','r','p']);halo(W,wx,wy,big?9:6,['k','r','R'],.8,big?5:3);metal(W,wx,wy,{...HOT,ext:big?3:1,inner:big?'R':null,ramp:big?HOT.ramp:['r','R','R','y','w']});
+  const ry=wy+W.h+12;R(60,ry,120,1,'p');R(84,ry,72,1,'R');D(120,ry-1,'w');D(119,ry,'w');D(121,ry,'w');D(120,ry+1,'w');
+  flare(wx+W.w-2,wy+f.sh,10)}
 
 let X;
 
@@ -142,5 +199,7 @@ function png(img){const zlib=require('zlib');const clear=img.px.includes(255);co
 if(typeof module!=='undefined'&&require.main===module){const fs=require('fs'),path=require('path');const here=__dirname,root=path.join(here,'../..');
   const word=crop(draw(lettering,240,240));
   const out={[path.join(here,'metal-chrome.png')]:draw(()=>v9(false),240,240),[path.join(here,'metal-chrome-lettering.png')]:word,
-    [path.join(here,'metal-chrome-lettering-2x.png')]:scale(word,2),[path.join(root,'docs/art/avatar.png')]:draw(a9,48,48)};
+    [path.join(here,'metal-chrome-lettering-2x.png')]:scale(word,2),[path.join(root,'docs/art/avatar.png')]:draw(a9,48,48),
+    [path.join(here,'title-glow.png')]:draw(()=>{R(0,0,240,240,'k');glow(4)},240,240)};
+  for(const[word,name]of TITLES)out[path.join(here,`title-${name}.png`)]=draw(()=>titleCard(word),240,240);
   for(const[file,img]of Object.entries(out)){fs.writeFileSync(file,png(img));console.log(`${path.relative(root,file)}: ${img.w} x ${img.h}`)}}
