@@ -1107,8 +1107,45 @@ controllers (bend, wheel, aftertouch) are one set for every channel, like the no
   width is a parameter, not the wheel's position, and is kept). A gap in the input does
   the same, so a lost return to the centre cannot leave the pitch bent.
 
+## Output
+
+SIDOU sends its parameter changes over USB (the USB-MIDI IN endpoint, cable 0), so a
+DAW can record the panel as automation and play it back. Nothing goes out of the TRS
+jack, which is MIDI IN only.
+
+- **What:** a parameter that changes on the panel (the knobs, MASTER, the FX button,
+  the effect-slot controls) goes out as the map's CC: the value as the CC curve gives it,
+  round(value * 127 / max). A preset from the panel (K4) goes out as a program change,
+  and the parameters it loads do not (the program change carries them).
+- **High resolution:** an option, off by default, sends the parameters of more than
+  128 values (cutoff, pulse width, volume) as their NRPNs instead, at full resolution.
+  A parameter with no CC (the bend range, the expression targets) always goes as its
+  NRPN, and so does the pulse width while the mod wheel drives another target (CC 1 is
+  then the wheel). An NRPN is {nrpn} CCs, without running status: 99 and 98 its
+  number, 6 and 38 the value's MSB and LSB (value / 128, value % 128), which is the
+  order the input above takes; no null NRPN follows.
+- **Channel:** 1 by default. Until M2 stores settings, the channel and the
+  high-resolution option are build options (CMake `SIDOU_MIDI_OUT_CHANNEL`, 1..16, and
+  `SIDOU_MIDI_OUT_NRPN`). The input stays omni.
+- **No echo:** a change that came in over MIDI, from either port, is never sent back:
+  the sender has it, and a DAW recording with MIDI thru on would otherwise loop. If
+  MIDI changes a parameter after the panel did, and before the panel's change went out,
+  MIDI's wins and nothing is sent. So TRS input is not passed on to USB: SIDOU is no
+  MIDI thru, and only the panel's changes go out.
+- **Rate:** at the instrument's {hz} Hz tick, at most one message per parameter (its
+  latest value) and {tick} packets in all a tick. A value that sends as the one last
+  sent (or received), such as a pulse-width move within one CC step, sends nothing.
+  What does not fit waits for the next tick, still as one latest value: nothing queues
+  up. With no host (no cable, or the computer asleep) the changes are dropped, so a host
+  that comes later gets none stale.
+- **Limit:** a parameter the panel changes in the same tick as the preset counts as
+  loaded by it and is not sent.
+
 ",
-        last = LIVE_PRESET_COUNT - 1
+        last = LIVE_PRESET_COUNT - 1,
+        nrpn = MIDI_OUT_NRPN_PACKETS,
+        hz = LIVE_TICK_HZ,
+        tick = MIDI_OUT_TICK_PACKETS
     )
 }
 

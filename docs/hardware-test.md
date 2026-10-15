@@ -213,6 +213,21 @@ Notes:
   contributors" (pid.codes test VID/PID 1209:0001). Record what the OS shows:
 - [ ] The same note, CC and program tests as section 7 pass over USB.
 - [ ] TRS and USB at the same time both play.
+- [ ] **MIDI out (M1d):** in a DAW (or a MIDI monitor) on the SIDOU input, turn K1:
+  CC 74 on channel 1 follows the knob, at most a message every 10 ms, and stops when
+  the knob stops. K2 sends CC 71, K3 CC 1, MASTER CC 7, FX CC 25 (127 for the 8580,
+  0 for the 6581), K4 a program change 0..3 and nothing else, and EDIT held with K1..K4
+  CCs 103..106 for the Distortion slot (SCL moves to 108..111 and 113..116). Record
+  what the monitor shows for one K1 turn:
+- [ ] Record K1 as automation in the DAW, then play it back into SIDOU over USB: the
+  cutoff moves as recorded, and the monitor shows no CCs coming back from SIDOU while
+  it plays (no echo).
+- [ ] With the DAW's MIDI thru (input monitoring) on, send CC 74 to SIDOU over USB and
+  over TRS: nothing comes back from SIDOU, so no feedback loop, no runaway messages.
+- [ ] Notes from the keys are not sent (M1: parameters only).
+- [ ] With the DAW closed (the port open by no application), turn the knobs for a
+  minute: the sound and the panel stay responsive; opening the DAW afterwards gets no
+  burst of old values beyond at most 64 messages.
 - [ ] Unplug the USB cable while playing (on battery): the sound goes on
   without dropouts, and plugging it back in enumerates again within a few
   seconds.

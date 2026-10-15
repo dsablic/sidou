@@ -65,6 +65,14 @@ algorithm, Amount, A, B, Mix). CC 120 and 123 release every note. The chip model
 NRPN 1/5) changes at the next 10 ms tick, to the last value received, so a stream of
 changes resets the chip at most 100 times a second; the FX button changes it at once.
 
+**MIDI out (USB only):** what you change on the panel goes out over USB on channel 1, so
+a DAW can record it as automation: each knob, MASTER, FX and the effect-slot controls as
+the parameter's CC (above), K4 as a program change. At most one message per parameter
+every 10 ms, with its latest value. A change that came in over MIDI (TRS or USB) is never
+sent back, so recording with the DAW's MIDI thru on does not loop, and TRS input is not
+passed on to USB. The channel and 14-bit NRPNs for cutoff, pulse width and volume are
+build options for now: [midi.md](midi.md), Output.
+
 An algorithm CC picks the algorithm in order (above) by dividing 0..127 evenly
 among the slot's algorithms: for the FX slot's five, 0..25 OFF, 26..51 DELAY, 52..76
 PING-PONG, 77..102 REVERB, 103..127 LUSH. A control CC (0..127) is the control's whole
