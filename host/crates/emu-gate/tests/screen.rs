@@ -279,8 +279,21 @@ fn the_menu_matches_its_golden_image_and_its_cursor_blinks() {
 const SAVE: u8 = 9;
 const K1: u8 = 2;
 
+/// Rows 0..22, every cell: what the views under MIDI learn's frame show, theirs to test.
+/// The frame is rows 23..26 (app/learn_view.h LEARN_VIEW_ROW), the toast row 27.
+const ABOVE_THE_LEARN_FRAME: [(usize, usize, usize); 23] = {
+    let mut rows = [(0, 0, W / 8); 23];
+    let mut r = 0;
+    while r < 23 {
+        rows[r].1 = r;
+        r += 1;
+    }
+    rows
+};
+
 /// MIDI learn's frame (app/learn_view.h) over the status screen as it asks for a knob, then
-/// for a CC, and the toast once CC 21 came over TRS.
+/// for a CC, and the toast once CC 21 came over TRS. Only rows 23..27 count, the frame's and
+/// the toast's (and the border): the view under the frame is not this test's.
 #[test]
 fn midi_learn_prompts_match_their_golden_images() {
     let Some((build, fw)) = fixture("the screen test") else {
@@ -289,15 +302,20 @@ fn midi_learn_prompts_match_their_golden_images() {
     let mut m = booted(&fw);
     m.key(SAVE, true);
     settle(&mut m, &fw);
-    compare_golden(&build, "learn-knob", &m.soc.lcd.fb, &[VERSION_CELLS]);
+    compare_golden(&build, "learn-knob", &m.soc.lcd.fb, &ABOVE_THE_LEARN_FRAME);
     m.turn(K1, 1);
     settle(&mut m, &fw);
-    compare_golden(&build, "learn-cc", &m.soc.lcd.fb, &[VERSION_CELLS]);
+    compare_golden(&build, "learn-cc", &m.soc.lcd.fb, &ABOVE_THE_LEARN_FRAME);
     m.key(SAVE, false);
     m.midi(&[0xB0, 21, 64]);
     m.run_ms(200);
     common::to_mid_frame(&mut m, &fw);
-    compare_golden(&build, "learn-learned", &m.soc.lcd.fb, &[VERSION_CELLS]);
+    compare_golden(
+        &build,
+        "learn-learned",
+        &m.soc.lcd.fb,
+        &ABOVE_THE_LEARN_FRAME,
+    );
     assert_eq!(
         common::top_view(&mut m, &fw),
         fw.symbol("views_status"),
