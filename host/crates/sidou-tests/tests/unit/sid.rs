@@ -492,3 +492,72 @@ fn three_voices_at_maximum_resonance_headroom() {
     let peak = reference.iter().fold(0.0f32, |m, &v| m.max(v.abs())) * 32768.0;
     assert!(peak >= 32700.0, "reSIDfp's 8580 peaks at {peak:.0} here");
 }
+
+/// Voice 3 as SAW LEAD plays it (attack 0, decay 9, sustain 10, release 6), held, then
+/// released to 0: the ADSR delay's setting for the next gate.
+fn released_voice_3(gate_reset: i32) -> Box<sid> {
+    let mut s = new_sid(SID_MODEL_6581);
+    unsafe { sid_set_gate_reset(&mut *s, gate_reset) };
+    write(&mut s, 0x13, 0x09);
+    write(&mut s, 0x14, 0xa6);
+    write(&mut s, 0x12, 0x21);
+    clock(&mut s, 100_000);
+    write(&mut s, 0x12, 0x20);
+    clock(&mut s, 4_000_000);
+    assert_eq!(read(&mut s, 0x1c), 0);
+    s
+}
+
+/// Cycles from the gate until ENV3 reads nonzero, at most `limit`.
+fn env3_rises_after(s: &mut sid, limit: u32) -> Option<u32> {
+    write(s, 0x12, 0x21);
+    (1..=limit).find(|_| {
+        clock(s, 1);
+        read(s, 0x1c) != 0
+    })
+}
+
+#[test]
+fn sid_init_leaves_the_gate_reset_off_on_every_voice() {
+    let mut s = new_sid(SID_MODEL_8580);
+    assert!(s.env.iter().all(|e| e.gate_reset == 0));
+    unsafe { sid_set_gate_reset(&mut *s, 1) };
+    assert!(s.env.iter().all(|e| e.gate_reset == 1));
+    unsafe { sid_set_gate_reset(&mut *s, 0) };
+    assert!(s.env.iter().all(|e| e.gate_reset == 0));
+    unsafe { sid_set_gate_reset(&mut *s, 7) }; // any nonzero is on
+    assert!(s.env.iter().all(|e| e.gate_reset == 1));
+    unsafe { sid_init(&mut *s, SID_MODEL_8580, SID_CLOCK_PAL, 44100) };
+    assert!(
+        s.env.iter().all(|e| e.gate_reset == 0),
+        "sid_init clears it"
+    );
+}
+
+#[test]
+fn with_the_gate_reset_env3_rises_within_an_attack_period_at_every_phase() {
+    // Release 6's period is 267 cycles: a gate at each of its phases. ENV3 shows the step
+    // one cycle after the counter takes it: 9 + 3 + 1 cycles at most.
+    let released = released_voice_3(1);
+    for phase in 0..267 {
+        let mut s = Box::new(*released);
+        clock(&mut s, phase);
+        let rise = env3_rises_after(&mut s, 100).expect("ENV3 never rose");
+        assert!(rise <= 13, "phase {phase}: {rise} cycles");
+    }
+}
+
+#[test]
+fn without_the_gate_reset_most_phases_wait_for_the_lfsr() {
+    // The ADSR delay, as reSIDfp has it: 8 of the 267 phases start at once.
+    let released = released_voice_3(0);
+    let waits: Vec<u32> = (0..267)
+        .map(|phase| {
+            let mut s = Box::new(*released);
+            clock(&mut s, phase);
+            env3_rises_after(&mut s, 40_000).expect("ENV3 never rose")
+        })
+        .collect();
+    assert_eq!(waits.iter().filter(|&&w| w <= 13).count(), 8, "{waits:?}");
+    assert!(waits.iter().all(|&w| w <= 13 || w > 32_000), "{waits:?}");
+}

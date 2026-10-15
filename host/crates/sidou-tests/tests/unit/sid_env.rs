@@ -160,6 +160,65 @@ fn lowering_the_rate_below_the_lfsr_position_waits_for_the_lfsr_to_wrap() {
     assert!(wait < 3_000, "{wait}");
 }
 
+/// SAW LEAD's envelope (attack 0, decay 9, sustain 10, release 6), held, released to 0, then
+/// gated again at each phase of the release rate's period (267 cycles): the cycles from
+/// the gate to the attack's first step, phase by phase. `gate_reset` is the chip's option
+/// (sid_set_gate_reset).
+fn retrigger_waits(gate_reset: u8) -> Vec<u32> {
+    let mut e = powered_on();
+    e.gate_reset = gate_reset;
+    unsafe {
+        sid_env_write_ad(&mut e, 0x09);
+        sid_env_write_sr(&mut e, 0xa6);
+        sid_env_set_gate(&mut e, 1);
+    }
+    advance(&mut e, 100_000);
+    unsafe { sid_env_set_gate(&mut e, 0) };
+    advance(&mut e, 4_000_000);
+    assert_eq!(e.counter, 0, "released to 0");
+    (0..RELEASE_6_PERIOD)
+        .map(|phase| {
+            let mut x = e;
+            advance(&mut x, phase);
+            unsafe { sid_env_set_gate(&mut x, 1) };
+            cycles_to_next_step(&mut x, 40_000).expect("the attack never started")
+        })
+        .collect()
+}
+
+/// Release 6's rate period: its LFSR position (266) plus one.
+const RELEASE_6_PERIOD: u32 = 267;
+
+/// Attack 0's first step from a rate counter reloaded at the gate: one period (9 cycles),
+/// then the LFSR reload and the envelope pipeline (sid_env.h's timeline).
+const ATTACK_0_FROM_RELOAD: u32 = 9 + 3;
+
+#[test]
+fn a_retrigger_after_a_slow_release_waits_for_the_lfsr_unless_the_gate_resets_it() {
+    // Authentic (the default): the ADSR delay bug, as reSIDfp has it. Attack 0 matches at
+    // LFSR position 8, which the attack rate takes two cycles after the gate; a gate that
+    // finds the LFSR too far on (259 of release 6's 267 phases) waits for it to come round,
+    // about 32767 cycles.
+    let authentic = retrigger_waits(0);
+    let at_once = authentic
+        .iter()
+        .filter(|&&w| w <= ATTACK_0_FROM_RELOAD)
+        .count();
+    assert_eq!(at_once, 8, "{authentic:?}");
+    assert!(
+        authentic
+            .iter()
+            .all(|&w| w <= ATTACK_0_FROM_RELOAD || w > 32_000),
+        "{authentic:?}"
+    );
+    // Gate reset: the rate counter restarts at the gate, so every phase starts at once.
+    let instant = retrigger_waits(1);
+    assert!(
+        instant.iter().all(|&w| w <= ATTACK_0_FROM_RELOAD),
+        "{instant:?}"
+    );
+}
+
 #[test]
 fn raising_sustain_above_counter_during_decay_falls_to_zero_and_freezes() {
     let mut e = gated(0x00, 0x00);
@@ -281,6 +340,9 @@ struct RefEnv {
     sustain: u8,
     release: u8,
     env3: u8,
+    /// Not reSIDfp's: SIDOU's gate reset (sid_set_gate_reset), the LFSR back to 0x7fff on a
+    /// gate's rising edge.
+    gate_reset: bool,
 }
 
 impl RefEnv {
@@ -306,6 +368,7 @@ impl RefEnv {
             sustain: 0,
             release: 0,
             env3: 0,
+            gate_reset: false,
         };
         e.reset();
         e
@@ -335,6 +398,9 @@ impl RefEnv {
         }
         self.gate = gate_next;
         if gate_next {
+            if self.gate_reset {
+                self.lfsr = 0x7fff;
+            }
             self.next_state = SID_ENV_ATTACK;
             self.state_pipeline = 2;
             if self.reset_lfsr || self.exponential_pipeline == 2 {
@@ -539,13 +605,25 @@ impl Lcg {
 
 /// sid_env_advance jumps over quiet stretches; reSIDfp clocks every cycle. Random
 /// writes at random times, including within a few cycles of each other so they land in
-/// the state-change and envelope pipelines, must leave both in the same state.
+/// the state-change and envelope pipelines, must leave both in the same state. With the
+/// gate reset too: the reference's LFSR restarts at each rising gate, and the fast paths
+/// (rest, linear runs, whole periods) must follow it there.
 #[test]
 fn jump_ahead_matches_per_cycle_reference() {
     let pos = lfsr_positions();
-    for seed in [0x51d0u32, 0xbeef, 0x1234_5678] {
+    for (seed, gate_reset) in [
+        (0x51d0u32, false),
+        (0xbeef, false),
+        (0x1234_5678, false),
+        (0x51d0, true),
+        (0xbeef, true),
+        (0x1234_5678, true),
+        (0x0bad_cafe, true),
+    ] {
         let mut e = powered_on();
+        e.gate_reset = u8::from(gate_reset);
         let mut r = RefEnv::new(0xaa);
+        r.gate_reset = gate_reset;
         let mut rng = Lcg { x: seed };
         for step in 0..20_000 {
             let op = rng.next() % 16;

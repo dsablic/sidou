@@ -167,6 +167,12 @@ void sid_set_dac(sid* s, const sid_dac* dac) {
     s->dac = dac;
 }
 
+void sid_set_gate_reset(sid* s, int on) {
+    for (int v = 0; v < 3; ++v) {
+        s->env[v].gate_reset = on ? 1u : 0u;
+    }
+}
+
 void sid_set_combined_profile(sid* s, int profile) {
     uint32_t p = profile >= 0 && profile < SID_PROFILES ? (uint32_t)profile : SID_PROFILE_AVERAGE;
     for (int v = 0; v < 3; ++v) {

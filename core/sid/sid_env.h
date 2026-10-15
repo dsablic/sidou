@@ -39,7 +39,15 @@ typedef enum { SID_ENV_ATTACK, SID_ENV_DECAY_SUSTAIN, SID_ENV_RELEASE } sid_env_
  * nothing visible changes (`dormant`: frozen at 0, or holding sustain) and in a run of
  * ordinary steps (`linear`); see sid_env_settle. Whole match sequences and rate periods
  * otherwise run as single events. Cycle by cycle (sid_env_clock) runs only around gate
- * changes, threshold crossings and calls that end inside a match sequence. */
+ * changes, threshold crossings and calls that end inside a match sequence.
+ *
+ * Gate reset (gate_reset, sid_set_gate_reset), not the chip's: a gate's rising edge also
+ * restarts the rate LFSR from 0x7fff, so the attack's first step comes one attack period
+ * after the gate (12 cycles at attack 0) instead of after the ADSR delay. Off by default
+ * (reSIDfp's behaviour). It is the one place the chip and reSIDfp say "the rate counter is
+ * never reset" (EnvelopeGenerator::writeCONTROL_REG), and the LFSR position is the only
+ * field it touches: every fast path computes from lfsr_pos once sid_env_settle has
+ * brought it up to date, which sid_env_set_gate does first. */
 #define SID_ENV_LFSR_PERIOD 32767u
 /* `idle` on entering a dormant state; it counts down from here. */
 #define SID_ENV_DORMANT 0xffffffffu
@@ -67,6 +75,7 @@ typedef struct {
     uint8_t attack, decay, release;
     uint8_t sustain; /* the 4-bit level in both nibbles, compared with the counter */
     uint8_t gate;
+    uint8_t gate_reset; /* 1: a rising gate restarts the rate LFSR (above); kept by reset */
     uint8_t dormant; /* resting in a periodic state; see sid_env_settle */
     uint8_t linear;  /* resting in a run of ordinary steps; see sid_env_settle */
     uint8_t lin_up;  /* linear: 1 counting up (attack), 0 down */
@@ -566,7 +575,7 @@ static inline void sid_env_advance(sid_env* e, uint32_t cycles) {
 }
 
 /* Like the chip's reset, this keeps the counter ("counter is not changed on reset",
- * reSIDfp), the LFSR and ENV3, and leaves the envelope releasing at rate 0 with the
+ * reSIDfp), the LFSR and ENV3 (and the gate_reset option), and leaves the envelope releasing at rate 0 with the
  * counter enabled, whatever its value (so a counter at 0 wraps to 0xff). The LFSR
  * reloads on the first cycle, so the first release step comes on the third.
  * sid_init sets SID_ENV_POWER_ON first. Before M1b Task 2, this release stepped first
@@ -601,6 +610,9 @@ static inline void sid_env_set_gate(sid_env* e, uint8_t gate) {
     sid_env_settle(e);
     e->gate = gate;
     if (gate) {
+        if (e->gate_reset) {
+            e->lfsr_pos = 0; /* 0x7fff: the attack's period starts now */
+        }
         e->next_state = SID_ENV_ATTACK;
         e->state_pipeline = 2;
         if (e->reset_lfsr || e->exponential_pipeline == 2) {
