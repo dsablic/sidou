@@ -609,3 +609,19 @@ pub fn run_past_boot(m: &mut Machine, fw: &Firmware) -> u64 {
     }
     panic!("the boot was still on the screen {BOOT_TIMEOUT_MS} ms after power-on");
 }
+
+/// Runs a millisecond at a time until the firmware's last frame (platform/fm1/ui.c
+/// `last_compose`, on the main loop's `uptime_ms`) is 20 ms old: half way between two frames,
+/// when the last one's cells have gone out and the next one's have not. Then 40 ms steps each
+/// hold one frame whole, and a look at the panel sees a frame, not part of one.
+pub fn to_mid_frame(m: &mut Machine, fw: &Firmware) {
+    let (last, now) = (fw.symbol("last_compose"), fw.symbol("uptime_ms"));
+    for _ in 0..80 {
+        let age = m.soc.read32(now).wrapping_sub(m.soc.read32(last));
+        if age == 20 {
+            return;
+        }
+        m.run_ms(1);
+    }
+    panic!("the UI's frames are not 40 ms apart");
+}

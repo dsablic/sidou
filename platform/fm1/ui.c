@@ -27,6 +27,8 @@ static uint32_t last_compose;
 /* A run rendered into lcd_buffer(), waiting for the panel. */
 static grid_run run;
 static uint8_t pending;
+/* The display is on: the first frame has reached the panel whole. */
+static uint8_t shown;
 
 /* The next changed run rendered into the free buffer, unless one waits already. 0: nothing to
  * send. */
@@ -52,18 +54,24 @@ static void flush(void) {
     lcd_sync();
 }
 
-void ui_init(live* l, uint32_t now_ms) {
+void ui_init(live* l, uint32_t now_ms, int home_held) {
     for (uint32_t i = 0; i < 16u; i++) {
         palette[i] = LCD_SWAP(grid_palette[i]);
     }
     grid_init(&cells, ' ', VIEWS_TEXT);
     views_init(&ui, &cells, l, "V" SIDOU_VERSION);
-    /* Short; HOME held at power-on makes it the full one (app/boot.h). */
-    views_boot(&ui, 0);
+    views_boot(&ui, home_held);
     last_compose = now_ms;
     views_frame(&ui, now_ms);
-    flush();
-    lcd_on();
+}
+
+/* The first frame has gone out whole and nothing is in transfer: the display can come on
+ * without showing the panel's power-on contents. */
+static void display_on_when_drawn(void) {
+    if (!shown && !pending && !(cells.rows & ~cells.hold) && !lcd_busy()) {
+        lcd_on();
+        shown = 1;
+    }
 }
 
 void ui_poll(uint32_t now_ms) {
@@ -72,6 +80,7 @@ void ui_poll(uint32_t now_ms) {
         views_frame(&ui, now_ms);
     }
     if (!pending && !(cells.rows & ~cells.hold)) {
+        display_on_when_drawn();
         return; /* nothing to send: most calls, between frames and on an idle screen */
     }
     if (prepare() && !lcd_busy()) {
@@ -92,4 +101,8 @@ void ui_update(uint32_t step, int32_t code) {
     grid_hold(&cells, 0); /* a wipe's held rows go out too */
     views_update(&ui, step, code);
     flush();
+    if (!shown) { /* an update that starts before the first frame was out */
+        lcd_on();
+        shown = 1;
+    }
 }

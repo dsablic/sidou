@@ -66,6 +66,11 @@ SPI):
 - **Boot:** `LOAD"SIDOU",8,1` → `SEARCHING FOR SIDOU` → `LOADING`
   (raster-stripe border, at most every other frame) → `READY.` → logo.
   Skippable, and short after the first boot.
+  - **Amended (Task 3):** short on every boot (the title card alone), and
+    HOME held at power-on plays the full sequence. Without storage the
+    firmware cannot tell the first boot after an install from the others;
+    "full once per install, short after" waits for M2's storage (a flag in
+    flash, [TODO](../TODO.md)). The user has been told.
 - **About:** a cracktro with raster bars, a starfield, a sine scroller and
   credits read from `CREDITS.md` at build time, within the SPI budget. Trim
   it from the prototype's 240 tiles to about 120.

@@ -17,11 +17,6 @@ use std::path::{Path, PathBuf};
 use common::{build_dir, Firmware, Machine};
 use fm1_core::Bus;
 
-/// Past the short boot (app/boot.h: the title card for 1.2 s from the first frame, then an
-/// 8-frame wipe to the status screen). 48 frames after M1e Task 2's 500 ms, a whole number of
-/// cursor blinks (16 frames), so that the measurements' frames and the menu cursor's phase
-/// fall as they did.
-const BOOT_MS: u64 = 2420;
 const W: usize = 240;
 /// platform/fm1/lcd.c: SPI1 at 60 MHz / (4 + 1).
 const SPI_HZ: f64 = 12e6;
@@ -77,9 +72,11 @@ fn fixture(what: &str) -> Option<(PathBuf, Firmware)> {
     Some((build, fw))
 }
 
+/// Past the short boot (app/boot.h: the title card for 1.2 s from the first frame, then an
+/// 8-frame wipe to the status screen): until the boot view is gone (common::run_past_boot).
 fn booted(fw: &Firmware) -> Machine {
     let mut m = Machine::boot(&fw.image);
-    m.run_ms(BOOT_MS);
+    common::run_past_boot(&mut m, fw);
     m
 }
 
@@ -94,19 +91,26 @@ fn press(m: &mut Machine, id: u8) {
 /// Long enough for a wipe (8 frames) or a raster (14 frames) to end.
 const SETTLE_MS: u64 = 700;
 
-/// The menu, settled.
-fn open_menu(m: &mut Machine) {
-    press(m, HOME);
+/// SETTLE_MS, then on to half way between two frames (common::to_mid_frame): the panel then
+/// holds a whole frame, and what follows starts at the same phase every run.
+fn settle(m: &mut Machine, fw: &Firmware) {
     m.run_ms(SETTLE_MS);
+    common::to_mid_frame(m, fw);
+}
+
+/// The menu, settled.
+fn open_menu(m: &mut Machine, fw: &Firmware) {
+    press(m, HOME);
+    settle(m, fw);
 }
 
 /// The glyph sheet, from the menu's last item.
-fn open_charset(m: &mut Machine) {
-    open_menu(m);
+fn open_charset(m: &mut Machine, fw: &Firmware) {
+    open_menu(m, fw);
     m.turn(SELECT, MENU_CHARSET);
     m.run_ms(100);
     m.turn(ALGORITHM, 1);
-    m.run_ms(SETTLE_MS);
+    settle(m, fw);
 }
 
 /// The 30 cell rows of a screen, each as its 8 pixel rows.
@@ -254,7 +258,7 @@ fn the_menu_matches_its_golden_image_and_its_cursor_blinks() {
         return;
     };
     let mut m = booted(&fw);
-    open_menu(&mut m);
+    open_menu(&mut m, &fw);
     // The cursor's phase depends on the frame count, so the golden leaves its cell out and the
     // blink is checked here: a light blue block and the blue background, 8 frames each.
     compare_golden(&build, "menu", &m.soc.lcd.fb, &[VERSION_CELLS, MENU_CURSOR]);
@@ -278,14 +282,22 @@ fn the_glyph_sheet_opens_from_the_menu_and_home_goes_back() {
     };
     let mut m = booted(&fw);
     let status = m.soc.lcd.fb.clone();
-    open_charset(&mut m);
+    open_charset(&mut m, &fw);
     compare_golden(&build, "charset", &m.soc.lcd.fb, &[]);
     // Back twice: the overlays are gone and the panel shows the status screen as at boot.
+    // The cursor is on CHARSET now, blinking in its own phase.
     press(&mut m, HOME);
-    m.run_ms(SETTLE_MS);
-    compare_golden(&build, "menu", &m.soc.lcd.fb, &[VERSION_CELLS, MENU_CURSOR]);
+    settle(&mut m, &fw);
+    let (cc, cr, cl) = MENU_CURSOR;
+    let on_charset = (cc, cr + MENU_CHARSET as usize, cl);
+    compare_golden(
+        &build,
+        "menu",
+        &m.soc.lcd.fb,
+        &[VERSION_CELLS, MENU_CURSOR, on_charset],
+    );
     press(&mut m, HOME);
-    m.run_ms(SETTLE_MS);
+    settle(&mut m, &fw);
     assert!(
         m.soc.lcd.fb == status,
         "the status screen differs after the glyph sheet"
@@ -314,8 +326,9 @@ fn classify(fb: &[u16], status: &[u16], menu: &[u16]) -> String {
         .collect()
 }
 
-/// Samples the panel every frame until it holds still; checks every sample is the menu over
-/// the status screen with at most an edge between them.
+/// Samples the panel every frame until it holds still (from half way between two frames,
+/// common::to_mid_frame, so that each sample sees a frame whole); checks every sample is the
+/// menu over the status screen with at most an edge between them.
 fn wipe_samples(m: &mut Machine, status: &[u16], menu: &[u16]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for _ in 0..20 {
@@ -340,12 +353,13 @@ fn a_wipe_opens_the_menu_from_the_top_and_closes_it_from_the_bottom() {
     };
     let mut m = booted(&fw);
     let status = m.soc.lcd.fb.clone();
-    open_menu(&mut m);
+    open_menu(&mut m, &fw);
     let menu = m.soc.lcd.fb.clone();
     press(&mut m, HOME);
-    m.run_ms(SETTLE_MS);
+    settle(&mut m, &fw);
     assert!(m.soc.lcd.fb == status);
 
+    common::to_mid_frame(&mut m, &fw);
     m.key(HOME, true);
     let down = wipe_samples(&mut m, &status, &menu);
     m.key(HOME, false);
@@ -362,7 +376,8 @@ fn a_wipe_opens_the_menu_from_the_top_and_closes_it_from_the_bottom() {
     let edge_rows: Vec<usize> = down.iter().filter_map(|r| r.find('E')).collect();
     assert!(edge_rows.windows(2).all(|w| w[1] > w[0]), "{edge_rows:?}");
 
-    m.run_ms(SETTLE_MS);
+    settle(&mut m, &fw);
+    common::to_mid_frame(&mut m, &fw);
     m.key(HOME, true);
     let up = wipe_samples(&mut m, &status, &menu);
     m.key(HOME, false);
@@ -385,6 +400,7 @@ fn a_chip_change_sweeps_the_raster_over_the_border() {
         (0..30).map(|r| idx[(r * 8 + 4) * W + 4]).collect()
     };
     let ramp = [1u8, 7, 13, 3, 14, 4, 10];
+    common::to_mid_frame(&mut m, &fw);
     m.key(FX, true);
     let mut frames = Vec::new();
     for _ in 0..24 {
@@ -480,6 +496,7 @@ impl Cost {
 
 /// `frames` frames, after `act` (a key going down, say) at the start of the first.
 fn measure(m: &mut Machine, fw: &Firmware, frames: u64, act: impl FnOnce(&mut Machine)) -> Cost {
+    common::to_mid_frame(m, fw);
     let from = m.watched_calls.len();
     act(m);
     let mut per = Vec::new();
@@ -508,18 +525,18 @@ fn screen_changes_and_transitions_stay_within_the_budgets() {
     };
     let mut m = Machine::boot(&fw.image);
     m.watch_calls(fw.symbol("ui_poll"));
-    m.run_ms(BOOT_MS);
+    common::run_past_boot(&mut m, &fw);
     let idle = measure(&mut m, &fw, 10, |_| {});
     let note = measure(&mut m, &fw, 10, |m| m.key(A4_KEY, true));
     m.key(A4_KEY, false);
     m.run_ms(200);
     let menu = measure(&mut m, &fw, 16, |m| m.key(HOME, true));
     m.key(HOME, false);
-    m.run_ms(SETTLE_MS);
+    settle(&mut m, &fw);
     let menu_idle = measure(&mut m, &fw, 16, |_| {});
     let back = measure(&mut m, &fw, 16, |m| m.key(HOME, true));
     m.key(HOME, false);
-    m.run_ms(SETTLE_MS);
+    settle(&mut m, &fw);
     let raster = measure(&mut m, &fw, 24, |m| m.key(FX, true));
     m.key(FX, false);
     let report = serde_json::json!({
@@ -629,12 +646,17 @@ fn the_short_boot_shows_the_title_card_then_the_status_screen() {
     m.run_ms(700);
     assert!(m.soc.lcd.display_on, "DISPON was not sent");
     compare_golden(&build, "boot-title", &m.soc.lcd.fb, &[TITLE_VERSION]);
-    m.run_ms(BOOT_MS - 700);
+    let gone = common::run_past_boot(&mut m, &fw);
+    // The title card shows 1.2 s from about 0.4 s in, then the 8-frame wipe.
+    assert!(
+        (1600..2200).contains(&gone),
+        "the short boot ended at {gone} ms"
+    );
     compare_golden(&build, "status", &m.soc.lcd.fb, &[VERSION_CELLS]);
 }
 
 /// HOME held at power-on, until the key scan has seen it (it starts with the interrupts, after
-/// the LCD's init and the boot's first frame, about 380 ms in).
+/// the LCD's init, about 400 ms in, and platform/fm1/main.c reads it 3 ms later).
 fn hold_home_through_power_on(m: &mut Machine) {
     m.key(HOME, true);
     m.run_ms(600);
@@ -648,7 +670,7 @@ fn home_held_at_power_on_plays_the_full_boot() {
     };
     let mut m = Machine::boot(&fw.image);
     hold_home_through_power_on(&mut m);
-    // app/boot.h, from the full boot's first frame (about 420 ms in): LOADING from 3.0 s to
+    // app/boot.h, from the full boot's first frame (about 400 ms in): LOADING from 3.0 s to
     // 5.6 s, RUN typed by 6.5 s, the title card from 7.0 s to 10.0 s, then the wipe.
     m.run_ms(4300 - 600);
     // The loading stripes: colours on the border other than the status screen's.
@@ -681,12 +703,12 @@ fn a_button_skips_the_boot_and_does_nothing_else() {
     };
     // FX would toggle the chip and OCT+ step the octave; either shows on the status screen and
     // as a toast.
-    // Pressed after app/boot.h BOOT_HOLD_MS, so that HOME does not mean "the full boot".
+    // HOME too: not held at power-on, its press is a skip like any other (app/boot.h).
     for button in [FX, OCT_UP, HOME] {
         let mut m = Machine::boot(&fw.image);
         m.run_ms(900);
         press(&mut m, button);
-        m.run_ms(SETTLE_MS);
+        settle(&mut m, &fw);
         compare_golden(&build, "status", &m.soc.lcd.fb, &[VERSION_CELLS]);
     }
 }
@@ -700,7 +722,7 @@ fn a_note_skips_the_boot_and_plays() {
     m.run_ms(600);
     let from = m.soc.periph.audio.len() / 2;
     m.key(A4_KEY, true);
-    m.run_ms(SETTLE_MS);
+    settle(&mut m, &fw);
     compare_golden(&build, "status-a4", &m.soc.lcd.fb, &[VERSION_CELLS]);
     let peak = m.left()[from..]
         .iter()
@@ -710,13 +732,35 @@ fn a_note_skips_the_boot_and_plays() {
     assert!(peak > 1000, "the note did not play: peak {peak}");
 }
 
+/// HOME tapped as soon as the title card shows, HOME not held at power-on: it skips the short
+/// boot (it is not taken for a hold, app/boot.h).
+#[test]
+fn home_tapped_as_soon_as_the_card_shows_skips_it() {
+    let Some((build, fw)) = fixture("the boot screen test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    while !m.soc.lcd.display_on {
+        assert!(m.ms() < 2000, "the display did not come on");
+        m.run_ms(5);
+    }
+    let shown = m.ms();
+    press(&mut m, HOME);
+    let gone = common::run_past_boot(&mut m, &fw);
+    assert!(
+        gone < shown + 600,
+        "the boot went on until {gone} ms (the display came on at {shown} ms): HOME did not skip"
+    );
+    compare_golden(&build, "status", &m.soc.lcd.fb, &[VERSION_CELLS]);
+}
+
 /// About, from the menu's last item.
-fn open_about(m: &mut Machine) {
-    open_menu(m);
+fn open_about(m: &mut Machine, fw: &Firmware) {
+    open_menu(m, fw);
     m.turn(SELECT, MENU_ABOUT);
     m.run_ms(100);
     m.turn(ALGORITHM, 1);
-    m.run_ms(SETTLE_MS);
+    settle(m, fw);
 }
 
 /// The first credits page names SIDOU and its version (row 12).
@@ -728,14 +772,14 @@ fn about_opens_from_the_menu_and_home_goes_back() {
         return;
     };
     let mut m = booted(&fw);
-    open_about(&mut m);
+    open_about(&mut m, &fw);
     compare_golden(&build, "about", &m.soc.lcd.fb, &[ABOUT_VERSION]);
     // The cracktro moves every frame.
     let before = m.soc.lcd.fb.clone();
     m.run_ms(UI_PERIOD_MS);
     assert!(m.soc.lcd.fb != before, "About stood still");
     press(&mut m, HOME);
-    m.run_ms(SETTLE_MS);
+    settle(&mut m, &fw);
     // The cursor is on ABOUT now, blinking in its own phase.
     let (cc, cr, cl) = MENU_CURSOR;
     let on_about = (cc, cr + MENU_ABOUT as usize, cl);
@@ -781,9 +825,15 @@ fn the_boot_and_about_stay_within_their_budgets() {
     m.watch_calls(fw.symbol("ui_poll"));
     hold_home_through_power_on(&mut m);
     let boot = measure(&mut m, &fw, 260, |_| {});
-    // About: 12 s, past two pages and their fades.
-    open_about(&mut m);
-    let about = measure(&mut m, &fw, 300, |_| {});
+    // About: a full round of its pages (the first, SIDOU's, and the credits), 4.8 s each.
+    open_about(&mut m, &fw);
+    let pages = u64::from(unsafe { sidou_sys::credits_page_count }) + 1;
+    let about = measure(
+        &mut m,
+        &fw,
+        pages * u64::from(sidou_sys::ABOUT_PAGE_FRAMES),
+        |_| {},
+    );
     let report = serde_json::json!({
         "frame_ms": UI_PERIOD_MS,
         "spi_hz": SPI_HZ,
@@ -833,6 +883,7 @@ const WIPE_CELLS: u32 = (4 + 1) * 30;
 /// 40 ms windows from now until a wipe has run and ended, as `measure` counts them: those
 /// during which a wipe ran (read from the screen's state at each window's start and end).
 fn wipe_windows(m: &mut Machine, fw: &Firmware, act: impl FnOnce(&mut Machine)) -> Vec<Sent> {
+    common::to_mid_frame(m, fw);
     act(m);
     let mut out = Vec::new();
     let mut was = common::screen_wiping(m, fw);
@@ -876,9 +927,9 @@ fn every_wipe_into_an_animated_view_sends_only_its_rows() {
         return;
     };
     let mut m = booted(&fw);
-    open_menu(&mut m);
+    open_menu(&mut m, &fw);
     m.turn(SELECT, MENU_ABOUT);
-    m.run_ms(SETTLE_MS);
+    settle(&mut m, &fw);
     let mut worst = Sent::default();
     let mut most = 0;
     for phase in (0..UI_PERIOD_MS).step_by(5) {
@@ -892,7 +943,7 @@ fn every_wipe_into_an_animated_view_sends_only_its_rows() {
             }
         }
         press(&mut m, HOME);
-        m.run_ms(SETTLE_MS);
+        settle(&mut m, &fw);
     }
     println!(
         "wipe into About: at most {most} cells, worst 40 ms {:.2} ms of SPI",

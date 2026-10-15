@@ -32,12 +32,14 @@ static const uint8_t STRIPES[9] = {GRID_LIGHT_BLUE,  GRID_YELLOW, GRID_RED,
                                    GRID_CYAN,        GRID_WHITE,  GRID_PURPLE,
                                    GRID_LIGHT_GREEN, GRID_BLUE,   GRID_ORANGE};
 
-void boot_init(boot* b, const live* l, const char* version, int full) {
+void boot_init(boot* b, const live* l, const char* version, int home_held) {
     static const boot empty;
     *b = empty;
     b->l = l;
     b->version = version;
-    b->full = (uint8_t)(full != 0);
+    b->note_ons = l ? l->note_ons : 0u;
+    b->full = (uint8_t)(home_held != 0);
+    b->home_edge = b->full;
     b->title = (uint8_t)!b->full;
 }
 
@@ -55,8 +57,17 @@ boot_phase boot_phase_at(const boot* b, uint32_t ms) {
                                   : BOOT_PROMPT;
 }
 
-static int notes_playing(const live* l) {
-    for (uint32_t k = 0; l && k < LIVE_VOICES; k++) {
+/* A note held, or one played since the start however short (a gate can open and close
+ * between two frames). */
+static int notes_played(const boot* b) {
+    const live* l = b->l;
+    if (!l) {
+        return 0;
+    }
+    if (l->note_ons != b->note_ons) {
+        return 1;
+    }
+    for (uint32_t k = 0; k < LIVE_VOICES; k++) {
         if (l->voice[k].gate) {
             return 1;
         }
@@ -70,7 +81,7 @@ boot_step boot_update(boot* b, uint32_t now_ms) {
         b->start = now_ms;
     }
     b->at = now_ms - b->start;
-    if (b->skip || notes_playing(b->l)) {
+    if (b->skip || notes_played(b)) {
         return BOOT_END;
     }
     boot_phase p = boot_phase_at(b, b->at);
@@ -86,33 +97,14 @@ boot_step boot_update(boot* b, uint32_t now_ms) {
     return BOOT_GO_ON;
 }
 
-/* A boot that has just started (or restarted as the full one): HOME means the full one. The
- * key scan's press edge and held state of a key held at power-on can reach the views one key
- * scan apart, in either order (platform/fm1/input.c reads them separately), so the edge after
- * the held state must not count as a skip. */
-static int home_window(const boot* b) {
-    return !b->started || b->at < BOOT_HOLD_MS;
-}
-
-static void go_full(boot* b) {
-    b->full = 1;
-    b->started = 0; /* from the start, at the next frame */
-}
-
 int boot_capture(void* ctx, const screen_event* e) {
     boot* b = ctx;
-    if (e->kind == SCREEN_PRESS && e->id == PANEL_BTN_HOME && home_window(b)) {
-        go_full(b);
+    if (e->kind == SCREEN_PRESS && e->id == PANEL_BTN_HOME && b->home_edge) {
+        b->home_edge = 0; /* the press edge of HOME held at power-on */
     } else {
         b->skip = 1;
     }
     return 1;
-}
-
-void boot_held(boot* b, uint32_t held) {
-    if ((held >> PANEL_BTN_HOME & 1u) && !b->full && home_window(b)) {
-        go_full(b);
-    }
 }
 
 /* ---- the prompt ---- */

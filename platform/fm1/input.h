@@ -24,6 +24,10 @@ uint32_t input_frame(void);
 void input_poll(panel* p, live* l);
 /* The debounced buttons (bit i: button i), as the key scan has them now. */
 uint32_t input_buttons(void);
+/* Once interrupts are on, before the main loop: waits FM1_DEB_PRESS + 1 key scan frames
+ * (about 3.3 ms), long enough for a key held since power-on to pass the debounce, and returns
+ * the debounced buttons. The press edge the scan makes for such a key stays for input_poll. */
+uint32_t input_buttons_at_power_on(void);
 /* Main loop: the MASTER pot, 0..1023, or -1 on an ADC timeout. */
 int32_t input_master(void);
 /* With interrupts off, before a flash erase (~17 ms without the scan): all LED rows dark, so

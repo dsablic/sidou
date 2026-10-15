@@ -197,12 +197,12 @@ Measured in fm1-emu (`screen_changes_and_transitions_stay_within_the_budgets`):
 | Menu idle (the cursor) | 1 in 8 | 1 | 139 | 0.1 ms |
 
 The animated screens compose every frame (`the_boot_and_about_stay_within_their_budgets`,
-260 frames of the full boot and 300 of About):
+260 frames of the full boot and 1800 of About, a full round of its 15 pages):
 
 | Screen | Cells a frame (average, most) | Windows a frame | SPI a frame (average, worst) | Main loop a frame (average, busiest `ui_poll`) |
 |---|---|---|---|---|
-| Full boot | 30, 151 | 9.6 | 2.6 ms, 12.9 ms | 50k, 63k instructions |
-| About | 93, 148 | 25.6 | 8.1 ms, 12.8 ms | 161k, 105k instructions |
+| Full boot | 29, 150 | 9.6 | 2.5 ms, 12.8 ms | 50k, 62k instructions |
+| About | 94, 148 | 24.5 | 8.2 ms, 12.8 ms | 161k, 106k instructions |
 
 About costs 4.0M instructions a second (1.7 % of the core at 240 MHz).
 
@@ -305,14 +305,24 @@ out within the budget; the first frame is drawn whole before the display is on.
 
 - **Short by default:** the title card alone, 1.2 s, then the status screen. Without storage
   the firmware cannot tell the first boot after an install from the others, so it does not
-  pretend to. **HOME held while powering on** plays the full sequence. With M2's storage the
-  full sequence will play once after an install (a flag in flash), and short after that
-  ([TODO](../TODO.md)).
+  pretend to. **HOME held while powering on** plays the full sequence: once the interrupts
+  are on, `platform/fm1/main.c` waits `FM1_DEB_PRESS + 1` key scan frames (3.3 ms; the audio
+  already runs) and reads HOME's debounced level. The key scan also makes one press edge for
+  a key held at power-on; the boot takes that first HOME press as part of the hold. Without
+  HOME held, a HOME press skips like any other button, from the first frame on. With M2's
+  storage the full sequence will play once after an install (a flag in flash), and short
+  after that ([TODO](../TODO.md)).
 - **Skippable by anything:** a button or an encoder ends it at the next frame and does nothing
   else (the boot's capture takes it: no octave step, no chip toggle); a note from the keys or
-  MIDI ends it and plays.
-- **It holds nothing up:** audio and MIDI start before the screen, and the main loop plays the
-  keys and MIDI all through it.
+  MIDI ends it and plays, even one shorter than a frame (`live`'s note-on count tells).
+  What MIDI changes meanwhile (the chip, the octave) shows no toast or raster over it.
+- **It holds nothing up:** the audio interrupt, the tick (the key scan, MIDI) and the
+  interrupts start before the screen's first frame, and the main loop sends that frame like
+  any other, without waiting on the panel (a full screen, about 80 ms of SPI on the device);
+  the display comes on once it is out. The keys and MIDI play from the start: in fm1-emu the
+  audio starts 394 ms after power-on, after `lcd_init`'s 350 ms of reset and wake-up delays
+  (`the_audio_and_the_keys_start_before_the_display`). Before, the first frame went out
+  whole, blocking, before the audio started.
 
 ## About
 

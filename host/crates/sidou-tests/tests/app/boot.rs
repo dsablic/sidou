@@ -138,65 +138,66 @@ fn the_short_boot_is_the_title_card_alone() {
 }
 
 #[test]
-fn home_held_at_power_on_plays_the_full_boot() {
-    // Held through power-on: the key scan reports it held, with no press edge (fm1_input).
-    // Pressed before the first frame, or just after it.
-    for (held, before) in [(true, true), (true, false), (false, true), (false, false)] {
-        let mut ui = booting(false);
+fn home_held_at_power_on_plays_the_full_boot_and_its_press_edge_is_part_of_the_hold() {
+    // platform/fm1/main.c reads HOME held at power-on from the key scan and starts the full
+    // boot. The key scan also reports the held key's press edge, once (fm1_input.h): it is
+    // the hold, not a skip, whether it comes before the first frame or after it.
+    for before in [true, false] {
+        let mut ui = booting(true);
         let start = ui.now + 40;
         if !before {
             run_to(&mut ui, start, 200);
         }
-        if held {
-            ui.hold(PANEL_BTN_HOME, true);
-        } else {
-            ui.press(PANEL_BTN_HOME);
-        }
-        assert_eq!(ui.top(), "BOOT", "HOME opened the menu");
-        ui.settle();
-        let now = ui.now;
-        run_to(&mut ui, now, 2400);
+        ui.hold(PANEL_BTN_HOME, true);
+        ui.press(PANEL_BTN_HOME);
+        ui.frame();
+        assert_eq!(ui.top(), "BOOT", "the hold's press edge skipped the boot");
+        ui.hold(PANEL_BTN_HOME, false);
+        run_to(&mut ui, start, 2400);
         assert!(
             ui.row(10).contains("SEARCHING FOR SIDOU"),
             "not the full boot: {}",
             ui.row(10)
         );
+        assert_eq!(ui.live().octave, 0);
+        // A HOME press after that one skips, and does nothing else.
+        ui.press(PANEL_BTN_HOME);
+        ui.frame();
+        assert_eq!(ui.top(), "STATUS", "a second HOME did not skip");
+        ui.settle();
+        assert_eq!(ui.top(), "STATUS", "HOME also opened the menu");
     }
 }
 
 #[test]
-fn home_held_then_its_press_edge_still_plays_the_full_boot() {
-    // platform/fm1/input.c reads the press edges and the held buttons separately: the held
-    // state of a key held at power-on can come one key scan before its edge.
-    let mut ui = booting(false);
-    let start = ui.now + 40;
-    run_to(&mut ui, start, 40);
-    ui.hold(PANEL_BTN_HOME, true);
-    ui.frame();
-    ui.press(PANEL_BTN_HOME);
-    ui.settle();
-    let now = ui.now;
-    run_to(&mut ui, now, 2400);
-    assert_eq!(ui.top(), "BOOT", "the edge skipped the boot");
-    assert!(ui.row(10).contains("SEARCHING FOR SIDOU"), "{}", ui.row(10));
+fn home_tapped_as_soon_as_the_card_shows_skips_it() {
+    // Without HOME held at power-on, a HOME press is a skip from the very first frame.
+    for frames in [0, 1, 5] {
+        let mut ui = booting(false);
+        for _ in 0..frames {
+            ui.frame();
+        }
+        ui.press(PANEL_BTN_HOME);
+        ui.frame();
+        assert_eq!(
+            ui.top(),
+            "STATUS",
+            "HOME after {frames} frames did not skip"
+        );
+        ui.settle();
+        assert_eq!(ui.top(), "STATUS", "HOME also opened the menu");
+    }
 }
 
 #[test]
-fn home_later_skips_like_any_button() {
+fn holding_home_later_is_not_a_press() {
     let mut ui = booting(false);
     let start = ui.now + 40;
     run_to(&mut ui, start, 400);
-    // Held from now on: too late for the full boot, and holding is not a press.
     ui.hold(PANEL_BTN_HOME, true);
     ui.frame();
     assert_eq!(ui.top(), "BOOT");
     assert!(ui.row(16).contains("SID FOR THE FM-1"), "the boot changed");
-    ui.hold(PANEL_BTN_HOME, false);
-    ui.press(PANEL_BTN_HOME);
-    ui.frame();
-    assert_eq!(ui.top(), "STATUS", "HOME did not skip");
-    ui.settle();
-    assert_eq!(ui.top(), "STATUS", "HOME also opened the menu");
 }
 
 #[test]
@@ -246,6 +247,46 @@ fn a_note_skips_and_plays() {
         assert_eq!(ui.top(), "STATUS", "full {full}: the note did not skip");
         assert!(ui.live().voice.iter().any(|v| v.gate != 0 && v.note == 69));
     }
+}
+
+#[test]
+fn a_note_shorter_than_a_frame_skips_the_boot_too() {
+    // On and off between two frames (a fast tap, or MIDI): no gate is left for the frame to
+    // see, but the note played.
+    for full in [true, false] {
+        let mut ui = booting(full);
+        let start = ui.now + 40;
+        run_to(&mut ui, start, 400);
+        ui.rig.note_on(69);
+        ui.rig.note_off(69);
+        ui.frame();
+        assert_eq!(
+            ui.top(),
+            "STATUS",
+            "full {full}: the short note did not skip"
+        );
+    }
+}
+
+#[test]
+fn changes_during_the_boot_draw_nothing_over_it() {
+    // MIDI can change the chip and the octave while the boot shows: no toast or raster over
+    // it, then or after it.
+    let mut ui = booting(true);
+    let start = ui.now + 40;
+    run_to(&mut ui, start, 400);
+    ui.rig.button(LIVE_BUTTON_FX);
+    ui.rig.button(LIVE_BUTTON_OCT_UP);
+    ui.frame();
+    assert_eq!(ui.top(), "BOOT");
+    assert_eq!(ui.toast(), None, "a toast over the boot");
+    assert_eq!(ui.v.s.raster_frames, 0, "a raster over the boot");
+    ui.press(PANEL_BTN_FX);
+    ui.frame();
+    assert_eq!(ui.top(), "STATUS");
+    ui.settle();
+    assert_eq!(ui.toast(), None, "the boot's changes showed after it");
+    assert_eq!(ui.live().model, SID_MODEL_8580);
 }
 
 /// The border cells of a grid.

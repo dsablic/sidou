@@ -107,3 +107,53 @@ fn boots_and_plays_a_held_key_sample_exact() {
         "the tone is at {f0:.2} Hz, expected {TONE_HZ} Hz"
     );
 }
+
+/// The audio starts before the screen's first frame (platform/fm1/main.c), and the main loop
+/// plays a key held at power-on while that frame goes out (platform/fm1/ui.h ui_init): the
+/// boot holds no sound up. Also the time to first audio, for docs/art/README.md "Boot".
+#[test]
+fn the_audio_and_the_keys_start_before_the_display() {
+    let Some(build) = build_dir() else {
+        common::skip_message("the boot order test");
+        return;
+    };
+    let fw = Firmware::load(&build);
+    let mut m = Machine::boot(&fw.image);
+    m.key(A4_KEY, true);
+    let (mut audio_at, mut note_at, mut display_at) = (None, None, None);
+    let mut seen = 0;
+    while m.ms() < RUN_MS && display_at.is_none() {
+        m.run_ms(1);
+        let audio = &m.soc.periph.audio;
+        if audio_at.is_none() && !audio.is_empty() {
+            audio_at = Some(m.ms());
+        }
+        if note_at.is_none() && audio[seen..].iter().any(|&s| s != 0) {
+            note_at = Some(m.ms());
+        }
+        seen = audio.len();
+        if m.soc.lcd.display_on {
+            display_at = Some(m.ms());
+        }
+    }
+    println!(
+        "first audio at {audio_at:?} ms, the held key heard at {note_at:?} ms, the display on \
+         at {display_at:?} ms from power-on"
+    );
+    let display_at = display_at.expect("the display came on");
+    let audio_at = audio_at.expect("the audio started");
+    let note_at = note_at.expect("the key played");
+    // The display comes on once the first frame is out. On the device that frame is a full
+    // screen of SPI, about 80 ms; fm1-emu sends SPI without its transfer time, so here only the
+    // order shows: the sound and the key come before it.
+    assert!(
+        audio_at < display_at,
+        "the audio started at {audio_at} ms, after the display at {display_at} ms"
+    );
+    assert!(
+        note_at < display_at,
+        "the key played at {note_at} ms, after the display came on at {display_at} ms"
+    );
+    // The LCD's reset and wake-up delays (lcd_init) come first.
+    assert!(audio_at < BOOT_MS_MAX, "the audio started at {audio_at} ms");
+}

@@ -103,10 +103,14 @@ Notes:
   screen wipes in.
 - [ ] OCT+ on the title card: the status screen wipes in, and OCTAVE stays
   +0 (the press only skipped). The same with FX: CHIP stays 6581.
+- [ ] Tap HOME as soon as the title card shows: the status screen wipes in
+  (not the full boot, and not the menu).
 - [ ] Hold HOME while powering on, then let it go: the full boot plays
   ("READY.", `LOAD"SIDOU",8,1` typed, "SEARCHING FOR SIDOU", "LOADING" with
   colour stripes running in the border, "READY.", "RUN", then the title
   card), about 10 s, and a note key played during it sounds.
+- [ ] HOME held at power-on, 5 times: the full boot every time (letting HOME
+  go does not skip it).
 - [ ] No sound, click or hum before a key is played.
 - [ ] Power on and off ten times: it boots every time.
 

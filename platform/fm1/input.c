@@ -73,3 +73,13 @@ void input_leds_dark(void) {
 uint32_t input_buttons(void) {
     return fm1_in.buttons;
 }
+
+uint32_t input_buttons_at_power_on(void) {
+    /* A key held since power-on counts as pressed after FM1_DEB_PRESS frames closed in a
+     * row; one more covers the frame the scan was in when this started. */
+    uint32_t from = fm1_in.frames;
+    while (fm1_in.frames - from < FM1_DEB_PRESS + 1u) {
+        __asm__ volatile("idle" ::: "memory"); /* the next TIMER5 tick */
+    }
+    return fm1_in.buttons;
+}

@@ -244,6 +244,7 @@ typedef struct {
     uint8_t mod_wheel;        /* CC 1, when the wheel has a target other than the pulse width */
     uint8_t channel_pressure; /* 0..127 */
     uint8_t last_velocity;    /* the last note-on's: LIVE_VELOCITY_CUTOFF's (one filter) */
+    uint32_t note_ons; /* note-ons played (wraps): a note shorter than a look still shows */
 } live;
 
 /* The instrument's parameters, each an integer 0..live_param_max: what MIDI reaches through

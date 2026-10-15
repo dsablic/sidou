@@ -510,6 +510,7 @@ void live_note_on(live* l, uint8_t note, uint8_t velocity) {
         v = pick_voice(l, 1);
     }
     start_voice(l, v, note, velocity > 127 ? 127 : velocity);
+    l->note_ons++;
 }
 
 static void release(live* l, int v) {

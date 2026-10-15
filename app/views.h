@@ -29,7 +29,8 @@
  *
  * Every frame the instrument's state is compared with the last frame's: a change of octave,
  * effect slot or algorithm shows a toast, whatever made it (panel, menu or MIDI), and a chip
- * model change also runs the raster over the border.
+ * model change also runs the raster over the border; not while the boot shows, which nothing
+ * draws over (its changes are taken as seen).
  *
  * Portable C with no hardware access and no allocation. */
 #ifndef SIDOU_VIEWS_H
@@ -85,8 +86,9 @@ extern const view views_charset;
 
 /* The status view on g, showing l. */
 void views_init(views* v, grid* g, live* l, const char* version);
-/* The boot sequence over it from the next frame on, the full one if full (app/boot.h). */
-void views_boot(views* v, int full);
+/* The boot sequence over it from the next frame on: the full one if HOME was held at
+ * power-on (home_held), whose first HOME press edge is then part of the hold (app/boot.h). */
+void views_boot(views* v, int home_held);
 /* Button press edges and the held buttons, as panel_buttons takes them: routed as above, and
  * what nobody consumed goes on to panel_buttons. */
 void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held);

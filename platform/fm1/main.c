@@ -3,9 +3,9 @@
 /* SIDOU boot and main loop. Init order after fm1-sid's firmware/main.c (fm1-emu) and
  * Felucca's src/main.c: watchdog first, fatal vectors, memory, then the LCD, the live
  * instrument, the key matrix and MIDI in (TRS UART, USB), audio (ALNK0 IRQ) and the 10 kHz
- * tick (TIMER5 IRQ, which also polls MIDI), interrupts on, and a main loop that plays MIDI
- * and the panel into the instrument, redraws the screen, answers the update protocol and
- * feeds the watchdog. The boot-loop guard comes first of all (fm1_cstart).
+ * tick (TIMER5 IRQ, which also polls MIDI), interrupts on, the screen's first frame (sent by
+ * the main loop), and a main loop that plays MIDI and the panel into the instrument, redraws
+ * the screen, answers the update protocol and feeds the watchdog. The boot-loop guard comes first of all (fm1_cstart).
  *
  * This file includes the HAL's interrupt, audio and timer headers; input.c and lcd.c include
  * the input and LCD ones (platform/fm1/VENDORED.md). */
@@ -183,13 +183,18 @@ static void sidou_main(void) {
     midi_init(&instrument);
     update_boot();
     audio_start();
-    /* The time uptime_ms will show: the tick's first interrupt counts every timer tick since
-     * power-on (fm1_timer5_irq). */
-    ui_init(&instrument, fm1_ticks() / (1000u * FM1_TICKS_PER_US));
+    /* Sound first: the audio interrupt, the tick (the key scan, MIDI, the clock) and the
+     * interrupts start before the screen's first frame, which the main loop then sends without
+     * waiting on it (ui_init). */
     fm1_audio_init(abuf, AUDIO_HALF_WORDS, isr_alnk0, PRIO_ALNK0);
     fm1_timer5_start(isr_timer5, PRIO_TIMER5);
     fm1_irq_enable_all();
     audio_irqs_on();
+    /* HOME held at power-on plays the full boot (app/boot.h): its level once the key scan
+     * has debounced it, about 3 ms after the tick started; the audio already runs. */
+    uint32_t held = input_buttons_at_power_on();
+    /* uptime_ms counts every timer tick since TIMER4 started (fm1_timer5_irq). */
+    ui_init(&instrument, uptime_ms, (int)((held >> PANEL_BTN_HOME) & 1u));
 #if defined(SIDOU_TEST_DEATH_MS)
     test_death_arm();
 #endif

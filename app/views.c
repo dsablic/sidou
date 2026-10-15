@@ -363,8 +363,8 @@ void views_init(views* v, grid* g, live* l, const char* version) {
     screen_global(&v->s, global, v);
 }
 
-void views_boot(views* v, int full) {
-    boot_init(&v->boot, v->l, v->version, full);
+void views_boot(views* v, int home_held) {
+    boot_init(&v->boot, v->l, v->version, home_held);
     screen_push(&v->s, &boot_view, &v->boot, SCREEN_CUT);
 }
 
@@ -395,10 +395,6 @@ void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
         if (screen_input(&v->s, &e)) {
             rest &= ~(1u << b);
         }
-    }
-    /* After the presses: a HOME press is the boot's capture's to judge first. */
-    if (screen_top(&v->s) == &boot_view) {
-        boot_held(&v->boot, held);
     }
     panel_buttons(p, v->l, rest, held);
 }
@@ -451,7 +447,11 @@ static void tell(views* v) {
 
 void views_frame(views* v, uint32_t now_ms) {
     boot_frame(v, now_ms);
-    tell(v);
+    if (screen_top(&v->s) == &boot_view) {
+        remember(v); /* nothing over the boot (app/boot.h), and nothing of it after */
+    } else {
+        tell(v);
+    }
     screen_frame(&v->s, now_ms);
 }
 
