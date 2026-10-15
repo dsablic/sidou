@@ -140,6 +140,27 @@ pub fn max_envelope_diff_db(a: &[f64], b: &[f64], floor_db: f64, first: usize) -
     worst
 }
 
+/// RMS of a - b over the windows max_envelope_diff_db compares (from `first` on, where
+/// the reference b is above floor_db): how far off the curves are overall, next to the
+/// largest single window. 0 if no window is compared; NaN if any compared window is NaN.
+pub fn rms_envelope_diff_db(a: &[f64], b: &[f64], floor_db: f64, first: usize) -> f64 {
+    let (mut sum, mut n) = (0.0, 0u32);
+    for (&ai, &bi) in a.iter().zip(b).skip(first) {
+        if ai.is_nan() || bi.is_nan() {
+            return f64::NAN;
+        }
+        if bi > floor_db {
+            sum += (ai - bi) * (ai - bi);
+            n += 1;
+        }
+    }
+    if n == 0 {
+        0.0
+    } else {
+        (sum / f64::from(n)).sqrt()
+    }
+}
+
 /// Writes a mono 16-bit PCM WAV file.
 pub fn write_wav16(path: &Path, x: &[f32], fs: u32) -> std::io::Result<()> {
     let bytes = u32::try_from(x.len() * 2).expect("WAV data fits in 4 GiB");

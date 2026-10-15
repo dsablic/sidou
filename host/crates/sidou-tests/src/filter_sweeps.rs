@@ -9,7 +9,9 @@
 use sidou_sys::sid_model;
 
 use crate::render::{render_residfp, render_sidou, RegWrite};
-use crate::signal_metrics::{max_envelope_diff_db, normalized_to_max, rms_envelope_db};
+use crate::signal_metrics::{
+    max_envelope_diff_db, normalized_to_max, rms_envelope_db, rms_envelope_diff_db,
+};
 
 /// 20 ms; noise has no period to align to.
 pub const WINDOW: usize = 882;
@@ -51,17 +53,27 @@ fn envelope(x: &[f32]) -> Vec<f64> {
     normalized_to_max(env, FIRST_WINDOW, len)
 }
 
-/// One sweep on both engines: SIDOU's and reSIDfp's output, and the largest envelope
-/// difference in dB.
-pub fn sweep(model: sid_model, mode: u8, sustain: u8) -> (Vec<f32>, Vec<f32>, f64) {
+/// One sweep on both engines.
+pub struct Sweep {
+    pub ours: Vec<f32>,
+    pub reference: Vec<f32>,
+    /// The largest envelope difference over the compared windows, in dB.
+    pub max_db: f64,
+    /// The RMS envelope difference over the same windows, in dB.
+    pub rms_db: f64,
+}
+
+/// One sweep on both engines: SIDOU's and reSIDfp's output, and their envelope
+/// differences.
+pub fn sweep(model: sid_model, mode: u8, sustain: u8) -> Sweep {
     let w = writes(mode, sustain);
     let ours = render_sidou(model, &w, FRAMES);
     let reference = render_residfp(model, &w, FRAMES, false);
-    let d = max_envelope_diff_db(
-        &envelope(&ours),
-        &envelope(&reference),
-        FLOOR_DB,
-        FIRST_WINDOW,
-    );
-    (ours, reference, d)
+    let (a, b) = (envelope(&ours), envelope(&reference));
+    Sweep {
+        max_db: max_envelope_diff_db(&a, &b, FLOOR_DB, FIRST_WINDOW),
+        rms_db: rms_envelope_diff_db(&a, &b, FLOOR_DB, FIRST_WINDOW),
+        ours,
+        reference,
+    }
 }

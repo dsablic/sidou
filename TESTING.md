@@ -142,11 +142,19 @@ linear filter should match reSIDfp's:
   below 7 kHz (above, SIDOU's trapezoidal filter departs from the analogue
   response whatever its tables say), each mode at its best level: the 8580
   within 1.0, 0.55 and 0.3 dB, the 6581 within 3.4, 3.75 and 3.5 dB;
+- **passband gain**: from the same measurements, each mode's gain in its
+  passband (LP f0/8 to f0/3, BP within 1.2x of f0, HP 3 f0 to 9 f0), SIDOU
+  minus reSIDfp, held to the range measured at M1b Task 5: the 8580 within
+  0.2 dB, the 6581 1.7 to 6.5 dB louder (a gap for Task 6);
 - **sweeps**: `sidou-compare`'s low-, band- and high-pass noise sweeps at that
-  level, as RMS envelopes, within 1.65, 2.05 and 1.75 dB on the 8580 and 5.2,
-  6.25 and 1.1 dB on the 6581. These also measure what the tables cannot fix
-  (the comment in `filter.rs` lists it); the 6581's level dependence is the
-  M1b plan's Task 6.
+  level, as RMS envelopes, the largest window and the RMS over the windows:
+  within 1.62, 2.03 and 1.70 dB (RMS 0.54, 0.80, 0.87) on the 8580 and 5.16,
+  6.22 and 1.05 dB (RMS 1.19, 2.92, 0.46) on the 6581. These also measure what
+  the tables cannot fix (the comment in `filter.rs` lists it);
+- **full-scale sweeps**, record only: the same sweeps at sustain 15, where the
+  6581's filter is level-dependent (the M1b plan's Task 6), held at the values
+  Task 5 measured (rounded up to 0.01 dB) so that they cannot regress
+  unnoticed.
 
 ### Register reads against reSIDfp
 
@@ -214,7 +222,7 @@ would show there first.
 engines (`sidou_tests::filter_sweeps`), at the small-signal level the `filter`
 tests assert and at full scale (`*_full`), writes each pair as 16-bit WAV
 files into `<dir>`, which must exist (default: the current directory) and
-prints the largest envelope difference per scenario and model. It is for
+prints the largest and the RMS envelope difference per scenario and model. It is for
 listening and for tracking the filter's distance from reSIDfp between
 milestones. The `sidou_compare_smoke` test only checks that it runs and
 writes all 24 files.
