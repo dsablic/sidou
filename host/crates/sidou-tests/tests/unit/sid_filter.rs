@@ -329,3 +329,46 @@ fn a_filter_curve_rebuilds_the_tables_and_applies_at_the_next_filter_write() {
         assert_eq!(s.filter_curve, 0);
     }
 }
+
+/// The 6581's coefficients come from one Newton step for 1 / (1 + g (g + k)), and the step's
+/// error is the model: under load the cutoff falls and the step underestimates a1, which
+/// raises the damping the filter runs at (k', what bpn carries: bpn = k' bp) above the
+/// table's k, as reSIDfp's damping grows under the load. An exact divide would keep k and
+/// change the sound. Pinned at FC 1024, resonance 0, three voices routed into the filter.
+#[test]
+fn the_6581_newton_step_is_the_load_damping() {
+    let mut s = Box::<sid>::default();
+    unsafe {
+        sid_init(&mut *s, SID_MODEL_6581, SID_CLOCK_PAL, 44100);
+        sid_write(&mut *s, 0x15, 0x00);
+        sid_write(&mut *s, 0x16, 0x80); // FC 1024
+        sid_write(&mut *s, 0x17, 0x07); // resonance 0, voices 1-3 into the filter
+        sid_write(&mut *s, 0x18, 0x1f);
+    }
+    let n = s.nl;
+    let mut f = s.svf;
+    let (g0, k) = (s.cutoff_g[1024], s.res_k[0]);
+    // At rest but for the band-pass integrator, with the swing at the tables' reference:
+    // only the load moves the cutoff.
+    f.ic1 = 0.1;
+    f.ic2 = 0.0;
+    f.hp = n.level_ref;
+    tick_6581(&mut f, &n, 0.0);
+    let k_run = f.bpn / f.bp;
+    // The model, written out: the load's cutoff and the Newton step from the table's a1.
+    let m = 1.0 + n.load * (n.load_ref - 3.0 * 1.15625);
+    let g = g0 * m;
+    let a10 = 1.0 / (1.0 + g0 * (g0 + k));
+    let a1 = a10 * (2.0 - (1.0 + g * (g + k)) * a10);
+    let k_model = (1.0 / a1 - 1.0) / g - g;
+    println!("FC 1024, three voices: k {k}, k' {k_run} (model {k_model}), g {g} of {g0}");
+    assert!(m < 0.8, "the load barely moves the cutoff: m {m}");
+    assert_near!(k_run, k_model, 1e-3 * k_model);
+    assert!(
+        k_run > 1.05 * k,
+        "the load's damping: k' {k_run} against the table's {k}"
+    );
+    // An exact divide keeps the table's damping: the step's error is what damps.
+    let exact = 1.0 / (1.0 + g * (g + k));
+    assert_near!((1.0 / exact - 1.0) / g - g, k, 1e-3 * k);
+}

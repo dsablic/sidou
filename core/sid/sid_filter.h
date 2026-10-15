@@ -34,9 +34,16 @@ typedef struct {
  *   m  = clamp(1 + load (load_ref - dc - lp state), SID_NL_M_MIN, SID_NL_M_MAX)
  *   g  = max(g0 m + level (|hp| - level_ref), floor)
  * and the coefficients follow from one Newton step for 1 / (1 + g (g + k)) from the
- * table's a1, not a per-sample divide. The step underestimates, more the further the
- * load pulls the cutoff down, which damps the filter as reSIDfp's damping grows under
- * the load, and keeps it stable: any 0 < a1 < 1 / (1 + g^2) is. SID_NL_M_MIN bounds how
+ * table's a1, not a per-sample divide. The step's error is the load-damping model, not an
+ * approximation of it: the step underestimates a1, more the further the load pulls the
+ * cutoff down, which raises the damping the filter runs at above the table's k as
+ * reSIDfp's damping grows under the load (unit/sid_filter.rs pins it: an exact divide
+ * would change the sound), and keeps it stable: any 0 < a1 < 1 / (1 + g^2) is. With
+ * d = 1 + g (g + k) and d0 the table's, the step is a1 = a10 t, t = 2 - d / d0, which
+ * underestimates 1 / d for any d; the clamp t >= 0.1 (at d > 1.9 d0) holds a1 at 0.1 a10,
+ * which still underestimates while d < 10 d0, and overestimates beyond (a swing far past
+ * any the voices reach: g would have to grow about threefold at the top of the table, more
+ * below it, and SID_NL_M_MAX caps the load's part). SID_NL_M_MIN bounds how
  * far the load goes, as reSIDfp's saturating op-amps bound its output: lower, three
  * voices at full resonance ring past full scale. Each chip keeps its
  * own values (sid.h, sid_set_filter_nonlinearity), so a profile can blend them while the

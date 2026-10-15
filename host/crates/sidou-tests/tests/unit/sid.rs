@@ -815,3 +815,20 @@ fn the_6581_filter_is_stable_across_the_non_linearity_range() {
         }
     }
 }
+
+/// The 6581's band-pass mix is over the damping (sid_svf_tick_6581's bpn), so it follows
+/// every write that sets the damping: a $15/$16 write after new tables (sid_set_filter_curve)
+/// takes the new damping, and the mix with it.
+#[test]
+fn the_6581_band_pass_mix_follows_the_damping_at_every_filter_write() {
+    let mut s = new_sid(SID_MODEL_6581);
+    write(&mut s, 0x17, 0xf1);
+    write(&mut s, 0x18, 0x2f);
+    assert_eq!(s.mix_bpn, 0.8125 / s.svf.k);
+    for reg in [0x15u8, 0x16] {
+        s.res_k.fill(1.5 + f32::from(reg - 0x15)); // as a new curve's tables would
+        write(&mut s, reg, 0x40);
+        assert_eq!(s.svf.k, 1.5 + f32::from(reg - 0x15));
+        assert_eq!(s.mix_bpn, 0.8125 / s.svf.k, "after ${reg:02x}");
+    }
+}

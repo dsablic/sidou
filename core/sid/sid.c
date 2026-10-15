@@ -41,7 +41,9 @@
  * load term, not the signal: as a step through a resonant low-pass it would ring past
  * full scale where reSIDfp's saturating op-amps do not). */
 #define DC_FILTER_INPUT 1.15625f
-/* The external filter's low-pass with reSIDfp's resampling after it: one pole. */
+/* The external filter's low-pass with reSIDfp's resampling after it: one pole, fitted to
+ * reSIDfp's output at 44.1 kHz (13.2 kHz), not the external filter's 15.9 kHz nominal
+ * pole, which leaves out the resampler's roll-off. */
 #define OUT_LP_HZ 13154.0f
 /* sid_clock's step. sid_osc_advance needs freq * cycles < 2^24, so at most 256.
  * Within that, the step only matters for hard sync: the restart is exact, but what the
@@ -51,16 +53,36 @@
  * matter: sid_clock is for tests and register-accurate seeking, not the audio path. */
 #define CLOCK_STEP 16u
 
-static void update_filter(sid* s) {
+/* update_mix_bpn, update_filter and update_mix are always inline: sid_init (flash) and
+ * sid_write (SRAM, the audio path) both call them, and no direct call may cross between the
+ * two (platform/fm1/app.ld).
+ * The 6581's band-pass mix: over the damping (sid_svf_tick_6581's bpn), so every write
+ * that sets the damping or the mode sets it. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+static inline void update_mix_bpn(sid* s) {
+    float bp = (s->mode_vol & 0x20u) ? 1.0f : 0.0f;
+    s->mix_bpn = MIX_GAIN_BP * bp / s->svf.k;
+}
+
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+static inline void update_filter(sid* s) {
     if (s->model == SID_MODEL_6581) {
         sid_svf_set_6581(&s->svf, &s->nl, s->cutoff_g[s->fc], s->res_k[s->res], s->dc_in);
+        update_mix_bpn(s);
     } else {
         sid_svf_set(&s->svf, s->cutoff_g[s->fc], s->res_k[s->res]);
     }
 }
 
 /* The 6581's mix of the filter's outputs and its load, for $17 and $18 (sid.h). */
-static void update_mix(sid* s) {
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+static inline void update_mix(sid* s) {
     if (s->model != SID_MODEL_6581) {
         return;
     }
@@ -73,14 +95,18 @@ static void update_mix(sid* s) {
     float hp = (s->mode_vol & 0x40u) ? 1.0f : 0.0f;
     s->mix_lp = -MIX_GAIN_LP * lp + MIX_GAIN_BP * MIX_LEAK * bp -
                 MIX_GAIN_HP * MIX_LEAK * MIX_LEAK * hp;
-    s->mix_bpn = MIX_GAIN_BP * bp / s->svf.k; /* bpn is over k (sid_svf_tick_6581) */
+    update_mix_bpn(s);
     s->mix_bp = -MIX_GAIN_HP * 2.0f * MIX_LEAK * hp;
     s->mix_hp = -MIX_GAIN_HP * hp;
     s->dc_in = DC_FILTER_INPUT * (float)routed;
     s->svf.load_at = s->nl.load_ref - s->dc_in;
 }
 
-/* exp(-x) for 0 <= x < ~4, without libm: (Taylor series of exp(-x / 16))^16. For sid_init. */
+/* exp(-x) for x >= 0, without libm: (Taylor series of exp(-x / 16))^16. For sid_init's
+ * output pole, x = 2 pi OUT_LP_HZ / fs: within 5e-6 relative from 22.05 kHz up (x < 3.75),
+ * 3e-5 at 16 kHz, 0.3% at 8 kHz, and 27% low at sid_init's lowest rate, 4 kHz (x = 20.7),
+ * where exp(-x) is 1e-9. out_c = 1 - exp_neg is within 5 ULP of exact at every rate
+ * sid_init accepts. */
 static float exp_neg(float x) {
     float y = x / 16.0f;
     float e = 1.0f - y * (1.0f - y / 2.0f * (1.0f - y / 3.0f * (1.0f - y / 4.0f * (1.0f - y / 5.0f))));
@@ -429,7 +455,7 @@ static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t e
  * compiler cannot know that through the pointer. The tap (sid_render_tap) sees its voices;
  * its filter's state is stored back once, at the end. */
 #if defined(__GNUC__) || defined(__clang__)
-__attribute__((noinline, unused))
+__attribute__((noinline))
 #endif
 static void render_6581(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_tap tap,
                         void* ctx) {
@@ -501,7 +527,7 @@ static void render_6581(sid* s, int16_t* out, uint32_t frames, uint32_t every, s
 }
 
 #if defined(__GNUC__) || defined(__clang__)
-__attribute__((noinline, unused))
+__attribute__((noinline))
 #endif
 static void render_8580(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_tap tap,
                         void* ctx) {
