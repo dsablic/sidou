@@ -3,7 +3,7 @@
   "default": "sidou",
   "firmwares": [
     { "id": "sidou", "name": "SIDOU", "version": "@VERSION@", "author": "SIDOU contributors", "license": "GPL-3.0-only (the firmware image)",
-      "about": "A C64 SID instrument for the FM-1: the latest build from main.",
+      "about": "A C64 SID instrument for the FM-1: the latest release, or your own local build.",
       "repo": "https://github.com/dsablic/sidou",
       "package": "sidou.fwsc" }
   ]

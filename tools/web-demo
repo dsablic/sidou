@@ -77,7 +77,7 @@ EOF
 sed "s/@VERSION@/$version/" "$root/web/firmwares.json" >"$out/firmwares.json"
 cp "$root/build/fm1/sidou.fwsc" "$out/sidou.fwsc"
 cp "$root/web/index.html" "$root/web/sidou.js" "$out/"
-cp "$root/assets/logo/cracktro-chrome-lettering-2x.png" "$out/logo.png"
+cp "$root/assets/logo/metal-chrome-lettering-2x.png" "$out/logo.png"
 mkdir -p "$out/licenses"
 cp "$root/LICENSES/GPL-3.0-only.txt" "$root/LICENSES/Apache-2.0.txt" "$out/licenses/"
 cp "$emu/LICENSE" "$out/licenses/fm1-emu-MIT.txt"
