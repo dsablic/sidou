@@ -47,5 +47,6 @@ All notable changes are documented here. The format follows
 - `sidou-pack`: the `.fwsc` packager (a port of Felucca's), byte-identical to
   Felucca's packer on the same inputs; CI builds `sidou.fwsc`, boots it in
   fm1-emu and uploads it.
-- The M1a hardware checklist (`docs/hardware-test.md`) and checklist builds
-  that die early on purpose (`SIDOU_TEST_DEATH`).
+- The M1a hardware checklist (`docs/hardware-test.md`), checklist builds that
+  die early on purpose while OCT- is held at power-on (`SIDOU_TEST_DEATH`),
+  and a package SIDOU refuses (`sidou-pack --test-wrong-size`).

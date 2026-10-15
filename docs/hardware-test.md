@@ -66,10 +66,23 @@ install the unit appears as Felucca's loader.
 
 Notes:
 
-## 2. An interrupted install resumes
+## 2. Interrupted and refused installs
 
-Do this only with section 0 ready.
+Do this only with section 0 ready. Step 1 is the part SIDOU runs (it reads
+the package and stages the loader); step 2 is the loader's (it writes the
+app area).
 
+- [ ] Pull the USB cable during step 1 (while the installer reports its
+  first read requests, before the unit restarts). Within about 15 s (three
+  unanswered reads of 5 s) SIDOU gives up: it erases what it staged, shows
+  "FAILED" with a code, and reboots into SIDOU. Plug the cable back:
+  `fm1_install.py sidou.fwsc` then installs normally.
+- [ ] Power-cycle the unit during step 1: it comes back as SIDOU (its first
+  boot clears a staging area left behind), and an install afterwards works.
+- [ ] A refused package: build one with `sidou-pack --test-wrong-size` (its
+  flash.bin is 4 KiB short) and install it with `fm1_install.py`. SIDOU
+  refuses it before erasing anything: the screen shows "UPDATE" and
+  "FAILED -15" for about 1.5 s, then the unit reboots into SIDOU as normal.
 - [ ] Pull the USB cable during step 2 (the write). Plug it back: the unit
   comes up as the update loader again, and running `fm1_install.py
   sidou.fwsc` again finishes the install.
@@ -85,6 +98,12 @@ Notes:
   Time from power-on to the screen:
 - [ ] No sound, click or hum before a key is played.
 - [ ] Power on and off ten times: it boots every time.
+
+The first boot after any install is also the first time SIDOU's flash code
+runs on the unit: at boot it reads the flash chip's id and, if an update
+left its staging area (`0xE0000..0xE5000`) in use, erases it
+(`ota_boot_cleanup`). Note anything unusual on that first boot (a longer
+start, a dark screen for a moment).
 
 Notes:
 
@@ -197,8 +216,10 @@ Notes:
 
 Notes:
 
-## 9. Back to stock V15, and SIDOU again
+## 9. Reinstall, back to stock V15, and SIDOU again
 
+- [ ] From SIDOU, install `sidou.fwsc` again (SIDOU to SIDOU): it installs,
+  and `--info` reports `FM-1_900`.
 - [ ] From SIDOU, `fm1_install.py FM-1.fwsc` (the unmodified official V15)
   installs: SIDOU's step 1 accepts it (its flash head is the unit's), the
   official loader writes it, and `--info` reports `FM-1_015`.
@@ -209,22 +230,34 @@ Notes:
 
 ## 10. Boot guard, watchdog and resets
 
-These need checklist builds that die on purpose, one second after boot,
-before the boot counts as stable (10 s). Build them as BUILDING.md says, with
+**Run this section only after a recovery from UBOOT has been shown to work
+on this unit** (with a tool from section 0), since its expected end is
+UBOOT.
+
+It needs a checklist build that dies on purpose, one second after boot,
+before the boot counts as stable (10 s). Build it as BUILDING.md says, with
 `-DSIDOU_TEST_DEATH=hang` (interrupts off: the watchdog resets the chip
 after about 8 s) or `-DSIDOU_TEST_DEATH=reboot` (a P33 reset, as the fault
-handler does), and package each as usual. Never give them to anyone else.
-Section 0 must be ready: the expected end is UBOOT.
+handler does), and package it as usual. It dies **only when OCT- (button 0)
+is held at power-on**, and only on that boot: started without the key it is
+the normal SIDOU, so the normal installer always reaches it. Never give
+these builds to anyone else, and install the normal package again when you
+are done.
 
-- [ ] Hang build: boot 1 dies, the watchdog resets, boot 2 dies, and boot 3
-  enters UBOOT instead of SIDOU. Record what the screen shows and how the
-  unit appears on USB in UBOOT. This shows the guard state in `.noinit`
-  survives a watchdog reset.
+- [ ] Without OCT-: the checklist build boots and plays as normal, and stays
+  up past 10 s.
+- [ ] Hang build: hold OCT- while powering on and keep it held through the
+  resets. Boot 1 dies, the watchdog resets, boot 2 dies, and boot 3 enters
+  UBOOT instead of SIDOU. Record what the screen shows and how the unit
+  appears on USB in UBOOT. This shows the guard state in `.noinit` survives
+  a watchdog reset.
 - [ ] In UBOOT, the unit stays there (no watchdog reset) for at least five
   minutes.
 - [ ] From UBOOT, install the normal `sidou.fwsc` with a recovery tool from
   section 0, and record which one worked and how:
 - [ ] Reboot build: the same, with the guard surviving a P33 reset.
+- [ ] One death, then a normal boot (OCT- released) that runs past 10 s,
+  then one more death: no UBOOT (the stable boot cleared the count).
 - [ ] Normal build: power-cycle quickly (off for under a second) three times
   within ten seconds of each boot. Record whether it ends in UBOOT (it
   should not, if RAM does not survive a power cut, but a brownout may keep
@@ -257,13 +290,13 @@ Notes:
 |---|---|---|
 | 0 Recovery ready | | |
 | 1 Install | | |
-| 2 Interrupted install | | |
+| 2 Interrupted and refused installs | | |
 | 3 Boot | | |
 | 4 Keys and LEDs | | |
 | 5 Buttons, encoders, MASTER | | |
 | 6 LCD | | |
 | 7 TRS MIDI | | |
 | 8 USB MIDI | | |
-| 9 Back to stock and again | | |
+| 9 Reinstall, stock and back | | |
 | 10 Guard, watchdog, resets | | |
 | 11 Measurements | | |

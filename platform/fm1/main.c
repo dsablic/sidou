@@ -124,12 +124,23 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
 }
 
 #if defined(SIDOU_TEST_DEATH_MS)
-/* Hardware-checklist builds only (docs/hardware-test.md; CMake SIDOU_TEST_DEATH): die
- * SIDOU_TEST_DEATH_MS after boot as an early crash would, before the boot is stable, so the
- * boot guard sends the third boot to UBOOT. A hang with interrupts off lets the watchdog reset
- * the chip; SIDOU_TEST_DEATH_REBOOT resets it through P33 as the fault handler does. */
+/* Hardware-checklist builds only (docs/hardware-test.md; CMake SIDOU_TEST_DEATH): with OCT-
+ * held at power-on, die SIDOU_TEST_DEATH_MS after boot as an early crash would, before the
+ * boot is stable, so the boot guard sends the third such boot to UBOOT. Without the key the
+ * build runs as the normal one, so the normal installer always reaches it. A hang with
+ * interrupts off lets the watchdog reset the chip; SIDOU_TEST_DEATH_REBOOT resets it through
+ * P33 as the fault handler does. */
+static uint8_t test_death_armed;
+
+/* Right after interrupts are on: the key scan needs a few frames to debounce (as Felucca reads
+ * its power-on combinations). */
+static void test_death_arm(void) {
+    fm1_delay_ms(30);
+    test_death_armed = (input_buttons() >> PANEL_BTN_OCT_DOWN) & 1u;
+}
+
 static void test_death(uint32_t now) {
-    if (now < SIDOU_TEST_DEATH_MS) {
+    if (!test_death_armed || now < SIDOU_TEST_DEATH_MS) {
         return;
     }
 #if SIDOU_TEST_DEATH_REBOOT
@@ -174,6 +185,9 @@ static void sidou_main(void) {
     fm1_timer5_start(isr_timer5, PRIO_TIMER5);
     fm1_irq_enable_all();
     audio_irqs_on();
+#if defined(SIDOU_TEST_DEATH_MS)
+    test_death_arm();
+#endif
     uint32_t next_tick = uptime_ms + TICK_MS;
     uint32_t last_frame = input_frame();
     for (;;) {

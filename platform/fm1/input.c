@@ -67,3 +67,7 @@ void input_leds(const panel* p, const live* l) {
 void input_leds_dark(void) {
     fm1__led_lines(0);
 }
+
+uint32_t input_buttons(void) {
+    return fm1_in.buttons;
+}

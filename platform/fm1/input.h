@@ -21,6 +21,8 @@ uint32_t input_frame(void);
  * Only once interrupts are on: its critical sections end with fm1__unlock, which always
  * re-enables interrupts (sti), whatever the state before. */
 void input_poll(panel* p, live* l);
+/* The debounced buttons (bit i: button i), as the key scan has them now. */
+uint32_t input_buttons(void);
 /* Main loop: the MASTER pot, 0..1023, or -1 on an ADC timeout. */
 int32_t input_master(void);
 /* With interrupts off, before a flash erase (~17 ms without the scan): all LED rows dark, so
