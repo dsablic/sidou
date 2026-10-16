@@ -3,7 +3,7 @@
 # The portable live-instrument logic, front-panel mapping, register ring, MIDI parser and MIDI input,
 # MIDI learn, the screen font, the cell-grid renderer, the screen's views (the CHIP view among them),
 # widgets and transitions, the boot sequence, the logo, the About cracktro with its credits, SCENE's
-# pieces and the title cards. Its headers are included bare ("live.h"); the SID core's as "sid/sid.h".
+# pieces and their pixel art, and the title cards. Its headers are included bare ("live.h"); the SID core's as "sid/sid.h".
 add_library(sidou_live STATIC
     about.c
     boot.c
@@ -29,6 +29,8 @@ add_library(sidou_live STATIC
     panel.c
     reg_ring.c
     scene.c
+    scene_art.c
+    scene_rmr_art.c
     scene_view.c
     scope.c
     screen.c

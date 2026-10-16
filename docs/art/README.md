@@ -689,6 +689,43 @@ edge, the blade pointing in toward `VS` in eight notches, each stamina lost taki
 at the tip (the tip moves in), what is lost left as a dark ghost of the blade. The prototype's
 eight square pips a side were replaced after the review below.
 
+### In flash
+
+`host/crates/sidou-tests/src/scene_art.rs` converts the PNGs into `app/scene_rmr_art.c`
+(`SIDOU_SCENE_UPDATE=1` regenerates it; a test fails while it is stale), a `scene_image`
+(`app/scene_art.h`) each, decoded a row span at a time by `scene_image_row`:
+
+- **Run-length rows with transparency.** Each image is cropped to the rectangle its pixels
+  cover inside its frame; each pixel row of the rectangle is coded as the logo bitmaps' are (a
+  byte a run of 1..16 pixels, `(length - 1) << 4 | colour`, and a table of where each row's runs
+  start), with one colour that no image of the set uses (cyan) coding a transparent run, so a
+  row decodes with the bitmaps' loop. Rows alike share their runs across every image. A sprite
+  keeps its frame's size, its anchor (a fighter's feet at (58, 112) of the 128 x 124 screen
+  frame; a sword's grip) and `gx`; drawn mirrored, a row is read from its end and the anchor is
+  (frame width - 58, 112), so no mirrored copies are stored.
+- **Patches.** An unarmed pose is coded as the rectangle where it differs from its armed pose
+  (the arm and the sword), over that pose, when that is smaller: guard, guard2 and hit, 120 to
+  188 bytes each instead of 813 to 931; reach has no armed pose and is whole.
+- **The skies** are a gradient computed on the device (`scene_gradient_row`: the prototype's
+  stops and 6-row Bayer seams) and an overlay of the pixels it does not give (the moon, wisps
+  and hills): **7,262 bytes for the three, against 10,977 coded whole** (rows shared across
+  the three). The gradient costs a fill a pixel on its flat rows and a Bayer compare a pixel
+  on its seam rows (24 of its 124), so it was chosen.
+- **The arena** is one image of the whole screen, transparent where the sky shows.
+
+| What | Bytes |
+|---|---|
+| Fighters, 16 armed poses | 16,500 |
+| Unarmed poses (6 patches, 2 whole reaches) | 2,461 |
+| Swords, 8 in flight and stuck | 1,878 |
+| Skies (3 overlays) and the arena | 17,132 |
+| Together, rows shared: 29,620 of runs, 5,240 of row offsets, 950 of tables | **35,810** (35.0 KB of the 48 KB ceiling) |
+
+The kinds are each image's runs and offsets alone; sharing rows across images brings the sum
+down to the total. A test prints the total and fails over 48 KB (`the_art_fits_its_flash_ceiling`),
+and another decodes every image, mirrored too and from any pixel, back to its PNG pixel for
+pixel. Nothing draws the art yet (M2f Task 4), so the linker leaves it out of the image for now.
+
 ### The originality review
 
 The preview and the sprite sheets were set beside a gameplay still of the genre's best-known

@@ -27,6 +27,7 @@ mod midi_usb;
 mod panel;
 mod reg_ring;
 mod scene;
+mod scene_art;
 mod scene_rmr_drawing;
 mod scope;
 mod screen;
