@@ -27,6 +27,13 @@ Follow-ups that aren't tied to a milestone task yet.
     a CC learned and moved like a mod wheel → "map it to vibrato depth?". Suggestions are
     one-line toasts with a single yes gesture, dismissable, learned per session, cheap
     (main-loop pattern counters, no audio cost), and off with one setting.
+- **The guiding principle: the antithesis of menu diving.** Everything a player reaches for
+  while making music is one gesture away, on the panel, never three pages deep in a menu.
+  Menus hold only set-and-forget settings. Measure it: for each common task (change the
+  sound, tweak an effect, save, learn a CC, mute a voice, change pattern), count the
+  presses from wherever the player is, and cut every path longer than two. The screen always
+  says what the knobs do right now, and nothing is ever hidden behind a mode the screen
+  doesn't show.
 - The user's priority (2026-10-16): finish the features first, then this pass.
 
 ## Apply for a pid.codes PID before 1.0
