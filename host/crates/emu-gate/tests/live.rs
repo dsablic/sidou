@@ -229,8 +229,9 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
     let blocks_before = m.alnk_blocks.len();
     let quiet_before = m.alnk_blocks.iter().copied().max().unwrap_or(0);
 
-    // live_init's reset at boot took the spare, sid 2, initialised for the 6581 (sid 0 is chip A
-    // from reg_ring_chips_init, sid 1 chip B); each toggle swaps A with the spare.
+    // live_init's reset at boot took the spare, sid 2, initialised for the 6581 (sid 0 was chip A
+    // from reg_ring_chips_init); chip B's boot preparation then took sid 0, so the spare is
+    // sid 1, and each toggle swaps A with the spare: 1, then 2.
     let boot_state = chips(&mut m, &fw);
     let expect = |active, model| Chips {
         active,
@@ -248,7 +249,7 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
     m.run_ms(50);
     let fx_led = m.soc.periph.led_take()[usize::from(FX)];
     let first = chips(&mut m, &fw);
-    assert_eq!(first, expect(0, SID_MODEL_8580), "after the first FX");
+    assert_eq!(first, expect(1, SID_MODEL_8580), "after the first FX");
     tap(&mut m, FX);
     m.run_ms(100);
     let second = chips(&mut m, &fw);
@@ -274,13 +275,13 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
     });
     println!("{report}");
 
-    // The two toggles' preparations, 7 slices each (the 8580 R5 and the 6581 R4AR with the
-    // model's own DACs), the first 4 more for the 8580's default DACs, built on first use: all
-    // in the main loop (the watch counts main-loop calls only), and the blocks stay small, so
-    // none ran in the interrupt.
+    // Chip B's boot preparation (the 6581 R4AR, 7 slices), then the two toggles', 7 slices each
+    // (the 8580 R5 and the 6581 R4AR with the model's own DACs), the first 4 more for the
+    // 8580's default DACs, built on first use: all in the main loop (the watch counts main-loop
+    // calls only), and the blocks stay small, so none ran in the interrupt.
     assert_eq!(
         calls.len(),
-        18,
+        25,
         "preparation slices from the main loop: {calls:?}"
     );
     assert!(

@@ -391,6 +391,19 @@ sample per chip less: the worst blocks are 717.49 and 1,439.67 (constants 718, 1
 sum has 16.53 left; another 6581 instruction per sample per chip in the worst block
 takes 2 of it. The 6502's headroom is 191.
 
+**M2b Task 3 (2026-10-16): the device's own two-chip block.** Until M2b the gates added the
+second chip from the bench; the firmware now renders chip B beside chip A while it is in
+use and mixes them before the slots (`chip_mix`, app/chip_mix.h: `sat16(a + b)`, a linear
+fade over the block it goes in or out of use). emu-gate's `chip_b.rs` drives both chips on
+the device with noise and ring modulation at 0x0800 on every voice, every slot's heaviest at
+full: the worst block 2,388.4 instructions a sample, within 2,700 (not at the gates' sum:
+the device cannot replay the bench's power-on transient, the SID's worst block). The mix
+itself costs 8.06 a sample in use, so the 6502's headroom is about 197 of the gates' 205.5.
+Out of use chip B is not rendered: a held chord costs 398.06 a sample against M1's 397.87.
+Headroom at the mix: one chip's loudest steady sample on the bench scenarios is 20,274
+(`gate_every_frame`, 6581), so two that loud and in phase clip, by up to 3.3 dB; a gain on
+the mix would move chip A's level each time B goes in or out of use, so it is not applied.
+
 (Since M1c Task 2 the algorithms' expensive inits run in `sid_slots_init` as templates
 that a switch copies, to fit the device's SRAM code region: the figures above are with
 that change.)

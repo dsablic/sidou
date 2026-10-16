@@ -52,7 +52,8 @@ SECTIONS
         *(.text.isr_alnk0)                          /* hal/fm1_isr.S: the IRQ entry */
         *(.text.fm1_alnk0_irq)                      /* main.c */
         *(.text.audio_fill)                         /* audio.c */
-        *(.text.reg_ring_drain .text.reg_ring_pop .text.reg_ring_chip)   /* app/reg_ring.c */
+        *(.text.chip_mix .text.mix_sat16)               /* app/chip_mix.c: chip B into chip A */
+        *(.text.reg_ring_drain .text.reg_ring_pop .text.reg_ring_chip .text.reg_ring_chip_of)   /* app/reg_ring.c */
         *(.text.sid_render .text.sid_render_tap .text.sid_write)   /* core/sid/sid.c (sid_svf_set is inline) */
         *(.text.render_6581 .text.render_8580)     /* sid.c, from sid_render_tap; and with */
         *(.text.render_6581_bleed .text.render_8580_bleed)  /* the bleed (sid.h) */

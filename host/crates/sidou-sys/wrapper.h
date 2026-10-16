@@ -18,6 +18,7 @@
 #include "about.h"
 #include "boot.h"
 #include "bootguard.h"
+#include "chip_mix.h"
 #include "chip_view.h"
 #include "credits.h"
 #include "font.h"

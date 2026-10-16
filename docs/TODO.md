@@ -358,7 +358,8 @@ working.
 - **Problem:** the switch gate holds two chips at the SID's worst block (1,426),
   the LIVE view's tap (4.5; on at power-on), the ISR (100) and the slots' worst
   switching block (964) to the 2,700 audio target, which leaves **205 per
-  sample** for the 6502 (M3; 191 after M1b, 227 before M1b Task 6's non-linear
+  sample** for the 6502; chip B's mix in the device's interrupt (M2b Task 3, `chip_mix`,
+  measured 8.1 a sample with both chips in use) leaves about **197** (M3; 191 after M1b, 227 before M1b Task 6's non-linear
   6581 filter, about 38 per sample per chip, and without the tap; M1c Task 3's
   fmax/fmin clamps in the 6581 filter gave back 14). The old budget reserved
   400. The SID's worst block is the power-on transient of noise combined with

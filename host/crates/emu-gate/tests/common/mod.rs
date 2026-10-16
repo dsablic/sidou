@@ -588,6 +588,124 @@ pub fn render_host(
     out
 }
 
+/// Chip B's events for render_host_chips, before a block as the device's drain applies them:
+/// register writes straight to chip A or chip B (sid_write, as the drain does with entries
+/// pushed into the ring) and chip B going in or out of use.
+pub struct ChipEvent {
+    pub block: usize,
+    pub a: Vec<(u8, u8)>,
+    pub b: Vec<(u8, u8)>,
+    pub b_use: Option<bool>,
+}
+
+/// What render_host_chips renders: the output (interleaved L, R), and each chip's own samples
+/// before the mix (chip B's 0 while out of use).
+pub struct ChipsRender {
+    pub out: Vec<i16>,
+    pub a: Vec<i16>,
+    pub b: Vec<i16>,
+}
+
+/// The firmware's two chips at boot rendered by the host build as audio_fill does: chip A the
+/// instrument (render_host, idle), chip B made as the device's boot makes it (the keys'
+/// setup: the 6581 R4AR at character 0, the envelope instant; platform/fm1/audio.c
+/// audio_chip_b_boot) and rendered only while in use, faded in or out over the block it goes
+/// in or out of use (app/chip_mix.h), mixed before the effect slots.
+pub fn render_host_chips(frames: usize, events: &[ChipEvent]) -> ChipsRender {
+    use sidou_sys::*;
+    let mut chip = Box::<sid>::default();
+    let mut spare = Box::<sid>::default();
+    let mut dacs = Box::<[sid_dac; 2]>::default();
+    let mut chip_b = Box::<sid>::default();
+    let mut dacs_b = Box::<[sid_dac; 2]>::default();
+    let mut pool = Box::<sid_slot_pool>::default();
+    let mut slots = Box::<sid_slots>::default();
+    let mut fx = Box::<fx_live>::default();
+    let mut target = Box::new(fx_live_target {
+        sid: live_sid_target {
+            chip: &mut *chip,
+            clock_hz: SID_CLOCK_PAL,
+            sample_rate: SAMPLE_RATE,
+            dacs: dacs.as_mut_ptr(),
+            spare: &mut *spare,
+            ..Default::default()
+        },
+        fx: &mut *fx,
+    });
+    let mut target_b = Box::new(live_sid_target {
+        chip: &mut *chip_b,
+        clock_hz: SID_CLOCK_PAL,
+        sample_rate: SAMPLE_RATE,
+        dacs: dacs_b.as_mut_ptr(),
+        ..Default::default()
+    });
+    let mut l = Box::<live>::default();
+    let t: *mut fx_live_target = &mut *target;
+    let tb: *mut live_sid_target = &mut *target_b;
+    let mut r = ChipsRender {
+        out: vec![0i16; 2 * frames],
+        a: vec![0i16; frames],
+        b: vec![0i16; frames],
+    };
+    let mut mono = vec![0i16; HALF_FRAMES];
+    let mut mono_b = vec![0i16; HALF_FRAMES];
+    let mut b_on = false;
+    let mut b_want = false;
+    // SAFETY: everything C keeps a pointer to is boxed and outlives the calls; the buffers
+    // hold the samples asked for.
+    unsafe {
+        sid_slots_init(&mut *slots, SAMPLE_RATE, SLOTS_SEED, &mut *pool);
+        fx_live_init(&mut *fx, &mut *slots);
+        live_init(
+            &mut *l,
+            Some(fx_live_sid_sink),
+            t.cast::<std::ffi::c_void>(),
+            SID_MODEL_6581,
+        );
+        let sid_target: *mut live_sid_target = &mut (*t).sid;
+        live_set_preparer(&mut *l, Some(live_sid_prepare), sid_target.cast());
+        live_set_master(&mut *l, POT);
+        let sink_b = |reg: u32, value: u32| live_sid_sink(tb.cast(), reg as u8, value as u8);
+        sink_b(LIVE_REG_CHAR_FIRST, SID_CHIP_6581_R4AR);
+        for f in 1..LIVE_CHAR_FIELDS {
+            sink_b(LIVE_REG_CHAR_FIRST + f, 0);
+        }
+        sink_b(LIVE_REG_RESET, SID_MODEL_6581);
+        sink_b(LIVE_REG_GATE_RESET, 1);
+        for (i, half) in r.out.chunks_mut(2 * HALF_FRAMES).enumerate() {
+            for e in events.iter().filter(|e| e.block == i) {
+                for &(reg, v) in &e.a {
+                    sid_write(&mut *chip, reg, v);
+                }
+                for &(reg, v) in &e.b {
+                    sid_write(&mut *chip_b, reg, v);
+                }
+                if let Some(u) = e.b_use {
+                    b_want = u;
+                }
+            }
+            let n = half.len() / 2;
+            sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
+            r.a[i * HALF_FRAMES..i * HALF_FRAMES + n].copy_from_slice(&mono[..n]);
+            if b_want || b_on {
+                sid_render(&mut *chip_b, mono_b.as_mut_ptr(), n as u32);
+                r.b[i * HALF_FRAMES..i * HALF_FRAMES + n].copy_from_slice(&mono_b[..n]);
+                let fade = if b_want == b_on {
+                    CHIP_MIX_FULL
+                } else if b_want {
+                    CHIP_MIX_IN
+                } else {
+                    CHIP_MIX_OUT
+                };
+                chip_mix(mono.as_mut_ptr(), mono_b.as_ptr(), n as u32, fade);
+                b_on = b_want;
+            }
+            sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+        }
+    }
+    r
+}
+
 /// The largest difference between two interleaved renders, in LSB.
 pub fn max_diff(a: &[i16], b: &[i16]) -> i32 {
     a.iter()

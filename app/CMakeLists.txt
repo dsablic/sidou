@@ -8,6 +8,7 @@ add_library(sidou_live STATIC
     about.c
     boot.c
     bootguard.c
+    chip_mix.c
     chip_view.c
     credits.c
     font.c

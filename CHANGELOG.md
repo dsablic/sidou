@@ -215,8 +215,11 @@ All notable changes are documented here. The format follows
   pseudo-registers 0xC0..0xC8; the effect slots' name no chip), in one ring so their writes
   stay in order; three sids (A, B and one spare they share, one preparation at a time) and
   three DAC tables (one each chip plays, one a ramp builds into, one build at a time). A sink
-  is bound to a chip (`reg_ring_out.chip`); live stays chip-agnostic. Chip B is not rendered
-  yet.
+  is bound to a chip (`reg_ring_out.chip`); live stays chip-agnostic.
+- M2b: chip B renders on the device beside chip A while it is in use, mixed before the
+  effect slots and faded in or out over one block; out of use it is not rendered and the
+  output is chip A's bit for bit. It is made at boot with the keys' setup, prepared in the
+  background. The LIVE view's tap can follow either chip.
 - The menu's CHIP item opens the CHIP view; the 6581/8580 choice it held is the view's profile
   picker (and the FX button, as before).
 - The EDIT layer (EDIT + K1..K4, SCL, ENV) is no longer a stopgap: it stays in every view as a

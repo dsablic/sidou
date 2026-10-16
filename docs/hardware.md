@@ -156,6 +156,10 @@ reverb layouts) run once in `sid_slots_init`, in flash, as templates that the
 interrupt only copies; with those inits in the interrupt it was 26,920
 bytes.
 
+M2b Task 3 adds chip B's render beside chip A's, while chip B is in use, and their mix
+(`chip_mix`): `.ram_text` 36,720 bytes. Out of use chip B is not rendered (a silent chip
+still has a level of its own); its use changes at a block boundary, faded over that block.
+
 M1b's exact SID core (register reads, combined waveforms, the envelope
 pipeline) brings `.ram_text` to about 32 KB, so RAMTEXT is now **48 KB**
 (0x01C00000–0x01C0C000), twice Felucca's 24 KB. Nothing on the hardware set

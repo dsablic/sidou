@@ -258,10 +258,11 @@ void reg_ring_sink(void* ctx, uint8_t reg, uint8_t value);
  * Requests faster than a preparation (about 70 ms) restart it each time: the chip swaps only
  * once they stop.
  *
- * Chip B's first reset, live_init's for its writer, is not prepared: it waits for the ring to
- * empty and builds the chip in one pass (0.5 M instructions), as chip A's at boot. It may
- * happen only at boot, before the main loop; chip B's sid (chip[1]) is zeroed until then,
- * its sample rate 0, and nothing may render it. */
+ * Chip B's first reset happens at boot only, prepared like any other in the first ticks of
+ * the main loop (platform/fm1/audio.c, audio_chip_b_boot and audio_chip_b_tick): an
+ * unprepared one, 0.5 M instructions in one pass before the main loop, would move the boot's
+ * timeline. Chip B's sid (chip[1]) is zeroed until that reset, its sample rate 0, and nothing
+ * may render it. */
 int reg_ring_prepare_step(void* ctx, uint8_t profile);
 /* Producer: the main-loop pass is over (platform/fm1/audio.c's audio_commit, once a pass at
  * its end). At most one slice runs a pass, so a catch-up pass of two ticks

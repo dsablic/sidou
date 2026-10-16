@@ -118,6 +118,7 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         *next_tick += TICK_MS;
         panel_master(&front, &instrument, input_master());
         live_tick(&instrument);
+        audio_chip_b_tick(); /* chip B's boot preparation, then nothing */
     }
     if (tick_due) {
         midi_send(); /* once a pass at most, so at most once a tick */
@@ -182,6 +183,10 @@ static void sidou_main(void) {
     live_init(&instrument, reg_ring_sink, audio_sink_ctx(), SID_MODEL_6581);
     /* From here on a profile or model change prepares the spare chip a slice a tick. */
     live_set_preparer(&instrument, reg_ring_prepare_step, audio_sink_ctx());
+    /* Chip B's first reset, at boot only (app/reg_ring.h): the keys' setup, live's, prepared
+     * in the background from the first ticks. */
+    audio_chip_b_boot(instrument.model, instrument.profile,
+                      instrument.envelope_mode == LIVE_ENVELOPE_INSTANT);
     panel_init(&front);
     input_init();
     panel_master(&front, &instrument, input_master());
