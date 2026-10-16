@@ -96,7 +96,7 @@ toast:
 | `SNG: BAD INSTRUMENTS` | more than 63 instruments |
 | `SNG: BAD PATTERN n` | pattern n has more than 129 rows, no end row, a note outside `$60-$BF`, an instrument above `$3F` or a command above `$F` before its end |
 | `SNG: BAD PATTERNS` | more than 208 patterns |
-| `SNG: TOO BIG (60K OF 52K)` | the orderlists and patterns do not fit the arena with its spare: on the device 53,360 bytes (52K) of the 64 KiB content region (`core/song/gt2_song.h`) |
+| `SNG: TOO BIG (60K OF 51K)` | the orderlists and patterns do not fit the arena with its spare: on the device 53,128 bytes (51K) of the 64 KiB content region (`core/song/gt2_song.h`) |
 | `SNG: MULTISPEED 8 (MAX 4)` | on the device: the `OPTS` chunk asks for multispeed above 4 (0, 25 Hz, is refused as `MULTISPEED 0`) |
 
 What GoatTracker accepts and plays oddly (a restart position past the end, a transpose

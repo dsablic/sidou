@@ -732,6 +732,7 @@ fn edit_refusals() {
             gt2_set_row(p, 0, 63, [0x60, 0, 0, 0].as_ptr(), &mut e),
             GT2_OK
         );
+        gt2_edit_cancel(p, &e);
         assert_eq!(
             gt2_set_row(p, 0, 64, [0x60, 0, 0, 0].as_ptr(), &mut e),
             GT2_ERR_RANGE
@@ -768,8 +769,10 @@ fn edit_refusals() {
         assert_eq!(gt2_set_order(p, 0, 0, 2, 0xe0, &mut e), GT2_ERR_ORDER_RULE);
         assert_eq!(gt2_set_order(p, 0, 0, 2, 9, &mut e), GT2_ERR_RANGE);
         assert_eq!(gt2_set_order(p, 0, 0, 2, 1, &mut e), GT2_OK);
+        gt2_edit_cancel(p, &e);
         assert_eq!(gt2_set_order(p, 0, 0, 3, 3, &mut e), GT2_ERR_RANGE); // restart past end
         assert_eq!(gt2_set_order(p, 0, 0, 3, 2, &mut e), GT2_OK);
+        gt2_edit_cancel(p, &e);
         assert_eq!(gt2_set_order(p, 1, 0, 0, 1, &mut e), GT2_ERR_RANGE); // no subtune 1
                                                                          // Rows.
         assert_eq!(gt2_pattern_resize(p, 0, 129, &mut e), GT2_ERR_ROWS);
@@ -1145,7 +1148,7 @@ fn a_trailer_settles_goattracker_stereos_guess() {
     for (f, v) in i.iter().enumerate() {
         let mut e = gt2_edit::default();
         assert_eq!(
-            unsafe { gt2_set_instr(u.ptr(), 1, f as u32, *v, &mut e) },
+            unsafe { gt2_set_instr(u.ptr_mut(), 1, f as u32, *v, &mut e) },
             GT2_OK
         );
         unsafe { gt2_edit_commit(u.ptr_mut(), &e) };
@@ -1508,4 +1511,526 @@ fn set_mono_from_spec(s: &mut Song, spec: &SngSpec) {
     for k in 0..3 {
         s.set_string(k, &spec.strings[k]);
     }
+}
+
+// Compaction.
+
+/// The blocks in the arena (every index entry's), for compaction's step bound.
+fn blocks(s: &Song) -> u32 {
+    let raw = s.raw();
+    (raw.order.iter().flatten().filter(|&&x| x != 0).count()
+        + raw.pattern.iter().filter(|&&x| x != 0).count()) as u32
+}
+
+/// The free space is one hole: every used unit below every free one.
+fn one_hole(s: &Song) -> bool {
+    let b = s.bitmap();
+    let used = s.raw().used_units as usize;
+    b[..used].iter().all(|&u| u) && b[used..].iter().all(|&u| !u)
+}
+
+/// Compacts to the end, each step committed at once; the steps taken.
+fn compact_all(s: &mut Song) -> u32 {
+    let mut steps = 0;
+    loop {
+        let before = in_use(s);
+        let m = Model::of(s);
+        let mut e = gt2_edit::default();
+        let r = unsafe { gt2_compact_step(s.ptr_mut(), &mut e) };
+        assert_ne!(r, -1, "nothing is pending");
+        if r == 0 {
+            return steps;
+        }
+        assert_eq!(in_use(s), before, "compaction changed bytes in use");
+        unsafe { gt2_edit_commit(s.ptr_mut(), &e) };
+        assert_eq!(Model::of(s), m, "compaction changed the song");
+        steps += 1;
+        assert!(steps <= 100_000, "compaction does not end");
+    }
+}
+
+/// A review's counterexample: full-size patterns, each followed by a 2-unit hole. The free
+/// space is well above the spare but no hole holds a 128-row pattern, and no single move
+/// into a hole helps: the old compaction gave up, and every rebuild failed for good.
+#[test]
+fn compaction_never_dead_ends() {
+    let mut s = Song::device();
+    unsafe { gt2_song_wipe(s.ptr_mut()) };
+    let cap = unsafe { gt2_arena_capacity(s.ptr()) };
+    let mut fillers = Vec::new();
+    let mut n = 0;
+    while (n + 1) * 516 <= cap {
+        let mut off4 = 0;
+        if unsafe { gt2_arena_alloc(s.ptr_mut(), 516, &mut off4) } != 0 {
+            break;
+        }
+        unsafe { (*s.ptr_mut()).pattern[n as usize] = off4 | 129 << 16 };
+        n += 1;
+        if unsafe { gt2_arena_alloc(s.ptr_mut(), 8, &mut off4) } == 0 {
+            fillers.push(off4);
+        }
+    }
+    for f in fillers {
+        unsafe { gt2_arena_release(s.ptr_mut(), f, 8) };
+    }
+    assert!(n >= 100, "{n} patterns");
+    let free = s.raw().arena_units * 4 - unsafe { gt2_arena_used(s.ptr()) };
+    assert!(free >= SONG_ARENA_SPARE, "free {free}");
+    assert!(unsafe { gt2_arena_largest_hole(s.ptr()) } < 516);
+    check_arena(&s);
+    let mut e = gt2_edit::default();
+    assert_eq!(
+        unsafe { gt2_pattern_delete_row(s.ptr_mut(), 0, 0, &mut e) },
+        GT2_ERR_FRAGMENTED
+    );
+    let b = blocks(&s);
+    let steps = compact_all(&mut s);
+    assert!(steps <= 2 * b, "{steps} steps for {b} blocks");
+    assert!(one_hole(&s));
+    check_arena(&s);
+    for p in 0..n {
+        assert_eq!(
+            unsafe { gt2_pattern_delete_row(s.ptr_mut(), p, 0, &mut e) },
+            GT2_OK,
+            "pattern {p}"
+        );
+        unsafe { gt2_edit_commit(s.ptr_mut(), &e) };
+    }
+    check_arena(&s);
+}
+
+/// Random fragmentation, then compaction to the end: always one hole, within 2 x blocks
+/// steps.
+#[test]
+fn compaction_always_reaches_one_hole() {
+    compaction_random(60);
+}
+
+#[test]
+#[ignore = "long: cargo test --release -p sidou-tests --test song -- --ignored"]
+fn compaction_always_reaches_one_hole_long() {
+    compaction_random(3000);
+}
+
+fn compaction_random(seeds: u64) {
+    for seed in 0..seeds {
+        let mut rng = Rng(0xc0_0000 + seed);
+        let mut s = Song::device();
+        s.read(&random_canonical(&mut rng, seed % 4 == 0).encode(), 4)
+            .unwrap();
+        // Fragment it: patterns added, resized and removed, rebuilds that find no hole
+        // skipped.
+        // Mostly near-full patterns, so the arena fills and its holes are small.
+        for _ in 0..rng.below(1500) {
+            let mut e = gt2_edit::default();
+            let p = rng.below(208);
+            let rows = if rng.chance(70) {
+                118 + rng.below(11)
+            } else {
+                1 + rng.below(128)
+            };
+            let r = unsafe {
+                match rng.below(3) {
+                    0 => {
+                        let mut got = 0;
+                        gt2_pattern_add(s.ptr_mut(), rows, &mut got, &mut e)
+                    }
+                    1 => gt2_pattern_resize(s.ptr_mut(), p, rows, &mut e),
+                    _ => gt2_pattern_remove(s.ptr_mut(), p, &mut e),
+                }
+            };
+            if r == GT2_OK {
+                unsafe { gt2_edit_commit(s.ptr_mut(), &e) };
+            }
+        }
+        check_arena(&s);
+        let b = blocks(&s);
+        let steps = compact_all(&mut s);
+        assert!(steps <= 2 * b, "seed {seed}: {steps} steps for {b} blocks");
+        assert!(one_hole(&s), "seed {seed}");
+        check_arena(&s);
+    }
+}
+
+// Deferred edits (M2c Task 6): the main loop makes edits and queues them; the audio
+// interrupt applies them later, in order, and acknowledges each; the main loop releases
+// each after its acknowledgement.
+
+/// What the main loop and the player see: the orderlists and patterns, the instruments and
+/// the tables.
+#[derive(Clone, Debug, PartialEq)]
+struct Whole {
+    m: Model,
+    instr: Vec<u8>,
+    tables: Vec<u8>,
+}
+
+impl Whole {
+    fn of(s: &Song) -> Whole {
+        let r = s.raw();
+        Whole {
+            m: Model::of(s),
+            instr: r.instr.iter().flatten().copied().collect(),
+            tables: r
+                .ltable
+                .iter()
+                .chain(r.rtable.iter())
+                .flatten()
+                .copied()
+                .collect(),
+        }
+    }
+}
+
+#[test]
+fn deferred_edits_apply_as_made() {
+    deferred_edits(60, 600);
+}
+
+#[test]
+#[ignore = "long: cargo test --release -p sidou-tests --test song -- --ignored"]
+fn deferred_edits_long() {
+    deferred_edits(2000, 2000);
+}
+
+fn deferred_edits(seeds: u64, steps: u32) {
+    use std::collections::VecDeque;
+    for seed in 0..seeds {
+        let mut rng = Rng(0xde_0000 + seed);
+        let mut s = Song::device();
+        s.read(&random_canonical(&mut rng, false).encode(), 4)
+            .unwrap();
+        // The intended song after every edit made so far, and the queue: each edit with the
+        // song as it must stand once that edit is applied.
+        let mut want = Whole::of(&s);
+        let mut queue: VecDeque<(gt2_edit, Whole)> = VecDeque::new();
+        let mut acked: VecDeque<gt2_edit> = VecDeque::new();
+        let (mut made, mut refused) = (0, 0);
+        for step in 0..steps {
+            match rng.below(10) {
+                // The interrupt applies up to 3 queued edits.
+                0 | 1 => {
+                    for _ in 0..rng.below(4) {
+                        let Some((e, w)) = queue.pop_front() else {
+                            break;
+                        };
+                        unsafe { gt2_edit_apply(s.ptr_mut(), &e) };
+                        assert_eq!(Whole::of(&s), w, "seed {seed} step {step}: applied");
+                        acked.push_back(e);
+                    }
+                }
+                // The main loop releases what is acknowledged.
+                2 => {
+                    while let Some(e) = acked.pop_front() {
+                        unsafe { gt2_edit_release(s.ptr_mut(), &e) };
+                    }
+                    if queue.is_empty() {
+                        check_arena(&s);
+                    }
+                }
+                // A compaction step: refused while an edit holding a slot is pending, else a swap that
+                // changes nothing the player sees.
+                3 => {
+                    let mut e = gt2_edit::default();
+                    // Instrument and table cells hold no slot and do not count.
+                    let pending = queue
+                        .iter()
+                        .map(|q| &q.0)
+                        .chain(acked.iter())
+                        .any(|e| e.slot != GT2_SLOT_NONE as u16);
+                    let r = unsafe { gt2_compact_step(s.ptr_mut(), &mut e) };
+                    assert_eq!(r == -1, pending, "seed {seed} step {step}: compaction");
+                    if r == 1 {
+                        queue.push_back((e, want.clone()));
+                    }
+                }
+                // An edit.
+                _ => {
+                    let live = in_use(&s);
+                    let mut e = gt2_edit::default();
+                    let mut w = want.clone();
+                    let r = deferred_op(&mut rng, &mut s, &mut w, &mut e);
+                    assert_eq!(in_use(&s), live, "seed {seed} step {step}: bytes in use");
+                    if r == GT2_OK {
+                        made += 1;
+                        want = w;
+                        queue.push_back((e, want.clone()));
+                    } else {
+                        refused += 1;
+                    }
+                }
+            }
+        }
+        while let Some((e, w)) = queue.pop_front() {
+            unsafe { gt2_edit_apply(s.ptr_mut(), &e) };
+            assert_eq!(Whole::of(&s), w, "seed {seed}: drained");
+            acked.push_back(e);
+        }
+        while let Some(e) = acked.pop_front() {
+            unsafe { gt2_edit_release(s.ptr_mut(), &e) };
+        }
+        check_arena(&s);
+        assert_eq!(Whole::of(&s), want, "seed {seed}");
+        assert!(
+            made > 0 && refused > 0,
+            "seed {seed}: {made} made, {refused} refused"
+        );
+    }
+}
+
+/// One random primitive on the song, its effect made on the model w if it succeeds.
+fn deferred_op(rng: &mut Rng, s: &mut Song, w: &mut Whole, e: &mut gt2_edit) -> gt2_err {
+    let held: Vec<u32> = (0..208)
+        .filter(|&p| w.m.patterns[p as usize].is_some())
+        .collect();
+    let p = if held.is_empty() {
+        0
+    } else {
+        held[rng.below(held.len() as u32) as usize]
+    };
+    let rows = w.m.patterns[p as usize]
+        .as_ref()
+        .map_or(0, |v| v.len() as u32);
+    let d = rng.below(w.m.orders.len() as u32);
+    let c = rng.below(3);
+    let (entries, restart) = w.m.orders[d as usize][c as usize].clone();
+    let n = entries.len() as u32;
+    let q = s.ptr_mut();
+    unsafe {
+        match rng.below(10) {
+            0 | 1 => {
+                let row = rng.below(rows.max(1));
+                let cell = [
+                    0x60 + rng.below(0x60) as u8,
+                    rng.below(64) as u8,
+                    rng.below(16) as u8,
+                    rng.byte(),
+                ];
+                let r = gt2_set_row(q, p, row, cell.as_ptr(), e);
+                if r == GT2_OK {
+                    w.m.patterns[p as usize].as_mut().unwrap()[row as usize] = cell;
+                }
+                r
+            }
+            2 => {
+                let (i, f, v) = (1 + rng.below(63), rng.below(25), rng.byte());
+                let r = gt2_set_instr(q, i, f, v, e);
+                if r == GT2_OK {
+                    w.instr[((i - 1) * 25 + f) as usize] = v;
+                }
+                r
+            }
+            3 => {
+                let (t, row, side, v) = (rng.below(4), rng.below(255), rng.below(2), rng.byte());
+                let r = gt2_set_table(q, t, row, side, v, e);
+                if r == GT2_OK {
+                    w.tables[(side * 1020 + t * 255 + row) as usize] = v;
+                }
+                r
+            }
+            4 => {
+                let row = rng.below(rows + 1);
+                let r = gt2_pattern_insert_row(q, p, row, e);
+                if r == GT2_OK {
+                    w.m.patterns[p as usize]
+                        .as_mut()
+                        .unwrap()
+                        .insert(row as usize, EMPTY);
+                }
+                r
+            }
+            5 => {
+                let row = rng.below(rows.max(1));
+                let r = gt2_pattern_delete_row(q, p, row, e);
+                if r == GT2_OK {
+                    w.m.patterns[p as usize]
+                        .as_mut()
+                        .unwrap()
+                        .remove(row as usize);
+                }
+                r
+            }
+            6 => {
+                let new_rows = 1 + rng.below(128);
+                let r = gt2_pattern_resize(q, p, new_rows, e);
+                if r == GT2_OK {
+                    let v = w.m.patterns[p as usize].as_mut().unwrap();
+                    let end = v.pop().unwrap();
+                    v.resize(new_rows as usize, EMPTY);
+                    v.push(end);
+                }
+                r
+            }
+            7 => {
+                let mut got = 0;
+                let new_rows = 1 + rng.below(128);
+                let r = gt2_pattern_add(q, new_rows, &mut got, e);
+                if r == GT2_OK {
+                    let mut v = vec![EMPTY; new_rows as usize];
+                    v.push([0xff, 0, 0, 0]);
+                    assert!(w.m.patterns[got as usize].is_none() && !w.m.named(got as u8));
+                    w.m.patterns[got as usize] = Some(v);
+                } else if rng.chance(50) {
+                    // Or remove one.
+                    let r = gt2_pattern_remove(q, p, e);
+                    if r == GT2_OK {
+                        assert!(!w.m.named(p as u8), "removed a named pattern {p}");
+                        w.m.patterns[p as usize] = None;
+                    }
+                    return r;
+                }
+                r
+            }
+            8 => {
+                let pos = rng.below(n + 1);
+                let value = if rng.chance(50) {
+                    p as u8
+                } else {
+                    0xd0 + rng.below(16) as u8
+                };
+                if rng.chance(30) {
+                    // A cell write: an entry, or the restart position.
+                    let v = if pos == n {
+                        rng.below(n.max(1)) as u8
+                    } else {
+                        value
+                    };
+                    let r = gt2_set_order(q, d, c, pos, v, e);
+                    if r == GT2_OK {
+                        let o = &mut w.m.orders[d as usize][c as usize];
+                        if pos == n {
+                            o.1 = v;
+                        } else {
+                            o.0[pos as usize] = v;
+                        }
+                        assert!(order_valid(&o.0), "an invalid orderlist written");
+                        assert!(o
+                            .0
+                            .iter()
+                            .all(|&x| x >= 0xd0 || w.m.patterns[x as usize].is_some()));
+                    }
+                    return r;
+                }
+                let r = gt2_order_insert(q, d, c, pos, value, e);
+                if r == GT2_OK {
+                    let o = &mut w.m.orders[d as usize][c as usize];
+                    o.0.insert(pos as usize, value);
+                    if pos <= restart as u32 && (restart as u32) < n {
+                        o.1 += 1;
+                    }
+                    assert!(order_valid(&o.0), "an invalid orderlist built");
+                    assert!(value >= 0xd0 || w.m.patterns[value as usize].is_some());
+                }
+                r
+            }
+            _ => {
+                let pos = rng.below(n.max(1));
+                let r = gt2_order_delete(q, d, c, pos, e);
+                if r == GT2_OK {
+                    let o = &mut w.m.orders[d as usize][c as usize];
+                    o.0.remove(pos as usize);
+                    let mut rs = o.1;
+                    if (pos as u8) < rs {
+                        rs -= 1;
+                    }
+                    if o.0.is_empty() {
+                        rs = 0;
+                    } else if rs as usize >= o.0.len() {
+                        rs = o.0.len() as u8 - 1;
+                    }
+                    o.1 = rs;
+                    assert!(order_valid(&o.0), "an invalid orderlist built");
+                }
+                r
+            }
+        }
+    }
+}
+
+/// The deferred contract's refusals (gt2_song.h), one by one.
+#[test]
+fn pending_edits_are_refused() {
+    let mut s = Song::device();
+    let p = s.ptr_mut();
+    let (mut a, mut b) = (gt2_edit::default(), gt2_edit::default());
+    let row = [0x60, 1, 0, 0];
+    unsafe {
+        // Cell writes to a pattern queue up; its rebuild waits for them.
+        assert_eq!(gt2_set_row(p, 0, 0, row.as_ptr(), &mut a), GT2_OK);
+        assert_eq!(gt2_set_row(p, 0, 1, row.as_ptr(), &mut b), GT2_OK);
+        assert_eq!(gt2_pattern_insert_row(p, 0, 0, &mut e()), GT2_ERR_PENDING);
+        gt2_edit_commit(p, &a);
+        assert_eq!(gt2_pattern_insert_row(p, 0, 0, &mut e()), GT2_ERR_PENDING);
+        gt2_edit_commit(p, &b);
+        // (b) One pending swap a pattern; (a) no cell write behind it, which would hold
+        // the old copy's offset.
+        assert_eq!(gt2_pattern_insert_row(p, 0, 0, &mut a), GT2_OK);
+        assert_eq!(gt2_pattern_delete_row(p, 0, 0, &mut e()), GT2_ERR_PENDING);
+        assert_eq!(gt2_pattern_resize(p, 0, 9, &mut e()), GT2_ERR_PENDING);
+        assert_eq!(
+            gt2_set_row(p, 0, 0, row.as_ptr(), &mut e()),
+            GT2_ERR_PENDING
+        );
+        // Another pattern is free to change.
+        assert_eq!(gt2_set_row(p, 1, 0, row.as_ptr(), &mut b), GT2_OK);
+        gt2_edit_commit(p, &b);
+        // (c) No compaction while anything is pending.
+        assert_eq!(gt2_compact_step(p, &mut e()), -1);
+        // An orderlist edit naming the pattern waits for its swap.
+        assert_eq!(gt2_order_insert(p, 0, 1, 0, 0, &mut e()), GT2_ERR_PENDING);
+        assert_eq!(gt2_set_order(p, 0, 1, 0, 0, &mut e()), GT2_ERR_PENDING);
+        gt2_edit_apply(p, &a);
+        assert_eq!(
+            gt2_set_row(p, 0, 0, row.as_ptr(), &mut e()),
+            GT2_ERR_PENDING
+        );
+        gt2_edit_release(p, &a);
+        // Released, compaction may run again.
+        if gt2_compact_step(p, &mut b) == 1 {
+            gt2_edit_commit(p, &b);
+        } else {
+            assert_eq!(gt2_compact_step(p, &mut b), 0);
+        }
+    }
+    // Orderlists: one pending edit each, and a pattern's removal waits for all of them.
+    let mut s = Song::device();
+    let p = s.ptr_mut();
+    unsafe {
+        let mut n = 0;
+        assert_eq!(gt2_pattern_add(p, 4, &mut n, &mut a), GT2_OK);
+        gt2_edit_commit(p, &a);
+        assert_eq!(gt2_order_insert(p, 0, 0, 0, n as u8, &mut a), GT2_OK);
+        assert_eq!(gt2_order_insert(p, 0, 0, 0, 1, &mut e()), GT2_ERR_PENDING);
+        assert_eq!(gt2_set_order(p, 0, 0, 0, 1, &mut e()), GT2_ERR_PENDING);
+        assert_eq!(gt2_order_delete(p, 0, 0, 0, &mut e()), GT2_ERR_PENDING);
+        assert_eq!(gt2_set_order(p, 0, 1, 0, 2, &mut b), GT2_OK);
+        assert_eq!(gt2_pattern_remove(p, n, &mut e()), GT2_ERR_PENDING);
+        gt2_edit_commit(p, &a);
+        gt2_edit_commit(p, &b);
+        assert_eq!(gt2_pattern_remove(p, n, &mut e()), GT2_ERR_IN_USE);
+        // A cancelled edit ends its pending too.
+        assert_eq!(gt2_order_delete(p, 0, 0, 0, &mut a), GT2_OK);
+        gt2_edit_cancel(p, &a);
+        assert_eq!(gt2_order_delete(p, 0, 0, 0, &mut a), GT2_OK);
+        gt2_edit_commit(p, &a);
+        assert_eq!(gt2_pattern_remove(p, n, &mut a), GT2_OK);
+        // A pattern being removed is not reused until released.
+        gt2_edit_apply(p, &a);
+        let mut m = 0;
+        assert_eq!(gt2_pattern_add(p, 4, &mut m, &mut b), GT2_OK);
+        assert_ne!(m, n);
+        gt2_edit_release(p, &a);
+        gt2_edit_commit(p, &b);
+        // The instruments and tables are never refused.
+        for _ in 0..300 {
+            assert_eq!(gt2_set_instr(p, 1, 0, 1, &mut a), GT2_OK);
+            assert_eq!(gt2_set_table(p, 0, 0, 0, 1, &mut a), GT2_OK);
+        }
+    }
+    assert_eq!(s.raw().pending, 0);
+    check_arena(&s);
+}
+
+fn e() -> gt2_edit {
+    gt2_edit::default()
 }

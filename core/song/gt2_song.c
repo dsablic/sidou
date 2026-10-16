@@ -1,12 +1,29 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-FileCopyrightText: Lasse Öörni and GoatTracker 2's contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* The song model: the region's layout, the arena, the edit primitives (gt2_song.h).
- * What savesong counts follows GoatTracker 2.77's gsong.c (savesong, countpatternlengths),
- * as decision record 0007 ("Round-trip rules") describes. */
+ * What savesong counts (gt2_saved_*) transliterates GoatTracker 2.77's gsong.c count loops
+ * (savesong, countpatternlengths), GPL-2.0-or-later, whose "any later version" lets this
+ * file stay GPL-3.0-or-later; decision record 0007 ("Round-trip rules") describes them. */
 #include "gt2_song.h"
 
+#include <stdatomic.h>
 #include <stddef.h>
 #include <string.h>
+
+/* An internal invariant, checked in host builds (the tests and fuzzers trap on it) and
+ * compiled out on the device and with NDEBUG, as sid_osc.h's SID_DEBUG_ASSERT. */
+#if !defined(NDEBUG) && !defined(__PI32V2__) && (defined(__GNUC__) || defined(__clang__))
+#define GT2_ASSERT(c) ((c) ? (void)0 : __builtin_trap())
+#else
+#define GT2_ASSERT(c) ((void)0)
+#endif
+
+_Static_assert(SONG_ARENA_SPARE >= (GT2_SCRATCH_UNITS * GT2_UNIT) + GT2_PATTERN_MAX_BYTES,
+               "the spare holds the scratch and a rebuild's new copy");
+_Static_assert(GT2_MAX_PATTERNS <= GT2_SLOT_ORDER &&
+                   GT2_SLOT_ORDER + GT2_MAX_SUBTUNES * GT2_MAX_CHANNELS < GT2_SLOT_NONE,
+               "slot numbers");
 
 static uint32_t header_bytes(void) {
     return ((uint32_t)sizeof(gt2_song) + 3u) & ~3u;
@@ -41,18 +58,28 @@ uint32_t gt2_pattern_span_bytes(gt2_span span) {
     return GT2_SPAN_LEN(span) * GT2_ROW_BYTES;
 }
 
+/* Marks units used or free; each must change (a double allocation or free is a bug). */
 static void mark(gt2_song* s, uint32_t off4, uint32_t units, int used) {
     uint32_t* b = bitmap(s);
+    GT2_ASSERT(off4 + units <= s->arena_units);
     for (uint32_t u = off4; u < off4 + units; u++) {
+        uint32_t bit = 1u << (u & 31u);
+        GT2_ASSERT(((b[u >> 5] & bit) != 0u) != (used != 0));
         if (used)
-            b[u >> 5] |= 1u << (u & 31u);
+            b[u >> 5] |= bit;
         else
-            b[u >> 5] &= ~(1u << (u & 31u));
+            b[u >> 5] &= ~bit;
     }
+    GT2_ASSERT(used || s->used_units >= units);
     if (used)
         s->used_units += units;
     else
         s->used_units -= units;
+}
+
+/* Where first fit may allocate: below the scratch. */
+static uint32_t alloc_limit(const gt2_song* s) {
+    return s->arena_units - GT2_SCRATCH_UNITS;
 }
 
 static int unit_used(const gt2_song* s, uint32_t u) {
@@ -91,13 +118,14 @@ static uint32_t next_used(const gt2_song* s, uint32_t from) {
     return s->arena_units;
 }
 
-/* The first hole of at least units, at or after from. */
+/* The first hole of at least units, at or after from, below the scratch. */
 static int find_hole(const gt2_song* s, uint32_t units, uint32_t from, uint32_t* off4) {
+    uint32_t limit = alloc_limit(s);
     uint32_t u = next_free(s, from);
-    while (u < s->arena_units) {
+    while (u < limit) {
         uint32_t end = next_used(s, u);
-        if (end > s->arena_units)
-            end = s->arena_units;
+        if (end > limit)
+            end = limit;
         if (end - u >= units) {
             *off4 = u;
             return 0;
@@ -129,12 +157,12 @@ uint32_t gt2_arena_used(const gt2_song* s) {
 }
 
 uint32_t gt2_arena_largest_hole(const gt2_song* s) {
-    uint32_t best = 0u;
+    uint32_t best = 0u, limit = alloc_limit(s);
     uint32_t u = next_free(s, 0u);
-    while (u < s->arena_units) {
+    while (u < limit) {
         uint32_t end = next_used(s, u);
-        if (end > s->arena_units)
-            end = s->arena_units;
+        if (end > limit)
+            end = limit;
         if (end - u > best)
             best = end - u;
         u = next_free(s, end);
@@ -194,6 +222,7 @@ gt2_song* gt2_song_init(void* region, uint32_t bytes) {
     if (region == NULL || ((uintptr_t)region & 3u) != 0u || bytes < gt2_region_min() ||
         bytes > GT2_REGION_MAX)
         return NULL;
+    _Static_assert((sizeof(gt2_song) + 3u) / 4u * 4u + 4096u <= GT2_REGION_MAX, "region");
     gt2_song* s = (gt2_song*)region;
     uint32_t hdr = header_bytes();
     uint32_t rest = bytes - hdr;
@@ -262,8 +291,70 @@ void gt2_edit_apply(gt2_song* s, const gt2_edit* e) {
         for (uint32_t i = 0; i < e->n; i++)
             base[e->offset + i] = e->bytes[i];
     } else if (e->kind == GT2_EDIT_SWAP) {
-        *(gt2_span*)(void*)(base + e->offset) = e->span;
+        /* The new copy's bytes (written by the main loop) before the index entry that makes
+         * it the player's: a compiler barrier on one core. M2c Task 6 checks the fm1
+         * disassembly holds one 32-bit store here. */
+        atomic_signal_fence(memory_order_release);
+        *(volatile gt2_span*)(void*)(base + e->offset) = e->span;
     }
+}
+
+/* Pending edits (gt2_song.h, the deferred contract). */
+
+static int pattern_pending(const gt2_song* s, uint32_t p) {
+    return s->pend_pattern[p] != 0u;
+}
+
+static int pattern_swap_pending(const gt2_song* s, uint32_t p) {
+    return (s->pend_pattern[p] & 0x80u) != 0u;
+}
+
+static uint32_t order_index(uint32_t subtune, uint32_t channel) {
+    return subtune * GT2_MAX_CHANNELS + channel;
+}
+
+static int order_pending(const gt2_song* s, uint32_t i) {
+    return (s->pend_order[i >> 5] >> (i & 31u)) & 1u;
+}
+
+/* An edit made on slot: pending until released. */
+static void pend(gt2_song* s, gt2_edit* e, uint32_t slot) {
+    e->slot = (uint16_t)slot;
+    if (slot == GT2_SLOT_NONE)
+        return;
+    if (slot >= GT2_SLOT_ORDER) {
+        uint32_t i = slot - GT2_SLOT_ORDER;
+        GT2_ASSERT(!order_pending(s, i));
+        s->pend_order[i >> 5] |= 1u << (i & 31u);
+        s->pending_orders++;
+    } else if (e->kind == GT2_EDIT_SWAP) {
+        GT2_ASSERT(s->pend_pattern[slot] == 0u);
+        s->pend_pattern[slot] = 0x80u;
+    } else {
+        GT2_ASSERT(s->pend_pattern[slot] < 0x7fu);
+        s->pend_pattern[slot]++;
+    }
+    s->pending++;
+}
+
+static void unpend(gt2_song* s, const gt2_edit* e) {
+    uint32_t slot = e->slot;
+    if (e->kind == GT2_EDIT_NONE || slot == GT2_SLOT_NONE)
+        return;
+    if (slot >= GT2_SLOT_ORDER) {
+        uint32_t i = slot - GT2_SLOT_ORDER;
+        GT2_ASSERT(order_pending(s, i));
+        s->pend_order[i >> 5] &= ~(1u << (i & 31u));
+        s->pending_orders--;
+    } else if (e->kind == GT2_EDIT_SWAP) {
+        GT2_ASSERT(s->pend_pattern[slot] == 0x80u);
+        s->pend_pattern[slot] = 0u;
+    } else {
+        GT2_ASSERT((s->pend_pattern[slot] & 0x7fu) != 0u);
+        s->pend_pattern[slot]--;
+    }
+    GT2_ASSERT(s->pending > 0u);
+    s->pending--;
 }
 
 static int is_pattern_slot(uint32_t offset) {
@@ -278,11 +369,13 @@ static uint32_t span_bytes_at(uint32_t offset, gt2_span sp) {
 void gt2_edit_release(gt2_song* s, const gt2_edit* e) {
     if (e->kind == GT2_EDIT_SWAP && e->old_span != 0u)
         gt2_arena_release(s, GT2_SPAN_OFF4(e->old_span), span_bytes_at(e->offset, e->old_span));
+    unpend(s, e);
 }
 
 void gt2_edit_cancel(gt2_song* s, const gt2_edit* e) {
     if (e->kind == GT2_EDIT_SWAP && e->span != 0u)
         gt2_arena_release(s, GT2_SPAN_OFF4(e->span), span_bytes_at(e->offset, e->span));
+    unpend(s, e);
 }
 
 void gt2_edit_commit(gt2_song* s, const gt2_edit* e) {
@@ -295,6 +388,7 @@ static void cell(gt2_edit* e, uint32_t offset, const uint8_t* bytes, uint32_t n)
     e->kind = GT2_EDIT_CELL;
     e->n = (uint8_t)n;
     e->offset = offset;
+    e->slot = GT2_SLOT_NONE;
     for (uint32_t i = 0; i < n; i++)
         e->bytes[i] = bytes[i];
 }
@@ -303,14 +397,17 @@ static int row_valid(const uint8_t* r) {
     return r[0] >= GT2_FIRSTNOTE && r[0] <= GT2_KEYON && r[1] <= GT2_MAX_INSTR && r[2] <= 0x0fu;
 }
 
-gt2_err gt2_set_row(const gt2_song* s, uint32_t pattern, uint32_t row, const uint8_t c[4],
+gt2_err gt2_set_row(gt2_song* s, uint32_t pattern, uint32_t row, const uint8_t c[4],
                     gt2_edit* e) {
     if (pattern >= GT2_MAX_PATTERNS || s->pattern[pattern] == 0u)
         return GT2_ERR_RANGE;
+    if (pattern_swap_pending(s, pattern) || s->pend_pattern[pattern] >= 0x7fu)
+        return GT2_ERR_PENDING;
     gt2_span sp = s->pattern[pattern];
     if (row + 1u >= GT2_SPAN_LEN(sp) || !row_valid(c))
         return GT2_ERR_RANGE;
     cell(e, s->arena_offset + GT2_SPAN_OFF4(sp) * GT2_UNIT + row * GT2_ROW_BYTES, c, 4u);
+    pend(s, e, pattern);
     return GT2_OK;
 }
 
@@ -339,10 +436,14 @@ static int order_index_ok(const gt2_song* s, uint32_t subtune, uint32_t channel)
     return subtune < s->subtunes && channel < s->channels && s->order[subtune][channel] != 0u;
 }
 
-gt2_err gt2_set_order(const gt2_song* s, uint32_t subtune, uint32_t channel, uint32_t pos,
+gt2_err gt2_set_order(gt2_song* s, uint32_t subtune, uint32_t channel, uint32_t pos,
                       uint8_t value, gt2_edit* e) {
     if (!order_index_ok(s, subtune, channel))
         return GT2_ERR_RANGE;
+    uint32_t slot = GT2_SLOT_ORDER + order_index(subtune, channel);
+    if (order_pending(s, order_index(subtune, channel)) ||
+        (value < GT2_REPEAT && pattern_swap_pending(s, value)))
+        return GT2_ERR_PENDING;
     const uint8_t* o = gt2_order_data(s, subtune, channel);
     uint32_t n = gt2_order_entries(s, subtune, channel);
     uint32_t base = s->arena_offset + GT2_SPAN_OFF4(s->order[subtune][channel]) * GT2_UNIT;
@@ -350,6 +451,7 @@ gt2_err gt2_set_order(const gt2_song* s, uint32_t subtune, uint32_t channel, uin
         if (n > 0u ? value >= n : value != 0u)
             return GT2_ERR_RANGE;
         cell(e, base + n + 1u, &value, 1u);
+        pend(s, e, slot);
         return GT2_OK;
     }
     if (pos > n || value == GT2_LOOPSONG)
@@ -363,6 +465,7 @@ gt2_err gt2_set_order(const gt2_song* s, uint32_t subtune, uint32_t channel, uin
     if (!gt2_order_valid(t, n))
         return GT2_ERR_ORDER_RULE;
     cell(e, base + pos, &value, 1u);
+    pend(s, e, slot);
     return GT2_OK;
 }
 
@@ -370,23 +473,23 @@ gt2_err gt2_set_order(const gt2_song* s, uint32_t subtune, uint32_t channel, uin
 
 /* Room for a rebuild that replaces old_bytes with new_bytes: the spare is kept once the swap
  * is released, and a hole fits the new copy now. */
+static int scratch_busy(const gt2_song* s) {
+    return next_used(s, alloc_limit(s)) < s->arena_units;
+}
+
+/* Room for a rebuild that replaces old_bytes with new_bytes: the spare is kept once the swap
+ * is released, and a hole fits the new copy now. While the scratch holds a block (half a
+ * compaction move), nothing is allocated, so the hole that block came from stays for the
+ * move's second half: FRAGMENTED, compact once more. */
 static gt2_err rebuild_alloc(gt2_song* s, uint32_t old_bytes, uint32_t new_bytes,
                              uint32_t* off4) {
     uint32_t after = gt2_arena_used(s) - units_of(old_bytes) * GT2_UNIT +
                      units_of(new_bytes) * GT2_UNIT;
     if (after > gt2_arena_capacity(s))
         return GT2_ERR_FULL;
-    if (gt2_arena_alloc(s, new_bytes, off4) != 0)
+    if (scratch_busy(s) || gt2_arena_alloc(s, new_bytes, off4) != 0)
         return GT2_ERR_FRAGMENTED;
     return GT2_OK;
-}
-
-static void swap(gt2_edit* e, uint32_t offset, gt2_span span, gt2_span old_span) {
-    memset(e, 0, sizeof *e);
-    e->kind = GT2_EDIT_SWAP;
-    e->offset = offset;
-    e->span = span;
-    e->old_span = old_span;
 }
 
 static uint32_t pattern_slot(uint32_t pattern) {
@@ -395,7 +498,21 @@ static uint32_t pattern_slot(uint32_t pattern) {
 
 static uint32_t order_slot(uint32_t subtune, uint32_t channel) {
     return (uint32_t)offsetof(gt2_song, order) +
-           (subtune * GT2_MAX_CHANNELS + channel) * (uint32_t)sizeof(gt2_span);
+           order_index(subtune, channel) * (uint32_t)sizeof(gt2_span);
+}
+
+/* A swap of the index entry at offset, pending on its slot. */
+static void swap(gt2_song* s, gt2_edit* e, uint32_t offset, gt2_span span, gt2_span old_span) {
+    memset(e, 0, sizeof *e);
+    e->kind = GT2_EDIT_SWAP;
+    e->offset = offset;
+    e->span = span;
+    e->old_span = old_span;
+    uint32_t slot = is_pattern_slot(offset)
+                        ? (offset - (uint32_t)offsetof(gt2_song, pattern)) / sizeof(gt2_span)
+                        : GT2_SLOT_ORDER +
+                              (offset - (uint32_t)offsetof(gt2_song, order)) / sizeof(gt2_span);
+    pend(s, e, slot);
 }
 
 /* A new pattern of rows rows (the end row included) from the old one: rows [0, keep_at) as
@@ -405,6 +522,8 @@ static gt2_err pattern_rebuild(gt2_song* s, uint32_t pattern, uint32_t rows, int
                                int drop_at, gt2_edit* e) {
     gt2_span old = s->pattern[pattern];
     uint32_t off4 = 0;
+    if (pattern_pending(s, pattern))
+        return GT2_ERR_PENDING;
     gt2_err err = rebuild_alloc(s, old ? gt2_pattern_span_bytes(old) : 0u,
                                 rows * GT2_ROW_BYTES, &off4);
     if (err != GT2_OK)
@@ -435,7 +554,7 @@ static gt2_err pattern_rebuild(gt2_song* s, uint32_t pattern, uint32_t rows, int
     } else {
         end_row(end);
     }
-    swap(e, pattern_slot(pattern), GT2_SPAN(off4, rows), old);
+    swap(s, e, pattern_slot(pattern), GT2_SPAN(off4, rows), old);
     return GT2_OK;
 }
 
@@ -486,7 +605,7 @@ gt2_err gt2_pattern_add(gt2_song* s, uint32_t rows, uint32_t* pattern, gt2_edit*
     if (rows < 1u || rows > GT2_MAX_ROWS)
         return GT2_ERR_ROWS;
     for (uint32_t p = 0; p < GT2_MAX_PATTERNS; p++) {
-        if (s->pattern[p] == 0u && !pattern_named(s, p)) {
+        if (s->pattern[p] == 0u && !pattern_pending(s, p) && !pattern_named(s, p)) {
             gt2_err err = pattern_rebuild(s, p, rows + 1u, -1, -1, e);
             if (err == GT2_OK)
                 *pattern = p;
@@ -499,9 +618,12 @@ gt2_err gt2_pattern_add(gt2_song* s, uint32_t rows, uint32_t* pattern, gt2_edit*
 gt2_err gt2_pattern_remove(gt2_song* s, uint32_t pattern, gt2_edit* e) {
     if (pattern >= GT2_MAX_PATTERNS || s->pattern[pattern] == 0u)
         return GT2_ERR_RANGE;
+    /* The orderlists are checked as they will stand: none may have an edit pending. */
+    if (pattern_pending(s, pattern) || s->pending_orders != 0u)
+        return GT2_ERR_PENDING;
     if (pattern_named(s, pattern))
         return GT2_ERR_IN_USE;
-    swap(e, pattern_slot(pattern), 0u, s->pattern[pattern]);
+    swap(s, e, pattern_slot(pattern), 0u, s->pattern[pattern]);
     return GT2_OK;
 }
 
@@ -518,7 +640,7 @@ static gt2_err order_rebuild(gt2_song* s, uint32_t subtune, uint32_t channel, co
         dst[i] = t[i];
     dst[n] = GT2_LOOPSONG;
     dst[n + 1u] = restart;
-    swap(e, order_slot(subtune, channel), GT2_SPAN(off4, n + 2u), old);
+    swap(s, e, order_slot(subtune, channel), GT2_SPAN(off4, n + 2u), old);
     return GT2_OK;
 }
 
@@ -526,6 +648,9 @@ gt2_err gt2_order_insert(gt2_song* s, uint32_t subtune, uint32_t channel, uint32
                          uint8_t value, gt2_edit* e) {
     if (!order_index_ok(s, subtune, channel))
         return GT2_ERR_RANGE;
+    if (order_pending(s, order_index(subtune, channel)) ||
+        (value < GT2_REPEAT && pattern_swap_pending(s, value)))
+        return GT2_ERR_PENDING;
     const uint8_t* o = gt2_order_data(s, subtune, channel);
     uint32_t n = gt2_order_entries(s, subtune, channel);
     if (pos > n || value == GT2_LOOPSONG)
@@ -553,6 +678,8 @@ gt2_err gt2_order_delete(gt2_song* s, uint32_t subtune, uint32_t channel, uint32
                          gt2_edit* e) {
     if (!order_index_ok(s, subtune, channel))
         return GT2_ERR_RANGE;
+    if (order_pending(s, order_index(subtune, channel)))
+        return GT2_ERR_PENDING;
     const uint8_t* o = gt2_order_data(s, subtune, channel);
     uint32_t n = gt2_order_entries(s, subtune, channel);
     if (pos >= n)
@@ -602,44 +729,43 @@ static void move_block(gt2_song* s, uint32_t slot, gt2_span sp, uint32_t to4, gt
     uint8_t* dst = a + to4 * GT2_UNIT;
     for (uint32_t i = 0; i < bytes; i++)
         dst[i] = src[i];
-    swap(e, slot, GT2_SPAN(to4, GT2_SPAN_LEN(sp)), sp);
+    swap(s, e, slot, GT2_SPAN(to4, GT2_SPAN_LEN(sp)), sp);
 }
 
 int gt2_compact_step(gt2_song* s, gt2_edit* e) {
+    if (s->pending != 0u)
+        return -1;
+    uint32_t limit = alloc_limit(s);
+    gt2_span sp = 0;
     uint32_t gap = next_free(s, 0u);
-    if (gap >= s->arena_units)
+    /* A block in the scratch (the last move's) goes down into the first hole that holds it.
+     * One does: the gap it left, grown by the block's old place, which nothing allocates
+     * from meanwhile (rebuild_alloc); uninterrupted, that is the lowest gap. */
+    uint32_t sc = next_used(s, limit);
+    if (sc < s->arena_units) {
+        uint32_t slot = owner_of(s, sc, &sp), to4 = 0;
+        GT2_ASSERT(slot != 0u);
+        if (slot == 0u || find_hole(s, units_of(span_bytes_at(slot, sp)), 0u, &to4) != 0) {
+            GT2_ASSERT(0);
+            return 0;
+        }
+        move_block(s, slot, sp, to4, e);
+        return 1;
+    }
+    if (gap >= limit)
         return 0;
     uint32_t b = next_used(s, gap);
-    if (b >= s->arena_units)
-        return 0;
-    uint32_t gap_units = b - gap;
-    gt2_span sp = 0;
+    if (b >= limit)
+        return 0; /* one hole, from gap to the scratch */
+    /* The block right above the lowest gap: into the gap if it fits, else out to the
+     * scratch (the next step brings it down). */
     uint32_t slot = owner_of(s, b, &sp);
-    if (slot != 0u) {
-        uint32_t units = units_of(span_bytes_at(slot, sp));
-        uint32_t to4 = 0;
-        /* Down into the gap if it fits there, else out to the first hole that fits. */
-        if (gap_units >= units) {
-            move_block(s, slot, sp, gap, e);
-            return 1;
-        }
-        if (find_hole(s, units, b + units, &to4) == 0) {
-            move_block(s, slot, sp, to4, e);
-            return 1;
-        }
-    }
-    /* Fill the lowest gap with a block from above that fits in it. */
-    for (uint32_t u = next_used(s, b); u < s->arena_units;) {
-        gt2_span other = 0;
-        uint32_t oslot = owner_of(s, u, &other);
-        uint32_t units = oslot ? units_of(span_bytes_at(oslot, other)) : 1u;
-        if (oslot != 0u && units <= gap_units) {
-            move_block(s, oslot, other, gap, e);
-            return 1;
-        }
-        u = next_used(s, u + units);
-    }
-    return 0;
+    GT2_ASSERT(slot != 0u);
+    if (slot == 0u)
+        return 0;
+    uint32_t units = units_of(span_bytes_at(slot, sp));
+    move_block(s, slot, sp, b - gap >= units ? gap : limit, e);
+    return 1;
 }
 
 /* What savesong writes. */
