@@ -1,0 +1,7 @@
+# RED MOON RITE, frame 210 of the arcade's pattern: stuck
+sky 1 1 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 1 1 1 1 1 1 1 1 1 1 1 1 1
+image sword-stuck 118 183 0
+fill 74 230 36 2 0
+image barb-0-guard 34 116 0
+fill 134 230 36 2 0
+image barb-1-guard-unarmed 82 116 1

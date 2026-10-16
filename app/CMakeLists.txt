@@ -30,6 +30,7 @@ add_library(sidou_live STATIC
     reg_ring.c
     scene.c
     scene_art.c
+    scene_px.c
     scene_rmr_art.c
     scene_view.c
     scope.c

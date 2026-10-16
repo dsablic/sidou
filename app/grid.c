@@ -49,6 +49,8 @@ void grid_init(grid* g, uint8_t ch, uint8_t attr) {
     g->region_bitmap = NULL;
     g->region_col = g->region_row = g->region_w = g->region_h = 0;
     g->region_bx = g->region_by = 0;
+    g->region_painter = NULL;
+    g->region_ctx = NULL;
     grid_invalidate(g);
 }
 
@@ -267,7 +269,7 @@ int grid_region(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
         h > bh - by) {
         return -1;
     }
-    if (g->region_bitmap == b && g->region_col == col && g->region_row == row &&
+    if (g->region_bitmap == b && !g->region_painter && g->region_col == col && g->region_row == row &&
         g->region_w == w && g->region_h == h && g->region_bx == bx && g->region_by == by) {
         return 0;
     }
@@ -278,10 +280,12 @@ int grid_region(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
                (int32_t)row - (int32_t)by == (int32_t)g->region_row - (int32_t)g->region_by;
     if (same) {
         region_moved(g, col, row, w, h);
-    } else if (g->region_bitmap) {
+    } else if (g->region_bitmap || g->region_painter) {
         region_stale(g);
     }
     g->region_bitmap = b;
+    g->region_painter = NULL;
+    g->region_ctx = NULL;
     g->region_col = (uint8_t)col;
     g->region_row = (uint8_t)row;
     g->region_w = (uint8_t)w;
@@ -294,11 +298,48 @@ int grid_region(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
     return 0;
 }
 
+int grid_region_painter(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
+                        grid_painter fn, void* ctx) {
+    if (!fn || w == 0 || h == 0 || col >= GRID_COLS || row >= GRID_ROWS ||
+        w > GRID_COLS - col || h > GRID_ROWS - row) {
+        return -1;
+    }
+    if (g->region_painter == fn && g->region_ctx == ctx && g->region_col == col &&
+        g->region_row == row && g->region_w == w && g->region_h == h) {
+        return 0;
+    }
+    if (g->region_bitmap || g->region_painter) {
+        region_stale(g);
+    }
+    g->region_bitmap = NULL;
+    g->region_painter = fn;
+    g->region_ctx = ctx;
+    g->region_col = (uint8_t)col;
+    g->region_row = (uint8_t)row;
+    g->region_w = (uint8_t)w;
+    g->region_h = (uint8_t)h;
+    g->region_bx = g->region_by = 0;
+    region_stale(g);
+    return 0;
+}
+
 void grid_region_clear(grid* g) {
-    if (g->region_bitmap) {
+    if (g->region_bitmap || g->region_painter) {
         region_stale(g);
         g->region_bitmap = NULL;
+        g->region_painter = NULL;
+        g->region_ctx = NULL;
     }
+}
+
+void grid_mark(grid* g, uint32_t col, uint32_t row) {
+    if (col < GRID_COLS && row < GRID_ROWS) {
+        mark_stale(g, row * GRID_COLS + col);
+    }
+}
+
+int grid_marked(const grid* g, uint32_t col, uint32_t row) {
+    return col < GRID_COLS && row < GRID_ROWS && dirty(g, row * GRID_COLS + col);
 }
 
 /* The run that holds pixel x of row y, and how many pixels of it are left from x on. */
@@ -475,15 +516,30 @@ static void render_region(const grid* g, const grid_run* run, uint32_t k0, uint3
                           const uint16_t pal[16], uint16_t* px) {
     const grid_bitmap* b = g->region_bitmap;
     uint32_t w = run->len * GRID_CELL_PX; /* pixels a row */
-    uint32_t x = (g->region_bx + run->col + k0 - g->region_col) * GRID_CELL_PX;
-    uint32_t y = (g->region_by + run->row - g->region_row) * GRID_CELL_PX;
-    uint32_t pairs[16];
-    for (uint32_t c = 0; c < 16u; c++) {
-        pairs[c] = PAIR(pal[c], pal[c]);
-    }
-    for (uint32_t r = 0; r < 8u; r++) {
-        bitmap_pixels(b, x, y + r, (k1 - k0) * GRID_CELL_PX, pairs,
-                      px + r * w + k0 * GRID_CELL_PX);
+    if (b) {
+        uint32_t x = (g->region_bx + run->col + k0 - g->region_col) * GRID_CELL_PX;
+        uint32_t y = (g->region_by + run->row - g->region_row) * GRID_CELL_PX;
+        uint32_t pairs[16];
+        for (uint32_t c = 0; c < 16u; c++) {
+            pairs[c] = PAIR(pal[c], pal[c]);
+        }
+        for (uint32_t r = 0; r < 8u; r++) {
+            bitmap_pixels(b, x, y + r, (k1 - k0) * GRID_CELL_PX, pairs,
+                          px + r * w + k0 * GRID_CELL_PX);
+        }
+    } else {
+        /* A painter: each cell's 64 colours, then the panel's pixels. */
+        for (uint32_t k = k0; k < k1; k++) {
+            uint8_t cell[64];
+            g->region_painter(g->region_ctx, run->col + k, run->row, cell);
+            uint16_t* o = px + k * GRID_CELL_PX;
+            for (uint32_t r = 0; r < 8u; r++, o += w) {
+                const uint8_t* c = cell + r * 8u;
+                for (uint32_t j = 0; j < 8u; j++) {
+                    o[j] = pal[c[j] & 15u];
+                }
+            }
+        }
     }
     uint32_t i = run->row * GRID_COLS + run->col + k0;
     for (uint32_t k = k0; k < k1; k++, i++) {
@@ -523,7 +579,7 @@ void grid_render_run(const grid* g, const grid_run* run, const uint16_t pal[16],
     /* The region's cells in the run, [k0, k1), counted from its first cell: none if k0 == k1. */
     uint32_t k0 = 0;
     uint32_t k1 = 0;
-    if (g->region_bitmap && run->row >= g->region_row &&
+    if ((g->region_bitmap || g->region_painter) && run->row >= g->region_row &&
         run->row < (uint32_t)g->region_row + g->region_h) {
         uint32_t c0 = g->region_col;
         uint32_t c1 = c0 + g->region_w;

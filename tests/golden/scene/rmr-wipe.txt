@@ -1,0 +1,6 @@
+# RED MOON RITE, frame 2 of the arcade's pattern: wipe
+sky 1 1 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+fill 74 230 36 2 0
+image barb-0-guard 34 116 0
+fill 134 230 36 2 0
+image barb-1-guard 82 116 1

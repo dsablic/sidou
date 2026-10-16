@@ -1,0 +1,7 @@
+# RED MOON RITE, frame 221 of the arcade's pattern: reach
+sky 1 1 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 1 1 1 1 1 1 1 1 1 1 1 1 1
+fill 74 230 36 2 0
+image barb-0-guard2 34 116 0
+fill 134 230 36 2 0
+image barb-1-reach-unarmed 82 116 1
+image sword-stuck 118 183 0

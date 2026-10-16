@@ -37,6 +37,7 @@
 #include "reg_ring.h"
 #include "scene.h"
 #include "scene_art.h"
+#include "scene_px.h"
 #include "scene_view.h"
 #include "scope.h"
 #include "screen.h"

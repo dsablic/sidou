@@ -34,7 +34,7 @@
 //   prototype's eight pips a side, which sat too close to the genre's best-known game's
 //   (docs/art/README.md "RED MOON RITE", the originality review).
 //
-//   node assets/scene/red-moon-rite.js [out-dir] [--review review-dir]
+//   node assets/scene/red-moon-rite.js [out-dir] [--review review-dir] [--frames golden-dir]
 //
 // writes the indexed PNGs (4 bits a pixel and the 16 colours in the art palette's order when
 // opaque, else 8 bits with a 17th, transparent entry, index 16, as metal-chrome.js writes
@@ -59,7 +59,8 @@
 // - flame-mask.png: the torches' flame area (white), 240 x 240, transparent elsewhere;
 // - red-moon-rite-preview.png: a montage of six frames of the vignette playing the arcade's
 //   pattern, the disarm among them, for the docs.
-// With --review, it also writes the review's sheets into review-dir (not committed).
+// With --review, it also writes the review's sheets into review-dir (not committed); with
+// --frames golden-dir, the compositor's golden frames (goldenFrames, below).
 // The output is the same on every run (no randomness but the seeded hash).
 
 'use strict'
@@ -906,10 +907,69 @@ function hudSheet (scale) {
   return { w, h, px: out }
 }
 
+// Frames for the compositor's goldens (tests/golden/scene/, M2f Task 3): frames of the
+// vignette playing the arcade's pattern as the layers the compositor stacks, each a PNG and
+// a list of its layers. A frame here is the background (the status bar's rows black, the sky
+// a palette a cell row, the arena) and what the sprites stage drew over it (shadows, fighters,
+// swords, sparks, the arc), recorded by wrapping put, rect and px while that stage runs; the
+// torches' cycling and the status bar are left out (they are the device's code, M2f Task 4).
+function goldenFrames (named) {
+  const names = new Map(named.map(([n, s]) => [s, n]))
+  const want = [
+    ['guard', st => st.pose[0].startsWith('guard') && st.pose[1].startsWith('guard') && !st.sword],
+    ['parry', st => st.spark > 1 && st.pose.includes('block')],
+    ['spin', st => st.spin > 0 && st.pose[st.spinWho] === 'spinB'],
+    ['flight', st => st.sword && st.sword.n > st.sword.T * 0.4 && st.sword.n < st.sword.T],
+    ['stuck', st => st.sword && st.sword.n >= st.sword.T && st.unarmed >= 0 && st.pose[st.unarmed].startsWith('guard')],
+    ['reach', st => st.unarmed >= 0 && st.pose[st.unarmed] === 'reach' && st.t[st.unarmed] < 5],
+    ['wipe', st => new Set(st.rowPal.subarray(2, 17)).size > 1]
+  ]
+  let rec = null
+  const [put0, rect0, px0] = [put, rect, px]
+  put = (p, sp, x, y, o) => { if (rec) rec.push(`image ${names.get(sp)} ${Math.round(x)} ${Math.round(y)} ${o && o.fx ? 1 : 0}`); put0(p, sp, x, y, o) }
+  rect = (p, x, y, w, h, c) => { if (rec) rec.push(`fill ${Math.round(x)} ${Math.round(y)} ${w} ${h} ${c}`); rect0(p, x, y, w, h, c) }
+  px = (p, x, y, c) => { const X = Math.round(x), Y = Math.round(y); if (rec && X >= 0 && X < W && Y >= 0 && Y < H) rec.push(`mark ${X} ${Y} ${c}`); px0(p, x, y, c) }
+  const v = RITE.make(), p = new Uint8Array(W * H), stepSec = 60 / 124 / 4
+  const got = want.map(() => null)
+  let pos = 0
+  for (let frame = 0; frame < 64 * 3 * 4 && got.includes(null);) {
+    const from = Math.floor(pos)
+    pos += 0.04 / stepSec
+    for (let i = from + 1; i <= Math.floor(pos); i++) v.step(patternStep(i), { pos, bpm: 124, cutoff: cutoffAt(pos), frame })
+    frame++
+    const c = { pos, bpm: 124, cutoff: cutoffAt(pos), frame }
+    v.layers(p, c)
+    const q = p.slice(0, W * H)
+    q.fill(BLACK, 0, 16 * W)
+    v.stages[0][2](p, c)
+    const calls = []
+    rec = calls
+    v.stages[1][2](p, c)
+    rec = null
+    const k = want.findIndex(([, ok], i) => !got[i] && ok(v.st))
+    if (k < 0) continue
+    // The background, and the sprites stage's calls again over it.
+    for (const line of calls) {
+      const [op, ...a] = line.split(' ')
+      if (op === 'image') put0(q, named.find(([n]) => n === a[0])[1], +a[1], +a[2], { fx: a[3] === '1' })
+      else if (op === 'fill') rect0(q, +a[0], +a[1], +a[2], +a[3], +a[4])
+      else px0(q, +a[0], +a[1], +a[2])
+    }
+    const text = [`# RED MOON RITE, frame ${frame} of the arcade's pattern: ${want[k][0]}`,
+      `sky ${Array.from(v.st.rowPal).join(' ')}`, ...calls].join('\n') + '\n'
+    got[k] = [want[k][0], { w: W, h: H, px: q }, text]
+  }
+  ;[put, rect, px] = [put0, rect0, px0]
+  got.forEach((g, i) => { if (!g) throw new Error(`no golden frame for ${want[i][0]}`) })
+  return got
+}
+
 if (typeof module !== 'undefined' && require.main === module) {
   const fs = require('fs'), path = require('path')
   const args = process.argv.slice(2), ri = args.indexOf('--review')
   const review = ri >= 0 ? args.splice(ri, 2)[1] : null
+  const fi = args.indexOf('--frames')
+  const golden = fi >= 0 ? args.splice(fi, 2)[1] : null
   const dir = args[0] || __dirname
   const v = RITE.make()
   const out = {}
@@ -932,6 +992,14 @@ if (typeof module !== 'undefined' && require.main === module) {
   fs.mkdirSync(dir, { recursive: true })
   for (const [name, img] of Object.entries(out)) fs.writeFileSync(path.join(dir, name), png(img))
   console.log(`${Object.keys(out).length} PNGs in ${dir}`)
+  if (golden) {
+    fs.mkdirSync(golden, { recursive: true })
+    for (const [name, img, text] of goldenFrames(sprites)) {
+      fs.writeFileSync(path.join(golden, `rmr-${name}.png`), png(img))
+      fs.writeFileSync(path.join(golden, `rmr-${name}.txt`), text)
+    }
+    console.log(`golden frames in ${golden}`)
+  }
   if (review) {
     fs.mkdirSync(review, { recursive: true })
     const sheets = {

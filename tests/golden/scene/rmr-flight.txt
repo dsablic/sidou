@@ -1,0 +1,7 @@
+# RED MOON RITE, frame 199 of the arcade's pattern: flight
+sky 1 1 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 1 1 1 1 1 1 1 1 1 1 1 1 1
+fill 74 230 36 2 0
+image barb-0-guard2 34 116 0
+fill 134 230 36 2 0
+image barb-1-hit-unarmed 82 116 1
+image sword-4 95 99 0

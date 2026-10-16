@@ -6,7 +6,7 @@ SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
 [[annotations]]
-path = [".gitmodules", "CMakePresets.json", "compile_flags.txt", "host/Cargo.lock", "tests/golden/hashes.txt", "tests/golden/lcd/*.png", "tools/docker/toolchain.sha256", "web/firmwares.json"]
+path = [".gitmodules", "CMakePresets.json", "compile_flags.txt", "host/Cargo.lock", "tests/golden/hashes.txt", "tests/golden/lcd/*.png", "tests/golden/scene/*", "tools/docker/toolchain.sha256", "web/firmwares.json"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 

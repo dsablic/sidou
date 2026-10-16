@@ -1,0 +1,6 @@
+# RED MOON RITE, frame 1 of the arcade's pattern: guard
+sky 1 1 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+fill 73 230 36 2 0
+image barb-0-guard 33 116 0
+fill 133 230 36 2 0
+image barb-1-guard 81 116 1

@@ -9,7 +9,8 @@
  * grid_render_run turns a run into pixels. A cell can carry a pixel overlay, a one-colour
  * 8 x 8 mask drawn over its glyph (oscilloscopes, the logo). A rectangle of cells can be a
  * pixel region, taking its background pixel for pixel from a bitmap in flash (a pixel-art
- * logo, app/logo.h). Rows can be held: their changes wait until they are released (the
+ * logo, app/logo.h) or from a painter, a function that fills a cell's pixels as it is sent (a
+ * pixel scene composited on demand, app/scene_px.h). Rows can be held: their changes wait until they are released (the
  * screen's wipe transition, app/screen.h).
  *
  * Portable C with no hardware access: platform/fm1/ui.c sends the runs, the host tests
@@ -73,6 +74,10 @@ typedef struct {
     const uint8_t* data;
 } grid_bitmap;
 
+/* A painter region's function: fills the 8 x 8 background pixels of cell (col, row), as
+ * colours (0..15), row by row, into px, as the cell is sent. */
+typedef void (*grid_painter)(void* ctx, uint32_t col, uint32_t row, uint8_t px[64]);
+
 /* Changed cells [col, col + len) of row. */
 typedef struct {
     uint8_t row;
@@ -105,7 +110,8 @@ typedef struct {
     uint8_t scan_row;
     uint8_t scan_col;
     /* The pixel region (grid_region): region_w x region_h cells from (region_col, region_row)
-     * show the bitmap's cells from (region_bx, region_by). NULL: none. */
+     * show the bitmap's cells from (region_bx, region_by), or (grid_region_painter) what
+     * region_painter paints for them. Both NULL: none. */
     const grid_bitmap* region_bitmap;
     uint8_t region_col;
     uint8_t region_row;
@@ -113,6 +119,8 @@ typedef struct {
     uint8_t region_h;
     uint8_t region_bx;
     uint8_t region_by;
+    grid_painter region_painter;
+    void* region_ctx;
 } grid;
 
 /* Every cell ch in attr, no overlays, no region, and all of it to be sent: what the panel
@@ -158,10 +166,25 @@ int grid_overlay_same(const grid* g, uint32_t col, uint32_t row, const uint8_t m
  * (nothing changes). */
 int grid_region(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
                 const grid_bitmap* b, uint32_t bx, uint32_t by);
+/* A painter region: the w x h cells from (col, row) take their background from fn(ctx, col,
+ * row, px), called for each as it is sent, as a bitmap region's take it from the bitmap (the
+ * glyphs' foreground and the overlays draw over it). The grid sends only the cells that
+ * changed, so the painter's owner marks the cells whose pixels it changed (grid_mark). It
+ * replaces a bitmap region, and the reverse; the same painter, context and cells again send
+ * nothing, others send the cells either covers. Returns 0, or -1 when fn is NULL or the
+ * rectangle is empty or leaves the grid (nothing changes). */
+int grid_region_painter(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
+                        grid_painter fn, void* ctx);
 /* No region: its cells are sent again in their background colour. */
 void grid_region_clear(grid* g);
 /* Pixels [x, x + n) of the bitmap's row y, as colours, into out (x + n <= b->w, y < b->h). */
 void grid_bitmap_row(const grid_bitmap* b, uint32_t x, uint32_t y, uint32_t n, uint8_t* out);
+
+/* Cell (col, row) to be sent again (a painter region's pixels changed under it). Cells
+ * outside the grid are ignored. */
+void grid_mark(grid* g, uint32_t col, uint32_t row);
+/* 1 if cell (col, row) differs from the panel or is marked to be sent; cells outside: 0. */
+int grid_marked(const grid* g, uint32_t col, uint32_t row);
 
 /* Cells that differ from the panel (grid_next_run would send them), held rows included: what
  * a view that holds itself to a budget has spent of it so far. */
@@ -180,7 +203,7 @@ int grid_next_run(grid* g, grid_run* run);
 /* A run's pixels into px: 8 rows of run->len * 8 pixels, top row first, as one LCD window
  * takes them. pal maps the 16 colours to the panel's pixel format. px is 4-byte aligned: two
  * pixels go in a 32-bit store. The region's cells in the run decode the bitmap's runs a pixel
- * row at a time. */
+ * row at a time, or are painted a cell at a time. */
 void grid_render_run(const grid* g, const grid_run* run, const uint16_t pal[16], uint16_t* px);
 
 #ifdef __cplusplus

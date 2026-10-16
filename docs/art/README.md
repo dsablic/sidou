@@ -644,6 +644,49 @@ The tap adds to the audio interrupt what it adds for LIVE (4.8 instructions a sa
 while SCENE shows. The firmware grew 7.5 KB (the pieces' code, the plasma's distance and sine
 tables, 1.2 KB).
 
+## Pixel scenes
+
+A drawn vignette (RED MOON RITE, below) is too many colours a cell for glyphs and too big
+for a frame buffer (240 x 240 at 4 bits is 28.8 KB of RAM), so it is **composited a tile at a
+time, on demand** (`app/scene_px.h`):
+
+- **The grid's painter region.** Besides a bitmap in flash, the grid's pixel region can take
+  its pixels from a painter (`grid_region_painter`): a function the renderer calls for each
+  cell of the region as it sends it, filling its 8 x 8 colours; glyphs and overlays still draw
+  over them. The grid sends only the cells marked (`grid_mark`), so the painter's owner says
+  what changed.
+- **Layers.** The compositor holds a stack of up to 24 layers in slots, bottom first: fills,
+  gradients (a sky computed on the device), images (`scene_image`, placed by their frame's
+  top-left, mirrored or not, with an optional 16-colour remap, clipped to a rectangle), marks
+  (single pixels: a spark's rays, an arc, small discs), text in the 8 x 8 font, and calls (a
+  function that paints a row span: colour cycling over a mask). Each layer knows its box, so a
+  tile draws only the layers over it: RED MOON RITE's frames stack 9 to 11 layers and a tile
+  visits 2.2 to 2.3 of them on average.
+- **What changed.** Setting a slot to a layer that differs from what it held (any field: a
+  layer whose drawing changes while its fields do not changes `param`) makes candidates of
+  the tiles under its old and new boxes. The scan composites each candidate into an 8 x 8
+  scratch, hashes it (FNV-1a, 32 bits: 3,600 bytes for the screen) and marks it only if the
+  hash differs from the panel's. The hash is taken again as the grid sends the tile, so it is
+  always what the panel shows; a candidate the grid is about to send anyway is dropped
+  without compositing. A tile is therefore composited twice when it changes (once to find
+  that it did, once to send it) and once when a layer over it changed without changing it:
+  about 560 ns a tile on the host; the device's instruction counts come with the view (M2f
+  Task 4).
+- **Slices and the budget.** `scene_px_scan` takes a number of tiles a call, so the scan runs
+  between frames (`views_prepare`) in slices that keep a main-loop pass within its allowance;
+  the view sends at most 200 cells a frame, and the grid goes on from where it stopped, round
+  the screen, so a marked tile waits at most one sweep.
+
+In RAM the compositor is 4,688 bytes on the device (the slots 768 and their boxes 192, the
+hashes 3,600, a bit a tile for the candidates 113, counters), and the grid grew 8 bytes (the
+painter and its context). The tests (`tests/app/scene_px.rs`) check tiles against a Rust
+model of the same layers in random stacks (mirroring, transparency, order, remaps, clips),
+the hash against every change (the panel always equals the composited screen, and exactly
+the changed tiles are sent) and against frames that `assets/scene/red-moon-rite.js` draws
+(`tests/golden/scene/`: seven frames of the arcade's pattern as the layers the compositor
+stacks, the torches' cycling and the status bar left out; `--frames` writes them, and
+`SIDOU_SCENE_UPDATE=1` regenerates them when Node is installed).
+
 ## RED MOON RITE
 
 RED MOON RITE is SCENE's first music-driven vignette for the device (M2f): two barbarians
