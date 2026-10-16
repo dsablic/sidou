@@ -233,7 +233,10 @@ static int capture(void* ctx, const screen_event* e) {
     }
     uint32_t param = panel_knob_param(lv->p, lv->l, e->held, e->id);
     if (!midi_learn_knob(ml, param, lv->s->now) && !midi_learn_param(param)) {
-        screen_toast(lv->s, "K4: THE PRESET, NO CC", SCREEN_TOAST_MS);
+        /* On the CHIP view's song tab K1..K4 turn the song's setup, which no CC reaches. */
+        int none = lv->p && lv->p->page == PANEL_PAGE_NONE && !(e->held & (1u << PANEL_BTN_EDIT));
+        screen_toast(lv->s, none ? "SONG SETUP: NO CC" : "K4: THE PRESET, NO CC",
+                     SCREEN_TOAST_MS);
     }
     return 1; /* the knob picks, it does not turn */
 }

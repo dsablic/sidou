@@ -452,12 +452,20 @@ frame equal. Report the examples' coverage (songs, subtunes, frames).
   `GT2_PLAY_WARN_PITCH` (OPTS asks for another A-4), the SONG view shows a hint.
 
 **keys_route's contract (M2b review, app/keys_route.h):** the transport starts a song only
-once `keys_route_ready_for_song` (the keys have left chip A, or KEYS is A); every setup the
-song gives chip A (its `CHPA`) is told with `keys_route_song_setup`; on the falling edge of a
-voice's bit in `keys_route_voices_taken` the player rewrites that voice's registers. Measure
-the shared pass: the song control's writes to chip A (`REG_RING_SONG_PASS`, 28) in one pass
-with keys_route taking chip A back to the keys' setup or moving the keys (30) and chip B
-following (4) must stay within `REG_RING_WORST_PASS`.
+once `keys_route_ready_for_song` (the keys have left chip A, or KEYS is A); the setup chip A
+is to have (the song's `CHPA`, at the start and at every change) goes through the want path,
+`keys_route_song_wants`, the one writer of `keys_route.song_want`, which keys_route brings
+chip A to in the background (the CHIP view's A tab edits the same want: the latest wins), and
+the song saves `song_want` back into its `CHPA` (`keys_route_song_setup` only records a setup
+chip A already holds); a profile change of chip A during a song is a prepared chip reset, and
+the reset chip has none of the song's registers: the player's register shadow rewrites them
+after the swap (`app/reg_ring.c`, above); on the falling edge of a voice's bit in
+`keys_route_voices_taken` the player rewrites that voice's registers. Measure the shared
+pass: the song control's writes to chip A (`REG_RING_SONG_PASS`, 28) in one pass with
+keys_route taking chip A back to the keys' setup or moving the keys (30) and chip B following
+(4) must stay within `REG_RING_WORST_PASS`; and under KEYS A, both chips following in one
+pass (chip A the song's setup, chip B the keys': up to 8 sink writes each, 4 of them queued)
+with chip A's character tick every song tick.
 
 **Files:** `core/player/song_ctl.h`/`.c` (new, portable: the command and event rings, the
 frame clock, the edit application), `platform/fm1/audio.c`/`.h`, `app/reg_ring.c` (the swap

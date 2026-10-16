@@ -763,7 +763,7 @@ fn the_tabs_switch_mark_the_keys_and_show_the_keys_setup() {
         "the tabs' focus"
     );
     assert_eq!(ui.g.ch[2 * COLS + 1], FONT_PLAY as u8);
-    let a_page: Vec<String> = (CHIP_VIEW_CHIP_ROW..CHIP_VIEW_HELP_ROW)
+    let a_page: Vec<String> = (CHIP_VIEW_CHIP_ROW..=CHIP_VIEW_HELP_ROW)
         .map(|r| ui.row(r as usize))
         .collect();
     ui.turn(PANEL_ENC_ALGORITHM, 1);
@@ -771,7 +771,7 @@ fn the_tabs_switch_mark_the_keys_and_show_the_keys_setup() {
     ui.turn(PANEL_ENC_ALGORITHM, 3);
     assert_eq!(ui.v.chip.tab, 1, "clamped at B");
     settle(&mut ui);
-    let b_page: Vec<String> = (CHIP_VIEW_CHIP_ROW..CHIP_VIEW_HELP_ROW)
+    let b_page: Vec<String> = (CHIP_VIEW_CHIP_ROW..=CHIP_VIEW_HELP_ROW)
         .map(|r| ui.row(r as usize))
         .collect();
     assert_eq!(
@@ -779,8 +779,13 @@ fn the_tabs_switch_mark_the_keys_and_show_the_keys_setup() {
         "with no song the B tab shows the keys' setup, the slots shared"
     );
     assert_eq!(
-        text(&ui, CHIP_VIEW_HELP_ROW, 2, 28),
+        text(&ui, CHIP_VIEW_NOTE_ROW, 2, 28).trim(),
         "FOLLOWS KEYS  SLOTS SHARED"
+    );
+    assert_eq!(
+        text(&ui, CHIP_VIEW_HELP_ROW, 2, 28),
+        "SELECT MOVE ALGORITHM STEP",
+        "the help line keeps the moves"
     );
     assert_eq!(at(&ui, 21, 2), ((GRID_WHITE << 4) | GRID_BLUE) as u8);
     // K1 on the tabs and on the chip turns the keys' age, on the B tab too.
@@ -795,8 +800,13 @@ fn the_tabs_switch_mark_the_keys_and_show_the_keys_setup() {
     settle(&mut ui);
     assert_eq!(text(&ui, 2, 12, 28), " A       B KEYS");
     assert_eq!(
-        text(&ui, CHIP_VIEW_HELP_ROW, 2, 28),
+        text(&ui, CHIP_VIEW_NOTE_ROW, 2, 28).trim(),
         "SLOTS SHARED WITH CHIP A"
+    );
+    assert_eq!(
+        text(&ui, CHIP_VIEW_HELP_ROW, 2, 28),
+        "SELECT MOVE ALGORITHM STEP",
+        "the help line keeps the moves"
     );
 }
 
@@ -826,8 +836,13 @@ fn during_a_song_the_a_tab_edits_the_songs_setup() {
     );
     assert_eq!(text(&ui, CHIP_VIEW_CHARACTER_ROW + 1, 23, 26), " 10");
     assert_eq!(
-        text(&ui, CHIP_VIEW_HELP_ROW, 2, 28),
+        text(&ui, CHIP_VIEW_NOTE_ROW, 2, 28).trim(),
         "SONG SETUP  SLOTS SHARED"
+    );
+    assert_eq!(
+        text(&ui, CHIP_VIEW_HELP_ROW, 2, 28),
+        "SELECT MOVE ALGORITHM STEP",
+        "the help line keeps the moves"
     );
     assert_eq!(unsafe { chip_view_page(&ui.v.chip) }, PANEL_PAGE_NONE);
     let (age, profile) = (param(&ui, LIVE_PARAM_AGE), param(&ui, LIVE_PARAM_PROFILE));
@@ -857,5 +872,36 @@ fn during_a_song_the_a_tab_edits_the_songs_setup() {
     ui.turn(PANEL_ENC_K1, 1);
     assert_eq!(param(&ui, LIVE_PARAM_AGE), age + 4);
     assert_eq!(kr.song_want.controls[0], 18, "the song's age moved");
+    unsafe { chip_view_set_keys(&mut ui.v.chip, std::ptr::null_mut()) };
+}
+
+/// MIDI learn over the song's A tab (PANEL_PAGE_NONE): K1..K4 pick nothing, and the toast says
+/// why (SONG SETUP: NO CC), not K4's preset message.
+#[test]
+fn learn_over_the_songs_tab_says_its_knobs_have_no_cc() {
+    let mut ui = chip_ui();
+    ui.rig.live.two_chips = 1;
+    ui.rig.live.keys_chip = 1;
+    let mut kr = Box::<keys_route>::default();
+    kr.l = &mut *ui.rig.live;
+    kr.song = 1;
+    unsafe { chip_view_set_keys(&mut ui.v.chip, &mut *kr) };
+    let mut ml = Box::<midi_learn>::default();
+    unsafe {
+        midi_learn_init(&mut *ml);
+        views_learn(&mut *ui.v, &mut *ml);
+    }
+    ui.press(SAVE);
+    step(&mut ui);
+    assert_eq!(ui.top(), "LEARN");
+    assert_eq!(ui.p.page, PANEL_PAGE_NONE as u8);
+    ui.turn(K1, 1);
+    assert_eq!(
+        u32::from(ml.state),
+        MIDI_LEARN_KNOB,
+        "a knob picked on the song's tab"
+    );
+    assert_eq!(ui.toast().as_deref(), Some("SONG SETUP: NO CC"));
+    ui.press(PANEL_BTN_HOME);
     unsafe { chip_view_set_keys(&mut ui.v.chip, std::ptr::null_mut()) };
 }

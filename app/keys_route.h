@@ -18,20 +18,32 @@
  * - the transport starts a song only once keys_route_ready_for_song: the keys have left chip
  *   A (KEYS AUTO, chip B ready) or KEYS is A. Until then (a profile step just before PLAY, a
  *   song autostarting at boot) the keys may still be on chip A, filtered as above;
- * - every setup it gives chip A (the song's CHPA) is told with keys_route_song_setup, so the
- *   keys are taken back to their own setup after the song (and STATUS shows chip A's);
+ * - the setup chip A is to have (the song's CHPA, at its start and at every change) goes to
+ *   keys_route_song_wants, the one writer of song_want: keys_route brings chip A to it in the
+ *   background (prepared, a slice a tick), as the CHIP view's A tab's edits do, so the latest
+ *   of the CHPA and the edits wins and what chip A has (ctl[0]) stays true; M2c saves
+ *   song_want back into the song's CHPA. keys_route_song_setup is only for a setup chip A
+ *   already holds (it records it, and wants it). After the song the keys are taken back to
+ *   their own setup (STATUS shows chip A's meanwhile);
+ * - a profile change of chip A during a song is a chip reset (prepared, then swapped in): the
+ *   reset chip has none of the song's registers, so M2c Task 6's register shadow rewrites them
+ *   after the swap;
  * - on the falling edge of a voice's bit in keys_route_voices_taken it rewrites that voice's
  *   registers (the keys' writes to it stop then);
  * - a pass in which the song control writes chip A (28 entries at most) and keys_route moves
- *   or takes chip A back (30) and chip B follows (4) is within REG_RING_WORST_PASS; M2c Task
- *   6 measures that shared pass.
+ *   or takes chip A back (30) and chip B follows (4) is within REG_RING_WORST_PASS. Under KEYS
+ *   A both chips follow in one pass (chip A the song's setup, chip B the keys'): each follow
+ *   makes up to 8 sink writes (the 4 character settings, which the ring's sink keeps and does
+ *   not queue; the profile, the reset, the gate reset and the character tick, queued), so up
+ *   to 4 entries each, and chip A gets a character tick every song tick. M2c Task 6 measures
+ *   that shared pass.
  *
  * The keys' setup travels with the keys. live's model, profile, character and envelope mode
  * are the keys' setup; the chip the keys play gets it from live, and the other chip follows
  * it in the background (chip_ctl), a slice a tick after the keys' own chip, so chip B holds
  * the keys' setup whenever the keys move to it. Chip A, while a song plays on it, is the
- * song's (M2c sets its setup) and follows nothing; when the song stops it follows the keys'
- * setup again.
+ * song's: it follows song_want (keys_route_song_wants); when the song stops it follows the
+ * keys' setup again.
  *
  * Moves happen in keys_route_tick, once a pass after the live ticks:
  * - to chip B, once chip B has the keys' setup: the notes the keys hold on chip A are released
@@ -65,8 +77,8 @@ typedef struct {
     uint8_t stale; /* 1 while chip A, the keys' under KEYS A, holds a song's setup */
     uint8_t under; /* 1 while the keys play under a song (on chip A) */
     uint8_t taken; /* the voices the keys held at the last write under a song */
-    /* During a song: the setup chip A should have (the song's CHPA, keys_route_song_setup, or
-     * an edit on the CHIP view's A tab, keys_route_edit_song_setup); chip A follows it. */
+    /* During a song: the setup chip A should have (the song's CHPA or an edit on the CHIP
+     * view's A tab, both through keys_route_song_wants); chip A follows it. */
     chip_setup song_want;
     uint8_t song_seen; /* song as the last tick saw it (a song's start sets song_want) */
     void (*moved)(void* ctx, uint32_t chip); /* NULL: nobody to tell */
@@ -95,12 +107,12 @@ void keys_route_set_song(keys_route* kr, int playing);
 uint8_t keys_route_voices_taken(const keys_route* kr);
 /* 1 once a song may start on chip A: the keys play chip B, or KEYS is A. */
 int keys_route_ready_for_song(const keys_route* kr);
-/* The setup the song gives chip A (its CHPA), as chip A has it from now on (and wants). */
+/* The setup chip A is to have during a song (the song's CHPA; an edit on the CHIP view's A
+ * tab): the one writer of song_want. Chip A is brought to it in the background (prepared, a
+ * slice a tick); the latest call wins; M2c saves song_want back into the song's CHPA. */
+void keys_route_song_wants(keys_route* kr, const chip_setup* setup);
+/* A setup chip A already holds (nothing is sent): recorded as what it has, and wanted. */
 void keys_route_song_setup(keys_route* kr, const chip_setup* setup);
-/* An edit of the song's setup (the CHIP view's A tab during a song): chip A is brought to it
- * (prepared, a slice a tick, as the other chip follows the keys'); M2c saves it in the song's
- * CHPA (song_want). */
-void keys_route_edit_song_setup(keys_route* kr, const chip_setup* setup);
 
 #ifdef __cplusplus
 }

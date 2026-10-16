@@ -110,15 +110,16 @@ play](#which-chip-the-keys-play):
   only from M2e), and the B tab shows the keys' setup and edits it.
 
 The effect slots are one chain on the mix of both chips: their frames show on both tabs, and
-the B tab's help line says **SLOTS SHARED**. **KEYS** marks the tab of the chip the keys play.
+the B tab's note under the tabs says **SLOTS SHARED**. **KEYS** marks the tab of the chip the keys play.
 
 | Rows | Section | Shows |
 |---|---|---|
 | 2 | CHIP and the tabs | **A** and **B**, the shown one in reverse video (white while the tabs have the focus), **KEYS** beside the keys' chip |
+| 3 | the tab's note | on the B tab FOLLOWS KEYS  SLOTS SHARED (no song) or SLOTS SHARED WITH CHIP A (the keys on B); on a song's A tab SONG SETUP  SLOTS SHARED; nothing on chip A with no song |
 | 4-7 | CHIP | the profile as asked for (6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581) and the model the chip plays |
 | 8-13 | CHARACTER | AGE, DAC, THUMP and BLEED, each a bar and its value 0..127 |
 | 14-17, 18-21, 22-25 | DIST, MOD, FX | the slot and its algorithm in the frame's title; its Amount, A, B and Mix, each named for what it does in that algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX); a control the algorithm does not use, and every control of a slot that is off, greyed under its plain name (AMT, A, B, MIX) |
-| 26 | | the help line: SELECT MOVE ALGORITHM STEP; on the B tab FOLLOWS KEYS  SLOTS SHARED (no song) or SLOTS SHARED WITH CHIP A (the keys on B); on a song's A tab SONG SETUP  SLOTS SHARED |
+| 26 | | the help line: SELECT MOVE ALGORITHM STEP |
 
 The focus is on the tabs, on the chip (both its frames) or on a slot: a play mark in the
 margin and white frames show it.

@@ -220,7 +220,9 @@ All notable changes are documented here. The format follows
   switches A and B, KEYS marks the keys' chip. A tab shows the keys' setup and edits it
   (with no song chip B follows it: FOLLOWS KEYS), but chip A's during a song, which shows and
   edits the song's setup. The effect slots show on both tabs as one shared chain. The CHIP
-  goldens change on row 2 (the tabs); chip-b and chip-b-keys are new.
+  goldens change on row 2 (the tabs); chip-b, chip-b-keys and chip-a-song are new. The tab's
+  note sits on row 3, and the help line keeps SELECT MOVE ALGORITHM STEP; MIDI learn over the
+  song's tab says SONG SETUP: NO CC.
 - M2b: the keys play chip A, or chip B while a song plays on chip A (the new menu item KEYS:
   AUTO, the default, or A); the keys' setup travels with them, chip B following it in the
   background (`app/keys_route.h`, `app/chip_ctl.h`), and the keys' chip goes first in the

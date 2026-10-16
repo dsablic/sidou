@@ -37,6 +37,8 @@ _Static_assert(CHIP_VIEW_CHIP_ROW + CHIP_H == CHIP_VIEW_CHARACTER_ROW &&
                    CHIP_VIEW_SLOT_ROW + LIVE_SLOTS * CHIP_VIEW_SLOT_ROWS == CHIP_VIEW_HELP_ROW,
                "the frames follow each other down to the help line");
 _Static_assert(CHIP_VIEW_HELP_ROW < SCREEN_TOAST_ROW, "the help line is above the toast's");
+_Static_assert(CHIP_VIEW_NOTE_ROW > 2u && CHIP_VIEW_NOTE_ROW < CHIP_VIEW_CHIP_ROW,
+               "the tab's note between the tabs and the CHIP frame");
 _Static_assert(CHIP_VIEW_COL + CHIP_VIEW_W == GRID_COLS - 2u, "the frames end before the margin");
 _Static_assert(BAR_COL + BAR_CELLS < VALUE_END - 3u, "a bar ends before its value");
 _Static_assert(TAB_COL + 2u * TAB_W == CHIP_VIEW_COL + CHIP_VIEW_W, "the tabs end with the frames");
@@ -215,8 +217,8 @@ static void shown(const chip_view* cv, chip_setup* s, uint8_t* model) {
     *model = (uint8_t)l->model_req;
 }
 
-/* What the help line says: 0 the moves, 1 the song's setup, 2 chip B following the keys, 3
- * chip B the keys'. */
+/* What the note under the tabs says: 0 nothing, 1 the song's setup, 2 chip B following the
+ * keys, 3 chip B the keys'. */
 static uint8_t help_kind(const chip_view* cv) {
     if (chip_view_song_tab(cv)) {
         return 1;
@@ -343,9 +345,12 @@ static void build(chip_view* cv) {
     for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
         draw_slot(cv, c, k);
     }
-    static const char* const HELP[4] = {"SELECT MOVE ALGORITHM STEP", "SONG SETUP  SLOTS SHARED",
-                                        "FOLLOWS KEYS  SLOTS SHARED", "SLOTS SHARED WITH CHIP A"};
-    text(c, CHIP_VIEW_COL, CHIP_VIEW_HELP_ROW, HELP[help_kind(cv)], TEXT);
+    /* Under the tabs, what the tab is (nothing on chip A with no song): the help line keeps
+     * the moves. */
+    static const char* const NOTE[4] = {"", "SONG SETUP  SLOTS SHARED", "FOLLOWS KEYS  SLOTS SHARED",
+                                        "SLOTS SHARED WITH CHIP A"};
+    text_right(c, CHIP_VIEW_COL + CHIP_VIEW_W, CHIP_VIEW_NOTE_ROW, NOTE[help_kind(cv)], TEXT);
+    text(c, CHIP_VIEW_COL, CHIP_VIEW_HELP_ROW, "SELECT MOVE ALGORITHM STEP", TEXT);
     cv->built = 1;
     cv->copying = 1;
 }
@@ -426,7 +431,7 @@ static int input(screen* s, void* state, const screen_event* e) {
         int32_t d = e->steps > 64 ? 64 : e->steps < -64 ? -64 : e->steps;
         want.controls[f] = (uint8_t)step_clamped(want.controls[f], d * PANEL_CHARACTER_DETENT,
                                                  SID_CHARACTER_MAX);
-        keys_route_edit_song_setup(cv->kr, &want);
+        keys_route_song_wants(cv->kr, &want);
         return 1;
     }
     if (e->id != PANEL_ENC_ALGORITHM) {
@@ -444,7 +449,7 @@ static int input(screen* s, void* state, const screen_event* e) {
     } else if (chip_view_song_tab(cv)) {
         chip_setup want = cv->kr->song_want;
         want.profile = (uint8_t)step_clamped(want.profile, e->steps, SID_CHIPS - 1u);
-        keys_route_edit_song_setup(cv->kr, &want);
+        keys_route_song_wants(cv->kr, &want);
     } else {
         live_param_set(l, LIVE_PARAM_PROFILE, step_clamped(profile_of(l), e->steps, SID_CHIPS - 1u));
     }

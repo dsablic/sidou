@@ -611,7 +611,7 @@ fn keys_a_leaves_the_songs_other_voices_byte_for_byte() {
     );
 }
 
-/// The CHIP view's A tab during a song edits the song's setup (keys_route_edit_song_setup):
+/// The CHIP view's A tab during a song edits the song's setup (keys_route_song_wants):
 /// chip A is prepared to it in the background, chip B (the keys') keeps the keys' setup.
 #[test]
 fn an_edit_of_the_songs_setup_brings_chip_a_to_it() {
@@ -626,11 +626,108 @@ fn an_edit_of_the_songs_setup_brings_chip_a_to_it() {
         controls: [0, 0, 64, 0],
         gate_reset: 1,
     };
-    unsafe { keys_route_edit_song_setup(&mut *k.kr, &song) };
+    unsafe { keys_route_song_wants(&mut *k.kr, &song) };
     k.ticks(40);
     assert_eq!(k.chip(0).filter_curve, 3, "chip A has the song's WORN");
     assert_eq!(k.chips.ramp[0].now.thump, 64, "and its thump");
     assert_eq!(setup(&k, 1), b_before, "the keys' chip changed");
     assert_eq!(k.outs[0].unprepared_resets, 1, "live_init's only");
     assert_eq!(k.chips.lost_resets, 0);
+}
+
+/// What chip A has at the ring: its profile's filter row, its model and its ramp's controls.
+fn chip_a_is(k: &Keys, want: &chip_setup) -> bool {
+    let p = unsafe { &*sid_chip_profile_get(u32::from(want.profile)) };
+    let c = &*k.chips;
+    let s = &c.chip[usize::from(c.active[0])];
+    let n = c.ramp[0].now;
+    s.filter_curve == p.curve
+        && s.model as u8 == p.model
+        && [n.age, n.dac, n.thump, n.bleed] == want.controls
+}
+
+/// Review of Task 5, item 1: the want path is the one writer of song_want. An A-tab edit, then
+/// the song's CHPA, then another edit: chip A follows each in turn, the latest wins, and what
+/// keys_route says chip A has (ctl[0]) is what the ring's chip A has at the end.
+#[test]
+fn edits_and_the_songs_chpa_go_through_one_want_path() {
+    let mut k = Keys::new();
+    k.ticks(20);
+    k.song(true);
+    k.ticks(2);
+    let edit = chip_setup {
+        profile: SID_CHIP_6581_WORN as u8,
+        controls: [32, 0, 0, 0],
+        gate_reset: 1,
+    };
+    let chpa = chip_setup {
+        profile: SID_CHIP_6581_R2 as u8,
+        controls: [0, 0, 64, 0],
+        gate_reset: 1,
+    };
+    let mut again = chpa;
+    again.controls[0] = 48;
+    for (what, want) in [
+        ("an edit", edit),
+        ("the CHPA", chpa),
+        ("another edit", again),
+    ] {
+        unsafe { keys_route_song_wants(&mut *k.kr, &want) };
+        k.ticks(200);
+        assert!(chip_a_is(&k, &want), "{what}: chip A did not get there");
+        let has = k.kr.ctl[0].has;
+        assert_eq!(
+            (has.profile, has.controls),
+            (want.profile, want.controls),
+            "{what}: ctl[0]"
+        );
+    }
+    assert_eq!(k.kr.song_want.controls, [48, 0, 64, 0]);
+    assert_eq!(k.outs[0].unprepared_resets, 1, "live_init's only");
+    assert_eq!(k.chips.lost_resets, 0);
+}
+
+/// Review of Task 5, item 3: a song stops after A-tab edits (the profile and the controls),
+/// with KEYS AUTO and KEYS A: chip A ends at the keys' profile and controls, with no reset made
+/// at once and none lost.
+#[test]
+fn chip_a_comes_back_to_the_keys_setup_after_a_tab_edits() {
+    for mode in [LIVE_KEYS_AUTO, LIVE_KEYS_A] {
+        let mut k = Keys::new();
+        unsafe {
+            live_set_keys_mode(&mut *k.live, mode);
+            live_param_set(&mut *k.live, LIVE_PARAM_AGE, 20);
+        }
+        k.ticks(60);
+        k.song(true);
+        k.ticks(3);
+        let edit = chip_setup {
+            profile: SID_CHIP_6581_WORN as u8,
+            controls: [100, 40, 80, 10],
+            gate_reset: 1,
+        };
+        unsafe { keys_route_song_wants(&mut *k.kr, &edit) };
+        k.ticks(200);
+        assert!(
+            chip_a_is(&k, &edit),
+            "mode {mode}: the edit did not reach chip A"
+        );
+        let (unprepared, lost) = (k.outs[0].unprepared_resets, k.chips.lost_resets);
+        k.song(false);
+        k.ticks(200);
+        let mut keys = Box::<chip_setup>::default();
+        unsafe { chip_setup_of(&*k.live, &mut *keys) };
+        assert_eq!(u32::from(keys.profile), SID_CHIP_6581_R4AR);
+        assert!(
+            chip_a_is(&k, &keys),
+            "mode {mode}: chip A kept the song's setup"
+        );
+        assert_eq!(k.live.keys_chip, 0, "mode {mode}");
+        assert_eq!(
+            (k.outs[0].unprepared_resets, k.chips.lost_resets),
+            (unprepared, lost),
+            "mode {mode}"
+        );
+        assert_eq!(lost, 0);
+    }
 }

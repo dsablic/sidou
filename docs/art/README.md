@@ -527,6 +527,7 @@ border, the focus in white, what is off in grey.
 ![CHIP, the focus on DIST](../../tests/golden/lcd/chip-dist.png)
 ![CHIP's B tab, the focus on the tabs](../../tests/golden/lcd/chip-b.png)
 ![CHIP's B tab with the keys on chip B](../../tests/golden/lcd/chip-b-keys.png)
+![CHIP's A tab during a song, the song's chip](../../tests/golden/lcd/chip-a-song.png)
 
 - **Row 2:** CHIP, and the chips' tabs from column 12, 8 cells each: **A** and **B**, the
   shown one in reverse video (blue on light blue; on white while the tabs have the focus,
@@ -540,9 +541,10 @@ border, the focus in white, what is off in grey.
   the margin at column 1 on each of its frames' top rows; the chip's focus is both its frames.
 - **Grey:** a slot's control its algorithm does not use (TAPE's A and B), and every control
   of a slot that is off, under its plain name (AMT, A, B, MIX).
-- **Row 26:** the help line, SELECT MOVE ALGORITHM STEP; on the B tab FOLLOWS KEYS  SLOTS
-  SHARED, or SLOTS SHARED WITH CHIP A while the keys play chip B; on a song's A tab SONG
-  SETUP  SLOTS SHARED. The toast keeps row 27.
+- **Row 3:** the tab's note, right-aligned against the frames: on the B tab FOLLOWS KEYS
+  SLOTS SHARED, or SLOTS SHARED WITH CHIP A while the keys play chip B; on a song's A tab SONG
+  SETUP  SLOTS SHARED; nothing on chip A with no song.
+- **Row 26:** the help line, SELECT MOVE ALGORITHM STEP, on every tab. The toast keeps row 27.
 
 **The budget.** The page is built in a canvas off the grid whenever what it shows changes
 (a byte each for the profile, the model, the character, every slot field, the selected slot

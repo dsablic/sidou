@@ -6,14 +6,15 @@
  * The tabs (M2b Task 5): A and B, the one shown in reverse video, KEYS beside the letter of
  * the chip the keys play (app/keys_route.h). What a tab shows and edits follows which chip the
  * keys play: chip A during a song is the song's, so its tab shows the song's setup and edits it
- * (keys_route_edit_song_setup; K1..K4 turned by the view itself, PANEL_PAGE_NONE, which MIDI
+ * (keys_route_song_wants; K1..K4 turned by the view itself, PANEL_PAGE_NONE, which MIDI
  * learn binds nothing to); every other tab shows the keys' setup, live's, and edits it (the
  * other chip follows it in the background: with no song the B tab says FOLLOWS KEYS). The
  * effect slots are one chain on the mix of both chips: their frames show on both tabs, and the
- * B tab's help line says SHARED.
+ * B tab's note under the tabs (row 3) says SHARED; the help line keeps the moves.
  *
  * The page, in PETSCII frames (docs/art/README.md "CHIP"):
  * - row 2: CHIP and the tabs, the shown one in reverse video (white while the tab focus is on);
+ * - row 3: the tab's note, right-aligned (none on chip A with no song);
  * - CHIP (rows 4-7): the profile (6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581) and its
  *   model as asked for (the chip plays them once its spare is prepared, 70 to 150 ms later:
  *   app/reg_ring.h);
@@ -76,11 +77,13 @@ extern "C" {
 #define CHIP_VIEW_SLOT_ROW 14u
 #define CHIP_VIEW_SLOT_ROWS 4u
 #define CHIP_VIEW_HELP_ROW 26u
+/* The tab's note, right-aligned under the tabs (FOLLOWS KEYS, SONG SETUP, SLOTS SHARED). */
+#define CHIP_VIEW_NOTE_ROW 3u
 /* A control's name on the page, terminator included ("DEPTH"). */
 #define CHIP_VIEW_LABEL 6u
 /* What the page shows, as bytes (chip_view.c look): the tab's profile and model (asked for),
  * its four character controls, every slot field, the selected slot, the focus, the tab, the
- * tabs' focus, the keys' chip and what the help line says. */
+ * tabs' focus, the keys' chip and what the tab's note says. */
 #define CHIP_VIEW_LOOK (2u + (LIVE_CHAR_FIELDS - 1u) + LIVE_SLOTS * LIVE_SLOT_FIELDS + 6u)
 
 typedef struct {

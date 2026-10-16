@@ -1962,6 +1962,11 @@ fn chip_matches_its_golden_images() {
     m.run_ms(300);
     settle(&mut m, &fw);
     compare_golden(&build, "chip-b-keys", &m.soc.lcd.fb, &[]);
+    // The A tab during the song: the song's chip, its setup (as the song found chip A).
+    m.turn(ALGORITHM, -1);
+    m.run_ms(300);
+    settle(&mut m, &fw);
+    compare_golden(&build, "chip-a-song", &m.soc.lcd.fb, &[]);
 }
 
 /// On the B tab during a song (the keys on chip B), a profile step reaches chip B, the keys',
