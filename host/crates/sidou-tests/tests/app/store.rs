@@ -3603,3 +3603,67 @@ fn a_cut_kill_is_made_again_before_anything_relies_on_it() {
     assert_eq!(r.mount(), STORE_STATE_SIDOU);
     assert_eq!(r.get(7), None, "the deleted value came back");
 }
+
+/// A collection cut while its copy's commit word was being programmed: the record and its copy
+/// share a number, the copy's commit word all faint. Whichever the mount takes, the next
+/// collection may kill the original's sector; the copy must read committed for good by then.
+#[test]
+fn a_copy_cut_in_its_commit_word_is_made_whole() {
+    for reads in [0x00u8, 0x5A] {
+        let mut r = fresh(68, 256);
+        // A first session's head, then the value in a later sector.
+        assert_eq!(r.put_now(30, b"first"), STORE_OK);
+        r.reset();
+        r.mount();
+        r.maintain();
+        assert_eq!(r.put_now(7, b"value"), STORE_OK);
+        assert_eq!(r.put_now(40, b"newer"), STORE_OK); // so the copy is not the newest record
+        let region = r.sim.region().to_vec();
+        let orig = sectors_holding(&region, 7, 1)[0];
+        // The copy, as a collection makes it, at the end of the earlier sector (the mount meets
+        // it first and keeps it), its commit word all faint.
+        let c = commit_word_of(&region, 7);
+        let rec = region[c - 8 - 16..c + 4].to_vec(); // header, "value" padded to 8, commit
+        let claim = |s: usize| rd32(&region, s * SECTOR + 20);
+        let early = (0..SECTORS)
+            .filter(|&s| {
+                s != orig && rd32(&region, s * SECTOR + 28) == 0 && region[s * SECTOR] == b'S'
+            })
+            .find(|&s| claim(s) > claim(orig) || (claim(s) == claim(orig) && s < orig))
+            .expect("a sector the mount prefers");
+        let at = early * SECTOR + usize::from(r.st.sector[early].free);
+        r.sim.cells.prog(at, &rec[..rec.len() - 4]);
+        for b in &mut r.sim.cells.meant[at + rec.len() - 4..at + rec.len()] {
+            *b = 0;
+        }
+        r.sim.set_faint(at + rec.len() - 4, 4, reads);
+        r.reset();
+        assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        assert_eq!(r.get(7).as_deref(), Some(&b"value"[..]));
+        let e = (0..usize::from(r.st.nkeys))
+            .find(|&i| r.st.key[i].key == 7)
+            .unwrap();
+        assert_eq!(
+            usize::from(r.st.key[e].sec),
+            early,
+            "the copy is the live one"
+        );
+        // The original's sector collected and killed.
+        assert_eq!(r.put_now(31, b"room"), STORE_OK);
+        let mut n = 0;
+        while sectors_holding(r.sim.region(), 7, 1).contains(&orig) {
+            assert_eq!(r.collect(), STORE_OK);
+            r.settle();
+            n += 1;
+            assert!(n < 10);
+        }
+        r.sim.faint_reads(0xFF);
+        r.reset();
+        assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        assert_eq!(
+            r.get(7).as_deref(),
+            Some(&b"value"[..]),
+            "reads {reads:#x}: lost"
+        );
+    }
+}
