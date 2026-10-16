@@ -157,7 +157,7 @@ data:
 
 A cut during a program or an erase can leave bits **faint**: neither
 programmed nor erased, read one way at one mount and another at the next.
-Three rules keep them harmless:
+Four rules keep them harmless:
 
 - **Every boot starts a fresh head.** No sector from before the mount takes
   another record: the first small write (or collection copy) after a mount
@@ -169,20 +169,32 @@ Three rules keep them harmless:
 - A commit word or claim word counts with **any** of its bits programmed
   (above).
 - A claim programs the erase header again (above).
+- **The interrupted write is completed.** A commit word all of whose
+  programmed bits are faint (likely: its 32 bits are programmed by one
+  pulse, so a cut leaves them charged alike) can read erased at one mount
+  and programmed at another. Only the write a cut interrupted can end in
+  one, and it is the **newest** record: one write is in flight at a time,
+  each takes the next sequence number, and a file's chunks carry the file's
+  id, also a sequence number. So the newest keyed record counts as committed
+  when its CRC checks, whatever its commit word reads; and before the
+  session's first record or file write, or garbage collection's first kill,
+  the store programs that record's header and commit word again (the same
+  bytes), so it reads committed for good before anything follows it or a
+  kill could take its key's older records. A newest record whose commit word
+  reads erased is indexed last at the mount, so if the key index is full it
+  is the one left out (counted as corruption). If a committed chunk of a
+  file begun after it is the newest, the session after it ran, and there is
+  nothing to complete.
 
-What is left: a commit word all of whose programmed bits are faint (likely:
-its 32 bits are programmed by one pulse, so a cut leaves them charged alike)
-can read erased at one mount and programmed at another. The record it ends
-is the write the cut interrupted, so the key reads its old value at one
-mount and its new one at another, never anything else, because the older
-records outlive it: such a record can only be the last of a sector written
-before the mount (every session starts a fresh head, and a cut leaves one
-write in flight), and before garbage collection kills any sector it copies
-every such record that has older records of its key around (a FILE record:
-the old one, whose chunks a kill could take) into the head first. The copy,
-written in this session, is whole, and from then on the key's live record is
-the copy. A record that read uncommitted keeps its key a place in the key
-index, so it finds one if it reads committed at the next mount.
+A cut write whose header and data went whole is thus completed at the next
+mount, and from then on reads the same at every mount. A write cut before
+its header went whole never counts (its CRC fails, or, if faint bits in its
+header happen to read right at a later mount, it is not the newest any more
+once anything else was written: the mount skips a sequence number, so the
+next write's is higher). The one case left: a write cut in its header, with
+faint header bits that read wrong at one mount and right at a later one,
+and nothing written between those mounts, appears at the later one. It is
+the write the cut interrupted, never anything else.
 
 ## Which record wins
 
@@ -235,16 +247,19 @@ maintenance moves the coldest sector's records so it cycles too.
 ## Partial programs and ECC
 
 Between two erases of its sector, a 256-byte page takes at most
-**`STORE_PAGE_PROGS` = 34 programs** for a write window of 16 bytes or more
+**`STORE_PAGE_PROGS` = 36 programs** for a write window of 16 bytes or more
 (the device's windows are 16, 64 or 256 bytes): record data in window-sized
 pieces, record headers and commit words, each its own program (the densest
 are 4-byte values: 3 programs in 24 bytes), and on a sector's first page its
-erase header, its claim and the kill. 34 is the maximum over every sequence
+erase header, its claim and the kill: 34, the maximum over every sequence
 of records (`STORE_PAGE_PROGS` in `app/store.h`; the host tests count every
-page's programs). Two of them program bytes already programmed: the claim
-writes the erase header's bytes again (the same bytes, zeros over zeros),
-and the kill programs the magic to zero. A part that limits partial programs
-per page below 34, or forbids programming bits already programmed, needs a
+page's programs), then 2 for completing a session's newest record (once a
+sector: each session starts a fresh head) and 2 more for each cut during
+that completion. Three kinds program bytes already programmed: the claim
+writes the erase header's bytes again and the completion a record's header
+and commit word again (the same bytes, zeros over zeros), and the kill
+programs the magic to zero. A part that limits partial programs per page
+below 36, or forbids programming bits already programmed, needs a
 format change; so would a part with **ECC**, whose code words cover fixed
 units (often 16 bytes) that may be programmed only once: records would
 become 16-byte single-shot units, a rework of this format. Whether the

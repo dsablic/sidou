@@ -1358,7 +1358,8 @@ impl Run {
                 assert_eq!(r.get(k).as_deref(), Some(&b"after"[..]));
                 self.verify(&r, "a forked cut, then a write");
                 r.assert_clean();
-                // Mounted again (faint bits read anew): what the first mount read stays.
+                // Mounted again (faint bits read anew): what the first mount read stays (the
+                // interrupted write, if the first mount read it, was completed by the write).
                 r.reset();
                 assert_eq!(r.mount(), STORE_STATE_SIDOU, "seed {}", self.seed);
                 for (key, want) in first.iter().enumerate() {
@@ -1520,7 +1521,7 @@ impl Run {
 /// together (`Tear::pulse`) and faint bits also read anew within a session.
 fn set_tear(rig: &mut Rig, seed: u64, faint: bool) {
     rig.sim.faint = faint;
-    rig.sim.pulse = faint && seed % 3 != 0;
+    rig.sim.pulse = faint && !seed.is_multiple_of(3);
     rig.sim.flips = rig.sim.pulse;
 }
 
@@ -3310,29 +3311,6 @@ fn review_all_faint_file_commit_then_gc() {
     );
 }
 
-/// A record whose CRC checks but whose commit word reads erased at a mount is not committed
-/// then, but its sequence number is taken: a later write of its key never reuses it, so if
-/// the commit word reads programmed at a later mount, the later write still wins (and no two
-/// records share a number: no corruption counted).
-#[test]
-fn a_record_read_uncommitted_still_takes_its_sequence_number() {
-    let mut r = fresh(63, 256);
-    assert_eq!(r.put_now(1, b"old"), STORE_OK);
-    assert_eq!(r.put_now(1, b"cut"), STORE_OK);
-    let c = commit_word_of(r.sim.region(), 1);
-    r.sim.set_faint(c, 4, 0xFF);
-    r.reset();
-    assert_eq!(r.mount(), STORE_STATE_SIDOU);
-    assert_eq!(r.get(1).as_deref(), Some(&b"old"[..]));
-    r.maintain();
-    assert_eq!(r.put_now(1, b"later"), STORE_OK);
-    r.sim.faint_reads(0x00);
-    r.reset();
-    assert_eq!(r.mount(), STORE_STATE_SIDOU);
-    assert_eq!(r.get(1).as_deref(), Some(&b"later"[..]));
-    assert_eq!(r.stats().corrupt, 0);
-}
-
 /// The hook fails operations with no cut (STORE_ERROR, the part having done part of each): the
 /// writer's failure, a file's (file_fail with STORE_ERROR, mid-claim too), an erase's, a kill's
 /// and a header's. Nothing breaks a rule, and at every remount each key and file reads its value
@@ -3343,7 +3321,7 @@ fn hook_errors_never_cost_a_committed_value() {
     for (seed, window) in WINDOWS.into_iter().enumerate() {
         let seed = 100 + seed as u64;
         let mut r = fresh(seed, window);
-        r.sim.faint = seed % 2 == 0;
+        r.sim.faint = seed.is_multiple_of(2);
         r.sim.pulse = r.sim.faint;
         r.sim.fail = 3;
         let mut rng = Rng::new(seed);
@@ -3428,28 +3406,101 @@ fn hook_errors_never_cost_a_committed_value() {
     assert!(failed > 300 && either > 10);
 }
 
-/// A new key's record read uncommitted keeps its key a slot in the index: with the index
-/// otherwise full, another new key is refused, so when the record reads committed at the next
-/// mount, its key finds its place and nothing overflows the index.
+/// The write a cut interrupted in its commit word (every bit faint, read erased) is the newest
+/// record: it counts at every mount, and the session's first write programs its header and
+/// commit word again, so it stays whatever the faint bits read later. Nothing else can read
+/// that way: a record older than the newest whose commit word reads erased never counts.
 #[test]
-fn a_record_read_uncommitted_keeps_its_key_a_slot() {
-    let mut r = fresh(64, 256);
-    for k in 0..STORE_KEYS_MAX - 1 {
-        assert_eq!(r.put_now(k, &k.to_le_bytes()), STORE_OK);
+fn the_interrupted_write_completes_and_stays() {
+    for reads in [0xFFu8, 0x00, 0x5A] {
+        let mut r = fresh(63, 256);
+        assert_eq!(r.put_now(1, b"old"), STORE_OK);
+        assert_eq!(r.put_now(1, b"cut"), STORE_OK);
+        let c = commit_word_of(r.sim.region(), 1);
+        r.sim.set_faint(c, 4, reads);
+        r.reset();
+        assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        assert_eq!(r.get(1).as_deref(), Some(&b"cut"[..]), "reads {reads:#x}");
+        let progs = r.sim.progs;
+        assert_eq!(r.put_now(2, b"next"), STORE_OK);
+        assert!(
+            r.sim.progs >= progs + 2,
+            "the header and commit word again first"
+        );
+        assert_eq!(r.sim.cells.faint[c..c + 4], [0; 4], "programmed for good");
+        r.maintain();
+        while r.collect() == STORE_OK {
+            r.maintain();
+        }
+        for faint in [0xFF, 0x00] {
+            r.sim.faint_reads(faint);
+            r.reset();
+            assert_eq!(r.mount(), STORE_STATE_SIDOU);
+            assert_eq!(r.get(1).as_deref(), Some(&b"cut"[..]));
+            assert_eq!(r.get(2).as_deref(), Some(&b"next"[..]));
+            assert_eq!(r.stats().corrupt, 0);
+        }
+        r.assert_clean();
     }
-    assert_eq!(r.put_now(1000, b"cut"), STORE_OK);
-    let c = commit_word_of(r.sim.region(), 1000);
-    r.sim.set_faint(c, 4, 0xFF);
+    // A record older than the newest, its commit word erased, does not count.
+    let mut r = fresh(64, 256);
+    assert_eq!(r.put_now(1, b"old"), STORE_OK);
+    assert_eq!(r.put_now(1, b"never"), STORE_OK);
+    let c = commit_word_of(r.sim.region(), 1);
     r.reset();
-    assert_eq!(r.mount(), STORE_STATE_SIDOU);
-    assert_eq!(r.get(1000), None);
-    r.maintain();
-    assert_eq!(r.put(2000, b"another"), STORE_FULL, "the slot is kept");
-    assert_eq!(r.put_now(1000, b"again"), STORE_OK, "its own key may write");
-    r.sim.faint_reads(0x00);
+    r.mount();
+    assert_eq!(r.put_now(2, b"newer"), STORE_OK);
+    r.sim.cells.mem[c..c + 4].fill(0xFF); // as if never programmed (a test's liberty)
+    r.sim.cells.meant[c..c + 4].fill(0xFF);
+    r.sim.mem[LO + c..LO + c + 4].fill(0xFF);
     r.reset();
-    assert_eq!(r.mount(), STORE_STATE_SIDOU);
-    let s = r.stats();
-    assert_eq!((s.keys, s.corrupt), (STORE_KEYS_MAX, 0));
-    assert_eq!(r.get(1000).as_deref(), Some(&b"again"[..]));
+    r.mount();
+    assert_eq!(r.get(1).as_deref(), Some(&b"old"[..]));
+    assert_eq!(r.get(2).as_deref(), Some(&b"newer"[..]));
+}
+
+/// The newest record completed at the mount is indexed last: with the index full of the other
+/// keys, it is the one left out (counted as corruption), whatever order the sectors scan in.
+#[test]
+fn a_completed_write_that_overflows_the_index_is_the_one_left_out() {
+    for first in [false, true] {
+        let mut r = fresh(65, 256);
+        for k in 0..STORE_KEYS_MAX {
+            assert_eq!(r.put_now(k, &k.to_le_bytes()), STORE_OK);
+        }
+        // A 49th key's record, its commit word never programmed, the newest number, placed
+        // after the records of the first sector or of the last (as a store from elsewhere).
+        let region = r.sim.region().to_vec();
+        let claimed: Vec<usize> = (0..SECTORS)
+            .filter(|&s| rd32(&region, s * SECTOR + 28) == 0 && region[s * SECTOR] == b'S')
+            .collect();
+        let sec = if first {
+            claimed[0]
+        } else {
+            *claimed.last().unwrap()
+        };
+        let mut off = 32;
+        let h = &region[sec * SECTOR..];
+        while h[off] != 0xFF {
+            let len = u16::from_le_bytes([h[off + 2], h[off + 3]]) as usize;
+            off += 16 + len.div_ceil(4) * 4 + 4;
+        }
+        let mut rec = vec![1u8, 0, 4, 0];
+        rec.extend_from_slice(&5000u32.to_le_bytes());
+        rec.extend_from_slice(&1_000_000u32.to_le_bytes());
+        let mut covered = rec.clone();
+        covered.extend_from_slice(b"over");
+        rec.extend_from_slice(&crc32(&covered).to_le_bytes());
+        rec.extend_from_slice(b"over");
+        r.sim.cells.prog(sec * SECTOR + off, &rec);
+        r.sim.mem[LO..HI].copy_from_slice(&r.sim.cells.mem);
+        r.reset();
+        assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        let s = r.stats();
+        assert_eq!((s.keys, s.corrupt), (STORE_KEYS_MAX, 1), "first {first}");
+        assert_eq!(r.get(5000), None, "the completed one is left out");
+        for k in 0..STORE_KEYS_MAX {
+            assert_eq!(r.get(k), Some(k.to_le_bytes().to_vec()));
+        }
+    }
 }

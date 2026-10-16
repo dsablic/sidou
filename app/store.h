@@ -38,10 +38,15 @@
  *   every mount; and a claim programs the erase header again, so a faint erase header is
  *   programmed for good before its sector holds anything (every claim of an erase cycle is the
  *   same bytes, so one read as never made is made again over the same bits). A commit word all
- *   of whose bits a cut left faint (likely: one pulse charges them alike) can still read erased
- *   at one mount and programmed at another: the write it ends is then old at one and new at the
- *   other, never anything else, since garbage collection copies such a record (the last of a
- *   sector from before the mount) forward before any kill could take its key's older records;
+ *   of whose bits a cut left faint (likely: one pulse charges them alike) can read erased at one
+ *   mount and programmed at another. Only the write the cut interrupted can end in one, and it
+ *   is the newest record (one write is in flight at a time, each taking the next number): the
+ *   newest keyed record counts as committed when its CRC checks, whatever its commit word reads,
+ *   and the session's first write of a record or file, or garbage collection's first kill, is
+ *   preceded by programming its header and commit word again (the same bytes), so it reads
+ *   committed for good before anything could follow it or take its key's older records. A cut
+ *   write is thus completed at the next mount if its header and data went whole, and never
+ *   reads otherwise afterwards;
  *
  * The erase-ahead pool: clean, unclaimed sectors. Whoever writes claims its sectors from the
  * pool before the first byte, so no write ever waits for an erase: a small record's new head
@@ -104,7 +109,6 @@
 #define STORE_TYPE_CHUNK 0x81u     /* a file's chunk: key the file's id, seq the chunk's index */
 #define STORE_TYPE_FILE 0x82u      /* a file's FILE record, which commits it */
 #define STORE_KEY_FILE 0x80000000u /* files' keys: STORE_KEY_FILE | a slot */
-#define STORE_NO_KEY 0xFFFFFFFFu   /* never a key */
 #define STORE_NAME_MAX 16u         /* a file name's characters */
 #define STORE_FILE_SECTORS 18u     /* the sectors of the largest file */
 #define STORE_FILE_HEAD 32u        /* a FILE record's data before its sector list */
@@ -133,9 +137,11 @@
  * program of the page), for a window of 16 bytes or more: records' data pieces, headers and
  * commit words (densest: 4-byte values, 3 programs in 24 bytes), and on a sector's first page
  * its erase header, its claim (which programs the erase header again, the same bytes) and the
- * kill. The maximum over every sequence of records; the host tests check it. A smaller window
- * takes more (one program a byte at 1). */
-#define STORE_PAGE_PROGS 34u
+ * kill: 34, the maximum over every sequence of records. Then 2 for the completion of a
+ * session's newest record (its header and commit word again; one session's records a sector,
+ * since each starts a fresh head), and 2 more for each cut that falls during that completion.
+ * The host tests check it. A smaller window takes more (one program a byte at 1). */
+#define STORE_PAGE_PROGS 36u
 #define STORE_FILE_IDLE_MS 5000u /* an open file's sender gone this long: the file is aborted */
 
 _Static_assert(STORE_POOL_MIN == 20u, "ceil(65,536 / 3,808) + 2");
@@ -268,8 +274,12 @@ typedef struct {
     uint16_t fres_bytes; /* the room kept for the open file's FILE record ... */
     uint8_t fres_sec;    /* ... in this sector, or 0xFF */
     uint8_t mount_phase; /* what the mount checks next in mount_sec */
-    uint32_t ghost;      /* the newest record read uncommitted: its key (or STORE_NO_KEY) ... */
-    uint32_t ghost_seq;  /* ... and its number */
+    uint32_t fix_seq;    /* the newest record at the mount (store.c newest): its number, ... */
+    uint16_t fix_off;    /* ... its place ... */
+    uint8_t fix_sec;
+    uint8_t fix_kind;    /* ... and what its completion has left to do (FIX_*) */
+    uint16_t fix_done;   /* bytes of it programmed */
+    uint16_t pad3;
     uint32_t work;       /* the last store_poll's work: bytes read, and 4 per key compared */
     uint8_t buf[STORE_WINDOW_MAX]; /* a collection's copy, the open file's bytes, a rename */
 } store;

@@ -914,8 +914,12 @@ having done part of each). The tests:
   word loses nothing written after it; a commit word all faint, read
   committed at one mount and erased at the next, after collections in
   between, leaves the old value or the new, never neither, for a small value
-  and for a file's replacement; a record read uncommitted keeps its sequence
-  number, so a later write of its key still wins;
+  and for a file's replacement; the interrupted write (the newest record)
+  completes at the next mount whatever its commit word reads, its header and
+  commit word are programmed again before the next write, and it reads the
+  same at every later mount; a newest record that overflows a full key index
+  is the one left out, wherever it lies; in the power-loss runs, every deep
+  fork mounted twice must read the same both times;
 - **hook errors:** with 3% of operations failed by the hook, at windows 1 to
   256, nothing breaks a rule and every remount reads each key and file as
   before a failed write or after it, every other one exactly;
@@ -940,7 +944,7 @@ having done part of each). The tests:
 - the bytes on flash are the documented format;
 - **bounds:** a mount's polls check at most a slice (`STORE_MOUNT_SLICE`, or
   one record alone) on blank, random, foreign, fixture and full regions; a
-  page takes at most `STORE_PAGE_PROGS` (34) programs between erases at
+  page takes at most `STORE_PAGE_PROGS` (36) programs between erases at
   windows of 16 or more, with the densest records there are (also checked at
   the end of every power-loss run);
 - **files:** a cut at every operation of file writes, replacements,
