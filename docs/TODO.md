@@ -20,6 +20,13 @@ Follow-ups that aren't tied to a milestone task yet.
   - first-run guidance (the full boot once, then a short "turn K1" tour), clear toasts,
     undo where it matters, and consistent naming;
   - usability checks with real players on hardware, recorded in `docs/hardware-test.md`.
+  - **suggested automations**: notice what the player keeps doing and offer to do it for
+    them, never on its own. Examples: the same knob swept over the same bars every loop →
+    "record this as an automation (per-step locks)?"; the same chord typed repeatedly →
+    "make it an arpeggio?"; a filter opened at every song start → "save it in the song?";
+    a CC learned and moved like a mod wheel → "map it to vibrato depth?". Suggestions are
+    one-line toasts with a single yes gesture, dismissable, learned per session, cheap
+    (main-loop pattern counters, no audio cost), and off with one setting.
 - The user's priority (2026-10-16): finish the features first, then this pass.
 
 ## Apply for a pid.codes PID before 1.0
