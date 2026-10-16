@@ -530,6 +530,11 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->prepare = NULL;
     l->prepare_ctx = NULL;
     l->preparing = 0;
+    l->two_chips = 0;
+    l->keys_chip = 0;
+    l->other_model = (uint8_t)model;
+    l->other_profile = (uint8_t)sid_chip_default(model);
+    l->keys_mode = LIVE_KEYS_AUTO;
     l->model = model;
     l->model_req = model;
     l->octave = 0;
@@ -1130,6 +1135,19 @@ void live_fx_select_next(live* l) {
 
 void live_fx_select(live* l, uint32_t slot) {
     l->fx_select = (uint8_t)(slot % LIVE_SLOTS);
+}
+
+uint8_t live_voice_control(const live* l, uint32_t v) {
+    return v < LIVE_VOICES ? voice_control(l, (int)v) : 0u;
+}
+
+void live_rewrite(live* l) {
+    write_gate_reset(l);
+    write_all(l);
+}
+
+void live_set_keys_mode(live* l, uint32_t mode) {
+    l->keys_mode = mode == LIVE_KEYS_A ? (uint8_t)LIVE_KEYS_A : (uint8_t)LIVE_KEYS_AUTO;
 }
 
 void live_set_preparer(live* l, live_prepare_fn prepare, void* ctx) {

@@ -35,6 +35,25 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
 The note keys and MASTER always play, whichever view shows. The effect-slot shortcut (EDIT,
 SCL, ENV) works in every view, the CHIP view included ([CHIP](#chip) says why it stays).
 
+## Which chip the keys play
+
+SIDOU has two SID chips, A and B. The panel and MIDI play **the keys' chip**:
+
+- **no song playing:** chip A, exactly as with one chip;
+- **a song playing on chip A:** chip B, on top of the song (KEYS **AUTO**, the default), or
+  chip A with KEYS **A** (menu): a key then takes a voice from the song while it sounds, the
+  song keeps the filter and the volume (K1, K2 and MASTER's volume do nothing on it) and its
+  chip setup.
+
+The keys' setup (the chip model, the profile, the character controls and the envelope mode)
+travels with the keys: chip B always holds it, prepared in the background after every change,
+so a key sounds the same on either chip. FX, the CHIP view's profile and character, and the
+chip CCs change the keys' setup. When a song starts the keys move to chip B (held keys sound
+again there); when it stops they move back to chip A once it has the keys' setup again and no
+key is held. LIVE says **KEYS:B** in its top line while the keys play chip B; the status
+screen shows both chips and marks the keys'. Until M2c plays songs, nothing starts one, so the
+keys always play chip A. KEYS is kept in RAM until the settings are saved (M2a).
+
 ## Panel
 
 | Control (id) | Does |
@@ -53,7 +72,7 @@ SCL, ENV) works in every view, the CHIP view included ([CHIP](#chip) says why it
 | **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, CHIP, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE behind THE OSCILLATOR's title card (below) |
 | **SAVE (button 9)** | MIDI learn (below): press it, turn a knob, then send a CC |
 | **SELECT (encoder 0)**, in the menu | moves the blinking cursor up and down the items |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: CHIP (the profile and the character), DIST, MOD, FX; it stops at either end |
 | **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP, the algorithm on a slot; it stops at either end |
 | **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, and round): it wipes in, and a toast names it |

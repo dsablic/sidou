@@ -300,3 +300,7 @@ int sid_character_ramp_tick(sid_character_ramp* r, const sid* s, sid_dac* free_t
     }
     return changed;
 }
+
+int sid_character_ramp_wants_table(const sid_character_ramp* r) {
+    return !r->building && r->now.dac != clamped(r->target.dac);
+}

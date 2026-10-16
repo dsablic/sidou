@@ -180,9 +180,14 @@ static void prompt(boot* b, grid* g, int blink) {
     }
     line[n] = 0;
     center(g, 3, line, TEXT);
-    center(g, 5,
-           b->l && b->l->model == SID_MODEL_8580 ? "CHIP 8580  3 VOICES" : "CHIP 6581  3 VOICES",
-           TEXT);
+    if (b->l && b->l->two_chips) {
+        center(g, 5, "CHIP A + CHIP B  6 VOICES", TEXT);
+    } else {
+        center(g, 5,
+               b->l && b->l->model == SID_MODEL_8580 ? "CHIP 8580  3 VOICES"
+                                                     : "CHIP 6581  3 VOICES",
+               TEXT);
+    }
     grid_text(g, TEXT_COL, 7, "READY.", TEXT);
 
     uint32_t chars = t < BOOT_TYPE_MS ? 0u : (t - BOOT_TYPE_MS) / BOOT_TYPE_CHAR_MS;

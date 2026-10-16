@@ -226,6 +226,9 @@ void sid_character_ramp_reset(sid_character_ramp* r, const sid_character* c,
  * a quarter of sid_dac_build's 94k instructions) and a stage (about 300) a tick. */
 int sid_character_ramp_tick(sid_character_ramp* r, const sid* s, sid_dac* free_table,
                             sid_character_stage* out);
+/* 1 if the ramp's next tick would start a DAC table given one: not building, and its DACs
+ * not yet at the target's. */
+int sid_character_ramp_wants_table(const sid_character_ramp* r);
 
 #ifdef __cplusplus
 }

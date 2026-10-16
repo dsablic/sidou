@@ -1,0 +1,175 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! End to end: which chip the keys play (M2b Task 4, app/keys_route.h). With no song the keys
+//! play chip A as in M1 (the other gates hold that: every golden and host comparison). A song
+//! on chip A is M2c's; until then its hook is `keys_router.song` (platform/fm1/main.c), set
+//! here in emulated RAM: the keys then play chip B, which holds the keys' setup.
+
+mod common;
+
+use fm1_core::Bus;
+
+use common::{build_dir, pitch, record, Firmware, Machine};
+use sidou_sys::{ilp32, SID_MODEL_6581, SID_MODEL_8580};
+
+/// The A4 key (Felucca's id), FX (button 2).
+const A4_KEY: u8 = 30;
+const FX: u8 = 2;
+
+fn fixture(what: &str) -> Option<Firmware> {
+    let Some(build) = build_dir() else {
+        common::skip_message(what);
+        return None;
+    };
+    Some(Firmware::load(&build))
+}
+
+fn booted(fw: &Firmware) -> Machine {
+    let mut m = Machine::boot(&fw.image);
+    common::run_past_boot(&mut m, fw);
+    m.run_ms(300);
+    m
+}
+
+fn song(m: &mut Machine, fw: &Firmware, on: bool) {
+    m.soc.write8(
+        fw.symbol("keys_router") + ilp32::keys_route::song as u32,
+        u8::from(on),
+    );
+}
+
+fn ui_live(m: &mut Machine, fw: &Firmware) -> u32 {
+    m.soc.read32(fw.symbol("ui") + ilp32::views::l as u32)
+}
+
+fn keys_chip(m: &mut Machine, fw: &Firmware) -> u8 {
+    let l = ui_live(m, fw);
+    m.soc.read8(l + ilp32::live::keys_chip as u32)
+}
+
+/// The sid chip x renders.
+fn sid_of(m: &mut Machine, fw: &Firmware, x: usize) -> u32 {
+    let base = fw.chips();
+    let active = m
+        .soc
+        .read8(base + (ilp32::reg_ring_chips::active + x) as u32);
+    base + (ilp32::reg_ring_chips::chip + usize::from(active) * ilp32::sid::SIZE) as u32
+}
+
+/// Voice 1..3's registers as chip x has them: frequency, control's gate, attack, sustain.
+fn voices(m: &mut Machine, fw: &Firmware, x: usize) -> Vec<(u32, u8, u8, u8)> {
+    let s = sid_of(m, fw, x);
+    (0..3usize)
+        .map(|v| {
+            let o = s + (ilp32::sid::osc + v * ilp32::sid_osc::SIZE) as u32;
+            let e = s + (ilp32::sid::env + v * ilp32::sid_env::SIZE) as u32;
+            (
+                m.soc.read32(o + ilp32::sid_osc::freq as u32),
+                m.soc.read8(e + ilp32::sid_env::gate as u32),
+                m.soc.read8(e + ilp32::sid_env::attack as u32),
+                m.soc.read8(e + ilp32::sid_env::sustain as u32),
+            )
+        })
+        .collect()
+}
+
+fn tap(m: &mut Machine, id: u8) {
+    m.key(id, true);
+    m.run_ms(30);
+    m.key(id, false);
+    m.run_ms(30);
+}
+
+/// With the song hook set, the keys move to chip B: chip B goes in use, the LIVE view's tap
+/// reads it, and A4 sounds from it at 440 Hz; chip B's voices get exactly the registers chip
+/// A's got for the same key with no song (the same setup and the instrument's writes), and
+/// chip A's are left alone. The hook cleared with no key held, the keys go back to chip A and
+/// chip B out of use.
+#[test]
+fn with_a_song_a_key_sounds_from_chip_b_as_it_does_from_chip_a() {
+    let Some(fw) = fixture("the keys test") else {
+        return;
+    };
+    // No song: A4 on chip A.
+    let mut m = booted(&fw);
+    m.key(A4_KEY, true);
+    m.run_ms(100);
+    let on_a = voices(&mut m, &fw, 0);
+    assert_eq!(keys_chip(&mut m, &fw), 0);
+    assert_eq!(
+        m.soc.read8(fw.symbol("b_on")),
+        0,
+        "chip B in use with no song"
+    );
+    // A song: the keys move to chip B.
+    let mut m = booted(&fw);
+    song(&mut m, &fw, true);
+    m.run_ms(50);
+    assert_eq!(keys_chip(&mut m, &fw), 1, "the keys stayed on chip A");
+    assert_eq!(m.soc.read8(fw.symbol("b_on")), 1, "chip B not in use");
+    assert_eq!(m.soc.read8(fw.symbol("tap_chip")), 1, "the tap on chip A");
+    let a_before = voices(&mut m, &fw, 0);
+    m.key(A4_KEY, true);
+    m.run_ms(100);
+    let on_b = voices(&mut m, &fw, 1);
+    assert_eq!(
+        on_b, on_a,
+        "chip B's voices against chip A's for the same key"
+    );
+    assert_eq!(voices(&mut m, &fw, 0), a_before, "the key reached chip A");
+    let f0 = pitch(&record(&mut m, 300));
+    println!("A4 on chip B: {f0:.2} Hz");
+    assert!(
+        (f0 / 440.0 - 1.0).abs() < 0.005,
+        "A4 on chip B at {f0:.2} Hz"
+    );
+    m.key(A4_KEY, false);
+    song(&mut m, &fw, false);
+    m.run_ms(100);
+    assert_eq!(keys_chip(&mut m, &fw), 0, "the keys stayed on chip B");
+    assert_eq!(m.soc.read8(fw.symbol("b_on")), 0, "chip B still in use");
+}
+
+/// The FX button acts on the keys' setup: during a song on chip B (the keys'), not chip A (the
+/// song's); after the song chip A takes it, and with no song chip B follows chip A.
+#[test]
+fn the_fx_button_acts_on_the_keys_setup() {
+    let Some(fw) = fixture("the keys FX test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    let model = |m: &mut Machine, x: usize| {
+        let s = sid_of(m, &fw, x);
+        m.soc.read8(s + ilp32::sid::model as u32)
+    };
+    // No song: FX changes chip A, and chip B follows in the background.
+    tap(&mut m, FX);
+    m.run_ms(300);
+    assert_eq!(
+        (model(&mut m, 0), model(&mut m, 1)),
+        (SID_MODEL_8580 as u8, SID_MODEL_8580 as u8)
+    );
+    // A song: FX changes chip B, the keys', and leaves chip A, the song's.
+    song(&mut m, &fw, true);
+    m.run_ms(50);
+    tap(&mut m, FX);
+    m.run_ms(300);
+    assert_eq!(
+        (model(&mut m, 0), model(&mut m, 1)),
+        (SID_MODEL_8580 as u8, SID_MODEL_6581 as u8)
+    );
+    // The song stops: chip A takes the keys' setup, then the keys go back to it.
+    song(&mut m, &fw, false);
+    m.run_ms(300);
+    assert_eq!(keys_chip(&mut m, &fw), 0);
+    assert_eq!(
+        (model(&mut m, 0), model(&mut m, 1)),
+        (SID_MODEL_6581 as u8, SID_MODEL_6581 as u8)
+    );
+    let base = fw.chips();
+    assert_eq!(
+        m.soc
+            .read32(base + ilp32::reg_ring_chips::lost_resets as u32),
+        0
+    );
+}

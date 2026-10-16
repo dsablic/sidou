@@ -40,7 +40,7 @@
 /* After the last entry, midi_rx_check_lost may find a gap that came behind it and release
  * every voice again: 3 writes beyond any entry's. */
 #define MIDI_LOST_WRITES LIVE_VOICES
-/* The drain takes an entry only while this many are free after it (1024 - 500 = 524 queued
+/* The drain takes an entry only while this many are free after it (1024 - 530 = 494 queued
  * at most), so the rest of the pass never waits for the audio ISR on its own account. */
 #define MIDI_DRAIN_RESERVE (MIDI_ENTRY_WRITES + MIDI_LOST_WRITES + REG_RING_WORST_PASS)
 _Static_assert(MIDI_DRAIN_RESERVE < REG_RING_SIZE, "the ring leaves MIDI no room");

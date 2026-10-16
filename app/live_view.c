@@ -330,8 +330,12 @@ static void box(canvas* cv, uint32_t col, uint32_t row, uint32_t w, uint32_t h, 
 static void header(const live_view* lv, canvas* cv) {
     const live* l = lv->l;
     fill(cv, 0, 0, GRID_COLS, 1, ' ', HEADER);
-    text(cv, 1, 0, "LIVE", HEADER);
-    put(cv, 6, 0, FONT_PLAY, HEADER);
+    if (l->two_chips && l->keys_chip) {
+        text(cv, 1, 0, "KEYS:B", HEADER); /* the keys play chip B (app/keys_route.h) */
+    } else {
+        text(cv, 1, 0, "LIVE", HEADER);
+        put(cv, 6, 0, FONT_PLAY, HEADER);
+    }
     text(cv, 8, 0, l->model == SID_MODEL_8580 ? "8580" : "6581", HEADER);
     const live_preset* p = live_preset_get(l->preset);
     text(cv, 13, 0, p ? p->name : "?", HEADER);
@@ -734,7 +738,7 @@ _Static_assert(KEY_END == LIVE_VIEW_LOOK, "LIVE_VIEW_LOOK holds every part's byt
 
 static void look(const live_view* lv, uint8_t out[LIVE_VIEW_LOOK]) {
     const live* l = lv->l;
-    out[KEY_HEADER] = (uint8_t)l->model;
+    out[KEY_HEADER] = (uint8_t)(l->model | (l->keys_chip & 1u) << 1);
     out[KEY_HEADER + 1u] = l->preset;
     out[KEY_HEADER + 2u] = (uint8_t)l->octave;
     for (uint32_t v = 0; v < SCOPE_VOICES; v++) {

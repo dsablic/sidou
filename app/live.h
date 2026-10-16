@@ -338,7 +338,22 @@ typedef struct {
     live_prepare_fn prepare;
     void* prepare_ctx;
     uint8_t preparing;
+    /* Two chips (M2b Task 4, app/keys_route.h; all 0 after live_init, one chip as in M1):
+     * 1 once a keys_route plays the instrument on chip A or B; the chip the keys play (0 A,
+     * 1 B); the other chip's model and profile as it has them (for the views); and the KEYS
+     * setting (a live_keys_mode). */
+    uint8_t two_chips;
+    uint8_t keys_chip;
+    uint8_t other_model;
+    uint8_t other_profile;
+    uint8_t keys_mode;
 } live;
+
+/* The KEYS setting: which chip the keys play while a song plays on chip A. */
+typedef enum {
+    LIVE_KEYS_AUTO = 0, /* chip B while a song plays, else chip A (the default) */
+    LIVE_KEYS_A = 1     /* chip A always: during a song a key takes a voice from it */
+} live_keys_mode;
 
 /* The instrument's parameters, each an integer 0..live_param_max: what MIDI reaches through
  * the published map (midi_map.h). The SID ones apply to every voice. */
@@ -394,6 +409,14 @@ typedef enum {
  * character's settings, LIVE_REG_RESET(model), LIVE_REG_GATE_RESET, then every register,
  * then every slot setting (fx_live.h). */
 void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model);
+/* Voice v's control register as live writes it (waveform, ring, sync and the gate). */
+uint8_t live_voice_control(const live* l, uint32_t v);
+/* Every register again, the gate reset first (a chip the keys have just moved to): a voice
+ * the keys hold gates again on it. The character and the slots are not registers: the chip
+ * has the keys' setup already (app/keys_route.h). */
+void live_rewrite(live* l);
+/* The KEYS setting (a live_keys_mode; anything else is AUTO). Not a MIDI parameter. */
+void live_set_keys_mode(live* l, uint32_t mode);
 /* From now on a model or profile change waits for prepare (above); NULL: none, as after
  * live_init. A preparation already asked for is dropped. */
 void live_set_preparer(live* l, live_prepare_fn prepare, void* ctx);

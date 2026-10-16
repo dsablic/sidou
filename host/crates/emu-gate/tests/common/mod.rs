@@ -609,7 +609,8 @@ pub struct ChipsRender {
 /// The firmware's two chips at boot rendered by the host build as audio_fill does: chip A the
 /// instrument (render_host, idle), chip B made as the device's boot makes it (the keys'
 /// setup: the 6581 R4AR at character 0, the envelope instant; platform/fm1/audio.c
-/// audio_chip_b_boot) and rendered only while in use, faded in or out over the block it goes
+/// app/keys_route.h: chip B follows the keys' setup from the first ticks) and rendered only
+/// while in use, faded in or out over the block it goes
 /// in or out of use (app/chip_mix.h), mixed before the effect slots.
 pub fn render_host_chips(frames: usize, events: &[ChipEvent]) -> ChipsRender {
     use sidou_sys::*;

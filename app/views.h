@@ -7,12 +7,15 @@
  * - LIVE, the root (app/live_view.h): the voices' oscilloscopes and envelopes, the filter's
  *   curve, the VU meters and the effect slots. What the screen shows from power-on; the tap
  *   on the audio runs only while it shows: on top, or under MIDI learn's frame.
- * - MENU (HOME): PRESET, OCTAVE, CARDS and the views to open (CHIP first), in a frame. SELECT
+ * - MENU (HOME): PRESET, OCTAVE, CARDS, KEYS (AUTO or A: which chip the keys play during a
+ *   song, app/keys_route.h; in RAM until the settings persist) and the views to open (CHIP
+ *   first), in a frame. SELECT
  *   moves the cursor, ALGORITHM changes the value under it or opens the view.
  * - CHIP (from the menu, behind THE CHIP's card): chip A's profile, character and effect slots
  *   (app/chip_view.h); SELECT moves the focus, ALGORITHM steps its choice, K1..K4 turn its
  *   values.
- * - STATUS (from the menu): chip, preset, octave, the sound parameters, the notes and the
+ * - STATUS (from the menu): the chip (with two chips both, KEYS marking the keys'), preset,
+ *   octave, the sound parameters, the notes and the
  *   effect slots with every control, in numbers.
  * - SCENE (from the menu): generative pieces that react to the voices (app/scene_view.h);
  *   SELECT steps between them. The tap on the audio runs while it shows, as for LIVE.
@@ -79,20 +82,22 @@ extern "C" {
 #define VIEWS_TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
 /* The menu's items and the rows it shows, the title cards' option, and the items that open a
  * view. */
-#define VIEWS_MENU_ITEMS 8u
+#define VIEWS_MENU_ITEMS 9u
 #define VIEWS_MENU_CHIP 0u
 #define VIEWS_MENU_CARDS 3u
-#define VIEWS_MENU_STATUS 4u
-#define VIEWS_MENU_SCENE 5u
-#define VIEWS_MENU_CHARSET 6u
-#define VIEWS_MENU_ABOUT 7u
+#define VIEWS_MENU_KEYS 4u
+#define VIEWS_MENU_STATUS 5u
+#define VIEWS_MENU_SCENE 6u
+#define VIEWS_MENU_CHARSET 7u
+#define VIEWS_MENU_ABOUT 8u
 /* Raster steps for a chip model change: the ramp once round. */
 #define VIEWS_RASTER_STEPS SCREEN_RAMP
 /* What the views show, as bytes (app/views.c look): the instrument's model (as asked for),
- * preset, octave, cutoff (2), resonance, pulse width (2), volume and selected slot, each
+ * which chip the keys play (with two chips and the KEYS setting), the keys' profile and the
+ * other chip's, the preset, octave, cutoff (2), resonance, pulse width (2), volume and selected slot, each
  * voice's sounding note, every slot field, the title cards' option, and the menu's cursor,
  * first row and blink. */
-#define VIEWS_LOOK (14u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
+#define VIEWS_LOOK (17u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
 
 typedef struct {
     screen s;

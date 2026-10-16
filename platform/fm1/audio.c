@@ -32,8 +32,8 @@ static fx_live fx;
 
 static reg_ring ring;
 static reg_ring_out out;
-/* The writer bound to chip B (reg_ring_out.chip 1): its boot reset (audio_chip_b_boot), and
- * from M2b Task 4 the keys while they play it. */
+/* The writer bound to chip B (reg_ring_out.chip 1): keys_route's (app/keys_route.h), its
+ * first reset at boot and the keys while they play it. */
 static reg_ring_out out_b;
 /* Chip B in use as the main loop asks (audio_chip_b_use), and as the last block had it: the
  * interrupt fades at the block where they differ. */
@@ -80,30 +80,11 @@ void* audio_sink_ctx_b(void) {
     return &out_b;
 }
 
-/* Chip B's first reset, prepared a slice a pass from the main loop's ticks
- * (audio_chip_b_tick); 0 until it has been sent. */
-static uint8_t b_profile, b_model, b_gate_reset, b_made;
-
-void audio_chip_b_boot(sid_model model, uint8_t profile, uint8_t gate_reset) {
-    /* The character's settings (live.h: the profile, the controls at 0): the sink keeps them
-     * for the preparation, nothing reaches the ring. */
-    reg_ring_sink(&out_b, LIVE_REG_CHAR(0), profile);
-    for (uint32_t f = 1; f < LIVE_CHAR_FIELDS; f++) {
-        reg_ring_sink(&out_b, (uint8_t)LIVE_REG_CHAR(f), 0);
-    }
-    b_model = (uint8_t)model;
-    b_profile = profile;
-    b_gate_reset = gate_reset;
-    b_made = 0;
-}
-
-void audio_chip_b_tick(void) {
-    if (b_made || !reg_ring_prepare_step(&out_b, b_profile)) {
-        return;
-    }
-    reg_ring_sink(&out_b, LIVE_REG_RESET, b_model);
-    reg_ring_sink(&out_b, LIVE_REG_GATE_RESET, b_gate_reset);
-    b_made = 1;
+void audio_keys(void* ctx, uint32_t chip) {
+    (void)ctx;
+    reg_ring_set_keys(&chips, chip);
+    audio_chip_b_use(chip == 1u);
+    audio_tap_chip(chip);
 }
 
 void audio_chip_b_use(int on) {

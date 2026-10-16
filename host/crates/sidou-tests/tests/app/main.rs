@@ -12,6 +12,7 @@ mod expression;
 mod font;
 mod fx_live;
 mod grid;
+mod keys_route;
 mod learn_view;
 mod live_freq;
 mod live_instrument;

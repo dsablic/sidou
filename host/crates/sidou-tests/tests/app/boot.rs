@@ -79,6 +79,21 @@ fn the_full_sequence_keeps_the_prototypes_timing() {
     }
 }
 
+/// With two chips (the device, app/keys_route.h), the banner names both and their six voices.
+#[test]
+fn the_boot_banner_names_both_chips() {
+    let mut ui = Ui::new();
+    ui.rig.live.two_chips = 1;
+    drain(&mut ui.g);
+    unsafe { views_boot(&mut *ui.v, 1) };
+    let start = ui.now + 40;
+    run_to(&mut ui, start, 0);
+    assert_eq!(
+        ui.row(5).trim_matches('#').trim(),
+        "CHIP A + CHIP B  6 VOICES"
+    );
+}
+
 #[test]
 fn the_full_boot_types_loads_and_runs_then_shows_the_title_and_the_status_screen() {
     let mut ui = booting(true);

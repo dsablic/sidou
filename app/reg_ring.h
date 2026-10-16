@@ -43,18 +43,20 @@
 extern "C" {
 #endif
 
-/* Entries in the ring, a power of two. The worst case of one main-loop pass is 419 entries
- * (reg_ring.c, REG_RING_WORST_PASS: the instrument's 391 on one chip and chip A's song
- * control's 28), so a pass never waits for room on its own account. The rest is MIDI's: the
- * device's drain (platform/fm1/midi.c) takes an entry only while the pass's worst case and the
- * entry's still fit (at most 524 entries queued before it): between two audio blocks (2.9 ms)
- * it takes up to 21 program changes, 25 writes each, where the TRS jack delivers 9. At 512 it
+/* Entries in the ring, a power of two. The worst case of one main-loop pass is 449 entries
+ * (reg_ring.c, REG_RING_WORST_PASS: the instrument's 391 on one chip, the other chip's 28 and
+ * a move of the keys' 30), so a pass never waits for room on its own account. The rest is
+ * MIDI's: the device's drain (platform/fm1/midi.c) takes an entry only while the pass's worst
+ * case and the entry's still fit (at most 494 entries queued before it): between two audio
+ * blocks (2.9 ms) it takes up to 19 program changes, 25 writes each, where the TRS jack
+ * delivers 9. At 512 it
  * took 2, and a flood overflowed the MIDI ring in about 150 ms. 2 bytes an entry: 2 KiB of
  * .bss. */
 #define REG_RING_SIZE 1024u
 #define REG_RING_LIVE_PASS 391u
 #define REG_RING_SONG_PASS 28u
-#define REG_RING_WORST_PASS (REG_RING_LIVE_PASS + REG_RING_SONG_PASS)
+#define REG_RING_MOVE_PASS 30u
+#define REG_RING_WORST_PASS (REG_RING_LIVE_PASS + REG_RING_SONG_PASS + REG_RING_MOVE_PASS)
 
 /* Two chips in one ring, so a pass's writes to A and to B stay in order with each other. An
  * entry's register names its chip: chip A's SID registers are 0x00..0x18 and its chip
@@ -174,8 +176,12 @@ typedef struct {
     uint8_t prep_on;
     uint8_t prep_profile;
     uint8_t prep_chip;
-    /* producer: 1 once this pass has run a slice (reg_ring_pass_end clears it) */
+    /* producer: 1 once this pass has run a slice, or a DAC table step (reg_ring_pass_end
+     * clears them) */
     uint8_t prep_pass;
+    uint8_t build_pass;
+    /* producer: the chip the keys play (reg_ring_set_keys), which goes first */
+    uint8_t keys;
     /* producer: each chip's request waiting for the spare or the build table */
     uint8_t prep_wait[REG_RING_CHIPS];
     /* producer: 1 once a preparation for the 8580 has spent its SID_DAC_BUILD_STEPS slices on
@@ -259,7 +265,7 @@ void reg_ring_sink(void* ctx, uint8_t reg, uint8_t value);
  * once they stop.
  *
  * Chip B's first reset happens at boot only, prepared like any other in the first ticks of
- * the main loop (platform/fm1/audio.c, audio_chip_b_boot and audio_chip_b_tick): an
+ * the main loop (app/keys_route.h: chip B follows the keys' setup from the first ticks): an
  * unprepared one, 0.5 M instructions in one pass before the main loop, would move the boot's
  * timeline. Chip B's sid (chip[1]) is zeroed until that reset, its sample rate 0, and nothing
  * may render it. */
@@ -269,6 +275,12 @@ int reg_ring_prepare_step(void* ctx, uint8_t profile);
  * (platform/fm1/main.c, TICK_CATCH_UP) runs one, the other tick's request waiting for the
  * next pass; and no ramp starts a DAC table in a pass that ran one. */
 void reg_ring_pass_end(reg_ring_chips* c);
+/* Producer: the chip the keys play (0 A, the default; 1 B; app/keys_route.h). Its requests and
+ * its character ramp go first: a preparation of the other chip is dropped for its request (and
+ * prepared again after), a table the other's ramp builds is taken back for its ramp, and the
+ * other's work yields a pass to its own, so it changes exactly as one chip alone would; the
+ * other catches up while it is quiet (a stream of its ramps delays the other's for as long). */
+void reg_ring_set_keys(reg_ring_chips* c, uint32_t chip);
 
 #ifdef SIDOU_REG_RING_RACE_HOOK
 /* Host tests only (the device never defines it): hook(ctx) runs where the audio interrupt

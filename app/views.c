@@ -86,6 +86,9 @@ static void look(const views* v, uint32_t blink, uint8_t out[VIEWS_LOOK]) {
     const live* l = v->l;
     uint32_t n = 0;
     out[n++] = (uint8_t)l->model_req;
+    out[n++] = (uint8_t)(l->keys_chip | l->two_chips << 1 | l->keys_mode << 2);
+    out[n++] = l->profile_req;
+    out[n++] = l->other_profile;
     out[n++] = l->preset;
     out[n++] = (uint8_t)l->octave;
     out[n++] = (uint8_t)l->cutoff;
@@ -137,13 +140,29 @@ static void status_compose(screen* s, void* state, grid* g) {
     put(g, 2, 2, "SIDOU");
     put(g, 2, VERSION_END_COL - length(v->version), v->version);
 
-    put(g, 5, 2, "CHIP");
-    put(g, 5, 9, l->model_req == SID_MODEL_8580 ? "8580" : "6581");
-    put(g, 6, 2, "PRESET");
+    uint32_t top = 5;
+    if (l->two_chips) {
+        /* Both chips' profiles (their model in the name); KEYS marks the one the keys play
+         * (app/keys_route.h): the keys' setup as asked for, the other's as it has it. */
+        for (uint32_t x = 0; x < 2u; x++, top++) {
+            uint32_t id = x == l->keys_chip ? l->profile_req : l->other_profile;
+            const sid_chip_profile* cp = sid_chip_profile_get(id);
+            put(g, top, 2, x ? "CHIP B" : "CHIP A");
+            put(g, top, 9, cp ? cp->name : "?");
+            if (x == l->keys_chip) {
+                put(g, top, 20, "KEYS");
+            }
+        }
+    } else {
+        put(g, 5, 2, "CHIP");
+        put(g, 5, 9, l->model_req == SID_MODEL_8580 ? "8580" : "6581");
+        top = 6;
+    }
+    put(g, top, 2, "PRESET");
     const live_preset* p = live_preset_get(l->preset);
-    put(g, 6, 9, p ? p->name : "?");
-    put(g, 7, 2, "OCTAVE");
-    widget_number(g, 9, 7, 2, l->octave, 1, TEXT);
+    put(g, top, 9, p ? p->name : "?");
+    put(g, top + 1u, 2, "OCTAVE");
+    widget_number(g, 9, top + 1u, 2, l->octave, 1, TEXT);
 
     put_param(g, 10, "CUTOFF", l->cutoff, LIVE_CUTOFF_MAX);
     put_param(g, 11, "RESO", l->resonance, LIVE_RESONANCE_MAX);
@@ -232,6 +251,19 @@ static void cards_turn(void* ctx, int32_t steps) {
     }
 }
 
+static void keys_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    join(buf, MENU_VALUE_CHARS, v->l->keys_mode == LIVE_KEYS_A ? "A" : "AUTO", "");
+}
+
+/* Clockwise A (the keys stay on chip A during a song), counter-clockwise AUTO. */
+static void keys_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    if (steps != 0) {
+        live_set_keys_mode(v->l, steps > 0 ? LIVE_KEYS_A : LIVE_KEYS_AUTO);
+    }
+}
+
 /* Title card id over the view on top, if the cards are on: from the views' input only (a push
  * from the frame would draw a frame of the view first). */
 static void show_card(views* v, title_card_id id) {
@@ -277,11 +309,13 @@ static void about_open(void* ctx, int32_t steps) {
 static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"CHIP", NULL, chip_open},             {"PRESET", preset_value, preset_turn},
     {"OCTAVE", octave_value, octave_turn}, {"CARDS", cards_value, cards_turn},
-    {"STATUS", NULL, status_open},         {"SCENE", NULL, scene_open},
-    {"CHARSET", NULL, charset_open},       {"ABOUT", NULL, about_open},
+    {"KEYS", keys_value, keys_turn},       {"STATUS", NULL, status_open},
+    {"SCENE", NULL, scene_open},           {"CHARSET", NULL, charset_open},
+    {"ABOUT", NULL, about_open},
 };
-_Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_CARDS == 3u && VIEWS_MENU_STATUS == 4u &&
-                   VIEWS_MENU_SCENE == 5u && VIEWS_MENU_CHARSET == 6u && VIEWS_MENU_ABOUT == 7u,
+_Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_CARDS == 3u && VIEWS_MENU_KEYS == 4u &&
+                   VIEWS_MENU_STATUS == 5u && VIEWS_MENU_SCENE == 6u &&
+                   VIEWS_MENU_CHARSET == 7u && VIEWS_MENU_ABOUT == 8u,
                "the menu's items");
 /* The help below the menu's frame. */
 #define MENU_HELP_ROW (MENU_ROW + VIEWS_MENU_ITEMS + 2u)

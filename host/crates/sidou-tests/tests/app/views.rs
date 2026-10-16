@@ -212,7 +212,7 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
     let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
-    let rows: Vec<String> = (4..14).map(|r| ui.row(r)).collect();
+    let rows: Vec<String> = (4..15).map(|r| ui.row(r)).collect();
     let body: Vec<String> = rows.iter().map(|r| r[3..27].to_string()).collect();
     assert_eq!(rows[0][2..10].to_string(), "# MENU #");
     // Labels after the cursor cell, values right-aligned against the frame, an arrow for a view.
@@ -220,11 +220,13 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
     assert_eq!(body[2], format!(" {:<15}SAW LEAD", "PRESET"));
     assert_eq!(body[3], format!(" {:<21}+0", "OCTAVE"));
     assert_eq!(body[4], format!(" {:<21}ON", "CARDS"));
-    assert_eq!(body[5][..23], format!(" {:<22}", "STATUS"));
-    assert_eq!(body[6][..23], format!(" {:<22}", "SCENE"));
-    assert_eq!(body[7][..23], format!(" {:<22}", "CHARSET"));
-    assert_eq!(body[8][..23], format!(" {:<22}", "ABOUT"));
-    for row in [5, 9, 10, 11, 12] {
+    // M2b Task 4: KEYS, which chip the keys play during a song (AUTO at power-on).
+    assert_eq!(body[5], format!(" {:<19}AUTO", "KEYS"));
+    assert_eq!(body[6][..23], format!(" {:<22}", "STATUS"));
+    assert_eq!(body[7][..23], format!(" {:<22}", "SCENE"));
+    assert_eq!(body[8][..23], format!(" {:<22}", "CHARSET"));
+    assert_eq!(body[9][..23], format!(" {:<22}", "ABOUT"));
+    for row in [5, 10, 11, 12, 13] {
         assert_eq!(
             ui.g.ch[row * COLS + 26],
             FONT_ARROW_RIGHT as u8,
@@ -232,7 +234,7 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
         );
     }
     assert_eq!(
-        rows[9][2..26].chars().filter(|&c| c == '#').count(),
+        rows[10][2..26].chars().filter(|&c| c == '#').count(),
         24,
         "the frame's bottom"
     );
@@ -406,6 +408,50 @@ fn the_status_view_shows_the_instrument() {
     ui.frame();
     assert_eq!(&ui.row(19)[2..12], ">DIST TAPE");
     assert_eq!(&ui.row(26)[2..8], "READY.");
+}
+
+/// With two chips (app/keys_route.h sets live.two_chips): the status screen shows both
+/// chips' profiles and marks the keys' chip; LIVE's header says KEYS:B while the keys play
+/// chip B; the menu's KEYS item switches AUTO and A.
+#[test]
+fn the_views_show_both_chips_and_which_the_keys_play() {
+    let mut ui = Ui::new();
+    ui.rig.live.two_chips = 1;
+    ui.rig.live.other_profile = SID_CHIP_8580_R5 as u8;
+    ui.frame();
+    assert_eq!(&ui.row(0)[1..5], "LIVE");
+    ui.rig.live.keys_chip = 1;
+    ui.frame();
+    assert_eq!(
+        &ui.row(0)[1..7],
+        "KEYS:B",
+        "LIVE's header with the keys on chip B"
+    );
+    open_status(&mut ui);
+    assert_eq!(&ui.row(5)[2..24], "CHIP A 8580 R5        ");
+    assert_eq!(&ui.row(6)[2..24], "CHIP B 6581 R4AR  KEYS");
+    assert_eq!(&ui.row(7)[2..17], "PRESET SAW LEAD");
+    ui.rig.live.keys_chip = 0;
+    ui.frame();
+    assert_eq!(&ui.row(5)[2..24], "CHIP A 6581 R4AR  KEYS");
+    assert_eq!(&ui.row(6)[2..24], "CHIP B 8580 R5        ");
+    // The menu's KEYS (HOME from the status screen goes back to the menu): clockwise A,
+    // counter-clockwise AUTO.
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    assert_eq!(ui.top(), "MENU");
+    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_KEYS as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(u32::from(ui.live().keys_mode), LIVE_KEYS_A);
+    ui.settle();
+    assert_eq!(
+        ui.row(9)[4..27],
+        format!("{:<22}A", "KEYS"),
+        "after the cursor"
+    );
+    ui.turn(PANEL_ENC_ALGORITHM, -1);
+    assert_eq!(u32::from(ui.live().keys_mode), LIVE_KEYS_AUTO);
 }
 
 /// A cell compose draws as a space on every view (inside the border, below the toast row).

@@ -1528,7 +1528,10 @@ fn the_worst_pass_for_two_chips_fits_without_waiting() {
         used > 200 + REG_RING_SONG_PASS,
         "{used}: far from the worst case"
     );
-    assert_eq!(REG_RING_WORST_PASS, REG_RING_LIVE_PASS + REG_RING_SONG_PASS);
+    assert_eq!(
+        REG_RING_WORST_PASS,
+        REG_RING_LIVE_PASS + REG_RING_SONG_PASS + REG_RING_MOVE_PASS
+    );
     t.block();
     assert_eq!(t.chips.lost_resets, 0);
     assert_eq!(
@@ -1625,38 +1628,165 @@ fn a_catch_up_pass_runs_one_slice() {
     }
 }
 
-/// No starvation (review M1): while chip B's request waits for chip A's ramp to finish its
-/// table, A's ramp starts no other; B's preparation then runs, and A's ramp goes on after.
+/// The keys' chip first (reg_ring_set_keys, M2b Task 4): while chip A's (the keys') ramp
+/// builds DAC tables, chip B's request waits for all of them, then runs; nothing of B's ever
+/// holds A up. (Review M1's guard, a waiting request holding the other chip's ramp, gave way
+/// to this: the keys' chip is never held; the other catches up once it is quiet.)
 #[test]
-fn a_waiting_preparation_holds_the_other_chips_ramp() {
+fn the_other_chips_preparation_waits_for_the_keys_ramp() {
     let mut t = Two::new();
     unsafe { live_param_set(&mut *t.lives[0], LIVE_PARAM_DAC, 127) };
     t.tick();
     assert_eq!(t.chips.ramp[0].building, 1, "A's ramp builds a table");
     unsafe { live_param_set(&mut *t.lives[1], LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN) };
     let mut started = None;
-    for tick in 1..=SID_DAC_BUILD_STEPS + 2 {
+    for tick in 1..=400 {
         t.tick();
         if t.chips.prep_on == 1 && started.is_none() {
             started = Some(tick);
+            assert_eq!(
+                t.chips.ramp[0].now.dac, 127,
+                "B started before A's ramp was done"
+            );
         }
         if started.is_none() {
             assert_eq!(t.chips.prep_wait[1], 1, "tick {tick}: B waits");
         }
     }
     assert!(started.is_some(), "B's preparation never started");
-    assert_eq!(
-        t.chips.ramp[0].building, 0,
-        "A started another table while B waited"
-    );
-    for _ in 0..20 {
-        t.tick();
-    }
     assert_eq!(t.chip(1).filter_curve, 3, "B got WORN");
-    for _ in 0..400 {
+}
+
+/// The keys' chip preempts the other's preparation: chip B prepares WORN, and chip A's own
+/// request in the middle drops it; A swaps after its own slices exactly, B prepares again
+/// after and ends on WORN.
+#[test]
+fn the_keys_request_preempts_the_others_preparation() {
+    let mut t = Two::new();
+    let worn =
+        unsafe { sid_character_prep_slices(SID_MODEL_6581, &character(SID_CHIP_6581_WORN, 0)) };
+    let r2 = unsafe { sid_character_prep_slices(SID_MODEL_6581, &character(SID_CHIP_6581_R2, 0)) };
+    unsafe { live_param_set(&mut *t.lives[1], LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN) };
+    for _ in 0..3 {
         t.tick();
     }
-    assert_eq!(t.chips.ramp[0].now.dac, 127, "A's ramp went on");
+    assert_eq!((t.chips.prep_on, t.chips.prep_chip), (1, 1), "B prepares");
+    unsafe { live_param_set(&mut *t.lives[0], LIVE_PARAM_PROFILE, SID_CHIP_6581_R2) };
+    let curve_r2 = unsafe { (*sid_chip_profile_get(SID_CHIP_6581_R2)).curve };
+    let mut a_at = None;
+    for tick in 1..=r2 + worn + 4 {
+        t.tick();
+        if a_at.is_none() && u32::from(t.lives[0].profile) == SID_CHIP_6581_R2 {
+            a_at = Some(tick);
+        }
+    }
+    assert_eq!(a_at, Some(r2), "A was held up");
+    assert_eq!(t.chip(0).filter_curve, curve_r2);
+    assert_eq!(
+        u32::from(t.lives[1].profile),
+        SID_CHIP_6581_WORN,
+        "B never got WORN"
+    );
+    assert_eq!(t.chips.lost_resets, 0);
+}
+
+/// Chip A, the keys', plays exactly as one chip alone would (a lone ring, prepared_device),
+/// tick for tick and byte for byte, while chip B prepares and ramps in the background: a
+/// profile step and DAC, age and thump changes on both chips, staggered.
+#[test]
+fn the_keys_chip_plays_as_if_alone() {
+    let mut t = Two::new();
+    let mut lone = prepared_device(SID_MODEL_6581);
+    let a = |t: &mut Two, lone: &mut Device, p: u32, v: u32| unsafe {
+        live_param_set(&mut *t.lives[0], p, v);
+        live_param_set(&mut *lone.live, p, v);
+    };
+    for n in [57, 64] {
+        unsafe {
+            live_note_on(&mut *t.lives[0], n, 100);
+            live_note_on(&mut *lone.live, n, 100);
+        }
+    }
+    let mut sound_t = Vec::new();
+    let mut sound_lone = Vec::new();
+    for tick in 0..700u32 {
+        match tick {
+            5 => unsafe { live_param_set(&mut *t.lives[1], LIVE_PARAM_DAC, 127) },
+            9 => a(&mut t, &mut lone, LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN),
+            12 => unsafe { live_param_set(&mut *t.lives[1], LIVE_PARAM_PROFILE, SID_CHIP_8580_R5) },
+            40 => a(&mut t, &mut lone, LIVE_PARAM_DAC, 90),
+            44 => unsafe { live_param_set(&mut *t.lives[1], LIVE_PARAM_THUMP, 127) },
+            300 => a(&mut t, &mut lone, LIVE_PARAM_AGE, 127),
+            310 => unsafe {
+                live_param_set(&mut *t.lives[1], LIVE_PARAM_PROFILE, SID_CHIP_6581_R2)
+            },
+            320 => a(&mut t, &mut lone, LIVE_PARAM_PROFILE, SID_CHIP_6581_R4AR),
+            _ => {}
+        }
+        t.tick();
+        unsafe { live_tick(&mut *lone.live) };
+        lone.block();
+        assert_eq!(
+            chip_bytes(t.chip(0)),
+            chip_bytes(lone.chip()),
+            "tick {tick}"
+        );
+        sound_t.extend(render(t.chip(0), 64));
+        sound_lone.extend(render(lone.chip(), 64));
+    }
+    assert_eq!(sound_t, sound_lone);
+    assert_eq!(
+        u32::from(t.lives[1].profile),
+        SID_CHIP_6581_R2,
+        "B caught up"
+    );
+    assert_eq!(t.chips.ramp[1].now.thump, 127);
+    assert_eq!(t.chips.lost_resets, 0);
+}
+
+/// One build's work a pass, with both chips busy (a slice, or one DAC table step): counted
+/// from the preparation's slices and each ramp's job steps across every pass of a busy run.
+#[test]
+fn no_pass_runs_two_builds() {
+    let mut t = Two::new();
+    let job =
+        |c: &reg_ring_chips, x: usize| (c.ramp[x].building, c.ramp[x].job.d, c.ramp[x].job.step);
+    let mut most = 0;
+    for tick in 0..900u32 {
+        let v = tick * 37 % 128;
+        match tick % 60 {
+            0 => unsafe { live_param_set(&mut *t.lives[0], LIVE_PARAM_DAC, v) },
+            7 => unsafe { live_param_set(&mut *t.lives[1], LIVE_PARAM_DAC, 127 - v) },
+            19 => unsafe {
+                live_param_set(&mut *t.lives[1], LIVE_PARAM_PROFILE, tick / 60 % SID_CHIPS)
+            },
+            31 => unsafe {
+                live_param_set(
+                    &mut *t.lives[0],
+                    LIVE_PARAM_PROFILE,
+                    (tick / 60 + 2) % SID_CHIPS,
+                )
+            },
+            _ => {}
+        }
+        let before = [job(&t.chips, 0), job(&t.chips, 1)];
+        let slices = t.outs[0].slices + t.outs[1].slices;
+        t.tick();
+        let after = [job(&t.chips, 0), job(&t.chips, 1)];
+        // A table step moves the job (a new table's first step, or the next); a build dropped
+        // unplayed (its building flag cleared) does no work.
+        let steps: u32 = (0..2)
+            .map(|x| {
+                let moved = (before[x].1, before[x].2) != (after[x].1, after[x].2);
+                u32::from(moved && (before[x].0 == 1 || after[x].0 == 1))
+            })
+            .sum();
+        let work = steps + t.outs[0].slices + t.outs[1].slices - slices;
+        most = most.max(work);
+        assert!(work <= 1, "tick {tick}: {work} builds in one pass");
+    }
+    assert_eq!(most, 1);
+    assert_eq!(t.chips.lost_resets, 0);
 }
 
 /// Chip B's pseudo-registers the drain does not know (0xC2..0xC7: live's character fields,

@@ -1245,6 +1245,26 @@ fn trace_pixels(fb: &[u16]) -> [usize; 3] {
     })
 }
 
+/// LIVE while the keys play chip B (M2b Task 4: a song on chip A, here its hook,
+/// `keys_router.song`): the header says KEYS:B, and A4 shows on the scope read from chip B.
+#[test]
+fn live_shows_the_keys_on_chip_b() {
+    let Some((build, fw)) = fixture("the LIVE keys test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    m.soc.write8(
+        fw.symbol("keys_router") + sidou_sys::ilp32::keys_route::song as u32,
+        1,
+    );
+    m.key(A4_KEY, true);
+    m.run_ms(1500);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "live-keys-b", &m.soc.lcd.fb, &[]);
+    let a4 = trace_pixels(&m.soc.lcd.fb);
+    assert!(a4[0] > 200, "voice 1's trace with A4 on chip B: {a4:?}");
+}
+
 #[test]
 fn live_matches_its_golden_images_and_its_scopes_follow_the_notes() {
     let Some((build, fw)) = fixture("the LIVE test") else {

@@ -21,6 +21,7 @@
 #include "audio.h"
 #include "bootguard.h"
 #include "input.h"
+#include "keys_route.h"
 #include "lcd.h"
 #include "live.h"
 #include "midi.h"
@@ -58,6 +59,8 @@ static int32_t abuf[2u * AUDIO_HALF_WORDS] __attribute__((aligned(4)));
 static bootguard boot_guard __attribute__((section(".noinit")));
 static volatile uint32_t uptime_ms;
 static live instrument;
+/* Which chip the keys play, and the two chips' setups (app/keys_route.h). */
+static keys_route keys_router;
 static panel front;
 
 void fm1_alnk0_irq(void) {
@@ -118,9 +121,12 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         *next_tick += TICK_MS;
         panel_master(&front, &instrument, input_master());
         live_tick(&instrument);
-        audio_chip_b_tick(); /* chip B's boot preparation, then nothing */
     }
     if (tick_due) {
+        /* Once a pass, after its live ticks: the keys' chip has had its turn, then the other
+         * chip follows the keys' setup (chip B's first reset at boot among it) and the keys
+         * move. */
+        keys_route_tick(&keys_router);
         midi_send(); /* once a pass at most, so at most once a tick */
     }
     if ((int32_t)(now - *next_tick) >= 0) {
@@ -180,13 +186,15 @@ static void sidou_main(void) {
     /* Interrupts are still off: lcd_init and input_init write port A, which carries PA2. */
     lcd_init();
     audio_init();
-    live_init(&instrument, reg_ring_sink, audio_sink_ctx(), SID_MODEL_6581);
+    /* The keys play chip A, as in M1; chip B is made with the keys' setup from the first
+     * ticks, prepared in the background (its first reset at boot only: app/reg_ring.h). */
+    keys_route_init(&keys_router, &instrument, reg_ring_sink, reg_ring_prepare_step,
+                    audio_sink_ctx(), audio_sink_ctx_b());
+    keys_router.moved = audio_keys;
+    live_init(&instrument, keys_route_sink, &keys_router, SID_MODEL_6581);
     /* From here on a profile or model change prepares the spare chip a slice a tick. */
-    live_set_preparer(&instrument, reg_ring_prepare_step, audio_sink_ctx());
-    /* Chip B's first reset, at boot only (app/reg_ring.h): the keys' setup, live's, prepared
-     * in the background from the first ticks. */
-    audio_chip_b_boot(instrument.model, instrument.profile,
-                      instrument.envelope_mode == LIVE_ENVELOPE_INSTANT);
+    live_set_preparer(&instrument, keys_route_prepare, &keys_router);
+    keys_route_start(&keys_router);
     panel_init(&front);
     input_init();
     panel_master(&front, &instrument, input_master());

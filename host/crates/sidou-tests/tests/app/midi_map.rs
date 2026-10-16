@@ -1113,6 +1113,11 @@ patch's value up or down around 64; SIDOU does not.
   received is the chip you get. A stream faster than that (a change every 70 ms or less)
   restarts the preparation each time, so the chip swaps only once it stops. The FX button
   asks for a change the same way.
+- **Two chips:** everything here (notes, CCs, NRPNs, expression, learn) plays the
+  instrument, so the chip the keys play: chip A, or chip B while a song plays on chip A (the
+  KEYS setting AUTO; with KEYS A, chip A always). The chip-level CCs (25 model, 85 profile,
+  86-90 the character) set the keys' setup, which both chips hold: the other chip follows it
+  in the background. Addressing chip A on its own from MIDI comes with M2e.
 - **Character:** the profile (CC 85) is a chip and a model: a change resets the chip as a
   model change does, and the model follows it. The model (CC 25, the FX button) selects
   the 8580 R5 profile, or goes back to the last 6581 profile. Age/heat, DAC sloppiness,

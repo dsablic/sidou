@@ -8,8 +8,8 @@
 #include <stddef.h>
 
 /* REG_RING_WORST_PASS, the most one main-loop pass can push: the instrument's on one chip,
- * REG_RING_LIVE_PASS (live.c's writes per call), and chip A's song control's,
- * REG_RING_SONG_PASS (below). The instrument's:
+ * REG_RING_LIVE_PASS (live.c's writes per call), the other chip's, REG_RING_SONG_PASS, and
+ * the keys' move, REG_RING_MOVE_PASS (below). The instrument's:
  *   a model change, a reset, the gate reset and every register
  *                                               1 + 1 + 25
  *   (live_tick taking a spare prepared for the profile or model asked for, or, with no
@@ -36,7 +36,13 @@
  * Chip A's song control (M2c, through its own reg_ring_out), a provision until M2c measures
  * it: every register and the gate reset (a song's start), and a REG_RING_CHARACTER a tick
  * 25 + 1 + 2 = 28 (REG_RING_SONG_PASS). Not a reset: of the instrument's and the song's, only
- * one per pass (above), and the instrument's above counts it. 391 + 28 = 419.
+ * one per pass (above), and the instrument's above counts it. The other chip is the song's or
+ * follows the keys' setup (app/chip_ctl.c: the profile, the reset, the gate reset and a tick,
+ * 4, under the song's 28), never both.
+ * keys_route_tick (app/keys_route.c), once a pass, at most one of: a move of the keys (the
+ * gate-offs on the old chip 3, the gate reset 1 and every register on the new one 25 = 29) or
+ * the keys' own chip taken back to the keys' setup after a song (its reset 4 and every
+ * register again 26 = 30): REG_RING_MOVE_PASS, 30. 391 + 28 + 30 = 449.
  * A note-on writes at most 11: a retrigger's gate-off (the sync lead steals its one voice) 1,
  * the velocity's sustain level 1, the voice's pulse width 2 (aftertouch MIDI changed since the
  * last write; the voice's own pressure starts again at 0), the cutoff 2 (the wheel MIDI moved
@@ -164,6 +170,8 @@ void reg_ring_chips_init(reg_ring_chips* c, sid_model model, uint32_t clock_hz,
     c->prep_profile = 0;
     c->prep_chip = 0;
     c->prep_pass = 0;
+    c->build_pass = 0;
+    c->keys = 0;
     c->prep_wait[0] = c->prep_wait[1] = 0;
     c->default_8580_spent = 0;
 }
@@ -334,23 +342,32 @@ int reg_ring_prepare_step(void* ctx, uint8_t profile) {
         }
         return 0;
     }
+    int keys = x == c->keys;
     if (c->prep_on && c->prep_chip != x) {
-        c->prep_wait[x] = 1; /* the other chip's: this one waits */
-        return 0;
+        if (!keys) {
+            c->prep_wait[x] = 1; /* the other chip's: this one waits */
+            return 0;
+        }
+        c->prep_on = 0; /* the keys' chip first: the other's is dropped, and asked again */
+        c->prep_wait[x ^ 1u] = 1;
     }
     int same = c->prep_on && c->prep_profile == profile;
     if (same && sid_character_prep_done(&c->prep)) {
         return 1;
     }
-    if (c->prep_pass) {
-        return 0; /* one slice a pass: the next tick's pass takes it */
+    if (c->prep_pass || (!keys && c->build_pass)) {
+        if (!keys) {
+            c->prep_wait[x] = 1;
+        }
+        return 0; /* one build's work a pass: the next tick's pass takes it */
     }
     if (!same) {
-        if (c->spare_ready || c->ramp[x ^ 1u].building) {
+        if (c->spare_ready || (!keys && c->ramp[x ^ 1u].building)) {
             c->prep_on = 0;
             c->prep_wait[x] = 1;
             return 0;
         }
+        c->ramp[x ^ 1u].building = 0; /* the other's table, unplayed: it starts it again */
         sid_character want = c->ramp[x].target;
         want.profile = (uint8_t)(profile + 1u);
         c->ramp[x].building = 0;
@@ -378,28 +395,61 @@ int reg_ring_prepare_step(void* ctx, uint8_t profile) {
 
 void reg_ring_pass_end(reg_ring_chips* c) {
     c->prep_pass = 0;
+    c->build_pass = 0;
+}
+
+void reg_ring_set_keys(reg_ring_chips* c, uint32_t chip) {
+    c->keys = (uint8_t)(chip & 1u);
 }
 
 /* The character's tick (LIVE_REG_CHAR_TICK) of the out's chip, on the sid its queued entries
  * end on: the ramp's next step into a stage that is not queued. The REG_RING_CHARACTER value.
- * One table is built at a time, and a pass runs one build's work: while the spare is being
- * prepared (for either chip), in a pass that ran a slice (the last one's included: the spare
- * is then taken and prep_on clear), while the other chip's ramp builds, and while the other
- * chip's preparation waits for its turn (so a stream of ramps cannot starve it), the ramp gets
- * no free DAC table and its DACs wait. So no pass runs a slice and a table step, or two table
- * steps (40k + 28k on top of a view's 68k would pass the poll allowance). */
+ * A pass runs one build's work: a slice, or one DAC table step (40k + 28k on top of a view's
+ * 68k would pass the poll allowance), and the keys' chip (reg_ring_set_keys) goes first:
+ * - the keys' chip's ramp gets no table only while its own chip is being prepared or in a
+ *   pass that ran a slice (the last one's included: the spare is then taken, prep_on clear);
+ *   a table the other chip's ramp or preparation is building, if it needs it, is taken back
+ *   (that build starts again later);
+ * - the other chip's ramp gets no table while a preparation runs, in a pass that ran a slice
+ *   or a table step, while the keys' ramp builds, and while the keys' request waits; and its
+ *   own build pauses in a pass the keys' chip has built in (it ticks after the keys').
+ * So the keys' chip changes as one chip alone would (sidou-tests' the_keys_chip_plays_as_if_
+ * alone), and the other catches up when the keys' chip is quiet. */
 static uint8_t character_tick(reg_ring_out* o) {
     reg_ring_chips* c = o->chips;
     uint32_t x = o->chip & 1u;
+    uint32_t y = x ^ 1u;
+    int keys = x == c->keys;
+    sid_character_ramp* ramp = &c->ramp[x];
+    if (!keys && ramp->building && (c->prep_pass || c->build_pass)) {
+        return REG_RING_NO_STAGE; /* the keys' chip built this pass: a tick later */
+    }
     const volatile uint8_t* pending = c->stage_pending[x];
     uint32_t k = !pending[0] ? 0u : !pending[1] ? 1u : 2u;
     if (k == 2u) {
         o->character_defers++;
         return REG_RING_NO_STAGE;
     }
-    int busy = c->prep_on || c->prep_pass || c->ramp[x ^ 1u].building || c->prep_wait[x ^ 1u];
+    int busy = keys ? (c->prep_on && c->prep_chip == x) || c->prep_pass
+                    : c->prep_on || c->prep_pass || c->build_pass || c->ramp[y].building ||
+                          c->prep_wait[y];
     sid_dac* table = busy ? NULL : free_dac(c);
-    if (!sid_character_ramp_tick(&c->ramp[x], &c->chip[c->next[x]], table, &c->stage[x][k])) {
+    if (keys && !busy && !table && sid_character_ramp_wants_table(ramp)) {
+        /* The third table is the other chip's build: take it back, unplayed. */
+        if (c->ramp[y].building) {
+            c->ramp[y].building = 0;
+        } else if (c->prep_on && c->prep_chip == y && c->prep.job.d) {
+            c->prep_on = 0;
+            c->prep_wait[y] = 1;
+        }
+        table = free_dac(c);
+    }
+    uint8_t was = ramp->building;
+    int changed = sid_character_ramp_tick(ramp, &c->chip[c->next[x]], table, &c->stage[x][k]);
+    if (was || ramp->building) {
+        c->build_pass = 1;
+    }
+    if (!changed) {
         return REG_RING_NO_STAGE;
     }
     c->stage_pending[x][k] = 1;

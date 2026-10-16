@@ -216,6 +216,12 @@ All notable changes are documented here. The format follows
   stay in order; three sids (A, B and one spare they share, one preparation at a time) and
   three DAC tables (one each chip plays, one a ramp builds into, one build at a time). A sink
   is bound to a chip (`reg_ring_out.chip`); live stays chip-agnostic.
+- M2b: the keys play chip A, or chip B while a song plays on chip A (the new menu item KEYS:
+  AUTO, the default, or A); the keys' setup travels with them, chip B following it in the
+  background (`app/keys_route.h`, `app/chip_ctl.h`), and the keys' chip goes first in the
+  register ring so it behaves exactly as one chip alone. LIVE says KEYS:B while the keys play
+  chip B, the status screen and the boot banner show both chips (their LCD goldens updated).
+  Until M2c a song is a test hook, so the keys always play chip A.
 - M2b: chip B renders on the device beside chip A while it is in use, mixed before the
   effect slots and faded in or out over one block; out of use it is not rendered and the
   output is chip A's bit for bit. It is made at boot with the keys' setup, prepared in the

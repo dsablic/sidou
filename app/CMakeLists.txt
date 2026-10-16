@@ -9,12 +9,14 @@ add_library(sidou_live STATIC
     boot.c
     bootguard.c
     chip_mix.c
+    chip_ctl.c
     chip_view.c
     credits.c
     font.c
     fx_live.c
     grid.c
     learn_view.c
+    keys_route.c
     live.c
     live_freq.c
     live_view.c

@@ -28,15 +28,10 @@ scope* audio_scope(void);
 void* audio_sink_ctx(void);
 /* The context for reg_ring_sink bound to chip B (a reg_ring_out*). */
 void* audio_sink_ctx_b(void);
-/* Chip B's first reset, at boot only (after live_init): its character (the profile, a
- * SID_CHIP_*, the controls at 0) now; then audio_chip_b_tick, once a live tick, prepares the
- * chip a slice a pass (reg_ring_prepare_step, about 70 ms, during the boot's title card) and
- * sends the reset to model and the gate reset once it is whole. Not a reset made at once: 0.5 M
- * instructions before the main loop would move the boot's timeline (with it LCD goldens and
- * budgets that depend on where the audio blocks fall against the frames). Until the reset
- * has reached the chip its sid is zeroed and audio_fill never renders it. */
-void audio_chip_b_boot(sid_model model, uint8_t profile, uint8_t gate_reset);
-void audio_chip_b_tick(void);
+/* The keys moved to chip (0 A, 1 B; app/keys_route.h, keys_route.moved): its requests first
+ * in the register ring (reg_ring_set_keys), chip B in use while the keys play it, and the
+ * LIVE view's tap on it. */
+void audio_keys(void* ctx, uint32_t chip);
 /* Chip B in use (1) or not (0): from the next block audio_fill renders it beside chip A and
  * mixes it in before the slots (app/chip_mix.h), fading it in or out over that block. Out of
  * use it is not rendered and the output is chip A's bit for bit. */

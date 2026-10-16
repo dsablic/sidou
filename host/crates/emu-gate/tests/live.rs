@@ -229,17 +229,18 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
     let blocks_before = m.alnk_blocks.len();
     let quiet_before = m.alnk_blocks.iter().copied().max().unwrap_or(0);
 
-    // live_init's reset at boot took the spare, sid 2, initialised for the 6581 (sid 0 was chip A
-    // from reg_ring_chips_init); chip B's boot preparation then took sid 0, so the spare is
-    // sid 1, and each toggle swaps A with the spare: 1, then 2.
-    let boot_state = chips(&mut m, &fw);
-    let expect = |active, model| Chips {
-        active,
-        spare_ready: 0,
-        spare_model: model as u8,
-        lost_resets: 0,
+    // Chip A's sid, and its model, after boot and each toggle: a swap each time (chip B, which
+    // follows the keys' setup in the background from M2b Task 4, takes the spare between them,
+    // so which of the three sids chip A is on depends on when it did), nothing lost.
+    let a_model = |m: &mut Machine| {
+        let base = fw.chips();
+        let active = m.soc.read8(base + ilp32::reg_ring_chips::active as u32);
+        let s =
+            base + (ilp32::reg_ring_chips::chip + usize::from(active) * ilp32::sid::SIZE) as u32;
+        m.soc.read8(s + ilp32::sid::model as u32)
     };
-    assert_eq!(boot_state, expect(2, SID_MODEL_6581), "after boot");
+    let boot_state = chips(&mut m, &fw);
+    assert_eq!(a_model(&mut m), SID_MODEL_6581 as u8, "after boot");
 
     let from = m.soc.periph.audio.len() / 2;
     tap(&mut m, FX);
@@ -249,11 +250,19 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
     m.run_ms(50);
     let fx_led = m.soc.periph.led_take()[usize::from(FX)];
     let first = chips(&mut m, &fw);
-    assert_eq!(first, expect(1, SID_MODEL_8580), "after the first FX");
+    assert_eq!(a_model(&mut m), SID_MODEL_8580 as u8, "after the first FX");
+    assert_ne!(
+        first.active, boot_state.active,
+        "the first FX swapped no chip"
+    );
     tap(&mut m, FX);
-    m.run_ms(100);
+    m.run_ms(300); // chip A's preparation, then chip B's following it
     let second = chips(&mut m, &fw);
-    assert_eq!(second, expect(2, SID_MODEL_6581), "after the second FX");
+    assert_eq!(a_model(&mut m), SID_MODEL_6581 as u8, "after the second FX");
+    assert_ne!(second.active, first.active, "the second FX swapped no chip");
+    for c in [&boot_state, &first, &second] {
+        assert_eq!((c.spare_ready, c.lost_resets), (0, 0), "{c:?}");
+    }
 
     let toggle_blocks = &m.alnk_blocks[blocks_before..];
     let worst = toggle_blocks.iter().copied().max().unwrap_or(0);
@@ -275,13 +284,14 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
     });
     println!("{report}");
 
-    // Chip B's boot preparation (the 6581 R4AR, 7 slices), then the two toggles', 7 slices each
-    // (the 8580 R5 and the 6581 R4AR with the model's own DACs), the first 4 more for the
-    // 8580's default DACs, built on first use: all in the main loop (the watch counts main-loop
-    // calls only), and the blocks stay small, so none ran in the interrupt.
+    // Chip B's boot preparation (the 6581 R4AR, 7 slices), then each toggle's on chip A and
+    // chip B following it, 7 slices each (the 8580 R5 and the 6581 R4AR with the model's own
+    // DACs), the first 4 more for the 8580's default DACs, built on first use: all in the main
+    // loop (the watch counts main-loop calls only), and the blocks stay small, so none ran in
+    // the interrupt.
     assert_eq!(
         calls.len(),
-        25,
+        7 + 11 + 7 + 7 + 7,
         "preparation slices from the main loop: {calls:?}"
     );
     assert!(
