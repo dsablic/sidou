@@ -1,0 +1,805 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! The player in the audio interrupt (M2c Task 6), on the host: the shape's analysis in
+//! slices, the frame clock, the transport's commands, and edits while a song plays, whose
+//! widened shape plays them as a player re-initialised on the edited song and fast-forwarded
+//! to the same call would.
+
+use sidou_sys::*;
+use sidou_tests::player::*;
+use sidou_tests::song::*;
+use sidou_tests::transport::*;
+
+#[allow(clippy::too_many_arguments)]
+fn ins(ad: u8, sr: u8, w: u8, p: u8, f: u8, vib: u8, vd: u8, gt: u8, fw: u8) -> [u8; 25] {
+    let mut i = [0u8; 25];
+    i[..9].copy_from_slice(&[ad, sr, w, p, f, vib, vd, gt, fw]);
+    i
+}
+
+const R: [u8; 4] = [0xbd, 0, 0, 0];
+
+fn n(octave: u8, semi: u8) -> u8 {
+    0x60 + octave * 12 + semi
+}
+
+fn row(note: u8, instr: u8) -> [u8; 4] {
+    [note, instr, 0, 0]
+}
+
+fn shape_bytes(s: &gt2_shape) -> &[u8] {
+    // SAFETY: gt2_shape is plain bytes and words with no padding between its fields.
+    unsafe {
+        std::slice::from_raw_parts((s as *const gt2_shape).cast::<u8>(), size_of::<gt2_shape>())
+    }
+}
+
+fn analyse(song: &Song, sub: u32, o: &gt2_options, budget: Option<u32>) -> (i32, Box<gt2_shape>) {
+    let mut a = Box::<gt2_analysis>::default();
+    let mut shape = Box::<gt2_shape>::default();
+    let r = unsafe {
+        match budget {
+            None => gt2_shape_analyse(&mut *a, song.ptr(), sub, o, &mut *shape),
+            Some(b) => {
+                let r = gt2_shape_begin(&mut *a, song.ptr(), sub, o);
+                if r < 0 {
+                    r
+                } else {
+                    let mut r;
+                    let mut steps = 0u32;
+                    loop {
+                        r = gt2_shape_step(&mut *a, &mut *shape, b);
+                        steps += 1;
+                        assert!(steps < 10_000_000, "the analysis never ends");
+                        if r != GT2_SHAPE_MORE as i32 {
+                            break;
+                        }
+                    }
+                    if r < 0 {
+                        r
+                    } else {
+                        0
+                    }
+                }
+            }
+        }
+    };
+    (r, shape)
+}
+
+fn options_of(g: &gt2_ref::Options) -> gt2_options {
+    let mut o = default_options();
+    o.hr_adsr = g.hr_adsr as u16;
+    o.multispeed = g.multiplier as u8;
+    o.ntsc = g.ntsc as u8;
+    o.optimize_pulse = g.optimize_pulse as u8;
+    o.optimize_realtime = g.optimize_realtime as u8;
+    let bits = [
+        (gt2_ref::PLAYER_BUFFERED, GT2_PLAYER_BUFFERED),
+        (gt2_ref::PLAYER_SOUNDEFFECTS, GT2_PLAYER_SOUNDEFFECTS),
+        (gt2_ref::PLAYER_VOLUME, GT2_PLAYER_VOLUME),
+        (gt2_ref::PLAYER_AUTHORINFO, GT2_PLAYER_AUTHORINFO),
+        (gt2_ref::PLAYER_ZPGHOSTREGS, GT2_PLAYER_ZPGHOSTREGS),
+        (gt2_ref::PLAYER_NOOPTIMIZATION, GT2_PLAYER_NOOPTIMIZATION),
+        (gt2_ref::PLAYER_FULLBUFFERED, GT2_PLAYER_FULLBUFFERED),
+    ];
+    let mut f = 0u32;
+    for (theirs, ours) in bits {
+        if g.player_version & theirs != 0 {
+            f |= ours;
+        }
+    }
+    o.player_flags = f as u16;
+    o
+}
+
+/// Every example and a hundred generated songs, every subtune: the analysis in slices of any
+/// size makes the same shape as at once.
+#[test]
+fn the_sliced_analysis_makes_the_same_shape() {
+    let mut cases: Vec<(String, Vec<u8>, gt2_options)> = gt2_ref::examples()
+        .into_iter()
+        .map(|(name, sng)| (name, sng, default_options()))
+        .collect();
+    for seed in 0..100 {
+        let g = gt2_ref::gen::generate(seed);
+        cases.push((format!("seed {seed}"), g.sng, options_of(&g.options)));
+    }
+    let mut shapes = 0;
+    for (name, sng, o) in &cases {
+        let mut song = Song::host();
+        song.read(sng, 0).unwrap();
+        for sub in 0..u32::from(sng[100]) {
+            let (r, whole) = analyse(&song, sub, o, None);
+            for budget in [1u32, 3, 64, SONG_SLICE_UNITS] {
+                let (rs, sliced) = analyse(&song, sub, o, Some(budget));
+                assert_eq!(rs, r, "{name} subtune {sub} budget {budget}");
+                if r == 0 {
+                    assert!(
+                        shape_bytes(&whole) == shape_bytes(&sliced),
+                        "{name} subtune {sub}: budget {budget} makes another shape"
+                    );
+                }
+            }
+            shapes += usize::from(r == 0);
+        }
+    }
+    eprintln!(
+        "{} songs, {shapes} shapes, equal in slices of 1, 3, 64 and {SONG_SLICE_UNITS}",
+        cases.len()
+    );
+    assert!(shapes > 100);
+}
+
+/// The call period: gt2reloc's CIA timer, cycles x 24 MHz / 544 / the clock, exact.
+#[test]
+fn the_frame_clock_is_the_cia_period_exactly() {
+    for ntsc in [0u32, 1] {
+        for ms in 0u32..=4 {
+            let p = unsafe { song_period_of(ms, ntsc) };
+            let (base, clock) = if ntsc == 1 {
+                (0x42c6u128, 1_022_727u128)
+            } else {
+                (0x4cc7, 985_248)
+            };
+            let cycles = if ms == 0 { base * 2 } else { base / ms as u128 } + 1;
+            // q + r / den == cycles * 24e6 / (clock * 544)
+            let lhs = (p.q as u128 * p.den as u128 + p.r as u128) * clock * 544;
+            let rhs = cycles * 24_000_000 * p.den as u128;
+            assert_eq!(lhs, rhs, "multispeed {ms} ntsc {ntsc}: {p:?}");
+            assert!(p.r < p.den);
+            assert!(p.q >= SONG_BLOCK, "a block holds at most one call");
+        }
+    }
+    let pal = unsafe { song_period_of(1, 0) };
+    assert_eq!(pal.q, 880, "19,656 cycles at 985,248 Hz is 880.16 samples");
+}
+
+/// A short song: channel 1 plays pattern 0 then pattern 1, channels 2 and 3 their own.
+fn simple_song() -> Vec<u8> {
+    let mut p0 = vec![row(n(3, 0), 1), R, R, R, row(n(3, 4), 0), R, R, R];
+    p0.extend(vec![row(n(3, 7), 1), R, R, R, R, R, R, R]);
+    let p1 = vec![row(n(4, 0), 1), R, R, R, R, R, R, R];
+    let p2 = vec![row(n(2, 0), 1), R, R, R, R, R, R, R];
+    let p3 = vec![row(n(1, 7), 1), R, R, R, R, R, R, R];
+    let mut s = SngSpec::new();
+    s.orders = vec![vec![(vec![0, 1], 0), (vec![2], 0), (vec![3], 0)]];
+    s.instr = vec![ins(0x09, 0x00, 1, 0, 0, 0, 0, 2, 0x09)];
+    s.tables = vec![vec![(0x41, 0x00), (0xff, 0x00)], vec![], vec![], vec![]];
+    s.patterns = vec![p0, p1, p2, p3]
+        .into_iter()
+        .map(|p| (p, [0xff, 0, 0, 0]))
+        .collect();
+    s.encode()
+}
+
+fn song_of(sng: &[u8], o: Option<&gt2_options>) -> Song {
+    let mut song = Song::host();
+    song.read(sng, 0).unwrap();
+    if let Some(o) = o {
+        assert_eq!(unsafe { song_ext_set_options(song.ptr_mut(), o) }, 0);
+    }
+    song
+}
+
+/// Plays through song_ctl until `calls` calls; each call's player state.
+fn transport_states(t: &mut Transport, calls: u32) -> Vec<Vec<u8>> {
+    let mut states = Vec::new();
+    let mut guard = 0u32;
+    while t.calls() < calls {
+        t.pass();
+        let before = t.calls();
+        t.block_silent();
+        if t.calls() != before {
+            states.push(player_state(&t.sc.player));
+        }
+        guard += 1;
+        assert!(guard < 10_000_000);
+    }
+    states
+}
+
+fn player_states(song: &Song, sub: u32, o: &gt2_options, calls: u32) -> Vec<Vec<u8>> {
+    let mut p = Player::new(song, sub, o).expect("plays");
+    (0..calls)
+        .map(|_| {
+            p.call_silent();
+            player_state(p.raw())
+        })
+        .collect()
+}
+
+/// The transport's player plays what gt2_play_init's plays, call for call, with the call
+/// at the clock's sample (every call at floor(k x samples a call) from the play's block).
+#[test]
+fn the_transport_plays_what_the_player_plays_at_the_clocks_samples() {
+    for (name, sng) in gt2_ref::examples().into_iter().take(4) {
+        for ms in [1u8, 4] {
+            let mut o = default_options();
+            o.multispeed = ms;
+            let mut song = song_of(&sng, Some(&o));
+            let want = player_states(&song, 0, &o, 600);
+            let mut t = Transport::new(&mut song);
+            assert!(t.play(0, 0));
+            let mut got = Vec::new();
+            let mut samples = Vec::new();
+            let mut block = 0usize;
+            let mut start = None;
+            while got.len() < 600 {
+                t.pass();
+                let before = t.calls();
+                let at = t.block_silent();
+                if t.calls() != before {
+                    if start.is_none() {
+                        start = Some(block);
+                    }
+                    got.push(player_state(&t.sc.player));
+                    samples.push((block - start.unwrap()) * BLOCK + at.unwrap());
+                }
+                block += 1;
+            }
+            assert!(got == want, "{name} x{ms}: the transport's player differs");
+            let p = unsafe { song_period_of(ms as u32, 0) };
+            for (k, &s) in samples.iter().enumerate() {
+                let exact =
+                    (k as u128 * (p.q as u128 * p.den as u128 + p.r as u128)) / p.den as u128;
+                assert_eq!(s as u128, exact, "{name} x{ms}: call {k} at sample {s}");
+            }
+        }
+    }
+}
+
+/// A primitive of the song model (gt2_song.h) making one edit.
+type Prim = Box<dyn Fn(*mut gt2_song, &mut gt2_edit) -> gt2_err>;
+
+/// Sends each primitive's edit to the transport as the song's editor would (again after a
+/// pass when the model or the transport asks to wait).
+fn send(t: &mut Transport, song: *mut gt2_song, p: &Prim) {
+    for _ in 0..1000 {
+        let mut e = gt2_edit::default();
+        match p(song, &mut e) {
+            GT2_OK => {
+                if t.edit(&e) {
+                    return;
+                }
+                unsafe { gt2_edit_cancel(song, &e) };
+            }
+            GT2_ERR_PENDING => {}
+            err => panic!("the edit is refused: {err}"),
+        }
+        t.pass();
+        t.block_silent();
+    }
+    panic!("an edit never went");
+}
+
+/// At call `at` the edits go; from then (or from the hand-over, when the shape's change is
+/// one the state cannot follow) the transport's player is the reference's: a player started
+/// on the edited song and fast-forwarded to the same call. The calls the hand-over took.
+fn edit_case(name: &str, sng: &[u8], at: u32, expect_handover: bool, prims: &[Prim]) -> u32 {
+    let o = default_options();
+    let mut live = song_of(sng, None);
+    let mut reference = song_of(sng, None);
+    for p in prims {
+        let mut e = gt2_edit::default();
+        assert_eq!(p(reference.ptr_mut(), &mut e), GT2_OK, "{name}");
+        unsafe { gt2_edit_commit(reference.ptr_mut(), &e) };
+    }
+    let song = live.ptr_mut();
+    let mut t = Transport::new(&mut live);
+    assert!(t.play(0, 0));
+    transport_states(&mut t, at);
+    let before = shape_bytes(t.shape()).to_vec();
+    let sent = t.calls();
+    for p in prims {
+        send(&mut t, song, p);
+    }
+    let handovers = t.sc.handovers;
+    let mut states = Vec::new();
+    let mut first = None;
+    let total = at + 1500;
+    while t.calls() < total {
+        t.pass();
+        let c = t.calls();
+        t.block_silent();
+        if t.calls() != c {
+            if first.is_none() && (!expect_handover || t.sc.handovers > handovers) {
+                first = Some(c);
+            }
+            states.push((c, player_state(&t.sc.player)));
+        }
+    }
+    let first = first.unwrap_or_else(|| panic!("{name}: no hand-over"));
+    assert_eq!(
+        t.sc.handovers > handovers,
+        expect_handover,
+        "{name}: hand-over"
+    );
+    let want = player_states(&reference, 0, &o, total);
+    for (call, state) in states.iter().filter(|(c, _)| *c >= first) {
+        assert!(
+            *state == want[*call as usize],
+            "{name}: call {call} differs from the edited song's player (edits at {sent}, \
+             compared from {first})"
+        );
+    }
+    assert!(
+        before != shape_bytes(t.shape()),
+        "{name}: the shape did not change"
+    );
+    // a fresh analysis of the edited song, once quiet, is the shape the player ends on
+    let (r, fresh) = analyse(&reference, 0, &o, None);
+    assert_eq!(r, 0);
+    assert!(
+        t.run_until(20_000, |t| t.sc.widened == 0
+            && t.sc.bg_on == 0
+            && t.sc.ff_on == 0),
+        "{name}: the shape is never narrowed"
+    );
+    assert!(
+        shape_bytes(t.shape()) == shape_bytes(&fresh),
+        "{name}: the shape is not the fresh analysis's"
+    );
+    first - sent
+}
+
+fn set_row(pattern: u32, r: u32, cell: [u8; 4]) -> Prim {
+    Box::new(move |s, e| unsafe { gt2_set_row(s, pattern, r, cell.as_ptr(), e) })
+}
+
+fn set_instr(i: u32, field: u32, v: u8) -> Prim {
+    Box::new(move |s, e| unsafe { gt2_set_instr(s, i, field, v, e) })
+}
+
+fn set_table(t: u32, r: u32, side: u32, v: u8) -> Prim {
+    Box::new(move |s, e| unsafe { gt2_set_table(s, t, r, side, v, e) })
+}
+
+fn insert_order(ch: u32, pos: u32, v: u8) -> Prim {
+    Box::new(move |s, e| unsafe { gt2_order_insert(s, 0, ch, pos, v, e) })
+}
+
+fn insert_row(pattern: u32, r: u32) -> Prim {
+    Box::new(move |s, e| unsafe { gt2_pattern_insert_row(s, pattern, r, e) })
+}
+
+/// A song for the edits: channel 1 plays pattern 0 (16 rows), then pattern 1, which nothing
+/// before call 90 reads (16 rows of 6 ticks: pattern 1 starts at call 96); instrument 2 and
+/// the tables' rows past 2 are free.
+fn edit_song(channel_3: bool) -> Vec<u8> {
+    let mut p0 = vec![row(n(3, 0), 1), R, R, R, row(n(3, 4), 0), R, R, R];
+    p0.extend(vec![row(n(3, 7), 1), R, R, R, R, R, R, R]);
+    let p1 = vec![row(n(4, 0), 1), R, R, R, R, R, R, R];
+    let p2 = vec![row(n(2, 0), 1), R, R, R, R, R, R, R];
+    let p3 = if channel_3 {
+        vec![row(n(1, 7), 1), R, R, R, R, R, R, R]
+    } else {
+        vec![R; 8]
+    };
+    let mut s = SngSpec::new();
+    s.orders = vec![vec![(vec![0, 1], 0), (vec![2], 0), (vec![3], 0)]];
+    s.instr = vec![
+        ins(0x09, 0x00, 1, 0, 0, 0, 0, 2, 0x09),
+        ins(0x0a, 0x00, 3, 0, 0, 0, 0, 2, 0x09),
+    ];
+    s.tables = vec![
+        vec![
+            (0x41, 0x00),
+            (0xff, 0x00),
+            (0x11, 0x00),
+            (0xff, 0x00),
+            (0, 0),
+            (0, 0),
+        ],
+        vec![(0, 0); 4],
+        vec![(0, 0); 4],
+        vec![(0, 0); 4],
+    ];
+    s.patterns = vec![p0, p1, p2, p3]
+        .into_iter()
+        .map(|p| (p, [0xff, 0, 0, 0]))
+        .collect();
+    s.encode()
+}
+
+const AT: u32 = 40;
+
+#[test]
+fn a_note_past_the_range_widens_the_frequency_table() {
+    edit_case(
+        "note range",
+        &edit_song(true),
+        AT,
+        false,
+        &[set_row(1, 2, row(0xbc, 1))],
+    );
+}
+
+#[test]
+fn a_first_command_of_a_class_widens_the_handlers() {
+    // AD (5XY) and a tempo (FXY), never used before
+    edit_case(
+        "commands",
+        &edit_song(true),
+        AT,
+        false,
+        &[
+            set_row(1, 3, [n(4, 2), 0, 5, 0x22]),
+            set_row(1, 5, [0xbd, 0, 0x0f, 0x05]),
+        ],
+    );
+}
+
+#[test]
+fn a_filter_command_writes_the_cutoff_from_then_on() {
+    edit_case(
+        "filter",
+        &edit_song(true),
+        AT,
+        false,
+        &[
+            set_table(GT2_FTBL, 1, 0, 0x90),
+            set_table(GT2_FTBL, 1, 1, 0xf1),
+            set_table(GT2_FTBL, 2, 0, 0x00),
+            set_table(GT2_FTBL, 2, 1, 0x40),
+            set_row(1, 1, [0xbd, 0, 0x0a, 0x01]),
+        ],
+    );
+}
+
+#[test]
+fn a_new_instrument_reaches_its_tables() {
+    // instrument 2's wavetable program (rows 3-4), first named by pattern 1; a calculated
+    // speed (portamento with a left byte of $80 and up) besides
+    edit_case(
+        "instrument",
+        &edit_song(true),
+        AT,
+        false,
+        &[
+            set_table(GT2_WTBL, 3, 1, 0x8c),
+            set_table(GT2_STBL, 1, 0, 0x80),
+            set_table(GT2_STBL, 1, 1, 0x02),
+            set_row(1, 0, [n(4, 0), 2, 1, 0x01]),
+        ],
+    );
+}
+
+#[test]
+fn an_orderlist_rebuild_plays_its_new_pattern() {
+    // a new entry naming pattern 4 (an empty pattern from the reader's) after pattern 1
+    edit_case(
+        "orderlist",
+        &edit_song(true),
+        AT,
+        false,
+        &[
+            insert_order(0, 2, 2),
+            insert_row(1, 4),
+            set_row(1, 4, [n(5, 1), 1, 0, 0]),
+        ],
+    );
+}
+
+/// A wave delay changes how the player's wavetable state reads (the packer recodes the
+/// waveforms): the player is handed over to one fast-forwarded with the new shape.
+#[test]
+fn a_wave_delay_hands_the_player_over() {
+    let took = edit_case(
+        "wave delay",
+        &edit_song(true),
+        AT,
+        true,
+        &[
+            set_table(GT2_WTBL, 3, 0, 0x03),
+            set_row(1, 0, row(n(4, 0), 2)),
+        ],
+    );
+    eprintln!("the wave delay's hand-over: {took} calls after the edit");
+}
+
+#[test]
+fn a_pulse_low_nybble_hands_the_player_over() {
+    edit_case(
+        "pulse",
+        &edit_song(true),
+        AT,
+        true,
+        &[
+            set_table(GT2_PTBL, 1, 0, 0x88),
+            set_table(GT2_PTBL, 1, 1, 0x08),
+            set_instr(2, GT2_INS_PULSE, 1),
+            set_row(1, 0, row(n(4, 0), 2)),
+        ],
+    );
+}
+
+/// A channel's first note (it held only rests, so the packer played two channels).
+#[test]
+fn a_channels_first_note_hands_the_player_over() {
+    let took = edit_case(
+        "channels",
+        &edit_song(false),
+        AT,
+        true,
+        &[set_row(3, 0, row(n(2, 7), 1))],
+    );
+    eprintln!("the third channel's hand-over: {took} calls after the edit");
+    assert!(took < 50, "the hand-over took {took} calls");
+}
+
+fn play_simple() -> (Song, Transport) {
+    let mut song = song_of(&simple_song(), None);
+    let mut t = Transport::new(&mut song);
+    assert!(t.play(0, 0));
+    assert!(t.run_until(100, |t| t.calls() > 0));
+    (song, t)
+}
+
+fn env_state(t: &Transport, v: usize) -> u32 {
+    t.chip.env[v].state
+}
+
+/// Stop: each voice's gate goes off and its envelope releases; continue: the next call is at
+/// the block it reaches; mute: a muted voice's gate goes off and its writes stay out.
+#[test]
+fn stop_releases_continue_resumes_mute_silences() {
+    let (_song, mut t) = play_simple();
+    transport_states(&mut t, 30);
+    let gated: Vec<bool> = (0..3).map(|v| t.chip.env[v].gate != 0).collect();
+    assert!(gated.iter().any(|&g| g), "a voice holds a note");
+    assert!(t.stop());
+    t.pass();
+    t.block_silent();
+    for (v, &was) in gated.iter().enumerate() {
+        assert_eq!(t.chip.env[v].gate, 0, "voice {v}'s gate after stop");
+        if was {
+            assert_eq!(env_state(&t, v), SID_ENV_RELEASE, "voice {v} releases");
+        }
+    }
+    let calls = t.calls();
+    for _ in 0..50 {
+        t.pass();
+        t.block_silent();
+    }
+    assert_eq!(t.calls(), calls, "no call while stopped");
+    assert!(t.resume());
+    t.pass();
+    let at = t.block_silent();
+    assert_eq!(at, Some(0), "continue: the call at the block's start");
+    // mute voice 1: its gate off, then nothing of its writes
+    assert!(t.mute(1));
+    t.pass();
+    t.block_silent();
+    assert_eq!(t.chip.env[0].gate, 0, "the muted voice's gate");
+    let freq = t.chip.osc[0].freq;
+    let shadow = t.sc.shadow;
+    let until = t.calls() + 300;
+    transport_states(&mut t, until);
+    assert_eq!(
+        t.chip.osc[0].freq, freq,
+        "the muted voice's frequency stays"
+    );
+    assert_eq!(t.chip.env[0].gate, 0);
+    assert!(
+        t.sc.shadow[..2] != shadow[..2],
+        "the player wrote it all the same"
+    );
+    // unmuted, the shadow goes back
+    assert!(t.mute(0));
+    t.pass();
+    t.block_silent();
+    let f = u32::from(t.sc.shadow[0]) | u32::from(t.sc.shadow[1]) << 8;
+    assert_ne!(t.chip.osc[0].freq, freq);
+    assert_eq!(t.chip.env[0].gate, t.sc.shadow[4] & 1);
+    let _ = f;
+}
+
+/// More edits than the ring and the edits in flight hold: each waits (0) and goes later;
+/// none is lost, and no block applies more than SONG_EDITS_PER_BLOCK.
+#[test]
+fn a_flood_of_edits_waits_and_is_never_lost() {
+    let (mut song, mut t) = play_simple();
+    let s = song.ptr_mut();
+    let mut refused = 0;
+    let mut sent = 0;
+    let target = 200u32;
+    while sent < target {
+        let r = sent % 8;
+        let mut e = gt2_edit::default();
+        let cell = [n(3, (sent % 12) as u8), 1, 0, 0];
+        match unsafe { gt2_set_row(s, 2, r, cell.as_ptr(), &mut e) } {
+            GT2_OK => {}
+            GT2_ERR_PENDING => {
+                t.pass();
+                t.block_silent();
+                continue;
+            }
+            err => panic!("{err}"),
+        }
+        if t.edit(&e) {
+            sent += 1;
+        } else {
+            unsafe { gt2_edit_cancel(s, &e) };
+            refused += 1;
+            // no pass: the next tries find it full too, then a block drains 8
+            if refused % 4 == 0 {
+                t.pass();
+                t.block_silent();
+            }
+        }
+    }
+    assert!(t.run_until(100, |t| t.sc.inflight_n == 0));
+    assert!(refused > 0, "the flood never filled the queue");
+    assert_eq!(t.sc.busy, refused, "every refusal is counted");
+    assert!(t.sc.edits_block_max <= SONG_EDITS_PER_BLOCK && t.sc.edits_block_max > 1);
+    let last = song.pattern(2).unwrap();
+    for r in 0..8u32 {
+        let k = (0..target).rev().find(|k| k % 8 == r).unwrap();
+        assert_eq!(
+            last[r as usize][0],
+            n(3, (k % 12) as u8),
+            "row {r}: the last edit"
+        );
+    }
+    eprintln!(
+        "200 edits, {refused} refusals, at most {} a block",
+        t.sc.edits_block_max
+    );
+}
+
+/// A rebuild's old copy stays allocated until the interrupt has applied its swap.
+#[test]
+fn a_swapped_patterns_old_space_is_freed_only_after_it_is_applied() {
+    let (mut song, mut t) = play_simple();
+    let s = song.ptr_mut();
+    let old = song.raw().pattern[2];
+    let mut e = gt2_edit::default();
+    assert_eq!(unsafe { gt2_pattern_insert_row(s, 2, 1, &mut e) }, GT2_OK);
+    let used = |song: &Song, sp: u32| -> bool {
+        let bm = song.bitmap();
+        (span_off4(sp)..span_off4(sp) + 1).all(|u| bm[u as usize])
+    };
+    assert!(t.edit(&e));
+    t.pass();
+    assert!(used(&song, old), "pending: the old copy is allocated");
+    assert_eq!(song.raw().pattern[2], old, "not applied before a block");
+    t.block_silent();
+    assert_ne!(song.raw().pattern[2], old, "applied at the block");
+    assert!(used(&song, old), "applied, not yet known applied");
+    t.pass();
+    assert!(
+        !used(&song, old),
+        "released after the main loop saw it applied"
+    );
+}
+
+/// A jam: the voice's next tick 0 starts the note with the instrument.
+#[test]
+fn a_jam_plays_at_the_voices_next_tick_0() {
+    let (_song, mut t) = play_simple();
+    t.events();
+    assert!(t.jam(1, 30, 1));
+    let mut found = false;
+    for _ in 0..60 {
+        t.pass();
+        t.block_silent();
+        for e in t.events() {
+            if (e.flags >> 5) & 3 == 1
+                && u32::from(e.flags & 0x1f) & GT2_EV_NOTE != 0
+                && e.note == 30
+            {
+                found = true;
+            }
+        }
+    }
+    assert!(found, "the jammed note started");
+}
+
+/// A seek: the player fast-forwarded to call 500 takes over at the interrupt's next call.
+#[test]
+fn a_seek_hands_over_a_fast_forwarded_player() {
+    let (song, mut t) = play_simple();
+    assert!(t.seek(500));
+    assert!(t.run_until(5000, |t| t.sc.handovers > 0));
+    let o = default_options();
+    let want = player_states(&song, 0, &o, 700);
+    let calls = t.calls();
+    let got = transport_states(&mut t, calls + 100);
+    for (k, s) in got.iter().enumerate() {
+        assert!(
+            *s == want[calls as usize + k],
+            "call {} after the seek",
+            calls as usize + k
+        );
+    }
+}
+
+/// The events are the player's, with the call's number; when the main loop does not read
+/// them the oldest go, counted.
+#[test]
+fn the_events_follow_the_player_and_overflow_drops_the_oldest() {
+    let (song, mut t) = play_simple();
+    t.events();
+    let start = t.calls();
+    let mut p = Player::new(&song, 0, &default_options()).unwrap();
+    for _ in 0..start {
+        p.call_silent();
+    }
+    let mut want = Vec::new();
+    for _ in 0..200 {
+        let k = t.calls();
+        p.call_silent();
+        for ch in 0..3u8 {
+            let ev = p.raw().ev[ch as usize];
+            if ev.flags != 0 {
+                want.push((k as u16, ev.flags | ch << 5, ev.pattern, ev.row, ev.note));
+            }
+        }
+        t.pass();
+        while t.calls() == k {
+            t.block_silent();
+        }
+    }
+    let got: Vec<_> = t
+        .events()
+        .iter()
+        .map(|e| (e.frame, e.flags, e.pattern, e.row, e.note))
+        .collect();
+    assert_eq!(got, want);
+    // unread for long: the ring keeps the newest
+    let lost = t.sc.ev_lost;
+    let until = t.calls() + 2000;
+    transport_states(&mut t, until);
+    let kept = t.events();
+    assert_eq!(kept.len(), SONG_EVENT_RING as usize);
+    assert!(t.sc.ev_lost > lost, "the dropped ones are counted");
+    let frames: Vec<u32> = kept.iter().map(|e| u32::from(e.frame)).collect();
+    assert!(frames.windows(2).all(|w| w[0] <= w[1]), "oldest first");
+    assert!(
+        frames[frames.len() - 1] + 30 >= (t.calls() - 1) & 0xffff,
+        "the newest kept"
+    );
+}
+
+/// A multispeed the device cannot play in one call a block is refused.
+#[test]
+fn multispeed_past_4_is_refused() {
+    let mut o = default_options();
+    o.multispeed = 8;
+    let mut song = song_of(&simple_song(), Some(&o));
+    let mut t = Transport::new(&mut song);
+    assert!(t.play(0, 0));
+    assert_eq!(t.sc.error, SONG_ERR_MULTISPEED as i16);
+    assert_eq!(t.state(), SONG_IDLE);
+}
+
+/// A chip swapped in (a profile change) gets the player's registers before it renders.
+#[test]
+fn a_swapped_chip_gets_the_players_registers() {
+    let (_song, mut t) = play_simple();
+    transport_states(&mut t, 20);
+    let mut fresh = Box::<sid>::default();
+    unsafe {
+        sid_init(&mut *fresh, SID_MODEL_6581, SID_CLOCK_PAL, SAMPLE_RATE);
+        song_ctl_chip_swapped((&mut *t.sc as *mut song_ctl).cast(), 0, &mut *fresh);
+    }
+    for v in 0..3 {
+        assert_eq!(fresh.env[v].gate, t.chip.env[v].gate, "voice {v}'s gate");
+        assert_eq!(
+            fresh.env[v].attack, t.chip.env[v].attack,
+            "voice {v}'s attack"
+        );
+        assert_eq!(
+            fresh.env[v].sustain, t.chip.env[v].sustain,
+            "voice {v}'s sustain"
+        );
+        assert_eq!(
+            fresh.osc[v].freq, t.chip.osc[v].freq,
+            "voice {v}'s frequency"
+        );
+        assert_eq!(fresh.osc[v].pw, t.chip.osc[v].pw, "voice {v}'s pulse width");
+    }
+    assert_eq!(fresh.mode_vol, t.chip.mode_vol);
+    assert_eq!(fresh.fc, t.chip.fc);
+}

@@ -11,9 +11,11 @@ use crate::song::Song;
 /// A call's SID writes: (register 0-24, value), in order.
 pub type Writes = Vec<(u8, u8)>;
 
-/// A player over a song; the song must outlive it (it reads the song every call).
+/// A player over a song and the shape its analysis gave it; the song must outlive it (it
+/// reads the song every call).
 pub struct Player {
     p: Box<gt2_player>,
+    shape: Box<gt2_shape>,
 }
 
 unsafe extern "C" fn collect(ctx: *mut c_void, reg: u8, value: u8) {
@@ -40,9 +42,10 @@ impl Player {
     /// The player, or gt2_play_init's refusal (`GT2_PLAY_ERR_*`).
     pub fn start(song: &Song, subtune: u32, o: &gt2_options) -> Result<Player, i32> {
         let mut p = Box::new(gt2_player::default());
-        let r = unsafe { gt2_play_init(&mut *p, song.ptr(), subtune, o) };
+        let mut shape = Box::new(gt2_shape::default());
+        let r = unsafe { gt2_play_init(&mut *p, &mut *shape, song.ptr(), subtune, o) };
         if r == 0 {
-            Ok(Player { p })
+            Ok(Player { p, shape })
         } else {
             Err(r)
         }
@@ -62,5 +65,10 @@ impl Player {
 
     pub fn raw(&self) -> &gt2_player {
         &self.p
+    }
+
+    /// The shape the player follows.
+    pub fn shape(&self) -> &gt2_shape {
+        &self.shape
     }
 }

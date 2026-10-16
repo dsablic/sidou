@@ -1,0 +1,755 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+/* The song in the audio interrupt (song_ctl.h). The interrupt's functions come first; on the
+ * device app.ld puts them (and only them) in SRAM, one section a function. */
+#include "song_ctl.h"
+
+/* The compiler keeps the stores before it before the ones after (one core: the interrupt
+ * either runs before a store or after, never beside it). */
+#define COMPILER_FENCE() __asm__ volatile("" ::: "memory")
+
+#define CMD_MASK (SONG_CMD_RING - 1u)
+#define EV_MASK (SONG_EVENT_RING - 1u)
+#define NO_GATE 0xffu /* a PLAY, STOP or CONTINUE that leaves chip A's gate reset alone */
+
+_Static_assert((SONG_CMD_RING & CMD_MASK) == 0u, "the command ring is a power of two");
+_Static_assert((SONG_EVENT_RING & EV_MASK) == 0u, "the event ring is a power of two");
+_Static_assert(sizeof(gt2_player) % 4u == 0u, "a hand-over copies the player in words");
+
+/* --- The audio interrupt ---------------------------------------------------------------- */
+
+/* The player's sink: chip A, less the muted voices; the shadow keeps every write. */
+static void song_sink(void* ctx, uint8_t reg, uint8_t value) {
+    song_ctl* sc = ctx;
+    sc->shadow[reg] = value;
+    if (reg < 21u && ((sc->mute >> (reg / 7u)) & 1u))
+        return;
+    sid_write(sc->chip, reg, value);
+}
+
+/* The shadow's registers into s, less the muted voices'. */
+static void song_rewrite(song_ctl* sc, sid* s) {
+    for (uint32_t r = 0u; r < GT2_SID_REGS; r++) {
+        if (r < 21u && ((sc->mute >> (r / 7u)) & 1u))
+            continue;
+        sid_write(s, (uint8_t)r, sc->shadow[r]);
+    }
+}
+
+/* Voice v's gate off on chip A (its wave register less the gate bit). */
+static void song_gate_off(song_ctl* sc, uint32_t v) {
+    sid_write(sc->chip, (uint8_t)(v * 7u + 4u), (uint8_t)(sc->shadow[v * 7u + 4u] & 0xfeu));
+}
+
+static void song_set_gate_reset(song_ctl* sc, uint8_t g) {
+    if (g != NO_GATE)
+        sid_set_gate_reset(sc->chip, g);
+}
+
+static void song_apply(song_ctl* sc, const song_cmd* c) {
+    switch (c->kind) {
+    case SONG_CMD_PLAY:
+        gt2_play_start(&sc->player, sc->song, (const gt2_shape*)c->u.p.ptr,
+                       (const uint8_t*)&c->u.p.x);
+        sc->calls = 0u;
+        sc->next = 0u;
+        sc->rem = 0u;
+        sc->period.q = c->u.p.y;
+        sc->period.r = c->u.p.z & 0xffffffu;
+        sc->period.den = (uint32_t)(uintptr_t)c->u.p.ptr2;
+        sc->armed = 0u;
+        for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++)
+            sc->jam[ch][0] = 0u;
+        /* the keys' registers out: the song starts from a silent chip */
+        for (uint32_t r = 0u; r < GT2_SID_REGS; r++) {
+            sc->shadow[r] = 0u;
+            sid_write(sc->chip, (uint8_t)r, 0u);
+        }
+        sc->song_gate = c->a;
+        song_set_gate_reset(sc, c->a);
+        sc->play_block = sc->blocks;
+        sc->isr_playing = 1u;
+        break;
+    case SONG_CMD_STOP:
+        sc->isr_playing = 0u;
+        for (uint32_t v = 0u; v < GT2_PLAY_CHANNELS; v++)
+            if (!((sc->mute >> v) & 1u))
+                song_gate_off(sc, v);
+        song_set_gate_reset(sc, c->a);
+        break;
+    case SONG_CMD_CONTINUE:
+        sc->next = 0u;
+        sc->rem = 0u;
+        song_set_gate_reset(sc, c->a);
+        sc->isr_playing = 1u;
+        break;
+    case SONG_CMD_MUTE: {
+        uint8_t was = sc->mute;
+        sc->mute = c->a;
+        for (uint32_t v = 0u; v < GT2_PLAY_CHANNELS; v++) {
+            uint32_t bit = 1u << v;
+            if ((c->a & bit) && !(was & bit)) {
+                song_gate_off(sc, v);
+            } else if (!(c->a & bit) && (was & bit)) {
+                for (uint32_t r = v * 7u; r < v * 7u + 7u; r++)
+                    sid_write(sc->chip, (uint8_t)r, sc->shadow[r]);
+            }
+        }
+        break;
+    }
+    case SONG_CMD_SHAPE:
+        gt2_play_set_shape(&sc->player, (const gt2_shape*)c->u.p.ptr);
+        break;
+    case SONG_CMD_HANDOVER:
+        sc->armed = 1u;
+        sc->armed_now = c->a;
+        sc->armed_state = (const gt2_player*)c->u.p.ptr;
+        sc->armed_shape = (const gt2_shape*)c->u.p.ptr2;
+        sc->armed_call = c->u.p.x;
+        sc->armed_seq = c->seq;
+        break;
+    case SONG_CMD_JAM:
+        if (c->a < GT2_PLAY_CHANNELS) {
+            sc->jam[c->a][0] = 1u;
+            sc->jam[c->a][1] = c->b;
+            sc->jam[c->a][2] = c->c;
+        }
+        break;
+    case SONG_CMD_EDIT:
+        gt2_edit_apply(sc->song, &c->u.edit);
+        break;
+    case SONG_CMD_PERIOD:
+        sc->period.q = c->u.p.x;
+        sc->period.r = c->u.p.y;
+        sc->period.den = c->u.p.z;
+        sc->rem = 0u;
+        break;
+    default:
+        break;
+    }
+}
+
+void song_ctl_block(song_ctl* sc, sid* chip) {
+    sc->chip = chip;
+    sc->blocks++;
+    uint32_t edits = 0u;
+    uint32_t tail = sc->cmd_tail;
+    uint32_t head = sc->cmd_head;
+    COMPILER_FENCE(); /* the head before the commands it publishes */
+    while (tail != head) {
+        const song_cmd* c = &sc->cmd[tail & CMD_MASK];
+        if (c->kind == SONG_CMD_EDIT) {
+            if (edits == SONG_EDITS_PER_BLOCK)
+                break; /* the rest wait for the next block */
+            edits++;
+        }
+        song_apply(sc, c);
+        sc->applied = c->seq;
+        tail++;
+    }
+    COMPILER_FENCE(); /* the commands read before the slots go back to the producer */
+    sc->cmd_tail = tail;
+    if (edits > sc->edits_block_max)
+        sc->edits_block_max = edits;
+}
+
+uint32_t song_ctl_due(const song_ctl* sc, uint32_t n) {
+    return sc->isr_playing && sc->next < n ? sc->next : n;
+}
+
+static void song_handover(song_ctl* sc) {
+    if (!sc->armed)
+        return;
+    if (!sc->armed_now && sc->calls != sc->armed_call) {
+        if (sc->calls > sc->armed_call) {
+            sc->armed = 0u; /* too late: the main loop fast-forwards further and tries again */
+            sc->handover_ok = 0u;
+            sc->handover_seq = sc->armed_seq;
+        }
+        return;
+    }
+    /* Word by word, not a struct assignment (which may become a memcpy call, in flash). */
+    const uint32_t* from = (const uint32_t*)(const void*)sc->armed_state;
+    uint32_t* to = (uint32_t*)(void*)&sc->player;
+    for (uint32_t i = 0u; i < sizeof(gt2_player) / 4u; i++)
+        ((volatile uint32_t*)to)[i] = from[i];
+    sc->player.shape = sc->armed_shape;
+    if (sc->armed_now)
+        sc->calls = sc->armed_call;
+    /* chip A as the fast-forwarded player left its registers */
+    for (uint32_t r = 0u; r < GT2_SID_REGS; r++)
+        sc->shadow[r] = sc->player.regs[r];
+    song_rewrite(sc, sc->chip);
+    sc->armed = 0u;
+    sc->handover_ok = 1u;
+    sc->handover_seq = sc->armed_seq;
+}
+
+static void song_push_events(song_ctl* sc) {
+    uint32_t h = sc->ev_head;
+    for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
+        const gt2_event* e = &sc->player.ev[ch];
+        if (e->flags == 0u)
+            continue;
+        song_event* o = &sc->ev[h & EV_MASK];
+        o->frame = (uint16_t)sc->calls;
+        o->flags = (uint8_t)((e->flags & 0x1fu) | (ch << 5));
+        o->pattern = e->pattern;
+        o->row = e->row;
+        o->order_pos = e->order_pos;
+        o->note = e->note;
+        o->instr = e->instr;
+        h++;
+    }
+    COMPILER_FENCE(); /* the events before the head that publishes them */
+    sc->ev_head = h;
+}
+
+void song_ctl_call(song_ctl* sc) {
+    song_handover(sc);
+    for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
+        if (sc->jam[ch][0]) {
+            sc->jam[ch][0] = 0u;
+            gt2_play_jam(&sc->player, ch, sc->jam[ch][1], sc->jam[ch][2], song_sink, sc);
+        }
+    }
+    gt2_play_frame(&sc->player, song_sink, sc);
+    sc->past_b7 |= sc->player.freq_unknown;
+    song_push_events(sc);
+    sc->calls++;
+    sc->next += sc->period.q;
+    sc->rem += sc->period.r;
+    if (sc->rem >= sc->period.den) {
+        sc->rem -= sc->period.den;
+        sc->next++;
+    }
+}
+
+void song_ctl_block_end(song_ctl* sc, uint32_t n) {
+    if (sc->isr_playing)
+        sc->next -= n;
+}
+
+void song_ctl_chip_swapped(void* ctx, uint32_t chip, sid* s) {
+    song_ctl* sc = ctx;
+    if (chip != 0u || !sc->isr_playing)
+        return;
+    song_rewrite(sc, s);
+    if (sc->song_gate != NO_GATE)
+        sid_set_gate_reset(s, sc->song_gate);
+}
+
+void song_ctl_render(song_ctl* sc, sid* chip, int16_t* out, uint32_t n) {
+    uint32_t at = song_ctl_due(sc, n);
+    if (at < n) {
+        if (at > 0u)
+            sid_render(chip, out, at);
+        song_ctl_call(sc);
+        sid_render(chip, out + at, n - at);
+    } else {
+        sid_render(chip, out, n);
+    }
+}
+
+/* --- The main loop ---------------------------------------------------------------------- */
+
+static void zero(void* p, uint32_t n) {
+    uint8_t* q = p;
+    for (uint32_t i = 0u; i < n; i++)
+        q[i] = 0u;
+}
+
+static int same(const void* a, const void* b, uint32_t n) {
+    const uint8_t* p = a;
+    const uint8_t* q = b;
+    for (uint32_t i = 0u; i < n; i++)
+        if (p[i] != q[i])
+            return 0;
+    return 1;
+}
+
+void song_ctl_init(song_ctl* sc, gt2_song* song, gt2_shape* shape0, gt2_shape* shape1,
+                   song_work* w) {
+    zero(sc, sizeof *sc);
+    sc->song = song;
+    sc->shapes[0] = shape0;
+    sc->shapes[1] = shape1;
+    sc->w = w;
+    sc->keys_gate_reset = 1u;
+    sc->song_gate = NO_GATE;
+    sc->period = song_period_of(1u, 0u);
+}
+
+void song_ctl_set_hooks(song_ctl* sc, const song_chip_hooks* hooks) {
+    sc->hooks = *hooks;
+}
+
+void song_ctl_set_keys_gate_reset(song_ctl* sc, uint8_t on) {
+    sc->keys_gate_reset = on ? 1u : 0u;
+}
+
+static uint32_t gcd(uint32_t a, uint32_t b) {
+    while (b != 0u) {
+        uint32_t t = a % b;
+        a = b;
+        b = t;
+    }
+    return a;
+}
+
+/* a * b / d and its remainder, by shifts (no 64-bit division helper on the device). */
+static uint32_t muldiv(uint32_t a, uint32_t b, uint32_t d, uint32_t* rem) {
+    uint64_t n = (uint64_t)a * b;
+    uint64_t q = 0u, r = 0u;
+    for (int i = 63; i >= 0; i--) {
+        r = (r << 1) | ((n >> i) & 1u);
+        if (r >= d) {
+            r -= d;
+            q |= (uint64_t)1u << i;
+        }
+    }
+    *rem = (uint32_t)r;
+    return (uint32_t)q;
+}
+
+song_period song_period_of(uint32_t multispeed, uint32_t ntsc) {
+    /* gt2reloc's CIA timer (greloc.c, the .sid's speed code): latch value + 1 cycles */
+    uint32_t base = ntsc ? 0x42c6u : 0x4cc7u;
+    uint32_t clock = ntsc ? 1022727u : 985248u;
+    uint32_t cycles = (multispeed ? base / multispeed : base * 2u) + 1u;
+    /* samples a call: cycles / clock * 24 MHz / 544 */
+    uint32_t num = 24000000u, den = clock * 544u;
+    uint32_t g = gcd(num, den);
+    num /= g;
+    den /= g;
+    song_period p;
+    p.q = muldiv(cycles, num, den, &p.r);
+    p.den = den;
+    return p;
+}
+
+static void cmd_init(song_cmd* c, uint8_t kind) {
+    zero(c, sizeof *c);
+    c->kind = kind;
+}
+
+static uint32_t room(const song_ctl* sc) {
+    return SONG_CMD_RING - (sc->stage - sc->cmd_tail);
+}
+
+/* Stages a command; its seq. The caller has checked the room. */
+static uint32_t push(song_ctl* sc, const song_cmd* c) {
+    song_cmd* d = &sc->cmd[sc->stage & CMD_MASK];
+    *d = *c;
+    d->seq = ++sc->seq;
+    sc->stage++;
+    return d->seq;
+}
+
+void song_ctl_commit(song_ctl* sc) {
+    COMPILER_FENCE(); /* the commands before the head that publishes them */
+    sc->cmd_head = sc->stage;
+}
+
+static uint8_t spare(const song_ctl* sc) {
+    return (uint8_t)(sc->active ^ 1u);
+}
+
+/* The player follows shapes[spare] once c (which names it) is applied; the other buffer is
+ * free once that has happened. */
+static void take_spare(song_ctl* sc, uint32_t seq) {
+    sc->active = spare(sc);
+    sc->spare_wait = 1u;
+    sc->spare_free_at = seq;
+}
+
+static uint8_t gate_for_play(const song_ctl* sc) {
+    return sc->hooks.chip_a_song ? NO_GATE : 0u; /* AUTHENTIC envelopes: no gate reset */
+}
+
+int song_ctl_play(song_ctl* sc, uint32_t subtune, uint32_t pos) {
+    song_work* w = sc->w;
+    if (sc->state == SONG_LOADING || sc->inflight_n || sc->ff_on || sc->spare_wait ||
+        room(sc) < 2u)
+        return 0;
+    if (sc->state == SONG_PLAYING)
+        song_ctl_stop(sc); /* the song plays no more while the next one loads */
+    sc->bg_on = 0u;
+    if (!song_ext_get_options(sc->song, &sc->opts))
+        gt2_options_default(&sc->opts);
+    sc->error = 0;
+    if (sc->opts.multispeed > SONG_MULTISPEED_MAX) {
+        sc->error = SONG_ERR_MULTISPEED;
+        return 1;
+    }
+    int r = gt2_shape_begin(&w->bg, sc->song, subtune, &sc->opts);
+    if (r < 0) {
+        sc->error = (int16_t)r;
+        return 1;
+    }
+    sc->subtune = (uint8_t)subtune;
+    sc->start_pos = (uint8_t)pos;
+    sc->bg_on = 0u;
+    sc->chip_ready = 0u;
+    sc->loading_done = 0u;
+    sc->state = SONG_LOADING;
+    return 1;
+}
+
+int song_ctl_stop(song_ctl* sc) {
+    if (sc->state != SONG_PLAYING || room(sc) < 1u)
+        return 0;
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_STOP);
+    c.a = sc->hooks.chip_a_keys ? NO_GATE : sc->keys_gate_reset;
+    sc->stop_seq = push(sc, &c);
+    sc->handback = 1u;
+    sc->state = SONG_STOPPED;
+    return 1;
+}
+
+int song_ctl_continue(song_ctl* sc) {
+    if (sc->state != SONG_STOPPED || room(sc) < 1u)
+        return 0;
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_CONTINUE);
+    c.a = gate_for_play(sc);
+    push(sc, &c);
+    sc->handback = 0u;
+    sc->state = SONG_PLAYING;
+    return 1;
+}
+
+int song_ctl_mute(song_ctl* sc, uint32_t mask) {
+    if (room(sc) < 1u)
+        return 0;
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_MUTE);
+    c.a = (uint8_t)(mask & 7u);
+    push(sc, &c);
+    return 1;
+}
+
+int song_ctl_jam(song_ctl* sc, uint32_t voice, uint32_t note, uint32_t instr) {
+    if (voice >= GT2_PLAY_CHANNELS || note > 95u || instr > GT2_MAX_INSTR || room(sc) < 1u)
+        return 0;
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_JAM);
+    c.a = (uint8_t)voice;
+    c.b = (uint8_t)note;
+    c.c = (uint8_t)instr;
+    push(sc, &c);
+    return 1;
+}
+
+int song_ctl_set_period(song_ctl* sc, song_period p) {
+    if (room(sc) < 1u || p.den == 0u || p.q < SONG_BLOCK)
+        return 0;
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_PERIOD);
+    c.u.p.x = p.q;
+    c.u.p.y = p.r;
+    c.u.p.z = p.den;
+    push(sc, &c);
+    sc->period = p;
+    return 1;
+}
+
+static void push_shape(song_ctl* sc) {
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_SHAPE);
+    c.u.p.ptr = sc->shapes[spare(sc)];
+    take_spare(sc, push(sc, &c));
+}
+
+int song_ctl_edit(song_ctl* sc, const gt2_edit* e) {
+    song_work* w = sc->w;
+    if (sc->state == SONG_IDLE) {
+        gt2_edit_commit(sc->song, e); /* no player reads the song */
+        return 1;
+    }
+    if (sc->state == SONG_LOADING || sc->ff_on || sc->inflight_n == SONG_INFLIGHT ||
+        room(sc) < 2u) {
+        sc->busy++;
+        return 0;
+    }
+    gt2_base saved = w->cur.base;
+    w->inflight[sc->inflight_n] = *e;
+    w->cur.pending = w->inflight;
+    w->cur.pending_count = sc->inflight_n + 1u;
+    if (gt2_shape_widen(&w->cur, e)) {
+        if (sc->spare_wait) {
+            /* the spare is the interrupt's until its command is applied: next pass */
+            w->cur.base = saved;
+            w->cur.pending_count = sc->inflight_n;
+            sc->busy++;
+            return 0;
+        }
+        sc->bg_on = 0u; /* a background analysis gives the spare up */
+        gt2_shape* next = sc->shapes[spare(sc)];
+        const gt2_shape* now = sc->shapes[sc->active];
+        gt2_shape_derive(&w->cur, next);
+        if (!same(next, now, sizeof *next)) {
+            if (!gt2_shape_compatible(now, next)) {
+                /* the player's state cannot follow: the channels it plays stay until a
+                 * fast-forwarded player takes over with the new shape */
+                gt2_shape_keep_channels(next, now->channels);
+                sc->want_handover = 1u;
+            }
+            push_shape(sc);
+            sc->widened = 1u;
+        }
+    } else if (sc->bg_on) {
+        sc->bg_dirty = 1u;
+    }
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_EDIT);
+    c.u.edit = *e;
+    w->inflight_seq[sc->inflight_n] = push(sc, &c);
+    sc->inflight_n++;
+    w->cur.pending_count = sc->inflight_n;
+    sc->quiet = 0u;
+    if (sc->bg_on)
+        sc->bg_dirty = 1u;
+    return 1;
+}
+
+static void start_ff(song_ctl* sc, uint32_t target, uint8_t now) {
+    song_work* w = sc->w;
+    gt2_play_start(&w->ff, sc->song, sc->shapes[now ? sc->active : spare(sc)], sc->start);
+    sc->ff_calls = 0u;
+    sc->ff_target = target;
+    sc->ff_now = now;
+    sc->ff_on = 1u;
+    sc->ff_sent = 0u;
+}
+
+int song_ctl_seek(song_ctl* sc, uint32_t call) {
+    if ((sc->state != SONG_PLAYING && sc->state != SONG_STOPPED) || sc->inflight_n || sc->ff_on)
+        return 0;
+    start_ff(sc, call, 1u);
+    return 1;
+}
+
+static void discard(void* ctx, uint8_t reg, uint8_t value) {
+    (void)ctx;
+    (void)reg;
+    (void)value;
+}
+
+/* What the interrupt has applied since the last poll. */
+static void poll_applied(song_ctl* sc) {
+    song_work* w = sc->w;
+    uint32_t a = sc->applied;
+    uint32_t k = 0u;
+    while (k < sc->inflight_n && (int32_t)(a - w->inflight_seq[k]) >= 0) {
+        gt2_edit_release(sc->song, &w->inflight[k]);
+        k++;
+    }
+    if (k > 0u) {
+        for (uint32_t i = k; i < sc->inflight_n; i++) {
+            w->inflight[i - k] = w->inflight[i];
+            w->inflight_seq[i - k] = w->inflight_seq[i];
+        }
+        sc->inflight_n -= k;
+        w->cur.pending_count = sc->inflight_n;
+    }
+    if (sc->spare_wait && (int32_t)(a - sc->spare_free_at) >= 0)
+        sc->spare_wait = 0u;
+    if (sc->handback && (int32_t)(a - sc->stop_seq) >= 0) {
+        sc->handback = 0u;
+        if (sc->hooks.chip_a_keys)
+            sc->hooks.chip_a_keys(sc->hooks.ctx);
+        sc->handed_back++;
+    }
+    if (sc->ff_sent && sc->handover_seq == sc->ff_seq) {
+        sc->ff_sent = 0u;
+        if (sc->handover_ok) {
+            sc->ff_on = 0u;
+            if (!sc->ff_now) {
+                sc->active = spare(sc); /* the interrupt took the spare with the state */
+                sc->want_handover = 0u;
+            }
+            sc->handovers++;
+        }
+    }
+}
+
+/* One slice of the fast-forward, and its hand-over once it is ahead of the interrupt. */
+static void poll_ff(song_ctl* sc) {
+    song_work* w = sc->w;
+    if (sc->ff_sent)
+        return;
+    uint32_t target = sc->ff_now ? sc->ff_target : sc->calls + SONG_HANDOVER_LEAD;
+    for (uint32_t i = 0u; i < SONG_FF_CALLS && sc->ff_calls < target; i++) {
+        gt2_play_frame(&w->ff, discard, 0);
+        sc->ff_calls++;
+    }
+    if (sc->ff_calls < target || room(sc) < 1u)
+        return;
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_HANDOVER);
+    c.a = sc->ff_now;
+    c.u.p.ptr = &w->ff;
+    c.u.p.ptr2 = sc->shapes[sc->ff_now ? sc->active : spare(sc)];
+    c.u.p.x = sc->ff_calls;
+    sc->ff_seq = push(sc, &c);
+    sc->ff_sent = 1u;
+}
+
+/* The analysis for PLAY, then chip A, then the PLAY command. */
+static void poll_loading(song_ctl* sc, int may_slice) {
+    song_work* w = sc->w;
+    if (!sc->loading_done) {
+        if (!may_slice)
+            return;
+        sc->slices++;
+        int r = gt2_shape_step(&w->bg, sc->shapes[spare(sc)], SONG_SLICE_UNITS);
+        if (r == GT2_SHAPE_MORE)
+            return;
+        if (r < 0) {
+            sc->error = (int16_t)r;
+            /* a stopped player keeps its song and shape; with none, nothing reads them */
+            sc->state = sc->shapes_used ? SONG_STOPPED : SONG_IDLE;
+            return;
+        }
+        sc->loading_done = 1u;
+        w->cur = w->bg;
+        w->cur.pending = w->inflight;
+        w->cur.pending_count = 0u;
+        for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++)
+            sc->start[ch] = sc->start_pos ? gt2_shape_order_byte(&w->cur, ch, sc->start_pos) : 0u;
+    }
+    if (!sc->chip_ready) {
+        if (sc->hooks.chip_a_song) {
+            song_chip_setup setup;
+            int has = song_ext_get_chip(sc->song, SONG_TAG_CHPA, &setup) > 0;
+            if (!sc->hooks.chip_a_song(sc->hooks.ctx, has ? &setup : 0))
+                return;
+        }
+        sc->chip_ready = 1u;
+    }
+    if (room(sc) < 1u)
+        return;
+    song_period p = song_period_of(sc->opts.multispeed, sc->opts.ntsc);
+    sc->period = p;
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_PLAY);
+    c.a = gate_for_play(sc);
+    c.u.p.ptr = sc->shapes[spare(sc)];
+    c.u.p.ptr2 = (const void*)(uintptr_t)p.den;
+    uint8_t* st = (uint8_t*)&c.u.p.x;
+    for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++)
+        st[ch] = sc->start[ch];
+    c.u.p.y = p.q;
+    c.u.p.z = p.r;
+    take_spare(sc, push(sc, &c));
+    sc->shapes_used = 1u;
+    sc->widened = 0u;
+    sc->want_handover = 0u;
+    sc->handback = 0u;
+    sc->state = SONG_PLAYING;
+}
+
+/* Narrowing: a fresh analysis of the song as it is, once edits have stopped. */
+static void poll_narrow(song_ctl* sc, int may_slice) {
+    song_work* w = sc->w;
+    if (!sc->bg_on) {
+        if (!sc->widened || sc->quiet < SONG_QUIET_POLLS || sc->inflight_n || sc->ff_on ||
+            sc->spare_wait || !may_slice)
+            return;
+        if (gt2_shape_begin(&w->bg, sc->song, sc->subtune, &sc->opts) < 0)
+            return;
+        sc->bg_on = 1u;
+        sc->bg_dirty = 0u;
+        return;
+    }
+    if (!may_slice)
+        return;
+    sc->slices++;
+    int r = gt2_shape_step(&w->bg, sc->shapes[spare(sc)], SONG_SLICE_UNITS);
+    if (r == GT2_SHAPE_MORE)
+        return;
+    sc->bg_on = 0u;
+    if (r < 0 || sc->bg_dirty || sc->inflight_n)
+        return; /* the song changed under it: again once quiet */
+    const gt2_shape* now = sc->shapes[sc->active];
+    gt2_shape* next = sc->shapes[spare(sc)];
+    w->cur = w->bg;
+    w->cur.pending = w->inflight;
+    w->cur.pending_count = 0u;
+    sc->widened = 0u;
+    if (same(next, now, sizeof *next))
+        return;
+    if (gt2_shape_compatible(now, next)) {
+        if (room(sc) < 1u) {
+            sc->widened = 1u; /* again later */
+            return;
+        }
+        push_shape(sc);
+        sc->narrowed++;
+    } else {
+        start_ff(sc, 0u, 0u); /* the spare holds the fresh shape */
+    }
+}
+
+void song_ctl_poll(song_ctl* sc, int may_slice) {
+    poll_applied(sc);
+    if (sc->quiet < 0xffffffffu)
+        sc->quiet++;
+    switch (sc->state) {
+    case SONG_LOADING:
+        poll_loading(sc, may_slice);
+        break;
+    case SONG_PLAYING:
+    case SONG_STOPPED:
+        if (sc->want_handover && !sc->ff_on && !sc->inflight_n && !sc->spare_wait) {
+            /* the true shape, into the spare, for the fast-forward */
+            gt2_shape_derive(&sc->w->cur, sc->shapes[spare(sc)]);
+            start_ff(sc, 0u, 0u);
+        }
+        if (sc->ff_on) {
+            if (may_slice) {
+                sc->slices++;
+                poll_ff(sc);
+            }
+        } else {
+            poll_narrow(sc, may_slice);
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+uint32_t song_ctl_events(song_ctl* sc, song_event* out, uint32_t n) {
+    uint32_t got = 0u;
+    while (got < n) {
+        uint32_t h = sc->ev_head;
+        COMPILER_FENCE();
+        if (h - sc->ev_tail > SONG_EVENT_RING) {
+            sc->ev_lost += h - sc->ev_tail - SONG_EVENT_RING;
+            sc->ev_tail = h - SONG_EVENT_RING;
+        }
+        if (sc->ev_tail == h)
+            break;
+        song_event e = sc->ev[sc->ev_tail & EV_MASK];
+        COMPILER_FENCE();
+        if (sc->ev_head - sc->ev_tail > SONG_EVENT_RING)
+            continue; /* overwritten while read: count it and go on from the oldest left */
+        out[got++] = e;
+        sc->ev_tail++;
+    }
+    return got;
+}
+
+uint32_t song_ctl_state(const song_ctl* sc) {
+    return sc->state;
+}
+
+uint32_t song_ctl_warnings(const song_ctl* sc) {
+    uint32_t w = sc->shapes[sc->active]->warnings;
+    if (sc->past_b7)
+        w |= GT2_PLAY_WARN_PAST_B7;
+    return w;
+}

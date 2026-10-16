@@ -1047,8 +1047,8 @@ fn check_events(sng: &[u8], subtune: u8, o: &gt2_options, e: &mut Events) -> Res
     let mut song = Song::host();
     song.read(sng, 0).map_err(|i| format!("read: {}", i.msg))?;
     let mut p = Player::new(&song, subtune as u32, o).ok_or("refused")?;
-    let channels = p.raw().channels as usize;
-    let sub = p.raw().subtune as u32;
+    let channels = p.shape().channels as usize;
+    let sub = p.shape().subtune as u32;
     let mut wave = [0u8; 3];
     let mut last_row: [Option<(u8, u8)>; 3] = [None; 3];
     for (f, frame) in t.frames.iter().enumerate() {
@@ -1276,7 +1276,8 @@ fn a_refused_init_leaves_the_player_zeroed() {
         let mut p = gt2_player::default();
         let bytes = size_of::<gt2_player>();
         unsafe { std::ptr::write_bytes(&mut p as *mut gt2_player as *mut u8, 0xaa, bytes) };
-        let r = unsafe { gt2_play_init(&mut p, song.ptr(), sub, &default_options()) };
+        let mut shape = Box::<gt2_shape>::default();
+        let r = unsafe { gt2_play_init(&mut p, &mut *shape, song.ptr(), sub, &default_options()) };
         assert_eq!(r, err);
         let raw =
             unsafe { std::slice::from_raw_parts(&p as *const gt2_player as *const u8, bytes) };
@@ -1291,15 +1292,15 @@ fn a_pitch_the_player_does_not_play_is_reported() {
     let mut song = Song::host();
     song.read(&notes_song(), 0).unwrap();
     let mut o = default_options();
-    assert_eq!(Player::new(&song, 0, &o).unwrap().raw().warnings, 0);
+    assert_eq!(Player::new(&song, 0, &o).unwrap().shape().warnings, 0);
     o.a4_millihz = 432_000;
     let p = Player::new(&song, 0, &o).unwrap();
     assert_eq!(
-        p.raw().warnings as u32 & GT2_PLAY_WARN_PITCH,
+        p.shape().warnings as u32 & GT2_PLAY_WARN_PITCH,
         GT2_PLAY_WARN_PITCH
     );
     // gt2reloc reads -F but never uses it: no warning
     o.a4_millihz = 0;
     o.clock_hz = 1_000_000;
-    assert_eq!(Player::new(&song, 0, &o).unwrap().raw().warnings, 0);
+    assert_eq!(Player::new(&song, 0, &o).unwrap().shape().warnings, 0);
 }

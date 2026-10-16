@@ -20,6 +20,8 @@ const SOURCES: &[&str] = &[
     "core/song/gt2_sng.c",
     "core/song/song_ext.c",
     "core/player/gt2_play.c",
+    "core/player/gt2_shape.c",
+    "core/player/song_ctl.c",
     "bench/workload.c",
     "app/about.c",
     "app/boot.c",
