@@ -194,6 +194,13 @@ Four rules keep them harmless:
   programs that header to zero (bits only cleared): it can never read valid
   again. A header already all zero is left alone, so each cut costs at most
   one such program.
+- **A kill is made again.** A kill cut short can leave the magic's zeros
+  faint: read killed at one mount (so a collection may drop a tombstone that
+  hid only that sector's records) and valid at a later one (the records
+  back). Zeros that read zero may still be faint, so every sector the mount
+  reads as killed has its magic programmed to zero again, before the
+  session's first record or file write, or first kill. Those pages are
+  garbage, waiting for their erase.
 
 A cut write whose header and data went whole is thus completed at the next
 mount, and from then on reads the same at every mount; one cut before that

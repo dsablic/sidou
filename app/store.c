@@ -15,7 +15,9 @@ enum {
     SEC_FULL = 0x10,  /* nothing more is written into it */
     SEC_GUESS = 0x20, /* the mount could not read its erase count */
     SEC_FILE = 0x40,  /* a live (or open) file's: never collected, never a head */
-    SEC_TORN = 0x80,  /* its records end in a cut header, at `free`: to program to zero (fix_first) */
+    /* A cut left it: its records end in a cut header, at `free` (claimed), or its kill was cut
+     * (dirty: any killed sector). Programmed to zero before the session writes (fix_first). */
+    SEC_TORN = 0x80,
 };
 
 /* store.work's units: each about 4 instructions or fewer on the device (Task 4 measures it): a
@@ -699,7 +701,9 @@ static int classify(store* s, uint32_t sec) {
     }
     if (killed(h, &erases)) {
         s->mount_sidou = 1;
-        s->sstate[sec] = SEC_DIRTY;
+        /* A kill whose zeros may be faint (even reading zero now): its records could read valid
+         * at a later mount. Killed again before the session writes; the page is garbage. */
+        s->sstate[sec] = SEC_DIRTY | SEC_TORN;
         c->erases = erases;
         return 1;
     }
@@ -1486,7 +1490,9 @@ static void fix_step(store* s) {
     static const uint8_t zero[STORE_REC_HEADER] = {0};
     uint32_t t = torn(s);
     if (t != NONE) {
-        int rc = prog_piece(s, t, s->sector[t].free, zero, STORE_REC_HEADER, &s->fix_done);
+        int dirty = sec_state(s, t) == SEC_DIRTY; /* a cut kill: the magic again */
+        int rc = prog_piece(s, t, dirty ? 0u : s->sector[t].free, zero, dirty ? 8u : STORE_REC_HEADER,
+                            &s->fix_done);
         if (rc != 0) {
             s->sstate[t] &= (uint8_t)~SEC_TORN; /* done, or failed (counted in errors) */
             s->fix_done = 0;

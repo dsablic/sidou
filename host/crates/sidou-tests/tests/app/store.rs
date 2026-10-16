@@ -3548,3 +3548,45 @@ fn a_cut_header_is_made_invalid_before_the_next_write() {
         assert_eq!(r.get(2), None);
     }
 }
+
+/// A kill cut short can leave the magic's zeros faint: the next mount reads the sector killed,
+/// and so lets a collection drop a tombstone that hid only that sector's records; a later mount
+/// reading the magic valid again would bring them back. The kill is programmed again before the
+/// session's first write or kill, so it holds.
+#[test]
+fn a_cut_kill_is_made_again_before_anything_relies_on_it() {
+    let mut r = fresh(67, 256);
+    assert_eq!(r.put_now(7, b"value"), STORE_OK);
+    let old = sectors_holding(r.sim.region(), 7, 1)[0];
+    // A boot between: the deletion lands in a fresh head.
+    r.reset();
+    r.mount();
+    r.maintain();
+    assert_eq!(r.delete_now(7), STORE_OK);
+    assert!(!sectors_holding(r.sim.region(), 7, STORE_TYPE_TOMB as u8).contains(&old));
+    // The value's sector killed by a cut kill: its magic's zeros faint, reading zero now.
+    for b in &mut r.sim.cells.meant[old * SECTOR..old * SECTOR + 8] {
+        *b = 0;
+    }
+    r.sim.set_faint(old * SECTOR, 8, 0x00);
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    assert_eq!(r.get(7), None);
+    // A collection of the tombstone's sector (the least live), with nothing older in sight of
+    // the tombstone, drops it (no erase meanwhile: the value's sector stays as the kill left it).
+    assert_eq!(r.put_now(30, b"a head with room"), STORE_OK);
+    assert_eq!(r.collect(), STORE_OK);
+    r.settle();
+    assert!(sectors_holding(r.sim.region(), 7, STORE_TYPE_TOMB as u8).is_empty());
+    // The magic reads valid again, if its bits are still faint.
+    for (i, &m) in b"SIDOUSTR".iter().enumerate() {
+        let at = old * SECTOR + i;
+        let f = r.sim.cells.faint[at];
+        r.sim.cells.mem[at] = (r.sim.cells.mem[at] & !f) | (m & f);
+    }
+    let cells = r.sim.cells.mem.clone();
+    r.sim.mem[LO..HI].copy_from_slice(&cells);
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    assert_eq!(r.get(7), None, "the deleted value came back");
+}

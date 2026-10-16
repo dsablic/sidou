@@ -46,7 +46,8 @@
  *   preceded by programming its header and commit word again (the same bytes), so it reads
  *   committed for good before anything could follow it or take its key's older records; and
  *   first, a header a cut left erased-looking or failing its CRC is programmed to zero, so its
- *   faint bits can never make it valid later. A cut write is thus completed at the next mount
+ *   faint bits can never make it valid later, and every sector the mount read as killed is
+ *   killed again (a cut kill's zeros may be faint, even reading zero). A cut write is thus completed at the next mount
  *   if its header and data went whole, never counts if not (once anything is written after
  *   it), and never reads otherwise afterwards;
  *
