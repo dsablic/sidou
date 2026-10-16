@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 
+#include "keys_route.h"
 #include "live.h"
 #include "panel.h"
 
@@ -22,6 +23,8 @@
  * the start. now_ms is on ui_poll's clock: the main loop's uptime, which counts from TIMER4's
  * start, not from here. */
 void ui_init(live* l, uint32_t now_ms, int home_held);
+/* The two chips' routing, for the CHIP view's tabs (app/keys_route.h). */
+void ui_set_keys(keys_route* kr);
 /* Main loop. Every UI_PERIOD_MS it runs a frame (views_frame: the view composes if what it
  * shows changed, app/screen.h), and half a frame later lets the view prepare the next one
  * (views_prepare), each in a call of its own. Changed cells go out as runs (one LCD window each), one per

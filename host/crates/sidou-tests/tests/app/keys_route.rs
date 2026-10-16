@@ -610,3 +610,27 @@ fn keys_a_leaves_the_songs_other_voices_byte_for_byte() {
         "voice 3, the sync source, is the keys'"
     );
 }
+
+/// The CHIP view's A tab during a song edits the song's setup (keys_route_edit_song_setup):
+/// chip A is prepared to it in the background, chip B (the keys') keeps the keys' setup.
+#[test]
+fn an_edit_of_the_songs_setup_brings_chip_a_to_it() {
+    let mut k = Keys::new();
+    k.ticks(20);
+    k.song(true);
+    k.ticks(2);
+    assert_eq!(k.live.keys_chip, 1);
+    let b_before = setup(&k, 1);
+    let song = chip_setup {
+        profile: SID_CHIP_6581_WORN as u8,
+        controls: [0, 0, 64, 0],
+        gate_reset: 1,
+    };
+    unsafe { keys_route_edit_song_setup(&mut *k.kr, &song) };
+    k.ticks(40);
+    assert_eq!(k.chip(0).filter_curve, 3, "chip A has the song's WORN");
+    assert_eq!(k.chips.ramp[0].now.thump, 64, "and its thump");
+    assert_eq!(setup(&k, 1), b_before, "the keys' chip changed");
+    assert_eq!(k.outs[0].unprepared_resets, 1, "live_init's only");
+    assert_eq!(k.chips.lost_resets, 0);
+}

@@ -140,11 +140,11 @@ fn chip_opens_from_the_menu_behind_the_chip_card() {
 fn the_page_shows_the_profile_the_character_and_the_slots() {
     let ui = chip_ui();
     assert_eq!(text(&ui, 2, 2, 6), "CHIP");
-    // The tabs: A in reverse video, B greyed with its milestone.
-    assert_eq!(text(&ui, 2, 20, 28), " A  B M2");
+    // The tabs (M2b Task 5): A shown, in reverse video, then B.
+    assert_eq!(text(&ui, 2, 12, 28), " A       B");
     let at = |ui: &Ui, c: usize, r: usize| ui.g.attr[r * COLS + c];
-    assert_eq!(at(&ui, 21, 2), ((GRID_LIGHT_BLUE << 4) | GRID_BLUE) as u8);
-    assert_eq!(at(&ui, 24, 2) & 15, GRID_GREY as u8);
+    assert_eq!(at(&ui, 13, 2), ((GRID_LIGHT_BLUE << 4) | GRID_BLUE) as u8);
+    assert_eq!(at(&ui, 21, 2), ((GRID_BLUE << 4) | GRID_LIGHT_BLUE) as u8);
     // The frames and their titles.
     assert_eq!(text(&ui, CHIP_VIEW_CHIP_ROW, 3, 9), " CHIP");
     assert_eq!(text(&ui, CHIP_VIEW_CHARACTER_ROW, 3, 14), " CHARACTER");
@@ -253,6 +253,12 @@ fn select_moves_the_focus_and_selects_the_slot() {
     ui.turn(PANEL_ENC_SELECT, 5);
     assert_eq!(focus(&ui), CHIP_VIEW_SECTIONS - 1);
     ui.turn(PANEL_ENC_SELECT, -9);
+    assert_eq!(
+        focus(&ui),
+        CHIP_VIEW_TABS,
+        "above the chip, the tabs (M2b Task 5)"
+    );
+    ui.turn(PANEL_ENC_SELECT, 1);
     assert_eq!(focus(&ui), CHIP_VIEW_CHIP);
     // On the chip, the selected slot stays as it was.
     assert_eq!(ui.live().fx_select, 2);
@@ -732,4 +738,124 @@ fn a_burst_of_changes_stays_within_the_budget() {
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut ui);
     assert_eq!(ui.g.ch.to_vec(), now);
+}
+
+/// The tabs (M2b Task 5): SELECT moves up from CHIP into them (clamped), ALGORITHM there
+/// switches A and B (clamped); the shown tab in reverse video (white with the tabs' focus),
+/// KEYS beside the keys' chip; with no song the B tab shows the keys' setup, FOLLOWS KEYS and
+/// the slots SHARED in its help line, and K1..K4 turn the keys' setup on either tab.
+#[test]
+fn the_tabs_switch_mark_the_keys_and_show_the_keys_setup() {
+    let mut ui = chip_ui();
+    ui.rig.live.two_chips = 1;
+    unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_AGE, 40) };
+    settle(&mut ui);
+    assert_eq!(text(&ui, 2, 12, 28), " A KEYS  B");
+    ui.turn(PANEL_ENC_SELECT, -1);
+    assert_eq!(focus(&ui), CHIP_VIEW_TABS);
+    ui.turn(PANEL_ENC_SELECT, -3);
+    assert_eq!(focus(&ui), CHIP_VIEW_TABS, "clamped above the tabs");
+    settle(&mut ui);
+    let at = |ui: &Ui, c: usize, r: usize| ui.g.attr[r * COLS + c];
+    assert_eq!(
+        at(&ui, 13, 2),
+        ((GRID_WHITE << 4) | GRID_BLUE) as u8,
+        "the tabs' focus"
+    );
+    assert_eq!(ui.g.ch[2 * COLS + 1], FONT_PLAY as u8);
+    let a_page: Vec<String> = (CHIP_VIEW_CHIP_ROW..CHIP_VIEW_HELP_ROW)
+        .map(|r| ui.row(r as usize))
+        .collect();
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(ui.v.chip.tab, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 3);
+    assert_eq!(ui.v.chip.tab, 1, "clamped at B");
+    settle(&mut ui);
+    let b_page: Vec<String> = (CHIP_VIEW_CHIP_ROW..CHIP_VIEW_HELP_ROW)
+        .map(|r| ui.row(r as usize))
+        .collect();
+    assert_eq!(
+        b_page, a_page,
+        "with no song the B tab shows the keys' setup, the slots shared"
+    );
+    assert_eq!(
+        text(&ui, CHIP_VIEW_HELP_ROW, 2, 28),
+        "FOLLOWS KEYS  SLOTS SHARED"
+    );
+    assert_eq!(at(&ui, 21, 2), ((GRID_WHITE << 4) | GRID_BLUE) as u8);
+    // K1 on the tabs and on the chip turns the keys' age, on the B tab too.
+    assert_eq!(unsafe { chip_view_page(&ui.v.chip) }, PANEL_PAGE_CHARACTER);
+    ui.turn(PANEL_ENC_K1, 1);
+    assert_eq!(param(&ui, LIVE_PARAM_AGE), 44);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_K1, 1);
+    assert_eq!(param(&ui, LIVE_PARAM_AGE), 48);
+    // The keys on chip B: KEYS moves, and the B tab's help says the slots are A's too.
+    ui.rig.live.keys_chip = 1;
+    settle(&mut ui);
+    assert_eq!(text(&ui, 2, 12, 28), " A       B KEYS");
+    assert_eq!(
+        text(&ui, CHIP_VIEW_HELP_ROW, 2, 28),
+        "SLOTS SHARED WITH CHIP A"
+    );
+}
+
+/// During a song the A tab shows the song's setup (keys_route.song_want) and edits it: the
+/// profile on ALGORITHM, the controls on K1..K4 (the view's own: the panel's page names
+/// nothing there, so MIDI learn binds nothing), and the keys' setup is left alone; the B tab
+/// shows and edits the keys'.
+#[test]
+fn during_a_song_the_a_tab_edits_the_songs_setup() {
+    let mut ui = chip_ui();
+    ui.rig.live.two_chips = 1;
+    ui.rig.live.keys_chip = 1;
+    let mut kr = Box::<keys_route>::default();
+    kr.l = &mut *ui.rig.live;
+    kr.song = 1;
+    kr.song_want = chip_setup {
+        profile: SID_CHIP_6581_R2 as u8,
+        controls: [10, 20, 30, 40],
+        gate_reset: 1,
+    };
+    unsafe { chip_view_set_keys(&mut ui.v.chip, &mut *kr) };
+    settle(&mut ui);
+    assert_eq!(unsafe { chip_view_song_tab(&ui.v.chip) }, 1);
+    assert_eq!(
+        text(&ui, CHIP_VIEW_CHIP_ROW + 1, 4, 26),
+        "PROFILE        6581 R2"
+    );
+    assert_eq!(text(&ui, CHIP_VIEW_CHARACTER_ROW + 1, 23, 26), " 10");
+    assert_eq!(
+        text(&ui, CHIP_VIEW_HELP_ROW, 2, 28),
+        "SONG SETUP  SLOTS SHARED"
+    );
+    assert_eq!(unsafe { chip_view_page(&ui.v.chip) }, PANEL_PAGE_NONE);
+    let (age, profile) = (param(&ui, LIVE_PARAM_AGE), param(&ui, LIVE_PARAM_PROFILE));
+    ui.turn(PANEL_ENC_K1, 2);
+    // The panel's page as the event left it (views set it before and after each event).
+    let p: *const panel = &*ui.p;
+    let learn = unsafe { panel_knob_param(p, &*ui.rig.live, 0, PANEL_ENC_K1) };
+    assert_eq!(
+        learn, LIVE_PARAM_COUNT,
+        "MIDI learn would bind a keys' control"
+    );
+    ui.turn(PANEL_ENC_K4, -1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(kr.song_want.controls, [18, 20, 30, 36]);
+    assert_eq!(u32::from(kr.song_want.profile), SID_CHIP_6581_R2 + 1);
+    assert_eq!(
+        (param(&ui, LIVE_PARAM_AGE), param(&ui, LIVE_PARAM_PROFILE)),
+        (age, profile)
+    );
+    settle(&mut ui);
+    assert_eq!(text(&ui, CHIP_VIEW_CHARACTER_ROW + 1, 23, 26), " 18");
+    // The B tab: the keys' setup, the knobs on it.
+    ui.turn(PANEL_ENC_SELECT, -1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    assert_eq!(unsafe { chip_view_page(&ui.v.chip) }, PANEL_PAGE_CHARACTER);
+    ui.turn(PANEL_ENC_K1, 1);
+    assert_eq!(param(&ui, LIVE_PARAM_AGE), age + 4);
+    assert_eq!(kr.song_want.controls[0], 18, "the song's age moved");
+    unsafe { chip_view_set_keys(&mut ui.v.chip, std::ptr::null_mut()) };
 }

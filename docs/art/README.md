@@ -519,15 +519,18 @@ still composes nothing: 7.4k a frame (7.3k before LIVE).
 
 ## CHIP
 
-CHIP (`app/chip_view.h`, from the menu behind THE CHIP's card) is chip A's sound on one page,
-on the status screen's colours: light blue on blue inside the full-block border, the focus in
-white, what is off or not there yet in grey.
+CHIP (`app/chip_view.h`, from the menu behind THE CHIP's card) is a chip's sound on one page,
+chip A or chip B, on the status screen's colours: light blue on blue inside the full-block
+border, the focus in white, what is off in grey.
 
 ![CHIP, the focus on the chip](../../tests/golden/lcd/chip.png)
 ![CHIP, the focus on DIST](../../tests/golden/lcd/chip-dist.png)
+![CHIP's B tab, the focus on the tabs](../../tests/golden/lcd/chip-b.png)
+![CHIP's B tab with the keys on chip B](../../tests/golden/lcd/chip-b-keys.png)
 
-- **Row 2:** CHIP, and the chips' tabs at the right: **A** in reverse video (blue on light
-  blue), **B M2** in grey until M2 brings chip B.
+- **Row 2:** CHIP, and the chips' tabs from column 12, 8 cells each: **A** and **B**, the
+  shown one in reverse video (blue on light blue; on white while the tabs have the focus,
+  with the play mark in the margin), **KEYS** beside the letter of the keys' chip.
 - **Frames** from column 2, 26 wide, one after the other: CHIP (rows 4-7: the profile and the
   model, values right-aligned against the frame), CHARACTER (rows 8-13: AGE, DAC, THUMP,
   BLEED, each a 12-cell bar of `BAR` eighths and its value), then DIST, MOD and FX (4 rows
@@ -537,7 +540,9 @@ white, what is off or not there yet in grey.
   the margin at column 1 on each of its frames' top rows; the chip's focus is both its frames.
 - **Grey:** a slot's control its algorithm does not use (TAPE's A and B), and every control
   of a slot that is off, under its plain name (AMT, A, B, MIX).
-- **Row 26:** the help line, SELECT MOVE ALGORITHM STEP; the toast keeps row 27.
+- **Row 26:** the help line, SELECT MOVE ALGORITHM STEP; on the B tab FOLLOWS KEYS  SLOTS
+  SHARED, or SLOTS SHARED WITH CHIP A while the keys play chip B; on a song's A tab SONG
+  SETUP  SLOTS SHARED. The toast keeps row 27.
 
 **The budget.** The page is built in a canvas off the grid whenever what it shows changes
 (a byte each for the profile, the model, the character, every slot field, the selected slot
@@ -551,6 +556,7 @@ bytes and composes nothing. Measured in fm1-emu (`chip_stays_within_its_budgets`
 |---|---|---|---|
 | Idle | 0, 0 | 0 | 6.3k, 0.3k instructions |
 | A knob's detent (25 frames) | 0.08, 2 | 0.19 ms | 7.7k, 34.2k |
+| A tab switch (25 frames; M2b Task 5) | 1.6, 40 | 3.44 ms | 8.3k, 34.8k |
 | The busiest: every control over MIDI at once, a focus move and a chip change (50 frames) | 26.9, 200 | 17.62 ms | 37.4k, 28.6k |
 
 The busiest `ui_poll` is a build of the page and the scan of its 900 cells. SELECT,

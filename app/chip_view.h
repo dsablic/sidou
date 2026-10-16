@@ -1,11 +1,19 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* CHIP, from the menu: the chip's profile, its character and the effect slots on one page, for
- * chip A (design doc section 7; docs/reference/controls.md "CHIP"). Chip B comes with M2: its
- * tab shows, greyed, as "B M2".
+/* CHIP, from the menu: a chip's profile, its character and the effect slots on one page, for
+ * chip A or chip B (design doc section 7; docs/reference/controls.md "CHIP").
+ *
+ * The tabs (M2b Task 5): A and B, the one shown in reverse video, KEYS beside the letter of
+ * the chip the keys play (app/keys_route.h). What a tab shows and edits follows which chip the
+ * keys play: chip A during a song is the song's, so its tab shows the song's setup and edits it
+ * (keys_route_edit_song_setup; K1..K4 turned by the view itself, PANEL_PAGE_NONE, which MIDI
+ * learn binds nothing to); every other tab shows the keys' setup, live's, and edits it (the
+ * other chip follows it in the background: with no song the B tab says FOLLOWS KEYS). The
+ * effect slots are one chain on the mix of both chips: their frames show on both tabs, and the
+ * B tab's help line says SHARED.
  *
  * The page, in PETSCII frames (docs/art/README.md "CHIP"):
- * - row 2: CHIP and the tabs, A in reverse video, B greyed;
+ * - row 2: CHIP and the tabs, the shown one in reverse video (white while the tab focus is on);
  * - CHIP (rows 4-7): the profile (6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581) and its
  *   model as asked for (the chip plays them once its spare is prepared, 70 to 150 ms later:
  *   app/reg_ring.h);
@@ -16,8 +24,9 @@
  *   (OVERDRIVE: DRIVE, TONE, BIAS); an unused control and a slot that is off are greyed;
  * - row 26: the help line.
  *
- * Focus: the chip (its profile and character, both frames) or a slot. A play mark in the
- * margin and white frames show it. SELECT moves it, clamped at both ends: CHIP, DIST, MOD, FX.
+ * Focus: the tabs, the chip (its profile and character, both frames) or a slot. A play mark in
+ * the margin and white frames show it. SELECT moves it, clamped at both ends: the tabs, CHIP,
+ * DIST, MOD, FX. ALGORITHM on the tabs switches A and B; K1..K4 there turn the chip's.
  * The slot focus is live's selected slot (fx_select), the one SCL selects and EDIT + K1..K4
  * turns everywhere: SELECT onto a slot selects it, and SCL on a slot moves the focus with it.
  * ALGORITHM steps the focused section's choice, clamped: the profile on the chip, the
@@ -41,6 +50,7 @@
 #include <stdint.h>
 
 #include "grid.h"
+#include "keys_route.h"
 #include "live.h"
 #include "screen.h"
 
@@ -54,6 +64,8 @@ extern "C" {
 /* The sections SELECT moves between: the chip, then the slots. */
 #define CHIP_VIEW_CHIP 0u
 #define CHIP_VIEW_SECTIONS (1u + LIVE_SLOTS)
+/* chip_view_focus with the focus on the tabs, above the chip. */
+#define CHIP_VIEW_TABS 0xffu
 /* The frames: CHIP from row CHIP_VIEW_CHIP_ROW, CHARACTER from CHIP_VIEW_CHARACTER_ROW, slot k
  * from CHIP_VIEW_SLOT_ROW + CHIP_VIEW_SLOT_ROWS * k; each from column CHIP_VIEW_COL,
  * CHIP_VIEW_W wide. */
@@ -66,9 +78,10 @@ extern "C" {
 #define CHIP_VIEW_HELP_ROW 26u
 /* A control's name on the page, terminator included ("DEPTH"). */
 #define CHIP_VIEW_LABEL 6u
-/* What the page shows, as bytes (chip_view.c look): the profile and model asked for,
- * the four character controls, every slot field, the selected slot and the focus. */
-#define CHIP_VIEW_LOOK (2u + (LIVE_CHAR_FIELDS - 1u) + LIVE_SLOTS * LIVE_SLOT_FIELDS + 2u)
+/* What the page shows, as bytes (chip_view.c look): the tab's profile and model (asked for),
+ * its four character controls, every slot field, the selected slot, the focus, the tab, the
+ * tabs' focus, the keys' chip and what the help line says. */
+#define CHIP_VIEW_LOOK (2u + (LIVE_CHAR_FIELDS - 1u) + LIVE_SLOTS * LIVE_SLOT_FIELDS + 6u)
 
 typedef struct {
     uint8_t ch[GRID_ROWS][GRID_COLS];
@@ -77,7 +90,10 @@ typedef struct {
 
 typedef struct {
     live* l;
+    keys_route* kr;  /* NULL: one chip's setup (live's) on both tabs, no song (host tests) */
     uint8_t chip;    /* 1: the focus is on the chip; 0: on the selected slot (live's fx_select) */
+    uint8_t tabs;    /* 1: the focus is on the tabs (chip is 1 too: K1..K4 turn the chip's) */
+    uint8_t tab;     /* the tab shown: 0 A, 1 B */
     uint8_t built;   /* the canvas shows drawn */
     uint8_t copying; /* the canvas has cells the grid does not have yet (the budget) */
     uint16_t cursor; /* the cell the copy goes on from */
@@ -88,13 +104,18 @@ typedef struct {
 
 extern const view chip_view_view;
 
-/* The focus on the chip, on l. */
+/* The focus on the chip, on l, tab A, no keys_route. */
 void chip_view_init(chip_view* cv, live* l);
-/* The section in focus: CHIP_VIEW_CHIP, or 1 + the selected slot. */
+/* The two chips' routing (the device's, app/keys_route.h): which the keys play, the song. */
+void chip_view_set_keys(chip_view* cv, keys_route* kr);
+/* The section in focus: CHIP_VIEW_TABS, CHIP_VIEW_CHIP, or 1 + the selected slot. */
 uint32_t chip_view_focus(const chip_view* cv);
 /* What K1..K4 turn while the page shows (app/panel.h panel.page): PANEL_PAGE_CHARACTER on the
- * chip, PANEL_PAGE_SLOT on a slot. */
+ * tabs and the chip, PANEL_PAGE_NONE there on a song's chip A (the view turns them),
+ * PANEL_PAGE_SLOT on a slot. */
 uint32_t chip_view_page(const chip_view* cv);
+/* 1 while the tab shows a song's chip A: its setup is the song's (keys_route.song_want). */
+int chip_view_song_tab(const chip_view* cv);
 /* The name of a slot's field (LIVE_SLOT_AMOUNT, _A, _B, _MIX) for its algorithm alg, as the
  * page shows it, into buf (CHIP_VIEW_LABEL): what it does in that algorithm (core/fx/fx_slots.h)
  * and 1, or its generic name (AMT, A, B, MIX) and 0 for a field the algorithm does not use and

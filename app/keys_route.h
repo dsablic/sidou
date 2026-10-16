@@ -65,6 +65,10 @@ typedef struct {
     uint8_t stale; /* 1 while chip A, the keys' under KEYS A, holds a song's setup */
     uint8_t under; /* 1 while the keys play under a song (on chip A) */
     uint8_t taken; /* the voices the keys held at the last write under a song */
+    /* During a song: the setup chip A should have (the song's CHPA, keys_route_song_setup, or
+     * an edit on the CHIP view's A tab, keys_route_edit_song_setup); chip A follows it. */
+    chip_setup song_want;
+    uint8_t song_seen; /* song as the last tick saw it (a song's start sets song_want) */
     void (*moved)(void* ctx, uint32_t chip); /* NULL: nobody to tell */
     void* moved_ctx;
 } keys_route;
@@ -91,8 +95,12 @@ void keys_route_set_song(keys_route* kr, int playing);
 uint8_t keys_route_voices_taken(const keys_route* kr);
 /* 1 once a song may start on chip A: the keys play chip B, or KEYS is A. */
 int keys_route_ready_for_song(const keys_route* kr);
-/* The setup the song gives chip A (its CHPA), as chip A has it from now on. */
+/* The setup the song gives chip A (its CHPA), as chip A has it from now on (and wants). */
 void keys_route_song_setup(keys_route* kr, const chip_setup* setup);
+/* An edit of the song's setup (the CHIP view's A tab during a song): chip A is brought to it
+ * (prepared, a slice a tick, as the other chip follows the keys'); M2c saves it in the song's
+ * CHPA (song_want). */
+void keys_route_edit_song_setup(keys_route* kr, const chip_setup* setup);
 
 #ifdef __cplusplus
 }

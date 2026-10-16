@@ -16,6 +16,7 @@
 #define FOCUS GRID_ATTR(GRID_WHITE, GRID_BLUE)
 #define DIM GRID_ATTR(GRID_GREY, GRID_BLUE)
 #define TAB GRID_ATTR(GRID_BLUE, GRID_LIGHT_BLUE)
+#define TAB_FOCUS GRID_ATTR(GRID_BLUE, GRID_WHITE)
 /* Inside the frames: names from LABEL_COL, the character's bars from BAR_COL, values ending at
  * VALUE_END; a slot's second column of controls SLOT_HALF further on. */
 #define LABEL_COL 4u
@@ -23,10 +24,10 @@
 #define BAR_CELLS 12u
 #define VALUE_END 26u
 #define SLOT_HALF 12u
-/* The tabs on row 2: " A " and "B M2". */
+/* The tabs on row 2: " A" and " B", each TAB_W cells from TAB_COL, KEYS beside the keys'. */
 #define TITLE_ROW 2u
-#define TAB_A_COL 20u
-#define TAB_B_COL 24u
+#define TAB_COL 12u
+#define TAB_W 8u
 /* The character's frame: four rows of controls; CHIP's, two of the profile and model. */
 #define CHIP_H 4u
 #define CHARACTER_H 6u
@@ -38,6 +39,7 @@ _Static_assert(CHIP_VIEW_CHIP_ROW + CHIP_H == CHIP_VIEW_CHARACTER_ROW &&
 _Static_assert(CHIP_VIEW_HELP_ROW < SCREEN_TOAST_ROW, "the help line is above the toast's");
 _Static_assert(CHIP_VIEW_COL + CHIP_VIEW_W == GRID_COLS - 2u, "the frames end before the margin");
 _Static_assert(BAR_COL + BAR_CELLS < VALUE_END - 3u, "a bar ends before its value");
+_Static_assert(TAB_COL + 2u * TAB_W == CHIP_VIEW_COL + CHIP_VIEW_W, "the tabs end with the frames");
 _Static_assert(LIVE_SLOT_FIELDS == 5u && LIVE_SLOT_MIX == 4u,
                "Amount, A, B, Mix after the algorithm");
 
@@ -195,13 +197,46 @@ static uint32_t profile_of(const live* l) {
     return live_param_get(l, LIVE_PARAM_PROFILE);
 }
 
+int chip_view_song_tab(const chip_view* cv) {
+    return cv->kr && cv->kr->song && cv->tab == 0u;
+}
+
+/* The tab's setup and model: the song's on a song's chip A, the keys' (as asked for) else. */
+static void shown(const chip_view* cv, chip_setup* s, uint8_t* model) {
+    const live* l = cv->l;
+    if (chip_view_song_tab(cv)) {
+        *s = cv->kr->song_want;
+        const sid_chip_profile* p = sid_chip_profile_get(s->profile);
+        *model = p ? p->model : (uint8_t)SID_MODEL_6581;
+        return;
+    }
+    chip_setup_of(l, s);
+    s->profile = (uint8_t)profile_of(l);
+    *model = (uint8_t)l->model_req;
+}
+
+/* What the help line says: 0 the moves, 1 the song's setup, 2 chip B following the keys, 3
+ * chip B the keys'. */
+static uint8_t help_kind(const chip_view* cv) {
+    if (chip_view_song_tab(cv)) {
+        return 1;
+    }
+    if (cv->tab == 1u) {
+        return cv->l->two_chips && cv->l->keys_chip == 1u ? 3u : 2u;
+    }
+    return 0;
+}
+
 static void look(const chip_view* cv, uint8_t out[CHIP_VIEW_LOOK]) {
     const live* l = cv->l;
     uint32_t n = 0;
-    out[n++] = (uint8_t)profile_of(l);
-    out[n++] = (uint8_t)l->model_req;
+    chip_setup s;
+    uint8_t model;
+    shown(cv, &s, &model);
+    out[n++] = s.profile;
+    out[n++] = model;
     for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; f++) {
-        out[n++] = l->character[f];
+        out[n++] = s.controls[f];
     }
     for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
         for (uint32_t f = 0; f < LIVE_SLOT_FIELDS; f++) {
@@ -209,7 +244,11 @@ static void look(const chip_view* cv, uint8_t out[CHIP_VIEW_LOOK]) {
         }
     }
     out[n++] = l->fx_select;
-    out[n] = cv->chip;
+    out[n++] = cv->chip;
+    out[n++] = cv->tab;
+    out[n++] = cv->tabs;
+    out[n++] = l->two_chips ? (uint8_t)(1u + l->keys_chip) : 0u;
+    out[n] = help_kind(cv);
 }
 
 static int looks_changed(const chip_view* cv) {
@@ -229,28 +268,46 @@ static void mark(chip_view_canvas* c, uint32_t row, int on) {
 }
 
 static void draw_chip(chip_view* cv, chip_view_canvas* c) {
-    const live* l = cv->l;
-    uint8_t a = cv->chip ? FOCUS : TEXT;
-    const sid_chip_profile* p = sid_chip_profile_get(profile_of(l));
+    uint8_t a = cv->chip && !cv->tabs ? FOCUS : TEXT;
+    chip_setup s;
+    uint8_t model;
+    shown(cv, &s, &model);
+    const sid_chip_profile* p = sid_chip_profile_get(s.profile);
     frame(c, CHIP_VIEW_CHIP_ROW, CHIP_H, "CHIP", NULL, a);
-    mark(c, CHIP_VIEW_CHIP_ROW, cv->chip);
+    mark(c, CHIP_VIEW_CHIP_ROW, cv->chip && !cv->tabs);
     text(c, LABEL_COL, CHIP_VIEW_CHIP_ROW + 1u, "PROFILE", a);
     text_right(c, VALUE_END, CHIP_VIEW_CHIP_ROW + 1u, p ? p->name : "?", a);
     text(c, LABEL_COL, CHIP_VIEW_CHIP_ROW + 2u, "MODEL", a);
     /* The model asked for, as PROFILE shows the profile asked for: a step shows at once,
      * while the spare chip for it is prepared (app/reg_ring.h). */
-    text_right(c, VALUE_END, CHIP_VIEW_CHIP_ROW + 2u, l->model_req == SID_MODEL_8580 ? "8580" : "6581",
-               a);
+    text_right(c, VALUE_END, CHIP_VIEW_CHIP_ROW + 2u, model == SID_MODEL_8580 ? "8580" : "6581", a);
 
     static const char* const NAMES[LIVE_CHAR_FIELDS - 1u] = {"AGE", "DAC", "THUMP", "BLEED"};
     frame(c, CHIP_VIEW_CHARACTER_ROW, CHARACTER_H, "CHARACTER", NULL, a);
-    mark(c, CHIP_VIEW_CHARACTER_ROW, cv->chip);
+    mark(c, CHIP_VIEW_CHARACTER_ROW, cv->chip && !cv->tabs);
     for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; f++) {
         uint32_t row = CHIP_VIEW_CHARACTER_ROW + 1u + f;
         text(c, LABEL_COL, row, NAMES[f], a);
-        bar(c, BAR_COL, row, l->character[f], a);
-        number(c, VALUE_END, row, l->character[f], a);
+        bar(c, BAR_COL, row, s.controls[f], a);
+        number(c, VALUE_END, row, s.controls[f], a);
     }
+}
+
+/* Row 2's tabs: the shown one in reverse video (white with the tabs' focus), KEYS beside the
+ * letter of the keys' chip; the focus's mark in the margin. */
+static void draw_tabs(chip_view* cv, chip_view_canvas* c) {
+    const live* l = cv->l;
+    for (uint32_t x = 0; x < 2u; x++) {
+        uint8_t a = x != cv->tab ? TEXT : cv->tabs ? TAB_FOCUS : TAB;
+        uint32_t col = TAB_COL + TAB_W * x;
+        fill(c, col, TITLE_ROW, TAB_W, 1, ' ', x == cv->tab ? a : TEXT);
+        uint32_t k = text(c, col, TITLE_ROW, x ? " B" : " A", a);
+        if (l->two_chips && l->keys_chip == x) {
+            k = text(c, k, TITLE_ROW, " KEYS", a);
+        }
+        put(c, k, TITLE_ROW, ' ', a);
+    }
+    mark(c, TITLE_ROW, cv->tabs);
 }
 
 static void draw_slot(chip_view* cv, chip_view_canvas* c, uint32_t k) {
@@ -258,7 +315,7 @@ static void draw_slot(chip_view* cv, chip_view_canvas* c, uint32_t k) {
     const uint8_t* s = l->slot[k];
     uint32_t alg = s[LIVE_SLOT_ALGORITHM];
     uint32_t row = CHIP_VIEW_SLOT_ROW + CHIP_VIEW_SLOT_ROWS * k;
-    int focus = !cv->chip && l->fx_select == k;
+    int focus = !cv->chip && !cv->tabs && l->fx_select == k;
     uint8_t a = focus ? FOCUS : TEXT;
     frame(c, row, CHIP_VIEW_SLOT_ROWS, views_slot_name(k), views_algorithm_name(k, alg), a);
     mark(c, row, focus);
@@ -281,13 +338,14 @@ static void build(chip_view* cv) {
     fill(c, 0, 0, GRID_COLS, GRID_ROWS, FONT_FULL, TEXT);
     fill(c, 1, 1, GRID_COLS - 2u, GRID_ROWS - 2u, ' ', TEXT);
     text(c, CHIP_VIEW_COL, TITLE_ROW, "CHIP", TEXT);
-    text(c, TAB_A_COL, TITLE_ROW, " A ", TAB);
-    text(c, TAB_B_COL, TITLE_ROW, "B M2", DIM);
+    draw_tabs(cv, c);
     draw_chip(cv, c);
     for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
         draw_slot(cv, c, k);
     }
-    text(c, CHIP_VIEW_COL, CHIP_VIEW_HELP_ROW, "SELECT MOVE ALGORITHM STEP", TEXT);
+    static const char* const HELP[4] = {"SELECT MOVE ALGORITHM STEP", "SONG SETUP  SLOTS SHARED",
+                                        "FOLLOWS KEYS  SLOTS SHARED", "SLOTS SHARED WITH CHIP A"};
+    text(c, CHIP_VIEW_COL, CHIP_VIEW_HELP_ROW, HELP[help_kind(cv)], TEXT);
     cv->built = 1;
     cv->copying = 1;
 }
@@ -296,19 +354,29 @@ static void build(chip_view* cv) {
 
 void chip_view_init(chip_view* cv, live* l) {
     cv->l = l;
+    cv->kr = NULL;
     cv->chip = 1;
+    cv->tabs = 0;
+    cv->tab = 0;
     cv->built = 0;
     cv->copying = 0;
     cv->cursor = 0;
     cv->held = 0;
 }
 
+void chip_view_set_keys(chip_view* cv, keys_route* kr) {
+    cv->kr = kr;
+}
+
 uint32_t chip_view_focus(const chip_view* cv) {
-    return cv->chip ? CHIP_VIEW_CHIP : 1u + cv->l->fx_select % LIVE_SLOTS;
+    return cv->tabs ? CHIP_VIEW_TABS : cv->chip ? CHIP_VIEW_CHIP : 1u + cv->l->fx_select % LIVE_SLOTS;
 }
 
 uint32_t chip_view_page(const chip_view* cv) {
-    return cv->chip ? PANEL_PAGE_CHARACTER : PANEL_PAGE_SLOT;
+    if (!cv->chip) {
+        return PANEL_PAGE_SLOT;
+    }
+    return chip_view_song_tab(cv) ? PANEL_PAGE_NONE : PANEL_PAGE_CHARACTER;
 }
 
 /* Built anew at its first compose: what changed while it was away. */
@@ -325,7 +393,9 @@ static uint32_t step_clamped(uint32_t v, int32_t steps, uint32_t max) {
     return n < 0 ? 0u : (uint32_t)n > max ? max : (uint32_t)n;
 }
 
-/* SELECT moves the focus, ALGORITHM steps the profile or the slot's algorithm. */
+/* SELECT moves the focus (the tabs, the chip, the slots), ALGORITHM switches the tab, steps
+ * the profile or the slot's algorithm; on a song's chip A, K1..K4 turn the song's controls
+ * and ALGORITHM its profile. */
 static int input(screen* s, void* state, const screen_event* e) {
     (void)s;
     chip_view* cv = state;
@@ -334,26 +404,51 @@ static int input(screen* s, void* state, const screen_event* e) {
         return 0;
     }
     if (e->id == PANEL_ENC_SELECT) {
-        uint32_t f = step_clamped(chip_view_focus(cv), e->steps, CHIP_VIEW_SECTIONS - 1u);
-        cv->chip = (uint8_t)(f == CHIP_VIEW_CHIP);
+        /* 0 the tabs, 1 the chip, 2.. the slots */
+        uint32_t at = cv->tabs ? 0u : cv->chip ? 1u : 2u + l->fx_select % LIVE_SLOTS;
+        uint32_t f = step_clamped(at, e->steps, CHIP_VIEW_SECTIONS);
+        cv->tabs = (uint8_t)(f == 0u);
+        cv->chip = (uint8_t)(f <= 1u);
         if (!cv->chip) {
-            live_fx_select(l, f - 1u);
+            live_fx_select(l, f - 2u);
         }
         return 1;
     }
-    if (e->id == PANEL_ENC_ALGORITHM) {
-        if (cv->chip) {
-            live_param_set(l, LIVE_PARAM_PROFILE,
-                           step_clamped(profile_of(l), e->steps, SID_CHIPS - 1u));
-        } else {
-            uint32_t k = l->fx_select % LIVE_SLOTS;
-            live_slot_set(l, k, LIVE_SLOT_ALGORITHM,
-                          (int32_t)step_clamped(l->slot[k][LIVE_SLOT_ALGORITHM], e->steps,
-                                                live_slot_algorithms(k) - 1u));
+    if (e->id >= PANEL_ENC_K1 && e->id <= PANEL_ENC_K4) {
+        /* The panel turns them (the CHIP view's input is gated by its cost: emu-gate screen.rs
+         * CHIP_INPUT), but on a song's chip A without EDIT: the song's controls, as
+         * panel_encoder turns the keys', 4 a detent. */
+        if (!cv->chip || (e->held & (1u << PANEL_BTN_EDIT)) || !chip_view_song_tab(cv)) {
+            return 0;
         }
+        chip_setup want = cv->kr->song_want;
+        uint32_t f = e->id - PANEL_ENC_K1;
+        int32_t d = e->steps > 64 ? 64 : e->steps < -64 ? -64 : e->steps;
+        want.controls[f] = (uint8_t)step_clamped(want.controls[f], d * PANEL_CHARACTER_DETENT,
+                                                 SID_CHARACTER_MAX);
+        keys_route_edit_song_setup(cv->kr, &want);
         return 1;
     }
-    return 0;
+    if (e->id != PANEL_ENC_ALGORITHM) {
+        return 0;
+    }
+    if (cv->tabs) {
+        cv->tab = (uint8_t)step_clamped(cv->tab, e->steps, 1u);
+        return 1;
+    }
+    if (!cv->chip) {
+        uint32_t k = l->fx_select % LIVE_SLOTS;
+        live_slot_set(l, k, LIVE_SLOT_ALGORITHM,
+                      (int32_t)step_clamped(l->slot[k][LIVE_SLOT_ALGORITHM], e->steps,
+                                            live_slot_algorithms(k) - 1u));
+    } else if (chip_view_song_tab(cv)) {
+        chip_setup want = cv->kr->song_want;
+        want.profile = (uint8_t)step_clamped(want.profile, e->steps, SID_CHIPS - 1u);
+        keys_route_edit_song_setup(cv->kr, &want);
+    } else {
+        live_param_set(l, LIVE_PARAM_PROFILE, step_clamped(profile_of(l), e->steps, SID_CHIPS - 1u));
+    }
+    return 1;
 }
 
 static int changed(screen* s, void* state) {

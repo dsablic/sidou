@@ -98,26 +98,36 @@ wipes in, the card holds for a second and the view cuts in, about 2.6 s in all.
 
 ## CHIP
 
-CHIP (the menu's first item) is chip A's sound on one page (`app/chip_view.h`): its profile,
-its character and the three effect slots, in PETSCII frames. Chip B comes with M2: its tab
-shows greyed, as **B M2**, and the page edits chip A only.
+CHIP (the menu's first item) is a chip's sound on one page (`app/chip_view.h`): its profile,
+its character and the three effect slots, in PETSCII frames, for chip **A** or chip **B** (the
+tabs on row 2). What a tab shows and edits follows [which chip the keys
+play](#which-chip-the-keys-play):
+
+- the keys' setup (live's), on both tabs, with no song: chip B follows it, so its tab says
+  **FOLLOWS KEYS**;
+- during a song, the A tab is the song's chip: it shows the song's setup and edits it (the
+  profile and K1..K4; MIDI learn binds nothing there, since MIDI reaches chip A on its own
+  only from M2e), and the B tab shows the keys' setup and edits it.
+
+The effect slots are one chain on the mix of both chips: their frames show on both tabs, and
+the B tab's help line says **SLOTS SHARED**. **KEYS** marks the tab of the chip the keys play.
 
 | Rows | Section | Shows |
 |---|---|---|
-| 2 | CHIP and the tabs | **A** in reverse video, **B M2** greyed |
+| 2 | CHIP and the tabs | **A** and **B**, the shown one in reverse video (white while the tabs have the focus), **KEYS** beside the keys' chip |
 | 4-7 | CHIP | the profile as asked for (6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581) and the model the chip plays |
 | 8-13 | CHARACTER | AGE, DAC, THUMP and BLEED, each a bar and its value 0..127 |
 | 14-17, 18-21, 22-25 | DIST, MOD, FX | the slot and its algorithm in the frame's title; its Amount, A, B and Mix, each named for what it does in that algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX); a control the algorithm does not use, and every control of a slot that is off, greyed under its plain name (AMT, A, B, MIX) |
-| 26 | | the help line: SELECT MOVE ALGORITHM STEP |
+| 26 | | the help line: SELECT MOVE ALGORITHM STEP; on the B tab FOLLOWS KEYS  SLOTS SHARED (no song) or SLOTS SHARED WITH CHIP A (the keys on B); on a song's A tab SONG SETUP  SLOTS SHARED |
 
-The focus is on the chip (both its frames) or on a slot: a play mark in the margin and white
-frames show it.
+The focus is on the tabs, on the chip (both its frames) or on a slot: a play mark in the
+margin and white frames show it.
 
-| Control | On the chip | On a slot |
-|---|---|---|
-| SELECT | moves the focus: CHIP, DIST, MOD, FX (it stops at either end) | the same |
-| ALGORITHM | the next profile clockwise, the one before counter-clockwise (it stops at either end) | the slot's next algorithm clockwise, the one before counter-clockwise (it stops at OFF and at the last) |
-| K1 / K2 / K3 / K4 | age / DAC sloppiness / output thump / filter bleed (32 detents end to end) | the slot's Amount / A / B / Mix (32 detents end to end) |
+| Control | On the tabs | On the chip | On a slot |
+|---|---|---|---|
+| SELECT | moves the focus: the tabs, CHIP, DIST, MOD, FX (it stops at either end) | the same | the same |
+| ALGORITHM | the B tab clockwise, the A tab counter-clockwise | the next profile clockwise, the one before counter-clockwise (it stops at either end) | the slot's next algorithm clockwise, the one before counter-clockwise (it stops at OFF and at the last) |
+| K1 / K2 / K3 / K4 | as on the chip | age / DAC sloppiness / output thump / filter bleed (32 detents end to end) | the slot's Amount / A / B / Mix (32 detents end to end) |
 
 The slot in focus is the selected slot, the one SCL selects and the EDIT shortcut turns:
 SELECT onto a slot selects it (and the toast says so, SLOT MOD), and SCL on a slot moves the

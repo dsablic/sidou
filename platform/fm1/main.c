@@ -213,6 +213,7 @@ static void sidou_main(void) {
     uint32_t held = input_buttons_at_power_on();
     /* uptime_ms counts every timer tick since TIMER4 started (fm1_timer5_irq). */
     ui_init(&instrument, uptime_ms, (int)((held >> PANEL_BTN_HOME) & 1u));
+    ui_set_keys(&keys_router);
 #if defined(SIDOU_TEST_DEATH_MS)
     test_death_arm();
 #endif

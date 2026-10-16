@@ -1887,8 +1887,17 @@ fn open_chip(m: &mut Machine, fw: &Firmware) {
     );
 }
 
-/// The CHIP view's focus (app/chip_view.h chip_view_focus): 0 the chip, 1 + the selected slot.
+/// The CHIP view's focus (app/chip_view.h chip_view_focus): 0xff the tabs, 0 the chip, 1 + the
+/// selected slot.
 fn chip_focus(m: &mut Machine, fw: &Firmware) -> u8 {
+    let tabs = ui_byte(
+        m,
+        fw,
+        sidou_sys::ilp32::views::chip + sidou_sys::ilp32::chip_view::tabs,
+    );
+    if tabs != 0 {
+        return sidou_sys::CHIP_VIEW_TABS as u8;
+    }
     let on_chip = ui_byte(
         m,
         fw,
@@ -1936,6 +1945,76 @@ fn chip_matches_its_golden_images() {
         assert_eq!(chip_focus(&mut m, &fw), k as u8 + 1);
         compare_golden(&build, &format!("chip-{name}"), &m.soc.lcd.fb, &[]);
     }
+    // The B tab (M2b Task 5), from the tabs' focus above CHIP: with no song, the keys' setup
+    // (chip B follows it), the slots shared.
+    m.turn(SELECT, -4);
+    m.run_ms(100);
+    assert_eq!(chip_focus(&mut m, &fw), sidou_sys::CHIP_VIEW_TABS as u8);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(1600); // the toast of the slots SELECT went through
+    settle(&mut m, &fw);
+    compare_golden(&build, "chip-b", &m.soc.lcd.fb, &[]);
+    // A song on chip A (its hook, keys_router.song): the keys on chip B, KEYS on its tab.
+    m.soc.write8(
+        fw.symbol("keys_router") + sidou_sys::ilp32::keys_route::song as u32,
+        1,
+    );
+    m.run_ms(300);
+    settle(&mut m, &fw);
+    compare_golden(&build, "chip-b-keys", &m.soc.lcd.fb, &[]);
+}
+
+/// On the B tab during a song (the keys on chip B), a profile step reaches chip B, the keys',
+/// and leaves chip A, the song's, bit for bit: its sid in emulated RAM is byte for byte what it
+/// is at the same moment in a run without the step (so its audio is too).
+#[test]
+fn a_profile_step_on_the_b_tab_leaves_chip_a_bit_exact() {
+    let Some((_, fw)) = fixture("the CHIP B tab test") else {
+        return;
+    };
+    let run = |step: bool| {
+        let mut m = booted(&fw);
+        m.soc.write8(
+            fw.symbol("keys_router") + sidou_sys::ilp32::keys_route::song as u32,
+            1,
+        );
+        m.run_ms(100);
+        open_chip(&mut m, &fw);
+        m.turn(SELECT, -1);
+        m.run_ms(50);
+        m.turn(ALGORITHM, 1); // the B tab
+        m.run_ms(50);
+        m.turn(SELECT, 1);
+        m.run_ms(50);
+        if step {
+            m.turn(ALGORITHM, 1); // R4AR to the 8580 R5, the keys' setup on chip B
+        }
+        m.run_ms(400);
+        let sid = |m: &mut Machine, x: usize| {
+            let base = fw.chips();
+            let active = m
+                .soc
+                .read8(base + (sidou_sys::ilp32::reg_ring_chips::active + x) as u32);
+            let s = base
+                + (sidou_sys::ilp32::reg_ring_chips::chip
+                    + usize::from(active) * sidou_sys::ilp32::sid::SIZE) as u32;
+            (0..sidou_sys::ilp32::sid::SIZE as u32)
+                .map(|i| m.soc.read8(s + i))
+                .collect::<Vec<u8>>()
+        };
+        let model = |m: &mut Machine, x: usize| {
+            let v = sid(m, x);
+            v[sidou_sys::ilp32::sid::model]
+        };
+        (sid(&mut m, 0), model(&mut m, 1))
+    };
+    let (a_still, b_still) = run(false);
+    let (a_step, b_step) = run(true);
+    assert_eq!((b_still, b_step), (0, 1), "the step did not reach chip B");
+    assert!(
+        a_still == a_step,
+        "chip A changed with the step on the B tab"
+    );
 }
 
 /// The page follows MIDI and the knobs, there and back: a CC takes the age to 0 and the page
@@ -1972,7 +2051,11 @@ fn chip_follows_midi_and_the_knobs_there_and_back() {
     compare_golden(&build, "chip", &m.soc.lcd.fb, &[]);
     m.turn(SELECT, -3);
     m.run_ms(100);
-    assert_eq!(chip_focus(&mut m, &fw), 0, "SELECT went past the chip");
+    assert_eq!(
+        chip_focus(&mut m, &fw),
+        sidou_sys::CHIP_VIEW_TABS as u8,
+        "SELECT did not stop at the tabs, above the chip"
+    );
 }
 
 /// Main-loop instructions in ui_poll (fm1-emu) on the CHIP view, bounded about 10 % above what
@@ -2026,6 +2109,13 @@ fn chip_stays_within_its_budgets() {
     open_chip(&mut m, &fw);
     let idle = measure(&mut m, &fw, 25, |_| {});
     let knob = measure(&mut m, &fw, 25, |m| m.turn(K1_CHIP, 1));
+    // A tab switch (M2b Task 5), from the tabs' focus: the tabs' row and the help line.
+    m.turn(SELECT, -1);
+    m.run_ms(200);
+    let tab = measure(&mut m, &fw, 25, |m| m.turn(ALGORITHM, 1));
+    m.turn(ALGORITHM, -1);
+    m.turn(SELECT, 1);
+    m.run_ms(200);
     // Every control changed at once, the focus moved to DIST, and the chip changed: the toast,
     // the raster, every bar and value, three frames' colours.
     let mut burst = CHIP_STATE;
@@ -2043,6 +2133,7 @@ fn chip_stays_within_its_budgets() {
         "spi_hz": SPI_HZ,
         "chip_idle": animated_json(&idle),
         "chip_knob": animated_json(&knob),
+        "chip_tab": animated_json(&tab),
         "chip_busiest": animated_json(&busy),
     });
     println!("{report}");
@@ -2050,6 +2141,7 @@ fn chip_stays_within_its_budgets() {
     for (what, c, per_frame) in [
         ("idle", &idle, CHIP_IDLE_PER_FRAME),
         ("a knob", &knob, CHIP_KNOB_PER_FRAME),
+        ("a tab switch", &tab, CHIP_KNOB_PER_FRAME),
         ("the busiest", &busy, CHIP_BUSY_PER_FRAME),
     ] {
         assert!(
@@ -2112,6 +2204,11 @@ fn chip_input_holds_the_main_loop_within_the_poll_allowance() {
         ("ALGORITHM on FX", ALGORITHM, -1),
         ("SELECT to the chip", SELECT, -3),
         ("K1 on the chip", K1_CHIP, -1),
+        ("SELECT to the tabs", SELECT, -1),
+        ("ALGORITHM to the B tab", ALGORITHM, 1),
+        ("K1 on the tabs", K1_CHIP, 1),
+        ("ALGORITHM to the A tab", ALGORITHM, -1),
+        ("SELECT to the chip", SELECT, 1),
     ] {
         let (input, pass) = start_cost(&mut m, 1600, |m| m.turn(enc, steps));
         println!("CHIP {what}: the input {input}, the busiest pass {pass}");

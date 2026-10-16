@@ -70,6 +70,9 @@ uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t
     if (page == PANEL_PAGE_CHARACTER) {
         return LIVE_PARAM_AGE + k; /* age, DAC, thump, bleed */
     }
+    if (page == PANEL_PAGE_NONE) {
+        return LIVE_PARAM_COUNT;
+    }
     return KNOBS[k];
 }
 
@@ -89,6 +92,9 @@ void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps) {
         return;
     }
     uint32_t param = panel_knob_param(p, l, p->held, enc);
+    if (param == LIVE_PARAM_COUNT && p->page == PANEL_PAGE_NONE) {
+        return; /* the view's own */
+    }
     if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {
         uint32_t i = param - LIVE_PARAM_SLOT;
         live_slot_turn(l, i / LIVE_SLOT_FIELDS, i % LIVE_SLOT_FIELDS, steps);

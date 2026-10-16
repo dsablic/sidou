@@ -130,6 +130,8 @@ extern const view views_charset;
 
 /* LIVE, the root view, on g, showing l and the audio's tap sc (NULL: none). */
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version);
+/* The two chips' routing (app/keys_route.h), for the CHIP view's tabs; NULL until set. */
+void views_set_keys(views* v, keys_route* kr);
 /* The boot sequence over it from the next frame on: the full one if HOME was held at
  * power-on (home_held), whose first HOME press edge is then part of the hold (app/boot.h). */
 void views_boot(views* v, int home_held);

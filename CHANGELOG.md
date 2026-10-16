@@ -216,6 +216,11 @@ All notable changes are documented here. The format follows
   stay in order; three sids (A, B and one spare they share, one preparation at a time) and
   three DAC tables (one each chip plays, one a ramp builds into, one build at a time). A sink
   is bound to a chip (`reg_ring_out.chip`); live stays chip-agnostic.
+- M2b: the CHIP view's B tab. SELECT moves up from CHIP into the tabs, ALGORITHM there
+  switches A and B, KEYS marks the keys' chip. A tab shows the keys' setup and edits it
+  (with no song chip B follows it: FOLLOWS KEYS), but chip A's during a song, which shows and
+  edits the song's setup. The effect slots show on both tabs as one shared chain. The CHIP
+  goldens change on row 2 (the tabs); chip-b and chip-b-keys are new.
 - M2b: the keys play chip A, or chip B while a song plays on chip A (the new menu item KEYS:
   AUTO, the default, or A); the keys' setup travels with them, chip B following it in the
   background (`app/keys_route.h`, `app/chip_ctl.h`), and the keys' chip goes first in the

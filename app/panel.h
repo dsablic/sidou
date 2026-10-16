@@ -59,6 +59,9 @@ extern "C" {
 #define PANEL_PAGE_LIVE 0u      /* the cutoff, resonance, pulse width and preset: every view */
 #define PANEL_PAGE_CHARACTER 1u /* age/heat, DAC sloppiness, output thump, filter bleed */
 #define PANEL_PAGE_SLOT 2u      /* the selected slot's Amount, A, B and Mix */
+/* Nothing: the view turns K1..K4 itself (the CHIP view on a song's chip A, whose controls are
+ * no live parameter: MIDI learn binds nothing there). EDIT held still turns the slot. */
+#define PANEL_PAGE_NONE 3u
 /* A detent moves a character control this many steps: 32 detents end to end, as a slot's. */
 #define PANEL_CHARACTER_DETENT 4
 
@@ -94,7 +97,8 @@ void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held);
  * PANEL_PAGE_LIVE K1..K3 the cutoff, resonance and pulse width, on PANEL_PAGE_CHARACTER K1..K4
  * age/heat, DAC sloppiness, output thump and filter bleed, on PANEL_PAGE_SLOT the selected
  * slot's Amount, A, B and Mix. LIVE_PARAM_COUNT for K4 on PANEL_PAGE_LIVE without EDIT (the
- * preset, which is no parameter) and every other encoder. p NULL: PANEL_PAGE_LIVE.
+ * preset, which is no parameter), for K1..K4 on PANEL_PAGE_NONE without EDIT, and every other
+ * encoder. p NULL: PANEL_PAGE_LIVE.
  * panel_encoder turns what this names, and MIDI learn picks the knob's parameter here, so the
  * two cannot disagree. */
 uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t enc);

@@ -433,6 +433,10 @@ static int global(void* ctx, const screen_event* e) {
     return 1;
 }
 
+void views_set_keys(views* v, keys_route* kr) {
+    chip_view_set_keys(&v->chip, kr);
+}
+
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->l = l;
     v->sc = sc;
