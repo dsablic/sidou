@@ -30,6 +30,7 @@
 #include "live.h"
 #include "live_view.h"
 #include "logo.h"
+#include "midi_clock.h"
 #include "midi_in.h"
 #include "midi_learn.h"
 #include "midi_map.h"

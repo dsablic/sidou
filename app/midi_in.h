@@ -10,7 +10,9 @@
  *   of MIDI_SYSEX_END (F7) or MIDI_SYSEX_ABORT (the status byte that cut it short; an F0
  *   inside a SysEx aborts it and starts a new one). Real-time bytes inside it are not
  *   part of it. A consumer discards what it collected on ABORT.
- * - System common messages (0xF1..0xF7) cancel running status; their data is skipped.
+ * - System common messages (0xF1..0xF7) cancel running status. Song position (F2) and song
+ *   select (F3) are reported; MTC quarter frames' (F1) data is skipped. A real-time byte
+ *   inside them is reported where it occurs, as inside any message.
  * - An incomplete message is dropped when a new status byte arrives.
  * - Note-on with velocity 0 is reported as note-off. */
 #ifndef SIDOU_MIDI_IN_H
@@ -31,7 +33,9 @@ typedef enum {
     MIDI_PROGRAM = 4,           /* data1 program */
     MIDI_CHANNEL_PRESSURE = 5,  /* data1 pressure */
     MIDI_PITCH_BEND = 6,        /* bend 0..16383, centre 8192 */
-    MIDI_REALTIME = 7           /* data1 the status byte, 0xF8..0xFF; channel 0 */
+    MIDI_REALTIME = 7,          /* data1 the status byte, 0xF8..0xFF; channel 0 */
+    MIDI_SONG_POSITION = 8,     /* bend the position in 16ths, 0..16383; channel 0 */
+    MIDI_SONG_SELECT = 9        /* data1 the song, 0..127; channel 0 */
 } midi_kind;
 
 typedef struct {
@@ -39,7 +43,7 @@ typedef struct {
     uint8_t channel; /* 0..15 */
     uint8_t data1;
     uint8_t data2;
-    uint16_t bend;
+    uint16_t bend; /* pitch bend, or the song position */
 } midi_msg;
 
 typedef enum {

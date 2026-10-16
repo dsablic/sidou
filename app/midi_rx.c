@@ -20,7 +20,7 @@ void midi_rx_live(midi_map_port* port, const midi_msg* msg) {
     case MIDI_PITCH_BEND: live_bend(l, msg->bend); break;
     case MIDI_CHANNEL_PRESSURE: live_pressure(l, msg->data1); break;
     case MIDI_POLY_PRESSURE: live_poly_pressure(l, msg->data1, msg->data2); break;
-    default: break; /* real time: nothing yet */
+    default: break; /* real time, song position and select: not the instrument's */
     }
 }
 

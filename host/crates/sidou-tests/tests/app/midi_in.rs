@@ -14,6 +14,8 @@ enum Ev {
     Pressure(u8, u8),
     Bend(u8, u16),
     RealTime(u8),
+    SongPosition(u16),
+    SongSelect(u8),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +48,8 @@ unsafe extern "C" fn on_msg(ctx: *mut c_void, m: *const midi_msg) {
         MIDI_CHANNEL_PRESSURE => Ev::Pressure(c, a),
         MIDI_PITCH_BEND => Ev::Bend(c, m.bend),
         MIDI_REALTIME => Ev::RealTime(a),
+        MIDI_SONG_POSITION => Ev::SongPosition(m.bend),
+        MIDI_SONG_SELECT => Ev::SongSelect(a),
         k => panic!("unknown kind {k}"),
     });
 }
@@ -278,21 +282,66 @@ fn sysex_without_a_callback_is_skipped() {
 }
 
 #[test]
-fn system_common_cancels_running_status_and_skips_its_data() {
-    // F1 (1 byte), F2 (2 bytes), F3 (1 byte), F6 (none), F4/F5 (undefined, none).
-    for (sc, data) in [
-        (0xf1, &[0x10][..]),
-        (0xf2, &[0x10, 0x20]),
-        (0xf3, &[0x05]),
-        (0xf6, &[]),
-        (0xf4, &[]),
-        (0xf5, &[]),
+fn system_common_cancels_running_status() {
+    // F1 (1 byte, skipped), F2 (2 bytes), F3 (1 byte), F6 (none), F4/F5 (undefined, none).
+    for (sc, data, ev) in [
+        (0xf1, &[0x10][..], None),
+        (
+            0xf2,
+            &[0x10, 0x20],
+            Some(Ev::SongPosition(0x10 | 0x20 << 7)),
+        ),
+        (0xf3, &[0x05], Some(Ev::SongSelect(5))),
+        (0xf6, &[], None),
+        (0xf4, &[], None),
+        (0xf5, &[], None),
     ] {
         let mut bytes = vec![0x90, 60, 100, sc];
         bytes.extend_from_slice(data);
         bytes.extend_from_slice(&[62, 100, 64]);
-        assert_eq!(parse(&bytes), [Ev::On(0, 60, 100)], "status {sc:#x}");
+        let mut want = vec![Ev::On(0, 60, 100)];
+        want.extend(ev);
+        assert_eq!(parse(&bytes), want, "status {sc:#x}");
     }
+}
+
+#[test]
+fn song_position_is_14_bit_lsb_first_and_song_select_is_reported() {
+    assert_eq!(
+        parse(&[0xf2, 0x7f, 0x7f, 0xf2, 0x00, 0x00, 0xf2, 0x01, 0x02, 0xf3, 0x7f, 0xf3, 0]),
+        [
+            Ev::SongPosition(16383),
+            Ev::SongPosition(0),
+            Ev::SongPosition(0x101),
+            Ev::SongSelect(127),
+            Ev::SongSelect(0),
+        ]
+    );
+    let m = Parser::new().feed(&[0xf2, 0x05, 0x01]).out.raw[0];
+    assert_eq!((m.channel, m.data1, m.data2), (0, 0, 0), "{m:?}");
+}
+
+#[test]
+fn real_time_bytes_inside_song_position_and_song_select() {
+    assert_eq!(
+        parse(&[0xf2, 0xf8, 0x10, 0xfa, 0x01, 0xf3, 0xfc, 0x09, 0xf8]),
+        [
+            Ev::RealTime(0xf8),
+            Ev::RealTime(0xfa),
+            Ev::SongPosition(0x90),
+            Ev::RealTime(0xfc),
+            Ev::SongSelect(9),
+            Ev::RealTime(0xf8),
+        ]
+    );
+}
+
+#[test]
+fn truncated_song_position_and_select_are_dropped() {
+    assert_eq!(
+        parse(&[0xf2, 0x10, 0x90, 60, 1, 0xf3, 0xf2, 0x01, 0xf6, 0xf3, 0xf0, 0xf7]),
+        [Ev::On(0, 60, 1)]
+    );
 }
 
 #[test]
@@ -345,6 +394,11 @@ fn random_streams_never_produce_out_of_range_data() {
             total += 1;
             if m.kind == MIDI_REALTIME {
                 assert!(m.data1 >= 0xf8 && m.channel == 0, "{m:?}");
+                continue;
+            }
+            if m.kind == MIDI_SONG_POSITION || m.kind == MIDI_SONG_SELECT {
+                assert!(m.channel == 0 && m.data2 == 0, "{m:?}");
+                assert!(m.data1 <= 127 && m.bend <= 16383, "{m:?}");
                 continue;
             }
             assert!(m.kind <= MIDI_PITCH_BEND, "{m:?}");

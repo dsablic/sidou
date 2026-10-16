@@ -63,8 +63,13 @@ static void complete(midi_in* m) {
     case 0xc0: emit(m, MIDI_PROGRAM, ch, a, 0, 0); break;
     case 0xd0: emit(m, MIDI_CHANNEL_PRESSURE, ch, a, 0, 0); break;
     case 0xe0: emit(m, MIDI_PITCH_BEND, ch, 0, 0, (uint16_t)(a | b << 7)); break;
-    default: /* system common: skipped, and there is no running status after it */
+    default: /* system common: there is no running status after it */
         m->status = 0;
+        if (s == 0xf2) {
+            emit(m, MIDI_SONG_POSITION, 0, 0, 0, (uint16_t)(a | b << 7));
+        } else if (s == 0xf3) {
+            emit(m, MIDI_SONG_SELECT, 0, a, 0, 0);
+        } /* F1, the MTC quarter frame: skipped */
         break;
     }
 }
