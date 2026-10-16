@@ -646,6 +646,12 @@ still ≤ 60 with locks on every row.
   skip a save, explicit or background, when the song has not changed since its last save
   (a SAVE of an unchanged song toasts `SONG SAVED` and writes nothing). Any autosave added
   later saves on a change, at most every few minutes, and not for songs over a few sectors.
+- **The idle timeout:** an open store file that takes no byte for 5 s is aborted
+  (`store_file_idle`, M2a). A save streams from RAM and never waits that long; but any
+  protocol that streams a song into a file and acknowledges each block only once it is
+  programmed (M2e's `PUT`), with blocks under 256 bytes, must count the flash's program time
+  in the gap between blocks: at the slowest window (Task 3b's numbers) a block's bytes may
+  take several passes to program, and the sender waits for each `ACK`.
 - **Edits are frozen while a save streams:** from `store_file_begin` to `store_file_end`
   (about 3 s for a 64 KiB song at 64 bytes a window, less for most), every edit the song
   views or MIDI would make is refused with the toast `SAVING`, and the views show `SAVING`

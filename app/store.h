@@ -13,7 +13,7 @@
  *
  * How it stays safe at any power cut:
  * - every sector carries a header: an erase header (magic, format, erase count, CRC),
- *   programmed right after the erase, then a claim (the sector's sequence number, a CRC and
+ *   programmed right after the erase, then a claim (its number: the erase count, a CRC and
  *   a claim word), programmed when the sector is taken into use, with the erase header again
  *   (the same bytes). A sector without a valid erase header is dirty whatever it reads, and is
  *   erased before any use;
@@ -22,8 +22,8 @@
  *   Anything after a sector's last valid record makes the sector full: nothing is ever
  *   programmed over bytes not erased, but the kill and the claim's erase header;
  * - every record carries a sequence number; the newest wins. A copy made by garbage
- *   collection keeps its record's number, and of two equal numbers the one in the newer
- *   sector wins (they hold the same bytes);
+ *   collection keeps its record's number: of two equal numbers either stands for the key
+ *   (they hold the same bytes);
  * - before a sector with a valid header is erased, its magic is programmed to zero (killed):
  *   an erase cut short can leave any mix of old bytes and 0xFF, header included, and a killed
  *   sector never counts again, whatever the erase left. (The one program over programmed
@@ -36,15 +36,20 @@
  *   last session's last write); a commit or claim word counts with any of its bits programmed
  *   (its CRC shows what came before it went whole), so a faint one reads the same verdict at
  *   every mount; and a claim programs the erase header again, so a faint erase header is
- *   programmed for good before its sector holds anything. A commit word all of whose bits a cut
- *   left faint can still read erased at one mount and programmed at the next: the write it
- *   ends is then old at one and new at the other (never anything else).
+ *   programmed for good before its sector holds anything (every claim of an erase cycle is the
+ *   same bytes, so one read as never made is made again over the same bits). A commit word all
+ *   of whose bits a cut left faint (likely: one pulse charges them alike) can still read erased
+ *   at one mount and programmed at another: the write it ends is then old at one and new at the
+ *   other, never anything else, since garbage collection copies such a record (the last of a
+ *   sector from before the mount) forward before any kill could take its key's older records;
  *
  * The erase-ahead pool: clean, unclaimed sectors. Whoever writes claims its sectors from the
  * pool before the first byte, so no write ever waits for an erase: a small record's new head
  * sector (refused with STORE_BUSY if that would take the pool under STORE_POOL_MIN), a file's
  * sectors (store_file_begin). Erases and garbage collection run only as maintenance, when the
  * caller says the device is quiet (store_quiet), and refill the pool toward STORE_POOL_TARGET.
+ * A collection takes the least-live sector, whatever its fill, when collecting the least-live
+ * sectors one after another would fill fewer sectors with their copies than it frees.
  *
  * Wear: sectors are taken from the pool and erased lowest erase count first, and when the
  * erase counts spread more than STORE_WEAR_SPREAD, maintenance moves the coldest claimed
@@ -99,6 +104,7 @@
 #define STORE_TYPE_CHUNK 0x81u     /* a file's chunk: key the file's id, seq the chunk's index */
 #define STORE_TYPE_FILE 0x82u      /* a file's FILE record, which commits it */
 #define STORE_KEY_FILE 0x80000000u /* files' keys: STORE_KEY_FILE | a slot */
+#define STORE_NO_KEY 0xFFFFFFFFu   /* never a key */
 #define STORE_NAME_MAX 16u         /* a file name's characters */
 #define STORE_FILE_SECTORS 18u     /* the sectors of the largest file */
 #define STORE_FILE_HEAD 32u        /* a FILE record's data before its sector list */
@@ -118,9 +124,11 @@
 /* The bytes one store_poll checks (reads, CRCs, compares) while mounting, or skips of a
  * collection's victim: a record whose CRC is more is checked alone in its poll. */
 #define STORE_MOUNT_SLICE 512u
-/* The most work (store.work) one store_poll does: a sector's walk (a collection's last step, a
- * tombstone's check), or a slice; the host proxy for Task 4's STORE_POLL_WORST in instructions. */
-#define STORE_POLL_WORK 4096u
+/* The most work one store_poll does (store.work: units of about 4 instructions or fewer each,
+ * store.c's WORK_*): a record's CRC alone, a walk of a sector's records, a slice and garbage
+ * collection's plan. The host proxy for Task 4's STORE_POLL_WORST (30,000 instructions):
+ * 7,168 x 4 is 28,672; Task 4 measures the instructions a unit of each kind of pass. */
+#define STORE_POLL_WORK 7168u
 /* The most programs one 256-byte page takes between two erases of its sector (each a partial
  * program of the page), for a window of 16 bytes or more: records' data pieces, headers and
  * commit words (densest: 4-byte values, 3 programs in 24 bytes), and on a sector's first page
@@ -173,7 +181,7 @@ typedef struct {
 
 /* A sector as the store sees it (store.c keeps the state). */
 typedef struct {
-    uint32_t seq; /* its claim's sequence number */
+    uint32_t seq; /* its claim's number (its erase count) */
     uint32_t erases;
     uint16_t free; /* the end of its valid records: where the next one goes */
     uint16_t live; /* bytes of live records in it */
@@ -233,7 +241,7 @@ typedef struct {
 
 typedef struct {
     store_flash flash;
-    uint32_t seq;     /* the next sequence number (records and claims) */
+    uint32_t seq;     /* the next sequence number (records, files' ids) */
     uint32_t live;    /* bytes of live records */
     uint32_t corrupt; /* inconsistencies the mount saw */
     uint32_t errors;  /* flash operations that failed */
@@ -260,6 +268,8 @@ typedef struct {
     uint16_t fres_bytes; /* the room kept for the open file's FILE record ... */
     uint8_t fres_sec;    /* ... in this sector, or 0xFF */
     uint8_t mount_phase; /* what the mount checks next in mount_sec */
+    uint32_t ghost;      /* the newest record read uncommitted: its key (or STORE_NO_KEY) ... */
+    uint32_t ghost_seq;  /* ... and its number */
     uint32_t work;       /* the last store_poll's work: bytes read, and 4 per key compared */
     uint8_t buf[STORE_WINDOW_MAX]; /* a collection's copy, the open file's bytes, a rename */
 } store;
@@ -281,7 +291,8 @@ typedef struct {
 } store_stats;
 
 /* `window`: the most bytes a program may write (1..STORE_WINDOW_MAX; the device's write
- * window, M2a Task 4). The store is unmounted until store_mount. */
+ * window, M2a Task 4), but a 4-byte commit word is always one program, so a window under 4
+ * still programs 4 bytes then. The store is unmounted until store_mount. */
 void store_init(store* s, const store_flash* flash, uint32_t window);
 /* Starts the mount; store_poll does it in slices. The first small write after it starts a
  * fresh head sector, so it needs the pool over STORE_POOL_MIN (fill the pool at boot). */

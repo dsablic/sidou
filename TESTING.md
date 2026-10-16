@@ -882,14 +882,21 @@ programs the erase header again) or the kill's zeros over a header's magic,
 program across a page, use a sector whose erase was cut before erasing it
 again, program from a source in flash, run more than one flash operation in
 a `store_poll`, or do more than `STORE_POLL_WORK` of work in one (`store.work`,
-bytes read and keys compared: the host proxy for Task 4's instruction gate).
+weighted units of about 4 instructions or fewer each: bytes scanned, CRC
+bytes at 3, keys compared, map calls, sector loops; the host proxy for Task
+4's instruction gate).
 It also counts each page's programs between erases. In **faint** mode a cut
 program or erase leaves bits neither programmed nor erased, which every
 mount reads anew at random; a cut erase may fall in the part's pre-program
-to 0 or in the erase proper, bit by bit. The tests:
+to 0 or in the erase proper, bit by bit. In **pulse** mode an operation's
+bits tear together (one progress level an operation, a small spread a bit),
+so a cut often leaves every bit of a commit word faint, or none started;
+with it, faint bits are also read anew now and then within a session. The
+hook can also fail a share of operations with no cut (STORE_ERROR, the part
+having done part of each). The tests:
 - **power loss:** random puts, deletes, collections and refills with windows
   of 1, 3, 4, 8, 12, 16, 64, 100 and 256 bytes, faint bits for half the
-  seeds; for every flash operation, the region as a cut during it would
+  seeds (pulse mode for two faint seeds in three); for every flash operation, the region as a cut during it would
   leave it (a program that cleared any subset of its bits; an erase that left
   all 0xFF, a mix of old bytes and 0xFF, or a part erased; in faint mode,
   faint bits) is mounted and every key must read its value from before the
@@ -898,12 +905,24 @@ to 0 or in the erase proper, bit by bit. The tests:
   the first mount read. Real cuts at random points carry on from the torn
   state. A directed test collects a deletion's sector before the sector of
   the value it deleted. The long version runs thousands of seeds (minutes),
-  every window size from 1 to 256 and faint bits for three seeds in four:
+  every window size from 1 to 256 and faint bits for three seeds in four
+  (pulse mode for two in three of those):
   `cargo test --release -p sidou-tests --test app store::power_loss_long -- --ignored`;
 - **faint bits:** a commit word read programmed at one mount and erased or
   half programmed at the next loses nothing written after it; a faint erase
   header is programmed again before its sector takes records; a faint claim
-  word loses nothing written after it;
+  word loses nothing written after it; a commit word all faint, read
+  committed at one mount and erased at the next, after collections in
+  between, leaves the old value or the new, never neither, for a small value
+  and for a file's replacement; a record read uncommitted keeps its sequence
+  number, so a later write of its key still wins;
+- **hook errors:** with 3% of operations failed by the hook, at windows 1 to
+  256, nothing breaks a rule and every remount reads each key and file as
+  before a failed write or after it, every other one exactly;
+- **near capacity across boots:** seven 18,000-byte files and two
+  1,248-byte values a boot over 40 keys, 400 boots: no write is refused (the
+  reviewer's case, which a fixed half-live rule for collections refused
+  10% under capacity), and the same with no boots;
 - the pool never under its minimum (a write that would take it there is
   refused with STORE_BUSY), and a quiet refill brings it to its target;
 - erase counts within 8 of each other after 10,000 erases, cold data

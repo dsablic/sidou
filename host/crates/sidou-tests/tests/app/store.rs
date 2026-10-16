@@ -92,7 +92,9 @@ impl Cells {
 
     /// A program cut short. Plain: some of the bits it would clear are cleared. Faint: each
     /// such bit is cleared, left faint, or left as it was.
-    fn torn_prog(&mut self, rng: &mut Rng, off: usize, data: &[u8], faint: bool) {
+    fn torn_prog(&mut self, rng: &mut Rng, off: usize, data: &[u8], tear: Tear) {
+        let faint = tear.faint;
+        let level = tear.level(rng);
         for (i, &d) in data.iter().enumerate() {
             let at = off + i;
             self.meant[at] &= d;
@@ -107,7 +109,7 @@ impl Cells {
                 if d & m != 0 || solid0 {
                     continue;
                 }
-                match rng.below(100) {
+                match Tear::roll(level, rng) {
                     0..=39 => {
                         self.mem[at] &= !m;
                         self.faint[at] &= !m;
@@ -126,7 +128,9 @@ impl Cells {
     /// 0xFF, or erased up to some point. Faint: per bit, either cut during the part's
     /// pre-program to 0 (bits cleared, faint or as they were) or during the erase proper,
     /// from all 0 (bits set, faint, or still 0).
-    fn torn_erase(&mut self, rng: &mut Rng, sec: usize, faint: bool) {
+    fn torn_erase(&mut self, rng: &mut Rng, sec: usize, tear: Tear) {
+        let faint = tear.faint;
+        let level = tear.level(rng);
         let r = sec * SECTOR..(sec + 1) * SECTOR;
         self.weak[sec] = true;
         self.meant[r.clone()].fill(0);
@@ -135,7 +139,7 @@ impl Cells {
             for at in r.clone() {
                 for bit in 0..8 {
                     let m = 1u8 << bit;
-                    let roll = rng.below(100);
+                    let roll = Tear::roll(level, rng);
                     if preprogram {
                         if self.mem[at] & m == 0 && self.faint[at] & m == 0 {
                             continue;
@@ -194,6 +198,30 @@ impl Cells {
     }
 }
 
+/// How a cut tears an operation. `faint`: bits may be left faint. `pulse`: the bits of one
+/// operation share one progress (a program pulse charges them together), with a small spread,
+/// so a cut often leaves all of them faint, or none started; else each bit draws alone.
+#[derive(Clone, Copy)]
+pub struct Tear {
+    pub faint: bool,
+    pub pulse: bool,
+}
+
+impl Tear {
+    /// The operation's progress, if its bits share one.
+    fn level(self, rng: &mut Rng) -> Option<u64> {
+        self.pulse.then(|| rng.below(100))
+    }
+
+    /// A bit's draw, 0..100: under 40 done, under 75 faint, else not started.
+    fn roll(level: Option<u64>, rng: &mut Rng) -> u64 {
+        match level {
+            Some(l) => (l + rng.below(21)).saturating_sub(10).min(99),
+            None => rng.below(100),
+        }
+    }
+}
+
 /// A flash operation, as the fork log keeps it (region offsets).
 #[derive(Clone)]
 pub enum Op {
@@ -207,7 +235,7 @@ pub struct Replay {
     cells: Cells,
     ops: std::vec::IntoIter<Op>,
     rng: Rng,
-    faint: bool,
+    tear: Tear,
 }
 
 impl Iterator for Replay {
@@ -219,11 +247,11 @@ impl Iterator for Replay {
         let mut fork = self.cells.clone();
         match &op {
             Op::Prog(off, data) => {
-                fork.torn_prog(&mut self.rng, *off, data, self.faint);
+                fork.torn_prog(&mut self.rng, *off, data, self.tear);
                 self.cells.prog(*off, data);
             }
             Op::Erase(sec) => {
-                fork.torn_erase(&mut self.rng, *sec, self.faint);
+                fork.torn_erase(&mut self.rng, *sec, self.tear);
                 self.cells.erase(*sec);
             }
         }
@@ -255,11 +283,19 @@ pub struct Sim {
     /// Log the operations, for the regions a cut during each would leave (`replay`).
     pub fork: bool,
     log: Option<(Cells, Vec<Op>)>,
-    /// Cuts leave faint bits, and every mount reads them anew.
+    /// Cuts leave faint bits, and every mount reads them anew; `pulse`: an operation's bits
+    /// tear together (`Tear`).
     pub faint: bool,
+    pub pulse: bool,
+    /// Faint bits read anew at some operations too (marginal bits in a session).
+    pub flips: bool,
+    /// Percent of operations the hook fails (STORE_ERROR), the part having done part of them.
+    pub fail: u64,
     /// Programs into each 256-byte page since its sector's last erase, and the most seen.
     pub page_progs: Vec<u16>,
     pub page_progs_max: u16,
+    /// Operations the hook failed.
+    pub failed: u64,
 }
 
 impl Sim {
@@ -281,8 +317,12 @@ impl Sim {
             fork: false,
             log: None,
             faint: false,
+            pulse: false,
+            flips: false,
+            fail: 0,
             page_progs: vec![0; (HI - LO) / STORE_PAGE as usize],
             page_progs_max: 0,
+            failed: 0,
         })
     }
 
@@ -296,10 +336,11 @@ impl Sim {
         sim
     }
 
-    pub fn with_cells(seed: u64, cells: Cells, faint: bool) -> Box<Self> {
+    pub fn with_cells(seed: u64, cells: Cells, tear: Tear) -> Box<Self> {
         let mut sim = Sim::new(seed);
         sim.cells = cells;
-        sim.faint = faint;
+        sim.faint = tear.faint;
+        sim.pulse = tear.pulse;
         sim.sync();
         sim
     }
@@ -347,8 +388,23 @@ impl Sim {
             cells,
             ops: ops.into_iter(),
             rng: Rng::new(seed),
-            faint: self.faint,
+            tear: self.tear(),
         })
+    }
+
+    pub fn tear(&self) -> Tear {
+        Tear {
+            faint: self.faint,
+            pulse: self.pulse,
+        }
+    }
+
+    /// In-session flips: now and then, every faint bit reads anew.
+    fn flip(&mut self) {
+        if self.flips && self.rng.chance(2) {
+            self.cells.reread(&mut self.rng);
+            self.sync();
+        }
     }
 
     fn logged(&mut self, op: Op) {
@@ -414,12 +470,20 @@ impl Sim {
         self.page_progs[page] += 1;
         self.page_progs_max = self.page_progs_max.max(self.page_progs[page]);
         self.logged(Op::Prog(r, data.clone()));
+        let tear = self.tear();
         if self.cut_at == Some(i) {
-            self.cells.torn_prog(&mut self.rng, r, &data, self.faint);
+            self.cells.torn_prog(&mut self.rng, r, &data, tear);
             self.sync();
             self.dead = true;
             return STORE_ERROR;
         }
+        if self.fail > 0 && self.rng.chance(self.fail) {
+            self.cells.torn_prog(&mut self.rng, r, &data, tear);
+            self.sync();
+            self.failed += 1;
+            return STORE_ERROR;
+        }
+        self.flip();
         self.cells.prog(r, &data);
         self.mem[off..off + n].copy_from_slice(&self.cells.mem[r..r + n]);
         STORE_OK
@@ -444,12 +508,20 @@ impl Sim {
         self.logged(Op::Erase(sec));
         let pages = SECTOR / STORE_PAGE as usize;
         self.page_progs[sec * pages..(sec + 1) * pages].fill(0);
+        let tear = self.tear();
         if self.cut_at == Some(i) {
-            self.cells.torn_erase(&mut self.rng, sec, self.faint);
+            self.cells.torn_erase(&mut self.rng, sec, tear);
             self.sync();
             self.dead = true;
             return STORE_ERROR;
         }
+        if self.fail > 0 && self.rng.chance(self.fail) {
+            self.cells.torn_erase(&mut self.rng, sec, tear);
+            self.sync();
+            self.failed += 1;
+            return STORE_ERROR;
+        }
+        self.flip();
         self.cells.erase(sec);
         self.mem[off..off + SECTOR].fill(0xFF);
         STORE_OK
@@ -688,6 +760,9 @@ impl Rig {
                 None => offer,
             }
             .min(data.len() - at);
+            if self.file_result() != STORE_BUSY {
+                return self.file_result(); // it failed meanwhile
+            }
             let room = STORE_WINDOW_MAX as usize - usize::from(self.st.f.fill);
             let took = self.file_write(&data[at..at + want]);
             assert_eq!(
@@ -933,18 +1008,15 @@ fn the_bytes_are_the_documented_format() {
         .find(|&s| rd32(&region, s * SECTOR + 28) == 0)
         .expect("a claimed sector");
     let h = &region[s * SECTOR..(s + 1) * SECTOR];
-    // The claim: a sequence number, a CRC of bytes 0-23, the claim word.
-    let seq = rd32(h, 20);
+    // The claim: its number (the erase count again), a CRC of bytes 0-23, the claim word.
+    assert_eq!(rd32(h, 20), rd32(h, 12));
     assert_eq!(rd32(h, 24), crc32(&h[..24]));
     assert_eq!(rd32(h, 28), 0);
     // The record at 32: type, flags, len, key, seq, CRC; data padded to 4; commit word.
     let rec = &h[32..32 + 16 + 8 + 4];
     assert_eq!(&rec[..4], &[1, 0, 5, 0]);
     assert_eq!(rd32(rec, 4), 0x1234_5678);
-    assert!(
-        rd32(rec, 8) > seq,
-        "the record's number follows its sector's claim"
-    );
+    assert!(rd32(rec, 8) > 0, "the record's number");
     let mut covered = rec[..12].to_vec();
     covered.extend_from_slice(b"hello");
     assert_eq!(rd32(rec, 12), crc32(&covered));
@@ -1206,7 +1278,7 @@ impl Run {
         let mut rng = Rng::new(seed ^ 0xC0FFEE);
         let mut rig = fresh(seed, window);
         rig.sim.fork = forks;
-        rig.sim.faint = faint;
+        set_tear(&mut rig, seed, faint);
         rig.sim.later = if rng.chance(30) { 25 } else { 0 };
         Run {
             rig,
@@ -1261,12 +1333,12 @@ impl Run {
         let Some(replay) = self.rig.sim.replay(self.seed ^ self.forks_checked) else {
             return;
         };
-        let faint = self.rig.sim.faint;
+        let tear = self.rig.sim.tear();
         for (cells, erased) in replay {
             self.forks_checked += 1;
             assert_eq!(guard_band_programmed(&cells.mem, &cells.weak), None);
             let mut r = Rig::new(
-                Sim::with_cells(self.forks_checked, cells, faint),
+                Sim::with_cells(self.forks_checked, cells, tear),
                 self.rig.window,
             );
             let state = r.mount();
@@ -1442,6 +1514,14 @@ impl Run {
             assert!(u32::from(self.rig.sim.page_progs_max) <= STORE_PAGE_PROGS);
         }
     }
+}
+
+/// Faint bits for a run that wants them; for two seeds in three, an operation's bits tear
+/// together (`Tear::pulse`) and faint bits also read anew within a session.
+fn set_tear(rig: &mut Rig, seed: u64, faint: bool) {
+    rig.sim.faint = faint;
+    rig.sim.pulse = faint && seed % 3 != 0;
+    rig.sim.flips = rig.sim.pulse;
 }
 
 /// Windows the quick runs take in turn: the device's (16, 64, 256), the smallest, and sizes
@@ -2188,7 +2268,7 @@ impl FileRun {
         let mut rng = Rng::new(seed ^ 0xF11E);
         let mut rig = fresh(seed, window);
         rig.sim.fork = forks;
-        rig.sim.faint = faint;
+        set_tear(&mut rig, seed, faint);
         rig.sim.later = if rng.chance(30) { 20 } else { 0 };
         FileRun {
             rig,
@@ -2255,11 +2335,11 @@ impl FileRun {
         let Some(replay) = self.rig.sim.replay(self.seed ^ self.forks_checked) else {
             return;
         };
-        let faint = self.rig.sim.faint;
+        let tear = self.rig.sim.tear();
         for (cells, _) in replay {
             self.forks_checked += 1;
             let mut r = Rig::new(
-                Sim::with_cells(self.forks_checked, cells, faint),
+                Sim::with_cells(self.forks_checked, cells, tear),
                 self.rig.window,
             );
             assert_eq!(r.mount(), STORE_STATE_SIDOU, "seed {}", self.seed);
@@ -2858,7 +2938,9 @@ fn a_faint_claim_loses_nothing_written_after_it() {
 #[test]
 fn a_mounts_polls_stay_within_a_slice() {
     // A record whose CRC and key lookup are more than a slice is checked alone in its poll.
-    let slice = STORE_MOUNT_SLICE.max(STORE_REC_HEADER + STORE_CHUNK + 4 * STORE_KEYS_MAX);
+    // (Its header, its CRC at 3 a byte, a key lookup, the maps.)
+    let slice =
+        STORE_MOUNT_SLICE.max(STORE_REC_HEADER + 3 * (12 + STORE_CHUNK) + STORE_KEYS_MAX + 24);
     let mut regions: Vec<(String, Vec<u8>)> = Vec::new();
     regions.push(("blank".into(), vec![0xFF; HI - LO]));
     regions.push((
@@ -3000,4 +3082,374 @@ fn a_commit_word_is_one_program_at_any_window() {
             .iter()
             .all(|&n| n <= window as usize));
     }
+}
+
+#[test]
+fn review_many_short_boots() {
+    let mut r = fresh(77, 256);
+    let mut rng = Rng::new(77);
+    let mut model: BTreeMap<u32, Vec<u8>> = BTreeMap::new();
+    let (mut busy, mut full) = (0, 0);
+    let song = content(5, 40_000);
+    assert_eq!(r.file_now("BIG", &song), STORE_OK);
+    for boot in 0..3000 {
+        r.reset();
+        assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        if boot % 5 != 0 {
+            r.maintain();
+        }
+        let n = 1 + rng.below(2);
+        for _ in 0..n {
+            let k = rng.below(40) as u32;
+            let n = if rng.chance(30) {
+                1000 + rng.below(249) as usize
+            } else {
+                rng.below(64) as usize
+            };
+            let v = rng.bytes(n);
+            match r.put(k, &v) {
+                STORE_OK => {
+                    r.settle();
+                    model.insert(k, v);
+                }
+                STORE_BUSY => busy += 1,
+                STORE_FULL => full += 1,
+                e => panic!("{e}"),
+            }
+        }
+    }
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    for (k, v) in &model {
+        assert_eq!(r.get(*k).as_ref(), Some(v));
+    }
+    assert_eq!(r.file("BIG"), Some(song));
+    let st = r.stats();
+    eprintln!(
+        "busy {busy} full {full} live {} pool {} dirty {} claimed {} erases {}..{} total_erases {}",
+        st.live, st.pool, st.dirty, st.claimed, st.erases_min, st.erases_max, r.sim.erases
+    );
+    assert_eq!(full, 0);
+}
+
+#[test]
+fn review_boots_near_capacity() {
+    let mut r = fresh(78, 256);
+    let mut files = 0;
+    let mut rng = Rng::new(78);
+    while files < 7 {
+        if r.file_now(&format!("F{files}"), &content(files as u64, 18_000)) != STORE_OK {
+            break;
+        }
+        files += 1;
+        r.maintain();
+    }
+    let (mut busy, mut full, mut ok) = (0, 0, 0);
+    let mut minfull = u32::MAX;
+    for boot in 0..400u32 {
+        r.reset();
+        assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        r.maintain();
+        for j in 0..2u32 {
+            let k = (boot * 2 + j) % 40;
+            let v = rng.bytes(1248);
+            match r.put(k, &v) {
+                STORE_OK => {
+                    r.settle();
+                    ok += 1;
+                }
+                STORE_BUSY => busy += 1,
+                STORE_FULL => {
+                    full += 1;
+                    minfull = minfull.min(r.stats().live);
+                }
+                e => panic!("{e}"),
+            }
+        }
+    }
+    let st = r.stats();
+    eprintln!("files {files} ok {ok} busy {busy} full {full} (lowest live when full {minfull}, capacity {}) live {} pool {} claimed {}", STORE_CAPACITY, st.live, st.pool, st.claimed);
+    assert_eq!(
+        full,
+        0,
+        "the store refused writes {} under its capacity",
+        STORE_CAPACITY - minfull.min(STORE_CAPACITY)
+    );
+}
+
+#[test]
+fn review_noboot_near_capacity() {
+    let mut r = fresh(78, 256);
+    let mut files = 0;
+    let mut rng = Rng::new(78);
+    while files < 7 {
+        if r.file_now(&format!("F{files}"), &content(files as u64, 18_000)) != STORE_OK {
+            break;
+        }
+        files += 1;
+        r.maintain();
+    }
+    let (mut busy, mut full, mut ok) = (0, 0, 0);
+    let mut minfull = u32::MAX;
+    for boot in 0..400u32 {
+        r.maintain();
+        for j in 0..2u32 {
+            let k = (boot * 2 + j) % 40;
+            let v = rng.bytes(1248);
+            match r.put(k, &v) {
+                STORE_OK => {
+                    r.settle();
+                    ok += 1;
+                }
+                STORE_BUSY => busy += 1,
+                STORE_FULL => {
+                    full += 1;
+                    minfull = minfull.min(r.stats().live);
+                }
+                e => panic!("{e}"),
+            }
+        }
+    }
+    let st = r.stats();
+    eprintln!("files {files} ok {ok} busy {busy} full {full} (lowest live when full {minfull}, capacity {}) live {} pool {} claimed {}", STORE_CAPACITY, st.live, st.pool, st.claimed);
+    assert_eq!(
+        full,
+        0,
+        "the store refused writes {} under its capacity",
+        STORE_CAPACITY - minfull.min(STORE_CAPACITY)
+    );
+}
+
+#[test]
+fn review_all_faint_commit_then_gc() {
+    let mut r = fresh(60, 256);
+    assert_eq!(r.put_now(1, b"old"), STORE_OK);
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    r.maintain();
+    assert_eq!(r.put_now(1, b"new"), STORE_OK);
+    let c = commit_word_of(r.sim.region(), 1);
+    r.sim.set_faint(c, 4, 0x00);
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    assert_eq!(r.get(1).as_deref(), Some(&b"new"[..]));
+    let before = r.sim.reclaims;
+    r.maintain();
+    let st = r.stats();
+    eprintln!("pool {} dirty {} claimed {}", st.pool, st.dirty, st.claimed);
+    let v = r.collect();
+    eprintln!("collect -> {v}");
+    if v == STORE_OK {
+        r.maintain();
+    }
+    eprintln!(
+        "sectors with key1: {:?}",
+        sectors_holding(r.sim.region(), 1, 1)
+    );
+    eprintln!("reclaims {}", r.sim.reclaims - before);
+    r.sim.faint_reads(0xFF);
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    let one = r.get(1);
+    eprintln!(
+        "key 1 after: {:?}",
+        one.as_deref()
+            .map(|v| String::from_utf8_lossy(v).to_string())
+    );
+    assert!(
+        one.as_deref() == Some(b"old") || one.as_deref() == Some(b"new"),
+        "lost: {one:?}"
+    );
+}
+
+#[test]
+fn review_all_faint_file_commit_then_gc() {
+    let mut r = fresh(61, 256);
+    assert_eq!(r.file_now("SONG", &content(1, 9000)), STORE_OK);
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    r.maintain();
+    assert_eq!(r.file_now("SONG", &content(2, 9000)), STORE_OK);
+    let key = r.file_open("SONG").unwrap().key;
+    let region = r.sim.region().to_vec();
+    let mut best = (0u32, 0usize);
+    for s in sectors_holding(&region, key, 0x82) {
+        let h = &region[s * SECTOR..(s + 1) * SECTOR];
+        let mut off = 32;
+        while off + 20 <= USE && h[off] != 0xFF {
+            let len = u16::from_le_bytes([h[off + 2], h[off + 3]]) as usize;
+            let size = 16 + len.div_ceil(4) * 4 + 4;
+            if h[off] == 0x82 && rd32(h, off + 4) == key && rd32(h, off + 8) >= best.0 {
+                best = (rd32(h, off + 8), s * SECTOR + off + size - 4);
+            }
+            off += size;
+        }
+    }
+    r.sim.set_faint(best.1, 4, 0x00);
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    assert_eq!(r.file("SONG"), Some(content(2, 9000)));
+    r.maintain();
+    for _ in 0..4 {
+        if r.collect() == STORE_OK {
+            r.maintain();
+        }
+    }
+    r.sim.faint_reads(0xFF);
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    let got = r.file("SONG");
+    eprintln!(
+        "SONG after: {:?} corrupt {}",
+        got.as_ref().map(|v| v == &content(1, 9000)),
+        r.stats().corrupt
+    );
+    assert!(
+        got == Some(content(1, 9000)) || got == Some(content(2, 9000)),
+        "song lost"
+    );
+}
+
+/// A record whose CRC checks but whose commit word reads erased at a mount is not committed
+/// then, but its sequence number is taken: a later write of its key never reuses it, so if
+/// the commit word reads programmed at a later mount, the later write still wins (and no two
+/// records share a number: no corruption counted).
+#[test]
+fn a_record_read_uncommitted_still_takes_its_sequence_number() {
+    let mut r = fresh(63, 256);
+    assert_eq!(r.put_now(1, b"old"), STORE_OK);
+    assert_eq!(r.put_now(1, b"cut"), STORE_OK);
+    let c = commit_word_of(r.sim.region(), 1);
+    r.sim.set_faint(c, 4, 0xFF);
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    assert_eq!(r.get(1).as_deref(), Some(&b"old"[..]));
+    r.maintain();
+    assert_eq!(r.put_now(1, b"later"), STORE_OK);
+    r.sim.faint_reads(0x00);
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    assert_eq!(r.get(1).as_deref(), Some(&b"later"[..]));
+    assert_eq!(r.stats().corrupt, 0);
+}
+
+/// The hook fails operations with no cut (STORE_ERROR, the part having done part of each): the
+/// writer's failure, a file's (file_fail with STORE_ERROR, mid-claim too), an erase's, a kill's
+/// and a header's. Nothing breaks a rule, and at every remount each key and file reads its value
+/// from before a failed write or after it, every other one exactly.
+#[test]
+fn hook_errors_never_cost_a_committed_value() {
+    let (mut failed, mut either) = (0, 0);
+    for (seed, window) in WINDOWS.into_iter().enumerate() {
+        let seed = 100 + seed as u64;
+        let mut r = fresh(seed, window);
+        r.sim.faint = seed % 2 == 0;
+        r.sim.pulse = r.sim.faint;
+        r.sim.fail = 3;
+        let mut rng = Rng::new(seed);
+        // What each key and file may read at the next mount.
+        let mut values: BTreeMap<u32, Vec<Option<Vec<u8>>>> = BTreeMap::new();
+        let mut files: BTreeMap<&str, Vec<Option<Vec<u8>>>> = BTreeMap::new();
+        for step in 0..300 {
+            let errors = r.stats().errors;
+            match rng.below(10) {
+                0..=4 => {
+                    let k = rng.below(8) as u32;
+                    let n = rng.below(if window < 8 { 80 } else { 600 }) as usize;
+                    let v = rng.bytes(n);
+                    let rc = r.put_now(k, &v);
+                    let now = values.entry(k).or_insert_with(|| vec![None]);
+                    if rc == STORE_OK {
+                        if r.stats().errors > errors {
+                            now.push(Some(v));
+                            either += 1;
+                        } else {
+                            *now = vec![Some(v)];
+                        }
+                    }
+                }
+                5 => {
+                    let k = rng.below(8) as u32;
+                    if r.delete_now(k) == STORE_OK {
+                        let now = values.entry(k).or_insert_with(|| vec![None]);
+                        if r.stats().errors > errors {
+                            now.push(None);
+                        } else {
+                            *now = vec![None];
+                        }
+                    }
+                }
+                6 | 7 => {
+                    let name = ["A", "B"][rng.below(2) as usize];
+                    let len = rng.below(if window < 8 { 600 } else { 9_000 }) as usize;
+                    let data = rng.bytes(len);
+                    let rc = r.file_now(name, &data);
+                    let now = files.entry(name).or_insert_with(|| vec![None]);
+                    if r.stats().errors > errors && (rc == STORE_OK || rc == STORE_ERROR) {
+                        now.push(Some(data));
+                    } else if rc == STORE_OK {
+                        *now = vec![Some(data)];
+                    }
+                }
+                8 => {
+                    if r.collect() == STORE_OK {
+                        r.settle();
+                    }
+                }
+                _ => r.maintain(),
+            }
+            assert!(
+                r.sim.violations.is_empty(),
+                "seed {seed}: {:#?}",
+                r.sim.violations
+            );
+            if step % 50 == 49 {
+                r.reset();
+                assert_eq!(r.mount(), STORE_STATE_SIDOU, "seed {seed}");
+                for (k, allowed) in values.iter_mut() {
+                    let got = r.get(*k);
+                    assert!(allowed.contains(&got), "seed {seed}: key {k}");
+                    *allowed = vec![got];
+                }
+                for (n, allowed) in files.iter_mut() {
+                    let got = r.file(n);
+                    assert!(allowed.contains(&got), "seed {seed}: file {n}");
+                    *allowed = vec![got];
+                }
+                assert_eq!(r.stats().corrupt, 0, "seed {seed}");
+            }
+        }
+        r.sim.fail = 0;
+        r.maintain();
+        r.assert_clean();
+        failed += r.sim.failed;
+    }
+    println!("{failed} operations failed, {either} writes left either way");
+    assert!(failed > 300 && either > 10);
+}
+
+/// A new key's record read uncommitted keeps its key a slot in the index: with the index
+/// otherwise full, another new key is refused, so when the record reads committed at the next
+/// mount, its key finds its place and nothing overflows the index.
+#[test]
+fn a_record_read_uncommitted_keeps_its_key_a_slot() {
+    let mut r = fresh(64, 256);
+    for k in 0..STORE_KEYS_MAX - 1 {
+        assert_eq!(r.put_now(k, &k.to_le_bytes()), STORE_OK);
+    }
+    assert_eq!(r.put_now(1000, b"cut"), STORE_OK);
+    let c = commit_word_of(r.sim.region(), 1000);
+    r.sim.set_faint(c, 4, 0xFF);
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    assert_eq!(r.get(1000), None);
+    r.maintain();
+    assert_eq!(r.put(2000, b"another"), STORE_FULL, "the slot is kept");
+    assert_eq!(r.put_now(1000, b"again"), STORE_OK, "its own key may write");
+    r.sim.faint_reads(0x00);
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    let s = r.stats();
+    assert_eq!((s.keys, s.corrupt), (STORE_KEYS_MAX, 0));
+    assert_eq!(r.get(1000).as_deref(), Some(&b"again"[..]));
 }

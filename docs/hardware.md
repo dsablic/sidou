@@ -427,9 +427,11 @@ through `fl_read_ram` with XIP off, so the window does not change them.
 **Partial programs.** The store programs a 256-byte page up to 34 times
 between two erases of its sector (`STORE_PAGE_PROGS`, for write windows of
 16 bytes or more): record data, headers and commit words, each its own
-program. Twice it programs bytes already programmed: a claim programs the
-sector's erase header again, the same bytes (so bits a cut left faint are
-programmed for good), and the kill programs the magic to zero. A part with
+program. It programs bytes already programmed only with the same bytes or
+to zero: a claim programs the sector's erase header again (so bits a cut
+left faint are programmed for good), a claim read as never made is made
+again over the same bytes (a claim's number is the erase count), and the
+kill programs the magic to zero. A part with
 ECC would need a format rework into 16-byte units each programmed once
 ([store-format.md](reference/store-format.md), "Partial programs and ECC").
 All three are open checks below.

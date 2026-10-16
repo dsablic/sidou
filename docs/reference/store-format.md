@@ -44,7 +44,7 @@ Written in two steps.
 | 10 | 2 | zero |
 | 12 | 4 | the sector's erase count |
 | 16 | 4 | CRC-32 of bytes 0-15 |
-| 20 | 4 | the sector's sequence number |
+| 20 | 4 | the claim's number: the erase count again |
 | 24 | 4 | CRC-32 of bytes 0-23 |
 | 28 | 4 | claim word, `0x00000000` |
 
@@ -55,8 +55,12 @@ Written in two steps.
   use, before its first record, in one go with the erase header again: the
   claim programs bytes 0-31, and bytes 0-19 are the same bytes once more, so
   a faint erase header (below) is programmed for good before the sector holds
-  anything. Sequence numbers come from one counter, shared with the records;
-  the newest is the highest.
+  anything. The claim's number is the sector's erase count again, so every
+  claim of one erase cycle is the same 32 bytes: a claim cut so early that
+  the next mount reads the sector clean (every bit it touched left faint), or
+  one the flash driver failed, is made again over the same bytes, never over
+  different ones. (Regions written before this rule hold a sequence number
+  there; either reads the same.)
 - **A sector without a valid erase header is dirty, whatever it reads**: an
   erase cut short can leave bytes that read 0xFF and hold no program. So is a
   clean sector with a cut claim: a bad claim CRC, or a claim word that reads
@@ -94,8 +98,12 @@ Written in two steps.
   whatever the write window). All three land on erased bytes. A record counts
   only with a good CRC and its commit word programmed: erased (`0xFFFFFFFF`)
   means the write was cut; any bit of it programmed counts, since the header
-  and data were programmed whole before it (the CRC shows it), so a commit
-  word a cut left faint reads the same verdict at every mount.
+  and data were programmed whole before it (the CRC shows it). So a commit
+  word with any bit programmed for good reads the same verdict at every
+  mount; one all of whose programmed bits are faint may not ("Faint bits and
+  the head"). Its sequence number is taken either way: a header whose CRC
+  checks moves the next number past its own even while its commit word reads
+  erased.
 - **The end of a sector's records** is the first header that reads all
   0xFF, if the rest of the sector's record area is 0xFF too. Anything else
   after the last valid record (a cut write: data under an erased header, a
@@ -162,10 +170,19 @@ Three rules keep them harmless:
   (above).
 - A claim programs the erase header again (above).
 
-What is left: a commit word all of whose programmed bits are faint can read
-erased at one mount and programmed at another. The record it ends is the
-write the cut interrupted, so the key reads its old value at one mount and
-its new one at the other, never anything else.
+What is left: a commit word all of whose programmed bits are faint (likely:
+its 32 bits are programmed by one pulse, so a cut leaves them charged alike)
+can read erased at one mount and programmed at another. The record it ends
+is the write the cut interrupted, so the key reads its old value at one
+mount and its new one at another, never anything else, because the older
+records outlive it: such a record can only be the last of a sector written
+before the mount (every session starts a fresh head, and a cut leaves one
+write in flight), and before garbage collection kills any sector it copies
+every such record that has older records of its key around (a FILE record:
+the old one, whose chunks a kill could take) into the head first. The copy,
+written in this session, is whole, and from then on the key's live record is
+the copy. A record that read uncommitted keeps its key a place in the key
+index, so it finds one if it reads committed at the next mount.
 
 ## Which record wins
 
@@ -173,10 +190,10 @@ its new one at the other, never anything else.
   means the key is deleted.
 - Garbage collection copies a live record into another sector **with its
   sequence number unchanged**. So two valid records of a key can share a
-  number: a record and its copy, which hold the same bytes. Of the two, the
-  one in the sector with the higher sector sequence number wins. Two with the
-  same number and different bytes cannot arise; the mount counts it as
-  corruption (`store_stats`) and takes the same choice.
+  number: a record and its copy, which hold the same bytes, so either may
+  stand for the key (the mount takes the one in the sector with the higher
+  claim number, or the first found). Two with the same number and different
+  CRCs cannot arise; the mount counts it as corruption (`store_stats`).
 - **Tombstones are carried forward** by garbage collection while any older
   record of their key survives in another sector; otherwise they are
   dropped with their sector.
@@ -197,8 +214,16 @@ its new one at the other, never anything else.
 Clean, unclaimed sectors. `STORE_POOL_MIN` is `ceil(65,536 / 3,808) + 2` =
 20: the largest file plus garbage collection's two-sector reserve.
 Maintenance refills the pool toward `STORE_POOL_TARGET` (22) when the device
-is quiet, erasing dirty sectors first, then collecting the sector with the
-least live data. A write claims its sectors from the pool before its first
+is quiet, erasing dirty sectors first, then collecting. A collection takes
+the sector with the least live data (the colder on a tie), but only when it
+gains: collecting the least-live sectors one after another copies their
+live records, back to back, into the head's room and then into fresh
+sectors, and the run must fill fewer sectors than it frees (`plan` in
+`store.c`; say three sectors two-thirds live give one). A run that gains
+goes on gaining as its sectors are collected, so collections never churn,
+and sectors of any fill can go (a fixed "at most half live" rule left each
+boot's head, two values of 1,268 bytes, uncollectable, and the store full
+10% under its capacity). A write claims its sectors from the pool before its first
 byte; a small value's new head sector is refused (`STORE_BUSY`) when it
 would take the pool under its minimum, and a file's sectors, with the place
 for its FILE record, when they would take it into garbage collection's
