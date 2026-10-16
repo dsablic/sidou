@@ -28,7 +28,7 @@
 //   broadsword spinning away; it sticks point-down in a flagstone, and he pulls it free in
 //   bar 1. SWORDS (the sword in flight, eight rotations, each drawn by the painter: no
 //   rotated pixels), STUCK (the sword standing in a flagstone, a crack round its point), the
-//   `reach` pose (bending to pull the sword from the floor), barbarian 1's unarmed poses,
+//   `reach` pose (bending to pull the sword from the floor), both barbarians' unarmed poses,
 //   and the logic in step and the sprites stage (marked "disarm");
 // - the status bar's stamina meter: a broadsword blade a side (bladeMeter), replacing the
 //   prototype's eight pips a side, which sat too close to the genre's best-known game's
@@ -45,7 +45,7 @@
 // - arena.png: the temple and floor, 240 x 240 in screen coordinates, transparent where the
 //   sky shows;
 // - barb-0-<pose>.png (bare-headed, dark hair, red headband) and barb-1-<pose>.png (steel
-//   helmet, red plume) for the eight poses of DUEL, and barb-1-<pose>-unarmed.png for guard,
+//   helmet, red plume) for the eight poses of DUEL, and barb-<n>-<pose>-unarmed.png for guard,
 //   guard2, hit and reach: 64 x 124, stored at half width (gx = 2: each stored pixel is two
 //   on the screen). Barbarian 0 faces right; barbarian 1 is drawn mirrored. The hip is at
 //   (hx, hy) = (58, 72) in screen pixels of the unmirrored sprite; the sprite's top-left goes
@@ -683,9 +683,10 @@ VIGNETTES.push({
       for (let x = 0; x < W; x++) for (let y = 222; y < 240; y++) if (bayW(x, y) < (y - 222) / 2) fg[y * W + x] = BLACK
     }
     for (const [tx, ty] of torchAt) for (let y = ty - 14; y < ty - 2; y++) for (let x = tx - 5; x < tx + 5; x++) flameMask.push([x, y, tx, ty])
-    const st = { rowPal: new Uint8Array(30).fill(1), lead: 0, pose: ['guard', 'guard'], t: [0, 0], stance: 0, x: 120, spark: 0, sparkAt: [120, 120], flare: 0, unarmed: false, sword: null, hp: [8, 8], spin: 0, spinWho: 0, shake: 0 }
+    const st = { rowPal: new Uint8Array(30).fill(1), lead: 0, pose: ['guard', 'guard'], t: [0, 0], stance: 0, x: 120, spark: 0, sparkAt: [120, 120], flare: 0, unarmed: -1, sword: null, hp: [8, 8], spin: 0, spinWho: 0, shake: 0 }
     const FEET = 228
     // disarm (new): where fighter k's front hand is on the screen in a pose, fighter at x
+    const xs0 = k => k ? st.x + 30 : st.x - 30
     const handAt = (k, pose, un, x) => {
       const s = barbSpr(k + pose + (un ? 'u' : ''), k, pose, un), ox = k === 0 ? x - 58 : x - 70, c = Math.floor(s.j.haF[0] / s.gx)
       return [k === 0 ? ox + c * 2 : ox + (s.w - 1 - c) * 2, FEET - 112 + Math.floor(s.j.haF[1])]
@@ -697,8 +698,9 @@ VIGNETTES.push({
         if (e.bass !== null) st.lead = e.bass >= 50 ? 1 : 0
         const L = st.lead, O = 1 - L
         // disarm: once his sword has stuck, the disarmed fighter pulls it free on the next beat
-        if (st.sword && st.sword.n >= st.sword.T && st.pose[1] !== 'reach' && st.t[1] <= 0 && e.s % 4 === 0) { st.pose[1] = 'reach'; st.t[1] = 8 }
-        if (e.fill && e.s === 12 && !(L === 1 && st.unarmed)) { st.spin = 4; st.spinWho = L; st.pose[L] = 'spinA'; st.t[L] = 99 }
+        const U = st.unarmed
+        if (st.sword && st.sword.n >= st.sword.T && st.pose[U] !== 'reach' && st.t[U] <= 0 && e.s % 4 === 0) { st.pose[U] = 'reach'; st.t[U] = 8 }
+        if (e.fill && e.s === 12 && U < 0) { st.spin = 4; st.spinWho = L; st.pose[L] = 'spinA'; st.t[L] = 99 }
         if (st.spin > 0) {
           st.pose[st.spinWho] = st.spin & 1 ? 'spinB' : 'spinA'
           st.spin--
@@ -707,14 +709,16 @@ VIGNETTES.push({
             st.pose[st.spinWho] = 'spinB'; st.t[st.spinWho] = 6
             st.pose[V] = 'hit'; st.t[V] = 10; st.hp[V] = Math.max(0, st.hp[V] - 2); st.shake = 3
             // disarm (replacing the prototype's helmet knock): his sword flies from his hand and
-            // lands point-down where he will bend to pull it free; the fighters hold their ground meanwhile
-            if (V === 1 && !st.unarmed) { st.unarmed = true; st.sword = swordFlight(handAt(1, 'hit', false, st.x + 30), handAt(1, 'reach', true, st.x + 30), -DUEL.hit.sw) }
+            // lands point-down where he will bend to pull it free; the fighters hold their ground
+            // meanwhile. Either fighter can be disarmed (the leader at the fill disarms the other);
+            // with the arcade's pattern the leader is always fighter 0
+            if (U < 0) { st.unarmed = V; st.sword = swordFlight(handAt(V, 'hit', false, xs0(V)), handAt(V, 'reach', true, xs0(V)), V ? -DUEL.hit.sw : DUEL.hit.sw) }
           }
           return
         }
         // disarm: while one fighter is unarmed, no one attacks or parries: the other waits for him
-        if (e.kick && !st.unarmed) { st.pose[L] = 'raise'; st.t[L] = 3; st.next = 'chop' }
-        if (e.snare && !st.unarmed) { st.pose[O] = 'block'; st.t[O] = 5; st.spark = 3; st.hp[L] = Math.max(0, st.hp[L] - 1) }
+        if (e.kick && U < 0) { st.pose[L] = 'raise'; st.t[L] = 3; st.next = 'chop' }
+        if (e.snare && U < 0) { st.pose[O] = 'block'; st.t[O] = 5; st.spark = 3; st.hp[L] = Math.max(0, st.hp[L] - 1) }
         if (e.hat) { st.stance ^= 1 }
         if (e.s === 0) for (const k of [0, 1]) if (st.hp[k] === 0) st.hp[k] = 8
         if (e.arp !== null) st.flare = 3
@@ -747,7 +751,7 @@ VIGNETTES.push({
         ['sprites', 'Fighters and FX', (p, c) => {
           for (const k of [0, 1]) if (st.t[k] > 0 && --st.t[k] === 0) {
             if (st.pose[k] === 'raise' && st.next) { st.pose[k] = st.next; st.t[k] = 5; st.next = null } else {
-              if (st.pose[k] === 'reach') { st.unarmed = false; st.sword = null } // disarm: the sword is back in his hand
+              if (st.pose[k] === 'reach') { st.unarmed = -1; st.sword = null } // disarm: the sword is back in his hand
               st.pose[k] = st.stance ? 'guard2' : 'guard'
             }
           }
@@ -761,9 +765,9 @@ VIGNETTES.push({
           if (sw && sw.n < sw.T) sw.n++ // disarm: frames 1 .. T - 1 in flight, then in the floor
           // disarm: in the floor, behind the fighters, and over the hand that pulls it free
           const stuck = () => put(p, STUCK, sw.to[0] - STUCK_GX, sw.to[1] - STUCK_GY)
-          if (sw && sw.n >= sw.T && st.pose[1] !== 'reach') stuck()
+          if (sw && sw.n >= sw.T && st.pose[st.unarmed] !== 'reach') stuck()
           for (const k of [0, 1]) {
-            const pose = st.pose[k], un = k === 1 && st.unarmed
+            const pose = st.pose[k], un = k === st.unarmed
             const s = barbSpr(k + pose + (un ? 'u' : ''), k, pose, un)
             const ox = k === 0 ? xs[0] - 58 : xs[1] - (128 - 58)
             rect(p, xs[k] - 18, FEET + 2, 36, 2, BLACK)
@@ -780,7 +784,7 @@ VIGNETTES.push({
             const cx = xs[st.spinWho] + (st.spinWho ? -10 : 10), cy = FEET - 60
             for (let a = 0; a < 14; a++) { const t = a / 14 * Math.PI * 1.4 + c.frame * 0.9; px(p, cx + Math.cos(t) * 44 * (st.spinWho ? -1 : 1), cy + Math.sin(t) * 12, a & 1 ? LGREY : WHITE) }
           }
-          if (sw && sw.n >= sw.T && st.pose[1] === 'reach') stuck()
+          if (sw && sw.n >= sw.T && st.pose[st.unarmed] === 'reach') stuck()
           if (sw && sw.n < sw.T) { // disarm: the sword in flight, over the fighters
             const [gx, gy, k] = swordAt(sw, sw.n)
             put(p, SWORDS[k], gx - SWORD_C, gy - SWORD_C)
@@ -916,7 +920,7 @@ if (typeof module !== 'undefined' && require.main === module) {
     if (k === 'reach') continue
     sprites.push([`barb-${who}-${k}`, barbSpr(who + k, who, k, false)])
   }
-  for (const k of ['guard', 'guard2', 'hit', 'reach']) sprites.push([`barb-1-${k}-unarmed`, barbSpr(1 + k + 'u', 1, k, true)])
+  for (const who of [0, 1]) for (const k of ['guard', 'guard2', 'hit', 'reach']) sprites.push([`barb-${who}-${k}-unarmed`, barbSpr(who + k + 'u', who, k, true)])
   SWORDS.forEach((s, k) => sprites.push([`sword-${k}`, s]))
   sprites.push(['sword-stuck', STUCK])
   for (const [name, s] of sprites) out[`${name}.png`] = spriteImage(s)

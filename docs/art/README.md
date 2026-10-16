@@ -663,7 +663,7 @@ original art in the 16 colours, with no game's name, logo, sprite, pose, arena o
 | `sky-0.png` .. `sky-2.png` | The three sky palettes with the moon, wisps and hills: the screen's rows 16-139, 240 x 124. |
 | `arena.png` | The temple and floor, 240 x 240 in screen coordinates, transparent where the sky shows. |
 | `barb-0-<pose>.png`, `barb-1-<pose>.png` | The two fighters (0: bare-headed, dark hair, red headband; 1: steel helmet, red plume) in the eight poses (guard, guard2, raise, chop, block, spinA, spinB, hit): 64 x 124, stored at half width (each stored pixel is two on the screen, `gx = 2`); fighter 1 is drawn mirrored. Hip at (58, 72) of the screen-width sprite; the header gives the placement. |
-| `barb-1-<pose>-unarmed.png` | Fighter 1 without his sword: guard, guard2, hit, and reach (bending to pull it from the floor). |
+| `barb-0-<pose>-unarmed.png`, `barb-1-<pose>-unarmed.png` | Each fighter without his sword: guard, guard2, hit, and reach (bending to pull it from the floor). |
 | `sword-0.png` .. `sword-7.png` | The sword in flight, eight rotations of 45 degrees, each painted whole (no rotated pixels), grip at the centre of 84 x 84 screen pixels. |
 | `sword-stuck.png` | The sword point-down in a flagstone, leaning a little, a crack round its point. |
 | `flame-mask.png` | The torches' flame area, where the colour cycling draws. |
@@ -674,14 +674,15 @@ PNG has transparency. A test (`scene_rmr_drawing`, in sidou-tests' app tests) ru
 twice when Node is installed and fails if the runs differ or the PNGs fall behind it.
 
 **The disarm** replaces the prototype's helmet knock (the helmet flew off fighter 1's head and
-he fought bare-headed until bar 1). At the spinning attack's last beat, fighter 1's sword
+he fought bare-headed until bar 1). At the spinning attack's last beat, the other fighter's sword
 leaves his hand in the `hit` pose; its middle follows a parabola for 20 frames (0.8 s)
 and turns a whole number of times, so it lands point-down with its grip where his hand will
 be in `reach`. The fighters hold their ground while it is out of his hand. On the first beat
 after it sticks he takes `reach` for 8 frames, then has it back in `guard`: with the arcade's
-pattern it lands near bar 1's second beat and is back in his hand by its fourth. Only fighter
-1 is ever disarmed (as only he had a helmet): the fill's spinner is whoever leads, and with
-the arcade's pattern that is always fighter 0.
+pattern it lands near bar 1's second beat and is back in his hand by its fourth. The fill's
+spinner is whoever leads and he disarms the other, so either fighter can be disarmed (both
+have unarmed poses); with the arcade's pattern the leader is always fighter 0, so the preview
+shows fighter 1 disarmed.
 
 **The status bar** shows each fighter's stamina as a broadsword: the hilt at the screen's
 edge, the blade pointing in toward `VS` in eight notches, each stamina lost taking the notch
