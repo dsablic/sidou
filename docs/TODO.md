@@ -4,6 +4,24 @@
 
 Follow-ups that aren't tied to a milestone task yet.
 
+## A UX pass: make SIDOU a joy to use (after the features)
+
+- **Where:** every view, `docs/reference/controls.md`, the design doc's UI section.
+- **Problem:** the features are built control by control; nobody has yet looked at the whole
+  as a player would. Gestures have piled up (EDIT layer, SAVE held, HOME held, menus, CHIP
+  focus), and there is no help on the device.
+- **Action (after M2 and M3's features, before the first release):**
+  - a UX review of every view and gesture with fresh eyes: what a first-time player tries,
+    where they get stuck, which gestures clash or are hard to remember; simplify and make
+    controls consistent across views;
+  - **integrated help cards**: a press-and-hold (or a HELP gesture) shows a card for the
+    current view, in the font and Metal Chrome style, naming what each knob and button does
+    *here*, generated from the same tables the panel uses so it can't drift;
+  - first-run guidance (the full boot once, then a short "turn K1" tour), clear toasts,
+    undo where it matters, and consistent naming;
+  - usability checks with real players on hardware, recorded in `docs/hardware-test.md`.
+- The user's priority (2026-10-16): finish the features first, then this pass.
+
 ## Apply for a pid.codes PID before 1.0
 
 - **Where:** `platform/fm1/usb/usb.c`, the device descriptor
