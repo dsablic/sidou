@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Builds the host harnesses (harness/): the firmware's step 1 of the update protocol
-//! (ota.c) and its flash hooks (platform/fm1/ota_flash.h), for the tests.
+//! (ota.c), its flash hooks (platform/fm1/ota_flash.h) and the flash spike's bounds
+//! (platform/fm1/flash_spike_guard.h), for the tests.
 
 use std::env;
 use std::path::PathBuf;
@@ -20,6 +21,11 @@ fn main() {
         .unwrap();
     println!("cargo:rerun-if-changed=harness/ota_harness.c");
     println!("cargo:rerun-if-changed=harness/flash_hooks.c");
+    println!("cargo:rerun-if-changed=harness/flash_spike_guard.c");
+    println!(
+        "cargo:rerun-if-changed={}",
+        fm1.join("flash_spike_guard.h").display()
+    );
     println!(
         "cargo:rerun-if-changed={}",
         fm1.join("ota_flash.h").display()
@@ -29,6 +35,7 @@ fn main() {
     build
         .file(manifest.join("harness/ota_harness.c"))
         .file(manifest.join("harness/flash_hooks.c"))
+        .file(manifest.join("harness/flash_spike_guard.c"))
         .include(&usb)
         .include(&fm1)
         .flag("-std=c11")

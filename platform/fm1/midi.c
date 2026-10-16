@@ -206,6 +206,16 @@ void midi_service(uint32_t now_ms) {
     usb_retry(now_ms);
 }
 
+#if defined(SIDOU_FLASH_SPIKE)
+void midi_spike_trs(uint32_t* bytes, uint32_t* lost) {
+    midi_ring_entry e;
+    while (midi_ring_pop(&in_ring, &e)) {
+    }
+    *bytes = um.bytes;
+    *lost = um.drops;
+}
+#endif
+
 /* ---- ota.c's hooks (Felucca's ota_hw.c, adapted) ---- */
 
 static uint8_t flash_ok;           /* the JEDEC id matched at boot */

@@ -27,6 +27,7 @@ lists the prerequisites.
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
 | Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
 | Emulator tests (gates incl. effects, boot, live instrument, screen, MIDI, latency, SRAM audio, package) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
+| Flash timing spike (a test firmware, M2a Task 3b) | build it with `-DSIDOU_FLASH_SPIKE=ON` into `build/fm1-spike` (BUILDING.md), then `SIDOU_FM1_BUILD=$PWD/../build/fm1 SIDOU_FM1_SPIKE_BUILD=$PWD/../build/fm1-spike cargo test --release -p emu-gate --test flash_spike -- --nocapture`; its bounds `cargo test --release -p sidou-pack --test flash_spike_guard` | `crates/emu-gate/tests/flash_spike.rs`, `crates/sidou-pack/tests/flash_spike_guard.rs` |
 | Browser demo smoke test (from the repository root) | `tools/web-demo --check` | `web/check.mjs`, `web/check.sh` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
@@ -822,6 +823,17 @@ MIDI is covered by the host tests of the packet conversion
   while the audio runs (-16, counted), the driver always called with
   interrupts masked and the LED rows dark for an erase, reads in 256-byte
   windows; and that the harness's copy of `FL_IN` is the HAL's.
+- `flash_spike_guard.rs` runs the flash spike's bounds
+  (`platform/fm1/flash_spike_guard.h`) with stand-ins for its driver on a
+  1 MiB flash: at every address of the part (and past it, and wrapping),
+  sector erases, page erases, programs and the suspend check reach the
+  driver only inside the store's last two sectors `[0xDE000, 0xE0000)`,
+  programs only inside one page and below each sector's guard band (0xF00),
+  and nothing else changes; the RAM driver's own gate in the spike's build
+  is the same; a sector is taken only if blank or the spike's own (its mark,
+  the band erased), so one programmed byte, a touched band or a store sector
+  (`SIDOUSTR`) is foreign; and the round-trip pattern reads absent, intact
+  or damaged.
 - `pack.rs` reads a package back with fm1-emu's reader (`fm1_soc::fwsc`): the
   head is the SDK-default one with the SDK's SPL and the chip key, the app
   is at `0x02000120` in the unscrambled app area, the directory, the
@@ -865,6 +877,29 @@ not model a reset, so each reset is a fresh machine that keeps the guard's
   death.
 
 The guard's rules are host-tested too (`tests/app/bootguard.rs`).
+
+### Flash spike test
+
+`crates/emu-gate/tests/flash_spike.rs` covers the flash timing spike
+(`platform/fm1/flash_spike.c`, M2a Task 3b), a test firmware for the user's
+FM-1 ([docs/hardware-test.md](docs/hardware-test.md), section 12):
+- with `SIDOU_FM1_BUILD`: the default image has no spike symbol in its ELF
+  (`flash_spike*`, `*spike_*`: what `nm` lists) and not the spike's sector
+  mark in its bytes;
+- with `SIDOU_FM1_SPIKE_BUILD` (the spike's build directory): the spike boots
+  to its start screen, starts on SAVE and runs to its result screen with the
+  TRS jack busy throughout. Every time is 0 (fm1-emu's flash is
+  instantaneous), every read-back check is clean, fm1-emu ignores the page
+  erase (0x81), about 3125 TRS bytes arrive in the open second and none is
+  lost across the 1 ms and 35 ms masks. Every byte of the flash outside the
+  two sectors holds a sentinel an erase or program would change (the update
+  staging area blank, as `update_boot` erases one in use), and none
+  changes; at the end 0xDF000 is blank, 0xDE000 holds the pattern, and both
+  guard bands are erased. A second run on that flash takes its own sectors
+  and finds the pattern intact; with that pattern damaged, it refuses. A
+  foreign byte in either sector (the band included) makes it refuse too, and
+  a refusal writes nothing. It writes its
+  results to `flash_spike.json` in the spike's build directory.
 
 ### SRAM audio test
 
@@ -941,7 +976,7 @@ triggers; it builds, smoke-tests and deploys the browser demo:
 | `asan` (Ubuntu, nightly Rust) | the tests with `SIDOU_SANITIZE=address` |
 | `msrv` (Ubuntu, Rust 1.87) | `cargo check` |
 | `reuse` | `reuse lint` |
-| `fm1` (Ubuntu) | the `fm1` build in Docker; `sidou-pack` makes `sidou.fwsc` (its inputs cached by `inputs.toml`'s hash) and its tests run with the inputs and with M-VAVE's V15 package (fetched and SHA-checked for the stock-return tests only); the emulator tests (gate, boot, live, MIDI, latency, SRAM, boot guard, package boot); a check that the JSON reports exist. The reports are uploaded as the `sid-budget` artifact, the package with `LICENSES/Apache-2.0.txt` and `LICENSES/GPL-3.0-only.txt` as `sidou-fwsc` |
+| `fm1` (Ubuntu) | the `fm1` build in Docker; `sidou-pack` makes `sidou.fwsc` (its inputs cached by `inputs.toml`'s hash) and its tests run with the inputs and with M-VAVE's V15 package (fetched and SHA-checked for the stock-return tests only); the flash timing spike's build (`build/fm1-spike`); the emulator tests (gate, boot, live, MIDI, latency, SRAM, boot guard, package boot, the flash spike); a check that the JSON reports exist. The reports are uploaded as the `sid-budget` artifact, the package with `LICENSES/Apache-2.0.txt` and `LICENSES/GPL-3.0-only.txt` as `sidou-fwsc` |
 
 Before opening a pull request, run at least:
 

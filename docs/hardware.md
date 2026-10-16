@@ -267,6 +267,95 @@ These follow from the facts above. Each needs measuring before it's adopted.
   ([hardware-test.md](hardware-test.md)); back to stock with M-VAVE's
   updater or "Return to official V15".
 
+## The flash part's timings (open: M2a Task 3b)
+
+The store (M2a) programs and erases the flash while SIDOU runs. With XIP off
+and interrupts masked for each operation, neither the audio interrupt nor
+TIMER5 runs meanwhile, so the store's write windows and held erases (M2a
+Task 4) are sized from the part's real times. fm1-emu can't give them: its
+flash is instantaneous.
+
+**The part.** The unit answers JEDEC `85 60 14`. The id table of Puya's
+P25Q80H datasheet (8 Mbit, January 2021) lists exactly that id. Its figures,
+typical / maximum:
+
+| Operation | Datasheet |
+|---|---|
+| 4 KiB sector erase (0x20), `tSE` | 8 / 20 ms |
+| 256-byte page erase (0x81), `tPE` | 8 / 20 ms |
+| page program (0x02), up to 256 bytes, `tPP` | 2 / 3 ms (0.6 / 1.5 ms for the "Q" ordering option) |
+| erase or program suspend latency (0x75), `tESL`/`tPSL` | 30 µs max |
+| resume (0x7A) to the next suspend, `tERS` | 20 µs min (100 µs for the erase to make progress) |
+
+More from the datasheet:
+- Suspend sets SUS1 (status bit 10) for an erase and SUS2 (bit 15) for a
+  program. While an erase is suspended, everything outside the sector being
+  erased can be read.
+- The configure register's DP bit (0x15, bit 7) turns pages to 512 bytes:
+  then page program wraps at 512 bytes and 0x81 erases a 512-byte dual page.
+  It defaults to 0.
+- On partial programs, the datasheet says only that 1 to 256 bytes may be
+  programmed per operation, that whole pages programmed once are fastest,
+  and it refers to "the P25Q serial flash application note for multiple
+  byte program operation within one page". It gives no count of programs a
+  page allows before an erase, and it says nothing on programming bits that
+  are already 0.
+- It doesn't mention ECC.
+
+The datasheet's worst page program (3 ms) is over a write window's
+1,000 µs, so the measured times decide.
+
+**The spike** (`platform/fm1/flash_spike.c`, a test firmware built with
+`-DSIDOU_FLASH_SPIKE=ON`; [hardware-test.md](hardware-test.md) section 12)
+measures all of this on the store's last two sectors and shows it on the
+screen. These are the numbers to record, from a real unit (fm1-emu shows 0
+for every time):
+
+| Measurement | Unit 1 | Notes |
+|---|---|---|
+| JEDEC id, SR1/SR2, CR (DP) | | |
+| CLOCK, adds/µs (0.8 × MHz: 192 is 240 MHz, 288 is 360 MHz) | | |
+| 4 KiB erase: min / mean / max µs (20 runs) | | |
+| program 16 bytes: min / mean / max µs (20) | | |
+| program 64 bytes (20) | | |
+| program 256 bytes (280) | | |
+| page erase 0x81: THE PAGE / WIDER / IGNORED / ODD; min / mean / max µs | | |
+| suspend: SUS1 n/5, latency min / mean / max µs, READ, END | | |
+| 64 programs into one page (PARTIAL) | | |
+| zeros over zeros, 3 times (REZERO) | | |
+| one byte programmed 8 times (BITWALK) | | |
+| a page programmed twice, the AND read back (TWICE; not OK suggests ECC) | | |
+| TRS: bytes and lost, open 1 s / 100 × 1 ms masked / 10 × 35 ms masked | | |
+| stock round trip: the pattern at 0xDE000 after V15 and back (INTACT / DAMAGED / ABSENT) | | |
+| store sectors not blank at the spike's first start, of 73 | | |
+
+**Decision rule** (M2a Task 4 applies it to the recorded numbers):
+- **Programs go in windows** if the worst 16-byte program plus the driver's
+  overhead is ≤ 1,000 µs. `STORE_WINDOW_BYTES` is the largest of 16, 64 and
+  256 whose worst time fits. Otherwise programs become **held operations**
+  like erases (quiet only), and settings saves wait for quiet.
+- **Erases:**
+  - a held 4 KiB sector erase, if its worst time is ≤ 30 ms;
+  - else 16 held page erases (0x81) a sector, if the part erases the page
+    alone and each is ≤ 30 ms;
+  - else erase suspend in ≤ 30 ms slices, if it works (SUS1 set, the read
+    correct, the erase finished after the resume);
+  - else erases only at boot (before the audio starts, at most
+    `STORE_POOL_TARGET` sectors) and on an explicit format, and the pool is
+    sized at boot for the session.
+
+  30 ms leaves 5 ms under the 35 ms hold budget for the driver.
+- **The TRS input:** a 35 ms hold must lose no TRS byte (the spike's 35 ms
+  row, LOST 0). Otherwise the hold budget shrinks until it does.
+- **Several programs into a page, and reprogramming:** the store programs a
+  record's data, then its header, then its commit flag, and a sector's
+  header in two steps (M2a Task 2), often into one page. If PARTIAL, REZERO
+  or BITWALK is not OK, or TWICE shows the part does not AND what it is
+  given, the format changes before Task 4: one program per page region, no
+  bit cleared twice.
+- **The clock:** at 360 MHz every instruction-count margin in M2 grows by
+  half; at 240 MHz they are as written.
+
 ## Open checks on a real unit
 
 | Check | Why it matters | How |
@@ -277,8 +366,9 @@ These follow from the facts above. Each needs measuring before it's adopted.
 | The audio path from SRAM | fm1-emu doesn't model the I-cache, so Task 5b's benefit is unmeasured. | Cycles per audio block (TIMER4 or `TL_CKCNT`) and fetch misses (`IF_UACNT`), with the LCD redrawing, in a build with `.ram_text`'s audio rules and one without. |
 | Combined waveforms from flash | The pulldown rows (6 KB per waveform and chip, `.rodata`) are the audio interrupt's only flash data reads. | Cycles per audio block with two chips on combined waveforms against single waveforms (TIMER4 or `TL_CKCNT`), and D-cache misses if a counter shows them. If they cost, move the default profile's rows to POOL (a loaded section, copied at boot). |
 | The USB retry's stall | Without a cable, the attach `usb_retry` runs once a second times out three SIE writes in one main-loop pass (300k instructions in fm1-emu). | Time `usb_attach_now` against TIMER4 on a unit powered on without a cable. If it is well over a millisecond, poll less or stop at the first timeout. |
+| Flash program and erase times (M2a Task 3b) | The store's write windows and held erases are sized from them; fm1-emu's flash is instantaneous. Also partial programs per page, reprogramming, ECC, page erase, erase suspend, and whether the stock firmware writes the store's range. | The flash spike ([hardware-test.md](hardware-test.md) section 12); the table and the decision rule are in "The flash part's timings" above. |
 | Unknown latencies | Divide latency, IRQ entry latency, `IPMASK` semantics, and whether IRQ priorities have 4 or 8 levels | Microbenchmarks on the device. |
 | Second core RAM issue | Some units misread RAM on core 1. | Felucca's core-1 self-test, before SIDOU ever uses core 1. |
 
-[hardware-test.md](hardware-test.md), section 11, turns these into checklist
+[hardware-test.md](hardware-test.md), sections 11 and 12, turn these into checklist
 items; its other sections cover installing, recovery and the instrument.

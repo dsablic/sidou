@@ -20,6 +20,9 @@
 
 #include "audio.h"
 #include "bootguard.h"
+#if defined(SIDOU_FLASH_SPIKE)
+#include "flash_spike.h"
+#endif
 #include "input.h"
 #include "keys_route.h"
 #include "lcd.h"
@@ -187,6 +190,20 @@ static void upgrade(void) {
     fm1_reboot();
 }
 
+#if defined(SIDOU_FLASH_SPIKE)
+/* The flash spike's build only (flash_spike.h): what its waits run, the main loop's services
+ * but play and the screen, so the normal installer reaches it at any time but mid-measurement. */
+static void spike_service(void) {
+    uint32_t now = uptime_ms;
+    fm1_wdt_feed();
+    midi_service(now);
+    bootguard_poll(&boot_guard, now);
+    if (update_poll()) {
+        upgrade();
+    }
+}
+#endif
+
 static void sidou_main(void) {
     /* Interrupts are still off: lcd_init and input_init write port A, which carries PA2. */
     lcd_init();
@@ -206,6 +223,14 @@ static void sidou_main(void) {
     panel_master(&front, &instrument, input_master());
     midi_init(&instrument);
     update_boot();
+#if defined(SIDOU_FLASH_SPIKE)
+    /* Not SIDOU: the flash spike, with the audio never started (flash_spike.h). The views are
+     * set up only for the update protocol's progress frame (ui_update). */
+    fm1_timer5_start(isr_timer5, PRIO_TIMER5);
+    fm1_irq_enable_all();
+    ui_init(&instrument, uptime_ms, 0);
+    flash_spike_run(spike_service);
+#endif
     audio_start();
     /* Sound first: the audio interrupt, the tick (the key scan, MIDI, the clock) and the
      * interrupts start before the screen's first frame, which the main loop then sends without

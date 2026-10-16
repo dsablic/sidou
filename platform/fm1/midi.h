@@ -35,4 +35,12 @@ void midi_send(void);
 /* Main loop: a USB retry while no host answers (once a second). */
 void midi_service(uint32_t now_ms);
 
+#if defined(SIDOU_FLASH_SPIKE)
+/* The flash spike only (flash_spike.c), which plays nothing: empties the input ring, and gives
+ * the TRS bytes taken since boot and those lost (the UART's 128-byte DMA ring overwritten
+ * before a poll, or the input ring full; it is emptied often enough that only the first can
+ * happen while the spike measures). */
+void midi_spike_trs(uint32_t* bytes, uint32_t* lost);
+#endif
+
 #endif

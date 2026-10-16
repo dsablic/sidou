@@ -45,6 +45,16 @@ if(SIDOU_TEST_DEATH STREQUAL "hang" OR SIDOU_TEST_DEATH STREQUAL "reboot")
 elseif(NOT SIDOU_TEST_DEATH STREQUAL "")
     message(FATAL_ERROR "SIDOU_TEST_DEATH is hang, reboot or empty")
 endif()
+# The flash timing spike (M2a Task 3b, docs/hardware-test.md section 12), never released: a
+# test firmware that measures the flash part's erase and program times on the store's last two
+# sectors instead of running SIDOU. Off by default; the default image has none of it
+# (emu-gate tests/flash_spike.rs checks its symbols).
+option(SIDOU_FLASH_SPIKE "Build the flash timing spike instead of SIDOU (never released)" OFF)
+if(SIDOU_FLASH_SPIKE)
+    message(WARNING "SIDOU_FLASH_SPIKE=ON: the flash timing spike, a test firmware, not SIDOU")
+    target_sources(${t} PRIVATE flash_spike.c)
+    target_compile_definitions(${t} PRIVATE SIDOU_FLASH_SPIKE=1)
+endif()
 target_compile_options(${t} PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wshadow>)
 # --gc-sections drops functions nothing calls (e.g. live_sid_sink, which only the host uses):
 # besides the size, an unused call between flash and SRAM code would otherwise have to link.

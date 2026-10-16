@@ -502,6 +502,175 @@ you can.
 
 Notes:
 
+## 12. Flash timing spike (M2a Task 3b)
+
+The store (M2a) will write the flash while SIDOU plays, and the size of its
+writes depends on how long this unit's flash part takes to program and
+erase. The emulator can't tell; this section measures it with a test
+firmware, the flash spike. While the spike is installed the unit is not
+SIDOU: it makes no sound and shows only the spike's screen. You put SIDOU
+(or stock) back at the end with the normal installer.
+
+What the spike writes, and what it never touches:
+- It erases and programs only the store's last two sectors,
+  `0xDE000..0xDFFFF`, and in each only bytes below `0xF00`. It never
+  writes the flash head, the app area or the update staging area
+  (`0xE0000..0xE4FFF`).
+- At boot it only reads: both sectors, and the whole store range
+  `0x97000..0xDFFFF`. If either sector holds anything that is neither blank
+  nor the spike's own, or the pattern it left in `0xDE000` has changed, it
+  shows **REFUSED** and writes nothing.
+- It starts measuring only when you press SAVE. Until then, and once it is
+  done, it answers the normal installer just as SIDOU does.
+- At the end it erases `0xDF000` back to blank and leaves a test pattern in
+  `0xDE000`, for the stock round trip (12.4). The pattern is harmless:
+  SIDOU's store treats that sector as unused and erases it when it needs it.
+
+Like SIDOU, the spike's boot erases a staging area that an interrupted
+install left in use (section 3). That is the update protocol's own cleanup,
+not the spike.
+
+### 12.0 Before you start
+
+- [ ] Section 0 is done: M-VAVE's `FM-1.fwsc` (V15), FM-1-transporter,
+  MvaveFM1Unbricker with jl-uboot-tool, and Felucca's `fm1_install.py`
+  are at hand, and `fm1_install.py --info` finds the unit.
+- [ ] Sections 1 and 9 have passed on this unit at least once: SIDOU
+  installs, and the way back to V15 works.
+- [ ] For the TRS check (optional): a MIDI sender on the TRS jack that never
+  pauses, wired as in section 7. One way is a computer sending a large
+  SysEx file in a loop through a USB-MIDI interface, or a sequencer
+  streaming dense CCs. Full rate is 3,125 bytes a second; the spike shows
+  how many arrived. Without a sender, the TRS rows read 0 and that check is
+  skipped.
+- [ ] A phone or camera, to photograph the result screen.
+
+Notes:
+
+### 12.1 Build the spike's package
+
+From the repository root (BUILDING.md, "The flash timing spike"):
+
+```sh
+tools/fm1-docker cmake --preset fm1 -B build/fm1-spike -DSIDOU_FLASH_SPIKE=ON
+tools/fm1-docker cmake --build build/fm1-spike
+```
+
+Then from `host/`:
+
+```sh
+cargo run --release -p sidou-pack -- \
+    --app ../build/fm1-spike/platform/fm1/sidou_app.bin \
+    --loader ../build/fm1-spike/platform/fm1/loader/loader.bin \
+    -o ../build/fm1-spike/sidou-spike.fwsc
+```
+
+Also build the normal `build/fm1/sidou.fwsc` (section 1), for the way back.
+
+- [ ] SIDOU commit, and the SHA-256 that `sidou-pack` prints for
+  `sidou-spike.fwsc`:
+
+### 12.2 Install it and read the start screen
+
+Install it as in section 1, from SIDOU or from stock:
+`fm1_install.py build/fm1-spike/sidou-spike.fwsc`. The unit restarts into
+the spike.
+
+- [ ] The screen reads "SIDOU FLASH SPIKE M2A TASK 3B". It shows the part
+  (JEDEC, SR, CR, the SFDP lines and CLOCK), "START DE: ... DF: ...",
+  "PATTERN AT START", "STORE SECTORS USED n/73", and "SAVE: START". There is
+  no sound. Record:
+  - JEDEC (expected `856014`), SR, CR:
+  - SFDP and ERASE (the part's own table: the signature `50444653`, and the
+    erase types, where `81` with size `08` would be the 256-byte page erase):
+  - CLOCK, in adds/µs (192 at 240 MHz, 288 at 360 MHz):
+  - START: both BLANK on a first run, `DE:SPIKE'S` after one:
+  - STORE SECTORS USED (how much of the store range holds anything: Felucca
+    or stock data, or nothing):
+- [ ] If the screen says **REFUSED**: photograph it and go to 12.5. Nothing
+  was written.
+
+### 12.3 Run the measurements
+
+Start the TRS sender, then press **SAVE**. The screen shows "RUNNING, STEP
+n" for steps 0 to 6 and fills in the results; it takes under a minute.
+**Do not power the unit off while it runs.** A cut there can leave the
+spike's own sectors half-erased: the next boot shows REFUSED. Nothing else
+is at risk, and SIDOU installs as usual.
+
+- [ ] The screen ends with "DONE. DF000 ERASED, DE000 KEEPS THE PATTERN".
+  Photograph it, and copy the numbers into
+  [hardware.md](hardware.md)'s table ("The flash part's timings").
+- [ ] If it ends with "FAILED AT STEP n RC m": photograph it and go to
+  12.5.
+
+How to read the screen:
+- **TIMES US**: min, mean and max microseconds. `ERASE 4K` is a 4 KiB
+  sector erase (20 runs). `PROG 16`, `PROG 64` and `PROG 256` are page
+  programs of that many bytes (20, 20 and 280 runs). `PAGE ER` is the
+  256-byte page erase, `SUSPEND` the erase-suspend latency. For comparison,
+  the datasheet's maximums are 20 ms for an erase, 3 ms for a page program
+  and 30 µs for a suspend.
+- **PAGE ERASE 81**: `THE PAGE` (it erased that page and nothing else),
+  `WIDER` (more than the page: the CR's DP bit makes pages 512 bytes),
+  `IGNORED` (nothing changed), or `ODD` (anything else).
+- **SUS1 n/5**: how many of the 5 suspended erases set the suspend bit.
+  `READ` is whether `0xDE000` read correctly while suspended; `END` is
+  whether each erase finished after the resume.
+- **VERIFY**: every timed program read back. **PARTIAL**: 64 programs of
+  4 bytes into one page (several programs per page). **REZERO**: zeros
+  programmed over zeros, 3 times. **BITWALK**: one byte programmed 8
+  times, clearing one more bit each time. **TWICE**: pages programmed twice
+  with different data; anything but OK means the part does not just AND
+  what it is given, which suggests ECC. **GUARD**: requests the spike's
+  own bounds turned down (must be 0).
+- **TRS**: bytes received and lost while the interrupts run (1 s), while
+  they are masked for 1 ms (100 times), and for 35 ms (10 times). LOST
+  must be 0 on the 35 ms row: the store's longest hold is 35 ms.
+
+Notes:
+
+### 12.4 The stock round trip (the store's range under V15)
+
+This checks whether the stock firmware, or its SPL, writes into the store's
+range, as the package's VM region allows (docs/hardware.md, "The flash
+part's timings" and the M2a plan's flash map). Start right after a DONE,
+with the pattern in `0xDE000`.
+
+1. Install M-VAVE's V15: `fm1_install.py FM-1.fwsc` (as in section 9).
+2. Use the stock firmware for a few minutes: play, and change and save a
+   setting or a patch if it offers one. Power it off and on once.
+3. Install the spike again: `fm1_install.py
+   build/fm1-spike/sidou-spike.fwsc` (as in section 1).
+
+- [ ] On the start screen, record "PATTERN AT START" (INTACT: the stock
+  firmware left the sector alone; DAMAGED or ABSENT: something wrote or
+  erased it), "START DE: ... DF: ...", and "STORE SECTORS USED", against the
+  values before the round trip:
+- [ ] If it shows REFUSED, something wrote the spike's sectors (PATTERN AT
+  START DAMAGED, or a sector FOREIGN). That is the result: record it. The
+  spike writes nothing then, so the evidence stays.
+- [ ] Optional: press SAVE to measure once more and compare.
+
+Notes:
+
+### 12.5 Back to SIDOU or to stock
+
+The spike answers the installer whenever it is not RUNNING: on the start
+screen, after DONE, REFUSED or FAILED. The screen shows SIDOU's UPDATE box
+during the install.
+
+- [ ] Back to SIDOU: `fm1_install.py build/fm1/sidou.fwsc`. `--info`
+  reports `FM-1_900`, and SIDOU boots and plays (section 3).
+- [ ] Or back to stock: `fm1_install.py FM-1.fwsc`; `--info` reports
+  `FM-1_015`.
+- [ ] If the spike's screen never appears, or the unit doesn't answer the
+  installer: three boots in a row that die within 10 s end in UBOOT
+  (section 10), from which a tool from section 0 installs `sidou.fwsc` or
+  V15. Record what happened and which tool worked.
+
+Notes:
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -518,3 +687,4 @@ Notes:
 | 9 Reinstall, stock and back | | |
 | 10 Guard, watchdog, resets | | |
 | 11 Measurements | | |
+| 12 Flash timing spike | | |

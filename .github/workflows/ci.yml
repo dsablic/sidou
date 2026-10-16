@@ -113,6 +113,10 @@ jobs:
         run: tools/fm1-docker cmake --preset fm1
       - name: Build
         run: tools/fm1-docker cmake --build --preset fm1
+      - name: Build the flash timing spike (a test firmware, never released)
+        run: |
+          tools/fm1-docker cmake --preset fm1 -B build/fm1-spike -DSIDOU_FLASH_SPIKE=ON
+          tools/fm1-docker cmake --build build/fm1-spike
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -154,6 +158,7 @@ jobs:
         working-directory: host
         env:
           SIDOU_FM1_BUILD: ${{ github.workspace }}/build/fm1
+          SIDOU_FM1_SPIKE_BUILD: ${{ github.workspace }}/build/fm1-spike
         run: cargo test --locked --release -p emu-gate -- --nocapture --test-threads=1
       - name: Check the gate actually ran
         # Without SIDOU_FM1_BUILD the gate skips and passes; the reports prove it ran.
@@ -181,6 +186,9 @@ jobs:
             test -s "$f" || { echo "::error::$f missing: the slots gate did not run"; exit 1; }
             jq -e '.all_heaviest_slots_instructions_per_sample | numbers' "$f"
           done
+          f=build/fm1-spike/flash_spike.json
+          test -s "$f" || { echo "::error::$f missing: the flash spike's run did not run"; exit 1; }
+          jq -e '.state == 3' "$f"
           f=build/fm1/scene_budget.json
           test -s "$f" || { echo "::error::$f missing: the pixel scene gate did not run"; exit 1; }
           jq -e '.tile_average | numbers > 0' "$f"

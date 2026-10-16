@@ -722,7 +722,8 @@ pub fn inputs(cache: &Path, fetch: bool) -> Result<Inputs> {
 }
 
 /// The ota.c harness (harness/ota_harness.c): Felucca's ota.c, SIDOU's step 1 of the update
-/// protocol, built for the host, so the tests can run it against packages from this crate.
+/// protocol, built for the host, so the tests can run it against packages from this crate; and
+/// the flash spike's bounds (harness/flash_spike_guard.c).
 #[doc(hidden)]
 pub mod harness {
     use std::ffi::c_void;
@@ -757,7 +758,36 @@ pub mod harness {
         pub area_len: u32,
     }
 
+    /// harness/flash_spike_guard.c's counters and the spike's bounds.
+    #[repr(C)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct FsCounters {
+        pub calls: u32,
+        pub lo: u32,
+        pub hi: u32,
+        pub refused: u32,
+        pub spike_lo: u32,
+        pub spike_hi: u32,
+        pub pattern: u32,
+        pub measure: u32,
+        pub sector_use: u32,
+        pub store_lo: u32,
+        pub store_hi: u32,
+    }
+
     extern "C" {
+        pub fn fs_reset(fill: u8);
+        pub fn fs_flash() -> *mut u8;
+        pub fn fs_counts() -> FsCounters;
+        pub fn fs_erase(off: u32) -> i32;
+        pub fn fs_page_erase(off: u32) -> i32;
+        pub fn fs_prog(off: u32, p: *const u8, n: u32) -> i32;
+        pub fn fs_suspend(erase_off: u32, read_off: u32, dst: *mut u8, n: u32) -> i32;
+        pub fn fs_driver_ok(off: u32, n: u32) -> i32;
+        pub fn fs_classify(sector: *const u8) -> i32;
+        pub fn fs_pattern_state(sector: *const u8) -> i32;
+        pub fn fs_pattern_byte(i: u32) -> u8;
+        pub fn fs_mark() -> *const std::ffi::c_char;
         pub fn fh_reset(audio: i32);
         pub fn fh_flash() -> *mut u8;
         pub fn fh_counts() -> FhCounters;

@@ -114,6 +114,27 @@ tools/fm1-docker cmake --build build/fm1-death
 ```
 
 Package its `platform/fm1/sidou_app.bin` with the normal loader.
+
+**The flash timing spike** (M2a Task 3b, only for
+[docs/hardware-test.md](docs/hardware-test.md) section 12, never to be handed
+out): a test firmware that, instead of SIDOU, measures the flash part's erase
+and program times on the store's last two sectors and shows them on the
+screen. The option is off by default, and the default image has none of it:
+
+```sh
+tools/fm1-docker cmake --preset fm1 -B build/fm1-spike -DSIDOU_FLASH_SPIKE=ON
+tools/fm1-docker cmake --build build/fm1-spike
+```
+
+From `host/`, package it as SIDOU is packaged, with its own app and loader:
+
+```sh
+cargo run --release -p sidou-pack -- \
+    --app ../build/fm1-spike/platform/fm1/sidou_app.bin \
+    --loader ../build/fm1-spike/platform/fm1/loader/loader.bin \
+    -o ../build/fm1-spike/sidou-spike.fwsc
+```
+
 `sidou-pack --test-wrong-size` makes a package that SIDOU's update step 1
 refuses (for the checklist's refused-install item).
 

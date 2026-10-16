@@ -57,6 +57,12 @@ Not vendored: `fm1_cpu1.{h,S}` (we don't use the second core) and
     `RAMFN` code lands in `.ram_text` (`app.ld` keeps it), and is called
     through `FL_FAR` pointers: flash and SRAM code are out of each other's
     branch reach ([docs/hardware.md](../../docs/hardware.md));
+  - `flash_spike.c`, only in the flash timing spike's build
+    (`-DSIDOU_FLASH_SPIKE=ON`, never released): `fm1_sys.h`, `fm1_time.h`
+    and a second copy of `fm1_flash.h`, whose `FL_RANGE_OK` there is the
+    spike's two sectors (`flash_spike_guard.h`) instead of the staging
+    area. Its `RAMFN` code is static to that file, so the copies don't
+    clash;
   - the loader (`loader/loader.c`, its own image, Felucca's unmodified):
     `fm1_time.h`, `fm1_sys.h`, `fm1_flash.h`, and Felucca's own
     `src/libc.c`, `src/usb.c` and `src/ota.c`.
