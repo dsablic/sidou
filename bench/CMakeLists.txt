@@ -15,6 +15,12 @@ add_library(sidou_workload_slots STATIC workload_slots.c)
 target_link_libraries(sidou_workload_slots PUBLIC sidou_workload)
 target_compile_options(sidou_workload_slots PRIVATE -Wall -Wextra -Wshadow)
 
+# The pixel scene's benchmark (workload_scene.h).
+add_library(sidou_workload_scene STATIC workload_scene.c)
+target_include_directories(sidou_workload_scene PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(sidou_workload_scene PUBLIC sidou_live)
+target_compile_options(sidou_workload_scene PRIVATE -Wall -Wextra -Wshadow)
+
 if(CMAKE_CROSSCOMPILING AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/fm1)
     add_subdirectory(fm1)
 endif()

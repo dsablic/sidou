@@ -68,3 +68,14 @@ pub fn render_host_slots(chips: u32) -> Vec<i16> {
     out.extend(sw);
     out
 }
+
+/// Host build of the pixel scene's benchmark (`bench/workload_scene.h`): its log, as
+/// `bench_scene_main.c` leaves it on the target.
+pub fn render_host_scene() -> Vec<i16> {
+    unsafe extern "C" fn no_mark() {}
+    let mut w = Box::<sidou_sys::workload_scene>::default();
+    let mut log = vec![0i16; sidou_sys::WORKLOAD_SCENE_LOG as usize];
+    let n = unsafe { sidou_sys::workload_scene_run(&mut *w, Some(no_mark), log.as_mut_ptr()) };
+    log.truncate(n as usize);
+    log
+}

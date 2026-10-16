@@ -47,3 +47,4 @@
 #include "widget.h"
 #include "workload_fx.h"
 #include "workload_slots.h"
+#include "workload_scene.h"

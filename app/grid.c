@@ -51,6 +51,7 @@ void grid_init(grid* g, uint8_t ch, uint8_t attr) {
     g->region_bx = g->region_by = 0;
     g->region_painter = NULL;
     g->region_ctx = NULL;
+    g->region_run = 0;
     grid_invalidate(g);
 }
 
@@ -269,7 +270,7 @@ int grid_region(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
         h > bh - by) {
         return -1;
     }
-    if (g->region_bitmap == b && !g->region_painter && g->region_col == col && g->region_row == row &&
+    if (g->region_bitmap == b && g->region_col == col && g->region_row == row &&
         g->region_w == w && g->region_h == h && g->region_bx == bx && g->region_by == by) {
         return 0;
     }
@@ -299,13 +300,13 @@ int grid_region(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
 }
 
 int grid_region_painter(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
-                        grid_painter fn, void* ctx) {
+                        grid_painter fn, void* ctx, uint32_t run) {
     if (!fn || w == 0 || h == 0 || col >= GRID_COLS || row >= GRID_ROWS ||
-        w > GRID_COLS - col || h > GRID_ROWS - row) {
+        w > GRID_COLS - col || h > GRID_ROWS - row || run == 0 || run > GRID_COLS) {
         return -1;
     }
     if (g->region_painter == fn && g->region_ctx == ctx && g->region_col == col &&
-        g->region_row == row && g->region_w == w && g->region_h == h) {
+        g->region_row == row && g->region_w == w && g->region_h == h && g->region_run == run) {
         return 0;
     }
     if (g->region_bitmap || g->region_painter) {
@@ -319,6 +320,7 @@ int grid_region_painter(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_
     g->region_w = (uint8_t)w;
     g->region_h = (uint8_t)h;
     g->region_bx = g->region_by = 0;
+    g->region_run = (uint8_t)run;
     region_stale(g);
     return 0;
 }
@@ -435,7 +437,17 @@ int grid_next_run(grid* g, grid_run* run) {
             continue;
         }
         uint32_t start = c;
+        /* A painter region's cells, [p0, p1) of the row, end the run at its cap. */
+        uint32_t p0 = 0, p1 = 0, left = GRID_COLS;
+        if (g->region_painter && row - g->region_row < g->region_h) {
+            p0 = g->region_col;
+            p1 = p0 + g->region_w;
+            left = g->region_run;
+        }
         for (; c < GRID_COLS && dirty(g, base + c); c++) {
+            if (c - p0 < p1 - p0 && !left--) {
+                break;
+            }
             uint32_t i = base + c;
             g->shown_ch[i] = g->ch[i];
             g->shown_attr[i] = g->attr[i];

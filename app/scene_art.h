@@ -11,7 +11,15 @@
  * ((length - 1) << 4) | colour for 1..16 pixels, the runs adding up to w exactly; rows alike
  * share their runs, within an image and across images. The colour `clear` (one the image
  * never shows; the converter picks one that no image of the set uses) codes a transparent
- * run, so a row decodes with the same loop as an opaque bitmap.
+ * run, so a row decodes with the same loop as an opaque bitmap. A row wider than
+ * SCENE_ART_SEEK has a run start at every SCENE_ART_SEEK pixels of it (the converter splits a
+ * run there), and `seek` holds where those runs are, so a span part way along a row is found
+ * from the checkpoint before it instead of from the row's start.
+ *
+ * The decoders trust the converter for what they do not check: every row's runs add up to
+ * w exactly (the round-trip tests decode every row), a patch's frame (fw, fh, gx) is its
+ * base's (the converter asserts it as it writes the patch), and gx is 1 or 2. Breaking one
+ * reads past a row or draws in the wrong place.
  *
  * (ax, ay) is the anchor, in screen pixels of the unmirrored frame: the point the drawing
  * places (a fighter's feet, a sword's grip). Drawn mirrored, the frame's stored pixel x is
@@ -34,6 +42,8 @@ extern "C" {
 
 /* What scene_image_row writes for a transparent pixel. */
 #define SCENE_ART_CLEAR 0xffu
+/* Stored pixels between a row's checkpoints (a power of 2). */
+#define SCENE_ART_SEEK 32u
 
 typedef struct scene_image scene_image;
 struct scene_image {
@@ -45,6 +55,10 @@ struct scene_image {
     uint8_t ax, ay;   /* the anchor, in screen pixels */
     const uint16_t* rows; /* h offsets into data */
     const uint8_t* data;
+    /* NULL when w <= SCENE_ART_SEEK; else k = (w - 1) / SCENE_ART_SEEK checkpoints a row,
+     * seek[r * k + j - 1] the offset from row r's first run of the run that starts at pixel
+     * j * SCENE_ART_SEEK of the rectangle. */
+    const uint8_t* seek;
     const scene_image* base; /* NULL, or a patch's base: the frame outside the rectangle */
 };
 
@@ -53,6 +67,14 @@ struct scene_image {
  * fw - 1 - x (out still runs left to right). */
 void scene_image_row(const scene_image* s, uint32_t x, uint32_t y, uint32_t n, int mirror,
                      uint8_t* out);
+/* Draws the image's screen pixels [x, x + n) of its frame's rows [y, y + h) (x counted from
+ * the frame's left as drawn, in screen pixels: a stored pixel is gx of them; x + n <= fw * gx,
+ * y + h <= fh) over out, out[0] being pixel x of row y and each row stride bytes after the
+ * last: its opaque pixels as their colour, through remap if not NULL (16 colours);
+ * transparent ones leave out as it is. Mirrored, screen pixel x shows stored pixel
+ * fw - 1 - x / gx. A run at a time: what a compositor draws a sprite with. */
+void scene_image_blend(const scene_image* s, uint32_t x, uint32_t y, uint32_t n, uint32_t h,
+                       uint32_t stride, int mirror, const uint8_t* remap, uint8_t* out);
 
 typedef struct {
     uint8_t y;      /* the band's first row, on the screen */

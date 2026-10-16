@@ -27,3 +27,5 @@ foreach(chips 1 2)
     target_compile_definitions(sid_bench_fx_worst_${chips} PRIVATE BENCH_FX_WORST)
     sidou_bench(sid_bench_slots_${chips} bench_slots_main.c ${chips} sidou_workload_slots)
 endforeach()
+# The pixel scene (one build: it has no chips).
+sidou_bench(sid_bench_scene bench_scene_main.c 1 sidou_workload_scene)

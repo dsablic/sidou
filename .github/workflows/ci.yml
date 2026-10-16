@@ -181,6 +181,9 @@ jobs:
             test -s "$f" || { echo "::error::$f missing: the slots gate did not run"; exit 1; }
             jq -e '.all_heaviest_slots_instructions_per_sample | numbers' "$f"
           done
+          f=build/fm1/scene_budget.json
+          test -s "$f" || { echo "::error::$f missing: the pixel scene gate did not run"; exit 1; }
+          jq -e '.tile_average | numbers > 0' "$f"
           for c in idle_instant busy_instant usbretry_instant idle_authentic; do
             f=build/fm1/latency_$c.json
             test -s "$f" || { echo "::error::$f missing: the latency test did not run"; exit 1; }
@@ -198,6 +201,7 @@ jobs:
             build/fm1/fx_budget_*.json
             build/fm1/fx_worst_budget_*.json
             build/fm1/slots_budget_*.json
+            build/fm1/scene_budget.json
             build/fm1/latency_*.json
           if-no-files-found: warn
       # The package, with the licence of the AC79 SDK files in it (and SIDOU's).

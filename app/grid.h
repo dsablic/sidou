@@ -10,8 +10,8 @@
  * 8 x 8 mask drawn over its glyph (oscilloscopes, the logo). A rectangle of cells can be a
  * pixel region, taking its background pixel for pixel from a bitmap in flash (a pixel-art
  * logo, app/logo.h) or from a painter, a function that fills a cell's pixels as it is sent (a
- * pixel scene composited on demand, app/scene_px.h). Rows can be held: their changes wait until they are released (the
- * screen's wipe transition, app/screen.h).
+ * pixel scene composited on demand, app/scene_px.h). Rows can be held: their changes wait
+ * until they are released (the screen's wipe transition, app/screen.h).
  *
  * Portable C with no hardware access: platform/fm1/ui.c sends the runs, the host tests
  * drive it directly. */
@@ -33,7 +33,8 @@ extern "C" {
  * (mask, colour, free-list entry): 2,550 bytes, 2.3 KB more than M1e Task 1's 32 slots. */
 #define GRID_OVERLAYS 255u
 #ifndef __cplusplus
-_Static_assert(GRID_OVERLAYS <= 255u, "a cell's byte holds 1 + its overlay slot, ovl_nfree the count");
+_Static_assert(GRID_OVERLAYS <= 255u,
+               "a cell's byte holds 1 + its overlay slot, ovl_nfree the count");
 #endif
 /* A run's pixels: at most a full row of cells. */
 #define GRID_RUN_PIXELS (GRID_COLS * GRID_CELL_PX * GRID_CELL_PX)
@@ -121,6 +122,8 @@ typedef struct {
     uint8_t region_by;
     grid_painter region_painter;
     void* region_ctx;
+    /* A painter region's cells a run takes at most (grid_region_painter). */
+    uint8_t region_run;
 } grid;
 
 /* Every cell ch in attr, no overlays, no region, and all of it to be sent: what the panel
@@ -162,19 +165,21 @@ int grid_overlay_same(const grid* g, uint32_t col, uint32_t row, const uint8_t m
  * stay possible on it; a blank glyph shows the bitmap alone. One region at a time: a new one
  * replaces the last, and the cells either covers are sent again; the same one again sends
  * nothing, and one over the same cells of the same bitmap (grown or shrunk, as a picture
- * revealed a few columns a frame) sends only the cells it adds or leaves. Returns 0, or -1 when the rectangle is empty or leaves the grid or the bitmap
- * (nothing changes). */
+ * revealed a few columns a frame) sends only the cells it adds or leaves. Returns 0, or -1
+ * when the rectangle is empty or leaves the grid or the bitmap (nothing changes). */
 int grid_region(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
                 const grid_bitmap* b, uint32_t bx, uint32_t by);
 /* A painter region: the w x h cells from (col, row) take their background from fn(ctx, col,
  * row, px), called for each as it is sent, as a bitmap region's take it from the bitmap (the
  * glyphs' foreground and the overlays draw over it). The grid sends only the cells that
- * changed, so the painter's owner marks the cells whose pixels it changed (grid_mark). It
- * replaces a bitmap region, and the reverse; the same painter, context and cells again send
- * nothing, others send the cells either covers. Returns 0, or -1 when fn is NULL or the
- * rectangle is empty or leaves the grid (nothing changes). */
+ * changed, so the painter's owner marks the cells whose pixels it changed (grid_mark). A run
+ * takes at most `run` of the region's cells (1..GRID_COLS), so that what grid_render_run
+ * spends painting a run is bounded: a run that reaches it ends there, and the next goes on.
+ * It replaces a bitmap region, and the reverse; the same painter, context, cells and cap
+ * again send nothing, others send the cells either covers. Returns 0, or -1 when fn is NULL,
+ * run is out of range or the rectangle is empty or leaves the grid (nothing changes). */
 int grid_region_painter(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
-                        grid_painter fn, void* ctx);
+                        grid_painter fn, void* ctx, uint32_t run);
 /* No region: its cells are sent again in their background colour. */
 void grid_region_clear(grid* g);
 /* Pixels [x, x + n) of the bitmap's row y, as colours, into out (x + n <= b->w, y < b->h). */
@@ -197,7 +202,8 @@ uint32_t grid_pending_in(const grid* g, uint32_t col, uint32_t row, uint32_t w, 
 void grid_hold(grid* g, uint32_t mask);
 
 /* The next run of changed cells, in screen order from where the last call stopped (wrapping
- * to the top for cells that changed behind it), counted as shown from now on. 0 when the
+ * to the top for cells that changed behind it), counted as shown from now on: adjacent
+ * changed cells of one row, at most a painter region's cap of the region's cells. 0 when the
  * panel shows the composed frame, held rows aside. */
 int grid_next_run(grid* g, grid_run* run);
 /* A run's pixels into px: 8 rows of run->len * 8 pixels, top row first, as one LCD window

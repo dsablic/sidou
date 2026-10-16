@@ -275,3 +275,119 @@ fn the_converter_takes_art_colours_and_full_transparency_only() {
     let e = scene_art::parse_png(&png_bytes(&[[1, 2, 3]], None, &[0; 8])).unwrap_err();
     assert!(e.contains("art palette"), "{e}");
 }
+
+/// The run that holds pixel x of a coded row (x from the coded rectangle's left), and the
+/// pixel it starts at, walking from the row's start.
+fn runs_of(s: &scene_image, r: usize) -> Vec<(usize, usize)> {
+    let row = unsafe { s.data.add(usize::from(*s.rows.add(r))) };
+    let (mut at, mut off, mut out) = (0, 0, Vec::new());
+    while at < usize::from(s.w) {
+        out.push((off, at));
+        at += usize::from(unsafe { *row.add(off) } >> 4) + 1;
+        off += 1;
+    }
+    assert_eq!(at, usize::from(s.w), "row {r}'s runs add up to w");
+    out
+}
+
+#[test]
+fn wide_rows_have_a_checkpoint_every_seek_pixels() {
+    let step = SCENE_ART_SEEK as usize;
+    assert_eq!(step, scene_art::SEEK);
+    assert!(step.is_power_of_two());
+    let mut wide = 0;
+    for (src, s) in scene_art::sources().iter().zip(compiled()) {
+        let k = (usize::from(s.w) - 1) / step;
+        if k == 0 {
+            assert!(s.seek.is_null(), "{}: no checkpoint to keep", src.png);
+            continue;
+        }
+        wide += 1;
+        assert!(!s.seek.is_null(), "{}", src.png);
+        for r in 0..usize::from(s.h) {
+            let runs = runs_of(s, r);
+            for j in 1..=k {
+                let off = usize::from(unsafe { *s.seek.add(r * k + j - 1) });
+                assert!(
+                    runs.contains(&(off, j * step)),
+                    "{} row {r}: checkpoint {j} at byte {off} is not the run from {}",
+                    src.png,
+                    j * step
+                );
+            }
+        }
+    }
+    assert!(wide >= 4, "the arena and the skies have checkpoints");
+}
+
+struct Rng(u64);
+
+impl Rng {
+    fn below(&mut self, n: usize) -> usize {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        ((self.0 >> 16) % n as u64) as usize
+    }
+}
+
+#[test]
+fn a_blended_span_draws_its_opaque_pixels_over_what_is_there() {
+    let remap: [u8; 16] = std::array::from_fn(|c| (15 - c) as u8);
+    let mut rng = Rng(0x0b1e_9d5a_77c3);
+    for (src, s) in scene_art::sources().iter().zip(compiled()) {
+        let f = &src.frame;
+        let gx = usize::from(s.gx);
+        let sw = f.w * gx;
+        for i in 0..300 {
+            let y = rng.below(f.h);
+            let h = 1 + rng.below((f.h - y).min(8));
+            let (sx, n) = if i < 4 {
+                (0, sw) // whole rows
+            } else {
+                let sx = rng.below(sw);
+                (sx, 1 + rng.below((sw - sx).min(12)))
+            };
+            let stride = n + rng.below(4);
+            let mirror = rng.below(2) == 1;
+            let map = rng.below(3) == 0;
+            let under: Vec<u8> = (0..=h * stride).map(|k| 0x40 + (k % 7) as u8).collect();
+            let mut out = under.clone();
+            unsafe {
+                scene_image_blend(
+                    s,
+                    sx as u32,
+                    y as u32,
+                    n as u32,
+                    h as u32,
+                    stride as u32,
+                    i32::from(mirror),
+                    if map {
+                        remap.as_ptr()
+                    } else {
+                        std::ptr::null()
+                    },
+                    out.as_mut_ptr(),
+                )
+            };
+            let mut want = under.clone();
+            for r in 0..h {
+                for k in 0..n {
+                    let p = (sx + k) / gx;
+                    let c = f.at(if mirror { f.w - 1 - p } else { p }, y + r);
+                    if c != CLEAR {
+                        want[r * stride + k] = if map { remap[usize::from(c)] } else { c };
+                    }
+                }
+            }
+            assert_eq!(
+                out,
+                want,
+                "{}: rows {y}..{}, {n} from {sx}{}",
+                src.png,
+                y + h,
+                if mirror { " mirrored" } else { "" }
+            );
+        }
+    }
+}

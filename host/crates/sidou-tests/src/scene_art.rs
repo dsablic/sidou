@@ -25,6 +25,10 @@ pub const CLEAR: u8 = 255;
 /// The longest run a byte holds.
 const RUN: usize = 16;
 
+/// app/scene_art.h SCENE_ART_SEEK: a row wider than this has a run start, and a checkpoint,
+/// every SEEK pixels.
+pub const SEEK: usize = 32;
+
 /// The flash ceiling for RED MOON RITE's art (docs/plans/2026-10-15-m2f-scene.md).
 pub const CEILING: usize = 48 * 1024;
 
@@ -297,13 +301,16 @@ fn bbox(p: &Picture, keep: impl Fn(usize, usize) -> bool) -> Option<Rect> {
     (x0 != usize::MAX).then_some((x0, y0, x1 - x0, y1 - y0))
 }
 
-/// One row's runs, `clear` coding transparency.
+/// One row's runs, `clear` coding transparency; a row wider than SEEK has a run start every
+/// SEEK pixels.
 fn row_runs(row: &[u8], clear: u8) -> Vec<u8> {
     let mut out = Vec::new();
     let mut x = 0;
+    let split = row.len() > SEEK;
     while x < row.len() {
         let c = row[x];
-        let n = row[x..].iter().take(RUN).take_while(|&&p| p == c).count();
+        let most = if split { RUN.min(SEEK - x % SEEK) } else { RUN };
+        let n = row[x..].iter().take(most).take_while(|&&p| p == c).count();
         out.push(((n - 1) << 4) as u8 | if c == CLEAR { clear } else { c });
         x += n;
     }
@@ -402,6 +409,34 @@ pub fn code(srcs: &[Source], clear: u8) -> Vec<Coded> {
         .collect()
 }
 
+/// The checkpoints of a coded image's rows (app/scene_art.h `seek`), None when it is no wider
+/// than SEEK: for each row, the offset of the run that starts at each multiple of SEEK.
+pub fn seek_table(c: &Coded) -> Option<Vec<u8>> {
+    let w = c.rect.2;
+    let k = (w - 1) / SEEK;
+    if k == 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(k * c.rows.len());
+    for (r, runs) in c.rows.iter().enumerate() {
+        let mut at = 0;
+        let mut next = SEEK;
+        for (off, &b) in runs.iter().enumerate() {
+            if at == next && next < w {
+                out.push(u8::try_from(off).expect("a row's runs within 256 bytes"));
+                next += SEEK;
+            }
+            at += usize::from(b >> 4) + 1;
+        }
+        assert_eq!(
+            out.len(),
+            (r + 1) * k,
+            "row {r}: a run starts at every checkpoint"
+        );
+    }
+    Some(out)
+}
+
 /// The set's rows in one array of runs, rows alike shared across every image: each image's
 /// row offsets, and the runs.
 pub fn share(coded: &[Coded]) -> (Vec<Vec<u16>>, Vec<u8>) {
@@ -489,19 +524,24 @@ pub fn skies_both_ways() -> (usize, usize) {
     (rows_cost(&whole), rows_cost(&overlays) + gradients)
 }
 
-/// sizeof(scene_image) on the pi32v2 (ILP32): ten bytes, two of padding, three pointers.
-pub const IMAGE_STRUCT: usize = 24;
+/// sizeof(scene_image) on the pi32v2 (ILP32): ten bytes, two of padding, four pointers.
+pub const IMAGE_STRUCT: usize = 28;
 /// sizeof(scene_gradient): four bytes and a pointer; and a stop.
 pub const GRADIENT_STRUCT: usize = 8;
 pub const STOP: usize = 2;
 
-/// What the set takes in flash: runs, row offsets, the images' and gradients' structs, the
-/// stops and the flame table.
+/// What the set takes in flash: runs, row offsets and checkpoints, the images' and gradients'
+/// structs, the stops and the flame table.
 pub fn flash() -> (usize, usize, usize, usize) {
     let srcs = sources();
     let coded = code(&srcs, clear_colour(&srcs));
     let (rows, data) = share(&coded);
-    let offs: usize = rows.iter().map(|r| 2 * r.len()).sum();
+    let offs: usize = rows.iter().map(|r| 2 * r.len()).sum::<usize>()
+        + coded
+            .iter()
+            .filter_map(seek_table)
+            .map(|t| t.len())
+            .sum::<usize>();
     let structs = IMAGE_STRUCT * srcs.len()
         + SKIES
             .iter()
@@ -528,9 +568,10 @@ pub fn c_source() -> String {
          * transparency (no image uses it), and a table of where each row's runs start; rows\n \
          * alike share their runs across every image. The unarmed poses are patches over their\n \
          * armed poses where that is smaller; the skies are a gradient computed on the device\n \
-         * and what it does not give (the moon, wisps and hills).\n \
-         * In flash: {runs} bytes of runs, {offs} of row offsets and {structs} of tables,\n \
-         * {total} in all.\n"
+         * and what it does not give (the moon, wisps and hills). A row wider than {SEEK}\n \
+         * pixels has a run start every {SEEK}, and a checkpoint table says where they are.\n \
+         * In flash: {runs} bytes of runs, {offs} of row offsets and checkpoints and {structs}\n \
+         * of tables, {total} in all.\n"
     );
     for (src, c) in srcs.iter().zip(&coded) {
         let (x, y, w, h) = c.rect;
@@ -558,6 +599,14 @@ pub fn c_source() -> String {
             r.len(),
             table(r, 12, |v| format!("{v:5}")),
         );
+        if let Some(t) = seek_table(&coded[i]) {
+            let _ = write!(
+                s,
+                "\nstatic const uint8_t SEEK_{i}[{}] = {{\n{}}};\n",
+                t.len(),
+                table(&t, 16, |v| format!("{v:3}")),
+            );
+        }
     }
     let init = |i: usize| {
         let src = &srcs[i];
@@ -566,10 +615,26 @@ pub fn c_source() -> String {
         // A patch's base on a line of its own, within 100 columns.
         let base = c
             .base
-            .map(|b| format!("\n            &{}", srcs[b].symbol))
+            .map(|b| {
+                // The decoders draw a patch's base in the patch's frame.
+                let b_src = &srcs[b];
+                assert_eq!(
+                    (b_src.frame.w, b_src.frame.h, b_src.gx),
+                    (src.frame.w, src.frame.h, src.gx),
+                    "{}: a patch's frame is its base's",
+                    src.png
+                );
+                format!("\n            &{}", b_src.symbol)
+            })
             .unwrap_or_else(|| " NULL".into());
+        assert!(matches!(src.gx, 1 | 2), "{}: gx is 1 or 2", src.png);
+        let seek = if seek_table(c).is_some() {
+            format!("SEEK_{i}")
+        } else {
+            "NULL".into()
+        };
         format!(
-            "{{{}, {}, {x}, {y}, {w}, {h}, {}, {clear}, {}, {}, ROWS_{i}, RUNS,{base}}}",
+            "{{{}, {}, {x}, {y}, {w}, {h}, {}, {clear}, {}, {}, ROWS_{i}, RUNS, {seek},{base}}}",
             src.frame.w, src.frame.h, src.gx, src.anchor.0, src.anchor.1
         )
     };
@@ -609,7 +674,7 @@ pub fn c_source() -> String {
     );
     for name in ["scene_rmr_sword_stuck", "scene_rmr_arena"] {
         let i = group(name)[0];
-        let _ = write!(s, "\nconst scene_image {name} = {};\n", init(i));
+        let _ = write!(s, "\nconst scene_image {name} =\n    {};\n", init(i));
     }
     s += &list("scene_rmr_sky[", "scene_rmr_sky[SCENE_RMR_SKIES]");
     for (i, g) in SKIES.iter().enumerate() {

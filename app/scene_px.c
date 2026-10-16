@@ -9,6 +9,9 @@
 
 #define TILE 8
 
+/* An empty slot (SCENE_PX_NONE is 0). */
+static const scene_px_layer NONE;
+
 static int32_t lo(int32_t a, int32_t b) {
     return a < b ? a : b;
 }
@@ -112,8 +115,7 @@ static void paint(void* ctx, uint32_t col, uint32_t row, uint8_t px[64]) {
 
 void scene_px_init(scene_px* sp, grid* g) {
     for (uint32_t i = 0; i < SCENE_PX_LAYERS; i++) {
-        sp->layer[i] = (scene_px_layer){0};
-        sp->layer[i].kind = SCENE_PX_NONE;
+        sp->layer[i] = NONE;
         for (uint32_t k = 0; k < 4u; k++) {
             sp->box[i][k] = 0;
         }
@@ -124,12 +126,14 @@ void scene_px_init(scene_px* sp, grid* g) {
     for (uint32_t k = 0; k < sizeof sp->cand; k++) {
         sp->cand[k] = 0;
     }
+    sp->nlive = 0;
     sp->ncand = 0;
     sp->next = 0;
+    sp->sweep = 0;
     sp->scanned = 0;
     sp->painted = 0;
     /* Every cell goes out with the region; each takes its hash as it is sent. */
-    grid_region_painter(g, 0, 0, GRID_COLS, GRID_ROWS, paint, sp);
+    grid_region_painter(g, 0, 0, GRID_COLS, GRID_ROWS, paint, sp, SCENE_PX_RUN_CELLS);
     for (uint32_t r = 0; r < GRID_ROWS; r++) {
         for (uint32_t c = 0; c < GRID_COLS; c++) {
             grid_mark(g, c, r);
@@ -141,10 +145,8 @@ void scene_px_set(scene_px* sp, uint32_t i, const scene_px_layer* l) {
     if (i >= SCENE_PX_LAYERS) {
         return;
     }
-    scene_px_layer none = {0};
-    none.kind = SCENE_PX_NONE;
     if (!l) {
-        l = &none;
+        l = &NONE;
     }
     if (same_layer(&sp->layer[i], l)) {
         return;
@@ -153,6 +155,13 @@ void scene_px_set(scene_px* sp, uint32_t i, const scene_px_layer* l) {
     sp->layer[i] = *l;
     layer_box(&sp->layer[i], sp->box[i]);
     touch_box(sp, sp->box[i]);
+    /* The slots with something on the screen, in order: all a tile looks at. */
+    sp->nlive = 0;
+    for (uint32_t k = 0; k < SCENE_PX_LAYERS; k++) {
+        if (sp->box[k][0] < sp->box[k][2]) {
+            sp->live[sp->nlive++] = (uint8_t)k;
+        }
+    }
 }
 
 void scene_px_touch(scene_px* sp, int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
@@ -201,6 +210,15 @@ uint32_t scene_px_scan(scene_px* sp, grid* g, uint32_t most) {
     return sp->ncand;
 }
 
+void scene_px_refresh(scene_px* sp, grid* g, uint32_t n) {
+    uint32_t t = sp->sweep;
+    for (; n; n--) {
+        grid_mark(g, t % GRID_COLS, t / GRID_COLS);
+        t = t + 1u < GRID_CELLS ? t + 1u : 0u;
+    }
+    sp->sweep = (uint16_t)t;
+}
+
 uint32_t scene_px_hash(const uint8_t px[64]) {
     /* FNV-1a, 32 bits. */
     uint32_t h = 2166136261u;
@@ -228,24 +246,12 @@ static void draw(const scene_px_layer* l, int32_t tx, int32_t ty, int32_t x0, in
                                out + (y - ty) * TILE + (x0 - tx));
         }
         break;
-    case SCENE_PX_IMAGE: {
-        const scene_image* s = l->src;
-        int32_t gx = s->gx;
-        /* The stored pixels under [x0, x1): (x - l->x) / gx, all >= 0. */
-        int32_t m0 = (x0 - l->x) / gx, m1 = (x1 - 1 - l->x) / gx + 1;
-        uint8_t row[TILE];
-        for (int32_t y = y0; y < y1; y++) {
-            scene_image_row(s, (uint32_t)m0, (uint32_t)(y - l->y), (uint32_t)(m1 - m0),
-                            l->mirror, row);
-            for (int32_t x = x0; x < x1; x++) {
-                uint8_t c = row[(x - l->x) / gx - m0];
-                if (c != SCENE_ART_CLEAR) {
-                    out[(y - ty) * TILE + (x - tx)] = l->remap ? l->remap[c & 15u] : c;
-                }
-            }
-        }
+    case SCENE_PX_IMAGE:
+        /* The box is within the frame: x0 - l->x and y - l->y are >= 0. */
+        scene_image_blend(l->src, (uint32_t)(x0 - l->x), (uint32_t)(y0 - l->y),
+                          (uint32_t)(x1 - x0), (uint32_t)(y1 - y0), TILE, l->mirror, l->remap,
+                          out + (y0 - ty) * TILE + (x0 - tx));
         break;
-    }
     case SCENE_PX_MARKS: {
         const scene_px_mark* m = l->src;
         for (uint32_t i = 0; i < l->n; i++) {
@@ -259,7 +265,7 @@ static void draw(const scene_px_layer* l, int32_t tx, int32_t ty, int32_t x0, in
         const uint8_t* text = l->src;
         for (int32_t y = y0; y < y1; y++) {
             for (int32_t x = x0; x < x1; x++) {
-                int32_t gx = x - l->x;
+                uint32_t gx = (uint32_t)(x - l->x);
                 uint8_t bits = font_glyphs[text[gx / TILE]][y - l->y];
                 if (bits & (0x80u >> (gx % TILE))) {
                     out[(y - ty) * TILE + (x - tx)] = l->colour;
@@ -281,15 +287,28 @@ static void draw(const scene_px_layer* l, int32_t tx, int32_t ty, int32_t x0, in
 
 void scene_px_tile(const scene_px* sp, uint32_t col, uint32_t row, uint8_t out[64]) {
     int32_t tx = (int32_t)col * TILE, ty = (int32_t)row * TILE;
-    for (uint32_t i = 0; i < 64u; i++) {
-        out[i] = GRID_BLACK;
-    }
-    for (uint32_t i = 0; i < SCENE_PX_LAYERS; i++) {
+    int blank = 1; /* out is still to be cleared to black */
+    for (uint32_t k = 0; k < sp->nlive; k++) {
+        uint32_t i = sp->live[k];
         const int16_t* b = sp->box[i];
         int32_t x0 = hi(b[0], tx), y0 = hi(b[1], ty);
         int32_t x1 = lo(b[2], tx + TILE), y1 = lo(b[3], ty + TILE);
         if (x0 < x1 && y0 < y1) {
-            draw(&sp->layer[i], tx, ty, x0, y0, x1, y1, out);
+            const scene_px_layer* l = &sp->layer[i];
+            /* A fill or a gradient over the whole tile hides the black under it. */
+            if (blank && !((l->kind == SCENE_PX_FILL || l->kind == SCENE_PX_GRADIENT) &&
+                           x1 - x0 == TILE && y1 - y0 == TILE)) {
+                for (uint32_t p = 0; p < 64u; p++) {
+                    out[p] = GRID_BLACK;
+                }
+            }
+            blank = 0;
+            draw(l, tx, ty, x0, y0, x1, y1, out);
+        }
+    }
+    if (blank) {
+        for (uint32_t p = 0; p < 64u; p++) {
+            out[p] = GRID_BLACK;
         }
     }
 }

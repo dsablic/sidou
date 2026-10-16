@@ -7,7 +7,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 49] = [
+const SOURCES: [&str; 50] = [
     "core/sid/sid.c",
     "core/sid/sid_character.c",
     "core/sid/sid_dac.c",
@@ -57,6 +57,7 @@ const SOURCES: [&str; 49] = [
     "app/widget.c",
     "bench/workload_fx.c",
     "bench/workload_slots.c",
+    "bench/workload_scene.c",
 ];
 
 /// Include roots, relative to the repository: core headers are "sid/...", the others bare.

@@ -669,23 +669,60 @@ time, on demand** (`app/scene_px.h`):
   hash differs from the panel's. The hash is taken again as the grid sends the tile, so it is
   always what the panel shows; a candidate the grid is about to send anyway is dropped
   without compositing. A tile is therefore composited twice when it changes (once to find
-  that it did, once to send it) and once when a layer over it changed without changing it:
-  about 560 ns a tile on the host; the device's instruction counts come with the view (M2f
-  Task 4).
-- **Slices and the budget.** `scene_px_scan` takes a number of tiles a call, so the scan runs
-  between frames (`views_prepare`) in slices that keep a main-loop pass within its allowance;
-  the view sends at most 200 cells a frame, and the grid goes on from where it stopped, round
-  the screen, so a marked tile waits at most one sweep.
+  that it did, once to send it) and once when a layer over it changed without changing it.
+- **The invariant.** A run is counted as shown, and its tiles' hashes taken, when it is
+  rendered, so every rendered run must reach the panel, or the grid be invalidated. A view
+  that has the screen back without setting its painter region again (which sends every cell)
+  calls `scene_px_init` or `grid_invalidate` first.
+- **The refresh sweep.** `scene_px_refresh` marks the next tiles round the screen whatever
+  their hashes say: a tile or two a frame sends the whole screen again every 18 to 36 s, a
+  safety net for a change the candidates missed (a forgotten `param`), at no RAM cost (a
+  position) and about 4.4k instructions and 0.19 ms of SPI a frame for two tiles.
+- **Runs, slices and the budget.** `grid_render_run` composites a run's tiles as it renders
+  it, and `ui_poll` renders up to two runs a call, so a run takes at most
+  `SCENE_PX_RUN_CELLS` (8) of the painter's cells (`grid_region_painter`'s cap). The scan
+  takes `SCENE_PX_SCAN_SLICE` (16) candidates a call at most, in passes of the main loop that
+  render no run. The emulator gate ties both to the 120k poll allowance at compile time. The
+  view sends at most 200 cells a frame, and the grid goes on from where it stopped, round
+  the screen, so a marked tile waits at most one sweep. 200 cells in as many windows (the
+  worst the cap can make) take 18.5 ms of SPI, within the 20 ms.
 
-In RAM the compositor is 4,688 bytes on the device (the slots 768 and their boxes 192, the
-hashes 3,600, a bit a tile for the candidates 113, counters), and the grid grew 8 bytes (the
-painter and its context). The tests (`tests/app/scene_px.rs`) check tiles against a Rust
-model of the same layers in random stacks (mirroring, transparency, order, remaps, clips),
-the hash against every change (the panel always equals the composited screen, and exactly
-the changed tiles are sent) and against frames that `assets/scene/red-moon-rite.js` draws
-(`tests/golden/scene/`: seven frames of the arcade's pattern as the layers the compositor
-stacks, the torches' cycling and the status bar left out; `--frames` writes them, and
-`SIDOU_SCENE_UPDATE=1` regenerates them when Node is installed).
+**What it costs on the device**, in fm1-emu (`emu-gate`'s `scene_budget.rs`, a frame like
+RED MOON RITE's with 13 slots, `bench/workload_scene.h`; instructions, a lower bound on
+cycles):
+
+| | Instructions |
+|---|---|
+| A tile composited, average / worst | 1,959 / 4,826 |
+| A cell sent (the tile, its hash, the panel's pixels), average / worst | 2,779 / 5,646 |
+| A run of 8 cells, worst; two in a ui_poll | 35.5k; 71k |
+| A scan, a candidate (the tile and its hash) | 2,829: 42 tiles a 120k pass |
+| A slice of 16 candidates, worst | 51.9k |
+| The whole screen sent (the first frame) | 2.49M |
+| The fighters step 4 px: 132 candidates, 123 sent | 0.89M |
+| The sky's palette changes: 480 candidates, 247 sent | 1.99M |
+| The torches tick: 10 candidates, 10 sent | 95k |
+
+As first written a tile cost 4.8k on average and 8.7k at worst, more than half of it finding
+a span's run from the start of the row, and a run of 30 painted cells 230k. Three changes
+brought it down: the rows' checkpoints (In flash, below), a sprite drawn into the tile a run
+at a time instead of a pixel at a time (`scene_image_blend`, with no divide a pixel), and a
+tile looking only at the slots in use. A 40 ms frame leaves about 5.2M instructions after
+the audio: RED MOON RITE's busiest frames (176 tiles changed in the prototype, perhaps 250
+candidates) come to about 1.2M, a quarter of it.
+
+In RAM the compositor is 4,716 bytes on the device (the slots 768 and their boxes 192, the
+slots in use 25, the hashes 3,600, a bit a tile for the candidates 113, counters), and the
+grid grew 12 bytes (the painter, its context and its cap). The tests (`tests/app/scene_px.rs`)
+check tiles against a Rust model of the same layers in random stacks (mirroring,
+transparency, order, remaps, clips), the hash against every change (the panel always equals
+the composited screen, and exactly the changed tiles are sent), the runs' cap, the sweep
+healing a missed change, any interleaving of changes, sliced scans, runs rendered and left
+waiting, delayed sends and held rows (400 seeds of 3,000 steps each converge on the screen),
+and against frames that `assets/scene/red-moon-rite.js` draws (`tests/golden/scene/`: seven
+frames of the arcade's pattern as the layers the compositor stacks, the torches' cycling and
+the status bar left out; `--frames` writes them, and `SIDOU_SCENE_UPDATE=1` regenerates them
+when Node is installed).
 
 ## RED MOON RITE
 
@@ -736,7 +773,8 @@ eight square pips a side were replaced after the review below.
 
 `host/crates/sidou-tests/src/scene_art.rs` converts the PNGs into `app/scene_rmr_art.c`
 (`SIDOU_SCENE_UPDATE=1` regenerates it; a test fails while it is stale), a `scene_image`
-(`app/scene_art.h`) each, decoded a row span at a time by `scene_image_row`:
+(`app/scene_art.h`) each, decoded a row span at a time by `scene_image_row`, or drawn over a
+tile a run at a time by `scene_image_blend`:
 
 - **Run-length rows with transparency.** Each image is cropped to the rectangle its pixels
   cover inside its frame; each pixel row of the rectangle is coded as the logo bitmaps' are (a
@@ -746,23 +784,30 @@ eight square pips a side were replaced after the review below.
   keeps its frame's size, its anchor (a fighter's feet at (58, 112) of the 128 x 124 screen
   frame; a sword's grip) and `gx`; drawn mirrored, a row is read from its end and the anchor is
   (frame width - 58, 112), so no mirrored copies are stored.
+- **Checkpoints.** A row wider than 32 pixels has a run start at every 32 pixels of it (the
+  converter splits a run there) and a byte for each in a checkpoint table, so a span part way
+  along a row is found from the checkpoint before it, not from the row's start: a tile of the
+  arena once walked 40 runs on average (118 at most) to reach its pixels, 2.6k of a tile's
+  4.8k. It takes 4,715 bytes of tables and 1,121 of split runs.
 - **Patches.** An unarmed pose is coded as the rectangle where it differs from its armed pose
   (the arm and the sword), over that pose, when that is smaller: guard, guard2 and hit, 120 to
   188 bytes each instead of 813 to 931; reach has no armed pose and is whole.
 - **The skies** are a gradient computed on the device (`scene_gradient_row`: the prototype's
   stops and 6-row Bayer seams) and an overlay of the pixels it does not give (the moon, wisps
-  and hills): **7,262 bytes for the three, against 10,977 coded whole** (rows shared across
-  the three). The gradient costs a fill a pixel on its flat rows and a Bayer compare a pixel
-  on its seam rows (24 of its 124), so it was chosen.
+  and hills): **7,472 bytes for the three, against 11,284 coded whole** (rows shared across
+  the three, checkpoint tables aside). The gradient costs a fill a pixel on its flat rows and
+  a Bayer compare a pixel on its seam rows (24 of its 124): measured in fm1-emu, 230
+  instructions a tile averaged over the screen (about 430 on each of the 480 tiles it
+  covers), so it was chosen.
 - **The arena** is one image of the whole screen, transparent where the sky shows.
 
 | What | Bytes |
 |---|---|
-| Fighters, 16 armed poses | 16,500 |
+| Fighters, 16 armed poses (781 of checkpoints) | 17,718 |
 | Unarmed poses (6 patches, 2 whole reaches) | 2,461 |
 | Swords, 8 in flight and stuck | 1,878 |
-| Skies (3 overlays) and the arena | 17,132 |
-| Together, rows shared: 29,620 of runs, 5,240 of row offsets, 950 of tables | **35,810** (35.0 KB of the 48 KB ceiling) |
+| Skies (3 overlays) and the arena (3,934 of checkpoints) | 21,880 |
+| Together, rows shared: 30,741 of runs, 9,955 of row offsets and checkpoints, 1,098 of tables | **41,794** (40.8 KB of the 48 KB ceiling) |
 
 The kinds are each image's runs and offsets alone; sharing rows across images brings the sum
 down to the total. A test prints the total and fails over 48 KB (`the_art_fits_its_flash_ceiling`),

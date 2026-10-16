@@ -20,7 +20,23 @@
  * screen from where it stopped, so none waits more than a sweep.
  *
  * A layer's identity is its fields: a layer whose drawing changes while its fields do not
- * (a mark array rewritten in place, a call whose output moves with time) changes `param`. */
+ * (a mark array rewritten in place, a call whose output moves with time) changes `param`.
+ * A refresh sweep (scene_px_refresh, a tile or two a frame) sends every tile again in turn
+ * regardless, so a change missed that way heals within a sweep.
+ *
+ * The invariant the hashes rest on: every run grid_next_run hands out with the scene's cells
+ * in it reaches the panel, or the grid is invalidated (grid_invalidate, or scene_px_init,
+ * which sends everything again). A run is counted as shown, and its tiles' hashes are taken,
+ * when it is rendered; one rendered and then dropped leaves hashes of pixels the panel never
+ * got, and the scan compares against them from then on. So a view that has the screen back
+ * (after another view's frames) without its painter region being set again through
+ * grid_region_painter (which sends every cell) calls scene_px_init or grid_invalidate before
+ * its next frame (M2f Task 4).
+ *
+ * The cost: grid_render_run composites a run's tiles as it renders it (ui_poll renders up to
+ * two runs a call), so a run takes at most SCENE_PX_RUN_CELLS of them; the emulator's scene
+ * benchmark (host/crates/emu-gate/tests/scene_budget.rs) bounds a tile's cost and ties the
+ * cap to the poll allowance. */
 #ifndef SIDOU_SCENE_PX_H
 #define SIDOU_SCENE_PX_H
 
@@ -38,6 +54,13 @@ extern "C" {
 #define SCENE_PX_LAYERS 24u
 #define SCENE_PX_W 240
 #define SCENE_PX_H 240
+/* The scene's cells a grid run takes at most (grid_region_painter): two runs of them, each
+ * at the worst cell the benchmark allows, stay within a ui_poll's allowance. */
+#define SCENE_PX_RUN_CELLS 8u
+/* The candidates a ui_poll pass scans at most (scene_px_scan's `most`): a slice of the
+ * worst tiles the benchmark allows, with the scan's walk over the candidate bits, stays
+ * within the pass's allowance. A pass that scans a slice renders no run. */
+#define SCENE_PX_SCAN_SLICE 16u
 
 enum {
     SCENE_PX_NONE,     /* an empty slot */
@@ -78,11 +101,15 @@ typedef struct {
     /* Each slot's box on the screen, clipped to it: [bx0, bx1) x [by0, by1); empty if
      * bx0 >= bx1. */
     int16_t box[SCENE_PX_LAYERS][4];
+    /* The slots whose box is not empty, bottom first: nlive of them. */
+    uint8_t live[SCENE_PX_LAYERS];
+    uint8_t nlive;
     /* The hash of each tile as the panel shows it (taken as it is sent). */
     uint32_t hash[GRID_CELLS];
     uint8_t cand[(GRID_CELLS + 7u) / 8u]; /* bit per tile: to be composited and compared */
     uint16_t ncand;
-    uint16_t next; /* where the scan goes on */
+    uint16_t next;  /* where the scan goes on */
+    uint16_t sweep; /* the refresh sweep's next tile */
     /* Tiles composited: by the scan, and as the grid sent them. */
     uint32_t scanned;
     uint32_t painted;
@@ -98,6 +125,11 @@ void scene_px_touch(scene_px* sp, int32_t x0, int32_t y0, int32_t x1, int32_t y1
 /* Composites up to `most` candidates and marks on g those that changed; candidates the grid
  * is to send already are dropped uncomposited. Returns the candidates left. */
 uint32_t scene_px_scan(scene_px* sp, grid* g, uint32_t most);
+/* Marks the next n tiles of the refresh sweep on g, in screen order round the screen,
+ * whatever their hashes say: a safety net for a change the candidates missed (a layer drawn
+ * differently with the same fields and param). A tile or two a frame sends the whole screen
+ * again every 18-36 s at 25 frames a second. */
+void scene_px_refresh(scene_px* sp, grid* g, uint32_t n);
 /* Tile (col, row) composited, 64 colours row by row. */
 void scene_px_tile(const scene_px* sp, uint32_t col, uint32_t row, uint8_t out[64]);
 /* The hash scene_px keeps of a tile's 64 colours. */

@@ -21,6 +21,9 @@ struct Rig {
     g: Box<grid>,
     sp: Box<scene_px>,
     panel: Vec<u8>,
+    /// The longest run sent, and how many times each cell was.
+    longest: usize,
+    sent: Vec<u32>,
 }
 
 impl Rig {
@@ -35,6 +38,8 @@ impl Rig {
             g,
             sp,
             panel: vec![0x55; W * W],
+            longest: 0,
+            sent: vec![0; TILES],
         }
     }
 
@@ -66,6 +71,10 @@ impl Rig {
                 }
             }
             sent += usize::from(run.len);
+            self.longest = self.longest.max(usize::from(run.len));
+            for c in run.col..run.col + run.len {
+                self.sent[usize::from(run.row) * 30 + usize::from(c)] += 1;
+            }
         }
         sent
     }
@@ -550,18 +559,18 @@ fn the_painter_region_replaces_a_bitmap_region_and_the_reverse() {
     let paint = rig.g.region_painter;
     unsafe {
         assert_eq!(
-            grid_region_painter(&mut *rig.g, 0, 0, 30, 30, paint, ctx),
+            grid_region_painter(&mut *rig.g, 0, 0, 30, 30, paint, ctx, SCENE_PX_RUN_CELLS),
             0
         );
     }
     assert_eq!(rig.send(usize::MAX), 0);
     unsafe {
         assert_eq!(
-            grid_region_painter(&mut *rig.g, 0, 0, 0, 30, paint, ctx),
+            grid_region_painter(&mut *rig.g, 0, 0, 0, 30, paint, ctx, SCENE_PX_RUN_CELLS),
             -1
         );
         assert_eq!(
-            grid_region_painter(&mut *rig.g, 0, 0, 30, 30, None, ctx),
+            grid_region_painter(&mut *rig.g, 0, 0, 30, 30, None, ctx, SCENE_PX_RUN_CELLS),
             -1
         );
         grid_region_clear(&mut *rig.g);
@@ -584,6 +593,109 @@ fn the_painter_region_replaces_a_bitmap_region_and_the_reverse() {
             assert_eq!(u32::from(rig.panel[y * W + x]), want, "({x}, {y})");
         }
     }
+}
+
+/// A painter that fills its cells in colour 5 and counts its calls (ctx: a usize).
+unsafe extern "C" fn counting(ctx: *mut c_void, _col: u32, _row: u32, px: *mut u8) {
+    unsafe {
+        *ctx.cast::<usize>() += 1;
+        std::ptr::write_bytes(px, 5, 64);
+    }
+}
+
+#[test]
+fn a_run_takes_at_most_the_painters_cap_of_its_cells() {
+    // The scene's region: the first frame sends the whole screen in runs of the cap.
+    let mut rig = Rig::new();
+    rig.set(0, Some(&fill(0, 0, 240, 240, GRID_BLUE)));
+    assert_eq!(rig.frame(), TILES);
+    assert_eq!(rig.longest, SCENE_PX_RUN_CELLS as usize);
+    assert!(rig.sent.iter().all(|&n| n == 1));
+    assert_eq!(rig.panel, rig.screen());
+    // A region over part of the screen: a run counts only the region's cells against the cap,
+    // and every changed cell goes out once.
+    let mut g = Box::<grid>::default();
+    let mut calls = 0usize;
+    let mut run = grid_run::default();
+    unsafe {
+        grid_init(&mut *g, b' ', 0x10);
+        let ctx = (&mut calls as *mut usize).cast();
+        assert_eq!(
+            grid_region_painter(&mut *g, 5, 2, 20, 3, Some(counting), ctx, 3),
+            0
+        );
+        assert_eq!(
+            grid_region_painter(&mut *g, 5, 2, 20, 3, Some(counting), ctx, 0),
+            -1
+        );
+        while grid_next_run(&mut *g, &mut run) != 0 {}
+        grid_fill(&mut *g, 0, 0, 30, 30, b'x', 0x21);
+    }
+    let mut sent = vec![0u32; TILES];
+    let pal = [0u16; 16];
+    let mut px = vec![0u32; GRID_RUN_PIXELS as usize / 2];
+    while unsafe { grid_next_run(&mut *g, &mut run) } != 0 {
+        unsafe { grid_render_run(&*g, &run, pal.as_ptr(), px.as_mut_ptr().cast()) };
+        let (r, c0, c1) = (run.row, run.col, run.col + run.len);
+        let painted = if (2..5).contains(&r) {
+            (c0..c1).filter(|c| (5..25).contains(c)).count()
+        } else {
+            0
+        };
+        assert!(
+            painted <= 3,
+            "row {r}: {} cells from {c0}, {painted} painted",
+            run.len
+        );
+        if !(2..5).contains(&r) {
+            assert_eq!((c0, run.len), (0, 30), "row {r}: no painter, one run");
+        }
+        for c in c0..c1 {
+            sent[usize::from(r) * 30 + usize::from(c)] += 1;
+        }
+    }
+    assert!(sent.iter().all(|&n| n == 1), "every cell once");
+    assert_eq!(calls, 60, "the region's cells painted as they were sent");
+}
+
+#[test]
+fn the_refresh_sweep_resends_every_tile_and_heals_a_missed_change() {
+    let mut rig = Rig::new();
+    let marks: &'static mut [scene_px_mark] = Box::leak(
+        (0..4)
+            .map(|i| scene_px_mark {
+                x: 100 + 9 * i,
+                y: 100,
+                colour: GRID_RED as u8,
+            })
+            .collect(),
+    );
+    let p = marks.as_mut_ptr();
+    rig.set(0, Some(&fill(0, 0, 240, 240, GRID_BLUE)));
+    let l = scene_px_layer {
+        n: 4,
+        src: p.cast_const().cast(),
+        ..layer(SCENE_PX_MARKS)
+    };
+    rig.set(1, Some(&l));
+    rig.frame();
+    assert_eq!(rig.panel, rig.screen());
+    // A mark changes colour in place and no one bumps the layer's param: a change the scene
+    // misses.
+    unsafe { (*p).colour = GRID_YELLOW as u8 };
+    assert_eq!(rig.frame(), 0);
+    assert_ne!(rig.panel, rig.screen());
+    // Two tiles a frame: every tile once in 450 frames, and the panel heals.
+    rig.sent.fill(0);
+    let painted = rig.sp.painted;
+    for f in 0..450 {
+        unsafe { scene_px_refresh(&mut *rig.sp, &mut *rig.g, 2) };
+        assert_eq!(rig.frame(), 2, "frame {f}");
+    }
+    assert!(rig.sent.iter().all(|&n| n == 1), "each tile once");
+    assert_eq!(rig.sp.painted - painted, TILES as u32);
+    assert_eq!(rig.panel, rig.screen());
+    assert_eq!(rig.sp.sweep, 0, "round to the first tile again");
 }
 
 /// A golden frame: its layers, as red-moon-rite.js recorded them, and its pixels.
@@ -830,6 +942,116 @@ fn compositing_a_tile_visits_only_the_layers_over_it() {
             visits < slots * TILES / 2,
             "{}: tiles visit most layers",
             f.name
+        );
+    }
+}
+
+/// The hashes hold under any interleaving the view can make: slots changed at random, the
+/// scan in slices of any size, a run rendered and left waiting for the panel while the scene
+/// changes on (as platform/fm1/ui.c keeps one), sends delayed, rows held and released, and
+/// the refresh sweep. However they interleave, once everything is scanned and sent the
+/// panel is the screen. (The invariant in app/scene_px.h: every rendered run reaches it.)
+#[test]
+fn any_interleaving_of_changes_scans_and_sends_converges_on_the_screen() {
+    let imgs = images();
+    let marks: Vec<scene_px_layer> = (0..8)
+        .map(|i| {
+            let m: &'static [scene_px_mark] = Box::leak(
+                (0..12)
+                    .map(|k| scene_px_mark {
+                        x: (17 * i + 23 * k) % 250 - 5,
+                        y: (31 * i + 11 * k) % 250 - 5,
+                        colour: ((i + k) % 16) as u8,
+                    })
+                    .collect(),
+            );
+            scene_px_layer {
+                n: 12,
+                src: m.as_ptr().cast(),
+                ..layer(SCENE_PX_MARKS)
+            }
+        })
+        .collect();
+    let pal: [u16; 16] = std::array::from_fn(|c| c as u16);
+    for seed in 1..=400u64 {
+        let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        let mut rig = Rig::new();
+        let mut buf = vec![0u32; GRID_RUN_PIXELS as usize / 2];
+        // A rendered run waiting for the panel.
+        let mut waiting: Option<(grid_run, Vec<u16>)> = None;
+        let apply = |panel: &mut Vec<u8>, run: &grid_run, px: &[u16]| {
+            let w = usize::from(run.len) * 8;
+            for y in 0..8 {
+                for x in 0..w {
+                    panel[(usize::from(run.row) * 8 + y) * W + usize::from(run.col) * 8 + x] =
+                        px[y * w + x] as u8;
+                }
+            }
+        };
+        for _ in 0..3000 {
+            match rng.below(10) {
+                0 | 1 => {
+                    let i = rng.below(12);
+                    let l = if rng.below(8) == 0 {
+                        marks[rng.below(8) as usize]
+                    } else {
+                        loop {
+                            let (l, _) = random_layer(&mut rng, &imgs);
+                            if u32::from(l.kind) != SCENE_PX_MARKS {
+                                break l;
+                            }
+                        }
+                    };
+                    rig.set(i as usize, Some(&l));
+                }
+                2 => rig.set(rng.below(12) as usize, None),
+                3 | 4 => unsafe {
+                    scene_px_scan(&mut *rig.sp, &mut *rig.g, rng.range(1, 40) as u32);
+                },
+                5 | 6 => {
+                    if waiting.is_none() {
+                        let mut run = grid_run::default();
+                        if unsafe { grid_next_run(&mut *rig.g, &mut run) } != 0 {
+                            let px = buf.as_mut_ptr().cast::<u16>();
+                            unsafe { grid_render_run(&*rig.g, &run, pal.as_ptr(), px) };
+                            let px =
+                                unsafe { std::slice::from_raw_parts(px, GRID_RUN_PIXELS as usize) };
+                            waiting = Some((run, px.to_vec()));
+                        }
+                    }
+                }
+                7 => {
+                    if let Some((run, px)) = waiting.take() {
+                        apply(&mut rig.panel, &run, &px);
+                    }
+                }
+                8 => unsafe {
+                    scene_px_refresh(&mut *rig.sp, &mut *rig.g, rng.below(3));
+                },
+                _ => {
+                    let mask = if rng.below(2) == 0 { 0 } else { rng.next() };
+                    unsafe { grid_hold(&mut *rig.g, mask) };
+                }
+            }
+        }
+        unsafe { grid_hold(&mut *rig.g, 0) };
+        if let Some((run, px)) = waiting.take() {
+            apply(&mut rig.panel, &run, &px);
+        }
+        rig.frame();
+        let want = rig.screen();
+        let stale = (0..TILES)
+            .filter(|t| {
+                let (c, r) = (t % 30, t / 30);
+                (0..8).any(|y| {
+                    let i = (r * 8 + y) * W + c * 8;
+                    rig.panel[i..i + 8] != want[i..i + 8]
+                })
+            })
+            .count();
+        assert_eq!(
+            stale, 0,
+            "seed {seed}: {stale} tiles differ from the screen"
         );
     }
 }
