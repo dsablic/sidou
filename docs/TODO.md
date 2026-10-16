@@ -4,6 +4,31 @@
 
 Follow-ups that aren't tied to a milestone task yet.
 
+## Knob ranges and response curves: every turn should be audible, none too jumpy
+
+- **Where:** `app/midi_map.c` (each parameter's range and curve), `app/panel.c` and every view
+  that maps K1–K4 or an encoder; the effect slots' parameter tables (`core/fx/fx_slots.c`).
+- **Problem:** parameters were given ranges from their engineering limits (a register's
+  width, an algorithm's parameter span), not from what is musically useful. Some knobs may
+  spend half their travel where nothing audible changes, or jump too far per detent where
+  the ear is sensitive (filter cutoff at the low end, resonance near self-oscillation,
+  detune, delay time, pulse width near 0 and 100%).
+- **Action** (alongside the UX pass, not a feature milestone):
+  - for every knob-controlled parameter, define the **useful range** (the span with
+    perceptible, musical change) and a **response curve** across it (linear, log for
+    frequencies and times, S-curves where the ends matter less), so equal turns give
+    roughly equal perceived change;
+  - set per-detent step sizes on the encoders and fine/coarse behaviour (e.g. hold a
+    button for fine), and smoothing where a jump would click;
+  - measure, don't guess: render each parameter's sweep on the host and check the
+    perceptual spacing (spectral centroid, loudness, pitch in cents, delay ms) per detent,
+    with a test that flags dead zones (several detents with no measurable change) and
+    jumps (one detent with a large change);
+  - MIDI keeps full resolution through NRPN; the curves shape the knobs and CCs, and the
+    generated `midi.md` documents each curve;
+  - check by ear on hardware with players, recorded in `docs/hardware-test.md`.
+- The user's priority (2026-10-16): after the features, with the UX pass.
+
 ## A UX pass: make SIDOU a joy to use (after the features)
 
 - **Where:** every view, `docs/reference/controls.md`, the design doc's UI section.
