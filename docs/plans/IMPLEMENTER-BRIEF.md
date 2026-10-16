@@ -33,6 +33,8 @@ Device code is C11 with no allocation and no libm; host tooling and tests are Ru
 - `noinline` helpers are `__attribute__((noinline, unused)) static`, never `static inline`.
 - SPDX headers on every new file; REUSE stays compliant.
 - Temporary files go in `build/scratch/` in your worktree.
+- `host/crates/sidou-sys/build.rs`'s `SOURCES` is a slice (`&[&str]`): on a rebase conflict keep
+  the slice form and the union of both sides' entries; never reintroduce a fixed-size array.
 - Never put the user's email address or any personal data in requests to outside services.
 - **A real FM-1 may be plugged into this computer. Never open, enumerate, send to, or flash
   any USB or MIDI device**: no CoreMIDI/Web MIDI/libusb code against real ports, no SysEx,
