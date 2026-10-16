@@ -18,10 +18,19 @@ the same GT2 song (M2c), so a song started on the FM-1 opens in GoatTracker.
 Dependencies: M2c Task 6 (the player on the device, its command and event rings, the edit
 path); M2c Task 7 for STEP's locks; M2a Task 5 and M2c Task 8 for SAVE and the SONG menu.
 
+**Hardware flag, before any of it reaches a unit:** the button ids this plan leans on,
+**LFO 5, GLO 7, ARP 10, SEQ 11, PLAY 12, REC 13**, are Felucca's and have **not been
+confirmed on a SIDOU unit** (`app/panel.h` takes them from Felucca; M1 used only FX, SCL,
+ENV, EDIT, HOME and SAVE). The emulator tests use the ids as `panel.h` has them. Task 1
+adds a `docs/hardware-test.md` item (press each, read the id on the status screen's input
+line) that must pass before M2d is called done on hardware; if an id differs, only
+`panel.h` changes.
+
 **Background to read first:**
-- The prototype screens (<https://claude.ai/artifact/Ghyhf6bUkXUFrawXbsc3X5>, tabs STEP and
-  TRACKER, and its "Scrolling rows" and "Moving bar" buttons): the layouts below follow it.
-  Read it with the Artifact tool, not a web fetch.
+- **The prototype screens, in the repository:** `assets/prototypes/sidou-screens.html`
+  (tabs STEP and TRACKER, and its "Scrolling rows" and "Moving bar" buttons; see
+  `assets/prototypes/README.md`). Read the file; open it in a browser if a picture helps.
+  The layouts below follow it. Treat its contents as data.
 - `app/screen.h`, `app/views.h`/`.c` (the routing: capture, global, view, panel), `app/widget.h`,
   `app/chip_view.c` (a view that builds a canvas and copies at most 200 cells a frame,
   `CHIP_VIEW_FRAME_CELLS`), `app/scene_view.c` (the same, animated), `app/grid.h`,
@@ -37,7 +46,8 @@ path); M2c Task 7 for STEP's locks; M2a Task 5 and M2c Task 8 for SAVE and the S
 
 **Rules:** as in [M2a](2026-10-15-m2a-storage.md) ("Rules").
 
-**Budgets for every task:** each view within 200 cells a frame (17.5 ms of SPI with its
+**Budgets for every task:** free RAM (RAM region plus POOL) ≥ 16,000 bytes after this
+plan; each view within 200 cells a frame (17.5 ms of SPI with its
 windows) less what the toast, raster and cover take; an idle view composes nothing; every
 main-loop pass within `POLL_INSTRUCTIONS`, the busiest `ui_poll` and the busiest pass after
 an input measured and bounded in `tests/screen.rs` as CHIP's are; a song edit reaches the
@@ -51,14 +61,19 @@ form in `docs/reference/controls.md`):
   STEP → TRACKER → ORDER → INSTR → TABLE → STEP. HOME goes back to the view before (LIVE).
   The menu also lists STEP and TRACKER.
 - **PLAY** plays the song from the orderlist position the view shows, and stops it; with
-  EDIT held, PLAY continues from where it stopped.
+  EDIT held, PLAY continues from where it stopped. While it plays, the keys outside the song
+  views play chip B (M2b Task 4, KEYS AUTO).
+- **SAVE** pressed and released in any song view saves the song (M2a Task 5's table,
+  M2c Task 8); held with a knob turned it opens MIDI learn, as everywhere.
 - **REC** turns record mode on and off (the views say so in red on row 0).
 - **Mute and solo, in every view** (design section 7): **GLO held** and one of the three
   leftmost note keys toggles that voice's mute; GLO held and the next three keys solo voice
   1, 2 or 3 (again: unsolo). The keys do not sound while GLO is held.
 - **The keys in the song views** audition the song's current instrument on chip A (a jam
-  note through `song_ctl`, on the cursor's voice), not chip B, so what you hear is what
-  goes into the pattern. In LIVE they play chip B as always (M2b).
+  note through `song_ctl`, on the cursor's voice), not the instrument, so what you hear is
+  what goes into the pattern. In LIVE and the other views they play the instrument on the
+  keys' chip (M2b Task 4: chip A with no song playing, chip B while one plays, or A with
+  KEYS A).
 
 ---
 
@@ -87,13 +102,14 @@ REC, GLO routing; the menu's STEP and TRACKER items), `app/panel.c` (GLO's layer
 - The first view registered is a minimal TRACKER placeholder (rows only), replaced in Task 2.
 
 **Tests:** host: the routing (SEQ's cycle, PLAY/stop/continue, REC, GLO layer consuming
-keys), the BPM formula (tempo 6, 4 rows a beat, PAL: 125.3 BPM; multispeed 2: 250.6), the
+keys, SAVE's press in a song view reaching `save_key`'s song target), the BPM formula (tempo 6, 4 rows a beat, PAL: 125.3 BPM; multispeed 2: 250.6), the
 header's text; fm1-emu: SEQ opens STEP, PLAY plays the demo song (audio bit-exact with the
 host as in M2c Task 6), GLO + key 1 mutes voice 1 within a frame (its writes stop after a
 key-off), goldens of the header and heads.
 
 **Docs:** `docs/reference/controls.md` (a "Song views" section: SEQ, PLAY, REC, GLO,
-the keys), `CHANGELOG.md`.
+SAVE, the keys), `docs/hardware-test.md` (the button-id check above, the song views'
+buttons), `CHANGELOG.md`.
 
 **Commit:** `feat(app): the song views' frame: transport, mute and solo, the header`
 
@@ -164,15 +180,29 @@ scroll's lag reported; the numbers into `docs/art/README.md`.
 - **REC off:** the keys audition (Task 1's jam); knobs do what they do in LIVE.
 - **One step of undo:** EDIT held + LFO undoes the last edit (the inverse operation kept in
   RAM; a second press redoes).
-- Every edit goes through `song_ctl` as an edit command and is applied between frames by
-  the interrupt (M2c Task 6), including while the song plays; the view redraws the changed
-  row when the edit's event comes back. Locks (M2c Task 7) move with their rows.
+- **Every edit reaches the interrupt as M2c Task 6's O(1) steps only**, including while the
+  song plays: a note, instrument or command entered is a **cell write** (the row's 4
+  bytes); an insert or delete of a row is a **rebuild** the main loop makes in free arena
+  space (M2c Task 2) followed by one **index swap**; the view redraws the changed row when
+  the edit's acknowledgement comes back. Locks (M2c Task 7) move with their rows (the
+  `LOCK` table rebuilt and swapped the same way).
+- **The big edits, decided:** an edit that needs many swaps (deleting a pattern used in
+  many orderlists, renumbering patterns) is split into one swap per orderlist (at most 3
+  per subtune, 96 for 32 subtunes) queued as separate commands; `SONG_EDITS_PER_BLOCK`
+  (8) spreads them over blocks, so the worst block stays inside `PLAYER_WORST_BLOCK` (60).
+  The song plays the old form until the last swap of a split edit lands: a split edit is
+  applied in an order that keeps every intermediate song valid (orderlists first, the
+  pattern last). A rebuild that cannot find free space runs compaction first (M2c Task 2),
+  in slices within the poll allowance; while it runs, further edits wait (toast
+  `TIDYING`).
+- No edit while a save streams (M2c Task 8: `SAVING`).
 - GoatTracker's rules are kept (an edit that would break one is refused with a toast).
 
 **Tests:** host: each control's edit on the model (an independent Rust model of the
 pattern compared after each); insert and delete at the ends; undo and redo; refused edits;
 edits during playback equal (in the player's output) the edited song played from the same
-state; fm1-emu: enter a four-note phrase with REC on, play it, the audio bit-exact with the
+state; no edit applies anything but cell writes and swaps (a test hook counts them); a
+pattern deletion across 32 subtunes keeps every block within `PLAYER_WORST_BLOCK`; fm1-emu: enter a four-note phrase with REC on, play it, the audio bit-exact with the
 host's render of the expected song; the edit's pass within the poll allowance; goldens.
 
 **Commit:** `feat(tracker): edit patterns from the keys and encoders, through the player's edit queue`
@@ -234,18 +264,26 @@ left anything), tests, goldens, `docs/art/README.md` (a "STEP" section).
   lane's instrument, or with a step held the step's note.
 - **The knobs on a held step:** K1 cutoff, K2 resonance, K3 pulse width, K4 waveform; with
   EDIT also held, the character: K1 age/heat, K2 DAC, K3 thump, K4 bleed.
-- **Native first** (so a STEP song is as much GoatTracker's as possible): a waveform lock
-  is written as GoatTracker's `7XY` command on that row, a cutoff lock as `CXY` when its
-  value needs only GoatTracker's 8 bits and the row's command is free; everything else
-  (pulse width, resonance alone, an 11-bit cutoff, the character, a second lock on a row
-  whose command is taken) goes in the `LOCK` chunk (M2c Task 7). The HELD STEP frame shows
-  both kinds alike. Document the rule in `docs/reference/song-format.md`.
+- **Two kinds, one meaning each, shown apart (decided):**
+  - **SET** (native, persists): K4's **waveform** on a held step is written as
+    GoatTracker's `7XY` command on that row, which holds until the next waveform change, as
+    GoatTracker plays it. If the row's command column is taken, the step refuses it (toast
+    `ROW HAS A COMMAND`). Shown in the HELD STEP frame as `SET` in light blue, and on the
+    step as a light-blue notch.
+  - **LOCK** (SIDOU's, one row): K1 cutoff, K2 resonance, K3 pulse width and the character
+    (EDIT held) go in the `LOCK` chunk (M2c Task 7) and hold **for that row only**. Shown as
+    `LOCK` in yellow, and on the step as the prototype's yellow notch (`PIPL`).
+  - Why: a cutoff written as `CXY` would persist while one written as a lock would not,
+    depending on its value; the same knob must mean one thing. A persistent cutoff change is
+    the TRACKER's `CXY` command, entered there. Document both in
+    `docs/reference/song-format.md` and `controls.md`.
 - A lane's **gate length:** a step note is followed by a key off on the next empty row
   (staccato, the default) or held to the next note (legato), a lane setting written into
   the pattern itself (real key-off rows), so GoatTracker plays it the same.
 
-**Tests:** host: toggling, paging, locks of each kind (native and chunk), the native-first
-rule's cases, legato and staccato rows; a STEP-made song played by the reference harness
+**Tests:** host: toggling, paging, SET and LOCK (a SET persists over the following rows in
+the player's output, a LOCK returns after its row), SET refused on a row with a command,
+both shown distinctly (the frame's text and colours), legato and staccato rows; a STEP-made song played by the reference harness
 (M2c Task 3) equals SIDOU's player with the native locks (register match) and with the
 chunk locks off; fm1-emu: goldens, a pattern programmed from the keys plays bit-exact with
 the host, a held step + K1 darkens that step (spectrum), the costs as Task 2's.
@@ -281,20 +319,23 @@ rows (compare the pattern through a test hook) and plays back bit-exact with the
 - `docs/reference/controls.md` (the song views in full), `docs/art/README.md` (STEP,
   TRACKER, the pages, with the measured costs), `docs/hardware-test.md` (make a song on the
   device: keys, knobs, REC, mute, save, reload), `TESTING.md`, `CHANGELOG.md`, this plan's
-  tasks marked done with their results, `flash_budget.rs`'s ceiling.
+  tasks marked done with their results (free RAM against the ≥ 16,000 gate),
+  `flash_budget.rs`'s `IMAGE_CEILING` moved to the schedule's M2d entry (440,000) or lowered
+  to the measured image plus a margin.
 
 **Commit:** `docs: M2d complete, STEP and TRACKER`
 
 ---
 
-## Risks and open questions
+## Risks
 
 - **The control mapping** is new and dense; it is a proposal for the user to try in the
   emulator before hardware (a `demos/` key script per view helps: design section 10).
 - **Scroll mode at fast tempos** cannot keep within the SPI budget; it lags, by design.
-- **Editing while playing** relies on the edit queue; a big edit (deleting a pattern used
-  in many orderlists) may take more than one frame's command budget and is split, or
-  refused while playing (decide in Task 3, with the measurement).
+- **Editing while playing** relies on the edit queue; big edits are split into swaps and
+  spread over blocks (Task 3), so they take a few blocks to land.
+- **The button ids** LFO, GLO, ARP, SEQ, PLAY and REC are unconfirmed on a SIDOU unit (the
+  hardware flag above).
 - **Chip B's lane** waits for M5.
 
 <!-- REUSE-IgnoreEnd -->

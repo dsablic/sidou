@@ -193,9 +193,10 @@ parameters, and the macro controls below move several at once.
     older versions keep loading as the project grows.
 - **Amended (M2 plan, 2026-10-15): GoatTracker 2's `.sng` is the song file.**
   The user decided that SIDOU reads and writes GT2 `.sng` (GTS5) directly
-  instead of a format "close to GT2" with an importer: the GT2 part is
-  lossless by construction, and songs move freely between SIDOU and
-  GoatTracker. SIDOU's additions above (locks, chip B's setup, the chip
+  instead of a format "close to GT2" with an importer, so songs move freely
+  between SIDOU and GoatTracker. A canonical GTS5 file (one GoatTracker's own
+  load and save leave unchanged) round-trips byte for byte; older versions
+  are converted to GTS5 on load, as GoatTracker does. SIDOU's additions above (locks, chip B's setup, the chip
   profile and character, the effect slots, and the playroutine options GT2
   keeps outside the file) go in a chunked, versioned trailer after the last
   pattern, which GoatTracker's loader ignores; readers still skip unknown
@@ -207,7 +208,8 @@ parameters, and the macro controls below move several at once.
   boundaries (the block is split at the frame), as the 6502 will in M3, so a
   song renders on the device bit for bit as on the host. Main-loop code
   talks to it through a command ring and hears its rows and notes through an
-  event ring (M2c Task 6).
+  event ring (M2c Task 6). Edits reach it only as O(1) steps (a cell write,
+  or a swap to a pattern rebuilt in free space).
 - **Playback modes:**
   1. *Native song*: our player engine writes chip registers once per frame
      (50 Hz PAL, or multispeed).
@@ -215,6 +217,10 @@ parameters, and the macro controls below move several at once.
      mute/solo and the chip profile still apply, because they act on the
      emulated chip.
 - **Live view:** chip B, a chosen instrument, and the keys.
+  - **Amended (M2 plan, 2026-10-16):** the keys play chip B while a song
+    plays on chip A; with no song playing they play chip A, as in M1; a KEYS
+    setting keeps them on chip A. The keys' chip setup travels with them, so
+    they sound the same on either chip (M2b Task 4).
   - The knobs control cutoff, resonance, pulse width and two character
     controls you assign.
   - REC records notes and knob moves into the current pattern, quantised as
@@ -283,12 +289,13 @@ parameters, and the macro controls below move several at once.
     pieces (M1e), SCENE gets drawn pixel-art vignettes in late-C64 style,
     homages to game genres with original characters: the first is RED MOON
     RITE (a barbarian duel under a blood moon, driven by the drums, bass,
-    arp, fill and cutoff), the second, optional, DUSK DUEL (a karate duel at
-    sunset). Their art is drawn by code (the prototype's painter and puppet),
+    arp, fill and cutoff; the fill disarms a fighter). DUSK DUEL, a karate
+    duel on a beach, was dropped: too close to its genre's best-known game.
+    The art is drawn by code (the prototype's painter and puppet),
     exported to indexed PNGs and converted to run-length sprites; the device
     composites changed tiles on demand, with no frame buffer (M2f). The
     rule above holds: no game's characters, sprites, layouts or names, and no
-    gore; each vignette gets an originality review.
+    gore; each vignette gets an originality review the user signs off.
 
   Scenes run on the UI core from the same timed events as the audio, so they
   stay in sync and never touch the audio budget. They need a few KB of sprite
@@ -361,6 +368,12 @@ At 240 MHz and 44.1 kHz, one core has about 5,400 cycles per stereo sample.
   1. chip B's filter oversampling;
   2. chip B's character tables (it falls back to a plain 8580 model);
   3. the post-chip effects.
+- **Amended (M2 plan, 2026-10-15):** the table's ≤ 400 for the 6502 is not
+  what the gates leave. Two chips at their worst block, the tap, the ISR and
+  the effect slots' worst switch leave about 205 a sample (M1), and M2's
+  always-on additions (chip B's second render call and mix, the song command
+  ring) about 195-200. The shortfall predates M2; docs/TODO.md ("The 6502
+  must fit the audio headroom the gates leave") keeps the levers for M3.
 
 ## 9. Testing
 
@@ -569,7 +582,7 @@ Each kind of document has one job:
      sounds (moved from M1);
    - MIDI: clock and transport, multitimbral and whole-chip modes, program
      change, SysEx dumps;
-   - SCENE view, with one vignette first: RED MOON RITE (DUSK DUEL optional).
+   - SCENE view, with one vignette first: RED MOON RITE.
 4. **M3, `.sid` files:**
    - 6502 and PSID playback;
    - mute and solo;
@@ -629,7 +642,8 @@ stream.
 
 **Modes**, saved per song:
 - **Live:** one channel plays chip B. It is three-voice polyphonic with voice
-  stealing, or mono/legato.
+  stealing, or mono/legato. (Amended, M2 plan: it plays the keys' chip, chip
+  A when no song plays; see section 5.)
 - **Multitimbral:** chip A's voices on channels N, N+1, N+2, each its own
   instrument, and chip B on a fourth. This is how a DAW plays or sequences
   the SID directly.
