@@ -68,6 +68,7 @@ int song_ext_valid(const gt2_song* s);
 #define GT2_PLAYER_ZPGHOSTREGS 0x10u   /* -C */
 #define GT2_PLAYER_NOOPTIMIZATION 0x20u /* -I0 */
 #define GT2_PLAYER_FULLBUFFERED 0x40u  /* -J */
+#define GT2_PLAYER_KNOWN 0x7fu
 typedef struct {
     uint16_t hr_adsr;      /* -A, $0F00 */
     uint8_t multispeed;    /* -S, 1 (0: 25 Hz) */
@@ -90,7 +91,11 @@ void gt2_options_default(gt2_options* o);
 int song_ext_get_options(const gt2_song* s, gt2_options* o);
 int song_ext_set_options(gt2_song* s, const gt2_options* o);
 void song_opts_encode(const gt2_options* o, uint8_t out[SONG_OPTS_BYTES]);
-/* 0, or -1 for a short chunk or another version (o then holds the defaults). */
+/* 0, or -1 for a short chunk, another version, or a value with no meaning to gt2reloc (an
+ * NTSC byte or SID model above 1, an unknown player flag); o then holds the defaults. What
+ * gt2reloc clamps is clamped as it does: multispeed to 16 (the device's cap of 4 is the
+ * reader's, gt2_caps), -O and -R to 1, a clock below 100 Hz to 0 (PAL/NTSC's), fine
+ * vibrato to 2 (always). */
 int song_opts_decode(const uint8_t* data, uint32_t len, gt2_options* o);
 
 /* CHPA, CHPB: a chip's setup. */

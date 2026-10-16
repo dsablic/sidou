@@ -38,7 +38,11 @@ GoatTracker Stereo file (detection below). Each:
 
 SIDOU's reader takes the entries up to the first `$FF` within the n bytes, as GoatTracker's
 loader does, and the byte after it as the restart position; there must be one, or the
-orderlist is refused.
+orderlist is refused. Nothing else is checked: an orderlist that breaks readme 3.1's rules
+(a transpose after a repeat, a last entry that is not a pattern) or a mono restart position
+at or past its entries loads as it is, since GoatTracker loads, saves and plays it. SIDOU's
+player plays it as GoatTracker's `player.s` does; SIDOU's edits never make one, and refuse
+an entry write that leaves one breaking the rules (`GT2_ERR_ORDER_RULE`).
 
 ### Instruments
 
@@ -213,7 +217,7 @@ older one's save. Every chunk SIDOU keeps (the trailer less its header, lead-in,
 | 4 | 1 | timing: 0 PAL, 1 NTSC | `-P`, `-N` | 0 |
 | 5 | 4 | custom SID clock, Hz (0: PAL's or NTSC's) | `-F` | 0 |
 | 9 | 4 | pitch of A-4, thousandths of a Hz (0: the built-in table) | `-G` | 0 |
-| 13 | 1 | fine vibrato: 0 off, 1 on | `-V` | 1 |
+| 13 | 1 | fine vibrato: 0 off, 1 on (below 2x multispeed), 2 always | `-V` | 1 |
 | 14 | 1 | pulse optimisation: 0 off, 1 on | `-O` | 1 |
 | 15 | 1 | realtime-effect optimisation: 0 off, 1 on | `-R` | 1 |
 | 16 | 2 | player flags, GoatTracker's `PLAYER_*` bits shifted right by 3: bit 0 buffered writes (`-B`), 1 sound effects (`-D`), 2 volume change (`-E`), 3 author info (`-H`), 4 zero-page ghost registers (`-C`), 5 optimisations **off** (`-I0`), 6 full buffering (`-J`) | | 0 |
@@ -221,6 +225,11 @@ older one's save. Every chunk SIDOU keeps (the trailer less its header, lead-in,
 | 20 | 1 | player address, high byte | `-W` | `$10` |
 | 21 | 1 | zero-page address | `-Z` | `$FC` |
 | 22 | 1 | SID model: 0 6581, 1 8580 | (editor) | 0 |
+
+A reader clamps what `gt2reloc` clamps, as it does: multispeed above 16 to 16, pulse and
+realtime optimisation above 1 to 1, a custom clock below 100 Hz to 0, fine vibrato above 2
+to 2. A timing byte or SID model above 1, or a player flag above bit 6, has no meaning: the
+chunk is not used and the defaults stand (the chunk itself is kept, as written).
 
 **`CHPA`, `CHPB`** (9 + x bytes): a chip's setup.
 

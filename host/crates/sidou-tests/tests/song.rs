@@ -2034,3 +2034,87 @@ fn pending_edits_are_refused() {
 fn e() -> gt2_edit {
     gt2_edit::default()
 }
+
+/// OPTS values out of gt2reloc's ranges: what gt2reloc clamps is clamped as it clamps it;
+/// what has no meaning there makes the chunk invalid (the defaults stand).
+#[test]
+fn opts_out_of_range_are_clamped_or_refused() {
+    let mut o = gt2_options::default();
+    unsafe { gt2_options_default(&mut o) };
+    let mut b = [0u8; SONG_OPTS_BYTES as usize];
+    unsafe { song_opts_encode(&o, b.as_mut_ptr()) };
+    let decode = |b: &[u8]| {
+        let mut d = gt2_options::default();
+        let r = unsafe { song_opts_decode(b.as_ptr(), b.len() as u32, &mut d) };
+        (r, d)
+    };
+    let (r, d) = decode(&b);
+    assert_eq!(r, 0);
+    assert_eq!(d.multispeed, 1);
+    // Clamped as gt2reloc clamps them: -S above 16, -O and -R above 1, -F below 100, and
+    // -V above 1 (any is "always").
+    let mut c = b;
+    c[3] = 20;
+    c[14] = 5;
+    c[15] = 9;
+    c[5..9].copy_from_slice(&50u32.to_le_bytes());
+    c[13] = 7;
+    let (r, d) = decode(&c);
+    assert_eq!(r, 0);
+    assert_eq!(
+        (
+            d.multispeed,
+            d.optimize_pulse,
+            d.optimize_realtime,
+            d.clock_hz,
+            d.finevibrato
+        ),
+        (16, 1, 1, 0, 2)
+    );
+    // In range, kept: multispeed 8 (refused only by the device's caps) and 0 (25 Hz).
+    for ms in [0u8, 8, 16] {
+        let mut c = b;
+        c[3] = ms;
+        assert_eq!(decode(&c).1.multispeed, ms);
+    }
+    // No meaning: the NTSC byte above 1, a SID model above 1, an unknown player flag.
+    for (at, v) in [(4usize, 2u8), (22, 2), (17, 0x80), (16, 0x80)] {
+        let mut c = b;
+        c[at] = v;
+        assert_eq!(decode(&c).0, -1, "byte {at} = {v:#x}");
+    }
+}
+
+/// Orderlists GoatTracker loads and plays though they break readme 3.1 (a transpose after a
+/// repeat, a last entry that is not a pattern) or hold a mono restart position at or past
+/// their entries: SIDOU's reader keeps them as they are, as GoatTracker does, and the song
+/// saves to what GoatTracker saves. The C player plays them as player.s does (M2c Task 4);
+/// the edit primitives never make one, and an entry write on one is refused.
+#[test]
+fn orderlists_breaking_the_rules_load_as_goattracker_loads_them() {
+    let mut spec = SngSpec::new();
+    spec.orders = vec![vec![
+        (vec![0xd2, 0xe3, 0], 0),
+        (vec![1, 0xe2], 0),
+        (vec![2], 7),
+    ]];
+    let file = spec.encode();
+    let mut s = Song::device();
+    s.read(&file, 4).unwrap();
+    assert_eq!(s.order(0, 0).unwrap(), (vec![0xd2, 0xe3, 0], 0));
+    assert_eq!(s.order(0, 1).unwrap(), (vec![1, 0xe2], 0));
+    assert_eq!(s.order(0, 2).unwrap(), (vec![2], 7));
+    assert_eq!(s.write(false), gt2_ref::canonical(&file).unwrap());
+    let mut e = gt2_edit::default();
+    assert_eq!(
+        unsafe { gt2_set_order(s.ptr_mut(), 0, 0, 2, 1, &mut e) },
+        GT2_ERR_ORDER_RULE
+    );
+    // The restart position is set back in range by an edit that writes it.
+    assert_eq!(
+        unsafe { gt2_set_order(s.ptr_mut(), 0, 2, 1, 0, &mut e) },
+        GT2_OK
+    );
+    unsafe { gt2_edit_commit(s.ptr_mut(), &e) };
+    assert_eq!(s.order(0, 2).unwrap(), (vec![2], 0));
+}

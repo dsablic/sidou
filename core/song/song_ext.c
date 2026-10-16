@@ -168,6 +168,22 @@ int song_opts_decode(const uint8_t* b, uint32_t len, gt2_options* o) {
     o->player_page = b[20];
     o->zeropage = b[21];
     o->sid_model = b[22];
+    /* What gt2reloc clamps (its main, after the options), clamped as it clamps it. */
+    if (o->multispeed > 16u)
+        o->multispeed = 16u;
+    if (o->optimize_pulse > 1u)
+        o->optimize_pulse = 1u;
+    if (o->optimize_realtime > 1u)
+        o->optimize_realtime = 1u;
+    if (o->clock_hz < 100u)
+        o->clock_hz = 0u;
+    if (o->finevibrato > 2u)
+        o->finevibrato = 2u; /* above 1: always, whatever the multispeed */
+    /* What has no meaning there: the chunk is not used. */
+    if (o->ntsc > 1u || o->sid_model > 1u || (o->player_flags & ~GT2_PLAYER_KNOWN) != 0u) {
+        gt2_options_default(o);
+        return -1;
+    }
     return 0;
 }
 

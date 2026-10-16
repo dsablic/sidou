@@ -13,6 +13,10 @@
  * The writer writes what GoatTracker's savesong writes (decision record 0007, rule 1), then
  * the trailer if asked.
  *
+ * Orderlists are kept as GoatTracker loads them: one breaking readme 3.1's rules, or a mono
+ * restart position at or past its entries, loads unchanged (GoatTracker plays it), and the
+ * player must play it as player.s does (M2c Task 4); the edit primitives never make one.
+ *
  * Every reader of a file is a parser of untrusted input (design doc section 6): no input
  * can make it read or write outside its buffers, and every refusal has a message short
  * enough for a toast. Portable C11, no allocation. */
