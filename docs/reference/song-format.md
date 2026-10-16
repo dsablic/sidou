@@ -92,18 +92,19 @@ toast:
 | `SNG: GT1 FORMAT` | `GTS!` (GoatTracker 1) |
 | `SNG: SHORT FILE` | the file ends inside the GT2 part |
 | `SNG: BAD SUBTUNES` | a subtune count of 0 or above 32 |
-| `SNG: BAD ORDERLIST Vn` | channel n's orderlist (1-6) has no `$FF` with a restart byte after it |
+| `SNG: BAD ORDERLIST Vn` | channel n's orderlist (1-6) has no `$FF` with a restart byte after it, or (stereo) a restart byte of its entries plus two or more |
 | `SNG: BAD INSTRUMENTS` | more than 63 instruments |
 | `SNG: BAD PATTERN n` | pattern n has more than 129 rows, no end row, a note outside `$60-$BF`, an instrument above `$3F` or a command above `$F` before its end |
 | `SNG: BAD PATTERNS` | more than 208 patterns |
-| `SNG: TOO BIG (58K OF 56K)` | the orderlists and patterns do not fit the arena with its spare (the content region, M2c Task 2) |
+| `SNG: TOO BIG (60K OF 52K)` | the orderlists and patterns do not fit the arena with its spare: on the device 53,360 bytes (52K) of the 64 KiB content region (`core/song/gt2_song.h`) |
 | `SNG: MULTISPEED 8 (MAX 4)` | on the device: the `OPTS` chunk asks for multispeed above 4 (0, 25 Hz, is refused as `MULTISPEED 0`) |
 
 What GoatTracker accepts and plays oddly (a restart position past the end, a transpose
 after a repeat, a missing pattern) loads: those are the editing rules of readme 3.1, which
 SIDOU's editing primitives enforce and its player follows as GoatTracker's does. An
 orderlist naming a pattern the file does not have gets an empty 64-row pattern, as
-GoatTracker's loader leaves one.
+GoatTracker's loader leaves one. An empty 64-row pattern no orderlist names is kept as
+"not held": it takes no room, and the writer writes it back as the same 64 rests.
 
 ### Mono or stereo
 
@@ -111,7 +112,11 @@ A GoatTracker Stereo file has the same ident and six orderlists a subtune. SIDOU
 decides as GoatTracker Stereo's `determinechannels` does: starting at the subtune count,
 it trial-reads 6 × S orderlists; a read at offset p with length byte n passes when the
 byte at p + n is `$FF` and the byte at p + n + 1 is below n + 1 (a byte past the end of
-the file counts as 0; a length byte of 0 fails). All passing: stereo, else mono.
+the file counts as 0; a length byte of 0 fails). All passing: stereo, else mono. The guess
+is GoatTracker Stereo's, and can be wrong: if the file read with the other channel count
+ends in a SIDOU trailer whose CRCs hold, and read with the guessed one does not, the other
+count wins (0007). A stereo song whose orderlist has a restart byte of its entries plus two
+or more is refused (`SNG: BAD ORDERLIST Vn`): saved, it would read as mono.
 
 ### Writing
 

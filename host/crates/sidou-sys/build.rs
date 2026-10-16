@@ -7,7 +7,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 43] = [
+const SOURCES: [&str; 46] = [
     "core/sid/sid.c",
     "core/sid/sid_character.c",
     "core/sid/sid_dac.c",
@@ -16,6 +16,9 @@ const SOURCES: [&str; 43] = [
     "core/fx/fx_reverb.c",
     "core/fx/fx_plate.c",
     "core/sid/sid_filter.c",
+    "core/song/gt2_song.c",
+    "core/song/gt2_sng.c",
+    "core/song/song_ext.c",
     "bench/workload.c",
     "app/about.c",
     "app/boot.c",
@@ -138,6 +141,10 @@ fn main() {
     println!("cargo:rerun-if-changed={}", root.join("core/fx").display());
     println!(
         "cargo:rerun-if-changed={}",
+        root.join("core/song").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
         root.join("bench/workload.h").display()
     );
     println!("cargo:rerun-if-changed={}", root.join("app").display());
@@ -163,13 +170,13 @@ fn main() {
         .clang_arg(format!("-D{MIDI_MAP_DOC}"))
         .clang_arg(format!("-D{RACE_HOOK}"))
         .allowlist_function(
-            "sid_.*|sidou_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|learn_view_.*|scope_.*|scene_.*|title_card_.*|chip_view_.*",
+            "sid_.*|sidou_.*|gt2_.*|song_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|learn_view_.*|scope_.*|scene_.*|title_card_.*|chip_view_.*",
         )
         .allowlist_type(
-            "sid.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|title_card.*|chip_view.*",
+            "sid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|title_card.*|chip_view.*",
         )
         .allowlist_var(
-            "SID_.*|SIDOU_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*|LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*|LEARN_VIEW_.*|SCOPE_.*|SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*",
+            "SID_.*|SIDOU_.*|GT2_.*|SONG_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*|LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*|LEARN_VIEW_.*|SCOPE_.*|SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*",
         )
         // `static const` tables private to the headers; they have no symbol to link to.
         .blocklist_item("SID_ENV_RATE_POS|SID_ENV_THRESHOLDS|SID_PULLDOWN_.*|SID_NOISE_WB")

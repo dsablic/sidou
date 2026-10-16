@@ -3,7 +3,7 @@
 //! Reference harness: renders SIDOU and reSIDfp from the same register writes and measures
 //! the difference. Used by the reference tests and by `sidou-compare`. Also the generators of
 //! the screen font (`font`), the About screen's credits (`credits`), the logos' bitmaps
-//! (`logo`) and the title cards' (`title_card`).
+//! (`logo`) and the title cards' (`title_card`), and the song model's Rust side (`song`).
 
 pub mod credits;
 pub mod filter_limits;
@@ -14,4 +14,5 @@ pub mod register_probe;
 pub mod render;
 pub mod residfp_engine;
 pub mod signal_metrics;
+pub mod song;
 pub mod title_card;

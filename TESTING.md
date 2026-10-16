@@ -14,6 +14,7 @@ lists the prerequisites.
 | Everything except the emulator gate | `cargo test --workspace --release` | all crates |
 | Unit tests | `cargo test --release -p sidou-tests --test unit` | `crates/sidou-tests/tests/unit/` |
 | App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_LOGO_UPDATE=1` `app/logo_bitmap.c` from `assets/logo/metal-chrome.png` and `cracktro-chrome.png` and `app/title_card_bitmap.c` from `assets/logo/title-*.png`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
+| Song files (the `.sng` reader and writer, the trailer, the song model's edits) | `cargo test --release -p sidou-tests --test song`; the long fuzz and edit runs with `-- --ignored` | `crates/sidou-tests/tests/song.rs`, `src/song.rs` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Filter against reSIDfp (transfer functions, sweeps) | `cargo test --release -p sidou-tests --test filter` | `crates/sidou-tests/tests/filter.rs`, `src/filter_sweeps.rs` |
@@ -84,6 +85,32 @@ their algorithms). Each algorithm is tested for:
 The drives, delays and reverbs run their click tests at low input levels.
 At full level their outputs saturate, or carry broadband tails, that differ
 between two runs by more than any click. The tests say where.
+
+### Song files
+
+`tests/song.rs` covers `core/song` (decision record 0007, `docs/reference/song-format.md`):
+- **round trips:** random canonical GTS5 songs (mono and GoatTracker Stereo, generated in
+  Rust by `src/song.rs`) read and write back byte for byte; SIDOU's own output, with and
+  without its trailer, reads and writes back the same; what `savesong` trims (trailing
+  name-only instruments, table rows, unnamed empty patterns, a trailing subtune with an
+  empty channel, rows past a pattern's end) and the older idents' conversions (GTS2's
+  speedtable, GTS3's pulse speeds, GTS4's legato) are pinned with hand-made files;
+- **the trailer:** its layout and CRCs, every chunk model, an unknown chunk kept in place,
+  a flipped GT2 byte dropping `LOCK` only, a flipped trailer byte dropping the trailer, and
+  every extension size up to 4,096 bytes with no `$FF` in the length;
+- **stereo detection:** mono songs of every size from the smallest up (with three end-row
+  shapes) and random mono and stereo songs, with trailers, against SIDOU's reader and an
+  independent Rust transcription of GoatTracker Stereo's `determinechannels`;
+- **refusals and caps:** each message, the song unchanged after it; a song over the
+  device's arena (`SNG: TOO BIG`), multispeed 0 and 8 on the device's caps;
+- **edits:** each primitive's refusals (readme 3.1's orderlist rules, 128 rows, 208
+  patterns, 254 entries, the spare); random edit sequences with compaction, compared after
+  every step with an independent Rust model, the bitmap checked against the index and the
+  spare kept, and every rebuild checked to leave the bytes in use unchanged before its
+  swap;
+- **fuzz:** random bytes and mutated songs of every ident never crash the reader; whatever
+  it accepts writes and reads back. `-- --ignored` runs 4,000 fuzz seeds and 2,000 edit
+  seeds of 2,000 steps.
 
 ### Golden renders
 

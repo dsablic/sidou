@@ -155,7 +155,7 @@ sections and nothing else, so a song saved by GoatTracker has no trailer (round-
 |---|---|---|
 | GoatTracker 2.77 | ignored (`loadsong` above) | |
 | GoatTracker 2.76 | ignored (`gsong.c` identical to 2.77's) | |
-| GoatTracker Stereo 2.77 | ignored; its stereo trial read must not mistake the trailer for orderlists (next section) | |
+| GoatTracker Stereo 2.77 | ignored; its stereo trial read must not mistake the trailer for orderlists (next section) | its `savesong` writes six orderlists a subtune whatever it loaded (`MAX_CHN` 6): a mono song saved there becomes a stereo file |
 | GoatTracker 2 Qt fork @ `6c45fafd` | ignored; its `determinechannels` is Stereo's, and a short read counts as mono | |
 | `gt2reloc` 2.77 | ignored: it calls the same `loadsong` (`gt2reloc.c` links `gsong.c`) | Task 3 runs it on files with trailers |
 | ChiptuneSAK @ `8759135b` | **refused**: `import_sng_binary_to_parsed_gt` raises "bytes parsed didn't match file bytes length" (`goat_tracker.py` line 868) | a compatibility note: SIDOU's writer can leave the trailer out, for tools like this one |
@@ -239,10 +239,20 @@ the same bound (no `$FF` in bytes 0-254) stops it at the trailer, though Chiptun
 refuses the trailing bytes anyway.
 
 GoatTracker Stereo's own comment says the trial is "not certain" for mono files: a mono
-GT2 part can, in principle, pass all 6 × S reads by itself. None of GoatTracker's 14
-example songs does (their trials fail at file offsets 117 to 371, inside the instruments
-and tables), and the trailer cannot make it more likely. SIDOU's reader follows the same rule, so SIDOU and
-GoatTracker Stereo always agree on a file.
+GT2 part can pass all 6 × S reads by itself. M2c Task 2's fuzz found such songs, and one
+is easy to make: an instrument whose bytes read `$FF 00 01 $FF 00 01 $FF 00` looks like
+three more orderlists. None of GoatTracker's 14 example songs does (their trials fail at
+file offsets 117 to 371, inside the instruments and tables), and the trailer cannot make
+it more likely. SIDOU's reader takes the same guess, then **settles it with the trailer**:
+if the file read with the guessed channel count has no trailer whose CRCs hold, and read
+with the other count has one, the other count wins. So SIDOU always reads its own files
+right; on a plain GT2 file it agrees with GoatTracker Stereo.
+
+A stereo song's orderlist with an end mark earlier than its length byte says, and a
+restart byte of its entries plus two or more, passes the check as read but not once saved
+canonically (the restart byte then sits right after the `$FF`). SIDOU's reader refuses such
+a stereo song (`SNG: BAD ORDERLIST Vn`), so it never writes a stereo song that reads back
+as mono.
 
 ## Round-trip rules
 
@@ -269,6 +279,15 @@ The user asked for exactly what round-trips.
      `clearpattern` leaves it; each pattern's row count is its rows up to and including the
      first end mark, and the end row's three other bytes are written as they were read;
    - **strings:** the 32 bytes each, as read.
+
+   Two corners, found by M2c Task 2's tests:
+   - `savesong` counts the patterns named by every loaded subtune, a trailing subtune it
+     drops (one with an empty channel) included. So saving such a song is not itself
+     canonical: the next save drops the patterns only that subtune named, then holds.
+     SIDOU's writer is `savesong` here too.
+   - A pattern not held in memory is written as `clearpattern` leaves it: 64 rests and an
+     end row of `$FF 00 00 00`. SIDOU's reader keeps such a pattern, when no orderlist
+     names it, as "not held": it takes no arena, and writes back the same bytes.
 
    A non-canonical file (an older ident, a trailing name-only instrument, untrimmed
    counts, a pattern whose length byte runs past its first end mark, an orderlist whose

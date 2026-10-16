@@ -8,7 +8,10 @@ add_library(sidou_core STATIC
     fx/fx.c
     fx/fx_slots.c
     fx/fx_reverb.c
-    fx/fx_plate.c)
+    fx/fx_plate.c
+    song/gt2_song.c
+    song/gt2_sng.c
+    song/song_ext.c)
 target_include_directories(sidou_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # Float results must be identical on host and pi32v2 so their outputs can be compared.
 target_compile_options(sidou_core PUBLIC -ffp-contract=off)
