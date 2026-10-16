@@ -1,0 +1,774 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>SIDOU Screens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Silkscreen&display=swap">
+<style>
+/* Layout: the device is the hero on the left; pattern controls and live render cost on the right; logo concepts in a grid below. Single dark look tuned to the C64 blue. */
+:root{
+  color-scheme: dark;
+  --bg:#121027; --panel:#1a1736; --panel-2:#231f47; --line:#353069;
+  --fg:#e4e0f8; --muted:#a6a0d2; --accent:#a094f2; --cyan:#7fc3d2;
+  --ok:#9ad284; --warn:#d8de8c; --hot:#e48d77; --body-shell:#24212e; --body-shell-2:#17151f;
+  --font-display:'Silkscreen', ui-monospace, Menlo, monospace;
+  --font-body:'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+}
+html{background:var(--bg)}
+body{background:var(--bg);color:var(--fg);font:15px/1.55 var(--font-body)}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:20px;padding-block:28px 72px;display:flex;flex-direction:column;gap:48px}
+h1,h2,h3{font-family:var(--font-display);font-weight:400;text-wrap:balance;margin:0;letter-spacing:.02em}
+h1{font-size:clamp(28px,5vw,44px);line-height:1.05;color:var(--fg)}
+h2{font-size:20px;color:var(--fg)}
+h3{font-size:14px;color:var(--fg)}
+p{margin:0;max-width:68ch}
+.eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--cyan)}
+.lede{color:var(--muted);font-size:16px}
+header{display:flex;flex-direction:column;gap:10px}
+.top{display:grid;grid-template-columns:1fr;gap:32px;align-items:start}
+@media (min-width:1000px){.top{grid-template-columns:auto minmax(0,1fr)}}
+.stage{display:flex;flex-direction:column;gap:14px;min-width:0}
+.device{background:linear-gradient(160deg,var(--body-shell),var(--body-shell-2));border-radius:26px;padding:20px;box-shadow:0 1px 0 #3a3648 inset,0 18px 40px #0008;display:flex;flex-direction:column;gap:12px;align-self:start;max-width:100%}
+.well{background:#000;padding:6px;border-radius:6px;box-shadow:0 0 0 2px #0b0a10;line-height:0}
+#lcd{display:block;width:480px;height:auto;max-width:100%;image-rendering:pixelated;image-rendering:crisp-edges;outline:none;cursor:pointer;background:#000}
+#lcd:focus-visible{box-shadow:0 0 0 2px var(--accent)}
+.device-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;font-family:var(--font-display);font-size:11px;color:#8d88a3}
+.leds{display:flex;gap:8px}
+.led{width:9px;height:9px;border-radius:50%;background:#2c2938;box-shadow:inset 0 0 0 1px #0006}
+.tabs,.pieces,.row{display:flex;flex-wrap:wrap;gap:6px}
+button,.chip{font:500 13px/1 var(--font-mono);color:var(--fg);background:var(--panel-2);border:1px solid var(--line);border-radius:4px;padding:9px 12px;cursor:pointer;letter-spacing:.04em}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button[aria-selected="true"],button[aria-pressed="true"]{background:var(--accent);color:#16132e;border-color:var(--accent)}
+.tabs button{font-family:var(--font-display);font-weight:400;font-size:12px}
+.readout{font-family:var(--font-mono);font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1.5}
+.readout b{color:var(--fg);font-weight:500}
+.hint{font-size:13px;color:var(--muted)}
+.side{display:flex;flex-direction:column;gap:28px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.ctrl{display:grid;grid-template-columns:110px minmax(0,1fr) 64px;gap:10px;align-items:center}
+.ctrl label{font-size:13px;color:var(--muted)}
+.ctrl output{font-family:var(--font-mono);font-size:13px;text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.check{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+.voice-btn .sw{display:inline-block;width:8px;height:8px;margin-right:7px;border-radius:1px;vertical-align:0}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:480px}
+th,td{padding:7px 8px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;white-space:nowrap}
+th{font:500 11px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+td{font-family:var(--font-mono)}
+th:first-child,td:first-child{text-align:left;font-family:var(--font-body)}
+tr.group td{color:var(--cyan);font:500 11px var(--font-mono);letter-spacing:.1em;text-transform:uppercase;padding-top:14px;border-bottom:none}
+tr.active td:first-child{color:var(--accent);font-weight:600}
+.bar{display:inline-block;width:90px;height:8px;background:#0e0c20;border-radius:2px;position:relative;vertical-align:middle;overflow:hidden}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--ok)}
+.bar i.warn{background:var(--warn)}.bar i.hot{background:var(--hot)}
+.bar s{position:absolute;top:-2px;bottom:-2px;left:50%;width:1px;background:var(--fg);opacity:.6}
+.foot{font-size:12.5px;color:var(--muted)}
+.logos{display:grid;grid-template-columns:1fr;gap:20px}
+@media (min-width:900px){.logos{grid-template-columns:1fr 1fr}}
+.logo-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.logo-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.logo-head label{font-size:13px;color:var(--muted);display:flex;gap:6px;align-items:center;cursor:pointer}
+.logo-figs{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
+.logo-figs figure{margin:0;display:flex;flex-direction:column;gap:6px;min-width:0}
+.logo-figs figcaption{font:11px var(--font-mono);color:var(--muted);letter-spacing:.06em}
+.logo-figs .big{flex:1 1 240px}
+canvas.px{image-rendering:pixelated;image-rendering:crisp-edges;display:block;background:#000;max-width:100%}
+canvas.dev{width:240px;height:240px}
+canvas.lg{width:100%;height:auto}
+.logo-card p{font-size:14px;color:var(--muted)}
+.notes{display:flex;flex-direction:column;gap:10px}
+.notes ul{margin:0;padding-left:20px;color:var(--muted);max-width:72ch;display:flex;flex-direction:column;gap:6px}
+code{font-family:var(--font-mono);font-size:.92em;color:var(--fg)}
+@media (max-width:520px){.device{padding:12px;border-radius:18px}.ctrl{grid-template-columns:88px minmax(0,1fr) 56px}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">SIDOU firmware · M1e look and feel</div>
+    <h1>SIDOU Screens</h1>
+    <p class="lede">A working prototype of the FM-1's 240×240 screen. Every frame is a 30×30 grid of 8×8 cells in the 16-colour palette, updated 25 times a second from a small three-voice pattern. Nothing here is a picture: the font, frames, scenes and logos are all drawn in code.</p>
+  </header>
+
+  <div class="top">
+    <section class="stage" aria-label="Device screen">
+      <div class="tabs" role="tablist" aria-label="Screens">
+        <button role="tab" data-screen="boot" aria-selected="false">BOOT</button>
+        <button role="tab" data-screen="live" aria-selected="false">LIVE</button>
+        <button role="tab" data-screen="step" aria-selected="false">STEP</button>
+        <button role="tab" data-screen="tracker" aria-selected="false">TRACKER</button>
+        <button role="tab" data-screen="scene" aria-selected="false">SCENE</button>
+        <button role="tab" data-screen="menu" aria-selected="false">MENU</button>
+        <button role="tab" data-screen="about" aria-selected="false">ABOUT</button>
+      </div>
+      <div class="device" id="device">
+        <div class="well"><canvas id="lcd" width="240" height="240" tabindex="0" aria-label="SIDOU device screen, 240 by 240 pixels"></canvas></div>
+        <div class="device-foot"><span>FM-1 · SIDOU 0.1</span><span class="leds" aria-hidden="true"><i class="led"></i><i class="led"></i><i class="led"></i></span></div>
+      </div>
+      <div class="pieces" id="pieces" hidden aria-label="Scene pieces"></div>
+      <div class="pieces" id="trkmode" hidden aria-label="Tracker follow mode"></div>
+      <div class="readout" id="frameinfo">&nbsp;</div>
+      <p class="hint">Click the screen to focus it. MENU: ↑ ↓ and Return (or click a line twice). SCENE: ← → or click. STEP and TRACKER: 1–3 mute a voice. Any key or click skips the boot and leaves ABOUT.</p>
+      <p class="hint" data-hint="step" hidden>STEP, arriving in M2 with songs. The 16 keys are the 16 steps of the page; hold a step and turn a knob to lock a parameter on it (K1 cutoff, K2 pulse width, K3 wave, K4 decay). Locked steps carry a corner notch. The encoder pages through the 64-step pattern (← → here), and the held step follows the pattern; click a step, a key, or a lane name to hold it, or mute that lane. Chip B gets its own lane once the second chip plays.</p>
+      <p class="hint" data-hint="tracker" hidden>TRACKER, arriving in M2 with songs. A GoatTracker 2 style grid, 64 rows in hex. Each voice is packed into 8 cells, <code>C-401308</code>: note (white), instrument (light blue), then command and parameter (yellow, green), so <code>3 08</code> is tone portamento and <code>4 22</code> vibrato. <code>===</code> is gate off, dots are empty. Click a column head to mute it; Return toggles between GT2 scrolling and a moving bar over still rows, which costs far fewer tiles.</p>
+    </section>
+
+    <div class="side">
+      <section class="panel" aria-labelledby="pat-h">
+        <h2 id="pat-h">Pattern</h2>
+        <div class="row">
+          <button id="play" aria-pressed="false">Pause</button>
+          <button id="sound" aria-pressed="false">Sound off</button>
+          <button id="replay">Replay boot</button>
+        </div>
+        <div class="ctrl"><label for="bpm">Tempo</label><input id="bpm" type="range" min="70" max="180" value="124"><output id="bpm-o">124 BPM</output></div>
+        <div class="ctrl"><label for="cutoff">Filter cutoff</label><input id="cutoff" type="range" min="0" max="100" value="55"><output id="cutoff-o"></output></div>
+        <div class="ctrl"><label for="res">Resonance</label><input id="res" type="range" min="0" max="15" value="7"><output id="res-o">7</output></div>
+        <div class="row" id="voices"></div>
+        <label class="check"><input type="checkbox" id="dirty"> Outline the tiles that changed this frame</label>
+        <p class="hint">Cutoff drives the plasma speed and the filter curve. Gates step the automaton and the ants, envelopes heat the fire, the kick warps the stars. Muting a voice stops its part of every scene.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="cost-h">
+        <h2 id="cost-h">Rendering cost on the device</h2>
+        <p class="hint">The LCD takes about 77 ms to redraw all 240×240 pixels over SPI, so redrawing everything would cap the screen near 13 fps. SIDOU sends only the 8×8 tiles that changed. Every screen and piece below runs in the background on the same pattern at 25 fps; a tile counts when any of its 64 pixels differs from the previous frame.</p>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Screen</th><th>Typical</th><th>Peak</th><th>Strips</th><th>SPI ms</th><th>Of 40 ms</th></tr></thead>
+            <tbody id="cost"></tbody>
+          </table>
+        </div>
+        <p class="foot">Typical is the mean over the last 5 s, peak the maximum. SPI time = tiles × 0.086 ms (77 ms ÷ 900 tiles) + 0.02 ms per horizontal strip for the window command. The tick in each bar marks 20 ms, half a frame, as the budget.</p>
+      </section>
+    </div>
+  </div>
+
+  <section class="notes" aria-labelledby="logo-h">
+    <h2 id="logo-h">Logo explorations</h2>
+    <p class="hint">Four original marks, each drawn in code from the 16 colours. Left: on the device at 1:1, inside the boot title card. Right: 4× for detail. The one you pick is used on the BOOT and ABOUT screens.</p>
+    <div class="logos" id="logos"></div>
+  </section>
+
+  <section class="notes" aria-labelledby="notes-h">
+    <h2 id="notes-h">Notes for the firmware</h2>
+    <ul>
+      <li>The font is an original 8×8 face with chamfered corners and 2-pixel stems. The graphics glyphs (quadrants, eighth-fills, Bayer dithers, rounded frame corners) are generated, so the C version can be a table built the same way.</li>
+      <li>Fire and plasma change most of the screen and need a frame-rate cap or a smaller window on the device. Rule 30, ants, stars, menus and the LIVE view fit comfortably.</li>
+      <li>The boot's loading stripes repaint the whole border every frame (224 tiles); keep that phase short or update the stripes every other frame.</li>
+      <li>Pieces are inspired by the catalogue at <a href="https://ascii.rest/#pieces" style="color:var(--cyan)">ascii.rest</a>; all code here is new.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---------- palette ----------
+const BLACK=0,WHITE=1,RED=2,CYAN=3,PURPLE=4,GREEN=5,BLUE=6,YELLOW=7,ORANGE=8,BROWN=9,LRED=10,DGREY=11,GREY=12,LGREEN=13,LBLUE=14,LGREY=15;
+const PAL=['#000000','#ffffff','#68372b','#70a4b2','#6f3d86','#588d43','#352879','#b8c76f','#6f4f25','#433900','#9a6759','#444444','#6c6c6c','#9ad284','#6c5eb5','#959595'];
+const PAL32=new Uint32Array(16);
+PAL.forEach((h,i)=>{const n=parseInt(h.slice(1),16);PAL32[i]=((255<<24)|((n&255)<<16)|(((n>>8)&255)<<8)|(n>>16))>>>0});
+
+// ---------- original 8x8 font ----------
+const FONT=[],NAME=new Map();
+function def(n,g){NAME.set(n,FONT.length);FONT.push(g)}
+function art(s){const g=new Uint8Array(8);if(!s)return g;s.split('/').forEach((r,i)=>{let b=0;for(let c=0;c<r.length&&c<8;c++)if(r[c]==='#')b|=128>>c;g[i]=b});return g}
+const TXT={
+A:'.#####./##...##/##...##/#######/##...##/##...##/##...##',B:'######./##...##/##...##/######./##...##/##...##/######.',
+C:'.#####./##...##/##...../##...../##...../##...##/.#####.',D:'#####../##..##./##...##/##...##/##...##/##..##./#####..',
+E:'#######/##...../##...../#####../##...../##...../#######',F:'#######/##...../##...../#####../##...../##...../##.....',
+G:'.#####./##...##/##...../##.####/##...##/##...##/.#####.',H:'##...##/##...##/##...##/#######/##...##/##...##/##...##',
+I:'######./..##.../..##.../..##.../..##.../..##.../######.',J:'.....##/.....##/.....##/.....##/##...##/##...##/.#####.',
+K:'##...##/##..##./##.##../####.../##.##../##..##./##...##',L:'##...../##...../##...../##...../##...../##...../#######',
+M:'##...##/###.###/#######/##.#.##/##...##/##...##/##...##',N:'##...##/###..##/####.##/##.####/##..###/##...##/##...##',
+O:'.#####./##...##/##...##/##...##/##...##/##...##/.#####.',P:'######./##...##/##...##/######./##...../##...../##.....',
+Q:'.#####./##...##/##...##/##...##/##.#.##/##..##./.###.##',R:'######./##...##/##...##/######./##.##../##..##./##...##',
+S:'.#####./##...##/##...../.#####./.....##/##...##/.#####.',T:'######./..##.../..##.../..##.../..##.../..##.../..##...',
+U:'##...##/##...##/##...##/##...##/##...##/##...##/.#####.',V:'##...##/##...##/##...##/##...##/.##.##./..###../...#...',
+W:'##...##/##...##/##...##/##.#.##/#######/###.###/##...##',X:'##...##/##...##/.##.##./..###../.##.##./##...##/##...##',
+Y:'##...##/##...##/.##.##./..###../..##.../..##.../..##...',Z:'#######/.....##/....##./...##../..##.../.##..../#######',
+'0':'.#####./##...##/##..###/##.#.##/###..##/##...##/.#####.','1':'..##.../.###.../..##.../..##.../..##.../..##.../######.',
+'2':'.#####./##...##/.....##/..####./.##..../##...../#######','3':'.#####./##...##/.....##/..####./.....##/##...##/.#####.',
+'4':'...###./..####./.##.##./##..##./#######/....##./....##.','5':'#######/##...../######./.....##/.....##/##...##/.#####.',
+'6':'.#####./##...../##...../######./##...##/##...##/.#####.','7':'#######/.....##/....##./...##../..##.../..##.../..##...',
+'8':'.#####./##...##/##...##/.#####./##...##/##...##/.#####.','9':'.#####./##...##/##...##/.######/.....##/.....##/.#####.',
+'.':'......./......./......./......./......./..##.../..##...',',':'......./......./......./......./..##.../..##.../.##....',
+':':'......./..##.../..##.../......./..##.../..##.../.......',';':'......./..##.../..##.../......./..##.../..##.../.##....',
+'!':'..##.../..##.../..##.../..##.../..##.../......./..##...','?':'.#####./##...##/....##./...##../...##../......./...##..',
+'"':'.##.##./.##.##./.#..#..',"'":'..##.../..##.../.##....',
+'(':'...##../..##.../.##..../.##..../.##..../..##.../...##..',')':'.##..../..##.../...##../...##../...##../..##.../.##....',
+'-':'......./......./......./.#####.','+':'......./..##.../..##.../######./..##.../..##...',
+'=':'......./......./.#####./......./.#####.','/':'.....##/....##./...##../..##.../.##..../##.....',
+'*':'......./.#.#.#./..###../#######/..###../.#.#.#.','#':'.##.##./.##.##./#######/.##.##./#######/.##.##./.##.##.',
+'<':'....##./...##../..##.../.##..../..##.../...##../....##.','>':'.##..../..##.../...##../....##./...##../..##.../.##....',
+'_':'......./......./......./......./......./......./#######','$':'..##.../.#####./##...../.####../....##./#####../..##...',
+'%':'##...##/##..##./...##../..##.../.##..../##..##./##...##','[':'.####../.##..../.##..../.##..../.##..../.##..../.####..',
+']':'.####../...##../...##../...##../...##../...##../.####..','·':'......./......./......./..##.../..##...',
+'↑':'..##.../.####../######./..##.../..##.../..##.../..##...','↓':'..##.../..##.../..##.../..##.../######./.####../..##...',
+'▶':'.#...../.##..../.###.../.####../.###.../.##..../.#.....','♪':'...###./...#.##/...#.../...#.../.###.../####.../.##....',
+'■':'......./.#####./.#####./.#####./.#####./.#####./.......'};
+def(' ',new Uint8Array(8));for(const k in TXT)def(k,art(TXT[k]));
+def('FULL',new Uint8Array(8).fill(255));
+for(let q=0;q<16;q++){const g=new Uint8Array(8);for(let r=0;r<8;r++){const t=r<4;g[r]=t?((q&1?0xF0:0)|(q&2?0x0F:0)):((q&4?0xF0:0)|(q&8?0x0F:0))}def('Q'+q,g)}
+for(let n=0;n<=8;n++){const v=new Uint8Array(8),h=new Uint8Array(8);for(let r=0;r<8;r++){v[r]=r>=8-n?255:0;h[r]=(0xFF<<(8-n))&0xFF}def('V'+n,v);def('H'+n,h)}
+const BAYER=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+for(let n=0;n<=16;n++){const g=new Uint8Array(8);for(let r=0;r<8;r++){let b=0;for(let c=0;c<8;c++)if(BAYER[r&3][c&3]<n)b|=128>>c;g[r]=b}def('D'+n,g)}
+function rows(f){const g=new Uint8Array(8);for(let r=0;r<8;r++)g[r]=f(r);return g}
+def('BH',rows(r=>r===3||r===4?255:0));def('BV',rows(()=>0x18));
+def('BTL',rows(r=>r<3?0:r<5?0x1F:0x18));def('BTR',rows(r=>r<3?0:r<5?0xF8:0x18));
+def('BBL',rows(r=>r<3?0x18:r<5?0x1F:0));def('BBR',rows(r=>r<3?0x18:r<5?0xF8:0));
+const flipH=g=>g.map(b=>{let o=0;for(let i=0;i<8;i++)if(b&(1<<i))o|=128>>i;return o});
+const flipV=g=>Uint8Array.from(g).reverse();
+const RTL=art('......../......../......../.....###/....####/...##.../...##.../...##...');
+def('RTL',RTL);def('RTR',flipH(RTL));def('RBL',flipV(RTL));def('RBR',flipV(flipH(RTL)));
+def('TINY',art('......../......../......../...#....'));
+def('DOT',art('......../......../......../...##.../...##...'));
+def('PLUS',art('......../......../...#..../..###.../...#....'));
+def('STAR',art('...#..../.#.#.#../..###.../#######./..###.../.#.#.#../...#....'));
+def('BALL',art('..####../.######./########/########/########/########/.######./..####..'));
+def('PIP',art('......../.######./.######./.######./.######./.######./.######.'));
+def('PIPL',art('......../.###.##./.###.##./.####.../.######./.######./.######.'));
+const C=n=>{const v=NAME.get(n);return v===undefined?0:v};
+
+// ---------- surface: 30x30 cells -> 240x240 indexed framebuffer, tile diff ----------
+class Surface{
+  constructor(){this.ch=new Uint16Array(900);this.fg=new Uint8Array(900);this.bg=new Uint8Array(900);
+    this.fb=new Uint8Array(57600);this.prev=new Uint8Array(57600).fill(255);this.dirty=new Uint8Array(900);
+    this.n=0;this.runs=0;this.hn=[];this.hr=[];this.primed=false}
+  fill(f,b,c=0){this.ch.fill(c);this.fg.fill(f);this.bg.fill(b)}
+  put(x,y,c,f,b){if(x<0||y<0||x>29||y>29)return;const i=y*30+x;this.ch[i]=c;if(f!=null)this.fg[i]=f;if(b!=null)this.bg[i]=b}
+  text(x,y,s,f,b){for(const k of String(s).toUpperCase())this.put(x++,y,C(k),f,b)}
+  center(y,s,f,b){this.text((30-s.length)>>1,y,s,f,b)}
+  rect(x,y,w,h,c,f,b){for(let j=y;j<y+h;j++)for(let i=x;i<x+w;i++)this.put(i,j,c,f,b)}
+  box(x,y,w,h,f,b,title){const R=x+w-1,B=y+h-1;
+    for(let i=x+1;i<R;i++){this.put(i,y,C('BH'),f,b);this.put(i,B,C('BH'),f,b)}
+    for(let j=y+1;j<B;j++){this.put(x,j,C('BV'),f,b);this.put(R,j,C('BV'),f,b)}
+    this.put(x,y,C('RTL'),f,b);this.put(R,y,C('RTR'),f,b);this.put(x,B,C('RBL'),f,b);this.put(R,B,C('RBR'),f,b);
+    if(title)this.text(x+2,y,' '+title+' ',f,b)}
+  render(){const fb=this.fb;for(let cy=0;cy<30;cy++)for(let cx=0;cx<30;cx++){const i=cy*30+cx,g=FONT[this.ch[i]],f=this.fg[i],b=this.bg[i];let o=cy*1920+cx*8;
+    for(let r=0;r<8;r++,o+=240){const bits=g[r];for(let c=0;c<8;c++)fb[o+c]=(bits&(128>>c))?f:b}}}
+  pset(x,y,c){x|=0;y|=0;if(x>=0&&y>=0&&x<240&&y<240)this.fb[y*240+x]=c}
+  hline(x0,x1,y,c){for(let x=x0;x<=x1;x++)this.pset(x,y,c)}
+  diff(){const fb=this.fb,pv=this.prev,d=this.dirty;let n=0,runs=0;
+    for(let ty=0;ty<30;ty++){let inRun=false;for(let tx=0;tx<30;tx++){let ch=0,o=ty*1920+tx*8;
+      outer:for(let r=0;r<8;r++,o+=240){for(let c=0;c<8;c++)if(fb[o+c]!==pv[o+c]){ch=1;break outer}}
+      d[ty*30+tx]=ch;if(ch){n++;if(!inRun){runs++;inRun=true}}else inRun=false}}
+    pv.set(fb);this.n=n;this.runs=runs;
+    if(this.primed){this.hn.push(n);this.hr.push(runs);if(this.hn.length>125){this.hn.shift();this.hr.shift()}}
+    this.primed=true}
+  blit(bmp,ox,oy){const{w,h,px}=bmp;for(let y=0;y<h;y++)for(let x=0;x<w;x++){const c=px[y*w+x];if(c!==255)this.pset(ox+x,oy+y,c)}}
+}
+const mean=a=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):0;
+
+// ---------- helpers ----------
+function hash(n){n=(n^61)^(n>>>16);n=(n+(n<<3))|0;n^=n>>>4;n=Math.imul(n,0x27d4eb2d);n^=n>>>15;return (n>>>0)/4294967296}
+function rng(seed){let a=seed>>>0;return()=>{a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296}}
+function wavef(f,ph,pw){switch(f){case'tri':return ph<.5?4*ph-1:3-4*ph;case'saw':return 2*ph-1;case'pulse':return ph<pw?1:-1;default:return 0}}
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const WCOL={pulse:CYAN,saw:YELLOW,tri:LGREEN,noise:LGREY};
+const WNAME={pulse:'PULSE',saw:'SAW',tri:'TRI',noise:'NOISE'};
+const NOTE=['C-','C#','D-','D#','E-','F-','F#','G-','G#','A-','A#','B-'];
+const noteName=n=>NOTE[n%12]+(Math.floor(n/12)-1);
+const fmtHz=f=>f>=1000?(f/1000).toFixed(1)+'K':String(Math.round(f));
+const hex=(n,w)=>n.toString(16).toUpperCase().padStart(w,'0');
+
+// ---------- sequencer: three SID-style voices ----------
+const sim={bpm:124,cutoff:.55,res:7,t:0,tick:0,step:15,acc:0,bar:-1,muted:[false,false,false],trigs:[],vu:[0,0,0,0],voices:[]};
+function mkV(wave,a,d,s,r,lvl){return{wave,note:45,gate:false,env:0,stage:'off',a,d,s,r,lvl,gateLeft:0,pw:.5,trig:0,age:9,drum:''}}
+sim.voices=[mkV('pulse',.004,.2,.55,.12,.5),mkV('saw',.002,.14,.3,.1,.3),mkV('tri',.001,.12,0,.08,.8)];
+const CHORDS=[[57,60,64],[53,57,60],[48,52,55],[55,59,62]];
+const BASS=[1,0,0,1,0,0,1,0,1,0,1,0,0,1,1,0],BOCT=[0,0,0,12,0,0,0,0,0,0,12,0,0,0,7,0];
+const ARP=[1,1,1,1,1,1,1,0,1,1,1,1,1,1,0,1],AORD=[0,1,2,1,0,2,1,2];
+const DR=['K.H.S.HKK.H.S.HH','K.H.S.HKK.H.SSSS'];
+const pageOf=()=>((sim.bar%4)+4)%4;
+const drumRow=()=>DR[pageOf()===3?1:0];
+const stepDur=()=>60/sim.bpm/4;
+const cutoffHz=()=>Math.min(12000,100*Math.pow(100,sim.cutoff)*(1+.4*sim.voices[0].env));
+const resQ=()=>.6+sim.res/15*6;
+function gateOn(v,note,len,o){const vc=sim.voices[v];if(sim.muted[v])return;if(o)Object.assign(vc,o);vc.note=note;vc.gate=true;vc.stage='a';vc.gateLeft=len*stepDur();vc.trig++;vc.age=0;sim.trigs.push({v,note,wave:vc.wave,dur:vc.gateLeft,drum:vc.drum})}
+function fireStep(i){const ch=CHORDS[((sim.bar%4)+4)%4];
+  if(BASS[i])gateOn(0,ch[0]-24+BOCT[i],.6);
+  if(ARP[i])gateOn(1,ch[AORD[i%8]]+12,.45);
+  const d=drumRow()[i];
+  if(d==='K')gateOn(2,40,.5,{wave:'tri',drum:'K',d:.14,lvl:.8});else if(d==='S')gateOn(2,72,.5,{wave:'noise',drum:'S',d:.16,lvl:.35});else if(d==='H')gateOn(2,96,.25,{wave:'noise',drum:'H',d:.05,lvl:.2})}
+function simTick(dt){sim.trigs.length=0;sim.t+=dt;sim.tick++;sim.acc+=dt;const sd=stepDur();
+  while(sim.acc>=sd){sim.acc-=sd;sim.step=(sim.step+1)&15;if(sim.step===0)sim.bar++;fireStep(sim.step)}
+  sim.voices.forEach((v,i)=>{v.age+=dt;
+    if(v.gate){v.gateLeft-=dt;if(v.gateLeft<=0){v.gate=false;v.stage='r'}}
+    if(sim.muted[i]&&v.stage!=='off'){v.gate=false;v.stage='r'}
+    if(v.stage==='a'){v.env+=dt/v.a;if(v.env>=1){v.env=1;v.stage='d'}}
+    else if(v.stage==='d'||v.stage==='s'){v.env=v.s+(v.env-v.s)*Math.exp(-dt/(v.d*.35));if(v.env-v.s<.01){v.env=v.s;v.stage=v.s>0?'s':'off'}}
+    else if(v.stage==='r'){v.env*=Math.exp(-dt/(v.r*.35));if(v.env<.01){v.env=0;v.stage='off'}}
+  });
+  sim.voices[0].pw=.5+.32*Math.sin(sim.t*.9);
+  let sq=0;sim.voices.forEach((v,i)=>{const l=sim.muted[i]?0:v.env*Math.min(1,v.lvl*1.6);sim.vu[i]=Math.max(l,sim.vu[i]*.8);sq+=sim.vu[i]*sim.vu[i]});
+  sim.vu[3]=Math.max(Math.min(1,Math.sqrt(sq)*.8),sim.vu[3]*.85);
+}
+
+// ---------- optional sound (after a click) ----------
+let ac=null,master=null,filt=null,noiseBuf=null,soundOn=false;
+function audioInit(){ac=new (window.AudioContext||window.webkitAudioContext)();master=ac.createGain();master.gain.value=.16;
+  filt=ac.createBiquadFilter();filt.type='lowpass';filt.connect(master);master.connect(ac.destination);
+  noiseBuf=ac.createBuffer(1,ac.sampleRate,ac.sampleRate);const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1}
+function audioFilter(){if(!ac)return;filt.frequency.setTargetAtTime(cutoffHz(),ac.currentTime,.02);filt.Q.setTargetAtTime(resQ(),ac.currentTime,.02)}
+function playTrig(tr){if(!soundOn||!ac)return;const v=sim.voices[tr.v],t0=ac.currentTime+.01,g=ac.createGain(),lvl=v.lvl*.6,off=t0+tr.dur;
+  g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(lvl,t0+v.a+.002);g.gain.setTargetAtTime(lvl*v.s,t0+v.a+.002,v.d*.35);
+  g.gain.cancelScheduledValues(off);g.gain.setTargetAtTime(0,off,v.r*.35);
+  let src;
+  if(tr.wave==='noise'){src=ac.createBufferSource();src.buffer=noiseBuf;src.loop=true;const bp=ac.createBiquadFilter();bp.type=tr.drum==='H'?'highpass':'bandpass';bp.frequency.value=tr.drum==='H'?7000:1800;src.connect(bp);bp.connect(g)}
+  else{src=ac.createOscillator();src.type=tr.wave==='pulse'?'square':tr.wave==='saw'?'sawtooth':'triangle';const f=440*Math.pow(2,(tr.note-69)/12);
+    if(tr.drum==='K'){src.frequency.setValueAtTime(170,t0);src.frequency.exponentialRampToValueAtTime(42,t0+.12)}else src.frequency.value=f;src.connect(g)}
+  g.connect(tr.v<2?filt:master);src.start(t0);src.stop(off+v.r*3+.05)}
+
+// ---------- logos ----------
+const L5={S:'.####/#..../#..../.###./....#/....#/####.',I:'#####/..#../..#../..#../..#../..#../#####',D:'####./#...#/#...#/#...#/#...#/#...#/####.',O:'.###./#...#/#...#/#...#/#...#/#...#/.###.',U:'#...#/#...#/#...#/#...#/#...#/#...#/.###.'};
+const Q5={S:'.####/##.../##.../.###./...##/...##/####.',I:'####./.##../.##../.##../.##../.##../####.',D:'####./##.##/##.##/##.##/##.##/##.##/####.',O:'.###./##.##/##.##/##.##/##.##/##.##/.###.',U:'##.##/##.##/##.##/##.##/##.##/##.##/.###.'};
+const RAMP=[WHITE,YELLOW,LGREEN,CYAN,LBLUE,PURPLE,LRED];
+function wordMask(tab,sc,gap,w,h,x0,y0){const m=new Int8Array(w*h).fill(-1);
+  [...'SIDOU'].forEach((ch,li)=>{const lx=x0+li*(5*sc+gap);tab[ch].split('/').forEach((r,ry)=>{for(let rx=0;rx<r.length;rx++)if(r[rx]==='#')
+    for(let dy=0;dy<sc;dy++)for(let dx=0;dx<sc;dx++){const X=lx+rx*sc+dx,Y=y0+ry*sc+dy;if(X>=0&&Y>=0&&X<w&&Y<h)m[Y*w+X]=li}})});return m}
+function logoPulse(t,anim){const w=120,h=40,px=new Uint8Array(w*h).fill(255),m=wordMask(L5,4,4,w,h,2,0),sh=anim?Math.floor(t*6):0;
+  for(let y=0;y<28;y++){if((y&3)===3)continue;const c=RAMP[(((y>>2)-sh)%7+7)%7];for(let x=0;x<w;x++)if(m[y*w+x]>=0)px[y*w+x]=c}
+  const P=24,duty=anim?.5+.3*Math.sin(t*2.2):.5,ph0=anim?t*24:0;let pl=null;
+  for(let x=0;x<w;x++){const ph=((((x+ph0)%P)+P)%P)/P,l=ph<duty?31:36;px[l*w+x]=CYAN;px[(l+1)*w+x]=CYAN;
+    if(pl!==null&&pl!==l)for(let y=31;y<=37;y++){px[y*w+x]=CYAN;px[y*w+x-1]=CYAN}pl=l}
+  return{w,h,px}}
+function logoWeave(t,anim){const w=120,h=40,px=new Uint8Array(w*h).fill(255),m=wordMask(L5,4,4,w,h,2,6),near=new Int8Array(w*h).fill(-1);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x;if(m[i]>=0){px[i]=LBLUE;continue}
+    for(let dy=-1;dy<=1&&near[i]<0;dy++)for(let dx=-1;dx<=1;dx++){const X=x+dx,Y=y+dy;if(X>=0&&Y>=0&&X<w&&Y<h&&m[Y*w+X]>=0){near[i]=m[Y*w+X];break}}}
+  const waves=[{f:'tri',c:LGREEN,yc:11,a:4,p:40,s:18},{f:'saw',c:YELLOW,yc:20,a:4,p:30,s:-26},{f:'pulse',c:CYAN,yc:29,a:3,p:24,s:12}];
+  waves.forEach((wv,wi)=>{const ph0=anim?t*wv.s:0;let py=null;
+    for(let x=0;x<w;x++){const ph=((((x+ph0)%wv.p)+wv.p)%wv.p)/wv.p,y=Math.round(wv.yc-wavef(wv.f,ph,.5)*wv.a),a=py===null?y:Math.min(py,y),b=py===null?y:Math.max(py,y);py=y;
+      const ref=m[y*w+x]>=0?m[y*w+x]:near[y*w+x];if(ref>=0&&ref!==wi*2)continue;
+      for(let yy=a;yy<=b;yy++)px[yy*w+x]=wv.c;
+      if(a-1>=0&&px[(a-1)*w+x]===LBLUE)px[(a-1)*w+x]=BLACK;if(b+1<h&&px[(b+1)*w+x]===LBLUE)px[(b+1)*w+x]=BLACK}});
+  return{w,h,px}}
+function logoReady(t,anim){const w=128,h=40,px=new Uint8Array(w*h).fill(255),rowCol=[WHITE,CYAN,LGREEN,YELLOW];
+  [...'READY.'].forEach((ch,k)=>{const g=FONT[C(ch)];for(let r=0;r<8;r++)for(let c=0;c<8;c++)if(g[r]&(128>>c))px[r*w+k*8+c]=LBLUE});
+  const q=new Uint8Array(32*8);[...'SIDOU'].forEach((ch,li)=>Q5[ch].split('/').forEach((r,ry)=>{for(let rx=0;rx<r.length;rx++)if(r[rx]==='#')q[ry*32+li*6+rx]=1}));
+  for(let qy=0;qy<8;qy++)for(let qx=0;qx<32;qx++)if(q[qy*32+qx]){const c=rowCol[qy>>1];for(let dy=0;dy<4;dy++)for(let dx=0;dx<4;dx++)px[(8+qy*4+dy)*w+qx*4+dx]=c}
+  if(!anim||Math.floor(t*3)%2===0)for(let y=32;y<40;y++)for(let x=120;x<128;x++)px[y*w+x]=LBLUE;
+  return{w,h,px}}
+function logoChip(t,anim){const w=120,h=40,px=new Uint8Array(w*h).fill(255),sh=anim?Math.floor(t*5):0;
+  for(let y=6;y<=33;y++)for(let x=4;x<=115;x++)px[y*w+x]=y===6?GREY:y===33?BLACK:DGREY;
+  for(let y=14;y<=25;y++)for(let x=4;x<=10;x++){const dx=x-4,dy=y-19.5;if(dx*dx+dy*dy<=20)px[y*w+x]=255}
+  for(let y=27;y<=29;y++)for(let x=9;x<=11;x++)if(!((y===27||y===29)&&(x===9||x===11)))px[y*w+x]=GREY;
+  for(let k=0;k<14;k++){const x0=7+k*8,v=k%3,vc=sim.voices[v],lit=anim&&!sim.muted[v]&&vc.age<.14,c=lit?WCOL[vc.wave]:LGREY;
+    for(let x=x0;x<x0+4;x++){for(let y=1;y<=5;y++)px[y*w+x]=c;for(let y=34;y<=38;y++)px[y*w+x]=c}}
+  const m=wordMask(L5,3,3,w,h,17,9);
+  for(let y=9;y<30;y++){const c=RAMP[((Math.floor((y-9)/3)-sh)%7+7)%7];for(let x=0;x<w;x++)if(m[y*w+x]>=0)px[y*w+x]=c}
+  return{w,h,px}}
+const LOGOS=[
+  {name:'Pulse Train',fn:logoPulse,why:'Slotted raster letters sitting on a pulse wave: the SID’s signature waveform becomes the underline, and in motion the stripes roll and the duty cycle sweeps, which is the variant the boot screen uses.'},
+  {name:'Three Voices',fn:logoWeave,why:'Triangle, saw and pulse traces weave over and under the letters, one per SID voice, so the mark reads as the instrument’s signal path.'},
+  {name:'READY.',fn:logoReady,why:'The name typed at the prompt in quadrant PETSCII blocks with a blinking cursor; it lives on the 8×8 cell grid, so animating it costs one cell.'},
+  {name:'28 Pin',fn:logoChip,why:'The SID is a 28-pin chip, so SIDOU sits where the part number would be, and the pins light up with the voice gates.'}];
+let bootLogo=0;
+
+// ---------- title card (boot end + logo previews) ----------
+function titleCard(s,t,li){s.fill(LBLUE,BLACK,0);
+  s.center(16,'SID FOR THE FM-1',LBLUE,BLACK);s.center(18,'V0.1  GPL-3.0',GREY,BLACK);
+  if(Math.floor(t*1.25)%2===0)s.center(25,'PRESS ANY KEY',WHITE,BLACK);
+  s.render();
+  for(let x=0;x<240;x++){const c=RAMP[Math.floor(x/34.3)%7];s.pset(x,52,c);s.pset(x,120,c)}
+  const b=LOGOS[li].fn(t,true);s.blit(b,(240-b.w)>>1,68);
+  if(t<.6){const wy=t/.6*290;for(let y=0;y<240;y++){const d=wy-y;if(d>=0&&d<48){const c=RAMP[Math.floor(d/7)%7];for(let x=0;x<240;x++)s.pset(x,y,c)}}}
+}
+
+// ---------- BOOT ----------
+const T_TYPE=.8,T_SEARCH=2.2,T_LOAD=3,T_READY=5.6,T_RUN=6.2,T_CLEAR=7;
+const LOADCMD='LOAD"SIDOU",8,1';
+class Boot{
+  constructor(loop){this.s=new Surface();this.t=0;this.loop=loop}
+  restart(){this.t=0}
+  skip(){if(this.t<T_CLEAR){this.t=T_CLEAR;return true}return false}
+  get done(){return this.t>=T_CLEAR}
+  tick(dt){this.t+=dt;if(this.loop&&this.t>12)this.t=0;const t=this.t,s=this.s;
+    if(t>=T_CLEAR){titleCard(s,t-T_CLEAR,bootLogo);return}
+    s.fill(LBLUE,BLUE,0);
+    for(let y=0;y<30;y++)for(let x=0;x<30;x++)if(x<2||y<2||x>27||y>27)s.put(x,y,0,LBLUE,LBLUE);
+    const blink=Math.floor(t*3)%2===0;
+    s.center(3,'*** SIDOU SID-OS V0.1 ***',LBLUE,BLUE);
+    s.center(5,'CHIP A + CHIP B  6 VOICES',LBLUE,BLUE);
+    s.text(2,7,'READY.');
+    const n=t<T_TYPE?0:Math.min(LOADCMD.length,Math.floor((t-T_TYPE)/.07));
+    s.text(2,8,LOADCMD.slice(0,n));
+    let cx=2+n,cy=8,cur=t<T_SEARCH;
+    if(t>=T_SEARCH)s.text(2,10,'SEARCHING FOR SIDOU');
+    if(t>=T_LOAD)s.text(2,11,'LOADING');
+    if(t>=T_READY){s.text(2,12,'READY.');const m=t<T_RUN?0:Math.min(3,Math.floor((t-T_RUN)/.1));s.text(2,13,'RUN'.slice(0,m));cx=2+m;cy=13;cur=true}
+    if(cur&&blink)s.put(cx,cy,C('FULL'),LBLUE,BLUE);
+    s.render();
+    if(t>=T_LOAD&&t<T_READY){const r=rng(Math.floor(t*25)*7919+1),cols=[LBLUE,YELLOW,RED,CYAN,WHITE,PURPLE,LGREEN,BLUE,ORANGE];
+      let y=0;while(y<240){const hgt=2+Math.floor(r()*9),c=cols[Math.floor(r()*cols.length)];
+        for(let yy=y;yy<Math.min(240,y+hgt);yy++){const inner=yy>=16&&yy<224;for(let x=0;x<240;x++){if(inner&&x>=16&&x<224){x=223;continue}s.fb[yy*240+x]=c}}y+=hgt}}
+  }
+}
+
+// ---------- LIVE ----------
+class Live{
+  constructor(){this.s=new Surface()}
+  tick(){const s=this.s;s.fill(LBLUE,BLUE,0);
+    s.rect(0,0,30,1,0,BLUE,LBLUE);
+    s.text(0,0,` LIVE ▶${String(sim.bpm).padStart(3)} BPM BAR ${(((sim.bar%4)+4)%4)+1} STEP ${String(sim.step+1).padStart(2,'0')}`,BLUE,LBLUE);
+    const stageName={a:'ATK',d:'DEC',s:'SUS',r:'REL',off:'---'};
+    sim.voices.forEach((v,i)=>{const r=1+6*i,col=WCOL[v.wave];
+      s.box(0,r,22,6,LBLUE,BLUE,`V${i+1} ${WNAME[v.wave]}`);
+      if(sim.muted[i])s.text(15,r,' MUTE ',LRED,BLUE);
+      const lv=Math.round(v.env*32);
+      for(let j=0;j<4;j++){const n=clamp(lv-(3-j)*8,0,8);s.put(22,r+1+j,C('V'+n),col,BLACK);s.put(23,r+1+j,C('V'+n),col,BLACK)}
+      s.text(25,r+1,noteName(v.note),v.gate?WHITE:LBLUE,BLUE);
+      s.text(25,r+2,WNAME[v.wave].slice(0,4),col,BLUE);
+      if(v.wave==='pulse')s.text(25,r+3,'PW'+String(Math.round(v.pw*99)).padStart(2,'0'),LBLUE,BLUE);
+      s.text(25,r+4,stageName[v.stage],v.stage==='off'?LBLUE:WHITE,BLUE);
+    });
+    const fc=cutoffHz();
+    s.box(0,19,18,8,LBLUE,BLUE,'FILTER LP');s.text(1,26,` FC ${fmtHz(fc)} RES ${sim.res} `,LBLUE,BLUE);
+    s.box(18,19,12,8,LBLUE,BLUE,'VU');
+    ['1','2','3',null,'M'].forEach((lab,k)=>{if(!lab)return;const y=20+k,lv=Math.round((k<3?sim.vu[k]:sim.vu[3])*72);
+      s.text(19,y,lab,k<3?WCOL[sim.voices[k].wave]:WHITE,BLUE);
+      for(let c=0;c<9;c++){const n=clamp(lv-c*8,0,8);s.put(20+c,y,C('H'+n),c<5?LGREEN:c<7?YELLOW:LRED,BLACK)}});
+    const dr=drumRow();
+    for(let v=0;v<3;v++){const y=27+v;s.text(0,y,String(v+1),WCOL[sim.voices[v].wave],BLUE);
+      for(let k=0;k<16;k++){const hit=v===0?BASS[k]:v===1?ARP[k]:dr[k]!=='.',cur=k===sim.step;
+        const f=cur?(hit?WHITE:BLUE):hit?(v===2?(dr[k]==='K'?LGREEN:LGREY):WCOL[sim.voices[v].wave]):LBLUE;
+        s.put(2+k,y,C(hit?'PIP':'TINY'),f,cur?LBLUE:BLUE)}}
+    s.text(20,27,`${sim.bpm} BPM`,LBLUE,BLUE);s.text(20,28,`CUT ${fmtHz(fc)}`,LBLUE,BLUE);s.text(20,29,`RES ${sim.res}`,LBLUE,BLUE);
+    s.render();
+    sim.voices.forEach((v,i)=>{const x0=8,w=160,y0=(2+6*i)*8,mid=y0+16,col=WCOL[v.wave],amp=sim.muted[i]?0:13*v.env;
+      for(let x=0;x<w;x+=4)s.pset(x0+x,mid,LBLUE);
+      const cyc=clamp(.8+(v.note-24)/14,1,6);let py=null;
+      for(let x=0;x<w;x++){const val=v.wave==='noise'?hash((x>>1)*131+sim.tick*7919)*2-1:wavef(v.wave,(x/w*cyc)%1,v.pw);
+        const y=Math.round(mid-val*amp),a=py===null?y:Math.min(py,y),b=py===null?y:Math.max(py,y);for(let yy=a;yy<=b;yy++)s.pset(x0+x,yy,col);py=y}});
+    const Q=resQ(),L400=Math.log(400);let py=null;const y0db=160+Math.round(18/48*47);
+    for(let x=0;x<128;x+=3)s.pset(8+x,y0db,LBLUE);
+    const fx=Math.round(127*Math.log(fc/30)/L400);if(fx>=0&&fx<128)for(let y=160;y<208;y+=2)s.pset(8+fx,y,YELLOW);
+    for(let i=0;i<128;i++){const f=30*Math.pow(400,i/127),r=f/fc,H=1/Math.sqrt((1-r*r)**2+(r/Q)**2),db=20*Math.log10(H);
+      const y=clamp(160+Math.round((18-db)/48*47),160,206);
+      for(let yy=y+2;yy<208;yy++)if((i&1)===0&&(yy&1)===0)s.pset(8+i,yy,LBLUE);
+      const a=py===null?y:Math.min(py,y),b=py===null?y:Math.max(py,y);for(let yy=a;yy<=b+1;yy++)s.pset(8+i,yy,WHITE);py=y}
+  }
+}
+
+// ---------- STEP sequencer (M2) ----------
+// one 64-step pattern = 4 pages of 16; page p plays during bar p, so the grid is the demo song itself
+const LANES=[['V1','BASS'],['V2','ARP'],['V3','DRUM']],LCOL=[CYAN,YELLOW,LGREEN];
+const PARAMS=['CUTOFF','PW','WAVE','DECAY'],LWAVE=['TRI','SAW','PUL','NOI'],LDEF=[[2,9],[1,6],[0,5]];
+function laneHit(l,p,k){return l===0?BASS[k]===1:l===1?ARP[k]===1:l===2&&DR[p===3?1:0][k]!=='.'}
+function lockAt(l,p,k){if(l>2||!laneHit(l,p,k))return null;const sd=l*977+p*131+k*17+5;if(hash(sd)>.3)return null;
+  return{mask:1+Math.floor(hash(sd+1)*15),v:[Math.floor(hash(sd+2)*0x800),Math.floor(hash(sd+3)*256)*16,Math.floor(hash(sd+4)*4),Math.floor(hash(sd+5)*16)]}}
+const hitCol=(l,p,k)=>sim.muted[l]?GREY:l===2?(DR[p===3?1:0][k]==='K'?LGREEN:LGREY):LCOL[l];
+class Step{
+  constructor(){this.s=new Surface();this.t=0;this.view=null;this.viewT=0;this.pick=null}
+  page(){return this.view===null?pageOf():this.view}
+  held(){const p=this.page();if(this.pick)return this.pick;const L=[];
+    for(let l=0;l<3;l++)for(let k=0;k<16;k++)if(lockAt(l,p,k))L.push({l,p,k});
+    return L.length?L[(Math.floor(sim.bar/4)+p)%L.length]:{l:0,p,k:0}}
+  hold(l,p,k){this.view=p;this.viewT=this.t;this.pick={l,p,k};blip(60+k)}
+  key(d){this.view=((this.page()+d)%4+4)%4;this.viewT=this.t;this.pick=null;blip(84)}
+  click(cx,cy){const l=[4,7,10].findIndex(y=>cy===y||cy===y+1),p=this.page();
+    if(l>=0&&cx>=1&&cx<=4){setMute(l,!sim.muted[l]);return}
+    if(l>=0&&cx>=5&&cx<=20){this.hold(l,p,cx-5);return}
+    if((cy===24||cy===25||cy===27||cy===28)&&cx>=3&&(cx-3)%3<2){const c=Math.floor((cx-3)/3);if(c<8)this.hold(this.held().l,p,c+(cy>=27?8:0))}}
+  tick(dt){this.t+=dt;if(this.view!==null&&this.t-this.viewT>6){this.view=null;this.pick=null}
+    const s=this.s,pp=pageOf(),p=this.page(),live=p===pp,h=this.held();s.fill(LBLUE,BLUE,0);
+    s.rect(0,0,30,1,0,BLUE,LBLUE);
+    s.text(0,0,` STEP ▶${String(sim.bpm).padStart(3)} BPM PG ${p+1}/4 STEP ${String(pp*16+sim.step+1).padStart(2,'0')}`,BLUE,LBLUE);
+    s.box(0,2,30,15,LBLUE,BLUE,'PATTERN 01  64 STEPS');
+    for(let q=0;q<4;q++)s.text(1+q,3,String(q+1),q===p?BLUE:q===pp?WHITE:LBLUE,q===p?LBLUE:BLUE);
+    for(let k=0;k<16;k++){const cur=live&&k===sim.step;s.put(5+k,3,C(cur?'↓':k%4===0?'+':'·'),cur?WHITE:LBLUE,BLUE)}
+    for(let l=0;l<4;l++){const y=4+3*l,b=l===3;
+      if(b){s.text(1,y,'B',GREY,BLUE);s.text(1,y+1,'CHIP',GREY,BLUE);s.text(22,y,'CHIP B',GREY,BLUE);s.text(22,y+1,'IN M2',GREY,BLUE)}
+      else{const v=sim.voices[l],m=sim.muted[l];
+        s.text(1,y,LANES[l][0],m?GREY:LCOL[l],BLUE);s.text(1,y+1,LANES[l][1],m?GREY:LBLUE,BLUE);
+        s.text(22,y,l===2?{K:'KCK',S:'SNR',H:'HAT'}[v.drum]||'---':noteName(v.note),v.gate&&!m?WHITE:LBLUE,BLUE);
+        s.text(26,y,WNAME[v.wave].slice(0,3),WCOL[v.wave],BLUE);if(m)s.text(22,y+1,'MUTE',LRED,BLUE)}
+      for(let k=0;k<16;k++){const hit=laneHit(l,p,k),lk=hit&&lockAt(l,p,k),cur=live&&k===sim.step,hd=h.l===l&&h.k===k;
+        const f=cur?(hit?WHITE:BLUE):b?PURPLE:hit?hitCol(l,p,k):LBLUE;
+        s.put(5+k,y,C(hit?(lk?'PIPL':'PIP'):'TINY'),f,cur?LBLUE:hd?PURPLE:BLUE)}}
+    const lk=lockAt(h.l,h.p,h.k)||{mask:0,v:[]},d=[Math.round(sim.cutoff*0x7FF),0x800,...LDEF[h.l]];
+    s.box(0,17,30,6,LBLUE,BLUE,`HELD STEP ${String(h.p*16+h.k+1).padStart(2,'0')} ${LANES[h.l][0]}`);
+    PARAMS.forEach((nm,j)=>{const on=(lk.mask>>j)&1,val=on?lk.v[j]:d[j],y=18+j;
+      const txt=j===2?LWAVE[val]:j===3?hex(val,1).padStart(3):hex(val,3),fr=j===0?val/0x7FF:j===1?val/0xFFF:j===2?(val+1)/4:val/15,lv=Math.round(fr*64);
+      s.text(2,y,'K'+(j+1),LBLUE,BLUE);s.text(5,y,nm,on?WHITE:LBLUE,BLUE);s.text(12,y,txt,on?YELLOW:LBLUE,BLUE);
+      for(let c=0;c<8;c++)s.put(16+c,y,C('H'+clamp(lv-c*8,0,8)),on?YELLOW:LBLUE,BLACK);
+      if(on)s.text(25,y,'LOCK',YELLOW,BLUE)});
+    s.text(1,23,`KEYS = STEPS  ${LANES[h.l][0]} ${LANES[h.l][1]}`,LBLUE,BLUE);
+    for(let k=0;k<16;k++){const x=3+(k%8)*3,y=k<8?24:27,hit=laneHit(h.l,p,k),cur=live&&k===sim.step;
+      const bg=cur?WHITE:h.k===k?PURPLE:hit?hitCol(h.l,p,k):DGREY;
+      s.rect(x,y,2,2,0,bg,bg);if(hit&&lockAt(h.l,p,k))s.put(x+1,y,C('DOT'),BLACK,bg)}
+    s.text(1,29,'HOLD KEY+KNOB LOCK  ENC PAGE',LBLUE,BLUE);
+    s.render()}
+}
+
+// ---------- TRACKER (M2) ----------
+// GT2 layout squeezed to 30 cells: row number, then per voice a gap and C-401308 (note, instrument, command + parameter)
+const CMDN={1:'PORTAMENTO UP',2:'PORTAMENTO DOWN',3:'TONE PORTAMENTO',4:'VIBRATO',5:'SET ATTACK/DECAY',8:'WAVETABLE',C:'FILTER CUTOFF',F:'SET TEMPO'};
+function trkCmd(v,p,k){
+  if(v===0){if(k===0)return'C'+hex(Math.round(sim.cutoff*255),2);if(k===14)return'308';if(p===3&&k===10)return'120'}
+  else if(v===1){if(k===0)return'80'+p;if(k===12)return'422';if(p===1&&k===5)return'210'}
+  else{if(p===0&&k===0)return'F06';if(p===3&&k===12)return'508'}
+  return null}
+function trkRow(v,r){const p=r>>4,k=r&15,ch=CHORDS[p];let n=null,ins=0;
+  if(v===0){if(BASS[k]){n=ch[0]-24+BOCT[k];ins=1}else if(BASS[(k+15)&15])n=-1}
+  else if(v===1){if(ARP[k]){n=ch[AORD[k%8]]+12;ins=2}else n=-1}
+  else{const d=DR[p===3?1:0][k];if(d!=='.'){n={K:40,S:72,H:96}[d];ins={K:3,S:4,H:5}[d]}}
+  return{n:n===null?'---':n<0?'===':noteName(n),i:ins?hex(ins,2):'..',c:trkCmd(v,p,k)}}
+class Tracker{
+  constructor(mode){this.s=new Surface();this.mode=mode;this.say='GT2 COMMANDS: CMD + PARAM'}
+  tick(){const s=this.s,cur=pageOf()*16+sim.step,top=this.mode==='scroll'?cur-12:Math.floor(cur/16)*16-4;s.fill(LBLUE,BLACK,0);
+    s.rect(0,0,30,1,0,BLUE,LBLUE);
+    s.text(0,0,` TRACKER ▶${String(sim.bpm).padStart(3)} BPM ROW ${hex(cur,2)}/3F`,BLUE,LBLUE);
+    for(let v=0;v<3;v++){const x=3+9*v,vc=sim.voices[v],m=sim.muted[v];
+      s.text(x,1,'V'+(v+1),m?GREY:LCOL[v],BLACK);s.text(x+3,1,m?'MUT':WNAME[vc.wave].slice(0,3),m?LRED:WCOL[vc.wave],BLACK);
+      s.put(x+7,1,C('V'+clamp(Math.round(sim.vu[v]*8),0,8)),WCOL[vc.wave],DGREY)}
+    for(let j=0;j<25;j++){const r=((top+j)%64+64)%64,y=2+j,on=r===cur,bg=on?BLUE:BLACK,dim=on?LBLUE:DGREY;
+      s.rect(0,y,29,1,0,LBLUE,bg);
+      s.text(0,y,hex(r,2),on?WHITE:r%16===0?YELLOW:r%4===0?LGREY:GREY,bg);
+      for(let v=0;v<3;v++){const x=3+9*v,c=trkRow(v,r),m=sim.muted[v];
+        s.text(x,y,c.n,m||c.n==='---'?dim:c.n==='==='?(on?LGREY:GREY):WHITE,bg);
+        s.text(x+3,y,c.i,m||c.i==='..'?dim:on?CYAN:LBLUE,bg);
+        if(c.c){s.text(x+5,y,c.c[0],m?dim:YELLOW,bg);s.text(x+6,y,c.c.slice(1),m?dim:LGREEN,bg)}else s.text(x+5,y,'...',dim,bg)}}
+    const pos=Math.floor(cur*25/64);for(let j=0;j<25;j++)s.put(29,2+j,C(j===pos?'PIP':'BV'),j===pos?LBLUE:DGREY,BLACK);
+    for(let x=0;x<30;x++)s.put(x,27,C('BH'),DGREY,BLACK);
+    s.text(0,28,'OL',GREY,BLACK);for(let v=0;v<3;v++){s.text(3+9*v,28,hex(v,2),WHITE,BLUE);s.text(5+9*v,28,' RST00',GREY,BLACK)}
+    for(let v=0;v<3;v++){const c=trkRow(v,cur).c;if(c&&!sim.muted[v]){this.say=`V${v+1} ${c[0]} ${c.slice(1)} ${CMDN[c[0]]}`;break}}
+    s.text(0,29,this.say.slice(0,30),YELLOW,BLACK);
+    s.render()}
+}
+
+// ---------- SCENE pieces ----------
+const FIRECOL=[BLACK,BROWN,RED,ORANGE,LRED,YELLOW,WHITE];
+class Fire{constructor(){this.s=new Surface();this.name='FIRE';this.h=new Float32Array(30*60);this.hv=[0,0,0]}
+  tick(){const W=30,H=60,h=this.h,s=this.s,v3=sim.voices[2];
+    for(let v=0;v<3;v++)this.hv[v]=sim.muted[v]?this.hv[v]*.8:Math.max(sim.voices[v].env,this.hv[v]*.93);
+    for(let x=0;x<W;x++){const v=Math.min(2,Math.floor(x/10)),e=this.hv[v];
+      h[(H-1)*W+x]=Math.min(1,.12+e*(.75+.25*Math.random())+(v3.drum==='K'&&!sim.muted[2]?v3.env*.35:0))}
+    for(let y=0;y<H-1;y++)for(let x=0;x<W;x++){const v=Math.min(2,Math.floor(x/10)),cool=.05-.025*clamp((sim.voices[v].note-36)/48,0,1);
+      const src=h[(y+1)*W+x],dx=clamp(x+Math.floor(Math.random()*3)-1,0,W-1);h[y*W+dx]=Math.max(0,src-Math.random()*cool)}
+    for(let cy=0;cy<30;cy++)for(let x=0;x<W;x++){const top=FIRECOL[Math.min(6,Math.floor(h[cy*2*W+x]*7))],bot=FIRECOL[Math.min(6,Math.floor(h[(cy*2+1)*W+x]*7))];
+      s.put(x,cy,C('Q3'),top,bot)}
+    s.render()}}
+const PLRAMP=[BLACK,BLUE,PURPLE,LBLUE,CYAN,WHITE];
+class Plasma{constructor(){this.s=new Surface();this.name='PLASMA';this.ph=0;this.rip=[]}
+  tick(dt){const s=this.s;this.ph+=dt*(.12+Math.pow(sim.cutoff,1.6)*3.6);const p=this.ph,tw=.1+sim.res/15*.25;
+    sim.trigs.forEach(tr=>{if(tr.v===1)this.rip.push({x:15+((tr.note%12)-6)*2,y:15-(tr.note-72)/2,a:0})});
+    this.rip.forEach(r=>r.a+=dt);this.rip=this.rip.filter(r=>r.a<1.2);
+    const k=sim.voices[2],boost=k.drum==='K'&&!sim.muted[2]?k.env*.18:0;
+    for(let y=0;y<30;y++)for(let x=0;x<30;x++){
+      let v=Math.sin(x*.28+p)+Math.sin(y*.22-p*.7)+Math.sin((x+y)*tw+p*1.3)+Math.sin(Math.hypot(x-15,y-15)*.35-p*1.7);
+      v=(v+4)/8;for(const r of this.rip){const d=Math.hypot(x-r.x,y-r.y);v+=.22*Math.sin(d*.9-r.a*9)*Math.exp(-r.a*3)*Math.exp(-d*.08)}
+      v=clamp(v+boost,0,.999);const L=Math.floor(v*20),pr=Math.floor(L/4),dn=L%4;
+      s.put(x,y,C('D'+dn*4),PLRAMP[pr+1],PLRAMP[pr])}
+    s.render()}}
+class Rule30{constructor(){this.s=new Surface();this.name='RULE 30';this.g=new Uint8Array(3600);this.rc=new Uint8Array(60);this.cur=new Uint8Array(60);this.cur[30]=1;this.head=0}
+  step(col){const c=this.cur,n=new Uint8Array(60);for(let i=0;i<60;i++){const l=c[(i+59)%60],m=c[i],r=c[(i+1)%60];n[i]=l^(m|r)}
+    this.cur=n;this.g.set(n,this.head*60);this.rc[this.head]=col;this.head=(this.head+1)%60;
+    for(let k=0;k<2;k++)this.g.fill(0,((this.head+k)%60)*60,((this.head+k)%60)*60+60)}
+  tick(){sim.trigs.forEach(tr=>{if(tr.v===2)this.cur[(tr.note*7+sim.step*11)%60]^=1;this.step(WCOL[tr.wave])});
+    const s=this.s,g=this.g;
+    for(let cy=0;cy<30;cy++)for(let cx=0;cx<30;cx++){const a=cy*2,b=a+1,x=cx*2;
+      const q=g[a*60+x]|(g[a*60+x+1]<<1)|(g[b*60+x]<<2)|(g[b*60+x+1]<<3);
+      s.put(cx,cy,C('Q'+q),(q&12)?this.rc[b]:this.rc[a],BLACK)}
+    s.render()}}
+class Stars{constructor(){this.s=new Surface();this.name='STARS';const r=rng(42);this.r=r;this.cx=0;
+    this.st=Array.from({length:90},(_,i)=>({x:(r()*2-1)*3,y:(r()*2-1)*3,z:.05+r()*.95,v:i%3}))}
+  tick(dt){const s=this.s,r=this.r,k=sim.voices[2];s.fill(WHITE,BLACK,0);
+    const speed=.22*sim.bpm/124+(k.drum==='K'&&!sim.muted[2]?k.env*1.1:0);
+    this.cx+=(((sim.voices[1].note-72)*4)-this.cx)*.12;
+    this.st.forEach(p=>{p.z-=speed*dt;if(p.z<=.05){p.z=1;p.x=(r()*2-1)*3;p.y=(r()*2-1)*3}});
+    [...this.st].sort((a,b)=>b.z-a.z).forEach(p=>{const sx=120+this.cx+p.x/p.z*40,sy=120+p.y/p.z*40;
+      const vc=sim.voices[p.v],hot=!sim.muted[p.v]&&vc.age<.22;
+      const gl=p.z>.75?'TINY':p.z>.45?'DOT':p.z>.22?'PLUS':'STAR',col=hot?WCOL[vc.wave]:p.z>.75?GREY:p.z>.45?LGREY:WHITE;
+      s.put(Math.floor(sx/8),Math.floor(sy/8),C(gl),col,BLACK)});
+    s.render()}}
+class Ants{constructor(){this.s=new Surface();this.name='ANT';this.reset()}
+  reset(){this.g=new Uint8Array(900);this.n=0;this.a=[{x:9,y:12,d:0},{x:20,y:12,d:1},{x:15,y:20,d:2}]}
+  tick(){const D=[[0,-1],[1,0],[0,1],[-1,0]];
+    sim.trigs.forEach(tr=>{const a=this.a[tr.v];for(let k=0;k<3;k++){const i=a.y*30+a.x;
+      if(this.g[i]===0){a.d=(a.d+1)&3;this.g[i]=WCOL[tr.wave]+1}else{a.d=(a.d+3)&3;this.g[i]=0}
+      a.x=(a.x+D[a.d][0]+30)%30;a.y=(a.y+D[a.d][1]+30)%30;this.n++}});
+    if(this.n>9000)this.reset();
+    const s=this.s;for(let i=0;i<900;i++)s.put(i%30,(i/30)|0,this.g[i]?C('PIP'):0,this.g[i]?this.g[i]-1:BLACK,BLACK);
+    this.a.forEach((a,v)=>s.put(a.x,a.y,C('BALL'),sim.muted[v]?DGREY:WHITE,BLACK));
+    s.render()}}
+
+// ---------- MENU ----------
+const ITEMS=[['10','STEP','SEQUENCER','step',['16 KEYS ARE STEPS.','HOLD A STEP, TURN A KNOB','TO LOCK A PARAMETER.']],
+  ['20','TRACKER','HEX PATTERNS','tracker',['HEX GRID WITH THREE','VOICE COLUMNS AND','GT2-STYLE COMMANDS.']],
+  ['30','LIVE','PLAY + SCOPES','live',['KEYS PLAY, KNOBS SHAPE','FILTER AND PULSE WIDTH.','REC RECORDS LOOPS.']],
+  ['40','CHIP','SID MODEL',null,['PROFILE PICKER, CHIP','CHARACTER AND POST-CHIP','EFFECTS PER CHIP.']],
+  ['50','SCENE','VISUALS','scene',['GENERATIVE PETSCII','PIECES THAT REACT TO','THE THREE VOICES.']],
+  ['60','BROWSE','SONGS + .SID',null,['STARTER PACK, YOUR','SONGS AND .SID FILES.','']],
+  ['70','SETUP','MIDI + SYSTEM',null,['MIDI CHANNELS, CLOCK,','THEMES AND SYSTEM.','']],
+  ['80','ABOUT','CREDITS','about',['CREDITS, LICENSE AND A','LITTLE CRACKTRO.','']]];
+class Menu{
+  constructor(){this.s=new Surface();this.sel=2;this.run=null;this.t=0;this.go=null}
+  key(k){if(this.run)return;if(k==='up')this.sel=(this.sel+7)%8;else if(k==='down')this.sel=(this.sel+1)%8;else if(k==='enter')this.start();blip(k==='enter'?72:84)}
+  start(){this.run={t:0,text:'RUN '+ITEMS[this.sel][0],item:ITEMS[this.sel]}}
+  click(cx,cy){const i=cy-7;if(i<0||i>7||this.run)return;if(i===this.sel)this.start();else this.sel=i;blip(84)}
+  tick(dt){this.t+=dt;const s=this.s,blink=Math.floor(this.t*3)%2===0;s.fill(LBLUE,BLUE,0);
+    s.box(0,0,30,30,LBLUE,BLUE,'SIDOU KERNAL');
+    s.text(2,2,'CHIP A + CHIP B  6 VOICES');s.text(2,4,'READY.');s.text(2,5,'LIST');
+    ITEMS.forEach((it,k)=>{const y=7+k,on=k===this.sel,f=on?BLUE:LBLUE,b=on?LBLUE:BLUE;s.rect(1,y,28,1,0,f,b);s.text(2,y,`${it[0]} ${it[1].padEnd(8)}${it[2]}`,f,b)});
+    s.text(2,16,'READY.');
+    let cx=2,cy=17,cur=true;
+    if(this.run){const r=this.run;r.t+=dt;const n=Math.min(r.text.length,Math.floor(r.t/.07));s.text(2,17,r.text.slice(0,n));cx=2+n;
+      if(n===r.text.length){const after=r.t-r.text.length*.07;cur=false;
+        if(r.item[3]){if(after>.35){this.run=null;this.go&&this.go(r.item[3])}}
+        else{if(after>.2){s.text(2,18,'?NOT IN THIS DEMO  ERROR');s.text(2,19,'READY.');cx=2;cy=20;cur=true}if(after>2.6)this.run=null}}}
+    if(cur&&blink)s.put(cx,cy,C('FULL'),LBLUE,BLUE);
+    s.box(1,21,28,6,LBLUE,BLUE,'INFO');ITEMS[this.sel][4].forEach((l,k)=>s.text(3,22+k,l));
+    s.text(2,28,'↑↓ SELECT  RETURN RUN');
+    s.render()}
+}
+
+// ---------- ABOUT cracktro ----------
+const CREDITS=[['SIDOU 0.1','SID SOUNDS FOR THE FM-1'],['CODE + DESIGN','DENIS SABLIC'],['FREE SOFTWARE','GPL-3.0'],['PIECES INSPIRED BY','ASCII.REST'],['3 VOICES  4 WAVES','1 FILTER  0 SAMPLES'],['GREETINGS TO','EVERY SID MUSICIAN']];
+const SCROLL='      SIDOU ... THE FM-1 BECOMES A THREE-VOICE SID MACHINE ... TRACKER, STEP SEQUENCER, LIVE PLAY AND A .SID PLAYER ... EVERY PIXEL HERE IS A CELL ON A 30X30 GRID ... FREE SOFTWARE UNDER GPL-3.0 ... PRESS ANY KEY TO LEAVE ...';
+const SC=[RED,LRED,YELLOW,LGREEN,CYAN,LBLUE,PURPLE,LBLUE,CYAN,LGREEN,YELLOW,LRED];
+const BARS=[[BLUE,LBLUE,CYAN,WHITE,CYAN,LBLUE,BLUE],[BROWN,RED,LRED,YELLOW,LRED,RED,BROWN]];
+class About{
+  constructor(){this.s=new Surface();this.t=0;this.sc=0;const r=rng(7);this.st=Array.from({length:44},()=>({x:r()*240,y:74+Math.floor(r()*102),l:Math.floor(r()*3)}))}
+  tick(dt){this.t+=dt;const t=this.t,s=this.s;s.fill(WHITE,BLACK,0);
+    const P=3.2,pg=CREDITS[Math.floor(t/P)%CREDITS.length],k=(t%P)/P,lv=clamp(Math.floor(k<.15?k/.15*4:k>.85?(1-k)/.15*4:3),0,3);
+    s.center(11,pg[0],[BLUE,PURPLE,LBLUE,CYAN][lv],BLACK);s.center(13,pg[1],[DGREY,GREY,LGREY,WHITE][lv],BLACK);
+    s.render();
+    const kick=sim.voices[2].drum==='K'?sim.voices[2].env*6:0;
+    BARS.forEach((bar,b)=>{const yc=Math.round(32+Math.sin(t*1.6+b*2.4)*20-kick);bar.forEach((c,j)=>{const y=yc-3+j;if(y>=0&&y<66)for(let x=0;x<240;x++)s.fb[y*240+x]=c})});
+    const lg=LOGOS[bootLogo].fn(t,true);s.blit(lg,(240-lg.w)>>1,14);
+    for(let x=0;x<240;x++){s.pset(x,68,RAMP[Math.floor(x/34.3)%7]);s.pset(x,180,RAMP[6-Math.floor(x/34.3)%7])}
+    const sp=.6+sim.bpm/200;
+    this.st.forEach(p=>{p.x-=(p.l+1)*1.4*sp;if(p.x<0)p.x+=240;const x=p.x|0,i=p.y*240+x;const c=[DGREY,GREY,WHITE][p.l];
+      if(s.fb[i]===BLACK)s.fb[i]=c;if(p.l===2&&x+1<240&&s.fb[i+1]===BLACK)s.fb[i+1]=c});
+    this.sc+=3;const TW=SCROLL.length*16,amp=8+6*sim.voices[0].env;
+    for(let sx=0;sx<240;sx++){const tx=(sx+this.sc)%TW,ch=SCROLL[Math.floor(tx/16)],gc=Math.floor((tx%16)/2),g=FONT[C(ch)];
+      const yo=Math.round(Math.sin(sx*.028+t*2.6)*amp);
+      for(let gy=0;gy<8;gy++)if(g[gy]&(128>>gc)){const y=198+yo+gy*2,c=SC[(y>>1)%SC.length];s.pset(sx,y,c);s.pset(sx,y+1,c)}}
+  }
+}
+
+// ---------- instances ----------
+const bootView=new Boot(false),bootMeasure=new Boot(true),live=new Live(),menu=new Menu(),about=new About();
+const stepView=new Step(),trkScroll=new Tracker('scroll'),trkBar=new Tracker('bar');
+const pieces=[new Fire(),new Plasma(),new Rule30(),new Stars(),new Ants()];
+const cards=LOGOS.map(()=>({s:new Surface(),t:0}));
+let screen='boot',piece=0,playing=true,showDirty=false,trkMode='scroll';
+menu.go=k=>setScreen(k);
+
+const lcd=document.getElementById('lcd'),ctx=lcd.getContext('2d'),img=ctx.createImageData(240,240),img32=new Uint32Array(img.data.buffer);
+function activeSurface(){return screen==='boot'?bootView.s:screen==='live'?live.s:screen==='step'?stepView.s:screen==='tracker'?(trkMode==='scroll'?trkScroll:trkBar).s:screen==='scene'?pieces[piece].s:screen==='menu'?menu.s:about.s}
+function paint(){const s=activeSurface(),fb=s.fb;for(let i=0;i<57600;i++)img32[i]=PAL32[fb[i]];
+  if(showDirty){const RED32=0xFF3355FF;for(let t=0;t<900;t++)if(s.dirty[t]){const ox=(t%30)*8,oy=((t/30)|0)*8;
+    for(let k=0;k<8;k++){img32[oy*240+ox+k]=RED32;img32[(oy+7)*240+ox+k]=RED32;img32[(oy+k)*240+ox]=RED32;img32[(oy+k)*240+ox+7]=RED32}}}
+  ctx.putImageData(img,0,0)}
+
+const DT=.04;
+function step(){simTick(DT);
+  if(soundOn){sim.trigs.forEach(playTrig);audioFilter()}
+  bootMeasure.tick(DT);bootMeasure.s.diff();
+  if(screen==='boot'){bootView.tick(DT);bootView.s.diff()}
+  live.tick(DT);live.s.diff();stepView.tick(DT);stepView.s.diff();trkScroll.tick();trkScroll.s.diff();trkBar.tick();trkBar.s.diff();menu.tick(DT);menu.s.diff();about.tick(DT);about.s.diff();
+  pieces.forEach(p=>{p.tick(DT);p.s.diff()});
+  cards.forEach((c,i)=>{c.t+=DT;titleCard(c.s,c.t+1,i);c.s.diff()});
+  leds.forEach((l,i)=>{const v=sim.voices[i];l.style.background=!sim.muted[i]&&v.env>.05?PAL[WCOL[v.wave]]:'';l.style.boxShadow=!sim.muted[i]&&v.env>.3?`0 0 8px ${PAL[WCOL[v.wave]]}`:''})}
+
+// ---------- page UI ----------
+const $=id=>document.getElementById(id);
+const leds=[...document.querySelectorAll('.led')];
+const tabs=[...document.querySelectorAll('[data-screen]')];
+function setScreen(k){screen=k;tabs.forEach(b=>b.setAttribute('aria-selected',String(b.dataset.screen===k)));$('pieces').hidden=k!=='scene';$('trkmode').hidden=k!=='tracker';
+  document.querySelectorAll('[data-hint]').forEach(p=>{p.hidden=p.dataset.hint!==k});
+  if(k==='boot')bootView.restart();if(k==='menu')menu.run=null;try{localStorage.setItem('sidou-screen',k)}catch(e){}
+  if(!playing){if(k==='boot')bootView.tick(T_CLEAR+1);paint()}}
+tabs.forEach(b=>b.addEventListener('click',()=>setScreen(b.dataset.screen)));
+const pc=$('pieces');
+pieces.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p.name;b.setAttribute('aria-pressed',String(i===0));b.addEventListener('click',()=>setPiece(i));pc.appendChild(b)});
+const tm=$('trkmode');
+[['scroll','Scrolling rows'],['bar','Moving bar']].forEach(([k,n])=>{const b=document.createElement('button');b.textContent=n;b.dataset.mode=k;b.setAttribute('aria-pressed',String(k===trkMode));b.addEventListener('click',()=>setTrkMode(k));tm.appendChild(b)});
+function setTrkMode(k){trkMode=k;[...tm.children].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===k)));if(!playing)paint()}
+function setPiece(i){piece=(i+pieces.length)%pieces.length;[...pc.children].forEach((b,k)=>b.setAttribute('aria-pressed',String(k===piece)));if(!playing)paint()}
+
+const VN=[['V1','pulse bass'],['V2','saw arpeggio'],['V3','drums']];
+const vbtns=VN.map(([n,d],i)=>{const b=document.createElement('button');b.className='voice-btn';b.setAttribute('aria-pressed','true');
+  b.innerHTML=`<span class="sw" style="background:${PAL[WCOL[sim.voices[i].wave]]}"></span>${n} ${d}`;b.title='Mute or unmute this voice';
+  b.addEventListener('click',()=>setMute(i,!sim.muted[i]));$('voices').appendChild(b);return b});
+function setMute(i,m){sim.muted[i]=m;vbtns[i].setAttribute('aria-pressed',String(!m))}
+
+function bindRange(id,fn){const el=$(id);const u=()=>fn(+el.value);el.addEventListener('input',u);u()}
+bindRange('bpm',v=>{sim.bpm=v;$('bpm-o').textContent=v+' BPM'});
+bindRange('cutoff',v=>{sim.cutoff=v/100;$('cutoff-o').textContent=fmtHz(100*Math.pow(100,sim.cutoff))+'Hz'});
+bindRange('res',v=>{sim.res=v;$('res-o').textContent=String(v)});
+$('dirty').addEventListener('change',e=>{showDirty=e.target.checked;paint()});
+$('play').addEventListener('click',()=>{playing=!playing;syncPlay()});
+function syncPlay(){$('play').textContent=playing?'Pause':'Play';$('play').setAttribute('aria-pressed',String(!playing));last=performance.now()}
+$('replay').addEventListener('click',()=>{setScreen('boot');if(!playing){playing=true;syncPlay()}});
+$('sound').addEventListener('click',()=>{try{if(!ac)audioInit();soundOn=!soundOn;if(soundOn)ac.resume();$('sound').textContent=soundOn?'Sound on':'Sound off';$('sound').setAttribute('aria-pressed',String(soundOn))}catch(e){$('sound').textContent='No audio';$('sound').disabled=true}});
+function blip(n){if(!soundOn||!ac)return;const t0=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type='square';o.frequency.value=440*Math.pow(2,(n-69)/12);g.gain.setValueAtTime(.12,t0);g.gain.exponentialRampToValueAtTime(.001,t0+.08);o.connect(g);g.connect(master);o.start(t0);o.stop(t0+.1)}
+
+function anyKey(){if(screen==='boot'){if(!bootView.skip())setScreen('menu');return true}if(screen==='about'){setScreen('menu');return true}return false}
+lcd.addEventListener('keydown',e=>{const k=e.key;
+  if(screen==='menu'){const m={ArrowUp:'up',ArrowDown:'down',Enter:'enter',' ':'enter'}[k];if(m){e.preventDefault();menu.key(m)}return}
+  if(screen==='scene'){if(k==='ArrowRight'||k==='ArrowLeft'){e.preventDefault();setPiece(piece+(k==='ArrowRight'?1:-1))}return}
+  if(screen==='step'||screen==='tracker'){const v='123'.indexOf(k);
+    if(k.length===1&&v>=0){e.preventDefault();setMute(v,!sim.muted[v])}
+    else if(screen==='step'&&(k==='ArrowRight'||k==='ArrowLeft')){e.preventDefault();stepView.key(k==='ArrowRight'?1:-1)}
+    else if(screen==='tracker'&&(k==='Enter'||k===' ')){e.preventDefault();setTrkMode(trkMode==='scroll'?'bar':'scroll')}
+    return}
+  if(k.length===1||k==='Enter'||k.startsWith('Arrow')){e.preventDefault();anyKey()}});
+lcd.addEventListener('click',e=>{const r=lcd.getBoundingClientRect(),cx=Math.floor((e.clientX-r.left)/r.width*30),cy=Math.floor((e.clientY-r.top)/r.height*30);
+  if(screen==='menu')menu.click(cx,cy);else if(screen==='scene')setPiece(piece+1);else if(screen==='step')stepView.click(cx,cy);
+  else if(screen==='tracker'){const v=Math.floor((cx-2)/9);if(cy===1&&v>=0&&v<3)setMute(v,!sim.muted[v]);else setTrkMode(trkMode==='scroll'?'bar':'scroll')}else anyKey();if(!playing)paint()});
+
+// logo cards
+const lc=$('logos');const cardCtx=[];
+LOGOS.forEach((L,i)=>{const el=document.createElement('article');el.className='logo-card';const b=L.fn(0,false);
+  el.innerHTML=`<div class="logo-head"><h3>${L.name}</h3><label><input type="radio" name="bootlogo" value="${i}" ${i===bootLogo?'checked':''}> Use on boot</label></div>
+  <p>${L.why}</p><div class="logo-figs"><figure><canvas class="px dev" width="240" height="240"></canvas><figcaption>DEVICE 1:1 · ${b.w}×${b.h}</figcaption></figure>
+  <figure class="big"><canvas class="px lg" width="${b.w}" height="${b.h}"></canvas><figcaption>4×</figcaption></figure></div>`;
+  el.querySelector('input').addEventListener('change',()=>{bootLogo=i});
+  const [dv,lg]=el.querySelectorAll('canvas');lg.style.maxWidth=(b.w*4)+'px';
+  cardCtx.push({dv:dv.getContext('2d'),lg:lg.getContext('2d'),di:new ImageData(240,240),li:new ImageData(b.w,b.h)});lc.appendChild(el)});
+function paintCards(){cards.forEach((c,i)=>{const k=cardCtx[i],d=new Uint32Array(k.di.data.buffer);for(let p=0;p<57600;p++)d[p]=PAL32[c.s.fb[p]];k.dv.putImageData(k.di,0,0);
+  const b=LOGOS[i].fn(c.t+1,true),l=new Uint32Array(k.li.data.buffer);for(let p=0;p<b.px.length;p++)l[p]=b.px[p]===255?PAL32[BLACK]:PAL32[b.px[p]];k.lg.putImageData(k.li,0,0)})}
+
+// cost table
+const ROWS=[['Pieces',null],...pieces.map((p,i)=>[p.name[0]+p.name.slice(1).toLowerCase(),()=>p.s,()=>screen==='scene'&&piece===i]),
+  ['Screens',null],['Boot sequence (looped)',()=>bootMeasure.s,()=>screen==='boot'],['Live',()=>live.s,()=>screen==='live'],['Step sequencer (M2)',()=>stepView.s,()=>screen==='step'],
+  ['Tracker, GT2 scrolling (M2)',()=>trkScroll.s,()=>screen==='tracker'&&trkMode==='scroll'],['Tracker, moving bar (M2)',()=>trkBar.s,()=>screen==='tracker'&&trkMode==='bar'],['Menu',()=>menu.s,()=>screen==='menu'],['About cracktro',()=>about.s,()=>screen==='about'],
+  ['Animated logo on title card',null],...LOGOS.map((L,i)=>[L.name,()=>cards[i].s,()=>false])];
+const tb=$('cost');
+const rowEls=ROWS.map(([n,f])=>{const tr=document.createElement('tr');if(!f){tr.className='group';tr.innerHTML=`<td colspan="6">${n}</td>`}
+  else tr.innerHTML=`<td>${n}</td><td></td><td></td><td></td><td></td><td><span class="bar"><i></i><s></s></span></td>`;tb.appendChild(tr);return tr});
+function updateCost(){ROWS.forEach(([n,f,act],k)=>{if(!f)return;const s=f(),tr=rowEls[k],typ=mean(s.hn),pk=s.hn.length?Math.max(...s.hn):0,runs=mean(s.hr),ms=typ*77/900+runs*.02;
+  const td=tr.children;td[1].textContent=typ;td[2].textContent=pk;td[3].textContent=runs;td[4].textContent=ms.toFixed(1);
+  const i=td[5].querySelector('i');i.style.width=Math.min(100,ms/40*100)+'%';i.className=ms>20?'hot':ms>10?'warn':'';tr.classList.toggle('active',act())});
+  const s=activeSurface();$('frameinfo').innerHTML=`This frame: <b>${s.n}</b> of 900 tiles changed in <b>${s.runs}</b> strips · ≈ <b>${(s.n*77/900+s.runs*.02).toFixed(1)} ms</b> of SPI at 25 fps`}
+
+// sizing: integer 2x when there is room, otherwise fit
+function fit(){const dev=$('device'),cs=getComputedStyle(dev),avail=dev.parentElement.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight)-12;
+  lcd.style.width=(avail>=480?480:Math.max(200,Math.floor(avail)))+'px'}
+addEventListener('resize',fit);fit();
+
+// main loop
+let last=performance.now(),acc=0,uiT=0;
+function frame(now){const dt=Math.min(.2,(now-last)/1000);last=now;
+  if(playing){acc+=dt;let n=0;while(acc>=DT&&n<5){step();acc-=DT;n++}if(n){paint();paintCards()}uiT+=dt;if(uiT>.25){uiT=0;updateCost()}}
+  requestAnimationFrame(frame)}
+
+let saved=null;try{saved=localStorage.getItem('sidou-screen')}catch(e){}
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SCR=['boot','live','step','tracker','scene','menu','about'],PIECE=['fire','plasma','rule30','stars','ant'],hs=location.hash.slice(1).toLowerCase();
+if(PIECE.includes(hs)){setScreen('scene');setPiece(PIECE.indexOf(hs))}
+else setScreen(SCR.includes(hs)?hs:saved&&SCR.includes(saved)&&saved!=='boot'?saved:'boot');
+if(reduce){for(let i=0;i<220;i++)step();playing=false;syncPlay()}
+else for(let i=0;i<3;i++)step();
+paint();paintCards();updateCost();
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>

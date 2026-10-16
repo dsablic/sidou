@@ -1,0 +1,3139 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>SIDOU Scene Arcade</title>
+<style>
+/* Layout: the FM-1 screen is the hero on the left; what the music does and what it costs sit on the right; every vignette runs as a thumbnail below. Single dark look tuned to the C64 blue, shared with SIDOU Screens. */
+:root{
+  color-scheme: dark;
+  --bg:#121027; --panel:#1a1736; --panel-2:#231f47; --line:#353069;
+  --fg:#e4e0f8; --muted:#a6a0d2; --accent:#a094f2; --cyan:#7fc3d2;
+  --ok:#9ad284; --warn:#d8de8c; --hot:#e48d77;
+  --v-drums:#e48d77; --v-bass:#9ad284; --v-arp:#7fc3d2; --v-mod:#d8de8c;
+  --k-hud:#8d88a3; --k-sky:#6c5eb5; --k-far:#a094f2; --k-mid:#7fc3d2; --k-near:#9ad284; --k-static:#b7b2d6; --k-cycle:#d8de8c; --k-sprites:#e48d77; --k-stars:#e4e0f8; --k-rain:#6fa7d8; --k-strip:#f0c060; --k-flash:#ffffff;
+  --shell:#24212e; --shell-2:#17151f; --well:#000000; --ink-on-accent:#16132e;
+  --font-display:'Silkscreen', ui-monospace, Menlo, monospace;
+  --font-body:'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+}
+html{background:var(--bg)}
+body{background:var(--bg);color:var(--fg);font:15px/1.55 var(--font-body);padding-inline:16px;padding-block:24px 64px}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:44px}
+h1,h2,h3{font-family:var(--font-display);font-weight:400;text-wrap:balance;margin:0;letter-spacing:.02em;color:var(--fg)}
+h1{font-size:clamp(28px,5vw,44px);line-height:1.05}
+h2{font-size:20px}
+h3{font-size:13px}
+p{margin:0;max-width:68ch}
+.eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--cyan)}
+.lede{color:var(--muted);font-size:16px}
+header{display:flex;flex-direction:column;gap:10px}
+.top{display:grid;grid-template-columns:minmax(0,1fr);gap:28px;align-items:start}
+@media (min-width:1000px){.top{grid-template-columns:auto minmax(0,1fr)}}
+.stage{display:flex;flex-direction:column;gap:14px;min-width:0}
+.device{background:linear-gradient(160deg,var(--shell),var(--shell-2));border-radius:26px;padding:20px;box-shadow:0 1px 0 #3a3648 inset,0 18px 40px #0008;display:flex;flex-direction:column;gap:12px;max-width:100%;align-self:start}
+.well{background:var(--well);padding:6px;border-radius:6px;box-shadow:0 0 0 2px #0b0a10;line-height:0}
+#lcd{display:block;width:480px;height:auto;max-width:100%;aspect-ratio:1;image-rendering:pixelated;image-rendering:crisp-edges;background:var(--well)}
+.device-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;font-family:var(--font-display);font-size:11px;color:#8d88a3;flex-wrap:wrap}
+.steps{display:grid;grid-template-columns:repeat(16,1fr);gap:3px;width:100%}
+.steps i{height:7px;border-radius:1px;background:#2c2938}
+.steps i.beat{background:#3b3750}
+.steps i.on{background:var(--warn)}
+.vtitle{display:flex;flex-direction:column;gap:6px}
+.vtitle h2{font-size:clamp(22px,3.4vw,30px)}
+.cap{color:var(--muted);font-size:14px}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+button{font:500 13px/1 var(--font-mono);color:var(--fg);background:var(--panel-2);border:1px solid var(--line);border-radius:4px;padding:9px 12px;cursor:pointer;letter-spacing:.04em}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--accent);color:var(--ink-on-accent);border-color:var(--accent)}
+button.mute[aria-pressed="true"]{background:var(--panel);color:var(--muted);border-color:var(--line);text-decoration:line-through}
+.seg{display:inline-flex;flex-wrap:wrap;gap:0}
+.seg button{border-radius:0;margin-left:-1px}
+.seg button:first-child{border-radius:4px 0 0 4px;margin-left:0}
+.seg button:last-child{border-radius:0 4px 4px 0}
+.sw{display:inline-block;width:8px;height:8px;margin-right:7px;border-radius:1px;vertical-align:0}
+.side{display:flex;flex-direction:column;gap:22px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.ctrl{display:grid;grid-template-columns:96px minmax(0,1fr) 76px;gap:10px;align-items:center}
+.ctrl label,.ctrl span{font-size:13px;color:var(--muted)}
+.ctrl output{font-family:var(--font-mono);font-size:13px;text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.cutbar{height:8px;background:#0e0c20;border-radius:2px;position:relative;overflow:hidden}
+.cutbar i{position:absolute;left:0;top:0;bottom:0;background:var(--v-mod)}
+.check{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+.maps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+.maps li{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px;align-items:baseline;font-size:14px}
+.maps .src{font:500 11px/1.2 var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:7px;white-space:nowrap}
+.maps .dot{width:9px;height:9px;border-radius:50%;background:var(--c,var(--muted));opacity:.25;flex:none;transition:opacity .12s}
+.maps .dot.lit{opacity:1;transition:none}
+.maps li.off{color:var(--muted);text-decoration:line-through}
+.meter{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat b{font:500 24px/1.1 var(--font-mono);font-variant-numeric:tabular-nums;color:var(--fg)}
+.stat span{font:500 10.5px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+#spark{width:100%;height:72px;display:block;background:#0e0c20;border-radius:4px}
+.stack{position:relative;height:16px;background:#0e0c20;border-radius:3px;overflow:hidden;display:flex}
+.stack i{height:100%;flex:none}
+.stack .bud{position:absolute;top:0;bottom:0;width:2px;background:var(--hot)}
+.bk{width:100%;border-collapse:collapse;font-size:12.5px;min-width:0}
+.bk td,.bk th{padding:5px 6px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+.bk th{font:500 10.5px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.bk td{font-family:var(--font-mono);white-space:nowrap}
+.bk td.nm,.bk th.nm{text-align:left;font-family:var(--font-body);white-space:normal}
+.bk td.nm small{display:block;color:var(--muted);font-size:11.5px;line-height:1.35}
+.bk tr.tot td{border-bottom:0;font-weight:500;color:var(--fg)}
+.pill{display:inline-flex;align-items:center;gap:6px;font:500 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;padding:4px 8px;border-radius:3px;border:1px solid currentColor;white-space:nowrap}
+.pill.ok{color:var(--ok)}.pill.warn{color:var(--warn)}.pill.hot{color:var(--hot)}
+.hint{font-size:13px;color:var(--muted)}
+.assume{margin:0;padding-left:18px;color:var(--muted);font-size:13px;display:flex;flex-direction:column;gap:4px;max-width:74ch}
+.assume b{color:var(--fg);font-weight:500}
+.tag{font:500 11px var(--font-mono);letter-spacing:.06em;color:var(--warn)}
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+.thumb{display:flex;flex-direction:column;gap:8px;padding:10px;text-align:left;background:var(--panel);border-radius:8px;line-height:1.3}
+.thumb canvas{width:100%;height:auto;aspect-ratio:1;display:block;background:var(--well);border-radius:3px;image-rendering:pixelated}
+.thumb .tt{font:400 12px var(--font-display);color:var(--fg)}
+.thumb .tm{font:12px var(--font-mono);color:var(--muted);font-variant-numeric:tabular-nums;display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap}
+.thumb[aria-current="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+details.early{display:flex;flex-direction:column;gap:14px}
+details.early summary{cursor:pointer;font-family:var(--font-display);font-size:14px;color:var(--fg);padding:6px 0}
+details.early summary span{font-family:var(--font-body);font-size:13px;color:var(--muted);margin-left:8px}
+details.early .thumbs{margin-top:12px}
+.tablewrap{overflow-x:auto}
+table.bt{border-collapse:collapse;width:100%;font-size:13px;min-width:640px}
+.bt th,.bt td{padding:7px 8px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;white-space:nowrap}
+.bt th{font:500 11px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.bt td{font-family:var(--font-mono)}
+.bt th:first-child,.bt td:first-child{text-align:left}
+.bt td:first-child{font-family:var(--font-display);font-size:12px}
+.bt td.cur{color:var(--fg);background:var(--panel-2)}
+.bt td.na{color:var(--muted)}
+.bt td.over{color:var(--hot)}
+.notes ul{margin:0;padding-left:20px;color:var(--muted);max-width:74ch;display:flex;flex-direction:column;gap:6px}
+@media (max-width:520px){.device{padding:12px;border-radius:18px}.ctrl{grid-template-columns:80px minmax(0,1fr) 66px}.meter{grid-template-columns:repeat(2,minmax(0,1fr))}.maps li{grid-template-columns:80px minmax(0,1fr)}.bk td.nm small{display:none}}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Silkscreen&display=swap">
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">SIDOU firmware · SCENE view sketches</div>
+    <h1>Scene Arcade</h1>
+    <p class="lede">Tiny looping scenes for the FM-1's 240×240 screen, each an original homage to a kind of 8-bit game. Nobody plays them: a built-in three-voice pattern at 124 BPM drives every move. The late-era set borrows the tricks of 1988–93 games (parallax bands, raster-split skies, colour cycling, shaded multicolour sprites), and every frame is measured the way the device pays for it, in 8×8 tiles sent over SPI.</p>
+  </header>
+
+  <div class="top">
+    <section class="stage" aria-label="Device screen">
+      <div class="device">
+        <div class="well"><canvas id="lcd" width="240" height="240" aria-label="Vignette on the 240 by 240 device screen"></canvas></div>
+        <div class="steps" id="steps" aria-hidden="true"></div>
+        <div class="device-foot"><span>FM-1 · SIDOU · SCENE</span><span id="barpos">BAR 1 / 4</span></div>
+      </div>
+      <div class="row">
+        <button id="prev" aria-label="Previous vignette">◀ Prev</button>
+        <button id="next" aria-label="Next vignette">Next ▶</button>
+        <div class="seg" role="group" aria-label="Era">
+          <button id="era-late" aria-pressed="true">Late era</button>
+          <button id="era-early" aria-pressed="false">Early era</button>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="dirty"> Tint what gets sent: red tiles, yellow hardware-scroll edge strips</label>
+    </section>
+
+    <div class="side">
+      <section class="panel" aria-live="polite">
+        <div class="vtitle">
+          <h2 id="vt">IRON STRIDE</h2>
+          <p class="cap" id="vc"></p>
+        </div>
+        <ul class="maps" id="maps"></ul>
+      </section>
+
+      <section class="panel" aria-labelledby="tr-h">
+        <h3 id="tr-h">Pattern</h3>
+        <div class="row">
+          <button id="play" aria-pressed="true">Pause</button>
+          <button id="sound" aria-pressed="false">Sound off</button>
+          <button class="mute" id="m-bass" aria-pressed="false"><i class="sw" style="background:var(--v-bass)"></i>Bass</button>
+          <button class="mute" id="m-arp" aria-pressed="false"><i class="sw" style="background:var(--v-arp)"></i>Arp</button>
+          <button class="mute" id="m-drums" aria-pressed="false"><i class="sw" style="background:var(--v-drums)"></i>Drums</button>
+        </div>
+        <div class="ctrl"><label for="tempo">Tempo</label><input id="tempo" type="range" min="80" max="170" value="124"><output id="tempo-o">124 BPM</output></div>
+        <div class="ctrl"><span>Filter cutoff</span><div class="cutbar" aria-hidden="true"><i id="cut-i"></i></div><output id="cut-o">0.50</output></div>
+        <p class="hint">Muting a voice stops its part of the scene. The cutoff sweeps by itself over eight bars.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="mode-h">
+        <h3 id="mode-h">How the screen scrolls</h3>
+        <div class="seg" role="group" aria-label="Scroll mode">
+          <button id="mode-sw" aria-pressed="true">Software parallax</button>
+          <button id="mode-hwa" aria-pressed="false">HW scroll (a)</button>
+          <button id="mode-hwb" aria-pressed="false">HW scroll (b)</button>
+        </div>
+        <p class="tag" id="mode-tag" hidden>If the LCD's hardware scroll works on the FM-1. To be verified.</p>
+        <p class="hint" id="mode-sum"></p>
+        <ul class="assume" id="mode-as"></ul>
+      </section>
+
+      <section class="panel" aria-labelledby="m-h">
+        <div class="row" style="justify-content:space-between"><h3 id="m-h">Tiles sent per frame</h3><span class="pill ok" id="status">Fits budget</span></div>
+        <div class="meter">
+          <div class="stat"><b id="s-now">0</b><span>This frame</span></div>
+          <div class="stat"><b id="s-avg">0</b><span>Average</span></div>
+          <div class="stat"><b id="s-max">0</b><span>Max</span></div>
+          <div class="stat"><b id="s-ms">0</b><span>Peak SPI ms</span></div>
+        </div>
+        <canvas id="spark" width="600" height="144" aria-label="Tiles sent per frame over the last ten seconds, with the 225-tile budget line; frames over budget are marked"></canvas>
+        <div class="stack" id="stack" aria-hidden="true"></div>
+        <table class="bk" aria-label="Cost by band for this vignette">
+          <thead><tr><th class="nm">Band</th><th>Now</th><th>Avg</th><th>Max</th></tr></thead>
+          <tbody id="bk"></tbody>
+        </table>
+        <p class="hint">Out of 900 tiles. At 25 fps the SPI budget is about 20 ms a frame, roughly 225 tiles; a full screen costs about 77 ms. Hardware-scroll edge strips count as tile-equivalents (64 pixels each). Averages, maxima and the over-budget count cover the last 10 seconds.</p>
+      </section>
+    </div>
+  </div>
+
+  <section style="display:flex;flex-direction:column;gap:16px" aria-labelledby="all-h">
+    <h2 id="all-h">Late era</h2>
+    <div class="thumbs" id="thumbs"></div>
+    <details class="early" id="early">
+      <summary>Early era<span>The original six, for comparison: still backdrops, small sprites, 1984–87 manners.</span></summary>
+      <div class="thumbs" id="thumbs-early"></div>
+    </details>
+  </section>
+
+  <section class="panel" aria-labelledby="b-h">
+    <h2 id="b-h">Budget by vignette and mode</h2>
+    <div class="tablewrap">
+      <table class="bt">
+        <thead><tr><th>Vignette</th><th>Software avg</th><th>max</th><th>HW (a) avg</th><th>max</th><th>HW (b) avg</th><th>max</th><th>Status now</th></tr></thead>
+        <tbody id="btab"></tbody>
+      </table>
+    </div>
+    <p class="hint">Every vignette runs in every mode all the time, so these numbers are live for the current tempo and mutes. Static scenes cost the same in every mode. Early-era scenes don't scroll in bands, so only software mode applies.</p>
+  </section>
+
+  <section class="notes" aria-labelledby="n-h">
+    <h2 id="n-h">Ground rules</h2>
+    <ul>
+      <li>All characters, sprites, titles and layouts are new. Each caption names only the genre that inspired it; no game names, logos, sprites or level maps are used.</li>
+      <li>Everything is drawn in the 16 Pepto C64 colours. Early-era sprites are hand-placed pixel rows; late-era sprites are posed skeletons painted with 4-step colour ramps, rim lighting, ordered dither and a black outline, at the C64's double-wide multicolour pixel.</li>
+      <li>Software parallax pays per band, the way C64 games did. A shift costs the same whether it moves 1 pixel or 8, because every tile with detail in it changes either way; so the far band moves in big steps on rare frames, the middle band every 2nd frame, and only the ground moves every frame. The updates are staggered so two heavy bands never land on the same frame, and the sky never changes except while a new colour scheme wipes down one tile row per frame.</li>
+      <li>Cheap texture: dithered horizontal stripes look the same after a shift of 4 pixels, so the ground scrolls in 4-pixel steps and only its top edge is re-sent. Colour cycling is kept to a few small spots, because every cycled tile is re-sent.</li>
+      <li>Keys: ← and → change vignette, Space plays and pauses.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(() => {
+'use strict'
+const W = 240, H = 240, BUDGET = 225, FULL_MS = 77, FRAME_MS = 40, WIN = 250
+const PAL = [0x000000, 0xFFFFFF, 0x68372B, 0x70A4B2, 0x6F3D86, 0x588D43, 0x352879, 0xB8C76F, 0x6F4F25, 0x433900, 0x9A6759, 0x444444, 0x6C6C6C, 0x9AD284, 0x6C5EB5, 0x959595]
+const PAL32 = new Uint32Array(PAL.map(c => (0xFF000000 | ((c & 0xFF) << 16) | (c & 0xFF00) | (c >> 16)) >>> 0))
+const KEY = { k: 0, w: 1, r: 2, c: 3, p: 4, g: 5, b: 6, y: 7, o: 8, n: 9, R: 10, d: 11, m: 12, G: 13, B: 14, l: 15 }
+const BLACK = 0, WHITE = 1, RED = 2, CYAN = 3, PURPLE = 4, GREEN = 5, BLUE = 6, YELLOW = 7, ORANGE = 8, BROWN = 9, LRED = 10, DGREY = 11, GREY = 12, LGREEN = 13, LBLUE = 14, LGREY = 15
+
+// ---------- drawing primitives on an indexed 240x240 buffer ----------
+function sprite (rows, map) {
+  const m = Object.assign({}, KEY, map || {})
+  const h = rows.length
+  const w = Math.max(...rows.map(r => r.length))
+  const d = new Int8Array(w * h).fill(-1)
+  rows.forEach((r, y) => {
+    for (let x = 0; x < r.length; x++) {
+      const c = r[x]
+      if (c === '.') continue
+      const v = m[c]
+      if (v === undefined) throw new Error('unknown key ' + c)
+      d[y * w + x] = v
+    }
+  })
+  return { w, h, d }
+}
+function rot90 (s) {
+  const d = new Int8Array(s.w * s.h).fill(-1)
+  for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) d[x * s.h + (s.h - 1 - y)] = s.d[y * s.w + x]
+  return { w: s.h, h: s.w, d }
+}
+function blit (p, s, x, y, o) {
+  o = o || {}
+  const sc = o.sc || 2
+  const fx = !!o.fx
+  const sy = o.sy === undefined ? 1 : o.sy
+  const rc = o.rc
+  const sh = o.shadow
+  x = Math.round(x); y = Math.round(y)
+  const dh = Math.max(1, Math.round(s.h * sc * Math.abs(sy)))
+  for (let dy = 0; dy < dh; dy++) {
+    const Y = y + dy
+    if (Y < 0 || Y >= H) continue
+    let sr = Math.min(s.h - 1, Math.floor(dy * s.h / dh))
+    if (sy < 0) sr = s.h - 1 - sr
+    for (let sx = 0; sx < s.w; sx++) {
+      let v = s.d[sr * s.w + (fx ? s.w - 1 - sx : sx)]
+      if (v < 0) continue
+      if (rc && rc[v] !== undefined) v = rc[v]
+      for (let k = 0; k < sc; k++) {
+        const X = x + sx * sc + k
+        if (X < 0 || X >= W) continue
+        const i = Y * W + X
+        p[i] = sh ? sh[p[i]] : v
+      }
+    }
+  }
+}
+function rect (p, x, y, w, h, c) {
+  x = Math.round(x); y = Math.round(y)
+  const x0 = Math.max(0, x), y0 = Math.max(0, y), x1 = Math.min(W, x + w), y1 = Math.min(H, y + h)
+  if (x1 <= x0) return
+  for (let Y = y0; Y < y1; Y++) p.fill(c, Y * W + x0, Y * W + x1)
+}
+function dith (p, x, y, w, h, a, b) {
+  for (let Y = Math.max(0, y); Y < Math.min(H, y + h); Y++) for (let X = Math.max(0, x); X < Math.min(W, x + w); X++) p[Y * W + X] = ((X + Y) & 1) ? b : a
+}
+function px (p, x, y, c) { x = Math.round(x); y = Math.round(y); if (x >= 0 && x < W && y >= 0 && y < H) p[y * W + x] = c }
+function disc (p, cx, cy, r, c, maxY) {
+  for (let y = -r; y <= r; y++) {
+    const Y = Math.round(cy + y)
+    if (maxY !== undefined && Y >= maxY) continue
+    const hw = Math.floor(Math.sqrt(r * r - y * y))
+    for (let x = -hw; x <= hw; x++) px(p, cx + x, Y, c)
+  }
+}
+function ring (p, cx, cy, r, c, every) {
+  const n = Math.max(8, Math.round(r * 6))
+  for (let i = 0; i < n; i++) {
+    if (every && (i % every)) continue
+    const a = i / n * Math.PI * 2
+    px(p, cx + Math.cos(a) * r, cy + Math.sin(a) * r, c)
+  }
+}
+function hash (n) {
+  n = Math.imul((n | 0) ^ 0x9e3779b9, 0x85ebca6b)
+  n = Math.imul(n ^ (n >>> 13), 0xc2b2ae35)
+  n ^= n >>> 16
+  return (n >>> 0) / 4294967296
+}
+function rng (seed) {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v
+
+// 3x5 font, drawn at 2x
+const FONT = {}
+;('0 111101101101111|1 010110010010111|2 111001111100111|3 111001111001111|4 101101111001001|5 111100111001111|6 111100111101111|7 111001010010010|8 111101111101111|9 111101111001111|' +
+  'A 010101111101101|B 110101110101110|C 011100100100011|D 110101101101110|E 111100110100111|F 111100110100100|G 011100101101011|H 101101111101101|I 111010010010111|J 001001001101010|K 101101110101101|L 100100100100111|M 101111111101101|' +
+  'N 110101101101101|O 010101101101010|P 110101110100100|Q 010101101110011|R 110101110101101|S 011100010001110|T 111010010010010|U 101101101101111|V 101101101101010|W 101101111111101|X 101101010101101|Y 101101010010010|Z 111001010100111|' +
+  ': 000010000010000|. 000000000000010|- 000000111000000|/ 001001010100100|+ 000010111010000|& 010101010101011').split('|').forEach(g => { FONT[g[0]] = g.slice(2) })
+function text (p, str, x, y, c, sh) {
+  str = String(str).toUpperCase()
+  for (let i = 0; i < str.length; i++) {
+    const g = FONT[str[i]]
+    if (g) {
+      for (let r = 0; r < 5; r++) for (let q = 0; q < 3; q++) {
+        if (g[r * 3 + q] === '1') {
+          if (sh !== undefined) rect(p, x + i * 8 + q * 2 + 1, y + r * 2 + 1, 2, 2, sh)
+          rect(p, x + i * 8 + q * 2, y + r * 2, 2, 2, c)
+        }
+      }
+    }
+  }
+}
+const textW = s => String(s).length * 8 - 2
+const pad = (n, l) => String(Math.max(0, Math.floor(n))).padStart(l, '0')
+
+// ---------- the pattern: 124 BPM, 16 steps, 4 bars, three voices ----------
+const ROOT = [45, 41, 48, 43] // A, F, C, G
+const TRIAD = [[0, 3, 7], [0, 4, 7], [0, 4, 7], [0, 4, 7]]
+const BASSP = [0, null, 0, 12, null, 0, 7, null, 0, null, 12, 0, null, 7, 12, null]
+const KICKP = ['x.....x.x.......', 'x.....x.x.x.....', 'x.....x.x.......', 'x.....x.x.......']
+const SNAREP = ['....x.......x...', '....x.......x...', '....x.......x..x', '....x.......xxxx']
+const HATP = ['..x...x...x.x.x.', '..x.x.x...x...x.', '..x...x...x.x.x.', '..x.x.x...x.....']
+const ARPG = 'xx.xx.xx.xx.x.xx'
+const ARPWALK = [0, 1, 2, 3, 4, 5, 4, 3, 2, 1]
+function patternStep (i) {
+  const s = i & 15, bar = (i >> 4) & 3
+  const tri = TRIAD[bar]
+  const tones = [tri[0], tri[1], tri[2], tri[0] + 12, tri[1] + 12, tri[2] + 12]
+  let arp = null
+  if (ARPG[s] === 'x') {
+    let k = 0
+    for (let j = 0; j < s; j++) if (ARPG[j] === 'x') k++
+    arp = ROOT[bar] + 12 + tones[ARPWALK[(k + bar * 3) % ARPWALK.length]]
+  }
+  return {
+    i, s, bar,
+    kick: KICKP[bar][s] === 'x',
+    snare: SNAREP[bar][s] === 'x',
+    hat: HATP[bar][s] === 'x',
+    fill: bar === 3 && s >= 12,
+    bass: BASSP[s] === null ? null : ROOT[bar] + BASSP[s],
+    arp
+  }
+}
+const cutoffAt = pos => 0.5 - 0.45 * Math.cos(Math.PI * 2 * pos / 128)
+
+// ---------- sprites ----------
+const FIGHT = {
+  stance: ['......hhhh........', '.....hhhhhh.......', '.....hhhRRR.......', '.....hhRRkR.......', '......RRRRR.......', '.......RRR........', '.....wwwwwww......', '....wlwwwwwwww....', '....wlwwwwww.RR...', '....wlwwwwwwwRR...', '...RRlwwwwww......', '...RR.wwwwww......', '......xxxxxx......', '......wwxwwww.....', '.....wwwwwwwww....', '.....wwwl..wwww...', '....wwwl....wwww..', '....wwl......www..', '...wwl........ww..', '...wwl........ww..', '..www.........ww..', '..ww..........ww..', '.RRR..........RRRR'],
+  punch: ['......hhhh..........', '.....hhhhhh.........', '.....hhhRRR.........', '.....hhRRkR.........', '......RRRRR.........', '.......RRR..........', '.....wwwwwwwwwwwwRRR', '....wlwwwwwwwwwwwRRR', '....wlwwwwww........', '....wlwwwwww........', '...RRlwwwwww........', '...RR.wwwwww........', '......xxxxxx........', '......wwxwwww.......', '.....wwwwwwwwww.....', '.....wwwl...wwww....', '....wwwl.....wwww...', '....wwl.......www...', '...wwl.........ww...', '...wwl.........ww...', '..www..........ww...', '..ww...........ww...', '.RRR...........RRRR.'],
+  kick: ['....hhhh................', '...hhhhhh...............', '...hhhRRR...............', '...hhRRkR...............', '....RRRRR...............', '.....RRR................', '...wwwwwww..............', '..wlwwwwwww.............', '.RRlwwwwww.RR...........', '.RRlwwwwwwwRR...........', '...lwwwwww..............', '...wwwwwww..............', '...xxxxxxx..............', '...wwxwwwwwwwwwwwwwwRRR.', '...wwwwwwwwwwwwwwwwwRRRR', '...wwwl.................', '...wwwl.................', '....wwl.................', '....wwl.................', '....wwl.................', '....wwl.................', '....wwl.................', '...RRRR.................'],
+  fly: ['....hhhh................', '...hhhhhh...............', '...hhhRRR...............', '...hhRRkR...............', '....RRRRR...............', '.....RRR................', '..wwwwwww...............', '.wlwwwwwwwRR............', 'RRlwwwwwww.RR...........', 'RR.lwwwwww..............', '...wwwwwww..............', '...xxxxxxx..............', '..wwwxwwwwwwww..........', '..wwwwwwwwwwwwwwwwwwRRR.', '..wwl......wwwwwwwwwRRRR', '..wwl...................', '...wwl..................', '....wwRRR...............', '.....RRR................']
+}
+const FAX = { stance: 9, punch: 9, kick: 6, fly: 7 }
+const fighterL = {}, fighterR = {}
+for (const k in FIGHT) {
+  fighterL[k] = sprite(FIGHT[k], { h: BLACK, w: WHITE, l: LGREY, x: BLACK })
+  fighterR[k] = sprite(FIGHT[k], { h: BROWN, w: CYAN, l: LBLUE, x: RED })
+}
+const JUDGE = sprite(['....RRRR....', '...RRRRRR...', '..wRkRRkRw..', '..wRRRRRRw..', '...wwwwww...', '....wwww....', '..nnnwwnnn..', '.nnnnwwnnnn.', '.nnoonnoonn.', '.RnnnnnnnnR.', '..nnnnnnnn..', '..nnnnnnnn..', '..nnoooonn..', '.nnnnnnnnnn.', '.kk......kk.'])
+const BURST = sprite(['....y....', '.y..w..y.', '..y.w.y..', '...www...', 'ywwwwwwwy', '...www...', '..y.w.y..', '.y..w..y.', '....y....'])
+
+const HELI = sprite(['...........d.............', '..........ddd............', '........mmmmmmmmm........', '......mmmllllllllmccc....', 'd....mmmlllllllllmcccc...', 'dmmmmmmmmrrrrmmmmmmcccc..', 'd.mm....mmmmmmmmmmmmmmmmy', '........dmmmmmmmmmmmmmdd.', '.........ddddddddddddd...', '..........k........k.....', '........kkkkkkkkkkkkkk...'])
+
+const SHIP = sprite(['.kkk................', 'kBBBk...............', '.kBBBBkk............', '..kBBBBBkkkk........', 'kkkwwwwwwwwwwkkk....', 'oykwwwwwwwwwwwwcckk.', 'oykwwwwwwwwwwwwcccwk', 'kkkwwwwwwwwwwkkk....', '..kBBBBBkkkk........', '.kBBBBkk............', 'kBBBk...............', '.kkk................'])
+
+const RUNA = ['....hhh.......', '...hhhhR......', '...hRRkR......', '....RRRR......', '.....RR.......', '....ssss......', '...sssssRR....', '..osssss..R...', '.o.ssnss......', 'o..ssss.......', '...qqqq.......', '..oqqqqRR.....', '..o....RR.....', '.o......RR....', '.o.......R....', 'o.........R...', 'ff........ff..']
+const RUNB = ['....hhh.......', '...hhhhR......', '...hRRkR......', '....RRRR......', '.....RR.......', '....ssss......', '...sssss......', '...ssssoR.....', '...ssnsso.....', '...ssssR......', '...qqqq.......', '...qqqqRRR....', '....oo..R.....', '....o...R.....', '....o..R......', '....o.........', '...ff.........']
+const swapLimbs = rows => rows.map((r, y) => y < 5 ? r : r.replace(/[oR]/g, c => c === 'o' ? 'R' : 'o'))
+const RUNJ = ['......hhh.......', '.....hhhhR......', '.....hRRkR......', '......RRRR......', '.....ssss.RR....', '....sssssRR.....', '...osssss.......', '..o.ssnss.......', '....ssss........', '....qqqqRRRRRRR.', '..ooqqqq......ff', '.o..............', 'oo..............', 'f...............']
+function runnerSet (map) {
+  return {
+    run: [RUNA, RUNB, swapLimbs(RUNA), swapLimbs(RUNB)].map(r => sprite(r, map)),
+    jump: sprite(RUNJ, map)
+  }
+}
+const RUNNER = runnerSet({ h: BLACK, s: WHITE, q: BLUE, f: RED, n: BLACK, o: ORANGE })
+const RIVAL = runnerSet({ h: BROWN, s: YELLOW, q: BLACK, f: WHITE, n: RED, o: ORANGE })
+const HURDLE = sprite(['wkwkwkwkww', 'wkwkwkwkww', 'l........l', 'l........l', 'l........l', 'l........l', 'l........l', 'l........l', 'l........l', 'dd......dd'])
+
+const DIG = [
+  sprite(['..yyyy..', '.yyyyyyy', '..RRkR..', '..RRRR..', '.bbbbbR.', 'R.bbbb..', '..b..b..', '.kk..kk.']),
+  sprite(['..yyyy..', '.yyyyyyy', '..RRkR..', '..RRRR..', 'RbbbbbR.', '..bbbb..', '...bb...', '..kkkk..'])
+]
+const ROCK = sprite(['..dmmd..', '.dmlmmd.', 'dmllmmmd', 'dmlmmmmd', 'dmmmmmmd', 'dmmmmmdd', '.dmmmdd.', '..dddd..'])
+const GEMROWS = ['........', '...cc...', '..cwcc..', '.cwcccB.', 'cccccBBB', '.cccBBB.', '..cBBB..', '...BB...']
+const GEMS = [[CYAN, LBLUE], [LGREEN, GREEN], [YELLOW, ORANGE], [WHITE, LGREY], [LRED, RED]].map(([a, b]) => sprite(GEMROWS, { c: a, B: b }))
+const SPARK = sprite(['...w....', '...w....', '.wwwww..', '...w....', '...w....', '........', '........', '........'])
+
+const AGENT = {
+  stand: sprite(['....hhhh....', '...hhhhhh...', '...hhRRkR...', '....RRRR....', '.....ww.....', '...llwwll...', '..lllwllll..', '..lmllllml..', '..lm.ll.ml..', '..R..ll..R..', '.....ll.....', '....mmmm....', '....ll.ll...', '....ll.ll...', '....ll.ll...', '....ll.ll...', '....ll.ll...', '....kk.kkk..'], { h: BLACK }),
+  a: sprite(['....hhhh....', '...hhhhhh...', '...hhRRkR...', '....RRRR....', '.....ww.....', '....lwwl....', '...llwlll...', '...mllllm...', '..m.llll.R..', '..R.llll....', '....llll....', '....mmmm....', '...ll..ll...', '..ll....ll..', '..l......l..', '.ll......ll.', '.l........l.', 'kk.......kkk'], { h: BLACK }),
+  b: sprite(['....hhhh....', '...hhhhhh...', '...hhRRkR...', '....RRRR....', '.....ww.....', '....lwwl....', '....lwll....', '....mlll....', '....mlll....', '....Rlll....', '....llll....', '....mmmm....', '....llll....', '....lll.....', '....lll.....', '....ll......', '....ll......', '....kkk.....'], { h: BLACK })
+}
+const TUCK0 = sprite(['...hhhh...', '..hhRRkR..', '..hRRRRR..', '.llllRRR..', 'lllllll...', 'lmllllll..', 'lmlllllRR.', '.mmmllRR..', '..llllkk..', '...kk.....'], { h: BLACK })
+const TUCK = [TUCK0, rot90(TUCK0), rot90(rot90(TUCK0)), rot90(rot90(rot90(TUCK0)))]
+const ROBOT = [0, 1].map(f => sprite(['.....y......', '.....d......', '...llllll...', '..llmmmmll..', '..lrrrrrrl..', '..lmmmmmml..', '...dddddd...', '..lmmmmmml..', '.dlmmmmmmld.', '.dlmmmmmmld.', '..dddddddd..', '.kkkkkkkkkk.', f ? '.k.k.k.k.kk.' : 'k.k.k.k.k.k.', '.kkkkkkkkkk.']))
+const REEL = [sprite(['.dddd.', 'd.ww.d', 'dw..wd', 'dw..wd', 'd.ww.d', '.dddd.']), sprite(['.dddd.', 'dw..wd', 'd.ww.d', 'd.ww.d', 'dw..wd', '.dddd.'])]
+
+// darken map for shadows
+const NUMS = '0123456789'.split('').map(d => FONT[d] + FONT[(+d + 3) % 10])
+const DARK = [0, 15, 0, 6, 6, 9, 0, 8, 9, 0, 2, 0, 11, 5, 6, 12]
+
+// ---------- vignettes ----------
+const VIGNETTES = []
+
+// 1. Karate duel on a beach at dusk
+VIGNETTES.push({
+  id: 'duel', title: 'DUSK DUEL', cap: 'A nod to 80s side-view karate duel games: two new fighters square off on a beach at sunset.',
+  maps: [
+    ['kick', 'Kick drum: the white fighter punches'],
+    ['snare', 'Snare: the cyan fighter kicks'],
+    ['hat', 'Hi-hats: both fighters hop in their stance'],
+    ['fill', 'Bar-4 snare fill: the leader takes a flying kick; the hit lands on the downbeat and scores'],
+    ['bass', 'Bass pitch: a high line puts the cyan fighter in front, a low line the white one'],
+    ['arp', 'Arp notes: sun glints on the water'],
+    ['cutoff', 'Filter cutoff: how high the sun sits'],
+    ['bar', 'Bars: the judge counts them and raises a flag for the scorer']
+  ],
+  make () {
+    const sky = new Uint8Array(W * H), fg = new Uint8Array(W * H).fill(255)
+    const bands = [[16, BLUE], [42, PURPLE], [72, LRED], [100, YELLOW]]
+    for (let y = 16; y < 126; y++) {
+      let c = BLUE
+      for (const [y0, col] of bands) if (y >= y0) c = col
+      for (let x = 0; x < W; x++) {
+        let v = c
+        for (let b = 1; b < bands.length; b++) {
+          const y0 = bands[b][0]
+          if (y >= y0 - 4 && y < y0) v = ((x + y) & 1) ? bands[b][1] : bands[b - 1][1]
+          if (y >= y0 - 8 && y < y0 - 4 && ((x + y) & 3) === 0) v = bands[b][1]
+        }
+        sky[y * W + x] = v
+      }
+    }
+    rect(fg, 0, 0, W, 16, BLACK)
+    // distant hills and a tiny sail
+    for (let x = 0; x < 110; x++) {
+      const h = Math.round(5 + 4 * Math.sin(x / 13) + 3 * Math.sin(x / 5.3 + 1))
+      rect(fg, x, 125 - h, 1, h, PURPLE)
+    }
+    rect(fg, 0, 124, W, 2, LBLUE)
+    rect(fg, 0, 126, W, 30, BLUE)
+    for (let i = 0; i < 70; i++) {
+      const x = Math.floor(hash(i * 7 + 1) * W), y = 128 + Math.floor(hash(i * 7 + 2) * 26)
+      if (Math.abs(x - 176) < 16) continue
+      rect(fg, x, y, 3 + Math.floor(hash(i * 7 + 3) * 7), 1, LBLUE)
+    }
+    rect(fg, 214, 113, 1, 11, BLACK); rect(fg, 215, 114, 4, 8, WHITE); rect(fg, 210, 122, 12, 2, BROWN)
+    rect(fg, 0, 156, W, 84, ORANGE)
+    for (let y = 156; y < 240; y++) for (let x = 0; x < W; x++) {
+      const hv = hash(x * 977 + y * 131)
+      if (hv < 0.06) fg[y * W + x] = BROWN
+      else if (y < 172 && hv > 0.97) fg[y * W + x] = YELLOW
+    }
+    for (let x = 0; x < W; x += 1) if (hash(x * 13) > 0.45) rect(fg, x, 155, 1, 2, WHITE)
+    rect(fg, 0, 157, W, 3, BROWN)
+    // palm: trunk on a curve, then fronds
+    for (let t = 0; t <= 1; t += 0.004) {
+      const x = (1 - t) * (1 - t) * 30 + 2 * (1 - t) * t * 6 + t * t * 46
+      const y = (1 - t) * (1 - t) * 226 + 2 * (1 - t) * t * 150 + t * t * 74
+      const th = 7 - t * 3
+      const seg = Math.floor(t * 30) & 1
+      rect(fg, x - th / 2, y, th, 2, seg ? BROWN : ORANGE)
+      px(fg, x - th / 2, y, BLACK)
+    }
+    const fronds = [[-2.7, 1.1], [-2.2, 0.8], [-1.4, 0.55], [-0.4, 0.6], [0.2, 1.0], [0.7, 1.3], [-3.0, 1.4]]
+    for (const [a0, droop] of fronds) {
+      for (let s = 0; s < 34; s++) {
+        const a = a0 + (Math.cos(a0) > 0 ? 1 : -1) * droop * s / 34 * 0.9
+        const r = s * 1.15
+        const x = 47 + Math.cos(a) * r, y = 73 + Math.sin(a0) * r * 0.55 + droop * s * s / 60
+        const t = 3 - Math.floor(s / 12)
+        rect(fg, x, y, 2, t, GREEN)
+        if (s % 3 === 0) { px(fg, x, y + t + 1, GREEN); px(fg, x + 1, y + t + 2, BLACK) }
+        px(fg, x, y - 1, LGREEN)
+      }
+    }
+    disc(fg, 44, 79, 3, BROWN); disc(fg, 50, 80, 3, BROWN); disc(fg, 47, 84, 2, BROWN)
+
+    const st = {
+      L: { x: 92, pose: 'stance', t: 0, bob: 0, hit: 0 },
+      R: { x: 148, pose: 'stance', t: 0, bob: 0, hit: 0 },
+      lead: 'L', score: [0, 0], flag: null, burst: null, fly: null, glint: 0, glintSeed: 0, bar: 0, bassAvg: 48
+    }
+    const FEET = 222
+    return {
+      step (e, c) {
+        st.bar = e.bar
+        if (e.bass !== null) {
+          st.bassAvg += (e.bass - st.bassAvg) * 0.35
+          st.lead = st.bassAvg >= 49 ? 'R' : 'L'
+        }
+        if (e.arp !== null) { st.glint = 4; st.glintSeed = e.arp }
+        if (st.fly && e.i >= st.fly.end) {
+          const who = st.fly.who, opp = who === 'L' ? st.R : st.L
+          st.burst = { x: opp.x + (who === 'L' ? -18 : 18), y: FEET - 40, t: 6 }
+          opp.hit = 10
+          st.score[who === 'L' ? 0 : 1] += 100
+          st.flag = { side: who, until: e.i + 16 }
+          st.fly = null
+        }
+        if (e.fill && e.s === 12 && !st.fly) st.fly = { who: st.lead, start: e.i, end: e.i + 4 }
+        if (e.kick && !(st.fly && st.fly.who === 'L')) { st.L.pose = 'punch'; st.L.t = 4 }
+        if (e.snare && !(st.fly && st.fly.who === 'R')) { st.R.pose = 'kick'; st.R.t = 5 }
+        if (e.hat) { st.L.bob = 3; st.R.bob = 3 }
+        if (st.flag && e.i >= st.flag.until) st.flag = null
+      },
+      draw (p, c) {
+        p.set(sky)
+        const sunY = Math.round(132 - c.cutoff * 34)
+        disc(p, 176, sunY, 19, YELLOW, 124)
+        disc(p, 176, sunY, 15, WHITE, 124)
+        for (let i = 0; i < p.length; i++) { const v = fg[i]; if (v !== 255) p[i] = v }
+        // glints on the water under the sun
+        for (let r = 0; r < 8; r++) {
+          const y = 128 + r * 3
+          const w = 18 - r * 2 + ((st.glint > 0 && ((r + st.glintSeed) % 3 === 0)) ? 6 : 0)
+          const col = (st.glint > 0 && ((r + st.glintSeed) % 2 === 0)) ? WHITE : YELLOW
+          rect(p, 176 - w / 2 + (r & 1) * 2, y, w, 1, col)
+        }
+        if (st.glint > 0) st.glint--
+        text(p, '1UP ' + pad(st.score[0], 4), 4, 3, WHITE)
+        const r2 = '2UP ' + pad(st.score[1], 4)
+        text(p, r2, W - 4 - textW(r2), 3, CYAN)
+        text(p, 'BAR ' + (st.bar + 1), 104, 3, YELLOW)
+        // judge with flag
+        blit(p, JUDGE, 208, FEET - 30)
+        rect(p, 204, FEET + 1, 32, 2, BROWN)
+        if (st.flag) {
+          const left = st.flag.side === 'L'
+          const hx = left ? 206 : 228
+          rect(p, hx, FEET - 46, 1, 26, LGREY)
+          rect(p, left ? hx - 10 : hx + 1, FEET - 46, 10, 7, left ? WHITE : CYAN)
+        }
+        // stance targets: leader steps in
+        const tL = 92 + (st.lead === 'L' ? 8 : -4) - (st.L.hit > 0 ? 10 : 0)
+        const tR = 148 + (st.lead === 'R' ? -8 : 4) + (st.R.hit > 0 ? 10 : 0)
+        st.L.x += clamp(tL - st.L.x, -2, 2)
+        st.R.x += clamp(tR - st.R.x, -2, 2)
+        const fighters = [['L', st.L, fighterL, false], ['R', st.R, fighterR, true]]
+        for (const [id, f, set, flip] of fighters) {
+          let x = f.x, y = FEET, pose = f.pose
+          if (st.fly && st.fly.who === id) {
+            const t = clamp((c.pos - st.fly.start) / 4, 0, 1)
+            const opp = id === 'L' ? st.R : st.L
+            const tx = opp.x + (id === 'L' ? -30 : 30)
+            x = f.x + (tx - f.x) * t
+            y = FEET - Math.sin(Math.PI * Math.min(1, t * 1.1)) * 26
+            pose = 'fly'
+          }
+          rect(p, x - 14, FEET, 28, 2, BROWN)
+          const s = set[pose]
+          const ax = FAX[pose]
+          const dx = flip ? x - (s.w - 1 - ax) * 2 - 2 : x - ax * 2
+          const bob = f.bob > 0 ? -2 : 0
+          let rc
+          if (f.hit > 0 && (f.hit & 1)) rc = flip ? { 3: 1, 14: 15 } : { 1: 7, 15: 8 }
+          blit(p, s, dx, y - s.h * 2 + bob, { fx: flip, rc })
+          if (f.t > 0 && --f.t === 0) f.pose = 'stance'
+          if (f.bob > 0) f.bob--
+          if (f.hit > 0) f.hit--
+        }
+        if (st.burst) {
+          blit(p, BURST, st.burst.x - 9, st.burst.y - 9, { rc: st.burst.t & 1 ? { 7: 1 } : undefined })
+          if (--st.burst.t <= 0) st.burst = null
+        }
+      }
+    }
+  }
+})
+
+// 2. Gunship canyon flyer
+VIGNETTES.push({
+  id: 'canyon', title: 'ROTOR CANYON', cap: 'A nod to 80s attack-helicopter games flown through caverns: a new gunship threads a cave the music carves.',
+  maps: [
+    ['bass', 'Bass pitch: height of the cave floor'],
+    ['arp', 'Arp pitch: height of the ceiling; each arp note fires a tracer'],
+    ['cutoff', 'Filter cutoff: day, dusk or night sky and moss, scrolling in from the right'],
+    ['snare', 'Snare: searchlight flash'],
+    ['kick', 'Kick drum: the gunship dips'],
+    ['hat', 'Hi-hats: the tail beacon blinks'],
+    ['bar', 'Bars: the distance counter']
+  ],
+  make () {
+    const ceil = new Float32Array(W).fill(40), flo = new Float32Array(W).fill(200), mood = new Uint8Array(W).fill(2), mood2 = new Uint8Array(W).fill(2)
+    const MOOD = [
+      { sky: BLACK, a: ORANGE, b: BROWN, rim: LBLUE, name: 'NIGHT' },
+      { sky: PURPLE, a: ORANGE, b: BROWN, rim: YELLOW, name: 'DUSK' },
+      { sky: CYAN, a: ORANGE, b: BROWN, rim: LGREEN, name: 'DAY' }
+    ]
+    const st = { wx: 0, ct: 40, ft: 200, cs: 40, fs: 200, hy: 100, dip: 0, rotor: 0, tr: [], light: 0, beacon: 0, dist: 0, moodNow: 2, lastM: 2, prevM: 2, blend: 0 }
+    return {
+      step (e, c) {
+        if (e.arp !== null) {
+          st.ct = 96 - (e.arp - 53) / 26 * 72
+          st.tr.push({ x: 36 + 50, y: Math.round(st.hy) + 13 })
+        }
+        if (e.bass !== null) st.ft = 228 - (e.bass - 41) / 19 * 70
+        if (e.snare) st.light = 3
+        if (e.kick) st.dip = 5
+        if (e.hat) st.beacon ^= 1
+        if (e.s === 0) st.dist++
+      },
+      draw (p, c) {
+        // scroll the cave two pixels and grow new columns at the right edge
+        const S = 2
+        ceil.copyWithin(0, S); flo.copyWithin(0, S); mood.copyWithin(0, S); mood2.copyWithin(0, S)
+        const m = c.cutoff < 0.33 ? 0 : c.cutoff < 0.66 ? 1 : 2
+        st.moodNow = m
+        for (let k = W - S; k < W; k++) {
+          st.wx++
+          st.cs += (st.ct - st.cs) * 0.035
+          st.fs += (st.ft - st.fs) * 0.035
+          let cv = Math.round(st.cs / 4) * 4 + (hash(st.wx >> 3) < 0.15 ? 4 : 0)
+          let fv = Math.round(st.fs / 4) * 4 - (hash((st.wx >> 3) + 9999) < 0.15 ? 4 : 0)
+          if (fv - cv < 86) { const mid = (fv + cv) / 2; cv = mid - 43; fv = mid + 43 }
+          ceil[k] = clamp(cv, 20, 150); flo[k] = clamp(fv, 106, 236)
+          if (m !== st.lastM) { st.blend = 10; st.prevM = st.lastM; st.lastM = m }
+          mood[k] = m; mood2[k] = st.blend > 0 ? st.prevM : m
+          if (st.blend > 0) st.blend--
+        }
+        for (let x = 0; x < W; x++) {
+          const M1 = MOOD[mood[x]], M2 = MOOD[mood2[x]]
+          const cy = Math.round(ceil[x]), fy = Math.round(flo[x])
+          const wx = st.wx - W + x
+          for (let y = 16; y < H; y++) {
+            const M = ((x + y) & 1) ? M2 : M1
+            let v
+            if (y < cy - 3 || y >= fy + 3) v = (y % 12 < 3) ? M.b : M.a
+            else if (y < cy || y >= fy) v = M.rim
+            else v = M.sky
+            p[y * W + x] = v
+          }
+          if (mood[x] === 0 && hash(wx * 31) < 0.03) {
+            const sy = Math.round(cy + 6 + hash(wx * 17) * (fy - cy - 12))
+            p[sy * W + x] = (hash(wx * 5) < 0.5) ? WHITE : LGREY
+          }
+        }
+        rect(p, 0, 0, W, 16, BLACK)
+        text(p, 'DIST ' + pad(st.dist, 4), 4, 3, WHITE)
+        const mn = MOOD[st.moodNow].name
+        text(p, mn, W - 4 - textW(mn), 3, YELLOW)
+        // gunship rides the middle of the gap
+        const ty = (ceil[64] + flo[64]) / 2 - 11
+        st.hy += (ty - st.hy) * 0.12
+        const hx = 36, hy = Math.round(st.hy + (st.dip > 0 ? Math.min(st.dip, 3) : 0))
+        if (st.dip > 0) st.dip--
+        // searchlight cone
+        if (st.light > 0) {
+          const ax = hx + 34, ay = hy + 20
+          for (let x = ax; x < Math.min(W, ax + 56); x++) {
+            const f = flo[x]
+            const t = (x - ax) / 56
+            const yTop = ay + t * 34, yBot = ay + t * 110
+            for (let y = Math.round(yTop); y < Math.min(f, yBot); y++) {
+              const on = st.light > 1 ? ((x + y) & 1) === 0 : ((x & 1) === 0 && (y & 1) === 0)
+              if (on && y >= 16) p[y * W + x] = YELLOW
+            }
+            if (yBot >= f) { const Y = Math.round(f); rect(p, x, Y - 3, 1, 3, WHITE) }
+          }
+          st.light--
+        }
+        st.rotor ^= 1
+        blit(p, HELI, hx, hy)
+        if (st.rotor) rect(p, hx + 6, hy - 2, 40, 2, LGREY)
+        else { rect(p, hx + 2, hy - 2, 18, 2, DGREY); rect(p, hx + 32, hy - 2, 18, 2, DGREY) }
+        if (st.rotor) rect(p, hx - 2, hy + 6, 2, 10, LGREY); else rect(p, hx - 6, hy + 10, 10, 2, LGREY)
+        rect(p, hx + 2, hy + 6, 2, 2, st.beacon ? RED : WHITE)
+        // tracers
+        for (const t of st.tr) {
+          t.x += 12
+          const ex = Math.min(W, t.x + 8)
+          for (let x = t.x; x < ex; x++) px(p, x, t.y, YELLOW)
+          px(p, t.x + 8, t.y, WHITE)
+        }
+        st.tr = st.tr.filter(t => t.x < W)
+      }
+    }
+  }
+})
+
+// 3. Dreadnought run
+VIGNETTES.push({
+  id: 'hull', title: 'HULL SKIMMER', cap: 'A nod to 80s shooters that skim the hull of a giant capital ship: a new fighter rolls low over the plating.',
+  maps: [
+    ['kick', 'Kick drum: the fighter flips and shows its belly'],
+    ['arp', 'Arp notes: light a row of hull lights; pitch picks the row'],
+    ['bass', 'Bass pitch: altitude over the hull'],
+    ['snare', 'Snare: flak bursts on the deck'],
+    ['hat', 'Hi-hats: engine flame flickers'],
+    ['cutoff', 'Filter cutoff: plating tint, scrolling in from the right'],
+    ['bar', 'Bars: sector counter']
+  ],
+  make () {
+    const segs = new Map()
+    const st = { scroll: 0, lanes: [0, 0, 0, 0], sy: 130, roll: -1, base: 1, flips: 0, puffs: [], flame: 0, sector: 0 }
+    const LANES = [90, 116, 144, 170]
+    const stars = Array.from({ length: 14 }, (_, i) => ({ x: hash(i * 3 + 1) * W, y: 18 + hash(i * 3 + 2) * 220 }))
+    let cutoffNow = 0.5
+    function seg (s) {
+      let g = segs.get(s)
+      if (!g) {
+        const h = hash(s * 7919 + 3)
+        g = { type: h < 0.35 ? 0 : h < 0.55 ? 1 : h < 0.78 ? 2 : 3, tint: cutoffNow > 0.5 ? 1 : 0 }
+        segs.set(s, g)
+      }
+      return g
+    }
+    return {
+      step (e, c) {
+        if (e.arp !== null) { const l = 3 - clamp(Math.floor((e.arp - 53) / 7), 0, 3); st.lanes[l] = 7 }
+        if (e.kick && st.roll < 0) st.roll = 0
+        if (e.snare) st.puffs.push({ x: st.scroll + 130 + hash(e.i * 13) * 90, y: 84 + hash(e.i * 29) * 92, t: 0 })
+        if (e.hat) st.flame = 2
+        if (e.s === 0) st.sector++
+      },
+      draw (p, c) {
+        cutoffNow = c.cutoff
+        st.scroll += 2
+        rect(p, 0, 16, W, H - 16, BLACK)
+        for (const s of stars) {
+          const x = Math.floor(((s.x - st.scroll * 0.5) % W + W) % W)
+          px(p, x, s.y, (s.y | 0) % 3 ? DGREY : GREY)
+        }
+        const s0 = Math.floor(st.scroll / 64) - 1
+        for (const k of segs.keys()) if (k < s0) segs.delete(k)
+        const TOP = 76, BOT = 190
+        for (let x = 0; x < W; x++) {
+          const xw = st.scroll + x, s = Math.floor(xw / 64), u = xw & 63
+          const g = seg(s)
+          const plate = g.tint ? GREY : DGREY, seam = g.tint ? DGREY : BLACK
+          const tower = g.type === 2 && u >= 16 && u < 48
+          const top = tower ? 52 : TOP
+          for (let y = top; y < BOT; y++) {
+            let v = plate
+            if (y < top + 2) v = LGREY
+            else if (y >= BOT - 3) v = DGREY
+            else if (tower && y < TOP) {
+              v = u === 16 ? WHITE : u === 47 ? DGREY : plate
+              if (y >= 58 && y < 61 && (u & 3) === 2 && u > 18 && u < 46) v = YELLOW
+            } else if (u === 0) v = seam
+            else if (u === 1) v = g.tint ? LGREY : GREY
+            else if (y === 104 || y === 132 || y === 160) v = seam
+            else if (u === 6 && (y === 90 || y === 174)) v = seam
+            else if (g.type === 0 && y >= 112 && y < 132 && u >= 14 && u < 42 && (u < 26 || u >= 30) && NUMS[s % 10][(u >= 30 ? 15 : 0) + Math.floor((y - 112) / 4) * 3 + Math.floor((u - (u >= 30 ? 30 : 14)) / 4)] === '1') v = g.tint ? LGREY : GREY
+            else if (g.type === 1 && u >= 20 && u < 44 && y >= 108 && y < 126) v = (y & 1) ? BLACK : DGREY
+            else if (g.type === 3 && y >= 138 && y < 154) {
+              const dy = Math.abs(y - 146), uu = (u - 10) % 18
+              if (u >= 10 && u < 56 && uu >= dy && uu < dy + 4) v = YELLOW
+            }
+            if (u >= 29 && u < 33 && y < BOT - 3 && !(tower && y < TOP)) {
+              for (let l = 0; l < 4; l++) if (y >= LANES[l] && y < LANES[l] + 2) v = st.lanes[l] > 0 ? (st.lanes[l] > 3 ? WHITE : CYAN) : (g.tint ? DGREY : BLACK)
+            }
+            p[y * W + x] = v
+          }
+        }
+        for (let l = 0; l < 4; l++) if (st.lanes[l] > 0) st.lanes[l]--
+        // flak puffs ride the hull
+        for (const f of st.puffs) {
+          const x = f.x - st.scroll, t = f.t++
+          if (t < 2) disc(p, x, f.y, 2 + t, t ? YELLOW : WHITE)
+          else if (t < 5) { ring(p, x, f.y, 3 + t, ORANGE); disc(p, x, f.y, 2, YELLOW) } else ring(p, x, f.y, 7, DGREY, 2)
+        }
+        st.puffs = st.puffs.filter(f => f.t < 8)
+        // fighter: altitude from bass, roll on kick
+        const target = 178 - (c.lastBass - 41) / 19 * 96
+        st.sy += (target - st.sy) * 0.12
+        let sy = st.base
+        if (st.roll >= 0) {
+          sy = Math.cos(Math.PI * st.roll / 8) * st.base
+          if (++st.roll > 8) { st.roll = -1; st.base = -st.base; st.flips++ }
+        }
+        const sx = 60, yy = Math.round(st.sy)
+        const hh = Math.max(2, Math.round(24 * Math.abs(sy)))
+        blit(p, SHIP, sx + 14, yy + 22 - hh / 2, { sy, shadow: DARK })
+        const rc = sy < 0 ? { 1: 12, 14: 6, 3: 6 } : {}
+        if (st.flame > 0) { rc[8] = YELLOW; rc[7] = WHITE; st.flame-- }
+        blit(p, SHIP, sx, yy - hh / 2, { sy, rc })
+        rect(p, 0, 0, W, 16, BLACK)
+        text(p, 'SECTOR ' + pad(st.sector, 3), 4, 3, WHITE)
+        const r = 'ROLL ' + pad(st.flips, 3)
+        text(p, r, W - 4 - textW(r), 3, LBLUE)
+      }
+    }
+  }
+})
+
+// 4. Track and field
+VIGNETTES.push({
+  id: 'track', title: 'DOWNBEAT DASH', cap: 'A nod to 80s joystick-waggling athletics games: a new sprinter clears a hurdle on every downbeat.',
+  maps: [
+    ['tempo', 'Tempo: running speed and stride rate'],
+    ['bar', 'Bar downbeat: a hurdle, cleared right on the one'],
+    ['hat', 'Hi-hats: a wave rolls along the crowd'],
+    ['snare', 'Snare: camera flashes in the stands'],
+    ['kick', 'Kick drum: dust kicks up behind the runner'],
+    ['bass', 'Bass pitch: the rival in lane 3 pulls ahead or drops back'],
+    ['arp', 'Arp notes: the scoreboard lights chase']
+  ],
+  make () {
+    const bg = new Uint8Array(W * H)
+    rect(bg, 0, 0, W, 16, BLACK)
+    rect(bg, 0, 16, W, 40, DGREY)
+    for (let y = 22; y < 56; y += 6) rect(bg, 0, y, W, 1, GREY)
+    const people = []
+    for (let r = 0; r < 6; r++) for (let x = 1 + (r & 1) * 2; x < W - 2; x += 4) {
+      const h = hash(r * 1000 + x)
+      if (h < 0.12) continue
+      people.push({ x, y: 17 + r * 6, skin: [LRED, ORANGE, BROWN, LRED][Math.floor(hash(h * 1e6) * 4)], shirt: [RED, CYAN, YELLOW, WHITE, LGREEN, LBLUE, PURPLE, ORANGE][Math.floor(h * 8)], id: r * 100 + x })
+    }
+    const boards = [[BLUE, WHITE, 'SID'], [YELLOW, BLACK, '6581'], [CYAN, BLACK, '8580'], [RED, WHITE, 'VIC II']]
+    for (let i = 0; i < 4; i++) {
+      const [b, f, t] = boards[i]
+      rect(bg, i * 60, 56, 60, 16, b)
+      rect(bg, i * 60, 56, 1, 16, BLACK)
+      text(bg, t, i * 60 + 30 - textW(t) / 2, 59, f)
+    }
+    rect(bg, 0, 72, W, 136, RED)
+    for (let y = 72; y < 208; y++) for (let x = 0; x < W; x++) if (hash(x * 7 + y * 1031) < 0.05) bg[y * W + x] = LRED
+    for (const y of [72, 106, 140, 174, 207]) rect(bg, 0, y, W, 1, WHITE)
+    text(bg, '1', 4, 78, WHITE); text(bg, '2', 4, 112, WHITE); text(bg, '3', 4, 146, WHITE); text(bg, '4', 4, 180, WHITE)
+    rect(bg, 0, 208, W, 32, GREEN)
+    for (let y = 212; y < 240; y += 8) rect(bg, 0, y, W, 3, LGREEN)
+    const P = 10, RX = 72
+    const st = { crowd: 0, wave: 0, flashes: [], dust: [], lights: 0, roff: 0, t: 0 }
+    return {
+      step (e, c) {
+        if (e.hat) { st.crowd = 3; st.wave = (st.wave + 1) % 6 }
+        if (e.snare) for (let k = 0; k < 2; k++) st.flashes.push({ q: people[Math.floor(hash(e.i * 7 + k) * people.length)], t: 2 })
+        if (e.kick) st.dust.push({ wx: c.pos * P + RX - 10, t: 0 })
+        if (e.arp !== null) st.lights = (st.lights + 1 + (e.arp % 3)) % 8
+      },
+      draw (p, c) {
+        p.set(bg)
+        st.t += FRAME_MS / 1000
+        for (const q of people) {
+          const up = st.crowd > 0 && Math.floor(q.x / 40) === st.wave
+          const y = q.y - (up ? 1 : 0)
+          rect(p, q.x, y, 2, 2, q.skin)
+          rect(p, q.x, y + 2, 2, 3, q.shirt)
+          if (up) { px(p, q.x - 1, y, q.skin); px(p, q.x + 2, y, q.skin) }
+        }
+        if (st.crowd > 0) st.crowd--
+        for (const f of st.flashes) { rect(p, f.q.x - 1, f.q.y + 1, 4, 1, WHITE); rect(p, f.q.x, f.q.y, 2, 3, WHITE); f.t-- }
+        st.flashes = st.flashes.filter(f => f.t > 0)
+        const cam = c.pos * P - RX
+        // ticks on the lane lines sell the speed
+        for (let wx = Math.floor(cam / 40) * 40; wx < cam + W + 40; wx += 40) {
+          const x = Math.round(wx - cam)
+          for (const y of [106, 140, 174]) rect(p, x, y + 1, 2, 3, WHITE)
+        }
+        // hurdles sit on every downbeat
+        const hk0 = Math.floor((cam - 40) / (16 * P)), hk1 = Math.ceil((cam + W + 40) / (16 * P))
+        for (let k = hk0; k <= hk1; k++) {
+          const x = Math.round(k * 16 * P - cam)
+          blit(p, HURDLE, x - 10, 170 - 20)
+          blit(p, HURDLE, x - 10, 204 - 20)
+        }
+        // rival in lane 2, placed by the bass
+        st.roff += (clamp((c.lastBass - 49) * 7, -56, 70) - st.roff) * 0.06
+        const rx = RX + st.roff, rw = cam + rx
+        const near = Math.round(rw / (16 * P)) * 16 * P, rd = (rw - near) / 16
+        const anim = Math.floor(c.pos * 2) & 3
+        if (Math.abs(rd) < 1) { const s = RIVAL.jump; blit(p, s, rx - 14, 170 - s.h * 2 - 24 * (1 - rd * rd)) } else { const s = RIVAL.run[anim]; blit(p, s, rx - 12, 170 - s.h * 2) }
+        // runner: hurdle on the downbeat
+        const d = c.pos - Math.round(c.pos / 16) * 16
+        for (const u of st.dust) {
+          const x = u.wx - cam, t = u.t++
+          px(p, x - t, 202 - t, BROWN); px(p, x - t * 2, 203 - t / 2, LRED); px(p, x - t - 3, 201 - t * 1.5, BROWN)
+        }
+        st.dust = st.dust.filter(u => u.t < 6)
+        if (Math.abs(d) < 1.6) { const s = RUNNER.jump, k = d / 1.6; blit(p, s, RX - 14, 204 - s.h * 2 - 26 * (1 - k * k)) } else { const s = RUNNER.run[anim]; blit(p, s, RX - 12, 204 - s.h * 2) }
+        // scoreboard
+        const cs = Math.floor(st.t * 100) % 6000
+        text(p, 'LANE 4', 4, 3, YELLOW)
+        text(p, Math.floor(cs / 100) + '.' + pad(cs % 100, 2), 64, 3, WHITE)
+        for (let i = 0; i < 8; i++) rect(p, 150 + i * 11, 4, 8, 8, i === st.lights && !c.mute.arp ? (i & 1 ? YELLOW : RED) : DGREY)
+      }
+    }
+  }
+})
+
+// 5. Boulder digger on the cell grid
+VIGNETTES.push({
+  id: 'warren', title: 'GEM WARREN', cap: 'A nod to 80s dig-and-dodge cave games: a new little digger tunnels while the music drops gems and rocks.',
+  maps: [
+    ['drums', 'Any drum hit: the digger moves one cell'],
+    ['arp', 'Arp notes: drop a gem; pitch picks the column'],
+    ['bass', 'Bass notes: drop a rock that falls and rolls; pitch picks the column'],
+    ['snare', 'Snare: every gem sparkles'],
+    ['kick', 'Kick drum: the digger swings its arms'],
+    ['bar', 'Bars: old tunnels slowly fill back in']
+  ],
+  make () {
+    const CW = 15, CR = 14, OY = 16
+    const EMPTY = 0, DIRT = 1, WALL = 2, ROCKC = 3, GEMC = 4
+    const g = new Uint8Array(CW * CR), age = new Uint16Array(CW * CR), gemCol = new Uint8Array(CW * CR)
+    const r = rng(1984)
+    for (let y = 0; y < CR; y++) for (let x = 0; x < CW; x++) {
+      const i = y * CW + x
+      g[i] = (x === 0 || y === 0 || x === CW - 1 || y === CR - 1) ? WALL : DIRT
+    }
+    for (let x = 3; x < 8; x++) g[5 * CW + x] = WALL
+    for (let x = 8; x < 12; x++) g[9 * CW + x] = WALL
+    for (let y = 1; y < 4; y++) for (let x = 9; x < 13; x++) g[y * CW + x] = EMPTY
+    g[2 * CW + 2] = EMPTY; g[2 * CW + 3] = EMPTY
+    for (const [x0, y0, w0, h0] of [[2, 7, 4, 2], [9, 6, 3, 2], [3, 10, 2, 3], [10, 10, 3, 3], [6, 3, 1, 2]]) for (let y = y0; y < y0 + h0; y++) for (let x = x0; x < x0 + w0; x++) g[y * CW + x] = EMPTY
+    const st = { dx: 2, dy: 2, face: 1, walk: 0, gems: 0, sparkle: 0, swing: 0, target: null, steps: 0, pending: [] }
+    const at = (x, y) => g[y * CW + x]
+    function stepPhysics () {
+      for (let y = CR - 2; y >= 1; y--) for (let x = 1; x < CW - 1; x++) {
+        const i = y * CW + x, v = g[i]
+        if (v !== ROCKC && v !== GEMC) continue
+        const below = (y + 1) * CW + x
+        const occupied = (xx, yy) => g[yy * CW + xx] !== EMPTY || (st.dx === xx && st.dy === yy)
+        if (!occupied(x, y + 1)) { g[below] = v; gemCol[below] = gemCol[i]; g[i] = EMPTY; age[i] = 0 } else if (g[below] === ROCKC || g[below] === GEMC) {
+          for (const dir of (hash(st.steps * 3 + x) < 0.5 ? [-1, 1] : [1, -1])) {
+            if (!occupied(x + dir, y) && !occupied(x + dir, y + 1)) { const j = y * CW + x + dir; g[j] = v; gemCol[j] = gemCol[i]; g[i] = EMPTY; age[i] = 0; break }
+          }
+        }
+      }
+    }
+    function nearestGem () {
+      let best = null, bd = 1e9
+      for (let y = 1; y < CR - 1; y++) for (let x = 1; x < CW - 1; x++) if (at(x, y) === GEMC) { const d = Math.abs(x - st.dx) + Math.abs(y - st.dy); if (d < bd) { bd = d; best = [x, y] } }
+      return best
+    }
+    function canEnter (x, y, dir) {
+      const v = at(x, y)
+      if (v === EMPTY || v === DIRT || v === GEMC) return true
+      if (v === ROCKC && dir !== 0 && at(x + dir, y) === EMPTY) return 'push'
+      return false
+    }
+    function moveDigger () {
+      let tgt = nearestGem()
+      if (!tgt) { if (!st.target || (st.target[0] === st.dx && st.target[1] === st.dy)) st.target = [1 + Math.floor(r() * (CW - 2)), 1 + Math.floor(r() * (CR - 2))]; tgt = st.target }
+      const ddx = Math.sign(tgt[0] - st.dx), ddy = Math.sign(tgt[1] - st.dy)
+      const opts = []
+      if (Math.abs(tgt[0] - st.dx) >= Math.abs(tgt[1] - st.dy)) { if (ddx) opts.push([ddx, 0]); if (ddy) opts.push([0, ddy]) } else { if (ddy) opts.push([0, ddy]); if (ddx) opts.push([ddx, 0]) }
+      opts.push(...[[1, 0], [-1, 0], [0, 1], [0, -1]].sort(() => r() - 0.5))
+      for (const [mx, my] of opts) {
+        const nx = st.dx + mx, ny = st.dy + my
+        const ok = canEnter(nx, ny, mx)
+        if (!ok) continue
+        if (ok === 'push') { g[ny * CW + nx + mx] = ROCKC; g[ny * CW + nx] = EMPTY }
+        const i = ny * CW + nx
+        if (g[i] === GEMC) { st.gems++; st.sparkle = Math.max(st.sparkle, 1) }
+        g[i] = EMPTY; age[i] = 0
+        if (mx) st.face = mx
+        st.dx = nx; st.dy = ny
+        st.target = st.target && st.target[0] === nx && st.target[1] === ny ? null : st.target
+        return
+      }
+    }
+    function drop (col, type, color) {
+      const i = 1 * CW + col
+      if (g[i] === WALL || (st.dx === col && st.dy === 1)) return
+      let count = 0
+      for (let k = 0; k < g.length; k++) if (g[k] === type) count++
+      if (count >= (type === ROCKC ? 10 : 8)) {
+        for (let k = 0; k < g.length; k++) if (g[k] === type) { g[k] = DIRT; break }
+      }
+      g[i] = type; gemCol[i] = color
+    }
+    return {
+      step (e, c) {
+        st.steps++
+        stepPhysics()
+        if (e.kick || e.snare || e.hat) { moveDigger(); st.walk ^= 1 }
+        if (e.kick) st.swing = 2
+        if (e.snare) st.sparkle = 3
+        if (e.arp !== null) drop(1 + (e.arp * 5) % 13, GEMC, e.arp % 5)
+        if (e.bass !== null && (e.s % 4 === 0)) drop(1 + ((e.bass - 36) * 7) % 13, ROCKC, 0)
+        // regrowth: one long-empty cell turns back to dirt
+        for (let k = 0; k < g.length; k++) if (g[k] === EMPTY) age[k]++
+        const i = Math.floor(r() * g.length), x = i % CW, y = Math.floor(i / CW)
+        if (g[i] === EMPTY && age[i] > 48 && !(x === st.dx && y === st.dy) && g[i - CW] !== ROCKC && g[i - CW] !== GEMC) g[i] = DIRT
+      },
+      draw (p, c) {
+        rect(p, 0, 0, W, 16, BLACK)
+        for (let y = 0; y < CR; y++) for (let x = 0; x < CW; x++) {
+          const i = y * CW + x, X = x * 16, Y = OY + y * 16, v = g[i]
+          if (v === WALL) {
+            rect(p, X, Y, 16, 16, GREY); rect(p, X, Y, 16, 1, LGREY); rect(p, X, Y, 1, 16, LGREY)
+            rect(p, X, Y + 15, 16, 1, DGREY); rect(p, X + 15, Y, 1, 16, DGREY)
+            rect(p, X, Y + 7, 16, 1, DGREY); rect(p, X + ((y & 1) ? 4 : 11), Y, 1, 7, DGREY); rect(p, X + ((y & 1) ? 11 : 4), Y + 8, 1, 7, DGREY)
+          } else if (v === DIRT) {
+            rect(p, X, Y, 16, 16, BROWN)
+            for (let k = 0; k < 7; k++) { const hx = hash(i * 31 + k), hy = hash(i * 57 + k); rect(p, X + Math.floor(hx * 15), Y + Math.floor(hy * 15), 2, 1, k & 1 ? ORANGE : DGREY) }
+          } else {
+            rect(p, X, Y, 16, 16, BLACK)
+            if (v === ROCKC) blit(p, ROCK, X, Y)
+            if (v === GEMC) {
+              blit(p, GEMS[gemCol[i]], X, Y)
+              if (st.sparkle > 0 && ((x + y + st.sparkle) % 2 === 0)) blit(p, SPARK, X + 6, Y - 2, { sc: 1 })
+            }
+          }
+        }
+        const dX = st.dx * 16, dY = OY + st.dy * 16
+        blit(p, DIG[st.swing > 0 ? 1 : st.walk], dX, dY, { fx: st.face < 0 })
+        if (st.swing > 0) st.swing--
+        if (st.sparkle > 0 && c.frame % 3 === 0) st.sparkle--
+        text(p, 'GEMS ' + pad(st.gems, 3), 4, 3, CYAN)
+        blit(p, GEMS[0], 220, 0)
+      }
+    }
+  }
+})
+
+// 6. Agent in a corridor with lifts
+VIGNETTES.push({
+  id: 'agent', title: 'LIFT & LEAP', cap: 'A nod to 80s infiltration platformers with lifts and patrol robots: a new agent crosses one floor per loop.',
+  maps: [
+    ['hat', 'Hi-hats: the agent\'s footsteps'],
+    ['fill', 'Bar-4 snare: the agent somersaults over the patrol robot'],
+    ['bass', 'Bass pitch: the lift rides up and down'],
+    ['kick', 'Kick drum: the robot\'s eye flashes; on the loop\'s first beat it beams out'],
+    ['arp', 'Arp notes: tape reels turn and console lights change'],
+    ['snare', 'Snare: the alarm lamp blinks'],
+    ['cutoff', 'Filter cutoff: the sky outside the window'],
+    ['drums', 'Drums muted: the agent waits behind the door']
+  ],
+  make () {
+    const bg = new Uint8Array(W * H)
+    rect(bg, 0, 0, W, 16, BLACK)
+    rect(bg, 0, 16, W, 224, BLUE)
+    for (let x = 0; x < W; x += 24) rect(bg, x, 16, 1, 88, PURPLE)
+    for (let x = 12; x < W; x += 24) rect(bg, x, 112, 1, 96, PURPLE)
+    rect(bg, 0, 104, W, 8, GREY); rect(bg, 0, 104, W, 1, LGREY); rect(bg, 0, 111, W, 1, DGREY)
+    rect(bg, 0, 208, W, 8, GREY); rect(bg, 0, 208, W, 1, LGREY); rect(bg, 0, 215, W, 1, DGREY)
+    rect(bg, 0, 216, W, 24, BLACK)
+    for (let x = 0; x < W; x += 16) rect(bg, x + 4, 222, 8, 2, DGREY)
+    // lift shaft
+    rect(bg, 112, 16, 34, 192, BLACK)
+    rect(bg, 112, 16, 2, 192, DGREY); rect(bg, 144, 16, 2, 192, DGREY)
+    for (let y = 18; y < 206; y += 8) { px(bg, 116, y, DGREY); px(bg, 141, y + 4, DGREY) }
+    // doors at both ends of the lower corridor
+    for (const dx of [0, 226]) { rect(bg, dx, 160, 14, 48, DGREY); rect(bg, dx + (dx ? 0 : 12), 160, 2, 48, BLACK); rect(bg, dx + 2, 162, 10, 44, GREY) }
+    // window frame on the upper floor
+    rect(bg, 164, 34, 52, 40, LGREY); rect(bg, 166, 36, 48, 36, BLACK)
+    // consoles on the upper floor
+    rect(bg, 14, 64, 76, 40, GREY); rect(bg, 14, 64, 76, 1, LGREY)
+    rect(bg, 54, 70, 30, 18, BLACK)
+    rect(bg, 20, 92, 64, 6, DGREY)
+    const st = { foot: 0, eye: 0, alarm: 0, reel: 0, ledSeed: 0, liftY: 170, beam: 0, leaps: 0, bar: 0 }
+    const AGENT_SPEED = 2
+    return {
+      step (e, c) {
+        st.bar = e.bar
+        if (e.hat) st.foot = (st.foot + 1) % 3
+        if (e.kick) st.eye = 3
+        if (e.kick && e.i % 64 === 0) st.beam = 6
+        if (e.snare && !e.fill) st.alarm = 4
+        if (e.arp !== null) { st.reel ^= 1; st.ledSeed = e.arp }
+        if (e.fill && e.s === 12) st.leaps++
+      },
+      draw (p, c) {
+        p.set(bg)
+        // window sky from cutoff
+        const sky = c.cutoff < 0.33 ? BLACK : c.cutoff < 0.66 ? PURPLE : CYAN
+        rect(p, 166, 36, 48, 36, sky)
+        rect(p, 166, 60, 48, 12, c.cutoff < 0.33 ? DGREY : c.cutoff < 0.66 ? BLUE : LBLUE)
+        for (const [bx, bh] of [[168, 18], [178, 26], [190, 14], [200, 22]]) rect(p, bx, 72 - bh, 9, bh, c.cutoff < 0.33 ? BLUE : DGREY)
+        if (c.cutoff < 0.33) { px(p, 172, 40, WHITE); px(p, 198, 44, WHITE); px(p, 207, 39, LGREY) }
+        rect(p, 189, 36, 2, 36, LGREY); rect(p, 166, 53, 48, 1, LGREY)
+        // consoles: reels and lights
+        blit(p, REEL[st.reel], 18, 68); blit(p, REEL[st.reel ^ 1], 34, 68, { fx: true })
+        for (let i = 0; i < 12; i++) {
+          const on = hash(st.ledSeed * 13 + i) < 0.5 && !c.mute.arp
+          rect(p, 56 + (i % 6) * 5, 72 + Math.floor(i / 6) * 8, 3, 3, on ? (i & 1 ? LGREEN : YELLOW) : DGREY)
+        }
+        for (let i = 0; i < 3; i++) rect(p, 58, 80 + i * 2, 4 + ((st.ledSeed + i * 5) % 20), 1, c.mute.arp ? DGREY : LGREEN)
+        // alarm lamp
+        rect(p, 100, 22, 8, 6, st.alarm > 0 ? RED : DGREY)
+        if (st.alarm > 0) { rect(p, 98, 24, 1, 2, RED); rect(p, 109, 24, 1, 2, RED); st.alarm-- }
+        // lift from bass pitch
+        const ly = 200 - clamp((c.lastBass - 41) / 19, 0, 1) * 96
+        st.liftY += (ly - st.liftY) * 0.2
+        const L = Math.round(st.liftY)
+        rect(p, 128, 16, 2, L - 40 - 16, LGREY)
+        rect(p, 114, L - 40, 30, 2, GREY); rect(p, 114, L - 40, 2, 40, DGREY); rect(p, 142, L - 40, 2, 40, DGREY)
+        rect(p, 114, L, 30, 6, LGREY); rect(p, 114, L + 5, 30, 1, DGREY)
+        // robot: rolls left, meets the agent on the bar-4 snare
+        const q = ((c.pos % 64) + 64) % 64
+        const rx = 160 + (61.5 - q) * 3
+        if (st.beam > 0) {
+          for (let k = 0; k < 6; k++) rect(p, 150 + hash(c.frame * 7 + k) * 24, 180 + hash(c.frame * 3 + k) * 26, 2, 2, k & 1 ? WHITE : CYAN)
+          st.beam--
+        } else if (rx < 234) {
+          blit(p, ROBOT[c.frame & 1], rx - 12, 208 - 28, { rc: st.eye > 0 ? { 2: 1 } : { 2: 2 } })
+          px(p, rx - 7 + ((c.frame >> 1) % 6) * 2, 188, st.eye > 0 ? YELLOW : RED)
+        }
+        if (st.eye > 0) st.eye--
+        // agent
+        if (!c.mute.drums) {
+          let ax, ay = 208, spr
+          if (q < 60) { ax = 10 + q * AGENT_SPEED; spr = [AGENT.a, AGENT.stand, AGENT.b][st.foot] }
+          if (q >= 60 && q < 63) {
+            const t = (q - 60) / 3
+            ax = 130 + t * 64
+            ay = 208 - Math.sin(Math.PI * t) * 52
+            const tk = TUCK[Math.min(3, Math.floor(t * 4))]
+            blit(p, tk, ax - 10, ay - 30)
+          } else {
+            if (q >= 63) { ax = 194 + (q - 63) * 34; spr = AGENT.a }
+            if (ax < 234) blit(p, spr, ax - 12, ay - spr.h * 2)
+          }
+        }
+        // door overlays hide entries and exits
+        rect(p, 226, 160, 14, 48, DGREY); rect(p, 228, 162, 10, 44, GREY)
+        if (c.mute.drums) { rect(p, 0, 160, 14, 48, DGREY); rect(p, 2, 162, 10, 44, GREY) }
+        text(p, 'FLOOR 4', 4, 3, WHITE)
+        const lt = 'LEAPS ' + pad(st.leaps, 2)
+        text(p, lt, W - 4 - textW(lt), 3, YELLOW)
+      }
+    }
+  }
+})
+
+// =====================================================================
+// LATE ERA (1988-93 style). Parallax bands, shaded multicolour sprites,
+// colour cycling and raster-split skies, all in the 16 Pepto colours.
+// =====================================================================
+const T = 255
+const BAY = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
+const bay = (x, y) => BAY[(y & 3) * 4 + (x & 3)]
+const bayW = (x, y) => BAY[(y & 3) * 4 + ((x >> 1) & 3)]
+// 2x2 ordered dither on wide (2 px) pixels: repeats every 4 px, so a band that moves in 4 px steps never changes it
+const bay2 = (x, y) => [0, 8, 12, 4][((x >> 1) & 1) + ((y & 1) << 1)]
+const rad = a => a * Math.PI / 180
+const lerp2 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
+
+// Raster-split gradient: flat colour bands joined by short ordered-dither seams, the way C64 raster bars were faded.
+function gradient (buf, y0, y1, stops, seam) {
+  for (let y = y0; y < y1; y++) {
+    let i = 0
+    while (i + 1 < stops.length && y >= stops[i + 1][0]) i++
+    const nx = stops[i + 1]
+    for (let x = 0; x < W; x++) {
+      let v = stops[i][1]
+      if (nx && y >= nx[0] - seam && bayW(x, y) < (y - (nx[0] - seam) + 0.5) / seam * 16) v = nx[1]
+      buf[y * W + x] = v
+    }
+  }
+}
+
+// A wrapping layer strip (T = transparent) and the compositor that scrolls it.
+function surf (w, h) { return { w, h, d: new Uint8Array(w * h).fill(T) } }
+function layer (p, s, y0, off) {
+  const w = s.w, o = ((Math.floor(off) % w) + w) % w
+  for (let y = 0; y < s.h; y++) {
+    const Y = y0 + y
+    if (Y < 0 || Y >= H) continue
+    const row = y * w, out = Y * W
+    let sx = o
+    for (let x = 0; x < W; x++) { const v = s.d[row + sx]; if (v !== T) p[out + x] = v; if (++sx === w) sx = 0 }
+  }
+}
+// Paste a painted sprite into a strip, wrapping at the strip's width.
+function stamp (s, spr, x, y) {
+  const gx = spr.gx || 1
+  for (let r = 0; r < spr.h; r++) {
+    const Y = y + r
+    if (Y < 0 || Y >= s.h) continue
+    for (let c = 0; c < spr.w * gx; c++) {
+      const v = spr.d[r * spr.w + Math.floor(c / gx)]
+      if (v < 0) continue
+      const X = (((x + c) % s.w) + s.w) % s.w
+      s.d[Y * s.w + X] = v
+    }
+  }
+}
+// Draw a painted sprite on screen; gx = 2 sprites use C64 multicolour wide pixels.
+function put (p, s, x, y, o) {
+  const g = s.gx || 1
+  blit(p, s, x, y, Object.assign({ sc: g, sy: 1 / g }, o))
+}
+
+// ---------- the painter: shapes become shaded, outlined pixel art ----------
+// Every shape is a "part" with a 4-step colour ramp [shadow, base, light, highlight].
+// Shading is rim lighting on the part's silhouette, with ordered-dither half steps,
+// and a part tucked behind a later part gets a cast shadow along that edge.
+function painter (w, h, gx) {
+  gx = gx || 2
+  const cw = Math.ceil(w / gx)
+  const id = new Int16Array(cw * h).fill(-1)
+  const ink = new Int8Array(cw * h).fill(-1)
+  const ramps = [], groups = []
+  let cur = null
+  function add (ramp, x0, y0, x1, y1, test) {
+    const k = ramps.length
+    groups.push(cur === null ? 'p' + k : cur)
+    ramps.push(typeof ramp === 'number' ? [ramp, ramp, ramp, ramp] : ramp)
+    const a = Math.max(0, Math.floor(x0 / gx) - 1), b = Math.min(cw - 1, Math.ceil(x1 / gx) + 1)
+    const c = Math.max(0, Math.floor(y0) - 1), d = Math.min(h - 1, Math.ceil(y1) + 1)
+    for (let y = c; y <= d; y++) for (let x = a; x <= b; x++) if (test(x * gx + gx / 2, y + 0.5)) id[y * cw + x] = k
+    return k
+  }
+  const P = {
+    gx, cw, h,
+    group (g) { cur = g === undefined ? null : g },
+    cap (ax, ay, bx, by, r0, r1, ramp) {
+      const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1e-6, rm = Math.max(r0, r1)
+      return add(ramp, Math.min(ax, bx) - rm, Math.min(ay, by) - rm, Math.max(ax, bx) + rm, Math.max(ay, by) + rm, (x, y) => {
+        let t = ((x - ax) * dx + (y - ay) * dy) / L2
+        t = t < 0 ? 0 : t > 1 ? 1 : t
+        const ex = ax + dx * t - x, ey = ay + dy * t - y, r = r0 + (r1 - r0) * t
+        return ex * ex + ey * ey <= r * r
+      })
+    },
+    ell (cx, cy, rx, ry, ramp, rot) {
+      const ca = Math.cos(rad(rot || 0)), sa = Math.sin(rad(rot || 0)), m = Math.max(rx, ry)
+      return add(ramp, cx - m, cy - m, cx + m, cy + m, (x, y) => {
+        const u = (x - cx) * ca + (y - cy) * sa, v = -(x - cx) * sa + (y - cy) * ca
+        return (u * u) / (rx * rx) + (v * v) / (ry * ry) <= 1
+      })
+    },
+    poly (pts, ramp) {
+      let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9
+      for (let i = 0; i < pts.length; i += 2) { x0 = Math.min(x0, pts[i]); x1 = Math.max(x1, pts[i]); y0 = Math.min(y0, pts[i + 1]); y1 = Math.max(y1, pts[i + 1]) }
+      return add(ramp, x0, y0, x1, y1, (x, y) => {
+        let inside = false
+        for (let i = 0, j = pts.length - 2; i < pts.length; j = i, i += 2) {
+          const xi = pts[i], yi = pts[i + 1], xj = pts[j], yj = pts[j + 1]
+          if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside
+        }
+        return inside
+      })
+    },
+    box (x, y, w2, h2, ramp) { return add(ramp, x, y, x + w2, y + h2, (px2, py) => px2 >= x && px2 < x + w2 && py >= y && py < y + h2) },
+    shape (x0, y0, x1, y1, ramp, test) { return add(ramp, x0, y0, x1, y1, test) },
+    cut (x0, y0, x1, y1, test) {
+      for (let y = Math.max(0, Math.floor(y0)); y <= Math.min(h - 1, Math.ceil(y1)); y++) for (let x = Math.max(0, Math.floor(x0 / gx)); x <= Math.min(cw - 1, Math.ceil(x1 / gx)); x++) if (test(x * gx + gx / 2, y + 0.5)) id[y * cw + x] = -1
+    },
+    dot (x, y, c) { x = Math.floor(x / gx); y = Math.floor(y); if (x >= 0 && x < cw && y >= 0 && y < h) ink[y * cw + x] = c },
+    line (ax, ay, bx, by, c) {
+      const n = Math.max(1, Math.ceil(Math.max(Math.abs(bx - ax) / gx, Math.abs(by - ay))))
+      for (let i = 0; i <= n; i++) P.dot(ax + (bx - ax) * i / n, ay + (by - ay) * i / n, c)
+    },
+    done (o) {
+      o = o || {}
+      const lx = o.lx === undefined ? -1 : o.lx, ly = o.ly === undefined ? -1 : o.ly
+      const out = new Int8Array(cw * h).fill(-1)
+      const get = (x, y) => (x < 0 || y < 0 || x >= cw || y >= h) ? -1 : id[y * cw + x]
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < cw; x++) {
+          const k = id[y * cw + x]
+          if (k < 0) continue
+          const R = ramps[k]
+          const edge = (xx, yy) => get(xx, yy) < k
+          let dLx = 99, dLy = 99, dSx = 99, dSy = 99
+          if (lx) { for (let s = 1; s <= 3; s++) if (edge(x + lx * s, y)) { dLx = s * gx; break } for (let s = 1; s <= 3; s++) if (edge(x - lx * s, y)) { dSx = s * gx; break } }
+          if (ly) { for (let s = 1; s <= 5; s++) if (edge(x, y + ly * s)) { dLy = s; break } for (let s = 1; s <= 5; s++) if (edge(x, y - ly * s)) { dSy = s; break } }
+          const dL = Math.min(dLx, dLy), dS = Math.min(dSx, dSy), ch = (x + y) & 1
+          let lv
+          const thick = !o.flat && Math.min(dLx + dSx, dLy + dSy) > 9
+          if (thick && dLx <= gx && dLy <= 1) lv = 3
+          else if (dL <= 2) lv = 2
+          else if (dS <= 2) lv = 0
+          else if (thick && dL <= 4) lv = ch ? 2 : 1
+          else if (thick && dS <= 4) lv = ch ? 0 : 1
+          else lv = 1
+          const front = j => j > k && groups[j] !== groups[k]
+          if (o.sep !== false && lv > 0 && (front(get(x + 1, y)) || front(get(x - 1, y)) || front(get(x, y + 1)) || front(get(x, y - 1)))) lv = 0
+          out[y * cw + x] = R[lv]
+          if (o.inner !== undefined) {
+            const back = j => j >= 0 && j < k && groups[j] !== groups[k]
+            if (back(get(x + 1, y)) || back(get(x - 1, y)) || back(get(x, y + 1)) || back(get(x, y - 1))) out[y * cw + x] = o.inner
+          }
+        }
+      }
+      for (let i = 0; i < out.length; i++) { if (ink[i] >= 0) out[i] = ink[i]; else if (ink[i] === -2) out[i] = -1 }
+      if (o.outline !== -1) {
+        const oc = o.outline === undefined ? BLACK : o.outline
+        const src = out.slice()
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < cw; x++) {
+            const i = y * cw + x
+            if (src[i] >= 0) continue
+            if ((x > 0 && src[i - 1] >= 0) || (x < cw - 1 && src[i + 1] >= 0) || (y > 0 && src[i - cw] >= 0) || (y < h - 1 && src[i + cw] >= 0)) out[i] = oc
+          }
+        }
+      }
+      return { w: cw, h, d: out, gx }
+    }
+  }
+  return P
+}
+const ERASE = -2
+const DEV = []
+
+// ---------- puppets: forward kinematics for side-on figures ----------
+// Angles are in degrees from straight down; positive swings toward the facing side, 180 points straight up.
+function puppet (S, Q) {
+  const P = painter(S.w, S.h, S.gx)
+  const hip = [S.hx + (Q.dx || 0), S.hy + (Q.dy || 0)]
+  const lean = Q.lean || 0
+  const go = (o, a, L) => [o[0] + Math.sin(rad(a)) * L, o[1] + Math.cos(rad(a)) * L]
+  const neck = go(hip, 180 + lean, S.torso)
+  const head = go(neck, 180 + lean + (Q.head || 0), S.neck)
+  const shF = [neck[0] + S.sh[0], neck[1] + S.sh[1]], shB = [neck[0] - S.sh[2], neck[1] + S.sh[3]]
+  const kneeB = go(hip, Q.tb, S.thigh), ankB = go(kneeB, Q.sb, S.shin)
+  const kneeF = go(hip, Q.tf, S.thigh), ankF = go(kneeF, Q.sf, S.shin)
+  const elB = go(shB, Q.ub, S.upper), haB = go(elB, Q.fb, S.fore)
+  const elF = go(shF, Q.uf, S.upper), haF = go(elF, Q.ff, S.fore)
+  const J = { hip, neck, head, shF, shB, kneeB, ankB, kneeF, ankF, elB, haB, elF, haF, lean, go }
+  S.paint(P, J, Q)
+  const s = P.done({ lx: S.lx, ly: S.ly, inner: S.inner })
+  s.j = J
+  return s
+}
+const poseMix = (a, b, t) => { const o = {}; for (const k in a) o[k] = typeof a[k] === 'number' ? a[k] + ((b[k] === undefined ? a[k] : b[k]) - a[k]) * t : a[k]; return o }
+function cacheBy (fn) { const m = new Map(); return (k, ...a) => { let v = m.get(k); if (!v) { v = fn(...a); m.set(k, v) } return v } }
+
+// Simple palette remap of a painted sprite (for night tints, second players, flashes).
+function recolour (s, map) { const d = new Int8Array(s.d.length); for (let i = 0; i < d.length; i++) { const v = s.d[i]; d[i] = v >= 0 && map[v] !== undefined ? map[v] : v } return { w: s.w, h: s.h, d, gx: s.gx } }
+
+// ---------- shared late-era sprites ----------
+const PLATE = [GREY, LGREY, WHITE, WHITE], PLATE_B = [DGREY, GREY, LGREY, LGREY], SUIT = [DGREY, BLUE, LBLUE, LBLUE], SUIT_B = [BLACK, BLUE, BLUE, LBLUE]
+const HERO = {
+  w: 60, h: 58, gx: 2, hx: 24, hy: 30, torso: 11, neck: 6, thigh: 10, shin: 10, upper: 7, fore: 6, sh: [1, 2, 3, 2],
+  paint (P, J, Q) {
+    const VIS = [BLUE, CYAN, WHITE, WHITE], GLOW = [ORANGE, YELLOW, WHITE, WHITE], RED_ = [BROWN, RED, LRED, WHITE]
+    const chest = lerp2(J.hip, J.neck, 0.68)
+    P.ell(chest[0] - 6, chest[1] + 1, 3.6, 6.5, RED_)
+    P.group('ab'); P.cap(...J.shB, ...J.elB, 2.6, 2.3, SUIT_B); P.cap(...J.elB, ...J.haB, 2.6, 3, PLATE_B); P.group()
+    P.group('lb'); P.cap(...J.hip, ...J.kneeB, 3.8, 3, SUIT_B); P.cap(...J.kneeB, ...J.ankB, 3.2, 3.6, PLATE_B)
+    P.cap(J.ankB[0] - 1, J.ankB[1] + 1, J.ankB[0] + 5, J.ankB[1] + 1.6, 2.7, 2.3, PLATE_B); P.group()
+    P.group('t'); P.cap(...J.hip, ...lerp2(J.hip, J.neck, 0.5), 4.2, 4.4, SUIT); P.group()
+    P.box(J.hip[0] - 5, J.hip[1] - 2, 10, 3, RED_)
+    P.ell(chest[0] + 0.5, chest[1], 6.6, 5.8, PLATE, J.lean)
+    P.ell(J.head[0], J.head[1], 5.4, 5.6, PLATE)
+    P.ell(J.head[0] + 3, J.head[1] + 0.8, 3.4, 2.3, VIS)
+    P.cap(J.head[0] - 4.5, J.head[1] - 3.5, J.head[0] + 1, J.head[1] - 6.5, 1.7, 1.1, RED_)
+    P.group('lf'); P.cap(...J.hip, ...J.kneeF, 4, 3.1, SUIT)
+    P.cap(...J.kneeF, ...J.ankF, 3.3, 3.8, PLATE); P.group()
+    P.ell(J.kneeF[0] + 1.5, J.kneeF[1], 3, 2.6, RED_)
+    P.group('lf'); P.cap(J.ankF[0] - 1, J.ankF[1] + 1, J.ankF[0] + 6, J.ankF[1] + 1.6, 2.9, 2.4, PLATE); P.group()
+    P.group('af'); P.cap(...J.shF, ...J.elF, 2.6, 2.4, SUIT); P.group()
+    P.ell(J.shF[0] - 0.5, J.shF[1] + 0.5, 5.4, 4.4, RED_)
+    const tip = J.go(J.elF, Q.ff, 10)
+    P.cap(...J.elF, ...tip, 3.3, 2.8, PLATE)
+    P.box(tip[0] - 4, tip[1] - 3.2, 2, 6.4, [BLACK, DGREY, GREY, GREY])
+    P.ell(tip[0] + 1, tip[1], 1.6, 2.4, GLOW)
+    P.dot(chest[0] + 3, chest[1] - 1, CYAN); P.dot(chest[0] + 3, chest[1], BLUE)
+    P.dot(J.head[0] + 4.5, J.head[1], WHITE)
+    J.tip = tip
+  }
+}
+const RUN = [[38, 8, -28, -55, 0, 25], [18, -20, -10, -85, -1, 10], [-4, -40, 16, -30, -1, -10], [-28, -55, 38, 8, 0, -25], [-10, -85, 18, -20, -1, -10], [16, -30, -4, -40, -1, 10]]
+const heroPose = (f, air) => {
+  if (air) return { lean: 6, tf: 70, sf: -15, tb: 5, sb: -70, uf: 30, ff: 90, ub: -40, fb: 10, dy: -2 }
+  const r = RUN[f]
+  return { lean: 12, tf: r[0], sf: r[1], tb: r[2], sb: r[3], dy: r[4], uf: 18 + r[5] * 0.3, ff: 92, ub: -r[5] * 1.4, fb: -r[5] + 50 }
+}
+const heroSpr = cacheBy((f, air) => { const s = puppet(HERO, heroPose(f, air)); return s })
+for (let f = 0; f < 6; f++) DEV.push(['hero' + f, puppet(HERO, heroPose(f, false))])
+DEV.push(['heroJ', puppet(HERO, heroPose(0, true))])
+const ORB = (() => { const P = painter(12, 12, 1); P.ell(6, 6, 5, 5, [PURPLE, LBLUE, CYAN, WHITE]); P.ell(6, 6, 2, 2, [CYAN, WHITE, WHITE, WHITE]); return P.done() })()
+const PLANT = (() => {
+  const P = painter(16, 28, 2)
+  P.cap(8, 27, 7, 12, 1.4, 1.1, [BLACK, GREEN, LGREEN, LGREEN])
+  P.cap(7, 22, 3, 17, 1, 1, [BLACK, GREEN, LGREEN, LGREEN])
+  P.cap(8, 19, 13, 15, 1, 1, [BLACK, GREEN, LGREEN, LGREEN])
+  P.ell(7, 8, 5, 6, [ORANGE, YELLOW, WHITE, WHITE])
+  P.ell(3, 15, 2.2, 2.6, [ORANGE, YELLOW, WHITE, WHITE]); P.ell(13, 13, 2, 2.4, [ORANGE, YELLOW, WHITE, WHITE])
+  return P.done()
+})()
+
+// ---------- 7. Run-and-gun ----------
+VIGNETTES.push({
+  id: 'stride', era: 'late', title: 'IRON STRIDE', cap: 'A nod to late-80s run-and-gun action games: a new armoured trooper sprints across an alien world the music builds as it goes.',
+  maps: [
+    ['kick', 'Kick drum: the arm cannon fires a beam'],
+    ['snare', 'Snare: the trooper jumps'],
+    ['bass', 'Bass pitch: the height of the ground scrolling in from the right'],
+    ['arp', 'Arp notes: power-up orbs light up ahead; running through one scores it'],
+    ['hat', 'Hi-hats: the stars and pod plants twinkle'],
+    ['cutoff', 'Filter cutoff: the raster sky shifts between dawn, dusk and night, one band at a time'],
+    ['tempo', 'Tempo: running speed (bigger steps, not more updates, so it costs nothing)']
+  ],
+  bands: [
+    { id: 'hud', name: 'Status bar', kind: 'hud', y0: 0, y1: 16 },
+    { id: 'sky', name: 'Raster sky', kind: 'sky', y0: 16, y1: 72 },
+    { id: 'far', name: 'Far mountains', kind: 'far', y0: 72, y1: 120, speed: 0.75, every: 8, phase: 1 },
+    { id: 'mid', name: 'Ruins and pipes', kind: 'mid', y0: 120, y1: 160, speed: 2, every: 2, phase: 0 },
+    { id: 'near', name: 'Ground', kind: 'near', y0: 160, y1: 240, speed: 4, every: 1, phase: 0, q: 4, hw: true }
+  ],
+  make (mode) {
+    const PALS = [
+      { name: 'NIGHT', stops: [[16, BLACK], [30, BLUE], [60, PURPLE], [100, LBLUE], [114, PURPLE], [132, BLUE], [152, BLACK]], stars: true },
+      { name: 'DUSK', stops: [[16, BLUE], [32, PURPLE], [62, RED], [90, LRED], [108, YELLOW], [114, LRED], [128, RED], [148, BROWN]], stars: true },
+      { name: 'DAWN', stops: [[16, BLUE], [28, LBLUE], [58, CYAN], [92, LGREY], [106, WHITE], [114, LGREY], [128, CYAN], [148, LBLUE]], stars: false }
+    ]
+    const planet = (() => {
+      const P = painter(64, 40, 2), cx = 32, cy = 20
+      P.ell(cx, cy, 27, 6, [DGREY, GREY, LGREY, WHITE], -14)
+      P.cut(0, 0, 64, 40, (x, y) => { const u = (x - cx) * Math.cos(rad(-14)) + (y - cy) * Math.sin(rad(-14)), v = -(x - cx) * Math.sin(rad(-14)) + (y - cy) * Math.cos(rad(-14)); return (u * u) / 420 + (v * v) / 10 <= 1 })
+      P.ell(cx, cy, 14, 14, [BROWN, ORANGE, LRED, YELLOW])
+      for (const [dy, c] of [[-6, BROWN], [-1, LRED], [4, BROWN], [8, ORANGE]]) for (let x = cx - 14; x < cx + 14; x += 2) if (Math.hypot(x + 1 - cx, dy) < 12.5 && bayW(x, dy + 40) < 10) P.dot(x, cy + dy, c)
+      P.shape(0, 0, 64, 40, [DGREY, GREY, LGREY, WHITE], (x, y) => {
+        const u = (x - cx) * Math.cos(rad(-14)) + (y - cy) * Math.sin(rad(-14)), v = -(x - cx) * Math.sin(rad(-14)) + (y - cy) * Math.cos(rad(-14))
+        return v > 0.5 && (u * u) / 729 + (v * v) / 36 <= 1 && (u * u) / 420 + (v * v) / 10 > 1
+      })
+      return P.done({ outline: -1 })
+    })()
+    const bgs = PALS.map(pl => {
+      const b = new Uint8Array(W * H)
+      // dithered seams in the open sky; hard raster splits behind the scrolling bands, so a hardware-scrolled band carries no dither
+      gradient(b, 16, 72, pl.stops, 4)
+      gradient(b, 72, H, pl.stops, 0)
+      if (pl.stars) for (let i = 0; i < 40; i++) { const x = Math.floor(hash(i * 5 + 1) * W), y = 18 + Math.floor(hash(i * 5 + 2) * 50); b[y * W + x] = hash(i * 5 + 3) < 0.3 ? WHITE : hash(i * 5 + 3) < 0.7 ? LGREY : GREY }
+      put(b, planet, 150, 22)
+      return b
+    })
+    const twinkle = Array.from({ length: 8 }, (_, i) => [Math.floor(hash(i * 11 + 7) * W), 18 + Math.floor(hash(i * 11 + 8) * 40)])
+    // far mountains: one range of crystal spires on a 480 px loop; steep, sparse peaks touch few tiles when they shift
+    const far = surf(480, 48)
+    const peaks = (n, seed, h0, h1, s0, s1) => { const r = rng(seed); return Array.from({ length: n }, () => ({ x: r() * 480, h: h0 + r() * (h1 - h0), s: s0 + r() * (s1 - s0) })) }
+    const back = peaks(7, 3, 22, 46, 1.1, 1.7)
+    const ridge = (pk, x) => { let best = -1e9, who = null; for (const q of pk) { let dx = x - q.x; dx -= Math.round(dx / 480) * 480; const h = q.h - q.s * Math.abs(dx); if (h > best) { best = h; who = dx } } return [best, who] }
+    for (let x = 0; x < 480; x += 2) {
+      const [hb0, db] = ridge(back, x)
+      const hb = Math.max(hb0, 8)
+      for (let y = 0; y < 48; y++) {
+        const up = 48 - y
+        let v = T
+        if (up <= hb) {
+          const lit = db < 0, deep = hb - up
+          v = lit ? LBLUE : PURPLE
+          if (deep < 6) v = lit ? (deep < 2 ? WHITE : LGREY) : (deep < 2 ? LGREY : GREY)
+        }
+        far.d[y * 480 + x] = far.d[y * 480 + x + 1] = v
+      }
+    }
+    // mid layer: ruined columns, a broken arch and pipework, shaded by the painter
+    const mid = surf(384, 40)
+    {
+      const STONE = [DGREY, GREY, LGREY, WHITE], PIPE = [BROWN, ORANGE, LRED, LRED], RUST = [BLACK, DGREY, GREY, LGREY]
+      const P = painter(448, 40, 2)
+      P.cap(-8, 30, 456, 30, 4, 4, PIPE)
+      P.cap(-8, 13, 120, 13, 2.5, 2.5, PIPE); P.cap(120, 13, 126, 22, 2.5, 2.5, PIPE)
+      P.cap(200, 18, 330, 18, 2, 2, RUST)
+      for (const x of [20, 84, 148, 212, 276, 340]) { P.box(x, 24, 6, 13, [BLACK, DGREY, GREY, LGREY]); P.box(x - 1, 23, 8, 2, [DGREY, GREY, LGREY, WHITE]) }
+      for (const [x, top] of [[40, 4], [176, 10], [300, 2]]) {
+        P.box(x, top + 4, 18, 40 - top, STONE)
+        P.poly([x - 2, top + 4, x + 20, top + 4, x + 18, top, x + 12, top + 3, x + 7, top - 1, x, top + 1], STONE)
+        P.box(x - 3, 34, 24, 6, STONE)
+      }
+      P.cap(230, 40, 238, 8, 5, 4, STONE); P.cap(238, 8, 262, 2, 4, 4, STONE)
+      P.box(-8, 36, 464, 4, [DGREY, DGREY, GREY, GREY])
+      const s = P.done({ flat: true })
+      stamp(mid, s, 0, 0)
+      for (const x of [43, 179, 303]) for (let y = 12; y < 32; y += 5) { mid.d[y * 384 + x + 6] = DGREY; mid.d[y * 384 + x + 7] = DGREY }
+    }
+    // ground: generated column by column as it scrolls in; the bass sets the height
+    const hk = new Map()
+    let genK = 0, curH = 192, hold = 0, target = 192
+    const heightAt = k => {
+      while (genK <= k) {
+        if (hold > 0) hold--
+        else if (curH !== target) { curH += Math.sign(target - curH) * 8; hold = 2 }
+        hk.set(genK, curH)
+        hk.delete(genK - 40)
+        genK++
+      }
+      return hk.get(k) === undefined ? curH : hk.get(k)
+    }
+    const surfY = wx => { const k = Math.floor(wx / 16), a = heightAt(k), b = heightAt(k + 1); return a === b ? a : Math.round(a + (b - a) * (wx - k * 16) / 16) }
+    const STRATA = [ORANGE, BROWN, RED, ORANGE, BROWN, RED, BROWN]
+    const st = { near: 0, pal: 2, rowPal: new Uint8Array(30).fill(2), score: 0, orbs: [], got: 0, beam: 0, air: 0, vy: 0, jy: 0, fx: [], hy: 192, glow: 0, tw: 0, energy: 8 }
+    return {
+      step (e, c) {
+        if (e.bass !== null) target = 200 - Math.round(clamp((e.bass - 41) / 19, 0, 1) * 4) * 8
+        if (e.kick) { st.beam = 3; st.energy = Math.max(1, st.energy - 1) }
+        if (e.snare && st.air === 0) { st.air = 1; st.vy = -5.2 }
+        if (e.hat) st.tw++
+        if (e.arp !== null) {
+          st.glow = 3
+          if (st.orbs.length < 3 && !st.orbs.some(o => o.wx > st.near + 200)) st.orbs.push({ wx: st.near + 250, y: 104 - (e.arp - 57) * 2.2 })
+        }
+        if (e.s % 4 === 0) st.score += 10
+      },
+      layers (p, c, B) {
+        const want = c.cutoff < 0.36 ? 0 : c.cutoff < 0.68 ? 1 : 2
+        // the sky wipes one tile row per frame on frames the far band leaves alone
+        if (c.frame % 8 !== 1 && (c.frame & 1)) {
+          for (let r = 2; r < 30; r++) if (st.rowPal[r] !== want) { st.rowPal[r] = want; break }
+        }
+        st.pal = want
+        for (let r = 2; r < 30; r++) p.set(bgs[st.rowPal[r]].subarray(r * 8 * W, r * 8 * W + 8 * W), r * 8 * W)
+        layer(p, far, 72, B.off('far'))
+        layer(p, mid, 120, B.off('mid'))
+        const off = B.off('near')
+        st.near = off
+        for (let x = 0; x < W; x++) {
+          const wx = x + off, s = surfY(wx), dr = Math.floor(hash(wx >> 2) * 3)
+          for (let y = Math.max(160, s); y < H; y++) {
+            const d = y - s
+            let v
+            if (d === 0) v = LGREEN
+            else if (d < 3) v = bay2(wx, y) < 6 ? LGREEN : GREEN
+            else if (d < 4 + dr) v = GREEN
+            else if (d < 6 + dr) v = bay2(wx, y) < 8 ? GREEN : BLACK
+            else if (d < 8) v = BLACK
+            else {
+              const band = Math.floor(y / 8), fr = y % 8
+              v = STRATA[band % STRATA.length]
+              const prev = STRATA[(band + STRATA.length - 1) % STRATA.length]
+              if (fr < 2 && bay2(wx, y) < 8) v = prev
+              else if (fr > 2 && fr < 7 && bay2(wx, y) < 2) v = v === BLACK ? BROWN : BLACK
+              else if (fr === 2 && bay2(wx, y) < 4) v = v === ORANGE ? LRED : ORANGE
+              if (y > 224 && bay2(wx, y) < (y - 224)) v = BLACK
+            }
+            p[y * W + x] = v
+          }
+        }
+        // pod plants ride the ground
+        const k0 = Math.floor(off / 16) - 1
+        for (let k = k0; k < k0 + 18; k++) {
+          const h = hash(k * 31 + 5)
+          const sx = k * 16 - off, s = surfY(k * 16 + 8)
+          if (h < 0.1) put(p, PLANT, sx, s - 27)
+        }
+        // status bar: numbers are latched only on odd frames the far band leaves alone (the middle band moves on even ones)
+        if ((c.frame & 1) && c.frame % 8 !== 1) st.hud = [st.score, st.energy, st.got, st.pal]
+        const [hs, he, hg, hp] = st.hud || [0, 8, 0, 2]
+        rect(p, 0, 0, W, 16, BLACK)
+        text(p, pad(hs, 6), 4, 3, WHITE)
+        for (let i = 0; i < 8; i++) rect(p, 60 + i * 6, 4, 4, 8, i < he ? (i < 3 ? RED : i < 6 ? YELLOW : LGREEN) : DGREY)
+        blit(p, ORB, 128, 2, { sc: 1 })
+        text(p, 'X' + pad(hg, 2), 144, 3, CYAN)
+        text(p, PALS[hp].name, W - 4 - textW(PALS[hp].name), 3, YELLOW)
+        rect(p, 0, 15, W, 1, PALS[hp].stars ? BLUE : LBLUE)
+      },
+      stages: [
+        ['cycle', 'Colour cycling', (p, c) => {
+          const CYC = [WHITE, LGREY, GREY, LGREY]
+          for (let i = 0; i < twinkle.length; i++) {
+            const [x, y] = twinkle[i]
+            if (st.rowPal[y >> 3] === 2) continue
+            const v = CYC[(st.tw + i + ((c.frame + 1) >> 3)) & 3]
+            px(p, x, y, v); if (v === WHITE) { px(p, x - 1, y, GREY); px(p, x + 1, y, GREY); px(p, x, y - 1, GREY); px(p, x, y + 1, GREY) }
+          }
+        }],
+        ['sprites', 'Sprites and FX', (p, c, B) => {
+          const off = st.near
+          const HX = 44
+          const ground = surfY(off + HX + 16)
+          st.hy += clamp(ground - st.hy, -4, 4)
+          if (st.air) {
+            st.jy += st.vy; st.vy += 1.05
+            if (st.jy >= 0) { st.jy = 0; st.air = 0; st.vy = 0; st.fx.push({ k: 'dust', x: HX + 10, y: st.hy, t: 0 }) }
+          }
+          const spr = heroSpr((Math.floor(off / 10) % 6) + (st.air ? 'a' : ''), Math.floor(off / 10) % 6, !!st.air)
+          const top = Math.round(st.hy + st.jy - 53)
+          // orbs ride the ground layer
+          for (const o of st.orbs) {
+            const x = o.wx - off, y = o.y + Math.sin((o.wx + c.frame * 3) / 9) * 2
+            if (Math.abs(x - (HX + 22)) < 14 && Math.abs(y - (top + 24)) < 26) { o.dead = 1; st.got++; st.score += 500; st.energy = Math.min(8, st.energy + 2); st.fx.push({ k: 'ring', x, y, t: 0 }); continue }
+            const rc = st.glow > 0 ? { [LBLUE]: WHITE, [PURPLE]: LBLUE } : undefined
+            blit(p, ORB, x - 6, y - 6, { sc: 1, rc })
+          }
+          st.orbs = st.orbs.filter(o => !o.dead && o.wx - off > -16)
+          if (st.glow > 0) st.glow--
+          put(p, spr, HX, top)
+          if (st.beam > 0) {
+            const mx = HX + Math.round(spr.j.tip[0]) + 2, my = (Math.round(top + spr.j.tip[1]) & ~7) + 2
+            const CY = [WHITE, CYAN, LBLUE, CYAN]
+            for (let x = mx; x < Math.min(W, mx + 104); x++) {
+              const k = ((x >> 2) + c.frame) & 3
+              px(p, x, my - 1, st.beam > 1 ? LBLUE : BLUE); px(p, x, my, CY[k]); px(p, x, my + 1, CY[(k + 2) & 3]); px(p, x, my + 2, st.beam > 1 ? LBLUE : BLUE)
+            }
+            disc(p, mx, my + 0.5, st.beam > 2 ? 5 : 3, WHITE); disc(p, mx, my + 0.5, 2, CYAN)
+            st.beam--
+          }
+          for (const f of st.fx) {
+            if (f.k === 'ring') { ring(p, f.x, f.y, 4 + f.t * 1.6, f.t < 2 ? WHITE : CYAN, f.t > 2 ? 2 : 0); if (f.t < 2) disc(p, f.x, f.y, 4 - f.t, WHITE) } else { px(p, f.x - f.t * 2, f.y - 1 - f.t, LGREY); px(p, f.x + 4 + f.t * 2, f.y - 1 - f.t, LGREY); px(p, f.x - f.t * 3, f.y - 2, GREY) }
+            f.t++
+          }
+          st.fx = st.fx.filter(f => f.t < 6)
+        }]
+      ]
+    }
+  }
+})
+
+// ---------- 8. Cute platformer ----------
+const BUD = [PURPLE, LBLUE, LBLUE, WHITE], FOOT = [BROWN, RED, LRED, LRED], LEAF = [GREEN, LGREEN, LGREEN, WHITE]
+function critter (sq, blink) {
+  const P = painter(44, 40, 2)
+  const rx = 11 * sq, ry = 10.5 / sq, cx = 22, cy = 34 - ry
+  P.ell(cx - 6, 35, 4.6, 2.8, FOOT)
+  P.cap(cx - 1, cy - ry + 2, cx - 3, cy - ry - 5, 1.2, 1, LEAF)
+  P.ell(cx + 2, cy - ry - 5, 4.4, 2.2, LEAF, -25)
+  P.ell(cx - 7, cy - ry - 3, 3.4, 1.8, LEAF, 30)
+  P.ell(cx, cy, rx, ry, BUD)
+  P.ell(cx + 6, 35.5, 4.8, 2.8, FOOT)
+  const ey = cy - ry * 0.25
+  for (const [hx, hy] of [[-6, -5], [-4, -6], [-6, -4], [-8, -3], [-2, -7]]) P.dot(cx + hx * sq, cy + hy / sq, hx === -6 && hy === -5 ? WHITE : CYAN)
+  for (const ex of [cx + 1.5, cx + 7.5]) {
+    if (blink) { P.line(ex - 2, ey + 1, ex + 2, ey + 1, BLACK); continue }
+    P.ell(ex, ey, 2.3, 3.6 / sq, [WHITE, WHITE, WHITE, WHITE])
+    P.dot(ex + 1, ey, BLACK); P.dot(ex + 1, ey + 1, BLACK); P.dot(ex + 1, ey + 2 / sq, BLACK); P.dot(ex + 1, ey - 1, BLUE)
+  }
+  P.dot(cx - 2, ey + 4, LRED); P.dot(cx + 11, ey + 4, LRED)
+  P.line(cx + 3.5, ey + 5, cx + 5.5, ey + 5, BLACK)
+  return P.done()
+}
+const CRIT = { idle: critter(1, false), blink: critter(1, true), squash: critter(1.25, false), stretch: critter(0.84, false) }
+for (const k in CRIT) DEV.push(['crit-' + k, CRIT[k]])
+const BUBBLE = [0, 1].map(f => {
+  const P = painter(24, 24, 1), c = 12
+  P.ell(c, c, 10, 10, [LBLUE, CYAN, WHITE, WHITE])
+  P.cut(0, 0, 24, 24, (x, y) => Math.hypot(x - c, y - c) < 8.6)
+  P.ell(c + 1, c + 2 + f, 5, 4.4, [BLUE, PURPLE, LBLUE, LBLUE])
+  P.dot(c - 1, c + 1 + f, WHITE); P.dot(c + 3, c + 1 + f, WHITE); P.dot(c, c + 1 + f, BLACK); P.dot(c + 4, c + 1 + f, BLACK)
+  P.line(c - 2, c - 1 + f, c + 1, c + f, BLACK); P.line(c + 5, c - 1 + f, c + 3, c + f, BLACK)
+  P.dot(c - 5, c - 5, WHITE); P.dot(c - 6, c - 4, WHITE); P.dot(c - 4, c - 6, WHITE)
+  return P.done({ outline: -1 })
+})
+DEV.push(['bubble', BUBBLE[0]])
+const STARF = (() => {
+  const P = painter(16, 16, 1), pts = []
+  for (let i = 0; i < 10; i++) { const a = rad(i * 36 - 90), r = i & 1 ? 3 : 7; pts.push(8 + Math.cos(a) * r, 8.5 + Math.sin(a) * r) }
+  P.poly(pts, [ORANGE, YELLOW, WHITE, WHITE])
+  P.dot(7, 7, BLACK); P.dot(9, 7, BLACK)
+  return P.done()
+})()
+DEV.push(['star', STARF])
+
+VIGNETTES.push({
+  id: 'meadow', era: 'late', title: 'MEADOW HOP', cap: 'A nod to cute late-80s mascot platformers: a new round sprout-bud hops through a pastel valley in time with the bass.',
+  maps: [
+    ['bass', 'Bass notes: the bud hops; the higher the note, the higher the hop'],
+    ['arp', 'Arp notes: a star appears ahead at the note\'s height, ready to be caught'],
+    ['snare', 'Snare: pops the nearest bubble critter'],
+    ['hat', 'Hi-hats: flip between two sets of colour-cycled sparkles'],
+    ['kick', 'Kick drum: the bud squashes and blinks'],
+    ['cutoff', 'Filter cutoff: how far the flowers open'],
+    ['tempo', 'Tempo: walking speed (bigger steps, same number of updates)']
+  ],
+  bands: [
+    { id: 'hud', name: 'Status bar', kind: 'hud', y0: 0, y1: 16 },
+    { id: 'sky', name: 'Raster sky and sun', kind: 'sky', y0: 16, y1: 32 },
+    { id: 'clouds', name: 'Clouds', kind: 'far', y0: 32, y1: 72, speed: 0.5, every: 16, phase: 5, q: 4 },
+    { id: 'far', name: 'Far hills', kind: 'far', y0: 72, y1: 120, speed: 1, every: 8, phase: 1, q: 4 },
+    { id: 'mid', name: 'Near hills and trees', kind: 'mid', y0: 120, y1: 192, speed: 2, every: 2, phase: 0, q: 4 },
+    { id: 'near', name: 'Flower bank', kind: 'near', y0: 192, y1: 240, speed: 4, every: 1, phase: 0, q: 4, hw: true }
+  ],
+  make (mode) {
+    const sky = new Uint8Array(W * H)
+    gradient(sky, 16, 184, [[16, BLUE], [24, LBLUE], [46, CYAN], [86, WHITE]], 6)
+    {
+      const P = painter(40, 40, 2)
+      P.ell(20, 20, 13, 13, [YELLOW, YELLOW, WHITE, WHITE]); P.ell(20, 20, 9, 9, [WHITE, WHITE, WHITE, WHITE])
+      const s = P.done({ outline: -1 })
+      for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) { const r = Math.hypot(x - 20 + 0.5, y - 20 + 0.5); if (r < 19 && r > 12 && bayW(x, y) < (19 - r) * 2.4) sky[(20 + y) * W + 176 + x] = YELLOW }
+      put(sky, s, 176, 20)
+    }
+    const clouds = surf(480, 40)
+    {
+      const P = painter(560, 40, 2), r = rng(42), CL = [LGREY, WHITE, WHITE, WHITE]
+      for (const [x0, w0, h0] of [[10, 70, 22], [130, 46, 14], [220, 96, 28], [360, 56, 18], [440, 60, 20]]) {
+        const n = Math.max(3, Math.round(w0 / 14))
+        for (let i = 0; i < n; i++) { const t = (i + 0.5) / n, x = x0 + t * w0, hh = h0 * (0.55 + 0.45 * Math.sin(Math.PI * t)) * (0.8 + r() * 0.3); P.ell(x, 36 - hh * 0.5, w0 / n * 0.9 + 4, hh * 0.55, CL) }
+        P.cut(x0 - 30, 33, x0 + w0 + 30, 40, () => true)
+      }
+      const s = P.done({ lx: 0, ly: -1, outline: -1, sep: false })
+      stamp(clouds, s, 0, 0)
+      for (let y = 30; y < 33; y++) for (let x = 0; x < 480; x++) if (clouds.d[y * 480 + x] !== T && bay2(x, y) < (y - 29) * 4) clouds.d[y * 480 + x] = CYAN
+    }
+    const far = surf(480, 48)
+    for (let x = 0; x < 480; x += 2) {
+      const h = 22 + 9 * Math.sin(x / 480 * Math.PI * 2 * 3 + 0.5) + 6 * Math.sin(x / 480 * Math.PI * 2 * 7 + 2), dh = 9 * 3 * Math.cos(x / 480 * Math.PI * 2 * 3 + 0.5) + 6 * 7 * Math.cos(x / 480 * Math.PI * 2 * 7 + 2)
+      for (let y = 0; y < 48; y++) {
+        const up = 48 - y
+        if (up > h) continue
+        const d = h - up
+        let v = d < 2 ? (dh > 0 ? WHITE : LGREEN) : d < 4 ? LGREEN : (y > 40 ? (bay2(x, y) < 8 ? CYAN : LGREEN) : CYAN)
+        far.d[y * 480 + x] = far.d[y * 480 + x + 1] = v
+      }
+    }
+    const mid = surf(512, 72)
+    {
+      const P = painter(576, 72, 2), HILL = [GREEN, LGREEN, LGREEN, WHITE], TREE = [GREEN, LGREEN, LGREEN, WHITE], TRUNK = [BROWN, ORANGE, ORANGE, ORANGE]
+      for (const [x, w0, h0] of [[60, 90, 34], [230, 120, 44], [400, 80, 30], [520, 110, 40]]) P.ell(x, 52, w0 * 0.6, h0, HILL)
+      for (const [x, y, s0] of [[92, 26, 1.2], [270, 14, 1.3], [450, 30, 1.1]]) {
+        P.cap(x, y + 6 * s0, x, y + 18 * s0, 2.2 * s0, 2.6 * s0, TRUNK)
+        P.ell(x - 4 * s0, y + 4 * s0, 7 * s0, 6 * s0, TREE); P.ell(x + 5 * s0, y + 5 * s0, 7 * s0, 6 * s0, TREE); P.ell(x, y - 2 * s0, 8 * s0, 7 * s0, TREE)
+      }
+      P.box(-10, 50, 600, 22, [GREEN, GREEN, GREEN, GREEN])
+      const s = P.done({ outline: GREEN, flat: true })
+      stamp(mid, s, 0, 0)
+      for (let y = 50; y < 72; y++) for (let x = 0; x < 512; x++) {
+        const band = ((y - 50) >> 2) & 3
+        mid.d[y * 512 + x] = [LGREEN, GREEN, LGREEN, GREEN][band] === LGREEN ? (bay2(x, y) < 10 ? LGREEN : GREEN) : (bay2(x, y) < 4 ? LGREEN : GREEN)
+      }
+    }
+    const flower = cacheBy((col, open) => {
+      const P = painter(12, 16, 2), pet = col === 0 ? [RED, LRED, WHITE, WHITE] : col === 1 ? [ORANGE, YELLOW, WHITE, WHITE] : [PURPLE, LBLUE, WHITE, WHITE]
+      P.cap(6, 15, 6, 8, 0.8, 0.8, [GREEN, GREEN, LGREEN, LGREEN])
+      P.ell(9, 12, 2.6, 1.4, LEAF, -30)
+      const r = 1.6 + open * 2.4
+      if (open > 0.15) for (let i = 0; i < 5; i++) { const a = rad(i * 72 - 90); P.ell(6 + Math.cos(a) * r, 6 + Math.sin(a) * r * 0.9, 2.2, 2, pet) } else P.ell(6, 6, 2.2, 3, pet)
+      P.ell(6, 6, 1.6, 1.6, [ORANGE, YELLOW, YELLOW, WHITE])
+      return P.done({ outline: GREEN })
+    })
+    const st = { near: 0, y: 0, vy: 0, air: false, squash: 0, blink: 0, stars: [], bubbles: [], pops: [], hats: 0, score: 0, caught: 0, open: 1 }
+    const HX = 76, GROUND = 208
+    return {
+      step (e, c) {
+        if (e.bass !== null && !st.air) { const hh = 14 + clamp((e.bass - 41) / 19, 0, 1) * 64; st.vy = -Math.sqrt(2 * 0.9 * hh); st.air = true; st.squash = 0 }
+        if (e.kick) { if (!st.air) st.squash = 3; st.blink = 3 }
+        if (e.hat) st.hats++
+        if (e.arp !== null && st.stars.length < 4 && !st.stars.some(s => s.wx > st.near + 210)) st.stars.push({ wx: st.near + 250, y: 186 - clamp((e.arp - 57) / 22, 0, 1) * 70 })
+        if ((e.s === 0 || e.s === 8) && st.bubbles.length < 3) st.bubbles.push({ x: 250, y: 108 + hash(e.i * 3) * 52, ph: hash(e.i) * 6 })
+        if (e.snare) {
+          let best = null
+          for (const b of st.bubbles) if (b.x > HX + 10 && b.x < 236 && (!best || b.x < best.x)) best = b
+          if (best) { best.dead = true; st.pops.push({ x: best.x, y: best.y, t: 0 }); st.score += 100 }
+        }
+      },
+      layers (p, c, B) {
+        p.set(sky)
+        st.open = c.cutoff
+        layer(p, clouds, 32, B.off('clouds'))
+        layer(p, far, 72, B.off('far'))
+        layer(p, mid, 120, B.off('mid'))
+        const off = B.off('near')
+        st.near = off
+        for (let y = 192; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            const wx = x + off, top = GROUND
+            let v
+            if (y < top - 3) v = bay2(wx, y) < 4 ? LGREEN : GREEN
+            else if (y < top) v = (hash(wx >> 1) * 3 > top - y) ? GREEN : (bay2(wx, y) < 4 ? LGREEN : GREEN)
+            else if (y === top) v = LGREEN
+            else if (y < top + 3) v = bay2(wx, y) < 8 ? LGREEN : GREEN
+            else if (y < top + 6) v = GREEN
+            else if (y < top + 8) v = bay2(wx, y) < 8 ? GREEN : BROWN
+            else { const band = Math.floor((y - top) / 7) & 1, fr = (y - top) % 7; v = band ? ORANGE : BROWN; if (fr === 0 && bay2(wx, y) < 8) v = band ? BROWN : ORANGE }
+            p[y * W + x] = v
+          }
+        }
+        const k0 = Math.floor(off / 24) - 1
+        const open = Math.round(clamp(st.open, 0, 1) * 4) / 4
+        for (let k = k0; k < k0 + 12; k++) {
+          const h = hash(k * 13 + 1)
+          if (h < 0.45) put(p, flower('f' + Math.floor(h * 6) % 3 + open, Math.floor(h * 6) % 3, open), k * 24 - off + Math.floor(h * 10), GROUND - 14)
+        }
+        rect(p, 0, 0, W, 16, BLACK)
+        for (let i = 0; i < 3; i++) { const x = 6 + i * 14; rect(p, x, 5, 4, 3, RED); rect(p, x + 6, 5, 4, 3, RED); rect(p, x + 1, 8, 8, 2, RED); rect(p, x + 3, 10, 4, 2, RED); px(p, x + 1, 5, LRED) }
+        blit(p, STARF, 96, 0, { sc: 1 })
+        text(p, 'X' + pad(st.caught, 2), 114, 3, YELLOW)
+        text(p, pad(st.score, 6), W - 4 - textW('000000'), 3, WHITE)
+        rect(p, 0, 15, W, 1, LBLUE)
+      },
+      stages: [
+        ['cycle', 'Colour cycling', (p, c) => {
+          const SP = [WHITE, YELLOW, LGREEN, CYAN]
+          const set = st.hats & 1
+          for (let i = 0; i < 5; i++) {
+            const x = Math.floor(hash(i * 9 + set * 101) * 220) + 10, y = 28 + Math.floor(hash(i * 9 + 4 + set * 101) * 80)
+            const ph = (c.frame + 1) >> 1, col = SP[(ph + i) & 3], col2 = SP[(ph + i + 2) & 3]
+            px(p, x, y, WHITE); for (let k = 1; k < 4; k++) { const cc = k < 2 ? col : col2; px(p, x + k, y, cc); px(p, x - k, y, cc); px(p, x, y + k, cc); px(p, x, y - k, cc) }
+          }
+        }],
+        ['sprites', 'Sprites and FX', (p, c) => {
+          for (const b of st.bubbles) {
+            b.x -= 1.4
+            const y = b.y + Math.sin(c.frame / 6 + b.ph) * 4
+            blit(p, BUBBLE[(c.frame >> 3) & 1], b.x - 12, y - 12, { sc: 1 })
+          }
+          st.bubbles = st.bubbles.filter(b => !b.dead && b.x > -14)
+          for (const q of st.pops) {
+            for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, r = 6 + q.t * 4; rect(p, q.x + Math.cos(a) * r - 1, q.y + Math.sin(a) * r - 1, 2, 2, q.t < 2 ? WHITE : CYAN) }
+            if (q.t < 6) text(p, '100', q.x - 11, q.y - 18 - q.t * 2, WHITE, BLUE)
+            q.t++
+          }
+          st.pops = st.pops.filter(q => q.t < 8)
+          if (st.air) { st.y += st.vy; st.vy += 0.9; if (st.y >= 0) { st.y = 0; st.vy = 0; st.air = false; st.squash = 3 } }
+          const spr = st.squash > 0 ? CRIT.squash : st.air && st.vy < -2 ? CRIT.stretch : st.blink > 0 ? CRIT.blink : CRIT.idle
+          const top = Math.round(GROUND + st.y - 39)
+          for (const s of st.stars) {
+            const x = s.wx - st.near, y = s.y + Math.sin((s.wx + c.frame * 4) / 10) * 2
+            if (Math.abs(x - (HX + 22)) < 18 && Math.abs(y - (top + 22)) < 18) { s.dead = true; st.caught++; st.score += 50; st.pops.push({ x, y, t: 3 }); continue }
+            blit(p, STARF, x - 8, y - 8, { sc: 1 })
+          }
+          st.stars = st.stars.filter(s => !s.dead && s.wx - st.near > -16)
+          if (!st.air) { rect(p, HX + 8, GROUND, 28, 1, GREEN) }
+          put(p, spr, HX, top)
+          if (st.squash > 0) st.squash--
+          if (st.blink > 0) st.blink--
+        }]
+      ]
+    }
+  }
+})
+
+// ---------- 9. Horizontal shooter ----------
+const HULL = [DGREY, GREY, LGREY, WHITE], WING = [BLUE, LBLUE, LBLUE, WHITE], WING_U = [BLACK, BLUE, PURPLE, LBLUE], CANOPY = [BLUE, CYAN, WHITE, WHITE]
+function shipSpr (roll) {
+  const P = painter(52, 28, 2), cy = 14, k = Math.cos(rad(roll)), under = k < 0, Y = y => cy + (y - cy) * k
+  const wing = (pts, back) => { const q = []; for (let i = 0; i < pts.length; i += 2) q.push(pts[i], Y(pts[i + 1])); P.poly(q, back ? WING_U : (under ? WING_U : WING)) }
+  wing([8, 12, 26, 12, 16, 1, 9, 1], true)
+  P.cap(4, cy - 2, 12, cy - 2, 2.6, 2.2, HULL)
+  P.poly([4, cy - 4, 30, cy - 4.5, 50, cy + 0.5, 30, cy + 4, 4, cy + 3.5], under ? [BLACK, DGREY, GREY, LGREY] : HULL)
+  P.cap(4, cy + 2, 13, cy + 2, 2.6, 2.2, HULL)
+  if (!under) P.ell(30, cy - 2.5, 7, 2.6, CANOPY)
+  else P.box(14, cy + 0.5, 22, 1.2, [RED, RED, LRED, LRED])
+  wing([8, 16, 26, 16, 16, 27, 9, 27], false)
+  P.line(16, cy, 44, cy + 0.5, under ? DGREY : RED)
+  if (Math.abs(k) > 0.4) { P.dot(14, Y(5), under ? DGREY : RED); P.dot(14, Y(23), under ? DGREY : RED) }
+  return P.done()
+}
+const SHIP_ROLL = [0, 40, 80, 120, 160, 200, 240, 280, 320].map(shipSpr)
+SHIP_ROLL.forEach((s, i) => DEV.push(['ship' + i, s]))
+const SPINNER = [0, 1, 2, 3].map(f => {
+  const P = painter(24, 20, 2), cx = 12, cy = 10
+  for (let i = 0; i < 4; i++) { const a = rad(f * 22.5 + i * 90); P.cap(cx + Math.cos(a) * 4, cy + Math.sin(a) * 3.5, cx + Math.cos(a) * 10.5, cy + Math.sin(a) * 8.5, 2.2, 0.8, [BROWN, ORANGE, YELLOW, WHITE]) }
+  P.ell(cx, cy, 6.5, 6, [PURPLE, LRED, LRED, WHITE])
+  P.ell(cx - 0.5, cy, 2.6, 2.6, [RED, RED, YELLOW, WHITE])
+  return P.done()
+})
+SPINNER.forEach((s, i) => DEV.push(['spin' + i, s]))
+const BOOM = [0, 1, 2, 3, 4, 5].map(f => {
+  const P = painter(32, 32, 2), r = rng(77 + f)
+  if (f < 4) P.ell(16, 16, 4 + f * 2.5, 3.5 + f * 2.2, f < 2 ? [YELLOW, WHITE, WHITE, WHITE] : [RED, ORANGE, YELLOW, WHITE])
+  for (let i = 0; i < 6; i++) { const a = r() * Math.PI * 2, d = 4 + f * 2.6 + r() * 3; P.ell(16 + Math.cos(a) * d, 16 + Math.sin(a) * d * 0.9, 2.4 - f * 0.25, 2.2 - f * 0.25, f < 3 ? [ORANGE, YELLOW, WHITE, WHITE] : [BLACK, DGREY, GREY, LGREY]) }
+  if (f >= 2 && f < 4) P.cut(0, 0, 32, 32, (x, y) => Math.hypot(x - 16, (y - 16) * 1.1) < f * 2)
+  return P.done({ outline: f < 2 ? -1 : BLACK })
+})
+
+VIGNETTES.push({
+  id: 'lance', era: 'late', title: 'ORBITAL LANCE', cap: 'A nod to late-80s horizontal shoot-\'em-ups: a new interceptor skims a giant orbital station while the music sends waves at it.',
+  maps: [
+    ['arp', 'Arp notes: fire a spread shot; high notes fan it wider'],
+    ['kick', 'Kick drum: a barrel roll'],
+    ['bass', 'Bass: on the beat, launches an enemy formation; pitch sets its height'],
+    ['snare', 'Snare: the station\'s running lights strobe'],
+    ['hat', 'Hi-hats: the engine glow cycles'],
+    ['cutoff', 'Filter cutoff: the interceptor\'s cruising height'],
+    ['tempo', 'Tempo: the station\'s scroll speed']
+  ],
+  bands: [
+    { id: 'hud', name: 'Status bar', kind: 'hud', y0: 0, y1: 16 },
+    { id: 'far', name: 'Planet', kind: 'far', y0: 16, y1: 96, speed: 0.25, every: 32, phase: 3 },
+    { id: 'mid', name: 'Station superstructure', kind: 'mid', y0: 96, y1: 192, speed: 2, every: 2, phase: 0, q: 4 },
+    { id: 'near', name: 'Hull and debris', kind: 'near', y0: 192, y1: 240, speed: 5, every: 1, phase: 0, q: 4, hw: true }
+  ],
+  make (mode) {
+    // far: a banded gas giant rising over the station, and a small moon
+    const far = surf(480, 80)
+    for (let y = 0; y < 80; y++) {
+      for (let x = 0; x < 480; x += 2) {
+        let v = T
+        const dx = x + 1 - 300, dy = y - 140, r = Math.hypot(dx, dy * 1.02)
+        if (r < 96) {
+          const lat = dy / 96, lit = -dx / 96 * 0.8 - lat * 0.3 + 0.25
+          const bands = [PURPLE, LBLUE, PURPLE, BLUE, LBLUE, PURPLE]
+          const bi = Math.floor((y + Math.sin(x / 23) * 2) / 7) % bands.length
+          v = bands[bi]
+          if ((y % 7) === 0 && bayW(x, y) < 8) v = bands[(bi + 1) % bands.length]
+          if (lit < 0.05) v = bayW(x, y) < (0.05 - lit) * 60 ? BLACK : v === LBLUE ? PURPLE : BLUE
+          if (lit < -0.25) v = BLACK
+          if (r > 93) v = lit > 0 ? CYAN : BLUE
+          else if (r > 90 && lit > 0.2) v = bayW(x, y) < 8 ? CYAN : v
+        } else if (r < 104 && bayW(x, y) < (104 - r) * 1.2 && dx < 40) v = BLUE
+        const mr = Math.hypot(x + 1 - 90, y - 26)
+        if (mr < 9) v = mr > 7.5 ? (x < 90 ? LGREY : GREY) : (x + 1 - 90 + (y - 26) * 0.6 > 3 ? (bayW(x, y) < 8 ? DGREY : GREY) : (hash(x * 3 + y * 7) < 0.15 ? GREY : LGREY))
+        far.d[y * 480 + x] = far.d[y * 480 + x + 1] = v
+      }
+    }
+    // mid: the station superstructure, painted, with window rows and a hull number
+    const mid = surf(512, 96)
+    const lights = []
+    {
+      const P = painter(576, 96, 2), r = rng(5)
+      P.box(-10, 44, 600, 52, HULL)
+      for (const [x, w0, h0] of [[20, 70, 24], [200, 96, 18], [330, 54, 32]]) {
+        P.poly([x, 46, x + 6, 44 - h0, x + w0 - 6, 44 - h0, x + w0, 46], HULL)
+        P.box(x + 10, 44 - h0 - 5, w0 - 20, 6, [DGREY, GREY, LGREY, LGREY])
+        P.box(x + 12, 44 - h0 + 6, w0 - 24, 3, [BLUE, CYAN, CYAN, WHITE])
+      }
+      P.box(150, 8, 3, 36, [DGREY, GREY, LGREY, LGREY]); P.ell(151.5, 8, 3, 3, [RED, RED, LRED, WHITE])
+      P.ell(250, 24, 14, 6, [DGREY, GREY, LGREY, WHITE]); P.cap(250, 24, 262, 14, 1.2, 1.2, [DGREY, GREY, LGREY, WHITE])
+      P.ell(368, 10, 7, 7, [BLUE, LBLUE, CYAN, WHITE])
+      const s = P.done({ lx: -1, ly: -1, flat: true })
+      stamp(mid, s, 0, 0)
+      // hull body as raster-style bands; every texture repeats every 4 px so a 4 px scroll step never changes it
+      const BODY = [[46, LGREY, 'flat'], [47, GREY, 'flat'], [50, DGREY, 'flat'], [51, GREY, 'flat'], [56, BLUE, 'win'], [62, GREY, 'flat'], [63, DGREY, 'flat'],
+        [64, GREY, 'flat'], [66, BLACK, 'grille'], [72, LGREY, 'flat'], [73, GREY, 'flat'], [78, DGREY, 'speck'], [86, BLACK, 'flat'], [87, BLUE, 'lamps'], [89, BLACK, 'flat'], [90, DGREY, 'grille']]
+      for (let y = 46; y < 96; y++) {
+        let i = 0
+        while (i + 1 < BODY.length && y >= BODY[i + 1][0]) i++
+        const [y0, col, kind] = BODY[i]
+        for (let x = 0; x < 512; x++) {
+          if (mid.d[y * 512 + x] === T) continue
+          let v = col
+          if (kind === 'win') v = (y - y0 === 0 || y - y0 === 5) ? DGREY : ((x & 3) < 2 && y - y0 > 1 && y - y0 < 4 ? (y - y0 === 2 ? LBLUE : CYAN) : BLUE)
+          else if (kind === 'grille') v = (x & 3) === 0 ? GREY : (y & 1 ? BLACK : DGREY)
+          else if (kind === 'speck') v = bay2(x, y) < 4 ? GREY : DGREY
+          else if (kind === 'lamps') v = (x & 3) === 1 ? (y & 1 ? YELLOW : ORANGE) : BLACK
+          mid.d[y * 512 + x] = v
+        }
+      }
+      for (let wx = 6; wx < 512; wx += 6) if (((wx >> 6) & 3) === 1 && wx % 64 < 30) { for (const y of [74, 77]) lights.push([wx, y]) }
+      const nums = ['07', '13']
+      for (let i = 0; i < 2; i++) {
+        const t = nums[i], x0 = 90 + i * 256, y0 = 50
+        for (let ci = 0; ci < 2; ci++) {
+          const g = FONT[t[ci]]
+          for (let r2 = 0; r2 < 5; r2++) for (let q = 0; q < 3; q++) if (g[r2 * 3 + q] === '1') for (let yy = 0; yy < 3; yy++) for (let xx = 0; xx < 4; xx++) mid.d[(y0 + r2 * 3 + yy) * 512 + x0 + ci * 16 + q * 4 + xx] = yy === 2 ? GREY : WHITE
+        }
+        for (let k = 0; k < 24; k++) for (let y = 70; y < 72; y++) mid.d[y * 512 + x0 + k] = ((k + y) >> 2) & 1 ? YELLOW : BLACK
+      }
+      for (let x = 0; x < 512; x += 2) { const v = mid.d[44 * 512 + x]; if (v !== T && v !== BLACK && hash(x) < 0.08) { mid.d[43 * 512 + x] = RED; mid.d[43 * 512 + x + 1] = RED } }
+    }
+    // near: dark lower hull (horizontal stripes, so moving it is free) with girders and wreckage drifting past
+    const near = surf(640, 48)
+    {
+      for (let y = 0; y < 48; y++) for (let x = 0; x < 640; x++) {
+        const fr = y % 10
+        near.d[y * 640 + x] = y < 2 ? T : fr === 2 ? GREY : fr === 3 ? DGREY : (bay2(x, y) < (y > 30 ? 12 : 4) ? BLACK : DGREY)
+      }
+      const P = painter(704, 48, 2), r = rng(11)
+      for (const x of [300]) {
+        P.box(x, 4, 8, 44, [BLACK, DGREY, GREY, LGREY]); P.box(x + 40, 4, 8, 44, [BLACK, DGREY, GREY, LGREY])
+        for (let k = 0; k < 4; k++) P.cap(x + 4, 8 + k * 10, x + 44, 14 + k * 10, 1.4, 1.4, [BLACK, DGREY, GREY, GREY])
+        P.box(x - 4, 0, 56, 6, [BLACK, DGREY, GREY, LGREY])
+      }
+      for (const x of [120]) { P.poly([x, 30, x + 14, 18, x + 30, 22, x + 26, 40, x + 6, 44], [BROWN, ORANGE, LRED, LRED]); P.box(x + 8, 26, 10, 3, [BLACK, DGREY, DGREY, DGREY]) }
+      const s = P.done({ flat: true })
+      stamp(near, s, 0, 0)
+    }
+    const stars = [[0.25, 14, GREY], [0.6, 10, LGREY], [1.4, 7, WHITE]].flatMap(([sp, n, col], li) => Array.from({ length: n }, (_, i) => ({ sp, col, x: hash(li * 100 + i) * W, y: 17 + Math.floor(hash(li * 100 + i + 50) * 170) })))
+    const st = { y: 60, roll: -1, rollF: 0, shots: [], foes: [], booms: [], strobe: 0, glow: 0, score: 0, wave: 0, arpN: 0 }
+    const SX = 34
+    return {
+      step (e, c) {
+        if (e.kick && st.roll < 0) st.roll = 0
+        if (e.arp !== null) {
+          st.arpN++
+          if (st.arpN & 1) {
+            const wide = e.arp >= 65
+            for (const dy of wide ? [-3, 0, 3] : [-1.5, 0, 1.5]) st.shots.push({ x: SX + 48, y: st.y + 14, vx: 12, vy: dy })
+          }
+        }
+        if (e.bass !== null && e.s % 4 === 0 && st.foes.length === 0) {
+          st.wave++
+          const cy = 140 - clamp((e.bass - 41) / 19, 0, 1) * 90, kind = st.wave % 3
+          for (let i = 0; i < 4; i++) st.foes.push({ x: 250 + i * 24, cy, i, kind, t: 0 })
+        }
+        if (e.snare) st.strobe = 4
+        if (e.hat) st.glow++
+      },
+      layers (p, c, B) {
+        p.fill(BLACK, 16 * W)
+        layer(p, far, 16, B.off('far'))
+        layer(p, mid, 96, B.off('mid'))
+        layer(p, near, 192, B.off('near'))
+        rect(p, 0, 0, W, 16, BLACK)
+        text(p, '1UP', 4, 3, RED)
+        text(p, pad(st.score, 6), 32, 3, WHITE)
+        text(p, 'WAVE ' + pad(st.wave, 2), 120, 3, CYAN)
+        for (let i = 0; i < 3; i++) { rect(p, 204 + i * 12, 6, 8, 3, LBLUE); rect(p, 206 + i * 12, 4, 3, 7, LBLUE) }
+        rect(p, 0, 15, W, 1, BLUE)
+      },
+      stages: [
+        ['stars', 'Starfield (3 speeds)', (p, c) => {
+          for (const s of stars) {
+            s.x -= s.sp * c.bpm / 124
+            if (s.x < 0) { s.x += W; s.y = 17 + Math.floor(hash(s.x * 7 + c.frame) * 170) }
+            const x = Math.floor(s.x), i = s.y * W + x
+            if (p[i] === BLACK) p[i] = s.col
+            if (s.sp > 1 && p[i + 1] === BLACK) p[i + 1] = DGREY
+          }
+        }, 'Single-pixel stars moved in software'],
+        ['cycle', 'Colour cycling', (p, c, B) => {
+          const off = B.off('mid')
+          const CY = st.strobe > 0 ? [WHITE, WHITE, CYAN, WHITE] : [YELLOW, ORANGE, DGREY, CYAN]
+          for (const [wx, y] of lights) {
+            const x = ((wx - off) % 512 + 512) % 512
+            if (x >= W - 1) continue
+            const v = CY[((wx >> 3) + ((c.frame + 3) >> 2)) & 3]
+            rect(p, x, 96 + y, 2, 2, v)
+          }
+          if (st.strobe > 0) st.strobe--
+        }, 'Window lights cycle every 4th frame'],
+        ['sprites', 'Sprites and FX', (p, c) => {
+          const ty = 26 + (1 - c.cutoff) * 70
+          st.y += (ty - st.y) * 0.08
+          let f = 0
+          if (st.roll >= 0) { f = Math.min(8, Math.floor(st.roll / 1.2)); st.roll++; if (st.roll > 11) st.roll = -1 }
+          const sy = Math.round(st.y)
+          const G = [WHITE, YELLOW, ORANGE, RED, ORANGE, YELLOW]
+          for (let k = 0; k < 4; k++) { const col = G[(st.glow + c.frame + k) % 6]; rect(p, SX - 2 - k * 3 - (k ? 0 : 0), sy + 12 - (k < 2 ? 1 : 0), 3, k < 2 ? 4 : 2, col) }
+          put(p, SHIP_ROLL[f], SX, sy)
+          for (const s of st.shots) {
+            s.x += s.vx; s.y += s.vy
+            rect(p, s.x, s.y, 6, 2, CYAN); rect(p, s.x + 4, s.y, 2, 2, WHITE)
+            for (const q of st.foes) if (!q.dead && Math.abs(q.x - s.x) < 12 && Math.abs(q.y - s.y) < 10) { q.dead = true; s.dead = true; st.booms.push({ x: q.x, y: q.y, t: 0 }); st.score += 150 }
+          }
+          st.shots = st.shots.filter(s => !s.dead && s.x < W && s.y > 16 && s.y < H)
+          for (const q of st.foes) {
+            q.t++
+            q.x -= 2.6
+            q.y = q.cy + (q.kind === 0 ? Math.sin((q.x + q.i * 10) / 26) * 26 : q.kind === 1 ? (q.i - 2) * 10 * Math.cos(q.t / 20) : Math.sin(q.t / 8 + q.i) * 8 + (q.i - 2) * 12)
+            if (!q.dead) put(p, SPINNER[(c.frame >> 1) & 3], q.x - 12, q.y - 10)
+          }
+          st.foes = st.foes.filter(q => !q.dead && q.x > -20)
+          for (const b of st.booms) { put(p, BOOM[Math.min(5, b.t >> 1)], b.x - 16, b.y - 16); b.t++; b.x -= 1.5 }
+          st.booms = st.booms.filter(b => b.t < 10)
+        }]
+      ]
+    }
+  }
+})
+
+// ---------- 10. Isometric night kata ----------
+const NIN = [BLACK, BLUE, LBLUE, WHITE], NIN_B = [BLACK, BLACK, BLUE, LBLUE], SASH = [BROWN, RED, LRED, LRED], WRAP = [DGREY, GREY, LGREY, LGREY]
+const NINJA = {
+  w: 80, h: 72, gx: 2, hx: 40, hy: 40, inner: BLACK, torso: 13, neck: 5, thigh: 11, shin: 11, upper: 8, fore: 8, sh: [1, 2, 2, 2], lx: 1, ly: -1,
+  paint (P, J, Q) {
+    const tail = J.go(J.head, -100 + (Q.wind || 0), 9), tail2 = J.go(J.head, -120 + (Q.wind || 0), 12)
+    P.cap(J.head[0] - 2, J.head[1] + 1, ...tail, 1.4, 1, SASH); P.cap(J.head[0] - 2, J.head[1] + 2, ...tail2, 1.2, 0.8, SASH)
+    P.group('ab'); P.cap(...J.shB, ...J.elB, 2.4, 2.1, NIN_B); P.cap(...J.elB, ...J.haB, 2.1, 1.9, WRAP); P.ell(J.haB[0], J.haB[1], 2.2, 2.2, NIN_B); P.group()
+    P.group('lb'); P.cap(...J.hip, ...J.kneeB, 3.4, 2.6, NIN_B); P.cap(...J.kneeB, ...J.ankB, 2.6, 2.2, NIN_B)
+    P.cap(J.ankB[0], J.ankB[1] + 1, J.ankB[0] + 4, J.ankB[1] + 1.5, 1.8, 1.5, WRAP); P.group()
+    P.group('t'); P.cap(...J.hip, ...lerp2(J.hip, J.neck, 0.55), 4, 4.2, NIN)
+    P.cap(...lerp2(J.hip, J.neck, 0.5), ...lerp2(J.hip, J.neck, 0.92), 4.8, 4.6, NIN); P.group()
+    const sa = lerp2(J.hip, J.neck, 0.12)
+    P.cap(sa[0] - 4.5, sa[1], sa[0] + 4.5, sa[1], 1.6, 1.6, SASH)
+    P.cap(sa[0] - 3, sa[1] + 1, sa[0] - 7, sa[1] + 7, 1.2, 0.8, SASH)
+    P.ell(J.head[0], J.head[1], 4.4, 4.8, NIN)
+    P.box(J.head[0] - 1, J.head[1] - 1.5, 5, 2, [BLACK, BLACK, BLACK, BLACK])
+    P.dot(J.head[0] + 1, J.head[1] - 1, WHITE); P.dot(J.head[0] + 3, J.head[1] - 1, WHITE)
+    P.group('lf'); P.cap(...J.hip, ...J.kneeF, 3.5, 2.7, NIN); P.cap(...J.kneeF, ...J.ankF, 2.7, 2.3, NIN)
+    P.cap(J.ankF[0], J.ankF[1] + 1, J.ankF[0] + 4.5, J.ankF[1] + 1.5, 1.9, 1.5, WRAP); P.group()
+    P.group('af'); P.cap(...J.shF, ...J.elF, 2.5, 2.2, NIN); P.cap(...J.elF, ...J.haF, 2.2, 2, WRAP); P.ell(J.haF[0], J.haF[1], 2.3, 2.3, NIN); P.group()
+  }
+}
+const KATA = {
+  stance: { lean: 4, tf: 30, sf: 4, tb: -26, sb: -10, uf: 60, ff: 118, ub: 28, fb: 78, dy: 2 },
+  guard: { lean: 8, tf: 22, sf: -4, tb: -32, sb: -16, uf: 100, ff: 162, ub: 50, fb: 112, dy: 3 },
+  kick: { lean: -22, tf: 128, sf: 132, tb: -4, sb: -4, uf: 70, ff: 140, ub: -60, fb: -20, dy: -1 },
+  strike: { lean: 16, tf: 42, sf: 12, tb: -42, sb: -30, uf: 88, ff: 92, ub: -10, fb: 70, dx: 4, dy: 3 },
+  sweep: { lean: 12, tf: 85, sf: 90, tb: -60, sb: -100, uf: 120, ff: 150, ub: -30, fb: 20, dy: 14 },
+  leap: { lean: -12, tf: 96, sf: 92, tb: 40, sb: -60, uf: 150, ff: 200, ub: -60, fb: -20, dy: -2 },
+  bow: { lean: 32, tf: 6, sf: 0, tb: -6, sb: 0, uf: 30, ff: 140, ub: 25, fb: 140, dy: 0 }
+}
+const kataSpr = cacheBy((k, w) => puppet(NINJA, Object.assign({ wind: w }, KATA[k])))
+for (const k in KATA) DEV.push(['kata-' + k, kataSpr(k + 0, k, 0)])
+const STONE_LANTERN = (() => {
+  const P = painter(28, 46, 2), S = [BLACK, DGREY, GREY, LGREY]
+  P.poly([4, 40, 14, 36, 24, 40, 14, 45], S); P.box(4, 40, 20, 3, S)
+  P.box(11, 24, 6, 16, S)
+  P.poly([3, 24, 14, 19, 25, 24, 14, 29], S)
+  P.box(6, 12, 16, 12, S)
+  P.poly([0, 12, 14, 4, 27, 12, 14, 15], [BLACK, DGREY, GREY, LGREY])
+  P.ell(14, 3, 2.2, 2.6, S)
+  return P.done({ lx: 1, ly: -1 })
+})()
+DEV.push(['lantern', STONE_LANTERN])
+
+VIGNETTES.push({
+  id: 'kata', era: 'late', title: 'STORM KATA', cap: 'A nod to late-80s isometric martial-arts adventures: a new masked figure practises on a temple terrace in the rain.',
+  maps: [
+    ['kick', 'Kick drum: a high front kick'],
+    ['snare', 'Snare: a straight strike, or a low sweep on the backbeat'],
+    ['hat', 'Hi-hats: the guard switches high and low'],
+    ['fill', 'Bar-4 fill: lightning, and a flying kick across the stones'],
+    ['arp', 'Arp notes: the lanterns flare'],
+    ['bass', 'Bass notes: ripples run across the pond'],
+    ['cutoff', 'Filter cutoff: how hard it rains']
+  ],
+  bands: [
+    { id: 'hud', name: 'Status bar', kind: 'hud', y0: 0, y1: 16 },
+    { id: 'sky', name: 'Raster sky and moon', kind: 'sky', y0: 16, y1: 96 },
+    { id: 'temple', name: 'Temple terrace', kind: 'static', y0: 96, y1: 240 }
+  ],
+  make () {
+    const bg = new Uint8Array(W * H)
+    gradient(bg, 16, 120, [[16, BLACK], [30, BLUE], [70, PURPLE], [100, BLUE]], 6)
+    const cloud = new Uint8Array(W * H)
+    // moon with halo, then cloud banks across it (remembered as a mask for the lightning)
+    for (let y = 16; y < 96; y++) for (let x = 0; x < W; x++) {
+      const r = Math.hypot(x - 176, (y - 42) * 1.0)
+      if (r < 15) {
+        let v = (x - 176) + (y - 42) * 0.7 < -6 ? WHITE : LGREY
+        if (hash(Math.floor((x - 160) / 3) * 13 + Math.floor((y - 26) / 3) * 7) < 0.22) v = GREY
+        if ((x - 176) * 0.7 + (y - 42) * 0.7 > 7) v = bayW(x, y) < 8 ? GREY : v
+        bg[y * W + x] = v
+      } else if (r < 22 && bayW(x, y) < (22 - r) * 1.6) bg[y * W + x] = LBLUE
+    }
+    const banks = [[30, 50, 150, 9], [130, 38, 120, 6], [10, 70, 110, 8], [150, 78, 100, 7], [60, 28, 70, 5]]
+    for (const [x0, y0, w0, h0] of banks) {
+      for (let y = y0 - h0; y < y0 + h0; y++) for (let x = x0; x < x0 + w0; x++) {
+        const t = (x - x0) / w0, edge = Math.sin(Math.PI * t) * h0 * (0.75 + 0.25 * Math.sin(x / 7))
+        const d = Math.abs(y - y0)
+        if (d > edge || x < 0 || x >= W) continue
+        const top = y < y0 - edge * 0.4
+        bg[y * W + x] = top ? (bayW(x, y) < 6 ? GREY : DGREY) : (bayW(x, y) < 8 ? DGREY : (d > edge - 2 ? BLUE : DGREY))
+        cloud[y * W + x] = 1
+      }
+    }
+    // distant ridge and a pine on the right
+    for (let x = 0; x < W; x++) { const h = 10 + 7 * Math.sin(x / 19) + 4 * Math.sin(x / 7 + 1); for (let y = Math.round(118 - h); y < 120; y++) bg[y * W + x] = bayW(x, y) < 3 ? BLUE : BLACK }
+    // the terrace: u runs to the right-down, v to the left-down
+    const TX = 120, TY = 104, toUV = (x, y) => [((x - TX) / 16 + (y - TY) / 8) / 2, ((y - TY) / 8 - (x - TX) / 16) / 2]
+    for (let y = 96; y < H; y++) for (let x = 0; x < W; x++) {
+      const [u, v] = toUV(x + 0.5, y + 0.5)
+      let c = -1
+      if (u >= 0 && v >= 0 && u < 6 && v < 6) {
+        const fu = u - Math.floor(u), fv = v - Math.floor(v), alt = (Math.floor(u) + Math.floor(v)) & 1
+        c = alt ? GREY : DGREY
+        if (hash(Math.floor(u) * 7 + Math.floor(v) * 13) < 0.3) c = bayW(x, y) < 6 ? (alt ? DGREY : GREY) : c
+        if (fu < 0.07 || fv < 0.07) c = BLACK
+        else if (fu > 0.93 || fv > 0.93) c = alt ? LGREY : GREY
+      }
+      if (c >= 0) bg[y * W + x] = c
+    }
+    // front faces of the terrace
+    for (let x = 24; x < 216; x++) {
+      const top = x <= 120 ? 152 + (x - 24) / 2 : 200 - (x - 120) / 2
+      for (let y = Math.ceil(top); y < top + 16; y++) {
+        const k = y - top, left = x < 120
+        let c = left ? DGREY : GREY
+        if (k < 1) c = left ? GREY : LGREY
+        else if (Math.floor(k) % 6 === 0) c = BLACK
+        else if (((Math.floor((x + (Math.floor(k / 6) & 1) * 8) / 16)) * 16 === x - (Math.floor(k / 6) & 1) * 8 + 0)) c = BLACK
+        else if (bayW(x, y) < 4) c = left ? BLACK : DGREY
+        bg[y * W + x] = c
+      }
+    }
+    // ground around: raked gravel, and the pond
+    const water = []
+    for (let y = 120; y < H; y++) for (let x = 0; x < W; x++) {
+      const top = x <= 120 ? 152 + (x - 24) / 2 : 200 - (x - 120) / 2
+      const [u, v] = toUV(x + 0.5, y + 0.5)
+      const onTerrace = u >= 0 && v >= 0 && u < 6 && v < 6
+      if (onTerrace || (x >= 24 && x < 216 && y >= top && y < top + 16)) continue
+      if (y < 118) continue
+      const px2 = (x - 196) / 46, py = (y - 222) / 17
+      if (px2 * px2 + py * py < 1 && y > 206) {
+        water.push(y * W + x)
+        bg[y * W + x] = BLUE
+      } else {
+        const rake = ((x + y * 2) % 8)
+        bg[y * W + x] = rake === 0 ? DGREY : (rake === 4 && bayW(x, y) < 8 ? DGREY : BLACK)
+        if (px2 * px2 + py * py < 1.25 && y > 204) bg[y * W + x] = (bayW(x, y) < 8 ? GREY : DGREY)
+      }
+    }
+    // the temple on the back-left edge: lit paper walls, posts, beams and a curling roof
+    for (let x = 24; x <= 120; x++) {
+      const base = 152 - (x - 24) / 2
+      for (let y = Math.round(base - 52); y < base; y++) {
+        const k = base - y, post = ((x - 24) % 24) < 3, beam = k > 44 || (k > 22 && k < 26) || k < 3
+        let c
+        if (post) c = (x - 24) % 24 === 0 ? ORANGE : BROWN
+        else if (beam) c = k > 44 ? BROWN : (k < 3 ? BLACK : BROWN)
+        else {
+          const lat = ((x - 24) % 6 === 0) || (Math.round(k) % 7 === 0)
+          c = lat ? BROWN : (bayW(x, y) < (k > 26 ? 9 : 13) ? YELLOW : ORANGE)
+        }
+        bg[y * W + x] = c
+      }
+    }
+    {
+      const P = painter(150, 120, 2), ROOF = [BLACK, BLUE, LBLUE, LBLUE]
+      P.poly([30, 106, 136, 54, 104, 18, -4, 72], ROOF)
+      P.poly([132, 57, 146, 44, 140, 58], ROOF)
+      P.poly([26, 108, 8, 102, 22, 100], ROOF)
+      P.cap(-4, 72, 104, 18, 2.4, 2.4, [BLACK, DGREY, GREY, LGREY])
+      P.cap(30, 106, 136, 54, 2, 2, [BLACK, BROWN, ORANGE, ORANGE])
+      const s = P.done({ lx: 1, ly: -1 })
+      for (let i = 0; i < s.d.length; i++) {
+        const cx = i % s.w, cy = Math.floor(i / s.w)
+        if (s.d[i] === BLUE && ((cx * 2 + cy * 2) % 10) < 2) s.d[i] = BLACK
+      }
+      put(bg, s, 0, 0)
+    }
+    // balustrade on the back-right edge
+    for (let x = 120; x <= 216; x++) {
+      const base = 104 + (x - 120) / 2
+      const post = ((x - 120) % 16) < 2
+      for (let k = 0; k < 14; k++) {
+        const y = Math.round(base - k)
+        if (post) bg[y * W + x] = (x - 120) % 16 === 0 ? ORANGE : BROWN
+        else if (k === 12 || k === 13) bg[y * W + x] = k === 13 ? ORANGE : BROWN
+        else if (k === 5) bg[y * W + x] = BROWN
+      }
+    }
+    put(bg, STONE_LANTERN, 172, 116)
+    put(bg, STONE_LANTERN, 42, 116)
+    // hanging paper lanterns under the eaves
+    const glow = []
+    for (const [hx, hy] of [[56, 92], [100, 70]]) {
+      for (let y = hy - 8; y < hy; y++) bg[y * W + hx] = DGREY
+      for (let y = 0; y < 12; y++) for (let x = -5; x <= 5; x++) {
+        const e = (x * x) / 25 + ((y - 5.5) ** 2) / 36
+        if (e > 1) continue
+        const i = (hy + y) * W + hx + x
+        bg[i] = (y === 0 || y === 11) ? BLACK : e > 0.7 ? RED : (y % 4 === 1 ? RED : LRED)
+        if (e <= 0.7 && y % 4 !== 1) glow.push(i)
+      }
+    }
+    const fire = []
+    for (const lx of [172, 42]) for (let y = 129; y < 137; y++) for (let x = lx + 10; x < lx + 18; x++) fire.push(y * W + x)
+    // puddle reflections of the lanterns on the wet stones
+    for (const [rx, ry] of [[186, 168], [56, 168]]) for (let y = 0; y < 14; y++) for (let x = -6; x <= 6; x += 2) if (hash(rx + x * 7 + y * 31) < 0.5 - y / 30) { const i = (ry + y) * W + rx + x; if (bg[i] === GREY || bg[i] === DGREY) { bg[i] = bayW(rx + x, ry + y) < 6 ? ORANGE : bg[i]; bg[i + 1] = bg[i] } }
+    const st = { pose: 'stance', t: 0, guard: 0, flash: 0, bolt: null, ripple: 0, flare: 0, drops: [], splash: [], kata: 0, name: 'STANCE', face: 1, leapX: 0 }
+    const r = rng(9)
+    for (let i = 0; i < 28; i++) st.drops.push({ x: r() * 260, y: 16 + r() * 220, stop: 110 + r() * 128 })
+    const MOVE = { kick: 'FRONT KICK', strike: 'STRIKE', sweep: 'LOW SWEEP', leap: 'FLYING KICK', guard: 'HIGH GUARD', stance: 'LOW GUARD', bow: 'BOW' }
+    return {
+      step (e, c) {
+        if (e.fill && e.s === 12) { st.pose = 'leap'; st.t = 18; st.flash = 2; st.bolt = { x: 30 + hash(e.i) * 170, seed: e.i } }
+        else if (e.fill && e.s === 14) { st.flash = 2; st.bolt = { x: 40 + hash(e.i * 3) * 150, seed: e.i * 3 } }
+        else if (st.pose !== 'leap') {
+          if (e.kick) { st.pose = 'kick'; st.t = 6 } else if (e.snare) { st.pose = e.s === 12 ? 'sweep' : 'strike'; st.t = 6 } else if (e.hat) { st.guard ^= 1; if (st.t <= 0) st.pose = st.guard ? 'guard' : 'stance' }
+        }
+        if (e.i % 64 === 0) { st.pose = 'bow'; st.t = 8; st.kata++ }
+        if (e.bass !== null) st.ripple++
+        if (e.arp !== null) st.flare = 3
+      },
+      layers (p, c) {
+        p.set(bg)
+        rect(p, 0, 0, W, 16, BLACK)
+        text(p, 'KATA ' + pad(st.kata % 100, 2), 4, 3, LBLUE)
+        text(p, MOVE[st.pose], W - 4 - textW(MOVE[st.pose]), 3, st.pose === 'leap' ? YELLOW : WHITE)
+        rect(p, 0, 15, W, 1, BLUE)
+      },
+      stages: [
+        ['flash', 'Lightning', (p, c) => {
+          if (st.flash > 0 && st.bolt) {
+            const bx0 = st.bolt.x - 48, bx1 = st.bolt.x + 48
+            for (let i = 16 * W; i < 96 * W; i++) { const x = i % W; if (cloud[i] && x > bx0 && x < bx1) p[i] = p[i] === DGREY ? LGREY : p[i] === GREY ? WHITE : LBLUE }
+            const rr = rng(st.bolt.seed)
+            let x = st.bolt.x, y = 30
+            while (y < 94) { const nx = x + (rr() - 0.5) * 14, ny = y + 4 + rr() * 6; for (let k = 0; k <= 8; k++) { const xx = x + (nx - x) * k / 8, yy = y + (ny - y) * k / 8; px(p, xx, yy, WHITE); px(p, xx + 1, yy, LBLUE) } x = nx; y = ny }
+            st.flashed = true
+          }
+        }, 'Cloud colours swap for two frames; only cloud tiles are re-sent'],
+        ['cycle', 'Colour cycling', (p, c) => {
+          const F = st.flare > 0 ? [WHITE, YELLOW, WHITE, YELLOW] : [YELLOW, ORANGE, WHITE, ORANGE]
+          for (let k = 0; k < fire.length; k++) { const i = fire[k]; p[i] = F[((k >> 3) + (c.frame >> 2) + (k & 1)) & 3] }
+          const GL = st.flare > 0 ? [WHITE, YELLOW] : [LRED, YELLOW]
+          for (let k = 0; k < glow.length; k++) p[glow[k]] = GL[((c.frame >> 2) + (k > glow.length / 2 ? 1 : 0)) & 1] === YELLOW && (k % 3 === 0) ? YELLOW : GL[0]
+          if (st.flare > 0 && (c.frame & 1)) st.flare--
+          const WC = [BLUE, LBLUE, BLUE, CYAN, BLUE, BLUE]
+          const ph = ((c.frame + 2) >> 2) + st.ripple * 2
+          for (let k = 0; k < water.length; k++) { const i = water[k], x = i % W, y = (i / W) | 0; const d = Math.round(Math.hypot((x - 196) / 2.6, y - 222)); p[i] = WC[((d >> 1) - ph + 600) % WC.length] }
+        }, 'Lantern fire, paper lanterns and pond ripples rotate their colours'],
+        ['rain', 'Rain', (p, c) => {
+          const n = Math.round(8 + c.cutoff * 14)
+          const frozen = st.flash > 0
+          for (let k = 0; k < n; k++) {
+            const d = st.drops[k]
+            if (!frozen) { d.y += 9; d.x -= 3 }
+            if (d.y > d.stop) { st.splash.push({ x: d.x, y: d.stop, t: 0 }); d.y = 16 + hash(c.frame + k) * 20; d.x = hash(c.frame * 3 + k) * 270; d.stop = 110 + hash(c.frame * 7 + k) * 128 }
+            for (let s2 = 0; s2 < 5; s2++) px(p, d.x + s2 * 0.6, d.y - s2 * 2, s2 < 2 ? LBLUE : GREY)
+          }
+          for (const s2 of st.splash) { px(p, s2.x - 2, s2.y - 1 - s2.t, LGREY); px(p, s2.x + 2, s2.y - 1 - s2.t, LGREY); s2.t++ }
+          st.splash = st.splash.filter(s2 => s2.t < 2)
+          if (st.flashed) { st.flash--; st.flashed = false }
+        }, 'Short streaks, a few tiles each; they hang still while the lightning strobes'],
+        ['sprites', 'Figure', (p, c) => {
+          let fx = 120, fy = 160
+          if (st.pose === 'leap') { const t = 1 - st.t / 18; fx = 120 + Math.sin(t * Math.PI * 2) * 34; fy = 160 - Math.sin(t * Math.PI) * 26 }
+          const wind = Math.round(Math.sin(c.frame / 5) * 2) * 6
+          const s = kataSpr(st.pose + wind, st.pose, wind)
+          const flip = st.pose === 'leap' ? Math.cos((1 - st.t / 18) * Math.PI * 2) < 0 : false
+          put(p, s, fx - 40, fy - 66, { fx: flip })
+          if (st.t > 0 && --st.t === 0) st.pose = st.guard ? 'guard' : 'stance'
+        }]
+      ]
+    }
+  }
+})
+
+// ---------- 11. Barbarian sword duel ----------
+const STEEL = [DGREY, GREY, LGREY, WHITE], LEATHER = [BLACK, BROWN, ORANGE, ORANGE]
+const BARB = [
+  { skin: [ORANGE, LRED, LRED, WHITE], skinB: [BROWN, ORANGE, ORANGE, LRED], hair: [BLACK, DGREY, GREY, GREY], cloth: [BLACK, DGREY, GREY, LGREY], helm: false },
+  { skin: [BROWN, ORANGE, LRED, LRED], skinB: [BLACK, BROWN, ORANGE, ORANGE], hair: [BLACK, BROWN, ORANGE, ORANGE], cloth: [BROWN, RED, RED, LRED], helm: true }
+]
+function barbSpec (who) {
+  const C = BARB[who]
+  return {
+    w: 128, h: 124, gx: 2, hx: 58, hy: 72, inner: C.skin[0] === ORANGE ? BROWN : BLACK, torso: 24, neck: 6, thigh: 17, shin: 17, upper: 13, fore: 12, sh: [1, 4, 3, 3],
+    paint (P, J, Q) {
+      const sk = C.skin, skB = C.skinB
+      const hand = J.haF, sw = Q.sw, tip = J.go(hand, sw, 38), pommel = J.go(hand, sw + 180, 7)
+      if (!C.helm || Q.bare) P.cap(J.head[0] - 3, J.head[1] - 2, J.neck[0] - 7, J.neck[1] + 6, 4, 2.5, C.hair)
+      P.group('ab'); P.cap(...J.shB, ...J.elB, 4.6, 4, skB); P.cap(...J.elB, ...J.haB, 4, 3.2, skB); P.group()
+      P.cap(...lerp2(J.elB, J.haB, 0.35), ...lerp2(J.elB, J.haB, 0.8), 3.6, 3.4, LEATHER)
+      P.ell(J.haB[0], J.haB[1], 3.2, 3, skB)
+      P.group('lb'); P.cap(...J.hip, ...J.kneeB, 6, 4.6, skB); P.cap(...J.kneeB, ...J.ankB, 4.4, 3, skB); P.group()
+      P.cap(...lerp2(J.kneeB, J.ankB, 0.55), ...J.ankB, 3.6, 3.4, LEATHER)
+      P.cap(J.ankB[0] - 1, J.ankB[1] + 1.5, J.ankB[0] + 6, J.ankB[1] + 2, 3, 2.4, LEATHER)
+      const mid = lerp2(J.hip, J.neck, 0.45), chest = lerp2(J.hip, J.neck, 0.8)
+      P.group('torso')
+      P.cap(...J.hip, ...mid, 6.4, 7.2, sk)
+      P.cap(...mid, ...chest, 8, 9.6, sk)
+      P.cap(J.shB[0] - 2, J.shB[1] + 1, J.shF[0] + 2, J.shF[1] + 1, 5.4, 5.4, sk)
+      P.group()
+      // pecs, abs and the belt
+      const fw = J.go(chest, 90 + J.lean, 1)
+      P.line(chest[0] - 3, chest[1] + 4, fw[0] + 6, fw[1] + 4, C.skin[0])
+      for (let k = 0; k < 3; k++) { const a = lerp2(J.hip, J.neck, 0.2 + k * 0.13); P.dot(a[0] + 3, a[1], C.skin[0]); P.dot(a[0] + 5, a[1] + 1, C.skin[0]) }
+      P.cap(J.hip[0] - 7, J.hip[1] - 2, J.hip[0] + 7, J.hip[1] - 2, 2.6, 2.6, LEATHER)
+      P.box(J.hip[0] + 1, J.hip[1] - 4, 4, 4, STEEL)
+      P.poly([J.hip[0] - 7, J.hip[1], J.hip[0] + 8, J.hip[1], J.hip[0] + 7 + Q.lean * 0.1, J.hip[1] + 14, J.hip[0] + 2, J.hip[1] + 16, J.hip[0] - 4, J.hip[1] + 13], C.cloth)
+      // head, face and hair or helmet
+      P.group('torso'); P.ell(J.neck[0] + 1, J.neck[1] - 1, 4.2, 4, sk); P.group('head')
+      P.ell(J.head[0] + 1, J.head[1], 5.6, 7, sk)
+      P.ell(J.head[0] + 3.5, J.head[1] + 4.5, 3.2, 2.6, sk); P.group()
+      if (C.helm && !Q.bare) {
+        P.ell(J.head[0], J.head[1] - 2.5, 6.6, 5.6, STEEL)
+        P.box(J.head[0] - 6, J.head[1] - 1, 13, 2.4, STEEL)
+        P.box(J.head[0] + 4, J.head[1] - 1, 2, 7, STEEL)
+        P.cap(J.head[0] - 2, J.head[1] - 8, J.head[0] - 5, J.head[1] - 12, 1.4, 0.8, [BROWN, RED, LRED, LRED])
+      } else {
+        P.ell(J.head[0] - 1.5, J.head[1] - 4, 5.6, 4, C.hair)
+        if (!C.helm) P.cap(J.head[0] - 5, J.head[1] - 1, J.head[0] + 5, J.head[1] - 3, 1.2, 1.2, [BROWN, RED, LRED, LRED])
+      }
+      P.dot(J.head[0] + 4, J.head[1] - 0.5, BLACK)
+      P.line(J.head[0] + 2.5, J.head[1] - 2, J.head[0] + 5.5, J.head[1] - 1.5, C.skin[0])
+      if (!C.helm) P.line(J.head[0] + 2, J.head[1] + 5, J.head[0] + 6, J.head[1] + 5, C.hair[0])
+      // front leg
+      P.group('lf'); P.cap(...J.hip, ...J.kneeF, 6.4, 4.8, sk); P.cap(...J.kneeF, ...J.ankF, 4.6, 3.2, sk); P.group()
+      P.cap(...lerp2(J.kneeF, J.ankF, 0.55), ...J.ankF, 3.8, 3.6, LEATHER)
+      P.cap(J.ankF[0] - 1, J.ankF[1] + 1.5, J.ankF[0] + 7, J.ankF[1] + 2, 3.2, 2.6, LEATHER)
+      // broadsword
+      P.cap(...hand, ...tip, 2.4, 1.1, STEEL)
+      P.line(...lerp2(hand, tip, 0.12), ...lerp2(hand, tip, 0.85), WHITE)
+      P.cap(...hand, ...pommel, 1.4, 1.4, LEATHER); P.ell(pommel[0], pommel[1], 2, 2, [BROWN, ORANGE, YELLOW, WHITE])
+      const gd = J.go(hand, sw + 90, 6), gd2 = J.go(hand, sw - 90, 6), gc = J.go(hand, sw, 3)
+      P.cap(gd[0] + (gc[0] - hand[0]), gd[1] + (gc[1] - hand[1]), gd2[0] + (gc[0] - hand[0]), gd2[1] + (gc[1] - hand[1]), 1.6, 1.6, [BROWN, ORANGE, YELLOW, WHITE])
+      // front arm and fist
+      P.group('af'); P.cap(...J.shF, ...J.elF, 5, 4.2, sk); P.cap(...J.elF, ...J.haF, 4.2, 3.4, sk); P.ell(J.shF[0], J.shF[1] + 2, 5, 4.4, sk); P.group()
+      P.cap(...lerp2(J.elF, J.haF, 0.35), ...lerp2(J.elF, J.haF, 0.8), 3.8, 3.6, LEATHER)
+      P.ell(hand[0], hand[1], 3.4, 3.2, sk)
+      J.tip = tip
+    }
+  }
+}
+const BARB_S = [barbSpec(0), barbSpec(1)]
+const DUEL = {
+  guard: { lean: 6, tf: 28, sf: 0, tb: -22, sb: -8, uf: 35, ff: 95, sw: 140, ub: 25, fb: 85, dy: 2 },
+  guard2: { lean: 10, tf: 36, sf: 8, tb: -30, sb: -14, uf: 28, ff: 82, sw: 128, ub: 18, fb: 72, dy: 5 },
+  raise: { lean: -6, tf: 20, sf: 0, tb: -18, sb: -8, uf: 168, ff: 205, sw: 245, ub: 150, fb: 195, dy: 0 },
+  chop: { lean: 24, tf: 48, sf: 16, tb: -36, sb: -22, uf: 92, ff: 96, sw: 72, ub: 70, fb: 96, dy: 7, dx: 6 },
+  block: { lean: -4, tf: 22, sf: 0, tb: -26, sb: -12, uf: 150, ff: 170, sw: 92, ub: 130, fb: 175, dy: 3 },
+  spinA: { lean: 18, tf: 40, sf: 10, tb: -30, sb: -18, uf: -40, ff: -70, sw: -95, ub: -20, fb: 20, dy: 6 },
+  spinB: { lean: 8, tf: 50, sf: 20, tb: -40, sb: -30, uf: 120, ff: 105, sw: 80, ub: 60, fb: 80, dy: 8, dx: 10 },
+  hit: { lean: -22, tf: 12, sf: -10, tb: -38, sb: -30, uf: 145, ff: 125, sw: 205, ub: -70, fb: -40, dx: -6, dy: 2 }
+}
+const barbSpr = cacheBy((who, k, bare) => puppet(BARB_S[who], Object.assign({ bare }, DUEL[k])))
+for (const k in DUEL) DEV.push(['barb-' + k, barbSpr(0 + k, 0, k, false)])
+DEV.push(['barb2-guard', barbSpr('1guard', 1, 'guard', false)])
+DEV.push(['barb2-hit', barbSpr('1hitb', 1, 'hit', true)])
+const HELM = (() => { const P = painter(20, 16, 2); P.ell(10, 8, 6.6, 5.6, STEEL); P.box(4, 10, 13, 2.4, STEEL); P.cap(8, 3, 5, -1, 1.4, 0.8, [BROWN, RED, LRED, LRED]); return P.done() })()
+
+VIGNETTES.push({
+  id: 'rite', era: 'late', title: 'RED MOON RITE', cap: 'A nod to late-80s fantasy sword-fighting games: two new barbarians trade broadsword blows in a ruined temple under a blood moon.',
+  maps: [
+    ['kick', 'Kick drum: the leading fighter winds up and chops overhead'],
+    ['snare', 'Snare: the other fighter parries, with a spark where the blades meet'],
+    ['hat', 'Hi-hats: footwork; both shift their stance'],
+    ['bass', 'Bass pitch: who presses forward and who gives ground'],
+    ['fill', 'Bar-4 fill: a spinning attack; on the downbeat it knocks the helmet clean off (it\'s back by bar 1)'],
+    ['arp', 'Arp notes: the torches flare'],
+    ['cutoff', 'Filter cutoff: how dark the sky gets'],
+    ['bar', 'Bars: the loser of each exchange loses stamina; empty bars refill']
+  ],
+  bands: [
+    { id: 'hud', name: 'Status bar', kind: 'hud', y0: 0, y1: 16 },
+    { id: 'sky', name: 'Raster sky and moon', kind: 'sky', y0: 16, y1: 136 },
+    { id: 'arena', name: 'Temple and floor', kind: 'static', y0: 136, y1: 240 }
+  ],
+  make () {
+    const PALS = [
+      [[16, BLACK], [30, BLUE], [58, PURPLE], [100, RED], [124, LRED]],
+      [[16, BLUE], [28, PURPLE], [56, RED], [92, LRED], [124, RED]],
+      [[16, PURPLE], [32, RED], [62, LRED], [96, LRED], [118, ORANGE]]
+    ]
+    const torchAt = [[26, 104], [212, 104]]
+    const flameMask = []
+    const bgs = PALS.map(stops => {
+      const b = new Uint8Array(W * H)
+      gradient(b, 16, 140, stops, 6)
+      // the blood moon: maria, a lit rim and a dithered halo
+      for (let y = 16; y < 110; y++) for (let x = 60; x < 180; x++) {
+        const dx = x - 120, dy = y - 60, r = Math.hypot(dx, dy)
+        if (r < 28) {
+          const lit = -dx * 0.6 - dy * 0.5
+          let v = WHITE
+          const m = hash(Math.floor((x + 3) / 6) * 31 + Math.floor((y + 2) / 5) * 17) + 0.35 * Math.sin(x / 9 + y / 13)
+          if (m > 0.8 && r < 25) v = bayW(x, y) < 10 ? LRED : WHITE
+          if (m > 1.0 && r < 25) v = LRED
+          if (lit < -2) v = bayW(x, y) < Math.min(16, (-lit + 2) * 1.6) ? (lit < -12 ? RED : LRED) : v
+          if (lit < -16) v = bayW(x, y) < 8 ? RED : LRED
+          b[y * W + x] = v
+        } else if (r < 38 && bayW(x, y) < (38 - r) * 1.1) b[y * W + x] = r < 31 ? LRED : (stops[stops.length - 2][1] === LRED ? RED : LRED)
+      }
+      // wisps across the moon
+      for (const [x0, y0, w0] of [[40, 70, 110], [110, 48, 90], [10, 92, 80], [150, 88, 80]]) for (let x = x0; x < x0 + w0; x++) { const th = Math.sin(Math.PI * (x - x0) / w0) * 3; for (let y = Math.round(y0 - th); y <= y0 + th * 0.5; y++) b[y * W + x] = bayW(x, y) < 10 ? PURPLE : BLACK }
+      // jagged hills on the horizon
+      for (let x = 0; x < W; x++) { const h = 14 + 8 * Math.abs(Math.sin(x / 23)) + 5 * Math.sin(x / 9); for (let y = Math.round(140 - h); y < 140; y++) b[y * W + x] = bayW(x, y) < 2 ? PURPLE : BLACK }
+      return b
+    })
+    // the arena: steps, ruined columns, an arch, flagstones
+    const fg = new Uint8Array(W * H).fill(T)
+    {
+      const P = painter(240, 240, 2), STONE = [BLACK, DGREY, GREY, LGREY], DARK = [BLACK, BLACK, DGREY, GREY]
+      P.box(0, 140, 240, 8, DARK); P.box(0, 148, 240, 8, STONE); P.box(0, 156, 240, 6, DARK)
+      for (const [x, top, broken] of [[8, 36, true], [196, 54, false]]) {
+        P.box(x, top + 10, 34, 150 - top, STONE)
+        P.box(x - 4, top + 2, 42, 9, STONE)
+        if (broken) P.poly([x - 4, top + 3, x + 6, top - 6, x + 14, top + 1, x + 24, top - 10, x + 38, top + 3], STONE)
+        else P.box(x - 6, top - 4, 46, 7, STONE)
+        P.box(x - 6, 150, 46, 12, STONE)
+      }
+      for (let k = 0; k < 7; k++) { const a = rad(180 - k * 15), cx = 120, cy = 126; P.poly([cx + Math.cos(a) * 52, cy - Math.sin(a) * 52, cx + Math.cos(a - 0.26) * 52, cy - Math.sin(a - 0.26) * 52, cx + Math.cos(a - 0.26) * 40, cy - Math.sin(a - 0.26) * 40, cx + Math.cos(a) * 40, cy - Math.sin(a) * 40], STONE) }
+      P.box(62, 124, 14, 18, STONE); P.box(164, 128, 14, 14, STONE)
+      P.poly([164, 128, 178, 128, 176, 120, 168, 124], STONE)
+      P.ell(150, 150, 8, 5, STONE); P.ell(62, 152, 6, 4, STONE)
+      for (const [tx, ty] of torchAt) { P.box(tx - 3, ty, 6, 12, [BLACK, BROWN, ORANGE, ORANGE]); P.box(tx - 6, ty - 2, 12, 4, [BLACK, DGREY, GREY, GREY]) }
+      const s = P.done({ lx: -1, ly: -1 })
+      put(fg, s, 0, 0)
+      for (let y = 46; y < 150; y++) for (const x0 of [8, 196]) for (let x = x0 + 4; x < x0 + 30; x += 8) if (fg[y * W + x] !== T && fg[y * W + x] !== BLACK) { fg[y * W + x] = DGREY; fg[y * W + x + 1] = (x - x0) < 10 ? LGREY : GREY }
+      for (let y = 162; y < 240; y++) {
+        const depth = (y - 150) / 90
+        for (let x = 0; x < W; x++) {
+          const row = Math.floor(Math.log(1 + (y - 162) / 6) * 3.2)
+          const rowY = (k) => 162 + 6 * (Math.exp(k / 3.2) - 1)
+          const vx = (x - 120) / (0.4 + depth * 1.6)
+          const col = Math.floor(vx / 22 + (row & 1) * 0.5)
+          const fracx = vx / 22 + (row & 1) * 0.5 - col
+          let v = ((row + col) & 1) ? GREY : DGREY
+          if (hash(row * 31 + col * 7) < 0.3) v = bayW(x, y) < 6 ? DGREY : v
+          if (y - rowY(row) < 1.2) v = BLACK
+          else if (y - rowY(row) < 2.2) v = v === GREY ? LRED : GREY
+          if (fracx < 0.04) v = BLACK
+          if (hash(Math.floor(x / 3) * 17 + Math.floor(y / 2) * 3) < 0.012) v = BLACK
+          fg[y * W + x] = v
+        }
+      }
+      for (let x = 0; x < W; x++) for (let y = 222; y < 240; y++) if (bayW(x, y) < (y - 222) / 2) fg[y * W + x] = BLACK
+    }
+    for (const [tx, ty] of torchAt) for (let y = ty - 14; y < ty - 2; y++) for (let x = tx - 5; x < tx + 5; x++) flameMask.push([x, y, tx, ty])
+    const st = { rowPal: new Uint8Array(30).fill(1), lead: 0, pose: ['guard', 'guard'], t: [0, 0], stance: 0, x: 120, spark: 0, sparkAt: [120, 120], flare: 0, helm: null, bare: false, hp: [8, 8], spin: 0, spinWho: 0, shake: 0 }
+    const FEET = 228
+    return {
+      step (e, c) {
+        if (e.bass !== null) st.lead = e.bass >= 50 ? 1 : 0
+        const L = st.lead, O = 1 - L
+        if (e.s === 0 && e.bar === 0) { st.bare = false; st.helm = null }
+        if (e.fill && e.s === 12) { st.spin = 4; st.spinWho = L; st.pose[L] = 'spinA'; st.t[L] = 99 }
+        if (st.spin > 0) {
+          st.pose[st.spinWho] = st.spin & 1 ? 'spinB' : 'spinA'
+          st.spin--
+          if (st.spin === 0) {
+            const V = 1 - st.spinWho
+            st.pose[st.spinWho] = 'spinB'; st.t[st.spinWho] = 6
+            st.pose[V] = 'hit'; st.t[V] = 10; st.hp[V] = Math.max(0, st.hp[V] - 2); st.shake = 3
+            if (V === 1 && !st.bare) { st.bare = true; st.helm = { x: st.x + 30, y: FEET - 86, vx: 3.2, vy: -7, rot: 0, rest: false } }
+          }
+          return
+        }
+        if (e.kick) { st.pose[L] = 'raise'; st.t[L] = 3; st.next = 'chop' }
+        if (e.snare) { st.pose[O] = 'block'; st.t[O] = 5; st.spark = 3; st.hp[L] = Math.max(0, st.hp[L] - 1) }
+        if (e.hat) { st.stance ^= 1 }
+        if (e.s === 0) for (const k of [0, 1]) if (st.hp[k] === 0) st.hp[k] = 8
+        if (e.arp !== null) st.flare = 3
+      },
+      layers (p, c) {
+        const want = c.cutoff < 0.36 ? 0 : c.cutoff < 0.68 ? 1 : 2
+        for (let r = 2; r < 17; r++) if (st.rowPal[r] !== want) { st.rowPal[r] = want; break }
+        p.fill(BLACK, 0, 16 * W)
+        for (let r = 2; r < 30; r++) p.set(bgs[st.rowPal[Math.min(r, 16)]].subarray(r * 8 * W, r * 8 * W + 8 * W), r * 8 * W)
+        for (let i = 16 * W; i < W * H; i++) { const v = fg[i]; if (v !== T) p[i] = v }
+        rect(p, 0, 0, W, 16, BLACK)
+        for (let k = 0; k < 8; k++) { rect(p, 6 + k * 9, 5, 7, 6, k < st.hp[0] ? (k < 2 ? RED : YELLOW) : DGREY); rect(p, W - 13 - k * 9, 5, 7, 6, k < st.hp[1] ? (k < 2 ? RED : YELLOW) : DGREY) }
+        text(p, 'VS', 112, 3, LRED)
+        rect(p, 0, 15, W, 1, RED)
+      },
+      stages: [
+        ['cycle', 'Colour cycling', (p, c) => {
+          const big = st.flare > 0
+          const FL = [YELLOW, WHITE, ORANGE, YELLOW, RED, ORANGE]
+          for (const [x, y, tx, ty] of flameMask) {
+            const dx = (x - tx + 0.5) / 5, dy = (ty - 2 - y) / (big ? 12 : 9)
+            const wob = Math.sin(y * 0.9 + c.frame * 0.7) * 0.15
+            if (Math.abs(dx + wob) > 1 - dy * 0.9 || dy > 1) continue
+            p[y * W + x] = FL[((y - c.frame) % 6 + 6) % 6 + (dy < 0.3 && Math.abs(dx) < 0.4 ? 0 : 0)] === WHITE && dy > 0.5 ? YELLOW : FL[((y - c.frame) % 6 + 6) % 6]
+          }
+          if (big) for (const [tx, ty] of torchAt) for (let y = ty - 24; y < ty - 13; y++) for (let x = tx - 3; x < tx + 3; x++) if (((x + y + c.frame) & 3) === 0) px(p, x, y, (y & 1) ? YELLOW : ORANGE)
+          if (st.flare > 0 && (c.frame & 1)) st.flare--
+        }, 'Two torch flames rotate six colours'],
+        ['sprites', 'Fighters and FX', (p, c) => {
+          for (const k of [0, 1]) if (st.t[k] > 0 && --st.t[k] === 0) {
+            if (st.pose[k] === 'raise' && st.next) { st.pose[k] = st.next; st.t[k] = 5; st.next = null } else st.pose[k] = st.stance ? 'guard2' : 'guard'
+          }
+          for (const k of [0, 1]) if (st.t[k] <= 0) st.pose[k] = st.stance ? 'guard2' : 'guard'
+          const tx = 120 + (st.lead ? -8 : 8)
+          st.x += clamp(tx - st.x, -1, 1)
+          const sh = st.shake > 0 ? (st.shake & 1 ? 2 : -2) : 0
+          if (st.shake > 0) st.shake--
+          const xs = [st.x - 30, st.x + 30]
+          for (const k of [0, 1]) {
+            const pose = st.pose[k], bare = k === 1 && st.bare
+            const s = barbSpr(k + pose + (bare ? 'b' : ''), k, pose, bare)
+            const ox = k === 0 ? xs[0] - 58 : xs[1] - (128 - 58)
+            rect(p, xs[k] - 18, FEET + 2, 36, 2, BLACK)
+            put(p, s, ox + sh, FEET - 112, { fx: k === 1 })
+          }
+          if (st.spark > 0) {
+            const cx = st.x, cy = FEET - 92
+            const R = st.spark * 4 + 4
+            for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + st.spark; for (let r = 2; r < R; r++) px(p, cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.8, r < R / 2 ? WHITE : YELLOW) }
+            disc(p, cx, cy, 3, WHITE)
+            st.spark--
+          }
+          if (st.spin > 0 || (st.pose[st.spinWho] === 'spinB' && st.t[st.spinWho] > 3)) {
+            const cx = xs[st.spinWho] + (st.spinWho ? -10 : 10), cy = FEET - 60
+            for (let a = 0; a < 14; a++) { const t = a / 14 * Math.PI * 1.4 + c.frame * 0.9; px(p, cx + Math.cos(t) * 44 * (st.spinWho ? -1 : 1), cy + Math.sin(t) * 12, a & 1 ? LGREY : WHITE) }
+          }
+          if (st.helm) {
+            const h = st.helm
+            if (!h.rest) { h.x += h.vx; h.y += h.vy; h.vy += 0.7; h.rot++; if (h.y > FEET - 10) { h.y = FEET - 10; h.rest = true } }
+            put(p, HELM, h.x - 10, h.y - 8, { fx: !h.rest && (h.rot >> 1) & 1, sy: h.rest ? 0.5 : ((h.rot >> 2) & 1 ? -0.5 : 0.5) })
+          }
+        }]
+      ]
+    }
+  }
+})
+
+// ---------- engine ----------
+// Cost model. The LCD keeps its own frame memory (GRAM). In software mode we write changed 8x8 tiles into it.
+// With hardware scroll, the panel shows GRAM starting at a scroll offset, so each band's pixels sit at
+// (x + offset) in a 320-line circular GRAM. We keep a shadow of GRAM per mode and count the 8x8 GRAM tiles
+// whose contents must change, plus the freshly exposed edge strip of every scrolled band (as tile-equivalents).
+const GN = 320
+const MODES = {
+  sw: {
+    name: 'Software parallax',
+    sum: 'The default, and the only mode the FM-1 is known to support. Every band is redrawn into the frame and only the 8×8 tiles that changed are sent.',
+    as: ['<b>Needs:</b> nothing beyond plain windowed pixel writes, which SIDOU already uses.', '<b>Pays:</b> every tile with detail in a band that moved. Bands are scheduled so the heavy ones never move on the same frame.']
+  },
+  hwa: {
+    name: 'HW scroll (a): one offset',
+    sum: 'One hardware scroll offset for the whole screen, set to the ground speed. The ground then costs only its new edge strip, but everything that should move slower (or not at all) is now moving in GRAM and has to be redrawn every frame to stay put.',
+    as: ['<b>Assumes</b> the panel accepts VSCRDEF/VSCRSADD and, once the picture is rotated, its scroll axis runs left to right.', '<b>Assumes</b> offset writes can be synced to the TE (tearing-effect) line so the scroll doesn\'t tear.', '<b>Pays</b> for the status bar, the sky and every slower band on every frame, because they are all compensating for the global scroll. Flat areas and stripes cost nothing; detail costs every frame.']
+  },
+  hwb: {
+    name: 'HW scroll (b): split per band',
+    sum: 'A different offset for each band, rewritten mid-refresh at the band boundaries, timed off TE like a C64 raster split. Each band then costs only its new edge strip, so the parallax is nearly free and every band can move smoothly every frame.',
+    as: ['<b>Assumes</b> everything in (a), plus the offset can be rewritten several times per refresh at the right scan line.', '<b>Caveat:</b> an ST7789 refreshes along the same axis it scrolls. After rotating the picture so it scrolls sideways, a mid-refresh change splits the screen into left and right parts, not top-to-bottom bands. Per-band sideways scrolling may not be possible on this controller at all; treat (b) as a best case until it is tried on the device.', '<b>Pays</b> the edge strips, the sprites and whatever animates in place.']
+  }
+}
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
+const state = { pos: 0, bpm: 124, playing: !reduce, mute: { bass: false, arp: false, drums: false }, lastBass: 45, lastArp: 64, frame: 0, cur: 0, dirty: false, mode: 'sw' }
+for (const v of VIGNETTES) v.era = v.era || 'early'
+// late era first in the arcade, early era after
+const ORDER = VIGNETTES.filter(v => v.era === 'late').concat(VIGNETTES.filter(v => v.era === 'early'))
+const scrolls = v => (v.bands || []).some(b => b.speed)
+function makeRun (v, mode) {
+  const bands = v.bands || [{ id: 'all', name: 'Whole screen', kind: 'static', y0: 0, y1: H }]
+  const inst = v.make(mode)
+  const stages = inst.stages || []
+  const nS = 1 + stages.length
+  const cats = bands.map(b => ({ name: b.name, kind: b.kind, band: b })).concat(stages.map(s => ({ name: s[1], kind: s[0], note: s[3] })))
+  const rowBand = new Uint8Array(30)
+  bands.forEach((b, i) => { for (let r = b.y0 >> 3; r < b.y1 >> 3; r++) rowBand[r] = i })
+  const bidx = {}
+  bands.forEach((b, i) => { bidx[b.id] = i })
+  const r = {
+    v, mode, inst, bands, stages, nS, cats, rowBand,
+    p: new Uint8Array(W * H),
+    snaps: Array.from({ length: nS - 1 }, () => new Uint8Array(W * H)),
+    G: Array.from({ length: nS }, () => new Uint8Array(GN * H).fill(T)),
+    dm: Array.from({ length: nS }, () => new Uint8Array(30 * 40)),
+    acc: new Float64Array(bands.length), shown: new Float64Array(bands.length), o: new Float64Array(bands.length), d: new Int16Array(bands.length),
+    hwIdx: Math.max(0, bands.findIndex(b => b.hw)),
+    cat: new Float64Array(cats.length), hist: new Uint16Array(WIN), chist: cats.map(() => new Uint16Array(WIN)), n: 0, head: 0, now: 0
+  }
+  r.B = { off: id => r.shown[bidx[id]] }
+  return r
+}
+const vruns = ORDER.map(v => {
+  if (!scrolls(v)) { const one = makeRun(v, 'sw'); return { sw: one, hwa: one, hwb: one, v } }
+  return { sw: makeRun(v, 'sw'), hwa: makeRun(v, 'hwa'), hwb: makeRun(v, 'hwb'), v }
+})
+const allRuns = []
+for (const vr of vruns) for (const m of ['sw', 'hwa', 'hwb']) if (!allRuns.includes(vr[m])) allRuns.push(vr[m])
+const runOf = i => vruns[i][state.mode]
+
+function advance (r, c) {
+  for (let i = 0; i < r.bands.length; i++) {
+    const b = r.bands[i]
+    if (!b.speed) continue
+    r.acc[i] += b.speed * c.bpm / 124
+    const upd = r.mode !== 'sw' || (c.frame % (b.every || 1)) === (b.phase || 0)
+    if (upd) { const q = r.mode === 'sw' ? (b.q || 1) : 1; r.shown[i] = Math.floor(r.acc[i] / q) * q }
+  }
+}
+function render (r, c) {
+  advance(r, c)
+  const inst = r.inst
+  if (!inst.layers) { inst.draw(r.p, c); return }
+  inst.layers(r.p, c, r.B)
+  for (let s = 0; s < r.stages.length; s++) {
+    r.snaps[s].set(r.p)
+    r.stages[s][2](r.p, c, r.B)
+  }
+}
+function measure (r) {
+  const nb = r.bands.length
+  for (let b = 0; b < nb; b++) {
+    const o = r.mode === 'sw' ? 0 : r.mode === 'hwa' ? r.shown[r.hwIdx] : r.shown[b]
+    r.d[b] = Math.min(W, Math.max(0, o - r.o[b]))
+    r.o[b] = o
+  }
+  for (let s = 0; s < r.nS; s++) {
+    const src = s < r.nS - 1 ? r.snaps[s] : r.p, G = r.G[s], dm = r.dm[s]
+    dm.fill(0)
+    for (let b = 0; b < nb; b++) {
+      const band = r.bands[b], o = ((r.o[b] % GN) + GN) % GN, keep = W - r.d[b]
+      for (let y = band.y0; y < band.y1; y++) {
+        const sr = y * W, gr = y * GN, tr = (y >> 3) * 40
+        for (let x = 0; x < W; x++) {
+          let g = o + x
+          if (g >= GN) g -= GN
+          const v = src[sr + x]
+          if (G[gr + g] !== v) { G[gr + g] = v; if (x < keep) dm[tr + (g >> 3)] = 1 }
+        }
+      }
+    }
+  }
+  const cat = r.cat
+  cat.fill(0)
+  const last = r.dm[r.nS - 1]
+  for (let t = 0; t < 1200; t++) {
+    if (!last[t]) continue
+    let k = r.rowBand[(t / 40) | 0]
+    if (r.nS > 1 && !r.dm[0][t]) { let s = 1; while (s < r.nS - 1 && !r.dm[s][t]) s++; k = nb + s - 1 }
+    cat[k]++
+  }
+  for (let b = 0; b < nb; b++) if (r.d[b] > 0) cat[b] += Math.ceil((r.bands[b].y1 - r.bands[b].y0) * r.d[b] / 64)
+  let n = 0
+  for (let k = 0; k < cat.length; k++) n += cat[k]
+  return n
+}
+function ctx () {
+  return { pos: state.pos, bpm: state.bpm, cutoff: cutoffAt(state.pos), mute: state.mute, lastBass: state.lastBass, lastArp: state.lastArp, frame: state.frame }
+}
+const flashes = {}
+function fireStep (i) {
+  const e = patternStep(i)
+  if (state.mute.drums) { e.kick = e.snare = e.hat = e.fill = false }
+  if (state.mute.bass) e.bass = null
+  if (state.mute.arp) e.arp = null
+  if (e.bass !== null) state.lastBass = e.bass
+  if (e.arp !== null) state.lastArp = e.arp
+  const c = ctx()
+  for (const r of allRuns) r.inst.step(e, c)
+  for (const k of ['kick', 'snare', 'hat', 'fill']) if (e[k]) flashes[k] = 3
+  if (e.kick || e.snare || e.hat) flashes.drums = 3
+  if (e.bass !== null) flashes.bass = 3
+  if (e.arp !== null) flashes.arp = 3
+  if (e.s === 0) flashes.bar = 4
+  flashes.tempo = e.s % 4 === 0 ? 3 : (flashes.tempo || 0)
+  audio.play(e)
+  ui.step(e)
+}
+function tick (record) {
+  const stepSec = 60 / state.bpm / 4
+  const from = Math.floor(state.pos)
+  state.pos += FRAME_MS / 1000 / stepSec
+  for (let i = from + 1; i <= Math.floor(state.pos); i++) fireStep(i)
+  state.frame++
+  const c = ctx()
+  for (const r of allRuns) {
+    render(r, c)
+    const n = measure(r)
+    r.now = n
+    if (record) {
+      if (!r.worst || n > r.worst[0] || r.n === 0) r.worst = [n, c.frame % 8, Array.from(r.cat)]
+      r.hist[r.head] = n
+      for (let k = 0; k < r.cats.length; k++) r.chist[k][r.head] = r.cat[k]
+      r.head = (r.head + 1) % WIN; r.n = Math.min(WIN, r.n + 1)
+    }
+  }
+}
+function stats (r) {
+  let s = 0, m = 0, over = 0
+  for (let k = 0; k < r.n; k++) { const v = r.hist[(r.head - 1 - k + WIN) % WIN]; s += v; if (v > m) m = v; if (v > BUDGET) over++ }
+  return { avg: r.n ? s / r.n : 0, max: m, over }
+}
+function catStats (r, k) {
+  let s = 0, m = 0
+  const h = r.chist[k]
+  for (let j = 0; j < r.n; j++) { const v = h[(r.head - 1 - j + WIN) % WIN]; s += v; if (v > m) m = v }
+  return { avg: r.n ? s / r.n : 0, max: m }
+}
+function statusOf (st) {
+  if (st.avg > BUDGET) return ['hot', 'Over budget']
+  if (st.max > BUDGET) return ['warn', st.over + (st.over === 1 ? ' frame over' : ' frames over')]
+  return ['ok', 'Fits budget']
+}
+
+// ---------- audio ----------
+const audio = {
+  ac: null, on: false, noise: null, master: null,
+  start () {
+    if (!this.ac) {
+      const AC = window.AudioContext || window.webkitAudioContext
+      if (!AC) return false
+      this.ac = new AC()
+      const comp = this.ac.createDynamicsCompressor()
+      this.master = this.ac.createGain(); this.master.gain.value = 0.45
+      this.master.connect(comp); comp.connect(this.ac.destination)
+      const len = this.ac.sampleRate
+      this.noise = this.ac.createBuffer(1, len, this.ac.sampleRate)
+      const d = this.noise.getChannelData(0)
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1
+    }
+    this.ac.resume()
+    this.on = true
+    return true
+  },
+  stop () { this.on = false; if (this.ac) this.ac.suspend() },
+  env (g, t, a, peak, dec) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + dec) },
+  play (e) {
+    if (!this.on || !this.ac || !state.playing) return
+    const ac = this.ac, t = ac.currentTime + 0.03, sd = 60 / state.bpm / 4
+    const hz = n => 440 * Math.pow(2, (n - 69) / 12)
+    if (e.bass !== null) {
+      const o = ac.createOscillator(), f = ac.createBiquadFilter(), g = ac.createGain()
+      o.type = 'square'; o.frequency.value = hz(e.bass)
+      f.type = 'lowpass'; f.frequency.value = 180 + cutoffAt(state.pos) * 2400; f.Q.value = 6
+      o.connect(f); f.connect(g); g.connect(this.master)
+      this.env(g, t, 0.004, 0.32, sd * 1.6); o.start(t); o.stop(t + sd * 2)
+    }
+    if (e.arp !== null) {
+      const o = ac.createOscillator(), g = ac.createGain()
+      o.type = 'sawtooth'; o.frequency.value = hz(e.arp)
+      o.connect(g); g.connect(this.master)
+      this.env(g, t, 0.003, 0.09, sd * 0.9); o.start(t); o.stop(t + sd)
+    }
+    if (e.kick) {
+      const o = ac.createOscillator(), g = ac.createGain()
+      o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.12)
+      o.connect(g); g.connect(this.master)
+      this.env(g, t, 0.002, 0.9, 0.2); o.start(t); o.stop(t + 0.25)
+    }
+    const nz = (hp, peak, dec) => {
+      const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain()
+      s.buffer = this.noise; f.type = 'highpass'; f.frequency.value = hp
+      s.connect(f); f.connect(g); g.connect(this.master)
+      this.env(g, t, 0.001, peak, dec); s.start(t, Math.random() * 0.5); s.stop(t + dec + 0.02)
+    }
+    if (e.snare) nz(1400, 0.35, 0.13)
+    if (e.hat) nz(7000, 0.12, 0.035)
+  }
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id)
+const lcd = $('lcd'), lctx = lcd.getContext('2d'), img = lctx.createImageData(W, H), img32 = new Uint32Array(img.data.buffer)
+const VCOL = { kick: '--v-drums', snare: '--v-drums', hat: '--v-drums', fill: '--v-drums', drums: '--v-drums', bass: '--v-bass', arp: '--v-arp', cutoff: '--v-mod', tempo: '--v-mod', bar: '--v-mod' }
+const VNAME = { kick: 'Kick', snare: 'Snare', hat: 'Hi-hat', fill: 'Fill', drums: 'Drums', bass: 'Bass', arp: 'Arp', cutoff: 'Cutoff', tempo: 'Tempo', bar: 'Bar' }
+const VGROUP = { kick: 'drums', snare: 'drums', hat: 'drums', fill: 'drums', drums: 'drums', bass: 'bass', arp: 'arp' }
+const stepsEl = $('steps')
+for (let i = 0; i < 16; i++) { const d = document.createElement('i'); if (i % 4 === 0) d.className = 'beat'; stepsEl.appendChild(d) }
+const thumbs = vruns.map((vr, idx) => {
+  const b = document.createElement('button')
+  b.className = 'thumb'
+  b.setAttribute('aria-label', 'Show ' + vr.v.title)
+  b.innerHTML = '<canvas width="240" height="240"></canvas><span class="tt"></span><span class="tm"><span class="tavg"></span><span class="tst"></span></span>'
+  b.querySelector('.tt').textContent = vr.v.title
+  b.addEventListener('click', () => select(idx))
+  $(vr.v.era === 'late' ? 'thumbs' : 'thumbs-early').appendChild(b)
+  const cv = b.querySelector('canvas'), cx = cv.getContext('2d'), im = cx.createImageData(W, H)
+  return { b, cx, im, im32: new Uint32Array(im.data.buffer), avg: b.querySelector('.tavg'), st: b.querySelector('.tst') }
+})
+const rowsT = vruns.map(vr => {
+  const tr = document.createElement('tr')
+  tr.innerHTML = '<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>'
+  tr.cells[0].textContent = vr.v.title
+  $('btab').appendChild(tr)
+  return tr
+})
+const ordn = n => n + (n === 2 ? 'nd' : n === 3 ? 'rd' : 'th')
+function ruleOf (cat, r) {
+  const b = cat.band
+  if (!b) return cat.note || ''
+  const moving = scrolls(r.v)
+  if (!b.speed) {
+    if (r.mode === 'hwa' && moving) return 'Doesn\'t move, so it is redrawn every frame against the global scroll'
+    if (b.kind === 'hud') return 'Re-sent only when a number changes'
+    if (b.id === 'all') return 'Diffed tile by tile'
+    return b.kind === 'sky' ? 'Never moves. Raster bands are drawn once' : 'Never moves'
+  }
+  const step = Math.round(b.speed * (b.every || 1) * 10) / 10
+  if (r.mode === 'sw') return (b.every || 1) > 1 ? step + ' px every ' + ordn(b.every) + ' frame, on frame ' + (b.phase || 0) + ' of ' + b.every : b.speed + ' px every frame' + (b.q ? ', in ' + b.q + ' px steps so its striped dither never changes' : '')
+  if (r.mode === 'hwb') return 'Own offset, ' + b.speed + ' px a frame; sends only the new edge strip'
+  return b.hw ? 'Sets the global offset; sends only the new edge strip' : 'Redrawn every frame at ' + b.speed + ' px a frame against the global scroll'
+}
+let mapEls = []
+let bkKey = ''
+let bkRows = []
+function buildBreakdown () {
+  const r = runOf(state.cur)
+  const key = state.cur + ':' + state.mode
+  if (key === bkKey) return
+  bkKey = key
+  const tb = $('bk'), stack = $('stack')
+  tb.textContent = ''; stack.textContent = ''
+  bkRows = r.cats.map(cat => {
+    const tr = document.createElement('tr')
+    tr.innerHTML = '<td class="nm"><i class="sw"></i><span></span><small></small></td><td></td><td></td><td></td>'
+    tr.querySelector('.sw').style.background = 'var(--k-' + cat.kind + ',var(--k-static))'
+    tr.querySelector('span').textContent = cat.name
+    tr.querySelector('small').textContent = ruleOf(cat, r)
+    tb.appendChild(tr)
+    const seg = document.createElement('i')
+    seg.style.background = 'var(--k-' + cat.kind + ',var(--k-static))'
+    stack.appendChild(seg)
+    return { tr, seg }
+  })
+  const tot = document.createElement('tr')
+  tot.className = 'tot'
+  tot.innerHTML = '<td class="nm">Total (budget 225)</td><td></td><td></td><td></td>'
+  tb.appendChild(tot)
+  bkRows.tot = tot
+  const bud = document.createElement('b')
+  bud.className = 'bud'
+  bud.style.left = (BUDGET / 300 * 100) + '%'
+  stack.appendChild(bud)
+}
+function renderInfo () {
+  const v = vruns[state.cur].v
+  $('vt').textContent = v.title
+  $('vc').textContent = v.cap
+  const ul = $('maps')
+  ul.textContent = ''
+  mapEls = v.maps.map(([src, txt]) => {
+    const li = document.createElement('li')
+    li.innerHTML = '<span class="src"><i class="dot"></i><span></span></span><span class="txt"></span>'
+    li.querySelector('.dot').style.setProperty('--c', 'var(' + VCOL[src] + ')')
+    li.querySelector('.src span').textContent = VNAME[src]
+    li.querySelector('.txt').textContent = txt
+    ul.appendChild(li)
+    return { li, src, dot: li.querySelector('.dot') }
+  })
+  thumbs.forEach((t, i) => t.b.setAttribute('aria-current', i === state.cur ? 'true' : 'false'))
+  const late = v.era === 'late'
+  $('era-late').setAttribute('aria-pressed', late ? 'true' : 'false')
+  $('era-early').setAttribute('aria-pressed', late ? 'false' : 'true')
+  if (!late) $('early').open = true
+  const m = MODES[state.mode]
+  for (const k in MODES) $('mode-' + k).setAttribute('aria-pressed', k === state.mode ? 'true' : 'false')
+  $('mode-tag').hidden = state.mode === 'sw'
+  let sum = m.sum
+  if (!scrolls(v)) sum = (late ? 'This scene doesn\'t scroll, so every mode costs the same. ' : 'Early-era scenes don\'t scroll in bands, so they are measured in software mode only. ') + sum
+  $('mode-sum').textContent = sum
+  $('mode-as').innerHTML = m.as.map(s => '<li>' + s + '</li>').join('')
+  bkKey = ''
+  buildBreakdown()
+  updateMuted()
+}
+function updateMuted () {
+  for (const m of mapEls) {
+    const g = VGROUP[m.src]
+    const off = g ? state.mute[g] && !(m.src === 'drums' && vruns[state.cur].v.id === 'agent') : false
+    m.li.classList.toggle('off', off)
+  }
+}
+function select (i) {
+  state.cur = (i + vruns.length) % vruns.length
+  renderInfo()
+  try { localStorage.setItem('sidou-arcade-v', vruns[state.cur].v.id) } catch (err) {}
+  if (history.replaceState) { try { history.replaceState(null, '', '#' + vruns[state.cur].v.id) } catch (err) {} }
+  paint()
+}
+function setMode (m) {
+  if (!MODES[m]) return
+  state.mode = m
+  try { localStorage.setItem('sidou-arcade-mode', m) } catch (err) {}
+  renderInfo()
+  paint()
+}
+function stepEra (dir) {
+  const era = vruns[state.cur].v.era
+  const idx = vruns.map((vr, i) => vr.v.era === era ? i : -1).filter(i => i >= 0)
+  const k = idx.indexOf(state.cur)
+  select(idx[(k + dir + idx.length) % idx.length])
+}
+function blitTo (r, im32, cx, im) {
+  const p = r.p
+  for (let i = 0; i < p.length; i++) im32[i] = PAL32[p[i]]
+  cx.putImageData(im, 0, 0)
+}
+const spark = $('spark'), sctx = spark.getContext('2d')
+const css = getComputedStyle(document.documentElement)
+const tok = n => css.getPropertyValue(n).trim()
+function drawSpark (r) {
+  const w = spark.width, h = spark.height, top = 940
+  sctx.clearRect(0, 0, w, h)
+  const y = v => h - 4 - (Math.min(v, top) / top) * (h - 8)
+  sctx.strokeStyle = tok('--line'); sctx.lineWidth = 1
+  for (const g of [450, 900]) { sctx.beginPath(); sctx.moveTo(0, y(g) + 0.5); sctx.lineTo(w, y(g) + 0.5); sctx.stroke() }
+  sctx.strokeStyle = tok('--hot'); sctx.setLineDash([6, 5]); sctx.lineWidth = 2
+  sctx.beginPath(); sctx.moveTo(0, y(BUDGET)); sctx.lineTo(w, y(BUDGET)); sctx.stroke(); sctx.setLineDash([])
+  sctx.fillStyle = tok('--hot'); sctx.font = '500 20px ' + tok('--font-mono'); sctx.fillText('225 budget', 8, y(BUDGET) - 7)
+  sctx.fillStyle = tok('--muted'); sctx.fillText('900 full', 8, y(900) + 22)
+  const n = r.n
+  if (!n) return
+  const dx = w / (WIN - 1)
+  sctx.beginPath()
+  for (let k = 0; k < n; k++) {
+    const v = r.hist[(r.head - n + k + WIN) % WIN]
+    const X = (WIN - n + k) * dx
+    if (k === 0) sctx.moveTo(X, y(v)); else sctx.lineTo(X, y(v))
+  }
+  sctx.strokeStyle = tok('--cyan'); sctx.lineWidth = 2; sctx.stroke()
+  sctx.lineTo(w, h); sctx.lineTo((WIN - n) * dx, h); sctx.closePath()
+  sctx.fillStyle = 'rgba(127,195,210,.16)'; sctx.fill()
+  sctx.fillStyle = tok('--hot')
+  for (let k = 0; k < n; k++) {
+    const v = r.hist[(r.head - n + k + WIN) % WIN]
+    if (v > BUDGET) { sctx.beginPath(); sctx.arc((WIN - n + k) * dx, y(v), 4, 0, Math.PI * 2); sctx.fill() }
+  }
+  const last = r.hist[(r.head - 1 + WIN) % WIN]
+  sctx.fillStyle = last > BUDGET ? tok('--hot') : tok('--fg')
+  sctx.beginPath(); sctx.arc(w - 4, y(last), 4, 0, Math.PI * 2); sctx.fill()
+}
+const ms = t => (t * FULL_MS / 900)
+function overlay (r) {
+  lctx.fillStyle = 'rgba(255,60,40,0.42)'
+  const dm = r.dm[r.nS - 1]
+  for (let t = 0; t < 1200; t++) {
+    if (!dm[t]) continue
+    const ty = (t / 40) | 0, b = r.rowBand[ty], o = ((r.o[b] % GN) + GN) % GN
+    let x = (t % 40) * 8 - o
+    while (x < -8) x += GN
+    if (x < W) lctx.fillRect(x, ty * 8, 8, 8)
+  }
+  lctx.fillStyle = 'rgba(240,192,96,0.55)'
+  r.bands.forEach((b, i) => { if (r.d[i] > 0) lctx.fillRect(W - r.d[i], b.y0, r.d[i], b.y1 - b.y0) })
+}
+const fmt = v => Math.round(v)
+function paint () {
+  const r = runOf(state.cur)
+  blitTo(r, img32, lctx, img)
+  if (state.dirty) overlay(r)
+  const earlyOpen = $('early').open
+  vruns.forEach((vr, i) => { if (vr.v.era === 'late' || earlyOpen) blitTo(vr[state.mode], thumbs[i].im32, thumbs[i].cx, thumbs[i].im) })
+  const s = stats(r)
+  $('s-now').textContent = r.now
+  $('s-avg').textContent = fmt(s.avg)
+  $('s-max').textContent = s.max
+  $('s-ms').textContent = ms(s.max).toFixed(1)
+  const [cls, label] = statusOf(s)
+  const pill = $('status'); pill.className = 'pill ' + cls; pill.textContent = label
+  drawSpark(r)
+  buildBreakdown()
+  let left = 0
+  r.cats.forEach((cat, k) => {
+    const row = bkRows[k], cs = catStats(r, k)
+    row.tr.cells[1].textContent = fmt(r.cat[k])
+    row.tr.cells[2].textContent = fmt(cs.avg)
+    row.tr.cells[3].textContent = cs.max
+    const wpc = Math.min(100 - left, r.cat[k] / 300 * 100)
+    row.seg.style.width = Math.max(0, wpc) + '%'
+    left += Math.max(0, wpc)
+  })
+  const tc = bkRows.tot.cells
+  tc[1].textContent = r.now; tc[2].textContent = fmt(s.avg); tc[3].textContent = s.max
+  tc[1].style.color = r.now > BUDGET ? 'var(--hot)' : ''
+  tc[3].style.color = s.max > BUDGET ? 'var(--hot)' : ''
+  vruns.forEach((vr, i) => {
+    const t = stats(vr[state.mode]), [c2, l2] = statusOf(t)
+    thumbs[i].avg.textContent = fmt(t.avg) + ' avg · ' + t.max + ' max'
+    thumbs[i].st.textContent = l2
+    thumbs[i].st.style.color = 'var(--' + c2 + ')'
+    const tr = rowsT[i]
+    ;['sw', 'hwa', 'hwb'].forEach((m, j) => {
+      const a = tr.cells[1 + j * 2], b = tr.cells[2 + j * 2]
+      const na = vr.v.era === 'early' && m !== 'sw'
+      const q = stats(vr[m])
+      a.textContent = na ? '—' : fmt(q.avg)
+      b.textContent = na ? '—' : q.max
+      a.className = (na ? 'na' : '') + (m === state.mode ? ' cur' : '')
+      b.className = (na ? 'na' : q.max > BUDGET ? 'over' : '') + (m === state.mode ? ' cur' : '')
+    })
+    tr.cells[7].innerHTML = '<span class="pill ' + c2 + '"></span>'
+    tr.cells[7].firstChild.textContent = l2
+  })
+  const cut = cutoffAt(state.pos)
+  $('cut-i').style.width = (cut * 100).toFixed(1) + '%'
+  $('cut-o').textContent = cut.toFixed(2)
+  for (const m of mapEls) {
+    const lit = m.src === 'cutoff' ? true : (flashes[m.src] || 0) > 0
+    m.dot.classList.toggle('lit', lit)
+    if (m.src === 'cutoff') m.dot.style.opacity = (0.25 + cut * 0.75).toFixed(2)
+  }
+  for (const k in flashes) if (flashes[k] > 0) flashes[k]--
+}
+const ui = {
+  step (e) {
+    const kids = stepsEl.children
+    for (let i = 0; i < 16; i++) kids[i].classList.toggle('on', i === e.s)
+    $('barpos').textContent = 'BAR ' + (e.bar + 1) + ' / 4'
+  }
+}
+
+// controls
+function setPlaying (on) {
+  state.playing = on
+  $('play').textContent = on ? 'Pause' : 'Play'
+  $('play').setAttribute('aria-pressed', on ? 'true' : 'false')
+}
+$('play').addEventListener('click', () => setPlaying(!state.playing))
+$('sound').addEventListener('click', () => {
+  if (audio.on) audio.stop(); else if (audio.start() && !state.playing) setPlaying(true)
+  $('sound').textContent = audio.on ? 'Sound on' : 'Sound off'
+  $('sound').setAttribute('aria-pressed', audio.on ? 'true' : 'false')
+})
+for (const v of ['bass', 'arp', 'drums']) {
+  $('m-' + v).addEventListener('click', () => {
+    state.mute[v] = !state.mute[v]
+    $('m-' + v).setAttribute('aria-pressed', state.mute[v] ? 'true' : 'false')
+    $('m-' + v).setAttribute('aria-label', (state.mute[v] ? 'Unmute ' : 'Mute ') + v)
+    updateMuted()
+    if (!state.playing) { paint() }
+  })
+}
+$('tempo').addEventListener('input', () => { state.bpm = +$('tempo').value; $('tempo-o').textContent = state.bpm + ' BPM' })
+$('dirty').addEventListener('change', () => { state.dirty = $('dirty').checked; paint() })
+$('prev').addEventListener('click', () => stepEra(-1))
+$('next').addEventListener('click', () => stepEra(1))
+$('era-late').addEventListener('click', () => { if (vruns[state.cur].v.era !== 'late') select(vruns.findIndex(vr => vr.v.era === 'late')) })
+$('era-early').addEventListener('click', () => { if (vruns[state.cur].v.era !== 'early') select(vruns.findIndex(vr => vr.v.era === 'early')) })
+for (const k in MODES) $('mode-' + k).addEventListener('click', () => setMode(k))
+$('early').addEventListener('toggle', () => paint())
+document.addEventListener('keydown', e => {
+  const t = e.target
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return
+  if (e.key === 'ArrowRight') { stepEra(1); e.preventDefault() } else if (e.key === 'ArrowLeft') { stepEra(-1); e.preventDefault() } else if (e.key === ' ' && !(t && (t.tagName === 'BUTTON' || t.tagName === 'SUMMARY'))) { setPlaying(!state.playing); e.preventDefault() }
+})
+
+// pre-roll to just before the bar-4 fill so the first frame is a representative one
+while (state.pos < 60.4) tick(false)
+for (const r of allRuns) { r.n = 0; r.head = 0 }
+let pick = 0
+const hashId = (location.hash || '').slice(1)
+let stored = null, storedMode = null
+try { stored = localStorage.getItem('sidou-arcade-v'); storedMode = localStorage.getItem('sidou-arcade-mode') } catch (err) {}
+for (const id of [hashId, stored]) { const k = vruns.findIndex(vr => vr.v.id === id); if (k >= 0) { pick = k; break } }
+if (storedMode && MODES[storedMode]) state.mode = storedMode
+state.cur = pick
+setPlaying(state.playing)
+renderInfo()
+paint()
+
+let last = performance.now(), acc = 0
+function loop (now) {
+  const dt = Math.min(250, now - last)
+  last = now
+  if (state.playing) {
+    acc += dt
+    let n = 0
+    while (acc >= FRAME_MS && n < 5) { acc -= FRAME_MS; tick(true); n++ }
+    if (n) paint()
+  } else acc = 0
+  requestAnimationFrame(loop)
+}
+requestAnimationFrame(loop)
+
+window.SIDOU_ARCADE = {
+  run (frames) { for (let k = 0; k < frames; k++) tick(true); paint() },
+  stats () { return vruns.map(vr => ({ id: vr.v.id, title: vr.v.title, era: vr.v.era, sw: stats(vr.sw), hwa: stats(vr.hwa), hwb: stats(vr.hwb), cats: vr.sw.cats.map((c, k) => [c.name, Math.round(catStats(vr.sw, k).avg), catStats(vr.sw, k).max]), catsA: vr.hwa.cats.map((c, k) => [c.name, Math.round(catStats(vr.hwa, k).avg), catStats(vr.hwa, k).max]), catsB: vr.hwb.cats.map((c, k) => [c.name, Math.round(catStats(vr.hwb, k).avg), catStats(vr.hwb, k).max]) })) },
+  reset () { for (const r of allRuns) { r.n = 0; r.head = 0; r.worst = null } },
+  worst: (m) => vruns.map(vr => [vr.v.id, vr[m || 'sw'].worst]),
+  ids: () => vruns.map(vr => vr.v.id),
+  frame (i, m) { return Array.from(vruns[i][m || state.mode].p) },
+  dev: () => DEV, pal: PAL,
+  select, setPlaying, setMode, state
+}
+})()
+</script>
+
+</body></html>

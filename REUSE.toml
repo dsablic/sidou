@@ -18,6 +18,13 @@ path = ["assets/logo/*.png", "docs/art/avatar.png"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
+# The look-and-feel prototypes (self-contained HTML pages made for SIDOU):
+# reference art and code for M2's STEP/TRACKER views and SCENE pieces.
+[[annotations]]
+path = ["assets/prototypes/*.html"]
+SPDX-FileCopyrightText = "2026 SIDOU contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
 # Test data only, never built into the firmware: the font8x8 face that SIDOU's
 # own font is checked against (host/crates/sidou-tests/tests/app/font.rs).
 [[annotations]]
