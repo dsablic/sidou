@@ -92,6 +92,10 @@ typedef struct {
     uint8_t filtstep, filttime, filtcutoff, filtctrl, filttype, masterfader;
     uint8_t funktempo[2];
     uint8_t timing_mark;     /* DXY's mark, with author info */
+    /* A bit a channel: its frequency came from past the packed frequency table, where the
+     * 6502 reads bytes only the packed layout knows (gt2_play.c, "Frequencies"). */
+    uint8_t freq_unknown;
+    uint8_t unknown;         /* scratch: the last frequency reads hit that region */
     uint8_t regs[GT2_SID_REGS]; /* the SID's registers as written (the ghost registers) */
     uint32_t pattused[(GT2_MAX_PATTERNS + 31u) / 32u]; /* the patterns the packer numbers */
     gt2_channel chn[GT2_PLAY_CHANNELS];

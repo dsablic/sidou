@@ -81,6 +81,11 @@ static uint8_t ins_vibdelay(const gt2_song* s, uint8_t i) {
     return d ? (uint8_t)(d - 1u) : 0u;
 }
 
+static uint8_t ins_vibparam(const gt2_song* s, uint8_t i) {
+    const uint8_t* ins = instrument(s, i);
+    return ins[GT2_INS_VIBDELAY] ? ins[GT2_INS_VIBPARAM] : 0u;
+}
+
 /* A pattern's rows (the end row not counted) and its bytes; NULL for a pattern not held
  * (64 empty rows) or a number past the patterns. */
 static const uint8_t* pattern(const gt2_song* s, uint8_t pat, uint32_t* rows) {
@@ -211,20 +216,27 @@ static uint8_t packed_pattern(const gt2_player* p, uint32_t q) {
 /* --- Frequencies ----------------------------------------------------------------------
  * The packed table holds notes first_note to last_note (greloc.c), lows then highs:
  * player.s reads mt_freqtbllo-FIRSTNOTE+y. A note past the table reads on into the highs,
- * as the 6502 does; past those (and below the table) it reads 0, where the 6502 reads the
- * song's other data. */
+ * as the 6502 does. Past those (and below the table) the 6502 reads the packed song's
+ * other bytes (the song table's addresses, which depend on the assembled player's size),
+ * so no player without the packed layout can know them: the player reads 0 there, as
+ * GoatTracker's editor does past B-7, and marks the read in `unknown`. */
 
-static uint8_t freq_byte(const gt2_player* p, uint8_t note, int high) {
+static uint8_t freq_byte(gt2_player* p, uint32_t note, int high) {
     uint32_t count = (uint32_t)p->last_note - p->first_note + 1u;
-    uint32_t i = (uint32_t)note - p->first_note;
-    if (note < p->first_note)
-        return 0u;
-    if (high)
-        return i < count ? freq_hi[note] : 0u;
-    if (i < count)
-        return freq_lo[note];
-    i -= count;
-    return i < count ? freq_hi[p->first_note + i] : 0u;
+    uint32_t i = note - p->first_note;
+    if (note >= p->first_note) {
+        if (high && i < count)
+            return freq_hi[note];
+        if (!high) {
+            if (i < count)
+                return freq_lo[note];
+            i -= count;
+            if (i < count)
+                return freq_hi[p->first_note + i];
+        }
+    }
+    p->unknown = 1u;
+    return 0u;
 }
 
 /* --- Writes -------------------------------------------------------------------------- */
@@ -300,11 +312,31 @@ static void loadregs_wave(out* o, const gt2_channel* c, uint32_t x) {
     wr(o, x + 4u, (uint8_t)(c->wave & c->gate));
 }
 
-/* --- Tick 0 one-shot commands (mt_tick0_5 to mt_tick0_d) -------------------------------- */
+/* --- Tick 0 commands (mt_tick0_0 to mt_tick0_f) ------------------------------------- */
 
+static void all_tempo(gt2_player* p, uint8_t a) {
+    for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++)
+        p->chn[ch].tempo = a;
+}
+
+/* A command's tick 0 part, with A its parameter (mt_tick0jumptbl). Commands 0-4 set the
+ * continuous effect the following ticks run (mt_tick0_34); 5-F act once. */
 static void tick0_cmd(out* o, gt2_channel* c, uint32_t x, uint8_t cmd, uint8_t a) {
     gt2_player* p = o->p;
     switch (cmd) {
+    case 0u: /* instrument vibrato */
+        a = ins_vibparam(p->song, c->instr);
+        goto tick0_34;
+    case 1u:
+    case 2u: /* portamentos: the vibrato's phase restarts */
+        c->vibtime = 0u;
+        /* fall through */
+    case 3u:
+    case 4u:
+    tick0_34:
+        c->param = a;
+        c->fx = c->newfx;
+        break;
     case 5u:
         set_ad(o, c, x, a);
         break;
@@ -314,15 +346,158 @@ static void tick0_cmd(out* o, gt2_channel* c, uint32_t x, uint8_t cmd, uint8_t a
     case 7u:
         c->wave = a;
         break;
-    case 13u: /* mt_tick0_d: the master volume, or the timing mark with author info */
+    case 8u:
+        c->waveptr = a;
+        c->wavetime = 0u;
+        break;
+    case 9u:
+        c->pulseptr = a;
+        c->pulsetime = 0u;
+        break;
+    case 10u:
+        p->filttime = 0u;
+        p->filtstep = a;
+        break;
+    case 11u: /* $00 also stops the filter table */
+        p->filtctrl = a;
+        if (a == 0u)
+            p->filtstep = 0u;
+        break;
+    case 12u:
+        p->filtcutoff = a;
+        break;
+    case 13u: /* the master volume, or the timing mark with author info */
         if ((p->flags & GT2_PF_AUTHORINFO) && a >= 0x10u)
             p->timing_mark = a;
         else
             p->masterfader = a;
         break;
-    default:
+    case 14u: /* funktempo: the speedtable entry's two tempos, all channels on the first */
+        p->funktempo[0] = tl(p->song, GT2_STBL, a);
+        p->funktempo[1] = tr(p->song, GT2_STBL, a);
+        all_tempo(p, 0u);
+        break;
+    default: /* 15: a channel's tempo ($80 and up) or all three */
+        if (a & 0x80u)
+            c->tempo = (uint8_t)(a & 0x7fu);
+        else
+            all_tempo(p, a);
         break;
     }
+}
+
+/* --- Continuous effects (mt_setspeedparam to mt_effect_3_found) ----------------------- */
+
+/* The channel's frequency from a note: known, unless a byte came from past the table. */
+static void set_note_freq(gt2_player* p, gt2_channel* c, uint8_t note) {
+    uint32_t bit = 1u << (uint32_t)(c - p->chn);
+    c->lastnote = note; /* mt_wavenoteabs */
+    c->vibtime = 0u;    /* mt_wavenote */
+    p->unknown = 0u;
+    c->freqlo = freq_byte(p, note, 0);
+    c->freqhi = freq_byte(p, note, 1);
+    p->freq_unknown = (uint8_t)(p->unknown ? p->freq_unknown | bit : p->freq_unknown & ~bit);
+}
+
+/* mt_freqadd and mt_freqsub, with the 6502's carry in. */
+static void freq_add(gt2_channel* c, uint8_t t1, uint8_t t2, uint32_t carry) {
+    uint32_t lo = (uint32_t)c->freqlo + t1 + carry;
+    c->freqlo = (uint8_t)lo;
+    c->freqhi = (uint8_t)(c->freqhi + t2 + (lo >> 8));
+}
+
+static void freq_sub(gt2_channel* c, uint8_t t1, uint8_t t2, uint32_t carry) {
+    uint32_t lo = (uint32_t)c->freqlo - t1 - (1u - carry);
+    c->freqlo = (uint8_t)lo;
+    c->freqhi = (uint8_t)(c->freqhi - t2 - ((lo >> 8) & 1u));
+}
+
+/* One tick of effect eff (0 instrument vibrato, 1 and 2 portamentos, 3 toneportamento, 4
+ * vibrato) with speedtable entry y. A speed's left byte $80 and up is note-independent:
+ * the step between the last note and the next, shifted right by the right byte. */
+static void effect(gt2_player* p, gt2_channel* c, uint8_t eff, uint8_t y) {
+    const gt2_song* s = p->song;
+    p->unknown = 0u;
+    uint8_t left = tl(s, GT2_STBL, y), right = tr(s, GT2_STBL, y);
+    uint8_t t1, t2;
+    int zero; /* the Z flag mt_effect_0 tests */
+    if (left & 0x80u) {
+        /* mt_calculatedspeed */
+        uint32_t n = c->lastnote;
+        uint32_t lo = (uint32_t)freq_byte(p, n + 1u, 0) - freq_byte(p, n, 0);
+        uint32_t hi = (uint32_t)freq_byte(p, n + 1u, 1) - freq_byte(p, n, 1) - ((lo >> 8) & 1u);
+        uint32_t v = ((hi & 0xffu) << 8) | (lo & 0xffu);
+        v = right < 16u ? v >> right : 0u;
+        t1 = (uint8_t)v;
+        t2 = (uint8_t)(v >> 8);
+        zero = y == 0u;
+    } else {
+        t2 = left;
+        t1 = right;
+        zero = right == 0u;
+    }
+    int found = 0;
+    switch (eff) {
+    case 0u: /* mt_effect_0: the instrument's vibrato after its delay */
+        if (zero)
+            return;
+        if (c->vibdelay) {
+            c->vibdelay--;
+            return;
+        }
+        /* fall through */
+    case 4u: { /* mt_effect_4 */
+        uint8_t speed = (uint8_t)(left & 0x7fu);
+        if (!(left & 0x80u))
+            t2 = 0u;
+        uint8_t a = c->vibtime;
+        if (!(a & 0x80u) && a > speed)
+            a = (uint8_t)~a;
+        a = (uint8_t)(a + 2u);
+        c->vibtime = a;
+        if (a & 1u)
+            freq_sub(c, t1, t2, 1u);
+        else
+            freq_add(c, t1, t2, 0u);
+        break;
+    }
+    case 3u: { /* mt_effect_3: toneportamento; speed 0 ties the note */
+        if (y == 0u) {
+            found = 1;
+            break;
+        }
+        uint8_t tlo = freq_byte(p, c->note, 0), thi = freq_byte(p, c->note, 1);
+        uint32_t dlo = (uint32_t)c->freqlo - tlo;
+        uint32_t dhi = (uint32_t)c->freqhi - thi - ((dlo >> 8) & 1u);
+        if (!(dhi & 0x100u)) {
+            /* at or above the target: down until the offset changes sign */
+            uint32_t lo = (dlo & 0xffu) - t1;
+            uint32_t hi = (dhi & 0xffu) - t2 - ((lo >> 8) & 1u);
+            if (hi & 0x80u)
+                found = 1;
+            else
+                freq_sub(c, t1, t2, (hi >> 8) & 1u ? 0u : 1u);
+        } else {
+            uint32_t lo = (dlo & 0xffu) + t1;
+            uint32_t hi = (dhi & 0xffu) + t2 + (lo >> 8);
+            if (!(hi & 0x80u))
+                found = 1;
+            else
+                freq_add(c, t1, t2, hi >> 8);
+        }
+        break;
+    }
+    case 1u:
+        freq_add(c, t1, t2, 0u);
+        break;
+    default:
+        freq_sub(c, t1, t2, 1u);
+        break;
+    }
+    if (found)
+        set_note_freq(p, c, c->note); /* mt_effect_3_found */
+    else if (p->unknown)
+        p->freq_unknown = (uint8_t)(p->freq_unknown | (1u << (uint32_t)(c - p->chn)));
 }
 
 /* --- The channel ----------------------------------------------------------------------- */
@@ -378,6 +553,70 @@ static void sequencer(gt2_player* p, gt2_channel* c, uint32_t ch) {
     c->songptr = (uint16_t)step(v, y);
 }
 
+/* The pulsetable's byte as packed: with simple pulse a width's high nybble goes into the
+ * low byte's low nybble (the one byte is written to both registers), and a modulation
+ * speed becomes the same rotated step (greloc.c, "Write table right side"). */
+static uint8_t pulse_right(const gt2_player* p, uint32_t pos) {
+    const gt2_song* s = p->song;
+    uint8_t l = tl(s, GT2_PTBL, pos), r = tr(s, GT2_PTBL, pos);
+    if (!(p->flags & GT2_PF_SIMPLEPULSE) || l == LOOP)
+        return r;
+    if (l >= 0x80u)
+        return (uint8_t)((l & 0x0fu) | (r & 0xf0u));
+    uint8_t speed = (uint8_t)(r >> 4);
+    if (r & 0x80u)
+        speed = (uint8_t)((speed | 0xf0u) - 1u);
+    return (uint8_t)((speed << 4) | (speed >> 4));
+}
+
+/* mt_pulseexec. */
+static void pulse_exec(out* o, gt2_channel* c, uint32_t x) {
+    gt2_player* p = o->p;
+    const gt2_song* s = p->song;
+    int simple = (p->flags & GT2_PF_SIMPLEPULSE) != 0;
+    uint8_t y = c->pulseptr;
+    if (c->pulsetime == 0u) {
+        uint8_t l = tl(s, GT2_PTBL, y);
+        if (simple && l != LOOP && l > 0x80u)
+            l = 0x80u;
+        if (l & 0x80u) {
+            /* mt_setpulse */
+            if (!simple)
+                c->pulsehi = l;
+            c->pulselo = pulse_right(p, y);
+            goto next;
+        }
+        c->pulsetime = l; /* mt_newpulsemod */
+    }
+    /* mt_pulsemod */
+    {
+        uint8_t spd = pulse_right(p, y);
+        uint32_t sum = (uint32_t)c->pulselo + spd;
+        if (simple) {
+            c->pulselo = (uint8_t)(sum + (sum >> 8));
+        } else {
+            if (spd & 0x80u)
+                c->pulsehi--;
+            c->pulselo = (uint8_t)sum;
+            if (sum >> 8)
+                c->pulsehi++;
+        }
+        if (--c->pulsetime != 0u)
+            goto write;
+    }
+next:
+    /* mt_nextpulsestep: the next row a jump: take it now */
+    {
+        uint32_t n = (uint32_t)y + 1u;
+        c->pulseptr = tl(s, GT2_PTBL, n) == LOOP ? tr(s, GT2_PTBL, n) : (uint8_t)n;
+    }
+write:
+    if (unbuffered(o)) {
+        wr(o, x + 2u, c->pulselo);
+        wr(o, x + 3u, simple ? c->pulselo : c->pulsehi);
+    }
+}
+
 /* mt_getnewnote: the next row, at the gate-off timer's tick. */
 static void getnewnote(out* o, gt2_channel* c, uint32_t x) {
     gt2_player* p = o->p;
@@ -393,6 +632,18 @@ static void getnewnote(out* o, gt2_channel* c, uint32_t x) {
     }
     if (row[1] != 0u)
         c->instr = row[1]; /* mt_instr */
+    if (!(p->flags & GT2_PF_NOEFFECTS)) {
+        /* mt_fx, as packpattern writes the command: a timing mark erased without author
+         * info, a tempo less one; command 0 carries no parameter */
+        uint8_t cmd = row[2], data = row[3];
+        if (cmd == 13u && data > 0x0fu && !(p->flags & GT2_PF_AUTHORINFO))
+            cmd = data = 0u;
+        if (cmd == 15u && (data & 0x7fu) >= 3u)
+            data--;
+        c->newfx = cmd;
+        if (cmd != 0u)
+            c->newparam = data;
+    }
     uint8_t note = row[0];
     if (note < REST) {
         /* mt_normalnote: the note, transposed, starts at the next tick 0. */
@@ -457,6 +708,7 @@ static void exec_channel(out* o, uint32_t ch) {
         c->fx = 0u;
         c->newnote = 0u;
         c->vibdelay = ins_vibdelay(s, c->instr);
+        c->param = ins_vibparam(s, c->instr);
         if (c->newfx == TONEPORTA)
             goto nonewnoteinit;
         a = ins[GT2_INS_FIRSTWAVE];
@@ -469,26 +721,37 @@ static void exec_channel(out* o, uint32_t ch) {
             }
         }
         /* mt_skipwave */
-        if (p->flags & GT2_PF_ALT) {
-            if (unbuffered(o))
-                loadregs_wave(o, c, x);
-            c->waveptr = ins[GT2_INS_WAVE];
-            set_ad(o, c, x, ins[GT2_INS_AD]);
-            set_sr(o, c, x, ins[GT2_INS_SR]);
-            if (!unbuffered(o))
-                loadregs(o, c, x);
-        } else {
-            c->waveptr = ins[GT2_INS_WAVE];
-            set_sr(o, c, x, ins[GT2_INS_SR]);
-            set_ad(o, c, x, ins[GT2_INS_AD]);
-            if (unbuffered(o))
-                loadregs_wave(o, c, x);
-            else
-                loadregs(o, c, x);
+        if ((p->flags & GT2_PF_ALT) && unbuffered(o))
+            loadregs_wave(o, c, x);
+        if (ins[GT2_INS_PULSE] != 0u) {
+            c->pulseptr = ins[GT2_INS_PULSE];
+            c->pulsetime = 0u;
         }
+        if (ins[GT2_INS_FILTER] != 0u && !(p->flags & GT2_PF_NOFILTER)) {
+            p->filtstep = ins[GT2_INS_FILTER];
+            p->filttime = 0u;
+        }
+        c->waveptr = ins[GT2_INS_WAVE];
+        if (p->flags & GT2_PF_ALT) {
+            set_ad(o, c, x, ins[GT2_INS_AD]);
+            set_sr(o, c, x, ins[GT2_INS_SR]);
+        } else {
+            set_sr(o, c, x, ins[GT2_INS_SR]);
+            set_ad(o, c, x, ins[GT2_INS_AD]);
+        }
+        /* the command's tick 0 part, then the registers (altplayer.s unbuffered: none) */
+        if (!(p->flags & GT2_PF_NOEFFECTS))
+            tick0_cmd(o, c, x, c->newfx, c->newparam);
+        if (!unbuffered(o))
+            loadregs(o, c, x);
+        else if (!(p->flags & GT2_PF_ALT))
+            loadregs_wave(o, c, x);
         return;
     }
 nonewnoteinit:
+    /* mt_nonewnoteinit: the command's tick 0 part, then the wavetable */
+    if (!(p->flags & GT2_PF_NOEFFECTS))
+        tick0_cmd(o, c, x, c->newfx, c->newparam);
 
 waveexec:
     /* mt_waveexec */
@@ -522,8 +785,14 @@ nowavechange: {
      * flipped */
     uint8_t is_cmd = cur >= 0xf0u && cur <= 0xfeu;
     if ((p->flags & GT2_PF_WAVECMD) && packed >= 0xe0u) {
-        /* mt_execwavecmd: one-shot commands now, then mt_done */
-        tick0_cmd(o, c, x, (uint8_t)(packed & 0x0fu), is_cmd ? right : (uint8_t)(right ^ 0x80u));
+        /* mt_execwavecmd: commands 0-4 run their effect now (on any tick), the others
+         * their tick 0 part; then mt_done */
+        uint8_t cmd = (uint8_t)(packed & 0x0fu);
+        uint8_t param = is_cmd ? right : (uint8_t)(right ^ 0x80u);
+        if (cmd < 5u)
+            effect(p, c, cmd, param);
+        else
+            tick0_cmd(o, c, x, cmd, param);
         goto done;
     }
     a = (uint8_t)(right ^ 0x80u);
@@ -532,17 +801,31 @@ nowavechange: {
     /* mt_wavefreq: a relative note (ADC with the carry clear) or an absolute one */
     if (a & 0x80u)
         a = (uint8_t)((a + c->note) & 0x7fu);
-    c->lastnote = a; /* mt_wavenoteabs */
-    c->vibtime = 0u; /* mt_wavenote */
-    c->freqlo = freq_byte(p, a, 0);
-    c->freqhi = freq_byte(p, a, 1);
+    set_note_freq(p, c, a);
     goto done;
 }
 
 wavedone:
+    /* the continuous effect, skipped on tick 0 with the realtime optimisation; without
+     * pattern commands the instrument's vibrato, from the current instrument */
+    if (!((p->flags & GT2_PF_REALTIMEOPT) && c->counter == 0u)) {
+        if (p->flags & GT2_PF_NOEFFECTS)
+            effect(p, c, 0u, ins_vibparam(s, c->instr));
+        else
+            effect(p, c, c->fx, c->param);
+    }
+
 done:
-    /* mt_done, then the gate-off timer: the next row's fetch */
-    if (c->counter == c->gatetimer) {
+    /* mt_done: with the pulse optimisation the gate-off timer first, and no pulse on its
+     * tick or on a tick 0 that read the orderlist */
+    if ((p->flags & GT2_PF_PULSEOPT) && c->counter == c->gatetimer) {
+        getnewnote(o, c, x);
+        return;
+    }
+    if (c->pulseptr != 0u &&
+        !((p->flags & GT2_PF_PULSEOPT) && c->counter == 0u && c->pattptr == 0u))
+        pulse_exec(o, c, x);
+    if (!(p->flags & GT2_PF_PULSEOPT) && c->counter == c->gatetimer) {
         getnewnote(o, c, x);
         return;
     }
@@ -584,10 +867,48 @@ static void song_init(out* o) {
 }
 
 /* The filter, every call before the channels (mt_filtstep to mt_masterfader). */
+static uint8_t filt_left(const gt2_song* s, uint32_t pos) {
+    return tl(s, GT2_FTBL, pos);
+}
+
 static void filter_exec(out* o) {
     gt2_player* p = o->p;
-    if (!(p->flags & GT2_PF_NOFILTER))
+    const gt2_song* s = p->song;
+    if (!(p->flags & GT2_PF_NOFILTER)) {
+        uint32_t y = p->filtstep;
+        if (y == 0u)
+            goto filtdone;
+        if (p->filttime != 0u)
+            goto filtmod;
+        {
+            uint8_t l = filt_left(s, y); /* mt_newfiltstep */
+            if (l == 0u)
+                goto setcutoff;
+            if (!(l & 0x80u)) {
+                p->filttime = l; /* mt_newfiltmod */
+                goto filtmod;
+            }
+            /* mt_setfilt: the passband (the packer keeps bits 4-6), resonance and
+             * channels; a cutoff row right below runs on the same call */
+            p->filttype = (uint8_t)(l & 0x70u);
+            p->filtctrl = tr(s, GT2_FTBL, y);
+            if (filt_left(s, y + 1u) != 0u)
+                goto nextstep;
+            y++; /* mt_setcutoff2 */
+        }
+    setcutoff:
+        p->filtcutoff = tr(s, GT2_FTBL, y);
+        goto nextstep;
+    filtmod:
+        p->filtcutoff = (uint8_t)(p->filtcutoff + tr(s, GT2_FTBL, y));
+        if (--p->filttime != 0u)
+            goto filtdone;
+    nextstep:
+        /* mt_nextfiltstep: the next row a jump: take it now */
+        p->filtstep = filt_left(s, y + 1u) == LOOP ? tr(s, GT2_FTBL, y + 1u) : (uint8_t)(y + 1u);
+    filtdone:
         wr(o, 0x16u, p->filtcutoff);
+    }
     wr(o, 0x17u, p->filtctrl);
     wr(o, 0x18u, (uint8_t)(p->filttype | p->masterfader));
 }

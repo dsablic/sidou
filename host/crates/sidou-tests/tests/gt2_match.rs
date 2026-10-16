@@ -54,43 +54,72 @@ fn hex(w: &[(u8, u8)]) -> String {
         .join(" ")
 }
 
-/// Plays `frames` frames of the subtune on both players; Ok(writes compared), or the
-/// first mismatch with both lists and the C player's channels.
-fn compare(sng: &[u8], subtune: u8, frames: usize, o: &gt2_options) -> Result<usize, String> {
+/// What a comparison found: the writes compared, and the calls whose only differences were
+/// the frequency of a channel the C player marks as read from past the packed frequency
+/// table (`gt2_player::freq_unknown`: the 6502 reads bytes there that only the packed
+/// layout knows).
+#[derive(Default, Debug, Clone, Copy)]
+struct Matched {
+    writes: usize,
+    unknown_calls: usize,
+}
+
+/// Equal, or equal but for the marked channels' frequency values.
+fn same(want: &[(u8, u8)], got: &[(u8, u8)], unknown: u8) -> Option<bool> {
+    if want == got {
+        return Some(true);
+    }
+    let tolerated = |r: u8| r < 21 && r % 7 < 2 && unknown & (1 << (r / 7)) != 0;
+    let ok = want.len() == got.len()
+        && want
+            .iter()
+            .zip(got)
+            .all(|(w, g)| w.0 == g.0 && (w.1 == g.1 || tolerated(w.0)));
+    ok.then_some(false)
+}
+
+/// Plays `frames` frames of the subtune on both players; the comparison, or the first
+/// mismatch with both lists and the C player's channels.
+fn compare(sng: &[u8], subtune: u8, frames: usize, o: &gt2_options) -> Result<Matched, String> {
     let t = trace(sng, subtune, frames, &ref_options(o)).map_err(|e| format!("trace: {e}"))?;
     let mut song = Song::host();
     song.read(sng, 0).map_err(|i| format!("read: {}", i.msg))?;
     let mut p = Player::new(&song, subtune as u32, o).ok_or("the player refused the subtune")?;
-    let mut writes = 0;
+    let mut m = Matched::default();
     let mut last: Vec<String> = Vec::new();
     for (f, frame) in t.frames.iter().enumerate() {
         for (k, want) in frame.calls.iter().enumerate() {
             let got = p.call();
-            if got != *want {
-                let chn: Vec<String> = p.raw().chn.iter().map(|c| format!("{c:?}")).collect();
-                return Err(format!(
-                    "frame {f} call {k}:\n  want {}\n  got  {}\n  earlier:\n    {}\n  channels after:\n    {}",
-                    hex(want),
-                    hex(&got),
-                    last.join("\n    "),
-                    chn.join("\n    ")
-                ));
+            match same(want, &got, p.raw().freq_unknown) {
+                Some(exact) => m.unknown_calls += usize::from(!exact),
+                None => {
+                    let chn: Vec<String> = p.raw().chn.iter().map(|c| format!("{c:?}")).collect();
+                    return Err(format!(
+                        "frame {f} call {k}:\n  want {}\n  got  {}\n  earlier:\n    {}\n  channels after:\n    {}",
+                        hex(want),
+                        hex(&got),
+                        last.join("\n    "),
+                        chn.join("\n    ")
+                    ));
+                }
             }
-            writes += got.len();
+            m.writes += got.len();
             last.push(format!("{f}.{k}: {}", hex(&got)));
             if last.len() > 6 {
                 last.remove(0);
             }
         }
     }
-    Ok(writes)
+    Ok(m)
 }
 
+/// Every subtune equal, exactly (a fixture never reads past the frequency table).
 fn check(name: &str, sng: &[u8], o: &gt2_options) {
     let subs = sng[100];
     for sub in 0..subs {
-        if let Err(e) = compare(sng, sub, FRAMES, o) {
-            panic!("{name} subtune {sub}: {e}");
+        match compare(sng, sub, FRAMES, o) {
+            Err(e) => panic!("{name} subtune {sub}: {e}"),
+            Ok(m) => assert_eq!(m.unknown_calls, 0, "{name} subtune {sub}: {m:?}"),
         }
     }
 }
@@ -452,4 +481,304 @@ fn orderlists_breaking_the_rules_play_as_packed() {
 #[test]
 fn subtunes_match() {
     check("subtunes", &subtunes_song(), &default_options());
+}
+
+/// Every example song GoatTracker ships, every subtune, with GoatTracker's defaults: the
+/// songs, subtunes and frames compared.
+/// The calls tolerated, by song and subtune.
+type Unknown = Vec<(String, u32, usize)>;
+
+fn examples_match(o: &gt2_options, frames: usize) -> (usize, usize, usize, Unknown) {
+    let (mut songs, mut subtunes, mut writes) = (0, 0, 0);
+    let mut unknown = Unknown::new();
+    let mut failures = Vec::new();
+    for (name, sng) in gt2_ref::examples() {
+        songs += 1;
+        for sub in 0..gt2_ref::subtunes(&sng) {
+            subtunes += 1;
+            match compare(&sng, sub as u8, frames, o) {
+                Ok(m) => {
+                    writes += m.writes;
+                    if m.unknown_calls > 0 {
+                        unknown.push((name.clone(), sub, m.unknown_calls));
+                    }
+                }
+                Err(e) => failures.push(format!("{name} subtune {sub}: {e}")),
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+    (songs, subtunes, writes, unknown)
+}
+
+#[test]
+fn every_example_matches() {
+    let (songs, subtunes, writes, unknown) = examples_match(&default_options(), FRAMES);
+    eprintln!(
+        "{songs} songs, {subtunes} subtunes, {FRAMES} frames each: {writes} writes equal; \
+         calls whose only difference is a frequency read past the packed table: {unknown:?}"
+    );
+    assert!(past_b7(&unknown), "{unknown:?}");
+}
+
+/// The examples that play notes past B-7, whose frequency's high byte the 6502 reads from
+/// the packed song table after its frequency table: everlasting.sng's drum starts on an
+/// absolute wavetable note of $F0 (note 112); hyperspace.sng arpeggiates note 85 up an
+/// octave (note 97, after about 9 minutes of play).
+fn past_b7(unknown: &Unknown) -> bool {
+    unknown
+        .iter()
+        .all(|u| ["everlasting.sng", "hyperspace.sng"].contains(&u.0.as_str()))
+}
+
+#[test]
+#[ignore = "long: every example for 30,000 frames (10 minutes of music)"]
+fn every_example_matches_long() {
+    let (songs, subtunes, writes, unknown) = examples_match(&default_options(), 30_000);
+    eprintln!("{songs} songs, {subtunes} subtunes, 30000 frames: {writes} writes; {unknown:?}");
+    assert!(past_b7(&unknown), "{unknown:?}");
+}
+
+fn cmd(note: u8, instr: u8, c: u8, d: u8) -> [u8; 4] {
+    [note, instr, c, d]
+}
+
+/// The speedtable the command fixtures share: 1 vibrato, 2-3 portamento speeds, 4 a
+/// note-independent vibrato, 5 a note-independent portamento, 6-7 funktempos, 8 a slow
+/// shallow vibrato, 9 a divisor past 15.
+fn speeds() -> Vec<(u8, u8)> {
+    vec![
+        (0x03, 0x40),
+        (0x00, 0x20),
+        (0x01, 0x00),
+        (0x83, 0x02),
+        (0x80, 0x01),
+        (0x09, 0x06),
+        (0x02, 0x02),
+        (0x05, 0x04),
+        (0x84, 0x14),
+    ]
+}
+
+/// Every pattern command, the one-shot ones between continuous ones, and the tempo
+/// command's every range.
+fn commands_song(simple_pulse: bool) -> Vec<u8> {
+    let lo = if simple_pulse { 0x40 } else { 0x48 };
+    let pulse = vec![
+        (0x88, 0x00),
+        (0x20, lo),
+        (0x40, 0xe0),
+        (0xff, 0x02),
+        (0x84, 0x30),
+        (0x00, 0x10),
+        (0xff, 0x00),
+        (0x81, 0x00),
+        (0x10, 0x20),
+        (0xff, 0x00),
+    ];
+    let filter = vec![
+        (0x90, 0xf1),
+        (0x00, 0x40),
+        (0x7f, 0x01),
+        (0x10, 0xff),
+        (0xff, 0x03),
+        (0xa0, 0x87),
+        (0x20, 0x02),
+        (0xff, 0x00),
+        (0xc0, 0xf2),
+        (0x00, 0xf0),
+        (0x80, 0x00),
+        (0x90, 0xf2),
+        (0x00, 0x50),
+        (0xff, 0x00),
+    ];
+    let wave = vec![
+        (0x41, 0x00),
+        (0xff, 0x00),
+        (0x21, 0x00),
+        (0xff, 0x00),
+        (0x11, 0x00),
+        (0xff, 0x00),
+    ];
+    let p0 = vec![
+        cmd(n(3, 0), 1, 0, 0),
+        cmd(0xbd, 0, 4, 1),
+        cmd(0xbd, 0, 4, 1),
+        cmd(0xbd, 0, 6, 0x5a),
+        cmd(0xbd, 0, 4, 1),
+        cmd(0xbd, 0, 5, 0x22),
+        cmd(0xbd, 0, 0, 0),
+        cmd(n(3, 7), 0, 1, 2),
+        cmd(0xbd, 0, 1, 2),
+        cmd(0xbd, 0, 2, 3),
+        cmd(0xbd, 0, 7, 0x21),
+        cmd(0xbd, 0, 2, 3),
+        cmd(n(4, 0), 0, 3, 2),
+        cmd(0xbd, 0, 3, 2),
+        cmd(0xbd, 0, 3, 2),
+        cmd(n(3, 0), 0, 3, 0),
+        cmd(n(3, 5), 0, 4, 4),
+        cmd(0xbd, 0, 4, 4),
+        cmd(0xbd, 0, 1, 5),
+        cmd(0xbd, 0, 2, 5),
+        cmd(n(2, 0), 0, 3, 5),
+        cmd(0xbd, 0, 3, 5),
+        cmd(n(3, 0), 2, 4, 8),
+        cmd(0xbd, 0, 4, 9),
+        cmd(0xbd, 0, 8, 3),
+        cmd(0xbd, 0, 8, 0),
+        cmd(n(3, 2), 1, 9, 5),
+        cmd(0xbd, 0, 9, 0),
+        cmd(0xbd, 0, 9, 8),
+        cmd(0xbd, 0, 0xd, 0x08),
+        cmd(0xbd, 0, 0xd, 0x3f),
+        cmd(0xbd, 0, 0xd, 0x0f),
+    ];
+    let p1 = vec![
+        cmd(n(2, 0), 3, 0xa, 1),
+        cmd(0xbd, 0, 0, 0),
+        cmd(0xbd, 0, 0, 0),
+        cmd(0xbd, 0, 0xb, 0x87),
+        cmd(0xbd, 0, 0xc, 0x20),
+        cmd(n(2, 5), 0, 0xa, 6),
+        cmd(0xbd, 0, 0, 0),
+        cmd(0xbd, 0, 0xb, 0x00),
+        cmd(0xbd, 0, 0xc, 0x80),
+        cmd(n(2, 7), 0, 0xa, 9),
+        cmd(0xbd, 0, 0xa, 0),
+        cmd(0xbd, 0, 0xb, 0x31),
+        cmd(n(2, 0), 0, 0xa, 1),
+        cmd(0xbd, 0, 0, 0),
+    ];
+    let p2 = vec![
+        cmd(n(4, 0), 2, 0xf, 0x04),
+        cmd(0xbd, 0, 0, 0),
+        cmd(n(4, 2), 0, 0xf, 0x86),
+        cmd(0xbd, 0, 0, 0),
+        cmd(n(4, 4), 0, 0xe, 6),
+        cmd(0xbd, 0, 0, 0),
+        cmd(0xbd, 0, 0, 0),
+        cmd(0xbd, 0, 0, 0),
+        cmd(n(4, 5), 0, 0xf, 0x00),
+        cmd(0xbd, 0, 0, 0),
+        cmd(n(4, 7), 0, 0xf, 0x81),
+        cmd(0xbd, 0, 0, 0),
+        cmd(n(4, 9), 0, 0xf, 0x02),
+        cmd(0xbd, 0, 0, 0),
+        cmd(n(4, 11), 0, 0xf, 0x82),
+        cmd(0xbd, 0, 0, 0),
+        cmd(n(5, 0), 0, 0xe, 7),
+        cmd(0xbd, 0, 0, 0),
+        cmd(n(4, 0), 0, 0xf, 0x03),
+        cmd(0xbd, 0, 0, 0),
+        cmd(0xbd, 0, 0xf, 0x7f),
+        cmd(0xbd, 0, 0xf, 0x06),
+    ];
+    song(
+        [(vec![0], 0), (vec![1], 0), (vec![2], 0)],
+        vec![
+            ins(0x09, 0x89, 1, 1, 0, 1, 4, 2, 0x09),
+            ins(0x22, 0xa8, 3, 5, 0, 8, 1, 2, 0x09),
+            ins(0x00, 0xf9, 5, 8, 1, 4, 2, 2, 0x81),
+        ],
+        [wave, pulse, filter, speeds()],
+        vec![p0, p1, p2],
+    )
+}
+
+/// The wavetable's commands 1-4 and 9-D, on any tick.
+fn wave_commands_song() -> Vec<u8> {
+    let wave = vec![
+        (0x41, 0x00),
+        (0xf1, 0x02),
+        (0xf1, 0x02),
+        (0xf2, 0x03),
+        (0x00, 0x80),
+        (0xf4, 0x01),
+        (0xf4, 0x01),
+        (0xf4, 0x04),
+        (0xff, 0x06),
+        (0x21, 0x0c),
+        (0xf9, 0x01),
+        (0xfa, 0x01),
+        (0x21, 0x00),
+        (0xfb, 0xa3),
+        (0xfc, 0x60),
+        (0x00, 0x80),
+        (0xfd, 0x0a),
+        (0xf3, 0x02),
+        (0xf3, 0x02),
+        (0xf3, 0x00),
+        (0xfb, 0x00),
+        (0xff, 0x00),
+    ];
+    let pulse = vec![(0x88, 0x00), (0x20, 0x40), (0xff, 0x02)];
+    let filter = vec![(0x90, 0xf3), (0x00, 0x30), (0x20, 0x04), (0xff, 0x03)];
+    let p0 = vec![row(n(3, 0), 1), R, R, R, R, R, R, R];
+    let p1 = vec![row(n(3, 7), 2), R, R, R, R, R, R, R, R, R, R, R, R, R, R, R];
+    song(
+        [(vec![0], 0), (vec![1], 0), (vec![0, 1], 0)],
+        vec![
+            ins(0x09, 0x89, 1, 0, 0, 0, 0, 2, 0x09),
+            ins(0x22, 0xa8, 10, 0, 0, 0, 0, 2, 0x09),
+        ],
+        [wave, pulse, filter, speeds()],
+        vec![p0, p1],
+    )
+}
+
+/// No pattern commands at all (the packer leaves the effect code out): the instrument
+/// vibrato then follows the current instrument, also between a row's fetch and its tick 0.
+fn no_commands_song() -> Vec<u8> {
+    let p0 = vec![
+        row(n(3, 0), 1),
+        R,
+        R,
+        R,
+        row(0xbd, 2),
+        R,
+        row(n(3, 4), 0),
+        R,
+        R,
+        R,
+        row(0xbd, 1),
+        R,
+        R,
+    ];
+    let p1 = vec![row(n(2, 0), 3), R, R, R, R, R, R, row(n(2, 7), 3), R];
+    song(
+        [(vec![0], 0), (vec![1], 0), (vec![0], 0)],
+        vec![
+            ins(0x09, 0x89, 1, 1, 0, 1, 2, 3, 0x09),
+            ins(0x09, 0x89, 1, 0, 0, 4, 1, 3, 0x09),
+            ins(0x22, 0xa8, 1, 1, 0, 8, 3, 2, 0x09),
+        ],
+        [
+            vec![(0x41, 0x00), (0x00, 0x80), (0xff, 0x02)],
+            vec![(0x88, 0x00), (0x20, 0x40), (0xff, 0x02)],
+            vec![],
+            speeds(),
+        ],
+        vec![p0, p1],
+    )
+}
+
+#[test]
+fn every_command_matches() {
+    check("commands", &commands_song(false), &default_options());
+    check(
+        "commands, simple pulse",
+        &commands_song(true),
+        &default_options(),
+    );
+}
+
+#[test]
+fn the_wavetables_commands_match() {
+    check("wave commands", &wave_commands_song(), &default_options());
+}
+
+#[test]
+fn without_commands_the_vibrato_follows_the_instrument() {
+    check("no commands", &no_commands_song(), &default_options());
 }

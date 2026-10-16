@@ -374,6 +374,46 @@ linked into the firmware. SIDOU's C player is written from the readme and `playe
 behaviour, credits GoatTracker, and stays GPL-3.0-or-later, which GPL-2.0-or-later's "any
 later version" permits.
 
+## The player's corners (M2c Tasks 4-5b)
+
+SIDOU's player (`core/player/gt2_play.c`) is checked against the packed player frame by
+frame (`host/crates/sidou-tests/tests/gt2_match.rs`). What it takes from the packer, and
+the one corner it cannot match:
+
+- **The packer shapes the player.** `gt2reloc` assembles `player.s` per song and leaves out
+  the code for what the song does not use. Most cuts are silent, but some change the
+  writes, so `gt2_play_init` runs `greloc.c`'s analysis over the song (the patterns its
+  subtunes name, the instruments and table rows they reach) and plays the shape the packer
+  would build: a channel whose patterns hold only rests is not played at all
+  (`NUMCHANNELS`); a song with no filter use never writes the cutoff (`NOFILTER`); a pulse
+  table with no low nybble writes its width in one byte to both registers
+  (`SIMPLEPULSE`); a wavetable with delays recodes its waveforms, so `$E0` is a silent
+  waveform with delays and "no change" without them, and with both delays and commands
+  in the table the waveforms `$D0-$DF` run as wavetable commands; with no pattern or wavetable command at all
+  the instrument vibrato follows the current instrument from the row's fetch on
+  (`NOEFFECTS`); each channel starts on the instrument the packer numbers 1 (the
+  lowest-numbered hard-restart instrument in use, if any); at multispeed the first legato
+  instrument plays as no-HR (the packer's "multispeed stability" count moves the legato
+  class's start); instrument 63's AD sets the default tempo. The analysis walks the song,
+  so it is the main loop's; Task 6 hands the state to the interrupt.
+- **Orderlists that break readme 3.1** play as `player.s` reads the packed bytes: a repeat
+  is read after its pattern, R0 (`$D0`) is dropped, and the restart position counts the
+  packed entries. A transpose last before the `$FF` makes `player.s` take the `$FF` as a
+  repeat and then read on past the restart byte into the next orderlist the packer wrote;
+  the player reads the same bytes (and `$00` past the last orderlist, where the 6502 reads
+  the packed patterns).
+- **Notes past B-7** (a transpose or a wavetable note above 95, or below C-0) read the
+  packed frequency table past its end. The low byte reads on into the high bytes, which
+  the player does too; the high byte reads the packed song table that follows, whose
+  bytes are addresses that depend on the assembled player's size. No player without the
+  packed layout can know them. SIDOU's player reads 0 there, as GoatTracker's editor
+  (`gplay.c`'s zero-padded table) does, and marks the channel (`gt2_player.freq_unknown`);
+  the test tolerates exactly the marked channels' frequency registers and counts the calls.
+  Two examples do it: `everlasting.sng`'s drum starts on the absolute wavetable note `$F0`
+  (note 112), in 63 of its first 3,000 frames (625 of 30,000); `hyperspace.sng`
+  arpeggiates note 85 up an octave (note 97) in 12 of 30,000 frames, the first at frame
+  3,356. Every other write of every example song, every subtune, matches.
+
 ## The player's place
 
 The C player runs **in the audio interrupt, at sample-exact frame boundaries** (overview
