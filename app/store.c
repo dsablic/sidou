@@ -338,6 +338,21 @@ static int prog_piece(store* s, uint32_t sec, uint32_t off, const uint8_t* src, 
     return *done == n;
 }
 
+/* A sector's header as it should read: the erase header (magic, format, erase count, CRC of
+ * bytes 0-15), then the claim (the sector's sequence number, CRC of bytes 0-23, the claim word).
+ * A claim programs all 32 bytes: the erase header again, the same bytes, so bits a cut left
+ * faint in it are programmed for good before the sector takes any record. */
+static void sector_header(const store* s, uint32_t sec, uint8_t* h) {
+    memcpy(h, MAGIC, 8);
+    wr16(h + 8, STORE_FORMAT);
+    wr16(h + 10, 0);
+    wr32(h + 12, s->sector[sec].erases);
+    wr32(h + 16, store_crc32(0, h, 16));
+    wr32(h + 20, s->sector[sec].seq);
+    wr32(h + 24, store_crc32(0, h, 24));
+    wr32(h + 28, 0);
+}
+
 static void rec_header(const store_writer* w, uint8_t* h) {
     h[0] = w->type;
     h[1] = 0;
@@ -423,14 +438,9 @@ static void writer_step(store* s) {
     store_writer* w = &s->w;
     int rc = 0;
     if (w->phase == W_CLAIM) {
-        uint8_t claim[24];
-        memcpy(claim, at(s, w->sec, 0), 20);
-        wr32(claim + 20, s->sector[w->sec].seq);
-        uint8_t p[12];
-        wr32(p, s->sector[w->sec].seq);
-        wr32(p + 4, store_crc32(0, claim, 24));
-        wr32(p + 8, 0);
-        rc = prog_piece(s, w->sec, 20, p, 12, &w->done);
+        uint8_t h[STORE_HEADER];
+        sector_header(s, w->sec, h);
+        rc = prog_piece(s, w->sec, 0, h, STORE_HEADER, &w->done);
         if (rc > 0) {
             set_state(s, w->sec, SEC_CLAIMED);
             w->phase = w->len ? W_DATA : W_HEAD;
@@ -579,8 +589,10 @@ static void classify(store* s, uint32_t sec) {
             }
             return;
         }
-        if (rd32(h + 24) != store_crc32(0, h, 24) || rd32(h + 28) != 0) {
-            return; /* a claim cut short */
+        /* A claim cut short: a bad CRC, or its claim word never programmed. A claim word with
+         * any bit programmed counts: its CRC checks, so the cut came during the word itself. */
+        if (rd32(h + 24) != store_crc32(0, h, 24) || rd32(h + 28) == 0xFFFFFFFFu) {
+            return;
         }
         s->sstate[sec] = SEC_CLAIMED;
         c->seq = rd32(h + 20);
@@ -623,7 +635,10 @@ static uint32_t rec_valid(const store* s, uint32_t sec, uint32_t off) {
          (len < STORE_FILE_HEAD || len > STORE_FILE_HEAD + STORE_FILE_SECTORS))) {
         return 0;
     }
-    if (rd32(h + STORE_REC_HEADER + pad4(len)) != 0) {
+    /* The commit word never programmed: the write was cut. Any bit of it programmed counts (a
+     * cut during the word itself leaves bits faint, which may read either way at each mount;
+     * its header and data were programmed before it, whole, as the CRC shows). */
+    if (rd32(h + STORE_REC_HEADER + pad4(len)) == 0xFFFFFFFFu) {
         return 0;
     }
     uint32_t crc = store_crc32(store_crc32(0, h, 12), h + STORE_REC_HEADER, len);
@@ -767,16 +782,17 @@ static void mount_finish(store* s) {
         }
         i++;
     }
+    /* No sector from before the mount takes another record: the first write starts a fresh
+     * head. A cut during the last session's last write can leave faint bits in that sector, read
+     * one way now and another at the next mount; nothing written now may follow them. */
     s->head = NONE;
     for (uint32_t i = 0; i < STORE_SECTORS; i++) {
         if (s->sstate[i] & SEC_GUESS) {
             s->sector[i].erases = known; /* unknown: count it among the most worn */
             s->sstate[i] &= (uint8_t)~SEC_GUESS;
         }
-        if (sec_state(s, i) == SEC_CLAIMED && !(s->sstate[i] & (SEC_FULL | SEC_FILE)) &&
-            s->sector[i].free + STORE_REC_OVERHEAD <= STORE_SECTOR_USE &&
-            (s->head == NONE || s->sector[i].seq > s->sector[s->head].seq)) {
-            s->head = (uint8_t)i;
+        if (sec_state(s, i) == SEC_CLAIMED) {
+            s->sstate[i] |= SEC_FULL;
         }
     }
     if (s->mount_newer) {
@@ -884,12 +900,8 @@ static void erase_step(store* s) {
         s->job_phase = E_HEADER;
         return;
     }
-    uint8_t h[20];
-    memcpy(h, MAGIC, 8);
-    wr16(h + 8, STORE_FORMAT);
-    wr16(h + 10, 0);
-    wr32(h + 12, s->sector[sec].erases);
-    wr32(h + 16, store_crc32(0, h, 16));
+    uint8_t h[STORE_HEADER];
+    sector_header(s, sec, h);
     uint16_t done = s->job_done;
     int rc = prog_piece(s, sec, 0, h, 20, &done);
     s->job_done = (uint8_t)done;
@@ -1097,13 +1109,9 @@ static int file_step(store* s) {
         f->pdone = 0;
     }
     if (f->phase == F_CLAIM) {
-        uint8_t claim[24], p[12];
-        memcpy(claim, at(s, sec, 0), 20);
-        wr32(claim + 20, s->sector[sec].seq);
-        wr32(p, s->sector[sec].seq);
-        wr32(p + 4, store_crc32(0, claim, 24));
-        wr32(p + 8, 0);
-        rc = prog_piece(s, sec, 20, p, 12, &f->pdone);
+        uint8_t h[STORE_HEADER];
+        sector_header(s, sec, h);
+        rc = prog_piece(s, sec, 0, h, STORE_HEADER, &f->pdone);
         if (rc > 0) {
             set_state(s, sec, SEC_CLAIMED);
             f->phase = F_DATA;

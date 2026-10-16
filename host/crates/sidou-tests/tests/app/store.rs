@@ -51,45 +51,191 @@ impl Rng {
     }
 }
 
-/// A program cut short: some of the bits it would clear are cleared.
-fn torn_prog(rng: &mut Rng, region: &mut [u8], off: usize, data: &[u8]) {
-    for (i, &d) in data.iter().enumerate() {
-        let clear = region[off + i] & !d;
-        region[off + i] &= !(clear & rng.next() as u8);
-    }
+/// The part's cells: the bytes as they read now, the bits programs meant to clear since the
+/// last erase, and the bits a cut left faint (neither programmed nor erased: each mount reads
+/// them anew, 0 or 1 at random, until a program clears them for good or an erase sets them).
+#[derive(Clone)]
+pub struct Cells {
+    pub mem: Vec<u8>,
+    pub meant: Vec<u8>,
+    pub faint: Vec<u8>,
+    /// Sectors whose erase was cut: not to be used before an erase completes.
+    pub weak: [bool; SECTORS],
 }
 
-/// An erase cut short: all 0xFF (cut before its header), any mix of old bytes and 0xFF, or
-/// erased up to some point.
-fn torn_erase(rng: &mut Rng, region: &mut [u8], sec: usize) {
-    let s = &mut region[sec * SECTOR..(sec + 1) * SECTOR];
-    match rng.below(3) {
-        0 => s.fill(0xFF),
-        1 => {
-            for b in s.iter_mut() {
-                if rng.chance(50) {
-                    *b = 0xFF;
+impl Cells {
+    fn blank() -> Self {
+        Cells {
+            mem: vec![0xFF; HI - LO],
+            meant: vec![0xFF; HI - LO],
+            faint: vec![0; HI - LO],
+            weak: [false; SECTORS],
+        }
+    }
+
+    /// A complete program of `data` at region offset `off`.
+    fn prog(&mut self, off: usize, data: &[u8]) {
+        for (i, &d) in data.iter().enumerate() {
+            self.mem[off + i] &= d;
+            self.meant[off + i] &= d;
+            self.faint[off + i] &= d;
+        }
+    }
+
+    fn erase(&mut self, sec: usize) {
+        let r = sec * SECTOR..(sec + 1) * SECTOR;
+        self.mem[r.clone()].fill(0xFF);
+        self.meant[r.clone()].fill(0xFF);
+        self.faint[r].fill(0);
+        self.weak[sec] = false;
+    }
+
+    /// A program cut short. Plain: some of the bits it would clear are cleared. Faint: each
+    /// such bit is cleared, left faint, or left as it was.
+    fn torn_prog(&mut self, rng: &mut Rng, off: usize, data: &[u8], faint: bool) {
+        for (i, &d) in data.iter().enumerate() {
+            let at = off + i;
+            self.meant[at] &= d;
+            if !faint {
+                let clear = self.mem[at] & !d;
+                self.mem[at] &= !(clear & rng.next() as u8);
+                continue;
+            }
+            for bit in 0..8 {
+                let m = 1u8 << bit;
+                let solid0 = self.mem[at] & m == 0 && self.faint[at] & m == 0;
+                if d & m != 0 || solid0 {
+                    continue;
+                }
+                match rng.below(100) {
+                    0..=39 => {
+                        self.mem[at] &= !m;
+                        self.faint[at] &= !m;
+                    }
+                    40..=74 => self.faint[at] |= m,
+                    _ => {}
                 }
             }
         }
-        _ => {
-            let n = rng.below(SECTOR as u64) as usize;
-            s[..n].fill(0xFF);
+        if faint {
+            self.reread_range(rng, off, data.len());
         }
+    }
+
+    /// An erase cut short. Plain: all 0xFF (cut before its header), any mix of old bytes and
+    /// 0xFF, or erased up to some point. Faint: per bit, either cut during the part's
+    /// pre-program to 0 (bits cleared, faint or as they were) or during the erase proper,
+    /// from all 0 (bits set, faint, or still 0).
+    fn torn_erase(&mut self, rng: &mut Rng, sec: usize, faint: bool) {
+        let r = sec * SECTOR..(sec + 1) * SECTOR;
+        self.weak[sec] = true;
+        self.meant[r.clone()].fill(0);
+        if faint {
+            let preprogram = rng.chance(50);
+            for at in r.clone() {
+                for bit in 0..8 {
+                    let m = 1u8 << bit;
+                    let roll = rng.below(100);
+                    if preprogram {
+                        if self.mem[at] & m == 0 && self.faint[at] & m == 0 {
+                            continue;
+                        }
+                        match roll {
+                            0..=39 => {
+                                self.mem[at] &= !m;
+                                self.faint[at] &= !m;
+                            }
+                            40..=74 => self.faint[at] |= m,
+                            _ => {}
+                        }
+                    } else {
+                        self.mem[at] &= !m;
+                        self.faint[at] &= !m;
+                        match roll {
+                            0..=39 => self.mem[at] |= m,
+                            40..=74 => self.faint[at] |= m,
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            self.reread_range(rng, r.start, SECTOR);
+            return;
+        }
+        let s = &mut self.mem[r];
+        match rng.below(3) {
+            0 => s.fill(0xFF),
+            1 => {
+                for b in s.iter_mut() {
+                    if rng.chance(50) {
+                        *b = 0xFF;
+                    }
+                }
+            }
+            _ => {
+                let n = rng.below(SECTOR as u64) as usize;
+                s[..n].fill(0xFF);
+            }
+        }
+    }
+
+    fn reread_range(&mut self, rng: &mut Rng, off: usize, n: usize) {
+        for at in off..off + n {
+            let f = self.faint[at];
+            if f != 0 {
+                self.mem[at] = (self.mem[at] & !f) | (rng.next() as u8 & f);
+            }
+        }
+    }
+
+    /// What a mount reads: every faint bit anew.
+    pub fn reread(&mut self, rng: &mut Rng) {
+        self.reread_range(rng, 0, HI - LO);
     }
 }
 
-/// A region as an operation, cut, would have left it, with the sectors left weak.
-pub struct Fork {
-    pub region: Vec<u8>,
-    pub weak: [bool; SECTORS],
+/// A flash operation, as the fork log keeps it (region offsets).
+#[derive(Clone)]
+pub enum Op {
+    Prog(usize, Vec<u8>),
+    Erase(usize),
+}
+
+/// Every region a cut during one of the logged operations would have left: from the cells
+/// before the first, each operation torn in turn, then applied whole for the next.
+pub struct Replay {
+    cells: Cells,
+    ops: std::vec::IntoIter<Op>,
+    rng: Rng,
+    faint: bool,
+}
+
+impl Iterator for Replay {
+    /// The cells as the operation, cut, would have left them, and whether it was an erase.
+    type Item = (Cells, bool);
+
+    fn next(&mut self) -> Option<(Cells, bool)> {
+        let op = self.ops.next()?;
+        let mut fork = self.cells.clone();
+        match &op {
+            Op::Prog(off, data) => {
+                fork.torn_prog(&mut self.rng, *off, data, self.faint);
+                self.cells.prog(*off, data);
+            }
+            Op::Erase(sec) => {
+                fork.torn_erase(&mut self.rng, *sec, self.faint);
+                self.cells.erase(*sec);
+            }
+        }
+        Some((fork, matches!(op, Op::Erase(_))))
+    }
 }
 
 /// The simulated part.
 pub struct Sim {
+    /// The whole flash, as the store's map reads it; the region's cells are mirrored in `cells`.
     pub mem: Vec<u8>,
-    /// Sectors whose erase was cut: not to be used before an erase completes.
-    pub weak: [bool; SECTORS],
+    pub cells: Cells,
     /// Programs and erases done (each a place a power cut can fall).
     pub ops: u64,
     pub progs: u64,
@@ -106,16 +252,21 @@ pub struct Sim {
     pub violations: Vec<String>,
     /// Operations in the current store_poll call.
     pub in_poll: u32,
-    /// Keep the region as each operation, cut, would leave it.
+    /// Log the operations, for the regions a cut during each would leave (`replay`).
     pub fork: bool,
-    pub forks: Vec<Fork>,
+    log: Option<(Cells, Vec<Op>)>,
+    /// Cuts leave faint bits, and every mount reads them anew.
+    pub faint: bool,
+    /// Programs into each 256-byte page since its sector's last erase, and the most seen.
+    pub page_progs: Vec<u16>,
+    pub page_progs_max: u16,
 }
 
 impl Sim {
     pub fn new(seed: u64) -> Box<Self> {
         Box::new(Sim {
             mem: vec![0xFF; FLASH],
-            weak: [false; SECTORS],
+            cells: Cells::blank(),
             ops: 0,
             progs: 0,
             erases: 0,
@@ -128,19 +279,86 @@ impl Sim {
             violations: Vec::new(),
             in_poll: 0,
             fork: false,
-            forks: Vec::new(),
+            log: None,
+            faint: false,
+            page_progs: vec![0; (HI - LO) / STORE_PAGE as usize],
+            page_progs_max: 0,
         })
     }
 
     pub fn with_region(seed: u64, region: &[u8], weak: [bool; SECTORS]) -> Box<Self> {
         let mut sim = Sim::new(seed);
-        sim.mem[LO..HI].copy_from_slice(region);
-        sim.weak = weak;
+        sim.cells.mem.copy_from_slice(region);
+        // What the region holds counts as programmed, as far as it reads programmed.
+        sim.cells.meant.copy_from_slice(region);
+        sim.cells.weak = weak;
+        sim.sync();
         sim
+    }
+
+    pub fn with_cells(seed: u64, cells: Cells, faint: bool) -> Box<Self> {
+        let mut sim = Sim::new(seed);
+        sim.cells = cells;
+        sim.faint = faint;
+        sim.sync();
+        sim
+    }
+
+    fn sync(&mut self) {
+        self.mem[LO..HI].copy_from_slice(&self.cells.mem);
     }
 
     pub fn region(&self) -> &[u8] {
         &self.mem[LO..HI]
+    }
+
+    /// Makes the bits meant programmed in `n` region bytes from `off` faint, reading `reads`
+    /// (masked to them) until the next change.
+    pub fn set_faint(&mut self, off: usize, n: usize, reads: u8) {
+        for at in off..off + n {
+            let f = !self.cells.meant[at];
+            self.cells.faint[at] = f;
+            self.cells.mem[at] = (self.cells.mem[at] & !f) | (reads & f);
+        }
+        self.sync();
+    }
+
+    /// Every faint bit reads `reads` (masked to it).
+    pub fn faint_reads(&mut self, reads: u8) {
+        for at in 0..HI - LO {
+            let f = self.cells.faint[at];
+            self.cells.mem[at] = (self.cells.mem[at] & !f) | (reads & f);
+        }
+        self.sync();
+    }
+
+    /// The bytes as a mount reads them: faint bits anew.
+    pub fn reread(&mut self) {
+        if self.faint {
+            self.cells.reread(&mut self.rng);
+            self.sync();
+        }
+    }
+
+    /// The logged operations since the last call, to replay as forks.
+    pub fn replay(&mut self, seed: u64) -> Option<Replay> {
+        let (cells, ops) = self.log.take()?;
+        Some(Replay {
+            cells,
+            ops: ops.into_iter(),
+            rng: Rng::new(seed),
+            faint: self.faint,
+        })
+    }
+
+    fn logged(&mut self, op: Op) {
+        if self.fork {
+            let cells = &self.cells;
+            self.log
+                .get_or_insert_with(|| (cells.clone(), Vec::new()))
+                .1
+                .push(op);
+        }
     }
 
     fn violation(&mut self, what: String) -> i32 {
@@ -173,37 +391,37 @@ impl Sim {
         if self.later > 0 && self.rng.chance(self.later) {
             return STORE_LATER;
         }
-        let kill = rel == 0 && n == 8 && data.iter().all(|&b| b == 0);
+        // The kill: zeros over a header's magic, in one program or in pieces.
+        let kill = rel + n <= 8 && data.iter().all(|&b| b == 0);
+        let r = off - LO;
         if !kill {
-            if self.weak[sec] {
+            if self.cells.weak[sec] {
                 return self.violation(format!(
                     "a program at {off:#x} in sector {sec}, cut mid-erase"
                 ));
             }
-            if self.mem[off..off + n].iter().any(|&b| b != 0xFF) {
+            // Over programmed bytes, only the bytes meant already (weak bits programmed again).
+            let meant = &self.cells.meant[r..r + n];
+            if meant.iter().zip(&data).any(|(&m, &d)| m != 0xFF && m != d) {
                 return self.violation(format!("a program over programmed bytes at {off:#x}+{n}"));
             }
         }
         let i = self.ops;
         self.ops += 1;
         self.progs += 1;
-        self.kills += u64::from(kill);
-        if self.fork {
-            let mut region = self.mem[LO..HI].to_vec();
-            torn_prog(&mut self.rng, &mut region, off - LO, &data);
-            self.forks.push(Fork {
-                region,
-                weak: self.weak,
-            });
-        }
+        self.kills += u64::from(kill && rel == 0);
+        let page = r / STORE_PAGE as usize;
+        self.page_progs[page] += 1;
+        self.page_progs_max = self.page_progs_max.max(self.page_progs[page]);
+        self.logged(Op::Prog(r, data.clone()));
         if self.cut_at == Some(i) {
-            torn_prog(&mut self.rng, &mut self.mem[LO..HI], off - LO, &data);
+            self.cells.torn_prog(&mut self.rng, r, &data, self.faint);
+            self.sync();
             self.dead = true;
             return STORE_ERROR;
         }
-        for (b, d) in self.mem[off..off + n].iter_mut().zip(&data) {
-            *b &= d;
-        }
+        self.cells.prog(r, &data);
+        self.mem[off..off + n].copy_from_slice(&self.cells.mem[r..r + n]);
         STORE_OK
     }
 
@@ -223,21 +441,17 @@ impl Sim {
         self.ops += 1;
         self.erases += 1;
         self.reclaims += u64::from(self.mem[off..off + SECTOR].iter().any(|&b| b != 0xFF));
-        if self.fork {
-            let mut region = self.mem[LO..HI].to_vec();
-            torn_erase(&mut self.rng, &mut region, sec);
-            let mut weak = self.weak;
-            weak[sec] = true;
-            self.forks.push(Fork { region, weak });
-        }
+        self.logged(Op::Erase(sec));
+        let pages = SECTOR / STORE_PAGE as usize;
+        self.page_progs[sec * pages..(sec + 1) * pages].fill(0);
         if self.cut_at == Some(i) {
-            torn_erase(&mut self.rng, &mut self.mem[LO..HI], sec);
-            self.weak[sec] = true;
+            self.cells.torn_erase(&mut self.rng, sec, self.faint);
+            self.sync();
             self.dead = true;
             return STORE_ERROR;
         }
+        self.cells.erase(sec);
         self.mem[off..off + SECTOR].fill(0xFF);
-        self.weak[sec] = false;
         STORE_OK
     }
 }
@@ -303,6 +517,7 @@ impl Rig {
     }
 
     pub fn mount(&mut self) -> store_state_id {
+        self.sim.reread();
         unsafe { store_mount(&mut *self.st) };
         let mut polls = 0;
         while self.busy() {
@@ -425,7 +640,10 @@ impl Rig {
             "the store did what it must not: {:#?}",
             self.sim.violations
         );
-        assert_eq!(guard_band_written(self.sim.region()), None);
+        assert_eq!(
+            guard_band_programmed(self.sim.region(), &self.sim.cells.weak),
+            None
+        );
     }
 }
 
@@ -553,10 +771,17 @@ impl Rig {
 
 /// The first store sector whose guard band holds a programmed byte.
 pub fn guard_band_written(region: &[u8]) -> Option<usize> {
+    guard_band_programmed(region, &[false; SECTORS])
+}
+
+/// The same, but for sectors whose erase was cut (`weak`): the part, not the store, left
+/// whatever they hold, and the store erases them before any use.
+pub fn guard_band_programmed(region: &[u8], weak: &[bool; SECTORS]) -> Option<usize> {
     (0..SECTORS).find(|&s| {
-        region[s * SECTOR + USE..(s + 1) * SECTOR]
-            .iter()
-            .any(|&b| b != 0xFF)
+        !weak[s]
+            && region[s * SECTOR + USE..(s + 1) * SECTOR]
+                .iter()
+                .any(|&b| b != 0xFF)
     })
 }
 
@@ -962,10 +1187,16 @@ struct Run {
 
 impl Run {
     fn new(seed: u64, keys: u32, forks: bool) -> Self {
+        Run::with(seed, keys, forks, [16, 64, 256][(seed % 3) as usize], false)
+    }
+
+    /// `window`: the most one program writes; `faint`: cuts leave faint bits, read anew at
+    /// every mount.
+    fn with(seed: u64, keys: u32, forks: bool, window: u32, faint: bool) -> Self {
         let mut rng = Rng::new(seed ^ 0xC0FFEE);
-        let window = [16u32, 64, 256][rng.below(3) as usize];
         let mut rig = fresh(seed, window);
         rig.sim.fork = forks;
+        rig.sim.faint = faint;
         rig.sim.later = if rng.chance(30) { 25 } else { 0 };
         Run {
             rig,
@@ -1017,12 +1248,15 @@ impl Run {
 
     /// Mounts every region a cut during the last operations would have left.
     fn check_forks(&mut self) {
-        let forks = std::mem::take(&mut self.rig.sim.forks);
-        for f in forks {
+        let Some(replay) = self.rig.sim.replay(self.seed ^ self.forks_checked) else {
+            return;
+        };
+        let faint = self.rig.sim.faint;
+        for (cells, erased) in replay {
             self.forks_checked += 1;
-            assert_eq!(guard_band_written(&f.region), None);
+            assert_eq!(guard_band_programmed(&cells.mem, &cells.weak), None);
             let mut r = Rig::new(
-                Sim::with_region(self.forks_checked, &f.region, f.weak),
+                Sim::with_cells(self.forks_checked, cells, faint),
                 self.rig.window,
             );
             let state = r.mount();
@@ -1032,16 +1266,28 @@ impl Run {
                 self.seed
             );
             self.verify(&r, "a forked cut");
-            let erased = f.weak.iter().zip(&self.rig.sim.weak).any(|(a, b)| a != b);
             if erased || self.forks_checked.is_multiple_of(self.deep) {
                 // Carry on from there: a refill (a sector cut mid-erase is erased again
                 // before any use) and a write.
+                let first: Vec<Option<Vec<u8>>> = (0..self.keys).map(|k| r.get(k)).collect();
                 r.maintain();
                 let k = self.keys;
                 assert_eq!(r.put_now(k, b"after"), STORE_OK, "seed {}", self.seed);
                 assert_eq!(r.get(k).as_deref(), Some(&b"after"[..]));
                 self.verify(&r, "a forked cut, then a write");
                 r.assert_clean();
+                // Mounted again (faint bits read anew): what the first mount read stays.
+                r.reset();
+                assert_eq!(r.mount(), STORE_STATE_SIDOU, "seed {}", self.seed);
+                for (key, want) in first.iter().enumerate() {
+                    assert_eq!(
+                        &r.get(key as u32),
+                        want,
+                        "seed {}: key {key} changed at the next mount",
+                        self.seed
+                    );
+                }
+                assert_eq!(r.get(k).as_deref(), Some(&b"after"[..]));
             }
         }
     }
@@ -1185,8 +1431,12 @@ impl Run {
     }
 }
 
-fn power_loss(seed: u64, steps: u32, keys: u32, forks: bool) -> Run {
-    let mut run = Run::new(seed, keys, forks);
+/// Windows the quick runs take in turn: the device's (16, 64, 256), the smallest, and sizes
+/// that split the 32-byte header, the 16-byte record header and the 4-byte commit word unevenly.
+const WINDOWS: [u32; 9] = [1, 3, 4, 8, 12, 16, 64, 100, 256];
+
+fn power_loss(seed: u64, steps: u32, keys: u32, forks: bool, window: u32, faint: bool) -> Run {
+    let mut run = Run::with(seed, keys, forks, window, faint);
     for _ in 0..steps {
         run.step();
     }
@@ -1204,8 +1454,9 @@ fn power_loss(seed: u64, steps: u32, keys: u32, forks: bool) -> Run {
 #[test]
 fn power_loss_at_every_operation_leaves_the_old_value_or_the_new() {
     let (mut forks, mut cuts, mut kills, mut reclaims) = (0, 0, 0, 0);
-    for seed in 0..3 {
-        let run = power_loss(seed, 700, 10, true);
+    for (seed, window) in WINDOWS.into_iter().enumerate() {
+        let steps = if window < 8 { 120 } else { 250 };
+        let run = power_loss(seed as u64, steps, 10, true, window, seed % 2 == 1);
         forks += run.forks_checked;
         cuts += run.cuts;
         kills += run.rig.sim.kills;
@@ -1215,33 +1466,37 @@ fn power_loss_at_every_operation_leaves_the_old_value_or_the_new() {
         "{forks} forked cuts and {cuts} real cuts checked; {kills} kills, {reclaims} sectors \
          reclaimed"
     );
-    assert!(forks > 3_000 && cuts > 10);
+    assert!(forks > 10_000 && cuts > 15);
 }
 
 #[test]
 fn power_loss_with_real_cuts_over_long_runs() {
     let mut cuts = 0;
-    for seed in 100..110 {
-        let run = power_loss(seed, 4_000, 14, false);
+    for seed in 100..118 {
+        let window = WINDOWS[seed as usize % WINDOWS.len()];
+        let run = power_loss(seed, 2_500, 14, false, window, seed % 2 == 0);
         cuts += run.cuts;
     }
     println!("{cuts} real cuts checked");
     assert!(cuts > 500);
 }
 
-/// The long version: thousands of seeds (minutes). `cargo test --release -p sidou-tests --test
-/// app store::power_loss_long -- --ignored`.
+/// The long version: thousands of seeds (minutes), every window size from 1 to 256, faint bits
+/// for three seeds in four. `cargo test --release -p sidou-tests --test app
+/// store::power_loss_long -- --ignored`.
 #[test]
 #[ignore]
 fn power_loss_long() {
     let (mut forks, mut cuts) = (0, 0);
-    for seed in 1_000..1_400 {
-        let run = power_loss(seed, 1_500, 12, true);
+    for seed in 1_000..1_400u64 {
+        let window = 1 + (seed % 256) as u32;
+        let run = power_loss(seed, 1_500, 12, true, window, seed % 4 != 0);
         forks += run.forks_checked;
         cuts += run.cuts;
     }
-    for seed in 10_000..13_000 {
-        cuts += power_loss(seed, 3_000, 16, false).cuts;
+    for seed in 10_000..13_000u64 {
+        let window = 1 + (seed % 256) as u32;
+        cuts += power_loss(seed, 3_000, 16, false, window, seed % 4 != 0).cuts;
     }
     println!("{forks} forked cuts and {cuts} real cuts checked");
 }
@@ -1899,6 +2154,7 @@ struct FileRun {
     forks: bool,
     forks_checked: u64,
     cuts: u64,
+    drops: u64,
     seed: u64,
     max_len: usize,
 }
@@ -1915,11 +2171,11 @@ enum FileOp {
 const NAMES: [&str; 5] = ["A", "SONG 1", "SONG 2", "DUMP", "SIXTEEN CHARS 16"];
 
 impl FileRun {
-    fn new(seed: u64, forks: bool, max_len: usize) -> Self {
+    fn new(seed: u64, forks: bool, max_len: usize, window: u32, faint: bool) -> Self {
         let mut rng = Rng::new(seed ^ 0xF11E);
-        let window = [16u32, 64, 256][rng.below(3) as usize];
-        let mut rig = fresh(seed, if forks { 256 } else { window });
+        let mut rig = fresh(seed, window);
         rig.sim.fork = forks;
+        rig.sim.faint = faint;
         rig.sim.later = if rng.chance(30) { 20 } else { 0 };
         FileRun {
             rig,
@@ -1930,6 +2186,7 @@ impl FileRun {
             forks,
             forks_checked: 0,
             cuts: 0,
+            drops: 0,
             seed,
             max_len,
         }
@@ -1982,15 +2239,21 @@ impl FileRun {
     }
 
     fn check_forks(&mut self) {
-        for f in std::mem::take(&mut self.rig.sim.forks) {
+        let Some(replay) = self.rig.sim.replay(self.seed ^ self.forks_checked) else {
+            return;
+        };
+        let faint = self.rig.sim.faint;
+        for (cells, _) in replay {
             self.forks_checked += 1;
             let mut r = Rig::new(
-                Sim::with_region(self.forks_checked, &f.region, f.weak),
+                Sim::with_cells(self.forks_checked, cells, faint),
                 self.rig.window,
             );
             assert_eq!(r.mount(), STORE_STATE_SIDOU, "seed {}", self.seed);
             self.verify(&r, "a forked cut");
-            if self.forks_checked.is_multiple_of(64) {
+            if self.forks_checked.is_multiple_of(32) {
+                let files: Vec<Option<Vec<u8>>> = NAMES.iter().map(|n| r.file(n)).collect();
+                let values: Vec<Option<Vec<u8>>> = (0..4).map(|k| r.get(k)).collect();
                 r.maintain();
                 assert_eq!(
                     r.file_now("AFTER", b"after"),
@@ -1999,6 +2262,21 @@ impl FileRun {
                     self.seed
                 );
                 r.assert_clean();
+                // Mounted again (faint bits read anew): what the first mount read stays.
+                r.reset();
+                assert_eq!(r.mount(), STORE_STATE_SIDOU, "seed {}", self.seed);
+                for (n, want) in NAMES.iter().zip(&files) {
+                    assert_eq!(
+                        &r.file(n),
+                        want,
+                        "seed {}: {n} at the next mount",
+                        self.seed
+                    );
+                }
+                for (k, want) in values.iter().enumerate() {
+                    assert_eq!(&r.get(k as u32), want, "seed {}: key {k}", self.seed);
+                }
+                assert_eq!(r.file("AFTER").as_deref(), Some(&b"after"[..]));
             }
         }
     }
@@ -2055,6 +2333,43 @@ impl FileRun {
         self.after();
     }
 
+    /// The open file, given some of its bytes and some polls (its claims may be half done),
+    /// then aborted or ended short: the old file stays, whole.
+    fn drop_file(&mut self, data: &[u8]) {
+        let upto = self.rng.below(data.len() as u64 + 1) as usize;
+        let polls = self.rng.below(48);
+        let mut at = 0;
+        let mut n = 0;
+        while (at < upto || n < polls) && !self.rig.sim.dead {
+            if at < upto {
+                at += self.rig.file_write(&data[at..upto]);
+            }
+            self.rig.poll();
+            n += 1;
+            assert!(
+                n < 100_000,
+                "seed {}: the file stopped taking bytes",
+                self.seed
+            );
+        }
+        if !self.rig.sim.dead {
+            let short = at < data.len() && self.rng.chance(50);
+            if short {
+                assert_eq!(unsafe { store_file_end(&mut *self.rig.st) }, STORE_INVALID);
+            } else {
+                unsafe { store_file_abort(&mut *self.rig.st) };
+            }
+            let want = if short {
+                STORE_INVALID
+            } else {
+                STORE_NOT_FOUND
+            };
+            assert_eq!(self.rig.file_result(), want, "seed {}", self.seed);
+            self.drops += 1;
+        }
+        self.after();
+    }
+
     fn step(&mut self) {
         if self.rig.sim.cut_at.is_none() && self.rng.chance(4) {
             self.rig.sim.cut_at = Some(self.rig.sim.ops + self.rng.below(300));
@@ -2081,6 +2396,10 @@ impl FileRun {
                     return;
                 }
                 assert_eq!(rc, STORE_OK, "seed {}", self.seed);
+                if self.rng.chance(15) {
+                    self.drop_file(&data);
+                    return;
+                }
                 self.inflight = FileOp::Write(name, data.clone());
                 let erases = self.rig.sim.erases;
                 let mut rng = self.rng.clone();
@@ -2153,8 +2472,15 @@ impl FileRun {
     }
 }
 
-fn file_power_loss(seed: u64, steps: u32, forks: bool, max_len: usize) -> FileRun {
-    let mut run = FileRun::new(seed, forks, max_len);
+fn file_power_loss(
+    seed: u64,
+    steps: u32,
+    forks: bool,
+    max_len: usize,
+    window: u32,
+    faint: bool,
+) -> FileRun {
+    let mut run = FileRun::new(seed, forks, max_len, window, faint);
     for _ in 0..steps {
         run.step();
     }
@@ -2164,24 +2490,31 @@ fn file_power_loss(seed: u64, steps: u32, forks: bool, max_len: usize) -> FileRu
 
 #[test]
 fn files_survive_a_cut_at_every_operation_old_or_new_never_neither_never_a_mix() {
-    let (mut forks, mut cuts) = (0, 0);
-    for seed in 0..2 {
-        let run = file_power_loss(seed, 120, true, 6_000);
+    let (mut forks, mut cuts, mut drops) = (0, 0, 0);
+    for (seed, window) in WINDOWS.into_iter().enumerate() {
+        // Files of up to a few windows' worth at the smallest windows, or the run takes minutes.
+        let max_len = (window as usize * 40).clamp(300, 6_000);
+        let run = file_power_loss(seed as u64, 60, true, max_len, window, seed % 2 == 0);
         forks += run.forks_checked;
         cuts += run.cuts;
+        drops += run.drops;
     }
-    println!("{forks} forked cuts and {cuts} real cuts checked");
-    assert!(forks > 2_000 && cuts > 3);
+    println!("{forks} forked cuts and {cuts} real cuts checked; {drops} files dropped");
+    assert!(forks > 5_000 && cuts > 3 && drops > 5);
 }
 
 #[test]
 fn files_under_real_cuts_over_long_runs() {
-    let mut cuts = 0;
-    for seed in 100..106 {
-        cuts += file_power_loss(seed, 400, false, FILE_MAX).cuts;
+    let (mut cuts, mut drops) = (0, 0);
+    for seed in 100..112 {
+        let window = WINDOWS[seed as usize % WINDOWS.len()];
+        let max_len = if window < 8 { 8_000 } else { FILE_MAX };
+        let run = file_power_loss(seed, 250, false, max_len, window, seed % 2 == 1);
+        cuts += run.cuts;
+        drops += run.drops;
     }
-    println!("{cuts} real cuts checked");
-    assert!(cuts > 50);
+    println!("{cuts} real cuts checked; {drops} files dropped");
+    assert!(cuts > 50 && drops > 20);
 }
 
 /// The long version, with the power-loss runs above (minutes).
@@ -2189,13 +2522,16 @@ fn files_under_real_cuts_over_long_runs() {
 #[ignore]
 fn files_power_loss_long() {
     let (mut forks, mut cuts) = (0, 0);
-    for seed in 1_000..1_060 {
-        let run = file_power_loss(seed, 200, true, 20_000);
+    for seed in 1_000..1_060u64 {
+        let window = WINDOWS[seed as usize % WINDOWS.len()];
+        let max_len = (window as usize * 100).clamp(1_000, 20_000);
+        let run = file_power_loss(seed, 200, true, max_len, window, seed % 4 != 0);
         forks += run.forks_checked;
         cuts += run.cuts;
     }
-    for seed in 10_000..10_300 {
-        cuts += file_power_loss(seed, 600, false, FILE_MAX).cuts;
+    for seed in 10_000..10_300u64 {
+        let window = 1 + (seed % 256) as u32;
+        cuts += file_power_loss(seed, 600, false, FILE_MAX, window, seed % 4 != 0).cuts;
     }
     println!("{forks} forked cuts and {cuts} real cuts checked");
 }
@@ -2212,9 +2548,17 @@ fn an_open_files_fresh_key_is_kept_for_it() {
     }
     assert_eq!(r.file_begin("SONG", 10), STORE_OK);
     let ops = r.sim.ops;
-    assert_eq!(r.put(1000, b"new"), STORE_FULL, "the file holds the last slot");
+    assert_eq!(
+        r.put(1000, b"new"),
+        STORE_FULL,
+        "the file holds the last slot"
+    );
     assert_eq!(r.sim.ops, ops);
-    assert_eq!(r.put(3, b"an old key"), STORE_OK, "an indexed key still writes");
+    assert_eq!(
+        r.put(3, b"an old key"),
+        STORE_OK,
+        "an indexed key still writes"
+    );
     r.settle();
     assert_eq!(r.file_stream(&[5; 10], 10, None), STORE_OK);
     assert_eq!(r.stats().keys, STORE_KEYS_MAX);
@@ -2253,7 +2597,11 @@ fn a_file_dropped_mid_claim_leaves_its_sector_to_be_erased() {
                 // Every sector is used again: files, then values.
                 r.maintain();
                 for i in 0..12u64 {
-                    assert_eq!(r.file_now(&format!("B{i}"), &content(i, 2000)), STORE_OK, "{what}");
+                    assert_eq!(
+                        r.file_now(&format!("B{i}"), &content(i, 2000)),
+                        STORE_OK,
+                        "{what}"
+                    );
                     assert_eq!(r.put_now(i as u32, &[i as u8; 300]), STORE_OK, "{what}");
                 }
                 r.assert_clean();
@@ -2289,7 +2637,11 @@ fn an_open_file_whose_sender_goes_quiet_times_out() {
     assert!(!r.erase_wanted(), "maintenance waits for the file");
     file_idle(&mut r, STORE_FILE_IDLE_MS - 1);
     assert_eq!(r.file_result(), STORE_BUSY);
-    assert_eq!(r.file_write(&data[256..300]), 44, "a byte starts the time again");
+    assert_eq!(
+        r.file_write(&data[256..300]),
+        44,
+        "a byte starts the time again"
+    );
     file_idle(&mut r, STORE_FILE_IDLE_MS - 1);
     assert_eq!(r.file_result(), STORE_BUSY);
     file_idle(&mut r, 1);
@@ -2346,4 +2698,140 @@ fn a_format_with_a_file_open_ends_it_as_not_found() {
     assert_eq!(r.file_begin("OPEN", 100), STORE_OK);
     unsafe { store_format(&mut *r.st) };
     assert_eq!(r.file_result(), STORE_NOT_FOUND);
+}
+
+// ---- faint bits ----
+
+/// The region offset of the commit word of `key`'s newest small record (by its sequence number).
+fn commit_word_of(region: &[u8], key: u32) -> usize {
+    let mut best = (0u32, 0usize);
+    for s in sectors_holding(region, key, 1) {
+        let h = &region[s * SECTOR..(s + 1) * SECTOR];
+        let mut off = 32;
+        while off + 20 <= USE && h[off] != 0xFF {
+            let len = u16::from_le_bytes([h[off + 2], h[off + 3]]) as usize;
+            let size = 16 + len.div_ceil(4) * 4 + 4;
+            if h[off] == 1 && rd32(h, off + 4) == key && rd32(h, off + 8) >= best.0 {
+                best = (rd32(h, off + 8), s * SECTOR + off + size - 4);
+            }
+            off += size;
+        }
+    }
+    assert_ne!(best.1, 0, "no record of key {key}");
+    best.1
+}
+
+/// A cut during a record's commit word can leave its bits faint: read as programmed at one
+/// mount, erased or half programmed at the next. Nothing written after it may depend on it,
+/// and once a mount has read it committed, it stays committed.
+#[test]
+fn a_faint_commit_word_loses_nothing_written_after_it() {
+    for reads in [0xFFu8, 0x5A] {
+        let mut r = fresh(60, 256);
+        assert_eq!(r.put_now(1, b"old"), STORE_OK);
+        assert_eq!(r.put_now(1, b"new"), STORE_OK);
+        let c = commit_word_of(r.sim.region(), 1);
+        r.sim.set_faint(c, 4, 0x00);
+        r.reset();
+        assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        assert_eq!(r.get(1).as_deref(), Some(&b"new"[..]));
+        for k in 2..6 {
+            assert_eq!(r.put_now(k, b"after"), STORE_OK);
+        }
+        // The next mount reads the faint bits otherwise.
+        r.sim.faint_reads(reads);
+        r.reset();
+        assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        for k in 2..6 {
+            assert_eq!(
+                r.get(k).as_deref(),
+                Some(&b"after"[..]),
+                "reads {reads:#x}: key {k}"
+            );
+        }
+        let one = r.get(1);
+        if reads == 0xFF {
+            assert!(one.as_deref() == Some(b"old") || one.as_deref() == Some(b"new"));
+        } else {
+            assert_eq!(
+                one.as_deref(),
+                Some(&b"new"[..]),
+                "a half-read commit word still commits"
+            );
+        }
+        assert_eq!(r.stats().corrupt, 0);
+        r.assert_clean();
+    }
+}
+
+/// A cut during an erase header's program can leave it faint: valid at one mount (the sector
+/// joins the pool), not at the next. Before a sector takes records, its claim programs the
+/// erase header again, so the records never go with it.
+#[test]
+fn a_faint_erase_header_is_programmed_again_before_its_sector_takes_records() {
+    let mut r = fresh(61, 256);
+    let region = r.sim.region().to_vec();
+    for s in 0..SECTORS {
+        if region[s * SECTOR..s * SECTOR + 8] == *b"SIDOUSTR" {
+            r.sim.set_faint(s * SECTOR, 20, 0x00);
+        }
+    }
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    let mut rng = Rng::new(61);
+    let values: Vec<Vec<u8>> = (0..24).map(|_| rng.bytes(700)).collect();
+    for (k, v) in values.iter().enumerate() {
+        assert_eq!(r.put_now(k as u32 % 12, v), STORE_OK);
+    }
+    assert_eq!(r.file_now("SONG", &content(61, 9000)), STORE_OK);
+    r.sim.faint_reads(0xFF);
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    for k in 0..12 {
+        assert_eq!(r.get(k).as_ref(), Some(&values[k as usize + 12]), "key {k}");
+    }
+    assert_eq!(r.file("SONG"), Some(content(61, 9000)));
+    r.assert_clean();
+}
+
+/// A cut during a claim can leave its claim word faint: the sector reads claimed and empty at
+/// one mount, cut short at the next. Nothing is written into it before then.
+#[test]
+fn a_faint_claim_loses_nothing_written_after_it() {
+    for reads in [0xFFu8, 0x3C] {
+        let mut r = fresh(62, 256);
+        assert_eq!(r.put_now(1, b"one"), STORE_OK);
+        // A clean sector claimed with the newest number, its claim word faint.
+        let region = r.sim.region().to_vec();
+        let x = (0..SECTORS)
+            .rev()
+            .find(|&s| {
+                region[s * SECTOR..s * SECTOR + 8] == *b"SIDOUSTR"
+                    && region[s * SECTOR + 20..s * SECTOR + 32]
+                        .iter()
+                        .all(|&b| b == 0xFF)
+            })
+            .unwrap();
+        let mut claim = region[x * SECTOR..x * SECTOR + 24].to_vec();
+        claim[20..24].copy_from_slice(&0x0100_0000u32.to_le_bytes());
+        let crc = crc32(&claim);
+        let mut p = claim[20..24].to_vec();
+        p.extend_from_slice(&crc.to_le_bytes());
+        p.extend_from_slice(&[0; 4]);
+        r.sim.cells.prog(x * SECTOR + 20, &p);
+        r.sim.set_faint(x * SECTOR + 28, 4, 0x00);
+        r.reset();
+        assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        for k in 2..6 {
+            assert_eq!(r.put_now(k, b"after"), STORE_OK);
+        }
+        r.sim.faint_reads(reads);
+        r.reset();
+        assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        for k in 1..6 {
+            assert!(r.get(k).is_some(), "reads {reads:#x}: key {k}");
+        }
+        r.maintain();
+        r.assert_clean();
+    }
 }
