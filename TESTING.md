@@ -878,8 +878,8 @@ within one 256-byte page; an erase sets a sector to 0xFF. The simulator
 also answers a share of operations with STORE_LATER (the core must retry),
 and records what the store must never do: program the guard band, program
 over programmed bytes anything but the bytes already meant there (a claim
-programs the erase header again) or the kill's zeros over a header's magic,
-program across a page, use a sector whose erase was cut before erasing it
+programs the erase header again) or, in a header's magic, the kill's zeros
+over bits that read 1 (never a 0 over a bit that reads 0), program across a page, use a sector whose erase was cut before erasing it
 again, program from a source in flash, run more than one flash operation in
 a `store_poll`, or do more than `STORE_POLL_WORK` of work in one (`store.work`,
 weighted units of about 4 instructions or fewer each: bytes scanned, CRC
@@ -891,12 +891,18 @@ mount reads anew at random; a cut erase may fall in the part's pre-program
 to 0 or in the erase proper, bit by bit. In **pulse** mode an operation's
 bits tear together (one progress level an operation, a small spread a bit),
 so a cut often leaves every bit of a commit word faint, or none started;
-with it, faint bits are also read anew now and then within a session. The
-hook can also fail a share of operations with no cut (STORE_ERROR, the part
-having done part of each). The tests:
+with it, faint bits are also read anew now and then within a session. In
+**biased** mode faint bits drift toward erased (each read gives 1 three
+times in four). In **suspend** mode an erase answers STORE_LATER midway, the
+sector reading as an erase cut short until a later call resumes it (Task 4's
+erase-suspend). The hook can also fail a share of operations with no cut
+(STORE_ERROR, the part having done part of each). Every API call outside
+`store_poll` (put, delete, file begin and rename, collect, erase wanted) is
+held to `STORE_POLL_WORK` too. The tests:
 - **power loss:** random puts, deletes, collections and refills with windows
   of 1, 3, 4, 8, 12, 16, 64, 100 and 256 bytes, faint bits for half the
-  seeds (pulse mode for two faint seeds in three); for every flash operation, the region as a cut during it would
+  seeds (pulse mode for two faint seeds in three, biased for two in five),
+  suspended erases for one seed in four; for every flash operation, the region as a cut during it would
   leave it (a program that cleared any subset of its bits; an erase that left
   all 0xFF, a mix of old bytes and 0xFF, or a part erased; in faint mode,
   faint bits) is mounted and every key must read its value from before the
@@ -908,6 +914,9 @@ having done part of each). The tests:
   every window size from 1 to 256 and faint bits for three seeds in four
   (pulse mode for two in three of those):
   `cargo test --release -p sidou-tests --test app store::power_loss_long -- --ignored`;
+  `store::power_loss_sweep` runs one of the long runs' seeds
+  (`SIDOU_STORE_SWEEP=values:1000` or `files:10000`), for a sweep of every
+  seed in parallel processes;
 - **faint bits:** a commit word read programmed at one mount and erased or
   half programmed at the next loses nothing written after it; a faint erase
   header is programmed again before its sector takes records; a faint claim
@@ -915,15 +924,19 @@ having done part of each). The tests:
   committed at one mount and erased at the next, after collections in
   between, leaves the old value or the new, never neither, for a small value
   and for a file's replacement; the interrupted write (the newest record)
-  completes at the next mount whatever its commit word reads, its header and
-  commit word are programmed again before the next write, and it reads the
-  same at every later mount; a header cut short, read erased or failing at
-  one mount and right at a later one, is programmed to zero before the next
-  write, even one cut in its own data; a kill cut short, its zeros faint,
-  is made again before a collection relies on it, so a tombstone dropped
-  meanwhile never lets a deleted value back; in the runs, after a real cut
-  the interrupted write may still read either way until the next session's
-  first write completes (a cut during that session's fixes), never after; a newest record that overflows a full key index
+  counts at the next mount whatever its commit word reads, is copied forward
+  before anything else is written (writes wait, STORE_BUSY), and reads the
+  same at every later mount; a header cut short, read erased at one mount
+  and right at a later one, never counts once recovery's first record has
+  completed; a sector read as killed is erased before
+  any write or collection, so a tombstone dropped later never lets a deleted
+  value back; a collection's copy cut in its commit word and read erased,
+  then a deletion and the collections that drop its tombstone, never bring
+  the value back (the third review's C1); a write between an erase and its
+  erase header lands safely, nothing programming the fresh sector but its
+  header (C2); in the runs, after a real cut the interrupted write may still
+  read either way until the next session's first record completes (a cut
+  before then), never after; a newest record that overflows a full key index
   is the one left out, wherever it lies; in the power-loss runs, every deep
   fork mounted twice must read the same both times;
 - **hook errors:** with 3% of operations failed by the hook, at windows 1 to
@@ -950,9 +963,11 @@ having done part of each). The tests:
 - the bytes on flash are the documented format;
 - **bounds:** a mount's polls check at most a slice (`STORE_MOUNT_SLICE`, or
   one record alone) on blank, random, foreign, fixture and full regions; a
-  page takes at most `STORE_PAGE_PROGS` (36) programs between erases at
-  windows of 16 or more, with the densest records there are (also checked at
-  the end of every power-loss run);
+  page takes at most `STORE_PAGE_PROGS` (34) programs between erases at
+  windows of 16 or more, with the densest records there are, and one more
+  for each cut that falls in the page (also checked at the end of every
+  power-loss run); every API call outside `store_poll` within
+  `STORE_POLL_WORK`, worst cases included (a full key index, a short pool);
 - **files:** a cut at every operation of file writes, replacements,
   deletions, renames, aborts and short ends (some while a sector's claim is
   half programmed) among small writes, collections and refills leaves each

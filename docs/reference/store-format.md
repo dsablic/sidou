@@ -66,12 +66,15 @@ Written in two steps.
   clean sector with a cut claim: a bad claim CRC, or a claim word that reads
   `0xFFFFFFFF`. A claim word with any bit programmed counts (its CRC checks,
   so the cut came during the word). A dirty sector is erased before any use.
-- **Before a sector with a valid header is erased, its magic is programmed
-  to zero** (the kill). An erase cut short can leave any mix of old bytes and
-  0xFF, the header included; a killed magic can never read `SIDOUSTR` again.
-  Bytes 8-19 still check against `SIDOUSTR` (the CRC at 16), so the sector's
-  erase count survives the kill. This is the one program over bytes already
-  programmed: it only clears bits.
+- **Before a sector that may hold a valid header is erased, its magic is
+  killed**: the magic's 1 bits that read 1 are programmed to 0, and only
+  those, so the kill never programs a 0 over a bit that reads 0. An erase cut
+  short can leave any mix of old bytes and 0xFF, the header included; a
+  killed magic can never read `SIDOUSTR` again. Bytes 8-19 still check
+  against `SIDOUSTR` (the CRC at 16), so the sector's erase count survives the
+  kill. A magic with a bit set that `SIDOUSTR` has clear (a blank sector) was
+  never valid and is not killed; one whose kill was cut or failed is killed
+  again before its erase, over the bits that still read 1.
 
 ### A record
 
@@ -160,75 +163,90 @@ programmed nor erased, read one way at one mount and another at the next.
 Four rules keep them harmless:
 
 - **Every boot starts a fresh head.** No sector from before the mount takes
-  another record: the first small write (or collection copy) after a mount
-  claims a new sector from the pool, so nothing is ever written after bits
-  the last session's last write may have left faint. It costs at most one
-  partly used sector a boot, which garbage collection reclaims; the first
-  write after a boot needs the pool above its minimum (the device fills the
-  pool at boot).
+  another record: the first record written after a mount claims a new sector
+  from the pool, so nothing is ever written after bits the last session's
+  last write may have left faint. It costs at most one partly used sector a
+  boot, which garbage collection reclaims.
 - A commit word or claim word counts with **any** of its bits programmed
-  (above).
-- A claim programs the erase header again (above).
-- **The interrupted write is completed.** A commit word all of whose
-  programmed bits are faint (likely: its 32 bits are programmed by one
-  pulse, so a cut leaves them charged alike) can read erased at one mount
-  and programmed at another. Only the write a cut interrupted can end in
-  one, and it is the **newest** record: one write is in flight at a time,
-  each takes the next sequence number, and a file's chunks carry the file's
-  id, also a sequence number. So the newest keyed record counts as committed
-  when its CRC checks, whatever its commit word reads; and before the
-  session's first record or file write, or garbage collection's first kill,
-  the store programs that record's header and commit word again (the same
-  bytes), so it reads committed for good before anything follows it or a
-  kill could take its key's older records. A newest record whose commit word
-  reads erased is indexed last at the mount, so if the key index is full it
-  is the one left out (counted as corruption). If a committed chunk of a
-  file begun after it is the newest, the session after it ran, and there is
-  nothing to complete.
+  (above), and a claim programs the erase header again (above).
+- **The newest record is copied forward.** Every write takes the next
+  sequence number (a collection's copy too), one write is in flight at a
+  time, and a file's chunks carry the file's id, also a sequence number: so
+  the write a cut interrupted is the **newest** record. A commit word all of
+  whose programmed bits are faint (likely: its 32 bits are programmed by one
+  pulse, so a cut leaves them charged alike) can read erased at one mount and
+  programmed at another, so the newest keyed record counts as committed when
+  its CRC checks, whatever its commit word reads. Before anything else is
+  written, maintenance copies it forward: a new record of the same key and
+  bytes, a new number, programmed whole. Whatever the faint bits read later,
+  the copy is newer. (A newest record read uncommitted is indexed last at the
+  mount, so if the key index is full it is the one left out, counted as
+  corruption. If a committed chunk of a file begun after it is the newest,
+  the session after it ran, and there is nothing to copy.)
+- **Ambiguous sectors are erased before the session writes.** Ambiguous: a
+  claimed sector whose records end in a **cut tail** (a header that fails its
+  CRC, a record whose CRC checks but reads uncommitted, data after a header
+  that reads erased), a sector read as **killed** (a kill cut short can leave
+  zeros faint, reading zero now and one later), and a sector torn otherwise
+  (an erase or a claim cut short). Faint bits there can read otherwise at a
+  later mount: a cut header can come to read valid, a killed sector's records
+  back. Only a completed erase settles them. So before the session's first
+  write, maintenance erases each ambiguous sector, a claimed one evacuated
+  first (its live records copied out with new numbers, as a collection
+  does). In order: the copy forward, the dirty ambiguous sectors' erases,
+  then the evacuations, so no collection ever drops a tombstone while a
+  sector holding an older record of its key could still read otherwise.
+  A sector read as killed whose zeros are faint reads killed either way
+  until its erase, and nothing relies on its records being gone before that
+  erase completes.
 
-- **A cut header is made invalid.** A write cut before its header went
-  whole leaves a header that reads erased or fails its CRC, but faint bits in
-  it may read right at a later mount, and it would then be the newest
-  record. The mount marks every sector whose records end that way, and
-  before the session's first record or file write, or first kill, the store
-  programs that header to zero (bits only cleared): it can never read valid
-  again. A header already all zero is left alone, so each cut costs at most
-  one such program.
-- **A kill is made again.** A kill cut short can leave the magic's zeros
-  faint: read killed at one mount (so a collection may drop a tombstone that
-  hid only that sector's records) and valid at a later one (the records
-  back). Zeros that read zero may still be faint, so every sector the mount
-  reads as killed has its magic programmed to zero again, before the
-  session's first record or file write, or first kill. Those pages are
-  garbage, waiting for their erase.
-- **A copy cut short is made whole.** Two records with one sequence number
-  (a record and its copy: a collection was cut) may hold a copy whose commit
-  word is faint, and the mount may pick either. The last record of both
-  their sectors (where a copy in flight can only be) has its header and
-  commit word programmed again, the same bytes.
+Until this **recovery** is done, the store answers `STORE_BUSY` to writes,
+files and collections; maintenance runs it first. After a cut it is at most
+the copy forward, one sector's evacuation (a few records) and two erases
+(the cut sector's, and a collection's killed victim: maintenance erases a
+killed victim before anything else, and `store_collect` waits for that
+erase); hook errors can add one evacuation each. The device fills its pool
+at boot, before the audio starts, which absorbs the wait.
 
-All these fixes, cut headers first, go before the session's first program
-of a record of any kind (the caller's, a file's, a collection's copy) and
-before a collection's kill; only erases may go first.
+**A collection's victims** are killed, then erased before any other
+maintenance (so a cut never finds more than one waiting).
 
-A cut write whose header and data went whole is thus completed at the next
-mount, and from then on reads the same at every mount; one cut before that
-never counts once the next session's fixes are done. The one case left: a
-write cut in its header, whose faint bits read wrong at one mount and right
-at a later one, with nothing but those fixes between the two (a second cut
-during them), appears at the later one (and is then completed). It is the
-write the cut interrupted, never anything else.
+What is left:
+
+- **A write cut in its header** whose faint bits read wrong at one mount
+  (the write never happened, no trace of it if it had no data: a tombstone)
+  and right at a later one counts at the later one, as the newest record, if
+  no record of the next session completed between the two (a second cut
+  before recovery's first copy, or before the first write of a session with
+  nothing to recover). Once a record of the next session has completed, it is
+  newer, and the cut write reads uncommitted and never counts. It is always
+  the write the cut interrupted, never anything else.
+- **Sequence numbers.** A mount skips 256 numbers past the newest it read: a
+  write cut in its header, unread, may hold one of them (after writes the
+  hook failed, and files aborted before a chunk, whose numbers left no record
+  that reads). More than 255 such numbers in a row before a cut could let a
+  session's record share the cut write's number. The numbers wrap after
+  about 16 million boots.
+- **Hook errors** (a flash operation the driver reports failed, the part
+  having done part of it) leave the write undecided, as a cut does: a later
+  mount may read it as made or not, on a reboot with no cut, until
+  maintenance has evacuated and erased its sector (it does so first, at the
+  next quiet). A failed collection copy holds its original's bytes, so it
+  reads the same either way.
+- **A kill cut short** whose zeros were left faint and read 1 at the next
+  mount leaves the sector reading valid (or partly killed); the next kill
+  programs those bits again (zeros over faint zeros: the only such program
+  besides the claim's).
 
 ## Which record wins
 
 - Each key's **newest sequence number** wins; a tombstone as the winner
   means the key is deleted.
-- Garbage collection copies a live record into another sector **with its
-  sequence number unchanged**. So two valid records of a key can share a
-  number: a record and its copy, which hold the same bytes, so either may
-  stand for the key (the mount takes the one in the sector with the higher
-  claim number, or the first found). Two with the same number and different
-  CRCs cannot arise; the mount counts it as corruption (`store_stats`).
+- Garbage collection copies a live record into another sector **with a new
+  sequence number**, so no two records share one. (Regions written before
+  this rule may hold a record and its copy with one number, the same bytes:
+  either stands for the key; the mount takes the first found. Two with the same number and
+  different CRCs are counted as corruption, `store_stats`.)
 - **Tombstones are carried forward** by garbage collection while any older
   record of their key survives in another sector; otherwise they are
   dropped with their sector.
@@ -270,24 +288,32 @@ maintenance moves the coldest sector's records so it cycles too.
 ## Partial programs and ECC
 
 Between two erases of its sector, a 256-byte page takes at most
-**`STORE_PAGE_PROGS` = 36 programs** for a write window of 16 bytes or more
+**`STORE_PAGE_PROGS` = 34 programs** for a write window of 16 bytes or more
 (the device's windows are 16, 64 or 256 bytes): record data in window-sized
 pieces, record headers and commit words, each its own program (the densest
 are 4-byte values: 3 programs in 24 bytes), and on a sector's first page its
 erase header, its claim and the kill: 34, the maximum over every sequence
 of records (`STORE_PAGE_PROGS` in `app/store.h`; the host tests count every
-page's programs), then 2 for completing a session's newest record (once a
-sector: each session starts a fresh head) and 2 more for each cut during
-that completion. Three kinds program bytes already programmed: the claim
-writes the erase header's bytes again and the completion a record's header
-and commit word again (the same bytes, zeros over zeros), and the kill
-programs the magic to zero. A part that limits partial programs per page
-below 36, or forbids programming bits already programmed, needs a
-format change; so would a part with **ECC**, whose code words cover fixed
-units (often 16 bytes) that may be programmed only once: records would
-become 16-byte single-shot units, a rework of this format. Whether the
-FM-1's part has any of these is an open check
-([hardware.md](../hardware.md), "Open checks on a real unit").
+page's programs). Nothing adds programs at a boot or in recovery (the
+interrupted write is copied, not programmed again). Only a cut can: a claim
+cut so that the next mount reads it never made is made again, and a kill cut
+short is made again, one more program in that page, at most one for each
+cut that falls there (and one for each kill the flash driver fails).
+
+Two kinds of program touch bytes already programmed. The claim programs
+the erase header's bytes again, and a claim read as never made programs its
+own bytes again (the same bytes: zeros over zeros, which settles bits a cut
+left faint). The kill programs the magic's 1 bits to 0, never a bit already
+0 (bits a cut kill left faint and reading 1 are programmed again by the
+next kill). A part that limits partial programs per page
+below 34, or forbids programming bits already programmed, needs a change:
+for zeros over zeros, the claim would program bytes 20-31 only, and every
+clean sector a mount finds would be erased again before its first claim (at
+most 22 erases a boot). A part with **ECC**, whose code words cover fixed
+units (often 16 bytes) that may be programmed only once, would need records
+as 16-byte single-shot units, a rework of this format. Whether the FM-1's
+part has any of these is an open check ([hardware.md](../hardware.md), "Open
+checks on a real unit").
 
 ## Wear
 
