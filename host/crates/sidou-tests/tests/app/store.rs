@@ -1262,6 +1262,8 @@ struct Run {
     model: BTreeMap<u32, Vec<u8>>,
     keys: u32,
     inflight: Inflight,
+    /// The write a real cut interrupted, while the session after it has not written yet.
+    lingering: Inflight,
     /// Check every fork with a mount; every `deep`th also refills and writes on it.
     forks: bool,
     deep: u64,
@@ -1290,6 +1292,7 @@ impl Run {
             model: BTreeMap::new(),
             keys,
             inflight: Inflight::Idle,
+            lingering: Inflight::Idle,
             forks,
             deep: 8,
             forks_checked: 0,
@@ -1301,10 +1304,12 @@ impl Run {
 
     fn allowed(&self, key: u32) -> Vec<Option<Vec<u8>>> {
         let mut a = vec![self.model.get(&key).cloned()];
-        match &self.inflight {
-            Inflight::Put(k, v) if *k == key => a.push(Some(v.clone())),
-            Inflight::Delete(k) if *k == key => a.push(None),
-            _ => {}
+        for op in [&self.inflight, &self.lingering] {
+            match op {
+                Inflight::Put(k, v) if *k == key => a.push(Some(v.clone())),
+                Inflight::Delete(k) if *k == key => a.push(None),
+                _ => {}
+            }
         }
         a
     }
@@ -1388,7 +1393,11 @@ impl Run {
         let state = self.rig.mount();
         assert_eq!(state, STORE_STATE_SIDOU, "seed {}", self.seed);
         self.verify(&self.rig, "a real cut");
-        if let Inflight::Put(k, _) | Inflight::Delete(k) = self.inflight {
+        // A write cut in its header, read as never made now, may still read made at a mount
+        // after a cut during the next session's fixes, before its first write completes
+        // (docs/reference/store-format.md, "Faint bits and the head").
+        self.lingering = std::mem::replace(&mut self.inflight, Inflight::Idle);
+        if let Inflight::Put(k, _) | Inflight::Delete(k) = self.lingering {
             match self.rig.get(k) {
                 Some(v) => self.model.insert(k, v),
                 None => self.model.remove(&k),
@@ -1407,7 +1416,11 @@ impl Run {
             self.recover();
             return;
         }
-        match std::mem::replace(&mut self.inflight, Inflight::Idle) {
+        let done = std::mem::replace(&mut self.inflight, Inflight::Idle);
+        if !matches!(done, Inflight::Idle) {
+            self.lingering = Inflight::Idle; // a write completed: the fixes went before it
+        }
+        match done {
             Inflight::Put(k, v) => {
                 self.model.insert(k, v);
             }

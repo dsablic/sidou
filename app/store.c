@@ -11,7 +11,8 @@ enum {
     SEC_CLEAN = 1,    /* erase header valid, the rest erased: in the pool */
     SEC_RESERVED = 2, /* taken from the pool in RAM; its claim is not programmed yet */
     SEC_CLAIMED = 3,  /* claimed: records from STORE_HEADER up to `free` */
-    SEC_STATE = 0x0F,
+    SEC_STATE = 0x07,
+    SEC_REDO = 0x08,  /* a twin (a copy cut short?) found in it: its last record to program again */
     SEC_FULL = 0x10,  /* nothing more is written into it */
     SEC_GUESS = 0x20, /* the mount could not read its erase count */
     SEC_FILE = 0x40,  /* a live (or open) file's: never collected, never a head */
@@ -764,10 +765,14 @@ static void index_record(store* s, uint32_t sec, uint32_t off) {
     uint32_t cur_seq = rd32(cur + 8);
     e->stale++;
     if (seq == cur_seq) {
-        /* A record and its copy: the same bytes (the same CRC), whichever wins. */
+        /* A record and its copy: the same bytes (the same CRC), whichever wins. A collection was
+         * cut: the copy in flight, the last record of its sector, may end in a faint commit word,
+         * so the last records of both sectors are programmed again before the session writes. */
         if (rd32(h + 12) != rd32(cur + 12) || rd16(cur + 2) != rd16(h + 2) || h[0] != cur[0]) {
             s->corrupt++;
         }
+        s->sstate[sec] |= SEC_REDO;
+        s->sstate[e->sec] |= SEC_REDO;
         if (s->sector[sec].seq <= s->sector[e->sec].seq) {
             return; /* either holds it: the first found, or the one with the higher claim number */
         }
@@ -1174,9 +1179,6 @@ static void collect_step(store* s) {
         }
         s->job_phase = C_KILL;
         s->job_done = 0;
-        if (fix_first(s)) {
-            return; /* the fix goes first */
-        }
     }
     if (s->job_phase == C_KILL) {
         int rc = kill(s, v);
@@ -1473,14 +1475,31 @@ static void file_fill(const uint8_t* rec, const store_key* e, store_file* out) {
 /* ---- completing the interrupted write ---- */
 
 /* A sector whose records end in a cut header (SEC_TORN), or NONE. */
+/* A cut header's first (the one a cut during the fix could still bring back), then a cut kill,
+ * then a twin's sector. */
 static uint32_t torn(const store* s) {
+    uint32_t best = NONE, rank = 0;
     work(s, WORK_SEC * STORE_SECTORS);
     for (uint32_t i = 0; i < STORE_SECTORS; i++) {
-        if (s->sstate[i] & SEC_TORN) {
-            return i;
+        uint32_t r = !(s->sstate[i] & SEC_TORN) ? (s->sstate[i] & SEC_REDO ? 1u : 0u)
+                     : sec_state(s, i) == SEC_DIRTY ? 2u
+                                                     : 3u;
+        if (r > rank) {
+            best = i;
+            rank = r;
         }
     }
-    return NONE;
+    return best;
+}
+
+/* The offset of the last record of `sec`'s records, or 0 if it has none. */
+static uint32_t last_record(const store* s, uint32_t sec) {
+    uint32_t last = 0;
+    for (uint32_t off = STORE_HEADER; off < s->sector[sec].free;) {
+        last = off;
+        off += rec_size(rd16(at(s, sec, off) + 2));
+    }
+    return last;
 }
 
 /* Programs a cut header to zero (it can never read valid again, whatever its faint bits read),
@@ -1489,6 +1508,29 @@ static uint32_t torn(const store* s) {
 static void fix_step(store* s) {
     static const uint8_t zero[STORE_REC_HEADER] = {0};
     uint32_t t = torn(s);
+    if (t != NONE && !(s->sstate[t] & SEC_TORN)) {
+        /* A twin's sector: its last record's header, then its commit word, again. */
+        uint32_t off = last_record(s, t);
+        if (!off || sec_state(s, t) != SEC_CLAIMED) {
+            s->sstate[t] &= (uint8_t)~SEC_REDO;
+            return;
+        }
+        const uint8_t* h = at(s, t, off);
+        uint8_t head[STORE_REC_HEADER];
+        memcpy(head, h, STORE_REC_HEADER);
+        int commit = s->redo_phase;
+        int rc = commit ? prog_piece(s, t, off + STORE_REC_HEADER + pad4(rd16(h + 2)), zero, 4,
+                                     &s->fix_done)
+                        : prog_piece(s, t, off, head, STORE_REC_HEADER, &s->fix_done);
+        if (rc != 0) {
+            s->fix_done = 0;
+            s->redo_phase = (uint8_t)(rc > 0 && !commit);
+            if (rc < 0 || commit) {
+                s->sstate[t] &= (uint8_t)~SEC_REDO;
+            }
+        }
+        return;
+    }
     if (t != NONE) {
         int dirty = sec_state(s, t) == SEC_DIRTY; /* a cut kill: the magic again */
         int rc = prog_piece(s, t, dirty ? 0u : s->sector[t].free, zero, dirty ? 8u : STORE_REC_HEADER,
@@ -1523,17 +1565,15 @@ static void fix_step(store* s) {
     }
 }
 
-/* 1 when the next operation must wait for the fix: a write of the caller's (a record, a file),
- * or a collection's kill, which could drop the older records of the newest one's key. Copies,
- * erases and erase headers may go first. */
+/* 1 when the next operation must wait for the fix: any record written (the caller's, a file's,
+ * a collection's copy: a cut during it must not find a cut header reading valid, or the newest
+ * record faint), and a collection's kill, which could drop older records. Erases (and the kill
+ * of a dirty sector, and the erase header) may go first. */
 static int fix_first(const store* s) {
     if (s->fix_kind == FIX_NONE && torn(s) == NONE) {
         return 0;
     }
-    if (s->w.phase != W_IDLE) {
-        return !s->w.copy;
-    }
-    return s->f.phase != F_IDLE || (s->job == JOB_COLLECT && s->job_phase == C_KILL);
+    return s->w.phase != W_IDLE || s->f.phase != F_IDLE || s->job == JOB_COLLECT;
 }
 
 /* ---- the API ---- */
@@ -1585,6 +1625,11 @@ int store_poll(store* s) {
     if (!writable(s)) {
         return 0;
     }
+    /* Maintenance waits for an open file. */
+    if (s->w.phase == W_IDLE && s->f.phase == F_IDLE && s->job == JOB_NONE &&
+        !(s->quiet && next_job(s))) {
+        return 0;
+    }
     if (fix_first(s)) {
         fix_step(s);
         return 1;
@@ -1594,10 +1639,7 @@ int store_poll(store* s) {
         return 1;
     }
     if (s->f.phase != F_IDLE) {
-        return file_step(s); /* maintenance waits for the file */
-    }
-    if (s->job == JOB_NONE && !(s->quiet && next_job(s))) {
-        return 0;
+        return file_step(s);
     }
     job_step(s);
     return 1;

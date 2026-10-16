@@ -921,7 +921,9 @@ having done part of each). The tests:
   one mount and right at a later one, is programmed to zero before the next
   write, even one cut in its own data; a kill cut short, its zeros faint,
   is made again before a collection relies on it, so a tombstone dropped
-  meanwhile never lets a deleted value back; a newest record that overflows a full key index
+  meanwhile never lets a deleted value back; in the runs, after a real cut
+  the interrupted write may still read either way until the next session's
+  first write completes (a cut during that session's fixes), never after; a newest record that overflows a full key index
   is the one left out, wherever it lies; in the power-loss runs, every deep
   fork mounted twice must read the same both times;
 - **hook errors:** with 3% of operations failed by the hook, at windows 1 to

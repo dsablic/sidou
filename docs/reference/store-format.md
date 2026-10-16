@@ -201,14 +201,23 @@ Four rules keep them harmless:
   reads as killed has its magic programmed to zero again, before the
   session's first record or file write, or first kill. Those pages are
   garbage, waiting for their erase.
+- **A copy cut short is made whole.** Two records with one sequence number
+  (a record and its copy: a collection was cut) may hold a copy whose commit
+  word is faint, and the mount may pick either. The last record of both
+  their sectors (where a copy in flight can only be) has its header and
+  commit word programmed again, the same bytes.
+
+All these fixes, cut headers first, go before the session's first program
+of a record of any kind (the caller's, a file's, a collection's copy) and
+before a collection's kill; only erases may go first.
 
 A cut write whose header and data went whole is thus completed at the next
 mount, and from then on reads the same at every mount; one cut before that
-never counts once anything is written after it. The one case left: a write
-cut in its header, whose faint bits read wrong at one mount and right at a
-later one, with nothing written between those mounts, appears at the later
-one (and is then completed). It is the write the cut interrupted, never
-anything else.
+never counts once the next session's fixes are done. The one case left: a
+write cut in its header, whose faint bits read wrong at one mount and right
+at a later one, with nothing but those fixes between the two (a second cut
+during them), appears at the later one (and is then completed). It is the
+write the cut interrupted, never anything else.
 
 ## Which record wins
 

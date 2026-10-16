@@ -46,8 +46,10 @@
  *   preceded by programming its header and commit word again (the same bytes), so it reads
  *   committed for good before anything could follow it or take its key's older records; and
  *   first, a header a cut left erased-looking or failing its CRC is programmed to zero, so its
- *   faint bits can never make it valid later, and every sector the mount read as killed is
- *   killed again (a cut kill's zeros may be faint, even reading zero). A cut write is thus completed at the next mount
+ *   faint bits can never make it valid later, every sector the mount read as killed is killed
+ *   again (a cut kill's zeros may be faint, even reading zero), and where two records share a
+ *   number (a collection's copy cut short) the last record of both sectors is programmed again.
+ *   These fixes go before any record is programmed (copies too) and before any kill. A cut write is thus completed at the next mount
  *   if its header and data went whole, never counts if not (once anything is written after
  *   it), and never reads otherwise afterwards;
  *
@@ -283,7 +285,8 @@ typedef struct {
     uint8_t fix_sec;
     uint8_t fix_kind;    /* ... and what its completion has left to do (FIX_*) */
     uint16_t fix_done;   /* bytes of it programmed */
-    uint16_t pad3;
+    uint8_t redo_phase;  /* a twin's sector's last record: 0 its header, 1 its commit word */
+    uint8_t pad3;
     uint32_t work;       /* the last store_poll's work: bytes read, and 4 per key compared */
     uint8_t buf[STORE_WINDOW_MAX]; /* a collection's copy, the open file's bytes, a rename */
 } store;
