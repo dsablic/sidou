@@ -236,8 +236,9 @@ parameters, and the macro controls below move several at once.
 | PSID → song ("RIP") | Log register writes per frame, then: detect notes from frequency; group ADSR, waveform and pulse settings into instruments; turn waveform/pulse/filter sweeps into tables; split into patterns | Approximate. Shown as "ripped". The original `.sid` stays linked so you can A/B compare. |
 
 - **Amended (M2 plan, 2026-10-15):** the GT2 row is no longer an import:
-  `.sng` is SIDOU's own song file (section 5). SID-Wizard stays in M5, as
-  section 14 has it.
+  `.sng` is SIDOU's own song file (section 5; decision record 0007,
+  `docs/reference/song-format.md`). SID-Wizard stays in M5, as section 14
+  has it.
 - Every importer is a parser of untrusted input. Each one is fuzzed (section
   9) and fails with a clear message on the screen, never a crash.
 - `.sid` support is PSID v1–v4 only. RSID files, and tunes that need CIA

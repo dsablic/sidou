@@ -1,0 +1,273 @@
+<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+# Song file format
+
+<!-- REUSE-IgnoreStart -->
+
+SIDOU's song file is GoatTracker 2's `.sng` (decision record
+[0007](../decisions/0007-gt2-song-format.md)), optionally followed by SIDOU's trailer. This
+page is the layout as SIDOU reads and writes it. The GT2 part follows GoatTracker 2.77's
+`readme.txt` section 6.1 and its `gsong.c`; the readme is the authority for what the data
+means (sections 3.1-3.5), and is not repeated here.
+
+All multi-byte numbers are little-endian. Offsets are from the start of the part described.
+
+## The GT2 part
+
+### Header
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 4 | ident: `GTS5` (also read: `GTS2`, `GTS3`, `GTS4`; 0007 "Versions") |
+| 4 | 32 | song name, zero-padded |
+| 36 | 32 | author, zero-padded |
+| 68 | 32 | copyright, zero-padded |
+| 100 | 1 | subtune count S, 1-32 |
+
+### Orderlists
+
+S × C orderlists, subtune by subtune, channel by channel, where C is 3, or 6 for a
+GoatTracker Stereo file (detection below). Each:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | n: the entries plus one (the `$FF`); 1-255 |
+| 1 | n - 1 | entries: `$00-$CF` pattern, `$D0-$DF` repeat, `$E0-$FE` transpose |
+| n | 1 | `$FF` (RST) |
+| n + 1 | 1 | restart position (an index into the entries) |
+
+SIDOU's reader takes the entries up to the first `$FF` within the n bytes, as GoatTracker's
+loader does, and the byte after it as the restart position; there must be one, or the
+orderlist is refused.
+
+### Instruments
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | count I, 0-63 |
+| 1 | 25 × I | instruments 1 to I |
+
+An instrument's 25 bytes: AD, SR, wave pointer, pulse pointer, filter pointer, vibrato
+parameter (a speedtable pointer), vibrato delay, gate-off timer, first-frame waveform,
+16-byte name. (`GTS2` stores the vibrato delay before an old-style vibrato parameter;
+0007 "Versions".)
+
+### Tables
+
+Four times, for the wave, pulse, filter and speed tables (`GTS2`: three, no speed table):
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | row count r, 0-255 |
+| 1 | r | left bytes |
+| 1 + r | r | right bytes |
+
+### Patterns
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | count P, 0-208 |
+
+Then P patterns, numbered from 0:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | rows m, including the end row; 1-129 |
+| 1 | 4 × m | rows: note, instrument, command, data |
+
+Notes: `$60-$BC` C-0 to G#7, `$BD` rest, `$BE` key off, `$BF` key on, `$FF` end of
+pattern. Instrument `$00` (none) to `$3F`; command `$0-$F`. A pattern ends at its first
+`$FF` row; rows after it in the file are dropped.
+
+The GT2 part ends after the last pattern. Its length is E.
+
+### What SIDOU's reader refuses
+
+Every refusal leaves the song in memory as it was, with a message short enough for a
+toast:
+
+| Message | When |
+|---|---|
+| `SNG: NOT A SONG` | an ident other than `GTS2`-`GTS5` or `GTS!` |
+| `SNG: GT1 FORMAT` | `GTS!` (GoatTracker 1) |
+| `SNG: SHORT FILE` | the file ends inside the GT2 part |
+| `SNG: BAD SUBTUNES` | a subtune count of 0 or above 32 |
+| `SNG: BAD ORDERLIST Vn` | channel n's orderlist (1-6) has no `$FF` with a restart byte after it |
+| `SNG: BAD INSTRUMENTS` | more than 63 instruments |
+| `SNG: BAD PATTERN n` | pattern n has more than 129 rows, no end row, a note outside `$60-$BF`, an instrument above `$3F` or a command above `$F` before its end |
+| `SNG: BAD PATTERNS` | more than 208 patterns |
+| `SNG: TOO BIG (58K OF 56K)` | the orderlists and patterns do not fit the arena with its spare (the content region, M2c Task 2) |
+| `SNG: MULTISPEED 8 (MAX 4)` | on the device: the `OPTS` chunk asks for multispeed above 4 (0, 25 Hz, is refused as `MULTISPEED 0`) |
+
+What GoatTracker accepts and plays oddly (a restart position past the end, a transpose
+after a repeat, a missing pattern) loads: those are the editing rules of readme 3.1, which
+SIDOU's editing primitives enforce and its player follows as GoatTracker's does. An
+orderlist naming a pattern the file does not have gets an empty 64-row pattern, as
+GoatTracker's loader leaves one.
+
+### Mono or stereo
+
+A GoatTracker Stereo file has the same ident and six orderlists a subtune. SIDOU's reader
+decides as GoatTracker Stereo's `determinechannels` does: starting at the subtune count,
+it trial-reads 6 × S orderlists; a read at offset p with length byte n passes when the
+byte at p + n is `$FF` and the byte at p + n + 1 is below n + 1 (a byte past the end of
+the file counts as 0; a length byte of 0 fails). All passing: stereo, else mono.
+
+### Writing
+
+SIDOU writes `GTS5` with the counts trimmed as GoatTracker's `savesong` trims them
+(0007, "Round-trip rules", rule 1): the subtunes, the instruments, each table and the
+patterns; each orderlist and pattern written up to its end mark.
+
+## SIDOU's trailer
+
+Optional. A file without one is a plain GT2 song, played with GoatTracker's default
+options. The writer can leave it out (for tools that refuse trailing bytes, such as
+ChiptuneSAK; 0007).
+
+### Layout
+
+The trailer starts at E, right after the last pattern. L is its total length.
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 8 | magic `SIDOU-X` and a 0 byte: `53 49 44 4F 55 2D 58 00` |
+| 8 | 2 | trailer version, 1 |
+| 10 | 4 | L, from the magic to the end, the final CRC included; **no byte of it is `$FF`** |
+| 14 | 241 | lead-in: `$00` bytes |
+| 255 | 4 | CRC-32 of the GT2 part, file bytes 0 to E - 1 |
+| 259 | L - 263 | chunks |
+| L - 4 | 4 | CRC-32 of the trailer's bytes 0 to L - 5 |
+
+**Why bytes 0-254 hold no `$FF`:** GoatTracker Stereo's stereo check (above) can look at
+most 254 bytes past the GT2 part, and only at bytes whose `$FF` would let a read pass.
+With no `$FF` there, no trial read can pass inside the trailer, so a mono file with a
+trailer stays mono in GoatTracker Stereo and in SIDOU (0007, "The trailer and stereo
+detection", has the bound). The writer keeps L free of `$FF` by adding a `PAD` chunk of
+the smallest size that does it.
+
+**CRC-32** is the common one (as zlib's `crc32`): polynomial `0x04C11DB7` reflected
+(`0xEDB88320`), initial value and final XOR `0xFFFFFFFF`. The CRC of `123456789` is
+`0xCBF43926`.
+
+### Reading the trailer
+
+After the GT2 part, a reader looks for the magic at E:
+
+- no magic (or fewer than 8 bytes left): no trailer; anything after E is ignored, as
+  GoatTracker ignores it;
+- a version other than 1, an L shorter than 263 or running past the end of the file, or
+  a trailer CRC that does not match: the trailer is dropped whole and the song loads
+  without it (`SNG: EXTRAS DROPPED`);
+- a GT2-part CRC that does not match (a tool changed the song but kept the bytes): the
+  position-bound chunks (`LOCK`) are dropped (`SNG: LOCKS DROPPED`) and the rest kept;
+- bytes after L are ignored.
+
+### Chunks
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 4 | tag, four ASCII characters |
+| 4 | 4 | length d of the data, at least 1 |
+| 8 | d | data; its first byte is the chunk's own version |
+
+Readers skip tags they do not know, and a chunk version they do not know. Unknown chunks
+are kept, and written back unchanged in their place, so a newer SIDOU's chunks survive an
+older one's save. Every chunk SIDOU keeps (the trailer less its header, lead-in, CRCs and
+`PAD`) fits in the song's extension area, `SONG_EXT_BYTES` = 4,096 bytes.
+
+| Tag | Holds | Position-bound | Defined by |
+|---|---|---|---|
+| `OPTS` | the playroutine options | no | M2c Task 2 |
+| `CHPA` | chip A's setup | no | M2c Task 2; expert values M2b |
+| `CHPB` | chip B's setup | no | M2c Task 2; expert values M2b |
+| `SLOT` | the effect slots | no | M2c Task 2 |
+| `LOCK` | parameter locks | **yes** | M2c Task 2; semantics M2c Task 7 |
+| `MIDI` | MIDI mode, channels, rows per beat | no | M2c Task 2; semantics M2e |
+| `SCNE` | the SCENE piece and the voices' roles | no | M2c Task 2; semantics M2f |
+| `KEYS` | the keys' live preset and setup | no | M2c Task 2 |
+| `PAD ` | padding (a space ends the tag) | no | skipped, never kept |
+| `TRKB` | reserved: chip B's tracks (M5) | | |
+| `RIPD` | reserved: rip data (M5) | | |
+
+### Version 1 of each chunk
+
+**`OPTS`** (23 bytes), every `gt2reloc` option (readme 4.4) and the editor's SID model:
+
+| Offset | Size | Field | `gt2reloc` | Default |
+|---|---|---|---|---|
+| 0 | 1 | version, 1 | | |
+| 1 | 2 | hard restart ADSR | `-A` | `$0F00` |
+| 3 | 1 | multispeed: 0 (25 Hz), 1-16 | `-S` | 1 |
+| 4 | 1 | timing: 0 PAL, 1 NTSC | `-P`, `-N` | 0 |
+| 5 | 4 | custom SID clock, Hz (0: PAL's or NTSC's) | `-F` | 0 |
+| 9 | 4 | pitch of A-4, thousandths of a Hz (0: the built-in table) | `-G` | 0 |
+| 13 | 1 | fine vibrato: 0 off, 1 on | `-V` | 1 |
+| 14 | 1 | pulse optimisation: 0 off, 1 on | `-O` | 1 |
+| 15 | 1 | realtime-effect optimisation: 0 off, 1 on | `-R` | 1 |
+| 16 | 2 | player flags, GoatTracker's `PLAYER_*` bits shifted right by 3: bit 0 buffered writes (`-B`), 1 sound effects (`-D`), 2 volume change (`-E`), 3 author info (`-H`), 4 zero-page ghost registers (`-C`), 5 optimisations **off** (`-I0`), 6 full buffering (`-J`) | | 0 |
+| 18 | 2 | SID address | `-L` | `$D400` |
+| 20 | 1 | player address, high byte | `-W` | `$10` |
+| 21 | 1 | zero-page address | `-Z` | `$FC` |
+| 22 | 1 | SID model: 0 6581, 1 8580 | (editor) | 0 |
+
+**`CHPA`, `CHPB`** (9 + x bytes): a chip's setup.
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | version, 1 |
+| 1 | 1 | model: 0 6581, 1 8580 |
+| 2 | 1 | profile: `sid_character.profile` (0 the model's default, else 1 + a `SID_CHIP_*`) |
+| 3 | 4 | the character: age/heat, DAC sloppiness, thump, bleed, each 0-127 |
+| 7 | 1 | envelope mode: 0 INSTANT, 1 AUTHENTIC (songs default to AUTHENTIC, 0005) |
+| 8 | 1 | x, the count of expert values |
+| 9 | x | the expert values (M2b's expert layer; 0 of them until then) |
+
+**`SLOT`** (2 + 5 × k bytes): the effect slots, as `live` keeps them.
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | version, 1 |
+| 1 | 1 | k, the slot count (3) |
+| 2 | 5 × k | per slot: algorithm, Amount, A, B, Mix (the controls 0-127) |
+
+**`LOCK`** (3 + 5 × k bytes): parameter locks, sorted by pattern, row, parameter.
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | version, 1 |
+| 1 | 2 | k, the lock count, at most 512 |
+| 3 | 5 × k | per lock: pattern, row, parameter, value (u16) |
+
+**`MIDI`** (4 + c bytes):
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | version, 1 |
+| 1 | 1 | mode (M2e) |
+| 2 | 1 | rows per beat, for the clock |
+| 3 | 1 | c, the channel count |
+| 4 | c | MIDI channels, 0-15, one per voice |
+
+**`SCNE`** (3 + v bytes):
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | version, 1 |
+| 1 | 1 | the SCENE piece (M2f) |
+| 2 | 1 | v, the voice count |
+| 3 | v | each voice's role (M2f) |
+
+**`KEYS`** (2 + 2 × q bytes): the keys' live preset and their chip setup, as `live_params`
+reports them (`app/live.h`, `LIVE_PARAM_*`; the model, envelope mode, profile and
+character are among them).
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | version, 1 |
+| 1 | 1 | q, the parameter count (`LIVE_PARAM_COUNT` when written) |
+| 2 | 2 × q | the parameters in `LIVE_PARAM_*` order, u16 each |
+
+**`PAD `** (1 + p bytes): version 1, then p bytes of `$00`.
+
+<!-- REUSE-IgnoreEnd -->
