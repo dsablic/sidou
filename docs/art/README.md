@@ -703,8 +703,10 @@ here in words only, and checked point by point:
 | Finishing moment | A decapitation, and the goblin | A disarm: the sword spins away and sticks in the floor; no head or helmet comes off, no blood, nobody is hurt while unarmed | Different |
 | Names and lettering | Its title logo | No logo or title in the piece; `VS` in the 3 x 5 font; no game's name anywhere | Clean |
 
-**Sign-off:** waiting for the user (M2f Task 1). Task 2 does not start until it is recorded
-here, with the date.
+**Sign-off: signed off by the user on 2026-10-16,** as it is: the fighters, the ruin, the
+blade-meter HUD and the disarm. The two readings above were accepted with it: the sword is
+back during bar 1 (not before it), and with the arcade's pattern only fighter 1 is disarmed.
+For any song (M2f Task 4) the fill's leader disarms the other fighter, whichever he is.
 
 ## Title cards
 
