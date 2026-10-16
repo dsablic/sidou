@@ -22,6 +22,8 @@
 
 static const unsigned char* in_data;
 static size_t in_len;
+static FILE* in_file;
+static int in_short;
 static char* out_buf[2];
 static size_t out_len[2];
 static char out_name[2][64];
@@ -29,6 +31,20 @@ static char out_name[2][64];
 void gt2ref_set_input(const unsigned char* data, size_t len) {
     in_data = data;
     in_len = len;
+    in_file = NULL;
+    in_short = 0;
+}
+
+int gt2ref_input_short(void) {
+    return in_short;
+}
+
+size_t gt2ref_fread(void* p, size_t size, size_t n, FILE* f) {
+    size_t got = fread(p, size, n, f);
+    /* fread returns 0 for a size of 0 (an empty table): that is no short read. */
+    if (f == in_file && size != 0 && got < n)
+        in_short = 1;
+    return got;
 }
 
 void gt2ref_take_output(const char* name, unsigned char** data, size_t* len) {
@@ -59,7 +75,10 @@ FILE* gt2ref_fopen(const char* name, const char* mode) {
         if (strcmp(name, GT2REF_INPUT) != 0 || in_data == NULL)
             return NULL;
         static unsigned char none[1];
-        return in_len ? fmemopen((void*)in_data, in_len, "rb") : fmemopen(none, 1, "rb");
+        /* An empty song as one byte (fmemopen refuses a size of 0): its ident's read is
+         * short all the same. */
+        in_file = in_len ? fmemopen((void*)in_data, in_len, "rb") : fmemopen(none, 1, "rb");
+        return in_file;
     }
     for (int i = 0; i < 2; i++) {
         if (out_buf[i] == NULL && out_name[i][0] == 0) {
@@ -74,7 +93,7 @@ FILE* gt2ref_fopen(const char* name, const char* mode) {
 
 unsigned fread8(FILE* file) {
     unsigned char b = 0;
-    if (fread(&b, 1, 1, file) != 1)
+    if (gt2ref_fread(&b, 1, 1, file) != 1)
         return 0;
     return b;
 }

@@ -30,7 +30,7 @@ fn dormanns_functional_test_passes_decimal_mode_included() {
     let lst = std::fs::read_to_string(path.replace(".bin", ".lst")).unwrap();
     assert!(lst.contains("0000 =                  disable_decimal = 0"));
     let mut ram = Ram::new(0xd400);
-    ram.load(0, &bin);
+    ram.load(0, &bin).unwrap();
     let mut cpu = Mos6502::new(ram);
     cpu.set_regs(Regs {
         sp: 0xff,

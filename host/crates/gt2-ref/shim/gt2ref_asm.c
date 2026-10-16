@@ -5,7 +5,8 @@
  *
  * GoatTracker ships the assembler from Exomizer 2 beta by Magnus Lind, whose licence
  * allows only non-commercial use; SIDOU does not take it in (third_party/goattracker2/
- * VENDORED.md). This one is written for SIDOU from the dialect's documented behaviour:
+ * VENDORED.md). This one was written for SIDOU from player.s, greloc.c's generated source
+ * and the original's observed output; no code of the original is used. What it takes:
  * - a line holds statements: `label:`, `name = expr`, an instruction, `.ORG (expr)`,
  *   `.BYTE (expr, ...)`, `.WORD (expr, ...)`, `.IF (expr)`, `.ELSE`, `.ENDIF`; `;` starts
  *   a comment;

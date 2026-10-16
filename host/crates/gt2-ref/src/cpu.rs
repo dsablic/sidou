@@ -41,10 +41,14 @@ impl Ram {
         }
     }
 
-    pub fn load(&mut self, at: u16, data: &[u8]) {
+    /// Copies `data` to `at`; refused, and nothing written, if it would run past `$FFFF`.
+    pub fn load(&mut self, at: u16, data: &[u8]) -> Result<(), String> {
         let at = at as usize;
-        let n = data.len().min(0x10000 - at);
-        self.bytes[at..at + n].copy_from_slice(&data[..n]);
+        if data.len() > 0x10000 - at {
+            return Err(format!("{} bytes at ${at:04X} run past $FFFF", data.len()));
+        }
+        self.bytes[at..at + data.len()].copy_from_slice(data);
+        Ok(())
     }
 }
 

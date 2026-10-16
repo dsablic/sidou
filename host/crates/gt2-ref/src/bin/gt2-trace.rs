@@ -3,21 +3,31 @@
 //! `gt2-trace song.sng [--subtune N] [--frames N] [gt2reloc options]`: prints each frame's
 //! SID writes from GoatTracker's packed player, for debugging SIDOU's player against it.
 //! The options are gt2reloc's (readme 4.4): `-Axxxx -Sn -Bn -Cn -Dn -En -Gf -Hn -In -Jn
-//! -Lxxxx -N -On -P -Rn -Vn -Wxx -Zxx`.
+//! -Lxxxx -N -On -P -Rn -Vn -Wxx -Zxx`. Every value is checked: the on/off flags and
+//! `-O`, `-R`, `-V` take 0 or 1, `-S` 0 to 16, `-W` and `-Z` a hex byte, `-A` and `-L` a
+//! hex word, `-N` and `-P` nothing, `--subtune` 0 to 31; anything else is an error.
 
 use gt2_ref::trace::trace;
 use gt2_ref::*;
 
-fn hex(s: &str) -> Result<u32, String> {
-    u32::from_str_radix(s, 16).map_err(|e| format!("{s}: {e}"))
+/// A number in the radix, digits only (no sign, no prefix), at most `max`.
+fn number(flag: &str, s: &str, radix: u32, max: u32) -> Result<u32, String> {
+    let bad = || {
+        let kind = if radix == 16 { "hex" } else { "decimal" };
+        format!("{flag}: {s:?} is not a {kind} number up to {max}")
+    };
+    if s.is_empty() || !s.chars().all(|c| c.is_digit(radix)) {
+        return Err(bad());
+    }
+    match u32::from_str_radix(s, radix) {
+        Ok(v) if v <= max => Ok(v),
+        _ => Err(bad()),
+    }
 }
 
-fn dec(s: &str) -> Result<u32, String> {
-    s.parse().map_err(|e| format!("{s}: {e}"))
-}
-
-fn flag(o: &mut Options, bit: u32, v: &str) -> Result<(), String> {
-    if dec(v)? != 0 {
+/// An on/off flag: 0 or 1.
+fn flag(o: &mut Options, name: &str, bit: u32, v: &str) -> Result<(), String> {
+    if number(name, v, 10, 1)? != 0 {
         o.player_version |= bit;
     } else {
         o.player_version &= !bit;
@@ -33,52 +43,71 @@ fn run() -> Result<(), String> {
     let mut i = 0;
     while i < args.len() {
         let a = &args[i];
-        match a.as_str() {
-            "--subtune" | "--frames" => {
-                let v = args.get(i + 1).ok_or(format!("{a} needs a value"))?;
-                if a == "--subtune" {
-                    subtune = dec(v)? as u8;
-                } else {
-                    frames = dec(v)? as usize;
-                }
-                i += 2;
-                continue;
+        if a == "--subtune" || a == "--frames" {
+            let v = args.get(i + 1).ok_or(format!("{a} needs a value"))?;
+            if a == "--subtune" {
+                // GoatTracker's 32 subtunes (gcommon.h MAX_SONGS).
+                subtune = number(a, v, 10, 31)? as u8;
+            } else {
+                frames = number(a, v, 10, u32::MAX)? as usize;
             }
-            _ => {}
+            i += 2;
+            continue;
+        }
+        if a.starts_with("--") || a == "-" {
+            return Err(format!("unknown option {a}"));
         }
         if let Some(opt) = a.strip_prefix('-') {
-            let (k, v) = opt.split_at(1.min(opt.len()));
-            match k.to_ascii_uppercase().as_str() {
-                "A" => o.hr_adsr = hex(v)?,
-                "S" => o.multiplier = dec(v)?,
-                "B" => flag(&mut o, PLAYER_BUFFERED, v)?,
-                "C" => flag(&mut o, PLAYER_ZPGHOSTREGS, v)?,
-                "D" => flag(&mut o, PLAYER_SOUNDEFFECTS, v)?,
-                "E" => flag(&mut o, PLAYER_VOLUME, v)?,
-                "H" => flag(&mut o, PLAYER_AUTHORINFO, v)?,
-                "I" => {
-                    // -I1: optimisations on (gt2reloc's -I also falls through into -J;
-                    // here it does not)
-                    flag(
-                        &mut o,
-                        PLAYER_NOOPTIMIZATION,
-                        if dec(v)? != 0 { "0" } else { "1" },
-                    )?
+            let k = opt.chars().next().unwrap().to_ascii_uppercase();
+            let v = &opt[1..];
+            let none = || {
+                if v.is_empty() {
+                    Ok(())
+                } else {
+                    Err(format!("{a}: -{k} takes no value"))
                 }
-                "J" => flag(&mut o, PLAYER_FULLBUFFERED, v)?,
-                "G" => o.a4_hz = v.parse().map_err(|e| format!("{v}: {e}"))?,
-                "L" => o.sid_address = hex(v)?,
-                "N" => o.ntsc = 1,
-                "P" => o.ntsc = 0,
-                "O" => o.optimize_pulse = dec(v)?,
-                "R" => o.optimize_realtime = dec(v)?,
-                "V" => o.finevibrato = dec(v)?,
-                "W" => o.player_address = hex(v)? << 8,
-                "Z" => o.zeropage = hex(v)?,
+            };
+            match k {
+                'A' => o.hr_adsr = number(a, v, 16, 0xffff)?,
+                'S' => o.multiplier = number(a, v, 10, 16)?,
+                'B' => flag(&mut o, a, PLAYER_BUFFERED, v)?,
+                'C' => flag(&mut o, a, PLAYER_ZPGHOSTREGS, v)?,
+                'D' => flag(&mut o, a, PLAYER_SOUNDEFFECTS, v)?,
+                'E' => flag(&mut o, a, PLAYER_VOLUME, v)?,
+                'H' => flag(&mut o, a, PLAYER_AUTHORINFO, v)?,
+                // -I1: optimisations on (gt2reloc's -I also falls through into -J; here it
+                // does not)
+                'I' => flag(
+                    &mut o,
+                    a,
+                    PLAYER_NOOPTIMIZATION,
+                    if number(a, v, 10, 1)? != 0 { "0" } else { "1" },
+                )?,
+                'J' => flag(&mut o, a, PLAYER_FULLBUFFERED, v)?,
+                'G' => {
+                    o.a4_hz = match v.parse::<f32>() {
+                        Ok(hz) if hz.is_finite() && hz >= 0.0 => hz,
+                        _ => return Err(format!("{a}: {v:?} is not a pitch in Hz")),
+                    }
+                }
+                'L' => o.sid_address = number(a, v, 16, 0xffff)?,
+                'N' => {
+                    none()?;
+                    o.ntsc = 1
+                }
+                'P' => {
+                    none()?;
+                    o.ntsc = 0
+                }
+                'O' => o.optimize_pulse = number(a, v, 10, 1)?,
+                'R' => o.optimize_realtime = number(a, v, 10, 1)?,
+                'V' => o.finevibrato = number(a, v, 10, 1)?,
+                'W' => o.player_address = number(a, v, 16, 0xff)? << 8,
+                'Z' => o.zeropage = number(a, v, 16, 0xff)?,
                 _ => return Err(format!("unknown option {a}")),
             }
-        } else {
-            song = Some(a.clone());
+        } else if song.replace(a.clone()).is_some() {
+            return Err(format!("one song only: {a}"));
         }
         i += 1;
     }

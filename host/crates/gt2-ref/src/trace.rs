@@ -12,8 +12,19 @@
 //! past [`STEP_LIMIT`] instructions is a hang.
 //!
 //! With zero-page ghost registers (`PLAYER_ZPGHOSTREGS`) the player writes no SID register
-//! itself; the harness then plays the main program's part, readme 5.1's copy loop
-//! (registers `$18` down to 0 from the ghost registers), after each call.
+//! itself; the harness then plays the main program's part after each call, readme 5.1's
+//! copy from the ghost registers: registers `$18` down to 0 ([`GHOST_REVERSE`]), or, for
+//! the alternative player (a hard restart ADSR of `$F000` and up), channel by channel
+//! ([`GHOST_ALT`]).
+//!
+//! A traced frame is one PAL video frame, 20 ms, holding `max(multiplier, 1)` play calls
+//! (20/n ms apart at n x). With the multiplier 0 (25 Hz) the player is meant to be called
+//! every other video frame, so each traced frame, one call, then stands for 40 ms.
+//!
+//! The packed code must leave room for what the harness and the C64 put in memory: it is
+//! refused ([`TraceError::Placement`]) over the SID's window (`$D400-$D7FF`, and the 25
+//! registers at `-L`'s address), over the return address pushed at `$01FE-$01FF`, over
+//! [`SENTINEL`], or past `$FFFF`.
 
 use crate::cpu::{documented, Cpu6502, Mos6502, Ram, Regs, SED};
 use crate::{pack, Options, Packed, PLAYER_ZPGHOSTREGS};
@@ -22,6 +33,35 @@ use crate::{pack, Options, Packed, PLAYER_ZPGHOSTREGS};
 pub const SENTINEL: u16 = 0xfff0;
 /// Instructions one call may take.
 pub const STEP_LIMIT: u32 = 200_000;
+
+/// The SID's I/O window on the C64.
+pub const SID_WINDOW: std::ops::RangeInclusive<u16> = 0xd400..=0xd7ff;
+/// Where [`call`] pushes the return address.
+pub const RETURN_SLOT: std::ops::RangeInclusive<u16> = 0x01fe..=0x01ff;
+
+/// The main program's copy for `player.s` (readme 5.1): `LDX #$18 / copy: LDA ghostregs,X /
+/// STA $D400,X / DEX / BPL copy`.
+pub const GHOST_REVERSE: [u8; 25] = [
+    0x18, 0x17, 0x16, 0x15, 0x14, 0x13, 0x12, 0x11, 0x10, 0x0f, 0x0e, 0x0d, 0x0c, 0x0b, 0x0a, 0x09,
+    0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00,
+];
+/// The copy for `altplayer.s`: readme 5.1, "the copy loop should not be in reverse order but
+/// should be for each channel: wave, frequency, pulsewidth, and ADSR last". The readme
+/// leaves the filter's four registers out; SIDOU copies them first, as the alternative
+/// player computes the filter before the channels and as the reverse loop also writes
+/// them first. Within a channel the order is the alternative player's own buffered one
+/// (`mt_loadregs`): wave, frequency low and high, pulse low and high, AD, SR.
+pub const GHOST_ALT: [u8; 25] = [
+    0x15, 0x16, 0x17, 0x18, 0x04, 0x00, 0x01, 0x02, 0x03, 0x05, 0x06, 0x0b, 0x07, 0x08, 0x09, 0x0a,
+    0x0c, 0x0d, 0x12, 0x0e, 0x0f, 0x10, 0x11, 0x13, 0x14,
+];
+
+/// Zero-page ghost registers: where they are, and the order the main program copies them.
+#[derive(Clone, Copy, Debug)]
+pub struct Ghost {
+    pub base: u16,
+    pub order: &'static [u8; 25],
+}
 
 /// A call's writes: (register 0-24, value), in order.
 pub type Writes = Vec<(u8, u8)>;
@@ -35,6 +75,8 @@ pub struct Frame {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TraceError {
     Pack(String),
+    /// The packed code where the harness cannot run it.
+    Placement(String),
     /// An undocumented opcode about to execute; frame None is the init call.
     Undocumented {
         opcode: u8,
@@ -43,6 +85,12 @@ pub enum TraceError {
     },
     /// SED about to execute, when the harness traps it.
     Decimal {
+        address: u16,
+        frame: Option<usize>,
+    },
+    /// An opcode the core cannot decode (a core that lacks a documented one).
+    Undecodable {
+        opcode: u8,
         address: u16,
         frame: Option<usize>,
     },
@@ -61,6 +109,16 @@ impl std::fmt::Display for TraceError {
         };
         match self {
             TraceError::Pack(e) => write!(f, "pack: {e}"),
+            TraceError::Placement(e) => write!(f, "placement: {e}"),
+            TraceError::Undecodable {
+                opcode,
+                address,
+                frame,
+            } => write!(
+                f,
+                "the core cannot decode ${opcode:02X} at ${address:04X}, {}",
+                at(frame)
+            ),
             TraceError::Undocumented {
                 opcode,
                 address,
@@ -91,8 +149,8 @@ pub struct Setup {
     pub init: u16,
     pub play: u16,
     pub calls_per_frame: u32,
-    /// The ghost registers' base, if the main program copies them to the SID.
-    pub ghost: Option<u16>,
+    /// The ghost registers, if the main program copies them to the SID.
+    pub ghost: Option<Ghost>,
     pub sid: u16,
     /// Fail on SED (only if the core's decimal mode were not proven, see the crate's tests).
     pub trap_sed: bool,
@@ -105,7 +163,16 @@ impl Setup {
             init: packed.init(),
             play: packed.play(),
             calls_per_frame: o.multiplier.max(1),
-            ghost: (o.player_version & PLAYER_ZPGHOSTREGS != 0).then_some(o.zeropage as u16),
+            ghost: (o.player_version & PLAYER_ZPGHOSTREGS != 0).then_some(Ghost {
+                base: (o.zeropage & 0xff) as u16,
+                // greloc.c: "if (adparam >= 0xf000) playername = "altplayer.s";", after
+                // gt2reloc's adparam &= 0xffff.
+                order: if o.hr_adsr & 0xffff >= 0xf000 {
+                    &GHOST_ALT
+                } else {
+                    &GHOST_REVERSE
+                },
+            }),
             sid: o.sid_address as u16,
             trap_sed: false,
         }
@@ -158,15 +225,21 @@ fn call<C: Cpu6502>(
             return Err(TraceError::Decimal { address: pc, frame });
         }
         steps += 1;
-        if steps > STEP_LIMIT || !cpu.step() {
+        if steps > STEP_LIMIT {
             return Err(TraceError::Hang { address: pc, frame });
         }
+        if !cpu.step() {
+            return Err(TraceError::Undecodable {
+                opcode: op,
+                address: pc,
+                frame,
+            });
+        }
     }
-    if let Some(base) = setup.ghost {
-        // readme 5.1: LDX #$18 / copy: LDA ghostregs,X / STA $D400,X / DEX / BPL copy
-        for r in (0..=0x18u16).rev() {
-            let v = cpu.ram().bytes[base.wrapping_add(r) as usize];
-            cpu.ram_mut().set_sid(setup.sid.wrapping_add(r), v);
+    if let Some(g) = setup.ghost {
+        for &r in g.order {
+            let v = cpu.ram().bytes[g.base.wrapping_add(r as u16) as usize];
+            cpu.ram_mut().set_sid(setup.sid.wrapping_add(r as u16), v);
         }
     }
     let ram = cpu.ram_mut();
@@ -201,17 +274,53 @@ pub fn run<C: Cpu6502>(
     Ok(Trace { init, frames: out })
 }
 
-/// Loads a packed player into a fresh [`Mos6502`].
-pub fn load(packed: &Packed, sid: u16) -> Mos6502 {
+/// Refuses code at `load`, `len` bytes long, where the harness cannot run it (the module's
+/// doc): over the SID's window or its registers at `sid`, the return slot, the sentinel, or
+/// past `$FFFF`.
+pub fn check_placement(load: u16, len: usize, sid: u16) -> Result<(), String> {
+    let start = load as u32;
+    let end = start + len as u32; // exclusive
+    if len == 0 {
+        return Ok(());
+    }
+    if end > 0x10000 {
+        return Err(format!("{len} bytes at ${load:04X} run past $FFFF"));
+    }
+    let over = |lo: u16, hi: u16| start <= hi as u32 && end > lo as u32;
+    let sid_regs = (sid, sid.saturating_add(0x18));
+    for (what, lo, hi) in [
+        ("the SID's window", *SID_WINDOW.start(), *SID_WINDOW.end()),
+        ("the SID's registers", sid_regs.0, sid_regs.1),
+        (
+            "the return address",
+            *RETURN_SLOT.start(),
+            *RETURN_SLOT.end(),
+        ),
+        ("the harness's sentinel", SENTINEL, SENTINEL),
+    ] {
+        if over(lo, hi) {
+            return Err(format!(
+                "code at ${load:04X}-${:04X} overlaps {what} (${lo:04X}-${hi:04X})",
+                end - 1
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Loads a packed player into a fresh [`Mos6502`], if it is placed where it can run.
+pub fn load(packed: &Packed, sid: u16) -> Result<Mos6502, TraceError> {
+    check_placement(packed.load, packed.code.len(), sid).map_err(TraceError::Placement)?;
     let mut ram = Ram::new(sid);
-    ram.load(packed.load, &packed.code);
-    Mos6502::new(ram)
+    ram.load(packed.load, &packed.code)
+        .map_err(TraceError::Placement)?;
+    Ok(Mos6502::new(ram))
 }
 
 /// Packs `sng` with the options and traces `frames` frames of `subtune`.
 pub fn trace(sng: &[u8], subtune: u8, frames: usize, o: &Options) -> Result<Trace, TraceError> {
     let packed = pack(sng, o).map_err(TraceError::Pack)?;
     let setup = Setup::of(&packed, o);
-    let mut cpu = load(&packed, setup.sid);
+    let mut cpu = load(&packed, setup.sid)?;
     run(&mut cpu, &setup, subtune, frames)
 }

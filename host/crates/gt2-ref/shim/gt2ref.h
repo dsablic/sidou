@@ -30,11 +30,14 @@ typedef struct {
 void gt2ref_default_options(gt2ref_options* o);
 
 /* The song packed as a .prg (load address first), as `gt2reloc song.sng out.prg` with the
- * options writes it. 0 and *prg (free with gt2ref_free), or -1 if GoatTracker refused it. */
+ * options writes it. 0 and *prg (free with gt2ref_free); -2 if loadsong could not load the
+ * song (an unknown ident, or a file shorter than its contents say); -1 if the packer
+ * refused it. */
 int gt2ref_pack(const unsigned char* sng, size_t len, const gt2ref_options* o,
                 unsigned char** prg, size_t* prg_len);
 
-/* GoatTracker's loadsong, then savesong: the song as GoatTracker writes it. */
+/* GoatTracker's loadsong, then savesong: the song as GoatTracker writes it. -2 if the song
+ * did not load (as gt2ref_pack), -1 if savesong failed. */
 int gt2ref_canonical(const unsigned char* sng, size_t len, unsigned char** out,
                      size_t* out_len);
 

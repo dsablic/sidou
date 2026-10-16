@@ -20,7 +20,8 @@ pub mod trace;
 pub struct Options {
     /// `-A`: the hard restart ADSR, `$0F00`. `$F000` and above select `altplayer.s`.
     pub hr_adsr: u32,
-    /// `-S`: the speed multiplier (0 is 25 Hz), 1.
+    /// `-S`: the speed multiplier (0 is 25 Hz: one call every 40 ms, so a traced frame is
+    /// then 40 ms), 1.
     pub multiplier: u32,
     /// `-N`: NTSC. In a packed `.prg` it changes nothing (only a `.sid`'s header and speed
     /// code); the player's frequency table is the same.
@@ -97,6 +98,10 @@ impl Default for Options {
 
 static GOATTRACKER: Mutex<()> = Mutex::new(());
 
+/// gt2ref.c's code for a song `loadsong` could not load.
+const LOAD_FAILED: c_int = -2;
+const LOAD_MESSAGE: &str = "loadsong: not a song it reads (an unknown ident, or a short file)";
+
 fn take(p: *mut u8, len: usize) -> Vec<u8> {
     let v = unsafe { std::slice::from_raw_parts(p, len) }.to_vec();
     unsafe { gt2ref_free(p.cast()) };
@@ -127,6 +132,9 @@ pub fn pack(sng: &[u8], o: &Options) -> Result<Packed, String> {
     let mut p = std::ptr::null_mut();
     let mut len = 0usize;
     let r = unsafe { gt2ref_pack(sng.as_ptr(), sng.len(), o, &mut p, &mut len) };
+    if r == LOAD_FAILED {
+        return Err(LOAD_MESSAGE.into());
+    }
     if r != 0 || p.is_null() {
         return Err("gt2reloc wrote no file".into());
     }
@@ -146,6 +154,9 @@ pub fn canonical(sng: &[u8]) -> Result<Vec<u8>, String> {
     let mut p = std::ptr::null_mut();
     let mut len = 0usize;
     let r = unsafe { gt2ref_canonical(sng.as_ptr(), sng.len(), &mut p, &mut len) };
+    if r == LOAD_FAILED {
+        return Err(LOAD_MESSAGE.into());
+    }
     if r != 0 || p.is_null() {
         return Err("savesong wrote no file".into());
     }

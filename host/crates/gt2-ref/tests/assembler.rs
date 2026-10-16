@@ -112,6 +112,7 @@ fn exomizer_packer(dir: &Path, rel: &Path) -> PathBuf {
                     "-fno-common",
                     "-c",
                     "-Dfopen=gt2ref_fopen",
+                    "-Dfread=gt2ref_fread",
                     "-Dmain=gt2reloc_main",
                     "-Dexit=gt2ref_exit",
                 ])

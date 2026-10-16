@@ -17,6 +17,11 @@ void gt2ref_set_input(const unsigned char* data, size_t len);
 /* The bytes written to name (malloc'd, the caller frees them), or NULL. */
 void gt2ref_take_output(const char* name, unsigned char** data, size_t* len);
 void gt2ref_reset_files(void);
+/* GoatTracker's sources are compiled with -Dfread=gt2ref_fread: a read of the song that
+ * gets less than it asked for is recorded, so a short file is an error, not zeros.
+ * gt2ref_input_short says whether one has happened since gt2ref_set_input. */
+size_t gt2ref_fread(void* p, size_t size, size_t n, FILE* f);
+int gt2ref_input_short(void);
 
 /* GoatTracker's sources are compiled with -Dexit=gt2ref_exit: inside gt2ref_guard's
  * callback it returns to gt2ref_guard (which then returns -1), elsewhere it exits. */

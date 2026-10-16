@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Builds GoatTracker 2.77's song, table and relocation code (third_party/goattracker2,
 //! unmodified) with SIDOU's shim (shim/: BME's calls, files in memory, the assembler) into
-//! a static library. GoatTracker's files are compiled with `fopen` and `exit` renamed to
+//! a static library. GoatTracker's files are compiled with `fopen`, `fread` and `exit` renamed to
 //! the shim's and gt2reloc's `main` renamed out of the way; their warnings are GoatTracker's and are
 //! not ours to fix, so they are silenced. No sanitizer: this is the reference, not the code
 //! under test.
@@ -33,6 +33,8 @@ fn main() {
         .include(&shim)
         .include(&gt)
         .define("fopen", "gt2ref_fopen")
+        // A short read of the song is recorded (loadsong itself reports nothing).
+        .define("fread", "gt2ref_fread")
         .define("main", "gt2reloc_main")
         // The relocator exits on an assembly error: the shim's exit returns to the caller.
         .define("exit", "gt2ref_exit")

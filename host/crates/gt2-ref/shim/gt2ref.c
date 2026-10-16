@@ -1,7 +1,10 @@
 /* SPDX-FileCopyrightText: 2026 SIDOU contributors
+ * SPDX-FileCopyrightText: Lasse Öörni and GoatTracker 2's contributors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 /* The harness's entry points (gt2ref.h): GoatTracker 2.77's gt2reloc main, its option
- * handling and checks, called with the options as values instead of a command line. */
+ * handling and checks, called with the options as values instead of a command line.
+ * gt2ref_pack's "Validate parameters" block reproduces gt2reloc.c's (GPL-2.0-or-later,
+ * whose "any later version" lets this file stay GPL-3.0-or-later). */
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,9 +42,23 @@ void gt2ref_default_options(gt2ref_options* o) {
     o->zeropage = 0xfc;
 }
 
+/* The idents loadsong reads (gsong.c); any other leaves the cleared song as it is. */
+static int known_ident(const unsigned char* sng, size_t len) {
+    static const char* const idents[] = {"GTS!", "GTS2", "GTS3", "GTS4", "GTS5"};
+    if (len < 4)
+        return 0;
+    for (size_t i = 0; i < sizeof idents / sizeof idents[0]; i++)
+        if (memcmp(sng, idents[i], 4) == 0)
+            return 1;
+    return 0;
+}
+
 /* What gt2reloc's main does before it reads its options: the channels, a cleared song,
- * then the song loaded. The defaults of every option, as gt2reloc.c initialises them. */
-static void gt2ref_load(const unsigned char* sng, size_t len) {
+ * then the song loaded. The defaults of every option, as gt2reloc.c initialises them.
+ * loadsong reports nothing: it skips a file whose ident it does not know, and reads zeros
+ * past the end of a short one. So the load fails (-1) on an unknown ident, or if any of
+ * loadsong's reads came back short (the shim's gt2ref_fread). */
+static int gt2ref_load(const unsigned char* sng, size_t len) {
     if (!saved_defaults) {
         memcpy(default_lo, freqtbllo, FREQ_NOTES);
         memcpy(default_hi, freqtblhi, FREQ_NOTES);
@@ -69,12 +86,20 @@ static void gt2ref_load(const unsigned char* sng, size_t len) {
     initchannels();
     clearsong(1, 1, 1, 1, 1);
     strcpy(songfilename, GT2REF_INPUT);
+    if (!known_ident(sng, len))
+        return -1;
     loadsong();
+    return gt2ref_input_short() ? -1 : 0;
 }
 
 int gt2ref_pack(const unsigned char* sng, size_t len, const gt2ref_options* o,
                 unsigned char** prg, size_t* prg_len) {
-    gt2ref_load(sng, len);
+    *prg = NULL;
+    *prg_len = 0;
+    if (gt2ref_load(sng, len) != 0) {
+        gt2ref_set_input(NULL, 0);
+        return -2;
+    }
     strcpy(packedsongname, PACKED_NAME);
     fileformat = FORMAT_PRG;
     adparam = o->hr_adsr;
@@ -138,7 +163,12 @@ int gt2ref_pack(const unsigned char* sng, size_t len, const gt2ref_options* o,
 
 int gt2ref_canonical(const unsigned char* sng, size_t len, unsigned char** out,
                      size_t* out_len) {
-    gt2ref_load(sng, len);
+    *out = NULL;
+    *out_len = 0;
+    if (gt2ref_load(sng, len) != 0) {
+        gt2ref_set_input(NULL, 0);
+        return -2;
+    }
     strcpy(songfilename, SAVED_NAME);
     int ok = savesong();
     gt2ref_take_output(SAVED_NAME, out, out_len);

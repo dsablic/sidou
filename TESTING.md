@@ -128,11 +128,18 @@ between two runs by more than any click. The tests say where.
   Dormann's functional test on it (`third_party/6502-tests`), decimal mode included.
 - **The trace** (`src/trace.rs`): init once with A the subtune, then play once a frame
   (`max(multiplier, 1)` times with multispeed), each call returning to a sentinel; each
-  call's writes to the SID's 25 registers in order. With zero-page ghost registers the
-  harness runs readme 5.1's copy loop after each call.
+  call's writes to the SID's 25 registers in order. A traced frame is 20 ms; with the
+  multiplier 0 (25 Hz) it is one call, 40 ms. With zero-page ghost registers the harness
+  runs readme 5.1's copy after each call: `$18` down to 0, or for the alternative player
+  (`-A` of `$F000` and up) each channel's wave, frequency, pulse width and ADSR last, the
+  filter first. `gt2_ref::pack` and `canonical` fail on a song `loadsong` cannot load (an
+  unknown ident, or a short file), and the trace refuses code placed over the SID's window
+  (`$D400-$D7FF`, and its registers at `-L`), the return slot `$01FE-$01FF`, the sentinel
+  `$FFF0`, or past `$FFFF` (`TraceError::Placement`).
 - **The traps:** before each instruction the harness checks the opcode against the 151
   documented ones and fails the trace on any other, with its address and frame
-  (`TraceError::Undocumented`); a call past 200,000 instructions is a hang. SED can be
+  (`TraceError::Undocumented`); a call past 200,000 instructions is a hang, and an opcode
+  the core cannot decode its own error (`TraceError::Undecodable`). SED can be
   trapped too (`Setup::trap_sed`), but Dormann's test proves the core's decimal mode, so it
   is off. M3's own 6502 needs the undocumented opcodes for `.sid` files and must be
   checked with Tom Harte's per-opcode tests for them; this harness only proves that
@@ -142,8 +149,12 @@ between two runs by more than any click. The tests say where.
   (`$1000` and `$1003`, or with `-W` elsewhere), each a JMP; each option changes the
   packed player as it should (multispeed, pulse and realtime optimisation, buffered writes,
   the hard restart ADSR, A-4's pitch), and NTSC does not (it only changes a `.sid`'s
-  header); multispeed calls play N times a frame; a hand-made player with an undocumented
-  opcode, SED or an endless loop fails with its address.
+  header); multispeed calls play N times a frame, every call writes, and the trace is not
+  1x's; a hand-made player with an undocumented opcode, SED or an endless loop fails with
+  its address; the option matrix (default, `-AF000`, `-B1`, `-J1`, `-D1 -E1`,
+  `-I0 -O0 -R0`, `-S2`, `-S4`) traces every example 300 frames, pinned by a digest per
+  set; the alternative player's ghost-register order; the load and placement refusals.
+  `tests/cli.rs`: `gt2-trace` takes good command lines and refuses bad ones.
 - `tests/assembler.rs` (`--ignored`): downloads GoatTracker 2.77 into
   `build/goattracker2-2.77/` (SHA-256 checked; curl with a generic User-Agent, unzip, a C
   compiler), checks the vendored files are the release's byte for byte, and packs every
@@ -157,7 +168,8 @@ between two runs by more than any click. The tests say where.
 
 `gt2-trace song.sng [--subtune N] [--frames N] [gt2reloc options]` prints init's writes and
 then one line a frame, `register=value` in hex, for comparing a player against the
-reference by hand.
+reference by hand. Its flags are strict: a value out of range, a value on `-N` or `-P`, an
+unknown flag or a second song is an error.
 
 ### Golden renders
 

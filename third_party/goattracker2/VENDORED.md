@@ -16,7 +16,12 @@ built into the firmware.
 - **Licences** (`REUSE.toml`):
   - the C sources and headers, `readme.txt`: GPL-2.0-or-later, © Lasse Öörni and
     GoatTracker's contributors (the readme's header names them); `copying` is the GPL's
-    text;
+    text. **Why "or later":** the release ships the GPL version 2's text (`copying`) and
+    says it is under the GPL, but no file carries a notice naming a version. GPLv2 §9
+    covers that case: "If the Program does not specify a version number of this License,
+    you may choose any version ever published by the Free Software Foundation." So any
+    version may be chosen, which REUSE records as GPL-2.0-or-later, and SIDOU's files that
+    follow GoatTracker's code stay GPL-3.0-or-later;
   - `src/player.s`, `src/altplayer.s`: their own permissive notice ("This playroutine
     source code does not fall under the GPL license! Use it, or song binaries created from
     it freely for any purpose, commercial or noncommercial."),
@@ -46,7 +51,8 @@ built into the firmware.
   packer calls. Its licence allows use "for any non-commercial, non-profit purpose" only:
   not free software, and not compatible with SIDOU's GPL-3.0-or-later. SIDOU assembles
   `player.s` with its own assembler instead (`host/crates/gt2-ref/shim/gt2ref_asm.c`,
-  written for SIDOU from the dialect's behaviour). The `assembler` test
+  written for SIDOU from `player.s`, `greloc.c`'s generated source and the original's
+  observed output; no code of the original is used). The `assembler` test
   (`cargo test --release -p gt2-ref --test assembler -- --ignored`) fetches the release
   into `build/goattracker2-2.77/` (never committed), builds the packer once with Exomizer's
   assembler and once with SIDOU's, and compares them on every example song and 30 option
@@ -63,12 +69,12 @@ built into the firmware.
 |---|---|
 | `bme.h` | BME's `bme.h`: declares the BME calls the song code makes (`fread8`, `fwrite8`, `fwritele16`, `io_open`, `io_lseek`, `io_read8`, `io_close`, `io_openlinkeddatafile`, `win_quitted`) and gives the editor's `KEY_*` codes distinct values |
 | `membuf.h`, `parse.h` | the assembler's interface `greloc.c` includes: `struct membuf` and its calls, `assemble()` |
-| `gt2ref_shim.c` | those calls; files in memory (`fopen` renamed to `gt2ref_fopen`: the song to read, the files written); `exit` renamed to `gt2ref_exit` (the relocator exits on an assembly error; the harness returns instead); the player sources read from this directory; stubs for the editor's `datafile`, `key`, `rawkey`, `shiftpressed`, `sidreg`, `editstring`, `resettime`, `incrementtime`, `sound_suspend`, `sound_flush` |
+| `gt2ref_shim.c` | those calls; files in memory (`fopen` renamed to `gt2ref_fopen`: the song to read, the files written; `fread` renamed to `gt2ref_fread`, which records a short read of the song, so a truncated file fails to load instead of reading zeros); `exit` renamed to `gt2ref_exit` (the relocator exits on an assembly error; the harness returns instead); the player sources read from this directory; stubs for the editor's `datafile`, `key`, `rawkey`, `shiftpressed`, `sidreg`, `editstring`, `resettime`, `incrementtime`, `sound_suspend`, `sound_flush` |
 | `gt2ref_asm.c` | Exomizer's assembler (above) |
-| `gt2ref.c` | `gt2reloc`'s `main`: its option defaults, checks and calls, with the options as values (`gt2ref_pack`); `loadsong` then `savesong` (`gt2ref_canonical`) |
+| `gt2ref.c` | `gt2reloc`'s `main`: its option defaults, checks and calls, with the options as values (`gt2ref_pack`); `loadsong` then `savesong` (`gt2ref_canonical`). `loadsong` reports nothing, so both fail when the ident is not one `loadsong` reads or a read came back short. Its "Validate parameters" block reproduces `gt2reloc.c`'s, so the file also carries Lasse Öörni's and GoatTracker 2's contributors' copyright line |
 
-GoatTracker's files are compiled unmodified with `-Dfopen=gt2ref_fopen -Dexit=gt2ref_exit
--Dmain=gt2reloc_main` and their warnings silenced (`host/crates/gt2-ref/build.rs`).
+GoatTracker's files are compiled unmodified with `-Dfopen=gt2ref_fopen -Dfread=gt2ref_fread
+-Dexit=gt2ref_exit -Dmain=gt2reloc_main` and their warnings silenced (`host/crates/gt2-ref/build.rs`).
 
 **Found while building it** (0007 records what matters for the player): `gt2reloc.c`'s
 `case 'I':` has no `break`, so `-I` also sets or clears full buffering (the harness sets
