@@ -35,8 +35,16 @@
  * - an orderlist edit naming a pattern waits for that pattern's pending swap, and a
  *   pattern's removal for every pending orderlist edit (each checks the other);
  * - gt2_compact_step does nothing (-1) while any of those is pending.
+ * - a rebuild that fits the song at rest (every pending edit released) but finds no room
+ *   now, the old copies still held, waits too; GT2_ERR_FULL only if it would not fit at
+ *   rest either.
  * The instruments and tables take cell writes only: they hold no slot, are never refused
- * and never refuse anything. The caller applies the
+ * and refuse nothing but a reload or a clear (gt2_sng_read, gt2_song_clear), which wait for
+ * every pending edit.
+ *
+ * The player (Task 6) re-reads the index entry each tick and never holds an arena pointer
+ * from one tick to the next: an edit's release may free, and the next edit reuse, any
+ * byte the index no longer names. The caller applies the
  * edits in the order it made them and releases each only once applied; the reader and
  * gt2_song_clear assume nothing is pending.
  *
@@ -137,6 +145,9 @@ typedef struct {
     uint32_t pend_order[(GT2_MAX_SUBTUNES * GT2_MAX_CHANNELS + 31u) / 32u]; /* a bit each */
     uint16_t pending;                       /* all pending edits that hold a slot */
     uint16_t pending_orders;                /* of which on orderlists */
+    uint32_t pending_loose;                 /* pending instrument and table cell writes */
+    uint32_t pending_old_units; /* old copies pending swaps will release: used_units less
+                                 * this is the song's size at rest */
     uint32_t ext_used;                  /* bytes of ext in use */
     uint8_t ext[SONG_EXT_BYTES];        /* the trailer's chunks (song_ext.h) */
 } gt2_song;
@@ -151,10 +162,12 @@ typedef enum {
     GT2_ERR_ROWS,       /* above 128 rows, or below 1 */
     GT2_ERR_PATTERNS,   /* 208 patterns */
     GT2_ERR_IN_USE,     /* a pattern an orderlist names */
-    GT2_ERR_FULL,       /* the content would leave less than SONG_ARENA_SPARE free */
+    GT2_ERR_FULL,       /* the content would leave less than SONG_ARENA_SPARE free once
+                         * every pending edit is released */
     GT2_ERR_FRAGMENTED, /* no hole large enough: gt2_compact_step, then again */
     GT2_ERR_REGION,     /* the region is too small or too large */
-    GT2_ERR_PENDING     /* a pending edit would make this one wrong: after its release */
+    GT2_ERR_PENDING     /* a pending edit would make this one wrong, or holds the room it
+                         * needs: again after the next release */
 } gt2_err;
 
 /* Formats an empty song into region (bytes long, 4-byte aligned): one subtune whose three
@@ -162,8 +175,9 @@ typedef enum {
  * it. NULL if the region is outside [gt2_region_min(), GT2_REGION_MAX] or the patterns do
  * not fit. */
 gt2_song* gt2_song_init(void* region, uint32_t bytes);
-/* Empties an existing song in place (its region kept), as gt2_song_init leaves it. */
-void gt2_song_clear(gt2_song* s);
+/* Empties an existing song in place (its region kept), as gt2_song_init leaves it. 0, or
+ * -1 (nothing done) while any edit is pending. */
+int gt2_song_clear(gt2_song* s);
 /* Empties it entirely: no subtune, no orderlist, no pattern (the reader's start). */
 void gt2_song_wipe(gt2_song* s);
 uint32_t gt2_region_min(void);
@@ -219,10 +233,10 @@ void gt2_edit_commit(gt2_song* s, const gt2_edit* e);
 /* Cell writes. */
 gt2_err gt2_set_row(gt2_song* s, uint32_t pattern, uint32_t row, const uint8_t cell[4],
                     gt2_edit* e);
-gt2_err gt2_set_instr(const gt2_song* s, uint32_t instr, uint32_t field, uint8_t value,
+gt2_err gt2_set_instr(gt2_song* s, uint32_t instr, uint32_t field, uint8_t value,
                       gt2_edit* e); /* instr 1..63, field 0..24 */
 /* side 0 the left byte, 1 the right (they are 255 bytes apart: one cell each). */
-gt2_err gt2_set_table(const gt2_song* s, uint32_t table, uint32_t row, uint32_t side,
+gt2_err gt2_set_table(gt2_song* s, uint32_t table, uint32_t row, uint32_t side,
                       uint8_t value, gt2_edit* e);
 gt2_err gt2_set_order(gt2_song* s, uint32_t subtune, uint32_t channel, uint32_t pos,
                       uint8_t value, gt2_edit* e); /* pos == entries: the restart position */
@@ -243,8 +257,11 @@ gt2_err gt2_order_delete(gt2_song* s, uint32_t subtune, uint32_t channel, uint32
 /* One compaction move (a rebuild): returns 1 and the move's swap if it moved a block, 0 if
  * the free space is already one hole at the arena's end, -1 (nothing done) while an edit is
  * pending. Each move slides the lowest block above the lowest gap down into it: straight
- * in if it fits, else through the scratch (one move out, the next one down). So the lowest
- * gap's start only rises, and at most 2 x blocks moves leave one hole. */
+ * in if it fits, else through the scratch (one move out, the next one down). So, with no
+ * rebuild between steps, the lowest gap's start only rises, and at most 2 x blocks moves
+ * leave one hole. Edits between steps can undo some of that, but each adds at most one
+ * hole (its old copy's place) and never a block (a rebuild's new copy replaces its old
+ * one; a removal takes one away), so once they stop the bound holds again from there. */
 int gt2_compact_step(gt2_song* s, gt2_edit* e);
 
 /* What savesong would write (0007, rule 1): the subtune, instrument and pattern counts and

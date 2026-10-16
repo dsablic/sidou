@@ -95,12 +95,13 @@ toast:
 | `SNG: NOT A SONG` | an ident other than `GTS2`-`GTS5` or `GTS!` |
 | `SNG: GT1 FORMAT` | `GTS!` (GoatTracker 1) |
 | `SNG: SHORT FILE` | the file ends inside the GT2 part |
+| `SNG: EDITS PENDING` | a reload while edits made on the song still wait for the audio interrupt (`core/song/gt2_song.h`, the deferred contract) |
 | `SNG: BAD SUBTUNES` | a subtune count of 0 or above 32 |
 | `SNG: BAD ORDERLIST Vn` | channel n's orderlist (1-6) has no `$FF` with a restart byte after it, or (stereo) a restart byte of its entries plus two or more |
 | `SNG: BAD INSTRUMENTS` | more than 63 instruments |
 | `SNG: BAD PATTERN n` | pattern n has more than 129 rows, no end row, a note outside `$60-$BF`, an instrument above `$3F` or a command above `$F` before its end |
 | `SNG: BAD PATTERNS` | more than 208 patterns |
-| `SNG: TOO BIG (60K OF 51K)` | the orderlists and patterns do not fit the arena with its spare: on the device 53,128 bytes (51K) of the 64 KiB content region (`core/song/gt2_song.h`) |
+| `SNG: TOO BIG (60K OF 51K)` | the orderlists and patterns do not fit the arena with its spare: on the device 53,120 bytes (51K) of the 64 KiB content region (`core/song/gt2_song.h`) |
 | `SNG: MULTISPEED 8 (MAX 4)` | on the device: the `OPTS` chunk asks for multispeed above 4 (0, 25 Hz, is refused as `MULTISPEED 0`) |
 
 What GoatTracker accepts and plays oddly (a restart position past the end, a transpose
@@ -137,7 +138,10 @@ patterns; each orderlist and pattern written up to its end mark.
 
 Optional. A file without one is a plain GT2 song, played with GoatTracker's default
 options. The writer can leave it out (for tools that refuse trailing bytes, such as
-ChiptuneSAK; 0007).
+ChiptuneSAK; 0007). Without it, a rare file is the canonical save of a mono song and of a stereo
+one alike, which no reader can tell apart; after a plain export `gt2_sng_check_plain`
+reads the file back and warns (`SNG: READS BACK AS STEREO`, `SNG: READS BACK AS MONO`) if it
+would load with the other channel count.
 
 ### Layout
 

@@ -195,7 +195,7 @@ void gt2_song_wipe(gt2_song* s) {
     memset(bitmap(s), 0, ((units + 31u) / 32u) * 4u);
 }
 
-void gt2_song_clear(gt2_song* s) {
+static void song_clear(gt2_song* s) {
     gt2_song_wipe(s);
     s->subtunes = 1u;
     s->channels = GT2_MONO_CHANNELS;
@@ -218,6 +218,13 @@ void gt2_song_clear(gt2_song* s) {
     }
 }
 
+int gt2_song_clear(gt2_song* s) {
+    if (s->pending != 0u || s->pending_loose != 0u)
+        return -1;
+    song_clear(s);
+    return 0;
+}
+
 gt2_song* gt2_song_init(void* region, uint32_t bytes) {
     if (region == NULL || ((uintptr_t)region & 3u) != 0u || bytes < gt2_region_min() ||
         bytes > GT2_REGION_MAX)
@@ -236,7 +243,7 @@ gt2_song* gt2_song_init(void* region, uint32_t bytes) {
     s->bitmap_offset = hdr;
     s->arena_offset = hdr + ((units + 31u) / 32u) * 4u;
     s->arena_units = units;
-    gt2_song_clear(s);
+    song_clear(s);
     return s;
 }
 
@@ -299,6 +306,15 @@ void gt2_edit_apply(gt2_song* s, const gt2_edit* e) {
     }
 }
 
+static int is_pattern_slot(uint32_t offset) {
+    return offset >= offsetof(gt2_song, pattern) &&
+           offset < offsetof(gt2_song, pattern) + sizeof(((gt2_song*)0)->pattern);
+}
+
+static uint32_t span_bytes_at(uint32_t offset, gt2_span sp) {
+    return is_pattern_slot(offset) ? gt2_pattern_span_bytes(sp) : gt2_order_span_bytes(sp);
+}
+
 /* Pending edits (gt2_song.h, the deferred contract). */
 
 static int pattern_pending(const gt2_song* s, uint32_t p) {
@@ -320,8 +336,12 @@ static int order_pending(const gt2_song* s, uint32_t i) {
 /* An edit made on slot: pending until released. */
 static void pend(gt2_song* s, gt2_edit* e, uint32_t slot) {
     e->slot = (uint16_t)slot;
-    if (slot == GT2_SLOT_NONE)
+    if (slot == GT2_SLOT_NONE) {
+        s->pending_loose++;
         return;
+    }
+    if (e->kind == GT2_EDIT_SWAP && e->old_span != 0u)
+        s->pending_old_units += units_of(span_bytes_at(e->offset, e->old_span));
     if (slot >= GT2_SLOT_ORDER) {
         uint32_t i = slot - GT2_SLOT_ORDER;
         GT2_ASSERT(!order_pending(s, i));
@@ -339,8 +359,18 @@ static void pend(gt2_song* s, gt2_edit* e, uint32_t slot) {
 
 static void unpend(gt2_song* s, const gt2_edit* e) {
     uint32_t slot = e->slot;
-    if (e->kind == GT2_EDIT_NONE || slot == GT2_SLOT_NONE)
+    if (e->kind == GT2_EDIT_NONE)
         return;
+    if (slot == GT2_SLOT_NONE) {
+        GT2_ASSERT(s->pending_loose > 0u);
+        s->pending_loose--;
+        return;
+    }
+    if (e->kind == GT2_EDIT_SWAP && e->old_span != 0u) {
+        uint32_t units = units_of(span_bytes_at(e->offset, e->old_span));
+        GT2_ASSERT(s->pending_old_units >= units);
+        s->pending_old_units -= units;
+    }
     if (slot >= GT2_SLOT_ORDER) {
         uint32_t i = slot - GT2_SLOT_ORDER;
         GT2_ASSERT(order_pending(s, i));
@@ -355,15 +385,6 @@ static void unpend(gt2_song* s, const gt2_edit* e) {
     }
     GT2_ASSERT(s->pending > 0u);
     s->pending--;
-}
-
-static int is_pattern_slot(uint32_t offset) {
-    return offset >= offsetof(gt2_song, pattern) &&
-           offset < offsetof(gt2_song, pattern) + sizeof(((gt2_song*)0)->pattern);
-}
-
-static uint32_t span_bytes_at(uint32_t offset, gt2_span sp) {
-    return is_pattern_slot(offset) ? gt2_pattern_span_bytes(sp) : gt2_order_span_bytes(sp);
 }
 
 void gt2_edit_release(gt2_song* s, const gt2_edit* e) {
@@ -411,24 +432,24 @@ gt2_err gt2_set_row(gt2_song* s, uint32_t pattern, uint32_t row, const uint8_t c
     return GT2_OK;
 }
 
-gt2_err gt2_set_instr(const gt2_song* s, uint32_t instr, uint32_t field, uint8_t value,
+gt2_err gt2_set_instr(gt2_song* s, uint32_t instr, uint32_t field, uint8_t value,
                       gt2_edit* e) {
-    (void)s;
     if (instr < 1u || instr > GT2_MAX_INSTR || field >= GT2_INSTR_BYTES)
         return GT2_ERR_RANGE;
     cell(e, (uint32_t)offsetof(gt2_song, instr) + (instr - 1u) * GT2_INSTR_BYTES + field, &value,
          1u);
+    pend(s, e, GT2_SLOT_NONE);
     return GT2_OK;
 }
 
-gt2_err gt2_set_table(const gt2_song* s, uint32_t table, uint32_t row, uint32_t side,
+gt2_err gt2_set_table(gt2_song* s, uint32_t table, uint32_t row, uint32_t side,
                       uint8_t value, gt2_edit* e) {
-    (void)s;
     if (table >= GT2_TABLES || row >= GT2_TABLE_ROWS || side > 1u)
         return GT2_ERR_RANGE;
     uint32_t base =
         side ? (uint32_t)offsetof(gt2_song, rtable) : (uint32_t)offsetof(gt2_song, ltable);
     cell(e, base + table * GT2_TABLE_ROWS + row, &value, 1u);
+    pend(s, e, GT2_SLOT_NONE);
     return GT2_OK;
 }
 
@@ -477,18 +498,21 @@ static int scratch_busy(const gt2_song* s) {
     return next_used(s, alloc_limit(s)) < s->arena_units;
 }
 
-/* Room for a rebuild that replaces old_bytes with new_bytes: the spare is kept once the swap
- * is released, and a hole fits the new copy now. While the scratch holds a block (half a
- * compaction move), nothing is allocated, so the hole that block came from stays for the
- * move's second half: FRAGMENTED, compact once more. */
+/* Room for a rebuild that replaces old_bytes with new_bytes: the spare is kept once every
+ * pending edit is released (the size at rest: the old copies pending swaps hold do not
+ * count; FULL only if it does not fit even so), and a hole fits the new copy now (else
+ * PENDING while old copies wait for release, FRAGMENTED otherwise: compact, then again).
+ * While the scratch holds a block (half a compaction move), nothing is allocated, so the
+ * hole that block came from stays for the move's second half: FRAGMENTED, compact once
+ * more. */
 static gt2_err rebuild_alloc(gt2_song* s, uint32_t old_bytes, uint32_t new_bytes,
                              uint32_t* off4) {
-    uint32_t after = gt2_arena_used(s) - units_of(old_bytes) * GT2_UNIT +
-                     units_of(new_bytes) * GT2_UNIT;
+    uint32_t at_rest = (s->used_units - s->pending_old_units) * GT2_UNIT;
+    uint32_t after = at_rest - units_of(old_bytes) * GT2_UNIT + units_of(new_bytes) * GT2_UNIT;
     if (after > gt2_arena_capacity(s))
         return GT2_ERR_FULL;
     if (scratch_busy(s) || gt2_arena_alloc(s, new_bytes, off4) != 0)
-        return GT2_ERR_FRAGMENTED;
+        return s->pending != 0u ? GT2_ERR_PENDING : GT2_ERR_FRAGMENTED;
     return GT2_OK;
 }
 

@@ -1320,13 +1320,13 @@ fn a_mono_file_that_passes_the_stereo_trial_reads_as_mono() {
 /// whose instruments or tables look like orderlists to GoatTracker Stereo's trial read
 /// included.
 #[test]
-fn sidou_output_without_a_trailer_always_reads_back() {
+fn sidou_output_without_a_trailer_reads_back_unless_ambiguous() {
     plain_reads_back(2000);
 }
 
 #[test]
 #[ignore = "long: cargo test --release -p sidou-tests --test song -- --ignored"]
-fn sidou_output_without_a_trailer_always_reads_back_long() {
+fn sidou_output_without_a_trailer_reads_back_unless_ambiguous_long() {
     plain_reads_back(200_000);
 }
 
@@ -1379,6 +1379,7 @@ fn plain_reads_back(seeds: u32) {
         assert_eq!(info.channels, want, "seed {seed}");
         assert_eq!(t.write(false), plain, "seed {seed}");
         assert_eq!(Model::of(&t), Model::of(&s), "seed {seed}");
+        assert_eq!(s.check_plain(&plain), (0, String::new()), "seed {seed}");
         // With the trailer, always.
         let mut u = Song::device();
         assert_eq!(
@@ -1396,7 +1397,7 @@ fn plain_reads_back(seeds: u32) {
 }
 
 /// A file that is the canonical save of a mono song and of a stereo one alike (found by
-/// `sidou_output_without_a_trailer_always_reads_back_long`): both readings end at the same
+/// `sidou_output_without_a_trailer_reads_back_unless_ambiguous_long`): both readings end at the same
 /// byte, so the trailer they share settles it only through the channel count it records.
 #[test]
 fn the_trailer_records_the_channel_count() {
@@ -1436,6 +1437,13 @@ fn the_trailer_records_the_channel_count() {
         let mut m = Song::device();
         set_mono_from_spec(&mut m, &spec);
         assert_eq!(m.write(false), file);
+        // A plain export of the mono song is caught by its check.
+        assert_eq!(
+            m.check_plain(&file),
+            (1, "SNG: READS BACK AS STEREO".into())
+        );
+        assert_eq!(s.check_plain(&file), (0, String::new()));
+        assert_eq!(m.check_plain(&file[..200]).0, -1);
         for (song, want) in [(&m, 3), (&s, 6)] {
             let t = song.write(true);
             let mut u = Song::device();
@@ -1693,25 +1701,50 @@ fn deferred_edits_long() {
     deferred_edits(2000, 2000);
 }
 
+/// The arena bytes the song's orderlists and patterns take, by the model.
+fn content_bytes(w: &Whole) -> u32 {
+    let orders: usize =
+        w.m.orders
+            .iter()
+            .flatten()
+            .map(|o| (o.0.len() + 2).div_ceil(4) * 4)
+            .sum();
+    let patterns: usize = w.m.patterns.iter().flatten().map(|p| p.len() * 4).sum();
+    (orders + patterns) as u32
+}
+
 fn deferred_edits(seeds: u64, steps: u32) {
     use std::collections::VecDeque;
+    let mut full_seen = 0;
     for seed in 0..seeds {
         let mut rng = Rng(0xde_0000 + seed);
         let mut s = Song::device();
-        s.read(&random_canonical(&mut rng, false).encode(), 4)
-            .unwrap();
+        let file = random_canonical(&mut rng, false).encode();
+        s.read(&file, 4).unwrap();
+        if seed % 2 == 0 {
+            // Near the cap, so rebuilds meet FULL and PENDING for room.
+            let mut r = GT2_OK;
+            while r == GT2_OK {
+                let mut n = 0;
+                let rows = 100 + rng.below(29);
+                r = rebuild(&mut s, &mut |p, e| unsafe {
+                    gt2_pattern_add(p, rows, &mut n, e)
+                });
+            }
+        }
+        let cap = unsafe { gt2_arena_capacity(s.ptr()) };
         // The intended song after every edit made so far, and the queue: each edit with the
-        // song as it must stand once that edit is applied.
+        // song as it must stand once that edit is applied, and as it stood before.
         let mut want = Whole::of(&s);
-        let mut queue: VecDeque<(gt2_edit, Whole)> = VecDeque::new();
+        let mut queue: VecDeque<(gt2_edit, Whole, Whole)> = VecDeque::new();
         let mut acked: VecDeque<gt2_edit> = VecDeque::new();
-        let (mut made, mut refused) = (0, 0);
+        let (mut made, mut refused, mut cancelled) = (0, 0, 0);
         for step in 0..steps {
-            match rng.below(10) {
+            match rng.below(12) {
                 // The interrupt applies up to 3 queued edits.
                 0 | 1 => {
                     for _ in 0..rng.below(4) {
-                        let Some((e, w)) = queue.pop_front() else {
+                        let Some((e, w, _)) = queue.pop_front() else {
                             break;
                         };
                         unsafe { gt2_edit_apply(s.ptr_mut(), &e) };
@@ -1728,8 +1761,8 @@ fn deferred_edits(seeds: u64, steps: u32) {
                         check_arena(&s);
                     }
                 }
-                // A compaction step: refused while an edit holding a slot is pending, else a swap that
-                // changes nothing the player sees.
+                // A compaction step: refused while an edit holding a slot is pending, else
+                // a swap that changes nothing the player sees.
                 3 => {
                     let mut e = gt2_edit::default();
                     // Instrument and table cells hold no slot and do not count.
@@ -1741,7 +1774,24 @@ fn deferred_edits(seeds: u64, steps: u32) {
                     let r = unsafe { gt2_compact_step(s.ptr_mut(), &mut e) };
                     assert_eq!(r == -1, pending, "seed {seed} step {step}: compaction");
                     if r == 1 {
-                        queue.push_back((e, want.clone()));
+                        queue.push_back((e, want.clone(), want.clone()));
+                    }
+                }
+                // The main loop takes back the last edit it queued, never applied.
+                4 => {
+                    if let Some((e, _, before)) = queue.pop_back() {
+                        unsafe { gt2_edit_cancel(s.ptr_mut(), &e) };
+                        want = before;
+                        cancelled += 1;
+                    }
+                }
+                // A reload or a clear waits for every pending edit.
+                5 if rng.chance(10) => {
+                    if !queue.is_empty() || !acked.is_empty() {
+                        let live = Whole::of(&s);
+                        assert_eq!(s.read(&file, 4).unwrap_err().msg, "SNG: EDITS PENDING");
+                        assert_eq!(unsafe { gt2_song_clear(s.ptr_mut()) }, -1);
+                        assert_eq!(Whole::of(&s), live, "seed {seed} step {step}");
                     }
                 }
                 // An edit.
@@ -1753,15 +1803,28 @@ fn deferred_edits(seeds: u64, steps: u32) {
                     assert_eq!(in_use(&s), live, "seed {seed} step {step}: bytes in use");
                     if r == GT2_OK {
                         made += 1;
+                        queue.push_back((e, w.clone(), want.clone()));
                         want = w;
-                        queue.push_back((e, want.clone()));
                     } else {
                         refused += 1;
+                        if r == GT2_ERR_FULL {
+                            // FULL is judged on the song at rest: only when the largest
+                            // rebuild would not fit it.
+                            full_seen += 1;
+                            assert!(content_bytes(&want) + 516 > cap, "seed {seed} step {step}");
+                        }
                     }
                 }
             }
+            // The song's size at rest (every pending edit released) is the model's.
+            let raw = s.raw();
+            assert_eq!(
+                (raw.used_units - raw.pending_old_units) * 4,
+                content_bytes(&want),
+                "seed {seed} step {step}: the size at rest"
+            );
         }
-        while let Some((e, w)) = queue.pop_front() {
+        while let Some((e, w, _)) = queue.pop_front() {
             unsafe { gt2_edit_apply(s.ptr_mut(), &e) };
             assert_eq!(Whole::of(&s), w, "seed {seed}: drained");
             acked.push_back(e);
@@ -1771,11 +1834,17 @@ fn deferred_edits(seeds: u64, steps: u32) {
         }
         check_arena(&s);
         assert_eq!(Whole::of(&s), want, "seed {seed}");
+        let raw = s.raw();
+        assert_eq!(
+            (raw.pending, raw.pending_loose, raw.pending_old_units),
+            (0, 0, 0)
+        );
         assert!(
-            made > 0 && refused > 0,
-            "seed {seed}: {made} made, {refused} refused"
+            made > 0 && refused > 0 && cancelled > 0,
+            "seed {seed}: {made} made, {refused} refused, {cancelled} cancelled"
         );
     }
+    assert!(full_seen > 0, "no FULL met");
 }
 
 /// One random primitive on the song, its effect made on the model w if it succeeds.
@@ -2117,4 +2186,66 @@ fn orderlists_breaking_the_rules_load_as_goattracker_loads_them() {
     );
     unsafe { gt2_edit_commit(s.ptr_mut(), &e) };
     assert_eq!(s.order(0, 2).unwrap(), (vec![2], 0));
+}
+
+/// A review's repro: the song filled to its cap, a row deleted in pattern 3 and left
+/// waiting for its swap, then a row deleted in pattern 4. The second makes the song smaller,
+/// so it is never FULL: it waits (PENDING) or goes ahead.
+#[test]
+fn a_waiting_rebuild_never_makes_a_shrinking_one_full() {
+    let mut s = Song::device();
+    let mut r = GT2_OK;
+    while r == GT2_OK {
+        let mut n = 0;
+        r = rebuild(&mut s, &mut |p, e| unsafe {
+            gt2_pattern_add(p, 128, &mut n, e)
+        });
+    }
+    assert_eq!(r, GT2_ERR_FULL);
+    // Fill the last bytes with a smaller pattern, so the cap is reached exactly or nearly.
+    for rows in (1..128).rev() {
+        let mut n = 0;
+        let _ = rebuild(&mut s, &mut |p, e| unsafe {
+            gt2_pattern_add(p, rows, &mut n, e)
+        });
+    }
+    let p = s.ptr_mut();
+    let (mut a, mut b) = (gt2_edit::default(), gt2_edit::default());
+    unsafe {
+        assert_eq!(gt2_pattern_delete_row(p, 3, 0, &mut a), GT2_OK);
+        let r = gt2_pattern_delete_row(p, 4, 0, &mut b);
+        assert!(r == GT2_OK || r == GT2_ERR_PENDING, "{r}");
+        if r == GT2_OK {
+            gt2_edit_commit(p, &b);
+        }
+        gt2_edit_commit(p, &a);
+        // Released, the second goes ahead (after compaction if it must).
+    }
+    let r = rebuild(&mut s, &mut |p, e| unsafe {
+        gt2_pattern_delete_row(p, 4, 0, e)
+    });
+    assert_eq!(r, GT2_OK);
+    check_arena(&s);
+}
+
+/// The device's multispeed refusal names the file's value, not the one gt2reloc's clamp
+/// makes of it.
+#[test]
+fn the_multispeed_refusal_shows_the_files_value() {
+    let mut s = Song::device();
+    let mut o = gt2_options::default();
+    unsafe { gt2_options_default(&mut o) };
+    o.multispeed = 20;
+    assert_eq!(unsafe { song_ext_set_options(s.ptr_mut(), &o) }, 0);
+    let file = s.write(true);
+    let mut t = Song::device();
+    assert_eq!(
+        t.read(&file, 4).unwrap_err().msg,
+        "SNG: MULTISPEED 20 (MAX 4)"
+    );
+    let mut h = Song::host();
+    h.read(&file, 0).unwrap();
+    let mut d = gt2_options::default();
+    assert_eq!(unsafe { song_ext_get_options(h.ptr(), &mut d) }, 1);
+    assert_eq!(d.multispeed, 16);
 }

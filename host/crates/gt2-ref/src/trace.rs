@@ -46,11 +46,15 @@ pub const GHOST_REVERSE: [u8; 25] = [
     0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00,
 ];
 /// The copy for `altplayer.s`: readme 5.1, "the copy loop should not be in reverse order but
-/// should be for each channel: wave, frequency, pulsewidth, and ADSR last". The readme
-/// leaves the filter's four registers out; SIDOU copies them first, as the alternative
-/// player computes the filter before the channels and as the reverse loop also writes
-/// them first. Within a channel the order is the alternative player's own buffered one
-/// (`mt_loadregs`): wave, frequency low and high, pulse low and high, AD, SR.
+/// should be for each channel: wave, frequency, pulsewidth, and ADSR last". Within a channel
+/// the order is the alternative player's own buffered one (`mt_loadregs`): wave, frequency
+/// low and high, pulse low and high, AD, SR. The readme leaves the filter's four registers
+/// out. `altplayer.s`'s own full-ghosting copy (`mt_copyregs`, non-zero-page ghosts) runs
+/// forward over $00-$18, so it writes the filter last; SIDOU's convention puts it first, as
+/// the reverse loop for `player.s` also does, so the two ghost orders differ only within
+/// the channels. Either way all 25 writes land together at the frame's start, so the SID's
+/// registers, and the sound, after each frame are the same; only the write list's order,
+/// which the C player's trace must match, depends on the choice.
 pub const GHOST_ALT: [u8; 25] = [
     0x15, 0x16, 0x17, 0x18, 0x04, 0x00, 0x01, 0x02, 0x03, 0x05, 0x06, 0x0b, 0x07, 0x08, 0x09, 0x0a,
     0x0c, 0x0d, 0x12, 0x0e, 0x0f, 0x10, 0x11, 0x13, 0x14,

@@ -230,16 +230,18 @@ static int has_ff(uint32_t v) {
     return 0;
 }
 
-/* The trailer at e: GT2_TRAILER_*; the chunk bytes to keep in *keep; the options; the GT2
- * part's channel count it records (0 if none). Loads the kept chunks into s if s is not
- * NULL. */
+/* The trailer at e: GT2_TRAILER_*; the chunk bytes to keep in *keep; the options, and the
+ * multispeed byte as the file has it (before song_opts_decode clamps it); the GT2 part's
+ * channel count it records (0 if none). Loads the kept chunks into s if s is not NULL. */
 static int trailer(gt2_read_fn read, void* ctx, uint32_t e, gt2_song* s, uint32_t* keep,
-                   uint32_t* length, gt2_options* opts, int* has_opts, uint8_t* channels) {
+                   uint32_t* length, gt2_options* opts, int* has_opts, uint8_t* ms_file,
+                   uint8_t* channels) {
     uint8_t h[SONG_TRAILER_HEADER + 1u];
     cursor c;
     *keep = 0;
     *length = 0;
     *has_opts = 0;
+    *ms_file = 1u;
     *channels = 0;
     gt2_options_default(opts);
     cur_init(&c, read, ctx, e);
@@ -295,6 +297,8 @@ static int trailer(gt2_read_fn read, void* ctx, uint32_t e, gt2_song* s, uint32_
                 if (cur_bytes(&c, o, n) != 0)
                     return GT2_TRAILER_DROPPED;
                 *has_opts = song_opts_decode(o, n, opts) == 0;
+                if (*has_opts)
+                    *ms_file = o[3];
             }
             kept += SONG_CHUNK_HEADER + clen;
         }
@@ -553,6 +557,7 @@ typedef struct {
     int has_opts;
     int ok;        /* the GT2 part parsed */
     int canonical; /* and its counts are savesong's */
+    uint8_t ms_file;
     uint8_t trailer_channels;
     int t;  /* GT2_TRAILER_* after it */
 } attempt;
@@ -562,7 +567,7 @@ static void attempt_run(attempt* a, gt2_read_fn read, void* ctx, uint32_t channe
     a->info.channels = (uint8_t)channels;
     a->ok = gt2_part(read, ctx, NULL, &a->info, a->named, &a->canonical) == 0;
     a->t = a->ok ? trailer(read, ctx, a->info.gt2_bytes, NULL, &a->keep, &a->length, &a->opts,
-                           &a->has_opts, &a->trailer_channels)
+                           &a->has_opts, &a->ms_file, &a->trailer_channels)
                  : GT2_TRAILER_NONE;
 }
 
@@ -587,10 +592,8 @@ static int attempt_rank(const attempt* a, gt2_read_fn read, void* ctx) {
     }
 }
 
-int gt2_sng_read(gt2_song* s, gt2_read_fn read, void* ctx, const gt2_caps* caps,
-                 gt2_read_info* info) {
-    attempt a, other;
-    memset(info, 0, sizeof *info);
+/* The reading the file is taken as, in *a (other is scratch). */
+static void choose(attempt* a, attempt* other, gt2_read_fn read, void* ctx) {
     /* GoatTracker Stereo's check is a guess ("not certain", 0007): a GT2 part can pass it,
      * or fail it, by chance, and a mono part's six-channel misreading, shifted by a few
      * bytes, can even fall back into step and end where the right reading ends. So the file
@@ -603,15 +606,41 @@ int gt2_sng_read(gt2_song* s, gt2_read_fn read, void* ctx, const gt2_caps* caps,
      * has them, a misreading almost never. A plain file both readings take as canonical is
      * the save of a mono song and of a stereo one alike; the guess stands. */
     uint32_t guess = gt2_sng_channels(read, ctx);
-    attempt_run(&a, read, ctx, guess);
-    int ra = attempt_rank(&a, read, ctx);
+    attempt_run(a, read, ctx, guess);
+    int ra = attempt_rank(a, read, ctx);
     if (ra < 9) {
-        attempt_run(&other, read, ctx,
+        attempt_run(other, read, ctx,
                     guess == GT2_MAX_CHANNELS ? GT2_MONO_CHANNELS : GT2_MAX_CHANNELS);
-        int ro = attempt_rank(&other, read, ctx);
-        if (ro > ra || (ro == ra && ro > 0 && other.canonical && !a.canonical))
-            a = other;
+        int ro = attempt_rank(other, read, ctx);
+        if (ro > ra || (ro == ra && ro > 0 && other->canonical && !a->canonical))
+            *a = *other;
     }
+}
+
+int gt2_sng_check_plain(const gt2_song* s, gt2_read_fn read, void* ctx, char msg[32]) {
+    attempt a, other;
+    msg[0] = 0;
+    choose(&a, &other, read, ctx);
+    if (!a.ok) {
+        msg_set(msg, "SNG: SAVED FILE UNREADABLE");
+        return -1;
+    }
+    if (a.info.channels == s->channels)
+        return 0;
+    msg_set(msg, a.info.channels == GT2_MAX_CHANNELS ? "SNG: READS BACK AS STEREO"
+                                                       : "SNG: READS BACK AS MONO");
+    return 1;
+}
+
+int gt2_sng_read(gt2_song* s, gt2_read_fn read, void* ctx, const gt2_caps* caps,
+                 gt2_read_info* info) {
+    attempt a, other;
+    memset(info, 0, sizeof *info);
+    if (s->pending != 0u || s->pending_loose != 0u) {
+        msg_set(info->msg, "SNG: EDITS PENDING");
+        return -1;
+    }
+    choose(&a, &other, read, ctx);
     *info = a.info;
     uint8_t* named = a.named;
     uint32_t keep = a.keep, length = a.length;
@@ -631,7 +660,7 @@ int gt2_sng_read(gt2_song* s, gt2_read_fn read, void* ctx, const gt2_caps* caps,
     uint32_t ms = has_opts ? opts.multispeed : 1u;
     if (caps && caps->max_multispeed && (ms == 0u || ms > caps->max_multispeed)) {
         msg_set(info->msg, "SNG: MULTISPEED ");
-        msg_num(info->msg, ms);
+        msg_num(info->msg, a.ms_file); /* the file's value, not the clamped one */
         msg_add(info->msg, " (MAX ");
         msg_num(info->msg, caps->max_multispeed);
         msg_add(info->msg, ")");
@@ -649,8 +678,8 @@ int gt2_sng_read(gt2_song* s, gt2_read_fn read, void* ctx, const gt2_caps* caps,
     }
     if (t == GT2_TRAILER_READ || t == GT2_TRAILER_LOCKS_DROPPED) {
         uint32_t keep2 = 0, length2 = 0;
-        uint8_t ch2 = 0;
-        int t2 = trailer(read, ctx, e, s, &keep2, &length2, &opts, &has_opts, &ch2);
+        uint8_t ch2 = 0, ms2 = 0;
+        int t2 = trailer(read, ctx, e, s, &keep2, &length2, &opts, &has_opts, &ms2, &ch2);
         if (t2 != t || keep2 != keep) {
             s->ext_used = 0;
             msg_set(info->msg, "SNG: READ ERROR");

@@ -150,6 +150,27 @@ impl Song {
         out
     }
 
+    /// `gt2_sng_check_plain` over a file written from this song: 0, 1 and the warning, or
+    /// -1 and the message.
+    pub fn check_plain(&self, file: &[u8]) -> (i32, String) {
+        let data = file.to_vec();
+        let mut msg = [0 as std::os::raw::c_char; 32];
+        let r = unsafe {
+            gt2_sng_check_plain(
+                self.ptr(),
+                Some(read_slice),
+                (&data as *const Vec<u8>).cast_mut().cast(),
+                msg.as_mut_ptr(),
+            )
+        };
+        let m: Vec<u8> = msg
+            .iter()
+            .take_while(|&&c| c != 0)
+            .map(|&c| c as u8)
+            .collect();
+        (r, String::from_utf8(m).unwrap())
+    }
+
     pub fn order(&self, subtune: u32, channel: u32) -> Option<(Vec<u8>, u8)> {
         let p = unsafe { gt2_order_data(self.ptr(), subtune, channel) };
         if p.is_null() {

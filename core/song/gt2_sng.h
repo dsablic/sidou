@@ -68,6 +68,14 @@ int gt2_sng_read(gt2_song* s, gt2_read_fn read, void* ctx, const gt2_caps* caps,
  * refuse trailing bytes). */
 int gt2_sng_write(const gt2_song* s, int with_trailer, gt2_write_fn write, void* ctx);
 
+/* After a plain export (gt2_sng_write with_trailer 0), the file read back through read:
+ * 0 if gt2_sng_read takes it with s's channel count; 1 and a warning in msg if with the
+ * other (the file is also the canonical save of a song with that count, which only the
+ * trailer tells apart: 0007); -1 and msg if it does not read at all. The writer streams
+ * and keeps nothing, so the caller hands the written file back; it reads the GT2 part
+ * twice, as the reader's first pass does, and changes nothing. */
+int gt2_sng_check_plain(const gt2_song* s, gt2_read_fn read, void* ctx, char msg[32]);
+
 /* GoatTracker Stereo's determinechannels over the file (0007): 6 if every trial read of
  * 6 x subtunes orderlists, from the subtune count at offset 100, passes; else 3. */
 uint32_t gt2_sng_channels(gt2_read_fn read, void* ctx);

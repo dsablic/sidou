@@ -259,7 +259,10 @@ Task 2's test found 15 among 80,000 generated look-alikes, and none among stereo
 When both readings end equally well SIDOU prefers the one whose counts are what `savesong`
 writes, and otherwise keeps GoatTracker Stereo's guess. So SIDOU reads every file it writes
 with a trailer right, and every plain file it writes right unless the file is one of those
-ambiguous ones (`sidou_output_without_a_trailer_always_reads_back`).
+ambiguous ones (`sidou_output_without_a_trailer_reads_back_unless_ambiguous`). A plain
+export is the only way to make one, so it is checked: `gt2_sng_check_plain` reads the
+written file back and warns (`SNG: READS BACK AS STEREO`, or `AS MONO`) when the reader
+would take it with the other channel count; the song is then best kept with its trailer.
 
 A stereo song's orderlist with an end mark earlier than its length byte says, and a
 restart byte of its entries plus two or more, passes the check as read but not once saved

@@ -104,8 +104,9 @@ between two runs by more than any click. The tests say where.
   independent Rust transcription of GoatTracker Stereo's `determinechannels`; a mono file
   whose instrument bytes pass that trial reads as mono; SIDOU's own output without a trailer
   reads back (2,000 songs, many of them look-alikes; 200,000 with `-- --ignored`), unless it
-  is also the canonical save of a song with the other channel count, which the test counts;
-  with a trailer, always, those ambiguous files included (the trailer records the count);
+  is also the canonical save of a song with the other channel count, which the test counts
+  and `gt2_sng_check_plain` warns of after a plain export; with a trailer, always, those
+  ambiguous files included (the trailer records the count);
 - **refusals and caps:** each message, the song unchanged after it; a song over the
   device's arena (`SNG: TOO BIG`), multispeed 0 and 8 on the device's caps;
 - **edits:** each primitive's refusals (readme 3.1's orderlist rules, 128 rows, 208
@@ -116,8 +117,11 @@ between two runs by more than any click. The tests say where.
   2-unit hole) and from random fragmentation always ends in one hole within 2 x blocks
   steps; **deferred edits:** edits queued, applied later in order as the audio interrupt
   will (M2c Task 6), released after, with the song checked at each application against the
-  model as it stood when that edit was made, and the deferred contract's refusals
-  (`GT2_ERR_PENDING`) one by one;
+  model as it stood when that edit was made, the last queued edit sometimes cancelled, half
+  the songs filled to the cap, the arena's size at rest checked against the model after
+  every step (so `GT2_ERR_FULL` is judged with no pending edit counted: a review's repro, a
+  waiting rebuild then a shrinking one, is its own test), a reload and a clear refused while
+  edits wait, and the deferred contract's refusals (`GT2_ERR_PENDING`) one by one;
 - **fuzz:** random bytes and mutated songs of every ident never crash the reader; whatever
   it accepts writes and reads back. `-- --ignored` runs 4,000 fuzz seeds, 2,000 edit
   seeds of 2,000 steps, 2,000 deferred-edit seeds and 3,000 compaction seeds.
