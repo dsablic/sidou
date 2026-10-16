@@ -60,6 +60,7 @@ const SOURCES: &[&str] = &[
     "app/screen.c",
     "app/sine.c",
     "app/song_view.c",
+    "app/store.c",
     "app/title_card.c",
     "app/title_card_bitmap.c",
     "app/ui_sound.c",
@@ -188,10 +189,10 @@ fn main() {
         .clang_arg(format!("-D{MIDI_MAP_DOC}"))
         .clang_arg(format!("-D{RACE_HOOK}"))
         .allowlist_function(
-            "sid_.*|sidou_.*|gt2_.*|song_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|learn_view_.*|scope_.*|scene_.*|title_card_.*|chip_view_.*|chip_mix|chip_ctl_.*|chip_setup_.*|keys_route_.*|ui_sound_.*",
+            "sid_.*|sidou_.*|gt2_.*|song_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|learn_view_.*|scope_.*|scene_.*|title_card_.*|chip_view_.*|chip_mix|chip_ctl_.*|chip_setup_.*|keys_route_.*|ui_sound_.*|store_.*",
         )
         .allowlist_type(
-            "sid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|title_card.*|chip_view.*|chip_mix.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*",
+            "sid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|title_card.*|chip_view.*|chip_mix.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*",
         )
         .allowlist_var(
             "SID_.*|SIDOU_.*|GT2_.*|SONG_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*|LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*|LEARN_VIEW_.*|SCOPE_.*|SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|UI_SOUND_.*|demo_song_.*|song_view_.*|STORE_.*",
@@ -223,7 +224,7 @@ fn main() {
         .clang_arg("--target=i686-unknown-none")
         .clang_arg("-ffreestanding")
         .allowlist_type(
-            "sid|sid_osc|sid_env|reg_ring|reg_ring_entry|reg_ring_chips|reg_ring_out|keys_route|chip_ctl|chip_setup|midi_out|midi_ring|midi_ring_entry|midi_learn|live|scope|views|title_card|song_ctl|screen",
+            "sid|sid_osc|sid_env|reg_ring|reg_ring_entry|reg_ring_chips|reg_ring_out|keys_route|chip_ctl|chip_setup|midi_out|midi_ring|midi_ring_entry|midi_learn|live|scope|views|title_card|song_ctl|screen|store",
         )
         .generate()
         .expect("bindgen (ILP32 layout) failed")

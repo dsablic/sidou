@@ -13,7 +13,7 @@ lists the prerequisites.
 |---|---|---|
 | Everything except the emulator gate | `cargo test --workspace --release` | all crates |
 | Unit tests | `cargo test --release -p sidou-tests --test unit` | `crates/sidou-tests/tests/unit/` |
-| App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets, the store's layout) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_LOGO_UPDATE=1` `app/logo_bitmap.c` from `assets/logo/metal-chrome.png` and `cracktro-chrome.png` and `app/title_card_bitmap.c` from `assets/logo/title-*.png`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
+| App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets, the store and its layout) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_LOGO_UPDATE=1` `app/logo_bitmap.c` from `assets/logo/metal-chrome.png` and `cracktro-chrome.png` and `app/title_card_bitmap.c` from `assets/logo/title-*.png`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
 | Song files (the `.sng` reader and writer, the trailer, the song model's edits) | `cargo test --release -p sidou-tests --test song`; the long fuzz and edit runs with `-- --ignored` | `crates/sidou-tests/tests/song.rs`, `src/song.rs` |
 | Song player reference (GoatTracker's packer and player in a host 6502, Dormann's 6502 test) | `cargo test --release -p gt2-ref`; the assembler cross-check with `--test assembler -- --ignored` (fetches GoatTracker 2.77 into `build/`); `cargo run --release -p gt2-ref --bin gt2-trace -- song.sng` prints a song's writes | `crates/gt2-ref/` |
 | Song player against GoatTracker's (every frame's SID writes equal) | `cargo test --release -p sidou-tests --test gt2_match`; the long runs (every example for 30,000 frames, 5,000 generated songs) with `-- --ignored` | `crates/sidou-tests/tests/gt2_match.rs`, `crates/gt2-ref/src/gen.rs`, `src/player.rs` |
@@ -865,6 +865,44 @@ the app slot (`app.ld`'s XIP region plus 0x4000 and 0x120), and inside the
 package's VM descriptor, read from a package `sidou-pack` builds with
 stand-in SDK inputs; and that the guard band (the last page of every
 sector) covers where an update record would sit.
+
+### Store
+
+`crates/sidou-tests/tests/app/store.rs` runs the store's core
+(`app/store.c`; the format is
+[docs/reference/store-format.md](docs/reference/store-format.md)) on a
+simulated NOR flash with the part's semantics: a program only clears bits,
+within one 256-byte page; an erase sets a sector to 0xFF. The simulator
+also answers a share of operations with STORE_LATER (the core must retry),
+and records what the store must never do: program the guard band, program
+bytes that are not erased (the kill's zeros over a header's magic
+excepted), program across a page, use a sector whose erase was cut before
+erasing it again, program from a source in flash, or run more than one
+flash operation in a `store_poll`. The tests:
+- **power loss:** random puts, deletes, collections and refills with every
+  window size; for every flash operation, the region as a cut during it
+  would leave it (a program that cleared any subset of its bits; an erase
+  that left all 0xFF, a mix of old bytes and 0xFF, or a part erased) is
+  mounted and every key must read its value from before the interrupted
+  write or after it; every eighth fork, and every fork of an erase, also
+  refills and writes on. Real cuts at random points carry on from the torn
+  state. A directed test collects a deletion's sector before the sector of
+  the value it deleted. The long version runs thousands of seeds (minutes):
+  `cargo test --release -p sidou-tests --test app store::power_loss_long -- --ignored`;
+- the pool never under its minimum (a write that would take it there is
+  refused with STORE_BUSY), and a quiet refill brings it to its target;
+- erase counts within 8 of each other after 10,000 erases, cold data
+  included;
+- a full key index refuses cleanly, and a deletion makes room after the
+  collections;
+- foreign data mounts foreign and nothing is written until a format; a
+  newer format version is foreign too;
+- a format 1 fixture (`tests/data/store-v1.bin`) mounts to the same values
+  (`SIDOU_STORE_FIXTURE_UPDATE=1` writes it, under format 1 only);
+- random regions, and real ones with random bits flipped, mount without a
+  crash (run them under the sanitizers) and never make the store break a
+  rule above;
+- the bytes on flash are the documented format.
 
 ### Package tests
 
