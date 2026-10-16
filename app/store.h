@@ -44,9 +44,11 @@
  *   newest keyed record counts as committed when its CRC checks, whatever its commit word reads,
  *   and the session's first write of a record or file, or garbage collection's first kill, is
  *   preceded by programming its header and commit word again (the same bytes), so it reads
- *   committed for good before anything could follow it or take its key's older records. A cut
- *   write is thus completed at the next mount if its header and data went whole, and never
- *   reads otherwise afterwards;
+ *   committed for good before anything could follow it or take its key's older records; and
+ *   first, a header a cut left erased-looking or failing its CRC is programmed to zero, so its
+ *   faint bits can never make it valid later. A cut write is thus completed at the next mount
+ *   if its header and data went whole, never counts if not (once anything is written after
+ *   it), and never reads otherwise afterwards;
  *
  * The erase-ahead pool: clean, unclaimed sectors. Whoever writes claims its sectors from the
  * pool before the first byte, so no write ever waits for an erase: a small record's new head
@@ -139,9 +141,10 @@
  * its erase header, its claim (which programs the erase header again, the same bytes) and the
  * kill: 34, the maximum over every sequence of records. Then 2 for the completion of a
  * session's newest record (its header and commit word again; one session's records a sector,
- * since each starts a fresh head), and 2 more for each cut that falls during that completion.
- * The host tests check it. A smaller window takes more (one program a byte at 1). */
-#define STORE_PAGE_PROGS 36u
+ * since each starts a fresh head) and 1 for programming a cut header to zero, and as many
+ * again for each cut that falls during them. The host tests check it. A smaller window takes
+ * more (one program a byte at 1). */
+#define STORE_PAGE_PROGS 37u
 #define STORE_FILE_IDLE_MS 5000u /* an open file's sender gone this long: the file is aborted */
 
 _Static_assert(STORE_POOL_MIN == 20u, "ceil(65,536 / 3,808) + 2");

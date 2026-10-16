@@ -15,6 +15,7 @@ enum {
     SEC_FULL = 0x10,  /* nothing more is written into it */
     SEC_GUESS = 0x20, /* the mount could not read its erase count */
     SEC_FILE = 0x40,  /* a live (or open) file's: never collected, never a head */
+    SEC_TORN = 0x80,  /* its records end in a cut header, at `free`: to program to zero (fix_first) */
 };
 
 /* store.work's units: each about 4 instructions or fewer on the device (Task 4 measures it): a
@@ -111,6 +112,14 @@ static int all_ff(const uint8_t* p, uint32_t n) {
         }
     }
     return 1;
+}
+
+static int all_zero(const uint8_t* p, uint32_t n) {
+    uint8_t any = 0;
+    for (uint32_t i = 0; i < n; i++) {
+        any |= p[i];
+    }
+    return !any;
 }
 
 static int sec_state(const store* s, uint32_t sec) {
@@ -828,6 +837,11 @@ static int scan_records(store* s, uint32_t sec, uint32_t* budget) {
         if (!size || !committed) {
             c->free = (uint16_t)off; /* a cut write: the sector takes no more */
             s->sstate[sec] |= SEC_FULL;
+            /* A header cut short, not yet programmed to zero: faint bits in it may read right at a
+             * later mount, and the newest record it would be then is not the write it was. */
+            if (!size && !all_zero(h, STORE_REC_HEADER)) {
+                s->sstate[sec] |= SEC_TORN;
+            }
             return 1;
         }
         index_record(s, sec, off);
@@ -977,7 +991,8 @@ static void mount_step(store* s) {
         default: /* M_TAIL: data after the erased header ends a cut write: full */
             r = ff_scan(s, sec, STORE_SECTOR_USE, &budget);
             if (r < 0) {
-                s->sstate[sec] |= SEC_FULL;
+                /* A write cut before or in its header (faint bits in it may read right later). */
+                s->sstate[sec] |= SEC_FULL | SEC_TORN;
             }
             done = r != 0;
             break;
@@ -1097,6 +1112,8 @@ static void erase_step(store* s) {
     }
 }
 
+static int fix_first(const store* s);
+
 /* Starts copying the record at `off` of `from` into the head, as a collection does (its number
  * kept); its first operation runs now. No room: the collection stops. */
 static void copy_record(store* s, uint32_t from, uint32_t off) {
@@ -1153,8 +1170,8 @@ static void collect_step(store* s) {
         }
         s->job_phase = C_KILL;
         s->job_done = 0;
-        if (s->fix_kind != FIX_NONE) {
-            return; /* the fix goes first (fix_first) */
+        if (fix_first(s)) {
+            return; /* the fix goes first */
         }
     }
     if (s->job_phase == C_KILL) {
@@ -1451,10 +1468,31 @@ static void file_fill(const uint8_t* rec, const store_key* e, store_file* out) {
 
 /* ---- completing the interrupted write ---- */
 
-/* Programs the newest record's header and commit word again, the same bytes, so bits a cut
- * left faint in them are programmed for good (newest). */
+/* A sector whose records end in a cut header (SEC_TORN), or NONE. */
+static uint32_t torn(const store* s) {
+    work(s, WORK_SEC * STORE_SECTORS);
+    for (uint32_t i = 0; i < STORE_SECTORS; i++) {
+        if (s->sstate[i] & SEC_TORN) {
+            return i;
+        }
+    }
+    return NONE;
+}
+
+/* Programs a cut header to zero (it can never read valid again, whatever its faint bits read),
+ * then the newest record's header and commit word again, the same bytes, so bits a cut left
+ * faint in them are programmed for good (newest). */
 static void fix_step(store* s) {
-    static const uint8_t zero[4] = {0, 0, 0, 0};
+    static const uint8_t zero[STORE_REC_HEADER] = {0};
+    uint32_t t = torn(s);
+    if (t != NONE) {
+        int rc = prog_piece(s, t, s->sector[t].free, zero, STORE_REC_HEADER, &s->fix_done);
+        if (rc != 0) {
+            s->sstate[t] &= (uint8_t)~SEC_TORN; /* done, or failed (counted in errors) */
+            s->fix_done = 0;
+        }
+        return;
+    }
     const uint8_t* h = at(s, s->fix_sec, s->fix_off);
     int rc;
     if (s->fix_kind == FIX_HEAD) {
@@ -1483,7 +1521,7 @@ static void fix_step(store* s) {
  * or a collection's kill, which could drop the older records of the newest one's key. Copies,
  * erases and erase headers may go first. */
 static int fix_first(const store* s) {
-    if (s->fix_kind == FIX_NONE) {
+    if (s->fix_kind == FIX_NONE && torn(s) == NONE) {
         return 0;
     }
     if (s->w.phase != W_IDLE) {

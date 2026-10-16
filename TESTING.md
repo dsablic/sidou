@@ -917,7 +917,9 @@ having done part of each). The tests:
   and for a file's replacement; the interrupted write (the newest record)
   completes at the next mount whatever its commit word reads, its header and
   commit word are programmed again before the next write, and it reads the
-  same at every later mount; a newest record that overflows a full key index
+  same at every later mount; a header cut short, read erased or failing at
+  one mount and right at a later one, is programmed to zero before the next
+  write, even one cut in its own data; a newest record that overflows a full key index
   is the one left out, wherever it lies; in the power-loss runs, every deep
   fork mounted twice must read the same both times;
 - **hook errors:** with 3% of operations failed by the hook, at windows 1 to

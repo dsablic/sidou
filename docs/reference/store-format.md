@@ -186,15 +186,22 @@ Four rules keep them harmless:
   file begun after it is the newest, the session after it ran, and there is
   nothing to complete.
 
+- **A cut header is made invalid.** A write cut before its header went
+  whole leaves a header that reads erased or fails its CRC, but faint bits in
+  it may read right at a later mount, and it would then be the newest
+  record. The mount marks every sector whose records end that way, and
+  before the session's first record or file write, or first kill, the store
+  programs that header to zero (bits only cleared): it can never read valid
+  again. A header already all zero is left alone, so each cut costs at most
+  one such program.
+
 A cut write whose header and data went whole is thus completed at the next
-mount, and from then on reads the same at every mount. A write cut before
-its header went whole never counts (its CRC fails, or, if faint bits in its
-header happen to read right at a later mount, it is not the newest any more
-once anything else was written: the mount skips a sequence number, so the
-next write's is higher). The one case left: a write cut in its header, with
-faint header bits that read wrong at one mount and right at a later one,
-and nothing written between those mounts, appears at the later one. It is
-the write the cut interrupted, never anything else.
+mount, and from then on reads the same at every mount; one cut before that
+never counts once anything is written after it. The one case left: a write
+cut in its header, whose faint bits read wrong at one mount and right at a
+later one, with nothing written between those mounts, appears at the later
+one (and is then completed). It is the write the cut interrupted, never
+anything else.
 
 ## Which record wins
 

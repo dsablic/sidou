@@ -447,8 +447,10 @@ impl Sim {
         if self.later > 0 && self.rng.chance(self.later) {
             return STORE_LATER;
         }
-        // The kill: zeros over a header's magic, in one program or in pieces.
-        let kill = rel + n <= 8 && data.iter().all(|&b| b == 0);
+        // The kill: zeros over a header's magic, in one program or in pieces. Zeros anywhere
+        // are a NOR program too (bits only cleared): a cut record's header made invalid.
+        let zeros = data.iter().all(|&b| b == 0);
+        let kill = rel + n <= 8 && zeros;
         let r = off - LO;
         if !kill {
             if self.cells.weak[sec] {
@@ -458,7 +460,7 @@ impl Sim {
             }
             // Over programmed bytes, only the bytes meant already (weak bits programmed again).
             let meant = &self.cells.meant[r..r + n];
-            if meant.iter().zip(&data).any(|(&m, &d)| m != 0xFF && m != d) {
+            if !zeros && meant.iter().zip(&data).any(|(&m, &d)| m != 0xFF && m != d) {
                 return self.violation(format!("a program over programmed bytes at {off:#x}+{n}"));
             }
         }
@@ -626,7 +628,7 @@ impl Rig {
     /// Polls until the store rests (or the power is cut).
     pub fn settle(&mut self) {
         let mut polls = 0u64;
-        while self.poll() && !self.sim.dead {
+        while !self.sim.dead && self.poll() {
             polls += 1;
             assert!(polls < 2_000_000, "store_poll never rests");
         }
@@ -772,7 +774,9 @@ impl Rig {
             );
             at += took;
             idle = if took == 0 { idle + 1 } else { 0 };
-            assert!(idle < 100, "the file stopped taking bytes");
+            // (The session's first write may first make cut headers invalid, 16 bytes each, a
+            // window at a time.)
+            assert!(idle < 100 + 16 * SECTORS, "the file stopped taking bytes");
             self.poll();
             if self.sim.dead {
                 return STORE_ERROR;
@@ -3502,5 +3506,45 @@ fn a_completed_write_that_overflows_the_index_is_the_one_left_out() {
         for k in 0..STORE_KEYS_MAX {
             assert_eq!(r.get(k), Some(k.to_le_bytes().to_vec()));
         }
+    }
+}
+
+/// A write cut in its header, the header's faint bits reading wrong at the next mount (the
+/// write never happened) and right at a later one: before the session's first write the cut
+/// header is programmed to zero, so it can never read valid again, even if that session's
+/// first write is cut before its own header.
+#[test]
+fn a_cut_header_is_made_invalid_before_the_next_write() {
+    for now in [0xFFu8, 0x5A] {
+        let mut r = fresh(66, 256);
+        assert_eq!(r.put_now(1, b"old"), STORE_OK);
+        assert_eq!(r.put_now(1, b"torn"), STORE_OK);
+        // As a cut during its header leaves it: the commit word never programmed, the header's
+        // bits faint, reading erased now.
+        let c = commit_word_of(r.sim.region(), 1);
+        let head = c - 4 - 16;
+        for at in [&mut r.sim.cells.mem, &mut r.sim.cells.meant] {
+            at[c..c + 4].fill(0xFF);
+        }
+        r.sim.set_faint(head, 16, now);
+        r.reset();
+        assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        assert_eq!(r.get(1).as_deref(), Some(&b"old"[..]));
+        // The session's first write, cut in its data.
+        r.sim.cut_at = Some(r.sim.ops + 3);
+        assert_eq!(r.put(2, &[7; 600]), STORE_OK);
+        r.settle();
+        assert!(r.sim.dead);
+        r.sim.dead = false;
+        r.sim.cut_at = None;
+        r.sim.faint_reads(0x00); // the cut header's bits read right now
+        r.reset();
+        assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        assert_eq!(
+            r.get(1).as_deref(),
+            Some(&b"old"[..]),
+            "{now:#x}: the cut write came back"
+        );
+        assert_eq!(r.get(2), None);
     }
 }
