@@ -31,3 +31,27 @@ SPDX-License-Identifier = "GPL-3.0-or-later"
 path = ["host/crates/sidou-tests/tests/data/font8x8_basic.h"]
 SPDX-FileCopyrightText = "Daniel Hepper <daniel@hepper.net>, after Marcel Sondaar and IBM's VGA fonts"
 SPDX-License-Identifier = "LicenseRef-PublicDomain"
+
+# GoatTracker 2.77, vendored unmodified for the song player's reference harness, test-only
+# (third_party/goattracker2/VENDORED.md): its C sources and readme are GPL-2.0-or-later;
+# its playroutines carry their own permissive notice; its example songs ship with it.
+[[annotations]]
+path = ["third_party/goattracker2/src/*.c", "third_party/goattracker2/src/*.h", "third_party/goattracker2/readme.txt", "third_party/goattracker2/copying"]
+SPDX-FileCopyrightText = "Lasse Öörni and GoatTracker 2's contributors (readme.txt)"
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
+path = ["third_party/goattracker2/src/player.s", "third_party/goattracker2/src/altplayer.s"]
+SPDX-FileCopyrightText = "Lasse Öörni"
+SPDX-License-Identifier = "LicenseRef-GoatTracker-Playroutine"
+
+[[annotations]]
+path = ["third_party/goattracker2/examples/*"]
+SPDX-FileCopyrightText = "GoatTracker 2's example songs' authors: Cadaver (Lasse Öörni), Randall, Richard Bayliss, Hein, Jammer, No-XS after beek (examples/goatcompo.txt and each song's header)"
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+# Klaus Dormann's 6502 functional test, test data only (third_party/6502-tests/VENDORED.md).
+[[annotations]]
+path = ["third_party/6502-tests/6502_functional_test.bin", "third_party/6502-tests/6502_functional_test.lst"]
+SPDX-FileCopyrightText = "2012-2015 Klaus Dormann"
+SPDX-License-Identifier = "GPL-3.0-or-later"

@@ -18,6 +18,9 @@ residfp-sys = { path = "../residfp-sys" }
 sidou-sys = { path = "../sidou-sys" }
 sidou-tablegen = { path = "../sidou-tablegen" }
 
+[dev-dependencies]
+gt2-ref = { path = "../gt2-ref" }
+
 [[bin]]
 name = "sidou-compare"
 path = "src/bin/sidou_compare.rs"

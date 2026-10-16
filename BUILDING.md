@@ -40,7 +40,10 @@ cargo test --workspace --release
 ```
 
 `cargo test` compiles the C core with the `cc` crate, so there is no separate
-C build step. [TESTING.md](TESTING.md) covers the test layers and the
+C build step. The same goes for the song player's reference (`crates/gt2-ref`), which
+builds GoatTracker 2.77's packer from `third_party/goattracker2`: nothing new to install.
+Only its `--ignored` assembler cross-check needs `curl` and `unzip`, to fetch GoatTracker's
+release into `build/` ([TESTING.md](TESTING.md), "Song player reference"). [TESTING.md](TESTING.md) covers the test layers and the
 sanitizer runs.
 
 **Compiler flags from the environment.** `cc` adds `CFLAGS` and `CXXFLAGS`

@@ -333,6 +333,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
+name = "gt2-ref"
+version = "0.0.0"
+dependencies = [
+ "cc",
+ "mos6502",
+ "sha2",
+]
+
+[[package]]
 name = "half"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -416,6 +425,16 @@ checksum = "b63fbc4a50860e98e7b2aa7804ded1db5cbc3aff9193adaff57a6931bf7c4b4c"
 dependencies = [
  "adler2",
  "simd-adler32",
+]
+
+[[package]]
+name = "mos6502"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41602b70ecb904b5359a3be5d947dacde19b03316284f1fbf804576437546e4d"
+dependencies = [
+ "bitflags",
+ "log",
 ]
 
 [[package]]
@@ -657,6 +676,7 @@ dependencies = [
 name = "sidou-tests"
 version = "0.0.0"
 dependencies = [
+ "gt2-ref",
  "png",
  "residfp-sys",
  "sidou-sys",

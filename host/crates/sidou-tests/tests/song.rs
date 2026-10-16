@@ -1157,3 +1157,110 @@ fn a_trailer_settles_goattracker_stereos_guess() {
     assert_eq!(info.trailer, GT2_TRAILER_READ);
     assert_eq!(s.write(true), with_trailer);
 }
+
+// Against GoatTracker's own load and save (gt2-ref, M2c Task 3).
+
+#[test]
+fn every_example_canonicalised_round_trips() {
+    let mut canonical_as_shipped = Vec::new();
+    let examples = gt2_ref::examples();
+    for (name, sng) in &examples {
+        let canon = gt2_ref::canonical(sng).unwrap();
+        if &canon == sng {
+            canonical_as_shipped.push(name.clone());
+        }
+        let mut s = Song::device();
+        let info = s
+            .read(&canon, 4)
+            .unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        assert_eq!(info.trailer, GT2_TRAILER_NONE);
+        assert_eq!(s.write(false), canon, "{name}");
+        // And from the file as shipped: SIDOU saves what GoatTracker saves.
+        let mut t = Song::device();
+        t.read(sng, 4).unwrap();
+        assert_eq!(t.write(false), canon, "{name} as shipped");
+    }
+    eprintln!(
+        "{} examples; canonical as shipped: {} ({})",
+        examples.len(),
+        canonical_as_shipped.len(),
+        canonical_as_shipped.join(", ")
+    );
+}
+
+/// A random song GoatTracker loads, canonical or not: any ident from GTS2, untrimmed
+/// counts, trailing unused instruments, rows past a pattern's end, orderlists whose length
+/// runs past their $FF.
+fn random_loose(rng: &mut Rng) -> Vec<u8> {
+    let mut sp = random_canonical(rng, false);
+    sp.ident = *[b"GTS2", b"GTS3", b"GTS4", b"GTS5"][rng.below(4) as usize];
+    if &sp.ident == b"GTS2" {
+        sp.tables.truncate(3);
+    }
+    for _ in 0..rng.below(3) {
+        let mut i = [0u8; 25];
+        if rng.chance(50) {
+            i[9] = b'X';
+        }
+        if rng.chance(30) {
+            i[7] = rng.byte();
+            i[8] = rng.byte();
+        }
+        sp.instr.push(i);
+    }
+    for t in sp.tables.iter_mut() {
+        for _ in 0..rng.below(3) {
+            t.push((0, 0));
+        }
+    }
+    if rng.chance(30) {
+        sp.patterns
+            .push((vec![EMPTY; 1 + rng.below(20) as usize], [0xff, 0, 0, 0]));
+    }
+    for p in sp.patterns.iter_mut() {
+        if rng.chance(20) {
+            p.1 = [0xff, rng.byte() & 0x3f, rng.byte() & 0x0f, rng.byte()];
+        }
+    }
+    let mut f = sp.encode();
+    if rng.chance(30) {
+        // A pattern with rows after its end row (its length byte past the end mark).
+        let mut sp2 = sp.clone();
+        let last = sp2.patterns.len() - 1;
+        sp2.patterns[last].0.push([0xff, 0, 0, 0]);
+        sp2.patterns[last].0.push([0x60, 0, 0, 0]);
+        f = sp2.encode();
+    }
+    f
+}
+
+#[test]
+fn sidou_saves_what_goattracker_saves() {
+    saves_as_goattracker(300);
+}
+
+#[test]
+#[ignore = "long: cargo test --release -p sidou-tests --test song -- --ignored"]
+fn sidou_saves_what_goattracker_saves_long() {
+    saves_as_goattracker(20_000);
+}
+
+fn saves_as_goattracker(seeds: u32) {
+    let mut rng = Rng(0x5eed_9000);
+    for seed in 0..seeds {
+        let f = random_loose(&mut rng);
+        let canon = gt2_ref::canonical(&f).unwrap();
+        let mut s = Song::host();
+        s.read(&f, 0)
+            .unwrap_or_else(|e| panic!("seed {seed}: {e:?}"));
+        let ours = s.write(false);
+        let at = ours.iter().zip(&canon).position(|(a, b)| a != b);
+        assert!(
+            ours == canon,
+            "seed {seed} ({}): {} vs {} bytes, first difference at {at:?}",
+            String::from_utf8_lossy(&f[..4]),
+            ours.len(),
+            canon.len()
+        );
+    }
+}

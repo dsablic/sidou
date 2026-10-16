@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "gt2-ref"
+description = "Test-only reference for SIDOU's song player: GoatTracker 2.77's own packer and player in a host 6502"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+# Links GoatTracker 2.77's GPL-2.0-or-later code (third_party/goattracker2) with SIDOU's
+# GPL-3.0-or-later shim; never built into the firmware.
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mos6502 = "0.10.1"
+
+[dev-dependencies]
+sha2 = "0.10"
+
+[build-dependencies]
+cc = "1"
+
+[[bin]]
+name = "gt2-trace"
+path = "src/bin/gt2-trace.rs"

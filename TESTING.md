@@ -15,6 +15,7 @@ lists the prerequisites.
 | Unit tests | `cargo test --release -p sidou-tests --test unit` | `crates/sidou-tests/tests/unit/` |
 | App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_LOGO_UPDATE=1` `app/logo_bitmap.c` from `assets/logo/metal-chrome.png` and `cracktro-chrome.png` and `app/title_card_bitmap.c` from `assets/logo/title-*.png`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
 | Song files (the `.sng` reader and writer, the trailer, the song model's edits) | `cargo test --release -p sidou-tests --test song`; the long fuzz and edit runs with `-- --ignored` | `crates/sidou-tests/tests/song.rs`, `src/song.rs` |
+| Song player reference (GoatTracker's packer and player in a host 6502, Dormann's 6502 test) | `cargo test --release -p gt2-ref`; the assembler cross-check with `--test assembler -- --ignored` (fetches GoatTracker 2.77 into `build/`); `cargo run --release -p gt2-ref --bin gt2-trace -- song.sng` prints a song's writes | `crates/gt2-ref/` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Filter against reSIDfp (transfer functions, sweeps) | `cargo test --release -p sidou-tests --test filter` | `crates/sidou-tests/tests/filter.rs`, `src/filter_sweeps.rs` |
@@ -111,6 +112,52 @@ between two runs by more than any click. The tests say where.
 - **fuzz:** random bytes and mutated songs of every ident never crash the reader; whatever
   it accepts writes and reads back. `-- --ignored` runs 4,000 fuzz seeds and 2,000 edit
   seeds of 2,000 steps.
+
+### Song player reference
+
+`crates/gt2-ref` is the reference SIDOU's song player is checked against (decision record
+0007, "Equivalence, defined" and "The reference harness"). It is test-only.
+- **The packer:** GoatTracker 2.77's own song model and relocator
+  (`third_party/goattracker2`, unmodified), built by `build.rs` with SIDOU's shim (BME's
+  calls, files in memory, and SIDOU's assembler for `player.s`, since GoatTracker's ships
+  under a non-commercial licence: `third_party/goattracker2/VENDORED.md`).
+  `gt2_ref::pack(sng, options)` is `gt2reloc song.sng out.prg` with those options;
+  `gt2_ref::canonical(sng)` is GoatTracker's `loadsong` then `savesong`.
+- **The 6502:** the `mos6502` crate's NMOS core behind the `Cpu6502` trait
+  (`src/cpu.rs`), so M3's own 6502 can run the same traces. `tests/cpu.rs` runs Klaus
+  Dormann's functional test on it (`third_party/6502-tests`), decimal mode included.
+- **The trace** (`src/trace.rs`): init once with A the subtune, then play once a frame
+  (`max(multiplier, 1)` times with multispeed), each call returning to a sentinel; each
+  call's writes to the SID's 25 registers in order. With zero-page ghost registers the
+  harness runs readme 5.1's copy loop after each call.
+- **The traps:** before each instruction the harness checks the opcode against the 151
+  documented ones and fails the trace on any other, with its address and frame
+  (`TraceError::Undocumented`); a call past 200,000 instructions is a hang. SED can be
+  trapped too (`Setup::trap_sed`), but Dormann's test proves the core's decimal mode, so it
+  is off. M3's own 6502 needs the undocumented opcodes for `.sid` files and must be
+  checked with Tom Harte's per-opcode tests for them; this harness only proves that
+  GoatTracker's player never runs one.
+- `tests/harness.rs`: every example song's every subtune traces 3,000 frames without a
+  trap; traces are stable across runs; init and play sit where gt2reloc reports
+  (`$1000` and `$1003`, or with `-W` elsewhere), each a JMP; each option changes the
+  packed player as it should (multispeed, pulse and realtime optimisation, buffered writes,
+  the hard restart ADSR, A-4's pitch), and NTSC does not (it only changes a `.sid`'s
+  header); multispeed calls play N times a frame; a hand-made player with an undocumented
+  opcode, SED or an endless loop fails with its address.
+- `tests/assembler.rs` (`--ignored`): downloads GoatTracker 2.77 into
+  `build/goattracker2-2.77/` (SHA-256 checked; curl with a generic User-Agent, unzip, a C
+  compiler), checks the vendored files are the release's byte for byte, and packs every
+  example with 30 option sets through both GoatTracker's assembler and SIDOU's: the same
+  bytes, or refused by both.
+- `crates/sidou-tests/tests/song.rs` uses it for the format: every example,
+  canonicalised by GoatTracker, reads and writes back identically in SIDOU (all 14 are
+  canonical as shipped, and the test prints how many are), and SIDOU's save equals
+  GoatTracker's for random songs of every ident, canonical or not (300 seeds; 20,000 with
+  `-- --ignored`).
+
+`gt2-trace song.sng [--subtune N] [--frames N] [gt2reloc options]` prints init's writes and
+then one line a frame, `register=value` in hex, for comparing a player against the
+reference by hand.
 
 ### Golden renders
 

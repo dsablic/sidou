@@ -339,6 +339,20 @@ opcodes only, so the harness proves that by execution. M3's own 6502 needs illeg
 for `.sid` files; it must rely on Tom Harte's per-opcode tests for those, not on this
 harness.
 
+**As built (M2c Task 3).** GoatTracker's packer calls the 6502 assembler from Exomizer 2
+beta (Magnus Lind), which GoatTracker ships under a licence for non-commercial use only:
+not free software, so SIDOU does not take it in. SIDOU assembles `player.s` with its own
+assembler (`host/crates/gt2-ref/shim/gt2ref_asm.c`), checked byte for byte against
+Exomizer's on every example song and 30 option sets by a test that fetches GoatTracker's
+release into `build/` (`third_party/goattracker2/VENDORED.md`). `player.s` itself is not
+GPL: its header lets anyone use it "freely for any purpose, commercial or noncommercial".
+Two findings for the player (M2c Tasks 4-5b): **NTSC changes nothing in a packed player**
+(gt2reloc's `-N` only sets a `.sid` file's header and speed code; there is one frequency
+table, and on NTSC the music plays at 60 Hz on a faster clock, as a PAL tune does on an
+NTSC C64), and **fine vibrato (`-V`) changes nothing in gt2reloc** (it is read after the
+song is loaded; only GTS2's conversion uses it). The `OPTS` chunk keeps both: SIDOU's frame
+clock follows NTSC (M2c Task 6), and `-V` is GoatTracker's to read.
+
 GoatTracker's source (GPL-2.0-or-later) is test-only: built by the host harness, never
 linked into the firmware. SIDOU's C player is written from the readme and `player.s`'s
 behaviour, credits GoatTracker, and stays GPL-3.0-or-later, which GPL-2.0-or-later's "any

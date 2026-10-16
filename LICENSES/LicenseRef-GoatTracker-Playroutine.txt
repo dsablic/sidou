@@ -1,0 +1,6 @@
+The notice at the head of GoatTracker 2's playroutines, src/player.s and src/altplayer.s
+(GoatTracker 2 by Lasse Öörni), verbatim:
+
+NOTE: This playroutine source code does not fall under the GPL license!
+Use it, or song binaries created from it freely for any purpose, commercial
+or noncommercial.
