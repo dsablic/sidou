@@ -402,17 +402,46 @@ the one corner it cannot match:
   repeat and then read on past the restart byte into the next orderlist the packer wrote;
   the player reads the same bytes (and `$00` past the last orderlist, where the 6502 reads
   the packed patterns).
-- **Notes past B-7** (a transpose or a wavetable note above 95, or below C-0) read the
-  packed frequency table past its end. The low byte reads on into the high bytes, which
-  the player does too; the high byte reads the packed song table that follows, whose
-  bytes are addresses that depend on the assembled player's size. No player without the
-  packed layout can know them. SIDOU's player reads 0 there, as GoatTracker's editor
-  (`gplay.c`'s zero-padded table) does, and marks the channel (`gt2_player.freq_unknown`);
-  the test tolerates exactly the marked channels' frequency registers and counts the calls.
-  Two examples do it: `everlasting.sng`'s drum starts on the absolute wavetable note `$F0`
-  (note 112), in 63 of its first 3,000 frames (625 of 30,000); `hyperspace.sng`
-  arpeggiates note 85 up an octave (note 97) in 12 of 30,000 frames, the first at frame
-  3,356. Every other write of every example song, every subtune, matches.
+- **Notes outside the frequency table** read the 6502's memory around the packed table.
+  The player reads what it can know of it:
+  - past the table, a note's low byte reads on into the high bytes, which the player does
+    too;
+  - below the table (a note-independent speed or a toneportamento before the channel's
+    first note reads note 0, under the song's lowest note), the 6502 reads the end of its
+    own channel variables, laid out as the song's assembly lays them out ("Normal" or
+    "Optimized channel variables", with or without the AD/SR and last-note block, the
+    ghost registers of full buffering after them). The player reads the same bytes from
+    its state, as `player.s` keeps them (0 where a variable is never written, the
+    packer's numbers for patterns and instruments). Of the earlier blocks (packed table
+    positions and speedtable indexes) it knows nothing;
+  - past the high bytes the 6502 reads the packed song table, whose bytes are addresses
+    that depend on the assembled player's size. No player without the packed layout can
+    know them.
+  Where it cannot know a byte the player reads 0, as GoatTracker's editor (`gplay.c`'s
+  zero-padded table) does past B-7, and marks the channel (`gt2_player.freq_unknown`); the
+  test tolerates exactly the marked channels' frequency registers and counts the calls.
+  Two examples play notes past B-7: `everlasting.sng`'s drum starts on the absolute
+  wavetable note `$F0` (note 112), in 63 of its first 3,000 frames (625 of 30,000);
+  `hyperspace.sng` arpeggiates note 85 up an octave (note 97) in 12 of 30,000 frames, the
+  first at frame 3,356. Every other write of every example song, every subtune, matches,
+  with every option.
+- **Waveforms read as commands.** With delays and commands in a wavetable the packer
+  moves the waveforms `$D0-$DF` up to `$E0-$EF`, where `player.s` takes them as commands
+  too (the low nybble the command, the right byte with its top bit flipped the
+  parameter). Such a command can name a handler the packer left out (no pattern or
+  wavetable row uses the command); its label is then the next assembled handler's, and the
+  player runs that one, as the 6502 does. When the handler it reaches takes a table
+  position or a speedtable index (8, 9, A, E, and the effects 1-4), the raw parameter
+  meets the packer's renumbered tables, which the player does not hold: such a song plays
+  differently, and the generated songs leave it out.
+- **The packer's other numberings** leak in two more places, both outside readme 3's
+  rules: a table pointer onto a jump row (the packer refuses it from an instrument or a
+  command, but a jump to a jump row runs the jump row's bytes as a step), and an
+  orderlist read past the last subtune's last orderlist (the packed patterns follow; the
+  player reads `$00`).
+- **Found by generated songs** (each now a fixture): an orderlist that opens with a
+  repeat replays the channel's first pattern number, 0, which is the packer's: the first
+  pattern in use; and the below-the-table reads and the left-out handlers above.
 
 ## The player's place
 

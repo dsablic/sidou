@@ -16,6 +16,7 @@ lists the prerequisites.
 | App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_LOGO_UPDATE=1` `app/logo_bitmap.c` from `assets/logo/metal-chrome.png` and `cracktro-chrome.png` and `app/title_card_bitmap.c` from `assets/logo/title-*.png`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
 | Song files (the `.sng` reader and writer, the trailer, the song model's edits) | `cargo test --release -p sidou-tests --test song`; the long fuzz and edit runs with `-- --ignored` | `crates/sidou-tests/tests/song.rs`, `src/song.rs` |
 | Song player reference (GoatTracker's packer and player in a host 6502, Dormann's 6502 test) | `cargo test --release -p gt2-ref`; the assembler cross-check with `--test assembler -- --ignored` (fetches GoatTracker 2.77 into `build/`); `cargo run --release -p gt2-ref --bin gt2-trace -- song.sng` prints a song's writes | `crates/gt2-ref/` |
+| Song player against GoatTracker's (every frame's SID writes equal) | `cargo test --release -p sidou-tests --test gt2_match`; the long runs (every example for 30,000 frames, 5,000 generated songs) with `-- --ignored` | `crates/sidou-tests/tests/gt2_match.rs`, `crates/gt2-ref/src/gen.rs`, `src/player.rs` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
 | Filter against reSIDfp (transfer functions, sweeps) | `cargo test --release -p sidou-tests --test filter` | `crates/sidou-tests/tests/filter.rs`, `src/filter_sweeps.rs` |
@@ -183,6 +184,46 @@ between two runs by more than any click. The tests say where.
 then one line a frame, `register=value` in hex, for comparing a player against the
 reference by hand. Its flags are strict: a value out of range, a value on `-N` or `-P`, an
 unknown flag or a second song is an error.
+
+### Song player register match
+
+`crates/sidou-tests/tests/gt2_match.rs` plays a song on SIDOU's C player
+(`core/player/gt2_play.c`, through `src/player.rs`) and on GoatTracker's packed player
+(`gt2-ref`, packed with the same options) and compares every call's SID writes, in order
+(decision record 0007, "Equivalence, defined"). A mismatch reports the frame and call,
+both write lists, the last calls before it and the C player's channels.
+- **Fixtures** generated in the test from Rust, each feature's: notes, rests, key off and
+  on, instrument changes, transposes, repeats and restarts, a 128-row pattern; the
+  wavetable (delays, waveforms, inaudible waveforms, notes, jumps, its commands); the
+  instrument classes and first waves, instrument 63's tempo; unused channels; orderlists
+  that break readme 3.1 (read on into the next orderlist, R0 dropped); subtunes; every
+  pattern command and the tempo command's ranges, simple and full pulse; waveforms read as
+  commands and the handlers the packer leaves out; a song with no commands; and the
+  generated songs' findings, each a fixture of its own.
+- **Every example song, every subtune**, 3,000 frames with the defaults, then with each
+  option alone (`-O0`, `-R0`, `-S2`, `-S4`, `-S8` and `-S0` on the host, `-N`, `-B`, `-C`,
+  `-J`, `-D`, `-H`, `-I0`, `-AF000`, `-A0A00`), and three examples with the full matrix:
+  pulse and realtime optimisation, multispeed 1, 2, 4 and 8, PAL and NTSC, the four ways
+  of writing, player.s and altplayer.s (256 sets).
+- **Generated songs** (`gt2-ref`'s `gen`): valid random songs with every command and
+  special note, table programs with jumps and loops, and random options within the
+  device's caps; 300 seeds, 5,000 with `--ignored`. A failing seed is printed with its
+  options; replay it with `gt2_ref::gen::generate(seed)`, and make its finding a fixture.
+- **The one tolerated difference:** a note past B-7 makes the 6502 read its frequency's
+  high byte from the packed song table, whose bytes depend on the assembled player's size.
+  The C player marks such a channel (`gt2_player.freq_unknown`) and the test accepts a
+  different value in that channel's two frequency registers only, counting the calls. Two
+  examples do it (`everlasting.sng`, `hyperspace.sng`); fixtures and generated songs must
+  not.
+- **The events:** every gate edge of each channel's wave register in the reference's
+  writes is reported on its call (`GT2_EV_GATE_ON`, `GT2_EV_GATE_OFF`), every note comes
+  with its row's event, and the row events follow each channel's orderlist.
+- **The cost on the host** is reported, not gated (`the_players_cost_on_the_host`: the
+  mean, 99.9th percentile and worst call); the device's instructions a sample are gated in
+  the emulator (M2c Task 6).
+
+To look at a mismatch by hand, `gt2-trace` prints the reference's writes for the same song
+and options.
 
 ### Golden renders
 

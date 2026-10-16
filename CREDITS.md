@@ -39,9 +39,8 @@ SIDOU builds on, or learns from, the work of these people and projects.
   Timmermann's measurements of the VIC-II colours
 
 ## Trackers and music
-- **GoatTracker**: Lasse Öörni (Cadaver) and contributors: SIDOU's song format,
-  the play routine SIDOU's song player follows, its frequency table, and the
-  player's reference
+- **GoatTracker**: Lasse Öörni (Cadaver) and contributors: SIDOU's song format
+  and its player's reference
 - **Cadaver, Randall, Richard Bayliss, Hein, Jammer and No-XS**: GoatTracker's
   example songs
 - **Klaus Dormann**: the 6502 functional test

@@ -87,10 +87,16 @@ fn compare(sng: &[u8], subtune: u8, frames: usize, o: &gt2_options) -> Result<Ma
     let mut p = Player::new(&song, subtune as u32, o).ok_or("the player refused the subtune")?;
     let mut m = Matched::default();
     let mut last: Vec<String> = Vec::new();
+    // Full buffering (not in the zero page) writes the last call's registers.
+    let late = o.player_flags as u32 & GT2_PLAYER_FULLBUFFERED != 0
+        && o.player_flags as u32 & GT2_PLAYER_ZPGHOSTREGS == 0;
+    let mut previous = 0;
     for (f, frame) in t.frames.iter().enumerate() {
         for (k, want) in frame.calls.iter().enumerate() {
             let got = p.call();
-            match same(want, &got, p.raw().freq_unknown) {
+            let unknown = if late { previous } else { p.raw().freq_unknown };
+            previous = p.raw().freq_unknown;
+            match same(want, &got, unknown) {
                 Some(exact) => m.unknown_calls += usize::from(!exact),
                 None => {
                     let chn: Vec<String> = p.raw().chn.iter().map(|c| format!("{c:?}")).collect();
@@ -781,4 +787,456 @@ fn the_wavetables_commands_match() {
 #[test]
 fn without_commands_the_vibrato_follows_the_instrument() {
     check("no commands", &no_commands_song(), &default_options());
+}
+
+/// One option set: a name and the changes from GoatTracker's defaults.
+type OptionSet = (&'static str, fn(&mut gt2_options));
+
+/// Each playroutine option on its own (song_ext.h's OPTS, gt2reloc's command line). The
+/// device plays multispeed up to 4; the host any multispeed gt2reloc packs.
+const OPTION_SETS: [OptionSet; 16] = [
+    ("-O0 (no pulse optimisation)", |o| o.optimize_pulse = 0),
+    ("-R0 (no realtime optimisation)", |o| {
+        o.optimize_realtime = 0
+    }),
+    ("-O0 -R0", |o| {
+        o.optimize_pulse = 0;
+        o.optimize_realtime = 0
+    }),
+    ("-S2", |o| o.multispeed = 2),
+    ("-S4", |o| o.multispeed = 4),
+    ("-S8 (host only)", |o| o.multispeed = 8),
+    ("-S0 (25 Hz)", |o| o.multispeed = 0),
+    ("-N (NTSC)", |o| o.ntsc = 1),
+    ("-B (buffered)", |o| {
+        o.player_flags |= GT2_PLAYER_BUFFERED as u16
+    }),
+    ("-C (zero-page ghost registers)", |o| {
+        o.player_flags |= GT2_PLAYER_ZPGHOSTREGS as u16;
+        o.zeropage = 0xe0
+    }),
+    ("-J (full buffering)", |o| {
+        o.player_flags |= GT2_PLAYER_FULLBUFFERED as u16
+    }),
+    ("-D (sound effects)", |o| {
+        o.player_flags |= GT2_PLAYER_SOUNDEFFECTS as u16
+    }),
+    ("-H (author info)", |o| {
+        o.player_flags |= GT2_PLAYER_AUTHORINFO as u16
+    }),
+    ("-I0 (no optimisation)", |o| {
+        o.player_flags |= GT2_PLAYER_NOOPTIMIZATION as u16
+    }),
+    ("-AF000 (altplayer.s)", |o| o.hr_adsr = 0xf000),
+    ("-A0A00", |o| o.hr_adsr = 0x0a00),
+];
+
+#[test]
+fn every_example_matches_with_each_option() {
+    let mut failures = Vec::new();
+    for (name, f) in OPTION_SETS {
+        let mut o = default_options();
+        f(&mut o);
+        let r = std::panic::catch_unwind(|| examples_match(&o, FRAMES));
+        match r {
+            Ok((_, subs, writes, unknown)) => {
+                eprintln!("{name}: {subs} subtunes, {writes} writes; {unknown:?}");
+                if !past_b7(&unknown) {
+                    failures.push(format!("{name}: {unknown:?}"));
+                }
+            }
+            Err(e) => failures.push(format!(
+                "{name}: {}",
+                e.downcast_ref::<String>().cloned().unwrap_or_default()
+            )),
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+}
+
+/// The full matrix: pulse and realtime optimisation on and off, multispeed 1, 2, 4 and 8
+/// (8 on the host only), PAL and NTSC, the four ways of writing (unbuffered, buffered,
+/// zero-page ghost registers, full buffering), player.s and altplayer.s; over three examples
+/// with legato instruments, funktempo and most commands.
+#[test]
+fn three_examples_match_with_the_full_option_matrix() {
+    let songs = ["funktest.sng", "ghosttrackers.sng", "hyperspace.sng"];
+    let writes: [u16; 4] = [
+        0,
+        GT2_PLAYER_BUFFERED as u16,
+        GT2_PLAYER_ZPGHOSTREGS as u16,
+        GT2_PLAYER_FULLBUFFERED as u16,
+    ];
+    let examples: Vec<(String, Vec<u8>)> = gt2_ref::examples()
+        .into_iter()
+        .filter(|(name, _)| songs.contains(&name.as_str()))
+        .collect();
+    let sets = 2 * 2 * 4 * 2 * 4 * 2;
+    let failures: Vec<String> = std::thread::scope(|scope| {
+        let runs: Vec<_> = examples
+            .iter()
+            .map(|(name, sng)| {
+                scope.spawn(move || {
+                    let mut failures = Vec::new();
+                    for bits in 0..sets {
+                        let mut o = default_options();
+                        o.optimize_pulse = (bits & 1) as u8;
+                        o.optimize_realtime = (bits >> 1 & 1) as u8;
+                        o.multispeed = [1, 2, 4, 8][bits >> 2 & 3];
+                        o.ntsc = (bits >> 4 & 1) as u8;
+                        o.player_flags = writes[bits >> 5 & 3];
+                        o.zeropage = 0xe0;
+                        o.hr_adsr = if bits >> 7 & 1 != 0 { 0xf000 } else { 0x0f00 };
+                        for sub in 0..gt2_ref::subtunes(sng) {
+                            if let Err(e) = compare(sng, sub as u8, FRAMES, &o) {
+                                failures.push(format!("{name} {sub} with {o:?}: {e}"));
+                            }
+                        }
+                    }
+                    failures
+                })
+            })
+            .collect();
+        runs.into_iter().flat_map(|r| r.join().unwrap()).collect()
+    });
+    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+    eprintln!("{sets} option sets over {songs:?}, {FRAMES} frames each");
+}
+
+/// SIDOU's options for gt2reloc's (the generator's).
+fn sidou_options(r: &Options) -> gt2_options {
+    let bits = [
+        (GT2_PLAYER_BUFFERED, gt2_ref::PLAYER_BUFFERED),
+        (GT2_PLAYER_SOUNDEFFECTS, gt2_ref::PLAYER_SOUNDEFFECTS),
+        (GT2_PLAYER_VOLUME, gt2_ref::PLAYER_VOLUME),
+        (GT2_PLAYER_AUTHORINFO, gt2_ref::PLAYER_AUTHORINFO),
+        (GT2_PLAYER_ZPGHOSTREGS, gt2_ref::PLAYER_ZPGHOSTREGS),
+        (GT2_PLAYER_NOOPTIMIZATION, gt2_ref::PLAYER_NOOPTIMIZATION),
+        (GT2_PLAYER_FULLBUFFERED, gt2_ref::PLAYER_FULLBUFFERED),
+    ];
+    let mut o = default_options();
+    o.hr_adsr = r.hr_adsr as u16;
+    o.multispeed = r.multiplier as u8;
+    o.ntsc = r.ntsc as u8;
+    o.optimize_pulse = r.optimize_pulse as u8;
+    o.optimize_realtime = r.optimize_realtime as u8;
+    o.zeropage = r.zeropage as u8;
+    o.player_flags = 0;
+    for (ours, theirs) in bits {
+        if r.player_version & theirs != 0 {
+            o.player_flags |= ours as u16;
+        }
+    }
+    o
+}
+
+/// Generated songs (gt2-ref's `gen`), each seed's song with its random options, every
+/// subtune, every frame equal. A failing seed is printed; it becomes a fixture.
+fn generated(seeds: std::ops::Range<u64>) {
+    let failures: Vec<String> = std::thread::scope(|scope| {
+        let threads = 8u64;
+        let runs: Vec<_> = (0..threads)
+            .map(|t| {
+                let seeds = seeds.clone();
+                scope.spawn(move || {
+                    let mut failures = Vec::new();
+                    for seed in seeds.filter(|s| s % threads == t) {
+                        let g = gt2_ref::gen::generate(seed);
+                        let o = sidou_options(&g.options);
+                        for sub in 0..g.sng[100] {
+                            match compare(&g.sng, sub, FRAMES, &o) {
+                                Ok(m) if m.unknown_calls == 0 => {}
+                                Ok(m) => failures.push(format!("seed {seed} subtune {sub}: {m:?}")),
+                                Err(e) => failures.push(format!(
+                                    "seed {seed} subtune {sub} ({:?}): {e}",
+                                    g.options
+                                )),
+                            }
+                        }
+                    }
+                    failures
+                })
+            })
+            .collect();
+        runs.into_iter().flat_map(|r| r.join().unwrap()).collect()
+    });
+    let shown: Vec<&String> = failures.iter().take(3).collect();
+    assert!(
+        failures.is_empty(),
+        "{} failing: {:?}",
+        failures.len(),
+        shown
+    );
+}
+
+#[test]
+fn generated_songs_match() {
+    generated(0..300);
+}
+
+#[test]
+#[ignore = "long: 5,000 generated songs"]
+fn generated_songs_match_long() {
+    generated(300..5300);
+}
+
+/// With delays and commands in the wavetable, the packer moves the waveforms $D0-$DF up to
+/// $E0-$EF, and player.s runs them as commands too (low nybble the command, the right
+/// byte, top bit flipped, its parameter). A command no pattern or wavetable row uses has
+/// no handler in the packed player: its label is the next assembled handler's. Here $D5
+/// (AD, never used) runs SR's handler, $DD the master volume's, $DF the tempo's.
+fn waveform_commands_song() -> Vec<u8> {
+    let wave = vec![
+        (0x41, 0x00),
+        (0x02, 0x00),
+        (0xd5, 0x9a),
+        (0x41, 0x00),
+        (0xdd, 0x86),
+        (0x21, 0x00),
+        (0xdf, 0x85),
+        (0x41, 0x0c),
+        (0xf6, 0x48),
+        (0xff, 0x00),
+    ];
+    let p0 = vec![
+        row(n(3, 0), 1),
+        R,
+        R,
+        R,
+        cmd(0xbd, 0, 0xd, 0x0c),
+        R,
+        R,
+        R,
+        cmd(n(3, 5), 0, 0xf, 0x06),
+        R,
+        R,
+        R,
+    ];
+    song(
+        [(vec![0], 0), (vec![0], 0), (vec![0], 0)],
+        vec![ins(0x09, 0x89, 1, 0, 0, 0, 0, 2, 0x09)],
+        [wave, vec![], vec![], vec![]],
+        vec![p0],
+    )
+}
+
+#[test]
+fn waveforms_read_as_commands_reach_the_assembled_handlers() {
+    check(
+        "waveform commands",
+        &waveform_commands_song(),
+        &default_options(),
+    );
+}
+
+/// What the events test counted.
+#[derive(Default, Debug)]
+struct Events {
+    rows: usize,
+    notes: usize,
+    gate_ons: usize,
+}
+
+/// The player's events against the reference: every gate edge of each channel's wave
+/// register in the reference's writes (a note's start among them) is reported on the same
+/// call, and no other; every note comes with its row's event and is that row's note,
+/// transposed; the row events step through each channel's patterns as its orderlist names
+/// them.
+fn check_events(sng: &[u8], subtune: u8, o: &gt2_options, e: &mut Events) -> Result<(), String> {
+    let t = trace(sng, subtune, FRAMES, &ref_options(o)).map_err(|e| format!("trace: {e}"))?;
+    let mut song = Song::host();
+    song.read(sng, 0).map_err(|i| format!("read: {}", i.msg))?;
+    let mut p = Player::new(&song, subtune as u32, o).ok_or("refused")?;
+    let channels = p.raw().channels as usize;
+    let sub = p.raw().subtune as u32;
+    let mut wave = [0u8; 3];
+    let mut last_row: [Option<(u8, u8)>; 3] = [None; 3];
+    for (f, frame) in t.frames.iter().enumerate() {
+        for want in &frame.calls {
+            let before = wave;
+            for &(r, v) in want {
+                if r < 21 && r % 7 == 4 {
+                    wave[(r / 7) as usize] = v;
+                }
+            }
+            p.call();
+            for ch in 0..3 {
+                let ev = p.raw().ev[ch];
+                if ch >= channels {
+                    if ev.flags != 0 {
+                        return Err(format!("frame {f}: events on unplayed channel {ch}"));
+                    }
+                    continue;
+                }
+                let (was, now) = (before[ch] & 1, wave[ch] & 1);
+                let on = ev.flags as u32 & GT2_EV_GATE_ON != 0;
+                let off = ev.flags as u32 & GT2_EV_GATE_OFF != 0;
+                if on != (was == 0 && now == 1) || off != (was == 1 && now == 0) || ev.gate != now {
+                    return Err(format!(
+                        "frame {f} channel {ch}: gate {was}->{now} in the reference, event {ev:?}"
+                    ));
+                }
+                e.gate_ons += usize::from(on);
+                if ev.flags as u32 & GT2_EV_NOTE != 0 {
+                    e.notes += 1;
+                    // the row that starts with it holds the note, transposed by -16..14
+                    let row = song
+                        .pattern(ev.pattern as u32)
+                        .and_then(|r| r.get(ev.row as usize).copied());
+                    let ok = ev.flags as u32 & GT2_EV_ROW != 0
+                        && row.is_some_and(|r| {
+                            let t = ev.note as i32 - (r[0] as i32 - 0x60);
+                            (0x60..=0xbc).contains(&r[0]) && (-16..=14).contains(&t)
+                        });
+                    if !ok {
+                        return Err(format!("frame {f} channel {ch}: note {ev:?}, row {row:?}"));
+                    }
+                }
+                if ev.flags as u32 & GT2_EV_ROW != 0 {
+                    e.rows += 1;
+                    if let Some((pat, row)) = last_row[ch] {
+                        let next = pat == ev.pattern && ev.row == row + 1;
+                        if !next && ev.row != 0 {
+                            return Err(format!(
+                                "frame {f} channel {ch}: row {:?} after {pat}/{row}",
+                                (ev.pattern, ev.row)
+                            ));
+                        }
+                    }
+                    if ev.order_pos != 0xff {
+                        let (entries, _) = song.order(sub, ch as u32).unwrap();
+                        if entries.get(ev.order_pos as usize) != Some(&ev.pattern) {
+                            return Err(format!(
+                                "frame {f} channel {ch}: {ev:?} not in {entries:?}"
+                            ));
+                        }
+                    }
+                    last_row[ch] = Some((ev.pattern, ev.row));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn the_events_follow_the_reference() {
+    let mut e = Events::default();
+    let mut failures = Vec::new();
+    for (name, sng) in gt2_ref::examples() {
+        for sub in 0..gt2_ref::subtunes(&sng) {
+            if let Err(err) = check_events(&sng, sub as u8, &default_options(), &mut e) {
+                failures.push(format!("{name} {sub}: {err}"));
+            }
+        }
+    }
+    for seed in 0..100 {
+        let g = gt2_ref::gen::generate(seed);
+        let mut o = sidou_options(&g.options);
+        // full buffering writes a call's registers at the next: its events lead the writes
+        o.player_flags &= !(GT2_PLAYER_FULLBUFFERED as u16);
+        for sub in 0..g.sng[100] {
+            if let Err(err) = check_events(&g.sng, sub, &o, &mut e) {
+                failures.push(format!("seed {seed} {sub}: {err}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    assert!(e.rows > 0 && e.notes > 0 && e.gate_ons > 0, "{e:?}");
+    eprintln!("{e:?}");
+}
+
+/// The player's cost on the host, reported (the device's instructions a sample are M2c
+/// Task 6's gate, measured in fm1-emu): every example, every subtune, 3,000 frames, at
+/// multispeed 1 and 4: the mean, the 99.9th percentile and the worst call (the worst is
+/// mostly the host's own interruptions).
+#[test]
+fn the_players_cost_on_the_host() {
+    for multispeed in [1u8, 4] {
+        let mut o = default_options();
+        o.multispeed = multispeed;
+        let mut ns: Vec<u128> = Vec::new();
+        for (_, sng) in gt2_ref::examples() {
+            let mut song = Song::host();
+            song.read(&sng, 0).unwrap();
+            for sub in 0..gt2_ref::subtunes(&sng) {
+                let mut p = Player::new(&song, sub, &o).unwrap();
+                for _ in 0..FRAMES * multispeed as usize {
+                    let t = std::time::Instant::now();
+                    p.call_silent();
+                    ns.push(t.elapsed().as_nanos());
+                }
+            }
+        }
+        let mean = ns.iter().sum::<u128>() / ns.len() as u128;
+        ns.sort_unstable();
+        eprintln!(
+            "multispeed {multispeed}: {} calls, mean {mean} ns, 99.9% under {} ns, worst {} ns",
+            ns.len(),
+            ns[ns.len() * 999 / 1000],
+            ns[ns.len() - 1]
+        );
+    }
+    eprintln!("player state: {} bytes", size_of::<gt2_player>());
+}
+
+/// Found by generated songs (seeds 243 and 278 of the first generator): an orderlist that
+/// opens with a repeat replays the channel's first pattern number, 0, before reading any:
+/// the packer's 0, the first pattern in use (here pattern 2).
+fn repeat_first_song() -> Vec<u8> {
+    let p2 = vec![cmd(n(3, 0), 1, 6, 0xc4), R, R, R];
+    let p3 = vec![row(n(4, 0), 1), R, row(n(4, 4), 0), R, R, R];
+    song(
+        [
+            (vec![0xd2, 3, 2], 0),
+            (vec![2, 3], 0),
+            (vec![0xd3, 0xf2, 3], 1),
+        ],
+        vec![ins(0x09, 0x89, 1, 0, 0, 0, 0, 2, 0x09)],
+        [vec![(0x41, 0x00), (0xff, 0x00)], vec![], vec![], vec![]],
+        vec![rests(4), rests(4), p2, p3],
+    )
+}
+
+/// Found by generated songs (seeds 32 and 64 of the first generator): before a channel's
+/// first note its last note is 0, and the first instrument's note-independent vibrato reads
+/// the frequencies of notes 0 and 1, below the packed table (which starts at the song's
+/// lowest note): the 6502 reads the end of its own channel variables there.
+fn before_the_first_note_song() -> Vec<u8> {
+    let p0 = vec![R, R, R, R, R, R, R, R, row(n(4, 0), 1), R, R, R];
+    let p1 = vec![R, R, R, R, R, R, row(n(3, 7), 2), R, R, R, R, R];
+    song(
+        [(vec![0], 0), (vec![1], 0), (vec![0, 1], 0)],
+        vec![
+            ins(0x09, 0x89, 1, 0, 0, 1, 2, 2, 0x09),
+            ins(0x22, 0xa8, 1, 0, 0, 2, 1, 2, 0x09),
+        ],
+        [
+            vec![(0x41, 0x00), (0xff, 0x00)],
+            vec![],
+            vec![],
+            vec![(0x83, 0x02), (0x84, 0x01)],
+        ],
+        vec![p0, p1],
+    )
+}
+
+#[test]
+fn generated_findings_match() {
+    check("repeat first", &repeat_first_song(), &default_options());
+    for (name, flags) in [
+        ("unbuffered", 0u16),
+        ("buffered", GT2_PLAYER_BUFFERED as u16),
+        ("full buffering", GT2_PLAYER_FULLBUFFERED as u16),
+        ("zero-page ghosts", GT2_PLAYER_ZPGHOSTREGS as u16),
+    ] {
+        let mut o = default_options();
+        o.player_flags = flags;
+        o.zeropage = 0xe0;
+        check(
+            &format!("before the first note, {name}"),
+            &before_the_first_note_song(),
+            &o,
+        );
+    }
 }

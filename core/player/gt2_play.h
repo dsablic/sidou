@@ -24,6 +24,16 @@
  * reads the model's .sng bytes and applies each rewrite where it reads them, so a cell edit
  * plays at once.
  *
+ * The options (song_ext.h's gt2_options): the hard restart ADSR (altplayer.s from $F000),
+ * multispeed (the caller's N calls; 0, 25 Hz, is one call), the pulse and realtime
+ * optimisations, buffered writes, sound-effect support, author info (timing marks kept),
+ * no optimisation, and the ghost registers: with them the player writes all 25 registers
+ * as the main program copies them, before each call with full buffering (player.s $18 down
+ * to 0, altplayer.s 0 up), after it from the zero page (gt2-ref's order, trace.rs). NTSC
+ * changes nothing in a packed player. Not played: a custom SID clock (-F) and A-4's pitch
+ * (-G), which make gt2reloc compute another frequency table; the player keeps the
+ * built-in one.
+ *
  * The contract with the song model (gt2_song.h): the player re-reads the index entry each
  * time it reads a pattern or an orderlist, and keeps no arena pointer from one call to the
  * next. It plays orderlists that break readme 3.1's rules, and restart positions past the
@@ -59,7 +69,31 @@ typedef struct {
     uint8_t pattnum, tempo, counter, note, instr, gate;
     uint8_t vibtime, vibdelay, wavetime, freqlo, freqhi, pulselo, pulsehi;
     uint8_t ad, sr, gatetimer, lastnote;
+    /* not player.s's: the row fetched for the next tick 0, for its row event */
+    uint8_t orderpos;  /* the orderlist entry the playing pattern came from, $FF: elsewhere */
+    uint8_t ev_pending, ev_pattern, ev_row, ev_orderpos;
 } gt2_channel;
+
+/* What one call did on a channel, for M2c Task 6's event ring (M2d's views, M2e's clock,
+ * M2f's scene). gt2_play_frame fills gt2_player.ev for the channels the player plays. */
+enum {
+    GT2_EV_ROW = 1u << 0,     /* a row starts (its tick 0): pattern, row, order_pos */
+    GT2_EV_NOTE = 1u << 1,    /* a note starts: note, instr */
+    GT2_EV_SLIDE = 1u << 2,   /* a toneportamento's target: note, instr (no new start) */
+    GT2_EV_GATE_ON = 1u << 3, /* the wave register's gate bit rose in this call */
+    GT2_EV_GATE_OFF = 1u << 4 /* it fell */
+};
+
+typedef struct {
+    uint8_t flags;        /* GT2_EV_* */
+    uint8_t pattern, row; /* GT2_EV_ROW: the model's pattern and row */
+    uint8_t order_pos;    /* GT2_EV_ROW: the pattern's orderlist entry; $FF if the packed
+                           * player read it from past its orderlist */
+    uint8_t note, instr;  /* GT2_EV_NOTE, GT2_EV_SLIDE: 0 is C-0, transposes applied */
+    uint8_t gate;         /* the gate bit the wave register holds after the call (with full
+                           * buffering the SID gets it at the next call) */
+    uint8_t reserved;
+} gt2_event;
 
 /* What the song and its options make of player.s (gt2_play_init). */
 enum {
@@ -75,6 +109,16 @@ enum {
     GT2_PF_SIMPLEPULSE = 1u << 9,/* pulse widths in one byte, written to both registers */
     GT2_PF_WAVEDELAY = 1u << 10, /* the wavetable's delays (and its recoding) */
     GT2_PF_WAVECMD = 1u << 11    /* the wavetable's commands */
+};
+
+/* How player.s lays out its variables (the reads below the frequency table, gt2_play.c). */
+enum {
+    GT2_LAYOUT_NORMAL = 1u << 0,      /* "Normal channel variables", else "Optimized" */
+    GT2_LAYOUT_G4 = 1u << 1,          /* the frequency and pulse block */
+    GT2_LAYOUT_G5 = 1u << 2,          /* the AD/SR, gate-off timer and last note block */
+    GT2_LAYOUT_FIXEDPARAMS = 1u << 3, /* one gate-off timer and first wave: never stored */
+    GT2_LAYOUT_NOINSVIB = 1u << 4,    /* no instrument vibrato: its delay never loaded */
+    GT2_LAYOUT_NOCALCSPEED = 1u << 5  /* no note-independent speed: no last note kept */
 };
 
 typedef struct {
@@ -97,8 +141,14 @@ typedef struct {
     uint8_t freq_unknown;
     uint8_t unknown;         /* scratch: the last frequency reads hit that region */
     uint8_t regs[GT2_SID_REGS]; /* the SID's registers as written (the ghost registers) */
+    uint32_t tick0;          /* the tick 0 handlers assembled (gt2_play.c) */
+    uint8_t layout;          /* GT2_LAYOUT_* */
+    uint8_t class_count[3];  /* instruments in use: hard restart, no hard restart, legato */
     uint32_t pattused[(GT2_MAX_PATTERNS + 31u) / 32u]; /* the patterns the packer numbers */
+    uint32_t instrused[2];   /* the instruments it numbers (bit i: instrument i) */
     gt2_channel chn[GT2_PLAY_CHANNELS];
+    gt2_event ev[GT2_PLAY_CHANNELS]; /* the last call's events */
+    uint8_t gates;                   /* each channel's gate bit after the last call */
 } gt2_player;
 
 /* Prepares the player for a subtune with the options (o NULL: GoatTracker's defaults), as
@@ -108,7 +158,8 @@ typedef struct {
  * analysis): the main loop's. */
 int gt2_play_init(gt2_player* p, const gt2_song* s, uint32_t subtune, const gt2_options* o);
 
-/* One call of the play routine: its SID writes, in order, to sink. */
+/* One call of the play routine: its SID writes, in order, to sink; then its events in
+ * p->ev. */
 void gt2_play_frame(gt2_player* p, gt2_sid_fn sink, void* ctx);
 
 #ifdef __cplusplus

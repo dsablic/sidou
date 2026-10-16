@@ -3,7 +3,8 @@
 //! The reference for SIDOU's song player (M2c Task 3; decision record 0007): GoatTracker
 //! 2.77's own packer (`gt2reloc`'s path, built from `third_party/goattracker2` with SIDOU's
 //! shim) and its packed player run in a host-only 6502 ([`cpu`]), frame by frame
-//! ([`trace`]). Test-only: nothing here reaches the firmware.
+//! ([`trace`]); and a generator of valid random songs for the player's register match
+//! ([`gen`]). Test-only: nothing here reaches the firmware.
 //!
 //! GoatTracker's code keeps its song in globals, so every call into it takes one lock.
 
@@ -12,6 +13,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 pub mod cpu;
+pub mod gen;
 pub mod trace;
 
 /// gt2reloc's options (readme 4.4), as GoatTracker's globals take them.
