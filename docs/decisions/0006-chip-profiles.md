@@ -336,7 +336,13 @@ The exception in "Cost" is gone: no main-loop pass is over the poll allowance an
   trial, at least 18 slices each) keeps the normal bounds over 24 trials: a note-on taken by
   the audio interrupt within 3.06 ms (mean 1.69), its first sample in the buffer within
   3.30 ms, a note-off taken within 2.81 ms, against the 3.40 ms block and poll; the longest
-  pass 60,125 instructions, MIDI's longest wait in its ring 1.0 ms.
+  pass 60,125 instructions, MIDI's longest wait in its ring 1.0 ms. That wait is not the
+  preparation's: Task 1's first build measured 201 us in this case, and the review's fixes
+  1.0 ms, but the latency gate's Idle case (no profile step) and its USB retry case measure
+  the same 1.0 ms in the same builds. It is `usb_retry`'s attach (docs/hardware.md, 300k
+  instructions once a second), which a CC of the trials now happens to meet: in fm1-emu a
+  stream of CC 85 steps every 40 ms keeps the ring's wait at 203 us or less for 3 s of steps,
+  and one CC put on the attach waits 1.2 ms. Benign, and the note bounds hold.
 - **Determinism:** the slices a preparation takes depend only on the request
   (`sid_character_prep_slices`), and the host's `live_sid_prepare` runs the same ones at the
   same ticks, so the emulator gate's host renders swap in the device's block, bit for bit
