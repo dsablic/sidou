@@ -216,6 +216,11 @@ All notable changes are documented here. The format follows
   stay in order; three sids (A, B and one spare they share, one preparation at a time) and
   three DAC tables (one each chip plays, one a ramp builds into, one build at a time). A sink
   is bound to a chip (`reg_ring_out.chip`); live stays chip-agnostic.
+- M2b: UI sounds on chip B's spare voice (M1e Task 6), off by default (the menu's new SOUNDS):
+  a blip, a confirm, a chime, a buzz and SAVE's drive chunk, in GoatTracker's sound-effect
+  format at 50 Hz. They never take a voice the keys use; off, nothing is written. The menu's
+  golden changes (the SOUNDS item), and scene-rule30 and scene-stars with the longer way to
+  SCENE in the menu (a later moment of the same pieces).
 - M2b: the CHIP view's B tab. SELECT moves up from CHIP into the tabs, ALGORITHM there
   switches A and B, KEYS marks the keys' chip. A tab shows the keys' setup and edits it
   (with no song chip B follows it: FOLLOWS KEYS), but chip A's during a song, which shows and

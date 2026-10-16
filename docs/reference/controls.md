@@ -54,6 +54,17 @@ key is held. LIVE says **KEYS:B** in its top line while the keys play chip B; th
 screen shows both chips and marks the keys'. Until M2c plays songs, nothing starts one, so the
 keys always play chip A. KEYS is kept in RAM until the settings are saved (M2a).
 
+## UI sounds
+
+**SOUNDS** in the menu (OFF at power-on, kept in RAM until the settings are saved, M2a) turns
+on short sounds on chip B's spare voice: a blip as the menu's cursor moves, a confirm as
+ALGORITHM changes a value or opens a view, a chime with a toast, a buzz when an action is
+refused (the cursor already at the menu's end, an action turned counter-clockwise), and a
+drive "chunk" when SAVE saves (from M2a). They never take a voice the keys use: with the keys
+on chip A they play on chip B; with the keys on chip B (during a song) only on a voice whose
+note has finished its release, and a note that needs that voice takes it back at once, ending
+the sound. Off, they write nothing and chip B stays out of use.
+
 ## Panel
 
 | Control (id) | Does |
@@ -72,7 +83,7 @@ keys always play chip A. KEYS is kept in RAM until the settings are saved (M2a).
 | **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, CHIP, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE behind THE OSCILLATOR's title card (below) |
 | **SAVE (button 9)** | MIDI learn (below): press it, turn a knob, then send a CC |
 | **SELECT (encoder 0)**, in the menu | moves the blinking cursor up and down the items |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: CHIP (the profile and the character), DIST, MOD, FX; it stops at either end |
 | **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP, the algorithm on a slot; it stops at either end |
 | **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, and round): it wipes in, and a toast names it |

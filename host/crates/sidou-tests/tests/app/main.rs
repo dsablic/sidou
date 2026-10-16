@@ -37,6 +37,7 @@ mod scope;
 mod screen;
 mod title_card;
 mod title_card_bitmap;
+mod ui_sound;
 mod views;
 mod widget;
 
@@ -53,7 +54,7 @@ pub struct Recorder {
     pub char_ticks: u32,
 }
 
-unsafe extern "C" fn record(ctx: *mut c_void, reg: u8, value: u8) {
+pub(crate) unsafe extern "C" fn record(ctx: *mut c_void, reg: u8, value: u8) {
     let r = unsafe { &mut *ctx.cast::<Recorder>() };
     if u32::from(reg) == LIVE_REG_CHAR_TICK {
         r.char_ticks += 1;

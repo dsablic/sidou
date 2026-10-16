@@ -79,6 +79,14 @@ static void put_param(grid* g, uint32_t row, const char* label, uint32_t value, 
     widget_bar(g, BAR_COL, row, BAR_CELLS, value, max, TEXT);
 }
 
+/* A UI sound (app/ui_sound.h), if there are UI sounds: ui_sound_play does nothing with
+ * SOUNDS off. */
+static void sound(views* v, ui_sound_id id) {
+    if (v->snd) {
+        ui_sound_play(v->snd, id);
+    }
+}
+
 /* ---- what the views show ---- */
 
 /* The fields STATUS and MENU show, as bytes, with the menu's blink phase (0 for STATUS). */
@@ -264,6 +272,19 @@ static void keys_turn(void* ctx, int32_t steps) {
     }
 }
 
+static void sounds_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    join(buf, MENU_VALUE_CHARS, v->snd && v->snd->on ? "ON" : "OFF", "");
+}
+
+/* Clockwise on, counter-clockwise off. */
+static void sounds_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    if (steps != 0 && v->snd) {
+        ui_sound_set(v->snd, steps > 0);
+    }
+}
+
 /* Title card id over the view on top, if the cards are on: from the views' input only (a push
  * from the frame would draw a frame of the view first). */
 static void show_card(views* v, title_card_id id) {
@@ -309,13 +330,14 @@ static void about_open(void* ctx, int32_t steps) {
 static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"CHIP", NULL, chip_open},             {"PRESET", preset_value, preset_turn},
     {"OCTAVE", octave_value, octave_turn}, {"CARDS", cards_value, cards_turn},
-    {"KEYS", keys_value, keys_turn},       {"STATUS", NULL, status_open},
-    {"SCENE", NULL, scene_open},           {"CHARSET", NULL, charset_open},
-    {"ABOUT", NULL, about_open},
+    {"KEYS", keys_value, keys_turn},       {"SOUNDS", sounds_value, sounds_turn},
+    {"STATUS", NULL, status_open},         {"SCENE", NULL, scene_open},
+    {"CHARSET", NULL, charset_open},       {"ABOUT", NULL, about_open},
 };
 _Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_CARDS == 3u && VIEWS_MENU_KEYS == 4u &&
-                   VIEWS_MENU_STATUS == 5u && VIEWS_MENU_SCENE == 6u &&
-                   VIEWS_MENU_CHARSET == 7u && VIEWS_MENU_ABOUT == 8u,
+                   VIEWS_MENU_SOUNDS == 5u && VIEWS_MENU_STATUS == 6u &&
+                   VIEWS_MENU_SCENE == 7u && VIEWS_MENU_CHARSET == 8u &&
+                   VIEWS_MENU_ABOUT == 9u,
                "the menu's items");
 /* The help below the menu's frame. */
 #define MENU_HELP_ROW (MENU_ROW + VIEWS_MENU_ITEMS + 2u)
@@ -327,11 +349,18 @@ static int menu_input(screen* s, void* state, const screen_event* e) {
         return 0;
     }
     if (e->id == PANEL_ENC_SELECT) {
+        uint8_t was = v->home.cursor;
         menu_move(&v->home, e->steps);
+        sound(v, v->home.cursor != was ? UI_SOUND_BLIP : UI_SOUND_BUZZ); /* the end: refused */
         return 1;
     }
     if (e->id == PANEL_ENC_ALGORITHM) {
+        /* menu_turn's own rule: an item with a value turns both ways, an action only
+         * clockwise; else refused. */
+        const menu_item* it = &v->home.items[v->home.cursor];
+        int does = it->turn && (it->value || e->steps > 0);
         menu_turn(&v->home, e->steps);
+        sound(v, does ? UI_SOUND_CONFIRM : UI_SOUND_BUZZ);
         return 1;
     }
     return 0;
@@ -433,6 +462,10 @@ static int global(void* ctx, const screen_event* e) {
     return 1;
 }
 
+void views_set_sounds(views* v, ui_sound* us) {
+    v->snd = us;
+}
+
 void views_set_keys(views* v, keys_route* kr) {
     chip_view_set_keys(&v->chip, kr);
 }
@@ -442,6 +475,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->sc = sc;
     v->version = version;
     v->cards = 1;
+    v->snd = NULL;
     menu_init(&v->home, MENU_ITEMS, VIEWS_MENU_ITEMS, VIEWS_MENU_ITEMS, v);
     remember(v);
     v->p = NULL;
@@ -566,6 +600,7 @@ static void tell(views* v) {
     }
     if (changed) {
         screen_toast(&v->s, buf, SCREEN_TOAST_MS);
+        sound(v, UI_SOUND_CHIME);
     }
     remember(v);
 }

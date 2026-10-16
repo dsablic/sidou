@@ -28,6 +28,7 @@
 #include "panel.h"
 #include "reg_ring.h"
 #include "ui.h"
+#include "ui_sound.h"
 #include "update.h"
 
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
@@ -61,6 +62,8 @@ static volatile uint32_t uptime_ms;
 static live instrument;
 /* Which chip the keys play, and the two chips' setups (app/keys_route.h). */
 static keys_route keys_router;
+/* The UI sounds on chip B's spare voice, off by default (app/ui_sound.h). */
+static ui_sound ui_sounds;
 static panel front;
 
 void fm1_alnk0_irq(void) {
@@ -121,12 +124,14 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         *next_tick += TICK_MS;
         panel_master(&front, &instrument, input_master());
         live_tick(&instrument);
+        ui_sound_tick(&ui_sounds);
     }
     if (tick_due) {
         /* Once a pass, after its live ticks: the keys' chip has had its turn, then the other
          * chip follows the keys' setup (chip B's first reset at boot among it) and the keys
          * move. */
         keys_route_tick(&keys_router);
+        audio_chip_b_use(AUDIO_B_UI, ui_sound_busy(&ui_sounds)); /* chip B in use for a sound */
         midi_send(); /* once a pass at most, so at most once a tick */
     }
     if ((int32_t)(now - *next_tick) >= 0) {
@@ -195,6 +200,7 @@ static void sidou_main(void) {
     /* From here on a profile or model change prepares the spare chip a slice a tick. */
     live_set_preparer(&instrument, keys_route_prepare, &keys_router);
     keys_route_start(&keys_router);
+    ui_sound_init(&ui_sounds, &instrument, reg_ring_sink, audio_sink_ctx_b());
     panel_init(&front);
     input_init();
     panel_master(&front, &instrument, input_master());
@@ -214,6 +220,7 @@ static void sidou_main(void) {
     /* uptime_ms counts every timer tick since TIMER4 started (fm1_timer5_irq). */
     ui_init(&instrument, uptime_ms, (int)((held >> PANEL_BTN_HOME) & 1u));
     ui_set_keys(&keys_router);
+    ui_set_sounds(&ui_sounds);
 #if defined(SIDOU_TEST_DEATH_MS)
     test_death_arm();
 #endif

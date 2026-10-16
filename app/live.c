@@ -535,6 +535,7 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->other_model = (uint8_t)model;
     l->other_profile = (uint8_t)sid_chip_default(model);
     l->keys_mode = LIVE_KEYS_AUTO;
+    l->ui_voice = 0;
     l->model = model;
     l->model_req = model;
     l->octave = 0;
@@ -583,7 +584,7 @@ static int older(uint32_t a, uint32_t b) {
 static int pick_voice(const live* l, uint8_t gated) {
     int best = -1;
     for (int v = 0; v < voice_count(l); ++v) {
-        if (l->voice[v].gate == gated &&
+        if (l->voice[v].gate == gated && v + 1 != l->ui_voice &&
             (best < 0 || older(l->voice[v].stamp, l->voice[best].stamp))) {
             best = v;
         }
@@ -634,6 +635,14 @@ void live_note_on(live* l, uint8_t note, uint8_t velocity) {
     }
     if (v < 0) {
         v = pick_voice(l, 0);
+    }
+    if (v < 0 && l->ui_voice) {
+        /* The others all held: a UI sound gives its voice back (app/ui_sound.h), with the
+         * instrument's envelope (the sound had its own). */
+        v = l->ui_voice - 1;
+        l->ui_voice = 0;
+        put(l, (uint8_t)(v * 7 + 5), l->attack_decay);
+        put(l, (uint8_t)(v * 7 + 6), voice_sr(l, v));
     }
     if (v < 0) {
         v = pick_voice(l, 1);
@@ -1135,6 +1144,19 @@ void live_fx_select_next(live* l) {
 
 void live_fx_select(live* l, uint32_t slot) {
     l->fx_select = (uint8_t)(slot % LIVE_SLOTS);
+}
+
+void live_rewrite_voice(live* l, uint32_t v) {
+    if (v >= LIVE_VOICES) {
+        return;
+    }
+    int i = (int)v;
+    put(l, (uint8_t)(i * 7 + 5), l->attack_decay);
+    put(l, (uint8_t)(i * 7 + 6), voice_sr(l, i));
+    write_freq(l, i);
+    write_pw(l, i);
+    write_control(l, i);
+    write_res_filt(l);
 }
 
 uint8_t live_voice_control(const live* l, uint32_t v) {

@@ -347,6 +347,10 @@ typedef struct {
     uint8_t other_model;
     uint8_t other_profile;
     uint8_t keys_mode;
+    /* A UI sound holds this voice of the keys' chip (app/ui_sound.h): v + 1, 0 none. The
+     * allocator skips it, and takes it back (setting it to 0) only when the other voices are
+     * all held. */
+    uint8_t ui_voice;
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */
@@ -414,6 +418,9 @@ typedef enum {
 void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model);
 /* Voice v's control register as live writes it (waveform, ring, sync and the gate). */
 uint8_t live_voice_control(const live* l, uint32_t v);
+/* Voice v's registers again (envelope, frequency, pulse width, control) and the filter
+ * routing: a voice a UI sound gives back (app/ui_sound.h). */
+void live_rewrite_voice(live* l, uint32_t v);
 /* Every register again, the gate reset first (a chip the keys have just moved to): a voice
  * the keys hold gates again on it. The character and the slots are not registers: the chip
  * has the keys' setup already (app/keys_route.h). */

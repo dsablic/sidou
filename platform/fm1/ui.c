@@ -59,6 +59,10 @@ static void flush(void) {
     lcd_sync();
 }
 
+void ui_set_sounds(ui_sound* us) {
+    views_set_sounds(&ui, us);
+}
+
 void ui_set_keys(keys_route* kr) {
     views_set_keys(&ui, kr);
 }

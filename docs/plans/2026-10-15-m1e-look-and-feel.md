@@ -122,5 +122,6 @@ SPI):
   Off by default, and never steals a playing voice.
 - **Moved to M2** (2026-10-15): it needs chip B's spare voice, and chip B arrives with M2.
   M1e is complete without it; M2 takes it up with chip B.
+- **Done in M2b Task 7** (2026-10-17, `app/ui_sound.h`): the menu's SOUNDS, off by default.
 
 <!-- REUSE-IgnoreEnd -->

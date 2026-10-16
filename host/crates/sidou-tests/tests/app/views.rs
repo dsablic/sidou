@@ -212,7 +212,7 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
     let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
-    let rows: Vec<String> = (4..15).map(|r| ui.row(r)).collect();
+    let rows: Vec<String> = (4..16).map(|r| ui.row(r)).collect();
     let body: Vec<String> = rows.iter().map(|r| r[3..27].to_string()).collect();
     assert_eq!(rows[0][2..10].to_string(), "# MENU #");
     // Labels after the cursor cell, values right-aligned against the frame, an arrow for a view.
@@ -222,11 +222,13 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
     assert_eq!(body[4], format!(" {:<21}ON", "CARDS"));
     // M2b Task 4: KEYS, which chip the keys play during a song (AUTO at power-on).
     assert_eq!(body[5], format!(" {:<19}AUTO", "KEYS"));
-    assert_eq!(body[6][..23], format!(" {:<22}", "STATUS"));
-    assert_eq!(body[7][..23], format!(" {:<22}", "SCENE"));
-    assert_eq!(body[8][..23], format!(" {:<22}", "CHARSET"));
-    assert_eq!(body[9][..23], format!(" {:<22}", "ABOUT"));
-    for row in [5, 10, 11, 12, 13] {
+    // M2b Task 7: SOUNDS, the UI sounds (OFF at power-on).
+    assert_eq!(body[6], format!(" {:<20}OFF", "SOUNDS"));
+    assert_eq!(body[7][..23], format!(" {:<22}", "STATUS"));
+    assert_eq!(body[8][..23], format!(" {:<22}", "SCENE"));
+    assert_eq!(body[9][..23], format!(" {:<22}", "CHARSET"));
+    assert_eq!(body[10][..23], format!(" {:<22}", "ABOUT"));
+    for row in [5, 11, 12, 13, 14] {
         assert_eq!(
             ui.g.ch[row * COLS + 26],
             FONT_ARROW_RIGHT as u8,
@@ -234,7 +236,7 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
         );
     }
     assert_eq!(
-        rows[10][2..26].chars().filter(|&c| c == '#').count(),
+        rows[11][2..26].chars().filter(|&c| c == '#').count(),
         24,
         "the frame's bottom"
     );

@@ -2759,3 +2759,99 @@ const _: () = assert!(
     CHIP_INPUT + CHIP_PASS + PREPARE_SLICES_PER_PASS * REG_RING_PREPARE_SLICE
         <= common::POLL_INSTRUCTIONS
 );
+
+// ---- the UI sounds (M2b Task 7, app/ui_sound.h) ----
+
+/// platform/fm1/audio.h AUDIO_B_UI: chip B's in-use bit for the UI sounds.
+const AUDIO_B_UI: u8 = 2;
+
+/// From LIVE: the menu, SOUNDS turned on or left off, then the cursor moved down one item and
+/// back (two blips with SOUNDS on); with `held`, three notes held on chip B first (a song's
+/// hook on: the keys play chip B). The audio from just before the moves, and whether chip B
+/// was in use for a sound (its b_want's UI bit) at any 5 ms along them.
+fn ui_sounds_run(fw: &Firmware, sounds: bool, held: bool) -> (Vec<i16>, bool) {
+    let mut m = booted(fw);
+    if held {
+        m.soc.write8(
+            fw.symbol("keys_router") + sidou_sys::ilp32::keys_route::song as u32,
+            1,
+        );
+        m.run_ms(100);
+        for k in CHORD {
+            m.key(k, true);
+            m.run_ms(CHORD_STAGGER_MS);
+        }
+    }
+    open_menu(&mut m, fw);
+    select(&mut m, sidou_sys::VIEWS_MENU_SOUNDS as i32);
+    if sounds {
+        m.turn(ALGORITHM, 1);
+    }
+    m.run_ms(800); // the confirm's sound and its release
+    let from = m.soc.periph.audio.len();
+    let mut ui_use = false;
+    let b_want = fw.symbol("b_want");
+    for step in [1, -1] {
+        m.turn(SELECT, step);
+        for _ in 0..60 {
+            m.run_ms(5);
+            ui_use |= m.soc.read8(b_want) & AUDIO_B_UI != 0;
+        }
+    }
+    (m.soc.periph.audio[from..].to_vec(), ui_use)
+}
+
+/// With SOUNDS on and nothing held, a menu move sounds on chip B: chip B is in use for it, and
+/// the output has the blip's energy (C-6, 1,047 Hz, on a triangle) where the same run with
+/// SOUNDS off has none; with SOUNDS off chip B is never in use for a sound.
+#[test]
+fn with_sounds_on_a_menu_move_blips_and_off_it_is_silent() {
+    let Some((_, fw)) = fixture("the UI sounds test") else {
+        return;
+    };
+    let (on, on_use) = ui_sounds_run(&fw, true, false);
+    let (off, off_use) = ui_sounds_run(&fw, false, false);
+    assert!(on_use, "chip B never in use for the blips");
+    assert!(!off_use, "chip B in use for a sound with SOUNDS off");
+    let left = |v: &[i16]| {
+        v.iter()
+            .step_by(2)
+            .map(|&s| f32::from(s))
+            .collect::<Vec<f32>>()
+    };
+    let band = |x: &[f32]| {
+        // The DFT's power at the blip's pitch over the first 4096 samples of the move.
+        let n = 4096.min(x.len());
+        let w = 2.0 * std::f64::consts::PI * 1046.5 / common::FS;
+        let (mut re, mut im) = (0.0, 0.0);
+        for (i, &s) in x[..n].iter().enumerate() {
+            re += f64::from(s) * (w * i as f64).cos();
+            im -= f64::from(s) * (w * i as f64).sin();
+        }
+        (re * re + im * im).sqrt() / n as f64
+    };
+    let (e_on, e_off) = (band(&left(&on)), band(&left(&off)));
+    println!("UI sounds: the blip's band {e_on:.1} with SOUNDS on, {e_off:.1} off");
+    assert!(
+        e_on > 20.0 * e_off.max(0.5),
+        "no blip: {e_on:.1} against {e_off:.1}"
+    );
+}
+
+/// With three notes held on chip B (the keys there, a song's hook on), a menu move with SOUNDS
+/// on finds no free voice: it does not sound, and the output is the same run's with SOUNDS
+/// off, sample for sample (the notes untouched).
+#[test]
+fn with_three_notes_held_on_chip_b_a_menu_move_is_silent_and_bit_exact() {
+    let Some((_, fw)) = fixture("the UI sounds test") else {
+        return;
+    };
+    let (on, on_use) = ui_sounds_run(&fw, true, true);
+    let (off, _) = ui_sounds_run(&fw, false, true);
+    assert!(!on_use, "chip B in use for a sound with every voice held");
+    assert!(
+        on.iter().any(|&v| v.abs() > 500),
+        "the chord does not sound"
+    );
+    assert!(on == off, "the held notes changed with SOUNDS on");
+}

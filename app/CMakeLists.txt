@@ -42,6 +42,7 @@ add_library(sidou_live STATIC
     sine.c
     title_card.c
     title_card_bitmap.c
+    ui_sound.c
     views.c
     widget.c)
 target_include_directories(sidou_live PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

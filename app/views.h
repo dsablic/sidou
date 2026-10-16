@@ -8,7 +8,8 @@
  *   curve, the VU meters and the effect slots. What the screen shows from power-on; the tap
  *   on the audio runs only while it shows: on top, or under MIDI learn's frame.
  * - MENU (HOME): PRESET, OCTAVE, CARDS, KEYS (AUTO or A: which chip the keys play during a
- *   song, app/keys_route.h; in RAM until the settings persist) and the views to open (CHIP
+ *   song, app/keys_route.h), SOUNDS (the UI sounds on chip B's spare voice, OFF by default,
+ *   app/ui_sound.h; both in RAM until the settings persist) and the views to open (CHIP
  *   first), in a frame. SELECT
  *   moves the cursor, ALGORITHM changes the value under it or opens the view.
  * - CHIP (from the menu, behind THE CHIP's card): chip A's profile, character and effect slots
@@ -69,6 +70,7 @@
 #include "live_view.h"
 #include "panel.h"
 #include "scene_view.h"
+#include "ui_sound.h"
 #include "scope.h"
 #include "screen.h"
 #include "title_card.h"
@@ -82,14 +84,15 @@ extern "C" {
 #define VIEWS_TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
 /* The menu's items and the rows it shows, the title cards' option, and the items that open a
  * view. */
-#define VIEWS_MENU_ITEMS 9u
+#define VIEWS_MENU_ITEMS 10u
 #define VIEWS_MENU_CHIP 0u
 #define VIEWS_MENU_CARDS 3u
 #define VIEWS_MENU_KEYS 4u
-#define VIEWS_MENU_STATUS 5u
-#define VIEWS_MENU_SCENE 6u
-#define VIEWS_MENU_CHARSET 7u
-#define VIEWS_MENU_ABOUT 8u
+#define VIEWS_MENU_SOUNDS 5u
+#define VIEWS_MENU_STATUS 6u
+#define VIEWS_MENU_SCENE 7u
+#define VIEWS_MENU_CHARSET 8u
+#define VIEWS_MENU_ABOUT 9u
 /* Raster steps for a chip model change: the ramp once round. */
 #define VIEWS_RASTER_STEPS SCREEN_RAMP
 /* What the views show, as bytes (app/views.c look): the instrument's model (as asked for),
@@ -122,6 +125,7 @@ typedef struct {
     scene_view scene;
     title_card card;
     uint8_t cards; /* 1: title cards on (the menu's CARDS) */
+    ui_sound* snd; /* the UI sounds (the menu's SOUNDS, app/ui_sound.h); NULL: none */
 } views;
 
 extern const view views_status;
@@ -132,6 +136,9 @@ extern const view views_charset;
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version);
 /* The two chips' routing (app/keys_route.h), for the CHIP view's tabs; NULL until set. */
 void views_set_keys(views* v, keys_route* kr);
+/* The UI sounds (app/ui_sound.h): the menu's SOUNDS turns them on and off, and the menu and
+ * the toasts play them; NULL until set (and the SOUNDS item then reads OFF and does nothing). */
+void views_set_sounds(views* v, ui_sound* us);
 /* The boot sequence over it from the next frame on: the full one if HOME was held at
  * power-on (home_held), whose first HOME press edge is then part of the hold (app/boot.h). */
 void views_boot(views* v, int home_held);

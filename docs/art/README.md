@@ -237,6 +237,21 @@ a frame of the wipe into it 243 cells, 21.0 ms, and the title card's stripes 192
 `the_wipe_into_about_sends_only_its_rows` and `the_wipe_into_the_title_card_sends_only_its_rows`
 on the host, at every phase).
 
+## UI sounds
+
+SOUNDS in the menu (off at power-on) plays short sounds on chip B's spare voice
+(`app/ui_sound.h`): a cursor blip when the menu's cursor moves (a triangle C-6, two frames), a
+confirm when ALGORITHM changes a value or opens a view (a pulse arpeggio E-5 G#5 B-5), a chime
+with a toast (a triangle falling E-6 C-6 G-5), an error buzz for a refused action (the
+cursor at the menu's end, an action turned counter-clockwise: a narrow pulse at C-2), and
+SAVE's drive chunk (noise, then a low pulse; it plays once SAVE saves, M2a Task 5). They are
+data in GoatTracker's sound-effect format (its readme, section 6.3), stepped at 50 Hz, so they
+can be edited in GoatTracker and converted with INS2SND2. They are quiet and short by design:
+the instrument is the thing to hear. They never take a voice the keys use: with the keys on
+chip A they play on chip B, which is otherwise silent; with the keys on chip B (a song
+playing) only on a voice that has finished its release, and a note that needs it takes it
+back at once.
+
 ## Logo
 
 **Metal Chrome, chosen by the user (replacing Cracktro Chrome)**, is SIDOU's logo: spiked,
