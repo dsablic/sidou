@@ -50,6 +50,8 @@
 #include "scope.h"
 #include "screen.h"
 #include "sine.h"
+#include "song_transport.h"
+#include "song_view.h"
 #include "title_card.h"
 #include "ui_sound.h"
 #include "views.h"

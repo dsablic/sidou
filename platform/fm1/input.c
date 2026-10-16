@@ -31,6 +31,7 @@ int32_t input_master(void) {
 }
 
 void input_poll(panel* p, live* l) {
+    (void)l; /* the views play the one they were given (ui_init), the same */
     uint32_t pressed = fm1_input_edges(0);
     /* The held keys and their press edges in one go: a press between two separate reads
      * would play twice or blip. */
@@ -41,7 +42,7 @@ void input_poll(panel* p, live* l) {
     fm1__unlock(k);
 
     ui_buttons(p, pressed, fm1_in.buttons);
-    panel_note_keys(p, l, down, note_pressed);
+    ui_note_keys(p, down, note_pressed);
     for (uint32_t e = 0; e < PANEL_ENCODERS; e++) {
         int32_t steps = fm1_enc_take(e);
         if (steps) {

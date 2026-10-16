@@ -265,3 +265,66 @@ fn panel_notes_sound_as_velocity_off_on_every_target() {
         assert_eq!(got, off, "velocity target {target}");
     }
 }
+
+/// app/panel.h: the ids M2d leans on, Felucca's (unconfirmed on a SIDOU unit:
+/// docs/hardware-test.md).
+#[test]
+fn the_song_buttons_have_feluccas_ids() {
+    assert_eq!(
+        [
+            PANEL_BTN_LFO,
+            PANEL_BTN_GLO,
+            PANEL_BTN_ARP,
+            PANEL_BTN_SEQ,
+            PANEL_BTN_PLAY,
+            PANEL_BTN_REC
+        ],
+        [5, 7, 10, 11, 12, 13]
+    );
+}
+
+/// GLO's layer: with GLO held a key sounds nothing until it goes up, and the six leftmost
+/// keys' presses are kept for panel_take_glo.
+#[test]
+fn glo_held_keeps_the_leftmost_keys_presses_and_sounds_nothing() {
+    let mut p = Panel::new();
+    unsafe { panel_buttons(&mut *p.p, &mut *p.rig.live, 0, 1 << PANEL_BTN_GLO) };
+    p.keys(key(0) | key(5) | key(6), key(0) | key(5) | key(6));
+    assert_eq!(p.gated(), 0);
+    assert!(p.rig.log().is_empty());
+    assert_eq!(
+        unsafe { panel_take_glo(&mut *p.p) },
+        0b100001,
+        "key 6 is no toggle"
+    );
+    assert_eq!(unsafe { panel_take_glo(&mut *p.p) }, 0, "taken");
+    // Pressed again under GLO: another toggle; let go of GLO: still nothing until they go up.
+    p.keys(key(0) | key(5) | key(6), key(0));
+    assert_eq!(unsafe { panel_take_glo(&mut *p.p) }, 1);
+    unsafe { panel_buttons(&mut *p.p, &mut *p.rig.live, 0, 0) };
+    p.keys(key(0) | key(5) | key(6), 0);
+    assert_eq!(p.gated(), 0);
+    p.keys(key(5), 0);
+    p.keys(key(0) | key(5), key(0));
+    assert_eq!(
+        p.gated(),
+        1,
+        "key 0 up and down again: it plays; key 5 still quiet"
+    );
+    assert_eq!(unsafe { panel_take_glo(&mut *p.p) }, 0);
+}
+
+/// panel_quiet_keys: a view takes keys (the song views' jam); a note they sound is released.
+#[test]
+fn quiet_keys_sound_nothing_until_they_go_up() {
+    let mut p = Panel::new();
+    p.keys(key(3), key(3));
+    assert_eq!(p.gated(), 1);
+    unsafe { panel_quiet_keys(&mut *p.p, &mut *p.rig.live, key(3) | key(4)) };
+    assert_eq!(p.gated(), 0, "released");
+    p.keys(key(3) | key(4), key(4));
+    assert_eq!(p.gated(), 0);
+    p.keys(0, 0);
+    p.keys(key(4), key(4));
+    assert_eq!(p.gated(), 1);
+}

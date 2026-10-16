@@ -216,7 +216,6 @@ static void song_boot(void) {
     song_ctl_set_hooks(audio_song(), &hooks);
 }
 
-static uint8_t song_toggle;   /* a PLAY press waiting for the transport to take it */
 static int16_t song_error;    /* the refusal last shown */
 static uint32_t song_warned;  /* the warnings shown since the play */
 
@@ -304,23 +303,6 @@ static uint8_t song_taken;
 
 static void song_pass(void) {
     song_ctl* sc = audio_song();
-    if (panel_take_play(&front) & 1u) {
-        song_toggle ^= 1u;
-    }
-    if (song_toggle) {
-        uint32_t st = song_ctl_state(sc);
-        if (st == SONG_PLAYING) {
-            song_toggle = !song_ctl_stop(sc);
-        } else if (st != SONG_LOADING && song_ctl_play(sc, 0, 0)) {
-            song_toggle = 0;
-            song_warned = 0;
-            song_setup_on = 0;
-            if (song_ctl_state(sc) == SONG_LOADING) {
-                keys_route_set_song(&keys_router, 1); /* the keys leave chip A */
-                song_mine = 1;
-            }
-        }
-    }
     uint8_t taken = keys_route_voices_taken(&keys_router);
     if (taken != song_taken && song_ctl_take(sc, taken)) {
         song_taken = taken;

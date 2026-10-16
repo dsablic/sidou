@@ -127,6 +127,10 @@ void ui_toast(const char* text, uint32_t ms) {
     screen_toast(&ui.s, text, ms);
 }
 
+void ui_note_keys(panel* p, uint32_t down, uint32_t pressed) {
+    views_note_keys(&ui, p, down, pressed);
+}
+
 void ui_update(uint32_t step, int32_t code) {
     grid_hold(&cells, 0); /* a wipe's held rows go out too */
     views_update(&ui, step, code);

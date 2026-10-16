@@ -41,6 +41,9 @@ void ui_buttons(panel* p, uint32_t pressed, uint32_t held);
 void ui_encoder(panel* p, uint32_t enc, int32_t steps);
 /* A toast over the view (app/screen.h screen_toast): text for ms from the next frame on. */
 void ui_toast(const char* text, uint32_t ms);
+/* Main loop, from input_poll after ui_buttons: the note keys through the views to the panel
+ * (views_note_keys: the song views' jam, GLO's mutes and solos). */
+void ui_note_keys(panel* p, uint32_t down, uint32_t pressed);
 /* The update protocol's progress (views_update) in a frame over the view. Draws at once
  * (blocking): the main loop is inside the update session and does not call ui_poll. */
 void ui_update(uint32_t step, int32_t code);

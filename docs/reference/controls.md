@@ -24,7 +24,8 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
    title card) sees everything first, HOME included, so HOME can cancel it; it ends when its
    view closes;
 2. **global:** HOME opens the menu from LIVE and goes back one view anywhere else; SAVE
-   opens MIDI learn over any view;
+   opens MIDI learn over any view; SEQ, PLAY and REC are the song views' ([below](#song-views)),
+   in every view;
 3. **the view on top:** the menu and CHIP take SELECT and ALGORITHM, SCENE takes SELECT;
    LIVE, the status screen, the glyph sheet and About take nothing; MIDI learn's frame passes
    them to the CHIP view under it, and to no other;
@@ -32,7 +33,9 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
    the page of the view that shows: CHIP's focused section on the CHIP view (on top or under
    MIDI learn's frame), LIVE's knobs in every other view.
 
-The note keys and MASTER always play, whichever view shows. The effect-slot shortcut (EDIT,
+The note keys and MASTER always play, whichever view shows, but for two layers before the
+panel: **GLO held** turns the leftmost keys into the song's mutes and solos, and in a **song
+view** the keys audition the song's instrument ([Song views](#song-views)). The effect-slot shortcut (EDIT,
 SCL, ENV) works in every view, the CHIP view included ([CHIP](#chip) says why it stays).
 
 ## Which chip the keys play
@@ -80,18 +83,53 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end), in every view; K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last) |
-| **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, CHIP, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE behind THE OSCILLATOR's title card (below) |
+| **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, CHIP, the song views, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE behind THE OSCILLATOR's title card (below) |
 | **SAVE (button 9)** | MIDI learn (below): press it, turn a knob, then send a CC |
-| **PLAY (button 12)** | plays SIDOU's first song (SIDOU LOOP) on chip A from its start, and stops it (each voice's release rings on); lit while it plays. Until M2d's transport. While it plays the keys play chip B (KEYS AUTO), or take voices from the song on chip A (KEYS A). A song the device cannot play is refused with a toast (`SNG: MULTISPEED 8 (MAX 4)`) |
+| **SEQ (button 11)** | opens the song views, and steps through them ([below](#song-views)) |
+| **PLAY (button 12)** | plays the song (SIDOU LOOP until songs load) from the song views' position, and stops it (each voice's release rings on); with EDIT held, goes on from where it stopped; lit while it plays. While it plays the keys play chip B (KEYS AUTO), or take voices from the song on chip A (KEYS A). A song the device cannot play is refused with a toast (`SNG: MULTISPEED 8 (MAX 4)`) |
+| **REC (button 13)** | record mode on and off |
+| **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; the keys sound nothing while GLO is held |
 | **SELECT (encoder 0)**, in the menu | moves the blinking cursor up and down the items |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: CHIP (the profile and the character), DIST, MOD, FX; it stops at either end |
 | **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP, the algorithm on a slot; it stops at either end |
 | **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, and round): it wipes in, and a toast names it |
 
-The other buttons (LFO, GLO, ARP, SEQ, PLAY, REC) and PRESETS (encoder 6) do
-nothing yet; SELECT does nothing outside the menu, CHIP and SCENE, ALGORITHM nothing outside
+The other buttons (LFO, ARP) and PRESETS (encoder 6) do nothing yet; SELECT does nothing outside the menu, CHIP and SCENE, ALGORITHM nothing outside
 the menu and CHIP.
+
+## Song views
+
+The song views make and play a song (M2d): **STEP**, **TRACKER**, **ORDER**, **INSTR** and
+**TABLE**, all on the same GoatTracker 2 song (`app/song_view.h`). Until M2d Task 2 there is
+one, a TRACKER placeholder: the header, the voice heads and the rows' numbers. Until the
+song player is bound on the device (M2c Task 6), nothing plays: the header shows the
+transport stopped and no tempo, PLAY does nothing, and the keys play the instrument there too.
+
+| Control | Does |
+|---|---|
+| **SEQ** | from any view, opens the first song view over it (HOME goes back to that view); in a song view, the next one: STEP, TRACKER, ORDER, INSTR, TABLE and round (the views not made yet are skipped). The menu's TRACKER opens them too |
+| **PLAY** | in every view: plays the song from the orderlist entry the song views show (the cursor's), or stops it (releases ring on). While it starts (the keys moving off chip A, [which chip the keys play](#which-chip-the-keys-play)) it shows as playing; PLAY again stops it |
+| **EDIT held + PLAY** | goes on from where the song stopped (from the cursor if it never played) |
+| **REC** | record mode on and off: REC in red on the song views' top line |
+| **GLO held + note key 1, 2, 3** | mutes voice 1, 2, 3 of the song, or lets it sound again |
+| **GLO held + note key 4, 5, 6** | solos voice 1, 2, 3, or unsolos it: while any voice is soloed the soloed ones sound and the rest are silent; with none, the muted ones are silent |
+| **Note keys**, in a song view | audition the song's current instrument on the cursor's voice through the player, at the panel's octave, one note at a time (the last key wins) |
+| **SAVE** | MIDI learn, as everywhere (saving the song with SAVE comes with M2a Task 5 and M2c Task 8) |
+
+GLO's layer works in every view and comes before the panel: a key pressed while GLO is held
+sounds nothing until it is let go, even if GLO is let go first; a key already sounding when GLO
+goes down sounds on. The mutes and solos show on every song view's voice heads (MUT in light
+red, SOL in white, a silent voice's name in grey) and on LIVE's top line, in red in the
+preset's place: **M13 S2** is voices 1 and 3 muted and voice 2 soloed.
+
+The song views' top line: the view's name, a play mark or a stop square, the tempo in BPM
+(the frame rate times the play routine's calls a frame, over the calls a row and the rows a
+beat, 4; funktempo's two speeds averaged: tempo 6 on PAL is 125.3 BPM, shown 125), the
+position (**ORD 03 ROW 1A**, in hex: the player's while it plays, the cursor's while it is
+stopped) and REC. The second line: V1, V2, V3 in their waveform's colour (pulse cyan, saw
+yellow, triangle light green, noise light grey), the waveform's name and a one-cell envelope
+meter.
 
 ## Title cards
 
@@ -369,8 +407,8 @@ The **status screen** (STATUS in the menu) shows the numbers: the chip, preset, 
 cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS each slot's
 algorithm and Mix (`>` marks the selected slot) with the selected slot's Amount, A and B.
 
-The menu (HOME) lists CHIP (the CHIP view, above), PRESET, OCTAVE and CARDS (the title cards,
-above) with their values, then STATUS, SCENE (the generative pieces, above), CHARSET (the
+The menu (HOME) lists CHIP (the CHIP view, above), TRACKER (the song views, above), PRESET,
+OCTAVE, CARDS (the title cards, above) and KEYS with their values, then STATUS, SCENE (the generative pieces, above), CHARSET (the
 glyph sheet: the font and the palette) and ABOUT. A view opens with a wipe from the top and
 closes with one from the bottom; CHIP, SCENE, and LIVE back from the menu, open behind a title
 card instead, and cut in under it in bands. M2's STEP view will be the default then; for M1 LIVE is.

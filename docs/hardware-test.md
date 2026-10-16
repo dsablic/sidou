@@ -189,8 +189,11 @@ which printed control did it.
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the status screen and the CHIP view; Mix as LIVE's bar), in every view; EDIT lit while the slot is on | | [ ] |
 | HOME (button 8) | from LIVE, the menu (a wipe down from the top); in the menu, back to LIVE behind THE OSCILLATOR's title card (below; with CARDS OFF, a wipe up from the bottom) | | [ ] |
 | SAVE (button 9) | a MIDI LEARN frame at the bottom of the screen, TURN A KNOB (section 7, MIDI learn); HOME closes it | | [ ] |
-| PLAY (button 12, Felucca's id, unconfirmed on a SIDOU unit) | SIDOU LOOP plays (a lead, a bass and drums, in time, no clicks between rows); PLAY again stops it and the notes ring out; PLAY's LED lit while it plays. Note which printed button it is | | [ ] |
-| SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, PRESET, OCTAVE, CARDS, STATUS, SCENE, CHARSET and ABOUT | | [ ] |
+| SEQ (button 11) | from any view, the TRACKER (black, a light blue top line TRACKER, a stop square, the tempo 125, ORD 00 ROW 00; V1 V2 V3 on the second line; row numbers 00..14 with a blue bar on 00); SEQ again stays there, HOME goes back | | [ ] |
+| PLAY (button 12) | SIDOU LOOP plays (a lead, a bass and drums, in time, no clicks between rows), in any view; TRACKER's top line shows a play mark and the rows move; PLAY again stops it and the notes ring out; EDIT + PLAY goes on from there; PLAY's LED lit while it plays | | [ ] |
+| REC (button 13) | REC in red at the right of TRACKER's top line, and off again | | [ ] |
+| GLO (button 7) held + the leftmost note key | while SIDOU LOOP plays, its voice 1 goes silent; TRACKER's V1 head says MUT in light red, LIVE's top line M1 in the preset's place; the key sounds nothing; again: back. GLO + the fourth key: only voice 1 sounds, SOL on V1 | | [ ] |
+| SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, TRACKER, PRESET, OCTAVE, CARDS, KEYS, SOUNDS, STATUS, SCENE, CHARSET and ABOUT | | [ ] |
 | ALGORITHM (encoder 1), in the menu | changes the item under the cursor (PRESET; OCTAVE -3..+3; CARDS: counter-clockwise OFF, clockwise ON); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
 | SELECT (encoder 0), on CHIP | the focus (a play mark and white frames) moves CHIP, DIST, MOD, FX and stops at either end; onto a slot that was not the selected one, the toast says SLOT DIST (or MOD, FX); onto the slot already selected (DIST at power-on), no toast | | [ ] |
 | ALGORITHM (encoder 1), on CHIP | on CHIP the PROFILE steps 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581 (MODEL follows; held notes attack again on the new chip, as at a model change); on a slot its algorithm, OFF to the last, named in the slot's frame | | [ ] |
@@ -211,6 +214,12 @@ which printed control did it.
   "SLOT MOD", "MOD CHORUS") that goes after about 1.5 s; FX shows
   "CHIP 8580" and sweeps colour bands down the border for about half a
   second.
+- [ ] **The song views' button ids (M2d).** GLO 7, SEQ 11, PLAY 12 and REC 13 (and LFO 5,
+  ARP 10, unused yet) are Felucca's ids and were never confirmed on a SIDOU unit (M1 used
+  only FX, SCL, ENV, EDIT, HOME and SAVE). The four rows above check them by what they do;
+  write the printed control for each. If one does nothing and another printed button does
+  its job, only `app/panel.h` changes: note which id is which. M2d is not done on hardware
+  until this passes.
 - [ ] The other buttons and encoders do nothing (record anything they do);
   SELECT does nothing outside the menu, CHIP and SCENE, ALGORITHM nothing
   outside the menu and CHIP.

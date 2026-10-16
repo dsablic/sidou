@@ -257,6 +257,20 @@ All notable changes are documented here. The format follows
   effect slots and faded in or out over one block; out of use it is not rendered and the
   output is chip A's bit for bit. It is made at boot with the keys' setup, prepared in the
   background. The LIVE view's tap can follow either chip.
+- M2d: the song views' frame (`app/song_view.h`). SEQ (button 11) opens the song views from
+  any view and steps through them (STEP, TRACKER, ORDER, INSTR, TABLE; for now a TRACKER
+  placeholder with the rows' numbers, also the menu's new second item); PLAY (12) plays and
+  stops the song, EDIT + PLAY goes on; REC (13) turns record mode on and off; GLO (7) held
+  with note keys 1-3 mutes voices 1-3 of the song and with keys 4-6 solos them, in every view,
+  the keys sounding nothing under GLO (`app/panel.h`). In a song view the note keys audition
+  the song's instrument on the cursor's voice. Row 0 shows the view, the transport, the tempo
+  in BPM, the position and REC; row 1 the voices' waveforms, mutes, solos and envelopes; LIVE's
+  top line shows the mutes and solos in the preset's place. The transport reaches the player
+  through a small binding (`app/song_transport.h`) that the device fills once M2c Task 6's
+  song control is on `main`; until then nothing plays and the header shows no tempo. The note
+  keys now pass through the views (`views_note_keys`). The menu, SCENE's RULE 30 and STARS
+  goldens are redone (the menu's new item; the pieces' moment moves with the menu's longer
+  walk), and TRACKER's, its mute and REC, and LIVE's mutes are new.
 - The menu's CHIP item opens the CHIP view; the 6581/8580 choice it held is the view's profile
   picker (and the FX button, as before).
 - The EDIT layer (EDIT + K1..K4, SCL, ENV) is no longer a stopgap: it stays in every view as a

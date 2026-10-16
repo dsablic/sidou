@@ -337,8 +337,31 @@ static void header(const live_view* lv, canvas* cv) {
         put(cv, 6, 0, FONT_PLAY, HEADER);
     }
     text(cv, 8, 0, l->model == SID_MODEL_8580 ? "8580" : "6581", HEADER);
-    const live_preset* p = live_preset_get(l->preset);
-    text(cv, 13, 0, p ? p->name : "?", HEADER);
+    if (lv->mutes) {
+        /* The song's mutes and solos (app/song_view.h) in place of the preset. */
+        char m[10];
+        uint32_t n = 0;
+        for (uint32_t part = 0; part < 2u; part++) {
+            uint32_t bits = (uint32_t)lv->mutes >> (3u * part) & 7u;
+            if (!bits) {
+                continue;
+            }
+            if (n) {
+                m[n++] = ' ';
+            }
+            m[n++] = part ? 'S' : 'M';
+            for (uint32_t v = 0; v < 3u; v++) {
+                if (bits >> v & 1u) {
+                    m[n++] = (char)('1' + v);
+                }
+            }
+        }
+        m[n] = 0;
+        text(cv, 13, 0, m, GRID_ATTR(GRID_RED, GRID_LIGHT_BLUE));
+    } else {
+        const live_preset* p = live_preset_get(l->preset);
+        text(cv, 13, 0, p ? p->name : "?", HEADER);
+    }
     char oct[6] = "OCT+0";
     int32_t o = l->octave;
     oct[3] = o < 0 ? '-' : '+';
@@ -727,7 +750,7 @@ static void slots(const live_view* lv, canvas* cv) {
 /* What each part of the canvas shows, as bytes (LIVE_VIEW_LOOK of them): a part is drawn
  * again when its bytes change. */
 #define KEY_HEADER 0u
-#define KEY_VOICE 3u /* 5 a voice */
+#define KEY_VOICE 4u /* 5 a voice */
 #define KEY_ENV (KEY_VOICE + 5u * SCOPE_VOICES)
 #define KEY_FILTER (KEY_ENV + SCOPE_VOICES)
 #define KEY_VU (KEY_FILTER + 1u)
@@ -741,6 +764,7 @@ static void look(const live_view* lv, uint8_t out[LIVE_VIEW_LOOK]) {
     out[KEY_HEADER] = (uint8_t)(l->model | (l->keys_chip & 1u) << 1);
     out[KEY_HEADER + 1u] = l->preset;
     out[KEY_HEADER + 2u] = (uint8_t)l->octave;
+    out[KEY_HEADER + 3u] = lv->mutes;
     for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
         uint8_t ctrl = voice_control(l, v);
         const live_voice* x = &l->voice[v];
@@ -780,7 +804,7 @@ static int differs(const live_view* lv, const uint8_t* now, uint32_t from, uint3
 /* The parts whose bytes changed, drawn again into the canvas: the rows they cover. */
 static uint32_t parts(live_view* lv, canvas* cv, const uint8_t now[LIVE_VIEW_LOOK]) {
     uint32_t rows = 0;
-    if (differs(lv, now, KEY_HEADER, 3u)) {
+    if (differs(lv, now, KEY_HEADER, 4u)) {
         header(lv, cv); /* fills its row */
         rows |= 1u;
     }

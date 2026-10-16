@@ -3,7 +3,8 @@
 //! The screen in fm1-emu: LCD snapshots of the views against golden images
 //! (tests/golden/lcd/), reached through the panel as a player would (HOME, SELECT, ALGORITHM);
 //! the boot sequence, short and full, and skipping it; LIVE's scopes following the notes; the
-//! CHIP view's pages and what MIDI and the knobs change on them;
+//! CHIP view's pages and what MIDI and the knobs change on them; the song views' frame (SEQ,
+//! REC, GLO's mutes);
 //! wipe and raster transitions frame by frame; and what drawing costs the main loop in
 //! instructions and SPI time, idle, for small changes, per frame of each transition, and for
 //! the animated boot, About and LIVE.
@@ -32,6 +33,13 @@ const A4_KEY: u8 = 14 + 69 - 53;
 const OCT_UP: u8 = 1;
 const FX: u8 = 2;
 const HOME: u8 = 8;
+/// app/panel.h: the song views' buttons (Felucca's ids, unconfirmed on a SIDOU unit) and the
+/// first note key's id.
+const GLO: u8 = 7;
+const SEQ: u8 = 11;
+const PLAY: u8 = 12;
+const REC: u8 = 13;
+const KEY0: u8 = 14;
 const SELECT: u8 = 0;
 const ALGORITHM: u8 = 1;
 /// app/views.h: the menu's title cards option and view items (STATUS is
@@ -2735,6 +2743,197 @@ const TITLE_CARD_PER_FRAME: f64 = 62_000.0;
 const TITLE_CARD_INPUT: u64 = 430;
 const TITLE_CARD_PASS: u64 = 80_000;
 
+/// The song views' state (app/song_view.h) inside the views.
+fn song_byte(m: &mut Machine, fw: &Firmware, field: usize) -> u8 {
+    ui_byte(m, fw, sidou_sys::ilp32::views::song + field)
+}
+
+/// The instrument's voices gated (app/live.h live.voice).
+fn live_gated(m: &mut Machine, fw: &Firmware) -> usize {
+    let l = m
+        .soc
+        .read32(fw.symbol("ui") + sidou_sys::ilp32::views::l as u32);
+    (0..3u32)
+        .filter(|v| {
+            let at = sidou_sys::ilp32::live::voice as u32
+                + v * sidou_sys::ilp32::live_voice::SIZE as u32
+                + sidou_sys::ilp32::live_voice::gate as u32;
+            m.soc.read8(l + at) != 0
+        })
+        .count()
+}
+
+/// The TRACKER placeholder from SEQ, settled.
+fn open_tracker(m: &mut Machine, fw: &Firmware) {
+    press(m, SEQ);
+    settle(m, fw);
+    assert_eq!(
+        common::top_view(m, fw),
+        fw.symbol("song_view_tracker"),
+        "SEQ did not open the song views"
+    );
+}
+
+/// SEQ opens the song views (until M2d Task 2 the TRACKER placeholder: the header, the voice
+/// heads and the rows' numbers); with no player bound (M2c Task 6 binds it), the transport
+/// stopped and no tempo. REC in the header; GLO and the leftmost key mute voice 1 within a
+/// frame and sound nothing, and LIVE's header says so; HOME goes back.
+#[test]
+fn the_song_views_header_and_heads_match_their_goldens() {
+    let Some((build, fw)) = fixture("the song views test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_tracker(&mut m, &fw);
+    compare_golden(&build, "tracker", &m.soc.lcd.fb, &[]);
+    // PLAY with no player does nothing; REC shows.
+    press(&mut m, PLAY);
+    press(&mut m, REC);
+    settle(&mut m, &fw);
+    assert_eq!(song_byte(&mut m, &fw, sidou_sys::ilp32::song_view::rec), 1);
+    // GLO and the leftmost key: voice 1 muted at once, shown at the next frame, no sound.
+    m.key(GLO, true);
+    m.run_ms(30);
+    common::to_mid_frame(&mut m, &fw);
+    m.key(KEY0, true);
+    m.run_ms(10);
+    assert_eq!(
+        song_byte(&mut m, &fw, sidou_sys::ilp32::song_view::mute),
+        1,
+        "the mute within the key's pass"
+    );
+    m.run_ms(UI_PERIOD_MS);
+    assert_eq!(live_gated(&mut m, &fw), 0, "a key under GLO sounds nothing");
+    m.key(KEY0, false);
+    m.key(GLO, false);
+    settle(&mut m, &fw);
+    assert_eq!(live_gated(&mut m, &fw), 0);
+    compare_golden(&build, "tracker-mute-rec", &m.soc.lcd.fb, &[]);
+    // LIVE's header, in the preset's place.
+    press(&mut m, HOME);
+    settle(&mut m, &fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("live_view_view"));
+    compare_golden(&build, "live-mutes", &m.soc.lcd.fb, &[]);
+    // The keys play the instrument again once GLO is let go.
+    m.key(KEY0, true);
+    m.run_ms(30);
+    assert_eq!(live_gated(&mut m, &fw), 1);
+    m.key(KEY0, false);
+    m.run_ms(30);
+}
+
+/// The TRACKER placeholder's main-loop costs, with no player bound (M2c Task 6 adds the
+/// moving position, M2d Task 2 the rows; both measure again), bounded about 10 % above what
+/// was measured:
+///
+/// | TRACKER | Cells a frame (average, most) | Worst SPI | Instructions a frame | Busiest ui_poll |
+/// |---|---|---|---|---|
+/// | Idle (25 frames) | 0, 0 | 0 | 7.4k | 0.5k |
+/// | REC on (25 frames) | 0.12, 3 | 0.26 ms | 8.5k | 25.0k |
+/// | GLO and a key: MUT (25 frames) | 0.20, 5 | 0.44 ms | 8.5k | 25.0k |
+///
+/// Idle it composes nothing. A change builds the canvas (900 cells) and copies the few that
+/// changed: the build and the scan are the busiest ui_poll. The inputs (ui_buttons for SEQ,
+/// REC and PLAY; GLO's key goes through the note keys' pass) and the busiest pass after each,
+/// against TRACKER_INPUT and TRACKER_PASS. Measured: SEQ from LIVE the input 4.2k (the push:
+/// the wipe's set-up over LIVE's overlays) and the pass 49.5k (the wipe's first frame: the
+/// canvas's first build and its rows copied whole); SEQ in TRACKER, REC and PLAY the input
+/// 0.2k and the pass 2.9k to 27.4k; GLO's key 27.5k.
+const TRACKER_IDLE_PER_FRAME: f64 = 8_200.0;
+const TRACKER_CHANGE_PER_FRAME: f64 = 9_400.0;
+const TRACKER_WORST_POLL: u64 = 28_000;
+const TRACKER_INPUT: u64 = 4_600;
+const TRACKER_PASS: u64 = 55_000;
+
+#[test]
+fn the_song_views_stay_within_their_budgets() {
+    let Some((_, fw)) = fixture("the song views budget test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    m.watch_calls(fw.symbol("ui_poll"));
+    common::run_past_boot(&mut m, &fw);
+    open_tracker(&mut m, &fw);
+    let idle = measure(&mut m, &fw, 25, |_| {});
+    let rec = measure(&mut m, &fw, 25, |m| m.key(REC, true));
+    m.key(REC, false);
+    m.key(GLO, true);
+    m.run_ms(100);
+    let glo = measure(&mut m, &fw, 25, |m| m.key(KEY0, true));
+    m.key(KEY0, false);
+    m.key(GLO, false);
+    let report = serde_json::json!({
+        "tracker_idle": animated_json(&idle),
+        "tracker_rec": animated_json(&rec),
+        "tracker_glo": animated_json(&glo),
+    });
+    println!("{report}");
+    assert_eq!(idle.total().windows, 0, "the idle TRACKER sent something");
+    for (what, c, per_frame) in [
+        ("idle", &idle, TRACKER_IDLE_PER_FRAME),
+        ("REC", &rec, TRACKER_CHANGE_PER_FRAME),
+        ("GLO and a key", &glo, TRACKER_CHANGE_PER_FRAME),
+    ] {
+        assert!(
+            c.worst_frame_ms() <= SPI_BUDGET_MS,
+            "{what}: a frame took {:.1} ms of SPI",
+            c.worst_frame_ms()
+        );
+        let most = c.frames.iter().map(cells).max().unwrap_or(0);
+        assert!(
+            most <= sidou_sys::SONG_VIEW_FRAME_CELLS,
+            "{what}: a frame sent {most} cells"
+        );
+        assert!(
+            c.worst_poll < TRACKER_WORST_POLL,
+            "{what}: a ui_poll took {} instructions",
+            c.worst_poll
+        );
+        assert!(
+            c.instructions_per_frame() < per_frame,
+            "{what}: {:.0} instructions a frame",
+            c.instructions_per_frame()
+        );
+    }
+
+    // The inputs and the busiest pass after each.
+    let mut m = booted(&fw);
+    m.watch_calls(fw.symbol("ui_buttons"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let mut over = Vec::new();
+    let mut costs = Vec::new();
+    for (what, id) in [
+        ("SEQ from LIVE", SEQ),
+        ("SEQ in TRACKER", SEQ),
+        ("REC", REC),
+        ("PLAY", PLAY),
+        ("REC again", REC),
+    ] {
+        let c = start_cost(&mut m, 1000, |m| press(m, id));
+        costs.push((what, c));
+    }
+    // GLO's key: the input is the note keys' pass (ui_note_keys is inlined into input_poll's
+    // caller's pass), so the pass alone.
+    m.key(GLO, true);
+    m.run_ms(30);
+    let c = start_cost(&mut m, 1000, |m| {
+        m.key(KEY0, true);
+        m.run_ms(30);
+        m.key(KEY0, false);
+    });
+    costs.push(("GLO and a key", c));
+    m.key(GLO, false);
+    for (what, (input, pass)) in &costs {
+        println!("TRACKER {what}: the input {input}, the busiest pass {pass}");
+        if *input >= TRACKER_INPUT || *pass >= TRACKER_PASS {
+            over.push(format!(
+                "{what}: the input {input}, the busiest pass {pass}"
+            ));
+        }
+    }
+    assert!(over.is_empty(), "{over:#?}");
+}
+
 // A ui_poll holds MIDI's drain for as long as it runs: every view's worst stays within the
 // latency gate's poll allowance (common::POLL_INSTRUCTIONS, 120k), so a compose that grows
 // past it fails here, not as a late note somewhere else.
@@ -2747,6 +2946,8 @@ const _: () = assert!(TITLE_CARD_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(TITLE_CARD_INPUT + TITLE_CARD_PASS <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(CHIP_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(CHIP_INPUT + CHIP_PASS <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(TRACKER_WORST_POLL <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(TRACKER_INPUT + TRACKER_PASS <= common::POLL_INSTRUCTIONS);
 // A pass that runs a slice of the spare's preparation (reg_ring_prepare_step) and the busiest
 // view's work still fits.
 // One slice a pass, however many ticks a pass catches up (reg_ring_pass_end, platform/fm1/
@@ -2757,6 +2958,10 @@ const _: () = assert!(
 );
 const _: () = assert!(
     CHIP_INPUT + CHIP_PASS + PREPARE_SLICES_PER_PASS * REG_RING_PREPARE_SLICE
+        <= common::POLL_INSTRUCTIONS
+);
+const _: () = assert!(
+    TRACKER_INPUT + TRACKER_PASS + PREPARE_SLICES_PER_PASS * REG_RING_PREPARE_SLICE
         <= common::POLL_INSTRUCTIONS
 );
 
@@ -2867,3 +3072,4 @@ const _: () = assert!(SCENE_INPUT + SCENE_START_PASS + SONG_SLICE <= common::POL
 const _: () = assert!(TITLE_CARD_INPUT + TITLE_CARD_PASS + SONG_SLICE <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(WIPE_WORST_POLL + SONG_SLICE <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(ABOUT_WORST_POLL + SONG_SLICE <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(TRACKER_INPUT + TRACKER_PASS + SONG_SLICE <= common::POLL_INSTRUCTIONS);

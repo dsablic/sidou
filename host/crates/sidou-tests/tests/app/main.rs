@@ -36,6 +36,7 @@ mod scene_px;
 mod scene_rmr_drawing;
 mod scope;
 mod screen;
+mod song_view;
 mod title_card;
 mod title_card_bitmap;
 mod ui_sound;

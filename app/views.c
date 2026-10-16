@@ -301,6 +301,12 @@ static void chip_open(void* ctx, int32_t steps) {
     show_card(v, TITLE_CARD_CHIP);
 }
 
+static void tracker_open(void* ctx, int32_t steps) {
+    views* v = ctx;
+    (void)steps;
+    screen_push(&v->s, &song_view_tracker, &v->song, SCREEN_WIPE_DOWN);
+}
+
 static void status_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
@@ -328,16 +334,16 @@ static void about_open(void* ctx, int32_t steps) {
 }
 
 static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
-    {"CHIP", NULL, chip_open},             {"PRESET", preset_value, preset_turn},
-    {"OCTAVE", octave_value, octave_turn}, {"CARDS", cards_value, cards_turn},
-    {"KEYS", keys_value, keys_turn},       {"SOUNDS", sounds_value, sounds_turn},
-    {"STATUS", NULL, status_open},         {"SCENE", NULL, scene_open},
-    {"CHARSET", NULL, charset_open},       {"ABOUT", NULL, about_open},
+    {"CHIP", NULL, chip_open},             {"TRACKER", NULL, tracker_open},
+    {"PRESET", preset_value, preset_turn}, {"OCTAVE", octave_value, octave_turn},
+    {"CARDS", cards_value, cards_turn},    {"KEYS", keys_value, keys_turn},
+    {"SOUNDS", sounds_value, sounds_turn}, {"STATUS", NULL, status_open},
+    {"SCENE", NULL, scene_open},           {"CHARSET", NULL, charset_open},
+    {"ABOUT", NULL, about_open},
 };
-_Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_CARDS == 3u && VIEWS_MENU_KEYS == 4u &&
-                   VIEWS_MENU_SOUNDS == 5u && VIEWS_MENU_STATUS == 6u &&
-                   VIEWS_MENU_SCENE == 7u && VIEWS_MENU_CHARSET == 8u &&
-                   VIEWS_MENU_ABOUT == 9u,
+_Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_CARDS == 4u &&
+                   VIEWS_MENU_KEYS == 5u && VIEWS_MENU_SOUNDS == 6u && VIEWS_MENU_STATUS == 7u &&
+                   VIEWS_MENU_SCENE == 8u && VIEWS_MENU_CHARSET == 9u && VIEWS_MENU_ABOUT == 10u,
                "the menu's items");
 /* The help below the menu's frame. */
 #define MENU_HELP_ROW (MENU_ROW + VIEWS_MENU_ITEMS + 2u)
@@ -443,12 +449,37 @@ static void remember(views* v) {
     }
 }
 
+/* SEQ: the first song view over the view on top, or in one the next (app/song_view.h). */
+static void song_step(views* v) {
+    const view* top = screen_top(&v->s);
+    const view* next = song_view_next(top);
+    if (!next || next == top) {
+        return;
+    }
+    if (song_view_is(top)) {
+        screen_pop(&v->s, SCREEN_CUT);
+    }
+    screen_push(&v->s, next, &v->song, SCREEN_WIPE_DOWN);
+}
+
 /* HOME: the menu from the root view, back one view from any other: from the menu to LIVE,
- * behind THE OSCILLATOR's card. SAVE: MIDI learn. */
+ * behind THE OSCILLATOR's card. SAVE: MIDI learn. SEQ, PLAY and REC: the song views'. */
 static int global(void* ctx, const screen_event* e) {
     views* v = ctx;
     if (e->kind == SCREEN_PRESS && e->id == LEARN_VIEW_BUTTON) {
         return learn_view_open(&v->learn, &v->s, v->p) == 0;
+    }
+    if (e->kind == SCREEN_PRESS && e->id == PANEL_BTN_SEQ) {
+        song_step(v);
+        return 1;
+    }
+    if (e->kind == SCREEN_PRESS && e->id == PANEL_BTN_PLAY) {
+        song_view_play(&v->song, (int)(e->held >> PANEL_BTN_EDIT & 1u));
+        return 1;
+    }
+    if (e->kind == SCREEN_PRESS && e->id == PANEL_BTN_REC) {
+        song_view_rec(&v->song);
+        return 1;
     }
     if (e->kind != SCREEN_PRESS || e->id != PANEL_BTN_HOME) {
         return 0;
@@ -470,6 +501,10 @@ void views_set_keys(views* v, keys_route* kr) {
     chip_view_set_keys(&v->chip, kr);
 }
 
+void views_set_song(views* v, const song_transport* t) {
+    song_view_set_transport(&v->song, t);
+}
+
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->l = l;
     v->sc = sc;
@@ -483,6 +518,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     chip_view_init(&v->chip, l);
     live_view_init(&v->live, l, sc);
     scene_view_init(&v->scene, l, sc);
+    song_view_init(&v->song, l);
     screen_init(&v->s, g, &live_view_view, &v->live);
     screen_global(&v->s, global, v);
 }
@@ -553,6 +589,34 @@ void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
     }
     knob_page(v, p);
     panel_buttons(p, v->l, rest, held);
+}
+
+/* The keys the panel holds: sounding (key_note) or quiet. */
+static uint32_t panel_owned(const panel* p, uint32_t keys) {
+    uint32_t owned = p->quiet;
+    for (uint32_t k = 0; keys >> k; k++) {
+        if ((keys >> k & 1u) && p->key_note[k] != LIVE_NO_NOTE) {
+            owned |= 1u << k;
+        }
+    }
+    return owned;
+}
+
+void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed) {
+    song_view* sv = &v->song;
+    /* Most passes: no key, and no jam to let go: the panel's (releases) alone. */
+    if (down | pressed | sv->jam_keys) {
+        int take = !(p->held >> PANEL_BTN_GLO & 1u) && sv->t && song_view_is(shows(v));
+        uint32_t owned = take ? panel_owned(p, down & ~pressed & ~sv->jam_keys) : 0u;
+        uint32_t taken = song_view_keys(sv, down, pressed, owned, take);
+        if (taken) {
+            panel_quiet_keys(p, v->l, taken);
+        }
+    }
+    panel_note_keys(p, v->l, down, pressed);
+    if (p->glo) {
+        song_view_glo(sv, panel_take_glo(p));
+    }
 }
 
 void views_encoder(views* v, panel* p, uint32_t enc, int32_t steps) {
@@ -629,6 +693,8 @@ void views_frame(views* v, uint32_t now_ms) {
         tell(v);
     }
     learn_view_frame(&v->learn, &v->s, now_ms);
+    song_view_frame(&v->song);
+    v->live.mutes = (uint8_t)song_view_mutes(&v->song);
     /* The tap runs while LIVE or SCENE shows: the audio interrupt pays for it only then. */
     top = shows(v);
     live_view_tap(&v->live, top == &live_view_view);

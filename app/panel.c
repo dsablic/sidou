@@ -9,8 +9,9 @@ void panel_init(panel* p) {
     p->master_raw = -1;
     p->held = 0;
     p->page = PANEL_PAGE_LIVE;
-    p->play_presses = 0;
     p->playing = 0;
+    p->glo = 0;
+    p->quiet = 0;
 }
 
 static void key_up(panel* p, live* l, uint32_t k) {
@@ -19,12 +20,32 @@ static void key_up(panel* p, live* l, uint32_t k) {
 }
 
 void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed) {
+    int glo = (p->held >> PANEL_BTN_GLO) & 1u;
+    /* Kept in a local and stored once: pi32v2's read-modify-write "and not" on memory, which
+     * clearing a bit of p->quiet in place compiles to, is one fm1-emu does not decode. */
+    uint32_t quiet = p->quiet;
+    uint32_t toggles = 0;
     for (uint32_t k = 0; k < PANEL_NOTE_KEYS; ++k) {
         uint32_t bit = 1u << k;
+        if (quiet & bit) {
+            if ((pressed & bit) && glo) {
+                toggles |= bit; /* pressed again */
+            }
+            if (!(down & bit)) {
+                quiet ^= bit; /* gone up: the panel's again from the next press */
+            }
+            continue;
+        }
         if (p->key_note[k] != LIVE_NO_NOTE && (pressed & bit)) {
             key_up(p, l, k); /* let go and pressed again since the last call */
         }
         if (p->key_note[k] == LIVE_NO_NOTE && ((down | pressed) & bit)) {
+            if (glo) {
+                /* GLO's layer: the key is a mute or a solo, and sounds nothing */
+                toggles |= bit;
+                quiet |= down & bit;
+                continue;
+            }
             uint8_t n = live_key_note(l, (uint8_t)(PANEL_BASE_NOTE + k));
             if (n != LIVE_NO_NOTE) {
                 live_note_on(l, n, PANEL_VELOCITY);
@@ -34,6 +55,28 @@ void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed) {
         if (p->key_note[k] != LIVE_NO_NOTE && !(down & bit)) {
             key_up(p, l, k);
         }
+    }
+    p->quiet = quiet;
+    p->glo |= (uint8_t)(toggles & ((1u << PANEL_GLO_KEYS) - 1u));
+}
+
+uint32_t panel_take_glo(panel* p) {
+    uint32_t t = p->glo;
+    p->glo = 0;
+    return t;
+}
+
+void panel_quiet_keys(panel* p, live* l, uint32_t mask) {
+    mask &= (1u << PANEL_NOTE_KEYS) - 1u;
+    for (uint32_t k = 0; mask >> k; ++k) {
+        uint32_t bit = 1u << k;
+        if (!(mask & bit)) {
+            continue;
+        }
+        if (p->key_note[k] != LIVE_NO_NOTE) {
+            key_up(p, l, k);
+        }
+        p->quiet |= bit;
     }
 }
 
@@ -54,15 +97,6 @@ void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held) {
     if (pressed & (1u << PANEL_BTN_FX)) {
         live_button(l, LIVE_BUTTON_FX);
     }
-    if ((pressed & (1u << PANEL_BTN_PLAY)) && p->play_presses < 0xffu) {
-        p->play_presses++;
-    }
-}
-
-uint32_t panel_take_play(panel* p) {
-    uint32_t n = p->play_presses;
-    p->play_presses = 0;
-    return n;
 }
 
 uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t enc) {

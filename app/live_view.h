@@ -3,7 +3,9 @@
 /* LIVE, the root view: what the instrument is doing, after the browser prototype's LIVE
  * (docs/art/README.md "LIVE").
  *
- * - a header line: the chip, the preset and the octave, in reverse video;
+ * - a header line: the chip, the preset and the octave, in reverse video; while the song's
+ *   voices are muted or soloed (GLO, app/song_view.h), which ones in red instead of the preset
+ *   ("M13 S2": voices 1 and 3 muted, voice 2 soloed);
  * - each voice in a box (rows 1-6, 7-12, 13-18): its oscilloscope (160 x 32 pixels, the
  *   trace an overlay on each cell it crosses, over a dotted centre line), its envelope as a
  *   bar of lower eighths (ENV3), its note, waveform, pulse width and envelope stage. The
@@ -65,10 +67,10 @@ extern "C" {
 #define LIVE_VIEW_FALL 3u
 /* VU rows: the voices, then left and right. */
 #define LIVE_VIEW_METERS (SCOPE_VOICES + 2u)
-/* What the canvas shows besides the scopes, as bytes (live_view.c look): the header 3, each
+/* What the canvas shows besides the scopes, as bytes (live_view.c look): the header 4, each
  * voice's box 5 and envelope 1, FILTER 1, VU 3 and the meters, the slots 1 + 2 each. */
 #define LIVE_VIEW_LOOK                                                                         \
-    (3u + 6u * SCOPE_VOICES + 1u + SCOPE_VOICES + LIVE_VIEW_METERS + 1u + 2u * LIVE_SLOTS)
+    (4u + 6u * SCOPE_VOICES + 1u + SCOPE_VOICES + LIVE_VIEW_METERS + 1u + 2u * LIVE_SLOTS)
 
 /* A frame composed off the grid, each cell then written to it once (live_view.c). */
 typedef struct {
@@ -81,6 +83,9 @@ typedef struct {
     scope* sc;      /* NULL: no tap, flat scopes and empty meters */
     uint32_t since; /* the tap's head when it went on: older points are stale */
     uint8_t on;     /* the tap is on */
+    /* The song's mutes (bits 0-2) and solos (bits 3-5) for the header (song_view_mutes): the
+     * views set it before each frame. */
+    uint8_t mutes;
     /* What the last update saw, drawn every frame. */
     uint8_t y[SCOPE_VOICES][SCOPE_W]; /* the traces, pixel rows of the scope (0 the top) */
     uint32_t cols[SCOPE_VOICES][SCOPE_W]; /* the traces as columns (live_view.c columns) */

@@ -36,14 +36,24 @@ extern "C" {
  * edits the same selected slot. */
 #define PANEL_BTN_SCL 3u
 #define PANEL_BTN_ENV 4u
+#define PANEL_BTN_LFO 5u
 #define PANEL_BTN_EDIT 6u
+/* The song views (app/song_view.h): GLO held turns the leftmost PANEL_GLO_KEYS note keys
+ * into the voices' mutes and solos (panel_take_glo), in every view; SEQ steps through the
+ * song views, PLAY plays and stops the song, REC turns record mode on and off. Their ids,
+ * like LFO's and ARP's, are Felucca's and not yet confirmed on a SIDOU unit
+ * (docs/hardware-test.md). */
+#define PANEL_BTN_GLO 7u
 /* The views (app/views.h): opens the menu, and goes back. */
 #define PANEL_BTN_HOME 8u
 /* MIDI learn (app/learn_view.h, docs/reference/controls.md): arms it, and clears. */
 #define PANEL_BTN_SAVE 9u
-/* The song (M2c Task 6, until M2d's transport): plays SIDOU's first song, and stops it. Its
- * id is Felucca's, unconfirmed on a SIDOU unit (docs/hardware-test.md). */
+#define PANEL_BTN_ARP 10u
+#define PANEL_BTN_SEQ 11u
 #define PANEL_BTN_PLAY 12u
+#define PANEL_BTN_REC 13u
+/* GLO's layer: keys 0-2 mute voices 1-3, keys 3-5 solo them. */
+#define PANEL_GLO_KEYS 6u
 /* The LED id of note key k is PANEL_KEY_ID0 + k; buttons are their own ids. */
 #define PANEL_KEY_ID0 14u
 
@@ -78,9 +88,14 @@ typedef struct {
      * (views_buttons, views_encoder) set it from the view that shows before every event and
      * again before the panel reads it; nothing else should rely on it between events. */
     uint8_t page;
-    /* PLAY's presses not yet taken (panel_take_play), and its LED (the song plays). */
-    uint8_t play_presses;
+    /* PLAY's LED: the song plays (or starts), as the views' transport has it (main.c). */
     uint8_t playing;
+    /* GLO's layer: the presses of the leftmost PANEL_GLO_KEYS keys while GLO was held, not
+     * yet taken (panel_take_glo), bit k: key k. */
+    uint8_t glo;
+    /* Keys that sound nothing until they go up (bit k: key k): pressed while GLO was held,
+     * or taken by a view (panel_quiet_keys). */
+    uint32_t quiet;
 } panel;
 
 /* The LEDs, as Felucca's input state lays out the keys. */
@@ -93,11 +108,19 @@ void panel_init(panel* p);
 /* down: the debounced note keys (bit k = key k); pressed: keys that went down since the last
  * call (Felucca's note edges), which catches a press and release between two calls. A key
  * that goes down plays live_key_note of its base note; a key that goes up releases the note
- * it played; a key pressed again while held retriggers. */
+ * it played; a key pressed again while held retriggers. With GLO held (p->held, from the
+ * last panel_buttons) a key that goes down sounds nothing (until it goes up, GLO held or
+ * not), and the leftmost PANEL_GLO_KEYS keys' presses are kept for panel_take_glo; a key
+ * that sounds already sounds on until it goes up. A quiet key (panel_quiet_keys) sounds
+ * nothing until it goes up. */
 void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed);
-/* Button press edges: OCT-, OCT+, FX (the 6581/8580 toggle), SCL and ENV (the effect slots),
- * PLAY (counted for panel_take_play); held: the debounced buttons, which says whether EDIT is
- * held for panel_encoder. */
+/* GLO's presses since the last call (bit k: key k of the PANEL_GLO_KEYS), cleared. */
+uint32_t panel_take_glo(panel* p);
+/* The keys in mask are another's until they go up (a view's: the song views' jam): a note
+ * they sound is released, and they sound nothing until then. */
+void panel_quiet_keys(panel* p, live* l, uint32_t mask);
+/* Button press edges: OCT-, OCT+, FX (the 6581/8580 toggle), SCL and ENV (the effect slots);
+ * held: the debounced buttons, which says whether EDIT is held for panel_encoder. */
 void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held);
 /* The parameter encoder enc turns with the buttons held (bit i: button i) on p's page: with
  * EDIT held, K1..K4 the selected slot's Amount, A, B and Mix on any page; without, on
@@ -113,8 +136,6 @@ uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t
  * LIVE_SLOT_DETENT a detent, a character control by PANEL_CHARACTER_DETENT, clamped at both
  * ends, and on PANEL_PAGE_LIVE live's knobs. */
 void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps);
-/* PLAY's presses since the last call (the main loop's song transport takes them). */
-uint32_t panel_take_play(panel* p);
 /* A MASTER pot reading, 0..1023 (a negative reading, an ADC timeout, is ignored). */
 void panel_master(panel* p, live* l, int32_t raw);
 /* Held keys, the octave on OCT- (below 0) or OCT+ (above 0), FX while the 8580 plays, EDIT

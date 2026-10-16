@@ -77,6 +77,11 @@ impl Ui {
         unsafe { views_buttons(&mut *self.v, &mut *self.p, 0, self.held) };
     }
 
+    /// The note keys down and pressed since the last call, through the views to the panel.
+    pub(crate) fn note_keys(&mut self, down: u32, pressed: u32) {
+        unsafe { views_note_keys(&mut *self.v, &mut *self.p, down, pressed) };
+    }
+
     pub(crate) fn turn(&mut self, enc: u32, steps: i32) {
         unsafe { views_encoder(&mut *self.v, &mut *self.p, enc, steps) };
     }
@@ -191,7 +196,7 @@ fn the_menu_changes_the_preset_and_octave() {
         (ui.top().as_str(), ui.live().model),
         ("MENU", SID_MODEL_6581)
     );
-    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_SELECT, 2); // past TRACKER, which ALGORITHM would open
     ui.turn(PANEL_ENC_ALGORITHM, 2);
     assert_eq!(ui.live().preset, 2);
     ui.turn(PANEL_ENC_SELECT, 1);
@@ -212,23 +217,25 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
     let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
-    let rows: Vec<String> = (4..16).map(|r| ui.row(r)).collect();
+    let rows: Vec<String> = (4..17).map(|r| ui.row(r)).collect();
     let body: Vec<String> = rows.iter().map(|r| r[3..27].to_string()).collect();
     assert_eq!(rows[0][2..10].to_string(), "# MENU #");
     // Labels after the cursor cell, values right-aligned against the frame, an arrow for a view.
     assert_eq!(body[1][..23], format!(" {:<22}", "CHIP"));
-    assert_eq!(body[2], format!(" {:<15}SAW LEAD", "PRESET"));
-    assert_eq!(body[3], format!(" {:<21}+0", "OCTAVE"));
-    assert_eq!(body[4], format!(" {:<21}ON", "CARDS"));
+    // M2d Task 1: TRACKER, the song views.
+    assert_eq!(body[2][..23], format!(" {:<22}", "TRACKER"));
+    assert_eq!(body[3], format!(" {:<15}SAW LEAD", "PRESET"));
+    assert_eq!(body[4], format!(" {:<21}+0", "OCTAVE"));
+    assert_eq!(body[5], format!(" {:<21}ON", "CARDS"));
     // M2b Task 4: KEYS, which chip the keys play during a song (AUTO at power-on).
-    assert_eq!(body[5], format!(" {:<19}AUTO", "KEYS"));
+    assert_eq!(body[6], format!(" {:<19}AUTO", "KEYS"));
     // M2b Task 7: SOUNDS, the UI sounds (OFF at power-on).
-    assert_eq!(body[6], format!(" {:<20}OFF", "SOUNDS"));
-    assert_eq!(body[7][..23], format!(" {:<22}", "STATUS"));
-    assert_eq!(body[8][..23], format!(" {:<22}", "SCENE"));
-    assert_eq!(body[9][..23], format!(" {:<22}", "CHARSET"));
-    assert_eq!(body[10][..23], format!(" {:<22}", "ABOUT"));
-    for row in [5, 11, 12, 13, 14] {
+    assert_eq!(body[7], format!(" {:<20}OFF", "SOUNDS"));
+    assert_eq!(body[8][..23], format!(" {:<22}", "STATUS"));
+    assert_eq!(body[9][..23], format!(" {:<22}", "SCENE"));
+    assert_eq!(body[10][..23], format!(" {:<22}", "CHARSET"));
+    assert_eq!(body[11][..23], format!(" {:<22}", "ABOUT"));
+    for row in [5, 6, 12, 13, 14, 15] {
         assert_eq!(
             ui.g.ch[row * COLS + 26],
             FONT_ARROW_RIGHT as u8,
@@ -236,7 +243,7 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
         );
     }
     assert_eq!(
-        rows[11][2..26].chars().filter(|&c| c == '#').count(),
+        rows[12][2..26].chars().filter(|&c| c == '#').count(),
         24,
         "the frame's bottom"
     );
@@ -455,7 +462,7 @@ fn the_views_show_both_chips_and_which_the_keys_play() {
     assert_eq!(u32::from(ui.live().keys_mode), LIVE_KEYS_A);
     ui.settle();
     assert_eq!(
-        ui.row(9)[4..27],
+        ui.row(10)[4..27],
         format!("{:<22}A", "KEYS"),
         "after the cursor"
     );

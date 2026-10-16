@@ -18,7 +18,8 @@ void input_tick_isr(void);
  * and the edges only change when it does. */
 uint32_t input_frame(void);
 /* Main loop: button, note-key and encoder changes since the last call into live; buttons and
- * encoders through the views first (ui_buttons, ui_encoder), the note keys straight to it.
+ * encoders through the views first (ui_buttons, ui_encoder), then the note keys
+ * (ui_note_keys).
  * Only once interrupts are on: its critical sections end with fm1__unlock, which always
  * re-enables interrupts (sti), whatever the state before. */
 void input_poll(panel* p, live* l);
