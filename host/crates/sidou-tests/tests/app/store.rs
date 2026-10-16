@@ -476,6 +476,10 @@ pub struct Rig {
     pub sim: Box<Sim>,
     pub st: Box<store>,
     pub window: u32,
+    /// The most work one store_poll did; the last mount's most for a sector's slice, and for
+    /// its finish.
+    pub work_max: u32,
+    pub mount_work: (u32, u32),
     /// The data of the last put: the store programs it from here until it commits.
     data: Vec<u8>,
 }
@@ -486,6 +490,8 @@ impl Rig {
             sim,
             st: Box::default(),
             window,
+            work_max: 0,
+            mount_work: (0, 0),
             data: Vec::new(),
         };
         r.reset();
@@ -504,7 +510,7 @@ impl Rig {
         unsafe { store_init(&mut *self.st, &flash, self.window) };
     }
 
-    /// One store_poll: never more than one flash operation.
+    /// One store_poll: never more than one flash operation, never more than STORE_POLL_WORK.
     pub fn poll(&mut self) -> bool {
         self.sim.in_poll = 0;
         let busy = unsafe { store_poll(&mut *self.st) } != 0;
@@ -513,19 +519,27 @@ impl Rig {
             "{} flash operations in one store_poll",
             self.sim.in_poll
         );
+        let work = self.st.work;
+        assert!(work <= STORE_POLL_WORK, "a store_poll of {work} work");
+        self.work_max = self.work_max.max(work);
         busy
     }
 
+    /// Mounts; the work of its polls (the last, which finishes it, apart) is in `mount_work`.
     pub fn mount(&mut self) -> store_state_id {
         self.sim.reread();
         unsafe { store_mount(&mut *self.st) };
         let mut polls = 0;
+        let mut works = Vec::new();
         while self.busy() {
             self.poll();
+            works.push(self.st.work);
             polls += 1;
             assert!(polls < 100_000, "the mount never ends");
         }
-        assert!(polls >= SECTORS, "the mount ran in {polls} polls");
+        assert!(polls > SECTORS, "the mount ran in {polls} polls");
+        let finish = works.pop().unwrap();
+        self.mount_work = (works.into_iter().max().unwrap_or(0), finish);
         self.state()
     }
 
@@ -769,13 +783,9 @@ impl Rig {
     }
 }
 
-/// The first store sector whose guard band holds a programmed byte.
-pub fn guard_band_written(region: &[u8]) -> Option<usize> {
-    guard_band_programmed(region, &[false; SECTORS])
-}
-
-/// The same, but for sectors whose erase was cut (`weak`): the part, not the store, left
-/// whatever they hold, and the store erases them before any use.
+/// The first store sector whose guard band holds a programmed byte, but for sectors whose
+/// erase was cut (`weak`): the part, not the store, left whatever they hold, and the store
+/// erases them before any use.
 pub fn guard_band_programmed(region: &[u8], weak: &[bool; SECTORS]) -> Option<usize> {
     (0..SECTORS).find(|&s| {
         !weak[s]
@@ -2834,4 +2844,57 @@ fn a_faint_claim_loses_nothing_written_after_it() {
         r.maintain();
         r.assert_clean();
     }
+}
+
+/// The host proxy for Task 4's STORE_POLL_WORST: a mount's polls check at most a slice
+/// (STORE_MOUNT_SLICE bytes, a sector's header checks included), or one record alone, on
+/// every kind of region; its finish, and every other poll, at most STORE_POLL_WORK.
+#[test]
+fn a_mounts_polls_stay_within_a_slice() {
+    // A record whose CRC and key lookup are more than a slice is checked alone in its poll.
+    let slice = STORE_MOUNT_SLICE.max(STORE_REC_HEADER + STORE_CHUNK + 4 * STORE_KEYS_MAX);
+    let mut regions: Vec<(String, Vec<u8>)> = Vec::new();
+    regions.push(("blank".into(), vec![0xFF; HI - LO]));
+    regions.push((
+        "the v1 fixture".into(),
+        decode_runs(&std::fs::read(fixture_path()).unwrap()),
+    ));
+    let mut rng = Rng::new(70);
+    regions.push(("random".into(), rng.bytes(HI - LO)));
+    regions.push(("foreign".into(), foreign_region(70)));
+    // Full of the largest values, of empty ones, and of the largest files.
+    let mut big = fresh(71, 256);
+    let mut k = 0;
+    while big.put_now(k % 40, &rng.bytes(VALUE_MAX)) == STORE_OK && k < 400 {
+        k += 1;
+    }
+    regions.push(("the largest values".into(), big.sim.region().to_vec()));
+    let mut tiny = fresh(72, 256);
+    for i in 0..3000 {
+        assert_eq!(tiny.put_now(i % 40, b""), STORE_OK);
+        if i % 500 == 0 {
+            tiny.maintain();
+        }
+    }
+    regions.push(("empty values".into(), tiny.sim.region().to_vec()));
+    let mut files = fresh(73, 256);
+    for i in 0..2 {
+        assert_eq!(
+            files.file_now(&format!("F{i}"), &content(i, FILE_MAX)),
+            STORE_OK
+        );
+        files.maintain();
+    }
+    regions.push(("the largest files".into(), files.sim.region().to_vec()));
+    let mut most = (0, 0);
+    for (what, region) in &regions {
+        let mut r = Rig::new(Sim::with_region(74, region, [false; SECTORS]), 256);
+        r.mount();
+        let (slice_work, finish) = r.mount_work;
+        println!("{what}: {slice_work} a slice at most, {finish} to finish");
+        assert!(slice_work <= slice, "{what}: a slice of {slice_work}");
+        assert!(finish <= STORE_POLL_WORK, "{what}: a finish of {finish}");
+        most = (most.0.max(slice_work), most.1.max(finish));
+    }
+    println!("mount polls: {} at most, {} to finish", most.0, most.1);
 }

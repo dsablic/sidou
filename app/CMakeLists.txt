@@ -52,3 +52,8 @@ add_library(sidou_live STATIC
 target_include_directories(sidou_live PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(sidou_live PUBLIC sidou_core)
 target_compile_options(sidou_live PRIVATE -Wall -Wextra -Wshadow)
+if(CMAKE_CROSSCOMPILING)
+    # The store runs in the main loop, never the audio path, and its polls are bounded by work
+    # (STORE_POLL_WORK), not speed: built for size (about a third smaller than -O2).
+    set_source_files_properties(store.c PROPERTIES COMPILE_OPTIONS -Os)
+endif()

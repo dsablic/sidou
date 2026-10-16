@@ -92,7 +92,12 @@
  * pool's minimum at a file's packing. 198,432 bytes. */
 #define STORE_CAPACITY ((STORE_SECTORS - STORE_POOL_MIN) * STORE_FILE_SECTOR_DATA)
 #define STORE_WEAR_SPREAD 4u    /* erase counts further apart than this: move the coldest */
-#define STORE_MOUNT_SLICE 1024u /* the record bytes one store_poll checks while mounting */
+/* The bytes one store_poll checks (reads, CRCs, compares) while mounting, or skips of a
+ * collection's victim: a record whose CRC is more is checked alone in its poll. */
+#define STORE_MOUNT_SLICE 512u
+/* The most work (store.work) one store_poll does: a sector's walk (a collection's last step, a
+ * tombstone's check), or a slice; the host proxy for Task 4's STORE_POLL_WORST in instructions. */
+#define STORE_POLL_WORK 4096u
 #define STORE_FILE_IDLE_MS 5000u /* an open file's sender gone this long: the file is aborted */
 
 _Static_assert(STORE_POOL_MIN == 20u, "ceil(65,536 / 3,808) + 2");
@@ -224,7 +229,8 @@ typedef struct {
     uint16_t job_off;
     uint16_t fres_bytes; /* the room kept for the open file's FILE record ... */
     uint8_t fres_sec;    /* ... in this sector, or 0xFF */
-    uint8_t pad2;
+    uint8_t mount_phase; /* what the mount checks next in mount_sec */
+    uint32_t work;       /* the last store_poll's work: bytes read, and 4 per key compared */
     uint8_t buf[STORE_WINDOW_MAX]; /* a collection's copy, the open file's bytes, a rename */
 } store;
 
