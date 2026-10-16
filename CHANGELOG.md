@@ -211,6 +211,12 @@ All notable changes are documented here. The format follows
   and swaps it in when it is whole. No main-loop pass is over the poll allowance any more (the
   reset's pass was up to 471.5k), so a note arriving during a step keeps the normal latency.
   The screens show the model asked for at once.
+- M2b: the register ring carries two chips, A and B (chip B's registers 0x40..0x58 and
+  pseudo-registers 0xC0..0xC8; the effect slots' name no chip), in one ring so their writes
+  stay in order; three sids (A, B and one spare they share, one preparation at a time) and
+  three DAC tables (one each chip plays, one a ramp builds into, one build at a time). A sink
+  is bound to a chip (`reg_ring_out.chip`); live stays chip-agnostic. Chip B is not rendered
+  yet.
 - The menu's CHIP item opens the CHIP view; the 6581/8580 choice it held is the view's profile
   picker (and the FX button, as before).
 - The EDIT layer (EDIT + K1..K4, SCL, ENV) is no longer a stopgap: it stays in every view as a

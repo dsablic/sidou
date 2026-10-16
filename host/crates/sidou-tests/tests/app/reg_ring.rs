@@ -113,7 +113,7 @@ fn the_drain_applies_registers_to_the_active_chip() {
     push(&mut r, 0x01, 0x12);
     commit(&mut r);
     assert_eq!(unsafe { reg_ring_drain(&mut *r, &mut *c) }, 2);
-    assert_eq!(c.active, 0);
+    assert_eq!(c.active[0], 0);
     assert_eq!(c.chip[0].osc[0].freq, 0x1234);
 }
 
@@ -132,7 +132,7 @@ fn a_reset_entry_never_reaches_sid_write() {
         "0x80 and 0x9f left voice 1 alone"
     );
     assert_eq!(c.chip[0].osc[1].freq, 0);
-    assert_eq!(c.active, 0, "no spare was prepared: no swap");
+    assert_eq!(c.active[0], 0, "no spare was prepared: no swap");
     assert_eq!(c.lost_resets, 1);
 }
 
@@ -140,30 +140,30 @@ fn a_reset_entry_never_reaches_sid_write() {
 fn a_reset_entry_swaps_to_the_prepared_spare() {
     let mut r = ring();
     let mut c = chips(SID_MODEL_6581);
-    unsafe { sid_init(&mut c.chip[1], SID_MODEL_8580, SID_CLOCK_PAL, RATE) };
+    unsafe { sid_init(&mut c.chip[2], SID_MODEL_8580, SID_CLOCK_PAL, RATE) };
     c.spare_model = SID_MODEL_8580 as u8;
     c.spare_ready = 1;
     push(&mut r, RESET, SID_MODEL_8580 as u8);
     push(&mut r, 0x00, 0x56);
     commit(&mut r);
     unsafe { reg_ring_drain(&mut *r, &mut *c) };
-    assert_eq!(c.active, 1);
+    assert_eq!(c.active[0], 2);
     assert_eq!(c.spare_ready, 0);
     assert_eq!(c.lost_resets, 0);
-    assert_eq!(c.chip[1].model, SID_MODEL_8580);
+    assert_eq!(c.chip[2].model, SID_MODEL_8580);
     assert_eq!(
-        c.chip[1].osc[0].freq, 0x56,
+        c.chip[2].osc[0].freq, 0x56,
         "writes after the reset go to the new chip"
     );
     assert_eq!(c.chip[0].osc[0].freq, 0);
-    assert!(std::ptr::eq(unsafe { reg_ring_chip(&mut *c) }, &c.chip[1]));
+    assert!(std::ptr::eq(unsafe { reg_ring_chip(&mut *c) }, &c.chip[2]));
 }
 
 #[test]
 fn a_gate_reset_entry_sets_the_option_on_the_active_chip_only() {
     let mut r = ring();
     let mut c = chips(SID_MODEL_6581);
-    unsafe { sid_init(&mut c.chip[1], SID_MODEL_8580, SID_CLOCK_PAL, RATE) };
+    unsafe { sid_init(&mut c.chip[2], SID_MODEL_8580, SID_CLOCK_PAL, RATE) };
     c.spare_model = SID_MODEL_8580 as u8;
     c.spare_ready = 1;
     push(&mut r, GATE_RESET, 1);
@@ -172,18 +172,18 @@ fn a_gate_reset_entry_sets_the_option_on_the_active_chip_only() {
     assert_eq!(unsafe { reg_ring_drain(&mut *r, &mut *c) }, 2);
     assert!(c.chip[0].env.iter().all(|e| e.gate_reset == 1));
     assert_eq!(c.chip[0].osc[0].freq, 0x12, "it never reaches sid_write");
-    assert!(c.chip[1].env.iter().all(|e| e.gate_reset == 0));
+    assert!(c.chip[2].env.iter().all(|e| e.gate_reset == 0));
     // A reset swaps to a chip sid_init left authentic; the entry after it sets the new one.
     push(&mut r, RESET, SID_MODEL_8580 as u8);
     push(&mut r, GATE_RESET, 1);
     commit(&mut r);
     unsafe { reg_ring_drain(&mut *r, &mut *c) };
-    assert_eq!(c.active, 1);
-    assert!(c.chip[1].env.iter().all(|e| e.gate_reset == 1));
+    assert_eq!(c.active[0], 2);
+    assert!(c.chip[2].env.iter().all(|e| e.gate_reset == 1));
     push(&mut r, GATE_RESET, 0);
     commit(&mut r);
     unsafe { reg_ring_drain(&mut *r, &mut *c) };
-    assert!(c.chip[1].env.iter().all(|e| e.gate_reset == 0));
+    assert!(c.chip[2].env.iter().all(|e| e.gate_reset == 0));
 }
 
 #[test]
@@ -195,7 +195,7 @@ fn a_reset_for_another_model_than_the_spare_is_not_taken() {
     push(&mut r, RESET, SID_MODEL_6581 as u8);
     commit(&mut r);
     unsafe { reg_ring_drain(&mut *r, &mut *c) };
-    assert_eq!((c.active, c.lost_resets), (0, 1));
+    assert_eq!((c.active[0], c.lost_resets), (0, 1));
 }
 
 // --- the sink, against live writing straight into a chip ---
@@ -340,8 +340,8 @@ fn the_model_toggle_swaps_chips_and_keeps_the_sound_parameters() {
     dev.block();
     assert_eq!(dev.chip().model, SID_MODEL_8580);
     assert_eq!(
-        dev.chips.active, 0,
-        "live_init's reset took chip 1, the toggle chip 0"
+        dev.chips.active[0], 0,
+        "live_init's reset took the spare, sid 2, and the toggle sid 0, chip A's first"
     );
 
     // With writes still queued the sink waits for them before it touches the spare.
@@ -384,7 +384,7 @@ fn the_character_reaches_the_chip_through_the_ring_and_across_model_changes() {
     const TICKS: u32 = 180;
     let mut tables: Vec<*const sid_dac> = Vec::new();
     let mut playing: Option<(*const sid_dac, Vec<f32>)> = None;
-    let ticks = dev.chips.ticks;
+    let ticks = dev.chips.ticks[0];
     for tick in 0..TICKS {
         both(&mut dev, &mut direct, |l| unsafe { live_tick(l) });
         dev.block();
@@ -405,7 +405,7 @@ fn the_character_reaches_the_chip_through_the_ring_and_across_model_changes() {
         assert_same_sound(&mut dev, &mut direct);
     }
     assert_eq!(
-        dev.chips.ticks,
+        dev.chips.ticks[0],
         ticks + TICKS,
         "a REG_RING_CHARACTER a tick"
     );
@@ -480,23 +480,23 @@ fn the_character_reaches_the_chip_through_the_ring_and_across_model_changes() {
 fn a_tick_with_both_stages_queued_waits_its_turn() {
     let mut dev = Device::new(SID_MODEL_6581);
     dev.block();
-    let ticks = dev.chips.ticks;
+    let ticks = dev.chips.ticks[0];
     unsafe { live_param_set(&mut *dev.live, LIVE_PARAM_THUMP, 127) };
     for _ in 0..3 {
         unsafe { live_tick(&mut *dev.live) };
     }
     assert_eq!(dev.out.character_defers, 1);
-    assert_eq!(dev.chips.stage_pending, [1, 1]);
+    assert_eq!(dev.chips.stage_pending[0], [1, 1]);
     let step = |n: f32| n * SID_CHARACTER_RAMP as f32 / 127.0;
     assert_eq!(
-        [dev.chips.stage[0].thump, dev.chips.stage[1].thump],
+        [dev.chips.stage[0][0].thump, dev.chips.stage[0][1].thump],
         [step(1.0), step(2.0)]
     );
     assert_eq!(dev.out.full_waits + dev.out.reset_waits, 0);
     dev.block();
-    assert_eq!(dev.chips.stage_pending, [0, 0]);
+    assert_eq!(dev.chips.stage_pending[0], [0, 0]);
     assert_eq!(dev.chip().thump, step(2.0), "the later stage last");
-    assert_eq!(dev.chips.ticks, ticks + 3);
+    assert_eq!(dev.chips.ticks[0], ticks + 3);
     unsafe { live_tick(&mut *dev.live) };
     dev.block();
     assert_eq!(dev.chip().thump, step(3.0), "the ramp goes on");
@@ -527,9 +527,9 @@ fn a_commit_during_the_choice_of_a_free_table_never_frees_the_one_it_plays() {
     for _ in 0..40 {
         unsafe { live_tick(&mut *dev.live) };
         commit(&mut dev.ring); // the pass ends; the interrupt has not come yet
-        let k = (0..2).find(|&k| dev.chips.stage_pending[k] != 0);
+        let k = (0..2).find(|&k| dev.chips.stage_pending[0][k] != 0);
         if let Some(k) = k {
-            if dev.chips.stage[k].dac == first && dev.chip().dac == second {
+            if dev.chips.stage[0][k].dac == first && dev.chip().dac == second {
                 queued = true;
                 break;
             }
@@ -552,11 +552,11 @@ fn a_commit_during_the_choice_of_a_free_table_never_frees_the_one_it_plays() {
         "the interrupt did not commit the stage"
     );
     assert_eq!(
-        dev.chips.ramp.building, 1,
+        dev.chips.ramp[0].building, 1,
         "the tick did not start the fourth table"
     );
     assert_eq!(
-        dev.chips.ramp.job.d.cast_const(),
+        dev.chips.ramp[0].job.d.cast_const(),
         second,
         "the fourth table is being built over the one the chip plays"
     );
@@ -931,7 +931,7 @@ fn a_profile_step_prepares_the_spare_a_slice_a_tick_and_swaps_at_the_hosts_tick(
         let (a, b) = tick_both(&mut dev, &mut host);
         assert_eq!(a, b, "the ramp");
     }
-    assert_eq!(dev.chips.ramp.now.dac, 127, "the DACs' ramp is done");
+    assert_eq!(dev.chips.ramp[0].now.dac, 127, "the DACs' ramp is done");
     let mut slices_per_profile = Vec::new();
     for to in [
         SID_CHIP_6581_WORN,
@@ -942,7 +942,7 @@ fn a_profile_step_prepares_the_spare_a_slice_a_tick_and_swaps_at_the_hosts_tick(
         let model = profile_model(to);
         let c = character(to, 127);
         let want = unsafe { sid_character_prep_slices(model, &c) };
-        let before = dev.chips.active;
+        let before = dev.chips.active[0];
         let (slices, was) = (dev.out.slices, dev.chip().filter_curve);
         for l in [&mut *dev.live, &mut *host.live] {
             unsafe { live_param_set(l, LIVE_PARAM_PROFILE, to) };
@@ -951,7 +951,7 @@ fn a_profile_step_prepares_the_spare_a_slice_a_tick_and_swaps_at_the_hosts_tick(
         for tick in 1..=want + 2 {
             let (a, b) = tick_both(&mut dev, &mut host);
             assert_eq!(a, b, "to {to}, tick {tick}");
-            if dev.chips.active != before && swapped_at.is_none() {
+            if dev.chips.active[0] != before && swapped_at.is_none() {
                 swapped_at = Some(tick);
             }
             if swapped_at.is_none() {
@@ -1050,16 +1050,16 @@ fn requests_during_a_preparation_coalesce() {
     );
     assert_eq!(dev.chip().thump, 1.0, "the spare took the thump");
     assert_eq!(
-        dev.chips.ramp.now.dac, 0,
+        dev.chips.ramp[0].now.dac, 0,
         "and the DACs as they were at the rows' end"
     );
     assert_same_after_ticks(&mut dev, &mut host);
     assert_eq!(
-        dev.chips.ramp.now.dac, 30,
+        dev.chips.ramp[0].now.dac, 30,
         "the ramp took the DACs the rest of the way"
     );
     // To R2 and back to WORN before it is whole: dropped, no reset, the ramp free again.
-    let active = dev.chips.active;
+    let active = dev.chips.active[0];
     both_live(&mut dev, &mut host, &|l| unsafe {
         live_param_set(l, LIVE_PARAM_PROFILE, SID_CHIP_6581_R2);
         live_param_set(l, LIVE_PARAM_DAC, 90);
@@ -1075,10 +1075,10 @@ fn requests_during_a_preparation_coalesce() {
     let (a, b) = tick_both(&mut dev, &mut host);
     assert_eq!(a, b);
     assert_eq!((dev.chips.prep_on, dev.live.preparing), (0, 0), "dropped");
-    assert_eq!(dev.chips.active, active, "no reset");
+    assert_eq!(dev.chips.active[0], active, "no reset");
     assert_same_after_ticks(&mut dev, &mut host);
     assert!(
-        dev.chips.ramp.now.dac > 30,
+        dev.chips.ramp[0].now.dac > 30,
         "the ramp builds its DACs again"
     );
     assert_eq!(dev.chips.lost_resets, 0);
@@ -1097,7 +1097,7 @@ fn a_preparation_never_starts_on_a_spare_still_queued_to_swap() {
         unsafe { live_tick(&mut *dev.live) };
         dev.block();
     }
-    let playing = dev.chips.active;
+    let playing = dev.chips.active[0];
     unsafe {
         live_tick(&mut *dev.live); // the reset, queued
         assert_eq!(dev.chips.spare_ready, 1);
@@ -1110,9 +1110,9 @@ fn a_preparation_never_starts_on_a_spare_still_queued_to_swap() {
         );
         assert_eq!(dev.chips.prep_on, 0);
     }
-    assert_eq!(dev.chips.active, playing);
+    assert_eq!(dev.chips.active[0], playing);
     dev.block();
-    assert_ne!(dev.chips.active, playing, "the swap");
+    assert_ne!(dev.chips.active[0], playing, "the swap");
     assert_eq!(dev.chip().model, SID_MODEL_8580);
     let worn =
         unsafe { sid_character_prep_slices(SID_MODEL_6581, &character(SID_CHIP_6581_WORN, 0)) };
@@ -1123,4 +1123,390 @@ fn a_preparation_never_starts_on_a_spare_still_queued_to_swap() {
     assert_eq!(dev.chip().filter_curve, 3);
     assert_eq!(dev.chips.lost_resets, 0);
     assert_eq!(dev.out.unprepared_resets, 1);
+}
+
+// --- two chips in one ring (M2b Task 2) ---
+
+/// Chips A and B on one ring and one reg_ring_chips, each played by its own live through a
+/// reg_ring_out bound to it, with the preparer (as the device will run them); the interrupt is
+/// the wait callback or `block`.
+struct Two {
+    ring: Box<reg_ring>,
+    chips: Box<reg_ring_chips>,
+    outs: [Box<reg_ring_out>; 2],
+    lives: [Box<live>; 2],
+}
+
+impl Two {
+    fn new() -> Self {
+        let mut ring = ring();
+        let mut chips = chips(SID_MODEL_6581);
+        let mut out = |chip: u8| {
+            let mut o = Box::new(reg_ring_out {
+                ring: &mut *ring,
+                chips: &mut *chips,
+                chip,
+                wait: Some(drain_now),
+                ..Default::default()
+            });
+            let p: *mut reg_ring_out = &mut *o;
+            o.wait_ctx = p.cast();
+            o
+        };
+        let mut outs = [out(0), out(1)];
+        let lives = [0, 1].map(|x| {
+            let mut l = Box::<live>::default();
+            let o: *mut reg_ring_out = &mut *outs[x];
+            unsafe {
+                live_init(&mut *l, Some(reg_ring_sink), o.cast(), SID_MODEL_6581);
+                live_set_preparer(&mut *l, Some(reg_ring_prepare_step), o.cast());
+            }
+            l
+        });
+        let mut t = Two {
+            ring,
+            chips,
+            outs,
+            lives,
+        };
+        t.block();
+        t
+    }
+
+    fn block(&mut self) {
+        commit(&mut self.ring);
+        unsafe { reg_ring_drain(&mut *self.ring, &mut *self.chips) };
+    }
+
+    fn chip(&mut self, x: u32) -> &mut sid {
+        unsafe { &mut *reg_ring_chip_of(&mut *self.chips, x) }
+    }
+
+    /// A tick of both, A's first, and the interrupt.
+    fn tick(&mut self) {
+        for l in &mut self.lives {
+            unsafe { live_tick(&mut **l) };
+        }
+        self.block();
+    }
+
+    fn sink(&mut self, x: usize, reg: u8, value: u8) {
+        let o: *mut reg_ring_out = &mut *self.outs[x];
+        unsafe { reg_ring_sink(o.cast(), reg, value) };
+    }
+
+    /// The entries pushed and not yet applied, oldest first.
+    fn queued(&self) -> Vec<(u8, u8)> {
+        let r = &*self.ring;
+        (r.tail..r.stage)
+            .map(|i| {
+                let e = r.e[(i & (SIZE - 1)) as usize];
+                (e.reg, e.value)
+            })
+            .collect()
+    }
+}
+
+/// Every register and pseudo-register a sink bound to chip B sends names B (0x40..0x58,
+/// 0xC0..0xC8), A's are as live sends them, the slots' name neither; and each reaches its own
+/// chip only: a register, the gate reset, a character tick's stage, a reset.
+#[test]
+fn every_entry_reaches_the_chip_it_names() {
+    let mut t = Two::new();
+    let slot = (LIVE_REG_SLOT_BASE | 1 << 3 | 2) as u8;
+    let profile = SID_CHIP_6581_WORN;
+    for x in 0..2usize {
+        let bit = if x == 1 { REG_RING_CHIP_B as u8 } else { 0 };
+        let other = 1 - x as u32;
+        let before = chip_bytes(t.chip(other));
+        t.sink(x, 0x05, 0x9a);
+        t.sink(x, 0x18, 0x0c);
+        t.sink(x, GATE_RESET, 0);
+        t.sink(x, slot, 77);
+        t.sink(x, (LIVE_REG_CHAR_FIRST + 3) as u8, 127); // the thump: kept, not queued
+        t.sink(x, LIVE_REG_CHAR_TICK as u8, 0);
+        assert_eq!(
+            t.queued(),
+            [
+                (0x05 | bit, 0x9a),
+                (0x18 | bit, 0x0c),
+                (GATE_RESET | bit, 0),
+                (slot, 77),
+                (REG_RING_CHARACTER as u8 | bit, 0),
+            ],
+            "chip {x}'s entries"
+        );
+        t.block();
+        let s = t.chip(x as u32);
+        assert_eq!(s.env[0].attack, 0x9);
+        assert_eq!(s.mode_vol, 0x0c);
+        assert!(s.env.iter().all(|e| e.gate_reset == 0));
+        assert_eq!(
+            s.thump,
+            SID_CHARACTER_RAMP as f32 / 127.0,
+            "the tick's stage"
+        );
+        assert_eq!(t.chips.ticks[x], 1);
+        assert_eq!(t.chips.ticks[1 - x], u32::from(x == 1), "the other's ticks");
+        assert_eq!(chip_bytes(t.chip(other)), before, "chip {other} changed");
+        // A reset, prepared a slice a tick for this chip alone.
+        let was = t.chips.active[x];
+        let o: *mut reg_ring_out = &mut *t.outs[x];
+        let mut n = 0;
+        while unsafe { reg_ring_prepare_step(o.cast(), profile as u8) } == 0 {
+            n += 1;
+            assert!(n < 32);
+        }
+        t.sink(x, LIVE_REG_CHAR_FIRST as u8, profile as u8);
+        t.sink(x, RESET, SID_MODEL_6581 as u8);
+        assert_eq!(t.queued(), [(RESET | bit, SID_MODEL_6581 as u8)]);
+        t.block();
+        assert_ne!(t.chips.active[x], was, "chip {x} swapped");
+        assert_eq!(t.chip(x as u32).filter_curve, 3);
+        assert_eq!(
+            chip_bytes(t.chip(other)),
+            before,
+            "chip {other} changed at the reset"
+        );
+    }
+    assert_eq!(t.chips.lost_resets, 0);
+    assert_eq!(
+        t.outs.iter().map(|o| o.unprepared_resets).sum::<u32>(),
+        2,
+        "live_init's"
+    );
+}
+
+/// What the slots' handler sees of both chips when it runs.
+struct Order {
+    chips: *mut reg_ring_chips,
+    seen: Vec<(u8, u8, u8)>,
+}
+
+unsafe extern "C" fn record_order(ctx: *mut c_void, reg: u8, _value: u8) {
+    let o = unsafe { &mut *ctx.cast::<Order>() };
+    let c = o.chips;
+    let vol = |x: u32| unsafe { (*reg_ring_chip_of(c, x)).mode_vol };
+    o.seen.push((reg, vol(0), vol(1)));
+}
+
+/// A's and B's writes interleaved in one pass, with slot writes between them, apply in the
+/// order they were made, across the chips.
+#[test]
+fn writes_to_both_chips_in_one_pass_apply_in_order() {
+    let mut t = Two::new();
+    let mut order = Box::new(Order {
+        chips: &mut *t.chips,
+        seen: Vec::new(),
+    });
+    let o: *mut Order = &mut *order;
+    t.chips.pseudo = Some(record_order);
+    t.chips.pseudo_ctx = o.cast();
+    let slot = |k: u32| (LIVE_REG_SLOT_BASE | k) as u8;
+    let b_was = t.chip(1).mode_vol;
+    t.sink(0, 0x18, 1);
+    t.sink(1, slot(0), 0);
+    t.sink(1, 0x18, 2);
+    t.sink(0, slot(1), 0);
+    t.sink(0, 0x18, 3);
+    t.sink(1, slot(2), 0);
+    t.sink(1, 0x18, 4);
+    t.sink(1, 0x18, 5);
+    t.sink(0, slot(3), 0);
+    t.block();
+    assert_eq!(
+        order.seen,
+        [
+            (slot(0), 1, b_was),
+            (slot(1), 1, 2),
+            (slot(2), 3, 2),
+            (slot(3), 3, 5)
+        ],
+        "(slot, A's $18, B's $18) as each slot write was applied"
+    );
+}
+
+/// The host's reference for one chip: live_sid_sink straight into a chip, with a spare.
+fn reference() -> Host {
+    Host::new(SID_MODEL_6581)
+}
+
+/// Chip A steps its profile (prepared over ticks, then the swap) and back, while chip B plays
+/// a held chord: B's sound is the host reference's sample for sample, and its sid byte for
+/// byte, all the way.
+#[test]
+fn a_reset_of_a_leaves_b_untouched_bit_for_bit() {
+    let mut t = Two::new();
+    let mut b = reference();
+    for n in [48, 55, 60] {
+        unsafe {
+            live_note_on(&mut *t.lives[1], n, 100);
+            live_note_on(&mut *b.live, n, 100);
+            live_note_on(&mut *t.lives[0], n + 12, 100);
+        }
+    }
+    t.block();
+    let (a_was, b_was) = (t.chips.active[0], t.chips.active[1]);
+    let mut swaps = 0;
+    for (i, profile) in [SID_CHIP_6581_WORN, SID_CHIP_8580_R5, SID_CHIP_6581_R4AR]
+        .into_iter()
+        .enumerate()
+    {
+        unsafe { live_param_set(&mut *t.lives[0], LIVE_PARAM_PROFILE, profile) };
+        for tick in 0..14 {
+            t.tick();
+            unsafe { live_tick(&mut *b.live) };
+            let got = render(t.chip(1), 128);
+            let want = render(&mut b.chip, 128);
+            assert_eq!(got, want, "step {i}, tick {tick}: chip B's sound");
+            assert_eq!(
+                chip_bytes(t.chip(1)),
+                chip_bytes(&b.chip),
+                "step {i}, tick {tick}"
+            );
+        }
+        assert_eq!(u32::from(t.lives[0].profile), profile);
+        swaps += 1;
+    }
+    assert_eq!(swaps, 3);
+    assert_ne!(t.chips.active[0], a_was);
+    assert_eq!(t.chips.active[1], b_was, "chip B never swapped");
+    assert_eq!(t.chips.lost_resets, 0);
+}
+
+/// One preparation at a time: A and B ask for a profile at the same tick; A's runs, B's waits
+/// without a slice, then runs from the tick after A's reset (the spare is A's old sid once
+/// the drain has swapped it in: B's request in the reset's tick finds the swap queued), and
+/// both chips end with the profile asked for.
+#[test]
+fn the_shared_spare_serialises_two_requests() {
+    let mut t = Two::new();
+    let worn =
+        unsafe { sid_character_prep_slices(SID_MODEL_6581, &character(SID_CHIP_6581_WORN, 0)) };
+    let r5 = unsafe { sid_character_prep_slices(SID_MODEL_8580, &character(SID_CHIP_8580_R5, 0)) };
+    unsafe {
+        live_param_set(&mut *t.lives[0], LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN);
+        live_param_set(&mut *t.lives[1], LIVE_PARAM_PROFILE, SID_CHIP_8580_R5);
+    }
+    let mut a_at = None;
+    let mut b_at = None;
+    for tick in 1..=worn + r5 + 3 {
+        t.tick();
+        if a_at.is_none() && t.chip(0).filter_curve == 3 {
+            a_at = Some(tick);
+        }
+        if b_at.is_none() && t.chip(1).model == SID_MODEL_8580 {
+            b_at = Some(tick);
+        }
+        if a_at.is_none() {
+            assert_eq!(
+                t.outs[1].slices, 0,
+                "tick {tick}: B's slice during A's preparation"
+            );
+            assert_eq!(t.chips.prep_chip, 0);
+        }
+    }
+    assert_eq!(a_at, Some(worn), "A after its own slices");
+    assert_eq!(b_at, Some(worn + r5), "B from the tick after A's swap");
+    assert_eq!((t.outs[0].slices, t.outs[1].slices), (worn, r5));
+    assert_eq!(u32::from(t.lives[1].profile), SID_CHIP_8580_R5);
+    assert_eq!(t.chips.lost_resets, 0);
+    let sids: Vec<u8> = t.chips.active.to_vec();
+    assert!(sids[0] != sids[1], "two chips on one sid: {sids:?}");
+}
+
+/// One build table: A and B both turn their DACs to 127 at once. A ramp builds into the table
+/// no chip plays, so the two take turns, never both building at once, and both end at 127;
+/// no table a chip plays from changes under it.
+#[test]
+fn the_shared_build_table_serialises_two_ramps() {
+    let mut t = Two::new();
+    for l in &mut t.lives {
+        unsafe { live_param_set(&mut **l, LIVE_PARAM_DAC, 127) };
+    }
+    let mut both_waited = false;
+    let mut playing: [Option<(*const sid_dac, Vec<f32>)>; 2] = [None, None];
+    let mut tick = 0;
+    while (0..2).any(|x| t.chips.ramp[x].now.dac != 127) {
+        tick += 1;
+        assert!(tick < 1000, "the ramps never ended");
+        t.tick();
+        let building = [t.chips.ramp[0].building, t.chips.ramp[1].building];
+        assert!(building != [1, 1], "tick {tick}: both ramps build at once");
+        if building.contains(&1) {
+            let waiting = (0..2).any(|x| building[x] == 0 && t.chips.ramp[x].now.dac != 127);
+            both_waited |= waiting;
+        }
+        for x in 0..2u32 {
+            let d = t.chip(x).dac;
+            let wave = unsafe { (*d).wave.to_vec() };
+            if let Some((p, w)) = &playing[x as usize] {
+                if *p == d {
+                    assert_eq!(*w, wave, "tick {tick}: chip {x}'s DACs changed under it");
+                }
+            }
+            playing[x as usize] = Some((d, wave));
+        }
+    }
+    assert!(both_waited, "one ramp never waited for the other's");
+    // Each chip alone would take 172 ticks (sid_character.h); taking turns, about twice that.
+    println!("both DAC ramps done in {tick} ticks");
+    assert!(tick > 172, "{tick} ticks: the ramps did not take turns");
+    for x in 0..2u32 {
+        let d = t.chip(x).dac;
+        assert!(
+            t.chips.dac.iter().any(|t| std::ptr::eq(t, d)),
+            "chip {x} plays a character table"
+        );
+    }
+    let (a, b) = (t.chip(0).dac, t.chip(1).dac);
+    assert_ne!(a, b, "the chips share a table");
+    assert_eq!(t.chips.lost_resets, 0);
+}
+
+/// The worst pass for two chips (reg_ring.c, REG_RING_WORST_PASS): the instrument's on chip B
+/// (the worst pass above) and chip A's song control's, every register, the gate reset and a
+/// character tick a tick, together without a wait.
+#[test]
+fn the_worst_pass_for_two_chips_fits_without_waiting() {
+    let mut t = Two::new();
+    // Without a preparer the instrument's FX resets at once, the reset in the worst pass.
+    unsafe {
+        live_set_preparer(&mut *t.lives[1], None, std::ptr::null_mut());
+        live_set_preset(&mut *t.lives[1], 1);
+    }
+    t.block();
+    let mut p = panel_box();
+    worst_pass(&mut t.lives[1], &mut p, true);
+    for r in 0..25u8 {
+        t.sink(0, r, r.wrapping_mul(9));
+    }
+    t.sink(0, GATE_RESET, 1);
+    for _ in 0..2 {
+        t.sink(0, LIVE_REG_CHAR_TICK as u8, 0);
+    }
+    let used = unsafe { reg_ring_used(&*t.ring) };
+    println!("two chips' worst pass: {used} entries");
+    assert_eq!(
+        t.outs.iter().map(|o| o.full_waits).sum::<u32>(),
+        0,
+        "a wait for room"
+    );
+    assert!(
+        used <= REG_RING_WORST_PASS,
+        "{used} entries, over {REG_RING_WORST_PASS}"
+    );
+    assert!(
+        used > 200 + REG_RING_SONG_PASS,
+        "{used}: far from the worst case"
+    );
+    assert_eq!(REG_RING_WORST_PASS, REG_RING_LIVE_PASS + REG_RING_SONG_PASS);
+    t.block();
+    assert_eq!(t.chips.lost_resets, 0);
+    assert_eq!(
+        t.chip(1).model,
+        SID_MODEL_8580,
+        "the instrument's FX took chip B"
+    );
+    assert_eq!(t.chip(0).model, SID_MODEL_6581);
 }

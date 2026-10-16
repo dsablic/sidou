@@ -19,8 +19,9 @@ static uint32_t far_drain(reg_ring* r, reg_ring_chips* c) {
     return fn(r, c);
 }
 
-/* Two chips of ~8.5 KB each, the effect slots (~6.9 KB) and their 128 KiB delay/reverb pool:
- * the big zero-initialised pool, not .bss. */
+/* Chips A and B and their shared spare (three sids, ~17 KB each, and three DAC tables), the
+ * effect slots (~6.9 KB) and their 128 KiB delay/reverb pool: the big zero-initialised pool,
+ * not .bss. */
 static reg_ring_chips chips __attribute__((section(".pool")));
 static sid_slots slots __attribute__((section(".pool")));
 static sid_slot_pool slot_pool __attribute__((section(".pool")));
@@ -57,6 +58,7 @@ void audio_init(void) {
     chips.pseudo_ctx = &fx;
     out.ring = &ring;
     out.chips = &chips;
+    out.chip = 0; /* the instrument plays chip A until M2b Task 4 */
     out.wait = wait_for_drain;
     out.wait_ctx = 0;
 }

@@ -52,8 +52,9 @@ fn tap(m: &mut Machine, id: u8) {
     m.run_ms(30);
 }
 
-/// The device's two chips (platform/fm1/audio.c `chips`), read from emulated RAM. The
-/// struct has no pointers, so the host build's layout (sidou-sys) is the device's.
+/// The device's chips (platform/fm1/audio.c `chips`: A, B and their spare), read from
+/// emulated RAM: chip A's sid, the spare's state. The struct has no pointers, so the host
+/// build's layout (sidou-sys) is the device's.
 #[derive(Debug, PartialEq)]
 struct Chips {
     active: u8,
@@ -228,7 +229,8 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
     let blocks_before = m.alnk_blocks.len();
     let quiet_before = m.alnk_blocks.iter().copied().max().unwrap_or(0);
 
-    // live_init's reset at boot took chip 1, initialised for the 6581.
+    // live_init's reset at boot took the spare, sid 2, initialised for the 6581 (sid 0 is chip A
+    // from reg_ring_chips_init, sid 1 chip B); each toggle swaps A with the spare.
     let boot_state = chips(&mut m, &fw);
     let expect = |active, model| Chips {
         active,
@@ -236,7 +238,7 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
         spare_model: model as u8,
         lost_resets: 0,
     };
-    assert_eq!(boot_state, expect(1, SID_MODEL_6581), "after boot");
+    assert_eq!(boot_state, expect(2, SID_MODEL_6581), "after boot");
 
     let from = m.soc.periph.audio.len() / 2;
     tap(&mut m, FX);
@@ -250,7 +252,7 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
     tap(&mut m, FX);
     m.run_ms(100);
     let second = chips(&mut m, &fw);
-    assert_eq!(second, expect(1, SID_MODEL_6581), "after the second FX");
+    assert_eq!(second, expect(2, SID_MODEL_6581), "after the second FX");
 
     let toggle_blocks = &m.alnk_blocks[blocks_before..];
     let worst = toggle_blocks.iter().copied().max().unwrap_or(0);

@@ -197,8 +197,8 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
     let tables = base + ilp32::reg_ring_chips::dac as u32;
     let table = ilp32::sid_dac::SIZE as u32;
     assert!(
-        dac == tables || dac == tables + table,
-        "the chip's DACs are the character's tables: {dac:#x}"
+        (0..3).any(|i| dac == tables + i * table),
+        "the chip's DACs are one of the character's tables: {dac:#x}"
     );
     // The host's chip with the same character has the same output stage.
     let mut want = Box::<sidou_sys::sid>::default();

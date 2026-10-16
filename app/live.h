@@ -9,7 +9,8 @@
  * function called once per write in the order the writes must happen:
  * - on the host, live_sid_sink applies them to a sid at once;
  * - on the device, the sink pushes them onto a ring that the audio ISR drains, so the
- *   chip is only ever changed between two rendered blocks.
+ *   chip is only ever changed between two rendered blocks. live is chip-agnostic: it writes
+ *   chip A's registers, and a sink bound to chip B names B in each entry (app/reg_ring.h).
  * Besides the SID registers 0x00..0x18 a sink receives two chip pseudo-registers:
  * - LIVE_REG_RESET (value: a sid_model) asks for the chip to be re-initialised with that
  *   model at its current clock and sample rate, before any write that follows it;

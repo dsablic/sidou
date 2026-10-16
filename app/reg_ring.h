@@ -43,18 +43,35 @@
 extern "C" {
 #endif
 
-/* Entries in the ring, a power of two. The worst case of one main-loop pass is 391 entries
- * (reg_ring.c, REG_RING_WORST_PASS), so a pass never waits for room on its own account. The
- * rest is MIDI's: the device's drain (platform/fm1/midi.c) takes an entry only while the
- * pass's worst case and the entry's still fit (at most 552 entries queued before it): between
- * two audio blocks (2.9 ms) it takes up to 23 program changes, 25 writes each, where the TRS
- * jack delivers 9. At 512 it took 2, and a flood overflowed the MIDI ring in about 150 ms.
- * 2 bytes an entry: 2 KiB of .bss. */
+/* Entries in the ring, a power of two. The worst case of one main-loop pass is 419 entries
+ * (reg_ring.c, REG_RING_WORST_PASS: the instrument's 391 on one chip and chip A's song
+ * control's 28), so a pass never waits for room on its own account. The rest is MIDI's: the
+ * device's drain (platform/fm1/midi.c) takes an entry only while the pass's worst case and the
+ * entry's still fit (at most 524 entries queued before it): between two audio blocks (2.9 ms)
+ * it takes up to 21 program changes, 25 writes each, where the TRS jack delivers 9. At 512 it
+ * took 2, and a flood overflowed the MIDI ring in about 150 ms. 2 bytes an entry: 2 KiB of
+ * .bss. */
 #define REG_RING_SIZE 1024u
-#define REG_RING_WORST_PASS 391u
+#define REG_RING_LIVE_PASS 391u
+#define REG_RING_SONG_PASS 28u
+#define REG_RING_WORST_PASS (REG_RING_LIVE_PASS + REG_RING_SONG_PASS)
+
+/* Two chips in one ring, so a pass's writes to A and to B stay in order with each other. An
+ * entry's register names its chip: chip A's SID registers are 0x00..0x18 and its chip
+ * pseudo-registers live's 0x80..0x87 (live.h) and REG_RING_CHARACTER (0x88); chip B's are
+ * the same with REG_RING_CHIP_B set, 0x40..0x58 and 0xC0..0xC8. The effect slots'
+ * pseudo-registers (0xA0..0xB7, app/fx_live.h) name no chip: one chain on the mix of both
+ * (docs/plans/2026-10-15-m2-overview.md, decision 9). */
+#define REG_RING_CHIPS 2u
+#define REG_RING_CHIP_B 0x40u
+/* The chip an entry's register names (0 A, 1 B), and the register without it. */
+#define REG_RING_CHIP_OF(reg) (((reg) >> 6) & 1u)
+#define REG_RING_BARE(reg) ((uint8_t)((reg) & ~REG_RING_CHIP_B))
+/* 1 for the effect slots' pseudo-registers, which name no chip: 0xA0..0xBF. */
+#define REG_RING_IS_SLOT(reg) (((reg) & 0xe0u) == 0xa0u)
 
 typedef struct {
-    uint8_t reg; /* a SID register 0x00..0x18, or a live pseudo-register (bit 7 set) */
+    uint8_t reg; /* a chip's register or pseudo-register, or a slot's (above) */
     uint8_t value;
 } reg_ring_entry;
 
@@ -76,8 +93,8 @@ uint32_t reg_ring_used(const reg_ring* r);
 int reg_ring_pop(reg_ring* r, reg_ring_entry* out);
 
 /* The drain's own pseudo-register, one for each of live's LIVE_REG_CHAR_TICK (live never sends
- * it): the value is the stage to commit to the active chip (reg_ring_chips, stage[0] or [1]),
- * or REG_RING_NO_STAGE for a tick that changed nothing. */
+ * it): the value is the stage to commit to the chip it names (reg_ring_chips, stage[chip][0]
+ * or [1]), or REG_RING_NO_STAGE for a tick that changed nothing. */
 #define REG_RING_CHARACTER 0x88u
 #define REG_RING_NO_STAGE 0xffu
 
@@ -85,17 +102,25 @@ int reg_ring_pop(reg_ring* r, reg_ring_entry* out);
  * app/fx_live.h), from the audio interrupt. */
 typedef void (*reg_ring_pseudo_fn)(void* ctx, uint8_t reg, uint8_t value);
 
-/* Two chips, one of them rendered. The drain swaps them at a LIVE_REG_RESET entry once the
- * producer has initialised the spare for that model.
+/* Two chips, A and B, and one spare they share: three sids, chip[active[0]] chip A,
+ * chip[active[1]] chip B and the third the spare. The drain swaps the spare with the chip a
+ * LIVE_REG_RESET entry names once the producer has initialised it for that model. One
+ * preparation runs at a time (reg_ring_prepare_step): a request for the other chip waits for
+ * it. Each chip keeps its own character ramp and its two stages; everything below holds for
+ * each.
  *
  * The chip's character (sid_character.h; live.h, LIVE_REG_CHAR) is the producer's: the sink
  * keeps the settings live sends (ramp.target) and applies them in the main loop, to the spare
  * before every swap (all of them at once, as sid_init reset them, while it is prepared:
  * reg_ring_prepare_step), and to the rendered chip a tick at a time (sid_character_ramp_tick
  * at each LIVE_REG_CHAR_TICK), never waiting for the audio interrupt:
- * - the ramp's DAC tables go into whichever of `dac` neither chip that renders or will (the
- *   active one, and the spare while a swap is queued) nor a queued stage points at; with
- *   none free the DACs wait a tick;
+ * - the ramp's DAC tables go into whichever of `dac` no chip that renders or will (each
+ *   chip's active one, and the spare while a swap is queued) points at, nor a queued stage,
+ *   nor a table being built (the other chip's ramp, the spare's preparation); with none free
+ *   the DACs wait a tick. Each chip plays one of the three tables and the third is the one a
+ *   ramp builds into, and one table is built at a time, so ramps on A and B take turns: a
+ *   character change on one chip while the other's ramp builds waits for it (a table, 4
+ *   ticks, at a time), and so does one while the spare is prepared;
  * - a tick's stage goes into whichever of `stage` is not queued (stage_pending), and the
  *   sink pushes REG_RING_CHARACTER with its index, at which the drain copies it into the
  *   rendered chip (sid_character_commit) and clears its flag; with both queued (two ticks in
@@ -119,49 +144,64 @@ typedef void (*reg_ring_pseudo_fn)(void* ctx, uint8_t reg, uint8_t value);
  * every register write reaching a chip through this drain, on one core: M3's 6502 player,
  * if it writes registers from the audio interrupt or from core 1, must revisit it (a write
  * applied outside the drain races its commits and the main loop's spare). */
+#define REG_RING_SIDS (REG_RING_CHIPS + 1u)
 typedef struct {
-    sid chip[2];
-    volatile uint8_t active;       /* the rendered chip; changed by the drain only */
+    sid chip[REG_RING_SIDS];
+    /* The sid each chip renders (A, B); changed by the drain only. The spare is the third. */
+    volatile uint8_t active[REG_RING_CHIPS];
     volatile uint8_t spare_ready;  /* producer sets it after initialising the spare */
     volatile uint8_t spare_model;  /* the sid_model the spare was initialised with */
+    volatile uint8_t spare_for;    /* the chip whose reset takes it (0 A, 1 B) */
     volatile uint32_t lost_resets; /* resets that found no spare ready (a bug if not 0) */
     uint32_t clock_hz;
     uint32_t sample_rate;
     reg_ring_pseudo_fn pseudo; /* NULL: other pseudo-registers are ignored */
     void* pseudo_ctx;
-    sid_character_ramp ramp; /* producer: the settings and the ramp towards them */
-    uint8_t next; /* producer: the chip the queued entries end on, the last one prepared */
-    volatile uint8_t stage_pending[2]; /* producer sets, the drain clears (above) */
-    volatile uint32_t ticks; /* drain: REG_RING_CHARACTER entries applied, every tick's */
-    sid_character_stage stage[2];
-    sid_dac dac[2]; /* the character's DAC tables, when they are not the model's defaults */
-    /* producer: the spare's preparation (reg_ring_prepare_step), on chip[next ^ 1], while
-     * prep_on; for the profile prep_profile (a SID_CHIP_*) and the character's controls as
-     * they were when it started. */
+    /* producer, each chip's: the settings and the ramp towards them */
+    sid_character_ramp ramp[REG_RING_CHIPS];
+    /* producer: the sid each chip's queued entries end on, the last one prepared for it */
+    uint8_t next[REG_RING_CHIPS];
+    volatile uint8_t stage_pending[REG_RING_CHIPS][2]; /* producer sets, the drain clears */
+    /* drain: each chip's REG_RING_CHARACTER entries applied, every tick's */
+    volatile uint32_t ticks[REG_RING_CHIPS];
+    sid_character_stage stage[REG_RING_CHIPS][2];
+    /* The character's DAC tables, when they are not the model's defaults: one each chip plays
+     * and one a ramp or the spare builds into (above). */
+    sid_dac dac[REG_RING_SIDS];
+    /* producer: the spare's preparation (reg_ring_prepare_step) for chip prep_chip, while
+     * prep_on; for the profile prep_profile (a SID_CHIP_*) and the character's controls. */
     sid_character_prep prep;
     uint8_t prep_on;
     uint8_t prep_profile;
+    uint8_t prep_chip;
 } reg_ring_chips;
 
-/* chip[active] is chip 0, initialised for model; chip 1 is left zeroed; no pseudo handler;
- * the character the model's default. */
+/* Chip A is chip[0], initialised for model, and chip B chip[1], left zeroed until its first
+ * reset (a writer bound to it: live_init's), as is the spare, chip[2]; both chips the model's
+ * default character; no pseudo handler. */
 void reg_ring_chips_init(reg_ring_chips* c, sid_model model, uint32_t clock_hz,
                          uint32_t sample_rate);
-/* The chip to render. */
+/* Chip A, the one to render while B is not in use. */
 sid* reg_ring_chip(reg_ring_chips* c);
+/* The sid chip (0 A, 1 B) renders now. */
+sid* reg_ring_chip_of(reg_ring_chips* c, uint32_t chip);
 
-/* Consumer: applies every committed entry in order. A SID register goes to sid_write on the
- * active chip; a LIVE_REG_RESET swaps to the spare (it never reaches sid_write, which would
- * alias it to register 0x00); a LIVE_REG_GATE_RESET goes to sid_set_gate_reset on the active
- * chip, so after a reset the new one; a REG_RING_CHARACTER counts a tick (ticks) and commits
- * the stage it names to the active chip (sid_character_commit); any other pseudo-register
- * goes to the pseudo handler, if there is one. Returns the entries applied. */
+/* Consumer: applies every committed entry in order, each to the chip it names. A SID register
+ * goes to sid_write on that chip's sid; a LIVE_REG_RESET swaps the spare in for the chip (it
+ * never reaches sid_write, which would alias it to register 0x00), its old sid the spare from
+ * then on; a LIVE_REG_GATE_RESET goes to sid_set_gate_reset on the chip's sid, so after a
+ * reset the new one; a REG_RING_CHARACTER counts a tick (ticks) and commits the stage it names
+ * to the chip's sid (sid_character_commit); any other pseudo-register (the slots') goes to the
+ * pseudo handler, if there is one. Returns the entries applied. */
 uint32_t reg_ring_drain(reg_ring* r, reg_ring_chips* c);
 
-/* The producer's side, the context of reg_ring_sink. */
+/* The producer's side, the context of reg_ring_sink: one for each writer, bound to a chip
+ * (the instrument to the chip the keys play, M2c's song control to chip A), all on one ring
+ * and one reg_ring_chips. */
 typedef struct {
     reg_ring* ring;
     reg_ring_chips* chips;
+    uint8_t chip; /* the chip its writes go to: 0 A, 1 B */
     /* Called while the producer waits for the consumer: the device sleeps until the next
      * interrupt (or drains itself before the audio runs); the host tests drain. */
     void (*wait)(void* ctx);
@@ -177,7 +217,9 @@ typedef struct {
     uint8_t sliced;
 } reg_ring_out;
 
-/* A live_sink_fn: ctx is a reg_ring_out*. The character's settings (LIVE_REG_CHAR) are kept,
+/* A live_sink_fn: ctx is a reg_ring_out*, whose chip every write goes to: live writes chip A's
+ * registers and pseudo-registers (live.h), and the sink names the chip in each entry (above);
+ * the slots' go as they are. The chip's character settings (LIVE_REG_CHAR) are kept,
  * not queued; LIVE_REG_CHAR_TICK runs the ramp's tick on the chip and queues
  * REG_RING_CHARACTER, without waiting; LIVE_REG_RESET takes the spare reg_ring_prepare_step
  * made whole for that model and the profile live has just sent, or, with none, waits for the
@@ -190,16 +232,18 @@ void reg_ring_sink(void* ctx, uint8_t reg, uint8_t value);
 #define REG_RING_PREPARE_SLICE 40000u
 
 /* A live_prepare_fn (live.h), ctx a reg_ring_out*, for live_tick only, once a tick: one
- * slice of preparing the spare for the profile (a SID_CHIP_*, its model the reset's) and the
+ * slice of preparing the spare for the out's chip, for the profile (a SID_CHIP_*, its model the reset's) and the
  * character's controls as the sink has them (sid_character_prep). A request for another
  * profile than the one being prepared starts again; for the same one it goes on, taking the
  * controls as they move (sid_character_prep_update: the DACs as they were when its filter rows
  * were done; the ramp takes the chip the rest of the way after the swap). 1 once the
  * spare is whole: the next LIVE_REG_RESET for its model takes it. LIVE_PREPARE_CANCEL drops
- * the preparation. While one runs the ramp builds no DAC table (one it was building is
- * dropped), so the spare always finds a free one; and none starts while a swap is still
- * queued (the spare is then the chip the interrupt renders until the drain reaches it): it
- * starts at the next tick. */
+ * the preparation. While one runs the chip's ramp builds no DAC table (one it was building is
+ * dropped); and none starts while a swap is still queued (the spare is then the chip the
+ * interrupt renders until the drain reaches it): it starts at the next tick. The spare is
+ * shared: while the other chip's preparation runs, a request waits (0, no slice) until that
+ * one is taken or dropped, at most 11 ticks; and one starts only while the other chip's ramp
+ * builds no DAC table (at most 4 ticks), one build at a time (character_tick). */
 int reg_ring_prepare_step(void* ctx, uint8_t profile);
 
 #ifdef SIDOU_REG_RING_RACE_HOOK

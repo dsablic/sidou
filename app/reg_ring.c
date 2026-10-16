@@ -2,16 +2,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "reg_ring.h"
 
+#include "fx_live.h"
 #include "live.h"
 
 #include <stddef.h>
 
-/* REG_RING_WORST_PASS, the most one main-loop pass can push (live.c's writes per call):
+/* REG_RING_WORST_PASS, the most one main-loop pass can push: the instrument's on one chip,
+ * REG_RING_LIVE_PASS (live.c's writes per call), and chip A's song control's,
+ * REG_RING_SONG_PASS (below). The instrument's:
  *   a model change, a reset, the gate reset and every register
  *                                               1 + 1 + 25
- *   (the FX button, or live_tick applying the model MIDI asked for: one per pass at most.
- *   MIDI only records the request; the panel runs before the ticks and the button settles
- *   any request, and a tick applies one only if it differs from the chip's.)
+ *   (live_tick taking a spare prepared for the profile or model asked for, or, with no
+ *   preparer, the FX button: one per pass at most. MIDI and the FX button only record the
+ *   request; a tick applies one only if it differs from the chip's, and once one reset is
+ *   queued no other spare can be ready in the pass: there is one, and a preparation never
+ *   starts while a swap is queued.)
  *   ENV, the selected effect slot's next algorithm  1
  *   (with EDIT held K1-K4 move effect-slot controls instead of the knobs, one write each:
  *   fewer than the knobs' below, so the knob layer is the worst case)
@@ -27,7 +32,11 @@
  *                                              27 * 11 = 297
  *   each tick's REG_RING_CHARACTER (the character's tick, below)
  *                                               2
- *                                             391
+ *                                             391 (REG_RING_LIVE_PASS)
+ * Chip A's song control (M2c, through its own reg_ring_out), a provision until M2c measures
+ * it: every register and the gate reset (a song's start), and a REG_RING_CHARACTER a tick
+ * 25 + 1 + 2 = 28 (REG_RING_SONG_PASS). Not a reset: of the instrument's and the song's, only
+ * one per pass (above), and the instrument's above counts it. 391 + 28 = 419.
  * A note-on writes at most 11: a retrigger's gate-off (the sync lead steals its one voice) 1,
  * the velocity's sustain level 1, the voice's pulse width 2 (aftertouch MIDI changed since the
  * last write; the voice's own pressure starts again at 0), the cutoff 2 (the wheel MIDI moved
@@ -109,60 +118,102 @@ int reg_ring_pop(reg_ring* r, reg_ring_entry* out) {
     return 1;
 }
 
+/* The entries' chip bit (reg_ring.h) is clear on every register and pseudo-register live
+ * sends and on the drain's own, and the slots' range is apart from both chips': nothing else
+ * reaches the ring. */
+_Static_assert(0x18u < REG_RING_CHIP_B && (0x18u | REG_RING_CHIP_B) < 0x80u,
+               "chip B's SID registers, 0x40..0x58, are below the pseudo-registers");
+_Static_assert(LIVE_REG_RESET == 0x80u && LIVE_REG_GATE_RESET == 0x81u &&
+                   LIVE_REG_CHAR_TICK == 0x87u && REG_RING_CHARACTER == 0x88u,
+               "chip A's pseudo-registers are 0x80..0x88");
+_Static_assert(!REG_RING_IS_SLOT(REG_RING_CHARACTER) &&
+                   !REG_RING_IS_SLOT(REG_RING_CHARACTER | REG_RING_CHIP_B) &&
+                   !REG_RING_IS_SLOT(LIVE_REG_RESET | REG_RING_CHIP_B),
+               "chip B's pseudo-registers, 0xC0..0xC8, are not the slots'");
+_Static_assert(REG_RING_IS_SLOT(LIVE_REG_SLOT(0, 0)) &&
+                   REG_RING_IS_SLOT(LIVE_REG_SLOT(LIVE_SLOTS - 1u, LIVE_SLOT_FIELDS - 1u)) &&
+                   !(LIVE_REG_SLOT(LIVE_SLOTS - 1u, LIVE_SLOT_FIELDS - 1u) & REG_RING_CHIP_B),
+               "the slots' pseudo-registers are 0xA0..0xBF and name no chip");
+_Static_assert(REG_RING_CHIP_B == 1u << 6 && REG_RING_CHIP_OF(REG_RING_CHIP_B) == 1u,
+               "a chip's bit is its number << 6 (reg_ring_sink)");
+_Static_assert(REG_RING_SIDS == 3u, "the spare is the sid neither chip renders: 3 - a - b");
+
 void reg_ring_chips_init(reg_ring_chips* c, sid_model model, uint32_t clock_hz,
                          uint32_t sample_rate) {
     c->clock_hz = clock_hz;
     c->sample_rate = sample_rate;
-    c->active = 0;
     c->spare_ready = 0;
     c->spare_model = 0;
+    c->spare_for = 0;
     c->lost_resets = 0;
     c->pseudo = 0;
     c->pseudo_ctx = 0;
+    /* Chip A only: B is made by its first reset (live_init's for its writer), and nothing
+     * renders it before. More work here would move the boot's timing. */
     sid_init(&c->chip[0], model, clock_hz, sample_rate);
     sid_character first;
     sid_character_init(&first);
-    sid_character_ramp_reset(&c->ramp, &first, NULL);
-    c->next = 0;
-    c->stage_pending[0] = c->stage_pending[1] = 0;
-    c->ticks = 0;
+    for (uint32_t x = 0; x < REG_RING_CHIPS; ++x) {
+        c->active[x] = (uint8_t)x;
+        c->next[x] = (uint8_t)x;
+        sid_character_ramp_reset(&c->ramp[x], &first, NULL);
+        c->stage_pending[x][0] = c->stage_pending[x][1] = 0;
+        c->ticks[x] = 0;
+    }
     c->prep_on = 0;
     c->prep_profile = 0;
+    c->prep_chip = 0;
 }
 
 sid* reg_ring_chip(reg_ring_chips* c) {
-    return &c->chip[c->active];
+    return &c->chip[c->active[0]];
+}
+
+sid* reg_ring_chip_of(reg_ring_chips* c, uint32_t chip) {
+    return &c->chip[c->active[chip & 1u]];
+}
+
+/* The sid neither chip renders, by the drain's choice (active) or the producer's (next). */
+static uint8_t third(const volatile uint8_t* pair) {
+    return (uint8_t)(3u - pair[0] - pair[1]);
 }
 
 static void apply(reg_ring_chips* c, reg_ring_entry e) {
-    if (!(e.reg & 0x80u)) {
-        sid_write(&c->chip[c->active], e.reg, e.value);
+    uint8_t reg = e.reg;
+    if (!(reg & 0x80u)) {
+        sid_write(&c->chip[c->active[REG_RING_CHIP_OF(reg)]], REG_RING_BARE(reg), e.value);
         return;
     }
-    if (e.reg == LIVE_REG_GATE_RESET) {
-        sid_set_gate_reset(&c->chip[c->active], e.value);
-        return;
-    }
-    if (e.reg == REG_RING_CHARACTER) {
-        if (e.value < 2u) {
-            sid_character_commit(&c->chip[c->active], &c->stage[e.value]);
-            COMPILER_FENCE(); /* the stage is read before the producer may write it again */
-            c->stage_pending[e.value] = 0;
-        }
-        c->ticks++;
-        return;
-    }
-    if (e.reg != LIVE_REG_RESET) {
+    if (REG_RING_IS_SLOT(reg)) {
         if (c->pseudo) {
-            c->pseudo(c->pseudo_ctx, e.reg, e.value);
+            c->pseudo(c->pseudo_ctx, reg, e.value);
         }
         return;
     }
-    if (c->spare_ready && c->spare_model == e.value) {
-        c->active ^= 1u;
-        c->spare_ready = 0;
-    } else {
-        c->lost_resets++;
+    /* An if chain, not a switch: a jump table would be data in flash, which the audio
+     * interrupt's SRAM code must not read (platform/fm1/app.ld, emu-gate's ram_audio.rs). */
+    uint32_t x = REG_RING_CHIP_OF(reg);
+    uint8_t bare = REG_RING_BARE(reg);
+    sid* s = &c->chip[c->active[x]];
+    if (bare == LIVE_REG_GATE_RESET) {
+        sid_set_gate_reset(s, e.value);
+    } else if (bare == REG_RING_CHARACTER) {
+        if (e.value < 2u) {
+            sid_character_commit(s, &c->stage[x][e.value]);
+            COMPILER_FENCE(); /* the stage is read before the producer may write it again */
+            c->stage_pending[x][e.value] = 0;
+        }
+        c->ticks[x]++;
+    } else if (bare == LIVE_REG_RESET) {
+        if (c->spare_ready && c->spare_for == x && c->spare_model == e.value) {
+            /* the spare (third), written out: apply runs from SRAM and calls nothing in flash */
+            c->active[x] = (uint8_t)(3u - c->active[0] - c->active[1]);
+            c->spare_ready = 0;
+        } else {
+            c->lost_resets++;
+        }
+    } else if (c->pseudo) {
+        c->pseudo(c->pseudo_ctx, reg, e.value);
     }
 }
 
@@ -176,66 +227,91 @@ uint32_t reg_ring_drain(reg_ring* r, reg_ring_chips* c) {
     return n;
 }
 
-/* A character DAC table nothing renders from or will: not the chip the queued entries end on
- * (next), not the active one while a swap to next is queued, not a queued stage's. NULL when
- * both are taken. The drain frees a table (a swap, a commit) or hands one from a queued stage
- * to the chip (a commit), so the reads go against the drain's order. A commit writes the
- * chip's dac, then clears the stage's flag (apply): read the queued stages first, then the
- * chips, and a commit between the two leaves its table taken in either read (still queued
- * when the stages were read, or the chip's when the chips were). The other way round, a
- * commit between them would hide it from both (the chip read before it, the flag after), and
- * a table the chip plays would come back free (app test reg_ring.rs plays that interrupt). A
+/* A character DAC table nothing renders from or will: not a sid either chip's queued entries
+ * end on (next), not a chip's active one while a swap to its next is queued, not a queued
+ * stage's, not one a ramp or the spare's preparation is building. NULL when all three are
+ * taken. The drain frees a table (a swap, a commit) or hands one from a queued stage to a
+ * chip (a commit), so the reads go against the drain's order. A commit writes the chip's
+ * dac, then clears the stage's flag (apply): read the queued stages first, then the chips,
+ * and a commit between the two leaves its table taken in either read (still queued when the
+ * stages were read, or the chip's when the chips were). The other way round, a commit
+ * between them would hide it from both (the chip read before it, the flag after), and a
+ * table the chip plays would come back free (app test reg_ring.rs plays that interrupt). A
  * swap after the stages were read only frees the old active chip's table, which then reads
- * as taken or free, both safe. */
+ * as taken or free, both safe. The tables being built are the producer's own. */
 static sid_dac* free_dac(reg_ring_chips* c) {
-    const sid_dac* staged[2];
-    for (uint32_t k = 0; k < 2u; ++k) {
-        staged[k] = c->stage_pending[k] ? c->stage[k].dac : NULL;
+    const sid_dac* taken[3u * REG_RING_CHIPS + 1u];
+    uint32_t n = 0;
+    for (uint32_t x = 0; x < REG_RING_CHIPS; ++x) {
+        for (uint32_t k = 0; k < 2u; ++k) {
+            if (c->stage_pending[x][k]) {
+                taken[n++] = c->stage[x][k].dac;
+            }
+        }
     }
     COMPILER_FENCE(); /* the stages before the chips (above) */
     RACE_POINT();
-    uint8_t active = c->active;
-    uint8_t next = c->next;
-    const sid_dac* playing[2] = {c->chip[next].dac, active != next ? c->chip[active].dac : NULL};
-    for (uint32_t i = 0; i < 2u; ++i) {
+    for (uint32_t x = 0; x < REG_RING_CHIPS; ++x) {
+        uint8_t active = c->active[x];
+        uint8_t next = c->next[x];
+        taken[n++] = c->chip[next].dac;
+        if (active != next) {
+            taken[n++] = c->chip[active].dac;
+        }
+        if (c->ramp[x].building) {
+            taken[n++] = c->ramp[x].job.d;
+        }
+    }
+    if (c->prep_on && c->prep.job.d) {
+        taken[n++] = c->prep.job.d;
+    }
+    for (uint32_t i = 0; i < REG_RING_SIDS; ++i) {
         const sid_dac* d = &c->dac[i];
-        if (d != staged[0] && d != staged[1] && d != playing[0] && d != playing[1]) {
+        uint32_t k = 0;
+        while (k < n && taken[k] != d) {
+            k++;
+        }
+        if (k == n) {
             return &c->dac[i];
         }
     }
     return NULL;
 }
 
-/* Initialises the spare chip for model with the character, at once (sid_init resets it);
- * the ring must be empty (no swap or stage queued). Any ramp still running ends there: the
- * spare has every control as asked. */
-static void prepare_spare(reg_ring_chips* c, uint8_t model) {
+/* Initialises the spare for chip x for model with its character, at once (sid_init resets
+ * it); the ring must be empty (no swap or stage queued). Any ramp still running on the chip
+ * ends there: the spare has every control as asked. */
+static void prepare_spare(reg_ring_chips* c, uint32_t x, uint8_t model) {
     sid_model m = model == SID_MODEL_8580 ? SID_MODEL_8580 : SID_MODEL_6581;
-    uint8_t spare = (uint8_t)(c->active ^ 1u);
-    c->prep_on = 0; /* its chip is this one */
+    uint8_t spare = third(c->active);
+    c->prep_on = 0; /* its sid is this one */
     sid* s = &c->chip[spare];
     sid_init(s, m, c->clock_hz, c->sample_rate);
-    const sid_dac* table = sid_character_apply(s, &c->ramp.target, free_dac(c));
-    sid_character_ramp_reset(&c->ramp, &c->ramp.target, table);
-    c->next = spare;
+    c->ramp[x].building = 0;
+    const sid_dac* table = sid_character_apply(s, &c->ramp[x].target, free_dac(c));
+    sid_character_ramp_reset(&c->ramp[x], &c->ramp[x].target, table);
+    c->next[x] = spare;
     c->spare_model = (uint8_t)m;
+    c->spare_for = (uint8_t)x;
     COMPILER_FENCE(); /* the chip is ready before the flag says so */
     c->spare_ready = 1;
 }
 
-/* The spare whole for a reset to model, prepared for the profile live has just sent: the
- * swap's chip from now on (next), its character the one the ramp starts from, the settings
- * as live last sent them still the ramp's target. */
-static int take_prepared(reg_ring_chips* c, uint8_t model) {
-    if (!c->prep_on || !sid_character_prep_done(&c->prep) || c->prep.model != model ||
-        c->prep.c.profile != c->ramp.target.profile) {
+/* The spare whole for a reset of chip x to model, prepared for the profile live has just
+ * sent: the chip's sid from now on (next), its character the one the ramp starts from, the
+ * settings as live last sent them still the ramp's target. */
+static int take_prepared(reg_ring_chips* c, uint32_t x, uint8_t model) {
+    sid_character_ramp* ramp = &c->ramp[x];
+    if (!c->prep_on || c->prep_chip != x || !sid_character_prep_done(&c->prep) ||
+        c->prep.model != model || c->prep.c.profile != ramp->target.profile) {
         return 0;
     }
-    sid_character want = c->ramp.target;
-    sid_character_ramp_reset(&c->ramp, &c->prep.c, c->prep.table);
-    c->ramp.target = want;
-    c->next = (uint8_t)(c->next ^ 1u);
+    sid_character want = ramp->target;
+    sid_character_ramp_reset(ramp, &c->prep.c, c->prep.table);
+    ramp->target = want;
+    c->next[x] = third(c->next);
     c->spare_model = model;
+    c->spare_for = (uint8_t)x;
     c->prep_on = 0;
     COMPILER_FENCE(); /* the chip is ready before the flag says so */
     c->spare_ready = 1;
@@ -245,48 +321,58 @@ static int take_prepared(reg_ring_chips* c, uint8_t model) {
 int reg_ring_prepare_step(void* ctx, uint8_t profile) {
     reg_ring_out* o = ctx;
     reg_ring_chips* c = o->chips;
+    uint32_t x = o->chip & 1u;
     const sid_chip_profile* p = sid_chip_profile_get(profile);
+    if (c->prep_on && c->prep_chip != x) {
+        return 0; /* the other chip's: this one waits (a cancel has nothing to drop) */
+    }
     if (!p) { /* LIVE_PREPARE_CANCEL */
         c->prep_on = 0;
         return 0;
     }
     if (!c->prep_on || c->prep_profile != profile) {
-        if (c->spare_ready) {
+        if (c->spare_ready || c->ramp[x ^ 1u].building) {
             c->prep_on = 0;
             return 0;
         }
-        sid_character want = c->ramp.target;
+        sid_character want = c->ramp[x].target;
         want.profile = (uint8_t)(profile + 1u);
-        c->ramp.building = 0;
-        sid_character_prep_start(&c->prep, &c->chip[c->next ^ 1u], (sid_model)p->model,
+        c->ramp[x].building = 0;
+        sid_character_prep_start(&c->prep, &c->chip[third(c->next)], (sid_model)p->model,
                                  c->clock_hz, c->sample_rate, &want);
         c->prep_on = 1;
         c->prep_profile = profile;
+        c->prep_chip = (uint8_t)x;
     } else if (sid_character_prep_done(&c->prep)) {
         return 1;
     } else {
-        sid_character_prep_update(&c->prep, &c->ramp.target);
+        sid_character_prep_update(&c->prep, &c->ramp[x].target);
     }
     o->slices++;
     o->sliced = 1;
     return sid_character_prep_step(&c->prep, free_dac(c));
 }
 
-/* The character's tick (LIVE_REG_CHAR_TICK), on the chip the queued entries end on: the
- * ramp's next step into a stage that is not queued. The REG_RING_CHARACTER value. While the
- * spare is being prepared the ramp gets no free DAC table (reg_ring_prepare_step). */
+/* The character's tick (LIVE_REG_CHAR_TICK) of the out's chip, on the sid its queued entries
+ * end on: the ramp's next step into a stage that is not queued. The REG_RING_CHARACTER value.
+ * One table is built at a time: while the spare is being prepared (for either chip) or the
+ * other chip's ramp builds, the ramp gets no free DAC table and its DACs wait, so a pass never
+ * runs two builds' steps (a slice and a table step, or two table steps: 40k + 28k on top of
+ * a view's 68k would pass the poll allowance). */
 static uint8_t character_tick(reg_ring_out* o) {
     reg_ring_chips* c = o->chips;
-    uint32_t k = !c->stage_pending[0] ? 0u : !c->stage_pending[1] ? 1u : 2u;
+    uint32_t x = o->chip & 1u;
+    const volatile uint8_t* pending = c->stage_pending[x];
+    uint32_t k = !pending[0] ? 0u : !pending[1] ? 1u : 2u;
     if (k == 2u) {
         o->character_defers++;
         return REG_RING_NO_STAGE;
     }
-    sid_dac* table = c->prep_on ? NULL : free_dac(c);
-    if (!sid_character_ramp_tick(&c->ramp, &c->chip[c->next], table, &c->stage[k])) {
+    sid_dac* table = c->prep_on || c->ramp[x ^ 1u].building ? NULL : free_dac(c);
+    if (!sid_character_ramp_tick(&c->ramp[x], &c->chip[c->next[x]], table, &c->stage[x][k])) {
         return REG_RING_NO_STAGE;
     }
-    c->stage_pending[k] = 1;
+    c->stage_pending[x][k] = 1;
     return (uint8_t)k;
 }
 
@@ -299,11 +385,25 @@ static void wait_empty(reg_ring_out* o, uint32_t* waits) {
     }
 }
 
+/* Pushes, waiting for room (the ring never drops). */
+static void push_waiting(reg_ring_out* o, uint8_t reg, uint8_t value) {
+    reg_ring* r = o->ring;
+    while (!reg_ring_push(r, reg, value)) {
+        reg_ring_commit(r);
+        o->full_waits++;
+        o->wait(o->wait_ctx);
+    }
+}
+
 void reg_ring_sink(void* ctx, uint8_t reg, uint8_t value) {
     reg_ring_out* o = ctx;
-    reg_ring* r = o->ring;
+    uint32_t x = o->chip & 1u;
+    if (!(reg & 0x80u)) { /* a SID register, most of them: the chip's bit and the push */
+        push_waiting(o, (uint8_t)(reg | x << 6), value);
+        return;
+    }
     if (reg >= LIVE_REG_CHAR(0) && reg < LIVE_REG_CHAR(LIVE_CHAR_FIELDS)) {
-        live_char_store(&o->chips->ramp.target, reg, value);
+        live_char_store(&o->chips->ramp[x].target, reg, value);
         return;
     }
     if (reg == LIVE_REG_CHAR_TICK) {
@@ -312,16 +412,15 @@ void reg_ring_sink(void* ctx, uint8_t reg, uint8_t value) {
     }
     if (reg == LIVE_REG_RESET) {
         uint8_t model = value == SID_MODEL_8580 ? SID_MODEL_8580 : SID_MODEL_6581;
-        if (!take_prepared(o->chips, model)) {
+        if (!take_prepared(o->chips, x, model)) {
             o->unprepared_resets++;
             wait_empty(o, &o->reset_waits);
-            prepare_spare(o->chips, model);
+            prepare_spare(o->chips, x, model);
         }
         value = o->chips->spare_model;
     }
-    while (!reg_ring_push(r, reg, value)) {
-        reg_ring_commit(r);
-        o->full_waits++;
-        o->wait(o->wait_ctx);
+    if (!REG_RING_IS_SLOT(reg) && x) {
+        reg |= REG_RING_CHIP_B;
     }
+    push_waiting(o, reg, value);
 }

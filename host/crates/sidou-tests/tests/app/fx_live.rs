@@ -210,7 +210,7 @@ struct Recorder {
 impl Recorder {
     fn catch_up(&mut self) {
         let c = unsafe { &*self.chips };
-        let chip = &c.chip[usize::from(c.active)];
+        let chip = &c.chip[usize::from(c.active[0])];
         if chip.fc != self.fc {
             self.fc = chip.fc;
             self.seen.push(Delivered::Cutoff);
@@ -264,7 +264,7 @@ fn slot_settings_cross_the_register_ring_in_order() {
     }
     let (fc, res) = unsafe {
         let c = &*chips;
-        let chip = &c.chip[usize::from(c.active)];
+        let chip = &c.chip[usize::from(c.active[0])];
         (chip.fc, chip.res)
     };
     let mut rec = Box::new(Recorder {

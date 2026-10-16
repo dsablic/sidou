@@ -7,8 +7,10 @@
  * MIDI) and sends every change down its sink as a pseudo-register, LIVE_REG_SLOT(slot,
  * field), value. On the device that is the register ring, so a slot change reaches the
  * audio interrupt in order with the SID writes of the same pass and is applied at the start
- * of a block, like them; reg_ring_drain hands pseudo-registers it does not know to
- * fx_live_apply. On the host fx_live_sid_sink applies everything at once.
+ * of a block, like them; reg_ring_drain hands the slots' pseudo-registers to fx_live_apply.
+ * The slots are one chain on the mix of both chips (docs/plans/2026-10-15-m2-overview.md,
+ * decision 9), so their pseudo-registers name no chip: a sink bound to chip B sends them as
+ * they are (app/reg_ring.h). On the host fx_live_sid_sink applies everything at once.
  *
  * Portable C with no hardware access. */
 #ifndef SIDOU_FX_LIVE_H
