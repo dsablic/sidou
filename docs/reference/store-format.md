@@ -90,7 +90,8 @@ Written in two steps.
 - Keys 0-0x7FFFFFFF are the caller's; `0x80000000 | n` are files'.
 - A small value is at most 1,248 bytes.
 - **Order of programming:** the data, then the header, then the commit
-  word, each its own program. All three land on erased bytes. A record counts
+  word, each its own program (the commit word always one 4-byte program,
+  whatever the write window). All three land on erased bytes. A record counts
   only with a good CRC and its commit word programmed: erased (`0xFFFFFFFF`)
   means the write was cut; any bit of it programmed counts, since the header
   and data were programmed whole before it (the CRC shows it), so a commit

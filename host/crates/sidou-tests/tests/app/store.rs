@@ -2973,3 +2973,31 @@ fn a_cut_during_a_blank_regions_first_erase_can_mount_foreign() {
     }
     assert!(foreign > 0, "no cut left the region foreign");
 }
+
+/// A commit word is one program whatever the window, so a cut during it leaves all 32 of its
+/// bits in play (at a window of 1, a cut during its first byte left 8, often all faint: the
+/// write then read committed at one mount and cut at the next).
+#[test]
+fn a_commit_word_is_one_program_at_any_window() {
+    for window in [1u32, 2, 3] {
+        let mut r = fresh(95, window);
+        r.sim.fork = true;
+        assert_eq!(r.put_now(1, b"abcdefg"), STORE_OK);
+        let replay = r.sim.replay(0).unwrap();
+        let sizes: Vec<usize> = replay
+            .ops
+            .as_slice()
+            .iter()
+            .map(|op| match op {
+                Op::Prog(_, data) => data.len(),
+                Op::Erase(_) => 0,
+            })
+            .collect();
+        // The claim and the data, a byte (or the window) a program; the header too; then the
+        // commit word, whole.
+        assert_eq!(sizes.last(), Some(&4), "window {window}: {sizes:?}");
+        assert!(sizes[..sizes.len() - 1]
+            .iter()
+            .all(|&n| n <= window as usize));
+    }
+}

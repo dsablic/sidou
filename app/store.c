@@ -290,7 +290,10 @@ static int prog_piece(store* s, uint32_t sec, uint32_t off, const uint8_t* src, 
     uint32_t a = base(sec) + off + *done;
     uint32_t k = n - *done;
     uint32_t page = STORE_PAGE - (a & (STORE_PAGE - 1u));
-    k = k > s->window ? s->window : k;
+    /* A 4-byte word (a commit word) is one program whatever the window: a cut leaves all 32 of
+     * its bits in play, so it reads erased only if every bit it cleared is left faint. */
+    uint32_t window = n == 4u && s->window < 4u ? 4u : s->window;
+    k = k > window ? window : k;
     k = k > page ? page : k;
     /* The device programs with XIP off: the bytes go from RAM, wherever the caller's are. */
     uint8_t ram[STORE_WINDOW_MAX];
@@ -390,6 +393,10 @@ static void writer_done(store* s) {
         e->stale = 0;
     } else {
         s->corrupt++; /* never: write_record and file_key keep a slot for every new key */
+        if (w->type == STORE_TYPE_FILE && s->f.phase == F_FILE && w->key == s->f.key) {
+            s->f.phase = F_IDLE;
+            s->f.result = STORE_ERROR;
+        }
         return;
     }
     e->sec = w->sec;
