@@ -50,6 +50,8 @@ const MENU_SCENE: i32 = sidou_sys::VIEWS_MENU_SCENE as i32;
 const MENU_CHARSET: i32 = sidou_sys::VIEWS_MENU_CHARSET as i32;
 const MENU_ABOUT: i32 = sidou_sys::VIEWS_MENU_ABOUT as i32;
 const MENU_ITEMS: i32 = sidou_sys::VIEWS_MENU_ITEMS as i32;
+const MENU_MIDI: i32 = sidou_sys::VIEWS_MENU_MIDI as i32;
+const MENU_CURSOR: (usize, usize, usize) = (3, 5, 1);
 /// app/screen.h: the toast's row.
 const TOAST_ROW: usize = 27;
 /// The art palette (docs/art/README.md) in sRGB; the panel gets its RGB565 truncation.
@@ -593,6 +595,65 @@ fn a_popup_ask_keeps_the_input_and_the_passes_within_the_allowance() {
     }
     assert!(over.is_empty(), "{over:#?}");
 }
+
+/// The MIDI page (M2e Task 3, app/views.c): its golden image, the wipe that opens it and an
+/// edit of MODE within the views' budgets, and the edit reaching MIDI's mode.
+#[test]
+fn the_midi_page_matches_its_golden_image_and_stays_within_the_budgets() {
+    let Some((build, fw)) = fixture("the MIDI page test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    m.watch_calls(fw.symbol("ui_poll"));
+    open_menu(&mut m, &fw);
+    select(&mut m, MENU_MIDI);
+    settle(&mut m, &fw);
+    let open = measure(&mut m, &fw, 16, |m| m.turn(ALGORITHM, 1));
+    settle(&mut m, &fw);
+    compare_golden(&build, "midi", &m.soc.lcd.fb, &[VERSION_CELLS, MENU_CURSOR]);
+    let idle = measure(&mut m, &fw, 16, |_| {});
+    let edit = measure(&mut m, &fw, 8, |m| m.turn(ALGORITHM, -3));
+    let mode = m.soc.read8(
+        fw.symbol("routing")
+            + (sidou_sys::ilp32::midi_route::setup + sidou_sys::ilp32::midi_route_setup::mode)
+                as u32,
+    );
+    assert_eq!(
+        mode,
+        sidou_sys::MIDI_MODE_MULTI as u8,
+        "MODE did not reach the router"
+    );
+    println!(
+        "{}",
+        serde_json::json!({
+            "wipe_down_to_the_midi_page": open.json(),
+            "midi_page_idle": idle.json(),
+            "midi_page_mode_edit": edit.json(),
+        })
+    );
+    for (what, c) in [("open", &open), ("idle", &idle), ("edit", &edit)] {
+        assert!(
+            c.worst_frame_ms() <= SPI_BUDGET_MS,
+            "the MIDI page's {what}: a frame took {:.1} ms of SPI",
+            c.worst_frame_ms()
+        );
+        assert!(
+            c.worst_poll < MIDI_PAGE_WORST_POLL,
+            "the MIDI page's {what}: a ui_poll took {} instructions",
+            c.worst_poll
+        );
+    }
+    assert!(
+        idle.total().windows <= 2,
+        "{} windows idle on the MIDI page",
+        idle.total().windows
+    );
+}
+
+/// The MIDI page's busiest ui_poll, about 10 % above what was measured (M2e Task 3: 20.6k,
+/// the wipe that opens it; an edit of MODE 20.3k).
+const MIDI_PAGE_WORST_POLL: u64 = 23_000;
+const _: () = assert!(MIDI_PAGE_WORST_POLL <= common::POLL_INSTRUCTIONS);
 
 /// app/panel.h PANEL_BTN_SAVE and K1.
 const SAVE: u8 = 9;

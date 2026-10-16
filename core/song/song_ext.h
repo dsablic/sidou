@@ -164,11 +164,20 @@ int song_lock_remove(gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param
 enum { SONG_LOCKS_INSERT = 1, SONG_LOCKS_DELETE, SONG_LOCKS_RESIZE, SONG_LOCKS_REMOVE };
 void song_locks_pattern_edit(gt2_song* s, uint32_t op, uint32_t pattern, uint32_t row);
 
-/* MIDI: the song's MIDI setup (M2e gives the fields meaning). */
+/* MIDI: the song's MIDI setup (M2e Task 3, app/midi_route.h gives the fields meaning). The
+ * options follow the channels in the chunk (M2e); a chunk without them reads as has_options
+ * 0, and the writer always writes them. */
 #define SONG_MIDI_CHANNELS_MAX 6u
+#define SONG_MIDI_OPTION_BYTES 5u
+#define SONG_MIDI_LEGATO 0x01u /* flags */
 typedef struct {
     uint8_t mode, rows_per_beat, count;
     uint8_t channel[SONG_MIDI_CHANNELS_MAX];
+    uint8_t has_options;
+    uint8_t flags;    /* SONG_MIDI_* */
+    uint8_t whole;    /* WHOLE-CHIP A's option */
+    uint8_t chord[2]; /* the stored chord: semitones above the note on voices 2 and 3 */
+    uint8_t arp_rate; /* frames an ARP step, 0: a 16th of the clock */
 } song_midi;
 int song_ext_get_midi(const gt2_song* s, song_midi* v);
 int song_ext_set_midi(gt2_song* s, const song_midi* v);

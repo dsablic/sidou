@@ -27,6 +27,7 @@ mod midi_learn;
 mod midi_map;
 mod midi_out;
 mod midi_ring;
+mod midi_route;
 mod midi_rx;
 mod midi_usb;
 mod panel;

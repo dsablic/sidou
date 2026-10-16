@@ -4,6 +4,7 @@
 
 #include <stddef.h>
 
+#include "midi_route.h"
 #include "midi_usb.h"
 
 void midi_rx_live(midi_map_port* port, const midi_msg* msg) {
@@ -70,6 +71,15 @@ static int edits(const midi_rx* rx, const midi_msg* msg) {
  * as MIDI's. */
 static void take(midi_rx* rx, midi_map_port* port, const midi_msg* msg) {
     rx->inputs += (uint32_t)(msg->kind != MIDI_REALTIME || msg->data1 == 0xFFu);
+    if (rx->route && !midi_route_fast(rx->route, msg)) {
+        midi_route_to to = midi_route_classify(rx->route, msg);
+        if (to == MIDI_ROUTE_TAKE) {
+            midi_route_take(rx->route, msg);
+        }
+        if (to != MIDI_ROUTE_LIVE) {
+            return;
+        }
+    }
     if (rx->out && !rx->looked && edits(rx, msg)) {
         midi_out_local(rx->out, rx->l);
         rx->looked = 1;
@@ -105,6 +115,9 @@ static void restart(midi_rx* rx, uint8_t epoch) {
     parsers_init(rx);
     live_all_notes_off(rx->l);
     live_reset_controllers(rx->l); /* a bend back to the centre may be among the lost */
+    if (rx->route) {
+        midi_route_reset_input(rx->route);
+    }
 }
 
 void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch) {
@@ -115,7 +128,12 @@ void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch) {
     rx->looked = 0;
     rx->learn = NULL;
     rx->inputs = 0;
+    rx->route = NULL;
     parsers_init(rx);
+}
+
+void midi_rx_route(midi_rx* rx, struct midi_route* route) {
+    rx->route = route;
 }
 
 void midi_rx_learn(midi_rx* rx, midi_learn* learn) {

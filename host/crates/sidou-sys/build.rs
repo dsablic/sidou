@@ -48,6 +48,7 @@ const SOURCES: &[&str] = &[
     "app/midi_map.c",
     "app/midi_out.c",
     "app/midi_ring.c",
+    "app/midi_route.c",
     "app/midi_rx.c",
     "app/midi_usb.c",
     "app/panel.c",

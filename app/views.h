@@ -12,9 +12,9 @@
  *   another firmware's data, which ALGORITHM turned clockwise twice formats), KEYS (AUTO or A:
  *   which chip the keys play during a song, app/keys_route.h), SOUNDS (the UI sounds on chip
  *   B's spare voice, OFF by default, app/ui_sound.h) and ROWS (TRACKER ROWS: BAR, the moving
- *   bar, or SCROLL: app/tracker_view.h; in RAM), then STATUS, SCENE, CHARSET and ABOUT. SELECT
+ *   bar, or SCROLL: app/tracker_view.h), then STATUS, SCENE, CHARSET, ABOUT and MIDI. SELECT
  *   moves the selection (a line in reverse video; the list scrolls with it, a line or two a
- *   frame), ALGORITHM changes the value under it or opens the view. CARDS, KEYS and SOUNDS
+ *   frame), ALGORITHM changes the value under it or opens the view. CARDS, KEYS, SOUNDS and ROWS
  *   persist (app/settings.h).
  * - CHIP (from the menu, behind THE CHIP's card): chip A's profile, character and effect slots
  *   (app/chip_view.h); SELECT moves the focus, ALGORITHM steps its choice, K1..K4 turn its
@@ -24,6 +24,10 @@
  *   effect slots with every control, in numbers.
  * - SCENE (from the menu): generative pieces that react to the voices (app/scene_view.h);
  *   SELECT steps between them. The tap on the audio runs while it shows, as for LIVE.
+ * - MIDI (from the menu): MIDI's mode and its options (app/midi_route.h), a menu like the
+ *   main one: MODE, the base CHANNEL N, WHOLE-CHIP A's OPTION, LEGATO, the stored chord's two
+ *   intervals, the ARP's rate in frames (0: CLOCK) and the rows a beat for the clock. In RAM
+ *   until the settings persist (M2a); a song's MIDI chunk carries its own.
  * - CHARSET: the font and the palette, the art reference.
  * - ABOUT: the credits, as a cracktro (app/about.h).
  * - BOOT: the boot sequence (app/boot.h), over LIVE at power-on (views_boot).
@@ -94,6 +98,7 @@
 #include "learn_view.h"
 #include "live.h"
 #include "live_view.h"
+#include "midi_route.h"
 #include "panel.h"
 #include "save_key.h"
 #include "scene_view.h"
@@ -114,7 +119,7 @@ extern "C" {
 /* The status screen's colours: light blue on blue. */
 #define VIEWS_TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
 /* The menu's items, the title cards' option, and the items that open a view. */
-#define VIEWS_MENU_ITEMS 13u
+#define VIEWS_MENU_ITEMS 14u
 #define VIEWS_MENU_CHIP 0u
 #define VIEWS_MENU_TRACKER 1u
 #define VIEWS_MENU_CARDS 4u
@@ -129,6 +134,13 @@ extern "C" {
 #define VIEWS_MENU_SCENE 10u
 #define VIEWS_MENU_CHARSET 11u
 #define VIEWS_MENU_ABOUT 12u
+#define VIEWS_MENU_MIDI 13u
+/* The MIDI page's items (app/midi_route.h): MODE, CHANNEL, OPTION, LEGATO, CHORD 2, CHORD 3,
+ * ARP RATE, ROWS/BEAT. */
+#define VIEWS_MIDI_ITEMS 8u
+/* What it shows: the setup's 8 bytes, the cursor, the first row, the blink and whether it has
+ * a router. */
+#define VIEWS_MIDI_LOOK 12u
 /* Raster steps for a chip model change: the ramp once round. */
 #define VIEWS_RASTER_STEPS SCREEN_RAMP
 /* What the views show, as bytes (app/views.c look): the instrument's model (as asked for),
@@ -172,11 +184,15 @@ typedef struct {
     /* The popup's state (app/screen.h), here at the end so that the screen's own fields, and the
      * views' before this, keep their small offsets. */
     screen_popup_state popup;
+    midi_route* route; /* MIDI's mode, for the MIDI page (views_route); NULL: none */
+    menu midi;
+    uint8_t midi_drawn[VIEWS_MIDI_LOOK];
 } views;
 
 extern const view views_status;
 extern const view views_menu;
 extern const view views_charset;
+extern const view views_midi;
 
 /* LIVE, the root view, on g, showing l and the audio's tap sc (NULL: none). */
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version);
@@ -196,6 +212,9 @@ void views_set_keys(views* v, keys_route* kr);
 /* The UI sounds (app/ui_sound.h): the menu's SOUNDS turns them on and off, and the menu and
  * the toasts play them; NULL until set (and the SOUNDS item then reads OFF and does nothing). */
 void views_set_sounds(views* v, ui_sound* us);
+/* MIDI's mode (app/midi_route.h), which the MIDI page edits; NULL until set (the page then
+ * shows "-" and changes nothing). */
+void views_route(views* v, midi_route* route);
 /* The boot sequence over it from the next frame on: the full one if full (the first boot
  * after an install) or if HOME was held at power-on (home_held), whose first HOME press edge is
  * then part of the hold (app/boot.h). */

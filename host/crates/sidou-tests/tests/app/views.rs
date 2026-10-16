@@ -294,7 +294,7 @@ fn the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video
     ui.settle();
     // The selected item's line (item 0) and the title bar (rows 0-2) are in reverse video:
     // MENU, and which item of how many.
-    assert_eq!(&ui.row(1)[1..15], "MENU   #  1/13");
+    assert_eq!(&ui.row(1)[1..15], "MENU   #  1/14");
     assert_eq!(ui.row(2), ui.row(1), "large text: two rows a line");
     assert_eq!(
         ui.g.attr[0],
@@ -325,18 +325,18 @@ fn the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video
     // frame, the selected first).
     ui.turn(PANEL_ENC_SELECT, 99);
     menu_settle(&mut ui);
-    assert_eq!(ui.v.home.top, 7);
-    assert_eq!(&ui.row(1)[1..15], "MENU  #  13/13");
-    let at_end: Vec<String> = (7..13).map(|i| ui.menu_line(i)).collect();
+    assert_eq!(ui.v.home.top, 8);
+    assert_eq!(&ui.row(1)[1..15], "MENU  #  14/14");
+    let at_end: Vec<String> = (8..14).map(|i| ui.menu_line(i)).collect();
     assert_eq!(
         at_end,
         [
-            format!("{:<6}{:>8}", "SOUNDS", "OFF"),
             format!("{:<4}{:>10}", "ROWS", "BAR"),
             format!("{:<13}#", "STATUS"),
             format!("{:<13}#", "SCENE"),
             format!("{:<13}#", "CHARSET"),
             format!("{:<13}#", "ABOUT"),
+            format!("{:<13}#", "MIDI"),
         ]
     );
     assert_eq!(ui.g.src[COLS + 13], FONT_ARROW_UP as u8);
@@ -353,7 +353,7 @@ fn every_menu_item_is_reachable_and_readable_as_the_cursor_walks_down_and_up() {
     ui.settle();
     let labels = [
         "CHIP", "TRACKER", "PRE", "OCTAVE", "CARDS", "STORE", "KEYS", "SOUNDS", "ROWS", "STATUS",
-        "SCENE", "CHARSET", "ABOUT",
+        "SCENE", "CHARSET", "ABOUT", "MIDI",
     ];
     assert_eq!(labels.len(), VIEWS_MENU_ITEMS as usize);
     let walk = |ui: &mut Ui, i: usize| {
@@ -747,4 +747,78 @@ fn the_update_box_shows_each_step_and_the_result() {
     ui.frame();
     assert_eq!(&ui.row(26)[2..8], "READY.");
     assert_eq!(&ui.row(20)[3..6], "MOD");
+}
+
+/// M2e Task 3: the MIDI page edits MIDI's mode (app/midi_route.h) item by item, clamped at
+/// both ends, and shows "-" with no router.
+#[test]
+fn the_midi_page_edits_midis_mode() {
+    let mut ui = Ui::without_cards();
+    let mut route = Box::<midi_route>::default();
+    unsafe {
+        midi_route_init(
+            &mut *route,
+            &mut *ui.rig.live,
+            std::ptr::null_mut(),
+            std::ptr::null(),
+        )
+    };
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_MIDI as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.settle();
+    assert_eq!(ui.top(), "MIDI");
+    let value = |ui: &Ui, item: usize| ui.row(5 + item)[4..27].trim_end().to_string();
+    let row = value(&ui, 0);
+    assert!(
+        row.starts_with("MODE") && row.ends_with(" -"),
+        "no router: {row:?}"
+    );
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    unsafe { views_route(&mut *ui.v, &mut *route) };
+    ui.frame();
+    let want = [
+        ("MODE", "OMNI"),
+        ("CHANNEL", "1"),
+        ("OPTION", "POLY"),
+        ("LEGATO", "OFF"),
+        ("CHORD 2", "+4"),
+        ("CHORD 3", "+7"),
+        ("ARP RATE", "3 FR"),
+        ("ROWS/BEAT", "4"),
+    ];
+    for (i, (label, v)) in want.iter().enumerate() {
+        let row = value(&ui, i);
+        assert!(
+            row.starts_with(label) && row.ends_with(v),
+            "item {i}: {row:?}"
+        );
+    }
+    ui.turn(PANEL_ENC_ALGORITHM, -3);
+    assert_eq!(route.setup.mode, MIDI_MODE_MULTI as u8);
+    ui.turn(PANEL_ENC_ALGORITHM, -9);
+    assert_eq!(route.setup.mode, MIDI_MODE_LIVE as u8, "clamped at LIVE");
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 20);
+    assert_eq!(route.setup.base, 15, "clamped at channel 16");
+    ui.frame();
+    assert!(value(&ui, 1).ends_with("16"));
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 2);
+    assert_eq!(route.setup.option, MIDI_WHOLE_ARP as u8);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(route.setup.legato, 1);
+    ui.turn(PANEL_ENC_SELECT, 3);
+    ui.turn(PANEL_ENC_ALGORITHM, -5);
+    assert_eq!(route.setup.arp_rate, 0);
+    ui.frame();
+    assert!(value(&ui, 6).ends_with("CLOCK"));
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, -9);
+    assert_eq!(route.setup.rows_per_beat, 1);
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    assert_eq!(ui.top(), "MENU");
 }

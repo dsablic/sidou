@@ -106,7 +106,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **REC (button 13)** | record mode on and off |
 | **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; the keys sound nothing while GLO is held |
 | **SELECT (encoder 0)**, in the menu | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), STORE ([format confirmation](#settings-and-store)), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF), TRACKER ROWS (ROWS in the menu; clockwise SCROLL, counter-clockwise BAR); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), STORE ([format confirmation](#settings-and-store)), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF), TRACKER ROWS (ROWS in the menu; clockwise SCROLL, counter-clockwise BAR); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits, on MIDI [the MIDI page](#the-midi-page) |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: CHIP (the profile and the character), DIST, MOD, FX; it stops at either end |
 | **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP (EDIT held: the save target), the algorithm on a slot; it stops at either end |
 | **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, RED MOON RITE, and round): it wipes in, and a toast names it |
@@ -397,7 +397,9 @@ the old register's 15 steps by at most half a step, 1/30 of full scale.
 
 ## MIDI
 
-Notes on every channel; program change 0..3 selects the preset. A program change loads
+Notes on every channel by default (MIDI's mode OMNI: [the MIDI page](#the-midi-page) can
+give the instrument one channel and chip A's voices channels of their own); program change
+0..3 selects the preset. A program change loads
 the preset's cutoff, resonance, pulse width and SID settings (waveform, ring, sync, the
 envelope, filter routing and mode) and expression settings over any edits, even when it
 selects the preset already playing; volume, octave, chip, envelope mode, effects and a bend
@@ -503,6 +505,28 @@ audio; completion then says **SAVED (GAPS)**. Background saves never do this. Wi
 a completed explicit save plays the drive chunk. A foreign store refuses it with
 **STORE FOREIGN: NOT SAVED**. SAVE saves settings in the song views too until M2c Task 8's
 song-file save; on CHIP it stores a USER slot as above, and the settings otherwise.
+
+## The MIDI page
+
+From the menu (HOME, MIDI): MIDI's mode and its options, a menu like the main one (SELECT
+moves the cursor, ALGORITHM changes the value under it, HOME goes back). The modes are in
+[midi.md](midi.md), Modes. A change of MODE or CHANNEL releases what MIDI was playing. The
+page's setting is kept in RAM until the settings are saved (M2a); a song brings its own in
+its `MIDI` chunk.
+
+| Item | Values | What |
+|---|---|---|
+| MODE | LIVE, MULTI, WHOLE A, WHOLE B, OMNI (at power-on) | which channel plays what |
+| CHANNEL | 1..16 (1) | N, the first channel: the instrument's in LIVE and WHOLE B, chip A's voice 1 in MULTI, chip A's in WHOLE A; N + 3 plays the instrument on chip B in MULTI and WHOLE A |
+| OPTION | POLY (default), CHORD, ARP | WHOLE A's: three-voice polyphony, the stored chord, the arpeggio on voice 1 |
+| LEGATO | OFF (default), ON | MULTI and CHORD: the next note while one is held glides on, no new attack |
+| CHORD 2, CHORD 3 | +0..+24 (+4, +7) | the stored chord: semitones above the note on voices 2 and 3 |
+| ARP RATE | CLOCK, 1..32 FR (3 FR) | frames an arpeggio step; CLOCK: every 16th of the MIDI clock |
+| ROWS/BEAT | 1..16 (4) | the song's rows a beat, for following the MIDI clock (M2e Task 2) |
+
+In MULTI and both WHOLE modes chip A belongs to the player, song or not, so the keys play
+chip B as they do [while a song plays](#which-chip-the-keys-play). Until song control plays
+jam notes (M2c), chip A's channels are routed and sound nothing yet.
 
 ## MIDI learn
 

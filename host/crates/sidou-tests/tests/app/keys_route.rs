@@ -731,3 +731,81 @@ fn chip_a_comes_back_to_the_keys_setup_after_a_tab_edits() {
         assert_eq!(lost, 0);
     }
 }
+
+/// M2e Task 3: a MIDI mode that gives chip A to the player counts as a song playing, with or
+/// without one: the keys go to chip B, and come back when the mode ends or, if a song plays,
+/// when it stops too.
+#[test]
+fn a_mode_that_gives_chip_a_to_the_player_moves_the_keys_as_a_song_does() {
+    let mut k = Keys::new();
+    k.ticks(20);
+    unsafe { keys_route_set_player(&mut *k.kr, 1) };
+    k.tick();
+    assert_eq!(k.moves, [1]);
+    k.song(true);
+    unsafe { keys_route_set_player(&mut *k.kr, 0) };
+    k.ticks(30);
+    assert_eq!(k.live.keys_chip, 1, "the song still plays");
+    k.song(false);
+    k.ticks(30);
+    assert_eq!(k.moves, [1, 0]);
+    assert_eq!(k.chips.lost_resets, 0);
+}
+
+/// M2e Task 3: the chip-level CCs on chip A's MIDI channels go to chip A's setup (the want
+/// path), not to the keys' (live's), which stays on chip B.
+#[test]
+fn chip_level_ccs_on_chip_as_channels_set_chip_as_setup() {
+    let mut k = Keys::new();
+    k.ticks(20);
+    let mut route = Box::<midi_route>::default();
+    let mut s = midi_route_setup::default();
+    unsafe {
+        midi_route_init(&mut *route, &mut *k.live, &mut *k.kr, std::ptr::null());
+        midi_route_setup_default(&mut s);
+    }
+    s.mode = MIDI_MODE_MULTI as u8;
+    unsafe { midi_route_set(&mut *route, &s) };
+    k.ticks(2);
+    assert_eq!(k.live.keys_chip, 1, "chip A is the player's");
+    let cc = |route: &mut midi_route, ch: u8, cc: u8, v: u8| {
+        let m = midi_msg {
+            kind: MIDI_CC,
+            channel: ch,
+            data1: cc,
+            data2: v,
+            bend: 0,
+        };
+        unsafe { midi_route_take(route, &m) };
+    };
+    // 85: the profile, 0..4 over 0..127; 89: thump; 26: AUTHENTIC.
+    cc(&mut route, 1, 85, 127);
+    cc(&mut route, 2, 89, 127);
+    cc(&mut route, 0, 26, 127);
+    let want = k.kr.song_want;
+    assert_eq!(u32::from(want.profile), SID_CHIP_6581_WORN);
+    assert_eq!(want.controls[2], 127);
+    assert_eq!(want.gate_reset, 0);
+    k.ticks(200);
+    assert!(chip_a_is(&k, &want), "chip A did not get there");
+    assert_eq!(
+        u32::from(k.live.profile),
+        SID_CHIP_6581_R4AR,
+        "the keys' setup is kept"
+    );
+    // 25: the model, the 8580's profile.
+    cc(&mut route, 0, 25, 127);
+    assert_eq!(u32::from(k.kr.song_want.profile), SID_CHIP_8580_R5);
+    cc(&mut route, 0, 25, 127);
+    assert_eq!(
+        u32::from(k.kr.song_want.profile),
+        SID_CHIP_8580_R5,
+        "already an 8580"
+    );
+    // Back to OMNI: chip A is the keys' again.
+    s.mode = MIDI_MODE_OMNI as u8;
+    unsafe { midi_route_set(&mut *route, &s) };
+    k.ticks(60);
+    assert_eq!(k.live.keys_chip, 0);
+    assert_eq!(k.chips.lost_resets, 0);
+}

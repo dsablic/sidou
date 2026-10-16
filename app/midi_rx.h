@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* MIDI input for the live instrument: ring entries (midi_ring.h) through a parser per
  * source (midi_in.h) onto live, with the mapping:
- * - notes on every channel (omni) play the instrument; the octave buttons do not apply;
+ * - notes on every channel (omni) play the instrument, or on the channels MIDI's mode gives it
+ *   (midi_rx_route); the octave buttons do not apply;
  * - CCs and NRPNs through the published map (midi_map.h, docs/reference/midi.md), with the
  *   NRPN state per channel and per source; CC 120 and 123 release every note;
  * - program change n selects preset n; programs past the last preset are ignored;
@@ -55,6 +56,7 @@ typedef struct {
      * the store's quiet detector watches it (platform/fm1/store_fm1.c), so a DAW's steady
      * clock and sensing do not count as playing. */
     uint32_t inputs;
+    struct midi_route* route; /* MIDI's mode (midi_rx_route), or NULL: OMNI, as in M1 */
 } midi_rx;
 
 /* epoch: the ring's midi_ring_epoch now, so losses before this are not held against it.
@@ -73,6 +75,10 @@ void midi_rx_watch(midi_rx* rx, midi_out* out);
  * parameter waiting to be learned takes the next learnable CC from either. A restart after
  * lost input keeps them. learn may be NULL: none. */
 void midi_rx_learn(midi_rx* rx, midi_learn* learn);
+/* Both ports' messages through MIDI's mode (app/midi_route.h): the instrument's channel to
+ * live as above, chip A's channels to the router, the rest dropped; a restart after lost input
+ * releases the router's notes too. route may be NULL: every channel plays the instrument. */
+void midi_rx_route(midi_rx* rx, struct midi_route* route);
 /* One entry, through its source's parser; entries of an unknown source are ignored. An entry
  * from a later epoch than the parsers' first restarts them (a gap lies before it). */
 void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e);

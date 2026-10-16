@@ -12,7 +12,9 @@
  * filter and the volume) are dropped, and of a voice's registers only those of the voices the
  * keys hold get through, and each voice's gate-off as the keys let it go (the keys sound
  * through the song's setup). "A song playing" is keys_route_set_song: platform/fm1/main.c's
- * song transport sets it at PLAY and clears it once a stop has reached the interrupt.
+ * song transport sets it at PLAY and clears it once a stop has reached the interrupt; or
+ * keys_route_set_player (M2e's MIDI modes that give chip A to the player, app/midi_route.h),
+ * which counts as one.
  *
  * For M2c's song control (song_ctl), the contract:
  * - the transport starts a song only once keys_route_ready_for_song: the keys have left chip
@@ -73,7 +75,10 @@ typedef struct {
     live_prepare_fn prepare; /* each chip's preparations: reg_ring_prepare_step */
     void* out[2];            /* their contexts for chip A and chip B */
     chip_ctl ctl[2];
-    uint8_t song;  /* 1 while a song plays on chip A */
+    uint8_t song;  /* 1 while chip A is the player's: a song plays on it, or a MIDI mode
+                    * gives it to the player (song_on | player) */
+    uint8_t song_on; /* keys_route_set_song's */
+    uint8_t player;  /* keys_route_set_player's */
     uint8_t stale; /* 1 while chip A, the keys' under KEYS A, holds a song's setup */
     uint8_t under; /* 1 while the keys play under a song (on chip A) */
     uint8_t taken; /* the voices the keys held at the last write under a song */
@@ -102,6 +107,10 @@ int keys_route_prepare(void* ctx, uint8_t profile);
 void keys_route_tick(keys_route* kr);
 /* A song plays on chip A (1) or not (0): M2c's transport; until then a test hook. */
 void keys_route_set_song(keys_route* kr, int playing);
+/* Chip A is the player's (1) or not (0) whether a song plays or not: MIDI's MULTITIMBRAL and
+ * WHOLE-CHIP modes (app/midi_route.h). Treated as a song playing, so the keys move to chip B
+ * (KEYS AUTO) and chip A follows song_want. */
+void keys_route_set_player(keys_route* kr, int owns);
 /* The voices of chip A the keys hold while a song plays with the keys on chip A (bit v: voice
  * v; under mono sync voice 3 with voice 1), for the song player to leave alone; 0 otherwise. */
 uint8_t keys_route_voices_taken(const keys_route* kr);

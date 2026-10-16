@@ -1091,7 +1091,9 @@ edit. SIDOU_MIDI_DOC_UPDATE=1 regenerates it. -->
 
 Every parameter of the live instrument has an NRPN (14-bit, full resolution), and all but
 the bend range and the three expression targets also a CC (7-bit). The map is fixed: the same numbers on every channel, on TRS and USB. Notes
-play on every channel (omni); program change 0..{last} selects the preset. A program change
+play on every channel (omni) by default; MIDI's mode (Modes, below) can give the instrument
+one channel and chip A's voices channels of their own. Program change 0..{last} selects the
+preset. A program change
 loads the preset's cutoff, resonance, pulse width, SID settings (waveform, ring, sync,
 the envelope, filter routing and mode) and expression settings (bend range, the targets,
 the vibrato) over any edits, even when it selects the preset already playing; volume, the
@@ -1153,7 +1155,7 @@ patch's value up or down around 64; SIDOU does not.
   instrument, so the chip the keys play: chip A, or chip B while a song plays on chip A (the
   KEYS setting AUTO; with KEYS A, chip A always). The chip-level CCs (25 model, 85 profile,
   86-90 the character) set the keys' setup, which both chips hold: the other chip follows it
-  in the background. Addressing chip A on its own from MIDI comes with M2e.
+  in the background. On chip A's own channels (Modes, below) they set chip A's setup.
 - **Character:** the profile (CC 85) is a chip and a model: a change resets the chip as a
   model change does, and the model follows it. The model (CC 25, the FX button) selects
   the 8580 R5 profile, or goes back to the last 6581 profile. Age/heat, DAC sloppiness,
@@ -1234,7 +1236,7 @@ jack, which is MIDI IN only.
   order the input above takes; no null NRPN follows.
 - **Channel:** 1 by default. Until M2 stores settings, the channel and the
   high-resolution option are build options (CMake `SIDOU_MIDI_OUT_CHANNEL`, 1..16, and
-  `SIDOU_MIDI_OUT_NRPN`). The input stays omni.
+  `SIDOU_MIDI_OUT_NRPN`). The input follows MIDI's mode (Modes, below).
 - **No echo:** a change that came in over MIDI, from either port, is never sent back:
   the sender has it, and a DAW recording with MIDI thru on would otherwise loop. If
   MIDI changes a parameter after the panel did, and before the panel's change went out,
@@ -1311,6 +1313,62 @@ the gesture, how to cancel and how to clear). What is learned:
     )
 }
 
+/// MIDI's modes (app/midi_route.c, M2e Task 3): the table from the router's own text.
+fn modes_section() -> String {
+    let mut s = String::from(
+        "\
+## Modes
+
+MIDI's mode says which channel plays what. It is set on the MIDI page (HOME, MIDI:
+[controls.md](controls.md)) and saved with a song in its `MIDI` chunk
+([song-format.md](song-format.md)); the page's own setting stays in RAM until the settings
+persist. N is the page's CHANNEL, 1..16, and N + 1.. wrap round from 16 to 1.
+
+| Mode | What plays |
+|---|---|
+",
+    );
+    for m in 0..MIDI_MODE_COUNT {
+        s.push_str(&format!(
+            "| {} | {} |\n",
+            text(unsafe { midi_route_mode_name(m) }),
+            text(unsafe { midi_route_mode_doc(m) })
+        ));
+    }
+    s.push_str(&format!(
+        "\
+\n- **Chip A is the player's** in MULTI and both WHOLE modes, with or without a song: the
+  instrument (the panel's keys, and its MIDI channel) plays chip B, with the keys' setup, as
+  while a song plays.
+- **Chip A's channels:** notes 12..107 (GoatTracker's C-0..B-7), without velocity (its
+  instruments have none). Program change n (0..{instr}) picks GoatTracker instrument n + 1
+  for the channel's next note. Pitch bend bends the channel's voice by the channel's own
+  range, {range} semitones until RPN 0 sets it, at the 100 Hz tick. CC 74 (cutoff) and 71
+  (resonance) lock chip A's filter at the value, over the song's, until CC 121 or a change
+  of mode. CC 25, 26, 85, 86, 87, 89 and 90 set chip A's model, envelope mode, profile and
+  character. CC 120 and 123 release the channel's voices; CC 121 also centres its bend.
+  Nothing else (the map, MIDI learn) reaches them: those are the instrument's channel's.
+- **A jam note takes its voice from the song** while it sounds (the song's writes to it
+  are held back) and gives it back at its release.
+- **The options:** LEGATO (MULTI, CHORD) moves to the next note without a new attack while
+  one is held. CHORD plays the note and its two intervals (CHORD 2 and CHORD 3 on the page,
+  +{c2} and +{c3} by default: a major triad). ARP cycles the held notes, in the order they
+  were pressed, on voice 1, a step every ARP RATE frames ({arp} by default), or every 16th of
+  the MIDI clock ({clocks} clocks) with the rate at CLOCK.
+- **Not yet on the device:** chip A's channels are routed and tracked, and sound once song
+  control (M2c) takes jam releases, voices and bends.
+
+",
+        instr = MIDI_ROUTE_INSTR_MAX - 1,
+        range = LIVE_BEND_RANGE_DEFAULT,
+        c2 = MIDI_ROUTE_CHORD_DEFAULT_2,
+        c3 = MIDI_ROUTE_CHORD_DEFAULT_3,
+        arp = MIDI_ROUTE_ARP_DEFAULT,
+        clocks = MIDI_ROUTE_ARP_CLOCKS,
+    ));
+    s
+}
+
 fn cc_text(r: &Row) -> String {
     if r.has_cc() {
         r.cc.to_string()
@@ -1340,6 +1398,7 @@ fn doc() -> String {
     let mut s = String::from(HEADER);
     s.push_str(&intro());
     s.push_str(&learn_section());
+    s.push_str(&modes_section());
     s.push_str("## The map\n\nIn NRPN order.\n\n");
     s.push_str("| Group | Parameter | CC | NRPN (MSB/LSB) | Range | Curve | Default | Values |\n");
     s.push_str("|---|---|---|---|---|---|---|---|\n");

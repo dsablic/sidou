@@ -11,12 +11,22 @@
 
 #include <stdint.h>
 
+#include "keys_route.h"
 #include "live.h"
 #include "midi_learn.h"
+#include "midi_route.h"
 
 /* Interrupts off, before TIMER5 starts: the UART (a port H read-modify-write) and USB (which
- * waits 25 ms for the controller's reset). l receives the messages. */
-void midi_init(live* l);
+ * waits 25 ms for the controller's reset). l receives the messages, through MIDI's mode
+ * (app/midi_route.h), which tells kr when chip A is the player's. */
+void midi_init(live* l, keys_route* kr);
+/* MIDI's mode, which the MIDI page edits (platform/fm1/ui.c). In RAM, OMNI at power-on, until
+ * the settings persist (M2a). Its player side is unbound until song control has jam release,
+ * take-over and bend (docs/plans/2026-10-15-m2e-midi.md, Task 3's results): chip A's channels
+ * are routed and tracked, and play nothing yet. */
+midi_route* midi_routed(void);
+/* Main loop, once per live tick, after live_tick: the mode's bends, filter and ARP steps. */
+void midi_tick(void);
 /* MIDI learn's bindings (app/midi_learn.h), which both inputs and MIDI out use: the screen
  * arms learn on them (platform/fm1/ui.c). In RAM, empty at power-on. */
 midi_learn* midi_learned(void);

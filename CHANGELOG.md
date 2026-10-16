@@ -316,6 +316,16 @@ stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
   SELECT and ALGORITHM still move the focus and step its choice, so K1..K4 pick on the page
   the focus gives. The page is built in a canvas and copied within 200 cells a frame (idle
   6.3k instructions a frame, nothing sent; the busiest frame 17.6 ms of SPI).
+- M2e: MIDI's modes (`app/midi_route.h`), set on the new MIDI page (HOME, MIDI) and saved
+  with a song in its `MIDI` chunk (its options appended): OMNI (the default, M1's), LIVE
+  (one channel), MULTITIMBRAL (channels N..N+2 chip A's voices, each a mono jam voice with
+  its own GoatTracker instrument, bend and range, LEGATO; N+3 the instrument on chip B),
+  WHOLE-CHIP A (one channel on chip A's three voices: POLY, CHORD or ARP, by frames or the
+  MIDI clock) and WHOLE-CHIP B. The player-owning modes move the keys to chip B as a song
+  does. On chip A's channels CC 74 and 71 lock its filter until CC 121, and the chip-level
+  CCs set chip A's setup. Chip A's jam voices sound once song control (M2c) binds the
+  router's player interface; until then they are routed and tracked. The setting is in RAM
+  until the settings persist.
 
 - M2a Tasks 1-4 and the Task 3b spike build were included in this preview;
   see [Unreleased](#unreleased) for the completed M2a results and the provisional timing policy.

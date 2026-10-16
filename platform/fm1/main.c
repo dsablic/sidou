@@ -533,6 +533,7 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         panel_master(&front, &instrument, input_master());
         live_tick(&instrument);
         ui_sound_tick(&ui_sounds);
+        midi_tick(); /* MIDI's mode: its bends, filter and ARP steps */
     }
     song_pass();
     if (tick_due) {
@@ -671,7 +672,7 @@ static void sidou_main(void) {
     input_init();
     panel_master(&front, &instrument, input_master());
     audio_set_master(instrument.master); /* the interrupt's first block has it */
-    midi_init(&instrument);
+    midi_init(&instrument, &keys_router);
     update_boot();
 #if defined(SIDOU_FLASH_SPIKE)
     /* Not SIDOU: the flash spike, with the audio never started (flash_spike.h). The views are

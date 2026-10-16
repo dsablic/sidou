@@ -282,15 +282,24 @@ row, or at its end the pattern again and the orderlist's next one). A pattern's 
 carries its locks with its rows: inserted and deleted rows move them, a cut drops those past
 it, a removed pattern drops all of its.
 
-**`MIDI`** (4 + c bytes):
+**`MIDI`** (4 + c bytes, and 5 of options since M2e: 9 + c), MIDI's mode for the song
+(`app/midi_route.h`; [midi.md](midi.md), Modes):
 
 | Offset | Size | Field |
 |---|---|---|
 | 0 | 1 | version, 1 |
-| 1 | 1 | mode (M2e) |
-| 2 | 1 | rows per beat, for the clock |
+| 1 | 1 | mode: 0 LIVE, 1 MULTITIMBRAL, 2 WHOLE-CHIP A, 3 WHOLE-CHIP B, 4 OMNI |
+| 2 | 1 | rows per beat, for the clock (1-16) |
 | 3 | 1 | c, the channel count |
-| 4 | c | MIDI channels, 0-15, one per voice |
+| 4 | c | MIDI channels, 0-15, one per voice: chip A's voices 1-3, then the instrument's (chip B). MULTITIMBRAL N, N+1, N+2, N+3; WHOLE-CHIP A N, N, N, N+3; LIVE and WHOLE-CHIP B one, N; OMNI none |
+| 4 + c | 1 | flags: bit 0 LEGATO |
+| 5 + c | 1 | WHOLE-CHIP A's option: 0 POLY, 1 CHORD, 2 ARP |
+| 6 + c | 2 | the stored chord: semitones above the note on voices 2 and 3 (0-24) |
+| 8 + c | 1 | the arpeggio's rate, frames a step (1-32), 0 a 16th of the MIDI clock |
+
+A reader takes N from the first channel. A chunk that ends after the channels (M2c's) has
+no options: the reader takes them from the device's setting. An unknown mode is the
+setting's; values out of range are clamped.
 
 **`SCNE`** (3 + v bytes, or 4 + v + 2 × d with a drum table): what RED MOON RITE hears in
 the song (`app/scene_song.h`; docs/art/README.md "RED MOON RITE").

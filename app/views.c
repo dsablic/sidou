@@ -468,6 +468,12 @@ static void about_open(void* ctx, int32_t steps) {
     screen_push(&v->s, &about_view, &v->about, SCREEN_WIPE_DOWN);
 }
 
+static void midi_open(void* ctx, int32_t steps) {
+    views* v = ctx;
+    (void)steps;
+    screen_push(&v->s, &views_midi, v, SCREEN_WIPE_DOWN);
+}
+
 /* PRE is PRESET and ROWS TRACKER ROWS: the 14-character lines hold the longest preset name
  * (NOISE PERC) and STORE's value (FOREIGN, FORMAT?, ERASE 20; 123K, the kilobytes free) beside
  * them. The popup (below) says the whole names. */
@@ -478,13 +484,13 @@ static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"KEYS", keys_value, keys_turn},       {"SOUNDS", sounds_value, sounds_turn},
     {"ROWS", rows_value, rows_turn},       {"STATUS", NULL, status_open},
     {"SCENE", NULL, scene_open},           {"CHARSET", NULL, charset_open},
-    {"ABOUT", NULL, about_open},
+    {"ABOUT", NULL, about_open},           {"MIDI", NULL, midi_open},
 };
 _Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_PRESET == 2u &&
                    VIEWS_MENU_CARDS == 4u && VIEWS_MENU_STORE == 5u && VIEWS_MENU_KEYS == 6u &&
                    VIEWS_MENU_SOUNDS == 7u && VIEWS_MENU_ROWS == 8u && VIEWS_MENU_STATUS == 9u &&
                    VIEWS_MENU_SCENE == 10u && VIEWS_MENU_CHARSET == 11u &&
-                   VIEWS_MENU_ABOUT == 12u,
+                   VIEWS_MENU_ABOUT == 12u && VIEWS_MENU_MIDI == 13u,
                "the menu's items");
 
 static int menu_input(screen* s, void* state, const screen_event* e) {
@@ -562,6 +568,259 @@ static void menu_compose(screen* s, void* state, grid* g) {
 }
 
 const view views_menu = {"MENU", NULL, NULL, menu_input, menu_compose, menu_changed};
+
+/* ---- MIDI ---- */
+
+/* n as decimal text into buf (n < 1000). */
+static void number_text(char* buf, uint32_t n) {
+    char t[4];
+    uint32_t k = 0;
+    do {
+        t[k++] = (char)('0' + n % 10u);
+        n /= 10u;
+    } while (n && k < 3u);
+    for (uint32_t i = 0; i < k; i++) {
+        buf[i] = t[k - 1u - i];
+    }
+    buf[k] = 0;
+}
+
+/* The page's items edit a copy of the setup, which midi_route_set takes whole. */
+static int midi_setup(const views* v, midi_route_setup* out) {
+    if (!v->route) {
+        return 0;
+    }
+    *out = v->route->setup;
+    return 1;
+}
+
+static void midi_apply(views* v, const midi_route_setup* s) {
+    midi_route_set(v->route, s);
+}
+
+/* x stepped by steps within lo..hi, clamped. */
+static uint8_t stepped(uint32_t x, int32_t steps, uint32_t lo, uint32_t hi) {
+    int32_t n = (int32_t)x + steps;
+    return (uint8_t)(n < (int32_t)lo ? lo : n > (int32_t)hi ? hi : (uint32_t)n);
+}
+
+static void midi_none(char* buf) {
+    join(buf, MENU_VALUE_CHARS, "-", "");
+}
+
+static void mode_value(void* ctx, char* buf) {
+    midi_route_setup s;
+    if (!midi_setup(ctx, &s)) {
+        midi_none(buf);
+        return;
+    }
+    join(buf, MENU_VALUE_CHARS, midi_route_mode_name(s.mode), "");
+}
+
+static void mode_turn(void* ctx, int32_t steps) {
+    midi_route_setup s;
+    if (midi_setup(ctx, &s)) {
+        s.mode = stepped(s.mode, steps, 0, MIDI_MODE_COUNT - 1u);
+        midi_apply(ctx, &s);
+    }
+}
+
+static void channel_value(void* ctx, char* buf) {
+    midi_route_setup s;
+    if (!midi_setup(ctx, &s)) {
+        midi_none(buf);
+        return;
+    }
+    number_text(buf, s.base + 1u);
+}
+
+static void channel_turn(void* ctx, int32_t steps) {
+    midi_route_setup s;
+    if (midi_setup(ctx, &s)) {
+        s.base = stepped(s.base, steps, 0, 15);
+        midi_apply(ctx, &s);
+    }
+}
+
+static void option_value(void* ctx, char* buf) {
+    midi_route_setup s;
+    if (!midi_setup(ctx, &s)) {
+        midi_none(buf);
+        return;
+    }
+    join(buf, MENU_VALUE_CHARS, midi_route_option_name(s.option), "");
+}
+
+static void option_turn(void* ctx, int32_t steps) {
+    midi_route_setup s;
+    if (midi_setup(ctx, &s)) {
+        s.option = stepped(s.option, steps, 0, MIDI_WHOLE_ARP);
+        midi_apply(ctx, &s);
+    }
+}
+
+static void legato_value(void* ctx, char* buf) {
+    midi_route_setup s;
+    if (!midi_setup(ctx, &s)) {
+        midi_none(buf);
+        return;
+    }
+    join(buf, MENU_VALUE_CHARS, s.legato ? "ON" : "OFF", "");
+}
+
+/* Clockwise on, counter-clockwise off. */
+static void legato_turn(void* ctx, int32_t steps) {
+    midi_route_setup s;
+    if (steps != 0 && midi_setup(ctx, &s)) {
+        s.legato = (uint8_t)(steps > 0);
+        midi_apply(ctx, &s);
+    }
+}
+
+static void interval_value(void* ctx, char* buf, uint32_t k) {
+    midi_route_setup s;
+    if (!midi_setup(ctx, &s)) {
+        midi_none(buf);
+        return;
+    }
+    buf[0] = '+';
+    number_text(buf + 1, s.chord[k]);
+}
+
+static void interval_turn(void* ctx, int32_t steps, uint32_t k) {
+    midi_route_setup s;
+    if (midi_setup(ctx, &s)) {
+        s.chord[k] = stepped(s.chord[k], steps, 0, MIDI_ROUTE_CHORD_MAX);
+        midi_apply(ctx, &s);
+    }
+}
+
+static void chord2_value(void* ctx, char* buf) {
+    interval_value(ctx, buf, 0);
+}
+
+static void chord2_turn(void* ctx, int32_t steps) {
+    interval_turn(ctx, steps, 0);
+}
+
+static void chord3_value(void* ctx, char* buf) {
+    interval_value(ctx, buf, 1);
+}
+
+static void chord3_turn(void* ctx, int32_t steps) {
+    interval_turn(ctx, steps, 1);
+}
+
+static void arp_value(void* ctx, char* buf) {
+    midi_route_setup s;
+    if (!midi_setup(ctx, &s)) {
+        midi_none(buf);
+        return;
+    }
+    if (s.arp_rate == 0u) {
+        join(buf, MENU_VALUE_CHARS, "CLOCK", "");
+    } else {
+        number_text(buf, s.arp_rate);
+        append(buf, MENU_VALUE_CHARS, " FR");
+    }
+}
+
+static void arp_turn(void* ctx, int32_t steps) {
+    midi_route_setup s;
+    if (midi_setup(ctx, &s)) {
+        s.arp_rate = stepped(s.arp_rate, steps, 0, MIDI_ROUTE_ARP_MAX);
+        midi_apply(ctx, &s);
+    }
+}
+
+static void rows_value(void* ctx, char* buf) {
+    midi_route_setup s;
+    if (!midi_setup(ctx, &s)) {
+        midi_none(buf);
+        return;
+    }
+    number_text(buf, s.rows_per_beat);
+}
+
+static void rows_turn(void* ctx, int32_t steps) {
+    midi_route_setup s;
+    if (midi_setup(ctx, &s)) {
+        s.rows_per_beat = stepped(s.rows_per_beat, steps, 1, MIDI_ROUTE_ROWS_MAX);
+        midi_apply(ctx, &s);
+    }
+}
+
+static const menu_item MIDI_ITEMS[VIEWS_MIDI_ITEMS] = {
+    {"MODE", mode_value, mode_turn},         {"CHANNEL", channel_value, channel_turn},
+    {"OPTION", option_value, option_turn},   {"LEGATO", legato_value, legato_turn},
+    {"CHORD 2", chord2_value, chord2_turn},  {"CHORD 3", chord3_value, chord3_turn},
+    {"ARP RATE", arp_value, arp_turn},       {"ROWS/BEAT", rows_value, rows_turn},
+};
+
+static void midi_look(const views* v, uint32_t blink, uint8_t out[VIEWS_MIDI_LOOK]) {
+    midi_route_setup s;
+    if (!midi_setup(v, &s)) {
+        midi_route_setup_default(&s);
+    }
+    out[0] = s.mode;
+    out[1] = s.base;
+    out[2] = s.option;
+    out[3] = s.legato;
+    out[4] = s.chord[0];
+    out[5] = s.chord[1];
+    out[6] = s.arp_rate;
+    out[7] = s.rows_per_beat;
+    out[8] = v->midi.cursor;
+    out[9] = v->midi.top;
+    out[10] = (uint8_t)blink;
+    out[11] = v->route != NULL;
+}
+
+static int midi_input(screen* s, void* state, const screen_event* e) {
+    (void)s;
+    views* v = state;
+    if (e->kind != SCREEN_TURN) {
+        return 0;
+    }
+    if (e->id == PANEL_ENC_SELECT) {
+        menu_move(&v->midi, e->steps);
+        return 1;
+    }
+    if (e->id == PANEL_ENC_ALGORITHM) {
+        menu_turn(&v->midi, e->steps);
+        return 1;
+    }
+    return 0;
+}
+
+static int midi_changed(screen* s, void* state) {
+    const views* v = state;
+    uint8_t now[VIEWS_MIDI_LOOK];
+    midi_look(v, (uint32_t)screen_blink(s), now);
+    for (uint32_t i = 0; i < VIEWS_MIDI_LOOK; i++) {
+        if (now[i] != v->midi_drawn[i]) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void midi_compose(screen* s, void* state, grid* g) {
+    views* v = state;
+    midi_look(v, (uint32_t)screen_blink(s), v->midi_drawn);
+    widget_screen(g, FONT_FULL, TEXT);
+    put(g, 2, 2, "SIDOU");
+    put(g, 2, VERSION_END_COL - length(v->version), v->version);
+    widget_frame(g, MENU_COL, MENU_ROW, MENU_W, VIEWS_MIDI_ITEMS + 2u, TEXT, "MIDI");
+    menu_draw(&v->midi, g, MENU_COL + 1u, MENU_ROW + 1u, MENU_W - 2u, TEXT, screen_blink(s));
+    uint32_t help = MENU_ROW + VIEWS_MIDI_ITEMS + 3u;
+    put(g, help, 2, "SELECT     MOVE");
+    put(g, help + 1u, 2, "ALGORITHM  CHANGE");
+    put(g, help + 2u, 2, "HOME       BACK");
+    put(g, 26, 2, "READY.");
+}
+
+const view views_midi = {"MIDI", NULL, NULL, midi_input, midi_compose, midi_changed};
 
 /* ---- CHARSET ---- */
 
@@ -724,6 +983,10 @@ void views_popup_midi(views* v, int on) {
     screen_popup_watch(&v->s, on ? midi_watch : NULL, on ? v : NULL);
 }
 
+void views_route(views* v, midi_route* route) {
+    v->route = route;
+}
+
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->l = l;
     v->sc = sc;
@@ -737,6 +1000,8 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     menu_init(&v->home, MENU_ITEMS, VIEWS_MENU_ITEMS, VIEWS_MENU_SHOWN, v);
     v->home.scale = 2;
     v->home.sel_attr = MENU_HEAD; /* the selected line in reverse video */
+    menu_init(&v->midi, MIDI_ITEMS, VIEWS_MIDI_ITEMS, VIEWS_MIDI_ITEMS, v);
+    v->route = NULL;
     remember(v);
     v->p = NULL;
     learn_view_init(&v->learn, l, NULL);

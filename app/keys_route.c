@@ -54,6 +54,8 @@ void keys_route_init(keys_route* kr, live* l, live_sink_fn sink, live_prepare_fn
     chip_ctl_init(&kr->ctl[0], sink, out_a, prepare, out_a);
     chip_ctl_init(&kr->ctl[1], sink, out_b, prepare, out_b);
     kr->song = 0;
+    kr->song_on = 0;
+    kr->player = 0;
     kr->stale = 0;
     kr->under = 0;
     kr->taken = 0;
@@ -124,7 +126,14 @@ static void update_under(keys_route* kr) {
 }
 
 void keys_route_set_song(keys_route* kr, int playing) {
-    kr->song = playing ? 1u : 0u;
+    kr->song_on = playing ? 1u : 0u;
+    kr->song = (uint8_t)(kr->song_on | kr->player);
+    update_under(kr);
+}
+
+void keys_route_set_player(keys_route* kr, int owns) {
+    kr->player = owns ? 1u : 0u;
+    kr->song = (uint8_t)(kr->song_on | kr->player);
     update_under(kr);
 }
 

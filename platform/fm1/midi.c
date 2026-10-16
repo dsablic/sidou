@@ -64,6 +64,8 @@ static midi_rx rx;
 /* MIDI learn's bindings (176 bytes, app/midi_learn.h); read by the emulator tests through the
  * ELF symbol. */
 static midi_learn learned __attribute__((used));
+/* MIDI's mode (app/midi_route.h); read by the emulator tests through the ELF symbol. */
+static midi_route routing __attribute__((used));
 /* Read by the emulator tests through the ELF symbol (its counters, app/midi_out.h). */
 static midi_out midi_tx __attribute__((used));
 /* fm1_ticks() at the start of the poll that is running: every entry it pushes gets it. */
@@ -113,9 +115,11 @@ _Static_assert(MIDI_SRC_USB == 1u && MIDI_SRC_TRS == 2u, "usb.c and midi_uart.c 
 
 /* ---- midi.h ---- */
 
-void midi_init(live* l) {
+void midi_init(live* l, keys_route* kr) {
     midi_ring_init(&in_ring);
     midi_rx_init(&rx, l, midi_ring_epoch(&in_ring));
+    midi_route_init(&routing, l, kr, NULL); /* the player's side: song control's (midi.h) */
+    midi_rx_route(&rx, &routing);
     midi_out_init(&midi_tx, l, (uint8_t)(SIDOU_MIDI_OUT_CHANNEL - 1), SIDOU_MIDI_OUT_NRPN != 0);
     midi_rx_watch(&rx, &midi_tx);
     midi_learn_init(&learned);
@@ -127,6 +131,14 @@ void midi_init(live* l) {
 
 midi_learn* midi_learned(void) {
     return &learned;
+}
+
+midi_route* midi_routed(void) {
+    return &routing;
+}
+
+void midi_tick(void) {
+    midi_route_tick(&routing);
 }
 
 void midi_usb_isr(void) {

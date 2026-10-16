@@ -63,6 +63,7 @@ fn with_chunks(s: &mut Song) {
         rows_per_beat: 4,
         count: 3,
         channel: [0, 1, 2, 0, 0, 0],
+        ..Default::default()
     };
     assert_eq!(unsafe { song_ext_set_midi(s.ptr_mut(), &m) }, 0);
     let sc = song_scene {

@@ -552,13 +552,37 @@ int song_ext_get_midi(const gt2_song* s, song_midi* v) {
     v->mode = head[0];
     v->rows_per_beat = head[1];
     v->count = head[2];
+    uint32_t len = 0;
+    const uint8_t* d = song_ext_find(s, SONG_TAG_MIDI, &len);
+    uint32_t at = 4u + v->count;
+    if (len >= at + SONG_MIDI_OPTION_BYTES) {
+        v->has_options = 1u;
+        v->flags = d[at];
+        v->whole = d[at + 1u];
+        v->chord[0] = d[at + 2u];
+        v->chord[1] = d[at + 3u];
+        v->arp_rate = d[at + 4u];
+    }
     return 1;
 }
 
 int song_ext_set_midi(gt2_song* s, const song_midi* v) {
-    uint8_t head[3] = {v->mode, v->rows_per_beat, v->count};
-    return set_counted(s, SONG_TAG_MIDI, head, 3u, v->channel, v->count,
-                       SONG_MIDI_CHANNELS_MAX);
+    uint8_t b[4u + SONG_MIDI_CHANNELS_MAX + SONG_MIDI_OPTION_BYTES];
+    if (v->count > SONG_MIDI_CHANNELS_MAX)
+        return -1;
+    b[0] = 1u;
+    b[1] = v->mode;
+    b[2] = v->rows_per_beat;
+    b[3] = v->count;
+    uint32_t n = 4u;
+    for (uint32_t i = 0; i < v->count; i++)
+        b[n++] = v->channel[i];
+    b[n++] = v->flags;
+    b[n++] = v->whole;
+    b[n++] = v->chord[0];
+    b[n++] = v->chord[1];
+    b[n++] = v->arp_rate;
+    return song_ext_set(s, SONG_TAG_MIDI, b, n);
 }
 
 int song_ext_get_scene(const gt2_song* s, song_scene* v) {
