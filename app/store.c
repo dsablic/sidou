@@ -148,6 +148,11 @@ static const store_key* find_c(const store* s, uint32_t key) {
     return find((store*)s, key);
 }
 
+/* Keys in use: the index, and an open file's fresh key, taken at its begin. */
+static uint32_t keys_taken(const store* s) {
+    return s->nkeys + (s->f.phase != F_IDLE && !find_c(s, s->f.key));
+}
+
 static void drop_key(store* s, store_key* e) {
     *e = s->key[--s->nkeys];
 }
@@ -318,34 +323,16 @@ static int prog_piece(store* s, uint32_t sec, uint32_t off, const uint8_t* src, 
     uint32_t page = STORE_PAGE - (a & (STORE_PAGE - 1u));
     k = k > s->window ? s->window : k;
     k = k > page ? page : k;
-    int rc = s->flash.prog(s->flash.ctx, a, src + *done, k);
+    /* The device programs with XIP off: the bytes go from RAM, wherever the caller's are. */
+    uint8_t ram[STORE_WINDOW_MAX];
+    memcpy(ram, src + *done, k);
+    int rc = s->flash.prog(s->flash.ctx, a, ram, k);
     if (rc == STORE_LATER) {
         return 0;
     }
     if (rc != STORE_OK) {
         s->errors++;
         return -1;
-    }
-    *done = (uint16_t)(*done + k);
-    return *done == n;
-}
-
-/* The same, for a range copied from flash at `from`: a piece goes through buf. */
-static int copy_piece(store* s, uint32_t sec, uint32_t off, uint32_t from, uint32_t n,
-                      uint16_t* done) {
-    uint32_t a = base(sec) + off + *done;
-    uint32_t k = n - *done;
-    uint32_t page = STORE_PAGE - (a & (STORE_PAGE - 1u));
-    k = k > s->window ? s->window : k;
-    k = k > page ? page : k;
-    memcpy(s->buf, s->flash.map(s->flash.ctx, from + *done), k);
-    uint16_t piece = 0;
-    int rc = prog_piece(s, sec, off + *done, s->buf, k, &piece);
-    if (rc < 0) {
-        return -1;
-    }
-    if (rc == 0) {
-        return 0;
     }
     *done = (uint16_t)(*done + k);
     return *done == n;
@@ -411,10 +398,13 @@ static void writer_done(store* s) {
         if (was[0] == STORE_TYPE_FILE) {
             file_live(s, was, -1); /* replaced, renamed or deleted */
         }
-    } else {
+    } else if (s->nkeys < STORE_KEYS_MAX) {
         e = &s->key[s->nkeys++];
         e->key = w->key;
         e->stale = 0;
+    } else {
+        s->corrupt++; /* never: write_record and file_key keep a slot for every new key */
+        return;
     }
     e->sec = w->sec;
     e->off = w->off;
@@ -451,8 +441,9 @@ static void writer_step(store* s) {
         if (w->src) {
             rc = prog_piece(s, w->sec, w->off + STORE_REC_HEADER, w->src, w->len, &w->done);
         } else {
-            rc = copy_piece(s, w->sec, w->off + STORE_REC_HEADER, w->from + STORE_REC_HEADER,
-                            w->len, &w->done);
+            rc = prog_piece(s, w->sec, w->off + STORE_REC_HEADER,
+                            s->flash.map(s->flash.ctx, w->from + STORE_REC_HEADER), w->len,
+                            &w->done);
         }
         if (rc > 0) {
             w->phase = W_HEAD;
@@ -489,7 +480,7 @@ static int write_record(store* s, uint32_t key, uint8_t type, const void* data, 
                         uint32_t floor) {
     uint32_t size = rec_size(len);
     store_key* e = find(s, key);
-    if (!e && s->nkeys >= STORE_KEYS_MAX) {
+    if (!e && keys_taken(s) >= STORE_KEYS_MAX) {
         return STORE_FULL;
     }
     uint32_t old = e ? entry_size(s, e) : 0u;
@@ -1037,11 +1028,15 @@ static void file_fail(store* s, int result) {
     if (f->phase == F_IDLE || f->phase == F_FILE) {
         return;
     }
+    /* A claim cut short (or failed: the hook may have cleared bits) is not clean any more. */
+    uint32_t torn = f->phase == F_CLAIM && (f->pdone || result == STORE_ERROR)
+                        ? f->sectors[f->chunk / 3u]
+                        : NONE;
     for (uint32_t i = 0; i < f->nsec; i++) {
         uint32_t sec = f->sectors[i];
         s->sstate[sec] &= (uint8_t)~SEC_FILE;
         if (sec_state(s, sec) == SEC_RESERVED) {
-            set_state(s, sec, SEC_CLEAN);
+            set_state(s, sec, sec == torn ? SEC_DIRTY : SEC_CLEAN);
         } else {
             s->sstate[sec] |= SEC_FULL; /* a chunk may be cut after its last committed one */
         }
@@ -1385,7 +1380,10 @@ void store_format(store* s) {
     s->head = NONE;
     s->job = JOB_NONE;
     s->w.phase = W_IDLE;
-    s->f.phase = F_IDLE;
+    if (s->f.phase != F_IDLE) {
+        s->f.phase = F_IDLE;
+        s->f.result = STORE_NOT_FOUND;
+    }
     s->fres_sec = NONE;
     s->fres_bytes = 0;
     s->state = STORE_STATE_BLANK;
@@ -1429,7 +1427,10 @@ int store_file_begin(store* s, const char* name, uint8_t type, uint32_t length) 
         return STORE_FULL;
     }
     uint32_t nsec = sectors_of(length), frec = rec_size(STORE_FILE_HEAD + nsec);
-    if (s->live + chunk_bytes(length) + frec > STORE_CAPACITY) {
+    /* A file it replaces frees its records when this one commits. */
+    uint32_t old =
+        e ? entry_size(s, e) + chunk_bytes(rd32(file_data(at(s, e->sec, e->off)) + 4)) : 0u;
+    if (s->live - old + chunk_bytes(length) + frec > STORE_CAPACITY) {
         return STORE_FULL;
     }
     uint32_t h = s->head, head_room = h != NONE && !(s->sstate[h] & SEC_FULL) &&
@@ -1459,6 +1460,7 @@ int store_file_begin(store* s, const char* name, uint8_t type, uint32_t length) 
     f->fill = 0;
     f->start = 0;
     f->closing = 0;
+    f->idle = 0;
     f->type = type;
     f->nsec = (uint8_t)nsec;
     memcpy(f->name, padded, STORE_NAME_MAX);
@@ -1482,6 +1484,7 @@ uint32_t store_file_write(store* s, const void* p, uint32_t n) {
     memcpy(s->buf, (const uint8_t*)p + first, n - first);
     f->fill = (uint16_t)(f->fill + n);
     f->taken += n;
+    f->idle = 0;
     return n;
 }
 
@@ -1504,6 +1507,18 @@ void store_file_abort(store* s) {
 
 int store_file_result(const store* s) {
     return s->f.phase != F_IDLE ? STORE_BUSY : s->f.result;
+}
+
+void store_file_idle(store* s, uint32_t ms) {
+    store_file_writer* f = &s->f;
+    if (f->phase == F_IDLE || f->phase == F_FILE || f->closing || f->fill == STORE_WINDOW_MAX) {
+        return; /* no file waiting for bytes; or the store, not the sender, is the slow one */
+    }
+    uint32_t idle = f->idle + (ms < STORE_FILE_IDLE_MS ? ms : STORE_FILE_IDLE_MS);
+    f->idle = (uint16_t)(idle < STORE_FILE_IDLE_MS ? idle : STORE_FILE_IDLE_MS);
+    if (f->idle >= STORE_FILE_IDLE_MS) {
+        file_fail(s, STORE_TIMEOUT);
+    }
 }
 
 int store_file_open(const store* s, const char* name, store_file* f) {

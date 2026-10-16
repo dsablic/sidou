@@ -50,8 +50,9 @@
  * Until its FILE record commits a file does not exist: replacing one leaves the old until the
  * new commits, and a cut at any point leaves the old file or the new. Chunks never move: a live
  * file's sectors are never collected, and its FILE record lists them, so a read goes straight
- * to a chunk through XIP. One file is written at a time; small writes go on meanwhile, and
- * maintenance waits until the file is committed or aborted.
+ * to a chunk through XIP. One file is written at a time; small writes go on meanwhile while the
+ * head sector has room, and maintenance waits until the file is committed, aborted or timed out
+ * (store_file_idle).
  *
  * RAM: the store struct, under 2 KB (a sector index, a key index, a 256-byte buffer that also
  * stages a file's bytes, the file being written). */
@@ -92,6 +93,7 @@
 #define STORE_CAPACITY ((STORE_SECTORS - STORE_POOL_MIN) * STORE_FILE_SECTOR_DATA)
 #define STORE_WEAR_SPREAD 4u    /* erase counts further apart than this: move the coldest */
 #define STORE_MOUNT_SLICE 1024u /* the record bytes one store_poll checks while mounting */
+#define STORE_FILE_IDLE_MS 5000u /* an open file's sender gone this long: the file is aborted */
 
 _Static_assert(STORE_POOL_MIN == 20u, "ceil(65,536 / 3,808) + 2");
 _Static_assert((STORE_FILE_MAX + STORE_FILE_SECTOR_DATA - 1u) / STORE_FILE_SECTOR_DATA +
@@ -113,6 +115,7 @@ enum {
     STORE_INVALID = -5, /* a bad argument */
     STORE_ERROR = -6,   /* a flash operation failed */
     STORE_EXISTS = -7,  /* a file of that name exists */
+    STORE_TIMEOUT = -8, /* an open file took no bytes for STORE_FILE_IDLE_MS: aborted */
 };
 
 /* The region, as the mount found it. */
@@ -189,7 +192,8 @@ typedef struct {
     int8_t result; /* the last file's: STORE_OK, STORE_BUSY while open, an error */
     char name[STORE_NAME_MAX];
     uint8_t sectors[STORE_FILE_SECTORS];
-    uint8_t pad[3];
+    uint8_t pad;
+    uint16_t idle; /* ms without a byte (store_file_idle) */
 } store_file_writer;
 
 typedef struct {
@@ -258,8 +262,9 @@ int store_erase_wanted(const store* s);
  * may be more than cap), or STORE_NOT_FOUND. `type`, if not NULL, gets its type. */
 int store_get(const store* s, uint32_t key, void* buf, uint32_t cap, uint8_t* type);
 /* Writes `len` bytes (up to STORE_VALUE_MAX) as `key`'s new value, of `type` (0..STORE_TYPE_MAX).
- * The data stays the caller's until store_busy is 0: store_poll programs it from there. The
- * place is taken before this returns. STORE_OK: it commits on later store_polls (a power cut
+ * The data stays the caller's until store_busy is 0: store_poll programs it from there, a piece
+ * at a time through a RAM copy (the device programs with XIP off, so no program reads flash:
+ * the data may be anywhere, flash included). The place is taken before this returns. STORE_OK: it commits on later store_polls (a power cut
  * before then leaves the old value). STORE_BUSY: not now (a write runs, or a new head sector
  * would take the pool under its minimum); STORE_FULL: not even after garbage collection. */
 int store_put(store* s, uint32_t key, uint8_t type, const void* data, uint32_t len);
@@ -301,12 +306,22 @@ uint32_t store_file_write(store* s, const void* p, uint32_t n);
  * chunk. With fewer bytes taken than its length, the file is aborted and STORE_INVALID returned.
  * store_file_result tells when it is done. */
 int store_file_end(store* s);
-/* Drops the open file: its sectors go back to the pool or to garbage collection. */
+/* Drops the open file: its sectors go back to the pool or to garbage collection (a sector whose
+ * claim was half programmed is erased first). Once its FILE record is being programmed (after
+ * store_file_end, its chunks all written; store_file_result still STORE_BUSY), the file is past
+ * aborting: it commits. */
 void store_file_abort(store* s);
 /* STORE_BUSY while a file is open or committing, else the last file's result: STORE_OK
- * (committed), STORE_INVALID (ended short), STORE_ERROR (a flash operation failed), or
- * STORE_NOT_FOUND (aborted). */
+ * (committed), STORE_INVALID (ended short), STORE_ERROR (a flash operation failed),
+ * STORE_NOT_FOUND (aborted, or a format meanwhile) or STORE_TIMEOUT (its sender went quiet). */
 int store_file_result(const store* s);
+/* The caller's clock, once a main-loop pass: `ms` milliseconds passed since the last call. An
+ * open file that takes no bytes for STORE_FILE_IDLE_MS is aborted (STORE_TIMEOUT), so a SysEx
+ * sender that disappears cannot hold the store: while a file is open, maintenance waits, and
+ * small writes go on only while the head sector has room (a new head would take the pool the
+ * file has claimed). The time while the staging buffer is full (the store, not the sender, is
+ * the slow one) and after store_file_end does not count. */
+void store_file_idle(store* s, uint32_t ms);
 int store_file_open(const store* s, const char* name, store_file* f);
 /* Up to n bytes of f from `off` into p, straight from flash. Returns how many, or
  * STORE_NOT_FOUND once the file was deleted or replaced. */

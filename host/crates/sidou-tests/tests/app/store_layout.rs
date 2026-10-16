@@ -168,3 +168,30 @@ fn the_store_and_the_staging_area_lie_inside_the_packages_vm_descriptor() {
         );
     }
 }
+
+/// The update loader's write gate (`platform/fm1/loader/loader.c` `FL_RANGE_OK`): the app
+/// area up to the store, and from the store's end on; never the store.
+#[test]
+fn the_loaders_write_gate_stops_exactly_at_the_store() {
+    let loader = repo("platform/fm1/loader/loader.c");
+    let line = loader
+        .lines()
+        .find(|l| l.starts_with("#define FL_RANGE_OK"))
+        .expect("loader.c's FL_RANGE_OK");
+    let ranges: Vec<(u32, u32)> = line
+        .split("FL_IN(")
+        .skip(1)
+        .map(|call| {
+            let args: Vec<&str> = call.split(')').next().unwrap().split(',').collect();
+            assert_eq!(args.len(), 4, "{call:?}");
+            (number(args[2]), number(args[3]))
+        })
+        .collect();
+    assert_eq!(ranges.len(), 2, "{line}");
+    let (app, rest) = (ranges[0], ranges[1]);
+    assert_eq!(app.1, STORE_LO, "the app area's range ends where the store begins");
+    assert_eq!(rest.0, STORE_HI, "the next range begins where the store ends");
+    for (lo, hi) in ranges {
+        assert!(hi <= STORE_LO || lo >= STORE_HI, "[{lo:#x}, {hi:#x}) reaches the store");
+    }
+}

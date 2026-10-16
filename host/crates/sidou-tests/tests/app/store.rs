@@ -2199,3 +2199,151 @@ fn files_power_loss_long() {
     }
     println!("{forks} forked cuts and {cuts} real cuts checked");
 }
+
+// ---- regressions ----
+
+/// An open file's fresh key is taken from its begin: a small write cannot take the key
+/// index's last slot from under it (the file's commit would index a 49th key).
+#[test]
+fn an_open_files_fresh_key_is_kept_for_it() {
+    let mut r = fresh(40, 256);
+    for k in 0..STORE_KEYS_MAX - 1 {
+        assert_eq!(r.put_now(k, &k.to_le_bytes()), STORE_OK);
+    }
+    assert_eq!(r.file_begin("SONG", 10), STORE_OK);
+    let ops = r.sim.ops;
+    assert_eq!(r.put(1000, b"new"), STORE_FULL, "the file holds the last slot");
+    assert_eq!(r.sim.ops, ops);
+    assert_eq!(r.put(3, b"an old key"), STORE_OK, "an indexed key still writes");
+    r.settle();
+    assert_eq!(r.file_stream(&[5; 10], 10, None), STORE_OK);
+    assert_eq!(r.stats().keys, STORE_KEYS_MAX);
+    r.reset();
+    r.mount();
+    let s = r.stats();
+    assert_eq!((s.keys, s.corrupt), (STORE_KEYS_MAX, 0));
+    assert_eq!(r.file("SONG").as_deref(), Some(&[5u8; 10][..]));
+    assert_eq!(r.get(3).as_deref(), Some(&b"an old key"[..]));
+    r.assert_clean();
+}
+
+/// An abort (or a short end) while a file sector's claim is half programmed leaves that sector
+/// dirty: it is erased before any use, never claimed again over the bits already cleared.
+#[test]
+fn a_file_dropped_mid_claim_leaves_its_sector_to_be_erased() {
+    for window in [1u32, 4, 8, 16] {
+        let pieces = (STORE_HEADER as usize).div_ceil(window as usize);
+        for polls in 1..pieces {
+            for short in [false, true] {
+                let what = format!("window {window}, {polls} pieces, short {short}");
+                let mut r = fresh(50 + u64::from(window), window);
+                assert_eq!(r.file_begin("A", 100), STORE_OK);
+                assert_eq!(r.file_write(&[7; 60]), 60);
+                for _ in 0..polls {
+                    r.poll();
+                }
+                if r.st.f.pdone == 0 {
+                    continue; // the claim's first pieces may sit in a page already done
+                }
+                if short {
+                    assert_eq!(unsafe { store_file_end(&mut *r.st) }, STORE_INVALID);
+                } else {
+                    unsafe { store_file_abort(&mut *r.st) };
+                }
+                // Every sector is used again: files, then values.
+                r.maintain();
+                for i in 0..12u64 {
+                    assert_eq!(r.file_now(&format!("B{i}"), &content(i, 2000)), STORE_OK, "{what}");
+                    assert_eq!(r.put_now(i as u32, &[i as u8; 300]), STORE_OK, "{what}");
+                }
+                r.assert_clean();
+                r.reset();
+                assert_eq!(r.mount(), STORE_STATE_SIDOU);
+                for i in 0..12u64 {
+                    assert_eq!(r.file(&format!("B{i}")), Some(content(i, 2000)), "{what}");
+                }
+                assert_eq!(r.file("A"), None);
+                assert_eq!(r.stats().corrupt, 0, "{what}");
+            }
+        }
+    }
+}
+
+fn file_idle(r: &mut Rig, ms: u32) {
+    unsafe { store_file_idle(&mut *r.st, ms) };
+}
+
+/// A file whose sender went away does not hold the store: after STORE_FILE_IDLE_MS without a
+/// byte it is aborted, and maintenance and other files go on.
+#[test]
+fn an_open_file_whose_sender_goes_quiet_times_out() {
+    let mut r = fresh(41, 64);
+    assert_eq!(r.put_now(1, b"x"), STORE_OK);
+    assert_eq!(r.file_begin("SYSEX", 5000), STORE_OK);
+    let data = content(41, 5000);
+    assert_eq!(r.file_write(&data[..300]), 256);
+    // The staging buffer full: the store is the slow one, the time does not count.
+    file_idle(&mut r, STORE_FILE_IDLE_MS * 2);
+    assert_eq!(r.file_result(), STORE_BUSY);
+    r.settle();
+    assert!(!r.erase_wanted(), "maintenance waits for the file");
+    file_idle(&mut r, STORE_FILE_IDLE_MS - 1);
+    assert_eq!(r.file_result(), STORE_BUSY);
+    assert_eq!(r.file_write(&data[256..300]), 44, "a byte starts the time again");
+    file_idle(&mut r, STORE_FILE_IDLE_MS - 1);
+    assert_eq!(r.file_result(), STORE_BUSY);
+    file_idle(&mut r, 1);
+    assert_eq!(r.file_result(), STORE_TIMEOUT);
+    assert_eq!(r.file_write(&data[300..400]), 0, "the file is gone");
+    assert!(r.erase_wanted(), "maintenance goes on");
+    r.maintain();
+    assert_eq!(r.file("SYSEX"), None);
+    // Ended, it commits however long the store takes.
+    assert_eq!(r.file_begin("SYSEX", 300), STORE_OK);
+    assert_eq!(r.file_write(&data[..300]), 256);
+    r.settle();
+    assert_eq!(r.file_write(&data[256..300]), 44);
+    assert_eq!(unsafe { store_file_end(&mut *r.st) }, STORE_OK);
+    file_idle(&mut r, STORE_FILE_IDLE_MS * 10);
+    r.settle();
+    assert_eq!(r.file_result(), STORE_OK);
+    assert_eq!(r.file("SYSEX"), Some(data[..300].to_vec()));
+    r.assert_clean();
+}
+
+/// Replacing a file is checked against the space it frees: three songs nearly fill the store
+/// (three of 64 KiB never fit: 3 x 18 sectors is more than the 53 outside the pool's minimum),
+/// and re-saving one, even at the largest size, succeeds.
+#[test]
+fn replacing_a_file_counts_the_space_the_old_one_frees() {
+    let mut r = fresh(42, 256);
+    let near = 17 * STORE_FILE_SECTOR_DATA as usize; // 63,648 bytes: 17 sectors
+    for (i, n) in ["SONG 1", "SONG 2", "SONG 3"].iter().enumerate() {
+        r.maintain();
+        assert_eq!(r.file_now(n, &content(i as u64, near)), STORE_OK, "{n}");
+    }
+    r.maintain();
+    let again = content(9, FILE_MAX);
+    assert_eq!(r.file_now("SONG 2", &again), STORE_OK);
+    assert_eq!(r.file("SONG 2"), Some(again.clone()));
+    let free = r.stats().free;
+    assert_eq!(
+        r.file_now("SONG 4", &content(4, near)),
+        STORE_FULL,
+        "a fourth does not fit ({free} bytes free)"
+    );
+    r.reset();
+    r.mount();
+    assert_eq!(r.file("SONG 1"), Some(content(0, near)));
+    assert_eq!(r.file("SONG 2"), Some(again));
+    assert_eq!(r.file("SONG 3"), Some(content(2, near)));
+    r.assert_clean();
+}
+
+#[test]
+fn a_format_with_a_file_open_ends_it_as_not_found() {
+    let mut r = fresh(43, 256);
+    assert_eq!(r.file_begin("OPEN", 100), STORE_OK);
+    unsafe { store_format(&mut *r.st) };
+    assert_eq!(r.file_result(), STORE_NOT_FOUND);
+}
