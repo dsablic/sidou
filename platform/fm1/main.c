@@ -554,8 +554,11 @@ static void spike_service(void) {
 #endif
 
 static void sidou_main(void) {
-    /* Interrupts are still off: lcd_init and input_init write port A, which carries PA2. */
-    lcd_init(song_load);
+    /* Interrupts are still off: lcd_init and input_init write port A, which carries PA2. The
+     * song's region loads in the panel's reset wait; the plain XIP window for the store
+     * (update.h) is set up in its wake-up wait: its cache invalidation takes milliseconds,
+     * which the boot then does not spend. */
+    lcd_init(song_load, flash_plain_window);
     audio_init();
     /* The keys play chip A, as in M1; chip B is made with the keys' setup from the first
      * ticks, prepared in the background (its first reset at boot only: app/reg_ring.h). */

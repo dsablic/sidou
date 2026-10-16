@@ -13,7 +13,7 @@ lists the prerequisites.
 |---|---|---|
 | Everything except the emulator gate | `cargo test --workspace --release` | all crates |
 | Unit tests | `cargo test --release -p sidou-tests --test unit` | `crates/sidou-tests/tests/unit/` |
-| App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_LOGO_UPDATE=1` `app/logo_bitmap.c` from `assets/logo/metal-chrome.png` and `cracktro-chrome.png` and `app/title_card_bitmap.c` from `assets/logo/title-*.png`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
+| App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets, the store's layout) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_LOGO_UPDATE=1` `app/logo_bitmap.c` from `assets/logo/metal-chrome.png` and `cracktro-chrome.png` and `app/title_card_bitmap.c` from `assets/logo/title-*.png`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
 | Song files (the `.sng` reader and writer, the trailer, the song model's edits) | `cargo test --release -p sidou-tests --test song`; the long fuzz and edit runs with `-- --ignored` | `crates/sidou-tests/tests/song.rs`, `src/song.rs` |
 | Song player reference (GoatTracker's packer and player in a host 6502, Dormann's 6502 test) | `cargo test --release -p gt2-ref`; the assembler cross-check with `--test assembler -- --ignored` (fetches GoatTracker 2.77 into `build/`); `cargo run --release -p gt2-ref --bin gt2-trace -- song.sng` prints a song's writes | `crates/gt2-ref/` |
 | Song player against GoatTracker's (every frame's SID writes equal) | `cargo test --release -p sidou-tests --test gt2_match`; the long runs (every example for 30,000 frames, 5,000 generated songs) with `-- --ignored` | `crates/sidou-tests/tests/gt2_match.rs`, `crates/gt2-ref/src/gen.rs`, `src/player.rs` |
@@ -26,7 +26,7 @@ lists the prerequisites.
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
 | Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
-| Emulator tests (gates incl. effects, boot, live instrument, screen, MIDI, latency, SRAM audio, package) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
+| Emulator tests (gates incl. effects, boot, live instrument, screen, MIDI, latency, SRAM audio, package, flash budget) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
 | Flash timing spike (a test firmware, M2a Task 3b) | build it with `-DSIDOU_FLASH_SPIKE=ON` into `build/fm1-spike` (BUILDING.md), then `SIDOU_FM1_BUILD=$PWD/../build/fm1 SIDOU_FM1_SPIKE_BUILD=$PWD/../build/fm1-spike cargo test --release -p emu-gate --test flash_spike -- --nocapture`; its bounds `cargo test --release -p sidou-pack --test flash_spike_guard` | `crates/emu-gate/tests/flash_spike.rs`, `crates/sidou-pack/tests/flash_spike_guard.rs` |
 | Browser demo smoke test (from the repository root) | `tools/web-demo --check` | `web/check.mjs`, `web/check.sh` |
 
@@ -608,6 +608,22 @@ It writes `sidou_boot.json` (frames, peak, measured pitch, the note-on's
 block, instructions in and out of interrupts, the largest audio block) into the
 fm1 build directory. Like the gate, it skips without `SIDOU_FM1_BUILD`.
 
+`the_store_reads_through_a_plain_xip_window` checks that the boot maps the
+flash from 0x93000 up as a plain XIP window before the audio starts (the
+window's registers, written once), that a word written into the flash chip
+at the store's first byte (`STORE_LO`) reads back through XIP, and that the
+boot writes nothing into the store (docs/hardware.md, "Flash map").
+
+### Flash budget
+
+`crates/emu-gate/tests/flash_budget.rs` holds M2's image schedule (the
+ceiling of `sidou_app.bin` after each plan, M2a 372,000 bytes up to M2f
+512,000) and fails if the image is over the ceiling of the plan in progress
+(`IMAGE_CEILING`). A raise is a change to the schedule's table, so it reads
+as a change to the plan; a test checks the table only rises and leaves M3 at
+least 69,564 bytes of the 581,564-byte slot. It prints the image's size and
+what is left; it skips without `SIDOU_FM1_BUILD`.
+
 ### Live instrument test
 
 `crates/emu-gate/tests/live.rs` plays the firmware through fm1-emu's front
@@ -837,6 +853,18 @@ fm1-emu does not emulate USB (see [docs/TODO.md](docs/TODO.md)), so USB
 MIDI is covered by the host tests of the packet conversion
 (`tests/app/midi_usb.rs`), the ring (`midi_ring.rs`) and the input logic
 (`midi_rx.rs`), and by hardware testing.
+
+### Store layout
+
+`crates/sidou-tests/tests/app/store_layout.rs` checks the store's place in
+flash (`app/store_layout.h`; docs/hardware.md, "Flash map"): whole sectors,
+exactly the range the update loader never touches (`LDR_DATA_LO/HI`, read
+from `platform/fm1/loader/ldr_core.c`'s text, and Felucca's `FL_DATA_LO/HI`),
+ending where the update protocol's staging area (`OTA_AREA`) begins, above
+the app slot (`app.ld`'s XIP region plus 0x4000 and 0x120), and inside the
+package's VM descriptor, read from a package `sidou-pack` builds with
+stand-in SDK inputs; and that the guard band (the last page of every
+sector) covers where an update record would sit.
 
 ### Package tests
 

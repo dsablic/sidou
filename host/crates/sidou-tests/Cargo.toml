@@ -20,6 +20,9 @@ sidou-tablegen = { path = "../sidou-tablegen" }
 
 [dev-dependencies]
 gt2-ref = { path = "../gt2-ref" }
+# The store's layout against the package's region descriptors (tests/app/store_layout.rs).
+fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "e52f4640157f490f8c3af778dd044e9d33e989e8" }
+sidou-pack = { path = "../sidou-pack" }
 
 [[bin]]
 name = "sidou-compare"

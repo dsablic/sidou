@@ -198,12 +198,9 @@ Headroom beyond 48 KB, if the audio path ever needs it:
   measured);
 - RAMTEXT further up, taking from POOL (RAM and the debug area move with
   it);
-- moving the flash driver out of RAMTEXT (it only runs with the audio
-  stopped, so it could be copied into the slots' pool for an update), which
-  touches the vendored update path. It also needs POOL to be executable:
-  `platform/fm1/app.ld` declares it `(rw)` today, so the linker would have
-  to declare it `(rwx)` (and nothing on the chip may forbid fetching from
-  it).
+- ~~moving the flash driver out of RAMTEXT~~: retired by M2a. The store
+  (see "Flash map") programs and erases while the firmware runs, so the
+  flash driver (`fl_*_ram`, about 2.8 KB) stays in RAMTEXT for good.
 
 The rules for keeping it that way:
 - **Placement is in `platform/fm1/app.ld` only**, by input-section rules on
@@ -375,6 +372,64 @@ for every time):
 - **The clock:** at 360 MHz every instruction-count margin in M2 grows by
   half; at 240 MHz they are as written.
 
+## Flash map
+
+The FM-1's flash is a 1 MiB SPI NOR (JEDEC `85 60 14`, a Puya
+P25Q80-class part) of 4 KiB erase sectors and 256-byte program pages. Who
+owns which bytes (M2a Task 1; the constants are in `app/store_layout.h`,
+and `host/crates/sidou-tests/tests/app/store_layout.rs` checks them against
+the loader, the update protocol, `app.ld` and the package):
+
+| Range | Size | Owner |
+|---|---|---|
+| `[0x000000, 0x004000)` | 16 KiB | the device's flash head (SPL, isd_config): never written by anyone but the vendor |
+| `[0x004000, 0x093000)` | 572 KiB | the app area; the update loader writes it; SIDOU's image is 0x8DFBC of it from 0x02000120. **Fixed:** the store's size is not a lever for the image |
+| `[0x093000, 0x097000)` | 16 KiB | the first 16 KiB of the package's VM region; inside the loader's record scan (it erases update records it finds there); the stock firmware's VM data may live here. Neither SIDOU nor Felucca writes it |
+| `[0x097000, 0x0E0000)` | 292 KiB, 73 sectors | **SIDOU's store** (Felucca's main store on Felucca); inside the VM region; the loader's scan skips it |
+| `[0x0E0000, 0x0E5000)` | 20 KiB | the update protocol's staging area and its record (0xE4F00); inside the VM region |
+| `[0x0E5000, 0x0E9000)` | 16 KiB | the end of the VM region: Felucca's autosave and voice bank, the stock OTA's VM backup (0xE8000); never written by SIDOU |
+| `[0x0E9000, 0x100000)` | 92 KiB | not SIDOU's: Felucca's globals (0xFC000) and the rest; never written |
+
+**The firmware may erase and program two ranges only:** the staging area
+and the store (`platform/fm1/midi.c`'s `FL_RANGE_OK`, which the RAM flash
+driver checks on every erase and program). The update protocol's hooks
+(`platform/fm1/ota_flash.h`) keep to the staging area.
+
+**The VM descriptor.** Besides the app and the whole-flash entry, the
+package (`host/crates/sidou-pack`) writes a "VM" region descriptor at
+0x93000, 352,256 bytes long: `[0x93000, 0xE9000)`, the SDK's own key-value
+store. It covers the store, the staging area and Felucca's autosave and
+voice bank. Nothing on SIDOU acts on it: only SDK code reads or formats that
+region (the stock app's syscfg); SIDOU links no SDK VM code; the update
+loader is SIDOU's own (`platform/fm1/loader/ldr_core.c`) and ignores the
+descriptor; and Felucca ships the same descriptor and has kept user data in
+`[0x97000, 0xE0000)` on these units since its 1.x releases. What the stock
+SPL does with it is not known: an open check (below).
+
+**The guard band.** Bytes `0xF00..0xFFF` of every store sector are never
+programmed (`STORE_SECTOR_USE`). An update record the SPL or the loader
+could take is 80 bytes at a sector's `0xF00` ("4K boundary - 256"), with
+the magic `0x5441` at +6 and a matching CRC16 (`platform/fm1/src/ota.c`).
+An erased band reads `0xFFFF` there, so nothing in the store can ever look
+like a record, wherever the SPL scans; the loader skips the range already.
+80 bytes would be enough: the band keeps the whole 256-byte page so that a
+page program, which wraps inside its page, can never reach it.
+
+**The plain XIP window.** At boot, during the panel's wake-up wait in
+`lcd_init` (so its cache invalidation, a few milliseconds, costs the boot no
+time) and long before the audio starts or anything reads the store, the
+firmware maps the flash from 0x93000 up as an unencrypted XIP
+window (`flash_plain_window`, Felucca's `fl_plain_window_init`, as the SDK's
+`IOCTL_SET_VM_INFO` does), so the store reads straight through
+`fm1_xip_ptr` as stored. The update protocol's reads (`ota_fread`) go
+through `fl_read_ram` with XIP off, so the window does not change them.
+
+Sources: `platform/fm1/loader/ldr_core.c` (`LDR_APP_*`, `LDR_REC_*`,
+`LDR_DATA_*` and the record scan), `platform/fm1/src/ota.c` (`OTA_AREA`,
+`OTA_RES`), `platform/fm1/hal/fm1_flash.h` (Felucca's ranges and
+`fl_plain_window_init`), `host/crates/sidou-pack/src/lib.rs` (the region
+descriptors), `platform/fm1/app.ld` (the app slot).
+
 ## Open checks on a real unit
 
 | Check | Why it matters | How |
@@ -387,6 +442,7 @@ for every time):
 | The USB retry's stall | Without a cable, the attach `usb_retry` runs once a second times out three SIE writes in one main-loop pass (300k instructions in fm1-emu). | Time `usb_attach_now` against TIMER4 on a unit powered on without a cable. If it is well over a millisecond, poll less or stop at the first timeout. |
 | Flash program and erase times (M2a Task 3b) | The store's write windows and held erases are sized from them; fm1-emu's flash is instantaneous. Also partial programs per page, reprogramming, ECC, page erase, erase suspend, and whether the stock firmware writes the store's range. | The flash spike ([hardware-test.md](hardware-test.md) section 12); the table and the decision rule are in "The flash part's timings" above. |
 | Unknown latencies | Divide latency, IRQ entry latency, `IPMASK` semantics, and whether IRQ priorities have 4 or 8 levels | Microbenchmarks on the device. |
+| The SPL and the VM descriptor | The package declares `[0x93000, 0xE9000)` as the SDK's VM region, which holds the store (see "Flash map"). Whether the stock SPL or stock V15 acts on it is not documented. | M2a Task 3b: a test pattern in the store survives a round trip through stock V15 and back. |
 | Second core RAM issue | Some units misread RAM on core 1. | Felucca's core-1 self-test, before SIDOU ever uses core 1. |
 
 [hardware-test.md](hardware-test.md), sections 11 and 12, turn these into checklist

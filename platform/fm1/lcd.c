@@ -64,7 +64,7 @@ static void window(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1) {
     cmd(0x2C);               /* RAMWR */
 }
 
-void lcd_init(void (*during)(void)) {
+void lcd_init(void (*during)(void), void (*while_waking)(void)) {
     static const uint8_t colmod = 0x55; /* RGB565 */
     static const uint8_t madctl = 0x00; /* top-left origin, RGB order */
     fm1_lcd_hw_init();
@@ -81,7 +81,13 @@ void lcd_init(void (*during)(void)) {
         }
     }
     cmd(0x11); /* SLPOUT */
-    fm1_delay_ms(120);
+    /* The wake-up wait, 120 ms from here, whatever while_waking takes. */
+    uint32_t woke = fm1_ticks();
+    if (while_waking) {
+        while_waking();
+    }
+    while ((uint32_t)(fm1_ticks() - woke) < 120000u * FM1_TICKS_PER_US) {
+    }
     cmd_data(0x3A, &colmod, 1);
     cmd_data(0x36, &madctl, 1);
     cmd(0x21); /* INVON: the IPS panel's native mode */

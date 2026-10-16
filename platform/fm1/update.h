@@ -15,6 +15,12 @@
 /* Boot, interrupts off, before the audio starts: checks the flash chip and erases a staging
  * area left from an update that did not finish (the SPL would otherwise run its loader). */
 void update_boot(void);
+/* Boot, interrupts off and no interrupt source on yet (it ends with sti), before anything
+ * reads the store: maps the flash from 0x93000 up as a plain (unencrypted) XIP window, as
+ * Felucca and the SDK do, so the store (app/store_layout.h) reads through XIP as stored. Here
+ * because midi.c holds the flash driver (fm1_flash.h). main.c runs it during the LCD's
+ * wake-up wait (lcd_init). */
+void flash_plain_window(void);
 /* Main loop: answers identity requests. Returns 1 when the host asked to upgrade. */
 int update_poll(void);
 /* After update_poll returned 1 and the caller stopped the audio for good (audio_halted):

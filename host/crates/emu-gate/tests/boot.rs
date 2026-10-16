@@ -157,3 +157,61 @@ fn the_audio_and_the_keys_start_before_the_display() {
     // The LCD's reset and wake-up delays (lcd_init) come first.
     assert!(audio_at < BOOT_MS_MAX, "the audio started at {audio_at} ms");
 }
+
+/// The flash from 0x93000 up is mapped as a plain (unencrypted) XIP window at boot
+/// (platform/fm1/midi.c `flash_plain_window`, Felucca's `fl_plain_window_init`), before the
+/// audio starts, so the store (app/store_layout.h) reads through XIP as stored. fm1-emu does
+/// not decrypt XIP, so here the window's registers show it was set up, and a byte written into
+/// the flash chip at the store's first byte reads back through XIP.
+#[test]
+fn the_store_reads_through_a_plain_xip_window() {
+    use fm1_core::Bus;
+    let Some(build) = build_dir() else {
+        common::skip_message("the plain window test");
+        return;
+    };
+    let fw = Firmware::load(&build);
+    let mut m = Machine::boot(&fw.image);
+    let lo = sidou_sys::STORE_LO as usize;
+    m.soc.flash.mem[lo..lo + 4].copy_from_slice(&[0x53, 0x49, 0xD0, 0x0A]);
+    let xip = |off: u32| 0x0200_0000 + off - 0x4000;
+    // Before the audio starts (the LCD's delays come first): the window is set up by then.
+    let mut audio_at = None;
+    while m.ms() < BOOT_MS_MAX && audio_at.is_none() {
+        m.run_ms(1);
+        if !m.soc.periph.audio.is_empty() {
+            audio_at = Some(m.ms());
+        }
+    }
+    assert!(audio_at.is_some(), "the audio did not start");
+    // SFCENC_UNENC_L/H (fm1_flash.h), write-only on the chip; fm1-emu logs them as unknown.
+    let wrote = |addr: u32, value: u32| {
+        m.soc
+            .unknown_accesses()
+            .iter()
+            .any(|a| a.is_write && a.addr == addr && a.value == value)
+    };
+    assert!(
+        wrote(0x4030C, xip(0x93000)),
+        "the window's low end is not flash 0x93000"
+    );
+    assert!(wrote(0x40308, 0x07FF_FFFF), "the window's high end");
+    assert!(
+        m.soc
+            .unknown_accesses()
+            .iter()
+            .any(|a| a.is_write && a.addr == 0x40300 && a.value & 2 != 0),
+        "SFCENC_CON's plain-window bit"
+    );
+    assert_eq!(
+        m.soc.read32(xip(sidou_sys::STORE_LO)),
+        0x0AD0_4953,
+        "the store's first word through XIP"
+    );
+    assert_eq!(m.soc.read32(xip(sidou_sys::STORE_HI - 4)), 0xFFFF_FFFF);
+    // Booting wrote nothing into the store (nothing writes it until M2a Task 4).
+    assert_eq!(&m.soc.flash.mem[lo..lo + 4], &[0x53, 0x49, 0xD0, 0x0A]);
+    assert!(m.soc.flash.mem[lo + 4..sidou_sys::STORE_HI as usize]
+        .iter()
+        .all(|&b| b == 0xFF));
+}

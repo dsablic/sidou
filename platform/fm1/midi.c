@@ -10,9 +10,12 @@
 
 #include "fm1_sys.h"
 #include "fm1_time.h"
-/* The app may erase and program the update staging area only (ota.c OTA_AREA, 0xE0000..0xE5000,
- * which holds the update record too); SIDOU keeps no other data in flash yet. */
-#define FL_RANGE_OK(off, n) FL_IN(off, n, FL_OTA_LO, FL_OTA_HI)
+/* The app may erase and program the update staging area (ota.c OTA_AREA, 0xE0000..0xE5000,
+ * which holds the update record too) and the store (app/store_layout.h, 0x97000..0xE0000;
+ * docs/hardware.md, "Flash map"), nothing else. The update protocol's hooks (ota_flash.h)
+ * check the staging area alone; the store's own hooks check its guard band too. */
+#include "store_layout.h"
+#define FL_RANGE_OK(off, n) (FL_IN(off, n, FL_OTA_LO, FL_OTA_HI) || FL_IN(off, n, STORE_LO, STORE_HI))
 #include "fm1_flash.h"
 
 #include "audio.h"
@@ -269,6 +272,13 @@ void update_boot(void) {
     if (flash_ok) {
         ota_boot_cleanup();
     }
+}
+
+void flash_plain_window(void) {
+    /* Maps flash from 0x93000 up as an unencrypted XIP window (fm1_flash.h), so the store
+     * reads straight through fm1_xip_ptr. The update protocol's reads (ota_fread) go through
+     * fl_read_ram with XIP off, so the window does not change them. */
+    fl_plain_window_init();
 }
 
 int update_poll(void) {
