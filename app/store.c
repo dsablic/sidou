@@ -12,13 +12,14 @@ enum {
     SEC_RESERVED = 2, /* taken from the pool in RAM; its claim is not programmed yet */
     SEC_CLAIMED = 3,  /* claimed: records from STORE_HEADER up to `free` */
     SEC_STATE = 0x07,
-    SEC_REDO = 0x08,  /* a twin (a copy cut short?) found in it: its last record to program again */
     SEC_FULL = 0x10,  /* nothing more is written into it */
     SEC_GUESS = 0x20, /* the mount could not read its erase count */
     SEC_FILE = 0x40,  /* a live (or open) file's: never collected, never a head */
-    /* A cut left it: its records end in a cut header, at `free` (claimed), or its kill was cut
-     * (dirty: any killed sector). Programmed to zero before the session writes (fix_first). */
-    SEC_TORN = 0x80,
+    /* Ambiguous: bits in it may read otherwise at a later mount (the mount found a cut tail, a
+     * kill, a torn erase or claim; an operation on it failed), or a collection killed it. Erased
+     * before any other maintenance (if claimed, evacuated first: its live records copied with
+     * new numbers); the mount's, before the session writes (recover_job). */
+    SEC_AMBIG = 0x80,
 };
 
 /* store.work's units: each about 4 instructions or fewer on the device (Task 4 measures it): a
@@ -29,12 +30,17 @@ enum { WORK_CRC = 3, WORK_KEY = 1, WORK_MAP = 3, WORK_SEC = 2 };
 /* Most of the least-live sectors garbage collection plans over to find a gain (plan). */
 #define PLAN_MAX 8u
 
+/* Sequence numbers a mount skips: a write cut in its header, unread now, may hold any of the
+ * next ones (after failed writes and aborted files, whose numbers left no record that reads),
+ * and the session's records must outrank it. 16 million boots before the numbers wrap. */
+#define SEQ_GAP 256u
+
 enum { W_IDLE, W_CLAIM, W_DATA, W_HEAD, W_COMMIT };
-/* The newest record at the mount (newest), then the session's first write completing it
- * (fix_step): none; its header to program again; the same, the record read uncommitted (to
- * index at the mount's finish); its commit word; a chunk was newest (nothing to do). */
-enum { FIX_NONE, FIX_HEAD, FIX_NEW, FIX_COMMIT, FIX_CHUNK };
-enum { JOB_NONE, JOB_ERASE, JOB_COLLECT };
+/* The newest record at the mount (newest): none; a keyed record, to copy forward before the
+ * session writes; the same, read uncommitted (indexed at the mount's finish); a chunk (the
+ * session after it ran: nothing to do). */
+enum { FIX_NONE, FIX_KEYED, FIX_NEW, FIX_CHUNK };
+enum { JOB_NONE, JOB_ERASE, JOB_COLLECT, JOB_FORWARD };
 enum { E_KILL, E_ERASE, E_HEADER };
 enum { C_SCAN, C_KILL, C_FORGET };
 enum { F_IDLE, F_DATA, F_CLAIM, F_HEAD, F_COMMIT, F_SEALED, F_FILE };
@@ -117,20 +123,12 @@ static int all_ff(const uint8_t* p, uint32_t n) {
     return 1;
 }
 
-static int all_zero(const uint8_t* p, uint32_t n) {
-    uint8_t any = 0;
-    for (uint32_t i = 0; i < n; i++) {
-        any |= p[i];
-    }
-    return !any;
-}
-
 static int sec_state(const store* s, uint32_t sec) {
     return s->sstate[sec] & SEC_STATE;
 }
 
 static void set_state(store* s, uint32_t sec, int state) {
-    s->sstate[sec] = (uint8_t)((s->sstate[sec] & SEC_GUESS) | state);
+    s->sstate[sec] = (uint8_t)((s->sstate[sec] & (SEC_GUESS | SEC_AMBIG)) | state);
 }
 
 static int writable(const store* s) {
@@ -279,10 +277,11 @@ static uint32_t victim(const store* s) {
     return plan(s, count(s, SEC_CLEAN), PLAN_MAX, 0);
 }
 
-/* Sectors maintenance could still add to the pool: the dirty ones, and what collections gain. */
+/* Sectors maintenance could still add to the pool: the dirty ones, and what the collections
+ * it would make gain (runs of PLAN_MAX at most, as victim's). */
 static uint32_t reclaimable(const store* s) {
     uint32_t gain = 0;
-    plan(s, count(s, SEC_CLEAN), STORE_SECTORS, &gain);
+    plan(s, count(s, SEC_CLEAN), PLAN_MAX, &gain);
     return count(s, SEC_DIRTY) + gain;
 }
 
@@ -375,10 +374,11 @@ static void file_live(store* s, const uint8_t* rec, int sign) {
 /* ---- programming ---- */
 
 /* Programs part of [off, off + n) of sector `sec` from `src`, from byte `*done` on: the most
- * one program may (the window, the page's end). 1 when the range is done, 0 when not yet
- * (a piece went, or the hook said later), < 0 on an error. */
+ * one program may (the window, the page's end); `acc`, if not NULL, takes the CRC of the bytes
+ * programmed. 1 when the range is done, 0 when not yet (a piece went, or the hook said later),
+ * < 0 on an error. */
 static int prog_piece(store* s, uint32_t sec, uint32_t off, const uint8_t* src, uint32_t n,
-                      uint16_t* done) {
+                      uint16_t* done, uint32_t* acc) {
     uint32_t a = base(sec) + off + *done;
     uint32_t k = n - *done;
     uint32_t page = STORE_PAGE - (a & (STORE_PAGE - 1u));
@@ -398,6 +398,9 @@ static int prog_piece(store* s, uint32_t sec, uint32_t off, const uint8_t* src, 
     if (rc != STORE_OK) {
         s->errors++;
         return -1;
+    }
+    if (acc) {
+        *acc = crc(s, *acc, ram, k);
     }
     *done = (uint16_t)(*done + k);
     return *done == n;
@@ -440,14 +443,18 @@ static void writer_failed(store* s) {
     }
     if (w->phase == W_CLAIM) {
         set_state(s, w->sec, SEC_DIRTY);
-    } else {
-        s->sstate[w->sec] |= SEC_FULL;
     }
+    /* The caller's write is undecided: a later mount may read it either way, until its sector's
+     * erase (maintenance evacuates it first). A copy holds its original's bytes: either way. */
+    s->sstate[w->sec] |= (uint8_t)(SEC_FULL | (w->copy ? 0u : SEC_AMBIG));
     if (s->head == w->sec) {
         s->head = NONE;
     }
     if (w->copy) {
         s->job = JOB_NONE; /* the collection stops: its victim keeps its records */
+        if (w->from_sec == s->fix_sec && w->from_off == s->fix_off) {
+            s->fix_kind = FIX_KEYED; /* the newest record's copy forward: again */
+        }
     }
     w->phase = W_IDLE;
 }
@@ -513,7 +520,7 @@ static void writer_step(store* s) {
     if (w->phase == W_CLAIM) {
         uint8_t h[STORE_HEADER];
         sector_header(s, w->sec, h);
-        rc = prog_piece(s, w->sec, 0, h, STORE_HEADER, &w->done);
+        rc = prog_piece(s, w->sec, 0, h, STORE_HEADER, &w->done, 0);
         if (rc > 0) {
             set_state(s, w->sec, SEC_CLAIMED);
             w->phase = w->len ? W_DATA : W_HEAD;
@@ -521,13 +528,11 @@ static void writer_step(store* s) {
             return;
         }
     } else if (w->phase == W_DATA) {
-        if (w->src) {
-            rc = prog_piece(s, w->sec, w->off + STORE_REC_HEADER, w->src, w->len, &w->done);
-        } else {
-            rc = prog_piece(s, w->sec, w->off + STORE_REC_HEADER,
-                            s->flash.map(s->flash.ctx, w->from + STORE_REC_HEADER), w->len,
-                            &w->done);
-        }
+        /* A copy's CRC is of the bytes it programs (its header's number is new). */
+        const uint8_t* src =
+            w->src ? w->src : s->flash.map(s->flash.ctx, w->from + STORE_REC_HEADER);
+        rc = prog_piece(s, w->sec, w->off + STORE_REC_HEADER, src, w->len, &w->done,
+                        w->src ? 0 : &w->crc);
         if (rc > 0) {
             w->phase = W_HEAD;
             w->done = 0;
@@ -536,7 +541,7 @@ static void writer_step(store* s) {
     } else if (w->phase == W_HEAD) {
         uint8_t h[STORE_REC_HEADER];
         rec_header(w, h);
-        rc = prog_piece(s, w->sec, w->off, h, STORE_REC_HEADER, &w->done);
+        rc = prog_piece(s, w->sec, w->off, h, STORE_REC_HEADER, &w->done, 0);
         if (rc > 0) {
             w->phase = W_COMMIT;
             w->done = 0;
@@ -544,7 +549,8 @@ static void writer_step(store* s) {
         }
     } else if (w->phase == W_COMMIT) {
         static const uint8_t zero[4] = {0, 0, 0, 0};
-        rc = prog_piece(s, w->sec, w->off + STORE_REC_HEADER + pad4(w->len), zero, 4, &w->done);
+        rc = prog_piece(s, w->sec, w->off + STORE_REC_HEADER + pad4(w->len), zero, 4, &w->done,
+                        0);
         if (rc > 0) {
             writer_done(s);
             return;
@@ -572,7 +578,14 @@ static int write_record(store* s, uint32_t key, uint8_t type, const void* data, 
     }
     uint32_t sec = place(s, size, floor);
     if (sec == NONE) {
-        return reclaimable(s) ? STORE_BUSY : STORE_FULL;
+        if (reclaimable(s)) {
+            return STORE_BUSY;
+        }
+        /* A full store must still take a deletion: it may take the pool one under its floor. */
+        sec = type == STORE_TYPE_TOMB ? place(s, size, floor - 1u) : NONE;
+        if (sec == NONE) {
+            return STORE_FULL;
+        }
     }
     write_at(s, sec, key, type, data, len);
     return STORE_OK;
@@ -684,6 +697,7 @@ static int classify(store* s, uint32_t sec) {
         /* A claim cut short: a bad CRC, or its claim word never programmed. A claim word with
          * any bit programmed counts: its CRC checks, so the cut came during the word itself. */
         if (rd32(h + 24) != store_crc32(0, h, 24) || rd32(h + 28) == 0xFFFFFFFFu) {
+            s->sstate[sec] |= SEC_AMBIG;
             return 1;
         }
         s->sstate[sec] = SEC_CLAIMED;
@@ -703,8 +717,8 @@ static int classify(store* s, uint32_t sec) {
     if (killed(h, &erases)) {
         s->mount_sidou = 1;
         /* A kill whose zeros may be faint (even reading zero now): its records could read valid
-         * at a later mount. Killed again before the session writes; the page is garbage. */
-        s->sstate[sec] = SEC_DIRTY | SEC_TORN;
+         * at a later mount. Erased before the session writes. */
+        s->sstate[sec] = SEC_DIRTY | SEC_AMBIG;
         c->erases = erases;
         return 1;
     }
@@ -765,31 +779,29 @@ static void index_record(store* s, uint32_t sec, uint32_t off) {
     uint32_t cur_seq = rd32(cur + 8);
     e->stale++;
     if (seq == cur_seq) {
-        /* A record and its copy: the same bytes (the same CRC), whichever wins. A collection was
-         * cut: the copy in flight, the last record of its sector, may end in a faint commit word,
-         * so the last records of both sectors are programmed again before the session writes. */
+        /* Never now: every record, a collection's copy too, takes a new number. A region
+         * written before that rule holds a record and its copy, the same bytes (the same CRC),
+         * whichever wins; anything else is corruption. */
         if (rd32(h + 12) != rd32(cur + 12) || rd16(cur + 2) != rd16(h + 2) || h[0] != cur[0]) {
             s->corrupt++;
         }
-        s->sstate[sec] |= SEC_REDO;
-        s->sstate[e->sec] |= SEC_REDO;
-        if (s->sector[sec].seq <= s->sector[e->sec].seq) {
-            return; /* either holds it: the first found, or the one with the higher claim number */
-        }
-    } else if (seq < cur_seq) {
-        return;
+    }
+    if (seq <= cur_seq) {
+        return; /* older, or (a record and its copy) either: the first found */
     }
     e->sec = (uint8_t)sec;
     e->off = (uint16_t)off;
 }
 
-/* The write a cut interrupted, if any, is the newest record: one write is in flight at a time,
- * and each takes the next sequence number. A record whose CRC checks (its data and header went
- * whole) counts as committed when it is the newest keyed one, whatever its commit word reads: a
- * cut during the commit word can leave all its bits faint, read programmed at one mount and
- * erased at the next. The session's first write programs it again (fix_step), so it stays.
- * A committed chunk of a file begun after it (its key, the file's id, newer) shows the session
- * after it ran: nothing to complete. Tracks the newest: keyed records by number, chunks by id. */
+/* The write a cut interrupted, if any, is the newest record: one write is in flight at a time
+ * (a collection's copy included), and each takes the next sequence number. A record whose CRC
+ * checks (its data and header went whole) counts as committed when it is the newest keyed one,
+ * whatever its commit word reads: a cut during the commit word can leave all its bits faint,
+ * read programmed at one mount and erased at the next. Before the session writes, maintenance
+ * copies it forward (a new number, programmed whole), so it stays whatever the faint bits read
+ * later. A committed chunk of a file begun after it (its key, the file's id, newer) shows the
+ * session after it ran: nothing to copy. Tracks the newest: keyed records by number, chunks by
+ * id. */
 static void newest(store* s, uint32_t sec, uint32_t off, int committed) {
     const uint8_t* h = at(s, sec, off);
     int chunk = h[0] == STORE_TYPE_CHUNK;
@@ -801,7 +813,7 @@ static void newest(store* s, uint32_t sec, uint32_t off, int committed) {
         s->seq = seq + 1u; /* its number is taken, committed or not */
     }
     if (s->fix_kind == FIX_NONE || seq > s->fix_seq) {
-        s->fix_kind = (uint8_t)(chunk ? FIX_CHUNK : committed ? FIX_HEAD : FIX_NEW);
+        s->fix_kind = (uint8_t)(chunk ? FIX_CHUNK : committed ? FIX_KEYED : FIX_NEW);
         s->fix_seq = seq;
         s->fix_sec = (uint8_t)sec;
         s->fix_off = (uint16_t)off;
@@ -844,13 +856,10 @@ static int scan_records(store* s, uint32_t sec, uint32_t* budget) {
             newest(s, sec, off, committed);
         }
         if (!size || !committed) {
-            c->free = (uint16_t)off; /* a cut write: the sector takes no more */
-            s->sstate[sec] |= SEC_FULL;
-            /* A header cut short, not yet programmed to zero: faint bits in it may read right at a
-             * later mount, and the newest record it would be then is not the write it was. */
-            if (!size && !all_zero(h, STORE_REC_HEADER)) {
-                s->sstate[sec] |= SEC_TORN;
-            }
+            /* A cut tail (a cut write's, or a failed one's): the sector takes no more, and is
+             * evacuated and erased before the session writes. */
+            c->free = (uint16_t)off;
+            s->sstate[sec] |= SEC_FULL | SEC_AMBIG;
             return 1;
         }
         index_record(s, sec, off);
@@ -906,9 +915,9 @@ static void mount_finish(store* s) {
         s->sector[s->fix_sec].free =
             (uint16_t)(s->fix_off + rec_size(rd16(at(s, s->fix_sec, s->fix_off) + 2)));
     }
-    s->fix_kind = s->fix_kind == FIX_HEAD || s->fix_kind == FIX_NEW ? FIX_HEAD : FIX_NONE;
-    s->fix_done = 0;
-    s->seq++; /* a number skipped: a write cut in its header (unread now) may hold the next */
+    s->fix_kind = s->fix_kind == FIX_KEYED || s->fix_kind == FIX_NEW ? FIX_KEYED : FIX_NONE;
+    s->rec = s->fix_kind != FIX_NONE;
+    s->seq += SEQ_GAP;
     for (uint32_t i = 0; i < STORE_SECTORS; i++) {
         if (!(s->sstate[i] & SEC_GUESS) && s->sector[i].erases > known) {
             known = s->sector[i].erases;
@@ -942,6 +951,7 @@ static void mount_finish(store* s) {
         if (sec_state(s, i) == SEC_CLAIMED) {
             s->sstate[i] |= SEC_FULL;
         }
+        s->rec |= (s->sstate[i] & SEC_AMBIG) != 0; /* recovered before the session writes */
     }
     if (s->mount_newer) {
         s->state = STORE_STATE_FOREIGN;
@@ -971,6 +981,7 @@ static void mount_step(store* s) {
                 s->sstate[sec] = SEC_CLEAN;
             } else if (r < 0) {
                 s->corrupt++; /* programmed bytes in a sector never claimed */
+                s->sstate[sec] |= SEC_AMBIG;
             }
             done = r != 0;
             break;
@@ -978,6 +989,7 @@ static void mount_step(store* s) {
             r = ff_scan(s, sec, STORE_SECTOR, &budget);
             if (r < 0) {
                 s->mount_blank = 0;
+                s->sstate[sec] |= SEC_AMBIG; /* not blank: a torn erase or header, or not ours */
                 if (s->mount_off < 20u && torn_header(at(s, sec, 0))) {
                     s->mount_phase = M_TORN; /* if the rest reads erased */
                     s->mount_off = 20;
@@ -1001,7 +1013,7 @@ static void mount_step(store* s) {
             r = ff_scan(s, sec, STORE_SECTOR_USE, &budget);
             if (r < 0) {
                 /* A write cut before or in its header (faint bits in it may read right later). */
-                s->sstate[sec] |= SEC_FULL | SEC_TORN;
+                s->sstate[sec] |= SEC_FULL | SEC_AMBIG;
             }
             done = r != 0;
             break;
@@ -1051,27 +1063,42 @@ static int forget(store* s, uint32_t sec) {
     s->live -= s->sector[sec].live;
     s->sector[sec].live = 0;
     set_state(s, sec, SEC_DIRTY);
+    s->sstate[sec] |= SEC_AMBIG; /* erased next, so a cut never finds many sectors killed */
     return 1;
 }
 
-/* Programs the magic to zero if the sector's header could still read valid: 1 when it did,
- * 2 when there was nothing to kill (no operation), 0 when the hook said later, -1 on an error. */
+/* A job's kill: programs to 0 the magic's 1 bits that read 1, and only those (never a 0 over
+ * a bit that reads 0), so the magic can never read SIDOUSTR again: an erase cut short then
+ * leaves no header that reads valid. 1 when it is done and was this call's operation, 2 when
+ * there was nothing to kill (no operation: no bit of the magic's to clear, or a bit set that a
+ * valid magic has clear: never a valid header, as a blank sector), 0 while it goes on
+ * (the hook said later, or a piece went) or when it failed: the job stops, the sector
+ * ambiguous, to be killed again (its bits that still read 1) and erased. A kill cut short can
+ * leave zeros faint, even reading 0: such a sector is ambiguous at the next mount, and nothing
+ * relies on its records being gone before its erase completes (recover_job). */
 static int kill(store* s, uint32_t sec) {
     const uint8_t* h = at(s, sec, 0);
-    int live = 0;
+    uint8_t k[8];
+    uint8_t any = 0, never = 0;
     for (uint32_t i = 0; i < 8; i++) {
-        if (h[i] & ~MAGIC[i]) {
-            return 2; /* never a valid header */
-        }
-        live |= h[i];
+        k[i] = (uint8_t)~(MAGIC[i] & h[i]);
+        any |= (uint8_t)~k[i];
+        never |= h[i] & (uint8_t)~MAGIC[i];
     }
-    if (!live) {
+    if (!s->job_done && (!any || never)) {
         return 2;
     }
-    static const uint8_t zero[8] = {0, 0, 0, 0, 0, 0, 0, 0};
     uint16_t done = s->job_done;
-    int rc = prog_piece(s, sec, 0, zero, 8, &done);
+    int rc = prog_piece(s, sec, 0, k, 8, &done, 0);
     s->job_done = (uint8_t)done;
+    if (rc < 0) {
+        s->sstate[sec] |= SEC_AMBIG;
+        s->job = JOB_NONE;
+        return 0;
+    }
+    if (rc > 0) {
+        s->job_done = 0;
+    }
     return rc;
 }
 
@@ -1079,14 +1106,10 @@ static void erase_step(store* s) {
     uint32_t sec = s->job_sec;
     if (s->job_phase == E_KILL) {
         int rc = kill(s, sec);
-        if (rc < 0) {
-            s->job = JOB_NONE;
-        }
-        if (rc <= 0) {
+        if (!rc) {
             return;
         }
         s->job_phase = E_ERASE;
-        s->job_done = 0;
         if (rc == 1) {
             return; /* the kill was this call's operation */
         }
@@ -1102,13 +1125,14 @@ static void erase_step(store* s) {
             return;
         }
         s->sector[sec].erases++;
+        s->sstate[sec] &= (uint8_t)~SEC_AMBIG; /* the erase settles it, whatever comes next */
         s->job_phase = E_HEADER;
         return;
     }
     uint8_t h[STORE_HEADER];
     sector_header(s, sec, h);
     uint16_t done = s->job_done;
-    int rc = prog_piece(s, sec, 0, h, 20, &done);
+    int rc = prog_piece(s, sec, 0, h, 20, &done, 0);
     s->job_done = (uint8_t)done;
     if (rc < 0) {
         s->job = JOB_NONE;
@@ -1121,10 +1145,9 @@ static void erase_step(store* s) {
     }
 }
 
-static int fix_first(const store* s);
-
-/* Starts copying the record at `off` of `from` into the head, as a collection does (its number
- * kept); its first operation runs now. No room: the collection stops. */
+/* Starts copying the record at `off` of `from` into the head with a new number, as a collection
+ * or the newest record's copy forward does; its first operation runs now. No room: the
+ * collection stops. */
 static void copy_record(store* s, uint32_t from, uint32_t off) {
     const uint8_t* h = at(s, from, off);
     uint32_t len = rd16(h + 2), sec = place(s, rec_size(len), 0);
@@ -1136,10 +1159,13 @@ static void copy_record(store* s, uint32_t from, uint32_t off) {
     w->src = 0;
     w->from = base(from) + off;
     w->key = rd32(h + 4);
-    w->seq = rd32(h + 8);
-    w->crc = rd32(h + 12);
+    w->seq = s->seq++;
+    w->crc = 0;
     w->type = h[0];
     w->len = (uint16_t)len;
+    uint8_t head[STORE_REC_HEADER];
+    rec_header(w, head);
+    w->crc = crc(s, 0, head, 12); /* the data's CRC follows as it is programmed */
     w->sec = (uint8_t)sec;
     w->off = s->sector[sec].free;
     w->copy = 1;
@@ -1182,10 +1208,7 @@ static void collect_step(store* s) {
     }
     if (s->job_phase == C_KILL) {
         int rc = kill(s, v);
-        if (rc < 0) {
-            s->job = JOB_NONE;
-        }
-        if (rc <= 0) {
+        if (!rc) {
             return;
         }
         s->job_phase = C_FORGET;
@@ -1207,10 +1230,44 @@ static void start_job(store* s, int job, uint32_t sec) {
     s->job_off = job == JOB_ERASE ? 0u : STORE_HEADER;
 }
 
-/* The maintenance due now, if any: a dirty sector to erase while the pool is under its
- * target, else a victim to collect (one that needs no room, or with a clean sector for its
- * copies), else, with the pool full, the coldest sector to move. JOB_NONE if nothing. */
+/* The ambiguous sector in `state` with the lowest index (a claimed one collectable), or NONE. */
+static uint32_t ambiguous(const store* s, int state) {
+    work(s, WORK_SEC * STORE_SECTORS);
+    for (uint32_t i = 0; i < STORE_SECTORS; i++) {
+        if ((s->sstate[i] & SEC_AMBIG) && sec_state(s, i) == state &&
+            (state == SEC_DIRTY || collectable(s, i))) {
+            return i;
+        }
+    }
+    return NONE;
+}
+
+/* Recovery, the maintenance that goes first: the mount's newest record copied forward (before
+ * anything else is written), then the ambiguous sectors: the dirty ones erased, then the claimed
+ * ones evacuated, so no collection drops a tombstone while a sector it may rely on could still
+ * read otherwise. JOB_NONE once none is left (or the pool is empty: no room for copies). */
+static int recover_job(const store* s, uint32_t* sec) {
+    uint32_t pool = count(s, SEC_CLEAN);
+    if (s->fix_kind == FIX_KEYED && pool) {
+        *sec = s->fix_sec;
+        return JOB_FORWARD;
+    }
+    *sec = ambiguous(s, SEC_DIRTY);
+    if (*sec != NONE) {
+        return JOB_ERASE;
+    }
+    *sec = pool ? ambiguous(s, SEC_CLAIMED) : NONE;
+    return *sec != NONE ? JOB_COLLECT : JOB_NONE;
+}
+
+/* The maintenance due now, if any: recovery, else a dirty sector to erase while the pool is
+ * under its target, else a victim to collect (one that needs no room, or with a clean sector
+ * for its copies), else, with the pool full, the coldest sector to move. JOB_NONE if nothing. */
 static int due(const store* s, uint32_t* sec) {
+    int job = recover_job(s, sec);
+    if (job != JOB_NONE) {
+        return job;
+    }
     uint32_t pool = count(s, SEC_CLEAN);
     if (pool < STORE_POOL_TARGET) {
         *sec = coldest(s, SEC_DIRTY);
@@ -1233,11 +1290,24 @@ static int next_job(store* s) {
     return job != JOB_NONE;
 }
 
+/* Copies the mount's newest record forward, if it is still its key's live one. */
+static void forward(store* s) {
+    s->job = JOB_NONE;
+    s->fix_kind = FIX_NONE;
+    s->work += WORK_KEY * s->nkeys;
+    const store_key* e = find(s, rd32(at(s, s->fix_sec, s->fix_off) + 4));
+    if (e && e->sec == s->fix_sec && e->off == s->fix_off) {
+        copy_record(s, s->fix_sec, s->fix_off);
+    }
+}
+
 static void job_step(store* s) {
     if (s->job == JOB_ERASE) {
         erase_step(s);
-    } else {
+    } else if (s->job == JOB_COLLECT) {
         collect_step(s);
+    } else {
+        forward(s);
     }
 }
 
@@ -1277,6 +1347,7 @@ static void file_fail(store* s, int result) {
         s->sstate[sec] &= (uint8_t)~SEC_FILE;
         if (sec_state(s, sec) == SEC_RESERVED) {
             set_state(s, sec, sec == torn ? SEC_DIRTY : SEC_CLEAN);
+            s->sstate[sec] |= sec == torn ? SEC_AMBIG : 0u;
         } else {
             s->sstate[sec] |= SEC_FULL; /* a chunk may be cut after its last committed one */
         }
@@ -1339,7 +1410,7 @@ static int file_step(store* s) {
     if (f->phase == F_CLAIM) {
         uint8_t h[STORE_HEADER];
         sector_header(s, sec, h);
-        rc = prog_piece(s, sec, 0, h, STORE_HEADER, &f->pdone);
+        rc = prog_piece(s, sec, 0, h, STORE_HEADER, &f->pdone, 0);
         if (rc > 0) {
             set_state(s, sec, SEC_CLAIMED);
             f->phase = F_DATA;
@@ -1357,9 +1428,9 @@ static int file_step(store* s) {
         }
         const uint8_t* src = s->buf + f->start;
         uint16_t done = 0;
-        rc = prog_piece(s, sec, chunk_off(f->chunk) + STORE_REC_HEADER + f->cdone, src, k, &done);
+        rc = prog_piece(s, sec, chunk_off(f->chunk) + STORE_REC_HEADER + f->cdone, src, k, &done,
+                        &f->rcrc);
         if (rc > 0) {
-            f->rcrc = crc(s, f->rcrc, src, k);
             f->crc = crc(s, f->crc, src, k);
             f->fill = (uint16_t)(f->fill - k);
             f->start = (uint16_t)((f->start + k) % STORE_WINDOW_MAX);
@@ -1372,7 +1443,7 @@ static int file_step(store* s) {
     } else if (f->phase == F_HEAD) {
         uint8_t h[STORE_REC_HEADER];
         chunk_header(f, h);
-        rc = prog_piece(s, sec, chunk_off(f->chunk), h, STORE_REC_HEADER, &f->pdone);
+        rc = prog_piece(s, sec, chunk_off(f->chunk), h, STORE_REC_HEADER, &f->pdone, 0);
         if (rc > 0) {
             f->phase = F_COMMIT;
             f->pdone = 0;
@@ -1381,7 +1452,7 @@ static int file_step(store* s) {
         static const uint8_t zero[4] = {0, 0, 0, 0};
         uint32_t len = chunk_len(f->length, f->chunk);
         rc = prog_piece(s, sec, chunk_off(f->chunk) + STORE_REC_HEADER + pad4(len), zero, 4,
-                        &f->pdone);
+                        &f->pdone, 0);
         if (rc > 0) {
             s->sector[sec].free = (uint16_t)(chunk_off(f->chunk) + rec_size(len));
             if (++f->chunk == chunks_of(f->length)) {
@@ -1472,110 +1543,6 @@ static void file_fill(const uint8_t* rec, const store_key* e, store_file* out) {
     memcpy(out->sectors, d + STORE_FILE_HEAD, out->nsec);
 }
 
-/* ---- completing the interrupted write ---- */
-
-/* A sector whose records end in a cut header (SEC_TORN), or NONE. */
-/* A cut header's first (the one a cut during the fix could still bring back), then a cut kill,
- * then a twin's sector. */
-static uint32_t torn(const store* s) {
-    uint32_t best = NONE, rank = 0;
-    work(s, WORK_SEC * STORE_SECTORS);
-    for (uint32_t i = 0; i < STORE_SECTORS; i++) {
-        uint32_t r = !(s->sstate[i] & SEC_TORN) ? (s->sstate[i] & SEC_REDO ? 1u : 0u)
-                     : sec_state(s, i) == SEC_DIRTY ? 2u
-                                                     : 3u;
-        if (r > rank) {
-            best = i;
-            rank = r;
-        }
-    }
-    return best;
-}
-
-/* The offset of the last record of `sec`'s records, or 0 if it has none. */
-static uint32_t last_record(const store* s, uint32_t sec) {
-    uint32_t last = 0;
-    for (uint32_t off = STORE_HEADER; off < s->sector[sec].free;) {
-        last = off;
-        off += rec_size(rd16(at(s, sec, off) + 2));
-    }
-    return last;
-}
-
-/* Programs a cut header to zero (it can never read valid again, whatever its faint bits read),
- * then the newest record's header and commit word again, the same bytes, so bits a cut left
- * faint in them are programmed for good (newest). */
-static void fix_step(store* s) {
-    static const uint8_t zero[STORE_REC_HEADER] = {0};
-    uint32_t t = torn(s);
-    if (t != NONE && !(s->sstate[t] & SEC_TORN)) {
-        /* A twin's sector: its last record's header, then its commit word, again. */
-        uint32_t off = last_record(s, t);
-        if (!off || sec_state(s, t) != SEC_CLAIMED) {
-            s->sstate[t] &= (uint8_t)~SEC_REDO;
-            return;
-        }
-        const uint8_t* h = at(s, t, off);
-        uint8_t head[STORE_REC_HEADER];
-        memcpy(head, h, STORE_REC_HEADER);
-        int commit = s->redo_phase;
-        int rc = commit ? prog_piece(s, t, off + STORE_REC_HEADER + pad4(rd16(h + 2)), zero, 4,
-                                     &s->fix_done)
-                        : prog_piece(s, t, off, head, STORE_REC_HEADER, &s->fix_done);
-        if (rc != 0) {
-            s->fix_done = 0;
-            s->redo_phase = (uint8_t)(rc > 0 && !commit);
-            if (rc < 0 || commit) {
-                s->sstate[t] &= (uint8_t)~SEC_REDO;
-            }
-        }
-        return;
-    }
-    if (t != NONE) {
-        int dirty = sec_state(s, t) == SEC_DIRTY; /* a cut kill: the magic again */
-        int rc = prog_piece(s, t, dirty ? 0u : s->sector[t].free, zero, dirty ? 8u : STORE_REC_HEADER,
-                            &s->fix_done);
-        if (rc != 0) {
-            s->sstate[t] &= (uint8_t)~SEC_TORN; /* done, or failed (counted in errors) */
-            s->fix_done = 0;
-        }
-        return;
-    }
-    const uint8_t* h = at(s, s->fix_sec, s->fix_off);
-    int rc;
-    if (s->fix_kind == FIX_HEAD) {
-        uint8_t head[STORE_REC_HEADER];
-        memcpy(head, h, STORE_REC_HEADER);
-        rc = prog_piece(s, s->fix_sec, s->fix_off, head, STORE_REC_HEADER, &s->fix_done);
-        if (rc > 0) {
-            s->fix_kind = FIX_COMMIT;
-            s->fix_done = 0;
-            return;
-        }
-    } else {
-        uint32_t at_commit = s->fix_off + STORE_REC_HEADER + pad4(rd16(h + 2));
-        rc = prog_piece(s, s->fix_sec, at_commit, zero, 4, &s->fix_done);
-        if (rc > 0) {
-            s->fix_kind = FIX_NONE;
-            return;
-        }
-    }
-    if (rc < 0) {
-        s->fix_kind = FIX_NONE; /* counted in errors; it may stay faint */
-    }
-}
-
-/* 1 when the next operation must wait for the fix: any record written (the caller's, a file's,
- * a collection's copy: a cut during it must not find a cut header reading valid, or the newest
- * record faint), and a collection's kill, which could drop older records. Erases (and the kill
- * of a dirty sector, and the erase header) may go first. */
-static int fix_first(const store* s) {
-    if (s->fix_kind == FIX_NONE && torn(s) == NONE) {
-        return 0;
-    }
-    return s->w.phase != W_IDLE || s->f.phase != F_IDLE || s->job == JOB_COLLECT;
-}
-
 /* ---- the API ---- */
 
 void store_init(store* s, const store_flash* flash, uint32_t window) {
@@ -1630,10 +1597,6 @@ int store_poll(store* s) {
         !(s->quiet && next_job(s))) {
         return 0;
     }
-    if (fix_first(s)) {
-        fix_step(s);
-        return 1;
-    }
     if (s->w.phase != W_IDLE) {
         writer_step(s);
         return 1;
@@ -1667,11 +1630,20 @@ int store_get(const store* s, uint32_t key, void* buf, uint32_t cap, uint8_t* ty
     return (int)len;
 }
 
-static int write_check(const store* s) {
+/* 1 while the mount's recovery has work left: the session writes nothing until then. */
+static int recovering(store* s) {
+    uint32_t sec;
+    if (s->rec && recover_job(s, &sec) == JOB_NONE) {
+        s->rec = 0;
+    }
+    return s->rec;
+}
+
+static int write_check(store* s) {
     if (s->state == STORE_STATE_FOREIGN) {
         return STORE_FOREIGN;
     }
-    if (!writable(s) || s->w.phase != W_IDLE) {
+    if (!writable(s) || s->w.phase != W_IDLE || recovering(s)) {
         return STORE_BUSY;
     }
     return STORE_OK;
@@ -1686,14 +1658,11 @@ int store_put(store* s, uint32_t key, uint8_t type, const void* data, uint32_t l
 }
 
 static int delete_key(store* s, uint32_t key) {
-    int rc;
     store_key* e = find(s, key);
     if (!e || at(s, e->sec, e->off)[0] == STORE_TYPE_TOMB) {
         return STORE_OK;
     }
-    rc = write_record(s, key, STORE_TYPE_TOMB, 0, 0, STORE_POOL_MIN);
-    /* A full store must still take a deletion: it may take the pool one under its minimum. */
-    return rc == STORE_FULL ? write_record(s, key, STORE_TYPE_TOMB, 0, 0, STORE_POOL_MIN - 1u) : rc;
+    return write_record(s, key, STORE_TYPE_TOMB, 0, 0, STORE_POOL_MIN);
 }
 
 int store_delete(store* s, uint32_t key) {
@@ -1705,7 +1674,10 @@ int store_delete(store* s, uint32_t key) {
 }
 
 int store_collect(store* s) {
-    if (!writable(s) || s->job != JOB_NONE || s->w.phase != W_IDLE || s->f.phase != F_IDLE) {
+    /* Not before recovery, nor while a killed sector waits for its erase (a cut then finds at
+     * most one: the next boot's wait stays short). */
+    if (!writable(s) || s->job != JOB_NONE || s->w.phase != W_IDLE || s->f.phase != F_IDLE ||
+        recovering(s) || ambiguous(s, SEC_DIRTY) != NONE) {
         return writable(s) ? STORE_BUSY : STORE_FOREIGN;
     }
     uint32_t v = victim(s);
@@ -1718,7 +1690,7 @@ int store_collect(store* s) {
 
 void store_format(store* s) {
     for (uint32_t i = 0; i < STORE_SECTORS; i++) {
-        set_state(s, i, SEC_DIRTY);
+        s->sstate[i] = SEC_DIRTY;
         s->sector[i].live = 0;
         s->sector[i].free = STORE_HEADER;
     }
@@ -1727,6 +1699,7 @@ void store_format(store* s) {
     s->head = NONE;
     s->job = JOB_NONE;
     s->fix_kind = FIX_NONE;
+    s->rec = 0;
     s->w.phase = W_IDLE;
     if (s->f.phase != F_IDLE) {
         s->f.phase = F_IDLE;

@@ -21,37 +21,35 @@
  *   with a good CRC and the commit word programmed (any of its bits: see faint bits below).
  *   Anything after a sector's last valid record makes the sector full: nothing is ever
  *   programmed over bytes not erased, but the kill and the claim's erase header;
- * - every record carries a sequence number; the newest wins. A copy made by garbage
- *   collection keeps its record's number: of two equal numbers either stands for the key
- *   (they hold the same bytes);
- * - before a sector with a valid header is erased, its magic is programmed to zero (killed):
- *   an erase cut short can leave any mix of old bytes and 0xFF, header included, and a killed
- *   sector never counts again, whatever the erase left. (The one program over programmed
- *   bytes: it only clears bits, which NOR allows.)
+ * - every record carries a sequence number; the newest wins. Each write takes the next one,
+ *   a copy made by garbage collection too, and one write is in flight at a time, so the write
+ *   a cut interrupted is always the newest record;
+ * - before a sector with a valid header is erased, its magic is killed: its 1 bits that read
+ *   1 are programmed to 0 (only those: never a 0 over a bit that reads 0). An erase cut short can leave any mix
+ *   of old bytes and 0xFF, header included, and a killed sector never counts again;
  * - a deletion is a tombstone record, carried forward by garbage collection while an older
  *   record of its key survives in another sector;
  * - faint bits: a cut during a program or an erase can leave bits neither programmed nor
- *   erased, read one way at one mount and another at the next. So every boot starts a fresh
- *   head (no sector from before the mount takes another record: nothing written follows the
- *   last session's last write); a commit or claim word counts with any of its bits programmed
- *   (its CRC shows what came before it went whole), so a faint one reads the same verdict at
- *   every mount; and a claim programs the erase header again, so a faint erase header is
- *   programmed for good before its sector holds anything (every claim of an erase cycle is the
- *   same bytes, so one read as never made is made again over the same bits). A commit word all
- *   of whose bits a cut left faint (likely: one pulse charges them alike) can read erased at one
- *   mount and programmed at another. Only the write the cut interrupted can end in one, and it
- *   is the newest record (one write is in flight at a time, each taking the next number): the
- *   newest keyed record counts as committed when its CRC checks, whatever its commit word reads,
- *   and the session's first write of a record or file, or garbage collection's first kill, is
- *   preceded by programming its header and commit word again (the same bytes), so it reads
- *   committed for good before anything could follow it or take its key's older records; and
- *   first, a header a cut left erased-looking or failing its CRC is programmed to zero, so its
- *   faint bits can never make it valid later, every sector the mount read as killed is killed
- *   again (a cut kill's zeros may be faint, even reading zero), and where two records share a
- *   number (a collection's copy cut short) the last record of both sectors is programmed again.
- *   These fixes go before any record is programmed (copies too) and before any kill. A cut write is thus completed at the next mount
- *   if its header and data went whole, never counts if not (once anything is written after
- *   it), and never reads otherwise afterwards;
+ *   erased, read one way at one mount and another at the next. Four rules:
+ *   every boot starts a fresh head (no sector from before the mount takes another record);
+ *   a commit or claim word counts with any of its bits programmed, and a claim programs the
+ *   erase header again (the same bytes);
+ *   the newest record counts when its CRC checks, whatever its commit word reads (a cut in
+ *   the commit word can leave all its bits faint), and is copied forward (a new number,
+ *   programmed whole) before the session writes anything else;
+ *   ambiguous sectors are erased before the session writes: a cut tail (a bad header, a record
+ *   whose CRC checks but reads uncommitted, data after an erased header), a sector read as
+ *   killed, a torn erase or claim. A claimed one is evacuated first (its live records copied
+ *   with new numbers). Only a completed erase settles faint bits, and no collection drops a
+ *   tombstone while such a sector could still read otherwise. Until this recovery is done
+ *   (maintenance runs it, first), writes and collections answer STORE_BUSY: at most the copy
+ *   forward, one sector's evacuation and two erases after a cut (more after hook errors).
+ *   What is left: a write cut in its header can read as never made at the next mount and as
+ *   made (and count) at a later one, if no record of the next session completes between the
+ *   two (docs/reference/store-format.md, "Faint bits and the head");
+ * - a hook error leaves its write undecided, as a cut does: a later mount may read it either
+ *   way until maintenance has evacuated and erased its sector, so a value can change across a
+ *   reboot with no cut (store_stats.errors counts the errors).
  *
  * The erase-ahead pool: clean, unclaimed sectors. Whoever writes claims its sectors from the
  * pool before the first byte, so no write ever waits for an erase: a small record's new head
@@ -77,9 +75,18 @@
  * since its last save is skipped (M2c Task 8). Each boot's fresh head adds at most one sector
  * fill a boot.
  *
- * Partial programs: a page takes at most STORE_PAGE_PROGS programs between erases. A part with
- * ECC would need 16-byte units each programmed once (a format rework); docs/hardware.md's open
- * checks ask the spike (M2a Task 3b).
+ * Partial programs: a page takes at most STORE_PAGE_PROGS programs between erases. Bytes already
+ * programmed are programmed again only by a claim (the erase header's same bytes, and a claim's
+ * same bytes again after a cut left it reading never made) and by a kill after a kill cut short
+ * or failed, over the bits it left faint and reading 1 (a kill programs only the magic's bits
+ * that read 1). A part with ECC would need 16-byte units each
+ * programmed once (a format rework); docs/hardware.md's open checks ask the spike (M2a Task 3b).
+ *
+ * Work outside store_poll: store_put, store_delete, store_file_begin, store_file_rename,
+ * store_collect and store_erase_wanted each do at most STORE_POLL_WORK (store_put's data CRC
+ * included, or garbage collection's plan when the pool is short; the host tests check every
+ * call); store_get, store_file_open, store_file_read and store_dir_next read and compare (a walk
+ * of the key index, 48 names at most).
  *
  * Files (songs, dumps): a name, a type and up to STORE_FILE_MAX bytes, written as chunk
  * records of STORE_CHUNK bytes, three to a sector, into sectors claimed for the file alone, then
@@ -142,12 +149,12 @@
  * program of the page), for a window of 16 bytes or more: records' data pieces, headers and
  * commit words (densest: 4-byte values, 3 programs in 24 bytes), and on a sector's first page
  * its erase header, its claim (which programs the erase header again, the same bytes) and the
- * kill: 34, the maximum over every sequence of records. Then 2 for the completion of a
- * session's newest record (its header and commit word again; one session's records a sector,
- * since each starts a fresh head) and 1 for programming a cut header to zero, and as many
- * again for each cut that falls during them. The host tests check it. A smaller window takes
- * more (one program a byte at 1). */
-#define STORE_PAGE_PROGS 37u
+ * kill: 34, the maximum over every sequence of records. Nothing adds programs at a boot or a
+ * recovery (a recovered write is copied, not programmed again); only a cut does, at most one
+ * program to the page it falls in (a claim or kill cut short is made again), and a hook error
+ * on a kill (made again). The host tests check it. A smaller window takes more (one program a
+ * byte at 1). */
+#define STORE_PAGE_PROGS 34u
 #define STORE_FILE_IDLE_MS 5000u /* an open file's sender gone this long: the file is aborted */
 
 _Static_assert(STORE_POOL_MIN == 20u, "ceil(65,536 / 3,808) + 2");
@@ -283,10 +290,9 @@ typedef struct {
     uint32_t fix_seq;    /* the newest record at the mount (store.c newest): its number, ... */
     uint16_t fix_off;    /* ... its place ... */
     uint8_t fix_sec;
-    uint8_t fix_kind;    /* ... and what its completion has left to do (FIX_*) */
-    uint16_t fix_done;   /* bytes of it programmed */
-    uint8_t redo_phase;  /* a twin's sector's last record: 0 its header, 1 its commit word */
-    uint8_t pad3;
+    uint8_t fix_kind;    /* ... and whether it is still to copy forward (FIX_*) */
+    uint8_t rec;         /* 1 while the mount's recovery has work: the session waits for it */
+    uint8_t pad3[3];
     uint32_t work;       /* the last store_poll's work: bytes read, and 4 per key compared */
     uint8_t buf[STORE_WINDOW_MAX]; /* a collection's copy, the open file's bytes, a rename */
 } store;
@@ -311,8 +317,11 @@ typedef struct {
  * window, M2a Task 4), but a 4-byte commit word is always one program, so a window under 4
  * still programs 4 bytes then. The store is unmounted until store_mount. */
 void store_init(store* s, const store_flash* flash, uint32_t window);
-/* Starts the mount; store_poll does it in slices. The first small write after it starts a
- * fresh head sector, so it needs the pool over STORE_POOL_MIN (fill the pool at boot). */
+/* Starts the mount; store_poll does it in slices. Writes wait (STORE_BUSY) for recovery, which
+ * maintenance runs first: the newest record copied forward, and after a cut a sector or two
+ * evacuated and erased. The first small write starts a fresh head sector, so it needs the pool
+ * over STORE_POOL_MIN. So fill the pool at boot (quiet maintenance until store_erase_wanted is
+ * 0): it absorbs both. */
 void store_mount(store* s);
 store_state_id store_state(const store* s);
 /* Advances the mount, the record being written or maintenance, at most one flash operation.
@@ -333,15 +342,17 @@ int store_get(const store* s, uint32_t key, void* buf, uint32_t cap, uint8_t* ty
  * The data stays the caller's until store_busy is 0: store_poll programs it from there, a piece
  * at a time through a RAM copy (the device programs with XIP off, so no program reads flash:
  * the data may be anywhere, flash included). The place is taken before this returns. STORE_OK: it commits on later store_polls (a power cut
- * before then leaves the old value). STORE_BUSY: not now (a write runs, or a new head sector
- * would take the pool under its minimum); STORE_FULL: not even after garbage collection. */
+ * before then leaves the old value). STORE_BUSY: not now (a write runs, a new head sector would
+ * take the pool under its minimum, or the mount's recovery is not done); STORE_FULL: not even
+ * after garbage collection. */
 int store_put(store* s, uint32_t key, uint8_t type, const void* data, uint32_t len);
 /* Deletes `key` (a tombstone). STORE_OK also when it does not exist. The tombstone keeps the
  * key's slot in the index (STORE_KEYS_MAX) until garbage collection drops it, once no older
  * record of the key survives elsewhere. */
 int store_delete(store* s, uint32_t key);
 /* Asks for a garbage collection of the best victim now, quiet or not (its erase still waits for
- * quiet). STORE_NOT_FOUND when no sector would gain, STORE_BUSY while maintenance runs. */
+ * quiet). STORE_NOT_FOUND when no sector would gain, STORE_BUSY while maintenance runs, before
+ * the mount's recovery, or while a killed sector waits for its erase. */
 int store_collect(store* s);
 /* Every sector dirty, to be erased by maintenance: for a region another firmware left
  * (STORE_STATE_FOREIGN), after the user confirmed. Loses everything. */
@@ -366,7 +377,7 @@ typedef struct {
  * (1..STORE_TYPE_MAX). Claims all its sectors and its FILE record's place before it returns,
  * writing nothing yet. A file of that name is replaced when this one commits. STORE_BUSY: not now
  * (the pool, less garbage collection's reserve, cannot cover it until a quiet refill, or a write
- * or a collection runs, or a file is open); STORE_FULL: not even after garbage collection;
+ * or a collection runs, or a file is open, or the mount's recovery is not done); STORE_FULL: not even after garbage collection;
  * STORE_INVALID: a bad name, type or length. */
 int store_file_begin(store* s, const char* name, uint8_t type, uint32_t length);
 /* Offers bytes of the open file: takes what fits the 256-byte staging buffer and returns how
