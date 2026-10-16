@@ -22,7 +22,7 @@ _Static_assert(sizeof(gt2_player) % 4u == 0u, "a hand-over copies the player in 
 static void song_sink(void* ctx, uint8_t reg, uint8_t value) {
     song_ctl* sc = ctx;
     sc->shadow[reg] = value;
-    if (reg < 21u && ((sc->mute >> (reg / 7u)) & 1u))
+    if (reg < 21u && (((sc->mute | sc->taken) >> (reg / 7u)) & 1u))
         return;
     sid_write(sc->chip, reg, value);
 }
@@ -30,7 +30,7 @@ static void song_sink(void* ctx, uint8_t reg, uint8_t value) {
 /* The shadow's registers into s, less the muted voices'. */
 static void song_rewrite(song_ctl* sc, sid* s) {
     for (uint32_t r = 0u; r < GT2_SID_REGS; r++) {
-        if (r < 21u && ((sc->mute >> (r / 7u)) & 1u))
+        if (r < 21u && (((sc->mute | sc->taken) >> (r / 7u)) & 1u))
             continue;
         sid_write(s, (uint8_t)r, sc->shadow[r]);
     }
@@ -73,7 +73,7 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
     case SONG_CMD_STOP:
         sc->isr_playing = 0u;
         for (uint32_t v = 0u; v < GT2_PLAY_CHANNELS; v++)
-            if (!((sc->mute >> v) & 1u))
+            if (!(((sc->mute | sc->taken) >> v) & 1u))
                 song_gate_off(sc, v);
         song_set_gate_reset(sc, c->a);
         break;
@@ -83,14 +83,23 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         song_set_gate_reset(sc, c->a);
         sc->isr_playing = 1u;
         break;
-    case SONG_CMD_MUTE: {
-        uint8_t was = sc->mute;
-        sc->mute = c->a;
+    case SONG_CMD_MUTE:
+    case SONG_CMD_TAKE: {
+        /* mute: the voice's gate off, then nothing of the song's; taken (the keys, KEYS A):
+         * nothing of the song's, the keys' writes stand. Back from either: the song's
+         * registers again. */
+        uint8_t was = (uint8_t)(sc->mute | sc->taken);
+        if (c->kind == SONG_CMD_MUTE)
+            sc->mute = c->a;
+        else
+            sc->taken = c->a;
+        uint8_t now = (uint8_t)(sc->mute | sc->taken);
         for (uint32_t v = 0u; v < GT2_PLAY_CHANNELS; v++) {
             uint32_t bit = 1u << v;
-            if ((c->a & bit) && !(was & bit)) {
-                song_gate_off(sc, v);
-            } else if (!(c->a & bit) && (was & bit)) {
+            if ((now & bit) && !(was & bit)) {
+                if (c->kind == SONG_CMD_MUTE)
+                    song_gate_off(sc, v);
+            } else if (!(now & bit) && (was & bit)) {
                 for (uint32_t r = v * 7u; r < v * 7u + 7u; r++)
                     sid_write(sc->chip, (uint8_t)r, sc->shadow[r]);
             }
@@ -370,7 +379,7 @@ static uint8_t gate_for_play(const song_ctl* sc) {
 int song_ctl_play(song_ctl* sc, uint32_t subtune, uint32_t pos) {
     song_work* w = sc->w;
     if (sc->state == SONG_LOADING || sc->inflight_n || sc->ff_on || sc->spare_wait ||
-        room(sc) < 2u)
+        sc->deriving || room(sc) < 2u)
         return 0;
     if (sc->state == SONG_PLAYING)
         song_ctl_stop(sc); /* the song plays no more while the next one loads */
@@ -430,6 +439,16 @@ int song_ctl_mute(song_ctl* sc, uint32_t mask) {
     return 1;
 }
 
+int song_ctl_take(song_ctl* sc, uint32_t mask) {
+    if (room(sc) < 1u)
+        return 0;
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_TAKE);
+    c.a = (uint8_t)(mask & 7u);
+    push(sc, &c);
+    return 1;
+}
+
 int song_ctl_jam(song_ctl* sc, uint32_t voice, uint32_t note, uint32_t instr) {
     if (voice >= GT2_PLAY_CHANNELS || note > 95u || instr > GT2_MAX_INSTR || room(sc) < 1u)
         return 0;
@@ -462,61 +481,95 @@ static void push_shape(song_ctl* sc) {
     take_spare(sc, push(sc, &c));
 }
 
+/* The edit's command, its seq the last of the edits in flight. */
+static void send_edit(song_ctl* sc, const gt2_edit* e) {
+    song_work* w = sc->w;
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_EDIT);
+    c.u.edit = *e;
+    uint32_t seq = push(sc, &c);
+    if (sc->inflight_n > 0u && w->inflight_seq[sc->inflight_n - 1u] == 0u) {
+        w->inflight_seq[sc->inflight_n - 1u] = seq; /* the held one goes */
+    } else {
+        w->inflight[sc->inflight_n] = *e;
+        w->inflight_seq[sc->inflight_n] = seq;
+        sc->inflight_n++;
+    }
+    w->cur.pending_count = sc->inflight_n;
+}
+
+/* The widened shape is whole in the spare: it goes (if it differs), then the held edit. */
+static int finish_widen(song_ctl* sc) {
+    song_work* w = sc->w;
+    if (room(sc) < 2u)
+        return 0;
+    gt2_shape* next = sc->shapes[spare(sc)];
+    const gt2_shape* now = sc->shapes[sc->active];
+    if (!same(next, now, sizeof *next)) {
+        if (!gt2_shape_compatible(now, next)) {
+            /* the player's state cannot follow: the channels it plays stay until a
+             * fast-forwarded player takes over with the new shape */
+            gt2_shape_keep_channels(next, now->channels);
+            sc->want_handover = 1u;
+        }
+        push_shape(sc);
+        sc->widened = 1u;
+    }
+    send_edit(sc, &w->inflight[sc->inflight_n - 1u]);
+    return 1;
+}
+
 int song_ctl_edit(song_ctl* sc, const gt2_edit* e) {
     song_work* w = sc->w;
     if (sc->state == SONG_IDLE) {
         gt2_edit_commit(sc->song, e); /* no player reads the song */
         return 1;
     }
-    if (sc->state == SONG_LOADING || sc->ff_on || sc->inflight_n == SONG_INFLIGHT ||
-        room(sc) < 2u) {
+    /* A shape command in flight holds the spare a widening may need: the edit waits a pass
+     * (the base must not grow without its shape going with the edit). */
+    if (sc->state == SONG_LOADING || sc->ff_on || sc->spare_wait || sc->deriving ||
+        sc->inflight_n == SONG_INFLIGHT || room(sc) < 2u) {
         sc->busy++;
         return 0;
     }
-    gt2_base saved = w->cur.base;
     w->inflight[sc->inflight_n] = *e;
     w->cur.pending = w->inflight;
     w->cur.pending_count = sc->inflight_n + 1u;
-    if (gt2_shape_widen(&w->cur, e)) {
-        if (sc->spare_wait) {
-            /* the spare is the interrupt's until its command is applied: next pass */
-            w->cur.base = saved;
-            w->cur.pending_count = sc->inflight_n;
-            sc->busy++;
-            return 0;
-        }
-        sc->bg_on = 0u; /* a background analysis gives the spare up */
-        gt2_shape* next = sc->shapes[spare(sc)];
-        const gt2_shape* now = sc->shapes[sc->active];
-        gt2_shape_derive(&w->cur, next);
-        if (!same(next, now, sizeof *next)) {
-            if (!gt2_shape_compatible(now, next)) {
-                /* the player's state cannot follow: the channels it plays stay until a
-                 * fast-forwarded player takes over with the new shape */
-                gt2_shape_keep_channels(next, now->channels);
-                sc->want_handover = 1u;
-            }
-            push_shape(sc);
-            sc->widened = 1u;
-        }
-    } else if (sc->bg_on) {
-        sc->bg_dirty = 1u;
-    }
-    song_cmd c;
-    cmd_init(&c, SONG_CMD_EDIT);
-    c.u.edit = *e;
-    w->inflight_seq[sc->inflight_n] = push(sc, &c);
-    sc->inflight_n++;
-    w->cur.pending_count = sc->inflight_n;
     sc->quiet = 0u;
     if (sc->bg_on)
         sc->bg_dirty = 1u;
+    if (gt2_shape_widen(&w->cur, e)) {
+        /* The shape again, a slice a poll (a whole derivation is more than a pass has to
+         * spare); the edit waits for it, held (seq 0), and goes with it (finish_widen). */
+        sc->bg_on = 0u; /* a background analysis gives the spare up */
+        w->inflight_seq[sc->inflight_n] = 0u;
+        sc->inflight_n++;
+        gt2_shape_derive_begin(&w->cur);
+        sc->deriving = SONG_DERIVE_EDIT;
+        sc->deriving_for = SONG_DERIVE_EDIT;
+        return 1;
+    }
+    send_edit(sc, e);
     return 1;
+}
+
+/* The player's frame path runs from SRAM on the device (platform/fm1/app.ld), beyond the
+ * direct call range of this side's code in flash: through pointers the compiler cannot fold
+ * back into direct calls (as platform/fm1/audio.c's far_drain). */
+static void far_start(gt2_player* p, const gt2_song* s, const gt2_shape* sh, const uint8_t* st) {
+    void (*volatile fn)(gt2_player*, const gt2_song*, const gt2_shape*, const uint8_t*) =
+        gt2_play_start;
+    fn(p, s, sh, st);
+}
+
+static void far_frame(gt2_player* p, gt2_sid_fn sink, void* ctx) {
+    void (*volatile fn)(gt2_player*, gt2_sid_fn, void*) = gt2_play_frame;
+    fn(p, sink, ctx);
 }
 
 static void start_ff(song_ctl* sc, uint32_t target, uint8_t now) {
     song_work* w = sc->w;
-    gt2_play_start(&w->ff, sc->song, sc->shapes[now ? sc->active : spare(sc)], sc->start);
+    far_start(&w->ff, sc->song, sc->shapes[now ? sc->active : spare(sc)], sc->start);
     sc->ff_calls = 0u;
     sc->ff_target = target;
     sc->ff_now = now;
@@ -525,7 +578,8 @@ static void start_ff(song_ctl* sc, uint32_t target, uint8_t now) {
 }
 
 int song_ctl_seek(song_ctl* sc, uint32_t call) {
-    if ((sc->state != SONG_PLAYING && sc->state != SONG_STOPPED) || sc->inflight_n || sc->ff_on)
+    if ((sc->state != SONG_PLAYING && sc->state != SONG_STOPPED) || sc->inflight_n || sc->ff_on ||
+        sc->deriving)
         return 0;
     start_ff(sc, call, 1u);
     return 1;
@@ -538,11 +592,12 @@ static void discard(void* ctx, uint8_t reg, uint8_t value) {
 }
 
 /* What the interrupt has applied since the last poll. */
-static void poll_applied(song_ctl* sc) {
+static void poll_applied(song_ctl* sc, int may_ring) {
     song_work* w = sc->w;
     uint32_t a = sc->applied;
     uint32_t k = 0u;
-    while (k < sc->inflight_n && (int32_t)(a - w->inflight_seq[k]) >= 0) {
+    while (k < sc->inflight_n && w->inflight_seq[k] != 0u &&
+           (int32_t)(a - w->inflight_seq[k]) >= 0) {
         gt2_edit_release(sc->song, &w->inflight[k]);
         k++;
     }
@@ -556,7 +611,7 @@ static void poll_applied(song_ctl* sc) {
     }
     if (sc->spare_wait && (int32_t)(a - sc->spare_free_at) >= 0)
         sc->spare_wait = 0u;
-    if (sc->handback && (int32_t)(a - sc->stop_seq) >= 0) {
+    if (sc->handback && may_ring && (int32_t)(a - sc->stop_seq) >= 0) {
         sc->handback = 0u;
         if (sc->hooks.chip_a_keys)
             sc->hooks.chip_a_keys(sc->hooks.ctx);
@@ -582,7 +637,7 @@ static void poll_ff(song_ctl* sc) {
         return;
     uint32_t target = sc->ff_now ? sc->ff_target : sc->calls + SONG_HANDOVER_LEAD;
     for (uint32_t i = 0u; i < SONG_FF_CALLS && sc->ff_calls < target; i++) {
-        gt2_play_frame(&w->ff, discard, 0);
+        far_frame(&w->ff, discard, 0);
         sc->ff_calls++;
     }
     if (sc->ff_calls < target || room(sc) < 1u)
@@ -693,8 +748,9 @@ static void poll_narrow(song_ctl* sc, int may_slice) {
     }
 }
 
-void song_ctl_poll(song_ctl* sc, int may_slice) {
-    poll_applied(sc);
+void song_ctl_poll(song_ctl* sc, uint32_t flags) {
+    int may_slice = (flags & SONG_POLL_SLICE) != 0;
+    poll_applied(sc, (flags & SONG_POLL_RING) != 0);
     if (sc->quiet < 0xffffffffu)
         sc->quiet++;
     switch (sc->state) {
@@ -703,10 +759,28 @@ void song_ctl_poll(song_ctl* sc, int may_slice) {
         break;
     case SONG_PLAYING:
     case SONG_STOPPED:
+        if (sc->deriving) {
+            if (!may_slice)
+                break;
+            sc->slices++;
+            if (sc->deriving == SONG_DERIVE_DONE ||
+                gt2_shape_derive_step(&sc->w->cur, sc->shapes[spare(sc)], SONG_SLICE_UNITS)) {
+                sc->deriving = SONG_DERIVE_DONE;
+                if (sc->deriving_for == SONG_DERIVE_HANDOVER) {
+                    start_ff(sc, 0u, 0u);
+                    sc->deriving = 0u;
+                } else if (finish_widen(sc)) {
+                    sc->deriving = 0u;
+                }
+            }
+            break;
+        }
         if (sc->want_handover && !sc->ff_on && !sc->inflight_n && !sc->spare_wait) {
-            /* the true shape, into the spare, for the fast-forward */
-            gt2_shape_derive(&sc->w->cur, sc->shapes[spare(sc)]);
-            start_ff(sc, 0u, 0u);
+            /* the true shape, into the spare, for the fast-forward: a slice a poll */
+            gt2_shape_derive_begin(&sc->w->cur);
+            sc->deriving = SONG_DERIVE_HANDOVER;
+            sc->deriving_for = SONG_DERIVE_HANDOVER;
+            break;
         }
         if (sc->ff_on) {
             if (may_slice) {

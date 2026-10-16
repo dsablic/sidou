@@ -65,7 +65,7 @@ impl Transport {
     /// A main-loop pass: what the interrupt applied, a slice, the commands made visible.
     pub fn pass(&mut self) {
         unsafe {
-            song_ctl_poll(&mut *self.sc, 1);
+            song_ctl_poll(&mut *self.sc, SONG_POLL_SLICE | SONG_POLL_RING);
             song_ctl_commit(&mut *self.sc);
         }
     }
@@ -100,6 +100,10 @@ impl Transport {
 
     pub fn mute(&mut self, mask: u32) -> bool {
         unsafe { song_ctl_mute(&mut *self.sc, mask) != 0 }
+    }
+
+    pub fn take(&mut self, mask: u32) -> bool {
+        unsafe { song_ctl_take(&mut *self.sc, mask) != 0 }
     }
 
     pub fn jam(&mut self, voice: u32, note: u32, instr: u32) -> bool {

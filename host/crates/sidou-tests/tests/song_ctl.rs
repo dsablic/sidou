@@ -303,7 +303,14 @@ fn edit_case(name: &str, sng: &[u8], at: u32, expect_handover: bool, prims: &[Pr
         let c = t.calls();
         t.block_silent();
         if t.calls() != c {
-            if first.is_none() && (!expect_handover || t.sc.handovers > handovers) {
+            // from the call after every edit has reached the interrupt (a widening's edit
+            // waits for its shape) and, if one is due, the hand-over
+            let settled = t.sc.inflight_n == 0 || t.sc.cmd_tail == t.sc.stage;
+            if first.is_none()
+                && settled
+                && t.sc.deriving == 0
+                && (!expect_handover || t.sc.handovers > handovers)
+            {
                 first = Some(c);
             }
             states.push((c, player_state(&t.sc.player)));
@@ -533,6 +540,7 @@ fn play_simple() -> (Song, Transport) {
     let mut t = Transport::new(&mut song);
     assert!(t.play(0, 0));
     assert!(t.run_until(100, |t| t.calls() > 0));
+    t.pass(); // the play known applied: its other shape buffer free
     (song, t)
 }
 
@@ -802,4 +810,32 @@ fn a_swapped_chip_gets_the_players_registers() {
     }
     assert_eq!(fresh.mode_vol, t.chip.mode_vol);
     assert_eq!(fresh.fc, t.chip.fc);
+}
+
+/// KEYS A (M2b's keys_route): a voice the keys take keeps their writes (the song's are
+/// dropped, and no gate-off is written over the keys' note); given back, it gets the song's
+/// registers again at the next block.
+#[test]
+fn a_voice_the_keys_take_is_left_to_them_and_given_back() {
+    let (_song, mut t) = play_simple();
+    transport_states(&mut t, 30);
+    assert!(t.take(1));
+    t.pass();
+    t.block_silent();
+    // the keys play voice 1: a note of theirs
+    unsafe {
+        sid_write(&mut *t.chip, 0, 0x34);
+        sid_write(&mut *t.chip, 1, 0x12);
+        sid_write(&mut *t.chip, 4, 0x41);
+    }
+    let until = t.calls() + 200;
+    transport_states(&mut t, until);
+    assert_eq!(t.chip.osc[0].freq, 0x1234, "the keys' frequency stands");
+    assert_eq!(t.chip.env[0].gate, 1, "the keys' gate stands");
+    assert!(t.take(0));
+    t.pass();
+    t.block_silent();
+    let f = u32::from(t.sc.shadow[0]) | u32::from(t.sc.shadow[1]) << 8;
+    assert_eq!(t.chip.osc[0].freq, f, "the song's frequency again");
+    assert_eq!(t.chip.env[0].gate, t.sc.shadow[4] & 1);
 }

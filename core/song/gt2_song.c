@@ -7,7 +7,6 @@
  * file stay GPL-3.0-or-later; decision record 0007 ("Round-trip rules") describes them. */
 #include "gt2_song.h"
 
-#include <stdatomic.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -299,9 +298,10 @@ void gt2_edit_apply(gt2_song* s, const gt2_edit* e) {
             base[e->offset + i] = e->bytes[i];
     } else if (e->kind == GT2_EDIT_SWAP) {
         /* The new copy's bytes (written by the main loop) before the index entry that makes
-         * it the player's: a compiler barrier on one core. M2c Task 6 checks the fm1
-         * disassembly holds one 32-bit store here. */
-        atomic_signal_fence(memory_order_release);
+         * it the player's: a compiler barrier on one core (atomic_signal_fence becomes a call
+         * of __sync_synchronize on pi32v2's clang, which the audio interrupt cannot make). The
+         * store is one 32-bit st (M2c Task 6 checked the fm1 disassembly). */
+        __asm__ volatile("" ::: "memory");
         *(volatile gt2_span*)(void*)(base + e->offset) = e->span;
     }
 }

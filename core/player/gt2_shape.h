@@ -83,6 +83,7 @@ typedef struct {
     uint8_t phase, i_sub, i_ch, i_row;
     uint16_t i_pos, i_pat;
     int16_t result;
+    uint8_t grew; /* the base gained something since gt2_shape_widen began */
     /* the derivation's own (reset by each) */
     uint8_t d_phase, d_ch;
     uint16_t d_i;
@@ -120,8 +121,12 @@ int gt2_shape_analyse(gt2_analysis* a, const gt2_song* s, uint32_t subtune,
  * is. Bounded: a cell is O(1) besides at most one table walk (255 rows); a pattern's swap
  * scans its rows, an orderlist's its entries and the rows of the patterns it newly names. */
 int gt2_shape_widen(gt2_analysis* a, const gt2_edit* e);
-/* The shape from a's base and the song (with the pending edits), all at once. */
+/* The shape from a's base and the song (with the pending edits), all at once (about 70k
+ * instructions on the device at the worst: more than a main-loop pass has to spare), or in
+ * slices: begin, then steps of about budget units each until one returns 1. */
 void gt2_shape_derive(gt2_analysis* a, gt2_shape* out);
+void gt2_shape_derive_begin(gt2_analysis* a);
+int gt2_shape_derive_step(gt2_analysis* a, gt2_shape* out, uint32_t budget);
 
 /* 1 if a player following `from` may follow `to` from its next call (gt2_play_set_shape):
  * the same channels and subtune, and the same encodings of the player's state (simple

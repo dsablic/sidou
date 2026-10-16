@@ -77,8 +77,8 @@ extern "C" {
 #define SONG_MULTISPEED_MAX 4u     /* the device's (gt2_caps): a block holds one call */
 /* The main loop's analysis slice, in gt2_shape_step units (fm1-emu measures a slice's
  * instructions against SONG_SLICE_INSTRUCTIONS, tests/song.rs). */
-#define SONG_SLICE_UNITS 600u
-#define SONG_SLICE_INSTRUCTIONS 40000u
+#define SONG_SLICE_UNITS 300u
+#define SONG_SLICE_INSTRUCTIONS 39000u
 /* Calls a fast-forward runs a slice, and how far ahead of the interrupt's call it hands over
  * (the hand-over is armed for that call). */
 #define SONG_FF_CALLS 6u
@@ -96,7 +96,7 @@ typedef struct {
 
 enum {
     SONG_CMD_PLAY = 1, SONG_CMD_STOP, SONG_CMD_CONTINUE, SONG_CMD_MUTE, SONG_CMD_SHAPE,
-    SONG_CMD_HANDOVER, SONG_CMD_JAM, SONG_CMD_EDIT, SONG_CMD_PERIOD
+    SONG_CMD_HANDOVER, SONG_CMD_JAM, SONG_CMD_EDIT, SONG_CMD_PERIOD, SONG_CMD_TAKE
 };
 
 typedef struct {
@@ -117,10 +117,14 @@ typedef struct {
     uint32_t q, r, den;
 } song_period;
 
-/* What PLAY needs from chip A (M2b Task 4's chip_ctl); every member may be NULL. */
+/* What PLAY needs from chip A (M2b Task 4's chip_ctl and keys_route); every member may be
+ * NULL. */
 typedef struct {
-    /* Called once a poll from PLAY on until it returns 1: chip A to the song's setup
-     * (setup NULL: the song has no CHPA, the keys' setup with AUTHENTIC envelopes). */
+    /* Called once a poll from PLAY on until it returns 1: chip A ready for the song (with
+     * M2b: keys_route_ready_for_song, the keys off chip A or KEYS A set) and in the song's
+     * setup (setup NULL: the song has no CHPA, the keys' setup with AUTHENTIC envelopes;
+     * the hook reports a setup it applies, keys_route_song_setup, so the keys come back to
+     * theirs at the stop). The song starts at the block after the call that returns 1. */
     int (*chip_a_song)(void* ctx, const song_chip_setup* setup);
     /* Once a stop has reached the interrupt: chip A back to the keys' setup. */
     void (*chip_a_keys)(void* ctx);
@@ -145,6 +149,8 @@ enum {
 
 /* song_ctl_play's refusal besides gt2_shape's (song_ctl.error). */
 #define SONG_ERR_MULTISPEED (-10) /* above SONG_MULTISPEED_MAX: two calls in a block */
+/* What a derivation in slices is for (song_ctl.deriving). */
+enum { SONG_DERIVE_EDIT = 1, SONG_DERIVE_HANDOVER, SONG_DERIVE_DONE };
 /* Polls with no edit before a widened shape is narrowed again. */
 #define SONG_QUIET_POLLS 50u
 
@@ -168,6 +174,7 @@ typedef struct {
     gt2_player player;
     uint8_t shadow[GT2_SID_REGS]; /* the player's writes to chip A */
     uint8_t mute;                 /* bit v: voice v muted */
+    uint8_t taken;                /* bit v: voice v the keys' (KEYS A, M2b's keys_route) */
     uint8_t armed, armed_now;     /* a hand-over waiting for its call */
     uint8_t jam[GT2_PLAY_CHANNELS][3]; /* a jam waiting for the next call: on, note, instr */
     uint32_t next;                /* samples from this block's start to the next call */
@@ -213,6 +220,8 @@ typedef struct {
     uint8_t chip_ready, loading_done;
     uint8_t handback;       /* a stop went: hand chip A back once it is applied */
     uint8_t shapes_used;    /* a play has gone: the interrupt's player holds a shape */
+    uint8_t deriving;       /* SONG_DERIVE_*: a derivation into the spare runs a slice a poll */
+    uint8_t deriving_for;
 } song_ctl;
 
 /* The song in its region, its two shape buffers and its work space, all the caller's;
@@ -237,21 +246,32 @@ int song_ctl_play(song_ctl* sc, uint32_t subtune, uint32_t pos);
 int song_ctl_stop(song_ctl* sc);
 int song_ctl_continue(song_ctl* sc);
 int song_ctl_mute(song_ctl* sc, uint32_t mask);
+/* The voices the keys hold on chip A (KEYS A: M2b's keys_route_voices_taken): the song's
+ * writes to them are dropped and the keys' stand (no gate-off, unlike a mute); a voice given
+ * back gets the song's registers again at the next block. */
+int song_ctl_take(song_ctl* sc, uint32_t mask);
 /* Voice v takes note (0 C-0 ... 95) and instrument at its next tick 0, as if its next row
  * held them (no command): M2d's audition, M2e's multitimbral mode. */
 int song_ctl_jam(song_ctl* sc, uint32_t voice, uint32_t note, uint32_t instr);
 /* An edit a gt2_song primitive returned: song_ctl owns it from a 1 on (it releases it once
- * applied); with 0 it is still the caller's (pending: send it again, or gt2_edit_cancel). */
+ * applied); with 0 it is still the caller's (pending: send it again, or gt2_edit_cancel). An
+ * edit that widens the shape is held while the shape is derived again, a slice a poll, and
+ * goes with it; the next edit waits (0) until then. */
 int song_ctl_edit(song_ctl* sc, const gt2_edit* e);
 int song_ctl_set_period(song_ctl* sc, song_period p);
 /* Fast-forwards a player from the play's start to call `call` and hands it over at the
  * interrupt's next call (M2d's seeks). */
 int song_ctl_seek(song_ctl* sc, uint32_t call);
 
-/* Once a pass: what the interrupt has applied (releases, hand-overs, chip A's hand-back),
- * then, with may_slice, one slice of the analysis or the fast-forward (SONG_SLICE_UNITS;
- * the caller passes 0 in a pass that already ran a chip preparation's slice). */
-void song_ctl_poll(song_ctl* sc, int may_slice);
+/* Once a pass: what the interrupt has applied (releases, hand-overs), with SONG_POLL_RING
+ * chip A's hand-back after a stop (song_chip_hooks.chip_a_keys: the pass's register-ring
+ * writes for song control, at most REG_RING_SONG_PASS; the caller leaves the flag out of a
+ * pass whose ring budget other paths took, M2b's keys_route), then with SONG_POLL_SLICE one
+ * slice of the analysis, a derivation or the fast-forward (SONG_SLICE_UNITS; the caller
+ * leaves it out of a pass that already ran a chip preparation's slice). */
+#define SONG_POLL_SLICE 1u
+#define SONG_POLL_RING 2u
+void song_ctl_poll(song_ctl* sc, uint32_t flags);
 /* Makes the pass's commands visible to the interrupt (with reg_ring_commit). */
 void song_ctl_commit(song_ctl* sc);
 /* Up to n events, oldest first; the count. Dropped ones are counted in ev_lost. */

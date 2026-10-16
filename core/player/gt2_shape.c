@@ -38,6 +38,21 @@ enum { D_INSTR, D_WAVECMD, D_WTABLE, D_PTABLE, D_FINAL, D_STREAMS, D_END };
 
 #define BIT(b, i) (((b)[(i) >> 5] >> ((i) & 31u)) & 1u)
 #define SET(b, i) ((b)[(i) >> 5] |= 1u << ((i) & 31u))
+/* What the base gains, noted (gt2_analysis.grew): a widening says whether anything did. */
+#define GROW_SET(a, b, i)                                                                     \
+    do {                                                                                     \
+        if (!BIT(b, i)) {                                                                    \
+            SET(b, i);                                                                       \
+            (a)->grew = 1u;                                                                  \
+        }                                                                                    \
+    } while (0)
+#define GROW_OR(a, x, v)                                                                      \
+    do {                                                                                     \
+        if (((x) | (v)) != (x)) {                                                            \
+            (x) |= (v);                                                                      \
+            (a)->grew = 1u;                                                                  \
+        }                                                                                    \
+    } while (0)
 
 /* --- The view: the song with the pending edits on top ----------------------------------- */
 
@@ -125,6 +140,7 @@ static uint32_t reach(gt2_analysis* a, uint32_t t, uint32_t ptr) {
         if (BIT(used, ptr))
             break;
         SET(used, ptr);
+        a->grew = 1u;
         steps++;
         if (t == GT2_STBL)
             break;
@@ -144,17 +160,20 @@ static uint32_t scan_order(gt2_analysis* a, uint32_t sub, uint32_t ch, uint32_t 
     for (uint32_t i = from; i < to; i++) {
         uint8_t e = vb(a, off + i);
         if (e < REPEAT) {
-            SET(b->pattused, e);
-            SET(b->named[ch], e);
+            GROW_SET(a, b->pattused, e);
+            GROW_SET(a, b->named[ch], e);
         } else if (e < TRANSDOWN) {
-            b->seen |= GT2_SEEN_REPEAT;
+            GROW_OR(a, b->seen, GT2_SEEN_REPEAT);
         } else {
-            b->seen |= GT2_SEEN_TRANS;
+            GROW_OR(a, b->seen, GT2_SEEN_TRANS);
             if (e < TRANS) {
-                if (TRANS - e > b->transdown)
+                if (TRANS - e > b->transdown) {
                     b->transdown = (uint8_t)(TRANS - e);
+                    a->grew = 1u;
+                }
             } else if (e - TRANS > b->transup) {
                 b->transup = (uint8_t)(e - TRANS);
+                a->grew = 1u;
             }
         }
     }
@@ -167,34 +186,38 @@ static uint32_t scan_row(gt2_analysis* a, uint32_t pat, const uint8_t row[4]) {
     uint8_t cmd = row[2], data = row[3];
     uint32_t units = 1u;
     if (row[0] != REST || row[1] != 0u || row[2] != 0u)
-        SET(b->filled, pat);
+        GROW_SET(a, b->filled, pat);
     if (row[1] != 0u && row[1] <= GT2_MAX_INSTR)
-        SET(b->instrused, row[1]);
+        GROW_SET(a, b->instrused, row[1]);
     if (cmd != 0u)
-        b->seen |= GT2_SEEN_EFFECTS;
+        GROW_OR(a, b->seen, GT2_SEEN_EFFECTS);
     if (cmd >= 8u && cmd <= 10u)
         units += reach(a, cmd - 8u, data);
     if ((cmd >= 1u && cmd <= 4u) || cmd == 14u)
         units += reach(a, GT2_STBL, data);
     if (cmd >= 1u && cmd <= 4u && data != 0u)
-        SET(b->stbl_calc, data);
+        GROW_SET(a, b->stbl_calc, data);
     if (cmd >= 10u && cmd <= 12u)
-        b->seen |= GT2_SEEN_FILTER; /* packpattern */
+        GROW_OR(a, b->seen, GT2_SEEN_FILTER); /* packpattern */
     if (cmd >= 5u && cmd <= 13u)
-        b->tick0 |= 1u << cmd;
+        GROW_OR(a, b->tick0, 1u << cmd);
     if (cmd == 14u)
-        b->tick0 |= 1u << 14 | GT2_TICK0_TEMPO_GLOBAL;
+        GROW_OR(a, b->tick0, 1u << 14 | GT2_TICK0_TEMPO_GLOBAL);
     if (cmd == 15u) {
         if ((data & 0x7fu) < 3u)
-            b->tick0 |= 1u << 14;
-        b->tick0 |= (data & 0x80u) ? GT2_TICK0_TEMPO_CHANNEL : GT2_TICK0_TEMPO_GLOBAL;
+            GROW_OR(a, b->tick0, 1u << 14);
+        GROW_OR(a, b->tick0, (data & 0x80u) ? GT2_TICK0_TEMPO_CHANNEL : GT2_TICK0_TEMPO_GLOBAL);
     }
     if (row[0] >= NOTE && row[0] <= GT2_LASTNOTE) {
         uint8_t n = (uint8_t)(row[0] - NOTE);
-        if (n < b->note_lo)
+        if (n < b->note_lo) {
             b->note_lo = n;
-        if (b->note_hi == 0xffu || n > b->note_hi)
+            a->grew = 1u;
+        }
+        if (b->note_hi == 0xffu || n > b->note_hi) {
             b->note_hi = n;
+            a->grew = 1u;
+        }
     }
     return units;
 }
@@ -851,24 +874,24 @@ static int derive_step(gt2_analysis* a, gt2_shape* out, uint32_t* budget) {
     return a->d_phase == D_END;
 }
 
-void gt2_shape_derive(gt2_analysis* a, gt2_shape* out) {
+void gt2_shape_derive_begin(gt2_analysis* a) {
     a->d_phase = D_INSTR;
     a->d_i = 0u;
-    uint32_t budget = 0xffffffffu;
-    while (!derive_step(a, out, &budget))
-        budget = 0xffffffffu;
+}
+
+int gt2_shape_derive_step(gt2_analysis* a, gt2_shape* out, uint32_t budget) {
+    if (budget == 0u)
+        budget = 1u;
+    return derive_step(a, out, &budget);
+}
+
+void gt2_shape_derive(gt2_analysis* a, gt2_shape* out) {
+    gt2_shape_derive_begin(a);
+    while (!gt2_shape_derive_step(a, out, 0xffffffffu)) {
+    }
 }
 
 /* --- Widening ---------------------------------------------------------------------------- */
-
-static int same_base(const gt2_base* x, const gt2_base* y) {
-    const uint8_t* p = (const uint8_t*)x;
-    const uint8_t* q = (const uint8_t*)y;
-    for (uint32_t i = 0u; i < sizeof *x; i++)
-        if (p[i] != q[i])
-            return 0;
-    return 1;
-}
 
 /* An orderlist of subtune sub changed (channel ch, or all three if ch is 3): scan it and
  * the patterns it newly names. */
@@ -876,7 +899,7 @@ static void widen_order(gt2_analysis* a, uint32_t sub) {
     gt2_base* b = &a->base;
     if (!packed_subtune(a, sub))
         return; /* the packer writes no orderlists for it (and an emptied one stays) */
-    b->packed |= 1u << sub;
+    GROW_OR(a, b->packed, 1u << sub);
     for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++)
         scan_order(a, sub, ch, 0u, GT2_MAX_ORDER);
     for (uint32_t pat = 0u; pat < GT2_MAX_PATTERNS; pat++)
@@ -886,7 +909,7 @@ static void widen_order(gt2_analysis* a, uint32_t sub) {
 
 int gt2_shape_widen(gt2_analysis* a, const gt2_edit* e) {
     const gt2_song* s = a->song;
-    gt2_base before = a->base;
+    a->grew = 0u;
     uint32_t off = e->offset;
     int derive = 0;
     if (e->kind == GT2_EDIT_SWAP) {
@@ -947,7 +970,7 @@ int gt2_shape_widen(gt2_analysis* a, const gt2_edit* e) {
         }
     }
 widened:
-    return derive || !same_base(&before, &a->base);
+    return derive || a->grew;
 }
 
 void gt2_shape_keep_channels(gt2_shape* sh, uint32_t channels) {
@@ -985,6 +1008,9 @@ int gt2_play_init(gt2_player* p, gt2_shape* shape, const gt2_song* s, uint32_t s
             q[i] = 0u;
         return r;
     }
-    gt2_play_start(p, s, shape, 0);
+    /* through a pointer: the frame path is in SRAM on the device (song_ctl.c, far_start) */
+    void (*volatile start)(gt2_player*, const gt2_song*, const gt2_shape*, const uint8_t*) =
+        gt2_play_start;
+    start(p, s, shape, 0);
     return 0;
 }
