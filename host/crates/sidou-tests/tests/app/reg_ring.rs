@@ -1628,33 +1628,35 @@ fn a_catch_up_pass_runs_one_slice() {
     }
 }
 
-/// The keys' chip first (reg_ring_set_keys, M2b Task 4): while chip A's (the keys') ramp
-/// builds DAC tables, chip B's request waits for all of them, then runs; nothing of B's ever
-/// holds A up. (Review M1's guard, a waiting request holding the other chip's ramp, gave way
-/// to this: the keys' chip is never held; the other catches up once it is quiet.)
+/// The keys' chip first (reg_ring_set_keys, M2b Task 4), within the age bound: while chip A's
+/// (the keys') ramp builds DAC tables, chip B's request waits, then, once it has waited
+/// REG_RING_YIELD_TICKS, A's ramp yields (its table in hand finished) and B's preparation
+/// runs; A's ramp goes on after and gets there.
 #[test]
-fn the_other_chips_preparation_waits_for_the_keys_ramp() {
+fn the_other_chips_preparation_waits_for_the_keys_ramp_within_the_bound() {
     let mut t = Two::new();
     unsafe { live_param_set(&mut *t.lives[0], LIVE_PARAM_DAC, 127) };
     t.tick();
     assert_eq!(t.chips.ramp[0].building, 1, "A's ramp builds a table");
     unsafe { live_param_set(&mut *t.lives[1], LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN) };
     let mut started = None;
-    for tick in 1..=400 {
+    for tick in 1..=600u32 {
         t.tick();
         if t.chips.prep_on == 1 && started.is_none() {
             started = Some(tick);
-            assert_eq!(
-                t.chips.ramp[0].now.dac, 127,
-                "B started before A's ramp was done"
-            );
         }
         if started.is_none() {
             assert_eq!(t.chips.prep_wait[1], 1, "tick {tick}: B waits");
         }
     }
-    assert!(started.is_some(), "B's preparation never started");
+    let started = started.expect("B's preparation never started");
+    println!("B's preparation started after {started} ticks");
+    assert!(
+        (REG_RING_YIELD_TICKS..=REG_RING_YIELD_TICKS + SID_DAC_BUILD_STEPS + 1).contains(&started),
+        "after {started} ticks"
+    );
     assert_eq!(t.chip(1).filter_curve, 3, "B got WORN");
+    assert_eq!(t.chips.ramp[0].now.dac, 127, "A's ramp got there");
 }
 
 /// The keys' chip preempts the other's preparation: chip B prepares WORN, and chip A's own
@@ -1808,4 +1810,34 @@ fn chip_bs_unknown_pseudo_registers_are_dropped() {
     t.block();
     let regs: Vec<u8> = order.seen.iter().map(|e| e.0).collect();
     assert_eq!(regs, [LIVE_REG_SLOT_BASE as u8]);
+}
+
+/// Review I-5: a continuous DAC sweep on the keys' chip (its ramp building a table straight
+/// after the last) cannot hold the other chip's preparation off for ever: once the
+/// request has waited REG_RING_YIELD_TICKS, the keys' ramp yields until it is served.
+#[test]
+fn a_dac_sweep_on_the_keys_chip_does_not_starve_the_others_preparation() {
+    let mut t = Two::new();
+    unsafe { live_param_set(&mut *t.lives[1], LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN) };
+    let mut done = None;
+    for tick in 0..400u32 {
+        // 0 to 127 and back, each leg longer than the whole ramp (172 ticks): A's ramp always
+        // builds, a table straight after the last.
+        if tick % 180 == 0 {
+            let v = if tick / 180 % 2 == 0 { 127 } else { 0 };
+            unsafe { live_param_set(&mut *t.lives[0], LIVE_PARAM_DAC, v) };
+        }
+        t.tick();
+        if done.is_none() && u32::from(t.lives[1].profile) == SID_CHIP_6581_WORN {
+            done = Some(tick);
+        }
+    }
+    let done = done.expect("chip B's preparation never ran under the sweep");
+    println!("chip B's preparation done after {done} ticks under the sweep");
+    // The bound, a table of the keys' to finish (4), B's own slices (11) and slack.
+    assert!(
+        done <= REG_RING_YIELD_TICKS + 4 + 11 + 8,
+        "after {done} ticks"
+    );
+    assert_eq!(t.chips.lost_resets, 0);
 }

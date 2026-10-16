@@ -7,10 +7,24 @@
  * play: chip A with no song playing, exactly as in M1; chip B while a song plays on chip A
  * (KEYS AUTO, the default); chip A always with KEYS A, where during a song a key takes a
  * voice from it (keys_route_voices_taken: the song's writes to those voices are held back, as
- * M2c's mute does), the song keeps the filter and the volume ($15-$18: the instrument's
- * writes to them are dropped) and the chip's setup (live's setup writes to it are dropped:
- * the keys sound through the song's setup). Until M2c, "a song playing" is
- * keys_route_set_song, which nothing on the device calls.
+ * M2c's mute does). While a song plays on chip A with the keys on it, chip A is the song's:
+ * live's setup writes (the character, resets, the gate reset) and its writes to $15-$18 (the
+ * filter and the volume) are dropped, and of a voice's registers only those of the voices the
+ * keys hold get through, and each voice's gate-off as the keys let it go (the keys sound
+ * through the song's setup). Until M2c, "a song playing" is keys_route_set_song, which
+ * nothing on the device calls.
+ *
+ * For M2c's song control (song_ctl), the contract:
+ * - the transport starts a song only once keys_route_ready_for_song: the keys have left chip
+ *   A (KEYS AUTO, chip B ready) or KEYS is A. Until then (a profile step just before PLAY, a
+ *   song autostarting at boot) the keys may still be on chip A, filtered as above;
+ * - every setup it gives chip A (the song's CHPA) is told with keys_route_song_setup, so the
+ *   keys are taken back to their own setup after the song (and STATUS shows chip A's);
+ * - on the falling edge of a voice's bit in keys_route_voices_taken it rewrites that voice's
+ *   registers (the keys' writes to it stop then);
+ * - a pass in which the song control writes chip A (28 entries at most) and keys_route moves
+ *   or takes chip A back (30) and chip B follows (4) is within REG_RING_WORST_PASS; M2c Task
+ *   6 measures that shared pass.
  *
  * The keys' setup travels with the keys. live's model, profile, character and envelope mode
  * are the keys' setup; the chip the keys play gets it from live, and the other chip follows
@@ -49,7 +63,8 @@ typedef struct {
     chip_ctl ctl[2];
     uint8_t song;  /* 1 while a song plays on chip A */
     uint8_t stale; /* 1 while chip A, the keys' under KEYS A, holds a song's setup */
-    uint8_t under; /* 1 while the keys play under a song (KEYS A) */
+    uint8_t under; /* 1 while the keys play under a song (on chip A) */
+    uint8_t taken; /* the voices the keys held at the last write under a song */
     void (*moved)(void* ctx, uint32_t chip); /* NULL: nobody to tell */
     void* moved_ctx;
 } keys_route;
@@ -71,9 +86,13 @@ int keys_route_prepare(void* ctx, uint8_t profile);
 void keys_route_tick(keys_route* kr);
 /* A song plays on chip A (1) or not (0): M2c's transport; until then a test hook. */
 void keys_route_set_song(keys_route* kr, int playing);
-/* The voices of chip A the keys hold while a song plays and KEYS is A (bit v: voice v), for
- * the song player to leave alone; 0 otherwise. */
+/* The voices of chip A the keys hold while a song plays with the keys on chip A (bit v: voice
+ * v; under mono sync voice 3 with voice 1), for the song player to leave alone; 0 otherwise. */
 uint8_t keys_route_voices_taken(const keys_route* kr);
+/* 1 once a song may start on chip A: the keys play chip B, or KEYS is A. */
+int keys_route_ready_for_song(const keys_route* kr);
+/* The setup the song gives chip A (its CHPA), as chip A has it from now on. */
+void keys_route_song_setup(keys_route* kr, const chip_setup* setup);
 
 #ifdef __cplusplus
 }

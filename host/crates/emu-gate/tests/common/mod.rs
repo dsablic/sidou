@@ -610,7 +610,7 @@ pub struct ChipsRender {
 /// instrument (render_host, idle), chip B made as the device's boot makes it (the keys'
 /// setup: the 6581 R4AR at character 0, the envelope instant; platform/fm1/audio.c
 /// app/keys_route.h: chip B follows the keys' setup from the first ticks) and rendered only
-/// while in use, faded in or out over the block it goes
+/// while in use (with a user, or until its envelopes are at 0), faded in or out over the block it goes
 /// in or out of use (app/chip_mix.h), mixed before the effect slots.
 pub fn render_host_chips(frames: usize, events: &[ChipEvent]) -> ChipsRender {
     use sidou_sys::*;
@@ -688,18 +688,22 @@ pub fn render_host_chips(frames: usize, events: &[ChipEvent]) -> ChipsRender {
             let n = half.len() / 2;
             sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
             r.a[i * HALF_FRAMES..i * HALF_FRAMES + n].copy_from_slice(&mono[..n]);
-            if b_want || b_on {
+            // In use with a user, or until its envelopes are at 0 after the last let go
+            // (platform/fm1/audio.c audio_fill).
+            let tails = b_on && chip_b.env.iter().any(|e| e.counter != 0);
+            let b_in = b_want || tails;
+            if b_in || b_on {
                 sid_render(&mut *chip_b, mono_b.as_mut_ptr(), n as u32);
                 r.b[i * HALF_FRAMES..i * HALF_FRAMES + n].copy_from_slice(&mono_b[..n]);
-                let fade = if b_want == b_on {
+                let fade = if b_in == b_on {
                     CHIP_MIX_FULL
-                } else if b_want {
+                } else if b_in {
                     CHIP_MIX_IN
                 } else {
                     CHIP_MIX_OUT
                 };
                 chip_mix(mono.as_mut_ptr(), mono_b.as_ptr(), n as u32, fade);
-                b_on = b_want;
+                b_on = b_in;
             }
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
         }

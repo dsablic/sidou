@@ -221,7 +221,9 @@ All notable changes are documented here. The format follows
   background (`app/keys_route.h`, `app/chip_ctl.h`), and the keys' chip goes first in the
   register ring so it behaves exactly as one chip alone. LIVE says KEYS:B while the keys play
   chip B, the status screen and the boot banner show both chips (their LCD goldens updated).
-  Until M2c a song is a test hook, so the keys always play chip A.
+  Until M2c a song is a test hook, so the keys always play chip A. With the keys on chip A
+  during a song, chip A is the song's: only the voices the keys hold are written. Chip B
+  stays in use until its envelopes are at 0, so release tails play out on it.
 - M2b: chip B renders on the device beside chip A while it is in use, mixed before the
   effect slots and faded in or out over one block; out of use it is not rendered and the
   output is chip A's bit for bit. It is made at boot with the keys' setup, prepared in the

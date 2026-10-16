@@ -184,7 +184,18 @@ fn chip_ctl_follows_a_setup_and_records_what_it_saw() {
 #[test]
 fn chip_b_holds_the_keys_setup_after_every_change() {
     let mut k = Keys::new();
-    k.ticks(20);
+    k.tick();
+    assert_eq!(
+        u32::from(k.live.other_profile),
+        LIVE_PROFILE_NONE,
+        "STATUS: chip B not made"
+    );
+    k.ticks(19);
+    assert_eq!(
+        u32::from(k.live.other_profile),
+        SID_CHIP_6581_R4AR,
+        "STATUS: chip B made"
+    );
     assert_eq!(k.live.keys_chip, 0);
     assert_eq!(
         setup(&k, 1),
@@ -403,4 +414,199 @@ fn a_move_in_a_heavy_pass_fits_the_ring_without_waiting() {
     assert_eq!(k.outs[0].full_waits + k.outs[1].full_waits, 0);
     k.block();
     assert_eq!(k.chips.lost_resets, 0);
+}
+
+/// A voice's registers as chip x has them: frequency, pulse width, control, attack, decay,
+/// sustain, release.
+fn voice_regs(k: &mut Keys, x: u32, v: usize) -> (u32, u32, u8, u8, u8, u8, u8) {
+    let s = k.chip(x);
+    let (o, e) = (&s.osc[v], &s.env[v]);
+    (
+        o.freq, o.pw, o.control, e.attack, e.decay, e.sustain, e.release,
+    )
+}
+
+/// The song's writes to chip A, as M2c's player would make them: every register of voices 1
+/// to 3 with values of its own, the filter and the volume.
+fn song_writes(k: &mut Keys) {
+    let a: *mut reg_ring_out = &mut *k.outs[0];
+    for v in 0..3u8 {
+        for (r, val) in [
+            (0, 0x34),
+            (1, 0x12 + v),
+            (2, 0x56),
+            (3, 0x07),
+            (5, 0x3a),
+            (6, 0x9c),
+            (4, 0x40),
+        ] {
+            unsafe { reg_ring_sink(a.cast(), v * 7 + r, val) };
+        }
+    }
+    unsafe { reg_ring_sink(a.cast(), 0x18, 0x1c) };
+    k.block();
+}
+
+/// Review I-1: a song started before chip B is ready (here at once, chip B not made yet) finds
+/// the keys still on chip A, which is then the song's already: keys_route_ready_for_song is 0,
+/// and the instrument's setup, filter and untaken voices stay off chip A until the keys move.
+#[test]
+fn a_song_before_chip_b_is_ready_waits_and_chip_a_is_already_the_songs() {
+    let mut k = Keys::new();
+    assert_eq!(k.kr.ctl[1].made, 0, "chip B made at once");
+    song_writes(&mut k);
+    k.song(true);
+    assert_eq!(unsafe { keys_route_ready_for_song(&*k.kr) }, 0);
+    let (fc, v2) = (k.chip(0).fc, voice_regs(&mut k, 0, 1));
+    unsafe {
+        live_knob(&mut *k.live, LIVE_KNOB_CUTOFF, -20);
+        live_button(&mut *k.live, LIVE_BUTTON_FX);
+        live_param_set(&mut *k.live, LIVE_PARAM_ATTACK, 12);
+    }
+    k.tick();
+    assert_eq!(k.live.keys_chip, 0);
+    assert_eq!(
+        (k.chip(0).fc, voice_regs(&mut k, 0, 1)),
+        (fc, v2),
+        "the song's chip changed"
+    );
+    let mut ready = None;
+    for t in 1..40 {
+        k.tick();
+        if unsafe { keys_route_ready_for_song(&*k.kr) } != 0 {
+            ready = Some(t);
+            break;
+        }
+    }
+    assert!(ready.is_some(), "never ready for the song");
+    assert_eq!(k.live.keys_chip, 1);
+    assert_eq!(
+        k.chip(1).model,
+        SID_MODEL_8580,
+        "chip B has the keys' setup (the FX button)"
+    );
+    unsafe { live_set_keys_mode(&mut *k.live, LIVE_KEYS_A) };
+    assert_eq!(
+        unsafe { keys_route_ready_for_song(&*k.kr) },
+        1,
+        "KEYS A is ready at once"
+    );
+}
+
+/// Review I-2: the setup a song gives chip A (keys_route_song_setup) is what chip A is taken
+/// back from after the song, with KEYS AUTO (chip A prepared to the keys' setup before the keys
+/// return) and KEYS A (chip A prepared back under the keys); STATUS shows it meanwhile.
+#[test]
+fn the_songs_setup_on_chip_a_is_taken_back_after_the_song() {
+    for mode in [LIVE_KEYS_AUTO, LIVE_KEYS_A] {
+        let mut k = Keys::new();
+        k.ticks(20);
+        unsafe { live_set_keys_mode(&mut *k.live, mode) };
+        k.song(true);
+        k.ticks(2);
+        let song = chip_setup {
+            profile: SID_CHIP_6581_R2 as u8,
+            controls: [0; 4],
+            gate_reset: 1,
+        };
+        unsafe { keys_route_song_setup(&mut *k.kr, &song) };
+        k.tick();
+        if mode == LIVE_KEYS_AUTO {
+            assert_eq!(
+                u32::from(k.live.other_profile),
+                SID_CHIP_6581_R2,
+                "STATUS's chip A"
+            );
+        }
+        let slices = k.outs[0].slices;
+        k.song(false);
+        k.ticks(30);
+        assert!(
+            k.outs[0].slices > slices,
+            "mode {mode}: chip A was not prepared back"
+        );
+        assert_eq!(k.live.keys_chip, 0, "mode {mode}");
+        assert_eq!(
+            u32::from(k.kr.ctl[0].has.profile),
+            SID_CHIP_6581_R4AR,
+            "mode {mode}"
+        );
+        assert_eq!(k.kr.stale, 0, "mode {mode}");
+        assert_eq!(k.chips.lost_resets, 0);
+    }
+}
+
+/// Review I-3: with KEYS A during a song, the voices the keys do not hold keep the song's
+/// registers byte for byte: through a preset (every register), the PWM's every-tick pulse
+/// widths, the envelope and pulse-width knobs and parameters, notes on the voice the keys
+/// hold and its release, and a switch to KEYS A mid-song (a move and every register again).
+/// Under mono sync the keys hold voice 3 with voice 1.
+#[test]
+fn keys_a_leaves_the_songs_other_voices_byte_for_byte() {
+    let mut k = Keys::new();
+    k.ticks(20);
+    k.song(true);
+    k.ticks(2);
+    assert_eq!(k.live.keys_chip, 1, "AUTO: the keys on chip B");
+    song_writes(&mut k);
+    let before: Vec<_> = (0..3).map(|v| voice_regs(&mut k, 0, v)).collect();
+    unsafe { live_set_keys_mode(&mut *k.live, LIVE_KEYS_A) };
+    k.ticks(2);
+    assert_eq!(k.live.keys_chip, 0, "KEYS A: back to chip A");
+    let all: Vec<_> = (0..3).map(|v| voice_regs(&mut k, 0, v)).collect();
+    assert_eq!(all, before, "the move to chip A wrote the song's voices");
+    unsafe {
+        live_set_preset(&mut *k.live, 1); // PWM BASS: its LFO writes pulse widths every tick
+        live_note_on(&mut *k.live, 60, 100);
+    }
+    k.tick();
+    let taken = unsafe { keys_route_voices_taken(&*k.kr) };
+    assert_eq!(taken.count_ones(), 1);
+    let held = taken.trailing_zeros() as usize;
+    for t in 0..20 {
+        unsafe {
+            match t {
+                3 => live_knob(&mut *k.live, LIVE_KNOB_PULSE_WIDTH, 9),
+                5 => live_param_set(&mut *k.live, LIVE_PARAM_ATTACK, 3),
+                7 => live_param_set(&mut *k.live, LIVE_PARAM_SUSTAIN, 2),
+                9 => live_param_set(&mut *k.live, LIVE_PARAM_PULSE_WIDTH, 100),
+                _ => {}
+            }
+        }
+        k.tick();
+        for v in (0..3).filter(|&v| v != held) {
+            assert_eq!(voice_regs(&mut k, 0, v), before[v], "tick {t}: voice {v}");
+        }
+    }
+    assert_eq!(k.chip(0).env[held].gate, 1, "the keys' voice plays");
+    unsafe { live_note_off(&mut *k.live, 60) };
+    k.tick();
+    assert_eq!(k.chip(0).env[held].gate, 0, "its gate-off reached chip A");
+    assert_eq!(unsafe { keys_route_voices_taken(&*k.kr) }, 0);
+    for v in (0..3).filter(|&v| v != held) {
+        assert_eq!(
+            voice_regs(&mut k, 0, v),
+            before[v],
+            "after the release: voice {v}"
+        );
+    }
+    // Mono sync (SYNC LEAD, preset 2): voice 1 and the sync source, voice 3.
+    unsafe {
+        live_set_preset(&mut *k.live, 2);
+        live_note_on(&mut *k.live, 64, 100);
+    }
+    k.tick();
+    assert_eq!(unsafe { keys_route_voices_taken(&*k.kr) }, 0b101);
+    assert_eq!(
+        voice_regs(&mut k, 0, 1),
+        before[1],
+        "voice 2 under mono sync"
+    );
+    let sync = k.live.voice[0].freq_out;
+    let _ = sync;
+    assert_ne!(
+        voice_regs(&mut k, 0, 2).0,
+        before[2].0,
+        "voice 3, the sync source, is the keys'"
+    );
 }

@@ -451,6 +451,14 @@ frame equal. Report the examples' coverage (songs, subtunes, frames).
 - **A UI hint.** When `freq_unknown` fires (a note past B-7, 0007), or init reports
   `GT2_PLAY_WARN_PITCH` (OPTS asks for another A-4), the SONG view shows a hint.
 
+**keys_route's contract (M2b review, app/keys_route.h):** the transport starts a song only
+once `keys_route_ready_for_song` (the keys have left chip A, or KEYS is A); every setup the
+song gives chip A (its `CHPA`) is told with `keys_route_song_setup`; on the falling edge of a
+voice's bit in `keys_route_voices_taken` the player rewrites that voice's registers. Measure
+the shared pass: the song control's writes to chip A (`REG_RING_SONG_PASS`, 28) in one pass
+with keys_route taking chip A back to the keys' setup or moving the keys (30) and chip B
+following (4) must stay within `REG_RING_WORST_PASS`.
+
 **Files:** `core/player/song_ctl.h`/`.c` (new, portable: the command and event rings, the
 frame clock, the edit application), `platform/fm1/audio.c`/`.h`, `app/reg_ring.c` (the swap
 re-applies the player's registers), `platform/fm1/app.ld` (`.ram_text` rules, the RAM/POOL

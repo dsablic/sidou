@@ -32,10 +32,15 @@ void* audio_sink_ctx_b(void);
  * in the register ring (reg_ring_set_keys), chip B in use while the keys play it, and the
  * LIVE view's tap on it. */
 void audio_keys(void* ctx, uint32_t chip);
-/* Chip B in use (1) or not (0): from the next block audio_fill renders it beside chip A and
- * mixes it in before the slots (app/chip_mix.h), fading it in or out over that block. Out of
- * use it is not rendered and the output is chip A's bit for bit. */
-void audio_chip_b_use(int on);
+/* Chip B's users, or'd: the keys while they play it, M2b Task 7's UI sounds. */
+#define AUDIO_B_KEYS 1u
+#define AUDIO_B_UI 2u
+/* A user takes chip B (on 1) or lets it go (0). Chip B is in use while it has a user and,
+ * after the last let go, until its three envelopes are at 0: from the next block audio_fill
+ * renders it beside chip A and mixes it in before the slots (app/chip_mix.h), fading it in or
+ * out over the block it goes in or out of use. Out of use it is not rendered and the output
+ * is chip A's bit for bit. */
+void audio_chip_b_use(uint32_t user, int on);
 /* The chip the LIVE view's tap reads (0 A, 1 B; the keys' chip), from the next block. While
  * chip B is out of use the tap reads chip A. */
 void audio_tap_chip(uint32_t chip);

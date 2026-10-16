@@ -349,6 +349,9 @@ typedef struct {
     uint8_t keys_mode;
 } live;
 
+/* live.other_profile for a chip not made yet (the views show "--"). */
+#define LIVE_PROFILE_NONE 0xffu
+
 /* The KEYS setting: which chip the keys play while a song plays on chip A. */
 typedef enum {
     LIVE_KEYS_AUTO = 0, /* chip B while a song plays, else chip A (the default) */

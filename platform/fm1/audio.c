@@ -35,8 +35,9 @@ static reg_ring_out out;
 /* The writer bound to chip B (reg_ring_out.chip 1): keys_route's (app/keys_route.h), its
  * first reset at boot and the keys while they play it. */
 static reg_ring_out out_b;
-/* Chip B in use as the main loop asks (audio_chip_b_use), and as the last block had it: the
- * interrupt fades at the block where they differ. */
+/* Chip B's users as the main loop has them (audio_chip_b_use: the keys, Task 7's UI sounds),
+ * and chip B in use as the last block had it: the interrupt fades at the block where they
+ * differ. */
 static volatile uint8_t b_want;
 static uint8_t b_on;
 /* The chip the tap reads (audio_tap_chip): 0 A, 1 B. */
@@ -83,12 +84,13 @@ void* audio_sink_ctx_b(void) {
 void audio_keys(void* ctx, uint32_t chip) {
     (void)ctx;
     reg_ring_set_keys(&chips, chip);
-    audio_chip_b_use(chip == 1u);
+    audio_chip_b_use(AUDIO_B_KEYS, chip == 1u);
     audio_tap_chip(chip);
 }
 
-void audio_chip_b_use(int on) {
-    b_want = on ? 1u : 0u;
+void audio_chip_b_use(uint32_t user, int on) {
+    uint8_t w = b_want;
+    b_want = (uint8_t)(on ? w | user : w & ~user);
 }
 
 void audio_tap_chip(uint32_t chip) {
@@ -135,9 +137,13 @@ void audio_fill(int32_t* buf) {
     reg_ring_drain(&ring, &chips);
     sid* a = reg_ring_chip_of(&chips, 0);
     sid* b = reg_ring_chip_of(&chips, 1);
-    /* Chip B is in use only once its boot reset has made it (a zeroed sid has a sample rate
-     * of 0, and must never render). */
-    uint8_t want = (uint8_t)(b_want && b->sample_rate);
+    /* Chip B is in use while it has a user, and after its last one let go until its three
+     * envelopes are at 0 (the keys' release tails play out, and nothing is frozen to come
+     * back later); only once its boot reset has made it (a zeroed sid has a sample rate of 0,
+     * and must never render). */
+    uint32_t tails = b_on ? (uint32_t)b->env[0].counter | b->env[1].counter | b->env[2].counter
+                          : 0u;
+    uint8_t want = (uint8_t)((b_want || tails) && b->sample_rate);
     if (!want && !b_on) {
         /* Chip A alone, as M1: sid_render's samples, and the tap's points while LIVE shows. */
         scope_render(&tap, a, s, AUDIO_HALF_FRAMES);

@@ -83,8 +83,8 @@ fn tap(m: &mut Machine, id: u8) {
 /// With the song hook set, the keys move to chip B: chip B goes in use, the LIVE view's tap
 /// reads it, and A4 sounds from it at 440 Hz; chip B's voices get exactly the registers chip
 /// A's got for the same key with no song (the same setup and the instrument's writes), and
-/// chip A's are left alone. The hook cleared with no key held, the keys go back to chip A and
-/// chip B out of use.
+/// chip A's are left alone. The hook cleared with no key held, the keys go back to chip A, and
+/// chip B goes out of use once its release tail has played out.
 #[test]
 fn with_a_song_a_key_sounds_from_chip_b_as_it_does_from_chip_a() {
     let Some(fw) = fixture("the keys test") else {
@@ -127,6 +127,7 @@ fn with_a_song_a_key_sounds_from_chip_b_as_it_does_from_chip_a() {
     song(&mut m, &fw, false);
     m.run_ms(100);
     assert_eq!(keys_chip(&mut m, &fw), 0, "the keys stayed on chip B");
+    m.run_ms(1500); // the release tail plays out on chip B first
     assert_eq!(m.soc.read8(fw.symbol("b_on")), 0, "chip B still in use");
 }
 
@@ -172,4 +173,64 @@ fn the_fx_button_acts_on_the_keys_setup() {
             .read32(base + ilp32::reg_ring_chips::lost_resets as u32),
         0
     );
+}
+
+/// Review I-4: the keys move back to chip A one tick after the last key-up, but chip B stays
+/// in use until its envelopes are at 0, so the note's release tail plays out on chip B (its
+/// envelope counter falls block by block after the move) and nothing of it is left frozen for
+/// a later use of chip B.
+#[test]
+fn a_release_tail_plays_out_on_chip_b_after_the_keys_move_back() {
+    let Some(fw) = fixture("the keys tail test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    song(&mut m, &fw, true);
+    m.run_ms(50);
+    m.key(A4_KEY, true);
+    m.run_ms(300); // the attack and the decay to SAW LEAD's sustain
+    song(&mut m, &fw, false);
+    m.key(A4_KEY, false);
+    m.run_ms(30);
+    assert_eq!(
+        keys_chip(&mut m, &fw),
+        0,
+        "the keys did not go back to chip A"
+    );
+    let counter = |m: &mut Machine| {
+        let s = sid_of(m, &fw, 1);
+        (0..3usize)
+            .map(|v| {
+                let e = s + (ilp32::sid::env + v * ilp32::sid_env::SIZE) as u32;
+                m.soc.read8(e + ilp32::sid_env::counter as u32)
+            })
+            .max()
+            .unwrap()
+    };
+    let b_on = |m: &mut Machine| m.soc.read8(fw.symbol("b_on"));
+    let mut trail = Vec::new();
+    for _ in 0..80 {
+        trail.push((counter(&mut m), b_on(&mut m)));
+        m.run_ms(5);
+    }
+    println!("chip B after the move (envelope, in use) every 5 ms: {trail:?}");
+    assert!(
+        trail[0].0 > 0 && trail[0].1 == 1,
+        "no tail on chip B after the move"
+    );
+    let out = trail
+        .iter()
+        .position(|t| t.1 == 0)
+        .expect("chip B never went out of use");
+    assert!(
+        trail[..out].windows(2).all(|w| w[1].0 <= w[0].0),
+        "the tail froze"
+    );
+    assert!(out > 2, "chip B went out of use with its tail");
+    assert_eq!(
+        trail[out - 1].0,
+        0,
+        "out of use before its envelopes were at 0"
+    );
+    assert!(trail[out..].iter().all(|t| t == &(0, 0)));
 }

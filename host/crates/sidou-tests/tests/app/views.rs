@@ -435,6 +435,13 @@ fn the_views_show_both_chips_and_which_the_keys_play() {
     ui.frame();
     assert_eq!(&ui.row(5)[2..24], "CHIP A 6581 R4AR  KEYS");
     assert_eq!(&ui.row(6)[2..24], "CHIP B 8580 R5        ");
+    ui.rig.live.other_profile = LIVE_PROFILE_NONE as u8;
+    ui.frame();
+    assert_eq!(
+        &ui.row(6)[2..24],
+        "CHIP B --             ",
+        "chip B not made yet"
+    );
     // The menu's KEYS (HOME from the status screen goes back to the menu): clockwise A,
     // counter-clockwise AUTO.
     ui.press(PANEL_BTN_HOME);

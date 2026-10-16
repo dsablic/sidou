@@ -42,7 +42,9 @@
  * keys_route_tick (app/keys_route.c), once a pass, at most one of: a move of the keys (the
  * gate-offs on the old chip 3, the gate reset 1 and every register on the new one 25 = 29) or
  * the keys' own chip taken back to the keys' setup after a song (its reset 4 and every
- * register again 26 = 30): REG_RING_MOVE_PASS, 30. 391 + 28 + 30 = 449.
+ * register again 26 = 30): REG_RING_MOVE_PASS, 30. 391 + 28 + 30 = 449. The chip A taken
+ * back after a song (30), chip B following (4) and the song control's 28 must not share one
+ * pass beyond that: M2c Task 6 measures that shared pass.
  * A note-on writes at most 11: a retrigger's gate-off (the sync lead steals its one voice) 1,
  * the velocity's sustain level 1, the voice's pulse width 2 (aftertouch MIDI changed since the
  * last write; the voice's own pressure starts again at 0), the cutoff 2 (the wheel MIDI moved
@@ -173,6 +175,7 @@ void reg_ring_chips_init(reg_ring_chips* c, sid_model model, uint32_t clock_hz,
     c->build_pass = 0;
     c->keys = 0;
     c->prep_wait[0] = c->prep_wait[1] = 0;
+    c->prep_age[0] = c->prep_age[1] = 0;
     c->default_8580_spent = 0;
 }
 
@@ -330,6 +333,15 @@ static int take_prepared(reg_ring_chips* c, uint32_t x, uint8_t model) {
     return 1;
 }
 
+/* Chip x's request waits a tick: its age, which bounds how long the keys' ramp may hold it
+ * (REG_RING_YIELD_TICKS). */
+static void wait_tick(reg_ring_chips* c, uint32_t x) {
+    c->prep_wait[x] = 1;
+    if (c->prep_age[x] < 255u) {
+        c->prep_age[x]++;
+    }
+}
+
 int reg_ring_prepare_step(void* ctx, uint8_t profile) {
     reg_ring_out* o = ctx;
     reg_ring_chips* c = o->chips;
@@ -337,6 +349,7 @@ int reg_ring_prepare_step(void* ctx, uint8_t profile) {
     const sid_chip_profile* p = sid_chip_profile_get(profile);
     if (!p) { /* LIVE_PREPARE_CANCEL */
         c->prep_wait[x] = 0;
+        c->prep_age[x] = 0;
         if (c->prep_on && c->prep_chip == x) {
             c->prep_on = 0;
         }
@@ -345,7 +358,7 @@ int reg_ring_prepare_step(void* ctx, uint8_t profile) {
     int keys = x == c->keys;
     if (c->prep_on && c->prep_chip != x) {
         if (!keys) {
-            c->prep_wait[x] = 1; /* the other chip's: this one waits */
+            wait_tick(c, x); /* the other chip's: this one waits */
             return 0;
         }
         c->prep_on = 0; /* the keys' chip first: the other's is dropped, and asked again */
@@ -357,14 +370,14 @@ int reg_ring_prepare_step(void* ctx, uint8_t profile) {
     }
     if (c->prep_pass || (!keys && c->build_pass)) {
         if (!keys) {
-            c->prep_wait[x] = 1;
+            wait_tick(c, x);
         }
         return 0; /* one build's work a pass: the next tick's pass takes it */
     }
     if (!same) {
         if (c->spare_ready || (!keys && c->ramp[x ^ 1u].building)) {
             c->prep_on = 0;
-            c->prep_wait[x] = 1;
+            wait_tick(c, x);
             return 0;
         }
         c->ramp[x ^ 1u].building = 0; /* the other's table, unplayed: it starts it again */
@@ -387,6 +400,9 @@ int reg_ring_prepare_step(void* ctx, uint8_t profile) {
     o->sliced = 1;
     c->prep_pass = 1;
     int done = sid_character_prep_step(&c->prep, free_dac(c));
+    if (done) {
+        c->prep_age[x] = 0; /* served */
+    }
     if (done && p->model == SID_MODEL_8580) {
         c->default_8580_spent = 1;
     }
@@ -430,7 +446,10 @@ static uint8_t character_tick(reg_ring_out* o) {
         o->character_defers++;
         return REG_RING_NO_STAGE;
     }
-    int busy = keys ? (c->prep_on && c->prep_chip == x) || c->prep_pass
+    /* The other chip's request has waited REG_RING_YIELD_TICKS: the keys' ramp starts no new
+     * table, and takes nothing back from it, until it is served (its preparation done). */
+    int yield = keys && c->prep_age[y] >= REG_RING_YIELD_TICKS;
+    int busy = keys ? (c->prep_on && c->prep_chip == x) || c->prep_pass || yield
                     : c->prep_on || c->prep_pass || c->build_pass || c->ramp[y].building ||
                           c->prep_wait[y];
     sid_dac* table = busy ? NULL : free_dac(c);

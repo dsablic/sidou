@@ -148,7 +148,7 @@ static void status_compose(screen* s, void* state, grid* g) {
             uint32_t id = x == l->keys_chip ? l->profile_req : l->other_profile;
             const sid_chip_profile* cp = sid_chip_profile_get(id);
             put(g, top, 2, x ? "CHIP B" : "CHIP A");
-            put(g, top, 9, cp ? cp->name : "?");
+            put(g, top, 9, cp ? cp->name : "--"); /* not made yet */
             if (x == l->keys_chip) {
                 put(g, top, 20, "KEYS");
             }

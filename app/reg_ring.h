@@ -182,8 +182,10 @@ typedef struct {
     uint8_t build_pass;
     /* producer: the chip the keys play (reg_ring_set_keys), which goes first */
     uint8_t keys;
-    /* producer: each chip's request waiting for the spare or the build table */
+    /* producer: each chip's request waiting for the spare or the build table, and for how
+     * many ticks (reg_ring.c, wait_tick) */
     uint8_t prep_wait[REG_RING_CHIPS];
+    uint8_t prep_age[REG_RING_CHIPS];
     /* producer: 1 once a preparation for the 8580 has spent its SID_DAC_BUILD_STEPS slices on
      * the 8580's default DACs (built on first use, sid_dac_default_step); before, every 8580
      * preparation spends them, done or not, so the count is a function of this flag and the
@@ -281,6 +283,11 @@ void reg_ring_pass_end(reg_ring_chips* c);
  * other's work yields a pass to its own, so it changes exactly as one chip alone would; the
  * other catches up while it is quiet (a stream of its ramps delays the other's for as long). */
 void reg_ring_set_keys(reg_ring_chips* c, uint32_t chip);
+/* The age bound on that priority: once the other chip's request has waited this many ticks,
+ * the keys' ramp starts no new DAC table (and takes nothing back) until the request is served,
+ * so a stream of the keys' ramps (a DAC sweep) cannot hold the other chip's preparation off
+ * for ever (M2c's PLAY waits for chip B's). The keys' own profile requests still win. */
+#define REG_RING_YIELD_TICKS 16u
 
 #ifdef SIDOU_REG_RING_RACE_HOOK
 /* Host tests only (the device never defines it): hook(ctx) runs where the audio interrupt

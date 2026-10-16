@@ -236,11 +236,12 @@ const SLOTS_WORST_SWITCH: f64 = 964.0;
 type Step = (u64, Vec<(u8, u8)>, Vec<(u8, u8)>, Option<bool>);
 
 /// Chip B in and out of use with both chips playing, against the host's render
-/// (render_host_chips) sample for sample: chip B goes in use with only its volume written
-/// (its own level, the volume step's, faded in over the block), then a note on each chip,
-/// chip B out of use while its note sounds, and A's release. Neither fade steps the output by
-/// more than chip B's own motion and a quarter of its level in any sample (a click test, on
-/// the host's render the device matches).
+/// (render_host_chips) sample for sample: chip B goes in use with only its volume written (its
+/// own level, the volume step's, faded in over the block), a note on each chip, B's release,
+/// and B out of use once its envelopes are at 0 (a DC-only chip faded out), then A's release.
+/// Neither fade steps the output by more than B's own step, 1/128 of its sample and 1 (the
+/// rounding) at any sample, the block's boundaries included (a click test, on the host's render
+/// the device matches).
 #[test]
 fn chip_b_fades_in_plays_and_fades_out_bit_exact_with_the_host() {
     let Some(fw) = fixture("the chip B mix test") else {
@@ -252,8 +253,8 @@ fn chip_b_fades_in_plays_and_fades_out_bit_exact_with_the_host() {
     let script: Vec<Step> = vec![
         (0, vec![], vec![(0x18, 0x0f)], Some(true)),
         (150, note(0, 0x1cd6, 0x41), note(0, 0x1167, 0x21), None),
-        // Out of use while B's note sounds (its level the note's), then the release on A.
-        (200, vec![], vec![], Some(false)),
+        (200, vec![], vec![(0x04, 0x20)], None),
+        (600, vec![], vec![], Some(false)),
         (100, vec![(0x04, 0x40)], vec![], None),
     ];
     let mut at = Vec::new();
@@ -271,8 +272,8 @@ fn chip_b_fades_in_plays_and_fades_out_bit_exact_with_the_host() {
     m.run_ms(200);
     let audio = m.soc.periph.audio.clone();
     let frames = audio.len() / 2;
-    // The halves played lag the blocks rendered: the first block an injection reaches is a
-    // few halves on; search the lag as the other host comparisons do.
+    // The halves played lag the blocks rendered: search the lag as the other host
+    // comparisons do.
     let mut found = None;
     'search: for silent in 0..=4usize {
         if audio[..2 * silent * HALF_FRAMES].iter().any(|&v| v != 0) {
@@ -300,33 +301,43 @@ fn chip_b_fades_in_plays_and_fades_out_bit_exact_with_the_host() {
         panic!("the device's two chips match no host render");
     };
     println!("chip B on the device vs host: silent halves {silent}, lag {lag}: bit-exact");
-    // The clicks: in each fade block, the mix's step against chip A's own.
-    for (what, e) in [("in", &events[0]), ("out", &events[2])] {
+    // The fades: chip B's share of the output (the output less chip A's own) against B's own
+    // samples, from the sample before the fade's block to its last and the one after.
+    for (what, e) in [("in", &events[0]), ("out", &events[3])] {
         let from = e.block * HALF_FRAMES;
-        let b = &host.b[from..from + HALF_FRAMES];
-        // What switching chip B in or out at once would step the output by, at worst: its
-        // largest sample in the block.
-        let level = b.iter().map(|&v| i64::from(v).abs()).max().unwrap();
-        let mixed: Vec<i32> = (from..from + HALF_FRAMES)
-            .map(|i| i32::from(host.out[2 * i]) - i32::from(host.a[i]))
-            .collect();
-        let step = mixed.windows(2).map(|w| (w[1] - w[0]).abs()).max().unwrap();
-        // B's own motion: the fade may add at most a quarter of B's level to it.
-        let own = b
-            .windows(2)
-            .map(|w| (i32::from(w[1]) - i32::from(w[0])).abs())
+        let share = |i: usize| i32::from(host.out[2 * i]) - i32::from(host.a[i]);
+        let b = |i: usize| i32::from(host.b[i]);
+        let mut worst = 0;
+        for i in from..=from + HALF_FRAMES {
+            let step = (share(i) - share(i - 1)).abs();
+            let bound = (b(i) - b(i - 1)).abs() + b(i).abs() / 128 + 1;
+            worst = worst.max(step - bound);
+            assert!(
+                step <= bound,
+                "fade {what}: sample {i} steps {step}, bound {bound}"
+            );
+        }
+        let level = (from..from + HALF_FRAMES)
+            .map(|i| b(i).abs())
             .max()
             .unwrap();
         println!(
-            "fade {what}: chip B's level {level}, its own largest step {own}, the mix's {step}"
+            "fade {what}: chip B's largest sample {level}, the steps within the bound by {}",
+            -worst
         );
-        assert!(
-            level > 100,
-            "fade {what}: chip B has no level to click with ({level})"
-        );
-        assert!(
-            i64::from(step - own).max(0) * 4 <= level,
-            "fade {what}: a step of {step} (B's own {own}) against chip B's level {level}"
-        );
+        if what == "in" {
+            assert!(
+                level > 100,
+                "fade in: chip B has no level to click with ({level})"
+            );
+        } else {
+            let envs = &host.b[from..from + HALF_FRAMES];
+            assert!(
+                envs.iter().all(|&v| i32::from(v).abs() < 64),
+                "fade out: B not DC-only"
+            );
+        }
     }
+    // Chip B stayed in use through its release: out of use only from the block it was asked to.
+    assert!(events[3].block > events[2].block + 10);
 }

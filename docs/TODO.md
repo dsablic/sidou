@@ -61,6 +61,17 @@ Follow-ups that aren't tied to a milestone task yet.
   doesn't show.
 - The user's priority (2026-10-16): finish the features first, then this pass.
 
+## A soft knee on the two chips' mix (if two loud chips clip)
+
+- **Where:** `app/chip_mix.c` (`chip_mix`), decision record 0004 ("M2b Task 3").
+- **Problem:** two chips at their loudest and in phase clip at the mix by up to 3.3 dB (one
+  chip's loudest steady sample on the bench is 20,274). A gain on the mix would change chip
+  A's level each time chip B goes in or out of use.
+- **Action (the review's proposal, if it is heard on hardware):** a hard knee on the sum:
+  identity below +-24,576, half the slope above it. About +2 to 4 instructions a sample on
+  the mix path only (chip B in use), and no golden moves (none of them has the sum above the
+  knee).
+
 ## Apply for a pid.codes PID before 1.0
 
 - **Where:** `platform/fm1/usb/usb.c`, the device descriptor
