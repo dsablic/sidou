@@ -14,11 +14,13 @@
  * How it stays safe at any power cut:
  * - every sector carries a header: an erase header (magic, format, erase count, CRC),
  *   programmed right after the erase, then a claim (the sector's sequence number, a CRC and
- *   a claim word), programmed when the sector is taken into use. A sector without a valid
- *   erase header is dirty whatever it reads, and is erased before any use;
+ *   a claim word), programmed when the sector is taken into use, with the erase header again
+ *   (the same bytes). A sector without a valid erase header is dirty whatever it reads, and is
+ *   erased before any use;
  * - a record is programmed data first, then its header, then its commit word; it counts only
- *   with a good CRC and the commit word programmed. Anything after a sector's last valid
- *   record makes the sector full: nothing is ever programmed over bytes not erased;
+ *   with a good CRC and the commit word programmed (any of its bits: see faint bits below).
+ *   Anything after a sector's last valid record makes the sector full: nothing is ever
+ *   programmed over bytes not erased, but the kill and the claim's erase header;
  * - every record carries a sequence number; the newest wins. A copy made by garbage
  *   collection keeps its record's number, and of two equal numbers the one in the newer
  *   sector wins (they hold the same bytes);
@@ -27,7 +29,16 @@
  *   sector never counts again, whatever the erase left. (The one program over programmed
  *   bytes: it only clears bits, which NOR allows.)
  * - a deletion is a tombstone record, carried forward by garbage collection while an older
- *   record of its key survives in another sector.
+ *   record of its key survives in another sector;
+ * - faint bits: a cut during a program or an erase can leave bits neither programmed nor
+ *   erased, read one way at one mount and another at the next. So every boot starts a fresh
+ *   head (no sector from before the mount takes another record: nothing written follows the
+ *   last session's last write); a commit or claim word counts with any of its bits programmed
+ *   (its CRC shows what came before it went whole), so a faint one reads the same verdict at
+ *   every mount; and a claim programs the erase header again, so a faint erase header is
+ *   programmed for good before its sector holds anything. A commit word all of whose bits a cut
+ *   left faint can still read erased at one mount and programmed at the next: the write it
+ *   ends is then old at one and new at the other (never anything else).
  *
  * The erase-ahead pool: clean, unclaimed sectors. Whoever writes claims its sectors from the
  * pool before the first byte, so no write ever waits for an erase: a small record's new head
@@ -37,11 +48,23 @@
  *
  * Wear: sectors are taken from the pool and erased lowest erase count first, and when the
  * erase counts spread more than STORE_WEAR_SPREAD, maintenance moves the coldest claimed
- * sector's live records so it cycles too. NOR parts endure about 100k erases a sector. A
+ * sector's live records so it cycles too; a live file's sectors never move, so stored files
+ * take their sectors out of the rotation. NOR parts endure about 100k erases a sector. A
  * settings save a minute for ten years is about 5.3M record writes; at about 200 records a
  * sector (records of ~16 bytes of data) that is 26k sector fills, spread over the 53 sectors
  * outside the pool's minimum (the pool's sectors rotate with the rest): under 500 erases a
- * sector.
+ * sector. Files wear far more, a save erasing as many sectors as the file has:
+ *   a 20 KB song (6 sectors) saved every 2 min for 4 h a day, one 64 KB song stored besides
+ *   (55 sectors rotate): 720 erases a day, ~13 a sector, ~21 years to 100k;
+ *   a 64 KB autosave (18 sectors) every minute for 8 h a day, two 64 KB songs stored besides
+ *   (37 sectors rotate): 8,640 a day, ~233 a sector, ~1.2 years.
+ * So large files are never autosaved by the minute, and a save of a file that has not changed
+ * since its last save is skipped (M2c Task 8). Each boot's fresh head adds at most one sector
+ * fill a boot.
+ *
+ * Partial programs: a page takes at most STORE_PAGE_PROGS programs between erases. A part with
+ * ECC would need 16-byte units each programmed once (a format rework); docs/hardware.md's open
+ * checks ask the spike (M2a Task 3b).
  *
  * Files (songs, dumps): a name, a type and up to STORE_FILE_MAX bytes, written as chunk
  * records of STORE_CHUNK bytes, three to a sector, into sectors claimed for the file alone, then
@@ -98,6 +121,13 @@
 /* The most work (store.work) one store_poll does: a sector's walk (a collection's last step, a
  * tombstone's check), or a slice; the host proxy for Task 4's STORE_POLL_WORST in instructions. */
 #define STORE_POLL_WORK 4096u
+/* The most programs one 256-byte page takes between two erases of its sector (each a partial
+ * program of the page), for a window of 16 bytes or more: records' data pieces, headers and
+ * commit words (densest: 4-byte values, 3 programs in 24 bytes), and on a sector's first page
+ * its erase header, its claim (which programs the erase header again, the same bytes) and the
+ * kill. The maximum over every sequence of records; the host tests check it. A smaller window
+ * takes more (one program a byte at 1). */
+#define STORE_PAGE_PROGS 34u
 #define STORE_FILE_IDLE_MS 5000u /* an open file's sender gone this long: the file is aborted */
 
 _Static_assert(STORE_POOL_MIN == 20u, "ceil(65,536 / 3,808) + 2");
@@ -235,14 +265,17 @@ typedef struct {
 } store;
 
 typedef struct {
-    uint32_t free; /* bytes that still fit (STORE_CAPACITY less the live records) */
+    /* Bytes that still fit: STORE_CAPACITY less the live records. It can overstate: live records
+     * scattered over many sectors (fragmentation) hold sectors whose rest only a collection
+     * frees, and a file needs whole sectors. */
+    uint32_t free;
     uint32_t live;
     uint32_t pool;  /* clean sectors ready to claim */
     uint32_t dirty; /* sectors waiting for an erase */
     uint32_t claimed;
     uint32_t erases_min;
     uint32_t erases_max;
-    uint32_t keys;
+    uint32_t keys; /* indexed keys: a deleted key's tombstone holds its slot until collected */
     uint32_t corrupt;
     uint32_t errors;
 } store_stats;
@@ -250,7 +283,8 @@ typedef struct {
 /* `window`: the most bytes a program may write (1..STORE_WINDOW_MAX; the device's write
  * window, M2a Task 4). The store is unmounted until store_mount. */
 void store_init(store* s, const store_flash* flash, uint32_t window);
-/* Starts the mount; store_poll does it in slices. */
+/* Starts the mount; store_poll does it in slices. The first small write after it starts a
+ * fresh head sector, so it needs the pool over STORE_POOL_MIN (fill the pool at boot). */
 void store_mount(store* s);
 store_state_id store_state(const store* s);
 /* Advances the mount, the record being written or maintenance, at most one flash operation.
@@ -274,7 +308,9 @@ int store_get(const store* s, uint32_t key, void* buf, uint32_t cap, uint8_t* ty
  * before then leaves the old value). STORE_BUSY: not now (a write runs, or a new head sector
  * would take the pool under its minimum); STORE_FULL: not even after garbage collection. */
 int store_put(store* s, uint32_t key, uint8_t type, const void* data, uint32_t len);
-/* Deletes `key` (a tombstone). STORE_OK also when it does not exist. */
+/* Deletes `key` (a tombstone). STORE_OK also when it does not exist. The tombstone keeps the
+ * key's slot in the index (STORE_KEYS_MAX) until garbage collection drops it, once no older
+ * record of the key survives elsewhere. */
 int store_delete(store* s, uint32_t key);
 /* Asks for a garbage collection of the best victim now, quiet or not (its erase still waits for
  * quiet). STORE_NOT_FOUND when no sector would gain, STORE_BUSY while maintenance runs. */

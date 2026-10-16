@@ -189,9 +189,18 @@ fn the_loaders_write_gate_stops_exactly_at_the_store() {
         .collect();
     assert_eq!(ranges.len(), 2, "{line}");
     let (app, rest) = (ranges[0], ranges[1]);
-    assert_eq!(app.1, STORE_LO, "the app area's range ends where the store begins");
-    assert_eq!(rest.0, STORE_HI, "the next range begins where the store ends");
+    assert_eq!(
+        app.1, STORE_LO,
+        "the app area's range ends where the store begins"
+    );
+    assert_eq!(
+        rest.0, STORE_HI,
+        "the next range begins where the store ends"
+    );
     for (lo, hi) in ranges {
-        assert!(hi <= STORE_LO || lo >= STORE_HI, "[{lo:#x}, {hi:#x}) reaches the store");
+        assert!(
+            hi <= STORE_LO || lo >= STORE_HI,
+            "[{lo:#x}, {hi:#x}) reaches the store"
+        );
     }
 }

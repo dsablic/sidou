@@ -1438,6 +1438,9 @@ impl Run {
         assert_eq!(self.rig.mount(), STORE_STATE_SIDOU);
         self.verify(&self.rig, "the end");
         self.rig.assert_clean();
+        if self.rig.window >= 16 {
+            assert!(u32::from(self.rig.sim.page_progs_max) <= STORE_PAGE_PROGS);
+        }
     }
 }
 
@@ -2479,6 +2482,9 @@ impl FileRun {
         assert_eq!(self.rig.mount(), STORE_STATE_SIDOU);
         self.verify(&self.rig, "the end");
         self.rig.assert_clean();
+        if self.rig.window >= 16 {
+            assert!(u32::from(self.rig.sim.page_progs_max) <= STORE_PAGE_PROGS);
+        }
     }
 }
 
@@ -2897,4 +2903,73 @@ fn a_mounts_polls_stay_within_a_slice() {
         most = (most.0.max(slice_work), most.1.max(finish));
     }
     println!("mount polls: {} at most, {} to finish", most.0, most.1);
+}
+
+/// The most programs a page takes between erases (STORE_PAGE_PROGS, for windows of 16 or more):
+/// the densest records there are (values of 1 to 8 bytes, tombstones), collections, files.
+#[test]
+fn a_page_takes_at_most_store_page_progs_programs_between_erases() {
+    for window in [16u32, 64, 256] {
+        let mut r = fresh(80 + u64::from(window), window);
+        let mut rng = Rng::new(80);
+        for i in 0..6_000u32 {
+            let k = rng.below(40) as u32;
+            if rng.chance(15) {
+                assert_eq!(r.delete_now(k), STORE_OK);
+            } else {
+                let n = 1 + rng.below(8) as usize;
+                assert_eq!(r.put_now(k, &rng.bytes(n)), STORE_OK);
+            }
+            if i % 700 == 0 {
+                assert_eq!(r.file_now("F", &content(u64::from(i), 9_000)), STORE_OK);
+                r.maintain();
+            }
+        }
+        println!(
+            "window {window}: {} programs in a page at most",
+            r.sim.page_progs_max
+        );
+        assert!(u32::from(r.sim.page_progs_max) <= STORE_PAGE_PROGS);
+        assert!(u32::from(r.sim.page_progs_max) >= STORE_PAGE_PROGS - 6);
+        r.assert_clean();
+    }
+}
+
+/// A cut during a blank region's very first erase: the part's pre-program to 0 can leave the
+/// sector neither blank nor SIDOU's, so the region mounts FOREIGN (nothing written then, as for
+/// any foreign region, until the user confirms a format: Task 5's screen must expect it).
+#[test]
+fn a_cut_during_a_blank_regions_first_erase_can_mount_foreign() {
+    let mut foreign = 0;
+    for seed in 0..16 {
+        let mut r = Rig::new(Sim::new(90 + seed), 256);
+        r.sim.faint = true;
+        assert_eq!(r.mount(), STORE_STATE_BLANK);
+        r.sim.cut_at = Some(0);
+        r.maintain();
+        assert!(r.sim.dead);
+        r.sim.dead = false;
+        r.sim.cut_at = None;
+        r.reset();
+        let state = r.mount();
+        assert!(
+            state == STORE_STATE_BLANK || state == STORE_STATE_FOREIGN,
+            "seed {seed}: {state}"
+        );
+        if state == STORE_STATE_FOREIGN {
+            foreign += 1;
+            let ops = r.sim.ops;
+            r.maintain();
+            assert_eq!(r.put(1, b"x"), STORE_FOREIGN);
+            assert_eq!(r.sim.ops, ops, "nothing written");
+            unsafe { store_format(&mut *r.st) };
+        }
+        r.maintain();
+        assert_eq!(r.put_now(1, b"x"), STORE_OK);
+        r.reset();
+        assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        assert_eq!(r.get(1).as_deref(), Some(&b"x"[..]));
+        r.assert_clean();
+    }
+    assert!(foreign > 0, "no cut left the region foreign");
 }

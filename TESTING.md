@@ -864,7 +864,9 @@ ending where the update protocol's staging area (`OTA_AREA`) begins, above
 the app slot (`app.ld`'s XIP region plus 0x4000 and 0x120), and inside the
 package's VM descriptor, read from a package `sidou-pack` builds with
 stand-in SDK inputs; and that the guard band (the last page of every
-sector) covers where an update record would sit.
+sector) covers where an update record would sit; and that the update
+loader's write gate (`platform/fm1/loader/loader.c` `FL_RANGE_OK`) stops
+exactly at the store's ends.
 
 ### Store
 
@@ -875,50 +877,75 @@ simulated NOR flash with the part's semantics: a program only clears bits,
 within one 256-byte page; an erase sets a sector to 0xFF. The simulator
 also answers a share of operations with STORE_LATER (the core must retry),
 and records what the store must never do: program the guard band, program
-bytes that are not erased (the kill's zeros over a header's magic
-excepted), program across a page, use a sector whose erase was cut before
-erasing it again, program from a source in flash, or run more than one
-flash operation in a `store_poll`. The tests:
-- **power loss:** random puts, deletes, collections and refills with every
-  window size; for every flash operation, the region as a cut during it
-  would leave it (a program that cleared any subset of its bits; an erase
-  that left all 0xFF, a mix of old bytes and 0xFF, or a part erased) is
-  mounted and every key must read its value from before the interrupted
-  write or after it; every eighth fork, and every fork of an erase, also
-  refills and writes on. Real cuts at random points carry on from the torn
+over programmed bytes anything but the bytes already meant there (a claim
+programs the erase header again) or the kill's zeros over a header's magic,
+program across a page, use a sector whose erase was cut before erasing it
+again, program from a source in flash, run more than one flash operation in
+a `store_poll`, or do more than `STORE_POLL_WORK` of work in one (`store.work`,
+bytes read and keys compared: the host proxy for Task 4's instruction gate).
+It also counts each page's programs between erases. In **faint** mode a cut
+program or erase leaves bits neither programmed nor erased, which every
+mount reads anew at random; a cut erase may fall in the part's pre-program
+to 0 or in the erase proper, bit by bit. The tests:
+- **power loss:** random puts, deletes, collections and refills with windows
+  of 1, 3, 4, 8, 12, 16, 64, 100 and 256 bytes, faint bits for half the
+  seeds; for every flash operation, the region as a cut during it would
+  leave it (a program that cleared any subset of its bits; an erase that left
+  all 0xFF, a mix of old bytes and 0xFF, or a part erased; in faint mode,
+  faint bits) is mounted and every key must read its value from before the
+  interrupted write or after it; every eighth fork, and every fork of an
+  erase, also refills, writes, and mounts again, and every key must read what
+  the first mount read. Real cuts at random points carry on from the torn
   state. A directed test collects a deletion's sector before the sector of
-  the value it deleted. The long version runs thousands of seeds (minutes):
+  the value it deleted. The long version runs thousands of seeds (minutes),
+  every window size from 1 to 256 and faint bits for three seeds in four:
   `cargo test --release -p sidou-tests --test app store::power_loss_long -- --ignored`;
+- **faint bits:** a commit word read programmed at one mount and erased or
+  half programmed at the next loses nothing written after it; a faint erase
+  header is programmed again before its sector takes records; a faint claim
+  word loses nothing written after it;
 - the pool never under its minimum (a write that would take it there is
   refused with STORE_BUSY), and a quiet refill brings it to its target;
 - erase counts within 8 of each other after 10,000 erases, cold data
   included;
 - a full key index refuses cleanly, and a deletion makes room after the
-  collections;
+  collections; an open file's fresh key is kept for it;
 - foreign data mounts foreign and nothing is written until a format; a
-  newer format version is foreign too;
+  newer format version is foreign too; a cut during a blank region's first
+  erase can mount foreign;
 - a format 1 fixture (`tests/data/store-v1.bin`) mounts to the same values
   (`SIDOU_STORE_FIXTURE_UPDATE=1` writes it, under format 1 only);
 - random regions, and real ones with random bits flipped, mount without a
   crash (run them under the sanitizers) and never make the store break a
   rule above;
 - the bytes on flash are the documented format;
+- **bounds:** a mount's polls check at most a slice (`STORE_MOUNT_SLICE`, or
+  one record alone) on blank, random, foreign, fixture and full regions; a
+  page takes at most `STORE_PAGE_PROGS` (34) programs between erases at
+  windows of 16 or more, with the densest records there are (also checked at
+  the end of every power-loss run);
 - **files:** a cut at every operation of file writes, replacements,
-  deletions and renames among small writes, collections and refills leaves
-  each file its old bytes or its new ones, whole (its CRC checked), never
-  neither and never a mix, and a rename never half done; real cuts over
-  long runs with files up to 64 KiB (the long version:
-  `store::files_power_loss_long -- --ignored`); a file of exactly 64 KiB in
-  18 sectors; `store_file_begin` claims `ceil(length / 3744)` sectors (and a
+  deletions, renames, aborts and short ends (some while a sector's claim is
+  half programmed) among small writes, collections and refills leaves each
+  file its old bytes or its new ones, whole (its CRC checked), never neither
+  and never a mix, and a rename never half done; every 32nd fork is mounted
+  again and must read the same; real cuts over long runs with files up to
+  64 KiB (the long version: `store::files_power_loss_long -- --ignored`); an
+  abort or a short end mid-claim, at windows of 1, 4, 8 and 16, leaves the
+  sector to be erased, never claimed over; a file of exactly 64 KiB in 18
+  sectors; `store_file_begin` claims `ceil(length / 3744)` sectors (and a
   head for the FILE record if the head has no room) and writes nothing; no
   erase between a file's begin and its end; the pool short gives STORE_BUSY
   with nothing written, and the same begin succeeds after a refill; a file
-  larger than the free space is refused before anything is written; reads
-  at every offset and length; the directory in name order;
-  `store_file_write`'s back-pressure with offers of every size from 1 to
-  1,000 bytes; a replacement leaves the old file until the new commits;
-  aborted and short files leave nothing; small writes go on while a file is
-  open.
+  larger than the free space is refused before anything is written, and a
+  replacement is checked against the space the old file frees (three
+  near-64 KiB songs, one re-saved at 64 KiB); reads at every offset and
+  length; the directory in name order; `store_file_write`'s back-pressure
+  with offers of every size from 1 to 1,000 bytes; a replacement leaves the
+  old file until the new commits; aborted and short files leave nothing;
+  small writes go on while a file is open; an open file whose sender goes
+  quiet for `STORE_FILE_IDLE_MS` is aborted (not while the store is the slow
+  one), and a format ends an open file.
 
 ### Package tests
 

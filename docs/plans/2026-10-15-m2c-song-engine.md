@@ -640,6 +640,12 @@ still ≤ 60 with locks on every row.
   options, chip A's and the keys' setups, slots, locks), streamed through the store:
   `store_file_begin` claims the file's sectors first (M2a Task 3), then the writer streams.
   `STORE_BUSY` follows M2a Task 4's rule (wait for quiet, then held erases after 2 s).
+- **Saves and wear (a constraint):** a save erases as many sectors as the song has (a 64 KB
+  song, 18). Never autosave a large song by the minute (a 64 KB autosave every minute, 8 h a
+  day, wears the store out in about 1.2 years, `docs/reference/store-format.md`, "Wear"), and
+  skip a save, explicit or background, when the song has not changed since its last save
+  (a SAVE of an unchanged song toasts `SONG SAVED` and writes nothing). Any autosave added
+  later saves on a change, at most every few minutes, and not for songs over a few sectors.
 - **Edits are frozen while a save streams:** from `store_file_begin` to `store_file_end`
   (about 3 s for a 64 KiB song at 64 bytes a window, less for most), every edit the song
   views or MIDI would make is refused with the toast `SAVING`, and the views show `SAVING`

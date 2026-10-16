@@ -424,6 +424,16 @@ window (`flash_plain_window`, Felucca's `fl_plain_window_init`, as the SDK's
 `fm1_xip_ptr` as stored. The update protocol's reads (`ota_fread`) go
 through `fl_read_ram` with XIP off, so the window does not change them.
 
+**Partial programs.** The store programs a 256-byte page up to 34 times
+between two erases of its sector (`STORE_PAGE_PROGS`, for write windows of
+16 bytes or more): record data, headers and commit words, each its own
+program. Twice it programs bytes already programmed: a claim programs the
+sector's erase header again, the same bytes (so bits a cut left faint are
+programmed for good), and the kill programs the magic to zero. A part with
+ECC would need a format rework into 16-byte units each programmed once
+([store-format.md](reference/store-format.md), "Partial programs and ECC").
+All three are open checks below.
+
 Sources: `platform/fm1/loader/ldr_core.c` (`LDR_APP_*`, `LDR_REC_*`,
 `LDR_DATA_*` and the record scan), `platform/fm1/src/ota.c` (`OTA_AREA`,
 `OTA_RES`), `platform/fm1/hal/fm1_flash.h` (Felucca's ranges and
@@ -443,6 +453,9 @@ descriptors), `platform/fm1/app.ld` (the app slot).
 | Flash program and erase times (M2a Task 3b) | The store's write windows and held erases are sized from them; fm1-emu's flash is instantaneous. Also partial programs per page, reprogramming, ECC, page erase, erase suspend, and whether the stock firmware writes the store's range. | The flash spike ([hardware-test.md](hardware-test.md) section 12); the table and the decision rule are in "The flash part's timings" above. |
 | Unknown latencies | Divide latency, IRQ entry latency, `IPMASK` semantics, and whether IRQ priorities have 4 or 8 levels | Microbenchmarks on the device. |
 | The SPL and the VM descriptor | The package declares `[0x93000, 0xE9000)` as the SDK's VM region, which holds the store (see "Flash map"). Whether the stock SPL or stock V15 acts on it is not documented. | M2a Task 3b: a test pattern in the store survives a round trip through stock V15 and back. |
+| Partial programs per page | The store programs a page up to 34 times between erases (`STORE_PAGE_PROGS`) and programs bytes already programmed twice (the claim's erase header again, the kill). Some NOR parts limit partial programs per page or programs over programmed bits. | M2a Task 3b, from the datasheet and the spike: (a) any limit on partial programs per page, or on reprogramming; the spike programs one page in 34 programs and reads it back. |
+| Zeros over zeros | The claim programs an erase header's bytes again, the same bytes (zeros over zeros), to fix bits a cut left faint. | M2a Task 3b: (b) whether programming 0 over bits already 0 is within the part's spec; the spike programs a page's bytes again 100 times and reads them back. If not, the claim stops reprogramming, and every clean sector a boot finds is erased again before use instead (at most 22 erases a boot). |
+| ECC | A part with ECC would need the store's format reworked into 16-byte units each programmed once. | M2a Task 3b: (c) whether the part has ECC (datasheet, SFDP); the spike programs one byte of a 16-byte unit, then another, and reads both back. |
 | Second core RAM issue | Some units misread RAM on core 1. | Felucca's core-1 self-test, before SIDOU ever uses core 1. |
 
 [hardware-test.md](hardware-test.md), sections 11 and 12, turn these into checklist
