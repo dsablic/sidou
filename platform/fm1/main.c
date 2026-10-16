@@ -47,7 +47,10 @@ void fm1_cstart(void);
 /* fm1_wdt_arm: 0x0A is 1 s, each step doubles it. */
 #define WDT_TIMEOUT 0x0Du
 #define TICK_MS (1000u / LIVE_TICK_HZ)
-/* live_tick catches up at most this many ticks in one pass (reg_ring.h's worst pass). */
+/* live_tick catches up at most this many ticks in one pass (reg_ring.h's worst pass). A pass
+ * runs at most one slice of the spare chip's preparation however many ticks it catches up
+ * (reg_ring_pass_end, from audio_commit at the pass's end): two would be 2 x 40k on top of a
+ * view's 68k, past the 120k poll allowance. */
 #define TICK_CATCH_UP 2u
 
 static int32_t abuf[2u * AUDIO_HALF_WORDS] __attribute__((aligned(4)));

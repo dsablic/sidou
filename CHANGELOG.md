@@ -207,8 +207,8 @@ All notable changes are documented here. The format follows
 - M2b: a profile or model step (the CHIP view's ALGORITHM, the FX button, CC 25, CC 85)
   prepares the new chip in the background, one slice of at most 40,000 instructions a 10 ms
   tick (7 slices, or 11 when the character's DACs are custom, 4 more the first time the 8580
-  is asked for after power-on), while the old chip plays on,
-  and swaps it in when it is whole. No main-loop pass is over the poll allowance any more (the
+  is asked for after power-on; one slice a main-loop pass at most), while the old chip plays
+  on, and swaps it in when it is whole. No main-loop pass is over the poll allowance any more (the
   reset's pass was up to 471.5k), so a note arriving during a step keeps the normal latency.
   The screens show the model asked for at once.
 - M2b: the register ring carries two chips, A and B (chip B's registers 0x40..0x58 and

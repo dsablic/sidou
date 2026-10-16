@@ -152,9 +152,10 @@ void sid_character_change(sid* s, const sid_character* c, sid_dac* dac);
 /* sid_init and then sid_character_apply, in slices for a main loop that must not stall (the
  * spare chip's preparation, app/reg_ring.h): the chip it leaves is theirs bit for bit, and
  * no slice takes more than about REG_RING_PREPARE_SLICE (40,000) instructions on the pi32v2
- * (emu-gate's screen.rs measures every one). In order: the model's default DACs a
- * sid_dac_job step a slice if they are not built yet (sid_dac_default_step: on the device the
- * 8580's, once after power-on, 4 slices), the start of sid_init and the
+ * (emu-gate's screen.rs measures every one). In order: the slices the caller asks for on the
+ * model's default DACs (sid_dac_default_step, a sid_dac_job step a slice on the device; the
+ * register ring asks for SID_DAC_BUILD_STEPS at its first 8580 preparation, the 8580's
+ * tables being built on first use), the start of sid_init and the
  * combined waveforms, then the first filter row SID_PREP_ROW_G entries a slice (tangents),
  * the second SID_PREP_ROW_X a slice (angles), the DACs a sid_dac_job step a slice when the
  * character's are custom, and the stage committed in the last slice. The controls may move
@@ -174,6 +175,7 @@ typedef struct {
     uint16_t at;   /* the next FC value of the row being built */
     uint8_t model; /* a sid_model */
     uint8_t phase; /* the next piece (sid_character.c) */
+    uint8_t default_left; /* slices still to spend on the model's default DACs */
 } sid_character_prep;
 
 /* The controls (not the profile) from now on: age, thump and bleed until the last slice, the
@@ -181,9 +183,11 @@ typedef struct {
 void sid_character_prep_update(sid_character_prep* p, const sid_character* c);
 
 /* Starts preparing s (main context, not rendering, and not again until done or abandoned)
- * for the model and the character; nothing is built yet. */
+ * for the model and the character; nothing is built yet. default_steps (at most
+ * SID_DAC_BUILD_STEPS) slices go on the model's default DACs first, done or not. */
 void sid_character_prep_start(sid_character_prep* p, sid* s, sid_model model,
-                              uint32_t clock_hz, uint32_t sample_rate, const sid_character* c);
+                              uint32_t clock_hz, uint32_t sample_rate, const sid_character* c,
+                              uint32_t default_steps);
 /* One slice. dac is a table for the character's DACs, taken by the slice that starts them
  * (only when they are custom: sid_character_dac_custom), and then built into over the
  * following slices: never a table a chip renders from or will (sid.h, sid_set_dac). NULL
@@ -193,8 +197,7 @@ int sid_character_prep_step(sid_character_prep* p, sid_dac* dac);
 /* 1 once the chip is whole. */
 int sid_character_prep_done(const sid_character_prep* p);
 /* The slices sid_character_prep_step takes for the model and the character when every one
- * that needs a DAC table gets one and the model's default DACs are built (else
- * SID_DAC_BUILD_STEPS more). */
+ * that needs a DAC table gets one, with no default_steps (add them). */
 uint32_t sid_character_prep_slices(sid_model model, const sid_character* c);
 
 /* The ramp from what the chip has to what was asked, a tick at a time: the register ring's

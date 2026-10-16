@@ -119,20 +119,30 @@ int live_sid_prepare(void* ctx, uint8_t profile) {
         t->prep_on = 0;
         return 0;
     }
-    if (!t->prep_on || t->prep_profile != profile) {
+    int same = t->prep_on && t->prep_profile == profile;
+    if (same && sid_character_prep_done(&t->prep)) {
+        return 1;
+    }
+    if (!same) {
         sid_character want = t->ramp.target;
         want.profile = (uint8_t)(profile + 1u);
         t->ramp.building = 0;
+        uint32_t defaults = p->model == SID_MODEL_8580 && !t->default_8580_spent
+                                ? SID_DAC_BUILD_STEPS
+                                : 0u;
         sid_character_prep_start(&t->prep, t->spare, (sid_model)p->model, t->clock_hz,
-                                 t->sample_rate, &want);
+                                 t->sample_rate, &want, defaults);
         t->prep_on = 1;
         t->prep_profile = profile;
-    } else if (sid_character_prep_done(&t->prep)) {
-        return 1;
     } else {
         sid_character_prep_update(&t->prep, &t->ramp.target);
     }
-    return sid_character_prep_step(&t->prep, host_free_dac(t));
+    t->prep_tick = 1;
+    int done = sid_character_prep_step(&t->prep, host_free_dac(t));
+    if (done && p->model == SID_MODEL_8580) {
+        t->default_8580_spent = 1;
+    }
+    return done;
 }
 
 /* The spare live_sid_prepare made whole for a reset to model and the profile just sent, into
@@ -165,7 +175,10 @@ void live_sid_sink(void* ctx, uint8_t reg, uint8_t value) {
         live_char_store(&t->ramp.target, reg, value);
     } else if (reg == LIVE_REG_CHAR_TICK) {
         sid_character_stage st;
-        sid_dac* table = t->prep_on ? NULL : host_free_dac(t);
+        /* No table while preparing, nor in the tick that ran a slice (the last one's
+         * included): reg_ring.c's character_tick, a tick standing for a pass. */
+        sid_dac* table = t->prep_on || t->prep_tick ? NULL : host_free_dac(t);
+        t->prep_tick = 0;
         if (sid_character_ramp_tick(&t->ramp, t->chip, table, &st)) {
             sid_character_commit(t->chip, &st);
         }

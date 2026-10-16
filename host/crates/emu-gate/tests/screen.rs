@@ -2145,13 +2145,13 @@ fn chip_resets_at_full_character_stay_within_the_poll_allowance() {
     let out = fw.symbol("out");
     let out_u32 = |m: &mut Machine, field: usize| m.soc.read32(out + field as u32);
     let mut costs: Vec<(String, u64, u64)> = Vec::new();
-    // core/sid/sid_dac.c's shared_state: 2 once a model's default DACs are built. The 8580's
-    // are built a step a slice by its first preparation (sid_dac_default_step).
-    let defaults = fw.symbol("shared_state");
+    // The register ring's default_8580_spent: the first 8580 preparation spends
+    // SID_DAC_BUILD_STEPS slices on its default DACs (sid_dac_default_step).
+    let spent = fw.chips() + sidou_sys::ilp32::reg_ring_chips::default_8580_spent as u32;
     let mut run = |m: &mut Machine, what: String, want: u32, act: &dyn Fn(&mut Machine)| {
         let slices = out_u32(m, sidou_sys::ilp32::reg_ring_out::slices);
         let model = unsafe { (*sidou_sys::sid_chip_profile_get(want)).model };
-        let built = m.soc.read32(defaults + 4 * u32::from(model)) == 2;
+        let built = u32::from(model) != sidou_sys::SID_MODEL_8580 || m.soc.read8(spent) != 0;
         let calls = m.watched_calls.len();
         let (_, pass) = start_cost(m, 500, act);
         assert_eq!(u32::from(profile(m, &fw)), want, "{what}");
@@ -2221,6 +2221,52 @@ fn chip_resets_at_full_character_stay_within_the_poll_allowance() {
         out_u32(&mut m, sidou_sys::ilp32::reg_ring_out::unprepared_resets),
         1,
         "a reset was prepared at once"
+    );
+}
+
+/// The DACs moved during a profile step (review I1): CC 87 sweeping every 10 ms while CC 85
+/// steps R4AR to WORN and back on LIVE with a chord of noise held (its busiest view), each
+/// step's swap pass among them, at several phases of the sweep against the step; every
+/// main-loop pass within the poll allowance, so no pass runs a slice and a ramp table step
+/// together.
+#[test]
+fn a_dac_sweep_during_a_profile_step_holds_every_pass_within_the_allowance() {
+    let Some((_, fw)) = fixture("the profile step and DAC sweep test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    m.midi(&[0xB0, 20, 64, 0xB0, 79, 127]); // noise, full sustain: LIVE's busiest
+    for k in CHORD {
+        m.key(k, true);
+    }
+    m.run_ms(300);
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let mut worst = 0;
+    let mut dac = 0u8;
+    for (phase, profile) in [
+        (0u64, 127u8),
+        (3, 64),
+        (7, 127),
+        (11, 64),
+        (13, 127),
+        (17, 64),
+    ] {
+        let from = m.passes.len();
+        m.run_ms(phase);
+        m.midi(&[0xB0, 85, profile]);
+        for _ in 0..30 {
+            dac = if dac >= 120 { 0 } else { dac + 24 };
+            m.midi(&[0xB0, 87, dac]);
+            m.run_ms(10);
+        }
+        let pass = m.passes[from..].iter().copied().max().unwrap_or(0);
+        println!("profile step CC 85 {profile} at phase {phase} ms: the busiest pass {pass}");
+        worst = worst.max(pass);
+    }
+    println!("profile step with the DACs sweeping: the busiest pass {worst}");
+    assert!(
+        worst <= common::POLL_INSTRUCTIONS,
+        "a pass took {worst} instructions, over the poll allowance"
     );
 }
 
@@ -2581,5 +2627,13 @@ const _: () = assert!(CHIP_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(CHIP_INPUT + CHIP_PASS <= common::POLL_INSTRUCTIONS);
 // A pass that runs a slice of the spare's preparation (reg_ring_prepare_step) and the busiest
 // view's work still fits.
-const _: () = assert!(LIVE_WORST_POLL + REG_RING_PREPARE_SLICE <= common::POLL_INSTRUCTIONS);
-const _: () = assert!(CHIP_INPUT + CHIP_PASS + REG_RING_PREPARE_SLICE <= common::POLL_INSTRUCTIONS);
+// One slice a pass, however many ticks a pass catches up (reg_ring_pass_end, platform/fm1/
+// main.c TICK_CATCH_UP), and no ramp table step in it.
+const PREPARE_SLICES_PER_PASS: u64 = 1;
+const _: () = assert!(
+    LIVE_WORST_POLL + PREPARE_SLICES_PER_PASS * REG_RING_PREPARE_SLICE <= common::POLL_INSTRUCTIONS
+);
+const _: () = assert!(
+    CHIP_INPUT + CHIP_PASS + PREPARE_SLICES_PER_PASS * REG_RING_PREPARE_SLICE
+        <= common::POLL_INSTRUCTIONS
+);

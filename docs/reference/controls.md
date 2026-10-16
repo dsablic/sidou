@@ -103,7 +103,8 @@ frames show it.
 The slot in focus is the selected slot, the one SCL selects and the EDIT shortcut turns:
 SELECT onto a slot selects it (and the toast says so, SLOT MOD), and SCL on a slot moves the
 focus with it. A profile changes from the next 10 ms tick, as its CC does (a chip reset, once
-the new chip is prepared, 70 to 110 ms later: held notes attack again on the new chip); the
+the new chip is prepared, 70 to 110 ms later, the first 8580 after power-on about 150 ms:
+held notes attack again on the new chip); the
 page shows it at once, the model follows it, and the FX button still toggles the model. The
 character's controls glide, as from MIDI ([Chip character](#chip-character)). Everything else
 plays as on LIVE: the note keys, MASTER, OCT-/OCT+, FX, SAVE (MIDI learn, which picks the
@@ -186,8 +187,10 @@ playing chip without a reset, and glide there rather than jump, so they don't cl
 the next 10 ms tick, age and thump take 0.32 s from 0 to 127, the bleed 1.27 s, the DACs
 1.72 s. A
 profile applies from the next tick: the new chip is prepared in the background while the old
-one plays on, and swaps in once it is whole, 70 to 110 ms later (the CHIP view and the toast
-show the choice at once). All of them keep the last value received and
+one plays on, and swaps in once it is whole, 70 to 110 ms later (the first 8580 after
+power-on about 150 ms; the CHIP view and the toast show the choice at once). Changes faster
+than that, a profile every 70 ms or less, restart the preparation each time: the chip swaps
+once they stop. All of them keep the last value received and
 survive preset and model changes. Every control at 0 is the profile as reSIDfp has it (the
 worn 6581 aside, which goes beyond reSIDfp on purpose).
 

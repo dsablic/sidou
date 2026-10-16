@@ -1107,10 +1107,12 @@ patch's value up or down around 64; SIDOU does not.
   hold: after it, the next program change loads the preset's range again. Neither CC 121
   nor a gap in the input changes the range.
 - **Chip model:** a change resets the chip, so it waits for the next 10 ms tick and takes
-  the last value received. The new chip is prepared in the background a slice a tick, about
-  70-110 ms, while the old one plays on, and swaps in when it is whole: a stream of changes
-  never holds the instrument up, and the last one received is the chip you get. The FX
-  button asks for a change the same way.
+  the last value received. The new chip is prepared in the background a slice a tick, 70 to
+  110 ms (the first 8580 after power-on about 150 ms), while the old one plays on, and swaps
+  in when it is whole: a stream of changes never holds the instrument up, and the last one
+  received is the chip you get. A stream faster than that (a change every 70 ms or less)
+  restarts the preparation each time, so the chip swaps only once it stops. The FX button
+  asks for a change the same way.
 - **Character:** the profile (CC 85) is a chip and a model: a change resets the chip as a
   model change does, and the model follows it. The model (CC 25, the FX button) selects
   the 8580 R5 profile, or goes back to the last 6581 profile. Age/heat, DAC sloppiness,

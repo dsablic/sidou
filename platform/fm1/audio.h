@@ -25,7 +25,8 @@ scope* audio_scope(void);
 /* The context for reg_ring_sink (a reg_ring_out*), for live. Before audio_start, a full ring
  * is drained at once; after it, the producer sleeps until the interrupt has made room. */
 void* audio_sink_ctx(void);
-/* Makes the main loop's writes so far visible to the interrupt (once per pass). */
+/* Makes the main loop's writes so far visible to the interrupt (once per pass), and ends the
+ * pass for the spare chip's preparation (reg_ring_pass_end: a slice a pass). */
 void audio_commit(void);
 /* Register writes queued and not yet applied by the interrupt (reg_ring_used). */
 uint32_t audio_queued(void);

@@ -135,7 +135,10 @@ enum { PREP_DEFAULT_DAC, PREP_ROW_G, PREP_ROW_X, PREP_DAC, PREP_DONE };
 #define ROW_SLICES(n) ((SID_FC_STEPS + (n) - 1u) / (n))
 
 void sid_character_prep_start(sid_character_prep* p, sid* s, sid_model model,
-                              uint32_t clock_hz, uint32_t sample_rate, const sid_character* c) {
+                              uint32_t clock_hz, uint32_t sample_rate, const sid_character* c,
+                              uint32_t default_steps) {
+    p->default_left = (uint8_t)(default_steps < SID_DAC_BUILD_STEPS ? default_steps
+                                                                     : SID_DAC_BUILD_STEPS);
     p->s = s;
     p->c = *c;
     p->table = NULL;
@@ -183,8 +186,12 @@ int sid_character_prep_step(sid_character_prep* p, sid_dac* dac) {
     switch (p->phase) {
     case PREP_DEFAULT_DAC:
         /* sid_init_begin points the chip at the model's default DACs: on the device the
-         * 8580's are built on first use, a step a slice, not all in one. */
-        if (!sid_dac_default_ready(p->model == SID_MODEL_6581)) {
+         * 8580's are built on first use, a step a slice, not all in one. The caller says how
+         * many slices to spend here, whether or not a step is left to do (on hosts the first
+         * builds the whole table, and another preparer may have built it), so the count is
+         * the same everywhere. */
+        if (p->default_left) {
+            p->default_left--;
             sid_dac_default_step(p->model == SID_MODEL_6581);
             return 0;
         }

@@ -304,8 +304,12 @@ The exception in "Cost" is gone: no main-loop pass is over the poll allowance an
   profile restarts the preparation (the newest wins); for the same one it goes on, taking the
   controls as they move (the DACs' setting until the filter rows are done, the rest until the
   last slice), and the ramp takes the chip the rest of the way after the swap. A request back
-  to the chip's own profile drops it. While a preparation runs the ramp builds no DAC table
-  (one it was building is dropped), so the spare always has a free one. The screens show the
+  to the chip's own profile drops it; requests faster than a preparation (every 70 ms or
+  less) restart it each time, so the chip swaps only once they stop. While a preparation
+  runs the ramp builds no DAC table (one it was building is dropped), so the spare always has
+  a free one; and a pass runs one build's work at most: one slice a pass however many ticks
+  it catches up (`reg_ring_pass_end`), and no ramp table started in a pass that ran a slice,
+  the swap's last one included. The screens show the
   model asked for at once (as PROFILE always showed the profile asked for), so the toast and
   the raster cover the preparation.
 - **The slices** (`sid_character_prep`, core/sid/sid_character.h): `sid_init` without its
@@ -316,25 +320,29 @@ The exception in "Cost" is gone: no main-loop pass is over the poll allowance an
   always, every profile at full character): 70 or 110 ms. The chip is `sid_init` and
   `sid_character_apply`'s byte for byte (host test, every profile on both models at four
   settings). The 8580's default DAC tables, built on first use (`sid_dac_default`, 94,995
-  instructions in one go), are built a `sid_dac_job` step a slice by the first preparation
-  that needs them (`sid_dac_default_step`): 4 more slices, once after power-on. (Building them
+  instructions in one go), are built a `sid_dac_job` step a slice by a preparer's first 8580
+  preparation (`sid_dac_default_step`): it spends 4 more slices on them whether or not they
+  are built yet (`default_8580_spent`, on the host as on the device), so the count is the
+  same everywhere: about 150 ms, once after power-on. (Building them
   at boot instead shifted the boot's timing, and with it three goldens and a LIVE ui_poll.)
 - **Measured** (emu-gate `screen.rs`, every way to step at full character onto every
-  profile): the worst slice 35,323 instructions (the 8580 R5's tangent row), against
-  `REG_RING_PREPARE_SLICE` = 40,000; the worst pass with a slice 74,675 (from 471.5k), the
-  CHIP view's ALGORITHM 72,456 with the page's character. `CHIP_RESET_PASS` and
+  profile): the worst slice 35,378 instructions (the 8580 R5's tangent row), against
+  `REG_RING_PREPARE_SLICE` = 40,000; the worst pass with a slice 74,749 (from 471.5k), the
+  CHIP view's ALGORITHM 71,762 with the page's character; with LIVE's busiest screen (a noise
+  chord) and CC 87 sweeping through a step, swaps included, 91,643. `CHIP_RESET_PASS` and
   `CHIP_PROFILE_PASS` (520k and 400k) are gone: the passes are held to the poll allowance,
   and at compile time the busiest LIVE pass (68k) and CHIP's (49k plus its input) fit with a
   slice. The latency gate's new profile-step case (a preparation in flight all through each
   trial, at least 18 slices each) keeps the normal bounds over 24 trials: a note-on taken by
-  the audio interrupt within 2.97 ms (mean 1.79), its first sample in the buffer within
-  3.21 ms, a note-off taken within 3.33 ms, against the 3.40 ms block and poll; the longest
-  pass 60,053 instructions, MIDI's longest wait in its ring 201 us.
+  the audio interrupt within 3.06 ms (mean 1.69), its first sample in the buffer within
+  3.30 ms, a note-off taken within 2.81 ms, against the 3.40 ms block and poll; the longest
+  pass 60,125 instructions, MIDI's longest wait in its ring 1.0 ms.
 - **Determinism:** the slices a preparation takes depend only on the request
   (`sid_character_prep_slices`), and the host's `live_sid_prepare` runs the same ones at the
   same ticks, so the emulator gate's host renders swap in the device's block, bit for bit
-  (`character.rs`). The one case where the device lags the host is a new request in the
-  same pass as a swap still queued (two ticks in one pass): it starts a tick later.
+  (`character.rs`). The device lags the host only in a catch-up pass of two ticks: there the
+  second tick runs no slice and starts no DAC table (the host's ticks each stand for a
+  pass), a tick later.
 - **The store:** a pass that runs a slice sets `reg_ring_out.sliced`, for M2a Task 4's store
   to skip its work in that pass.
 

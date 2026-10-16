@@ -73,6 +73,7 @@ void* audio_sink_ctx(void) {
 
 void audio_commit(void) {
     reg_ring_commit(&ring);
+    reg_ring_pass_end(&chips); /* one slice of a chip's preparation a pass */
 }
 
 uint32_t audio_queued(void) {

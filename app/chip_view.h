@@ -7,7 +7,7 @@
  * The page, in PETSCII frames (docs/art/README.md "CHIP"):
  * - row 2: CHIP and the tabs, A in reverse video, B greyed;
  * - CHIP (rows 4-7): the profile (6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581) and its
- *   model as asked for (the chip plays them once its spare is prepared, about 0.1 s later:
+ *   model as asked for (the chip plays them once its spare is prepared, 70 to 150 ms later:
  *   app/reg_ring.h);
  * - CHARACTER (rows 8-13): age/heat, DAC sloppiness, output thump and filter bleed, each a bar
  *   and its value 0..127;

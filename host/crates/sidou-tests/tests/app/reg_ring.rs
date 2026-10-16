@@ -236,9 +236,11 @@ impl Device {
         }
     }
 
-    /// The interrupt at a block boundary.
+    /// The pass's end (platform/fm1/audio.c, audio_commit) and the interrupt at a block
+    /// boundary.
     fn block(&mut self) {
         commit(&mut self.ring);
+        unsafe { reg_ring_pass_end(&mut *self.chips) };
         unsafe { reg_ring_drain(&mut *self.ring, &mut *self.chips) };
     }
 
@@ -773,6 +775,7 @@ fn the_staged_preparation_makes_the_one_shot_chip_in_a_fixed_number_of_slices() 
                             SID_CLOCK_PAL,
                             RATE,
                             &c,
+                            0,
                         );
                     }
                     let mut slices = 0;
@@ -819,7 +822,15 @@ fn the_staged_preparation_waits_for_a_free_dac_table() {
     let mut prep = Box::<sid_character_prep>::default();
     let c = character(SID_CHIP_6581_WORN, 127);
     unsafe {
-        sid_character_prep_start(&mut *prep, &mut *s, SID_MODEL_6581, SID_CLOCK_PAL, RATE, &c)
+        sid_character_prep_start(
+            &mut *prep,
+            &mut *s,
+            SID_MODEL_6581,
+            SID_CLOCK_PAL,
+            RATE,
+            &c,
+            0,
+        )
     };
     let want = unsafe { sid_character_prep_slices(SID_MODEL_6581, &c) };
     let rows = want - SID_DAC_BUILD_STEPS;
@@ -844,6 +855,13 @@ fn the_staged_preparation_waits_for_a_free_dac_table() {
     assert_eq!(s.dac, &*d as *const sid_dac);
 }
 
+/// The slices of a preparer's first 8580 preparation (R5, the controls at 0): its own and
+/// SID_DAC_BUILD_STEPS on the 8580's default DACs.
+fn first_8580() -> u32 {
+    let own = unsafe { sid_character_prep_slices(SID_MODEL_8580, &character(SID_CHIP_8580_R5, 0)) };
+    own + SID_DAC_BUILD_STEPS
+}
+
 /// The device: live through the ring into two chips with the preparer, as the firmware runs
 /// (platform/fm1/main.c), the interrupt a block after every tick.
 fn prepared_device(model: sid_model) -> Device {
@@ -859,7 +877,7 @@ fn prepared_device(model: sid_model) -> Device {
 struct Host {
     chip: Box<sid>,
     _spare: Box<sid>,
-    _target: Box<live_sid_target>,
+    target: Box<live_sid_target>,
     _dacs: Box<[sid_dac; 2]>,
     live: Box<live>,
 }
@@ -886,7 +904,7 @@ impl Host {
         Host {
             chip,
             _spare: spare,
-            _target: target,
+            target,
             _dacs: dacs,
             live: l,
         }
@@ -941,7 +959,10 @@ fn a_profile_step_prepares_the_spare_a_slice_a_tick_and_swaps_at_the_hosts_tick(
     ] {
         let model = profile_model(to);
         let c = character(to, 127);
-        let want = unsafe { sid_character_prep_slices(model, &c) };
+        let mut want = unsafe { sid_character_prep_slices(model, &c) };
+        if model == SID_MODEL_8580 && dev.chips.default_8580_spent == 0 {
+            want += SID_DAC_BUILD_STEPS; // its default DACs, the first time
+        }
         let before = dev.chips.active[0];
         let (slices, was) = (dev.out.slices, dev.chip().filter_curve);
         for l in [&mut *dev.live, &mut *host.live] {
@@ -1000,7 +1021,8 @@ fn requests_during_a_preparation_coalesce() {
     });
     let worn =
         unsafe { sid_character_prep_slices(SID_MODEL_6581, &character(SID_CHIP_6581_WORN, 0)) };
-    let r5 = unsafe { sid_character_prep_slices(SID_MODEL_8580, &character(SID_CHIP_8580_R5, 0)) };
+    // The first 8580 preparation of a preparer: SID_DAC_BUILD_STEPS more, the default DACs.
+    let r5 = first_8580();
     // WORN, then R5 three ticks in: R5's whole preparation from there.
     both_live(&mut dev, &mut host, &|l| unsafe {
         live_param_set(l, LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN)
@@ -1091,7 +1113,8 @@ fn requests_during_a_preparation_coalesce() {
 #[test]
 fn a_preparation_never_starts_on_a_spare_still_queued_to_swap() {
     let mut dev = prepared_device(SID_MODEL_6581);
-    let r5 = unsafe { sid_character_prep_slices(SID_MODEL_8580, &character(SID_CHIP_8580_R5, 0)) };
+    // The first 8580 preparation of a preparer: SID_DAC_BUILD_STEPS more, the default DACs.
+    let r5 = first_8580();
     unsafe { live_param_set(&mut *dev.live, LIVE_PARAM_PROFILE, SID_CHIP_8580_R5) };
     for _ in 0..r5 - 1 {
         unsafe { live_tick(&mut *dev.live) };
@@ -1175,7 +1198,10 @@ impl Two {
 
     fn block(&mut self) {
         commit(&mut self.ring);
-        unsafe { reg_ring_drain(&mut *self.ring, &mut *self.chips) };
+        unsafe {
+            reg_ring_pass_end(&mut *self.chips);
+            reg_ring_drain(&mut *self.ring, &mut *self.chips);
+        }
     }
 
     fn chip(&mut self, x: u32) -> &mut sid {
@@ -1254,6 +1280,7 @@ fn every_entry_reaches_the_chip_it_names() {
         let o: *mut reg_ring_out = &mut *t.outs[x];
         let mut n = 0;
         while unsafe { reg_ring_prepare_step(o.cast(), profile as u8) } == 0 {
+            unsafe { reg_ring_pass_end(&mut *t.chips) }; // a slice a pass
             n += 1;
             assert!(n < 32);
         }
@@ -1383,7 +1410,8 @@ fn the_shared_spare_serialises_two_requests() {
     let mut t = Two::new();
     let worn =
         unsafe { sid_character_prep_slices(SID_MODEL_6581, &character(SID_CHIP_6581_WORN, 0)) };
-    let r5 = unsafe { sid_character_prep_slices(SID_MODEL_8580, &character(SID_CHIP_8580_R5, 0)) };
+    // The first 8580 preparation of a preparer: SID_DAC_BUILD_STEPS more, the default DACs.
+    let r5 = first_8580();
     unsafe {
         live_param_set(&mut *t.lives[0], LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN);
         live_param_set(&mut *t.lives[1], LIVE_PARAM_PROFILE, SID_CHIP_8580_R5);
@@ -1509,4 +1537,145 @@ fn the_worst_pass_for_two_chips_fits_without_waiting() {
         "the instrument's FX took chip B"
     );
     assert_eq!(t.chip(0).model, SID_MODEL_6581);
+}
+
+/// Every test here passes on its own, in a process of its own: what one test leaves behind in
+/// the process (the default DAC tables, sid_dac.c) never changes what another measures. The
+/// test binary runs itself once a test, `--exact`, one thread.
+#[test]
+fn every_ring_test_passes_alone() {
+    use std::process::Command;
+    let exe = std::env::current_exe().expect("the test binary");
+    let list = Command::new(&exe)
+        .args(["--list", "--format", "terse", "reg_ring::"])
+        .output()
+        .expect("list the tests");
+    let me = "reg_ring::every_ring_test_passes_alone";
+    let names: Vec<String> = String::from_utf8_lossy(&list.stdout)
+        .lines()
+        .filter_map(|l| l.strip_suffix(": test"))
+        .filter(|n| n.starts_with("reg_ring::") && *n != me)
+        .map(str::to_owned)
+        .collect();
+    assert!(names.len() > 20, "found only {names:?}");
+    let failed: Vec<&String> = names
+        .iter()
+        .filter(|n| {
+            let out = Command::new(&exe)
+                .args(["--exact", n.as_str(), "--test-threads=1"])
+                .output()
+                .expect("run a test");
+            !(out.status.success() && String::from_utf8_lossy(&out.stdout).contains("1 passed"))
+        })
+        .collect();
+    assert!(failed.is_empty(), "failed alone: {failed:#?}");
+}
+
+/// A pass runs one build's work (review I1): the tick whose slice is a preparation's last,
+/// and takes the spare, starts no ramp DAC table, though the DACs moved during the
+/// preparation and want one; the next tick starts it. The host's sink does the same.
+#[test]
+fn the_pass_that_takes_the_spare_starts_no_dac_table() {
+    let mut dev = prepared_device(SID_MODEL_6581);
+    let mut host = Host::new(SID_MODEL_6581);
+    let worn =
+        unsafe { sid_character_prep_slices(SID_MODEL_6581, &character(SID_CHIP_6581_WORN, 0)) };
+    for l in [&mut *dev.live, &mut *host.live] {
+        unsafe { live_param_set(l, LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN) };
+    }
+    let rows = worn - SID_DAC_BUILD_STEPS;
+    let mut swapped = None;
+    for tick in 1..=worn + 1 {
+        if tick == rows + 1 {
+            // after the rows: the spare keeps the DACs at 0, the ramp wants 127
+            for l in [&mut *dev.live, &mut *host.live] {
+                unsafe { live_param_set(l, LIVE_PARAM_DAC, 127) };
+            }
+        }
+        let active = dev.chips.active[0];
+        let (a, b) = tick_both(&mut dev, &mut host);
+        assert_eq!(a, b, "tick {tick}");
+        if swapped.is_none() && dev.chips.active[0] != active {
+            swapped = Some(tick);
+            assert_eq!(
+                dev.chips.ramp[0].building, 0,
+                "a table started in the swap's pass"
+            );
+            assert_eq!(host.target.ramp.building, 0, "the host started one");
+        } else if swapped.is_some() {
+            assert_eq!(dev.chips.ramp[0].building, 1, "the tick after starts it");
+        }
+    }
+    assert_eq!(swapped, Some(worn));
+}
+
+/// One slice a pass (review I2): two ticks in one pass (the device's catch-up) run one slice;
+/// the next pass runs the next.
+#[test]
+fn a_catch_up_pass_runs_one_slice() {
+    let mut dev = prepared_device(SID_MODEL_6581);
+    unsafe { live_param_set(&mut *dev.live, LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN) };
+    for pass in 1..=3 {
+        unsafe {
+            live_tick(&mut *dev.live);
+            live_tick(&mut *dev.live);
+        }
+        dev.block();
+        assert_eq!(dev.out.slices, pass, "pass {pass}");
+    }
+}
+
+/// No starvation (review M1): while chip B's request waits for chip A's ramp to finish its
+/// table, A's ramp starts no other; B's preparation then runs, and A's ramp goes on after.
+#[test]
+fn a_waiting_preparation_holds_the_other_chips_ramp() {
+    let mut t = Two::new();
+    unsafe { live_param_set(&mut *t.lives[0], LIVE_PARAM_DAC, 127) };
+    t.tick();
+    assert_eq!(t.chips.ramp[0].building, 1, "A's ramp builds a table");
+    unsafe { live_param_set(&mut *t.lives[1], LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN) };
+    let mut started = None;
+    for tick in 1..=SID_DAC_BUILD_STEPS + 2 {
+        t.tick();
+        if t.chips.prep_on == 1 && started.is_none() {
+            started = Some(tick);
+        }
+        if started.is_none() {
+            assert_eq!(t.chips.prep_wait[1], 1, "tick {tick}: B waits");
+        }
+    }
+    assert!(started.is_some(), "B's preparation never started");
+    assert_eq!(
+        t.chips.ramp[0].building, 0,
+        "A started another table while B waited"
+    );
+    for _ in 0..20 {
+        t.tick();
+    }
+    assert_eq!(t.chip(1).filter_curve, 3, "B got WORN");
+    for _ in 0..400 {
+        t.tick();
+    }
+    assert_eq!(t.chips.ramp[0].now.dac, 127, "A's ramp went on");
+}
+
+/// Chip B's pseudo-registers the drain does not know (0xC2..0xC7: live's character fields,
+/// which never reach the ring) are dropped, not handed to the slots' handler (review M3).
+#[test]
+fn chip_bs_unknown_pseudo_registers_are_dropped() {
+    let mut t = Two::new();
+    let mut order = Box::new(Order {
+        chips: &mut *t.chips,
+        seen: Vec::new(),
+    });
+    let o: *mut Order = &mut *order;
+    t.chips.pseudo = Some(record_order);
+    t.chips.pseudo_ctx = o.cast();
+    for reg in 0xC2..=0xC7u8 {
+        assert!(unsafe { reg_ring_push(&mut *t.ring, reg, 1) } != 0);
+    }
+    assert!(unsafe { reg_ring_push(&mut *t.ring, LIVE_REG_SLOT_BASE as u8, 1) } != 0);
+    t.block();
+    let regs: Vec<u8> = order.seen.iter().map(|e| e.0).collect();
+    assert_eq!(regs, [LIVE_REG_SLOT_BASE as u8]);
 }

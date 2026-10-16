@@ -174,6 +174,15 @@ typedef struct {
     uint8_t prep_on;
     uint8_t prep_profile;
     uint8_t prep_chip;
+    /* producer: 1 once this pass has run a slice (reg_ring_pass_end clears it) */
+    uint8_t prep_pass;
+    /* producer: each chip's request waiting for the spare or the build table */
+    uint8_t prep_wait[REG_RING_CHIPS];
+    /* producer: 1 once a preparation for the 8580 has spent its SID_DAC_BUILD_STEPS slices on
+     * the 8580's default DACs (built on first use, sid_dac_default_step); before, every 8580
+     * preparation spends them, done or not, so the count is a function of this flag and the
+     * request on the host and the device alike */
+    uint8_t default_8580_spent;
 } reg_ring_chips;
 
 /* Chip A is chip[0], initialised for model, and chip B chip[1], left zeroed until its first
@@ -242,9 +251,23 @@ void reg_ring_sink(void* ctx, uint8_t reg, uint8_t value);
  * dropped); and none starts while a swap is still queued (the spare is then the chip the
  * interrupt renders until the drain reaches it): it starts at the next tick. The spare is
  * shared: while the other chip's preparation runs, a request waits (0, no slice) until that
- * one is taken or dropped, at most 11 ticks; and one starts only while the other chip's ramp
- * builds no DAC table (at most 4 ticks), one build at a time (character_tick). */
+ * one is taken or dropped, at most 15 ticks (11, and 4 for the 8580's default DACs the first
+ * time); and one starts only while the other chip's ramp builds no DAC table (at most 4
+ * ticks), one build at a time; a request that waits keeps the other chip's ramp from
+ * starting another table (character_tick). At most one slice runs a pass (reg_ring_pass_end).
+ * Requests faster than a preparation (about 70 ms) restart it each time: the chip swaps only
+ * once they stop.
+ *
+ * Chip B's first reset, live_init's for its writer, is not prepared: it waits for the ring to
+ * empty and builds the chip in one pass (0.5 M instructions), as chip A's at boot. It may
+ * happen only at boot, before the main loop; chip B's sid (chip[1]) is zeroed until then,
+ * its sample rate 0, and nothing may render it. */
 int reg_ring_prepare_step(void* ctx, uint8_t profile);
+/* Producer: the main-loop pass is over (platform/fm1/audio.c's audio_commit, once a pass at
+ * its end). At most one slice runs a pass, so a catch-up pass of two ticks
+ * (platform/fm1/main.c, TICK_CATCH_UP) runs one, the other tick's request waiting for the
+ * next pass; and no ramp starts a DAC table in a pass that ran one. */
+void reg_ring_pass_end(reg_ring_chips* c);
 
 #ifdef SIDOU_REG_RING_RACE_HOOK
 /* Host tests only (the device never defines it): hook(ctx) runs where the audio interrupt

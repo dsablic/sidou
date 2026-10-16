@@ -145,10 +145,6 @@ static float default_leakage(int is6581) {
  * and finished at once by sid_dac_default. */
 static sid_dac_job shared_job[2];
 
-int sid_dac_default_ready(int is6581) {
-    return shared_state[is6581 ? 0 : 1] == 2;
-}
-
 int sid_dac_default_step(int is6581) {
     uint32_t m = is6581 ? 0u : 1u;
     if (shared_state[m] == 2) {
@@ -192,10 +188,6 @@ const sid_dac* sid_dac_default(int is6581) {
 }
 
 /* Hosts build a table at once: the step is the whole of it. */
-int sid_dac_default_ready(int is6581) {
-    return ready(&shared_state[is6581 ? 0 : 1]);
-}
-
 int sid_dac_default_step(int is6581) {
     (void)sid_dac_default(is6581);
     return 1;

@@ -182,6 +182,8 @@ typedef struct {
     sid_character_prep prep;
     uint8_t prep_on;
     uint8_t prep_profile;
+    uint8_t prep_tick;          /* a slice ran since the last LIVE_REG_CHAR_TICK */
+    uint8_t default_8580_spent; /* as reg_ring_chips' */
 } live_sid_target;
 
 /* Applies writes to ctx (a live_sid_target*) at once: sid_write for registers, sid_init and
@@ -193,8 +195,11 @@ typedef struct {
  * runs in the audio context. */
 void live_sid_sink(void* ctx, uint8_t reg, uint8_t value);
 /* A live_prepare_fn, ctx a live_sid_target* with a spare: the device's reg_ring_prepare_step
- * on the host, slice for slice (the same preparation, the ramp held off the DAC tables while
- * it runs), so a host render with it swaps chips at the device's tick. */
+ * on the host, slice for slice (the same preparation, the same slices on the 8580's default
+ * DACs, the ramp held off the DAC tables while it runs and in a tick that ran a slice), so a
+ * host render with it swaps chips at the device's tick. Each tick stands for a main-loop
+ * pass: in the device's catch-up pass of two ticks (platform/fm1/main.c) the second runs no
+ * slice and starts no DAC table, a tick later than here. */
 int live_sid_prepare(void* ctx, uint8_t profile);
 /* A LIVE_REG_CHAR(field) write into the settings it changes (any other reg: nothing). For
  * the sinks. */

@@ -163,6 +163,9 @@ void reg_ring_chips_init(reg_ring_chips* c, sid_model model, uint32_t clock_hz,
     c->prep_on = 0;
     c->prep_profile = 0;
     c->prep_chip = 0;
+    c->prep_pass = 0;
+    c->prep_wait[0] = c->prep_wait[1] = 0;
+    c->default_8580_spent = 0;
 }
 
 sid* reg_ring_chip(reg_ring_chips* c) {
@@ -212,7 +215,7 @@ static void apply(reg_ring_chips* c, reg_ring_entry e) {
         } else {
             c->lost_resets++;
         }
-    } else if (c->pseudo) {
+    } else if (!x && c->pseudo) { /* chip B's unknown pseudo-registers: dropped */
         c->pseudo(c->pseudo_ctx, reg, e.value);
     }
 }
@@ -240,7 +243,8 @@ uint32_t reg_ring_drain(reg_ring* r, reg_ring_chips* c) {
  * swap after the stages were read only frees the old active chip's table, which then reads
  * as taken or free, both safe. The tables being built are the producer's own. */
 static sid_dac* free_dac(reg_ring_chips* c) {
-    const sid_dac* taken[3u * REG_RING_CHIPS + 1u];
+    /* each chip's two stages, its next and active sids and its ramp's job; the spare's */
+    const sid_dac* taken[2u * REG_RING_CHIPS + 3u * REG_RING_CHIPS + 1u];
     uint32_t n = 0;
     for (uint32_t x = 0; x < REG_RING_CHIPS; ++x) {
         for (uint32_t k = 0; k < 2u; ++k) {
@@ -323,42 +327,67 @@ int reg_ring_prepare_step(void* ctx, uint8_t profile) {
     reg_ring_chips* c = o->chips;
     uint32_t x = o->chip & 1u;
     const sid_chip_profile* p = sid_chip_profile_get(profile);
-    if (c->prep_on && c->prep_chip != x) {
-        return 0; /* the other chip's: this one waits (a cancel has nothing to drop) */
-    }
     if (!p) { /* LIVE_PREPARE_CANCEL */
-        c->prep_on = 0;
+        c->prep_wait[x] = 0;
+        if (c->prep_on && c->prep_chip == x) {
+            c->prep_on = 0;
+        }
         return 0;
     }
-    if (!c->prep_on || c->prep_profile != profile) {
+    if (c->prep_on && c->prep_chip != x) {
+        c->prep_wait[x] = 1; /* the other chip's: this one waits */
+        return 0;
+    }
+    int same = c->prep_on && c->prep_profile == profile;
+    if (same && sid_character_prep_done(&c->prep)) {
+        return 1;
+    }
+    if (c->prep_pass) {
+        return 0; /* one slice a pass: the next tick's pass takes it */
+    }
+    if (!same) {
         if (c->spare_ready || c->ramp[x ^ 1u].building) {
             c->prep_on = 0;
+            c->prep_wait[x] = 1;
             return 0;
         }
         sid_character want = c->ramp[x].target;
         want.profile = (uint8_t)(profile + 1u);
         c->ramp[x].building = 0;
+        uint32_t defaults = p->model == SID_MODEL_8580 && !c->default_8580_spent
+                                ? SID_DAC_BUILD_STEPS
+                                : 0u;
         sid_character_prep_start(&c->prep, &c->chip[third(c->next)], (sid_model)p->model,
-                                 c->clock_hz, c->sample_rate, &want);
+                                 c->clock_hz, c->sample_rate, &want, defaults);
         c->prep_on = 1;
         c->prep_profile = profile;
         c->prep_chip = (uint8_t)x;
-    } else if (sid_character_prep_done(&c->prep)) {
-        return 1;
+        c->prep_wait[x] = 0;
     } else {
         sid_character_prep_update(&c->prep, &c->ramp[x].target);
     }
     o->slices++;
     o->sliced = 1;
-    return sid_character_prep_step(&c->prep, free_dac(c));
+    c->prep_pass = 1;
+    int done = sid_character_prep_step(&c->prep, free_dac(c));
+    if (done && p->model == SID_MODEL_8580) {
+        c->default_8580_spent = 1;
+    }
+    return done;
+}
+
+void reg_ring_pass_end(reg_ring_chips* c) {
+    c->prep_pass = 0;
 }
 
 /* The character's tick (LIVE_REG_CHAR_TICK) of the out's chip, on the sid its queued entries
  * end on: the ramp's next step into a stage that is not queued. The REG_RING_CHARACTER value.
- * One table is built at a time: while the spare is being prepared (for either chip) or the
- * other chip's ramp builds, the ramp gets no free DAC table and its DACs wait, so a pass never
- * runs two builds' steps (a slice and a table step, or two table steps: 40k + 28k on top of
- * a view's 68k would pass the poll allowance). */
+ * One table is built at a time, and a pass runs one build's work: while the spare is being
+ * prepared (for either chip), in a pass that ran a slice (the last one's included: the spare
+ * is then taken and prep_on clear), while the other chip's ramp builds, and while the other
+ * chip's preparation waits for its turn (so a stream of ramps cannot starve it), the ramp gets
+ * no free DAC table and its DACs wait. So no pass runs a slice and a table step, or two table
+ * steps (40k + 28k on top of a view's 68k would pass the poll allowance). */
 static uint8_t character_tick(reg_ring_out* o) {
     reg_ring_chips* c = o->chips;
     uint32_t x = o->chip & 1u;
@@ -368,7 +397,8 @@ static uint8_t character_tick(reg_ring_out* o) {
         o->character_defers++;
         return REG_RING_NO_STAGE;
     }
-    sid_dac* table = c->prep_on || c->ramp[x ^ 1u].building ? NULL : free_dac(c);
+    int busy = c->prep_on || c->prep_pass || c->ramp[x ^ 1u].building || c->prep_wait[x ^ 1u];
+    sid_dac* table = busy ? NULL : free_dac(c);
     if (!sid_character_ramp_tick(&c->ramp[x], &c->chip[c->next[x]], table, &c->stage[x][k])) {
         return REG_RING_NO_STAGE;
     }
