@@ -7,7 +7,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 55] = [
+const SOURCES: &[&str] = &[
     "core/sid/sid.c",
     "core/sid/sid_character.c",
     "core/sid/sid_dac.c",
