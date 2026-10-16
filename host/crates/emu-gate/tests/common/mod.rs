@@ -524,9 +524,10 @@ pub const POT: u16 = 900;
 /// platform/fm1/audio.c SLOTS_SEED.
 pub const SLOTS_SEED: u32 = 0x51D0;
 
-/// The firmware's instrument at boot (platform/fm1/main.c: live_init, then the MASTER pot),
-/// rendered by the host build in blocks as audio_fill does (the chip, then the effect
-/// slots). Before block `note_block` the note `note` goes on; each `(block, cc, value)` of
+/// The firmware's instrument at boot (platform/fm1/main.c: live_init, its preparer, then the
+/// MASTER pot), rendered by the host build in blocks as audio_fill does (the chip, then the
+/// effect slots); a profile step prepares the spare a slice a tick as the device does
+/// (live_sid_prepare), so its reset lands at the device's tick. Before block `note_block` the note `note` goes on; each `(block, cc, value)` of
 /// `ccs` goes to live before its block (as the device's drain applies a pass's entries at a
 /// block start), in order. Interleaved L, R.
 pub fn render_host(
@@ -537,6 +538,7 @@ pub fn render_host(
 ) -> Vec<i16> {
     use sidou_sys::*;
     let mut chip = Box::<sid>::default();
+    let mut spare = Box::<sid>::default();
     let mut dacs = Box::<[sid_dac; 2]>::default();
     let mut pool = Box::<sid_slot_pool>::default();
     let mut slots = Box::<sid_slots>::default();
@@ -547,6 +549,7 @@ pub fn render_host(
             clock_hz: SID_CLOCK_PAL,
             sample_rate: SAMPLE_RATE,
             dacs: dacs.as_mut_ptr(),
+            spare: &mut *spare,
             ..Default::default()
         },
         fx: &mut *fx,
@@ -566,6 +569,9 @@ pub fn render_host(
             t.cast::<std::ffi::c_void>(),
             SID_MODEL_6581,
         );
+        // The device's preparer (platform/fm1/main.c): a profile step's reset at its tick.
+        let sid_target: *mut live_sid_target = &mut (*t).sid;
+        live_set_preparer(&mut *l, Some(live_sid_prepare), sid_target.cast());
         live_set_master(&mut *l, POT);
         for (i, half) in out.chunks_mut(2 * HALF_FRAMES).enumerate() {
             for &(_, cc, value) in ccs.iter().filter(|c| c.0 == i) {

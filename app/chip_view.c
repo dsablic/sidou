@@ -199,7 +199,7 @@ static void look(const chip_view* cv, uint8_t out[CHIP_VIEW_LOOK]) {
     const live* l = cv->l;
     uint32_t n = 0;
     out[n++] = (uint8_t)profile_of(l);
-    out[n++] = (uint8_t)l->model;
+    out[n++] = (uint8_t)l->model_req;
     for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; f++) {
         out[n++] = l->character[f];
     }
@@ -237,7 +237,9 @@ static void draw_chip(chip_view* cv, chip_view_canvas* c) {
     text(c, LABEL_COL, CHIP_VIEW_CHIP_ROW + 1u, "PROFILE", a);
     text_right(c, VALUE_END, CHIP_VIEW_CHIP_ROW + 1u, p ? p->name : "?", a);
     text(c, LABEL_COL, CHIP_VIEW_CHIP_ROW + 2u, "MODEL", a);
-    text_right(c, VALUE_END, CHIP_VIEW_CHIP_ROW + 2u, l->model == SID_MODEL_8580 ? "8580" : "6581",
+    /* The model asked for, as PROFILE shows the profile asked for: a step shows at once,
+     * while the spare chip for it is prepared (app/reg_ring.h). */
+    text_right(c, VALUE_END, CHIP_VIEW_CHIP_ROW + 2u, l->model_req == SID_MODEL_8580 ? "8580" : "6581",
                a);
 
     static const char* const NAMES[LIVE_CHAR_FIELDS - 1u] = {"AGE", "DAC", "THUMP", "BLEED"};

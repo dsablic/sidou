@@ -130,6 +130,21 @@ static inline void sid_update_filter(sid* s) {
  * exponential divider: about 6 ms), and each accumulator at 0x555555. Until M1b Task 2
  * that release ran one step behind reSIDfp's; it is now cycle-exact. */
 void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate);
+/* sid_init in pieces, for a main loop that must not stall (sid_character_prep, which runs
+ * them a slice a tick): sid_init_begin is everything sid_init does but its filter tables and
+ * what it derives from them; then each of the two filter rows a range of FC values at a time
+ * (sid_filter_row_part, every entry of both once); then sid_init_end. The chip is then
+ * sid_init's followed by sid_set_filter_blend(s, first row's curve, second's, 0), but for
+ * what sid_init derives from its tables (the filter's coefficients and the 6581's
+ * non-linearity), which here follow from these tables: sid_character_commit recomputes both,
+ * so after it the two are the same, bit for bit. Main context, on a chip that is not
+ * rendering. */
+void sid_init_begin(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate);
+/* Entries [from, to) of the first row (second 0: the cutoffs as g, tangents) or the second
+ * (1: as angles) for the curve setting; the part that reaches SID_FC_STEPS also sets the
+ * row's damping table and the chip's filter_curve (filter_toward). */
+void sid_filter_row_part(sid* s, int second, uint32_t curve, uint32_t from, uint32_t to);
+void sid_init_end(sid* s);
 void sid_write(sid* s, uint8_t reg, uint8_t value);
 void sid_render(sid* s, int16_t* out, uint32_t frames);
 
@@ -240,8 +255,8 @@ void sid_nonlin_for(const sid* s, float amount, float t, sid_nonlin* out);
  * gives that one block some old and some new values: benign. Main context only: it and
  * sidou_tanf are in flash on the device, so never call it from the audio interrupt or
  * through the register ring. sid_init resets the amount to 1, so after a model switch
- * (M1c: prepare_spare runs sid_init on the spare chip) apply the profile's amount to the
- * spare again before the swap. */
+ * (the register ring prepares the spare chip from sid_init: app/reg_ring.h) apply the
+ * profile's amount to the spare again before the swap. */
 void sid_set_filter_nonlinearity(sid* s, float amount);
 
 /* Points the chip at other voice DACs (sid_dac_build), which must outlive it; sid_init

@@ -204,6 +204,13 @@ All notable changes are documented here. The format follows
   6.3k instructions a frame, nothing sent; the busiest frame 17.6 ms of SPI).
 
 ### Changed
+- M2b: a profile or model step (the CHIP view's ALGORITHM, the FX button, CC 25, CC 85)
+  prepares the new chip in the background, one slice of at most 40,000 instructions a 10 ms
+  tick (7 slices, or 11 when the character's DACs are custom, 4 more the first time the 8580
+  is asked for after power-on), while the old chip plays on,
+  and swaps it in when it is whole. No main-loop pass is over the poll allowance any more (the
+  reset's pass was up to 471.5k), so a note arriving during a step keeps the normal latency.
+  The screens show the model asked for at once.
 - The menu's CHIP item opens the CHIP view; the 6581/8580 choice it held is the view's profile
   picker (and the FX button, as before).
 - The EDIT layer (EDIT + K1..K4, SCL, ENV) is no longer a stopgap: it stays in every view as a
@@ -225,11 +232,10 @@ M1 (design doc section 14: sound) is done on `main`, with these exceptions.
   and NRPN); everything that needs storage: user-saved profiles, MIDI learn's mappings, the
   CARDS option, and the full boot once after an install; and About's music on the SID (design
   doc section 7), which M1e's plan left out and needs M2's song player.
-- **Kept as an exception:** a chip reset (a profile or model step: the CHIP view's ALGORITHM,
-  the FX button, CC 25, CC 85) runs in one main-loop pass of up to 471.5k instructions (worn
-  at full character), about four times the latency gate's poll allowance: a note arriving
-  then waits about 5 ms instead of 3.4. It is a deliberate step, at most one a tick, and
-  MIDI waits in its buffer meanwhile; splitting it over ticks is in `docs/TODO.md` for M2.
+- **Kept as an exception (retired in M2b, above):** a chip reset (a profile or model step:
+  the CHIP view's ALGORITHM, the FX button, CC 25, CC 85) ran in one main-loop pass of up to
+  471.5k instructions (worn at full character), about four times the latency gate's poll
+  allowance: a note arriving then waited about 5 ms instead of 3.4.
 - **On hardware only:** the whole checklist in `docs/hardware-test.md` is still to be run on a
   unit (install and recovery, the printed labels against the ids, SAVE's id among them, the
   LCD, the audio, TRS and USB MIDI, MIDI out, the latency's feel, the boot guard), and the open

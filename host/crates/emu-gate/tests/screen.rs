@@ -1978,21 +1978,17 @@ const CHIP_WORST_POLL: u64 = 38_000;
 /// (SELECT from FX back to the chip: three frames change colour).
 const CHIP_INPUT: u64 = 220;
 const CHIP_PASS: u64 = 49_000;
-/// ALGORITHM on the chip steps the profile: its pass is the chip reset (the live tick prepares
-/// the spare chip, decision record 0006, "Cost"), as the FX button's and CC 85's are. A reset
-/// is the one input over the poll allowance, by design: it is a deliberate step the player
-/// takes, at most one a 10 ms tick (requests in between coalesce), MIDI waits in its buffer
-/// rather than being dropped, and the FX button and CC 85 have always cost the same. A note
-/// arriving during the pass waits for it (about 2 ms) and the drain after it: about 5 ms,
-/// against decision record 0005's 3.4 ms, only while the profile or model steps.
-/// docs/TODO.md: split the spare chip's preparation over ticks (M2).
+/// ALGORITHM on the chip steps the profile, as the FX button and CC 85 do: the live tick
+/// prepares the spare chip a slice a tick (app/reg_ring.h, reg_ring_prepare_step; decision
+/// record 0006, "Cost") and swaps it in once it is whole, so the step's passes are the
+/// others' plus a slice, within the poll allowance like every pass (M2b Task 1 retired M1's
+/// exception, a reset in one pass of up to 471.5k).
 ///
-/// CHIP_PROFILE_PASS: R4AR to the 8580 and back at the page's character (CHIP_STATE), measured
-/// 362.6k and 313.5k. CHIP_RESET_PASS: every reset at full character (age, DAC, thump and
-/// bleed 127), measured onto WORN 471.5k by ALGORITHM, 471.4k by CC 85, 470.7k by FX (R2 and
-/// R3 471.2k, R4AR 313.5k, the 8580 362.6k): the worst case. Both about 10 % above.
-const CHIP_PROFILE_PASS: u64 = 400_000;
-const CHIP_RESET_PASS: u64 = 520_000;
+/// REG_RING_PREPARE_SLICE: the most one slice may take (app/reg_ring.h), measured at full
+/// character onto every profile (chip_resets_at_full_character_stay_within_the_poll_allowance).
+/// With the busiest pass of LIVE or CHIP it stays within the allowance (asserted below).
+const REG_RING_PREPARE_SLICE: u64 = 40_000;
+const _: () = assert!(REG_RING_PREPARE_SLICE == sidou_sys::REG_RING_PREPARE_SLICE as u64);
 
 /// The CHIP view idle, a knob's detent, and the busiest frames: every frame within
 /// CHIP_VIEW_FRAME_CELLS and the SPI budget, the main loop's cost a frame and its busiest
@@ -2074,7 +2070,8 @@ fn chip_stays_within_its_budgets() {
 
 /// SELECT, ALGORITHM on a slot and a knob on the CHIP view: the input within CHIP_INPUT, every
 /// pass after it within CHIP_PASS; ALGORITHM on the chip, the profile, its input within
-/// CHIP_INPUT and its pass, the chip reset's, within CHIP_PROFILE_PASS.
+/// CHIP_INPUT and every pass while the spare is prepared and swapped in within CHIP_PASS and
+/// a slice (REG_RING_PREPARE_SLICE), so within the poll allowance.
 #[test]
 fn chip_input_holds_the_main_loop_within_the_poll_allowance() {
     let Some((_, fw)) = fixture("the CHIP input test") else {
@@ -2104,11 +2101,11 @@ fn chip_input_holds_the_main_loop_within_the_poll_allowance() {
             ));
         }
     }
-    // The profile: the input as the others', the pass the chip reset's (CHIP_PROFILE_PASS).
+    // The profile: the input as the others', the passes with a slice of the preparation.
     for (what, steps) in [("ALGORITHM on the chip", 1), ("ALGORITHM back", -1)] {
         let (input, pass) = start_cost(&mut m, 1600, |m| m.turn(ALGORITHM, steps));
         println!("CHIP {what}: the input {input}, the busiest pass {pass}");
-        if input >= CHIP_INPUT || pass >= CHIP_PROFILE_PASS {
+        if input >= CHIP_INPUT || pass >= CHIP_PASS + REG_RING_PREPARE_SLICE {
             over.push(format!(
                 "{what}: the input {input}, the busiest pass {pass}"
             ));
@@ -2127,9 +2124,12 @@ fn profile(m: &mut Machine, fw: &Firmware) -> u8 {
 
 /// Every way to reset the chip, at full character (age, DAC, thump and bleed at 127, settled):
 /// ALGORITHM on CHIP onto every profile, the FX button both ways, and CC 85 onto every profile;
-/// the busiest main-loop pass after each within CHIP_RESET_PASS.
+/// the busiest main-loop pass after each within the poll allowance, every slice of the spare's
+/// preparation within REG_RING_PREPARE_SLICE, as many slices as the host's preparation counts
+/// (sid_character_prep_slices; the first onto the 8580 4 more, its default DACs), and none
+/// prepared at once (unprepared_resets: live_init's only).
 #[test]
-fn chip_resets_at_full_character_stay_within_their_bound() {
+fn chip_resets_at_full_character_stay_within_the_poll_allowance() {
     use sidou_sys::{SID_CHIP_6581_R2, SID_CHIP_6581_R4AR, SID_CHIP_6581_WORN, SID_CHIP_8580_R5};
     let Some((_, fw)) = fixture("the chip reset test") else {
         return;
@@ -2141,12 +2141,36 @@ fn chip_resets_at_full_character_stay_within_their_bound() {
     assert_eq!(character(&mut m, &fw), [127; 4]);
     assert_eq!(u32::from(profile(&mut m, &fw)), SID_CHIP_6581_R4AR);
     m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
-    let mut costs: Vec<(String, u64)> = Vec::new();
+    m.watch_calls(fw.symbol("reg_ring_prepare_step"));
+    let out = fw.symbol("out");
+    let out_u32 = |m: &mut Machine, field: usize| m.soc.read32(out + field as u32);
+    let mut costs: Vec<(String, u64, u64)> = Vec::new();
+    // core/sid/sid_dac.c's shared_state: 2 once a model's default DACs are built. The 8580's
+    // are built a step a slice by its first preparation (sid_dac_default_step).
+    let defaults = fw.symbol("shared_state");
     let mut run = |m: &mut Machine, what: String, want: u32, act: &dyn Fn(&mut Machine)| {
+        let slices = out_u32(m, sidou_sys::ilp32::reg_ring_out::slices);
+        let model = unsafe { (*sidou_sys::sid_chip_profile_get(want)).model };
+        let built = m.soc.read32(defaults + 4 * u32::from(model)) == 2;
+        let calls = m.watched_calls.len();
         let (_, pass) = start_cost(m, 500, act);
         assert_eq!(u32::from(profile(m, &fw)), want, "{what}");
-        println!("chip reset, {what}: the busiest pass {pass}");
-        costs.push((what, pass));
+        let slice = m.watched_calls[calls..].iter().copied().max().unwrap_or(0);
+        let n = out_u32(m, sidou_sys::ilp32::reg_ring_out::slices) - slices;
+        let c = sidou_sys::sid_character {
+            profile: want as u8 + 1,
+            age: 127,
+            dac: 127,
+            thump: 127,
+            bleed: 127,
+        };
+        let mut expect = unsafe { sidou_sys::sid_character_prep_slices(model.into(), &c) };
+        if !built {
+            expect += sidou_sys::SID_DAC_BUILD_STEPS;
+        }
+        println!("chip reset, {what}: the busiest pass {pass}, slice {slice}, {n} slices");
+        assert_eq!(n, expect, "{what}: the slices");
+        costs.push((what, pass, slice));
     };
     let r3 = SID_CHIP_6581_R4AR - 1;
     // ALGORITHM: R4AR up to WORN, then down to R2.
@@ -2185,9 +2209,19 @@ fn chip_resets_at_full_character_stay_within_their_bound() {
         });
     }
     let worst = costs.iter().max_by_key(|c| c.1).unwrap();
-    println!("chip reset, the worst: {} ({})", worst.1, worst.0);
-    let over: Vec<_> = costs.iter().filter(|c| c.1 >= CHIP_RESET_PASS).collect();
+    println!("chip reset, the worst pass: {} ({})", worst.1, worst.0);
+    let worst = costs.iter().max_by_key(|c| c.2).unwrap();
+    println!("chip reset, the worst slice: {} ({})", worst.2, worst.0);
+    let over: Vec<_> = costs
+        .iter()
+        .filter(|c| c.1 >= common::POLL_INSTRUCTIONS || c.2 >= REG_RING_PREPARE_SLICE)
+        .collect();
     assert!(over.is_empty(), "{over:#?}");
+    assert_eq!(
+        out_u32(&mut m, sidou_sys::ilp32::reg_ring_out::unprepared_resets),
+        1,
+        "a reset was prepared at once"
+    );
 }
 
 // ---- the title cards (app/title_card.h) ----
@@ -2545,3 +2579,7 @@ const _: () = assert!(TITLE_CARD_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(TITLE_CARD_INPUT + TITLE_CARD_PASS <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(CHIP_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(CHIP_INPUT + CHIP_PASS <= common::POLL_INSTRUCTIONS);
+// A pass that runs a slice of the spare's preparation (reg_ring_prepare_step) and the busiest
+// view's work still fits.
+const _: () = assert!(LIVE_WORST_POLL + REG_RING_PREPARE_SLICE <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(CHIP_INPUT + CHIP_PASS + REG_RING_PREPARE_SLICE <= common::POLL_INSTRUCTIONS);

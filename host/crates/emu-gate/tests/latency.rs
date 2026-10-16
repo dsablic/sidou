@@ -79,6 +79,13 @@
 //! (midi_drain to midi_service) by the poll allowance, common::POLL_INSTRUCTIONS: a pass that
 //! long would hold a note-on back by as much.
 //!
+//! The profile step case keeps a profile change in flight all through the trial: CC 85
+//! between two profiles other than the chip's, faster than either's preparation, so every
+//! tick runs a slice of the spare chip's (app/reg_ring.h, reg_ring_prepare_step) and none
+//! ever swaps in. Until M2b a profile step prepared the whole chip in one pass (up to 471.5k
+//! instructions) and a note arriving then waited about 5 ms, an exception decision record
+//! 0006 kept; now the notes keep the normal bounds and every pass the poll allowance.
+//!
 //! The cases' trial counts keep CI short; `SIDOU_LATENCY_TRIALS` sets every case's (64
 //! reproduces decision record 0005's run). Each case writes its report into the fm1 build
 //! directory as `latency_<case>_<envelope>.json`.
@@ -172,6 +179,10 @@ enum Scenario {
     UsbRetry,
     /// The character's CCs sweeping all the while (the module's doc).
     CharacterSweep,
+    /// A profile step in flight all the while: CC 85 between two profiles other than the
+    /// chip's, faster than either's preparation, so the spare is prepared a slice every tick
+    /// and never swaps in (the module's doc).
+    ProfileStep,
 }
 
 /// The sweep: a CC every SWEEP_MS, CC 86 and CC 87 in turn, each value SWEEP_STEP from its
@@ -181,18 +192,35 @@ const SWEEP_STEP: i32 = 24;
 const CC_AGE: u8 = 86;
 const CC_DAC: u8 = 87;
 
+/// The profile step: CC 85 every STEP_MS, R2 (0) and WORN (127) in turn, the chip R4AR. Each
+/// request restarts the spare's preparation, which takes at least 7 ticks (70 ms).
+const STEP_MS: u64 = 40;
+const CC_PROFILE: u8 = 85;
+
 struct Sweep {
     next: u64,
     sent: u32,
+    period_ms: u64,
+    profile: bool,
 }
 
 impl Sweep {
-    fn new() -> Self {
-        Sweep { next: 0, sent: 0 }
+    fn new(scenario: Scenario) -> Self {
+        let profile = scenario == Scenario::ProfileStep;
+        Sweep {
+            next: 0,
+            sent: 0,
+            period_ms: if profile { STEP_MS } else { SWEEP_MS },
+            profile,
+        }
     }
 
-    /// The next CC: a triangle 0..127 in SWEEP_STEPs, per controller.
+    /// The next CC: a triangle 0..127 in SWEEP_STEPs, per controller; or the profile step's.
     fn message(&mut self) -> [u8; 3] {
+        if self.profile {
+            self.sent += 1;
+            return [0xB0, CC_PROFILE, if self.sent & 1 == 1 { 0 } else { 127 }];
+        }
         let cc = if self.sent & 1 == 0 { CC_AGE } else { CC_DAC };
         let step = (self.sent / 2) as i32 * SWEEP_STEP;
         let period = 2 * 127;
@@ -214,7 +242,7 @@ impl Sweep {
                     let msg = self.message();
                     m.midi(&msg);
                 }
-                self.next = now + c.of_ms(SWEEP_MS);
+                self.next = now + c.of_ms(self.period_ms);
             }
             m.run_cycles(self.next.min(end) - now);
         }
@@ -244,6 +272,10 @@ struct Trial {
     isr_max: u64,
     /// The longest main-loop pass (midi_drain to midi_service), instructions.
     pass_max: u64,
+    /// Slices of the spare's preparation run during the trial (reg_ring_out.slices), and the
+    /// chip's profile at its end (live.profile).
+    slices: u32,
+    profile: u8,
 }
 
 /// xorshift64*: reproducible phases.
@@ -410,7 +442,8 @@ fn run_trial(
     let c = Clock {
         hz: m.soc.periph.hz,
     };
-    let mut sweep = (scenario == Scenario::CharacterSweep).then(Sweep::new);
+    let swept = matches!(scenario, Scenario::CharacterSweep | Scenario::ProfileStep);
+    let mut sweep = swept.then(|| Sweep::new(scenario));
     let mut run = |m: &mut Machine, cycles: u64| match &mut sweep {
         Some(s) => s.run(m, &c, cycles),
         None => m.run_cycles(cycles),
@@ -468,8 +501,19 @@ fn trial(
         m.snapshot_buffer(Some((abuf, words)));
         played_before = m.half_played.len();
     };
+    let slices_at = |m: &mut Machine| {
+        m.soc
+            .read32(fw.symbol("out") + ilp32::reg_ring_out::slices as u32)
+    };
+    let mut slices_before = 0;
     let (mut m, injected, held_until, held_len, off_injected) =
-        run_trial(fw, offset, off_offset, scenario, envelope, true, &mut start);
+        run_trial(fw, offset, off_offset, scenario, envelope, true, |m| {
+            slices_before = slices_at(m);
+            start(m);
+        });
+    let slices = slices_at(&mut m) - slices_before;
+    let l = m.soc.read32(fw.symbol("ui") + ilp32::views::l as u32);
+    let profile = m.soc.read8(l + ilp32::live::profile as u32);
     let (mean, threshold, buffer) = base.unwrap();
     let baseline = if scenario == Scenario::CharacterSweep {
         let (r, ..) = run_trial(fw, offset, off_offset, scenario, envelope, false, |m| {
@@ -593,6 +637,8 @@ fn trial(
         ui_poll_max: m.watched_calls.iter().copied().max().unwrap_or(0),
         isr_max: snaps.iter().map(|s| s.exit - s.entry).max().unwrap(),
         pass_max: m.passes.iter().copied().max().unwrap_or(0),
+        slices,
+        profile,
     }
 }
 
@@ -706,6 +752,7 @@ fn measure(scenario: Scenario, envelope: Envelope, default_trials: usize) {
         "max_ui_poll_instructions": trials.iter().map(|t| t.ui_poll_max).max(),
         "max_main_loop_pass_instructions": trials.iter().map(|t| t.pass_max).max(),
         "poll_instructions": POLL_INSTRUCTIONS,
+        "min_preparation_slices": trials.iter().map(|t| t.slices).min(),
     });
     println!("{report}");
     let name = format!(
@@ -719,13 +766,21 @@ fn measure(scenario: Scenario, envelope: Envelope, default_trials: usize) {
     let bound = block_plus_poll + attach.unwrap_or(0);
     let lfsr = (LFSR_PERIOD + 2) * c.hz / SID_HZ;
     let adsr = lfsr + c.of_ms(ATTACK_MS);
-    if scenario == Scenario::CharacterSweep {
+    if matches!(scenario, Scenario::CharacterSweep | Scenario::ProfileStep) {
         let pass = trials.iter().map(|t| t.pass_max).max().unwrap();
         assert!(
             pass <= POLL_INSTRUCTIONS,
-            "a main-loop pass took {pass} instructions with the character sweeping, over the \
-             poll allowance ({POLL_INSTRUCTIONS})"
+            "a main-loop pass took {pass} instructions ({scenario:?}), over the poll allowance \
+             ({POLL_INSTRUCTIONS})"
         );
+    }
+    if scenario == Scenario::ProfileStep {
+        // A slice every tick from the first CC on (the trial runs over 200 ms), and the chip
+        // never swapped: every note played on the R4AR it booted with.
+        for t in &trials {
+            assert!(t.slices >= 15, "only {} slices ran: {t:?}", t.slices);
+            assert_eq!(u32::from(t.profile), sidou_sys::SID_CHIP_6581_R4AR, "{t:?}");
+        }
     }
     for t in &trials {
         // The note is in the block that starts within a block and a poll of its arrival...
@@ -821,4 +876,13 @@ fn an_authentic_envelope_waits_for_the_adsr_delay_at_most() {
 #[test]
 fn a_note_on_keeps_its_bounds_while_the_character_sweeps() {
     measure(Scenario::CharacterSweep, Envelope::Instant, 24);
+}
+
+/// A note-on while a profile step is in flight (the module's doc): the spare chip's
+/// preparation, a slice every tick, holds no note back past the bounds (decision record 0006:
+/// M1's 5 ms exception, a reset in one pass, is gone), and no pass exceeds the poll
+/// allowance.
+#[test]
+fn a_note_on_keeps_its_bounds_while_a_profile_step_is_prepared() {
+    measure(Scenario::ProfileStep, Envelope::Instant, 24);
 }

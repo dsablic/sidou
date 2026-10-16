@@ -53,5 +53,12 @@ int sid_dac_job_step(sid_dac_job* j);
  * chip of that model (17,408 bytes each). Call from one context at a time on the
  * device (sid_init runs in the main loop); thread-safe on hosts. */
 const sid_dac* sid_dac_default(int is6581);
+/* 1 once the model's default DACs are built. */
+int sid_dac_default_ready(int is6581);
+/* For a main loop that must not stall (the spare chip's preparation, sid_character.h): on
+ * the device one sid_dac_job step of the model's default DACs (about a quarter of
+ * sid_dac_build), 1 once they are built (and at every call after); sid_dac_default finishes
+ * a table begun this way. On hosts the whole table at once, and 1. */
+int sid_dac_default_step(int is6581);
 
 #endif

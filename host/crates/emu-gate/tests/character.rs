@@ -63,6 +63,7 @@ fn schedules(first: usize) -> Vec<Vec<usize>> {
 fn render_host(frames: usize, blocks: &[usize], note_block: usize, ticks: &[u32]) -> Vec<i16> {
     use sidou_sys::*;
     let mut chip = Box::<sid>::default();
+    let mut spare = Box::<sid>::default();
     let mut dacs = Box::<[sid_dac; 2]>::default();
     let mut pool = Box::<sid_slot_pool>::default();
     let mut slots = Box::<sid_slots>::default();
@@ -73,6 +74,7 @@ fn render_host(frames: usize, blocks: &[usize], note_block: usize, ticks: &[u32]
             clock_hz: SID_CLOCK_PAL,
             sample_rate: SAMPLE_RATE,
             dacs: dacs.as_mut_ptr(),
+            spare: &mut *spare,
             ..Default::default()
         },
         fx: &mut *fx,
@@ -91,6 +93,9 @@ fn render_host(frames: usize, blocks: &[usize], note_block: usize, ticks: &[u32]
             t.cast::<std::ffi::c_void>(),
             SID_MODEL_6581,
         );
+        // The device's preparer (platform/fm1/main.c): a profile step's reset at its tick.
+        let sid_target: *mut live_sid_target = &mut (*t).sid;
+        live_set_preparer(&mut *l, Some(live_sid_prepare), sid_target.cast());
         live_set_master(&mut *l, POT);
         for (i, half) in out.chunks_mut(2 * HALF_FRAMES).enumerate() {
             for (k, &(cc, value)) in CCS.iter().enumerate() {
@@ -325,6 +330,7 @@ fn render_host_ages(
 ) -> Vec<i16> {
     use sidou_sys::*;
     let mut chip = Box::<sid>::default();
+    let mut spare = Box::<sid>::default();
     let mut dacs = Box::<[sid_dac; 2]>::default();
     let mut pool = Box::<sid_slot_pool>::default();
     let mut slots = Box::<sid_slots>::default();
@@ -335,6 +341,7 @@ fn render_host_ages(
             clock_hz: SID_CLOCK_PAL,
             sample_rate: SAMPLE_RATE,
             dacs: dacs.as_mut_ptr(),
+            spare: &mut *spare,
             ..Default::default()
         },
         fx: &mut *fx,
@@ -353,6 +360,9 @@ fn render_host_ages(
             t.cast::<std::ffi::c_void>(),
             SID_MODEL_6581,
         );
+        // The device's preparer (platform/fm1/main.c): a profile step's reset at its tick.
+        let sid_target: *mut live_sid_target = &mut (*t).sid;
+        live_set_preparer(&mut *l, Some(live_sid_prepare), sid_target.cast());
         live_set_master(&mut *l, POT);
         for (i, half) in out.chunks_mut(2 * HALF_FRAMES).enumerate() {
             let age = u32::from(ages.get(i).copied().unwrap_or(AGE));

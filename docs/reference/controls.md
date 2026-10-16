@@ -102,9 +102,9 @@ frames show it.
 
 The slot in focus is the selected slot, the one SCL selects and the EDIT shortcut turns:
 SELECT onto a slot selects it (and the toast says so, SLOT MOD), and SCL on a slot moves the
-focus with it. A profile changes at the next 10 ms tick, as its CC does (a chip reset: held
-notes attack again on the new chip); the model follows it, and the FX button still toggles the
-model. The
+focus with it. A profile changes from the next 10 ms tick, as its CC does (a chip reset, once
+the new chip is prepared, 70 to 110 ms later: held notes attack again on the new chip); the
+page shows it at once, the model follows it, and the FX button still toggles the model. The
 character's controls glide, as from MIDI ([Chip character](#chip-character)). Everything else
 plays as on LIVE: the note keys, MASTER, OCT-/OCT+, FX, SAVE (MIDI learn, which picks the
 parameter K1..K4 turn on the page: AGE for K1 on the chip), and HOME back to the menu. A change
@@ -185,7 +185,9 @@ the 8580 R5, or goes back to the last 6581 profile chosen. The four controls cha
 playing chip without a reset, and glide there rather than jump, so they don't click: from
 the next 10 ms tick, age and thump take 0.32 s from 0 to 127, the bleed 1.27 s, the DACs
 1.72 s. A
-profile applies at the next tick, at once. All of them keep the last value received and
+profile applies from the next tick: the new chip is prepared in the background while the old
+one plays on, and swaps in once it is whole, 70 to 110 ms later (the CHIP view and the toast
+show the choice at once). All of them keep the last value received and
 survive preset and model changes. Every control at 0 is the profile as reSIDfp has it (the
 worn 6581 aside, which goes beyond reSIDfp on purpose).
 
@@ -205,8 +207,9 @@ expression targets a CC: the map, generated from the code, is [midi.md](midi.md)
 numbers M1a and M1c set are kept: 1 pulse width, 7 volume, 71 resonance, 74 cutoff, and
 the effect slots on 102..116 (Distortion 102..106, Modulation 107..111, FX 112..116:
 algorithm, Amount, A, B, Mix). CC 120 and 123 release every note. The chip model (CC 25,
-NRPN 1/5) changes at the next 10 ms tick, to the last value received, so a stream of
-changes resets the chip at most 100 times a second; the FX button changes it at once.
+NRPN 1/5) changes from the next 10 ms tick, to the last value received: its chip is
+prepared in the background, a slice a tick, and swaps in when it is whole, so a stream of
+changes never holds the instrument up; the FX button asks for a change the same way.
 
 **Envelope: INSTANT / AUTHENTIC** (CC 26, NRPN 1/10; INSTANT at power-on). The real SID
 has a quirk known as the ADSR delay bug. Each voice's envelope steps when a 15-bit rate

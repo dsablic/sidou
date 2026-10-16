@@ -702,3 +702,425 @@ fn the_documented_worst_pass_fits_exactly_without_waiting() {
     assert_eq!(dev.chip().model, SID_MODEL_8580);
     assert_same_sound(&mut dev, &mut direct);
 }
+
+// --- the spare's preparation a slice a tick (reg_ring_prepare_step, live_sid_prepare) ---
+
+/// The character with every control at `v` for profile `id`.
+fn character(id: u32, v: u8) -> sid_character {
+    sid_character {
+        profile: (id + 1) as u8,
+        age: v,
+        dac: v,
+        thump: v,
+        bleed: v,
+    }
+}
+
+fn profile_model(id: u32) -> sid_model {
+    sid_model::from(unsafe { (*sid_chip_profile_get(id)).model })
+}
+
+/// The chip's bytes, its DAC table pointer left out (the tables are compared by content).
+fn chip_bytes(s: &sid) -> Vec<u8> {
+    let mut c = Box::new(*s);
+    c.dac = std::ptr::null();
+    let p: *const sid = &*c;
+    unsafe { std::slice::from_raw_parts(p.cast::<u8>(), size_of::<sid>()) }.to_vec()
+}
+
+fn dac_eq(a: *const sid_dac, b: *const sid_dac) -> bool {
+    let (a, b) = unsafe { (&*a, &*b) };
+    a.wave
+        .iter()
+        .zip(&b.wave)
+        .all(|(x, y)| x.to_bits() == y.to_bits())
+        && a.env
+            .iter()
+            .zip(&b.env)
+            .all(|(x, y)| x.to_bits() == y.to_bits())
+}
+
+/// The staged preparation (sid_character_prep) against sid_init and sid_character_apply at
+/// once: every profile, on its own model and on the other one (the model's default then), at
+/// several settings, the same chip byte for byte (filter tables, coefficients, non-linearity,
+/// stage) and the same DAC table, in the slices sid_character_prep_slices says, every time.
+#[test]
+fn the_staged_preparation_makes_the_one_shot_chip_in_a_fixed_number_of_slices() {
+    let mut once = Box::<sid>::default();
+    let mut staged = Box::<sid>::default();
+    let mut dacs = Box::<[sid_dac; 2]>::default();
+    let mut prep = Box::<sid_character_prep>::default();
+    let mut counts = Vec::new();
+    for id in 0..SID_CHIPS {
+        for model in [profile_model(id), 1 - profile_model(id)] {
+            for v in [0u8, 1, 64, 127] {
+                let c = character(id, v);
+                unsafe {
+                    sid_init(&mut *once, model, SID_CLOCK_PAL, RATE);
+                    sid_character_apply(&mut *once, &c, &mut dacs[0]);
+                }
+                let want = unsafe { sid_character_prep_slices(model, &c) };
+                for run in 0..2 {
+                    // A chip that played before: the preparation leaves nothing of it.
+                    unsafe {
+                        sid_init(&mut *staged, 1 - model, SID_CLOCK_PAL, RATE);
+                        sid_write(&mut *staged, 0x18, 0x1f);
+                        render(&mut staged, 64);
+                        sid_character_prep_start(
+                            &mut *prep,
+                            &mut *staged,
+                            model,
+                            SID_CLOCK_PAL,
+                            RATE,
+                            &c,
+                        );
+                    }
+                    let mut slices = 0;
+                    while unsafe { sid_character_prep_done(&*prep) } == 0 {
+                        slices += 1;
+                        assert!(slices <= 32, "profile {id} model {model} at {v}: no end");
+                        let done = unsafe { sid_character_prep_step(&mut *prep, &mut dacs[1]) };
+                        assert_eq!(done != 0, unsafe { sid_character_prep_done(&*prep) } != 0);
+                    }
+                    let what = format!("profile {id} on model {model} at {v}, run {run}");
+                    assert_eq!(slices, want, "{what}: slices");
+                    assert_eq!(chip_bytes(&staged), chip_bytes(&once), "{what}: the chip");
+                    let custom = std::ptr::eq(once.dac, &dacs[0]);
+                    if custom {
+                        assert!(std::ptr::eq(staged.dac, &dacs[1]), "{what}");
+                        assert_eq!(prep.table, staged.dac, "{what}");
+                        assert!(dac_eq(staged.dac, once.dac), "{what}: the DAC table");
+                    } else {
+                        assert_eq!(staged.dac, once.dac, "{what}: the default DACs");
+                        assert!(prep.table.is_null(), "{what}");
+                    }
+                    // Once whole, more calls change nothing.
+                    assert_eq!(
+                        unsafe { sid_character_prep_step(&mut *prep, &mut dacs[1]) },
+                        1
+                    );
+                    assert_eq!(chip_bytes(&staged), chip_bytes(&once), "{what}: after");
+                }
+                if model == profile_model(id) {
+                    counts.push((id, v, want));
+                }
+            }
+        }
+    }
+    println!("slices (profile, controls, slices): {counts:?}");
+}
+
+/// With no free table where the DACs start, the slice waits, doing nothing, and the next one
+/// with a table goes on.
+#[test]
+fn the_staged_preparation_waits_for_a_free_dac_table() {
+    let mut s = Box::<sid>::default();
+    let mut d = Box::<sid_dac>::default();
+    let mut prep = Box::<sid_character_prep>::default();
+    let c = character(SID_CHIP_6581_WORN, 127);
+    unsafe {
+        sid_character_prep_start(&mut *prep, &mut *s, SID_MODEL_6581, SID_CLOCK_PAL, RATE, &c)
+    };
+    let want = unsafe { sid_character_prep_slices(SID_MODEL_6581, &c) };
+    let rows = want - SID_DAC_BUILD_STEPS;
+    for _ in 0..rows {
+        assert_eq!(
+            unsafe { sid_character_prep_step(&mut *prep, std::ptr::null_mut()) },
+            0
+        );
+    }
+    for _ in 0..3 {
+        assert_eq!(
+            unsafe { sid_character_prep_step(&mut *prep, std::ptr::null_mut()) },
+            0
+        );
+        assert!(prep.job.d.is_null(), "the DACs started without a table");
+    }
+    let mut n = 0;
+    while unsafe { sid_character_prep_step(&mut *prep, &mut *d) } == 0 {
+        n += 1;
+    }
+    assert_eq!(n + 1, SID_DAC_BUILD_STEPS);
+    assert_eq!(s.dac, &*d as *const sid_dac);
+}
+
+/// The device: live through the ring into two chips with the preparer, as the firmware runs
+/// (platform/fm1/main.c), the interrupt a block after every tick.
+fn prepared_device(model: sid_model) -> Device {
+    let mut d = Device::new(model);
+    let o: *mut reg_ring_out = &mut *d.out;
+    unsafe { live_set_preparer(&mut *d.live, Some(reg_ring_prepare_step), o.cast()) };
+    d.block();
+    d
+}
+
+/// The host: live_sid_sink with a spare and live_sid_prepare, as the emulator gate's host
+/// renders run (emu-gate common::render_host).
+struct Host {
+    chip: Box<sid>,
+    _spare: Box<sid>,
+    _target: Box<live_sid_target>,
+    _dacs: Box<[sid_dac; 2]>,
+    live: Box<live>,
+}
+
+impl Host {
+    fn new(model: sid_model) -> Self {
+        let mut chip = Box::<sid>::default();
+        let mut spare = Box::<sid>::default();
+        let mut dacs = Box::<[sid_dac; 2]>::default();
+        let mut target = Box::new(live_sid_target {
+            chip: &mut *chip,
+            clock_hz: SID_CLOCK_PAL,
+            sample_rate: RATE,
+            dacs: dacs.as_mut_ptr(),
+            spare: &mut *spare,
+            ..Default::default()
+        });
+        let mut l = Box::<live>::default();
+        let t: *mut live_sid_target = &mut *target;
+        unsafe {
+            live_init(&mut *l, Some(live_sid_sink), t.cast(), model);
+            live_set_preparer(&mut *l, Some(live_sid_prepare), t.cast());
+        }
+        Host {
+            chip,
+            _spare: spare,
+            _target: target,
+            _dacs: dacs,
+            live: l,
+        }
+    }
+}
+
+/// A tick on both, the device's interrupt after it, and a block of each chip's sound.
+fn tick_both(dev: &mut Device, host: &mut Host) -> (Vec<i16>, Vec<i16>) {
+    unsafe {
+        live_tick(&mut *dev.live);
+        live_tick(&mut *host.live);
+    }
+    dev.block();
+    (render(dev.chip(), 128), render(&mut host.chip, 128))
+}
+
+/// A profile step at full character with the preparer: the old chip keeps playing, untouched
+/// but for its ramp, while the spare is prepared a slice a tick; the reset goes in the tick
+/// the spare is whole, the slices sid_character_prep_slices counts after the request, and the
+/// sound matches the host's per-tick preparation sample for sample all the way, swap block
+/// included. No reset waits for the ring or finds no spare.
+#[test]
+fn a_profile_step_prepares_the_spare_a_slice_a_tick_and_swaps_at_the_hosts_tick() {
+    let mut dev = prepared_device(SID_MODEL_6581);
+    let mut host = Host::new(SID_MODEL_6581);
+    let resets = (dev.out.unprepared_resets, dev.out.reset_waits);
+    assert_eq!(resets.0, 1, "live_init's reset is the one made at once");
+    for l in [&mut *dev.live, &mut *host.live] {
+        unsafe {
+            for p in [
+                LIVE_PARAM_AGE,
+                LIVE_PARAM_DAC,
+                LIVE_PARAM_THUMP,
+                LIVE_PARAM_BLEED,
+            ] {
+                live_param_set(l, p, 127);
+            }
+            live_note_on(l, 57, 100);
+        }
+    }
+    for _ in 0..200 {
+        let (a, b) = tick_both(&mut dev, &mut host);
+        assert_eq!(a, b, "the ramp");
+    }
+    assert_eq!(dev.chips.ramp.now.dac, 127, "the DACs' ramp is done");
+    let mut slices_per_profile = Vec::new();
+    for to in [
+        SID_CHIP_6581_WORN,
+        SID_CHIP_8580_R5,
+        SID_CHIP_6581_R2,
+        SID_CHIP_6581_R4AR,
+    ] {
+        let model = profile_model(to);
+        let c = character(to, 127);
+        let want = unsafe { sid_character_prep_slices(model, &c) };
+        let before = dev.chips.active;
+        let (slices, was) = (dev.out.slices, dev.chip().filter_curve);
+        for l in [&mut *dev.live, &mut *host.live] {
+            unsafe { live_param_set(l, LIVE_PARAM_PROFILE, to) };
+        }
+        let mut swapped_at = None;
+        for tick in 1..=want + 2 {
+            let (a, b) = tick_both(&mut dev, &mut host);
+            assert_eq!(a, b, "to {to}, tick {tick}");
+            if dev.chips.active != before && swapped_at.is_none() {
+                swapped_at = Some(tick);
+            }
+            if swapped_at.is_none() {
+                assert_eq!(
+                    dev.chip().filter_curve,
+                    was,
+                    "to {to}: the old chip changed"
+                );
+                assert_eq!(u32::from(dev.live.profile), u32::from(host.live.profile));
+            }
+        }
+        assert_eq!(swapped_at, Some(want), "to {to}: the swap's tick");
+        assert_eq!(dev.out.slices - slices, want, "to {to}: a slice a tick");
+        assert_eq!(dev.chip().model, model);
+        assert_eq!(u32::from(dev.live.profile), to);
+        assert_eq!(dev.chips.prep_on, 0);
+        slices_per_profile.push((to, want));
+    }
+    assert_eq!((dev.out.unprepared_resets, dev.out.reset_waits), resets);
+    assert_eq!(dev.chips.lost_resets, 0);
+    println!("slices at full character: {slices_per_profile:?}");
+    assert_same_after_ticks(&mut dev, &mut host);
+}
+
+fn assert_same_after_ticks(dev: &mut Device, host: &mut Host) {
+    for _ in 0..50 {
+        let (a, b) = tick_both(dev, host);
+        assert_eq!(a, b);
+    }
+}
+
+/// Requests during a preparation: another profile restarts it (the newest wins), the same
+/// one with only the controls changed goes on (the ramp takes the rest after the swap), and
+/// back to the chip's own profile drops it, with no reset, and the ramp builds its DACs again.
+/// The FX button asks for the other model than the one asked for.
+#[test]
+fn requests_during_a_preparation_coalesce() {
+    let mut dev = prepared_device(SID_MODEL_6581);
+    let mut host = Host::new(SID_MODEL_6581);
+    let both_live = |dev: &mut Device, host: &mut Host, f: &dyn Fn(&mut live)| {
+        f(&mut dev.live);
+        f(&mut host.live);
+    };
+    both_live(&mut dev, &mut host, &|l| unsafe {
+        live_note_on(l, 60, 100)
+    });
+    let worn =
+        unsafe { sid_character_prep_slices(SID_MODEL_6581, &character(SID_CHIP_6581_WORN, 0)) };
+    let r5 = unsafe { sid_character_prep_slices(SID_MODEL_8580, &character(SID_CHIP_8580_R5, 0)) };
+    // WORN, then R5 three ticks in: R5's whole preparation from there.
+    both_live(&mut dev, &mut host, &|l| unsafe {
+        live_param_set(l, LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN)
+    });
+    for _ in 0..3 {
+        let (a, b) = tick_both(&mut dev, &mut host);
+        assert_eq!(a, b);
+    }
+    assert_eq!(dev.chips.prep_profile, SID_CHIP_6581_WORN as u8);
+    both_live(&mut dev, &mut host, &|l| unsafe {
+        live_button(l, LIVE_BUTTON_FX)
+    });
+    assert_eq!(
+        dev.live.profile_req, SID_CHIP_8580_R5 as u8,
+        "FX: the other model"
+    );
+    for tick in 1..=r5 {
+        assert_eq!(dev.chip().model, SID_MODEL_6581, "tick {tick}");
+        let (a, b) = tick_both(&mut dev, &mut host);
+        assert_eq!(a, b, "tick {tick}");
+    }
+    assert_eq!(dev.chip().model, SID_MODEL_8580, "R5 after its own slices");
+    // The same profile, the controls changed half way: it goes on and takes them, the DACs'
+    // setting only until the filter rows are done (slice 7), the ramp the rest after.
+    both_live(&mut dev, &mut host, &|l| unsafe {
+        live_param_set(l, LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN)
+    });
+    let rows = worn - SID_DAC_BUILD_STEPS;
+    for tick in 1..=worn {
+        if tick == 3 {
+            both_live(&mut dev, &mut host, &|l| unsafe {
+                live_param_set(l, LIVE_PARAM_THUMP, 127)
+            });
+        }
+        if tick == rows + 2 {
+            both_live(&mut dev, &mut host, &|l| unsafe {
+                live_param_set(l, LIVE_PARAM_DAC, 30)
+            });
+        }
+        let (a, b) = tick_both(&mut dev, &mut host);
+        assert_eq!(a, b, "tick {tick}");
+    }
+    assert_eq!(
+        dev.chip().filter_curve,
+        3,
+        "WORN after its slices, the controls notwithstanding"
+    );
+    assert_eq!(dev.chip().thump, 1.0, "the spare took the thump");
+    assert_eq!(
+        dev.chips.ramp.now.dac, 0,
+        "and the DACs as they were at the rows' end"
+    );
+    assert_same_after_ticks(&mut dev, &mut host);
+    assert_eq!(
+        dev.chips.ramp.now.dac, 30,
+        "the ramp took the DACs the rest of the way"
+    );
+    // To R2 and back to WORN before it is whole: dropped, no reset, the ramp free again.
+    let active = dev.chips.active;
+    both_live(&mut dev, &mut host, &|l| unsafe {
+        live_param_set(l, LIVE_PARAM_PROFILE, SID_CHIP_6581_R2);
+        live_param_set(l, LIVE_PARAM_DAC, 90);
+    });
+    for _ in 0..2 {
+        let (a, b) = tick_both(&mut dev, &mut host);
+        assert_eq!(a, b);
+    }
+    assert_eq!(dev.chips.prep_on, 1);
+    both_live(&mut dev, &mut host, &|l| unsafe {
+        live_param_set(l, LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN)
+    });
+    let (a, b) = tick_both(&mut dev, &mut host);
+    assert_eq!(a, b);
+    assert_eq!((dev.chips.prep_on, dev.live.preparing), (0, 0), "dropped");
+    assert_eq!(dev.chips.active, active, "no reset");
+    assert_same_after_ticks(&mut dev, &mut host);
+    assert!(
+        dev.chips.ramp.now.dac > 30,
+        "the ramp builds its DACs again"
+    );
+    assert_eq!(dev.chips.lost_resets, 0);
+    assert_eq!(dev.out.unprepared_resets, 1);
+}
+
+/// Two ticks in one pass (the main loop catching up) with the reset in the first: the second
+/// tick's new request finds the swap still queued, so its preparation starts at the next
+/// tick, not on the chip the interrupt still renders. Nothing is lost.
+#[test]
+fn a_preparation_never_starts_on_a_spare_still_queued_to_swap() {
+    let mut dev = prepared_device(SID_MODEL_6581);
+    let r5 = unsafe { sid_character_prep_slices(SID_MODEL_8580, &character(SID_CHIP_8580_R5, 0)) };
+    unsafe { live_param_set(&mut *dev.live, LIVE_PARAM_PROFILE, SID_CHIP_8580_R5) };
+    for _ in 0..r5 - 1 {
+        unsafe { live_tick(&mut *dev.live) };
+        dev.block();
+    }
+    let playing = dev.chips.active;
+    unsafe {
+        live_tick(&mut *dev.live); // the reset, queued
+        assert_eq!(dev.chips.spare_ready, 1);
+        live_param_set(&mut *dev.live, LIVE_PARAM_PROFILE, SID_CHIP_6581_WORN);
+        let slices = dev.out.slices;
+        live_tick(&mut *dev.live); // same pass: the swap has not happened yet
+        assert_eq!(
+            dev.out.slices, slices,
+            "a slice ran on the chip still rendering"
+        );
+        assert_eq!(dev.chips.prep_on, 0);
+    }
+    assert_eq!(dev.chips.active, playing);
+    dev.block();
+    assert_ne!(dev.chips.active, playing, "the swap");
+    assert_eq!(dev.chip().model, SID_MODEL_8580);
+    let worn =
+        unsafe { sid_character_prep_slices(SID_MODEL_6581, &character(SID_CHIP_6581_WORN, 0)) };
+    for _ in 0..worn {
+        unsafe { live_tick(&mut *dev.live) };
+        dev.block();
+    }
+    assert_eq!(dev.chip().filter_curve, 3);
+    assert_eq!(dev.chips.lost_resets, 0);
+    assert_eq!(dev.out.unprepared_resets, 1);
+}

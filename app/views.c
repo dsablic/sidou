@@ -85,7 +85,7 @@ static void put_param(grid* g, uint32_t row, const char* label, uint32_t value, 
 static void look(const views* v, uint32_t blink, uint8_t out[VIEWS_LOOK]) {
     const live* l = v->l;
     uint32_t n = 0;
-    out[n++] = (uint8_t)l->model;
+    out[n++] = (uint8_t)l->model_req;
     out[n++] = l->preset;
     out[n++] = (uint8_t)l->octave;
     out[n++] = (uint8_t)l->cutoff;
@@ -138,7 +138,7 @@ static void status_compose(screen* s, void* state, grid* g) {
     put(g, 2, VERSION_END_COL - length(v->version), v->version);
 
     put(g, 5, 2, "CHIP");
-    put(g, 5, 9, l->model == SID_MODEL_8580 ? "8580" : "6581");
+    put(g, 5, 9, l->model_req == SID_MODEL_8580 ? "8580" : "6581");
     put(g, 6, 2, "PRESET");
     const live_preset* p = live_preset_get(l->preset);
     put(g, 6, 9, p ? p->name : "?");
@@ -372,7 +372,7 @@ const view views_charset = {"CHARSET", NULL, NULL, NULL, charset_compose, charse
 
 static void remember(views* v) {
     const live* l = v->l;
-    v->model = (uint8_t)l->model;
+    v->model = (uint8_t)l->model_req;
     v->octave = l->octave;
     v->fx_select = l->fx_select;
     for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
@@ -497,7 +497,8 @@ void views_encoder(views* v, panel* p, uint32_t enc, int32_t steps) {
 }
 
 /* What changed since the last frame, as a toast; a chip change also runs the raster. The last
- * of several changes in one frame wins the toast. */
+ * of several changes in one frame wins the toast. The chip's is the model asked for: the toast
+ * covers the ticks its chip takes to prepare (app/reg_ring.h). */
 static void tell(views* v) {
     const live* l = v->l;
     char buf[SCREEN_TOAST_CHARS + 1u];
@@ -520,8 +521,8 @@ static void tell(views* v) {
             changed = 1;
         }
     }
-    if ((uint8_t)l->model != v->model) {
-        join(buf, sizeof buf, "CHIP ", l->model == SID_MODEL_8580 ? "8580" : "6581");
+    if ((uint8_t)l->model_req != v->model) {
+        join(buf, sizeof buf, "CHIP ", l->model_req == SID_MODEL_8580 ? "8580" : "6581");
         screen_raster(&v->s, VIEWS_RASTER_STEPS);
         changed = 1;
     }

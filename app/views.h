@@ -88,10 +88,10 @@ extern "C" {
 #define VIEWS_MENU_ABOUT 7u
 /* Raster steps for a chip model change: the ramp once round. */
 #define VIEWS_RASTER_STEPS SCREEN_RAMP
-/* What the views show, as bytes (app/views.c look): the instrument's model, preset, octave,
- * cutoff (2), resonance, pulse width (2), volume and selected slot, each voice's sounding
- * note, every slot field, the title cards' option, and the menu's cursor, first row and
- * blink. */
+/* What the views show, as bytes (app/views.c look): the instrument's model (as asked for),
+ * preset, octave, cutoff (2), resonance, pulse width (2), volume and selected slot, each
+ * voice's sounding note, every slot field, the title cards' option, and the menu's cursor,
+ * first row and blink. */
 #define VIEWS_LOOK (14u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
 
 typedef struct {

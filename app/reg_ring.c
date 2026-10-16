@@ -126,6 +126,8 @@ void reg_ring_chips_init(reg_ring_chips* c, sid_model model, uint32_t clock_hz,
     c->next = 0;
     c->stage_pending[0] = c->stage_pending[1] = 0;
     c->ticks = 0;
+    c->prep_on = 0;
+    c->prep_profile = 0;
 }
 
 sid* reg_ring_chip(reg_ring_chips* c) {
@@ -210,6 +212,7 @@ static sid_dac* free_dac(reg_ring_chips* c) {
 static void prepare_spare(reg_ring_chips* c, uint8_t model) {
     sid_model m = model == SID_MODEL_8580 ? SID_MODEL_8580 : SID_MODEL_6581;
     uint8_t spare = (uint8_t)(c->active ^ 1u);
+    c->prep_on = 0; /* its chip is this one */
     sid* s = &c->chip[spare];
     sid_init(s, m, c->clock_hz, c->sample_rate);
     const sid_dac* table = sid_character_apply(s, &c->ramp.target, free_dac(c));
@@ -220,8 +223,58 @@ static void prepare_spare(reg_ring_chips* c, uint8_t model) {
     c->spare_ready = 1;
 }
 
+/* The spare whole for a reset to model, prepared for the profile live has just sent: the
+ * swap's chip from now on (next), its character the one the ramp starts from, the settings
+ * as live last sent them still the ramp's target. */
+static int take_prepared(reg_ring_chips* c, uint8_t model) {
+    if (!c->prep_on || !sid_character_prep_done(&c->prep) || c->prep.model != model ||
+        c->prep.c.profile != c->ramp.target.profile) {
+        return 0;
+    }
+    sid_character want = c->ramp.target;
+    sid_character_ramp_reset(&c->ramp, &c->prep.c, c->prep.table);
+    c->ramp.target = want;
+    c->next = (uint8_t)(c->next ^ 1u);
+    c->spare_model = model;
+    c->prep_on = 0;
+    COMPILER_FENCE(); /* the chip is ready before the flag says so */
+    c->spare_ready = 1;
+    return 1;
+}
+
+int reg_ring_prepare_step(void* ctx, uint8_t profile) {
+    reg_ring_out* o = ctx;
+    reg_ring_chips* c = o->chips;
+    const sid_chip_profile* p = sid_chip_profile_get(profile);
+    if (!p) { /* LIVE_PREPARE_CANCEL */
+        c->prep_on = 0;
+        return 0;
+    }
+    if (!c->prep_on || c->prep_profile != profile) {
+        if (c->spare_ready) {
+            c->prep_on = 0;
+            return 0;
+        }
+        sid_character want = c->ramp.target;
+        want.profile = (uint8_t)(profile + 1u);
+        c->ramp.building = 0;
+        sid_character_prep_start(&c->prep, &c->chip[c->next ^ 1u], (sid_model)p->model,
+                                 c->clock_hz, c->sample_rate, &want);
+        c->prep_on = 1;
+        c->prep_profile = profile;
+    } else if (sid_character_prep_done(&c->prep)) {
+        return 1;
+    } else {
+        sid_character_prep_update(&c->prep, &c->ramp.target);
+    }
+    o->slices++;
+    o->sliced = 1;
+    return sid_character_prep_step(&c->prep, free_dac(c));
+}
+
 /* The character's tick (LIVE_REG_CHAR_TICK), on the chip the queued entries end on: the
- * ramp's next step into a stage that is not queued. The REG_RING_CHARACTER value. */
+ * ramp's next step into a stage that is not queued. The REG_RING_CHARACTER value. While the
+ * spare is being prepared the ramp gets no free DAC table (reg_ring_prepare_step). */
 static uint8_t character_tick(reg_ring_out* o) {
     reg_ring_chips* c = o->chips;
     uint32_t k = !c->stage_pending[0] ? 0u : !c->stage_pending[1] ? 1u : 2u;
@@ -229,7 +282,8 @@ static uint8_t character_tick(reg_ring_out* o) {
         o->character_defers++;
         return REG_RING_NO_STAGE;
     }
-    if (!sid_character_ramp_tick(&c->ramp, &c->chip[c->next], free_dac(c), &c->stage[k])) {
+    sid_dac* table = c->prep_on ? NULL : free_dac(c);
+    if (!sid_character_ramp_tick(&c->ramp, &c->chip[c->next], table, &c->stage[k])) {
         return REG_RING_NO_STAGE;
     }
     c->stage_pending[k] = 1;
@@ -257,8 +311,12 @@ void reg_ring_sink(void* ctx, uint8_t reg, uint8_t value) {
         reg = REG_RING_CHARACTER;
     }
     if (reg == LIVE_REG_RESET) {
-        wait_empty(o, &o->reset_waits);
-        prepare_spare(o->chips, value);
+        uint8_t model = value == SID_MODEL_8580 ? SID_MODEL_8580 : SID_MODEL_6581;
+        if (!take_prepared(o->chips, model)) {
+            o->unprepared_resets++;
+            wait_empty(o, &o->reset_waits);
+            prepare_spare(o->chips, model);
+        }
         value = o->chips->spare_model;
     }
     while (!reg_ring_push(r, reg, value)) {

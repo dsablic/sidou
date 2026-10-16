@@ -208,7 +208,7 @@ fn main() {
         .clang_arg("--target=i686-unknown-none")
         .clang_arg("-ffreestanding")
         .allowlist_type(
-            "sid|sid_osc|sid_env|reg_ring_chips|midi_out|midi_ring|midi_ring_entry|midi_learn|live|scope|views|title_card",
+            "sid|sid_osc|sid_env|reg_ring_chips|reg_ring_out|midi_out|midi_ring|midi_ring_entry|midi_learn|live|scope|views|title_card",
         )
         .generate()
         .expect("bindgen (ILP32 layout) failed")

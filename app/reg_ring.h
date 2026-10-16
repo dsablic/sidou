@@ -23,10 +23,14 @@
  * never run with interrupts off once the audio runs (before that, the callback drains).
  *
  * Model change (LIVE_REG_RESET): re-initialising a chip costs far more than a block's time
- * budget allows inside the interrupt (sid_init computes 2048 cutoff coefficients). So the
- * sink does it in the main loop, on the chip the interrupt is not rendering, and the drain
- * only swaps which chip is active when it reaches the reset entry. Before that the sink waits
- * for the ring to empty, so no earlier reset (and swap) is still pending. */
+ * budget allows inside the interrupt (sid_init computes 2048 cutoff coefficients), and far
+ * more than a main-loop pass's (about 0.5 M instructions with a profile's tables, against
+ * the 120k poll allowance). So the main loop prepares the chip the interrupt is not
+ * rendering (the spare) a slice a tick (reg_ring_prepare_step, live.h's live_prepare_fn)
+ * while the other plays on, and the drain only swaps which chip is active when it reaches the
+ * reset entry, which live sends once the spare is whole. A reset with no preparation for it
+ * (live_init's, or a sink without a preparer) prepares the spare at once, after waiting for
+ * the ring to empty, so no earlier reset (and swap) is still pending. */
 #ifndef SIDOU_REG_RING_H
 #define SIDOU_REG_RING_H
 
@@ -86,9 +90,9 @@ typedef void (*reg_ring_pseudo_fn)(void* ctx, uint8_t reg, uint8_t value);
  *
  * The chip's character (sid_character.h; live.h, LIVE_REG_CHAR) is the producer's: the sink
  * keeps the settings live sends (ramp.target) and applies them in the main loop, to the spare
- * before every swap (all of them at once, as sid_init reset them), and to the rendered chip a
- * tick at a time (sid_character_ramp_tick at each LIVE_REG_CHAR_TICK), never waiting for the
- * audio interrupt:
+ * before every swap (all of them at once, as sid_init reset them, while it is prepared:
+ * reg_ring_prepare_step), and to the rendered chip a tick at a time (sid_character_ramp_tick
+ * at each LIVE_REG_CHAR_TICK), never waiting for the audio interrupt:
  * - the ramp's DAC tables go into whichever of `dac` neither chip that renders or will (the
  *   active one, and the spare while a swap is queued) nor a queued stage points at; with
  *   none free the DACs wait a tick;
@@ -131,6 +135,12 @@ typedef struct {
     volatile uint32_t ticks; /* drain: REG_RING_CHARACTER entries applied, every tick's */
     sid_character_stage stage[2];
     sid_dac dac[2]; /* the character's DAC tables, when they are not the model's defaults */
+    /* producer: the spare's preparation (reg_ring_prepare_step), on chip[next ^ 1], while
+     * prep_on; for the profile prep_profile (a SID_CHIP_*) and the character's controls as
+     * they were when it started. */
+    sid_character_prep prep;
+    uint8_t prep_on;
+    uint8_t prep_profile;
 } reg_ring_chips;
 
 /* chip[active] is chip 0, initialised for model; chip 1 is left zeroed; no pseudo handler;
@@ -159,13 +169,38 @@ typedef struct {
     uint32_t full_waits;  /* waits for room in a full ring */
     uint32_t reset_waits; /* waits for the ring to empty before a model change */
     uint32_t character_defers; /* ticks that found both stages queued (reg_ring_chips) */
+    uint32_t slices;            /* reg_ring_prepare_step's slices run */
+    uint32_t unprepared_resets; /* resets that found no preparation and prepared at once */
+    /* Set by every pass that runs a slice. M2a Task 4's store reads and clears it, and skips
+     * its own work in that pass, so a slice and the store's never share one; until the store
+     * is in, nothing reads it. */
+    uint8_t sliced;
 } reg_ring_out;
 
 /* A live_sink_fn: ctx is a reg_ring_out*. The character's settings (LIVE_REG_CHAR) are kept,
  * not queued; LIVE_REG_CHAR_TICK runs the ramp's tick on the chip and queues
- * REG_RING_CHARACTER, without waiting; LIVE_REG_RESET waits for the ring to empty and
- * initialises the spare with the model and the character. */
+ * REG_RING_CHARACTER, without waiting; LIVE_REG_RESET takes the spare reg_ring_prepare_step
+ * made whole for that model and the profile live has just sent, or, with none, waits for the
+ * ring to empty and initialises the spare with the model and the character at once. */
 void reg_ring_sink(void* ctx, uint8_t reg, uint8_t value);
+
+/* The most instructions one slice of the spare's preparation may take on the device
+ * (emu-gate's screen.rs measures each against it): with the busiest view's pass (68k) it
+ * leaves MIDI's drain 12k of the 120k poll allowance. */
+#define REG_RING_PREPARE_SLICE 40000u
+
+/* A live_prepare_fn (live.h), ctx a reg_ring_out*, for live_tick only, once a tick: one
+ * slice of preparing the spare for the profile (a SID_CHIP_*, its model the reset's) and the
+ * character's controls as the sink has them (sid_character_prep). A request for another
+ * profile than the one being prepared starts again; for the same one it goes on, taking the
+ * controls as they move (sid_character_prep_update: the DACs as they were when its filter rows
+ * were done; the ramp takes the chip the rest of the way after the swap). 1 once the
+ * spare is whole: the next LIVE_REG_RESET for its model takes it. LIVE_PREPARE_CANCEL drops
+ * the preparation. While one runs the ramp builds no DAC table (one it was building is
+ * dropped), so the spare always finds a free one; and none starts while a swap is still
+ * queued (the spare is then the chip the interrupt renders until the drain reaches it): it
+ * starts at the next tick. */
+int reg_ring_prepare_step(void* ctx, uint8_t profile);
 
 #ifdef SIDOU_REG_RING_RACE_HOOK
 /* Host tests only (the device never defines it): hook(ctx) runs where the audio interrupt

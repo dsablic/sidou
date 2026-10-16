@@ -357,20 +357,3 @@ working.
   3. have a slot switch wait a block when the SID's block is heavy.
   Keep the output exact (golden hashes, the bulk-against-cycle fuzz).
 
-## Split the spare chip's preparation over ticks (M2)
-
-- **Where:** `prepare_spare` in the register ring's sink (`app/reg_ring.c`), `sid_init`
-  (`core/sid/sid.c`), `sid_character_apply` (`core/sid/sid_character.c`) and the filter
-  rows' build (`core/sid/sid_filter.c`);
-  [decision record 0006](decisions/0006-chip-profiles.md), "Cost".
-- **Problem:** a profile or model change (the CHIP view's ALGORITHM, the FX button, CC 25,
-  CC 85) prepares the whole spare chip in one main-loop pass: 471.5k instructions onto the
-  worn 6581 at full character, about four times the latency gate's 120k poll allowance (the
-  emu-gate bound is 520k). A note arriving during it waits about 5 ms, against decision
-  record 0005's 3.4 ms. It is a deliberate, user-initiated step at most once a tick, so M1
-  keeps it as an exception; with chip B (M2) there are two chips to step and it matters more.
-- **Action:** prepare the spare chip over several ticks and swap when it is whole. The
-  plumbing is there: `spare_ready`, `next`, and the DAC tables already build in stages. The
-  big pieces need splitting further: `sid_init` is about 0.16 M and the filter's two rows
-  about 0.23 M on their own, each well over the allowance. Then tighten the emu-gate bounds
-  (`CHIP_RESET_PASS`, `CHIP_PROFILE_PASS` in `tests/screen.rs`) to the poll allowance.

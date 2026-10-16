@@ -232,7 +232,7 @@ _Static_assert(offsetof(sid, res_k) == offsetof(sid, cutoff_g) + sizeof(float) *
                    offsetof(sid, filter_t) == offsetof(sid, res_k_to) + sizeof(float) * 16u,
                "the filter tables lie together, from cutoff_g to filter_t");
 
-void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) {
+void sid_init_begin(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) {
     memset(s, 0, offsetof(sid, cutoff_g));
     memset(&s->filter_t, 0, sizeof *s - offsetof(sid, filter_t));
     s->model = model;
@@ -249,15 +249,45 @@ void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) 
         sid_env_reset_settled(&s->env[v]); /* zeroed above: nothing to settle */
     }
     s->sample_rate = sample_rate;
-    build_filter_tables(s, 0, 0);
     sid_svf_reset(&s->svf);
     s->dc_r = 1.0f - 2.0f * SIDOU_PI * DC_BLOCK_HZ / (float)sample_rate;
     s->nl.level_ref = NL_LEVEL_REF;
     s->nl.load_ref = NL_LOAD_REF;
-    sid_set_filter_nonlinearity(s, 1.0f);
     s->out_c = 1.0f - exp_neg(2.0f * SIDOU_PI * OUT_LP_HZ / (float)sample_rate);
+}
+
+void sid_filter_row_part(sid* s, int second, uint32_t curve, uint32_t from, uint32_t to) {
+    float* row = second ? s->cutoff_x_to : s->cutoff_g;
+    if (to > SID_FC_STEPS) {
+        to = SID_FC_STEPS;
+    }
+    for (uint32_t fc = from; fc < to; ++fc) {
+        float hz = sid_cutoff_hz(s->model, curve, fc);
+        row[fc] = second ? cutoff_x(s, hz) : cutoff_g(s, hz);
+    }
+    if (to == SID_FC_STEPS) {
+        float* k = second ? s->res_k_to : s->res_k;
+        for (uint32_t r = 0; r < 16u; ++r) {
+            k[r] = sid_resonance_k(s->model, curve, r);
+        }
+        if (second) {
+            s->filter_toward = (uint8_t)curve;
+        } else {
+            s->filter_curve = (uint8_t)curve;
+        }
+    }
+}
+
+void sid_init_end(sid* s) {
+    sid_set_filter_nonlinearity(s, 1.0f);
     update_filter(s);
     update_mix(s);
+}
+
+void sid_init(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_rate) {
+    sid_init_begin(s, model, clock_hz, sample_rate);
+    build_filter_tables(s, 0, 0);
+    sid_init_end(s);
 }
 
 void sid_filter_refresh(sid* s) {

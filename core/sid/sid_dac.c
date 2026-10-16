@@ -132,16 +132,45 @@ void sid_dac_build(sid_dac* d, int is6581, float kink, float leakage) {
 static sid_dac shared[2];
 static int shared_state[2];
 
+static float default_kink(int is6581) {
+    return is6581 ? SID_DAC_KINK_6581 : SID_DAC_KINK_8580;
+}
+
+static float default_leakage(int is6581) {
+    return is6581 ? SID_DAC_LEAKAGE_6581 : SID_DAC_LEAKAGE_8580;
+}
+
 #ifdef __PI32V2__
-static int claim(int* s) {
-    if (*s) {
+/* One context, the main loop: a table can be built a step at a time (sid_dac_default_step)
+ * and finished at once by sid_dac_default. */
+static sid_dac_job shared_job[2];
+
+int sid_dac_default_ready(int is6581) {
+    return shared_state[is6581 ? 0 : 1] == 2;
+}
+
+int sid_dac_default_step(int is6581) {
+    uint32_t m = is6581 ? 0u : 1u;
+    if (shared_state[m] == 2) {
+        return 1;
+    }
+    if (shared_state[m] == 0) {
+        sid_dac_job_start(&shared_job[m], &shared[m], is6581, default_kink(is6581),
+                          default_leakage(is6581));
+        shared_state[m] = 1;
+    }
+    if (!sid_dac_job_step(&shared_job[m])) {
         return 0;
     }
-    *s = 1;
+    shared_state[m] = 2;
     return 1;
 }
-static int ready(const int* s) { return *s == 2; }
-static void publish(int* s) { *s = 2; }
+
+const sid_dac* sid_dac_default(int is6581) {
+    while (!sid_dac_default_step(is6581)) {
+    }
+    return &shared[is6581 ? 0 : 1];
+}
 #else
 static int claim(int* s) {
     int expected = 0;
@@ -149,13 +178,11 @@ static int claim(int* s) {
 }
 static int ready(const int* s) { return __atomic_load_n(s, __ATOMIC_ACQUIRE) == 2; }
 static void publish(int* s) { __atomic_store_n(s, 2, __ATOMIC_RELEASE); }
-#endif
 
 const sid_dac* sid_dac_default(int is6581) {
     uint32_t m = is6581 ? 0u : 1u;
     if (claim(&shared_state[m])) {
-        sid_dac_build(&shared[m], is6581, is6581 ? SID_DAC_KINK_6581 : SID_DAC_KINK_8580,
-                      is6581 ? SID_DAC_LEAKAGE_6581 : SID_DAC_LEAKAGE_8580);
+        sid_dac_build(&shared[m], is6581, default_kink(is6581), default_leakage(is6581));
         publish(&shared_state[m]);
     }
     while (!ready(&shared_state[m])) {
@@ -163,3 +190,14 @@ const sid_dac* sid_dac_default(int is6581) {
     }
     return &shared[m];
 }
+
+/* Hosts build a table at once: the step is the whole of it. */
+int sid_dac_default_ready(int is6581) {
+    return ready(&shared_state[is6581 ? 0 : 1]);
+}
+
+int sid_dac_default_step(int is6581) {
+    (void)sid_dac_default(is6581);
+    return 1;
+}
+#endif

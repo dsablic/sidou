@@ -177,6 +177,8 @@ static void sidou_main(void) {
     lcd_init();
     audio_init();
     live_init(&instrument, reg_ring_sink, audio_sink_ctx(), SID_MODEL_6581);
+    /* From here on a profile or model change prepares the spare chip a slice a tick. */
+    live_set_preparer(&instrument, reg_ring_prepare_step, audio_sink_ctx());
     panel_init(&front);
     input_init();
     panel_master(&front, &instrument, input_master());

@@ -219,7 +219,9 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
         return;
     };
     let mut m = Machine::boot(&fw.image);
-    m.watch_calls(fw.symbol("sid_init"));
+    // The spare chip's preparation, a slice a tick (app/reg_ring.h): every slice of both
+    // toggles. (Boot's chips are made at once, by sid_init, before the main loop.)
+    m.watch_calls(fw.symbol("sid_character_prep_step"));
     common::run_past_boot(&mut m, &fw);
     m.key(key_id(A4), true);
     m.run_ms(200);
@@ -259,7 +261,7 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
         .count();
     let f0 = pitch(&x[x.len() / 2..]);
     let report = serde_json::json!({
-        "sid_init_calls_main_loop": calls,
+        "preparation_slices_main_loop": calls,
         "block_budget_instructions": BLOCK_BUDGET,
         "max_block_instructions_before": quiet_before,
         "max_block_instructions_across_toggle": worst,
@@ -270,13 +272,14 @@ fn the_model_toggle_swaps_chips_without_a_gap() {
     });
     println!("{report}");
 
-    // At boot reg_ring_chips_init and live_init's reset, then the two toggles: all four in
-    // the main loop (the watch counts main-loop calls only), and the blocks stay small, so
+    // The two toggles' preparations, 7 slices each (the 8580 R5 and the 6581 R4AR with the
+    // model's own DACs), the first 4 more for the 8580's default DACs, built on first use: all
+    // in the main loop (the watch counts main-loop calls only), and the blocks stay small, so
     // none ran in the interrupt.
     assert_eq!(
         calls.len(),
-        4,
-        "sid_init calls from the main loop: {calls:?}"
+        18,
+        "preparation slices from the main loop: {calls:?}"
     );
     assert!(
         worst < BLOCK_BUDGET / 4,

@@ -24,13 +24,17 @@ void sid_character_init(sid_character* c) {
     c->bleed = 0;
 }
 
-/* The character's profile for the chip: its own, or the chip's model's default. */
-static const sid_chip_profile* profile_of(const sid* s, const sid_character* c) {
+/* The character's profile for a chip of the model: its own, or the model's default. */
+static const sid_chip_profile* profile_for(sid_model model, const sid_character* c) {
     const sid_chip_profile* p = c->profile ? sid_chip_profile_get(c->profile - 1u) : NULL;
-    if (!p || p->model != (uint8_t)s->model) {
-        p = &profiles[sid_chip_default(s->model)];
+    if (!p || p->model != (uint8_t)model) {
+        p = &profiles[sid_chip_default(model)];
     }
     return p;
+}
+
+static const sid_chip_profile* profile_of(const sid* s, const sid_character* c) {
+    return profile_for(s->model, c);
 }
 
 /* A control as 0..1. */
@@ -38,19 +42,28 @@ static float amount(uint8_t v) {
     return (float)(v > SID_CHARACTER_MAX ? SID_CHARACTER_MAX : v) / (float)SID_CHARACTER_MAX;
 }
 
-static void dac_params(const sid* s, const sid_character* c, float* kink, float* leakage) {
-    const sid_chip_profile* p = profile_of(s, c);
+static void dac_params_for(sid_model model, const sid_character* c, float* kink,
+                           float* leakage) {
+    const sid_chip_profile* p = profile_for(model, c);
     float a = amount(c->dac);
     *kink = p->kink + a * SID_CHARACTER_KINK;
     *leakage = p->leakage * (1.0f + a * (SID_CHARACTER_LEAK - 1.0f));
 }
 
-int sid_character_dac_custom(const sid* s, const sid_character* c) {
+static void dac_params(const sid* s, const sid_character* c, float* kink, float* leakage) {
+    dac_params_for(s->model, c, kink, leakage);
+}
+
+static int dac_custom_for(sid_model model, const sid_character* c) {
     float kink, leakage;
-    dac_params(s, c, &kink, &leakage);
-    int is6581 = s->model == SID_MODEL_6581;
+    dac_params_for(model, c, &kink, &leakage);
+    int is6581 = model == SID_MODEL_6581;
     return kink != (is6581 ? SID_DAC_KINK_6581 : SID_DAC_KINK_8580) ||
            leakage != (is6581 ? SID_DAC_LEAKAGE_6581 : SID_DAC_LEAKAGE_8580);
+}
+
+int sid_character_dac_custom(const sid* s, const sid_character* c) {
+    return dac_custom_for(s->model, c);
 }
 
 void sid_character_build_dac(const sid* s, const sid_character* c, sid_dac* d) {
@@ -114,6 +127,113 @@ const sid_dac* sid_character_apply(sid* s, const sid_character* c, sid_dac* dac)
 
 void sid_character_change(sid* s, const sid_character* c, sid_dac* dac) {
     change(s, c, dac);
+}
+
+/* The preparation's pieces (sid_character_prep_step), in order. */
+enum { PREP_DEFAULT_DAC, PREP_ROW_G, PREP_ROW_X, PREP_DAC, PREP_DONE };
+
+#define ROW_SLICES(n) ((SID_FC_STEPS + (n) - 1u) / (n))
+
+void sid_character_prep_start(sid_character_prep* p, sid* s, sid_model model,
+                              uint32_t clock_hz, uint32_t sample_rate, const sid_character* c) {
+    p->s = s;
+    p->c = *c;
+    p->table = NULL;
+    p->job.d = NULL;
+    p->clock_hz = clock_hz;
+    p->sample_rate = sample_rate;
+    p->at = 0;
+    p->model = (uint8_t)model;
+    p->phase = PREP_DEFAULT_DAC;
+}
+
+void sid_character_prep_update(sid_character_prep* p, const sid_character* c) {
+    if (p->phase == PREP_DONE) {
+        return;
+    }
+    p->c.age = c->age;
+    p->c.thump = c->thump;
+    p->c.bleed = c->bleed;
+    if (p->phase < PREP_DAC) {
+        p->c.dac = c->dac;
+    }
+}
+
+int sid_character_prep_done(const sid_character_prep* p) {
+    return p->phase == PREP_DONE;
+}
+
+/* sid_init_end and sid_character_apply's stage: what is left once the tables are built. */
+static void prep_finish(sid_character_prep* p) {
+    sid* s = p->s;
+    sid_init_end(s);
+    sid_character_stage st;
+    sid_character_stage_for(s, &p->c, p->table, &st);
+    sid_character_commit(s, &st); /* the filter's coefficients too */
+    p->phase = PREP_DONE;
+}
+
+/* The pieces follow sid_init and sid_character_apply (sid_character_filter, then the DACs,
+ * then the stage), building each table once: the first row is the profile's curve setting
+ * and the second its hot row, as sid_character_filter leaves them whichever way it gets
+ * there (both rows anew, or sid_init's first and the second anew). */
+int sid_character_prep_step(sid_character_prep* p, sid_dac* dac) {
+    sid* s = p->s;
+    const sid_chip_profile* prof = profile_for((sid_model)p->model, &p->c);
+    switch (p->phase) {
+    case PREP_DEFAULT_DAC:
+        /* sid_init_begin points the chip at the model's default DACs: on the device the
+         * 8580's are built on first use, a step a slice, not all in one. */
+        if (!sid_dac_default_ready(p->model == SID_MODEL_6581)) {
+            sid_dac_default_step(p->model == SID_MODEL_6581);
+            return 0;
+        }
+        p->phase = PREP_ROW_G;
+        /* fall through */
+    case PREP_ROW_G:
+        if (p->at == 0u) {
+            sid_init_begin(s, (sid_model)p->model, p->clock_hz, p->sample_rate);
+            sid_set_combined_profile(s, prof->combined);
+        }
+        sid_filter_row_part(s, 0, prof->curve, p->at, p->at + SID_PREP_ROW_G);
+        p->at = (uint16_t)(p->at + SID_PREP_ROW_G);
+        if (p->at >= SID_FC_STEPS) {
+            p->at = 0;
+            p->phase = PREP_ROW_X;
+        }
+        return 0;
+    case PREP_ROW_X:
+        sid_filter_row_part(s, 1, prof->hot_curve, p->at, p->at + SID_PREP_ROW_X);
+        p->at = (uint16_t)(p->at + SID_PREP_ROW_X);
+        if (p->at < SID_FC_STEPS) {
+            return 0;
+        }
+        p->phase = PREP_DAC;
+        if (!sid_character_dac_custom(s, &p->c)) {
+            prep_finish(p);
+            return 1;
+        }
+        return 0;
+    case PREP_DAC:
+        if (!p->job.d) {
+            if (!dac) {
+                return 0;
+            }
+            sid_character_dac_job(s, &p->c, dac, &p->job);
+        }
+        if (!sid_dac_job_step(&p->job)) {
+            return 0;
+        }
+        p->table = p->job.d;
+        prep_finish(p);
+        return 1;
+    default: return 1;
+    }
+}
+
+uint32_t sid_character_prep_slices(sid_model model, const sid_character* c) {
+    return ROW_SLICES(SID_PREP_ROW_G) + ROW_SLICES(SID_PREP_ROW_X) +
+           (dac_custom_for(model, c) ? SID_DAC_BUILD_STEPS : 0u);
 }
 
 void sid_character_ramp_reset(sid_character_ramp* r, const sid_character* c,

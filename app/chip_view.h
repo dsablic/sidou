@@ -6,8 +6,9 @@
  *
  * The page, in PETSCII frames (docs/art/README.md "CHIP"):
  * - row 2: CHIP and the tabs, A in reverse video, B greyed;
- * - CHIP (rows 4-7): the profile (6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581) as asked
- *   for, and the model the chip plays;
+ * - CHIP (rows 4-7): the profile (6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581) and its
+ *   model as asked for (the chip plays them once its spare is prepared, about 0.1 s later:
+ *   app/reg_ring.h);
  * - CHARACTER (rows 8-13): age/heat, DAC sloppiness, output thump and filter bleed, each a bar
  *   and its value 0..127;
  * - DIST, MOD and FX (4 rows each from row 14): the slot and its algorithm in the frame's
@@ -65,7 +66,7 @@ extern "C" {
 #define CHIP_VIEW_HELP_ROW 26u
 /* A control's name on the page, terminator included ("DEPTH"). */
 #define CHIP_VIEW_LABEL 6u
-/* What the page shows, as bytes (chip_view.c look): the profile asked for, the chip's model,
+/* What the page shows, as bytes (chip_view.c look): the profile and model asked for,
  * the four character controls, every slot field, the selected slot and the focus. */
 #define CHIP_VIEW_LOOK (2u + (LIVE_CHAR_FIELDS - 1u) + LIVE_SLOTS * LIVE_SLOT_FIELDS + 2u)
 

@@ -112,18 +112,61 @@ static sid_dac* host_free_dac(const live_sid_target* t) {
     return t->chip->dac == &t->dacs[0] ? &t->dacs[1] : &t->dacs[0];
 }
 
+int live_sid_prepare(void* ctx, uint8_t profile) {
+    live_sid_target* t = ctx;
+    const sid_chip_profile* p = sid_chip_profile_get(profile);
+    if (!p || !t->spare) {
+        t->prep_on = 0;
+        return 0;
+    }
+    if (!t->prep_on || t->prep_profile != profile) {
+        sid_character want = t->ramp.target;
+        want.profile = (uint8_t)(profile + 1u);
+        t->ramp.building = 0;
+        sid_character_prep_start(&t->prep, t->spare, (sid_model)p->model, t->clock_hz,
+                                 t->sample_rate, &want);
+        t->prep_on = 1;
+        t->prep_profile = profile;
+    } else if (sid_character_prep_done(&t->prep)) {
+        return 1;
+    } else {
+        sid_character_prep_update(&t->prep, &t->ramp.target);
+    }
+    return sid_character_prep_step(&t->prep, host_free_dac(t));
+}
+
+/* The spare live_sid_prepare made whole for a reset to model and the profile just sent, into
+ * the chip (reg_ring.c, take_prepared). */
+static int take_prepared(live_sid_target* t, sid_model model) {
+    if (!t->prep_on || !sid_character_prep_done(&t->prep) || t->prep.model != (uint8_t)model ||
+        t->prep.c.profile != t->ramp.target.profile) {
+        return 0;
+    }
+    *t->chip = *t->spare;
+    sid_character want = t->ramp.target;
+    sid_character_ramp_reset(&t->ramp, &t->prep.c, t->prep.table);
+    t->ramp.target = want;
+    t->prep_on = 0;
+    return 1;
+}
+
 void live_sid_sink(void* ctx, uint8_t reg, uint8_t value) {
     live_sid_target* t = ctx;
     if (reg == LIVE_REG_RESET) {
         sid_model model = value == SID_MODEL_8580 ? SID_MODEL_8580 : SID_MODEL_6581;
-        sid_init(t->chip, model, t->clock_hz, t->sample_rate);
-        const sid_dac* table = sid_character_apply(t->chip, &t->ramp.target, host_free_dac(t));
-        sid_character_ramp_reset(&t->ramp, &t->ramp.target, table);
+        if (!take_prepared(t, model)) {
+            t->prep_on = 0;
+            sid_init(t->chip, model, t->clock_hz, t->sample_rate);
+            const sid_dac* table =
+                sid_character_apply(t->chip, &t->ramp.target, host_free_dac(t));
+            sid_character_ramp_reset(&t->ramp, &t->ramp.target, table);
+        }
     } else if (reg >= LIVE_REG_CHAR(0) && reg < LIVE_REG_CHAR(LIVE_CHAR_FIELDS)) {
         live_char_store(&t->ramp.target, reg, value);
     } else if (reg == LIVE_REG_CHAR_TICK) {
         sid_character_stage st;
-        if (sid_character_ramp_tick(&t->ramp, t->chip, host_free_dac(t), &st)) {
+        sid_dac* table = t->prep_on ? NULL : host_free_dac(t);
+        if (sid_character_ramp_tick(&t->ramp, t->chip, table, &st)) {
             sid_character_commit(t->chip, &st);
         }
     } else if (reg == LIVE_REG_GATE_RESET) {
@@ -471,6 +514,9 @@ static void load_preset(live* l, uint8_t index) {
 void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->sink = sink;
     l->sink_ctx = sink_ctx;
+    l->prepare = NULL;
+    l->prepare_ctx = NULL;
+    l->preparing = 0;
     l->model = model;
     l->model_req = model;
     l->octave = 0;
@@ -728,8 +774,13 @@ void live_button(live* l, live_button_id button) {
             ++l->octave;
         }
         break;
-    case LIVE_BUTTON_FX: /* at once, at a human's pace; over any request still pending */
-        set_model(l, l->model == SID_MODEL_6581 ? SID_MODEL_8580 : SID_MODEL_6581);
+    case LIVE_BUTTON_FX:
+        if (l->prepare) { /* the other model than the one asked for: live_tick prepares it */
+            sid_model m = l->model_req == SID_MODEL_6581 ? SID_MODEL_8580 : SID_MODEL_6581;
+            request_profile(l, model_profile(l, m));
+        } else { /* at once, at a human's pace; over any request still pending */
+            set_model(l, l->model == SID_MODEL_6581 ? SID_MODEL_8580 : SID_MODEL_6581);
+        }
         break;
     default: break;
     }
@@ -1068,10 +1119,38 @@ void live_fx_select(live* l, uint32_t slot) {
     l->fx_select = (uint8_t)(slot % LIVE_SLOTS);
 }
 
-void live_tick(live* l) {
-    if (l->profile_req != l->profile) {
-        set_profile(l, l->profile_req);
+void live_set_preparer(live* l, live_prepare_fn prepare, void* ctx) {
+    if (l->preparing) {
+        l->prepare(l->prepare_ctx, LIVE_PREPARE_CANCEL);
     }
+    l->prepare = prepare;
+    l->prepare_ctx = ctx;
+    l->preparing = 0;
+}
+
+/* A profile asked for that the chip does not have: with a preparer, a slice of its chip a
+ * tick and the reset once that chip is whole; without, the reset at once. A request that went
+ * back to the chip's own profile drops the preparation. */
+static void apply_profile(live* l) {
+    if (l->profile_req == l->profile) {
+        if (l->preparing) {
+            l->preparing = 0;
+            l->prepare(l->prepare_ctx, LIVE_PREPARE_CANCEL);
+        }
+        return;
+    }
+    if (l->prepare) {
+        l->preparing = 1;
+        if (!l->prepare(l->prepare_ctx, l->profile_req)) {
+            return;
+        }
+        l->preparing = 0;
+    }
+    set_profile(l, l->profile_req);
+}
+
+void live_tick(live* l) {
+    apply_profile(l);
     update_character(l);
     const live_preset* p = cur(l);
     if (p->pwm_depth) {

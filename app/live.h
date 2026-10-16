@@ -25,7 +25,14 @@
  * - LIVE_REG_CHAR_TICK (value 0), once every live_tick, after the settings that changed.
  * live_init and a model or profile change send the character's settings, a reset, the gate
  * reset, then every register; a change of the envelope mode sends the gate reset alone; a
- * tick sends the character's controls that changed and LIVE_REG_CHAR_TICK. */
+ * tick sends the character's controls that changed and LIVE_REG_CHAR_TICK.
+ *
+ * A model or profile change with a preparer (live_set_preparer) waits for the chip the reset
+ * will swap in: live_tick calls the preparer once a tick, a slice of the work each (the
+ * sink's spare chip, app/reg_ring.h), and sends the reset, in that tick, once it says the
+ * chip is whole; the chip that plays meanwhile keeps every register and setting. Without
+ * one, the reset goes at the next tick (the FX button's at once) and the sink prepares the
+ * chip in that call. */
 #ifndef SIDOU_LIVE_H
 #define SIDOU_LIVE_H
 
@@ -150,6 +157,12 @@ typedef enum {
 } live_pressure_target;
 
 typedef void (*live_sink_fn)(void* ctx, uint8_t reg, uint8_t value);
+/* A preparer: one slice of preparing the chip a reset will swap in for profile (a SID_CHIP_*,
+ * whose model the reset names) and the character's controls the sink has; 1 once that chip
+ * is whole. LIVE_PREPARE_CANCEL (the request went back to the chip's own profile) drops the
+ * preparation and returns 0. live_tick is its only caller, once a tick at most. */
+typedef int (*live_prepare_fn)(void* ctx, uint8_t profile);
+#define LIVE_PREPARE_CANCEL 0xffu
 
 /* The context of live_sid_sink: a chip and the clock and rate it was initialised with, the
  * character's ramp (sid_character.h; zero-initialised: the model's default profile, every
@@ -162,15 +175,26 @@ typedef struct {
     uint32_t sample_rate;
     sid_character_ramp ramp;
     sid_dac* dacs;
+    /* Optional, for live_sid_prepare: the chip it prepares, a slice a call, as the device's
+     * register ring prepares its spare (app/reg_ring.h), and a reset copies into chip. */
+    sid* spare;
+    sid_character_prep prep;
+    uint8_t prep_on;
+    uint8_t prep_profile;
 } live_sid_target;
 
 /* Applies writes to ctx (a live_sid_target*) at once: sid_write for registers, sid_init and
- * then the character (sid_character_apply) for LIVE_REG_RESET, sid_set_gate_reset for
+ * then the character (sid_character_apply) for LIVE_REG_RESET, unless live_sid_prepare has
+ * made the spare whole for it (then the spare, copied into the chip), sid_set_gate_reset for
  * LIVE_REG_GATE_RESET, the character's settings kept for LIVE_REG_CHAR, and at
  * LIVE_REG_CHAR_TICK the ramp's tick (sid_character_ramp_tick) and its stage committed;
  * other pseudo-registers (the slots') are ignored. For the host and for code that already
  * runs in the audio context. */
 void live_sid_sink(void* ctx, uint8_t reg, uint8_t value);
+/* A live_prepare_fn, ctx a live_sid_target* with a spare: the device's reg_ring_prepare_step
+ * on the host, slice for slice (the same preparation, the ramp held off the DAC tables while
+ * it runs), so a host render with it swaps chips at the device's tick. */
+int live_sid_prepare(void* ctx, uint8_t profile);
 /* A LIVE_REG_CHAR(field) write into the settings it changes (any other reg: nothing). For
  * the sinks. */
 void live_char_store(sid_character* c, uint8_t reg, uint8_t value);
@@ -185,8 +209,9 @@ typedef enum {
 typedef enum {
     LIVE_BUTTON_OCT_DOWN = 0,
     LIVE_BUTTON_OCT_UP = 1,
-    LIVE_BUTTON_FX = 2 /* toggles the chip 6581/8580 at once, keeping every parameter: the
-                        * 8580 R5 profile, or back to the last 6581 profile */
+    LIVE_BUTTON_FX = 2 /* toggles the chip 6581/8580, keeping every parameter: the 8580 R5
+                        * profile, or back to the last 6581 profile; at once, or with a
+                        * preparer the model asked for, which live_tick prepares */
 } live_button_id;
 
 /* A preset is data. The knobs start from its cutoff, resonance and pulse width, and the SID
@@ -302,6 +327,11 @@ typedef struct {
     uint8_t profile_6581;
     uint8_t character[LIVE_CHAR_FIELDS - 1u];
     uint8_t character_sent[LIVE_CHAR_FIELDS - 1u];
+    /* The preparer (live_set_preparer; NULL: none), and 1 while live_tick has asked it for
+     * the profile it waits for (profile_req). */
+    live_prepare_fn prepare;
+    void* prepare_ctx;
+    uint8_t preparing;
 } live;
 
 /* The instrument's parameters, each an integer 0..live_param_max: what MIDI reaches through
@@ -358,6 +388,9 @@ typedef enum {
  * character's settings, LIVE_REG_RESET(model), LIVE_REG_GATE_RESET, then every register,
  * then every slot setting (fx_live.h). */
 void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model);
+/* From now on a model or profile change waits for prepare (above); NULL: none, as after
+ * live_init. A preparation already asked for is dropped. */
+void live_set_preparer(live* l, live_prepare_fn prepare, void* ctx);
 /* Absolute MIDI notes; the octave is not applied here (see live_key_note). Velocity 0
  * is a note-off. A note that is already held is retriggered on its voice. The note starts at
  * the current bend, with its pressure at 0 and its vibrato at the start of the delay; its
@@ -395,7 +428,8 @@ uint32_t live_param_max(uint32_t param);
  * parameters are ignored. The chip model is only recorded here: re-initialising the chip
  * waits for the audio interrupt to empty the register ring and runs sid_init in the main
  * loop, too slow for every CC of a stream. live_tick applies the last model asked for, at
- * most once a tick and only when it differs from the chip's; the FX button applies at once. */
+ * most once a tick and only when it differs from the chip's (with a preparer, once the chip
+ * for it is whole); the FX button applies at once without a preparer. */
 void live_param_set(live* l, uint32_t param, uint32_t value);
 /* A parameter's value; 0 for an unknown one. For the chip model, the one last asked for
  * (model_req), so a set reads back at once; the chip's is the model field. */
@@ -418,7 +452,8 @@ void live_bend_range_rpn(live* l, uint32_t semitones);
 void live_set_preset(live* l, uint8_t index);
 /* The MASTER pot, 0..1023 (clamped); the chip's volume is its top 4 bits, rounded. */
 void live_set_master(live* l, uint16_t value);
-/* Applies a chip model or profile asked for since the last tick (live_param_set), sends the
+/* Applies a chip model or profile asked for since the last tick (live_param_set; with a
+ * preparer, one slice of its preparation, and the reset once it is whole), sends the
  * character's controls that changed and LIVE_REG_CHAR_TICK, advances
  * the pulse-width LFO and each voice's vibrato, then writes every frequency, pulse width and
  * the cutoff that the controllers, the vibrato or the LFO changed (nothing that did not
