@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* SIDOU's store: a log-structured, power-loss-safe key-value store in the flash region of
- * app/store_layout.h, for the settings, MIDI learn's map, user chip profiles and (Task 3)
+ * app/store_layout.h, for the settings, MIDI learn's map, user chip profiles and
  * files. The format is docs/reference/store-format.md, byte for byte.
  *
  * Portable C11, no allocation, no hardware: the flash is reached only through store_flash,
@@ -32,8 +32,8 @@
  * The erase-ahead pool: clean, unclaimed sectors. Whoever writes claims its sectors from the
  * pool before the first byte, so no write ever waits for an erase: a small record's new head
  * sector (refused with STORE_BUSY if that would take the pool under STORE_POOL_MIN), a file's
- * sectors (Task 3). Erases and garbage collection run only as maintenance, when the caller
- * says the device is quiet (store_quiet), and refill the pool toward STORE_POOL_TARGET.
+ * sectors (store_file_begin). Erases and garbage collection run only as maintenance, when the
+ * caller says the device is quiet (store_quiet), and refill the pool toward STORE_POOL_TARGET.
  *
  * Wear: sectors are taken from the pool and erased lowest erase count first, and when the
  * erase counts spread more than STORE_WEAR_SPREAD, maintenance moves the coldest claimed
@@ -43,7 +43,18 @@
  * outside the pool's minimum (the pool's sectors rotate with the rest): under 500 erases a
  * sector.
  *
- * RAM: the store struct, about 1.9 KB (a sector index, a key index, a 256-byte buffer). */
+ * Files (songs, dumps): a name, a type and up to STORE_FILE_MAX bytes, written as chunk
+ * records of STORE_CHUNK bytes, three to a sector, into sectors claimed for the file alone, then
+ * committed whole by one FILE record in the head. store_file_begin claims every sector the file
+ * needs, and the FILE record's place, before it returns, so a file never waits for an erase.
+ * Until its FILE record commits a file does not exist: replacing one leaves the old until the
+ * new commits, and a cut at any point leaves the old file or the new. Chunks never move: a live
+ * file's sectors are never collected, and its FILE record lists them, so a read goes straight
+ * to a chunk through XIP. One file is written at a time; small writes go on meanwhile, and
+ * maintenance waits until the file is committed or aborted.
+ *
+ * RAM: the store struct, under 2 KB (a sector index, a key index, a 256-byte buffer that also
+ * stages a file's bytes, the file being written). */
 #ifndef SIDOU_STORE_H
 #define SIDOU_STORE_H
 
@@ -51,19 +62,26 @@
 
 #include "store_layout.h"
 
-#define STORE_FORMAT 1u /* the format version in every erase header */
+#define STORE_FORMAT 1u  /* the format version in every erase header */
 #define STORE_HEADER 32u /* a sector's header; records from here */
 #define STORE_RECORDS (STORE_SECTOR_USE - STORE_HEADER) /* 0xEE0: 3,808 bytes of records */
 #define STORE_REC_HEADER 16u
-#define STORE_REC_OVERHEAD 20u /* the header and the commit word */
-#define STORE_VALUE_MAX 1248u /* the largest small value (a file chunk's data, Task 3) */
-#define STORE_KEYS_MAX 48u /* small values and files together */
-#define STORE_KEY_MAX 0x7FFFFFFFu /* the largest caller key; keys above are the store's */
-#define STORE_TYPE_MAX 0x7Fu /* the largest caller type; types above are the store's */
-#define STORE_TYPE_TOMB 0x80u /* a tombstone: the key was deleted */
-#define STORE_WINDOW_MAX 256u /* the most one program writes: a page */
-#define STORE_FILE_MAX 65536u /* the largest file (Task 3) */
-#define STORE_CHUNK 1248u /* a file chunk's data (Task 3): three chunk records fill a sector */
+#define STORE_REC_OVERHEAD 20u     /* the header and the commit word */
+#define STORE_VALUE_MAX 1248u      /* the largest small value (as a file chunk's data) */
+#define STORE_KEYS_MAX 48u         /* small values and files together */
+#define STORE_KEY_MAX 0x7FFFFFFFu  /* the largest caller key; keys above are the store's */
+#define STORE_TYPE_MAX 0x7Fu       /* the largest caller type; types above are the store's */
+#define STORE_TYPE_TOMB 0x80u      /* a tombstone: the key was deleted */
+#define STORE_TYPE_CHUNK 0x81u     /* a file's chunk: key the file's id, seq the chunk's index */
+#define STORE_TYPE_FILE 0x82u      /* a file's FILE record, which commits it */
+#define STORE_KEY_FILE 0x80000000u /* files' keys: STORE_KEY_FILE | a slot */
+#define STORE_NAME_MAX 16u         /* a file name's characters */
+#define STORE_FILE_SECTORS 18u     /* the sectors of the largest file */
+#define STORE_FILE_HEAD 32u        /* a FILE record's data before its sector list */
+#define STORE_FILE_SONG 1u         /* file types: 1..STORE_TYPE_MAX; a GoatTracker 2 song (M2c) */
+#define STORE_WINDOW_MAX 256u      /* the most one program writes: a page */
+#define STORE_FILE_MAX 65536u      /* the largest file */
+#define STORE_CHUNK 1248u          /* a file chunk's data: three chunk records fill a sector */
 #define STORE_FILE_SECTOR_DATA (3u * STORE_CHUNK) /* 3,744 bytes of a file a sector */
 #define STORE_GC_RESERVE 2u /* the pool's last sectors, which only garbage collection takes */
 /* Enough for the largest file and the garbage collector's reserve. */
@@ -72,7 +90,7 @@
 /* The most live data the store takes (records with their headers): the sectors outside the
  * pool's minimum at a file's packing. 198,432 bytes. */
 #define STORE_CAPACITY ((STORE_SECTORS - STORE_POOL_MIN) * STORE_FILE_SECTOR_DATA)
-#define STORE_WEAR_SPREAD 4u /* erase counts further apart than this: move the coldest */
+#define STORE_WEAR_SPREAD 4u    /* erase counts further apart than this: move the coldest */
 #define STORE_MOUNT_SLICE 1024u /* the record bytes one store_poll checks while mounting */
 
 _Static_assert(STORE_POOL_MIN == 20u, "ceil(65,536 / 3,808) + 2");
@@ -82,6 +100,7 @@ _Static_assert((STORE_FILE_MAX + STORE_FILE_SECTOR_DATA - 1u) / STORE_FILE_SECTO
                "the pool covers the largest file at the chunks' real packing");
 _Static_assert(3u * (STORE_CHUNK + STORE_REC_OVERHEAD) <= STORE_RECORDS, "3 chunks a sector");
 _Static_assert(STORE_VALUE_MAX + STORE_REC_OVERHEAD <= STORE_RECORDS, "a value fits a sector");
+_Static_assert(STORE_FILE_SECTORS* STORE_FILE_SECTOR_DATA >= STORE_FILE_MAX, "the largest file");
 
 /* Results. A hook returns STORE_OK, STORE_LATER or an error (any other value). */
 enum {
@@ -92,15 +111,16 @@ enum {
     STORE_NOT_FOUND = -3,
     STORE_FOREIGN = -4, /* the region holds another firmware's data: nothing is written */
     STORE_INVALID = -5, /* a bad argument */
-    STORE_ERROR = -6, /* a flash operation failed */
+    STORE_ERROR = -6,   /* a flash operation failed */
+    STORE_EXISTS = -7,  /* a file of that name exists */
 };
 
 /* The region, as the mount found it. */
 typedef enum {
     STORE_STATE_UNMOUNTED,
     STORE_STATE_MOUNTING,
-    STORE_STATE_BLANK, /* all 0xFF and no headers: formats lazily as the pool fills */
-    STORE_STATE_SIDOU, /* SIDOU's headers */
+    STORE_STATE_BLANK,   /* all 0xFF and no headers: formats lazily as the pool fills */
+    STORE_STATE_SIDOU,   /* SIDOU's headers */
     STORE_STATE_FOREIGN, /* not blank, no SIDOU headers: never formatted silently */
 } store_state_id;
 
@@ -138,8 +158,8 @@ typedef struct {
     uint32_t seq;
     uint32_t crc;
     uint16_t len;
-    uint16_t off; /* where it goes */
-    uint16_t done; /* data bytes programmed */
+    uint16_t off;      /* where it goes */
+    uint16_t done;     /* data bytes programmed */
     uint16_t from_off; /* a copy's original, for the key index */
     uint8_t sec;
     uint8_t type;
@@ -149,21 +169,45 @@ typedef struct {
     uint8_t pad[3];
 } store_writer;
 
+/* The file being written. */
+typedef struct {
+    uint32_t key;
+    uint32_t fid; /* its chunks' key */
+    uint32_t length;
+    uint32_t taken; /* bytes accepted from the caller */
+    uint32_t crc;   /* of the bytes programmed so far */
+    uint32_t rcrc;  /* the chunk record's CRC so far */
+    uint16_t chunk; /* the chunk being programmed */
+    uint16_t cdone; /* its data bytes programmed */
+    uint16_t pdone; /* bytes of a header or claim being programmed */
+    uint16_t fill;  /* bytes waiting in buf, a ring ... */
+    uint16_t start; /* ... from here */
+    uint8_t phase;
+    uint8_t closing; /* store_file_end was called */
+    uint8_t type;
+    uint8_t nsec;
+    int8_t result; /* the last file's: STORE_OK, STORE_BUSY while open, an error */
+    char name[STORE_NAME_MAX];
+    uint8_t sectors[STORE_FILE_SECTORS];
+    uint8_t pad[3];
+} store_file_writer;
+
 typedef struct {
     store_flash flash;
-    uint32_t seq; /* the next sequence number (records and claims) */
-    uint32_t live; /* bytes of live records */
+    uint32_t seq;     /* the next sequence number (records and claims) */
+    uint32_t live;    /* bytes of live records */
     uint32_t corrupt; /* inconsistencies the mount saw */
-    uint32_t errors; /* flash operations that failed */
-    uint32_t window; /* the most bytes one program writes */
+    uint32_t errors;  /* flash operations that failed */
+    uint32_t window;  /* the most bytes one program writes */
     store_sector sector[STORE_SECTORS];
     uint8_t sstate[STORE_SECTORS];
     uint8_t state; /* store_state_id */
-    uint8_t head; /* the sector small records go to, or 0xFF */
+    uint8_t head;  /* the sector small records go to, or 0xFF */
     uint8_t quiet;
     uint8_t nkeys;
     store_key key[STORE_KEYS_MAX];
     store_writer w;
+    store_file_writer f;
     uint16_t mount_off; /* the mount's place: a sector and an offset in it */
     uint8_t mount_sec;
     uint8_t mount_sidou;
@@ -174,13 +218,16 @@ typedef struct {
     uint8_t job_phase;
     uint8_t job_done; /* bytes of the header being programmed */
     uint16_t job_off;
-    uint8_t buf[STORE_WINDOW_MAX];
+    uint16_t fres_bytes; /* the room kept for the open file's FILE record ... */
+    uint8_t fres_sec;    /* ... in this sector, or 0xFF */
+    uint8_t pad2;
+    uint8_t buf[STORE_WINDOW_MAX]; /* a collection's copy, the open file's bytes, a rename */
 } store;
 
 typedef struct {
     uint32_t free; /* bytes that still fit (STORE_CAPACITY less the live records) */
     uint32_t live;
-    uint32_t pool; /* clean sectors ready to claim */
+    uint32_t pool;  /* clean sectors ready to claim */
     uint32_t dirty; /* sectors waiting for an erase */
     uint32_t claimed;
     uint32_t erases_min;
@@ -225,6 +272,50 @@ int store_collect(store* s);
  * (STORE_STATE_FOREIGN), after the user confirmed. Loses everything. */
 void store_format(store* s);
 void store_stats_get(const store* s, store_stats* out);
+
+/* A committed file, as store_file_open and store_dir_next give it. */
+typedef struct {
+    uint32_t key;
+    uint32_t fid;
+    uint32_t length;
+    uint32_t crc; /* CRC-32 of its bytes */
+    uint16_t chunks;
+    uint8_t type;
+    uint8_t nsec;
+    char name[STORE_NAME_MAX + 1]; /* NUL-terminated */
+    uint8_t sectors[STORE_FILE_SECTORS];
+} store_file;
+
+/* Starts writing a file of exactly `length` bytes (0..STORE_FILE_MAX) named `name` (1 to 16
+ * characters 0x20..0x5F, the font's upper case, not starting with a space), of `type`
+ * (1..STORE_TYPE_MAX). Claims all its sectors and its FILE record's place before it returns,
+ * writing nothing yet. A file of that name is replaced when this one commits. STORE_BUSY: not now
+ * (the pool, less garbage collection's reserve, cannot cover it until a quiet refill, or a write
+ * or a collection runs, or a file is open); STORE_FULL: not even after garbage collection;
+ * STORE_INVALID: a bad name, type or length. */
+int store_file_begin(store* s, const char* name, uint8_t type, uint32_t length);
+/* Offers bytes of the open file: takes what fits the 256-byte staging buffer and returns how
+ * many (0 while it is full: offer the rest after a store_poll). store_poll programs them. */
+uint32_t store_file_write(store* s, const void* p, uint32_t n);
+/* Commits the open file once store_poll has programmed it: its FILE record follows its last
+ * chunk. With fewer bytes taken than its length, the file is aborted and STORE_INVALID returned.
+ * store_file_result tells when it is done. */
+int store_file_end(store* s);
+/* Drops the open file: its sectors go back to the pool or to garbage collection. */
+void store_file_abort(store* s);
+/* STORE_BUSY while a file is open or committing, else the last file's result: STORE_OK
+ * (committed), STORE_INVALID (ended short), STORE_ERROR (a flash operation failed), or
+ * STORE_NOT_FOUND (aborted). */
+int store_file_result(const store* s);
+int store_file_open(const store* s, const char* name, store_file* f);
+/* Up to n bytes of f from `off` into p, straight from flash. Returns how many, or
+ * STORE_NOT_FOUND once the file was deleted or replaced. */
+int store_file_read(const store* s, const store_file* f, uint32_t off, void* p, uint32_t n);
+/* The committed files in name order: f->name "" for the first; 1 with f filled, 0 at the end. */
+int store_dir_next(const store* s, store_file* f);
+int store_file_delete(store* s, const char* name);
+/* STORE_EXISTS if `to` names another file. */
+int store_file_rename(store* s, const char* from, const char* to);
 
 /* CRC-32 (IEEE 802.3, reflected, as zlib's crc32): `crc` 0 to start, or a previous result. */
 uint32_t store_crc32(uint32_t crc, const void* p, uint32_t n);

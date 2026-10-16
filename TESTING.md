@@ -902,7 +902,23 @@ flash operation in a `store_poll`. The tests:
 - random regions, and real ones with random bits flipped, mount without a
   crash (run them under the sanitizers) and never make the store break a
   rule above;
-- the bytes on flash are the documented format.
+- the bytes on flash are the documented format;
+- **files:** a cut at every operation of file writes, replacements,
+  deletions and renames among small writes, collections and refills leaves
+  each file its old bytes or its new ones, whole (its CRC checked), never
+  neither and never a mix, and a rename never half done; real cuts over
+  long runs with files up to 64 KiB (the long version:
+  `store::files_power_loss_long -- --ignored`); a file of exactly 64 KiB in
+  18 sectors; `store_file_begin` claims `ceil(length / 3744)` sectors (and a
+  head for the FILE record if the head has no room) and writes nothing; no
+  erase between a file's begin and its end; the pool short gives STORE_BUSY
+  with nothing written, and the same begin succeeds after a refill; a file
+  larger than the free space is refused before anything is written; reads
+  at every offset and length; the directory in name order;
+  `store_file_write`'s back-pressure with offers of every size from 1 to
+  1,000 bytes; a replacement leaves the old file until the new commits;
+  aborted and short files leave nothing; small writes go on while a file is
+  open.
 
 ### Package tests
 

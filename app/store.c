@@ -7,70 +7,64 @@
 
 /* A sector's state in sstate's low bits, and flags. */
 enum {
-    SEC_DIRTY = 0, /* to be erased before any use */
-    SEC_CLEAN = 1, /* erase header valid, the rest erased: in the pool */
+    SEC_DIRTY = 0,    /* to be erased before any use */
+    SEC_CLEAN = 1,    /* erase header valid, the rest erased: in the pool */
     SEC_RESERVED = 2, /* taken from the pool in RAM; its claim is not programmed yet */
-    SEC_CLAIMED = 3, /* claimed: records from STORE_HEADER up to `free` */
+    SEC_CLAIMED = 3,  /* claimed: records from STORE_HEADER up to `free` */
     SEC_STATE = 0x0F,
-    SEC_FULL = 0x10, /* nothing more is written into it */
+    SEC_FULL = 0x10,  /* nothing more is written into it */
     SEC_GUESS = 0x20, /* the mount could not read its erase count */
+    SEC_FILE = 0x40,  /* a live (or open) file's: never collected, never a head */
 };
 
 enum { W_IDLE, W_CLAIM, W_DATA, W_HEAD, W_COMMIT };
 enum { JOB_NONE, JOB_ERASE, JOB_COLLECT };
 enum { E_KILL, E_ERASE, E_HEADER };
 enum { C_SCAN, C_KILL };
+enum { F_IDLE, F_DATA, F_CLAIM, F_HEAD, F_COMMIT, F_SEALED, F_FILE };
 
 #define NONE 0xFFu
-#define TOMB_SIZE STORE_REC_OVERHEAD
 
 static const uint8_t MAGIC[8] = {'S', 'I', 'D', 'O', 'U', 'S', 'T', 'R'};
 
 static const uint32_t CRC_TABLE[256] = {
-    0x00000000u, 0x77073096u, 0xEE0E612Cu, 0x990951BAu, 0x076DC419u, 0x706AF48Fu,
-    0xE963A535u, 0x9E6495A3u, 0x0EDB8832u, 0x79DCB8A4u, 0xE0D5E91Eu, 0x97D2D988u,
-    0x09B64C2Bu, 0x7EB17CBDu, 0xE7B82D07u, 0x90BF1D91u, 0x1DB71064u, 0x6AB020F2u,
-    0xF3B97148u, 0x84BE41DEu, 0x1ADAD47Du, 0x6DDDE4EBu, 0xF4D4B551u, 0x83D385C7u,
-    0x136C9856u, 0x646BA8C0u, 0xFD62F97Au, 0x8A65C9ECu, 0x14015C4Fu, 0x63066CD9u,
-    0xFA0F3D63u, 0x8D080DF5u, 0x3B6E20C8u, 0x4C69105Eu, 0xD56041E4u, 0xA2677172u,
-    0x3C03E4D1u, 0x4B04D447u, 0xD20D85FDu, 0xA50AB56Bu, 0x35B5A8FAu, 0x42B2986Cu,
-    0xDBBBC9D6u, 0xACBCF940u, 0x32D86CE3u, 0x45DF5C75u, 0xDCD60DCFu, 0xABD13D59u,
-    0x26D930ACu, 0x51DE003Au, 0xC8D75180u, 0xBFD06116u, 0x21B4F4B5u, 0x56B3C423u,
-    0xCFBA9599u, 0xB8BDA50Fu, 0x2802B89Eu, 0x5F058808u, 0xC60CD9B2u, 0xB10BE924u,
-    0x2F6F7C87u, 0x58684C11u, 0xC1611DABu, 0xB6662D3Du, 0x76DC4190u, 0x01DB7106u,
-    0x98D220BCu, 0xEFD5102Au, 0x71B18589u, 0x06B6B51Fu, 0x9FBFE4A5u, 0xE8B8D433u,
-    0x7807C9A2u, 0x0F00F934u, 0x9609A88Eu, 0xE10E9818u, 0x7F6A0DBBu, 0x086D3D2Du,
-    0x91646C97u, 0xE6635C01u, 0x6B6B51F4u, 0x1C6C6162u, 0x856530D8u, 0xF262004Eu,
-    0x6C0695EDu, 0x1B01A57Bu, 0x8208F4C1u, 0xF50FC457u, 0x65B0D9C6u, 0x12B7E950u,
-    0x8BBEB8EAu, 0xFCB9887Cu, 0x62DD1DDFu, 0x15DA2D49u, 0x8CD37CF3u, 0xFBD44C65u,
-    0x4DB26158u, 0x3AB551CEu, 0xA3BC0074u, 0xD4BB30E2u, 0x4ADFA541u, 0x3DD895D7u,
-    0xA4D1C46Du, 0xD3D6F4FBu, 0x4369E96Au, 0x346ED9FCu, 0xAD678846u, 0xDA60B8D0u,
-    0x44042D73u, 0x33031DE5u, 0xAA0A4C5Fu, 0xDD0D7CC9u, 0x5005713Cu, 0x270241AAu,
-    0xBE0B1010u, 0xC90C2086u, 0x5768B525u, 0x206F85B3u, 0xB966D409u, 0xCE61E49Fu,
-    0x5EDEF90Eu, 0x29D9C998u, 0xB0D09822u, 0xC7D7A8B4u, 0x59B33D17u, 0x2EB40D81u,
-    0xB7BD5C3Bu, 0xC0BA6CADu, 0xEDB88320u, 0x9ABFB3B6u, 0x03B6E20Cu, 0x74B1D29Au,
-    0xEAD54739u, 0x9DD277AFu, 0x04DB2615u, 0x73DC1683u, 0xE3630B12u, 0x94643B84u,
-    0x0D6D6A3Eu, 0x7A6A5AA8u, 0xE40ECF0Bu, 0x9309FF9Du, 0x0A00AE27u, 0x7D079EB1u,
-    0xF00F9344u, 0x8708A3D2u, 0x1E01F268u, 0x6906C2FEu, 0xF762575Du, 0x806567CBu,
-    0x196C3671u, 0x6E6B06E7u, 0xFED41B76u, 0x89D32BE0u, 0x10DA7A5Au, 0x67DD4ACCu,
-    0xF9B9DF6Fu, 0x8EBEEFF9u, 0x17B7BE43u, 0x60B08ED5u, 0xD6D6A3E8u, 0xA1D1937Eu,
-    0x38D8C2C4u, 0x4FDFF252u, 0xD1BB67F1u, 0xA6BC5767u, 0x3FB506DDu, 0x48B2364Bu,
-    0xD80D2BDAu, 0xAF0A1B4Cu, 0x36034AF6u, 0x41047A60u, 0xDF60EFC3u, 0xA867DF55u,
-    0x316E8EEFu, 0x4669BE79u, 0xCB61B38Cu, 0xBC66831Au, 0x256FD2A0u, 0x5268E236u,
-    0xCC0C7795u, 0xBB0B4703u, 0x220216B9u, 0x5505262Fu, 0xC5BA3BBEu, 0xB2BD0B28u,
-    0x2BB45A92u, 0x5CB36A04u, 0xC2D7FFA7u, 0xB5D0CF31u, 0x2CD99E8Bu, 0x5BDEAE1Du,
-    0x9B64C2B0u, 0xEC63F226u, 0x756AA39Cu, 0x026D930Au, 0x9C0906A9u, 0xEB0E363Fu,
-    0x72076785u, 0x05005713u, 0x95BF4A82u, 0xE2B87A14u, 0x7BB12BAEu, 0x0CB61B38u,
-    0x92D28E9Bu, 0xE5D5BE0Du, 0x7CDCEFB7u, 0x0BDBDF21u, 0x86D3D2D4u, 0xF1D4E242u,
-    0x68DDB3F8u, 0x1FDA836Eu, 0x81BE16CDu, 0xF6B9265Bu, 0x6FB077E1u, 0x18B74777u,
-    0x88085AE6u, 0xFF0F6A70u, 0x66063BCAu, 0x11010B5Cu, 0x8F659EFFu, 0xF862AE69u,
-    0x616BFFD3u, 0x166CCF45u, 0xA00AE278u, 0xD70DD2EEu, 0x4E048354u, 0x3903B3C2u,
-    0xA7672661u, 0xD06016F7u, 0x4969474Du, 0x3E6E77DBu, 0xAED16A4Au, 0xD9D65ADCu,
-    0x40DF0B66u, 0x37D83BF0u, 0xA9BCAE53u, 0xDEBB9EC5u, 0x47B2CF7Fu, 0x30B5FFE9u,
-    0xBDBDF21Cu, 0xCABAC28Au, 0x53B39330u, 0x24B4A3A6u, 0xBAD03605u, 0xCDD70693u,
-    0x54DE5729u, 0x23D967BFu, 0xB3667A2Eu, 0xC4614AB8u, 0x5D681B02u, 0x2A6F2B94u,
-    0xB40BBE37u, 0xC30C8EA1u, 0x5A05DF1Bu, 0x2D02EF8Du
-};
+    0x00000000u, 0x77073096u, 0xEE0E612Cu, 0x990951BAu, 0x076DC419u, 0x706AF48Fu, 0xE963A535u,
+    0x9E6495A3u, 0x0EDB8832u, 0x79DCB8A4u, 0xE0D5E91Eu, 0x97D2D988u, 0x09B64C2Bu, 0x7EB17CBDu,
+    0xE7B82D07u, 0x90BF1D91u, 0x1DB71064u, 0x6AB020F2u, 0xF3B97148u, 0x84BE41DEu, 0x1ADAD47Du,
+    0x6DDDE4EBu, 0xF4D4B551u, 0x83D385C7u, 0x136C9856u, 0x646BA8C0u, 0xFD62F97Au, 0x8A65C9ECu,
+    0x14015C4Fu, 0x63066CD9u, 0xFA0F3D63u, 0x8D080DF5u, 0x3B6E20C8u, 0x4C69105Eu, 0xD56041E4u,
+    0xA2677172u, 0x3C03E4D1u, 0x4B04D447u, 0xD20D85FDu, 0xA50AB56Bu, 0x35B5A8FAu, 0x42B2986Cu,
+    0xDBBBC9D6u, 0xACBCF940u, 0x32D86CE3u, 0x45DF5C75u, 0xDCD60DCFu, 0xABD13D59u, 0x26D930ACu,
+    0x51DE003Au, 0xC8D75180u, 0xBFD06116u, 0x21B4F4B5u, 0x56B3C423u, 0xCFBA9599u, 0xB8BDA50Fu,
+    0x2802B89Eu, 0x5F058808u, 0xC60CD9B2u, 0xB10BE924u, 0x2F6F7C87u, 0x58684C11u, 0xC1611DABu,
+    0xB6662D3Du, 0x76DC4190u, 0x01DB7106u, 0x98D220BCu, 0xEFD5102Au, 0x71B18589u, 0x06B6B51Fu,
+    0x9FBFE4A5u, 0xE8B8D433u, 0x7807C9A2u, 0x0F00F934u, 0x9609A88Eu, 0xE10E9818u, 0x7F6A0DBBu,
+    0x086D3D2Du, 0x91646C97u, 0xE6635C01u, 0x6B6B51F4u, 0x1C6C6162u, 0x856530D8u, 0xF262004Eu,
+    0x6C0695EDu, 0x1B01A57Bu, 0x8208F4C1u, 0xF50FC457u, 0x65B0D9C6u, 0x12B7E950u, 0x8BBEB8EAu,
+    0xFCB9887Cu, 0x62DD1DDFu, 0x15DA2D49u, 0x8CD37CF3u, 0xFBD44C65u, 0x4DB26158u, 0x3AB551CEu,
+    0xA3BC0074u, 0xD4BB30E2u, 0x4ADFA541u, 0x3DD895D7u, 0xA4D1C46Du, 0xD3D6F4FBu, 0x4369E96Au,
+    0x346ED9FCu, 0xAD678846u, 0xDA60B8D0u, 0x44042D73u, 0x33031DE5u, 0xAA0A4C5Fu, 0xDD0D7CC9u,
+    0x5005713Cu, 0x270241AAu, 0xBE0B1010u, 0xC90C2086u, 0x5768B525u, 0x206F85B3u, 0xB966D409u,
+    0xCE61E49Fu, 0x5EDEF90Eu, 0x29D9C998u, 0xB0D09822u, 0xC7D7A8B4u, 0x59B33D17u, 0x2EB40D81u,
+    0xB7BD5C3Bu, 0xC0BA6CADu, 0xEDB88320u, 0x9ABFB3B6u, 0x03B6E20Cu, 0x74B1D29Au, 0xEAD54739u,
+    0x9DD277AFu, 0x04DB2615u, 0x73DC1683u, 0xE3630B12u, 0x94643B84u, 0x0D6D6A3Eu, 0x7A6A5AA8u,
+    0xE40ECF0Bu, 0x9309FF9Du, 0x0A00AE27u, 0x7D079EB1u, 0xF00F9344u, 0x8708A3D2u, 0x1E01F268u,
+    0x6906C2FEu, 0xF762575Du, 0x806567CBu, 0x196C3671u, 0x6E6B06E7u, 0xFED41B76u, 0x89D32BE0u,
+    0x10DA7A5Au, 0x67DD4ACCu, 0xF9B9DF6Fu, 0x8EBEEFF9u, 0x17B7BE43u, 0x60B08ED5u, 0xD6D6A3E8u,
+    0xA1D1937Eu, 0x38D8C2C4u, 0x4FDFF252u, 0xD1BB67F1u, 0xA6BC5767u, 0x3FB506DDu, 0x48B2364Bu,
+    0xD80D2BDAu, 0xAF0A1B4Cu, 0x36034AF6u, 0x41047A60u, 0xDF60EFC3u, 0xA867DF55u, 0x316E8EEFu,
+    0x4669BE79u, 0xCB61B38Cu, 0xBC66831Au, 0x256FD2A0u, 0x5268E236u, 0xCC0C7795u, 0xBB0B4703u,
+    0x220216B9u, 0x5505262Fu, 0xC5BA3BBEu, 0xB2BD0B28u, 0x2BB45A92u, 0x5CB36A04u, 0xC2D7FFA7u,
+    0xB5D0CF31u, 0x2CD99E8Bu, 0x5BDEAE1Du, 0x9B64C2B0u, 0xEC63F226u, 0x756AA39Cu, 0x026D930Au,
+    0x9C0906A9u, 0xEB0E363Fu, 0x72076785u, 0x05005713u, 0x95BF4A82u, 0xE2B87A14u, 0x7BB12BAEu,
+    0x0CB61B38u, 0x92D28E9Bu, 0xE5D5BE0Du, 0x7CDCEFB7u, 0x0BDBDF21u, 0x86D3D2D4u, 0xF1D4E242u,
+    0x68DDB3F8u, 0x1FDA836Eu, 0x81BE16CDu, 0xF6B9265Bu, 0x6FB077E1u, 0x18B74777u, 0x88085AE6u,
+    0xFF0F6A70u, 0x66063BCAu, 0x11010B5Cu, 0x8F659EFFu, 0xF862AE69u, 0x616BFFD3u, 0x166CCF45u,
+    0xA00AE278u, 0xD70DD2EEu, 0x4E048354u, 0x3903B3C2u, 0xA7672661u, 0xD06016F7u, 0x4969474Du,
+    0x3E6E77DBu, 0xAED16A4Au, 0xD9D65ADCu, 0x40DF0B66u, 0x37D83BF0u, 0xA9BCAE53u, 0xDEBB9EC5u,
+    0x47B2CF7Fu, 0x30B5FFE9u, 0xBDBDF21Cu, 0xCABAC28Au, 0x53B39330u, 0x24B4A3A6u, 0xBAD03605u,
+    0xCDD70693u, 0x54DE5729u, 0x23D967BFu, 0xB3667A2Eu, 0xC4614AB8u, 0x5D681B02u, 0x2A6F2B94u,
+    0xB40BBE37u, 0xC30C8EA1u, 0x5A05DF1Bu, 0x2D02EF8Du};
 
 uint32_t store_crc32(uint32_t crc, const void* p, uint32_t n) {
     const uint8_t* b = p;
@@ -159,7 +153,7 @@ static void drop_key(store* s, store_key* e) {
 }
 
 static int keyed(uint8_t type) {
-    return type <= STORE_TYPE_MAX || type == STORE_TYPE_TOMB;
+    return type <= STORE_TYPE_MAX || type == STORE_TYPE_TOMB || type == STORE_TYPE_FILE;
 }
 
 static uint32_t entry_size(const store* s, const store_key* e) {
@@ -180,7 +174,8 @@ static uint32_t count(const store* s, int state) {
 static uint32_t coldest(const store* s, int state) {
     uint32_t best = NONE;
     for (uint32_t i = 0; i < STORE_SECTORS; i++) {
-        if (sec_state(s, i) == state && (best == NONE || s->sector[i].erases < s->sector[best].erases)) {
+        if (sec_state(s, i) == state &&
+            (best == NONE || s->sector[i].erases < s->sector[best].erases)) {
             best = i;
         }
     }
@@ -190,8 +185,9 @@ static uint32_t coldest(const store* s, int state) {
 /* A sector garbage collection may take: claimed, not written to, with at most half its
  * records live, so its copies fit a fresh sector whatever the fragmentation. */
 static int viable(const store* s, uint32_t sec) {
-    return sec_state(s, sec) == SEC_CLAIMED && sec != s->head &&
-           !(s->job != JOB_NONE && s->job_sec == sec) && 2u * s->sector[sec].live <= STORE_RECORDS;
+    return sec_state(s, sec) == SEC_CLAIMED && !(s->sstate[sec] & SEC_FILE) && sec != s->head &&
+           sec != s->fres_sec && !(s->job != JOB_NONE && s->job_sec == sec) &&
+           2u * s->sector[sec].live <= STORE_RECORDS;
 }
 
 /* The best victim: the least live data, the oldest on a tie. */
@@ -230,19 +226,22 @@ static uint32_t wear_victim(const store* s) {
     uint32_t max = 0, cold = NONE;
     for (uint32_t i = 0; i < STORE_SECTORS; i++) {
         max = s->sector[i].erases > max ? s->sector[i].erases : max;
-        if (sec_state(s, i) == SEC_CLAIMED && i != s->head &&
-            (cold == NONE || s->sector[i].erases < s->sector[cold].erases)) {
+        if (sec_state(s, i) == SEC_CLAIMED && !(s->sstate[i] & SEC_FILE) && i != s->head &&
+            i != s->fres_sec && (cold == NONE || s->sector[i].erases < s->sector[cold].erases)) {
             cold = i;
         }
     }
     return cold != NONE && max - s->sector[cold].erases > STORE_WEAR_SPREAD ? cold : NONE;
 }
 
-/* A place for `size` bytes of records in the head, or a new head from the pool if that
- * leaves more than `floor` sectors in it. The sector, or NONE. */
+/* A place for `size` bytes of records in the head (less the room kept for an open file's
+ * FILE record), or a new head from the pool if that leaves more than `floor` sectors in it.
+ * The sector, or NONE. */
 static uint32_t place(store* s, uint32_t size, uint32_t floor) {
     uint32_t h = s->head;
-    if (h != NONE && !(s->sstate[h] & SEC_FULL) && s->sector[h].free + size <= STORE_SECTOR_USE) {
+    uint32_t keep = h == s->fres_sec ? s->fres_bytes : 0u;
+    if (h != NONE && !(s->sstate[h] & SEC_FULL) &&
+        s->sector[h].free + size + keep <= STORE_SECTOR_USE) {
         return h;
     }
     if (count(s, SEC_CLEAN) <= floor) {
@@ -257,12 +256,63 @@ static uint32_t place(store* s, uint32_t size, uint32_t floor) {
     return h;
 }
 
+/* ---- files: where their chunks are ---- */
+
+static uint32_t chunk_len(uint32_t length, uint32_t i) {
+    uint32_t rest = length - i * STORE_CHUNK;
+    return rest < STORE_CHUNK ? rest : STORE_CHUNK;
+}
+
+/* Chunk i's record in its sector: three a sector, at fixed places. */
+static uint32_t chunk_off(uint32_t i) {
+    return STORE_HEADER + (i % 3u) * (STORE_CHUNK + STORE_REC_OVERHEAD);
+}
+
+static uint32_t chunks_of(uint32_t length) {
+    return (length + STORE_CHUNK - 1u) / STORE_CHUNK;
+}
+
+static uint32_t sectors_of(uint32_t length) {
+    return (length + STORE_FILE_SECTOR_DATA - 1u) / STORE_FILE_SECTOR_DATA;
+}
+
+/* The records a file's chunks take. */
+static uint32_t chunk_bytes(uint32_t length) {
+    uint32_t n = chunks_of(length);
+    return n ? (n - 1u) * rec_size(STORE_CHUNK) + rec_size(chunk_len(length, n - 1u)) : 0u;
+}
+
+/* A FILE record's data (after its 16-byte header): fid, length, CRC, type, sector count, chunk
+ * count, name, sectors. */
+static const uint8_t* file_data(const uint8_t* rec) {
+    return rec + STORE_REC_HEADER;
+}
+
+/* A live file's chunks count as live in its sectors (sign 1), or no more (sign -1). */
+static void file_live(store* s, const uint8_t* rec, int sign) {
+    const uint8_t* d = file_data(rec);
+    uint32_t length = rd32(d + 4), chunks = rd16(d + 14);
+    for (uint32_t i = 0; i < chunks; i++) {
+        uint32_t sec = d[STORE_FILE_HEAD + i / 3u], size = rec_size(chunk_len(length, i));
+        if (sign > 0) {
+            s->sector[sec].live = (uint16_t)(s->sector[sec].live + size);
+            s->live += size;
+            s->sstate[sec] |= SEC_FILE;
+        } else {
+            s->sector[sec].live = (uint16_t)(s->sector[sec].live - size);
+            s->live -= size;
+            s->sstate[sec] &= (uint8_t)~SEC_FILE;
+        }
+    }
+}
+
 /* ---- programming ---- */
 
 /* Programs part of [off, off + n) of sector `sec` from `src`, from byte `*done` on: the most
  * one program may (the window, the page's end). 1 when the range is done, 0 when not yet
  * (a piece went, or the hook said later), < 0 on an error. */
-static int prog_piece(store* s, uint32_t sec, uint32_t off, const uint8_t* src, uint32_t n, uint16_t* done) {
+static int prog_piece(store* s, uint32_t sec, uint32_t off, const uint8_t* src, uint32_t n,
+                      uint16_t* done) {
     uint32_t a = base(sec) + off + *done;
     uint32_t k = n - *done;
     uint32_t page = STORE_PAGE - (a & (STORE_PAGE - 1u));
@@ -281,7 +331,8 @@ static int prog_piece(store* s, uint32_t sec, uint32_t off, const uint8_t* src, 
 }
 
 /* The same, for a range copied from flash at `from`: a piece goes through buf. */
-static int copy_piece(store* s, uint32_t sec, uint32_t off, uint32_t from, uint32_t n, uint16_t* done) {
+static int copy_piece(store* s, uint32_t sec, uint32_t off, uint32_t from, uint32_t n,
+                      uint16_t* done) {
     uint32_t a = base(sec) + off + *done;
     uint32_t k = n - *done;
     uint32_t page = STORE_PAGE - (a & (STORE_PAGE - 1u));
@@ -309,8 +360,14 @@ static void rec_header(const store_writer* w, uint8_t* h) {
     wr32(h + 12, w->crc);
 }
 
+static void file_fail(store* s, int result);
+
 static void writer_failed(store* s) {
     store_writer* w = &s->w;
+    if (!w->copy && w->type == STORE_TYPE_FILE && s->f.phase == F_FILE && w->key == s->f.key) {
+        s->f.phase = F_SEALED; /* so file_fail can drop it */
+        file_fail(s, STORE_ERROR);
+    }
     if (w->phase == W_CLAIM) {
         set_state(s, w->sec, SEC_DIRTY);
     } else {
@@ -346,10 +403,14 @@ static void writer_done(store* s) {
         return;
     }
     if (e) {
-        uint32_t old = entry_size(s, e);
+        const uint8_t* was = at(s, e->sec, e->off);
+        uint32_t old = rec_size(rd16(was + 2));
         s->sector[e->sec].live = (uint16_t)(s->sector[e->sec].live - old);
         s->live -= old;
         e->stale++;
+        if (was[0] == STORE_TYPE_FILE) {
+            file_live(s, was, -1); /* replaced, renamed or deleted */
+        }
     } else {
         e = &s->key[s->nkeys++];
         e->key = w->key;
@@ -359,6 +420,13 @@ static void writer_done(store* s) {
     e->off = w->off;
     c->live = (uint16_t)(c->live + size);
     s->live += size;
+    if (w->type == STORE_TYPE_FILE) {
+        file_live(s, at(s, w->sec, w->off), 1);
+        if (s->f.phase == F_FILE && w->key == s->f.key) {
+            s->f.phase = F_IDLE; /* the open file is committed */
+            s->f.result = STORE_OK;
+        }
+    }
 }
 
 static void writer_step(store* s) {
@@ -383,7 +451,8 @@ static void writer_step(store* s) {
         if (w->src) {
             rc = prog_piece(s, w->sec, w->off + STORE_REC_HEADER, w->src, w->len, &w->done);
         } else {
-            rc = copy_piece(s, w->sec, w->off + STORE_REC_HEADER, w->from + STORE_REC_HEADER, w->len, &w->done);
+            rc = copy_piece(s, w->sec, w->off + STORE_REC_HEADER, w->from + STORE_REC_HEADER,
+                            w->len, &w->done);
         }
         if (rc > 0) {
             w->phase = W_HEAD;
@@ -412,8 +481,12 @@ static void writer_step(store* s) {
     }
 }
 
+static void write_at(store* s, uint32_t sec, uint32_t key, uint8_t type, const void* data,
+                     uint32_t len);
+
 /* Starts writing a record into a place taken now. */
-static int write_record(store* s, uint32_t key, uint8_t type, const void* data, uint32_t len, uint32_t floor) {
+static int write_record(store* s, uint32_t key, uint8_t type, const void* data, uint32_t len,
+                        uint32_t floor) {
     uint32_t size = rec_size(len);
     store_key* e = find(s, key);
     if (!e && s->nkeys >= STORE_KEYS_MAX) {
@@ -427,6 +500,13 @@ static int write_record(store* s, uint32_t key, uint8_t type, const void* data, 
     if (sec == NONE) {
         return reclaimable(s) ? STORE_BUSY : STORE_FULL;
     }
+    write_at(s, sec, key, type, data, len);
+    return STORE_OK;
+}
+
+/* Sets the writer to program a record at the end of sector `sec`'s records. */
+static void write_at(store* s, uint32_t sec, uint32_t key, uint8_t type, const void* data,
+                     uint32_t len) {
     store_writer* w = &s->w;
     w->src = data;
     w->from = 0;
@@ -442,7 +522,6 @@ static int write_record(store* s, uint32_t key, uint8_t type, const void* data, 
     rec_header(w, h);
     w->crc = store_crc32(store_crc32(0, h, 12), data, len);
     w->phase = sec_state(s, sec) == SEC_RESERVED ? W_CLAIM : (len ? W_DATA : W_HEAD);
-    return STORE_OK;
 }
 
 /* ---- the mount ---- */
@@ -546,8 +625,11 @@ static uint32_t rec_valid(const store* s, uint32_t sec, uint32_t off) {
     }
     const uint8_t* h = at(s, sec, off);
     uint32_t len = rd16(h + 2), size = rec_size(len);
-    if (h[0] == 0xFFu || off + size > STORE_SECTOR_USE ||
-        (h[0] == STORE_TYPE_TOMB && len != 0) || (h[0] <= STORE_TYPE_MAX && len > STORE_VALUE_MAX)) {
+    if (h[0] == 0xFFu || off + size > STORE_SECTOR_USE || (h[0] == STORE_TYPE_TOMB && len != 0) ||
+        (h[0] <= STORE_TYPE_MAX && len > STORE_VALUE_MAX) ||
+        (h[0] == STORE_TYPE_CHUNK && (len == 0 || len > STORE_CHUNK)) ||
+        (h[0] == STORE_TYPE_FILE &&
+         (len < STORE_FILE_HEAD || len > STORE_FILE_HEAD + STORE_FILE_SECTORS))) {
         return 0;
     }
     if (rd32(h + STORE_REC_HEADER + pad4(len)) != 0) {
@@ -639,6 +721,38 @@ static int scan_records(store* s, uint32_t sec) {
     return 0;
 }
 
+/* A FILE record the mount found: whole, with every chunk where it says, in sectors no other
+ * file holds. */
+static int file_ok(const store* s, const uint8_t* rec) {
+    const uint8_t* d = file_data(rec);
+    uint32_t fid = rd32(d), length = rd32(d + 4), nsec = d[13], chunks = rd16(d + 14);
+    if (length > STORE_FILE_MAX || nsec != sectors_of(length) || chunks != chunks_of(length) ||
+        rd16(rec + 2) != STORE_FILE_HEAD + nsec) {
+        return 0;
+    }
+    for (uint32_t i = 0; i < nsec; i++) {
+        uint32_t sec = d[STORE_FILE_HEAD + i];
+        if (sec >= STORE_SECTORS || sec_state(s, sec) != SEC_CLAIMED ||
+            (s->sstate[sec] & SEC_FILE)) {
+            return 0;
+        }
+        for (uint32_t j = 0; j < i; j++) {
+            if (d[STORE_FILE_HEAD + j] == sec) {
+                return 0;
+            }
+        }
+    }
+    for (uint32_t i = 0; i < chunks; i++) {
+        uint32_t sec = d[STORE_FILE_HEAD + i / 3u], off = chunk_off(i), len = chunk_len(length, i);
+        const uint8_t* h = at(s, sec, off);
+        if (off + rec_size(len) > s->sector[sec].free || h[0] != STORE_TYPE_CHUNK ||
+            rd16(h + 2) != len || rd32(h + 4) != fid || rd32(h + 8) != i) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static void mount_finish(store* s) {
     uint32_t known = 0;
     for (uint32_t i = 0; i < STORE_SECTORS; i++) {
@@ -646,23 +760,33 @@ static void mount_finish(store* s) {
             known = s->sector[i].erases;
         }
     }
+    s->live = 0;
+    for (uint32_t i = 0; i < s->nkeys;) {
+        const uint8_t* rec = at(s, s->key[i].sec, s->key[i].off);
+        if (rec[0] == STORE_TYPE_FILE && !file_ok(s, rec)) {
+            s->corrupt++; /* a damaged file: dropped */
+            drop_key(s, &s->key[i]);
+            continue;
+        }
+        uint32_t size = rec_size(rd16(rec + 2));
+        s->sector[s->key[i].sec].live = (uint16_t)(s->sector[s->key[i].sec].live + size);
+        s->live += size;
+        if (rec[0] == STORE_TYPE_FILE) {
+            file_live(s, rec, 1);
+        }
+        i++;
+    }
     s->head = NONE;
     for (uint32_t i = 0; i < STORE_SECTORS; i++) {
         if (s->sstate[i] & SEC_GUESS) {
             s->sector[i].erases = known; /* unknown: count it among the most worn */
             s->sstate[i] &= (uint8_t)~SEC_GUESS;
         }
-        if (sec_state(s, i) == SEC_CLAIMED && !(s->sstate[i] & SEC_FULL) &&
+        if (sec_state(s, i) == SEC_CLAIMED && !(s->sstate[i] & (SEC_FULL | SEC_FILE)) &&
             s->sector[i].free + STORE_REC_OVERHEAD <= STORE_SECTOR_USE &&
             (s->head == NONE || s->sector[i].seq > s->sector[s->head].seq)) {
             s->head = (uint8_t)i;
         }
-    }
-    s->live = 0;
-    for (uint32_t i = 0; i < s->nkeys; i++) {
-        uint32_t size = entry_size(s, &s->key[i]);
-        s->sector[s->key[i].sec].live = (uint16_t)(s->sector[s->key[i].sec].live + size);
-        s->live += size;
     }
     if (s->mount_newer) {
         s->state = STORE_STATE_FOREIGN;
@@ -886,6 +1010,237 @@ static void job_step(store* s) {
     }
 }
 
+/* ---- writing a file ---- */
+
+static void chunk_header(const store_file_writer* f, uint8_t* h) {
+    h[0] = STORE_TYPE_CHUNK;
+    h[1] = 0;
+    wr16(h + 2, chunk_len(f->length, f->chunk));
+    wr32(h + 4, f->fid);
+    wr32(h + 8, f->chunk);
+    wr32(h + 12, f->rcrc);
+}
+
+static void chunk_start(store_file_writer* f) {
+    uint8_t h[STORE_REC_HEADER];
+    f->cdone = 0;
+    f->pdone = 0;
+    f->rcrc = 0;
+    chunk_header(f, h);
+    f->rcrc = store_crc32(0, h, 12);
+}
+
+/* Drops the open file: sectors never programmed go back to the pool, the others to garbage
+ * collection. */
+static void file_fail(store* s, int result) {
+    store_file_writer* f = &s->f;
+    if (f->phase == F_IDLE || f->phase == F_FILE) {
+        return;
+    }
+    for (uint32_t i = 0; i < f->nsec; i++) {
+        uint32_t sec = f->sectors[i];
+        s->sstate[sec] &= (uint8_t)~SEC_FILE;
+        if (sec_state(s, sec) == SEC_RESERVED) {
+            set_state(s, sec, SEC_CLEAN);
+        } else {
+            s->sstate[sec] |= SEC_FULL; /* a chunk may be cut after its last committed one */
+        }
+    }
+    s->fres_sec = NONE;
+    s->fres_bytes = 0;
+    f->phase = F_IDLE;
+    f->result = (int8_t)result;
+}
+
+/* The open file's FILE record, into the room kept for it. */
+static void file_commit(store* s) {
+    store_file_writer* f = &s->f;
+    uint8_t* d = s->buf;
+    wr32(d, f->fid);
+    wr32(d + 4, f->length);
+    wr32(d + 8, f->crc);
+    d[12] = f->type;
+    d[13] = f->nsec;
+    wr16(d + 14, chunks_of(f->length));
+    memcpy(d + 16, f->name, STORE_NAME_MAX);
+    memcpy(d + STORE_FILE_HEAD, f->sectors, f->nsec);
+    uint32_t sec = s->fres_sec, size = s->fres_bytes;
+    s->fres_sec = NONE;
+    s->fres_bytes = 0;
+    if ((s->sstate[sec] & SEC_FULL) ||
+        (sec_state(s, sec) != SEC_CLAIMED && sec_state(s, sec) != SEC_RESERVED)) {
+        sec = place(s, size, 0); /* a write failed there meanwhile: the place moves */
+        if (sec == NONE) {
+            f->phase = F_SEALED;
+            file_fail(s, STORE_ERROR);
+            return;
+        }
+    }
+    f->phase = F_FILE;
+    write_at(s, sec, f->key, STORE_TYPE_FILE, d, STORE_FILE_HEAD + f->nsec);
+    writer_step(s);
+}
+
+/* The open file's next operation. 1 if it ran one (or started its FILE record), 0 while it waits
+ * for bytes or for store_file_end. */
+static int file_step(store* s) {
+    store_file_writer* f = &s->f;
+    uint32_t sec = f->sectors[f->chunk / 3u];
+    int rc;
+    if (f->phase == F_SEALED) {
+        if (!f->closing) {
+            return 0;
+        }
+        file_commit(s);
+        return 1;
+    }
+    if (f->phase == F_FILE) {
+        return 0;
+    }
+    if (f->phase == F_DATA && f->cdone == 0 && sec_state(s, sec) == SEC_RESERVED) {
+        f->phase = F_CLAIM;
+        f->pdone = 0;
+    }
+    if (f->phase == F_CLAIM) {
+        uint8_t claim[24], p[12];
+        memcpy(claim, at(s, sec, 0), 20);
+        wr32(claim + 20, s->sector[sec].seq);
+        wr32(p, s->sector[sec].seq);
+        wr32(p + 4, store_crc32(0, claim, 24));
+        wr32(p + 8, 0);
+        rc = prog_piece(s, sec, 20, p, 12, &f->pdone);
+        if (rc > 0) {
+            set_state(s, sec, SEC_CLAIMED);
+            f->phase = F_DATA;
+            f->pdone = 0;
+        }
+    } else if (f->phase == F_DATA) {
+        uint32_t len = chunk_len(f->length, f->chunk);
+        uint32_t a = base(sec) + chunk_off(f->chunk) + STORE_REC_HEADER + f->cdone;
+        uint32_t k = len - f->cdone, page = STORE_PAGE - (a & (STORE_PAGE - 1u));
+        k = k > s->window ? s->window : k;
+        k = k > page ? page : k;
+        k = k > STORE_WINDOW_MAX - f->start ? STORE_WINDOW_MAX - f->start : k; /* the ring's end */
+        if (f->fill < k) {
+            return 0; /* waiting for bytes */
+        }
+        const uint8_t* src = s->buf + f->start;
+        uint16_t done = 0;
+        rc = prog_piece(s, sec, chunk_off(f->chunk) + STORE_REC_HEADER + f->cdone, src, k, &done);
+        if (rc > 0) {
+            f->rcrc = store_crc32(f->rcrc, src, k);
+            f->crc = store_crc32(f->crc, src, k);
+            f->fill = (uint16_t)(f->fill - k);
+            f->start = (uint16_t)((f->start + k) % STORE_WINDOW_MAX);
+            f->cdone = (uint16_t)(f->cdone + k);
+            if (f->cdone == len) {
+                f->phase = F_HEAD;
+                f->pdone = 0;
+            }
+        }
+    } else if (f->phase == F_HEAD) {
+        uint8_t h[STORE_REC_HEADER];
+        chunk_header(f, h);
+        rc = prog_piece(s, sec, chunk_off(f->chunk), h, STORE_REC_HEADER, &f->pdone);
+        if (rc > 0) {
+            f->phase = F_COMMIT;
+            f->pdone = 0;
+        }
+    } else {
+        static const uint8_t zero[4] = {0, 0, 0, 0};
+        uint32_t len = chunk_len(f->length, f->chunk);
+        rc = prog_piece(s, sec, chunk_off(f->chunk) + STORE_REC_HEADER + pad4(len), zero, 4,
+                        &f->pdone);
+        if (rc > 0) {
+            s->sector[sec].free = (uint16_t)(chunk_off(f->chunk) + rec_size(len));
+            if (++f->chunk == chunks_of(f->length)) {
+                f->phase = F_SEALED;
+            } else {
+                chunk_start(f);
+                f->phase = F_DATA;
+            }
+        }
+    }
+    if (rc < 0) {
+        file_fail(s, STORE_ERROR);
+    }
+    return 1;
+}
+
+/* ---- names ---- */
+
+/* `name` padded with NULs to STORE_NAME_MAX bytes; 0 if it is not a file name. */
+static int name_pad(const char* name, char* out) {
+    uint32_t n = 0;
+    while (name && n <= STORE_NAME_MAX && name[n]) {
+        n++;
+    }
+    if (!name || n == 0 || n > STORE_NAME_MAX || name[0] == ' ') {
+        return 0;
+    }
+    for (uint32_t i = 0; i < STORE_NAME_MAX; i++) {
+        char c = i < n ? name[i] : 0;
+        if (i < n && (c < 0x20 || c > 0x5F)) {
+            return 0;
+        }
+        out[i] = c;
+    }
+    return 1;
+}
+
+static int name_cmp(const char* a, const char* b) {
+    for (uint32_t i = 0; i < STORE_NAME_MAX; i++) {
+        if (a[i] != b[i]) {
+            return (uint8_t)a[i] < (uint8_t)b[i] ? -1 : 1;
+        }
+    }
+    return 0;
+}
+
+/* The key of the committed file named `name` (padded), or 0. */
+static store_key* file_find(store* s, const char* name) {
+    for (uint32_t i = 0; i < s->nkeys; i++) {
+        const uint8_t* rec = at(s, s->key[i].sec, s->key[i].off);
+        if (rec[0] == STORE_TYPE_FILE && name_cmp((const char*)file_data(rec) + 16, name) == 0) {
+            return &s->key[i];
+        }
+    }
+    return 0;
+}
+
+/* A key for a new file: a deleted file's, or the first free one. 0 if the index is full. */
+static uint32_t file_key(store* s) {
+    for (uint32_t i = 0; i < s->nkeys; i++) {
+        if (s->key[i].key >= STORE_KEY_FILE &&
+            at(s, s->key[i].sec, s->key[i].off)[0] == STORE_TYPE_TOMB) {
+            return s->key[i].key;
+        }
+    }
+    if (s->nkeys >= STORE_KEYS_MAX) {
+        return 0;
+    }
+    for (uint32_t k = STORE_KEY_FILE;; k++) {
+        if (!find(s, k)) {
+            return k;
+        }
+    }
+}
+
+static void file_fill(const uint8_t* rec, const store_key* e, store_file* out) {
+    const uint8_t* d = file_data(rec);
+    out->key = e->key;
+    out->fid = rd32(d);
+    out->length = rd32(d + 4);
+    out->crc = rd32(d + 8);
+    out->type = d[12];
+    out->nsec = d[13];
+    out->chunks = rd16(d + 14);
+    memcpy(out->name, d + 16, STORE_NAME_MAX);
+    out->name[STORE_NAME_MAX] = 0;
+    memset(out->sectors, 0xFF, sizeof out->sectors);
+    memcpy(out->sectors, d + STORE_FILE_HEAD, out->nsec);
+}
+
 /* ---- the API ---- */
 
 void store_init(store* s, const store_flash* flash, uint32_t window) {
@@ -893,6 +1248,8 @@ void store_init(store* s, const store_flash* flash, uint32_t window) {
     s->flash = *flash;
     s->window = window == 0 || window > STORE_WINDOW_MAX ? STORE_WINDOW_MAX : window;
     s->head = NONE;
+    s->fres_sec = NONE;
+    s->f.result = STORE_NOT_FOUND;
     s->state = STORE_STATE_UNMOUNTED;
 }
 
@@ -921,7 +1278,7 @@ int store_erase_wanted(const store* s) {
         return 0;
     }
     uint32_t sec;
-    return s->job != JOB_NONE || due(s, &sec) != JOB_NONE;
+    return s->f.phase == F_IDLE && (s->job != JOB_NONE || due(s, &sec) != JOB_NONE);
 }
 
 int store_poll(store* s) {
@@ -935,6 +1292,9 @@ int store_poll(store* s) {
     if (s->w.phase != W_IDLE) {
         writer_step(s);
         return 1;
+    }
+    if (s->f.phase != F_IDLE) {
+        return file_step(s); /* maintenance waits for the file */
     }
     if (s->job == JOB_NONE && !(s->quiet && next_job(s))) {
         return 0;
@@ -956,7 +1316,9 @@ int store_get(const store* s, uint32_t key, void* buf, uint32_t cap, uint8_t* ty
         return STORE_NOT_FOUND;
     }
     uint32_t len = rd16(h + 2);
-    memcpy(buf, h + STORE_REC_HEADER, len < cap ? len : cap);
+    if (len && cap) {
+        memcpy(buf, h + STORE_REC_HEADER, len < cap ? len : cap);
+    }
     if (type) {
         *type = h[0];
     }
@@ -981,14 +1343,8 @@ int store_put(store* s, uint32_t key, uint8_t type, const void* data, uint32_t l
     return rc ? rc : write_record(s, key, type, data, len, STORE_POOL_MIN);
 }
 
-int store_delete(store* s, uint32_t key) {
-    if (key > STORE_KEY_MAX) {
-        return STORE_INVALID;
-    }
-    int rc = write_check(s);
-    if (rc) {
-        return rc;
-    }
+static int delete_key(store* s, uint32_t key) {
+    int rc;
     store_key* e = find(s, key);
     if (!e || at(s, e->sec, e->off)[0] == STORE_TYPE_TOMB) {
         return STORE_OK;
@@ -998,8 +1354,16 @@ int store_delete(store* s, uint32_t key) {
     return rc == STORE_FULL ? write_record(s, key, STORE_TYPE_TOMB, 0, 0, STORE_POOL_MIN - 1u) : rc;
 }
 
+int store_delete(store* s, uint32_t key) {
+    if (key > STORE_KEY_MAX) {
+        return STORE_INVALID;
+    }
+    int rc = write_check(s);
+    return rc ? rc : delete_key(s, key);
+}
+
 int store_collect(store* s) {
-    if (!writable(s) || s->job != JOB_NONE || s->w.phase != W_IDLE) {
+    if (!writable(s) || s->job != JOB_NONE || s->w.phase != W_IDLE || s->f.phase != F_IDLE) {
         return writable(s) ? STORE_BUSY : STORE_FOREIGN;
     }
     uint32_t v = victim(s);
@@ -1021,6 +1385,9 @@ void store_format(store* s) {
     s->head = NONE;
     s->job = JOB_NONE;
     s->w.phase = W_IDLE;
+    s->f.phase = F_IDLE;
+    s->fres_sec = NONE;
+    s->fres_bytes = 0;
     s->state = STORE_STATE_BLANK;
 }
 
@@ -1040,4 +1407,208 @@ void store_stats_get(const store* s, store_stats* out) {
     out->keys = s->nkeys;
     out->corrupt = s->corrupt;
     out->errors = s->errors;
+}
+
+/* ---- files ---- */
+
+int store_file_begin(store* s, const char* name, uint8_t type, uint32_t length) {
+    char padded[STORE_NAME_MAX];
+    if (!name_pad(name, padded) || type == 0 || type > STORE_TYPE_MAX || length > STORE_FILE_MAX) {
+        return STORE_INVALID;
+    }
+    int rc = write_check(s);
+    if (rc) {
+        return rc;
+    }
+    if (s->f.phase != F_IDLE || s->job == JOB_COLLECT) {
+        return STORE_BUSY; /* one file at a time; a collection's copies use the buffer */
+    }
+    store_key* e = file_find(s, padded);
+    uint32_t key = e ? e->key : file_key(s);
+    if (!key) {
+        return STORE_FULL;
+    }
+    uint32_t nsec = sectors_of(length), frec = rec_size(STORE_FILE_HEAD + nsec);
+    if (s->live + chunk_bytes(length) + frec > STORE_CAPACITY) {
+        return STORE_FULL;
+    }
+    uint32_t h = s->head, head_room = h != NONE && !(s->sstate[h] & SEC_FULL) &&
+                                      s->sector[h].free + frec <= STORE_SECTOR_USE;
+    uint32_t need = nsec + !head_room, pool = count(s, SEC_CLEAN);
+    if (pool < need + STORE_GC_RESERVE) {
+        return pool + reclaimable(s) >= need + STORE_GC_RESERVE ? STORE_BUSY : STORE_FULL;
+    }
+    store_file_writer* f = &s->f;
+    for (uint32_t i = 0; i < nsec; i++) {
+        uint32_t sec = coldest(s, SEC_CLEAN);
+        set_state(s, sec, SEC_RESERVED);
+        s->sstate[sec] |= SEC_FILE;
+        s->sector[sec].seq = s->seq++;
+        s->sector[sec].free = STORE_HEADER;
+        s->sector[sec].live = 0;
+        f->sectors[i] = (uint8_t)sec;
+    }
+    s->fres_sec = (uint8_t)(head_room ? h : place(s, frec, 0));
+    s->fres_bytes = (uint16_t)frec;
+    f->key = key;
+    f->fid = s->seq++;
+    f->length = length;
+    f->taken = 0;
+    f->crc = 0;
+    f->chunk = 0;
+    f->fill = 0;
+    f->start = 0;
+    f->closing = 0;
+    f->type = type;
+    f->nsec = (uint8_t)nsec;
+    memcpy(f->name, padded, STORE_NAME_MAX);
+    f->result = STORE_BUSY;
+    chunk_start(f);
+    f->phase = length ? F_DATA : F_SEALED;
+    return STORE_OK;
+}
+
+uint32_t store_file_write(store* s, const void* p, uint32_t n) {
+    store_file_writer* f = &s->f;
+    if (f->phase == F_IDLE || f->phase == F_FILE || f->closing || !n) {
+        return 0;
+    }
+    uint32_t room = STORE_WINDOW_MAX - f->fill, left = f->length - f->taken;
+    n = n > room ? room : n;
+    n = n > left ? left : n;
+    uint32_t to = (f->start + f->fill) % STORE_WINDOW_MAX, first = STORE_WINDOW_MAX - to;
+    first = first > n ? n : first;
+    memcpy(s->buf + to, p, first);
+    memcpy(s->buf, (const uint8_t*)p + first, n - first);
+    f->fill = (uint16_t)(f->fill + n);
+    f->taken += n;
+    return n;
+}
+
+int store_file_end(store* s) {
+    store_file_writer* f = &s->f;
+    if (f->phase == F_IDLE || f->phase == F_FILE || f->closing) {
+        return STORE_INVALID;
+    }
+    if (f->taken < f->length) {
+        file_fail(s, STORE_INVALID);
+        return STORE_INVALID;
+    }
+    f->closing = 1;
+    return STORE_OK;
+}
+
+void store_file_abort(store* s) {
+    file_fail(s, STORE_NOT_FOUND);
+}
+
+int store_file_result(const store* s) {
+    return s->f.phase != F_IDLE ? STORE_BUSY : s->f.result;
+}
+
+int store_file_open(const store* s, const char* name, store_file* f) {
+    char padded[STORE_NAME_MAX];
+    if (!writable(s) || !name_pad(name, padded)) {
+        return STORE_NOT_FOUND;
+    }
+    const store_key* e = file_find((store*)s, padded);
+    if (!e) {
+        return STORE_NOT_FOUND;
+    }
+    file_fill(at(s, e->sec, e->off), e, f);
+    return STORE_OK;
+}
+
+int store_file_read(const store* s, const store_file* f, uint32_t off, void* p, uint32_t n) {
+    const store_key* e = writable(s) ? find_c(s, f->key) : 0;
+    const uint8_t* rec = e ? at(s, e->sec, e->off) : 0;
+    if (!rec || rec[0] != STORE_TYPE_FILE || rd32(file_data(rec)) != f->fid) {
+        return STORE_NOT_FOUND;
+    }
+    if (off >= f->length) {
+        return 0;
+    }
+    n = n > f->length - off ? f->length - off : n;
+    uint8_t* out = p;
+    for (uint32_t done = 0; done < n;) {
+        uint32_t i = (off + done) / STORE_CHUNK, o = (off + done) % STORE_CHUNK;
+        uint32_t k = chunk_len(f->length, i) - o;
+        k = k > n - done ? n - done : k;
+        memcpy(out + done, at(s, f->sectors[i / 3u], chunk_off(i) + STORE_REC_HEADER + o), k);
+        done += k;
+    }
+    return (int)n;
+}
+
+int store_dir_next(const store* s, store_file* f) {
+    char prev[STORE_NAME_MAX];
+    const uint8_t* best = 0;
+    const store_key* best_e = 0;
+    if (!writable(s)) {
+        return 0;
+    }
+    uint32_t n = 0;
+    while (n < STORE_NAME_MAX && f->name[n]) {
+        n++;
+    }
+    for (uint32_t i = 0; i < STORE_NAME_MAX; i++) {
+        prev[i] = i < n ? f->name[i] : 0;
+    }
+    for (uint32_t i = 0; i < s->nkeys; i++) {
+        const uint8_t* rec = at(s, s->key[i].sec, s->key[i].off);
+        if (rec[0] != STORE_TYPE_FILE) {
+            continue;
+        }
+        const char* name = (const char*)file_data(rec) + 16;
+        if ((!f->name[0] || name_cmp(name, prev) > 0) &&
+            (!best || name_cmp(name, (const char*)file_data(best) + 16) < 0)) {
+            best = rec;
+            best_e = &s->key[i];
+        }
+    }
+    if (!best) {
+        return 0;
+    }
+    file_fill(best, best_e, f);
+    return 1;
+}
+
+int store_file_delete(store* s, const char* name) {
+    char padded[STORE_NAME_MAX];
+    if (!name_pad(name, padded)) {
+        return STORE_INVALID;
+    }
+    int rc = write_check(s);
+    if (rc) {
+        return rc;
+    }
+    store_key* e = file_find(s, padded);
+    return e ? delete_key(s, e->key) : STORE_NOT_FOUND;
+}
+
+int store_file_rename(store* s, const char* from, const char* to) {
+    char a[STORE_NAME_MAX], b[STORE_NAME_MAX];
+    if (!name_pad(from, a) || !name_pad(to, b)) {
+        return STORE_INVALID;
+    }
+    int rc = write_check(s);
+    if (rc) {
+        return rc;
+    }
+    if (s->f.phase != F_IDLE || s->job == JOB_COLLECT) {
+        return STORE_BUSY; /* the buffer is the open file's or the collection's */
+    }
+    store_key* e = file_find(s, a);
+    if (!e) {
+        return STORE_NOT_FOUND;
+    }
+    store_key* other = file_find(s, b);
+    if (other) {
+        return other == e ? STORE_OK : STORE_EXISTS;
+    }
+    const uint8_t* rec = at(s, e->sec, e->off);
+    uint32_t len = rd16(rec + 2);
+    memcpy(s->buf, file_data(rec), len);
+    memcpy(s->buf + 16, b, STORE_NAME_MAX);
+    return write_record(s, e->key, STORE_TYPE_FILE, s->buf, len, STORE_POOL_MIN);
 }

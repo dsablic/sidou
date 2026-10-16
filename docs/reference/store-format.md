@@ -79,9 +79,9 @@ Written in two steps.
 | 16 + len rounded up to 4 | 4 | commit word, `0x00000000` |
 
 - Types 0x00-0x7F are the caller's (a small value); 0x80 is a **tombstone**
-  (the key was deleted, no data). Types 0x81 and up are the store's own
-  (files, Task 3). 0xFF is never a type: an erased header reads 0xFF.
-- Keys 0-0x7FFFFFFF are the caller's; the store keeps the rest for files.
+  (the key was deleted, no data); 0x81 a file's **chunk**, 0x82 a **FILE
+  record** (below). 0xFF is never a type: an erased header reads 0xFF.
+- Keys 0-0x7FFFFFFF are the caller's; `0x80000000 | n` are files'.
 - A small value is at most 1,248 bytes.
 - **Order of programming:** the data, then the header, then the commit
   word. All three land on erased bytes. A record counts only with a good CRC
@@ -92,6 +92,49 @@ Written in two steps.
   after the last valid record (a cut write: data under an erased header, a
   bad CRC, no commit word) makes the sector full: nothing more is ever
   programmed into it.
+
+## Files
+
+A file (a song, a dump) is a name of 1 to 16 characters (0x20-0x5F, the
+screen font's upper case, not starting with a space), a type (1 is a
+GoatTracker 2 song) and up to 65,536 bytes. It is written as **chunk
+records**, then committed by one **FILE record**.
+
+**A chunk record** (type 0x81): key = the file's id, sequence number = the
+chunk's index (from 0), data = 1,248 bytes of the file (the last chunk
+shorter). A chunk record takes 16 + 1,248 + 4 = 1,268 bytes, so three fill a
+sector's records (3,804 of 3,808 bytes): a sector carries 3,744 bytes of a
+file and a 64 KiB file takes 18 sectors. A file's chunks go only into the
+sectors claimed for it, at fixed places: chunk `i` is in the file's sector
+`i / 3`, at offset `0x20 + (i % 3) × 1268`.
+
+**A FILE record** (type 0x82), in a head sector: key = the file's key
+(`0x80000000 | n`, which stays the file's across replacements and renames),
+data:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 4 | the file's id: its chunks' key (a sequence number, new for every write) |
+| 4 | 4 | length in bytes |
+| 8 | 4 | CRC-32 of the file's bytes |
+| 12 | 1 | type |
+| 13 | 1 | sector count, `ceil(length / 3744)` |
+| 14 | 2 | chunk count, `ceil(length / 1248)` |
+| 16 | 16 | name, NUL-padded |
+| 32 | sector count | the sectors, in order, as indexes from the store's first (0 = 0x97000) |
+
+- **A file without its FILE record does not exist.** Its chunks are written
+  first, then the FILE record commits it whole. Replacing a file writes the
+  new one completely, then its FILE record (the same key, a newer sequence
+  number) supersedes the old one; the old chunks become garbage. Renaming
+  writes the FILE record again with the new name; deleting writes a
+  tombstone on its key. So a cut at any point leaves the old file or the new.
+- **Chunks never move:** a live file's sectors hold nothing else and are
+  never collected; they become garbage, whole, when the file is replaced or
+  deleted. A read goes straight to a chunk through XIP.
+- The mount checks a FILE record against its chunks (each where it says,
+  with the file's id and its index, inside its sector's valid records); a
+  file that does not check is dropped and counted as corruption.
 
 ## Which record wins
 
@@ -126,13 +169,16 @@ Maintenance refills the pool toward `STORE_POOL_TARGET` (22) when the device
 is quiet, erasing dirty sectors first, then collecting the sector with the
 least live data. A write claims its sectors from the pool before its first
 byte; a small value's new head sector is refused (`STORE_BUSY`) when it
-would take the pool under its minimum. Sectors leave the pool, and are
+would take the pool under its minimum, and a file's sectors, with the place
+for its FILE record, when they would take it into garbage collection's
+reserve. While a file is open, maintenance waits. Sectors leave the pool, and are
 erased, lowest erase count first; when the counts spread by more than 4,
 maintenance moves the coldest sector's records so it cycles too.
 
 ## The test fixture
 
 `host/crates/sidou-tests/tests/data/store-v1.bin` is a format 1 region,
-checked in, that every later version must mount to the same values. On disk
+checked in, that every later version must mount to the same values and
+files. On disk
 it is the region's runs of bytes other than 0xFF: each `[u32 flash offset]
 [u16 length][bytes]`; the rest of the region is 0xFF.

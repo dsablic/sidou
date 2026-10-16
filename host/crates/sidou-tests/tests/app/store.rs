@@ -429,6 +429,128 @@ impl Rig {
     }
 }
 
+/// Files.
+impl Rig {
+    pub fn file_begin(&mut self, name: &str, len: usize) -> i32 {
+        let c = std::ffi::CString::new(name).unwrap();
+        unsafe { store_file_begin(&mut *self.st, c.as_ptr(), STORE_FILE_SONG as u8, len as u32) }
+    }
+
+    pub fn file_write(&mut self, data: &[u8]) -> usize {
+        unsafe { store_file_write(&mut *self.st, data.as_ptr().cast(), data.len() as u32) as usize }
+    }
+
+    pub fn file_result(&self) -> i32 {
+        unsafe { store_file_result(&*self.st) }
+    }
+
+    /// Offers `data` in pieces of up to `offer` bytes (random sizes if `rng`), polling between
+    /// offers as the main loop would, then ends the file and polls until it is committed (or
+    /// the power is cut). Returns the result. Checks the back-pressure as it goes.
+    pub fn file_stream(&mut self, data: &[u8], offer: usize, mut rng: Option<&mut Rng>) -> i32 {
+        let mut at = 0;
+        let mut idle = 0;
+        while at < data.len() {
+            let want = match rng.as_deref_mut() {
+                Some(r) => 1 + r.below(offer as u64) as usize,
+                None => offer,
+            }
+            .min(data.len() - at);
+            let room = STORE_WINDOW_MAX as usize - usize::from(self.st.f.fill);
+            let took = self.file_write(&data[at..at + want]);
+            assert_eq!(
+                took,
+                want.min(room),
+                "store_file_write took {took} of {want} with {room} free"
+            );
+            at += took;
+            idle = if took == 0 { idle + 1 } else { 0 };
+            assert!(idle < 100, "the file stopped taking bytes");
+            self.poll();
+            if self.sim.dead {
+                return STORE_ERROR;
+            }
+        }
+        let rc = unsafe { store_file_end(&mut *self.st) };
+        if rc != STORE_OK {
+            return rc;
+        }
+        let mut polls = 0;
+        while self.file_result() == STORE_BUSY && !self.sim.dead {
+            self.poll();
+            polls += 1;
+            assert!(polls < 1_000_000, "the file never committed");
+        }
+        self.file_result()
+    }
+
+    /// A whole file write; no maintenance between its begin and its end.
+    pub fn file_now(&mut self, name: &str, data: &[u8]) -> i32 {
+        let mut rc = self.file_begin(name, data.len());
+        if rc == STORE_BUSY {
+            self.maintain();
+            rc = self.file_begin(name, data.len());
+        }
+        if rc != STORE_OK {
+            return rc;
+        }
+        let erases = self.sim.erases;
+        let rc = self.file_stream(data, 1000, None);
+        assert_eq!(self.sim.erases, erases, "an erase while a file was written");
+        rc
+    }
+
+    pub fn file_open(&self, name: &str) -> Option<store_file> {
+        let c = std::ffi::CString::new(name).unwrap();
+        let mut f = store_file::default();
+        (unsafe { store_file_open(&*self.st, c.as_ptr(), &mut f) } == STORE_OK).then_some(f)
+    }
+
+    pub fn file_read(&self, f: &store_file, off: usize, n: usize) -> Option<Vec<u8>> {
+        let mut buf = vec![0u8; n];
+        let got =
+            unsafe { store_file_read(&*self.st, f, off as u32, buf.as_mut_ptr().cast(), n as u32) };
+        if got == STORE_NOT_FOUND {
+            return None;
+        }
+        buf.truncate(got as usize);
+        Some(buf)
+    }
+
+    /// The file's bytes, checked against its CRC.
+    pub fn file(&self, name: &str) -> Option<Vec<u8>> {
+        let f = self.file_open(name)?;
+        let data = self.file_read(&f, 0, f.length as usize)?;
+        assert_eq!(data.len(), f.length as usize);
+        assert_eq!(crc32(&data), f.crc, "{name}: its CRC");
+        Some(data)
+    }
+
+    pub fn dir(&self) -> Vec<(String, u8, u32)> {
+        let mut f = store_file::default();
+        let mut out = Vec::new();
+        while unsafe { store_dir_next(&*self.st, &mut f) } == 1 {
+            let name = unsafe { std::ffi::CStr::from_ptr(f.name.as_ptr()) };
+            out.push((name.to_str().unwrap().to_owned(), f.type_, f.length));
+            assert!(out.len() <= STORE_KEYS_MAX as usize, "the directory loops");
+        }
+        out
+    }
+
+    pub fn file_delete(&mut self, name: &str) -> i32 {
+        let c = std::ffi::CString::new(name).unwrap();
+        unsafe { store_file_delete(&mut *self.st, c.as_ptr()) }
+    }
+
+    pub fn file_rename(&mut self, from: &str, to: &str) -> i32 {
+        let (a, b) = (
+            std::ffi::CString::new(from).unwrap(),
+            std::ffi::CString::new(to).unwrap(),
+        );
+        unsafe { store_file_rename(&mut *self.st, a.as_ptr(), b.as_ptr()) }
+    }
+}
+
 /// The first store sector whose guard band holds a programmed byte.
 pub fn guard_band_written(region: &[u8]) -> Option<usize> {
     (0..SECTORS).find(|&s| {
@@ -470,10 +592,10 @@ fn the_constants_are_the_plans() {
     assert_eq!(STORE_POOL_TARGET, 22);
     assert_eq!(STORE_FILE_SECTOR_DATA, 3744);
     assert_eq!(STORE_CAPACITY, 198_432);
-    // The store's RAM on the device: under 2 KB with Task 3's file handle to come.
+    // The store's RAM on the device: at most 2,000 bytes (the plan's budget).
     let size = ilp32::store::SIZE;
     println!("store: {size} bytes on the device");
-    assert!(size <= 1_900, "the store struct is {size} bytes");
+    assert!(size <= 2_000, "the store struct is {size} bytes");
 }
 
 #[test]
@@ -1211,6 +1333,17 @@ fn fixture_value(k: u32, round: u32) -> Vec<u8> {
         .collect()
 }
 
+/// The fixture's files' bytes.
+fn fixture_file(seed: u32, len: usize) -> Vec<u8> {
+    (0..len)
+        .map(|i| (i as u32 * 31 + seed * 17 + (i as u32 >> 8)) as u8)
+        .collect()
+}
+
+/// The files the fixture holds at the end: name, seed, length.
+const FIXTURE_FILES: [(&str, u32, usize); 3] =
+    [("NEW", 4, 400), ("SONG A", 1, 5000), ("SONG B", 3, 2600)];
+
 const FIXTURE_KEYS: u32 = 16;
 const FIXTURE_ROUNDS: u32 = 12;
 /// Deleted in the fixture's last round.
@@ -1220,13 +1353,28 @@ fn fixture_path() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/store-v1.bin")
 }
 
-/// A STORE_FORMAT 1 region: rounds of writes to 16 keys with collections between, three keys
-/// deleted at the end, then a write cut halfway.
+/// A STORE_FORMAT 1 region: rounds of writes to 16 keys with collections between, files
+/// written, replaced, deleted and renamed among them, three keys deleted at the end, then a
+/// write cut halfway.
 fn fixture_region() -> Vec<u8> {
     let mut r = fresh(13, 64);
     for round in 0..FIXTURE_ROUNDS {
         for k in 0..FIXTURE_KEYS {
             assert_eq!(r.put_now(k, &fixture_value(k, round)), STORE_OK);
+        }
+        match round {
+            2 => assert_eq!(r.file_now("SONG A", &fixture_file(1, 5000)), STORE_OK),
+            3 => assert_eq!(r.file_now("SONG B", &fixture_file(2, 1000)), STORE_OK),
+            4 => assert_eq!(r.file_now("GONE", &fixture_file(5, 700)), STORE_OK),
+            5 => assert_eq!(r.file_now("OLD", &fixture_file(4, 400)), STORE_OK),
+            6 => assert_eq!(r.file_now("SONG B", &fixture_file(3, 2600)), STORE_OK),
+            7 => {
+                assert_eq!(r.file_delete("GONE"), STORE_OK);
+                r.settle();
+                assert_eq!(r.file_rename("OLD", "NEW"), STORE_OK);
+                r.settle();
+            }
+            _ => {}
         }
         if round % 4 == 3 {
             let _ = r.collect();
@@ -1307,9 +1455,17 @@ fn a_format_1_region_mounts_to_the_same_values() {
         let want = (!FIXTURE_DELETED.contains(&k)).then(|| fixture_value(k, FIXTURE_ROUNDS - 1));
         assert_eq!(r.get(k), want, "key {k}");
     }
+    let want: Vec<(String, u8, u32)> = FIXTURE_FILES
+        .iter()
+        .map(|&(n, _, len)| (n.to_owned(), STORE_FILE_SONG as u8, len as u32))
+        .collect();
+    assert_eq!(r.dir(), want);
+    for (name, seed, len) in FIXTURE_FILES {
+        assert_eq!(r.file(name), Some(fixture_file(seed, len)), "{name}");
+    }
     let s = r.stats();
     assert_eq!(s.corrupt, 0);
-    assert_eq!(s.keys, FIXTURE_KEYS);
+    assert!(s.keys >= FIXTURE_KEYS + 3);
     // And it carries on: a refill and writes over it.
     r.maintain();
     assert_eq!(r.put_now(3, b"back"), STORE_OK);
@@ -1383,4 +1539,663 @@ fn damaged_regions_mount_and_stay_safe() {
             r.sim.violations
         );
     }
+}
+
+// ---- files ----
+
+const FILE_MAX: usize = STORE_FILE_MAX as usize;
+
+fn content(seed: u64, len: usize) -> Vec<u8> {
+    Rng::new(seed).bytes(len)
+}
+
+fn sectors_for(len: usize) -> u32 {
+    len.div_ceil(STORE_FILE_SECTOR_DATA as usize) as u32
+}
+
+#[test]
+fn a_file_round_trips_and_survives_a_power_cycle() {
+    let mut r = fresh(20, 256);
+    let data = content(20, 5000);
+    assert_eq!(r.file_now("SONG 1", &data), STORE_OK);
+    assert_eq!(r.file("SONG 1"), Some(data.clone()));
+    assert_eq!(r.file("SONG 2"), None);
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    assert_eq!(r.file("SONG 1"), Some(data));
+    assert_eq!(
+        r.dir(),
+        vec![("SONG 1".to_owned(), STORE_FILE_SONG as u8, 5000)]
+    );
+    assert_eq!(r.stats().corrupt, 0);
+    r.assert_clean();
+}
+
+#[test]
+fn a_file_claims_its_sectors_before_it_writes_a_byte() {
+    let mut r = fresh(21, 256);
+    for (i, len) in [0usize, 1, 1248, 1249, 3744, 3745, 7488, 20_000, FILE_MAX]
+        .into_iter()
+        .enumerate()
+    {
+        r.maintain();
+        let (pool, ops) = (r.stats().pool, r.sim.ops);
+        let head_room = {
+            let h = usize::from(r.st.head);
+            h != 0xFF && usize::from(r.st.sector[h].free) + 16 + 32 + 20 + 4 <= USE
+        };
+        assert_eq!(r.file_begin(&format!("F{i}"), len), STORE_OK, "{len} bytes");
+        assert_eq!(r.sim.ops, ops, "begin writes nothing");
+        assert_eq!(u32::from(r.st.f.nsec), sectors_for(len));
+        let taken = pool - r.stats().pool;
+        assert_eq!(
+            taken,
+            sectors_for(len) + u32::from(!head_room),
+            "{len} bytes: the sectors and maybe a head for its FILE record"
+        );
+        let erases = r.sim.erases;
+        assert_eq!(r.file_stream(&content(i as u64, len), 700, None), STORE_OK);
+        assert_eq!(r.sim.erases, erases, "no erase between begin and end");
+        assert_eq!(r.file(&format!("F{i}")), Some(content(i as u64, len)));
+    }
+    r.reset();
+    r.mount();
+    for (i, len) in [0usize, 1, 1248, 1249, 3744, 3745, 7488, 20_000, FILE_MAX]
+        .into_iter()
+        .enumerate()
+    {
+        assert_eq!(r.file(&format!("F{i}")), Some(content(i as u64, len)));
+    }
+    r.assert_clean();
+}
+
+#[test]
+fn the_largest_file_takes_18_sectors_and_reads_back_at_any_offset() {
+    let mut r = fresh(22, 64);
+    let data = content(22, FILE_MAX);
+    assert_eq!(r.file_now("BIG", &data), STORE_OK);
+    let f = r.file_open("BIG").unwrap();
+    assert_eq!((f.nsec, f.chunks, f.length as usize), (18, 53, FILE_MAX));
+    assert_eq!(f.crc, crc32(&data));
+    let mut rng = Rng::new(22);
+    for _ in 0..3000 {
+        let off = rng.below(FILE_MAX as u64 + 1) as usize;
+        let n = rng.below(4000) as usize;
+        let want = &data[off.min(FILE_MAX)..(off + n).min(FILE_MAX)];
+        assert_eq!(r.file_read(&f, off, n).as_deref(), Some(want), "{off}+{n}");
+    }
+    assert_eq!(r.file_read(&f, FILE_MAX + 10, 5), Some(Vec::new()));
+    r.reset();
+    r.mount();
+    assert_eq!(r.file("BIG"), Some(data));
+}
+
+#[test]
+fn reads_at_every_offset_and_length() {
+    let mut r = fresh(23, 256);
+    let len = 5000;
+    let data = content(23, len);
+    assert_eq!(r.file_now("EVERY", &data), STORE_OK);
+    let f = r.file_open("EVERY").unwrap();
+    for off in 0..=len {
+        for n in [0, 1, 2, 3, 4, 1247, 1248, 1249, 2500, len] {
+            let want = &data[off..(off + n).min(len)];
+            assert_eq!(r.file_read(&f, off, n).as_deref(), Some(want), "{off}+{n}");
+        }
+    }
+}
+
+#[test]
+fn file_writes_take_offers_of_every_size_from_1_to_1000() {
+    let mut r = fresh(24, 64);
+    for offer in 1..=1000usize {
+        let data = content(offer as u64, 1500 + offer * 3);
+        let mut rc = r.file_begin("OFFERS", data.len());
+        if rc == STORE_BUSY {
+            r.maintain();
+            rc = r.file_begin("OFFERS", data.len());
+        }
+        assert_eq!(rc, STORE_OK, "offer {offer}");
+        assert_eq!(r.file_stream(&data, offer, None), STORE_OK, "offer {offer}");
+        assert_eq!(r.file("OFFERS"), Some(data), "offer {offer}");
+    }
+    r.reset();
+    r.mount();
+    assert_eq!(r.dir().len(), 1);
+    r.assert_clean();
+}
+
+#[test]
+fn the_directory_is_in_name_order() {
+    let mut r = fresh(25, 256);
+    let names = ["ZED", "ALPHA", "M 2", "M 10", "!BANG", "SONG_9", "A"];
+    for (i, n) in names.iter().enumerate() {
+        assert_eq!(r.file_now(n, &content(i as u64, 100 * i)), STORE_OK);
+    }
+    let mut want: Vec<(String, u8, u32)> = names
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (n.to_string(), STORE_FILE_SONG as u8, 100 * i as u32))
+        .collect();
+    want.sort();
+    assert_eq!(r.dir(), want);
+    // Small values are not files.
+    assert_eq!(r.put_now(5, b"setting"), STORE_OK);
+    assert_eq!(r.dir().len(), names.len());
+    r.reset();
+    r.mount();
+    assert_eq!(r.dir(), want);
+}
+
+#[test]
+fn names_are_the_fonts_upper_case() {
+    let mut r = fresh(26, 256);
+    for bad in [
+        "",
+        "lower",
+        " LEAD",
+        "SEVENTEEN CHARS!!",
+        "TAB\tX",
+        "TILDE~",
+        "\u{7f}",
+    ] {
+        assert_eq!(r.file_begin(bad, 10), STORE_INVALID, "{bad:?}");
+    }
+    for good in ["A", "SIXTEEN CHARS 16", "@#$%^&*()_+-=[]?", "TRAILING "] {
+        assert_eq!(r.file_now(good, b"x"), STORE_OK, "{good:?}");
+        assert_eq!(r.file(good).as_deref(), Some(&b"x"[..]));
+    }
+    assert_eq!(
+        unsafe { store_file_begin(&mut *r.st, c"X".as_ptr(), 0, 1) },
+        STORE_INVALID,
+        "type 0"
+    );
+    assert_eq!(r.file_begin("X", FILE_MAX + 1), STORE_INVALID);
+}
+
+#[test]
+fn replacing_a_file_keeps_the_old_until_the_new_commits() {
+    let mut r = fresh(27, 64);
+    let (old, new) = (content(1, 9000), content(2, 4000));
+    assert_eq!(r.file_now("SONG", &old), STORE_OK);
+    let handle = r.file_open("SONG").unwrap();
+    assert_eq!(r.file_begin("SONG", new.len()), STORE_OK);
+    assert_eq!(r.file_write(&new[..200]), 200);
+    r.settle();
+    assert_eq!(
+        r.file("SONG"),
+        Some(old.clone()),
+        "while the new one is written"
+    );
+    let _ = r.file_write(&new[200..256]);
+    let mut at = 256;
+    while at < new.len() {
+        at += r.file_write(&new[at..]);
+        r.poll();
+    }
+    assert_eq!(r.file("SONG"), Some(old.clone()), "before the end");
+    assert_eq!(unsafe { store_file_end(&mut *r.st) }, STORE_OK);
+    while r.file_result() == STORE_BUSY {
+        r.poll();
+    }
+    assert_eq!(r.file_result(), STORE_OK);
+    assert_eq!(r.file("SONG"), Some(new.clone()));
+    assert_eq!(
+        r.file_read(&handle, 0, 10),
+        None,
+        "an old handle reads nothing"
+    );
+    assert_eq!(r.dir().len(), 1);
+    // The old file's sectors are garbage now: a refill collects them.
+    let live = r.stats().live;
+    r.maintain();
+    assert_eq!(r.stats().live, live);
+    r.reset();
+    r.mount();
+    assert_eq!(r.file("SONG"), Some(new));
+    r.assert_clean();
+}
+
+#[test]
+fn deleting_renaming_aborting_and_ending_short() {
+    let mut r = fresh(28, 256);
+    assert_eq!(r.file_now("ONE", &content(1, 3000)), STORE_OK);
+    assert_eq!(r.file_now("TWO", &content(2, 300)), STORE_OK);
+    assert_eq!(r.file_rename("ONE", "TWO"), STORE_EXISTS);
+    assert_eq!(r.file_rename("ONE", "ONE"), STORE_OK);
+    assert_eq!(r.file_rename("NONE", "X"), STORE_NOT_FOUND);
+    assert_eq!(r.file_rename("ONE", "THREE"), STORE_OK);
+    r.settle();
+    assert_eq!(r.file("ONE"), None);
+    assert_eq!(r.file("THREE"), Some(content(1, 3000)));
+    assert_eq!(r.file_delete("TWO"), STORE_OK);
+    r.settle();
+    assert_eq!(r.file("TWO"), None);
+    assert_eq!(r.file_delete("TWO"), STORE_NOT_FOUND);
+    // Aborted: nothing appears, unused sectors go back to the pool.
+    r.maintain();
+    let pool = r.stats().pool;
+    assert_eq!(r.file_begin("HALF", 20_000), STORE_OK);
+    assert_eq!(r.file_write(&content(3, 256)), 256);
+    r.settle();
+    unsafe { store_file_abort(&mut *r.st) };
+    assert_eq!(r.file_result(), STORE_NOT_FOUND);
+    assert_eq!(r.file("HALF"), None);
+    assert_eq!(
+        r.stats().pool + 1,
+        pool,
+        "the claimed sector became garbage, the rest came back"
+    );
+    // Ended short.
+    assert_eq!(r.file_begin("SHORT", 100), STORE_OK);
+    assert_eq!(r.file_write(&[1; 50]), 50);
+    assert_eq!(unsafe { store_file_end(&mut *r.st) }, STORE_INVALID);
+    assert_eq!(r.file_result(), STORE_INVALID);
+    assert_eq!(r.file("SHORT"), None);
+    r.reset();
+    r.mount();
+    assert_eq!(
+        r.dir(),
+        vec![("THREE".to_owned(), STORE_FILE_SONG as u8, 3000)]
+    );
+    r.assert_clean();
+}
+
+#[test]
+fn small_writes_go_on_while_a_file_is_open_and_maintenance_waits() {
+    let mut r = fresh(29, 64);
+    let data = content(29, 12_000);
+    // A head with room: the file's sectors leave the pool under its minimum, so small writes
+    // that need a new head wait for the file and a refill.
+    assert_eq!(r.put_now(9, b"head"), STORE_OK);
+    assert_eq!(r.file_begin("OPEN", data.len()), STORE_OK);
+    assert!(!r.erase_wanted(), "maintenance waits for the file");
+    assert_eq!(r.collect(), STORE_BUSY);
+    assert_eq!(r.file_begin("SECOND", 10), STORE_BUSY, "one file at a time");
+    let mut at = 0;
+    let mut k = 0;
+    while at < data.len() {
+        at += r.file_write(&data[at..(at + 300).min(data.len())]);
+        if !r.busy() && k < 30 {
+            assert_eq!(r.put(k % 4, &[k as u8; 40]), STORE_OK);
+            k += 1;
+        }
+        r.poll();
+    }
+    r.settle();
+    assert_eq!(unsafe { store_file_end(&mut *r.st) }, STORE_OK);
+    while r.file_result() == STORE_BUSY {
+        r.poll();
+    }
+    assert!(k > 10);
+    assert_eq!(r.file("OPEN"), Some(data.clone()));
+    r.reset();
+    r.mount();
+    assert_eq!(r.file("OPEN"), Some(data));
+    for i in 0..4 {
+        assert!(r.get(i).is_some());
+    }
+    r.assert_clean();
+}
+
+#[test]
+fn the_pool_short_is_busy_and_writes_nothing_until_a_refill() {
+    let mut r = fresh(30, 256);
+    assert_eq!(r.file_now("FIRST", &content(1, FILE_MAX)), STORE_OK);
+    let ops = r.sim.ops;
+    assert_eq!(r.file_begin("SECOND", FILE_MAX), STORE_BUSY);
+    assert_eq!(r.sim.ops, ops, "nothing written");
+    r.maintain();
+    assert_eq!(r.file_begin("SECOND", FILE_MAX), STORE_OK);
+    assert_eq!(r.file_stream(&content(2, FILE_MAX), 256, None), STORE_OK);
+    assert_eq!(r.file("SECOND"), Some(content(2, FILE_MAX)));
+}
+
+#[test]
+fn a_file_larger_than_the_free_space_is_refused_before_anything_is_written() {
+    let mut r = fresh(31, 256);
+    let mut n = 0;
+    loop {
+        let data = content(n, 30_000);
+        let ops = r.sim.ops;
+        let rc = r.file_now(&format!("FILL {n}"), &data);
+        if rc == STORE_FULL {
+            assert_eq!(r.sim.ops, ops, "a refused file wrote something");
+            break;
+        }
+        assert_eq!(rc, STORE_OK);
+        n += 1;
+        assert!(n < 10);
+    }
+    println!(
+        "{n} files of 30,000 bytes fit; {} bytes free",
+        r.stats().free
+    );
+    assert!(n >= 6, "only {n} files fit");
+    assert!(r.stats().free < 30_000 + 1_000);
+    // Deleting makes room after the collections.
+    assert_eq!(r.file_delete("FILL 0"), STORE_OK);
+    r.settle();
+    r.maintain();
+    assert_eq!(r.file_now("AGAIN", &content(99, 30_000)), STORE_OK);
+    r.reset();
+    r.mount();
+    for i in 1..n {
+        assert_eq!(r.file(&format!("FILL {i}")), Some(content(i, 30_000)));
+    }
+    assert_eq!(r.file("AGAIN"), Some(content(99, 30_000)));
+    r.assert_clean();
+}
+
+/// Files under power cuts: random file writes, replacements, deletions and renames among small
+/// writes, collections and refills. After every cut every file reads its old bytes or its new
+/// ones, whole (its CRC checked), and every small value its old or new value.
+struct FileRun {
+    rig: Rig,
+    rng: Rng,
+    files: BTreeMap<String, Vec<u8>>,
+    values: BTreeMap<u32, Vec<u8>>,
+    inflight: FileOp,
+    forks: bool,
+    forks_checked: u64,
+    cuts: u64,
+    seed: u64,
+    max_len: usize,
+}
+
+#[derive(Clone, Debug)]
+enum FileOp {
+    Idle,
+    Write(String, Vec<u8>),
+    Delete(String),
+    Rename(String, String),
+    Put(u32, Vec<u8>),
+}
+
+const NAMES: [&str; 5] = ["A", "SONG 1", "SONG 2", "DUMP", "SIXTEEN CHARS 16"];
+
+impl FileRun {
+    fn new(seed: u64, forks: bool, max_len: usize) -> Self {
+        let mut rng = Rng::new(seed ^ 0xF11E);
+        let window = [16u32, 64, 256][rng.below(3) as usize];
+        let mut rig = fresh(seed, if forks { 256 } else { window });
+        rig.sim.fork = forks;
+        rig.sim.later = if rng.chance(30) { 20 } else { 0 };
+        FileRun {
+            rig,
+            rng,
+            files: BTreeMap::new(),
+            values: BTreeMap::new(),
+            inflight: FileOp::Idle,
+            forks,
+            forks_checked: 0,
+            cuts: 0,
+            seed,
+            max_len,
+        }
+    }
+
+    fn verify(&self, r: &Rig, what: &str) {
+        let seed = self.seed;
+        assert_eq!(r.stats().corrupt, 0, "seed {seed}: {what}: corruption seen");
+        for name in NAMES {
+            let got = r.file(name);
+            let old = self.files.get(name).cloned();
+            let ok = match &self.inflight {
+                FileOp::Write(n, v) if n == name => got == old || got.as_ref() == Some(v),
+                FileOp::Delete(n) if n == name => got == old || got.is_none(),
+                FileOp::Rename(a, b) if a == name || b == name => true, // checked below
+                _ => got == old,
+            };
+            assert!(
+                ok,
+                "seed {seed}: {what}: {name} reads {:?} bytes, had {:?} ({:?})",
+                got.as_ref().map(|v| v.len()),
+                old.as_ref().map(|v| v.len()),
+                self.inflight_short()
+            );
+        }
+        if let FileOp::Rename(a, b) = &self.inflight {
+            let (ga, gb) = (r.file(a), r.file(b));
+            let v = self.files.get(a).cloned();
+            assert!(
+                (ga == v && gb.is_none()) || (ga.is_none() && gb == v),
+                "seed {seed}: {what}: a rename from {a} to {b} half done"
+            );
+        }
+        for k in 0..4 {
+            let got = r.get(k);
+            let old = self.values.get(&k).cloned();
+            let ok = match &self.inflight {
+                FileOp::Put(key, v) if *key == k => got == old || got.as_ref() == Some(v),
+                _ => got == old,
+            };
+            assert!(ok, "seed {seed}: {what}: key {k}");
+        }
+    }
+
+    fn inflight_short(&self) -> String {
+        match &self.inflight {
+            FileOp::Write(n, v) => format!("writing {n}, {} bytes", v.len()),
+            other => format!("{other:?}"),
+        }
+    }
+
+    fn check_forks(&mut self) {
+        for f in std::mem::take(&mut self.rig.sim.forks) {
+            self.forks_checked += 1;
+            let mut r = Rig::new(
+                Sim::with_region(self.forks_checked, &f.region, f.weak),
+                self.rig.window,
+            );
+            assert_eq!(r.mount(), STORE_STATE_SIDOU, "seed {}", self.seed);
+            self.verify(&r, "a forked cut");
+            if self.forks_checked.is_multiple_of(64) {
+                r.maintain();
+                assert_eq!(
+                    r.file_now("AFTER", b"after"),
+                    STORE_OK,
+                    "seed {}",
+                    self.seed
+                );
+                r.assert_clean();
+            }
+        }
+    }
+
+    /// After the operation: the forks, then a real cut's recovery, or the model's update.
+    fn after(&mut self) {
+        if self.forks {
+            self.check_forks();
+        }
+        let op = std::mem::replace(&mut self.inflight, FileOp::Idle);
+        if self.rig.sim.dead {
+            self.inflight = op;
+            self.cuts += 1;
+            self.rig.sim.dead = false;
+            self.rig.sim.cut_at = None;
+            self.rig.reset();
+            assert_eq!(self.rig.mount(), STORE_STATE_SIDOU, "seed {}", self.seed);
+            self.verify(&self.rig, "a real cut");
+            for name in NAMES {
+                match self.rig.file(name) {
+                    Some(v) => self.files.insert(name.to_owned(), v),
+                    None => self.files.remove(name),
+                };
+            }
+            for k in 0..4 {
+                match self.rig.get(k) {
+                    Some(v) => self.values.insert(k, v),
+                    None => self.values.remove(&k),
+                };
+            }
+            self.inflight = FileOp::Idle;
+            return;
+        }
+        match op {
+            FileOp::Write(n, v) => {
+                self.files.insert(n, v);
+            }
+            FileOp::Delete(n) => {
+                self.files.remove(&n);
+            }
+            FileOp::Rename(a, b) => {
+                let v = self.files.remove(&a).unwrap();
+                self.files.insert(b, v);
+            }
+            FileOp::Put(k, v) => {
+                self.values.insert(k, v);
+            }
+            FileOp::Idle => {}
+        }
+    }
+
+    fn maintain(&mut self) {
+        self.rig.maintain();
+        self.after();
+    }
+
+    fn step(&mut self) {
+        if self.rig.sim.cut_at.is_none() && self.rng.chance(4) {
+            self.rig.sim.cut_at = Some(self.rig.sim.ops + self.rng.below(300));
+        }
+        let name = NAMES[self.rng.below(NAMES.len() as u64) as usize].to_owned();
+        match self.rng.below(100) {
+            0..=34 => {
+                let len = match self.rng.below(10) {
+                    0 => 0,
+                    1 => self.max_len,
+                    2..=5 => self.rng.below(3000) as usize,
+                    _ => self.rng.below(self.max_len as u64 + 1) as usize,
+                };
+                let data = self.rng.bytes(len);
+                let mut rc = self.rig.file_begin(&name, len);
+                for _ in 0..3 {
+                    if rc != STORE_BUSY {
+                        break;
+                    }
+                    self.maintain();
+                    rc = self.rig.file_begin(&name, len);
+                }
+                if rc == STORE_FULL {
+                    return;
+                }
+                assert_eq!(rc, STORE_OK, "seed {}", self.seed);
+                self.inflight = FileOp::Write(name, data.clone());
+                let erases = self.rig.sim.erases;
+                let mut rng = self.rng.clone();
+                let rc = self.rig.file_stream(&data, 1000, Some(&mut rng));
+                self.rng = rng;
+                assert_eq!(
+                    self.rig.sim.erases, erases,
+                    "seed {}: an erase in a file",
+                    self.seed
+                );
+                assert!(
+                    self.rig.sim.dead || rc == STORE_OK,
+                    "seed {}: {rc}",
+                    self.seed
+                );
+                self.after();
+            }
+            35..=44 => {
+                if self.rig.file_delete(&name) == STORE_OK {
+                    self.inflight = FileOp::Delete(name);
+                    self.rig.settle();
+                }
+                self.after();
+            }
+            45..=54 => {
+                let to = NAMES[self.rng.below(NAMES.len() as u64) as usize].to_owned();
+                let rc = self.rig.file_rename(&name, &to);
+                if rc == STORE_OK && name != to {
+                    self.inflight = FileOp::Rename(name, to);
+                    self.rig.settle();
+                } else {
+                    self.rig.settle();
+                }
+                self.after();
+            }
+            55..=79 => {
+                let k = self.rng.below(4) as u32;
+                let n = self.rng.below(200) as usize;
+                let v = self.rng.bytes(n);
+                if self.rig.put(k, &v) == STORE_OK {
+                    self.inflight = FileOp::Put(k, v);
+                    self.rig.settle();
+                }
+                self.after();
+            }
+            80..=87 => {
+                if self.rig.collect() == STORE_OK {
+                    self.rig.settle();
+                }
+                self.after();
+            }
+            _ => self.maintain(),
+        }
+        assert!(
+            self.rig.sim.violations.is_empty(),
+            "seed {}: {:#?}",
+            self.seed,
+            self.rig.sim.violations
+        );
+    }
+
+    fn end(&mut self) {
+        self.rig.sim.cut_at = None;
+        self.rig.sim.fork = false;
+        self.maintain();
+        self.rig.reset();
+        assert_eq!(self.rig.mount(), STORE_STATE_SIDOU);
+        self.verify(&self.rig, "the end");
+        self.rig.assert_clean();
+    }
+}
+
+fn file_power_loss(seed: u64, steps: u32, forks: bool, max_len: usize) -> FileRun {
+    let mut run = FileRun::new(seed, forks, max_len);
+    for _ in 0..steps {
+        run.step();
+    }
+    run.end();
+    run
+}
+
+#[test]
+fn files_survive_a_cut_at_every_operation_old_or_new_never_neither_never_a_mix() {
+    let (mut forks, mut cuts) = (0, 0);
+    for seed in 0..2 {
+        let run = file_power_loss(seed, 120, true, 6_000);
+        forks += run.forks_checked;
+        cuts += run.cuts;
+    }
+    println!("{forks} forked cuts and {cuts} real cuts checked");
+    assert!(forks > 2_000 && cuts > 3);
+}
+
+#[test]
+fn files_under_real_cuts_over_long_runs() {
+    let mut cuts = 0;
+    for seed in 100..106 {
+        cuts += file_power_loss(seed, 400, false, FILE_MAX).cuts;
+    }
+    println!("{cuts} real cuts checked");
+    assert!(cuts > 50);
+}
+
+/// The long version, with the power-loss runs above (minutes).
+#[test]
+#[ignore]
+fn files_power_loss_long() {
+    let (mut forks, mut cuts) = (0, 0);
+    for seed in 1_000..1_060 {
+        let run = file_power_loss(seed, 200, true, 20_000);
+        forks += run.forks_checked;
+        cuts += run.cuts;
+    }
+    for seed in 10_000..10_300 {
+        cuts += file_power_loss(seed, 600, false, FILE_MAX).cuts;
+    }
+    println!("{forks} forked cuts and {cuts} real cuts checked");
 }
