@@ -644,6 +644,68 @@ The tap adds to the audio interrupt what it adds for LIVE (4.8 instructions a sa
 while SCENE shows. The firmware grew 7.5 KB (the pieces' code, the plasma's distance and sine
 tables, 1.2 KB).
 
+## RED MOON RITE
+
+RED MOON RITE is SCENE's first music-driven vignette for the device (M2f): two barbarians
+with broadswords under a blood moon in a torch-lit ruin. The kick is an overhead chop, the
+snare a parry with a spark, the hi-hats footwork, the bass decides who presses forward, the
+arp flares the torches and the cutoff darkens the sky in three palettes. The bar-4 fill is a
+spinning attack that **disarms** the other fighter: his sword spins away and sticks point-down
+in the flagstones, and in bar 1 he bends and pulls it free; nobody attacks while he is
+unarmed. It is a homage to late-80s fantasy sword-fighting games, not to any one game:
+original art in the 16 colours, with no game's name, logo, sprite, pose, arena or HUD.
+
+![RED MOON RITE: guard, a parry, the spinning attack, the sword in flight, in the floor, pulled free](../../assets/scene/red-moon-rite-preview.png)
+
+| Asset | What |
+|---|---|
+| `assets/scene/red-moon-rite.js` | The source: the Scene Arcade's drawing code (`assets/prototypes/sidou-vignettes.html`: the helpers, the painter, the puppet, RED MOON RITE), verbatim but for the changes its header lists, plus the new drawing below. `node assets/scene/red-moon-rite.js` writes the PNGs. |
+| `sky-0.png` .. `sky-2.png` | The three sky palettes with the moon, wisps and hills: the screen's rows 16-139, 240 x 124. |
+| `arena.png` | The temple and floor, 240 x 240 in screen coordinates, transparent where the sky shows. |
+| `barb-0-<pose>.png`, `barb-1-<pose>.png` | The two fighters (0: bare-headed, dark hair, red headband; 1: steel helmet, red plume) in the eight poses (guard, guard2, raise, chop, block, spinA, spinB, hit): 64 x 124, stored at half width (each stored pixel is two on the screen, `gx = 2`); fighter 1 is drawn mirrored. Hip at (58, 72) of the screen-width sprite; the header gives the placement. |
+| `barb-1-<pose>-unarmed.png` | Fighter 1 without his sword: guard, guard2, hit, and reach (bending to pull it from the floor). |
+| `sword-0.png` .. `sword-7.png` | The sword in flight, eight rotations of 45 degrees, each painted whole (no rotated pixels), grip at the centre of 84 x 84 screen pixels. |
+| `sword-stuck.png` | The sword point-down in a flagstone, leaning a little, a crack round its point. |
+| `flame-mask.png` | The torches' flame area, where the colour cycling draws. |
+| `red-moon-rite-preview.png` | Six frames of the vignette playing the arcade's pattern (above). |
+
+All PNGs are indexed: the art palette's 16 colours in order, and index 16 transparent where a
+PNG has transparency. A test (`scene_rmr_drawing`, in sidou-tests' app tests) runs the script
+twice when Node is installed and fails if the runs differ or the PNGs fall behind it.
+
+**The disarm** replaces the prototype's helmet knock (the helmet flew off fighter 1's head and
+he fought bare-headed until bar 1). At the spinning attack's last beat, fighter 1's sword
+leaves his hand in the `hit` pose; its middle follows a parabola for 20 frames (0.8 s)
+and turns a whole number of times, so it lands point-down with its grip where his hand will
+be in `reach`. The fighters hold their ground while it is out of his hand. On the first beat
+after it sticks he takes `reach` for 8 frames, then has it back in `guard`: with the arcade's
+pattern it lands near bar 1's second beat and is back in his hand by its fourth. Only fighter
+1 is ever disarmed (as only he had a helmet): the fill's spinner is whoever leads, and with
+the arcade's pattern that is always fighter 0.
+
+**The status bar** shows each fighter's stamina as a broadsword: the hilt at the screen's
+edge, the blade pointing in toward `VS` in eight notches, each stamina lost taking the notch
+at the tip (the tip moves in), what is lost left as a dark ghost of the blade. The prototype's
+eight square pips a side were replaced after the review below.
+
+### The originality review
+
+The preview and the sprite sheets were set beside a gameplay still of the genre's best-known
+C64 game (a one-on-one barbarian duel, 1987), looked at outside the repository and described
+here in words only, and checked point by point:
+
+| Point | That game | RED MOON RITE | Verdict |
+|---|---|---|---|
+| Fighters' builds and costume | Two small, thin hi-res figures, bare-chested in loincloths, the same figure for both players | Two bulky shaded multicolour figures (64 x 124 pixels, `gx = 2`) of SIDOU's painter: one bare-headed with dark hair and a red headband, one in a round steel helmet with a red plume, grey or red loincloths, leather bracers and boots | Different; the nearest point is the genre's archetype both share (bare chest, loincloth, broadsword). Fighter 0's red headband is the detail to watch |
+| Poses | Its own animation set | Joint angles of SIDOU's puppet (guard, raise, chop, block, spin, hit, reach), not traced from any game | No pose matched |
+| Arena | An enclosed stone hall: a wall with two arched windows and spectators in them, grey flagstones, pillars wrapped in snakes with skulls at the screen's sides; a forest glade elsewhere; a goblin who drags the loser off | An open ruin at night: a raster sky in three palettes, a blood moon, wisps and hills, a broken arch, a broken and a whole plain column with torches, steps, flagstones in perspective; no spectators, no snakes, no skulls, no goblin | Different; both have stone floors and a column toward each edge, plain here |
+| HUD | A large title banner at the top centre with the scores under it; each fighter's energy as six red circles in the top corners | Prototype: eight square pips a side from the corners inward, the first two red, then yellow, `VS` between | **Too close** (a row of red markers per fighter in the top corners): replaced by the blade meter, which has no title, no score, no circles, and steel instead of red |
+| Finishing moment | A decapitation, and the goblin | A disarm: the sword spins away and sticks in the floor; no head or helmet comes off, no blood, nobody is hurt while unarmed | Different |
+| Names and lettering | Its title logo | No logo or title in the piece; `VS` in the 3 x 5 font; no game's name anywhere | Clean |
+
+**Sign-off:** waiting for the user (M2f Task 1). Task 2 does not start until it is recorded
+here, with the date.
+
 ## Title cards
 
 A major view entered from the menu opens behind a **title card** (`app/title_card.h`), after

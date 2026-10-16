@@ -18,6 +18,13 @@ path = ["assets/logo/*.png", "docs/art/avatar.png"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
+# RED MOON RITE, SCENE's first vignette: original art made for SIDOU, exported from its
+# source, assets/scene/red-moon-rite.js (docs/art/README.md "RED MOON RITE").
+[[annotations]]
+path = ["assets/scene/*.png"]
+SPDX-FileCopyrightText = "2026 SIDOU contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
 # The look-and-feel prototypes (self-contained HTML pages made for SIDOU):
 # reference art and code for M2's STEP/TRACKER views and SCENE pieces.
 [[annotations]]
