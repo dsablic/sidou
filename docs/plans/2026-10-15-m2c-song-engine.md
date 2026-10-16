@@ -407,6 +407,50 @@ frame equal. Report the examples' coverage (songs, subtunes, frames).
 
 **Needs:** M2b Tasks 3 and 4 (`chip_ctl`, `keys_route`).
 
+**Prerequisites from the review of Tasks 4-5b** (2026-10-16; each is part of this task):
+- **The shape goes stale on live edits.** `gt2_play_init` runs greloc's analysis once and
+  the player follows that shape (decision record 0007, "The player's corners"); an edit
+  can change it (a new note range, a first command of a class, a wave delay or command, a
+  pulse low nybble, a channel's first non-rest). So:
+  - split `gt2_shape_analyse(song, opts, &shape)` (the main loop's, walks the song) from
+    `gt2_play_start` and `gt2_play_set_shape` (O(1) each, the interrupt's);
+  - **widen** the shape in O(1) for each edit (note range, command class, wave delay or
+    command, pulse nybble, channel used), sent in the same command-ring batch as the edit,
+    so the player never plays an edit with a shape that lacks it;
+  - **narrow** it by a background analysis, sliced across polls, and a shape swap;
+  - a change of the channel count goes through the shadow player's state hand-over (the
+    seek path), not a swap;
+  - a differential test: an edit stream played with the incremental shape equals the
+    player re-initialised on the edited song and fast-forwarded to the same frame;
+  - a note in 0007: while editing, the target is "what the packer would make of the song
+    as it is now".
+- **Init's cost.** The orderlist pass rescans each named pattern once per orderlist entry
+  (typically ~60k steps, up to ~25M at the limits: 32 subtunes, 254 entries, 128 rows).
+  Keep a "not empty" bit per pattern (updated by the row writes) and slice the analysis
+  across polls, or run it behind a loading state; either way within `POLL_INSTRUCTIONS`.
+- **A call's worst case against the gate.** `PLAYER_WORST_BLOCK` (60 instructions a sample
+  × 128 samples ≈ 7,680 a block) holds one call and 8 edits. `order_at` is O(entries), and
+  a broken orderlist's read walks past its restart into the next ones. Cache each
+  channel's restart as a model position (updated by an orderlist swap), and flatten a
+  broken orderlist's packed byte stream at analysis time. Measure the worst call in
+  fm1-emu over the examples and the generated songs.
+- **RAMTEXT.** The player's frame path is ~6.3 KB at `-O2` (~5.7 KB at `-Os`); init and
+  the analysis ~3.1 KB. Put init and the analysis in a flash file (`gt2_shape.c`); build
+  the frame path at `-Os`; move the cold below-the-table reads (`var_byte`, `group_byte`)
+  into the analysis (a table it fills); check that `song_init`'s zeroing emits no
+  `memset`/`memcpy` call. The overview budgeted ~5 KB for all of this task's RAMTEXT; the
+  estimate is now **~7.5 KB** (the frame path at `-Os`, the rings, the edit application
+  and the split render), so RAMTEXT after M2 is ~45.5 KB of 48 (the overview says so).
+- **Multispeed timing.** A C64 calls a multispeed or 25 Hz tune from a CIA timer of
+  `0x4cc7/N + 1` cycles (PAL; NTSC `0x42c6/N + 1`), gt2reloc's `.sid` speed code: 25 Hz is
+  39,311 cycles (two video frames are 39,312), NTSC ×3 is 3 × 5,699 = 17,097 (a frame is
+  17,095). Decide what "frame-exact" means for N ≠ 1 (the CIA's period, or the video
+  frame divided by N) and record it in 0007; the host render follows the same choice.
+- **Row events.** Channels the packer does not play (`gt2_player.channels` < 3) emit no
+  row events; M2d's cursors must follow their orderlists another way.
+- **A UI hint.** When `freq_unknown` fires (a note past B-7, 0007), or init reports
+  `GT2_PLAY_WARN_PITCH` (OPTS asks for another A-4), the SONG view shows a hint.
+
 **Files:** `core/player/song_ctl.h`/`.c` (new, portable: the command and event rings, the
 frame clock, the edit application), `platform/fm1/audio.c`/`.h`, `app/reg_ring.c` (the swap
 re-applies the player's registers), `platform/fm1/app.ld` (`.ram_text` rules, the RAM/POOL

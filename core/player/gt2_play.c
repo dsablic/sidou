@@ -11,9 +11,16 @@
  * a variable. */
 #include "gt2_play.h"
 
-/* gplay.c's frequency table: C-0 to B-7. In RAM (not const), as the audio path's tables
- * must be on the device (docs/hardware.md, "Code in SRAM"). */
-static uint8_t freq_lo[96] = {
+/* gplay.c's frequency table: C-0 to B-7. In RAM, as the audio path's tables must be on the
+ * device (docs/hardware.md, "Code in SRAM"): pi32v2's clang would otherwise put a static
+ * that is never written in flash's .rodata, so the section is named, as sid_env.h does. */
+#ifdef __PI32V2__
+#define GT2_RAM_DATA __attribute__((section(".data.gt2_play")))
+#else
+#define GT2_RAM_DATA
+#endif
+
+GT2_RAM_DATA static const uint8_t freq_lo[96] = {
     0x17, 0x27, 0x39, 0x4b, 0x5f, 0x74, 0x8a, 0xa1, 0xba, 0xd4, 0xf0, 0x0e, 0x2d, 0x4e, 0x71,
     0x96, 0xbe, 0xe8, 0x14, 0x43, 0x74, 0xa9, 0xe1, 0x1c, 0x5a, 0x9c, 0xe2, 0x2d, 0x7c, 0xcf,
     0x28, 0x85, 0xe8, 0x52, 0xc1, 0x37, 0xb4, 0x39, 0xc5, 0x5a, 0xf7, 0x9e, 0x4f, 0x0a, 0xd1,
@@ -21,7 +28,7 @@ static uint8_t freq_lo[96] = {
     0xd0, 0xe2, 0x14, 0x67, 0xdd, 0x79, 0x3c, 0x29, 0x44, 0x8d, 0x08, 0xb8, 0xa1, 0xc5, 0x28,
     0xcd, 0xba, 0xf1, 0x78, 0x53, 0x87, 0x1a, 0x10, 0x71, 0x42, 0x89, 0x4f, 0x9b, 0x74, 0xe2,
     0xf0, 0xa6, 0x0e, 0x33, 0x20, 0xff};
-static uint8_t freq_hi[96] = {
+GT2_RAM_DATA static const uint8_t freq_hi[96] = {
     0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x02, 0x02, 0x02, 0x02,
     0x02, 0x02, 0x02, 0x03, 0x03, 0x03, 0x03, 0x03, 0x04, 0x04, 0x04, 0x04, 0x05, 0x05, 0x05,
     0x06, 0x06, 0x06, 0x07, 0x07, 0x08, 0x08, 0x09, 0x09, 0x0a, 0x0a, 0x0b, 0x0c, 0x0d, 0x0d,
@@ -68,7 +75,7 @@ static uint8_t tr(const gt2_song* s, uint32_t t, uint32_t pos) {
 }
 
 static const uint8_t* instrument(const gt2_song* s, uint8_t i) {
-    static uint8_t none[GT2_INSTR_BYTES]; /* in RAM, as the frequency table */
+    static const uint8_t none[GT2_INSTR_BYTES] GT2_RAM_DATA = {0}; /* in RAM, as freq_lo */
     return i >= 1u && i <= GT2_MAX_INSTR ? s->instr[i - 1u] : none;
 }
 
@@ -1084,7 +1091,7 @@ static void filter_exec(out* o) {
  * with zero-page ghost registers the main program copies them after the call, as the
  * reference harness does (gt2-ref's trace.rs: $18 down to 0, or for altplayer.s the
  * filter's four, then each channel's wave, frequency, pulse, AD and SR). */
-static uint8_t ghost_alt[GT2_SID_REGS] = {0x15, 0x16, 0x17, 0x18, 0x04, 0x00, 0x01,
+GT2_RAM_DATA static const uint8_t ghost_alt[GT2_SID_REGS] = {0x15, 0x16, 0x17, 0x18, 0x04, 0x00, 0x01,
                                                 0x02, 0x03, 0x05, 0x06, 0x0b, 0x07, 0x08,
                                                 0x09, 0x0a, 0x0c, 0x0d, 0x12, 0x0e, 0x0f,
                                                 0x10, 0x11, 0x13, 0x14};
@@ -1175,6 +1182,11 @@ static void exectable(const gt2_song* s, usage* u, uint32_t t, uint32_t ptr) {
 }
 
 int gt2_play_init(gt2_player* p, const gt2_song* s, uint32_t subtune, const gt2_options* opt) {
+    uint8_t* q = (uint8_t*)p;
+    for (uint32_t i = 0u; i < sizeof *p; i++)
+        q[i] = 0u;
+    if (s->channels != GT2_MONO_CHANNELS)
+        return GT2_PLAY_ERR_STEREO;
     gt2_options defaults;
     if (opt == 0) {
         gt2_options_default(&defaults);
@@ -1229,12 +1241,12 @@ int gt2_play_init(gt2_player* p, const gt2_song* s, uint32_t subtune, const gt2_
         songs++;
     }
     if (songs == 0u)
-        return -1;
+        return GT2_PLAY_ERR_SUBTUNE;
     /* With one song the packed init ignores the subtune; with more it is the song's index
      * among the first `songs` subtunes (greloc.c packs subtunes 0 to songs - 1). */
     uint32_t sub = songs == 1u ? 0u : subtune;
     if (sub >= songs || !packed_subtune(s, sub))
-        return -1;
+        return GT2_PLAY_ERR_SUBTUNE;
 
     uint32_t channels = 3u;
     if (!chnused[2])
@@ -1407,10 +1419,9 @@ int gt2_play_init(gt2_player* p, const gt2_song* s, uint32_t subtune, const gt2_
         lastnote = (int)NOTES - 1;
     }
 
-    uint8_t* q = (uint8_t*)p;
-    for (uint32_t i = 0u; i < sizeof *p; i++)
-        q[i] = 0u;
     p->song = s;
+    if (opt->a4_millihz != 0u)
+        p->warnings |= GT2_PLAY_WARN_PITCH;
     p->subtune = (uint8_t)sub;
     p->songs = (uint8_t)songs;
     for (uint32_t i = 0u; i < BITS(GT2_MAX_PATTERNS); i++)

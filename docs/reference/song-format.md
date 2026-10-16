@@ -219,8 +219,8 @@ older one's save. Every chunk SIDOU keeps (the trailer less its header, lead-in,
 | 1 | 2 | hard restart ADSR | `-A` | `$0F00` |
 | 3 | 1 | multispeed: 0 (25 Hz), 1-16 | `-S` | 1 |
 | 4 | 1 | timing: 0 PAL, 1 NTSC | `-P`, `-N` | 0 |
-| 5 | 4 | custom SID clock, Hz (0: PAL's or NTSC's) | `-F` | 0 |
-| 9 | 4 | pitch of A-4, thousandths of a Hz (0: the built-in table) | `-G` | 0 |
+| 5 | 4 | custom SID clock, Hz (0: PAL's or NTSC's); gt2reloc 2.77 parses `-F` and never uses it, so it changes nothing played | `-F` | 0 |
+| 9 | 4 | pitch of A-4, thousandths of a Hz (0: the built-in table); SIDOU's player keeps the built-in table and reports a non-zero value (`GT2_PLAY_WARN_PITCH`) | `-G` | 0 |
 | 13 | 1 | fine vibrato: 0 off, 1 on (below 2x multispeed), 2 always | `-V` | 1 |
 | 14 | 1 | pulse optimisation: 0 off, 1 on | `-O` | 1 |
 | 15 | 1 | realtime-effect optimisation: 0 off, 1 on | `-R` | 1 |

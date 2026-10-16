@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Random valid songs for the song player's register match (M2c Task 5b): a `.sng` that
 //! gt2reloc packs, using every pattern command and special note, tables with jumps and
-//! loops, the wavetable's commands, and random playroutine options within the device's caps
+//! loops, the wavetable's commands, orderlists of up to 40 steps, patterns of up to 128
+//! rows (cut to what packs into 256 bytes), up to 4 subtunes, now and then a gate-off timer
+//! at or above the tempo, and random playroutine options within the device's caps
 //! (multispeed 1-4).
 //!
 //! "Valid" is what the packer accepts (no table pointer onto a jump, no table running off
@@ -161,6 +163,27 @@ fn options(rng: &mut Rng) -> Options {
     o
 }
 
+/// A pattern cut until it packs into gt2reloc's 256 bytes: an upper bound of packpattern's
+/// size (an instrument byte, a command byte and its parameter whenever they change, the
+/// note, the end mark; packed rests only make it smaller).
+fn fit_packed(mut rows: Vec<[u8; 4]>) -> Vec<[u8; 4]> {
+    loop {
+        let mut size = 1;
+        let mut cmd = None;
+        for r in &rows {
+            size += usize::from(r[1] != 0) + 1;
+            if cmd != Some((r[2], r[3])) {
+                cmd = Some((r[2], r[3]));
+                size += 1 + usize::from(r[2] != 0);
+            }
+        }
+        if size <= 255 {
+            return rows;
+        }
+        rows.pop();
+    }
+}
+
 /// The song for a seed.
 pub fn generate(seed: u64) -> Generated {
     let rng = &mut Rng::new(seed);
@@ -297,6 +320,11 @@ pub fn generate(seed: u64) -> Generated {
             if gate == 0 && rng.chance(70) {
                 gate = 2;
             }
+            if rng.chance(3) {
+                // at or above the tempo: the editor stops; the packed player never fetches
+                // the channel's next row again
+                gate = rng.range(6, 0x3f) as u8;
+            }
             if rng.chance(15) {
                 gate |= 0x80;
             }
@@ -331,7 +359,12 @@ pub fn generate(seed: u64) -> Generated {
     // has a note before any effect reads it.
     let patterns: Vec<Vec<[u8; 4]>> = (0..npat)
         .map(|_| {
-            (0..rng.range(4, 40))
+            let rows = if rng.chance(15) {
+                rng.range(64, 128)
+            } else {
+                rng.range(4, 40)
+            };
+            (0..rows)
                 .map(|r| {
                     let note = match if r == 0 { 9 } else { rng.below(20) } {
                         0..=8 => 0xbd,
@@ -389,20 +422,26 @@ pub fn generate(seed: u64) -> Generated {
                     };
                     [note, ins, c, d]
                 })
-                .collect()
+                .collect::<Vec<[u8; 4]>>()
         })
+        .map(fit_packed)
         .collect();
 
     // The orderlists: [transpose] [repeat] pattern steps, sometimes an R0 or a transpose
     // after a repeat (readme 3.1's rules broken, as GoatTracker packs them), always a
     // pattern last.
-    let subtunes = rng.range(1, 2) as usize;
+    let subtunes = rng.pick(&[1, 1, 2, 3, 4]) as usize;
     let orders: Vec<Vec<(Vec<u8>, u8)>> = (0..subtunes)
         .map(|_| {
             (0..3)
                 .map(|_| {
                     let mut e = Vec::new();
-                    for _ in 0..rng.range(1, 6) {
+                    let steps = if rng.chance(15) {
+                        rng.range(7, 40)
+                    } else {
+                        rng.range(1, 6)
+                    };
+                    for _ in 0..steps {
                         let trans = |rng: &mut Rng| {
                             let t = rng.range(0, 2 * TRANS) as i32 - TRANS as i32;
                             (0xf0i32 + t) as u8

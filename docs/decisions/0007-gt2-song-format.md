@@ -76,13 +76,13 @@ them on `gt2reloc`'s command line (readme 4.4 and 5.1, `gt2reloc.c`'s `main`):
 | Zero-page ghost registers | `-C` | off | no (implies buffered) |
 | Sound-effect support | `-D` | off | no (implies buffered) |
 | Volume-change support | `-E` | off | no |
-| Custom SID clock | `-Fn` | 0 (PAL/NTSC's) | the frequency table |
-| Pitch of A-4 | `-Gf` | 0 (the built-in table) | the frequency table |
+| Custom SID clock | `-Fn` | 0 (PAL/NTSC's) | no: gt2reloc 2.77 parses it (`customclockrate`) and never uses it |
+| Pitch of A-4 | `-Gf` | 0 (the built-in table) | the frequency table (SIDOU's player keeps the built-in one and reports it: `GT2_PLAY_WARN_PITCH`) |
 | Author info, timing mark | `-H` | off | no |
 | Optimisations | `-I` | on | no (code size) |
 | Full buffering | `-J` | off | write timing |
 | SID address | `-Lxxxx` | `$D400` | no |
-| NTSC | `-N` / `-P` | PAL | the frequency table |
+| NTSC | `-N` / `-P` | PAL | the tempo only: the packed player is the same (one frequency table), called at 60 Hz |
 | Pulse optimisation (skipping) | `-O` | on | yes |
 | Realtime-effect optimisation | `-R` | on | yes |
 | Multispeed | `-Sn` | 1 (0 is 25 Hz) | yes |

@@ -34,9 +34,18 @@ impl Player {
     /// The player after `init` with the subtune, or None if the packed song would not hold
     /// it.
     pub fn new(song: &Song, subtune: u32, o: &gt2_options) -> Option<Player> {
+        Player::start(song, subtune, o).ok()
+    }
+
+    /// The player, or gt2_play_init's refusal (`GT2_PLAY_ERR_*`).
+    pub fn start(song: &Song, subtune: u32, o: &gt2_options) -> Result<Player, i32> {
         let mut p = Box::new(gt2_player::default());
         let r = unsafe { gt2_play_init(&mut *p, song.ptr(), subtune, o) };
-        (r == 0).then_some(Player { p })
+        if r == 0 {
+            Ok(Player { p })
+        } else {
+            Err(r)
+        }
     }
 
     /// One call of the play routine.

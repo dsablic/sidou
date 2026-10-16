@@ -1240,3 +1240,66 @@ fn generated_findings_match() {
         );
     }
 }
+
+/// A GoatTracker Stereo song: six orderlists a subtune.
+fn stereo_song() -> Vec<u8> {
+    let mut s = SngSpec::new();
+    s.orders = vec![(0..6).map(|k| (vec![k as u8 % 3], 0u8)).collect()];
+    s.instr = vec![ins(0x09, 0x89, 1, 0, 0, 0, 0, 2, 0x09)];
+    s.tables = vec![vec![(0x41, 0x00), (0xff, 0x00)], vec![], vec![], vec![]];
+    s.patterns = (0..3)
+        .map(|_| (vec![row(n(3, 0), 1), R, R, R], [0xff, 0, 0, 0]))
+        .collect();
+    s.encode()
+}
+
+#[test]
+fn stereo_songs_are_refused_as_gt2reloc_refuses_them() {
+    let mut song = Song::host();
+    let info = song.read(&stereo_song(), 0).unwrap();
+    assert_eq!(info.channels, 6);
+    assert_eq!(
+        Player::start(&song, 0, &default_options()).err(),
+        Some(GT2_PLAY_ERR_STEREO)
+    );
+}
+
+#[test]
+fn a_refused_init_leaves_the_player_zeroed() {
+    let cases: [(Vec<u8>, u32, i32); 2] = [
+        (stereo_song(), 0, GT2_PLAY_ERR_STEREO),
+        (subtunes_song(), 7, GT2_PLAY_ERR_SUBTUNE),
+    ];
+    for (sng, sub, err) in cases {
+        let mut song = Song::host();
+        song.read(&sng, 0).unwrap();
+        let mut p = gt2_player::default();
+        let bytes = size_of::<gt2_player>();
+        unsafe { std::ptr::write_bytes(&mut p as *mut gt2_player as *mut u8, 0xaa, bytes) };
+        let r = unsafe { gt2_play_init(&mut p, song.ptr(), sub, &default_options()) };
+        assert_eq!(r, err);
+        let raw =
+            unsafe { std::slice::from_raw_parts(&p as *const gt2_player as *const u8, bytes) };
+        assert!(raw.iter().all(|&b| b == 0), "not zeroed after {err}");
+    }
+}
+
+/// A-4's pitch (gt2reloc's -G, SIDOU's OPTS a4_millihz) makes another frequency table,
+/// which the player does not compute (no libm on the device): init says so.
+#[test]
+fn a_pitch_the_player_does_not_play_is_reported() {
+    let mut song = Song::host();
+    song.read(&notes_song(), 0).unwrap();
+    let mut o = default_options();
+    assert_eq!(Player::new(&song, 0, &o).unwrap().raw().warnings, 0);
+    o.a4_millihz = 432_000;
+    let p = Player::new(&song, 0, &o).unwrap();
+    assert_eq!(
+        p.raw().warnings as u32 & GT2_PLAY_WARN_PITCH,
+        GT2_PLAY_WARN_PITCH
+    );
+    // gt2reloc reads -F but never uses it: no warning
+    o.a4_millihz = 0;
+    o.clock_hz = 1_000_000;
+    assert_eq!(Player::new(&song, 0, &o).unwrap().raw().warnings, 0);
+}

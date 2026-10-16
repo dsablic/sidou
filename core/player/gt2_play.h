@@ -30,9 +30,10 @@
  * no optimisation, and the ghost registers: with them the player writes all 25 registers
  * as the main program copies them, before each call with full buffering (player.s $18 down
  * to 0, altplayer.s 0 up), after it from the zero page (gt2-ref's order, trace.rs). NTSC
- * changes nothing in a packed player. Not played: a custom SID clock (-F) and A-4's pitch
- * (-G), which make gt2reloc compute another frequency table; the player keeps the
- * built-in one.
+ * changes nothing in a packed player, and neither does a custom SID clock (-F): gt2reloc
+ * 2.77 parses it and never uses it. Not played: A-4's pitch (-G, SIDOU's OPTS a4_millihz),
+ * from which gt2reloc computes another frequency table; the player keeps the built-in one
+ * and reports it (GT2_PLAY_WARN_PITCH).
  *
  * The contract with the song model (gt2_song.h): the player re-reads the index entry each
  * time it reads a pattern or an orderlist, and keeps no arena pointer from one call to the
@@ -121,9 +122,23 @@ enum {
     GT2_LAYOUT_NOCALCSPEED = 1u << 5  /* no note-independent speed: no last note kept */
 };
 
+/* gt2_play_init's refusals. */
+enum {
+    GT2_PLAY_ERR_SUBTUNE = -1, /* the packed song would not hold the subtune */
+    GT2_PLAY_ERR_STEREO = -2   /* a GoatTracker Stereo song: gt2reloc packs three channels */
+};
+
+/* What gt2_play_init could not follow, for the UI to show (the song plays regardless). */
+enum {
+    GT2_PLAY_WARN_PITCH = 1u << 0 /* OPTS asks for another A-4 (gt2reloc's -G): gt2reloc
+                                   * computes another frequency table, with libm; the player
+                                   * keeps the built-in one */
+};
+
 typedef struct {
     const gt2_song* song;
     uint16_t flags;          /* GT2_PF_* */
+    uint8_t warnings;        /* GT2_PLAY_WARN_* */
     uint8_t subtune;         /* the subtune whose orderlists play */
     uint8_t songs;           /* the subtunes the packer writes orderlists for */
     uint8_t channels;        /* NUMCHANNELS: 1-3, the channels the packed player runs */
@@ -153,9 +168,10 @@ typedef struct {
 
 /* Prepares the player for a subtune with the options (o NULL: GoatTracker's defaults), as
  * the packed player is after `JSR init` with A the subtune: the next call initialises the
- * song. 0, or -1 if the packed song would not hold the subtune (it has an empty orderlist
- * on channels 1-3, or lies past the subtunes gt2reloc packs). Walks the song (greloc's
- * analysis): the main loop's. */
+ * song. 0; GT2_PLAY_ERR_SUBTUNE if the packed song would not hold the subtune (it has an
+ * empty orderlist on channels 1-3, or lies past the subtunes gt2reloc packs);
+ * GT2_PLAY_ERR_STEREO for a GoatTracker Stereo song. On a refusal *p is all zeros. Walks
+ * the song (greloc's analysis): the main loop's. */
 int gt2_play_init(gt2_player* p, const gt2_song* s, uint32_t subtune, const gt2_options* o);
 
 /* One call of the play routine: its SID writes, in order, to sink; then its events in
