@@ -40,6 +40,51 @@ Follow-ups that aren't tied to a milestone task yet.
     recording in a DAW with no dropouts while the LCD redraws; USB-MIDI
     still working alongside.
 
+## A browser editor and librarian over USB (after M2e)
+
+- **Where:** a new page under `web/`, using M2e's SysEx dump protocol
+  (`docs/plans/2026-10-15-m2e-midi.md`) and design doc section 11's web companion.
+- **Problem:** tracking on four knobs and a 240×240 screen is slow. A computer
+  keyboard and a large screen make song and instrument editing far quicker. SLICE64-FM
+  (an FM-1 tracker on fm1-editor.com's watch list) shows the value of such an editor.
+- **Action:** a Chrome/Edge page using Web MIDI with SysEx. It lists the device's songs
+  and profiles; sends and receives `.sng` and `.sid` files; edits instruments, tables and
+  patterns with a keyboard; and offers a "plain GT2 export" carrying
+  `gt2_sng_check_plain`'s warning. It talks only to a SIDOU that answers the identity
+  query, never to the update loader, and never sends the mask-ROM key. Plan it as M2g or
+  early M4.
+
+## Mirror the screen over USB
+
+- **Where:** `app/grid.c` (the renderer already sends only changed 8×8 tiles) and a USB
+  path next to USB-MIDI (a vendor bulk interface, or CDC; SysEx is too slow for
+  full-rate frames).
+- **Problem:** demos, screen recordings and the browser editor would benefit from seeing
+  the device's screen live on the computer.
+- **Action:** an opt-in mode that copies each sent tile run to USB as well (about
+  2.5–20 KB a frame at typical change rates), plus a viewer in the web companion. Measure
+  the USB cost against the main-loop budget, and add hardware checks. The same transport
+  is half of the separate "remote panel" idea: fm1-emu issue #4.
+
+## Decide on RSID playback (M3 plan)
+
+- **Where:** M3's 6502 and `.sid` player (design doc section 5 currently rejects RSID).
+- **Problem:** RSID tunes need CIA timer and NMI emulation, and some need cycle-exact
+  interrupt timing. The 6502 has only about 200 instructions a sample of headroom (see
+  "The 6502 must fit the audio headroom" below). SLICE64-FM claims RSID playback.
+- **Action:** when writing M3's plan, measure what CIA, IRQ and NMI emulation costs, and
+  decide: full RSID support, a common subset (CIA-timed tunes without cycle-exact NMI
+  digis), or keeping the polite rejection.
+
+## A friendlier ARP editor in TRACKER (M2d)
+
+- **Where:** M2d's TRACKER view (`docs/plans/2026-10-15-m2d-step-tracker.md`).
+- **Problem:** GoatTracker's wavetable already does arpeggios (relative note steps with a
+  loop), but entering one by hand as raw wavetable rows is fiddly.
+- **Action:** an ARP helper that writes the wavetable rows from a list of semitone offsets
+  with a speed and a loop point, and shows an existing arpeggio in that form. No new
+  engine is needed, and the files stay plain GT2.
+
 ## Generate the active profile's combined-waveform rows into POOL (M2/M3 fallback)
 
 - **Where:** `core/sid/gen/wave_6581.h` and `wave_8580.h` (`SID_PULLDOWN_*`),
