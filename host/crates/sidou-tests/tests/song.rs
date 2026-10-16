@@ -436,7 +436,8 @@ fn trailer_layout_crc_rules_and_unknown_chunks() {
     assert_eq!(&out[e + 8..e + 10], &[1, 0]);
     let len = u32::from_le_bytes(out[e + 10..e + 14].try_into().unwrap()) as usize;
     assert_eq!(e + len, out.len());
-    assert!(out[e + 14..e + 255].iter().all(|&b| b == 0));
+    assert_eq!(out[e + 14], 3, "the GT2 part's channel count");
+    assert!(out[e + 15..e + 255].iter().all(|&b| b == 0));
     let gt2_crc = unsafe { song_crc32(0, out.as_ptr(), e as u32) };
     assert_eq!(
         u32::from_le_bytes(out[e + 255..e + 259].try_into().unwrap()),
@@ -1136,10 +1137,10 @@ fn a_trailer_settles_goattracker_stereos_guess() {
         "GoatTracker Stereo misreads it"
     );
     let mut s = Song::device();
-    // Without a trailer SIDOU guesses as GoatTracker Stereo does.
-    assert!(s.read(&file, 4).map_or(true, |i| i.channels == 6));
-    // With one, it reads its own file right. The song is built by hand, as the reader
-    // would take the plain file as stereo.
+    // Without a trailer the six-channel reading does not end at the file's end and the
+    // three-channel one does, so SIDOU reads it as mono, as GoatTracker 2.77 does.
+    assert_eq!(s.read(&file, 4).unwrap().channels, 3);
+    // With one, the trailer settles it.
     let mut u = Song::device();
     for (f, v) in i.iter().enumerate() {
         let mut e = gt2_edit::default();
@@ -1262,5 +1263,249 @@ fn saves_as_goattracker(seeds: u32) {
             ours.len(),
             canon.len()
         );
+    }
+}
+
+/// The reviewer's file: a plain 405-byte mono song (one pattern held, patterns 1 and 2 named
+/// and so empty) whose instrument 1 starts `FF 00 01 FF 00 01 FF 00`. Those bytes pass
+/// GoatTracker Stereo's three extra trial reads, and the six-channel parse that follows ends
+/// at byte 128, nowhere near the file's end. GoatTracker 2.77 opens it as mono.
+fn reviewers_mono_file() -> Vec<u8> {
+    let mut spec = SngSpec::new();
+    let mut i = [0u8; 25];
+    i[..8].copy_from_slice(&[0xff, 0x00, 0x01, 0xff, 0x00, 0x01, 0xff, 0x00]);
+    spec.instr = vec![i];
+    spec.patterns.truncate(1);
+    spec.patterns[0].0[0] = [0x60, 1, 0, 0];
+    spec.encode()
+}
+
+#[test]
+fn a_mono_file_that_passes_the_stereo_trial_reads_as_mono() {
+    let file = reviewers_mono_file();
+    assert_eq!(file.len(), 405);
+    assert_eq!(determinechannels(&file), 6, "GoatTracker Stereo's guess");
+    let mut s = Song::device();
+    let info = s.read(&file, 4).unwrap();
+    assert_eq!(info.channels, 3, "{info:?}");
+    assert_eq!(info.gt2_bytes as usize, file.len());
+    assert_eq!(s.pattern(0).unwrap()[0], [0x60, 1, 0, 0]);
+    assert_eq!(s.raw().instr[0][..8], [0xff, 0, 1, 0xff, 0, 1, 0xff, 0]);
+    // Saved, the named patterns 1 and 2 are written too, and it still reads as mono.
+    let plain = s.write(false);
+    assert_eq!(determinechannels(&plain), 6);
+    let mut u = Song::device();
+    assert_eq!(u.read(&plain, 4).unwrap().channels, 3);
+    assert_eq!(u.write(false), plain);
+    // A trailer after it: the six-channel parse ends at neither the file's end nor the
+    // trailer, the three-channel one at the trailer.
+    let t = s.write(true);
+    let mut u = Song::device();
+    let info = u.read(&t, 4).unwrap();
+    assert_eq!((info.channels, info.trailer), (3, GT2_TRAILER_READ));
+    // A damaged trailer still ends the three-channel reading better than the six-channel
+    // one, which stops at byte 128.
+    let mut d = t.clone();
+    let last = d.len() - 1;
+    d[last] ^= 1;
+    let info = u.read(&d, 4).unwrap();
+    assert_eq!((info.channels, info.trailer), (3, GT2_TRAILER_DROPPED));
+    assert_eq!(u.write(true), t);
+}
+
+/// Whatever SIDOU writes without a trailer, it reads back as the same song: mono songs
+/// whose instruments or tables look like orderlists to GoatTracker Stereo's trial read
+/// included.
+#[test]
+fn sidou_output_without_a_trailer_always_reads_back() {
+    plain_reads_back(2000);
+}
+
+#[test]
+#[ignore = "long: cargo test --release -p sidou-tests --test song -- --ignored"]
+fn sidou_output_without_a_trailer_always_reads_back_long() {
+    plain_reads_back(200_000);
+}
+
+fn plain_reads_back(seeds: u32) {
+    let mut rng = Rng(0x5eed_0004);
+    let lookalike = [0xff, 0x00, 0x01, 0xff, 0x00, 0x01, 0xff, 0x00];
+    let (mut misread, mut ambiguous) = (0, 0);
+    for seed in 0..seeds {
+        let stereo = seed % 5 == 0;
+        let mut spec = random_canonical(&mut rng, stereo);
+        if !stereo && seed % 2 == 1 {
+            // Make the trial read pass: the first subtune's three extra "orderlists" come
+            // from the instrument count and the first instrument's bytes.
+            let mut i = [0u8; 25];
+            i[..8].copy_from_slice(&lookalike);
+            for b in i.iter_mut().skip(8) {
+                *b = if rng.chance(50) { 0 } else { rng.byte() };
+            }
+            i[0] |= 1;
+            spec.orders.truncate(1);
+            spec.instr.insert(0, i);
+            spec.instr.truncate(1);
+            for p in spec.patterns.iter_mut() {
+                for r in p.0.iter_mut() {
+                    r[1] = r[1].min(1);
+                }
+            }
+        }
+        let want = if stereo { 6 } else { 3 };
+        let file = spec.encode();
+        let mut s = Song::device();
+        let info = s
+            .read(&file, 4)
+            .unwrap_or_else(|e| panic!("seed {seed}: {e:?}"));
+        if info.channels != want {
+            // Only a file that is also the canonical save of a song with the other channel
+            // count, which no reader can tell apart, may read otherwise.
+            assert_eq!(s.write(false), file, "seed {seed}: {file:02x?}");
+            ambiguous += 1;
+            continue;
+        }
+        let plain = s.write(false);
+        if determinechannels(&plain) != want as u32 {
+            misread += 1;
+        }
+        let mut t = Song::device();
+        let info = t
+            .read(&plain, 4)
+            .unwrap_or_else(|e| panic!("seed {seed}: {e:?}"));
+        assert_eq!(info.channels, want, "seed {seed}");
+        assert_eq!(t.write(false), plain, "seed {seed}");
+        assert_eq!(Model::of(&t), Model::of(&s), "seed {seed}");
+        // With the trailer, always.
+        let mut u = Song::device();
+        assert_eq!(
+            u.read(&s.write(true), 4).unwrap().channels,
+            want,
+            "seed {seed}"
+        );
+    }
+    eprintln!("{seeds} songs: {misread} GoatTracker Stereo misreads, {ambiguous} ambiguous");
+    assert!(misread > 0, "no file GoatTracker Stereo misreads");
+    assert!(
+        ambiguous * 1000 <= seeds,
+        "{ambiguous} ambiguous of {seeds}"
+    );
+}
+
+/// A file that is the canonical save of a mono song and of a stereo one alike (found by
+/// `sidou_output_without_a_trailer_always_reads_back_long`): both readings end at the same
+/// byte, so the trailer they share settles it only through the channel count it records.
+#[test]
+fn the_trailer_records_the_channel_count() {
+    let lookalike = [0xff, 0x00, 0x01, 0xff, 0x00, 0x01, 0xff, 0x00];
+    let mut found = 0;
+    // The generator's states before three of the ambiguous songs it made.
+    for state in [
+        0xdf75_5aa4_46c7_9a0d,
+        0xe055_6381_75ab_ace3,
+        0x0917_3ee8_97e0_f7b5,
+    ] {
+        let mut rng = Rng(state);
+        let mut spec = random_canonical(&mut rng, false);
+        let mut i = [0u8; 25];
+        i[..8].copy_from_slice(&lookalike);
+        for b in i.iter_mut().skip(8) {
+            *b = if rng.chance(50) { 0 } else { rng.byte() };
+        }
+        i[0] |= 1;
+        spec.orders.truncate(1);
+        spec.instr = vec![i];
+        for p in spec.patterns.iter_mut() {
+            for r in p.0.iter_mut() {
+                r[1] = r[1].min(1);
+            }
+        }
+        let file = spec.encode();
+        let mut s = Song::device();
+        let Ok(info) = s.read(&file, 4) else { continue };
+        if info.channels != 6 || s.write(false) != file {
+            continue;
+        }
+        // Read plain as stereo, and its stereo save is the same file: ambiguous. The mono
+        // song (built from the spec by hand) saved with a trailer reads back as mono, and
+        // the stereo one as stereo.
+        found += 1;
+        let mut m = Song::device();
+        set_mono_from_spec(&mut m, &spec);
+        assert_eq!(m.write(false), file);
+        for (song, want) in [(&m, 3), (&s, 6)] {
+            let t = song.write(true);
+            let mut u = Song::device();
+            let info = u.read(&t, 4).unwrap();
+            assert_eq!((info.channels, info.trailer), (want, GT2_TRAILER_READ));
+            assert_eq!(u.write(true), t);
+        }
+    }
+    assert_eq!(found, 3, "the ambiguous files");
+}
+
+/// Builds a one-subtune mono spec's song through the edit primitives (the reader would take
+/// an ambiguous file as stereo).
+fn set_mono_from_spec(s: &mut Song, spec: &SngSpec) {
+    let p = s.ptr_mut();
+    let commit = |e: &gt2_edit| unsafe { gt2_edit_commit(p, e) };
+    let mut e = gt2_edit::default();
+    unsafe {
+        for (n, (rows, _)) in spec.patterns.iter().enumerate() {
+            if n >= 3 {
+                let mut got = 0;
+                assert_eq!(
+                    gt2_pattern_add(p, rows.len() as u32, &mut got, &mut e),
+                    GT2_OK
+                );
+                assert_eq!(got, n as u32);
+            } else {
+                assert_eq!(
+                    gt2_pattern_resize(p, n as u32, rows.len() as u32, &mut e),
+                    GT2_OK
+                );
+            }
+            commit(&e);
+            for (r, cell) in rows.iter().enumerate() {
+                assert_eq!(
+                    gt2_set_row(p, n as u32, r as u32, cell.as_ptr(), &mut e),
+                    GT2_OK
+                );
+                commit(&e);
+            }
+        }
+        for (c, (entries, restart)) in spec.orders[0].iter().enumerate() {
+            let c = c as u32;
+            for (k, v) in entries.iter().enumerate() {
+                assert_eq!(gt2_order_insert(p, 0, c, k as u32, *v, &mut e), GT2_OK);
+                commit(&e);
+            }
+            // Drop clearsong's entry, now last.
+            assert_eq!(
+                gt2_order_delete(p, 0, c, entries.len() as u32, &mut e),
+                GT2_OK
+            );
+            commit(&e);
+            assert_eq!(
+                gt2_set_order(p, 0, c, entries.len() as u32, *restart, &mut e),
+                GT2_OK
+            );
+            commit(&e);
+        }
+        for (k, v) in spec.instr[0].iter().enumerate() {
+            assert_eq!(gt2_set_instr(p, 1, k as u32, *v, &mut e), GT2_OK);
+            commit(&e);
+        }
+        for (t, rows) in spec.tables.iter().enumerate() {
+            for (r, (l, rr)) in rows.iter().enumerate() {
+                assert_eq!(gt2_set_table(p, t as u32, r as u32, 0, *l, &mut e), GT2_OK);
+                commit(&e);
+                assert_eq!(gt2_set_table(p, t as u32, r as u32, 1, *rr, &mut e), GT2_OK);
+                commit(&e);
+            }
+        }
+    }
+    for k in 0..3 {
+        s.set_string(k, &spec.strings[k]);
     }
 }

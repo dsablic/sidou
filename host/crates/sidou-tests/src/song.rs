@@ -172,6 +172,19 @@ impl Song {
         Some(d.chunks(4).map(|r| [r[0], r[1], r[2], r[3]]).collect())
     }
 
+    /// Sets the name (0), author (1) or copyright (2) string.
+    pub fn set_string(&mut self, which: usize, v: &[u8; 32]) {
+        let s = unsafe { &mut *self.ptr_mut() };
+        let field = match which {
+            0 => &mut s.name,
+            1 => &mut s.author,
+            _ => &mut s.copyright,
+        };
+        for (d, &b) in field.iter_mut().zip(v.iter()) {
+            *d = b as _;
+        }
+    }
+
     pub fn ext_set(&mut self, tag: u32, data: &[u8]) -> i32 {
         unsafe { song_ext_set(self.ptr_mut(), tag, data.as_ptr(), data.len() as u32) }
     }

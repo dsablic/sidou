@@ -227,7 +227,8 @@ passing. The bound is tighter and does not depend on the subtune count:
 
 **The shape that follows:** the magic `SIDOU-X\0`, the version (u16 `01 00`) and the
 length (u32, which the writer pads with a `PAD` chunk until none of its bytes is `$FF`)
-hold no `$FF`; they take bytes 0-13. **A lead-in of 241 `$00` bytes** fills bytes 14-254.
+hold no `$FF`; they take bytes 0-13. **A lead-in of 241 bytes** fills bytes 14-254: the
+GT2 part's channel count (3 or 6), then 240 `$00` bytes.
 The first field that can hold `$FF` (the GT2 part's CRC-32) starts at byte 255.
 
 **Stereo files with a trailer** read as stereo: the trial reads exactly the 6 × S real
@@ -243,10 +244,22 @@ GT2 part can pass all 6 × S reads by itself. M2c Task 2's fuzz found such songs
 is easy to make: an instrument whose bytes read `$FF 00 01 $FF 00 01 $FF 00` looks like
 three more orderlists. None of GoatTracker's 14 example songs does (their trials fail at
 file offsets 117 to 371, inside the instruments and tables), and the trailer cannot make
-it more likely. SIDOU's reader takes the same guess, then **settles it with the trailer**:
-if the file read with the guessed channel count has no trailer whose CRCs hold, and read
-with the other count has one, the other count wins. So SIDOU always reads its own files
-right; on a plain GT2 file it agrees with GoatTracker Stereo.
+it more likely. SIDOU's reader takes the same guess, then reads the file with the other
+channel count too and **takes the reading that ends where a song file ends**: at a SIDOU
+trailer recording that reading's channel count (byte 14 of the trailer), then at any
+trailer, then at the file's last byte. A mono file whose instrument bytes pass the trial but
+whose six-channel reading stops short (a review's 405-byte example: GoatTracker 2.77 opens
+it as mono, the six-channel reading ends at byte 128) so reads as mono.
+
+The channel count in the trailer is needed because a six-channel misreading of a mono part
+is shifted by only a few bytes and can fall back into step: both readings then end at the
+same byte, before the same trailer whose CRCs hold. Without a trailer such a file is
+ambiguous in earnest, the canonical save of a mono song and of a stereo song alike (M2c
+Task 2's test found 15 among 80,000 generated look-alikes, and none among stereo songs).
+When both readings end equally well SIDOU prefers the one whose counts are what `savesong`
+writes, and otherwise keeps GoatTracker Stereo's guess. So SIDOU reads every file it writes
+with a trailer right, and every plain file it writes right unless the file is one of those
+ambiguous ones (`sidou_output_without_a_trailer_always_reads_back`).
 
 A stereo song's orderlist with an end mark earlier than its length byte says, and a
 restart byte of its entries plus two or more, passes the check as read but not once saved

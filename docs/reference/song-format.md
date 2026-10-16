@@ -113,9 +113,14 @@ decides as GoatTracker Stereo's `determinechannels` does: starting at the subtun
 it trial-reads 6 × S orderlists; a read at offset p with length byte n passes when the
 byte at p + n is `$FF` and the byte at p + n + 1 is below n + 1 (a byte past the end of
 the file counts as 0; a length byte of 0 fails). All passing: stereo, else mono. The guess
-is GoatTracker Stereo's, and can be wrong: if the file read with the other channel count
-ends in a SIDOU trailer whose CRCs hold, and read with the guessed one does not, the other
-count wins (0007). A stereo song whose orderlist has a restart byte of its entries plus two
+is GoatTracker Stereo's, and can be wrong, so SIDOU also reads the file with the other
+count and takes the reading that ends better, in this order: at a SIDOU trailer whose CRCs
+hold and that records that reading's channel count; at a trailer whose CRCs hold; at one
+whose own CRC holds; at a damaged trailer's magic; at the file's last byte. When both end
+equally well, the reading whose counts are what `savesong` would write (the last subtune's
+first three orderlists, the last instrument, each table's last row and the last pattern in
+use) wins over one whose counts are not; otherwise the guess stands (0007, "The trailer and
+stereo detection"). A stereo song whose orderlist has a restart byte of its entries plus two
 or more is refused (`SNG: BAD ORDERLIST Vn`): saved, it would read as mono.
 
 ### Writing
@@ -139,7 +144,8 @@ The trailer starts at E, right after the last pattern. L is its total length.
 | 0 | 8 | magic `SIDOU-X` and a 0 byte: `53 49 44 4F 55 2D 58 00` |
 | 8 | 2 | trailer version, 1 |
 | 10 | 4 | L, from the magic to the end, the final CRC included; **no byte of it is `$FF`** |
-| 14 | 241 | lead-in: `$00` bytes |
+| 14 | 1 | the GT2 part's channel count: 3, or 6 for a GoatTracker Stereo song (0: not recorded) |
+| 15 | 240 | lead-in: `$00` bytes |
 | 255 | 4 | CRC-32 of the GT2 part, file bytes 0 to E - 1 |
 | 259 | L - 263 | chunks |
 | L - 4 | 4 | CRC-32 of the trailer's bytes 0 to L - 5 |

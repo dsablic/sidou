@@ -41,7 +41,8 @@ extern "C" {
 #define SONG_TRAILER_VERSION 1u
 #define SONG_TRAILER_HEADER 14u        /* magic, version, length */
 #define SONG_TRAILER_FF_FREE 255u      /* bytes 0-254 hold no $FF (stereo detection) */
-#define SONG_TRAILER_LEAD_IN (SONG_TRAILER_FF_FREE - SONG_TRAILER_HEADER) /* 241 */
+#define SONG_TRAILER_LEAD_IN (SONG_TRAILER_FF_FREE - SONG_TRAILER_HEADER) /* 241: no $FF */
+#define SONG_TRAILER_CHANNELS 14u      /* the lead-in's first byte: the GT2 part's 3 or 6 */
 #define SONG_TRAILER_CHUNKS (SONG_TRAILER_FF_FREE + 4u) /* after the GT2 part's CRC */
 #define SONG_TRAILER_MIN (SONG_TRAILER_CHUNKS + 4u)     /* no chunks: 263 */
 #define SONG_CHUNK_HEADER 8u
