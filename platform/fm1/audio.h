@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* The audio render, without hardware access: main.c's ALNK0 interrupt calls audio_fill for
- * each free half of the I2S DMA buffer: the chip, then the effect slots, in stereo.
+ * each free half of the I2S DMA buffer: the chip (split at the song's call, song_ctl.h),
+ * then the effect slots, in stereo.
  *
  * The main loop changes the chip only through audio_sink (app/reg_ring.h): its writes queue
  * up in a ring that audio_fill drains before each block. */
@@ -10,6 +11,7 @@
 
 #include <stdint.h>
 
+#include "player/song_ctl.h"
 #include "scope.h"
 #include "sid/sid.h"
 
@@ -23,6 +25,13 @@
 void audio_init(void);
 /* The tap the LIVE view reads (app/scope.h); audio_fill feeds it while its `on` is set. */
 scope* audio_scope(void);
+/* Before audio_init (main.c runs it in the LCD's reset wait): the song's region formatted and
+ * the song transport made; the empty song. */
+gt2_song* audio_song_boot(void);
+/* The song transport (core/player/song_ctl.h): its main-loop side, the song's region in POOL. */
+song_ctl* audio_song(void);
+/* song_ctl_poll, with a slice unless the pass has run one of the spare chip's preparation. */
+void audio_song_poll(void);
 /* The context for reg_ring_sink (a reg_ring_out*), for live. Before audio_start, a full ring
  * is drained at once; after it, the producer sleeps until the interrupt has made room. */
 void* audio_sink_ctx(void);

@@ -171,8 +171,27 @@ from the SPL after a reset, never next to the app. The layout:
 |---|---|---|
 | RAMTEXT | 0x01C00000–0x01C0C000 | 48 KB |
 | RAM-run debug area (crt0.S's boot words at 0x01C0DF20) | 0x01C0C000–0x01C0E000 | 8 KB |
-| RAM | 0x01C0E000–0x01C20000 | 72 KB |
-| POOL | 0x01C20000–0x01C74000 | 336 KB |
+| RAM | 0x01C0E000–0x01C1E000 | 64 KB |
+| POOL | 0x01C1E000–0x01C74000 | 344 KB: the song's content region first (`__song_region`, 0x01C1E000–0x01C2E000, 64 KiB, 4 KiB aligned), then the chips, the slots' pool and the rest |
+
+M2c Task 6 moved the RAM/POOL boundary 8 KiB down (from 0x01C20000) so POOL holds
+the song's 64 KiB content region beside chip B. Measured at M2c Task 6 (no M2b Task 3
+yet): the RAM region 48,948 bytes used, 16,588 free; POOL 346,656 used, 5,600 free;
+22,188 free together (the gate after M2c is 22,000, each region at least 4 KiB:
+emu-gate `tests/song.rs`).
+
+**The song player (M2c Task 6)** runs in the audio interrupt too: the whole of
+`core/player/gt2_play.c` (the frame path, at `-Os` and without jump tables, which
+would be read from flash), `song_ctl`'s interrupt side (`song_ctl_block`, `_due`,
+`_call`, `_block_end`, the swap hook `song_ctl_chip_swapped` and their helpers) and
+the edit it applies (`gt2_edit_apply`). At boot the song's region, the shapes and
+song_ctl are set up and the first song read into the region inside the LCD's 150 ms reset
+wait (`lcd_init`'s `during`), and the boot's zeroing skips them (`.song_ram` and the head of
+`.pool` in `app.ld`), so the song costs the boot's timeline nothing (the LCD goldens and the
+budgets depend on where the audio blocks fall against the frames). Its analysis (`gt2_shape.c`) and `song_ctl`'s
+main-loop side stay in flash and reach the frame path through pointers (`far_start`,
+`far_frame`). The player's frequency tables are in `.data`; the shapes it follows and
+the song are in RAM. `.ram_text` grew from 36,460 to **42,844 bytes** (of 49,152).
 
 Headroom beyond 48 KB, if the audio path ever needs it:
 - `-Os` for `core/fx` (about 3.3 KB smaller, at a cycle cost not yet

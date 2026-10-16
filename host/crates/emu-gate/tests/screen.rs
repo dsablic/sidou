@@ -2855,3 +2855,15 @@ fn with_three_notes_held_on_chip_b_a_menu_move_is_silent_and_bit_exact() {
     );
     assert!(on == off, "the held notes changed with SOUNDS on");
 }
+
+// A pass that runs a slice of the song's analysis or fast-forward (song_ctl_poll, M2c Task 6:
+// never in a pass that ran a chip preparation's slice, platform/fm1/audio.c audio_song_poll)
+// and the busiest view's work still fits; song.rs measures the slices against
+// SONG_SLICE_INSTRUCTIONS.
+const SONG_SLICE: u64 = sidou_sys::SONG_SLICE_INSTRUCTIONS as u64;
+const _: () = assert!(LIVE_WORST_POLL + SONG_SLICE <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(CHIP_INPUT + CHIP_PASS + SONG_SLICE <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(SCENE_INPUT + SCENE_START_PASS + SONG_SLICE <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(TITLE_CARD_INPUT + TITLE_CARD_PASS + SONG_SLICE <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(WIPE_WORST_POLL + SONG_SLICE <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(ABOUT_WORST_POLL + SONG_SLICE <= common::POLL_INSTRUCTIONS);

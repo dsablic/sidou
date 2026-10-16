@@ -6,9 +6,11 @@
 #include "fx/fx_slots.h"
 #include "fx_live.h"
 #include "live.h"
+#include "player/song_ctl.h"
 #include "reg_ring.h"
 #include "scope.h"
 #include "sid/sid.h"
+#include "song/gt2_song.h"
 
 /* The effect slots' seed (their noise and drift generators). */
 #define SLOTS_SEED 0x51D0u
@@ -42,6 +44,20 @@ static volatile uint8_t b_want;
 static uint8_t b_on;
 /* The chip the tap reads (audio_tap_chip): 0 A, 1 B. */
 static volatile uint8_t tap_chip;
+
+/* The song (M2c Task 6). Its content region (decision record 0007): one 64 KiB block, 4 KiB
+ * aligned, first in POOL (app.ld, __song_region), which M3's 6502 memory will overlay. The
+ * player's state, its shadow and the rings (song_ctl) and the two shapes it reads are the
+ * interrupt's: RAM. The main loop's work space (two analyses, a fast-forward player, the edits
+ * in flight) is big and the main loop's only: POOL. */
+static uint32_t song_region[SONG_REGION_BYTES / 4u]
+    __attribute__((section(".pool.song_region"), aligned(4096)));
+/* Not zeroed by the boot (app.ld keeps them out of the zeroed ranges): audio_song_boot sets
+ * them up in the LCD's reset wait, so the song costs the boot's timeline nothing. The
+ * interrupt's in the RAM region, the main loop's work space in POOL. */
+static gt2_shape song_shapes[2] __attribute__((section(".song_noinit")));
+static song_ctl song_transport __attribute__((section(".song_noinit")));
+static song_work song_space __attribute__((section(".pool.song_noinit")));
 /* The LIVE view's tap (app/scope.h): the voices every SCOPE_DECIMATE samples, the envelopes
  * and the output's peaks, while the view shows. */
 static scope tap;
@@ -75,6 +91,8 @@ void audio_init(void) {
     out.wait_ctx = 0;
     out_b = out;
     out_b.chip = 1;
+    chips.swapped = song_ctl_chip_swapped; /* a swap of chip A while a song plays */
+    chips.swapped_ctx = &song_transport;
 }
 
 void* audio_sink_ctx_b(void) {
@@ -97,6 +115,23 @@ void audio_tap_chip(uint32_t chip) {
     tap_chip = chip ? 1u : 0u;
 }
 
+gt2_song* audio_song_boot(void) {
+    gt2_song* s = gt2_song_init(song_region, SONG_REGION_BYTES);
+    song_ctl_init(&song_transport, s, &song_shapes[0], &song_shapes[1], &song_space);
+    return s;
+}
+
+song_ctl* audio_song(void) {
+    return &song_transport;
+}
+
+void audio_song_poll(void) {
+    /* no slice in a pass that ran one of the spare chip's preparation (reg_ring_pass_end);
+     * the ring's writes for song control in any pass until M2b's keys_route shares it */
+    song_ctl_poll(&song_transport,
+                  (chips.prep_pass ? 0u : SONG_POLL_SLICE) | SONG_POLL_RING);
+}
+
 scope* audio_scope(void) {
     return &tap;
 }
@@ -107,6 +142,7 @@ void* audio_sink_ctx(void) {
 
 void audio_commit(void) {
     reg_ring_commit(&ring);
+    song_ctl_commit(&song_transport); /* the pass's song commands with its register writes */
     reg_ring_pass_end(&chips); /* one slice of a chip's preparation a pass */
 }
 
@@ -131,12 +167,37 @@ int audio_running(void) {
     return running;
 }
 
+/* Part of chip A's block: with the LIVE view's tap (tapped) or without. */
+static void render_part(sid* a, int16_t* s, uint32_t n, int tapped) {
+    if (tapped) {
+        scope_render(&tap, a, s, n);
+    } else {
+        sid_render(a, s, n);
+    }
+}
+
+/* Chip A's block, split at the song's call, whose writes go straight into chip A
+ * (song_ctl.h; decision record 0005's split render). */
+static void render_a(sid* a, int16_t* s, int tapped) {
+    uint32_t at = song_ctl_due(&song_transport, AUDIO_HALF_FRAMES);
+    if (at < AUDIO_HALF_FRAMES) {
+        if (at > 0u) {
+            render_part(a, s, at, tapped);
+        }
+        song_ctl_call(&song_transport);
+        render_part(a, s + at, AUDIO_HALF_FRAMES - at, tapped);
+    } else {
+        render_part(a, s, AUDIO_HALF_FRAMES, tapped);
+    }
+}
+
 void audio_fill(int32_t* buf) {
     int16_t s[AUDIO_HALF_FRAMES];
     int16_t lr[2u * AUDIO_HALF_FRAMES];
     reg_ring_drain(&ring, &chips);
     sid* a = reg_ring_chip_of(&chips, 0);
     sid* b = reg_ring_chip_of(&chips, 1);
+    song_ctl_block(&song_transport, a);
     /* Chip B is in use while it has a user, and after its last one let go until its three
      * envelopes are at 0 (the keys' release tails play out, and nothing is frozen to come
      * back later); only once its boot reset has made it (a zeroed sid has a sample rate of 0,
@@ -146,20 +207,21 @@ void audio_fill(int32_t* buf) {
     uint8_t want = (uint8_t)((b_want || tails) && b->sample_rate);
     if (!want && !b_on) {
         /* Chip A alone, as M1: sid_render's samples, and the tap's points while LIVE shows. */
-        scope_render(&tap, a, s, AUDIO_HALF_FRAMES);
+        render_a(a, s, 1);
     } else {
         int16_t sb[AUDIO_HALF_FRAMES];
         if (tap_chip) {
-            sid_render(a, s, AUDIO_HALF_FRAMES);
+            render_a(a, s, 0);
             scope_render(&tap, b, sb, AUDIO_HALF_FRAMES);
         } else {
-            scope_render(&tap, a, s, AUDIO_HALF_FRAMES);
+            render_a(a, s, 1);
             sid_render(b, sb, AUDIO_HALF_FRAMES);
         }
         chip_mix(s, sb, AUDIO_HALF_FRAMES,
                  want == b_on ? CHIP_MIX_FULL : want ? CHIP_MIX_IN : CHIP_MIX_OUT);
         b_on = want;
     }
+    song_ctl_block_end(&song_transport, AUDIO_HALF_FRAMES);
     /* With every slot off this writes the chip's output to both sides unchanged. */
     sid_slots_process(&slots, s, lr, AUDIO_HALF_FRAMES);
     scope_peaks(&tap, lr, AUDIO_HALF_FRAMES);

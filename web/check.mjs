@@ -3,7 +3,8 @@
 // The demo's smoke test, in headless Chromium (Playwright): load the page, press Start, wait for
 // SIDOU to boot past its title card, check the LCD shows something and nothing went to the
 // console as an error, then hold a note key and check the screen changes and the audio thread
-// makes sound. Exits non-zero on any failure. Run by web/check.sh (tools/web-demo --check).
+// makes sound, and press PLAY (Space, button 12) and check the song sounds and PLAY again
+// stops it. Exits non-zero on any failure. Run by web/check.sh (tools/web-demo --check).
 //   node check.mjs http://127.0.0.1:8642/ [screenshot.png]
 import { chromium } from "playwright";
 
@@ -106,6 +107,24 @@ try {
   console.log(`A4 held: output RMS ${quiet.toFixed(5)} -> ${note.toFixed(5)}; screen ${before === during ? "unchanged" : "changed"}`);
   if (before === during) fail("holding a note key did not change the screen");
   if (!(note > 4 * quiet + 1e-4)) fail("holding a note key made no sound");
+
+  // the song: Space is PLAY (button 12), which plays SIDOU's first song; PLAY again stops it
+  await page.waitForTimeout(800); // A4's release
+  const still = await page.evaluate(() => window.__sidou.level(300));
+  const play = async () => {
+    await page.keyboard.down(" ");
+    await page.waitForTimeout(150); // past the key scan's debounce
+    await page.keyboard.up(" ");
+  };
+  await play();
+  await page.waitForTimeout(600);
+  const song = await page.evaluate(() => window.__sidou.level(1000));
+  await play();
+  await page.waitForTimeout(1500); // the releases ring out
+  const after = await page.evaluate(() => window.__sidou.level(400));
+  console.log(`PLAY: output RMS ${still.toFixed(5)} -> ${song.toFixed(5)}, stopped ${after.toFixed(5)}`);
+  if (!(song > 4 * still + 1e-4)) fail("PLAY made no sound");
+  if (!(after < song / 4)) fail("PLAY again did not stop the song");
 
   if (shot) {
     await page.keyboard.down("h");

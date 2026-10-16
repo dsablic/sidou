@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! End to end: which chip the keys play (M2b Task 4, app/keys_route.h). With no song the keys
 //! play chip A as in M1 (the other gates hold that: every golden and host comparison). A song
-//! on chip A is M2c's; until then its hook is `keys_router.song` (platform/fm1/main.c), set
-//! here in emulated RAM: the keys then play chip B, which holds the keys' setup.
+//! on chip A is M2c's (PLAY, tests/song.rs); here the flag it sets, `keys_router.song`
+//! (platform/fm1/main.c), is set in emulated RAM with no song playing, and the transport leaves
+//! a flag it did not set alone: the keys then play chip B, which holds the keys' setup.
 
 mod common;
 
@@ -208,12 +209,14 @@ fn a_release_tail_plays_out_on_chip_b_after_the_keys_move_back() {
             .unwrap()
     };
     let b_on = |m: &mut Machine| m.soc.read8(fw.symbol("b_on"));
+    // every millisecond: the last block in use, with the envelopes at 0, is 2.9 ms long, so
+    // a coarser grid can step over it (as it did once M2c's song code moved the timing)
     let mut trail = Vec::new();
-    for _ in 0..80 {
+    for _ in 0..400 {
         trail.push((counter(&mut m), b_on(&mut m)));
-        m.run_ms(5);
+        m.run_ms(1);
     }
-    println!("chip B after the move (envelope, in use) every 5 ms: {trail:?}");
+    println!("chip B after the move (envelope, in use) every 1 ms: {trail:?}");
     assert!(
         trail[0].0 > 0 && trail[0].1 == 1,
         "no tail on chip B after the move"

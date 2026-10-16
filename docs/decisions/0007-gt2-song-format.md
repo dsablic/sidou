@@ -395,7 +395,8 @@ the one corner it cannot match:
   lowest-numbered hard-restart instrument in use, if any); at multispeed the first legato
   instrument plays as no-HR (the packer's "multispeed stability" count moves the legato
   class's start); instrument 63's AD sets the default tempo. The analysis walks the song,
-  so it is the main loop's; Task 6 hands the state to the interrupt.
+  so it is the main loop's (`core/player/gt2_shape.c`, in slices); the player follows the
+  shape it derives (M2c Task 6, "The shape while editing" below).
 - **Orderlists that break readme 3.1** play as `player.s` reads the packed bytes: a repeat
   is read after its pattern, R0 (`$D0`) is dropped, and the restart position counts the
   packed entries. A transpose last before the `$FF` makes `player.s` take the `$FF` as a
@@ -459,6 +460,33 @@ The cost: its tick joins the audio budget (at most 60 instructions a sample in i
 128-sample block, gated in M2c Task 6) and its code joins RAMTEXT. Song edits reach it
 only as O(1) steps (a cell write of at most 4 bytes, or an index swap to a pattern or
 orderlist the main loop has rebuilt in free space), at most 8 a block (M2c Tasks 2 and 6).
+
+**Frame-exact, for multispeed (M2c Task 6).** A C64 calls a packed tune from the video
+frame at 1x, and from a CIA timer otherwise: gt2reloc's `.sid` speed code sets the timer's
+latch to `0x4cc7 / N` (PAL) or `0x42c6 / N` (NTSC), and `0x4cc7 x 2` for 25 Hz, so a call
+every latch + 1 cycles. At 1x that is the video frame (19,656 PAL, 17,095 NTSC cycles); on
+PAL every N up to 4 divides the frame exactly; on NTSC the CIA's period is a little longer
+than a third or a quarter of the frame (3 x 5,699 = 17,097 cycles). **SIDOU calls the player
+every CIA period**, the period the packed tune plays at in a SID player, and the host render
+follows the same clock (`song_period_of`). The position of the next call is kept in whole
+samples and a remainder at 24 MHz / 544, so it never drifts.
+
+**The shape while editing (M2c Task 6).** The target while a song is edited is **what the
+packer would make of the song as it is now**. An edit can change it, so the main loop
+widens the shape for each edit before the edit goes (`gt2_shape_widen`: O(1) for a cell, a
+rebuild's one pattern or orderlist scanned) and sends the wider shape in the same batch,
+and the player never plays an edit with a shape that lacks it. A widened shape is a
+superset; once edits stop, a fresh analysis in the background narrows it and a swap takes
+it in. A change the player's state cannot follow (the channel count, the pulse's one- or
+two-byte encoding, the wavetable's delay timer and recoded waveforms) goes through a
+hand-over instead: the channels stay as they were until a player fast-forwarded on the
+edited song from the play's start takes over at a call, so from then on the player is the
+one re-initialised on the edited song (host test `song_ctl.rs`). A first command of any
+class or a first filter changes what runs from the next call, not what the state means,
+and swaps in at once.
+
+**Row events.** Channels the packer does not play (`gt2_shape.channels` below 3) make no row
+events: M2d's cursors follow their orderlists another way.
 
 ## SID-Wizard
 

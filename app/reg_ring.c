@@ -156,6 +156,8 @@ void reg_ring_chips_init(reg_ring_chips* c, sid_model model, uint32_t clock_hz,
     c->lost_resets = 0;
     c->pseudo = 0;
     c->pseudo_ctx = 0;
+    c->swapped = 0;
+    c->swapped_ctx = 0;
     /* Chip A only: B is made by its first reset (live_init's for its writer), and nothing
      * renders it before. More work here would move the boot's timing. */
     sid_init(&c->chip[0], model, clock_hz, sample_rate);
@@ -234,9 +236,20 @@ static void apply(reg_ring_chips* c, reg_ring_entry e) {
 uint32_t reg_ring_drain(reg_ring* r, reg_ring_chips* c) {
     reg_ring_entry e;
     uint32_t n = 0;
+    uint8_t was[REG_RING_CHIPS];
+    for (uint32_t x = 0; x < REG_RING_CHIPS; ++x) {
+        was[x] = c->active[x];
+    }
     while (reg_ring_pop(r, &e)) {
         apply(c, e);
         n++;
+    }
+    if (c->swapped) {
+        for (uint32_t x = 0; x < REG_RING_CHIPS; ++x) {
+            if (c->active[x] != was[x]) {
+                c->swapped(c->swapped_ctx, x, &c->chip[c->active[x]]);
+            }
+        }
     }
     return n;
 }

@@ -64,13 +64,22 @@ static void window(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1) {
     cmd(0x2C);               /* RAMWR */
 }
 
-void lcd_init(void) {
+void lcd_init(void (*during)(void)) {
     static const uint8_t colmod = 0x55; /* RGB565 */
     static const uint8_t madctl = 0x00; /* top-left origin, RGB order */
     fm1_lcd_hw_init();
     fm1_delay_ms(80);
     cmd(0x01); /* SWRESET */
-    fm1_delay_ms(150);
+    {
+        /* The boot's own work in the reset's wait (M2c Task 6: the song's region), so the
+         * boot's timeline stays as it was. */
+        uint32_t start = fm1_ticks();
+        if (during) {
+            during();
+        }
+        while ((uint32_t)(fm1_ticks() - start) < 150u * 1000u * FM1_TICKS_PER_US) {
+        }
+    }
     cmd(0x11); /* SLPOUT */
     fm1_delay_ms(120);
     cmd_data(0x3A, &colmod, 1);

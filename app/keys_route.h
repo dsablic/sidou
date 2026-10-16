@@ -11,8 +11,8 @@
  * live's setup writes (the character, resets, the gate reset) and its writes to $15-$18 (the
  * filter and the volume) are dropped, and of a voice's registers only those of the voices the
  * keys hold get through, and each voice's gate-off as the keys let it go (the keys sound
- * through the song's setup). Until M2c, "a song playing" is keys_route_set_song, which
- * nothing on the device calls.
+ * through the song's setup). "A song playing" is keys_route_set_song: platform/fm1/main.c's
+ * song transport sets it at PLAY and clears it once a stop has reached the interrupt.
  *
  * For M2c's song control (song_ctl), the contract:
  * - the transport starts a song only once keys_route_ready_for_song: the keys have left chip

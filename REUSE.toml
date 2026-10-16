@@ -25,6 +25,13 @@ path = ["assets/scene/*.png"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
+# SIDOU's songs: original music written for SIDOU, the .sng files written out from their
+# sources (assets/songs/<name>.md names each one's).
+[[annotations]]
+path = ["assets/songs/*.sng"]
+SPDX-FileCopyrightText = "2026 SIDOU contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
 # The look-and-feel prototypes (self-contained HTML pages made for SIDOU):
 # reference art and code for M2's STEP/TRACKER views and SCENE pieces.
 [[annotations]]

@@ -72,7 +72,7 @@ extern "C" {
 #define SONG_EDITS_PER_BLOCK 8u
 #define SONG_EVENT_RING 256u       /* events, a power of two: a second of them, three
                                     * channels at speed 1 (150) and more */
-#define SONG_INFLIGHT 16u          /* edits sent and not yet acknowledged */
+#define SONG_INFLIGHT 12u          /* edits sent and not yet acknowledged: a block's 8 and more */
 #define SONG_BLOCK 128u            /* samples a block (platform/fm1/audio.h) */
 #define SONG_MULTISPEED_MAX 4u     /* the device's (gt2_caps): a block holds one call */
 /* The main loop's analysis slice, in gt2_shape_step units (fm1-emu measures a slice's

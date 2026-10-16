@@ -25,6 +25,8 @@ use fm1_core::Bus;
 const RAMTEXT_BYTES: u32 = 48 * 1024;
 /// A4's key id, held so the render has a voice to run.
 const A4_KEY: u8 = 30;
+/// PLAY (app/panel.h PANEL_BTN_PLAY): the song player runs in the interrupt too.
+const PLAY: u8 = sidou_sys::PANEL_BTN_PLAY as u8;
 
 fn fixture(what: &str) -> Option<(PathBuf, Firmware)> {
     let Some(build) = build_dir() else {
@@ -75,8 +77,18 @@ fn the_audio_interrupt_runs_only_from_sram() {
     let mut m = Machine::boot(&fw.image);
     m.key(A4_KEY, true);
     m.run_ms(500); // past the LCD's start-up delays: the audio starts after them
+    common::run_past_boot(&mut m, &fw);
+    // and the song player (M2c Task 6): PLAY plays SIDOU's first song in the interrupt
+    m.key(PLAY, true);
+    m.run_ms(30);
+    m.key(PLAY, false);
+    m.run_ms(100);
     m.watch_alnk_pcs(ram_text(&fw));
     m.run_ms(400);
+    let calls = m
+        .soc
+        .read32(fw.symbol("song_transport") + sidou_sys::ilp32::song_ctl::calls as u32);
+    assert!(calls > 10, "the song did not play ({calls} calls)");
     let outside: Vec<String> = m
         .alnk_pcs_outside
         .iter()

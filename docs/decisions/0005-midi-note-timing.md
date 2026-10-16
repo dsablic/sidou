@@ -245,6 +245,22 @@ What it changes, from the tables above:
 - With INSTANT, the first non-silent sample comes earlier within its block (the
   envelope, not only the leak), so "audible" falls by about 0.3 ms (median).
 
+## Amendment: songs are frame-exact through the split render (M2c Task 6, 2026-10-16)
+
+The song player takes the split render this record described, for its own writes only:
+it runs in the audio interrupt, and `audio_fill` renders chip A up to the sample where a
+call of the play routine falls, makes the call (its writes go straight into chip A with
+`sid_write`, `core/player/song_ctl.h`), and renders the rest. The calls fall on a
+rational clock (gt2reloc's CIA period, 880.16 samples at PAL 1x, kept in whole samples
+and a remainder, so it never drifts), so a song's every frame is at its exact sample, and
+the host's render, which splits at the same samples, equals the device's bit for bit
+(emu-gate `tests/song.rs`). With multispeed up to 4 a block holds at most one call, so a
+split is one more `sid_render` call a block at most. The register ring is untouched:
+the player is a second writer of chip A, in the interrupt, between the drain and the
+render, so none of the ring's invariants above change. Notes from the keys and MIDI keep
+this record's block-start placement. Songs default to AUTHENTIC envelopes (the gate reset
+off), set on chip A when a song starts.
+
 ## Consequences
 
 - **Measured latency:** the note-on's first sample reaches the buffer in

@@ -103,6 +103,8 @@ int reg_ring_pop(reg_ring* r, reg_ring_entry* out);
 /* Gets the pseudo-registers the drain does not handle itself (the effect slots',
  * app/fx_live.h), from the audio interrupt. */
 typedef void (*reg_ring_pseudo_fn)(void* ctx, uint8_t reg, uint8_t value);
+/* reg_ring_chips.swapped: chip (0 A, 1 B) renders s from now on. */
+typedef void (*reg_ring_swap_fn)(void* ctx, uint32_t chip, sid* s);
 
 /* Two chips, A and B, and one spare they share: three sids, chip[active[0]] chip A,
  * chip[active[1]] chip B and the third the spare. The drain swaps the spare with the chip a
@@ -143,9 +145,14 @@ typedef void (*reg_ring_pseudo_fn)(void* ctx, uint8_t reg, uint8_t value);
  * in the audio interrupt; and each entry is an aligned 32-bit store, so even
  * sid_set_filter_curve on a playing chip (sid.h allows it from the main loop) would give
  * such an update an old or a new entry, never a torn one. That rests on
- * every register write reaching a chip through this drain, on one core: M3's 6502 player,
- * if it writes registers from the audio interrupt or from core 1, must revisit it (a write
- * applied outside the drain races its commits and the main loop's spare). */
+ * every register write reaching a chip either through this drain or from the audio interrupt
+ * itself, on one core. The song player (M2c Task 6, core/player/song_ctl.h) is the first
+ * writer outside the drain: it writes chip A with sid_write from the same interrupt, between
+ * the drain and the render (a call at its sample of the block), so it never runs beside the
+ * drain's commits, and it never touches the spare the main loop prepares. A swap of chip A
+ * (a profile change while a song plays) takes the player's registers again through the swap
+ * hook (reg_ring_chips.swapped) before the block renders. M3's 6502 must keep to the same: in
+ * this interrupt, or on core 1 only through the ring. */
 #define REG_RING_SIDS (REG_RING_CHIPS + 1u)
 typedef struct {
     sid chip[REG_RING_SIDS];
@@ -159,6 +166,11 @@ typedef struct {
     uint32_t sample_rate;
     reg_ring_pseudo_fn pseudo; /* NULL: other pseudo-registers are ignored */
     void* pseudo_ctx;
+    /* Called at the end of a drain that swapped a chip, once for each chip it swapped, with
+     * the sid it renders now: a writer outside the drain (the song player, on chip A) writes
+     * its registers into it before the block renders. From the audio interrupt; NULL: none. */
+    reg_ring_swap_fn swapped;
+    void* swapped_ctx;
     /* producer, each chip's: the settings and the ramp towards them */
     sid_character_ramp ramp[REG_RING_CHIPS];
     /* producer: the sid each chip's queued entries end on, the last one prepared for it */
@@ -209,7 +221,8 @@ sid* reg_ring_chip_of(reg_ring_chips* c, uint32_t chip);
  * then on; a LIVE_REG_GATE_RESET goes to sid_set_gate_reset on the chip's sid, so after a
  * reset the new one; a REG_RING_CHARACTER counts a tick (ticks) and commits the stage it names
  * to the chip's sid (sid_character_commit); any other pseudo-register (the slots') goes to the
- * pseudo handler, if there is one. Returns the entries applied. */
+ * pseudo handler, if there is one; then, for a chip it swapped, the swap hook. Returns the
+ * entries applied. */
 uint32_t reg_ring_drain(reg_ring* r, reg_ring_chips* c);
 
 /* The producer's side, the context of reg_ring_sink: one for each writer, bound to a chip

@@ -16,6 +16,11 @@ add_library(sidou_core STATIC
     player/gt2_shape.c
     player/song_ctl.c)
 target_include_directories(sidou_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+# The song player's frame path and song_ctl run once a frame (a call), not once a sample: -Os
+# keeps their SRAM small (platform/fm1/app.ld; M2c Task 6). No jump tables: a switch's table
+# would be read from flash (.rodata) by the audio interrupt.
+set_source_files_properties(player/gt2_play.c player/song_ctl.c PROPERTIES
+    COMPILE_OPTIONS "-Os;-fno-jump-tables")
 # Float results must be identical on host and pi32v2 so their outputs can be compared.
 target_compile_options(sidou_core PUBLIC -ffp-contract=off)
 target_compile_options(sidou_core PRIVATE -Wall -Wextra -Wshadow)

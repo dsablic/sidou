@@ -12,6 +12,7 @@ add_library(sidou_live STATIC
     chip_ctl.c
     chip_view.c
     credits.c
+    demo_song.c
     font.c
     fx_live.c
     grid.c

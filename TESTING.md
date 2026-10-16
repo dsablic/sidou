@@ -226,6 +226,41 @@ both write lists, the last calls before it and the C player's channels.
 To look at a mismatch by hand, `gt2-trace` prints the reference's writes for the same song
 and options.
 
+### The player in the audio interrupt (M2c Task 6)
+
+On the host, `crates/sidou-tests/tests/song_ctl.rs` (`cargo test --release -p sidou-tests
+--test song_ctl`) runs `core/player/song_ctl.h` through `src/transport.rs` as the device
+does (a block's commands, its render split at the call, a main-loop pass between blocks):
+- the shape's analysis in slices of 1, 3, 64 and SONG_SLICE_UNITS units makes the shape the
+  whole analysis makes, on every example and 100 generated songs;
+- the frame clock is gt2reloc's CIA period exactly, and every call falls at floor(k x
+  samples a call) from the play's block;
+- edits of each widening class (a note past the range, a first command, a filter, a new
+  instrument's tables, an orderlist rebuild; a wave delay, a pulse low nybble and a
+  channel's first note through a hand-over) play, from the edit (or the hand-over), as a
+  player started on the edited song and fast-forwarded to the same call, and the shape
+  ends on the fresh analysis's once quiet;
+- stop, continue, mute, a flood of edits (none lost, at most 8 a block), a swap's old space
+  freed only once applied, jam, seek, the events and their overflow, multispeed 8 refused,
+  a swapped chip given the player's registers.
+
+`tests/app/demo_song.rs` keeps `assets/songs/sidou-loop.sng` and `app/demo_song.c` in step
+with their source (`src/song_embed.rs`; `SIDOU_SONG_UPDATE=1` rewrites them) and checks the
+song is canonical GTS5; `gt2_match.rs` plays it against GoatTracker's player.
+
+In fm1-emu, `crates/emu-gate/tests/song.rs`: PLAY plays the first song and the audio equals
+the host's render (`common::render_host_song`, which runs the same song_ctl on the host
+chip) sample for sample over 10 s, at multispeed 1 and 4 (a song written into the device's
+region before PLAY), with edits made while it plays (a test hook, `song_test_hook` in
+`platform/fm1/main.c`, each edit's block read from the interrupt's applied count), with the
+keys moved to chip B at PLAY (chip B rendered and mixed from the block it goes in use, read
+after every block); PLAYER_WORST_BLOCK on the bench image `sid_bench_song`
+(every example and subtune at multispeed 1 and 4 and 40 generated seeds, written into its
+RAM one at a time, eight cell writes or swaps a block); the analysis's slices and passes
+while the largest example loads; the multispeed 8 refusal's toast; stop's releases and chip
+A's hand-back; the map (the song's region, the free RAM). `ram_audio.rs` runs the song in
+the interrupt for its SRAM checks.
+
 ### Golden renders
 
 `renders_match_recorded_hashes` renders the shared benchmark workload
@@ -940,7 +975,10 @@ its browser into `build/web-check/` on first use). It fails when:
 - the canvas's LCD area is nearly black;
 - holding a note key (H, A4) does not change the screen, or the output's
   RMS (an analyser on the AudioWorklet's output) does not rise above four
-  times its level before the key.
+  times its level before the key;
+- PLAY (Space, button 12) does not raise the RMS above four times its level
+  before (SIDOU's first song), or PLAY again does not bring it down to a
+  quarter of the song's within 1.5 s.
 
 It saves a screenshot with the note held to
 `build/web-check/screenshot.png` (`SIDOU_WEB_SCREENSHOT` overrides). The

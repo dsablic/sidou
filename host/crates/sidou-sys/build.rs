@@ -30,6 +30,7 @@ const SOURCES: &[&str] = &[
     "app/chip_mix.c",
     "app/chip_view.c",
     "app/credits.c",
+    "app/demo_song.c",
     "app/font.c",
     "app/fx_live.c",
     "app/grid.c",
@@ -192,7 +193,7 @@ fn main() {
             "sid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|title_card.*|chip_view.*|chip_mix.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*",
         )
         .allowlist_var(
-            "SID_.*|SIDOU_.*|GT2_.*|SONG_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*|LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*|LEARN_VIEW_.*|SCOPE_.*|SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|UI_SOUND_.*",
+            "SID_.*|SIDOU_.*|GT2_.*|SONG_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*|LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*|LEARN_VIEW_.*|SCOPE_.*|SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|UI_SOUND_.*|demo_song_.*",
         )
         // `static const` tables private to the headers; they have no symbol to link to.
         .blocklist_item("SID_ENV_RATE_POS|SID_ENV_THRESHOLDS|SID_PULLDOWN_.*|SID_NOISE_WB")
@@ -210,9 +211,10 @@ fn main() {
 
     // Field offsets and sizes of the structs as the pi32v2 lays them out (ILP32: 4-byte
     // pointers and ints; no 64-bit fields in them), for the emulator tests, which read
-    // the firmware's chips, MIDI out's state, its MIDI in ring, the LIVE view's tap and the
-    // views' title card from its RAM. The host's own layout differs wherever a struct holds a
-    // pointer. bindgen's layout assertions carry clang's numbers for the target.
+    // the firmware's chips, MIDI out's state, its MIDI in ring, the LIVE view's tap, the
+    // views' title card and the song transport from its RAM. The host's own layout differs
+    // wherever a struct holds a pointer. bindgen's layout assertions carry clang's numbers for
+    // the target.
     let ilp32 = bindgen::Builder::default()
         .header(wrapper.to_str().unwrap())
         .clang_args(INCLUDES.map(|dir| format!("-I{}", root.join(dir).display())))
@@ -220,7 +222,7 @@ fn main() {
         .clang_arg("--target=i686-unknown-none")
         .clang_arg("-ffreestanding")
         .allowlist_type(
-            "sid|sid_osc|sid_env|reg_ring|reg_ring_entry|reg_ring_chips|reg_ring_out|keys_route|chip_ctl|chip_setup|midi_out|midi_ring|midi_ring_entry|midi_learn|live|scope|views|title_card",
+            "sid|sid_osc|sid_env|reg_ring|reg_ring_entry|reg_ring_chips|reg_ring_out|keys_route|chip_ctl|chip_setup|midi_out|midi_ring|midi_ring_entry|midi_learn|live|scope|views|title_card|song_ctl|screen",
         )
         .generate()
         .expect("bindgen (ILP32 layout) failed")

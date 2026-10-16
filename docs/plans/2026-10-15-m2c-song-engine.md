@@ -570,6 +570,15 @@ the split render), `docs/reference/controls.md` (PLAY, until M2d), `TESTING.md`,
 
 **Commit:** `feat(fm1): the song player in the audio interrupt, frame-exact, bit-exact with the host`
 
+**Results (2026-10-16, measured in fm1-emu):** the player's worst block 30.7 instructions a
+sample (of 60; a call at most 3,409, eight cell writes 515); RAMTEXT 43,284 of 49,152 bytes;
+the analysis's slices at most 33.8k (of SONG_SLICE_INSTRUCTIONS 39k), PLAY to the first call
+32 ms; the image 398 KB; free RAM 22,116 bytes (the RAM region 16,420, POOL 5,696), 116 over
+the floor of 22,000. **The lever if RAM runs short:** the two shape buffers (2 x 2,168
+bytes in the RAM region), mostly each channel's flattened orderlist and its entry map (2 x
+768 bytes a buffer): keep the map only for orderlists that break readme 3.1's rules, or
+derive the model's entry from the packed byte in the main loop when it reads an event.
+
 ---
 
 ### Task 7: Parameter locks

@@ -20,6 +20,7 @@
 
 #include "audio.h"
 #include "bootguard.h"
+#include "demo_song.h"
 #if defined(SIDOU_FLASH_SPIKE)
 #include "flash_spike.h"
 #endif
@@ -29,7 +30,9 @@
 #include "live.h"
 #include "midi.h"
 #include "panel.h"
+#include "player/song_ctl.h"
 #include "reg_ring.h"
+#include "song/gt2_sng.h"
 #include "ui.h"
 #include "ui_sound.h"
 #include "update.h"
@@ -111,6 +114,204 @@ static void fm1_fault(const fm1_crash_t* c) {
     fm1_reboot();
 }
 
+/* --- The song (M2c Task 6): SIDOU's first song, PLAY plays and stops it until M2d's
+ * transport. The keys share chip A with it until M2b Task 4 moves them to chip B. --- */
+
+/* The first song (app/demo_song.h) from flash into the song's region: the audio interrupt never
+ * reads flash. */
+static uint32_t read_demo(void* ctx, uint32_t offset, uint8_t* buf, uint32_t len) {
+    (void)ctx;
+    if (offset >= demo_song_sng_bytes) {
+        return 0;
+    }
+    uint32_t n = demo_song_sng_bytes - offset;
+    n = n < len ? n : len;
+    for (uint32_t i = 0; i < n; i++) {
+        buf[i] = demo_song_sng[offset + i];
+    }
+    return n;
+}
+
+/* The song's chip A (song_chip_hooks, app/keys_route.h's contract). Called a poll at a time
+ * from PLAY on: once the keys have left chip A (or KEYS is A), the song's setup (its CHPA, or
+ * the keys' with AUTHENTIC envelopes, decision record 0005) is what chip A should have
+ * (keys_route_song_wants, the one writer of song_want: keys_route's tick brings chip A
+ * there, preparing it in the background, as it does the other chip for the keys); the song
+ * starts once chip A has it. M2c Task 8's save writes song_want back into the CHPA. */
+static uint8_t song_setup_on; /* chip A's setup for the song is asked for */
+static chip_setup song_want;
+
+static int song_chip_ready(void* ctx, const song_chip_setup* c) {
+    keys_route* kr = ctx;
+    if (!keys_route_ready_for_song(kr)) {
+        return 0;
+    }
+    if (!song_setup_on) {
+        song_want = kr->ctl[0].has; /* chip A as the song finds it (the keys' setup) */
+        if (c) {
+            song_want.profile = c->profile;
+            song_want.controls[0] = c->age;
+            song_want.controls[1] = c->dac;
+            song_want.controls[2] = c->thump;
+            song_want.controls[3] = c->bleed;
+            song_want.gate_reset = c->envelope == 0u; /* 0 INSTANT */
+        } else {
+            song_want.gate_reset = 0u; /* AUTHENTIC */
+        }
+        keys_route_song_wants(kr, &song_want);
+        song_setup_on = 1;
+    }
+    if (!chip_ctl_has(&kr->ctl[0], &song_want)) {
+        return 0;
+    }
+    song_setup_on = 0;
+    return 1;
+}
+
+/* Once a stop has reached the interrupt: chip A back to the keys (keys_route takes it back to
+ * their setup, and the keys back to it). */
+static uint8_t song_mine; /* keys_route_set_song(1) is the transport's */
+
+static void song_chip_back(void* ctx) {
+    keys_route_set_song(ctx, 0);
+    song_mine = 0;
+}
+
+/* In the LCD's reset wait, before anything else: the song's region and the first song in it. */
+static void song_load(void) {
+    gt2_song* s = audio_song_boot();
+    gt2_caps caps = {SONG_MULTISPEED_MAX};
+    gt2_read_info info;
+    /* The song is SIDOU's own: it always reads (host tests check it does, with these caps). */
+    gt2_sng_read(s, read_demo, 0, &caps, &info);
+}
+
+static void song_boot(void) {
+    song_chip_hooks hooks = {song_chip_ready, song_chip_back, &keys_router};
+    song_ctl_set_hooks(audio_song(), &hooks);
+}
+
+static uint8_t song_toggle;   /* a PLAY press waiting for the transport to take it */
+static int16_t song_error;    /* the refusal last shown */
+static uint32_t song_warned;  /* the warnings shown since the play */
+
+/* A refusal or a warning as a toast (the SONG view's hint until it exists, M2c Task 8). */
+static void song_tell(song_ctl* sc) {
+    if (sc->error != song_error) {
+        song_error = sc->error;
+        if (song_error == SONG_ERR_MULTISPEED) {
+            /* as the reader says it (gt2_sng.c) */
+            char t[32] = "SNG: MULTISPEED ";
+            uint32_t k = 16u, m = sc->opts.multispeed;
+            if (m >= 10u) {
+                t[k++] = (char)('0' + m / 10u);
+            }
+            t[k++] = (char)('0' + m % 10u);
+            const char* tail = " (MAX 4)";
+            while (*tail) {
+                t[k++] = *tail++;
+            }
+            t[k] = 0;
+            ui_toast(t, 2000u);
+        } else if (song_error == GT2_PLAY_ERR_STEREO) {
+            ui_toast("SNG: STEREO, NOT PLAYED", 2000u);
+        } else if (song_error != 0) {
+            ui_toast("SNG: NOTHING TO PLAY", 2000u);
+        }
+    }
+    if (song_ctl_state(sc) != SONG_PLAYING) {
+        return;
+    }
+    uint32_t w = song_ctl_warnings(sc) & ~song_warned;
+    if (w & GT2_PLAY_WARN_PITCH) {
+        ui_toast("SNG: A-4 PITCH NOT PLAYED", 2000u);
+    } else if (w & GT2_PLAY_WARN_PAST_B7) {
+        ui_toast("SNG: NOTE PAST B-7", 2000u);
+    }
+    song_warned |= w;
+}
+
+/* fm1-emu's tests only (emu-gate tests/song.rs, "edits while playing"): edit requests a test
+ * writes into RAM, which the main loop makes with the song model's primitives and sends as
+ * M2d's editor will. op: 0 none, 1 a row write (a: pattern, b: row, cell), 2 a row inserted
+ * and 3 a row deleted (a rebuild: a swap); the main loop clears op once the edit is sent and
+ * records the song's block count then (the edit applies at the next block). Nothing on the
+ * device writes it. */
+typedef struct {
+    volatile uint32_t op;
+    uint32_t a, b;
+    uint8_t cell[4];
+    volatile uint32_t block;
+} song_test_req;
+#define SONG_TEST_REQS 4u
+song_test_req song_test_hook[SONG_TEST_REQS];
+
+static void song_test_edits(song_ctl* sc) {
+    for (uint32_t i = 0; i < SONG_TEST_REQS; i++) {
+        song_test_req* r = &song_test_hook[i];
+        if (r->op == 0u) {
+            continue;
+        }
+        gt2_edit e;
+        gt2_err err = GT2_ERR_RANGE;
+        if (r->op == 1u) {
+            err = gt2_set_row(sc->song, r->a, r->b, r->cell, &e);
+        } else if (r->op == 2u) {
+            err = gt2_pattern_insert_row(sc->song, r->a, r->b, &e);
+        } else if (r->op == 3u) {
+            err = gt2_pattern_delete_row(sc->song, r->a, r->b, &e);
+        }
+        if (err == GT2_ERR_PENDING) {
+            return; /* in order: this one again next pass */
+        }
+        if (err == GT2_OK && !song_ctl_edit(sc, &e)) {
+            gt2_edit_cancel(sc->song, &e);
+            return;
+        }
+        r->block = sc->blocks;
+        r->op = 0u;
+    }
+}
+
+/* Once a pass: PLAY's presses, then the transport's poll (a slice of its analysis); the
+ * voices the keys take from the song under KEYS A. */
+static uint8_t song_taken;
+
+static void song_pass(void) {
+    song_ctl* sc = audio_song();
+    if (panel_take_play(&front) & 1u) {
+        song_toggle ^= 1u;
+    }
+    if (song_toggle) {
+        uint32_t st = song_ctl_state(sc);
+        if (st == SONG_PLAYING) {
+            song_toggle = !song_ctl_stop(sc);
+        } else if (st != SONG_LOADING && song_ctl_play(sc, 0, 0)) {
+            song_toggle = 0;
+            song_warned = 0;
+            song_setup_on = 0;
+            if (song_ctl_state(sc) == SONG_LOADING) {
+                keys_route_set_song(&keys_router, 1); /* the keys leave chip A */
+                song_mine = 1;
+            }
+        }
+    }
+    uint8_t taken = keys_route_voices_taken(&keys_router);
+    if (taken != song_taken && song_ctl_take(sc, taken)) {
+        song_taken = taken;
+    }
+    song_test_edits(sc);
+    audio_song_poll();
+    uint32_t now_st = song_ctl_state(sc);
+    if (song_mine && (now_st == SONG_IDLE || now_st == SONG_STOPPED) && !sc->handback) {
+        keys_route_set_song(&keys_router, 0); /* stopped, or a refused play: the keys come back */
+        song_mine = 0;
+    }
+    song_tell(sc);
+    uint32_t st = song_ctl_state(sc);
+    front.playing = st == SONG_PLAYING || st == SONG_LOADING;
+}
+
 /* One main-loop pass: the panel into the instrument, the 100 Hz work, then the queued
  * register writes go to the audio interrupt in one batch. The panel only changes when the
  * key scan finishes a frame (~1.1 ms), so a wake-up from the 10 kHz tick in between does
@@ -129,6 +330,7 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         live_tick(&instrument);
         ui_sound_tick(&ui_sounds);
     }
+    song_pass();
     if (tick_due) {
         /* Once a pass, after its live ticks: the keys' chip has had its turn, then the other
          * chip follows the keys' setup (chip B's first reset at boot among it) and the keys
@@ -206,7 +408,7 @@ static void spike_service(void) {
 
 static void sidou_main(void) {
     /* Interrupts are still off: lcd_init and input_init write port A, which carries PA2. */
-    lcd_init();
+    lcd_init(song_load);
     audio_init();
     /* The keys play chip A, as in M1; chip B is made with the keys' setup from the first
      * ticks, prepared in the background (its first reset at boot only: app/reg_ring.h). */
@@ -218,6 +420,7 @@ static void sidou_main(void) {
     live_set_preparer(&instrument, keys_route_prepare, &keys_router);
     keys_route_start(&keys_router);
     ui_sound_init(&ui_sounds, &instrument, reg_ring_sink, audio_sink_ctx_b());
+    song_boot();
     panel_init(&front);
     input_init();
     panel_master(&front, &instrument, input_master());

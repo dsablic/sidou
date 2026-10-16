@@ -517,6 +517,16 @@ fn examples_match(o: &gt2_options, frames: usize) -> (usize, usize, usize, Unkno
     (songs, subtunes, writes, unknown)
 }
 
+/// SIDOU's first song (song_embed), with the defaults and at multispeed 4.
+#[test]
+fn the_first_song_matches() {
+    let sng = sidou_tests::song_embed::sng();
+    check("sidou-loop", &sng, &default_options());
+    let mut o = default_options();
+    o.multispeed = 4;
+    check("sidou-loop x4", &sng, &o);
+}
+
 #[test]
 fn every_example_matches() {
     let (songs, subtunes, writes, unknown) = examples_match(&default_options(), FRAMES);

@@ -95,6 +95,13 @@ impl Song {
         unsafe { &*self.ptr() }
     }
 
+    /// Another song of the same region size, byte for byte (the region holds no pointers, so
+    /// the copy is a whole song).
+    pub fn copy_from(&mut self, other: &Song) {
+        assert_eq!(self.region.len(), other.region.len());
+        self.region.copy_from_slice(&other.region);
+    }
+
     /// The whole region's bytes.
     pub fn bytes(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.region.as_ptr().cast(), self.region.len() * 4) }

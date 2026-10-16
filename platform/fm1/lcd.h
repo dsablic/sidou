@@ -26,7 +26,9 @@
 /* The panel's pins, SPI1, reset and init sequence; the display stays off (lcd_on).
  * Interrupts must be off: the backlight pin PA2 is also the key matrix's /OE, which the
  * TIMER5 scan writes on the same port. */
-void lcd_init(void);
+/* during: work run inside the panel's 150 ms reset wait (the wait takes as long as before
+ * if the work is shorter), or NULL; with interrupts off. */
+void lcd_init(void (*during)(void));
 /* DISPON, once the first picture is in the panel's RAM. */
 void lcd_on(void);
 /* 1 while a window's transfer is still running. */

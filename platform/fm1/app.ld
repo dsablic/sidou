@@ -3,13 +3,15 @@
  * SPDX-License-Identifier: GPL-3.0-only
  * SIDOU memory map: Felucca's firmware/app.ld, without the second core's .c1_text, and with
  * RAMTEXT at 48 KB instead of Felucca's 24 KB (RAM and the debug area moved up, POOL starts
- * higher; docs/hardware.md, "Code in SRAM").
+ * higher; docs/hardware.md, "Code in SRAM"), and the RAM/POOL boundary 8 KiB down from
+ * Felucca's 0x01C20000 for the song's 64 KiB content region (M2c Task 6).
  * XIP    : code and constants, executed in place; app.bin offset 0 = 0x02000120.
  * RAMTEXT: .ram_text, code that runs from SRAM: the audio path (no I-cache misses on flash
  *          in the audio interrupt) and code that runs while XIP is off (the flash driver).
  *          0x01C0C000..0x01C0E000 stays free for RAM-run debug (crt0.S writes there).
  * RAM    : .data/.bss, what the interrupts touch and small variables.
- * POOL   : big zero-initialised buffers (section .pool).
+ * POOL   : big zero-initialised buffers (section .pool): first the song's content region
+ *          (__song_region, 64 KiB, 4 KiB aligned: M3's 6502 memory overlays it), then the rest.
  * NOINIT : survives resets (the crash record, fm1_irq.h).
  * Stacks with 256-byte guard bands below each. 0x01C7FD50.. is reserved: boot info, the
  * boot-state mailbox and the vector table (0x01C7FE00). */
@@ -17,8 +19,8 @@ MEMORY
 {
     XIP     (rx)  : ORIGIN = 0x02000120, LENGTH = 0x8DFBC
     RAMTEXT (rwx) : ORIGIN = 0x01C00000, LENGTH = 48K
-    RAM     (rwx) : ORIGIN = 0x01C0E000, LENGTH = 72K
-    POOL    (rw)  : ORIGIN = 0x01C20000, LENGTH = 0x54000
+    RAM     (rwx) : ORIGIN = 0x01C0E000, LENGTH = 64K
+    POOL    (rw)  : ORIGIN = 0x01C1E000, LENGTH = 0x56000
     NOINIT  (rw)  : ORIGIN = 0x01C7C000, LENGTH = 0x3D50
 }
 SECTIONS
@@ -79,6 +81,17 @@ SECTIONS
         /* The LIVE view's tap (app/scope.c): the tapped render, its points (called through a
          * pointer from sid_render_tap: no branch check sees it) and the output's peaks. */
         *(.text.scope_render .text.scope_tap_point .text.scope_peaks)
+        /* The song (M2c Task 6): the player's frame path, the whole of core/player/gt2_play.c
+         * (its analysis is gt2_shape.c, in flash); song_ctl's interrupt side (its main-loop
+         * side stays in flash and reaches the player through pointers); the edit it applies
+         * (core/song/gt2_song.c). song_ctl_chip_swapped is called through reg_ring_chips'
+         * swap hook. */
+        *gt2_play.c.obj(.text .text.*)
+        *(.text.song_ctl_block .text.song_ctl_due .text.song_ctl_call .text.song_ctl_block_end)
+        *(.text.song_ctl_chip_swapped .text.song_sink .text.song_rewrite .text.song_gate_off)
+        *(.text.song_set_gate_reset .text.song_apply .text.song_handover .text.song_push_events)
+        *(.text.render_a .text.render_part)         /* audio.c: chip A split at the call */
+        *(.text.gt2_edit_apply)
         . = ALIGN(4);
         _rt_end = .;
     } > RAMTEXT AT > XIP
@@ -100,7 +113,17 @@ SECTIONS
         . = ALIGN(4);
         _bss_end = .;
     } > RAM
+    /* The song transport's interrupt-side state, not zeroed (platform/fm1/audio.c). */
+    .song_ram (NOLOAD) : ALIGN(4) { *(.song_noinit) . = ALIGN(4); } > RAM
     .pool (NOLOAD) : {
+        /* The song's region and its transport first, outside the zeroed range (_pool_start
+         * on): platform/fm1/audio.c sets them up in the LCD's reset wait. */
+        . = ALIGN(4096);
+        __song_region = .;
+        *(.pool.song_region)
+        __song_region_end = .;
+        *(.pool.song_noinit)
+        . = ALIGN(4);
         _pool_start = .;
         *(.pool*)
         _pool_dac_start = .;
@@ -126,6 +149,8 @@ ASSERT(_data_start == ADDR(.data) && _data_end == ADDR(.data) + SIZEOF(.data), "
 ASSERT(_rt_end <= 0x01C0C000, "app.ld: .ram_text runs into the RAM-run debug area")
 ASSERT(SIZEOF(.ram_text) <= 48K, "app.ld: .ram_text is over RAMTEXT's 48 KB")
 ASSERT(ADDR(.ram_text) == ORIGIN(RAMTEXT), "app.ld: .ram_text must start at RAMTEXT")
+ASSERT(__song_region == ORIGIN(POOL) && __song_region % 4096 == 0, "app.ld: the song's region must start POOL, 4 KiB aligned")
+ASSERT(__song_region_end - __song_region == 65536, "app.ld: the song's region (audio.c song_region) must be 64 KiB")
 ASSERT(_pool_dac_end - _pool_dac_start >= 2 * 17408, "app.ld: the DAC tables (sid_dac.c's .bss) are not in POOL: does *sid_dac.c.obj still match its object?")
 /* The region lengths already keep each section inside its region; these guard the constants
  * above against an edit that moves a region or a stack into its neighbour. */

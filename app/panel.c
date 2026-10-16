@@ -9,6 +9,8 @@ void panel_init(panel* p) {
     p->master_raw = -1;
     p->held = 0;
     p->page = PANEL_PAGE_LIVE;
+    p->play_presses = 0;
+    p->playing = 0;
 }
 
 static void key_up(panel* p, live* l, uint32_t k) {
@@ -52,6 +54,15 @@ void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held) {
     if (pressed & (1u << PANEL_BTN_FX)) {
         live_button(l, LIVE_BUTTON_FX);
     }
+    if ((pressed & (1u << PANEL_BTN_PLAY)) && p->play_presses < 0xffu) {
+        p->play_presses++;
+    }
+}
+
+uint32_t panel_take_play(panel* p) {
+    uint32_t n = p->play_presses;
+    p->play_presses = 0;
+    return n;
 }
 
 uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t enc) {
@@ -142,6 +153,9 @@ panel_leds panel_get_leds(const panel* p, const live* l) {
     }
     if (l->slot[l->fx_select][LIVE_SLOT_ALGORITHM] != 0) {
         o.buttons |= 1u << PANEL_BTN_EDIT;
+    }
+    if (p->playing) {
+        o.buttons |= 1u << PANEL_BTN_PLAY;
     }
     return o;
 }

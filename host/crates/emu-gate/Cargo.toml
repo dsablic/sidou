@@ -18,6 +18,7 @@ sidou-sys = { path = "../sidou-sys" }
 [dev-dependencies]
 fm1-core = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "e52f4640157f490f8c3af778dd044e9d33e989e8" }
 fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "e52f4640157f490f8c3af778dd044e9d33e989e8" }
+gt2-ref = { path = "../gt2-ref" }
 object = { version = "0.36", default-features = false, features = ["read", "elf", "std"] }
 png = "0.18"
 serde_json = "1"

@@ -39,6 +39,8 @@ void ui_poll(uint32_t now_ms);
  * detents, through the views to the panel (views_buttons, views_encoder). */
 void ui_buttons(panel* p, uint32_t pressed, uint32_t held);
 void ui_encoder(panel* p, uint32_t enc, int32_t steps);
+/* A toast over the view (app/screen.h screen_toast): text for ms from the next frame on. */
+void ui_toast(const char* text, uint32_t ms);
 /* The update protocol's progress (views_update) in a frame over the view. Draws at once
  * (blocking): the main loop is inside the update session and does not call ui_poll. */
 void ui_update(uint32_t step, int32_t code);

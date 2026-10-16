@@ -41,6 +41,9 @@ extern "C" {
 #define PANEL_BTN_HOME 8u
 /* MIDI learn (app/learn_view.h, docs/reference/controls.md): arms it, and clears. */
 #define PANEL_BTN_SAVE 9u
+/* The song (M2c Task 6, until M2d's transport): plays SIDOU's first song, and stops it. Its
+ * id is Felucca's, unconfirmed on a SIDOU unit (docs/hardware-test.md). */
+#define PANEL_BTN_PLAY 12u
 /* The LED id of note key k is PANEL_KEY_ID0 + k; buttons are their own ids. */
 #define PANEL_KEY_ID0 14u
 
@@ -75,6 +78,9 @@ typedef struct {
      * (views_buttons, views_encoder) set it from the view that shows before every event and
      * again before the panel reads it; nothing else should rely on it between events. */
     uint8_t page;
+    /* PLAY's presses not yet taken (panel_take_play), and its LED (the song plays). */
+    uint8_t play_presses;
+    uint8_t playing;
 } panel;
 
 /* The LEDs, as Felucca's input state lays out the keys. */
@@ -89,8 +95,9 @@ void panel_init(panel* p);
  * that goes down plays live_key_note of its base note; a key that goes up releases the note
  * it played; a key pressed again while held retriggers. */
 void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed);
-/* Button press edges: OCT-, OCT+, FX (the 6581/8580 toggle), SCL and ENV (the effect slots);
- * held: the debounced buttons, which says whether EDIT is held for panel_encoder. */
+/* Button press edges: OCT-, OCT+, FX (the 6581/8580 toggle), SCL and ENV (the effect slots),
+ * PLAY (counted for panel_take_play); held: the debounced buttons, which says whether EDIT is
+ * held for panel_encoder. */
 void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held);
 /* The parameter encoder enc turns with the buttons held (bit i: button i) on p's page: with
  * EDIT held, K1..K4 the selected slot's Amount, A, B and Mix on any page; without, on
@@ -106,10 +113,12 @@ uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t
  * LIVE_SLOT_DETENT a detent, a character control by PANEL_CHARACTER_DETENT, clamped at both
  * ends, and on PANEL_PAGE_LIVE live's knobs. */
 void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps);
+/* PLAY's presses since the last call (the main loop's song transport takes them). */
+uint32_t panel_take_play(panel* p);
 /* A MASTER pot reading, 0..1023 (a negative reading, an ADC timeout, is ignored). */
 void panel_master(panel* p, live* l, int32_t raw);
-/* Held keys, the octave on OCT- (below 0) or OCT+ (above 0), FX while the 8580 plays, and
- * EDIT while the selected slot has an algorithm. */
+/* Held keys, the octave on OCT- (below 0) or OCT+ (above 0), FX while the 8580 plays, EDIT
+ * while the selected slot has an algorithm, and PLAY while the song plays (panel.playing). */
 panel_leds panel_get_leds(const panel* p, const live* l);
 
 #ifdef __cplusplus

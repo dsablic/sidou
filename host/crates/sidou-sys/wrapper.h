@@ -24,6 +24,7 @@
 #include "chip_mix.h"
 #include "chip_view.h"
 #include "credits.h"
+#include "demo_song.h"
 #include "font.h"
 #include "fx_live.h"
 #include "grid.h"

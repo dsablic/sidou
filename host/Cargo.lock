@@ -262,6 +262,7 @@ version = "0.0.0"
 dependencies = [
  "fm1-core",
  "fm1-soc",
+ "gt2-ref",
  "object",
  "png",
  "serde_json",

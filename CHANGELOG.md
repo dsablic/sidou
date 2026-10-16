@@ -203,6 +203,18 @@ All notable changes are documented here. The format follows
   the focus gives. The page is built in a canvas and copied within 200 cells a frame (idle
   6.3k instructions a frame, nothing sent; the busiest frame 17.6 ms of SPI).
 
+- M2c Task 6: the song player in the audio interrupt. PLAY (button 12) plays SIDOU's first
+  song, SIDOU LOOP (`assets/songs/sidou-loop.sng`, original, GPL-3.0-or-later), on chip A
+  until M2d's transport (the keys move to chip B as M2b's keys_route says, and chip A takes
+  the song's setup through chip_ctl first); the player's calls fall at their exact samples (gt2reloc's CIA
+  period, a block's render split at the call), so the device's audio equals the host's
+  render bit for bit. The packer's analysis is the main loop's, in slices
+  (`core/player/gt2_shape.c`), and widens the player's shape for each edit; `song_ctl`
+  carries play, stop, continue, mute, shape swaps, hand-overs, jams, edits (at most 8 a
+  block, O(1) each) and the call period to the interrupt, and row and note events back.
+  The song's 64 KiB content region is first in POOL (`__song_region`); the RAM/POOL boundary
+  moved 8 KiB down.
+
 ### Changed
 - M2b: a profile or model step (the CHIP view's ALGORITHM, the FX button, CC 25, CC 85)
   prepares the new chip in the background, one slice of at most 40,000 instructions a 10 ms

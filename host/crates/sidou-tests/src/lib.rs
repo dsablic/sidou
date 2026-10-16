@@ -5,7 +5,7 @@
 //! the screen font (`font`), the About screen's credits (`credits`), the logos' bitmaps
 //! (`logo`), the title cards' (`title_card`), SCENE's pixel art (`scene_art`), the song
 //! model's Rust side (`song`), the song player's (`player`) and its transport's
-//! (`transport`).
+//! (`transport`), and the first song (`song_embed`).
 
 pub mod credits;
 pub mod filter_limits;
@@ -19,5 +19,6 @@ pub mod residfp_engine;
 pub mod scene_art;
 pub mod signal_metrics;
 pub mod song;
+pub mod song_embed;
 pub mod title_card;
 pub mod transport;

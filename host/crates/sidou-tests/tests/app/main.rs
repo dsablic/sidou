@@ -8,6 +8,7 @@ mod bootguard;
 mod chip_mix;
 mod chip_view;
 mod credits;
+mod demo_song;
 mod expression;
 mod font;
 mod fx_live;

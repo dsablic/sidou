@@ -503,6 +503,22 @@ pub const ISR_OVERHEAD: f64 = 100.0;
 /// Two chips plus the effects (M1c plan Task 1's cap).
 pub const TWO_CHIPS_PLUS_EFFECTS: f64 = 2300.0;
 
+/// The song player's worst 128-sample block in instructions a sample (song.rs fails above
+/// it): its call and SONG_EDITS_PER_BLOCK of the costliest edit command, with the block's
+/// command handling (M2c Task 6; the plan's budget, docs/plans/2026-10-15-m2c-song-engine.md).
+pub const PLAYER_WORST_BLOCK: f64 = 60.0;
+/// The effect slots' worst switching block, instructions a sample (slots_budget.rs measures
+/// 964, M1c Task 3): what the audio target holds besides the chips, the tap and the ISR when
+/// a preset change switches the slots.
+pub const SLOTS_SWITCH_WORST: f64 = 964.0;
+/// Free RAM (the RAM region and POOL) after M2c (docs/plans/2026-10-15-m2-overview.md).
+pub const FREE_RAM_MIN: u64 = 22_000;
+// A song plays with two chips at their worst, the effects at their cap, the ISR, the tap and
+// the player: within the audio target.
+const _: () = assert!(
+    TWO_CHIPS_PLUS_EFFECTS + TAP_PER_SAMPLE + ISR_OVERHEAD + PLAYER_WORST_BLOCK <= AUDIO_TARGET
+);
+
 /// fm1-emu's CPU clock, one instruction a cycle (latency.rs checks it).
 pub const CPU_HZ: u64 = 240_000_000;
 /// The TRS UART poll's rate (platform/fm1/main.c: every 5th 10 kHz tick).
@@ -711,6 +727,214 @@ pub fn render_host_chips(frames: usize, events: &[ChipEvent]) -> ChipsRender {
     r
 }
 
+/// The device's song region (platform/fm1/audio.c `song_region`, 64 KiB) holding `sng` as
+/// the device reads it (its multispeed cap), with `o` as the song's options (an OPTS chunk)
+/// if given: the bytes a test writes into the device's region, and the host's copy.
+pub fn device_song(sng: &[u8], o: Option<&sidou_sys::gt2_options>) -> sidou_tests::song::Song {
+    let mut song = sidou_tests::song::Song::device();
+    song.read(sng, 0).expect("the song reads");
+    if let Some(o) = o {
+        assert_eq!(
+            unsafe { sidou_sys::song_ext_set_options(song.ptr_mut(), o) },
+            0
+        );
+    }
+    song
+}
+
+/// A primitive of the song model making one edit (gt2_song.h).
+pub type SongPrim = Box<dyn Fn(*mut sidou_sys::gt2_song, &mut sidou_sys::gt2_edit) -> u32>;
+
+/// What the device did with a song, for the host to do the same at the same blocks.
+pub struct SongPlay<'a> {
+    /// The song (a copy plays).
+    pub song: &'a sidou_tests::song::Song,
+    /// The block whose start applied PLAY (0: the first block the interrupt rendered).
+    pub play_block: usize,
+    /// (block, cc, value): to live before the block, as render_host's.
+    pub ccs: &'a [(usize, u8, u8)],
+    /// live_tick calls before each block (the device's, from the drain's tick count).
+    pub ticks: &'a [u32],
+    /// (block, primitive): edits sent before the block (applied at its start).
+    pub edits: &'a [(usize, SongPrim)],
+    /// The block whose start applies STOP.
+    pub stop_block: Option<usize>,
+    /// The keys' move to chip B at PLAY (app/keys_route.h): the block chip B goes in use, and
+    /// the block whose drain applies the keys' registers on it (live_rewrite).
+    pub b_use_block: Option<usize>,
+    pub b_rewrite_block: Option<usize>,
+}
+
+struct HostSink {
+    target: *mut sidou_sys::fx_live_target,
+    reset: bool,
+}
+
+unsafe extern "C" fn host_song_sink(ctx: *mut std::ffi::c_void, reg: u8, value: u8) {
+    let h = unsafe { &mut *(ctx as *mut HostSink) };
+    if reg == sidou_sys::LIVE_REG_RESET as u8 {
+        h.reset = true;
+    }
+    unsafe { sidou_sys::fx_live_sid_sink(h.target.cast(), reg, value) };
+}
+
+unsafe extern "C" fn host_ready(
+    _ctx: *mut std::ffi::c_void,
+    _setup: *const sidou_sys::song_chip_setup,
+) -> i32 {
+    1
+}
+
+/// The firmware playing a song (platform/fm1/audio.c and main.c), rendered by the host build:
+/// the instrument at boot as render_host, chip B as render_host_chips makes it, song_ctl on
+/// chip A, its commands sent where the device sent them, chip A's envelopes AUTHENTIC from the
+/// play (the song's setup), the keys moved to chip B at the device's blocks, each block's
+/// chip A split at the call as audio_fill splits it, chip B mixed while in use, then the
+/// effect slots. Interleaved L, R.
+pub fn render_host_song(frames: usize, p: &SongPlay) -> Vec<i16> {
+    use sidou_sys::*;
+    let mut chip = Box::<sid>::default();
+    let mut spare = Box::<sid>::default();
+    let mut dacs = Box::<[sid_dac; 2]>::default();
+    let mut chip_b = Box::<sid>::default();
+    let mut dacs_b = Box::<[sid_dac; 2]>::default();
+    let mut pool = Box::<sid_slot_pool>::default();
+    let mut slots = Box::<sid_slots>::default();
+    let mut fx = Box::<fx_live>::default();
+    let mut target = Box::new(fx_live_target {
+        sid: live_sid_target {
+            chip: &mut *chip,
+            clock_hz: SID_CLOCK_PAL,
+            sample_rate: SAMPLE_RATE,
+            dacs: dacs.as_mut_ptr(),
+            spare: &mut *spare,
+            ..Default::default()
+        },
+        fx: &mut *fx,
+    });
+    let mut target_b = Box::new(live_sid_target {
+        chip: &mut *chip_b,
+        clock_hz: SID_CLOCK_PAL,
+        sample_rate: SAMPLE_RATE,
+        dacs: dacs_b.as_mut_ptr(),
+        ..Default::default()
+    });
+    let tb: *mut live_sid_target = &mut *target_b;
+    let mut mono_b = vec![0i16; HALF_FRAMES];
+    let (mut b_on, mut b_want) = (false, false);
+    let mut sink = Box::new(HostSink {
+        target: &mut *target,
+        reset: false,
+    });
+    let mut l = Box::<live>::default();
+    let mut song = sidou_tests::song::Song::device();
+    song.copy_from(p.song);
+    let mut sc = Box::<song_ctl>::default();
+    let mut shapes = Box::<[gt2_shape; 2]>::default();
+    let mut work = Box::<song_work>::default();
+    let mut out = vec![0i16; 2 * frames];
+    let mut mono = vec![0i16; HALF_FRAMES];
+    // SAFETY: everything C keeps a pointer to is boxed and outlives the calls; the buffers
+    // hold the samples asked for.
+    unsafe {
+        sid_slots_init(&mut *slots, SAMPLE_RATE, SLOTS_SEED, &mut *pool);
+        fx_live_init(&mut *fx, &mut *slots);
+        let sink_ctx: *mut HostSink = &mut *sink;
+        live_init(
+            &mut *l,
+            Some(host_song_sink),
+            sink_ctx.cast(),
+            SID_MODEL_6581,
+        );
+        let sid_target: *mut live_sid_target = &mut (*sink.target).sid;
+        live_set_preparer(&mut *l, Some(live_sid_prepare), sid_target.cast());
+        let (a, b) = shapes.split_at_mut(1);
+        song_ctl_init(&mut *sc, song.ptr_mut(), &mut a[0], &mut b[0], &mut *work);
+        let lp: *mut live = &mut *l;
+        // the device's hooks bring chip A to the song's setup (the gate reset, above) and hand
+        // it back to keys_route at the stop: no register writes of song control's own
+        let _ = lp;
+        let hooks = song_chip_hooks {
+            chip_a_song: Some(host_ready),
+            chip_a_keys: None,
+            ctx: std::ptr::null_mut(),
+        };
+        song_ctl_set_hooks(&mut *sc, &hooks);
+        live_set_master(&mut *l, POT);
+        // chip B, made with the keys' setup (render_host_chips)
+        let sink_b = |reg: u32, value: u32| live_sid_sink(tb.cast(), reg as u8, value as u8);
+        sink_b(LIVE_REG_CHAR_FIRST, SID_CHIP_6581_R4AR);
+        for f in 1..LIVE_CHAR_FIELDS {
+            sink_b(LIVE_REG_CHAR_FIRST + f, 0);
+        }
+        sink_b(LIVE_REG_RESET, SID_MODEL_6581);
+        sink_b(LIVE_REG_GATE_RESET, 1);
+        sink.reset = false;
+        for (i, half) in out.chunks_mut(2 * HALF_FRAMES).enumerate() {
+            for &(_, cc, value) in p.ccs.iter().filter(|c| c.0 == i) {
+                live_cc(&mut *l, cc, value);
+            }
+            for _ in 0..p.ticks.get(i).copied().unwrap_or(0) {
+                live_tick(&mut *l);
+            }
+            if p.b_rewrite_block == Some(i) {
+                // the keys' registers on chip B (keys_route's move: live_rewrite)
+                let (s0, c0) = (l.sink, l.sink_ctx);
+                l.sink = Some(live_sid_sink);
+                l.sink_ctx = tb.cast();
+                live_rewrite(&mut *l);
+                l.sink = s0;
+                l.sink_ctx = c0;
+            }
+            if p.b_use_block == Some(i) {
+                b_want = true;
+            }
+            if i == p.play_block {
+                // the song's setup reached chip A before the play: AUTHENTIC envelopes
+                sid_set_gate_reset(&mut *chip, 0);
+                assert_eq!(song_ctl_play(&mut *sc, 0, 0), 1);
+                while song_ctl_state(&*sc) == SONG_LOADING {
+                    song_ctl_poll(&mut *sc, SONG_POLL_SLICE | SONG_POLL_RING);
+                }
+            }
+            for (_, prim) in p.edits.iter().filter(|e| e.0 == i) {
+                let mut e = gt2_edit::default();
+                assert_eq!(prim(song.ptr_mut(), &mut e), GT2_OK, "the host's edit");
+                assert_eq!(song_ctl_edit(&mut *sc, &e), 1, "the host's edit went");
+            }
+            if p.stop_block == Some(i) {
+                assert_eq!(song_ctl_stop(&mut *sc), 1);
+            }
+            song_ctl_poll(&mut *sc, SONG_POLL_RING);
+            song_ctl_commit(&mut *sc);
+            // the drain's swap hook: chip A was swapped for a prepared one
+            if std::mem::take(&mut sink.reset) {
+                song_ctl_chip_swapped((&mut *sc as *mut song_ctl).cast(), 0, &mut *chip);
+            }
+            let n = half.len() / 2;
+            song_ctl_block(&mut *sc, &mut *chip);
+            song_ctl_render(&mut *sc, &mut *chip, mono.as_mut_ptr(), n as u32);
+            let tails = b_on && chip_b.env.iter().any(|e| e.counter != 0);
+            let b_in = b_want || tails;
+            if b_in || b_on {
+                sid_render(&mut *chip_b, mono_b.as_mut_ptr(), n as u32);
+                let fade = if b_in == b_on {
+                    CHIP_MIX_FULL
+                } else if b_in {
+                    CHIP_MIX_IN
+                } else {
+                    CHIP_MIX_OUT
+                };
+                chip_mix(mono.as_mut_ptr(), mono_b.as_ptr(), n as u32, fade);
+                b_on = b_in;
+            }
+            song_ctl_block_end(&mut *sc, n as u32);
+            sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+        }
+    }
+    out
+}
+
 /// The largest difference between two interleaved renders, in LSB.
 pub fn max_diff(a: &[i16], b: &[i16]) -> i32 {
     a.iter()
@@ -772,6 +996,8 @@ pub struct Run {
     pub samples: Vec<i16>,
     /// Instructions run by `step_block_load_dec` instead of fm1-core.
     pub emulated_block_loads: u64,
+    /// The result area's first words (0 the magic, 1 the samples, then the image's own).
+    pub words: [u32; 8],
 }
 
 fn bench_u32(soc: &Soc, addr: u32) -> u32 {
@@ -787,6 +1013,11 @@ fn bench_u32(soc: &Soc, addr: u32) -> u32 {
 /// Runs `bench/fm1/<name>.bin` to completion; it must call `bench_mark` `marks` times. The
 /// samples it leaves at the result address come back with the instruction counts.
 pub fn run(build: &Path, name: &str, marks: usize) -> Run {
+    run_with(build, name, marks, |_| {})
+}
+
+/// `run`, with `setup` writing the emulated RAM before the image starts (its inputs).
+pub fn run_with(build: &Path, name: &str, marks: usize, setup: impl FnOnce(&mut Soc)) -> Run {
     use object::{Object, ObjectSymbol};
     let dir = build.join("bench/fm1");
     let elf_path = dir.join(format!("{name}.elf"));
@@ -801,6 +1032,7 @@ pub fn run(build: &Path, name: &str, marks: usize) -> Run {
         .address() as u32;
 
     let mut soc = Soc::new(1 << 20, bin);
+    setup(&mut soc);
     let mut cpu = Cpu::new(fm1_soc::XIP_BASE);
     let mut seen = Vec::new();
     let mut steps: u64 = 0;
@@ -834,10 +1066,12 @@ pub fn run(build: &Path, name: &str, marks: usize) -> Run {
             i16::from_le_bytes([soc.ram.read8(o), soc.ram.read8(o + 1)])
         })
         .collect();
+    let words = std::array::from_fn(|i| bench_u32(&soc, BENCH_RESULT_ADDR + 4 * i as u32));
     Run {
         phases: seen.windows(2).map(|w| w[1] - w[0]).collect(),
         samples,
         emulated_block_loads,
+        words,
     }
 }
 
