@@ -4,6 +4,7 @@
  * and app/. */
 #include "fx/fx.h"
 #include "fx/fx_slots.h"
+#include "player/gt2_play.h"
 #include "sid/sid.h"
 #include "sid/sid_character.h"
 #include "sid/sid_env.h"

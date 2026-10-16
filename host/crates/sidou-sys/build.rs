@@ -7,7 +7,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-const SOURCES: [&str; 50] = [
+const SOURCES: [&str; 51] = [
     "core/sid/sid.c",
     "core/sid/sid_character.c",
     "core/sid/sid_dac.c",
@@ -19,6 +19,7 @@ const SOURCES: [&str; 50] = [
     "core/song/gt2_song.c",
     "core/song/gt2_sng.c",
     "core/song/song_ext.c",
+    "core/player/gt2_play.c",
     "bench/workload.c",
     "app/about.c",
     "app/boot.c",
@@ -146,6 +147,10 @@ fn main() {
     println!(
         "cargo:rerun-if-changed={}",
         root.join("core/song").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        root.join("core/player").display()
     );
     println!(
         "cargo:rerun-if-changed={}",
