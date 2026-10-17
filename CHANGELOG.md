@@ -20,6 +20,9 @@ All notable changes are documented here. The format follows
   into the slot picked), asking **OVERWRITE USER 3?** first over a profile, and **SAVED TO USER 3**
   when the store commits. On a song's chip A it stores the song's setup. CC 85 and NRPN 2/0
   reach the slots above the built-in profiles (range 0..12; an empty slot does nothing).
+- OCT- alone held about a second at power-on enters the chip's ROM boot mode (UBOOT), the
+  first thing the firmware does, so a broken firmware or update path is recovered with
+  `tools/fm1-unbrick-mac` or MvaveFM1Unbricker, without a Flipper.
 
 ### Changed
 - TRACKER ROWS (BAR or SCROLL) persists across power cycles in settings schema 2;
@@ -28,6 +31,11 @@ All notable changes are documented here. The format follows
   uses let chains.
 
 ### Fixed
+- USB-MIDI out, which on v0.2.0-m2-preview almost never reached the host (the update
+  protocol's replies, K1's CCs, K4's program changes): the main loop no longer sleeps in
+  `idle` while a host has the device configured, USB is never polled inside the audio
+  interrupt, and IN packets carry at most 16 bytes. Checked in fm1-emu against a modelled
+  host; to be confirmed on hardware (`docs/hardware-test.md`, section 8.1).
 - `gt2-ref` on CI: a song one byte short is refused with a fortifying C library too, the
   packer's report no longer takes the test threads' output with it, and a refused pack
   no longer leaks the relocator's buffers.

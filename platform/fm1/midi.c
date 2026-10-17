@@ -213,6 +213,11 @@ void midi_service(uint32_t now_ms) {
     usb_retry(now_ms);
 }
 
+int midi_usb_live(void) {
+    /* Each changes in the TIMER5 interrupt: read through volatile, as midi_send reads them. */
+    return *(volatile uint8_t*)&usb.up && *(volatile uint8_t*)&usb.config && !usb.suspended;
+}
+
 #if defined(SIDOU_FLASH_SPIKE)
 void midi_spike_trs(uint32_t* bytes, uint32_t* lost) {
     midi_ring_entry e;

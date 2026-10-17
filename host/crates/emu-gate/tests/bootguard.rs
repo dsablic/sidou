@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The boot-loop guard in the firmware (platform/fm1/main.c, app/bootguard.c): boots that die
-//! early twice in a row end in UBOOT on the third, and a stable boot clears the count.
+//! early twice in a row end in UBOOT on the third, and a stable boot clears the count. And the
+//! power-on gesture into UBOOT (main.c power_on_uboot): OCT- alone, held a second.
 //!
 //! fm1-emu does not model a reset (no P33, so neither the watchdog nor `fm1_reboot` resets
 //! the chip; docs/TODO.md). Each reset is played here by booting a fresh machine that keeps
@@ -116,4 +117,123 @@ fn a_stable_boot_clears_an_earlier_death() {
         b"usb_update_mode",
         "a single death entered UBOOT"
     );
+}
+
+/// Felucca's ids: OCT- and OCT+ (buttons 0 and 1), and a note key.
+const OCT_DOWN: u8 = 0;
+const OCT_UP: u8 = 1;
+const NOTE_C: u8 = 14;
+/// main.c uboot_gesture: 21 scans 50 ms apart.
+const GESTURE_MS: u64 = 1_000;
+
+/// A boot with `keys` held from power-on, let go of at `release` ms (if any), run to `ms`.
+fn boot_holding(fw: &Firmware, keys: &[u8], release: Option<u64>, ms: u64) -> Machine {
+    let mut m = boot_with(fw, None);
+    for &k in keys {
+        m.key(k, true);
+    }
+    if let Some(at) = release {
+        m.run_ms(at);
+        for &k in keys {
+            m.key(k, false);
+        }
+    }
+    let now = m.ms();
+    m.run_ms(ms - now);
+    m
+}
+
+#[test]
+fn oct_down_alone_held_a_second_at_power_on_enters_uboot() {
+    let Some(fw) = fixture("the power-on UBOOT test") else {
+        return;
+    };
+    // Not before the second is up.
+    let mut early = boot_holding(&fw, &[OCT_DOWN], None, GESTURE_MS - 50);
+    assert_ne!(
+        &mailbox(&mut early)[..15],
+        b"usb_update_mode",
+        "UBOOT before OCT- was held a second"
+    );
+    let mut m = boot_holding(&fw, &[OCT_DOWN], None, GESTURE_MS + 200);
+    let mb = mailbox(&mut m);
+    let pc = m.cpu.pc;
+    let at = fw.function_at(pc);
+    // PA2 (port A's OUT bit 2) high: the backlight dark, the gesture's confirmation.
+    let pa_out = m.soc.read32(0x5_0000);
+    println!(
+        "mailbox {:?}, the core at {pc:#x} ({at}), PA2 {}, {} audio frames",
+        String::from_utf8_lossy(&mb),
+        (pa_out >> 2) & 1,
+        m.soc.periph.audio.len() / 2
+    );
+    assert_eq!(&mb[..15], b"usb_update_mode", "no UBOOT request");
+    // fm1_enter_uboot's last step asks P33 for the chip reset (which fm1-emu does not model):
+    // the core waits for it in that loop, with interrupts off, and never got to anything else.
+    assert!(
+        at.starts_with("fm1_enter_uboot"),
+        "the core is not waiting for the reset: {at}"
+    );
+    m.run_ms(50);
+    assert_eq!(m.cpu.pc, pc, "the core left the reset's wait");
+    assert_eq!((pa_out >> 2) & 1, 1, "the backlight is not dark");
+    assert!(
+        m.soc.periph.audio.is_empty(),
+        "the boot went on to the audio"
+    );
+    assert_eq!(guard(&mut m, &fw)[0], 0, "the boot guard ran first");
+}
+
+#[test]
+fn oct_down_let_go_within_the_second_boots_on() {
+    let Some(fw) = fixture("the power-on UBOOT test") else {
+        return;
+    };
+    for release in [5, 300, GESTURE_MS - 100] {
+        let mut m = boot_holding(&fw, &[OCT_DOWN], Some(release), 2_500);
+        assert_ne!(
+            &mailbox(&mut m)[..15],
+            b"usb_update_mode",
+            "UBOOT although OCT- was let go at {release} ms"
+        );
+        assert!(
+            !m.soc.periph.audio.is_empty(),
+            "no audio after OCT- let go at {release} ms"
+        );
+    }
+}
+
+#[test]
+fn oct_down_with_another_key_or_none_does_nothing() {
+    let Some(fw) = fixture("the power-on UBOOT test") else {
+        return;
+    };
+    for keys in [&[OCT_DOWN, OCT_UP][..], &[OCT_DOWN, NOTE_C], &[OCT_UP], &[]] {
+        let mut m = boot_holding(&fw, keys, None, 2_000);
+        assert_ne!(
+            &mailbox(&mut m)[..15],
+            b"usb_update_mode",
+            "UBOOT with {keys:?} held"
+        );
+        assert!(
+            !m.soc.periph.audio.is_empty(),
+            "no audio with {keys:?} held"
+        );
+    }
+}
+
+#[test]
+fn a_second_key_pressed_during_the_hold_cancels_it() {
+    let Some(fw) = fixture("the power-on UBOOT test") else {
+        return;
+    };
+    let mut m = boot_with(&fw, None);
+    m.key(OCT_DOWN, true);
+    m.run_ms(500);
+    m.key(OCT_UP, true);
+    m.run_ms(100);
+    m.key(OCT_UP, false);
+    m.run_ms(1_500);
+    assert_ne!(&mailbox(&mut m)[..15], b"usb_update_mode");
+    assert!(!m.soc.periph.audio.is_empty());
 }

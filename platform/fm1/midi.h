@@ -34,6 +34,9 @@ int midi_drain(void);
 void midi_send(void);
 /* Main loop: a USB retry while no host answers (once a second). */
 void midi_service(uint32_t now_ms);
+/* 1 while a host has the device configured and is awake (its frame number moves): the main
+ * loop then never sleeps in `idle` (main.c wait_for_interrupt). */
+int midi_usb_live(void);
 /* The MIDI messages taken so far other than real-time ones (midi_rx.inputs): a count, for the
  * store's quiet detector (platform/fm1/store_fm1.c), which a DAW's steady clock and sensing do
  * not disturb. */

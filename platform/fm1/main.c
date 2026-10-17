@@ -73,7 +73,14 @@ static keys_route keys_router;
 static ui_sound ui_sounds;
 static panel front;
 
+/* The audio interrupt renders: a TIMER5 tick nested in it leaves USB's poll for later
+ * (fm1_timer5_irq). */
+static volatile uint8_t in_audio;
+/* TIMER5 interrupts so far: the main loop's wait for the next one while a host is there. */
+static volatile uint32_t timer_irqs;
+
 void fm1_alnk0_irq(void) {
+    in_audio = 1;
     uint8_t p = fm1_audio_pending();
     fm1_audio_ack_aux(p);
     if (p & FM1_AUDIO_HALF) {
@@ -81,21 +88,31 @@ void fm1_alnk0_irq(void) {
         fm1_audio_ack_half();
     }
     audio_block_end = fm1_ticks(); /* a write window may start now (store_fm1.c) */
+    in_audio = 0;
 }
 
 /* Every 5th tick (2 kHz) each, on different ticks, as Felucca does: USB on tick 0, the TRS
- * UART on tick 2. Nested in the audio ISR too: neither touches what the render does. */
+ * UART on tick 2. The UART's poll runs nested in the audio ISR too (it touches nothing the
+ * render does). USB's never does, as in Felucca's fm1_timer5_irq: a poll due while a block
+ * renders is owed, and runs at the first tick after the render (within a render's length,
+ * about 0.2 ms idle and at most a block's 2.9 ms). */
 #define MIDI_POLL_TICKS 5u
 
 void fm1_timer5_irq(void) {
     static uint32_t last, acc, sub;
+    static uint8_t usb_owed;
     uint32_t now = fm1_ticks();
     fm1_timer5_ack();
+    timer_irqs++;
     input_tick_isr();
     if (sub == 0u) {
-        midi_usb_isr();
+        usb_owed = 1;
     } else if (sub == 2u) {
         midi_uart_isr();
+    }
+    if (usb_owed && !in_audio) {
+        usb_owed = 0;
+        midi_usb_isr();
     }
     if (++sub == MIDI_POLL_TICKS) {
         sub = 0;
@@ -575,6 +592,24 @@ static void upgrade(void) {
     fm1_reboot();
 }
 
+/* The end of a main-loop pass: until the next interrupt. With no USB host, or one asleep or
+ * gone, the core sleeps in `idle` (it saves power, and fm1-emu skips ahead). While a host has
+ * the device configured, it spins until the next TIMER5 tick instead, as Felucca's main loop,
+ * ChoralRoot's and the update loader's never idle: on the device, a host saw no IN packet
+ * from SIDOU's `idle` build (docs/hardware-test.md, section 8), while the controller's DMA
+ * reads each IN packet from RAM when the host's token comes, likely while the core sleeps.
+ * The spin wakes the loop at the tick as `idle` does, so a pass's work is the same either way;
+ * fm1-emu, which has no host, always takes the `idle`. */
+static void wait_for_interrupt(void) {
+    if (midi_usb_live()) {
+        uint32_t t = timer_irqs;
+        while (timer_irqs == t) {
+        }
+        return;
+    }
+    __asm__ volatile("idle");
+}
+
 #if defined(SIDOU_FLASH_SPIKE)
 /* The flash spike's build only (flash_spike.h): what its waits run, the main loop's services
  * but play and the screen, so the normal installer reaches it at any time but mid-measurement. */
@@ -673,15 +708,53 @@ static void sidou_main(void) {
         if (update_poll()) {
             upgrade();
         }
-        /* Sleep until the next interrupt: saves power, and fm1-emu skips ahead. */
-        __asm__ volatile("idle");
+        wait_for_interrupt();
     }
 }
+
+#if !defined(SIDOU_TEST_DEATH_MS)
+/* The power-on UBOOT gesture, SIDOU's own way back that needs nothing of it but this: OCT-
+ * alone held while powering on, and still alone a second later, enters the mask ROM's USB
+ * boot (UBOOT), where MvaveFM1Unbricker or jl-uboot-tool install whatever the update path no
+ * longer can (docs/reference/controls.md, "At power-on"). It runs first of all, before
+ * memory, the boot guard, interrupts, the LCD, audio, the store, settings and USB. Before it
+ * only crt0 (the stack), fm1_time_init (TIMER4's three registers) and fm1_wdt_arm (P33
+ * writes, the same as the boot guard's path relies on), none of which waits on anything that
+ * can fail; it reads the matrix with input_raw_keys, GPIO only, no variable. UBOOT_SAMPLES
+ * whole-matrix scans UBOOT_GAP_MS apart (~1 s) must each see OCT- and nothing else: any other
+ * button or note key, or OCT- open in any one of them, and the boot goes on as usual. The
+ * first scan costs a normal boot about 0.3 ms. The confirmation: the backlight goes dark
+ * (PA2 high), then the ROM's black screen. The checklist's dying builds leave it out: there
+ * OCT- held at power-on is theirs (docs/hardware-test.md, section 10). */
+#define UBOOT_SAMPLES 21u
+#define UBOOT_GAP_MS 50u
+#define UBOOT_KEY (1u << PANEL_BTN_OCT_DOWN)
+
+static void uboot_gesture(void) {
+    for (uint32_t i = 0;; i++) {
+        if (input_raw_keys() != UBOOT_KEY) {
+            return;
+        }
+        if (i + 1u == UBOOT_SAMPLES) {
+            break;
+        }
+        fm1_wdt_feed();
+        fm1_delay_ms(UBOOT_GAP_MS);
+    }
+    input_raw_dark();
+    /* The watchdog would reset the chip out of UBOOT while a host installs. */
+    fm1_wdt_stop();
+    fm1_enter_uboot();
+}
+#endif
 
 void fm1_cstart(void) {
     uint32_t *d, *s;
     fm1_time_init();
     fm1_wdt_arm(WDT_TIMEOUT);
+#if !defined(SIDOU_TEST_DEATH_MS)
+    uboot_gesture();
+#endif
     /* First, before anything that may crash: the third boot in a row that dies before it is
      * stable goes to UBOOT, which still accepts updates (not the 7D soft key: a direct entry). */
     if (bootguard_boot(&boot_guard)) {

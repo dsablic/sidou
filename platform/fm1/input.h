@@ -10,6 +10,17 @@
 #include "live.h"
 #include "panel.h"
 
+/* fm1_cstart's power-on UBOOT gesture (main.c), first thing at boot: before memory is set
+ * up, so it touches no variable, only GPIO (the matrix's rows, the 74HC595's three lines,
+ * PA2, the LED lines) and TIMER4 (fm1_time_init has run). One whole matrix scan with the LED
+ * lines dark: the keys closed now, undebounced, as INPUT_RAW_* below. PA2 (the 595's /OE and
+ * the backlight, active low) is driven low for the scan's ~0.3 ms, then put back as it was.
+ * Interrupts off. */
+#define INPUT_RAW_NOTES (1u << 31) /* any note key closed */
+uint32_t input_raw_keys(void);
+/* After the gesture: PA2 high, so the backlight goes dark (and the 595's outputs off), the
+ * gesture's confirmation before the reset into UBOOT. */
+void input_raw_dark(void);
 /* Matrix pins and the ADC, with interrupts off (the scan shares port A with PA2). */
 void input_init(void);
 /* From the 10 kHz TIMER5 interrupt: one matrix column. */

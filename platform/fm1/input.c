@@ -18,6 +18,63 @@ void input_init(void) {
     (void)fm1_adc_read(FM1_ADC_MASTER); /* the first conversion after power-on is off */
 }
 
+/* The matrix's pins as fm1_input_init sets them, without its scan state (fm1_in, in .bss,
+ * which is not set up yet when input_raw_keys runs). */
+static void raw_pins(void) {
+    static const uint8_t LEDP[4][2] = {{FM1_PH, 6}, {FM1_PH, 9}, {FM1_PA, 9}, {FM1_PA, 10}};
+    const uint32_t rows_a = (1u << 0) | (1u << 5) | (1u << 6) | (1u << 7) | (1u << 8);
+    const uint32_t sr = (1u << 1) | (1u << 3) | (1u << 4), row_b = 1u << 7;
+    for (uint32_t i = 0; i < 4u; i++) {
+        uint32_t p = LEDP[i][0], m = 1u << LEDP[i][1];
+        FM1_PR(p, FM1_DIE) |= m;
+        FM1_PR(p, FM1_OUT) &= ~m;
+        FM1_PR(p, FM1_DIR) &= ~m;
+    }
+    FM1_PR(FM1_PA, FM1_DIE) |= rows_a;
+    FM1_PR(FM1_PA, FM1_DIR) |= rows_a;
+    FM1_PR(FM1_PA, FM1_PD) &= ~rows_a;
+    FM1_PR(FM1_PA, FM1_PU) |= rows_a;
+    FM1_PR(FM1_PB, FM1_DIE) |= row_b;
+    FM1_PR(FM1_PB, FM1_DIR) |= row_b;
+    FM1_PR(FM1_PB, FM1_PD) &= ~row_b;
+    FM1_PR(FM1_PB, FM1_PU) |= row_b;
+    FM1_PR(FM1_PA, FM1_DIE) |= sr;
+    FM1_PR(FM1_PA, FM1_PU) &= ~sr;
+    FM1_PR(FM1_PA, FM1_PD) &= ~sr;
+    FM1_PR(FM1_PA, FM1_OUT) &= ~sr;
+    FM1_PR(FM1_PA, FM1_DIR) &= ~sr;
+}
+
+#define RAW_OE (1u << 2) /* PA2: the 595's /OE, the backlight (active low) */
+
+uint32_t input_raw_keys(void) {
+    raw_pins();
+    uint32_t out = FM1_PR(FM1_PA, FM1_OUT) & RAW_OE, dir = FM1_PR(FM1_PA, FM1_DIR) & RAW_OE;
+    FM1_PR(FM1_PA, FM1_OUT) &= ~RAW_OE;
+    FM1_PR(FM1_PA, FM1_DIR) &= ~RAW_OE;
+    uint32_t keys = 0;
+    for (uint32_t p = 0; p < FM1_NCOL; p++) { /* fm1_input_scan's column order and select */
+        fm1__sr_word(0xFFFFu ^ (1u << p) ^ (p < 2u ? 1u << (11u + p) : 0u));
+        fm1_delay_us(FM1_SETTLE_US);
+        uint32_t raw = fm1__rows();
+        for (uint32_t r = 1; r < 5u; r++) {
+            int32_t id = FM1_KEYMAP[r][p];
+            if (id >= 0 && ((raw >> r) & 1u)) {
+                keys |= id < 14 ? 1u << id : INPUT_RAW_NOTES;
+            }
+        }
+    }
+    fm1__sr_word(0xFFFFu); /* no column, as fm1_input_init leaves it */
+    FM1_PR(FM1_PA, FM1_OUT) = (FM1_PR(FM1_PA, FM1_OUT) & ~RAW_OE) | out;
+    FM1_PR(FM1_PA, FM1_DIR) = (FM1_PR(FM1_PA, FM1_DIR) & ~RAW_OE) | dir;
+    return keys;
+}
+
+void input_raw_dark(void) {
+    FM1_PR(FM1_PA, FM1_OUT) |= RAW_OE;
+    FM1_PR(FM1_PA, FM1_DIR) &= ~RAW_OE;
+}
+
 void input_tick_isr(void) {
     fm1_input_tick();
 }

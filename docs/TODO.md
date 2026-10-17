@@ -202,8 +202,15 @@ Follow-ups that aren't tied to a milestone task yet.
   step 1 (`ota.c`) is host-tested against packages from `sidou-pack`
   (`crates/sidou-pack/tests/ota_step1.rs`), and an install is a hardware
   check ([hardware-test.md](hardware-test.md)).
+- **Since the USB fix:** `host/crates/emu-gate/tests/usb.rs` plays a host
+  against a model of the controller in the test crate
+  (`tests/common/usb_host.rs`, over fm1-emu's plain register storage):
+  enumeration, the update protocol's handshake and first read request, and
+  K1's and K4's MIDI out. The emulator's other tests still run without a
+  host. The model is the firmware's side only: the chip's DMA and timing
+  are not in it.
 - **Action:** test USB MIDI on hardware ([hardware-test.md](hardware-test.md),
-  section 8), and
+  section 8 and 8.1), and
   measure `usb_poll` there: three SIE round trips per poll at 2 kHz with
   no traffic. Ask upstream whether a USB device model is planned.
 

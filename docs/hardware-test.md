@@ -43,7 +43,22 @@ this checklist records.
 - [ ] I have Felucca's installer (`tools/fm1_install.py` from
   <https://github.com/hugelton/Felucca>, needs `mido` and
   `python-rtmidi`), and `fm1_install.py --info` finds the unit.
-- [ ] I can put the unit into ROM boot mode (`WL82 UBOOT1.00`, USB
+- [ ] **The first recovery route, from the USB fix on: OCT- at power-on.**
+  With the unit off, hold **OCT- alone**, switch on, and keep holding for
+  about a second: the screen stays black (the backlight goes off), and the
+  unit appears on USB as the chip's ROM boot mode, `WL82 UBOOT1.00` (USB
+  4C4A:8057). There `tools/fm1-unbrick-mac` (from a Mac) or
+  MvaveFM1Unbricker (Linux, Windows) restores a package
+  (`tools/fm1-unbrick-mac/README.md`). It is the first thing SIDOU runs at
+  power-on, before anything that could hang or crash
+  ([controls](reference/controls.md#at-power-on)), so it works whatever
+  state the rest of the firmware or its update path is in. It needs a
+  SIDOU build that has it (not v0.2.0-m2-preview), and it is checked on the
+  unit right after the first install (section 1). Switching off and on
+  without the key leaves the ROM boot mode with nothing written. The
+  checklist's dying builds (section 10) leave it out.
+- [ ] The fallback, for a unit without a SIDOU build that has the gesture: I
+  can put the unit into ROM boot mode (`WL82 UBOOT1.00`, USB
   4C4A:8057) without the firmware's help: a Flipper Zero with
   [flipper-fm1-recovery](https://github.com/merthsoft/flipper-fm1-recovery), or the FM-1
   Transporter. From there MvaveFM1Unbricker writes a package from Linux or Windows, or from a
@@ -69,6 +84,19 @@ install the unit appears as Felucca's loader.
 - [ ] Step 2 (the loader writes the app area) completes; the unit restarts.
 - [ ] `fm1_install.py --info` reports `FM-1_900`. (Felucca's development
   builds answer the same; distinct digits come later.)
+- [ ] **Right after the first install of a build with the power-on UBOOT
+  gesture, before anything else:** switch off, hold OCT- alone, switch on and
+  keep holding. Within about a second the screen is black, and the computer
+  shows `WL82 UBOOT1.00` (USB 4C4A:8057; on a Mac, System Information > USB).
+  Record what you see:
+  - [ ] `tools/fm1-unbrick-mac` (or MvaveFM1Unbricker) finds the unit there.
+    Restore `sidou.fwsc` with it, or just switch off and on.
+  - [ ] It stays in the ROM boot mode for five minutes (no watchdog reset).
+  - [ ] Switched off and on without the key, SIDOU starts as before.
+  - [ ] OCT- tapped briefly at power-on, OCT- held with OCT+, and OCT- held
+    with a note key each boot SIDOU as usual.
+  If the gesture fails, stop here: recover with the fallback in section 0
+  and report it.
 - [ ] Optional, only if you know what it writes: the aroum/fm1-custom-fw
   flasher with the same `.fwsc`. Record whether it writes the flash head
   (0..0x4000); SIDOU's own path never does.
@@ -509,6 +537,33 @@ Notes:
 
 Notes:
 
+### 8.1 Before any release: USB-MIDI out (must pass)
+
+v0.2.0-m2-preview received USB-MIDI (notes, the upgrade request) but almost
+nothing it sent reached the host. The USB fix (no `idle` while a host has the
+device configured, no USB poll nested in the audio interrupt, IN packets of
+16 bytes) is checked in fm1-emu against a modelled host
+(`host/crates/emu-gate/tests/usb.rs`), which cannot show the chip's own
+behaviour. **No release goes out unless every item here passes on a real
+FM-1 with that release's package**, each from a cold boot and again after a
+USB replug:
+
+- [ ] `fm1_install.py --info` answers with SIDOU's identity (`FM-1_900`
+  for development builds). Record its output:
+- [ ] A reinstall over SIDOU (`fm1_install.py sidou.fwsc`, SIDOU to SIDOU)
+  completes: the read requests reach the host, the loader writes, and the
+  unit boots the new package (`--info` again).
+- [ ] In a MIDI monitor on the SIDOU input, K1 sends CC 74 on channel 1
+  while it turns, and K4 a program change per detent. Record what the
+  monitor shows:
+- [ ] The same after deleting the device from the OS's MIDI setup (macOS:
+  Audio MIDI Setup) and replugging.
+
+If an item fails, record it, and get back to a working firmware with the
+power-on gesture (section 0) rather than the installer.
+
+Notes:
+
 ## 9. Reinstall, back to stock V15, and SIDOU again
 
 - [ ] From SIDOU, install `sidou.fwsc` again (SIDOU to SIDOU): it installs,
@@ -533,9 +588,10 @@ before the boot counts as stable (10 s). Build it as BUILDING.md says, with
 after about 8 s) or `-DSIDOU_TEST_DEATH=reboot` (a P33 reset, as the fault
 handler does), and package it as usual. It dies **only when OCT- (button 0)
 is held at power-on**, and only on that boot: started without the key it is
-the normal SIDOU, so the normal installer always reaches it. Never give
-these builds to anyone else, and install the normal package again when you
-are done.
+the normal SIDOU, so the normal installer always reaches it. These builds
+leave out the power-on UBOOT gesture (section 0), whose key is the same: their
+OCT- at power-on dies instead. Never give these builds to anyone else, and
+install the normal package again when you are done.
 
 - [ ] Without OCT-: the checklist build boots and plays as normal, and stays
   up past 10 s.
@@ -551,6 +607,9 @@ are done.
 - [ ] Reboot build: the same, with the guard surviving a P33 reset.
 - [ ] One death, then a normal boot (OCT- released) that runs past 10 s,
   then one more death: no UBOOT (the stable boot cleared the count).
+- [ ] Normal build: hold OCT- alone while powering on, about a second: the
+  ROM boot mode, as the guard's (section 1 has the full check). Record
+  whether the guard's UBOOT and this one look the same on USB:
 - [ ] Normal build: power-cycle quickly (off for under a second) three times
   within ten seconds of each boot. Record whether it ends in UBOOT (it
   should not, if RAM does not survive a power cut, but a brownout may keep

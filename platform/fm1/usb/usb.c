@@ -19,6 +19,7 @@
  * - usb_retry does the 25 ms reset without blocking the main loop, and an attach gives up
  *   at the third SIE timeout instead of timing out every write;
  * - usb_detach masks interrupts in the app;
+ * - ep1_tx sends at most 16 bytes (4 events) an IN packet;
  * - the app's strings name SIDOU.
  * The update loader is not built from this copy: it builds, unmodified, from Felucca's own
  * src/usb.c (platform/fm1/src/), so its FELUCCA_LOADER code here is unused.
@@ -481,6 +482,11 @@ static void ota_frame_done(void)
 }
 #endif
 
+/* (SIDOU: an EP1 IN packet carries at most 4 event packets, 16 bytes, where Felucca fills up to
+ * 64: a defensive cap while IN packets are not seen on the device, docs/hardware-test.md
+ * section 8. A longer reply goes as several packets, one a poll.) */
+#define EP1_IN_MAX 16u
+
 static void ep1_tx(void)
 {
     uint32_t csr, n = 0;
@@ -498,7 +504,7 @@ static void ep1_tx(void)
     if (csr & 0x80u)
         sie_wr(S_TXCSR1, csr & ~0x80u);
 #if FELUCCA_OTA
-    while (so_r != so_w && n < 64u) {                   /* SysEx first, never split by notes */
+    while (so_r != so_w && n < EP1_IN_MAX) {            /* SysEx first, never split by notes */
         uint32_t pkt = sx_out_q[so_r % SXQ];
         ep1tx[n] = (uint8_t)pkt;
         ep1tx[n + 1] = (uint8_t)(pkt >> 8);
@@ -507,9 +513,9 @@ static void ep1_tx(void)
         n += 4u;
         so_r++;
     }
-    while (!sx_busy && so_r == so_w && mo_r != mo_w && n < 64u) {
+    while (!sx_busy && so_r == so_w && mo_r != mo_w && n < EP1_IN_MAX) {
 #else
-    while (mo_r != mo_w && n < 64u) {
+    while (mo_r != mo_w && n < EP1_IN_MAX) {
 #endif
         uint32_t pkt;
         RING_PUBLISH();                                 /* the producer (SIDOU: the main loop) may be mid-push: */

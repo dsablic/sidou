@@ -6,6 +6,8 @@
 
 use std::path::{Path, PathBuf};
 
+pub mod usb_host;
+
 use fm1_core::{Bus, Cpu};
 use fm1_soc::Soc;
 use sidou_tests::signal_metrics::estimate_f0;
@@ -207,6 +209,8 @@ pub struct Machine {
     /// Bytes read into each buffer snapshot as well (e.g. the voices' gates).
     pub snapshot_bytes: Vec<u32>,
     alnk_entry: u64,
+    /// A USB host on the cable (common::usb_host), None: no host, as fm1-emu has none.
+    pub usb: Option<usb_host::UsbHost>,
 }
 
 /// The TRS backlog `Machine::midi_paced` keeps: under a third of fm1-emu's limit, about 0.3 s
@@ -378,6 +382,7 @@ impl Machine {
             snapshot: None,
             snapshot_bytes: Vec::new(),
             alnk_entry: 0,
+            usb: None,
         }
     }
 
@@ -501,6 +506,9 @@ impl Machine {
             if step(cpu, soc) {
                 self.emulated_block_loads += 1;
             }
+            if let Some(usb) = &mut self.usb {
+                usb.after_step(soc, self.alnk_open.is_some());
+            }
             self.steps += 1;
             if let Some((depth, start)) = self.alnk_open {
                 if self.cpu.irq_levels.len() <= depth {
@@ -523,6 +531,17 @@ impl Machine {
                     }
                 }
             }
+        }
+    }
+
+    /// Runs `ms` milliseconds a 1 ms USB frame at a time (common::usb_host): SOF, and the
+    /// IN packets the device readied go to the host.
+    pub fn usb_frames(&mut self, ms: u64) {
+        for _ in 0..ms {
+            if let Some(usb) = &mut self.usb {
+                usb.frame(&mut self.soc);
+            }
+            self.run_ms(1);
         }
     }
 

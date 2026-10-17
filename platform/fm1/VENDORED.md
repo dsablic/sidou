@@ -47,13 +47,17 @@ Not vendored: `fm1_cpu1.{h,S}` (we don't use the second core) and
   - `input.c`: `fm1_input.h` (with `fm1_time.h`, `fm1_gpio.h` and
     `fm1_led_anim.h`) and `fm1_adc.h`. The scan state `fm1_in` is static
     there, so the TIMER5 interrupt in `main.c` reaches `fm1_input_tick`
-    through `input_tick_isr`;
+    through `input_tick_isr`. `input_raw_keys`, for `main.c`'s power-on
+    UBOOT gesture before memory is set up, repeats `fm1_input_init`'s pin
+    setup and uses `fm1__sr_word`, `fm1__rows` and `FM1_KEYMAP` without the
+    scan state;
   - `lcd.c`: `fm1_lcd_hw.h` and `fm1_time.h`;
   - `midi.c`: `fm1_sys.h`, `fm1_time.h` and `fm1_flash.h` (the update
     protocol's flash access), and `fm1_usb.h` and `fm1_uart.h` through the
     vendored `usb/usb.c` and `usb/midi_uart.c`, which it includes with
     `src/ota.c` and its flash hooks `ota_flash.h` (see below). The TIMER5 interrupt in `main.c` calls their
-    polls through `midi_usb_isr` and `midi_uart_isr`. `fm1_flash.h`'s
+    polls through `midi_usb_isr` and `midi_uart_isr`; as in Felucca, never
+    the USB poll nested in the audio interrupt (it waits for the render's end). `fm1_flash.h`'s
     `RAMFN` code lands in `.ram_text` (`app.ld` keeps it), and is called
     through `FL_FAR` pointers: flash and SRAM code are out of each other's
     branch reach ([docs/hardware.md](../../docs/hardware.md));
@@ -171,8 +175,13 @@ carry the changes over onto SIDOU's versions.
 - **MIDI out:** `midi_out_event` is called from the main loop
   (`midi.c` `midi_send`, which checks the room first and drops nothing
   itself), not from the audio interrupt, and is no longer marked unused;
-  its and `ep1_tx`'s comments say so. The ring, `ep1_tx` and the bus
-  reset's flush are unchanged.
+  its and `ep1_tx`'s comments say so. The ring and the bus reset's flush
+  are unchanged.
+- **IN packets of 16 bytes:** `ep1_tx` puts at most 4 event packets
+  (`EP1_IN_MAX`, 16 bytes) into an EP1 IN packet, SysEx and MIDI alike,
+  where Felucca fills up to 64. Defensive, after a device that sent no IN
+  packet ([docs/hardware-test.md](../../docs/hardware-test.md), section 8):
+  a longer reply goes as several packets, one a poll.
   Only a bus reset flushes the ring: a `SET_CONFIGURATION(0)` without one
   stops `ep1_tx` but leaves what is queued (up to 64 packets) to go out
   when the host configures the device again.

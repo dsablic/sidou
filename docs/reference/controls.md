@@ -19,6 +19,18 @@ sequence; letting HOME go does not skip it, and anything after that does. Withou
 a HOME press skips it like any button. Allow the settings save to finish before powering
 off; a foreign store cannot remember the version ([Settings and STORE](#settings-and-store)).
 
+**OCT- alone held while powering on**, for about a second, enters the chip's ROM boot mode
+(UBOOT, `WL82 UBOOT1.00` on USB): the recovery route that needs nothing of SIDOU but its first
+instructions. The screen stays black (the backlight goes off), and `tools/fm1-unbrick-mac` or
+MvaveFM1Unbricker can then restore a package ([hardware-test.md](../hardware-test.md), section 0).
+It is the first thing the firmware does at power-on, before memory, the boot guard, the
+screen, sound, USB and the stored settings, so nothing they do can stop it. The keys are read
+21 times over the second, and every reading must show OCT- and no other button or note key;
+let go, or press anything else, and the boot goes on as usual (a normal boot spends 0.3 ms on
+the first reading). Switching off and on leaves the ROM boot mode with nothing written. The
+checklist's dying builds (`SIDOU_TEST_DEATH`) leave it out: there OCT- at power-on is theirs
+([hardware-test.md](../hardware-test.md), section 10).
+
 ## Routing
 
 Each button press and encoder turn goes, in this order (`app/views.h`):
