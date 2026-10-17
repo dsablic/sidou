@@ -96,9 +96,10 @@ static const midi_map_entry rows[MIDI_MAP_ROWS] = {
 
     ROW("Character", "Profile",
         "0 6581 R2, 1 6581 R3, 2 6581 R4AR (reSIDfp's default), 3 8580 R5, 4 worn 6581 "
-        "(artistic); sets the chip model too (a chip reset)",
-        LIVE_PARAM_PROFILE, 85, NRPN(NRPN_CHARACTER, 0), SID_CHIPS - 1, SID_CHIP_6581_R4AR,
-        STEPS),
+        "(artistic), 5..12 USER 1..8 (an empty slot does nothing: it is skipped); sets the "
+        "chip model too (a chip reset)",
+        LIVE_PARAM_PROFILE, 85, NRPN(NRPN_CHARACTER, 0), SID_CHIPS - 1 + LIVE_USER_PROFILES,
+        SID_CHIP_6581_R4AR, STEPS),
     ROW("Character", "Age/heat",
         "0 the profile .. 127: the filter's cutoff drifts darker, the 6581's non-linearity "
         "doubles", LIVE_PARAM_AGE, 86, NRPN(NRPN_CHARACTER, 1), SID_CHARACTER_MAX, 0, LINEAR),

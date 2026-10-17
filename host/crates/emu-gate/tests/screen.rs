@@ -2427,7 +2427,7 @@ fn chip_resets_at_full_character_stay_within_the_poll_allowance() {
             &|m| m.turn(ALGORITHM, steps),
         );
     }
-    // CC 85 (0..4 over 0..127): onto each profile, ending on WORN.
+    // CC 85 (0..12 over 0..127, the profiles then USER 1..8): onto each profile, ending on WORN.
     for want in [
         r3,
         SID_CHIP_6581_R4AR,
@@ -2435,7 +2435,7 @@ fn chip_resets_at_full_character_stay_within_the_poll_allowance() {
         SID_CHIP_6581_R2,
         SID_CHIP_6581_WORN,
     ] {
-        let v = (want * 127).div_ceil(4) as u8;
+        let v = (want * 128).div_ceil(13) as u8;
         run(&mut m, format!("CC 85 {v} to profile {want}"), want, &|m| {
             m.midi(&[0xB0, 85, v])
         });
@@ -2482,12 +2482,12 @@ fn a_dac_sweep_during_a_profile_step_holds_every_pass_within_the_allowance() {
     let mut worst = 0;
     let mut dac = 0u8;
     for (phase, profile) in [
-        (0u64, 127u8),
-        (3, 64),
-        (7, 127),
-        (11, 64),
-        (13, 127),
-        (17, 64),
+        (0u64, 43u8), // WORN
+        (3, 20),      // R4AR
+        (7, 43),
+        (11, 20),
+        (13, 43),
+        (17, 20),
     ] {
         let from = m.passes.len();
         m.run_ms(phase);

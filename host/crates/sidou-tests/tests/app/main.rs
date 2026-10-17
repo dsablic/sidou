@@ -47,6 +47,7 @@ mod title_card;
 mod title_card_bitmap;
 mod tracker_view;
 mod ui_sound;
+mod user_profile;
 mod views;
 mod widget;
 

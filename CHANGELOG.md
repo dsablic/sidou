@@ -8,6 +8,19 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Eight USER chip profiles (M2a Task 6). Each is a built-in base profile and the character's
+  four controls, kept on the store under its own key (`0x101`..`0x108`, 7 bytes, apart from
+  the settings record: [`docs/reference/profile-format.md`](docs/reference/profile-format.md)).
+  On the CHIP view, ALGORITHM on the chip runs the five built-in profiles, then the filled
+  USER slots (an empty one is skipped: **USER 4 EMPTY**); picking one is an ordinary profile
+  change (the spare chip prepared, then swapped). **EDIT held + ALGORITHM** steps a save
+  target, USER 1..8 or OFF, shown yellow in the CHIP frame (**SAVE TO USER 3**) without changing
+  the chip; **SAVE** on the chip focus stores the tab's profile and controls into it (or back
+  into the slot picked), asking **OVERWRITE USER 3?** first over a profile, and **SAVED TO USER 3**
+  when the store commits. On a song's chip A it stores the song's setup. CC 85 and NRPN 2/0
+  reach the slots above the built-in profiles (range 0..12; an empty slot does nothing).
+
 ### Changed
 - TRACKER ROWS (BAR or SCROLL) persists across power cycles in settings schema 2;
   schema-1 settings still load with BAR.

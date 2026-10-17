@@ -351,6 +351,16 @@ erases it; a cut then can leave a sector that is neither blank nor SIDOU's
 never held anything. As for any foreign region, nothing is written until the
 user confirms a format; M2a Task 5's format screen must expect it.
 
+## What the firmware keeps in it
+
+| Key | Type | Value |
+|---|---|---|
+| `0x100` | 1 | the [settings record](settings-format.md) |
+| `0x101`..`0x108` | 2 | the eight [USER chip profiles](profile-format.md) |
+| `0x80000000 \| slot` | `0x82` | a file (a song, M2c) |
+
+Keys below `0x100` belong to the emulator tests (`platform/fm1/store_fm1.c`'s hook).
+
 ## The test fixture
 
 `host/crates/sidou-tests/tests/data/store-v1.bin` is a format 1 region,

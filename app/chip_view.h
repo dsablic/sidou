@@ -54,6 +54,7 @@
 #include "keys_route.h"
 #include "live.h"
 #include "screen.h"
+#include "user_profile.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -82,9 +83,12 @@ extern "C" {
 /* A control's name on the page, terminator included ("DEPTH"). */
 #define CHIP_VIEW_LABEL 6u
 /* What the page shows, as bytes (chip_view.c look): the tab's profile and model (asked for),
- * its four character controls, every slot field, the selected slot, the focus, the tab, the
- * tabs' focus, the keys' chip and what the tab's note says. */
+ * its four character controls, every slot field, the selected slot, the focus, the tab and the
+ * tabs' focus in one byte, the keys' chip, what the tab's note says, then the applied USER slot
+ * with the save target, and whether the target holds a profile. */
 #define CHIP_VIEW_LOOK (2u + (LIVE_CHAR_FIELDS - 1u) + LIVE_SLOTS * LIVE_SLOT_FIELDS + 6u)
+/* A toast's text, terminator included ("OVERWRITE USER 3?"). */
+#define CHIP_VIEW_MSG 24u
 
 typedef struct {
     uint8_t ch[GRID_ROWS][GRID_COLS];
@@ -103,6 +107,15 @@ typedef struct {
     uint32_t held;   /* frames whose copy the budget cut short (diagnostic) */
     uint8_t drawn[CHIP_VIEW_LOOK];
     chip_view_canvas cv;
+    /* USER profiles (M2a Task 6). users: where a saved slot is written (NULL: only live keeps
+     * it). target: n + 1, the slot SAVE stores into (EDIT + ALGORITHM), 0 none; confirm: n + 1,
+     * an overwrite SAVE asked about; song_user: n + 1, the song tab's setup was set by picking
+     * USER n + 1 (live.user_applied is the keys' tab's). msg: what the last SAVE or pick says. */
+    user_profiles* users;
+    uint8_t target;
+    uint8_t confirm;
+    uint8_t song_user;
+    char msg[CHIP_VIEW_MSG];
 } chip_view;
 
 extern const view chip_view_view;
@@ -117,10 +130,20 @@ uint32_t chip_view_focus(const chip_view* cv);
  * tabs and the chip, PANEL_PAGE_NONE there on a song's chip A (the view turns them),
  * PANEL_PAGE_SLOT on a slot. */
 uint32_t chip_view_page(const chip_view* cv);
+/* Where a saved USER slot is written (app/user_profile.h); NULL until set. */
+void chip_view_set_users(chip_view* cv, user_profiles* users);
 /* SAVE's press and release while the view shows (app/save_key.h, the precedence of
- * app/views.c): 1 if the view saved (the chip's setup into a USER slot, M2a Task 6), 0 to let
- * the settings save. 0 until user profiles exist. */
-int chip_view_save(chip_view* cv);
+ * app/views.c), with the focus on the chip: into the save target; else into the USER slot the
+ * tab's setup was picked from; else nothing (CHIP_VIEW_SAVE_NONE: the settings save). A slot
+ * that holds a profile asks first (the message OVERWRITE USER 3?; SAVE again stores). The tab's
+ * setup is stored: the keys' on the keys' tabs, the song's (keys_route.song_want, never a
+ * parameter lock's) on a song's chip A. */
+typedef enum {
+    CHIP_VIEW_SAVE_NONE = 0,
+    CHIP_VIEW_SAVE_PENDING = 1, /* handed to the store: its result comes from user_profiles_tick */
+    CHIP_VIEW_SAVE_MSG = 2      /* toast cv->msg now */
+} chip_view_save_result;
+chip_view_save_result chip_view_save(chip_view* cv, uint32_t now_ms);
 /* 1 while the tab shows a song's chip A: its setup is the song's (keys_route.song_want). */
 int chip_view_song_tab(const chip_view* cv);
 /* The name of a slot's field (LIVE_SLOT_AMOUNT, _A, _B, _MIX) for its algorithm alg, as the

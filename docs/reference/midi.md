@@ -212,7 +212,7 @@ In NRPN order.
 | SID | Sustain | 79 | 1/8 (136) | 0..15 | steps | 10 | 0..15, the level |
 | SID | Release | 72 | 1/9 (137) | 0..15 | steps | 6 | 0..15, the SID's rates |
 | SID | Envelope mode | 26 | 1/10 (138) | 0..1 | steps | 0 | 0 instant (the rate counter restarts at each gate edge), 1 authentic (the chip's ADSR delay: an attack or release up to 33 ms late after a slower rate) |
-| Character | Profile | 85 | 2/0 (256) | 0..4 | steps | 2 | 0 6581 R2, 1 6581 R3, 2 6581 R4AR (reSIDfp's default), 3 8580 R5, 4 worn 6581 (artistic); sets the chip model too (a chip reset) |
+| Character | Profile | 85 | 2/0 (256) | 0..12 | steps | 2 | 0 6581 R2, 1 6581 R3, 2 6581 R4AR (reSIDfp's default), 3 8580 R5, 4 worn 6581 (artistic), 5..12 USER 1..8 (an empty slot does nothing: it is skipped); sets the chip model too (a chip reset) |
 | Character | Age/heat | 86 | 2/1 (257) | 0..127 | linear | 0 | 0 the profile .. 127: the filter's cutoff drifts darker, the 6581's non-linearity doubles |
 | Character | DAC sloppiness | 87 | 2/2 (258) | 0..127 | linear | 0 | 0 the profile .. 127: the voice DACs leak up to 6 times as much and kink more |
 | Character | Output thump | 89 | 2/3 (259) | 0..127 | linear | 0 | 0 none .. 127: a volume change steps the output (the 6581's operating point) |

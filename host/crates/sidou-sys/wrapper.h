@@ -61,6 +61,7 @@
 #include "title_card.h"
 #include "tracker_view.h"
 #include "ui_sound.h"
+#include "user_profile.h"
 #include "views.h"
 #include "widget.h"
 #include "workload_fx.h"

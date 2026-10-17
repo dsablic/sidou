@@ -88,7 +88,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last) |
 | **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, CHIP, the song views, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE behind THE OSCILLATOR's title card (below) |
-| **SAVE (button 9)** | press and release without another button or encoder: save settings; hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
+| **SAVE (button 9)** | press and release without another button or encoder: save settings (a USER chip profile on CHIP's chip focus); hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
 | **SEQ (button 11)** | opens the song views, and steps through them ([below](#song-views)) |
 | **PLAY (button 12)** | plays the song (SIDOU LOOP until songs load) from the song views' position, and stops it (each voice's release rings on); with EDIT held, goes on from where it stopped; lit while it plays. While it plays the keys play chip B (KEYS AUTO), or take voices from the song on chip A (KEYS A). A song the device cannot play is refused with a toast (`SNG: MULTISPEED 8 (MAX 4)`) |
 | **REC (button 13)** | record mode on and off |
@@ -96,7 +96,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **SELECT (encoder 0)**, in the menu | moves the blinking cursor up and down the items |
 | **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), STORE ([format confirmation](#settings-and-store)), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF), TRACKER ROWS (clockwise SCROLL, counter-clockwise BAR); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: CHIP (the profile and the character), DIST, MOD, FX; it stops at either end |
-| **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP, the algorithm on a slot; it stops at either end |
+| **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP (EDIT held: the save target), the algorithm on a slot; it stops at either end |
 | **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, RED MOON RITE, and round): it wipes in, and a toast names it |
 
 The other buttons (LFO, ARP) and PRESETS (encoder 6) do nothing yet; SELECT does nothing outside the menu, CHIP and SCENE, ALGORITHM nothing outside
@@ -173,7 +173,7 @@ the B tab's note under the tabs says **SLOTS SHARED**. **KEYS** marks the tab of
 |---|---|---|
 | 2 | CHIP and the tabs | **A** and **B**, the shown one in reverse video (white while the tabs have the focus), **KEYS** beside the keys' chip |
 | 3 | the tab's note | on the B tab FOLLOWS KEYS  SLOTS SHARED (no song) or SLOTS SHARED WITH CHIP A (the keys on B); on a song's A tab SONG SETUP  SLOTS SHARED; nothing on chip A with no song |
-| 4-7 | CHIP | the profile as asked for (6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581) and the model the chip plays |
+| 4-7 | CHIP | the profile as asked for (6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581, or USER 1..8 when one was picked) and the model the chip plays; with a save target the frame's title reads **SAVE TO USER 3** in yellow (and **SAVE TO USER 3 -** while that slot is empty) |
 | 8-13 | CHARACTER | AGE, DAC, THUMP and BLEED, each a bar and its value 0..127 |
 | 14-17, 18-21, 22-25 | DIST, MOD, FX | the slot and its algorithm in the frame's title; its Amount, A, B and Mix, each named for what it does in that algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX); a control the algorithm does not use, and every control of a slot that is off, greyed under its plain name (AMT, A, B, MIX) |
 | 26 | | the help line: SELECT MOVE ALGORITHM STEP |
@@ -184,7 +184,8 @@ margin and white frames show it.
 | Control | On the tabs | On the chip | On a slot |
 |---|---|---|---|
 | SELECT | moves the focus: the tabs, CHIP, DIST, MOD, FX (it stops at either end) | the same | the same |
-| ALGORITHM | the B tab clockwise, the A tab counter-clockwise | the next profile clockwise, the one before counter-clockwise (it stops at either end) | the slot's next algorithm clockwise, the one before counter-clockwise (it stops at OFF and at the last) |
+| ALGORITHM | the B tab clockwise, the A tab counter-clockwise | the next profile clockwise, the one before counter-clockwise: the five built-in ones, then USER 1..8 (it stops at either end) | the slot's next algorithm clockwise, the one before counter-clockwise (it stops at OFF and at the last) |
+| EDIT held + ALGORITHM | | steps the **save target**: USER 1..8, or OFF (below) | |
 | K1 / K2 / K3 / K4 | as on the chip | age / DAC sloppiness / output thump / filter bleed (32 detents end to end) | the slot's Amount / A / B / Mix (32 detents end to end) |
 
 The slot in focus is the selected slot, the one SCL selects and the EDIT shortcut turns:
@@ -198,6 +199,26 @@ plays as on LIVE: the note keys, MASTER, OCT-/OCT+, FX, SAVE (save settings, or 
 for MIDI learn, which picks the parameter K1..K4 turn on the page: AGE for K1 on the chip),
 and HOME back to the menu. A change
 from MIDI shows on the page at the next frame.
+
+**USER profiles.** A USER profile is a base profile and the four character controls,
+stored by name USER 1..8 ([format](profile-format.md)). The picker (ALGORITHM on the chip)
+runs the five built-in profiles, then the slots that hold one; an empty slot is skipped, and
+a step that finds only empty ones to its end stays where it is and says which: **USER 4
+EMPTY**. Picking one applies it as any profile change does (the spare chip is prepared a
+slice a tick, then swapped in; its four controls glide), and the PROFILE row reads **USER 3**
+until another profile or the model (FX) is chosen. CC 85 reaches them too, above the
+built-in ones (values 5..12; an empty slot does nothing).
+
+To store the sound: with the focus on the chip, **EDIT held + ALGORITHM** steps a **save
+target** through USER 1..8 and OFF without changing the chip, shown in the CHIP frame's title
+(**SAVE TO USER 3**, yellow); the target clears when the focus leaves the chip or the view
+closes. **SAVE** then stores the tab's base profile and four controls into the target, or,
+with no target, back into the USER slot the tab was picked from; with neither it saves the
+settings, as elsewhere ([SAVE](#save)). A slot that holds a profile asks first
+(**OVERWRITE USER 3?**): SAVE again stores, HOME keeps it. The toast **SAVED TO USER 3** comes
+when the store commits (**SAVED TO USER 3 (GAPS)** when held flash operations were forced, as
+for the settings). On a song's chip A the tab's setup is the song's (not the keys', and not a
+parameter lock's value), and picking a USER there sets the song's setup.
 
 **The EDIT layer stays, as a shortcut.** EDIT + K1..K4, SCL and ENV were the slots' stopgap
 until this view. They stay in every view, because they are a player's: they turn an effect
@@ -292,7 +313,7 @@ and measurements: [decision record 0006](../decisions/0006-chip-profiles.md)):
 
 | Control | CC | NRPN | Values |
 |---|---|---|---|
-| Profile | 85 | 2/0 | 0 6581 R2, 1 6581 R3, 2 6581 R4AR (power-on with the 6581), 3 8580 R5, 4 worn 6581 (artistic) |
+| Profile | 85 | 2/0 | 0 6581 R2, 1 6581 R3, 2 6581 R4AR (power-on with the 6581), 3 8580 R5, 4 worn 6581 (artistic), 5..12 USER 1..8 (an empty slot does nothing) |
 | Age/heat | 86 | 2/1 | 0..127: the filter drifts darker, the 6581's non-linearity rises |
 | DAC sloppiness | 87 | 2/2 | 0..127: leakier, more kinked voice DACs (a released voice still whispers) |
 | Output thump | 89 | 2/3 | 0..127: a volume change steps the output, as the 6581's operating point does |
@@ -409,6 +430,7 @@ another button while SAVE is down prevents that release from saving.
 | Gesture | Result |
 |---|---|
 | SAVE pressed and released, no encoder turned or other button pressed while down | saves settings now, skipping the 5 s debounce; **SAVED** when committed |
+| the same, on the CHIP view's chip focus with a USER slot as the save target, or applied | stores the tab's profile and controls into that slot ([USER profiles](#chip)); **OVERWRITE USER 3?** first when it holds one, then **SAVED TO USER 3** |
 | SAVE held + K1..K4, with or without EDIT | opens MIDI LEARN on that knob's parameter on the turn, not the press; the parameter does not move and SAVE's release saves nothing |
 | Another knob turned while the learn frame waits, SAVE held or not | picks that knob's parameter instead |
 | CC received while the frame waits | learns it, closes the frame and applies its value; **LEARNED CC 21 → CUTOFF** |
@@ -422,8 +444,8 @@ another button while SAVE is down prevents that release from saving.
 An explicit save waiting for 2 s may force short held flash operations, with gaps in the
 audio; completion then says **SAVED (GAPS)**. Background saves never do this. With SOUNDS on,
 a completed explicit save plays the drive chunk. A foreign store refuses it with
-**STORE FOREIGN: NOT SAVED**. SAVE currently saves settings on CHIP and in the song views
-too; USER-slot and song-file save precedence belongs to M2a Task 6 and M2c Task 8.
+**STORE FOREIGN: NOT SAVED**. SAVE saves settings in the song views too until M2c Task 8's
+song-file save; on CHIP it stores a USER slot as above, and the settings otherwise.
 
 ## MIDI learn
 

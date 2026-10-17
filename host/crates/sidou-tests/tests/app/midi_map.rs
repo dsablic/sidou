@@ -112,6 +112,28 @@ fn set(rig: &mut Rig, param: u32, value: u32) {
     unsafe { live_param_set(&mut *rig.live, param, value) }
 }
 
+/// Every USER slot holds a profile (slot n: the built-in profile n % 5), so the profile
+/// parameter's values above the built-in ones apply (M2a Task 6; an empty slot does nothing).
+fn fill_users(rig: &mut Rig) {
+    let l = &mut *rig.live;
+    l.user_valid = 0xff;
+    for n in 0..LIVE_USER_PROFILES as usize {
+        l.user_base[n] = (n % SID_CHIPS as usize) as u8;
+        l.user_ctl[n] = [n as u8, 2 * n as u8, 3 * n as u8, 4 * n as u8];
+    }
+}
+
+/// What live_param_get gives after `value` was set on `param`: itself, but for the profile
+/// parameter's USER slots, which set their base profile (the slot is the parameter's, not the
+/// profile's).
+fn expected(rig: &Rig, param: u32, value: u32) -> u32 {
+    if param == LIVE_PARAM_PROFILE && value >= SID_CHIPS {
+        u32::from(rig.live.user_base[(value - SID_CHIPS) as usize])
+    } else {
+        value
+    }
+}
+
 // --- the table ---
 
 #[test]
@@ -307,11 +329,17 @@ fn each_entry_round_trips_through_its_cc() {
     for r in rows().iter().filter(|r| r.has_cc() && !r.reserved()) {
         let e = ptr_for(u32::from(r.param));
         let mut rig = Rig::new(SID_MODEL_6581);
+        fill_users(&mut rig);
         for v in 0..128u8 {
             let want = expect_from_cc(r, v);
             assert_eq!(unsafe { midi_map_from_cc(e, v) }, want, "{} CC {v}", r.name);
             rig.cc(u32::from(r.cc), v);
-            assert_eq!(get(&rig, u32::from(r.param)), want, "{} CC {v}", r.name);
+            assert_eq!(
+                get(&rig, u32::from(r.param)),
+                expected(&rig, u32::from(r.param), want),
+                "{} CC {v}",
+                r.name
+            );
             if !r.steps() {
                 assert_eq!(
                     unsafe { midi_map_to_cc(e, want) },
@@ -358,17 +386,24 @@ fn each_entry_round_trips_through_its_cc() {
 fn each_entry_round_trips_through_its_nrpn_at_full_resolution() {
     for r in rows().iter().filter(|r| r.has_nrpn() && !r.reserved()) {
         let mut m = Midi::new();
+        fill_users(&mut m.rig);
         let (msb, lsb) = ((r.nrpn >> 7) as u8, (r.nrpn & 0x7f) as u8);
         m.trs(&[0xB0, 99, msb, 98, lsb]);
+        let param = u32::from(r.param);
         for p in (0..=r.max).rev() {
             m.trs(&[6, (p >> 7) as u8, 38, (p & 0x7f) as u8]);
-            assert_eq!(get(&m.rig, u32::from(r.param)), u32::from(p), "{}", r.name);
+            assert_eq!(
+                get(&m.rig, param),
+                expected(&m.rig, param, u32::from(p)),
+                "{}",
+                r.name
+            );
         }
         // Past the range: clamped.
         m.trs(&[6, 127, 38, 127]);
         assert_eq!(
-            get(&m.rig, u32::from(r.param)),
-            u32::from(r.max),
+            get(&m.rig, param),
+            expected(&m.rig, param, u32::from(r.max)),
             "{}",
             r.name
         );
@@ -384,10 +419,11 @@ const CHARACTER: usize = LIVE_CHAR_FIELDS as usize;
 #[test]
 fn parameters_set_clamp_and_write_only_on_a_change() {
     let mut rig = Rig::new(SID_MODEL_6581);
+    fill_users(&mut rig);
     for p in 0..LIVE_PARAM_COUNT {
         let max = unsafe { live_param_max(p) };
         set(&mut rig, p, max + 1000);
-        assert_eq!(get(&rig, p), max, "parameter {p} clamps");
+        assert_eq!(get(&rig, p), expected(&rig, p, max), "parameter {p} clamps");
         rig.clear();
         set(&mut rig, p, max);
         assert!(rig.log().is_empty(), "parameter {p}: {:?}", rig.log());

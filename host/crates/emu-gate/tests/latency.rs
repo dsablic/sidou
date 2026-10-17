@@ -196,10 +196,12 @@ const SWEEP_STEP: i32 = 24;
 const CC_AGE: u8 = 86;
 const CC_DAC: u8 = 87;
 
-/// The profile step: CC 85 every STEP_MS, R2 (0) and WORN (127) in turn, the chip R4AR. Each
-/// request restarts the spare's preparation, which takes at least 7 ticks (70 ms).
+/// The profile step: CC 85 every STEP_MS, R2 (0) and WORN (43: CC 85 spans the five profiles and
+/// the eight USER slots, 0..12 in steps of 128/13) in turn, the chip R4AR. Each request restarts
+/// the spare's preparation, which takes at least 7 ticks (70 ms).
 const STEP_MS: u64 = 40;
 const CC_PROFILE: u8 = 85;
+const CC_PROFILE_WORN: u8 = 43;
 
 struct Sweep {
     next: u64,
@@ -223,7 +225,15 @@ impl Sweep {
     fn message(&mut self) -> [u8; 3] {
         if self.profile {
             self.sent += 1;
-            return [0xB0, CC_PROFILE, if self.sent & 1 == 1 { 0 } else { 127 }];
+            return [
+                0xB0,
+                CC_PROFILE,
+                if self.sent & 1 == 1 {
+                    0
+                } else {
+                    CC_PROFILE_WORN
+                },
+            ];
         }
         let cc = if self.sent & 1 == 0 { CC_AGE } else { CC_DAC };
         let step = (self.sent / 2) as i32 * SWEEP_STEP;

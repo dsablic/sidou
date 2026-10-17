@@ -366,6 +366,7 @@ static void store_turn(void* ctx, int32_t steps) {
         v->format_arm = 0;
         store_format(st);
         settings_forget(v->set);
+        user_profiles_forget(&v->users);
         v->formatting = 1;
         if (v->set->force) {
             v->set->force(1);
@@ -629,6 +630,8 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->p = NULL;
     learn_view_init(&v->learn, l, NULL);
     chip_view_init(&v->chip, l);
+    user_profiles_init(&v->users, l, NULL);
+    chip_view_set_users(&v->chip, &v->users);
     live_view_init(&v->live, l, sc);
     scene_view_init(&v->scene, l, sc);
     song_view_init(&v->song, l);
@@ -642,6 +645,8 @@ void views_learn(views* v, midi_learn* ml) {
 
 void views_settings(views* v, settings* set) {
     v->set = set;
+    v->users.st = set ? set->st : NULL;
+    user_profiles_load(&v->users);
 }
 
 void views_boot(views* v, int full, int home_held) {
@@ -704,8 +709,14 @@ static void save(views* v) {
         learn_view_save(&v->learn); /* forget the picked CC, or confirm the clear */
         return;
     }
-    if (shows(v) == &chip_view_view && chip_view_save(&v->chip)) {
-        return; /* a USER slot (M2a Task 6) */
+    if (shows(v) == &chip_view_view) {
+        chip_view_save_result r = chip_view_save(&v->chip, v->s.now);
+        if (r) { /* a USER slot: its toast now, or when the store commits (store_frame) */
+            if (r == CHIP_VIEW_SAVE_MSG) {
+                screen_toast(&v->s, v->chip.msg, SCREEN_TOAST_MS);
+            }
+            return;
+        }
     }
     /* A song view saves the song here, to its file (M2c Task 8, not in yet). */
     if (v->set) {
@@ -843,12 +854,38 @@ static void tell(views* v) {
     remember(v);
 }
 
+/* A USER profile's write: handed to the store, committed, its toast; keeps the frame awake while
+ * it has work. */
+__attribute__((noinline, unused)) static void users_frame(views* v, uint32_t now_ms) {
+    user_profiles_tick(&v->users, now_ms, v->set->force);
+    uint32_t slot;
+    char buf[24] = "SAVED TO USER n";
+    user_profile_result r = user_profiles_take(&v->users, &slot);
+    buf[14] = (char)('1' + slot);
+    if (r == USER_PROFILE_SAVED_GAPS) {
+        append(buf, sizeof buf, " (GAPS)");
+    }
+    if (r == USER_PROFILE_SAVED || r == USER_PROFILE_SAVED_GAPS) {
+        screen_toast(&v->s, buf, SCREEN_TOAST_MS);
+        sound(v, UI_SOUND_CHUNK);
+    } else if (r == USER_PROFILE_FOREIGN) {
+        screen_toast(&v->s, "STORE FOREIGN: NOT SAVED", SCREEN_TOAST_MS);
+        sound(v, UI_SOUND_BUZZ);
+    }
+    if (user_profiles_busy(&v->users)) {
+        v->l->settings_dirty |= 2u;
+    }
+}
+
 /* The settings' debounce and an explicit save's toast; a format's end. */
 __attribute__((noinline, unused)) static void store_frame(views* v, uint32_t now_ms) {
     if (!v->set) {
         return;
     }
     settings_tick(v->set, now_ms);
+    if (user_profiles_busy(&v->users)) {
+        users_frame(v, now_ms);
+    }
     /* Peek at settings' result directly to save idle-frame cycles. */
     if (!v->set->result && !v->formatting) {
         return;

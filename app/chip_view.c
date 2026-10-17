@@ -17,6 +17,7 @@
 #define DIM GRID_ATTR(GRID_GREY, GRID_BLUE)
 #define TAB GRID_ATTR(GRID_BLUE, GRID_LIGHT_BLUE)
 #define TAB_FOCUS GRID_ATTR(GRID_BLUE, GRID_WHITE)
+#define TARGET GRID_ATTR(GRID_YELLOW, GRID_BLUE)
 /* Inside the frames: names from LABEL_COL, the character's bars from BAR_COL, values ending at
  * VALUE_END; a slot's second column of controls SLOT_HALF further on. */
 #define LABEL_COL 4u
@@ -203,6 +204,16 @@ int chip_view_song_tab(const chip_view* cv) {
     return cv->kr && cv->kr->song && cv->tab == 0u;
 }
 
+/* The USER slot the tab's setup was picked from, n + 1, or 0. */
+static uint32_t applied(const chip_view* cv) {
+    if (!chip_view_song_tab(cv)) {
+        return cv->l->user_applied;
+    }
+    /* The song's setup, unless something else has set its profile since. */
+    uint32_t n = cv->song_user;
+    return n && cv->kr->song_want.profile == cv->l->user_base[n - 1u] ? n : 0u;
+}
+
 /* The tab's setup and model: the song's on a song's chip A, the keys' (as asked for) else. */
 static void shown(const chip_view* cv, chip_setup* s, uint8_t* model) {
     const live* l = cv->l;
@@ -246,11 +257,11 @@ static void look(const chip_view* cv, uint8_t out[CHIP_VIEW_LOOK]) {
         }
     }
     out[n++] = l->fx_select;
-    out[n++] = cv->chip;
-    out[n++] = cv->tab;
-    out[n++] = cv->tabs;
+    out[n++] = (uint8_t)(cv->chip | cv->tab << 1 | cv->tabs << 2);
     out[n++] = l->two_chips ? (uint8_t)(1u + l->keys_chip) : 0u;
-    out[n] = help_kind(cv);
+    out[n++] = help_kind(cv);
+    out[n++] = (uint8_t)(applied(cv) | cv->target << 4);
+    out[n] = (uint8_t)(cv->target && (l->user_valid >> (cv->target - 1u) & 1u));
 }
 
 static int looks_changed(const chip_view* cv) {
@@ -267,6 +278,27 @@ static int looks_changed(const chip_view* cv) {
 /* The focus's mark in the margin, on its frame's top row. */
 static void mark(chip_view_canvas* c, uint32_t row, int on) {
     put(c, 1, row, on ? FONT_PLAY : (uint8_t)' ', on ? FOCUS : TEXT);
+}
+
+/* The USER profile picked, in the PROFILE row (over the built-in profile's name the base shows),
+ * and the save target, yellow, in the CHIP frame's title: the chip is unchanged. An empty slot
+ * ends in a dash, as the picker would show it. Cold: drawn only with a slot picked or a target. */
+__attribute__((noinline, unused)) static void draw_user(chip_view* cv, chip_view_canvas* c) {
+    uint8_t a = cv->chip && !cv->tabs ? FOCUS : TEXT;
+    uint32_t n = applied(cv);
+    if (n) {
+        char user[7] = {'U', 'S', 'E', 'R', ' ', (char)('0' + n), 0};
+        fill(c, VALUE_END - 12u, CHIP_VIEW_CHIP_ROW + 1u, 12u, 1, ' ', a);
+        text_right(c, VALUE_END, CHIP_VIEW_CHIP_ROW + 1u, user, a);
+    }
+    if (cv->target) {
+        char title[20] = " SAVE TO USER n";
+        title[14] = (char)('0' + cv->target);
+        uint32_t k = text(c, CHIP_VIEW_COL + 1u, CHIP_VIEW_CHIP_ROW, title, TARGET);
+        int empty = !(cv->l->user_valid >> (cv->target - 1u) & 1u);
+        k = text(c, k, CHIP_VIEW_CHIP_ROW, empty ? " -" : "", TARGET);
+        put(c, k, CHIP_VIEW_CHIP_ROW, ' ', TARGET);
+    }
 }
 
 static void draw_chip(chip_view* cv, chip_view_canvas* c) {
@@ -292,6 +324,9 @@ static void draw_chip(chip_view* cv, chip_view_canvas* c) {
         text(c, LABEL_COL, row, NAMES[f], a);
         bar(c, BAR_COL, row, s.controls[f], a);
         number(c, VALUE_END, row, s.controls[f], a);
+    }
+    if (cv->l->user_applied | cv->song_user | cv->target) {
+        draw_user(cv, c);
     }
 }
 
@@ -367,6 +402,15 @@ void chip_view_init(chip_view* cv, live* l) {
     cv->copying = 0;
     cv->cursor = 0;
     cv->held = 0;
+    cv->users = NULL;
+    cv->target = 0;
+    cv->confirm = 0;
+    cv->song_user = 0;
+    cv->msg[0] = 0;
+}
+
+void chip_view_set_users(chip_view* cv, user_profiles* users) {
+    cv->users = users;
 }
 
 void chip_view_set_keys(chip_view* cv, keys_route* kr) {
@@ -377,9 +421,53 @@ uint32_t chip_view_focus(const chip_view* cv) {
     return cv->tabs ? CHIP_VIEW_TABS : cv->chip ? CHIP_VIEW_CHIP : 1u + cv->l->fx_select % LIVE_SLOTS;
 }
 
-int chip_view_save(chip_view* cv) {
-    (void)cv;
-    return 0; /* no USER slots yet (M2a Task 6) */
+/* msg = a, the digit of USER slot n (1..8), b. */
+static void message(chip_view* cv, const char* a, uint32_t n, const char* b) {
+    uint32_t i = 0;
+    for (; *a && i + 1u < CHIP_VIEW_MSG; a++) {
+        cv->msg[i++] = *a;
+    }
+    if (i + 1u < CHIP_VIEW_MSG) {
+        cv->msg[i++] = (char)('0' + n);
+    }
+    for (; *b && i + 1u < CHIP_VIEW_MSG; b++) {
+        cv->msg[i++] = *b;
+    }
+    cv->msg[i] = 0;
+}
+
+/* The save: into the target or the applied USER slot, asking before it overwrites one. */
+__attribute__((noinline, unused)) static chip_view_save_result save_user(chip_view* cv,
+                                                                       uint32_t now_ms) {
+    live* l = cv->l;
+    uint32_t slot1 = cv->target ? cv->target : applied(cv);
+    if (!slot1) {
+        return CHIP_VIEW_SAVE_NONE;
+    }
+    uint32_t slot = slot1 - 1u;
+    if ((l->user_valid >> slot & 1u) && cv->confirm != slot1) {
+        cv->confirm = (uint8_t)slot1;
+        message(cv, "OVERWRITE USER ", slot1, "?");
+        return CHIP_VIEW_SAVE_MSG;
+    }
+    cv->confirm = 0;
+    chip_setup s;
+    uint8_t model;
+    shown(cv, &s, &model);
+    int done = user_profile_save(cv->users, slot, s.profile, s.controls, now_ms);
+    l->settings_dirty |= 2u; /* the views' frame ticks the write (app/views.c store_frame) */
+    if (done) {
+        message(cv, "SAVED TO USER ", slot1, "");
+        return CHIP_VIEW_SAVE_MSG;
+    }
+    return CHIP_VIEW_SAVE_PENDING;
+}
+
+chip_view_save_result chip_view_save(chip_view* cv, uint32_t now_ms) {
+    if (!cv->users || !cv->chip || cv->tabs) {
+        return CHIP_VIEW_SAVE_NONE;
+    }
+    return save_user(cv, now_ms);
 }
 
 uint32_t chip_view_page(const chip_view* cv) {
@@ -395,6 +483,9 @@ static void enter(screen* s, void* state) {
     chip_view* cv = state;
     cv->built = 0;
     cv->cursor = 0;
+    cv->target = 0;
+    cv->confirm = 0;
+    cv->song_user = 0;
 }
 
 /* steps added to v, clamped to 0..max. */
@@ -403,11 +494,82 @@ static uint32_t step_clamped(uint32_t v, int32_t steps, uint32_t max) {
     return n < 0 ? 0u : (uint32_t)n > max ? max : (uint32_t)n;
 }
 
+/* ALGORITHM on the chip with EDIT held: the save target, USER 1..8 or OFF, the chip unchanged. */
+__attribute__((noinline, unused)) static void target_step(chip_view* cv, int32_t steps) {
+    cv->target = (uint8_t)step_clamped(cv->target, steps, LIVE_USER_PROFILES);
+    cv->confirm = 0;
+}
+
+/* The focus left the chip: its save target and overwrite question go. */
+__attribute__((noinline, unused)) static void target_clear(chip_view* cv) {
+    cv->target = 0;
+    cv->confirm = 0;
+}
+
+/* ALGORITHM on the chip when the step reaches the USER slots, or one is applied: the picker runs
+ * the five built-in profiles then USER 1..8, empty slots skipped; a step that finds only empty
+ * ones to its end stays and says which (USER 3 EMPTY). The pick is applied as a profile change
+ * (live_param_set's, which prepares the spare chip and swaps), or on a song's chip A as the
+ * song's setup (its base profile and controls through keys_route_song_wants). */
+__attribute__((noinline, unused)) static void pick(screen* s, chip_view* cv, int32_t steps) {
+    live* l = cv->l;
+    int song = chip_view_song_tab(cv);
+    int32_t last = (int32_t)(SID_CHIPS + LIVE_USER_PROFILES) - 1;
+    uint32_t was = applied(cv);
+    int32_t at = was ? (int32_t)(SID_CHIPS - 1u + was) : (int32_t)(song ? cv->kr->song_want.profile : profile_of(l));
+    int32_t dir = steps < 0 ? -1 : 1;
+    for (int32_t n = steps < 0 ? -steps : steps; n > 0; n--) {
+        int32_t k = at;
+        int32_t skipped = -1;
+        for (;;) {
+            k += dir;
+            if (k < 0 || k > last) {
+                k = -1;
+                break;
+            }
+            if (k < (int32_t)SID_CHIPS || (l->user_valid >> (k - (int32_t)SID_CHIPS) & 1u)) {
+                break;
+            }
+            if (skipped < 0) {
+                skipped = k - (int32_t)SID_CHIPS;
+            }
+        }
+        if (k < 0) {
+            if (skipped >= 0) {
+                message(cv, "USER ", (uint32_t)skipped + 1u, " EMPTY");
+                screen_toast(s, cv->msg, SCREEN_TOAST_MS);
+            }
+            break;
+        }
+        at = k;
+    }
+    if (at < (int32_t)SID_CHIPS) {
+        if (song) {
+            chip_setup want = cv->kr->song_want;
+            want.profile = (uint8_t)at;
+            cv->song_user = 0;
+            keys_route_song_wants(cv->kr, &want);
+        } else {
+            live_param_set(l, LIVE_PARAM_PROFILE, (uint32_t)at);
+        }
+    } else if (song) {
+        uint32_t n = (uint32_t)at - SID_CHIPS;
+        chip_setup want = cv->kr->song_want;
+        want.profile = l->user_base[n];
+        for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; f++) {
+            want.controls[f] = l->user_ctl[n][f];
+        }
+        cv->song_user = (uint8_t)(n + 1u);
+        keys_route_song_wants(cv->kr, &want);
+    } else {
+        live_param_set(l, LIVE_PARAM_PROFILE, (uint32_t)at);
+    }
+}
+
 /* SELECT moves the focus (the tabs, the chip, the slots), ALGORITHM switches the tab, steps
  * the profile or the slot's algorithm; on a song's chip A, K1..K4 turn the song's controls
  * and ALGORITHM its profile. */
 static int input(screen* s, void* state, const screen_event* e) {
-    (void)s;
     chip_view* cv = state;
     live* l = cv->l;
     if (e->kind != SCREEN_TURN) {
@@ -421,6 +583,9 @@ static int input(screen* s, void* state, const screen_event* e) {
         cv->chip = (uint8_t)(f <= 1u);
         if (!cv->chip) {
             live_fx_select(l, f - 2u);
+        }
+        if ((cv->target | cv->confirm) && f != 1u) {
+            target_clear(cv);
         }
         return 1;
     }
@@ -451,12 +616,14 @@ static int input(screen* s, void* state, const screen_event* e) {
         live_slot_set(l, k, LIVE_SLOT_ALGORITHM,
                       (int32_t)step_clamped(l->slot[k][LIVE_SLOT_ALGORITHM], e->steps,
                                             live_slot_algorithms(k) - 1u));
+    } else if (e->held & (1u << PANEL_BTN_EDIT)) {
+        target_step(cv, e->steps);
     } else if (chip_view_song_tab(cv)) {
-        chip_setup want = cv->kr->song_want;
-        want.profile = (uint8_t)step_clamped(want.profile, e->steps, SID_CHIPS - 1u);
-        keys_route_song_wants(cv->kr, &want);
-    } else {
+        pick(s, cv, e->steps);
+    } else if (!l->user_applied && (int32_t)profile_of(l) + e->steps < (int32_t)SID_CHIPS) {
         live_param_set(l, LIVE_PARAM_PROFILE, step_clamped(profile_of(l), e->steps, SID_CHIPS - 1u));
+    } else {
+        pick(s, cv, e->steps);
     }
     return 1;
 }

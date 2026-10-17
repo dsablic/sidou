@@ -40,7 +40,9 @@
  * Routing, for each button press and encoder turn:
  * 0. SAVE (app/save_key.h), before everything else: its press goes nowhere; its clean release
  *    saves: in MIDI learn's frame it forgets the picked parameter's CC (or confirms the clear),
- *    on the CHIP view a USER slot (chip_view_save, M2a Task 6), on a song view the song (M2d),
+ *    on the CHIP view's chip focus a USER slot, the save target or the applied one
+ *    (chip_view_save; toast OVERWRITE USER 3? first when it holds a profile, then SAVED TO USER
+ *    3 when the store commits), on a song view the song (M2d),
  *    anywhere else the settings, now (settings_save_now; the toast SAVED when it commits).
  *    While SAVE is held, K1..K4 open LEARN on the knob's parameter, and HOME asks, in the frame,
  *    to clear every mapping (outside it, HOME does nothing). Over the boot or a title card SAVE
@@ -88,6 +90,7 @@
 #include "scene_view.h"
 #include "settings.h"
 #include "ui_sound.h"
+#include "user_profile.h"
 #include "scope.h"
 #include "screen.h"
 #include "song_view.h"
@@ -153,6 +156,7 @@ typedef struct {
     ui_sound* snd; /* the UI sounds (the menu's SOUNDS, app/ui_sound.h); NULL: none */
     settings* set; /* what SAVE saves and the menu's STORE shows (views_settings); NULL: none */
     uint8_t formatting; /* a format's erases run (forced: the user asked) */
+    user_profiles users; /* the CHIP view's USER slots on the store (app/user_profile.h) */
 } views;
 
 extern const view views_status;

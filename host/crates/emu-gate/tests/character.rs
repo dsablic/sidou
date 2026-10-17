@@ -26,9 +26,9 @@ const LATE_BLOCKS: usize = 8;
 /// before it or up to this many blocks after (the next tick).
 const SPREAD: usize = 5;
 
-/// docs/reference/midi.md's Character rows: profile (steps: 127 is the last, worn 6581),
-/// age/heat, DAC sloppiness, output thump, filter bleed.
-const CCS: [(u8, u8); 5] = [(85, 127), (86, 100), (87, 127), (89, 64), (90, 90)];
+/// docs/reference/midi.md's Character rows: profile (steps over the five profiles and the eight
+/// USER slots: 43 is 4, worn 6581), age/heat, DAC sloppiness, output thump, filter bleed.
+const CCS: [(u8, u8); 5] = [(85, 43), (86, 100), (87, 127), (89, 64), (90, 90)];
 
 fn fixture() -> Option<Firmware> {
     let Some(build) = build_dir() else {

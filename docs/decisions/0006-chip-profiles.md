@@ -356,5 +356,7 @@ The exception in "Cost" is gone: no main-loop pass is over the poll allowance an
 
 Panel access is the CHIP view (Task 4, done): the profile on its ALGORITHM, the four controls
 on K1..K4. The plan's expert layer (every analogue parameter as its own control) did not come
-with it and goes to M2, with the M1d map's NRPN rows after 2/4; user-saved profiles need storage
-and go with M2.
+with it and goes to M2, with the M1d map's NRPN rows after 2/4. User-saved profiles are done
+(M2a Task 6): eight USER slots, each a base profile and the four controls, on the store
+([profile-format.md](../reference/profile-format.md)); the expert layer's fields join them
+through a schema migration (M2b Task 6).

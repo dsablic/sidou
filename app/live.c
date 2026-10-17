@@ -537,6 +537,8 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->keys_mode = LIVE_KEYS_AUTO;
     l->ui_voice = 0;
     l->settings_dirty = 0;
+    l->user_valid = 0;
+    l->user_applied = 0;
     l->model = model;
     l->model_req = model;
     l->octave = 0;
@@ -764,6 +766,20 @@ static void request_profile(live* l, uint32_t profile) {
     }
 }
 
+/* USER slot n set as the keys' setup: its base profile as a profile change (the spare prepared,
+ * then swapped), its controls as the character's. An empty slot does nothing. Cold: picked
+ * by hand or by a CC, never per frame. */
+__attribute__((noinline, unused)) static void apply_user(live* l, uint32_t n) {
+    if (n >= LIVE_USER_PROFILES || !(l->user_valid >> n & 1u)) {
+        return;
+    }
+    request_profile(l, l->user_base[n]);
+    for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
+        l->character[f] = l->user_ctl[n][f];
+    }
+    l->user_applied = (uint8_t)(n + 1u);
+}
+
 /* The profile for a model: the 8580's, or the last 6581 one asked for. */
 static uint32_t model_profile(const live* l, sid_model model) {
     return model == SID_MODEL_8580 ? sid_chip_default(SID_MODEL_8580) : l->profile_6581;
@@ -810,8 +826,10 @@ void live_button(live* l, live_button_id button) {
     case LIVE_BUTTON_FX:
         if (l->prepare) { /* the other model than the one asked for: live_tick prepares it */
             sid_model m = l->model_req == SID_MODEL_6581 ? SID_MODEL_8580 : SID_MODEL_6581;
+            l->user_applied = 0;
             request_profile(l, model_profile(l, m));
         } else { /* at once, at a human's pace; over any request still pending */
+            l->user_applied = 0;
             set_model(l, l->model == SID_MODEL_6581 ? SID_MODEL_8580 : SID_MODEL_6581);
         }
         break;
@@ -913,7 +931,7 @@ uint32_t live_param_max(uint32_t param) {
     case LIVE_PARAM_VIBRATO_RATE:
     case LIVE_PARAM_VIBRATO_DEPTH:
     case LIVE_PARAM_VIBRATO_DELAY: return LIVE_EXPRESSION_MAX;
-    case LIVE_PARAM_PROFILE: return SID_CHIPS - 1u;
+    case LIVE_PARAM_PROFILE: return SID_CHIPS - 1u + LIVE_USER_PROFILES;
     case LIVE_PARAM_AGE:
     case LIVE_PARAM_DAC:
     case LIVE_PARAM_THUMP:
@@ -1000,9 +1018,17 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
         }
         break;
     case LIVE_PARAM_MODEL: /* only recorded: live_tick applies it */
+        l->user_applied = 0;
         request_profile(l, model_profile(l, value ? SID_MODEL_8580 : SID_MODEL_6581));
         break;
-    case LIVE_PARAM_PROFILE: request_profile(l, value); break; /* the same */
+    case LIVE_PARAM_PROFILE: /* the same; USER 1..8 above the built-in ones */
+        if (value < SID_CHIPS) {
+            l->user_applied = 0;
+            request_profile(l, value);
+        } else {
+            apply_user(l, value - SID_CHIPS);
+        }
+        break;
     case LIVE_PARAM_AGE:
     case LIVE_PARAM_DAC:
     case LIVE_PARAM_THUMP:

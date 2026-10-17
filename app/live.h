@@ -54,6 +54,8 @@ extern "C" {
 /* The character (above): LIVE_REG_CHAR(0..LIVE_CHAR_FIELDS - 1) is 0x82..0x86, then the
  * tick. */
 #define LIVE_CHAR_FIELDS 5u
+/* The USER chip profiles: slots USER 1..8, after the built-in profiles in LIVE_PARAM_PROFILE. */
+#define LIVE_USER_PROFILES 8u
 #define LIVE_REG_CHAR_FIRST 0x82u
 #define LIVE_REG_CHAR(field) (LIVE_REG_CHAR_FIRST + (field))
 #define LIVE_REG_CHAR_TICK 0x87u
@@ -354,6 +356,15 @@ typedef struct {
     /* Bit 0: a persisted setter ran; bit 1: settings work pending. Setters assign 1 because
      * bit 0 forces settings.c's pending() to recompute the pending work. */
     uint8_t settings_dirty;
+    /* The USER chip profiles (M2a Task 6; app/user_profile.h keeps them on the store): bit n of
+     * user_valid, USER n + 1 holds one, its base profile and four character controls in
+     * user_base[n] and user_ctl[n]; user_applied, n + 1 while the keys' setup was set by
+     * picking USER n + 1 (any other profile or model change clears it), else 0. At the end:
+     * the fields above keep their offsets. */
+    uint8_t user_valid;
+    uint8_t user_applied;
+    uint8_t user_base[LIVE_USER_PROFILES];
+    uint8_t user_ctl[LIVE_USER_PROFILES][LIVE_CHAR_FIELDS - 1u];
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */
@@ -398,9 +409,10 @@ typedef enum {
     LIVE_PARAM_ENVELOPE_MODE = 36,
     /* The chip's character (sid_character.h), recorded; live_tick applies it. The profile,
      * 0..SID_CHIPS - 1 (6581 R2, 6581 R3, 6581 R4AR, 8580 R5, worn 6581), sets the chip
-     * model too (a reset, as LIVE_PARAM_MODEL); the model sets the 8580 R5 profile, or back
-     * to the last 6581 one. The controls, 0..127 each, change the playing chip without a
-     * reset. */
+     * model too (a reset, as LIVE_PARAM_MODEL); SID_CHIPS.. is USER 1..8: the slot's base
+     * profile and controls, set as a profile change and four control changes (an empty slot
+     * does nothing). The model sets the 8580 R5 profile, or back to the last 6581 one. The
+     * controls, 0..127 each, change the playing chip without a reset. */
     LIVE_PARAM_PROFILE = 37,
     LIVE_PARAM_AGE = 38,
     LIVE_PARAM_DAC = 39,

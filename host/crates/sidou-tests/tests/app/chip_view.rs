@@ -683,7 +683,7 @@ fn midi_changes_show_on_the_page() {
     step(&mut ui);
     assert_eq!(slot_title(&ui, 1), "MOD WOW");
     assert_eq!(slot_field(&ui, 1, 0), ("WOW".into(), "50".into()));
-    ui.rig.cc(CC_PROFILE, 127); // the last: worn
+    ui.rig.cc(CC_PROFILE, 40); // 4, worn: CC 85 spans the five built-in profiles, then USER 1..8
     step(&mut ui);
     assert_eq!(
         text(&ui, CHIP_VIEW_CHIP_ROW + 1, 4, 26),
