@@ -78,7 +78,7 @@ fn exomizer_packer(dir: &Path, rel: &Path) -> PathBuf {
     // The shim's headers without its membuf.h and parse.h: the release's are used.
     let inc = dir.join("include");
     std::fs::create_dir_all(&inc).unwrap();
-    for h in ["bme.h", "gt2ref_shim.h", "gt2ref.h"] {
+    for h in ["bme.h", "gt2ref_shim.h", "gt2ref.h", "gt2ref_rename.h"] {
         std::fs::copy(shim.join(h), inc.join(h)).unwrap();
     }
     let src = rel.join("src");
@@ -97,7 +97,7 @@ fn exomizer_packer(dir: &Path, rel: &Path) -> PathBuf {
         .arg(src.join("asm"));
     c.arg("-DGT2REF_EXOMIZER_ASM");
     c.arg(format!("-DGT2REF_SRC_DIR=\"{}\"", src.display()));
-    // GoatTracker's files with fopen and main renamed, as build.rs builds them.
+    // GoatTracker's files with fopen, fread, exit and main renamed, as build.rs builds them.
     let objs = dir.join("gt-objs");
     std::fs::create_dir_all(&objs).unwrap();
     for f in [
@@ -106,16 +106,9 @@ fn exomizer_packer(dir: &Path, rel: &Path) -> PathBuf {
         let o = objs.join(format!("{f}.o"));
         run(
             Command::new(std::env::var("CC").unwrap_or_else(|_| "cc".into()))
-                .args([
-                    "-O2",
-                    "-w",
-                    "-fno-common",
-                    "-c",
-                    "-Dfopen=gt2ref_fopen",
-                    "-Dfread=gt2ref_fread",
-                    "-Dmain=gt2reloc_main",
-                    "-Dexit=gt2ref_exit",
-                ])
+                .args(["-O2", "-w", "-fno-common", "-c"])
+                .arg("-include")
+                .arg(inc.join("gt2ref_rename.h"))
                 .arg("-I")
                 .arg(&inc)
                 .arg("-I")
