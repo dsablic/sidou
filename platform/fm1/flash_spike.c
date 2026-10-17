@@ -277,12 +277,27 @@ typedef struct {
 } spike_results;
 static spike_results flash_spike_res __attribute__((used));
 
-/* The sector images: what was read, and what 0xDF000 should hold. */
-static uint8_t rd[FLASH_SPIKE_SECTOR] __attribute__((section(".pool"), aligned(4)));
-static uint8_t expect[FLASH_SPIKE_SECTOR] __attribute__((section(".pool"), aligned(4)));
-static uint8_t data[FLASH_SPIKE_PAGE] __attribute__((section(".pool"), aligned(4)));
-static uint8_t sfdp[128] __attribute__((section(".pool"), aligned(4)));
-static grid flash_spike_screen __attribute__((section(".pool")));
+/* The sector images (what was read, and what 0xDF000 should hold), the program buffer, the
+ * SFDP table and the screen. They live in the song's content region (app.ld, __song_region):
+ * this build never plays a song (the audio is never started), and POOL has no room left. */
+#define SPIKE_SFDP_BYTES 128u
+typedef struct {
+    uint8_t rd[FLASH_SPIKE_SECTOR];
+    uint8_t expect[FLASH_SPIKE_SECTOR];
+    uint8_t data[FLASH_SPIKE_PAGE];
+    uint8_t sfdp[SPIKE_SFDP_BYTES];
+    grid screen;
+} spike_buffers;
+extern uint32_t __song_region[];
+_Static_assert(sizeof(spike_buffers) <= 65536u, "the spike's buffers must fit the song's region");
+#define SPIKE_BUF ((spike_buffers*)(void*)__song_region)
+static uint8_t* const rd = SPIKE_BUF->rd;
+static uint8_t* const expect = SPIKE_BUF->expect;
+static uint8_t* const data = SPIKE_BUF->data;
+static uint8_t* const sfdp = SPIKE_BUF->sfdp;
+#define flash_spike_screen (SPIKE_BUF->screen)
+/* Where the screen is, for the emulator tests (host/crates/emu-gate/tests/flash_spike.rs). */
+static grid* const flash_spike_screen_at __attribute__((used)) = &SPIKE_BUF->screen;
 static uint16_t palette[16];
 
 #define M FLASH_SPIKE_MEASURE
@@ -576,7 +591,7 @@ static void measure_part(void) {
     uint32_t f = irq_save();
     r->jedec = FL_FAR(fl_jedec_ram)();
     r->regs = FL_FAR(flash_spike_regs_ram)();
-    FL_FAR(flash_spike_sfdp_ram)(sfdp, sizeof sfdp);
+    FL_FAR(flash_spike_sfdp_ram)(sfdp, SPIKE_SFDP_BYTES);
     /* 100,000 rounds of 8 adds, from SRAM with interrupts masked. */
     uint32_t ticks = FL_FAR(flash_spike_adds_ram)(100000u);
     irq_restore(f);
@@ -584,7 +599,7 @@ static void measure_part(void) {
     r->sfdp[0] = le32(sfdp);
     /* The first parameter header (bytes 8..15): its table's pointer in bytes 12..14. */
     uint32_t ptp = le32(&sfdp[12]) & 0xFFFFFFu;
-    if (ptp + 36u <= sizeof sfdp) {
+    if (ptp + 36u <= SPIKE_SFDP_BYTES) {
         r->sfdp[1] = le32(&sfdp[ptp]);
         r->sfdp[2] = le32(&sfdp[ptp + 28u]);
         r->sfdp[3] = le32(&sfdp[ptp + 32u]);

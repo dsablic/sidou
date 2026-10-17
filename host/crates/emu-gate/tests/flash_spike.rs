@@ -104,7 +104,8 @@ fn results(m: &mut Machine, fw: &Firmware) -> Vec<u32> {
 
 /// What the spike's screen shows (its grid's shown_ch), row by row.
 fn screen_text(m: &mut Machine, fw: &Firmware) -> Vec<String> {
-    let shown = fw.symbol("flash_spike_screen") + 3 * 900;
+    // The grid sits in the song's region; flash_spike_screen_at holds its address.
+    let shown = m.soc.read32(fw.symbol("flash_spike_screen_at")) + 3 * 900;
     (0..30u32)
         .map(|r| {
             (0..30u32)
