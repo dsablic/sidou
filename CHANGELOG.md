@@ -8,6 +8,15 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- The minimum Rust version is 1.88 (was 1.87): `gt2-ref`'s 6502 core, mos6502 0.10.1,
+  uses let chains.
+
+### Fixed
+- `gt2-ref` on CI: a song one byte short is refused with a fortifying C library too, the
+  packer's report no longer takes the test threads' output with it, and a refused pack
+  no longer leaks the relocator's buffers.
+
 ## [0.2.0-m2-preview] - 2026-10-17
 A preview of M2 in progress, from `main` as it stood when the work paused: **untested on
 hardware, not for installing on an FM-1**. It is published so the songs can be heard in the

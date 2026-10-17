@@ -25,7 +25,7 @@ git submodule update --init
 ## Host build
 
 **Prerequisites:**
-- Rust 1.87 or newer (the workspace's `rust-version`), for example through
+- Rust 1.88 or newer (the workspace's `rust-version`), for example through
   rustup;
 - a C11 and C++17 compiler (the C++ is reSIDfp, test-only);
 - libclang, for bindgen. macOS has it with the Xcode command line tools; on

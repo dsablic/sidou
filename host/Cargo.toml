@@ -9,8 +9,9 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.0.0"
 edition = "2021"
-# fm1-core (emu-gate) needs 1.87 for is_multiple_of; criterion needs 1.86; our code 1.79.
-rust-version = "1.87"
+# mos6502 0.10.1 (gt2-ref) needs 1.88 for let chains; fm1-core (emu-gate) needs 1.87 for
+# is_multiple_of; criterion needs 1.86; our code 1.79.
+rust-version = "1.88"
 license = "GPL-3.0-or-later"
 publish = false
 

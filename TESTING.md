@@ -1211,7 +1211,7 @@ triggers; it builds, smoke-tests and deploys the browser demo:
 |---|---|
 | `host` (Ubuntu and macOS) | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --release`, and the tests again with `SIDOU_SANITIZE=undefined`; on Ubuntu also the filter tables' drift test (ignored elsewhere) |
 | `asan` (Ubuntu, nightly Rust) | the tests with `SIDOU_SANITIZE=address` |
-| `msrv` (Ubuntu, Rust 1.87) | `cargo check` |
+| `msrv` (Ubuntu, Rust 1.88) | `cargo check` |
 | `reuse` | `reuse lint` |
 | `fm1` (Ubuntu) | the `fm1` build in Docker; `sidou-pack` makes `sidou.fwsc` (its inputs cached by `inputs.toml`'s hash) and its tests run with the inputs and with M-VAVE's V15 package (fetched and SHA-checked for the stock-return tests only); the flash timing spike's build (`build/fm1-spike`); the emulator tests (gate, boot, live, MIDI, latency, SRAM, boot guard, package boot, the flash spike); a check that the JSON reports exist. The reports are uploaded as the `sid-budget` artifact, the package with `LICENSES/Apache-2.0.txt` and `LICENSES/GPL-3.0-only.txt` as `sidou-fwsc` |
 

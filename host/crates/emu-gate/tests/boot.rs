@@ -46,7 +46,12 @@ fn boots_and_plays_a_held_key_sample_exact() {
         "{frames} frames of audio in {RUN_MS} ms, expected over {expected_frames:.0}: \
          the audio interrupt is not running"
     );
-    let (left, right): (Vec<i16>, Vec<i16>) = audio.chunks_exact(2).map(|f| (f[0], f[1])).unzip();
+    let (left, right): (Vec<i16>, Vec<i16>) = audio
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|f| (f[0], f[1]))
+        .unzip();
     assert_eq!(
         left, right,
         "every effect slot is off at boot: L and R must match"
