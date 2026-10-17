@@ -95,6 +95,7 @@ static void give_back(ui_sound* us) {
 }
 
 void ui_sound_set(ui_sound* us, int on) {
+    us->l->settings_dirty = 1;
     us->on = on ? 1u : 0u;
     if (!us->on && us->voice != UI_SOUND_NONE) {
         give_back(us);

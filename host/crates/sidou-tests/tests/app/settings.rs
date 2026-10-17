@@ -1,0 +1,560 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! The settings that persist (`app/settings.c`, M2a Task 5): the record and its schema, the
+//! load at boot (the full boot once after an install), the debounced background save, the
+//! explicit save and its forced held operations, and a foreign store.
+
+use std::cell::Cell;
+use std::ffi::CStr;
+
+use sidou_sys::*;
+
+use crate::store::{fresh, Rig as Store};
+use crate::{record, Recorder, Rig};
+
+const VERSION: &CStr = c"V1.2.3";
+const TICK: u32 = 10;
+
+thread_local! {
+    /// The force hook's calls, in order (settings.force).
+    static FORCED: Cell<(u32, u32)> = const { Cell::new((0, 0)) };
+}
+
+unsafe extern "C" fn force(on: i32) {
+    FORCED.with(|f| {
+        let (ons, offs) = f.get();
+        f.set(if on != 0 {
+            (ons + 1, offs)
+        } else {
+            (ons, offs + 1)
+        });
+    });
+}
+
+fn forced() -> (u32, u32) {
+    FORCED.with(Cell::get)
+}
+
+/// An instrument, its learn table, CARDS and the UI sounds, and the settings on a store.
+struct Set {
+    rig: Rig,
+    ml: Box<midi_learn>,
+    cards: Box<u8>,
+    snd: Box<ui_sound>,
+    st: Store,
+    set: Box<settings>,
+    now: u32,
+    /// Writes the settings' ticks began.
+    writes: u32,
+    /// The store is quiet: maintenance runs (else only writes).
+    quiet: bool,
+}
+
+impl Set {
+    fn new(st: Store, version: &CStr) -> Self {
+        let mut rig = Rig::new(SID_MODEL_6581);
+        let mut ml = Box::<midi_learn>::default();
+        let mut cards = Box::new(1u8);
+        let mut snd = Box::<ui_sound>::default();
+        let rec: *mut Recorder = &mut *rig.rec;
+        let mut s = Set {
+            set: Box::default(),
+            rig,
+            ml: Box::default(),
+            cards: Box::new(0),
+            snd: Box::default(),
+            st,
+            now: 1000,
+            writes: 0,
+            quiet: true,
+        };
+        unsafe {
+            midi_learn_init(&mut *ml);
+            ui_sound_init(&mut *snd, &mut *s.rig.live, Some(record), rec.cast());
+            settings_init(
+                &mut *s.set,
+                &mut *s.rig.live,
+                &mut *ml,
+                &mut *cards,
+                &mut *snd,
+                &mut *s.st.st,
+                version.as_ptr(),
+                Some(force),
+            );
+        }
+        s.ml = ml;
+        s.cards = cards;
+        s.snd = snd;
+        FORCED.with(|f| f.set((0, 0)));
+        s
+    }
+
+    /// On a fresh, blank store with its pool filled.
+    fn blank() -> Self {
+        Self::new(fresh(1, 256), VERSION)
+    }
+
+    fn load(&mut self) -> bool {
+        (unsafe { settings_load(&mut *self.set, self.now) }) != 0
+    }
+
+    /// The settings' tick, then the store's polls for it (as the device's main loop runs
+    /// them). A write the tick began counts in `writes`.
+    fn tick(&mut self) {
+        self.now += TICK;
+        let busy = self.st.busy();
+        unsafe { settings_tick(&mut *self.set, self.now) };
+        if !busy && self.st.busy() {
+            self.writes += 1;
+        }
+        unsafe {
+            store_quiet(
+                &mut *self.st.st,
+                i32::from(self.quiet || self.set.forcing != 0),
+            )
+        };
+        for _ in 0..64 {
+            if unsafe { store_poll(&mut *self.st.st) } == 0 {
+                break;
+            }
+        }
+    }
+
+    fn ticks(&mut self, ms: u32) {
+        for _ in 0..ms / TICK {
+            self.tick();
+        }
+    }
+
+    fn gather(&self) -> Vec<u8> {
+        let mut out = vec![0u8; SETTINGS_BYTES as usize];
+        let n = unsafe { settings_gather(&*self.set, out.as_mut_ptr()) };
+        out.truncate(n as usize);
+        out
+    }
+
+    fn stored(&self) -> Option<Vec<u8>> {
+        self.st.get(SETTINGS_KEY)
+    }
+
+    fn param(&self, p: u32) -> u32 {
+        unsafe { live_param_get(&*self.rig.live, p) }
+    }
+
+    fn set_param(&mut self, p: u32, v: u32) {
+        unsafe { live_param_set(&mut *self.rig.live, p, v) };
+    }
+
+    fn result(&mut self) -> settings_result {
+        unsafe { settings_take_result(&mut *self.set) }
+    }
+
+    /// The instrument and the settings as they stand, all of what persists.
+    fn snapshot(&self) -> (Vec<u32>, u8, u8, u8, u8, Vec<u8>) {
+        let params = (0..LIVE_PARAM_COUNT)
+            .filter(|&p| p != LIVE_PARAM_VOLUME)
+            .map(|p| self.param(p))
+            .collect();
+        let ccs = (0..LIVE_PARAM_COUNT)
+            .map(|p| unsafe { midi_learn_cc_of(&*self.ml, p) })
+            .collect();
+        (
+            params,
+            *self.cards,
+            self.snd.on,
+            self.rig.live.keys_mode,
+            self.rig.live.preset,
+            ccs,
+        )
+    }
+
+    /// Every kind of persisted value away from its default.
+    fn change_everything(&mut self) {
+        *self.cards = 0;
+        unsafe { ui_sound_set(&mut *self.snd, 1) };
+        unsafe { live_set_keys_mode(&mut *self.rig.live, LIVE_KEYS_A) };
+        self.rig.set_preset(2);
+        self.set_param(LIVE_PARAM_CUTOFF, 1234);
+        self.set_param(LIVE_PARAM_PULSE_WIDTH, 3001);
+        self.set_param(LIVE_PARAM_RESONANCE, 9);
+        self.set_param(LIVE_PARAM_ENVELOPE_MODE, LIVE_ENVELOPE_AUTHENTIC);
+        self.set_param(LIVE_PARAM_MODEL, 1);
+        self.set_param(LIVE_PARAM_PROFILE, 2);
+        self.set_param(LIVE_PARAM_AGE, 77);
+        self.set_param(LIVE_PARAM_BLEED, 5);
+        self.set_param(LIVE_PARAM_SLOT + LIVE_SLOT_ALGORITHM, 3);
+        self.set_param(LIVE_PARAM_SLOT + 2 * LIVE_SLOT_FIELDS + LIVE_SLOT_MIX, 99);
+        self.set_param(LIVE_PARAM_VIBRATO_DEPTH, 40);
+        unsafe { midi_learn_bind(&mut *self.ml, 21, LIVE_PARAM_CUTOFF) };
+        unsafe { midi_learn_bind(&mut *self.ml, 30, LIVE_PARAM_AGE) };
+        self.rig.tick();
+    }
+}
+
+#[test]
+fn the_record_is_v1s_layout_with_the_defaults() {
+    let s = Set::blank();
+    let rec = s.gather();
+    assert_eq!(rec.len(), SETTINGS_V1_BYTES as usize);
+    assert_eq!(rec.len(), 106);
+    assert_eq!(rec[..6], [1, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]);
+    let cutoff = s.param(LIVE_PARAM_CUTOFF);
+    assert_eq!(
+        rec[6..8],
+        [cutoff as u8, (cutoff >> 8) as u8],
+        "the cutoff, two bytes"
+    );
+    assert_eq!(rec[8], s.param(LIVE_PARAM_RESONANCE) as u8);
+    let pw = s.param(LIVE_PARAM_PULSE_WIDTH);
+    assert_eq!(
+        rec[9..11],
+        [pw as u8, (pw >> 8) as u8],
+        "the pulse width, two bytes"
+    );
+    assert_eq!(rec[11], 0, "the volume is the pot's");
+    for p in 4..LIVE_PARAM_COUNT {
+        assert_eq!(u32::from(rec[p as usize + 8]), s.param(p), "parameter {p}");
+    }
+    assert!(
+        rec[50..92].iter().all(|&b| b == MIDI_MAP_NO_CC as u8),
+        "no bindings"
+    );
+    assert_eq!(&rec[92..98], b"V1.2.3");
+    assert!(rec[98..].iter().all(|&b| b == 0), "NUL-padded");
+}
+
+#[test]
+fn every_persisted_value_round_trips_and_the_volume_does_not() {
+    let mut a = Set::blank();
+    a.change_everything();
+    let rec = a.gather();
+    let mut b = Set::blank();
+    b.rig.set_master(100);
+    let volume = b.rig.live.volume;
+    let same = unsafe { settings_apply(&mut *b.set, rec.as_ptr(), rec.len() as u32) };
+    assert_eq!(same, 1, "the same firmware version");
+    b.rig.tick();
+    assert_eq!(b.snapshot(), a.snapshot());
+    assert_eq!(b.rig.live.volume, volume, "the pot's, as it was");
+    // The master pot changes no record: no background save for it.
+    a.rig.set_master(1000);
+    assert_eq!(a.gather(), rec);
+}
+
+#[test]
+fn a_first_boot_plays_the_full_boot_and_saves_the_version_then_the_short_one() {
+    let mut s = Set::blank();
+    let before = s.snapshot();
+    assert!(!s.load(), "no record: the full boot");
+    assert_eq!(s.snapshot(), before, "M1's defaults");
+    s.ticks(SETTINGS_DEBOUNCE_MS - 20);
+    assert_eq!(s.stored(), None, "not before the debounce");
+    s.ticks(40);
+    assert_eq!(s.stored(), Some(s.gather()), "the version stored");
+    assert_eq!(s.writes, 1);
+    // The next boot, from the flash.
+    let mut st = s.st;
+    st.reset();
+    assert_eq!(st.mount(), STORE_STATE_SIDOU);
+    let mut s = Set::new(st, VERSION);
+    assert!(s.load(), "the short boot");
+    s.ticks(2 * SETTINGS_DEBOUNCE_MS);
+    assert_eq!(s.writes, 0, "nothing changed: nothing written");
+}
+
+#[test]
+fn settings_survive_a_power_cycle_and_a_new_version_plays_the_full_boot_once() {
+    let mut s = Set::blank();
+    s.load();
+    s.change_everything();
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    let want = s.snapshot();
+    let mut st = s.st;
+    st.reset();
+    st.mount();
+    let mut s = Set::new(st, c"V1.3.0");
+    assert!(!s.load(), "another version: the full boot");
+    s.rig.tick();
+    assert_eq!(s.snapshot(), want, "the settings still apply");
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    assert_eq!(s.writes, 1, "the new version stored");
+    let mut st = s.st;
+    st.reset();
+    st.mount();
+    let mut s = Set::new(st, c"V1.3.0");
+    assert!(s.load(), "then the short boot");
+    s.rig.tick();
+    assert_eq!(s.snapshot(), want);
+}
+
+#[test]
+fn an_unchanged_frame_does_not_gather_and_a_setter_change_is_saved() {
+    let mut s = Set::blank();
+    s.load();
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    let seen = s.set.seen;
+    let cutoff = s.rig.live.cutoff;
+    // Bypass the read-only live API to detect an unwanted gather on an idle frame.
+    s.rig.live.cutoff ^= 1;
+    s.tick();
+    assert_eq!(
+        s.set.seen, seen,
+        "an unchanged frame must not gather or CRC"
+    );
+    s.rig.live.cutoff = cutoff;
+    s.set_param(LIVE_PARAM_CUTOFF, u32::from(cutoff ^ 1));
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    assert_eq!(s.writes, 2);
+    assert_eq!(s.stored(), Some(s.gather()));
+}
+
+#[test]
+fn every_parameter_setter_marks_a_change_for_the_background_save() {
+    for p in 0..LIVE_PARAM_COUNT {
+        if p == LIVE_PARAM_VOLUME {
+            continue;
+        }
+        let mut s = Set::blank();
+        s.load();
+        s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+        let value = (s.param(p) + 1) % (unsafe { live_param_max(p) } + 1);
+        s.set_param(p, value);
+        s.ticks(SETTINGS_DEBOUNCE_MS - 20);
+        assert_eq!(s.writes, 1, "parameter {p}: must debounce");
+        s.ticks(120);
+        assert_eq!(s.writes, 2, "parameter {p}: must save");
+        assert_eq!(s.stored(), Some(s.gather()), "parameter {p}");
+    }
+}
+
+#[test]
+fn direct_persisted_setters_are_background_saved_but_controllers_are_not() {
+    let changes: &[fn(&mut Set)] = &[
+        |s| unsafe { live_knob(&mut *s.rig.live, LIVE_KNOB_CUTOFF, 1) },
+        |s| unsafe { live_knob(&mut *s.rig.live, LIVE_KNOB_RESONANCE, 1) },
+        |s| unsafe { live_knob(&mut *s.rig.live, LIVE_KNOB_PULSE_WIDTH, 1) },
+        |s| s.rig.set_preset(1),
+        |s| unsafe { live_button(&mut *s.rig.live, LIVE_BUTTON_FX) },
+        |s| unsafe { live_slot_set(&mut *s.rig.live, 0, LIVE_SLOT_MIX, 100) },
+        |s| unsafe { live_set_keys_mode(&mut *s.rig.live, LIVE_KEYS_A) },
+        |s| unsafe { live_bend_range_rpn(&mut *s.rig.live, 12) },
+        |s| unsafe { ui_sound_set(&mut *s.snd, 1) },
+    ];
+    for (i, change) in changes.iter().enumerate() {
+        let mut s = Set::blank();
+        s.load();
+        s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+        change(&mut s);
+        s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+        assert_eq!(s.writes, 2, "setter {i}");
+        assert_eq!(s.stored(), Some(s.gather()), "setter {i}");
+    }
+    let mut s = Set::blank();
+    s.load();
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    unsafe {
+        live_set_master(&mut *s.rig.live, 10);
+        live_bend(&mut *s.rig.live, 4000);
+        live_pressure(&mut *s.rig.live, 80);
+        live_button(&mut *s.rig.live, LIVE_BUTTON_OCT_UP);
+        live_note_on(&mut *s.rig.live, 60, 100);
+    }
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    assert_eq!(s.writes, 1, "transient controls must not save");
+    assert_eq!(s.rig.live.settings_dirty, 0);
+}
+
+#[test]
+fn binding_forgetting_and_clearing_are_background_saved() {
+    let mut s = Set::blank();
+    s.load();
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    unsafe { midi_learn_bind(&mut *s.ml, 21, LIVE_PARAM_CUTOFF) };
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    assert_eq!(s.writes, 2);
+    assert_eq!(s.stored(), Some(s.gather()));
+    unsafe { midi_learn_forget(&mut *s.ml, LIVE_PARAM_CUTOFF) };
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    assert_eq!(s.writes, 3);
+    assert_eq!(s.stored(), Some(s.gather()));
+    unsafe { midi_learn_bind(&mut *s.ml, 22, LIVE_PARAM_RESONANCE) };
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    unsafe { midi_learn_clear(&mut *s.ml) };
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    assert_eq!(s.writes, 5);
+    assert_eq!(s.stored(), Some(s.gather()));
+}
+
+#[test]
+fn a_burst_of_changes_is_one_write_five_seconds_after_the_last() {
+    let mut s = Set::blank();
+    assert!(!s.load());
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    assert_eq!(s.writes, 1, "the first boot's version");
+    for i in 0..40 {
+        s.set_param(LIVE_PARAM_CUTOFF, 100 + i * 10);
+        s.ticks(100);
+    }
+    assert_eq!(s.writes, 1, "nothing while the knob turns");
+    s.ticks(SETTINGS_DEBOUNCE_MS - 200);
+    assert_eq!(s.writes, 1, "nor before 5 s");
+    s.ticks(300);
+    assert_eq!(s.writes, 2, "one write for the burst");
+    assert_eq!(s.stored(), Some(s.gather()));
+    // Back to a value already stored and away again within the debounce: still one write.
+    s.set_param(LIVE_PARAM_CUTOFF, 5);
+    s.ticks(1000);
+    s.set_param(LIVE_PARAM_CUTOFF, 490);
+    s.ticks(2 * SETTINGS_DEBOUNCE_MS);
+    assert_eq!(s.writes, 2, "the stored value again: nothing to write");
+    let result = s.result();
+    assert_eq!(result, SETTINGS_NOTHING, "background saves say nothing");
+}
+
+#[test]
+fn save_now_skips_the_debounce_and_tells_when_it_commits() {
+    let mut s = Set::blank();
+    s.load();
+    *s.cards = 0;
+    unsafe { settings_save_now(&mut *s.set, s.now) };
+    assert_eq!(s.result(), SETTINGS_NOTHING, "not committed yet");
+    s.tick();
+    s.tick();
+    assert_eq!(s.result(), SETTINGS_SAVED);
+    assert_eq!(s.result(), SETTINGS_NOTHING, "said once");
+    assert_eq!(s.stored(), Some(s.gather()));
+    assert_eq!(forced(), (0, 0), "a store with its pool needs no force");
+    s.ticks(2 * SETTINGS_DEBOUNCE_MS);
+    assert_eq!(
+        s.writes, 0,
+        "the debounce has nothing left (the version is in that save)"
+    );
+    // Nothing changed: an explicit save still says SAVED.
+    unsafe { settings_save_now(&mut *s.set, s.now) };
+    s.ticks(30);
+    assert_eq!(s.result(), SETTINGS_SAVED);
+}
+
+/// A store whose pool is short (not quiet since its mount: the device was never quiet) takes
+/// no write; an explicit save waits, and after SETTINGS_FORCE_MS forces the held operations
+/// (the store refills while forced), says SAVED (GAPS), and the force ends.
+#[test]
+fn an_explicit_save_on_a_short_pool_forces_the_held_operations_and_says_so() {
+    let mut st = Store::new(crate::store::Sim::new(2), 256);
+    assert_eq!(st.mount(), STORE_STATE_BLANK);
+    let mut s = Set::new(st, VERSION);
+    s.quiet = false;
+    s.load();
+    unsafe { settings_save_now(&mut *s.set, s.now) };
+    s.ticks(SETTINGS_FORCE_MS - 20);
+    assert_eq!((s.stored(), forced()), (None, (0, 0)), "waits, unforced");
+    s.ticks(40);
+    assert_eq!(forced().0, 1, "forced after SETTINGS_FORCE_MS");
+    for _ in 0..1000 {
+        s.tick();
+        if s.result() == SETTINGS_SAVED_GAPS {
+            break;
+        }
+        assert!(s.set.asked != 0, "it ended without saying so");
+    }
+    assert_eq!(s.stored(), Some(s.gather()));
+    assert_eq!(forced(), (1, 1), "the force ends with the save");
+}
+
+#[test]
+fn a_foreign_store_keeps_nothing_and_an_explicit_save_says_so() {
+    let mut region = vec![0xFFu8; (STORE_HI - STORE_LO) as usize];
+    region[5 * STORE_SECTOR as usize + 7] = 0x42;
+    let mut st = Store::new(
+        crate::store::Sim::with_region(3, &region, [false; STORE_SECTORS as usize]),
+        256,
+    );
+    assert_eq!(st.mount(), STORE_STATE_FOREIGN);
+    let mut s = Set::new(st, VERSION);
+    assert!(!s.load(), "nothing read: the full boot");
+    s.change_everything();
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    unsafe { settings_save_now(&mut *s.set, s.now) };
+    s.tick();
+    assert_eq!(s.result(), SETTINGS_FOREIGN);
+    assert_eq!(s.st.sim.region(), &region[..], "not a byte written");
+    assert_eq!(forced(), (0, 0));
+}
+
+#[test]
+fn a_record_that_is_not_one_applies_nothing() {
+    let mut s = Set::blank();
+    let before = s.snapshot();
+    let mut good = Set::blank();
+    good.change_everything();
+    let rec = good.gather();
+    for bad in [
+        rec[..rec.len() - 1].to_vec(),    // short
+        [&[0u8][..], &rec[1..]].concat(), // schema 0
+        {
+            let mut r = rec.clone();
+            r[5] = 41; // fewer parameters than v1's
+            r
+        },
+    ] {
+        let same = unsafe { settings_apply(&mut *s.set, bad.as_ptr(), bad.len() as u32) };
+        assert_eq!(same, 0);
+        assert_eq!(s.snapshot(), before);
+    }
+}
+
+/// A later schema appends fields: this firmware reads a newer record's v1 part.
+#[test]
+fn a_newer_schemas_record_applies_its_v1_part() {
+    let mut good = Set::blank();
+    good.change_everything();
+    let mut rec = good.gather();
+    rec[0] = 2;
+    rec.extend_from_slice(&[0xA5; 20]);
+    let mut s = Set::blank();
+    let same = unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) };
+    assert_eq!(same, 1);
+    s.rig.tick();
+    assert_eq!(s.snapshot(), good.snapshot());
+}
+
+/// An out-of-range value (a corrupt field the record's CRC still matched, or a range a later
+/// firmware narrowed) is skipped: the parameter keeps its value.
+#[test]
+fn an_out_of_range_value_is_skipped() {
+    let mut s = Set::blank();
+    let mut rec = s.gather();
+    let reso = s.param(LIVE_PARAM_RESONANCE);
+    rec[8] = 200;
+    unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) };
+    assert_eq!(s.param(LIVE_PARAM_RESONANCE), reso);
+}
+
+fn fixture_path() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/settings-v1.bin")
+}
+
+/// `tests/data/settings-v1.bin` is a schema 1 record, checked in: every later schema must load
+/// it to the same values, the fields it lacks at their defaults.
+/// `SIDOU_SETTINGS_FIXTURE_UPDATE=1` writes it, for schema 1 only.
+#[test]
+fn a_schema_1_record_loads_to_the_same_values() {
+    let path = fixture_path();
+    let mut want = Set::blank();
+    want.change_everything();
+    if std::env::var_os("SIDOU_SETTINGS_FIXTURE_UPDATE").is_some() {
+        assert_eq!(
+            SETTINGS_VERSION, 1,
+            "the v1 fixture is written by schema 1 only"
+        );
+        std::fs::write(&path, want.gather()).unwrap();
+    }
+    let rec = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    assert_eq!(rec.len(), 106);
+    let mut s = Set::blank();
+    let same = unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) };
+    assert_eq!(same, 1, "written by V1.2.3");
+    s.rig.tick();
+    assert_eq!(s.snapshot(), want.snapshot());
+    assert_eq!(s.rig.live.octave, 0, "the octave does not persist");
+}

@@ -1056,7 +1056,7 @@ fn the_tap_runs_while_scene_shows() {
         midi_learn_init(&mut *ml);
         views_learn(&mut *ui.v, &mut *ml);
     }
-    ui.press(LEARN_VIEW_BUTTON);
+    ui.learn_on(PANEL_ENC_K1);
     ui.frame();
     assert_eq!(ui.top(), "LEARN");
     assert_eq!(ui.sc.on, 1, "the tap is off under learn's frame over SCENE");
@@ -1294,7 +1294,7 @@ fn learns_frame_over_every_piece_and_over_live_stays_within_the_budget() {
         for _ in 0..20 {
             band.frame(&mut ui, true);
         }
-        ui.press(LEARN_VIEW_BUTTON);
+        ui.learn_on(PANEL_ENC_K1);
         let sent: Vec<usize> = (0..60).map(|_| band.frame(&mut ui, true).cells).collect();
         assert_eq!(ui.top(), "LEARN", "{name}");
         let most = sent.iter().copied().max().unwrap();
@@ -1307,7 +1307,7 @@ fn learns_frame_over_every_piece_and_over_live_stays_within_the_budget() {
             "learn over {name}: a frame sent {most} cells"
         );
         assert!(
-            ui.row(LEARN_VIEW_ROW as usize + 1).contains("TURN A KNOB"),
+            ui.row(LEARN_VIEW_ROW as usize + 1).contains("SEND A CC"),
             "learn over {name}: {:?}",
             ui.row(LEARN_VIEW_ROW as usize + 1)
         );

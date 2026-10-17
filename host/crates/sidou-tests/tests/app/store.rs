@@ -1294,8 +1294,20 @@ fn foreign_data_mounts_foreign_and_nothing_is_written_until_a_format() {
     // The user's confirm: a format, then the store is SIDOU's.
     unsafe { store_format(&mut *r.st) };
     assert_eq!(r.state(), STORE_STATE_BLANK);
+    // Nothing is written until every sector is erased: a foreign sector left as it was would
+    // make the next mount foreign again.
+    assert_eq!(r.put(1, b"early"), STORE_BUSY);
     r.maintain();
-    assert_eq!(r.stats().pool, STORE_POOL_TARGET);
+    assert_eq!(r.stats().pool, SECTORS as u32, "all 73 erased");
+    for sec in r.sim.region().chunks(SECTOR) {
+        assert!(
+            sec.iter().all(|&b| b == 0xFF) || sec[..8] == *b"SIDOUSTR",
+            "a sector neither erased nor SIDOU's"
+        );
+    }
+    r.reset();
+    assert_ne!(r.mount(), STORE_STATE_FOREIGN);
+    r.maintain();
     assert_eq!(r.put_now(1, b"mine"), STORE_OK);
     r.reset();
     assert_eq!(r.mount(), STORE_STATE_SIDOU);

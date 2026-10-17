@@ -377,6 +377,11 @@ uint32_t chip_view_focus(const chip_view* cv) {
     return cv->tabs ? CHIP_VIEW_TABS : cv->chip ? CHIP_VIEW_CHIP : 1u + cv->l->fx_select % LIVE_SLOTS;
 }
 
+int chip_view_save(chip_view* cv) {
+    (void)cv;
+    return 0; /* no USER slots yet (M2a Task 6) */
+}
+
 uint32_t chip_view_page(const chip_view* cv) {
     if (!cv->chip) {
         return PANEL_PAGE_SLOT;

@@ -120,7 +120,8 @@ fn screen_text(m: &mut Machine, fw: &Firmware) -> Vec<String> {
 /// Boots the spike on `flash`, waits for its start screen, presses SAVE and runs to the end
 /// with the TRS jack busy (active sensing, one byte a message) throughout.
 fn run(fw: &Firmware, flash: &[u8]) -> (Machine, Vec<u32>) {
-    let mut m = Machine::boot(&fw.image);
+    // A blank-flash boot: the spike stores no settings, and the test sets the flash itself.
+    let mut m = Machine::boot_blank(&fw.image);
     m.soc.flash.mem.copy_from_slice(flash);
     let mut r = results(&mut m, fw);
     for _ in 0..30 {

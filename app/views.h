@@ -7,11 +7,12 @@
  * - LIVE, the root (app/live_view.h): the voices' oscilloscopes and envelopes, the filter's
  *   curve, the VU meters and the effect slots. What the screen shows from power-on; the tap
  *   on the audio runs only while it shows: on top, or under MIDI learn's frame.
- * - MENU (HOME): PRESET, OCTAVE, CARDS, KEYS (AUTO or A: which chip the keys play during a
- *   song, app/keys_route.h), SOUNDS (the UI sounds on chip B's spare voice, OFF by default,
- *   app/ui_sound.h; both in RAM until the settings persist) and the views to open (CHIP
- *   first, then TRACKER), in a frame. SELECT
- *   moves the cursor, ALGORITHM changes the value under it or opens the view.
+ * - MENU (HOME): PRESET, OCTAVE, CARDS, STORE (the store's free space, or FOREIGN: another
+ *   firmware's data, which ALGORITHM turned clockwise twice formats), KEYS (AUTO or A: which
+ *   chip the keys play during a song, app/keys_route.h), SOUNDS (the UI sounds on chip B's
+ *   spare voice, OFF by default, app/ui_sound.h) and the views to open (CHIP first, then
+ *   TRACKER), in a frame. SELECT moves the cursor, ALGORITHM changes the value under it or
+ *   opens the view. CARDS, KEYS and SOUNDS persist (app/settings.h).
  * - CHIP (from the menu, behind THE CHIP's card): chip A's profile, character and effect slots
  *   (app/chip_view.h); SELECT moves the focus, ALGORITHM steps its choice, K1..K4 turn its
  *   values.
@@ -23,7 +24,8 @@
  * - CHARSET: the font and the palette, the art reference.
  * - ABOUT: the credits, as a cracktro (app/about.h).
  * - BOOT: the boot sequence (app/boot.h), over LIVE at power-on (views_boot).
- * - LEARN: MIDI learn (app/learn_view.h), a frame over any view, from SAVE (views_learn).
+ * - LEARN: MIDI learn (app/learn_view.h), a frame over any view, from SAVE held while a knob
+ *   turns (views_learn).
  * - The song views (app/song_view.h): STEP, TRACKER, ORDER, INSTR and TABLE, from SEQ in any
  *   view or the menu's TRACKER; SEQ steps through them, HOME goes back to the view before.
  *   Until M2d Task 2 only a TRACKER placeholder.
@@ -35,12 +37,18 @@
  *   power-on).
  *
  * Routing, for each button press and encoder turn:
+ * 0. SAVE (app/save_key.h), before everything else: its press goes nowhere; its clean release
+ *    saves: in MIDI learn's frame it forgets the picked parameter's CC (or confirms the clear),
+ *    on the CHIP view a USER slot (chip_view_save, M2a Task 6), on a song view the song (M2d),
+ *    anywhere else the settings, now (settings_save_now; the toast SAVED when it commits).
+ *    While SAVE is held, K1..K4 open LEARN on the knob's parameter, and HOME asks, in the frame,
+ *    to clear every mapping (outside it, HOME does nothing). Over the boot or a title card SAVE
+ *    is a control as any other: it ends them;
  * 1. the capture (screen_capture), if a view set one: it sees HOME too, so it can take HOME
  *    as "cancel";
  * 2. global (screen_global): HOME opens the menu on the root view, and goes back one view
- *    anywhere else; SAVE opens LEARN over any view; SEQ opens the song views or steps
- *    through them, PLAY plays or stops the song (EDIT held: goes on), REC turns record mode
- *    on and off (app/song_view.h);
+ *    anywhere else; SEQ opens the song views or steps through them, PLAY plays or stops the
+ *    song (EDIT held: goes on), REC turns record mode on and off (app/song_view.h);
  * 3. the view on top;
  * 4. the panel (app/panel.h): what nobody consumed plays the instrument as in M1a and M1c,
  *    in every view: OCT-/OCT+, FX, K1..K4, and the effect slots' EDIT shortcut (EDIT held +
@@ -75,7 +83,9 @@
 #include "live.h"
 #include "live_view.h"
 #include "panel.h"
+#include "save_key.h"
 #include "scene_view.h"
+#include "settings.h"
 #include "ui_sound.h"
 #include "scope.h"
 #include "screen.h"
@@ -91,27 +101,29 @@ extern "C" {
 #define VIEWS_TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
 /* The menu's items and the rows it shows, the title cards' option, and the items that open a
  * view. */
-#define VIEWS_MENU_ITEMS 11u
+#define VIEWS_MENU_ITEMS 12u
 #define VIEWS_MENU_CHIP 0u
 #define VIEWS_MENU_TRACKER 1u
 #define VIEWS_MENU_CARDS 4u
-#define VIEWS_MENU_KEYS 5u
-#define VIEWS_MENU_SOUNDS 6u
-#define VIEWS_MENU_STATUS 7u
-#define VIEWS_MENU_SCENE 8u
-#define VIEWS_MENU_CHARSET 9u
-#define VIEWS_MENU_ABOUT 10u
+#define VIEWS_MENU_STORE 5u
+#define VIEWS_MENU_KEYS 6u
+#define VIEWS_MENU_SOUNDS 7u
+#define VIEWS_MENU_STATUS 8u
+#define VIEWS_MENU_SCENE 9u
+#define VIEWS_MENU_CHARSET 10u
+#define VIEWS_MENU_ABOUT 11u
 /* Raster steps for a chip model change: the ramp once round. */
 #define VIEWS_RASTER_STEPS SCREEN_RAMP
 /* What the views show, as bytes (app/views.c look): the instrument's model (as asked for),
  * which chip the keys play (with two chips and the KEYS setting), the keys' profile and the
  * other chip's, the preset, octave, cutoff (2), resonance, pulse width (2), volume and selected slot, each
- * voice's sounding note, every slot field, the title cards' option, and the menu's cursor,
- * first row and blink. */
-#define VIEWS_LOOK (17u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
+ * voice's sounding note, every slot field, the title cards' option, the menu's cursor,
+ * first row and blink, then the store's state and free kilobytes (only MENU compares these two). */
+#define VIEWS_LOOK (19u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
 
 typedef struct {
     screen s;
+    save_key key;
     live* l;
     scope* sc; /* the audio's tap, NULL: none; on while LIVE or SCENE shows */
     const char* version; /* "V" and the version, at most 14 characters */
@@ -124,6 +136,7 @@ typedef struct {
     /* What the view on top showed at its last compose: it composes again when this changes
      * (the views' changed functions). */
     uint8_t drawn[VIEWS_LOOK];
+    uint8_t format_arm; /* the menu's STORE on a foreign store: turned clockwise once */
     panel* p; /* the panel of the last event (views_buttons, views_encoder); NULL before */
     boot boot;
     about about;
@@ -135,6 +148,8 @@ typedef struct {
     song_view song;
     uint8_t cards; /* 1: title cards on (the menu's CARDS) */
     ui_sound* snd; /* the UI sounds (the menu's SOUNDS, app/ui_sound.h); NULL: none */
+    settings* set; /* what SAVE saves and the menu's STORE shows (views_settings); NULL: none */
+    uint8_t formatting; /* a format's erases run (forced: the user asked) */
 } views;
 
 extern const view views_status;
@@ -148,11 +163,12 @@ void views_set_keys(views* v, keys_route* kr);
 /* The UI sounds (app/ui_sound.h): the menu's SOUNDS turns them on and off, and the menu and
  * the toasts play them; NULL until set (and the SOUNDS item then reads OFF and does nothing). */
 void views_set_sounds(views* v, ui_sound* us);
-/* The boot sequence over it from the next frame on: the full one if HOME was held at
- * power-on (home_held), whose first HOME press edge is then part of the hold (app/boot.h). */
-void views_boot(views* v, int home_held);
-/* SAVE arms MIDI learn over ml's bindings from now on (app/learn_view.h); NULL: SAVE does
- * nothing (views_init's default). */
+/* The boot sequence over it from the next frame on: the full one if full (the first boot
+ * after an install) or if HOME was held at power-on (home_held), whose first HOME press edge is
+ * then part of the hold (app/boot.h). */
+void views_boot(views* v, int full, int home_held);
+/* SAVE held + a knob opens MIDI learn over ml's bindings from now on (app/learn_view.h); NULL:
+ * it does nothing (views_init's default). */
 void views_learn(views* v, midi_learn* ml);
 /* The song's player (app/song_transport.h) for the song views; NULL: none (the host tests'
  * default; the device binds song_ctl, platform/fm1/main.c). */
@@ -161,6 +177,10 @@ void views_set_song(views* v, const song_transport* t);
  * in a song view with a player, the jam takes them (song_view_keys); GLO's layer takes its
  * keys to the song's mutes and solos (song_view_glo); the rest play the instrument. */
 void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed);
+/* The settings (app/settings.h, made with this views' cards): SAVE saves them, views_frame
+ * ticks them, the menu's STORE shows their store. NULL (views_init's default): SAVE saves
+ * nothing and STORE reads NONE. */
+void views_settings(views* v, settings* set);
 /* Button press edges and the held buttons, as panel_buttons takes them: routed as above, and
  * what nobody consumed goes on to panel_buttons. */
 void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held);

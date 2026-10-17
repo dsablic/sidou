@@ -176,7 +176,7 @@ fn the_store_reads_through_a_plain_xip_window() {
         return;
     };
     let fw = Firmware::load(&build);
-    let mut m = Machine::boot(&fw.image);
+    let mut m = Machine::boot_blank(&fw.image);
     let lo = sidou_sys::STORE_LO as usize;
     m.soc.flash.mem[lo..lo + 4].copy_from_slice(&[0x53, 0x49, 0xD0, 0x0A]);
     let xip = |off: u32| 0x0200_0000 + off - 0x4000;

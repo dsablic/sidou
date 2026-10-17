@@ -31,10 +31,11 @@ fn assert_title_card_is_the_scene(ui: &Ui) {
     }
 }
 
+/// The full boot as HOME held at power-on starts it, or the short one.
 fn booting(full: bool) -> Ui {
     let mut ui = Ui::new();
     drain(&mut ui.g);
-    unsafe { views_boot(&mut *ui.v, i32::from(full)) };
+    unsafe { views_boot(&mut *ui.v, i32::from(full), i32::from(full)) };
     ui
 }
 
@@ -51,7 +52,7 @@ fn run_to(ui: &mut Ui, start: u32, ms: u32) -> Vec<Sent> {
 fn phase_at(full: bool, ms: u32) -> boot_phase {
     let mut b = boot::default();
     unsafe {
-        boot_init(&mut b, std::ptr::null(), c"V1".as_ptr(), i32::from(full));
+        boot_init(&mut b, std::ptr::null(), c"V1".as_ptr(), i32::from(full), 0);
         boot_phase_at(&b, ms)
     }
 }
@@ -85,7 +86,7 @@ fn the_boot_banner_names_both_chips() {
     let mut ui = Ui::new();
     ui.rig.live.two_chips = 1;
     drain(&mut ui.g);
-    unsafe { views_boot(&mut *ui.v, 1) };
+    unsafe { views_boot(&mut *ui.v, 1, 1) };
     let start = ui.now + 40;
     run_to(&mut ui, start, 0);
     assert_eq!(
@@ -241,6 +242,23 @@ fn home_held_at_power_on_plays_the_full_boot_and_its_press_edge_is_part_of_the_h
         ui.settle();
         assert_eq!(ui.top(), "LIVE", "HOME also opened the menu");
     }
+}
+
+/// The full boot once after an install (app/settings.h: no record, or another version's),
+/// HOME not held: the whole sequence, and HOME's first press skips it.
+#[test]
+fn the_full_boot_after_an_install_is_skipped_by_the_first_home() {
+    let mut ui = Ui::new();
+    drain(&mut ui.g);
+    unsafe { views_boot(&mut *ui.v, 1, 0) };
+    let start = ui.now + 40;
+    run_to(&mut ui, start, 2400);
+    assert!(ui.row(10).contains("SEARCHING FOR SIDOU"), "{}", ui.row(10));
+    ui.press(PANEL_BTN_HOME);
+    ui.frame();
+    assert_eq!(ui.top(), "LIVE", "the first HOME did not skip");
+    ui.settle();
+    assert_eq!(ui.top(), "LIVE", "HOME also opened the menu");
 }
 
 #[test]
@@ -439,7 +457,7 @@ fn the_wipe_into_the_title_card_sends_only_its_rows() {
         let mut ui = Ui::new();
         ui.now += offset;
         drain(&mut ui.g);
-        unsafe { views_boot(&mut *ui.v, 1) };
+        unsafe { views_boot(&mut *ui.v, 1, 1) };
         let start = ui.now + 40;
         run_to(&mut ui, start, BOOT_TITLE_MS - 200);
         let frames = wipe_frames(&mut || {
@@ -464,7 +482,7 @@ fn the_banner_fits_the_longest_version() {
     let mut ui = Ui::new();
     let v = c"V1234567890123";
     ui.v.version = v.as_ptr();
-    unsafe { views_boot(&mut *ui.v, 1) };
+    unsafe { views_boot(&mut *ui.v, 1, 1) };
     ui.frame();
     let row = ui.row(3);
     assert!(row.contains("*** SIDOU V1234567890123 ***"), "{row}");

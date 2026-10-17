@@ -89,13 +89,9 @@ static void lines(const learn_view* lv, char a[LINE], char b[LINE]) {
         }
         break;
     }
-    case MIDI_LEARN_CONFIRM:
+    default: /* MIDI_LEARN_CONFIRM */
         append(a, LINE, "CLEAR ALL MAPPINGS?");
         append(b, LINE, "SAVE: YES  HOME: NO");
-        break;
-    default: /* MIDI_LEARN_KNOB */
-        append(a, LINE, "TURN A KNOB");
-        append(b, LINE, "SAVE: CLEAR ALL");
         break;
     }
 }
@@ -188,13 +184,9 @@ static void finish(learn_view* lv) {
     }
     case MIDI_LEARN_FORGOT:
         append(t, LINE, name);
-        if (ml->result_cc != MIDI_MAP_NO_CC) {
-            append(t, LINE, ": CC ");
-            append_number(t, LINE, ml->result_cc);
-            append(t, LINE, " FORGOTTEN");
-        } else {
-            append(t, LINE, ": NO CC LEARNED");
-        }
+        append(t, LINE, ": CC ");
+        append_number(t, LINE, ml->result_cc);
+        append(t, LINE, " FORGOTTEN");
         break;
     case MIDI_LEARN_CLEARED: append(t, LINE, "MIDI LEARN CLEARED"); break;
     case MIDI_LEARN_TIMED_OUT: append(t, LINE, "LEARN TIMED OUT"); break;
@@ -205,53 +197,89 @@ static void finish(learn_view* lv) {
     lv->s = NULL;
 }
 
+/* Knob enc's parameter (with the buttons held), picked: 1, or 0 and a toast when it has no
+ * CC (the CHIP view's song tab turns the song's setup, which no CC reaches; K4 on LIVE's page
+ * is the preset). */
+static int pick(learn_view* lv, screen* s, const panel* p, uint32_t enc, uint32_t held) {
+    uint32_t param = panel_knob_param(p, lv->l, held, enc);
+    if (midi_learn_open(lv->ml, param, s->now)) {
+        return 1;
+    }
+    int none = p && p->page == PANEL_PAGE_NONE && !(held & (1u << PANEL_BTN_EDIT));
+    screen_toast(s, none ? "SONG SETUP: NO CC" : "K4: THE PRESET, NO CC", SCREEN_TOAST_MS);
+    return 0;
+}
+
 static int capture(void* ctx, const screen_event* e) {
     learn_view* lv = ctx;
     midi_learn* ml = lv->ml;
     if (ml->state == MIDI_LEARN_IDLE) {
         /* A CC ended learn since the last frame (learn_view_frame would close it): it closes
-         * now, with its toast. A knob turns as if learn were not there; SAVE and HOME, meant
-         * for the frame, do nothing more (SAVE would arm learn again over the toast). */
+         * now, with its toast. A knob turns as if learn were not there; HOME, meant for the
+         * frame, does nothing more. */
         finish(lv);
-        return e->kind == SCREEN_PRESS && (e->id == PANEL_BTN_HOME || e->id == LEARN_VIEW_BUTTON);
+        return e->kind == SCREEN_PRESS && e->id == PANEL_BTN_HOME;
     }
     if (e->kind == SCREEN_PRESS) {
-        if (e->id == PANEL_BTN_HOME) {
-            midi_learn_cancel(ml);
-        } else if (e->id == LEARN_VIEW_BUTTON) {
-            midi_learn_button(ml, lv->s->now);
-        } else {
+        if (e->id != PANEL_BTN_HOME) {
             return 0; /* the panel's */
         }
-        if (ml->state == MIDI_LEARN_IDLE) {
-            finish(lv);
-        }
+        midi_learn_cancel(ml);
+        finish(lv);
         return 1;
     }
     if (e->id < PANEL_ENC_K1 || e->id > PANEL_ENC_K4) {
         return 0;
     }
-    uint32_t param = panel_knob_param(lv->p, lv->l, e->held, e->id);
-    if (!midi_learn_knob(ml, param, lv->s->now) && !midi_learn_param(param)) {
-        /* On the CHIP view's song tab K1..K4 turn the song's setup, which no CC reaches. */
-        int none = lv->p && lv->p->page == PANEL_PAGE_NONE && !(e->held & (1u << PANEL_BTN_EDIT));
-        screen_toast(lv->s, none ? "SONG SETUP: NO CC" : "K4: THE PRESET, NO CC",
-                     SCREEN_TOAST_MS);
-    }
+    (void)pick(lv, lv->s, lv->p, e->id, e->held);
     return 1; /* the knob picks, it does not turn */
 }
 
-int learn_view_open(learn_view* lv, screen* s, const panel* p) {
-    if (!lv->ml || screen_push(s, &learn_view_view, lv, SCREEN_OVER) != 0) {
+int learn_view_open(learn_view* lv, screen* s, const panel* p, uint32_t enc, uint32_t held) {
+    if (!lv->ml || lv->s) {
+        return -1;
+    }
+    midi_learn_cancel(lv->ml); /* from idle, whatever it was in */
+    (void)midi_learn_take(lv->ml);
+    if (!pick(lv, s, p, enc, held) || screen_push(s, &learn_view_view, lv, SCREEN_OVER) != 0) {
+        midi_learn_cancel(lv->ml);
+        (void)midi_learn_take(lv->ml);
         return -1;
     }
     lv->s = s;
     lv->p = p;
     screen_capture(s, capture, lv);
-    midi_learn_cancel(lv->ml); /* from idle, whatever it was in */
-    (void)midi_learn_take(lv->ml);
-    midi_learn_button(lv->ml, s->now);
     return 0;
+}
+
+int learn_view_is_open(const learn_view* lv) {
+    return lv->s != NULL;
+}
+
+void learn_view_save(learn_view* lv) {
+    midi_learn* ml = lv->ml;
+    if (!lv->s) {
+        return;
+    }
+    if (ml->state == MIDI_LEARN_CONFIRM) {
+        midi_learn_confirm(ml);
+    } else if (ml->state == MIDI_LEARN_CC && !midi_learn_forget_picked(ml, lv->s->now)) {
+        char t[LINE];
+        t[0] = 0;
+        learn_view_param_name(ml->param, t);
+        append(t, LINE, ": NO CC");
+        screen_toast(lv->s, t, SCREEN_TOAST_MS); /* nothing to forget: the frame stays */
+        return;
+    }
+    if (ml->state == MIDI_LEARN_IDLE) {
+        finish(lv);
+    }
+}
+
+void learn_view_ask_clear(learn_view* lv) {
+    if (lv->s && lv->ml->state != MIDI_LEARN_IDLE) {
+        midi_learn_ask_clear(lv->ml, lv->s->now);
+    }
 }
 
 void learn_view_frame(learn_view* lv, screen* s, uint32_t now_ms) {

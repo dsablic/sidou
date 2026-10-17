@@ -3,12 +3,14 @@
 /* MIDI learn: CCs bound to parameters at run time, over the published map (midi_map.h), and the
  * state machine that binds them (docs/reference/controls.md, "MIDI learn").
  *
- * The gesture (app/learn_view.h draws it): the learn button arms it (KNOB), a knob turn picks
- * the parameter the knob controls (CC), and the next learnable CC from either port binds to
- * it (back to IDLE, LEARNED). The button again before a knob asks to clear every binding
- * (CONFIRM), a third time clears them (CLEARED); the button after the knob instead of a CC
- * forgets that parameter's binding (FORGOT). HOME cancels (CANCELLED), and so does
- * MIDI_LEARN_TIMEOUT_MS without a step (TIMED_OUT). Each step restarts the timeout.
+ * The gesture (app/save_key.h and app/learn_view.h): a knob turned while SAVE is held opens
+ * learn on the parameter the knob controls (CC; midi_learn_open), another knob picks its
+ * parameter instead, and the next learnable CC from either port binds to it (back to IDLE,
+ * LEARNED). SAVE pressed and released then forgets that parameter's binding (FORGOT;
+ * midi_learn_forget_picked), or with none bound says so and waits on; SAVE held + HOME asks to
+ * clear every binding (CONFIRM; midi_learn_ask_clear), and SAVE then clears them (CLEARED;
+ * midi_learn_confirm). HOME cancels (CANCELLED), from CONFIRM too (the bindings stay), and so
+ * does MIDI_LEARN_TIMEOUT_MS without a step (TIMED_OUT). Each step restarts the timeout.
  *
  * The bindings:
  * - omni, like the map: a learned CC means the same on every channel and on TRS and USB;
@@ -19,7 +21,7 @@
  * - one CC per parameter and one parameter per CC: learning a parameter again moves it to the
  *   new CC, and learning a bound CC for another parameter moves the CC;
  * - the value goes through the parameter's curve and range from its map row, as its own CC's;
- * - in RAM: lost at power-off until M2 stores settings.
+ * - stored with the settings (app/settings.h), as param_cc.
  * Learnable CCs are 0..119 but data entry, increment and decrement, NRPN and RPN (6, 38,
  * 96..101): midi_map_cc takes those before any binding. 120..127 are channel mode messages.
  *
@@ -47,9 +49,9 @@ extern "C" {
 
 typedef enum {
     MIDI_LEARN_IDLE = 0,
-    MIDI_LEARN_KNOB = 1,   /* armed: a knob picks the parameter */
+    /* 1 was M1d's armed state, before a knob picked: learn now opens on the knob */
     MIDI_LEARN_CC = 2,     /* param picked: the next learnable CC binds to it */
-    MIDI_LEARN_CONFIRM = 3 /* the button twice: a third press clears every binding */
+    MIDI_LEARN_CONFIRM = 3 /* SAVE held + HOME: SAVE clears every binding, HOME keeps them */
 } midi_learn_state;
 
 /* How the last learn ended (midi_learn_take). */
@@ -70,6 +72,8 @@ typedef struct midi_learn {
     uint8_t param;                      /* MIDI_LEARN_CC: the parameter picked */
     uint8_t result;                     /* a midi_learn_result, until midi_learn_take */
     uint8_t result_cc;
+    uint8_t settings_dirty; /* bindings changed; settings_tick consumes it */
+    uint8_t* settings_wake; /* the instrument's settings activity byte, or NULL */
     uint32_t since; /* ms of the last step, for the timeout */
 } midi_learn;
 
@@ -81,12 +85,16 @@ int midi_learn_learnable(uint32_t cc);
 int midi_learn_param(uint32_t param);
 
 /* The gesture. now: ms, for the timeout. */
-/* The learn button: IDLE arms (KNOB), KNOB asks to clear all (CONFIRM), CONFIRM clears every
- * binding (CLEARED), CC forgets the picked parameter's binding (FORGOT). */
-void midi_learn_button(midi_learn* ml, uint32_t now);
-/* A knob turned while armed (KNOB, CC or CONFIRM): param is picked (CC). 1 if taken; 0 when
- * idle or param cannot be learned (the state stays). */
-int midi_learn_knob(midi_learn* ml, uint32_t param, uint32_t now);
+/* A knob: param is picked (CC), from any state: it opens learn when idle, picks another
+ * parameter when open. 1 if taken; 0 when param cannot be learned (the state stays). */
+int midi_learn_open(midi_learn* ml, uint32_t param, uint32_t now);
+/* SAVE pressed and released while a parameter waits (CC): its binding is forgotten (FORGOT,
+ * 1). With none bound nothing happens and it waits on (0). */
+int midi_learn_forget_picked(midi_learn* ml, uint32_t now);
+/* SAVE held + HOME while learn is open: asks to clear every binding (CONFIRM). */
+void midi_learn_ask_clear(midi_learn* ml, uint32_t now);
+/* SAVE while asked (CONFIRM): every binding is gone (CLEARED). */
+void midi_learn_confirm(midi_learn* ml);
 /* HOME: an armed learn ends, CANCELLED. */
 void midi_learn_cancel(midi_learn* ml);
 /* An armed learn with no step since MIDI_LEARN_TIMEOUT_MS ends, TIMED_OUT. 1 if it did. */

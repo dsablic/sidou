@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! MIDI learn (`app/midi_learn.c`): the state machine (arm, knob, CC, cancel, timeout, forget,
-//! clear), the bindings over the map (midi_map_cc), through MIDI input (midi_rx) and out
+//! MIDI learn (`app/midi_learn.c`): the state machine (open on a knob, another knob, CC,
+//! cancel, timeout, forget the picked, clear all after a confirm; M2a Task 5's gesture), the bindings over the map (midi_map_cc), through MIDI input (midi_rx) and out
 //! (midi_out), and the panel's knob-to-parameter mapping it shares with the panel.
 
 use sidou_sys::*;
@@ -38,11 +38,10 @@ fn take(ml: &mut midi_learn) -> midi_learn_result {
     unsafe { midi_learn_take(ml) }
 }
 
-/// Arm, pick param with a knob, then the CC through midi_learn_route.
+/// Open on param's knob, then the CC through midi_learn_route.
 fn learn_cc(ml: &mut midi_learn, param: u32, cc: u8) {
     unsafe {
-        midi_learn_button(ml, 0);
-        assert_eq!(midi_learn_knob(ml, param, 0), 1);
+        assert_eq!(midi_learn_open(ml, param, 0), 1);
         let e = midi_learn_route(ml, cc);
         assert!(!e.is_null());
         assert_eq!(u32::from((*e).param), param);
@@ -86,15 +85,13 @@ fn every_parameter_with_a_map_row_can_be_learned() {
 }
 
 #[test]
-fn arm_then_a_knob_then_a_cc_binds_the_cc_to_the_knobs_parameter() {
+fn a_knob_opens_learn_on_its_parameter_then_a_cc_binds_to_it() {
     let mut ml = learn();
-    unsafe { midi_learn_button(&mut *ml, 100) };
-    assert_eq!(u32::from(ml.state), MIDI_LEARN_KNOB);
-    // A CC before a knob binds nothing.
+    // A CC while idle binds nothing.
     assert!(unsafe { midi_learn_route(&mut *ml, 21) }.is_null());
-    assert_eq!(u32::from(ml.state), MIDI_LEARN_KNOB);
+    assert_eq!(u32::from(ml.state), MIDI_LEARN_IDLE);
     assert_eq!(
-        unsafe { midi_learn_knob(&mut *ml, LIVE_PARAM_CUTOFF, 200) },
+        unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_CUTOFF, 200) },
         1
     );
     assert_eq!(u32::from(ml.state), MIDI_LEARN_CC);
@@ -118,30 +115,31 @@ fn arm_then_a_knob_then_a_cc_binds_the_cc_to_the_knobs_parameter() {
 }
 
 #[test]
-fn a_knob_while_idle_or_without_a_parameter_is_not_taken() {
+fn a_knob_without_a_parameter_opens_nothing_and_another_knob_picks_again() {
     let mut ml = learn();
-    assert_eq!(
-        unsafe { midi_learn_knob(&mut *ml, LIVE_PARAM_CUTOFF, 0) },
-        0
-    );
-    assert_eq!(u32::from(ml.state), MIDI_LEARN_IDLE);
-    unsafe { midi_learn_button(&mut *ml, 0) };
     // K4 (the preset) has no parameter: the panel says LIVE_PARAM_COUNT.
-    assert_eq!(unsafe { midi_learn_knob(&mut *ml, LIVE_PARAM_COUNT, 0) }, 0);
-    assert_eq!(u32::from(ml.state), MIDI_LEARN_KNOB);
+    assert_eq!(unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_COUNT, 0) }, 0);
+    assert_eq!(u32::from(ml.state), MIDI_LEARN_IDLE);
+    unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_CUTOFF, 0) };
+    assert_eq!(unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_COUNT, 0) }, 0);
+    assert_eq!(
+        (u32::from(ml.state), u32::from(ml.param)),
+        (MIDI_LEARN_CC, LIVE_PARAM_CUTOFF),
+        "a knob with no parameter leaves the pick"
+    );
     // Another knob after the first picks again.
-    unsafe { midi_learn_knob(&mut *ml, LIVE_PARAM_CUTOFF, 0) };
-    unsafe { midi_learn_knob(&mut *ml, LIVE_PARAM_RESONANCE, 0) };
+    unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_RESONANCE, 0) };
     assert_eq!(u32::from(ml.param), LIVE_PARAM_RESONANCE);
+    assert_eq!(take(&mut ml), MIDI_LEARN_NOTHING);
 }
 
 #[test]
 fn home_cancels_at_every_step_and_binds_nothing() {
-    for knob in [false, true] {
+    for ask in [false, true] {
         let mut ml = learn();
-        unsafe { midi_learn_button(&mut *ml, 0) };
-        if knob {
-            unsafe { midi_learn_knob(&mut *ml, LIVE_PARAM_CUTOFF, 0) };
+        unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_CUTOFF, 0) };
+        if ask {
+            unsafe { midi_learn_ask_clear(&mut *ml, 0) };
         }
         unsafe { midi_learn_cancel(&mut *ml) };
         assert_eq!(u32::from(ml.state), MIDI_LEARN_IDLE);
@@ -159,12 +157,12 @@ fn ten_seconds_without_a_step_time_out_and_each_step_restarts_the_time() {
     let t = MIDI_LEARN_TIMEOUT_MS;
     let mut ml = learn();
     let start = 0xffff_f000u32; // across the clock's wrap
-    unsafe { midi_learn_button(&mut *ml, start) };
+    unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_RESONANCE, start) };
     assert_eq!(
         unsafe { midi_learn_tick(&mut *ml, start.wrapping_add(t - 1)) },
         0
     );
-    unsafe { midi_learn_knob(&mut *ml, LIVE_PARAM_CUTOFF, start.wrapping_add(t - 1)) };
+    unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_CUTOFF, start.wrapping_add(t - 1)) };
     assert_eq!(
         unsafe { midi_learn_tick(&mut *ml, start.wrapping_add(2 * t - 2)) },
         0
@@ -185,15 +183,23 @@ fn ten_seconds_without_a_step_time_out_and_each_step_restarts_the_time() {
 }
 
 #[test]
-fn the_button_three_times_clears_every_binding() {
+fn asked_then_confirmed_clears_every_binding() {
     let mut ml = learn();
     learn_cc(&mut ml, LIVE_PARAM_CUTOFF, 21);
     learn_cc(&mut ml, LIVE_PARAM_RESONANCE, 22);
-    unsafe { midi_learn_button(&mut *ml, 0) };
-    unsafe { midi_learn_button(&mut *ml, 0) };
+    // Neither asks nor confirms while idle.
+    unsafe { midi_learn_ask_clear(&mut *ml, 0) };
+    unsafe { midi_learn_confirm(&mut *ml) };
+    assert_eq!((u32::from(ml.state), ml.count), (MIDI_LEARN_IDLE, 2));
+    unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_PULSE_WIDTH, 0) };
+    unsafe { midi_learn_confirm(&mut *ml) };
+    assert_eq!(ml.count, 2, "a confirm before the question clears nothing");
+    unsafe { midi_learn_ask_clear(&mut *ml, 0) };
     assert_eq!(u32::from(ml.state), MIDI_LEARN_CONFIRM);
     assert_eq!(ml.count, 2, "asking clears nothing");
-    unsafe { midi_learn_button(&mut *ml, 0) };
+    // A CC while asked binds nothing.
+    assert!(unsafe { midi_learn_route(&mut *ml, 30) }.is_null());
+    unsafe { midi_learn_confirm(&mut *ml) };
     assert_eq!(u32::from(ml.state), MIDI_LEARN_IDLE);
     assert_eq!(take(&mut ml), MIDI_LEARN_CLEARED);
     assert_eq!(ml.count, 0);
@@ -205,15 +211,15 @@ fn the_button_three_times_clears_every_binding() {
 fn home_or_a_knob_after_the_question_clears_nothing() {
     let mut ml = learn();
     learn_cc(&mut ml, LIVE_PARAM_CUTOFF, 21);
-    unsafe { midi_learn_button(&mut *ml, 0) };
-    unsafe { midi_learn_button(&mut *ml, 0) };
+    unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_CUTOFF, 0) };
+    unsafe { midi_learn_ask_clear(&mut *ml, 0) };
     unsafe { midi_learn_cancel(&mut *ml) };
     assert_eq!(take(&mut ml), MIDI_LEARN_CANCELLED);
     assert_eq!(ml.count, 1);
-    unsafe { midi_learn_button(&mut *ml, 0) };
-    unsafe { midi_learn_button(&mut *ml, 0) };
+    unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_CUTOFF, 0) };
+    unsafe { midi_learn_ask_clear(&mut *ml, 0) };
     assert_eq!(
-        unsafe { midi_learn_knob(&mut *ml, LIVE_PARAM_RESONANCE, 0) },
+        unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_RESONANCE, 0) },
         1
     );
     assert_eq!(u32::from(ml.state), MIDI_LEARN_CC);
@@ -221,13 +227,13 @@ fn home_or_a_knob_after_the_question_clears_nothing() {
 }
 
 #[test]
-fn the_button_instead_of_a_cc_forgets_the_parameters_binding() {
+fn forget_instead_of_a_cc_forgets_the_picked_parameters_binding() {
     let mut ml = learn();
     learn_cc(&mut ml, LIVE_PARAM_CUTOFF, 21);
     learn_cc(&mut ml, LIVE_PARAM_RESONANCE, 22);
-    unsafe { midi_learn_button(&mut *ml, 0) };
-    unsafe { midi_learn_knob(&mut *ml, LIVE_PARAM_CUTOFF, 0) };
-    unsafe { midi_learn_button(&mut *ml, 0) };
+    assert_eq!(unsafe { midi_learn_forget_picked(&mut *ml, 0) }, 0, "idle");
+    unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_CUTOFF, 0) };
+    assert_eq!(unsafe { midi_learn_forget_picked(&mut *ml, 0) }, 1);
     assert_eq!(u32::from(ml.state), MIDI_LEARN_IDLE);
     assert_eq!((take(&mut ml), ml.result_cc), (MIDI_LEARN_FORGOT, 21));
     assert_eq!(routed(&ml, 21), None);
@@ -237,11 +243,15 @@ fn the_button_instead_of_a_cc_forgets_the_parameters_binding() {
         "the other stays"
     );
     assert_eq!(ml.count, 1);
-    // A parameter with nothing bound: forgot nothing.
-    unsafe { midi_learn_button(&mut *ml, 0) };
-    unsafe { midi_learn_knob(&mut *ml, LIVE_PARAM_CUTOFF, 0) };
-    unsafe { midi_learn_button(&mut *ml, 0) };
-    assert_eq!((take(&mut ml), ml.result_cc), (MIDI_LEARN_FORGOT, NO_CC));
+    // A parameter with nothing bound: nothing to forget, and it waits on, its time restarted.
+    unsafe { midi_learn_open(&mut *ml, LIVE_PARAM_CUTOFF, 0) };
+    assert_eq!(unsafe { midi_learn_forget_picked(&mut *ml, 5000) }, 0);
+    assert_eq!(u32::from(ml.state), MIDI_LEARN_CC);
+    assert_eq!(take(&mut ml), MIDI_LEARN_NOTHING);
+    assert_eq!(
+        unsafe { midi_learn_tick(&mut *ml, MIDI_LEARN_TIMEOUT_MS + 4999) },
+        0
+    );
 }
 
 #[test]
@@ -349,8 +359,7 @@ fn random_binds_forgets_clears_and_routes_keep_the_tables_inverse() {
             45..=64 => unsafe { midi_learn_forget(&mut *ml, param) },
             65 => unsafe { midi_learn_clear(&mut *ml) },
             66..=89 => unsafe {
-                midi_learn_button(&mut *ml, 0);
-                midi_learn_knob(&mut *ml, param, 0);
+                midi_learn_open(&mut *ml, param, 0);
                 midi_learn_route(&mut *ml, cc as u8);
                 midi_learn_cancel(&mut *ml);
             },
@@ -434,10 +443,7 @@ impl Learned {
 
     /// The gesture with the CC from TRS (on channel 5: learn is omni).
     fn learn(&mut self, param: u32, cc: u8, value: u8) {
-        unsafe {
-            midi_learn_button(&mut *self.ml, 0);
-            midi_learn_knob(&mut *self.ml, param, 0);
-        }
+        unsafe { midi_learn_open(&mut *self.ml, param, 0) };
         self.trs(&[0xB4, cc, value]);
         assert_eq!(take(&mut self.ml), MIDI_LEARN_LEARNED);
     }
@@ -515,10 +521,7 @@ fn a_learned_cc_1_wins_over_the_mod_wheel() {
 #[test]
 fn nrpn_data_entry_and_channel_mode_are_never_learned() {
     let mut m = Learned::new();
-    unsafe {
-        midi_learn_button(&mut *m.ml, 0);
-        midi_learn_knob(&mut *m.ml, LIVE_PARAM_CUTOFF, 0);
-    }
+    unsafe { midi_learn_open(&mut *m.ml, LIVE_PARAM_CUTOFF, 0) };
     // An NRPN for the resonance, all of it, while learn waits.
     m.trs(&[0xB0, 99, 0, 98, 1, 6, 0, 38, 9, 96, 0, 0xB0, 121, 0, 123, 0]);
     assert_eq!(m.get(LIVE_PARAM_RESONANCE), 10);
@@ -612,10 +615,7 @@ fn a_cc_neither_the_map_nor_learn_takes_costs_midi_out_no_look() {
     assert_eq!(looked(&mut m, 14), 0, "CC 14, free and not learned");
     assert_eq!(looked(&mut m, 85), 1, "CC 85, the character's profile");
     assert_eq!(looked(&mut m, LIVE_CC_CUTOFF as u8), 1, "the map's CC 74");
-    unsafe {
-        midi_learn_button(&mut *m.ml, 0);
-        midi_learn_knob(&mut *m.ml, LIVE_PARAM_RESONANCE, 0);
-    }
+    unsafe { midi_learn_open(&mut *m.ml, LIVE_PARAM_RESONANCE, 0) };
     assert_eq!(looked(&mut m, 64), 1, "CC 64 while a parameter waits");
     assert_eq!(take(&mut m.ml), MIDI_LEARN_LEARNED);
     assert_eq!(looked(&mut m, 64), 1, "CC 64 learned");

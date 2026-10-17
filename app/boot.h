@@ -8,8 +8,8 @@
  * READY. and RUN, then the title card: the logo's scene (app/logo.h), the version and PRESS ANY
  * KEY. The short one is the title card alone. Then the status screen wipes in.
  *
- * Short is the default: without storage (M2) the firmware cannot tell the first boot after
- * an install from the others. HOME held while powering on plays the full one instead:
+ * Short is the default. The full one plays once after an install (the settings' stored version
+ * is missing or another, app/settings.h), and whenever HOME is held while powering on:
  * platform/fm1/main.c reads the debounced buttons once the key scan runs (FM1_DEB_PRESS + 1
  * scan frames, about 3 ms) and passes HOME's level to views_boot. The key scan also reports
  * a key held at power-on as one press edge when its debounce ends (fm1_input.h), which reaches
@@ -104,9 +104,10 @@ typedef struct {
 
 extern const view boot_view;
 
-/* home_held: HOME was held at power-on: the whole sequence, and the key scan's press edge of
- * that hold is part of it. Else the title card alone. */
-void boot_init(boot* b, const live* l, const char* version, int home_held);
+/* full: the whole sequence (HOME held at power-on, or the first boot after an install), else
+ * the title card alone. home_held: HOME was held at power-on: the key scan's press edge of that
+ * hold is part of it, not a skip. */
+void boot_init(boot* b, const live* l, const char* version, int full, int home_held);
 /* The phase at ms from the start. */
 boot_phase boot_phase_at(const boot* b, uint32_t ms);
 /* One frame at now_ms, before the screen's: the time, the notes played (they end it), and

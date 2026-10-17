@@ -15,6 +15,8 @@
 #define MENU_COL 2u
 #define MENU_ROW 4u
 #define MENU_W 26u
+/* STATUS and MENU's shared snapshot, without STORE's two menu-only bytes. */
+#define COMMON_LOOK (VIEWS_LOOK - 2u)
 
 static const char* const NOTE_NAMES[12] = {"C",  "C#", "D",  "D#", "E",  "F",
                                            "F#", "G",  "G#", "A",  "A#", "B"};
@@ -89,8 +91,33 @@ static void sound(views* v, ui_sound_id id) {
 
 /* ---- what the views show ---- */
 
+/* The menu's STORE: its state (STORE_LOOK_*) and, for a store that writes, its free kilobytes
+ * (or, while a format runs, the sectors it still erases) in *n. */
+enum { STORE_LOOK_NONE, STORE_LOOK_FREE, STORE_LOOK_FOREIGN, STORE_LOOK_ARMED, STORE_LOOK_ERASING };
+static uint32_t store_look(const views* v, uint32_t* n) {
+    const store* st = v->set ? v->set->st : NULL;
+    if (!st) {
+        return STORE_LOOK_NONE;
+    }
+    store_state_id state = store_state(st);
+    if (state == STORE_STATE_FOREIGN) {
+        return v->format_arm ? STORE_LOOK_ARMED : STORE_LOOK_FOREIGN;
+    }
+    if (state != STORE_STATE_BLANK && state != STORE_STATE_SIDOU) {
+        return STORE_LOOK_NONE; /* not mounted */
+    }
+    store_stats stats;
+    store_stats_get(st, &stats);
+    if (v->formatting) {
+        *n = stats.dirty;
+        return STORE_LOOK_ERASING;
+    }
+    *n = stats.free / 1024u;
+    return STORE_LOOK_FREE;
+}
+
 /* The fields STATUS and MENU show, as bytes, with the menu's blink phase (0 for STATUS). */
-static void look(const views* v, uint32_t blink, uint8_t out[VIEWS_LOOK]) {
+static void look(const views* v, uint32_t blink, uint8_t out[COMMON_LOOK]) {
     const live* l = v->l;
     uint32_t n = 0;
     out[n++] = (uint8_t)l->model_req;
@@ -120,11 +147,24 @@ static void look(const views* v, uint32_t blink, uint8_t out[VIEWS_LOOK]) {
     out[n] = (uint8_t)blink;
 }
 
+/* The common snapshot followed by the menu's STORE state and kilobytes. */
+__attribute__((noinline, unused)) static void menu_look(const views* v, uint32_t blink,
+                                                     uint8_t out[VIEWS_LOOK]) {
+    look(v, blink, out);
+    uint32_t kb = 0;
+    out[COMMON_LOOK] = (uint8_t)store_look(v, &kb);
+    out[COMMON_LOOK + 1u] = (uint8_t)kb;
+}
+
 /* 1 when the view on top would show other fields than at its last compose. */
-static int looks_changed(const views* v, uint32_t blink) {
+static int looks_changed(const views* v, uint32_t blink, int menu_showing) {
     uint8_t now[VIEWS_LOOK];
-    look(v, blink, now);
-    for (uint32_t i = 0; i < VIEWS_LOOK; i++) {
+    if (menu_showing) {
+        menu_look(v, blink, now);
+    } else {
+        look(v, blink, now);
+    }
+    for (uint32_t i = 0; i < (menu_showing ? VIEWS_LOOK : COMMON_LOOK); i++) {
         if (now[i] != v->drawn[i]) {
             return 1;
         }
@@ -136,7 +176,7 @@ static int looks_changed(const views* v, uint32_t blink) {
 
 static int status_changed(screen* s, void* state) {
     (void)s;
-    return looks_changed(state, 0);
+    return looks_changed(state, 0, 0);
 }
 
 static void status_compose(screen* s, void* state, grid* g) {
@@ -256,6 +296,7 @@ static void cards_turn(void* ctx, int32_t steps) {
     views* v = ctx;
     if (steps != 0) {
         v->cards = (uint8_t)(steps > 0);
+        v->l->settings_dirty = 1;
     }
 }
 
@@ -282,6 +323,55 @@ static void sounds_turn(void* ctx, int32_t steps) {
     views* v = ctx;
     if (steps != 0 && v->snd) {
         ui_sound_set(v->snd, steps > 0);
+    }
+}
+
+static void store_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    uint32_t n = 0;
+    char num[4];
+    switch (store_look(v, &n)) {
+    case STORE_LOOK_FREE:
+    case STORE_LOOK_ERASING: {
+        uint32_t k = 0;
+        for (uint32_t p = n >= 100u ? 100u : n >= 10u ? 10u : 1u; p; p /= 10u) {
+            num[k++] = (char)('0' + n / p % 10u);
+        }
+        num[k] = 0;
+        if (v->formatting) {
+            join(buf, MENU_VALUE_CHARS, "ERASING ", num);
+        } else {
+            join(buf, MENU_VALUE_CHARS, num, "K FREE");
+        }
+        break;
+    }
+    case STORE_LOOK_FOREIGN: join(buf, MENU_VALUE_CHARS, "FOREIGN", ""); break;
+    case STORE_LOOK_ARMED: join(buf, MENU_VALUE_CHARS, "FORMAT? TURN", ""); break;
+    default: join(buf, MENU_VALUE_CHARS, "NONE", ""); break;
+    }
+}
+
+/* On a foreign store: clockwise once arms the format, twice formats (every sector erased, the
+ * erases forced: the user asked for their gaps); counter-clockwise disarms. Else nothing. */
+static void store_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    store* st = v->set ? v->set->st : NULL;
+    if (!st || store_state(st) != STORE_STATE_FOREIGN || steps == 0) {
+        v->format_arm = 0;
+        return;
+    }
+    if (steps < 0) {
+        v->format_arm = 0;
+    } else if (v->format_arm || steps > 1) {
+        v->format_arm = 0;
+        store_format(st);
+        settings_forget(v->set);
+        v->formatting = 1;
+        if (v->set->force) {
+            v->set->force(1);
+        }
+    } else {
+        v->format_arm = 1;
     }
 }
 
@@ -336,14 +426,15 @@ static void about_open(void* ctx, int32_t steps) {
 static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"CHIP", NULL, chip_open},             {"TRACKER", NULL, tracker_open},
     {"PRESET", preset_value, preset_turn}, {"OCTAVE", octave_value, octave_turn},
-    {"CARDS", cards_value, cards_turn},    {"KEYS", keys_value, keys_turn},
-    {"SOUNDS", sounds_value, sounds_turn}, {"STATUS", NULL, status_open},
-    {"SCENE", NULL, scene_open},           {"CHARSET", NULL, charset_open},
-    {"ABOUT", NULL, about_open},
+    {"CARDS", cards_value, cards_turn},    {"STORE", store_value, store_turn},
+    {"KEYS", keys_value, keys_turn},       {"SOUNDS", sounds_value, sounds_turn},
+    {"STATUS", NULL, status_open},         {"SCENE", NULL, scene_open},
+    {"CHARSET", NULL, charset_open},       {"ABOUT", NULL, about_open},
 };
 _Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_CARDS == 4u &&
-                   VIEWS_MENU_KEYS == 5u && VIEWS_MENU_SOUNDS == 6u && VIEWS_MENU_STATUS == 7u &&
-                   VIEWS_MENU_SCENE == 8u && VIEWS_MENU_CHARSET == 9u && VIEWS_MENU_ABOUT == 10u,
+                   VIEWS_MENU_STORE == 5u && VIEWS_MENU_KEYS == 6u && VIEWS_MENU_SOUNDS == 7u &&
+                   VIEWS_MENU_STATUS == 8u && VIEWS_MENU_SCENE == 9u &&
+                   VIEWS_MENU_CHARSET == 10u && VIEWS_MENU_ABOUT == 11u,
                "the menu's items");
 /* The help below the menu's frame. */
 #define MENU_HELP_ROW (MENU_ROW + VIEWS_MENU_ITEMS + 2u)
@@ -357,6 +448,7 @@ static int menu_input(screen* s, void* state, const screen_event* e) {
     if (e->id == PANEL_ENC_SELECT) {
         uint8_t was = v->home.cursor;
         menu_move(&v->home, e->steps);
+        v->format_arm = 0; /* the confirm is two turns on the item, nothing between */
         sound(v, v->home.cursor != was ? UI_SOUND_BLIP : UI_SOUND_BUZZ); /* the end: refused */
         return 1;
     }
@@ -365,6 +457,9 @@ static int menu_input(screen* s, void* state, const screen_event* e) {
          * clockwise; else refused. */
         const menu_item* it = &v->home.items[v->home.cursor];
         int does = it->turn && (it->value || e->steps > 0);
+        if (v->home.cursor == VIEWS_MENU_STORE) {
+            does = v->set && v->set->st && store_state(v->set->st) == STORE_STATE_FOREIGN;
+        }
         menu_turn(&v->home, e->steps);
         sound(v, does ? UI_SOUND_CONFIRM : UI_SOUND_BUZZ);
         return 1;
@@ -373,12 +468,12 @@ static int menu_input(screen* s, void* state, const screen_event* e) {
 }
 
 static int menu_changed(screen* s, void* state) {
-    return looks_changed(state, (uint32_t)screen_blink(s));
+    return looks_changed(state, (uint32_t)screen_blink(s), 1);
 }
 
 static void menu_compose(screen* s, void* state, grid* g) {
     views* v = state;
-    look(v, (uint32_t)screen_blink(s), v->drawn);
+    menu_look(v, (uint32_t)screen_blink(s), v->drawn);
     widget_screen(g, FONT_FULL, TEXT);
     put(g, 2, 2, "SIDOU");
     put(g, 2, VERSION_END_COL - length(v->version), v->version);
@@ -463,12 +558,9 @@ static void song_step(views* v) {
 }
 
 /* HOME: the menu from the root view, back one view from any other: from the menu to LIVE,
- * behind THE OSCILLATOR's card. SAVE: MIDI learn. SEQ, PLAY and REC: the song views'. */
+ * behind THE OSCILLATOR's card. SEQ, PLAY and REC: the song views'. */
 static int global(void* ctx, const screen_event* e) {
     views* v = ctx;
-    if (e->kind == SCREEN_PRESS && e->id == LEARN_VIEW_BUTTON) {
-        return learn_view_open(&v->learn, &v->s, v->p) == 0;
-    }
     if (e->kind == SCREEN_PRESS && e->id == PANEL_BTN_SEQ) {
         song_step(v);
         return 1;
@@ -484,6 +576,7 @@ static int global(void* ctx, const screen_event* e) {
     if (e->kind != SCREEN_PRESS || e->id != PANEL_BTN_HOME) {
         return 0;
     }
+    v->format_arm = 0;
     const view* from = screen_top(&v->s);
     if (screen_pop(&v->s, SCREEN_WIPE_UP) != 0) {
         screen_push(&v->s, &views_menu, v, SCREEN_WIPE_DOWN);
@@ -511,6 +604,10 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->version = version;
     v->cards = 1;
     v->snd = NULL;
+    v->set = NULL;
+    v->format_arm = 0;
+    v->formatting = 0;
+    save_key_init(&v->key);
     menu_init(&v->home, MENU_ITEMS, VIEWS_MENU_ITEMS, VIEWS_MENU_ITEMS, v);
     remember(v);
     v->p = NULL;
@@ -527,8 +624,12 @@ void views_learn(views* v, midi_learn* ml) {
     learn_view_init(&v->learn, v->l, ml);
 }
 
-void views_boot(views* v, int home_held) {
-    boot_init(&v->boot, v->l, v->version, home_held);
+void views_settings(views* v, settings* set) {
+    v->set = set;
+}
+
+void views_boot(views* v, int full, int home_held) {
+    boot_init(&v->boot, v->l, v->version, full || home_held, home_held);
     screen_push(&v->s, &boot_view, &v->boot, SCREEN_CUT);
 }
 
@@ -575,9 +676,57 @@ static void knob_page(views* v, panel* p) {
     p->page = (uint8_t)(shows(v) == &chip_view_view ? chip_view_page(&v->chip) : PANEL_PAGE_LIVE);
 }
 
+/* The boot or a title card on top: they take every control, SAVE included (it ends them). */
+static int curtain(const views* v) {
+    const view* top = screen_top(&v->s);
+    return top == &boot_view || top == &title_card_view;
+}
+
+/* SAVE's clean release (app/save_key.h): the precedence of views.h's routing. */
+static void save(views* v) {
+    if (learn_view_is_open(&v->learn)) {
+        learn_view_save(&v->learn); /* forget the picked CC, or confirm the clear */
+        return;
+    }
+    if (shows(v) == &chip_view_view && chip_view_save(&v->chip)) {
+        return; /* a USER slot (M2a Task 6) */
+    }
+    /* A song view saves the song here, to its file (M2c Task 8, not in yet). */
+    if (v->set) {
+        settings_save_now(v->set, v->s.now); /* its toast when it commits (views_frame) */
+    }
+}
+
+/* Route SAVE's gesture and consume HOME while SAVE is held. */
+__attribute__((noinline, unused)) static uint32_t save_buttons(views* v, uint32_t pressed,
+                                                            uint32_t held) {
+    uint32_t save_bit = 1u << SAVE_KEY_BUTTON;
+    int ends = (pressed & save_bit) && curtain(v);
+    if (ends) {
+        save_key_buttons(&v->key, save_bit, held | save_bit);
+        save_key_spoil(&v->key); /* it ends the boot or the card: no save at its release */
+        screen_event e = {SCREEN_PRESS, (uint8_t)SAVE_KEY_BUTTON, 0, held};
+        (void)screen_input(&v->s, &e);
+    }
+    if (save_key_buttons(&v->key, pressed & ~(ends ? save_bit : 0u), held) == SAVE_KEY_SAVE) {
+        save(v);
+    }
+    pressed &= ~save_bit; /* SAVE goes nowhere else */
+    /* Read save_key's held bit directly to save input cycles. */
+    if (v->key.down && (pressed & (1u << PANEL_BTN_HOME))) {
+        pressed &= ~(1u << PANEL_BTN_HOME); /* SAVE held + HOME: never the menu */
+        learn_view_ask_clear(&v->learn);
+    }
+    return pressed;
+}
+
 void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
-    uint32_t rest = pressed;
     knob_page(v, p);
+    /* Read save_key's held bit directly to save ordinary button-path cycles. */
+    if ((pressed | v->key.down) & (1u << SAVE_KEY_BUTTON)) {
+        pressed = save_buttons(v, pressed, held);
+    }
+    uint32_t rest = pressed;
     for (uint32_t b = 0; b < 32u && pressed >> b; b++) {
         if (!((pressed >> b) & 1u)) {
             continue;
@@ -626,6 +775,15 @@ void views_encoder(views* v, panel* p, uint32_t enc, int32_t steps) {
     int32_t clamped = steps > INT16_MAX ? INT16_MAX : steps < -INT16_MAX ? -INT16_MAX : steps;
     screen_event e = {SCREEN_TURN, (uint8_t)enc, (int16_t)clamped, p->held};
     knob_page(v, p);
+    /* Read save_key's held bit directly to save encoder-path cycles. */
+    if (v->key.down) {
+        save_key_spoil(&v->key); /* a knob while SAVE is down: its release saves nothing */
+        if (enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4 && !learn_view_is_open(&v->learn) &&
+            !curtain(v) && v->learn.ml) {
+            (void)learn_view_open(&v->learn, &v->s, p, enc, p->held); /* the knob picks */
+            return;
+        }
+    }
     if (!screen_input(&v->s, &e)) {
         knob_page(v, p);
         panel_encoder(p, v->l, enc, steps);
@@ -669,6 +827,47 @@ static void tell(views* v) {
     remember(v);
 }
 
+/* The settings' debounce and an explicit save's toast; a format's end. */
+__attribute__((noinline, unused)) static void store_frame(views* v, uint32_t now_ms) {
+    if (!v->set) {
+        return;
+    }
+    settings_tick(v->set, now_ms);
+    /* Peek at settings' result directly to save idle-frame cycles. */
+    if (!v->set->result && !v->formatting) {
+        return;
+    }
+    switch (settings_take_result(v->set)) {
+    case SETTINGS_SAVED:
+        screen_toast(&v->s, "SAVED", SCREEN_TOAST_MS);
+        sound(v, UI_SOUND_CHUNK);
+        break;
+    case SETTINGS_SAVED_GAPS:
+        screen_toast(&v->s, "SAVED (GAPS)", SCREEN_TOAST_MS);
+        sound(v, UI_SOUND_CHUNK);
+        break;
+    case SETTINGS_FOREIGN:
+        screen_toast(&v->s, "STORE FOREIGN: NOT SAVED", SCREEN_TOAST_MS);
+        sound(v, UI_SOUND_BUZZ);
+        break;
+    default: break;
+    }
+    if (v->formatting && v->set->st && !store_busy(v->set->st)) {
+        store_stats stats;
+        store_stats_get(v->set->st, &stats);
+        if (!stats.dirty) {
+            v->formatting = 0;
+            if (v->set->force) {
+                v->set->force(0);
+            }
+            screen_toast(&v->s, "STORE FORMATTED", SCREEN_TOAST_MS);
+        }
+    }
+    if (v->formatting) {
+        v->l->settings_dirty |= 2u;
+    }
+}
+
 void views_prepare(views* v) {
     if (screen_animating(&v->s)) {
         return;
@@ -693,6 +892,9 @@ void views_frame(views* v, uint32_t now_ms) {
         tell(v);
     }
     learn_view_frame(&v->learn, &v->s, now_ms);
+    if (v->l->settings_dirty) {
+        store_frame(v, now_ms);
+    }
     /* The tap runs while LIVE or SCENE shows: the audio interrupt pays for it only then. */
     top = shows(v);
     song_view_frame(&v->song, song_view_is(top));

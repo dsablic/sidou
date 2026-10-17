@@ -8,6 +8,7 @@ _Static_assert(MIDI_MAP_ROWS < MIDI_LEARN_NONE, "a row index fits cc_row");
 _Static_assert(LIVE_PARAM_COUNT < 256u, "count and param are bytes");
 
 void midi_learn_init(midi_learn* ml) {
+    ml->settings_wake = NULL;
     midi_learn_clear(ml);
     ml->state = MIDI_LEARN_IDLE;
     ml->param = 0;
@@ -42,35 +43,45 @@ static void end(midi_learn* ml, midi_learn_result r, uint8_t cc) {
     ml->result_cc = cc;
 }
 
-void midi_learn_button(midi_learn* ml, uint32_t now) {
-    ml->since = now;
-    switch (ml->state) {
-    case MIDI_LEARN_IDLE:
-        ml->state = MIDI_LEARN_KNOB;
-        ml->result = MIDI_LEARN_NOTHING;
-        break;
-    case MIDI_LEARN_KNOB: ml->state = MIDI_LEARN_CONFIRM; break;
-    case MIDI_LEARN_CONFIRM:
-        midi_learn_clear(ml);
-        end(ml, MIDI_LEARN_CLEARED, MIDI_MAP_NO_CC);
-        break;
-    default: { /* MIDI_LEARN_CC */
-        uint8_t cc = ml->param_cc[ml->param];
-        midi_learn_forget(ml, ml->param);
-        end(ml, MIDI_LEARN_FORGOT, cc);
-        break;
-    }
-    }
-}
-
-int midi_learn_knob(midi_learn* ml, uint32_t param, uint32_t now) {
-    if (ml->state == MIDI_LEARN_IDLE || !midi_learn_param(param)) {
+int midi_learn_open(midi_learn* ml, uint32_t param, uint32_t now) {
+    if (!midi_learn_param(param)) {
         return 0;
+    }
+    if (ml->state == MIDI_LEARN_IDLE) {
+        ml->result = MIDI_LEARN_NOTHING;
     }
     ml->state = MIDI_LEARN_CC;
     ml->param = (uint8_t)param;
     ml->since = now;
     return 1;
+}
+
+int midi_learn_forget_picked(midi_learn* ml, uint32_t now) {
+    if (ml->state != MIDI_LEARN_CC) {
+        return 0;
+    }
+    ml->since = now;
+    uint8_t cc = ml->param_cc[ml->param];
+    if (cc == MIDI_MAP_NO_CC) {
+        return 0;
+    }
+    midi_learn_forget(ml, ml->param);
+    end(ml, MIDI_LEARN_FORGOT, cc);
+    return 1;
+}
+
+void midi_learn_ask_clear(midi_learn* ml, uint32_t now) {
+    if (ml->state != MIDI_LEARN_IDLE) {
+        ml->state = MIDI_LEARN_CONFIRM;
+        ml->since = now;
+    }
+}
+
+void midi_learn_confirm(midi_learn* ml) {
+    if (ml->state == MIDI_LEARN_CONFIRM) {
+        midi_learn_clear(ml);
+        end(ml, MIDI_LEARN_CLEARED, MIDI_MAP_NO_CC);
+    }
 }
 
 void midi_learn_cancel(midi_learn* ml) {
@@ -116,6 +127,13 @@ uint8_t midi_learn_cc_of(const midi_learn* ml, uint32_t param) {
     return param < LIVE_PARAM_COUNT ? ml->param_cc[param] : (uint8_t)MIDI_MAP_NO_CC;
 }
 
+static void settings_changed(midi_learn* ml) {
+    ml->settings_dirty = 1;
+    if (ml->settings_wake) {
+        *ml->settings_wake = 1;
+    }
+}
+
 /* cc's binding gone, whoever has it. */
 static void unbind(midi_learn* ml, uint32_t cc) {
     const midi_map_entry* e = midi_learn_for_cc(ml, cc);
@@ -123,6 +141,7 @@ static void unbind(midi_learn* ml, uint32_t cc) {
         ml->param_cc[e->param] = MIDI_MAP_NO_CC;
         ml->cc_row[cc] = MIDI_LEARN_NONE;
         ml->count--;
+        settings_changed(ml);
     }
 }
 
@@ -138,6 +157,7 @@ int midi_learn_bind(midi_learn* ml, uint32_t cc, uint32_t param) {
     ml->cc_row[cc] = (uint8_t)(e - midi_map_row(0));
     ml->param_cc[param] = (uint8_t)cc;
     ml->count++;
+    settings_changed(ml);
     return 1;
 }
 
@@ -148,6 +168,7 @@ void midi_learn_forget(midi_learn* ml, uint32_t param) {
 }
 
 void midi_learn_clear(midi_learn* ml) {
+    settings_changed(ml);
     for (uint32_t cc = 0; cc < 128u; ++cc) {
         ml->cc_row[cc] = MIDI_LEARN_NONE;
     }

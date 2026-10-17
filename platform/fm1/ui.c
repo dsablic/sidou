@@ -6,6 +6,8 @@
 #include "grid.h"
 #include "lcd.h"
 #include "midi.h"
+#include "settings.h"
+#include "store_fm1.h"
 #include "views.h"
 
 #ifndef SIDOU_VERSION
@@ -23,6 +25,8 @@ _Static_assert(GRID_RUN_PIXELS <= LCD_BUFFER_PIXELS, "a grid run does not fit an
 
 static grid cells;
 static views ui;
+/* What persists (app/settings.h): on the device's store, ticked in the views' frame. */
+static settings persisted;
 /* grid_palette in the panel's byte order. */
 static uint16_t palette[16];
 static uint32_t last_compose;
@@ -59,10 +63,6 @@ static void flush(void) {
     lcd_sync();
 }
 
-void ui_set_sounds(ui_sound* us) {
-    views_set_sounds(&ui, us);
-}
-
 void ui_set_keys(keys_route* kr) {
     views_set_keys(&ui, kr);
 }
@@ -71,14 +71,21 @@ void ui_set_song(const song_transport* t) {
     views_set_song(&ui, t);
 }
 
-void ui_init(live* l, uint32_t now_ms, int home_held) {
+void ui_init(live* l, ui_sound* us, uint32_t now_ms, int home_held) {
     for (uint32_t i = 0; i < 16u; i++) {
         palette[i] = LCD_SWAP(grid_palette[i]);
     }
     grid_init(&cells, ' ', VIEWS_TEXT);
     views_init(&ui, &cells, l, audio_scope(), "V" SIDOU_VERSION);
+    views_set_sounds(&ui, us);
     views_learn(&ui, midi_learned()); /* midi_init ran before */
-    views_boot(&ui, home_held);
+    /* The settings as they were left (the store mounted in lcd_init's wake-up wait); the full
+     * boot once after an install: no record, or another version's. */
+    settings_init(&persisted, l, midi_learned(), &ui.cards, us, store_fm1(), "V" SIDOU_VERSION,
+                  store_fm1_force);
+    int known = settings_load(&persisted, now_ms);
+    views_settings(&ui, &persisted);
+    views_boot(&ui, !known, home_held);
     last_compose = now_ms;
     next_at = now_ms + UI_PERIOD_MS / 2u;
     views_frame(&ui, now_ms);

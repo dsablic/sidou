@@ -15,7 +15,6 @@ use crate::{drain, Sent, SPI_BUDGET_MS};
 
 const COLS: usize = GRID_COLS as usize;
 const K1: u32 = PANEL_ENC_K1;
-const SAVE: u32 = LEARN_VIEW_BUTTON;
 /// docs/reference/midi.md: the character's CCs (profile, age, DAC, thump, bleed).
 const CC_PROFILE: u32 = 85;
 const CC_AGE: u32 = 86;
@@ -513,14 +512,13 @@ fn midi_learn_binds_a_chip_view_knob() {
         midi_learn_init(&mut *ml);
         views_learn(&mut *ui.v, &mut *ml);
     }
-    ui.press(SAVE);
+    ui.learn_on(K1);
     step(&mut ui);
     assert_eq!(ui.top(), "LEARN");
     assert_eq!(
         ui.p.page, PANEL_PAGE_CHARACTER as u8,
         "the page under learn"
     );
-    ui.turn(K1, 1);
     assert_eq!(u32::from(ml.state), MIDI_LEARN_CC);
     assert_eq!(u32::from(ml.param), LIVE_PARAM_AGE);
     assert_eq!(param(&ui, LIVE_PARAM_AGE), 0, "the knob picked and turned");
@@ -549,8 +547,7 @@ fn midi_learn_binds_a_chip_view_knob() {
     assert_eq!(character_row(&ui, 0).1, "100");
     // On the FX slot, K4 is its Mix.
     ui.turn(PANEL_ENC_SELECT, 3);
-    ui.press(SAVE);
-    ui.turn(K1 + 3, 1);
+    ui.learn_on(K1 + 3);
     assert_eq!(
         u32::from(ml.param),
         LIVE_PARAM_SLOT + 2 * LIVE_SLOT_FIELDS + LIVE_SLOT_MIX
@@ -572,7 +569,7 @@ fn select_and_algorithm_work_under_the_learn_frame() {
     }
     assert_eq!(focus(&ui), CHIP_VIEW_CHIP);
     assert_eq!(ui.live().fx_select, 0);
-    ui.press(SAVE);
+    ui.learn_on(K1);
     step(&mut ui);
     assert_eq!(ui.top(), "LEARN");
     ui.turn(PANEL_ENC_SELECT, 1);
@@ -891,17 +888,15 @@ fn learn_over_the_songs_tab_says_its_knobs_have_no_cc() {
         midi_learn_init(&mut *ml);
         views_learn(&mut *ui.v, &mut *ml);
     }
-    ui.press(SAVE);
+    ui.learn_on(K1);
     step(&mut ui);
-    assert_eq!(ui.top(), "LEARN");
     assert_eq!(ui.p.page, PANEL_PAGE_NONE as u8);
-    ui.turn(K1, 1);
+    assert_eq!(ui.top(), "CHIP", "no frame on the song's tab");
     assert_eq!(
         u32::from(ml.state),
-        MIDI_LEARN_KNOB,
+        MIDI_LEARN_IDLE,
         "a knob picked on the song's tab"
     );
     assert_eq!(ui.toast().as_deref(), Some("SONG SETUP: NO CC"));
-    ui.press(PANEL_BTN_HOME);
     unsafe { chip_view_set_keys(&mut ui.v.chip, std::ptr::null_mut()) };
 }

@@ -1118,7 +1118,8 @@ fn a_filter_cc_flood_fits_the_isr_overhead_at_any_age() {
 
 // --- MIDI learn ---
 
-/// app/panel.h PANEL_BTN_SAVE: arms MIDI learn (docs/reference/controls.md).
+/// app/panel.h PANEL_BTN_SAVE: held while a knob turns, opens MIDI learn on the knob
+/// (docs/reference/controls.md, "SAVE").
 const SAVE: u8 = 9;
 const HOME: u8 = 8;
 /// A CC the map leaves free (docs/reference/midi.md).
@@ -1134,6 +1135,16 @@ fn live_cutoff(m: &mut Machine, fw: &Firmware) -> u32 {
     )
 }
 
+/// SAVE held, K1 turned, SAVE up: MIDI learn open on K1's parameter.
+fn open_learn(m: &mut Machine) {
+    m.key(SAVE, true);
+    m.run_ms(30);
+    m.turn(K1, 1);
+    m.run_ms(30);
+    m.key(SAVE, false);
+    m.run_ms(30);
+}
+
 /// platform/fm1/midi.c `learned`: the state and CC 14's bound row.
 fn learned(m: &mut Machine, fw: &Firmware) -> (u8, u8, u8) {
     let base = fw.symbol("learned");
@@ -1145,9 +1156,10 @@ fn learned(m: &mut Machine, fw: &Firmware) -> (u8, u8, u8) {
     )
 }
 
-/// SAVE down (the press arms learn), K1 turned, SAVE up (the frame stays), CC 14 over TRS: CC 14 drives the cutoff from then
-/// on, on any channel, through the map's linear curve, and the map's CC 74 still does too.
-/// HOME then cancels a second learn and SAVE three times clears the binding.
+/// SAVE held and K1 turned open learn on the cutoff (SAVE's press alone does not), SAVE up (the
+/// frame stays), CC 14 over TRS: CC 14 drives the cutoff from then on, on any channel, through
+/// the map's linear curve, and the map's CC 74 still does too. HOME then cancels a second learn,
+/// and SAVE held + HOME, then SAVE, clears the binding.
 #[test]
 fn midi_learn_over_trs_binds_cc_14_to_k1s_cutoff() {
     let Some(fw) = fixture("the MIDI learn test") else {
@@ -1161,16 +1173,21 @@ fn midi_learn_over_trs_binds_cc_14_to_k1s_cutoff() {
         / size_of::<sidou_sys::midi_map_entry>();
     let from_cc = |v: u8| unsafe { sidou_sys::midi_map_from_cc(cutoff_row, v) };
 
-    // SAVE down, and K1 turned before it comes up: the frame stays open either way.
+    // SAVE down, and K1 turned before it comes up: the frame opens on the turn and stays.
     m.key(SAVE, true);
     m.run_ms(50);
     assert_eq!(
         common::top_view(&mut m, &fw),
-        learn,
-        "SAVE did not open learn"
+        root,
+        "SAVE's press alone opened learn"
     );
     m.turn(K1, 2);
     m.run_ms(50);
+    assert_eq!(
+        common::top_view(&mut m, &fw),
+        learn,
+        "SAVE held + K1 did not open learn"
+    );
     m.key(SAVE, false);
     m.run_ms(50);
     assert_eq!(
@@ -1213,19 +1230,21 @@ fn midi_learn_over_trs_binds_cc_14_to_k1s_cutoff() {
     assert_eq!(map_cc, from_cc(100), "the map's CC 74 stopped working");
 
     // A second learn, cancelled by HOME: nothing changes, HOME does not open the menu.
-    press(&mut m, SAVE);
-    m.turn(K1, 1);
-    m.run_ms(50);
+    open_learn(&mut m);
     press(&mut m, HOME);
     m.run_ms(50);
     assert_eq!(common::top_view(&mut m, &fw), root);
     m.midi(&[0xB0, CC_FREE + 1, 127]);
     m.run_ms(20);
     assert_eq!(learned(&mut m, &fw).1, 1, "a cancelled learn bound CC 15");
-    // SAVE three times clears: CC 14 does nothing again.
-    for _ in 0..3 {
-        press(&mut m, SAVE);
-    }
+    // SAVE held + HOME asks, SAVE confirms: CC 14 does nothing again.
+    open_learn(&mut m);
+    m.key(SAVE, true);
+    m.run_ms(50);
+    press(&mut m, HOME);
+    m.key(SAVE, false);
+    m.run_ms(50);
+    press(&mut m, SAVE);
     m.run_ms(50);
     let cleared = learned(&mut m, &fw);
     m.midi(&[0xB0, CC_FREE, 0]);
@@ -1258,9 +1277,7 @@ fn a_learned_cc_flood_costs_what_a_map_cc_flood_does() {
     };
     let mut m = booted_for_the_panel(&fw);
     attach_host(&mut m, &fw);
-    press(&mut m, SAVE);
-    m.turn(K1, 1);
-    m.run_ms(50);
+    open_learn(&mut m);
     m.midi(&[0xB0, CC_FREE, 0]);
     m.run_ms(1500); // past a USB retry
 

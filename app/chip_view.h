@@ -117,6 +117,10 @@ uint32_t chip_view_focus(const chip_view* cv);
  * tabs and the chip, PANEL_PAGE_NONE there on a song's chip A (the view turns them),
  * PANEL_PAGE_SLOT on a slot. */
 uint32_t chip_view_page(const chip_view* cv);
+/* SAVE's press and release while the view shows (app/save_key.h, the precedence of
+ * app/views.c): 1 if the view saved (the chip's setup into a USER slot, M2a Task 6), 0 to let
+ * the settings save. 0 until user profiles exist. */
+int chip_view_save(chip_view* cv);
 /* 1 while the tab shows a song's chip A: its setup is the song's (keys_route.song_want). */
 int chip_view_song_tab(const chip_view* cv);
 /* The name of a slot's field (LIVE_SLOT_AMOUNT, _A, _B, _MIX) for its algorithm alg, as the

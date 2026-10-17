@@ -1708,7 +1708,9 @@ int store_collect(store* s) {
 
 void store_format(store* s) {
     for (uint32_t i = 0; i < STORE_SECTORS; i++) {
-        s->sstate[i] = SEC_DIRTY;
+        /* Every sector erased before the next write (recovery's ambiguous ones): a foreign
+         * sector left as it was would mount the region foreign again. */
+        s->sstate[i] = SEC_DIRTY | SEC_AMBIG;
         s->sector[i].live = 0;
         s->sector[i].free = STORE_HEADER;
     }
@@ -1717,7 +1719,7 @@ void store_format(store* s) {
     s->head = NONE;
     s->job = JOB_NONE;
     s->fix_kind = FIX_NONE;
-    s->rec = 0;
+    s->rec = 1;
     s->w.phase = W_IDLE;
     if (s->f.phase != F_IDLE) {
         s->f.phase = F_IDLE;

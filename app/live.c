@@ -536,6 +536,7 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->other_profile = (uint8_t)sid_chip_default(model);
     l->keys_mode = LIVE_KEYS_AUTO;
     l->ui_voice = 0;
+    l->settings_dirty = 0;
     l->model = model;
     l->model_req = model;
     l->octave = 0;
@@ -697,6 +698,7 @@ static uint16_t step_clamped(uint16_t now, int32_t delta, int32_t step, uint16_t
 static void set_cutoff(live* l, uint16_t value) {
     if (value != l->cutoff) {
         l->cutoff = value;
+        l->settings_dirty = 1;
         update_cutoff(l);
     }
 }
@@ -704,16 +706,19 @@ static void set_cutoff(live* l, uint16_t value) {
 static void set_resonance(live* l, uint8_t value) {
     if (value != l->resonance) {
         l->resonance = value;
+        l->settings_dirty = 1;
         write_res_filt(l);
     }
 }
 
 static void set_pulse_width(live* l, uint16_t value) {
+    l->settings_dirty = 1;
     l->pulse_width = value;
     update_pws(l);
 }
 
 void live_set_preset(live* l, uint8_t index) {
+    l->settings_dirty = 1;
     if (index >= LIVE_PRESET_COUNT) {
         index = LIVE_PRESET_COUNT - 1;
     }
@@ -751,6 +756,7 @@ static sid_model profile_model(uint32_t profile) {
 /* Records a profile asked for: the model follows it, and a 6581 one is the one to go back
  * to. */
 static void request_profile(live* l, uint32_t profile) {
+    l->settings_dirty = 1;
     l->profile_req = (uint8_t)profile;
     l->model_req = profile_model(profile);
     if (l->model_req == SID_MODEL_6581) {
@@ -869,6 +875,7 @@ void live_poly_pressure(live* l, uint8_t note, uint8_t pressure) {
 }
 
 void live_bend_range_rpn(live* l, uint32_t semitones) {
+    l->settings_dirty = 1;
     l->bend_range = (uint8_t)(semitones > LIVE_BEND_RANGE_MAX ? LIVE_BEND_RANGE_MAX : semitones);
     l->bend_range_rpn = 1;
 }
@@ -938,6 +945,9 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
     uint32_t max = live_param_max(param);
     if (value > max) {
         value = max;
+    }
+    if (param != LIVE_PARAM_VOLUME) {
+        l->settings_dirty = 1;
     }
     switch (param) {
     case LIVE_PARAM_CUTOFF: set_cutoff(l, (uint16_t)value); break;
@@ -1120,6 +1130,7 @@ void live_slot_set(live* l, uint32_t slot, uint32_t field, int32_t value) {
     value = value < 0 ? 0 : value > max ? max : value;
     if (l->slot[slot][field] != (uint8_t)value) {
         l->slot[slot][field] = (uint8_t)value;
+        l->settings_dirty = 1;
         put(l, (uint8_t)LIVE_REG_SLOT(slot, field), (uint8_t)value);
     }
 }
@@ -1169,6 +1180,7 @@ void live_rewrite(live* l) {
 }
 
 void live_set_keys_mode(live* l, uint32_t mode) {
+    l->settings_dirty = 1;
     l->keys_mode = mode == LIVE_KEYS_A ? (uint8_t)LIVE_KEYS_A : (uint8_t)LIVE_KEYS_AUTO;
 }
 

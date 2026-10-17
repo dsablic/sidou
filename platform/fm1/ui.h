@@ -17,21 +17,20 @@
 /* The screen is composed at most this often (25 fps); only cells that changed are sent. */
 #define UI_PERIOD_MS 40u
 
-/* After lcd_init: LIVE, the root view, of l and the audio's tap (audio_scope), under the boot
- * sequence (app/boot.h), the full one if home_held (HOME held at power-on), and its first
- * frame composed at now_ms. It does not wait
+/* After lcd_init: LIVE, the root view, of l and the audio's tap (audio_scope), with the UI
+ * sounds us and the settings as the store kept them (app/settings.h, loaded here), under the
+ * boot sequence (app/boot.h): the full one if home_held (HOME held at power-on) or once after
+ * an install (no settings, or another version's), and its first frame composed at now_ms. It does not wait
  * on the panel: ui_poll sends that frame like any other (the whole screen, about 80 ms of
  * SPI) and turns the display on once it is out, so the main loop plays the keys and MIDI from
  * the start. now_ms is on ui_poll's clock: the main loop's uptime, which counts from TIMER4's
  * start, not from here. */
-void ui_init(live* l, uint32_t now_ms, int home_held);
+void ui_init(live* l, ui_sound* us, uint32_t now_ms, int home_held);
 /* The two chips' routing, for the CHIP view's tabs (app/keys_route.h). */
 void ui_set_keys(keys_route* kr);
 /* The song's player for the song views (app/song_transport.h, main.c's binding over
  * song_ctl). */
 void ui_set_song(const song_transport* t);
-/* The UI sounds (app/ui_sound.h), for the menu's SOUNDS and the triggers. */
-void ui_set_sounds(ui_sound* us);
 /* Main loop. Every UI_PERIOD_MS it runs a frame (views_frame: the view composes if what it
  * shows changed, app/screen.h), and half a frame later lets the view prepare the next one
  * (views_prepare), each in a call of its own. Changed cells go out as runs (one LCD window each), one per

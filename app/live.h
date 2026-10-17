@@ -351,6 +351,9 @@ typedef struct {
      * allocator skips it, and takes it back (setting it to 0) only when the other voices are
      * all held. */
     uint8_t ui_voice;
+    /* Bit 0: a persisted setter ran; bit 1: settings work pending. Setters assign 1 because
+     * bit 0 forces settings.c's pending() to recompute the pending work. */
+    uint8_t settings_dirty;
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */

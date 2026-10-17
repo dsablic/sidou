@@ -1,6 +1,6 @@
 <!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-# Controls (M1)
+# Controls
 
 How the live instrument is played from the FM-1's panel and over MIDI. Button names are
 fm1-emu's and Felucca's ids (`platform/fm1/VENDORED.md`); the printed labels may differ,
@@ -10,11 +10,14 @@ view.
 
 ## At power-on
 
-The boot animation (the title card, about 1.2 s) plays over LIVE while the instrument
-already plays. **Any button or encoder** skips it and does nothing else; **a
-note** (from the keys or MIDI) skips it and plays. **HOME held while powering on** plays the
-full boot sequence instead (about 10 s); letting HOME go does not skip it, and anything after
-that does. Without HOME held, a HOME press on the title card skips it like any button.
+The full boot sequence (about 10 s) plays once when the saved firmware version is missing or
+differs from the installed version. Once the current version has been saved, later boots
+show only the title card (about 1.2 s). Both play over LIVE while the instrument already
+plays. **Any button or encoder** skips the boot and does nothing else; **a note** (from the
+keys or MIDI) skips it and plays. **HOME held while powering on** always plays the full
+sequence; letting HOME go does not skip it, and anything after that does. Without HOME held,
+a HOME press skips it like any button. Allow the settings save to finish before powering
+off; a foreign store cannot remember the version ([Settings and STORE](#settings-and-store)).
 
 ## Routing
 
@@ -24,7 +27,8 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
    title card) sees everything first, HOME included, so HOME can cancel it; it ends when its
    view closes;
 2. **global:** HOME opens the menu from LIVE and goes back one view anywhere else; SAVE
-   opens MIDI learn over any view; SEQ, PLAY and REC are the song views' ([below](#song-views)),
+   saves on a clean release, or held with a knob opens MIDI learn over any view; SAVE held
+   with HOME consumes HOME ([SAVE](#save)); SEQ, PLAY and REC are the song views' ([below](#song-views)),
    in every view;
 3. **the view on top:** the menu and CHIP take SELECT and ALGORITHM, SCENE takes SELECT;
    LIVE, the status screen, the glyph sheet and About take nothing; MIDI learn's frame passes
@@ -55,15 +59,15 @@ chip CCs change the keys' setup. When a song starts the keys move to chip B (hel
 again there); when it stops they move back to chip A once it has the keys' setup again and no
 key is held. LIVE says **KEYS:B** in its top line while the keys play chip B; the status
 screen shows both chips and marks the keys'. Until M2c plays songs, nothing starts one, so the
-keys always play chip A. KEYS is kept in RAM until the settings are saved (M2a).
+keys always play chip A. KEYS persists with the settings.
 
 ## UI sounds
 
-**SOUNDS** in the menu (OFF at power-on, kept in RAM until the settings are saved, M2a) turns
+**SOUNDS** in the menu (OFF by default, restored with the settings) turns
 on short sounds on chip B's spare voice: a blip as the menu's cursor moves, a confirm as
 ALGORITHM changes a value or opens a view, a chime with a toast, a buzz when an action is
 refused (the cursor already at the menu's end, an action turned counter-clockwise), and a
-drive "chunk" when SAVE saves (from M2a). They never take a voice the keys use: with the keys
+drive "chunk" when SAVE saves. They never take a voice the keys use: with the keys
 on chip A they play on chip B; with the keys on chip B (during a song) only on a voice whose
 note has finished its release, and a note that needs that voice takes it back at once, ending
 the sound. Off, they write nothing and chip B stays out of use.
@@ -84,13 +88,13 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last) |
 | **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, CHIP, the song views, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE behind THE OSCILLATOR's title card (below) |
-| **SAVE (button 9)** | MIDI learn (below): press it, turn a knob, then send a CC |
+| **SAVE (button 9)** | press and release without another button or encoder: save settings; hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
 | **SEQ (button 11)** | opens the song views, and steps through them ([below](#song-views)) |
 | **PLAY (button 12)** | plays the song (SIDOU LOOP until songs load) from the song views' position, and stops it (each voice's release rings on); with EDIT held, goes on from where it stopped; lit while it plays. While it plays the keys play chip B (KEYS AUTO), or take voices from the song on chip A (KEYS A). A song the device cannot play is refused with a toast (`SNG: MULTISPEED 8 (MAX 4)`) |
 | **REC (button 13)** | record mode on and off |
 | **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; the keys sound nothing while GLO is held |
 | **SELECT (encoder 0)**, in the menu | moves the blinking cursor up and down the items |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), STORE ([format confirmation](#settings-and-store)), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: CHIP (the profile and the character), DIST, MOD, FX; it stops at either end |
 | **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP, the algorithm on a slot; it stops at either end |
 | **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, and round): it wipes in, and a toast names it |
@@ -114,7 +118,7 @@ SIDOU LOOP until songs load from the store (M2c Task 8).
 | **GLO held + note key 1, 2, 3** | mutes voice 1, 2, 3 of the song, or lets it sound again |
 | **GLO held + note key 4, 5, 6** | solos voice 1, 2, 3, or unsolos it: while any voice is soloed the soloed ones sound and the rest are silent; with none, the muted ones are silent |
 | **Note keys**, in a song view | audition the song's current instrument on the cursor's voice through the player, on chip A with the song's setup, at the panel's octave, one note at a time (the last key wins). With the song stopped the audition takes chip A for the song (the keys elsewhere move to chip B, as for PLAY; the first note sounds a few tens of milliseconds late) and gives it back two seconds after the last note is let go; no row of the song plays |
-| **SAVE** | MIDI learn, as everywhere (saving the song with SAVE comes with M2a Task 5 and M2c Task 8) |
+| **SAVE** | a clean release saves settings; held + K1..K4 opens MIDI learn. Saving the song itself comes with M2c Task 8 |
 
 GLO's layer works in every view and comes before the panel: a key pressed while GLO is held
 sounds nothing until it is let go, even if GLO is let go first; a key already sounding when GLO
@@ -143,7 +147,7 @@ wipes in, the card holds for a second and the view cuts in, about 2.6 s in all.
 - **A note**, from the keys or MIDI, plays as ever and ends the card. The keys, MIDI and the
   audio are never held up by it.
 - **CARDS** in the menu turns the title cards off (ALGORITHM counter-clockwise on it) and on
-  again (clockwise). They are on at power-on; the setting is not kept across power-off yet.
+  again (clockwise). They are on by default; the setting persists across power-off.
 
 ## CHIP
 
@@ -186,8 +190,9 @@ the new chip is prepared, 70 to 110 ms later, the first 8580 after power-on abou
 held notes attack again on the new chip); the
 page shows it at once, the model follows it, and the FX button still toggles the model. The
 character's controls glide, as from MIDI ([Chip character](#chip-character)). Everything else
-plays as on LIVE: the note keys, MASTER, OCT-/OCT+, FX, SAVE (MIDI learn, which picks the
-parameter K1..K4 turn on the page: AGE for K1 on the chip), and HOME back to the menu. A change
+plays as on LIVE: the note keys, MASTER, OCT-/OCT+, FX, SAVE (save settings, or held + a knob
+for MIDI learn, which picks the parameter K1..K4 turn on the page: AGE for K1 on the chip),
+and HOME back to the menu. A change
 from MIDI shows on the page at the next frame.
 
 **The EDIT layer stays, as a shortcut.** EDIT + K1..K4, SCL and ENV were the slots' stopgap
@@ -243,7 +248,7 @@ Distortion, Modulation and FX run after the chip, in that order, in stereo
 
 Mix is dry/wet. Every control is smoothed, and changing algorithm crossfades through
 the dry sound (slots take turns, so a full change takes up to ~150 ms). Everything is off
-at power-on.
+by default; saved slot settings are restored at power-on.
 
 ## Chip character
 
@@ -293,7 +298,8 @@ NRPN 1/5) changes from the next 10 ms tick, to the last value received: its chip
 prepared in the background, a slice a tick, and swaps in when it is whole, so a stream of
 changes never holds the instrument up; the FX button asks for a change the same way.
 
-**Envelope: INSTANT / AUTHENTIC** (CC 26, NRPN 1/10; INSTANT at power-on). The real SID
+**Envelope: INSTANT / AUTHENTIC** (CC 26, NRPN 1/10; INSTANT by default, restored with the
+settings). The real SID
 has a quirk known as the ADSR delay bug. Each voice's envelope steps when a 15-bit rate
 counter reaches the current rate's period, and only that match restarts the counter: a
 gate change does not. If a note starts while the counter is already past the attack's
@@ -338,20 +344,67 @@ among the slot's algorithms: for the FX slot's five, 0..25 OFF, 26..51 DELAY, 52
 PING-PONG, 77..102 REVERB, 103..127 LUSH. A control CC (0..127) is the control's whole
 range.
 
+## Settings and STORE
+
+Settings load at power-on: CARDS, KEYS, SOUNDS, the preset and its edits, the keys' chip
+model, profile and character, the effect slots, envelope mode, MIDI-learn bindings and the
+last firmware version booted. Missing or unreadable settings use the defaults. Octave,
+held notes, controllers and the view on screen are not restored; volume follows MASTER.
+
+Changes are saved in the background **5 s after the last change to a persisted value**,
+without a toast. A busy store waits; background saves never force audible gaps. With the
+current flash timing limits, programs as well as erases wait for quiet. Stop playing and
+let release tails fade before powering off, or use SAVE and wait for its completion toast.
+
+The menu's **STORE** item, immediately after CARDS, shows free space outside the store's
+reserve pool (for example, **STORE 193K FREE**) or **FOREIGN**. FOREIGN means the region
+contains data SIDOU does not own: it is left untouched, and settings cannot persist.
+
+On FOREIGN, turn **ALGORITHM clockwise once**: **FORMAT? TURN**. Turn clockwise again
+without leaving the item to confirm. Counter-clockwise or moving the menu cursor cancels
+the confirmation. **Formatting destroys the other firmware's data in the store**, erases
+all 73 sectors and can interrupt the sound. STORE shows **ERASING n**, then the toast
+**STORE FORMATTED**. Current settings are then saved when the store can take them. Formatting
+is never automatic; ALGORITHM does not format a SIDOU store.
+
+## SAVE
+
+A plain SAVE acts on **release**, not on the initial press. Turning any encoder or pressing
+another button while SAVE is down prevents that release from saving.
+
+| Gesture | Result |
+|---|---|
+| SAVE pressed and released, no encoder turned or other button pressed while down | saves settings now, skipping the 5 s debounce; **SAVED** when committed |
+| SAVE held + K1..K4, with or without EDIT | opens MIDI LEARN on that knob's parameter on the turn, not the press; the parameter does not move and SAVE's release saves nothing |
+| Another knob turned while the learn frame waits, SAVE held or not | picks that knob's parameter instead |
+| CC received while the frame waits | learns it, closes the frame and applies its value; **LEARNED CC 21 → CUTOFF** |
+| SAVE pressed and released again in the learn frame | forgets the picked parameter's binding and closes: **CUTOFF: CC 21 FORGOTTEN**; with none, **CUTOFF: NO CC** and the frame stays |
+| SAVE held + HOME in the learn frame | asks **CLEAR ALL MAPPINGS?**; release SAVE, then press and release it again to confirm: **MIDI LEARN CLEARED**; HOME or 10 s without a step keeps the mappings |
+| HOME without SAVE held, or 10 s without a step in the learn frame | cancels and closes the frame; HOME opens nothing else |
+| SAVE held + HOME outside the learn frame | consumes HOME without opening the menu; SAVE's release saves nothing |
+| SAVE held + any other button | that button acts as usual; SAVE's release saves nothing |
+| SAVE pressed during the boot or a title card | skips it only; its release saves nothing |
+
+An explicit save waiting for 2 s may force short held flash operations, with gaps in the
+audio; completion then says **SAVED (GAPS)**. Background saves never do this. With SOUNDS on,
+a completed explicit save plays the drive chunk. A foreign store refuses it with
+**STORE FOREIGN: NOT SAVED**. SAVE currently saves settings on CHIP and in the song views
+too; USER-slot and song-file save precedence belongs to M2a Task 6 and M2c Task 8.
+
 ## MIDI learn
 
 Any knob's parameter can follow a CC of your choice, from a controller on TRS or USB:
 
-1. **Press SAVE** (button 9) **and turn a knob.** A frame, MIDI LEARN, opens over the screen
-   on the press and says TURN A KNOB; the knob turned names its parameter (CUTOFF
+1. **Hold SAVE** (button 9) **and turn a knob.** A frame, MIDI LEARN, opens over the screen
+   on the turn and names its parameter (CUTOFF
    &larr; SEND A CC) and does not move it. The knob is the parameter it turns on the panel, in
    the view under the frame: K1..K3 the cutoff, resonance and pulse width; on the CHIP view,
    K1..K4 its focused section's (AGE, DAC, THUMP, BLEED on the chip; a slot's Amount, A, B and
    Mix on a slot; SELECT moves the focus while the frame shows); with **EDIT held**, K1..K4
    the selected effect slot's Amount, A, B and Mix in any view (SCL first to pick the slot; it
    works while the frame shows). K4 alone on LIVE's page is the preset, which has no CC
-   (program changes select it). SAVE need
-   not be held: the frame waits after it comes up, and holding it changes nothing.
+   (program changes select it); trying it shows K4: THE PRESET, NO CC and opens no frame.
+   Release SAVE once the frame opens: the frame keeps waiting and that release saves nothing.
 2. **Send the CC** (move the controller's knob). The frame closes with LEARNED CC 21 &rarr;
    CUTOFF, the parameter jumps to the controller's value, and from then on follows it.
 
@@ -361,11 +414,14 @@ and SCENE, SELECT and ALGORITHM do nothing while it shows.
 
 - **Cancel:** HOME (it closes the frame and opens nothing), or 10 s without a step (each
   step restarts the time). A cancelled learn changes nothing.
-- **Forget one:** SAVE, turn the knob, then SAVE again instead of sending a CC: the
-  parameter's learned CC is forgotten (CUTOFF: CC 21 FORGOTTEN), and its own CC is its own
-  again. The frame shows SAVE: FORGET CC 21 when there is one.
-- **Clear all:** SAVE, SAVE (CLEAR ALL MAPPINGS?), SAVE: MIDI LEARN CLEARED. HOME instead of
-  the third press keeps them.
+- **Forget one:** hold SAVE and turn the knob, release SAVE, then press and release SAVE
+  again instead of sending a CC: the parameter's learned CC is forgotten (CUTOFF: CC 21
+  FORGOTTEN), and its own CC is its own
+  again. The frame shows SAVE: FORGET CC 21 when there is one. With no binding, it says
+  CUTOFF: NO CC and stays open.
+- **Clear all:** with the frame open, hold SAVE and press HOME (CLEAR ALL MAPPINGS?),
+  release SAVE, then press and release SAVE again: MIDI LEARN CLEARED. HOME without SAVE,
+  or 10 s without a step, keeps them.
 
 What learning means for MIDI in and out ([midi.md](midi.md), MIDI learn): a learned CC
 works on every channel and on both ports, like the map; the parameter's own CC keeps
@@ -375,17 +431,13 @@ for another parameter moves to it. The panel's changes to a learned parameter go
 USB on the learned CC. Data entry and NRPN/RPN selection (6, 38, 96..101) and the channel
 mode messages (120..127) cannot be learned.
 
-The mappings are kept in RAM until power-off; saving them comes with M2's storage.
+The mappings persist with the settings, including forget and clear-all changes: background
+save after 5 s without another persisted change, or a plain SAVE after the frame closes.
 
-**Why SAVE.** The holds in use are EDIT (the effect-slot shortcut while it is held), OCT- at
-power-on (the test-death builds) and HOME at power-on (the full boot); HOME's press is the
-menu's. Of the buttons that do nothing yet, the ones a player hits while playing are
-taken by the design for M2's performance features (REC, PLAY, SEQ and ARP for the
-sequencer, LFO and GLO for the sound); SAVE is about keeping what you set, which a
-mapping is, and M2 will store the mappings with the settings it saves. The press arms
-learn, so SAVE need not be held; if M2 gives SAVE's plain press a job of its own, arming can
-move to a knob turned while SAVE is held, a chord no other control uses, and a player who
-holds SAVE while turning keeps the same gesture.
+**Why SAVE.** SAVE is about keeping what you set, which a mapping is. Its plain press and
+release now saves settings; MIDI learn has moved to a knob turned while SAVE is held.
+Opening the frame on the turn distinguishes learning from saving without a long-press
+delay, and works with EDIT's effect-slot layer. The mappings are saved with the settings.
 SAVE's id (9) follows the design's button order (FX SCL ENV LFO EDIT GLO HOME SAVE ...),
 which matches the ids known so far (FX 2, SCL 3, ENV 4, EDIT 6, HOME 8); the hardware
 checklist confirms it.
@@ -407,8 +459,9 @@ cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS eac
 algorithm and Mix (`>` marks the selected slot) with the selected slot's Amount, A and B.
 
 The menu (HOME) lists CHIP (the CHIP view, above), TRACKER (the song views, above), PRESET,
-OCTAVE, CARDS (the title cards, above) and KEYS with their values, then STATUS, SCENE (the generative pieces, above), CHARSET (the
-glyph sheet: the font and the palette) and ABOUT. A view opens with a wipe from the top and
+OCTAVE, CARDS (the title cards, above), STORE, KEYS and SOUNDS with their values, then STATUS,
+SCENE (the generative pieces, above), CHARSET (the glyph sheet: the font and the palette) and
+ABOUT. A view opens with a wipe from the top and
 closes with one from the bottom; CHIP, SCENE, and LIVE back from the menu, open behind a title
 card instead, and cut in under it in bands. M2's STEP view will be the default then; for M1 LIVE is.
 

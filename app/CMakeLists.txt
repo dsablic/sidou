@@ -39,8 +39,10 @@ add_library(sidou_live STATIC
     scene_px.c
     scene_rmr_art.c
     scene_view.c
+    save_key.c
     scope.c
     screen.c
+    settings.c
     sine.c
     song_view.c
     store.c
@@ -54,6 +56,7 @@ target_link_libraries(sidou_live PUBLIC sidou_core)
 target_compile_options(sidou_live PRIVATE -Wall -Wextra -Wshadow)
 if(CMAKE_CROSSCOMPILING)
     # The store runs in the main loop, never the audio path, and its polls are bounded by work
-    # (STORE_POLL_WORK), not speed: built for size (about a third smaller than -O2).
-    set_source_files_properties(store.c PROPERTIES COMPILE_OPTIONS -Os)
+    # (STORE_POLL_WORK), not speed: built for size (about a third smaller than -O2). The
+    # settings, which run a few times a second in the UI's frame, too.
+    set_source_files_properties(store.c settings.c PROPERTIES COMPILE_OPTIONS -Os)
 endif()

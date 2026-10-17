@@ -408,9 +408,9 @@ const ABOVE_THE_LEARN_FRAME: [(usize, usize, usize); 23] = {
     rows
 };
 
-/// MIDI learn's frame (app/learn_view.h) over the status screen as it asks for a knob, then
-/// for a CC, and the toast once CC 21 came over TRS. Only rows 23..27 count, the frame's and
-/// the toast's (and the border): the view under the frame is not this test's.
+/// MIDI learn's frame (app/learn_view.h) over LIVE as SAVE held + K1 open it on the cutoff and
+/// it asks for a CC, and the toast once CC 21 came over TRS. Only rows 23..27 count, the
+/// frame's and the toast's (and the border): the view under the frame is not this test's.
 #[test]
 fn midi_learn_prompts_match_their_golden_images() {
     let Some((build, fw)) = fixture("the screen test") else {
@@ -418,8 +418,7 @@ fn midi_learn_prompts_match_their_golden_images() {
     };
     let mut m = booted(&fw);
     m.key(SAVE, true);
-    settle(&mut m, &fw);
-    compare_golden(&build, "learn-knob", &m.soc.lcd.fb, &ABOVE_THE_LEARN_FRAME);
+    m.run_ms(30);
     m.turn(K1, 1);
     settle(&mut m, &fw);
     compare_golden(&build, "learn-cc", &m.soc.lcd.fb, &ABOVE_THE_LEARN_FRAME);
@@ -1494,15 +1493,14 @@ fn open_scene(m: &mut Machine, fw: &Firmware, piece: usize) {
 
 /// Each piece after a chord held for a second (its note-ons, then its envelopes), from the
 /// piece's start: a fixed frame with a known audio state.
-#[test]
-fn scene_matches_its_golden_images() {
+fn scene_matches_its_golden_image(piece: usize) {
     let Some((build, fw)) = fixture("the SCENE test") else {
         return;
     };
     let mut m = booted(&fw);
     open_scene(&mut m, &fw, 0);
     assert!(common::tap_on(&mut m, &fw), "the tap is off under SCENE");
-    for (k, name) in SCENE_PIECES.iter().enumerate() {
+    for (k, name) in SCENE_PIECES.iter().enumerate().take(piece + 1) {
         if k > 0 {
             m.turn(SELECT, 1);
             m.run_ms(1600);
@@ -1513,7 +1511,9 @@ fn scene_matches_its_golden_images() {
         }
         m.run_ms(1000);
         common::to_mid_frame(&mut m, &fw);
-        compare_golden(&build, &format!("scene-{name}"), &m.soc.lcd.fb, &[]);
+        if k == piece {
+            compare_golden(&build, &format!("scene-{name}"), &m.soc.lcd.fb, &[]);
+        }
         for key in CHORD {
             m.key(key, false);
         }
@@ -1524,6 +1524,31 @@ fn scene_matches_its_golden_images() {
     settle(&mut m, &fw);
     assert_eq!(common::top_view(&mut m, &fw), fw.symbol("views_menu"));
     assert!(!common::tap_on(&mut m, &fw), "the tap runs under the menu");
+}
+
+#[test]
+fn scene_fire_matches_its_golden_image() {
+    scene_matches_its_golden_image(0);
+}
+
+#[test]
+fn scene_plasma_matches_its_golden_image() {
+    scene_matches_its_golden_image(1);
+}
+
+#[test]
+fn scene_rule30_matches_its_golden_image() {
+    scene_matches_its_golden_image(2);
+}
+
+#[test]
+fn scene_stars_matches_its_golden_image() {
+    scene_matches_its_golden_image(3);
+}
+
+#[test]
+fn scene_ant_matches_its_golden_image() {
+    scene_matches_its_golden_image(4);
 }
 
 /// Cells each 40 ms of `frames` sent.
@@ -1724,6 +1749,7 @@ fn midi_learn_over_scene_and_live_stays_within_the_budget() {
             band(m, f);
             match f {
                 10 => m.key(SAVE, true),
+                11 => m.turn(K1_CUTOFF, 1),
                 13 => m.key(SAVE, false),
                 90 => {
                     opened = common::top_view(m, &fw);

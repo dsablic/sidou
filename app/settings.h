@@ -1,0 +1,114 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+/* The settings that persist (M2a Task 5): one record on the store (app/store.h), versioned.
+ *
+ * What it holds: CARDS, the UI sounds (SOUNDS), KEYS, the preset and every live parameter (the
+ * keys' chip model, profile and character, the effect slots, the envelope mode and the
+ * preset's edits: the instrument as it was left; not the MASTER volume, which is the pot),
+ * MIDI learn's bindings, and the firmware version last booted (for the full boot once after
+ * an install). Not the octave, the held notes, the controllers or the view on screen.
+ *
+ * The record, little-endian bytes (SETTINGS_V1_BYTES; docs/reference/settings-format.md):
+ *   0  schema version (SETTINGS_VERSION)
+ *   1  CARDS (0 off, 1 on)
+ *   2  SOUNDS (0 off, 1 on)
+ *   3  KEYS (a live_keys_mode)
+ *   4  the preset
+ *   5  the live parameters that follow (42 in v1)
+ *   6  each live parameter in order, one byte each but the cutoff and the pulse width (two);
+ *      the volume (the MASTER pot's) is 0 and ignored
+ *  50  MIDI learn: each parameter's bound CC (MIDI_MAP_NO_CC: none), 42 bytes
+ *  92  the firmware version, NUL-padded, SETTINGS_VERSION_CHARS bytes
+ * A later schema only appends fields: an older firmware reads a newer record's v1 part, and a
+ * newer one fills what an older record lacks with its defaults (settings_load's migrations).
+ *
+ * Saving: a background save 5 s (SETTINGS_DEBOUNCE_MS) after the last change of a persisted
+ * value, the record written whole as one store_put; SAVE saves at once (settings_save_now). A
+ * store that cannot take it now (STORE_BUSY: a write runs, the pool is short, or the device is
+ * not quiet yet with programs held) is asked again on later ticks; an explicit save still
+ * waiting after SETTINGS_FORCE_MS forces the held operations (the force hook: short gaps the
+ * user asked for) and says so (SAVED (GAPS)). A foreign store keeps nothing.
+ *
+ * Portable C with no hardware access and no allocation. */
+#ifndef SIDOU_SETTINGS_H
+#define SIDOU_SETTINGS_H
+
+#include <stdint.h>
+
+#include "live.h"
+#include "midi_learn.h"
+#include "store.h"
+#include "ui_sound.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* The record's store key and type. The firmware's keys start at 0x100 (0x101.. are Task 6's
+ * user profiles); those below are the emulator tests' (platform/fm1/store_fm1.h's hook). */
+#define SETTINGS_KEY 0x100u
+#define SETTINGS_TYPE 1u
+#define SETTINGS_VERSION 1u
+#define SETTINGS_VERSION_CHARS 14u /* "V" and the version, as the status screen shows it */
+#define SETTINGS_PARAMS_V1 42u
+#define SETTINGS_V1_BYTES (6u + SETTINGS_PARAMS_V1 + 2u + SETTINGS_PARAMS_V1 + SETTINGS_VERSION_CHARS)
+#define SETTINGS_BYTES SETTINGS_V1_BYTES
+#define SETTINGS_DEBOUNCE_MS 5000u
+#define SETTINGS_FORCE_MS 2000u
+
+/* What an explicit save came to (settings_take_result). */
+typedef enum {
+    SETTINGS_NOTHING = 0,
+    SETTINGS_SAVED = 1,      /* committed */
+    SETTINGS_SAVED_GAPS = 2, /* committed, with the held operations forced */
+    SETTINGS_FOREIGN = 3     /* the store holds another firmware's data: nothing saved */
+} settings_result;
+
+typedef struct {
+    live* l;
+    midi_learn* ml; /* NULL: no bindings */
+    uint8_t* cards; /* the views' CARDS */
+    ui_sound* snd;  /* NULL: no SOUNDS */
+    store* st;      /* NULL: nothing persists */
+    const char* version;
+    void (*force)(int on); /* the platform's forced held operations, or NULL */
+    uint8_t out[SETTINGS_BYTES]; /* the record being written: the store programs it from here */
+    uint32_t seen;               /* CRC of the record as last gathered, ... */
+    uint32_t saved;              /* ... and as last written */
+    uint32_t changed_at;
+    uint32_t asked_at; /* an explicit save's start */
+    uint8_t asked;     /* 1 an explicit save waits to be taken, 2 to commit */
+    uint8_t forcing;
+    uint8_t result; /* a settings_result, until settings_take_result */
+    uint8_t started;
+} settings;
+
+void settings_init(settings* s, live* l, midi_learn* ml, uint8_t* cards, ui_sound* snd,
+                   store* st, const char* version, void (*force)(int on));
+/* The record as it stands now, into out (SETTINGS_BYTES); its length. */
+uint32_t settings_gather(const settings* s, uint8_t* out);
+/* Applies a record (of len bytes, any schema): every field it has, defaults for the fields a
+ * later schema added. 1 if its firmware version is s->version, 0 if not (or if it is not a
+ * record: nothing applied). */
+int settings_apply(settings* s, const uint8_t* rec, uint32_t len);
+/* At boot, after the store's mount and live_init, before the first tick: the stored record
+ * applied, if any. 1 if it was there and of this firmware version: the short boot; 0 (a first
+ * boot, a new version, no record): the full boot once, and the version is saved. */
+int settings_load(settings* s, uint32_t now_ms);
+/* Main loop, once a tick: the debounce, and an explicit save's progress. Persisted setters
+ * mark live.settings_dirty or midi_learn.settings_dirty; unchanged ticks gather no record.
+ * live.settings_dirty stays nonzero through the debounce, retries and an unconsumed result,
+ * so a frame caller can skip the call entirely when it is zero. */
+void settings_tick(settings* s, uint32_t now_ms);
+/* SAVE: the settings saved now, skipping the debounce; settings_take_result tells when. */
+void settings_save_now(settings* s, uint32_t now_ms);
+/* The store lost the record (a format): it is written again once the store takes it. */
+void settings_forget(settings* s);
+/* An explicit save's end, once (then SETTINGS_NOTHING). */
+settings_result settings_take_result(settings* s);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

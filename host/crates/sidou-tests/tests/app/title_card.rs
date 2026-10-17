@@ -218,7 +218,7 @@ fn home_from_the_menu_to_live_shows_the_oscillator_card() {
 fn power_on_the_boot_and_back_from_a_view_to_the_menu_show_no_card() {
     let mut ui = Ui::new();
     assert_eq!(ui.top(), "LIVE");
-    unsafe { views_boot(&mut *ui.v, 0) };
+    unsafe { views_boot(&mut *ui.v, 0, 0) };
     for _ in 0..80 {
         ui.frame();
         assert_ne!(ui.top(), "TITLE");

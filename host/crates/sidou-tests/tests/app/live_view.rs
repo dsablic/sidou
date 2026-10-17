@@ -528,7 +528,7 @@ fn the_tap_runs_while_live_is_under_midi_learns_frame() {
         views_learn(&mut *ui.v, &mut *ml);
     }
     settle(&mut ui);
-    ui.press(LEARN_VIEW_BUTTON);
+    ui.learn_on(PANEL_ENC_K1);
     assert_eq!(ui.top(), "LEARN");
     ui.rig.note_on(69);
     for _ in 0..4 {
@@ -549,7 +549,7 @@ fn the_tap_runs_while_live_is_under_midi_learns_frame() {
     ui.settle();
     ui.press(PANEL_BTN_HOME); // the menu
     ui.settle();
-    ui.press(LEARN_VIEW_BUTTON);
+    ui.learn_on(PANEL_ENC_K1);
     assert_eq!(ui.top(), "LEARN");
     ui.frame();
     assert_eq!(

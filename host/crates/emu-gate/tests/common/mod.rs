@@ -213,8 +213,117 @@ pub struct Machine {
 /// of bytes.
 pub const MIDI_PACED_BACKLOG: usize = 900;
 
+// ---- the store core on the host, over a flash dump (read only) ----
+
+unsafe extern "C" fn dump_map(ctx: *mut std::ffi::c_void, off: u32) -> *const u8 {
+    unsafe { ctx.cast::<u8>().add(off as usize) }
+}
+
+unsafe extern "C" fn dump_refuse(
+    _: *mut std::ffi::c_void,
+    _: u32,
+    _: *const std::ffi::c_void,
+    _: u32,
+) -> i32 {
+    sidou_sys::STORE_ERROR
+}
+
+unsafe extern "C" fn dump_no_erase(_: *mut std::ffi::c_void, _: u32) -> i32 {
+    sidou_sys::STORE_ERROR
+}
+
+/// The store mounted from a flash dump (the whole chip) on the host: the same C core as the
+/// firmware's, which may not write. Whatever it finds.
+fn mount_any(flash: &mut [u8]) -> Box<sidou_sys::store> {
+    use sidou_sys::*;
+    let f = store_flash {
+        map: Some(dump_map),
+        prog: Some(dump_refuse),
+        erase: Some(dump_no_erase),
+        ctx: flash.as_mut_ptr().cast(),
+    };
+    let mut st: Box<store> = Box::default();
+    unsafe {
+        store_init(&mut *st, &f, 256);
+        store_mount(&mut *st);
+        while store_busy(&*st) != 0 {
+            store_poll(&mut *st);
+        }
+    }
+    st
+}
+
+/// As mount_any, which must find SIDOU's store, uncorrupted.
+pub fn mount_dump(flash: &mut [u8]) -> Box<sidou_sys::store> {
+    let st = mount_any(flash);
+    assert_eq!(st.state, sidou_sys::STORE_STATE_SIDOU as u8);
+    assert_eq!(st.corrupt, 0, "the mount saw corruption");
+    st
+}
+
+/// `key`'s value in a flash dump's store, if it is SIDOU's and holds it.
+pub fn stored_value(flash: &[u8], key: u32) -> Option<Vec<u8>> {
+    let mut flash = flash.to_vec();
+    let st = mount_any(&mut flash);
+    if st.state != sidou_sys::STORE_STATE_SIDOU as u8 {
+        return None;
+    }
+    let mut buf = vec![0u8; sidou_sys::STORE_VALUE_MAX as usize];
+    let n = unsafe {
+        sidou_sys::store_get(
+            &*st,
+            key,
+            buf.as_mut_ptr().cast(),
+            buf.len() as u32,
+            std::ptr::null_mut(),
+        )
+    };
+    (n >= 0).then(|| {
+        buf.truncate(n as usize);
+        buf
+    })
+}
+
+/// Emulated ms the first boot on a blank flash runs before its settings are stored: the debounce
+/// (app/settings.h, 5 s from the load at the screen's start) and the held programs' wait for
+/// quiet, with room.
+pub const SETTLE_MS: u64 = 7_000;
+
+/// The flash after a first boot of `image` on a blank chip: its settings stored (app/settings.h:
+/// the defaults and the firmware's version), as a device holds them from its second power-on.
+/// Made once per image and test process.
+fn settled_flash(image: &[u8]) -> Vec<u8> {
+    use std::sync::{Mutex, OnceLock};
+    type FlashCache = Vec<(Vec<u8>, Vec<u8>)>;
+    static MADE: OnceLock<Mutex<FlashCache>> = OnceLock::new();
+    let made = MADE.get_or_init(|| Mutex::new(Vec::new()));
+    let mut made = made.lock().unwrap();
+    if let Some((_, f)) = made.iter().find(|(i, _)| i == image) {
+        return f.clone();
+    }
+    let mut m = Machine::boot_blank(image);
+    m.run_ms(SETTLE_MS);
+    let flash = m.soc.flash.mem.clone();
+    assert!(
+        stored_value(&flash, sidou_sys::SETTINGS_KEY).is_some(),
+        "the first boot stored no settings in {SETTLE_MS} ms"
+    );
+    made.push((image.to_vec(), flash.clone()));
+    flash
+}
+
 impl Machine {
+    /// As the device boots from its second power-on: the settings of a first boot stored, so
+    /// the boot is the short one (app/boot.h). boot_blank is the first power-on after an install.
     pub fn boot(image: &[u8]) -> Self {
+        let flash = settled_flash(image);
+        let mut m = Self::boot_blank(image);
+        m.soc.flash.mem.copy_from_slice(&flash);
+        m
+    }
+
+    /// On a blank flash chip: the first power-on after an install (the full boot, app/boot.h).
+    pub fn boot_blank(image: &[u8]) -> Self {
         let mut xip = vec![0u8; (APP_BASE - fm1_soc::XIP_BASE) as usize];
         xip.extend_from_slice(image);
         let mut soc = Soc::new(RAM_SIZE, xip);

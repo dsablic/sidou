@@ -177,18 +177,6 @@ Follow-ups that aren't tied to a milestone task yet.
   output exact: OSC3 against reSIDfp at each profile
   (`tests/profiles.rs`) and the golden hashes.
 
-## The full boot sequence once after an install (M2 storage)
-
-- **Where:** `app/boot.h`, `views_boot` in `platform/fm1/ui.c`.
-- **Problem:** the plan asks for a boot that is short after the first boot.
-  Without storage the firmware cannot tell the first boot after an install
-  from the others: RAM is no help (whether `.noinit` survives a power cut is
-  unknown, and a brownout may keep it; hardware-test.md section 10), so the
-  boot is short every time and HOME held at power-on plays the full one.
-- **Action:** with M2's flash storage, keep a "seen" flag (or the version
-  last booted): play the full sequence when it is missing or differs, then
-  set it. HOME held at power-on keeps playing the full one.
-
 ## The GitHub avatar and social preview are set by hand
 
 - **Where:** the repository's settings on GitHub (Settings, General, Social
@@ -415,4 +403,3 @@ working.
      first block);
   3. have a slot switch wait a block when the SID's block is heavy.
   Keep the output exact (golden hashes, the bulk-against-cycle fuzz).
-

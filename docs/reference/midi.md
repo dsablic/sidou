@@ -166,7 +166,7 @@ jack, which is MIDI IN only.
 
 ## MIDI learn
 
-Any knob's parameter can also follow a CC of your choice: press SAVE, turn the knob (EDIT held
+Any knob's parameter can also follow a CC of your choice: hold SAVE and turn the knob (EDIT held
 for the effect-slot layer), then send the CC ([controls.md](controls.md), MIDI learn, has
 the gesture, how to cancel and how to clear). What is learned:
 
@@ -178,16 +178,17 @@ the gesture, how to cancel and how to clear). What is learned:
   and gets its CC back when the binding is forgotten. CC 1 learned for a parameter no longer
   moves the modulation wheel.
 - **One each way:** a parameter has at most one learned CC and a CC at most one parameter;
-  learning again moves the binding. The gesture reaches the 15 parameters on the knobs
-  (the cutoff, resonance and pulse width, and each effect slot's Amount, A, B and Mix), so
-  there are at most 15 bindings.
+  learning again moves the binding. The gesture reaches the 19 parameters on the knobs
+  (the cutoff, resonance and pulse width, CHIP's Age, DAC, Thump and Bleed, and each
+  effect slot's Amount, A, B and Mix), so
+  there are at most 19 bindings.
 - **Values:** through the parameter's curve and range in the map below, as its own CC.
 - **Output:** a panel change to a learned parameter goes out on the learned CC, so a DAW
   records what the controller sends and plays it back onto the same parameter. A parameter
   whose own CC another parameter learned goes out as its NRPN. A learned CC from MIDI is
   never echoed, as any other.
-- **Kept:** in RAM, across program changes and gaps in the input, until power-off; saving
-  them comes with M2's settings storage. An armed learn with no step for 10 s is
+- **Kept:** across program changes and power cycles, saved with the settings five seconds
+  after the last change, or at once with SAVE. An armed learn with no step for 10 s is
   cancelled.
 
 ## The map

@@ -604,7 +604,7 @@ static void sidou_main(void) {
      * set up only for the update protocol's progress frame (ui_update). */
     fm1_timer5_start(isr_timer5, PRIO_TIMER5);
     fm1_irq_enable_all();
-    ui_init(&instrument, uptime_ms, 0);
+    ui_init(&instrument, &ui_sounds, uptime_ms, 0);
     flash_spike_run(spike_service);
 #endif
     audio_start();
@@ -619,12 +619,11 @@ static void sidou_main(void) {
      * has debounced it, about 3 ms after the tick started; the audio already runs. */
     uint32_t held = input_buttons_at_power_on();
     /* uptime_ms counts every timer tick since TIMER4 started (fm1_timer5_irq). */
-    ui_init(&instrument, uptime_ms, (int)((held >> PANEL_BTN_HOME) & 1u));
+    ui_init(&instrument, &ui_sounds, uptime_ms, (int)((held >> PANEL_BTN_HOME) & 1u));
     ui_set_keys(&keys_router);
     song_bound = song_binding;
     song_bound.ctx = audio_song();
     ui_set_song(&song_bound);
-    ui_set_sounds(&ui_sounds);
 #if defined(SIDOU_TEST_DEATH_MS)
     test_death_arm();
 #endif

@@ -239,12 +239,12 @@ on the host, at every phase).
 
 ## UI sounds
 
-SOUNDS in the menu (off at power-on) plays short sounds on chip B's spare voice
+SOUNDS in the menu (off by default, restored with the settings) plays short sounds on chip B's spare voice
 (`app/ui_sound.h`): a cursor blip when the menu's cursor moves (a triangle C-6, two frames), a
 confirm when ALGORITHM changes a value or opens a view (a pulse arpeggio E-5 G#5 B-5), a chime
 with a toast (a triangle falling E-6 C-6 G-5), an error buzz for a refused action (the
 cursor at the menu's end, an action turned counter-clockwise: a narrow pulse at C-2), and
-SAVE's drive chunk (noise, then a low pulse; it plays once SAVE saves, M2a Task 5). They are
+SAVE's drive chunk (noise, then a low pulse, when an explicit save commits). They are
 data in GoatTracker's sound-effect format (its readme, section 6.3), stepped at 50 Hz, so they
 can be edited in GoatTracker and converted with INS2SND2. They are quiet and short by design:
 the instrument is the thing to hear. They never take a voice the keys use: with the keys on
@@ -390,7 +390,7 @@ What works, and what does not, on this panel and budget:
 
 ## Boot
 
-The boot sequence (`app/boot.h`) is a view over the status screen at power-on, after the
+The boot sequence (`app/boot.h`) is a view over LIVE at power-on, after the
 prototype's `Boot`:
 
 | From | Shows |
@@ -401,21 +401,23 @@ prototype's `Boot`:
 | 3.0 s | `LOADING`, and raster stripes in the border, new every other frame |
 | 5.6 s | `READY.`, then `RUN` typed from 6.2 s |
 | 7.0 s | the title card: the logo's scene (Metal Chrome's), the version and licence above it, `PRESS ANY KEY` blinking below |
-| 10.0 s | the status screen wipes in |
+| 10.0 s | LIVE wipes in |
 
 The stripes split each border cell row in two colours at a random height (a lower-eighths
 glyph): the 116 border cells, about 10 ms of SPI, every other frame. Every other change goes
 out within the budget; the first frame is drawn whole before the display is on.
 
-- **Short by default:** the title card alone, 1.2 s, then the status screen. Without storage
-  the firmware cannot tell the first boot after an install from the others, so it does not
-  pretend to. **HOME held while powering on** plays the full sequence: once the interrupts
+- **Full once per firmware version:** when the stored version is missing or differs from
+  the installed version, the full sequence plays and the current version is saved with the
+  settings. Later boots of that version show the title card alone, 1.2 s, then LIVE.
+  Reinstalling the same version does not reset this choice. Let the settings save finish
+  before powering off: its background write is debounced for 5 s and waits for quiet. A
+  foreign store cannot remember the version until explicitly formatted, so it keeps showing
+  the full sequence. **HOME held while powering on** always plays the full sequence: once the interrupts
   are on, `platform/fm1/main.c` waits `FM1_DEB_PRESS + 1` key scan frames (3.3 ms; the audio
   already runs) and reads HOME's debounced level. The key scan also makes one press edge for
   a key held at power-on; the boot takes that first HOME press as part of the hold. Without
-  HOME held, a HOME press skips like any other button, from the first frame on. With M2's
-  storage the full sequence will play once after an install (a flag in flash), and short
-  after that ([TODO](../TODO.md)).
+  HOME held, a HOME press skips like any other button, from the first frame on.
 - **Skippable by anything:** a button or an encoder ends it at the next frame and does nothing
   else (the boot's capture takes it: no octave step, no chip toggle); a note from the keys or
   MIDI ends it and plays, even one shorter than a frame (`live`'s note-on count tells).

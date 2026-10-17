@@ -93,6 +93,14 @@ Notes:
 
 ## 3. Boot
 
+Check the full sequence first, then let the instrument sit quiet for at least 6 s so its
+version can be saved. The title-card-only checks below apply to subsequent boots of the
+same version with a writable store.
+
+- [ ] With no saved version, or after installing a different firmware version, the full
+  sequence plays without holding HOME (the sequence described below). After a quiet save,
+  power-cycle: only the title card plays. Reinstalling the same version keeps the short
+  boot; installing a different version gives the full boot once again.
 - [ ] The title card appears: Metal Chrome's scene, the spiked SIDOU letters
   with their red to white chrome and purple shadow on a dithered purple glow,
   between raster bars, with stars, a glint on the U and the tagline "FORGED IN
@@ -188,13 +196,13 @@ which printed control did it.
 | ENV (button 4) | the selected slot's next algorithm (the name on LIVE's slot line changes) | | [ ] |
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the status screen and the CHIP view; Mix as LIVE's bar), in every view; EDIT lit while the slot is on | | [ ] |
 | HOME (button 8) | from LIVE, the menu (a wipe down from the top); in the menu, back to LIVE behind THE OSCILLATOR's title card (below; with CARDS OFF, a wipe up from the bottom) | | [ ] |
-| SAVE (button 9) | a MIDI LEARN frame at the bottom of the screen, TURN A KNOB (section 7, MIDI learn); HOME closes it | | [ ] |
+| SAVE (button 9) | press alone opens nothing; a clean release saves settings and shows SAVED when committed (or SAVED (GAPS)); held + K1 opens MIDI LEARN on CUTOFF, HOME closes it (section 7) | | [ ] |
 | SEQ (button 11) | from any view, the TRACKER (black, a light blue top line TRACKER, a stop square, the tempo 125, ORD 00 ROW 00; V1 V2 V3 on the second line; row numbers 00..14 with a blue bar on 00); SEQ again stays there, HOME goes back | | [ ] |
 | PLAY (button 12) | SIDOU LOOP plays (a lead, a bass and drums, in time, no clicks between rows), in any view; TRACKER's top line shows a play mark and the rows move; PLAY again stops it and the notes ring out; EDIT + PLAY goes on from there; PLAY's LED lit while it plays | | [ ] |
 | REC (button 13) | REC in red at the right of TRACKER's top line, and off again | | [ ] |
 | A note key in TRACKER, the song stopped | SIDOU LOOP's first instrument on voice 1 (V1's meter moves), nothing of the song plays; let go, it releases; LIVE's keys sound the same as before afterwards | | [ ] |
 | GLO (button 7) held + the leftmost note key | while SIDOU LOOP plays, its voice 1 goes silent; TRACKER's V1 head says MUT in light red, LIVE's top line M1 in the preset's place; the key sounds nothing; again: back. GLO + the fourth key: only voice 1 sounds, SOL on V1 | | [ ] |
-| SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, TRACKER, PRESET, OCTAVE, CARDS, KEYS, SOUNDS, STATUS, SCENE, CHARSET and ABOUT | | [ ] |
+| SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, TRACKER, PRESET, OCTAVE, CARDS, STORE, KEYS, SOUNDS, STATUS, SCENE, CHARSET and ABOUT | | [ ] |
 | ALGORITHM (encoder 1), in the menu | changes the item under the cursor (PRESET; OCTAVE -3..+3; CARDS: counter-clockwise OFF, clockwise ON); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
 | SELECT (encoder 0), on CHIP | the focus (a play mark and white frames) moves CHIP, DIST, MOD, FX and stops at either end; onto a slot that was not the selected one, the toast says SLOT DIST (or MOD, FX); onto the slot already selected (DIST at power-on), no toast | | [ ] |
 | ALGORITHM (encoder 1), on CHIP | on CHIP the PROFILE steps 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581 (MODEL follows; held notes attack again on the new chip, as at a model change); on a slot its algorithm, OFF to the last, named in the slot's frame | | [ ] |
@@ -276,8 +284,9 @@ Title cards ([controls](reference/controls.md#title-cards)):
   delay against playing on LIVE) and the view comes in.
 - [ ] A chord held and played through a card: no click, crackle or late note.
 - [ ] Menu, CARDS turned counter-clockwise: OFF; SCENE and HOME back to LIVE
-  now wipe in with no card. Clockwise: ON, and the cards are back. After a
-  power-cycle CARDS is ON.
+  now wipe in with no card. Clockwise: ON, and the cards are back. Set OFF,
+  wait at least 6 s with no further changes and the keys released, then power-cycle:
+  CARDS stays OFF. Restore ON if needed for the remaining title-card checks.
 
 CHIP (menu, CHIP; [controls](reference/controls.md#chip)):
 
@@ -342,23 +351,26 @@ record the one that works.
 - [ ] A dense part from a sequencer (running status, clock on) plays without
   hanging notes. Latency feels:
 
-**MIDI learn (M1d)** ([controls.md](reference/controls.md), MIDI learn), with a controller
+**MIDI learn (SAVE held + knob)** ([controls.md](reference/controls.md), MIDI learn), with a controller
 that sends a CC the map leaves free (e.g. CC 14; [midi.md](reference/midi.md) lists the
 map's) on the TRS jack. While the frame waits for a CC, any learnable CC binds, whatever
 sends it: a DAW that sends CC 0, 32 or 64 when its transport starts, or a controller's
 pedal, binds that instead. Stop the transport and keep pedals still while learning.
 
-- [ ] Press SAVE: the MIDI LEARN frame says TURN A KNOB, and stays after SAVE comes up.
-  Turn K1: CUTOFF &larr; SEND A CC, and the cutoff does not move. Move the controller's
+- [ ] Press and hold SAVE: no learn frame yet. Turn K1: the MIDI LEARN frame opens on
+  CUTOFF &larr; SEND A CC, and the cutoff does not move. Release SAVE: no save toast,
+  and the frame stays. Move the controller's
   knob: LEARNED CC 14 &rarr; CUTOFF, the frame closes, and the controller's knob now sweeps
   the cutoff (the bar and the sound) on any channel. CC 74 still moves it too.
 - [ ] The same over USB from a DAW, and the other way: learn K2 on CC 15 from USB, then
   send CC 15 from a TRS controller: both ports drive what either learned.
 - [ ] EDIT held + K4 while learning, then a CC: the selected slot's Mix follows it
   (LEARNED CC n &rarr; DIST MIX; SCL first for MOD or FX).
-- [ ] On the CHIP view with the focus on CHIP, SAVE and K1: AGE &larr; SEND A CC; the CC
-  then moves AGE's bar and the sound. On a slot, SAVE and K4: that slot's MIX.
-- [ ] On the CHIP view with the focus on CHIP, SAVE, then SELECT one step clockwise while the
+- [ ] On the CHIP view with the focus on CHIP, hold SAVE and turn K1: AGE &larr; SEND A CC;
+  release SAVE, then send the CC: it moves AGE's bar and the sound. On a slot, hold SAVE
+  and turn K4: that slot's MIX.
+- [ ] On the CHIP view with the focus on CHIP, hold SAVE and turn K1, release SAVE, then
+  SELECT one step clockwise while the
   frame shows: the focus moves to DIST under the frame, and K4 then learns DIST MIX (not
   BLEED). ALGORITHM under the frame steps DIST's algorithm. In the menu, SELECT and
   ALGORITHM do nothing while the frame shows.
@@ -368,11 +380,53 @@ pedal, binds that instead. Stop the transport and keep pedals still while learni
   monitor shows CC 14, not CC 74. Moving the controller's knob sends nothing back.
 - [ ] HOME while the frame shows: LEARN CANCELLED, no menu, nothing learned. Leave the
   frame alone for 10 s: LEARN TIMED OUT.
-- [ ] SAVE, K1, SAVE: CUTOFF: CC 14 FORGOTTEN, and CC 14 does nothing. SAVE, SAVE, SAVE:
-  MIDI LEARN CLEARED.
+- [ ] Hold SAVE and turn K1, release SAVE, then press and release SAVE: CUTOFF: CC 14
+  FORGOTTEN, and CC 14 does nothing. Repeat with no binding: CUTOFF: NO CC, frame stays.
+- [ ] With the learn frame open, hold SAVE and press HOME: CLEAR ALL MAPPINGS?. Release
+  SAVE: nothing cleared yet. Press and release SAVE again: MIDI LEARN CLEARED. Repeat with
+  HOME without SAVE held instead of confirming, then with a 10 s wait: mappings are kept.
+- [ ] Outside the frame, hold SAVE and press HOME: no menu and no frame; release SAVE:
+  no save. Hold SAVE and press OCT+: octave changes, but release SAVE saves nothing.
+- [ ] While the frame waits, turn K2 without holding SAVE: RESO &larr; SEND A CC; resonance
+  does not move. On LIVE, SAVE held + K4 says K4: THE PRESET, NO CC and opens no frame.
 - [ ] The note keys play while the frame shows, and the sound has no gap when it opens or
   closes.
-- [ ] Power off and on: nothing is learned any more (RAM only until M2).
+- [ ] Learn CC 14 for K1, release all notes and wait at least 6 s without changing a persisted
+  value; power off and on: CC 14 still moves cutoff. Forget it, wait for another quiet save,
+  power-cycle: the binding stays forgotten.
+
+Notes:
+
+## 7.1 Settings, SAVE and STORE (M2a Task 5)
+
+Use a writable store for the persistence checks. If STORE says FOREIGN, read the destructive
+format check below before deciding whether to format; nothing persists until then.
+
+- [ ] Change CARDS, KEYS and SOUNDS, the preset and a preset edit, the chip profile and a
+  character control, an effect algorithm and Mix, and the envelope mode (CC 26). Release
+  notes and wait at least 6 s after the last change, without further persisted changes:
+  no background-save toast. Power-cycle: all those values and the learn binding return.
+  Octave returns to 0, no notes are held, LIVE opens and volume follows MASTER.
+- [ ] Make several changes less than 5 s apart, then stop: the settings save follows the
+  last change, not the first. After a quiet save and power-cycle, the final values return.
+- [ ] Change CARDS, then press and hold SAVE: no frame and no save yet. Release without
+  turning an encoder or pressing another button: SAVED appears when the write commits,
+  without the 5 s debounce. Power-cycle after the toast: the new value returns.
+- [ ] Hold a chord and release SAVE to request a save. If it cannot write while playing,
+  after about 2 s short held operations may interrupt the sound; completion says
+  SAVED (GAPS). With SOUNDS on a completed explicit save plays the drive chunk. A background
+  save alone waits for quiet and never forces gaps.
+- [ ] In the menu, STORE is immediately after CARDS and shows nK FREE, excluding the
+  reserve pool. ALGORITHM on a writable SIDOU store does not format it.
+- [ ] **Only with unwanted foreign data and permission to destroy it:** STORE says FOREIGN.
+  A plain SAVE says STORE FOREIGN: NOT SAVED; power-cycling without formatting leaves the
+  region foreign. ALGORITHM clockwise once on STORE says FORMAT? TURN; counter-clockwise
+  cancels, as does moving SELECT away and back. Nothing is erased by those cancelled steps.
+- [ ] **Destructive confirmation:** on FOREIGN, turn ALGORITHM clockwise twice without
+  leaving STORE. The store's 73 sectors are erased; STORE shows ERASING n (sound can have
+  gaps), then STORE FORMATTED and nK FREE. Let settings save, power-cycle, and check that
+  STORE is no longer FOREIGN and settings persist. Never format automatically just to
+  proceed with the checklist.
 
 Notes:
 
@@ -707,6 +761,7 @@ Notes:
 | 5 Buttons, encoders, MASTER | | |
 | 6 LCD | | |
 | 7 TRS MIDI | | |
+| 7.1 Settings, SAVE and STORE | | |
 | 8 USB MIDI | | |
 | 9 Reinstall, stock and back | | |
 | 10 Guard, watchdog, resets | | |

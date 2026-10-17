@@ -353,7 +353,8 @@ int store_delete(store* s, uint32_t key);
  * quiet). STORE_NOT_FOUND when no sector would gain, STORE_BUSY while maintenance runs, before
  * the mount's recovery, or while a killed sector waits for its erase. */
 int store_collect(store* s);
-/* Every sector dirty, to be erased by maintenance: for a region another firmware left
+/* Every sector dirty, all 73 to be erased by maintenance (when quiet) before anything is
+ * written (writes answer STORE_BUSY until then): for a region another firmware left
  * (STORE_STATE_FOREIGN), after the user confirmed. Loses everything. */
 void store_format(store* s);
 void store_stats_get(const store* s, store_stats* out);

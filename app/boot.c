@@ -35,14 +35,14 @@ static const uint8_t STRIPES[9] = {GRID_LIGHT_BLUE,  GRID_YELLOW, GRID_RED,
                                    GRID_CYAN,        GRID_WHITE,  GRID_PURPLE,
                                    GRID_LIGHT_GREEN, GRID_BLUE,   GRID_ORANGE};
 
-void boot_init(boot* b, const live* l, const char* version, int home_held) {
+void boot_init(boot* b, const live* l, const char* version, int full, int home_held) {
     static const boot empty;
     *b = empty;
     b->l = l;
     b->version = version;
     b->note_ons = l ? l->note_ons : 0u;
-    b->full = (uint8_t)(home_held != 0);
-    b->home_edge = b->full;
+    b->full = (uint8_t)(full != 0);
+    b->home_edge = (uint8_t)(home_held != 0);
     b->title = (uint8_t)!b->full;
     b->logo = logo_default;
 }

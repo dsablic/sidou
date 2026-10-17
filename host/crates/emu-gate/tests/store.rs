@@ -18,9 +18,8 @@
 mod common;
 
 use std::collections::BTreeMap;
-use std::ffi::c_void;
 
-use common::{build_dir, Firmware, Machine, CPU_HZ, POLL_INSTRUCTIONS};
+use common::{build_dir, mount_dump, Firmware, Machine, CPU_HZ, POLL_INSTRUCTIONS};
 use fm1_core::Bus;
 use sidou_sys::*;
 
@@ -85,7 +84,7 @@ impl<'a> Dev<'a> {
     /// Powered on with `flash` (blank if None), run until the main loop has run a while (the
     /// store's mount, recovery and pool fill ran in the LCD's wake-up wait).
     fn boot(fw: &'a Firmware, flash: Option<&[u8]>) -> Self {
-        let mut m = Machine::boot(&fw.image);
+        let mut m = Machine::boot_blank(&fw.image);
         if let Some(f) = flash {
             m.soc.flash.mem.copy_from_slice(f);
         }
@@ -234,41 +233,6 @@ impl<'a> Dev<'a> {
         }
         assert_eq!(self.ops(), ops, "two operations in one step");
     }
-}
-
-// ---- the store core on the host, over a flash dump (read only) ----
-
-unsafe extern "C" fn dump_map(ctx: *mut c_void, off: u32) -> *const u8 {
-    unsafe { ctx.cast::<u8>().add(off as usize) }
-}
-
-unsafe extern "C" fn dump_refuse(_: *mut c_void, _: u32, _: *const c_void, _: u32) -> i32 {
-    STORE_ERROR
-}
-
-unsafe extern "C" fn dump_no_erase(_: *mut c_void, _: u32) -> i32 {
-    STORE_ERROR
-}
-
-/// The store mounted from a flash dump on the host (the same C core as the firmware's).
-fn mount_dump(flash: &mut [u8]) -> Box<store> {
-    let f = store_flash {
-        map: Some(dump_map),
-        prog: Some(dump_refuse),
-        erase: Some(dump_no_erase),
-        ctx: flash.as_mut_ptr().cast(),
-    };
-    let mut st: Box<store> = Box::default();
-    unsafe {
-        store_init(&mut *st, &f, 256);
-        store_mount(&mut *st);
-        while store_busy(&*st) != 0 {
-            store_poll(&mut *st);
-        }
-    }
-    assert_eq!(st.state, STORE_STATE_SIDOU as u8);
-    assert_eq!(st.corrupt, 0, "the mount saw corruption");
-    st
 }
 
 /// The test file's bytes (store_fm1.c's hook: byte i is i * 7 + seed).
