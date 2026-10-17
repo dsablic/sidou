@@ -7,6 +7,13 @@ All notable changes are documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.2.0-m2-preview] - 2026-10-17
+A preview of M2 in progress, from `main` as it stood when the work paused: **untested on
+hardware, not for installing on an FM-1**. It is published so the songs can be heard in the
+browser demo; the first release proper comes after M3 and the hardware checklist. Where M2
+stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
+
 ### Added
 - Design document, licensing, credits and contribution guidelines.
 - SID core in C11 (`core/sid/`): oscillators, noise, hard sync and ring
@@ -203,6 +210,28 @@ All notable changes are documented here. The format follows
   the focus gives. The page is built in a canvas and copied within 200 cells a frame (idle
   6.3k instructions a frame, nothing sent; the busiest frame 17.6 ms of SPI).
 
+- M2a: the store (`core/store/`): a log-structured, power-loss-safe store in flash at
+  [0x97000, 0xE0000) with a guard band at each sector's end; files claimed up front, written in
+  chunks and committed whole; recovery that makes an interrupted write whole or drops it, with
+  copies taking new sequence numbers and ambiguous sectors erased before a session's first
+  write. On the device (`platform/fm1/store_fm1.c`) programs go in write windows after an
+  audio block, and erases, held, wait for quiet (no song, no gate, no input, a low output) with
+  the audio faded out; the boot mounts it in the LCD's wake-up wait. Its timings are the
+  P25Q80H datasheet's maxima, provisional until the flash spike's numbers.
+- M2a Task 3b: the flash timing spike (`-DSIDOU_FLASH_SPIKE=ON`, a test firmware, never
+  released), confined to two sectors at 0xDE000, with its checklist in `docs/hardware-test.md`
+  section 12.
+- M2c Tasks 1-5b: GoatTracker 2's `.sng` as SIDOU's song file (decision record 0007), read and
+  written with SIDOU's trailer; GoatTracker's packed player in a host 6502 as the reference
+  (`host/crates/gt2-ref`); the player in C (`core/player/`), matching it register for register
+  on every example.
+- M2e Task 1: MIDI realtime and system common messages, song position and song select, and a
+  clock follower (a least-squares fit over 96 clocks).
+- M2f Tasks 1-3: RED MOON RITE's art from its prototype's drawing code, with the disarm and its
+  originality review; the art as run-length sprites in flash; a painter region and a tile
+  compositor for pixel scenes.
+- The browser demo plays songs (Start, then Space or PLAY), and its Start button waits until
+  the page is ready.
 - M2c Task 7: parameter locks. A pattern row may lock the cutoff, the resonance, the filter
   mode, its voice's routing or pulse width (written over the player's registers for that
   row, in the audio interrupt) and chip A's character (moved with chip_ctl's glide); the song's
@@ -280,6 +309,13 @@ All notable changes are documented here. The format follows
 - The EDIT layer (EDIT + K1..K4, SCL, ENV) is no longer a stopgap: it stays in every view as a
   shortcut to the selected effect slot, the one the CHIP view's slot focus shows.
 - The fm1-emu credit is reworded so that it fits one About page.
+
+### M2 status (preview)
+M2 is partway through; see the progress table in `docs/plans/2026-10-15-m2-overview.md`.
+In this preview: chip B, the song player with parameter locks, the song views' frame, the
+store on the device. Not yet: saving songs and settings from the panel, the TRACKER and STEP
+views' editing, MIDI modes and clock driving the player, RED MOON RITE on the device, SysEx.
+The store's flash timings are the datasheet's until the spike runs on a unit.
 
 ### M1 status
 M1 (design doc section 14: sound) is done on `main`, with these exceptions.

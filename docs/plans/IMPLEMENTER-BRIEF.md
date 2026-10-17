@@ -33,6 +33,8 @@ Device code is C11 with no allocation and no libm; host tooling and tests are Ru
 - `noinline` helpers are `__attribute__((noinline, unused)) static`, never `static inline`.
 - SPDX headers on every new file; REUSE stays compliant.
 - Temporary files go in `build/scratch/` in your worktree.
+- Park work in progress as a `wip:` commit on your branch, never `git stash`: the stash is shared
+  by every worktree, so another track's agent can pop yours.
 - `host/crates/sidou-sys/build.rs`'s `SOURCES` is a slice (`&[&str]`): on a rebase conflict keep
   the slice form and the union of both sides' entries; never reintroduce a fixed-size array.
 - Never put the user's email address or any personal data in requests to outside services.

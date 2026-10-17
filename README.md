@@ -11,12 +11,14 @@ step sequencer with a tracker underneath, a live-play mode, `.sid` playback, and
 importers for GoatTracker and SID-Wizard songs. The SID emulation adds an
 amp-modeller-style "chip character" layer on top.
 
-**Status:** M1a, the first firmware: a live SID instrument played from the
-FM-1's keys and knobs and from MIDI (TRS and USB), with a status screen and
-the community update protocol. It is tested in the fm1-emu emulator and on
-the host only: **no FM-1 has run it yet**, and it is not ready to be
-installed on hardware (see below). See the
-[design document](docs/plans/2026-10-14-sidou-design.md) for where it's going.
+**Status:** M1 (the live instrument) is done, and M2 (songs) is partway: chip B,
+GoatTracker 2 songs played by a C player on the device (PLAY, button 12), parameter locks,
+the song views' frame (SEQ, mute and solo with GLO) and power-loss-safe storage in flash.
+The latest version is the preview **v0.2.0-m2-preview**
+([CHANGELOG.md](CHANGELOG.md)). It is tested in the fm1-emu emulator and on the host only:
+**no FM-1 has run it yet**, and it is not ready to be installed on hardware (see below). See
+the [design document](docs/plans/2026-10-14-sidou-design.md) for where it's going, and the
+[M2 overview](docs/plans/2026-10-15-m2-overview.md) for what is left.
 
 ## Try it in your browser
 
@@ -33,7 +35,7 @@ needed; [BUILDING.md](BUILDING.md), "Browser demo"):
 tools/web-demo          # builds everything, then serves http://localhost:8642/
 ```
 
-## Try M1a
+## Try it
 
 **In the emulator** (no hardware needed). Build the firmware and the package
 ([BUILDING.md](BUILDING.md)), then, from `host/`:
@@ -59,7 +61,9 @@ recovery tools at hand (FM-1-transporter, MvaveFM1Unbricker with
 jl-uboot-tool) and M-VAVE's official `FM-1.fwsc` for the way back.
 Entirely at your own risk: SIDOU comes with no warranty.
 
-**What M1a plays:** one SID chip, three voices, four presets (SAW LEAD, PWM
+**What it plays:** press PLAY (button 12) for SIDOU's first song, SIDOU LOOP, and PLAY
+again to stop; SEQ (11) opens the song views. The keys play chip A, or chip B while a song
+plays (menu, KEYS). Since M1a: one SID chip, three voices, four presets (SAW LEAD, PWM
 BASS, SYNC LEAD, NOISE PERC); K1 cutoff, K2 resonance, K3 pulse width, K4
 preset, MASTER volume, OCT-/OCT+, FX for the 6581/8580; MIDI notes on every
 channel, CC 74 cutoff, CC 71 resonance, CC 1 pulse width, CC 7 volume,
