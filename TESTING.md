@@ -612,17 +612,55 @@ fm1 build directory. Like the gate, it skips without `SIDOU_FM1_BUILD`.
 flash from 0x93000 up as a plain XIP window before the audio starts (the
 window's registers, written once), that a word written into the flash chip
 at the store's first byte (`STORE_LO`) reads back through XIP, and that the
-boot writes nothing into the store (docs/hardware.md, "Flash map").
+boot then writes nothing into the store: the word is not SIDOU's, so the
+store mounts the region foreign (docs/hardware.md, "Flash map").
 
 ### Flash budget
 
 `crates/emu-gate/tests/flash_budget.rs` holds M2's image schedule (the
 ceiling of `sidou_app.bin` after each plan, M2a 372,000 bytes up to M2f
 512,000) and fails if the image is over the ceiling of the plan in progress
-(`IMAGE_CEILING`). A raise is a change to the schedule's table, so it reads
+(`IMAGE_CEILING`): the latest stage whose code is merged (the plans land in
+parallel). A raise is a change to the schedule's table, so it reads
 as a change to the plan; a test checks the table only rises and leaves M3 at
 least 69,564 bytes of the 581,564-byte slot. It prints the image's size and
 what is left; it skips without `SIDOU_FM1_BUILD`.
+
+### The store on the device
+
+`crates/emu-gate/tests/store.rs` runs the store on the firmware
+(`platform/fm1/store_fm1.c`, M2a Task 4). The firmware's test hook
+(`store_fm1_hook` in RAM: a put, a get, a file of a pattern, a collection,
+a song playing) does the store operations; the tests write it as a debugger
+would. fm1-emu's flash is instantaneous, so a cut is the flash as it was
+after the k-th program or erase (`store_fm1_counts`). The timings in
+`store_fm1.h` are provisional (the P25Q80H datasheet's maxima), and by the
+decision rule no write window fits them: programs are held operations, and
+the tests that need windows set `store_fm1_window` in RAM. The tests:
+- a value persists across a power cycle (a blank region formats at boot);
+- a cut after every operation of a settings save, every third of a file's
+  replacement and the collection and erases it leaves, and every 24th of a
+  64 KiB file: a fresh boot (or the host's store core on the dump) reads the
+  old value or the new, the old file or the new, never a mix;
+- in 16-byte windows, every program starts within `STORE_WINDOW_LEAD_US` of
+  an audio block's end, some wait for a window, none is held, no block is
+  missed, and the driver's masked instructions are within its estimate;
+- no erase while a chord plays, a CC every 100 ms comes in, or a song plays;
+  once quiet (a DAW's clock and active sensing do not count), the erase comes,
+  with the output faded to silence;
+- the peak scan costs at most 2 instructions a sample, and nothing when off
+  (`chip_b.rs`'s M1 comparison runs with it off);
+- a 64 KiB file during a held chord, in windows, lands with no erase and no
+  hold;
+- every `store_poll` within `STORE_POLL_WORST` (30,000), each kind of pass
+  (mount slices, its finish, a record, a copy, a file's chunk, a collection's
+  scan and kill, forget, an erase, the newest record's copy forward,
+  maintenance's plan) at most 4 instructions a work unit (a kind over raises
+  its weight in `store.c`), and `store_fm1_service` with the rest of a pass
+  within the poll allowance.
+
+`latency.rs`'s save case plays notes while a 64 KiB file is written in
+16-byte windows.
 
 ### Live instrument test
 
@@ -822,7 +860,8 @@ from the rendered chip) is in the buffer. The cases and their trials:
 - the status screen idle: 64 trials with the envelope INSTANT (the default), 16 with
   AUTHENTIC (CC 26 = 127 after the boot, checked on the rendered chip's gate reset);
 - the screen redrawing (K1-K3 turning): 64, INSTANT;
-- the note-on around the USB retry's attach: 32, INSTANT.
+- the note-on around the USB retry's attach: 32, INSTANT;
+- a 64 KiB file being saved in 16-byte write windows (M2a Task 4): 24, INSTANT.
 
 It asserts for every trial:
 - taken within one block and one poll (2.9 + 0.5 ms), plus the USB attach's stall when

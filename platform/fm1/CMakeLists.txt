@@ -16,7 +16,7 @@ target_compile_options(fm1_hal_check PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Werr
 
 # The firmware: sidou_app.elf, sidou_app.bin (what the SPL maps at XIP 0x02000120) and .dis.
 set(t sidou_app)
-add_executable(${t} crt0.S main.c audio.c input.c lcd.c midi.c ui.c libc_min.c hal/fm1_isr.S
+add_executable(${t} crt0.S main.c audio.c input.c lcd.c midi.c store_fm1.c ui.c libc_min.c hal/fm1_isr.S
     hal/fm1_vec.S)
 set_target_properties(${t} PROPERTIES SUFFIX ".elf")
 target_link_libraries(${t} PRIVATE fm1_hal sidou_live sidou_core)

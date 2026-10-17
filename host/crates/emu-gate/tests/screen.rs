@@ -626,7 +626,7 @@ fn sent(m: &mut Machine, fw: &Firmware) -> Sent {
 }
 
 /// What a stretch of emulated time cost: ui_poll's instructions (its callees included), and
-/// the windows and SPI bytes sent in each UI_PERIOD_MS frame of it.
+/// the windows and SPI bytes each frame (each compose) in it sent.
 struct Cost {
     polls: usize,
     instructions: u64,
@@ -666,21 +666,71 @@ impl Cost {
     }
 }
 
-/// `frames` frames, after `act` (a key going down, say) at the start of the first.
+/// What each compose sent: from its compose (ui.c's `last_compose`, stamped as the compose
+/// starts; its cells go out in later ui_poll calls) to the next one's, the last to `end`. Run
+/// 100 us at a time: a compose's own call is longer, so its cells are never counted before it.
+struct Composes {
+    last: u32,
+    stamp: u32,
+    start: Option<Sent>,
+    per: Vec<Sent>,
+}
+
+impl Composes {
+    fn new(m: &mut Machine, fw: &Firmware) -> Self {
+        let last = fw.symbol("last_compose");
+        Composes {
+            last,
+            stamp: m.soc.read32(last),
+            start: None,
+            per: Vec::new(),
+        }
+    }
+
+    fn close(&mut self, m: &mut Machine, fw: &Firmware) {
+        if let Some(b) = self.start {
+            let now = sent(m, fw);
+            self.per.push(Sent {
+                windows: now.windows - b.windows,
+                bytes: now.bytes - b.bytes,
+            });
+        }
+    }
+
+    /// Runs `ms`, closing a frame at each compose.
+    fn run(&mut self, m: &mut Machine, fw: &Firmware, ms: u64) {
+        let step = m.soc.periph.cycle_of_ms(1) / 10;
+        let end = m.soc.periph.cycles + m.soc.periph.cycle_of_ms(ms);
+        while m.soc.periph.cycles < end {
+            m.run_cycles(step);
+            let s = m.soc.read32(self.last);
+            if s != self.stamp {
+                self.stamp = s;
+                self.close(m, fw);
+                self.start = Some(sent(m, fw));
+            }
+        }
+    }
+
+    /// The frames, the last closed now.
+    fn end(mut self, m: &mut Machine, fw: &Firmware) -> Vec<Sent> {
+        self.close(m, fw);
+        self.per
+    }
+}
+
+/// `frames` frames' time, after `act` (a key going down, say) at the start of the first: what
+/// each compose in it sent, from its compose (ui.c's `last_compose`, stamped as the compose
+/// starts; its cells go out in later ui_poll calls) to the next one's, the last to the end. Per
+/// compose, not per UI_PERIOD_MS of time: a window of time can hold the tail of one frame and
+/// the whole of the next, which no frame sends.
 fn measure(m: &mut Machine, fw: &Firmware, frames: u64, act: impl FnOnce(&mut Machine)) -> Cost {
     common::to_mid_frame(m, fw);
     let from = m.watched_calls.len();
     act(m);
-    let mut per = Vec::new();
-    for _ in 0..frames {
-        let before = sent(m, fw);
-        m.run_ms(UI_PERIOD_MS);
-        let after = sent(m, fw);
-        per.push(Sent {
-            windows: after.windows - before.windows,
-            bytes: after.bytes - before.bytes,
-        });
-    }
+    let mut composes = Composes::new(m, fw);
+    composes.run(m, fw, frames * UI_PERIOD_MS);
+    let per = composes.end(m, fw);
     let calls = &m.watched_calls[from..];
     Cost {
         polls: calls.len(),
@@ -2620,16 +2670,10 @@ fn title_cards_stay_within_their_budgets() {
         m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
         enter(&mut m);
         let from = (m.watched_calls.len(), m.passes.len());
-        let mut frames = Vec::new();
+        let mut composes = Composes::new(&mut m, &fw);
         let t0 = m.ms();
         loop {
-            let before = sent(&mut m, &fw);
-            m.run_ms(UI_PERIOD_MS);
-            let after = sent(&mut m, &fw);
-            frames.push(Sent {
-                windows: after.windows - before.windows,
-                bytes: after.bytes - before.bytes,
-            });
+            composes.run(&mut m, &fw, UI_PERIOD_MS);
             if !showing_card(&mut m, &fw) && !common::screen_animating(&mut m, &fw) {
                 break;
             }
@@ -2638,6 +2682,7 @@ fn title_cards_stay_within_their_budgets() {
                 "THE {name}: the card did not end"
             );
         }
+        let frames = composes.end(&mut m, &fw);
         let calls = &m.watched_calls[from.0..];
         let c = Cost {
             polls: calls.len(),

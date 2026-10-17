@@ -51,6 +51,10 @@ typedef struct {
     midi_out* out;     /* told which changes are MIDI's (midi_rx_watch), or NULL */
     uint8_t looked;    /* midi_out_local ran this pass: midi_rx_settle owes midi_out_remote */
     midi_learn* learn; /* MIDI learn's bindings, both ports' (midi_rx_learn), or NULL */
+    /* Messages taken other than real-time ones (F8 clock, FA-FC transport, FE active sensing):
+     * the store's quiet detector watches it (platform/fm1/store_fm1.c), so a DAW's steady
+     * clock and sensing do not count as playing. */
+    uint32_t inputs;
 } midi_rx;
 
 /* epoch: the ring's midi_ring_epoch now, so losses before this are not held against it.

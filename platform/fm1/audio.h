@@ -70,6 +70,27 @@ void audio_irqs_on(void);
 void audio_halted(void);
 /* 1 between audio_irqs_on and audio_halted. */
 int audio_running(void);
+/* fm1_ticks() at the end of the last audio block: main.c's ALNK0 interrupt writes it as its
+ * last act. A write window (platform/fm1/store_fm1.c) starts only shortly after it. */
+extern volatile uint32_t audio_block_end;
+/* A held flash operation (store_fm1.c): with on, audio_fill renders one more block faded out to
+ * 0, then writes silence without rendering (the chips and their clocks stand still; the ring's
+ * writes still apply) until on is 0, then renders again, the first block faded in. */
+void audio_hold(int on);
+/* 1 once both halves of the DMA buffer hold silence for the hold: an operation with
+ * interrupts masked now loops silence. */
+int audio_held(void);
+/* The quiet detector's peak scan (store_fm1.c): on only while the store wants a held operation
+ * and no song plays; off it costs nothing. While on, audio_quiet_blocks counts the blocks in
+ * a row whose output stayed under AUDIO_QUIET_PEAK; off, it is 0. -48 dBFS, not the plan's
+ * -60: after notes the 6581's bleed leaves a floor of about -55 dBFS that never decays
+ * (measured in fm1-emu, emu-gate store.rs), so -60 would never come. */
+#define AUDIO_QUIET_PEAK 128
+void audio_peak_scan(int on);
+uint32_t audio_quiet_blocks(void);
+/* Reads and clears whether a pass ran a slice of a chip's preparation (reg_ring_out.sliced, of
+ * either chip's writer): the store skips its work in such a pass. */
+int audio_pass_sliced(void);
 /* AUDIO_HALF_WORDS words: the SID's output through the effect slots (core/fx/fx_slots.h),
  * interleaved L and R, 24-bit left-justified ((int32)sample << 8); with every slot off, the
  * chip's output on both sides. Feeds the LIVE view's tap while it is on (scope_render,

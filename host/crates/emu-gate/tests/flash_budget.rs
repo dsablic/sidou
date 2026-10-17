@@ -15,7 +15,10 @@
 //! | M2f | 512,000 |
 //!
 //! `IMAGE_CEILING` is the entry of the plan in progress. Each plan's last task moves it to its
-//! own entry, or lowers it to the measured image plus a margin. The schedule only rises and
+//! own entry, or lowers it to the measured image plus a margin. The plans land in parallel,
+//! so the stage in progress is the latest whose code is merged, not the next one by
+//! sub-milestone order: M2a's store came after M2b's chip B, M2c's songs and M2d's song views had
+//! merged. The schedule only rises and
 //! ends at or below 512,000 bytes, which leaves at least 69,564 bytes of the 581,564-byte slot
 //! for M3 (the 6502 core, PSID loading, the browser).
 
@@ -33,8 +36,9 @@ const SCHEDULE: [(&str, usize); 6] = [
     ("M2f", 512_000),
 ];
 
-/// The plan in progress: its index in the schedule.
-const IN_PROGRESS: usize = 0;
+/// The plan in progress: its index in the schedule (the latest stage whose code is merged:
+/// M2d's song views, with M2a's store, M2b's chip B and M2c's songs in).
+const IN_PROGRESS: usize = 3;
 const PLAN: &str = SCHEDULE[IN_PROGRESS].0;
 const IMAGE_CEILING: usize = SCHEDULE[IN_PROGRESS].1;
 

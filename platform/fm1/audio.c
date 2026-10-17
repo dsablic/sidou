@@ -63,6 +63,16 @@ static song_work song_space __attribute__((section(".pool.song_noinit")));
 static scope tap;
 _Static_assert(AUDIO_HALF_FRAMES % SCOPE_DECIMATE == 0u, "a block is whole chunks of the tap");
 static volatile uint8_t running;
+volatile uint32_t audio_block_end;
+/* The hold (audio_hold): wanted by the main loop; halves written silent since the fade (2:
+ * held); the next rendered block fades in. */
+static volatile uint8_t hold_want;
+static volatile uint8_t hold_silent;
+static uint8_t hold_faded;
+static uint8_t fade_in;
+/* The peak scan (audio_peak_scan) and the quiet blocks it counted. */
+static volatile uint8_t peak_on;
+static volatile uint32_t quiet_blocks;
 
 /* reg_ring_out.wait: the producer needs the interrupt to drain. Before audio_irqs_on the
  * interrupts are off, and an idle would never wake: drain here instead. */
@@ -191,9 +201,62 @@ static void render_a(sid* a, int16_t* s, int tapped) {
     }
 }
 
+void audio_hold(int on) {
+    if (!on) {
+        hold_want = 0;
+        return;
+    }
+    hold_silent = 0;
+    hold_want = 1;
+}
+
+int audio_held(void) {
+    return hold_want && hold_silent >= 2u;
+}
+
+void audio_peak_scan(int on) {
+    if (!on) {
+        quiet_blocks = 0;
+    }
+    peak_on = (uint8_t)(on != 0);
+}
+
+uint32_t audio_quiet_blocks(void) {
+    return quiet_blocks;
+}
+
+int audio_pass_sliced(void) {
+    int s = out.sliced | out_b.sliced;
+    out.sliced = 0;
+    out_b.sliced = 0;
+    return s;
+}
+
+/* Scales a block's samples by a ramp: down from full to 0 (down 1) or up from 0 (down 0).
+ * In .ram_text with audio_fill (app.ld). */
+_Static_assert(AUDIO_HALF_FRAMES == 128u, "audio_ramp's shift");
+static void audio_ramp(int16_t* lr, int down) {
+    for (uint32_t f = 0; f < AUDIO_HALF_FRAMES; f++) {
+        int32_t k = (int32_t)(down ? AUDIO_HALF_FRAMES - 1u - f : f);
+        lr[2u * f] = (int16_t)((lr[2u * f] * k) >> 7);
+        lr[2u * f + 1u] = (int16_t)((lr[2u * f + 1u] * k) >> 7);
+    }
+}
+
 void audio_fill(int32_t* buf) {
     int16_t s[AUDIO_HALF_FRAMES];
     int16_t lr[2u * AUDIO_HALF_FRAMES];
+    if (hold_want && hold_faded) {
+        /* Held: silence, nothing rendered (the chips stand still). The ring still drains, so
+         * a main loop waiting for room (wait_for_drain) goes on, and releases the hold. */
+        reg_ring_drain(&ring, &chips);
+        for (uint32_t i = 0; i < 2u * AUDIO_HALF_FRAMES; i++) {
+            buf[i] = 0;
+        }
+        hold_silent = (uint8_t)(hold_silent < 2u ? hold_silent + 1u : 2u);
+        quiet_blocks += peak_on;
+        return;
+    }
     reg_ring_drain(&ring, &chips);
     sid* a = reg_ring_chip_of(&chips, 0);
     sid* b = reg_ring_chip_of(&chips, 1);
@@ -224,6 +287,23 @@ void audio_fill(int32_t* buf) {
     song_ctl_block_end(&song_transport, AUDIO_HALF_FRAMES);
     /* With every slot off this writes the chip's output to both sides unchanged. */
     sid_slots_process(&slots, s, lr, AUDIO_HALF_FRAMES);
+    if (hold_want) {
+        audio_ramp(lr, 1); /* the hold's fade out; silence from the next block */
+        hold_faded = 1;
+        fade_in = 1;
+    } else if (fade_in) {
+        audio_ramp(lr, 0);
+        fade_in = 0;
+        hold_faded = 0;
+    }
+    if (peak_on) {
+        /* Every ninth value, L and R in turn: under 2 instructions a sample. */
+        int32_t m = 0;
+        for (uint32_t i = 0; i < 2u * AUDIO_HALF_FRAMES; i += 9u) {
+            m |= lr[i] ^ (lr[i] >> 15);
+        }
+        quiet_blocks = m < AUDIO_QUIET_PEAK ? quiet_blocks + 1u : 0u;
+    }
     scope_peaks(&tap, lr, AUDIO_HALF_FRAMES);
     for (uint32_t i = 0; i < 2u * AUDIO_HALF_FRAMES; i++) {
         buf[i] = (int32_t)lr[i] * 256;

@@ -69,6 +69,7 @@ static int edits(const midi_rx* rx, const midi_msg* msg) {
  * pass, MIDI out takes what changed until then as the panel's; midi_rx_settle takes the rest
  * as MIDI's. */
 static void take(midi_rx* rx, midi_map_port* port, const midi_msg* msg) {
+    rx->inputs += (uint32_t)(msg->kind != MIDI_REALTIME || msg->data1 == 0xFFu);
     if (rx->out && !rx->looked && edits(rx, msg)) {
         midi_out_local(rx->out, rx->l);
         rx->looked = 1;
@@ -113,6 +114,7 @@ void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch) {
     rx->out = 0;
     rx->looked = 0;
     rx->learn = NULL;
+    rx->inputs = 0;
     parsers_init(rx);
 }
 

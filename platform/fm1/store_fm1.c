@@ -1,0 +1,276 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+/* The store on the device (store_fm1.h). */
+#include "store_fm1.h"
+
+#include <stdint.h>
+
+#include "fm1_time.h"
+#include "fm1_xip.h"
+
+#include "audio.h"
+#include "input.h"
+#include "midi.h"
+#include "store_layout.h"
+
+/* ALNK0's pending register: a free half (a block due) is bit 7 (hal/fm1_audio.h, which only
+ * main.c includes). */
+#define ALNK_CON2 (*(volatile uint8_t*)0x12E08u)
+#define ALNK_HALF 0x80u
+
+/* The most store_polls the boot gives the mount and the pool's fill (a blank region's first
+ * format is about 100). */
+#define BOOT_POLLS 20000u
+/* How often an idle store asks whether maintenance has work (store_erase_wanted: a plan of a
+ * few thousand instructions; quiet takes 500 ms anyway). */
+#define WANT_MS 1000u
+
+/* The device's store (a global: the emulator tests read it). */
+store store_fm1_store;
+store_fm1_stats store_fm1_counts;
+store_fm1_test store_fm1_hook;
+/* The program window in bytes, STORE_WINDOW_BYTES (0: programs are held operations); the
+ * emulator tests set it to try either. */
+volatile uint32_t store_fm1_window = STORE_WINDOW_BYTES;
+
+/* The service's state (a global: the emulator tests read it). */
+struct {
+    uint32_t now;        /* the main loop's ms, for the hooks */
+    uint32_t last_ms;    /* the last service's */
+    uint32_t last_hold;  /* the last held operation's end */
+    uint32_t inputs;     /* midi_inputs as last seen, and when it changed */
+    uint32_t input_ms;
+    uint32_t wanted_at;  /* when store_erase_wanted was last asked */
+    uint32_t file_at;    /* the test hook's file: bytes offered */
+    uint8_t wanted;      /* maintenance has work */
+    uint8_t quiet;
+    uint8_t force;
+    uint8_t holding;     /* audio_hold is on */
+    uint8_t polled;      /* the last store_poll had work */
+    uint8_t file;        /* the test hook's file: 1 streaming, 2 ended */
+} store_fm1_state;
+#define fm store_fm1_state
+
+static void cli(void) {
+    __asm__ volatile("cli" ::: "memory");
+}
+
+static void sti(void) {
+    __asm__ volatile("csync\n\tsti" ::: "memory");
+}
+
+static const uint8_t* map(void* ctx, uint32_t off) {
+    (void)ctx;
+    return (const uint8_t*)FM1_XIP(off);
+}
+
+/* A held operation may run now: the device quiet (or a forced save), the gap since the last
+ * one passed, and the audio silent. Asks for the hold if it is not on. */
+static int hold_ready(void) {
+    if (!fm.quiet && !fm.force) {
+        return 0;
+    }
+    if (!fm.holding) {
+        audio_hold(1);
+        fm.holding = 1;
+        return 0;
+    }
+    uint32_t gap = fm.quiet ? STORE_HOLD_GAP_MS : STORE_FORCE_GAP_MS;
+    return fm.now - fm.last_hold >= gap && audio_held();
+}
+
+/* Before the audio starts the operation runs at once; after, in a window or held. `erase`: a
+ * sector erase, else a program. */
+static int operate(uint32_t off, const void* p, uint32_t n, int erase) {
+    int rc, held = 0;
+    if (!audio_running()) {
+        cli();
+    } else if (!erase && store_fm1_window) {
+        cli();
+        uint32_t since = fm1_ticks() - audio_block_end;
+        if (since > STORE_WINDOW_LEAD_US * FM1_TICKS_PER_US || (ALNK_CON2 & ALNK_HALF)) {
+            sti();
+            store_fm1_counts.window_later++;
+            return STORE_LATER;
+        }
+    } else {
+        if (!hold_ready()) {
+            store_fm1_counts.hold_later++;
+            return STORE_LATER;
+        }
+        held = 1;
+        cli();
+    }
+    rc = erase ? flash_store_erase(off) : flash_store_prog(off, p, n);
+    sti();
+    if (held) {
+        fm.last_hold = fm.now;
+        store_fm1_counts.holds++;
+    }
+    if (rc) {
+        store_fm1_counts.errors++;
+        return STORE_ERROR;
+    }
+    store_fm1_counts.progs += (uint32_t)!erase;
+    store_fm1_counts.erases += (uint32_t)erase;
+    return STORE_OK;
+}
+
+static int prog(void* ctx, uint32_t off, const void* p, uint32_t n) {
+    (void)ctx;
+    return operate(off, p, n, 0);
+}
+
+static int erase(void* ctx, uint32_t off) {
+    (void)ctx;
+    return operate(off, 0, 0, 1);
+}
+
+store* store_fm1(void) {
+    return &store_fm1_store;
+}
+
+void store_fm1_force(int on) {
+    fm.force = (uint8_t)(on != 0);
+}
+
+void store_fm1_boot(void (*feed)(void)) {
+    static const store_flash flash = {map, prog, erase, 0};
+    store_init(&store_fm1_store, &flash, store_fm1_window ? store_fm1_window : STORE_WINDOW_MAX);
+    if (!flash_store_ok()) {
+        return; /* not the part we know: the store stays unmounted, and refuses everything */
+    }
+    store_mount(&store_fm1_store);
+    store_quiet(&store_fm1_store, 1);
+    for (uint32_t n = 0; n < BOOT_POLLS && store_poll(&store_fm1_store); n++) {
+        feed(); /* a blank region's first format: 22 erases, 440 ms at the worst */
+    }
+    store_quiet(&store_fm1_store, 0);
+}
+
+/* 1 while the device is quiet: no song plays, no voice is gated, no UI sound plays, no button
+ * is down, no MIDI input but real-time bytes for STORE_QUIET_MS, and the output's peak low as
+ * long (the peak scan runs while the store wants a held operation). */
+static int quiet(const live* l, const keys_route* kr, int sounding) {
+    uint32_t in = midi_inputs();
+    if (in != fm.inputs) {
+        fm.inputs = in;
+        fm.input_ms = fm.now;
+    }
+    if (kr->song || sounding || input_buttons() || fm.now - fm.input_ms < STORE_QUIET_MS) {
+        return 0;
+    }
+    for (uint32_t v = 0; v < LIVE_VOICES; v++) {
+        if (l->voice[v].gate) {
+            return 0;
+        }
+    }
+    return audio_quiet_blocks() * STORE_BLOCK_US >= STORE_QUIET_MS * 1000u;
+}
+
+/* The test hook (store_fm1_test): one operation once the store rests. */
+static void test_hook(keys_route* kr) {
+    store_fm1_test* t = &store_fm1_hook;
+    if (fm.file == 1) {
+        uint8_t b[64];
+        uint32_t k = t->len - fm.file_at > sizeof b ? sizeof b : t->len - fm.file_at;
+        for (uint32_t i = 0; i < k; i++) {
+            b[i] = (uint8_t)((fm.file_at + i) * 7u + t->key);
+        }
+        fm.file_at += store_file_write(&store_fm1_store, b, k);
+        if (fm.file_at == t->len) {
+            store_file_end(&store_fm1_store);
+            fm.file = 2;
+        }
+        return;
+    }
+    if (fm.file == 2) {
+        if (store_file_result(&store_fm1_store) != STORE_BUSY) {
+            t->result = store_file_result(&store_fm1_store);
+            fm.file = 0;
+            t->op = 0;
+        }
+        return;
+    }
+    if (store_busy(&store_fm1_store)) {
+        return;
+    }
+    uint32_t len = t->len > STORE_FM1_DATA ? STORE_FM1_DATA : t->len;
+    switch (t->op) {
+    case STORE_FM1_PUT:
+        t->result = store_put(&store_fm1_store, t->key, 1, t->data, len);
+        break;
+    case STORE_FM1_GET:
+        t->result = store_get(&store_fm1_store, t->key, t->data, STORE_FM1_DATA, 0);
+        break;
+    case STORE_FM1_FILE:
+        t->result = store_file_begin(&store_fm1_store, "TEST", STORE_FILE_SONG, t->len);
+        if (t->result == STORE_OK) {
+            fm.file = (uint8_t)(t->len ? 1u : 2u);
+            fm.file_at = 0;
+            if (!t->len) {
+                store_file_end(&store_fm1_store);
+            }
+            return;
+        }
+        break;
+    case STORE_FM1_COLLECT:
+        t->result = store_collect(&store_fm1_store);
+        break;
+    case STORE_FM1_SONG:
+        keys_route_set_song(kr, t->len != 0);
+        break;
+    case STORE_FM1_FORCE:
+        store_fm1_force(t->len != 0);
+        break;
+    default:
+        t->result = STORE_INVALID;
+        break;
+    }
+    fm.wanted_at = fm.now - WANT_MS; /* ask again at once */
+    t->op = 0;
+}
+
+uint8_t store_fm1_active;
+
+void store_fm1_service(uint32_t now_ms, const live* l, keys_route* kr, int sounding) {
+    store* s = &store_fm1_store;
+    int writing = s->w.phase || s->f.phase || s->state == STORE_STATE_MOUNTING;
+    if (!fm.wanted && !fm.polled && !store_fm1_hook.op && !fm.holding && !writing &&
+        now_ms - fm.wanted_at < WANT_MS) {
+        fm.last_ms = now_ms; /* idle: nothing until the next ask */
+        return;
+    }
+    fm.now = now_ms;
+    if (store_fm1_hook.op) {
+        test_hook(kr);
+    }
+    fm.quiet = (uint8_t)quiet(l, kr, sounding);
+    store_fm1_store.window = store_fm1_window ? store_fm1_window : STORE_WINDOW_MAX;
+    /* Whether maintenance has work: asked at most every WANT_MS, and never in a pass whose
+     * store_poll had work (the two together could pass the poll allowance). */
+    int ask = !fm.polled && now_ms - fm.wanted_at >= WANT_MS;
+    if (ask) {
+        fm.wanted = (uint8_t)store_erase_wanted(&store_fm1_store);
+        fm.wanted_at = now_ms;
+    }
+    /* A held operation is wanted: maintenance, or (no window) a write. */
+    int want_hold = fm.wanted || (!store_fm1_window && writing);
+    audio_peak_scan(want_hold && !kr->song);
+    if (fm.holding && (!want_hold || (!fm.quiet && !fm.force))) {
+        audio_hold(0);
+        fm.holding = 0;
+    }
+    store_quiet(&store_fm1_store, (fm.quiet || fm.force) && fm.wanted);
+    fm.polled = 0;
+    int sliced = audio_pass_sliced(); /* read every pass: it is this pass's */
+    if (!ask && !sliced) {
+        fm.polled = (uint8_t)store_poll(&store_fm1_store);
+        if (!fm.polled && (fm.quiet || fm.force) && fm.wanted) {
+            fm.wanted = 0; /* maintenance found nothing more to do */
+        }
+    }
+    store_file_idle(&store_fm1_store, now_ms - fm.last_ms);
+    fm.last_ms = now_ms;
+    store_fm1_active = (uint8_t)(fm.polled || fm.holding || store_fm1_hook.op || writing);
+}

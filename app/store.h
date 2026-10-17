@@ -200,8 +200,7 @@ typedef struct {
 
 /* A sector as the store sees it (store.c keeps the state). */
 typedef struct {
-    uint32_t seq; /* its claim's number (its erase count) */
-    uint32_t erases;
+    uint32_t erases; /* also its claim's number, as the header has it */
     uint16_t free; /* the end of its valid records: where the next one goes */
     uint16_t live; /* bytes of live records in it */
 } store_sector;

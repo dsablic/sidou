@@ -444,6 +444,61 @@ Sources: `platform/fm1/loader/ldr_core.c` (`LDR_APP_*`, `LDR_REC_*`,
 `fl_plain_window_init`), `host/crates/sidou-pack/src/lib.rs` (the region
 descriptors), `platform/fm1/app.ld` (the app slot).
 
+## How the store writes
+
+`platform/fm1/store_fm1.c` gives the store (`app/store.h`) its flash: reads
+straight through the plain XIP window, programs and erases through
+`midi.c`'s RAM driver (`flash_store_prog`, `flash_store_erase`), which keeps
+to the store's range and never touches a sector's guard band.
+
+- **At boot**, in the LCD's 120 ms wake-up wait (before the audio starts;
+  the wait is to a deadline, so the boot's later timing does not move): the
+  mount, the recovery after a cut, and the pool's fill to its target, with no
+  holds. A blank region's first format is up to 22 erases (440 ms at the
+  datasheet's worst), once.
+- **A program in a window**: interrupts masked, at most
+  `STORE_WINDOW_LEAD_US` (250 us) after the end of an audio block (the
+  ALNK0 interrupt stamps `audio_block_end` as its last act) and with no
+  block due; else `STORE_LATER` at once, and the store tries again on a
+  later pass. A window lasts at most `STORE_WINDOW_US` (1,000 us), so it
+  ends 211 us before the next block's interrupt at the worst
+  (`_Static_assert` in `store_fm1.h`).
+- **A held operation** (every erase; programs too while no window fits):
+  only when quiet. `audio_hold` fades the output to 0 over one block, then
+  writes silence (the chips stand still; the register ring still drains);
+  once both DMA halves are silent the operation runs with interrupts masked,
+  at most `STORE_HOLD_US` (35 ms), held operations at least 10 ms apart.
+- **Quiet**: no song playing, no voice gated, no UI sound, no button down,
+  no MIDI input but real-time bytes (F8, FA-FC, FE) for 500 ms, and the
+  output under -48 dBFS for as long (a peak scan in `audio_fill`, under 2
+  instructions a sample, on only while the store wants a held operation and
+  no song plays). -48 dBFS rather than -60: after notes the 6581 model's
+  bleed leaves a floor of about -55 dBFS that never decays.
+- **The main loop** runs `store_fm1_service` once a pass after
+  `midi_service`: the quiet detector, then `store_poll`, never in a pass that
+  ran a chip preparation slice; a store with work in hand runs at every
+  pass, an idle one looks once a tick (10 ms) and asks whether maintenance has
+  work (a plan of a few thousand instructions) once a second, never in a pass
+  whose `store_poll` had work.
+- **A forced save** (`store_fm1_force`, for Task 5's explicit SAVE with the
+  pool short): held erases without quiet, 100 ms apart.
+
+**The numbers are provisional**: the P25Q80H datasheet's maxima (Table
+5-4): a page program up to 3 ms, a 4 KiB sector erase up to 20 ms, erase
+suspend latency 30 us. By the decision rule below no window fits a 3 ms
+program, so programs are held operations for now and a settings save waits
+for quiet; the sector erase fits a hold. Task 3b's spike replaces
+`STORE_PROG16_MAX_US`, `STORE_PROG64_MAX_US`, `STORE_PROG256_MAX_US` and
+`STORE_ERASE_MAX_US` in `store_fm1.h`, and `STORE_WINDOW_BYTES` follows.
+
+**The decision rule** (M2a plan, Task 3b): programs in windows if the worst
+16-byte program plus the driver's overhead fits 1,000 us, `STORE_WINDOW_BYTES`
+the largest of 16, 64 and 256 that fits; else held programs. Erases: a held
+sector erase if its worst fits 30 ms; else 16 held page erases (0x81) if each
+fits; else erase-suspend slices; else erases only at boot. Only the sector
+erase is built: a spike that needs another mode fails `store_fm1.h`'s
+`_Static_assert`.
+
 ## Open checks on a real unit
 
 | Check | Why it matters | How |
@@ -460,6 +515,9 @@ descriptors), `platform/fm1/app.ld` (the app slot).
 | Partial programs per page | The store programs a page up to 34 times between erases (`STORE_PAGE_PROGS`, one more for each cut in the page) and programs bytes already programmed two ways (the claim's erase header again, the kill's 1 bits of the magic). Some NOR parts limit partial programs per page or programs over programmed bits. | M2a Task 3b, from the datasheet and the spike: (a) any limit on partial programs per page, or on reprogramming; the spike programs one page in 34 programs and reads it back. |
 | Zeros over zeros | The claim programs an erase header's bytes again (and a claim read as never made its own bytes again), the same bytes (zeros over zeros), to fix bits a cut left faint. A kill after a kill cut short programs again the bits it left faint and reading 1. | M2a Task 3b: (b) whether programming 0 over bits already 0 is within the part's spec; the spike programs a page's bytes again 100 times and reads them back. If not, the claim programs bytes 20-31 only and every clean sector a mount finds is erased again before its first claim (at most 22 erases a boot). |
 | ECC | A part with ECC would need the store's format reworked into 16-byte units each programmed once. | M2a Task 3b: (c) whether the part has ECC (datasheet, SFDP); the spike programs one byte of a 16-byte unit, then another, and reads both back. |
+| The store's timings | `store_fm1.h`'s program and erase times are the P25Q80H datasheet's maxima; by them no write window fits and settings saves wait for quiet. | M2a Task 3b's spike: page programs of 16, 64 and 256 bytes and sector erases, timed. |
+| A write window on the device | A program masks interrupts up to 1,000 us right after a block: it must never drop an audio block or a TRS byte. | hardware-test.md section 11: a save while a chord plays, listened to; MIDI clock into the TRS jack during saves. |
+| A hold's gap | A held erase silences the output up to 35 ms when quiet (faded out over a block, back in over one). | hardware-test.md section 11: a pool refill after a chord's release tail, listened to. |
 | Second core RAM issue | Some units misread RAM on core 1. | Felucca's core-1 self-test, before SIDOU ever uses core 1. |
 
 [hardware-test.md](hardware-test.md), sections 11 and 12, turn these into checklist

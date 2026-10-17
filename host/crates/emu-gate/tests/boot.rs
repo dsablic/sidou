@@ -176,40 +176,35 @@ fn the_store_reads_through_a_plain_xip_window() {
     m.soc.flash.mem[lo..lo + 4].copy_from_slice(&[0x53, 0x49, 0xD0, 0x0A]);
     let xip = |off: u32| 0x0200_0000 + off - 0x4000;
     // Before the audio starts (the LCD's delays come first): the window is set up by then.
+    // SFCENC_UNENC_L/H and SFCENC_CON (fm1_flash.h), write-only on the chip: fm1-emu logs them
+    // as unknown accesses, keeping only the last 8,192 to 16,384, and the window's own cache
+    // invalidation and the store's boot after it log more than that: looked for as they come.
+    let (mut low, mut high, mut on) = (false, false, false);
     let mut audio_at = None;
+    let cycles = m.soc.periph.cycle_of_ms(1) / 10;
     while m.ms() < BOOT_MS_MAX && audio_at.is_none() {
-        m.run_ms(1);
+        m.run_cycles(cycles);
+        for a in m.soc.unknown_accesses().iter().filter(|a| a.is_write) {
+            low |= a.addr == 0x4030C && a.value == xip(0x93000);
+            high |= a.addr == 0x40308 && a.value == 0x07FF_FFFF;
+            on |= a.addr == 0x40300 && a.value & 2 != 0;
+        }
         if !m.soc.periph.audio.is_empty() {
             audio_at = Some(m.ms());
         }
     }
     assert!(audio_at.is_some(), "the audio did not start");
-    // SFCENC_UNENC_L/H (fm1_flash.h), write-only on the chip; fm1-emu logs them as unknown.
-    let wrote = |addr: u32, value: u32| {
-        m.soc
-            .unknown_accesses()
-            .iter()
-            .any(|a| a.is_write && a.addr == addr && a.value == value)
-    };
-    assert!(
-        wrote(0x4030C, xip(0x93000)),
-        "the window's low end is not flash 0x93000"
-    );
-    assert!(wrote(0x40308, 0x07FF_FFFF), "the window's high end");
-    assert!(
-        m.soc
-            .unknown_accesses()
-            .iter()
-            .any(|a| a.is_write && a.addr == 0x40300 && a.value & 2 != 0),
-        "SFCENC_CON's plain-window bit"
-    );
+    assert!(low, "the window's low end is not flash 0x93000");
+    assert!(high, "the window's high end");
+    assert!(on, "SFCENC_CON's plain-window bit");
     assert_eq!(
         m.soc.read32(xip(sidou_sys::STORE_LO)),
         0x0AD0_4953,
         "the store's first word through XIP"
     );
     assert_eq!(m.soc.read32(xip(sidou_sys::STORE_HI - 4)), 0xFFFF_FFFF);
-    // Booting wrote nothing into the store (nothing writes it until M2a Task 4).
+    // Booting wrote nothing into the store: the bytes above are not SIDOU's, so the store
+    // mounts the region foreign and writes nothing (a blank one it formats: emu-gate store.rs).
     assert_eq!(&m.soc.flash.mem[lo..lo + 4], &[0x53, 0x49, 0xD0, 0x0A]);
     assert!(m.soc.flash.mem[lo + 4..sidou_sys::STORE_HI as usize]
         .iter()

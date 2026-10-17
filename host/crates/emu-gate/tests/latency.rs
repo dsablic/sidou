@@ -183,6 +183,10 @@ enum Scenario {
     /// chip's, faster than either's preparation, so the spare is prepared a slice every tick
     /// and never swaps in (the module's doc).
     ProfileStep,
+    /// A file being written all the while (M2a Task 4): the store's programs in 16-byte write
+    /// windows right after the audio blocks (platform/fm1/store_fm1.c; the emulator test hook
+    /// starts a 64 KiB file, store_fm1_window set to 16 as the spike's numbers would).
+    Saving,
 }
 
 /// The sweep: a CC every SWEEP_MS, CC 86 and CC 87 in turn, each value SWEEP_STEP from its
@@ -324,6 +328,15 @@ fn boot(fw: &Firmware, scenario: Scenario, envelope: Envelope) -> Machine {
             want,
             "the rendered chip's gate reset is not {envelope:?}'s"
         );
+    }
+    if scenario == Scenario::Saving {
+        m.soc.write32(fw.symbol("store_fm1_window"), 16);
+        let hook = fw.symbol("store_fm1_hook");
+        m.soc.write32(hook + 8, 65_536); // len
+        m.soc.write32(hook, 3); // STORE_FM1_FILE
+        m.run_ms(50);
+        let progs = m.soc.read32(fw.symbol("store_fm1_counts"));
+        assert!(progs > 0, "the file is not being written");
     }
     if scenario == Scenario::Busy {
         // 400 ms of turning (a detent per 8 ms), past the window and the measurement.
@@ -885,4 +898,12 @@ fn a_note_on_keeps_its_bounds_while_the_character_sweeps() {
 #[test]
 fn a_note_on_keeps_its_bounds_while_a_profile_step_is_prepared() {
     measure(Scenario::ProfileStep, Envelope::Instant, 24);
+}
+
+/// A note-on while a file is saved (M2a Task 4): the store's programs in write windows, with
+/// interrupts masked, hold no note back past the bounds, and no pass exceeds the poll
+/// allowance.
+#[test]
+fn a_note_on_keeps_its_bounds_while_a_file_is_saved() {
+    measure(Scenario::Saving, Envelope::Instant, 24);
 }

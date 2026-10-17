@@ -178,6 +178,10 @@ pub struct Machine {
     pub watched_calls: Vec<u64>,
     /// The cycle at which each of those calls began.
     pub watched_starts: Vec<u64>,
+    /// With `watch_bytes`: the watched range's bytes at each call's entry and at its return.
+    pub watched_entry_bytes: Vec<Vec<u8>>,
+    pub watched_exit_bytes: Vec<Vec<u8>>,
+    watch_range: Option<(u32, u32)>,
     watch: Option<u32>,
     open_call: Option<OpenCall>,
     /// Instructions run outside interrupts (the main loop).
@@ -248,6 +252,9 @@ impl Machine {
             alnk_open: None,
             watched_calls: Vec::new(),
             watched_starts: Vec::new(),
+            watched_entry_bytes: Vec::new(),
+            watched_exit_bytes: Vec::new(),
+            watch_range: None,
             watch: None,
             open_call: None,
             main_steps: 0,
@@ -268,6 +275,12 @@ impl Machine {
     /// Counts the instructions of every call of the function at `entry` from the main loop.
     pub fn watch_calls(&mut self, entry: u32) {
         self.watch = Some(entry);
+    }
+
+    /// With `watch_calls`: snapshots `len` bytes at `addr` at each watched call's entry and
+    /// return (`watched_entry_bytes`, `watched_exit_bytes`), e.g. the state a call works on.
+    pub fn watch_bytes(&mut self, addr: u32, len: u32) {
+        self.watch_range = Some((addr, len));
     }
 
     /// Counts the main loop's instructions from each entry of the function at `from` to the
@@ -353,6 +366,10 @@ impl Machine {
                 if let Some(entry) = self.watch {
                     if cpu.pc == entry && self.open_call.is_none() {
                         self.watched_starts.push(soc.periph.cycles);
+                        if let Some((addr, len)) = self.watch_range {
+                            let b = (0..len).map(|i| soc.read8(addr + i)).collect();
+                            self.watched_entry_bytes.push(b);
+                        }
                         self.open_call = Some(OpenCall {
                             rets: cpu.rets,
                             sp: cpu.sp,
@@ -364,6 +381,10 @@ impl Machine {
                     if cpu.pc == c.rets && cpu.sp >= c.sp {
                         self.watched_calls.push(self.main_steps - c.start);
                         self.open_call = None;
+                        if let Some((addr, len)) = self.watch_range {
+                            let b = (0..len).map(|i| soc.read8(addr + i)).collect();
+                            self.watched_exit_bytes.push(b);
+                        }
                     }
                 }
                 self.main_steps += 1;
@@ -513,9 +534,9 @@ pub const PLAYER_WORST_BLOCK: f64 = 60.0;
 pub const SLOTS_SWITCH_WORST: f64 = 964.0;
 /// Free RAM (the RAM region and POOL): M2c's floor, 22,000, less the overview's RAM budget of
 /// each other M2 plan merged on top of it (docs/plans/2026-10-15-m2-overview.md: M2a 2,000,
-/// M2d 6,000, M2e 2,000, M2f 5,000), whatever order they merge in. In this tree: M2d (6,000).
-/// Each region keeps 4 KiB as well (song.rs).
-pub const FREE_RAM_MIN: u64 = 22_000 - 6_000;
+/// M2d 6,000, M2e 2,000, M2f 5,000), whatever order they merge in. In this tree: M2d (6,000)
+/// and M2a (2,000). Each region keeps 4 KiB as well (song.rs).
+pub const FREE_RAM_MIN: u64 = 22_000 - 6_000 - 2_000;
 // A song plays with two chips at their worst, the effects at their cap, the ISR, the tap and
 // the player: within the audio target.
 const _: () = assert!(

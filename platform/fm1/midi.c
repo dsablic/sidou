@@ -143,6 +143,10 @@ void midi_uart_isr(void) {
     uart_midi_poll();
 }
 
+uint32_t midi_inputs(void) {
+    return rx.inputs;
+}
+
 int midi_drain(void) {
     midi_ring_entry e;
     uint32_t n = 0;
@@ -279,6 +283,38 @@ void flash_plain_window(void) {
      * reads straight through fm1_xip_ptr. The update protocol's reads (ota_fread) go through
      * fl_read_ram with XIP off, so the window does not change them. */
     fl_plain_window_init();
+}
+
+/* ---- store_fm1.h: the store's flash operations ---- */
+
+/* The store's range only, never a sector's guard band (app/store_layout.h). */
+static int store_range(uint32_t off, uint32_t n) {
+    return FL_IN(off, n, STORE_LO, STORE_HI) &&
+           (off & (STORE_SECTOR - 1u)) + n <= STORE_SECTOR_USE;
+}
+
+int flash_store_prog(uint32_t off, const void* p, uint32_t n) {
+    uint32_t took;
+    if (!flash_ok || !store_range(off, n)) {
+        return -8;
+    }
+    return FL_FAR(fl_prog_ram)(off, p, n, &took);
+}
+
+int flash_store_erase(uint32_t off) {
+    uint32_t took;
+    if (!flash_ok || !store_range(off, STORE_SECTOR_USE) || (off & (STORE_SECTOR - 1u))) {
+        return -8;
+    }
+    return FL_FAR(fl_erase4k_ram)(off, &took);
+}
+
+int flash_store_ok(void) {
+    uint32_t f = irq_save(); /* its sti is harmless at boot: no interrupt source is on yet */
+    uint32_t id = FL_FAR(fl_jedec_ram)();
+    irq_restore(f);
+    flash_ok = id == FLASH_JEDEC;
+    return flash_ok;
 }
 
 int update_poll(void) {

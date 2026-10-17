@@ -22,10 +22,25 @@ enum {
     SEC_AMBIG = 0x80,
 };
 
-/* store.work's units: each about 4 instructions or fewer on the device (Task 4 measures it): a
- * byte scanned or copied 1, a CRC byte 3, a key compared 1, a map() call 3, a sector visited in
- * a loop over them 2. */
-enum { WORK_CRC = 3, WORK_KEY = 1, WORK_MAP = 3, WORK_SEC = 2 };
+/* store.work's units: each about 4 instructions or fewer on the device (M2a Task 4 measures
+ * every kind of pass in fm1-emu, emu-gate store.rs): a byte scanned or copied 1, a CRC byte 4,
+ * a key compared 1, a map() call 3, a sector visited in a loop over them 3, a byte programmed
+ * 8 (the device's driver clocks each byte out over SPI by hand, about 25 instructions), and a
+ * flash operation 300 (the driver around it: XIP off and on, the write enable, the status
+ * polls, the cache lines invalidated), an erase 500 (its 128 cache lines invalidated besides),
+ * a byte the mount checks for 0xFF 2 (ff_scan's loop), and
+ * a record the mount checks 64 (its type and length checks, newest, the index's calls). */
+enum {
+    WORK_CRC = 4, /* the nibble table's loop, about 13 instructions a byte */
+    WORK_KEY = 1,
+    WORK_MAP = 3,
+    WORK_SEC = 3, /* a sector's turn in a loop, about 10 instructions */
+    WORK_PROG = 8,
+    WORK_OP = 300,
+    WORK_ERASE = 500,
+    WORK_FF = 2,
+    WORK_REC = 64
+};
 
 /* Most of the least-live sectors garbage collection plans over to find a gain (plan). */
 #define PLAN_MAX 8u
@@ -214,7 +229,8 @@ static uint32_t next_live(const store* s, uint32_t sec, uint32_t after, uint32_t
     return best;
 }
 
-/* Garbage collection's plan. The collectable sectors from the least live (the oldest on a tie):
+/* Garbage collection's plan. The collectable sectors from the least live (the least erased on a
+ * tie):
  * collecting the first k copies their live records, one after another as a collection does,
  * into the head's room and then into fresh sectors (at most `fresh` of them), and gains when
  * the copies fill fewer than k sectors. Returns the first (the victim) if a run of at most
@@ -233,7 +249,7 @@ static uint32_t plan(const store* s, uint32_t fresh, uint32_t most, uint32_t* ga
         uint32_t j = n++;
         while (j && (s->sector[order[j - 1]].live > c->live ||
                      (s->sector[order[j - 1]].live == c->live &&
-                      s->sector[order[j - 1]].seq > c->seq))) {
+                      s->sector[order[j - 1]].erases > c->erases))) {
             order[j] = order[j - 1];
             j--;
         }
@@ -314,7 +330,6 @@ static uint32_t place(store* s, uint32_t size, uint32_t floor) {
     }
     h = coldest(s, SEC_CLEAN);
     set_state(s, h, SEC_RESERVED);
-    s->sector[h].seq = s->sector[h].erases; /* the claim's number (sector_header) */
     s->sector[h].free = STORE_HEADER;
     s->sector[h].live = 0;
     s->head = (uint8_t)h;
@@ -390,7 +405,7 @@ static int prog_piece(store* s, uint32_t sec, uint32_t off, const uint8_t* src, 
     /* The device programs with XIP off: the bytes go from RAM, wherever the caller's are. */
     uint8_t ram[STORE_WINDOW_MAX];
     memcpy(ram, src + *done, k);
-    s->work += k;
+    s->work += WORK_OP + WORK_PROG * k;
     int rc = s->flash.prog(s->flash.ctx, a, ram, k);
     if (rc == STORE_LATER) {
         return 0;
@@ -419,7 +434,7 @@ static void sector_header(const store* s, uint32_t sec, uint8_t* h) {
     wr16(h + 10, 0);
     wr32(h + 12, s->sector[sec].erases);
     wr32(h + 16, crc(s, 0, h, 16));
-    wr32(h + 20, s->sector[sec].seq);
+    wr32(h + 20, s->sector[sec].erases); /* the claim's number: the erase count again */
     wr32(h + 24, crc(s, 0, h, 24));
     wr32(h + 28, 0);
 }
@@ -658,11 +673,16 @@ static int torn_header(const uint8_t* h) {
  * byte that does not (mount_off is that byte). */
 static int ff_scan(store* s, uint32_t sec, uint32_t end, uint32_t* budget) {
     const uint8_t* p = at(s, sec, 0);
-    uint32_t off = s->mount_off, stop = end - off > *budget ? off + *budget : end;
+    uint32_t room = *budget / WORK_FF;
+    if (!room) {
+        *budget = 0; /* the next poll */
+        return 0;
+    }
+    uint32_t off = s->mount_off, stop = end - off > room ? off + room : end;
     while (off < stop && p[off] == 0xFFu) {
         off++;
     }
-    uint32_t n = off - s->mount_off + (off < stop);
+    uint32_t n = WORK_FF * (off - s->mount_off + (off < stop));
     *budget -= n < *budget ? n : *budget;
     s->work += n;
     s->mount_off = (uint16_t)off;
@@ -675,7 +695,6 @@ static int classify(store* s, uint32_t sec) {
     const uint8_t* h = at(s, sec, 0);
     store_sector* c = &s->sector[sec];
     uint32_t version = 0, erases = 0;
-    c->seq = 0;
     c->free = STORE_HEADER;
     c->live = 0;
     c->erases = 0;
@@ -701,10 +720,6 @@ static int classify(store* s, uint32_t sec) {
             return 1;
         }
         s->sstate[sec] = SEC_CLAIMED;
-        c->seq = rd32(h + 20);
-        if (c->seq >= s->seq) {
-            s->seq = c->seq + 1u;
-        }
         s->work += STORE_SECTOR - STORE_SECTOR_USE;
         if (!all_ff(h + STORE_SECTOR_USE, STORE_SECTOR - STORE_SECTOR_USE)) {
             s->corrupt++; /* the guard band was written: read it, write no more into it */
@@ -833,15 +848,16 @@ static int scan_records(store* s, uint32_t sec, uint32_t* budget) {
         }
         const uint8_t* h = at(s, sec, off);
         uint32_t len = rd16(h + 2);
-        /* What checking it may take: its header scanned, its CRC, a key
+        /* What checking it may take: its header scanned, its fixed checks, its CRC, a key
          * lookup, the maps. */
-        uint32_t cost = STORE_REC_HEADER + WORK_CRC * (12u + (len <= STORE_CHUNK ? len : 0u)) +
+        uint32_t cost = STORE_REC_HEADER + WORK_REC +
+                        WORK_CRC * (12u + (len <= STORE_CHUNK ? len : 0u)) +
                         WORK_KEY * STORE_KEYS_MAX + 8u * WORK_MAP;
         if (cost > *budget && *budget < STORE_MOUNT_SLICE) {
             return 0; /* the next poll */
         }
         uint32_t w0 = s->work;
-        s->work += STORE_REC_HEADER;
+        s->work += STORE_REC_HEADER + WORK_REC;
         if (all_ff(h, STORE_REC_HEADER)) {
             /* The end, unless a cut write left data after an erased header (M_TAIL). */
             c->free = (uint16_t)off;
@@ -907,7 +923,8 @@ static int file_ok(store* s, const uint8_t* rec) {
 
 static void mount_finish(store* s) {
     uint32_t known = 0;
-    s->work += 2u * WORK_SEC * STORE_SECTORS + 4u * s->nkeys; /* its loops, file_ok aside */
+    /* Its loops (each sector's flags about 10 instructions), file_ok aside. */
+    s->work += 3u * WORK_SEC * STORE_SECTORS + 4u * s->nkeys;
     if (s->fix_kind == FIX_NEW) {
         /* The newest record, read uncommitted: it counts (newest). Indexed last, so if the index
          * is full it is the one left out. */
@@ -1115,6 +1132,7 @@ static void erase_step(store* s) {
         }
     }
     if (s->job_phase == E_ERASE) {
+        s->work += WORK_ERASE;
         int rc = s->flash.erase(s->flash.ctx, base(sec));
         if (rc == STORE_LATER) {
             return;
@@ -1765,7 +1783,6 @@ int store_file_begin(store* s, const char* name, uint8_t type, uint32_t length) 
         uint32_t sec = coldest(s, SEC_CLEAN);
         set_state(s, sec, SEC_RESERVED);
         s->sstate[sec] |= SEC_FILE;
-        s->sector[sec].seq = s->sector[sec].erases;
         s->sector[sec].free = STORE_HEADER;
         s->sector[sec].live = 0;
         f->sectors[i] = (uint8_t)sec;

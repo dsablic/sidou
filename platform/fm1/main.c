@@ -33,6 +33,7 @@
 #include "player/song_ctl.h"
 #include "reg_ring.h"
 #include "song/gt2_sng.h"
+#include "store_fm1.h"
 #include "ui.h"
 #include "ui_sound.h"
 #include "update.h"
@@ -79,6 +80,7 @@ void fm1_alnk0_irq(void) {
         audio_fill(&abuf[fm1_audio_free_half() * AUDIO_HALF_WORDS]);
         fm1_audio_ack_half();
     }
+    audio_block_end = fm1_ticks(); /* a write window may start now (store_fm1.c) */
 }
 
 /* Every 5th tick (2 kHz) each, on different ticks, as Felucca does: USB on tick 0, the TRS
@@ -489,6 +491,13 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
     if ((int32_t)(now - *next_tick) >= 0) {
         *next_tick = now + TICK_MS; /* too far behind: skip, the LFO only slows down */
     }
+    /* The store (store_fm1.h): at every key-scan frame (about 1.1 kHz) while it has work in
+     * hand, else once a tick; its share of the pass within STORE_POLL_WORST, none in a pass
+     * that ran a chip preparation slice. Here, not after every wake: an idle store costs the
+     * main loop nothing between frames. */
+    if (tick_due || store_fm1_active) {
+        store_fm1_service(now, &instrument, &keys_router, ui_sound_busy(&ui_sounds));
+    }
     audio_commit();
     input_leds(&front, &instrument);
 }
@@ -553,12 +562,26 @@ static void spike_service(void) {
 }
 #endif
 
+/* During the panel's wake-up wait (lcd_init's 120 ms, whatever this takes): the plain XIP
+ * window for the store (update.h; its cache invalidation takes milliseconds), then the store's
+ * mount, its recovery and the pool's fill (store_fm1.h; a few milliseconds, but a blank
+ * region's first format, up to 22 erases), before the audio starts. */
+/* The boot's watchdog feed, for store_fm1_boot: a function of its own, so the main loop's
+ * fm1_wdt_feed stays inlined (taking the inline's address made the compiler call it there). */
+static void boot_feed(void) {
+    fm1_wdt_feed();
+}
+
+static void while_lcd_wakes(void) {
+    flash_plain_window();
+    store_fm1_boot(boot_feed);
+}
+
 static void sidou_main(void) {
     /* Interrupts are still off: lcd_init and input_init write port A, which carries PA2. The
-     * song's region loads in the panel's reset wait; the plain XIP window for the store
-     * (update.h) is set up in its wake-up wait: its cache invalidation takes milliseconds,
-     * which the boot then does not spend. */
-    lcd_init(song_load, flash_plain_window);
+     * song's region loads in the panel's reset wait, the store in its wake-up wait
+     * (while_lcd_wakes). */
+    lcd_init(song_load, while_lcd_wakes);
     audio_init();
     /* The keys play chip A, as in M1; chip B is made with the keys' setup from the first
      * ticks, prepared in the background (its first reset at boot only: app/reg_ring.h). */

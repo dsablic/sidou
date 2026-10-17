@@ -3096,9 +3096,9 @@ fn a_faint_claim_loses_nothing_written_after_it() {
 #[test]
 fn a_mounts_polls_stay_within_a_slice() {
     // A record whose CRC and key lookup are more than a slice is checked alone in its poll.
-    // (Its header, its CRC at 3 a byte, a key lookup, the maps.)
+    // (Its header, its fixed checks, its CRC at 4 a byte, a key lookup, the maps.)
     let slice =
-        STORE_MOUNT_SLICE.max(STORE_REC_HEADER + 3 * (12 + STORE_CHUNK) + STORE_KEYS_MAX + 24);
+        STORE_MOUNT_SLICE.max(STORE_REC_HEADER + 64 + 4 * (12 + STORE_CHUNK) + STORE_KEYS_MAX + 24);
     let mut regions: Vec<(String, Vec<u8>)> = Vec::new();
     regions.push(("blank".into(), vec![0xFF; HI - LO]));
     regions.push((

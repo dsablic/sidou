@@ -34,6 +34,10 @@ int midi_drain(void);
 void midi_send(void);
 /* Main loop: a USB retry while no host answers (once a second). */
 void midi_service(uint32_t now_ms);
+/* The MIDI messages taken so far other than real-time ones (midi_rx.inputs): a count, for the
+ * store's quiet detector (platform/fm1/store_fm1.c), which a DAW's steady clock and sensing do
+ * not disturb. */
+uint32_t midi_inputs(void);
 
 #if defined(SIDOU_FLASH_SPIKE)
 /* The flash spike only (flash_spike.c), which plays nothing: empties the input ring, and gives

@@ -510,6 +510,19 @@ you can.
   and the cycles:
 - [ ] Core 1 is not used by SIDOU; its RAM self-test (Felucca's) is for a
   later milestone.
+- [ ] The store's write windows (M2a Task 4, once Task 3b's numbers let
+  programs go in windows; docs/hardware.md, "How the store writes"): hold a
+  chord and save settings (Task 5's SAVE) several times; listen for a click,
+  a dropout or a missed block. Then play a TRS MIDI controller at full rate
+  (a fast arpeggio) while saving: no note is lost or stuck.
+- [ ] A hold's gap: release a chord and wait for its tail to fade; a pool
+  refill (after a few saves) may follow 500 ms after the input stops. Listen
+  for each held erase (a fade out and back, up to 35 ms): note whether it is
+  heard, and whether a DAW's MIDI clock into the TRS jack keeps the refill
+  from running (it must not).
+- [ ] The first boot after an install on a unit whose store region is blank:
+  the store formats its first 22 sectors at boot, up to 0.5 s more than a
+  later boot. Note the boot's length against the next one's.
 
 Notes:
 
