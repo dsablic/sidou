@@ -15,7 +15,7 @@ const COLS: usize = GRID_COLS as usize;
 
 /// What the views asked of the player.
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum Call {
+pub(crate) enum Call {
     Play(u32),
     Stop,
     Resume,
@@ -26,9 +26,9 @@ enum Call {
 /// The player, as the binding over song_ctl would show it: PLAY waits for the keys to leave
 /// chip A (`ready`, keys_route_ready_for_song) before it plays; `refuse` stands for its
 /// command ring full.
-struct Fake {
-    calls: Vec<Call>,
-    st: song_status,
+pub(crate) struct Fake {
+    pub(crate) calls: Vec<Call>,
+    pub(crate) st: song_status,
     ready: bool,
     refuse: bool,
     statuses: u32,
@@ -85,15 +85,22 @@ unsafe extern "C" fn status(ctx: *mut c_void, out: *mut song_status) {
     unsafe { *out = f.st };
 }
 
-/// The views with the fake bound (both boxed: C keeps pointers to them).
-struct Song {
-    ui: Ui,
-    f: Box<Fake>,
+/// The views with the fake bound (both boxed: C keeps pointers to them), and the song it
+/// plays, if any.
+pub(crate) struct Song {
+    pub(crate) ui: Ui,
+    pub(crate) f: Box<Fake>,
     _t: Box<song_transport>,
+    _song: Option<sidou_tests::song::Song>,
 }
 
 impl Song {
     fn new() -> Self {
+        Self::playing(None)
+    }
+
+    /// With the fake playing `song` (its region on the heap, where C reads it).
+    pub(crate) fn playing(song: Option<sidou_tests::song::Song>) -> Self {
         let mut ui = Ui::without_cards();
         let mut f = Box::new(Fake {
             calls: Vec::new(),
@@ -117,9 +124,15 @@ impl Song {
             jam: Some(jam),
             status: Some(status),
             ctx: ctx.cast(),
+            song: song.as_ref().map_or(std::ptr::null(), |s| s.ptr()),
         });
         unsafe { views_set_song(&mut *ui.v, &*t) };
-        let mut s = Song { ui, f, _t: t };
+        let mut s = Song {
+            ui,
+            f,
+            _t: t,
+            _song: song,
+        };
         s.ui.frame();
         s.f.calls.clear();
         s
@@ -131,11 +144,11 @@ impl Song {
 }
 
 /// Frames until no transition runs and the song view is whole on the grid.
-fn settle(ui: &mut Ui) {
+pub(crate) fn settle(ui: &mut Ui) {
     for _ in 0..200 {
         ui.frame();
         drain(&mut ui.g);
-        if unsafe { screen_animating(&ui.v.s) } == 0 && ui.v.song.copying == 0 {
+        if unsafe { screen_animating(&ui.v.s) } == 0 && ui.v.song.dirty == 0 {
             ui.frame();
             drain(&mut ui.g);
             return;
@@ -144,21 +157,21 @@ fn settle(ui: &mut Ui) {
     panic!("the screen kept changing");
 }
 
-fn open_tracker(ui: &mut Ui) {
+pub(crate) fn open_tracker(ui: &mut Ui) {
     ui.press(PANEL_BTN_SEQ);
     settle(ui);
     assert_eq!(ui.top(), "TRACKER");
 }
 
-fn attr(ui: &Ui, col: usize, row: usize) -> u8 {
+pub(crate) fn attr(ui: &Ui, col: usize, row: usize) -> u8 {
     ui.g.attr[row * COLS + col]
 }
 
-fn ch(ui: &Ui, col: usize, row: usize) -> u8 {
+pub(crate) fn ch(ui: &Ui, col: usize, row: usize) -> u8 {
     ui.g.ch[row * COLS + col]
 }
 
-const fn attr_of(fg: u32, bg: u32) -> u8 {
+pub(crate) const fn attr_of(fg: u32, bg: u32) -> u8 {
     (bg << 4 | fg) as u8
 }
 
@@ -234,7 +247,7 @@ fn seq_opens_the_tracker_from_any_view_and_home_goes_back() {
 
 #[test]
 fn seq_steps_to_the_next_song_view_and_round() {
-    let tracker: *const view = unsafe { &song_view_tracker };
+    let tracker: *const view = unsafe { &tracker_view_view };
     unsafe {
         assert_eq!(song_view_next(std::ptr::null()), tracker);
         assert_eq!(song_view_next(&views_menu), tracker);
@@ -591,7 +604,7 @@ fn the_rows_show_the_page_of_the_row_and_the_bar_on_it() {
     open_tracker(&mut s.ui);
     // Stopped: the cursor's row 0, the page from row -4 (four blank rows).
     for j in 0..4 {
-        assert_eq!(s.ui.row(2 + j).trim(), "", "row {j}");
+        assert_eq!(s.ui.row(2 + j)[..29].trim(), "", "row {j}");
     }
     assert_eq!(&s.ui.row(6)[..2], "00");
     assert_eq!(attr(&s.ui, 0, 6), attr_of(GRID_WHITE, GRID_BLUE), "the bar");

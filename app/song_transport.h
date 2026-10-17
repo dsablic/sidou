@@ -35,6 +35,8 @@
 
 #include <stdint.h>
 
+#include "song/gt2_song.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -66,6 +68,7 @@ typedef struct {
     uint8_t row[SONG_T_VOICES];       /* and the row, SONG_T_NOWHERE until a row event */
     uint8_t wave[SONG_T_VOICES];      /* each voice's control register as last written */
     uint8_t env[SONG_T_VOICES];       /* each voice's envelope, 0..255 */
+    uint32_t applied; /* command acknowledgements plus idle edits: pattern data may have changed */
 } song_status;
 
 /* The player's side. Every member is set. */
@@ -82,6 +85,9 @@ typedef struct {
     int (*jam)(void* ctx, uint32_t voice, uint32_t note, uint32_t instr);
     void (*status)(void* ctx, song_status* out);
     void* ctx;
+    /* The song it plays, for the views to read (never to write: edits go through the player,
+     * which applies them between its calls); NULL: none. */
+    const gt2_song* song;
 } song_transport;
 
 #ifdef __cplusplus

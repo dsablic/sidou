@@ -260,6 +260,7 @@ typedef struct {
     uint8_t auditioning;    /* jams sound with the song stopped (song_ctl_audition) */
     uint8_t chip_held;      /* chip A is the song's: from a load's chip hook to the hand-back */
     uint8_t load_for;       /* what SONG_LOADING ends in (song_ctl.c LOAD_*) */
+    uint32_t idle_edits;    /* edits committed before a player exists, without a command */
 } song_ctl;
 
 /* The song in its region, its two shape buffers and its work space, all the caller's;

@@ -391,10 +391,24 @@ static void chip_open(void* ctx, int32_t steps) {
     show_card(v, TITLE_CARD_CHIP);
 }
 
+static void rows_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    join(buf, MENU_VALUE_CHARS, v->song.scroll ? "SCROLL" : "BAR", "");
+}
+
+/* Clockwise SCROLL (GoatTracker's), counter-clockwise BAR (the moving bar). */
+static void rows_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    if (steps != 0) {
+        v->song.scroll = (uint8_t)(steps > 0);
+        screen_redraw(&v->s);
+    }
+}
+
 static void tracker_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
-    screen_push(&v->s, &song_view_tracker, &v->song, SCREEN_WIPE_DOWN);
+    screen_push(&v->s, &tracker_view_view, &v->song, SCREEN_WIPE_DOWN);
 }
 
 static void status_open(void* ctx, int32_t steps) {
@@ -428,13 +442,14 @@ static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"PRESET", preset_value, preset_turn}, {"OCTAVE", octave_value, octave_turn},
     {"CARDS", cards_value, cards_turn},    {"STORE", store_value, store_turn},
     {"KEYS", keys_value, keys_turn},       {"SOUNDS", sounds_value, sounds_turn},
-    {"STATUS", NULL, status_open},         {"SCENE", NULL, scene_open},
-    {"CHARSET", NULL, charset_open},       {"ABOUT", NULL, about_open},
+    {"TRACKER ROWS", rows_value, rows_turn}, {"STATUS", NULL, status_open},
+    {"SCENE", NULL, scene_open},           {"CHARSET", NULL, charset_open},
+    {"ABOUT", NULL, about_open},
 };
 _Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_CARDS == 4u &&
                    VIEWS_MENU_STORE == 5u && VIEWS_MENU_KEYS == 6u && VIEWS_MENU_SOUNDS == 7u &&
-                   VIEWS_MENU_STATUS == 8u && VIEWS_MENU_SCENE == 9u &&
-                   VIEWS_MENU_CHARSET == 10u && VIEWS_MENU_ABOUT == 11u,
+                   VIEWS_MENU_ROWS == 8u && VIEWS_MENU_STATUS == 9u && VIEWS_MENU_SCENE == 10u &&
+                   VIEWS_MENU_CHARSET == 11u && VIEWS_MENU_ABOUT == 12u,
                "the menu's items");
 /* The help below the menu's frame. */
 #define MENU_HELP_ROW (MENU_ROW + VIEWS_MENU_ITEMS + 2u)

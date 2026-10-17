@@ -6,8 +6,8 @@
  *
  * The song views are STEP, TRACKER, ORDER, INSTR and TABLE. SEQ opens the first of them from
  * any view (on top of it: HOME goes back to it) and, in one, steps to the next:
- * STEP, TRACKER, ORDER, INSTR, TABLE and round. A view not made yet is skipped: until M2d
- * Task 2 the only one is a TRACKER placeholder (song_view_tracker, its rows' numbers only).
+ * STEP, TRACKER, ORDER, INSTR, TABLE and round. A view not made yet is skipped (TRACKER,
+ * app/tracker_view.h, is the first made).
  *
  * The transport goes through the player's binding (app/song_transport.h: song_ctl on the
  * device; with none bound the transport stays stopped):
@@ -79,17 +79,13 @@ extern "C" {
 #define SONG_VIEW_HEAD_W 9u
 /* Rows a beat by default (the BPM). */
 #define SONG_VIEW_ROWS_A_BEAT 4u
-/* The TRACKER placeholder's rows: 25 from row 2, the 16-row page of the row it shows with 4
- * rows above it (M2d Task 2's moving bar). */
-#define SONG_VIEW_ROWS_TOP 2u
-#define SONG_VIEW_ROWS 25u
-#define SONG_VIEW_PAGE 16u
-#define SONG_VIEW_CONTEXT 4u
 /* No key: song_view.jam_key. */
 #define SONG_VIEW_NO_KEY 0xffu
-/* What a song view shows, as bytes (song_view.c look): the view, the header (state, BPM 2,
- * position 2, REC), each voice's head (colour, name, meter) and the rows' window (top, bar). */
-#define SONG_VIEW_LOOK (1u + 6u + 3u * SONG_T_VOICES + 2u)
+/* What the header and the heads show, as bytes (song_view_head_look): the state, BPM 2,
+ * position 2, REC, and each voice's head (colour, name, meter). */
+#define SONG_VIEW_HEAD_LOOK (6u + 3u * SONG_T_VOICES)
+/* Room for a view's look in song_view.drawn: the head's, then the view's own. */
+#define SONG_VIEW_LOOK 48u
 
 typedef struct {
     uint8_t ch[GRID_ROWS][GRID_COLS];
@@ -114,18 +110,17 @@ typedef struct {
     uint8_t jam_voice; /* the voice it sounds on */
     uint8_t jam_off;   /* a jam's release the player has not taken yet */
     uint32_t jam_keys; /* the keys the jam took, until they go up (bit k: key k) */
-    /* The shared canvas and its copy (as chip_view's). */
-    uint8_t which;     /* the song view it holds, SONG_VIEW_* */
+    const gt2_song* song; /* the player's song (song_transport.song), NULL: none */
+    uint32_t song_edits;  /* edits sent: a view reading the song reads it again */
+    uint8_t scroll;       /* TRACKER's rows: 0 the moving bar, 1 scrolling (the menu's) */
+    /* The shared canvas and its copy (song_view_copy). */
+    uint8_t which;     /* the song view it holds, SONG_VIEW_*; 0xFF none */
     uint8_t built;
-    uint8_t copying;
-    uint16_t cursor;
+    uint32_t dirty;    /* rows of the canvas the grid may not have yet (bit r: row r) */
     uint32_t held;     /* frames whose copy the budget cut short (diagnostic) */
     uint8_t drawn[SONG_VIEW_LOOK];
     song_view_canvas cv;
 } song_view;
-
-/* The TRACKER placeholder (until M2d Task 2): the header, the heads and the rows' numbers. */
-extern const view song_view_tracker;
 
 /* No player, nothing muted, the cursor at entry 0 row 0 of voice 1, instrument 1. */
 void song_view_init(song_view* sv, live* l);
@@ -165,6 +160,17 @@ void song_view_header(const song_view* sv, const char* name, uint8_t ch[GRID_COL
 /* Row 1, the heads, on background bg, into ch and attr. */
 void song_view_heads(const song_view* sv, uint8_t bg, uint8_t ch[GRID_COLS],
                      uint8_t attr[GRID_COLS]);
+/* The header's and the heads' look (SONG_VIEW_HEAD_LOOK bytes): they are drawn again when it
+ * changes. */
+void song_view_head_look(const song_view* sv, uint8_t out[SONG_VIEW_HEAD_LOOK]);
+/* Voice v's orderlist entry and row as the views show them: the player's (its row events)
+ * while the song plays and one said, the cursor's otherwise. */
+void song_view_position(const song_view* sv, uint32_t v, uint32_t* entry, uint32_t* row);
+/* The canvas onto the grid: under a wipe the rows it reveals whole; otherwise the changed
+ * cells of the dirty rows and the rows the screen drew over, top first, within
+ * SONG_VIEW_FRAME_CELLS less what the screen's layers take, leaving what is covered this
+ * frame and the border under the raster; the rows not finished stay dirty for the next. */
+void song_view_copy(song_view* sv, screen* s, grid* g);
 /* GLO's state for LIVE's header: the mutes in bits 0-2, the solos in bits 3-5. */
 uint32_t song_view_mutes(const song_view* sv);
 

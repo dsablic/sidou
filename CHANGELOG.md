@@ -335,6 +335,15 @@ stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
   (`views_note_keys`). The free-RAM gate moves to M2d's floor, 16,000 bytes. The menu, SCENE's RULE 30 and STARS
   goldens are redone (the menu's new item; the pieces' moment moves with the menu's longer
   walk), and TRACKER's, its mute and REC, and LIVE's mutes are new.
+- M2d: TRACKER (`app/tracker_view.h`), replacing the placeholder: each voice's pattern in
+  GoatTracker's layout (C-401308, `---`, `===`, `+++`, `..`, `...`), silent voices in dark
+  grey, the bar's place in its pattern, each voice's orderlist from its entry and the bar
+  row's command spelled out; the rows follow the player's row events while the song plays and
+  the cursor while it is stopped, as a moving bar (the default) or scrolling (the menu's new
+  TRACKER ROWS). The song views read the song through the binding (`song_transport.song`) and
+  copy only the rows they built. Its costs over 30 s at tempo 6 and 3 in both modes are in
+  docs/art/README.md "TRACKER"; goldens tracker, tracker-play, tracker-mute-rec redone and
+  tracker-scroll new; the menu, RULE 30 and STARS again.
 - The menu's CHIP item opens the CHIP view; the 6581/8580 choice it held is the view's profile
   picker (and the FX button, as before).
 - The EDIT layer (EDIT + K1..K4, SCL, ENV) is no longer a stopgap: it stays in every view as a

@@ -384,6 +384,7 @@ static void st_status(void* ctx, song_status* out) {
         }
     }
     *out = song_seen;
+    out->applied = sc->applied + sc->idle_edits;
     out->state = (uint8_t)song_ctl_shown_state(sc);
     /* the play's options; before one, the song's (or the defaults), read again each second */
     static gt2_options before;
@@ -417,7 +418,7 @@ static void st_status(void* ctx, song_status* out) {
 }
 
 static const song_transport song_binding = {st_play, st_stop,   st_resume, st_mute,
-                                            st_jam,  st_status, 0};
+                                            st_jam,  st_status, 0,         0};
 static song_transport song_bound;
 
 /* Once a pass: the voices the keys take from the song under KEYS A, the audition's jam that
@@ -623,6 +624,7 @@ static void sidou_main(void) {
     ui_set_keys(&keys_router);
     song_bound = song_binding;
     song_bound.ctx = audio_song();
+    song_bound.song = audio_song()->song;
     ui_set_song(&song_bound);
 #if defined(SIDOU_TEST_DEATH_MS)
     test_death_arm();

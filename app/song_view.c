@@ -6,11 +6,10 @@
 
 #include "font.h"
 #include "live_view.h"
+#include "tracker_view.h"
 
 #define HEADER GRID_ATTR(GRID_BLUE, GRID_LIGHT_BLUE)
 #define REC_ATTR GRID_ATTR(GRID_RED, GRID_LIGHT_BLUE)
-/* The TRACKER's ground (the prototype's): black, the bar light blue on blue. */
-#define GROUND GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLACK)
 
 /* A PLAY the player has not taken yet. */
 #define WANT_NONE 0u
@@ -29,15 +28,13 @@
 /* live's notes are MIDI's: GoatTracker's C-0 is MIDI's 12. */
 #define GT2_NOTE0 12u
 #define GT2_NOTES 96u
-/* A pattern's rows at most (GoatTracker's). */
-#define MAX_ROWS 128u
 
 static const char HEX[] = "0123456789ABCDEF";
 
 /* ---- the song views, SEQ's order ---- */
 
 /* NULL: not made yet (SEQ skips it). */
-static const view* const VIEWS[SONG_VIEW_COUNT] = {NULL, &song_view_tracker, NULL, NULL, NULL};
+static const view* const VIEWS[SONG_VIEW_COUNT] = {NULL, &tracker_view_view, NULL, NULL, NULL};
 
 int song_view_is(const view* v) {
     for (uint32_t i = 0; i < SONG_VIEW_COUNT; i++) {
@@ -73,6 +70,7 @@ void song_view_init(song_view* sv, live* l) {
     sv->st.multispeed = 1;
     sv->st.ntsc = 0;
     sv->st.mute = 0;
+    sv->st.applied = 0;
     sv->st.speed[0] = 0;
     sv->st.speed[1] = 0;
     for (uint32_t v = 0; v < SONG_T_VOICES; v++) {
@@ -95,10 +93,12 @@ void song_view_init(song_view* sv, live* l) {
     sv->jam_voice = 0;
     sv->jam_off = 0;
     sv->jam_keys = 0;
-    sv->which = SONG_VIEW_TRACKER;
+    sv->song = NULL;
+    sv->song_edits = 0;
+    sv->scroll = 0;
+    sv->which = 0xffu;
     sv->built = 0;
-    sv->copying = 0;
-    sv->cursor = 0;
+    sv->dirty = 0;
     sv->held = 0;
 }
 
@@ -152,6 +152,8 @@ static void send_jam_off(song_view* sv) {
 
 void song_view_set_transport(song_view* sv, const song_transport* t) {
     sv->t = t;
+    sv->song = t ? t->song : NULL;
+    sv->built = 0;
     sv->sent = 0xffu;
     sv->want = WANT_NONE;
     sv->jam_off = 0;
@@ -248,6 +250,7 @@ void song_view_frame(song_view* sv, int shows) {
     send_play(sv);
     if (shows && sv->want == WANT_NONE) {
         t->status(t->ctx, &sv->st);
+        sv->song_edits = sv->st.applied;
     }
     send_mutes(sv);
     send_jam_off(sv);
@@ -282,10 +285,7 @@ static void hex2(char* out, uint32_t v) {
     out[1] = HEX[v & 15u];
 }
 
-/* The position the header shows: the player's while the song plays and a row event said where,
- * the cursor's otherwise. */
-static void position(const song_view* sv, uint32_t* order_pos, uint32_t* row) {
-    uint32_t v = sv->voice;
+void song_view_position(const song_view* sv, uint32_t v, uint32_t* order_pos, uint32_t* row) {
     if (going(sv->st.state) && sv->st.row[v] != SONG_T_NOWHERE) {
         *order_pos = sv->st.order_pos[v];
         *row = sv->st.row[v];
@@ -326,7 +326,7 @@ void song_view_header(const song_view* sv, const char* name, uint8_t ch[GRID_COL
     }
     row_text(ch, attr, 8, t, HEADER);
     uint32_t pos, row;
-    position(sv, &pos, &row);
+    song_view_position(sv, sv->voice, &pos, &row);
     char p[14] = "ORD 00 ROW 00";
     hex2(&p[4], pos);
     hex2(&p[11], row);
@@ -386,26 +386,13 @@ void song_view_heads(const song_view* sv, uint8_t bg, uint8_t ch[GRID_COLS],
     }
 }
 
-/* ---- the TRACKER placeholder (M2d Task 2 replaces it) ---- */
+/* ---- the shared canvas ---- */
 
-/* The row the rows show: the player's while it plays, the cursor's otherwise; and the window's
- * first row (may be negative: blank rows above row 0). */
-static uint32_t shown_row(const song_view* sv) {
-    uint32_t pos, row;
-    position(sv, &pos, &row);
-    return row;
-}
-
-static int32_t window_top(uint32_t row) {
-    return (int32_t)(row / SONG_VIEW_PAGE * SONG_VIEW_PAGE) - (int32_t)SONG_VIEW_CONTEXT;
-}
-
-static void look(const song_view* sv, uint8_t out[SONG_VIEW_LOOK]) {
+void song_view_head_look(const song_view* sv, uint8_t out[SONG_VIEW_HEAD_LOOK]) {
     uint32_t n = 0;
     uint32_t pos, row;
-    position(sv, &pos, &row);
+    song_view_position(sv, sv->voice, &pos, &row);
     uint32_t bpm = shown_bpm(sv);
-    out[n++] = sv->which;
     out[n++] = (uint8_t)going(sv->st.state);
     out[n++] = (uint8_t)bpm;
     out[n++] = (uint8_t)(bpm >> 8);
@@ -418,70 +405,6 @@ static void look(const song_view* sv, uint8_t out[SONG_VIEW_LOOK]) {
         out[n++] = (uint8_t)(h.says | (sv->st.wave[v] & 0xf0u));
         out[n++] = h.meter;
     }
-    out[n++] = (uint8_t)(window_top(row) + (int32_t)SONG_VIEW_CONTEXT);
-    out[n] = (uint8_t)row;
-}
-
-static int looks_changed(const song_view* sv) {
-    uint8_t now[SONG_VIEW_LOOK];
-    look(sv, now);
-    for (uint32_t i = 0; i < SONG_VIEW_LOOK; i++) {
-        if (now[i] != sv->drawn[i]) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-static void build_tracker(song_view* sv) {
-    song_view_canvas* c = &sv->cv;
-    look(sv, sv->drawn);
-    sv->built = 1;
-    for (uint32_t r = 0; r < GRID_ROWS; r++) {
-        for (uint32_t k = 0; k < GRID_COLS; k++) {
-            c->ch[r][k] = ' ';
-            c->attr[r][k] = GROUND;
-        }
-    }
-    song_view_header(sv, "TRACKER", c->ch[0], c->attr[0]);
-    song_view_heads(sv, GRID_BLACK, c->ch[1], c->attr[1]);
-    uint32_t bar = shown_row(sv);
-    int32_t top = window_top(bar);
-    for (uint32_t j = 0; j < SONG_VIEW_ROWS; j++) {
-        int32_t rn = top + (int32_t)j;
-        uint32_t r = SONG_VIEW_ROWS_TOP + j;
-        if (rn < 0 || rn >= (int32_t)MAX_ROWS) {
-            continue;
-        }
-        uint32_t u = (uint32_t)rn;
-        uint8_t bg = u == bar ? GRID_BLUE : GRID_BLACK;
-        uint8_t fg = u == bar           ? GRID_WHITE
-                     : u % 16u == 0u    ? GRID_YELLOW
-                     : u % 4u == 0u     ? GRID_LIGHT_GREY
-                                        : GRID_GREY;
-        for (uint32_t k = 0; k + 1u < GRID_COLS; k++) {
-            c->attr[r][k] = GRID_ATTR(GRID_LIGHT_BLUE, bg);
-        }
-        c->ch[r][0] = (uint8_t)HEX[u >> 4 & 15u];
-        c->ch[r][1] = (uint8_t)HEX[u & 15u];
-        c->attr[r][0] = GRID_ATTR(fg, bg);
-        c->attr[r][1] = GRID_ATTR(fg, bg);
-    }
-}
-
-/* Built anew at its first compose: what changed while it was away. */
-static void tracker_enter(screen* s, void* state) {
-    (void)s;
-    song_view* sv = state;
-    sv->which = SONG_VIEW_TRACKER;
-    sv->built = 0;
-    sv->cursor = 0;
-}
-
-static int tracker_changed(screen* s, void* state) {
-    (void)s;
-    const song_view* sv = state;
-    return !sv->built || sv->copying || looks_changed(sv);
 }
 
 /* 1 for a cell of the screen's outer ring. */
@@ -489,10 +412,7 @@ static int border(uint32_t c, uint32_t r) {
     return r == 0 || r == GRID_ROWS - 1u || c == 0 || c == GRID_COLS - 1u;
 }
 
-/* The canvas onto the grid as CHIP copies its own (app/chip_view.c): under a wipe the rows it
- * reveals whole; otherwise the changed cells from where the last frame stopped, within the
- * frame's budget, leaving alone what is covered this frame and the border under the raster. */
-static void copy(song_view* sv, screen* s, grid* g) {
+void song_view_copy(song_view* sv, screen* s, grid* g) {
     const song_view_canvas* c = &sv->cv;
     uint32_t whole = s->redraw && s->wipe != SCREEN_CUT ? s->redraw_rows : 0u;
     for (uint32_t r = 0; r < GRID_ROWS; r++) {
@@ -503,33 +423,28 @@ static void copy(song_view* sv, screen* s, grid* g) {
     int raster = s->raster_frames && s->wipe == SCREEN_CUT;
     uint32_t used = screen_pending(s) + screen_layer_cells(s);
     uint32_t left = used < SONG_VIEW_FRAME_CELLS ? SONG_VIEW_FRAME_CELLS - used : 0u;
-    uint32_t i = sv->cursor;
-    for (uint32_t n = 0; n < GRID_CELLS; n++, i = i + 1u < GRID_CELLS ? i + 1u : 0u) {
-        uint32_t r = i / GRID_COLS;
-        uint32_t k = i % GRID_COLS;
-        if ((whole >> r & 1u) || (g->ch[i] == c->ch[r][k] && g->attr[i] == c->attr[r][k]) ||
-            screen_covered(s, k, r) || (raster && border(k, r))) {
+    uint32_t rows = (sv->dirty | (s->redraw ? s->redraw_rows : 0u)) & ~whole;
+    for (uint32_t r = 0; rows >> r; r++) {
+        if (!(rows >> r & 1u)) {
             continue;
         }
-        if (!left) {
-            sv->cursor = (uint16_t)i;
-            sv->held++;
-            sv->copying = 1;
-            return;
+        const uint8_t* gc = &g->ch[r * GRID_COLS];
+        const uint8_t* ga = &g->attr[r * GRID_COLS];
+        for (uint32_t k = 0; k < GRID_COLS; k++) {
+            if ((gc[k] == c->ch[r][k] && ga[k] == c->attr[r][k]) || screen_covered(s, k, r) ||
+                (raster && border(k, r))) {
+                continue;
+            }
+            if (!left) {
+                sv->dirty = rows & ~((1u << r) - 1u); /* this row and the ones below: next */
+                sv->held++;
+                return;
+            }
+            grid_put(g, k, r, c->ch[r][k], c->attr[r][k]);
+            left--;
         }
-        grid_put(g, k, r, c->ch[r][k], c->attr[r][k]);
-        left--;
     }
-    sv->copying = 0;
+    /* All of it is on the grid but what the layers hold: those come back when the screen
+     * composes again after them (it forces that). */
+    sv->dirty = 0;
 }
-
-static void tracker_compose(screen* s, void* state, grid* g) {
-    song_view* sv = state;
-    if (!sv->built || looks_changed(sv)) {
-        build_tracker(sv);
-    }
-    copy(sv, s, g);
-}
-
-const view song_view_tracker = {"TRACKER", tracker_enter, NULL, NULL, tracker_compose,
-                                tracker_changed};

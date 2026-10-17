@@ -696,6 +696,7 @@ int song_ctl_edit(song_ctl* sc, const gt2_edit* e) {
     song_work* w = sc->w;
     if (sc->state == SONG_IDLE) {
         gt2_edit_commit(sc->song, e); /* no player reads the song */
+        sc->idle_edits++;
         return 1;
     }
     /* A shape command in flight holds the spare a widening may need: the edit waits a pass

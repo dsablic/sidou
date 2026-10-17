@@ -57,6 +57,7 @@
 #include "store.h"
 #include "store_layout.h"
 #include "title_card.h"
+#include "tracker_view.h"
 #include "ui_sound.h"
 #include "views.h"
 #include "widget.h"

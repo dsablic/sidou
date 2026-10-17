@@ -587,6 +587,62 @@ CC 85's are. At the page's character a step to the 8580 costs 362.6k (bounded at
 worst, onto WORN at full character, 471.5k (ALGORITHM; CC 85 471.4k, FX 470.7k), bounded at
 520k for all three. RAM: the view's state 1,840 bytes, most of it the canvas.
 
+## TRACKER
+
+TRACKER (`app/tracker_view.h`, from SEQ or the menu) is the song's patterns in GoatTracker
+2's layout, squeezed to the 30 x 30 grid after the prototype
+(`assets/prototypes/sidou-screens.html`): black, the header in reverse video.
+
+![TRACKER, stopped](../../tests/golden/lcd/tracker.png)
+![TRACKER, SIDOU LOOP playing, the moving bar](../../tests/golden/lcd/tracker-play.png)
+![TRACKER, scrolling](../../tests/golden/lcd/tracker-scroll.png)
+![TRACKER, voice 1 muted, REC](../../tests/golden/lcd/tracker-mute-rec.png)
+
+- **Row 0:** the song views' header (`app/song_view.h`): TRACKER, a play mark or a stop
+  square, the tempo in BPM, ORD and ROW in hex, REC in red.
+- **Row 1:** the voice heads, from columns 3, 12 and 21: V1-V3 in the waveform's colour, its
+  name (MUT in light red, SOL in white), a one-cell envelope meter on dark grey.
+- **Rows 2-26:** 25 pattern rows. Columns 0-1 the row number (white on the bar, yellow every
+  16, light grey every 4, grey); then each voice's row of its pattern, eight cells
+  `C-401308`: the note in white (`---` a rest in dark grey, `===` a key off and `+++` a key on
+  in grey), the instrument in light blue (`..` none), the command in yellow and its data in
+  light green (`...` none). The bar is light blue on blue across columns 0-28, its
+  instruments cyan and its empty cells light blue. A silent voice is all dark grey.
+- **Column 29:** a dark grey rule and a light blue pip where the bar's row is in its pattern.
+- **Row 27:** a rule. **Row 28:** OL, and each voice's orderlist from its entry: the entry in
+  white on blue, the two after it in grey (a pattern in hex, `R2` a repeat, `+3` or `-1` a
+  transpose, `RST00` the end and its restart position). **Row 29:** the bar row's first
+  command, of the voices that sound, spelled out in yellow (`V2 4 22 VIBRATO`).
+
+Each voice shows the pattern of its orderlist entry: while the song plays the entry and row
+of its last row event, stopped the cursor's. **The moving bar** (TRACKER ROWS BAR, the
+default): the rows stand still and the bar moves down the 16-row page with 4 rows of context
+above; at the page's end the window moves a page. **Scrolling** (TRACKER ROWS SCROLL,
+GoatTracker's): the bar stays on screen row 14 and the rows move under it.
+
+**The budget.** The header and the heads are built into the song views' shared canvas when
+they change (the meters, REC), the rows when the window, the bar, a pattern or a mute does;
+only the rows built are compared with the grid, and their changed cells go out top first
+within 200 cells a frame (`SONG_VIEW_FRAME_CELLS`) less what the screen's layers take. Measured
+in fm1-emu over 30 s of each (`the_tracker_stays_within_its_budgets_while_a_song_plays`):
+
+| 30 s playing | Cells a frame (average, most) | SPI a frame (average, worst) | Main loop a frame (average, busiest `ui_poll`) | Frames at the cap |
+|---|---|---|---|---|
+| SIDOU LOOP (tempo 6), bar | 25.6, 129 | 2.22, 11.35 ms | 27.6k, 31.4k | 0 of 750 |
+| SIDOU LOOP, scroll | 83.4, 200 | 7.30, 17.56 ms | 51.0k, 34.0k | 256 of 750 |
+| A dense song at tempo 3 (a note on every row of every voice), bar | 61.6, 200 | 5.35, 17.79 ms | 49.8k, 38.4k | 38 of 750 |
+| The same, scroll | 100.4, 200 | 9.08, 17.58 ms | 89.9k, 36.8k | 24 of 750 |
+
+The bar always keeps up: a row step changes its two rows and the line under the rows (60 to
+90 cells), and only a page turn (up to 725 cells) is spread over up to four frames, top first,
+behind the bar. The scroll changes every row whose text differs from the one above it: with
+SIDOU LOOP, at tempo 6, a third of the frames already reach the cap, so the scroll stops
+keeping up at about tempo 6 on patterns like it (the rows lag the music by up to a frame or
+two, never the sound); a song whose rows look alike (the tempo-3 song, whose cells differ in
+a note's name only) changes fewer cells a step and lags less, even at tempo 3. Idle and
+stopped it composes nothing (the song views' table in `tests/screen.rs`: 8.1k instructions a
+frame idle). RAM: the song views' state 1,920 bytes, most of it their shared canvas.
+
 ## SCENE
 
 SCENE (`app/scene_view.h`, the menu's item after STATUS) is M1e's prototype of M2's visuals:

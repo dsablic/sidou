@@ -11,8 +11,9 @@
  *   firmware's data, which ALGORITHM turned clockwise twice formats), KEYS (AUTO or A: which
  *   chip the keys play during a song, app/keys_route.h), SOUNDS (the UI sounds on chip B's
  *   spare voice, OFF by default, app/ui_sound.h) and the views to open (CHIP first, then
- *   TRACKER), in a frame. SELECT moves the cursor, ALGORITHM changes the value under it or
- *   opens the view. CARDS, KEYS and SOUNDS persist (app/settings.h).
+ *   TRACKER), in a frame, plus TRACKER ROWS (BAR, the moving bar, or SCROLL:
+ *   app/tracker_view.h; in RAM). SELECT moves the cursor, ALGORITHM changes the value under
+ *   it or opens the view. CARDS, KEYS and SOUNDS persist (app/settings.h).
  * - CHIP (from the menu, behind THE CHIP's card): chip A's profile, character and effect slots
  *   (app/chip_view.h); SELECT moves the focus, ALGORITHM steps its choice, K1..K4 turn its
  *   values.
@@ -28,7 +29,7 @@
  *   turns (views_learn).
  * - The song views (app/song_view.h): STEP, TRACKER, ORDER, INSTR and TABLE, from SEQ in any
  *   view or the menu's TRACKER; SEQ steps through them, HOME goes back to the view before.
- *   Until M2d Task 2 only a TRACKER placeholder.
+ *   TRACKER shows the patterns (app/tracker_view.h); the other song views come later.
  * - TITLE: a title card (app/title_card.h) over a major view entered from the menu: THE CHIP
  *   over CHIP, THE SCENE over SCENE, THE OSCILLATOR over LIVE when HOME goes back to it from
  *   the menu (not at power-on, after the boot, nor when MIDI learn's frame closes). It ends by
@@ -90,6 +91,7 @@
 #include "scope.h"
 #include "screen.h"
 #include "song_view.h"
+#include "tracker_view.h"
 #include "title_card.h"
 #include "widget.h"
 
@@ -101,17 +103,18 @@ extern "C" {
 #define VIEWS_TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
 /* The menu's items and the rows it shows, the title cards' option, and the items that open a
  * view. */
-#define VIEWS_MENU_ITEMS 12u
+#define VIEWS_MENU_ITEMS 13u
 #define VIEWS_MENU_CHIP 0u
 #define VIEWS_MENU_TRACKER 1u
 #define VIEWS_MENU_CARDS 4u
 #define VIEWS_MENU_STORE 5u
 #define VIEWS_MENU_KEYS 6u
 #define VIEWS_MENU_SOUNDS 7u
-#define VIEWS_MENU_STATUS 8u
-#define VIEWS_MENU_SCENE 9u
-#define VIEWS_MENU_CHARSET 10u
-#define VIEWS_MENU_ABOUT 11u
+#define VIEWS_MENU_ROWS 8u
+#define VIEWS_MENU_STATUS 9u
+#define VIEWS_MENU_SCENE 10u
+#define VIEWS_MENU_CHARSET 11u
+#define VIEWS_MENU_ABOUT 12u
 /* Raster steps for a chip model change: the ramp once round. */
 #define VIEWS_RASTER_STEPS SCREEN_RAMP
 /* What the views show, as bytes (app/views.c look): the instrument's model (as asked for),

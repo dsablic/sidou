@@ -237,7 +237,7 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
     let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
-    let rows: Vec<String> = (4..18).map(|r| ui.row(r)).collect();
+    let rows: Vec<String> = (4..19).map(|r| ui.row(r)).collect();
     let body: Vec<String> = rows.iter().map(|r| r[3..27].to_string()).collect();
     assert_eq!(rows[0][2..10].to_string(), "# MENU #");
     // Labels after the cursor cell, values right-aligned against the frame, an arrow for a view.
@@ -253,11 +253,13 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
     assert_eq!(body[7], format!(" {:<19}AUTO", "KEYS"));
     // M2b Task 7: SOUNDS, the UI sounds (OFF at power-on).
     assert_eq!(body[8], format!(" {:<20}OFF", "SOUNDS"));
-    assert_eq!(body[9][..23], format!(" {:<22}", "STATUS"));
-    assert_eq!(body[10][..23], format!(" {:<22}", "SCENE"));
-    assert_eq!(body[11][..23], format!(" {:<22}", "CHARSET"));
-    assert_eq!(body[12][..23], format!(" {:<22}", "ABOUT"));
-    for row in [5, 6, 13, 14, 15, 16] {
+    // M2d Task 2: TRACKER ROWS, the TRACKER's moving bar or scrolling (BAR at power-on).
+    assert_eq!(body[9], format!(" {:<20}BAR", "TRACKER ROWS"));
+    assert_eq!(body[10][..23], format!(" {:<22}", "STATUS"));
+    assert_eq!(body[11][..23], format!(" {:<22}", "SCENE"));
+    assert_eq!(body[12][..23], format!(" {:<22}", "CHARSET"));
+    assert_eq!(body[13][..23], format!(" {:<22}", "ABOUT"));
+    for row in [5, 6, 14, 15, 16, 17] {
         assert_eq!(
             ui.g.ch[row * COLS + 26],
             FONT_ARROW_RIGHT as u8,
@@ -265,7 +267,7 @@ fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
         );
     }
     assert_eq!(
-        rows[13][2..26].chars().filter(|&c| c == '#').count(),
+        rows[14][2..26].chars().filter(|&c| c == '#').count(),
         24,
         "the frame's bottom"
     );

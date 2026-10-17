@@ -2834,19 +2834,18 @@ fn live_gated(m: &mut Machine, fw: &Firmware) -> usize {
         .count()
 }
 
-/// The TRACKER placeholder from SEQ, settled.
+/// TRACKER from SEQ, settled.
 fn open_tracker(m: &mut Machine, fw: &Firmware) {
     press(m, SEQ);
     settle(m, fw);
     assert_eq!(
         common::top_view(m, fw),
-        fw.symbol("song_view_tracker"),
+        fw.symbol("tracker_view_view"),
         "SEQ did not open the song views"
     );
 }
 
-/// SEQ opens the song views (until M2d Task 2 the TRACKER placeholder: the header, the voice
-/// heads and the rows' numbers): stopped, SIDOU LOOP's tempo; PLAY plays it (the play mark,
+/// SEQ opens TRACKER: stopped, SIDOU LOOP's patterns and tempo; PLAY plays it (the play mark,
 /// the position, the waveforms and meters), REC in the header; GLO and the leftmost key mute
 /// voice 1 within the key's pass and sound nothing, and LIVE's header says so.
 #[test]
@@ -2896,29 +2895,30 @@ fn the_song_views_header_and_heads_match_their_goldens() {
     m.run_ms(30);
 }
 
-/// The TRACKER placeholder's main-loop costs, with SIDOU LOOP bound (M2d Task 2's rows
-/// measure again), bounded about 10 % above what was measured:
+/// TRACKER's main-loop costs (M2d Task 2), with SIDOU LOOP bound, bounded about 10 % above
+/// what was measured:
 ///
 /// | TRACKER | Cells a frame (average, most) | Worst SPI | Instructions a frame | Busiest ui_poll |
 /// |---|---|---|---|---|
-/// | Idle (25 frames) | 0, 0 | 0 | 7.8k | 0.9k |
-/// | REC on (25 frames) | 0.12, 3 | 0.26 ms | 8.8k | 25.5k |
-/// | Playing (100 frames) | 20.9, 77 | 6.66 ms | 34.6k | 28.7k |
-/// | GLO and a key: MUT (25 frames) | 0.20, 5 | 0.44 ms | 8.7k | 25.4k |
+/// | Idle (25 frames) | 0, 0 | 0 | 8.1k | 1.3k |
+/// | REC on (25 frames) | 0.12, 3 | 0.26 ms | 8.3k | 3.9k |
+/// | Playing, BAR (100 frames) | 21.9, 86 | 7.56 ms | 25.7k | 29.8k |
+/// | GLO and a key: MUT (25 frames) | 1.24, 31 | 2.71 ms | 9.8k | 27.4k |
 ///
-/// Idle it composes nothing. A change builds the canvas (900 cells) and copies the few that
-/// changed: the build and the scan are the busiest ui_poll; playing, the meters and the
-/// position change every frame, so it builds every frame (the bar's row step about 60 cells).
+/// Idle it composes nothing. The header and the heads are built again when they change (REC,
+/// the meters), the rows when the window, the bar, a pattern or a mute does (a row step: the
+/// build reads 25 rows of three patterns), and only the rows built are compared and copied.
 /// The inputs (ui_buttons for SEQ, REC and PLAY; GLO's key goes through the note keys' pass)
 /// and the busiest pass after each, against TRACKER_INPUT and TRACKER_PASS. Measured: SEQ from
-/// LIVE the input 4.2k (the push: the wipe's set-up over LIVE's overlays) and the pass 50.1k
-/// (the wipe's first frame: the canvas's first build and its rows copied whole); PLAY the
-/// input 1.7k (song_ctl_play) and the pass 31.3k; SEQ in TRACKER and REC the input 0.2k and the
-/// pass 3.5k to 31.3k; GLO's key 30.9k.
-const TRACKER_IDLE_PER_FRAME: f64 = 8_200.0;
-const TRACKER_CHANGE_PER_FRAME: f64 = 9_400.0;
-const TRACKER_PLAYING_PER_FRAME: f64 = 38_000.0;
-const TRACKER_WORST_POLL: u64 = 31_500;
+/// LIVE the input 4.2k (the push: the wipe's set-up over LIVE's overlays) and the pass 48.0k
+/// (the wipe's first frame: the whole canvas built and its rows copied whole); PLAY the input
+/// 1.9k (song_ctl_play) and the pass 29.6k; SEQ in TRACKER and REC the input 0.2k and the pass
+/// 5.0k to 30.4k; GLO's key 29.7k. The playing costs over 30 s, both modes and two tempos, are
+/// the_tracker_stays_within_its_budgets_while_a_song_plays's.
+const TRACKER_IDLE_PER_FRAME: f64 = 8_900.0;
+const TRACKER_CHANGE_PER_FRAME: f64 = 10_800.0;
+const TRACKER_PLAYING_PER_FRAME: f64 = 28_000.0;
+const TRACKER_WORST_POLL: u64 = 33_000;
 const TRACKER_INPUT: u64 = 4_600;
 const TRACKER_PASS: u64 = 55_000;
 
@@ -3020,6 +3020,196 @@ fn the_song_views_stay_within_their_budgets() {
     assert!(over.is_empty(), "{over:#?}");
 }
 
+/// A song at tempo 3 (a row every 3 calls, 251 BPM): every voice a note on every row of a
+/// 64-row pattern, voice 1's first row setting the tempo.
+fn tempo_3_song() -> sidou_tests::song::Song {
+    let mut s = sidou_tests::song::SngSpec::new();
+    let mut ins = [0u8; 25];
+    ins[..9].copy_from_slice(&[0x09, 0x00, 1, 0, 0, 0, 0, 2, 0x09]);
+    s.instr = vec![ins];
+    s.tables = vec![vec![(0x21, 0x00), (0xff, 0x00)], vec![], vec![], vec![]];
+    s.patterns = (0..3u8)
+        .map(|v| {
+            let rows = (0..64u8)
+                .map(|r| {
+                    let mut c = [0x60 + 24 + v * 12 + (r * 5) % 12, 1, 0, 0];
+                    if v == 0 && r == 0 {
+                        c[2] = 0xf;
+                        c[3] = 0x03;
+                    }
+                    c
+                })
+                .collect();
+            (rows, [0xff, 0, 0, 0])
+        })
+        .collect();
+    common::device_song(&s.encode(), None)
+}
+
+/// TRACKER playing for `ms`: the song (None: SIDOU LOOP) injected, BAR or SCROLL (the views'
+/// TRACKER ROWS, set in RAM: the menu's path is the host tests'), SEQ, PLAY; the frames'
+/// costs and the frames whose copy the budget cut short (song_view.held).
+fn tracker_run(
+    fw: &Firmware,
+    song: Option<&sidou_tests::song::Song>,
+    scroll: bool,
+    ms: u64,
+) -> (Cost, u32) {
+    let mut m = Machine::boot(&fw.image);
+    m.watch_calls(fw.symbol("ui_poll"));
+    common::run_past_boot(&mut m, fw);
+    if let Some(s) = song {
+        let base = fw.symbol("__song_region");
+        for (i, &b) in s.bytes().iter().enumerate() {
+            m.soc.write8(base + i as u32, b);
+        }
+    }
+    let views = fw.symbol("ui");
+    m.soc.write8(
+        views + (sidou_sys::ilp32::views::song + sidou_sys::ilp32::song_view::scroll) as u32,
+        u8::from(scroll),
+    );
+    open_tracker(&mut m, fw);
+    press(&mut m, PLAY);
+    m.run_ms(500);
+    let held_at =
+        views + (sidou_sys::ilp32::views::song + sidou_sys::ilp32::song_view::held) as u32;
+    let held = m.soc.read32(held_at);
+    let c = measure(&mut m, fw, ms / UI_PERIOD_MS, |_| {});
+    (c, m.soc.read32(held_at) - held)
+}
+
+/// TRACKER in SCROLL (the views' TRACKER ROWS set in RAM), SIDOU LOOP two seconds in: the
+/// playing row on screen row 14, the rows above and below it.
+#[test]
+fn the_tracker_scrolling_matches_its_golden_image() {
+    let Some((build, fw)) = fixture("the TRACKER scroll test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    m.soc.write8(
+        fw.symbol("ui")
+            + (sidou_sys::ilp32::views::song + sidou_sys::ilp32::song_view::scroll) as u32,
+        1,
+    );
+    open_tracker(&mut m, &fw);
+    press(&mut m, PLAY);
+    m.run_ms(2_000);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "tracker-scroll", &m.soc.lcd.fb, &[]);
+}
+
+#[test]
+fn applied_song_edits_refresh_the_tracker_before_and_after_playback() {
+    let Some((_, fw)) = fixture("the TRACKER edit refresh test") else {
+        return;
+    };
+    let song = tempo_3_song();
+    for played in [false, true] {
+        let mut m = booted(&fw);
+        let base = fw.symbol("__song_region");
+        for (i, &byte) in song.bytes().iter().enumerate() {
+            m.soc.write8(base + i as u32, byte);
+        }
+        open_tracker(&mut m, &fw);
+        if played {
+            press(&mut m, PLAY);
+            m.run_ms(500);
+            press(&mut m, PLAY);
+            m.run_ms(500);
+        }
+        let hook = fw.symbol("song_test_hook");
+        m.soc.write32(hook + 4, 0); // pattern 0
+        m.soc.write32(hook + 8, 0); // row 0
+        for (i, byte) in [0x60 + 4 * 12 + 2, 1, 4, 0x22].into_iter().enumerate() {
+            m.soc.write8(hook + 12 + i as u32, byte);
+        }
+        m.soc.write32(hook, 1);
+        m.run_ms(200);
+        assert_eq!(m.soc.read32(hook), 0, "the edit was taken");
+        let cells = fw.symbol("cells") + sidou_sys::ilp32::grid::ch as u32;
+        let note: Vec<u8> = (0..8)
+            .map(|i| m.soc.read8(cells + 6 * 30 + 3 + i))
+            .collect();
+        assert_eq!(note, b"D-401422", "played first: {played}");
+    }
+}
+
+/// TRACKER's costs while a song plays, 30 s each (docs/art/README.md "TRACKER"):
+///
+/// | 30 s playing | Cells a frame (average, most) | SPI a frame (average, worst) | Instructions a frame | Busiest ui_poll | Frames at the cap |
+/// |---|---|---|---|---|---|
+/// | SIDOU LOOP (tempo 6), BAR | 25.6, 129 | 2.22, 11.35 ms | 27.6k | 31.4k | 0 of 750 |
+/// | SIDOU LOOP, SCROLL | 83.4, 200 | 7.30, 17.56 ms | 51.0k | 34.0k | 256 |
+/// | tempo_3_song, BAR | 61.6, 200 | 5.35, 17.79 ms | 49.8k | 38.4k | 38 (page turns) |
+/// | tempo_3_song, SCROLL | 100.4, 200 | 9.08, 17.58 ms | 89.9k | 36.8k | 24 |
+///
+/// The bar keeps every frame within SONG_VIEW_FRAME_CELLS and the SPI budget; SCROLL holds
+/// to the cells as well, and what does not fit waits (the frames cut short: its lag).
+const TRACKER_BAR_PER_FRAME: f64 = 55_000.0;
+const TRACKER_SCROLL_PER_FRAME: f64 = 99_000.0;
+const TRACKER_PLAY_WORST_POLL: u64 = 42_000;
+
+#[test]
+fn the_tracker_stays_within_its_budgets_while_a_song_plays() {
+    let Some((_, fw)) = fixture("the TRACKER playing budget test") else {
+        return;
+    };
+    let fast = tempo_3_song();
+    let mut report = serde_json::Map::new();
+    let mut over = Vec::new();
+    for (name, song, scroll) in [
+        ("loop_bar", None, false),
+        ("loop_scroll", None, true),
+        ("tempo3_bar", Some(&fast), false),
+        ("tempo3_scroll", Some(&fast), true),
+    ] {
+        let (c, held) = tracker_run(&fw, song, scroll, 30_000);
+        let per: Vec<u32> = c.frames.iter().map(cells).collect();
+        let most = per.iter().copied().max().unwrap_or(0);
+        let avg = f64::from(per.iter().sum::<u32>()) / per.len() as f64;
+        let full = per
+            .iter()
+            .filter(|&&n| n >= sidou_sys::SONG_VIEW_FRAME_CELLS - 10)
+            .count();
+        println!(
+            "TRACKER {name}: cells a frame {avg:.1} (most {most}), SPI {:.2} ms a frame (worst \
+             {:.2}), {:.1}k instructions a frame, busiest ui_poll {:.1}k, {held} of {} frames cut \
+             short, {full} at the cap",
+            c.total().spi_ms() / per.len() as f64,
+            c.worst_frame_ms(),
+            c.instructions_per_frame() / 1000.0,
+            c.worst_poll as f64 / 1000.0,
+            per.len()
+        );
+        let mut j = animated_json(&c);
+        j["frames_cut_short"] = serde_json::json!(held);
+        j["frames_at_the_cap"] = serde_json::json!(full);
+        j.as_object_mut().unwrap().remove("per_frame");
+        report.insert(name.into(), j);
+        if most > sidou_sys::SONG_VIEW_FRAME_CELLS || c.worst_frame_ms() > SPI_BUDGET_MS {
+            over.push(format!(
+                "{name}: {most} cells, {:.1} ms",
+                c.worst_frame_ms()
+            ));
+        }
+        let per_frame = if scroll {
+            TRACKER_SCROLL_PER_FRAME
+        } else {
+            TRACKER_BAR_PER_FRAME
+        };
+        if c.instructions_per_frame() >= per_frame || c.worst_poll >= TRACKER_PLAY_WORST_POLL {
+            over.push(format!(
+                "{name}: {:.0} instructions a frame, a ui_poll {}",
+                c.instructions_per_frame(),
+                c.worst_poll
+            ));
+        }
+    }
+    println!("{}", serde_json::Value::Object(report));
+    assert!(over.is_empty(), "{over:#?}");
+}
+
 // A ui_poll holds MIDI's drain for as long as it runs: every view's worst stays within the
 // latency gate's poll allowance (common::POLL_INSTRUCTIONS, 120k), so a compose that grows
 // past it fails here, not as a late note somewhere else.
@@ -3033,6 +3223,7 @@ const _: () = assert!(TITLE_CARD_INPUT + TITLE_CARD_PASS <= common::POLL_INSTRUC
 const _: () = assert!(CHIP_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(CHIP_INPUT + CHIP_PASS <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(TRACKER_WORST_POLL <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(TRACKER_PLAY_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(TRACKER_INPUT + TRACKER_PASS <= common::POLL_INSTRUCTIONS);
 // A pass that runs a slice of the spare's preparation (reg_ring_prepare_step) and the busiest
 // view's work still fits.

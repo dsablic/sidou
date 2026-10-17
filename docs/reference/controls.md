@@ -94,7 +94,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **REC (button 13)** | record mode on and off |
 | **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; the keys sound nothing while GLO is held |
 | **SELECT (encoder 0)**, in the menu | moves the blinking cursor up and down the items |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), STORE ([format confirmation](#settings-and-store)), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), STORE ([format confirmation](#settings-and-store)), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF), TRACKER ROWS (clockwise SCROLL, counter-clockwise BAR); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: CHIP (the profile and the character), DIST, MOD, FX; it stops at either end |
 | **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP, the algorithm on a slot; it stops at either end |
 | **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, and round): it wipes in, and a toast names it |
@@ -105,9 +105,13 @@ the menu and CHIP.
 ## Song views
 
 The song views make and play a song (M2d): **STEP**, **TRACKER**, **ORDER**, **INSTR** and
-**TABLE**, all on the same GoatTracker 2 song (`app/song_view.h`). Until M2d Task 2 there is
-one, a TRACKER placeholder: the header, the voice heads and the rows' numbers. The song is
-SIDOU LOOP until songs load from the store (M2c Task 8).
+**TABLE**, all on the same GoatTracker 2 song (`app/song_view.h`). TRACKER is the first made
+(`app/tracker_view.h`; docs/art/README.md "TRACKER" shows it): the patterns of the three
+voices in GoatTracker's layout, the orderlists and the bar row's command. Its rows follow the
+song while it plays, the cursor while it is stopped, as a moving bar over still rows (the
+menu's **TRACKER ROWS** BAR, the default) or scrolling under a still bar (SCROLL, as
+GoatTracker does); TRACKER ROWS resets to BAR at power-on and is not part of the settings record. The song
+is SIDOU LOOP until songs load from the store (M2c Task 8).
 
 | Control | Does |
 |---|---|
@@ -459,9 +463,9 @@ cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS eac
 algorithm and Mix (`>` marks the selected slot) with the selected slot's Amount, A and B.
 
 The menu (HOME) lists CHIP (the CHIP view, above), TRACKER (the song views, above), PRESET,
-OCTAVE, CARDS (the title cards, above), STORE, KEYS and SOUNDS with their values, then STATUS,
-SCENE (the generative pieces, above), CHARSET (the glyph sheet: the font and the palette) and
-ABOUT. A view opens with a wipe from the top and
+OCTAVE, CARDS (the title cards, above), STORE, KEYS, SOUNDS and TRACKER ROWS with their values,
+then STATUS, SCENE (the generative pieces, above), CHARSET (the
+glyph sheet: the font and the palette) and ABOUT. A view opens with a wipe from the top and
 closes with one from the bottom; CHIP, SCENE, and LIVE back from the menu, open behind a title
 card instead, and cut in under it in bands. M2's STEP view will be the default then; for M1 LIVE is.
 
