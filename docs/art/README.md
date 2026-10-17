@@ -941,16 +941,16 @@ sent.
 
 **What it costs**, measured in fm1-emu over 60 s of the demo song
 (`red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song`, `emu-gate` screen.rs;
-instructions):
+instructions; rebased onto main `084fea9`):
 
 | RED MOON RITE | Measured | Bound |
 |---|---|---|
-| Tiles (cells) sent a frame, average / most (the prototype: 117 / 176) | 98.8 / 170 | 109 / 180 |
-| SPI a frame, average / worst | 8.7 ms / 15.0 ms | 20 ms |
-| Main loop a frame (ui_poll) | 904k (17 % of a frame's 5.2M) | 1.0M |
-| Busiest ui_poll / main-loop pass | 56.4k / 57.5k | 62k / 63k, each with a song's 39k slice within 120k |
+| Tiles (cells) sent a frame, average / most (the prototype: 117 / 176) | 98.931 / 170 | 109 / 180 |
+| SPI a frame, average / worst | 8.727 ms / 14.954 ms | 20 ms |
+| Main loop a frame (ui_poll) | 908.6k (17 % of a frame's 5.2M) | 1.0M |
+| Busiest ui_poll / main-loop pass | 57,353 / 57,754 | 62k / 63k, each with a song's 39k slice within 120k |
 | Busiest scan slice (8 candidates) / run (4 cells) | 56.3k / 24.6k | 62k / 27k |
-| Costliest tile / a tile on average | 5,930 / 2,890 | 6,500 |
+| Costliest tile / a tile on average | 5,930 / 2,892 | 6,500 |
 | The keys' band (scene_stays_within_its_budgets) | 120.5 cells a frame, 1.03M | 133, 1.14M |
 | Its start (SELECT, or the menu into it) | 58.7k the busiest pass | 65k |
 
@@ -966,7 +966,13 @@ canvas (about 2.7 KB); the music hooks (`scene_song`, about 240 bytes) are alway
 grew 2,318 bytes, 5,112 in all. **In flash**, the art 43,413 bytes and the code about 6.6 KB
 (`scene_rmr.c` and `scene_song.c` at -Os, the view's part, the event fan-out), with the
 compositor's and decoders' 3.9 KB (M2f Tasks 2-3) that the linker kept out until now: the
-image grew 54,832 bytes (measured on f1a1a9f; 463,508 bytes in all on main with M2d Task 1).
+image grew 54,416 bytes against main `084fea9`: 479,584 bytes in all, below M2f's 512,000-byte
+ceiling. The free-RAM gate measures 15,756 bytes (RAM region 10,060, POOL 5,696), against this base's
+9,000-byte gate (22,000 less M2d's 6,000, M2a's 2,000 and M2f's 5,000). The linked RAM use
+grew 2,336 bytes against that base, including alignment and the music hooks' data.
+Excluding the 4-byte alignment gap before `.bss`, the free region tails total 15,752 bytes.
+RAMTEXT is unchanged at 44,404 bytes of 49,152. The code came to about 10.5 KB including
+the compositor and decoders, against the 10 KB budget; optional wisp parallax is not done.
 
 ### The originality review
 

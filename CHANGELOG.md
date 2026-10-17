@@ -264,11 +264,14 @@ stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
   free. With no song the keys play it. The prototype's logic in C (`app/scene_rmr.h`, checked
   frame for frame against the script), music hooks over the song's events (`app/scene_song.h`;
   the `SCNE` chunk's voice roles and a new instrument-to-drum table, else guesses), drawn on
-  the tile compositor in 21 layers: 98.8 cells a frame on average and 170 at most over a
-  minute of the demo song, 8.7 ms of SPI a frame, 904k instructions. The song's events are
+  the tile compositor in 21 layers: 98.931 cells a frame on average and 170 at most over a
+  minute of the demo song, 8.727 ms of SPI a frame, 908.6k instructions. The song's events are
   drained once a pass in `platform/fm1/main.c` and handed to each listener (the song views' places, SCENE's hooks); `ui_poll` runs a
   view's work between frames (`views_idle`) when it has nothing to send. Goldens scene-rmr,
-  scene-rmr-song, -disarm and -stuck. Free RAM 17,732 bytes with M2d (the gate 11,000).
+  scene-rmr-song, -disarm and -stuck. On main `084fea9`, the free-RAM gate measures 15,756 bytes against
+  the 9,000-byte gate (M2d, M2a and M2f); the image is 479,584 bytes against M2f's 512,000.
+- M2f complete: RED MOON RITE's plan marked done with its results against the budgets
+  (`docs/plans/2026-10-15-m2f-scene.md`); `TESTING.md` lists its tests.
 
 ### Changed
 - M2a Task 5: settings persist across power cycles: CARDS, KEYS, SOUNDS, the preset and

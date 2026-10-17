@@ -744,7 +744,16 @@ SELECT, ALGORITHM):
   pass is the chip reset (bounded on its own); every chip reset at full
   character (ALGORITHM onto each profile, the FX button both ways, CC 85 onto
   each profile) stays within its bound, the worst onto worn; a CC changes the
-  page's row and K1 turns it back to its golden.
+  page's row and K1 turns it back to its golden. RED MOON RITE, SCENE's
+  sixth piece, is in every SCENE check above, and has its own with the demo
+  song: goldens a second in, at the fill's landing and with the sword stuck
+  (`scene-rmr-song`, `-disarm`, `-stuck`); a minute of the song bounded in
+  cells a frame (average and most, against the prototype's 117 and 176),
+  SPI, instructions a frame, the busiest `ui_poll` and pass, and on further
+  runs the busiest scan slice, run and tile, each tied to the poll allowance
+  with a song's analysis slice; a muted drum voice stops the chops and
+  parries; and once the song stops the duel calms and sends nothing.
+  `song.rs` checks the song bit-exact with the host while it shows.
 
 The host tests cover the same machinery without the device:
 `tests/app/screen.rs` (the view stack, focus, routing, the capture, the
@@ -769,7 +778,14 @@ out sending its CCs, MIDI's changes on the page, and a burst within the budget) 
 ants, the starfield's flight, the fire's and the plasma's bounds and
 interlacing; what the music moves in each; the view's navigation, its tap,
 its budget a frame with a band playing, its wipes, and the canvas coming
-back after the screen drew over it); `title_card.rs` (the cards' sequence
+back after the screen drew over it, RED MOON RITE among them);
+`scene_rmr.rs` (RED MOON RITE's state machine frame for frame against
+`assets/scene/red-moon-rite.js`'s trace, `tests/golden/scene/rmr-trace.tsv`;
+its layers against the script's golden frames; its painter region, toast and
+MIDI learn's frame in SCENE), `scene_song.rs` (its music hooks: roles and
+drums guessed and from the `SCNE` chunk, the place in the bar and the fill,
+the bass, mutes, SIDOU LOOP through the transport, and the keys);
+`title_card.rs` (the cards' sequence
 frame by frame, the glow's levels against the art's, the held frames against
 their PNGs, the budget, skipping, notes playing through, nothing drawn over
 them, the CARDS option) and `title_card_bitmap.rs` (their converter: the drift
