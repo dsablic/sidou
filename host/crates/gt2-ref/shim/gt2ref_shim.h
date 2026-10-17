@@ -28,4 +28,9 @@ int gt2ref_input_short(void);
 void gt2ref_exit(int status);
 int gt2ref_guard(void (*fn)(void));
 
+/* The stdout GoatTracker's sources are compiled with (gt2ref_rename.h): /dev/null, opened
+ * once and kept for the process's life. Redirecting file descriptor 1 instead would also
+ * swallow, or break, what the test threads print meanwhile. */
+FILE* gt2ref_quiet(void);
+
 #endif

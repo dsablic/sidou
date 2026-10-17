@@ -21,5 +21,9 @@
 #define fread gt2ref_fread
 #define exit gt2ref_exit
 #define main gt2reloc_main
+/* What GoatTracker prints on stdout (gt2reloc's packing results) goes to gt2ref_quiet's
+ * stream instead, never to the process's: the tests run in threads that share it. */
+#undef stdout
+#define stdout gt2ref_quiet()
 
 #endif

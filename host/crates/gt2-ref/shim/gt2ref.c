@@ -5,10 +5,8 @@
  * handling and checks, called with the options as values instead of a command line.
  * gt2ref_pack's "Validate parameters" block reproduces gt2reloc.c's (GPL-2.0-or-later,
  * whose "any later version" lets this file stay GPL-3.0-or-later). */
-#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "goattrk2.h"
 #include "gt2ref.h"
@@ -137,19 +135,8 @@ int gt2ref_pack(const unsigned char* sng, size_t len, const gt2ref_options* o,
         basepitch = 0.0f;
     if (basepitch > 0.0f)
         calculatefreqtable();
-    /* gt2reloc reports its sizes on stdout: not into the caller's output. */
-    fflush(stdout);
-    int saved = dup(1), null = open("/dev/null", O_WRONLY);
-    if (saved >= 0 && null >= 0)
-        dup2(null, 1);
+    /* gt2reloc reports its sizes on its stdout, which gt2ref_quiet discards. */
     int ok = gt2ref_guard(relocator) == 0;
-    fflush(stdout);
-    if (saved >= 0 && null >= 0)
-        dup2(saved, 1);
-    if (saved >= 0)
-        close(saved);
-    if (null >= 0)
-        close(null);
     gt2ref_take_output(PACKED_NAME, prg, prg_len);
     gt2ref_set_input(NULL, 0);
     if (!ok) {

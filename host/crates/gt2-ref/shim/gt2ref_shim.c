@@ -166,6 +166,15 @@ void io_close(int h) {
     io_data[h] = NULL;
 }
 
+/* GoatTracker's stdout */
+
+FILE* gt2ref_quiet(void) {
+    static FILE* quiet;
+    if (quiet == NULL)
+        quiet = fopen("/dev/null", "w");
+    return quiet ? quiet : stderr;
+}
+
 /* exit, returning to gt2ref_guard */
 
 static jmp_buf guard;
