@@ -192,6 +192,12 @@ void views_encoder(views* v, panel* p, uint32_t enc, int32_t steps);
 /* Half way between two frames: LIVE or SCENE, showing (on top or under MIDI learn's frame) and
  * still, prepares its next frame (live_view_prepare, scene_view_prepare). */
 void views_prepare(views* v);
+/* A slice of a view's work between frames, in a ui_poll that has nothing to send and no frame
+ * or preparation due (RED MOON RITE's scan, scene_view_idle): 1 while work is left. */
+int views_idle(views* v);
+/* Once a main-loop pass: the song control (NULL: none) and the events its ring gave this
+ * pass (platform/fm1/main.c drains it, the ring's one reader, and hands each reader them). */
+void views_song(views* v, const song_ctl* sc, const song_event* ev, uint32_t n);
 /* One frame: the boot's progress, a title card's end, the toasts and raster of what changed,
  * MIDI learn's end (learn_view_frame), then screen_frame. */
 void views_frame(views* v, uint32_t now_ms);

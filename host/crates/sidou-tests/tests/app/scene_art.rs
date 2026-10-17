@@ -20,6 +20,12 @@ fn compiled() -> Vec<&'static scene_image> {
         out.push(&scene_rmr_sword_stuck);
         out.extend(scene_rmr_sky.iter());
         out.push(&scene_rmr_arena);
+        out.extend([
+            &scene_rmr_hud,
+            &scene_rmr_blade_empty,
+            &scene_rmr_blade_full,
+            &scene_rmr_blade_tip,
+        ]);
     }
     out
 }
@@ -124,7 +130,8 @@ fn every_image_decodes_to_its_png_pixel_for_pixel() {
         );
         // Any span of a row, entered part way, writes exactly its n pixels.
         for y in (0..c.h).step_by(7) {
-            for (x, n) in [(0, 1), (1, 3), (5, 8), (c.w / 2, 4), (c.w - 4, 4)] {
+            let spans = [(0, 1), (1, 3), (5, 8), (c.w / 2, 4), (c.w - 4, 4)];
+            for (x, n) in spans.into_iter().filter(|&(x, n)| x + n <= c.w) {
                 for mirror in [false, true] {
                     let mut part = vec![0x55u8; n + 1];
                     unsafe {
@@ -390,4 +397,60 @@ fn a_blended_span_draws_its_opaque_pixels_over_what_is_there() {
             );
         }
     }
+}
+
+/// The motion tables in flash are red-moon-rite-motion.txt's: each fighter's flight and where
+/// his sword sticks, and the spark's stages, row by row as the script draws them (a pixel
+/// drawn twice keeping its last colour).
+#[test]
+fn the_motion_tables_are_the_scripts() {
+    let m = scene_art::motion();
+    let flights = unsafe { &*std::ptr::addr_of!(scene_rmr_flights) };
+    for (v, f) in m.flights.iter().enumerate() {
+        let c = &flights[v];
+        assert_eq!(usize::from(c.frames), f.frames, "flight {v}");
+        let path: Vec<(i32, i32, u8)> = (0..f.frames - 1)
+            .map(|n| {
+                let g = unsafe { *c.path.add(n) };
+                (i32::from(g.dx), i32::from(g.y), g.k)
+            })
+            .collect();
+        assert_eq!(path, f.path, "flight {v}");
+        assert!(
+            path.iter().all(|g| g.2 < 8),
+            "flight {v}: a rotation past 7"
+        );
+        assert_eq!(
+            (i32::from(c.stuck.dx), i32::from(c.stuck.y)),
+            f.stuck,
+            "flight {v}"
+        );
+    }
+    let sparks = unsafe { &*std::ptr::addr_of!(scene_rmr_sparks) };
+    for (i, marks) in m.sparks.iter().enumerate() {
+        let sp = &sparks[i];
+        let mut want = std::collections::BTreeMap::new();
+        for &(x, y, c) in marks {
+            want.insert((y, x), c);
+        }
+        let mut got = std::collections::BTreeMap::new();
+        for r in 0..usize::from(sp.rows) {
+            let (a, b) = unsafe { (*sp.at.add(r), *sp.at.add(r + 1)) };
+            let mut last = i32::MIN;
+            for k in usize::from(a)..usize::from(b) {
+                let x = i32::from(unsafe { *sp.dx.add(k) });
+                assert!(x > last, "stage {}: row {r} not left to right", i + 1);
+                last = x;
+                got.insert((i32::from(sp.dy0) + r as i32, x), unsafe {
+                    *sp.colour.add(k)
+                });
+            }
+        }
+        assert_eq!(got, want, "spark stage {}", i + 1);
+    }
+    // The script's stages: 141, 109 and 77 pixels drawn, a disc of 29 among them.
+    assert_eq!(
+        m.sparks.iter().map(Vec::len).collect::<Vec<_>>(),
+        [77, 109, 141]
+    );
 }

@@ -72,6 +72,17 @@ fn play(
     fw: &Firmware,
     song: Option<&Song>,
     ms: u64,
+    during: impl FnMut(&mut Machine, u64),
+) -> Played {
+    play_after(fw, song, ms, |_| {}, during)
+}
+
+/// `play`, with `before` run between the boot and PLAY (a view opened, say).
+fn play_after(
+    fw: &Firmware,
+    song: Option<&Song>,
+    ms: u64,
+    before: impl FnOnce(&mut Machine),
     mut during: impl FnMut(&mut Machine, u64),
 ) -> Played {
     let mut m = Machine::boot(&fw.image);
@@ -87,6 +98,7 @@ fn play(
     if let Some(s) = song {
         inject(&mut m, fw, s);
     }
+    before(&mut m);
     press(&mut m, PLAY);
     let mut elapsed = 30;
     while elapsed < ms {
@@ -150,7 +162,16 @@ fn demo() -> Song {
 }
 
 fn check_song(name: &str, fw: &Firmware, song: Option<&Song>) -> Played {
-    let p = play(fw, song, PLAY_MS, |_, _| {});
+    check_song_after(name, fw, song, |_| {})
+}
+
+fn check_song_after(
+    name: &str,
+    fw: &Firmware,
+    song: Option<&Song>,
+    before: impl FnOnce(&mut Machine),
+) -> Played {
+    let p = play_after(fw, song, PLAY_MS, before, |_, _| {});
     let s = song.map_or_else(demo, |s| {
         let mut c = Song::device();
         c.copy_from(s);
@@ -205,6 +226,44 @@ fn play_plays_the_first_song_bit_exact_with_the_host() {
     println!("{} blocks from power-on to the play", p.play_block);
 }
 
+/// The first song while SCENE shows RED MOON RITE, which the song's events drive
+/// (app/scene_song.h): the audio is the host's, sample for sample, the vignette touching none
+/// of it.
+#[test]
+fn the_first_song_is_bit_exact_while_red_moon_rite_plays_it() {
+    let Some((_, fw)) = fixture("the song test under RED MOON RITE") else {
+        return;
+    };
+    let f = &fw;
+    check_song_after("sidou-loop under RED MOON RITE", &fw, None, |m| {
+        // HOME, SELECT to SCENE in the menu, ALGORITHM: THE SCENE's card, then SCENE on FIRE;
+        // SELECT back once: RED MOON RITE.
+        const HOME: u8 = PANEL_BTN_HOME as u8;
+        let items = VIEWS_MENU_ITEMS as i32;
+        press(m, HOME);
+        m.run_ms(700);
+        m.turn(PANEL_ENC_SELECT as u8, -items);
+        m.run_ms(10 * items as u64);
+        m.turn(PANEL_ENC_SELECT as u8, VIEWS_MENU_SCENE as i32);
+        m.run_ms(10 * VIEWS_MENU_SCENE as u64);
+        m.turn(PANEL_ENC_ALGORITHM as u8, 1);
+        m.run_ms(4000);
+        assert_eq!(
+            top_view(m, f),
+            f.symbol("scene_view_view"),
+            "SCENE did not open"
+        );
+        m.turn(PANEL_ENC_SELECT as u8, -1);
+        m.run_ms(1000);
+        let which = f.symbol("ui") + (ilp32::views::scene + ilp32::scene_view::which) as u32;
+        assert_eq!(
+            u32::from(m.soc.read8(which)),
+            SCENE_RMR,
+            "not RED MOON RITE"
+        );
+    });
+}
+
 /// The same song at multispeed 4 (four calls a frame, one in a block at most).
 #[test]
 fn the_first_song_at_multispeed_4_is_bit_exact_with_the_host() {
@@ -218,7 +277,7 @@ fn the_first_song_at_multispeed_4_is_bit_exact_with_the_host() {
 }
 
 /// app.ld's map: the song's region is 64 KiB, 4 KiB aligned, at POOL's start; RAM (the RAM
-/// region and POOL) keeps at least 22,000 bytes free, each region at least 4 KiB.
+/// region and POOL) keeps at least FREE_RAM_MIN bytes free, each region at least 4 KiB.
 #[test]
 fn the_song_region_and_the_free_ram() {
     let Some((build, fw)) = fixture("the map test") else {

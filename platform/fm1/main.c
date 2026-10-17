@@ -370,20 +370,20 @@ static int st_jam(void* ctx, uint32_t voice, uint32_t note, uint32_t instr) {
     return 1;
 }
 
-static void st_status(void* ctx, song_status* out) {
-    song_ctl* sc = ctx;
-    song_event ev[16];
-    uint32_t n;
-    while ((n = song_ctl_events(sc, ev, 16u)) != 0u) {
-        for (uint32_t i = 0; i < n; i++) {
-            uint32_t ch = SONG_EV_CHANNEL(&ev[i]);
-            if ((SONG_EV_FLAGS(&ev[i]) & GT2_EV_ROW) && ch < SONG_T_VOICES) {
-                song_seen.order_pos[ch] = ev[i].order_pos;
-                song_seen.row[ch] = ev[i].row;
-            }
+/* The song views' listener of the event ring (song_events below): each voice's place. */
+static void song_seen_rows(const song_event* ev, uint32_t n) {
+    for (uint32_t i = 0; i < n; i++) {
+        uint32_t ch = SONG_EV_CHANNEL(&ev[i]);
+        if ((SONG_EV_FLAGS(&ev[i]) & GT2_EV_ROW) && ch < SONG_T_VOICES) {
+            song_seen.order_pos[ch] = ev[i].order_pos;
+            song_seen.row[ch] = ev[i].row;
         }
     }
-    *out = song_seen;
+}
+
+static void st_status(void* ctx, song_status* out) {
+    song_ctl* sc = ctx;
+    *out = song_seen; /* the rows song_events has heard, up to this pass */
     out->applied = sc->applied + sc->idle_edits;
     out->state = (uint8_t)song_ctl_shown_state(sc);
     /* the play's options; before one, the song's (or the defaults), read again each second */
@@ -426,6 +426,29 @@ static song_transport song_bound;
  * song or the keys. */
 static uint8_t song_taken;
 
+/* The event ring's one reader (core/player/song_ctl.h song_ctl_events), once a pass: every
+ * event goes, in order, to each of the song's listeners, the song views' places
+ * (song_seen_rows) and SCENE's music hooks (ui_song), so no reader takes one from another. A
+ * pass drains at most a ring of them. */
+#define SONG_EVENTS_AT_ONCE 16u
+static uint8_t song_heard_state; /* the transport's state the listeners last heard */
+
+/* Called only when there are events or the state changed (song_pass): most passes have
+ * neither, and the test costs them a few instructions. */
+__attribute__((noinline, unused)) static void song_events(song_ctl* sc) {
+    song_heard_state = sc->state;
+    song_event ev[SONG_EVENTS_AT_ONCE];
+    uint32_t n = 0;
+    for (uint32_t k = 0; k < SONG_EVENT_RING / SONG_EVENTS_AT_ONCE; k++) {
+        n = song_ctl_events(sc, ev, SONG_EVENTS_AT_ONCE);
+        song_seen_rows(ev, n);
+        ui_song(sc, ev, n);
+        if (n < SONG_EVENTS_AT_ONCE) {
+            break;
+        }
+    }
+}
+
 static void song_pass(void) {
     song_ctl* sc = audio_song();
     uint8_t taken = keys_route_voices_taken(&keys_router);
@@ -451,6 +474,9 @@ static void song_pass(void) {
     }
     song_test_edits(sc);
     audio_song_poll();
+    if (sc->ev_head != sc->ev_tail || sc->state != song_heard_state) {
+        song_events(sc); /* song_ctl_state's, read in place */
+    }
     st = song_ctl_state(sc);
     engaged = st == SONG_LOADING || st == SONG_PLAYING || sc->auditioning || sc->handback;
     if (song_mine && !engaged) {

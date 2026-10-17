@@ -568,12 +568,38 @@ int song_ext_get_scene(const gt2_song* s, song_scene* v) {
         return 0;
     v->piece = head[0];
     v->count = head[1];
+    /* The drum table after the roles, if the chunk has one (M2f): a count and its pairs. */
+    uint32_t len = 0;
+    const uint8_t* d = song_ext_find(s, SONG_TAG_SCNE, &len);
+    uint32_t at = 3u + v->count;
+    if (len > at && d[at] <= SONG_SCENE_DRUMS_MAX && len >= at + 1u + 2u * d[at]) {
+        v->drums = d[at];
+        for (uint32_t i = 0; i < v->drums; i++) {
+            v->drum[i][0] = d[at + 1u + 2u * i];
+            v->drum[i][1] = d[at + 2u + 2u * i];
+        }
+    }
     return 1;
 }
 
 int song_ext_set_scene(gt2_song* s, const song_scene* v) {
-    uint8_t head[2] = {v->piece, v->count};
-    return set_counted(s, SONG_TAG_SCNE, head, 2u, v->role, v->count, SONG_SCENE_VOICES_MAX);
+    uint8_t b[3u + SONG_SCENE_VOICES_MAX + 1u + 2u * SONG_SCENE_DRUMS_MAX];
+    if (v->count > SONG_SCENE_VOICES_MAX || v->drums > SONG_SCENE_DRUMS_MAX)
+        return -1;
+    b[0] = 1u;
+    b[1] = v->piece;
+    b[2] = v->count;
+    uint32_t n = 3u;
+    for (uint32_t i = 0; i < v->count; i++)
+        b[n++] = v->role[i];
+    if (v->drums) { /* none: the chunk as M2c wrote it */
+        b[n++] = v->drums;
+        for (uint32_t i = 0; i < v->drums; i++) {
+            b[n++] = v->drum[i][0];
+            b[n++] = v->drum[i][1];
+        }
+    }
+    return song_ext_set(s, SONG_TAG_SCNE, b, n);
 }
 
 /* KEYS */

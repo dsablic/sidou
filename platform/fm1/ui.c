@@ -30,14 +30,19 @@ static settings persisted;
 /* grid_palette in the panel's byte order. */
 static uint16_t palette[16];
 static uint32_t last_compose;
-/* views_prepare has run since the last frame; when the next of the two is due. */
-static uint8_t prepared;
+/* When the next frame or half-frame preparation is due. */
 static uint32_t next_at;
 /* A run rendered into lcd_buffer(), waiting for the panel. */
 static grid_run run;
 static uint8_t pending;
 /* The display is on: the first frame has reached the panel whole. */
 static uint8_t shown;
+/* The view may have work between frames (views_idle): from a frame that leaves some (SCENE's
+ * idle, RED MOON RITE's scan) until views_idle says it has none. */
+static uint8_t idle_work;
+/* A call with nothing to send has nothing to do either: the display is on and the view has no
+ * work between frames (the one test such calls make, most calls). */
+static uint8_t at_rest;
 
 /* The next changed run rendered into the free buffer, unless one waits already. 0: nothing to
  * send. */
@@ -100,25 +105,41 @@ static void display_on_when_drawn(void) {
     }
 }
 
+/* A call with nothing to send: the display on once the first frame is out, and a slice of the
+ * view's work between frames if it has any (a call renders runs or works a slice, never
+ * both). Out of line: the calls at rest test one flag. */
+__attribute__((noinline, unused)) static void between(void) {
+    display_on_when_drawn();
+    if (idle_work) {
+        idle_work = (uint8_t)views_idle(&ui);
+    }
+    at_rest = (uint8_t)(shown && !idle_work);
+}
+
 void ui_poll(uint32_t now_ms) {
     /* A frame, half a frame later its preparation (views_prepare), and the runs: each in a
      * call of its own, so no call is long and the main loop drains MIDI between them. */
     if ((int32_t)(now_ms - next_at) >= 0) {
-        if (prepared || now_ms - last_compose >= UI_PERIOD_MS) {
+        if (now_ms - last_compose >= UI_PERIOD_MS) {
             last_compose = now_ms;
-            prepared = 0;
             next_at = now_ms + UI_PERIOD_MS / 2u;
             views_frame(&ui, now_ms);
+            if (ui.scene.idle) { /* the frame left work between frames (views_idle) */
+                idle_work = 1;
+                at_rest = 0;
+            }
         } else {
-            prepared = 1;
             next_at = last_compose + UI_PERIOD_MS;
             views_prepare(&ui);
         }
         return;
     }
     if (!pending && !(cells.rows & ~cells.hold)) {
-        display_on_when_drawn();
-        return; /* nothing to send: most calls, between frames and on an idle screen */
+        /* nothing to send: most calls, between frames and on an idle screen */
+        if (!at_rest) {
+            between();
+        }
+        return;
     }
     if (prepare() && !lcd_busy()) {
         send();
@@ -132,6 +153,10 @@ void ui_buttons(panel* p, uint32_t pressed, uint32_t held) {
 
 void ui_encoder(panel* p, uint32_t enc, int32_t steps) {
     views_encoder(&ui, p, enc, steps);
+}
+
+void ui_song(const song_ctl* sc, const song_event* ev, uint32_t n) {
+    views_song(&ui, sc, ev, n);
 }
 
 void ui_toast(const char* text, uint32_t ms) {

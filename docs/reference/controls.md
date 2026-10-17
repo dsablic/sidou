@@ -97,7 +97,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), STORE ([format confirmation](#settings-and-store)), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF), TRACKER ROWS (clockwise SCROLL, counter-clockwise BAR); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: CHIP (the profile and the character), DIST, MOD, FX; it stops at either end |
 | **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP, the algorithm on a slot; it stops at either end |
-| **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, and round): it wipes in, and a toast names it |
+| **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, RED MOON RITE, and round): it wipes in, and a toast names it |
 
 The other buttons (LFO, ARP) and PRESETS (encoder 6) do nothing yet; SELECT does nothing outside the menu, CHIP and SCENE, ALGORITHM nothing outside
 the menu and CHIP.
@@ -212,7 +212,7 @@ K1..K4 and the view keeps the rest.
 
 SCENE (the menu's item after STATUS) is M1e's prototype of M2's visuals: a
 generative piece on the whole screen that reacts to what the instrument plays
-(`app/scene.h`). SELECT steps between the pieces; everything else plays as on
+(`app/scene.h`), and RED MOON RITE, a drawn duel the song plays (below). SELECT steps between the pieces; everything else plays as on
 LIVE, so the keys and MIDI move the piece, and K1 (cutoff) and K2 (resonance) set
 its mood. The piece starts again from its beginning each time it opens.
 
@@ -227,6 +227,36 @@ its mood. The piece starts again from its beginning each time it opens.
 A voice that makes no sound (SYNC LEAD's voices 2 and 3) counts as silent. The voices'
 colours are their waveforms' (pulse cyan, saw yellow, triangle light green, noise light
 grey), as on LIVE.
+
+### RED MOON RITE
+
+The sixth piece (M2f) is a drawn duel of two barbarians under a blood moon
+([art](../art/README.md#red-moon-rite)), played by the song while one plays (PLAY, button
+12), else by the keys. What moves it (`app/scene_song.h`, `app/scene_rmr.h`):
+
+| The music | The duel |
+|---|---|
+| a kick | the leader raises his sword and chops overhead |
+| a snare | the other parries, a spark where the blades meet, and the leader loses a notch of stamina |
+| a hi-hat | both shift between their two guards |
+| the bass | a high note gives the right barbarian the lead, a low one the left, and the pair drifts toward the one giving ground |
+| the fill, the last beat of every fourth bar | the leader's spinning attack, which disarms the other: his sword spins away and sticks in the flagstones; on the first beat after it sticks he pulls it free. Nobody attacks while he is unarmed |
+| an arp or lead note | the torches flare |
+| the cutoff (K1, or the song's filter) | the sky's palette: low dark, high bright, wiped down a row a frame |
+| a bar's first row | an empty stamina blade fills again |
+
+**With a song:** the voices' roles and the drums come from the song's `SCNE` chunk
+([song format](song-format.md)), else they are guessed: a voice whose instrument's wavetable
+starts with noise is the drums (a kick under MIDI note 100, a hat from 106, a snare between,
+by the first wavetable step's note), the lowest of the others the bass, the rest the arp.
+A row is each row of voice 1; the bar has 4 beats of the `MIDI` chunk's rows a beat (4 by
+default). The bass is high above the middle of its range over the current and the last bar.
+A muted voice plays no part: muted drums stop the chops and parries.
+
+**With the keys:** a note-on on a voice whose waveform has noise (NOISE PERC) is a drum by its
+pitch, the lowest note held is the bass, the others the arp; a free clock makes a row every
+3 frames while a note is held, so the fill comes as you play. A second after the last
+release the torches hold still, and once the duel has settled nothing changes.
 
 ## Presets
 

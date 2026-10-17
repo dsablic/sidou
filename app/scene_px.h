@@ -55,12 +55,14 @@ extern "C" {
 #define SCENE_PX_W 240
 #define SCENE_PX_H 240
 /* The scene's cells a grid run takes at most (grid_region_painter): two runs of them, each
- * at the worst cell the benchmark allows, stay within a ui_poll's allowance. */
-#define SCENE_PX_RUN_CELLS 8u
+ * at the worst cell RED MOON RITE draws, stay within a ui_poll's allowance with a song's
+ * analysis slice in the same pass (8 until M2f Task 4 measured the vignette's own tiles). */
+#define SCENE_PX_RUN_CELLS 4u
 /* The candidates a ui_poll pass scans at most (scene_px_scan's `most`): a slice of the
- * worst tiles the benchmark allows, with the scan's walk over the candidate bits, stays
- * within the pass's allowance. A pass that scans a slice renders no run. */
-#define SCENE_PX_SCAN_SLICE 16u
+ * worst tiles RED MOON RITE draws, with the scan's walk over the candidate bits, stays
+ * within the pass's allowance, a song's analysis slice with it (16 until M2f Task 4). A pass
+ * that scans a slice renders no run. */
+#define SCENE_PX_SCAN_SLICE 8u
 
 enum {
     SCENE_PX_NONE,     /* an empty slot */
@@ -110,9 +112,15 @@ typedef struct {
     uint16_t ncand;
     uint16_t next;  /* where the scan goes on */
     uint16_t sweep; /* the refresh sweep's next tile */
-    /* Tiles composited: by the scan, and as the grid sent them. */
+    /* Tiles composited: by the scan, and as the grid sent them; and the cells the scan
+     * marked (a view holding to a budget counts them). */
     uint32_t scanned;
     uint32_t painted;
+    uint32_t marked;
+    /* Set by a caller right after scene_px_init, while every tile is still to be sent: setting
+     * a slot makes no candidates then (compositing them would be moot). It clears it once its
+     * first layers are set, before any tile has gone out. */
+    uint8_t fresh;
 } scene_px;
 
 /* Empty slots, and the whole screen the grid's painter region, every cell to be sent. */

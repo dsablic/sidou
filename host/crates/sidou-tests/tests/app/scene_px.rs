@@ -897,6 +897,14 @@ fn the_golden_frames_are_what_the_script_draws() {
     if update {
         return;
     }
+    // The vignette's state frame by frame (tests/app/scene_rmr.rs checks the device's against
+    // it).
+    let trace = std::fs::read_to_string(out.join("rmr-trace.tsv")).unwrap();
+    let want = std::fs::read_to_string(golden_dir().join("rmr-trace.tsv")).unwrap();
+    assert!(
+        trace == want,
+        "rmr-trace.tsv is stale: rerun with SIDOU_SCENE_UPDATE=1"
+    );
     for f in goldens() {
         let text = std::fs::read_to_string(out.join(format!("{}.txt", f.name))).unwrap();
         let want = std::fs::read_to_string(golden_dir().join(format!("{}.txt", f.name))).unwrap();

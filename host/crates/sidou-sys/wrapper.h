@@ -46,6 +46,8 @@
 #include "scene.h"
 #include "scene_art.h"
 #include "scene_px.h"
+#include "scene_rmr.h"
+#include "scene_song.h"
 #include "scene_view.h"
 #include "settings.h"
 #include "save_key.h"

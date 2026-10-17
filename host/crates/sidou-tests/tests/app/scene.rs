@@ -10,7 +10,9 @@ use std::ffi::CStr;
 use sidou_sys::*;
 
 use crate::views::Ui;
-use crate::{assert_wipe_holds_still, drain, wipe_frames, Sent, SPI_BUDGET_MS};
+use crate::{
+    assert_wipe_holds_still, drain, petscii, petscii_mut, wipe_frames, Sent, SPI_BUDGET_MS,
+};
 
 const COLS: usize = GRID_COLS as usize;
 const ROWS: usize = GRID_ROWS as usize;
@@ -905,7 +907,7 @@ fn the_plasmas_sine_table_is_sine_q7() {
 
 #[test]
 fn a_piece_starts_and_plays_the_same_every_time() {
-    for piece in 0..SCENE_PIECES {
+    for piece in 0..SCENE_PETSCII {
         let mut a = new_scene(piece);
         let mut b = new_scene(piece);
         assert_eq!(changed(&a.cv, &b.cv), 0, "piece {piece}");
@@ -925,8 +927,8 @@ fn a_piece_starts_and_plays_the_same_every_time() {
         unsafe { scene_start(&mut *a, piece, &quiet()) };
         assert_eq!(changed(&a.cv, &new_scene(piece).cv), 0, "piece {piece}");
     }
-    // Pieces wrap.
-    assert_eq!(new_scene(SCENE_PIECES + 2).piece, 2);
+    // Pieces wrap, among the five drawn in cells.
+    assert_eq!(new_scene(SCENE_PETSCII + 2).piece, 2);
 }
 
 /// A piece begun (scene_begin) and drawn a wipe's rows at a time (scene_fill) is the piece
@@ -937,7 +939,7 @@ fn a_piece_begun_and_filled_by_rows_is_the_piece_started_whole() {
     let mut m = quiet();
     m.resonance = 11;
     m.cutoff = 1900;
-    for piece in 0..SCENE_PIECES {
+    for piece in 0..SCENE_PETSCII {
         let mut whole = Box::<scene>::default();
         unsafe { scene_start(&mut *whole, piece, &m) };
         let mut part = Box::<scene>::default();
@@ -989,9 +991,14 @@ pub(crate) fn open_scene(ui: &mut Ui) {
     ui.settle();
 }
 
-/// The grid's composed cells as the canvas has them.
+/// The grid's composed cells as the piece has them: the canvas's, or RED MOON RITE's blank
+/// cells over its painter region.
 fn grid_is_canvas(ui: &Ui) -> bool {
-    let cv = &ui.v.scene.piece.cv;
+    if u32::from(ui.v.scene.which) == SCENE_RMR {
+        return ui.g.region_painter.is_some()
+            && (0..ROWS * COLS).all(|i| ui.g.ch[i] == b' ' && ui.g.attr[i] == 0);
+    }
+    let cv = &petscii(&ui.v.scene).cv;
     (0..ROWS * COLS).all(|i| {
         let (r, c) = (i / COLS, i % COLS);
         ui.g.ch[i] == cv.ch[r][c] && ui.g.attr[i] == cv.attr[r][c]
@@ -1004,20 +1011,29 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
     open_scene(&mut ui);
     assert_eq!(ui.top(), "SCENE");
     assert_eq!(u32::from(ui.v.scene.which), SCENE_FIRE);
-    assert_eq!(u32::from(ui.v.scene.piece.piece), SCENE_FIRE);
+    assert_eq!(u32::from(petscii(&ui.v.scene).piece), SCENE_FIRE);
     assert!(grid_is_canvas(&ui), "the grid is not the fire's canvas");
     // SELECT: the next piece wipes in, and a toast names it; round and back.
     for k in 1..=SCENE_PIECES {
         ui.turn(PANEL_ENC_SELECT, 1);
         assert_eq!(u32::from(ui.v.scene.which), k % SCENE_PIECES);
         ui.frame();
-        assert_eq!(u32::from(ui.v.scene.piece.piece), k % SCENE_PIECES);
+        if k % SCENE_PIECES < SCENE_PETSCII {
+            assert_eq!(u32::from(petscii(&ui.v.scene).piece), k % SCENE_PIECES);
+        }
         assert_ne!(ui.v.s.wipe, 0, "piece {k}: no wipe");
         assert_eq!(
             ui.toast().as_deref(),
             Some(piece_name(k % SCENE_PIECES).as_str())
         );
         ui.settle();
+        if k % SCENE_PIECES == SCENE_RMR {
+            for _ in 0..40 {
+                ui.frame(); // the toast gone
+                drain(&mut ui.g);
+            }
+            assert!(grid_is_canvas(&ui), "RED MOON RITE's cells are not blank");
+        }
     }
     ui.turn(PANEL_ENC_SELECT, -2);
     assert_eq!(u32::from(ui.v.scene.which), SCENE_PIECES - 2);
@@ -1034,7 +1050,7 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
     assert_eq!(ui.top(), "SCENE");
-    assert_eq!(u32::from(ui.v.scene.piece.piece), SCENE_PIECES - 2);
+    assert_eq!(u32::from(petscii(&ui.v.scene).piece), SCENE_PIECES - 2);
 }
 
 #[test]
@@ -1199,7 +1215,7 @@ fn the_grid_catches_up_with_the_canvas_within_a_few_frames() {
     // The ant draws only the cells it changes: a canvas changed whole (as its board clearing
     // at SCENE_ANT_RESET changes it) is far more than a frame's budget.
     let mut ui = scene_on(SCENE_ANT);
-    let cv = &mut ui.v.scene.piece.cv;
+    let cv = &mut petscii_mut(&mut ui.v.scene).cv;
     for r in 0..ROWS {
         for c in 0..COLS {
             cv.ch[r][c] = FONT_PIP as u8;
@@ -1324,7 +1340,7 @@ fn the_copy_leaves_a_showing_toast_alone() {
     unsafe { screen_toast(&mut ui.v.s, text.as_ptr(), 4000) };
     ui.frame();
     drain(&mut ui.g);
-    let cv = &mut ui.v.scene.piece.cv;
+    let cv = &mut petscii_mut(&mut ui.v.scene).cv;
     for r in 0..ROWS {
         for c in 0..COLS {
             cv.ch[r][c] = FONT_PIP as u8;
@@ -1343,7 +1359,7 @@ fn the_copy_leaves_a_showing_toast_alone() {
     }
     let toast_row = SCREEN_TOAST_ROW as usize;
     let toast_col = SCREEN_TOAST_COL as usize;
-    let cv = &ui.v.scene.piece.cv;
+    let cv = &petscii(&ui.v.scene).cv;
     let under_toast =
         |r: usize, c: usize| r == toast_row && (toast_col..toast_col + n).contains(&c);
     assert!(
@@ -1371,21 +1387,21 @@ fn the_copy_leaves_a_showing_toast_alone() {
 #[test]
 fn a_piece_starts_in_the_wipes_first_frame_not_in_the_input() {
     let mut ui = scene_on(SCENE_FIRE);
-    let before = ui.v.scene.piece.cv;
+    let before = petscii(&ui.v.scene).cv;
     ui.turn(PANEL_ENC_SELECT, 1);
     assert_eq!(u32::from(ui.v.scene.which), SCENE_PLASMA);
     assert_eq!(
-        u32::from(ui.v.scene.piece.piece),
+        u32::from(petscii(&ui.v.scene).piece),
         SCENE_FIRE,
         "started in the input"
     );
     assert_eq!(
-        changed(&ui.v.scene.piece.cv, &before),
+        changed(&petscii(&ui.v.scene).cv, &before),
         0,
         "drawn in the input"
     );
     ui.frame();
-    assert_eq!(u32::from(ui.v.scene.piece.piece), SCENE_PLASMA);
+    assert_eq!(u32::from(petscii(&ui.v.scene).piece), SCENE_PLASMA);
     let mut fresh = Box::<scene>::default();
     unsafe { scene_start(&mut *fresh, SCENE_PLASMA, &ui.v.scene.music) };
     for r in 0..SCREEN_WIPE_ROWS as usize {
@@ -1401,17 +1417,17 @@ fn a_piece_starts_in_the_wipes_first_frame_not_in_the_input() {
     // From the menu.
     ui.press(PANEL_BTN_HOME);
     ui.settle();
-    let before = ui.v.scene.piece.cv;
+    let before = petscii(&ui.v.scene).cv;
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(ui.top(), "SCENE");
     assert_eq!(
-        changed(&ui.v.scene.piece.cv, &before),
+        changed(&petscii(&ui.v.scene).cv, &before),
         0,
         "drawn in the input"
     );
     ui.frame();
     unsafe { scene_start(&mut *fresh, SCENE_PLASMA, &ui.v.scene.music) };
-    assert_eq!(ui.v.scene.piece.cv.ch[..4], fresh.cv.ch[..4]);
+    assert_eq!(petscii(&ui.v.scene).cv.ch[..4], fresh.cv.ch[..4]);
 }
 
 /// SYNC LEAD makes sound on voice 1 alone (voices 2 and 3 have no waveform: they clock the
@@ -1426,7 +1442,7 @@ fn sync_leads_silent_voices_stop_their_parts() {
         let mut ui = scene_on(piece);
         ui.rig.set_preset(sync);
         let mut band = Band::new();
-        let ants = unsafe { ui.v.scene.piece.u.ant.a };
+        let ants = unsafe { petscii(&ui.v.scene).u.ant.a };
         let mut heard = [0u32; 3];
         for _ in 0..200 {
             band.frame(&mut ui, true);
@@ -1443,11 +1459,11 @@ fn sync_leads_silent_voices_stop_their_parts() {
             piece_name(piece)
         );
         if piece == SCENE_FIRE {
-            let s = &ui.v.scene.piece;
+            let s = petscii(&ui.v.scene);
             assert!(flame_height(s, 0) > 0, "voice 1's flame is out");
             assert_eq!((flame_height(s, 1), flame_height(s, 2)), (0, 0));
         } else {
-            let now = unsafe { ui.v.scene.piece.u.ant.a };
+            let now = unsafe { petscii(&ui.v.scene).u.ant.a };
             assert_ne!(
                 (now[0].x, now[0].y),
                 (ants[0].x, ants[0].y),

@@ -9,7 +9,7 @@ use sidou_sys::*;
 use sidou_tests::title_card as tc;
 
 use crate::views::Ui;
-use crate::{drain, pixels, Sent, SPI_BUDGET_MS};
+use crate::{drain, petscii, pixels, Sent, SPI_BUDGET_MS};
 
 const W: usize = 240;
 
@@ -143,9 +143,9 @@ fn scene_from_the_menu_shows_its_card_then_cuts_to_scene() {
     }
     assert!(bands <= 5, "{bands} frames of bands");
     // SCENE started its piece in the cut, and the cut showed all of it.
-    assert_eq!(u32::from(ui.v.scene.piece.piece), SCENE_FIRE);
+    assert_eq!(u32::from(petscii(&ui.v.scene).piece), SCENE_FIRE);
     step(&mut ui);
-    let cv = &ui.v.scene.piece.cv;
+    let cv = &petscii(&ui.v.scene).cv;
     assert!(
         (0..30 * 30).all(|i| ui.g.ch[i] == cv.ch[i / 30][i % 30]
             && ui.g.attr[i] == cv.attr[i / 30][i % 30]),

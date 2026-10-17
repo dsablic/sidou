@@ -136,6 +136,48 @@ extern const scene_image scene_rmr_sky[SCENE_RMR_SKIES];
 extern const scene_image scene_rmr_arena;
 /* The torches' flame areas, where the colour cycling draws: {x, y, w, h} on the screen. */
 extern const uint8_t scene_rmr_flames[2][4];
+/* The status bar (rows 0-15): black, VS and the red line, opaque; and side 0's broadsword
+ * meter as three layers, its frames at (0, 0) on the screen: empty (the hilt and the blade's
+ * dark ghost), full (the hilt and eight notches, drawn clipped to the stamina left) and the
+ * tip (5 x 5, drawn where the notches end). Side 1 is the mirror image: a frame drawn
+ * mirrored at 240 minus its width. */
+extern const scene_image scene_rmr_hud;
+extern const scene_image scene_rmr_blade_empty;
+extern const scene_image scene_rmr_blade_full;
+extern const scene_image scene_rmr_blade_tip;
+/* The meter's geometry (red-moon-rite.js's BLADE_X, BLADE_N): notch k of side 0 starts at
+ * x = SCENE_RMR_BLADE_X + k * SCENE_RMR_BLADE_N, the tip at the first notch lost, on row
+ * SCENE_RMR_BLADE_Y. */
+#define SCENE_RMR_BLADE_X 17
+#define SCENE_RMR_BLADE_N 11
+#define SCENE_RMR_BLADE_Y 6
+
+/* The motion the script computes once (assets/scene/red-moon-rite-motion.txt). */
+typedef struct {
+    int8_t dx; /* the sword's grip, from the disarmed fighter's place when it starts */
+    uint8_t y; /* on the screen */
+    uint8_t k; /* the rotation: scene_rmr_sword[k] */
+} scene_rmr_grip;
+/* A fighter's sword knocked from his hand: `frames` in the air (the grip at frames
+ * 1 .. frames - 1, path[n - 1]), then stuck point-down with its grip at `stuck`. */
+typedef struct {
+    uint8_t frames;
+    const scene_rmr_grip* path;
+    scene_rmr_grip stuck;
+} scene_rmr_flight;
+/* [fighter disarmed] */
+extern const scene_rmr_flight scene_rmr_flights[2];
+/* A parry's spark at one stage: rows dy0 .. dy0 + rows - 1 around the point where the blades
+ * meet, row r's pixels at dx[at[r] .. at[r + 1]) (left to right) in colour[]. */
+typedef struct {
+    int8_t dy0;
+    uint8_t rows;
+    const uint8_t* at;
+    const int8_t* dx;
+    const uint8_t* colour;
+} scene_rmr_spark;
+/* Stages 1, 2 and 3 at [0], [1], [2]: a parry shows 3, 2, then 1. */
+extern const scene_rmr_spark scene_rmr_sparks[3];
 
 #ifdef __cplusplus
 }

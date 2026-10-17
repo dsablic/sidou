@@ -257,6 +257,18 @@ stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
   block, O(1) each) and the call period to the interrupt, and row and note events back.
   The song's 64 KiB content region is first in POOL (`__song_region`); the RAM/POOL boundary
   moved 8 KiB down.
+- M2f Task 4: RED MOON RITE, SCENE's sixth piece (SELECT counter-clockwise from FIRE), a
+  barbarian duel the song plays: kicks chop, snares parry with a spark, hats shift the guards,
+  the bass gives the lead, the arp flares the torches, the cutoff darkens the sky, and bar 4's
+  fill is a spinning attack that knocks the other's sword into the flagstones until he pulls it
+  free. With no song the keys play it. The prototype's logic in C (`app/scene_rmr.h`, checked
+  frame for frame against the script), music hooks over the song's events (`app/scene_song.h`;
+  the `SCNE` chunk's voice roles and a new instrument-to-drum table, else guesses), drawn on
+  the tile compositor in 21 layers: 98.8 cells a frame on average and 170 at most over a
+  minute of the demo song, 8.7 ms of SPI a frame, 904k instructions. The song's events are
+  drained once a pass in `platform/fm1/main.c` and handed to each listener (the song views' places, SCENE's hooks); `ui_poll` runs a
+  view's work between frames (`views_idle`) when it has nothing to send. Goldens scene-rmr,
+  scene-rmr-song, -disarm and -stuck. Free RAM 17,732 bytes with M2d (the gate 11,000).
 
 ### Changed
 - M2a Task 5: settings persist across power cycles: CARDS, KEYS, SOUNDS, the preset and
@@ -281,6 +293,10 @@ stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
   STORE FORMATTED on completion. Counter-clockwise or leaving the item cancels the first
   step. The hardware checklist covers persistence, the versioned boot, SAVE and the new
   learn and format gestures.
+- M2f Task 4: the compositor's caps came down to 4 cells a run and 8 candidates a scan slice
+  (RED MOON RITE's own tiles cost up to 5,930 instructions, and a song's analysis slice may
+  share the pass); MIDI learn's frame (`SCREEN_OVER`) keeps the grid's pixel region as it keeps
+  the overlays, so the view under it keeps its pixels.
 - M2b: a profile or model step (the CHIP view's ALGORITHM, the FX button, CC 25, CC 85)
   prepares the new chip in the background, one slice of at most 40,000 instructions a 10 ms
   tick (7 slices, or 11 when the character's DACs are custom, 4 more the first time the 8580

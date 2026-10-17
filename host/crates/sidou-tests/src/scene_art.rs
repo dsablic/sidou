@@ -279,7 +279,107 @@ pub fn sources() -> Vec<Source> {
         anchor: (0, 0),
         base: None,
     });
+    for (png, symbol) in HUD {
+        out.push(Source {
+            symbol: symbol.into(),
+            frame: load(png),
+            png: png.into(),
+            gx: 1,
+            anchor: (0, 0),
+            base: None,
+        });
+    }
     out
+}
+
+/// The status bar's images and their symbols: the bar, and side 0's blade meter empty, full
+/// and its tip (side 1 is drawn mirrored).
+pub const HUD: [(&str, &str); 4] = [
+    ("hud", "scene_rmr_hud"),
+    ("hud-blade-empty", "scene_rmr_blade_empty"),
+    ("hud-blade-full", "scene_rmr_blade_full"),
+    ("hud-blade-tip", "scene_rmr_blade_tip"),
+];
+
+/// The disarm's flight of a fighter's sword (red-moon-rite-motion.txt): its frames in the air,
+/// the grip's place (dx from the fighter's place when it starts, y) and rotation at frames
+/// 1 .. frames - 1, and the grip's place once it sticks.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Flight {
+    pub frames: usize,
+    pub path: Vec<(i32, i32, u8)>,
+    pub stuck: (i32, i32),
+}
+
+/// The motion tables: each fighter's flight, and the spark's stages 1, 2 and 3 (pixels
+/// (dx, dy, colour) around the blades' meeting point, in drawing order).
+#[derive(Clone, Debug, Default)]
+pub struct Motion {
+    pub flights: Vec<Flight>,
+    pub sparks: Vec<Vec<(i32, i32, u8)>>,
+}
+
+pub fn motion_path() -> PathBuf {
+    repo_root().join("assets/scene/red-moon-rite-motion.txt")
+}
+
+/// red-moon-rite-motion.txt, parsed.
+pub fn motion() -> Motion {
+    let text = std::fs::read_to_string(motion_path()).expect("red-moon-rite-motion.txt");
+    let mut lines = text.lines().filter(|l| !l.starts_with('#'));
+    let nums = |l: &str| -> Vec<i32> {
+        l.split(' ')
+            .skip_while(|w| w.parse::<i32>().is_err())
+            .map(|w| w.parse().unwrap())
+            .collect()
+    };
+    let mut m = Motion {
+        flights: vec![Flight::default(); 2],
+        sparks: vec![Vec::new(); 3],
+    };
+    while let Some(head) = lines.next() {
+        let n = nums(head);
+        if head.starts_with("flight ") {
+            let (v, frames) = (n[0] as usize, n[1] as usize);
+            let path = (1..frames)
+                .map(|_| {
+                    let p = nums(lines.next().unwrap());
+                    (p[0], p[1], p[2] as u8)
+                })
+                .collect();
+            m.flights[v].frames = frames;
+            m.flights[v].path = path;
+        } else if head.starts_with("stuck ") {
+            m.flights[n[0] as usize].stuck = (n[1], n[2]);
+        } else if head.starts_with("spark ") {
+            let (stage, count) = (n[0] as usize, n[1] as usize);
+            m.sparks[stage - 1] = (0..count)
+                .map(|_| {
+                    let p = nums(lines.next().unwrap());
+                    (p[0], p[1], p[2] as u8)
+                })
+                .collect();
+        } else {
+            panic!("red-moon-rite-motion.txt: {head:?}");
+        }
+    }
+    m
+}
+
+/// A spark stage as rows (app/scene_art.h's scene_rmr_spark): the first row's dy, then each
+/// row's pixels (dx, colour) left to right, a pixel drawn twice taking its last colour.
+pub fn spark_rows(marks: &[(i32, i32, u8)]) -> (i32, Vec<Vec<(i32, u8)>>) {
+    let dy0 = marks.iter().map(|m| m.1).min().unwrap();
+    let dy1 = marks.iter().map(|m| m.1).max().unwrap();
+    let mut rows: Vec<std::collections::BTreeMap<i32, u8>> =
+        vec![Default::default(); (dy1 - dy0 + 1) as usize];
+    for &(x, y, c) in marks {
+        rows[(y - dy0) as usize].insert(x, c);
+    }
+    (
+        dy0,
+        rows.into_iter().map(|r| r.into_iter().collect()).collect(),
+    )
 }
 
 /// The coded rectangle of an image: (x, y, w, h).
@@ -547,11 +647,111 @@ pub fn flash() -> (usize, usize, usize, usize) {
             .iter()
             .map(|g| GRADIENT_STRUCT + STOP * g.stops.len())
             .sum::<usize>()
-        + 8;
+        + 8
+        + motion_flash();
     (data.len(), offs, structs, data.len() + offs + structs)
 }
 
-/// `app/scene_rmr_art.c`, from the PNGs.
+/// sizeof(scene_rmr_grip), sizeof(scene_rmr_flight) and sizeof(scene_rmr_spark) on the
+/// pi32v2.
+pub const GRIP_STRUCT: usize = 3;
+pub const FLIGHT_STRUCT: usize = 12;
+pub const SPARK_STRUCT: usize = 16;
+
+/// What the motion tables take in flash: the flights' grips and the sparks' pixels and rows.
+pub fn motion_flash() -> usize {
+    let m = motion();
+    let flights: usize = m
+        .flights
+        .iter()
+        .map(|f| FLIGHT_STRUCT + GRIP_STRUCT * f.path.len())
+        .sum();
+    let sparks: usize = m
+        .sparks
+        .iter()
+        .map(|sp| {
+            let (_, rows) = spark_rows(sp);
+            SPARK_STRUCT + rows.len() + 1 + 2 * rows.iter().map(Vec::len).sum::<usize>()
+        })
+        .sum();
+    flights + sparks
+}
+
+/// The motion tables' C (red-moon-rite-motion.txt).
+fn motion_c() -> String {
+    let m = motion();
+    let mut s = String::new();
+    for (v, f) in m.flights.iter().enumerate() {
+        let grips: Vec<String> = f
+            .path
+            .iter()
+            .map(|&(x, y, k)| {
+                let x = i8::try_from(x).expect("a flight's dx in an int8");
+                let y = u8::try_from(y).expect("a flight's y in a uint8");
+                format!("{{{x}, {y}, {k}}}")
+            })
+            .collect();
+        let _ = write!(
+            s,
+            "\nstatic const scene_rmr_grip PATH_{v}[{}] = {{\n{}}};\n",
+            grips.len(),
+            table(&grips, 6, |g| g.clone())
+        );
+    }
+    s += "\nconst scene_rmr_flight scene_rmr_flights[2] = {\n";
+    for (v, f) in m.flights.iter().enumerate() {
+        assert!(
+            f.frames >= 2 && f.frames <= 255,
+            "flight {v}: {} frames",
+            f.frames
+        );
+        let _ = writeln!(
+            s,
+            "    {{{}, PATH_{v}, {{{}, {}, 0}}}},",
+            f.frames, f.stuck.0, f.stuck.1
+        );
+    }
+    s += "};\n";
+    for (i, sp) in m.sparks.iter().enumerate() {
+        let (_, rows) = spark_rows(sp);
+        let mut at = vec![0usize];
+        let mut dx = Vec::new();
+        let mut colour = Vec::new();
+        for r in &rows {
+            for &(x, c) in r {
+                dx.push(i8::try_from(x).expect("a spark's dx in an int8"));
+                colour.push(c);
+            }
+            at.push(dx.len());
+        }
+        let at: Vec<u8> = at.into_iter().map(|a| u8::try_from(a).unwrap()).collect();
+        let _ = write!(
+            s,
+            "\nstatic const uint8_t SPARK_AT_{i}[{}] = {{\n{}}};\n\
+             \nstatic const int8_t SPARK_DX_{i}[{}] = {{\n{}}};\n\
+             \nstatic const uint8_t SPARK_C_{i}[{}] = {{\n{}}};\n",
+            at.len(),
+            table(&at, 16, |v| format!("{v:3}")),
+            dx.len(),
+            table(&dx, 16, |v| format!("{v:3}")),
+            colour.len(),
+            table(&colour, 16, |v| format!("{v:2}")),
+        );
+    }
+    s += "\nconst scene_rmr_spark scene_rmr_sparks[3] = {\n";
+    for (i, sp) in m.sparks.iter().enumerate() {
+        let (dy0, rows) = spark_rows(sp);
+        let _ = writeln!(
+            s,
+            "    {{{dy0}, {}, SPARK_AT_{i}, SPARK_DX_{i}, SPARK_C_{i}}},",
+            rows.len()
+        );
+    }
+    s += "};\n";
+    s
+}
+
+/// `app/scene_rmr_art.c`, from the PNGs and the motion tables.
 pub fn c_source() -> String {
     let srcs = sources();
     let clear = clear_colour(&srcs);
@@ -561,8 +761,8 @@ pub fn c_source() -> String {
     let mut s = String::from(SPDX);
     let _ = write!(
         s,
-        "/* Generated by host/crates/sidou-tests/src/scene_art.rs from the PNGs in\n \
-         * assets/scene/ (drawn by assets/scene/red-moon-rite.js); do not edit.\n \
+        "/* Generated by host/crates/sidou-tests/src/scene_art.rs from the PNGs and the motion\n \
+         * tables in assets/scene/ (drawn by assets/scene/red-moon-rite.js); do not edit.\n \
          * RED MOON RITE's art (app/scene_art.h): each image cropped to the pixels it covers,\n \
          * a pixel row's runs a byte each, (length - 1) << 4 | colour, colour {clear} coding\n \
          * transparency (no image uses it), and a table of where each row's runs start; rows\n \
@@ -672,7 +872,10 @@ pub fn c_source() -> String {
         "scene_rmr_sword[",
         "scene_rmr_sword[SCENE_RMR_SWORD_FRAMES]",
     );
-    for name in ["scene_rmr_sword_stuck", "scene_rmr_arena"] {
+    for name in ["scene_rmr_sword_stuck", "scene_rmr_arena"]
+        .into_iter()
+        .chain(HUD.iter().map(|h| h.1))
+    {
         let i = group(name)[0];
         let _ = write!(s, "\nconst scene_image {name} =\n    {};\n", init(i));
     }
@@ -709,6 +912,7 @@ pub fn c_source() -> String {
         f[0].map(|v| v.to_string()).join(", "),
         f[1].map(|v| v.to_string()).join(", ")
     );
+    s += &motion_c();
     s
 }
 

@@ -106,9 +106,16 @@ impl Ui {
         unsafe { views_encoder(&mut *self.v, &mut *self.p, enc, steps) };
     }
 
+    /// A frame, then the view's work between frames (views_idle: RED MOON RITE's scan) until
+    /// it has none, as platform/fm1/ui.c's calls with nothing to send run it.
     pub(crate) fn frame(&mut self) {
         self.now += 40;
         unsafe { views_frame(&mut *self.v, self.now) };
+        for _ in 0..GRID_CELLS {
+            if unsafe { views_idle(&mut *self.v) } == 0 {
+                break;
+            }
+        }
     }
 
     /// Frames until no transition runs.

@@ -173,11 +173,20 @@ typedef struct {
 int song_ext_get_midi(const gt2_song* s, song_midi* v);
 int song_ext_set_midi(gt2_song* s, const song_midi* v);
 
-/* SCNE: the SCENE piece and the voices' roles (M2f gives them meaning). */
+/* SCNE: the SCENE piece, the voices' roles and the instruments' drums (M2f: RED MOON RITE's
+ * music hooks, app/scene_song.h). A role or a drum the chunk leaves out (AUTO, or an
+ * instrument not in the table) is guessed from the music (scene_song.h). The drum table
+ * follows the roles, and a chunk without one (M2c's) has none. */
 #define SONG_SCENE_VOICES_MAX 6u
+#define SONG_SCENE_DRUMS_MAX 16u
+enum { SONG_ROLE_AUTO, SONG_ROLE_DRUMS, SONG_ROLE_BASS, SONG_ROLE_ARP, SONG_ROLE_LEAD,
+       SONG_ROLE_NONE };
+enum { SONG_DRUM_NONE, SONG_DRUM_KICK, SONG_DRUM_SNARE, SONG_DRUM_HAT };
 typedef struct {
     uint8_t piece, count;
-    uint8_t role[SONG_SCENE_VOICES_MAX];
+    uint8_t role[SONG_SCENE_VOICES_MAX]; /* SONG_ROLE_* of each voice */
+    uint8_t drums;                       /* the drum table's pairs */
+    uint8_t drum[SONG_SCENE_DRUMS_MAX][2]; /* an instrument (1-63) and its SONG_DRUM_* */
 } song_scene;
 int song_ext_get_scene(const gt2_song* s, song_scene* v);
 int song_ext_set_scene(gt2_song* s, const song_scene* v);

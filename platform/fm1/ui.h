@@ -10,6 +10,7 @@
 
 #include "keys_route.h"
 #include "live.h"
+#include "player/song_ctl.h"
 #include "ui_sound.h"
 #include "panel.h"
 #include "song_transport.h"
@@ -35,9 +36,13 @@ void ui_set_song(const song_transport* t);
  * shows changed, app/screen.h), and half a frame later lets the view prepare the next one
  * (views_prepare), each in a call of its own. Changed cells go out as runs (one LCD window each), one per
  * call and only while the panel is free; the next run is rendered while the last one
- * transfers, so the main loop never waits on the panel. A call with nothing to send returns
- * at once; the first one after the first frame is out turns the display on. */
+ * transfers, so the main loop never waits on the panel. A call with nothing to send runs a
+ * slice of the view's work between frames, if it has any (views_idle: RED MOON RITE's scan),
+ * and returns; the first one after the first frame is out turns the display on. */
 void ui_poll(uint32_t now_ms);
+/* Main loop, once a pass: the song control and the events drained from its ring this pass,
+ * for the views (views_song). */
+void ui_song(const song_ctl* sc, const song_event* ev, uint32_t n);
 /* Main loop, from input_poll: button press edges and the held buttons, and an encoder's
  * detents, through the views to the panel (views_buttons, views_encoder). */
 void ui_buttons(panel* p, uint32_t pressed, uint32_t held);

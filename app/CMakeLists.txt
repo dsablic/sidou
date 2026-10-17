@@ -37,7 +37,9 @@ add_library(sidou_live STATIC
     scene.c
     scene_art.c
     scene_px.c
+    scene_rmr.c
     scene_rmr_art.c
+    scene_song.c
     scene_view.c
     save_key.c
     scope.c
@@ -53,6 +55,9 @@ add_library(sidou_live STATIC
     views.c
     widget.c)
 target_include_directories(sidou_live PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+# RED MOON RITE's music hooks and its state run once a pass or a frame, not once a tile: -Os
+# keeps them small in flash (M2f's code budget, docs/plans/2026-10-15-m2f-scene.md).
+set_source_files_properties(scene_song.c scene_rmr.c PROPERTIES COMPILE_OPTIONS "-Os")
 target_link_libraries(sidou_live PUBLIC sidou_core)
 target_compile_options(sidou_live PRIVATE -Wall -Wextra -Wshadow)
 if(CMAKE_CROSSCOMPILING)

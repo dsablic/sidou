@@ -132,13 +132,11 @@ void scene_px_init(scene_px* sp, grid* g) {
     sp->sweep = 0;
     sp->scanned = 0;
     sp->painted = 0;
+    sp->marked = 0;
+    sp->fresh = 0;
     /* Every cell goes out with the region; each takes its hash as it is sent. */
     grid_region_painter(g, 0, 0, GRID_COLS, GRID_ROWS, paint, sp, SCENE_PX_RUN_CELLS);
-    for (uint32_t r = 0; r < GRID_ROWS; r++) {
-        for (uint32_t c = 0; c < GRID_COLS; c++) {
-            grid_mark(g, c, r);
-        }
-    }
+    grid_invalidate(g); /* the region is the whole screen: every cell marked */
 }
 
 void scene_px_set(scene_px* sp, uint32_t i, const scene_px_layer* l) {
@@ -151,10 +149,14 @@ void scene_px_set(scene_px* sp, uint32_t i, const scene_px_layer* l) {
     if (same_layer(&sp->layer[i], l)) {
         return;
     }
-    touch_box(sp, sp->box[i]);
+    if (!sp->fresh) {
+        touch_box(sp, sp->box[i]);
+    }
     sp->layer[i] = *l;
     layer_box(&sp->layer[i], sp->box[i]);
-    touch_box(sp, sp->box[i]);
+    if (!sp->fresh) {
+        touch_box(sp, sp->box[i]);
+    }
     /* The slots with something on the screen, in order: all a tile looks at. */
     sp->nlive = 0;
     for (uint32_t k = 0; k < SCENE_PX_LAYERS; k++) {
@@ -204,6 +206,7 @@ uint32_t scene_px_scan(scene_px* sp, grid* g, uint32_t most) {
         most--;
         if (scene_px_hash(px) != sp->hash[t]) {
             grid_mark(g, col, row);
+            sp->marked++;
         }
     }
     sp->next = (uint16_t)(t >= GRID_CELLS ? 0 : t);

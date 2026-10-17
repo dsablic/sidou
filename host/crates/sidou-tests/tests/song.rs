@@ -69,6 +69,7 @@ fn with_chunks(s: &mut Song) {
         piece: 1,
         count: 3,
         role: [1, 2, 3, 0, 0, 0],
+        ..Default::default()
     };
     assert_eq!(unsafe { song_ext_set_scene(s.ptr_mut(), &sc) }, 0);
     let mut k = song_keys {

@@ -52,12 +52,16 @@ extern "C" {
 #endif
 
 #define SCENE_VOICES 3u
-#define SCENE_PIECES 5u
+/* SCENE's pieces, as SELECT steps through them: the five here (SCENE_PETSCII, drawn in
+ * cells), then RED MOON RITE (app/scene_rmr.h, drawn in pixels: SCENE_RMR). */
+#define SCENE_PIECES 6u
+#define SCENE_PETSCII 5u
 #define SCENE_FIRE 0u
 #define SCENE_PLASMA 1u
 #define SCENE_RULE30 2u
 #define SCENE_STARS 3u
 #define SCENE_ANT 4u
+#define SCENE_RMR 5u
 
 /* No note (app/live.h LIVE_NO_NOTE). */
 #define SCENE_NO_NOTE 0xFFu
@@ -175,10 +179,10 @@ extern const uint8_t scene_dist4[GRID_ROWS][GRID_COLS];
 /* sine_q7 (app/sine.h) for each byte of phase, whole: the plasma looks it up for every cell,
  * and sine_q7 works from a quarter wave (generated; host/crates/sidou-tests checks it). */
 extern const int8_t scene_sin8[256];
-/* The pieces' names, as the screen shows them. */
+/* The pieces' names, as the screen shows them, RED MOON RITE's last. */
 extern const char* const scene_names[SCENE_PIECES];
 
-/* Starts piece (wrapped into 0..SCENE_PIECES - 1) from its first frame, the canvas drawn
+/* Starts piece (wrapped into 0..SCENE_PETSCII - 1) from its first frame, the canvas drawn
  * whole as the music m (NULL: none playing) shows it: the same piece always starts the same. */
 void scene_start(scene* s, uint32_t piece, const scene_music* m);
 /* scene_start with the canvas left to scene_fill: for a start that a wipe reveals

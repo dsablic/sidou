@@ -203,7 +203,7 @@ older one's save. Every chunk SIDOU keeps (the trailer less its header, lead-in,
 | `SLOT` | the effect slots | no | M2c Task 2 |
 | `LOCK` | parameter locks | **yes** | M2c Task 2; semantics M2c Task 7 |
 | `MIDI` | MIDI mode, channels, rows per beat | no | M2c Task 2; semantics M2e |
-| `SCNE` | the SCENE piece and the voices' roles | no | M2c Task 2; semantics M2f |
+| `SCNE` | the SCENE piece, the voices' roles and the drums | no | M2c Task 2; semantics M2f Task 4 |
 | `KEYS` | the keys' live preset and setup | no | M2c Task 2 |
 | `PAD ` | padding (a space ends the tag) | no | skipped, never kept |
 | `TRKB` | reserved: chip B's tracks (M5) | | |
@@ -292,14 +292,20 @@ it, a removed pattern drops all of its.
 | 3 | 1 | c, the channel count |
 | 4 | c | MIDI channels, 0-15, one per voice |
 
-**`SCNE`** (3 + v bytes):
+**`SCNE`** (3 + v bytes, or 4 + v + 2 × d with a drum table): what RED MOON RITE hears in
+the song (`app/scene_song.h`; docs/art/README.md "RED MOON RITE").
 
 | Offset | Size | Field |
 |---|---|---|
 | 0 | 1 | version, 1 |
-| 1 | 1 | the SCENE piece (M2f) |
+| 1 | 1 | the SCENE piece (kept; M2 does not act on it) |
 | 2 | 1 | v, the voice count |
-| 3 | v | each voice's role (M2f) |
+| 3 | v | each voice's role: 0 AUTO (guessed), 1 DRUMS, 2 BASS, 3 ARP, 4 LEAD (as ARP), 5 NONE |
+| 3 + v | 1 | d, the drum table's pairs, 0-16 (absent: none) |
+| 4 + v | 2 × d | per pair: an instrument (1-63) and its drum: 1 KICK, 2 SNARE, 3 HAT |
+
+A voice left AUTO, and a drum voice's instrument not in the table, are guessed as
+`app/scene_song.h` describes. A reader older than the drum table reads the roles and stops.
 
 **`KEYS`** (2 + 2 × q bytes): the keys' live preset and their chip setup, as `live_params`
 reports them (`app/live.h`, `LIVE_PARAM_*`; the model, envelope mode, profile and

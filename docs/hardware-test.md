@@ -310,9 +310,9 @@ SCENE (menu, SCENE; [controls](reference/controls.md#scene)):
 
 - [ ] It opens on FIRE: black, with a brown ember line at the bottom that
   holds still in silence.
-- [ ] SELECT clockwise: PLASMA, RULE 30, STARS, ANT, then FIRE again, each
-  wiping in from the top with its name as a toast; counter-clockwise goes
-  back. HOME returns to the menu.
+- [ ] SELECT clockwise: PLASMA, RULE 30, STARS, ANT, RED MOON RITE, then
+  FIRE again, each wiping in from the top with its name as a toast;
+  counter-clockwise goes back. HOME returns to the menu.
 - [ ] FIRE: a key flares and heats one flame (the first note the left
   third); a three-note chord all three, in tongues of red and light red;
   higher notes burn higher; K1 down dulls them to red and light red, up
@@ -333,6 +333,30 @@ SCENE (menu, SCENE; [controls](reference/controls.md#scene)):
 - [ ] No flicker or tearing beyond the pieces' own motion, the sound stays
   clean (SCENE taps the audio interrupt as LIVE does), and fast playing
   (a run of notes, a chord stab) keeps the sound and the keys on time.
+
+RED MOON RITE (SELECT counter-clockwise from FIRE; [art](art/README.md#red-moon-rite),
+[controls](reference/controls.md#red-moon-rite)): the panel's look of the drawn piece, which
+only the real LCD shows.
+
+- [ ] Still, it looks like `tests/golden/lcd/scene-rmr-song.png` (two barbarians in guard
+  under a blood moon, a ruin with two torches, a broadsword stamina blade a side and VS):
+  the colours as in the PNG on a computer screen (no colour swapped or washed out), the
+  wide pixels square-ish, no torn or shifted 8 x 8 cell.
+- [ ] The dither (the moon's halo, the sky's seams between bands, the flagstones' half
+  tones, the fighters' shading): does any area shimmer or crawl, or show moire, when the
+  piece is still? Note where.
+- [ ] PLAY (button 12): the song plays the duel. Kicks chop, snares parry with a white and
+  yellow spark, the hats shift the guards, the torches flicker and flare on the lead's notes;
+  near the end of the fourth bar the spinning attack knocks a sword away, it spins through
+  the air and sticks in the floor, and a beat later its owner bends and pulls it free. The
+  motion looks smooth (25 frames a second) with no cell lagging behind the rest of a
+  fighter for more than a frame, and the sound stays clean.
+- [ ] K1 (the keys' cutoff, with the song stopped) or the song's filter darkens and
+  brightens the sky in three palettes, wiped down a row at a time.
+- [ ] PLAY again (stop): once the notes have faded the duel settles and the torches hold
+  still; the picture stays clean (no stale or flickering cell).
+- [ ] SAVE (MIDI learn's frame) over it: the frame reads as over the other pieces (white on
+  blue), the duel goes on around it, and HOME brings the duel back whole.
 
 Notes:
 

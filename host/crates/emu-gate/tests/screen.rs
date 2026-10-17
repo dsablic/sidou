@@ -1464,7 +1464,9 @@ const LIVE_CHORD_PER_FRAME: f64 = 53_000.0;
 const LIVE_NOISE_PER_FRAME: f64 = 155_000.0;
 
 /// SCENE's pieces (app/scene.h), in SELECT's order, as their goldens are named.
-const SCENE_PIECES: [&str; 5] = ["fire", "plasma", "rule30", "stars", "ant"];
+/// SELECT's order (app/scene.h): the five PETSCII pieces, then RED MOON RITE (app/scene_rmr.h).
+const SCENE_PIECES: [&str; 6] = ["fire", "plasma", "rule30", "stars", "ant", "rmr"];
+const _: () = assert!(SCENE_PIECES.len() == sidou_sys::SCENE_PIECES as usize);
 /// app/panel.h K1: the cutoff.
 const K1_CUTOFF: u8 = 2;
 
@@ -1549,6 +1551,11 @@ fn scene_stars_matches_its_golden_image() {
 #[test]
 fn scene_ant_matches_its_golden_image() {
     scene_matches_its_golden_image(4);
+}
+
+#[test]
+fn scene_rmr_matches_its_golden_image() {
+    scene_matches_its_golden_image(SCENE_RMR);
 }
 
 /// Cells each 40 ms of `frames` sent.
@@ -1709,8 +1716,18 @@ fn scene_stays_within_its_budgets() {
         );
         assert!(avg <= cells_bound, "{name}: {avg:.1} cells a frame");
         assert!(most <= most_bound, "{name}: {most} cells in a frame");
+        // RED MOON RITE's ui_polls render the compositor's runs (two of 8 painted cells,
+        // bounded by scene_budget.rs), its own bound; so is the wipe into it, from ANT.
+        let poll_bound = |k: usize| {
+            if k == SCENE_RMR {
+                RMR_WORST_POLL
+            } else {
+                SCENE_WORST_POLL
+            }
+        };
+        let next = (piece + 1) % SCENE_PIECES.len();
         assert!(
-            c.worst_poll < SCENE_WORST_POLL && wipe_poll < SCENE_WORST_POLL,
+            c.worst_poll < poll_bound(piece) && wipe_poll < poll_bound(piece).max(poll_bound(next)),
             "{name}: a ui_poll took {} instructions ({wipe_poll} in the wipe)",
             c.worst_poll
         );
@@ -1806,12 +1823,13 @@ fn midi_learn_over_scene_and_live_stays_within_the_budget() {
 /// | RULE 30 | 18.9, 76 | 1.65 ms, 6.60 ms | 32.7k | 21.3k |
 /// | STARS | 39.5, 68 | 3.59 ms, 6.16 ms | 74.1k | 21.1k |
 /// | ANT | 2.7, 9 | 0.25 ms, 0.80 ms | 29.3k | 18.9k |
-const SCENE_BOUNDS: [(f64, u32, f64); 5] = [
-    (138.0, 175, 108_000.0), // fire
-    (152.0, 200, 152_000.0), // plasma: the most is SCENE_VIEW_FRAME_CELLS
-    (21.0, 84, 33_500.0),    // rule 30
-    (44.0, 75, 79_000.0),    // stars
-    (3.0, 10, 30_000.0),     // ant
+const SCENE_BOUNDS: [(f64, u32, f64); 6] = [
+    (138.0, 175, 108_000.0),   // fire
+    (152.0, 200, 152_000.0),   // plasma: the most is SCENE_VIEW_FRAME_CELLS
+    (21.0, 84, 33_500.0),      // rule 30
+    (44.0, 75, 79_000.0),      // stars
+    (3.0, 10, 30_000.0),       // ant
+    (133.0, 136, 1_140_000.0), // red moon rite: the pair drifting a pixel a frame
 ];
 const SCENE_WORST_POLL: u64 = 62_000;
 /// A piece starts in the compose of the first frame of the wipe that brings it in (SELECT, or
@@ -1834,6 +1852,11 @@ const SCENE_WORST_POLL: u64 = 62_000;
 /// whole canvas there; the busiest pass after SELECT to PLASMA is now 32.7k.
 const SCENE_INPUT: u64 = 230;
 const SCENE_START_PASS: u64 = 67_000;
+/// RED MOON RITE (M2f Task 4): SELECT from it to FIRE clears its painter region, which marks
+/// every cell (measured below, bounded about 10 % over), and the busiest pass after SELECT to
+/// it or the menu into it is one of its ui_polls (its start, or two runs of the compositor).
+const RMR_INPUT: u64 = 1_050;
+const RMR_START_PASS: u64 = 65_000;
 
 /// What `act` costs over the next `ms`: the busiest ui_encoder call and the busiest main-loop
 /// pass (`Machine::passes`).
@@ -1899,12 +1922,21 @@ fn starting_a_piece_holds_the_main_loop_within_the_poll_allowance() {
             "{what}: the input {input}, the busiest pass {pass}, together {} instructions",
             input + pass
         );
-        let input_bound = if what.starts_with("SELECT") {
+        // SELECT from RED MOON RITE clears its painter region (every cell marked), and its
+        // start and its ui_polls are the compositor's: their own bounds.
+        let input_bound = if what == "SELECT to fire" || what == "SELECT to rmr" {
+            RMR_INPUT
+        } else if what.starts_with("SELECT") {
             SCENE_INPUT
         } else {
             TITLE_CARD_INPUT
         };
-        if *input >= input_bound || *pass >= SCENE_START_PASS {
+        let pass_bound = if what.ends_with("rmr") {
+            RMR_START_PASS
+        } else {
+            SCENE_START_PASS
+        };
+        if *input >= input_bound || *pass >= pass_bound {
             over.push(format!(
                 "{what}: the input {input}, the busiest pass {pass}"
             ));
@@ -3346,7 +3378,280 @@ const SONG_SLICE: u64 = sidou_sys::SONG_SLICE_INSTRUCTIONS as u64;
 const _: () = assert!(LIVE_WORST_POLL + SONG_SLICE <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(CHIP_INPUT + CHIP_PASS + SONG_SLICE <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(SCENE_INPUT + SCENE_START_PASS + SONG_SLICE <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(RMR_INPUT + RMR_START_PASS + SONG_SLICE <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(TITLE_CARD_INPUT + TITLE_CARD_PASS + SONG_SLICE <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(WIPE_WORST_POLL + SONG_SLICE <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(ABOUT_WORST_POLL + SONG_SLICE <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(TRACKER_INPUT + TRACKER_PASS + SONG_SLICE <= common::POLL_INSTRUCTIONS);
+
+// ---- RED MOON RITE (app/scene_rmr.h) playing the demo song ----
+
+const SCENE_RMR: usize = sidou_sys::SCENE_RMR as usize;
+
+/// A byte of the views' SCENE (app/scene_view.h) at `offset` in the device's layout.
+fn scene_byte(m: &mut Machine, fw: &Firmware, offset: usize) -> u8 {
+    ui_byte(m, fw, sidou_sys::ilp32::views::scene + offset)
+}
+
+/// A byte of RED MOON RITE's state (app/scene_rmr.h scene_rmr) while it runs.
+fn rmr_byte(m: &mut Machine, fw: &Firmware, field: usize) -> u8 {
+    use sidou_sys::ilp32::{scene_view, scene_view_rite};
+    scene_byte(m, fw, scene_view::u + scene_view_rite::rmr + field)
+}
+
+/// The song transport's state (core/player/song_ctl.h SONG_*).
+fn song_state(m: &mut Machine, fw: &Firmware) -> u32 {
+    u32::from(
+        m.soc
+            .read8(fw.symbol("song_transport") + sidou_sys::ilp32::song_ctl::state as u32),
+    )
+}
+
+/// The screen's toast text (app/screen.h).
+fn toast_text(m: &mut Machine, fw: &Firmware) -> String {
+    let at =
+        fw.symbol("ui") + (sidou_sys::ilp32::views::s + sidou_sys::ilp32::screen::toast) as u32;
+    (0..sidou_sys::SCREEN_TOAST_CHARS)
+        .map(|i| m.soc.read8(at + i))
+        .take_while(|&b| b != 0)
+        .map(char::from)
+        .collect()
+}
+
+/// SCENE on RED MOON RITE (SELECT back from FIRE), its toast gone, then PLAY until the song
+/// plays; on to half way between two frames.
+fn rmr_with_the_song(m: &mut Machine, fw: &Firmware) {
+    open_scene(m, fw, 0);
+    m.turn(SELECT, -1);
+    m.run_ms(100);
+    assert_eq!(
+        usize::from(scene_byte(m, fw, sidou_sys::ilp32::scene_view::which)),
+        SCENE_RMR
+    );
+    assert_eq!(toast_text(m, fw), "RED MOON RITE", "SELECT's toast");
+    m.run_ms(1600);
+    press(m, PLAY);
+    for _ in 0..100 {
+        if song_state(m, fw) == sidou_sys::SONG_PLAYING {
+            break;
+        }
+        m.run_ms(10);
+    }
+    assert_eq!(
+        song_state(m, fw),
+        sidou_sys::SONG_PLAYING,
+        "PLAY did not play the song"
+    );
+    common::to_mid_frame(m, fw);
+}
+
+/// Frames until `ok`, at most `frames`: the frame count it took.
+fn frames_until(
+    m: &mut Machine,
+    fw: &Firmware,
+    frames: u32,
+    mut ok: impl FnMut(&mut Machine, &Firmware) -> bool,
+) -> Option<u32> {
+    for f in 0..frames {
+        if ok(m, fw) {
+            return Some(f);
+        }
+        m.run_ms(UI_PERIOD_MS);
+    }
+    None
+}
+
+/// The demo song plays the duel: a second in, the fill's spinning attack landing (the sword
+/// knocked from his hand) and the sword stuck in the floor, each as its golden image.
+#[test]
+fn red_moon_rite_plays_the_demo_song_as_its_golden_images() {
+    use sidou_sys::ilp32::scene_rmr as r;
+    let Some((build, fw)) = fixture("the RED MOON RITE test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    rmr_with_the_song(&mut m, &fw);
+    m.run_ms(1000);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "scene-rmr-song", &m.soc.lcd.fb, &[]);
+    // The demo song's fourth bar ends in the fill: about 8 s at 6 frames a row.
+    let landed = frames_until(&mut m, &fw, 600, |m, fw| {
+        rmr_byte(m, fw, r::sword) != 0 && rmr_byte(m, fw, r::sword_n) <= 2
+    });
+    assert!(landed.is_some(), "no disarm in 24 s of the song");
+    compare_golden(&build, "scene-rmr-disarm", &m.soc.lcd.fb, &[]);
+    let stuck = frames_until(&mut m, &fw, 100, |m, fw| {
+        let u = rmr_byte(m, fw, r::unarmed);
+        rmr_byte(m, fw, r::sword_n) >= 20
+            && u < 2
+            && u32::from(rmr_byte(m, fw, r::pose + usize::from(u))) != sidou_sys::SCENE_RMR_REACH
+    });
+    assert!(stuck.is_some(), "the sword never stuck");
+    m.run_ms(4 * UI_PERIOD_MS);
+    let unarmed = rmr_byte(&mut m, &fw, r::unarmed);
+    assert!(
+        rmr_byte(&mut m, &fw, r::sword) != 0 && unarmed < 2,
+        "the stuck-sword golden must precede the sword's recovery"
+    );
+    compare_golden(&build, "scene-rmr-stuck", &m.soc.lcd.fb, &[]);
+    println!("the disarm {landed:?} frames in, stuck {stuck:?} frames after");
+}
+
+/// What the duel costs over 60 s of the demo song: the tiles (cells) a frame against the
+/// prototype's 117 on average and 176 at most, SPI a frame, the main loop's instructions a
+/// frame, the busiest ui_poll and main-loop pass; then, on runs of 20 s each (fm1-emu is
+/// deterministic), the busiest call of each kind a ui_poll makes for it: a scan slice
+/// (scene_view_idle) and a run rendered (grid_render_run, two a ui_poll at most), and the
+/// costliest tile (scene_px_tile) of the vignette's own frames.
+#[test]
+fn red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song() {
+    let Some((_, fw)) = fixture("the RED MOON RITE budget test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    m.watch_calls(fw.symbol("ui_poll"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    common::run_past_boot(&mut m, &fw);
+    rmr_with_the_song(&mut m, &fw);
+    let passes = m.passes.len();
+    let c = measure_frames(&mut m, &fw, 1500, |_, _| {});
+    let pass = m.passes[passes..].iter().copied().max().unwrap_or(0);
+    let per = cells_sent(&c);
+    let avg = f64::from(per.iter().sum::<u32>()) / per.len() as f64;
+    let most = per.iter().copied().max().unwrap_or(0);
+    let busiest = |f: &str| {
+        let mut m = Machine::boot(&fw.image);
+        m.watch_calls(fw.symbol(f));
+        common::run_past_boot(&mut m, &fw);
+        rmr_with_the_song(&mut m, &fw);
+        let from = m.watched_calls.len();
+        m.run_ms(20_000);
+        let calls = &m.watched_calls[from..];
+        let mean = calls.iter().sum::<u64>() as f64 / calls.len().max(1) as f64;
+        (calls.iter().copied().max().unwrap_or(0), mean, calls.len())
+    };
+    let (slice, slice_mean, slices) = busiest("scene_view_idle");
+    let (run, run_mean, runs) = busiest("grid_render_run");
+    let (tile, tile_mean, tiles) = busiest("scene_px_tile");
+    println!(
+        "{}",
+        serde_json::json!({
+            "frames": per.len(),
+            "cells_a_frame": avg,
+            "cells_most": most,
+            "spi_ms_a_frame": c.total().spi_ms() / per.len() as f64,
+            "spi_ms_worst": c.worst_frame_ms(),
+            "instructions_a_frame": c.instructions_per_frame(),
+            "busiest_ui_poll": c.worst_poll,
+            "busiest_pass": pass,
+            "scan_slices_in_20_s": slices, "scan_slice_mean": slice_mean,
+            "busiest_scan_slice": slice,
+            "runs_in_20_s": runs, "run_mean": run_mean, "busiest_run": run,
+            "tiles_in_20_s": tiles, "tile_mean": tile_mean, "busiest_tile": tile,
+        })
+    );
+    assert!(
+        c.worst_frame_ms() <= SPI_BUDGET_MS,
+        "a frame took {:.1} ms of SPI",
+        c.worst_frame_ms()
+    );
+    assert!(
+        most <= sidou_sys::SCENE_VIEW_FRAME_CELLS,
+        "a frame sent {most} cells"
+    );
+    assert!(avg <= RMR_CELLS_AVERAGE, "{avg:.1} cells a frame");
+    assert!(most <= RMR_CELLS_MOST, "{most} cells in a frame");
+    assert!(
+        c.instructions_per_frame() <= RMR_PER_FRAME,
+        "{:.0} instructions a frame",
+        c.instructions_per_frame()
+    );
+    assert!(
+        c.worst_poll <= RMR_WORST_POLL,
+        "a ui_poll took {}",
+        c.worst_poll
+    );
+    assert!(pass <= RMR_WORST_PASS, "a main-loop pass took {pass}");
+    assert!(slice <= RMR_WORST_SLICE, "a scan slice took {slice}");
+    assert!(run <= RMR_WORST_RUN, "a run took {run}");
+    assert!(tile <= RMR_WORST_TILE, "a tile took {tile}");
+}
+
+/// The duel's bounds, about 10 % over what M2f Task 4 measured over a minute of the demo song
+/// (red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song), the plan's 180 cells at
+/// most: measured, 98.8 cells a frame on average and 170 at most (the prototype's 117 and 176),
+/// 8.7 ms of SPI a frame and 15.0 at worst, 904k instructions a frame, the busiest ui_poll
+/// 56.4k, pass 57.5k, scan slice 56.3k and run 24.6k, the costliest tile 5,930. That tile is
+/// over the bench's (scene_budget.rs TILE_WORST 5,300: two fighters, the spark and the arc over
+/// the arena), so the run and slice caps came down to 4 and 8 (app/scene_px.h) for two runs, or
+/// a slice, and a song's slice to fit a pass.
+const RMR_CELLS_AVERAGE: f64 = 109.0;
+const RMR_CELLS_MOST: u32 = 180;
+const RMR_PER_FRAME: f64 = 1_000_000.0;
+const RMR_WORST_POLL: u64 = 62_000;
+const RMR_WORST_PASS: u64 = 63_000;
+const RMR_WORST_SLICE: u64 = 62_000;
+const RMR_WORST_RUN: u64 = 27_000;
+const RMR_WORST_TILE: u64 = 6_500;
+// A pass that runs RED MOON RITE's busiest ui_poll may run a song's analysis slice too.
+const _: () = assert!(RMR_WORST_POLL + SONG_SLICE <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(RMR_WORST_PASS + SONG_SLICE <= common::POLL_INSTRUCTIONS);
+// A ui_poll renders two runs, or scans a slice: either within its bound.
+const _: () = assert!(2 * RMR_WORST_RUN <= RMR_WORST_POLL && RMR_WORST_SLICE <= RMR_WORST_POLL);
+
+/// A muted drum voice stops the chops and parries; the bass and the arp go on moving it.
+#[test]
+fn a_muted_drum_voice_stops_the_chops_and_parries() {
+    use sidou_sys::ilp32::scene_rmr as r;
+    let Some((_, fw)) = fixture("the RED MOON RITE mute test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    rmr_with_the_song(&mut m, &fw);
+    let attacks = |m: &mut Machine, fw: &Firmware, frames: u32| {
+        let mut n = 0;
+        for _ in 0..frames {
+            for k in 0..2 {
+                let p = u32::from(rmr_byte(m, fw, r::pose + k));
+                n += u32::from(
+                    p == sidou_sys::SCENE_RMR_RAISE
+                        || p == sidou_sys::SCENE_RMR_CHOP
+                        || p == sidou_sys::SCENE_RMR_BLOCK,
+                );
+            }
+            m.run_ms(UI_PERIOD_MS);
+        }
+        n
+    };
+    let open = attacks(&mut m, &fw, 150);
+    // Voice 3, the drums: the interrupt's mute mask (song_ctl.mute), as a mute command sets it.
+    let mute = fw.symbol("song_transport") + sidou_sys::ilp32::song_ctl::mute as u32;
+    m.soc.write8(mute, 1 << 2);
+    m.run_ms(500);
+    let muted = attacks(&mut m, &fw, 150);
+    println!("frames in an attack or a parry over 6 s: {open} with the drums, {muted} muted");
+    assert!(open > 20, "{open}: the drums did not move the duel");
+    assert_eq!(muted, 0, "the muted drums still move the duel");
+}
+
+/// Once the song stops and its releases have rung out, the duel calms: nothing is sent.
+#[test]
+fn red_moon_rite_calms_when_the_song_stops() {
+    let Some((_, fw)) = fixture("the RED MOON RITE calm test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    rmr_with_the_song(&mut m, &fw);
+    let playing = cells_sent(&measure(&mut m, &fw, 50, |_| {}));
+    press(&mut m, PLAY);
+    m.run_ms(3000);
+    let after = cells_sent(&measure(&mut m, &fw, 50, |_| {}));
+    let sum = |v: &[u32]| v.iter().sum::<u32>();
+    println!(
+        "cells in 2 s: playing {}, after the stop {}",
+        sum(&playing),
+        sum(&after)
+    );
+    assert!(sum(&playing) > 1000);
+    assert_eq!(sum(&after), 0, "{after:?}");
+}

@@ -111,7 +111,7 @@ typedef enum {
     SCREEN_WIPE_DOWN = 1, /* top row first: a view opens */
     SCREEN_WIPE_UP = 2,   /* bottom row first: back to the view below */
     /* At once, to or from a view drawn over the one under it, which it composes (MIDI learn's
-     * frame, app/learn_view.h): that one keeps showing, so its overlays stay. */
+     * frame, app/learn_view.h): that one keeps showing, so its overlays and pixel region stay. */
     SCREEN_OVER = 3,
     /* A cut spread over frames: SCREEN_BAND_ROWS rows a frame, top first, with no edge (the end
      * of a title card, app/title_card.h). */

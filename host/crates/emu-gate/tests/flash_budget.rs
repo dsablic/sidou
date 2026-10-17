@@ -37,8 +37,9 @@ const SCHEDULE: [(&str, usize); 6] = [
 ];
 
 /// The plan in progress: its index in the schedule (the latest stage whose code is merged:
-/// M2d's song views, with M2a's store, M2b's chip B and M2c's songs in).
-const IN_PROGRESS: usize = 3;
+/// M2f's RED MOON RITE, with M2a's store, M2b's chip B, M2c's songs and M2d's song views in;
+/// M2e's entry is passed over, its code not merged yet).
+const IN_PROGRESS: usize = 5;
 const PLAN: &str = SCHEDULE[IN_PROGRESS].0;
 const IMAGE_CEILING: usize = SCHEDULE[IN_PROGRESS].1;
 

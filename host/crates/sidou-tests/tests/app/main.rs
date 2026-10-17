@@ -34,7 +34,9 @@ mod save_key;
 mod scene;
 mod scene_art;
 mod scene_px;
+mod scene_rmr;
 mod scene_rmr_drawing;
+mod scene_song;
 mod scope;
 mod screen;
 mod settings;
@@ -51,6 +53,15 @@ mod widget;
 use std::ffi::c_void;
 
 use sidou_sys::*;
+
+/// SCENE's PETSCII piece: the view's union holds one unless RED MOON RITE runs.
+pub fn petscii(sv: &scene_view) -> &sidou_sys::scene {
+    unsafe { &sv.u.piece }
+}
+
+pub fn petscii_mut(sv: &mut scene_view) -> &mut sidou_sys::scene {
+    unsafe { &mut sv.u.piece }
+}
 
 /// A register sink that records every write and mirrors the register file. The character's
 /// tick (LIVE_REG_CHAR_TICK, sent every live_tick) is counted, not logged.
@@ -224,7 +235,12 @@ impl Sent {
 pub fn drain(g: &mut sidou_sys::grid) -> Sent {
     let mut sent = Sent::default();
     let mut run = grid_run::default();
+    let pal = [0u16; 16];
+    let mut px = vec![0u32; GRID_RUN_PIXELS as usize / 2]; // 4-byte aligned
     while unsafe { grid_next_run(g, &mut run) } != 0 {
+        // Rendered, as platform/fm1/ui.c renders every run it is handed: a painter region
+        // (RED MOON RITE's) takes each tile's hash as it is painted (app/scene_px.h).
+        unsafe { grid_render_run(g, &run, pal.as_ptr(), px.as_mut_ptr().cast()) };
         sent.windows += 1;
         sent.cells += usize::from(run.len);
     }

@@ -695,6 +695,14 @@ VIGNETTES.push({
     return {
       st,
       art: { bgs, fg, flameMask, torchAt },
+      // device (new): the disarm's flight and where the sword sticks for fighter V, relative
+      // to his place (xs0) when it starts, for the device's tables (red-moon-rite-motion.txt)
+      flight (V) {
+        const f = swordFlight(handAt(V, 'hit', false, 0), handAt(V, 'reach', true, 0), V ? -DUEL.hit.sw : DUEL.hit.sw)
+        const path = []
+        for (let n = 1; n < f.T; n++) path.push(swordAt(f, n))
+        return { T: f.T, path, to: f.to }
+      },
       step (e, c) {
         if (e.bass !== null) st.lead = e.bass >= 50 ? 1 : 0
         const L = st.lead, O = 1 - L
@@ -907,6 +915,100 @@ function hudSheet (scale) {
   return { w, h, px: out }
 }
 
+// ---------- the device's tables and trace (new, M2f Task 4) ----------
+// The spark of a parry at stage n (3, 2, 1: the frames it shows), as the sprites stage draws
+// it around (0, 0): its pixels in drawing order, [dx, dy, colour].
+function sparkMarks (n) {
+  const out = []
+  const mark = (x, y, c) => out.push([Math.round(x), Math.round(y), c])
+  const R = n * 4 + 4
+  for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + n; for (let r = 2; r < R; r++) mark(Math.cos(a) * r, Math.sin(a) * r * 0.8, r < R / 2 ? WHITE : YELLOW) }
+  for (let y = -3; y <= 3; y++) { const hw = Math.floor(Math.sqrt(9 - y * y)); for (let x = -hw; x <= hw; x++) mark(x, y, WHITE) }
+  return out
+}
+
+// The motion the device takes from tables (red-moon-rite-motion.txt): for each fighter, the
+// flight of his sword when he is disarmed (frames 1 .. T - 1: the grip's place relative to his
+// place when it starts, and the rotation) and where it sticks; the spark's three stages.
+function motionText () {
+  const v = RITE.make()
+  const lines = ['# RED MOON RITE\'s motion tables, written by assets/scene/red-moon-rite.js: do not edit.',
+    '# flight V T: fighter V\'s sword in the air for T frames; then T - 1 lines "dx y k", its',
+    '# grip at frames 1 .. T - 1 (dx from his place when it starts) and the rotation shown;',
+    '# stuck V dx y: where the grip is once it sticks; spark n m: stage n\'s m pixels "dx dy c"',
+    '# around the blades\' meeting point, in drawing order.']
+  for (const V of [0, 1]) {
+    const f = v.flight(V)
+    lines.push(`flight ${V} ${f.T}`)
+    for (const [x, y, k] of f.path) lines.push(`${x} ${y} ${k}`)
+    lines.push(`stuck ${V} ${f.to[0]} ${f.to[1]}`)
+  }
+  for (const n of [3, 2, 1]) {
+    const m = sparkMarks(n)
+    lines.push(`spark ${n} ${m.length}`)
+    for (const [x, y, c] of m) lines.push(`${x} ${y} ${c}`)
+  }
+  return lines.join('\n') + '\n'
+}
+
+// The status bar's parts as the device stacks them: the bar (black, VS, the red line), a
+// blade meter empty (the hilt and the ghost), full (the hilt and eight notches) and its tip,
+// all for side 0 (side 1 is the mirror image), as bladeMeter draws them.
+function hudImages () {
+  const at = (p, w, s, x, y) => { for (let r = 0; r < s.h; r++) for (let q = 0; q < s.w; q++) { const c = s.d[r * s.w + q]; if (c >= 0) p[(y + r) * w + x + q] = c } }
+  const bar = new Uint8Array(W * H)
+  text(bar, 'VS', 112, 3, LRED)
+  rect(bar, 0, 15, W, 1, RED)
+  const empty = new Uint8Array(W * 16).fill(255), full = new Uint8Array(W * 16).fill(255), tip = new Uint8Array(NOTCH_TIP.w * NOTCH_TIP.h).fill(255)
+  at(empty, W, HILT, 0, 1)
+  for (let k = 0; k < 8; k++) at(empty, W, GHOST, BLADE_X + k * BLADE_N, 6)
+  at(empty, W, GHOST_TIP, BLADE_X + 8 * BLADE_N, 6)
+  at(full, W, HILT, 0, 1)
+  for (let k = 0; k < 8; k++) at(full, W, NOTCH, BLADE_X + k * BLADE_N, 6)
+  at(tip, NOTCH_TIP.w, NOTCH_TIP, 0, 0)
+  return {
+    'hud.png': { w: W, h: 16, px: bar.slice(0, 16 * W) },
+    'hud-blade-empty.png': { w: W, h: 16, px: empty },
+    'hud-blade-full.png': { w: W, h: 16, px: full },
+    'hud-blade-tip.png': { w: NOTCH_TIP.w, h: NOTCH_TIP.h, px: tip }
+  }
+}
+
+// The vignette playing the arcade's pattern, frame by frame (tests/golden/scene/rmr-trace.tsv):
+// the steps each frame took, the cutoff, and the state after the frame, for the device's state
+// machine to be checked against (host/crates/sidou-tests/tests/app/scene_rmr.rs).
+function traceText (frames) {
+  const v = RITE.make(), p = new Uint8Array(W * H), stepSec = 60 / 124 / 4, st = v.st
+  const lines = ['# RED MOON RITE playing the arcade\'s pattern, written by assets/scene/red-moon-rite.js.',
+    '# frame; steps "s.bar.flags.bass" (flags: k kick, s snare, h hat, f fill, a arp; bass - none);',
+    '# cutoff 0..2047 (rounded down); x lead; poses; t; hp; unarmed; spark spin spinWho shake flare; next;',
+    '# sword "n/T/gx/gy/k" (- none, gx gy k of the flight, or the stuck grip and k 8); sky rows 2-16']
+  let pos = 0
+  for (let frame = 0; frame < frames;) {
+    const from = Math.floor(pos)
+    pos += 0.04 / stepSec
+    const steps = []
+    for (let i = from + 1; i <= Math.floor(pos); i++) {
+      const e = patternStep(i)
+      steps.push(`${e.s}.${e.bar}.${e.kick ? 'k' : ''}${e.snare ? 's' : ''}${e.hat ? 'h' : ''}${e.fill ? 'f' : ''}${e.arp !== null ? 'a' : ''}.${e.bass === null ? '-' : e.bass}`)
+      v.step(e, { pos, bpm: 124, cutoff: cutoffAt(pos), frame })
+    }
+    frame++
+    const c = { pos, bpm: 124, cutoff: cutoffAt(pos), frame }
+    v.layers(p, c)
+    for (const s of v.stages) s[2](p, c)
+    const sw = st.sword
+    let sword = '-'
+    if (sw) {
+      const [gx, gy, k] = sw.n < sw.T ? swordAt(sw, sw.n) : [sw.to[0], sw.to[1], 8]
+      sword = `${sw.n}/${sw.T}/${gx}/${gy}/${k}`
+    }
+    lines.push([frame, steps.join(',') || '-', Math.floor(c.cutoff * 2047), st.x, st.lead, st.pose.join(','), st.t.join(','), st.hp.join(','), st.unarmed,
+      st.spark, st.spin, st.spinWho, st.shake, st.flare, st.next || '-', sword, Array.from(st.rowPal.subarray(2, 17)).join('')].join(' '))
+  }
+  return lines.join('\n') + '\n'
+}
+
 // Frames for the compositor's goldens (tests/golden/scene/, M2f Task 3): frames of the
 // vignette playing the arcade's pattern as the layers the compositor stacks, each a PNG and
 // a list of its layers. A frame here is the background (the status bar's rows black, the sky
@@ -987,17 +1089,20 @@ if (typeof module !== 'undefined' && require.main === module) {
   const mask = new Uint8Array(W * H).fill(255)
   for (const [x, y] of v.art.flameMask) mask[y * W + x] = WHITE
   out['flame-mask.png'] = { w: W, h: H, px: mask }
+  Object.assign(out, hudImages())
   const frames = previewFrames()
   out['red-moon-rite-preview.png'] = montage(frames, 3, 1)
   fs.mkdirSync(dir, { recursive: true })
   for (const [name, img] of Object.entries(out)) fs.writeFileSync(path.join(dir, name), png(img))
-  console.log(`${Object.keys(out).length} PNGs in ${dir}`)
+  fs.writeFileSync(path.join(dir, 'red-moon-rite-motion.txt'), motionText())
+  console.log(`${Object.keys(out).length} PNGs and the motion tables in ${dir}`)
   if (golden) {
     fs.mkdirSync(golden, { recursive: true })
     for (const [name, img, text] of goldenFrames(sprites)) {
       fs.writeFileSync(path.join(golden, `rmr-${name}.png`), png(img))
       fs.writeFileSync(path.join(golden, `rmr-${name}.txt`), text)
     }
+    fs.writeFileSync(path.join(golden, 'rmr-trace.tsv'), traceText(64 * 3 * 4))
     console.log(`golden frames in ${golden}`)
   }
   if (review) {

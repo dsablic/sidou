@@ -647,7 +647,8 @@ frame idle). RAM: the song views' state 1,920 bytes, most of it their shared can
 
 SCENE (`app/scene_view.h`, the menu's item after STATUS) is M1e's prototype of M2's visuals:
 the browser prototype's five generative pieces (`app/scene.h`), ported to the cell grid, each
-reacting to the voices. SELECT steps between them; the new one wipes in and a toast names it.
+reacting to the voices, and since M2f a sixth, RED MOON RITE (below), drawn in pixels. SELECT
+steps between them; the new one wipes in and a toast names it.
 What moves each one is in [controls](../reference/controls.md#scene); in short, a voice's
 note-ons trigger its part (a flame's flare, a ripple, a generation, lit stars, an ant's walk),
 its envelope (ENV3, from LIVE's tap, which runs while SCENE shows) keeps it going, its pitch
@@ -667,7 +668,8 @@ eight cools by three times more, so the flames break into tongues instead of a m
 **The canvas.** Each piece draws into a 30 x 30 canvas of its own (1,800 bytes); the view
 copies it onto the grid. So a piece that changes a few cells a step (the ant, RULE 30) draws
 only those, and SCENE's compose still draws every cell (`app/screen.h`). The pieces share their
-state in a union, about 1 KB; SCENE's RAM is 2,784 bytes in all.
+state in a union, about 1 KB; SCENE's RAM was 2,784 bytes in all, and RED MOON RITE shares
+that memory with them (below).
 
 **The budget.** The copy sends at most 200 cells a frame (`SCENE_VIEW_FRAME_CELLS`, about 17.5 ms
 of SPI with their windows): changed cells from where the last frame stopped, until the frame has
@@ -761,9 +763,11 @@ time, on demand** (`app/scene_px.h`):
   position) and about 4.4k instructions and 0.19 ms of SPI a frame for two tiles.
 - **Runs, slices and the budget.** `grid_render_run` composites a run's tiles as it renders
   it, and `ui_poll` renders up to two runs a call, so a run takes at most
-  `SCENE_PX_RUN_CELLS` (8) of the painter's cells (`grid_region_painter`'s cap). The scan
-  takes `SCENE_PX_SCAN_SLICE` (16) candidates a call at most, in passes of the main loop that
-  render no run. The emulator gate ties both to the 120k poll allowance at compile time. The
+  `SCENE_PX_RUN_CELLS` (4) of the painter's cells (`grid_region_painter`'s cap). The scan
+  takes `SCENE_PX_SCAN_SLICE` (8) candidates a call at most, in passes of the main loop that
+  render no run. The emulator gate ties both to the 120k poll allowance at compile time, with
+  a song's analysis slice (39k) in the same pass: they were 8 and 16 until RED MOON RITE's own
+  tiles were measured (5,930 at worst, over the bench's 5,300). The
   view sends at most 200 cells a frame, and the grid goes on from where it stopped, round
   the screen, so a marked tile waits at most one sweep. 200 cells in as many windows (the
   worst the cap can make) take 18.5 ms of SPI, within the 20 ms.
@@ -776,9 +780,9 @@ cycles):
 |---|---|
 | A tile composited, average / worst | 1,959 / 4,826 |
 | A cell sent (the tile, its hash, the panel's pixels), average / worst | 2,779 / 5,646 |
-| A run of 8 cells, worst; two in a ui_poll | 35.5k; 71k |
+| A run of 8 cells, worst; two in a ui_poll (Task 3; the cap is 4 since Task 4) | 35.5k; 71k |
 | A scan, a candidate (the tile and its hash) | 2,829: 42 tiles a 120k pass |
-| A slice of 16 candidates, worst | 51.9k |
+| A slice of 16 candidates, worst (Task 3; 8 since Task 4) | 51.9k |
 | The whole screen sent (the first frame) | 2.49M |
 | The fighters step 4 px: 132 candidates, 123 sent | 0.89M |
 | The sky's palette changes: 480 candidates, 247 sent | 1.99M |
@@ -828,6 +832,8 @@ original art in the 16 colours, with no game's name, logo, sprite, pose, arena o
 | `sword-0.png` .. `sword-7.png` | The sword in flight, eight rotations of 45 degrees, each painted whole (no rotated pixels), grip at the centre of 84 x 84 screen pixels. |
 | `sword-stuck.png` | The sword point-down in a flagstone, leaning a little, a crack round its point. |
 | `flame-mask.png` | The torches' flame area, where the colour cycling draws. |
+| `hud.png`, `hud-blade-empty.png`, `hud-blade-full.png`, `hud-blade-tip.png` | The status bar (black, VS, the red line) and side 0's blade meter as the device stacks it: empty, full (drawn clipped to the stamina) and the tip; side 1 is drawn mirrored (M2f Task 4). |
+| `red-moon-rite-motion.txt` | The motion the script computes once for the device: each fighter's sword flight and where it sticks, the spark's three stages (M2f Task 4). |
 | `red-moon-rite-preview.png` | Six frames of the vignette playing the arcade's pattern (above). |
 
 All PNGs are indexed: the art palette's 16 colours in order, and index 16 transparent where a
@@ -893,7 +899,74 @@ tile a run at a time by `scene_image_blend`:
 The kinds are each image's runs and offsets alone; sharing rows across images brings the sum
 down to the total. A test prints the total and fails over 48 KB (`the_art_fits_its_flash_ceiling`),
 and another decodes every image, mirrored too and from any pixel, back to its PNG pixel for
-pixel. Nothing draws the art yet (M2f Task 4), so the linker leaves it out of the image for now.
+pixel. Since M2f Task 4 the set also holds the status bar (`hud.png` and the blade meter
+empty, full and its tip, 4 images) and the motion tables (below): **43,413 bytes** (42.4 KB of
+the 48 KB ceiling), all in the image now that the vignette draws them.
+
+### On the device
+
+`app/scene_rmr.h` is the prototype's logic in C: its `step` (once a row of the music) and its
+layers' and stages' state (once a frame), with the disarm, integer only. A host test plays it
+against the script frame for frame (`tests/golden/scene/rmr-trace.tsv`, 768 frames of the
+arcade's pattern, written with `--frames`: positions, poses, timers, stamina, the sword's path
+and where it sticks, the sky's rows; all equal), and another stacks its layers for the
+script's golden frames (`tests/golden/scene/rmr-*.png`): equal pixel for pixel but the spin's
+arc (the device's sine, `app/sine.h`, within a pixel of the script's) and the torches and the
+status bar, which those frames leave out. What the script computes once is in
+`assets/scene/red-moon-rite-motion.txt`, which it writes beside the PNGs and the converter
+compiles: each fighter's sword flight (19 grips and rotations from his place, then where it
+sticks) and the spark's three stages (pixels around the blades' meeting point).
+
+**The music** (`app/scene_song.h`): the song control's row, note and gate events, which the
+main loop drains once a pass and hands to each listener (`platform/fm1/main.c`), and chip A's
+cutoff as the player wrote it; with no song, the instrument. The voices' roles and drums come
+from the song's `SCNE` chunk (`docs/reference/song-format.md`) or are guessed (a noise-first
+wavetable is the drums, by its first step's pitch; the lowest other voice the bass; the rest
+the arp); the place in the bar is the pattern's row modulo 4 beats of the `MIDI` chunk's rows
+a beat (4); muted voices play no part ([controls](../reference/controls.md#red-moon-rite)).
+
+**The layers**, bottom first (21 slots of 24): the status bar, each meter (empty, full clipped
+to the stamina, the tip), the sky (one call: each cell row its palette's gradient and overlay,
+so the wipe touches 30 tiles a frame), the arena, the two torches (a call each: six colours
+cycling up a wobbling flame, sparks over it when flared), the stuck sword behind the fighters,
+each fighter's shadow and sprite (mirrored for fighter 1, an unarmed patch over the armed pose),
+the spark (a call over the stage's rows), the arc (14 marks), the stuck sword over the hand
+that pulls it free, the flying sword, and the cover: over what the screen draws on the scene
+this frame (the toast's row, MIDI learn's frame, the raster's border) each cell that is not
+blank shows its own background under its glyph. The step is in SCENE's compose, so a frame's
+cells go out together after it; the scan then runs a slice of 8 candidates in each `ui_poll`
+that has nothing to send, until the frame has spent its 200 cells. Silence calms it: a second
+after the last gate the torches and the arc hold still, the refresh sweep stops, and nothing is
+sent.
+
+**What it costs**, measured in fm1-emu over 60 s of the demo song
+(`red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song`, `emu-gate` screen.rs;
+instructions):
+
+| RED MOON RITE | Measured | Bound |
+|---|---|---|
+| Tiles (cells) sent a frame, average / most (the prototype: 117 / 176) | 98.8 / 170 | 109 / 180 |
+| SPI a frame, average / worst | 8.7 ms / 15.0 ms | 20 ms |
+| Main loop a frame (ui_poll) | 904k (17 % of a frame's 5.2M) | 1.0M |
+| Busiest ui_poll / main-loop pass | 56.4k / 57.5k | 62k / 63k, each with a song's 39k slice within 120k |
+| Busiest scan slice (8 candidates) / run (4 cells) | 56.3k / 24.6k | 62k / 27k |
+| Costliest tile / a tile on average | 5,930 / 2,890 | 6,500 |
+| The keys' band (scene_stays_within_its_budgets) | 120.5 cells a frame, 1.03M | 133, 1.14M |
+| Its start (SELECT, or the menu into it) | 58.7k the busiest pass | 65k |
+
+The pair drifting a pixel a frame is most of it: both fighters' and shadows' tiles change.
+The audio is the host's sample for sample while it shows
+(`the_first_song_is_bit_exact_while_red_moon_rite_plays_it`, emu-gate song.rs). The LCD goldens
+`scene-rmr-song`, `scene-rmr-disarm` and `scene-rmr-stuck` are the demo song a second in, the
+fill's landing and the sword in the floor; `scene-rmr` the keys' chord, as for the other pieces.
+
+**In RAM** RED MOON RITE shares the PETSCII pieces' memory (a union in `scene_view`): the
+compositor (4,724 bytes) and the vignette's state (136) take the place of a piece and its
+canvas (about 2.7 KB); the music hooks (`scene_song`, about 240 bytes) are always there. SCENE
+grew 2,318 bytes, 5,112 in all. **In flash**, the art 43,413 bytes and the code about 6.6 KB
+(`scene_rmr.c` and `scene_song.c` at -Os, the view's part, the event fan-out), with the
+compositor's and decoders' 3.9 KB (M2f Tasks 2-3) that the linker kept out until now: the
+image grew 54,832 bytes (measured on f1a1a9f; 463,508 bytes in all on main with M2d Task 1).
 
 ### The originality review
 

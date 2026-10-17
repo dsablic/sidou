@@ -18,10 +18,10 @@ path = ["assets/logo/*.png", "docs/art/avatar.png"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
-# RED MOON RITE, SCENE's first vignette: original art made for SIDOU, exported from its
-# source, assets/scene/red-moon-rite.js (docs/art/README.md "RED MOON RITE").
+# RED MOON RITE, SCENE's first vignette: original art made for SIDOU, and its motion tables,
+# exported from its source, assets/scene/red-moon-rite.js (docs/art/README.md "RED MOON RITE").
 [[annotations]]
-path = ["assets/scene/*.png"]
+path = ["assets/scene/*.png", "assets/scene/red-moon-rite-motion.txt"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 

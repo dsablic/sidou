@@ -895,6 +895,14 @@ void views_prepare(views* v) {
     }
 }
 
+int views_idle(views* v) {
+    return shows(v) == &scene_view_view ? scene_view_idle(&v->scene) : 0;
+}
+
+void views_song(views* v, const song_ctl* sc, const song_event* ev, uint32_t n) {
+    scene_view_song(&v->scene, sc, ev, n);
+}
+
 void views_frame(views* v, uint32_t now_ms) {
     boot_frame(v, now_ms);
     card_frame(v);

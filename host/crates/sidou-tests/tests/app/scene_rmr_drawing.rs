@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! RED MOON RITE's art: the PNGs in assets/scene/ are what assets/scene/red-moon-rite.js
 //! draws, and the script draws the same PNGs on every run (pixels, palette and transparency:
-//! Node's zlib may compress them to other bytes). Needs Node; skipped without it.
-//! `node assets/scene/red-moon-rite.js` rewrites the PNGs.
+//! Node's zlib may compress them to other bytes); so are its motion tables
+//! (red-moon-rite-motion.txt). Needs Node; skipped without it.
+//! `node assets/scene/red-moon-rite.js` rewrites them.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -57,8 +58,11 @@ fn pngs(dir: &Path) -> BTreeMap<String, Decoded> {
         .collect()
 }
 
-/// Runs the script into a fresh directory and returns what it wrote.
-fn export(run: &str) -> BTreeMap<String, Decoded> {
+const MOTION: &str = "red-moon-rite-motion.txt";
+
+/// Runs the script into a fresh directory and returns the PNGs it wrote, and its motion
+/// tables.
+fn export(run: &str) -> (BTreeMap<String, Decoded>, String) {
     let out = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("red-moon-rite-{run}"));
     let _ = fs::remove_dir_all(&out);
     let script = repo_root().join("assets/scene/red-moon-rite.js");
@@ -68,7 +72,10 @@ fn export(run: &str) -> BTreeMap<String, Decoded> {
         .status()
         .expect("node");
     assert!(status.success(), "{} failed: {status}", script.display());
-    pngs(&out)
+    (
+        pngs(&out),
+        fs::read_to_string(out.join(MOTION)).expect(MOTION),
+    )
 }
 
 #[test]
@@ -77,8 +84,18 @@ fn red_moon_rite_pngs_match_their_drawing_code() {
         eprintln!("skipped: Node is not installed, so assets/scene/red-moon-rite.js cannot run");
         return;
     }
-    let first = export("a");
-    let second = export("b");
+    let (first, motion) = export("a");
+    let (second, motion2) = export("b");
+    assert!(
+        motion == motion2,
+        "two runs of the script wrote different motion tables"
+    );
+    let committed_motion =
+        fs::read_to_string(repo_root().join("assets/scene").join(MOTION)).unwrap();
+    assert!(
+        committed_motion == motion,
+        "assets/scene/{MOTION} is behind its drawing code: run `node assets/scene/red-moon-rite.js`"
+    );
     assert!(first.len() >= 35, "the script wrote {} PNGs", first.len());
     assert!(
         first == second,

@@ -41,9 +41,12 @@ const RUN_WORST: u64 = SCENE_PX_RUN_CELLS as u64 * CELL_WORST + NEXT_RUN;
 /// transfers) spends besides them: its own bookkeeping and the window it starts (lcd_send).
 /// Allowed, not measured here: the view's gate measures the whole ui_poll (M2f Task 4).
 const POLL_REST: u64 = 10_000;
-// Two runs of the scene's worst cells fit a ui_poll's allowance: SCENE_PX_RUN_CELLS and
-// CELL_WORST cannot grow past it.
-const _: () = assert!(2 * RUN_WORST + POLL_REST <= common::POLL_INSTRUCTIONS);
+/// A song's analysis or derivation slice, which a main-loop pass may run beside ui_poll
+/// (core/player/song_ctl.h SONG_SLICE_INSTRUCTIONS).
+const SONG_SLICE: u64 = sidou_sys::SONG_SLICE_INSTRUCTIONS as u64;
+// Two runs of the scene's worst cells fit a ui_poll's allowance, with a song's slice in the
+// pass: SCENE_PX_RUN_CELLS and CELL_WORST cannot grow past it.
+const _: () = assert!(2 * RUN_WORST + POLL_REST + SONG_SLICE <= common::POLL_INSTRUCTIONS);
 /// A scan's cost per candidate composited (the tile and its hash).
 const SCAN_PER_TILE: f64 = 3_100.0;
 /// A slice of the scan (SCENE_PX_SCAN_SLICE candidates): a tile at TILE_WORST each, with its
@@ -51,8 +54,8 @@ const SCAN_PER_TILE: f64 = 3_100.0;
 const SCAN_HASH: u64 = 500;
 const SCAN_WALK: u64 = 8_000;
 const SLICE_WORST: u64 = SCENE_PX_SCAN_SLICE as u64 * (TILE_WORST + SCAN_HASH) + SCAN_WALK;
-// A pass that scans a slice fits the allowance with the rest of a ui_poll.
-const _: () = assert!(SLICE_WORST + POLL_REST <= common::POLL_INSTRUCTIONS);
+// A pass that scans a slice fits the allowance with the rest of a ui_poll and a song's slice.
+const _: () = assert!(SLICE_WORST + POLL_REST + SONG_SLICE <= common::POLL_INSTRUCTIONS);
 
 /// A scan: the candidates before it, those composited, the cells marked after it, and its
 /// cost.
