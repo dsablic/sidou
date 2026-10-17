@@ -313,9 +313,54 @@ fn budget_songs() -> Vec<(String, Song, u32)> {
                     sub,
                 ));
             }
+            if sub == 0 {
+                v.push((format!("{name} {sub} locked"), locked(&sng), sub));
+            }
         }
     }
     v
+}
+
+/// A song with locks on as many of its rows as SONG_LOCKS_MAX allows: every filter and pulse
+/// parameter (five locks a row), on the rows of the patterns its first subtune names, in order.
+fn locked(sng: &[u8]) -> Song {
+    let mut song = device_song(sng, None);
+    let mut pats: Vec<u32> = Vec::new();
+    for ch in 0..3 {
+        if let Some((entries, _)) = song.order(0, ch) {
+            for e in entries {
+                if e < 0xd0 && !pats.contains(&u32::from(e)) {
+                    pats.push(u32::from(e));
+                }
+            }
+        }
+    }
+    let values = [
+        (SONG_LOCK_CUTOFF, 300),
+        (SONG_LOCK_RESONANCE, 9),
+        (SONG_LOCK_FILTER_MODE, 1),
+        (SONG_LOCK_ROUTE, 1),
+        (SONG_LOCK_PULSE, 0x400),
+    ];
+    let mut n = 0;
+    'fill: for row in 0..128u32 {
+        for &p in &pats {
+            if row + 1 >= unsafe { gt2_pattern_rows(song.ptr(), p) } {
+                continue;
+            }
+            for &(param, v) in &values {
+                if n == SONG_LOCKS_MAX {
+                    break 'fill;
+                }
+                assert_eq!(
+                    unsafe { song_lock_put(song.ptr_mut(), p, row, param, v) },
+                    0
+                );
+                n += 1;
+            }
+        }
+    }
+    song
 }
 
 /// PLAYER_WORST_BLOCK: the player's call and SONG_EDITS_PER_BLOCK of the costliest edit in
@@ -598,4 +643,69 @@ fn the_analysis_runs_in_slices_within_the_poll_allowance() {
     );
     assert!(slice <= u64::from(SONG_SLICE_INSTRUCTIONS));
     assert!(pass <= POLL_INSTRUCTIONS);
+}
+
+/// Parameter locks (M2c Task 7): the first song with the lead's first bar's cutoff locked low
+/// plays bit-exact with the host's render, and that bar is darker than without the locks (less
+/// of its power above 1.5 kHz), the rest as it was.
+#[test]
+fn a_locked_cutoff_plays_a_darker_bar_bit_exact_with_the_host() {
+    let Some((_, fw)) = fixture("the song lock test") else {
+        return;
+    };
+    let mut song = demo();
+    for row in 0..16 {
+        assert_eq!(
+            unsafe { song_lock_put(song.ptr_mut(), 4, row, SONG_LOCK_CUTOFF, 40) },
+            0
+        );
+    }
+    let p = check_song("sidou-loop locked", &fw, Some(&song));
+    let host = |s: &Song| {
+        render_host_song(
+            (p.play_block + 400) * HALF_FRAMES + 40 * 6 * 880,
+            &SongPlay {
+                song: s,
+                play_block: p.play_block,
+                ccs: &[],
+                ticks: &[],
+                edits: &[],
+                stop_block: None,
+                b_use_block: p.b_use,
+                b_rewrite_block: p.b_use,
+            },
+        )
+    };
+    // the device's equals the locked host render (check_song); the two host renders compared
+    let (locked, plain) = (host(&song), host(&demo()));
+    let left = |v: &[i16], from: usize, n: usize| -> Vec<f32> {
+        v.iter()
+            .step_by(2)
+            .skip(from)
+            .take(n)
+            .map(|&s| f32::from(s))
+            .collect()
+    };
+    // the bar: 16 rows of 6 calls, 880 samples a call; its middle, from the play's block
+    let from = p.play_block * HALF_FRAMES + 20 * 880;
+    let dark = power_above(&left(&locked, from, 8192), 1500.0);
+    let bright = power_above(&left(&plain, from, 8192), 1500.0);
+    // the bar after next (rows 32-47): the song's own cutoff again
+    let later = from + 32 * 6 * 880;
+    let (l2, p2) = (
+        power_above(&left(&locked, later, 8192), 1500.0),
+        power_above(&left(&plain, later, 8192), 1500.0),
+    );
+    println!(
+        "the power above 1.5 kHz (the whole mix: the bass and drums are not filtered): the \
+         locked bar {dark:.4}, unlocked {bright:.4}; two bars on {l2:.4} and {p2:.4}"
+    );
+    assert!(
+        dark < 0.85 * bright,
+        "the locked bar is not darker: {dark} against {bright}"
+    );
+    assert!(
+        (l2 - p2).abs() <= 0.05 * p2,
+        "the song's cutoff did not return: {l2} against {p2}"
+    );
 }

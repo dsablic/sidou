@@ -90,6 +90,7 @@ SECTIONS
         *(.text.song_ctl_block .text.song_ctl_due .text.song_ctl_call .text.song_ctl_block_end)
         *(.text.song_ctl_chip_swapped .text.song_sink .text.song_rewrite .text.song_gate_off)
         *(.text.song_set_gate_reset .text.song_apply .text.song_handover .text.song_push_events)
+        *(.text.song_lock_row .text.song_lock_apply)
         *(.text.render_a .text.render_part)         /* audio.c: chip A split at the call */
         *(.text.gt2_edit_apply)
         . = ALIGN(4);

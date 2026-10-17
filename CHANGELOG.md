@@ -203,6 +203,11 @@ All notable changes are documented here. The format follows
   the focus gives. The page is built in a canvas and copied within 200 cells a frame (idle
   6.3k instructions a frame, nothing sent; the busiest frame 17.6 ms of SPI).
 
+- M2c Task 7: parameter locks. A pattern row may lock the cutoff, the resonance, the filter
+  mode, its voice's routing or pulse width (written over the player's registers for that
+  row, in the audio interrupt) and chip A's character (moved with chip_ctl's glide); the song's
+  own values return at the next row. Kept sorted in the LOCK chunk, carried by the pattern
+  edits that move rows, dropped by the GT2 part's CRC rule.
 - M2c Task 6: the song player in the audio interrupt. PLAY (button 12) plays SIDOU's first
   song, SIDOU LOOP (`assets/songs/sidou-loop.sng`, original, GPL-3.0-or-later), on chip A
   until M2d's transport (the keys move to chip B as M2b's keys_route says, and chip A takes

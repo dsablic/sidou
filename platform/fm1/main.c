@@ -186,8 +186,33 @@ static void song_load(void) {
     gt2_sng_read(s, read_demo, 0, &caps, &info);
 }
 
+/* A row's character locks (M2c Task 7): chip A's controls move to them with chip_ctl's glide,
+ * as a MIDI CC moves them (decision record 0006: 0.32 s end to end, so coarse by nature),
+ * and back to the song's own setup after (what chip A wanted when the first lock came). */
+static chip_setup song_char_base;
+static int16_t song_char_on[4] = {-1, -1, -1, -1};
+
+static void song_chip_character(void* ctx, uint32_t field, int32_t value) {
+    keys_route* kr = ctx;
+    int any = 0;
+    for (uint32_t f = 0; f < 4u; f++) {
+        any |= song_char_on[f] >= 0;
+    }
+    if (!any) {
+        song_char_base = kr->song_want;
+    }
+    song_char_on[field] = (int16_t)value;
+    chip_setup want = song_char_base;
+    for (uint32_t f = 0; f < 4u; f++) {
+        if (song_char_on[f] >= 0) {
+            want.controls[f] = (uint8_t)song_char_on[f];
+        }
+    }
+    keys_route_song_wants(kr, &want);
+}
+
 static void song_boot(void) {
-    song_chip_hooks hooks = {song_chip_ready, song_chip_back, &keys_router};
+    song_chip_hooks hooks = {song_chip_ready, song_chip_back, song_chip_character, &keys_router};
     song_ctl_set_hooks(audio_song(), &hooks);
 }
 

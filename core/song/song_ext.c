@@ -335,6 +335,184 @@ int song_ext_set_locks(gt2_song* s, const song_lock* locks, uint32_t n) {
     return 0;
 }
 
+uint32_t song_lock_max(uint32_t param) {
+    static const uint16_t max[SONG_LOCK_PARAMS] = {2047u, 15u, 7u, 1u, 4095u,
+                                                   127u,  127u, 127u, 127u};
+    return param < SONG_LOCK_PARAMS ? max[param] : 0u;
+}
+
+/* The LOCK chunk's data (version 1) and its record count; NULL if none or malformed. */
+static uint8_t* locks_of(gt2_song* s, int32_t* at, uint32_t* n) {
+    *at = find_at(s, SONG_TAG_LOCK);
+    if (*at < 0)
+        return NULL;
+    uint32_t len = rd32(s->ext + *at + 4);
+    uint8_t* d = s->ext + *at + SONG_CHUNK_HEADER;
+    if (len < 3u || d[0] != 1u)
+        return NULL;
+    *n = rd16(d + 1);
+    if (*n > SONG_LOCKS_MAX || len < 3u + *n * SONG_LOCK_BYTES)
+        return NULL;
+    return d;
+}
+
+/* The chunk at at to data length len, what follows moved (no memmove on the device). */
+static int chunk_resize(gt2_song* s, int32_t at, uint32_t len) {
+    uint32_t old = rd32(s->ext + at + 4);
+    if (len > old && s->ext_used + (len - old) > SONG_EXT_BYTES)
+        return -1;
+    uint32_t tail = (uint32_t)at + SONG_CHUNK_HEADER + old;
+    uint32_t count = s->ext_used - tail;
+    uint32_t to = (uint32_t)at + SONG_CHUNK_HEADER + len;
+    if (len < old) {
+        for (uint32_t i = 0; i < count; i++)
+            s->ext[to + i] = s->ext[tail + i];
+    } else {
+        for (uint32_t i = count; i > 0u; i--)
+            s->ext[to + i - 1u] = s->ext[tail + i - 1u];
+    }
+    s->ext_used = s->ext_used - old + len;
+    wr32(s->ext + at + 4, len);
+    return 0;
+}
+
+static uint32_t rec_key(const uint8_t* r) {
+    return (uint32_t)r[0] << 16 | (uint32_t)r[1] << 8 | r[2];
+}
+
+/* The first record at or after key. */
+static uint32_t lower_bound(const uint8_t* recs, uint32_t n, uint32_t key) {
+    uint32_t lo = 0, hi = n;
+    while (lo < hi) {
+        uint32_t mid = (lo + hi) / 2u;
+        if (rec_key(recs + mid * SONG_LOCK_BYTES) < key)
+            lo = mid + 1u;
+        else
+            hi = mid;
+    }
+    return lo;
+}
+
+const uint8_t* song_locks_row(const gt2_song* s, uint32_t pattern, uint32_t row, uint32_t* n) {
+    int32_t at;
+    uint32_t count = 0;
+    const uint8_t* d = locks_of((gt2_song*)s, &at, &count);
+    *n = 0;
+    if (d == NULL)
+        return NULL;
+    const uint8_t* recs = d + 3;
+    uint32_t key = (pattern & 0xffu) << 16 | (row & 0xffu) << 8;
+    uint32_t i = lower_bound(recs, count, key);
+    uint32_t j = i;
+    while (j < count && (rec_key(recs + j * SONG_LOCK_BYTES) >> 8) == key >> 8)
+        j++;
+    *n = j - i;
+    return j > i ? recs + i * SONG_LOCK_BYTES : NULL;
+}
+
+int song_lock_put(gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param, uint32_t value) {
+    if (pattern >= GT2_MAX_PATTERNS || row >= GT2_MAX_ROWS || param >= SONG_LOCK_PARAMS ||
+        value > song_lock_max(param))
+        return -1;
+    int32_t at;
+    uint32_t n = 0;
+    uint8_t* d = locks_of(s, &at, &n);
+    if (d == NULL) {
+        if (find_at(s, SONG_TAG_LOCK) >= 0)
+            return -1; /* malformed: left alone */
+        uint8_t head[3] = {1u, 0u, 0u};
+        if (song_ext_set(s, SONG_TAG_LOCK, head, 3u) != 0)
+            return -1;
+        d = locks_of(s, &at, &n);
+    }
+    uint32_t key = pattern << 16 | row << 8 | param;
+    uint32_t i = lower_bound(d + 3, n, key);
+    uint8_t* r = d + 3 + i * SONG_LOCK_BYTES;
+    if (i < n && rec_key(r) == key) {
+        wr16(r + 3, value);
+        return 0;
+    }
+    if (n >= SONG_LOCKS_MAX || chunk_resize(s, at, 3u + (n + 1u) * SONG_LOCK_BYTES) != 0)
+        return -1;
+    d = s->ext + at + SONG_CHUNK_HEADER;
+    r = d + 3 + i * SONG_LOCK_BYTES;
+    for (uint32_t k = (n - i) * SONG_LOCK_BYTES; k > 0u; k--)
+        r[SONG_LOCK_BYTES + k - 1u] = r[k - 1u];
+    r[0] = (uint8_t)pattern;
+    r[1] = (uint8_t)row;
+    r[2] = (uint8_t)param;
+    wr16(r + 3, value);
+    wr16(d + 1, n + 1u);
+    return 0;
+}
+
+/* Keeps the records keep(record) says, in order; returns how many went. */
+typedef int (*lock_keep_fn)(uint8_t* rec, uint32_t a, uint32_t b, uint32_t c);
+
+static uint32_t locks_filter(gt2_song* s, lock_keep_fn keep, uint32_t a, uint32_t b,
+                             uint32_t c) {
+    int32_t at;
+    uint32_t n = 0;
+    uint8_t* d = locks_of(s, &at, &n);
+    if (d == NULL)
+        return 0u;
+    uint32_t w = 0;
+    for (uint32_t i = 0; i < n; i++) {
+        uint8_t* r = d + 3 + i * SONG_LOCK_BYTES;
+        if (!keep(r, a, b, c))
+            continue;
+        if (w != i)
+            for (uint32_t k = 0; k < SONG_LOCK_BYTES; k++)
+                d[3 + w * SONG_LOCK_BYTES + k] = r[k];
+        w++;
+    }
+    if (w == 0u) {
+        (void)song_ext_remove(s, SONG_TAG_LOCK);
+    } else if (w != n) {
+        wr16(d + 1, w);
+        (void)chunk_resize(s, at, 3u + w * SONG_LOCK_BYTES);
+    }
+    return n - w;
+}
+
+static int keep_not_key(uint8_t* r, uint32_t pattern, uint32_t row, uint32_t param) {
+    return !(r[0] == pattern && r[1] == row && r[2] == param);
+}
+
+int song_lock_remove(gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param) {
+    return locks_filter(s, keep_not_key, pattern, row, param) != 0u;
+}
+
+/* The pattern edit's rule on one record; it may move the record's row (the order holds: the
+ * rows of one pattern move together). */
+static int keep_edit(uint8_t* r, uint32_t op, uint32_t pattern, uint32_t row) {
+    if (r[0] != pattern)
+        return 1;
+    switch (op) {
+    case SONG_LOCKS_INSERT:
+        if (r[1] >= row) {
+            if (r[1] + 1u >= GT2_MAX_ROWS)
+                return 0;
+            r[1]++;
+        }
+        return 1;
+    case SONG_LOCKS_DELETE:
+        if (r[1] == row)
+            return 0;
+        if (r[1] > row)
+            r[1]--;
+        return 1;
+    case SONG_LOCKS_RESIZE:
+        return r[1] < row;
+    default:
+        return 0;
+    }
+}
+
+void song_locks_pattern_edit(gt2_song* s, uint32_t op, uint32_t pattern, uint32_t row) {
+    (void)locks_filter(s, keep_edit, op, pattern, row);
+}
+
 /* MIDI, SCNE */
 
 static int get_counted(const gt2_song* s, uint32_t tag, uint32_t fixed, uint32_t max,

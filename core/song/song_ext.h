@@ -121,8 +121,26 @@ typedef struct {
 int song_ext_get_slots(const gt2_song* s, song_slots* v);
 int song_ext_set_slots(gt2_song* s, const song_slots* v);
 
-/* LOCK: parameter locks, sorted by pattern, row, parameter (M2c Task 7 gives them meaning). */
+/* LOCK: parameter locks, sorted by pattern, row, parameter (M2c Task 7). A lock replaces one
+ * parameter for one row of a pattern (each channel that plays the pattern): the song's own
+ * value returns at the next row without it. The pulse width and the routing are the voice's
+ * that plays the row; the filter and the character are the chip's. */
 #define SONG_LOCKS_MAX 512u
+enum {
+    SONG_LOCK_CUTOFF,      /* 0..2047, $15/$16 */
+    SONG_LOCK_RESONANCE,   /* 0..15, $17's high nybble */
+    SONG_LOCK_FILTER_MODE, /* 0..7: low-pass, band-pass, high-pass ($18 bits 4-6) */
+    SONG_LOCK_ROUTE,       /* 0..1: the voice into the filter ($17's bit) */
+    SONG_LOCK_PULSE,       /* 0..4095: the voice's pulse width */
+    SONG_LOCK_AGE,         /* 0..127: the character's controls (chip_ctl, with its glide) */
+    SONG_LOCK_DAC,
+    SONG_LOCK_THUMP,
+    SONG_LOCK_BLEED,
+    SONG_LOCK_PARAMS
+};
+#define SONG_LOCK_BYTES 5u /* a record: pattern, row, parameter, value (u16) */
+/* A parameter's largest value, 0 for none. */
+uint32_t song_lock_max(uint32_t param);
 typedef struct {
     uint8_t pattern, row, param;
     uint16_t value;
@@ -131,6 +149,20 @@ typedef struct {
 uint32_t song_ext_get_locks(const gt2_song* s, song_lock* out, uint32_t max);
 /* -1 if n > SONG_LOCKS_MAX, the locks are not sorted and distinct, or they do not fit. */
 int song_ext_set_locks(gt2_song* s, const song_lock* locks, uint32_t n);
+/* A row's locks (SONG_LOCK_BYTES a record, by parameter): the first and their count (0:
+ * NULL). A binary search: the main loop's. */
+const uint8_t* song_locks_row(const gt2_song* s, uint32_t pattern, uint32_t row, uint32_t* n);
+/* Sets one lock (a new one, or its value), kept sorted: 0, or -1 if out of range, the song
+ * holds SONG_LOCKS_MAX, or the extension area is full. */
+int song_lock_put(gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param, uint32_t value);
+/* 1 if there was one, removed. */
+int song_lock_remove(gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param);
+/* What a pattern's rebuild does to its locks (gt2_song.c, once the swap is applied): a row
+ * inserted at row (the locks at it and after move down one; any reaching 128 go), deleted
+ * at row (its locks go, those after move up), the rows cut to row (the locks past them go),
+ * or the pattern removed (all go). */
+enum { SONG_LOCKS_INSERT = 1, SONG_LOCKS_DELETE, SONG_LOCKS_RESIZE, SONG_LOCKS_REMOVE };
+void song_locks_pattern_edit(gt2_song* s, uint32_t op, uint32_t pattern, uint32_t row);
 
 /* MIDI: the song's MIDI setup (M2e gives the fields meaning). */
 #define SONG_MIDI_CHANNELS_MAX 6u

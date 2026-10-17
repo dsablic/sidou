@@ -857,6 +857,7 @@ pub fn render_host_song(frames: usize, p: &SongPlay) -> Vec<i16> {
         let hooks = song_chip_hooks {
             chip_a_song: Some(host_ready),
             chip_a_keys: None,
+            chip_a_character: None,
             ctx: std::ptr::null_mut(),
         };
         song_ctl_set_hooks(&mut *sc, &hooks);

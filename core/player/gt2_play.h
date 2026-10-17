@@ -183,7 +183,6 @@ typedef struct {
      * GT2_VF_*. */
     uint8_t var[GT2_VAR_MAX];
     uint8_t pat_num[GT2_MAX_PATTERNS]; /* the packer's number of a model pattern, $FF none */
-    uint8_t pat_of[GT2_MAX_PATTERNS];  /* the model pattern of a packer's number, $FF none */
     uint8_t ins_num[GT2_MAX_INSTR + 1u]; /* the packer's number of an instrument, 0 none */
     /* Each channel's packed orderlist as player.s reads it from its start: the entries (a
      * repeat after its pattern, R0 dropped), $FF and the restart byte, then whatever the

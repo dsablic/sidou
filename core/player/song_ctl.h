@@ -128,6 +128,9 @@ typedef struct {
     int (*chip_a_song)(void* ctx, const song_chip_setup* setup);
     /* Once a stop has reached the interrupt: chip A back to the keys' setup. */
     void (*chip_a_keys)(void* ctx);
+    /* A row's character locks (SONG_LOCK_AGE + field, field 0-3): value, or -1 for the
+     * song's own again. Once a row change, for each field whose lock changed. */
+    void (*chip_a_character)(void* ctx, uint32_t field, int32_t value);
     void* ctx;
 } song_chip_hooks;
 
@@ -146,6 +149,23 @@ enum {
     SONG_PLAYING,
     SONG_STOPPED    /* stopped, continue resumes */
 };
+
+/* Parameter locks (M2c Task 7; song_ext.h's LOCK). The interrupt never reads the extension
+ * area: at each row a channel starts, the main loop (song_ctl_poll) resolves the filter and
+ * pulse locks the channel's next row may have (the pattern's next row, or at its end the
+ * pattern again and the orderlist's next one) into a small table, published by an index
+ * flip; at the row's start the interrupt takes the entries whose row it is, and after each of
+ * the row's calls writes the locked registers over the player's (its own state, and its
+ * shadow, untouched), until a row without them. The character's locks go to the main loop's
+ * hook (song_chip_hooks.chip_a_character), which moves the controls with chip_ctl's glide. */
+#define SONG_ROW_LOCKS 8u /* a channel's resolved locks for its next row, at most */
+typedef struct {
+    uint8_t pattern, row, param, lo, hi;
+} song_row_lock;
+typedef struct {
+    uint8_t n;
+    song_row_lock e[SONG_ROW_LOCKS];
+} song_lock_set;
 
 /* song_ctl_play's refusal besides gt2_shape's (song_ctl.error). */
 #define SONG_ERR_MULTISPEED (-10) /* above SONG_MULTISPEED_MAX: two calls in a block */
@@ -177,6 +197,16 @@ typedef struct {
     uint8_t taken;                /* bit v: voice v the keys' (KEYS A, M2b's keys_route) */
     uint8_t armed, armed_now;     /* a hand-over waiting for its call */
     uint8_t jam[GT2_PLAY_CHANNELS][3]; /* a jam waiting for the next call: on, note, instr */
+    /* the locks: the main loop's resolved tables (two a channel, lock_pub the one to read),
+     * the row each channel plays (row_seq counts its starts), the locks it holds */
+    song_lock_set lock_next[GT2_PLAY_CHANNELS][2];
+    volatile uint8_t lock_pub[GT2_PLAY_CHANNELS];
+    volatile uint8_t row_seq[GT2_PLAY_CHANNELS];
+    uint8_t row_pat[GT2_PLAY_CHANNELS], row_row[GT2_PLAY_CHANNELS];
+    uint8_t row_ord[GT2_PLAY_CHANNELS];
+    uint8_t lock_n[GT2_PLAY_CHANNELS];
+    song_row_lock lock_cur[GT2_PLAY_CHANNELS][SONG_ROW_LOCKS];
+    uint32_t lock_regs;           /* the registers the last call wrote over (bit r) */
     uint32_t next;                /* samples from this block's start to the next call */
     uint32_t rem;
     song_period period;
@@ -220,6 +250,10 @@ typedef struct {
     uint8_t chip_ready, loading_done;
     uint8_t handback;       /* a stop went: hand chip A back once it is applied */
     uint8_t shapes_used;    /* a play has gone: the interrupt's player holds a shape */
+    uint8_t row_seen[GT2_PLAY_CHANNELS]; /* row_seq as the main loop last resolved it */
+    uint8_t play_sub;       /* the packed subtune the play's orderlists are */
+    int16_t char_lock[GT2_PLAY_CHANNELS][4]; /* each channel's row's character locks, -1 */
+    int16_t char_told[4];   /* the character locks told to the hook, -1 none */
     uint8_t deriving;       /* SONG_DERIVE_*: a derivation into the spare runs a slice a poll */
     uint8_t deriving_for;
 } song_ctl;

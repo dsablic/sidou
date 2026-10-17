@@ -58,8 +58,11 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         sc->period.r = c->u.p.z & 0xffffffu;
         sc->period.den = (uint32_t)(uintptr_t)c->u.p.ptr2;
         sc->armed = 0u;
-        for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++)
+        sc->lock_regs = 0u;
+        for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
             sc->jam[ch][0] = 0u;
+            sc->lock_n[ch] = 0u;
+        }
         /* the keys' registers out: the song starts from a silent chip */
         for (uint32_t r = 0u; r < GT2_SID_REGS; r++) {
             sc->shadow[r] = 0u;
@@ -214,6 +217,80 @@ static void song_push_events(song_ctl* sc) {
     sc->ev_head = h;
 }
 
+/* A channel's row starts: the published locks that are this row's become the channel's. */
+static void song_lock_row(song_ctl* sc, uint32_t ch, const gt2_event* e) {
+    const song_lock_set* set = &sc->lock_next[ch][sc->lock_pub[ch] & 1u];
+    uint32_t n = 0u;
+    for (uint32_t i = 0u; i < set->n && i < SONG_ROW_LOCKS; i++) {
+        const song_row_lock* l = &set->e[i];
+        if (l->pattern == e->pattern && l->row == e->row) {
+            song_row_lock* d = &sc->lock_cur[ch][n++];
+            d->pattern = l->pattern;
+            d->row = l->row;
+            d->param = l->param;
+            d->lo = l->lo;
+            d->hi = l->hi;
+        }
+    }
+    sc->lock_n[ch] = (uint8_t)n;
+    sc->row_pat[ch] = e->pattern;
+    sc->row_row[ch] = e->row;
+    sc->row_ord[ch] = e->order_pos;
+    COMPILER_FENCE(); /* the row before the count that says it changed */
+    sc->row_seq[ch] = (uint8_t)(sc->row_seq[ch] + 1u);
+}
+
+/* After a call: the locked registers over the player's (from its shadow and the locks), and
+ * the shadow's back in those a lock left. */
+static void song_lock_apply(song_ctl* sc) {
+    uint8_t r[GT2_SID_REGS];
+    uint32_t mask = 0u;
+    uint8_t drop = (uint8_t)(sc->mute | sc->taken);
+    for (uint32_t g = 0u; g < GT2_SID_REGS; g++)
+        r[g] = sc->shadow[g];
+    for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
+        uint32_t x = ch * 7u;
+        for (uint32_t i = 0u; i < sc->lock_n[ch]; i++) {
+            const song_row_lock* l = &sc->lock_cur[ch][i];
+            uint32_t v = (uint32_t)l->lo | (uint32_t)l->hi << 8;
+            switch (l->param) {
+            case SONG_LOCK_CUTOFF:
+                r[0x15] = (uint8_t)((r[0x15] & 0xf8u) | (v & 7u));
+                r[0x16] = (uint8_t)(v >> 3);
+                mask |= 3u << 0x15;
+                break;
+            case SONG_LOCK_RESONANCE:
+                r[0x17] = (uint8_t)((r[0x17] & 0x0fu) | (v << 4));
+                mask |= 1u << 0x17;
+                break;
+            case SONG_LOCK_FILTER_MODE:
+                r[0x18] = (uint8_t)((r[0x18] & 0x8fu) | (v << 4));
+                mask |= 1u << 0x18;
+                break;
+            case SONG_LOCK_ROUTE:
+                r[0x17] = (uint8_t)(v ? r[0x17] | (1u << ch) : r[0x17] & ~(1u << ch));
+                mask |= 1u << 0x17;
+                break;
+            case SONG_LOCK_PULSE:
+                if ((drop >> ch) & 1u)
+                    break;
+                r[x + 2u] = (uint8_t)v;
+                r[x + 3u] = (uint8_t)((sc->shadow[x + 3u] & 0xf0u) | (v >> 8));
+                mask |= 3u << (x + 2u);
+                break;
+            default:
+                break;
+            }
+        }
+    }
+    uint32_t all = mask | sc->lock_regs;
+    for (uint32_t g = 0u; all != 0u; g++, all >>= 1) {
+        if (all & 1u)
+            sid_write(sc->chip, (uint8_t)g, ((mask >> g) & 1u) ? r[g] : sc->shadow[g]);
+    }
+    sc->lock_regs = mask;
+}
+
 void song_ctl_call(song_ctl* sc) {
     song_handover(sc);
     for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
@@ -225,6 +302,10 @@ void song_ctl_call(song_ctl* sc) {
     gt2_play_frame(&sc->player, song_sink, sc);
     sc->past_b7 |= sc->player.freq_unknown;
     song_push_events(sc);
+    for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++)
+        if (sc->player.ev[ch].flags & GT2_EV_ROW)
+            song_lock_row(sc, ch, &sc->player.ev[ch]);
+    song_lock_apply(sc);
     sc->calls++;
     sc->next += sc->period.q;
     sc->rem += sc->period.r;
@@ -262,6 +343,9 @@ void song_ctl_render(song_ctl* sc, sid* chip, int16_t* out, uint32_t n) {
 
 /* --- The main loop ---------------------------------------------------------------------- */
 
+static void lock_prime(song_ctl* sc);
+static void lock_character(song_ctl* sc);
+
 static void zero(void* p, uint32_t n) {
     uint8_t* q = p;
     for (uint32_t i = 0u; i < n; i++)
@@ -287,6 +371,11 @@ void song_ctl_init(song_ctl* sc, gt2_song* song, gt2_shape* shape0, gt2_shape* s
     sc->keys_gate_reset = 1u;
     sc->song_gate = NO_GATE;
     sc->period = song_period_of(1u, 0u);
+    for (uint32_t f = 0u; f < 4u; f++)
+        sc->char_told[f] = -1;
+    for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++)
+        for (uint32_t f = 0u; f < 4u; f++)
+            sc->char_lock[ch][f] = -1;
 }
 
 void song_ctl_set_hooks(song_ctl* sc, const song_chip_hooks* hooks) {
@@ -613,6 +702,10 @@ static void poll_applied(song_ctl* sc, int may_ring) {
         sc->spare_wait = 0u;
     if (sc->handback && may_ring && (int32_t)(a - sc->stop_seq) >= 0) {
         sc->handback = 0u;
+        for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++)
+            for (uint32_t f = 0u; f < 4u; f++)
+                sc->char_lock[ch][f] = -1;
+        lock_character(sc); /* the song's own character again, before the keys take it */
         if (sc->hooks.chip_a_keys)
             sc->hooks.chip_a_keys(sc->hooks.ctx);
         sc->handed_back++;
@@ -669,6 +762,7 @@ static void poll_loading(song_ctl* sc, int may_slice) {
             return;
         }
         sc->loading_done = 1u;
+        sc->play_sub = sc->shapes[spare(sc)]->subtune;
         w->cur = w->bg;
         w->cur.pending = w->inflight;
         w->cur.pending_count = 0u;
@@ -688,6 +782,7 @@ static void poll_loading(song_ctl* sc, int may_slice) {
         return;
     song_period p = song_period_of(sc->opts.multispeed, sc->opts.ntsc);
     sc->period = p;
+    lock_prime(sc);
     song_cmd c;
     cmd_init(&c, SONG_CMD_PLAY);
     c.a = gate_for_play(sc);
@@ -748,6 +843,116 @@ static void poll_narrow(song_ctl* sc, int may_slice) {
     }
 }
 
+/* --- Locks, the main loop's side ----------------------------------------------------------- */
+
+/* The pattern channel ch's orderlist plays after model entry pos (the restart's after the
+ * last), or -1. */
+static int next_pattern(const song_ctl* sc, uint32_t ch, uint32_t pos) {
+    uint32_t sub = sc->play_sub;
+    const uint8_t* o = gt2_order_data(sc->song, sub, ch);
+    uint32_t n = gt2_order_entries(sc->song, sub, ch);
+    if (o == 0 || n == 0u)
+        return -1;
+    uint32_t i = pos + 1u;
+    for (uint32_t step = 0u; step <= n + 1u; step++, i++) {
+        if (i >= n)
+            i = o[n + 1u] < n ? o[n + 1u] : 0u;
+        if (o[i] < GT2_REPEAT)
+            return o[i];
+    }
+    return -1;
+}
+
+/* A row's filter and pulse locks into set (at most SONG_ROW_LOCKS). */
+static void lock_add_row(const song_ctl* sc, song_lock_set* set, uint32_t pattern,
+                         uint32_t row) {
+    uint32_t n = 0u;
+    const uint8_t* rec = song_locks_row(sc->song, pattern, row, &n);
+    for (uint32_t i = 0u; i < n && set->n < SONG_ROW_LOCKS; i++, rec += SONG_LOCK_BYTES) {
+        if (rec[2] > SONG_LOCK_PULSE)
+            continue; /* the character's: the hook's */
+        song_row_lock* l = &set->e[set->n++];
+        l->pattern = rec[0];
+        l->row = rec[1];
+        l->param = rec[2];
+        l->lo = rec[3];
+        l->hi = rec[4];
+    }
+}
+
+/* The locks channel ch's next row may have after its row (pattern, row, its entry ord),
+ * into the table the interrupt does not read, then published. */
+static void lock_resolve(song_ctl* sc, uint32_t ch, uint32_t pattern, uint32_t row,
+                         uint32_t ord, int first) {
+    song_lock_set* set = &sc->lock_next[ch][(sc->lock_pub[ch] & 1u) ^ 1u];
+    set->n = 0u;
+    uint32_t rows = gt2_pattern_rows(sc->song, pattern) - 1u;
+    if (first) {
+        lock_add_row(sc, set, pattern, 0u);
+    } else if (row + 1u < rows) {
+        lock_add_row(sc, set, pattern, row + 1u);
+    } else {
+        /* the pattern's end: the pattern again (a repeat), or the orderlist's next */
+        lock_add_row(sc, set, pattern, 0u);
+        int next = ord != 0xffu ? next_pattern(sc, ch, ord) : -1;
+        if (next >= 0 && (uint32_t)next != pattern)
+            lock_add_row(sc, set, (uint32_t)next, 0u);
+    }
+    COMPILER_FENCE(); /* the table before the index that publishes it */
+    sc->lock_pub[ch] = (uint8_t)(sc->lock_pub[ch] ^ 1u);
+}
+
+/* At PLAY: each channel's first row, from the play's entry. */
+static void lock_prime(song_ctl* sc) {
+    for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
+        int p = next_pattern(sc, ch, (uint32_t)sc->start_pos - 1u);
+        sc->lock_next[ch][(sc->lock_pub[ch] & 1u) ^ 1u].n = 0u;
+        if (p >= 0)
+            lock_resolve(sc, ch, (uint32_t)p, 0u, 0xffu, 1);
+        sc->row_seen[ch] = sc->row_seq[ch];
+        for (uint32_t f = 0u; f < 4u; f++)
+            sc->char_lock[ch][f] = -1;
+    }
+}
+
+/* The character's locks the channels' rows hold, told to the hook as they change. */
+static void lock_character(song_ctl* sc) {
+    for (uint32_t f = 0u; f < 4u; f++) {
+        int16_t v = -1;
+        for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS && v < 0; ch++)
+            v = sc->char_lock[ch][f];
+        if (v != sc->char_told[f]) {
+            sc->char_told[f] = v;
+            if (sc->hooks.chip_a_character)
+                sc->hooks.chip_a_character(sc->hooks.ctx, f, v);
+        }
+    }
+}
+
+/* The rows the interrupt has started since the last poll. */
+static void poll_locks(song_ctl* sc) {
+    for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
+        uint8_t seq = sc->row_seq[ch];
+        if (seq == sc->row_seen[ch])
+            continue;
+        COMPILER_FENCE();
+        uint32_t pattern = sc->row_pat[ch], row = sc->row_row[ch], ord = sc->row_ord[ch];
+        COMPILER_FENCE();
+        if (sc->row_seq[ch] != seq)
+            continue; /* another row started while read: the next poll */
+        sc->row_seen[ch] = seq;
+        lock_resolve(sc, ch, pattern, row, ord, 0);
+        uint32_t n = 0u;
+        const uint8_t* rec = song_locks_row(sc->song, pattern, row, &n);
+        for (uint32_t f = 0u; f < 4u; f++)
+            sc->char_lock[ch][f] = -1;
+        for (uint32_t i = 0u; i < n; i++, rec += SONG_LOCK_BYTES)
+            if (rec[2] >= SONG_LOCK_AGE && rec[2] <= SONG_LOCK_BLEED)
+                sc->char_lock[ch][rec[2] - SONG_LOCK_AGE] = (int16_t)(rec[3] | rec[4] << 8);
+    }
+    lock_character(sc);
+}
+
 void song_ctl_poll(song_ctl* sc, uint32_t flags) {
     int may_slice = (flags & SONG_POLL_SLICE) != 0;
     poll_applied(sc, (flags & SONG_POLL_RING) != 0);
@@ -759,6 +964,8 @@ void song_ctl_poll(song_ctl* sc, uint32_t flags) {
         break;
     case SONG_PLAYING:
     case SONG_STOPPED:
+        if (sc->state == SONG_PLAYING)
+            poll_locks(sc);
         if (sc->deriving) {
             if (!may_slice)
                 break;

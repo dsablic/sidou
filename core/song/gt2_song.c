@@ -6,6 +6,7 @@
  * (savesong, countpatternlengths), GPL-2.0-or-later, whose "any later version" lets this
  * file stay GPL-3.0-or-later; decision record 0007 ("Round-trip rules") describes them. */
 #include "gt2_song.h"
+#include "song_ext.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -390,6 +391,10 @@ static void unpend(gt2_song* s, const gt2_edit* e) {
 void gt2_edit_release(gt2_song* s, const gt2_edit* e) {
     if (e->kind == GT2_EDIT_SWAP && e->old_span != 0u)
         gt2_arena_release(s, GT2_SPAN_OFF4(e->old_span), span_bytes_at(e->offset, e->old_span));
+    /* A pattern's rebuild moves its locks with its rows, once the player has the new copy
+     * (M2c Task 7): an edit never applied (gt2_edit_cancel) moves nothing. */
+    if (e->kind == GT2_EDIT_SWAP && e->bytes[0] != 0u && is_pattern_slot(e->offset))
+        song_locks_pattern_edit(s, e->bytes[0], e->slot, e->bytes[1]);
     unpend(s, e);
 }
 
@@ -582,12 +587,22 @@ static gt2_err pattern_rebuild(gt2_song* s, uint32_t pattern, uint32_t rows, int
     return GT2_OK;
 }
 
+/* The locks' rule for a pattern rebuild's swap, carried in the edit (gt2_edit_release). */
+static gt2_err with_locks(gt2_err err, gt2_edit* e, uint32_t op, uint32_t row) {
+    if (err == GT2_OK) {
+        e->bytes[0] = (uint8_t)op;
+        e->bytes[1] = (uint8_t)row;
+    }
+    return err;
+}
+
 gt2_err gt2_pattern_resize(gt2_song* s, uint32_t pattern, uint32_t rows, gt2_edit* e) {
     if (pattern >= GT2_MAX_PATTERNS || s->pattern[pattern] == 0u)
         return GT2_ERR_RANGE;
     if (rows < 1u || rows > GT2_MAX_ROWS)
         return GT2_ERR_ROWS;
-    return pattern_rebuild(s, pattern, rows + 1u, -1, -1, e);
+    return with_locks(pattern_rebuild(s, pattern, rows + 1u, -1, -1, e), e, SONG_LOCKS_RESIZE,
+                      rows);
 }
 
 gt2_err gt2_pattern_insert_row(gt2_song* s, uint32_t pattern, uint32_t row, gt2_edit* e) {
@@ -598,7 +613,8 @@ gt2_err gt2_pattern_insert_row(gt2_song* s, uint32_t pattern, uint32_t row, gt2_
         return GT2_ERR_RANGE;
     if (body + 1u > GT2_MAX_ROWS)
         return GT2_ERR_ROWS;
-    return pattern_rebuild(s, pattern, body + 2u, (int)row, -1, e);
+    return with_locks(pattern_rebuild(s, pattern, body + 2u, (int)row, -1, e), e,
+                      SONG_LOCKS_INSERT, row);
 }
 
 gt2_err gt2_pattern_delete_row(gt2_song* s, uint32_t pattern, uint32_t row, gt2_edit* e) {
@@ -609,7 +625,8 @@ gt2_err gt2_pattern_delete_row(gt2_song* s, uint32_t pattern, uint32_t row, gt2_
         return GT2_ERR_RANGE;
     if (body < 2u)
         return GT2_ERR_ROWS;
-    return pattern_rebuild(s, pattern, body, -1, (int)row, e);
+    return with_locks(pattern_rebuild(s, pattern, body, -1, (int)row, e), e, SONG_LOCKS_DELETE,
+                      row);
 }
 
 static int pattern_named(const gt2_song* s, uint32_t pattern) {
@@ -633,7 +650,7 @@ gt2_err gt2_pattern_add(gt2_song* s, uint32_t rows, uint32_t* pattern, gt2_edit*
             gt2_err err = pattern_rebuild(s, p, rows + 1u, -1, -1, e);
             if (err == GT2_OK)
                 *pattern = p;
-            return err;
+            return with_locks(err, e, SONG_LOCKS_REMOVE, 0u); /* a fresh pattern: none */
         }
     }
     return GT2_ERR_PATTERNS;
@@ -648,7 +665,7 @@ gt2_err gt2_pattern_remove(gt2_song* s, uint32_t pattern, gt2_edit* e) {
     if (pattern_named(s, pattern))
         return GT2_ERR_IN_USE;
     swap(s, e, pattern_slot(pattern), 0u, s->pattern[pattern]);
-    return GT2_OK;
+    return with_locks(GT2_OK, e, SONG_LOCKS_REMOVE, 0u);
 }
 
 /* A new orderlist: the entries t (n of them), $FF, restart. */

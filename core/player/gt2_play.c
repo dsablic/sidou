@@ -113,6 +113,16 @@ static const uint8_t* pattern(const gt2_song* s, uint8_t pat, uint32_t* rows) {
  * (a restart byte, or past every orderlist) is the packed player's: as a pattern number it
  * is the packer's numbering, which the shape maps back to the model's pattern. */
 
+/* The model pattern the packer numbers q, $FF past the packed patterns (an empty one). A
+ * search of the numbering: only a raw orderlist byte (a broken orderlist's) and a start take
+ * it, and it is bounded (208 steps), so the shape keeps one table, not two (RAM). */
+static uint8_t pattern_of(const gt2_shape* sh, uint32_t q) {
+    for (uint32_t pat = 0u; pat < GT2_MAX_PATTERNS; pat++)
+        if (sh->pat_num[pat] == q)
+            return (uint8_t)pat;
+    return 0xffu;
+}
+
 static int is_raw(const gt2_shape* sh, uint32_t ch, uint32_t y) {
     return sh->ord_pos[ch][y] == GT2_ORD_RAW;
 }
@@ -521,7 +531,7 @@ static void sequencer(gt2_player* p, gt2_channel* c, uint32_t ch) {
         if (!is_raw(sh, ch, y))
             c->pattnum = a;
         else
-            c->pattnum = a < GT2_MAX_PATTERNS ? sh->pat_of[a] : 0xffu;
+            c->pattnum = pattern_of(sh, a);
         c->orderpos = is_raw(sh, ch, y) ? 0xffu : sh->ord_pos[ch][y];
     }
     c->songptr = (uint8_t)(y + 1u);
@@ -992,7 +1002,7 @@ void gt2_play_start(gt2_player* p, const gt2_song* s, const gt2_shape* shape,
         p->chn[ch].gate = 0xfeu;
         /* mt_chnpattnum starts at 0, the packer's first pattern in use: an orderlist that
          * opens with a repeat (readme 3.1's rules broken) replays it */
-        p->chn[ch].pattnum = shape->pat_of[0];
+        p->chn[ch].pattnum = pattern_of(shape, 0u);
         p->chn[ch].orderpos = 0xffu;
     }
 }

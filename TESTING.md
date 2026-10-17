@@ -244,6 +244,13 @@ does (a block's commands, its render split at the call, a main-loop pass between
   freed only once applied, jam, seek, the events and their overflow, multispeed 8 refused,
   a swapped chip given the player's registers.
 
+`tests/song_locks.rs`: the LOCK chunk sorted, through the trailer and the CRC rule, carried by
+row inserts, deletes and cuts (a cancel moves nothing); a locked row's cutoff and pulse width
+on the chip after each of its calls, the song's own after, the player as without locks; the
+character's locks at the hook. In fm1-emu, `song.rs` plays the first song with its lead's
+first bar's cutoff locked low, bit-exact with the host and darker than without, and
+PLAYER_WORST_BLOCK runs every example with five locks on as many rows as 512 allow.
+
 `tests/app/demo_song.rs` keeps `assets/songs/sidou-loop.sng` and `app/demo_song.c` in step
 with their source (`src/song_embed.rs`; `SIDOU_SONG_UPDATE=1` rewrites them) and checks the
 song is canonical GTS5; `gt2_match.rs` plays it against GoatTracker's player.

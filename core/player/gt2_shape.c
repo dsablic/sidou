@@ -705,14 +705,9 @@ static void derive_final(gt2_analysis* a, gt2_shape* sh) {
     /* The packer's numberings. */
     uint32_t q = 0u;
     for (uint32_t pat = 0u; pat < GT2_MAX_PATTERNS; pat++) {
-        sh->pat_of[pat] = 0xffu;
         sh->pat_num[pat] = 0xffu;
-    }
-    for (uint32_t pat = 0u; pat < GT2_MAX_PATTERNS; pat++) {
-        if (BIT(b->pattused, pat)) {
-            sh->pat_num[pat] = (uint8_t)q;
-            sh->pat_of[q++] = (uint8_t)pat;
-        }
+        if (BIT(b->pattused, pat))
+            sh->pat_num[pat] = (uint8_t)q++;
     }
     uint32_t next[3];
     next[CLASS_HR] = 1u;

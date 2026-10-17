@@ -263,6 +263,25 @@ chunk is not used and the defaults stand (the chunk itself is kept, as written).
 | 1 | 2 | k, the lock count, at most 512 |
 | 3 | 5 × k | per lock: pattern, row, parameter, value (u16) |
 
+A lock replaces one parameter for one row of a pattern, on each channel that plays the
+pattern (M2c Task 7): the song's own value returns at the next row without it, and the
+player's own state is not changed, so its tables run on underneath.
+
+| Parameter | Value | Writes |
+|---|---|---|
+| 0 cutoff | 0-2047 | `$D415`'s low 3 bits and `$D416` |
+| 1 resonance | 0-15 | `$D417`'s high nybble |
+| 2 filter mode | 0-7: bit 0 low-pass, 1 band-pass, 2 high-pass | `$D418` bits 4-6 |
+| 3 routing | 0-1: the row's voice into the filter | `$D417`'s bit for the voice |
+| 4 pulse width | 0-4095 | the row's voice's `$D402`, `$D403`'s low nybble |
+| 5-8 age/heat, DAC sloppiness, thump, bleed | 0-127 | chip A's character, with chip_ctl's glide (0.32 s end to end: coarse by nature) |
+
+The filter and pulse locks are written over the player's registers after each call of the
+row, in the audio interrupt; at most 8 resolve for a channel's next row (a pattern's next
+row, or at its end the pattern again and the orderlist's next one). A pattern's rebuild
+carries its locks with its rows: inserted and deleted rows move them, a cut drops those past
+it, a removed pattern drops all of its.
+
 **`MIDI`** (4 + c bytes):
 
 | Offset | Size | Field |
