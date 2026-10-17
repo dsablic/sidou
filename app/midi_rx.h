@@ -58,6 +58,7 @@ typedef struct {
      * clock and sensing do not count as playing. */
     uint32_t inputs;
     struct midi_route* route; /* MIDI's mode (midi_rx_route), or NULL: OMNI, as in M1 */
+    const uint8_t* fast; /* the router's per-channel fast kinds, or the no-router defaults */
     struct midi_sync* sync;   /* clock and transport (midi_rx_sync), or NULL: ignored */
     const midi_ring_entry* entry; /* the entry being parsed (its stamp) */
 } midi_rx;

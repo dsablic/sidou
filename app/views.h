@@ -27,8 +27,8 @@
  * - MIDI (from the menu): MIDI's mode and its options (app/midi_route.h), a menu like the
  *   main one: MODE, the base CHANNEL N, WHOLE-CHIP A's OPTION, LEGATO, the stored chord's two
  *   intervals, the ARP's rate in frames (0: CLOCK), the rows a beat for the clock, CLOCK
- *   (AUTO, FOLLOW, OFF) and CLOCK OUT (app/midi_sync.h). In RAM until the settings persist
- *   (M2a); a song's MIDI chunk carries its own mode.
+ *   (AUTO, FOLLOW, OFF) and CLOCK OUT (app/midi_sync.h). The page's setup stays in RAM;
+ *   a song's MIDI chunk carries its own mode. Global MIDI defaults are not persisted.
  * - CHARSET: the font and the palette, the art reference.
  * - ABOUT: the credits, as a cracktro (app/about.h).
  * - BOOT: the boot sequence (app/boot.h), over LIVE at power-on (views_boot).

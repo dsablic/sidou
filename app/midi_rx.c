@@ -8,6 +8,12 @@
 #include "midi_sync.h"
 #include "midi_usb.h"
 
+/* With no router, every channel message plays the instrument. */
+static const uint8_t UNROUTED[16] = {
+    0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu,
+    0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu, 0x7fu,
+};
+
 void midi_rx_live(midi_map_port* port, const midi_msg* msg) {
     live* l = port->l;
     switch (msg->kind) {
@@ -72,13 +78,13 @@ static int edits(const midi_rx* rx, const midi_msg* msg) {
  * as MIDI's. */
 static void take(midi_rx* rx, midi_map_port* port, const midi_msg* msg) {
     rx->inputs += (uint32_t)(msg->kind != MIDI_REALTIME || msg->data1 == 0xFFu);
-    midi_route* r = rx->route;
     /* the instrument's note or CC goes straight on (a CC flood pays one look a message) */
-    if (!r || !midi_route_fast(r, msg)) {
+    if (!((rx->fast[msg->channel] >> msg->kind) & 1u)) {
         if (rx->sync && msg->kind >= MIDI_REALTIME) {
             /* and on: the ARP's clock is the router's */
             midi_sync_msg(rx->sync, msg, rx->entry ? rx->entry->stamp : 0u);
         }
+        midi_route* r = rx->route;
         if (r) {
             midi_route_to to = midi_route_classify(r, msg);
             if (to == MIDI_ROUTE_TAKE) {
@@ -144,6 +150,7 @@ void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch) {
     rx->learn = NULL;
     rx->inputs = 0;
     rx->route = NULL;
+    rx->fast = UNROUTED;
     rx->sync = NULL;
     rx->entry = NULL;
     parsers_init(rx);
@@ -155,6 +162,7 @@ void midi_rx_sync(midi_rx* rx, struct midi_sync* sync) {
 
 void midi_rx_route(midi_rx* rx, struct midi_route* route) {
     rx->route = route;
+    rx->fast = route ? route->fast : UNROUTED;
     rx->trs_map.banks = route ? route->bank : NULL;
     rx->usb_map.banks = rx->trs_map.banks;
 }

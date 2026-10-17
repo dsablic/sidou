@@ -512,8 +512,8 @@ song-file save; on CHIP it stores a USER slot as above, and the settings otherwi
 From the menu (HOME, MIDI): MIDI's mode and its options, a menu like the main one (SELECT
 moves the cursor, ALGORITHM changes the value under it, HOME goes back). The modes are in
 [midi.md](midi.md), Modes; the clock in Clock and transport. A change of MODE or CHANNEL
-releases what MIDI was playing. The page's setting is kept in RAM until the settings are
-saved (M2a); a song brings its own mode in its `MIDI` chunk.
+releases what MIDI was playing. The page's setup stays in RAM and is not included in saved
+settings; a song carries its own mode in its `MIDI` chunk.
 
 | Item | Values | What |
 |---|---|---|
