@@ -99,12 +99,16 @@ typedef struct {
     midi_map_channel ch[16];
     /* The bindings MIDI learn made (midi_learn.h), shared by the inputs, or NULL: none. */
     struct midi_learn* learn;
+    /* Each channel's bank select (CC 0, CC 32), shared by the inputs (MIDI's mode keeps it,
+     * app/midi_route.h), or NULL: CC 0 and 32 do nothing. */
+    uint8_t (*banks)[2];
 } midi_map_port;
 
 /* Nothing selected on any channel; no learn. */
 void midi_map_port_init(midi_map_port* p, live* l);
 /* A CC on a channel (0..15): selection, data entry, increment and decrement by the channel's
- * state (RPN 0 the bend range, other RPNs nothing), CC 121 (reset all controllers) deselects
+ * state (RPN 0 the bend range, other RPNs nothing), CC 0 and 32 the channel's bank select (into
+ * banks, if set), CC 121 (reset all controllers) deselects
  * and resets live's controllers; everything else through MIDI learn first
  * (midi_learn_route: a CC bound to a parameter sets it through the parameter's row, and a
  * parameter waiting to be learned takes the CC), then live_cc. */

@@ -189,7 +189,12 @@ typedef struct midi_route {
     /* Each channel's midi_route_to for its channel messages in this mode, so midi_rx sends the
      * instrument's straight on (midi_route_fast) */
     uint8_t to[16];
-    uint8_t bank_msb[16], bank_lsb[16]; /* each channel's bank select */
+    /* Each channel's kinds (bit k: midi_kind k) that go straight to live: notes, aftertouch,
+     * CCs and bend on the instrument's channels, none elsewhere (midi_route_fast). */
+    uint8_t fast[16];
+    /* Each channel's bank select, MSB and LSB: the router's channels write it here, the
+     * instrument's through midi_map_cc (midi_map_port.banks, app/midi_rx.h). */
+    uint8_t bank[16][2];
     uint8_t song_req;  /* the song a bank 1 program change asks for, or MIDI_ROUTE_NO_REQUEST */
     uint8_t user_req;  /* the USER profile (0..7) bank 2 asks for, or MIDI_ROUTE_NO_REQUEST */
     uint8_t user_chip; /* and for which chip (MIDI_ROUTE_CHIP_*) */
@@ -222,12 +227,11 @@ void midi_route_init(midi_route* r, live* l, keys_route* kr, const midi_route_pl
 void midi_route_set(midi_route* r, const midi_route_setup* s);
 /* 1 if chip A belongs to the player in this mode. */
 int midi_route_owns_chip_a(uint32_t mode);
-/* 1 if msg is surely the instrument's (a note, aftertouch or CC other than bank select, on a
- * channel to[] says is live's; the program change, bend and the rest take the long way):
+/* 1 if msg is surely the instrument's (a note, aftertouch, CC or bend on a channel to[] says
+ * is live's: its bank select goes to bank[] through midi_map_cc; the program change and the
+ * rest take the long way):
  * midi_rx's look before midi_route_classify, cheap for a stream of the instrument's CCs. */
-#define midi_route_fast(r, msg)                                                                \
-    ((msg)->kind < MIDI_PROGRAM && (r)->to[(msg)->channel & 15u] == MIDI_ROUTE_LIVE &&         \
-     !((msg)->kind == MIDI_CC && ((msg)->data1 & 0xdfu) == 0u))
+#define midi_route_fast(r, msg) (((r)->fast[(msg)->channel & 15u] >> (msg)->kind) & 1u)
 /* Where a message goes (pure). */
 midi_route_to midi_route_classify(const midi_route* r, const midi_msg* msg);
 /* 1 if the message, which classify gave the router, changes one of live's parameters (a

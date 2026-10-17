@@ -32,6 +32,7 @@ add_library(sidou_live STATIC
     midi_out.c
     midi_ring.c
     midi_route.c
+    midi_sync.c
     midi_rx.c
     midi_usb.c
     panel.c

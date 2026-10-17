@@ -7,6 +7,8 @@
 #include "fx/fx_slots.h"
 #include "midi_learn.h"
 
+#define CC_BANK_MSB 0u
+#define CC_BANK_LSB 32u
 #define CC_DATA_MSB 6u
 #define CC_DATA_LSB 38u
 #define CC_INCREMENT 96u
@@ -245,6 +247,7 @@ static void deselect(midi_map_channel* c) {
 void midi_map_port_init(midi_map_port* p, live* l) {
     p->l = l;
     p->learn = NULL;
+    p->banks = NULL;
     for (uint32_t i = 0; i < 16u; ++i) {
         deselect(&p->ch[i]);
     }
@@ -342,6 +345,12 @@ void midi_map_cc(midi_map_port* p, uint8_t channel, uint8_t cc, uint8_t value) {
     case CC_DATA_LSB:
     case CC_INCREMENT:
     case CC_DECREMENT: data(p, c, cc, value); break;
+    case CC_BANK_MSB:
+    case CC_BANK_LSB:
+        if (p->banks) {
+            p->banks[channel][cc == CC_BANK_LSB] = value;
+        }
+        break;
     case CC_RESET_ALL:
         deselect(c);
         live_cc(p->l, cc, value); /* the controllers */

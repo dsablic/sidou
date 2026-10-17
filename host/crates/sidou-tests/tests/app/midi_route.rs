@@ -767,7 +767,7 @@ fn bank_select_on_the_instruments_channel_never_reaches_live() {
     r.rig.clear();
     r.trs(&[0xB0, 0, 5, 0xB0, 32, 7]);
     assert!(r.rig.log().is_empty());
-    assert_eq!((r.route.bank_msb[0], r.route.bank_lsb[0]), (5, 7));
+    assert_eq!(r.route.bank[0], [5, 7]);
 }
 
 #[test]

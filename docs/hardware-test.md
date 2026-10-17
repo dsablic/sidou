@@ -630,6 +630,30 @@ power-on gesture (section 0) rather than the installer.
 
 Notes:
 
+## 8b. MIDI clock and transport (M2e Task 2)
+
+The song is SIDOU's first song (PLAY). The MIDI page is HOME, then MIDI at the end of the
+menu; CLOCK is AUTO and CLOCK OUT OFF at power-on.
+
+- [ ] **Follow a DAW over USB:** set the DAW to send MIDI clock and transport to SIDOU at
+  120 BPM and press its play: SIDOU's song starts on the DAW's downbeat and stays with it for
+  a minute (record the DAW's metronome and SIDOU together: the rows on the clicks, no drift).
+  Change the DAW's tempo to 90 and to 140 while it plays: the song follows within a beat or
+  two. Stop the DAW: the song stops. Record what you hear at the start:
+- [ ] **The same over TRS:** a hardware sequencer or a DAW's MIDI interface into the TRS
+  jack: as above.
+- [ ] **Song position:** in the DAW, stop, move the play head to bar 3 and press play
+  (continue): the song plays from bar 3, in step with the DAW.
+- [ ] **A clock that stops:** with CLOCK at AUTO, unplug the clock's cable while the song
+  plays: the song carries on at the tempo it had. With CLOCK at FOLLOW, the same stops it.
+- [ ] **Lead a DAW:** set CLOCK OUT to ON on the MIDI page and set the DAW to follow MIDI clock
+  from SIDOU over USB. Press PLAY on SIDOU: the DAW starts and follows the song's tempo;
+  PLAY again stops both. Record the tempo the DAW shows:
+- [ ] **No echo:** with CLOCK OUT on and the DAW sending clock to SIDOU, the DAW's MIDI
+  monitor shows no clock coming back from SIDOU.
+
+Notes:
+
 ## 9. Reinstall, back to stock V15, and SIDOU again
 
 - [ ] From SIDOU, install `sidou.fwsc` again (SIDOU to SIDOU): it installs,

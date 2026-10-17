@@ -58,6 +58,8 @@ typedef struct {
      * clock and sensing do not count as playing. */
     uint32_t inputs;
     struct midi_route* route; /* MIDI's mode (midi_rx_route), or NULL: OMNI, as in M1 */
+    struct midi_sync* sync;   /* clock and transport (midi_rx_sync), or NULL: ignored */
+    const midi_ring_entry* entry; /* the entry being parsed (its stamp) */
 } midi_rx;
 
 /* epoch: the ring's midi_ring_epoch now, so losses before this are not held against it.
@@ -80,6 +82,9 @@ void midi_rx_learn(midi_rx* rx, midi_learn* learn);
  * live as above, chip A's channels to the router, the rest dropped; a restart after lost input
  * releases the router's notes too. route may be NULL: every channel plays the instrument. */
 void midi_rx_route(midi_rx* rx, struct midi_route* route);
+/* Real time, song position and song select from both ports to the clock follower and the
+ * transport (app/midi_sync.h), each with its entry's stamp. sync may be NULL: none. */
+void midi_rx_sync(midi_rx* rx, struct midi_sync* sync);
 /* One entry, through its source's parser; entries of an unknown source are ignored. An entry
  * from a later epoch than the parsers' first restarts them (a gap lies before it). */
 void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e);

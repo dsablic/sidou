@@ -57,7 +57,7 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         gt2_play_start(&sc->player, sc->song, (const gt2_shape*)c->u.p.ptr,
                        (const uint8_t*)&c->u.p.x);
         sc->calls = 0u;
-        sc->next = 0u;
+        sc->next = c->c ? SONG_NEXT_HELD : 0u; /* c: held for M2e's align */
         sc->rem = 0u;
         sc->period.q = c->u.p.y;
         sc->period.r = c->u.p.z & 0xffffffu;
@@ -88,7 +88,7 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         song_set_gate_reset(sc, c->a);
         break;
     case SONG_CMD_CONTINUE:
-        sc->next = 0u;
+        sc->next = c->c ? SONG_NEXT_HELD : 0u;
         sc->rem = 0u;
         song_set_gate_reset(sc, c->a);
         sc->audition = 0u;
@@ -143,6 +143,12 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
     case SONG_CMD_EDIT:
         gt2_edit_apply(sc->song, &c->u.edit);
         break;
+    case SONG_CMD_ALIGN: {
+        int32_t d = (int32_t)(c->u.p.x - sc->samples);
+        sc->next = d > 0 ? (uint32_t)d : 0u;
+        sc->rem = 0u;
+        break;
+    }
     case SONG_CMD_PERIOD:
         sc->period.q = c->u.p.x;
         sc->period.r = c->u.p.y;
@@ -322,6 +328,7 @@ void song_ctl_call(song_ctl* sc) {
                 sc->player.chn[ch].counter = 1u; /* its tick 0 at this call */
         }
     }
+    sc->call_sample = sc->samples + sc->next;
     gt2_play_frame(&sc->player, song_sink, sc);
     sc->past_b7 |= sc->player.freq_unknown;
     song_push_events(sc);
@@ -341,6 +348,7 @@ void song_ctl_call(song_ctl* sc) {
 void song_ctl_block_end(song_ctl* sc, uint32_t n) {
     if (sc->isr_playing || sc->audition)
         sc->next -= n;
+    sc->samples += n;
 }
 
 void song_ctl_chip_swapped(void* ctx, uint32_t chip, sid* s) {
@@ -551,6 +559,8 @@ int song_ctl_continue(song_ctl* sc) {
     song_cmd c;
     cmd_init(&c, SONG_CMD_CONTINUE);
     c.a = gate_for_play(sc);
+    c.c = sc->hold_next;
+    sc->hold_next = 0u;
     push(sc, &c);
     sc->handback = 0u;
     sc->state = SONG_PLAYING;
@@ -759,6 +769,28 @@ int song_ctl_seek(song_ctl* sc, uint32_t call) {
     return 1;
 }
 
+int song_ctl_seek_further(song_ctl* sc, uint32_t call) {
+    if (!sc->ff_on || sc->ff_sent || !sc->ff_now)
+        return 0;
+    if (call > sc->ff_target)
+        sc->ff_target = call;
+    return 1;
+}
+
+void song_ctl_hold(song_ctl* sc, int on) {
+    sc->hold_next = on ? 1u : 0u;
+}
+
+int song_ctl_align(song_ctl* sc, uint32_t sample) {
+    if (room(sc) < 1u)
+        return 0;
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_ALIGN);
+    c.u.p.x = sample;
+    push(sc, &c);
+    return 1;
+}
+
 static void discard(void* ctx, uint8_t reg, uint8_t value) {
     (void)ctx;
     (void)reg;
@@ -876,6 +908,8 @@ static void poll_loading(song_ctl* sc, int may_slice) {
         song_cmd k;
         cmd_init(&k, SONG_CMD_CONTINUE);
         k.a = gate_for_play(sc);
+        k.c = sc->hold_next;
+        sc->hold_next = 0u;
         push(sc, &k);
         sc->handback = 0u;
         sc->state = SONG_PLAYING;
@@ -888,6 +922,8 @@ static void poll_loading(song_ctl* sc, int may_slice) {
     cmd_init(&c, SONG_CMD_PLAY);
     c.a = gate_for_play(sc);
     c.b = (uint8_t)(sc->load_for == LOAD_PAUSED);
+    c.c = sc->hold_next; /* M2e's clock: the first call waits for an align */
+    sc->hold_next = 0u;
     c.u.p.ptr = sc->shapes[spare(sc)];
     c.u.p.ptr2 = (const void*)(uintptr_t)p.den;
     uint8_t* st = (uint8_t*)&c.u.p.x;

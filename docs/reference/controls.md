@@ -511,9 +511,9 @@ song-file save; on CHIP it stores a USER slot as above, and the settings otherwi
 
 From the menu (HOME, MIDI): MIDI's mode and its options, a menu like the main one (SELECT
 moves the cursor, ALGORITHM changes the value under it, HOME goes back). The modes are in
-[midi.md](midi.md), Modes. A change of MODE or CHANNEL releases what MIDI was playing. The
-page's setting is kept in RAM until the settings are saved (M2a); a song brings its own in
-its `MIDI` chunk.
+[midi.md](midi.md), Modes; the clock in Clock and transport. A change of MODE or CHANNEL
+releases what MIDI was playing. The page's setting is kept in RAM until the settings are
+saved (M2a); a song brings its own mode in its `MIDI` chunk.
 
 | Item | Values | What |
 |---|---|---|
@@ -523,7 +523,9 @@ its `MIDI` chunk.
 | LEGATO | OFF (default), ON | MULTI and CHORD: the next note while one is held glides on, no new attack |
 | CHORD 2, CHORD 3 | +0..+24 (+4, +7) | the stored chord: semitones above the note on voices 2 and 3 |
 | ARP RATE | CLOCK, 1..32 FR (3 FR) | frames an arpeggio step; CLOCK: every 16th of the MIDI clock |
-| ROWS/BEAT | 1..16 (4) | the song's rows a beat, for following the MIDI clock (M2e Task 2) |
+| ROWS/BEAT | 1..16 (4) | the song's rows a beat, for following and sending the MIDI clock |
+| CLOCK | AUTO (default), FOLLOW, OFF | AUTO: the song follows a MIDI clock and transport while one arrives, and carries on at the last tempo when it stops; FOLLOW: the same, but the song stops with the clock; OFF: the song on its own frames, MIDI's start and stop ignored |
+| CLOCK OUT | OFF (default), ON | the song's clock out over USB, 24 a beat, with start, stop and continue, while no clock comes in |
 
 In MULTI and both WHOLE modes chip A belongs to the player, song or not, so the keys play
 chip B as they do [while a song plays](#which-chip-the-keys-play). Until song control plays

@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 #include "midi_route.h"
+#include "midi_sync.h"
 #include "midi_usb.h"
 
 void midi_rx_live(midi_map_port* port, const midi_msg* msg) {
@@ -71,17 +72,25 @@ static int edits(const midi_rx* rx, const midi_msg* msg) {
  * as MIDI's. */
 static void take(midi_rx* rx, midi_map_port* port, const midi_msg* msg) {
     rx->inputs += (uint32_t)(msg->kind != MIDI_REALTIME || msg->data1 == 0xFFu);
-    if (rx->route && !midi_route_fast(rx->route, msg)) {
-        midi_route_to to = midi_route_classify(rx->route, msg);
-        if (to == MIDI_ROUTE_TAKE) {
-            if (rx->out && !rx->looked && midi_route_edits_live(rx->route, msg)) {
-                midi_out_local(rx->out, rx->l); /* a preset or a profile: MIDI's, as above */
-                rx->looked = 1;
-            }
-            midi_route_take(rx->route, msg);
+    midi_route* r = rx->route;
+    /* the instrument's note or CC goes straight on (a CC flood pays one look a message) */
+    if (!r || !midi_route_fast(r, msg)) {
+        if (rx->sync && msg->kind >= MIDI_REALTIME) {
+            /* and on: the ARP's clock is the router's */
+            midi_sync_msg(rx->sync, msg, rx->entry ? rx->entry->stamp : 0u);
         }
-        if (to != MIDI_ROUTE_LIVE) {
-            return;
+        if (r) {
+            midi_route_to to = midi_route_classify(r, msg);
+            if (to == MIDI_ROUTE_TAKE) {
+                if (rx->out && !rx->looked && midi_route_edits_live(r, msg)) {
+                    midi_out_local(rx->out, rx->l); /* a preset or a profile: MIDI's */
+                    rx->looked = 1;
+                }
+                midi_route_take(r, msg);
+            }
+            if (to != MIDI_ROUTE_LIVE) {
+                return;
+            }
         }
     }
     if (rx->out && !rx->looked && edits(rx, msg)) {
@@ -109,6 +118,8 @@ static void parsers_init(midi_rx* rx) {
     midi_map_port_init(&rx->usb_map, rx->l);
     rx->trs_map.learn = rx->learn;
     rx->usb_map.learn = rx->learn;
+    rx->trs_map.banks = rx->route ? rx->route->bank : NULL;
+    rx->usb_map.banks = rx->trs_map.banks;
     midi_in_init(&rx->trs, on_trs, 0, rx);
     midi_in_init(&rx->usb, on_usb, 0, rx);
 }
@@ -133,11 +144,19 @@ void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch) {
     rx->learn = NULL;
     rx->inputs = 0;
     rx->route = NULL;
+    rx->sync = NULL;
+    rx->entry = NULL;
     parsers_init(rx);
+}
+
+void midi_rx_sync(midi_rx* rx, struct midi_sync* sync) {
+    rx->sync = sync;
 }
 
 void midi_rx_route(midi_rx* rx, struct midi_route* route) {
     rx->route = route;
+    rx->trs_map.banks = route ? route->bank : NULL;
+    rx->usb_map.banks = rx->trs_map.banks;
 }
 
 void midi_rx_learn(midi_rx* rx, midi_learn* learn) {
@@ -154,6 +173,7 @@ void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e) {
     if (e->epoch != rx->epoch) {
         restart(rx, e->epoch);
     }
+    rx->entry = e;
     if (e->source == MIDI_SRC_TRS) {
         midi_in_byte(&rx->trs, (uint8_t)e->data);
     } else if (e->source == MIDI_SRC_USB) {

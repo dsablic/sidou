@@ -230,6 +230,8 @@ static void song_chip_character(void* ctx, uint32_t field, int32_t value) {
     keys_route_song_wants(kr, &want);
 }
 
+static const midi_sync* sync_state; /* midi_synced(), for play()'s look at CLOCK OUT */
+
 static void song_boot(void) {
     song_chip_hooks hooks = {song_chip_ready, song_chip_back, song_chip_character, &keys_router};
     song_ctl_set_hooks(audio_song(), &hooks);
@@ -434,8 +436,73 @@ static void st_status(void* ctx, song_status* out) {
     }
 }
 
-static const song_transport song_binding = {st_play, st_stop,   st_resume, st_mute,
-                                            st_jam,  st_status, 0,         0};
+/* M2e's MIDI clock (app/midi_sync.h): the held start, the align, the period, the seeks and
+ * the calls' samples, through the same transport as the song views'. */
+static int st_hold(void* ctx, uint32_t on) {
+    song_ctl_hold(ctx, (int)on);
+    return 1;
+}
+
+static int st_align(void* ctx, uint32_t sample) {
+    return song_ctl_align(ctx, sample);
+}
+
+static int st_period(void* ctx, uint32_t q16) {
+    song_ctl* sc = ctx;
+    song_period p;
+    if (q16 == 0u) {
+        p = song_period_of(sc->opts.multispeed, sc->opts.ntsc);
+    } else {
+        p.q = q16 >> 16;
+        p.r = q16 & 0xffffu;
+        p.den = 65536u;
+    }
+    return song_ctl_set_period(sc, p);
+}
+
+static int st_seek(void* ctx, uint32_t call) {
+    return song_ctl_seek(ctx, call);
+}
+
+static int st_seek_further(void* ctx, uint32_t call) {
+    return song_ctl_seek_further(ctx, call);
+}
+
+static void st_clock(void* ctx, song_clock* out) {
+    const song_ctl* sc = ctx;
+    out->state = (uint8_t)song_ctl_state(sc);
+    out->seeking = sc->ff_on ? (sc->ff_sent ? 2u : 1u) : 0u;
+    const gt2_player* p = &sc->player;
+    uint8_t t = p->shape ? p->chn[0].tempo : 0u;
+    if (!sc->shapes_used || !p->shape) {
+        out->speed[0] = out->speed[1] = 0u; /* no tempo before a play */
+    } else if (t < 2u) {
+        out->speed[0] = p->funktempo[0];
+        out->speed[1] = p->funktempo[1];
+    } else {
+        out->speed[0] = out->speed[1] = (uint8_t)(t + 1u);
+    }
+    out->calls = sc->calls;
+    out->call_sample = sc->call_sample;
+    const song_period* q = &sc->period;
+    float frac = (float)q->r * 65536.0f / (float)(q->den ? q->den : 1u);
+    out->period_q16 = (q->q << 16) + (uint32_t)frac;
+}
+
+static const song_transport song_binding = {
+    .play = st_play,
+    .stop = st_stop,
+    .resume = st_resume,
+    .mute = st_mute,
+    .jam = st_jam,
+    .status = st_status,
+    .hold = st_hold,
+    .align = st_align,
+    .period = st_period,
+    .seek = st_seek,
+    .seek_further = st_seek_further,
+    .clock = st_clock,
+};
 static song_transport song_bound;
 
 /* Once a pass: the voices the keys take from the song under KEYS A, the audition's jam that
@@ -553,6 +620,9 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
      * main loop nothing between frames. */
     if (tick_due || store_fm1_active) {
         store_fm1_service(now, &instrument, &keys_router, ui_sound_busy(&ui_sounds));
+    }
+    if (sync_state->clock_out) {
+        midi_sync_pass(); /* clock out's times, about once a millisecond */
     }
     commit_pass();
     input_leds(&front, &instrument);
@@ -673,6 +743,8 @@ static void sidou_main(void) {
     panel_master(&front, &instrument, input_master());
     audio_set_master(instrument.master); /* the interrupt's first block has it */
     midi_init(&instrument, &keys_router);
+    midi_sync_bind(midi_synced(), &song_bound); /* MIDI's clock plays the song */
+    sync_state = midi_synced();
     update_boot();
 #if defined(SIDOU_FLASH_SPIKE)
     /* Not SIDOU: the flash spike, with the audio never started (flash_spike.h). The views are

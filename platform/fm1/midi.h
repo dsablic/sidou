@@ -15,6 +15,7 @@
 #include "live.h"
 #include "midi_learn.h"
 #include "midi_route.h"
+#include "midi_sync.h"
 
 /* Interrupts off, before TIMER5 starts: the UART (a port H read-modify-write) and USB (which
  * waits 25 ms for the controller's reset). l receives the messages, through MIDI's mode
@@ -27,6 +28,15 @@ void midi_init(live* l, keys_route* kr);
 midi_route* midi_routed(void);
 /* Main loop, once per live tick, after live_tick: the mode's bends, filter and ARP steps. */
 void midi_tick(void);
+/* MIDI clock and transport (app/midi_sync.h): main.c binds its player over song control.
+ * Its settings (CLOCK, CLOCK OUT) are in RAM until the settings persist (M2a). */
+midi_sync* midi_synced(void);
+/* The clock's requests to the player (start, stop, continue, seeks, the period and the
+ * alignment) and clock out's packets over USB, sent at once (the TIMER5 interrupt's USB poll
+ * takes them), each before a commit: from midi_tick (100 Hz), from midi_drain after a clock or
+ * a transport message, and from main.c's play() while CLOCK OUT is on (about once a
+ * millisecond, with the key scan: clock out's times). */
+void midi_sync_pass(void);
 /* MIDI learn's bindings (app/midi_learn.h), which both inputs and MIDI out use: the screen
  * arms learn on them (platform/fm1/ui.c). In RAM, empty at power-on. */
 midi_learn* midi_learned(void);

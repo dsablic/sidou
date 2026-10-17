@@ -1408,6 +1408,54 @@ channel's bank says. Bank 0, the power-on bank, is M1's meaning on the instrumen
     s
 }
 
+/// MIDI clock and transport for the song (app/midi_sync.h, M2e Task 2).
+fn clock_section() -> String {
+    let fs = 24e6 / 544.0;
+    let ms = |samples: u32| f64::from(samples) / fs * 1e3;
+    format!(
+        "\
+## Clock and transport
+
+SIDOU's song follows a sequencer's MIDI clock, or leads one. The MIDI page's CLOCK (AUTO,
+FOLLOW, OFF; AUTO at power-on) and CLOCK OUT (OFF at power-on) set it
+([controls.md](controls.md)); both are kept in RAM until the settings are saved.
+
+- **In** (TRS and USB, merged): timing clock (F8), start (FA), continue (FB), stop (FC),
+  song position (F2) and song select (F3). With CLOCK at AUTO or FOLLOW and a clock arriving,
+  the song's frame clock follows the clock: its rows land on the clock's 16ths, at the
+  song's rows a beat (ROWS/BEAT, 4 by default: a row a 16th). The tempo comes from a fit
+  through the last {window} clocks, known after {lock}; each row's error goes into the next
+  beat's period (at most 1 % of a beat), and an error over {align:.1} ms re-aligns at once.
+- **Start** plays the song from its start on the next clock; **continue** goes on on the
+  next clock from where it stopped, or from a song position; **stop** stops it, its
+  releases ringing as the chip's would. **Song position** (in 16ths: rows = 16ths x rows a
+  beat / 4) is taken while the song is stopped or not started, and sought in the
+  background; a continue that comes during the seek starts when it is done, as far on as
+  the clock went meanwhile. A song position while the song plays is ignored. **Song
+  select** picks the subtune the next start plays.
+- **The delay:** each row sounds {delay:.1} ms after its clock reached the jack: the block
+  being heard, the next one (already rendered), and the poll. It is a constant, for a
+  sequencer's output latency compensation.
+- **A clock that stops** ({lost} ms without one): with AUTO the song carries on at the last
+  tempo; with FOLLOW it stops. CLOCK OFF ignores clock and transport: the song runs on its
+  own frames, and start and stop come from the panel only.
+- **Out** (USB only: the TRS jack is MIDI IN only), with CLOCK OUT on and no clock coming
+  in: {ppq} clocks a beat at the song's tempo (a beat is its calls a row x rows a beat), each
+  sent in the first pass after its time, within a pass and USB's 1 ms frame; start (FA) when
+  the song starts, stop (FC) when it stops, and song position then continue (F2, FB) when it
+  goes on from where it stopped. A clock that comes in is never sent back: while one is
+  followed, nothing goes out.
+
+",
+        window = MIDI_CLOCK_WINDOW,
+        lock = MIDI_CLOCK_LOCK,
+        align = ms(MIDI_SYNC_ALIGN_SAMPLES),
+        delay = ms(MIDI_SYNC_DELAY),
+        lost = MIDI_CLOCK_LOST_MS,
+        ppq = MIDI_CLOCK_PER_BEAT,
+    )
+}
+
 fn cc_text(r: &Row) -> String {
     if r.has_cc() {
         r.cc.to_string()
@@ -1439,6 +1487,7 @@ fn doc() -> String {
     s.push_str(&learn_section());
     s.push_str(&modes_section());
     s.push_str(&banks_section());
+    s.push_str(&clock_section());
     s.push_str("## The map\n\nIn NRPN order.\n\n");
     s.push_str("| Group | Parameter | CC | NRPN (MSB/LSB) | Range | Curve | Default | Values |\n");
     s.push_str("|---|---|---|---|---|---|---|---|\n");

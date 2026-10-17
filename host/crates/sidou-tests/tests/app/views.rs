@@ -822,3 +822,33 @@ fn the_midi_page_edits_midis_mode() {
     ui.settle();
     assert_eq!(ui.top(), "MENU");
 }
+
+/// M2e Task 2: the MIDI page's CLOCK and CLOCK OUT set MIDI's clock (app/midi_sync.h).
+#[test]
+fn the_midi_pages_clock_items_set_the_clock() {
+    let mut ui = Ui::without_cards();
+    let mut sync = Box::<midi_sync>::default();
+    unsafe { midi_sync_init(&mut *sync) };
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_MIDI as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.settle();
+    let value = |ui: &Ui, item: usize| ui.row(5 + item)[4..27].trim_end().to_string();
+    ui.turn(PANEL_ENC_SELECT, 8);
+    ui.frame();
+    assert!(value(&ui, 8).starts_with("CLOCK") && value(&ui, 8).ends_with(" -"));
+    unsafe { views_sync(&mut *ui.v, &mut *sync) };
+    ui.frame();
+    assert!(value(&ui, 8).ends_with("AUTO"), "{:?}", value(&ui, 8));
+    assert!(value(&ui, 9).ends_with("OFF"), "{:?}", value(&ui, 9));
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(u32::from(sync.mode), MIDI_SYNC_FOLLOW);
+    ui.turn(PANEL_ENC_ALGORITHM, 5);
+    assert_eq!(u32::from(sync.mode), MIDI_SYNC_OFF, "clamped");
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(sync.clock_out, 1);
+    ui.frame();
+    assert!(value(&ui, 9).ends_with("ON"));
+}

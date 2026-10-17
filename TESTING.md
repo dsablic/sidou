@@ -938,6 +938,21 @@ rendered chip's state, read from emulated RAM through the `chips` symbol:
   (`Machine::midi_paced`: fm1-emu drops a backlog past 3125 bytes) and check that nothing
   was dropped.
 
+### MIDI modes, banks and clock tests (M2e)
+
+`crates/emu-gate/tests/midi_modes.rs`: MULTITIMBRAL set on the MIDI page moves the
+instrument to chip B and plays it from channel N + 3, chip A's channels reach the router's
+jam voices (`routing` in RAM) and not the instrument, OMNI gives chip A back; a dense
+four-channel stream at TRS's full rate keeps every pass within the poll allowance; bank 2
+program 3 picks the 8580 R5 profile, bank 1 program 0 asks for the first song, bank 0 is the
+presets. `crates/emu-gate/tests/midi_transport.rs`: SIDOU's first song started from a 120
+BPM clock over TRS lands its rows within 1 ms of the clock's 16ths from two beats on (the
+device's own poll gives the clock its jitter); stop, a song position to bar 3 and continue
+play on from row 32; every pass within the allowance. On the host, `tests/app/midi_route.rs`
+(the modes, the banks, the `MIDI` chunk), `tests/app/midi_sync.rs` (the clock over the real
+song control: phase, transport, clock out's packets) and `tests/app/views.rs` (the MIDI
+page).
+
 ### Latency test
 
 `crates/emu-gate/tests/latency.rs` injects a note-on into the emulated TRS jack at a

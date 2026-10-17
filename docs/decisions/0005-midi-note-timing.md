@@ -261,6 +261,31 @@ render, so none of the ring's invariants above change. Notes from the keys and M
 this record's block-start placement. Songs default to AUTHENTIC envelopes (the gate reset
 off), set on chip A when a song starts.
 
+## Amendment: MIDI clock and transport place the song's calls (M2e Task 2, 2026-10-17)
+
+The record's revisit "with M2's clock and transport" is done for the song: a sequencer's
+clock now places the player's calls, not the notes of the keys or MIDI.
+
+- **Placement:** each clock is stamped at the poll that took it (the TRS UART's 2 kHz, USB's
+  1 ms frames), the clock follower (app/midi_clock.h) fits a line through the last 96, and
+  the call due at a 16th goes at that clock's fitted time plus a fixed delay
+  (`MIDI_SYNC_DELAY`, 352 samples, 8.0 ms): the block being heard, the next (rendered
+  already when the command is sent) and the stamp's age. song_ctl's commands place a call at
+  any sample (`song_ctl_align`, and a held start that waits for one), so the rows are
+  sample-exact against the fit: the jitter of the stamps is gone, the fixed delay stays.
+- **Measured:** rows against the 16ths of a clock with the TRS poll's jitter, from two beats
+  after the start: host 0.29-0.31 ms worst at 90, 120 and 125.3 BPM; fm1-emu over TRS at
+  120 BPM 0.03 ms. The cost: none in the audio interrupt beyond the align command's handling
+  (a subtraction) and two words a call and a block; in the main loop, a pass with the clock
+  and its row's period update stays far below the poll allowance (36.9k at worst with the
+  song starting; the dense four-channel stream 25k).
+- **Jam notes (TIGHT):** the option the record sketched for notes that drive the player
+  (Task 3's jam notes: their stamp carried through song control and placed at a fixed delay)
+  waits for song control's jam binding (docs/plans/2026-10-15-m2e-midi.md, Task 3's results):
+  there are no jam notes on the device to measure yet. The mechanism is the one above (an
+  aligned command at the stamp plus the delay), so its cost is the align's. Decided: not
+  now; live notes to the keys' chip stay as M1 decided (block-start placement, 3.0 to 6.7 ms).
+
 ## Consequences
 
 - **Measured latency:** the note-on's first sample reaches the buffer in

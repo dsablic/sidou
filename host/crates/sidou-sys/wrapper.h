@@ -42,6 +42,7 @@
 #include "midi_out.h"
 #include "midi_ring.h"
 #include "midi_route.h"
+#include "midi_sync.h"
 #include "midi_rx.h"
 #include "midi_usb.h"
 #include "panel.h"

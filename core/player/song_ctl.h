@@ -84,6 +84,10 @@ extern "C" {
 #define SONG_FF_CALLS 6u
 #define SONG_HANDOVER_LEAD 4u
 
+/* song_ctl.next while a held PLAY or CONTINUE waits for its align (song_ctl_hold): far ahead,
+ * hours of blocks. */
+#define SONG_NEXT_HELD 0x40000000u
+
 /* An event out of the ring: one channel's events of one call. */
 typedef struct {
     uint16_t frame;    /* the call's number since play, low 16 bits */
@@ -96,7 +100,8 @@ typedef struct {
 
 enum {
     SONG_CMD_PLAY = 1, SONG_CMD_STOP, SONG_CMD_CONTINUE, SONG_CMD_MUTE, SONG_CMD_SHAPE,
-    SONG_CMD_HANDOVER, SONG_CMD_JAM, SONG_CMD_EDIT, SONG_CMD_PERIOD, SONG_CMD_TAKE
+    SONG_CMD_HANDOVER, SONG_CMD_JAM, SONG_CMD_EDIT, SONG_CMD_PERIOD, SONG_CMD_TAKE,
+    SONG_CMD_ALIGN
 };
 
 typedef struct {
@@ -174,7 +179,7 @@ enum { SONG_DERIVE_EDIT = 1, SONG_DERIVE_HANDOVER, SONG_DERIVE_DONE };
 /* Polls with no edit before a widened shape is narrowed again. */
 #define SONG_QUIET_POLLS 50u
 
-typedef struct {
+typedef struct song_ctl {
     /* --- written by the main loop, read by the interrupt --- */
     song_cmd cmd[SONG_CMD_RING];
     volatile uint32_t cmd_head; /* commands before it are visible */
@@ -183,6 +188,10 @@ typedef struct {
     volatile uint32_t cmd_tail;     /* commands before it are applied */
     volatile uint32_t applied;      /* the last applied command's seq */
     volatile uint32_t calls;        /* play routine calls since play */
+    /* M2e's clock (song_ctl_align): samples rendered before this block since init, and the
+     * sample of the last call on that count. */
+    volatile uint32_t samples;
+    volatile uint32_t call_sample;
     volatile uint32_t ev_head;
     volatile uint32_t handover_seq; /* the last hand-over the interrupt took or refused */
     volatile uint8_t handover_ok;
@@ -261,6 +270,7 @@ typedef struct {
     uint8_t chip_held;      /* chip A is the song's: from a load's chip hook to the hand-back */
     uint8_t load_for;       /* what SONG_LOADING ends in (song_ctl.c LOAD_*) */
     uint32_t idle_edits;    /* edits committed before a player exists, without a command */
+    uint8_t hold_next;      /* song_ctl_hold: the next PLAY or CONTINUE waits for an align */
 } song_ctl;
 
 /* The song in its region, its two shape buffers and its work space, all the caller's;
@@ -321,6 +331,19 @@ int song_ctl_set_period(song_ctl* sc, song_period p);
 /* Fast-forwards a player from the play's start to call `call` and hands it over at the
  * interrupt's next call (M2d's seeks). */
 int song_ctl_seek(song_ctl* sc, uint32_t call);
+/* A seek's target moved on to call `call` while it still runs its slices (a MIDI continue
+ * during a song position's seek, M2e: the frames the clock ran meanwhile): 1, or 0 when no
+ * seek is under way or it has gone to the interrupt already. */
+int song_ctl_seek_further(song_ctl* sc, uint32_t call);
+
+/* M2e's MIDI clock. With on, the next PLAY (the one a song_ctl_play sends once its analysis
+ * and chip A are ready) or CONTINUE waits, playing nothing, until song_ctl_align says when
+ * its first call is. */
+void song_ctl_hold(song_ctl* sc, int on);
+/* The next call at sample `sample` of the interrupt's count (song_ctl.samples), or at the next
+ * block's start if that has passed; the frame clock goes on from there (the remainder
+ * cleared). A playing song's phase, or a held one's start. */
+int song_ctl_align(song_ctl* sc, uint32_t sample);
 
 /* Once a pass: what the interrupt has applied (releases, hand-overs), with SONG_POLL_RING
  * chip A's hand-back after a stop (song_chip_hooks.chip_a_keys: the pass's register-ring

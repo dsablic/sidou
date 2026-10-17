@@ -326,6 +326,12 @@ stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
   CCs set chip A's setup. Chip A's jam voices sound once song control (M2c) binds the
   router's player interface; until then they are routed and tracked. The setting is in RAM
   until the settings persist.
+- M2e: MIDI clock and transport for the song (`app/midi_sync.h`): the song follows a MIDI
+  clock from TRS or USB, its rows on the clock's 16ths (0.03 ms worst in fm1-emu at 120 BPM,
+  a fixed 8 ms after the clock), with start, stop, continue, song position (sought in the
+  background) and song select; or it leads one over USB with CLOCK OUT (24 a beat, start,
+  stop, continue). The MIDI page's CLOCK (AUTO, FOLLOW, OFF) and CLOCK OUT, in RAM until the
+  settings persist. Song control places a call at any sample (`song_ctl_align`, held starts).
 - M2e: program change with bank select (CC 0 and 32, per channel): bank 0 the channel's
   sound (presets, or a GoatTracker instrument on chip A's channels), bank 1 songs (a request
   for the store's n-th song, taken once songs are on the device), bank 2 the chip's profile

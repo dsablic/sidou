@@ -29,6 +29,11 @@
 enum { ROLE_NONE, ROLE_LIVE, ROLE_JAM };
 
 static void roles(midi_route* r);
+/* What goes straight to live on its channels (midi_route_fast). */
+#define FAST_KINDS                                                                             \
+    (uint8_t)(1u << MIDI_NOTE_OFF | 1u << MIDI_NOTE_ON | 1u << MIDI_POLY_PRESSURE |            \
+              1u << MIDI_CC | 1u << MIDI_CHANNEL_PRESSURE | 1u << MIDI_PITCH_BEND)
+_Static_assert(MIDI_SONG_SELECT < 32, "a kind is a bit of a word");
 static void program(midi_route* r, uint32_t ch, uint32_t k, uint32_t jam, uint8_t n);
 
 static const char* const MODE_NAMES[MIDI_MODE_COUNT] = {"LIVE", "MULTI", "WHOLE A", "WHOLE B",
@@ -218,8 +223,8 @@ void midi_route_init(midi_route* r, live* l, keys_route* kr, const midi_route_pl
     r->stamp = 0;
     r->dropped = 0;
     for (uint32_t ch = 0; ch < 16u; ch++) {
-        r->bank_msb[ch] = 0;
-        r->bank_lsb[ch] = 0;
+        r->bank[ch][0] = 0;
+        r->bank[ch][1] = 0;
     }
     r->song_req = MIDI_ROUTE_NO_REQUEST;
     r->user_req = MIDI_ROUTE_NO_REQUEST;
@@ -293,6 +298,7 @@ static void roles(midi_route* r) {
         r->to[ch] = (uint8_t)(k == ROLE_LIVE ? MIDI_ROUTE_LIVE
                               : k == ROLE_JAM ? MIDI_ROUTE_TAKE
                                               : MIDI_ROUTE_IGNORE);
+        r->fast[ch] = k == ROLE_LIVE ? FAST_KINDS : 0u;
     }
 }
 
@@ -304,11 +310,8 @@ midi_route_to midi_route_classify(const midi_route* r, const midi_msg* msg) {
         return MIDI_ROUTE_IGNORE; /* the transport's (M2e Task 2) */
     }
     uint8_t to = r->to[msg->channel & 15u];
-    if (to == MIDI_ROUTE_LIVE &&
-        (msg->kind == MIDI_PROGRAM ||
-         (msg->kind == MIDI_CC && (msg->data1 == MIDI_ROUTE_CC_BANK_MSB ||
-                                   msg->data1 == MIDI_ROUTE_CC_BANK_LSB)))) {
-        return MIDI_ROUTE_TAKE; /* bank select and its program changes */
+    if (to == MIDI_ROUTE_LIVE && msg->kind == MIDI_PROGRAM) {
+        return MIDI_ROUTE_TAKE; /* what the channel's bank says */
     }
     return (midi_route_to)to;
 }
@@ -586,7 +589,7 @@ static void jam_cc(midi_route* r, uint32_t jam, uint8_t cc, uint8_t value) {
 /* ---- program change and banks ---- */
 
 static uint32_t bank_of(const midi_route* r, uint32_t ch) {
-    return (uint32_t)r->bank_msb[ch] << 7 | r->bank_lsb[ch];
+    return (uint32_t)r->bank[ch][0] << 7 | r->bank[ch][1];
 }
 
 int midi_route_edits_live(const midi_route* r, const midi_msg* msg) {
@@ -666,11 +669,11 @@ void midi_route_take(midi_route* r, const midi_msg* msg) {
     }
     uint32_t ch = msg->channel & 15u;
     if (msg->kind == MIDI_CC && msg->data1 == MIDI_ROUTE_CC_BANK_MSB) {
-        r->bank_msb[ch] = msg->data2;
+        r->bank[ch][0] = msg->data2;
         return;
     }
     if (msg->kind == MIDI_CC && msg->data1 == MIDI_ROUTE_CC_BANK_LSB) {
-        r->bank_lsb[ch] = msg->data2;
+        r->bank[ch][1] = msg->data2;
         return;
     }
     uint32_t jam = 0;
@@ -697,6 +700,10 @@ void midi_route_take(midi_route* r, const midi_msg* msg) {
 
 void midi_route_tick(midi_route* r) {
     const midi_route_setup* s = &r->setup;
+    if (!midi_route_owns_chip_a(s->mode) && !r->filter_dirty &&
+        !(r->v[0].bend_sent | r->v[1].bend_sent | r->v[2].bend_sent)) {
+        return; /* the instrument's mode, nothing of the jam's left to send */
+    }
     if (s->mode == MIDI_MODE_MULTI || s->mode == MIDI_MODE_WHOLE_A) {
         for (uint32_t v = 0; v < MIDI_ROUTE_VOICES; v++) {
             const midi_route_chan* c = &r->ch[s->mode == MIDI_MODE_MULTI ? v : 0u];

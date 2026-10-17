@@ -125,6 +125,7 @@ impl Song {
             status: Some(status),
             ctx: ctx.cast(),
             song: song.as_ref().map_or(std::ptr::null(), |s| s.ptr()),
+            ..Default::default() // M2e's clock members: none
         });
         unsafe { views_set_song(&mut *ui.v, &*t) };
         let mut s = Song {

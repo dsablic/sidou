@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "audio.h"
 
+#include "fm1_time.h"
+
 #include "chip_mix.h"
 #include "fx/fx_slots.h"
 #include "fx_live.h"
@@ -82,6 +84,9 @@ static uint8_t fade_in;
 /* The peak scan (audio_peak_scan) and the quiet blocks it counted. */
 static volatile uint8_t peak_on;
 static volatile uint32_t quiet_blocks;
+/* Each block's anchor (audio_song_anchor): the tick its render started, its first sample; seq
+ * odd while the interrupt writes them. */
+static volatile uint32_t anchor_seq, anchor_ticks, anchor_samples;
 
 /* reg_ring_out.wait: the producer needs the interrupt to drain. Before audio_irqs_on the
  * interrupts are off, and an idle would never wake: drain here instead. */
@@ -142,6 +147,15 @@ gt2_song* audio_song_boot(void) {
 
 song_ctl* audio_song(void) {
     return &song_transport;
+}
+
+void audio_song_anchor(uint32_t* ticks, uint32_t* samples) {
+    uint32_t seq;
+    do {
+        seq = anchor_seq;
+        *ticks = anchor_ticks;
+        *samples = anchor_samples;
+    } while ((seq & 1u) || seq != anchor_seq);
 }
 
 void audio_song_poll(void) {
@@ -278,6 +292,10 @@ void audio_fill(int32_t* buf) {
     sid* a = reg_ring_chip_of(&chips, 0);
     sid* b = reg_ring_chip_of(&chips, 1);
     song_ctl_block(&song_transport, a);
+    anchor_seq++;
+    anchor_ticks = fm1_ticks();
+    anchor_samples = song_transport.samples;
+    anchor_seq++;
     /* Chip B is in use while it has a user, and after its last one let go until its three
      * envelopes are at 0 (the keys' release tails play out, and nothing is frozen to come
      * back later); only once its boot reset has made it (a zeroed sid has a sample rate of 0,

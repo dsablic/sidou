@@ -26,8 +26,9 @@
  *   SELECT steps between them. The tap on the audio runs while it shows, as for LIVE.
  * - MIDI (from the menu): MIDI's mode and its options (app/midi_route.h), a menu like the
  *   main one: MODE, the base CHANNEL N, WHOLE-CHIP A's OPTION, LEGATO, the stored chord's two
- *   intervals, the ARP's rate in frames (0: CLOCK) and the rows a beat for the clock. In RAM
- *   until the settings persist (M2a); a song's MIDI chunk carries its own.
+ *   intervals, the ARP's rate in frames (0: CLOCK), the rows a beat for the clock, CLOCK
+ *   (AUTO, FOLLOW, OFF) and CLOCK OUT (app/midi_sync.h). In RAM until the settings persist
+ *   (M2a); a song's MIDI chunk carries its own mode.
  * - CHARSET: the font and the palette, the art reference.
  * - ABOUT: the credits, as a cracktro (app/about.h).
  * - BOOT: the boot sequence (app/boot.h), over LIVE at power-on (views_boot).
@@ -99,6 +100,7 @@
 #include "live.h"
 #include "live_view.h"
 #include "midi_route.h"
+#include "midi_sync.h"
 #include "panel.h"
 #include "save_key.h"
 #include "scene_view.h"
@@ -136,11 +138,11 @@ extern "C" {
 #define VIEWS_MENU_ABOUT 12u
 #define VIEWS_MENU_MIDI 13u
 /* The MIDI page's items (app/midi_route.h): MODE, CHANNEL, OPTION, LEGATO, CHORD 2, CHORD 3,
- * ARP RATE, ROWS/BEAT. */
-#define VIEWS_MIDI_ITEMS 8u
-/* What it shows: the setup's 8 bytes, the cursor, the first row, the blink and whether it has
- * a router. */
-#define VIEWS_MIDI_LOOK 12u
+ * ARP RATE, ROWS/BEAT, and the clock's (app/midi_sync.h): CLOCK, CLOCK OUT. */
+#define VIEWS_MIDI_ITEMS 10u
+/* What it shows: the setup's 8 bytes, the cursor, the first row, the blink, whether it has
+ * a router, CLOCK and CLOCK OUT. */
+#define VIEWS_MIDI_LOOK 14u
 /* Raster steps for a chip model change: the ramp once round. */
 #define VIEWS_RASTER_STEPS SCREEN_RAMP
 /* What the views show, as bytes (app/views.c look): the instrument's model (as asked for),
@@ -185,6 +187,7 @@ typedef struct {
      * views' before this, keep their small offsets. */
     screen_popup_state popup;
     midi_route* route; /* MIDI's mode, for the MIDI page (views_route); NULL: none */
+    midi_sync* sync;   /* MIDI's clock, for the MIDI page's CLOCK items; NULL: none */
     menu midi;
     uint8_t midi_drawn[VIEWS_MIDI_LOOK];
 } views;
@@ -215,6 +218,9 @@ void views_set_sounds(views* v, ui_sound* us);
 /* MIDI's mode (app/midi_route.h), which the MIDI page edits; NULL until set (the page then
  * shows "-" and changes nothing). */
 void views_route(views* v, midi_route* route);
+/* MIDI's clock (app/midi_sync.h): the MIDI page's CLOCK and CLOCK OUT; NULL until set (they
+ * show "-"). */
+void views_sync(views* v, midi_sync* sync);
 /* The boot sequence over it from the next frame on: the full one if full (the first boot
  * after an install) or if HOME was held at power-on (home_held), whose first HOME press edge is
  * then part of the hold (app/boot.h). */

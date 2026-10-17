@@ -750,11 +750,38 @@ static void rows_turn(void* ctx, int32_t steps) {
     }
 }
 
+static void clock_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    join(buf, MENU_VALUE_CHARS, v->sync ? midi_sync_mode_name(v->sync->mode) : "-", "");
+}
+
+static void clock_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    if (v->sync) {
+        midi_sync_set(v->sync, stepped(v->sync->mode, steps, 0, MIDI_SYNC_MODES - 1u),
+                      v->sync->clock_out);
+    }
+}
+
+static void clock_out_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    join(buf, MENU_VALUE_CHARS, !v->sync ? "-" : v->sync->clock_out ? "ON" : "OFF", "");
+}
+
+/* Clockwise on, counter-clockwise off. */
+static void clock_out_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    if (v->sync && steps != 0) {
+        midi_sync_set(v->sync, v->sync->mode, steps > 0);
+    }
+}
+
 static const menu_item MIDI_ITEMS[VIEWS_MIDI_ITEMS] = {
     {"MODE", mode_value, mode_turn},         {"CHANNEL", channel_value, channel_turn},
     {"OPTION", option_value, option_turn},   {"LEGATO", legato_value, legato_turn},
     {"CHORD 2", chord2_value, chord2_turn},  {"CHORD 3", chord3_value, chord3_turn},
     {"ARP RATE", arp_value, arp_turn},       {"ROWS/BEAT", rows_value, rows_turn},
+    {"CLOCK", clock_value, clock_turn},      {"CLOCK OUT", clock_out_value, clock_out_turn},
 };
 
 static void midi_look(const views* v, uint32_t blink, uint8_t out[VIEWS_MIDI_LOOK]) {
@@ -774,6 +801,8 @@ static void midi_look(const views* v, uint32_t blink, uint8_t out[VIEWS_MIDI_LOO
     out[9] = v->midi.top;
     out[10] = (uint8_t)blink;
     out[11] = v->route != NULL;
+    out[12] = v->sync ? v->sync->mode : 0xffu;
+    out[13] = v->sync ? v->sync->clock_out : 0xffu;
 }
 
 static int midi_input(screen* s, void* state, const screen_event* e) {
@@ -987,6 +1016,10 @@ void views_route(views* v, midi_route* route) {
     v->route = route;
 }
 
+void views_sync(views* v, midi_sync* sync) {
+    v->sync = sync;
+}
+
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->l = l;
     v->sc = sc;
@@ -1002,6 +1035,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->home.sel_attr = MENU_HEAD; /* the selected line in reverse video */
     menu_init(&v->midi, MIDI_ITEMS, VIEWS_MIDI_ITEMS, VIEWS_MIDI_ITEMS, v);
     v->route = NULL;
+    v->sync = NULL;
     remember(v);
     v->p = NULL;
     learn_view_init(&v->learn, l, NULL);

@@ -66,6 +66,9 @@ static midi_rx rx;
 static midi_learn learned __attribute__((used));
 /* MIDI's mode (app/midi_route.h); read by the emulator tests through the ELF symbol. */
 static midi_route routing __attribute__((used));
+/* MIDI clock and transport (app/midi_sync.h); read by the emulator tests through the ELF
+ * symbol. Its player is bound by main.c (midi_synced). */
+static midi_sync syncing __attribute__((used));
 /* Read by the emulator tests through the ELF symbol (its counters, app/midi_out.h). */
 static midi_out midi_tx __attribute__((used));
 /* fm1_ticks() at the start of the poll that is running: every entry it pushes gets it. */
@@ -120,6 +123,8 @@ void midi_init(live* l, keys_route* kr) {
     midi_rx_init(&rx, l, midi_ring_epoch(&in_ring));
     midi_route_init(&routing, l, kr, NULL); /* the player's side: song control's (midi.h) */
     midi_rx_route(&rx, &routing);
+    midi_sync_init(&syncing);
+    midi_rx_sync(&rx, &syncing);
     midi_out_init(&midi_tx, l, (uint8_t)(SIDOU_MIDI_OUT_CHANNEL - 1), SIDOU_MIDI_OUT_NRPN != 0);
     midi_rx_watch(&rx, &midi_tx);
     midi_learn_init(&learned);
@@ -139,6 +144,37 @@ midi_route* midi_routed(void) {
 
 void midi_tick(void) {
     midi_route_tick(&routing);
+    midi_sync_pass(); /* the anchor, the follower's rows and its lost clock, 100 times a second */
+}
+
+midi_sync* midi_synced(void) {
+    return &syncing;
+}
+
+/* Called from midi_tick (100 Hz: the anchor, the follower's rows, the lost clock), from
+ * midi_drain after a clock or a transport message (the start's alignment), and from main.c's
+ * play() while CLOCK OUT is on (its clocks' times, about once a millisecond). */
+void midi_sync_pass(void) {
+    uint32_t t, smp;
+    audio_song_anchor(&t, &smp);
+    if (t == 0u && smp == 0u) {
+        return; /* no block yet */
+    }
+    midi_sync_anchor(&syncing, t, smp);
+    if (!(syncing.want | syncing.aligning | syncing.fresh | syncing.clock.active |
+          syncing.clock_out)) {
+        return; /* no clock, no request, nothing to send */
+    }
+    uint32_t now = fm1_ticks();
+    midi_sync_rows(&syncing, routing.setup.rows_per_beat);
+    uint32_t pkt[MIDI_SYNC_OUT_MAX];
+    uint32_t n = midi_sync_poll(&syncing, now, pkt);
+    /* No host, or one asleep: clock out's packets are dropped (midi_send's rule). The
+     * update's SysEx shares the ring's room with nothing else: a full ring drops them too. */
+    int up = *(volatile uint8_t*)&usb.config && !usb.suspended;
+    for (uint32_t i = 0; i < n && up; i++) {
+        midi_out_event(pkt[i]);
+    }
 }
 
 void midi_usb_isr(void) {
@@ -184,6 +220,9 @@ int midi_drain(void) {
      * changes parameters only in main.c's play(), after it (ui_poll only reads live), and the
      * interrupts (key scan, MIDI polls, audio render) change none. */
     midi_rx_settle(&rx);
+    if (syncing.fresh | syncing.want) {
+        midi_sync_pass(); /* a clock or a transport message: its commands go with the pass's */
+    }
     if (in_ring.head == in_ring.tail) {
         /* All taken: a gap after the last entry, with nothing behind it yet. Its epoch was
          * read before the ring was seen empty, so every entry before it has been taken. */

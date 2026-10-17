@@ -29,6 +29,7 @@ mod midi_out;
 mod midi_ring;
 mod midi_route;
 mod midi_rx;
+mod midi_sync;
 mod midi_usb;
 mod panel;
 mod popup;

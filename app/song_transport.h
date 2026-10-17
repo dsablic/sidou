@@ -26,6 +26,8 @@
  *   speed from the first voice's tempo (funktempo's two speeds); multispeed and ntsc from the
  *   song's options; mute as applied; wave from the player's shadow of each voice's control
  *   register; env from chip A's envelope counters.
+ * - M2e's clock members (below): song_ctl_hold, song_ctl_align, song_ctl_set_period,
+ *   song_ctl_seek, song_ctl_seek_further, and the calls' samples song control publishes.
  * Every command returns at once (the main loop's, no waiting); a 0 (song_ctl's ring full) is
  * asked again by the views at the next frame.
  *
@@ -71,7 +73,22 @@ typedef struct {
     uint32_t applied; /* command acknowledgements plus idle edits: pattern data may have changed */
 } song_status;
 
-/* The player's side. Every member is set. */
+/* What M2e's MIDI clock needs of the player (app/midi_sync.h), as often as it asks: the state
+ * in song_ctl_state's order (SONG_T_STARTING for a load, including a held start's), whether a
+ * seek runs its slices (1) or waits for its call (2), the speed (as song_status's; 0 0
+ * before a play), the calls since the play and the last one's sample on song control's count
+ * (song_ctl.samples), and the samples a call now (Q16). */
+typedef struct {
+    uint8_t state;
+    uint8_t seeking;
+    uint8_t speed[2];
+    uint32_t calls;
+    uint32_t call_sample;
+    uint32_t period_q16;
+} song_clock;
+
+/* The player's side. Every member up to ctx is set; the MIDI clock's after it may be NULL
+ * (a binding without them: MIDI clock and transport do nothing). */
 typedef struct {
     /* The song from orderlist entry order_pos of each voice. 1: taken, 0: not now. */
     int (*play)(void* ctx, uint32_t order_pos);
@@ -88,6 +105,18 @@ typedef struct {
     /* The song it plays, for the views to read (never to write: edits go through the player,
      * which applies them between its calls); NULL: none. */
     const gt2_song* song;
+    /* M2e Task 2's MIDI clock (app/midi_sync.h), over song control's: on, the next play or
+     * resume is held, playing nothing, until align places its first call (song_ctl_hold); the
+     * next call at a sample (song_ctl_align); samples a call, Q16, 0 the song's own
+     * (song_ctl_set_period); a seek to call `call` from the play's start, and a running one
+     * moved on (song_ctl_seek, song_ctl_seek_further); and the clock's view of the player. The
+     * status above drains the song's events: clock does not. */
+    int (*hold)(void* ctx, uint32_t on);
+    int (*align)(void* ctx, uint32_t sample);
+    int (*period)(void* ctx, uint32_t q16);
+    int (*seek)(void* ctx, uint32_t call);
+    int (*seek_further)(void* ctx, uint32_t call);
+    void (*clock)(void* ctx, song_clock* out);
 } song_transport;
 
 #ifdef __cplusplus

@@ -30,6 +30,9 @@ scope* audio_scope(void);
 gt2_song* audio_song_boot(void);
 /* The song transport (core/player/song_ctl.h): its main-loop side, the song's region in POOL. */
 song_ctl* audio_song(void);
+/* The latest block's anchor for MIDI's clock (app/midi_sync.h, midi_sync_anchor): the tick
+ * its render started at and its first sample on the song's count (song_ctl.samples). */
+void audio_song_anchor(uint32_t* ticks, uint32_t* samples);
 /* song_ctl_poll, with a slice unless the pass has run one of the spare chip's preparation. */
 void audio_song_poll(void);
 /* The context for reg_ring_sink (a reg_ring_out*), for live. Before audio_start, a full ring

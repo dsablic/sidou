@@ -89,6 +89,7 @@ void ui_init(live* l, ui_sound* us, uint32_t now_ms, int home_held) {
     views_set_sounds(&ui, us);
     views_learn(&ui, midi_learned()); /* midi_init ran before */
     views_route(&ui, midi_routed());
+    views_sync(&ui, midi_synced());
     /* The settings as they were left (the store mounted in lcd_init's wake-up wait); the full
      * boot once after an install: no record, or another version's. */
     settings_init(&persisted, l, midi_learned(), &ui.cards, &ui.song.scroll, us, store_fm1(), "V" SIDOU_VERSION,

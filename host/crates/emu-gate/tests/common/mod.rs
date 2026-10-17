@@ -663,8 +663,8 @@ pub const SLOTS_SWITCH_WORST: f64 = 964.0;
 /// Free RAM (the RAM region and POOL): M2c's floor, 22,000, less the overview's RAM budget of
 /// each other M2 plan merged on top of it (docs/plans/2026-10-15-m2-overview.md: M2a 2,000,
 /// M2d 6,000, M2e 2,000, M2f 5,000), whatever order they merge in. In this tree: M2d (6,000),
-/// M2a (2,000) and M2f (5,000). Each region keeps 4 KiB as well (song.rs).
-pub const FREE_RAM_MIN: u64 = 22_000 - 6_000 - 2_000 - 5_000;
+/// M2a (2,000), M2e (2,000) and M2f (5,000). Each region keeps 4 KiB as well (song.rs).
+pub const FREE_RAM_MIN: u64 = 22_000 - 6_000 - 2_000 - 2_000 - 5_000;
 // A song plays with two chips at their worst, the effects at their cap, the ISR, the tap and
 // the player: within the audio target.
 const _: () = assert!(
