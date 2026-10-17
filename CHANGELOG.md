@@ -26,6 +26,11 @@ browser demo; the first release proper comes after M3 and the hardware checklist
 stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
 
 ### Added
+- `docs/hardware-results/2026-10-17-first-flash.md`: SIDOU's first run on a real FM-1. It
+  played; its USB-MIDI output did not work (no update path); the unit was recovered to V15
+  through ROM boot with a Flipper Zero and `tools/fm1-unbrick-mac` (MvaveFM1Unbricker on
+  macOS through a libusb Bulk-Only-Transport back end). docs/hardware-test.md section 0 lists
+  the route.
 - Design document, licensing, credits and contribution guidelines.
 - SID core in C11 (`core/sid/`): oscillators, noise, hard sync and ring
   modulation, envelope generator with the ADSR delay bug, a

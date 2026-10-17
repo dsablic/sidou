@@ -43,6 +43,15 @@ this checklist records.
 - [ ] I have Felucca's installer (`tools/fm1_install.py` from
   <https://github.com/hugelton/Felucca>, needs `mido` and
   `python-rtmidi`), and `fm1_install.py --info` finds the unit.
+- [ ] I can put the unit into ROM boot mode (`WL82 UBOOT1.00`, USB
+  4C4A:8057) without the firmware's help: a Flipper Zero with
+  [flipper-fm1-recovery](https://github.com/merthsoft/flipper-fm1-recovery), or the FM-1
+  Transporter. From there MvaveFM1Unbricker writes a package from Linux or Windows, or from a
+  Mac with `tools/fm1-unbrick-mac` (a Linux VM's USB passthrough did not work). This route
+  recovered a unit on 2026-10-17: `docs/hardware-results/2026-10-17-first-flash.md`.
+- [ ] After switching firmware on a Mac, the old USB-MIDI device is deleted in Audio MIDI
+  Setup (Window > Show MIDI Studio): the Felucca family shares USB 1209:0001 and CoreMIDI
+  otherwise keeps the old record.
 
 Notes:
 

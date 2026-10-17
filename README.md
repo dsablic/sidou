@@ -53,7 +53,10 @@ revision, at an instruction it does not execute yet; the tests work around
 it ([docs/TODO.md](docs/TODO.md)).
 
 **On hardware: not yet.** Installing custom firmware can leave an FM-1
-unable to boot, and SIDOU has not been tested on one. When it is time, it
+unable to boot. **Do not install v0.2.0-m2-preview**: its first run on a real FM-1
+(2026-10-17, [the report](docs/hardware-results/2026-10-17-first-flash.md)) played, but its
+USB-MIDI output did not work, so it cannot be updated or replaced over USB; that unit was
+recovered through the chip's ROM boot mode. A fixed build comes first. When it is time, it
 installs like the other community firmwares, with Felucca's installer
 (`fm1_install.py sidou.fwsc`), and its update loader is Felucca's own. Before
 anything else, run the [hardware checklist](docs/hardware-test.md) with its
