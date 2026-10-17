@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Builds GoatTracker 2.77's song, table and relocation code (third_party/goattracker2,
 //! unmodified) with SIDOU's shim (shim/: BME's calls, files in memory, the assembler) into
-//! a static library. GoatTracker's files are compiled with `fopen`, `fread` and `exit` renamed to
-//! the shim's and gt2reloc's `main` renamed out of the way (`shim/gt2ref_rename.h`); their warnings are GoatTracker's and are
-//! not ours to fix, so they are silenced. No sanitizer: this is the reference, not the code
-//! under test.
+//! a static library. GoatTracker's files are compiled with `fopen`, `fread`, `exit`, `malloc`,
+//! `free` and `stdout` renamed to the shim's and gt2reloc's `main` renamed out of the way
+//! (`shim/gt2ref_rename.h`); their warnings are GoatTracker's and are not ours to fix, so they
+//! are silenced. No sanitizer: this is the reference, not the code under test.
 
 use std::path::PathBuf;
 
@@ -32,10 +32,10 @@ fn main() {
     build
         .include(&shim)
         .include(&gt)
-        // fopen, fread, exit and main renamed after the C library's headers
-        // (gt2ref_rename.h says why): files in memory, a short read of the song recorded
-        // (loadsong itself reports nothing), and an exit on an assembly error that returns
-        // to the caller.
+        // The renames, after the C library's headers (gt2ref_rename.h says why): files in
+        // memory, a short read of the song recorded (loadsong itself reports nothing), an
+        // exit on an assembly error that returns to the caller and frees what the relocator
+        // allocated, and a stdout of its own.
         .flag("-include")
         .flag(shim.join("gt2ref_rename.h").to_str().unwrap())
         .warnings(false)

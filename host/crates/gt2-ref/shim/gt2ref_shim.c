@@ -180,6 +180,36 @@ FILE* gt2ref_quiet(void) {
 static jmp_buf guard;
 static int guarded;
 
+/* The blocks GoatTracker allocates inside gt2ref_guard and has not freed: the relocator's
+ * work buffers (greloc.c's songwork, pattwork, instrwork), which are its locals, so its
+ * exit on an assembly error loses them. gt2ref_guard frees them on that path. */
+#define GUARDED_BLOCKS 16
+static void* guarded_block[GUARDED_BLOCKS];
+static int guarded_blocks;
+
+void* gt2ref_malloc(size_t size) {
+    void* p = malloc(size);
+    if (p == NULL || !guarded)
+        return p;
+    if (guarded_blocks == GUARDED_BLOCKS) {
+        fprintf(stderr, "gt2ref: more than %d blocks allocated in the relocator\n",
+                GUARDED_BLOCKS);
+        abort();
+    }
+    guarded_block[guarded_blocks++] = p;
+    return p;
+}
+
+void gt2ref_gt_free(void* p) {
+    for (int i = 0; i < guarded_blocks; i++) {
+        if (guarded_block[i] == p) {
+            guarded_block[i] = guarded_block[--guarded_blocks];
+            break;
+        }
+    }
+    free(p);
+}
+
 void gt2ref_exit(int status) {
     if (guarded)
         longjmp(guard, 1);
@@ -188,12 +218,16 @@ void gt2ref_exit(int status) {
 
 int gt2ref_guard(void (*fn)(void)) {
     guarded = 1;
+    guarded_blocks = 0;
     if (setjmp(guard)) {
         guarded = 0;
+        while (guarded_blocks > 0)
+            free(guarded_block[--guarded_blocks]);
         return -1;
     }
     fn();
     guarded = 0;
+    guarded_blocks = 0;
     return 0;
 }
 

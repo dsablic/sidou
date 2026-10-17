@@ -70,13 +70,17 @@ built into the firmware.
 | `gt2ref_rename.h` | nothing of GoatTracker's: the renames above, after the C library's headers |
 | `bme.h` | BME's `bme.h`: declares the BME calls the song code makes (`fread8`, `fwrite8`, `fwritele16`, `io_open`, `io_lseek`, `io_read8`, `io_close`, `io_openlinkeddatafile`, `win_quitted`) and gives the editor's `KEY_*` codes distinct values |
 | `membuf.h`, `parse.h` | the assembler's interface `greloc.c` includes: `struct membuf` and its calls, `assemble()` |
-| `gt2ref_shim.c` | those calls; files in memory (`fopen` renamed to `gt2ref_fopen`: the song to read, the files written; `fread` renamed to `gt2ref_fread`, which records a short read of the song, so a truncated file fails to load instead of reading zeros); `exit` renamed to `gt2ref_exit` (the relocator exits on an assembly error; the harness returns instead); the player sources read from this directory; stubs for the editor's `datafile`, `key`, `rawkey`, `shiftpressed`, `sidreg`, `editstring`, `resettime`, `incrementtime`, `sound_suspend`, `sound_flush` |
+| `gt2ref_shim.c` | those calls; files in memory (`fopen` renamed to `gt2ref_fopen`: the song to read, the files written; `fread` renamed to `gt2ref_fread`, which records a short read of the song, so a truncated file fails to load instead of reading zeros); `exit` renamed to `gt2ref_exit` (the relocator exits on an assembly error; the harness returns instead, and frees the relocator's work buffers); `malloc` and `free` renamed, to know those buffers; `stdout` renamed to `gt2ref_quiet()`; the player sources read from this directory; stubs for the editor's `datafile`, `key`, `rawkey`, `shiftpressed`, `sidreg`, `editstring`, `resettime`, `incrementtime`, `sound_suspend`, `sound_flush` |
 | `gt2ref_asm.c` | Exomizer's assembler (above) |
 | `gt2ref.c` | `gt2reloc`'s `main`: its option defaults, checks and calls, with the options as values (`gt2ref_pack`); `loadsong` then `savesong` (`gt2ref_canonical`). `loadsong` reports nothing, so both fail when the ident is not one `loadsong` reads or a read came back short. Its "Validate parameters" block reproduces `gt2reloc.c`'s, so the file also carries Lasse Öörni's and GoatTracker 2's contributors' copyright line |
 
 GoatTracker's files are compiled unmodified with `-include gt2ref_rename.h`, which reads the
 C library's headers and then renames `fopen`, `fread`, `exit` and `main` to `gt2ref_fopen`,
-`gt2ref_fread`, `gt2ref_exit` and `gt2reloc_main`, and their warnings silenced
+`gt2ref_fread`, `gt2ref_exit` and `gt2reloc_main`; `malloc` and `free` to the shim's, which
+note what the relocator allocates, so that `gt2ref_guard` frees its work buffers when its
+`exit` returns early (they are its locals); and `stdout` to `gt2ref_quiet()`, a stream on
+`/dev/null` for gt2reloc's packing report (redirecting file descriptor 1 would also take the
+output of the test threads running meanwhile). Their warnings are silenced
 (`host/crates/gt2-ref/build.rs`). The renames are not `-D` flags: with glibc's
 `_FORTIFY_SOURCE` (on by default in Ubuntu's compilers) `fread` is an inline wrapper in
 `<stdio.h>`, and `-Dfread=gt2ref_fread` renamed the wrapper with it, so GoatTracker's

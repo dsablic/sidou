@@ -27,6 +27,11 @@ int gt2ref_input_short(void);
  * callback it returns to gt2ref_guard (which then returns -1), elsewhere it exits. */
 void gt2ref_exit(int status);
 int gt2ref_guard(void (*fn)(void));
+/* GoatTracker's sources are compiled with malloc and free renamed to these: what is
+ * allocated inside gt2ref_guard's callback and not freed when its exit returns early is
+ * freed by gt2ref_guard. */
+void* gt2ref_malloc(size_t size);
+void gt2ref_gt_free(void* p);
 
 /* The stdout GoatTracker's sources are compiled with (gt2ref_rename.h): /dev/null, opened
  * once and kept for the process's life. Redirecting file descriptor 1 instead would also

@@ -1,7 +1,8 @@
 /* SPDX-FileCopyrightText: 2026 SIDOU contributors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 /* Included first in every GoatTracker file the harness builds (build.rs passes it with
- * -include): the C library's headers, then the renames of what the shim stands in for.
+ * -include): the C library's headers, then the renames of what the shim stands in for
+ * (files, exit, the relocator's allocations, stdout).
  * The renames come after the headers, not as -D on the command line: a C library may
  * wrap a function in its own header (glibc's _FORTIFY_SOURCE, which Ubuntu's compilers
  * turn on by default, makes fread an inline function that calls the real fread), and a
@@ -21,6 +22,8 @@
 #define fread gt2ref_fread
 #define exit gt2ref_exit
 #define main gt2reloc_main
+#define malloc gt2ref_malloc
+#define free gt2ref_gt_free
 /* What GoatTracker prints on stdout (gt2reloc's packing results) goes to gt2ref_quiet's
  * stream instead, never to the process's: the tests run in threads that share it. */
 #undef stdout
