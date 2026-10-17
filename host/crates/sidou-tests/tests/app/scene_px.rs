@@ -277,9 +277,13 @@ impl Rng {
     }
 }
 
-/// A random layer of any kind, as C's and as the model's. Marks are leaked (C keeps the
-/// pointer).
-fn random_layer(rng: &mut Rng, imgs: &[(&'static scene_image, Picture)]) -> (scene_px_layer, ML) {
+/// A random layer of any kind, as C's and as the model's. A marks layer's marks go into
+/// `kept`, which must outlive the rig the layer is set in (C keeps the pointer).
+fn random_layer(
+    rng: &mut Rng,
+    imgs: &[(&'static scene_image, Picture)],
+    kept: &mut Vec<Box<[scene_px_mark]>>,
+) -> (scene_px_layer, ML) {
     let rect = |rng: &mut Rng| {
         let (x0, y0) = (rng.range(-20, 240), rng.range(-20, 240));
         [x0, y0, x0 + rng.range(1, 90), y0 + rng.range(1, 90)]
@@ -334,12 +338,13 @@ fn random_layer(rng: &mut Rng, imgs: &[(&'static scene_image, Picture)]) -> (sce
                 .iter()
                 .map(|m| (i32::from(m.x), i32::from(m.y), m.colour))
                 .collect();
-            let marks: &'static [scene_px_mark] = Box::leak(marks.into_boxed_slice());
+            let marks = marks.into_boxed_slice();
             let l = scene_px_layer {
                 n: n as u8,
                 src: marks.as_ptr().cast(),
                 ..layer(SCENE_PX_MARKS)
             };
+            kept.push(marks);
             (l, ML::Marks(model))
         }
         4 => {
@@ -380,11 +385,12 @@ fn random_layers_composite_as_the_model_draws_them() {
     let model = Model { images: &imgs };
     let mut rng = Rng(0x5eed_1234_abcd);
     for round in 0..40 {
+        let mut kept = Vec::new();
         let mut rig = Rig::new();
         let n = rng.range(1, SCENE_PX_LAYERS as i32 + 1) as usize;
         let mut ml = Vec::new();
         for i in 0..n {
-            let (l, m) = random_layer(&mut rng, &imgs);
+            let (l, m) = random_layer(&mut rng, &imgs, &mut kept);
             rig.set(i, Some(&l));
             ml.push(m);
         }
@@ -448,9 +454,13 @@ fn mirroring_transparency_order_and_remaps() {
 fn the_hash_marks_every_change_and_nothing_else() {
     let imgs = images();
     let mut rng = Rng(0xfeed_beef_0001);
+    // Every layer's marks, for the test's length: a replaced layer is still the scene's
+    // until the next set.
+    let mut kept = Vec::new();
     let mut rig = Rig::new();
-    let mut layers: Vec<scene_px_layer> =
-        (0..12).map(|_| random_layer(&mut rng, &imgs).0).collect();
+    let mut layers: Vec<scene_px_layer> = (0..12)
+        .map(|_| random_layer(&mut rng, &imgs, &mut kept).0)
+        .collect();
     for (i, l) in layers.iter().enumerate() {
         rig.set(i, Some(l));
     }
@@ -467,7 +477,7 @@ fn the_hash_marks_every_change_and_nothing_else() {
             }
             _ => {
                 let i = rng.below(12) as usize;
-                layers[i] = random_layer(&mut rng, &imgs).0;
+                layers[i] = random_layer(&mut rng, &imgs, &mut kept).0;
                 rig.set(i, Some(&layers[i]));
             }
         }
@@ -660,17 +670,15 @@ fn a_run_takes_at_most_the_painters_cap_of_its_cells() {
 
 #[test]
 fn the_refresh_sweep_resends_every_tile_and_heals_a_missed_change() {
-    let mut rig = Rig::new();
-    let marks: &'static mut [scene_px_mark] = Box::leak(
-        (0..4)
-            .map(|i| scene_px_mark {
-                x: 100 + 9 * i,
-                y: 100,
-                colour: GRID_RED as u8,
-            })
-            .collect(),
-    );
+    let mut marks: Box<[scene_px_mark]> = (0..4)
+        .map(|i| scene_px_mark {
+            x: 100 + 9 * i,
+            y: 100,
+            colour: GRID_RED as u8,
+        })
+        .collect();
     let p = marks.as_mut_ptr();
+    let mut rig = Rig::new();
     rig.set(0, Some(&fill(0, 0, 240, 240, GRID_BLUE)));
     let l = scene_px_layer {
         n: 4,
@@ -954,22 +962,23 @@ fn compositing_a_tile_visits_only_the_layers_over_it() {
 #[test]
 fn any_interleaving_of_changes_scans_and_sends_converges_on_the_screen() {
     let imgs = images();
-    let marks: Vec<scene_px_layer> = (0..8)
+    let kept: Vec<Box<[scene_px_mark]>> = (0..8)
         .map(|i| {
-            let m: &'static [scene_px_mark] = Box::leak(
-                (0..12)
-                    .map(|k| scene_px_mark {
-                        x: (17 * i + 23 * k) % 250 - 5,
-                        y: (31 * i + 11 * k) % 250 - 5,
-                        colour: ((i + k) % 16) as u8,
-                    })
-                    .collect(),
-            );
-            scene_px_layer {
-                n: 12,
-                src: m.as_ptr().cast(),
-                ..layer(SCENE_PX_MARKS)
-            }
+            (0..12)
+                .map(|k| scene_px_mark {
+                    x: (17 * i + 23 * k) % 250 - 5,
+                    y: (31 * i + 11 * k) % 250 - 5,
+                    colour: ((i + k) % 16) as u8,
+                })
+                .collect()
+        })
+        .collect();
+    let marks: Vec<scene_px_layer> = kept
+        .iter()
+        .map(|m| scene_px_layer {
+            n: 12,
+            src: m.as_ptr().cast(),
+            ..layer(SCENE_PX_MARKS)
         })
         .collect();
     let pal: [u16; 16] = std::array::from_fn(|c| c as u16);
@@ -995,8 +1004,10 @@ fn any_interleaving_of_changes_scans_and_sends_converges_on_the_screen() {
                     let l = if rng.below(8) == 0 {
                         marks[rng.below(8) as usize]
                     } else {
+                        // A layer of any other kind: a marks layer drawn here is never
+                        // set, so its marks go with it.
                         loop {
-                            let (l, _) = random_layer(&mut rng, &imgs);
+                            let (l, _) = random_layer(&mut rng, &imgs, &mut Vec::new());
                             if u32::from(l.kind) != SCENE_PX_MARKS {
                                 break l;
                             }
