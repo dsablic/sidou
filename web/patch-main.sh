@@ -9,6 +9,8 @@
 #   2. The default clock is 240 MHz, not 100: the emulator gate measures SIDOU's audio budget at
 #      240 MHz (host/crates/emu-gate), and fewer instructions a second can starve its audio in
 #      emulated time. ?mhz= and the Clock menu still choose another.
+#   3. Start is enabled only once its handler is attached: main.js awaits the catalog and the
+#      wasm first, and a click before then did nothing (index.html starts it disabled).
 #   web/patch-main.sh build/web/main.js
 set -eu
 f="$1"
@@ -24,3 +26,4 @@ edit() {
 }
 edit 'new URL(f.package || f.installer).host' 'new URL(f.package || f.installer, location.href).host'
 edit 'stored("fm1.mhz") || 100)' 'stored("fm1.mhz") || 240)'
+edit 'startBtn.addEventListener("click", async () => {' 'startBtn.disabled = false; startBtn.addEventListener("click", async () => {'
