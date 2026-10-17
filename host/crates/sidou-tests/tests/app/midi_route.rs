@@ -679,3 +679,118 @@ fn a_song_without_the_chunk_or_its_options_takes_the_default() {
     assert_eq!(back.chord, [MIDI_ROUTE_CHORD_MAX as u8; 2]);
     assert_eq!(back.arp_rate, MIDI_ROUTE_ARP_MAX as u8);
 }
+
+// ---- M2e Task 4: program change and bank select ----
+
+#[test]
+fn bank_select_is_kept_per_channel_and_bank_0_is_m1s() {
+    let mut r = Route::new();
+    r.trs(&[0xC0, 2]);
+    assert_eq!(r.rig.live.preset, 2, "bank 0: the preset, as in M1");
+    // Channel 2 in bank 1: its program changes are songs, channel 1's still presets.
+    r.trs(&[0xB1, 0, 0, 0xB1, 32, 1, 0xC1, 3, 0xC0, 1]);
+    assert_eq!(r.rig.live.preset, 1);
+    assert_eq!(unsafe { midi_route_take_song(&mut *r.route) }, 3);
+    assert_eq!(unsafe { midi_route_take_song(&mut *r.route) }, -1, "taken");
+    r.trs(&[0xC1, 0]);
+    assert_eq!(r.rig.live.preset, 1, "held until changed");
+    assert_eq!(unsafe { midi_route_take_song(&mut *r.route) }, 0);
+    // CC 0 is the MSB: bank 128 means nothing.
+    r.trs(&[0xB1, 0, 1, 0xC1, 0]);
+    assert_eq!(unsafe { midi_route_take_song(&mut *r.route) }, -1);
+    assert_eq!(r.rig.live.preset, 1);
+    assert!(r.take().is_empty());
+}
+
+#[test]
+fn a_second_song_request_replaces_the_first() {
+    let mut r = Route::new();
+    r.trs(&[0xB0, 32, 1, 0xC0, 4, 0xC0, 7]);
+    assert_eq!(unsafe { midi_route_take_song(&mut *r.route) }, 7);
+}
+
+#[test]
+fn songs_come_from_the_instruments_channel_or_channel_n_only() {
+    let mut r = Route::with(MIDI_MODE_MULTI, 4, |_| {});
+    for ch in [5u8, 6, 9] {
+        r.trs(&[0xB0 | ch, 32, 1, 0xC0 | ch, 2]);
+        assert_eq!(
+            unsafe { midi_route_take_song(&mut *r.route) },
+            -1,
+            "channel {ch}"
+        );
+    }
+    r.trs(&[0xB4, 32, 1, 0xC4, 2]);
+    assert_eq!(unsafe { midi_route_take_song(&mut *r.route) }, 2, "N");
+    r.trs(&[0xB7, 32, 1, 0xC7, 3]);
+    assert_eq!(unsafe { midi_route_take_song(&mut *r.route) }, 3, "N + 3");
+    // Bank 0 on chip A's channels is still the instrument there.
+    r.trs(&[0xB5, 32, 0, 0xC5, 9, 0x95, C4, 1]);
+    assert_eq!(r.take(), [on(1, C4, 10)]);
+}
+
+#[test]
+fn bank_2_picks_the_instruments_profile_and_asks_for_user_ones() {
+    let mut r = Route::new();
+    r.trs(&[0xB0, 32, 2, 0xC0, SID_CHIP_8580_R5 as u8]);
+    assert_eq!(u32::from(r.rig.live.profile_req), SID_CHIP_8580_R5);
+    assert_eq!(r.rig.live.preset, 0, "not a preset");
+    let mut chip = 9u32;
+    assert_eq!(
+        unsafe { midi_route_take_user_profile(&mut *r.route, &mut chip) },
+        -1
+    );
+    r.trs(&[0xC0, 5]);
+    assert_eq!(
+        unsafe { midi_route_take_user_profile(&mut *r.route, &mut chip) },
+        0,
+        "program 5 is USER 1"
+    );
+    assert_eq!(chip, MIDI_ROUTE_CHIP_KEYS);
+    r.trs(&[0xC0, 12]);
+    assert_eq!(
+        unsafe { midi_route_take_user_profile(&mut *r.route, &mut chip) },
+        7
+    );
+    r.trs(&[0xC0, 13]);
+    assert_eq!(
+        unsafe { midi_route_take_user_profile(&mut *r.route, &mut chip) },
+        -1,
+        "past USER 8"
+    );
+    assert_eq!(u32::from(r.rig.live.profile_req), SID_CHIP_8580_R5);
+}
+
+#[test]
+fn bank_select_on_the_instruments_channel_never_reaches_live() {
+    let mut r = Route::new();
+    r.rig.clear();
+    r.trs(&[0xB0, 0, 5, 0xB0, 32, 7]);
+    assert!(r.rig.log().is_empty());
+    assert_eq!((r.route.bank_msb[0], r.route.bank_lsb[0]), (5, 7));
+}
+
+#[test]
+fn a_program_change_that_edits_live_is_one_midi_out_takes_as_midis() {
+    let r = Route::new();
+    let pc = |ch: u8, n: u8| midi_msg {
+        kind: MIDI_PROGRAM,
+        channel: ch,
+        data1: n,
+        data2: 0,
+        bend: 0,
+    };
+    let edits = |r: &Route, m: &midi_msg| unsafe { midi_route_edits_live(&*r.route, m) };
+    assert_eq!(edits(&r, &pc(0, 1)), 1);
+    assert_eq!(edits(&r, &pc(0, LIVE_PRESET_COUNT as u8)), 0);
+    let mut r = r;
+    r.trs(&[0xB0, 32, 1]);
+    assert_eq!(edits(&r, &pc(0, 1)), 0, "a song");
+    r.trs(&[0xB0, 32, 2]);
+    assert_eq!(edits(&r, &pc(0, 4)), 1, "a profile");
+    assert_eq!(
+        edits(&r, &pc(0, 5)),
+        0,
+        "a USER profile: not yet a parameter"
+    );
+}

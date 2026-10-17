@@ -19,6 +19,9 @@
  *   stays pending, one flag per parameter: nothing queues beyond that.
  * - A value that encodes as the one last sent (or received) sends nothing: a pulse-width
  *   move within one CC step, or a knob turned there and back within a tick.
+ * - Banks (M2e Task 4, app/midi_route.h): a preset's program change is bank 0's; when the last
+ *   bank sent was another, CC 0 = 0 and CC 32 = 0 go before it. A song loaded from the SONG
+ *   menu (midi_out_song) goes as CC 0 = 0, CC 32 = 1 and its program, before anything else.
  * - A preset change from the panel is a program change, sent before any parameter; the
  *   parameters it loads (live_set_preset: not the volume, the chip model, the effect slots
  *   or a bend range set by RPN 0) are not sent, the program change carries them, and their
@@ -72,6 +75,9 @@ typedef struct {
     uint8_t pending[LIVE_PARAM_COUNT];
     uint8_t preset_seen;
     uint8_t preset_pending; /* a program change to send */
+    uint8_t bank_sent;      /* the bank of the last program change sent: 0, or 1 (songs) */
+    uint8_t song_pending;   /* a song's program change to send (midi_out_song) */
+    uint8_t song_program;
     uint8_t channel;        /* 0..15 */
     uint8_t hires;          /* 1: NRPN for the parameters of more than 128 values */
     uint8_t next;           /* where the next tick's round robin starts */
@@ -86,6 +92,8 @@ typedef struct {
 void midi_out_init(midi_out* o, const live* l, uint8_t channel, uint8_t hires);
 /* Sends by MIDI learn's bindings from now on ("MIDI learn" above); NULL: the map's alone. */
 void midi_out_learn(midi_out* o, const midi_learn* learn);
+/* A song loaded from the SONG menu: its program n (0..127) in bank 1, at the next tick. */
+void midi_out_song(midi_out* o, uint8_t n);
 /* The changes since the last look are the panel's: pending. */
 void midi_out_local(midi_out* o, const live* l);
 /* The changes since the last look came from MIDI input: never echoed. */

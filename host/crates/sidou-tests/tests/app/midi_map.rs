@@ -1093,7 +1093,7 @@ Every parameter of the live instrument has an NRPN (14-bit, full resolution), an
 the bend range and the three expression targets also a CC (7-bit). The map is fixed: the same numbers on every channel, on TRS and USB. Notes
 play on every channel (omni) by default; MIDI's mode (Modes, below) can give the instrument
 one channel and chip A's voices channels of their own. Program change 0..{last} selects the
-preset. A program change
+preset (in bank 0, the power-on bank: Program change and banks, below). A program change
 loads the preset's cutoff, resonance, pulse width, SID settings (waveform, ring, sync,
 the envelope, filter routing and mode) and expression settings (bend range, the targets,
 the vibrato) over any edits, even when it selects the preset already playing; volume, the
@@ -1285,8 +1285,9 @@ Any knob's parameter can also follow a CC of your choice: hold SAVE and turn the
 for the effect-slot layer), then send the CC ([controls.md](controls.md), MIDI learn, has
 the gesture, how to cancel and how to clear). What is learned:
 
-- **Which CCs:** 0..119, except {unlearnable}, which carry NRPN and RPN data entry and
-  selection; 120..127 are channel mode messages. A CC from either port (TRS or USB) and on
+- **Which CCs:** 0..119, except {unlearnable}, which carry bank select (0 and 32, see
+  Program change and banks) and NRPN and RPN data entry and selection; 120..127 are
+  channel mode messages. A CC from either port (TRS or USB) and on
   any channel: like the map, a learned CC is omni.
 - **Added, and it wins:** the parameter's own CC and NRPN still work. If the learned CC was
   another parameter's, it now moves the learned parameter only; the other keeps its NRPN,
@@ -1369,6 +1370,44 @@ persist. N is the page's CHANNEL, 1..16, and N + 1.. wrap round from 16 to 1.
     s
 }
 
+/// Program change and bank select (app/midi_route.c, M2e Task 4): the banks from the
+/// router's own text.
+fn banks_section() -> String {
+    let mut s = String::from(
+        "\
+## Program change and banks
+
+CC 0 (bank select MSB) and CC 32 (LSB) choose a channel's bank, MSB * 128 + LSB, and keep it
+until they change: bank 1 is CC 0 = 0, CC 32 = 1. A program change then means what the
+channel's bank says. Bank 0, the power-on bank, is M1's meaning on the instrument's channel.
+
+| Bank | Program n selects |
+|---|---|
+",
+    );
+    for b in 0..MIDI_ROUTE_BANKS {
+        s.push_str(&format!(
+            "| {b} | {} |\n",
+            text(unsafe { midi_route_bank_doc(b) })
+        ));
+    }
+    s.push_str(
+        "\
+\n- Any other bank, or a program past a bank's range, does nothing. The bank is kept per
+  channel for both ports together, and across a gap in the input.
+- **Songs:** a load takes a few passes; a second request before it is done replaces the
+  first. Until the device keeps songs (M2c), the request waits and nothing loads.
+- **USER profiles:** until the device keeps them (M2a), the request waits and nothing
+  changes.
+- **Out:** a preset from the panel goes out as its program change in bank 0, with CC 0 and 32
+  first when the last bank sent was another; a song loaded from the SONG menu goes out as
+  CC 0 = 0, CC 32 = 1 and its program.
+
+",
+    );
+    s
+}
+
 fn cc_text(r: &Row) -> String {
     if r.has_cc() {
         r.cc.to_string()
@@ -1399,6 +1438,7 @@ fn doc() -> String {
     s.push_str(&intro());
     s.push_str(&learn_section());
     s.push_str(&modes_section());
+    s.push_str(&banks_section());
     s.push_str("## The map\n\nIn NRPN order.\n\n");
     s.push_str("| Group | Parameter | CC | NRPN (MSB/LSB) | Range | Curve | Default | Values |\n");
     s.push_str("|---|---|---|---|---|---|---|---|\n");
@@ -1466,7 +1506,7 @@ fn the_reference_is_up_to_date() {
 
 #[test]
 fn midi_learn_leaves_alone_exactly_the_ccs_the_nrpn_receiver_takes() {
-    assert_eq!(unlearnable(), [6, 38, 96, 97, 98, 99, 100, 101]);
+    assert_eq!(unlearnable(), [0, 6, 32, 38, 96, 97, 98, 99, 100, 101]);
     // Each of them changes the receiver's state; a learnable one goes to live_cc.
     for cc in 0..128u8 {
         let mut m = Midi::new();
@@ -1477,11 +1517,11 @@ fn midi_learn_leaves_alone_exactly_the_ccs_the_nrpn_receiver_takes() {
             before.nrpn_msb != after.nrpn_msb || before.nrpn_lsb != after.nrpn_lsb,
             before.rpn_msb != after.rpn_msb || before.rpn_lsb != after.rpn_lsb,
         );
-        if unlearnable().contains(&u32::from(cc)) && ![6, 38, 96, 97].contains(&cc) {
+        if unlearnable().contains(&u32::from(cc)) && ![0, 6, 32, 38, 96, 97].contains(&cc) {
             assert!(selection.0 || selection.1, "CC {cc} selects nothing");
         }
     }
-    assert!(learn_section().contains("except 6, 38, 96, 97, 98, 99, 100 and 101"));
+    assert!(learn_section().contains("except 0, 6, 32, 38, 96, 97, 98, 99, 100 and 101"));
 }
 
 #[test]

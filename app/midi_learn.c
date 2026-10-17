@@ -19,6 +19,8 @@ void midi_learn_init(midi_learn* ml) {
 
 int midi_learn_learnable(uint32_t cc) {
     switch (cc) {
+    case 0:  /* bank select MSB (app/midi_route.h) */
+    case 32: /* bank select LSB */
     case 6:  /* data entry MSB */
     case 38: /* data entry LSB */
     case 96: /* increment */

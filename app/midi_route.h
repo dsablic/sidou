@@ -63,6 +63,22 @@
  *   next tick. A NULL function does nothing (returns 1); the device leaves them NULL until
  *   song_ctl has them (docs/plans/2026-10-15-m2e-midi.md, Task 3's results).
  *
+ * Program change and bank select (M2e Task 4): CC 0 (MSB) and CC 32 (LSB) select a channel's
+ * bank, MSB * 128 + LSB, held until changed (from either port; kept across lost input); a
+ * program change means what the channel's bank says:
+ * - bank 0, the channel's sound: on the instrument's channel the instrument's preset (M1's:
+ *   0..LIVE_PRESET_COUNT - 1), on a chip A channel (MULTITIMBRAL, WHOLE-CHIP A) GoatTracker
+ *   instrument n + 1;
+ * - bank 1, songs: program n asks for the store's n-th song in name order, loaded stopped,
+ *   on the instrument's channel or channel N only (midi_route_take_song: the song loader
+ *   takes the request, M2c Task 8; a second one before it does replaces it);
+ * - bank 2, the chip's profiles: 0..4 the built-in ones (SID_CHIP_*), on the instrument's
+ *   channel live's profile (the keys' setup), on a chip A channel chip A's (its want path);
+ *   5..12 USER 1..8 (midi_route_take_user_profile: M2a Task 6's user profiles take it);
+ * - any other bank, or a program past a bank's range: nothing.
+ * CC 0 and 32 are bank select on every channel the mode routes: MIDI learn leaves them
+ * alone (midi_learn_learnable).
+ *
  * The setup (midi_route_setup) is saved per song in its MIDI chunk (core/song/song_ext.h,
  * midi_route_setup_from_song, midi_route_setup_to_song); the global default stays in RAM
  * until the settings persist (M2a).
@@ -119,6 +135,15 @@ typedef enum { MIDI_WHOLE_POLY = 0, MIDI_WHOLE_CHORD = 1, MIDI_WHOLE_ARP = 2 } m
 #define MIDI_ROUTE_CHORD_MAX 24u
 #define MIDI_ROUTE_ARP_MAX 32u
 #define MIDI_ROUTE_ROWS_MAX 16u
+/* Bank select (Task 4). */
+#define MIDI_ROUTE_CC_BANK_MSB 0u
+#define MIDI_ROUTE_CC_BANK_LSB 32u
+enum { MIDI_ROUTE_BANK_SOUND = 0, MIDI_ROUTE_BANK_SONGS = 1, MIDI_ROUTE_BANK_PROFILES = 2 };
+#define MIDI_ROUTE_BANKS 3u
+#define MIDI_ROUTE_USER_PROFILES 8u
+#define MIDI_ROUTE_NO_REQUEST 0xffu
+/* Which chip a USER profile is asked for (midi_route_take_user_profile). */
+enum { MIDI_ROUTE_CHIP_KEYS = 0, MIDI_ROUTE_CHIP_A = 1 };
 
 typedef struct {
     uint8_t mode;          /* a midi_mode */
@@ -164,6 +189,10 @@ typedef struct midi_route {
     /* Each channel's midi_route_to for its channel messages in this mode, so midi_rx sends the
      * instrument's straight on (midi_route_fast) */
     uint8_t to[16];
+    uint8_t bank_msb[16], bank_lsb[16]; /* each channel's bank select */
+    uint8_t song_req;  /* the song a bank 1 program change asks for, or MIDI_ROUTE_NO_REQUEST */
+    uint8_t user_req;  /* the USER profile (0..7) bank 2 asks for, or MIDI_ROUTE_NO_REQUEST */
+    uint8_t user_chip; /* and for which chip (MIDI_ROUTE_CHIP_*) */
     uint8_t locks;      /* the filter's, as asked */
     uint8_t locks_sent; /* 0xff: to send */
     uint16_t cutoff;
@@ -193,12 +222,23 @@ void midi_route_init(midi_route* r, live* l, keys_route* kr, const midi_route_pl
 void midi_route_set(midi_route* r, const midi_route_setup* s);
 /* 1 if chip A belongs to the player in this mode. */
 int midi_route_owns_chip_a(uint32_t mode);
-/* 1 if msg is surely the instrument's (a channel message on a channel to[] says is live's):
+/* 1 if msg is surely the instrument's (a note, aftertouch or CC other than bank select, on a
+ * channel to[] says is live's; the program change, bend and the rest take the long way):
  * midi_rx's look before midi_route_classify, cheap for a stream of the instrument's CCs. */
 #define midi_route_fast(r, msg)                                                                \
-    ((msg)->kind < MIDI_REALTIME && (r)->to[(msg)->channel & 15u] == MIDI_ROUTE_LIVE)
+    ((msg)->kind < MIDI_PROGRAM && (r)->to[(msg)->channel & 15u] == MIDI_ROUTE_LIVE &&         \
+     !((msg)->kind == MIDI_CC && ((msg)->data1 & 0xdfu) == 0u))
 /* Where a message goes (pure). */
 midi_route_to midi_route_classify(const midi_route* r, const midi_msg* msg);
+/* 1 if the message, which classify gave the router, changes one of live's parameters (a
+ * program change in bank 0 or 2 on the instrument's channel): MIDI out looks before it
+ * (app/midi_rx.h). */
+int midi_route_edits_live(const midi_route* r, const midi_msg* msg);
+/* The song (0..127) a bank 1 program change asked for since the last call, or -1: the request
+ * is cleared. */
+int32_t midi_route_take_song(midi_route* r);
+/* The USER profile (0..7) bank 2 asked for, and its chip (MIDI_ROUTE_CHIP_*), or -1. */
+int32_t midi_route_take_user_profile(midi_route* r, uint32_t* chip);
 /* A message classify gave the router: a jam channel's, or real time (the ARP's clock). */
 void midi_route_take(midi_route* r, const midi_msg* msg);
 /* Every jam note released and the jam channels' controllers reset (lost input,
@@ -225,6 +265,8 @@ const char* midi_route_option_name(uint32_t option);
 #ifdef SIDOU_MIDI_MAP_DOC
 /* For the generated reference (docs/reference/midi.md): what each mode does. */
 const char* midi_route_mode_doc(uint32_t mode);
+/* What a program change in each bank (0..MIDI_ROUTE_BANKS - 1) selects. */
+const char* midi_route_bank_doc(uint32_t bank);
 #endif
 
 #ifdef __cplusplus

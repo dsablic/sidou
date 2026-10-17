@@ -204,3 +204,38 @@ fn a_dense_four_channel_stream_keeps_every_pass_within_the_allowance() {
         "a pass took {worst} instructions, over the poll allowance"
     );
 }
+
+fn live_byte(m: &mut Machine, fw: &Firmware, offset: usize) -> u8 {
+    let l = m.soc.read32(fw.symbol("ui") + ilp32::views::l as u32);
+    m.soc.read8(l + offset as u32)
+}
+
+/// M2e Task 4 over TRS: bank 2's program 3 picks the 8580 R5 profile for the instrument (its
+/// chip prepared and swapped in), bank 1's program 0 asks for the first stored song (the
+/// request waits for the song loader, M2c Task 8) and changes no preset, and bank 0 is the
+/// presets again.
+#[test]
+fn bank_select_picks_profiles_and_songs_over_trs() {
+    let Some(fw) = fixture("the MIDI banks test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    let profile = |m: &mut Machine| live_byte(m, &fw, ilp32::live::profile);
+    let preset = |m: &mut Machine| live_byte(m, &fw, ilp32::live::preset);
+    assert_eq!(u32::from(profile(&mut m)), sidou_sys::SID_CHIP_6581_R4AR);
+    m.midi(&[0xB0, 0, 0, 0xB0, 32, 2, 0xC0, 3]);
+    m.run_ms(400);
+    assert_eq!(u32::from(profile(&mut m)), sidou_sys::SID_CHIP_8580_R5);
+    assert_eq!(preset(&mut m), 0);
+    m.midi(&[0xB0, 32, 1, 0xC0, 0]);
+    m.run_ms(50);
+    assert_eq!(
+        route_byte(&mut m, &fw, ilp32::midi_route::song_req),
+        0,
+        "the first song asked for"
+    );
+    assert_eq!(preset(&mut m), 0);
+    m.midi(&[0xB0, 32, 0, 0xC0, 2]);
+    m.run_ms(50);
+    assert_eq!(preset(&mut m), 2, "bank 0: the presets");
+}

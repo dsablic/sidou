@@ -326,6 +326,12 @@ stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
   CCs set chip A's setup. Chip A's jam voices sound once song control (M2c) binds the
   router's player interface; until then they are routed and tracked. The setting is in RAM
   until the settings persist.
+- M2e: program change with bank select (CC 0 and 32, per channel): bank 0 the channel's
+  sound (presets, or a GoatTracker instrument on chip A's channels), bank 1 songs (a request
+  for the store's n-th song, taken once songs are on the device), bank 2 the chip's profile
+  (0-4 built in; 5-12 USER 1-8, a request until user profiles exist). Bank select is no
+  longer learnable. MIDI out puts a preset's program change in bank 0 and can send a song's
+  in bank 1.
 
 - M2a Tasks 1-4 and the Task 3b spike build were included in this preview;
   see [Unreleased](#unreleased) for the completed M2a results and the provisional timing policy.

@@ -679,3 +679,42 @@ fn the_character_goes_out_on_its_ccs() {
     want.sort_unstable();
     assert_eq!(got, want);
 }
+
+fn pc_packet(channel: u8, program: u8) -> u32 {
+    u32::from_le_bytes([
+        0x0C | (MIDI_OUT_CABLE as u8) << 4,
+        0xC0 | channel,
+        program,
+        0,
+    ])
+}
+
+/// M2e Task 4: a song from the SONG menu goes out as bank 1 and its program; the next preset
+/// from the panel selects bank 0 again first, and a preset after it is its program change
+/// alone, as in M1.
+#[test]
+fn a_song_goes_out_in_bank_1_and_a_preset_after_it_selects_bank_0_again() {
+    let mut o = Out::with(2, 0);
+    unsafe { midi_out_song(&mut *o.out, 5) };
+    assert_eq!(
+        o.tick(),
+        [cc_packet(2, 0, 0), cc_packet(2, 32, 1), pc_packet(2, 5)]
+    );
+    o.rig.knob(LIVE_KNOB_PRESET, 1);
+    assert_eq!(
+        o.tick(),
+        [cc_packet(2, 0, 0), cc_packet(2, 32, 0), pc_packet(2, 1)]
+    );
+    o.rig.knob(LIVE_KNOB_PRESET, 1);
+    assert_eq!(o.tick(), [pc_packet(2, 2)]);
+    // Without room for the whole message, it waits.
+    unsafe { midi_out_song(&mut *o.out, 9) };
+    assert!(o.tick_room(2).is_empty());
+    assert_eq!(o.tick_room(3).len(), 3);
+    // No host: dropped.
+    unsafe {
+        midi_out_song(&mut *o.out, 1);
+        midi_out_drop(&mut *o.out, &*o.rig.live);
+    }
+    assert!(o.tick().is_empty());
+}

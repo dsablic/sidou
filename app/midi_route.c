@@ -29,6 +29,7 @@
 enum { ROLE_NONE, ROLE_LIVE, ROLE_JAM };
 
 static void roles(midi_route* r);
+static void program(midi_route* r, uint32_t ch, uint32_t k, uint32_t jam, uint8_t n);
 
 static const char* const MODE_NAMES[MIDI_MODE_COUNT] = {"LIVE", "MULTI", "WHOLE A", "WHOLE B",
                                                         "OMNI"};
@@ -59,6 +60,18 @@ const char* midi_route_mode_doc(uint32_t mode) {
         "every channel plays the instrument, on the chip the keys play (the default, M1's)",
     };
     return mode < MIDI_MODE_COUNT ? DOC[mode] : "";
+}
+
+const char* midi_route_bank_doc(uint32_t bank) {
+    static const char* const DOC[MIDI_ROUTE_BANKS] = {
+        "the channel's sound: on the instrument's channel its preset 0..3 (M1's); on a chip A "
+        "channel (MULTI, WHOLE A) GoatTracker instrument n + 1, 0..62",
+        "songs: program n loads the store's n-th song in name order, stopped; on the "
+        "instrument's channel or channel N only",
+        "the chip's profile: 0 6581 R2, 1 6581 R3, 2 6581 R4AR, 3 8580 R5, 4 worn 6581, 5..12 "
+        "USER 1..8; the instrument's (the keys' setup) on its channel, chip A's on chip A's",
+    };
+    return bank < MIDI_ROUTE_BANKS ? DOC[bank] : "";
 }
 #endif
 
@@ -204,6 +217,13 @@ void midi_route_init(midi_route* r, live* l, keys_route* kr, const midi_route_pl
     r->arp_wait = 0;
     r->stamp = 0;
     r->dropped = 0;
+    for (uint32_t ch = 0; ch < 16u; ch++) {
+        r->bank_msb[ch] = 0;
+        r->bank_lsb[ch] = 0;
+    }
+    r->song_req = MIDI_ROUTE_NO_REQUEST;
+    r->user_req = MIDI_ROUTE_NO_REQUEST;
+    r->user_chip = MIDI_ROUTE_CHIP_KEYS;
 }
 
 void midi_route_set(midi_route* r, const midi_route_setup* s) {
@@ -283,7 +303,14 @@ midi_route_to midi_route_classify(const midi_route* r, const midi_msg* msg) {
     if (msg->kind == MIDI_SONG_POSITION || msg->kind == MIDI_SONG_SELECT) {
         return MIDI_ROUTE_IGNORE; /* the transport's (M2e Task 2) */
     }
-    return (midi_route_to)r->to[msg->channel & 15u];
+    uint8_t to = r->to[msg->channel & 15u];
+    if (to == MIDI_ROUTE_LIVE &&
+        (msg->kind == MIDI_PROGRAM ||
+         (msg->kind == MIDI_CC && (msg->data1 == MIDI_ROUTE_CC_BANK_MSB ||
+                                   msg->data1 == MIDI_ROUTE_CC_BANK_LSB)))) {
+        return MIDI_ROUTE_TAKE; /* bank select and its program changes */
+    }
+    return (midi_route_to)to;
 }
 
 /* ---- notes ---- */
@@ -556,6 +583,73 @@ static void jam_cc(midi_route* r, uint32_t jam, uint8_t cc, uint8_t value) {
     }
 }
 
+/* ---- program change and banks ---- */
+
+static uint32_t bank_of(const midi_route* r, uint32_t ch) {
+    return (uint32_t)r->bank_msb[ch] << 7 | r->bank_lsb[ch];
+}
+
+int midi_route_edits_live(const midi_route* r, const midi_msg* msg) {
+    if (msg->kind != MIDI_PROGRAM || r->to[msg->channel & 15u] != MIDI_ROUTE_LIVE) {
+        return 0;
+    }
+    switch (bank_of(r, msg->channel & 15u)) {
+    case MIDI_ROUTE_BANK_SOUND: return msg->data1 < LIVE_PRESET_COUNT;
+    case MIDI_ROUTE_BANK_PROFILES: return msg->data1 < SID_CHIPS;
+    default: return 0;
+    }
+}
+
+static void program(midi_route* r, uint32_t ch, uint32_t k, uint32_t jam, uint8_t n) {
+    if (k == ROLE_NONE) {
+        return;
+    }
+    switch (bank_of(r, ch)) {
+    case MIDI_ROUTE_BANK_SOUND:
+        if (k == ROLE_JAM) {
+            if (n < MIDI_ROUTE_INSTR_MAX) {
+                r->ch[jam].instr = (uint8_t)(n + 1u); /* from the next note */
+            }
+        } else if (n < LIVE_PRESET_COUNT) {
+            live_set_preset(r->l, n);
+        }
+        break;
+    case MIDI_ROUTE_BANK_SONGS:
+        if (k == ROLE_LIVE || ch == r->setup.base) {
+            r->song_req = n; /* the latest wins */
+        }
+        break;
+    case MIDI_ROUTE_BANK_PROFILES:
+        if (n < SID_CHIPS) {
+            if (k == ROLE_LIVE) {
+                live_param_set(r->l, LIVE_PARAM_PROFILE, n);
+            } else if (r->kr) {
+                chip_setup s = r->kr->song_want;
+                s.profile = n;
+                keys_route_song_wants(r->kr, &s);
+            }
+        } else if (n < SID_CHIPS + MIDI_ROUTE_USER_PROFILES) {
+            r->user_req = (uint8_t)(n - SID_CHIPS);
+            r->user_chip = k == ROLE_LIVE ? MIDI_ROUTE_CHIP_KEYS : MIDI_ROUTE_CHIP_A;
+        }
+        break;
+    default: break;
+    }
+}
+
+int32_t midi_route_take_song(midi_route* r) {
+    int32_t n = r->song_req == MIDI_ROUTE_NO_REQUEST ? -1 : (int32_t)r->song_req;
+    r->song_req = MIDI_ROUTE_NO_REQUEST;
+    return n;
+}
+
+int32_t midi_route_take_user_profile(midi_route* r, uint32_t* chip) {
+    int32_t n = r->user_req == MIDI_ROUTE_NO_REQUEST ? -1 : (int32_t)r->user_req;
+    *chip = r->user_chip;
+    r->user_req = MIDI_ROUTE_NO_REQUEST;
+    return n;
+}
+
 void midi_route_take(midi_route* r, const midi_msg* msg) {
     if (msg->kind == MIDI_REALTIME) {
         if (r->setup.mode != MIDI_MODE_WHOLE_A || r->setup.option != MIDI_WHOLE_ARP ||
@@ -570,8 +664,22 @@ void midi_route_take(midi_route* r, const midi_msg* msg) {
         }
         return;
     }
+    uint32_t ch = msg->channel & 15u;
+    if (msg->kind == MIDI_CC && msg->data1 == MIDI_ROUTE_CC_BANK_MSB) {
+        r->bank_msb[ch] = msg->data2;
+        return;
+    }
+    if (msg->kind == MIDI_CC && msg->data1 == MIDI_ROUTE_CC_BANK_LSB) {
+        r->bank_lsb[ch] = msg->data2;
+        return;
+    }
     uint32_t jam = 0;
-    if (role(&r->setup, msg->channel, &jam) != ROLE_JAM) {
+    uint32_t k = role(&r->setup, ch, &jam);
+    if (msg->kind == MIDI_PROGRAM) {
+        program(r, ch, k, jam, msg->data1);
+        return;
+    }
+    if (k != ROLE_JAM) {
         return;
     }
     switch (msg->kind) {
@@ -581,11 +689,6 @@ void midi_route_take(midi_route* r, const midi_msg* msg) {
         r->ch[jam].bend = msg->bend > LIVE_BEND_MAX ? (uint16_t)LIVE_BEND_MAX : msg->bend;
         break;
     case MIDI_CC: jam_cc(r, jam, msg->data1, msg->data2); break;
-    case MIDI_PROGRAM:
-        if (msg->data1 < MIDI_ROUTE_INSTR_MAX) {
-            r->ch[jam].instr = (uint8_t)(msg->data1 + 1u); /* from the next note */
-        }
-        break;
     default: break; /* aftertouch: GoatTracker's instruments have none */
     }
 }

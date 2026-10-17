@@ -65,12 +65,12 @@ fn at_power_on_nothing_is_bound_and_learn_is_idle() {
 }
 
 #[test]
-fn the_learnable_ccs_are_0_to_119_but_data_entry_and_parameter_selection() {
+fn the_learnable_ccs_are_0_to_119_but_bank_select_data_entry_and_parameter_selection() {
     let learnable: Vec<u32> = (0..=255)
         .filter(|&cc| unsafe { midi_learn_learnable(cc) } != 0)
         .collect();
     let want: Vec<u32> = (0..120)
-        .filter(|cc| ![6, 38, 96, 97, 98, 99, 100, 101].contains(cc))
+        .filter(|cc| ![0, 6, 32, 38, 96, 97, 98, 99, 100, 101].contains(cc))
         .collect();
     assert_eq!(learnable, want);
 }

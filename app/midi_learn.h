@@ -22,8 +22,9 @@
  *   new CC, and learning a bound CC for another parameter moves the CC;
  * - the value goes through the parameter's curve and range from its map row, as its own CC's;
  * - stored with the settings (app/settings.h), as param_cc.
- * Learnable CCs are 0..119 but data entry, increment and decrement, NRPN and RPN (6, 38,
- * 96..101): midi_map_cc takes those before any binding. 120..127 are channel mode messages.
+ * Learnable CCs are 0..119 but bank select (0, 32: MIDI's mode takes them, app/midi_route.h)
+ * and data entry, increment and decrement, NRPN and RPN (6, 38, 96..101): midi_map_cc takes
+ * those before any binding. 120..127 are channel mode messages.
  *
  * Every lookup is O(1): a CC's binding is one byte of cc_row (its map row), a parameter's one
  * byte of param_cc.

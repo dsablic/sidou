@@ -913,12 +913,14 @@ fn a_tick_of_midi_out_costs_little_at_worst() {
             .write16(base + ilp32::midi_out::wire as u32 + 2 * p, wire);
     });
     // The same with every parameter bound by MIDI learn (platform/fm1/midi.c `learned`) to a
-    // CC: 0..43 are all learnable but 6 and 38, so CC p below 6, p + 1 from there, p + 2 from
-    // 37.
+    // CC: parameter p to the p-th learnable CC (0..47 are all learnable but bank select, 0 and
+    // 32, and data entry, 6 and 38).
     let learned = fw.symbol("learned");
+    let learnable: Vec<u32> = (0..120)
+        .filter(|&cc| unsafe { sidou_sys::midi_learn_learnable(cc) } != 0)
+        .collect();
     for p in 0..sidou_sys::LIVE_PARAM_COUNT {
-        let cc = p + u32::from(p >= 6) + u32::from(p >= 37);
-        assert_ne!(unsafe { sidou_sys::midi_learn_learnable(cc) }, 0, "CC {cc}");
+        let cc = learnable[p as usize];
         m.soc
             .write8(learned + ilp32::midi_learn::param_cc as u32 + p, cc as u8);
         let row = unsafe { sidou_sys::midi_map_for_param(p) };

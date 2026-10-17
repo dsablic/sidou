@@ -6,7 +6,8 @@
  *   (midi_rx_route); the octave buttons do not apply;
  * - CCs and NRPNs through the published map (midi_map.h, docs/reference/midi.md), with the
  *   NRPN state per channel and per source; CC 120 and 123 release every note;
- * - program change n selects preset n; programs past the last preset are ignored;
+ * - program change n selects preset n; programs past the last preset are ignored (with MIDI's
+ *   mode, midi_rx_route: what the channel's bank select says, app/midi_route.h);
  * - pitch bend, channel and polyphonic aftertouch go to live (live_bend, live_pressure,
  *   live_poly_pressure), which applies them at its next tick;
  * - everything else (real time, system common, SysEx) is ignored.

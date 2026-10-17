@@ -74,6 +74,10 @@ static void take(midi_rx* rx, midi_map_port* port, const midi_msg* msg) {
     if (rx->route && !midi_route_fast(rx->route, msg)) {
         midi_route_to to = midi_route_classify(rx->route, msg);
         if (to == MIDI_ROUTE_TAKE) {
+            if (rx->out && !rx->looked && midi_route_edits_live(rx->route, msg)) {
+                midi_out_local(rx->out, rx->l); /* a preset or a profile: MIDI's, as above */
+                rx->looked = 1;
+            }
             midi_route_take(rx->route, msg);
         }
         if (to != MIDI_ROUTE_LIVE) {

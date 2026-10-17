@@ -399,7 +399,8 @@ the old register's 15 steps by at most half a step, 1/30 of full scale.
 
 Notes on every channel by default (MIDI's mode OMNI: [the MIDI page](#the-midi-page) can
 give the instrument one channel and chip A's voices channels of their own); program change
-0..3 selects the preset. A program change loads
+0..3 selects the preset. Bank select (CC 0 and 32) makes program changes pick songs (bank 1)
+or the chip's profile (bank 2): [midi.md](midi.md), Program change and banks. A program change loads
 the preset's cutoff, resonance, pulse width and SID settings (waveform, ring, sync, the
 envelope, filter routing and mode) and expression settings over any edits, even when it
 selects the preset already playing; volume, octave, chip, envelope mode, effects and a bend
@@ -565,8 +566,8 @@ works on every channel and on both ports, like the map; the parameter's own CC k
 working; if the learned CC was another parameter's, it now moves the learned one only (the
 other keeps its NRPN); learning a parameter again moves it to the new CC, and a CC learned
 for another parameter moves to it. The panel's changes to a learned parameter go out over
-USB on the learned CC. Data entry and NRPN/RPN selection (6, 38, 96..101) and the channel
-mode messages (120..127) cannot be learned.
+USB on the learned CC. Bank select (0, 32), data entry and NRPN/RPN selection (6, 38,
+96..101) and the channel mode messages (120..127) cannot be learned.
 
 The mappings persist with the settings, including forget and clear-all changes: background
 save after 5 s without another persisted change, or a plain SAVE after the frame closes.
