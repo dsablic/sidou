@@ -756,6 +756,19 @@ what they did (the profile change is the chip reset, decision record 0006, "Cost
 RAM: the view's state 2,780 bytes (1,880 before), most of it the canvas (cells, colours and the
 characters of the large text's pieces: 2,700 bytes).
 
+## SONG
+
+SONG uses the song views' shared canvas, not a second screen-sized buffer. The
+title is at row 2, the LOAD/NEW/SAVE AS/DELETE choices at rows 6, 8, 10 and 12.
+LOAD and DELETE list eight filenames per page; scanning advances one directory
+entry per frame. SAVE AS places its 16-character name at row 8, with the cursor
+underneath and a SAVE action below. Confirmations default to NO. Help is at the
+bottom, with HOME consistently returning to the preceding page.
+
+Only changed cells are copied, at most 200 per frame including overlays. The
+reference images are `song`, `song-load`, `song-save-as` and `song-confirm`.
+Song-view headers show SAVING while a file is being written.
+
 ## TRACKER
 
 TRACKER (`app/tracker_view.h`, from SEQ or the menu) is the song's patterns in GoatTracker 2's

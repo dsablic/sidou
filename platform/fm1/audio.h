@@ -35,6 +35,8 @@ song_ctl* audio_song(void);
 void audio_song_anchor(uint32_t* ticks, uint32_t* samples);
 /* song_ctl_poll, with a slice unless the pass has run one of the spare chip's preparation. */
 void audio_song_poll(void);
+/* Claim a foreground slice; excludes chip preparation and the store's work this pass. */
+int audio_work_slice(void);
 /* The context for reg_ring_sink (a reg_ring_out*), for live. Before audio_start, a full ring
  * is drained at once; after it, the producer sleeps until the interrupt has made room. */
 void* audio_sink_ctx(void);

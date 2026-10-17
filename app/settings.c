@@ -62,13 +62,18 @@ uint32_t settings_gather(const settings* s, uint8_t* out) {
     }
     out[n++] = *s->tracker_rows;
     out[n++] = l->theme;
+    for (uint32_t i = 0; i < STORE_NAME_MAX; i++) {
+        out[n++] = (uint8_t)s->last_song[i];
+    }
     return n;
 }
 
 int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
     /* Schema 1 or later: the v1 part (a later schema appends). */
     if (len < SETTINGS_V1_BYTES || rec[0] < 1u || rec[5] < SETTINGS_PARAMS_V1 ||
-        (rec[0] >= 2u && len < SETTINGS_V2_BYTES) || (rec[0] >= 3u && len < SETTINGS_V3_BYTES)) {
+        (rec[0] >= 2u && len < SETTINGS_V2_BYTES) ||
+        (rec[0] >= 3u && len < SETTINGS_V3_BYTES) ||
+        (rec[0] >= 4u && len < SETTINGS_V4_BYTES)) {
         return 0;
     }
     live* l = s->l;
@@ -99,6 +104,17 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
     n += SETTINGS_PARAMS_V1;
     *s->tracker_rows = (uint8_t)(rec[0] >= 2u && rec[SETTINGS_V1_BYTES] == 1u);
     live_set_theme(l, rec[0] >= 3u ? rec[SETTINGS_V2_BYTES] : 0u); /* an older record: HIGH CONTRAST */
+    memset(s->last_song, 0, sizeof s->last_song);
+    if (rec[0] >= 4u) {
+        for (uint32_t i = 0; i < STORE_NAME_MAX && rec[SETTINGS_V3_BYTES + i]; i++) {
+            uint8_t c = rec[SETTINGS_V3_BYTES + i];
+            if (c < 0x20u || c > 0x5fu || (i == 0u && c == ' ')) {
+                memset(s->last_song, 0, sizeof s->last_song);
+                break;
+            }
+            s->last_song[i] = (char)c;
+        }
+    }
     for (uint32_t i = 0; i < SETTINGS_VERSION_CHARS; i++) {
         char c = s->version[i];
         if ((uint8_t)c != rec[n + i]) {
@@ -219,6 +235,21 @@ void settings_save_now(settings* s, uint32_t now_ms) {
 void settings_forget(settings* s) {
     s->saved = 0;
     s->l->settings_dirty |= 2u;
+}
+
+void settings_set_song(settings* s, const char* name) {
+    char next[STORE_NAME_MAX + 1u] = {0};
+    for (uint32_t i = 0; i < STORE_NAME_MAX && name[i]; i++) {
+        uint8_t c = (uint8_t)name[i];
+        if (c < 0x20u || c > 0x5fu || (i == 0u && c == ' ')) {
+            return;
+        }
+        next[i] = (char)c;
+    }
+    if (memcmp(next, s->last_song, sizeof next) != 0) {
+        memcpy(s->last_song, next, sizeof next);
+        s->l->settings_dirty = 1u;
+    }
 }
 
 settings_result settings_take_result(settings* s) {

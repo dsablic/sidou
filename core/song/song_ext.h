@@ -52,7 +52,8 @@ uint32_t song_crc32(uint32_t crc, const uint8_t* p, uint32_t n);
 
 /* Chunks in the extension area. find: the data and its length, NULL if absent. set:
  * replaces a chunk of that tag in place or appends one; 0, or -1 if it does not fit (the
- * area unchanged). remove: 1 if there was one. */
+ * area unchanged). remove: 1 if there was one. Mutation also returns -GT2_ERR_SONG_FULL,
+ * -GT2_ERR_SAVING or -GT2_ERR_PENDING (an indexed edit's locks must settle first). */
 const uint8_t* song_ext_find(const gt2_song* s, uint32_t tag, uint32_t* len);
 int song_ext_set(gt2_song* s, uint32_t tag, const uint8_t* data, uint32_t len);
 int song_ext_remove(gt2_song* s, uint32_t tag);
@@ -155,7 +156,7 @@ const uint8_t* song_locks_row(const gt2_song* s, uint32_t pattern, uint32_t row,
 /* Sets one lock (a new one, or its value), kept sorted: 0, or -1 if out of range, the song
  * holds SONG_LOCKS_MAX, or the extension area is full. */
 int song_lock_put(gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param, uint32_t value);
-/* 1 if there was one, removed. */
+/* 1 if there was one, removed; a negative GT2_ERR_* on refusal. */
 int song_lock_remove(gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param);
 /* What a pattern's rebuild does to its locks (gt2_song.c, once the swap is applied): a row
  * inserted at row (the locks at it and after move down one; any reaching 128 go), deleted
@@ -163,6 +164,8 @@ int song_lock_remove(gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param
  * or the pattern removed (all go). */
 enum { SONG_LOCKS_INSERT = 1, SONG_LOCKS_DELETE, SONG_LOCKS_RESIZE, SONG_LOCKS_REMOVE };
 void song_locks_pattern_edit(gt2_song* s, uint32_t op, uint32_t pattern, uint32_t row);
+/* Extension length after that edit, without changing the chunk or its records. */
+uint32_t song_locks_pattern_size(const gt2_song* s, uint32_t op, uint32_t pattern, uint32_t row);
 
 /* MIDI: the song's MIDI setup (M2e Task 3, app/midi_route.h gives the fields meaning). The
  * options follow the channels in the chunk (M2e); a chunk without them reads as has_options
@@ -202,8 +205,10 @@ int song_ext_set_scene(gt2_song* s, const song_scene* v);
 
 /* KEYS: the keys' live preset and setup, live_params's values in LIVE_PARAM_* order. */
 #define SONG_KEYS_MAX 64u
+#define SONG_KEYS_PRESET_NONE 255u
 typedef struct {
     uint8_t count;
+    uint8_t preset; /* optional trailing preset index; NONE in an older chunk */
     uint16_t param[SONG_KEYS_MAX];
 } song_keys;
 int song_ext_get_keys(const gt2_song* s, song_keys* v);

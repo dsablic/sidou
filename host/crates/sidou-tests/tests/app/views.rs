@@ -13,6 +13,331 @@ use crate::Rig;
 
 const COLS: usize = GRID_COLS as usize;
 
+fn song_frames(ui: &mut Ui) {
+    crate::drain(&mut ui.g);
+    for _ in 0..40 {
+        ui.frame();
+        crate::drain(&mut ui.g);
+    }
+}
+
+#[test]
+fn song_menu_has_load_new_save_as_delete_and_home_cancels_a_page() {
+    let mut ui = Ui::without_cards();
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    song_frames(&mut ui);
+    assert_eq!(ui.top(), "SONG");
+    let text = (0..GRID_ROWS as usize)
+        .map(|r| ui.row(r))
+        .collect::<String>();
+    for action in ["LOAD", "NEW", "SAVE AS", "DELETE"] {
+        assert!(text.contains(action), "missing {action}: {text}");
+    }
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    song_frames(&mut ui);
+    assert!(ui.row(2).contains("LOAD"));
+    assert!((0..GRID_ROWS as usize).any(|r| ui.row(r).contains("NO SONGS")));
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "SONG", "HOME should cancel LOAD, not leave SONG");
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "MENU");
+}
+
+#[test]
+fn song_pages_use_large_labels_and_reverse_selection_without_losing_changed_glyphs() {
+    let mut ui = Ui::without_cards();
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    song_frames(&mut ui);
+    assert_eq!(ui.row(2), ui.row(3), "the SONG heading is two rows tall");
+    assert_eq!(ui.g.src[2 * COLS + 2], b'S');
+    let reverse = ((GRID_LIGHT_BLUE << 4) | GRID_BLUE) as u8;
+    assert_eq!(ui.g.attr[6 * COLS + 2], reverse);
+    ui.turn(PANEL_ENC_SELECT, 2);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    song_frames(&mut ui);
+    let before = ui.row(8);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    let mut changed = 0;
+    for _ in 0..12 {
+        ui.frame();
+        let sent = crate::drain(&mut ui.g);
+        changed += sent.cells;
+        assert!(sent.cells <= SONG_VIEW_FRAME_CELLS as usize, "{sent:?}");
+        assert!(sent.spi_ms() <= crate::SPI_BUDGET_MS, "{sent:?}");
+    }
+    assert_ne!(
+        ui.row(8),
+        before,
+        "a new glyph must replace the same four piece codes"
+    );
+    assert!(changed > 0, "the changed glyph must be sent to the LCD");
+    assert_eq!(ui.row(8), ui.row(9));
+    ui.turn(PANEL_ENC_SELECT, 8);
+    song_frames(&mut ui);
+    assert!(
+        ui.row(14).contains('^'),
+        "the cursor follows the second half of the name"
+    );
+}
+
+#[test]
+fn save_in_an_unnamed_song_opens_the_name_editor_not_settings() {
+    let mut ui = Ui::without_cards();
+    ui.press(PANEL_BTN_SEQ);
+    ui.press(SAVE_KEY_BUTTON);
+    assert_eq!(ui.top(), "SONG");
+    song_frames(&mut ui);
+    assert!(ui.row(2).contains("SAVE AS"));
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(PANEL_ENC_SELECT, 15);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    song_frames(&mut ui);
+    let name = format!("{}{}", &ui.row(8)[1..9], &ui.row(12)[1..9]);
+    assert_eq!(name.len(), 16);
+    assert_eq!(&name[15..], "!");
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(
+        ui.top(),
+        "TRACKER",
+        "SAVE AS cancellation returns to the song view"
+    );
+}
+
+#[test]
+fn new_requires_confirmation_and_home_keeps_the_unsaved_song() {
+    let mut ui = Ui::without_cards();
+    let mut io = Box::new(song_io {
+        dirty: 1,
+        ..Default::default()
+    });
+    unsafe { views_song_io(&mut *ui.v, &mut *io) };
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.settle();
+    assert!(ui.row(6).contains("DISCARD"));
+    assert!(ui.row(8).contains("UNSAVED SONG?"));
+    ui.turn(PANEL_ENC_ALGORITHM, 4);
+    assert_eq!(io.state, SONG_IO_IDLE as u8, "NO is selected initially");
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "SONG");
+    assert_eq!(io.dirty, 1);
+    assert_eq!(io.state, SONG_IO_IDLE as u8);
+}
+
+#[test]
+fn song_header_shows_saving_and_returns_to_tracker_after_save() {
+    let mut ui = Ui::without_cards();
+    let mut io = Box::new(song_io {
+        state: SONG_IO_WRITE as u8,
+        ..Default::default()
+    });
+    unsafe { views_song_io(&mut *ui.v, &mut *io) };
+    ui.press(PANEL_BTN_SEQ);
+    song_frames(&mut ui);
+    assert!(ui.row(0).starts_with("SAVING"));
+    io.state = SONG_IO_IDLE as u8;
+    song_frames(&mut ui);
+    assert!(ui.row(0).starts_with("TRACKER"));
+}
+
+#[test]
+fn song_pages_share_the_canvas_without_leaking_it_into_tracker() {
+    let mut ui = Ui::without_cards();
+    crate::drain(&mut ui.g);
+    ui.press(PANEL_BTN_SEQ);
+    for _ in 0..30 {
+        ui.frame();
+        crate::drain(&mut ui.g);
+    }
+    ui.press(SAVE_KEY_BUTTON);
+    for _ in 0..30 {
+        ui.frame();
+        let sent = crate::drain(&mut ui.g);
+        assert!(sent.cells <= SONG_VIEW_FRAME_CELLS as usize, "{sent:?}");
+        assert!(sent.spi_ms() <= crate::SPI_BUDGET_MS, "{sent:?}");
+    }
+    ui.turn(PANEL_ENC_SELECT, 16);
+    for _ in 0..10 {
+        ui.frame();
+        let sent = crate::drain(&mut ui.g);
+        assert!(sent.cells <= SONG_VIEW_FRAME_CELLS as usize, "{sent:?}");
+    }
+    ui.press(PANEL_BTN_HOME);
+    for _ in 0..30 {
+        ui.frame();
+        crate::drain(&mut ui.g);
+    }
+    assert!(ui.row(0).starts_with("TRACKER"));
+    assert!(!(0..GRID_ROWS as usize).any(|r| ui.row(r).contains("WRITE SONG")));
+}
+
+#[test]
+fn unnamed_save_works_when_the_song_view_already_fills_the_stack() {
+    let mut ui = Ui::without_cards();
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(ui.top(), "CHIP");
+    ui.press(PANEL_BTN_SEQ);
+    assert_eq!(ui.v.s.depth, SCREEN_DEPTH as u8);
+    ui.press(SAVE_KEY_BUTTON);
+    assert_eq!(ui.top(), "SONG");
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "TRACKER");
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "CHIP");
+}
+
+#[test]
+fn load_directory_pages_and_delete_waits_for_yes() {
+    let mut ui = Ui::without_cards();
+    let mut flash = crate::store::fresh(808, STORE_WINDOW_MAX);
+    for i in (0..10).rev() {
+        assert_eq!(flash.file_now(&format!("SONG {i:02}"), &[0]), STORE_OK);
+    }
+    let mut io = Box::new(song_io {
+        st: &mut *flash.st,
+        ..Default::default()
+    });
+    unsafe { views_song_io(&mut *ui.v, &mut *io) };
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    crate::drain(&mut ui.g);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    for _ in 0..60 {
+        ui.frame();
+        let sent = crate::drain(&mut ui.g);
+        assert!(sent.cells <= SONG_VIEW_FRAME_CELLS as usize, "{sent:?}");
+    }
+    assert!(ui.row(6).contains("SONG 00"));
+    assert!(ui.row(20).contains("SONG 07"));
+    ui.turn(PANEL_ENC_SELECT, 8);
+    for _ in 0..60 {
+        ui.frame();
+        crate::drain(&mut ui.g);
+    }
+    assert!(ui.row(6).contains("SONG 08"));
+    assert!(ui.row(8).contains("SONG 09"));
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, 3);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    for _ in 0..60 {
+        ui.frame();
+        crate::drain(&mut ui.g);
+    }
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(io.state, SONG_IO_IDLE as u8);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(io.state, SONG_IO_IDLE as u8, "default NO must not delete");
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(io.state, SONG_IO_DELETE as u8);
+    assert_eq!(unsafe { CStr::from_ptr(io.target.as_ptr()) }, c"SONG 01");
+}
+
+#[test]
+fn model_revision_alone_requires_new_confirmation() {
+    let mut ui = Ui::without_cards();
+    let mut model = Box::new(gt2_song {
+        revision: 1,
+        ..Default::default()
+    });
+    let mut ctl = Box::new(song_ctl {
+        song: &mut *model,
+        ..Default::default()
+    });
+    let mut io = Box::new(song_io {
+        ctl: &mut *ctl,
+        ..Default::default()
+    });
+    unsafe { views_song_io(&mut *ui.v, &mut *io) };
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.settle();
+    assert!(ui.row(6).contains("DISCARD"));
+    assert!(ui.row(8).contains("UNSAVED SONG?"));
+    assert_eq!(io.state, SONG_IO_IDLE as u8);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(io.state, SONG_IO_STOP as u8);
+}
+
+#[test]
+fn song_page_home_still_cancels_after_midi_learn_closes() {
+    let mut ui = Ui::without_cards();
+    let mut ml = Box::<midi_learn>::default();
+    unsafe {
+        midi_learn_init(&mut *ml);
+        views_learn(&mut *ui.v, &mut *ml);
+    }
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.learn_on(PANEL_ENC_K1);
+    assert_eq!(ui.top(), "LEARN");
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "SONG");
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "SONG", "HOME should return from LOAD to SONG");
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "MENU");
+}
+
+#[test]
+fn save_routes_named_songs_to_io_and_save_as_accepts_all_sixteen_characters() {
+    let mut ui = Ui::without_cards();
+    let mut model = Box::<gt2_song>::default();
+    let mut ctl = Box::new(song_ctl {
+        song: &mut *model,
+        ..Default::default()
+    });
+    let mut st = Box::<store>::default();
+    let mut io = Box::new(song_io {
+        ctl: &mut *ctl,
+        st: &mut *st,
+        ..Default::default()
+    });
+    for (out, byte) in io.name.iter_mut().zip(b"EXISTING") {
+        *out = *byte as _;
+    }
+    unsafe { views_song_io(&mut *ui.v, &mut *io) };
+    ui.press(PANEL_BTN_SEQ);
+    ui.press(SAVE_KEY_BUTTON);
+    assert_eq!(ui.top(), "TRACKER");
+    assert_eq!(io.state, SONG_IO_SAVE_WAIT as u8);
+    assert_eq!(unsafe { CStr::from_ptr(io.target.as_ptr()) }, c"EXISTING");
+    io.state = SONG_IO_IDLE as u8;
+    io.name[0] = 0;
+    ui.press(SAVE_KEY_BUTTON);
+    assert_eq!(ui.top(), "SONG");
+    let original = b"NEW SONG        ";
+    for (i, (was, want)) in original.iter().zip(b"ABCDEFGHIJKLMNOP").enumerate() {
+        if i != 0 {
+            ui.turn(PANEL_ENC_SELECT, 1);
+        }
+        ui.turn(PANEL_ENC_ALGORITHM, i32::from(*want) - i32::from(*was));
+    }
+    ui.press(SAVE_KEY_BUTTON);
+    assert_eq!(ui.top(), "TRACKER");
+    assert_eq!(io.state, SONG_IO_SAVE_WAIT as u8);
+    assert_eq!(
+        unsafe { CStr::from_ptr(io.target.as_ptr()) },
+        c"ABCDEFGHIJKLMNOP"
+    );
+}
+
 pub(crate) struct Ui {
     pub(crate) rig: Rig,
     pub(crate) p: Box<panel>,
@@ -303,7 +628,7 @@ fn the_menu_changes_the_preset_and_octave() {
         (ui.top().as_str(), ui.live().model),
         ("MENU", SID_MODEL_6581)
     );
-    ui.turn(PANEL_ENC_SELECT, 2); // past TRACKER, which ALGORITHM would open
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_PRESET as i32); // past TRACKER, which ALGORITHM would open
     ui.turn(PANEL_ENC_ALGORITHM, 2);
     assert_eq!(ui.live().preset, 2);
     ui.turn(PANEL_ENC_SELECT, 1);
@@ -314,7 +639,7 @@ fn the_menu_changes_the_preset_and_octave() {
     ui.turn(PANEL_ENC_ALGORITHM, 9);
     assert_eq!(ui.live().octave, LIVE_OCTAVE_MAX as i8);
     // SELECT stops at the last item, and turning the action back does nothing.
-    ui.turn(PANEL_ENC_SELECT, 9);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_ITEMS as i32);
     ui.turn(PANEL_ENC_ALGORITHM, -1);
     assert_eq!(ui.top(), "MENU");
 }
@@ -337,7 +662,7 @@ fn the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video
     ui.settle();
     // The selected item's line (item 0) and the title bar (rows 0-2) are in reverse video:
     // MENU, and which item of how many.
-    assert_eq!(&ui.row(1)[1..15], "MENU   #  1/15");
+    assert_eq!(&ui.row(1)[1..15], format!("MENU   #  1/{VIEWS_MENU_ITEMS}"));
     assert_eq!(ui.row(2), ui.row(1), "large text: two rows a line");
     let t = unsafe { &*theme_get(THEME_HIGH_CONTRAST) };
     assert_eq!(
@@ -369,16 +694,22 @@ fn the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video
     // frame, the selected first).
     ui.turn(PANEL_ENC_SELECT, 99);
     menu_settle(&mut ui);
-    assert_eq!(ui.v.home.top, 9);
-    assert_eq!(&ui.row(1)[1..15], "MENU  #  15/15");
-    let at_end: Vec<String> = (9..15).map(|i| ui.menu_line(i)).collect();
+    let end_top = VIEWS_MENU_ITEMS - VIEWS_MENU_SHOWN;
+    assert_eq!(u32::from(ui.v.home.top), end_top);
+    assert_eq!(
+        &ui.row(1)[1..15],
+        format!("MENU  #  {VIEWS_MENU_ITEMS}/{VIEWS_MENU_ITEMS}")
+    );
+    let at_end: Vec<String> = (end_top..VIEWS_MENU_ITEMS)
+        .map(|i| ui.menu_line(i as usize))
+        .collect();
     assert_eq!(
         at_end,
         [
-            format!("{:<5}{:>9}", "THEME", "HIGH"),
             format!("{:<13}#", "STATUS"),
             format!("{:<13}#", "SCENE"),
             format!("{:<13}#", "CHARSET"),
+            format!("{:<13}#", "SONG"),
             format!("{:<13}#", "ABOUT"),
             format!("{:<13}#", "MIDI"),
         ]
@@ -397,7 +728,7 @@ fn every_menu_item_is_reachable_and_readable_as_the_cursor_walks_down_and_up() {
     ui.settle();
     let labels = [
         "CHIP", "TRACKER", "PRE", "OCTAVE", "CARDS", "STORE", "KEYS", "SOUNDS", "ROWS", "THEME",
-        "STATUS", "SCENE", "CHARSET", "ABOUT", "MIDI",
+        "STATUS", "SCENE", "CHARSET", "SONG", "ABOUT", "MIDI",
     ];
     assert_eq!(labels.len(), VIEWS_MENU_ITEMS as usize);
     let walk = |ui: &mut Ui, i: usize| {
@@ -420,6 +751,9 @@ fn every_menu_item_is_reachable_and_readable_as_the_cursor_walks_down_and_up() {
                 "item {k}: {}",
                 ui.menu_line(k)
             );
+            if k == VIEWS_MENU_THEME as usize {
+                assert_eq!(ui.menu_line(k), format!("{:<5}{:>9}", "THEME", "HIGH"));
+            }
         }
         let up_hint = ui.g.src[COLS + 13] == FONT_ARROW_UP as u8;
         let down_hint = ui.g.src[COLS + 15] == FONT_ARROW_DOWN as u8;

@@ -60,6 +60,7 @@ const view* song_view_next(const view* top) {
 
 void song_view_init(song_view* sv, live* l) {
     sv->t = NULL;
+    sv->io = NULL;
     sv->l = l;
     sv->st.state = SONG_T_IDLE;
     sv->st.multispeed = 1;
@@ -350,5 +351,63 @@ void song_view_copy(song_view* sv, screen* s, grid* g) {
     }
     /* All of it is on the grid but what the layers hold: those come back when the screen
      * composes again after them (it forces that). */
+    sv->dirty = 0;
+}
+
+/* The source character is part of a large cell's identity, even if its piece code is unchanged. */
+static void canvas_large_put(grid* g, uint32_t col, uint32_t row, uint8_t ch, uint8_t a,
+                             int big) {
+    if (big) {
+        uint32_t i = row * GRID_COLS + col;
+        if (g->src[i] != ch) {
+            g->src[i] = ch;
+            g->big_touched = 1;
+            grid_mark(g, col, row);
+        }
+        ch = (uint8_t)(GRID_BIG_FIRST + (row & 1u) * 2u + (col & 1u));
+    }
+    grid_put(g, col, row, ch, a);
+}
+
+void song_view_copy_large(song_view* sv, screen* s, grid* g, uint32_t big_rows) {
+    const song_view_canvas* cv = &sv->cv;
+    uint32_t whole = s->redraw && s->wipe != SCREEN_CUT ? s->redraw_rows : 0u;
+    for (uint32_t r = 0; r < GRID_ROWS; r++) {
+        if (whole >> r & 1u) {
+            if (big_rows >> r & 1u) {
+                for (uint32_t c = 0; c < GRID_COLS; c++) {
+                    canvas_large_put(g, c, r, cv->ch[r][c], cv->attr[r][c], 1);
+                }
+            } else {
+                grid_row(g, r, cv->ch[r], cv->attr[r]);
+            }
+        }
+    }
+    int raster = s->raster_frames && s->wipe == SCREEN_CUT;
+    uint32_t used = screen_pending(s) + screen_layer_cells(s);
+    uint32_t left = used < SONG_VIEW_FRAME_CELLS ? SONG_VIEW_FRAME_CELLS - used : 0u;
+    uint32_t rows = (sv->dirty | (s->redraw ? s->redraw_rows : 0u)) & ~whole;
+    for (uint32_t r = 0; rows >> r; r++) {
+        if (!(rows >> r & 1u)) {
+            continue;
+        }
+        int big = (int)(big_rows >> r & 1u);
+        for (uint32_t c = 0; c < GRID_COLS; c++) {
+            uint32_t i = r * GRID_COLS + c;
+            uint8_t ch = big ? (uint8_t)(GRID_BIG_FIRST + (r & 1u) * 2u + (c & 1u)) : cv->ch[r][c];
+            if ((g->ch[i] == ch && g->attr[i] == cv->attr[r][c] &&
+                 (!big || g->src[i] == cv->ch[r][c])) || screen_covered(s, c, r) ||
+                (raster && border(c, r))) {
+                continue;
+            }
+            if (!left) {
+                sv->dirty = rows & ~((1u << r) - 1u);
+                sv->held++;
+                return;
+            }
+            canvas_large_put(g, c, r, cv->ch[r][c], cv->attr[r][c], big);
+            left--;
+        }
+    }
     sv->dirty = 0;
 }

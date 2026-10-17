@@ -22,9 +22,10 @@
  *   song autostarting at boot) the keys may still be on chip A, filtered as above;
  * - the setup chip A is to have (the song's CHPA, at its start and at every change) goes to
  *   keys_route_song_wants, the one writer of song_want: keys_route brings chip A to it in the
- *   background (prepared, a slice a tick), as the CHIP view's A tab's edits do, so the latest
- *   of the CHPA and the edits wins and what chip A has (ctl[0]) stays true; M2c saves
- *   song_want back into the song's CHPA. keys_route_song_setup is only for a setup chip A
+ *   background (prepared, a slice a tick). The CHIP view's A tab uses keys_route_song_edit
+ *   so the platform can keep its unlocked base and apply character locks before wants; what
+ *   chip A has (ctl[0]) stays true. M2c saves the unlocked base into the song's CHPA.
+ *   keys_route_song_setup is only for a setup chip A
  *   already holds (it records it, and wants it). After the song the keys are taken back to
  *   their own setup (STATUS shows chip A's meanwhile);
  * - a profile change of chip A during a song is a chip reset (prepared, then swapped in): the
@@ -83,12 +84,14 @@ typedef struct {
     uint8_t under; /* 1 while the keys play under a song (on chip A) */
     uint8_t taken; /* the voices the keys held at the last write under a song */
     /* During a song: the setup chip A should have (the song's CHPA or an edit on the CHIP
-     * view's A tab, both through keys_route_song_wants); chip A follows it. */
+     * view's A tab, after its edit callback); chip A follows it. */
     chip_setup song_want;
     uint8_t song_seen; /* song as the last tick saw it (a song's start sets song_want) */
     uint8_t song_user; /* USER slot n + 1 that supplied song_want, or 0 */
     void (*moved)(void* ctx, uint32_t chip); /* NULL: nobody to tell */
     void* moved_ctx;
+    int (*song_edit)(void* ctx, const chip_setup* setup); /* 1 accepted, 0 refused; NULL: wants */
+    void* song_edit_ctx;
 } keys_route;
 
 /* The keys on chip A, chip B not made (its first reset follows from the first ticks). Then live_init(l, keys_route_sink, kr, model),
@@ -117,10 +120,14 @@ void keys_route_set_player(keys_route* kr, int owns);
 uint8_t keys_route_voices_taken(const keys_route* kr);
 /* 1 once a song may start on chip A: the keys play chip B, or KEYS is A. */
 int keys_route_ready_for_song(const keys_route* kr);
-/* The setup chip A is to have during a song (the song's CHPA; an edit on the CHIP view's A
- * tab): the one writer of song_want. Chip A is brought to it in the background (prepared, a
- * slice a tick); the latest call wins; M2c saves song_want back into the song's CHPA. */
+/* Runtime setup chip A is to have during a song: the one writer of song_want. Chip A is
+ * brought to it in the background (prepared, a slice a tick); the latest call wins. Explicit
+ * edits use keys_route_song_edit so runtime locks do not replace the saved song base. */
 void keys_route_song_wants(keys_route* kr, const chip_setup* setup);
+/* Explicit CHIP A edit, distinct from runtime locks: the callback owns acceptance and the
+ * unlocked song base; without one, goes straight to keys_route_song_wants. Returns 1 if
+ * accepted, 0 if refused, with the setup and USER identity unchanged. */
+int keys_route_song_edit(keys_route* kr, const chip_setup* setup);
 /* A setup chip A already holds (nothing is sent): recorded as what it has, and wanted. */
 void keys_route_song_setup(keys_route* kr, const chip_setup* setup);
 

@@ -165,6 +165,14 @@ void audio_song_poll(void) {
                   (chips.prep_pass ? 0u : SONG_POLL_SLICE) | SONG_POLL_RING);
 }
 
+int audio_work_slice(void) {
+    if (chips.prep_pass) {
+        return 0;
+    }
+    out.sliced = 1; /* store_fm1_service skips its work in this pass */
+    return 1;
+}
+
 scope* audio_scope(void) {
     return &tap;
 }

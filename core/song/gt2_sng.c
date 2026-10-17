@@ -139,7 +139,7 @@ static void msg_num(char* m, uint32_t v) {
  * entry if there is one, else the first empty one; -1 if data is 0 or the table is full. */
 enum { MST_NOFINEVIB, MST_FINEVIB, MST_FUNKTEMPO, MST_PORTAMENTO };
 
-static int makespeedtable(gt2_song* s, uint32_t data, int mode) {
+static int speed_entry(uint32_t data, int mode, uint8_t* left, uint8_t* right) {
     uint8_t l = 0, r = 0;
     if (!data)
         return -1;
@@ -161,6 +161,15 @@ static int makespeedtable(gt2_song* s, uint32_t data, int mode) {
         r = (uint8_t)((data << 2) & 0xffu);
         break;
     }
+    *left = l;
+    *right = r;
+    return 0;
+}
+
+static int makespeedtable(gt2_song* s, uint32_t data, int mode) {
+    uint8_t l = 0u, r = 0u;
+    if (speed_entry(data, mode, &l, &r) != 0)
+        return -1;
     for (uint32_t c = 0; c < GT2_TABLE_ROWS; c++)
         if (s->ltable[GT2_STBL][c] == l && s->rtable[GT2_STBL][c] == r)
             return (int)c;
@@ -172,6 +181,22 @@ static int makespeedtable(gt2_song* s, uint32_t data, int mode) {
         }
     }
     return -1;
+}
+
+static void preflight_speed(uint8_t speed[GT2_TABLE_ROWS][2], uint32_t data, int mode) {
+    uint8_t l = 0u, r = 0u;
+    if (speed_entry(data, mode, &l, &r) != 0)
+        return;
+    for (uint32_t i = 0; i < GT2_TABLE_ROWS; i++)
+        if (speed[i][0] == l && speed[i][1] == r)
+            return;
+    for (uint32_t i = 0; i < GT2_TABLE_ROWS; i++) {
+        if (!speed[i][0] && !speed[i][1]) {
+            speed[i][0] = l;
+            speed[i][1] = r;
+            return;
+        }
+    }
 }
 
 /* GTS2's commands with a speedtable parameter (loadsong's "Convert speedtable-requiring
@@ -319,6 +344,11 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
     cursor c;
     uint8_t b[4];
     uint32_t need = 0;
+    uint16_t pattern_bytes[GT2_MAX_PATTERNS], order_bytes[GT2_MAX_SUBTUNES] = {0};
+    uint8_t speed[GT2_TABLE_ROWS][2] = {{0}};
+    uint32_t saved_subtunes = 1u, table_bytes = 0u;
+    for (uint32_t p = 0; p < GT2_MAX_PATTERNS; p++)
+        pattern_bytes[p] = 1u + (GT2_DEFAULT_ROWS + 1u) * GT2_ROW_BYTES;
     int canon = 1;
     uint32_t top_named = 0, top_instr = 0, top_pattern = 0;
     cur_init(&c, read, ctx, 0u);
@@ -358,6 +388,7 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
     }
     /* Orderlists. */
     for (uint32_t d = 0; d < subtunes; d++) {
+        int used_subtune = 1;
         for (uint32_t ch = 0; ch < info->channels; ch++) {
             uint8_t n = 0, o[256];
             if (cur_byte(&c, &n) != 0 || cur_bytes(&c, o, (uint32_t)n + 1u) != 0)
@@ -383,6 +414,9 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
             }
             if (d + 1u == subtunes && d > 0u && ch < GT2_MONO_CHANNELS && i == 0u)
                 canon = 0;
+            if (ch < GT2_MONO_CHANNELS && i == 0u)
+                used_subtune = 0;
+            order_bytes[d] = (uint16_t)(order_bytes[d] + i + 3u);
             need += ((i + 2u + 3u) / 4u) * 4u;
             if (s) {
                 uint32_t off4 = 0;
@@ -394,6 +428,8 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
                 s->order[d][ch] = GT2_SPAN(off4, i + 2u);
             }
         }
+        if (used_subtune)
+            saved_subtunes = d + 1u;
     }
     /* Instruments. */
     uint8_t instruments = 0;
@@ -420,25 +456,42 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
                 to[GT2_INS_VIBPARAM] = (uint8_t)(makespeedtable(s, in[6], MST_FINEVIB) + 1);
             }
         }
+        if (version == 2u)
+            preflight_speed(speed, in[6], MST_FINEVIB);
     }
     /* Tables: three in GTS2, four after. */
     uint32_t tables = version == 2u ? 3u : GT2_TABLES;
     for (uint32_t t = 0; t < tables; t++) {
         uint8_t rows = 0, l = 0, r = 0;
+        uint32_t used_rows = 0u;
         if (cur_byte(&c, &rows) != 0)
             goto short_file;
         if (rows > 0u) {
-            /* Each side read up to its last byte, then that byte on its own. */
-            if (cur_bytes(&c, s ? s->ltable[t] : NULL, rows - 1u) != 0 || cur_byte(&c, &l) != 0 ||
-                cur_bytes(&c, s ? s->rtable[t] : NULL, rows - 1u) != 0 || cur_byte(&c, &r) != 0)
-                goto short_file;
-            if (s) {
-                s->ltable[t][rows - 1u] = l;
-                s->rtable[t][rows - 1u] = r;
+            for (uint32_t side = 0; side < 2u; side++) {
+                for (uint32_t row = 0; row < rows; row++) {
+                    uint8_t value = 0;
+                    if (cur_byte(&c, &value) != 0)
+                        goto short_file;
+                    if (value && row + 1u > used_rows)
+                        used_rows = row + 1u;
+                    if (s) {
+                        if (side)
+                            s->rtable[t][row] = value;
+                        else
+                            s->ltable[t][row] = value;
+                    }
+                    if (row + 1u == rows) {
+                        if (side)
+                            r = value;
+                        else
+                            l = value;
+                    }
+                }
             }
             if (!(l | r))
                 canon = 0;
         }
+        table_bytes += used_rows * 2u;
     }
     /* Patterns. */
     uint8_t patterns = 0;
@@ -467,6 +520,14 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
             uint8_t row[4];
             if (cur_bytes(&c, row, 4u) != 0)
                 goto short_file;
+            if (version == 2u) {
+                if (row[2] >= 1u && row[2] <= 3u)
+                    preflight_speed(speed, row[3], MST_PORTAMENTO);
+                else if (row[2] == 4u)
+                    preflight_speed(speed, row[3], MST_FINEVIB);
+                else if (row[2] == 14u)
+                    preflight_speed(speed, row[3], MST_FUNKTEMPO);
+            }
             if (s && version == 2u)
                 gts2_row(s, row);
             if (r < end) {
@@ -494,6 +555,7 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
             msg_num(info->msg, p);
             return -1;
         }
+        pattern_bytes[p] = (uint16_t)(1u + (end + 1u) * GT2_ROW_BYTES);
         if (deflt && end == GT2_DEFAULT_ROWS && !named[p]) {
             /* An empty 64-row pattern no orderlist names is what the writer writes for a
              * pattern not held: not held, it takes no arena. */
@@ -539,6 +601,17 @@ static int gt2_part(gt2_read_fn read, void* ctx, gt2_song* s, gt2_read_info* inf
         *canonical = canon && instruments == top_instr && patterns == top_pattern + 1u;
     info->gt2_bytes = c.pos;
     info->need_bytes = need;
+    info->saved_bytes = 107u + GT2_INSTR_BYTES * top_instr + table_bytes;
+    if (version == 2u) {
+        uint32_t rows = GT2_TABLE_ROWS;
+        while (rows && !(speed[rows - 1u][0] || speed[rows - 1u][1]))
+            rows--;
+        info->saved_bytes += rows * 2u;
+    }
+    for (uint32_t d = 0; d < saved_subtunes; d++)
+        info->saved_bytes += order_bytes[d];
+    for (uint32_t p = 0; p <= top_pattern; p++)
+        info->saved_bytes += pattern_bytes[p];
     return 0;
 short_file:
     msg_set(info->msg, s ? "SNG: READ ERROR" : "SNG: SHORT FILE");
@@ -569,6 +642,7 @@ static void attempt_run(attempt* a, gt2_read_fn read, void* ctx, uint32_t channe
     a->t = a->ok ? trailer(read, ctx, a->info.gt2_bytes, NULL, &a->keep, &a->length, &a->opts,
                            &a->has_opts, &a->ms_file, &a->trailer_channels)
                  : GT2_TRAILER_NONE;
+    a->info.saved_bytes += gt2_saved_trailer_size(a->keep);
 }
 
 /* How well the reading's GT2 part ends where a song file ends, best first: at a trailer
@@ -636,6 +710,10 @@ int gt2_sng_read(gt2_song* s, gt2_read_fn read, void* ctx, const gt2_caps* caps,
                  gt2_read_info* info) {
     attempt a, other;
     memset(info, 0, sizeof *info);
+    if (s->frozen) {
+        msg_set(info->msg, "SNG: SAVING");
+        return GT2_READ_SAVING;
+    }
     if (s->pending != 0u || s->pending_loose != 0u) {
         msg_set(info->msg, "SNG: EDITS PENDING");
         return -1;
@@ -648,6 +726,10 @@ int gt2_sng_read(gt2_song* s, gt2_read_fn read, void* ctx, const gt2_caps* caps,
     int has_opts = a.has_opts, ok = a.ok, t = a.t;
     if (!ok)
         return -1;
+    if (s->region_bytes <= SONG_REGION_BYTES && info->saved_bytes > GT2_SAVED_MAX) {
+        msg_set(info->msg, "SNG: SONG FULL (64K MAX)");
+        return GT2_READ_SONG_FULL;
+    }
     if (info->need_bytes > gt2_arena_capacity(s)) {
         msg_set(info->msg, "SNG: TOO BIG (");
         msg_num(info->msg, (info->need_bytes + 1023u) / 1024u);
@@ -669,6 +751,7 @@ int gt2_sng_read(gt2_song* s, gt2_read_fn read, void* ctx, const gt2_caps* caps,
     /* Pass 2: load. */
     uint8_t version = info->version, channels = info->channels;
     uint32_t need = info->need_bytes;
+    uint32_t revision = s->revision;
     gt2_song_wipe(s);
     memset(named, 0, GT2_MAX_PATTERNS);
     if (gt2_part(read, ctx, s, info, named, NULL) != 0 || info->gt2_bytes != e ||
@@ -695,6 +778,9 @@ int gt2_sng_read(gt2_song* s, gt2_read_fn read, void* ctx, const gt2_caps* caps,
         msg_set(info->msg, "SNG: EXTRAS DROPPED");
     else if (t == GT2_TRAILER_LOCKS_DROPPED)
         msg_set(info->msg, "SNG: LOCKS DROPPED");
+    gt2_saved_recount(s);
+    info->saved_bytes = gt2_saved_size(s);
+    s->revision = revision + 1u;
     return 0;
 }
 

@@ -36,6 +36,7 @@
  * multispeed: 0x4cc7 / N + 1 cycles PAL, 0x42c6 / N + 1 NTSC, decision record 0007), over the
  * calls a row (funktempo: their average) and the rows a beat (4; the MIDI chunk's once M2e
  * lands).
+ * While io streams a save, SAVING replaces the view name; transport, mutes and jam keep running.
  *
  * Row 1, the voice heads, from columns 3, 12 and 21: V1, V2 and V3 in their waveform's colour
  * (pulse cyan, saw yellow, triangle light green, noise light grey, combined white; grey
@@ -59,6 +60,7 @@
 #include "panel.h"
 #include "screen.h"
 #include "song_transport.h"
+#include "song_io.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -85,6 +87,7 @@ typedef grid_canvas song_view_canvas;
 
 typedef struct {
     const song_transport* t; /* NULL: no player */
+    song_io* io; /* NULL: no song files */
     live* l;
     song_status st;    /* the player's, as the last frame read it (song_view_frame) */
     uint8_t mute;      /* GLO's mutes, bit v: voice v */
@@ -118,6 +121,10 @@ typedef struct {
 void song_view_init(song_view* sv, live* l);
 /* The player's binding (app/song_transport.h), or NULL: none. */
 void song_view_set_transport(song_view* sv, const song_transport* t);
+/* SONG's large-text rows borrow the same canvas: each 2x2 block, aligned to even columns
+ * and rows, holds its source character in all four cells. Other rows remain ordinary text.
+ * big_rows marks both rows of each large-text line. The copy keeps the ordinary frame budget. */
+void song_view_copy_large(song_view* sv, screen* s, grid* g, uint32_t big_rows);
 /* 1 if v is a song view. */
 int song_view_is(const view* v);
 /* SEQ: the song view to show after `top` (the view on top): the first one made for a view that

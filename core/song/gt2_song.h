@@ -38,9 +38,9 @@
  * - a rebuild that fits the song at rest (every pending edit released) but finds no room
  *   now, the old copies still held, waits too; GT2_ERR_FULL only if it would not fit at
  *   rest either.
- * The instruments and tables take cell writes only: they hold no slot, are never refused
- * and refuse nothing but a reload or a clear (gt2_sng_read, gt2_song_clear), which wait for
- * every pending edit.
+ * The instruments and tables take cell writes only and hold no slot. They can still be
+ * refused by the serialized-size cap or a save freeze. Reload and clear wait for every
+ * pending edit, including these loose writes.
  *
  * The player (Task 6) re-reads the index entry each tick and never holds an arena pointer
  * from one tick to the next: an edit's release may free, and the next edit reuse, any
@@ -104,6 +104,7 @@ enum {
 
 /* The content region. */
 #define SONG_REGION_BYTES 65536u
+#define GT2_SAVED_MAX 65536u /* STORE_FILE_MAX; the device's trailer-inclusive save limit */
 #define GT2_REGION_MAX 262144u   /* spans count 4-byte units in 16 bits */
 #define SONG_EXT_BYTES 4096u
 /* The largest pattern: 128 rows and the end row, 4 bytes each. */
@@ -150,6 +151,24 @@ typedef struct {
                                  * this is the song's size at rest */
     uint32_t ext_used;                  /* bytes of ext in use */
     uint8_t ext[SONG_EXT_BYTES];        /* the trailer's chunks (song_ext.h) */
+    /* Save accounting: the interrupt changes only cell deltas and per-pattern row counts.
+     * Rebuild instrument counts have a separate main-loop writer. Their uint16_t sums are
+     * modulo 65536; at most 208 * 128 rows can contribute to any instrument. IRQ-owned
+     * fields are volatile; applied acknowledgements delimit stable main-loop snapshots. */
+    uint32_t revision;
+    uint32_t saved_bytes, saved_epoch, saved_growth;
+    uint32_t saved_row_work; /* Host instrumentation: accounting row inspections; zero on target. */
+    uint16_t saved_pattern_groups[GT2_MAX_PATTERNS / 16u];
+    volatile uint8_t saved_pattern_nonempty[GT2_MAX_PATTERNS];
+    uint16_t saved_instr_base[GT2_MAX_INSTR + 1u];
+    volatile uint16_t saved_instr_delta[GT2_MAX_INSTR + 1u];
+    uint32_t saved_pattern_bits[7], saved_instr_defs[2];
+    uint32_t saved_table_bits[GT2_TABLES][8];
+    uint32_t saved_subtune_bits;
+    uint16_t saved_order_tree[GT2_MAX_SUBTUNES + 1u];
+    uint16_t saved_pattern_refs[GT2_MAX_PATTERNS];
+    uint8_t frozen; /* Refuses new edits; edits accepted before the save still apply/release. */
+    uint8_t saved_trim_pending; /* Removed trailing pattern + 1; its future hole is not reserved. */
 } gt2_song;
 
 /* Errors. Every primitive refuses what would break GoatTracker's rules (readme 3.1) or the
@@ -166,8 +185,10 @@ typedef enum {
                          * every pending edit is released */
     GT2_ERR_FRAGMENTED, /* no hole large enough: gt2_compact_step, then again */
     GT2_ERR_REGION,     /* the region is too small or too large */
-    GT2_ERR_PENDING     /* a pending edit would make this one wrong, or holds the room it
+    GT2_ERR_PENDING,    /* a pending edit would make this one wrong, or holds the room it
                          * needs: again after the next release */
+    GT2_ERR_SONG_FULL,  /* the canonical .sng, including its trailer, exceeds GT2_SAVED_MAX */
+    GT2_ERR_SAVING      /* edits are frozen while a save streams */
 } gt2_err;
 
 /* Formats an empty song into region (bytes long, 4-byte aligned): one subtune whose three
@@ -219,8 +240,10 @@ typedef struct {
     gt2_span old_span;  /* SWAP: what the swap replaces, released by gt2_edit_release */
 } gt2_edit;
 
-/* One store: the cell's bytes, or the index entry (a volatile aligned 32-bit store after a
- * release fence, so the copy it publishes is complete first). O(1); the audio interrupt's. */
+/* The cell's bytes, or the index entry (a volatile aligned 32-bit store after a release
+ * fence). A row cell also adjusts its nonempty count and at most two instrument bins from
+ * the actual old row, so overlapping queued writes need no shadow copy. No row scan or
+ * variable-length work; the audio interrupt's. */
 void gt2_edit_apply(gt2_song* s, const gt2_edit* e);
 /* After the edit is applied: frees a swap's old span, and ends the edit's pending. */
 void gt2_edit_release(gt2_song* s, const gt2_edit* e);
@@ -270,6 +293,20 @@ uint32_t gt2_saved_subtunes(const gt2_song* s);
 uint32_t gt2_saved_instruments(const gt2_song* s);
 uint32_t gt2_saved_patterns(const gt2_song* s);
 uint32_t gt2_saved_table_rows(const gt2_song* s, uint32_t table);
+/* Exact canonical length with the trailer, after all edits have been released. Pending
+ * edits reserve growth conservatively until the whole batch ends; a cancellation gives
+ * back its reservation. Applying edits still performs only the original O(1) stores. */
+uint32_t gt2_saved_size(const gt2_song* s);
+uint32_t gt2_saved_trailer_size(uint32_t ext_used);
+/* After direct model writes (loaders/templates), with no pending edits. step: cursor starts
+ * at zero; 0 means more work, 1 means done. Each call handles at most one bounded object. */
+void gt2_saved_recount(gt2_song* s);
+int gt2_saved_recount_step(gt2_song* s, uint32_t* cursor);
+/* Extension mutation preflight, and notification after a successful change. Indexed edits
+ * must settle first, so their deferred lock trimming cannot race extension replacement. */
+int gt2_saved_ext_check(const gt2_song* s, uint32_t ext_used);
+void gt2_saved_ext_changed(gt2_song* s, uint32_t old_used);
+void gt2_song_changed(gt2_song* s);
 
 /* Arena allocation (the reader's and the primitives'): first fit below the scratch, 4-byte
  * units. alloc returns 0 and the unit offset, or -1 if no hole fits. */

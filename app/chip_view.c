@@ -545,7 +545,7 @@ __attribute__((noinline, unused)) static void target_clear(chip_view* cv) {
  * the five built-in profiles then USER 1..8, empty slots skipped; a step that finds only empty
  * ones to its end stays and says which (USER 3 EMPTY). The pick is applied as a profile change
  * (live_param_set's, which prepares the spare chip and swaps), or on a song's chip A as the
- * song's setup (its base profile and controls through keys_route_song_wants). */
+ * song's setup (its base profile and controls through keys_route_song_edit). */
 __attribute__((noinline, unused)) static void pick(screen* s, chip_view* cv, int32_t steps) {
     live* l = cv->l;
     int song = chip_view_song_tab(cv);
@@ -582,8 +582,9 @@ __attribute__((noinline, unused)) static void pick(screen* s, chip_view* cv, int
         if (song) {
             chip_setup want = cv->kr->song_want;
             want.profile = (uint8_t)at;
-            keys_route_song_wants(cv->kr, &want);
-            cv->kr->song_user = 0;
+            if (keys_route_song_edit(cv->kr, &want)) {
+                cv->kr->song_user = 0;
+            }
         } else {
             live_param_set(l, LIVE_PARAM_PROFILE, (uint32_t)at);
         }
@@ -594,8 +595,9 @@ __attribute__((noinline, unused)) static void pick(screen* s, chip_view* cv, int
         for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; f++) {
             want.controls[f] = l->user_ctl[n][f];
         }
-        keys_route_song_wants(cv->kr, &want);
-        cv->kr->song_user = (uint8_t)(n + 1u);
+        if (keys_route_song_edit(cv->kr, &want)) {
+            cv->kr->song_user = (uint8_t)(n + 1u);
+        }
     } else {
         live_param_set(l, LIVE_PARAM_PROFILE, (uint32_t)at);
     }
@@ -636,7 +638,7 @@ static int input(screen* s, void* state, const screen_event* e) {
         int32_t d = e->steps > 64 ? 64 : e->steps < -64 ? -64 : e->steps;
         want.controls[f] = (uint8_t)step_clamped(want.controls[f], d * PANEL_CHARACTER_DETENT,
                                                  SID_CHARACTER_MAX);
-        keys_route_song_wants(cv->kr, &want);
+        keys_route_song_edit(cv->kr, &want);
         return 1;
     }
     if (e->id != PANEL_ENC_ALGORITHM) {

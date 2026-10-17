@@ -46,6 +46,8 @@ static const char SCROLL[] =
     "NO SAMPLES ... EVERY PIXEL HERE IS A CELL ON A 30X30 GRID ... FREE SOFTWARE UNDER "
     "GPL-3.0 ... GREETINGS TO EVERY SID MUSICIAN ... HOME TO LEAVE ...      ";
 #define SCROLL_CHARS (sizeof SCROLL - 1u)
+static const char SILENT_SCROLL[] = "SAVE YOUR SONG FOR MUSIC ...      ";
+_Static_assert(sizeof SILENT_SCROLL - 1u >= GRID_COLS, "the scroller wraps at most once per row");
 
 /* The page before the credits. */
 static const char* const FIRST_LINES[CREDITS_LINES] = {
@@ -90,6 +92,8 @@ void about_init(about* a, const char* version) {
     a->version = version;
     a->frame = 0;
     a->logo = logo_default;
+    a->io = NULL;
+    a->silent = 0;
     for (uint32_t b = 0; b < ABOUT_BARS; b++) {
         a->bar[b] = bar_target(b, 0);
     }
@@ -256,8 +260,10 @@ static void stars(grid* g, uint32_t f) {
  * on the sine (by its x on the screen, the wave moving as well). The wave is two screens long
  * (a turn every 448 pixels, travelling 4/256 of a turn a frame), so neighbouring letters
  * mostly share a row and words read whole. */
-static void scroller(grid* g, uint32_t f) {
-    uint32_t s = f * ABOUT_SCROLL_PX % (SCROLL_CHARS * 8u);
+static void scroller(const about* a, grid* g, uint32_t f) {
+    const char* text = a->silent ? SILENT_SCROLL : SCROLL;
+    uint32_t chars = a->silent ? sizeof SILENT_SCROLL - 1u : SCROLL_CHARS;
+    uint32_t s = f * ABOUT_SCROLL_PX % (chars * 8u);
     uint32_t first = s / 8u;
     uint32_t shift = s % 8u;
     /* The rows of the 31 letters on the screen. */
@@ -272,8 +278,13 @@ static void scroller(grid* g, uint32_t f) {
         uint8_t color[GRID_COLS];
         for (uint32_t c = 0; c < GRID_COLS; c++) {
             color[c] = SCROLL_COLOR;
-            const uint8_t* left = font_glyphs[(uint8_t)SCROLL[(first + c) % SCROLL_CHARS]];
-            const uint8_t* right = font_glyphs[(uint8_t)SCROLL[(first + c + 1u) % SCROLL_CHARS]];
+            uint32_t index = first + c;
+            if (index >= chars) {
+                index -= chars;
+            }
+            uint32_t following = index + 1u == chars ? 0u : index + 1u;
+            const uint8_t* left = font_glyphs[(uint8_t)text[index]];
+            const uint8_t* right = font_glyphs[(uint8_t)text[following]];
             for (uint32_t y = 0; y < 8u; y++) {
                 if (row[c] == r) {
                     mask[c][y] |= (uint8_t)(left[y] << shift);
@@ -305,8 +316,16 @@ static void about_compose(screen* s, void* state, grid* g) {
     credits(a, g, f);
     stars(g, f);
     bars(a, g);
-    scroller(g, f);
+    scroller(a, g, f);
+}
+
+static void about_exit(screen* s, void* state) {
+    (void)s;
+    about* a = state;
+    if (a->io) {
+        song_io_about(a->io, 0);
+    }
 }
 
 /* Composed every frame (no changed function). */
-const view about_view = {"ABOUT", NULL, NULL, NULL, about_compose, NULL};
+const view about_view = {"ABOUT", NULL, about_exit, NULL, about_compose, NULL};

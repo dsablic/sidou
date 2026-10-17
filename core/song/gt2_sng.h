@@ -58,9 +58,14 @@ typedef struct {
     uint32_t gt2_bytes;  /* the GT2 part's length */
     uint32_t file_bytes; /* the GT2 part and the trailer, as read */
     uint32_t need_bytes; /* the arena bytes the content takes */
+    uint32_t saved_bytes; /* canonical GTS5 length, including a newly framed trailer */
 } gt2_read_info;
 
-/* 0 and the song loaded, or -1 and info->msg. caps NULL: no cap. */
+#define GT2_READ_SONG_FULL (-2)
+#define GT2_READ_SAVING (-3)
+
+/* 0 and the song loaded, -1 and info->msg, GT2_READ_SONG_FULL or GT2_READ_SAVING.
+ * caps NULL: no multispeed cap; regions no larger than SONG_REGION_BYTES retain the save cap. */
 int gt2_sng_read(gt2_song* s, gt2_read_fn read, void* ctx, const gt2_caps* caps,
                  gt2_read_info* info);
 

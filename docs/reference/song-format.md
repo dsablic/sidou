@@ -101,7 +101,7 @@ toast:
 | `SNG: BAD INSTRUMENTS` | more than 63 instruments |
 | `SNG: BAD PATTERN n` | pattern n has more than 129 rows, no end row, a note outside `$60-$BF`, an instrument above `$3F` or a command above `$F` before its end |
 | `SNG: BAD PATTERNS` | more than 208 patterns |
-| `SNG: TOO BIG (60K OF 51K)` | the orderlists and patterns do not fit the arena with its spare: on the device 53,120 bytes (51K) of the 64 KiB content region (`core/song/gt2_song.h`) |
+| `SNG: TOO BIG (60K OF 50K)` | the orderlists and patterns do not fit the arena with its spare: on the device 51,992 bytes (50K) of the 64 KiB content region |
 | `SNG: MULTISPEED 8 (MAX 4)` | on the device: the `OPTS` chunk asks for multispeed above 4 (0, 25 Hz, is refused as `MULTISPEED 0`) |
 
 What GoatTracker accepts and plays oddly (a restart position past the end, a transpose
@@ -110,6 +110,18 @@ SIDOU's editing primitives enforce and its player follows as GoatTracker's does.
 orderlist naming a pattern the file does not have gets an empty 64-row pattern, as
 GoatTracker's loader leaves one. An empty 64-row pattern no orderlist names is kept as
 "not held": it takes no room, and the writer writes it back as the same 64 rests.
+
+### Saved-size limit on the device
+
+A device song's canonical saved form, including the SIDOU trailer and its padding,
+must fit **65,536 bytes**, the store's maximum file size. This is independent of the
+content arena's capacity: empty pattern-number holes can take more space in the
+file than in RAM. An edit that would cross the saved-size limit is refused with
+`SONG FULL`; the song is unchanged. Loading a file whose saved form exceeds the
+limit is refused with a read error and a toast explaining the size limit. The host
+reference player can use its larger region without the device's file-size cap.
+The synchronous reader returns `GT2_READ_SONG_FULL` (`-2`) with
+`SNG: SONG FULL (64K MAX)` when the canonical saved form exceeds this limit.
 
 ### Mono or stereo
 
@@ -316,7 +328,7 @@ the song (`app/scene_song.h`; docs/art/README.md "RED MOON RITE").
 A voice left AUTO, and a drum voice's instrument not in the table, are guessed as
 `app/scene_song.h` describes. A reader older than the drum table reads the roles and stops.
 
-**`KEYS`** (2 + 2 × q bytes): the keys' live preset and their chip setup, as `live_params`
+**`KEYS`** (2 + 2 × q bytes, optionally followed by a preset byte): the keys' live preset and their chip setup, as `live_params`
 reports them (`app/live.h`, `LIVE_PARAM_*`; the model, envelope mode, profile and
 character are among them).
 
@@ -325,6 +337,11 @@ character are among them).
 | 0 | 1 | version, 1 |
 | 1 | 1 | q, the parameter count (`LIVE_PARAM_COUNT` when written) |
 | 2 | 2 × q | the parameters in `LIVE_PARAM_*` order, u16 each |
+| 2 + 2 × q | 1, optional | preset index; absent in older chunks: retain the current preset |
+
+The preset is applied before its edited parameters. Older readers ignore the
+appended byte. SIDOU writes it when saving a device song, since the preset's
+voice-allocation mode is not recoverable from oscillator parameters alone.
 
 **`PAD `** (1 + p bytes): version 1, then p bytes of `$00`.
 

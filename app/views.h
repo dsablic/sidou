@@ -12,7 +12,7 @@
  *   another firmware's data, which ALGORITHM turned clockwise twice formats), KEYS (AUTO or A:
  *   which chip the keys play during a song, app/keys_route.h), SOUNDS (the UI sounds on chip
  *   B's spare voice, OFF by default, app/ui_sound.h) and ROWS (TRACKER ROWS: BAR, the moving
- *   bar, or SCROLL: app/tracker_view.h), then STATUS, SCENE, CHARSET, ABOUT and MIDI. SELECT
+ *   bar, or SCROLL: app/tracker_view.h), then STATUS, SCENE, CHARSET, SONG, ABOUT and MIDI. SELECT
  *   moves the selection (a line in reverse video; the list scrolls with it, a line or two a
  *   frame), ALGORITHM changes the value under it or opens the view. CARDS, KEYS, SOUNDS and ROWS
  *   persist (app/settings.h).
@@ -31,6 +31,10 @@
  *   a song's MIDI chunk carries its own mode. Global MIDI defaults are not persisted.
  * - CHARSET: the font and the palette, the art reference.
  * - ABOUT: the credits, as a cracktro (app/about.h).
+ * - SONG: LOAD and DELETE browse the store's songs; NEW confirms unsaved changes; SAVE AS
+ *   edits a 16-character name (SELECT the cursor, ALGORITHM the character, SAVE writes it).
+ *   Its large-text pages share the song views' canvas and their 200-cell frame budget; the
+ *   directory keeps full 16-character filenames at the font's own size.
  * - BOOT: the boot sequence (app/boot.h), over LIVE at power-on (views_boot).
  * - LEARN: MIDI learn (app/learn_view.h), a frame over any view, from SAVE held while a knob
  *   turns (views_learn).
@@ -49,7 +53,8 @@
  *    saves: in MIDI learn's frame it forgets the picked parameter's CC (or confirms the clear),
  *    on the CHIP view's chip focus a USER slot, the save target or the applied one
  *    (chip_view_save; toast OVERWRITE USER 3? first when it holds a profile, then SAVED TO USER
- *    3 when the store commits), on a song view the song (M2d),
+ *    3 when the store commits), on a song view the song
+ *    (song_io_save; an unnamed song opens SAVE AS),
  *    anywhere else the settings, now (settings_save_now; the toast SAVED when it commits).
  *    While SAVE is held, K1..K4 open LEARN on the knob's parameter, and HOME asks, in the frame,
  *    to clear every mapping (outside it, HOME does nothing). Over the boot or a title card SAVE
@@ -122,7 +127,7 @@ extern "C" {
 /* The status screen's colours: light blue on blue. */
 #define VIEWS_TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
 /* The menu's items, the title cards' option, and the items that open a view. */
-#define VIEWS_MENU_ITEMS 15u
+#define VIEWS_MENU_ITEMS 16u
 #define VIEWS_MENU_CHIP 0u
 #define VIEWS_MENU_TRACKER 1u
 #define VIEWS_MENU_CARDS 4u
@@ -137,8 +142,9 @@ extern "C" {
 #define VIEWS_MENU_STATUS 10u
 #define VIEWS_MENU_SCENE 11u
 #define VIEWS_MENU_CHARSET 12u
-#define VIEWS_MENU_ABOUT 13u
-#define VIEWS_MENU_MIDI 14u
+#define VIEWS_MENU_SONG 13u
+#define VIEWS_MENU_ABOUT 14u
+#define VIEWS_MENU_MIDI 15u
 /* The MIDI page's items (app/midi_route.h): MODE, CHANNEL, OPTION, LEGATO, CHORD 2, CHORD 3,
  * ARP RATE, ROWS/BEAT, and the clock's (app/midi_sync.h): CLOCK, CLOCK OUT. */
 #define VIEWS_MIDI_ITEMS 10u
@@ -153,6 +159,16 @@ extern "C" {
  * voice's sounding note, every slot field, the title cards' option, the menu's cursor,
  * first row and blink, then the store's state and free kilobytes (only MENU compares these two). */
 #define VIEWS_LOOK (19u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
+
+#define VIEWS_SONG_FILES 8u
+typedef struct {
+    const view* return_view;
+    uint8_t page, cursor, action, confirm, direct, built;
+    uint8_t scanning, skip, count, directory_page, io_state;
+    char after[17];
+    char name[17];
+    char files[VIEWS_SONG_FILES][17];
+} views_song_menu;
 
 typedef struct {
     screen s;
@@ -179,6 +195,7 @@ typedef struct {
     scene_view scene;
     title_card card;
     song_view song;
+    views_song_menu songs;
     uint8_t cards; /* 1: title cards on (the menu's CARDS) */
     ui_sound* snd; /* the UI sounds (the menu's SOUNDS, app/ui_sound.h); NULL: none */
     settings* set; /* what SAVE saves and the menu's STORE shows (views_settings); NULL: none */
@@ -198,6 +215,7 @@ extern const view views_status;
 extern const view views_menu;
 extern const view views_charset;
 extern const view views_midi;
+extern const view views_song_menu_view;
 
 /* LIVE, the root view, on g, showing l and the audio's tap sc (NULL: none). */
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version);
@@ -233,6 +251,8 @@ void views_learn(views* v, midi_learn* ml);
 /* The song's player (app/song_transport.h) for the song views; NULL: none (the host tests'
  * default; the device binds song_ctl, platform/fm1/main.c). */
 void views_set_song(views* v, const song_transport* t);
+/* The song files' controller; NULL until the platform binds it. */
+void views_song_io(views* v, song_io* io);
 /* The note keys, as panel_note_keys takes them, after the frame's buttons (views_buttons):
  * in a song view with a player, the jam takes them (song_view_keys); GLO's layer takes its
  * keys to the song's mutes and solos (song_view_glo); the rest play the instrument. */

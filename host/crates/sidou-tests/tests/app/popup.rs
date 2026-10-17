@@ -483,7 +483,7 @@ fn a_view_switch_takes_the_popup_away_in_the_next_frame() {
     assert!(!shown(&ui));
     assert_eq!(ui.v.s.layers, 0);
     ui.settle();
-    assert_eq!(&ui.row(1)[1..15], "MENU   #  1/15");
+    assert_eq!(&ui.row(1)[1..15], format!("MENU   #  1/{VIEWS_MENU_ITEMS}"));
 }
 
 #[test]

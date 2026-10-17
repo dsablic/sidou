@@ -684,6 +684,58 @@ every pass within the poll allowance during a load and a save; goldens of the SO
 
 **Commit:** `feat(app): songs on the store: load, save, new, About's music`
 
+**Capacity decision (2026-10-17, the user's option 1):** the content arena's limit
+does not imply that the canonical file fits the store. Empty, unheld patterns below
+the highest saved pattern expand to 64 rests on disk. Device songs therefore also
+have a **65,536-byte serialized-size cap, trailer included**. The model maintains
+the saved size incrementally; an edit that would exceed it is refused with
+`SONG FULL`, leaving the song unchanged. Loads whose saved form would exceed it
+are refused with a read error and a size reason. No pattern renumbering, silent
+data loss, or store-format change is permitted. Host reference songs can retain
+the larger host region's capacity.
+
+**Results (2026-10-18): complete, on top of `6e41eb6`.**
+- `song_io` loads and saves store files through a bounded `gt2_stream` state machine;
+  there is no second content region. Store-file CRCs are checked before destructive
+  loading. A preflight refusal preserves RAM; a later failure reloads the previous file.
+  Invalid device chip setups are refused rather than leaving PLAY waiting forever.
+- SONG offers LOAD, NEW, a 16-character SAVE AS editor and confirmed DELETE. It reuses
+  the song views' canvas, including their 200-cell copy budget. SAVE's precedence lives
+  in the existing views router; `save_key`'s clean-release/learn gesture is unchanged.
+- SAVE freezes new model edits as soon as the action is accepted, including a pool
+  wait: stronger than the original begin-to-end rule, to preserve the requested snapshot.
+  Previously accepted edits finish first. Small chip/keys/slot metadata shares the
+  existing 256-byte producer buffer until the file begins. Playback, mute, solo and jam
+  continue; the two forced-write owners (song and settings) cannot cancel each other.
+- Point-edit accounting reads one actual predecessor row in the interrupt, regardless
+  of pattern length; releasing a cell reads no pattern rows. Separate interrupt and
+  main-loop instrument counters support overlapping writes and cancellation. Structural
+  rebuilds account their old/new content during their existing bounded structural work;
+  neither kind reserializes the song. The size total and its highest-used summaries are cached.
+- The capacity regression saves at 64,658, 64,914, 65,170 and 65,426 bytes; the next
+  addition is refused unchanged. Canonical oversized loads return `GT2_READ_SONG_FULL`
+  (`-2`). Random edits, cancellation, counter wrap and queued trailing-pattern removal
+  are regression-tested. The model header is 10,844 bytes; device arena capacity is
+  51,992 bytes, inside the same 65,536-byte region.
+- CHPA captures the unlocked song setup, including explicit CHIP edits during a lock.
+  KEYS also appends the preset identity, which determines voice allocation; older readers
+  ignore that optional byte. Settings schema 3 appends the last song after schema 2's
+  TRACKER ROWS; schemas 1, 2 and 3 have migration fixtures.
+- About uses the existing original SIDOU LOOP, from `demo_song`, and restores the loaded
+  song stopped. Dirty songs stay silent with SAVE YOUR SONG FOR MUSIC. No PUT or large-song
+  autosave was added. Flash timings remain M2a's provisional datasheet timings.
+- Full COMMON checks all exit 0. Application 508,480 bytes of 512,000; RAMTEXT
+  44,512 of 49,152; RAM free 8,228 and POOL free 5,696, together 13,924 against main's
+  9,000-byte floor (M2a, M2d and M2f). No bound was loosened.
+- The player gate charges 5,036 + 592 measured isolated row-apply instructions = 5,628
+  a block, 44.0/sample of 60. SONG I/O's tested busiest combined pass is 58,233 of 120,000.
+  SONG pages peak at 108 cells, 9.32 ms SPI and a 31,620-instruction `ui_poll`.
+  STATUS idle stays 7,496.6/frame of <7,500; HOME stays 429 of <430. CHIP's initial
+  225-instruction regression was removed: K1 is 217 of <220.
+- Goldens: the menu gains SONG; four new SONG pages. FIRE's flicker and RULE 30's
+  automaton differ only in animation phase from the longer menu walk; both old/new PNGs
+  were viewed. Other existing LCD goldens are unchanged.
+
 ---
 
 ### Task 9: Docs and the M2c status

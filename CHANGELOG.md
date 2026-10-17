@@ -407,6 +407,14 @@ stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
   (`docs/plans/2026-10-15-m2f-scene.md`); `TESTING.md` lists its tests.
 
 ### Changed
+- M2c Task 8: songs load and save on the store in bounded slices. SONG offers LOAD,
+  NEW, 16-character SAVE AS and confirmed DELETE; SAVE in a song view saves the song.
+  Unchanged saves write nothing, active saves freeze song edits, and settings schema 3
+  remembers the last song without losing schema 2's TRACKER ROWS. ABOUT plays SIDOU
+  LOOP only with a clean, stopped song and restores the loaded song on close.
+  Device edits also enforce a 65,536-byte canonical saved-size cap, trailer included:
+  SONG FULL refuses an edit without changing the song. Oversized saved forms are
+  refused on load; incremental accounting keeps edits from making songs unsaveable.
 - M2f Task 4: the compositor's caps came down to 4 cells a run and 8 candidates a scan slice
   (RED MOON RITE's own tiles cost up to 5,930 instructions, and a song's analysis slice may
   share the pass); MIDI learn's frame (`SCREEN_OVER`) keeps the grid's pixel region as it keeps
@@ -482,9 +490,9 @@ stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
 
 ### M2 status (preview)
 M2 is partway through; see the progress table in `docs/plans/2026-10-15-m2-overview.md`.
-In this preview: chip B, the song player with parameter locks, the song views' frame, the
-store on the device. Not yet: saving songs and settings from the panel, the TRACKER and STEP
-views' editing, MIDI modes and clock driving the player, RED MOON RITE on the device, SysEx.
+In this preview: chip B, the song player with parameter locks, TRACKER, RED MOON RITE,
+the store, settings and song saves from the panel, SONG's file actions and About's music.
+Not yet: TRACKER and STEP editing, MIDI modes and clock driving the player, SysEx.
 The store's flash timings are the datasheet's until the spike runs on a unit.
 
 ### M1 status
@@ -501,7 +509,7 @@ M1 (design doc section 14: sound) is done on `main`, with these exceptions.
 - **Moved to M2:** the character's expert layer (every analogue parameter as its own control
   and NRPN); everything that needs storage: user-saved profiles, MIDI learn's mappings, the
   CARDS option, and the full boot once after an install; and About's music on the SID (design
-  doc section 7), which M1e's plan left out and needs M2's song player.
+  doc section 7), which M1e's plan left out and M2c Task 8 now supplies.
 - **Kept as an exception (retired in M2b, above):** a chip reset (a profile or model step:
   the CHIP view's ALGORITHM, the FX button, CC 25, CC 85) ran in one main-loop pass of up to
   471.5k instructions (worn at full character), about four times the latency gate's poll

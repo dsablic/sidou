@@ -18,6 +18,7 @@ const SOURCES: &[&str] = &[
     "core/sid/sid_filter.c",
     "core/song/gt2_song.c",
     "core/song/gt2_sng.c",
+    "core/song/gt2_stream.c",
     "core/song/song_ext.c",
     "core/player/gt2_play.c",
     "core/player/gt2_shape.c",
@@ -68,6 +69,7 @@ const SOURCES: &[&str] = &[
     "app/settings.c",
     "app/sine.c",
     "app/song_view.c",
+    "app/song_io.c",
     "app/store.c",
     "app/theme.c",
     "app/title_card.c",
@@ -245,9 +247,12 @@ fn main() {
         .clang_arg("-std=c11")
         .clang_arg("--target=i686-unknown-none")
         .clang_arg("-ffreestanding")
-        .allowlist_type(
-            "sid|sid_osc|sid_env|reg_ring|reg_ring_entry|reg_ring_chips|reg_ring_out|keys_route|chip_ctl|chip_setup|midi_out|midi_ring|midi_ring_entry|midi_learn|live|scope|grid|views|title_card|song_ctl|screen|store|store_writer|store_file_writer|boot|midi_route|midi_sync|midi_clock",
-        )
+        .allowlist_type(concat!(
+            "sid|sid_osc|sid_env|reg_ring|reg_ring_entry|reg_ring_chips|reg_ring_out|keys_route|",
+            "chip_ctl|chip_setup|midi_out|midi_ring|midi_ring_entry|midi_learn|live|scope|grid|views|",
+            "title_card|song_ctl|screen|store|store_writer|store_file_writer|boot|gt2_stream|",
+            "midi_route|midi_sync|midi_clock",
+        ))
         .generate()
         .expect("bindgen (ILP32 layout) failed")
         .to_string();

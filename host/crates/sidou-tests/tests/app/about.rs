@@ -66,6 +66,63 @@ fn about_opens_from_the_menu_and_home_goes_back() {
 }
 
 #[test]
+fn unsaved_song_keeps_about_silent_and_the_silent_scroller_stays_in_budget() {
+    let mut ui = Ui::without_cards();
+    let mut io = Box::new(song_io {
+        dirty: 1,
+        ..Default::default()
+    });
+    unsafe { views_song_io(&mut *ui.v, &mut *io) };
+    drain(&mut ui.g);
+    open_about(&mut ui);
+    drain(&mut ui.g);
+    assert_eq!(ui.v.about.silent, 1);
+    assert_eq!(io.about, 0, "About must not replace an unsaved song");
+    for _ in 0..300 {
+        ui.frame();
+        let sent = drain(&mut ui.g);
+        assert!(sent.spi_ms() <= SPI_BUDGET_MS, "{sent:?}");
+    }
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(io.dirty, 1);
+    assert_eq!(io.state, SONG_IO_IDLE as u8);
+}
+
+#[test]
+fn clean_about_requests_its_tune_once_and_close_requests_restoration() {
+    unsafe extern "C" fn builtin(_: *mut std::ffi::c_void, _: u32, _: *mut u8, _: u32) -> u32 {
+        0
+    }
+    let mut ui = Ui::without_cards();
+    let mut model = Box::<gt2_song>::default();
+    let mut ctl = Box::new(song_ctl {
+        song: &mut *model,
+        ..Default::default()
+    });
+    let mut io = Box::new(song_io {
+        ctl: &mut *ctl,
+        hooks: song_io_hooks {
+            builtin: Some(builtin),
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    unsafe { views_song_io(&mut *ui.v, &mut *io) };
+    open_about(&mut ui);
+    assert_eq!(io.about, 1);
+    assert_eq!(io.state, SONG_IO_STOP as u8);
+    assert_eq!(ui.v.about.silent, 0);
+    io.about_play = 1;
+    for _ in 0..10 {
+        ui.frame();
+    }
+    assert_eq!(io.about_play, 1, "frames must not reopen About's music");
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(io.about_close, 1);
+    assert_eq!(io.about_play, 0);
+}
+
+#[test]
 fn the_first_page_names_sidou_and_its_version_and_then_every_credits_page_shows() {
     let mut ui = Ui::new();
     open_about(&mut ui);

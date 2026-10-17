@@ -378,7 +378,7 @@ fn the_menu_matches_its_golden_images_at_the_top_and_scrolled_and_does_not_blink
     };
     let mut m = booted(&fw);
     open_menu(&mut m, &fw);
-    // 2 times the font, 6 items of 13: the first six, the selected line in reverse video.
+    // 2 times the font, 6 items at a time: the selected line in reverse video.
     compare_golden(&build, "menu", &m.soc.lcd.fb, &[]);
     // The selection is a line in reverse video that does not blink (a 2 x 2 cell block would
     // send 2 windows each phase, over screen_changes_and_transitions_stay_within_the_budgets'
@@ -662,6 +662,67 @@ fn the_midi_page_matches_its_golden_image_and_stays_within_the_budgets() {
 /// the wipe that opens it; an edit of MODE 20.3k).
 const MIDI_PAGE_WORST_POLL: u64 = 23_000;
 const _: () = assert!(MIDI_PAGE_WORST_POLL <= common::POLL_INSTRUCTIONS);
+
+#[test]
+fn the_song_pages_match_their_goldens_and_stay_within_the_frame_budget() {
+    song_pages(true);
+}
+
+#[test]
+fn the_song_pages_stay_within_the_frame_budget_before_golden_review() {
+    song_pages(false);
+}
+
+fn song_pages(goldens: bool) {
+    let Some((build, fw)) = fixture("the SONG pages") else {
+        return;
+    };
+    let snapshot = |name: &str, fb: &[u16]| {
+        if goldens {
+            compare_golden(&build, name, fb, &[]);
+        } else {
+            write_png(&build.join(format!("{name}.actual.png")), &indexed(fb));
+        }
+    };
+    let mut m = booted(&fw);
+    open_menu(&mut m, &fw);
+    select(&mut m, sidou_sys::VIEWS_MENU_SONG as i32);
+    m.watch_calls(fw.symbol("ui_poll"));
+    let open = measure(&mut m, &fw, 24, |m| m.turn(ALGORITHM, 1));
+    snapshot("song", &m.soc.lcd.fb);
+    let directory = measure(&mut m, &fw, 24, |m| m.turn(ALGORITHM, 1));
+    snapshot("song-load", &m.soc.lcd.fb);
+    press(&mut m, HOME);
+    settle(&mut m, &fw);
+    m.turn(SELECT, 2);
+    m.run_ms(30);
+    let editor = measure(&mut m, &fw, 24, |m| m.turn(ALGORITHM, 1));
+    snapshot("song-save-as", &m.soc.lcd.fb);
+    press(&mut m, HOME);
+    settle(&mut m, &fw);
+    let io = fw.symbol("songs") + sidou_sys::ilp32::song_io::dirty as u32;
+    m.soc.write8(io, 1);
+    m.turn(SELECT, -1);
+    m.run_ms(30);
+    let confirm = measure(&mut m, &fw, 24, |m| m.turn(ALGORITHM, 1));
+    snapshot("song-confirm", &m.soc.lcd.fb);
+    for (name, cost) in [
+        ("open", open),
+        ("load", directory),
+        ("save as", editor),
+        ("confirm", confirm),
+    ] {
+        let most = cost.frames.iter().map(cells).max().unwrap_or(0);
+        println!(
+            "SONG {name}: worst poll {}, {most} cells, {:.2} ms SPI",
+            cost.worst_poll,
+            cost.worst_frame_ms()
+        );
+        assert!(cost.worst_poll <= common::POLL_INSTRUCTIONS);
+        assert!(most <= sidou_sys::SONG_VIEW_FRAME_CELLS);
+        assert!(cost.worst_frame_ms() <= SPI_BUDGET_MS);
+    }
+}
 
 /// app/panel.h PANEL_BTN_SAVE and K1.
 const SAVE: u8 = 9;

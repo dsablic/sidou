@@ -3,6 +3,7 @@
 #include "views.h"
 
 #include <stddef.h>
+#include <string.h>
 
 #include "font.h"
 
@@ -514,10 +515,386 @@ static void charset_open(void* ctx, int32_t steps) {
     screen_push(&v->s, &views_charset, v, SCREEN_WIPE_DOWN);
 }
 
+/* ---- SONG: its pages borrow the song views' canvas ---- */
+
+enum { SONG_MENU_ROOT, SONG_MENU_DIR, SONG_MENU_NAME, SONG_MENU_CONFIRM };
+enum { SONG_MENU_LOAD, SONG_MENU_NEW, SONG_MENU_SAVE, SONG_MENU_DELETE };
+#define SONG_MENU_CANVAS 0xffu
+
+static const char* const SONG_ACTIONS[] = {"LOAD", "NEW", "SAVE AS", "DELETE"};
+static int song_menu_input(void* ctx, const screen_event* e);
+static int global(void* ctx, const screen_event* e);
+/* SONG's HOME handling survives LEARN's capture without work in ordinary input routing. */
+static int song_menu_global(void* ctx, const screen_event* e) {
+    return song_menu_input(ctx, e) || global(ctx, e);
+}
+
+static void song_menu_changed(views* v) {
+    v->songs.built = 0;
+}
+
+static void song_directory(views* v, uint8_t page) {
+    views_song_menu* m = &v->songs;
+    m->page = SONG_MENU_DIR;
+    m->directory_page = page;
+    m->cursor = 0;
+    m->count = 0;
+    m->after[0] = 0;
+    m->skip = (uint8_t)(page * VIEWS_SONG_FILES);
+    m->scanning = 1;
+    song_menu_changed(v);
+}
+
+static void song_name(views* v, int direct) {
+    views_song_menu* m = &v->songs;
+    const char* name = v->song.io && v->song.io->name[0] ? v->song.io->name : "NEW SONG";
+    uint32_t n = 0;
+    while (name[n] && n < STORE_NAME_MAX) {
+        m->name[n] = name[n];
+        n++;
+    }
+    while (n < STORE_NAME_MAX) {
+        m->name[n++] = ' ';
+    }
+    m->name[STORE_NAME_MAX] = 0;
+    m->page = SONG_MENU_NAME;
+    m->action = SONG_MENU_SAVE;
+    m->cursor = 0;
+    m->direct = (uint8_t)direct;
+    m->return_view = NULL;
+    m->scanning = 0;
+    song_menu_changed(v);
+}
+
+static void song_menu_done(views* v) {
+    uint8_t direct = v->songs.direct;
+    if (direct) {
+        const view* back = v->songs.return_view;
+        screen_pop(&v->s, SCREEN_WIPE_UP);
+        v->songs.direct = 0;
+        v->songs.page = SONG_MENU_ROOT;
+        v->songs.cursor = SONG_MENU_SAVE;
+        v->songs.scanning = 0;
+        song_menu_changed(v);
+        if (direct == 2u) {
+            screen_push(&v->s, back, &v->song, SCREEN_WIPE_UP);
+        }
+    } else {
+        v->songs.page = SONG_MENU_ROOT;
+        v->songs.cursor = v->songs.action;
+        v->songs.scanning = 0;
+        song_menu_changed(v);
+    }
+}
+
+static void song_menu_execute(views* v, int confirmed) {
+    views_song_menu* m = &v->songs;
+    song_io* io = v->song.io;
+    if (!io) {
+        screen_toast(&v->s, "NO STORE", SCREEN_TOAST_MS);
+        return;
+    }
+    if (song_io_busy(io)) {
+        screen_toast(&v->s, song_io_saving(io) ? "SAVING" : "SONG BUSY", SCREEN_TOAST_MS);
+        return;
+    }
+    if (!confirmed && ((song_io_changed(io) && (m->action == SONG_MENU_LOAD || m->action == SONG_MENU_NEW)) ||
+                       m->action == SONG_MENU_DELETE)) {
+        m->page = SONG_MENU_CONFIRM;
+        m->confirm = 0;
+        song_menu_changed(v);
+        return;
+    }
+    int accepted;
+    switch (m->action) {
+    case SONG_MENU_LOAD: accepted = song_io_load(io, m->name, confirmed); break;
+    case SONG_MENU_NEW: accepted = song_io_new(io, confirmed); break;
+    case SONG_MENU_SAVE: accepted = song_io_save(io, m->name, v->s.now); break;
+    case SONG_MENU_DELETE: accepted = song_io_delete(io, m->name, confirmed); break;
+    default: return;
+    }
+    if (accepted) {
+        song_menu_done(v);
+    }
+}
+
+static void song_menu_save_name(views* v) {
+    views_song_menu* m = &v->songs;
+    uint32_t n = STORE_NAME_MAX;
+    while (n && m->name[n - 1u] == ' ') {
+        n--;
+    }
+    m->name[n] = 0;
+    if (!n || m->name[0] == ' ') {
+        screen_toast(&v->s, "NAME NEEDS FIRST CHARACTER", SCREEN_TOAST_MS);
+        while (n < STORE_NAME_MAX) {
+            m->name[n++] = ' ';
+        }
+        return;
+    }
+    song_menu_execute(v, 0);
+    if (screen_top(&v->s) == &views_song_menu_view && m->page == SONG_MENU_NAME) {
+        while (n < STORE_NAME_MAX) {
+            m->name[n++] = ' ';
+        }
+    }
+}
+
+static int32_t song_clamp(int32_t n, int32_t max) {
+    return n < 0 ? 0 : n > max ? max : n;
+}
+
+static int song_menu_input(void* ctx, const screen_event* e) {
+    views* v = ctx;
+    views_song_menu* m = &v->songs;
+    if (screen_top(&v->s) != &views_song_menu_view) {
+        return 0;
+    }
+    if (e->kind == SCREEN_PRESS && e->id == PANEL_BTN_HOME) {
+        if (m->page == SONG_MENU_NAME && m->direct) {
+            song_menu_done(v);
+            return 1;
+        }
+        if (m->page == SONG_MENU_ROOT) {
+            return 0;
+        }
+        if (m->page == SONG_MENU_CONFIRM && m->action != SONG_MENU_NEW) {
+            m->page = m->action == SONG_MENU_SAVE ? SONG_MENU_NAME : SONG_MENU_DIR;
+        } else {
+            m->page = SONG_MENU_ROOT;
+            m->cursor = m->action;
+            m->scanning = 0;
+        }
+        song_menu_changed(v);
+        return 1;
+    }
+    if (e->kind != SCREEN_TURN ||
+        (e->id != PANEL_ENC_SELECT && e->id != PANEL_ENC_ALGORITHM)) {
+        return 0;
+    }
+    int32_t steps = e->steps;
+    if (e->id == PANEL_ENC_SELECT) {
+        if (m->page == SONG_MENU_CONFIRM) {
+            m->confirm = (uint8_t)song_clamp((int32_t)m->confirm + steps, 1);
+        } else if (m->page == SONG_MENU_DIR) {
+            int32_t next = (int32_t)m->cursor + steps;
+            if (!m->scanning && next >= (int32_t)VIEWS_SONG_FILES && m->count == VIEWS_SONG_FILES &&
+                (uint32_t)(m->directory_page + 1u) * VIEWS_SONG_FILES < STORE_KEYS_MAX) {
+                song_directory(v, (uint8_t)(m->directory_page + 1u));
+            } else if (next < 0 && m->directory_page) {
+                song_directory(v, (uint8_t)(m->directory_page - 1u));
+            } else {
+                m->cursor = (uint8_t)song_clamp(next, m->count ? m->count - 1 : 0);
+            }
+        } else {
+            m->cursor = (uint8_t)song_clamp((int32_t)m->cursor + steps,
+                                           m->page == SONG_MENU_NAME ? STORE_NAME_MAX : 3u);
+        }
+    } else if (m->page == SONG_MENU_NAME && m->cursor < STORE_NAME_MAX) {
+        uint32_t c = m->cursor;
+        int32_t lo = c == 0 ? '!' : ' ';
+        int32_t range = 0x60 - lo;
+        int32_t ch = ((int32_t)m->name[c] - lo + steps) % range;
+        m->name[c] = (char)(lo + (ch < 0 ? ch + range : ch));
+    } else if (steps > 0) {
+        if (m->page == SONG_MENU_ROOT) {
+            m->action = m->cursor;
+            if (m->action == SONG_MENU_LOAD || m->action == SONG_MENU_DELETE) {
+                song_directory(v, 0);
+            } else if (m->action == SONG_MENU_SAVE) {
+                song_name(v, 0);
+            } else {
+                song_menu_execute(v, 0);
+            }
+        } else if (m->page == SONG_MENU_DIR && !m->scanning && m->count) {
+            join(m->name, sizeof m->name, m->files[m->cursor], "");
+            song_menu_execute(v, 0);
+        } else if (m->page == SONG_MENU_NAME) {
+            song_menu_save_name(v);
+        } else if (m->page == SONG_MENU_CONFIRM && m->confirm) {
+            song_menu_execute(v, 1);
+        }
+    }
+    song_menu_changed(v);
+    return 1;
+}
+
+static void song_menu_enter(screen* s, void* state) {
+    views* v = state;
+    song_menu_changed(v);
+    screen_global(s, song_menu_global, v);
+}
+
+static void song_menu_exit(screen* s, void* state) {
+    views* v = state;
+    v->song.built = 0;
+    v->song.which = SONG_VIEW_TRACKER;
+    screen_global(s, global, v);
+    for (uint32_t i = 0; i + 1u < s->depth; i++) {
+        if (s->stack[i].v == &views_song_menu_view) {
+            screen_global(s, song_menu_global, v);
+            break;
+        }
+    }
+}
+
+static void song_directory_step(views* v) {
+    views_song_menu* m = &v->songs;
+    store_file file;
+    memset(&file, 0, sizeof file);
+    join(file.name, sizeof file.name, m->after, "");
+    if (!v->song.io || !v->song.io->st || !store_dir_next(v->song.io->st, &file)) {
+        m->scanning = 0;
+        return;
+    }
+    join(m->after, sizeof m->after, file.name, "");
+    if (file.type != STORE_FILE_SONG) {
+        return;
+    }
+    if (m->skip) {
+        m->skip--;
+    } else {
+        join(m->files[m->count++], sizeof m->files[0], file.name, "");
+        if (m->count == VIEWS_SONG_FILES) {
+            m->scanning = 0;
+        }
+    }
+}
+
+static void song_canvas_text(views* v, uint32_t row, uint32_t col, const char* text, uint8_t a) {
+    while (*text && col < GRID_COLS) {
+        v->song.cv.ch[row][col] = (uint8_t)*text++;
+        v->song.cv.attr[row][col++] = a;
+    }
+}
+
+static void song_canvas_big(views* v, uint32_t row, uint32_t col, const char* text, uint8_t a) {
+    while (*text && col + 1u < GRID_COLS) {
+        uint8_t ch = (uint8_t)*text++;
+        for (uint32_t y = 0; y < 2u; y++) {
+            for (uint32_t x = 0; x < 2u; x++) {
+                v->song.cv.ch[row + y][col + x] = ch;
+                v->song.cv.attr[row + y][col + x] = a;
+            }
+        }
+        col += 2u;
+    }
+}
+
+static uint32_t song_menu_big_rows(const views_song_menu* m) {
+    uint32_t rows = 3u << 2; /* heading */
+    rows |= 3u << 4; /* busy status, when present */
+    if (m->page == SONG_MENU_ROOT) {
+        for (uint32_t i = 0; i < 4u; i++) {
+            rows |= 3u << (6u + i * 4u);
+        }
+    } else if (m->page == SONG_MENU_NAME) {
+        rows |= (3u << 8) | (3u << 12) | (3u << 16);
+    } else if (m->page == SONG_MENU_CONFIRM) {
+        rows |= (3u << 6) | (3u << 8) | (3u << 14);
+    }
+    return rows;
+}
+
+static uint8_t song_menu_io_state(const views* v) {
+    return v->song.io ? v->song.io->state : 0;
+}
+
+static int song_menu_dirty(screen* s, void* state) {
+    (void)s;
+    const views* v = state;
+    return !v->songs.built || v->songs.scanning || v->song.dirty ||
+           v->song.which != SONG_MENU_CANVAS || v->songs.io_state != song_menu_io_state(v);
+}
+
+static void song_menu_compose(screen* s, void* state, grid* g) {
+    views* v = state;
+    views_song_menu* m = &v->songs;
+    if (m->scanning && m->page == SONG_MENU_DIR) {
+        song_directory_step(v);
+        m->built = 0;
+    }
+    if (!m->built || v->song.which != SONG_MENU_CANVAS || m->io_state != song_menu_io_state(v)) {
+        for (uint32_t r = 0; r < GRID_ROWS; r++) {
+            for (uint32_t c = 0; c < GRID_COLS; c++) {
+                v->song.cv.ch[r][c] = ' ';
+                v->song.cv.attr[r][c] = TEXT;
+            }
+        }
+        song_canvas_big(v, 2, 2, m->page == SONG_MENU_ROOT ? "SONG" : SONG_ACTIONS[m->action], TEXT);
+        if (v->song.io && song_io_busy(v->song.io)) {
+            song_canvas_big(v, 4, 2, song_io_saving(v->song.io) ? "SAVING" : "BUSY", TEXT);
+        }
+        if (m->page == SONG_MENU_ROOT) {
+            for (uint32_t i = 0; i < 4u; i++) {
+                song_canvas_big(v, 6u + i * 4u, 2, SONG_ACTIONS[i], i == m->cursor ? MENU_HEAD : TEXT);
+            }
+        } else if (m->page == SONG_MENU_DIR) {
+            for (uint32_t i = 0; i < m->count; i++) {
+                song_canvas_text(v, 6u + i * 2u, 4, i == m->cursor ? ">" : " ", TEXT);
+                song_canvas_text(v, 6u + i * 2u, 6, m->files[i], TEXT);
+            }
+            song_canvas_text(v, 23, 4, m->scanning ? "READING..." : m->count ? "SELECT TO BROWSE" : "NO SONGS",
+                             TEXT);
+        } else if (m->page == SONG_MENU_NAME) {
+            char half[9];
+            for (uint32_t i = 0; i < 2u; i++) {
+                memcpy(half, &m->name[i * 8u], 8);
+                half[8] = 0;
+                song_canvas_big(v, 8u + i * 4u, 2, half, TEXT);
+            }
+            if (m->cursor < STORE_NAME_MAX) {
+                song_canvas_text(v, 10u + m->cursor / 8u * 4u, 2u + m->cursor % 8u * 2u, "^^", TEXT);
+            }
+            song_canvas_big(v, 16, 2, "SAVE", m->cursor == STORE_NAME_MAX ? MENU_HEAD : TEXT);
+            song_canvas_text(v, 19, 2, "SELECT     CURSOR", TEXT);
+            song_canvas_text(v, 20, 2, "ALGORITHM  CHARACTER", TEXT);
+            song_canvas_text(v, 21, 2, "SAVE       WRITE SONG", TEXT);
+        } else {
+            song_canvas_big(v, 6, 2, m->action == SONG_MENU_DELETE ? "DELETE SONG?" : "DISCARD", TEXT);
+            if (m->action != SONG_MENU_DELETE) {
+                song_canvas_big(v, 8, 2, "UNSAVED SONG?", TEXT);
+            }
+            if (m->action != SONG_MENU_NEW) {
+                song_canvas_text(v, 11, 6, m->name, TEXT);
+            }
+            song_canvas_big(v, 14, 2, "NO", m->confirm ? TEXT : MENU_HEAD);
+            song_canvas_big(v, 14, 16, "YES", m->confirm ? MENU_HEAD : TEXT);
+        }
+        if (m->page != SONG_MENU_NAME) {
+            song_canvas_text(v, 24, 2, "ALGORITHM  OPEN / CONFIRM", TEXT);
+        }
+        song_canvas_text(v, 25, 2, "HOME       BACK", TEXT);
+        v->song.which = SONG_MENU_CANVAS;
+        v->song.dirty = (1u << GRID_ROWS) - 1u;
+        m->built = 1;
+        m->io_state = song_menu_io_state(v);
+    }
+    song_view_copy_large(&v->song, s, g, song_menu_big_rows(m));
+}
+
+const view views_song_menu_view = {"SONG", song_menu_enter, song_menu_exit, NULL,
+                                   song_menu_compose, song_menu_dirty};
+
+static void song_open(void* ctx, int32_t steps) {
+    (void)steps;
+    views* v = ctx;
+    v->songs.page = SONG_MENU_ROOT;
+    v->songs.cursor = 0;
+    v->songs.direct = 0;
+    v->songs.scanning = 0;
+    screen_push(&v->s, &views_song_menu_view, v, SCREEN_WIPE_DOWN);
+}
+
 static void about_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
     about_init(&v->about, v->version);
+    v->about.io = v->song.io;
+    v->about.silent = (uint8_t)(v->song.io && song_io_changed(v->song.io));
+    if (v->song.io) {
+        song_io_about(v->song.io, 1);
+    }
     screen_push(&v->s, &about_view, &v->about, SCREEN_WIPE_DOWN);
 }
 
@@ -537,15 +914,15 @@ static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"KEYS", keys_value, keys_turn},       {"SOUNDS", sounds_value, sounds_turn},
     {"ROWS", rows_value, rows_turn},       {"THEME", theme_value, theme_turn},
     {"STATUS", NULL, status_open},         {"SCENE", NULL, scene_open},
-    {"CHARSET", NULL, charset_open},       {"ABOUT", NULL, about_open},
-    {"MIDI", NULL, midi_open},
+    {"CHARSET", NULL, charset_open},       {"SONG", NULL, song_open},
+    {"ABOUT", NULL, about_open},           {"MIDI", NULL, midi_open},
 };
 _Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_PRESET == 2u &&
                    VIEWS_MENU_CARDS == 4u && VIEWS_MENU_STORE == 5u && VIEWS_MENU_KEYS == 6u &&
                    VIEWS_MENU_SOUNDS == 7u && VIEWS_MENU_ROWS == 8u && VIEWS_MENU_THEME == 9u &&
                    VIEWS_MENU_STATUS == 10u && VIEWS_MENU_SCENE == 11u &&
-                   VIEWS_MENU_CHARSET == 12u && VIEWS_MENU_ABOUT == 13u &&
-                   VIEWS_MENU_MIDI == 14u,
+                   VIEWS_MENU_CHARSET == 12u && VIEWS_MENU_SONG == 13u &&
+                   VIEWS_MENU_ABOUT == 14u && VIEWS_MENU_MIDI == 15u,
                "the menu's items");
 _Static_assert(LIVE_THEMES == THEME_COUNT, "live.theme holds a theme's id");
 
@@ -1080,6 +1457,10 @@ void views_sync(views* v, midi_sync* sync) {
     v->sync = sync;
 }
 
+void views_song_io(views* v, song_io* io) {
+    v->song.io = io;
+}
+
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->l = l;
     v->sc = sc;
@@ -1105,6 +1486,8 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     live_view_init(&v->live, l, sc);
     scene_view_init(&v->scene, l, sc);
     song_view_init(&v->song, l);
+    v->songs.built = 0;
+    v->songs.scanning = 0;
     screen_init(&v->s, g, &live_view_view, &v->live);
     screen_global(&v->s, global, v);
     screen_popup_source(&v->s, &v->popup, popup_text, v);
@@ -1370,7 +1753,26 @@ static void save(views* v) {
             return;
         }
     }
-    /* A song view saves the song here, to its file (M2c Task 8, not in yet). */
+    if (shows(v) == &views_song_menu_view) {
+        if (v->songs.page == SONG_MENU_NAME) {
+            song_menu_save_name(v);
+        }
+        return;
+    }
+    if (song_view_is(shows(v))) {
+        if (v->song.io && v->song.io->name[0]) {
+            song_io_save(v->song.io, v->song.io->name, v->s.now);
+        } else {
+            song_name(v, 1);
+            if (v->s.depth == SCREEN_DEPTH) {
+                v->songs.return_view = screen_top(&v->s);
+                v->songs.direct = 2;
+                screen_pop(&v->s, SCREEN_CUT);
+            }
+            screen_push(&v->s, &views_song_menu_view, v, SCREEN_WIPE_DOWN);
+        }
+        return;
+    }
     if (v->set) {
         settings_save_now(v->set, v->s.now); /* its toast when it commits (views_frame) */
     }

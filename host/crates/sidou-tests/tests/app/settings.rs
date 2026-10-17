@@ -15,6 +15,146 @@ use crate::{record, Recorder, Rig};
 const VERSION: &CStr = c"V1.2.3";
 const TICK: u32 = 10;
 
+#[test]
+fn the_last_song_survives_a_power_cycle_and_old_records_default_to_none() {
+    let mut a = Set::blank();
+    a.load();
+    unsafe {
+        live_set_theme(&mut *a.rig.live, THEME_C64);
+        settings_set_song(&mut *a.set, c"NIGHT DRIVE".as_ptr());
+    }
+    a.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    let mut st = a.st;
+    st.reset();
+    st.mount();
+    let mut b = Set::new(st, VERSION);
+    b.load();
+    assert_eq!(b.rig.live.theme, THEME_C64 as u8);
+    assert_eq!(
+        unsafe { CStr::from_ptr(b.set.last_song.as_ptr()) },
+        c"NIGHT DRIVE"
+    );
+    let old = include_bytes!("../data/settings-v1.bin");
+    unsafe { settings_apply(&mut *b.set, old.as_ptr(), old.len() as u32) };
+    assert_eq!(b.set.last_song[0], 0, "v1 has no last song");
+}
+
+#[test]
+fn schema_four_fixture_keeps_every_earlier_field_and_the_last_song() {
+    let mut a = Set::blank();
+    let v3 = include_bytes!("../data/settings-v3.bin");
+    assert_eq!(
+        unsafe { settings_apply(&mut *a.set, v3.as_ptr(), v3.len() as u32) },
+        1
+    );
+    assert_eq!(a.set.last_song[0], 0);
+    unsafe { settings_set_song(&mut *a.set, c"NIGHT DRIVE".as_ptr()) };
+    let rec = a.gather();
+    assert_eq!(rec.len(), 124);
+    assert_eq!(rec[0], 4);
+    assert_eq!(&rec[1..108], &v3[1..]);
+    assert_eq!(&rec[108..124], b"NIGHT DRIVE\0\0\0\0\0");
+    let path = fixture_path().with_file_name("settings-v4.bin");
+    if std::env::var_os("SIDOU_SETTINGS_V4_FIXTURE_UPDATE").is_some() {
+        assert_eq!(SETTINGS_VERSION, 4, "the v4 generator requires schema 4");
+        std::fs::write(&path, &rec).unwrap();
+    }
+    assert_eq!(std::fs::read(path).expect("schema 4 fixture"), rec);
+    let mut b = Set::blank();
+    assert_eq!(
+        unsafe { settings_apply(&mut *b.set, rec.as_ptr(), rec.len() as u32) },
+        1
+    );
+    assert_eq!(b.gather(), rec, "exact schema 4 round trip");
+}
+
+#[test]
+fn every_schema_migrates_from_nondefaults_without_changing_its_prefix() {
+    for (schema, len, rows, theme, song) in [
+        (1, 106, 0, THEME_HIGH_CONTRAST, c""),
+        (2, 107, 1, THEME_HIGH_CONTRAST, c""),
+        (3, 108, 1, THEME_C64, c""),
+        (4, 124, 1, THEME_C64, c"NIGHT DRIVE"),
+    ] {
+        let path = fixture_path().with_file_name(format!("settings-v{schema}.bin"));
+        let rec = std::fs::read(path).unwrap();
+        assert_eq!(rec.len(), len);
+        assert_eq!(rec[0], schema);
+        let mut s = Set::blank();
+        *s.rows = 1 - rows;
+        unsafe {
+            live_set_theme(&mut *s.rig.live, THEME_COUNT - 1 - theme);
+            settings_set_song(&mut *s.set, c"OLD SONG".as_ptr());
+        }
+        assert_eq!(
+            unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
+            1,
+            "schema {schema}"
+        );
+        assert_eq!(*s.rows, rows, "schema {schema}: TRACKER ROWS");
+        assert_eq!(u32::from(s.rig.live.theme), theme, "schema {schema}: THEME");
+        assert_eq!(unsafe { CStr::from_ptr(s.set.last_song.as_ptr()) }, song);
+        assert_eq!(&s.gather()[1..len], &rec[1..], "unchanged schema prefix");
+        s.rig.tick();
+        let mut want = Set::blank();
+        want.change_everything();
+        assert_eq!(s.snapshot(), want.snapshot(), "schema {schema}: v1 fields");
+    }
+}
+
+#[test]
+fn short_records_are_rejected_before_any_field_changes_for_every_schema() {
+    let mut s = Set::blank();
+    s.change_everything();
+    *s.rows = 1;
+    unsafe {
+        live_set_theme(&mut *s.rig.live, THEME_C64);
+        settings_set_song(&mut *s.set, c"OLD SONG".as_ptr());
+    }
+    let before = s.gather();
+    for (schema, len) in [(1, 106), (2, 107), (3, 108), (4, 124), (5, 124)] {
+        let mut rec = Set::blank().gather();
+        rec[0] = schema;
+        for short in 0..len {
+            assert_eq!(
+                unsafe { settings_apply(&mut *s.set, rec.as_ptr(), short) },
+                0,
+                "schema {schema}: length {short}"
+            );
+            assert_eq!(s.gather(), before, "rejected records apply nothing");
+        }
+    }
+}
+
+#[test]
+fn theme_validation_applies_to_schema_three_four_and_future_prefixes() {
+    for schema in [3, 4, 5] {
+        for theme in [THEME_HIGH_CONTRAST, THEME_C64, THEME_COUNT, 255] {
+            let mut rec = Set::blank().gather();
+            rec[0] = schema;
+            rec[107] = theme as u8;
+            if schema == 3 {
+                rec.truncate(108);
+            } else if schema == 5 {
+                rec.extend_from_slice(&[0xa5; 20]);
+            }
+            let mut s = Set::blank();
+            unsafe { live_set_theme(&mut *s.rig.live, THEME_C64) };
+            assert_eq!(
+                unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
+                1
+            );
+            let want = if theme < THEME_COUNT {
+                theme
+            } else {
+                THEME_HIGH_CONTRAST
+            };
+            assert_eq!(u32::from(s.rig.live.theme), want);
+            assert_eq!(s.gather()[107], want as u8);
+        }
+    }
+}
+
 thread_local! {
     /// The force hook's calls, in order (settings.force).
     static FORCED: Cell<(u32, u32)> = const { Cell::new((0, 0)) };
@@ -197,12 +337,15 @@ impl Set {
 }
 
 #[test]
-fn the_record_is_v3s_layout_with_the_defaults() {
+fn the_record_is_v4s_layout_with_the_defaults() {
     let s = Set::blank();
     let rec = s.gather();
     assert_eq!(rec.len(), SETTINGS_BYTES as usize);
-    assert_eq!(rec.len(), 108);
-    assert_eq!(rec[..6], [3, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]);
+    assert_eq!(rec.len(), 124);
+    assert_eq!(
+        rec[..6],
+        [SETTINGS_VERSION as u8, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]
+    );
     let cutoff = s.param(LIVE_PARAM_CUTOFF);
     assert_eq!(
         rec[6..8],
@@ -228,6 +371,7 @@ fn the_record_is_v3s_layout_with_the_defaults() {
     assert!(rec[98..106].iter().all(|&b| b == 0), "NUL-padded");
     assert_eq!(rec[106], 0, "BAR");
     assert_eq!(rec[107], THEME_HIGH_CONTRAST as u8, "HIGH CONTRAST");
+    assert_eq!(&rec[108..124], &[0; 16], "built-in song");
 }
 
 #[test]
@@ -254,7 +398,7 @@ fn tracker_rows_round_trips_both_modes() {
         let mut a = Set::blank();
         *a.rows = rows;
         let rec = a.gather();
-        assert_eq!(rec.len(), 108);
+        assert_eq!(rec.len(), SETTINGS_BYTES as usize);
         assert_eq!(rec[0], SETTINGS_VERSION as u8);
         assert_eq!(rec[106], rows);
         let mut b = Set::blank();
@@ -269,19 +413,60 @@ fn tracker_rows_round_trips_both_modes() {
 
 #[test]
 fn invalid_tracker_rows_falls_back_to_bar() {
-    for rows in [2, 255] {
-        let mut s = Set::blank();
-        let mut rec = s.gather();
-        rec.resize(107, 0);
-        rec[0] = 2;
-        rec[106] = rows;
-        *s.rows = 1;
-        assert_eq!(
-            unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
-            1
-        );
-        assert_eq!(*s.rows, 0);
+    for (schema, len) in [(2, 107), (3, 108), (4, 124), (5, 144)] {
+        for rows in [2, 255] {
+            let mut s = Set::blank();
+            let mut rec = s.gather();
+            rec.resize(len, 0);
+            rec[0] = schema;
+            rec[106] = rows;
+            *s.rows = 1;
+            assert_eq!(
+                unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
+                1
+            );
+            assert_eq!(*s.rows, 0, "schema {schema}: invalid TRACKER ROWS");
+        }
     }
+}
+
+#[test]
+fn filename_validation_clears_invalid_records_but_keeps_a_full_length_name() {
+    for schema in [4, 5] {
+        for name in [
+            b" SIXTEEN CHARS!!".as_slice(),
+            b"LOWERcase",
+            b"BAD\x1f",
+            b"BAD`",
+        ] {
+            let mut s = Set::blank();
+            unsafe { settings_set_song(&mut *s.set, c"OLD SONG".as_ptr()) };
+            let mut rec = s.gather();
+            rec[0] = schema;
+            rec[108..124].fill(0);
+            rec[108..108 + name.len()].copy_from_slice(name);
+            assert_eq!(
+                unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
+                1
+            );
+            assert_eq!(
+                s.set.last_song[0], 0,
+                "invalid filename selects the built-in song"
+            );
+        }
+    }
+    let mut s = Set::blank();
+    let mut rec = s.gather();
+    rec[108..124].copy_from_slice(b"SIXTEEN CHARS!!!");
+    assert_eq!(
+        unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
+        1
+    );
+    assert_eq!(
+        unsafe { CStr::from_ptr(s.set.last_song.as_ptr()) },
+        c"SIXTEEN CHARS!!!"
+    );
+    assert_eq!(s.gather(), rec);
 }
 
 #[test]
@@ -382,6 +567,7 @@ fn direct_persisted_setters_are_background_saved_but_controllers_are_not() {
         |s| unsafe { live_set_keys_mode(&mut *s.rig.live, LIVE_KEYS_A) },
         |s| unsafe { live_bend_range_rpn(&mut *s.rig.live, 12) },
         |s| unsafe { ui_sound_set(&mut *s.snd, 1) },
+        |s| unsafe { live_set_theme(&mut *s.rig.live, THEME_C64) },
     ];
     for (i, change) in changes.iter().enumerate() {
         let mut s = Set::blank();
@@ -532,8 +718,8 @@ fn a_record_that_is_not_one_applies_nothing() {
     good.change_everything();
     let rec = good.gather();
     for bad in [
-        rec[..rec.len() - 1].to_vec(),    // short
-        [&[0u8][..], &rec[1..]].concat(), // schema 0
+        rec[..SETTINGS_V1_BYTES as usize - 1].to_vec(), // short
+        [&[0u8][..], &rec[1..]].concat(),               // schema 0
         {
             let mut r = rec.clone();
             r[5] = 41; // fewer parameters than v1's
@@ -551,14 +737,21 @@ fn a_record_that_is_not_one_applies_nothing() {
 fn a_newer_schemas_record_applies_its_v1_part() {
     let mut good = Set::blank();
     good.change_everything();
+    *good.rows = 1;
+    unsafe {
+        live_set_theme(&mut *good.rig.live, THEME_C64);
+        settings_set_song(&mut *good.set, c"NIGHT DRIVE".as_ptr());
+    }
+    let prefix = good.gather();
     let mut rec = good.gather();
-    rec[0] = 3;
+    rec[0] = SETTINGS_VERSION as u8 + 1;
     rec.extend_from_slice(&[0xA5; 20]);
     let mut s = Set::blank();
     let same = unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) };
     assert_eq!(same, 1);
     s.rig.tick();
     assert_eq!(s.snapshot(), good.snapshot());
+    assert_eq!(s.gather(), prefix, "the entire known prefix survives");
 }
 
 /// An out-of-range value (a corrupt field the record's CRC still matched, or a range a later
@@ -622,12 +815,13 @@ fn a_schema_2_record_loads_scroll_and_keeps_the_v1_prefix() {
     );
     assert_eq!(*s.rows, 1);
     let mut again = fixture.clone();
-    again[0] = 3;
+    again[0] = 4;
     again.push(THEME_HIGH_CONTRAST as u8);
+    again.extend_from_slice(&[0; 16]);
     assert_eq!(
         s.gather(),
         again,
-        "schema 3 encodes schema 2's bytes and the theme"
+        "schema 4 keeps schema 2's bytes and defaults the theme and song"
     );
     s.rig.tick();
     let mut want = Set::blank();
@@ -658,7 +852,13 @@ fn a_schema_3_record_loads_the_c64_theme_and_keeps_the_v2_prefix() {
     );
     assert_eq!(s.rig.live.theme, THEME_C64 as u8);
     assert_eq!(*s.rows, 1);
-    assert_eq!(s.gather(), fixture, "schema 3 encodes the same bytes");
+    let gathered = s.gather();
+    assert_eq!(
+        &gathered[1..108],
+        &fixture[1..],
+        "schema 3's prefix survives"
+    );
+    assert!(gathered[108..124].iter().all(|&b| b == 0));
 }
 
 #[test]
@@ -667,7 +867,7 @@ fn the_theme_round_trips_and_an_older_record_loads_high_contrast() {
         let mut a = Set::blank();
         unsafe { live_set_theme(&mut *a.rig.live, theme) };
         let rec = a.gather();
-        assert_eq!(rec.len(), 108);
+        assert_eq!(rec.len(), 124);
         assert_eq!(rec[107], theme as u8);
         let mut b = Set::blank();
         unsafe { live_set_theme(&mut *b.rig.live, THEME_COUNT - 1 - theme) };
@@ -691,6 +891,8 @@ fn the_theme_round_trips_and_an_older_record_loads_high_contrast() {
     // A theme the firmware does not know is the default, and a schema 3 record needs its byte.
     let mut s = Set::blank();
     let mut rec = s.gather();
+    rec[0] = 3;
+    rec.truncate(108);
     rec[107] = 9;
     unsafe { live_set_theme(&mut *s.rig.live, THEME_C64) };
     assert_eq!(

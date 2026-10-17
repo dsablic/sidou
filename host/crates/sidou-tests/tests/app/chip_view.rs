@@ -955,6 +955,113 @@ fn during_a_song_the_a_tab_edits_the_songs_setup() {
     unsafe { chip_view_set_keys(&mut ui.v.chip, std::ptr::null_mut()) };
 }
 
+#[test]
+fn only_explicit_song_chip_edits_notify_the_edit_callback() {
+    unsafe extern "C" fn edited(ctx: *mut std::ffi::c_void, want: *const chip_setup) -> i32 {
+        let edits = unsafe { &mut *ctx.cast::<Vec<chip_setup>>() };
+        edits.push(unsafe { *want });
+        1
+    }
+
+    let mut ui = chip_ui();
+    let mut edits = Vec::<chip_setup>::new();
+    let mut kr = Box::<keys_route>::default();
+    kr.l = &mut *ui.rig.live;
+    kr.song = 1;
+    kr.song_want.controls = [10, 20, 30, 40];
+    kr.song_edit = Some(edited);
+    kr.song_edit_ctx = (&mut edits as *mut Vec<chip_setup>).cast();
+    unsafe { chip_view_set_keys(&mut ui.v.chip, &mut *kr) };
+
+    let locked = chip_setup {
+        controls: [90, 20, 30, 40],
+        ..kr.song_want
+    };
+    unsafe { keys_route_song_wants(&mut *kr, &locked) };
+    assert!(edits.is_empty(), "runtime locks must not count as edits");
+    ui.turn(PANEL_ENC_K1, 1);
+    ui.turn(PANEL_ENC_K4, -1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(edits.len(), 3);
+    assert_eq!(edits[0].controls, [94, 20, 30, 40]);
+    assert_eq!(edits[1].controls, [90, 20, 30, 36]);
+    assert_eq!(edits[2].profile, locked.profile + 1);
+    assert_eq!(
+        kr.song_want.controls, locked.controls,
+        "callback owns acceptance"
+    );
+    assert_eq!(kr.song_want.profile, locked.profile);
+
+    ui.hold(PANEL_BTN_EDIT, true);
+    ui.turn(PANEL_ENC_K1, 1);
+    ui.hold(PANEL_BTN_EDIT, false);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(PANEL_ENC_K1, 1);
+    ui.turn(PANEL_ENC_SELECT, -2);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(PANEL_ENC_K1, 1);
+    assert_eq!(
+        edits.len(),
+        3,
+        "slots and keys must not edit the song setup"
+    );
+    unsafe { chip_view_set_keys(&mut ui.v.chip, std::ptr::null_mut()) };
+}
+
+#[test]
+fn refused_song_chip_edits_keep_the_setup_user_identity_and_popup_value() {
+    unsafe extern "C" fn refuse(ctx: *mut std::ffi::c_void, _: *const chip_setup) -> i32 {
+        unsafe { *ctx.cast::<u32>() += 1 };
+        0
+    }
+
+    let mut ui = chip_ui();
+    let mut calls = 0u32;
+    let mut kr = Box::<keys_route>::default();
+    kr.l = &mut *ui.rig.live;
+    kr.song = 1;
+    kr.song_want.profile = SID_CHIP_6581_R3 as u8;
+    kr.song_want.controls = [10, 20, 30, 40];
+    kr.song_user = 1;
+    kr.song_edit = Some(refuse);
+    kr.song_edit_ctx = (&mut calls as *mut u32).cast();
+    ui.rig.live.user_valid = 3;
+    ui.rig.live.user_base[0] = kr.song_want.profile;
+    ui.rig.live.user_base[1] = kr.song_want.profile;
+    ui.rig.live.user_ctl[1] = [50, 60, 70, 80];
+    unsafe { chip_view_set_keys(&mut ui.v.chip, &mut *kr) };
+    let before = kr.song_want;
+
+    for (encoder, steps) in [
+        (PANEL_ENC_ALGORITHM, 1),
+        (PANEL_ENC_ALGORITHM, -1),
+        (PANEL_ENC_K1, 1),
+    ] {
+        ui.turn(encoder, steps);
+        assert_eq!(kr.song_want.profile, before.profile);
+        assert_eq!(kr.song_want.controls, before.controls);
+        assert_eq!(kr.song_user, 1);
+        assert_eq!(unsafe { chip_view_user(&ui.v.chip) }, 1);
+        ui.frame();
+        let value = unsafe { CStr::from_ptr(ui.v.popup.value.as_ptr()) }
+            .to_str()
+            .unwrap();
+        assert_eq!(
+            value,
+            if encoder == PANEL_ENC_ALGORITHM {
+                "USER 1"
+            } else {
+                "10"
+            }
+        );
+    }
+    assert_eq!(calls, 3);
+    unsafe { chip_view_set_keys(&mut ui.v.chip, std::ptr::null_mut()) };
+}
+
 /// MIDI learn over the song's A tab (PANEL_PAGE_NONE): K1..K4 pick nothing, and the toast says
 /// why (SONG SETUP: NO CC), not K4's preset message.
 #[test]

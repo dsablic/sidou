@@ -334,7 +334,8 @@ fn the_song_region_and_the_free_ram() {
 }
 
 /// One bench run (bench/fm1/bench_song_main.c): the song in the bench's RAM, `blocks`
-/// blocks with SONG_EDITS_PER_BLOCK edits of `kind` (0 cells, 1 swaps) each after the first.
+/// blocks with SONG_EDITS_PER_BLOCK edits of `kind` (0 name cells, 1 swaps, 2 none,
+/// 3 isolated real row cells) each after the first.
 struct Bench {
     /// Instructions of each block.
     blocks: Vec<u64>,
@@ -343,6 +344,7 @@ struct Bench {
     analysis: u64,
     derive: u64,
     calls: u32,
+    commands: u32,
     error: i32,
 }
 
@@ -369,8 +371,62 @@ fn bench(build: &std::path::Path, song: &Song, sub: u32, blocks: u32, kind: u32)
         analysis: r.phases[0],
         derive: r.phases[1],
         calls,
+        commands: r.words[4],
         error,
     }
+}
+
+fn row_delta_apply_cost(build: &std::path::Path) -> u64 {
+    let song = demo();
+    let baseline = bench(build, &song, 0, 192, 2);
+    let rows = bench(build, &song, 0, 192, 3);
+    assert_eq!(baseline.error, 0);
+    assert_eq!(rows.error, 0);
+    assert!(
+        baseline.commands > 0,
+        "the fixture must have sent its play command"
+    );
+    assert_eq!(
+        baseline.calls, rows.calls,
+        "the player's clock is unchanged"
+    );
+    assert_eq!(
+        baseline.commands, rows.commands,
+        "kind 3 adds no player commands"
+    );
+    let additional = baseline
+        .blocks
+        .iter()
+        .zip(&rows.blocks)
+        .skip(1)
+        .map(|(&before, &after)| {
+            after
+                .checked_sub(before)
+                .expect("isolated row applies cannot make the player's block cheaper")
+        })
+        .max()
+        .unwrap();
+    assert!(
+        additional > 0,
+        "kind 3 must execute real row-delta accounting"
+    );
+    println!(
+        "eight isolated row applies: maximum block {} -> {}, additional {additional} instructions \
+         including loop/call overhead; player calls {} in both runs",
+        baseline.blocks.iter().skip(1).max().unwrap(),
+        rows.blocks.iter().skip(1).max().unwrap(),
+        rows.calls
+    );
+    additional
+}
+
+#[test]
+fn real_row_delta_accounting_is_included_in_the_interrupt_cost() {
+    let Some((build, _)) = fixture("the row-delta apply microcase") else {
+        return;
+    };
+    let additional = row_delta_apply_cost(&build);
+    assert!(additional as f64 / HALF_FRAMES as f64 <= PLAYER_WORST_BLOCK);
 }
 
 /// The songs the budget is measured over: every example, every subtune, and generated
@@ -506,13 +562,16 @@ fn the_players_worst_block_fits_its_budget() {
             }
         }
     }
-    let per_sample = worst.0 as f64 / HALF_FRAMES as f64;
+    let row_delta = row_delta_apply_cost(&build);
+    let charged = worst.0 + row_delta;
+    let per_sample = charged as f64 / HALF_FRAMES as f64;
     let headroom = AUDIO_TARGET
         - (SID_WORST_BLOCK_TWO_CHIPS + TAP_PER_SAMPLE + ISR_OVERHEAD)
         - SLOTS_SWITCH_WORST
         - per_sample;
     println!(
-        "the player's worst block: {} instructions ({per_sample:.1} a sample, budget \
+        "the player's worst block: {} + {row_delta} isolated row-apply instructions = {charged} \
+         instructions ({per_sample:.1} a sample, budget \
          {PLAYER_WORST_BLOCK}) in {}; a block of 8 edits and no call {worst_edits}, a call at most \
          {worst_call} besides; over {} runs of {} songs; the main loop's sending of 8 edits at \
          most {edits_main}. The play's analysis at most {analysis} instructions (all its slices), a \
@@ -531,7 +590,7 @@ fn the_players_worst_block_fits_its_budget() {
     );
     // a fast-forward's slice: SONG_FF_CALLS calls at the worst (and its bookkeeping)
     assert!(
-        u64::from(SONG_FF_CALLS) * worst.0 <= u64::from(SONG_SLICE_INSTRUCTIONS),
+        u64::from(SONG_FF_CALLS) * charged <= u64::from(SONG_SLICE_INSTRUCTIONS),
         "{SONG_FF_CALLS} calls of {worst_call} are over the slice of {SONG_SLICE_INSTRUCTIONS}"
     );
 }

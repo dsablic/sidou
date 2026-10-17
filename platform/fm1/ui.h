@@ -14,6 +14,7 @@
 #include "ui_sound.h"
 #include "panel.h"
 #include "song_transport.h"
+#include "song_io.h"
 
 /* The screen is composed at most this often (25 fps); only cells that changed are sent. */
 #define UI_PERIOD_MS 40u
@@ -34,6 +35,10 @@ void ui_set_panel(panel* p);
 /* The song's player for the song views (app/song_transport.h, main.c's binding over
  * song_ctl). */
 void ui_set_song(const song_transport* t);
+void ui_set_song_io(song_io* io);
+settings* ui_settings(void);
+/* Independent force ownership: a settings save cannot release a song save's holds. */
+void ui_song_force(int on);
 /* Main loop. Every UI_PERIOD_MS it runs a frame (views_frame: the view composes if what it
  * shows changed, app/screen.h), and half a frame later lets the view prepare the next one
  * (views_prepare), each in a call of its own. Changed cells go out as runs (one LCD window each), one per

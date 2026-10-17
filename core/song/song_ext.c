@@ -24,6 +24,13 @@ static uint32_t rd32(const uint8_t* p) {
     return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
 }
 
+static int bytes_equal(const uint8_t* a, const uint8_t* b, uint32_t n) {
+    for (uint32_t i = 0; i < n; i++)
+        if (a[i] != b[i])
+            return 0;
+    return 1;
+}
+
 static void wr32(uint8_t* p, uint32_t v) {
     p[0] = (uint8_t)v;
     p[1] = (uint8_t)(v >> 8);
@@ -77,18 +84,31 @@ const uint8_t* song_ext_find(const gt2_song* s, uint32_t tag, uint32_t* len) {
     return s->ext + at + SONG_CHUNK_HEADER;
 }
 
+static void remove_at(gt2_song* s, uint32_t at, uint32_t size) {
+    for (uint32_t i = at; i + size < s->ext_used; i++)
+        s->ext[i] = s->ext[i + size];
+    s->ext_used -= size;
+}
+
 int song_ext_remove(gt2_song* s, uint32_t tag) {
+    if (s->frozen)
+        return -(int)GT2_ERR_SAVING;
     int32_t at = find_at(s, tag);
     if (at < 0)
         return 0;
     uint32_t size = SONG_CHUNK_HEADER + rd32(s->ext + at + 4);
-    for (uint32_t i = (uint32_t)at; i + size < s->ext_used; i++)
-        s->ext[i] = s->ext[i + size];
-    s->ext_used -= size;
+    int cap = gt2_saved_ext_check(s, s->ext_used - size);
+    if (cap != 0)
+        return cap;
+    uint32_t old_used = s->ext_used;
+    remove_at(s, (uint32_t)at, size);
+    gt2_saved_ext_changed(s, old_used);
     return 1;
 }
 
 int song_ext_set(gt2_song* s, uint32_t tag, const uint8_t* data, uint32_t len) {
+    if (s->frozen)
+        return -(int)GT2_ERR_SAVING;
     if (len == 0u || tag == SONG_TAG_PAD)
         return -1;
     int32_t at = find_at(s, tag);
@@ -96,6 +116,12 @@ int song_ext_set(gt2_song* s, uint32_t tag, const uint8_t* data, uint32_t len) {
     uint32_t size = SONG_CHUNK_HEADER + len;
     if (len > SONG_EXT_BYTES || s->ext_used - old + size > SONG_EXT_BYTES)
         return -1;
+    if (old == size && bytes_equal(s->ext + at + SONG_CHUNK_HEADER, data, len))
+        return 0;
+    int cap = gt2_saved_ext_check(s, s->ext_used - old + size);
+    if (cap != 0)
+        return cap;
+    uint32_t old_used = s->ext_used;
     if (at < 0) {
         at = (int32_t)s->ext_used;
         s->ext_used += size;
@@ -117,6 +143,7 @@ int song_ext_set(gt2_song* s, uint32_t tag, const uint8_t* data, uint32_t len) {
     wr32(s->ext + at + 4, len);
     for (uint32_t i = 0; i < len; i++)
         s->ext[(uint32_t)at + SONG_CHUNK_HEADER + i] = data[i];
+    gt2_saved_ext_changed(s, old_used);
     return 0;
 }
 
@@ -302,22 +329,29 @@ static uint32_t lock_key(const song_lock* l) {
 }
 
 int song_ext_set_locks(gt2_song* s, const song_lock* locks, uint32_t n) {
+    if (s->frozen)
+        return -(int)GT2_ERR_SAVING;
     if (n > SONG_LOCKS_MAX)
         return -1;
     for (uint32_t i = 1; i < n; i++)
         if (lock_key(&locks[i - 1u]) >= lock_key(&locks[i]))
             return -1;
     if (n == 0u) {
-        (void)song_ext_remove(s, SONG_TAG_LOCK);
-        return 0;
+        int removed = song_ext_remove(s, SONG_TAG_LOCK);
+        return removed < 0 ? removed : 0;
     }
     uint32_t len = 3u + n * 5u;
     int32_t at = find_at(s, SONG_TAG_LOCK);
     uint32_t old = at < 0 ? 0u : SONG_CHUNK_HEADER + rd32(s->ext + at + 4);
     if (s->ext_used - old + SONG_CHUNK_HEADER + len > SONG_EXT_BYTES)
         return -1;
+    int cap = gt2_saved_ext_check(s, s->ext_used - old + SONG_CHUNK_HEADER + len);
+    if (cap != 0)
+        return cap;
     /* Built at the area's end, as one chunk: remove the old one, then append. */
-    (void)song_ext_remove(s, SONG_TAG_LOCK);
+    uint32_t old_used = s->ext_used;
+    if (at >= 0)
+        remove_at(s, (uint32_t)at, old);
     uint8_t* d = s->ext + s->ext_used;
     wr32(d, SONG_TAG_LOCK);
     wr32(d + 4, len);
@@ -332,6 +366,7 @@ int song_ext_set_locks(gt2_song* s, const song_lock* locks, uint32_t n) {
         wr16(l + 3, locks[i].value);
     }
     s->ext_used += SONG_CHUNK_HEADER + len;
+    gt2_saved_ext_changed(s, old_used);
     return 0;
 }
 
@@ -357,10 +392,14 @@ static uint8_t* locks_of(gt2_song* s, int32_t* at, uint32_t* n) {
 }
 
 /* The chunk at at to data length len, what follows moved (no memmove on the device). */
-static int chunk_resize(gt2_song* s, int32_t at, uint32_t len) {
+static int chunk_resize(gt2_song* s, int32_t at, uint32_t len, int reserved) {
     uint32_t old = rd32(s->ext + at + 4);
     if (len > old && s->ext_used + (len - old) > SONG_EXT_BYTES)
         return -1;
+    int cap = reserved ? 0 : gt2_saved_ext_check(s, s->ext_used - old + len);
+    if (cap != 0)
+        return cap;
+    uint32_t old_used = s->ext_used;
     uint32_t tail = (uint32_t)at + SONG_CHUNK_HEADER + old;
     uint32_t count = s->ext_used - tail;
     uint32_t to = (uint32_t)at + SONG_CHUNK_HEADER + len;
@@ -373,6 +412,10 @@ static int chunk_resize(gt2_song* s, int32_t at, uint32_t len) {
     }
     s->ext_used = s->ext_used - old + len;
     wr32(s->ext + at + 4, len);
+    if (reserved)
+        gt2_song_changed(s);
+    else
+        gt2_saved_ext_changed(s, old_used);
     return 0;
 }
 
@@ -411,6 +454,8 @@ const uint8_t* song_locks_row(const gt2_song* s, uint32_t pattern, uint32_t row,
 }
 
 int song_lock_put(gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param, uint32_t value) {
+    if (s->frozen)
+        return -(int)GT2_ERR_SAVING;
     if (pattern >= GT2_MAX_PATTERNS || row >= GT2_MAX_ROWS || param >= SONG_LOCK_PARAMS ||
         value > song_lock_max(param))
         return -1;
@@ -420,20 +465,24 @@ int song_lock_put(gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param, u
     if (d == NULL) {
         if (find_at(s, SONG_TAG_LOCK) >= 0)
             return -1; /* malformed: left alone */
-        uint8_t head[3] = {1u, 0u, 0u};
-        if (song_ext_set(s, SONG_TAG_LOCK, head, 3u) != 0)
-            return -1;
-        d = locks_of(s, &at, &n);
+        song_lock first = {(uint8_t)pattern, (uint8_t)row, (uint8_t)param, (uint16_t)value};
+        return song_ext_set_locks(s, &first, 1u);
     }
     uint32_t key = pattern << 16 | row << 8 | param;
     uint32_t i = lower_bound(d + 3, n, key);
     uint8_t* r = d + 3 + i * SONG_LOCK_BYTES;
     if (i < n && rec_key(r) == key) {
+        if (rd16(r + 3) == value)
+            return 0;
         wr16(r + 3, value);
+        gt2_song_changed(s);
         return 0;
     }
-    if (n >= SONG_LOCKS_MAX || chunk_resize(s, at, 3u + (n + 1u) * SONG_LOCK_BYTES) != 0)
+    if (n >= SONG_LOCKS_MAX)
         return -1;
+    int resized = chunk_resize(s, at, 3u + (n + 1u) * SONG_LOCK_BYTES, 0);
+    if (resized != 0)
+        return resized;
     d = s->ext + at + SONG_CHUNK_HEADER;
     r = d + 3 + i * SONG_LOCK_BYTES;
     for (uint32_t k = (n - i) * SONG_LOCK_BYTES; k > 0u; k--)
@@ -449,13 +498,26 @@ int song_lock_put(gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param, u
 /* Keeps the records keep(record) says, in order; returns how many went. */
 typedef int (*lock_keep_fn)(uint8_t* rec, uint32_t a, uint32_t b, uint32_t c);
 
-static uint32_t locks_filter(gt2_song* s, lock_keep_fn keep, uint32_t a, uint32_t b,
-                             uint32_t c) {
+static int locks_filter(gt2_song* s, lock_keep_fn keep, uint32_t a, uint32_t b,
+                        uint32_t c, int reserved) {
+    if (s->frozen)
+        return 0u;
     int32_t at;
     uint32_t n = 0;
     uint8_t* d = locks_of(s, &at, &n);
     if (d == NULL)
         return 0u;
+    uint32_t kept = 0u;
+    for (uint32_t i = 0; i < n; i++) {
+        uint8_t record[SONG_LOCK_BYTES];
+        memcpy(record, d + 3u + i * SONG_LOCK_BYTES, SONG_LOCK_BYTES);
+        kept += keep(record, a, b, c) != 0;
+    }
+    uint32_t old = SONG_CHUNK_HEADER + rd32(s->ext + at + 4);
+    uint32_t size = kept ? SONG_CHUNK_HEADER + 3u + kept * SONG_LOCK_BYTES : 0u;
+    int cap = reserved ? 0 : gt2_saved_ext_check(s, s->ext_used - old + size);
+    if (cap != 0)
+        return cap;
     uint32_t w = 0;
     for (uint32_t i = 0; i < n; i++) {
         uint8_t* r = d + 3 + i * SONG_LOCK_BYTES;
@@ -467,12 +529,19 @@ static uint32_t locks_filter(gt2_song* s, lock_keep_fn keep, uint32_t a, uint32_
         w++;
     }
     if (w == 0u) {
-        (void)song_ext_remove(s, SONG_TAG_LOCK);
+        uint32_t old_used = s->ext_used;
+        remove_at(s, (uint32_t)at, old);
+        if (reserved)
+            gt2_song_changed(s);
+        else
+            gt2_saved_ext_changed(s, old_used);
     } else if (w != n) {
         wr16(d + 1, w);
-        (void)chunk_resize(s, at, 3u + w * SONG_LOCK_BYTES);
+        (void)chunk_resize(s, at, 3u + w * SONG_LOCK_BYTES, reserved);
     }
-    return n - w;
+    if (w == n)
+        gt2_song_changed(s);
+    return (int)(n - w);
 }
 
 static int keep_not_key(uint8_t* r, uint32_t pattern, uint32_t row, uint32_t param) {
@@ -480,7 +549,10 @@ static int keep_not_key(uint8_t* r, uint32_t pattern, uint32_t row, uint32_t par
 }
 
 int song_lock_remove(gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param) {
-    return locks_filter(s, keep_not_key, pattern, row, param) != 0u;
+    if (s->frozen)
+        return -(int)GT2_ERR_SAVING;
+    int removed = locks_filter(s, keep_not_key, pattern, row, param, 0);
+    return removed < 0 ? removed : removed != 0;
 }
 
 /* The pattern edit's rule on one record; it may move the record's row (the order holds: the
@@ -509,8 +581,25 @@ static int keep_edit(uint8_t* r, uint32_t op, uint32_t pattern, uint32_t row) {
     }
 }
 
+uint32_t song_locks_pattern_size(const gt2_song* s, uint32_t op, uint32_t pattern, uint32_t row) {
+    int32_t at;
+    uint32_t n = 0u, kept = 0u;
+    const uint8_t* d = locks_of((gt2_song*)s, &at, &n);
+    if (d == NULL)
+        return s->ext_used;
+    for (uint32_t i = 0; i < n; i++) {
+        uint8_t record[SONG_LOCK_BYTES];
+        memcpy(record, d + 3u + i * SONG_LOCK_BYTES, SONG_LOCK_BYTES);
+        kept += keep_edit(record, op, pattern, row) != 0;
+    }
+    if (kept == n)
+        return s->ext_used;
+    uint32_t old = SONG_CHUNK_HEADER + rd32(s->ext + at + 4);
+    return s->ext_used - old + (kept ? SONG_CHUNK_HEADER + 3u + kept * SONG_LOCK_BYTES : 0u);
+}
+
 void song_locks_pattern_edit(gt2_song* s, uint32_t op, uint32_t pattern, uint32_t row) {
-    (void)locks_filter(s, keep_edit, op, pattern, row);
+    (void)locks_filter(s, keep_edit, op, pattern, row, 1);
 }
 
 /* MIDI, SCNE */
@@ -618,22 +707,28 @@ int song_ext_set_scene(gt2_song* s, const song_scene* v) {
 int song_ext_get_keys(const gt2_song* s, song_keys* v) {
     uint32_t len = 0;
     memset(v, 0, sizeof *v);
+    v->preset = SONG_KEYS_PRESET_NONE;
     const uint8_t* d = get_v1(s, SONG_TAG_KEYS, 2u, &len);
     if (d == NULL || d[1] > SONG_KEYS_MAX || len < 2u + 2u * d[1])
         return 0;
     v->count = d[1];
     for (uint32_t i = 0; i < v->count; i++)
         v->param[i] = rd16(d + 2u + 2u * i);
+    if (len > 2u + 2u * v->count)
+        v->preset = d[2u + 2u * v->count];
     return 1;
 }
 
 int song_ext_set_keys(gt2_song* s, const song_keys* v) {
-    uint8_t b[2u + 2u * SONG_KEYS_MAX];
+    uint8_t b[3u + 2u * SONG_KEYS_MAX];
     if (v->count > SONG_KEYS_MAX)
         return -1;
     b[0] = 1u;
     b[1] = v->count;
     for (uint32_t i = 0; i < v->count; i++)
         wr16(b + 2u + 2u * i, v->param[i]);
-    return song_ext_set(s, SONG_TAG_KEYS, b, 2u + 2u * v->count);
+    uint32_t len = 2u + 2u * v->count;
+    if (v->preset != SONG_KEYS_PRESET_NONE)
+        b[len++] = v->preset;
+    return song_ext_set(s, SONG_TAG_KEYS, b, len);
 }

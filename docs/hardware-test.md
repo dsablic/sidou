@@ -982,6 +982,24 @@ during the install.
 
 Notes:
 
+## 13. Songs on the store (M2c Task 8)
+
+These checks are for the user to run on hardware; automated testing uses fm1-emu only.
+
+- [ ] Open SONG, choose NEW, and confirm discarding changes if asked. Check the three
+  64-row patterns and the pulse lead, bass and noise drum instruments.
+- [ ] Choose SAVE AS, enter a 16-character name with SELECT and ALGORITHM, and save.
+  Wait for SONG SAVED before switching the power off.
+- [ ] Power on again: the last song loads stopped. PLAY sounds the saved song.
+- [ ] SAVE an unchanged song: SONG SAVED appears without a flash-write delay.
+- [ ] During a save, edits are refused with SAVING; playback, mute, solo and jam continue.
+- [ ] Near the saved-size limit, an edit that would exceed 65,536 bytes is refused
+  with SONG FULL and leaves the song unchanged.
+- [ ] With a clean, stopped song, open ABOUT: its tune plays. HOME stops it and
+  restores the loaded song, stopped. With unsaved changes, ABOUT stays silent and
+  its scroller says SAVE YOUR SONG FOR MUSIC.
+- [ ] DELETE asks for confirmation. Cancelling keeps the file; confirming removes it.
+
 ## Result
 
 | Section | Pass / fail | Notes |

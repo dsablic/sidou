@@ -6,9 +6,10 @@
  * chip's render. The emulator test (emu-gate tests/song.rs) puts the song's region at
  * SONG_ADDR (a song read and laid out by the host, as the device's region) and the
  * parameters at PARAM_ADDR before it starts: [0] the subtune, [1] the blocks, [2] the edits'
- * kind (0 4-byte cell writes, 1 index swaps, 2 none). Marks: the start, the play's analysis (every
+ * kind (0 name cells, 1 index swaps, 2 none, 3 real row cells on an isolated song).
+ * Marks: the start, the play's analysis (every
  * slice), a derivation of the whole shape (a widening's worst), then each block's start and
- * end. RESULT_ADDR [2] gets song_ctl's error, [3] the calls made. */
+ * end. RESULT_ADDR [2] gets song_ctl's error, [3] the calls made, [4] the commands sent. */
 #include <stddef.h>
 #include <stdint.h>
 
@@ -27,6 +28,8 @@ static song_ctl sc;
 static gt2_shape shapes[2];
 static gt2_shape scratch;
 static song_work work;
+static uint32_t row_region[SONG_REGION_BYTES / sizeof(uint32_t)];
+static gt2_edit row_edits[SONG_EDITS_PER_BLOCK];
 
 __attribute__((noinline)) void bench_mark(void) { __asm__ volatile("" ::: "memory"); }
 
@@ -70,6 +73,19 @@ int main(void) {
     volatile uint32_t* param = (volatile uint32_t*)PARAM_ADDR;
     gt2_song* song = (gt2_song*)SONG_ADDR;
     uint32_t blocks = param[1], kind = param[2];
+    gt2_song* row_song = NULL;
+    gt2_err row_error = GT2_OK;
+    if (kind == 3u) {
+        row_song = gt2_song_init(row_region, sizeof row_region);
+        if (row_song == NULL) {
+            row_error = GT2_ERR_REGION;
+        } else {
+            const uint8_t seed[4] = {GT2_REST, 0u, 0u, 1u};
+            row_error = gt2_set_row(row_song, 0u, 0u, seed, &row_edits[0]);
+            if (row_error == GT2_OK)
+                gt2_edit_commit(row_song, &row_edits[0]);
+        }
+    }
 
     sid_init(&chip, SID_MODEL_6581, SID_CLOCK_PAL, 44118u);
     song_ctl_init(&sc, song, &shapes[0], &shapes[1], &work);
@@ -85,11 +101,22 @@ int main(void) {
     for (uint32_t b = 0; b < blocks; b++) {
         if (b > 0u) {
             for (uint32_t k = 0; k < SONG_EDITS_PER_BLOCK; k++) {
-                edit(song, kind);
+                if (kind == 3u) {
+                    if (row_error == GT2_OK) {
+                        const uint8_t cell[4] = {GT2_REST, k & 1u ? 0u : GT2_MAX_INSTR,
+                                                 0u, k & 1u ? 1u : 0u};
+                        row_error = gt2_set_row(row_song, 0u, 0u, cell, &row_edits[k]);
+                    }
+                } else {
+                    edit(song, kind);
+                }
             }
         }
         song_ctl_commit(&sc);
         bench_mark();
+        if (b > 0u && kind == 3u && row_error == GT2_OK)
+            for (uint32_t k = 0; k < SONG_EDITS_PER_BLOCK; k++)
+                gt2_edit_apply(row_song, &row_edits[k]);
         song_ctl_block(&sc, &chip);
         uint32_t at = song_ctl_due(&sc, SONG_BLOCK);
         if (at < SONG_BLOCK) {
@@ -97,11 +124,15 @@ int main(void) {
         }
         song_ctl_block_end(&sc, SONG_BLOCK);
         bench_mark();
+        if (b > 0u && kind == 3u && row_error == GT2_OK)
+            for (uint32_t k = 0; k < SONG_EDITS_PER_BLOCK; k++)
+                gt2_edit_release(row_song, &row_edits[k]);
         song_ctl_poll(&sc, 0u);
     }
     result[1] = 0;
-    result[2] = (uint32_t)(int32_t)sc.error;
+    result[2] = row_error != GT2_OK ? (uint32_t)row_error : (uint32_t)(int32_t)sc.error;
     result[3] = sc.calls;
+    result[4] = sc.cmd_head;
     result[0] = RESULT_MAGIC;
     for (;;) {
     }

@@ -10,6 +10,7 @@
  * This file includes the HAL's interrupt, audio and timer headers; input.c and lcd.c include
  * the input and LCD ones (platform/fm1/VENDORED.md). */
 #include <stdint.h>
+#include <string.h>
 
 #include "fm1_sys.h" /* before fm1_irq.h: FM1_RESET_PREP */
 
@@ -33,6 +34,8 @@
 #include "player/song_ctl.h"
 #include "reg_ring.h"
 #include "song/gt2_sng.h"
+#include "song/gt2_stream.h"
+#include "song_io.h"
 #include "store_fm1.h"
 #include "ui.h"
 #include "ui_sound.h"
@@ -72,6 +75,8 @@ static keys_route keys_router;
 /* The UI sounds on chip B's spare voice, off by default (app/ui_sound.h). */
 static ui_sound ui_sounds;
 static panel front;
+static song_io songs;
+static gt2_stream song_stream;
 
 /* The audio interrupt renders: a TIMER5 tick nested in it leaves USB's poll for later
  * (fm1_timer5_irq). */
@@ -159,6 +164,8 @@ static uint32_t read_demo(void* ctx, uint32_t offset, uint8_t* buf, uint32_t len
  * starts once chip A has it. M2c Task 8's save writes song_want back into the CHPA. */
 static uint8_t song_setup_on; /* chip A's setup for the song is asked for */
 static chip_setup song_want;
+static int song_base_get(chip_setup* setup);
+static void song_base_set(const chip_setup* setup);
 
 static int song_chip_ready(void* ctx, const song_chip_setup* c) {
     keys_route* kr = ctx;
@@ -166,18 +173,21 @@ static int song_chip_ready(void* ctx, const song_chip_setup* c) {
         return 0;
     }
     if (!song_setup_on) {
-        song_want = kr->ctl[0].has; /* chip A as the song finds it (the keys' setup) */
-        if (c) {
-            song_want.profile = c->profile;
-            song_want.controls[0] = c->age;
-            song_want.controls[1] = c->dac;
-            song_want.controls[2] = c->thump;
-            song_want.controls[3] = c->bleed;
-            song_want.gate_reset = c->envelope == 0u; /* 0 INSTANT */
-        } else {
-            song_want.gate_reset = 0u; /* AUTHENTIC */
+        if (!song_base_get(&song_want)) {
+            song_want = kr->ctl[0].has; /* chip A as the song finds it (the keys' setup) */
+            if (c) {
+                song_want.profile = c->profile;
+                song_want.controls[0] = c->age;
+                song_want.controls[1] = c->dac;
+                song_want.controls[2] = c->thump;
+                song_want.controls[3] = c->bleed;
+                song_want.gate_reset = c->envelope == 0u; /* 0 INSTANT */
+            } else {
+                song_want.gate_reset = 0u; /* AUTHENTIC */
+            }
         }
         keys_route_song_wants(kr, &song_want);
+        song_base_set(&song_want);
         kr->song_user = 0;
         song_setup_on = 1;
     }
@@ -210,7 +220,22 @@ static void song_load(void) {
  * as a MIDI CC moves them (decision record 0006: 0.32 s end to end, so coarse by nature),
  * and back to the song's own setup after (what chip A wanted when the first lock came). */
 static chip_setup song_char_base;
+static uint8_t song_base_valid;
 static int16_t song_char_on[4] = {-1, -1, -1, -1};
+static uint32_t song_warned; /* warnings shown since PLAY */
+
+__attribute__((noinline, unused)) static int song_base_get(chip_setup* setup) {
+    if (!song_base_valid) {
+        return 0;
+    }
+    *setup = song_char_base;
+    return 1;
+}
+
+__attribute__((noinline, unused)) static void song_base_set(const chip_setup* setup) {
+    song_char_base = *setup;
+    song_base_valid = 1;
+}
 
 static void song_chip_character(void* ctx, uint32_t field, int32_t value) {
     keys_route* kr = ctx;
@@ -220,6 +245,7 @@ static void song_chip_character(void* ctx, uint32_t field, int32_t value) {
     }
     if (!any) {
         song_char_base = kr->song_want;
+        song_base_valid = 1;
     }
     song_char_on[field] = (int16_t)value;
     chip_setup want = song_char_base;
@@ -232,14 +258,247 @@ static void song_chip_character(void* ctx, uint32_t field, int32_t value) {
 }
 
 static const midi_sync* sync_state; /* midi_synced(), for play()'s look at CLOCK OUT */
+static int song_chip_edit(void* ctx, const chip_setup* setup) {
+    keys_route* kr = ctx;
+    if (audio_song()->song->frozen) {
+        ui_toast("SAVING", 2000u);
+        return 0;
+    }
+    int any = 0;
+    for (uint32_t f = 0; f < 4u; f++) {
+        any |= song_char_on[f] >= 0;
+    }
+    if (!any) {
+        song_char_base = *setup;
+        song_base_valid = 1;
+        keys_route_song_wants(kr, setup);
+        return 1;
+    }
+    song_char_base.profile = setup->profile;
+    song_char_base.gate_reset = setup->gate_reset;
+    for (uint32_t f = 0; f < 4u; f++) {
+        /* Unchanged locked controls in the view's copy are runtime values, not edits. */
+        if (song_char_on[f] < 0 || setup->controls[f] != kr->song_want.controls[f]) {
+            song_char_base.controls[f] = setup->controls[f];
+        }
+    }
+    chip_setup want = song_char_base;
+    for (uint32_t f = 0; f < 4u; f++) {
+        if (song_char_on[f] >= 0) {
+            want.controls[f] = (uint8_t)song_char_on[f];
+        }
+    }
+    keys_route_song_wants(kr, &want);
+    return 1;
+}
 
 static void song_boot(void) {
     song_chip_hooks hooks = {song_chip_ready, song_chip_back, song_chip_character, &keys_router};
     song_ctl_set_hooks(audio_song(), &hooks);
+    keys_router.song_edit = song_chip_edit;
+    keys_router.song_edit_ctx = &keys_router;
+}
+
+static midi_route* route_state;
+
+static void setup_encode(song_chip_setup* out, const chip_setup* in) {
+    const sid_chip_profile* profile = sid_chip_profile_get(in->profile);
+    out->model = profile ? (uint8_t)profile->model : 0u;
+    out->profile = in->profile;
+    out->age = in->controls[0];
+    out->dac = in->controls[1];
+    out->thump = in->controls[2];
+    out->bleed = in->controls[3];
+    out->envelope = !in->gate_reset;
+}
+
+typedef struct {
+    song_chip_setup chip;
+    gt2_options opts;
+    song_slots slots;
+    song_keys keys;
+    midi_route_setup midi;
+} song_save_data;
+
+_Static_assert(sizeof(song_save_data) <= STORE_WINDOW_MAX, "save metadata reuses the IO buffer");
+
+__attribute__((noinline, unused)) static void song_collect(song_save_data* out) {
+    song_ctl* sc = audio_song();
+    gt2_song* s = sc->song;
+    song_chip_setup chip;
+    int has_chip = song_ext_get_chip(s, SONG_TAG_CHPA, &chip);
+    /* Ownership changes can temporarily set song_want to the keys' setup. Only explicit
+     * song edits and the song's own start change its authoritative, unlocked base. */
+    if (song_base_valid) {
+        setup_encode(&chip, &song_char_base);
+    } else if (!has_chip) {
+        chip_setup keys;
+        chip_setup_of(&instrument, &keys);
+        keys.profile = instrument.profile_req;
+        setup_encode(&chip, &keys);
+        chip.envelope = 1;
+    }
+    gt2_options opts;
+    (void)song_ext_get_options(s, &opts);
+    song_slots slots = {0, {{0}}};
+    slots.count = LIVE_SLOTS;
+    for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
+        for (uint32_t f = 0; f < LIVE_SLOT_FIELDS; f++) {
+            slots.slot[k][f] = instrument.slot[k][f];
+        }
+    }
+    song_keys keys = {0, 0, {0}};
+    keys.count = LIVE_PARAM_COUNT;
+    keys.preset = instrument.preset;
+    for (uint32_t p = 0; p < LIVE_PARAM_COUNT; p++) {
+        keys.param[p] = (uint16_t)(p == LIVE_PARAM_VOLUME ? 0u : live_param_get(&instrument, p));
+    }
+    out->chip = chip;
+    out->opts = opts;
+    out->slots = slots;
+    out->keys = keys;
+    out->midi = midi_routed()->setup;
+}
+
+static void song_snapshot(void* ctx, uint8_t* storage) {
+    (void)ctx;
+    song_save_data data;
+    song_collect(&data);
+    memcpy(storage, &data, sizeof data);
+}
+
+static int song_capture(void* ctx) {
+    (void)ctx;
+    gt2_song* s = audio_song()->song;
+    song_save_data data;
+    if (songs.snapshot) {
+        memcpy(&data, songs.data, sizeof data);
+    } else {
+        song_collect(&data);
+    }
+    const song_chip_setup chip = data.chip;
+    const gt2_options opts = data.opts;
+    const song_slots slots = data.slots;
+    const song_keys keys = data.keys;
+    song_midi midi;
+    midi_route_setup_encode(&data.midi, &midi);
+    const sid_chip_profile* profile = sid_chip_profile_get(chip.profile);
+    if (!profile || (uint32_t)profile->model != chip.model || chip.age > 127u ||
+        chip.dac > 127u || chip.thump > 127u || chip.bleed > 127u || chip.envelope > 1u) {
+        memcpy(songs.failure, "SNG: BAD CHIP SETUP", sizeof "SNG: BAD CHIP SETUP");
+        return 0;
+    }
+    const uint32_t tags[] = {SONG_TAG_CHPA, SONG_TAG_OPTS, SONG_TAG_SLOT, SONG_TAG_KEYS, SONG_TAG_MIDI};
+    const uint32_t sizes[] = {9u + chip.expert_count, SONG_OPTS_BYTES,
+                              2u + slots.count * SONG_SLOT_FIELDS, 3u + keys.count * 2u,
+                              4u + midi.count + SONG_MIDI_OPTION_BYTES};
+    uint32_t old_sizes[5];
+    uint32_t ext = s->ext_used;
+    for (uint32_t i = 0; i < 5u; i++) {
+        uint32_t old = 0;
+        if (song_ext_find(s, tags[i], &old)) {
+            ext -= SONG_CHUNK_HEADER + old;
+            old_sizes[i] = SONG_CHUNK_HEADER + old;
+        } else {
+            old_sizes[i] = 0u;
+        }
+        ext += SONG_CHUNK_HEADER + sizes[i];
+    }
+    if (ext > SONG_EXT_BYTES || gt2_saved_size(s) - gt2_saved_trailer_size(s->ext_used) +
+            gt2_saved_trailer_size(ext) > STORE_FILE_MAX) {
+        return 0;
+    }
+    /* Shrink before growing; check every intermediate trailer padding transition before
+     * changing a byte, so the sequence cannot fail after a partial capture. */
+    uint32_t at = s->ext_used;
+    for (uint32_t pass = 0; pass < 2u; pass++) {
+        for (uint32_t i = 0; i < 5u; i++) {
+            uint32_t size = SONG_CHUNK_HEADER + sizes[i];
+            if ((size > old_sizes[i]) != (pass != 0u)) {
+                continue;
+            }
+            at = at - old_sizes[i] + size;
+            if (at > SONG_EXT_BYTES || gt2_saved_ext_check(s, at) != 0) {
+                return 0;
+            }
+        }
+    }
+    for (uint32_t pass = 0; pass < 2u; pass++) {
+        for (uint32_t i = 0; i < 5u; i++) {
+            if ((SONG_CHUNK_HEADER + sizes[i] > old_sizes[i]) != (pass != 0u)) {
+                continue;
+            }
+            if (i == 0u) {
+                (void)song_ext_set_chip(s, SONG_TAG_CHPA, &chip);
+            } else if (i == 1u) {
+                (void)song_ext_set_options(s, &opts);
+            } else if (i == 2u) {
+                (void)song_ext_set_slots(s, &slots);
+            } else if (i == 3u) {
+                (void)song_ext_set_keys(s, &keys);
+            } else {
+                (void)song_ext_set_midi(s, &midi);
+            }
+        }
+    }
+    return 1;
+}
+
+static uint32_t song_generation(void* ctx) {
+    (void)ctx;
+    uint16_t values[LIVE_PARAM_COUNT];
+    for (uint32_t p = 0; p < LIVE_PARAM_COUNT; p++) {
+        values[p] = (uint16_t)(p == LIVE_PARAM_VOLUME ? 0u : live_param_get(&instrument, p));
+    }
+    uint32_t crc = store_crc32(0u, values, sizeof values);
+    crc = store_crc32(crc, &instrument.preset, sizeof instrument.preset);
+    crc = store_crc32(crc, &midi_routed()->setup, sizeof(midi_route_setup));
+    song_ctl* sc = audio_song();
+    song_chip_setup chip;
+    (void)song_ext_get_chip(sc->song, SONG_TAG_CHPA, &chip);
+    if (song_base_valid) {
+        setup_encode(&chip, &song_char_base);
+    }
+    return store_crc32(crc, &chip, sizeof chip);
+}
+
+static void song_loaded(void* ctx) {
+    (void)ctx;
+    song_setup_on = 0;
+    song_warned = 0;
+    song_base_valid = 0;
+    for (uint32_t f = 0; f < 4u; f++) {
+        song_char_on[f] = -1;
+    }
+    song_keys keys;
+    gt2_song* s = audio_song()->song;
+    midi_route_setup setup;
+    (void)midi_route_setup_from_song(s, &midi_routed()->setup, &setup);
+    midi_route_set(midi_routed(), &setup);
+    midi_sync_rows(midi_synced(), setup.rows_per_beat);
+    midi_sync_song_changed(midi_synced());
+    if (song_ext_get_keys(s, &keys)) {
+        if (keys.preset < LIVE_PRESET_COUNT) {
+            live_set_preset(&instrument, keys.preset);
+        }
+        for (uint32_t p = 0; p < keys.count && p < LIVE_PARAM_COUNT; p++) {
+            if (p != LIVE_PARAM_VOLUME && keys.param[p] <= live_param_max(p)) {
+                live_param_set(&instrument, p, keys.param[p]);
+            }
+        }
+    }
+    song_slots slots;
+    if (song_ext_get_slots(s, &slots)) {
+        for (uint32_t k = 0; k < slots.count && k < LIVE_SLOTS; k++) {
+            for (uint32_t f = 0; f < LIVE_SLOT_FIELDS; f++) {
+                live_param_set(&instrument, LIVE_PARAM_SLOT + k * LIVE_SLOT_FIELDS + f,
+                               slots.slot[k][f]);
+            }
+        }
+    }
 }
 
 static int16_t song_error;    /* the refusal last shown */
-static uint32_t song_warned;  /* the warnings shown since the play */
 
 /* A refusal or a warning as a toast (the SONG view's hint until it exists, M2c Task 8). */
 static void song_tell(song_ctl* sc) {
@@ -310,6 +569,9 @@ static void song_test_edits(song_ctl* sc) {
         if (err == GT2_ERR_PENDING) {
             return; /* in order: this one again next pass */
         }
+        if (err != GT2_OK) {
+            ui_toast(sc->song->frozen ? "SAVING" : "SONG FULL", 2000u);
+        }
         if (err == GT2_OK && !song_ctl_edit(sc, &e)) {
             gt2_edit_cancel(sc->song, &e);
             return;
@@ -317,6 +579,28 @@ static void song_test_edits(song_ctl* sc) {
         r->block = sc->blocks;
         r->op = 0u;
     }
+}
+
+/* RAM-only requests for emulator integration tests; no device input writes this hook. */
+typedef struct {
+    volatile uint32_t op;
+    char name[STORE_NAME_MAX + 1u];
+    int32_t result;
+} song_io_test_req;
+song_io_test_req song_io_test_hook;
+
+static void song_io_test(void) {
+    song_io_test_req* r = &song_io_test_hook;
+    switch (r->op) {
+    case 1: r->result = song_io_new(&songs, 1); break;
+    case 2: r->result = song_io_save(&songs, r->name, uptime_ms); break;
+    case 3: r->result = song_io_load(&songs, r->name, 1); break;
+    case 4: r->result = song_io_delete(&songs, r->name, 1); break;
+    case 5: r->result = song_io_about(&songs, 1); break;
+    case 6: r->result = song_io_about(&songs, 0); break;
+    default: return;
+    }
+    r->op = 0;
 }
 
 /* --- The song views' player (app/song_transport.h) over song_ctl --- */
@@ -334,6 +618,9 @@ static uint32_t jam_last_ms;  /* the last jam's time */
 
 static int st_play(void* ctx, uint32_t pos) {
     song_ctl* sc = ctx;
+    if (song_io_busy(&songs) && !song_io_saving(&songs)) {
+        return 1; /* transport requests during a load do not play a half-read model */
+    }
     if (!song_ctl_play(sc, 0, pos)) {
         return 0;
     }
@@ -352,6 +639,9 @@ static int st_stop(void* ctx) {
 
 static int st_resume(void* ctx) {
     song_ctl* sc = ctx;
+    if (song_io_busy(&songs) && !song_io_saving(&songs)) {
+        return 1;
+    }
     song_setup_on = 0;
     return song_ctl_continue(sc);
 }
@@ -364,6 +654,9 @@ static int st_mute(void* ctx, uint32_t mask) {
  * take a few ticks to start (chip A taken for the song): the note waits for it. */
 static int st_jam(void* ctx, uint32_t voice, uint32_t note, uint32_t instr) {
     song_ctl* sc = ctx;
+    if (song_io_busy(&songs) && !song_io_saving(&songs)) {
+        return 1;
+    }
     int off = note == SONG_T_RELEASE;
     jam_last_ms = uptime_ms;
     if (song_ctl_jam_ready(sc) && !jam_wait[0]) {
@@ -440,15 +733,24 @@ static void st_status(void* ctx, song_status* out) {
 /* M2e's MIDI clock (app/midi_sync.h): the held start, the align, the period, the seeks and
  * the calls' samples, through the same transport as the song views'. */
 static int st_hold(void* ctx, uint32_t on) {
+    if (song_io_busy(&songs) && !song_io_saving(&songs)) {
+        return 1;
+    }
     song_ctl_hold(ctx, (int)on);
     return 1;
 }
 
 static int st_align(void* ctx, uint32_t sample) {
+    if (song_io_busy(&songs) && !song_io_saving(&songs)) {
+        return 1;
+    }
     return song_ctl_align(ctx, sample);
 }
 
 static int st_period(void* ctx, uint32_t q16) {
+    if (song_io_busy(&songs) && !song_io_saving(&songs)) {
+        return 1;
+    }
     song_ctl* sc = ctx;
     song_period p;
     if (q16 == 0u) {
@@ -462,10 +764,16 @@ static int st_period(void* ctx, uint32_t q16) {
 }
 
 static int st_seek(void* ctx, uint32_t call) {
+    if (song_io_busy(&songs) && !song_io_saving(&songs)) {
+        return 1;
+    }
     return song_ctl_seek(ctx, call);
 }
 
 static int st_seek_further(void* ctx, uint32_t call) {
+    if (song_io_busy(&songs) && !song_io_saving(&songs)) {
+        return 1;
+    }
     return song_ctl_seek_further(ctx, call);
 }
 
@@ -515,6 +823,21 @@ static song_transport song_bound;
  * song or the keys. */
 static uint8_t song_taken;
 
+__attribute__((noinline, unused)) static void song_file_pass(song_ctl* sc, uint32_t slices) {
+    static uint8_t turn;
+    if (!(turn++ & 1u) || slices != sc->slices || !audio_work_slice()) {
+        return;
+    }
+    song_io_poll(&songs, uptime_ms);
+    char message[32];
+    if (song_io_take_message(&songs, message)) {
+        ui_toast(message, 2000u);
+        if (memcmp(message, "SONG SAVED", 10u) == 0) {
+            ui_sound_play(&ui_sounds, UI_SOUND_CHUNK);
+        }
+    }
+}
+
 /* The event ring's one reader (core/player/song_ctl.h song_ctl_events), once a pass: every
  * event goes, in order, to each of the song's listeners, the song views' places
  * (song_seen_rows) and SCENE's music hooks (ui_song), so no reader takes one from another. A
@@ -562,9 +885,16 @@ static void song_pass(void) {
         song_mine = 1;
     }
     song_test_edits(sc);
+    if (song_io_test_hook.op) {
+        song_io_test();
+    }
+    uint32_t slices = sc->slices;
     audio_song_poll();
     if (sc->ev_head != sc->ev_tail || sc->state != song_heard_state) {
         song_events(sc); /* song_ctl_state's, read in place */
+    }
+    if (songs.state || songs.about_play || songs.message[0]) {
+        song_file_pass(sc, slices);
     }
     st = song_ctl_state(sc);
     engaged = st == SONG_LOADING || st == SONG_PLAYING || sc->auditioning || sc->handback;
@@ -606,6 +936,10 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         live_tick(&instrument);
         ui_sound_tick(&ui_sounds);
         midi_tick(); /* MIDI's mode: its bends, filter and ARP steps */
+        if (route_state->song_req != MIDI_ROUTE_NO_REQUEST) {
+            int32_t program = midi_route_take_song(route_state);
+            (void)song_io_program(&songs, (uint32_t)program);
+        }
     }
     song_pass();
     if (tick_due) {
@@ -623,7 +957,7 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
      * hand, else once a tick; its share of the pass within STORE_POLL_WORST, none in a pass
      * that ran a chip preparation slice. Here, not after every wake: an idle store costs the
      * main loop nothing between frames. */
-    if (tick_due || store_fm1_active) {
+    if (tick_due || store_fm1_active || songs.state) {
         store_fm1_service(now, &instrument, &keys_router, ui_sound_busy(&ui_sounds));
     }
     if (sync_state->clock_out) {
@@ -748,6 +1082,7 @@ static void sidou_main(void) {
     panel_master(&front, &instrument, input_master());
     audio_set_master(instrument.master); /* the interrupt's first block has it */
     midi_init(&instrument, &keys_router);
+    route_state = midi_routed();
     midi_sync_bind(midi_synced(), &song_bound); /* MIDI's clock plays the song */
     sync_state = midi_synced();
     update_boot();
@@ -778,6 +1113,14 @@ static void sidou_main(void) {
     song_bound.ctx = audio_song();
     song_bound.song = audio_song()->song;
     ui_set_song(&song_bound);
+    song_io_hooks io_hooks = {song_capture, song_loaded, read_demo, 0, song_generation,
+                              ui_song_force, song_snapshot};
+    (void)song_capture(0);
+    song_io_init(&songs, audio_song(), store_fm1(), ui_settings(), &song_stream, &io_hooks);
+    ui_set_song_io(&songs);
+    if (ui_settings()->last_song[0]) {
+        (void)song_io_load(&songs, ui_settings()->last_song, 1);
+    }
 #if defined(SIDOU_TEST_DEATH_MS)
     test_death_arm();
 #endif

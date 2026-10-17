@@ -27,6 +27,19 @@ static grid cells;
 static views ui;
 /* What persists (app/settings.h): on the device's store, ticked in the views' frame. */
 static settings persisted;
+static uint8_t settings_forced, song_forced;
+
+static void settings_force(int on) {
+    settings_forced = (uint8_t)(on != 0);
+    store_fm1_force(settings_forced || song_forced || persisted.forcing ||
+                    ui.users.forcing || ui.formatting);
+}
+
+void ui_song_force(int on) {
+    song_forced = (uint8_t)(on != 0);
+    store_fm1_force(settings_forced || song_forced || persisted.forcing ||
+                    ui.users.forcing || ui.formatting);
+}
 /* grid_palette in the panel's byte order. */
 static uint16_t palette[16];
 static uint32_t last_compose;
@@ -80,6 +93,14 @@ void ui_set_song(const song_transport* t) {
     views_set_song(&ui, t);
 }
 
+void ui_set_song_io(song_io* io) {
+    views_song_io(&ui, io);
+}
+
+settings* ui_settings(void) {
+    return &persisted;
+}
+
 void ui_init(live* l, ui_sound* us, uint32_t now_ms, int home_held) {
     for (uint32_t i = 0; i < 16u; i++) {
         palette[i] = LCD_SWAP(grid_palette[i]);
@@ -93,7 +114,7 @@ void ui_init(live* l, ui_sound* us, uint32_t now_ms, int home_held) {
     /* The settings as they were left (the store mounted in lcd_init's wake-up wait); the full
      * boot once after an install: no record, or another version's. */
     settings_init(&persisted, l, midi_learned(), &ui.cards, &ui.song.scroll, us, store_fm1(), "V" SIDOU_VERSION,
-                  store_fm1_force);
+                  settings_force);
     int known = settings_load(&persisted, now_ms);
     views_settings(&ui, &persisted);
     views_boot(&ui, !known, home_held);

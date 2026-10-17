@@ -38,6 +38,15 @@ void midi_sync_bind(midi_sync* s, const song_transport* t) {
     s->t = t;
 }
 
+void midi_sync_song_changed(midi_sync* s) {
+    s->want = 0;
+    s->held = s->aligning = s->synced = s->seek_on = s->fresh = 0;
+    s->subtune = 0;
+    s->next_row = 0;
+    s->out_state = MIDI_SYNC_IDLE;
+    s->out_clock = 0;
+}
+
 /* The transport has the clock's members (its ctx may be set after the bind). */
 static int bound(const midi_sync* s) {
     const song_transport* t = s->t;

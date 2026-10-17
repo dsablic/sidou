@@ -506,8 +506,9 @@ static void chip_profile(midi_route* r, uint32_t pick) {
             s.controls[f] = r->l->user_ctl[slot][f];
         }
     }
-    keys_route_song_wants(r->kr, &s);
-    r->kr->song_user = user;
+    if (keys_route_song_edit(r->kr, &s)) {
+        r->kr->song_user = user;
+    }
 }
 
 /* Chip A's setup, as the song wants it, changed by a chip-level CC. */
@@ -540,7 +541,7 @@ static void chip_cc(midi_route* r, uint8_t cc, uint8_t value) {
     case LIVE_PARAM_BLEED: s.controls[e->param - LIVE_PARAM_AGE] = (uint8_t)v; break;
     default: return;
     }
-    keys_route_song_wants(r->kr, &s);
+    keys_route_song_edit(r->kr, &s);
 }
 
 static void filter_cc(midi_route* r, uint8_t cc, uint8_t value) {

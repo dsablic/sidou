@@ -19,6 +19,8 @@
  *
  * It composes every frame, and holds still while a wipe or a raster runs (screen_animating):
  * the wipe that opens it sends its own rows and nothing else.
+ * views binds io and asks it to play the About tune at opening; exit asks it to restore the
+ * loaded song. With unsaved changes, silent selects SAVE YOUR SONG FOR MUSIC in the scroller.
  *
  * Portable C with no hardware access and no allocation. */
 #ifndef SIDOU_ABOUT_H
@@ -29,6 +31,7 @@
 #include "grid.h"
 #include "logo.h"
 #include "screen.h"
+#include "song_io.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -63,6 +66,8 @@ typedef struct {
     uint32_t frame;          /* frames of the animation shown since it opened */
     uint8_t bar[ABOUT_BARS]; /* each bar's centre, in half cell rows from ABOUT_BAR_ROW */
     const logo* logo;        /* logo_default */
+    song_io* io;
+    uint8_t silent;
 } about;
 
 extern const view about_view;

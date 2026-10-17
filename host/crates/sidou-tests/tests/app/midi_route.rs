@@ -822,6 +822,51 @@ fn bank_select_on_the_instruments_channel_never_reaches_live() {
 }
 
 #[test]
+fn refused_chip_a_midi_edits_keep_the_setup_and_user_identity() {
+    unsafe extern "C" fn refuse(ctx: *mut c_void, _: *const chip_setup) -> i32 {
+        unsafe { *ctx.cast::<u32>() += 1 };
+        0
+    }
+
+    let mut r = Route::with(MIDI_MODE_MULTI, 0, |_| {});
+    let mut calls = 0u32;
+    let mut kr = Box::<keys_route>::default();
+    r.route.kr = &mut *kr;
+    kr.song = 1;
+    kr.song_want = chip_setup {
+        profile: SID_CHIP_6581_R3 as u8,
+        controls: [10, 20, 30, 40],
+        gate_reset: 1,
+    };
+    kr.song_user = 1;
+    kr.song_edit = Some(refuse);
+    kr.song_edit_ctx = (&mut calls as *mut u32).cast();
+    r.rig.live.user_valid = 0xff;
+    for slot in 0..LIVE_USER_PROFILES as usize {
+        r.rig.live.user_base[slot] = SID_CHIP_6581_R3 as u8;
+        r.rig.live.user_ctl[slot] = [slot as u8 + 50, 60, 70, 80];
+    }
+    let before = kr.song_want;
+    for pick in 0..SID_CHIPS + LIVE_USER_PROFILES {
+        let cc = unsafe { midi_map_to_cc(midi_map_for_cc(85), pick) };
+        for bytes in [vec![0xB0, 32, 2, 0xC0, pick as u8], vec![0xB0, 85, cc]] {
+            r.trs(&bytes);
+            assert_eq!(kr.song_want.profile, before.profile, "pick {pick}");
+            assert_eq!(kr.song_want.controls, before.controls, "pick {pick}");
+            assert_eq!(kr.song_user, 1, "pick {pick}");
+        }
+    }
+    for cc in [25, 26, 86, 87, 89, 90] {
+        r.trs(&[0xB0, cc, 127]);
+        assert_eq!(kr.song_want.profile, before.profile, "CC {cc}");
+        assert_eq!(kr.song_want.controls, before.controls, "CC {cc}");
+        assert_eq!(kr.song_want.gate_reset, before.gate_reset, "CC {cc}");
+        assert_eq!(kr.song_user, 1, "CC {cc}");
+    }
+    assert_eq!(calls, 2 * (SID_CHIPS + LIVE_USER_PROFILES) + 6);
+}
+
+#[test]
 fn a_program_change_that_edits_live_is_one_midi_out_takes_as_midis() {
     let r = Route::new();
     let pc = |ch: u8, n: u8| midi_msg {

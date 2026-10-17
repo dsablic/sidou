@@ -11,6 +11,20 @@
 #include <stddef.h>
 #include <string.h>
 
+static uint32_t pattern_prefix(const gt2_song* s, uint32_t n);
+static uint32_t order_prefix(const gt2_song* s, uint32_t n);
+static void saved_pattern_refresh(gt2_song* s, uint32_t p);
+static void saved_pattern_mark(gt2_song* s, uint32_t p);
+static void saved_instr_refresh(gt2_song* s, uint32_t instr);
+static void saved_table_refresh(gt2_song* s, uint32_t table, uint32_t row);
+static void saved_order_refs(gt2_song* s, const uint8_t* o, uint32_t n, int add);
+static void saved_order_refresh(gt2_song* s, uint32_t d);
+static gt2_err saved_check(const gt2_song* s, uint32_t growth);
+static uint32_t saved_cell_growth(const gt2_song* s, const gt2_edit* e, uint32_t slot);
+static uint32_t saved_order_growth(const gt2_song* s, uint32_t d, uint32_t ch,
+                                  const uint8_t* data, uint32_t n);
+static uint32_t saved_size_compute(const gt2_song* s);
+
 /* An internal invariant, checked in host builds (the tests and fuzzers trap on it) and
  * compiled out on the device and with NDEBUG, as sid_osc.h's SID_DEBUG_ASSERT. */
 #if !defined(NDEBUG) && !defined(__PI32V2__) && (defined(__GNUC__) || defined(__clang__))
@@ -19,11 +33,19 @@
 #define GT2_ASSERT(c) ((void)0)
 #endif
 
+#if !defined(__PI32V2__)
+#define GT2_ROW_WORK(s) ((s)->saved_row_work++)
+#else
+#define GT2_ROW_WORK(s) ((void)0)
+#endif
+
 _Static_assert(SONG_ARENA_SPARE >= (GT2_SCRATCH_UNITS * GT2_UNIT) + GT2_PATTERN_MAX_BYTES,
                "the spare holds the scratch and a rebuild's new copy");
 _Static_assert(GT2_MAX_PATTERNS <= GT2_SLOT_ORDER &&
                    GT2_SLOT_ORDER + GT2_MAX_SUBTUNES * GT2_MAX_CHANNELS < GT2_SLOT_NONE,
                "slot numbers");
+_Static_assert(GT2_MAX_PATTERNS * GT2_MAX_ROWS < 65536u, "instrument counts fit modulo 65536");
+_Static_assert(GT2_MAX_ROWS <= 255u, "a pattern's nonempty-row count fits one byte");
 
 static uint32_t header_bytes(void) {
     return ((uint32_t)sizeof(gt2_song) + 3u) & ~3u;
@@ -216,12 +238,15 @@ static void song_clear(gt2_song* s) {
         end_row(p + GT2_DEFAULT_ROWS * GT2_ROW_BYTES);
         s->pattern[c] = GT2_SPAN(off4, GT2_DEFAULT_ROWS + 1u);
     }
+    gt2_saved_recount(s);
 }
 
 int gt2_song_clear(gt2_song* s) {
-    if (s->pending != 0u || s->pending_loose != 0u)
+    if (s->frozen || s->pending != 0u || s->pending_loose != 0u)
         return -1;
+    uint32_t revision = s->revision;
     song_clear(s);
+    s->revision = revision + 1u;
     return 0;
 }
 
@@ -295,6 +320,19 @@ int gt2_order_valid(const uint8_t* e, uint32_t n) {
 void gt2_edit_apply(gt2_song* s, const gt2_edit* e) {
     uint8_t* base = (uint8_t*)s;
     if (e->kind == GT2_EDIT_CELL) {
+        if (e->slot < GT2_MAX_PATTERNS) {
+            const uint8_t* old = base + e->offset;
+            uint32_t was = old[0] != GT2_REST || old[1] || old[2] || old[3];
+            uint32_t now = e->bytes[0] != GT2_REST || e->bytes[1] || e->bytes[2] || e->bytes[3];
+            GT2_ROW_WORK(s);
+            s->saved_pattern_nonempty[e->slot] =
+                (uint8_t)(s->saved_pattern_nonempty[e->slot] + now - was);
+            uint32_t before = old[1], after = e->bytes[1];
+            if (before != after) {
+                s->saved_instr_delta[before] = (uint16_t)(s->saved_instr_delta[before] - 1u);
+                s->saved_instr_delta[after] = (uint16_t)(s->saved_instr_delta[after] + 1u);
+            }
+        }
         for (uint32_t i = 0; i < e->n; i++)
             base[e->offset + i] = e->bytes[i];
     } else if (e->kind == GT2_EDIT_SWAP) {
@@ -326,6 +364,10 @@ static int pattern_swap_pending(const gt2_song* s, uint32_t p) {
     return (s->pend_pattern[p] & 0x80u) != 0u;
 }
 
+static int prefix_pending(const gt2_song* s, uint32_t pattern) {
+    return s->saved_trim_pending != 0u && pattern + 1u >= s->saved_trim_pending;
+}
+
 static uint32_t order_index(uint32_t subtune, uint32_t channel) {
     return subtune * GT2_MAX_CHANNELS + channel;
 }
@@ -336,6 +378,11 @@ static int order_pending(const gt2_song* s, uint32_t i) {
 
 /* An edit made on slot: pending until released. */
 static void pend(gt2_song* s, gt2_edit* e, uint32_t slot) {
+    if (s->pending == 0u && s->pending_loose == 0u) {
+        s->saved_epoch = gt2_saved_size(s);
+        s->saved_growth = 0u;
+    }
+    s->saved_growth += e->reserved;
     e->slot = (uint16_t)slot;
     if (slot == GT2_SLOT_NONE) {
         s->pending_loose++;
@@ -380,6 +427,8 @@ static void unpend(gt2_song* s, const gt2_edit* e) {
     } else if (e->kind == GT2_EDIT_SWAP) {
         GT2_ASSERT(s->pend_pattern[slot] == 0x80u);
         s->pend_pattern[slot] = 0u;
+        if (slot + 1u == s->saved_trim_pending)
+            s->saved_trim_pending = 0u;
     } else {
         GT2_ASSERT((s->pend_pattern[slot] & 0x7fu) != 0u);
         s->pend_pattern[slot]--;
@@ -389,23 +438,93 @@ static void unpend(gt2_song* s, const gt2_edit* e) {
 }
 
 void gt2_edit_release(gt2_song* s, const gt2_edit* e) {
+    if (e->kind != GT2_EDIT_NONE) {
+        if (e->slot < GT2_MAX_PATTERNS) {
+            if (e->kind == GT2_EDIT_SWAP) {
+                uint32_t old = e->old_span ? gt2_pattern_span_bytes(e->old_span)
+                                          : (GT2_DEFAULT_ROWS + 1u) * GT2_ROW_BYTES;
+                uint32_t now = e->span ? gt2_pattern_span_bytes(e->span)
+                                      : (GT2_DEFAULT_ROWS + 1u) * GT2_ROW_BYTES;
+                uint32_t group = e->slot / 16u;
+                s->saved_pattern_groups[group] =
+                    (uint16_t)(s->saved_pattern_groups[group] - old + now);
+                if (e->bytes[0] != 0u) {
+                    const uint8_t* data = gt2_arena(s) + GT2_SPAN_OFF4(e->old_span) * GT2_UNIT;
+                    uint32_t rows = e->old_span ? GT2_SPAN_LEN(e->old_span) - 1u : 0u;
+                    for (uint32_t r = 0; r < rows; r++) {
+                        GT2_ROW_WORK(s);
+                        uint32_t instr = data[r * GT2_ROW_BYTES + 1u];
+                        if (instr <= GT2_MAX_INSTR)
+                            s->saved_instr_base[instr] = (uint16_t)(s->saved_instr_base[instr] - 1u);
+                    }
+                    saved_pattern_refresh(s, e->slot);
+                }
+            } else {
+                saved_pattern_mark(s, e->slot);
+            }
+        } else if (e->slot != GT2_SLOT_NONE) {
+            uint32_t index = e->slot - GT2_SLOT_ORDER;
+            uint32_t d = index / GT2_MAX_CHANNELS, ch = index % GT2_MAX_CHANNELS;
+            if (e->kind == GT2_EDIT_SWAP) {
+                const uint8_t* old = gt2_arena(s) + GT2_SPAN_OFF4(e->old_span) * GT2_UNIT;
+                saved_order_refs(s, old, GT2_SPAN_LEN(e->old_span) - 2u, 0);
+                saved_order_refs(s, gt2_order_data(s, d, ch), gt2_order_entries(s, d, ch), 1);
+                uint32_t before = GT2_SPAN_LEN(e->old_span), after = GT2_SPAN_LEN(e->span);
+                for (uint32_t i = d + 1u; i <= GT2_MAX_SUBTUNES; i += i & (0u - i))
+                    s->saved_order_tree[i] = (uint16_t)(s->saved_order_tree[i] - before + after);
+            } else {
+                uint32_t base = s->arena_offset + GT2_SPAN_OFF4(s->order[d][ch]) * GT2_UNIT;
+                if (e->offset - base < gt2_order_entries(s, d, ch)) {
+                    uint8_t old = (uint8_t)e->span;
+                    saved_order_refs(s, &old, 1u, 0);
+                    saved_order_refs(s, e->bytes, 1u, 1);
+                }
+            }
+            saved_order_refresh(s, d);
+        } else if (e->offset >= offsetof(gt2_song, instr) &&
+                   e->offset < offsetof(gt2_song, instr) + sizeof s->instr) {
+            saved_instr_refresh(s, (e->offset - (uint32_t)offsetof(gt2_song, instr)) /
+                                       GT2_INSTR_BYTES + 1u);
+        } else if (e->offset >= offsetof(gt2_song, ltable) &&
+                   e->offset < offsetof(gt2_song, rtable) + sizeof s->rtable) {
+            uint32_t base = e->offset >= offsetof(gt2_song, rtable)
+                                ? (uint32_t)offsetof(gt2_song, rtable)
+                                : (uint32_t)offsetof(gt2_song, ltable);
+            uint32_t index = e->offset - base;
+            saved_table_refresh(s, index / GT2_TABLE_ROWS, index % GT2_TABLE_ROWS);
+        }
+        if (e->kind != GT2_EDIT_SWAP || e->bytes[0] != 0u ||
+            GT2_SPAN_LEN(e->span) != GT2_SPAN_LEN(e->old_span))
+            gt2_song_changed(s);
+    }
     if (e->kind == GT2_EDIT_SWAP && e->old_span != 0u)
         gt2_arena_release(s, GT2_SPAN_OFF4(e->old_span), span_bytes_at(e->offset, e->old_span));
     /* A pattern's rebuild moves its locks with its rows, once the player has the new copy
      * (M2c Task 7): an edit never applied (gt2_edit_cancel) moves nothing. */
-    if (e->kind == GT2_EDIT_SWAP && e->bytes[0] != 0u && is_pattern_slot(e->offset))
+    if (e->kind == GT2_EDIT_SWAP && e->bytes[0] != 0u && is_pattern_slot(e->offset)) {
+        uint8_t frozen = s->frozen;
+        s->frozen = 0u;
         song_locks_pattern_edit(s, e->bytes[0], e->slot, e->bytes[1]);
+        s->frozen = frozen;
+    }
     unpend(s, e);
+    s->saved_bytes = saved_size_compute(s);
+    if (s->pending == 0u && s->pending_loose == 0u)
+        s->saved_growth = 0u;
 }
 
 void gt2_edit_cancel(gt2_song* s, const gt2_edit* e) {
+    s->saved_growth -= e->reserved;
     if (e->kind == GT2_EDIT_SWAP && e->span != 0u)
         gt2_arena_release(s, GT2_SPAN_OFF4(e->span), span_bytes_at(e->offset, e->span));
     unpend(s, e);
+    if (s->pending == 0u && s->pending_loose == 0u)
+        s->saved_growth = 0u;
 }
 
 void gt2_edit_commit(gt2_song* s, const gt2_edit* e) {
-    gt2_edit_apply(s, e);
+    void (*volatile apply)(gt2_song*, const gt2_edit*) = gt2_edit_apply;
+    apply(s, e);
     gt2_edit_release(s, e);
 }
 
@@ -423,8 +542,18 @@ static int row_valid(const uint8_t* r) {
     return r[0] >= GT2_FIRSTNOTE && r[0] <= GT2_KEYON && r[1] <= GT2_MAX_INSTR && r[2] <= 0x0fu;
 }
 
+static gt2_err cell_check(const gt2_song* s, gt2_edit* e, uint32_t slot) {
+    uint32_t growth = saved_cell_growth(s, e, slot);
+    gt2_err err = saved_check(s, growth);
+    if (err == GT2_OK)
+        e->reserved = s->region_bytes <= SONG_REGION_BYTES ? (uint16_t)growth : 0u;
+    return err;
+}
+
 gt2_err gt2_set_row(gt2_song* s, uint32_t pattern, uint32_t row, const uint8_t c[4],
                     gt2_edit* e) {
+    if (s->frozen)
+        return GT2_ERR_SAVING;
     if (pattern >= GT2_MAX_PATTERNS || s->pattern[pattern] == 0u)
         return GT2_ERR_RANGE;
     if (pattern_swap_pending(s, pattern) || s->pend_pattern[pattern] >= 0x7fu)
@@ -432,28 +561,43 @@ gt2_err gt2_set_row(gt2_song* s, uint32_t pattern, uint32_t row, const uint8_t c
     gt2_span sp = s->pattern[pattern];
     if (row + 1u >= GT2_SPAN_LEN(sp) || !row_valid(c))
         return GT2_ERR_RANGE;
+    if (prefix_pending(s, pattern) && (c[0] != GT2_REST || c[1] || c[2] || c[3]))
+        return GT2_ERR_PENDING;
     cell(e, s->arena_offset + GT2_SPAN_OFF4(sp) * GT2_UNIT + row * GT2_ROW_BYTES, c, 4u);
+    gt2_err err = cell_check(s, e, pattern);
+    if (err != GT2_OK)
+        return err;
     pend(s, e, pattern);
     return GT2_OK;
 }
 
 gt2_err gt2_set_instr(gt2_song* s, uint32_t instr, uint32_t field, uint8_t value,
                       gt2_edit* e) {
+    if (s->frozen)
+        return GT2_ERR_SAVING;
     if (instr < 1u || instr > GT2_MAX_INSTR || field >= GT2_INSTR_BYTES)
         return GT2_ERR_RANGE;
     cell(e, (uint32_t)offsetof(gt2_song, instr) + (instr - 1u) * GT2_INSTR_BYTES + field, &value,
          1u);
+    gt2_err err = cell_check(s, e, GT2_SLOT_NONE);
+    if (err != GT2_OK)
+        return err;
     pend(s, e, GT2_SLOT_NONE);
     return GT2_OK;
 }
 
 gt2_err gt2_set_table(gt2_song* s, uint32_t table, uint32_t row, uint32_t side,
                       uint8_t value, gt2_edit* e) {
+    if (s->frozen)
+        return GT2_ERR_SAVING;
     if (table >= GT2_TABLES || row >= GT2_TABLE_ROWS || side > 1u)
         return GT2_ERR_RANGE;
     uint32_t base =
         side ? (uint32_t)offsetof(gt2_song, rtable) : (uint32_t)offsetof(gt2_song, ltable);
     cell(e, base + table * GT2_TABLE_ROWS + row, &value, 1u);
+    gt2_err err = cell_check(s, e, GT2_SLOT_NONE);
+    if (err != GT2_OK)
+        return err;
     pend(s, e, GT2_SLOT_NONE);
     return GT2_OK;
 }
@@ -464,6 +608,8 @@ static int order_index_ok(const gt2_song* s, uint32_t subtune, uint32_t channel)
 
 gt2_err gt2_set_order(gt2_song* s, uint32_t subtune, uint32_t channel, uint32_t pos,
                       uint8_t value, gt2_edit* e) {
+    if (s->frozen)
+        return GT2_ERR_SAVING;
     if (!order_index_ok(s, subtune, channel))
         return GT2_ERR_RANGE;
     uint32_t slot = GT2_SLOT_ORDER + order_index(subtune, channel);
@@ -482,6 +628,8 @@ gt2_err gt2_set_order(gt2_song* s, uint32_t subtune, uint32_t channel, uint32_t 
     }
     if (pos > n || value == GT2_LOOPSONG)
         return GT2_ERR_RANGE;
+    if (value < GT2_REPEAT && prefix_pending(s, value))
+        return GT2_ERR_PENDING;
     if (value < GT2_REPEAT && s->pattern[value] == 0u)
         return GT2_ERR_RANGE;
     uint8_t t[GT2_MAX_ORDER];
@@ -491,6 +639,10 @@ gt2_err gt2_set_order(gt2_song* s, uint32_t subtune, uint32_t channel, uint32_t 
     if (!gt2_order_valid(t, n))
         return GT2_ERR_ORDER_RULE;
     cell(e, base + pos, &value, 1u);
+    e->span = o[pos];
+    gt2_err err = cell_check(s, e, slot);
+    if (err != GT2_OK)
+        return err;
     pend(s, e, slot);
     return GT2_OK;
 }
@@ -531,12 +683,14 @@ static uint32_t order_slot(uint32_t subtune, uint32_t channel) {
 }
 
 /* A swap of the index entry at offset, pending on its slot. */
-static void swap(gt2_song* s, gt2_edit* e, uint32_t offset, gt2_span span, gt2_span old_span) {
+static void swap(gt2_song* s, gt2_edit* e, uint32_t offset, gt2_span span, gt2_span old_span,
+                 uint32_t growth) {
     memset(e, 0, sizeof *e);
     e->kind = GT2_EDIT_SWAP;
     e->offset = offset;
     e->span = span;
     e->old_span = old_span;
+    e->reserved = s->region_bytes <= SONG_REGION_BYTES ? (uint16_t)growth : 0u;
     uint32_t slot = is_pattern_slot(offset)
                         ? (offset - (uint32_t)offsetof(gt2_song, pattern)) / sizeof(gt2_span)
                         : GT2_SLOT_ORDER +
@@ -548,11 +702,28 @@ static void swap(gt2_song* s, gt2_edit* e, uint32_t offset, gt2_span span, gt2_s
  * they are, an empty row at insert_at if it is below rows, rows from drop_at + 1 on shifted,
  * the old end row last. A pattern not held reads as GT2_DEFAULT_ROWS empty rows. */
 static gt2_err pattern_rebuild(gt2_song* s, uint32_t pattern, uint32_t rows, int insert_at,
-                               int drop_at, gt2_edit* e) {
+                                int drop_at, gt2_edit* e) {
+    if (s->frozen)
+        return GT2_ERR_SAVING;
     gt2_span old = s->pattern[pattern];
     uint32_t off4 = 0;
     if (pattern_pending(s, pattern))
         return GT2_ERR_PENDING;
+    uint32_t old_bytes = old ? gt2_pattern_span_bytes(old)
+                             : (GT2_DEFAULT_ROWS + 1u) * GT2_ROW_BYTES;
+    uint32_t new_bytes = rows * GT2_ROW_BYTES;
+    uint32_t growth = new_bytes > old_bytes ? new_bytes - old_bytes : 0u;
+    uint32_t op = old == 0u ? SONG_LOCKS_REMOVE : insert_at >= 0 ? SONG_LOCKS_INSERT
+                                             : drop_at >= 0 ? SONG_LOCKS_DELETE : SONG_LOCKS_RESIZE;
+    uint32_t lock_row = insert_at >= 0 ? (uint32_t)insert_at
+                                     : drop_at >= 0 ? (uint32_t)drop_at : rows - 1u;
+    uint32_t before_trailer = gt2_saved_trailer_size(s->ext_used);
+    uint32_t after_trailer = gt2_saved_trailer_size(song_locks_pattern_size(s, op, pattern, lock_row));
+    if (after_trailer > before_trailer)
+        growth += after_trailer - before_trailer;
+    gt2_err cap = saved_check(s, growth);
+    if (cap != GT2_OK)
+        return cap;
     gt2_err err = rebuild_alloc(s, old ? gt2_pattern_span_bytes(old) : 0u,
                                 rows * GT2_ROW_BYTES, &off4);
     if (err != GT2_OK)
@@ -583,7 +754,7 @@ static gt2_err pattern_rebuild(gt2_song* s, uint32_t pattern, uint32_t rows, int
     } else {
         end_row(end);
     }
-    swap(s, e, pattern_slot(pattern), GT2_SPAN(off4, rows), old);
+    swap(s, e, pattern_slot(pattern), GT2_SPAN(off4, rows), old, growth);
     return GT2_OK;
 }
 
@@ -597,6 +768,8 @@ static gt2_err with_locks(gt2_err err, gt2_edit* e, uint32_t op, uint32_t row) {
 }
 
 gt2_err gt2_pattern_resize(gt2_song* s, uint32_t pattern, uint32_t rows, gt2_edit* e) {
+    if (s->frozen)
+        return GT2_ERR_SAVING;
     if (pattern >= GT2_MAX_PATTERNS || s->pattern[pattern] == 0u)
         return GT2_ERR_RANGE;
     if (rows < 1u || rows > GT2_MAX_ROWS)
@@ -606,6 +779,8 @@ gt2_err gt2_pattern_resize(gt2_song* s, uint32_t pattern, uint32_t rows, gt2_edi
 }
 
 gt2_err gt2_pattern_insert_row(gt2_song* s, uint32_t pattern, uint32_t row, gt2_edit* e) {
+    if (s->frozen)
+        return GT2_ERR_SAVING;
     if (pattern >= GT2_MAX_PATTERNS || s->pattern[pattern] == 0u)
         return GT2_ERR_RANGE;
     uint32_t body = GT2_SPAN_LEN(s->pattern[pattern]) - 1u;
@@ -618,6 +793,8 @@ gt2_err gt2_pattern_insert_row(gt2_song* s, uint32_t pattern, uint32_t row, gt2_
 }
 
 gt2_err gt2_pattern_delete_row(gt2_song* s, uint32_t pattern, uint32_t row, gt2_edit* e) {
+    if (s->frozen)
+        return GT2_ERR_SAVING;
     if (pattern >= GT2_MAX_PATTERNS || s->pattern[pattern] == 0u)
         return GT2_ERR_RANGE;
     uint32_t body = GT2_SPAN_LEN(s->pattern[pattern]) - 1u;
@@ -643,6 +820,8 @@ static int pattern_named(const gt2_song* s, uint32_t pattern) {
 }
 
 gt2_err gt2_pattern_add(gt2_song* s, uint32_t rows, uint32_t* pattern, gt2_edit* e) {
+    if (s->frozen)
+        return GT2_ERR_SAVING;
     if (rows < 1u || rows > GT2_MAX_ROWS)
         return GT2_ERR_ROWS;
     for (uint32_t p = 0; p < GT2_MAX_PATTERNS; p++) {
@@ -657,6 +836,8 @@ gt2_err gt2_pattern_add(gt2_song* s, uint32_t rows, uint32_t* pattern, gt2_edit*
 }
 
 gt2_err gt2_pattern_remove(gt2_song* s, uint32_t pattern, gt2_edit* e) {
+    if (s->frozen)
+        return GT2_ERR_SAVING;
     if (pattern >= GT2_MAX_PATTERNS || s->pattern[pattern] == 0u)
         return GT2_ERR_RANGE;
     /* The orderlists are checked as they will stand: none may have an edit pending. */
@@ -664,7 +845,28 @@ gt2_err gt2_pattern_remove(gt2_song* s, uint32_t pattern, gt2_edit* e) {
         return GT2_ERR_PENDING;
     if (pattern_named(s, pattern))
         return GT2_ERR_IN_USE;
-    swap(s, e, pattern_slot(pattern), 0u, s->pattern[pattern]);
+    uint32_t old = gt2_pattern_span_bytes(s->pattern[pattern]);
+    uint32_t deflt = (GT2_DEFAULT_ROWS + 1u) * GT2_ROW_BYTES;
+    uint32_t growth = deflt > old ? deflt - old : 0u;
+    uint32_t before_trailer = gt2_saved_trailer_size(s->ext_used);
+    uint32_t after_trailer = gt2_saved_trailer_size(
+        song_locks_pattern_size(s, SONG_LOCKS_REMOVE, pattern, 0u));
+    if (after_trailer > before_trailer)
+        growth += after_trailer - before_trailer;
+    int trailing = pattern != 0u && pattern + 1u == gt2_saved_patterns(s);
+    if (trailing && s->region_bytes <= SONG_REGION_BYTES) {
+        for (uint32_t p = pattern + 1u; p < GT2_MAX_PATTERNS; p++)
+            if (pattern_pending(s, p))
+                return GT2_ERR_PENDING;
+    }
+    if (trailing)
+        growth = 0u; /* Trimming the last pattern saves at least nine bytes, padding included. */
+    gt2_err cap = saved_check(s, growth);
+    if (cap != GT2_OK)
+        return cap;
+    swap(s, e, pattern_slot(pattern), 0u, s->pattern[pattern], growth);
+    if (trailing && s->region_bytes <= SONG_REGION_BYTES)
+        s->saved_trim_pending = (uint8_t)(pattern + 1u);
     return with_locks(GT2_OK, e, SONG_LOCKS_REMOVE, 0u);
 }
 
@@ -673,6 +875,10 @@ static gt2_err order_rebuild(gt2_song* s, uint32_t subtune, uint32_t channel, co
                              uint32_t n, uint8_t restart, gt2_edit* e) {
     gt2_span old = s->order[subtune][channel];
     uint32_t off4 = 0;
+    uint32_t growth = saved_order_growth(s, subtune, channel, t, n);
+    gt2_err cap = saved_check(s, growth);
+    if (cap != GT2_OK)
+        return cap;
     gt2_err err = rebuild_alloc(s, gt2_order_span_bytes(old), n + 2u, &off4);
     if (err != GT2_OK)
         return err;
@@ -681,12 +887,14 @@ static gt2_err order_rebuild(gt2_song* s, uint32_t subtune, uint32_t channel, co
         dst[i] = t[i];
     dst[n] = GT2_LOOPSONG;
     dst[n + 1u] = restart;
-    swap(s, e, order_slot(subtune, channel), GT2_SPAN(off4, n + 2u), old);
+    swap(s, e, order_slot(subtune, channel), GT2_SPAN(off4, n + 2u), old, growth);
     return GT2_OK;
 }
 
 gt2_err gt2_order_insert(gt2_song* s, uint32_t subtune, uint32_t channel, uint32_t pos,
                          uint8_t value, gt2_edit* e) {
+    if (s->frozen)
+        return GT2_ERR_SAVING;
     if (!order_index_ok(s, subtune, channel))
         return GT2_ERR_RANGE;
     if (order_pending(s, order_index(subtune, channel)) ||
@@ -696,6 +904,8 @@ gt2_err gt2_order_insert(gt2_song* s, uint32_t subtune, uint32_t channel, uint32
     uint32_t n = gt2_order_entries(s, subtune, channel);
     if (pos > n || value == GT2_LOOPSONG)
         return GT2_ERR_RANGE;
+    if (value < GT2_REPEAT && prefix_pending(s, value))
+        return GT2_ERR_PENDING;
     if (value < GT2_REPEAT && s->pattern[value] == 0u)
         return GT2_ERR_RANGE;
     if (n >= GT2_MAX_ORDER)
@@ -716,7 +926,9 @@ gt2_err gt2_order_insert(gt2_song* s, uint32_t subtune, uint32_t channel, uint32
 }
 
 gt2_err gt2_order_delete(gt2_song* s, uint32_t subtune, uint32_t channel, uint32_t pos,
-                         gt2_edit* e) {
+                          gt2_edit* e) {
+    if (s->frozen)
+        return GT2_ERR_SAVING;
     if (!order_index_ok(s, subtune, channel))
         return GT2_ERR_RANGE;
     if (order_pending(s, order_index(subtune, channel)))
@@ -770,10 +982,12 @@ static void move_block(gt2_song* s, uint32_t slot, gt2_span sp, uint32_t to4, gt
     uint8_t* dst = a + to4 * GT2_UNIT;
     for (uint32_t i = 0; i < bytes; i++)
         dst[i] = src[i];
-    swap(s, e, slot, GT2_SPAN(to4, GT2_SPAN_LEN(sp)), sp);
+    swap(s, e, slot, GT2_SPAN(to4, GT2_SPAN_LEN(sp)), sp, 0u);
 }
 
 int gt2_compact_step(gt2_song* s, gt2_edit* e) {
+    if (s->frozen)
+        return -1;
     if (s->pending != 0u)
         return -1;
     uint32_t limit = alloc_limit(s);
@@ -811,69 +1025,292 @@ int gt2_compact_step(gt2_song* s, gt2_edit* e) {
 
 /* What savesong writes. */
 
-uint32_t gt2_saved_subtunes(const gt2_song* s) {
-    /* Mono and Stereo GoatTracker alike look at channels 1-3 only. */
-    uint32_t c = s->subtunes - 1u;
-    for (;;) {
-        if (gt2_order_entries(s, c, 0) && gt2_order_entries(s, c, 1) &&
-            gt2_order_entries(s, c, 2))
-            break;
-        if (c == 0u)
-            break;
-        c--;
+static uint32_t highest_bit(uint32_t bits) {
+    uint32_t bit = 0u;
+    if (bits >= 0x10000u) {
+        bits >>= 16;
+        bit += 16u;
     }
-    return c + 1u;
+    if (bits >= 0x100u) {
+        bits >>= 8;
+        bit += 8u;
+    }
+    if (bits >= 0x10u) {
+        bits >>= 4;
+        bit += 4u;
+    }
+    if (bits >= 4u) {
+        bits >>= 2;
+        bit += 2u;
+    }
+    return bit + (bits >= 2u);
+}
+
+uint32_t gt2_saved_subtunes(const gt2_song* s) {
+    uint32_t bits = s->saved_subtune_bits | 1u;
+    return highest_bit(bits) + 1u;
 }
 
 uint32_t gt2_saved_patterns(const gt2_song* s) {
-    uint32_t highest = 0;
-    for (uint32_t p = 0; p < GT2_MAX_PATTERNS; p++) {
-        const uint8_t* d = gt2_pattern_data(s, p);
-        if (d == NULL)
-            continue;
-        uint32_t body = GT2_SPAN_LEN(s->pattern[p]) - 1u;
-        for (uint32_t r = 0; r < body; r++) {
-            const uint8_t* row = d + r * GT2_ROW_BYTES;
-            if (row[0] != GT2_REST || row[1] || row[2] || row[3])
-                highest = p;
-        }
-    }
-    for (uint32_t d = 0; d < s->subtunes; d++) {
-        for (uint32_t c = 0; c < s->channels; c++) {
-            const uint8_t* o = gt2_order_data(s, d, c);
-            uint32_t n = gt2_order_entries(s, d, c);
-            for (uint32_t i = 0; i < n; i++)
-                if (o[i] < GT2_REPEAT && o[i] > highest)
-                    highest = o[i];
-        }
-    }
-    return highest + 1u;
+    for (uint32_t i = 7u; i > 0u; i--)
+        if (s->saved_pattern_bits[i - 1u])
+            return (i - 1u) * 32u + highest_bit(s->saved_pattern_bits[i - 1u]) + 1u;
+    return 1u;
 }
 
 uint32_t gt2_saved_instruments(const gt2_song* s) {
-    uint32_t highest = 0;
-    for (uint32_t p = 0; p < GT2_MAX_PATTERNS; p++) {
-        const uint8_t* d = gt2_pattern_data(s, p);
-        if (d == NULL)
-            continue;
-        uint32_t body = GT2_SPAN_LEN(s->pattern[p]) - 1u;
-        for (uint32_t r = 0; r < body; r++)
-            if (d[r * GT2_ROW_BYTES + 1u] > highest)
-                highest = d[r * GT2_ROW_BYTES + 1u];
+    uint32_t highest = 0u;
+    for (uint32_t i = 2u; i > 0u; i--) {
+        uint32_t bits = s->saved_instr_defs[i - 1u];
+        if (bits) {
+            highest = (i - 1u) * 32u + highest_bit(bits);
+            break;
+        }
     }
-    for (uint32_t i = 1; i <= GT2_MAX_INSTR; i++) {
-        const uint8_t* in = s->instr[i - 1u];
-        if (in[GT2_INS_AD] || in[GT2_INS_SR] || in[GT2_INS_WAVE] || in[GT2_INS_PULSE] ||
-            in[GT2_INS_FILTER] || in[GT2_INS_VIBDELAY] || in[GT2_INS_VIBPARAM])
-            if (i > highest)
-                highest = i;
-    }
+    for (uint32_t instr = GT2_MAX_INSTR; instr > highest; instr--)
+        if ((uint16_t)(s->saved_instr_base[instr] + s->saved_instr_delta[instr]) != 0u)
+            return instr;
     return highest;
 }
 
 uint32_t gt2_saved_table_rows(const gt2_song* s, uint32_t table) {
-    uint32_t c = GT2_TABLE_ROWS;
-    while (c > 0u && !(s->ltable[table][c - 1u] | s->rtable[table][c - 1u]))
-        c--;
-    return c;
+    if (table >= GT2_TABLES)
+        return 0u;
+    for (uint32_t i = 8u; i > 0u; i--)
+        if (s->saved_table_bits[table][i - 1u])
+            return (i - 1u) * 32u + highest_bit(s->saved_table_bits[table][i - 1u]) + 1u;
+    return 0u;
+}
+
+static void set_bit(uint32_t* bits, uint32_t index, int value) {
+    uint32_t bit = 1u << (index & 31u);
+    if (value)
+        bits[index >> 5] |= bit;
+    else
+        bits[index >> 5] &= ~bit;
+}
+
+static uint32_t pattern_prefix(const gt2_song* s, uint32_t n) {
+    uint32_t sum = 0u;
+    uint32_t groups = n / 16u;
+    for (uint32_t i = 0; i < groups; i++)
+        sum += s->saved_pattern_groups[i];
+    for (uint32_t p = groups * 16u; p < n; p++)
+        sum += 1u + gt2_pattern_rows(s, p) * GT2_ROW_BYTES;
+    return sum;
+}
+
+static uint32_t order_prefix(const gt2_song* s, uint32_t n) {
+    uint32_t sum = 0u;
+    for (; n > 0u; n &= n - 1u)
+        sum += s->saved_order_tree[n];
+    return sum;
+}
+
+uint32_t gt2_saved_trailer_size(uint32_t ext_used) {
+    uint32_t length = SONG_TRAILER_MIN + ext_used;
+    if ((length & 0xffu) == 0xffu || ((length >> 8) & 0xffu) == 0xffu) {
+        length += SONG_CHUNK_HEADER + 1u;
+        while ((length & 0xffu) == 0xffu || ((length >> 8) & 0xffu) == 0xffu)
+            length++;
+    }
+    return length;
+}
+
+uint32_t gt2_saved_size(const gt2_song* s) {
+    return s->saved_bytes;
+}
+
+static uint32_t saved_size_compute(const gt2_song* s) {
+    uint32_t size = 107u + order_prefix(s, gt2_saved_subtunes(s)) +
+                    GT2_INSTR_BYTES * gt2_saved_instruments(s) +
+                    pattern_prefix(s, gt2_saved_patterns(s));
+    for (uint32_t t = 0; t < GT2_TABLES; t++)
+        size += 2u * gt2_saved_table_rows(s, t);
+    return size + gt2_saved_trailer_size(s->ext_used);
+}
+
+static void saved_pattern_mark(gt2_song* s, uint32_t p) {
+    set_bit(s->saved_pattern_bits, p,
+            s->saved_pattern_nonempty[p] != 0u || s->saved_pattern_refs[p] != 0u);
+}
+
+static void saved_pattern_refresh(gt2_song* s, uint32_t p) {
+    if (p >= GT2_MAX_PATTERNS)
+        return;
+    uint8_t nonempty = 0u;
+    const uint8_t* data = gt2_pattern_data(s, p);
+    if (data) {
+        uint32_t n = GT2_SPAN_LEN(s->pattern[p]) - 1u;
+        for (uint32_t r = 0; r < n; r++) {
+            GT2_ROW_WORK(s);
+            const uint8_t* row = data + r * GT2_ROW_BYTES;
+            nonempty += (uint8_t)(row[0] != GT2_REST || row[1] || row[2] || row[3]);
+            uint32_t instr = row[1];
+            if (instr <= GT2_MAX_INSTR)
+                s->saved_instr_base[instr] = (uint16_t)(s->saved_instr_base[instr] + 1u);
+        }
+    }
+    s->saved_pattern_nonempty[p] = nonempty;
+    saved_pattern_mark(s, p);
+}
+
+static void saved_instr_refresh(gt2_song* s, uint32_t instr) {
+    const uint8_t* in = s->instr[instr - 1u];
+    set_bit(s->saved_instr_defs, instr,
+            in[0] || in[1] || in[2] || in[3] || in[4] || in[5] || in[6]);
+}
+
+static void saved_table_refresh(gt2_song* s, uint32_t table, uint32_t row) {
+    set_bit(s->saved_table_bits[table], row, s->ltable[table][row] || s->rtable[table][row]);
+}
+
+static void saved_order_refs(gt2_song* s, const uint8_t* o, uint32_t n, int add) {
+    for (uint32_t i = 0; i < n; i++) {
+        uint32_t p = o[i];
+        if (p >= GT2_REPEAT)
+            continue;
+        if (add)
+            s->saved_pattern_refs[p]++;
+        else
+            s->saved_pattern_refs[p]--;
+        saved_pattern_mark(s, p);
+    }
+}
+
+static void saved_order_refresh(gt2_song* s, uint32_t d) {
+    int used = gt2_order_entries(s, d, 0u) && gt2_order_entries(s, d, 1u) &&
+               gt2_order_entries(s, d, 2u);
+    set_bit(&s->saved_subtune_bits, d, used);
+}
+
+int gt2_saved_recount_step(gt2_song* s, uint32_t* cursor) {
+    uint32_t at = (*cursor)++;
+    if (at == 0u) {
+        memset(s->saved_pattern_groups, 0,
+               offsetof(gt2_song, frozen) - offsetof(gt2_song, saved_pattern_groups));
+        s->saved_epoch = 0u;
+        s->saved_growth = 0u;
+        s->saved_bytes = 0u;
+        s->saved_row_work = 0u;
+        s->saved_trim_pending = 0u;
+        return 0;
+    }
+    at--;
+    if (at < GT2_MAX_PATTERNS) {
+        uint32_t bytes = 1u + gt2_pattern_rows(s, at) * GT2_ROW_BYTES;
+        s->saved_pattern_groups[at / 16u] =
+            (uint16_t)(s->saved_pattern_groups[at / 16u] + bytes);
+        saved_pattern_refresh(s, at);
+        return 0;
+    }
+    at -= GT2_MAX_PATTERNS;
+    if (at < GT2_MAX_SUBTUNES * GT2_MAX_CHANNELS) {
+        uint32_t d = at / GT2_MAX_CHANNELS, ch = at % GT2_MAX_CHANNELS;
+        if (d < s->subtunes && ch < s->channels) {
+            uint32_t n = gt2_order_entries(s, d, ch);
+            saved_order_refs(s, gt2_order_data(s, d, ch), n, 1);
+            for (uint32_t i = d + 1u; i <= GT2_MAX_SUBTUNES; i += i & (0u - i))
+                s->saved_order_tree[i] = (uint16_t)(s->saved_order_tree[i] + n + 3u);
+            saved_order_refresh(s, d);
+        }
+        return 0;
+    }
+    at -= GT2_MAX_SUBTUNES * GT2_MAX_CHANNELS;
+    if (at < GT2_MAX_INSTR) {
+        saved_instr_refresh(s, at + 1u);
+        return 0;
+    }
+    at -= GT2_MAX_INSTR;
+    if (at < GT2_TABLES * GT2_TABLE_ROWS) {
+        saved_table_refresh(s, at / GT2_TABLE_ROWS, at % GT2_TABLE_ROWS);
+        return 0;
+    }
+    s->saved_bytes = saved_size_compute(s);
+    return 1;
+}
+
+void gt2_saved_recount(gt2_song* s) {
+    uint32_t cursor = 0u;
+    while (!gt2_saved_recount_step(s, &cursor)) {}
+}
+
+void gt2_song_changed(gt2_song* s) {
+    s->revision++;
+}
+
+static gt2_err saved_check(const gt2_song* s, uint32_t growth) {
+    if (s->region_bytes > SONG_REGION_BYTES || s->channels == 0u)
+        return GT2_OK;
+    uint32_t base = s->pending || s->pending_loose ? s->saved_epoch + s->saved_growth
+                                                : gt2_saved_size(s);
+    return growth <= GT2_SAVED_MAX && base <= GT2_SAVED_MAX - growth
+               ? GT2_OK : GT2_ERR_SONG_FULL;
+}
+
+int gt2_saved_ext_check(const gt2_song* s, uint32_t ext_used) {
+    if (s->frozen)
+        return -(int)GT2_ERR_SAVING;
+    if (s->pending)
+        return -(int)GT2_ERR_PENDING;
+    uint32_t before = gt2_saved_trailer_size(s->ext_used);
+    uint32_t after = gt2_saved_trailer_size(ext_used);
+    return saved_check(s, after > before ? after - before : 0u) == GT2_OK
+               ? 0 : -(int)GT2_ERR_SONG_FULL;
+}
+
+void gt2_saved_ext_changed(gt2_song* s, uint32_t old_used) {
+    uint32_t before = gt2_saved_trailer_size(old_used);
+    uint32_t after = gt2_saved_trailer_size(s->ext_used);
+    if ((s->pending || s->pending_loose) && after > before)
+        s->saved_growth += after - before;
+    s->saved_bytes = s->saved_bytes - before + after;
+    gt2_song_changed(s);
+}
+
+static uint32_t pattern_growth(const gt2_song* s, uint32_t pattern) {
+    uint32_t count = gt2_saved_patterns(s);
+    return pattern + 1u > count ? pattern_prefix(s, pattern + 1u) - pattern_prefix(s, count) : 0u;
+}
+
+static uint32_t instrument_growth(const gt2_song* s, uint32_t instr) {
+    uint32_t count = gt2_saved_instruments(s);
+    return instr > count ? (instr - count) * GT2_INSTR_BYTES : 0u;
+}
+
+static uint32_t saved_cell_growth(const gt2_song* s, const gt2_edit* e, uint32_t slot) {
+    if (slot < GT2_SLOT_ORDER) {
+        int active = e->bytes[0] != GT2_REST || e->bytes[1] || e->bytes[2] || e->bytes[3];
+        return (active ? pattern_growth(s, slot) : 0u) + instrument_growth(s, e->bytes[1]);
+    }
+    if (slot != GT2_SLOT_NONE) {
+        uint32_t index = slot - GT2_SLOT_ORDER;
+        uint32_t d = index / GT2_MAX_CHANNELS, ch = index % GT2_MAX_CHANNELS;
+        uint32_t base = s->arena_offset + GT2_SPAN_OFF4(s->order[d][ch]) * GT2_UNIT;
+        return e->offset - base < gt2_order_entries(s, d, ch) && e->bytes[0] < GT2_REPEAT
+                   ? pattern_growth(s, e->bytes[0]) : 0u;
+    }
+    if (e->offset < offsetof(gt2_song, ltable)) {
+        uint32_t offset = e->offset - (uint32_t)offsetof(gt2_song, instr);
+        return offset % GT2_INSTR_BYTES <= GT2_INS_VIBDELAY && e->bytes[0]
+                   ? instrument_growth(s, offset / GT2_INSTR_BYTES + 1u) : 0u;
+    }
+    uint32_t base = e->offset >= offsetof(gt2_song, rtable)
+                        ? (uint32_t)offsetof(gt2_song, rtable) : (uint32_t)offsetof(gt2_song, ltable);
+    uint32_t offset = e->offset - base, row = offset % GT2_TABLE_ROWS + 1u;
+    uint32_t count = gt2_saved_table_rows(s, offset / GT2_TABLE_ROWS);
+    return e->bytes[0] && row > count ? 2u * (row - count) : 0u;
+}
+
+static uint32_t saved_order_growth(const gt2_song* s, uint32_t d, uint32_t ch,
+                                  const uint8_t* data, uint32_t n) {
+    uint32_t old = gt2_order_entries(s, d, ch), highest = 0u;
+    for (uint32_t i = 0; i < n; i++)
+        if (data[i] < GT2_REPEAT && data[i] > highest)
+            highest = data[i];
+    uint32_t growth = (n > old ? n - old : 0u) + pattern_growth(s, highest);
+    uint32_t subtunes = gt2_saved_subtunes(s);
+    if (n > 0u && d >= subtunes)
+        growth += order_prefix(s, d + 1u) - order_prefix(s, subtunes);
+    return growth;
 }

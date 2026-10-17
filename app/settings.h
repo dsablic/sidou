@@ -6,7 +6,8 @@
  * keys' chip model, profile and character, the effect slots, the envelope mode and the
  * preset's edits: the instrument as it was left; not the MASTER volume, which is the pot),
  * MIDI learn's bindings, the firmware version last booted (for the full boot once after
- * an install), and TRACKER ROWS. Not the octave, held notes, controllers or view on screen.
+ * an install), TRACKER ROWS, THEME and the last song. Not the octave, held notes, controllers
+ * or view on screen.
  *
  * The record, little-endian bytes (SETTINGS_BYTES; docs/reference/settings-format.md):
  *   0  schema version (SETTINGS_VERSION)
@@ -21,6 +22,7 @@
  *  92  the firmware version, NUL-padded, SETTINGS_VERSION_CHARS bytes
  * 106  TRACKER ROWS (0 BAR, 1 SCROLL; schema 2)
  * 107  THEME (0 HIGH CONTRAST, 1 C64; schema 3)
+ * 108  last song's filename, 16 NUL-padded bytes (schema 4); absent: built-in song
  * A later schema only appends fields: an older firmware reads a newer record's v1 part, and a
  * newer one fills what an older record lacks with its defaults (settings_load's migrations).
  *
@@ -50,13 +52,14 @@ extern "C" {
  * user profiles); those below are the emulator tests' (platform/fm1/store_fm1.h's hook). */
 #define SETTINGS_KEY 0x100u
 #define SETTINGS_TYPE 1u
-#define SETTINGS_VERSION 3u
+#define SETTINGS_VERSION 4u
 #define SETTINGS_VERSION_CHARS 14u /* "V" and the version, as the status screen shows it */
 #define SETTINGS_PARAMS_V1 42u
 #define SETTINGS_V1_BYTES (6u + SETTINGS_PARAMS_V1 + 2u + SETTINGS_PARAMS_V1 + SETTINGS_VERSION_CHARS)
 #define SETTINGS_V2_BYTES (SETTINGS_V1_BYTES + 1u)
 #define SETTINGS_V3_BYTES (SETTINGS_V2_BYTES + 1u)
-#define SETTINGS_BYTES SETTINGS_V3_BYTES
+#define SETTINGS_V4_BYTES (SETTINGS_V3_BYTES + STORE_NAME_MAX)
+#define SETTINGS_BYTES SETTINGS_V4_BYTES
 #define SETTINGS_DEBOUNCE_MS 5000u
 #define SETTINGS_FORCE_MS 2000u
 
@@ -86,6 +89,7 @@ typedef struct {
     uint8_t forcing;
     uint8_t result; /* a settings_result, until settings_take_result */
     uint8_t started;
+    char last_song[STORE_NAME_MAX + 1u];
 } settings;
 
 void settings_init(settings* s, live* l, midi_learn* ml, uint8_t* cards, uint8_t* tracker_rows, ui_sound* snd,
@@ -109,6 +113,8 @@ void settings_tick(settings* s, uint32_t now_ms);
 void settings_save_now(settings* s, uint32_t now_ms);
 /* The store lost the record (a format): it is written again once the store takes it. */
 void settings_forget(settings* s);
+/* The last loaded or saved song; an empty name boots the built-in song. */
+void settings_set_song(settings* s, const char* name);
 /* An explicit save's end, once (then SETTINGS_NOTHING). */
 settings_result settings_take_result(settings* s);
 

@@ -166,6 +166,32 @@ fn a_new_song_clears_user_identity_even_when_its_base_profile_is_unchanged() {
 }
 
 #[test]
+fn a_refused_explicit_edit_leaves_the_song_setup_and_identity_unchanged() {
+    unsafe extern "C" fn refuse(ctx: *mut c_void, _: *const chip_setup) -> i32 {
+        unsafe { *ctx.cast::<u32>() += 1 };
+        0
+    }
+
+    let mut k = Keys::new();
+    let mut calls = 0u32;
+    k.kr.song_user = 2;
+    k.kr.song_edit = Some(refuse);
+    k.kr.song_edit_ctx = (&mut calls as *mut u32).cast();
+    let before = k.kr.song_want;
+    let edit = chip_setup {
+        profile: SID_CHIP_6581_WORN as u8,
+        controls: [10, 20, 30, 40],
+        gate_reset: 0,
+    };
+    assert_eq!(unsafe { keys_route_song_edit(&mut *k.kr, &edit) }, 0);
+    assert_eq!(calls, 1);
+    assert_eq!(k.kr.song_want.profile, before.profile);
+    assert_eq!(k.kr.song_want.controls, before.controls);
+    assert_eq!(k.kr.song_want.gate_reset, before.gate_reset);
+    assert_eq!(k.kr.song_user, 2);
+}
+
+#[test]
 fn chip_ctl_follows_a_setup_and_records_what_it_saw() {
     let mut k = Keys::new();
     let want = chip_setup {
@@ -649,7 +675,9 @@ fn an_edit_of_the_songs_setup_brings_chip_a_to_it() {
         controls: [0, 0, 64, 0],
         gate_reset: 1,
     };
-    unsafe { keys_route_song_wants(&mut *k.kr, &song) };
+    assert!(k.kr.song_edit.is_none());
+    assert!(k.kr.song_edit_ctx.is_null());
+    assert_eq!(unsafe { keys_route_song_edit(&mut *k.kr, &song) }, 1);
     k.ticks(40);
     assert_eq!(k.chip(0).filter_curve, 3, "chip A has the song's WORN");
     assert_eq!(k.chips.ramp[0].now.thump, 64, "and its thump");
@@ -832,4 +860,115 @@ fn chip_level_ccs_on_chip_as_channels_set_chip_as_setup() {
     k.ticks(60);
     assert_eq!(k.live.keys_chip, 0);
     assert_eq!(k.chips.lost_resets, 0);
+}
+
+#[test]
+fn chip_edits_under_character_locks_preserve_the_unlocked_song_base() {
+    use std::{fs, path::Path, process::Command};
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let main = fs::read_to_string(root.join("platform/fm1/main.c")).unwrap();
+    let start = main.find("static chip_setup song_char_base;").unwrap();
+    let end = main[start..].find("static void song_boot(void)").unwrap() + start;
+    let source = format!(
+        r#"
+#include <assert.h>
+#include <string.h>
+#include "keys_route.h"
+#include "midi_sync.h"
+#include "player/song_ctl.h"
+static gt2_song song;
+static song_ctl ctl;
+static unsigned toasts;
+static song_ctl* audio_song(void) {{ return &ctl; }}
+static void ui_toast(const char* text, uint32_t ms) {{
+    assert(strcmp(text, "SAVING") == 0 && ms == 2000u);
+    toasts++;
+}}
+void keys_route_song_wants(keys_route* kr, const chip_setup* setup) {{ kr->song_want = *setup; }}
+{}
+int main(void) {{
+    ctl.song = &song;
+    keys_route kr = {{0}};
+    chip_setup base = {{1, {{10, 20, 30, 40}}, 1}};
+    keys_route_song_wants(&kr, &base);
+    song_chip_character(&kr, 0, 90);
+    song_chip_character(&kr, 1, 80);
+    chip_setup edit = kr.song_want;
+    edit.profile = 3;
+    edit.gate_reset = 0;
+    edit.controls[2] = 50;
+    assert(song_chip_edit(&kr, &edit) == 1);
+    assert(song_char_base.profile == 3 && song_char_base.gate_reset == 0);
+    assert(song_char_base.controls[0] == 10 && song_char_base.controls[1] == 20);
+    assert(song_char_base.controls[2] == 50);
+    assert(kr.song_want.controls[0] == 90 && kr.song_want.controls[1] == 80);
+    edit = kr.song_want;
+    edit.controls[0] = 94;
+    assert(song_chip_edit(&kr, &edit) == 1);
+    assert(song_char_base.controls[0] == 94 && song_char_base.controls[1] == 20);
+    assert(kr.song_want.controls[0] == 90);
+    song_chip_character(&kr, 1, 70);
+    assert(kr.song_want.profile == 3 && kr.song_want.gate_reset == 0);
+    assert(kr.song_want.controls[2] == 50);
+    song.frozen = 1;
+    edit.profile = 4;
+    edit.controls[0] = 100;
+    assert(song_chip_edit(&kr, &edit) == 0);
+    assert(toasts == 1 && song_char_base.profile == 3 && song_char_base.controls[0] == 94);
+    assert(kr.song_want.profile == 3 && kr.song_want.controls[0] == 90);
+    song.frozen = 0;
+    song_chip_character(&kr, 0, -1);
+    assert(kr.song_want.controls[0] == 94 && kr.song_want.controls[1] == 70);
+    song_chip_character(&kr, 1, -1);
+    assert(kr.song_want.controls[1] == 20 && kr.song_want.controls[2] == 50);
+    edit = kr.song_want;
+    edit.profile = 2;
+    song.frozen = 1;
+    assert(song_chip_edit(&kr, &edit) == 0);
+    assert(toasts == 2 && kr.song_want.profile == 3);
+    song.frozen = 0;
+    assert(song_chip_edit(&kr, &edit) == 1);
+    assert(kr.song_want.profile == 2);
+    song_chip_character(&kr, 3, 60);
+    assert(song_char_base.profile == 2 && song_char_base.controls[0] == 94);
+    return 0;
+}}
+"#,
+        &main[start..end]
+    );
+    let scratch = root.join("build/scratch");
+    fs::create_dir_all(&scratch).unwrap();
+    let file = scratch.join(format!("song-chip-edit-{}.c", std::process::id()));
+    let exe = file.with_extension("test");
+    fs::write(&file, source).unwrap();
+    let build = Command::new("cc")
+        .args(["-std=c11", "-Werror", "-I"])
+        .arg(root.join("app"))
+        .arg("-I")
+        .arg(root.join("core"))
+        .arg(&file)
+        .arg("-o")
+        .arg(&exe)
+        .output()
+        .unwrap();
+    let run = build
+        .status
+        .success()
+        .then(|| Command::new(&exe).output().unwrap());
+    fs::remove_file(&file).unwrap();
+    if exe.exists() {
+        fs::remove_file(&exe).unwrap();
+    }
+    assert!(
+        build.status.success(),
+        "{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let run = run.unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
 }

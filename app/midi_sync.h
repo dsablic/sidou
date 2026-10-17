@@ -140,6 +140,8 @@ void midi_sync_init(midi_sync* s);
 /* The player: the song views' transport (app/song_transport.h) with its clock members; one
  * without them, or NULL, leaves clock and transport doing nothing. */
 void midi_sync_bind(midi_sync* s, const song_transport* t);
+/* A new stopped song: cancel the old song's pending transport, retaining clock fit/settings. */
+void midi_sync_song_changed(midi_sync* s);
 /* The settings (clamped). */
 void midi_sync_set(midi_sync* s, uint32_t mode, uint32_t clock_out);
 /* The song's rows a beat (MIDI's mode, app/midi_route.h). */

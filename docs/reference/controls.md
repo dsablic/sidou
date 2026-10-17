@@ -100,13 +100,13 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last) |
 | **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, CHIP, the song views, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE behind THE OSCILLATOR's title card (below) |
-| **SAVE (button 9)** | press and release without another button or encoder: save settings (a USER chip profile on CHIP's chip focus); hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
+| **SAVE (button 9)** | clean press and release: save a USER profile on CHIP's chip focus, the song in a song view, settings elsewhere; hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
 | **SEQ (button 11)** | opens the song views, and steps through them ([below](#song-views)) |
-| **PLAY (button 12)** | plays the song (SIDOU LOOP until songs load) from the song views' position, and stops it (each voice's release rings on); with EDIT held, goes on from where it stopped; lit while it plays. While it plays the keys play chip B (KEYS AUTO), or take voices from the song on chip A (KEYS A). A song the device cannot play is refused with a toast (`SNG: MULTISPEED 8 (MAX 4)`) |
+| **PLAY (button 12)** | plays the loaded song from the song views' position, and stops it (each voice's release rings on); with EDIT held, goes on from where it stopped; lit while it plays. While it plays the keys play chip B (KEYS AUTO), or take voices from the song on chip A (KEYS A). A song the device cannot play is refused with a toast (`SNG: MULTISPEED 8 (MAX 4)`) |
 | **REC (button 13)** | record mode on and off |
 | **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; the keys sound nothing while GLO is held |
 | **SELECT (encoder 0)**, in the menu | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), STORE ([format confirmation](#settings-and-store)), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF), TRACKER ROWS (ROWS in the menu; clockwise SCROLL, counter-clockwise BAR), THEME (the screens' colours: clockwise C64, counter-clockwise HIGH CONTRAST, the default; see [the theme](../art/README.md#theme)); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits, on MIDI [the MIDI page](#the-midi-page) |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), STORE ([format confirmation](#settings-and-store)), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF), TRACKER ROWS (ROWS in the menu; clockwise SCROLL, counter-clockwise BAR), THEME (the screens' colours: clockwise C64, counter-clockwise HIGH CONTRAST, the default; see [the theme](../art/README.md#theme)); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on SONG the [song-file actions](#song), on ABOUT the credits, on MIDI [the MIDI page](#the-midi-page) |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: CHIP (the profile and the character), DIST, MOD, FX; it stops at either end |
 | **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP (EDIT held: the save target), the algorithm on a slot; it stops at either end |
 | **SELECT (encoder 0)**, in TRACKER | the shown voice: voice 1, 2, 3 and round (clockwise the next, counter-clockwise the one before); the note keys then audition on it |
@@ -169,7 +169,7 @@ is SIDOU LOOP until songs load from the store (M2c Task 8).
 | **GLO held + note key 1, 2, 3** | mutes voice 1, 2, 3 of the song, or lets it sound again |
 | **GLO held + note key 4, 5, 6** | solos voice 1, 2, 3, or unsolos it: while any voice is soloed the soloed ones sound and the rest are silent; with none, the muted ones are silent |
 | **Note keys**, in a song view | audition the song's current instrument on the cursor's voice through the player, on chip A with the song's setup, at the panel's octave, one note at a time (the last key wins). With the song stopped the audition takes chip A for the song (the keys elsewhere move to chip B, as for PLAY; the first note sounds a few tens of milliseconds late) and gives it back two seconds after the last note is let go; no row of the song plays |
-| **SAVE** | a clean release saves settings; held + K1..K4 opens MIDI learn. Saving the song itself comes with M2c Task 8 |
+| **SAVE** | a clean release saves the song; an unnamed song opens SAVE AS. Held + K1..K4 opens MIDI learn |
 
 GLO's layer works in every view and comes before the panel: a key pressed while GLO is held
 sounds nothing until it is let go, even if GLO is let go first; a key already sounding when GLO
@@ -490,6 +490,34 @@ all 73 sectors and can interrupt the sound. STORE shows **ERASE n**, then the to
 **STORE FORMATTED**. Current settings are then saved when the store can take them. Formatting
 is never automatic; ALGORITHM does not format a SIDOU store.
 
+## SONG
+
+In STEP, TRACKER and its ORDER, INSTR and TABLE pages, a clean SAVE release saves
+the loaded song, not the global settings. An unnamed song opens SAVE AS. Unchanged
+songs report **SONG SAVED** without rewriting flash. From an accepted SAVE until
+completion, including a wait for the store, the header shows **SAVING** and new
+song edits are refused with the same toast. Already queued edits finish first;
+playback, mute, solo and jam continue. Songs are not autosaved.
+
+The menu's **SONG** item opens the song-file actions:
+
+- **LOAD** lists the store's songs. Loading stops the transport. Unsaved changes
+  require confirmation before they can be discarded. If a file is refused, its
+  reason appears in a toast and the previous file is reloaded, stopped.
+- **NEW** creates one subtune, three one-pattern orderlists and three 64-row
+  patterns, with pulse-lead, bass and noise-drum instruments at tempo 6.
+- **SAVE AS** edits an upper-case filename of up to 16 characters: SELECT moves
+  the cursor and ALGORITHM steps its character. The page's save action commits it.
+- **DELETE** requires confirmation before removing a file.
+
+The last song loads stopped at power-on. A device song must fit both the content
+arena and the **65,536-byte saved-file limit**, including its trailer. An edit
+that would cross the latter limit reports **SONG FULL** and changes nothing.
+
+ABOUT plays its original tune only when the loaded song is stopped and clean.
+Closing ABOUT restores that song, stopped. With unsaved changes the music is
+silent and the scroller says **SAVE YOUR SONG FOR MUSIC**.
+
 ## SAVE
 
 A plain SAVE acts on **release**, not on the initial press. Turning any encoder or pressing
@@ -497,7 +525,7 @@ another button while SAVE is down prevents that release from saving.
 
 | Gesture | Result |
 |---|---|
-| SAVE pressed and released, no encoder turned or other button pressed while down | saves settings now, skipping the 5 s debounce; **SAVED** when committed |
+| SAVE pressed and released, no encoder turned or other button pressed while down | saves the song in a song view (above); elsewhere saves settings now, skipping the 5 s debounce; **SAVED** when committed |
 | the same, on the CHIP view's chip focus with a USER slot as the save target, or applied | stores the tab's profile and controls into that slot ([USER profiles](#chip)); **OVERWRITE USER 3?** first when it holds one, then **SAVED TO USER 3** |
 | SAVE held + K1..K4, with or without EDIT | opens MIDI LEARN on that knob's parameter on the turn, not the press; the parameter does not move and SAVE's release saves nothing |
 | Another knob turned while the learn frame waits, SAVE held or not | picks that knob's parameter instead |
@@ -512,8 +540,8 @@ another button while SAVE is down prevents that release from saving.
 An explicit save waiting for 2 s may force short held flash operations, with gaps in the
 audio; completion then says **SAVED (GAPS)**. Background saves never do this. With SOUNDS on,
 a completed explicit save plays the drive chunk. A foreign store refuses it with
-**STORE FOREIGN: NOT SAVED**. SAVE saves settings in the song views too until M2c Task 8's
-song-file save; on CHIP it stores a USER slot as above, and the settings otherwise.
+**STORE FOREIGN: NOT SAVED**. Song saves report **SONG SAVED** or **SONG SAVED (GAPS)**;
+on CHIP, SAVE stores a USER slot as above, and settings otherwise.
 
 ## The MIDI page
 
