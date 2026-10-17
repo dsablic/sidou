@@ -2775,9 +2775,9 @@ fn open_tracker(m: &mut Machine, fw: &Firmware) {
 }
 
 /// SEQ opens the song views (until M2d Task 2 the TRACKER placeholder: the header, the voice
-/// heads and the rows' numbers); with no player bound (M2c Task 6 binds it), the transport
-/// stopped and no tempo. REC in the header; GLO and the leftmost key mute voice 1 within a
-/// frame and sound nothing, and LIVE's header says so; HOME goes back.
+/// heads and the rows' numbers): stopped, SIDOU LOOP's tempo; PLAY plays it (the play mark,
+/// the position, the waveforms and meters), REC in the header; GLO and the leftmost key mute
+/// voice 1 within the key's pass and sound nothing, and LIVE's header says so.
 #[test]
 fn the_song_views_header_and_heads_match_their_goldens() {
     let Some((build, fw)) = fixture("the song views test") else {
@@ -2786,10 +2786,11 @@ fn the_song_views_header_and_heads_match_their_goldens() {
     let mut m = booted(&fw);
     open_tracker(&mut m, &fw);
     compare_golden(&build, "tracker", &m.soc.lcd.fb, &[]);
-    // PLAY with no player does nothing; REC shows.
     press(&mut m, PLAY);
+    m.run_ms(2_000);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "tracker-play", &m.soc.lcd.fb, &[]);
     press(&mut m, REC);
-    settle(&mut m, &fw);
     assert_eq!(song_byte(&mut m, &fw, sidou_sys::ilp32::song_view::rec), 1);
     // GLO and the leftmost key: voice 1 muted at once, shown at the next frame, no sound.
     m.key(GLO, true);
@@ -2806,10 +2807,12 @@ fn the_song_views_header_and_heads_match_their_goldens() {
     assert_eq!(live_gated(&mut m, &fw), 0, "a key under GLO sounds nothing");
     m.key(KEY0, false);
     m.key(GLO, false);
-    settle(&mut m, &fw);
+    m.run_ms(200);
+    common::to_mid_frame(&mut m, &fw);
     assert_eq!(live_gated(&mut m, &fw), 0);
     compare_golden(&build, "tracker-mute-rec", &m.soc.lcd.fb, &[]);
-    // LIVE's header, in the preset's place.
+    // Stopped, back in LIVE: its header, in the preset's place.
+    press(&mut m, PLAY);
     press(&mut m, HOME);
     settle(&mut m, &fw);
     assert_eq!(common::top_view(&mut m, &fw), fw.symbol("live_view_view"));
@@ -2822,26 +2825,29 @@ fn the_song_views_header_and_heads_match_their_goldens() {
     m.run_ms(30);
 }
 
-/// The TRACKER placeholder's main-loop costs, with no player bound (M2c Task 6 adds the
-/// moving position, M2d Task 2 the rows; both measure again), bounded about 10 % above what
-/// was measured:
+/// The TRACKER placeholder's main-loop costs, with SIDOU LOOP bound (M2d Task 2's rows
+/// measure again), bounded about 10 % above what was measured:
 ///
 /// | TRACKER | Cells a frame (average, most) | Worst SPI | Instructions a frame | Busiest ui_poll |
 /// |---|---|---|---|---|
-/// | Idle (25 frames) | 0, 0 | 0 | 7.4k | 0.5k |
-/// | REC on (25 frames) | 0.12, 3 | 0.26 ms | 8.5k | 25.0k |
-/// | GLO and a key: MUT (25 frames) | 0.20, 5 | 0.44 ms | 8.5k | 25.0k |
+/// | Idle (25 frames) | 0, 0 | 0 | 7.8k | 0.9k |
+/// | REC on (25 frames) | 0.12, 3 | 0.26 ms | 8.8k | 25.5k |
+/// | Playing (100 frames) | 20.9, 77 | 6.66 ms | 34.6k | 28.7k |
+/// | GLO and a key: MUT (25 frames) | 0.20, 5 | 0.44 ms | 8.7k | 25.4k |
 ///
 /// Idle it composes nothing. A change builds the canvas (900 cells) and copies the few that
-/// changed: the build and the scan are the busiest ui_poll. The inputs (ui_buttons for SEQ,
-/// REC and PLAY; GLO's key goes through the note keys' pass) and the busiest pass after each,
-/// against TRACKER_INPUT and TRACKER_PASS. Measured: SEQ from LIVE the input 4.2k (the push:
-/// the wipe's set-up over LIVE's overlays) and the pass 49.5k (the wipe's first frame: the
-/// canvas's first build and its rows copied whole); SEQ in TRACKER, REC and PLAY the input
-/// 0.2k and the pass 2.9k to 27.4k; GLO's key 27.5k.
+/// changed: the build and the scan are the busiest ui_poll; playing, the meters and the
+/// position change every frame, so it builds every frame (the bar's row step about 60 cells).
+/// The inputs (ui_buttons for SEQ, REC and PLAY; GLO's key goes through the note keys' pass)
+/// and the busiest pass after each, against TRACKER_INPUT and TRACKER_PASS. Measured: SEQ from
+/// LIVE the input 4.2k (the push: the wipe's set-up over LIVE's overlays) and the pass 50.1k
+/// (the wipe's first frame: the canvas's first build and its rows copied whole); PLAY the
+/// input 1.7k (song_ctl_play) and the pass 31.3k; SEQ in TRACKER and REC the input 0.2k and the
+/// pass 3.5k to 31.3k; GLO's key 30.9k.
 const TRACKER_IDLE_PER_FRAME: f64 = 8_200.0;
 const TRACKER_CHANGE_PER_FRAME: f64 = 9_400.0;
-const TRACKER_WORST_POLL: u64 = 28_000;
+const TRACKER_PLAYING_PER_FRAME: f64 = 38_000.0;
+const TRACKER_WORST_POLL: u64 = 31_500;
 const TRACKER_INPUT: u64 = 4_600;
 const TRACKER_PASS: u64 = 55_000;
 
@@ -2857,6 +2863,13 @@ fn the_song_views_stay_within_their_budgets() {
     let idle = measure(&mut m, &fw, 25, |_| {});
     let rec = measure(&mut m, &fw, 25, |m| m.key(REC, true));
     m.key(REC, false);
+    let playing = measure(&mut m, &fw, 100, |m| m.key(PLAY, true));
+    m.key(PLAY, false);
+    m.run_ms(100);
+    m.key(PLAY, true);
+    m.run_ms(30);
+    m.key(PLAY, false);
+    m.run_ms(500);
     m.key(GLO, true);
     m.run_ms(100);
     let glo = measure(&mut m, &fw, 25, |m| m.key(KEY0, true));
@@ -2865,6 +2878,7 @@ fn the_song_views_stay_within_their_budgets() {
     let report = serde_json::json!({
         "tracker_idle": animated_json(&idle),
         "tracker_rec": animated_json(&rec),
+        "tracker_playing": animated_json(&playing),
         "tracker_glo": animated_json(&glo),
     });
     println!("{report}");
@@ -2872,6 +2886,7 @@ fn the_song_views_stay_within_their_budgets() {
     for (what, c, per_frame) in [
         ("idle", &idle, TRACKER_IDLE_PER_FRAME),
         ("REC", &rec, TRACKER_CHANGE_PER_FRAME),
+        ("playing", &playing, TRACKER_PLAYING_PER_FRAME),
         ("GLO and a key", &glo, TRACKER_CHANGE_PER_FRAME),
     ] {
         assert!(

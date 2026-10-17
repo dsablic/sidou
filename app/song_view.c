@@ -158,6 +158,7 @@ void song_view_set_transport(song_view* sv, const song_transport* t) {
     sv->jam_key = SONG_VIEW_NO_KEY;
     if (t) {
         t->status(t->ctx, &sv->st);
+        sv->sent = sv->st.mute; /* what the player has: nothing to send for it */
         send_mutes(sv);
     }
 }
@@ -170,6 +171,9 @@ static int going(uint32_t state) {
 void song_view_play(song_view* sv, int resume) {
     if (!sv->t) {
         return;
+    }
+    if (sv->want == WANT_NONE) {
+        sv->t->status(sv->t->ctx, &sv->st); /* the state now: no frame read it outside */
     }
     /* A PLAY not taken yet counts as done: a second press undoes it. */
     int was = going(sv->st.state);
@@ -235,13 +239,14 @@ uint32_t song_view_keys(song_view* sv, uint32_t down, uint32_t pressed, uint32_t
     return taken;
 }
 
-void song_view_frame(song_view* sv) {
+void song_view_frame(song_view* sv, int shows) {
     const song_transport* t = sv->t;
-    if (!t) {
-        return;
+    if (!t || (!shows && sv->want == WANT_NONE && !sv->jam_off &&
+               song_view_mute_mask(sv) == sv->sent)) {
+        return; /* outside the song views, most frames: nothing waits */
     }
     send_play(sv);
-    if (sv->want == WANT_NONE) {
+    if (shows && sv->want == WANT_NONE) {
         t->status(t->ctx, &sv->st);
     }
     send_mutes(sv);

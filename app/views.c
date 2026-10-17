@@ -693,10 +693,10 @@ void views_frame(views* v, uint32_t now_ms) {
         tell(v);
     }
     learn_view_frame(&v->learn, &v->s, now_ms);
-    song_view_frame(&v->song);
-    v->live.mutes = (uint8_t)song_view_mutes(&v->song);
     /* The tap runs while LIVE or SCENE shows: the audio interrupt pays for it only then. */
     top = shows(v);
+    song_view_frame(&v->song, song_view_is(top));
+    v->live.mutes = (uint8_t)song_view_mutes(&v->song);
     live_view_tap(&v->live, top == &live_view_view);
     scene_view_tap(&v->scene, top == &scene_view_view);
     if (v->sc) {

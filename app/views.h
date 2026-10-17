@@ -154,8 +154,8 @@ void views_boot(views* v, int home_held);
 /* SAVE arms MIDI learn over ml's bindings from now on (app/learn_view.h); NULL: SAVE does
  * nothing (views_init's default). */
 void views_learn(views* v, midi_learn* ml);
-/* The song's player (app/song_transport.h) for the song views; NULL: none (until the device
- * binds M2c's song control). */
+/* The song's player (app/song_transport.h) for the song views; NULL: none (the host tests'
+ * default; the device binds song_ctl, platform/fm1/main.c). */
 void views_set_song(views* v, const song_transport* t);
 /* The note keys, as panel_note_keys takes them, after the frame's buttons (views_buttons):
  * in a song view with a player, the jam takes them (song_view_keys); GLO's layer takes its

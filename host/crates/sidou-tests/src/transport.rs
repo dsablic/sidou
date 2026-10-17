@@ -110,6 +110,19 @@ impl Transport {
         unsafe { song_ctl_jam(&mut *self.sc, voice, note, instr) != 0 }
     }
 
+    /// The audition: jams with the song stopped (M2d).
+    pub fn audition(&mut self) -> bool {
+        unsafe { song_ctl_audition(&mut *self.sc) != 0 }
+    }
+
+    pub fn audition_end(&mut self) -> bool {
+        unsafe { song_ctl_audition_end(&mut *self.sc) != 0 }
+    }
+
+    pub fn jam_ready(&self) -> bool {
+        unsafe { song_ctl_jam_ready(&*self.sc) != 0 }
+    }
+
     pub fn edit(&mut self, e: &gt2_edit) -> bool {
         unsafe { song_ctl_edit(&mut *self.sc, e) != 0 }
     }

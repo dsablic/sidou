@@ -67,6 +67,10 @@ void ui_set_keys(keys_route* kr) {
     views_set_keys(&ui, kr);
 }
 
+void ui_set_song(const song_transport* t) {
+    views_set_song(&ui, t);
+}
+
 void ui_init(live* l, uint32_t now_ms, int home_held) {
     for (uint32_t i = 0; i < 16u; i++) {
         palette[i] = LCD_SWAP(grid_palette[i]);

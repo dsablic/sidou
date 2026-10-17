@@ -12,6 +12,7 @@
 #include "live.h"
 #include "ui_sound.h"
 #include "panel.h"
+#include "song_transport.h"
 
 /* The screen is composed at most this often (25 fps); only cells that changed are sent. */
 #define UI_PERIOD_MS 40u
@@ -26,6 +27,9 @@
 void ui_init(live* l, uint32_t now_ms, int home_held);
 /* The two chips' routing, for the CHIP view's tabs (app/keys_route.h). */
 void ui_set_keys(keys_route* kr);
+/* The song's player for the song views (app/song_transport.h, main.c's binding over
+ * song_ctl). */
+void ui_set_song(const song_transport* t);
 /* The UI sounds (app/ui_sound.h), for the menu's SOUNDS and the triggers. */
 void ui_set_sounds(ui_sound* us);
 /* Main loop. Every UI_PERIOD_MS it runs a frame (views_frame: the view composes if what it

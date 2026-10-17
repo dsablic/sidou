@@ -4,26 +4,28 @@
  * the jam, and what the player is doing, as a table of functions (M2d Task 1).
  *
  * The device binds it over M2c Task 6's song control (core/player/song_ctl.h) in
- * platform/fm1/main.c; the host tests bind a fake. Until the device binds one, the views run
- * without (song_view_set_transport NULL): the header shows the transport stopped and no
- * tempo, PLAY does nothing, the note keys play the instrument in the song views too, and the
- * mutes and solos are kept and shown but reach nothing.
+ * platform/fm1/main.c; the host tests bind a fake. With none bound (song_view_set_transport
+ * NULL) the views still run: the header shows the transport stopped and no tempo, PLAY does
+ * nothing, the note keys play the instrument in the song views too, and the mutes and solos
+ * are kept and shown but reach nothing.
  *
- * What the binding over song_ctl has to do:
- * - play: song_ctl_play(subtune 0, order_pos), and keys_route_set_song(1), so the keys leave
- *   chip A; the song starts only once keys_route_ready_for_song (song_ctl's chip hooks), and
- *   until then state is SONG_T_STARTING. stop: song_ctl_stop (the keys come back once it is
- *   applied). resume: song_ctl_continue.
+ * The device's binding over song_ctl:
+ * - play: song_ctl_play(subtune 0, order_pos); the keys leave chip A (keys_route_set_song)
+ *   while the song has it, and the song starts once keys_route_ready_for_song and chip A has
+ *   the song's setup (song_ctl's chip hooks): until then the state is SONG_T_STARTING. stop:
+ *   song_ctl_stop (the keys come back once it is applied); asked again while it starts.
+ *   resume: song_ctl_continue, which takes chip A again first if it went back meanwhile.
  * - mute: song_ctl_mute(mask), solo already folded into the mask (song_view_mute_mask).
- * - jam: song_ctl_jam(voice, note, instr); a release (SONG_T_RELEASE) is the voice's gate off
- *   as a key-off row would give it. The song views audition with the song stopped as well, so
- *   the player's jam has to sound without the song playing.
- * - status: once a frame, from the main loop: state from song_ctl_state; position from the
- *   row events (song_ctl_events, which the binding drains: it is their one reader); speed from
- *   the player's tempo (funktempo's two speeds); multispeed and ntsc from the song's options;
- *   mute as last applied; wave from the player's shadow of each voice's control register; env
- *   from chip A (ENV3 for voice 3; voices 1 and 2 from their gate in the events where nothing
- *   better is at hand: 255 while gated, 0 once not).
+ * - jam: song_ctl_jam(voice, note, instr) while the song plays; a release (SONG_T_RELEASE)
+ *   is song_ctl's SONG_JAM_RELEASE, the voice's gate off as a key-off row gives it. With the
+ *   song stopped, the jam goes through song_ctl's audition (song_ctl_audition: chip A taken
+ *   for the song, the calls running with the sequencer held), the note waiting until it is
+ *   on; it ends two seconds after the last jam is let go.
+ * - status: once a frame, from the main loop: state from song_ctl_shown_state; position
+ *   from the row events (song_ctl_events, which the binding drains: it is their one reader);
+ *   speed from the first voice's tempo (funktempo's two speeds); multispeed and ntsc from the
+ *   song's options; mute as applied; wave from the player's shadow of each voice's control
+ *   register; env from chip A's envelope counters.
  * Every command returns at once (the main loop's, no waiting); a 0 (song_ctl's ring full) is
  * asked again by the views at the next frame.
  *

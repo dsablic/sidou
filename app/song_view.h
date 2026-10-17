@@ -9,8 +9,8 @@
  * STEP, TRACKER, ORDER, INSTR, TABLE and round. A view not made yet is skipped: until M2d
  * Task 2 the only one is a TRACKER placeholder (song_view_tracker, its rows' numbers only).
  *
- * The transport goes through the player's binding (app/song_transport.h; none until M2c Task
- * 6's player is bound, which leaves the transport stopped):
+ * The transport goes through the player's binding (app/song_transport.h: song_ctl on the
+ * device; with none bound the transport stays stopped):
  * - PLAY plays the song from the orderlist entry the views show (the cursor's) and stops it;
  *   with EDIT held it goes on from where it stopped. In every view: the panel never sees it.
  * - REC turns record mode on and off; the header says REC in red. (What it records is M2d
@@ -152,8 +152,9 @@ uint32_t song_view_mute_mask(const song_view* sv);
  * to keep quiet (panel_quiet_keys). */
 uint32_t song_view_keys(song_view* sv, uint32_t down, uint32_t pressed, uint32_t owned,
                         int take);
-/* Once a frame before the screen's: the player's status, and what it has not taken yet. */
-void song_view_frame(song_view* sv);
+/* Once a frame before the screen's: what the player has not taken yet, and with shows (a song
+ * view shows) its status; outside the song views PLAY reads the status when pressed. */
+void song_view_frame(song_view* sv, int shows);
 /* The tempo in tenths of a BPM, rounded: speed_sum the calls of two rows (2 x the speed, or
  * funktempo's two), multispeed 0-4 (0: 25 Hz), rows_beat > 0. 0 for no speed. */
 uint32_t song_view_bpm10(uint32_t speed_sum, uint32_t multispeed, uint32_t ntsc,

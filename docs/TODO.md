@@ -341,6 +341,28 @@ Follow-ups that aren't tied to a milestone task yet.
 - **Action:** open an issue (and possibly a PR) upstream with the above, then
   bump the pinned rev.
 
+## Report fm1-emu: the and-not read-modify-write on memory is not decoded
+
+- **Where:** fm1-emu at the pinned rev (`e52f4640`).
+- **Problem:** fm1-core faults with `Decode(UnknownInstruction)` on pi32v2's
+  read-modify-write "and not" on a memory word with a register mask,
+  `[rX+imm] &= ~rY`: opcodes `64 e8 0b ..` and `64 e8 0f ..` (the `|=` form,
+  `64 e8 08 ..`, and `&= ~(1 << rY)`, `66 e8 03 ..`, decode and run).
+- **Repro:** JieLi clang `-O2` emits it for `s->field &= ~bit;` with `bit` in a
+  register, as `panel_note_keys` and `key_up` in `app/panel.c` did during M2d
+  Task 1 (the keys test, the song views' tests and the browser demo stopped
+  at the first key release).
+- **Our workaround:** none in the emulator: `app/panel.c` keeps the mask in a
+  local and stores it once, and clears a known-set bit with `^=`; no SIDOU
+  code emits the opcode today (`grep -c '\] &= ~r' sidou_app.dis` is 0).
+- **A gate that catches it coming back:** an emu-gate test that walks the
+  image's `.text` and `.ram_text` with fm1-isa's decoder (as `ram_audio.rs`
+  walks `.ram_text` for flash loads) and fails on any word it cannot decode
+  or fm1-core cannot execute, naming the function from the symbol table. It
+  would catch every new compiler idiom the emulator lacks at build time,
+  not when a test happens to run the path.
+- **Action:** report upstream with the encodings; add the gate.
+
 ## fm1-emu does not model P33 or the watchdog
 
 - **Where:** fm1-emu at rev `e52f4640157f490f8c3af778dd044e9d33e989e8`.

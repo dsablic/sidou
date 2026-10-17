@@ -625,6 +625,13 @@ static void note_start(out* o, gt2_channel* c, uint32_t x, uint8_t newnote) {
 /* mt_getnewnote: the next row, at the gate-off timer's tick. */
 static void getnewnote(out* o, gt2_channel* c, uint32_t x) {
     gt2_player* p = o->p;
+    if (p->frozen) {
+        /* an empty row, read from nowhere: no note, instrument or command */
+        if (!(p->shape->flags & GT2_PF_NOEFFECTS))
+            c->newfx = 0u;
+        loadregs(o, c, x);
+        return;
+    }
     uint32_t rows;
     const uint8_t* pat = pattern(p->song, c->pattnum, &rows);
     uint8_t row[4] = {REST, 0u, 0u, 0u};
@@ -699,7 +706,7 @@ static void exec_channel(out* o, uint32_t ch) {
         e->order_pos = c->ev_orderpos;
         c->ev_pending = 0u;
     }
-    if (c->pattptr == 0u)
+    if (c->pattptr == 0u && !p->frozen)
         sequencer(p, c, ch);
     /* mt_nonewpatt */
     c->gatetimer = ins_gatetimer(s, c->instr);

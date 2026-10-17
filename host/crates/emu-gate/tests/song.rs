@@ -709,3 +709,136 @@ fn a_locked_cutoff_plays_a_darker_bar_bit_exact_with_the_host() {
         "the song's cutoff did not return: {l2} against {p2}"
     );
 }
+
+/// app/panel.h: GLO, SEQ and the first note key's id (Felucca's ids).
+const GLO: u8 = PANEL_BTN_GLO as u8;
+const SEQ: u8 = PANEL_BTN_SEQ as u8;
+const KEY0: u8 = 14;
+
+/// Chip A's voice v as the interrupt renders it: its frequency, its control register's
+/// waveform and its envelope's gate.
+fn chip_a_voice(m: &mut Machine, fw: &Firmware, v: usize) -> (u32, u8, u8) {
+    let chips = fw.chips();
+    let active = m.soc.read8(chips + ilp32::reg_ring_chips::active as u32);
+    let chip =
+        chips + (ilp32::reg_ring_chips::chip + usize::from(active) * ilp32::sid::SIZE) as u32;
+    let o = chip + (ilp32::sid::osc + v * ilp32::sid_osc::SIZE) as u32;
+    let e = chip + (ilp32::sid::env + v * ilp32::sid_env::SIZE) as u32;
+    (
+        m.soc.read32(o + ilp32::sid_osc::freq as u32),
+        m.soc.read8(o + ilp32::sid_osc::control as u32),
+        m.soc.read8(e + ilp32::sid_env::gate as u32),
+    )
+}
+
+/// The song views' mute (M2d Task 1): GLO held and the leftmost key while SIDOU LOOP plays.
+/// The mute reaches the interrupt within a frame, voice 1's gate goes off and its writes
+/// stop (chip A's voice stays as it was while the song plays on), the other voices play on;
+/// GLO and the key again give it back.
+#[test]
+fn glo_and_the_first_key_mute_voice_1_and_its_writes_stop() {
+    let Some((_, fw)) = fixture("the song mute test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    press(&mut m, PLAY);
+    m.run_ms(2_000);
+    let t = transport(&fw);
+    let mut before = std::collections::HashSet::new();
+    for _ in 0..100 {
+        m.run_ms(20);
+        before.insert(chip_a_voice(&mut m, &fw, 0).0);
+    }
+    assert!(before.len() > 2, "voice 1 plays: {before:?}");
+    m.key(GLO, true);
+    m.run_ms(30);
+    m.key(KEY0, true);
+    let from = m.ms();
+    while m.soc.read8(t + ilp32::song_ctl::mute as u32) != 1 {
+        m.run_ms(1);
+        assert!(m.ms() - from <= 40, "the mute took more than a frame");
+    }
+    println!(
+        "the mute reached the interrupt {} ms after the key",
+        m.ms() - from
+    );
+    m.key(KEY0, false);
+    m.key(GLO, false);
+    m.run_ms(40);
+    let held = chip_a_voice(&mut m, &fw, 0);
+    assert_eq!(held.2, 0, "voice 1's gate off");
+    let mut others = std::collections::HashSet::new();
+    for _ in 0..150 {
+        m.run_ms(20);
+        assert_eq!(
+            chip_a_voice(&mut m, &fw, 0),
+            held,
+            "voice 1 was written while muted"
+        );
+        others.insert((
+            chip_a_voice(&mut m, &fw, 1).0,
+            chip_a_voice(&mut m, &fw, 2).0,
+        ));
+    }
+    assert!(others.len() > 2, "voices 2 and 3 play on");
+    m.key(GLO, true);
+    m.run_ms(30);
+    m.key(KEY0, true);
+    m.run_ms(30);
+    m.key(KEY0, false);
+    m.key(GLO, false);
+    let mut after = std::collections::HashSet::new();
+    for _ in 0..100 {
+        m.run_ms(20);
+        after.insert(chip_a_voice(&mut m, &fw, 0).0);
+    }
+    assert_eq!(m.soc.read8(t + ilp32::song_ctl::mute as u32), 0);
+    assert!(after.len() > 2, "voice 1 plays again: {after:?}");
+}
+
+/// The audition (M2d Task 1): in TRACKER with the song stopped, a key sounds the song's
+/// instrument on the cursor's voice (voice 1) on chip A, its release lets it go, no row is
+/// read (the song stays where it was: never played), and two seconds later chip A goes back
+/// to the keys.
+#[test]
+fn a_key_in_tracker_auditions_on_chip_a_with_the_song_stopped() {
+    let Some((_, fw)) = fixture("the song audition test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    press(&mut m, SEQ);
+    m.run_ms(500);
+    let t = transport(&fw);
+    let from = m.ms();
+    m.key(KEY0 + 16, true); // A4
+    while chip_a_voice(&mut m, &fw, 0).2 == 0 {
+        m.run_ms(1);
+        assert!(m.ms() - from <= 400, "the audition did not sound");
+    }
+    println!("the audition sounds {} ms after the key", m.ms() - from);
+    assert_eq!(m.soc.read8(t + ilp32::song_ctl::isr_playing as u32), 0);
+    assert_eq!(m.soc.read8(t + ilp32::song_ctl::audition as u32), 1);
+    let note = chip_a_voice(&mut m, &fw, 0).0;
+    m.run_ms(300);
+    assert_ne!(chip_a_voice(&mut m, &fw, 0).0, 0, "at {note}");
+    for v in 1..3 {
+        assert_eq!(chip_a_voice(&mut m, &fw, v).2, 0, "voice {} silent", v + 1);
+    }
+    m.key(KEY0 + 16, false);
+    m.run_ms(100);
+    assert_eq!(chip_a_voice(&mut m, &fw, 0).2, 0, "released");
+    assert_eq!(field32(&mut m, &fw, ilp32::song_ctl::handed_back), 0);
+    m.run_ms(2_500);
+    assert_eq!(
+        m.soc.read8(t + ilp32::song_ctl::audition as u32),
+        0,
+        "the audition ended"
+    );
+    assert_eq!(
+        field32(&mut m, &fw, ilp32::song_ctl::handed_back),
+        1,
+        "chip A back to the keys"
+    );
+}

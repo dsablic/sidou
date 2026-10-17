@@ -208,6 +208,10 @@ typedef struct {
     uint8_t freq_unknown;
     uint8_t unknown;         /* scratch: the last frequency reads hit that region */
     uint8_t gates;           /* each channel's gate bit after the last call */
+    /* 1: the sequencer holds (M2d's audition with the song stopped, song_ctl.h): no row,
+     * orderlist or pattern is read, and the channels play on (their instruments, tables and
+     * jams) as if every row were empty. 0 for every song played. */
+    uint8_t frozen;
     uint8_t start[GT2_PLAY_CHANNELS]; /* the packed orderlist byte the song starts each
                                        * channel from (0: its start) */
     uint8_t regs[GT2_SID_REGS]; /* the SID's registers as written (the ghost registers) */

@@ -266,9 +266,13 @@ All notable changes are documented here. The format follows
   the song's instrument on the cursor's voice. Row 0 shows the view, the transport, the tempo
   in BPM, the position and REC; row 1 the voices' waveforms, mutes, solos and envelopes; LIVE's
   top line shows the mutes and solos in the preset's place. The transport reaches the player
-  through a small binding (`app/song_transport.h`) that the device fills once M2c Task 6's
-  song control is on `main`; until then nothing plays and the header shows no tempo. The note
-  keys now pass through the views (`views_note_keys`). The menu, SCENE's RULE 30 and STARS
+  through a small binding (`app/song_transport.h`, bound over `song_ctl` in
+  `platform/fm1/main.c`; PLAY's LED follows it). `song_ctl` gains a jam release
+  (`SONG_JAM_RELEASE`) and the audition (`song_ctl_audition`): jams that sound with the song
+  stopped, the calls running with the sequencer held (`gt2_player.frozen`), chip A taken for
+  the song as PLAY takes it and given back two seconds after the last jam; continue takes chip A
+  again if it went back after a stop. The note keys now pass through the views
+  (`views_note_keys`). The free-RAM gate moves to M2d's floor, 16,000 bytes. The menu, SCENE's RULE 30 and STARS
   goldens are redone (the menu's new item; the pieces' moment moves with the menu's longer
   walk), and TRACKER's, its mute and REC, and LIVE's mutes are new.
 - The menu's CHIP item opens the CHIP view; the 6581/8580 choice it held is the view's profile

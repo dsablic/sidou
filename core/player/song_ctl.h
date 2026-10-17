@@ -187,6 +187,7 @@ typedef struct {
     volatile uint32_t handover_seq; /* the last hand-over the interrupt took or refused */
     volatile uint8_t handover_ok;
     volatile uint8_t isr_playing;
+    volatile uint8_t audition;      /* the song stopped, the calls run for a jam (frozen) */
     volatile uint8_t past_b7;       /* channels that played a note past the table */
     uint8_t song_gate;              /* the gate reset PLAY gave chip A, or $FF */
     song_event ev[SONG_EVENT_RING];
@@ -256,6 +257,9 @@ typedef struct {
     int16_t char_told[4];   /* the character locks told to the hook, -1 none */
     uint8_t deriving;       /* SONG_DERIVE_*: a derivation into the spare runs a slice a poll */
     uint8_t deriving_for;
+    uint8_t auditioning;    /* jams sound with the song stopped (song_ctl_audition) */
+    uint8_t chip_held;      /* chip A is the song's: from a load's chip hook to the hand-back */
+    uint8_t load_for;       /* what SONG_LOADING ends in (song_ctl.c LOAD_*) */
 } song_ctl;
 
 /* The song in its region, its two shape buffers and its work space, all the caller's;
@@ -275,7 +279,9 @@ song_period song_period_of(uint32_t multispeed, uint32_t ntsc);
  * the next pass. */
 
 /* Plays subtune from orderlist entry pos of each channel (0: the start). The analysis runs
- * a slice a poll (SONG_LOADING), then chip A's setup; the song starts at the block after. */
+ * a slice a poll (SONG_LOADING), then chip A's setup; the song starts at the block after.
+ * song_ctl_continue goes on from a stop; if chip A has been handed back meanwhile, it takes
+ * it again first (SONG_LOADING, the chip hooks only). */
 int song_ctl_play(song_ctl* sc, uint32_t subtune, uint32_t pos);
 int song_ctl_stop(song_ctl* sc);
 int song_ctl_continue(song_ctl* sc);
@@ -287,6 +293,24 @@ int song_ctl_take(song_ctl* sc, uint32_t mask);
 /* Voice v takes note (0 C-0 ... 95) and instrument at its next tick 0, as if its next row
  * held them (no command): M2d's audition, M2e's multitimbral mode. */
 int song_ctl_jam(song_ctl* sc, uint32_t voice, uint32_t note, uint32_t instr);
+/* A jam's release: note SONG_JAM_RELEASE to song_ctl_jam lets voice's note go at its next
+ * call (the gate off, as a key-off row gives it). */
+#define SONG_JAM_RELEASE 0xffu
+/* The audition (M2d's song views): jams that sound with the song stopped. The calls run on
+ * the frame clock with the sequencer held (gt2_player.frozen): the voices play their
+ * instruments and tables and the jams, no row is read. Starting it takes chip A for the
+ * song as PLAY does (the chip hooks; with no song played yet, the analysis first, as
+ * SONG_LOADING), then song_ctl_jam_ready is 1. A jam on a stopped song starts its note at
+ * the next call (playing, at the channel's next tick 0). 1: started (or on, or the song
+ * plays: nothing to do), 0: not now. song_ctl_audition_end lets the voices go and hands chip
+ * A back as a stop does; PLAY and continue end it as well. */
+int song_ctl_audition(song_ctl* sc);
+int song_ctl_audition_end(song_ctl* sc);
+/* song_ctl_state as a transport shows it: an audition's loading (chip A taken, or the
+ * analysis before a paused start) is no start: SONG_STOPPED, or SONG_IDLE before any play. */
+uint32_t song_ctl_shown_state(const song_ctl* sc);
+/* 1 when a jam sounds now: the song plays, or the audition is on. */
+int song_ctl_jam_ready(const song_ctl* sc);
 /* An edit a gt2_song primitive returned: song_ctl owns it from a 1 on (it releases it once
  * applied); with 0 it is still the caller's (pending: send it again, or gt2_edit_cancel). An
  * edit that widens the shape is held while the shape is derived again, a slice a poll, and

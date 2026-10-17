@@ -102,9 +102,8 @@ the menu and CHIP.
 
 The song views make and play a song (M2d): **STEP**, **TRACKER**, **ORDER**, **INSTR** and
 **TABLE**, all on the same GoatTracker 2 song (`app/song_view.h`). Until M2d Task 2 there is
-one, a TRACKER placeholder: the header, the voice heads and the rows' numbers. Until the
-song player is bound on the device (M2c Task 6), nothing plays: the header shows the
-transport stopped and no tempo, PLAY does nothing, and the keys play the instrument there too.
+one, a TRACKER placeholder: the header, the voice heads and the rows' numbers. The song is
+SIDOU LOOP until songs load from the store (M2c Task 8).
 
 | Control | Does |
 |---|---|
@@ -114,7 +113,7 @@ transport stopped and no tempo, PLAY does nothing, and the keys play the instrum
 | **REC** | record mode on and off: REC in red on the song views' top line |
 | **GLO held + note key 1, 2, 3** | mutes voice 1, 2, 3 of the song, or lets it sound again |
 | **GLO held + note key 4, 5, 6** | solos voice 1, 2, 3, or unsolos it: while any voice is soloed the soloed ones sound and the rest are silent; with none, the muted ones are silent |
-| **Note keys**, in a song view | audition the song's current instrument on the cursor's voice through the player, at the panel's octave, one note at a time (the last key wins) |
+| **Note keys**, in a song view | audition the song's current instrument on the cursor's voice through the player, on chip A with the song's setup, at the panel's octave, one note at a time (the last key wins). With the song stopped the audition takes chip A for the song (the keys elsewhere move to chip B, as for PLAY; the first note sounds a few tens of milliseconds late) and gives it back two seconds after the last note is let go; no row of the song plays |
 | **SAVE** | MIDI learn, as everywhere (saving the song with SAVE comes with M2a Task 5 and M2c Task 8) |
 
 GLO's layer works in every view and comes before the panel: a key pressed while GLO is held

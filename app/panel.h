@@ -96,6 +96,9 @@ typedef struct {
     /* Keys that sound nothing until they go up (bit k: key k): pressed while GLO was held,
      * or taken by a view (panel_quiet_keys). */
     uint32_t quiet;
+    /* The keys that sound a note (key_note set), bit k: key k: with none down, pressed,
+     * sounding or quiet, panel_note_keys has nothing to do. */
+    uint32_t sounding;
 } panel;
 
 /* The LEDs, as Felucca's input state lays out the keys. */

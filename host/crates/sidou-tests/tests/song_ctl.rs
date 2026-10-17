@@ -839,3 +839,107 @@ fn a_voice_the_keys_take_is_left_to_them_and_given_back() {
     assert_eq!(t.chip.osc[0].freq, f, "the song's frequency again");
     assert_eq!(t.chip.env[0].gate, t.sc.shadow[4] & 1);
 }
+
+/// A jam's release while the song plays: the voice's gate goes off at the next call.
+#[test]
+fn a_jam_release_lets_the_voice_go_at_the_next_call() {
+    let (_song, mut t) = play_simple();
+    transport_states(&mut t, 20);
+    let gated = (0..3)
+        .find(|&v| t.chip.env[v].gate != 0)
+        .expect("a voice holds a note");
+    assert!(t.jam(gated as u32, SONG_JAM_RELEASE, 0));
+    t.pass();
+    let calls = t.calls();
+    assert!(t.run_until(20, |t| t.calls() > calls + 1));
+    assert_eq!(t.chip.env[gated].gate, 0, "voice {gated} let go");
+    assert_eq!(t.sc.shadow[gated * 7 + 4] & 1, 0);
+}
+
+/// The calls a block makes and the row events, for `blocks` blocks.
+fn rows_seen(t: &mut Transport, blocks: usize) -> (u32, usize) {
+    let calls = t.calls();
+    let mut rows = 0;
+    for _ in 0..blocks {
+        t.pass();
+        t.block_silent();
+        rows += t
+            .events()
+            .iter()
+            .filter(|e| u32::from(e.flags & 0x1f) & GT2_EV_ROW != 0)
+            .count();
+    }
+    (t.calls() - calls, rows)
+}
+
+/// The audition with no song played yet: the analysis, then a paused start; a jam sounds the
+/// instrument on its voice at the next call, no row is read, the release lets it go, and the
+/// end stops the calls.
+#[test]
+fn an_audition_sounds_jams_with_the_song_stopped() {
+    let mut song = song_of(&simple_song(), None);
+    let mut t = Transport::new(&mut song);
+    assert!(!t.jam_ready());
+    assert!(t.audition());
+    assert_eq!(
+        unsafe { song_ctl_shown_state(&*t.sc) },
+        SONG_IDLE,
+        "no start shown"
+    );
+    assert!(t.run_until(200, |t| t.jam_ready()));
+    assert_eq!(t.state(), SONG_STOPPED);
+    assert!(t.jam(2, 30, 1));
+    t.pass();
+    let calls = t.calls();
+    assert!(t.run_until(20, |t| t.calls() > calls + 1));
+    assert_ne!(t.chip.env[2].gate, 0, "the jam sounds on voice 3");
+    let f = u32::from(t.sc.shadow[14]) | u32::from(t.sc.shadow[15]) << 8;
+    assert_ne!(f, 0, "at the note's frequency");
+    let (calls, rows) = rows_seen(&mut t, 100);
+    assert!(calls >= 14, "the calls run, 50 a second: {calls}");
+    assert_eq!(rows, 0, "no row read with the song stopped");
+    for v in 0..2 {
+        assert_eq!(t.chip.env[v].gate, 0, "voice {v} stays silent");
+    }
+    assert!(t.jam(2, SONG_JAM_RELEASE, 1));
+    rows_seen(&mut t, 5);
+    assert_eq!(t.chip.env[2].gate, 0, "released");
+    assert!(t.audition_end());
+    rows_seen(&mut t, 2);
+    let (calls, _) = rows_seen(&mut t, 50);
+    assert_eq!(calls, 0, "no call once it ends");
+    assert!(!t.jam_ready());
+}
+
+/// An audition after a stop, chip A handed back meanwhile, takes chip A again and leaves the
+/// song where it stopped: continue goes on from the row after the stop's.
+#[test]
+fn an_audition_after_a_stop_keeps_where_continue_goes_on() {
+    let (_song, mut t) = play_simple();
+    transport_states(&mut t, 40);
+    assert!(t.stop());
+    for _ in 0..4 {
+        t.pass();
+        t.block_silent();
+    }
+    assert_eq!(t.sc.chip_held, 0, "the stop handed chip A back");
+    let stopped = t.sc.player.chn.map(|c| (c.songptr, c.pattptr));
+    assert!(t.audition());
+    assert!(t.run_until(20, |t| t.jam_ready()));
+    assert!(t.jam(0, 40, 1));
+    rows_seen(&mut t, 60);
+    assert!(t.audition_end());
+    rows_seen(&mut t, 4);
+    assert_eq!(
+        t.sc.player.chn.map(|c| (c.songptr, c.pattptr)),
+        stopped,
+        "the audition read no row"
+    );
+    assert!(t.resume());
+    assert!(t.run_until(20, |t| t.state() == SONG_PLAYING));
+    let (calls, rows) = rows_seen(&mut t, 100);
+    assert!(
+        calls >= 14 && rows > 0,
+        "{calls} calls, {rows} rows after continue"
+    );
+}

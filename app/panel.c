@@ -12,14 +12,19 @@ void panel_init(panel* p) {
     p->playing = 0;
     p->glo = 0;
     p->quiet = 0;
+    p->sounding = 0;
 }
 
 static void key_up(panel* p, live* l, uint32_t k) {
     live_note_off(l, p->key_note[k]);
     p->key_note[k] = LIVE_NO_NOTE;
+    p->sounding ^= 1u << k; /* set: key_up runs on a sounding key only */
 }
 
 void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed) {
+    if (!(down | pressed | p->sounding | p->quiet)) {
+        return; /* most calls: no key */
+    }
     int glo = (p->held >> PANEL_BTN_GLO) & 1u;
     /* Kept in a local and stored once: pi32v2's read-modify-write "and not" on memory, which
      * clearing a bit of p->quiet in place compiles to, is one fm1-emu does not decode. */
@@ -50,6 +55,7 @@ void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed) {
             if (n != LIVE_NO_NOTE) {
                 live_note_on(l, n, PANEL_VELOCITY);
                 p->key_note[k] = n;
+                p->sounding |= bit;
             }
         }
         if (p->key_note[k] != LIVE_NO_NOTE && !(down & bit)) {

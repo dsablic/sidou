@@ -11,6 +11,11 @@
 #define CMD_MASK (SONG_CMD_RING - 1u)
 #define EV_MASK (SONG_EVENT_RING - 1u)
 #define NO_GATE 0xffu /* a PLAY, STOP or CONTINUE that leaves chip A's gate reset alone */
+/* What SONG_LOADING ends in (song_ctl.load_for). */
+#define LOAD_PLAY 0u     /* the PLAY command: the song plays */
+#define LOAD_PAUSED 1u   /* the PLAY command, paused: the audition, no song played yet */
+#define LOAD_WAKE 2u     /* chip A taken again for the audition of a stopped song */
+#define LOAD_CONTINUE 3u /* chip A taken again, then CONTINUE */
 
 _Static_assert((SONG_CMD_RING & CMD_MASK) == 0u, "the command ring is a power of two");
 _Static_assert((SONG_EVENT_RING & EV_MASK) == 0u, "the event ring is a power of two");
@@ -71,10 +76,12 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         sc->song_gate = c->a;
         song_set_gate_reset(sc, c->a);
         sc->play_block = sc->blocks;
-        sc->isr_playing = 1u;
+        sc->isr_playing = (uint8_t)!c->b; /* b: paused, for the audition */
+        sc->audition = c->b;
         break;
     case SONG_CMD_STOP:
         sc->isr_playing = 0u;
+        sc->audition = 0u;
         for (uint32_t v = 0u; v < GT2_PLAY_CHANNELS; v++)
             if (!(((sc->mute | sc->taken) >> v) & 1u))
                 song_gate_off(sc, v);
@@ -84,6 +91,7 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         sc->next = 0u;
         sc->rem = 0u;
         song_set_gate_reset(sc, c->a);
+        sc->audition = 0u;
         sc->isr_playing = 1u;
         break;
     case SONG_CMD_MUTE:
@@ -121,6 +129,11 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         sc->armed_seq = c->seq;
         break;
     case SONG_CMD_JAM:
+        if (!sc->isr_playing && !sc->audition && sc->player.shape) {
+            sc->audition = 1u; /* a stopped song's audition: the calls from now on */
+            sc->next = 0u;
+            sc->rem = 0u;
+        }
         if (c->a < GT2_PLAY_CHANNELS) {
             sc->jam[c->a][0] = 1u;
             sc->jam[c->a][1] = c->b;
@@ -166,7 +179,7 @@ void song_ctl_block(song_ctl* sc, sid* chip) {
 }
 
 uint32_t song_ctl_due(const song_ctl* sc, uint32_t n) {
-    return sc->isr_playing && sc->next < n ? sc->next : n;
+    return (sc->isr_playing || sc->audition) && sc->next < n ? sc->next : n;
 }
 
 static void song_handover(song_ctl* sc) {
@@ -293,10 +306,20 @@ static void song_lock_apply(song_ctl* sc) {
 
 void song_ctl_call(song_ctl* sc) {
     song_handover(sc);
+    uint8_t frozen = (uint8_t)!sc->isr_playing;
+    sc->player.frozen = frozen;
     for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
-        if (sc->jam[ch][0]) {
+        /* a paused start's first call initialises the song (which clears a new note): the
+         * jam at the call after */
+        if (sc->jam[ch][0] && !(frozen && sc->player.initsong)) {
             sc->jam[ch][0] = 0u;
+            if (sc->jam[ch][1] == SONG_JAM_RELEASE) {
+                sc->player.chn[ch].gate = 0xfeu; /* as a key-off row */
+                continue;
+            }
             gt2_play_jam(&sc->player, ch, sc->jam[ch][1], sc->jam[ch][2], song_sink, sc);
+            if (frozen)
+                sc->player.chn[ch].counter = 1u; /* its tick 0 at this call */
         }
     }
     gt2_play_frame(&sc->player, song_sink, sc);
@@ -316,13 +339,13 @@ void song_ctl_call(song_ctl* sc) {
 }
 
 void song_ctl_block_end(song_ctl* sc, uint32_t n) {
-    if (sc->isr_playing)
+    if (sc->isr_playing || sc->audition)
         sc->next -= n;
 }
 
 void song_ctl_chip_swapped(void* ctx, uint32_t chip, sid* s) {
     song_ctl* sc = ctx;
-    if (chip != 0u || !sc->isr_playing)
+    if (chip != 0u || !(sc->isr_playing || sc->audition))
         return;
     song_rewrite(sc, s);
     if (sc->song_gate != NO_GATE)
@@ -490,6 +513,8 @@ int song_ctl_play(song_ctl* sc, uint32_t subtune, uint32_t pos) {
     sc->bg_on = 0u;
     sc->chip_ready = 0u;
     sc->loading_done = 0u;
+    sc->load_for = LOAD_PLAY;
+    sc->auditioning = 0u;
     sc->state = SONG_LOADING;
     return 1;
 }
@@ -506,9 +531,23 @@ int song_ctl_stop(song_ctl* sc) {
     return 1;
 }
 
+/* SONG_LOADING for chip A alone (the song and its shape as they are): its hook, then what
+ * `then` says. */
+static void retake_chip(song_ctl* sc, uint8_t then) {
+    sc->loading_done = 1u;
+    sc->chip_ready = 0u;
+    sc->load_for = then;
+    sc->state = SONG_LOADING;
+}
+
 int song_ctl_continue(song_ctl* sc) {
     if (sc->state != SONG_STOPPED || room(sc) < 1u)
         return 0;
+    sc->auditioning = 0u;
+    if (!sc->chip_held && !sc->handback) {
+        retake_chip(sc, LOAD_CONTINUE); /* chip A went back to the keys meanwhile */
+        return 1;
+    }
     song_cmd c;
     cmd_init(&c, SONG_CMD_CONTINUE);
     c.a = gate_for_play(sc);
@@ -539,7 +578,8 @@ int song_ctl_take(song_ctl* sc, uint32_t mask) {
 }
 
 int song_ctl_jam(song_ctl* sc, uint32_t voice, uint32_t note, uint32_t instr) {
-    if (voice >= GT2_PLAY_CHANNELS || note > 95u || instr > GT2_MAX_INSTR || room(sc) < 1u)
+    if (voice >= GT2_PLAY_CHANNELS || (note > 95u && note != SONG_JAM_RELEASE) ||
+        instr > GT2_MAX_INSTR || room(sc) < 1u)
         return 0;
     song_cmd c;
     cmd_init(&c, SONG_CMD_JAM);
@@ -547,6 +587,50 @@ int song_ctl_jam(song_ctl* sc, uint32_t voice, uint32_t note, uint32_t instr) {
     c.b = (uint8_t)note;
     c.c = (uint8_t)instr;
     push(sc, &c);
+    return 1;
+}
+
+uint32_t song_ctl_shown_state(const song_ctl* sc) {
+    if (sc->state == SONG_LOADING && (sc->load_for == LOAD_PAUSED || sc->load_for == LOAD_WAKE))
+        return sc->shapes_used ? SONG_STOPPED : SONG_IDLE;
+    return sc->state;
+}
+
+int song_ctl_jam_ready(const song_ctl* sc) {
+    return sc->state == SONG_PLAYING || sc->auditioning;
+}
+
+int song_ctl_audition(song_ctl* sc) {
+    if (sc->state == SONG_PLAYING || sc->state == SONG_LOADING || sc->auditioning)
+        return 1;
+    if (sc->state == SONG_IDLE) {
+        /* no song played yet: its analysis first, then a paused PLAY */
+        if (!song_ctl_play(sc, sc->subtune, 0u))
+            return 0;
+        if (sc->state == SONG_LOADING)
+            sc->load_for = LOAD_PAUSED;
+        return 1;
+    }
+    if (sc->chip_held || sc->handback) {
+        sc->handback = 0u; /* a stop not yet handed back: chip A stays the song's */
+        sc->auditioning = 1u;
+        return 1;
+    }
+    retake_chip(sc, LOAD_WAKE);
+    return 1;
+}
+
+int song_ctl_audition_end(song_ctl* sc) {
+    if (!sc->auditioning)
+        return 1;
+    if (room(sc) < 1u)
+        return 0;
+    song_cmd c;
+    cmd_init(&c, SONG_CMD_STOP);
+    c.a = sc->hooks.chip_a_keys ? NO_GATE : sc->keys_gate_reset;
+    sc->stop_seq = push(sc, &c);
+    sc->handback = 1u;
+    sc->auditioning = 0u;
     return 1;
 }
 
@@ -702,6 +786,7 @@ static void poll_applied(song_ctl* sc, int may_ring) {
         sc->spare_wait = 0u;
     if (sc->handback && may_ring && (int32_t)(a - sc->stop_seq) >= 0) {
         sc->handback = 0u;
+        sc->chip_held = 0u;
         for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++)
             for (uint32_t f = 0u; f < 4u; f++)
                 sc->char_lock[ch][f] = -1;
@@ -777,15 +862,31 @@ static void poll_loading(song_ctl* sc, int may_slice) {
                 return;
         }
         sc->chip_ready = 1u;
+        sc->chip_held = 1u;
+    }
+    if (sc->load_for == LOAD_WAKE) {
+        sc->auditioning = 1u; /* the first jam starts the calls */
+        sc->state = SONG_STOPPED;
+        return;
     }
     if (room(sc) < 1u)
         return;
+    if (sc->load_for == LOAD_CONTINUE) {
+        song_cmd k;
+        cmd_init(&k, SONG_CMD_CONTINUE);
+        k.a = gate_for_play(sc);
+        push(sc, &k);
+        sc->handback = 0u;
+        sc->state = SONG_PLAYING;
+        return;
+    }
     song_period p = song_period_of(sc->opts.multispeed, sc->opts.ntsc);
     sc->period = p;
     lock_prime(sc);
     song_cmd c;
     cmd_init(&c, SONG_CMD_PLAY);
     c.a = gate_for_play(sc);
+    c.b = (uint8_t)(sc->load_for == LOAD_PAUSED);
     c.u.p.ptr = sc->shapes[spare(sc)];
     c.u.p.ptr2 = (const void*)(uintptr_t)p.den;
     uint8_t* st = (uint8_t*)&c.u.p.x;
@@ -798,6 +899,11 @@ static void poll_loading(song_ctl* sc, int may_slice) {
     sc->widened = 0u;
     sc->want_handover = 0u;
     sc->handback = 0u;
+    if (sc->load_for == LOAD_PAUSED) {
+        sc->auditioning = 1u;
+        sc->state = SONG_STOPPED;
+        return;
+    }
     sc->state = SONG_PLAYING;
 }
 

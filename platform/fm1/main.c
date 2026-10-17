@@ -114,8 +114,8 @@ static void fm1_fault(const fm1_crash_t* c) {
     fm1_reboot();
 }
 
-/* --- The song (M2c Task 6): SIDOU's first song, PLAY plays and stops it until M2d's
- * transport. The keys share chip A with it until M2b Task 4 moves them to chip B. --- */
+/* --- The song (M2c Task 6): SIDOU's first song, played by the song views' transport
+ * (app/song_view.h, bound below). --- */
 
 /* The first song (app/demo_song.h) from flash into the song's region: the audio interrupt never
  * reads flash. */
@@ -297,8 +297,130 @@ static void song_test_edits(song_ctl* sc) {
     }
 }
 
-/* Once a pass: PLAY's presses, then the transport's poll (a slice of its analysis); the
- * voices the keys take from the song under KEYS A. */
+/* --- The song views' player (app/song_transport.h) over song_ctl --- */
+
+/* An audition (jams with the song stopped, song_ctl_audition) ends this long after its last
+ * jam is let go, and chip A goes back to the keys. */
+#define AUDITION_HOLD_MS 2000u
+
+static song_status song_seen; /* the row events' positions, kept between frames */
+static uint8_t jam_wait[3];   /* a jam note waiting for the audition: on, voice, note */
+static uint8_t jam_instr;
+static uint8_t jam_wait_off;  /* and its release */
+static uint8_t jam_held;      /* a jam note sounds and is not let go */
+static uint32_t jam_last_ms;  /* the last jam's time */
+
+static int st_play(void* ctx, uint32_t pos) {
+    song_ctl* sc = ctx;
+    if (!song_ctl_play(sc, 0, pos)) {
+        return 0;
+    }
+    song_warned = 0;
+    song_setup_on = 0;
+    for (uint32_t v = 0; v < SONG_T_VOICES; v++) {
+        song_seen.order_pos[v] = SONG_T_NOWHERE;
+        song_seen.row[v] = SONG_T_NOWHERE;
+    }
+    return 1;
+}
+
+static int st_stop(void* ctx) {
+    return song_ctl_stop(ctx); /* 0 while it starts: asked again until it plays */
+}
+
+static int st_resume(void* ctx) {
+    song_ctl* sc = ctx;
+    song_setup_on = 0;
+    return song_ctl_continue(sc);
+}
+
+static int st_mute(void* ctx, uint32_t mask) {
+    return song_ctl_mute(ctx, mask);
+}
+
+/* While the song plays, straight to the player; stopped, through the audition, which may
+ * take a few ticks to start (chip A taken for the song): the note waits for it. */
+static int st_jam(void* ctx, uint32_t voice, uint32_t note, uint32_t instr) {
+    song_ctl* sc = ctx;
+    int off = note == SONG_T_RELEASE;
+    jam_last_ms = uptime_ms;
+    if (song_ctl_jam_ready(sc) && !jam_wait[0]) {
+        if (!song_ctl_jam(sc, voice, off ? SONG_JAM_RELEASE : note, instr)) {
+            return 0;
+        }
+        jam_held = (uint8_t)!off;
+        return 1;
+    }
+    if (off) {
+        jam_wait_off = jam_wait[0];
+        jam_held = 0;
+        return 1;
+    }
+    if (song_ctl_state(sc) != SONG_PLAYING && !song_ctl_audition(sc)) {
+        return 0;
+    }
+    jam_wait[0] = 1;
+    jam_wait[1] = (uint8_t)voice;
+    jam_wait[2] = (uint8_t)note;
+    jam_instr = (uint8_t)instr;
+    jam_wait_off = 0;
+    jam_held = 1;
+    return 1;
+}
+
+static void st_status(void* ctx, song_status* out) {
+    song_ctl* sc = ctx;
+    song_event ev[16];
+    uint32_t n;
+    while ((n = song_ctl_events(sc, ev, 16u)) != 0u) {
+        for (uint32_t i = 0; i < n; i++) {
+            uint32_t ch = SONG_EV_CHANNEL(&ev[i]);
+            if ((SONG_EV_FLAGS(&ev[i]) & GT2_EV_ROW) && ch < SONG_T_VOICES) {
+                song_seen.order_pos[ch] = ev[i].order_pos;
+                song_seen.row[ch] = ev[i].row;
+            }
+        }
+    }
+    *out = song_seen;
+    out->state = (uint8_t)song_ctl_shown_state(sc);
+    /* the play's options; before one, the song's (or the defaults), read again each second */
+    static gt2_options before;
+    static uint8_t frames;
+    gt2_options o = sc->opts;
+    if (!sc->shapes_used) {
+        if (frames++ % 25u == 0u && !song_ext_get_options(sc->song, &before)) {
+            gt2_options_default(&before);
+        }
+        o = before;
+    }
+    out->multispeed = o.multispeed;
+    out->ntsc = o.ntsc;
+    out->mute = sc->mute;
+    /* the player's tempo: calls a row, its packed form less one (funktempo below 2) */
+    const gt2_player* p = &sc->player;
+    uint8_t t = p->shape ? p->chn[0].tempo : 0u;
+    if (!p->shape) {
+        out->speed[0] = out->speed[1] = 6u; /* GoatTracker's default until a play */
+    } else if (t < 2u) {
+        out->speed[0] = p->funktempo[0];
+        out->speed[1] = p->funktempo[1];
+    } else {
+        out->speed[0] = out->speed[1] = (uint8_t)(t + 1u);
+    }
+    const sid* a = sc->chip;
+    for (uint32_t v = 0; v < SONG_T_VOICES; v++) {
+        out->wave[v] = sc->shadow[v * 7u + 4u];
+        out->env[v] = a ? a->env[v].counter : 0u;
+    }
+}
+
+static const song_transport song_binding = {st_play, st_stop,   st_resume, st_mute,
+                                            st_jam,  st_status, 0};
+static song_transport song_bound;
+
+/* Once a pass: the voices the keys take from the song under KEYS A, the audition's jam that
+ * waited and its end, the transport's poll (a slice of its analysis), and chip A with the
+ * song or the keys. */
 static uint8_t song_taken;
 
 static void song_pass(void) {
@@ -307,15 +429,33 @@ static void song_pass(void) {
     if (taken != song_taken && song_ctl_take(sc, taken)) {
         song_taken = taken;
     }
+    if (jam_wait[0] && song_ctl_jam_ready(sc) &&
+        song_ctl_jam(sc, jam_wait[1], jam_wait[2], jam_instr)) {
+        jam_wait[0] = 0;
+        if (jam_wait_off && song_ctl_jam(sc, jam_wait[1], SONG_JAM_RELEASE, jam_instr)) {
+            jam_wait_off = 0;
+        }
+    }
+    if (sc->auditioning && !jam_held && !jam_wait[0] &&
+        uptime_ms - jam_last_ms >= AUDITION_HOLD_MS) {
+        song_ctl_audition_end(sc);
+    }
+    uint32_t st = song_ctl_state(sc);
+    int engaged = st == SONG_LOADING || st == SONG_PLAYING || sc->auditioning || sc->handback;
+    if (engaged && !song_mine) {
+        keys_route_set_song(&keys_router, 1); /* the keys leave chip A */
+        song_mine = 1;
+    }
     song_test_edits(sc);
     audio_song_poll();
-    uint32_t now_st = song_ctl_state(sc);
-    if (song_mine && (now_st == SONG_IDLE || now_st == SONG_STOPPED) && !sc->handback) {
+    st = song_ctl_state(sc);
+    engaged = st == SONG_LOADING || st == SONG_PLAYING || sc->auditioning || sc->handback;
+    if (song_mine && !engaged) {
         keys_route_set_song(&keys_router, 0); /* stopped, or a refused play: the keys come back */
         song_mine = 0;
     }
     song_tell(sc);
-    uint32_t st = song_ctl_state(sc);
+    st = song_ctl_shown_state(sc);
     front.playing = st == SONG_PLAYING || st == SONG_LOADING;
 }
 
@@ -455,6 +595,9 @@ static void sidou_main(void) {
     /* uptime_ms counts every timer tick since TIMER4 started (fm1_timer5_irq). */
     ui_init(&instrument, uptime_ms, (int)((held >> PANEL_BTN_HOME) & 1u));
     ui_set_keys(&keys_router);
+    song_bound = song_binding;
+    song_bound.ctx = audio_song();
+    ui_set_song(&song_bound);
     ui_set_sounds(&ui_sounds);
 #if defined(SIDOU_TEST_DEATH_MS)
     test_death_arm();
