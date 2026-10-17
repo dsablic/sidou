@@ -40,6 +40,7 @@ struct Set {
     rig: Rig,
     ml: Box<midi_learn>,
     cards: Box<u8>,
+    rows: Box<u8>,
     snd: Box<ui_sound>,
     st: Store,
     set: Box<settings>,
@@ -55,6 +56,7 @@ impl Set {
         let mut rig = Rig::new(SID_MODEL_6581);
         let mut ml = Box::<midi_learn>::default();
         let mut cards = Box::new(1u8);
+        let mut rows = Box::new(0u8);
         let mut snd = Box::<ui_sound>::default();
         let rec: *mut Recorder = &mut *rig.rec;
         let mut s = Set {
@@ -62,6 +64,7 @@ impl Set {
             rig,
             ml: Box::default(),
             cards: Box::new(0),
+            rows: Box::new(0),
             snd: Box::default(),
             st,
             now: 1000,
@@ -76,6 +79,7 @@ impl Set {
                 &mut *s.rig.live,
                 &mut *ml,
                 &mut *cards,
+                &mut *rows,
                 &mut *snd,
                 &mut *s.st.st,
                 version.as_ptr(),
@@ -84,6 +88,7 @@ impl Set {
         }
         s.ml = ml;
         s.cards = cards;
+        s.rows = rows;
         s.snd = snd;
         FORCED.with(|f| f.set((0, 0)));
         s
@@ -192,12 +197,12 @@ impl Set {
 }
 
 #[test]
-fn the_record_is_v1s_layout_with_the_defaults() {
+fn the_record_is_v2s_layout_with_the_defaults() {
     let s = Set::blank();
     let rec = s.gather();
-    assert_eq!(rec.len(), SETTINGS_V1_BYTES as usize);
-    assert_eq!(rec.len(), 106);
-    assert_eq!(rec[..6], [1, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]);
+    assert_eq!(rec.len(), SETTINGS_BYTES as usize);
+    assert_eq!(rec.len(), 107);
+    assert_eq!(rec[..6], [2, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]);
     let cutoff = s.param(LIVE_PARAM_CUTOFF);
     assert_eq!(
         rec[6..8],
@@ -220,7 +225,8 @@ fn the_record_is_v1s_layout_with_the_defaults() {
         "no bindings"
     );
     assert_eq!(&rec[92..98], b"V1.2.3");
-    assert!(rec[98..].iter().all(|&b| b == 0), "NUL-padded");
+    assert!(rec[98..106].iter().all(|&b| b == 0), "NUL-padded");
+    assert_eq!(rec[106], 0, "BAR");
 }
 
 #[test]
@@ -239,6 +245,42 @@ fn every_persisted_value_round_trips_and_the_volume_does_not() {
     // The master pot changes no record: no background save for it.
     a.rig.set_master(1000);
     assert_eq!(a.gather(), rec);
+}
+
+#[test]
+fn tracker_rows_round_trips_both_modes() {
+    for rows in [0, 1] {
+        let mut a = Set::blank();
+        *a.rows = rows;
+        let rec = a.gather();
+        assert_eq!(rec.len(), 107);
+        assert_eq!(rec[0], 2);
+        assert_eq!(rec[106], rows);
+        let mut b = Set::blank();
+        *b.rows = 1 - rows;
+        assert_eq!(
+            unsafe { settings_apply(&mut *b.set, rec.as_ptr(), rec.len() as u32) },
+            1
+        );
+        assert_eq!(*b.rows, rows);
+    }
+}
+
+#[test]
+fn invalid_tracker_rows_falls_back_to_bar() {
+    for rows in [2, 255] {
+        let mut s = Set::blank();
+        let mut rec = s.gather();
+        rec.resize(107, 0);
+        rec[0] = 2;
+        rec[106] = rows;
+        *s.rows = 1;
+        assert_eq!(
+            unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
+            1
+        );
+        assert_eq!(*s.rows, 0);
+    }
 }
 
 #[test]
@@ -509,7 +551,7 @@ fn a_newer_schemas_record_applies_its_v1_part() {
     let mut good = Set::blank();
     good.change_everything();
     let mut rec = good.gather();
-    rec[0] = 2;
+    rec[0] = 3;
     rec.extend_from_slice(&[0xA5; 20]);
     let mut s = Set::blank();
     let same = unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) };
@@ -552,9 +594,35 @@ fn a_schema_1_record_loads_to_the_same_values() {
     let rec = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     assert_eq!(rec.len(), 106);
     let mut s = Set::blank();
+    *s.rows = 1;
     let same = unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) };
     assert_eq!(same, 1, "written by V1.2.3");
     s.rig.tick();
     assert_eq!(s.snapshot(), want.snapshot());
     assert_eq!(s.rig.live.octave, 0, "the octave does not persist");
+    assert_eq!(*s.rows, 0, "schema 1 defaults to BAR, even after SCROLL");
+}
+
+#[test]
+fn a_schema_2_record_loads_scroll_and_keeps_the_v1_prefix() {
+    let mut rec = std::fs::read(fixture_path()).unwrap();
+    rec[0] = 2;
+    rec.push(1);
+    let path = fixture_path().with_file_name("settings-v2.bin");
+    let fixture = std::fs::read(path).unwrap();
+    assert_eq!(
+        fixture, rec,
+        "only the version and appended byte differ from v1"
+    );
+    let mut s = Set::blank();
+    assert_eq!(
+        unsafe { settings_apply(&mut *s.set, fixture.as_ptr(), fixture.len() as u32) },
+        1
+    );
+    assert_eq!(*s.rows, 1);
+    assert_eq!(s.gather(), fixture, "schema 2 encodes the same bytes");
+    s.rig.tick();
+    let mut want = Set::blank();
+    want.change_everything();
+    assert_eq!(s.snapshot(), want.snapshot());
 }

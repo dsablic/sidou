@@ -14,12 +14,13 @@ static int wide(uint32_t p) {
     return p == LIVE_PARAM_CUTOFF || p == LIVE_PARAM_PULSE_WIDTH;
 }
 
-void settings_init(settings* s, live* l, midi_learn* ml, uint8_t* cards, ui_sound* snd,
+void settings_init(settings* s, live* l, midi_learn* ml, uint8_t* cards, uint8_t* tracker_rows, ui_sound* snd,
                    store* st, const char* version, void (*force)(int on)) {
     memset(s, 0, sizeof *s);
     s->l = l;
     s->ml = ml;
     s->cards = cards;
+    s->tracker_rows = tracker_rows;
     s->snd = snd;
     s->st = st;
     s->version = version;
@@ -59,12 +60,14 @@ uint32_t settings_gather(const settings* s, uint8_t* out) {
     for (uint32_t i = 0; i < SETTINGS_VERSION_CHARS && s->version[i]; i++) {
         out[n - SETTINGS_VERSION_CHARS + i] = (uint8_t)s->version[i];
     }
+    out[n++] = *s->tracker_rows;
     return n;
 }
 
 int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
     /* Schema 1 or later: the v1 part (a later schema appends). */
-    if (len < SETTINGS_V1_BYTES || rec[0] < 1u || rec[5] < SETTINGS_PARAMS_V1) {
+    if (len < SETTINGS_V1_BYTES || rec[0] < 1u || rec[5] < SETTINGS_PARAMS_V1 ||
+        (rec[0] >= 2u && len < SETTINGS_V2_BYTES)) {
         return 0;
     }
     live* l = s->l;
@@ -93,6 +96,7 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
         }
     }
     n += SETTINGS_PARAMS_V1;
+    *s->tracker_rows = (uint8_t)(rec[0] >= 2u && rec[SETTINGS_V1_BYTES] == 1u);
     for (uint32_t i = 0; i < SETTINGS_VERSION_CHARS; i++) {
         char c = s->version[i];
         if ((uint8_t)c != rec[n + i]) {

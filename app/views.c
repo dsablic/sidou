@@ -401,6 +401,7 @@ static void rows_turn(void* ctx, int32_t steps) {
     views* v = ctx;
     if (steps != 0) {
         v->song.scroll = (uint8_t)(steps > 0);
+        v->l->settings_dirty = 1;
         screen_redraw(&v->s);
     }
 }

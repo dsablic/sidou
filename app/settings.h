@@ -5,10 +5,10 @@
  * What it holds: CARDS, the UI sounds (SOUNDS), KEYS, the preset and every live parameter (the
  * keys' chip model, profile and character, the effect slots, the envelope mode and the
  * preset's edits: the instrument as it was left; not the MASTER volume, which is the pot),
- * MIDI learn's bindings, and the firmware version last booted (for the full boot once after
- * an install). Not the octave, the held notes, the controllers or the view on screen.
+ * MIDI learn's bindings, the firmware version last booted (for the full boot once after
+ * an install), and TRACKER ROWS. Not the octave, held notes, controllers or view on screen.
  *
- * The record, little-endian bytes (SETTINGS_V1_BYTES; docs/reference/settings-format.md):
+ * The record, little-endian bytes (SETTINGS_BYTES; docs/reference/settings-format.md):
  *   0  schema version (SETTINGS_VERSION)
  *   1  CARDS (0 off, 1 on)
  *   2  SOUNDS (0 off, 1 on)
@@ -19,6 +19,7 @@
  *      the volume (the MASTER pot's) is 0 and ignored
  *  50  MIDI learn: each parameter's bound CC (MIDI_MAP_NO_CC: none), 42 bytes
  *  92  the firmware version, NUL-padded, SETTINGS_VERSION_CHARS bytes
+ * 106  TRACKER ROWS (0 BAR, 1 SCROLL; schema 2)
  * A later schema only appends fields: an older firmware reads a newer record's v1 part, and a
  * newer one fills what an older record lacks with its defaults (settings_load's migrations).
  *
@@ -48,11 +49,12 @@ extern "C" {
  * user profiles); those below are the emulator tests' (platform/fm1/store_fm1.h's hook). */
 #define SETTINGS_KEY 0x100u
 #define SETTINGS_TYPE 1u
-#define SETTINGS_VERSION 1u
+#define SETTINGS_VERSION 2u
 #define SETTINGS_VERSION_CHARS 14u /* "V" and the version, as the status screen shows it */
 #define SETTINGS_PARAMS_V1 42u
 #define SETTINGS_V1_BYTES (6u + SETTINGS_PARAMS_V1 + 2u + SETTINGS_PARAMS_V1 + SETTINGS_VERSION_CHARS)
-#define SETTINGS_BYTES SETTINGS_V1_BYTES
+#define SETTINGS_V2_BYTES (SETTINGS_V1_BYTES + 1u)
+#define SETTINGS_BYTES SETTINGS_V2_BYTES
 #define SETTINGS_DEBOUNCE_MS 5000u
 #define SETTINGS_FORCE_MS 2000u
 
@@ -68,6 +70,7 @@ typedef struct {
     live* l;
     midi_learn* ml; /* NULL: no bindings */
     uint8_t* cards; /* the views' CARDS */
+    uint8_t* tracker_rows; /* the song view's scroll mode */
     ui_sound* snd;  /* NULL: no SOUNDS */
     store* st;      /* NULL: nothing persists */
     const char* version;
@@ -83,7 +86,7 @@ typedef struct {
     uint8_t started;
 } settings;
 
-void settings_init(settings* s, live* l, midi_learn* ml, uint8_t* cards, ui_sound* snd,
+void settings_init(settings* s, live* l, midi_learn* ml, uint8_t* cards, uint8_t* tracker_rows, ui_sound* snd,
                    store* st, const char* version, void (*force)(int on));
 /* The record as it stands now, into out (SETTINGS_BYTES); its length. */
 uint32_t settings_gather(const settings* s, uint8_t* out);

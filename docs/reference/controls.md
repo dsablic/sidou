@@ -110,7 +110,7 @@ The song views make and play a song (M2d): **STEP**, **TRACKER**, **ORDER**, **I
 voices in GoatTracker's layout, the orderlists and the bar row's command. Its rows follow the
 song while it plays, the cursor while it is stopped, as a moving bar over still rows (the
 menu's **TRACKER ROWS** BAR, the default) or scrolling under a still bar (SCROLL, as
-GoatTracker does); TRACKER ROWS resets to BAR at power-on and is not part of the settings record. The song
+GoatTracker does). TRACKER ROWS is saved with the settings. The song
 is SIDOU LOOP until songs load from the store (M2c Task 8).
 
 | Control | Does |
@@ -380,7 +380,7 @@ range.
 
 ## Settings and STORE
 
-Settings load at power-on: CARDS, KEYS, SOUNDS, the preset and its edits, the keys' chip
+Settings load at power-on: CARDS, KEYS, SOUNDS, TRACKER ROWS, the preset and its edits, the keys' chip
 model, profile and character, the effect slots, envelope mode, MIDI-learn bindings and the
 last firmware version booted. Missing or unreadable settings use the defaults. Octave,
 held notes, controllers and the view on screen are not restored; volume follows MASTER.

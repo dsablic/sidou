@@ -9,6 +9,8 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- TRACKER ROWS (BAR or SCROLL) persists across power cycles in settings schema 2;
+  schema-1 settings still load with BAR.
 - The minimum Rust version is 1.88 (was 1.87): `gt2-ref`'s 6502 core, mos6502 0.10.1,
   uses let chains.
 

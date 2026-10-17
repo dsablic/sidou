@@ -95,6 +95,7 @@ impl Saving {
                 &mut *ui.rig.live,
                 &mut *ml,
                 &mut ui.v.cards,
+                &mut ui.v.song.scroll,
                 std::ptr::null_mut(),
                 &mut *st.st,
                 c"V1.2.3".as_ptr(),
@@ -177,6 +178,44 @@ impl Saving {
 }
 
 const MENU_ROW: usize = 4;
+
+#[test]
+fn a_tracker_rows_change_alone_is_background_saved_after_five_seconds_and_loaded_at_boot() {
+    let mut s = Saving::new();
+    for _ in 0..150 {
+        s.frame();
+    }
+    let before = s.stored().expect("the boot's settings saved");
+    assert_eq!(s.ui.rig.live.settings_dirty, 0);
+    s.ui.press(PANEL_BTN_HOME);
+    s.ui.settle();
+    s.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_ROWS as i32);
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(s.ui.v.song.scroll, 1);
+    s.frame();
+    let changed_at = s.set.changed_at;
+    while s.ui.now - changed_at < SETTINGS_DEBOUNCE_MS {
+        assert_eq!(s.stored(), Some(before.clone()), "not before five seconds");
+        s.frame();
+    }
+    s.frame();
+    s.frame();
+    assert_eq!(s.stored(), Some(s.gather()), "TRACKER ROWS alone must save");
+    assert_ne!(s.stored(), Some(before));
+    let mut st = s.st;
+    st.reset();
+    st.mount();
+    let mut reboot = Saving::on(st);
+    reboot.ui.press(PANEL_BTN_SEQ);
+    reboot.ui.settle();
+    assert_eq!(reboot.ui.top(), "TRACKER");
+    assert_eq!(reboot.ui.v.song.scroll, 1, "opens in the loaded mode");
+    assert_eq!(
+        &reboot.ui.row(14)[..2],
+        "00",
+        "SCROLL puts row 0 at screen row 14"
+    );
+}
 
 #[test]
 fn a_learned_binding_alone_is_background_saved_through_views_frame() {

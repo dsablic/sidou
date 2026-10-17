@@ -157,6 +157,67 @@ scroll's lag reported; the numbers into `docs/art/README.md`.
 
 **Commit:** `feat(tracker): the TRACKER view, a moving bar by default and scrolling as an option`
 
+**As built — TRACKER ROWS persistence:** settings schema 2 appends byte 106 (`0` BAR,
+`1` SCROLL), leaving every schema-1 field at its original offset. Schema-1 records load
+with BAR; invalid mode bytes also select BAR. The unchanged v1 fixture and a new v2
+fixture cover compatibility; host tests cover both modes, the five-second background
+save from a TRACKER ROWS menu edit alone, and reopening TRACKER in its saved mode after
+a simulated power cycle. The menu wakes settings through `live.settings_dirty`, as
+CARDS does; no gather is added to idle frames. Settings point directly to the song
+view's existing mode byte and apply it before the first frame at boot. No song or store
+code changes. A later settings addition can append its field under the next schema.
+The dirty-mark mutation check failed at `TRACKER ROWS alone must save` (exit 101)
+with the mark removed and passed after restoring it (exit 0). A diff-only review
+found no correctness defects. The v1 fixture is unchanged; no golden was regenerated.
+
+Persistence follow-up resources (Task 2 base → schema 2): image **428,724 → 428,792 B**
+(sidou-pack); free RAM **18,024 → 18,020 B** (gate 14,000), RAM region used
+**53,208 → 53,212 B** of 65,536; POOL **346,560 B** of 352,256 and RAMTEXT
+**44,404 B** of 49,152, both unchanged. No budget or tolerance was changed.
+
+Tight gates, before → after: STATUS idle **7,496.6 → 7,496.6 instructions/frame**
+(`<7,500`), worst idle `ui_poll` **591 → 591**, zero cells or SPI windows;
+HOME into THE OSCILLATOR **429 → 429 input instructions** (`<430`), busiest pass
+**71,394 → 71,394**, input plus pass **71,823 → 71,823**, at most 200 cells /
+17.14 ms SPI. The extra gathered byte costs idle frames nothing.
+
+Every TRACKER measurement below is identical before and after persistence:
+
+| Case | Instructions/frame | Worst `ui_poll` | Cells/frame (average, most) | SPI/frame ms (average, worst) |
+|---|---:|---:|---:|---:|
+| Idle | 8,100.84 | 1,327 | 0, 0 | 0, 0 |
+| REC | 8,302.76 | 3,946 | 0.12, 3 | 0.011, 0.263 |
+| Playing, 100 frames | 25,679.69 | 29,808 | 21.94, 86 | 1.899, 7.559 |
+| GLO and a key | 9,846.60 | 27,413 | 1.24, 31 | 0.108, 2.711 |
+| SIDOU LOOP, BAR, 30 s | 27,580.02 | 31,432 | 25.57, 129 | 2.218, 11.345 |
+| SIDOU LOOP, SCROLL, 30 s | 50,985.75 | 34,036 | 83.36, 200 | 7.296, 17.558 |
+| Tempo 3, BAR, 30 s | 49,781.60 | 38,358 | 61.58, 200 | 5.349, 17.785 |
+| Tempo 3, SCROLL, 30 s | 89,897.85 | 36,823 | 100.43, 200 | 9.076, 17.580 |
+
+TRACKER input / busiest following pass, also unchanged: SEQ from LIVE **4,155 /
+47,964**, SEQ in TRACKER **228 / 5,035**, REC **200 / 5,035**, PLAY **1,880 /
+29,605**, REC again **201 / 30,368**, GLO and a key **71 / 29,709**. All remain
+under the existing 4,600 input / 55,000 pass bounds. The 30 s runs each cover 750
+frames: BAR/SCROLL cut-short counts are **0/243** for SIDOU LOOP and **34/24** at
+tempo 3, unchanged; all frames stay within 200 cells and 20 ms SPI.
+
+Checks (exit codes): fm1 build **0**; flash-spike build **0**; GCC 13 on
+`app/settings.c` **0** and `app/views.c` **0**; `cargo fmt --all --check` **0**;
+`cargo clippy --locked --workspace --all-targets -- -D warnings` **0**;
+`cargo test --locked --workspace --release` **0**;
+`SIDOU_SANITIZE=undefined cargo test --locked --workspace` **0**;
+sidou-pack with CI's app/loader/output arguments (cached inputs, `--offline`) **0**;
+`cargo test --locked --release -p sidou-pack -- --nocapture` **0**;
+full emu-gate with both firmware build paths and `--nocapture --test-threads=1`
+**0**; `uvx --offline --from 'reuse[charset-normalizer]' reuse lint` **0**;
+`tools/web-demo --check` **0** (cached dependencies only).
+The base build, base screen budgets, base SRAM/song-region tests and base package
+all exited **0**; the final targeted STATUS, title-card and RAM gates also exited
+**0**. The initial new-feature tests failed as intended (**101**); the complete
+host app suite then passed (**0**), as did the restored dirty-mark regression
+(**0**). Nothing remains open for this follow-up. Hardware flags from Tasks 1/2
+and provisional flash timings remain unchanged; no hardware was accessed.
+
 ---
 
 ### Task 3: TRACKER, edited
