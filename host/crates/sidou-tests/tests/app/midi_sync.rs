@@ -126,6 +126,7 @@ fn transport(sc: *mut song_ctl) -> song_transport {
         jam: Some(t_jam),
         status: Some(t_status),
         ctx: sc.cast(),
+        song: unsafe { (*sc).song },
         hold: Some(t_hold),
         align: Some(t_align),
         period: Some(t_period),

@@ -531,19 +531,6 @@ static int get_counted(const gt2_song* s, uint32_t tag, uint32_t fixed, uint32_t
     return 1;
 }
 
-static int set_counted(gt2_song* s, uint32_t tag, const uint8_t* head, uint32_t fixed,
-                       const uint8_t* list, uint32_t count, uint32_t max) {
-    uint8_t b[16];
-    if (count > max || 1u + fixed + count > sizeof b)
-        return -1;
-    b[0] = 1u;
-    for (uint32_t i = 0; i < fixed; i++)
-        b[1u + i] = head[i];
-    for (uint32_t i = 0; i < count; i++)
-        b[1u + fixed + i] = list[i];
-    return song_ext_set(s, tag, b, 1u + fixed + count);
-}
-
 int song_ext_get_midi(const gt2_song* s, song_midi* v) {
     uint8_t head[3];
     memset(v, 0, sizeof *v);

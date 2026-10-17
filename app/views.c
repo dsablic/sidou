@@ -733,7 +733,7 @@ static void arp_turn(void* ctx, int32_t steps) {
     }
 }
 
-static void rows_value(void* ctx, char* buf) {
+static void midi_rows_value(void* ctx, char* buf) {
     midi_route_setup s;
     if (!midi_setup(ctx, &s)) {
         midi_none(buf);
@@ -742,7 +742,7 @@ static void rows_value(void* ctx, char* buf) {
     number_text(buf, s.rows_per_beat);
 }
 
-static void rows_turn(void* ctx, int32_t steps) {
+static void midi_rows_turn(void* ctx, int32_t steps) {
     midi_route_setup s;
     if (midi_setup(ctx, &s)) {
         s.rows_per_beat = stepped(s.rows_per_beat, steps, 1, MIDI_ROUTE_ROWS_MAX);
@@ -780,7 +780,7 @@ static const menu_item MIDI_ITEMS[VIEWS_MIDI_ITEMS] = {
     {"MODE", mode_value, mode_turn},         {"CHANNEL", channel_value, channel_turn},
     {"OPTION", option_value, option_turn},   {"LEGATO", legato_value, legato_turn},
     {"CHORD 2", chord2_value, chord2_turn},  {"CHORD 3", chord3_value, chord3_turn},
-    {"ARP RATE", arp_value, arp_turn},       {"ROWS/BEAT", rows_value, rows_turn},
+    {"ARP RATE", arp_value, arp_turn},       {"ROWS/BEAT", midi_rows_value, midi_rows_turn},
     {"CLOCK", clock_value, clock_turn},      {"CLOCK OUT", clock_out_value, clock_out_turn},
 };
 
