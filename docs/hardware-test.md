@@ -608,7 +608,7 @@ Notes:
 
 ## 7.1 Settings, SAVE and STORE (M2a Task 5)
 
-Use a writable store for the persistence checks. Previous ChoralRoot/Felucca data in the
+Use a writable store for the persistence checks. Previous Felucca data in the
 store's range reads as FOREIGN, not as a blank store. Read the destructive format check
 below before deciding whether to format; nothing persists until then. SIDOU never formats
 it without the menu's confirmation; preserve wanted data with the previous firmware first.
