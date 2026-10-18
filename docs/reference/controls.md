@@ -515,6 +515,10 @@ moves the cursor, ALGORITHM changes the value under it, HOME goes back). The mod
 releases what MIDI was playing. The page's setup stays in RAM and is not included in saved
 settings; a song carries its own mode in its `MIDI` chunk.
 
+MIDI is the last item in the large main menu. The options page shows eight compact rows
+at a time and scrolls to CLOCK and CLOCK OUT. Turning ALGORITHM names the selected item
+and its value in the large value popup; closing it restores the page underneath.
+
 | Item | Values | What |
 |---|---|---|
 | MODE | LIVE, MULTI, WHOLE A, WHOLE B, OMNI (at power-on) | which channel plays what |

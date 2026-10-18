@@ -102,7 +102,8 @@ enum {
     MIDI_SYNC_WANT_START = 1u,
     MIDI_SYNC_WANT_RESUME = 2u,
     MIDI_SYNC_WANT_STOP = 4u,
-    MIDI_SYNC_WANT_SEEK = 8u
+    MIDI_SYNC_WANT_SEEK = 8u,
+    MIDI_SYNC_WANT_FREE = 16u
 };
 
 typedef struct midi_sync {
@@ -113,7 +114,7 @@ typedef struct midi_sync {
     uint8_t rows_per_beat;
     uint8_t subtune;     /* song select's */
     uint8_t want;        /* MIDI_SYNC_WANT_* */
-    uint8_t held;        /* the start or resume asked for is held, to be aligned */
+    uint8_t held;        /* a held play/resume remains outstanding, including during a seek */
     uint8_t aligning;    /* a held start or resume waits for its clock */
     uint8_t synced;      /* the playing song has a position on the clock */
     uint8_t fresh;       /* a clock has come since the last pass */

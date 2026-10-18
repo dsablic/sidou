@@ -730,35 +730,86 @@ fn songs_come_from_the_instruments_channel_or_channel_n_only() {
 }
 
 #[test]
-fn bank_2_picks_the_instruments_profile_and_asks_for_user_ones() {
+fn bank_2_applies_saved_user_profiles_to_the_instrument_and_ignores_empty_slots() {
     let mut r = Route::new();
     r.trs(&[0xB0, 32, 2, 0xC0, SID_CHIP_8580_R5 as u8]);
     assert_eq!(u32::from(r.rig.live.profile_req), SID_CHIP_8580_R5);
     assert_eq!(r.rig.live.preset, 0, "not a preset");
-    let mut chip = 9u32;
-    assert_eq!(
-        unsafe { midi_route_take_user_profile(&mut *r.route, &mut chip) },
-        -1
-    );
-    r.trs(&[0xC0, 5]);
-    assert_eq!(
-        unsafe { midi_route_take_user_profile(&mut *r.route, &mut chip) },
-        0,
-        "program 5 is USER 1"
-    );
-    assert_eq!(chip, MIDI_ROUTE_CHIP_KEYS);
-    r.trs(&[0xC0, 12]);
-    assert_eq!(
-        unsafe { midi_route_take_user_profile(&mut *r.route, &mut chip) },
-        7
-    );
-    r.trs(&[0xC0, 13]);
-    assert_eq!(
-        unsafe { midi_route_take_user_profile(&mut *r.route, &mut chip) },
-        -1,
-        "past USER 8"
-    );
+    for slot in 0..LIVE_USER_PROFILES as usize {
+        r.rig.live.user_valid = 1 << slot;
+        r.rig.live.user_base[slot] = SID_CHIP_6581_R3 as u8;
+        r.rig.live.user_ctl[slot] = [11 + slot as u8, 22, 33, 44];
+        r.trs(&[0xC0, SID_CHIPS as u8 + slot as u8]);
+        assert_eq!(r.rig.live.user_applied, slot as u8 + 1);
+        assert_eq!(u32::from(r.rig.live.profile_req), SID_CHIP_6581_R3);
+        assert_eq!(&r.rig.live.character[..4], &r.rig.live.user_ctl[slot]);
+    }
+    r.trs(&[0xC0, SID_CHIP_8580_R5 as u8]);
+    r.rig.live.user_valid = 0;
+    r.trs(&[0xC0, 5, 12, 13]);
     assert_eq!(u32::from(r.rig.live.profile_req), SID_CHIP_8580_R5);
+    assert_eq!(r.rig.live.user_applied, 0);
+}
+
+#[test]
+fn bank_2_and_cc_85_pick_the_same_builtin_and_saved_profiles_on_chip_a() {
+    let mut r = Route::with(MIDI_MODE_MULTI, 0, |_| {});
+    let mut kr = Box::<keys_route>::default();
+    r.route.kr = &mut *kr;
+    kr.song = 1;
+    let cv = chip_view {
+        kr: &mut *kr,
+        l: &mut *r.rig.live,
+        ..Default::default()
+    };
+    r.rig.live.user_valid = 0xff;
+    for slot in 0..LIVE_USER_PROFILES as usize {
+        r.rig.live.user_base[slot] = SID_CHIP_6581_R3 as u8;
+        r.rig.live.user_ctl[slot] = [slot as u8 + 10, 20, 30, 40];
+    }
+    for pick in 0..SID_CHIPS + LIVE_USER_PROFILES {
+        let initial = chip_setup {
+            profile: SID_CHIP_6581_R4AR as u8,
+            controls: [1, 2, 3, 4],
+            ..Default::default()
+        };
+        kr.song_want = initial;
+        r.trs(&[0xB0, 32, 2, 0xC0, pick as u8]);
+        let want = kr.song_want;
+        let (profile, controls) = if pick < SID_CHIPS {
+            (pick as u8, initial.controls)
+        } else {
+            let slot = (pick - SID_CHIPS) as usize;
+            (r.rig.live.user_base[slot], r.rig.live.user_ctl[slot])
+        };
+        assert_eq!(want.profile, profile, "program {pick}");
+        assert_eq!(want.controls, controls, "program {pick}");
+        let user = if pick < SID_CHIPS {
+            0
+        } else {
+            (pick - SID_CHIPS + 1) as i32
+        };
+        assert_eq!(
+            unsafe { chip_view_user(&cv) },
+            user,
+            "program {pick}: USER identity"
+        );
+        kr.song_want = initial;
+        let cc = unsafe { midi_map_to_cc(midi_map_for_cc(85), pick) };
+        r.trs(&[0xB0, 85, cc]);
+        assert_eq!(kr.song_want.profile, want.profile, "CC 85 pick {pick}");
+        assert_eq!(kr.song_want.controls, want.controls, "CC 85 pick {pick}");
+        assert_eq!(
+            unsafe { chip_view_user(&cv) },
+            user,
+            "CC 85 pick {pick}: USER identity"
+        );
+    }
+    r.rig.live.user_valid = 0;
+    let before = kr.song_want;
+    r.trs(&[0xC0, 5, 12, 13]);
+    assert_eq!(kr.song_want.profile, before.profile);
+    assert_eq!(kr.song_want.controls, before.controls);
 }
 
 #[test]
@@ -790,7 +841,7 @@ fn a_program_change_that_edits_live_is_one_midi_out_takes_as_midis() {
     assert_eq!(edits(&r, &pc(0, 4)), 1, "a profile");
     assert_eq!(
         edits(&r, &pc(0, 5)),
-        0,
-        "a USER profile: not yet a parameter"
+        1,
+        "a USER profile's base and controls are MIDI's changes"
     );
 }

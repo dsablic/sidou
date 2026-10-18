@@ -86,6 +86,7 @@ typedef struct {
      * view's A tab, both through keys_route_song_wants); chip A follows it. */
     chip_setup song_want;
     uint8_t song_seen; /* song as the last tick saw it (a song's start sets song_want) */
+    uint8_t song_user; /* USER slot n + 1 that supplied song_want, or 0 */
     void (*moved)(void* ctx, uint32_t chip); /* NULL: nobody to tell */
     void* moved_ctx;
 } keys_route;

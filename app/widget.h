@@ -25,6 +25,8 @@ extern "C" {
 /* Rows a menu shows at most (menu_init clamps), and the cells of a line at scale 2 at most. */
 #define MENU_MAX_ROWS 8u
 #define MENU_LINE_CELLS 60u
+/* force_rows uses only the grid's 30 rows; its high bit budgets forced restoration too. */
+#define MENU_BUDGET_FORCED (1u << 31)
 
 typedef struct {
     const char* label;
@@ -51,9 +53,12 @@ typedef struct {
     /* At scale 2 (a line is up to 60 cells, a scroll changes them all): menu_draw draws the
      * lines whose text changed since they were drawn, the selected one first, while what the
      * grid has pending (grid_pending) leaves room for another line within `budget` cells (0: no
-     * limit); the first line of a call is drawn whatever the grid has pending. A line whose rows
-     * are in force_rows (what something drew over, or all after a view switch) is drawn whatever
-     * it was. `pending` says lines were left for the next call. The caller sets budget and
+     * limit); the first line makes progress even while a view switch has old cells pending.
+     * Rows in force_rows (what something drew over, or all after a view switch) are drawn
+     * regardless of budget unless force_rows includes MENU_BUDGET_FORCED. Deferred forced rows
+     * are invalidated
+     * so the next call restores them. `pending`
+     * says lines were left for the next call. The caller sets budget and
      * force_rows before each call. */
     uint16_t budget;
     uint8_t pending;

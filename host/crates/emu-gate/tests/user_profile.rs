@@ -227,6 +227,42 @@ fn active_sid(m: &mut Machine, fw: &Firmware) -> u32 {
 }
 
 #[test]
+fn bank_2_program_change_applies_a_saved_user_profile_like_cc_85() {
+    let Some(fw) = fixture() else { return };
+    let flash = flash_with_user_3(&fw);
+    let mut m = Machine::boot_blank(&fw.image);
+    m.soc.flash.mem.copy_from_slice(&flash);
+    run_past_boot(&mut m, &fw);
+    m.midi(&[0xB0, 0, 0, 32, 2, 0xC0, 7]);
+    m.run_ms(2500);
+    assert_eq!(
+        live_u8(&mut m, &fw, ilp32::live::profile),
+        SID_CHIP_6581_WORN as u8
+    );
+    assert_eq!(live_u8(&mut m, &fw, ilp32::live::user_applied), 3);
+    for (i, control) in SAVED_CONTROLS.iter().enumerate() {
+        assert_eq!(live_u8(&mut m, &fw, ilp32::live::character + i), *control);
+    }
+    m.midi(&[0xC0, 5, 12, 13]);
+    m.run_ms(100);
+    assert_eq!(
+        live_u8(&mut m, &fw, ilp32::live::user_applied),
+        3,
+        "empty or invalid pick"
+    );
+    m.midi(&[0xB0, 85, CC_R4AR]);
+    m.run_ms(400);
+    assert_eq!(live_u8(&mut m, &fw, ilp32::live::user_applied), 0);
+    m.midi(&[0xB0, 85, CC_USER_3]);
+    m.run_ms(2500);
+    assert_eq!(
+        live_u8(&mut m, &fw, ilp32::live::profile),
+        SID_CHIP_6581_WORN as u8
+    );
+    assert_eq!(live_u8(&mut m, &fw, ilp32::live::user_applied), 3);
+}
+
+#[test]
 fn a_user_profile_saved_from_the_chip_view_survives_a_power_cycle_and_sounds_as_saved() {
     let Some(fw) = fixture() else {
         return;

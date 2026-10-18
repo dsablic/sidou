@@ -561,6 +561,7 @@ static void menu_compose(screen* s, void* state, grid* g) {
     uint32_t layers = screen_layer_cells(s);
     v->home.budget = (uint16_t)(MENU_FRAME_CELLS > layers ? MENU_FRAME_CELLS - layers : 1u);
     v->home.force_rows = s->redraw ? s->redraw_rows : 0u;
+    v->home.force_rows |= layers ? MENU_BUDGET_FORCED : 0u;
     menu_draw(&v->home, g, 0, MENU_ROW, GRID_COLS, TEXT, 0);
     /* What the encoders do (ALG is ALGORITHM): HOME goes back, as everywhere. */
     grid_text_big(g, 1, MENU_HELP_ROW, 2, "SELECT  MOVE", TEXT);
@@ -571,19 +572,8 @@ const view views_menu = {"MENU", NULL, NULL, menu_input, menu_compose, menu_chan
 
 /* ---- MIDI ---- */
 
-/* n as decimal text into buf (n < 1000). */
-static void number_text(char* buf, uint32_t n) {
-    char t[4];
-    uint32_t k = 0;
-    do {
-        t[k++] = (char)('0' + n % 10u);
-        n /= 10u;
-    } while (n && k < 3u);
-    for (uint32_t i = 0; i < k; i++) {
-        buf[i] = t[k - 1u - i];
-    }
-    buf[k] = 0;
-}
+#define MIDI_MENU_COL 2u
+#define MIDI_MENU_W 26u
 
 /* The page's items edit a copy of the setup, which midi_route_set takes whole. */
 static int midi_setup(const views* v, midi_route_setup* out) {
@@ -840,9 +830,10 @@ static void midi_compose(screen* s, void* state, grid* g) {
     widget_screen(g, FONT_FULL, TEXT);
     put(g, 2, 2, "SIDOU");
     put(g, 2, VERSION_END_COL - length(v->version), v->version);
-    widget_frame(g, MENU_COL, MENU_ROW, MENU_W, VIEWS_MIDI_ITEMS + 2u, TEXT, "MIDI");
-    menu_draw(&v->midi, g, MENU_COL + 1u, MENU_ROW + 1u, MENU_W - 2u, TEXT, screen_blink(s));
-    uint32_t help = MENU_ROW + VIEWS_MIDI_ITEMS + 3u;
+    widget_frame(g, MIDI_MENU_COL, MENU_ROW, MIDI_MENU_W, v->midi.rows + 2u, TEXT, "MIDI");
+    menu_draw(&v->midi, g, MIDI_MENU_COL + 1u, MENU_ROW + 1u, MIDI_MENU_W - 2u, TEXT,
+              screen_blink(s));
+    uint32_t help = MENU_ROW + v->midi.rows + 3u;
     put(g, help, 2, "SELECT     MOVE");
     put(g, help + 1u, 2, "ALGORITHM  CHANGE");
     put(g, help + 2u, 2, "HOME       BACK");
@@ -1234,7 +1225,7 @@ static int menu_choice_text(const views* v, char* name, char* value) {
 
 /* The popup's source (screen_popup_source): the control the panel changed, as the view that
  * shows has it. 0 under the boot, a title card and MIDI learn's frame, and for what has no
- * value to show. MIDI never asks (docs/reference/controls.md "Value popup"). */
+ * value to show. Incoming MIDI never asks (docs/reference/controls.md "Value popup"). */
 static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t* fill,
                       uint32_t* max) {
     const views* v = ctx;
@@ -1275,6 +1266,15 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
         }
         if (top == &views_menu) {
             return menu_choice_text(v, name, value);
+        }
+        if (top == &views_midi) {
+            const menu_item* it = &v->midi.items[v->midi.cursor];
+            join(name, SCREEN_POPUP_TEXT, it->label, "");
+            char text[MENU_VALUE_CHARS] = {0};
+            it->value((void*)v, text);
+            text[SCREEN_POPUP_CHARS] = 0;
+            join(value, SCREEN_POPUP_TEXT, text, "");
+            return 1;
         }
     }
     return 0;

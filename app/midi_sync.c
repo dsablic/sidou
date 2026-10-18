@@ -48,8 +48,7 @@ void midi_sync_set(midi_sync* s, uint32_t mode, uint32_t clock_out) {
     s->mode = (uint8_t)(mode < MIDI_SYNC_MODES ? mode : MIDI_SYNC_AUTO);
     s->clock_out = clock_out ? 1u : 0u;
     if (s->mode == MIDI_SYNC_OFF) {
-        s->want = 0;
-        s->aligning = 0;
+        s->want = MIDI_SYNC_WANT_FREE;
         s->synced = 0;
     }
 }
@@ -158,6 +157,7 @@ static void align_start(midi_sync* s, const song_clock* st) {
     }
     s->aligns++;
     s->aligning = 0;
+    s->held = 0;
     s->synced = 1;
     s->p_anchor = pos;
     s->next_row = s->c_anchor;
@@ -208,6 +208,7 @@ static int play(midi_sync* s, int held) {
         s->t->hold(s->t->ctx, 0u);
         return 0;
     }
+    s->held = (uint8_t)held;
     return 1;
 }
 
@@ -217,6 +218,7 @@ static int resume(midi_sync* s, int held) {
         s->t->hold(s->t->ctx, 0u);
         return 0;
     }
+    s->held = (uint8_t)held;
     return 1;
 }
 
@@ -227,6 +229,7 @@ static void lost(midi_sync* s, const song_clock* st) {
         /* held for a clock that will not come: start now */
         if (s->t->align(s->t->ctx, horizon(s))) {
             s->aligning = 0;
+            s->held = 0;
         }
     }
     if (s->mode == MIDI_SYNC_FOLLOW && st->state == MIDI_SYNC_PLAYING) {
@@ -237,10 +240,14 @@ static void lost(midi_sync* s, const song_clock* st) {
 /* The pending requests, in order: stop, start, seek, resume. */
 static void requests(midi_sync* s, const song_clock* st, int following) {
     if (s->want & MIDI_SYNC_WANT_STOP) {
+        if (st->state == MIDI_SYNC_LOADING) {
+            return;
+        }
         if (st->state != MIDI_SYNC_PLAYING || s->t->stop(s->t->ctx)) {
             s->want &= (uint8_t)~MIDI_SYNC_WANT_STOP;
             s->synced = 0;
             s->aligning = 0;
+            s->held = 0;
         }
         return;
     }
@@ -385,6 +392,23 @@ uint32_t midi_sync_poll(midi_sync* s, uint32_t ticks, uint32_t out[MIDI_SYNC_OUT
     song_clock st;
     s->t->clock(s->t->ctx, &st);
     uint32_t now = midi_sync_sample_of(s, ticks);
+    if (s->want & MIDI_SYNC_WANT_FREE) {
+        s->t->hold(s->t->ctx, 0u);
+        if (st.state == MIDI_SYNC_LOADING) {
+            return 0;
+        }
+        if (s->held) {
+            if (st.state == MIDI_SYNC_PLAYING && !s->t->align(s->t->ctx, horizon(s))) {
+                return 0;
+            }
+            s->aligning = 0;
+            s->held = 0;
+        }
+        if (!s->t->period(s->t->ctx, 0u)) {
+            return 0;
+        }
+        s->want &= (uint8_t)~MIDI_SYNC_WANT_FREE;
+    }
     if (s->mode != MIDI_SYNC_OFF && midi_clock_poll(&s->clock, now) == MIDI_CLOCK_EV_LOST) {
         lost(s, &st);
     }
@@ -397,6 +421,7 @@ uint32_t midi_sync_poll(midi_sync* s, uint32_t ticks, uint32_t out[MIDI_SYNC_OUT
             /* the held play or continue did not happen (a refused song): no hold left */
             s->t->hold(s->t->ctx, 0u);
             s->aligning = 0;
+            s->held = 0;
         }
         if (s->aligning && st.state == MIDI_SYNC_PLAYING && st.seeking != 1u) {
             align_start(s, &st);

@@ -769,7 +769,11 @@ fn the_midi_page_edits_midis_mode() {
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
     assert_eq!(ui.top(), "MIDI");
-    let value = |ui: &Ui, item: usize| ui.row(5 + item)[4..27].trim_end().to_string();
+    let value = |ui: &Ui, item: usize| {
+        ui.row(5 + item - usize::from(ui.v.midi.top))[4..27]
+            .trim_end()
+            .to_string()
+    };
     let row = value(&ui, 0);
     assert!(
         row.starts_with("MODE") && row.ends_with(" -"),
@@ -834,21 +838,28 @@ fn the_midi_pages_clock_items_set_the_clock() {
     ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_MIDI as i32);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
-    let value = |ui: &Ui, item: usize| ui.row(5 + item)[4..27].trim_end().to_string();
+    let value = |ui: &Ui, item: usize| {
+        ui.row(5 + item - usize::from(ui.v.midi.top))[4..27]
+            .trim_end()
+            .to_string()
+    };
     ui.turn(PANEL_ENC_SELECT, 8);
     ui.frame();
     assert!(value(&ui, 8).starts_with("CLOCK") && value(&ui, 8).ends_with(" -"));
     unsafe { views_sync(&mut *ui.v, &mut *sync) };
     ui.frame();
     assert!(value(&ui, 8).ends_with("AUTO"), "{:?}", value(&ui, 8));
-    assert!(value(&ui, 9).ends_with("OFF"), "{:?}", value(&ui, 9));
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(u32::from(sync.mode), MIDI_SYNC_FOLLOW);
     ui.turn(PANEL_ENC_ALGORITHM, 5);
     assert_eq!(u32::from(sync.mode), MIDI_SYNC_OFF, "clamped");
     ui.turn(PANEL_ENC_SELECT, 1);
+    ui.popup_gone();
+    ui.frame();
+    assert!(value(&ui, 9).ends_with("OFF"), "{:?}", value(&ui, 9));
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(sync.clock_out, 1);
+    ui.popup_gone();
     ui.frame();
     assert!(value(&ui, 9).ends_with("ON"));
 }

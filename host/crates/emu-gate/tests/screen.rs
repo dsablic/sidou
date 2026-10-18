@@ -465,7 +465,7 @@ fn the_popup_stays_within_its_budgets_over_every_view() {
     };
     let mut report = serde_json::Map::new();
     let mut over = Vec::new();
-    for view in ["live", "status", "menu", "chip", "scene"] {
+    for view in ["live", "status", "menu", "chip", "scene", "midi"] {
         let mut m = Machine::boot(&fw.image);
         m.watch_calls(fw.symbol("ui_poll"));
         common::run_past_boot(&mut m, &fw);
@@ -474,6 +474,12 @@ fn the_popup_stays_within_its_budgets_over_every_view() {
             "menu" => open_menu(&mut m, &fw),
             "chip" => open_chip(&mut m, &fw),
             "scene" => open_scene(&mut m, &fw, 2),
+            "midi" => {
+                open_menu(&mut m, &fw);
+                select(&mut m, MENU_MIDI);
+                m.turn(ALGORITHM, 1);
+                settle(&mut m, &fw);
+            }
             _ => settle(&mut m, &fw),
         }
         if view == "live" || view == "scene" {
@@ -515,7 +521,7 @@ fn the_popup_stays_within_its_budgets_over_every_view() {
             stay.total().windows
         );
         // (LIVE and SCENE move on their own: they send what they send)
-        let still = !matches!(view, "live" | "scene");
+        let still = !matches!(view, "live" | "scene" | "midi");
         if extra >= POPUP_STATIC_EXTRA || (still && stay.total().windows != 0) {
             over.push(format!(
                 "{view}: a static popup costs {extra:.0} instructions a frame and sent {} windows",
@@ -604,6 +610,7 @@ fn the_midi_page_matches_its_golden_image_and_stays_within_the_budgets() {
         return;
     };
     let mut m = booted(&fw);
+    no_popup(&mut m, &fw);
     m.watch_calls(fw.symbol("ui_poll"));
     open_menu(&mut m, &fw);
     select(&mut m, MENU_MIDI);

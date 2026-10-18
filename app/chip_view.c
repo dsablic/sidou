@@ -216,7 +216,7 @@ static uint32_t applied(const chip_view* cv) {
         return cv->l->user_applied;
     }
     /* The song's setup, unless something else has set its profile since. */
-    uint32_t n = cv->song_user;
+    uint32_t n = cv->kr->song_user;
     return n && cv->kr->song_want.profile == cv->l->user_base[n - 1u] ? n : 0u;
 }
 
@@ -331,7 +331,7 @@ static void draw_chip(chip_view* cv, chip_view_canvas* c) {
         bar(c, BAR_COL, row, s.controls[f], a);
         number(c, VALUE_END, row, s.controls[f], a);
     }
-    if (cv->l->user_applied | cv->song_user | cv->target) {
+    if (cv->l->user_applied | (cv->kr ? cv->kr->song_user : 0u) | cv->target) {
         draw_user(cv, c);
     }
 }
@@ -411,7 +411,6 @@ void chip_view_init(chip_view* cv, live* l) {
     cv->users = NULL;
     cv->target = 0;
     cv->confirm = 0;
-    cv->song_user = 0;
     cv->msg[0] = 0;
 }
 
@@ -491,7 +490,6 @@ static void enter(screen* s, void* state) {
     cv->cursor = 0;
     cv->target = 0;
     cv->confirm = 0;
-    cv->song_user = 0;
 }
 
 /* steps added to v, clamped to 0..max. */
@@ -553,8 +551,8 @@ __attribute__((noinline, unused)) static void pick(screen* s, chip_view* cv, int
         if (song) {
             chip_setup want = cv->kr->song_want;
             want.profile = (uint8_t)at;
-            cv->song_user = 0;
             keys_route_song_wants(cv->kr, &want);
+            cv->kr->song_user = 0;
         } else {
             live_param_set(l, LIVE_PARAM_PROFILE, (uint32_t)at);
         }
@@ -565,8 +563,8 @@ __attribute__((noinline, unused)) static void pick(screen* s, chip_view* cv, int
         for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; f++) {
             want.controls[f] = l->user_ctl[n][f];
         }
-        cv->song_user = (uint8_t)(n + 1u);
         keys_route_song_wants(cv->kr, &want);
+        cv->kr->song_user = (uint8_t)(n + 1u);
     } else {
         live_param_set(l, LIVE_PARAM_PROFILE, (uint32_t)at);
     }

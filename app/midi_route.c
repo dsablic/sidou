@@ -227,8 +227,6 @@ void midi_route_init(midi_route* r, live* l, keys_route* kr, const midi_route_pl
         r->bank[ch][1] = 0;
     }
     r->song_req = MIDI_ROUTE_NO_REQUEST;
-    r->user_req = MIDI_ROUTE_NO_REQUEST;
-    r->user_chip = MIDI_ROUTE_CHIP_KEYS;
 }
 
 void midi_route_set(midi_route* r, const midi_route_setup* s) {
@@ -489,6 +487,29 @@ static void channel_off(midi_route* r, uint32_t jam) {
 
 /* ---- controllers ---- */
 
+static void chip_profile(midi_route* r, uint32_t pick) {
+    if (!r->kr || pick >= SID_CHIPS + LIVE_USER_PROFILES) {
+        return;
+    }
+    chip_setup s = r->kr->song_want;
+    uint8_t user = 0;
+    if (pick < SID_CHIPS) {
+        s.profile = (uint8_t)pick;
+    } else {
+        uint32_t slot = pick - SID_CHIPS;
+        if (!(r->l->user_valid >> slot & 1u)) {
+            return;
+        }
+        s.profile = r->l->user_base[slot];
+        user = (uint8_t)(slot + 1u);
+        for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; f++) {
+            s.controls[f] = r->l->user_ctl[slot][f];
+        }
+    }
+    keys_route_song_wants(r->kr, &s);
+    r->kr->song_user = user;
+}
+
 /* Chip A's setup, as the song wants it, changed by a chip-level CC. */
 static void chip_cc(midi_route* r, uint8_t cc, uint8_t value) {
     if (!r->kr) {
@@ -501,7 +522,9 @@ static void chip_cc(midi_route* r, uint8_t cc, uint8_t value) {
     chip_setup s = r->kr->song_want;
     uint32_t v = midi_map_from_cc(e, value);
     switch (e->param) {
-    case LIVE_PARAM_PROFILE: s.profile = (uint8_t)v; break;
+    case LIVE_PARAM_PROFILE:
+        chip_profile(r, v);
+        return;
     case LIVE_PARAM_MODEL: {
         const sid_chip_profile* p = sid_chip_profile_get(s.profile);
         sid_model now = p ? p->model : SID_MODEL_6581;
@@ -598,7 +621,7 @@ int midi_route_edits_live(const midi_route* r, const midi_msg* msg) {
     }
     switch (bank_of(r, msg->channel & 15u)) {
     case MIDI_ROUTE_BANK_SOUND: return msg->data1 < LIVE_PRESET_COUNT;
-    case MIDI_ROUTE_BANK_PROFILES: return msg->data1 < SID_CHIPS;
+    case MIDI_ROUTE_BANK_PROFILES: return msg->data1 < SID_CHIPS + LIVE_USER_PROFILES;
     default: return 0;
     }
 }
@@ -623,17 +646,12 @@ static void program(midi_route* r, uint32_t ch, uint32_t k, uint32_t jam, uint8_
         }
         break;
     case MIDI_ROUTE_BANK_PROFILES:
-        if (n < SID_CHIPS) {
+        if (n < SID_CHIPS + LIVE_USER_PROFILES) {
             if (k == ROLE_LIVE) {
                 live_param_set(r->l, LIVE_PARAM_PROFILE, n);
-            } else if (r->kr) {
-                chip_setup s = r->kr->song_want;
-                s.profile = n;
-                keys_route_song_wants(r->kr, &s);
+            } else {
+                chip_profile(r, n);
             }
-        } else if (n < SID_CHIPS + MIDI_ROUTE_USER_PROFILES) {
-            r->user_req = (uint8_t)(n - SID_CHIPS);
-            r->user_chip = k == ROLE_LIVE ? MIDI_ROUTE_CHIP_KEYS : MIDI_ROUTE_CHIP_A;
         }
         break;
     default: break;
@@ -643,13 +661,6 @@ static void program(midi_route* r, uint32_t ch, uint32_t k, uint32_t jam, uint8_
 int32_t midi_route_take_song(midi_route* r) {
     int32_t n = r->song_req == MIDI_ROUTE_NO_REQUEST ? -1 : (int32_t)r->song_req;
     r->song_req = MIDI_ROUTE_NO_REQUEST;
-    return n;
-}
-
-int32_t midi_route_take_user_profile(midi_route* r, uint32_t* chip) {
-    int32_t n = r->user_req == MIDI_ROUTE_NO_REQUEST ? -1 : (int32_t)r->user_req;
-    *chip = r->user_chip;
-    r->user_req = MIDI_ROUTE_NO_REQUEST;
     return n;
 }
 

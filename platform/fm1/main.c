@@ -178,6 +178,7 @@ static int song_chip_ready(void* ctx, const song_chip_setup* c) {
             song_want.gate_reset = 0u; /* AUTHENTIC */
         }
         keys_route_song_wants(kr, &song_want);
+        kr->song_user = 0;
         song_setup_on = 1;
     }
     if (!chip_ctl_has(&kr->ctl[0], &song_want)) {
@@ -469,24 +470,28 @@ static int st_seek_further(void* ctx, uint32_t call) {
 }
 
 static void st_clock(void* ctx, song_clock* out) {
-    const song_ctl* sc = ctx;
-    out->state = (uint8_t)song_ctl_state(sc);
-    out->seeking = sc->ff_on ? (sc->ff_sent ? 2u : 1u) : 0u;
-    const gt2_player* p = &sc->player;
-    uint8_t t = p->shape ? p->chn[0].tempo : 0u;
-    if (!sc->shapes_used || !p->shape) {
-        out->speed[0] = out->speed[1] = 0u; /* no tempo before a play */
-    } else if (t < 2u) {
-        out->speed[0] = p->funktempo[0];
-        out->speed[1] = p->funktempo[1];
-    } else {
-        out->speed[0] = out->speed[1] = (uint8_t)(t + 1u);
-    }
-    out->calls = sc->calls;
-    out->call_sample = sc->call_sample;
-    const song_period* q = &sc->period;
-    float frac = (float)q->r * 65536.0f / (float)(q->den ? q->den : 1u);
-    out->period_q16 = (q->q << 16) + (uint32_t)frac;
+    const volatile song_ctl* sc = ctx;
+    uint32_t samples;
+    do {
+        samples = sc->samples;
+        out->state = (uint8_t)sc->state;
+        out->seeking = sc->ff_on ? (sc->ff_sent ? 2u : 1u) : 0u;
+        const volatile gt2_player* p = &sc->player;
+        uint8_t t = p->shape ? p->chn[0].tempo : 0u;
+        if (!sc->shapes_used || !p->shape) {
+            out->speed[0] = out->speed[1] = 0u; /* no tempo before a play */
+        } else if (t < 2u) {
+            out->speed[0] = p->funktempo[0];
+            out->speed[1] = p->funktempo[1];
+        } else {
+            out->speed[0] = out->speed[1] = (uint8_t)(t + 1u);
+        }
+        out->calls = sc->calls;
+        out->call_sample = sc->call_sample;
+        const volatile song_period* q = &sc->period;
+        float frac = (float)q->r * 65536.0f / (float)(q->den ? q->den : 1u);
+        out->period_q16 = (q->q << 16) + (uint32_t)frac;
+    } while (samples != sc->samples);
 }
 
 static const song_transport song_binding = {

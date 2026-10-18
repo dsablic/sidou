@@ -74,7 +74,7 @@
  *   takes the request, M2c Task 8; a second one before it does replaces it);
  * - bank 2, the chip's profiles: 0..4 the built-in ones (SID_CHIP_*), on the instrument's
  *   channel live's profile (the keys' setup), on a chip A channel chip A's (its want path);
- *   5..12 USER 1..8 (midi_route_take_user_profile: M2a Task 6's user profiles take it);
+ *   5..12 USER 1..8 (the saved base and controls; an empty slot does nothing);
  * - any other bank, or a program past a bank's range: nothing.
  * CC 0 and 32 are bank select on every channel the mode routes: MIDI learn leaves them
  * alone (midi_learn_learnable).
@@ -140,10 +140,7 @@ typedef enum { MIDI_WHOLE_POLY = 0, MIDI_WHOLE_CHORD = 1, MIDI_WHOLE_ARP = 2 } m
 #define MIDI_ROUTE_CC_BANK_LSB 32u
 enum { MIDI_ROUTE_BANK_SOUND = 0, MIDI_ROUTE_BANK_SONGS = 1, MIDI_ROUTE_BANK_PROFILES = 2 };
 #define MIDI_ROUTE_BANKS 3u
-#define MIDI_ROUTE_USER_PROFILES 8u
 #define MIDI_ROUTE_NO_REQUEST 0xffu
-/* Which chip a USER profile is asked for (midi_route_take_user_profile). */
-enum { MIDI_ROUTE_CHIP_KEYS = 0, MIDI_ROUTE_CHIP_A = 1 };
 
 typedef struct {
     uint8_t mode;          /* a midi_mode */
@@ -196,8 +193,6 @@ typedef struct midi_route {
      * instrument's through midi_map_cc (midi_map_port.banks, app/midi_rx.h). */
     uint8_t bank[16][2];
     uint8_t song_req;  /* the song a bank 1 program change asks for, or MIDI_ROUTE_NO_REQUEST */
-    uint8_t user_req;  /* the USER profile (0..7) bank 2 asks for, or MIDI_ROUTE_NO_REQUEST */
-    uint8_t user_chip; /* and for which chip (MIDI_ROUTE_CHIP_*) */
     uint8_t locks;      /* the filter's, as asked */
     uint8_t locks_sent; /* 0xff: to send */
     uint16_t cutoff;
@@ -241,8 +236,6 @@ int midi_route_edits_live(const midi_route* r, const midi_msg* msg);
 /* The song (0..127) a bank 1 program change asked for since the last call, or -1: the request
  * is cleared. */
 int32_t midi_route_take_song(midi_route* r);
-/* The USER profile (0..7) bank 2 asked for, and its chip (MIDI_ROUTE_CHIP_*), or -1. */
-int32_t midi_route_take_user_profile(midi_route* r, uint32_t* chip);
 /* A message classify gave the router: a jam channel's, or real time (the ARP's clock). */
 void midi_route_take(midi_route* r, const midi_msg* msg);
 /* Every jam note released and the jam channels' controllers reset (lost input,

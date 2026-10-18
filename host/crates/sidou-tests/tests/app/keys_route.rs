@@ -143,6 +143,29 @@ fn setup(k: &Keys, x: usize) -> (u8, u8, [u8; 5]) {
 }
 
 #[test]
+fn a_new_song_clears_user_identity_even_when_its_base_profile_is_unchanged() {
+    let mut k = Keys::new();
+    k.song(true);
+    k.ticks(2);
+    k.kr.song_user = 1;
+    let mut edit = k.kr.song_want;
+    edit.controls = [10, 20, 30, 40];
+    unsafe { keys_route_song_wants(&mut *k.kr, &edit) };
+    assert_eq!(
+        k.kr.song_user, 1,
+        "ordinary character edits keep the selection"
+    );
+    k.song(false);
+    k.ticks(2);
+    k.song(true);
+    k.ticks(2);
+    assert_eq!(
+        k.kr.song_user, 0,
+        "the new song inherits a setup, not a USER selection"
+    );
+}
+
+#[test]
 fn chip_ctl_follows_a_setup_and_records_what_it_saw() {
     let mut k = Keys::new();
     let want = chip_setup {
@@ -778,8 +801,9 @@ fn chip_level_ccs_on_chip_as_channels_set_chip_as_setup() {
         };
         unsafe { midi_route_take(route, &m) };
     };
-    // 85: the profile, 0..4 over 0..127; 89: thump; 26: AUTHENTIC.
-    cc(&mut route, 1, 85, 127);
+    // CC 85 now includes USER 1..8 after the five built-in profiles.
+    let worn = unsafe { midi_map_to_cc(midi_map_for_cc(85), SID_CHIP_6581_WORN) };
+    cc(&mut route, 1, 85, worn);
     cc(&mut route, 2, 89, 127);
     cc(&mut route, 0, 26, 127);
     let want = k.kr.song_want;

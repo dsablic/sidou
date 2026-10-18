@@ -61,6 +61,52 @@ fn cutoff_text(ui: &Ui) -> String {
     text_of(live_view_cutoff_text, ui.live())
 }
 
+#[test]
+fn the_midi_page_names_each_edited_value_in_the_popup() {
+    let mut ui = Ui::without_cards();
+    let mut route = Box::<midi_route>::default();
+    let mut sync = Box::<midi_sync>::default();
+    unsafe {
+        midi_route_init(
+            &mut *route,
+            &mut *ui.rig.live,
+            std::ptr::null_mut(),
+            std::ptr::null(),
+        );
+        midi_sync_init(&mut *sync);
+        views_route(&mut *ui.v, &mut *route);
+        views_sync(&mut *ui.v, &mut *sync);
+    }
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_MIDI as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.settle();
+    for (i, (name, value)) in [
+        ("MODE", "OMNI"),
+        ("CHANNEL", "2"),
+        ("OPTION", "CHORD"),
+        ("LEGATO", "ON"),
+        ("CHORD 2", "+5"),
+        ("CHORD 3", "+8"),
+        ("ARP RATE", "4 FR"),
+        ("ROWS/BEAT", "5"),
+        ("CLOCK", "FOLLOW"),
+        ("CLOCK OUT", "ON"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if i != 0 {
+            ui.turn(PANEL_ENC_SELECT, 1);
+        }
+        ui.turn(PANEL_ENC_ALGORITHM, 1);
+        open(&mut ui);
+        assert_eq!(says(&ui), (name.to_owned(), value.to_owned()), "item {i}");
+        ui.popup_gone();
+    }
+}
+
 fn grid_copy(ui: &Ui) -> (Vec<u8>, Vec<u8>) {
     (ui.g.ch.to_vec(), ui.g.attr.to_vec())
 }
@@ -437,7 +483,7 @@ fn a_view_switch_takes_the_popup_away_in_the_next_frame() {
     assert!(!shown(&ui));
     assert_eq!(ui.v.s.layers, 0);
     ui.settle();
-    assert_eq!(&ui.row(1)[1..15], "MENU   #  1/13");
+    assert_eq!(&ui.row(1)[1..15], "MENU   #  1/14");
 }
 
 #[test]
@@ -604,9 +650,9 @@ fn the_menu_stays_within_the_cell_and_spi_budgets_as_it_scrolls_and_under_a_popu
     let mut frames = Vec::new();
     // A step a frame down and up the whole list, jumps from end to end, a popup over the middle
     // (ALGORITHM on a value item) and OCT+'s toast in the course of it.
-    let turns: Vec<i32> = (0..13)
+    let turns: Vec<i32> = (0..VIEWS_MENU_ITEMS)
         .map(|_| 1)
-        .chain((0..13).map(|_| -1))
+        .chain((0..VIEWS_MENU_ITEMS).map(|_| -1))
         .chain([99, -99, 99, -99])
         .collect();
     for (n, steps) in turns.iter().enumerate() {

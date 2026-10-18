@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "widget.h"
 
+_Static_assert(GRID_ROWS < 32u, "the menu's budget flag is not a grid row");
+
 #include "font.h"
 
 void widget_frame(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint8_t attr,
@@ -168,8 +170,10 @@ __attribute__((noinline, unused)) static void draw_big(menu* m, grid* g, uint32_
         if (!forced && (m->valid >> k & 1u) && m->sig[k] == sig) {
             continue; /* it shows this already */
         }
-        if (!forced && drawn && m->budget && grid_pending(g) + MENU_LINE_CELLS > m->budget) {
+        if ((!forced || (m->force_rows & MENU_BUDGET_FORCED)) && drawn && m->budget &&
+            grid_pending(g) + MENU_LINE_CELLS > m->budget) {
             m->pending = 1; /* the next call */
+            m->valid = (uint8_t)(m->valid & ~(1u << k));
             continue;
         }
         drawn++;

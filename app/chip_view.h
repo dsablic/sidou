@@ -109,12 +109,11 @@ typedef struct {
     chip_view_canvas cv;
     /* USER profiles (M2a Task 6). users: where a saved slot is written (NULL: only live keeps
      * it). target: n + 1, the slot SAVE stores into (EDIT + ALGORITHM), 0 none; confirm: n + 1,
-     * an overwrite SAVE asked about; song_user: n + 1, the song tab's setup was set by picking
-     * USER n + 1 (live.user_applied is the keys' tab's). msg: what the last SAVE or pick says. */
+     * an overwrite SAVE asked about. keys_route.song_user tracks the song tab's USER setup,
+     * live.user_applied the keys' tab's. msg: what the last SAVE or pick says. */
     user_profiles* users;
     uint8_t target;
     uint8_t confirm;
-    uint8_t song_user;
     char msg[CHIP_VIEW_MSG];
 } chip_view;
 

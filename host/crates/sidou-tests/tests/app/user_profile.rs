@@ -459,7 +459,7 @@ fn on_a_songs_chip_a_the_save_target_stores_the_songs_setup_not_the_keys() {
     // Picking a USER on the song's tab sets the song's setup, as an edit does.
     p.fill(1, SID_CHIP_8580_R5, [1, 3, 5, 7]);
     p.ui.turn(ALG, 4); // R3 -> R4AR -> 8580 -> worn -> USER 2 (USER 1 is empty)
-    assert_eq!(p.ui.v.chip.song_user, 2);
+    assert_eq!(unsafe { (*p.ui.v.chip.kr).song_user }, 2);
     assert_eq!(kr.song_want.profile, SID_CHIP_8580_R5 as u8);
     assert_eq!(kr.song_want.controls, [1, 3, 5, 7]);
     assert_eq!(

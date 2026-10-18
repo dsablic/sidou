@@ -60,6 +60,8 @@ void keys_route_init(keys_route* kr, live* l, live_sink_fn sink, live_prepare_fn
     kr->under = 0;
     kr->taken = 0;
     kr->song_seen = 0;
+    kr->song_user = 0;
+    kr->song_want = (chip_setup){0};
     kr->moved = 0;
     kr->moved_ctx = 0;
 }
@@ -112,6 +114,7 @@ int keys_route_prepare(void* ctx, uint8_t profile) {
 static void update_under(keys_route* kr) {
     if (kr->song && !kr->song_seen) {
         keys_route_song_wants(kr, &kr->ctl[0].has); /* chip A as the song finds it */
+        kr->song_user = 0;
     }
     kr->song_seen = kr->song;
     uint8_t now = (uint8_t)keys_under_song(kr);
@@ -146,10 +149,14 @@ int keys_route_ready_for_song(const keys_route* kr) {
 }
 
 void keys_route_song_wants(keys_route* kr, const chip_setup* setup) {
+    if (setup->profile != kr->song_want.profile) {
+        kr->song_user = 0;
+    }
     kr->song_want = *setup; /* the one writer of song_want */
 }
 
 void keys_route_song_setup(keys_route* kr, const chip_setup* setup) {
+    kr->song_user = 0;
     kr->ctl[0].has = *setup;
     kr->ctl[0].made = 1;
     keys_route_song_wants(kr, setup);

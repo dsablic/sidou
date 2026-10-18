@@ -514,6 +514,66 @@ fn clock_off_ignores_the_transport() {
 }
 
 #[test]
+fn clock_off_releases_a_held_start_before_or_after_loading() {
+    for request in [
+        MIDI_SYNC_WANT_START,
+        MIDI_SYNC_WANT_SEEK | MIDI_SYNC_WANT_RESUME,
+    ] {
+        for load_blocks in [0, 20] {
+            let mut r = Rig::new();
+            r.run(10);
+            r.sync.clock.active = 1;
+            r.sync.want = request as u8;
+            r.sync.seek_pos = 32;
+            let mut out = [0; MIDI_SYNC_OUT_MAX as usize];
+            let now = r.samples() * TPS;
+            unsafe { midi_sync_poll(&mut *r.sync, now, out.as_mut_ptr()) };
+            assert_eq!(r.status().state, MIDI_SYNC_LOADING as u8);
+            r.run(load_blocks);
+            assert_eq!(r.t.calls(), 0, "held start");
+            unsafe { midi_sync_set(&mut *r.sync, MIDI_SYNC_OFF, 0) };
+            r.run(100);
+            assert!(
+                r.t.calls() > 0,
+                "CLOCK OFF left the song held after {load_blocks} blocks"
+            );
+            assert_eq!(r.t.sc.hold_next, 0);
+        }
+    }
+}
+
+#[test]
+fn clock_off_restores_the_native_frame_period() {
+    let mut r = Rig::new();
+    r.run(10);
+    let t0 = r.samples() * TPS;
+    r.midi.extend(clock(t0, 150.0, 6, |_| 0));
+    start_at(&mut r, t0 + 4_000_000);
+    r.run((1.5 * FS / BLOCK as f64) as u32);
+    let native = unsafe { song_period_of(r.t.sc.opts.multispeed.into(), r.t.sc.opts.ntsc.into()) };
+    assert_ne!(r.t.sc.period.q, native.q, "the external tempo differs");
+    unsafe { midi_sync_set(&mut *r.sync, MIDI_SYNC_OFF, 0) };
+    r.run(30);
+    assert_eq!(r.t.sc.period.q, native.q);
+    assert_eq!(r.t.sc.period.r, native.r);
+    assert_eq!(r.t.sc.period.den, native.den);
+}
+
+#[test]
+fn a_stop_during_loading_waits_until_the_transport_can_stop() {
+    let mut r = Rig::new();
+    r.run(10);
+    r.sync.want = MIDI_SYNC_WANT_START as u8;
+    let mut out = [0; MIDI_SYNC_OUT_MAX as usize];
+    let now = r.samples() * TPS;
+    unsafe { midi_sync_poll(&mut *r.sync, now, out.as_mut_ptr()) };
+    assert_eq!(r.status().state, MIDI_SYNC_LOADING as u8);
+    r.sync.want = MIDI_SYNC_WANT_STOP as u8;
+    r.run(100);
+    assert_eq!(r.status().state, MIDI_SYNC_STOPPED as u8);
+}
+
+#[test]
 fn song_select_picks_the_subtune_and_names_fit() {
     let mut r = Rig::new();
     r.midi.push(At {
