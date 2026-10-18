@@ -160,6 +160,43 @@ M2b Task 3 adds chip B's render beside chip A's, while chip B is in use, and the
 (`chip_mix`): `.ram_text` 36,720 bytes. Out of use chip B is not rendered (a silent chip
 still has a level of its own); its use changes at a block boundary, faded over that block.
 
+**M2b completion, integrated build on `m2b` at `fbbba3f`:** chip A carries the song;
+with KEYS AUTO, the keys play A without a song and B while it plays. B always follows
+the keys' setup. KEYS A borrows song voices until key-up instead. UI sounds borrow a free
+B voice only, never steal a held note, and are off by default. Both chips mix before the
+one shared effect chain and final MASTER gain. Two loud chips in phase can clip the mix
+by up to 3.3 dB; no automatic gain or soft knee has been introduced.
+
+The expert layer does not reset either SID: constants and completed tables change at
+audio-block boundaries. Filter rows use leased existing SID backing (no new row arrays),
+build over 27 ticks, then crossfade over 127 ticks. DAC edits use the one shared build
+table. Preparation, character builds, song analysis and store service exclude competing
+slices in the same main-loop pass.
+
+| Integrated resource | Measured | Existing limit |
+|---|---:|---:|
+| Packaged app image | 466,528 bytes | 512,000 bytes (latest merged stage, M2f) |
+| RAMTEXT | 45,920 bytes | 49,152 bytes |
+| Free RAM region / POOL | 4,372 / 4,472 bytes | ≥4,096 each |
+| Free RAM region + POOL | 8,844 bytes | ≥7,000 bytes |
+| POOL used | 347,784 bytes | 352,256 bytes |
+| Three-SID ring object | 105,408 bytes | Expert growth 1,224 bytes |
+| Chip B's marginal state | 35,216 bytes | Original estimate 35,300 bytes |
+
+These include the merged storage, song engine, song views, MIDI and SCENE work; the
+standalone M2b 384,000-byte image and 92,000-free-RAM projection is not this build's gate.
+Before the expert layer (`64b6f97`), the image was 425,140 bytes, RAMTEXT 45,108 and
+combined free RAM 11,492. Both 4 KiB region floors remain unchanged.
+
+The emulator's real two-chip ISR with every slot at its heaviest measures 2,387.1172
+instructions/sample against 2,700. The conservative 6502 allowance is about **185.35
+instructions/sample** after the mix (8.05946) and MASTER gain (12.0625 steady,
+12.08567 with one pot move), not the earlier mix-only 197.44. Song playback and a future
+6502 do not run together. The SID-only worst blocks are 705.3516 / 1,419.5469 for one/two
+chips against 711 / 1,426; audio remains bit-exact with the host. These are instruction
+counts, not hardware cycle measurements. Listening, clock/cache costs and the real LCD
+remain manual checks in [the checklist](hardware-test.md#63-two-chips-routing-and-ui-sounds-m2b).
+
 M1b's exact SID core (register reads, combined waveforms, the envelope
 pipeline) brings `.ram_text` to about 32 KB, so RAMTEXT is now **48 KB**
 (0x01C00000–0x01C0C000), twice Felucca's 24 KB. Nothing on the hardware set
@@ -276,9 +313,9 @@ The rules for keeping it that way:
   every address the `.ram_text` code loads. Other constant tables stay in
   flash.
 - **One flash read remains, by design:** the combined waveforms' pulldown
-  rows (`gen/pulldown.h`, the 6581's three strengths and the 8580's AVERAGE:
-  122,880 bytes of rows since M1c's chip profiles, 39,256 since M2 shares
-  their 16-entry blocks; a lookup reads the row's index, then the block), which the
+  rows (`gen/pulldown.h`, three strengths on each model since M2b's expert selector:
+  184,320 bytes before packing, 58,488 after sharing their 16-entry blocks;
+  a lookup reads the row's index, then the block), which the
   oscillator reads through `sid_osc.pulldown` while a combined waveform
   plays. They are too big for RAM, and the relocation check cannot see a
   read through a pointer. Whether they cost cache misses in the audio

@@ -245,7 +245,7 @@ which printed control did it.
 | GLO (button 7) held + the leftmost note key | while SIDOU LOOP plays, its voice 1 goes silent; TRACKER's V1 turns grey and says MUT in red beside the pattern (a muted voice shown as a strip: grey and short), LIVE's top line M1 in red in the preset's place; the key sounds nothing; again: back. GLO + the fourth key: only voice 1 sounds, SOL beside V1's pattern | | [ ] |
 | SELECT (encoder 0), in the menu | the selected line (reverse video) moves between CHIP, TRACKER, PRE (PRESET), OCTAVE, CARDS, STORE, KEYS, SOUNDS, ROWS (TRACKER ROWS), THEME, STATUS, SCENE, CHARSET and ABOUT; six lines show at a time and the list scrolls with it, the title bar's arrows telling which way more is | | [ ] |
 | ALGORITHM (encoder 1), in the menu | changes the item under the selection (PRESET; OCTAVE -3..+3; CARDS: counter-clockwise OFF, clockwise ON; THEME: counter-clockwise HIGH, the default, clockwise C64: every screen, the menu included, changes colours at once); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
-| SELECT (encoder 0), on CHIP | the focus (the yellow tab, or the yellow title on the A/B tabs) moves CHIP, DIST, MOD, FX and stops at either end; onto a slot that was not the selected one, the toast says SLOT DIST (or MOD, FX); onto the slot already selected (DIST at power-on), no toast | | [ ] |
+| SELECT (encoder 0), on CHIP | the focus (the yellow tab, or the yellow title on the A/B tabs) moves tabs, CHIP, DIST, MOD, FX, EXPERT and stops at either end; onto a slot that was not the selected one, the toast says SLOT DIST (or MOD, FX); onto the slot already selected (DIST at power-on), no toast | | [ ] |
 | ALGORITHM (encoder 1), on CHIP | on CHIP the PROFILE steps 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581, then filled USER slots (7.2; MODEL follows; held notes attack again on the new chip, as at a model change); on a slot its algorithm, OFF to the last, at 3× under the tabs | | [ ] |
 | K1..K4, on CHIP | on CHIP AGE, DAC, THUMP, BLEED (values at 3× with bars, in the knob's colour; the sound darkens with AGE, a released note whispers with DAC); on a slot its four controls, named for the algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX) | | [ ] |
 
@@ -408,6 +408,16 @@ CHIP (menu, CHIP; [controls](reference/controls.md#chip)):
 - [ ] MIDI CCs for every slot and character control at once (a controller's snapshot,
   or a DAW sending them in one go): the page catches up within a few frames, no cell
   left stale.
+- [ ] SELECT one stop after FX opens EXPERT. ALGORITHM steps its four pages and stops
+  at either end; SELECT back returns to FX. The four physical knobs turn the labelled
+  controls (K1/K2 upper pair, K3/K4 lower pair); the last page's unused positions do nothing.
+- [ ] In both HIGH CONTRAST and C64 themes, the expert names at 2× and unit values at
+  2×/3× are readable in the hand and at arm's length. Knob tags and popup bars keep K1 yellow,
+  K2 cyan, K3 light green and K4 light red. Every popup names its own control; no value
+  overlaps its neighbour or runs under the bezel. Model-specific inactive values say N/A.
+- [ ] With a fresh R4AR setup, following defaults read 100% nonlinearity, 0.75% DAC leakage,
+  1.16 DC filter bias and 13154 Hz external low-pass. These are physical units, not raw
+  MIDI values. Compare the four pages with `chip-expert-1.png` through `chip-expert-4.png`.
 
 SCENE (menu, SCENE; [controls](reference/controls.md#scene)):
 
@@ -460,6 +470,64 @@ only the real LCD shows.
   still; the picture stays clean (no stale or flickering cell).
 - [ ] Hold SAVE and turn K1 (MIDI learn's frame) over it: the frame reads as over the other
   pieces (white on blue), the duel goes on around it, and HOME brings the duel back whole.
+
+### 6.3 Two chips, routing and UI sounds (M2b)
+
+These are listening/panel checks for the user; emulator instruction counts do not mark
+them passed. Use a moderate headphone level. Keep the USB-output release gate in section
+8.1 open until it passes independently.
+
+- [ ] With KEYS AUTO and the song stopped, the keys sound on A as before. PLAY starts the
+  song on A; newly played keys sound independently above it on B, with the same keys'
+  profile and character. LIVE says KEYS:B. Stop the song with a key held: it continues
+  without a cut; after release and A's preparation, new keys return to A. B's release
+  tails finish without a click or a frozen tail on its next use.
+- [ ] Hold keys across PLAY: they re-sound on B while the song starts on A. No stuck note
+  remains on either chip after releasing the keys and stopping the song.
+- [ ] On CHIP, SELECT counter-clockwise to the A/B tab focus, then ALGORITHM between A and
+  B. The title and KEYS marker follow the chosen chip. With no song, B says FOLLOWS KEYS;
+  editing it changes the keys' setup. While a song plays, A edits the song's setup and B
+  the keys'. Effects remain one shared chain, with the B tab's shared-slot indication.
+- [ ] Select KEYS A in the menu and play the song: a held key temporarily takes a song
+  voice; releasing it gives the voice back, with no stuck gate. The song keeps its filter
+  and volume; the instrument's filter knobs do not take them over. Restore AUTO.
+- [ ] While a chord holds on the keys' chip, step a built-in profile and toggle FX both
+  ways. No silent block, dropout or crackle occurs during preparation. A profile/model
+  change intentionally re-attacks held notes; an expert edit below must not.
+- [ ] SOUNDS is OFF by default: menu moves and confirmations add no sound. Turn it ON:
+  menu SELECT gives a blip, confirmation a confirm sound, a toast its chime, a completed
+  explicit SAVE the drive chunk, and a refused action a buzz. They do not change the
+  keys' setup or effect settings. Restore OFF and check it remains OFF after a quiet save
+  and power-cycle.
+- [ ] With AUTO and a song playing, hold three keys on B and move through the menu with
+  SOUNDS ON: no cursor sound and no held note stolen or changed. With a UI sound playing
+  and the other B voices busy, a new note takes priority immediately; its release leaves
+  no stuck note. Turn SOUNDS OFF afterwards.
+- [ ] Song plus keys at a loud setting: listen for clipping at the shared mix and record
+  the profiles/notes/MASTER level if heard. Two loud, in-phase chips can clip; the build
+  does not apply automatic attenuation or a soft knee. Also listen during expert edits,
+  screen transitions and a USB replug; record any click, dropout or late note.
+
+### 6.4 Expert edits without a note reset (M2b Task 6)
+
+- [ ] Hold a triangle note (or a steady chord) while changing every applicable expert,
+  including filter curve/range and DAC kink/leakage. Pitch/envelope/gate stay continuous:
+  no new attack, silent gap or click. Table changes may glide over several ticks; check
+  both the 6581 and 8580, skipping their N/A controls. The external corners change tone,
+  combined strength changes combined waves, and noise feedback changes a noise combination.
+- [ ] Edit 6581 curve, then move AGE: the curve returns to AGE's path. A filter-bias edit
+  stays when AGE moves. DAC reclaims only kink/leakage, THUMP only output thump, BLEED only
+  filter bleed. A different built-in profile/model clears all overrides; a clamped picker
+  step or an empty USER choice leaves them intact. The page's macro reminder is readable.
+- [ ] Send the generated chart's expert NRPNs 2/5–18 over TRS and USB: their values and the
+  sound follow, with no popup opened by MIDI and no echo back. On EXPERT, SAVE held + a
+  knob learns that expert without changing it; a learned CC can reach both endpoints.
+  In a USB monitor, a local expert turn sends its NRPN, or its learned CC. Mixed macro and
+  expert automation reaches the final values without a stale override arriving later.
+- [ ] Save and recall experts with a USER profile (section 7.2), including on B and on
+  the song's A tab. Release notes and wait at least 6 s after expert/settings changes,
+  then power-cycle: the keys' explicit experts and learned bindings return; following
+  fields still follow a subsequent related macro move.
 
 Notes:
 
@@ -562,11 +630,12 @@ Notes:
 
 ## 7.2 USER chip profiles (M2a Task 6)
 
-Use a writable store (section 7.1). CHIP's chip focus, not its tabs or effect slots, owns
-profile saves. A saved slot contains a base profile and AGE, DAC, THUMP and BLEED; the
+Use a writable store (section 7.1). CHIP's chip or EXPERT focus, not its tabs or effect
+slots, owns profile saves. A saved slot contains a base profile, AGE, DAC, THUMP and BLEED,
+and all fourteen expert overrides (including fields following their defaults); the
 settings keep the base setup, not the identity of the USER slot picked.
 
-- [ ] On CHIP, select a built-in profile and set recognisable character values. Hold EDIT
+- [ ] On CHIP, select a built-in profile and set recognisable character and expert values. Hold EDIT
   and turn ALGORITHM to target an empty USER slot: the yellow title says SAVE TO USER n
   (with `-` for empty), and the popup names the target. Neither the current profile nor
   the sound changes. Step through USER 1..8 and OFF; leaving chip focus or closing CHIP
@@ -576,7 +645,9 @@ settings keep the base setup, not the identity of the USER slot picked.
   has not changed. Power-cycle after completion: the slot remains. ALGORITHM's picker
   runs the five built-ins then filled USER slots, skipping empty ones with USER n EMPTY
   at an empty end. Pick the saved slot: its base model and four controls, and its sound,
-  return; the PROFILE row and popup name USER n.
+  return, including the expert overrides; the PROFILE row and popup name USER n. Repeat
+  EDIT + ALGORITHM and SAVE from EXPERT, selecting the target again after reaching it:
+  passing through DIST, MOD or FX clears the previous target.
 - [ ] Change a character control while that USER slot is applied, then SAVE with no target:
   OVERWRITE USER n? first. HOME keeps the old slot and leaves the view, clearing the
   question/target. Repeat, then a fresh SAVE press and release confirms. Reboot and pick

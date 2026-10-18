@@ -22,6 +22,7 @@ lists the prerequisites.
 | Filter against reSIDfp (transfer functions, sweeps) | `cargo test --release -p sidou-tests --test filter` | `crates/sidou-tests/tests/filter.rs`, `src/filter_sweeps.rs` |
 | Register reads (OSC3, ENV3) | `cargo test --release -p sidou-tests --test register_reads` | `crates/sidou-tests/tests/register_reads.rs` |
 | Chip profiles against reSIDfp (each profile's filter and combined waveforms at its settings) | `cargo test --release -p sidou-tests --test profiles` | `crates/sidou-tests/tests/profiles.rs` |
+| Expert parameter transport (macro releases, ordered restore, learned maximum and no echo) | `cargo test --locked --release -p sidou-tests --test expert_transport` | `crates/sidou-tests/tests/expert_transport.rs` |
 | Generated tables (drift) | `cargo test --release -p sidou-tablegen`; the filter tables with `--test drift -- --ignored` (measures reSIDfp's filter: about 20 s on every core) | `crates/sidou-tablegen/`, `core/sid/gen/` |
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
@@ -138,8 +139,9 @@ For one reproducible seed, `SIDOU_STORE_SWEEP=values:1000` (or `files:10000`) wi
 `cargo test --locked --release -p sidou-tests --test app store::power_loss_sweep -- --ignored --nocapture`
 runs that seed only; `values-forked:N` and `files-forked:N` force the forked variant.
 
-`tests/app/settings.rs` checks every persisted field and default, schema-1 and schema-2
-fixtures (schema 1 defaults TRACKER ROWS to BAR), invalid records/fields, the versioned full
+`tests/app/settings.rs` checks every persisted field and default, schema-1 through schema-4
+fixtures (schema 1 defaults TRACKER ROWS to BAR; versions before 4 follow profile/macro
+expert defaults), invalid records/fields, the versioned full
 boot, the 5 s debounce after the last change, explicit commit notification, busy retries,
 the 2 s forced-save path and foreign-store refusal. Volume and transient controllers are
 not restored. Setters and learn edits wake background saves; an unchanged frame does not
@@ -149,7 +151,8 @@ gather the record.
 cancellation by an encoder or another button, routing through the views, SAVE-held + knob
 learning without changing the parameter, forgetting one binding, SAVE-held + HOME and a
 fresh SAVE confirmation to clear all, HOME/timeout cancellation and STORE's two-turn format
-confirmation. `tests/app/user_profile.rs` checks the separate seven-byte records, eight-slot
+confirmation. `tests/app/user_profile.rs` checks the separate 22-byte schema-2 records,
+the seven-byte schema-1 migration, raw expert overrides and following defaults, the eight-slot
 picker and empty-slot skipping, target changes without chip writes, overwrite confirmation,
 both keys and song-chip setups, profile preparation/ramping, boot load, retries and forced
 gaps, foreign-store refusal and clearing the slots on format.
@@ -160,6 +163,77 @@ an explicit SAVE within a second without the debounce, and menu-confirmed foreig
 `user_profile.rs` saves USER 3 from CHIP, reboots, picks it over CC 85 and compares the sound
 bit for bit with the host using the saved setup; a separate panel walk checks the picker
 skips empty slots. These complement the store's device-level cuts and cost gates below.
+
+### Two chips and the expert layer (M2b)
+
+Run focused host checks from `host/`:
+
+```sh
+cargo test --locked --release -p sidou-tests --test unit sid_character::
+cargo test --locked --release -p sidou-tests --test app reg_ring::
+cargo test --locked --release -p sidou-tests --test app keys_route::
+cargo test --locked --release -p sidou-tests --test app chip_view::
+cargo test --locked --release -p sidou-tests --test expert_transport
+```
+
+The character tests cover all fourteen experts: their physical ranges and defaults,
+monotonic filter coordinates, six cutoff endpoints and all 23 curve/range anchors against
+the pinned reSIDfp measurement at FC 1024/resonance 8, independent DAC controls, combined
+strength's oscillator-mode refresh, noise feedback, and the existing 30-LSB click-residual
+bound. The sparse fitted cutoff grid is not a claim of full-response equivalence between
+anchors; damping stays the profile's. Following defaults retain exact physical values,
+rather than a seven-bit approximation. Held oscillator/envelope state and gates survive
+expert changes and the return to profile/macro defaults.
+
+The register-ring tests exercise chip-tagged writes, independent A/B state, the shared
+spare and DAC build table, the keys' priority and bounded yielding, and expert filter-row
+leases. Producer/interrupt race tests keep rendered chips, queued stages and active jobs
+out of a lease; catch-up ticks cannot perform two table builds in one pass. The routing
+tests cover keys on A without a song, B during a song, held-key moves and release tails,
+and KEYS A's temporary borrowing of song voices.
+
+The CHIP tests cover both tabs, the final EXPERT stop, all four pages' K1–K4 assignments,
+inactive model-specific fields, exact unit readouts, named/coloured popups, MIDI learn,
+and USER saves from either chip. Clamped or empty profile-picker steps preserve edits;
+new built-in profile/model choices release them. Settings v1–3 and USER v1 fixtures
+load with following experts; v4/v2 round trips retain explicit overrides and learned CCs.
+
+`expert_transport` replays outgoing packets into a second instrument. It checks macro
+releases after deferred or canceled changes, macro-before-expert restoration, remote
+edits after a queued local macro, explicit learned 127 versus the internal following
+sentinel, and input that must not echo or freeze inherited values.
+
+After both firmware builds, run the complete emulator gate (not just these focused checks):
+
+```sh
+SIDOU_FM1_BUILD=$PWD/../build/fm1 SIDOU_FM1_SPIKE_BUILD=$PWD/../build/fm1-spike \
+    cargo test --locked --release -p emu-gate -- --nocapture --test-threads=1
+```
+
+- `chip_b.rs`: B is never rendered before preparation, costs no extra render while unused,
+  fades in/out bit-exactly with the host, and fits the real two-chip ISR budget with every
+  slot at its heaviest. It measures the mix and MASTER gain separately.
+- `character.rs`: expert NRPNs affect the chip/audio without resets or lost gates; filter
+  builds are sliced, stages commit at block boundaries, and all six combined strengths
+  have exactly their required shared table blocks. Existing character renders stay
+  bit-exact with the host.
+- `screen.rs`: both chip tabs and `chip-expert-1.png` through `chip-expert-4.png`, unchanged
+  CHIP input/frame limits, and expert idle <7,000 instructions/frame, a detent <8,500,
+  worst `ui_poll` <38,000, ≤200 cells/frame and ≤20 ms SPI. STATUS idle stays <7,500,
+  HOME input <430 and CHIP K1 <215.
+- `user_profile.rs` and `settings.rs`: expert edits survive a save/reboot/recall, the
+  saved profile's sound matches the host, and genuine old-schema records still load.
+- `midi.rs`: existing mapped/learned TRS floods, USB drain and MIDI-output tick limits,
+  including a cold expert snapshot with every parameter learned. `latency.rs` retains
+  normal note-on/off bounds while a profile is prepared and character controls sweep.
+- `screen.rs` also checks UI sounds off/on and three held notes on B: no stolen voice and
+  bit-exact notes when a cursor sound cannot borrow one.
+
+Keep the full checklist above the focused runs: formatting, clippy, release workspace,
+UBSan, GCC 13, production/spike builds, packaging, REUSE and `tools/web-demo --check`.
+Run long checks detached with separate logs and exit-code files. A missing build variable
+can skip an emulator check; a skipped run is not device validation. Hardware-only checks
+remain in [the hardware checklist](docs/hardware-test.md#63-two-chips-routing-and-ui-sounds-m2b).
 
 ### Song files
 
@@ -499,7 +573,7 @@ emulated RAM and the audio against the host build, sample for sample, the host r
 the device's ticks block by block (the drain counts them), does the same for the age that
 the CHIP view's K1 turns from the panel (the host replaying the age the drain had after each
 block), and checks that the image holds
-only the combined-waveform tables the profiles play; `latency.rs`'s sweep case plays a
+  only the combined-waveform tables the profiles and expert selector use; `latency.rs`'s sweep case plays a
 note while the character's CCs sweep, against ADR 0005's bounds, and bounds every
 main-loop pass by the poll allowance; the SID gate's `character_*` scenarios run the
 costliest character on the device.
@@ -544,11 +618,11 @@ fits SIDOU's filter to each response around its cutoff, and prints how well
 it fits. Each
 profile is 30,720 bytes per model. Per model, only AVERAGE, reSIDfp's default,
 is compiled unless the model's flag (a CMake option of the same name) adds WEAK
-and STRONG: `SIDOU_ALL_COMBINED_PROFILES` for the 6581, on by default since the
-chip profiles play all three; `SIDOU_ALL_COMBINED_PROFILES_8580` for the 8580,
-off, since its one profile plays AVERAGE. The firmware holds 122,880 bytes of
-them (emu-gate's `character.rs` checks it); the host tests build with all six,
-184,320 bytes.
+and STRONG: `SIDOU_ALL_COMBINED_PROFILES` for the 6581 and
+`SIDOU_ALL_COMBINED_PROFILES_8580` for the 8580, both on by default because the
+expert selector can use all three on either model. All six represent 184,320 bytes
+before lossless shared-block packing; the current firmware's `SID_PD` is 58,488 bytes.
+Emu-gate's `character.rs` checks every sampled strength and that no unused blocks remain.
 
 The checked-in headers are the source of truth; the generator is a
 documented tool. After changing the generator or the reSIDfp submodule,

@@ -15,6 +15,13 @@ All notable changes are documented here. The format follows
   original music. [The M2c status](docs/plans/2026-10-15-m2c-song-engine.md#m2c-status)
   records the remeasured costs, memory, image and coverage. The narrow RAM-region margin
   and the GoatTracker licence-audit findings remain open for the end-of-M2 review.
+- **M2b complete on its branch** (Tasks 1–8): sliced preparation, two SIDs, keys on B
+  during a song, both CHIP tabs, expert controls and off-by-default UI sounds. The
+  [M2b status](docs/plans/2026-10-15-m2b-chip-b.md#m2b-status) records the integrated
+  image (466,528 bytes), RAMTEXT (45,920), free RAM + POOL (8,844), chip B's marginal
+  state (35,216) and passing two-chip ISR/full emulator gates. TESTING documents the
+  new coverage; hardware checklist 6.3–6.4 adds two-chip routing, voice-safe sounds,
+  expert readability, continuous notes and persistence. Hardware acceptance remains open.
 - **The character's expert layer** (M2b Task 6): fourteen independent analogue controls,
   each on NRPN 2/5..18 and available to MIDI learn. CHIP's final **EXPERT** SELECT stop has
   four directly mapped knobs per page, in two readable pairs, with names and unit-bearing
