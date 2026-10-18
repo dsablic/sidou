@@ -94,6 +94,18 @@ the 6502 study below.
       Chrome's "Cast tab", Miracast from Windows), or open the share link in the TV's
       browser. AirPlay from the FM-1 itself is out: it has no network, AirPlay needs Apple's
       certification, and the chip can't encode video.
+    - **The tray app** (macOS menu bar, Windows tray, Linux), the optional "just works"
+      host: Tauri (Rust, like SIDOU's host tools) around the same viewer code as the page.
+      It notices the FM-1 when it is plugged in and starts Live Link, serves the viewer on
+      the local network (QR link; no signalling service, works offline at a gig), and
+      offers the mirror to OBS and video calls. Later the companion for song transfer,
+      backups and firmware updates (behind the same safety checks and an explicit confirm).
+      Installed on macOS from our own Homebrew tap as a **formula** (`brew install
+      dsablic/sidou/fm1-live-link`, built from source or a prebuilt binary, started at
+      login with `brew services`): formulae aren't quarantined, so it runs unsigned without
+      Gatekeeper warnings. Not a cask: Homebrew 5 ended support for casks that fail
+      Gatekeeper on 2026-09-01. A signed download or App Store build only if there is
+      demand (an Apple developer account, the user's call).
     - **Later: an iPhone and iPad host app** (a web view with a CoreMIDI bridge), since
       Safari has no Web MIDI. Needs an Apple developer account; the user's call when we get
       there.
