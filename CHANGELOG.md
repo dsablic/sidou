@@ -23,8 +23,25 @@ All notable changes are documented here. The format follows
 - OCT- alone held about a second at power-on enters the chip's ROM boot mode (UBOOT), the
   first thing the firmware does, so a broken firmware or update path is recovered with
   `tools/fm1-unbrick-mac` or MvaveFM1Unbricker, without a Flipper.
+- **Large text**, because the 8×8 font on the 1.3-inch panel was almost unreadable at the first
+  hardware run: `grid_text_big` draws a string at 2 or 3 times the font from its own glyphs
+  (pixel-doubled, each cell drawing its part, no new font data), and `grid_put_top` a cell no
+  overlay shows over (`app/grid.c`, docs/art/README.md "Large text").
+- **A value popup** over any view when the panel changes a parameter (K1-K4, ALGORITHM,
+  MASTER): the name and value at 3 times the font with a bar for a continuous value, opening 3
+  rows a frame, gone a second after the last change with the view under it back as it was.
+  The names and values are the views' own, from one function (`app/views.c popup_text`).
+  MIDI changes do not open it: one switch, `VIEWS_POPUP_MIDI` (`views_popup_midi`).
+- docs/hardware-test.md: a readability check of the large text on the panel.
 
 ### Changed
+- **The menu is drawn at 2× text**: six of the thirteen items at a time, scrolling with the
+  cursor, the selected item's line in reverse video (the blinking block cursor is gone, and
+  with it the menu's idle redraws), the title bar showing the position and arrows for the items
+  out of sight. Labels are shorter to fit a 14-character line: **PRE** (PRESET), **ROWS**
+  (TRACKER ROWS); STORE reads `193K`, `FORMAT?` and `ERASE 20` (was `193K FREE`,
+  `FORMAT? TURN`, `ERASING 20`).
+- **Toasts use the large text** (2×, two lines when they are long), over rows 27-28.
 - TRACKER ROWS (BAR or SCROLL) persists across power cycles in settings schema 2;
   schema-1 settings still load with BAR.
 - The minimum Rust version is 1.88 (was 1.87): `gt2-ref`'s 6502 core, mos6502 0.10.1,

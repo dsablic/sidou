@@ -66,6 +66,19 @@ top; a cell is at pixel (8 × column, 8 × row).
   (`grid_overlay`, at most `GRID_OVERLAYS` = 255 cells at once, enough for
   LIVE's three scopes of about 80 cells each; the pool costs 2.5 KB of RAM).
   A view switch clears them all.
+- **Large text** (`grid_text_big`) draws a string 2 or 3 times as large, from the same 8×8
+  font and no new data: each character is 2×2 or 3×3 cells, its glyph pixel-doubled or
+  tripled and cut into the cells, and each cell draws its own part. A cell holds a **piece
+  code** instead of the glyph's (`GRID_BIG_FIRST` = `0x01`: `+ y * 2 + x` at 2×, `+ 4 + y * 3 +
+  x` at 3×, `GRID_PIECE_PLAIN` = `0x0E` for a glyph at its own size that no overlay shows
+  over, `grid_put_top`), and the grid keeps the character it is a piece of (`src`, 900 bytes
+  of RAM). A piece is a blank glyph in the font, so a view that draws over its cells with
+  ordinary text simply shows its own glyphs, and large text needs no clearing on a view
+  switch; the renderer tests one cell code to tell a piece (about 2 instructions a cell,
+  the pieces' own pixels cost about as much as an ordinary cell). 2× is 16-pixel characters
+  (15 to a row), 3× 24-pixel (10 to a row); the font's 7×7 ink and one-pixel gap become 14
+  and 2, 21 and 3. Used by the value popup, the toasts and the menu (below); the dense
+  views (LIVE's scopes, TRACKER, CHIP, STATUS, ABOUT) keep the 8×8.
 
 ## Font
 
@@ -85,8 +98,8 @@ chamfered capitals with 2-pixel stems, 7×7 pixels in the top-left of the
 cell, so text keeps a one-pixel gap to the right and below.
 Graphics glyphs fill the whole cell, so they join up. The firmware's glyph
 sheet (the CHARSET view in `app/views.c`, opened from the menu) shows them
-all, with the palette; its fm1-emu snapshot is
-`tests/golden/lcd/charset.png`.
+all, with the palette (the codes `0x01`-`0x0E`, large text's piece codes, blank glyphs, are drawn
+as blanks); its fm1-emu snapshot is `tests/golden/lcd/charset.png`.
 
 | Codes | Glyphs |
 |---|---|
@@ -101,7 +114,8 @@ all, with the palette; its fm1-emu snapshot is
 | `0xCB`–`0xD8` | icons: dots, star, ball, pip, arrows, play, note, square |
 | `0xD9`–`0xDB` | `SLOT_L`, `SLOT_R`, `SLOT_LR`: the logo's slotted raster bands, a top half's quadrants 3 rows deep |
 | `0xDC` | `SCOPE_MID`: LIVE's dotted scope centre line, a pixel every 4 on the top row |
-| `0x00`–`0x1F`, `0xDD`–`0xFF` | blank, free for later glyphs |
+| `0x01`–`0x0E` | blank in the font, and the cell codes of large text's pieces (above) |
+| `0x00`, `0x0F`–`0x1F`, `0xDD`–`0xFF` | blank, free for later glyphs |
 
 **Provenance and licence.** The font is drawn for SIDOU. Its letters and
 digits came from the browser prototype, and the rest of ASCII, the bar
@@ -172,13 +186,44 @@ does not take plays the instrument (`app/views.h`,
 
 - **Frames:** PETSCII box glyphs with the title set into the top edge,
   between spaces (`widget_frame`). A screen keeps the full-block border on
-  the outer ring.
+  the outer ring (the main menu, drawn at 2× over the whole width, has none).
 - **Menus:** a list of items, each a label and a value right-aligned against
-  the frame (an arrow for an item that opens a view). The cursor is a
-  **blinking block** in front of the selected item, 8 frames on and 8 off
-  (320 ms each). SELECT moves it, ALGORITHM changes the value.
-- **Toast:** a line of reverse-video text (blue on light blue) on row 27 for
-  1.5 s, saying what changed.
+  the edge (an arrow for an item that opens a view), SELECT moves the selection, ALGORITHM
+  changes the value. The main menu (HOME) is drawn at **2× text** with six items of the
+  thirteen showing: a title bar in reverse video (MENU, an arrow up and down for the items out
+  of sight, the item's number of the count) in rows 0-2, a line of 14 characters every 3 rows
+  from row 4 (a cell of margin each side: a panel's bezel hides its edge), and the selected
+  item's whole line in reverse video (no blinking block: a 2×2-cell block would send two
+  windows a blink, and a bar reads better at a glance). A line is up to 60 cells, so a scroll
+  (every line changes) is drawn a line or two a frame, the selected line first, within 190
+  cells less what a popup or a toast draws the same frame (`MENU_FRAME_CELLS`, `menu.budget`),
+  and at once for the rows a layer let go or a view switch left (`menu.force_rows`). Labels
+  are short so that value and label fit a line: **PRE** is PRESET (the longest preset name,
+  NOISE PERC, is 10 characters), **ROWS** TRACKER ROWS, and STORE shows `193K` (kilobytes
+  free), `FOREIGN`, `FORMAT?` or `ERASE 20`; the popup says the whole names. The help below
+  (`SELECT  MOVE`, `ALG   CHANGE`: ALG is ALGORITHM) is large too. The menus of M2's views
+  (and a CHIP-sized menu of the song's) can use the same widget at either size
+  (`menu.scale`).
+- **Toast:** reverse-video text (blue on light blue) in **2× text** on rows 27-28 for 1.5 s,
+  saying what changed: up to 13 characters; a longer one breaks at a space into two lines
+  (rows 25-28, up to 26 characters), and one whose words fit neither (`SNG: A-4 PITCH NOT
+  PLAYED`) shows at the font's own size on row 27.
+- **Popup:** a change of a parameter from the panel (a K knob, ALGORITHM, MASTER) opens a box
+  over the middle of the view, rows 10-18 and columns 1-28: a PETSCII frame in light blue on
+  black, the parameter's name in yellow at **3× text** (24-pixel characters, up to 8; 2×, up to
+  12, for a longer name), its value in white as large, and for a continuous value a bar of
+  24 cells (green on dark grey, eighths of a cell, `FONT_H0..8`). It opens 3 rows a frame (78
+  cells), stays 1 s after the last change and closes 3 rows a frame, bottom first, the rows it
+  lets go composed again by the view under it (the screen forces that). It is a screen layer
+  like the toast, over any view: it covers its rows (`screen_cover`, so a view holding to a
+  cell budget leaves them alone and sets aside what the popup draws), and guards them from the
+  view's own large text (`grid_big_guard`). Its cells are plain pieces
+  (`grid_put_top`): the overlays of LIVE's scopes under the box do not show, and the
+  overlay changes under it send nothing (`grid_unstale`). It waits while a wipe or a raster
+  runs, and a view switch takes it away at once. A change comes in as one byte the input path
+  stores (`popup_ask`), and the frame asks the views for the text (`popup_text` in
+  `app/views.c`, the one place that names and formats a control's value): MIDI changes do not
+  ask (`VIEWS_POPUP_MIDI`).
 - **Wipe:** a view opens top first and closes bottom first, 4 rows a frame
   behind a white edge row, so the full redraw a view switch needs spreads
   over 8 frames (about 320 ms). The rows not reached yet keep the old view
@@ -198,7 +243,7 @@ Measured in fm1-emu (`screen_changes_and_transitions_stay_within_the_budgets`):
 | Wipe up from the status screen to the menu | 8 | 52 | 78,908 | 11.6 ms |
 | Wipe down from the menu to the status screen | 8 | 48 | 77,200 | 10.4 ms |
 | Raster and toast (chip change) | 15, every other one | 451 | 123,105 | 10.5 ms |
-| Menu idle (the cursor) | 1 in 8 | 1 | 139 | 0.1 ms |
+| Menu idle (the selection: no blink) | none | 0 | 0 | 0 ms |
 
 The animated screens compose every frame (`the_boot_and_about_stay_within_their_budgets`,
 260 frames of the full boot and 1920 of About, a full round of its 16 pages), with Metal
@@ -219,6 +264,30 @@ now two stores, with no clamp while the longest run still fits (33.5k). A run's 
 written two at a 32-bit store, a cell row from two 4-entry tables (the glyph's colours, and
 the overlay over the background for a blank glyph row): About was 161k and 105k, the boot
 50k and 64k, with a pixel a store. A bitmap's run fills two pixels a store as well.
+
+**Large text** (M2f) costs what it sends: the popup opens and closes 78 cells a frame, a value
+change at most about 104 (the value's three rows and the bar), the menu a line or two (60
+cells each) a frame, a scroll 3 to 6 frames; none of them more than 160 cells or 14 ms of
+SPI a frame in fm1-emu (`the_popup_stays_within_its_budgets_over_every_view`,
+`the_menu_stays_within_the_cell_and_spi_budgets_as_it_scrolls_and_under_a_popup` on the host):
+
+| Popup over | Cells a frame (most) | Worst SPI | Busiest `ui_poll` | Static popup, extra a frame |
+|---|---|---|---|---|
+| LIVE, a note held | 132 | 11.3 ms | 30.7k | 7.3k (LIVE composes every frame) |
+| STATUS | 132 | 11.3 ms | 33.7k | 0.15k |
+| MENU | 132 | 11.3 ms | 36.5k | 0.15k |
+| CHIP | 132 | 11.3 ms | 35.4k | 0.1k |
+| SCENE (RULE 30, a note held) | 158 | 13.6 ms | 31.3k | 12.5k (SCENE composes every frame) |
+
+A popup's frame that asks for it opens nothing (the view's own compose of a changed control
+takes most of a frame: CHIP's detent is 35.7k in its busiest `ui_poll`, bound 38k); it
+draws the rows it adds, and the text once its rows are in, and again only when the view
+composed or the text changed. The input path stores two bytes and a pointer (the control and
+the view it was made on: 13 instructions on a K1 turn, which is 218 on LIVE and STATUS, 234
+on the menu and 230 on SCENE, bound 250; CHIP's 210, bound 215). The popup's state (names,
+timer, the source) is not in the screen's struct but in the views', after everything else, so
+that no field the input paths reach moved (the tightest input gates have a few
+instructions to spare).
 
 A wipe sends only the rows that differ, once each, and its edge row once
 more; a raster step recolours the 116 border cells in 58 windows. Every frame

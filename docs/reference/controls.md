@@ -105,14 +105,46 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **PLAY (button 12)** | plays the song (SIDOU LOOP until songs load) from the song views' position, and stops it (each voice's release rings on); with EDIT held, goes on from where it stopped; lit while it plays. While it plays the keys play chip B (KEYS AUTO), or take voices from the song on chip A (KEYS A). A song the device cannot play is refused with a toast (`SNG: MULTISPEED 8 (MAX 4)`) |
 | **REC (button 13)** | record mode on and off |
 | **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; the keys sound nothing while GLO is held |
-| **SELECT (encoder 0)**, in the menu | moves the blinking cursor up and down the items |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the cursor: PRESET, OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), STORE ([format confirmation](#settings-and-store)), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF), TRACKER ROWS (clockwise SCROLL, counter-clockwise BAR); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
+| **SELECT (encoder 0)**, in the menu | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), STORE ([format confirmation](#settings-and-store)), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF), TRACKER ROWS (ROWS in the menu; clockwise SCROLL, counter-clockwise BAR); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: CHIP (the profile and the character), DIST, MOD, FX; it stops at either end |
 | **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP (EDIT held: the save target), the algorithm on a slot; it stops at either end |
 | **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, RED MOON RITE, and round): it wipes in, and a toast names it |
 
 The other buttons (LFO, ARP) and PRESETS (encoder 6) do nothing yet; SELECT does nothing outside the menu, CHIP and SCENE, ALGORITHM nothing outside
 the menu and CHIP.
+
+## Value popup
+
+A change of a parameter **from the panel** opens a large overlay over the view on screen, in any
+view: the parameter's name at 3 times the font (24-pixel characters, 8 to a row; 2 times, 12
+to a row, for a name or value longer than 8 characters), its value as large, and for a
+continuous value a bar. It opens 3 rows a frame, stays while the control keeps changing, goes
+**1 s after the last change** (3 rows a frame), and the view under it is back as it was. What
+opens it, and what it says (the text the views show, from one place, `popup_text` in
+`app/views.c`):
+
+| Control | Popup |
+|---|---|
+| K1 / K2 / K3 on LIVE's page (every view but CHIP) | CUTOFF (in Hz as LIVE's FILTER frame says it, `11.4K`), RESO (0-15), PULSE (a percent) |
+| K4 on LIVE's page | PRESET, the preset's name (no bar) |
+| K1-K4 on CHIP's chip section | AGE, DAC, THUMP, BLEED (0-127; on a song's chip A, the song's) |
+| EDIT held + K1-K4, or a slot's section on CHIP | the slot and its control in the algorithm's own word: `DIST DRIVE`, `MOD DEPTH` (0-127) |
+| MASTER | VOLUME (0-15) |
+| ALGORITHM on CHIP | the profile (`PROFILE`, its name), or a slot's algorithm (`DIST`, `OVERDRIVE`) |
+| ALGORITHM in the menu, on an item with a value | the item in full and its value: `PRESET`, `OCTAVE`, `CARDS`, `STORE`, `KEYS`, `SOUNDS`, `TRACKER ROWS` |
+
+SELECT never opens it (it moves a cursor or a focus, which the screen shows); the buttons
+(OCT-, OCT+, FX, SCL, ENV) say what they changed in a toast, as before, and a control's popup
+replaces its toast. Nothing opens under the boot, a title card or MIDI learn's frame (a knob there
+does what it did), and a view change takes an open popup away at once. **MIDI never opens
+it**: a controller sweep or a song would flood the screen. That is one switch,
+`VIEWS_POPUP_MIDI` in `app/views.h` (0), or `views_popup_midi` at run time: on, a change of the
+cutoff, resonance, pulse width or volume that no panel control made opens it as well.
+
+**Toasts** use the large text too: 2 times the font on the two rows above the border, up to 13
+characters; longer ones break at a space into two lines (up to 26 characters), and one whose
+words fit neither (`SNG: A-4 PITCH NOT PLAYED`) shows in the font's own size on one row.
 
 ## Song views
 
@@ -424,13 +456,13 @@ current flash timing limits, programs as well as erases wait for quiet. Stop pla
 let release tails fade before powering off, or use SAVE and wait for its completion toast.
 
 The menu's **STORE** item, immediately after CARDS, shows free space outside the store's
-reserve pool (for example, **STORE 193K FREE**) or **FOREIGN**. FOREIGN means the region
+reserve pool in kilobytes (for example, **STORE 193K**) or **FOREIGN**. FOREIGN means the region
 contains data SIDOU does not own: it is left untouched, and settings cannot persist.
 
-On FOREIGN, turn **ALGORITHM clockwise once**: **FORMAT? TURN**. Turn clockwise again
+On FOREIGN, turn **ALGORITHM clockwise once**: **FORMAT?**. Turn clockwise again
 without leaving the item to confirm. Counter-clockwise or moving the menu cursor cancels
 the confirmation. **Formatting destroys the other firmware's data in the store**, erases
-all 73 sectors and can interrupt the sound. STORE shows **ERASING n**, then the toast
+all 73 sectors and can interrupt the sound. STORE shows **ERASE n**, then the toast
 **STORE FORMATTED**. Current settings are then saved when the store can take them. Formatting
 is never automatic; ALGORITHM does not format a SIDOU store.
 
@@ -526,10 +558,16 @@ The **status screen** (STATUS in the menu) shows the numbers: the chip, preset, 
 cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS each slot's
 algorithm and Mix (`>` marks the selected slot) with the selected slot's Amount, A and B.
 
-The menu (HOME) lists CHIP (the CHIP view, above), TRACKER (the song views, above), PRESET,
-OCTAVE, CARDS (the title cards, above), STORE, KEYS, SOUNDS and TRACKER ROWS with their values,
-then STATUS, SCENE (the generative pieces, above), CHARSET (the
-glyph sheet: the font and the palette) and ABOUT. A view opens with a wipe from the top and
+The menu (HOME) is drawn at 2 times the font, six items of the thirteen at a time (the
+selected one a line in reverse video; the title bar says which it is of how many, and an arrow
+up or down when items are out of sight, and the list scrolls with SELECT). It lists CHIP (the
+CHIP view, above), TRACKER (the song views, above), PRE (the preset), OCTAVE, CARDS (the title cards, above), STORE, KEYS,
+SOUNDS and ROWS (TRACKER ROWS) with their values, then STATUS, SCENE (the generative pieces,
+above), CHARSET (the glyph sheet: the font and the palette) and ABOUT. A line is 14 characters:
+PRE, ROWS and STORE's kilobytes (`193K`, FOREIGN, FORMAT?, `ERASE 20`) are short so that the
+longest preset name (NOISE PERC) and value fit beside their labels; the
+[popup](#value-popup) says the whole names. LIVE's scopes, TRACKER, CHIP, STATUS and ABOUT keep
+the font's own size. A view opens with a wipe from the top and
 closes with one from the bottom; CHIP, SCENE, and LIVE back from the menu, open behind a title
 card instead, and cut in under it in bands. M2's STEP view will be the default then; for M1 LIVE is.
 

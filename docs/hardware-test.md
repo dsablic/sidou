@@ -240,8 +240,8 @@ which printed control did it.
 | REC (button 13) | REC in red at the right of TRACKER's top line, and off again | | [ ] |
 | A note key in TRACKER, the song stopped | SIDOU LOOP's first instrument on voice 1 (V1's meter moves), nothing of the song plays; let go, it releases; LIVE's keys sound the same as before afterwards | | [ ] |
 | GLO (button 7) held + the leftmost note key | while SIDOU LOOP plays, its voice 1 goes silent; TRACKER's V1 head says MUT in light red, LIVE's top line M1 in the preset's place; the key sounds nothing; again: back. GLO + the fourth key: only voice 1 sounds, SOL on V1 | | [ ] |
-| SELECT (encoder 0), in the menu | the blinking block cursor moves between CHIP, TRACKER, PRESET, OCTAVE, CARDS, STORE, KEYS, SOUNDS, TRACKER ROWS, STATUS, SCENE, CHARSET and ABOUT | | [ ] |
-| ALGORITHM (encoder 1), in the menu | changes the item under the cursor (PRESET; OCTAVE -3..+3; CARDS: counter-clockwise OFF, clockwise ON); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
+| SELECT (encoder 0), in the menu | the selected line (reverse video) moves between CHIP, TRACKER, PRE (PRESET), OCTAVE, CARDS, STORE, KEYS, SOUNDS, ROWS (TRACKER ROWS), STATUS, SCENE, CHARSET and ABOUT; six lines show at a time and the list scrolls with it, the title bar's arrows telling which way more is | | [ ] |
+| ALGORITHM (encoder 1), in the menu | changes the item under the selection (PRESET; OCTAVE -3..+3; CARDS: counter-clockwise OFF, clockwise ON); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
 | SELECT (encoder 0), on CHIP | the focus (a play mark and white frames) moves CHIP, DIST, MOD, FX and stops at either end; onto a slot that was not the selected one, the toast says SLOT DIST (or MOD, FX); onto the slot already selected (DIST at power-on), no toast | | [ ] |
 | ALGORITHM (encoder 1), on CHIP | on CHIP the PROFILE steps 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581 (MODEL follows; held notes attack again on the new chip, as at a model change); on a slot its algorithm, OFF to the last, named in the slot's frame | | [ ] |
 | K1..K4, on CHIP | on CHIP AGE, DAC, THUMP, BLEED (bars and values; the sound darkens with AGE, a released note whispers with DAC); on a slot its four controls, named for the algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX) | | [ ] |
@@ -303,6 +303,33 @@ LIVE (the screen at power-on):
   on them after the note.
 - [ ] No click or crackle in the sound while LIVE shows, against the menu
   (LIVE taps the audio interrupt; the menu does not).
+
+Large text, the menu and the value popup ([controls](reference/controls.md#value-popup);
+`docs/art/README.md` "Large text"): the first hardware run found the 8×8 font almost
+unreadable on this panel. Look at arm's length, at a desk and held in the hand:
+
+- [ ] **The menu** (HOME): the title bar and six lines are readable without leaning in, the
+  selected line's reverse video is clear at a glance, nothing sits under the bezel at the
+  left or right edge (a cell of margin), and the top line of the title bar is whole. Scroll to
+  the end and back: the lines come in a line or two a frame (a short sweep, no tearing, no
+  stray cells), the arrows in the title bar say where more is, PRE shows NOISE PERC without
+  touching its label, STORE reads `193K` and ROWS BAR or SCROLL. Every one of the 13 items
+  can be reached and read.
+- [ ] **The popup**: turn K1 on LIVE: CUTOFF and its value in Hz (`1.2K`) in large letters
+  over the middle of the screen with a green bar, opening in about a tenth of a second; keep
+  turning and it stays; stop and it goes about a second later, LIVE back whole (scopes, FILTER
+  curve and slots as before, no stray cells). Each of these says its own name and value
+  readably, in the large size where it fits: K2 RESO, K3 PULSE (a percent), K4 PRESET (a name,
+  no bar), EDIT + K1..K4 (`DIST DRIVE` and the like, in the smaller size), MASTER VOLUME, and on
+  CHIP K1..K4 AGE, DAC, THUMP, BLEED and ALGORITHM the PROFILE or the slot's algorithm. Over
+  the menu, ALGORITHM on OCTAVE shows OCTAVE and `+1`. SELECT opens nothing.
+- [ ] **MIDI never opens it**: sweep a controller (CC 74) over MIDI while LIVE shows: the
+  FILTER curve moves, no popup.
+- [ ] **A popup while notes sound**: hold a chord on LIVE and turn K1: the scopes under the box
+  are hidden, the rest keeps moving, the sound has no click or dropout, and the box goes
+  cleanly a second after the last turn.
+- [ ] **Toasts**: OCT+ shows `OCTAVE +1` in large letters on the bottom two rows, readable, for
+  about 1.5 s; SAVE shows `SAVED`.
 
 Title cards ([controls](reference/controls.md#title-cards)):
 
@@ -478,15 +505,15 @@ format check below before deciding whether to format; nothing persists until the
   after about 2 s short held operations may interrupt the sound; completion says
   SAVED (GAPS). With SOUNDS on a completed explicit save plays the drive chunk. A background
   save alone waits for quiet and never forces gaps.
-- [ ] In the menu, STORE is immediately after CARDS and shows nK FREE, excluding the
+- [ ] In the menu, STORE is immediately after CARDS and shows nK (the kilobytes free), excluding the
   reserve pool. ALGORITHM on a writable SIDOU store does not format it.
 - [ ] **Only with unwanted foreign data and permission to destroy it:** STORE says FOREIGN.
   A plain SAVE says STORE FOREIGN: NOT SAVED; power-cycling without formatting leaves the
-  region foreign. ALGORITHM clockwise once on STORE says FORMAT? TURN; counter-clockwise
+  region foreign. ALGORITHM clockwise once on STORE says FORMAT?; counter-clockwise
   cancels, as does moving SELECT away and back. Nothing is erased by those cancelled steps.
 - [ ] **Destructive confirmation:** on FOREIGN, turn ALGORITHM clockwise twice without
-  leaving STORE. The store's 73 sectors are erased; STORE shows ERASING n (sound can have
-  gaps), then STORE FORMATTED and nK FREE. Let settings save, power-cycle, and check that
+  leaving STORE. The store's 73 sectors are erased; STORE shows ERASE n (sound can have
+  gaps), then STORE FORMATTED and nK. Let settings save, power-cycle, and check that
   STORE is no longer FOREIGN and settings persist. Never format automatically just to
   proceed with the checklist.
 

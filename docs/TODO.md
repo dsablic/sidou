@@ -60,6 +60,13 @@ Follow-ups that aren't tied to a milestone task yet.
   says what the knobs do right now, and nothing is ever hidden behind a mode the screen
   doesn't show.
 - The user's priority (2026-10-16): finish the features first, then this pass.
+- **Done: readability on the panel (2026-10-18).** The first hardware run found the 8×8 font on
+  the 30×30 grid almost unreadable on the 1.3-inch panel. Large text (2× and 3× the font, built
+  from cells), a value popup over any view when the panel changes a parameter, the menu at
+  2× with scroll hints, and large toasts are in (docs/art/README.md "Large text",
+  docs/reference/controls.md "Value popup", the readability check in docs/hardware-test.md
+  section 6). Still to do on the dense views at 8×8 (LIVE's scopes, TRACKER, CHIP, STATUS,
+  ABOUT): look at them on the panel and decide which numbers deserve the large size.
 
 ## A soft knee on the two chips' mix (if two loud chips clip)
 
