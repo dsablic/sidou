@@ -401,7 +401,12 @@ Follow-ups that aren't tied to a milestone task yet.
   or fm1-core cannot execute, naming the function from the symbol table. It
   would catch every new compiler idiom the emulator lacks at build time,
   not when a test happens to run the path.
-- **Action:** report upstream with the encodings; add the gate.
+- **Recheck at `7ca5b96c` (2026-10-18):** a bare `Cpu::step` on `64 e8 0b 10` and
+  `64 e8 0f 10` (and `0a`, the `&=`) executes them as `[r1+8] &= ~r0`, `[r1+12] &= ~r0` and
+  `[r1+8] &= r0`, at `7ca5b96c` and at `e52f4640` alike, so those encodings decode in the
+  interpreter at both. The original fault (the keys test and the browser demo) could not be
+  recreated that way: it may need other operand bytes, or the JIT path. The workaround stays
+  until a real instance is found.
 
 ## fm1-emu does not model P33 or the watchdog
 

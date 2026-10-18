@@ -28,11 +28,16 @@ function watch() {
         const m = e.data;
         if (m.type === "error") w.errors.push(m.message);
         if (m.type !== "frame") return;
-        let lit = 0, hash = 0;
-        for (let i = 0; i < m.lcd.length; i++) {
-          if (m.lcd[i]) lit++;
-          hash = (Math.imul(hash, 31) + m.lcd[i]) | 0;
+        // fm1-emu sends the picture only when it changed (lcd is null otherwise): keep the last
+        if (m.lcd) {
+          let lit = 0, hash = 0;
+          for (let i = 0; i < m.lcd.length; i++) {
+            if (m.lcd[i]) lit++;
+            hash = (Math.imul(hash, 31) + m.lcd[i]) | 0;
+          }
+          w.picture = { lit, hash };
         }
+        const { lit, hash } = w.picture || { lit: 0, hash: 0 };
         w.frames++;
         w.last = { ms: m.ms, lit, hash, halted: m.halted, short: m.short, minsns: m.minsns };
         if (!w.title && m.ms >= 500) w.title = w.last;   // the short boot's title card: 0..1.2 s

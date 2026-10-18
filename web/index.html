@@ -4,7 +4,8 @@
 <!-- SIDOU's page around fm1-emu's web frontend (MIT, Joakim Eriksson): main.js, worklet.js, jit.js,
      fwsc.js and fm1_web.wasm are upstream's, copied at the pinned revision by tools/web-demo.
      main.js finds its elements by id (title, status, fw, mhz, midi, midich, midiact, midiin, open,
-     bank, bankname, about, panel, start, fwlist) and observes <header> and .bar: keep them all. -->
+     bank, bankname, about, panel, start, fwlist, fullpage, perfwarn and its -text, -fix, -copy and
+     -close) and observes <header> and .bar: keep them all. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -71,6 +72,16 @@
   td:first-child { white-space: nowrap; }
   #build { font-variant-numeric: tabular-nums; }
   footer { color: var(--dim); font-size: 12.5px; border-top: 1px solid var(--rule); padding-top: 12px; margin-top: 8px; }
+  /* fm1-emu's "the device can't keep up" warning (main.js perf): between the controls and the synth */
+  #perfwarn { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between;
+              border: 1px solid var(--yellow); border-radius: 10px; background: var(--card); padding: 9px 12px; }
+  #perfwarn[hidden] { display: none; }
+  #perfwarn p { margin: 0; flex: 1 1 320px; min-width: 0; }
+  #perfwarn .acts { display: flex; gap: 8px; align-items: center; }
+  #perfwarn button { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line);
+                     border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+  #perfwarn button.primary { background: var(--accent); border-color: var(--accent); color: #0f0c22; font-weight: 600; }
+  #perfwarn button[hidden] { display: none; }
   @media (max-width: 600px) { .brand img { width: 160px; } }
 </style>
 </head>
@@ -94,6 +105,15 @@
     <label class="file" hidden>DX7 bank… <input type="file" id="bank"></label>
     <span id="bankname" hidden></span>
     <span id="about"></span>
+  </div>
+  <a id="fullpage" href="./" hidden>full page</a>
+  <div id="perfwarn" role="alert" hidden>
+    <p id="perfwarn-text"></p>
+    <div class="acts">
+      <button type="button" id="perfwarn-fix" class="primary"></button>
+      <button type="button" id="perfwarn-copy" title="A short text about this device and how it kept up, to paste into a bug report">Copy a report</button>
+      <button type="button" id="perfwarn-close" aria-label="Dismiss">✕</button>
+    </div>
   </div>
   <div class="stage">
     <canvas id="panel" aria-label="FM-1 front panel"></canvas>

@@ -344,7 +344,7 @@ impl Machine {
     pub fn boot_package(package: &[u8]) -> Self {
         let stock = fm1_soc::stock_from_package(package, None).expect("an FM-1 package");
         let mut soc = Soc::new(RAM_SIZE, stock.xip.clone());
-        let r0 = fm1_soc::stock_boot(&mut soc, &stock.flash, PACKAGE_PARAMS);
+        let r0 = fm1_soc::stock_boot(&mut soc, &stock.flash, PACKAGE_PARAMS, fm1_soc::Board::Fm1);
         Self::start(soc, stock.entry, r0)
     }
 
