@@ -392,14 +392,16 @@ CHIP (menu, CHIP; [controls](reference/controls.md#chip)):
 
 - [ ] The page as `tests/golden/lcd/chip.png`, its state set over MIDI (the emulator test's
   CCs): AGE 100, DAC 40, THUMP 64, BLEED 20; DIST OVERDRIVE, MOD CHORUS, FX REVERB. CHIP A at
-  2× in white, the CHIP tab yellow, `6581` and the profile at 3×, the four controls in yellow,
-  cyan, light green and light red with their values at 3× (AGE's `100` at 2×, which is how
-  three digits fit), and the three slots' algorithms at 2× below.
+  2× in white, the CHIP tab yellow, `6581` and the profile at 3×, the four small control labels
+  in yellow, cyan, light green and light grey (K4 white in C64), their bars in the knob's
+  accent colour, and their values white at 3× (AGE's `100` at 2×, which is how three digits
+  fit). The K1..K4 tags, names below the choice, KEYS marker, note and help lines use the
+  readable hint colour; the three slots' algorithms are at 2× below.
 - [ ] SELECT through DIST, MOD and FX: each tab turns yellow in turn, the choice at 3× is the
   slot's algorithm, its controls are named for it (OVERDRIVE: DRIVE, TONE, BIAS, MIX), and the
   lines below are the chip and the other two slots. With every slot OFF (ALGORITHM
-  counter-clockwise on each), a slot's controls are dark grey under their generic names (AMT,
-  A, B, MIX).
+  counter-clockwise on each), a slot's control labels, values and bars are dark grey under
+  their generic names (AMT, A, B, MIX), but the K1..K4 tags remain readable in the hint colour.
 - [ ] ALGORITHM on CHIP between two 6581 profiles (R2 and R3, R3 and R4AR, either way) shows
   no toast and no raster, by design: only a model change (to or from 8580 R5) says CHIP 6581
   or CHIP 8580 and sweeps the border. The profile word changes either way.
@@ -416,9 +418,12 @@ CHIP (menu, CHIP; [controls](reference/controls.md#chip)):
   Repeat with MIDI LEARN open over the returned CHIP page. Open SONG, return to TRACKER,
   and check its rows/name are restored rather than stale CHIP or SONG text.
 - [ ] In both HIGH CONTRAST and C64 themes, the expert names at 2× and unit values at
-  2×/3× are readable in the hand and at arm's length. Knob tags and popup bars keep K1 yellow,
-  K2 cyan, K3 light green and K4 light red. Every popup names its own control; no value
-  overlaps its neighbour or runs under the bezel. Model-specific inactive values say N/A.
+  2×/3× are readable in the hand and at arm's length. Active large names keep the knob accents:
+  K1 yellow, K2 cyan, K3 light green and K4 light red (light grey in C64). The small knob tags
+  and the macro reminder use the neutral, readable hint colour, not the physical knob accent.
+  Popup bars retain their theme colours (the knob accent in HIGH CONTRAST, light green in
+  C64). Every popup names its own control; no value overlaps its neighbour or runs under the
+  bezel. Model-specific inactive names and values dim, values say N/A, and tags remain readable.
 - [ ] With a fresh R4AR setup, following defaults read 100% nonlinearity, 0.75% DAC leakage,
   1.16 DC filter bias and 13154 Hz external low-pass. These are physical units, not raw
   MIDI values. Compare the four pages with `chip-expert-1.png` through `chip-expert-4.png`.

@@ -450,14 +450,15 @@ static void draw_tabs(const chip_view* cv, canvas* c, const theme* th) {
     }
 }
 
-/* One control in its knob's column: its label small in the knob's colour, its value at 3x (2x
- * from 100, which needs 3 digits), a bar and the knob's name. `used` 0: all dark grey. */
+/* One control in its knob's column: its label in the knob's readable text role, its value at 3x (2x
+ * from 100, which needs 3 digits), a bar and the knob's name. Unused controls are dim;
+ * the knob legend stays readable. */
 static void draw_control(canvas* c, const theme* th, uint32_t k, const char* name, uint32_t value,
                          uint32_t max, int used) {
     uint32_t col = KNOB_COL[k];
     uint32_t cells = KNOB_W[k] - 1u;
     uint8_t accent = used ? th->knob[k] : th->dim;
-    text(c, col, CHIP_VIEW_LABEL_ROW, name, GRID_ATTR(accent, th->bg));
+    text(c, col, CHIP_VIEW_LABEL_ROW, name, GRID_ATTR(used ? th->knob_text[k] : th->dim, th->bg));
     char v[4];
     uint32_t n = 0;
     if (value >= 100u) {
@@ -481,14 +482,14 @@ static void draw_control(canvas* c, const theme* th, uint32_t k, const char* nam
         put(c, col + i, CHIP_VIEW_BAR_ROW, (uint8_t)(FONT_BAR0 + f), GRID_ATTR(accent, th->dim));
     }
     char tag[3] = {'K', (char)('1' + k), 0};
-    text(c, col, CHIP_VIEW_TAG_ROW, tag, THEME_ATTR(th, dim));
+    text(c, col, CHIP_VIEW_TAG_ROW, tag, THEME_ATTR(th, hint));
 }
 
 /* The USER profile picked says USR n in the choice; the save target, yellow, in the names row:
  * the chip is unchanged. An empty slot ends in a dash, as the picker would show it. */
 static void draw_names(const chip_view* cv, canvas* c, const theme* th) {
     const live* l = cv->l;
-    uint8_t dim = THEME_ATTR(th, dim);
+    uint8_t hint = THEME_ATTR(th, hint);
     if (cv->chip || cv->expert) {
         if (cv->target) {
             char title[20] = "SAVE TO USER n";
@@ -498,13 +499,13 @@ static void draw_names(const chip_view* cv, canvas* c, const theme* th) {
                 text(c, k, CHIP_VIEW_NAMES_ROW, " -", THEME_ATTR(th, hot));
             }
         } else if (cv->expert) {
-            text(c, 0, CHIP_VIEW_NAMES_ROW, "DIRECT K1-K4   ALGORITHM PAGE", dim);
+            text(c, 0, CHIP_VIEW_NAMES_ROW, "DIRECT K1-K4   ALGORITHM PAGE", hint);
         } else {
-            text(c, 0, CHIP_VIEW_NAMES_ROW, "MODEL", dim);
-            text(c, PROFILE_COL, CHIP_VIEW_NAMES_ROW, "PROFILE", dim);
+            text(c, 0, CHIP_VIEW_NAMES_ROW, "MODEL", hint);
+            text(c, PROFILE_COL, CHIP_VIEW_NAMES_ROW, "PROFILE", hint);
         }
     } else {
-        text(c, 0, CHIP_VIEW_NAMES_ROW, "ALGORITHM", dim);
+        text(c, 0, CHIP_VIEW_NAMES_ROW, "ALGORITHM", hint);
     }
 }
 
@@ -531,7 +532,7 @@ __attribute__((noinline, unused)) static void draw_expert(chip_view* cv, canvas*
         uint8_t accent = GRID_ATTR(active ? th->knob[k] : th->dim, th->bg);
         char tag[] = "K1";
         tag[1] = (char)('1' + k);
-        text(c, col, row - 1u, tag, accent);
+        text(c, col, row - 1u, tag, THEME_ATTR(th, hint));
         big(c, col, row, 2, LABEL[index], accent);
         char value[16];
         if (active) {
@@ -545,7 +546,7 @@ __attribute__((noinline, unused)) static void draw_expert(chip_view* cv, canvas*
         uint32_t scale = length(value) <= 4u ? 3u : 2u;
         big(c, col, row + 3u, scale, value, GRID_ATTR(active ? th->value : th->dim, th->bg));
     }
-    text(c, 0, 25, "MACRO MOVES RESET ITS OVERRIDES", THEME_ATTR(th, label));
+    text(c, 0, 25, "MACRO MOVES RESET ITS OVERRIDES", THEME_ATTR(th, hint));
 }
 
 /* The whole page into the canvas, and what it shows remembered. */
@@ -566,7 +567,7 @@ static void build(chip_view* cv) {
     title[5] = cv->tab ? 'B' : 'A';
     big(c, 0, 0, 2, title, GRID_ATTR(cv->tabs ? th->hot : th->value, th->bg));
     if (l->two_chips && l->keys_chip == cv->tab) {
-        text(c, GRID_COLS - 6u, 0, cv->tab ? "KEYS:B" : "KEYS:A", THEME_ATTR(th, label));
+        text(c, GRID_COLS - 6u, 0, cv->tab ? "KEYS:B" : "KEYS:A", THEME_ATTR(th, hint));
     }
     draw_tabs(cv, c, th);
     draw_names(cv, c, th);
@@ -629,9 +630,9 @@ static void build(chip_view* cv) {
     /* At the foot, what the tab is (nothing on chip A with no song): the help line keeps the moves. */
     static const char* const NOTE[4] = {"", "SONG SETUP  SLOTS SHARED", "FOLLOWS KEYS  SLOTS SHARED",
                                         "SLOTS SHARED WITH CHIP A"};
-    text(c, 0, CHIP_VIEW_NOTE_ROW, NOTE[help_kind(cv)], THEME_ATTR(th, label));
+    text(c, 0, CHIP_VIEW_NOTE_ROW, NOTE[help_kind(cv)], THEME_ATTR(th, hint));
     text(c, 0, CHIP_VIEW_HELP_ROW,
-         cv->expert ? "SELECT MOVE ALGORITHM PAGE" : "SELECT MOVE ALGORITHM STEP", THEME_ATTR(th, dim));
+         cv->expert ? "SELECT MOVE ALGORITHM PAGE" : "SELECT MOVE ALGORITHM STEP", THEME_ATTR(th, hint));
     cv->built = 1;
     cv->copying = 1;
 }

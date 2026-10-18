@@ -160,7 +160,7 @@ M2b Task 3 adds chip B's render beside chip A's, while chip B is in use, and the
 (`chip_mix`): `.ram_text` 36,720 bytes. Out of use chip B is not rendered (a silent chip
 still has a level of its own); its use changes at a block boundary, faded over that block.
 
-**M2b completion, schema-5 build on `m2b`, rebased onto `82f7357`:** chip A carries the song;
+**M2b completion, schema-5 build on `m2b`, rebased onto T1 `e88d2e7`:** chip A carries the song;
 with KEYS AUTO, the keys play A without a song and B while it plays. B always follows
 the keys' setup. KEYS A borrows song voices until key-up instead. UI sounds borrow a free
 B voice only, never steal a held note, and are off by default. Both chips mix before the
@@ -175,7 +175,7 @@ slices in the same main-loop pass.
 
 | Integrated resource | Measured | Existing limit |
 |---|---:|---:|
-| Packaged app image | 497,088 bytes | 512,000 bytes (latest merged stage, M2f) |
+| Packaged app image | 497,120 bytes | 512,000 bytes (latest merged stage, M2f) |
 | RAMTEXT | 46,016 bytes | 49,152 bytes |
 | Free RAM region / POOL | 5,380 / 4,472 bytes | ≥4,096 each |
 | Free RAM region + POOL | 9,852 bytes | ≥7,000 bytes |
@@ -195,6 +195,8 @@ share one 2,700-byte drawing canvas, with compose-time ownership and independent
 state, recovering 2,704 aligned RAM bytes. The song snapshot packs narrow parameters
 and cutoff/pulse-width high bytes into the unchanged 160-byte I/O buffer; raw expert
 255 stays profile-following. These are main-loop/UI storage changes, not audio changes.
+The T1 theme-role rebase and CHIP text-role wiring add 32 image bytes over the previous
+497,088-byte build, without changing RAM, RAMTEXT, tab layout or audio behavior.
 
 The emulator's real two-chip ISR with every slot at its heaviest measures 2,387.1172
 instructions/sample against 2,700. The conservative 6502 allowance is about **185.07

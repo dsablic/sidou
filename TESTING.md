@@ -202,6 +202,9 @@ CHIP and the song views borrow the same drawing canvas: regressions interrupt a 
 build, return with HOME without re-entering CHIP, compose under MIDI LEARN, and restore
 SONG/TRACKER after a different owner. The view state remains separate; ownership changes
 invalidate rendering caches rather than clearing or copying a canvas in an input handler.
+`chip_labels_and_legends_use_t1_roles_without_changing_tabs` checks the readable 1×
+control/legend roles in both themes, large-name/bar accents, inactive controls and all
+expert pages, while preserving the existing tab rendering for the separate T2 task.
 
 `expert_transport` replays outgoing packets into a second instrument. It checks macro
 releases after deferred or canceled changes, macro-before-expert restoration, remote

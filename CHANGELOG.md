@@ -18,8 +18,8 @@ All notable changes are documented here. The format follows
 - **M2b complete on its branch** (Tasks 1–8): sliced preparation, two SIDs, keys on B
   during a song, both CHIP tabs, expert controls and off-by-default UI sounds. The
   [M2b status](docs/plans/2026-10-15-m2b-chip-b.md#m2b-status) records the integrated
-  image (497,088 bytes), RAMTEXT (46,016), free RAM + POOL (9,852), chip B's marginal
-  state (35,216) and passing two-chip ISR/screen gates. TESTING documents the
+  image (497,120 bytes), RAMTEXT (46,016), free RAM + POOL (9,852), chip B's marginal
+  state (35,216) and two-chip ISR/screen measurements. TESTING documents the
   new coverage; hardware checklist 6.3–6.4 adds two-chip routing, voice-safe sounds,
   expert readability, continuous notes and persistence. Hardware acceptance remains open.
 - **The character's expert layer** (M2b Task 6): fourteen independent analogue controls,
@@ -83,6 +83,9 @@ All notable changes are documented here. The format follows
 - docs/hardware-test.md: a readability check of the large text on the panel.
 
 ### Changed
+- CHIP adopts T1's readable text roles: small control labels use `knob_text`, captions,
+  tags and help use `hint`, while bars and large EXPERT names keep knob accents. Inactive
+  controls stay dim. Tab rendering and navigation are unchanged; T2 remains separate.
 - Expert settings use **schema 5**, retaining M2c Task 8's schema-4 last-song filename
   at offsets 108–123; v1–4 migrate without turning filename bytes into expert overrides.
   CHIP and the song views share their inactive drawing canvas to retain the unchanged

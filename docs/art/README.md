@@ -709,24 +709,28 @@ knobs' places.
   the A/B tabs, CHIP, DIST, MOD, FX, then EXPERT, clamped at both ends.
 - **Rows 4-6, 7:** the section's main choice at 3×: for CHIP the chip's model (`6581`, white) and
   its profile (`R4AR`, yellow: the name without the model, `WORN`, or **USR 3** for a picked
-  USER slot), over the small names MODEL and PROFILE; for a slot its algorithm (white, OFF dark
-  grey) over ALGORITHM. **With a save target** (EDIT + ALGORITHM on the chip) the names row
-  reads **SAVE TO USER 3** (and ` -` while that slot is empty) in yellow: the old CHIP frame's
+  USER slot), over the small names MODEL and PROFILE in the hint colour; for a slot its algorithm
+  (white, OFF dark grey) over ALGORITHM in the hint colour. **With a save target** (EDIT +
+  ALGORITHM on the chip) the names row reads **SAVE TO USER 3** (and ` -` while that slot is
+  empty) in yellow: the old CHIP frame's
   title had no room, and here it sits under the profile it will store.
 - **Rows 9-14, the four controls in the knobs' places** (the same columns as LIVE's knob row):
-  the label small in the knob's colour (yellow, cyan, light green, light red: AGE, DAC, THUMP,
-  BLEED; or the slot's names for what Amount, A, B and Mix do in its algorithm), the value
-  0..127 at 3× in white, a bar in the knob's colour on dark grey, and the knob's name K1..K4 small.
+  the label small in the knob's text colour (`knob_text[k]`: yellow, cyan, light green, light
+  grey in HIGH CONTRAST; K4 white in C64): AGE, DAC, THUMP, BLEED, or the slot's names for what
+  Amount, A, B and Mix do in its algorithm; the value 0..127 at 3× in white, a bar in the knob's
+  accent colour (`knob[k]`) on dark grey, and the
+  knob's name K1..K4 small in the neutral, readable hint colour.
   **A value of 100 or more is drawn at 2× instead** (on the lower two rows of its three): three
   digits at 3× are 9 cells and a column is 7 or 8, so it cannot be 3× at 100..127 without
   running into the next column. A control the algorithm does not use and every control of a
-  slot that is off are dark grey, with their generic names (AMT, A, B, MIX).
+  slot that is off have dark grey labels, values and bars, with their generic names (AMT, A,
+  B, MIX); the K1..K4 tags keep the hint colour.
 - **Rows 16-21, the other sections** at 2×, a line each (the name in grey, its state in white): on
   the chip, DIST, MOD and FX with their algorithms; on a slot, the chip's model and profile
   (`6581 R4AR`) and the other two slots.
 - **Rows 27-28:** the tab's note (nothing on chip A with no song; on the B tab FOLLOWS KEYS  SLOTS
   SHARED, or SLOTS SHARED WITH CHIP A while the keys play chip B; on a song's A tab SONG SETUP
-  SLOTS SHARED) and the help line, SELECT MOVE ALGORITHM STEP, small and dim. The toast keeps
+  SLOTS SHARED) and the help line, SELECT MOVE ALGORITHM STEP, small in the hint colour. The toast keeps
   rows 27-28 while it shows.
 
 **EXPERT keeps the readable design.** It is one final SELECT stop, not another menu. The
@@ -738,12 +742,14 @@ control's reach to at most three page detents, with no menu diving.
 
 The long units need more width than CHIP's seven-cell columns. EXPERT therefore uses two
 pairs: K1/K2 at columns 0/15, names on rows 9-10 and values from row 12; K3/K4 on rows 17-18
-and from row 20. Names are at 2× in the knob's colour, preceded by a small K1..K4 tag; values
-include their units at 3× up to four characters, otherwise 2×. Even `20000HZ` fits its
+and from row 20. Names are at 2× in the knob's accent colour (`knob[k]`), preceded by a small
+K1..K4 tag in the neutral hint colour; values include their units at 3× up to four characters,
+otherwise 2×. Even `20000HZ` fits its
 half-screen without clipping. The last page's unused lower pair stays blank. Every turn's
-popup uses the same named parameter and unit formatter, in the corresponding knob colour.
+popup uses the same named parameter and unit formatter, retaining the theme's popup colours.
+Inactive names and values are dim, with **N/A** for the value; their knob tags remain readable.
 The summary lines give way to this second pair; row 25 says **MACRO MOVES RESET ITS
-OVERRIDES**, while the chip/song note and help remain at the foot. The help becomes SELECT
+OVERRIDES** in the hint colour, while the chip/song note and help remain at the foot. The help becomes SELECT
 MOVE ALGORITHM PAGE. EDIT + ALGORITHM retains the USER save target here too, in the same
 yellow names row; SAVE includes the independent expert settings.
 

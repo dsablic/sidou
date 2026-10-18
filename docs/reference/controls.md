@@ -227,10 +227,10 @@ chip the keys play.
 |---|---|
 | 0-1 | the title **CHIP A** or **CHIP B** at 2× (yellow while the focus is on the tabs, below), **KEYS:A / KEYS:B** small on the right on the keys' chip |
 | 2 | the section tabs **CHIP, DIST, MOD, FX**: the focused one yellow (the CHIP tab grey instead while the focus is on the A/B tabs, whose K1..K4 turn the chip's) |
-| 4-6, 7 | the section's choice at 3×, and under it its names: the chip's model (6581, 8580) and profile (R2, R3, R4AR, R5, WORN, or **USR 3** when USER 3 was picked) over MODEL and PROFILE; or the slot's algorithm over ALGORITHM. With a save target the names read **SAVE TO USER 3** in yellow (**SAVE TO USER 3 -** while the slot is empty) |
-| 9-14 | the section's four controls in the knobs' places (K1..K4 left to right, as LIVE's knob row): its label small in the knob's colour (AGE, DAC, THUMP, BLEED; a slot's named for what they do in its algorithm: OVERDRIVE has DRIVE, TONE, BIAS, MIX), its value 0..127 at 3× in white (2× from 100: three digits do not fit a column), a bar in the knob's colour and the knob's name K1..K4. A control the algorithm does not use, and every control of a slot that is off, is dark grey |
+| 4-6, 7 | the section's choice at 3×, and under it its names in the hint colour: the chip's model (6581, 8580) and profile (R2, R3, R4AR, R5, WORN, or **USR 3** when USER 3 was picked) over MODEL and PROFILE; or the slot's algorithm over ALGORITHM. With a save target the names read **SAVE TO USER 3** in yellow (**SAVE TO USER 3 -** while the slot is empty) |
+| 9-14 | the section's four controls in the knobs' places (K1..K4 left to right, as LIVE's knob row): its label small in the knob's readable text colour (AGE, DAC, THUMP, BLEED; a slot's named for what they do in its algorithm: OVERDRIVE has DRIVE, TONE, BIAS, MIX), its value 0..127 at 3× in white (2× from 100: three digits do not fit a column), a bar in the knob's accent colour and the knob's name K1..K4 in the neutral hint colour. A control the algorithm does not use, and every control of a slot that is off, has dark grey labels, values and bars; the knob tags remain readable |
 | 16-21 | the other sections at 2×, a line each: DIST, MOD and FX with their algorithms (OFF dark grey); with a slot in focus, the chip's model and profile and the other two slots |
-| 27-28 | the tab's note (SONG SETUP  SLOTS SHARED, FOLLOWS KEYS  SLOTS SHARED, SLOTS SHARED WITH CHIP A; nothing on chip A with no song) and the help line: SELECT MOVE ALGORITHM STEP |
+| 27-28 | the tab's note (SONG SETUP  SLOTS SHARED, FOLLOWS KEYS  SLOTS SHARED, SLOTS SHARED WITH CHIP A; nothing on chip A with no song) and the help line in the hint colour: SELECT MOVE ALGORITHM STEP |
 
 The focus is on the tabs, the chip, a slot or EXPERT; the yellow tab (or title) shows it.
 
@@ -255,10 +255,11 @@ from MIDI shows on the page at the next frame.
 
 **EXPERT.** One SELECT stop after FX opens four pages of independent controls; ALGORITHM
 steps pages, clamped at either end. K1 and K2 are the upper pair, K3 and K4 the lower pair,
-each explicitly tagged in its physical knob's colour. Names are at 2×; values, including
-their units, are at 2× or 3×. Empty positions on the last page do nothing. Each detent moves
+each explicitly tagged K1..K4 in the neutral, readable hint colour. Names are at 2× in the
+physical knob's accent colour; values, including their units, are at 2× or 3×. Empty positions
+on the last page do nothing. Each detent moves
 one raw step out of 127; the popup names the parameter, shows its value in units and keeps
-the knob's colour. EDIT + K1..K4 still turns the selected effect slot.
+the theme's popup colours. EDIT + K1..K4 still turns the selected effect slot.
 
 | Page | K1 | K2 | K3 | K4 |
 |---|---|---|---|---|
@@ -272,14 +273,16 @@ Nonlinearity shows 100% for a factor of one; bleed and leakage show fractions as
 `R` is the DAC's 2R/R ladder ratio; `DC` is a voice-DAC unit, not volts. External corners show
 Hz. Combined strength uses three bands of the raw range (WEAK, MED, STRONG); noise write-back
 shows OFF or the number of connected taps (1 TAP through 8 TAPS). Model-specific controls
-remain named on both models; an inapplicable control is grey and says **N/A** on the page.
+remain named on both models; an inapplicable control's name and value are dim and it says
+**N/A** on the page, while its knob tag remains readable.
 Its popup also says **N/A**.
 
 Expert edits stay until a related macro moves: AGE releases the two curves, range and
 nonlinearity; DAC releases kink and leakage; THUMP releases output thump; BLEED releases filter
 bleed. Other independent settings stay. A new base profile releases all expert overrides.
-The page reminds: **MACRO MOVES RESET ITS OVERRIDES**. During a song the A tab edits the song's
-expert setup, not the keys'; its knobs cannot be MIDI-learned. B edits the keys' setup.
+The page reminds in the hint colour: **MACRO MOVES RESET ITS OVERRIDES**. During a song the A
+tab edits the song's expert setup, not the keys'; its knobs cannot be MIDI-learned. B edits
+the keys' setup.
 
 **USER profiles.** A USER profile is a base profile, the four character controls and the
 expert overrides (including values that follow the profile/macros),

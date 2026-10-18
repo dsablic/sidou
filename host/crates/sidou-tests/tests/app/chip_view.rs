@@ -566,6 +566,69 @@ fn chip_opens_from_the_menu_behind_the_chip_card() {
 }
 
 #[test]
+fn chip_labels_and_legends_use_t1_roles_without_changing_tabs() {
+    for id in [THEME_HIGH_CONTRAST, THEME_C64] {
+        let mut ui = chip_ui();
+        unsafe { live_set_theme(&mut *ui.rig.live, id) };
+        settle(&mut ui);
+        let t = theme_of(&ui);
+        let fg = |ui: &Ui, row: u32, col: usize| ui.g.attr[row as usize * COLS + col] & 15;
+        assert_eq!(fg(&ui, CHIP_VIEW_NAMES_ROW, 0), t.hint);
+        assert_eq!(fg(&ui, CHIP_VIEW_NAMES_ROW, 13), t.hint);
+        assert_eq!(fg(&ui, CHIP_VIEW_HELP_ROW, 0), t.hint);
+        for (k, col) in KNOB_COL.into_iter().enumerate() {
+            assert_eq!(fg(&ui, CHIP_VIEW_LABEL_ROW, col), t.knob_text[k]);
+            assert_eq!(fg(&ui, CHIP_VIEW_TAG_ROW, col), t.hint);
+            assert_eq!(fg(&ui, CHIP_VIEW_BAR_ROW, col), t.knob[k]);
+        }
+        for i in 0..4 {
+            assert_eq!(tab_bg(&ui, i), if i == 0 { t.hot } else { t.dim });
+        }
+        ui.turn(PANEL_ENC_SELECT, 1);
+        for alg in [SID_DIST_OVERDRIVE, 0] {
+            unsafe { live_slot_set(&mut *ui.rig.live, 0, LIVE_SLOT_ALGORITHM, alg as i32) };
+            settle(&mut ui);
+            assert_eq!(fg(&ui, CHIP_VIEW_NAMES_ROW, 0), t.hint);
+            assert_eq!(fg(&ui, CHIP_VIEW_HELP_ROW, 0), t.hint);
+            for (k, col) in KNOB_COL.into_iter().enumerate() {
+                let active = alg != 0 && label(0, alg, LIVE_SLOT_AMOUNT + k as u32).1;
+                assert_eq!(
+                    fg(&ui, CHIP_VIEW_LABEL_ROW, col),
+                    if active { t.knob_text[k] } else { t.dim }
+                );
+                assert_eq!(fg(&ui, CHIP_VIEW_TAG_ROW, col), t.hint);
+                assert_eq!(
+                    fg(&ui, CHIP_VIEW_BAR_ROW, col),
+                    if active { t.knob[k] } else { t.dim }
+                );
+            }
+        }
+        ui.turn(PANEL_ENC_SELECT, 3);
+        for page in 0..SID_EXPERT_COUNT.div_ceil(4) {
+            settle(&mut ui);
+            assert_eq!(fg(&ui, CHIP_VIEW_NAMES_ROW, 0), t.hint);
+            assert_eq!(fg(&ui, CHIP_VIEW_HELP_ROW, 0), t.hint);
+            assert_eq!(fg(&ui, 25, 0), t.hint);
+            for k in 0..4 {
+                let index = page * 4 + k;
+                if index >= SID_EXPERT_COUNT {
+                    continue;
+                }
+                let col = (k % 2 * 15) as usize;
+                let row = 9 + k / 2 * 8;
+                assert_eq!(fg(&ui, row - 1, col), t.hint);
+                let active = unsafe { sid_character_expert_active(SID_MODEL_6581, index) } != 0;
+                assert_eq!(
+                    fg(&ui, row, col),
+                    if active { t.knob[k as usize] } else { t.dim }
+                );
+            }
+            ui.turn(PANEL_ENC_ALGORITHM, 1);
+        }
+    }
+}
+
+#[test]
 fn the_page_shows_the_profile_the_character_and_the_other_sections() {
     let ui = chip_ui();
     let t = theme_of(&ui);
@@ -604,7 +667,7 @@ fn the_page_shows_the_profile_the_character_and_the_other_sections() {
         let col = KNOB_COL[k];
         assert_eq!(
             ui.g.attr[CHIP_VIEW_LABEL_ROW as usize * COLS + col] & 15,
-            t.knob[k],
+            t.knob_text[k],
             "{name}'s colour"
         );
         assert_eq!(
