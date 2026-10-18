@@ -951,3 +951,146 @@ fn undo_reserves_trailer_padding_growth_not_just_the_restored_record_bytes() {
     );
     assert_eq!(engine.song.raw().saved_growth, 0);
 }
+
+fn check_restore_serialization(lock_limit: bool) {
+    let mut song = Song::device();
+    let count = if lock_limit { SONG_LOCKS_MAX - 1 } else { 1 };
+    for index in 0..count {
+        let param = index % SONG_LOCK_PARAMS;
+        assert_eq!(
+            unsafe {
+                song_lock_put(
+                    song.ptr_mut(),
+                    2,
+                    index / SONG_LOCK_PARAMS,
+                    param,
+                    song_lock_max(param),
+                )
+            },
+            0
+        );
+    }
+    if !lock_limit {
+        let size = SONG_EXT_BYTES - SONG_LOCK_BYTES - song.raw().ext_used - SONG_CHUNK_HEADER;
+        assert_eq!(
+            song.ext_set(sidou_tests::song::tag(b"CAPT"), &vec![1; size as usize]),
+            0
+        );
+        assert_eq!(song.raw().ext_used, SONG_EXT_BYTES - SONG_LOCK_BYTES);
+    }
+    let original_used = song.raw().used_units;
+    let cell = [GT2_REST as u8, 0, 0, 0];
+    let locks_a = [0, 63, SONG_LOCK_CUTOFF as u8, 100, 0];
+    let locks_b = [1, 63, SONG_LOCK_CUTOFF as u8, 100, 0];
+    let mut a = gt2_edit::default();
+    let mut b = gt2_edit::default();
+    let prepare = |song: &mut Song, pattern, locks: &[u8; 5], edit: &mut gt2_edit| unsafe {
+        gt2_pattern_shift_restore(
+            song.ptr_mut(),
+            pattern,
+            0,
+            0,
+            cell.as_ptr(),
+            locks.as_ptr(),
+            1,
+            edit,
+        )
+    };
+    let mut loose = gt2_edit::default();
+    assert_eq!(
+        unsafe { gt2_set_instr(song.ptr_mut(), 1, 0, 1, &mut loose) },
+        GT2_OK
+    );
+    assert_eq!(song.raw().pending, 0);
+    assert_eq!(song.raw().pending_loose, 1);
+    let before = song.bytes().to_vec();
+    assert_eq!(prepare(&mut song, 0, &locks_a, &mut a), GT2_ERR_PENDING);
+    assert_eq!(
+        song.bytes(),
+        before,
+        "loose edits must settle before restore preflight too"
+    );
+    unsafe { gt2_edit_cancel(song.ptr_mut(), &loose) };
+    assert_eq!(prepare(&mut song, 0, &locks_a, &mut a), GT2_OK);
+    let before = song.bytes().to_vec();
+    assert_eq!(prepare(&mut song, 1, &locks_b, &mut b), GT2_ERR_PENDING);
+    assert_eq!(
+        song.bytes(),
+        before,
+        "a second restoration must not allocate or reserve"
+    );
+    unsafe { (*song.ptr_mut()).frozen = 1 };
+    let before = song.bytes().to_vec();
+    assert_eq!(prepare(&mut song, 1, &locks_b, &mut b), GT2_ERR_SAVING);
+    assert_eq!(song.bytes(), before);
+    unsafe {
+        (*song.ptr_mut()).frozen = 0;
+        gt2_edit_cancel(song.ptr_mut(), &a);
+    }
+    assert_eq!(song.raw().saved_growth, 0);
+    assert_eq!(song.raw().used_units, original_used);
+    assert_eq!(prepare(&mut song, 1, &locks_b, &mut b), GT2_OK);
+    unsafe { gt2_edit_cancel(song.ptr_mut(), &b) };
+
+    assert_eq!(prepare(&mut song, 0, &locks_a, &mut a), GT2_OK);
+    unsafe {
+        gt2_edit_apply(song.ptr_mut(), &a);
+        gt2_edit_release_with_locks(song.ptr_mut(), &a, locks_a.as_ptr(), 1);
+    }
+    let final_count = unsafe { song_ext_get_locks(song.ptr(), std::ptr::null_mut(), 0) };
+    assert_eq!(final_count, count + 1);
+    if lock_limit {
+        assert_eq!(final_count, SONG_LOCKS_MAX);
+    } else {
+        assert_eq!(song.raw().ext_used, SONG_EXT_BYTES);
+    }
+    assert_eq!(song.raw().saved_growth, 0);
+    assert_eq!(song.raw().pending, 0);
+    assert_eq!(
+        unsafe { gt2_saved_size(song.ptr()) } as usize,
+        song.write(true).len()
+    );
+    let before = song.bytes().to_vec();
+    assert_eq!(prepare(&mut song, 1, &locks_b, &mut b), GT2_ERR_FULL);
+    assert_eq!(
+        song.bytes(),
+        before,
+        "the settled full limit is authoritative"
+    );
+
+    // Ordinary shifts may move or discard records, but never consume restore capacity.
+    for push in [true, false, false] {
+        let previous = unsafe { song_ext_get_locks(song.ptr(), std::ptr::null_mut(), 0) };
+        commit(&mut song, |s, e| unsafe {
+            if push {
+                gt2_pattern_push_row(s, 2, 0, e)
+            } else {
+                gt2_pattern_pull_row(s, 2, 0, e)
+            }
+        });
+        assert!(unsafe { song_ext_get_locks(song.ptr(), std::ptr::null_mut(), 0) } <= previous);
+    }
+    assert_eq!(prepare(&mut song, 1, &locks_b, &mut b), GT2_OK);
+    unsafe {
+        gt2_edit_apply(song.ptr_mut(), &b);
+        gt2_edit_release_with_locks(song.ptr_mut(), &b, locks_b.as_ptr(), 1);
+    }
+    assert!(song.raw().ext_used <= SONG_EXT_BYTES);
+    assert!(unsafe { song_ext_get_locks(song.ptr(), std::ptr::null_mut(), 0) } <= SONG_LOCKS_MAX);
+    assert_eq!(song.raw().saved_growth, 0);
+    assert_eq!(song.raw().pending, 0);
+    assert_eq!(
+        unsafe { gt2_saved_size(song.ptr()) } as usize,
+        song.write(true).len()
+    );
+}
+
+#[test]
+fn restores_on_different_patterns_serialize_the_shared_lock_record_limit() {
+    check_restore_serialization(true);
+}
+
+#[test]
+fn restores_on_different_patterns_serialize_the_shared_extension_capacity() {
+    check_restore_serialization(false);
+}

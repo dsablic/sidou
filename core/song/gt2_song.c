@@ -440,7 +440,9 @@ static void unpend(gt2_song* s, const gt2_edit* e) {
 }
 
 static void edit_release(gt2_song* s, const gt2_edit* e, const uint8_t* locks, uint32_t nlocks) {
-    if (e->kind != GT2_EDIT_NONE) {
+    if (e->kind != GT2_EDIT_NONE &&
+        (e->kind != GT2_EDIT_SWAP || e->bytes[0] != 0u ||
+         GT2_SPAN_LEN(e->span) != GT2_SPAN_LEN(e->old_span))) {
         if (e->slot < GT2_MAX_PATTERNS) {
             if (e->kind == GT2_EDIT_SWAP) {
                 uint32_t old = e->old_span ? gt2_pattern_span_bytes(e->old_span)
@@ -495,9 +497,7 @@ static void edit_release(gt2_song* s, const gt2_edit* e, const uint8_t* locks, u
             uint32_t index = e->offset - base;
             saved_table_refresh(s, index / GT2_TABLE_ROWS, index % GT2_TABLE_ROWS);
         }
-        if (e->kind != GT2_EDIT_SWAP || e->bytes[0] != 0u ||
-            GT2_SPAN_LEN(e->span) != GT2_SPAN_LEN(e->old_span))
-            gt2_song_changed(s);
+        gt2_song_changed(s);
     }
     if (e->kind == GT2_EDIT_SWAP && e->old_span != 0u)
         gt2_arena_release(s, GT2_SPAN_OFF4(e->old_span), span_bytes_at(e->offset, e->old_span));
@@ -862,6 +862,8 @@ gt2_err gt2_pattern_shift_restore(gt2_song* s, uint32_t pattern, uint32_t row, i
                                  gt2_edit* e) {
     if (s->frozen)
         return GT2_ERR_SAVING;
+    if (s->pending || s->pending_loose)
+        return GT2_ERR_PENDING;
     if (pattern >= GT2_MAX_PATTERNS || s->pattern[pattern] == 0u || !cell || !row_valid(cell))
         return GT2_ERR_RANGE;
     uint32_t body = GT2_SPAN_LEN(s->pattern[pattern]) - 1u;
@@ -1193,10 +1195,13 @@ uint32_t gt2_saved_table_rows(const gt2_song* s, uint32_t table) {
 
 static void set_bit(uint32_t* bits, uint32_t index, int value) {
     uint32_t bit = 1u << (index & 31u);
+    uint32_t word = bits[index >> 5];
+    __asm__ volatile("" ::: "memory");
     if (value)
-        bits[index >> 5] |= bit;
+        word |= bit;
     else
-        bits[index >> 5] &= ~bit;
+        word &= ~bit;
+    bits[index >> 5] = word;
 }
 
 static uint32_t pattern_prefix(const gt2_song* s, uint32_t n) {
@@ -1276,6 +1281,7 @@ static void saved_table_refresh(gt2_song* s, uint32_t table, uint32_t row) {
 
 static void saved_order_refs(gt2_song* s, const uint8_t* o, uint32_t n, int add) {
     for (uint32_t i = 0; i < n; i++) {
+        GT2_ROW_WORK(s);
         uint32_t p = o[i];
         if (p >= GT2_REPEAT)
             continue;

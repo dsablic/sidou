@@ -2803,6 +2803,60 @@ fn capped_tracker_same_length_order_replacement_marks_dirty_but_compaction_does_
     );
 }
 
+#[test]
+fn neutral_compaction_preserves_accounting_without_inspecting_content_rows() {
+    let mut song = Song::device();
+    let mut edit = e();
+    assert_eq!(
+        unsafe { gt2_pattern_resize(song.ptr_mut(), 0, 8, &mut edit) },
+        GT2_OK
+    );
+    unsafe { gt2_edit_commit(song.ptr_mut(), &edit) };
+    let model = Model::of(&song);
+    let serialized = song.write(true);
+    let mut moved_order = false;
+    let mut moved_pattern = false;
+    for _ in 0..20 {
+        let work = song.raw().saved_row_work;
+        let result = unsafe { gt2_compact_step(song.ptr_mut(), &mut edit) };
+        if result == 0 {
+            break;
+        }
+        assert_eq!(result, 1);
+        assert_eq!(edit.bytes[0], 0);
+        assert_eq!(span_len(edit.span), span_len(edit.old_span));
+        assert_eq!(edit.reserved, 0);
+        moved_order |= edit.slot as u32 >= GT2_SLOT_ORDER;
+        moved_pattern |= (edit.slot as u32) < GT2_MAX_PATTERNS;
+        let start = std::mem::offset_of!(gt2_song, revision);
+        let end = std::mem::offset_of!(gt2_song, frozen);
+        let accounting = song.bytes()[start..end].to_vec();
+        unsafe { gt2_edit_commit(song.ptr_mut(), &edit) };
+        assert_eq!(
+            song.raw().saved_row_work,
+            work,
+            "compaction walked semantic content"
+        );
+        assert_eq!(&song.bytes()[start..end], accounting);
+        assert_eq!(Model::of(&song), model);
+        assert_eq!(song.write(true), serialized);
+        assert_eq!(
+            (
+                song.raw().pending,
+                song.raw().pending_old_units,
+                song.raw().saved_growth
+            ),
+            (0, 0, 0)
+        );
+        check_arena(&song);
+    }
+    assert!(
+        moved_order && moved_pattern,
+        "exercise both neutral swap kinds"
+    );
+    assert_eq!(unsafe { gt2_compact_step(song.ptr_mut(), &mut edit) }, 0);
+}
+
 fn e() -> gt2_edit {
     gt2_edit::default()
 }

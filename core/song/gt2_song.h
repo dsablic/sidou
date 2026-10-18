@@ -279,7 +279,8 @@ gt2_err gt2_pattern_pull_row(gt2_song* s, uint32_t pattern, uint32_t row, gt2_ed
 /* Fixed-length shift plus the inverse's lost row and packed row locks. insert selects
  * push (restored row at cursor) or pull (restored row at tail). Complete preflight occurs
  * before allocation; the private copy must not be patched afterwards. Keep locks unchanged
- * through gt2_edit_release_with_locks when n is nonzero. */
+ * through gt2_edit_release_with_locks when n is nonzero. Waits for every pending edit so
+ * two restores cannot reserve the same shared LOCK capacity. */
 gt2_err gt2_pattern_shift_restore(gt2_song* s, uint32_t pattern, uint32_t row, int insert,
                                  const uint8_t cell[4], const uint8_t* locks, uint32_t n,
                                  gt2_edit* e);

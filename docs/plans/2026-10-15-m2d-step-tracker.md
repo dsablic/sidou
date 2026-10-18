@@ -385,6 +385,75 @@ main at this base. Host/UI tests exercise SAVING and SONG FULL refusals with lar
 Save/load initiation must finish pending UI requests and accepted commands; even a fixed-length cell edit can grow
 serialized instrument/table counts. No hardware was accessed; the button-id flags remain.
 
+**Task 3 integration on `82f7357` (M2c Task 8):** rebased onto the stored-song/schema-4
+implementation, retaining both build-source lists, both test modules, the SONG menu and
+its borrowed large-text canvas, and the readable TRACKER editor. The original feature
+commit is now `d9c1b11`; Task 4 preparation remains unregistered and separate.
+
+The earlier guard placeholder is now wired to real save/load state. Prospective size is
+checked by the model's authoritative reservation logic before allocation or mutation;
+`GT2_ERR_SONG_FULL` shows SONG FULL, `GT2_ERR_SAVING` shows SAVING, and a destructive
+song-I/O operation shows SONG BUSY. An emulator panel test starts from an exactly
+65,536-byte song and confirms that K1 growth is refused without changing its bytes.
+Push/pull and whole-order replacement retain the cap/freeze accounting, including
+trailer-padding growth when tail locks disappear and pending pattern-prefix trims.
+
+Undo now preflights its restored row/instrument prefix and packed locks together, before
+allocating a rebuilt pattern. Its checked release restores locks while frozen, before
+reservation recomputation and completion. Concurrent restore preparation waits for all
+pending edits, protecting the shared 512-lock/4,096-byte extension limits without new
+RAM fields. A primitive prepared before SAVE may drain while frozen, so SAVE_WAIT and
+an unsent edit cannot deadlock. Loads wait for private model reservations too; a successful
+load clears the old undo history, cursor and pending PLAY/jam intent. Regression tests
+cover these lifecycles, exact-cap refusals, cancellation and unchanged-model failures.
+
+The main baseline has only **4,116 B free in RAM**, 20 B above the unchanged 4,096-B
+regional gate. Song I/O's explicitly initialized state moved to POOL; no buffer or
+behavior was removed. Baseline → integration: RAM used **61,420 → 61,260 B**, RAM free
+**4,116 → 4,276 B**; POOL used **346,560 → 346,960 B**, POOL free **5,696 → 5,296 B**;
+combined free **9,812 → 9,572 B** against unchanged FREE_RAM_MIN **7,000 B**. RAMTEXT
+**45,216 → 45,340 B**. The app image is **454,284 → 461,196 B**; the cumulative main
+stage is M2f's unchanged **512,000-B** ceiling, rather than the old standalone M2d
+projection. All regional, aggregate, flash and audio bounds remain intact.
+
+Early integration gates pass unchanged: STATUS idle **7,480.2 → 7,482.2** instructions/frame;
+all HOME/CHIP/SCENE input checks and stopped/playing TRACKER edit budgets pass. The real
+size-cap panel regression, loaded-song history regression, 20 editor regressions and
+native workspace/UBSan suites pass. The final post-rebase checklist is complete below.
+
+The first complete integration run exposed a neutral-compaction codegen path using a
+memory-form bit-clear the pinned emulator does not decode (the baseline contains the same
+instruction family). Neutral swaps now bypass semantic accounting; real bit updates use
+a scalar load/register operation/store. Old spans, pending flags, reservations and saved
+size still finish normally. Targeted compaction passes at **439 input / 27,353 busiest
+pass**, with the unchanged 4,600/55,000 bounds; the change also removes 144 image bytes.
+The bank/save row hooks now await exact row bytes plus apply-and-release completion rather
+than assuming that an accepted, shape-widening edit finishes within 10 ms. Their timeout,
+data-preservation and pass bounds are unchanged. The phrase fixture admits only known
+new setup chunks captured by M2c on audition, retaining byte-exact expected GT2 data,
+pre-existing chunks and the full audio comparison. All four focused regressions pass.
+
+**Final integration gates:** STATUS idle **7,482.2** (<7,500); HOME **426** (<430);
+CHIP K1 **211** (<215); SELECT to RULE 30 **227** (<230); LIVE noise
+**154,349.05 instructions/frame** (<155,000); USB's 16-CC drain **7,991** (<8,000).
+All MIDI floods and every TRACKER budget pass unchanged. PLAYER_WORST_BLOCK remains
+60: **5,731 instructions / 44.77 per sample**, including **592** isolated row-accounting
+instructions. Eight edits without a call cost **647**, the worst call remains **4,492**;
+the complete audio budget leaves **160.7 instructions/sample** of headroom.
+
+**Final integration checks — all exit 0:** normal fm1 configure/build; flash-spike
+configure/build; GCC 13 on every changed app/core C file; workspace fmt check; locked
+workspace/all-target Clippy with `-D warnings`; locked release workspace tests;
+locked UBSan workspace tests; fresh CI-argument sidou-pack and sidou-pack tests;
+the complete emu-gate with both build variables and `--nocapture --test-threads=1`
+(`--no-fail-fast` collected all binaries); offline REUSE lint; and
+`tools/web-demo --check` with cached dependencies. The app suite has **943 passing**
+tests and 3 pre-existing ignored tests. The real-cap panel, frozen-save, bank refusal,
+four-note audio, loaded-history and fragmented-arena regressions all pass. No new
+golden was regenerated during this integration; the earlier intended TRACKER goldens
+are unchanged. No hardware was accessed. Task 4's audition-policy checkpoint below
+remains open and its preparation is not registered in production builds.
+
 ---
 
 ### Task 4: ORDER, INSTR and TABLE pages

@@ -3910,6 +3910,64 @@ fn tracker_compaction_is_bounded_and_shows_tidying() {
     );
 }
 
+#[test]
+fn tracker_refuses_growth_at_the_real_song_size_cap() {
+    use sidou_sys::*;
+    let Some((_, fw)) = fixture("the TRACKER serialized-size refusal") else {
+        return;
+    };
+    let mut spec = sidou_tests::song::SngSpec::new();
+    spec.orders = vec![vec![(vec![207; 100], 0); 3]; 32];
+    spec.patterns = (0..208)
+        .map(|_| {
+            (
+                vec![[GT2_REST as u8, 0, 0, 0]; 64],
+                [GT2_ENDPATT as u8, 0, 0, 0],
+            )
+        })
+        .collect();
+    spec.patterns[207].0[0] = [GT2_FIRSTNOTE as u8, 1, 0, 0];
+    let mut model = common::device_song(&spec.encode(), None);
+    let before = unsafe { gt2_saved_size(model.ptr()) };
+    let trailer = unsafe { gt2_saved_trailer_size(model.raw().ext_used) };
+    let padding = (1..SONG_EXT_BYTES - SONG_CHUNK_HEADER)
+        .find(|&n| {
+            before - trailer
+                + unsafe { gt2_saved_trailer_size(model.raw().ext_used + SONG_CHUNK_HEADER + n) }
+                == GT2_SAVED_MAX
+        })
+        .expect("fixture reaches the exact cap");
+    assert_eq!(
+        model.ext_set(sidou_tests::song::tag(b"CAPT"), &vec![1; padding as usize]),
+        0
+    );
+    let expected = model.write(true);
+    assert_eq!(expected.len(), GT2_SAVED_MAX as usize);
+    let mut m = booted(&fw);
+    let region = fw.symbol("__song_region");
+    for (i, &byte) in model.bytes().iter().enumerate() {
+        m.soc.write8(region + i as u32, byte);
+    }
+    open_tracker(&mut m, &fw);
+    press(&mut m, REC);
+    m.turn(PANEL_ENC_K1 as u8, 1);
+    m.run_ms(200);
+    assert_eq!(toast_text(&mut m, &fw), "SONG FULL");
+    let mut actual = sidou_tests::song::Song::device();
+    let bytes = unsafe {
+        std::slice::from_raw_parts_mut(actual.ptr_mut().cast::<u8>(), SONG_REGION_BYTES as usize)
+    };
+    for (i, byte) in bytes.iter_mut().enumerate() {
+        *byte = m.soc.read8(region + i as u32);
+    }
+    assert_eq!(
+        actual.write(true),
+        expected,
+        "a refused panel edit must not change the song"
+    );
+    assert_eq!(actual.raw().pending, 0);
+}
+
 /// TRACKER's costs while a song plays, 30 s each (docs/art/README.md "TRACKER"):
 ///
 /// | 30 s playing | Cells a frame (average, most) | SPI a frame (average, worst) | Instructions a frame | Busiest ui_poll | Frames at the cap |

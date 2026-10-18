@@ -286,6 +286,30 @@ fn a_four_note_tracker_phrase_is_the_expected_song_and_plays_bit_exact() {
     for (i, byte) in bytes.iter_mut().enumerate() {
         *byte = m.soc.read8(base + i as u32);
     }
+    // M2c captures runtime setup on first audition. Keep pre-existing chunks and the
+    // independently expected GT2 data exact; only known new setup chunks are admitted.
+    assert_eq!(
+        actual.write(false),
+        expected.write(false),
+        "the panel programmed the expected GT2 data"
+    );
+    for (tag, data) in actual.ext_chunks() {
+        if expected.ext_find(tag).is_none() {
+            assert!(
+                [
+                    sidou_tests::song::TAG_CHPA,
+                    sidou_tests::song::TAG_CHPB,
+                    sidou_tests::song::TAG_OPTS,
+                    sidou_tests::song::TAG_KEYS,
+                    sidou_tests::song::TAG_SLOT,
+                    sidou_tests::song::TAG_MIDI
+                ]
+                .contains(&tag),
+                "unexpected audition metadata tag {tag:#x}"
+            );
+            assert_eq!(expected.ext_set(tag, &data), 0);
+        }
+    }
     assert_eq!(
         actual.write(true),
         expected.write(true),

@@ -215,6 +215,8 @@ fn press_play(m: &mut Machine) {
 
 fn row_write(m: &mut Machine, fw: &Firmware, pattern: u32, row: u32, cell: [u8; 4]) {
     let hook = fw.symbol("song_test_hook");
+    let base = fw.symbol("__song_region");
+    let frozen = m.soc.read8(base + ilp32::gt2_song::frozen as u32) != 0;
     assert_eq!(m.soc.read32(hook), 0);
     m.soc.write32(hook + 4, pattern);
     m.soc.write32(hook + 8, row);
@@ -225,7 +227,26 @@ fn row_write(m: &mut Machine, fw: &Firmware, pattern: u32, row: u32, cell: [u8; 
     until(m, "main loop consumes row write", |m| {
         m.soc.read32(hook) == 0
     });
-    m.run_ms(10);
+    if frozen {
+        assert_eq!(toast(m, fw), "SAVING");
+        return;
+    }
+    until(m, "row write applies and releases", |m| {
+        let span = m
+            .soc
+            .read32(base + ilp32::gt2_song::pattern as u32 + pattern * 4);
+        let arena = m.soc.read32(base + ilp32::gt2_song::arena_offset as u32);
+        let address = base + arena + (span & 0xffff) * GT2_UNIT + row * GT2_ROW_BYTES;
+        span >> 16 > row + 1
+            && cell
+                .into_iter()
+                .enumerate()
+                .all(|(i, value)| m.soc.read8(address + i as u32) == value)
+            && m.soc.read16(base + ilp32::gt2_song::pending as u32) == 0
+            && m.soc
+                .read32(fw.symbol("song_transport") + ilp32::song_ctl::inflight_n as u32)
+                == 0
+    });
 }
 
 fn assert_stopped(m: &mut Machine, fw: &Firmware) {

@@ -110,7 +110,21 @@ fn row_write(m: &mut Machine, fw: &Firmware, note: u8) {
     }
     m.soc.write32(hook, 1);
     until(m, "main consumes row edit", |m| m.soc.read32(hook) == 0);
-    m.run_ms(10);
+    let base = fw.symbol("__song_region");
+    until(m, "row edit applies and releases", |m| {
+        let span = m.soc.read32(base + ilp32::gt2_song::pattern as u32);
+        let arena = m.soc.read32(base + ilp32::gt2_song::arena_offset as u32);
+        let row = base + arena + (span & 0xffff) * GT2_UNIT;
+        span >> 16 > 1
+            && [note, 1, 0, 0]
+                .into_iter()
+                .enumerate()
+                .all(|(i, value)| m.soc.read8(row + i as u32) == value)
+            && m.soc.read16(base + ilp32::gt2_song::pending as u32) == 0
+            && m.soc
+                .read32(fw.symbol("song_transport") + ilp32::song_ctl::inflight_n as u32)
+                == 0
+    });
 }
 
 fn song(m: &mut Machine, fw: &Firmware) -> Song {
