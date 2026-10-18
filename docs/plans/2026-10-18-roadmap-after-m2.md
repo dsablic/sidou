@@ -31,7 +31,11 @@ the 6502 study below.
 5. **The ergonomics pass.** The user reviews the harness's findings and the heuristic review
    (`host/crates/ergo`, `build/ergo/`); the accepted ones become the fix list. Knob ranges and
    curves, gestures, consistency, readability, workflow.
-6. **v0.1**, led by what sets SIDOU apart: writing C64 music on the FM-1, GoatTracker 2
+6. **v0.1**, which ships with **no known bug**: everything spotted by then is fixed first,
+   from the ergonomics review (`docs/plans/2026-10-18-ergonomics-pass.md`, including its
+   deferred TRACKER and CHIP items), flash day, the testers and `docs/TODO.md`'s bug entries.
+   The harness is re-run on the release candidate, and every finding it reports is fixed or
+   shown to be a false positive by a harness fix. It is led by what sets SIDOU apart: writing C64 music on the FM-1, GoatTracker 2
    compatible both ways, two authentic SIDs with the chip character. With:
    - a small group of testers who already have a recovery route (also to measure the power
      cost of the main loop's spin while USB is attached);
