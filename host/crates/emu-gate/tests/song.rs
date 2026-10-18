@@ -83,9 +83,24 @@ fn play_after(
     song: Option<&Song>,
     ms: u64,
     before: impl FnOnce(&mut Machine),
+    during: impl FnMut(&mut Machine, u64),
+) -> Played {
+    play_at_pot(fw, None, song, ms, before, during)
+}
+
+/// `play_after` with the MASTER pot at `pot` from power-on (None: fm1-emu's POT).
+fn play_at_pot(
+    fw: &Firmware,
+    pot: Option<u16>,
+    song: Option<&Song>,
+    ms: u64,
+    before: impl FnOnce(&mut Machine),
     mut during: impl FnMut(&mut Machine, u64),
 ) -> Played {
     let mut m = Machine::boot(&fw.image);
+    if let Some(v) = pot {
+        m.pot(v);
+    }
     let chips = fw.chips();
     let t = transport(fw);
     m.snapshot_bytes = vec![
@@ -900,4 +915,58 @@ fn a_key_in_tracker_auditions_on_chip_a_with_the_song_stopped() {
         1,
         "chip A back to the keys"
     );
+}
+
+/// MASTER scales a playing song (the hardware test's first find: a song played at full volume
+/// whatever the pot said, its own $D418 writes, 15, overriding the chip volume MASTER used to
+/// set). With the pot at 1023, 256 and 64 the firmware's audio equals the host's render of the
+/// same song through the same MASTER gain stage, sample for sample; the loudest sample scales
+/// as the pot does; and at full MASTER the output is the song's, as before the fix (the host
+/// render at unity, which is what the bit-exact tests above compare with at POT).
+#[test]
+fn master_scales_a_playing_song_and_full_master_leaves_it_alone() {
+    let Some((_, fw)) = fixture("the MASTER song test") else {
+        return;
+    };
+    let s = demo();
+    let peak = |a: &[i16]| a.iter().map(|&v| i32::from(v).abs()).max().unwrap_or(0);
+    let mut full_peak = 0;
+    for pot in [1023u16, 256, 64] {
+        let p = play_at_pot(&fw, Some(pot), None, PLAY_MS, |_| {}, |_, _| {});
+        let r = matches(&p, |frames, rewrite| {
+            render_host_song_master(
+                frames,
+                &SongPlay {
+                    song: &s,
+                    play_block: p.play_block,
+                    ccs: &[],
+                    ticks: &[],
+                    edits: &[],
+                    stop_block: None,
+                    b_use_block: p.b_use,
+                    b_rewrite_block: rewrite,
+                },
+                pot,
+            )
+        });
+        let loudest = peak(&p.audio);
+        println!("MASTER {pot}: peak {loudest}: {r:?}");
+        assert!(
+            r.is_ok(),
+            "pot {pot}: the firmware differs from the host: {r:?}"
+        );
+        if pot == 1023 {
+            full_peak = loudest;
+            assert!(
+                full_peak > 1000,
+                "the song is silent: the scaling would be vacuous"
+            );
+        } else {
+            let want = f64::from(full_peak) * f64::from(pot) / 1023.0;
+            assert!(
+                (f64::from(loudest) - want).abs() <= want * 0.02 + 2.0,
+                "pot {pot}: peak {loudest}, wanted {want:.0} of {full_peak}"
+            );
+        }
+    }
 }

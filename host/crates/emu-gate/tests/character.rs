@@ -12,7 +12,9 @@ mod common;
 
 use fm1_core::Bus;
 
-use common::{build_dir, max_diff, Firmware, Machine, HALF_FRAMES, POT, SAMPLE_RATE, SLOTS_SEED};
+use common::{
+    build_dir, master_stage, max_diff, Firmware, Machine, HALF_FRAMES, POT, SAMPLE_RATE, SLOTS_SEED,
+};
 use sidou_sys::{ilp32, SID_CHIP_6581_WORN, SID_MODEL_6581};
 
 /// The A4 key (Felucca's id) and its note.
@@ -113,6 +115,7 @@ fn render_host(frames: usize, blocks: &[usize], note_block: usize, ticks: &[u32]
             let n = half.len() / 2;
             sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+            master_stage(half, POT);
         }
     }
     out
@@ -383,6 +386,7 @@ fn render_host_ages(
             let n = half.len() / 2;
             sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+            master_stage(half, POT);
         }
     }
     out

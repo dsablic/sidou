@@ -689,6 +689,21 @@ pub const SAMPLE_RATE: u32 = 44_118;
 pub const HALF_FRAMES: usize = 128;
 /// fm1-emu's MASTER pot reading at power-on.
 pub const POT: u16 = 900;
+/// The MASTER gain stage audio_fill ends with (platform/fm1/audio.c, app/master_gain.h): the
+/// block's interleaved L, R at the gain of `master` (the pot, 0..LIVE_MASTER_MAX), held since
+/// the boot set it: no ramp.
+pub fn master_stage(half: &mut [i16], master: u16) {
+    let mut block = [0i16; 2 * HALF_FRAMES];
+    let n = half.len();
+    assert!(n <= block.len());
+    block[..n].copy_from_slice(half);
+    // SAFETY: block holds the 128 frames master_gain_apply scales.
+    unsafe {
+        let g = sidou_sys::master_gain_of(u32::from(master), sidou_sys::LIVE_MASTER_MAX);
+        sidou_sys::master_gain_apply(block.as_mut_ptr(), g, g);
+    }
+    half.copy_from_slice(&block[..n]);
+}
 /// platform/fm1/audio.c SLOTS_SEED.
 pub const SLOTS_SEED: u32 = 0x51D0;
 
@@ -751,6 +766,7 @@ pub fn render_host(
             let n = half.len() / 2;
             sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+            master_stage(half, POT);
         }
     }
     out
@@ -874,6 +890,7 @@ pub fn render_host_chips(frames: usize, events: &[ChipEvent]) -> ChipsRender {
                 b_on = b_in;
             }
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+            master_stage(half, POT);
         }
     }
     r
@@ -944,6 +961,13 @@ unsafe extern "C" fn host_ready(
 /// chip A split at the call as audio_fill splits it, chip B mixed while in use, then the
 /// effect slots. Interleaved L, R.
 pub fn render_host_song(frames: usize, p: &SongPlay) -> Vec<i16> {
+    render_host_song_master(frames, p, POT)
+}
+
+/// render_host_song with the MASTER pot at `master` for the whole run (the firmware's boot
+/// reads the pot before the audio interrupt starts, so the gain is in force from the first
+/// block; the song's registers are the same at every MASTER).
+pub fn render_host_song_master(frames: usize, p: &SongPlay, master: u16) -> Vec<i16> {
     use sidou_sys::*;
     let mut chip = Box::<sid>::default();
     let mut spare = Box::<sid>::default();
@@ -1083,6 +1107,7 @@ pub fn render_host_song(frames: usize, p: &SongPlay) -> Vec<i16> {
             }
             song_ctl_block_end(&mut *sc, n as u32);
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+            master_stage(half, master);
         }
     }
     out

@@ -689,6 +689,12 @@ you can.
   chord and save settings (Task 5's SAVE) several times; listen for a click,
   a dropout or a missed block. Then play a TRS MIDI controller at full rate
   (a fast arpeggio) while saving: no note is lost or stuck.
+- [ ] MASTER controls a song's level (M2 hardware fix): play a song (PLAY, the demo
+  song or any other) with MASTER fully up, then turn MASTER down slowly to zero and
+  back: the song's level follows the pot smoothly, with no zipper or click, down to
+  silence at the bottom. Start a song with MASTER low and raise it. Press keys over a
+  playing song (KEYS AUTO plays chip B): they follow MASTER too, and a UI sound (the
+  menu's) is quiet when MASTER is. With MASTER full the song is as loud as before.
 - [ ] A hold's gap: release a chord and wait for its tail to fade; a pool
   refill (after a few saves) may follow 500 ms after the input stops. Listen
   for each held erase (a fade out and back, up to 35 ms): note whether it is

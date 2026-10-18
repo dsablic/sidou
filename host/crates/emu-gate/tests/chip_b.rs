@@ -150,6 +150,9 @@ fn chip_b_out_of_use_costs_the_interrupt_what_m1_did() {
         return;
     };
     let mut m = booted(&fw);
+    // MASTER full: its gain stage (app/master_gain.c, measured on its own below, in
+    // two_chips_at_their_worst...) does not run at unity, so this measures what chip B costs.
+    m.pot(1023);
     m.midi(&[0x90, 57, 100, 0x90, 64, 100, 0x90, 69, 100]);
     m.run_ms(300);
     let from = m.alnk_blocks.len();
@@ -221,6 +224,31 @@ fn two_chips_at_their_worst_with_every_slot_heaviest_fit_the_audio_target() {
         "two chips at their worst and every slot's heaviest: {worst_block:.1} a sample"
     );
     assert!(mix < 10.0, "chip B's mix costs {mix:.2} a sample");
+    // MASTER's gain stage (app/master_gain.c) at the pot's power-on reading, 900: a constant
+    // gain; and its ramp after the pot moved. A bound set from this measurement (new code).
+    m.alnk_pcs_inside = 0;
+    m.watch_alnk_pcs(function(&fw, "master_gain_apply"));
+    let from = m.alnk_blocks.len();
+    m.run_ms(500);
+    let n = (m.alnk_blocks.len() - from) as f64 * BLOCK_FRAMES;
+    let constant = m.alnk_pcs_inside as f64 / n;
+    m.alnk_pcs_inside = 0;
+    m.pot(300);
+    let from = m.alnk_blocks.len();
+    m.run_ms(500);
+    let n = (m.alnk_blocks.len() - from) as f64 * BLOCK_FRAMES;
+    let moved = m.alnk_pcs_inside as f64 / n;
+    println!(
+        "{}",
+        serde_json::json!({
+            "master_gain_instructions_per_sample": constant,
+            "master_gain_instructions_per_sample_with_the_pot_moved_once": moved,
+        })
+    );
+    assert!(
+        constant <= MASTER_PER_SAMPLE,
+        "MASTER's gain costs {constant:.2} a sample"
+    );
     let s = sid_of(&mut m, &fw, 1);
     assert_eq!(
         m.soc.read8(s + ilp32::sid::mode_vol as u32),
@@ -228,6 +256,14 @@ fn two_chips_at_their_worst_with_every_slot_heaviest_fit_the_audio_target() {
         "chip B was not written"
     );
 }
+
+/// MASTER's gain stage, instructions a sample (a stereo frame, as every gate here counts) at a
+/// constant gain (the pot at its power-on 900, so every block of the gates runs it): measured
+/// 12.04 on this image, a little over 5 an audio sample (a load, a multiply, the rounding add,
+/// a shift, a store) in a loop unrolled by four. It takes that much from the gates' headroom
+/// for the 6502 (205.5, less the chip B mix's 8.1: about 185 are left). A ramping block
+/// measures the same.
+const MASTER_PER_SAMPLE: f64 = 12.5;
 
 /// slots_budget.rs's worst switching block (docs/plans/2026-10-15-m2-overview.md: 964).
 const SLOTS_WORST_SWITCH: f64 = 964.0;

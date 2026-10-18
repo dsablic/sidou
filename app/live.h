@@ -68,6 +68,9 @@ extern "C" {
 #define LIVE_PULSE_WIDTH_MAX 4095u
 #define LIVE_PULSE_WIDTH_DETENT 32
 #define LIVE_MASTER_MAX 1023u
+/* The volume the live instrument leaves in the chip's $D418 bits 0-3, always: MASTER is a
+ * digital gain after the chips (live_set_master). */
+#define LIVE_CHIP_VOLUME 15u
 /* live_tick is called this often; the PWM and vibrato rates assume it. */
 #define LIVE_TICK_HZ 100u
 
@@ -294,7 +297,7 @@ typedef struct {
     uint8_t resonance;    /* 0..15 */
     uint16_t pulse_width; /* 0..4095, before PWM */
     uint16_t master;      /* 0..1023 */
-    uint8_t volume;       /* 0..15, from master */
+    uint8_t volume;       /* 0..15, master's top 4 bits, rounded: what the views show */
     uint16_t cutoff_out;  /* the cutoff last written, after expression */
     uint16_t lfo_phase;
     uint32_t clock;
@@ -504,7 +507,10 @@ void live_bend_range_rpn(live* l, uint32_t semitones);
  * controllers (bend, wheel, pressure) and a bend range set by RPN 0 are kept. An index past
  * the last is clamped. */
 void live_set_preset(live* l, uint8_t index);
-/* The MASTER pot, 0..1023 (clamped); the chip's volume is its top 4 bits, rounded. */
+/* The MASTER pot, 0..1023 (clamped). It scales the final output digitally (app/master_gain.h,
+ * applied by the audio path after the chips and the effect slots, from l->master): the
+ * chip's volume register stays at LIVE_CHIP_VOLUME whatever it is. l->volume, its top 4
+ * bits rounded, is only for display. */
 void live_set_master(live* l, uint16_t value);
 /* Applies a chip model or profile asked for since the last tick (live_param_set; with a
  * preparer, one slice of its preparation, and the reset once it is whole), sends the

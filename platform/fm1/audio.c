@@ -6,6 +6,7 @@
 #include "fx/fx_slots.h"
 #include "fx_live.h"
 #include "live.h"
+#include "master_gain.h"
 #include "player/song_ctl.h"
 #include "reg_ring.h"
 #include "scope.h"
@@ -42,6 +43,11 @@ static reg_ring_out out_b;
  * differ. */
 static volatile uint8_t b_want;
 static uint8_t b_on;
+/* The MASTER gain (app/master_gain.h) as how far each is below unity, so full MASTER, the usual
+ * case, is both 0 and the interrupt asks one question of it: master_to as the main loop last
+ * set it, master_now the gain the last block ended on (the interrupt's). */
+static volatile uint32_t master_to = 0;
+static uint32_t master_now = 0;
 /* The chip the tap reads (audio_tap_chip): 0 A, 1 B. */
 static volatile uint8_t tap_chip;
 
@@ -177,6 +183,14 @@ int audio_running(void) {
     return running;
 }
 
+void audio_set_master(uint32_t master) {
+    uint32_t g = master_gain_of(master, LIVE_MASTER_MAX);
+    master_to = MASTER_UNITY - g;
+    if (!running) {
+        master_now = MASTER_UNITY - g; /* before the interrupt runs: no ramp, the first block has it */
+    }
+}
+
 /* Part of chip A's block: with the LIVE view's tap (tapped) or without. */
 static void render_part(sid* a, int16_t* s, uint32_t n, int tapped) {
     if (tapped) {
@@ -287,6 +301,12 @@ void audio_fill(int32_t* buf) {
     song_ctl_block_end(&song_transport, AUDIO_HALF_FRAMES);
     /* With every slot off this writes the chip's output to both sides unchanged. */
     sid_slots_process(&slots, s, lr, AUDIO_HALF_FRAMES);
+    /* MASTER: a digital gain on everything, after the chips and the slots. */
+    uint32_t to = master_to;
+    if ((to | master_now) != 0u) { /* full MASTER: no call at all */
+        master_gain_apply(lr, MASTER_UNITY - master_now, MASTER_UNITY - to);
+        master_now = to;
+    }
     if (hold_want) {
         audio_ramp(lr, 1); /* the hold's fade out; silence from the next block */
         hold_faded = 1;

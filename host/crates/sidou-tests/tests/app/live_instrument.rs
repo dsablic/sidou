@@ -482,7 +482,9 @@ fn the_volume_survives_a_preset_change() {
     let vol = rig.live.volume;
     rig.set_preset(NOISE_PERC);
     assert_eq!(rig.live.volume, vol);
-    assert_eq!(rig.reg(0x18) & 0x0f, vol);
+    assert_eq!(rig.live.master, 512);
+    // MASTER is a digital gain after the chips (app/master_gain.h): the register stays at 15
+    assert_eq!(u32::from(rig.reg(0x18) & 0x0f), LIVE_CHIP_VOLUME);
 }
 
 #[test]
@@ -594,23 +596,28 @@ fn resonance_and_pulse_width_reach_the_registers() {
     }
 }
 
+/// MASTER no longer touches the chip: its volume register stays at 15 (a digital gain after the
+/// chips scales the output, app/master_gain.h, so a song's own $D418 writes keep their meaning),
+/// and the displayed volume, master's top 4 bits rounded, follows.
 #[test]
-fn master_sets_the_volume_nibble() {
+fn master_leaves_the_chips_volume_register_alone() {
     let mut rig = Rig::new(SID_MODEL_8580);
     let mode = preset(SAW_LEAD).filter_mode;
+    rig.clear();
     rig.set_master(0);
-    assert_eq!((rig.live.volume, rig.reg(0x18)), (0, mode));
+    assert_eq!((rig.live.volume, rig.live.master), (0, 0));
     rig.set_master(512);
     assert_eq!(rig.live.volume, 8);
     rig.set_master(5000);
     assert_eq!(u32::from(rig.live.master), LIVE_MASTER_MAX);
-    assert_eq!(rig.reg(0x18), mode | 15);
-    rig.clear();
+    assert_eq!(rig.live.volume, 15);
     rig.set_master(1020);
     assert!(
         rig.log().is_empty(),
-        "no write while the nibble is unchanged"
+        "MASTER writes no register: {:?}",
+        rig.log()
     );
+    assert_eq!(u32::from(rig.reg(0x18)), u32::from(mode) | LIVE_CHIP_VOLUME);
 }
 
 #[test]

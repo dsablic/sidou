@@ -39,6 +39,7 @@ const SOURCES: &[&str] = &[
     "app/learn_view.c",
     "app/live_freq.c",
     "app/live_view.c",
+    "app/master_gain.c",
     "app/logo.c",
     "app/logo_bitmap.c",
     "app/midi_clock.c",
@@ -198,19 +199,19 @@ fn main() {
             concat!(
                 "sid_.*|sidou_.*|gt2_.*|song_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|",
                 "fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|",
-                "learn_view_.*|scope_.*|scene_.*|title_card_.*|chip_view_.*|chip_mix|chip_ctl_.*|chip_setup_.*|",
+                "learn_view_.*|scope_.*|scene_.*|title_card_.*|chip_view_.*|chip_mix|master_.*|chip_ctl_.*|chip_setup_.*|",
                 "keys_route_.*|ui_sound_.*|store_.*|save_key_.*|settings_.*|tracker_view_.*|user_profile_.*|user_profiles_.*",
             ),
         )
         .allowlist_type(
-            "sid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|title_card.*|chip_view.*|chip_mix.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|user_profile.*",
+            "sid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|title_card.*|chip_view.*|chip_mix.*|master.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|user_profile.*",
         )
         .allowlist_var(
             concat!(
                 "SID_.*|SIDOU_.*|GT2_.*|SONG_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|",
                 "live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*|",
                 "LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*|LEARN_VIEW_.*|SCOPE_.*|",
-                "SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|UI_SOUND_.*|",
+                "SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|MASTER_.*|UI_SOUND_.*|",
                 "demo_song_.*|song_view_.*|STORE_.*|SAVE_KEY_.*|SETTINGS_.*|tracker_view_.*|TRACKER_VIEW_.*|USER_PROFILE.*|user_profile.*",
             ),
         )

@@ -65,7 +65,7 @@ static const midi_map_entry rows[MIDI_MAP_ROWS] = {
         "wheel's target (the default)",
         LIVE_PARAM_PULSE_WIDTH, LIVE_CC_PULSE_WIDTH, NRPN(NRPN_LIVE, 2), LIVE_PULSE_WIDTH_MAX,
         2048, LINEAR),
-    ROW("Live", "Volume", "0..1023 as the MASTER pot; the chip's volume is its top 4 bits",
+    ROW("Live", "Volume", "0..1023 as the MASTER pot, the final output's digital gain",
         LIVE_PARAM_VOLUME, LIVE_CC_VOLUME, NRPN(NRPN_LIVE, 3), LIVE_MASTER_MAX,
         LIVE_MASTER_MAX, LINEAR),
 

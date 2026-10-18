@@ -505,6 +505,17 @@ static void song_pass(void) {
     front.playing = st == SONG_PLAYING || st == SONG_LOADING;
 }
 
+/* The end of a pass: MASTER (the pot or MIDI's volume) to the audio path as its output gain,
+ * and the pass's register writes made visible to the interrupt. */
+static void commit_pass(void) {
+    static uint16_t master_sent = 0xffffu; /* (a pass at idle does only this compare) */
+    if (instrument.master != master_sent) {
+        master_sent = instrument.master;
+        audio_set_master(master_sent);
+    }
+    audio_commit();
+}
+
 /* One main-loop pass: the panel into the instrument, the 100 Hz work, then the queued
  * register writes go to the audio interrupt in one batch. The panel only changes when the
  * key scan finishes a frame (~1.1 ms), so a wake-up from the 10 kHz tick in between does
@@ -542,7 +553,7 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
     if (tick_due || store_fm1_active) {
         store_fm1_service(now, &instrument, &keys_router, ui_sound_busy(&ui_sounds));
     }
-    audio_commit();
+    commit_pass();
     input_leds(&front, &instrument);
 }
 
@@ -659,6 +670,7 @@ static void sidou_main(void) {
     panel_init(&front);
     input_init();
     panel_master(&front, &instrument, input_master());
+    audio_set_master(instrument.master); /* the interrupt's first block has it */
     midi_init(&instrument);
     update_boot();
 #if defined(SIDOU_FLASH_SPIKE)
@@ -697,7 +709,7 @@ static void sidou_main(void) {
         fm1_wdt_feed();
         uint32_t now = uptime_ms;
         if (midi_drain()) {
-            audio_commit();
+            commit_pass();
         }
         play(now, &next_tick, &last_frame);
         ui_poll(now);

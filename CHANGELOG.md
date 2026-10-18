@@ -53,6 +53,13 @@ All notable changes are documented here. The format follows
   `idle` while a host has the device configured, USB is never polled inside the audio
   interrupt, and IN packets carry at most 16 bytes. Checked in fm1-emu against a modelled
   host; to be confirmed on hardware (`docs/hardware-test.md`, section 8.1).
+- MASTER scales a playing song (found on the first real FM-1: a song played at full volume
+  whatever the pot said): it is now a digital gain on the final output, after both chips and
+  the effect slots, instead of the chip's volume register, which the song's own $D418 writes
+  overrode. It covers the keys, songs on either chip and UI sounds; full MASTER is the
+  output as before, the song's fades and volume digi trick keep their meaning relative to
+  it, and MASTER no longer thumps at thump above 0. Live play differs from the 15-step
+  register by at most half a step (1/30 of full scale) between its steps.
 - `gt2-ref` on CI: a song one byte short is refused with a fortifying C library too, the
   packer's report no longer takes the test threads' output with it, and a refused pack
   no longer leaks the relocator's buffers.

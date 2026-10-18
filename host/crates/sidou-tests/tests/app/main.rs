@@ -20,6 +20,7 @@ mod live_instrument;
 mod live_view;
 mod logo;
 mod logo_bitmap;
+mod master_gain;
 mod midi_clock;
 mod midi_in;
 mod midi_learn;

@@ -22,6 +22,7 @@ add_library(sidou_live STATIC
     live.c
     live_freq.c
     live_view.c
+    master_gain.c
     logo.c
     logo_bitmap.c
     midi_clock.c

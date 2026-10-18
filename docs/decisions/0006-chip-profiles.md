@@ -106,7 +106,10 @@ tick, and ramped there (below):
     DC, and its headroom puts the 6581 0.41 to 0.59 dB below reSIDfp's level there (M1b's
     single-voice level tolerance is 0.2 dB). At the default, 0, the gap stays open, as
     M1b left it.
-  - **The MASTER pot clicks with it.** MASTER writes the volume register, so with thump
+  - **(Superseded after the first hardware test: MASTER is now a digital gain after the
+    chips, `app/master_gain.h`, and no longer writes the volume register, so it no longer
+    thumps; a song's own `$18` writes still do, as they should.)**
+    **The MASTER pot clicks with it.** MASTER writes the volume register, so with thump
     on each of its 15 steps steps the output: about 280 LSB a step at 127 on the 6581
     (4,191 for 0 to 15, `unit/sid_character.rs`), as reSIDfp's chip does at every volume
     write. Scaling MASTER digitally while thump is on (the output gain, at no per-sample

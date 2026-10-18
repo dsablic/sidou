@@ -50,6 +50,11 @@ void audio_keys(void* ctx, uint32_t chip);
  * out over the block it goes in or out of use. Out of use it is not rendered and the output
  * is chip A's bit for bit. */
 void audio_chip_b_use(uint32_t user, int on);
+/* The MASTER pot's value, 0..LIVE_MASTER_MAX (live.master), as a digital gain on the final
+ * output from the next block (app/master_gain.h): after the chips, chip B's mix and the effect
+ * slots, so it scales the keys, a song on either chip and the UI sounds alike. Before the
+ * interrupt runs it takes effect at once. Main.c passes live's value when it changes. */
+void audio_set_master(uint32_t master);
 /* The chip the LIVE view's tap reads (0 A, 1 B; the keys' chip), from the next block. While
  * chip B is out of use the tap reads chip A. */
 void audio_tap_chip(uint32_t chip);

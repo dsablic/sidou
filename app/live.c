@@ -351,7 +351,7 @@ static void write_res_filt(live* l) {
 }
 
 static void write_mode_vol(live* l) {
-    put(l, REG_MODE_VOL, (uint8_t)(l->filter_mode | l->volume));
+    put(l, REG_MODE_VOL, (uint8_t)(l->filter_mode | LIVE_CHIP_VOLUME));
 }
 
 static void write_envelopes(live* l) {
@@ -841,12 +841,11 @@ void live_set_master(live* l, uint16_t value) {
     if (value > LIVE_MASTER_MAX) {
         value = LIVE_MASTER_MAX;
     }
+    /* A digital gain on the final output (app/master_gain.h; the main loop hands l->master to
+     * the audio path): the chip's volume register stays at LIVE_CHIP_VOLUME, so a song's own
+     * writes to it (a fade, the 6581's volume digi trick) keep their meaning relative to MASTER. */
     l->master = value;
-    uint8_t vol = (uint8_t)((value * 15u + LIVE_MASTER_MAX / 2u) / LIVE_MASTER_MAX);
-    if (vol != l->volume) {
-        l->volume = vol;
-        write_mode_vol(l);
-    }
+    l->volume = (uint8_t)((value * 15u + LIVE_MASTER_MAX / 2u) / LIVE_MASTER_MAX);
 }
 
 void live_cc(live* l, uint8_t cc, uint8_t value) {

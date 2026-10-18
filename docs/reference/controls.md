@@ -61,8 +61,8 @@ SIDOU has two SID chips, A and B. The panel and MIDI play **the keys' chip**:
 - **no song playing:** chip A, exactly as with one chip;
 - **a song playing on chip A:** chip B, on top of the song (KEYS **AUTO**, the default), or
   chip A with KEYS **A** (menu): a key then takes a voice from the song while it sounds, the
-  song keeps the filter and the volume (K1, K2 and MASTER's volume do nothing on it) and its
-  chip setup.
+  song keeps the filter and the chip's volume register (K1 and K2 do nothing on it; MASTER
+  still scales the whole output, song included) and its chip setup.
 
 The keys' setup (the chip model, the profile, the character controls and the envelope mode)
 travels with the keys: chip B always holds it, prepared in the background after every change,
@@ -95,7 +95,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | K2 (encoder 3) | resonance (CHIP: the second) |
 | K3 (encoder 4) | pulse width (CHIP: the third) |
 | K4 (encoder 5) | preset (CHIP: the fourth) |
-| MASTER (pot) | volume |
+| MASTER (pot) | volume: a digital gain on the final output, for everything that plays (the keys, a song on either chip, UI sounds) |
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end), in every view; K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last) |
@@ -377,10 +377,16 @@ once they stop. All of them keep the last value received and
 survive preset and model changes. Every control at 0 is the profile as reSIDfp has it (the
 worn 6581 aside, which goes beyond reSIDfp on purpose).
 
-**Thump and the MASTER pot:** MASTER sets the chip's volume register, in 15 steps. With
-output thump above 0 each step thumps, as a real 6581 does at every volume write: up to
-about 280 LSB a step at thump 127 on a 6581, so turning MASTER clicks. Keep thump at 0 (the
-default) for a clean MASTER.
+**The MASTER pot** is a digital gain on the final stereo output, after both chips and the
+effect slots, so it scales everything that plays: the keys, a song on either chip and the UI
+sounds. Full is exactly the chips' output (the stage does nothing); 0 is silence; between,
+the gain is linear in the pot (a gain of pot / 1023) and a change ramps over one 2.9 ms
+block, so turning it never zippers. The chips' own volume registers keep their musical
+meaning: live leaves $D418's volume at 15, and a song's fades and 6581 volume digi trick
+play relative to MASTER. (Until this fix MASTER set the chip's volume register in 15 steps,
+which a song's own writes overrode, so a playing song ignored it, and with output thump
+above 0 each step thumped. MASTER no longer thumps, whatever the thump.) The gain differs from
+the old register's 15 steps by at most half a step, 1/30 of full scale.
 
 ## MIDI
 
