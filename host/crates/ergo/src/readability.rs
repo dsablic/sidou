@@ -37,6 +37,7 @@ impl Class {
 #[derive(Clone, Debug)]
 pub enum Pat {
     Any,
+    Hex,
     Note,
     Value,
     Words(Vec<String>),
@@ -69,6 +70,11 @@ impl Pat {
     fn matches(&self, text: &str) -> bool {
         match self {
             Pat::Any => true,
+            Pat::Hex => {
+                let tokens: Vec<_> = text.split_whitespace().collect();
+                !tokens.is_empty()
+                    && tokens.iter().all(|t| t.len() == 2 && t.bytes().all(|b| b.is_ascii_hexdigit()))
+            }
             Pat::Note => text.split_whitespace().any(is_note),
             Pat::Value => text.split_whitespace().any(is_value),
             Pat::Words(w) => {
@@ -109,6 +115,7 @@ pub fn parse_rules(text: &str) -> Result<Vec<Rule>, String> {
         let (kind, arg) = p[2].split_once(' ').unwrap_or((p[2], ""));
         let pat = match kind {
             "any" => Pat::Any,
+            "hex" => Pat::Hex,
             "note" => Pat::Note,
             "value" => Pat::Value,
             "words" => Pat::Words(arg.split(',').map(|s| s.trim().to_uppercase()).collect()),
@@ -148,6 +155,9 @@ pub struct RunReport {
 }
 
 pub fn judge(shot: &Shot, rules: &[Rule], cfg: &Config) -> Vec<RunReport> {
+    if shot.transient || shot.view == "title_card" {
+        return Vec::new();
+    }
     let pal = palette_rgb();
     text_runs(&shot.cells)
         .into_iter()
@@ -431,6 +441,37 @@ mod tests {
     use crate::device::Cell;
 
     #[test]
+    fn setup_views_hex_rows_and_legends_are_not_play_text() {
+        let rules = parse_rules(DEFAULT_RULES).unwrap();
+        for (view, text, want) in [
+            ("status", "125", Class::Glance),
+            ("learn", "A-4", Class::Glance),
+            ("tracker", "04 05 0F", Class::Glance),
+            ("chip", "K1 K2 K3 K4", Class::Hint),
+            ("live", "SELECT MOVE", Class::Hint),
+            ("tracker", "A-4 02", Class::Play),
+        ] {
+            assert_eq!(classify(&rules, view, text), want, "{view}: {text}");
+        }
+        let hex = parse_rules("* | glance | hex\n* | play | any").unwrap();
+        for text in ["", "0", "000", "04 GG", "A-4"] {
+            assert_eq!(classify(&hex, "tracker", text), Class::Play);
+        }
+    }
+
+    #[test]
+    fn the_raster_is_not_read() {
+        let mut s = shot_with("title_card", "M6", 0x04);
+        let rules = parse_rules("* | play | any").unwrap();
+        assert!(judge(&s, &rules, &Config::default()).is_empty());
+        s.view = "chip".into();
+        s.transient = true;
+        assert!(judge(&s, &rules, &Config::default()).is_empty());
+        s.transient = false;
+        assert!(!judge(&s, &rules, &Config::default()).is_empty());
+    }
+
+    #[test]
     fn label_and_hint_coloured_text_is_not_play_text() {
         for id in 0..2 {
             let th = unsafe { &*sidou_sys::theme_get(id) };
@@ -467,6 +508,7 @@ mod tests {
             };
         }
         Shot {
+            transient: false,
             fb: vec![],
             cells,
             view: view.to_string(),
@@ -482,7 +524,7 @@ mod tests {
         assert_eq!(classify(&rules, "live", "SAW LEAD"), Class::Play);
         assert_eq!(classify(&rules, "live", "FILTER LP"), Class::Glance);
         assert_eq!(classify(&rules, "about", "V0.2.0 2026"), Class::Ignore);
-        assert_eq!(classify(&rules, "menu", "SELECT MOVE"), Class::Play);
+        assert_eq!(classify(&rules, "menu", "SELECT MOVE"), Class::Hint);
     }
 
     #[test]

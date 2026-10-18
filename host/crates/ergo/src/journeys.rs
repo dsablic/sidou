@@ -1311,6 +1311,7 @@ mod tests {
             put(30 - 1 - 2 * value.len(), value, *value_attr);
         }
         Shot {
+            transient: false,
             fb: Vec::new(),
             cells,
             view: "menu".into(),

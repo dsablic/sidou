@@ -6,8 +6,10 @@
 #            status, scene, about, charset, midi, learn, title_card, boot) or * for every view
 #   class    play   - read while playing (values, notes, names): must be big and contrasty
 #            glance - read between sets, labels and help: contrast only
+#            hint   - legends/help: contrast even when dim; never size
 #            ignore - not judged (art, credits, the boot)
-#   pattern  any | note | value | words A,B,C | contains TEXT
+#   pattern  any | hex | note | value | words A,B,C | contains TEXT
+#            hex: only two-hex-digit tokens (00, 04 05 0F)
 #            note: starts like A-4 or C#3; value: a token of digits with an optional unit
 #            (11.4K, +0, 125%); words: any of the names, case-insensitive; contains: a substring
 #
@@ -18,10 +20,12 @@ about   | ignore | any
 charset | ignore | any
 boot    | ignore | any
 title_card | ignore | any
+status  | glance | any
+learn   | glance | any
+tracker | glance | hex
+*       | hint   | words SELECT,ALGORITHM,ALG,HOME,MOVE,STEP,CHANGE,BACK,CANCEL,VOICE,MODEL,PROFILE,BPM,OL,K1
 menu    | play   | any
-tracker | play   | any
 *       | play   | note
 *       | play   | value
 *       | play   | words SAW LEAD,PWM BASS,SYNC LEAD,NOISE PERC,6581 R2,6581 R3,6581 R4AR,8580 R5,WORN 6581,USER
 *       | play   | words TAPE,OVERDRIVE,FUZZ,CRUSH,LO-FI,CHORUS,FLANGER,PHASER,TREMOLO,AUTO-PAN,WOW,DELAY,PING-PONG,REVERB,LUSH
-status  | glance | any

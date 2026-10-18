@@ -59,6 +59,7 @@ pub struct Cell {
 /// The screen as the panel shows it.
 #[derive(Clone, Debug)]
 pub struct Shot {
+    pub transient: bool,
     pub fb: Vec<u16>,
     pub cells: Vec<Cell>,
     pub view: String,
@@ -312,6 +313,7 @@ impl Dev {
         let g = self.grid_addr();
         if g == 0 {
             return Shot {
+                transient: false,
                 fb: self.m.soc.lcd.fb.clone(),
                 cells: vec![Cell::default(); 900],
                 view: "off".to_string(),
@@ -330,6 +332,7 @@ impl Dev {
         }
         let view = self.view();
         Shot {
+            transient: self.animating(),
             fb: self.m.soc.lcd.fb.clone(),
             cells,
             view,
