@@ -385,7 +385,7 @@ fn learn_opens_over_the_menu_and_closes_back_to_it() {
     t.open(K1);
     assert_eq!(t.ui.top(), "LEARN");
     t.ui.frame();
-    assert!(t.ui.row(4).contains("MENU"));
+    assert!(t.ui.row(1).contains("MENU"));
     t.ui.press(PANEL_BTN_HOME);
     assert_eq!(t.ui.top(), "MENU");
 }

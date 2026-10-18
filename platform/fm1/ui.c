@@ -72,6 +72,10 @@ void ui_set_keys(keys_route* kr) {
     views_set_keys(&ui, kr);
 }
 
+void ui_set_panel(panel* p) {
+    views_set_panel(&ui, p);
+}
+
 void ui_set_song(const song_transport* t) {
     views_set_song(&ui, t);
 }

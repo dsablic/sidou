@@ -99,6 +99,11 @@ typedef struct {
     /* The keys that sound a note (key_note set), bit k: key k: with none down, pressed,
      * sounding or quiet, panel_note_keys has nothing to do. */
     uint32_t sounding;
+    /* Called (with master_ctx) when the MASTER pot moves the volume: the views ask for the
+     * popup (views_set_panel). NULL: none. Only a move that lands calls it, so a pot at rest
+     * costs nothing. */
+    void (*master_hook)(void* ctx);
+    void* master_ctx;
 } panel;
 
 /* The LEDs, as Felucca's input state lays out the keys. */

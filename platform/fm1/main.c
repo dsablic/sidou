@@ -683,6 +683,7 @@ static void sidou_main(void) {
     /* uptime_ms counts every timer tick since TIMER4 started (fm1_timer5_irq). */
     ui_init(&instrument, &ui_sounds, uptime_ms, (int)((held >> PANEL_BTN_HOME) & 1u));
     ui_set_keys(&keys_router);
+    ui_set_panel(&front);
     song_bound = song_binding;
     song_bound.ctx = audio_song();
     song_bound.song = audio_song()->song;

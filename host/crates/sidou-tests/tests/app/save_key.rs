@@ -82,6 +82,9 @@ thread_local! {
 impl Saving {
     fn on(st: Store) -> Self {
         let mut ui = Ui::without_cards();
+        // These tests read the menu's cells; the value popup (views.rs, screen.rs) would sit on
+        // them.
+        ui.v.popup.source = None;
         let mut set = Box::<settings>::default();
         let mut ml = Box::<midi_learn>::default();
         unsafe {
@@ -163,8 +166,10 @@ impl Saving {
 
     /// The menu's STORE item's value.
     fn store_item(&mut self) -> String {
-        let row = MENU_ROW + 1 + VIEWS_MENU_STORE as usize;
-        self.ui.row(row)[4..27].trim().to_string()
+        self.ui
+            .menu_line(VIEWS_MENU_STORE as usize)
+            .trim()
+            .to_string()
     }
 
     fn open_store_item(&mut self) {
@@ -176,8 +181,6 @@ impl Saving {
         self.frame();
     }
 }
-
-const MENU_ROW: usize = 4;
 
 #[test]
 fn a_tracker_rows_change_alone_is_background_saved_after_five_seconds_and_loaded_at_boot() {
@@ -379,12 +382,12 @@ fn save_ends_the_boot_and_saves_nothing() {
 fn the_menus_store_shows_the_free_space() {
     let mut s = Saving::new();
     s.open_store_item();
-    assert_eq!(s.store_item(), format!("STORE{:>18}", "193K FREE"));
+    assert_eq!(s.store_item(), format!("STORE{:>9}", "193K"));
     assert_eq!(STORE_CAPACITY / 1024, 193);
     // ALGORITHM on it does nothing (and buzzes).
     s.ui.turn(PANEL_ENC_ALGORITHM, 2);
     s.frame();
-    assert_eq!(s.store_item(), format!("STORE{:>18}", "193K FREE"));
+    assert_eq!(s.store_item(), format!("STORE{:>9}", "193K"));
 }
 
 #[test]
@@ -400,20 +403,20 @@ fn a_foreign_store_reads_foreign_and_two_clockwise_turns_format_it() {
     let mut s = Saving::on(st);
     assert_eq!(s.save().as_deref(), Some("STORE FOREIGN: NOT SAVED"));
     s.open_store_item();
-    assert_eq!(s.store_item(), format!("STORE{:>18}", "FOREIGN"));
+    assert_eq!(s.store_item(), format!("STORE{:>9}", "FOREIGN"));
     // Once arms; SELECT away and back disarms; once again arms, twice formats.
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     s.frame();
-    assert_eq!(s.store_item(), format!("STORE{:>18}", "FORMAT? TURN"));
+    assert_eq!(s.store_item(), format!("STORE{:>9}", "FORMAT?"));
     s.ui.turn(PANEL_ENC_SELECT, 1);
     s.ui.turn(PANEL_ENC_SELECT, -1);
     s.frame();
-    assert_eq!(s.store_item(), format!("STORE{:>18}", "FOREIGN"));
+    assert_eq!(s.store_item(), format!("STORE{:>9}", "FOREIGN"));
     s.ui.turn(PANEL_ENC_ALGORITHM, -1);
     s.frame();
     assert_eq!(
         s.store_item(),
-        format!("STORE{:>18}", "FOREIGN"),
+        format!("STORE{:>9}", "FOREIGN"),
         "counter-clockwise"
     );
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
@@ -427,7 +430,7 @@ fn a_foreign_store_reads_foreign_and_two_clockwise_turns_format_it() {
     s.ui.frame(); // no polls yet
     let item = s.store_item();
     assert!(
-        item.starts_with("STORE") && item.ends_with("ERASING 73"),
+        item.starts_with("STORE") && item.ends_with("ERASE 73"),
         "{item}"
     );
     let mut frames = 0;
@@ -437,7 +440,7 @@ fn a_foreign_store_reads_foreign_and_two_clockwise_turns_format_it() {
         assert!(frames < 200, "the format never ended: {}", s.store_item());
     }
     assert!(!s.forced, "the force ends with the format");
-    assert_eq!(s.store_item(), format!("STORE{:>18}", "193K FREE"));
+    assert_eq!(s.store_item(), format!("STORE{:>9}", "193K"));
     // The settings are written again once the store takes them.
     s.ticks_for_the_debounce();
     assert_eq!(s.stored(), Some(s.gather()));

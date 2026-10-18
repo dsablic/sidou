@@ -52,6 +52,11 @@ void grid_init(grid* g, uint8_t ch, uint8_t attr) {
     g->region_painter = NULL;
     g->region_ctx = NULL;
     g->region_run = 0;
+    for (uint32_t i = 0; i < GRID_CELLS; i++) {
+        g->src[i] = ' ';
+    }
+    g->big_touched = 0;
+    g->big_guard = 0;
     grid_invalidate(g);
 }
 
@@ -130,6 +135,93 @@ void grid_box(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint8
     grid_put(g, right, row, round ? FONT_ROUND_TR : FONT_BOX_TR, attr);
     grid_put(g, col, bottom, round ? FONT_ROUND_BL : FONT_BOX_BL, attr);
     grid_put(g, right, bottom, round ? FONT_ROUND_BR : FONT_BOX_BR, attr);
+}
+
+uint32_t grid_text_big(grid* g, uint32_t col, uint32_t row, uint32_t scale, const char* s,
+                       uint8_t attr) {
+    uint32_t n = 0;
+    while (s[n]) {
+        n++;
+    }
+    if (col >= GRID_COLS || scale < 2u || scale > 3u) {
+        return col;
+    }
+    if (n * scale > GRID_COLS - col) {
+        n = (GRID_COLS - col) / scale;
+    }
+    uint32_t first = scale == 2u ? GRID_BIG_FIRST : GRID_BIG_FIRST + 4u;
+    for (uint32_t y = 0; y < scale && row + y < GRID_ROWS; y++) {
+        uint32_t r = row + y;
+        if (g->big_guard >> r & 1u) {
+            continue;
+        }
+        uint32_t cell = r * GRID_COLS + col;
+        uint32_t changed = 0;
+        for (uint32_t i = 0; i < n; i++) {
+            for (uint32_t x = 0; x < scale; x++, cell++) {
+                uint8_t piece = (uint8_t)(first + y * scale + x);
+                changed |= (uint32_t)(g->ch[cell] ^ piece) | (uint32_t)(g->attr[cell] ^ attr);
+                g->ch[cell] = piece;
+                g->attr[cell] = attr;
+                if (g->src[cell] != (uint8_t)s[i]) {
+                    g->src[cell] = (uint8_t)s[i];
+                    g->big_touched = 1;
+                    mark_stale(g, cell);
+                }
+            }
+        }
+        if (changed) {
+            g->rows |= 1u << r;
+        }
+    }
+    return col + n * scale;
+}
+
+void grid_put_top(grid* g, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr) {
+    if (col >= GRID_COLS || row >= GRID_ROWS) {
+        return;
+    }
+    uint32_t i = row * GRID_COLS + col;
+    if (g->ch[i] != GRID_PIECE_PLAIN || g->attr[i] != attr) {
+        g->ch[i] = (uint8_t)GRID_PIECE_PLAIN;
+        g->attr[i] = attr;
+        g->rows |= 1u << row;
+    }
+    if (g->src[i] != ch) {
+        g->src[i] = ch;
+        g->big_touched = 1;
+        mark_stale(g, i);
+    }
+}
+
+void grid_fill_top(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint8_t ch,
+                   uint8_t attr) {
+    for (uint32_t r = row; r < row + h; r++) {
+        for (uint32_t c = col; c < col + w; c++) {
+            grid_put_top(g, c, r, ch, attr);
+        }
+    }
+}
+
+void grid_big_guard(grid* g, uint32_t rows) {
+    g->big_guard = rows;
+}
+
+int grid_big_touched(grid* g) {
+    int t = g->big_touched;
+    g->big_touched = 0;
+    return t;
+}
+
+void grid_unstale(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h) {
+    uint32_t c1 = col < GRID_COLS && w < GRID_COLS - col ? col + w : GRID_COLS;
+    uint32_t r1 = row < GRID_ROWS && h < GRID_ROWS - row ? row + h : GRID_ROWS;
+    for (uint32_t r = row; r < r1; r++) {
+        for (uint32_t c = col; c < c1; c++) {
+            uint32_t i = r * GRID_COLS + c;
+            g->stale[i >> 3] &= (uint8_t)~(1u << (i & 7u));
+        }
+    }
 }
 
 int grid_overlay(grid* g, uint32_t col, uint32_t row, const uint8_t mask[8], uint8_t color) {
@@ -584,6 +676,35 @@ static void render_region(const grid* g, const grid_run* run, uint32_t k0, uint3
     }
 }
 
+/* Pixel p (0..23) of a glyph drawn at scale 1, 2 or 3: the pixel of the 8 x 8 glyph it shows (p,
+ * p / 2, p / 3 as a multiply: exact for p < 24). */
+static uint32_t big_src(uint32_t p, uint32_t scale) {
+    return scale == 1u ? p : scale == 2u ? p >> 1 : p * 11u >> 5;
+}
+
+/* The cell at i, a piece (0..GRID_BIG_PIECES - 1), as pixels at o with w pixels to a row: its
+ * part of its character's glyph pixel-doubled or tripled, or (the last) the glyph as it is. */
+__attribute__((noinline, unused)) static void render_piece(const grid* g, uint32_t i,
+                                                           uint32_t piece, uint16_t fg,
+                                                           uint16_t bg, uint16_t* o,
+                                                           uint32_t w) {
+    uint32_t scale = piece < 4u ? 2u : piece < 13u ? 3u : 1u;
+    uint32_t q = piece < 4u ? piece : piece < 13u ? piece - 4u : 0u; /* y * scale + x */
+    uint32_t y0 = big_src(q, scale) * 8u;          /* the cell's pixel row in the character */
+    uint32_t x0 = (q - big_src(q, scale) * scale) * 8u;
+    const uint8_t* glyph = font_glyphs[g->src[i]];
+    uint32_t sx[8];
+    for (uint32_t j = 0; j < 8u; j++) {
+        sx[j] = 7u - big_src(x0 + j, scale);
+    }
+    for (uint32_t y = 0; y < 8u; y++, o += w) {
+        uint32_t bits = glyph[big_src(y0 + y, scale)];
+        for (uint32_t j = 0; j < 8u; j++) {
+            o[j] = bits >> sx[j] & 1u ? fg : bg;
+        }
+    }
+}
+
 void grid_render_run(const grid* g, const grid_run* run, const uint16_t pal[16], uint16_t* px) {
     uint32_t stride = run->len * GRID_CELL_PX / 2u; /* pairs a pixel row */
     uint32_t i = run->row * GRID_COLS + run->col;
@@ -605,6 +726,12 @@ void grid_render_run(const grid* g, const grid_run* run, const uint16_t pal[16],
     }
     for (uint32_t k = 0; k < run->len; k++, i++) {
         if (k >= k0 && k < k1) {
+            continue;
+        }
+        uint32_t piece = (uint32_t)g->ch[i] - GRID_BIG_FIRST;
+        if (piece < GRID_BIG_PIECES) {
+            render_piece(g, i, piece, pal[g->attr[i] & 15u], pal[g->attr[i] >> 4],
+                         px + k * GRID_CELL_PX, run->len * GRID_CELL_PX);
             continue;
         }
         const uint8_t* glyph = font_glyphs[g->ch[i]];

@@ -29,6 +29,7 @@ mod midi_ring;
 mod midi_rx;
 mod midi_usb;
 mod panel;
+mod popup;
 mod reg_ring;
 mod save_key;
 mod scene;
@@ -62,6 +63,16 @@ pub fn petscii(sv: &scene_view) -> &sidou_sys::scene {
 
 pub fn petscii_mut(sv: &mut scene_view) -> &mut sidou_sys::scene {
     unsafe { &mut sv.u.piece }
+}
+
+/// The part of a character a grid cell's piece code draws (app/grid.h GRID_BIG_FIRST): its
+/// scale (2, 3, or 1 for a plain glyph) and the cell's place in it (y * scale + x).
+pub(crate) fn piece_part(piece: usize) -> (usize, usize) {
+    match piece {
+        0..=3 => (2, piece),
+        4..=12 => (3, piece - 4),
+        _ => (1, 0),
+    }
 }
 
 /// A register sink that records every write and mirrors the register file. The character's

@@ -50,7 +50,6 @@ const MENU_SCENE: i32 = sidou_sys::VIEWS_MENU_SCENE as i32;
 const MENU_CHARSET: i32 = sidou_sys::VIEWS_MENU_CHARSET as i32;
 const MENU_ABOUT: i32 = sidou_sys::VIEWS_MENU_ABOUT as i32;
 const MENU_ITEMS: i32 = sidou_sys::VIEWS_MENU_ITEMS as i32;
-const MENU_CURSOR: (usize, usize, usize) = (3, 5, 1);
 /// app/screen.h: the toast's row.
 const TOAST_ROW: usize = 27;
 /// The art palette (docs/art/README.md) in sRGB; the panel gets its RGB565 truncation.
@@ -370,26 +369,229 @@ fn a_button_change_shows_a_toast_that_goes_away() {
 }
 
 #[test]
-fn the_menu_matches_its_golden_image_and_its_cursor_blinks() {
+fn the_menu_matches_its_golden_images_at_the_top_and_scrolled_and_does_not_blink() {
     let Some((build, fw)) = fixture("the screen test") else {
         return;
     };
     let mut m = booted(&fw);
     open_menu(&mut m, &fw);
-    // The cursor's phase depends on the frame count, so the golden leaves its cell out and the
-    // blink is checked here: a light blue block and the blue background, 8 frames each.
-    compare_golden(&build, "menu", &m.soc.lcd.fb, &[VERSION_CELLS, MENU_CURSOR]);
-    let (cc, cr, _) = MENU_CURSOR;
-    let mut seen = std::collections::BTreeSet::new();
-    for _ in 0..16 {
-        m.run_ms(UI_PERIOD_MS);
-        seen.insert(indexed(&m.soc.lcd.fb)[(cr * 8 + 4) * W + cc * 8 + 4]);
+    // 2 times the font, 6 items of 13: the first six, the selected line in reverse video.
+    compare_golden(&build, "menu", &m.soc.lcd.fb, &[]);
+    // The selection is a line in reverse video that does not blink (a 2 x 2 cell block would
+    // send 2 windows each phase, over screen_changes_and_transitions_stay_within_the_budgets'
+    // bound for the menu idle): the panel stands still.
+    let still = m.soc.lcd.fb.clone();
+    m.run_ms(16 * UI_PERIOD_MS);
+    assert!(m.soc.lcd.fb == still, "the idle menu changed");
+    // Scrolled to the last item: the last six, an arrow up in place of the one down.
+    select(&mut m, MENU_ITEMS - 1);
+    m.run_ms(300);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "menu-scrolled", &m.soc.lcd.fb, &[]);
+}
+
+/// A knob's popup (app/screen.h) is gone this long after its last detent: a second, and the three
+/// frames it takes to close, with room.
+const POPUP_GONE_MS: u64 = 2_000;
+
+/// The firmware without its popup (views.popup.source NULL): for the gates of what a view itself
+/// costs when a control changes, which a popup's hundreds of cells would drown.
+fn no_popup(m: &mut Machine, fw: &Firmware) {
+    let at = fw.symbol("ui")
+        + (sidou_sys::ilp32::views::popup + sidou_sys::ilp32::screen_popup_state::source) as u32;
+    m.soc.write32(at, 0);
+}
+
+/// The value popup (app/screen.h) in the device's firmware: over LIVE and over CHIP, K1's
+/// parameter in the largest text with its bar; a second after the last turn it goes and LIVE is
+/// back as it was.
+#[test]
+fn a_knob_popup_matches_its_goldens_over_live_and_chip_and_gives_the_view_back() {
+    let Some((build, fw)) = fixture("the popup test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    settle(&mut m, &fw);
+    let live = m.soc.lcd.fb.clone();
+    m.turn(K1, 5);
+    m.run_ms(300);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "popup-live", &m.soc.lcd.fb, &[]);
+    // The cutoff back where it was; a second after that turn the popup closes (3 rows a
+    // frame) and the panel shows LIVE as before the knob.
+    m.turn(K1, -5);
+    m.run_ms(1700);
+    common::to_mid_frame(&mut m, &fw);
+    assert!(m.soc.lcd.fb == live, "LIVE differs after the popup");
+    open_chip(&mut m, &fw);
+    let chip = m.soc.lcd.fb.clone();
+    m.turn(K1, 3);
+    m.run_ms(300);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "popup-chip", &m.soc.lcd.fb, &[]);
+    m.turn(K1, -3);
+    m.run_ms(1700);
+    common::to_mid_frame(&mut m, &fw);
+    assert!(m.soc.lcd.fb == chip, "CHIP differs after the popup");
+}
+
+/// The value popup's costs over each view (app/screen.h popup_step, popup_draw, app/views.c
+/// popup_text): K1 turned and the popup open, held a second and closed (3 rows, 78 cells, a frame
+/// each way), with a note held under LIVE and SCENE; turned every other frame for a second; and
+/// held static, which draws the box again every frame (each cell written once, so nothing is
+/// sent) and forces nothing on the view under it. Every frame within the SPI budget and 200
+/// cells, every ui_poll and a static popup's extra instructions a frame within the bounds below
+/// (about 15 % over what was measured, M2f large text). A static popup draws again only when
+/// the view composed (LIVE and SCENE compose every frame), and sends nothing:
+///
+/// | View | Cells a frame (most) | Worst SPI | Busiest ui_poll | Static popup, extra a frame |
+/// |---|---|---|---|---|
+/// | LIVE (a note) | 132 | 11.3 ms | 30.7k | 7.3k |
+/// | STATUS | 132 | 11.3 ms | 33.7k | 0.15k |
+/// | MENU | 132 | 11.3 ms | 36.5k | 0.15k |
+/// | CHIP | 132 | 11.3 ms | 35.4k | 0.1k |
+/// | SCENE, RULE 30 (a note) | 158 | 13.6 ms | 31.3k | 12.5k |
+const POPUP_OPEN_FRAMES: u64 = 70;
+const POPUP_WORST_POLL: u64 = 42_000;
+const POPUP_STATIC_EXTRA: f64 = 15_000.0;
+const _: () = assert!(POPUP_WORST_POLL <= common::POLL_INSTRUCTIONS);
+
+#[test]
+fn the_popup_stays_within_its_budgets_over_every_view() {
+    let Some((_, fw)) = fixture("the popup budget test") else {
+        return;
+    };
+    let mut report = serde_json::Map::new();
+    let mut over = Vec::new();
+    for view in ["live", "status", "menu", "chip", "scene"] {
+        let mut m = Machine::boot(&fw.image);
+        m.watch_calls(fw.symbol("ui_poll"));
+        common::run_past_boot(&mut m, &fw);
+        match view {
+            "status" => common::open_status(&mut m, &fw),
+            "menu" => open_menu(&mut m, &fw),
+            "chip" => open_chip(&mut m, &fw),
+            "scene" => open_scene(&mut m, &fw, 2),
+            _ => settle(&mut m, &fw),
+        }
+        if view == "live" || view == "scene" {
+            m.key(A4_KEY, true);
+            m.run_ms(300);
+        }
+        let idle = measure(&mut m, &fw, 10, |_| {});
+        // K1 once: it opens, stays a second and closes within the 70 frames.
+        let run = measure(&mut m, &fw, POPUP_OPEN_FRAMES, |m| m.turn(K1, 3));
+        // Held open: a turn every other frame for a second, then the popup static.
+        let turning = measure_frames(&mut m, &fw, 30, |m, f| {
+            if f % 2 == 0 {
+                m.turn(K1, if f % 4 == 0 { 3 } else { -3 });
+            }
+        });
+        m.run_ms(200); // the last detents' values go out
+        let stay = measure(&mut m, &fw, 10, |_| {});
+        for (what, c) in [("run", &run), ("turning", &turning)] {
+            let most = c.frames.iter().map(cells).max().unwrap();
+            assert!(most <= 200, "{view} {what}: a frame sent {most} cells");
+            assert!(
+                c.worst_frame_ms() <= SPI_BUDGET_MS,
+                "{view} {what}: {:.1} ms of SPI",
+                c.worst_frame_ms()
+            );
+            assert!(
+                c.worst_poll < POPUP_WORST_POLL,
+                "{view} {what}: a ui_poll took {}",
+                c.worst_poll
+            );
+        }
+        let extra = stay.instructions_per_frame() - idle.instructions_per_frame();
+        println!(
+            "popup over {view}: {} cells a frame at most, {:.1} ms of SPI, ui_poll {} / {}, a static popup costs {extra:.0} a frame, sent {} windows",
+            run.frames.iter().chain(&turning.frames).map(cells).max().unwrap(),
+            run.worst_frame_ms().max(turning.worst_frame_ms()),
+            run.worst_poll,
+            turning.worst_poll,
+            stay.total().windows
+        );
+        // (LIVE and SCENE move on their own: they send what they send)
+        let still = !matches!(view, "live" | "scene");
+        if extra >= POPUP_STATIC_EXTRA || (still && stay.total().windows != 0) {
+            over.push(format!(
+                "{view}: a static popup costs {extra:.0} instructions a frame and sent {} windows",
+                stay.total().windows
+            ));
+        }
+        for (what, c) in [("run", &run), ("turning", &turning)] {
+            let most = c.frames.iter().map(cells).max().unwrap();
+            if most > 200 || c.worst_frame_ms() > SPI_BUDGET_MS || c.worst_poll >= POPUP_WORST_POLL
+            {
+                over.push(format!(
+                    "{view} {what}: {most} cells, {:.1} ms of SPI, a ui_poll of {}",
+                    c.worst_frame_ms(),
+                    c.worst_poll
+                ));
+            }
+        }
+        report.insert(
+            view.to_string(),
+            serde_json::json!({
+                "idle_per_frame": idle.instructions_per_frame(),
+                "static_per_frame": stay.instructions_per_frame(),
+                "worst_poll_run": run.worst_poll,
+                "worst_poll_turning": turning.worst_poll,
+                "most_cells_run": run.frames.iter().map(cells).max(),
+                "most_cells_turning": turning.frames.iter().map(cells).max(),
+                "worst_spi_ms": run.worst_frame_ms().max(turning.worst_frame_ms()),
+            }),
+        );
     }
-    assert_eq!(
-        seen.into_iter().collect::<Vec<_>>(),
-        [6, 14],
-        "blue and light blue"
-    );
+    println!("{}", serde_json::Value::Object(report));
+    assert!(over.is_empty(), "{over:#?}");
+}
+
+/// A turn that asks for the popup stays within an input bound whatever view takes it (the CHIP
+/// view's own: CHIP_INPUT): the input's call (ui_encoder, which stores the ask) and the busiest
+/// pass after it, in which the frame asks the views for the text and draws the popup's first
+/// rows. Measured (M2f): K1 218 on LIVE and STATUS (234 over the menu, 230 on SCENE), K2 170 to
+/// 186, ALGORITHM 166, SELECT 129, the busiest pass 37.2k on the views that compose little and
+/// 59.8k on SCENE (its own piece). K4 (the preset) is no popup's cost:
+/// it loads a preset, 1,185 here and 88,997 in the busiest pass over LIVE, as before.
+const POPUP_INPUT: u64 = 250;
+const POPUP_PASS: u64 = 70_000;
+const _: () = assert!(POPUP_INPUT + POPUP_PASS <= common::POLL_INSTRUCTIONS);
+
+#[test]
+fn a_popup_ask_keeps_the_input_and_the_passes_within_the_allowance() {
+    let Some((_, fw)) = fixture("the popup input test") else {
+        return;
+    };
+    let mut over = Vec::new();
+    for view in ["live", "status", "menu", "scene"] {
+        let mut m = booted(&fw);
+        match view {
+            "status" => common::open_status(&mut m, &fw),
+            "menu" => {
+                open_menu(&mut m, &fw);
+                select(&mut m, 3); // OCTAVE
+            }
+            "scene" => open_scene(&mut m, &fw, 0),
+            _ => settle(&mut m, &fw),
+        }
+        m.watch_calls(fw.symbol("ui_encoder"));
+        m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+        let mut turns = vec![("K1", K1, 1), ("K2", K1 + 1, 1)];
+        if view == "menu" {
+            turns.push(("ALGORITHM", ALGORITHM, 1));
+            turns.push(("SELECT", SELECT, 1));
+        }
+        for (what, enc, steps) in turns {
+            let (input, pass) = start_cost(&mut m, 1600, |m| m.turn(enc, steps));
+            println!("popup over {view}, {what}: the input {input}, the busiest pass {pass}");
+            if input >= POPUP_INPUT || pass >= POPUP_PASS {
+                over.push(format!("{view} {what}: the input {input}, the pass {pass}"));
+            }
+        }
+    }
+    assert!(over.is_empty(), "{over:#?}");
 }
 
 /// app/panel.h PANEL_BTN_SAVE and K1.
@@ -452,17 +654,14 @@ fn the_glyph_sheet_opens_from_the_menu_and_home_goes_back() {
     open_charset(&mut m, &fw);
     compare_golden(&build, "charset", &m.soc.lcd.fb, &[]);
     // Back twice: the sheet's overlays are gone and the panel shows LIVE as at boot.
-    // The cursor is on CHARSET now, blinking in its own phase.
+    // The cursor is on CHARSET now (the menu scrolled to it); back on the first item the menu
+    // is its golden again.
     press(&mut m, HOME);
     settle(&mut m, &fw);
-    let (cc, cr, cl) = MENU_CURSOR;
-    let on_charset = (cc, cr + MENU_CHARSET as usize, cl);
-    compare_golden(
-        &build,
-        "menu",
-        &m.soc.lcd.fb,
-        &[VERSION_CELLS, MENU_CURSOR, on_charset],
-    );
+    select(&mut m, 0);
+    m.run_ms(300);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "menu", &m.soc.lcd.fb, &[]);
     // Back to LIVE behind THE OSCILLATOR's card.
     press(&mut m, HOME);
     assert!(showing_card(&mut m, &fw), "no card back to LIVE");
@@ -474,16 +673,10 @@ fn the_glyph_sheet_opens_from_the_menu_and_home_goes_back() {
 /// Each cell row of the panel as S (the view under the menu's: LIVE's), M (the menu's), B
 /// (both: the rows they share), E (the wipe's white edge) or ? (none of them).
 fn classify(fb: &[u16], status: &[u16], menu: &[u16]) -> String {
-    let (cc, cr, _) = MENU_CURSOR;
-    let same = |row: usize, a: &[u16], b: &[u16]| {
-        (0..8 * W).all(|i| {
-            let x = i % W;
-            (row == cr && x / 8 == cc) || a[i] == b[i]
-        })
-    };
+    let same = |a: &[u16], b: &[u16]| (0..8 * W).all(|i| a[i] == b[i]);
     let (f, s, mm) = (cell_rows(fb), cell_rows(status), cell_rows(menu));
     (0..30)
-        .map(|r| match (same(r, f[r], s[r]), same(r, f[r], mm[r])) {
+        .map(|r| match (same(f[r], s[r]), same(f[r], mm[r])) {
             (true, true) => 'B',
             (true, false) => 'S',
             (false, true) => 'M',
@@ -1039,15 +1232,12 @@ fn about_opens_from_the_menu_and_home_goes_back() {
     assert!(m.soc.lcd.fb != before, "About stood still");
     press(&mut m, HOME);
     settle(&mut m, &fw);
-    // The cursor is on ABOUT now, blinking in its own phase.
-    let (cc, cr, cl) = MENU_CURSOR;
-    let on_about = (cc, cr + MENU_ABOUT as usize, cl);
-    compare_golden(
-        &build,
-        "menu",
-        &m.soc.lcd.fb,
-        &[VERSION_CELLS, MENU_CURSOR, on_about],
-    );
+    // The cursor is on ABOUT now (the menu scrolled to it); back on the first item the menu is
+    // its golden again.
+    select(&mut m, 0);
+    m.run_ms(300);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "menu", &m.soc.lcd.fb, &[]);
 }
 
 /// Cells a frame sent: each a 128-byte window body, each window 11 command bytes.
@@ -1678,7 +1868,7 @@ fn scene_stays_within_its_budgets() {
         common::run_past_boot(&mut m, &fw);
         open_scene(&mut m, &fw, piece);
         m.turn(K1_CUTOFF, 64);
-        m.run_ms(1000);
+        m.run_ms(POPUP_GONE_MS); // the popup it opened (app/screen.h) has closed
         let c = measure_band(&mut m, &fw, 150);
         for k in 0..30 {
             band(&mut m, k); // into the wipe with notes playing
@@ -1760,7 +1950,7 @@ fn midi_learn_over_scene_and_live_stays_within_the_budget() {
         }
         let name = name.unwrap_or("LIVE");
         m.turn(K1_CUTOFF, 64);
-        m.run_ms(1000);
+        m.run_ms(POPUP_GONE_MS);
         let mut opened = 0;
         let c = measure_frames(&mut m, &fw, 120, |m, f| {
             band(m, f);
@@ -2167,8 +2357,9 @@ fn chip_follows_midi_and_the_knobs_there_and_back() {
     }
     m.turn(K1_CHIP, 25);
     m.run_ms(25 * 10 + 200);
-    common::to_mid_frame(&mut m, &fw);
     assert_eq!(character(&mut m, &fw), [100, 40, 64, 20]);
+    m.run_ms(POPUP_GONE_MS); // the knob's popup has closed
+    common::to_mid_frame(&mut m, &fw);
     compare_golden(&build, "chip", &m.soc.lcd.fb, &[]);
     m.turn(SELECT, -3);
     m.run_ms(100);
@@ -2198,9 +2389,10 @@ const CHIP_BUSY_PER_FRAME: f64 = 41_000.0;
 const CHIP_WORST_POLL: u64 = 38_000;
 /// SELECT, ALGORITHM and a knob on the CHIP view: the input's call (ui_encoder) and the busiest
 /// main-loop pass after it (from midi_drain to midi_service), within the latency gate's poll
-/// allowance together. Measured: the input 198 at most (K1 on DIST), the busiest pass 44.5k
+/// allowance together. Measured: the input 210 at most (K1 on DIST, which stores the popup's ask;
+/// 217 before M2f's large text, whose input path saved 25 instructions elsewhere), the busiest pass 44.5k
 /// (SELECT from FX back to the chip: three frames change colour).
-const CHIP_INPUT: u64 = 220;
+const CHIP_INPUT: u64 = 215;
 const CHIP_PASS: u64 = 49_000;
 /// ALGORITHM on the chip steps the profile, as the FX button and CC 85 do: the live tick
 /// prepares the spare chip a slice a tick (app/reg_ring.h, reg_ring_prepare_step; decision
@@ -2228,6 +2420,8 @@ fn chip_stays_within_its_budgets() {
     m.midi(&CHIP_STATE);
     m.run_ms(200);
     open_chip(&mut m, &fw);
+    // The view's own cost: the popup a knob opens has its own gate (the_popup_stays_within_...).
+    no_popup(&mut m, &fw);
     let idle = measure(&mut m, &fw, 25, |_| {});
     let knob = measure(&mut m, &fw, 25, |m| m.turn(K1_CHIP, 1));
     // A tab switch (M2b Task 5), from the tabs' focus: the tabs' row and the help line.

@@ -7,6 +7,8 @@ use std::ffi::{c_int, c_void, CStr};
 
 use sidou_sys::*;
 
+use crate::piece_part;
+
 const COLS: usize = GRID_COLS as usize;
 const ROWS: usize = GRID_ROWS as usize;
 const CELLS: usize = COLS * ROWS;
@@ -228,9 +230,21 @@ impl Rig {
             .collect()
     }
 
+    /// `len` characters of what the panel shows on a row from `col`: large text (a character
+    /// over several cells) as one character, from the grid's record of it.
     fn row_text(&self, row: usize, col: usize, len: usize) -> String {
-        (col..col + len)
-            .map(|c| self.shown[row * COLS + c].0 as char)
+        (col..COLS)
+            .filter_map(|c| {
+                let i = row * COLS + c;
+                let ch = self.shown[i].0;
+                let piece = usize::from(ch).wrapping_sub(GRID_BIG_FIRST as usize);
+                if piece >= GRID_BIG_PIECES as usize {
+                    return Some(ch as char);
+                }
+                let (scale, q) = piece_part(piece);
+                (q % scale == 0).then(|| self.g.src[i] as char)
+            })
+            .take(len)
             .collect()
     }
 }
@@ -661,8 +675,10 @@ fn a_toast_shows_on_its_row_until_it_times_out() {
     let col = SCREEN_TOAST_COL as usize;
     unsafe { screen_toast(&mut *r.s, c"OCTAVE +1".as_ptr(), 100) };
     let sent = r.frame();
-    assert_eq!((sent.windows, sent.cells), (1, 9));
+    // Large text: 9 characters of 2 x 2 cells, in two rows.
+    assert_eq!((sent.windows, sent.cells), (2, 36));
     assert_eq!(r.row_text(row, col, 9), "OCTAVE +1");
+    assert_eq!(r.row_text(row + 1, col, 9), "OCTAVE +1");
     let a = r.shown[row * COLS + col].1;
     assert_eq!(a, attr(GRID_BLUE, GRID_LIGHT_BLUE), "reverse video");
     assert_eq!(r.frame().cells, 0, "a toast that stays costs nothing");
@@ -1065,9 +1081,10 @@ fn the_cover_and_a_showing_toast_are_left_out_of_a_views_budget() {
     let row = SCREEN_TOAST_ROW;
     let col = SCREEN_TOAST_COL;
     unsafe { screen_toast(&mut *r.s, c"HELLO".as_ptr(), 120) };
-    assert!(covered(&r, col, row) && covered(&r, col + 4, row));
-    assert!(!covered(&r, col + 5, row) && !covered(&r, col - 1, row));
-    assert!(!covered(&r, col, row - 1));
+    // Large text: 5 characters of 2 x 2 cells, on the toast's row and the one below.
+    assert!(covered(&r, col, row) && covered(&r, col + 9, row + 1));
+    assert!(!covered(&r, col + 10, row) && !covered(&r, col - 1, row));
+    assert!(!covered(&r, col, row - 1) && !covered(&r, col, row + 2));
     r.frame(); // its first frame: it shows until 120 ms from now
     let first = r.now;
     r.s.now = first + 80;

@@ -130,6 +130,9 @@ void live_view_init(live_view* lv, const live* l, scope* sc);
  * traces go flat and the envelopes and meters to zero: what LIVE shows when it comes back,
  * until the tap has points, is the instrument at rest, not what it was when it went. */
 void live_view_tap(live_view* lv, int on);
+/* The filter's cutoff in Hz as LIVE's FILTER frame says it, "1234" or "11.4K" for the cutoff the
+ * chip has now (cutoff_out), into buf (8 characters). */
+void live_view_cutoff_text(const live* l, char* buf);
 /* The control register voice v plays with, without the gate: 0 for a voice that makes no sound
  * (SYNC LEAD's voices 2 and 3, voice 3 only clocking the sync). */
 uint8_t live_view_voice_control(const live* l, uint32_t v);

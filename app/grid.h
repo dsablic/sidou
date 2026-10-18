@@ -11,7 +11,10 @@
  * pixel region, taking its background pixel for pixel from a bitmap in flash (a pixel-art
  * logo, app/logo.h) or from a painter, a function that fills a cell's pixels as it is sent (a
  * pixel scene composited on demand, app/scene_px.h). Rows can be held: their changes wait
- * until they are released (the screen's wipe transition, app/screen.h).
+ * until they are released (the screen's wipe transition, app/screen.h). Large text
+ * (grid_text_big) draws each character 2 or 3 times as large, from the same 8 x 8 font, over
+ * scale x scale cells that each draw their own part of it: a cell's code is its part's (a
+ * piece, GRID_BIG_FIRST..) and the grid keeps the character it is a piece of.
  *
  * Portable C with no hardware access: platform/fm1/ui.c sends the runs, the host tests
  * drive it directly. */
@@ -38,6 +41,14 @@ _Static_assert(GRID_OVERLAYS <= 255u,
 #endif
 /* A run's pixels: at most a full row of cells. */
 #define GRID_RUN_PIXELS (GRID_COLS * GRID_CELL_PX * GRID_CELL_PX)
+/* The cell codes of large text's pieces: GRID_BIG_FIRST + y * 2 + x for the cell (x, y) of a
+ * character at 2 times the font (4 pieces), then GRID_BIG_FIRST + 4 + y * 3 + x at 3 times
+ * (9 pieces), then GRID_PIECE_PLAIN: a glyph at its own size that no overlay shows over
+ * (grid_put_top). They are blank glyphs in the font, so a cell that holds one and is drawn by
+ * anything else, as an ordinary cell, shows what it draws. */
+#define GRID_BIG_FIRST 0x01u
+#define GRID_PIECE_PLAIN (GRID_BIG_FIRST + 13u)
+#define GRID_BIG_PIECES 14u
 
 /* The 16 colours (docs/art/README.md), indexes into grid_palette. */
 #define GRID_BLACK 0u
@@ -124,6 +135,13 @@ typedef struct {
     void* region_ctx;
     /* A painter region's cells a run takes at most (grid_region_painter). */
     uint8_t region_run;
+    /* The character a large-text or plain piece is a piece of (ch holds the piece), for each
+     * cell. */
+    uint8_t src[GRID_CELLS];
+    /* The rows grid_text_big leaves alone (bit r: row r): a layer drawing over a view's own
+     * large text (app/screen.h) guards its rows so that the view's compose does not move it. */
+    uint32_t big_guard;
+    uint8_t big_touched; /* a piece's character changed (grid_big_touched) */
 } grid;
 
 /* Every cell ch in attr, no overlays, no region, and all of it to be sent: what the panel
@@ -140,6 +158,28 @@ void grid_row(grid* g, uint32_t row, const uint8_t ch[GRID_COLS], const uint8_t 
 /* A NUL-terminated string from (col, row), clipped at the row's end. Returns the column after
  * it. Codes are font codes, so ASCII shows as itself. */
 uint32_t grid_text(grid* g, uint32_t col, uint32_t row, const char* s, uint8_t attr);
+/* Large text: s at scale 2 or 3 from (col, row): each character is scale x scale cells, its
+ * glyph pixel-doubled or tripled and cut into the cells. The text is clipped at the row's end
+ * (whole characters). It uses the cells' colours: foreground for the glyph, background
+ * elsewhere; their overlays and a pixel region do not show. Rows under grid_big_guard are
+ * left alone. Returns the column after it. A cell the text leaves is the next view's, drawn
+ * as any other. */
+uint32_t grid_text_big(grid* g, uint32_t col, uint32_t row, uint32_t scale, const char* s,
+                       uint8_t attr);
+/* Cell (col, row) in glyph ch at its own size, over everything: no overlay shows on it (a layer
+ * drawing over a view that has overlays, app/screen.h's popup). Cells outside are ignored. */
+void grid_put_top(grid* g, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr);
+/* A w x h block of grid_put_top. */
+void grid_fill_top(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint8_t ch,
+                   uint8_t attr);
+/* Rows grid_text_big leaves alone (bit r: row r). */
+void grid_big_guard(grid* g, uint32_t rows);
+/* 1 if a piece's character changed (its cell is sent again) since the last call; clears it. */
+int grid_big_touched(grid* g);
+/* The w x h cells from (col, row) are no longer marked to be sent again for their own sake
+ * (an overlay under large text changed): they go out only if their glyph or colours differ
+ * from the panel's. Cells outside the grid are ignored. */
+void grid_unstale(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h);
 /* A w x h block of ch. */
 void grid_fill(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint8_t ch,
                uint8_t attr);

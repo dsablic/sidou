@@ -655,6 +655,11 @@ static void hz_text(char* buf, uint32_t hz) {
     buf[n] = 0;
 }
 
+void live_view_cutoff_text(const live* l, char* buf) {
+    float fc = sid_cutoff_hz(l->model, 0, l->cutoff_out);
+    hz_text(buf, (uint32_t)((fc < 30.0f ? 30.0f : fc) + 0.5f)); /* as curve() clamps it */
+}
+
 static void filter(const live_view* lv, canvas* cv) {
     const live* l = lv->l;
     char title[16] = "FILTER ";

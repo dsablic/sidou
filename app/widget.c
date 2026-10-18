@@ -61,9 +61,15 @@ void menu_init(menu* m, const menu_item* items, uint32_t count, uint32_t rows, v
     m->items = items;
     m->ctx = ctx;
     m->count = (uint8_t)count;
-    m->rows = (uint8_t)(rows ? rows : 1u);
+    m->rows = (uint8_t)(rows ? (rows < MENU_MAX_ROWS ? rows : MENU_MAX_ROWS) : 1u);
     m->cursor = 0;
     m->top = 0;
+    m->scale = 1;
+    m->sel_attr = 0;
+    m->budget = 0;
+    m->pending = 0;
+    m->valid = 0;
+    m->force_rows = 0;
 }
 
 void menu_move(menu* m, int32_t steps) {
@@ -90,9 +96,98 @@ void menu_turn(menu* m, int32_t steps) {
     }
 }
 
-void menu_draw(const menu* m, grid* g, uint32_t col, uint32_t row, uint32_t w, uint8_t attr,
+/* Line k of the menu at scale 2: n characters in text, the colour into *attr. */
+static void big_line(const menu* m, uint32_t k, uint32_t n, char* line, uint8_t base,
+                     uint8_t* attr) {
+    uint32_t i = m->top + k;
+    for (uint32_t c = 0; c < n; c++) {
+        line[c] = ' ';
+    }
+    line[n] = 0;
+    *attr = base;
+    if (i >= m->count) {
+        return;
+    }
+    const menu_item* it = &m->items[i];
+    if (i == m->cursor && m->sel_attr) {
+        *attr = m->sel_attr;
+    }
+    uint32_t c = 0;
+    for (const char* s = it->label; *s && c < n; s++) {
+        line[c++] = *s;
+    }
+    if (!it->value) {
+        line[n - 1u] = (char)FONT_ARROW_RIGHT;
+        return;
+    }
+    char buf[MENU_VALUE_CHARS];
+    buf[0] = 0;
+    it->value(m->ctx, buf);
+    buf[MENU_VALUE_CHARS - 1u] = 0;
+    uint32_t len = 0;
+    while (buf[len]) {
+        len++;
+    }
+    uint32_t v = len + 1u < n - c ? n - len : c + 1u;
+    for (uint32_t j = 0; buf[j] && v < n; j++) {
+        line[v++] = buf[j];
+    }
+}
+
+/* What a line shows, as 16 bits: its text and colour. */
+static uint16_t big_sig(const char* line, uint8_t attr) {
+    uint32_t h = attr;
+    for (; *line; line++) {
+        h = h * 31u + (uint8_t)*line;
+    }
+    return (uint16_t)(h ^ h >> 16);
+}
+
+/* The menu at scale 2: each item a line of (w - 2) / 2 characters in large text, a cell in from
+ * each side (a panel's bezel hides the edge): the label, the value right-aligned or the
+ * action's arrow, the selected one in sel_attr (its whole line, the margins too). Lines are
+ * drawn as menu.budget and menu.force_rows say. */
+__attribute__((noinline, unused)) static void draw_big(menu* m, grid* g, uint32_t col,
+                                                    uint32_t row, uint32_t w, uint8_t attr) {
+    uint32_t n = (w - 2u) / 2u; /* characters a line */
+    char line[GRID_COLS / 2u + 1u];
+    if (n >= sizeof line) {
+        n = sizeof line - 1u;
+    }
+    uint32_t drawn = 0;
+    m->pending = 0;
+    /* The selected line first (the cursor's move shows at once), then the others in order. */
+    uint32_t sel = m->cursor >= m->top ? (uint32_t)m->cursor - m->top : 0u;
+    for (uint32_t j = 0; j < m->rows; j++) {
+        uint32_t k = j == 0 ? sel : j <= sel ? j - 1u : j;
+        uint8_t a;
+        big_line(m, k, n, line, attr, &a);
+        uint16_t sig = big_sig(line, a);
+        uint32_t r = row + 3u * k;
+        int forced = (m->force_rows >> r & 3u) != 0u;
+        if (!forced && (m->valid >> k & 1u) && m->sig[k] == sig) {
+            continue; /* it shows this already */
+        }
+        if (!forced && drawn && m->budget && grid_pending(g) + MENU_LINE_CELLS > m->budget) {
+            m->pending = 1; /* the next call */
+            continue;
+        }
+        drawn++;
+        m->sig[k] = sig;
+        m->valid = (uint8_t)(m->valid | 1u << k);
+        grid_fill(g, col, r, w, 3, ' ', a); /* the margins, a selected line's bar, the gap row */
+        grid_fill(g, col, r + 2u, w, 1, ' ', attr);
+        grid_text_big(g, col + 1u, r, 2, line, a);
+    }
+}
+
+void menu_draw(menu* m, grid* g, uint32_t col, uint32_t row, uint32_t w, uint8_t attr,
                int cursor_on) {
     if (w < 2u) {
+        return;
+    }
+    if (m->scale == 2u) {
+        draw_big(m, g, col, row, w, attr);
         return;
     }
     uint32_t last = col + w - 1u;

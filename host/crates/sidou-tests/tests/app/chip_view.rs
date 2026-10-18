@@ -33,7 +33,11 @@ fn settle(ui: &mut Ui) {
     for _ in 0..200 {
         step(ui);
         let card = ui.top() == "TITLE";
-        if !card && unsafe { screen_animating(&ui.v.s) } == 0 && ui.v.chip.copying == 0 {
+        if !card
+            && unsafe { screen_animating(&ui.v.s) } == 0
+            && unsafe { screen_popup_shows(&ui.v.s) } == 0
+            && ui.v.chip.copying == 0
+        {
             step(ui);
             return;
         }
@@ -119,8 +123,8 @@ fn chip_opens_from_the_menu_behind_the_chip_card() {
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     // The menu's first item opens the view: an arrow, no value.
-    assert_eq!(&ui.row(5)[4..8], "CHIP");
-    assert_eq!(ui.g.ch[5 * COLS + 26], FONT_ARROW_RIGHT as u8);
+    assert_eq!(&ui.menu_line(0)[..4], "CHIP");
+    assert_eq!(ui.g.src[4 * COLS + 28], FONT_ARROW_RIGHT as u8);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(ui.top(), "TITLE");
     assert_eq!(u32::from(ui.v.card.id), TITLE_CARD_CHIP);

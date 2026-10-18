@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "panel.h"
 
+#include <stddef.h>
+
 void panel_init(panel* p) {
     for (uint32_t k = 0; k < PANEL_NOTE_KEYS; ++k) {
         p->key_note[k] = LIVE_NO_NOTE;
@@ -13,6 +15,8 @@ void panel_init(panel* p) {
     p->glo = 0;
     p->quiet = 0;
     p->sounding = 0;
+    p->master_hook = NULL;
+    p->master_ctx = NULL;
 }
 
 static void key_up(panel* p, live* l, uint32_t k) {
@@ -172,6 +176,9 @@ void panel_master(panel* p, live* l, int32_t raw) {
         ((raw == 0 || raw == (int32_t)LIVE_MASTER_MAX) && d != 0)) {
         p->master_raw = (int16_t)raw;
         live_set_master(l, (uint16_t)raw);
+        if (p->master_hook) {
+            p->master_hook(p->master_ctx);
+        }
     }
 }
 

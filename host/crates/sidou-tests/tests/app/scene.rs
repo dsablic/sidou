@@ -1151,10 +1151,13 @@ fn scene_on(piece: u32) -> Ui {
     }
     // The cutoff wide open: the busiest plasma and the hottest fire.
     ui.turn(PANEL_ENC_K1, 64);
+    // The knob's popup (app/screen.h) opens over the piece and closes, which restores the cells
+    // under it a few frames at a time as a piece does: sent frame by frame as the panel takes
+    // them.
     for _ in 0..80 {
         ui.frame();
+        drain(&mut ui.g);
     }
-    drain(&mut ui.g);
     ui.v.scene.held = 0;
     ui
 }

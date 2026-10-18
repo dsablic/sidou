@@ -62,10 +62,11 @@ static void cover(scene_view_rite* rt, const screen* s) {
         y1 = (s->cover_row + s->cover_h) * px > y1 ? (s->cover_row + s->cover_h) * px : y1;
     }
     if (s->toast_on) {
-        const int32_t r = (int32_t)SCREEN_TOAST_ROW * px, c = (int32_t)SCREEN_TOAST_COL * px;
-        const int32_t e = c + (int32_t)SCREEN_TOAST_CHARS * px;
+        const int32_t r = (int32_t)SCREEN_TOAST_FIRST_ROW(s) * px, c = (int32_t)SCREEN_TOAST_COL * px;
+        const int32_t e = c + (int32_t)s->toast_w * px;
+        const int32_t b = r + (int32_t)s->toast_h * px;
         x0 = c < x0 ? c : x0, y0 = r < y0 ? r : y0;
-        x1 = e > x1 ? e : x1, y1 = r + px > y1 ? r + px : y1;
+        x1 = e > x1 ? e : x1, y1 = b > y1 ? b : y1;
     }
     static const scene_px_layer none;
     scene_px_layer l = none;
@@ -126,7 +127,7 @@ static void rite_compose(screen* s, scene_view* sv, grid* g) {
         if (!(whole >> r & 1u)) {
             continue;
         }
-        if (r != SCREEN_TOAST_ROW && (!s->cover_w || r - s->cover_row >= s->cover_h)) {
+        if (r - SCREEN_TOAST_FIRST_ROW(s) >= s->toast_h && (!s->cover_w || r - s->cover_row >= s->cover_h)) {
             grid_row(g, r, BLANK_CH, BLANK_ATTR); /* nothing over this row */
             continue;
         }

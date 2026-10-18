@@ -3,6 +3,8 @@
 //! The cell-grid renderer (app/grid.c): which cells go out, in which runs, as which pixels.
 
 use sidou_sys::*;
+
+use crate::piece_part;
 use sidou_tests::font;
 
 const COLS: usize = GRID_COLS as usize;
@@ -93,14 +95,29 @@ impl Screen {
             for y in 0..8 {
                 for x in 0..8 {
                     let a = g.attr[i];
-                    let mut c = if f.pixel(g.ch[i], x, y) {
+                    let piece = usize::from(g.ch[i]).wrapping_sub(GRID_BIG_FIRST as usize);
+                    let mut c = if piece < GRID_BIG_PIECES as usize {
+                        // A piece of large text, worked out here with divisions: its part of
+                        // its character's glyph pixel-doubled or tripled.
+                        let (scale, q) = piece_part(piece);
+                        let (gx, gy) = ((q % scale) * 8 + x, (q / scale) * 8 + y);
+                        pal[usize::from(if f.pixel(g.src[i], gx / scale, gy / scale) {
+                            a & 15
+                        } else {
+                            a >> 4
+                        })]
+                    } else if f.pixel(g.ch[i], x, y) {
                         pal[usize::from(a & 15)]
                     } else if let Some((bx, by)) = in_region(g, col, row) {
                         pal[usize::from(bitmap_px(g.region_bitmap, bx * 8 + x, by * 8 + y))]
                     } else {
                         pal[usize::from(a >> 4)]
                     };
-                    if ovl != 0 && g.ovl_mask[ovl - 1][y] & (0x80 >> x) != 0 {
+                    // (a piece of large text shows no overlay)
+                    if piece >= GRID_BIG_PIECES as usize
+                        && ovl != 0
+                        && g.ovl_mask[ovl - 1][y] & (0x80 >> x) != 0
+                    {
                         c = pal[usize::from(g.ovl_color[ovl - 1] & 15)];
                     }
                     out[(row * 8 + y) * W + col * 8 + x] = c;
@@ -866,4 +883,195 @@ fn random_regions_text_and_overlays_end_on_the_composed_frame() {
     s.drain();
     assert!(s.panel == s.expected());
     let _ = &bitmaps[0].enc;
+}
+
+fn big(s: &mut Screen, col: u32, row: u32, scale: u32, text: &str, a: u8) -> u32 {
+    let c = std::ffi::CString::new(text).unwrap();
+    unsafe { grid_text_big(&mut *s.g, col, row, scale, c.as_ptr(), a) }
+}
+
+#[test]
+fn large_text_is_the_font_pixel_doubled_and_tripled() {
+    // Each glyph of the 8 x 8 font, drawn scale times as large and cut into scale x scale
+    // cells, read back from the panel: expected() works the same out with a division.
+    for scale in [2u32, 3] {
+        let mut s = Screen::new();
+        let a = attr(GRID_YELLOW, GRID_BROWN);
+        let end = big(&mut s, 1, 2, scale, "AK8.", a);
+        assert_eq!(end, 1 + 4 * scale);
+        s.drain();
+        assert_eq!(s.panel, s.expected(), "scale {scale}");
+        let f = font::load();
+        let pal = unsafe { grid_palette };
+        for (i, ch) in b"AK8.".iter().enumerate() {
+            for y in 0..8 * scale as usize {
+                for x in 0..8 * scale as usize {
+                    let want = if f.pixel(*ch, x / scale as usize, y / scale as usize) {
+                        pal[GRID_YELLOW as usize]
+                    } else {
+                        pal[GRID_BROWN as usize]
+                    };
+                    let (px, py) = (8 + i * 8 * scale as usize + x, 16 + y);
+                    assert_eq!(
+                        s.panel[py * W + px],
+                        want,
+                        "scale {scale} '{ch}' ({x}, {y})"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_tripled_full_stop_is_a_six_pixel_square_across_two_cells() {
+    // '.' is the pixels (2..=3, 5..=6) of its cell: tripled, (6..=11, 15..=20) of 24 x 24, so
+    // it crosses the cells' edges in x (8) and y (16).
+    let mut s = Screen::new();
+    big(&mut s, 0, 0, 3, ".", attr(GRID_WHITE, GRID_BLACK));
+    s.drain();
+    let pal = unsafe { grid_palette };
+    for y in 0..24 {
+        for x in 0..24 {
+            let on = (6..=11).contains(&x) && (15..=20).contains(&y);
+            let want = pal[if on { GRID_WHITE } else { GRID_BLACK } as usize];
+            assert_eq!(s.panel[y * W + x], want, "({x}, {y})");
+        }
+    }
+}
+
+#[test]
+fn a_doubled_glyph_has_every_pixel_twice_over() {
+    // 'T' is a bar (0xfc) over a 2-pixel stem (0x30): doubled, 12 pixels wide on its first two
+    // rows and 4 on the others, in the first 16 x 16 pixels.
+    let mut s = Screen::new();
+    big(&mut s, 0, 0, 2, "T", attr(GRID_WHITE, GRID_BLACK));
+    s.drain();
+    let pal = unsafe { grid_palette };
+    for y in 0..16 {
+        for x in 0..16 {
+            let on = if y < 2 {
+                x < 12
+            } else {
+                y < 14 && (4..8).contains(&x)
+            };
+            let want = pal[if on { GRID_WHITE } else { GRID_BLACK } as usize];
+            assert_eq!(s.panel[y * W + x], want, "({x}, {y})");
+        }
+    }
+}
+
+#[test]
+fn large_text_sends_what_changed_and_goes_back_to_ordinary_cells() {
+    let mut s = Screen::new();
+    let a = attr(GRID_WHITE, GRID_BLUE);
+    big(&mut s, 2, 4, 3, "AB", a);
+    let first = s.runs();
+    assert_eq!(first, vec![(4, 2, 6), (5, 2, 6), (6, 2, 6)]);
+    big(&mut s, 2, 4, 3, "AB", a);
+    assert_eq!(s.runs(), vec![], "the same text again sent something");
+    // Another character in the same cells, same colours: only its cells go out.
+    big(&mut s, 2, 4, 3, "AC", a);
+    assert_eq!(
+        s.runs(),
+        vec![(4, 5, 3), (5, 5, 3), (6, 5, 3)],
+        "only the second character"
+    );
+    assert_eq!(s.panel, s.expected());
+    // Large text of another size over the same cells.
+    big(&mut s, 2, 4, 2, "AC", a);
+    s.drain();
+    assert_eq!(s.panel, s.expected());
+    // Ordinary text over them: the cells that change go out in their own glyphs, and the ones
+    // the text leaves alone are still its pieces (the next view draws over them).
+    s.text(2, 4, "HI", a);
+    s.drain();
+    assert_eq!(s.panel, s.expected());
+    unsafe { grid_fill(&mut *s.g, 2, 4, 6, 3, b' ', a) };
+    s.drain();
+    assert_eq!(s.panel, s.expected());
+    assert_eq!(
+        s.panel[(4 * 8) * W + 2 * 8],
+        unsafe { grid_palette }[GRID_BLUE as usize]
+    );
+}
+
+#[test]
+fn a_piece_of_large_text_is_blank_in_the_font_so_drawing_over_it_shows_the_new_glyph() {
+    let f = font::load();
+    for code in GRID_BIG_FIRST..GRID_BIG_FIRST + GRID_BIG_PIECES {
+        assert_eq!(f.glyphs[code as usize], [0u8; 8], "code {code}");
+    }
+}
+
+#[test]
+fn large_text_is_clipped_to_whole_characters_and_respects_the_guard() {
+    let mut s = Screen::new();
+    let a = attr(GRID_WHITE, GRID_BLUE);
+    // 3 columns left on the row: one tripled character fits, two doubled ones do not.
+    assert_eq!(big(&mut s, 27, 0, 3, "AB", a), 30);
+    assert_eq!(big(&mut s, 25, 4, 2, "ABC", a), 29);
+    assert_eq!(
+        big(&mut s, 29, 8, 2, "A", a),
+        29,
+        "no room for one character"
+    );
+    assert_eq!(big(&mut s, 30, 8, 2, "A", a), 30);
+    assert_eq!(
+        big(&mut s, 0, 28, 3, "A", a),
+        3,
+        "the rows below the grid are not drawn"
+    );
+    s.drain();
+    assert_eq!(s.panel, s.expected());
+    // A guarded row keeps what it has (a layer draws over a view's own large text there).
+    unsafe { grid_big_guard(&mut *s.g, 1 << 10) };
+    big(&mut s, 0, 10, 2, "Z", a);
+    assert_eq!(s.g.ch[10 * COLS], b' ');
+    assert_eq!(
+        s.g.ch[11 * COLS],
+        (GRID_BIG_FIRST + 2) as u8,
+        "the row below is not guarded"
+    );
+}
+
+#[test]
+fn a_cell_put_on_top_shows_its_glyph_with_no_overlay_over_it() {
+    let mut s = Screen::new();
+    let a = attr(GRID_WHITE, GRID_BLACK);
+    // An overlay on a blank cell shows; the same cell put on top does not, and the glyph is
+    // drawn at its own size from the code, which the cell holds as a piece of its own.
+    assert_eq!(s.overlay(4, 4, [0xff; 8], GRID_RED), 0);
+    s.drain();
+    assert_eq!(
+        s.panel[(4 * 8) * W + 4 * 8],
+        unsafe { grid_palette }[GRID_RED as usize]
+    );
+    unsafe { grid_put_top(&mut *s.g, 4, 4, b'A', a) };
+    s.drain();
+    assert_eq!(s.panel, s.expected());
+    assert_eq!(s.g.ch[4 * COLS + 4], GRID_PIECE_PLAIN as u8);
+    assert_eq!(s.g.src[4 * COLS + 4], b'A');
+    let f = font::load();
+    let pal = unsafe { grid_palette };
+    for y in 0..8 {
+        for x in 0..8 {
+            let want = pal[if f.pixel(b'A', x, y) {
+                GRID_WHITE
+            } else {
+                GRID_BLACK
+            } as usize];
+            assert_eq!(s.panel[(32 + y) * W + 32 + x], want, "({x}, {y})");
+        }
+    }
+    // Again the same sends nothing; another glyph in its colours sends it; a fill covers a block.
+    unsafe { grid_put_top(&mut *s.g, 4, 4, b'A', a) };
+    assert_eq!(s.runs(), vec![]);
+    unsafe { grid_put_top(&mut *s.g, 4, 4, b'B', a) };
+    assert_eq!(s.runs(), vec![(4, 4, 1)]);
+    unsafe { grid_fill_top(&mut *s.g, 10, 10, 3, 2, b'C', a) };
+    assert_eq!(s.runs(), vec![(10, 10, 3), (11, 10, 3)]);
+    assert_eq!(s.panel, s.expected());
+    unsafe { grid_put_top(&mut *s.g, 30, 0, b'A', a) }; // outside: ignored
+    assert_eq!(s.runs(), vec![]);
 }

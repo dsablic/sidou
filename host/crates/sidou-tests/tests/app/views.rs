@@ -7,6 +7,8 @@ use std::ffi::CStr;
 
 use sidou_sys::*;
 
+use crate::piece_part;
+
 use crate::Rig;
 
 const COLS: usize = GRID_COLS as usize;
@@ -118,15 +120,28 @@ impl Ui {
         }
     }
 
-    /// Frames until no transition runs.
+    /// Frames until no transition runs and the value popup (app/screen.h) has closed.
     pub(crate) fn settle(&mut self) {
         for _ in 0..40 {
             self.frame();
             if unsafe { screen_animating(&self.v.s) } == 0 {
+                self.popup_gone();
                 return;
             }
         }
         panic!("the screen kept animating");
+    }
+
+    /// Frames until the popup is gone (a second and the frames it takes to close), the view
+    /// under it composed again.
+    pub(crate) fn popup_gone(&mut self) {
+        for _ in 0..80 {
+            if unsafe { screen_popup_shows(&self.v.s) } == 0 {
+                return;
+            }
+            self.frame();
+        }
+        panic!("the popup never closed");
     }
 
     pub(crate) fn top(&self) -> String {
@@ -136,15 +151,37 @@ impl Ui {
             .into_owned()
     }
 
+    /// Item `i`'s line of the menu (large text, a line every 3 rows from row 4, MENU_ROW in
+    /// app/views.c): its 14 characters between the margins.
+    pub(crate) fn menu_line(&self, i: usize) -> String {
+        let top = usize::from(self.v.home.top);
+        assert!(
+            (top..top + VIEWS_MENU_SHOWN as usize).contains(&i),
+            "item {i} is out of sight"
+        );
+        self.row(4 + 3 * (i - top))[1..15].to_string()
+    }
+
+    /// A row's text, one character a cell; large text (grid_text_big) one a character, whatever
+    /// its size and the row of its character, from the grid's record of the character each
+    /// piece belongs to.
     pub(crate) fn row(&self, row: usize) -> String {
+        let text = |b: u8| {
+            if (0x20..0x7f).contains(&b) {
+                b as char
+            } else {
+                '#'
+            }
+        };
         (0..COLS)
-            .map(|c| self.g.ch[row * COLS + c])
-            .map(|b| {
-                if (0x20..0x7f).contains(&b) {
-                    b as char
-                } else {
-                    '#'
+            .filter_map(|c| {
+                let i = row * COLS + c;
+                let piece = usize::from(self.g.ch[i]).wrapping_sub(GRID_BIG_FIRST as usize);
+                if piece >= GRID_BIG_PIECES as usize {
+                    return Some(text(self.g.ch[i]));
                 }
+                let (scale, q) = piece_part(piece);
+                (q % scale == 0).then(|| text(self.g.src[i]))
             })
             .collect()
     }
@@ -239,57 +276,138 @@ fn the_menu_changes_the_preset_and_octave() {
     assert_eq!(ui.top(), "MENU");
 }
 
+/// Frames until the menu has drawn every line (a scroll takes a few frames: app/widget.h budget).
+fn menu_settle(ui: &mut Ui) {
+    for _ in 0..12 {
+        ui.frame();
+        if ui.v.home.pending == 0 {
+            return;
+        }
+    }
+    panic!("the menu kept lines pending");
+}
+
 #[test]
-fn the_menu_draws_its_items_in_a_frame_with_a_blinking_cursor() {
+fn the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video() {
     let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
-    let rows: Vec<String> = (4..19).map(|r| ui.row(r)).collect();
-    let body: Vec<String> = rows.iter().map(|r| r[3..27].to_string()).collect();
-    assert_eq!(rows[0][2..10].to_string(), "# MENU #");
-    // Labels after the cursor cell, values right-aligned against the frame, an arrow for a view.
-    assert_eq!(body[1][..23], format!(" {:<22}", "CHIP"));
-    // M2d Task 1: TRACKER, the song views.
-    assert_eq!(body[2][..23], format!(" {:<22}", "TRACKER"));
-    assert_eq!(body[3], format!(" {:<15}SAW LEAD", "PRESET"));
-    assert_eq!(body[4], format!(" {:<21}+0", "OCTAVE"));
-    assert_eq!(body[5], format!(" {:<21}ON", "CARDS"));
-    // M2a Task 5: STORE, the store's free space (NONE: no store in these views).
-    assert_eq!(body[6], format!(" {:<19}NONE", "STORE"));
-    // M2b Task 4: KEYS, which chip the keys play during a song (AUTO at power-on).
-    assert_eq!(body[7], format!(" {:<19}AUTO", "KEYS"));
-    // M2b Task 7: SOUNDS, the UI sounds (OFF at power-on).
-    assert_eq!(body[8], format!(" {:<20}OFF", "SOUNDS"));
-    // M2d Task 2: TRACKER ROWS, the TRACKER's moving bar or scrolling (BAR at power-on).
-    assert_eq!(body[9], format!(" {:<20}BAR", "TRACKER ROWS"));
-    assert_eq!(body[10][..23], format!(" {:<22}", "STATUS"));
-    assert_eq!(body[11][..23], format!(" {:<22}", "SCENE"));
-    assert_eq!(body[12][..23], format!(" {:<22}", "CHARSET"));
-    assert_eq!(body[13][..23], format!(" {:<22}", "ABOUT"));
-    for row in [5, 6, 14, 15, 16, 17] {
-        assert_eq!(
-            ui.g.ch[row * COLS + 26],
-            FONT_ARROW_RIGHT as u8,
-            "row {row}"
-        );
-    }
+    // The selected item's line (item 0) and the title bar (rows 0-2) are in reverse video:
+    // MENU, and which item of how many.
+    assert_eq!(&ui.row(1)[1..15], "MENU   #  1/13");
+    assert_eq!(ui.row(2), ui.row(1), "large text: two rows a line");
     assert_eq!(
-        rows[14][2..26].chars().filter(|&c| c == '#').count(),
-        24,
-        "the frame's bottom"
+        ui.g.attr[0],
+        ((GRID_LIGHT_BLUE << 4) | GRID_BLUE) as u8,
+        "the title bar is in reverse video"
     );
-    // The cursor: a block on the selected row for 8 frames, then a space for 8.
-    let cursor = |ui: &Ui| ui.g.ch[5 * COLS + 3];
-    let mut seen = Vec::new();
-    for _ in 0..16 {
-        ui.frame();
-        seen.push(cursor(&ui));
+    // Items a line every 3 rows: a label after the cursor's column, the value right-aligned
+    // (15 characters a line), an arrow for a view. PRE is PRESET, ROWS TRACKER ROWS.
+    let at_top = |ui: &Ui| -> Vec<String> { (0..6).map(|i| ui.menu_line(i)).collect() };
+    assert_eq!(
+        at_top(&ui),
+        [
+            format!("{:<13}#", "CHIP"),
+            format!("{:<13}#", "TRACKER"),
+            format!("{:<3}{:>11}", "PRE", "SAW LEAD"),
+            format!("{:<6}{:>8}", "OCTAVE", "+0"),
+            format!("{:<5}{:>9}", "CARDS", "ON"),
+            format!("{:<5}{:>9}", "STORE", "NONE"),
+        ]
+    );
+    // The arrow of an item that opens a view, in the line's last character (2 cells).
+    assert_eq!(ui.g.src[4 * COLS + 28], FONT_ARROW_RIGHT as u8);
+    assert_eq!(ui.g.src[7 * COLS + 28], FONT_ARROW_RIGHT as u8);
+    // Hints in the title bar: the items below are out of sight (an arrow down), none above.
+    assert_eq!(ui.g.src[COLS + 15], FONT_ARROW_DOWN as u8);
+    assert_eq!(ui.g.src[COLS + 13], b' ');
+    // Scrolled to the end: the last 6 items, an arrow up and none down (the lines come two a
+    // frame, the selected first).
+    ui.turn(PANEL_ENC_SELECT, 99);
+    menu_settle(&mut ui);
+    assert_eq!(ui.v.home.top, 7);
+    assert_eq!(&ui.row(1)[1..15], "MENU  #  13/13");
+    let at_end: Vec<String> = (7..13).map(|i| ui.menu_line(i)).collect();
+    assert_eq!(
+        at_end,
+        [
+            format!("{:<6}{:>8}", "SOUNDS", "OFF"),
+            format!("{:<4}{:>10}", "ROWS", "BAR"),
+            format!("{:<13}#", "STATUS"),
+            format!("{:<13}#", "SCENE"),
+            format!("{:<13}#", "CHARSET"),
+            format!("{:<13}#", "ABOUT"),
+        ]
+    );
+    assert_eq!(ui.g.src[COLS + 13], FONT_ARROW_UP as u8);
+    assert_eq!(ui.g.src[COLS + 15], b' ');
+    // The help under the items, large text as well.
+    assert!(ui.row(24).contains("SELECT  MOVE"));
+    assert!(ui.row(26).contains("ALG   CHANGE"));
+}
+
+#[test]
+fn every_menu_item_is_reachable_and_readable_as_the_cursor_walks_down_and_up() {
+    let mut ui = Ui::new();
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    let labels = [
+        "CHIP", "TRACKER", "PRE", "OCTAVE", "CARDS", "STORE", "KEYS", "SOUNDS", "ROWS", "STATUS",
+        "SCENE", "CHARSET", "ABOUT",
+    ];
+    assert_eq!(labels.len(), VIEWS_MENU_ITEMS as usize);
+    let walk = |ui: &mut Ui, i: usize| {
+        assert_eq!(usize::from(ui.v.home.cursor), i);
+        menu_settle(ui);
+        let top = usize::from(ui.v.home.top);
+        assert!(
+            (top..top + VIEWS_MENU_SHOWN as usize).contains(&i),
+            "item {i} is out of the {} rows shown from {top}",
+            VIEWS_MENU_SHOWN
+        );
+        for (k, label) in labels
+            .iter()
+            .enumerate()
+            .skip(top)
+            .take(VIEWS_MENU_SHOWN as usize)
+        {
+            assert!(
+                ui.menu_line(k).starts_with(label),
+                "item {k}: {}",
+                ui.menu_line(k)
+            );
+        }
+        let up_hint = ui.g.src[COLS + 13] == FONT_ARROW_UP as u8;
+        let down_hint = ui.g.src[COLS + 15] == FONT_ARROW_DOWN as u8;
+        assert_eq!(up_hint, top > 0, "the hint up at item {i}");
+        assert_eq!(
+            down_hint,
+            top + (VIEWS_MENU_SHOWN as usize) < labels.len(),
+            "the hint down at item {i}"
+        );
+    };
+    walk(&mut ui, 0);
+    for i in 1..labels.len() {
+        ui.turn(PANEL_ENC_SELECT, 1);
+        walk(&mut ui, i);
     }
-    assert!(seen.contains(&(FONT_FULL as u8)) && seen.contains(&b' '));
-    ui.turn(PANEL_ENC_SELECT, 2);
-    for _ in 0..16 {
-        ui.frame();
-        assert_eq!(cursor(&ui), b' ', "the cursor stayed on CHIP");
+    // The cursor scrolls by one at the edges of the window, on the way back as well.
+    for i in (0..labels.len() - 1).rev() {
+        ui.turn(PANEL_ENC_SELECT, -1);
+        walk(&mut ui, i);
+    }
+    assert_eq!(ui.v.home.top, 0);
+    // The selected item's whole line, both rows, is in reverse video, and no other line is.
+    let reverse = ((GRID_LIGHT_BLUE << 4) | GRID_BLUE) as u8;
+    let normal = ((GRID_BLUE << 4) | GRID_LIGHT_BLUE) as u8;
+    for c in 0..COLS {
+        assert_eq!(
+            ui.g.attr[4 * COLS + c],
+            reverse,
+            "item 0, row 4, column {c}"
+        );
+        assert_eq!(ui.g.attr[5 * COLS + c], reverse);
+        assert_eq!(ui.g.attr[7 * COLS + c], normal, "item 1");
     }
 }
 
@@ -493,8 +611,8 @@ fn the_views_show_both_chips_and_which_the_keys_play() {
     assert_eq!(u32::from(ui.live().keys_mode), LIVE_KEYS_A);
     ui.settle();
     assert_eq!(
-        ui.row(11)[4..27],
-        format!("{:<22}A", "KEYS"),
+        ui.menu_line(VIEWS_MENU_KEYS as usize),
+        format!("{:<4}{:>10}", "KEYS", "A"),
         "after the cursor"
     );
     ui.turn(PANEL_ENC_ALGORITHM, -1);
@@ -543,20 +661,20 @@ fn an_idle_view_is_not_composed_and_a_change_is() {
 }
 
 #[test]
-fn the_menu_composes_when_its_cursor_blinks_or_moves() {
+fn the_menu_composes_when_its_cursor_moves_and_not_while_it_waits() {
     let mut ui = Ui::new();
     ui.press(PANEL_BTN_HOME);
     ui.settle();
-    let mut composes = 0;
+    // The selection is a line in reverse video: it does not blink, so a menu that waits
+    // composes nothing and sends nothing (the 2 x 2 cell block of a cursor would cost 2 windows
+    // a blink: emu-gate screen.rs asserts at most 2 in 16 frames).
+    crate::drain(&mut ui.g);
     for _ in 0..4 * SCREEN_BLINK_FRAMES {
         mark(&mut ui);
         ui.frame();
-        composes += usize::from(composed(&ui));
+        assert!(!composed(&ui), "the menu composed while it waited");
+        assert_eq!(crate::drain(&mut ui.g).windows, 0);
     }
-    assert!(
-        (3..=5).contains(&composes),
-        "{composes} composes in 4 blinks"
-    );
     mark(&mut ui);
     ui.turn(PANEL_ENC_SELECT, 1);
     ui.frame();

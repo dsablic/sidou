@@ -37,7 +37,18 @@
  * - raster: the border (the outer ring of cells) takes the raster ramp's colours in bands
  *   that move one row every SCREEN_RASTER_FRAMES frames, then gets the view's own colours
  *   back. It waits while a wipe runs.
- * - toast: a line of text on SCREEN_TOAST_ROW for a while.
+ * - toast: large text (2 times the font, app/grid.h grid_text_big) on SCREEN_TOAST_ROW and the
+ *   row below it for a while; a text of more than SCREEN_TOAST_LINE characters breaks at a
+ *   space into a second line above (rows 25-28).
+ * - popup: a box over the middle of the view (rows SCREEN_POPUP_ROW..), with a parameter's name
+ *   and value in the largest text (3 times the font, 2 times when a text is longer than 8
+ *   characters) and a bar, from a function the views give (screen_popup_source). A change of a
+ *   parameter asks for it (screen_popup_ask); it opens SCREEN_POPUP_STEP rows a frame, stays
+ *   SCREEN_POPUP_MS after the last ask, and closes the same way, the rows it lets go composed
+ *   again by the view under it (which is forced to). A change of the view on top (a switch, a
+ *   title card, MIDI learn's frame) takes it away in the next frame. It covers its rows
+ *   (screen_cover) and guards them from the view's own large text.
+ *   The layers are run by one test of `layers`: a frame with none costs that alone.
  *
  * Portable C with no hardware access and no allocation; the host tests drive it directly. */
 #ifndef SIDOU_SCREEN_H
@@ -53,12 +64,33 @@ extern "C" {
 
 /* Views on the stack at most, the root included. */
 #define SCREEN_DEPTH 4u
-/* The toast's row and its text: columns 2..27, inside the frame and its margin
- * (docs/art/README.md). */
+/* The toast's first row (of a one-line toast; large text takes two rows) and its text: columns
+ * 2..27, inside the frame and its margin (docs/art/README.md), SCREEN_TOAST_LINE characters a
+ * line at 2 times the font, two lines at most. */
 #define SCREEN_TOAST_ROW 27u
 #define SCREEN_TOAST_COL 2u
-#define SCREEN_TOAST_CHARS 26u
+#define SCREEN_TOAST_LINE 13u
+#define SCREEN_TOAST_CHARS (2u * SCREEN_TOAST_LINE)
 #define SCREEN_TOAST_MS 1500u
+/* The first row of a screen's toast: large text takes two rows from SCREEN_TOAST_ROW, or four
+ * from two rows above it for two lines. */
+#define SCREEN_TOAST_FIRST_ROW(s) ((s)->toast_h == 4u ? SCREEN_TOAST_ROW - 2u : SCREEN_TOAST_ROW)
+/* The popup: a box of SCREEN_POPUP_W x SCREEN_POPUP_ROWS cells (a frame, the name in rows 1-3,
+ * the value in rows 4-6 and the bar in row 7 of it), opening and closing SCREEN_POPUP_STEP rows
+ * a frame (78 cells), staying SCREEN_POPUP_MS after the last change. Its text is
+ * SCREEN_POPUP_CHARS characters at 2 times the font, SCREEN_POPUP_BIG at 3 times. */
+#define SCREEN_POPUP_COL 1u
+#define SCREEN_POPUP_ROW 10u
+#define SCREEN_POPUP_W 28u
+#define SCREEN_POPUP_ROWS 9u
+#define SCREEN_POPUP_STEP 3u
+#define SCREEN_POPUP_MS 1000u
+#define SCREEN_POPUP_BIG 8u
+#define SCREEN_POPUP_CHARS 12u
+/* A popup's text, terminator included. */
+#define SCREEN_POPUP_TEXT (SCREEN_POPUP_CHARS + 1u)
+/* The bar's cells and the largest `fill` in them (pixels). */
+#define SCREEN_POPUP_BAR_CELLS 24u
 /* The block cursor is on for this many frames, then off as long (320 ms at 25 fps). */
 #define SCREEN_BLINK_FRAMES 8u
 /* Rows a wipe reveals per frame. Each frame sends at most these rows and the edge: 5 rows of
@@ -90,6 +122,33 @@ typedef struct {
 } screen_event;
 
 typedef struct screen screen;
+
+/* A function the popup runs once a frame, before its asks (screen_popup_watch). */
+typedef void (*screen_watch_fn)(void* ctx);
+
+/* What the popup shows for the control asked for (screen_popup_ask's `ask`): its name and
+ * value into name and value (SCREEN_POPUP_TEXT), and for a continuous value fill out of max
+ * for the bar (max 0: no bar). 0: nothing to show. */
+typedef int (*screen_popup_fn)(void* ctx, uint32_t ask, char* name, char* value, uint32_t* fill,
+                               uint32_t* max);
+
+/* The popup's state, in whoever owns the screen (the views: a screen's fields stay small and
+ * where they were), given to screen_popup_source. */
+typedef struct {
+    screen_popup_fn source; /* what an ask shows */
+    void* source_ctx;
+    screen_watch_fn watch; /* every frame, or NULL */
+    void* watch_ctx;
+    uint32_t until;   /* when its time ends */
+    uint8_t rows;     /* rows of the box drawn */
+    uint8_t next;     /* rows of it this frame draws */
+    uint8_t alive;    /* the time runs (2: from its first frame) */
+    uint8_t fresh;    /* its text was set this frame */
+    uint8_t bar;      /* the bar's fill, 0..SCREEN_POPUP_BAR_CELLS * 8 */
+    uint8_t has_bar;
+    char name[SCREEN_POPUP_TEXT];
+    char value[SCREEN_POPUP_TEXT];
+} screen_popup_state;
 
 /* Any function may be NULL but compose. When compose runs it draws every cell of the grid:
  * what it leaves alone keeps whatever the grid holds, the layers' last frame or another
@@ -137,6 +196,14 @@ struct screen {
     uint8_t redraw;        /* compose on the next frame whatever the view says */
     uint8_t busy;          /* in a view's enter or exit: no push or pop */
     uint8_t capture_depth; /* the stack's depth when the capture was set */
+    /* Nonzero while the toast or the popup has work (screen_frame tests this alone). */
+    uint8_t layers;
+    uint8_t toast_h;   /* the toast's rows: 1 ordinary text, 2 or 4 large (from row 27, or 25) */
+    uint8_t toast_w;   /* the cells of its widest line */
+    /* A toast of more than a line, large: its first line's characters (a second line follows
+     * them); 0 while it is not laid out yet (screen_toast takes the room of two lines, the frame
+     * lays it out). */
+    uint8_t toast_brk;
     uint32_t frame;        /* frames run */
     uint32_t now;          /* the last frame's time, ms */
     /* With redraw, bit r: row r may show something else than the view drew (a switch, a
@@ -151,6 +218,14 @@ struct screen {
     void* capture_ctx;
     screen_capture_fn global;
     void* global_ctx;
+    /* The popup's own state, after the rest: the views reach their fields through small
+     * offsets, and these (M2f) must not move them. */
+    uint8_t popup_ask; /* the control asked for, 0: none (screen_popup_ask) */
+    uint8_t composed;  /* the view composed this frame (the popup draws again) */
+    /* The view on top that the ask was made on, and the popup is for (NULL: whichever is on top
+     * when the frame takes the ask): a popup whose view is not on top any more goes. */
+    const view* popup_view;
+    screen_popup_state* popup; /* NULL: no popup (screen_popup_source) */
 };
 
 /* The raster ramp as GRID_ colours. */
@@ -181,6 +256,22 @@ void screen_redraw(screen* s);
 /* Shows text (clipped to SCREEN_TOAST_CHARS) for ms from the next frame on, replacing a toast
  * that shows. */
 void screen_toast(screen* s, const char* text, uint32_t ms);
+/* The popup: its state st (kept by the caller, as long as the screen) and the source of what
+ * screen_popup_ask's controls show (views_init). Without one, no popup. */
+void screen_popup_source(screen* s, screen_popup_state* st, screen_popup_fn fn, void* ctx);
+/* fn(ctx) runs every frame, before the asks of that frame are taken (NULL: none, the default):
+ * for a source of asks that has no input to hook (views_popup_midi). A screen with a watcher
+ * runs its layers every frame. */
+void screen_popup_watch(screen* s, screen_watch_fn fn, void* ctx);
+/* The control `ask` (1..255) changed: the next frame asks the source for its text and opens
+ * the popup, or keeps it open another SCREEN_POPUP_MS. Cheap (the input paths set the two
+ * fields it sets themselves: popup_ask, then layers). */
+void screen_popup_ask(screen* s, uint32_t ask);
+/* The popup showing name and value (clipped to SCREEN_POPUP_CHARS) and a bar of fill out of
+ * max (max 0: none), opening or kept open another SCREEN_POPUP_MS. */
+void screen_popup(screen* s, const char* name, const char* value, uint32_t fill, uint32_t max);
+/* 1 while the popup is open, opening or closing. */
+int screen_popup_shows(const screen* s);
 /* Sweeps the raster over the border for steps steps (SCREEN_RASTER_FRAMES frames each). */
 void screen_raster(screen* s, uint32_t steps);
 /* 1 while the block cursor is on. */

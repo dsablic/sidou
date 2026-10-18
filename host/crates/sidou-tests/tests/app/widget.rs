@@ -231,7 +231,7 @@ fn a_menu_draws_its_rows_with_values_on_the_right_and_a_block_cursor() {
     let a = attr(GRID_LIGHT_BLUE, GRID_BLUE);
     unsafe {
         menu_move(&mut m, 1);
-        menu_draw(&m, &mut *g, 3, 5, 12, a, 1);
+        menu_draw(&mut m, &mut *g, 3, 5, 12, a, 1);
     }
     assert_eq!(text(&g, 3, 5, 12), " LEVEL   -12");
     assert_eq!(at(&g, 3, 6), FONT_FULL as u8, "the cursor on MODE");
@@ -244,8 +244,93 @@ fn a_menu_draws_its_rows_with_values_on_the_right_and_a_block_cursor() {
     // The cursor off; scrolled, the rows show the items from the top one.
     unsafe {
         menu_move(&mut m, 3);
-        menu_draw(&m, &mut *g, 3, 5, 12, a, 0);
+        menu_draw(&mut m, &mut *g, 3, 5, 12, a, 0);
     }
     assert_eq!(text(&g, 3, 5, 11), " OPEN      ");
     assert_eq!(text(&g, 3, 7, 12), " FIVE    -12");
+}
+
+/// A menu's line at scale 2, as its characters: the collapsed row `row` from column `col`.
+fn big_line(g: &grid, row: usize, col: usize, chars: usize) -> String {
+    (0..chars)
+        .map(|k| g.src[row * COLS + col + 2 * k] as char)
+        .collect()
+}
+
+#[test]
+fn a_menu_at_scale_two_draws_large_lines_a_quota_at_a_time_and_only_what_changed() {
+    let its = items();
+    let mut c = Ctx {
+        level: 7,
+        ..Ctx::default()
+    };
+    let mut m = new_menu(&its, 4, &mut c);
+    m.scale = 2;
+    let sel = attr(GRID_BLUE, GRID_LIGHT_BLUE);
+    m.sel_attr = sel;
+    let mut g = new_grid();
+    let a = attr(GRID_LIGHT_BLUE, GRID_BLUE);
+    let draw = |m: &mut menu, g: &mut grid| unsafe { menu_draw(m, g, 0, 4, 30, a, 0) };
+    // 4 lines (90 cells each here, on a grid of other cells) in a budget of 190: two a call (the
+    // first whatever is pending, the second while 60 more fit), the selected one first; the
+    // other two in the next call.
+    crate::drain(&mut g);
+    m.budget = 190;
+    draw(&mut m, &mut g);
+    assert_eq!(
+        (m.pending, m.valid),
+        (1, 0b0011),
+        "the selected line and the first"
+    );
+    assert_eq!(big_line(&g, 4, 1, 14), format!("{:<5}{:>9}", "LEVEL", "7"));
+    assert_eq!(
+        g.attr[4 * COLS],
+        sel,
+        "the selected line's bar, margin included"
+    );
+    assert_eq!(g.attr[4 * COLS + 29], sel);
+    assert_eq!(g.ch[10 * COLS + 2], b'.', "the third line is not drawn yet");
+    crate::drain(&mut g);
+    draw(&mut m, &mut g);
+    assert_eq!((m.pending, m.valid), (0, 0b1111));
+    // Nothing changed: nothing drawn, and nothing marked.
+    let before = (g.ch, g.attr);
+    draw(&mut m, &mut g);
+    assert!((g.ch, g.attr) == before && m.pending == 0);
+    // A value that changed redraws its line alone; a cursor move two (the old and the new).
+    c.level = 12;
+    crate::drain(&mut g);
+    draw(&mut m, &mut g);
+    assert_eq!(big_line(&g, 4, 1, 14), format!("{:<5}{:>9}", "LEVEL", "12"));
+    crate::drain(&mut g);
+    unsafe { menu_move(&mut m, 1) };
+    draw(&mut m, &mut g);
+    assert_eq!(g.attr[4 * COLS], a, "the old line lost its bar");
+    assert_eq!(g.attr[7 * COLS], sel, "the new one has it");
+    assert_eq!(m.pending, 0);
+    // Scrolled: every line differs; two a call (the cursor's first), the grid drained between.
+    crate::drain(&mut g);
+    unsafe { menu_move(&mut m, 9) };
+    draw(&mut m, &mut g);
+    assert_eq!(m.pending, 1);
+    assert_eq!(
+        big_line(&g, 13, 1, 14),
+        format!("{:<4}{:>10}", "FIVE", "12"),
+        "the cursor's line first"
+    );
+    crate::drain(&mut g);
+    draw(&mut m, &mut g);
+    assert_eq!(m.pending, 0);
+    assert_eq!(
+        big_line(&g, 4, 1, 14),
+        format!("{:<4}{:>10}", "MODE", "OFF")
+    );
+    // What something drew over is drawn again whatever it was, quota or not.
+    g.ch[7 * COLS + 2] = b'#';
+    m.force_rows = 0b11 << 7;
+    m.budget = 1;
+    draw(&mut m, &mut g);
+    let line = big_line(&g, 7, 1, 14);
+    assert!(line.starts_with("OPEN"), "{line}");
+    assert_eq!(line.chars().last().unwrap() as u32, FONT_ARROW_RIGHT);
 }

@@ -285,8 +285,8 @@ fn scroll_keeps_the_bar_on_the_windows_row_12() {
     // The value changes without waiting for the cursor's next blink phase.
     s.ui.frame();
     assert_eq!(
-        s.ui.row(4 + 1 + VIEWS_MENU_ROWS as usize)[4..27].to_string(),
-        format!("{:<17}SCROLL", "TRACKER ROWS")
+        s.ui.menu_line(VIEWS_MENU_ROWS as usize),
+        format!("ROWS{:>10}", "SCROLL")
     );
     s.ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
     s.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_TRACKER as i32);

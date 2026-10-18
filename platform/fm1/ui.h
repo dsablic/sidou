@@ -29,6 +29,8 @@
 void ui_init(live* l, ui_sound* us, uint32_t now_ms, int home_held);
 /* The two chips' routing, for the CHIP view's tabs (app/keys_route.h). */
 void ui_set_keys(keys_route* kr);
+/* The front panel, whose MASTER pot then asks for the value popup (views_set_panel). */
+void ui_set_panel(panel* p);
 /* The song's player for the song views (app/song_transport.h, main.c's binding over
  * song_ctl). */
 void ui_set_song(const song_transport* t);

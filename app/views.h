@@ -7,13 +7,15 @@
  * - LIVE, the root (app/live_view.h): the voices' oscilloscopes and envelopes, the filter's
  *   curve, the VU meters and the effect slots. What the screen shows from power-on; the tap
  *   on the audio runs only while it shows: on top, or under MIDI learn's frame.
- * - MENU (HOME): PRESET, OCTAVE, CARDS, STORE (the store's free space, or FOREIGN: another
- *   firmware's data, which ALGORITHM turned clockwise twice formats), KEYS (AUTO or A: which
- *   chip the keys play during a song, app/keys_route.h), SOUNDS (the UI sounds on chip B's
- *   spare voice, OFF by default, app/ui_sound.h) and the views to open (CHIP first, then
- *   TRACKER), in a frame, plus TRACKER ROWS (BAR, the moving bar, or SCROLL:
- *   app/tracker_view.h; in RAM). SELECT moves the cursor, ALGORITHM changes the value under
- *   it or opens the view. CARDS, KEYS and SOUNDS persist (app/settings.h).
+ * - MENU (HOME), at 2 times the font, six of its items at a time: CHIP and TRACKER, the views
+ *   to open, then PRE (PRESET), OCTAVE, CARDS, STORE (the store's free kilobytes, or FOREIGN:
+ *   another firmware's data, which ALGORITHM turned clockwise twice formats), KEYS (AUTO or A:
+ *   which chip the keys play during a song, app/keys_route.h), SOUNDS (the UI sounds on chip
+ *   B's spare voice, OFF by default, app/ui_sound.h) and ROWS (TRACKER ROWS: BAR, the moving
+ *   bar, or SCROLL: app/tracker_view.h; in RAM), then STATUS, SCENE, CHARSET and ABOUT. SELECT
+ *   moves the selection (a line in reverse video; the list scrolls with it, a line or two a
+ *   frame), ALGORITHM changes the value under it or opens the view. CARDS, KEYS and SOUNDS
+ *   persist (app/settings.h).
  * - CHIP (from the menu, behind THE CHIP's card): chip A's profile, character and effect slots
  *   (app/chip_view.h); SELECT moves the focus, ALGORITHM steps its choice, K1..K4 turn its
  *   values.
@@ -70,7 +72,14 @@
  * Every frame the instrument's state is compared with the last frame's: a change of octave,
  * effect slot or algorithm shows a toast, whatever made it (panel, menu or MIDI), and a chip
  * model change also runs the raster over the border; not while the boot shows, which nothing
- * draws over (its changes are taken as seen).
+ * draws over (its changes are taken as seen). A control's own popup (below) says what it
+ * changed: no toast then.
+ *
+ * The value popup (app/screen.h): a K knob, ALGORITHM or the MASTER pot changes a parameter, and
+ * the screen shows its name and value in the largest text over the view (popup_text, the one
+ * function that names and formats a control: the views' own text, from live's state). The
+ * input paths only store which control changed (views_encoder, master_moved); the frame asks.
+ * SELECT never does, and neither does MIDI (VIEWS_POPUP_MIDI, views_popup_midi).
  *
  * Portable C with no hardware access and no allocation. */
 #ifndef SIDOU_VIEWS_H
@@ -104,8 +113,7 @@ extern "C" {
 
 /* The status screen's colours: light blue on blue. */
 #define VIEWS_TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
-/* The menu's items and the rows it shows, the title cards' option, and the items that open a
- * view. */
+/* The menu's items, the title cards' option, and the items that open a view. */
 #define VIEWS_MENU_ITEMS 13u
 #define VIEWS_MENU_CHIP 0u
 #define VIEWS_MENU_TRACKER 1u
@@ -114,6 +122,9 @@ extern "C" {
 #define VIEWS_MENU_KEYS 6u
 #define VIEWS_MENU_SOUNDS 7u
 #define VIEWS_MENU_ROWS 8u
+/* PRESET (the item that shows PRE), and the items the menu shows at once. */
+#define VIEWS_MENU_PRESET 2u
+#define VIEWS_MENU_SHOWN 6u
 #define VIEWS_MENU_STATUS 9u
 #define VIEWS_MENU_SCENE 10u
 #define VIEWS_MENU_CHARSET 11u
@@ -157,6 +168,10 @@ typedef struct {
     settings* set; /* what SAVE saves and the menu's STORE shows (views_settings); NULL: none */
     uint8_t formatting; /* a format's erases run (forced: the user asked) */
     user_profiles users; /* the CHIP view's USER slots on the store (app/user_profile.h) */
+    uint16_t watched[4]; /* the parameters views_popup_midi watches, as the last frame saw them */
+    /* The popup's state (app/screen.h), here at the end so that the screen's own fields, and the
+     * views' before this, keep their small offsets. */
+    screen_popup_state popup;
 } views;
 
 extern const view views_status;
@@ -165,6 +180,17 @@ extern const view views_charset;
 
 /* LIVE, the root view, on g, showing l and the audio's tap sc (NULL: none). */
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version);
+/* Whether MIDI's changes of the knobs' parameters (cutoff, resonance, pulse width, volume) open
+ * the value popup: 0, they do not (a controller sweep or a song would flood the screen with it).
+ * The one switch: 1 here, or views_popup_midi at run time, turns the watcher on; nothing else
+ * decides it. The panel's controls always do. */
+#define VIEWS_POPUP_MIDI 0
+/* 1: a change of the cutoff, resonance, pulse width or volume that no panel control made (MIDI,
+ * a song) opens the popup too, from the next frame; 0: it does not (views_init's default,
+ * VIEWS_POPUP_MIDI). */
+void views_popup_midi(views* v, int on);
+/* The panel whose MASTER pot asks for the popup (panel.master_hook); until set, it does not. */
+void views_set_panel(views* v, panel* p);
 /* The two chips' routing (app/keys_route.h), for the CHIP view's tabs; NULL until set. */
 void views_set_keys(views* v, keys_route* kr);
 /* The UI sounds (app/ui_sound.h): the menu's SOUNDS turns them on and off, and the menu and
