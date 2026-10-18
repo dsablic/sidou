@@ -15,6 +15,35 @@ use serde_json::{json, Value};
 use crate::device::{panel, Dev};
 use crate::findings::{Finding, Sev};
 use crate::journeys::{run_script, view_depth};
+use crate::screen::text_runs;
+
+fn parameter_label_visible(param: &str, p: &crate::device::Params, text: &[String]) -> bool {
+    use sidou_sys::*;
+    let mut buf = [0; 32];
+    if let Some((slot, field)) = param.split_once('.') {
+        let Some(s) = ["dist", "mod", "fx"].iter().position(|n| *n == slot) else { return false };
+        let Some(f) = ["algorithm", "amount", "a", "b", "mix"].iter().position(|n| *n == field) else { return false };
+        if unsafe { chip_view_label(s as u32, u32::from(p.slot[s][0]), f as u32, buf.as_mut_ptr()) } == 0 {
+            return false;
+        }
+    } else {
+        let id = match param {
+            "cutoff" => LIVE_PARAM_CUTOFF,
+            "resonance" => LIVE_PARAM_RESONANCE,
+            "pulse_width" => LIVE_PARAM_PULSE_WIDTH,
+            "age" => LIVE_PARAM_AGE,
+            "dac" => LIVE_PARAM_DAC,
+            "thump" => LIVE_PARAM_THUMP,
+            "bleed" => LIVE_PARAM_BLEED,
+            _ => return false,
+        };
+        unsafe { learn_view_param_name(id, buf.as_mut_ptr()) };
+    }
+    let label = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }.to_string_lossy();
+    !label.is_empty() && text.iter().any(|t| {
+        format!(" {} ", t.to_uppercase()).contains(&format!(" {label} "))
+    })
+}
 
 /// The views and how to get to each from LIVE (journeys.txt actions).
 pub const VIEWS: &[(&str, &str)] = &[
@@ -66,6 +95,7 @@ pub const DOCUMENTED_INERT: &[(&str, &str)] = &[
 /// What one control did in one view.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Effect {
+    pub labelled: bool,
     pub screen: bool,
     pub params: Vec<String>,
     pub view_changed: bool,
@@ -106,15 +136,20 @@ fn after(build: &Path, setup: &str, control: u8, dir: Option<i32>) -> (BTreeSet<
         None => {}
     }
     let mut seen = BTreeSet::new();
+    let mut text = Vec::new();
     for _ in 0..30 {
         d.run(40);
         popup |= d.popup_rows() > 0;
         seen.insert(frame(&d));
+        text.extend(text_runs(&d.shot().cells).into_iter().map(|r| r.text));
     }
     let view1 = d.view();
+    let p1 = d.params();
+    let params = p0.diff(&p1);
     let e = Effect {
+        labelled: params.iter().all(|p| parameter_label_visible(p, &p1, &text)),
         screen: d.m.soc.lcd.fb != fb0,
-        params: p0.diff(&d.params()),
+        params,
         view_changed: view1 != view0,
         depth_delta: i32::from(view_depth(&view1, d.depth())) - depth0,
         popup,
@@ -174,6 +209,7 @@ pub fn analyse(effects: &BTreeMap<(String, String), Effect>) -> ConsistencyResul
             "view": view, "control": control, "acts": e.acts(), "screen": e.screen,
             "params": e.params, "view_changed": e.view_changed, "popup": e.popup,
             "documented_inert": documented_inert,
+            "labelled": e.labelled,
         }));
         if !e.acts() {
             if documented_inert && !["status", "about", "charset"].contains(&view.as_str()) {
@@ -232,18 +268,18 @@ pub fn analyse(effects: &BTreeMap<(String, String), Effect>) -> ConsistencyResul
     // K1-K4's meaning across views: the parameter families they move.
     let mut fam: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for ((view, control), e) in effects {
-        if control == "K1" && !e.params.is_empty() {
+        if control == "K1" && !e.params.is_empty() && !e.labelled {
             fam.entry(e.params.join("+"))
                 .or_default()
                 .push(view.clone());
         }
     }
-    if fam.len() > 1 {
+    if !fam.is_empty() {
         findings.push(
             finding(
                 "CONS.k-meaning",
                 Sev::Low,
-                format!("K1 moves {} different parameters depending on the view", fam.len()),
+                format!("K1 moves {} parameter families without a visible label", fam.len()),
                 "K1-K4 are one parameter row; where the row changes, the screen says what each knob does now.",
             )
             .detail(
@@ -300,6 +336,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn chip_age_on_screen_or_in_a_popup_is_consistent() {
+        let mut e = fx(true, &["age"], false, 0);
+        e.labelled = parameter_label_visible("age", &crate::device::Params::default(), &["AGE 32".into()]);
+        let mut m = BTreeMap::from([(("chip".into(), "K1".into()), e)]);
+        assert!(!analyse(&m).findings.iter().any(|f| f.id == "CONS.k-meaning"));
+        m.get_mut(&("chip".into(), "K1".into())).unwrap().labelled = false;
+        assert!(analyse(&m).findings.iter().any(|f| f.id == "CONS.k-meaning"));
+        assert!(!parameter_label_visible("age", &crate::device::Params::default(), &["MESSAGE".into()]));
+        let mut p = crate::device::Params::default();
+        p.slot[0][0] = 2;
+        assert!(parameter_label_visible("dist.amount", &p, &["DIST DRIVE".into()]));
+    }
+
+    #[test]
     fn tracker_select_is_documented_and_read_only_views_do_not_count_as_inert() {
         let mut m = BTreeMap::new();
         m.insert(("tracker".into(), "SELECT".into()), fx(true, &[], false, 0));
@@ -317,6 +367,7 @@ mod tests {
 
     fn fx(screen: bool, params: &[&str], view_changed: bool, depth: i32) -> Effect {
         Effect {
+            labelled: false,
             screen,
             params: params.iter().map(|s| s.to_string()).collect(),
             view_changed,
