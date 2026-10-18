@@ -1,0 +1,286 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Pre-flash check: is this package sound and is the way back open?
+
+    tools/preflash PACKAGE.fwsc [--unbricker DIR] [--installer PATH] [--v15 FM-1.fwsc]
+
+It reads local files and prints a PASS/FAIL list and the install steps. It never opens,
+enumerates or talks to a USB or MIDI device, never imports the installer, and never runs the
+steps it prints. docs/flash-day.md is the checklist around it.
+
+  --unbricker DIR   the MvaveFM1Unbricker folder: its jl-uboot-tool must be at the pinned
+                    commit with a valid wl82 loader (the unbricker's own verify_jlub)
+  --installer PATH  Felucca 1.6.1's tools/fm1_install.py (or a folder that has it)
+  --v15 PATH        M-VAVE's official FM-1.fwsc; else build/stock/, the package's folder and
+                    the unbricker folder are searched
+
+Exit status 0 when nothing FAILs (a SKIP is not a failure), 1 otherwise.
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import hashlib
+import importlib.util
+import os
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+ROOT = Path(__file__).resolve().parent.parent
+V15_SHA256 = "db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a"
+
+results: List[Tuple[str, str, str]] = []
+
+
+def record(status: str, name: str, detail: str = "") -> bool:
+    results.append((status, name, detail))
+    return status != "FAIL"
+
+
+def sha256_of(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def run_verify(package: Path) -> Optional[dict]:
+    host = ROOT / "host"
+    env = dict(os.environ, PATH="/opt/homebrew/opt/rustup/bin:" + os.environ.get("PATH", ""))
+    build = subprocess.run(
+        ["cargo", "build", "-q", "--locked", "--release", "-p", "sidou-pack"],
+        cwd=host,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if build.returncode != 0:
+        lines = build.stderr.strip().splitlines()
+        record("FAIL", "sidou-pack builds", lines[-1] if lines else "cargo failed")
+        return None
+    out = subprocess.run(
+        [str(host / "target/release/sidou-pack"), "--verify", str(package)],
+        capture_output=True,
+        text=True,
+    )
+    facts: dict = {"problems": []}
+    for line in out.stdout.splitlines():
+        key, _, value = line.partition(" ")
+        if key == "problem":
+            facts["problems"].append(value)
+        else:
+            facts[key] = value
+    facts["exit"] = out.returncode
+    return facts
+
+
+def check_package(package: Path) -> Optional[dict]:
+    if not package.is_file():
+        record("FAIL", "package exists", str(package))
+        return None
+    facts = run_verify(package)
+    if facts is None:
+        return None
+    problems: List[str] = facts["problems"]
+    identity_problems = [p for p in problems if "identity" in p]
+    size_problems = [p for p in problems if "flash.bin is" in p]
+    loader_problems = [p for p in problems if "loader" in p or "ota.bin" in p]
+    classified = identity_problems + size_problems + loader_problems
+    structure_problems = [p for p in problems if p not in classified]
+    record("PASS", "package SHA-256", facts.get("sha256", "?"))
+    record(
+        "FAIL" if identity_problems or not facts.get("identity") else "PASS",
+        "identity (FM-1_900 or a release FM-1_9XY)",
+        "; ".join(identity_problems) or facts.get("identity", ""),
+    )
+    record(
+        "FAIL" if size_problems or facts.get("flash_bin", "0") == "0" else "PASS",
+        "flash.bin size (the loader refuses any other)",
+        "; ".join(size_problems) or facts.get("flash_bin", "?") + " bytes",
+    )
+    record("PASS" if facts.get("app", "0") != "0" else "FAIL", "app size", facts.get("app", "?") + " bytes")
+    marker_ok = facts.get("marker") == "FELUCCA-LOADER-1" and not loader_problems
+    record(
+        "PASS" if marker_ok else "FAIL",
+        "update loader size and its FELUCCA-LOADER-1 marker",
+        "; ".join(loader_problems) or "{} bytes".format(facts.get("loader", "?")),
+    )
+    record(
+        "FAIL" if structure_problems or facts["exit"] != 0 and not problems else "PASS",
+        "package structure and CRCs (container, files, head key, app area)",
+        "; ".join(structure_problems),
+    )
+    return facts
+
+
+def check_docs() -> None:
+    needs = [
+        (ROOT / "docs/hardware-test.md", ["OCT-", "WL82 UBOOT1.00"]),
+        (ROOT / "docs/reference/controls.md", ["OCT-"]),
+        (ROOT / "docs/flash-day.md", ["OCT-"]),
+    ]
+    for path, words in needs:
+        rel = path.relative_to(ROOT)
+        if not path.is_file():
+            record("FAIL", "recovery doc " + str(rel), "missing")
+            continue
+        text = path.read_text(encoding="utf-8")
+        missing = [w for w in words if w not in text]
+        record("FAIL" if missing else "PASS", "OCT- power-on gesture documented in " + str(rel), "lacks " + ", ".join(missing) if missing else "")
+
+
+def check_unbrick_mac() -> None:
+    script = ROOT / "tools/fm1-unbrick-mac/fm1_unbrick_mac.py"
+    readme = ROOT / "tools/fm1-unbrick-mac/README.md"
+    ok = script.is_file() and readme.is_file()
+    record("PASS" if ok else "FAIL", "tools/fm1-unbrick-mac present", "" if ok else "missing script or README")
+
+
+def check_unbricker(folder: Optional[Path]) -> None:
+    if folder is None:
+        record("SKIP", "unbricker folder (jl-uboot-tool at the pinned commit, wl82 loader)", "give --unbricker DIR")
+        return
+    module_path = folder / "fm1_unbrick.py"
+    if not module_path.is_file():
+        record("FAIL", "unbricker folder", str(module_path) + " not found")
+        return
+    spec = importlib.util.spec_from_file_location("fm1_unbrick_preflash", module_path)
+    if spec is None or spec.loader is None:
+        record("FAIL", "unbricker folder", "cannot load fm1_unbrick.py")
+        return
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+        commit = module.verify_jlub(folder / "jl-uboot-tool")
+    except Exception as e:
+        record("FAIL", "jl-uboot-tool at the pinned commit, wl82 loader valid", str(e))
+        return
+    record("PASS", "jl-uboot-tool at the pinned commit, wl82 loader valid (the unbricker's verify_jlub)", commit[:12])
+
+
+def find_v15(explicit: Optional[Path], package: Path, unbricker: Optional[Path]) -> Optional[Path]:
+    candidates: List[Path] = []
+    if explicit is not None:
+        candidates.append(explicit)
+    candidates.append(ROOT / "build/stock/FM-1.fwsc")
+    candidates.append(package.parent / "FM-1.fwsc")
+    if unbricker is not None:
+        candidates += [unbricker / "FM-1.fwsc", unbricker.parent / "FM-1.fwsc"]
+    for c in candidates:
+        if c.is_file() and sha256_of(c) == V15_SHA256:
+            return c
+    return None
+
+
+def check_v15(explicit: Optional[Path], package: Path, unbricker: Optional[Path]) -> None:
+    found = find_v15(explicit, package, unbricker)
+    if found is not None:
+        record("PASS", "V15 FM-1.fwsc (SHA-256 db1642b2...edb8a)", str(found))
+        return
+    if explicit is not None and explicit.is_file():
+        record("FAIL", "V15 FM-1.fwsc", "{} has SHA-256 {}, not {}".format(explicit, sha256_of(explicit), V15_SHA256))
+    else:
+        record("FAIL", "V15 FM-1.fwsc", "none found with SHA-256 " + V15_SHA256 + "; give --v15 PATH")
+
+
+def installer_script(path: Path) -> Optional[Path]:
+    for c in (path, path / "tools/fm1_install.py", path / "fm1_install.py"):
+        if c.is_file():
+            return c
+    return None
+
+
+def check_installer(path: Optional[Path]) -> Optional[Path]:
+    if path is None:
+        record("SKIP", "installer (Felucca 1.6.1's tools/fm1_install.py)", "give --installer PATH")
+        return None
+    script = installer_script(path)
+    if script is None:
+        record("FAIL", "installer", str(path) + ": no fm1_install.py found")
+        return None
+    try:
+        ast.parse(script.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError) as e:
+        record("FAIL", "installer", "{} does not parse: {}".format(script, e))
+        return None
+    record("PASS", "installer present and parses (not run)", str(script))
+    return script
+
+
+def steps(package: Path, facts: Optional[dict], installer: Optional[Path], v15: Optional[Path], unbricker: Optional[Path]) -> List[str]:
+    inst = shlex.quote(str(installer)) if installer else "fm1_install.py"
+    pkg = shlex.quote(str(package))
+    sha = facts.get("sha256", "?") if facts else "?"
+    ident = facts.get("identity", "FM-1_900") if facts else "FM-1_900"
+    unb = shlex.quote(str(unbricker)) if unbricker else "<MvaveFM1Unbricker folder>"
+    v15s = shlex.quote(str(v15)) if v15 else "FM-1.fwsc"
+    return [
+        "Run these yourself, one at a time, with only the FM-1 as a USB-MIDI device. Nothing here was run.",
+        "",
+        "  0. shasum -a 256 {}   # expect {}".format(pkg, sha),
+        "",
+        "A. The unit runs V15 or a Felucca-family firmware (not SIDOU yet):",
+        "  1. python3 {} --info                  # the firmware before; stop if the unit does not answer".format(inst),
+        "  2. python3 {} --backup .              # user data of the firmware that is on it".format(inst),
+        "  3. python3 {} {} --yes".format(inst, pkg),
+        "  4. python3 {} --info                  # expect {} (SIDOU's USB-MIDI out is still dead:".format(inst, ident),
+        "     a timeout here, with the unit coming back as USB 1209:0001 \"SIDOU\", is the known state)",
+        "  If the unit runs M-VAVE's FM1 Open (identity FM-1_8000013, port \"FM1 Community\"), go to V15 first:",
+        "     python3 tools/fm1_install_v15_over_open.py <Felucca tools dir> {} --port \"FM1 Community\" --yes".format(v15s),
+        "  and then A.1 to A.4.",
+        "",
+        "B. The unit runs a SIDOU build with the OCT- gesture (the way to put a build on it today):",
+        "  1. power off, hold OCT- alone, power on, hold ~1 s: black screen, USB WL80/WL82 UBOOT1.00 (4C4A:8057)",
+        "  2. cd {} && sudo ../venv/bin/python fm1_unbrick_mac.py info      # reads only".format(unb),
+        "  3. sudo ../venv/bin/python fm1_unbrick_mac.py restore {}   # double backup, write, verify".format(pkg),
+        "",
+        "Then, in order (docs/flash-day.md): the OCT- gesture check, the USB update gate (docs/hardware-test.md 8.1),",
+        "readability, the audio checks, the recipes.",
+        "",
+        "If anything fails, back to V15 (nothing below was run either):",
+        "  OCT- gesture:   cd {} && sudo ../venv/bin/python fm1_unbrick_mac.py restore {}".format(unb, v15s),
+        "  or without it:  Flipper Zero (flipper-fm1-recovery) or the FM-1 Transporter into ROM boot, then the same restore.",
+    ]
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Pre-flash check (no device access).")
+    ap.add_argument("package", type=Path)
+    ap.add_argument("--unbricker", type=Path)
+    ap.add_argument("--installer", type=Path)
+    ap.add_argument("--v15", type=Path)
+    args = ap.parse_args()
+
+    facts = check_package(args.package)
+    check_docs()
+    check_unbrick_mac()
+    check_unbricker(args.unbricker)
+    check_v15(args.v15, args.package, args.unbricker)
+    installer = check_installer(args.installer)
+
+    print("SIDOU pre-flash check: {}".format(args.package))
+    print()
+    for status, name, detail in results:
+        print("[{}] {}{}".format(status, name, ": " + detail if detail else ""))
+    failed = [r for r in results if r[0] == "FAIL"]
+    skipped = [r for r in results if r[0] == "SKIP"]
+    print()
+    if failed:
+        print("RESULT: FAIL ({} failed, {} skipped). Do not install.".format(len(failed), len(skipped)))
+        return 1
+    print("RESULT: PASS ({} checks, {} skipped).".format(len(results) - len(skipped), len(skipped)))
+    print()
+    for line in steps(args.package, facts, installer, find_v15(args.v15, args.package, args.unbricker), args.unbricker):
+        print(line)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

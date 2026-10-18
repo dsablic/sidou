@@ -5,8 +5,9 @@
 //! and skip without it.
 
 use sidou_pack::{
-    default_cache, head, head_chip_key, inputs, package, product_of, sha256_hex, ufw_file,
-    unwrap_loader, Inputs, APP_SLOT, CHIP_KEY, DEFAULT_PRODUCT, FLASH_SIZE, HEAD_SIZE, LOADER_LOAD,
+    default_cache, flash_image, head, head_chip_key, inputs, package, product_of, sha256_hex, ufw,
+    ufw_file, unwrap_loader, verify, wrap_loader, Inputs, APP_SLOT, CHIP_KEY, DEFAULT_PRODUCT,
+    FLASH_SIZE, HEAD_SIZE, LOADER_LOAD,
 };
 
 /// The package of `tiny_app` and `tiny_loader` with the pinned inputs.
@@ -90,4 +91,68 @@ fn the_golden_package() {
         sha, GOLDEN_SHA256,
         "the package format changed: check it, then update GOLDEN_SHA256"
     );
+}
+
+#[test]
+fn verify_accepts_a_sound_package_and_reports_its_facts() {
+    let Some(inp) = cached() else {
+        return;
+    };
+    let (app, loader) = (tiny_app(), tiny_loader());
+    let pkg = package(&inp, &app, &loader, DEFAULT_PRODUCT).unwrap();
+    let v = verify(&pkg);
+    assert!(v.problems.is_empty(), "{:?}", v.problems);
+    assert_eq!(v.sha256, sha256_hex(&pkg));
+    assert_eq!(
+        (v.identity.as_str(), v.flash_len, v.app_len, v.loader_len),
+        (DEFAULT_PRODUCT, FLASH_SIZE, app.len(), loader.len())
+    );
+    assert!(v.marker);
+    let release = package(&inp, &app, &loader, "FM-1_921");
+    assert!(
+        release.is_err(),
+        "the app must carry the identity it is packed with"
+    );
+}
+
+#[test]
+fn verify_refuses_a_wrong_size_package() {
+    let Some(inp) = cached() else {
+        return;
+    };
+    let mut flash = flash_image(&inp, &tiny_app()).unwrap();
+    flash.truncate(flash.len() - 0x1000);
+    let ota = wrap_loader(&tiny_loader()).unwrap();
+    let pkg = ufw(&flash, &ota, DEFAULT_PRODUCT).unwrap();
+    let v = verify(&pkg);
+    assert!(
+        v.problems.iter().any(|p| p.contains("(-14)")),
+        "{:?}",
+        v.problems
+    );
+}
+
+#[test]
+fn verify_refuses_damage_and_foreign_identities() {
+    let Some(inp) = cached() else {
+        return;
+    };
+    let pkg = package(&inp, &tiny_app(), &tiny_loader(), DEFAULT_PRODUCT).unwrap();
+    // A flipped bit in the app area: the package's own CRCs catch it.
+    let mut bad = pkg.clone();
+    let at = 0x400 + HEAD_SIZE + 0x200;
+    bad[at] ^= 1;
+    assert!(!verify(&bad).problems.is_empty());
+    // Not a package at all.
+    assert!(!verify(&[0u8; 100]).problems.is_empty());
+    assert!(!verify(&vec![0u8; 5000]).problems.is_empty());
+    // An identity outside FM-1_9XY.
+    let ota = wrap_loader(&tiny_loader()).unwrap();
+    let mut flash = flash_image(&inp, &tiny_app()).unwrap();
+    flash.truncate(FLASH_SIZE);
+    let stock = ufw(&flash, &ota, "FM-1_015").unwrap();
+    assert!(verify(&stock)
+        .problems
+        .iter()
+        .any(|p| p.contains("FM-1_015")));
 }

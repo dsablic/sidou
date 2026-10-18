@@ -29,6 +29,10 @@ Mark each item **[x] pass** or **[x] fail**, and write what you saw.
 
 ## 0. Before you start: recovery
 
+On the day, [flash-day.md](flash-day.md) is the one-page order of work around this
+checklist, and `tools/preflash` checks the package and the recovery route first (files only;
+it never touches a device).
+
 The update loader writes only the app area, never the flash head, so the
 unit keeps M-VAVE's SPL and settings. Once step 1 of an install commits, the
 unit runs the update loader at every power-on until an install completes. If

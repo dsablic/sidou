@@ -13,7 +13,7 @@ use sidou_pack::{default_cache, inputs, package, product_of, sha256_hex, DEFAULT
 
 const USAGE: &str = "usage: sidou-pack --app APP.bin --loader LOADER.bin -o OUT.fwsc \
                      [--product FM-1_900] [--cache DIR] [--offline] [--ota OUT_OTA.bin] \
-                     [--test-wrong-size]";
+                     [--test-wrong-size]\n       sidou-pack --verify PACKAGE.fwsc";
 
 struct Args {
     app: PathBuf,
@@ -90,7 +90,52 @@ fn run(a: &Args) -> Result<(), String> {
     Ok(())
 }
 
+/// `--verify PKG`: checks a finished package (no inputs, no network, no device) and prints one
+/// `key value` line per fact, `problem ...` lines for what is wrong. Exit 1 if there is any.
+fn verify_main(path: &str) -> ExitCode {
+    let pkg = match std::fs::read(path) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("sidou-pack: {path}: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let v = sidou_pack::verify(&pkg);
+    println!("sha256 {}", v.sha256);
+    println!("size {}", v.size);
+    println!("identity {}", v.identity);
+    println!("flash_bin {}", v.flash_len);
+    println!("app {}", v.app_len);
+    println!("loader {}", v.loader_len);
+    println!(
+        "marker {}",
+        if v.marker {
+            "FELUCCA-LOADER-1"
+        } else {
+            "missing"
+        }
+    );
+    for p in &v.problems {
+        println!("problem {p}");
+    }
+    if v.problems.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
 fn main() -> ExitCode {
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    if argv.first().map(String::as_str) == Some("--verify") {
+        return match argv.as_slice() {
+            [_, path] => verify_main(path),
+            _ => {
+                eprintln!("{USAGE}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     match parse().and_then(|a| run(&a)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

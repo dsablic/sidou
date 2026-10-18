@@ -592,6 +592,22 @@ pub fn ufw_file(package: &[u8], typ: u16) -> Result<(usize, Vec<u8>)> {
     err(format!("no file of type {typ} in the package"))
 }
 
+/// The data CRC16 in a package's entry for a file type.
+fn ufw_entry_crc(package: &[u8], typ: u16) -> Option<u16> {
+    let logical = logical_image(package);
+    let mut hdr = logical[..0x40].to_vec();
+    enc(&mut hdr, 0xFFFF);
+    for i in 0..u16::from_le_bytes([hdr[8], hdr[9]]) as usize {
+        let at = 0x40 + i * 0x50;
+        let mut e = logical.get(at..at + 0x50)?.to_vec();
+        enc(&mut e, 0xFFFF);
+        if u16::from_le_bytes([e[0], e[1]]) == typ {
+            return Some(u16::from_le_bytes([e[4], e[5]]));
+        }
+    }
+    None
+}
+
 /// Checks that the app answers the update protocol with `product` (the identity string is in
 /// its image, NUL-terminated): an installer verifies the identity after the install.
 pub fn check_app_identity(app: &[u8], product: &str) -> Result<()> {
@@ -610,6 +626,140 @@ pub fn check_app_identity(app: &[u8], product: &str) -> Result<()> {
 pub fn package(inputs: &Inputs, app: &[u8], loader: &[u8], product: &str) -> Result<Vec<u8>> {
     check_app_identity(app, product)?;
     ufw(&flash_image(inputs, app)?, &wrap_loader(loader)?, product)
+}
+
+/// What `verify` found in a package.
+#[derive(Debug, Default)]
+pub struct Verified {
+    pub sha256: String,
+    pub size: usize,
+    pub identity: String,
+    /// flash.bin's length (`FLASH_SIZE` for this board).
+    pub flash_len: usize,
+    /// The firmware image's length in the app slot (its trailing 0xFF padding trimmed).
+    pub app_len: usize,
+    /// The update loader's RAM image, unwrapped from ota.bin.
+    pub loader_len: usize,
+    pub marker: bool,
+    /// Every check that failed; empty when the package is sound.
+    pub problems: Vec<String>,
+}
+
+/// An identity a SIDOU package may answer with: the development build's or a release's,
+/// `FM-1_9XY`.
+pub fn identity_ok(id: &str) -> bool {
+    id.len() == 8 && id.starts_with("FM-1_9") && id[6..].bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Checks a finished package without any input file or device: the container's CRCs and the
+/// two files' CRCs, the identity (and that the app carries it), flash.bin's size (the size a
+/// loader of this board accepts), the head's chip key, the app area's own CRCs, and the update
+/// loader's unwrapped image (size, load marker). The problems are collected, not just the
+/// first.
+pub fn verify(package: &[u8]) -> Verified {
+    let mut v = Verified {
+        sha256: sha256_hex(package),
+        size: package.len(),
+        identity: String::new(),
+        ..Verified::default()
+    };
+    if package.len() < MARK_BLOCKS * (MARK_KEEP + 1) + 0x400 {
+        v.problems.push(format!(
+            "{} bytes is too short for an FM-1 update package",
+            package.len()
+        ));
+        return v;
+    }
+    v.identity = product_of(package);
+    if !identity_ok(&v.identity) {
+        v.problems.push(format!(
+            "identity {:?} is neither FM-1_900 nor a release FM-1_9XY",
+            v.identity
+        ));
+    }
+    let (flash, ota) = match (ufw_file(package, 0), ufw_file(package, 100)) {
+        (Ok((_, f)), Ok((_, o))) => (f, o),
+        (f, o) => {
+            for e in [f.err(), o.err()].into_iter().flatten() {
+                v.problems.push(e.0);
+            }
+            return v;
+        }
+    };
+    v.flash_len = flash.len();
+    for (name, typ, data) in [("flash.bin", 0, &flash), ("ota.bin", 100, &ota)] {
+        if ufw_entry_crc(package, typ) != Some(crc16(data, 0)) {
+            v.problems
+                .push(format!("{name} fails the CRC16 of its package entry"));
+        }
+    }
+    if flash.len() != FLASH_SIZE {
+        v.problems.push(format!(
+            "flash.bin is {} bytes, this board's is {FLASH_SIZE}: the loader refuses it (-14)",
+            flash.len()
+        ));
+    } else {
+        verify_flash(&flash, &mut v);
+    }
+    match unwrap_loader(&ota) {
+        Ok(image) => {
+            v.loader_len = image.len();
+            v.marker = image.len() >= 64 && image[..64].windows(16).any(|w| w == LOADER_MARK);
+            if image.is_empty() || image.len() > LOADER_MAX {
+                v.problems.push(format!(
+                    "the loader is {} bytes (1..={LOADER_MAX})",
+                    image.len()
+                ));
+            }
+            if !v.marker {
+                v.problems.push(format!(
+                    "the loader lacks the {} marker",
+                    String::from_utf8_lossy(LOADER_MARK)
+                ));
+            }
+        }
+        Err(e) => v.problems.push(format!("ota.bin: {}", e.0)),
+    }
+    v
+}
+
+fn verify_flash(flash: &[u8], v: &mut Verified) {
+    match head_chip_key(&flash[..HEAD_SIZE]) {
+        Ok(CHIP_KEY) => {}
+        Ok(k) => v.problems.push(format!(
+            "the head's chip key is {k:#06x}, not {CHIP_KEY:#06x}"
+        )),
+        Err(e) => v.problems.push(e.0),
+    }
+    let mut region = flash[HEAD_SIZE..].to_vec();
+    sfc(&mut region, CHIP_KEY);
+    let u16_at = |b: &[u8], o: usize| u16::from_le_bytes([b[o], b[o + 1]]);
+    let u32_at = |b: &[u8], o: usize| u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]]);
+    let head = &region[..32];
+    if crc16(&head[2..], 0) != u16_at(head, 0) {
+        v.problems
+            .push("the app area's head entry fails its CRC (wrong key or damaged)".into());
+        return;
+    }
+    let blk = u32_at(head, 8) as usize;
+    match region.get(32..blk) {
+        Some(body) if crc16(body, 0) == u16_at(head, 2) => {}
+        _ => v.problems.push("the app area fails its CRC".into()),
+    }
+    let slot = region.get(0x120..0x120 + APP_SLOT);
+    let Some(slot) = slot else {
+        v.problems.push("the app slot is missing".into());
+        return;
+    };
+    let app_entry = &region[32..64];
+    if crc16(&app_entry[2..], 0) != u16_at(app_entry, 0) || crc16(slot, 0) != u16_at(app_entry, 2) {
+        v.problems.push("app.bin fails its CRC".into());
+    }
+    let end = slot.iter().rposition(|&b| b != 0xFF).map_or(0, |i| i + 1);
+    v.app_len = end;
+    if let Err(e) = check_app_identity(&slot[..end], &v.identity) {
+        v.problems.push(e.0);
+    }
 }
 
 pub fn sha256_hex(data: &[u8]) -> String {
