@@ -15,6 +15,7 @@ here.
 | 4 | fm1-emu | A 6-byte compare and branch (`43 ff …`), which JieLi clang emits for the 6502 prototype's dispatch, does not decode | 2026-10-18, 6502 study | decision record 0008, Risks | not drafted |
 | 5 | fm1-emu | P33 and the watchdog are not modelled (`P33_CON`/`P33_DAT` read 0) | M1 | `docs/TODO.md`, "fm1-emu does not model P33 or the watchdog" | feature request, not drafted |
 | 6 | Felucca (`firmware/src/usb.c:50-56`) | The USB DMA buffers (`ep0buf`, `ep1tx`, `ep1rx`, …) are declared `aligned(4)`, but on the FM-1 an EP1 IN buffer at 4 mod 8 is never sent (TxPktRdy stays set). Felucca's own builds happen to place them 8-aligned; a layout change would break USB-MIDI out. Fix: `aligned(8)` or more. | 2026-10-18, SIDOU's USB-out diagnosis | `usbdbg` branch, `docs/hardware-results/usb-out-diagnosis.md` (rungs 0 and 1) | not drafted |
+| 7 | Felucca (licence request, not a bug) | Ask Felucca's author for a GPL-3.0 section 7 additional permission on the Felucca files SIDOU uses in its app image (HAL, USB stack, TRS MIDI driver), to link with M-VAVE's FM1 binary SDK for BLE MIDI, worded as FM1 Open's linking exception | 2026-10-18 | roadmap item 10 | draft for the user |
 
 Items 2-5 are against the pinned `e52f4640`. The fm1-emu bump will show which are still
 open.
