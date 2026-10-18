@@ -1,0 +1,259 @@
+<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<title>SIDOU Screen Readability</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;800&family=Martian+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a bench under a lamp. Each screen pair sits at true physical size first, with a zoomed detail beside it. */
+:root {
+  --bench: #121214;
+  --panel: #1c1c20;
+  --ink: #ecebe6;
+  --muted: #9d9b93;
+  --line: #2e2e34;
+  --accent: #e7c75f;
+  --good: #8fd47d;
+  --display: "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --mono: "Martian Mono", "SF Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bench); color: var(--ink); font-family: var(--display); font-size: 16px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 64px;
+}
+main { max-width: 1120px; margin: 0 auto; display: grid; gap: 48px; }
+h1 { font-weight: 800; font-size: clamp(30px, 5vw, 46px); line-height: 1.05; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+h2 { font-weight: 800; font-size: 24px; margin: 0; text-wrap: balance; }
+p { margin: 0; max-width: 68ch; color: var(--muted); }
+p strong { color: var(--ink); }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+header { display: grid; gap: 14px; }
+.calib { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 20px; display: grid; gap: 14px; }
+.calib-row { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; }
+.card-bar { height: 22px; background: repeating-linear-gradient(90deg, var(--accent) 0 1px, transparent 1px 10px), #2a2618; border: 1px solid var(--accent); max-width: 100%; }
+label { font-family: var(--mono); font-size: 13px; color: var(--muted); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+input[type=range] { width: min(320px, 70vw); accent-color: var(--accent); }
+input[type=number] { width: 84px; background: var(--bench); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; font-family: var(--mono); }
+input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.readout { font-family: var(--mono); font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+section.case { display: grid; gap: 18px; border-top: 1px solid var(--line); padding-top: 28px; }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
+figure { margin: 0; display: grid; gap: 10px; align-content: start; min-width: 0; }
+figcaption { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+figcaption b { color: var(--ink); font-weight: 600; }
+.tag { display: inline-block; font-family: var(--mono); font-size: 11px; padding: 1px 7px; border-radius: 3px; margin-right: 8px; }
+.tag.now { background: #3a2a2a; color: #e8a59a; }
+.tag.new { background: #263a25; color: var(--good); }
+.stage { display: flex; gap: 18px; align-items: end; flex-wrap: wrap; }
+.bezel { background: #050505; padding: 6px; border-radius: 3px; box-shadow: 0 0 0 1px #000, 0 6px 18px rgba(0,0,0,.5); display: inline-block; line-height: 0; }
+canvas { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+canvas.zoom { width: 240px; height: 240px; max-width: 100%; height: auto; aspect-ratio: 1; }
+.scale-note { font-family: var(--mono); font-size: 11px; color: var(--muted); line-height: 1.4; }
+ul.points { margin: 0; padding-left: 18px; color: var(--muted); max-width: 68ch; display: grid; gap: 6px; }
+ul.points b { color: var(--ink); }
+footer p { font-size: 14px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<main>
+  <header>
+    <div class="eyebrow">SIDOU · FM-1 display · 240 × 240</div>
+    <h1>Screen readability at real size</h1>
+    <p>The FM-1's screen packs 240 pixels into about <strong>23 mm</strong>, so SIDOU's 8-pixel font comes out at <strong>0.8 mm</strong>. Each pair below shows a screen as it is today next to a proposal. Both are drawn with SIDOU's own font and 16-colour palette, at the size the device shows them, with a 1:1 pixel view beside them. Calibrate first, so "real size" is real on your monitor.</p>
+  </header>
+
+  <section class="calib" aria-labelledby="calib-h">
+    <h2 id="calib-h">1 · Calibrate your screen</h2>
+    <p>Hold a bank card (85.60 mm wide) against the bar and drag the slider until they match. Then measure the FM-1's lit screen area with a ruler and enter its width.</p>
+    <div class="card-bar" id="cardbar"></div>
+    <div class="calib-row">
+      <label for="ppm">pixels per mm <input type="range" id="ppm" min="2.5" max="8" step="0.01" value="3.78"></label>
+      <label for="mmw">FM-1 screen width, mm <input type="number" id="mmw" min="15" max="40" step="0.1" value="23.4"></label>
+      <span class="readout" id="readout"></span>
+    </div>
+  </section>
+
+  <div id="cases"></div>
+
+  <footer>
+    <p>The proposals use only what the device can draw: the 16-colour palette and SIDOU's 8×8 font, scaled 2× or 3× by doubling pixels. That is the method the large-text work in progress already uses. Black backgrounds, one colour per voice and knob, and at least 16-pixel text for anything you read while playing.</p>
+  </footer>
+</main>
+
+<script>
+const FONT = [[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[48,48,48,48,0,48,48,0],[204,204,68,0,0,0,0,0],[108,254,108,108,108,254,108,0],[16,124,208,124,22,124,16,0],[198,204,24,48,96,204,198,0],[112,216,216,114,222,204,118,0],[48,48,96,0,0,0,0,0],[24,48,48,48,48,48,24,0],[96,48,48,48,48,48,96,0],[0,84,56,254,56,84,0,0],[0,48,48,252,252,48,48,0],[0,0,0,0,48,48,96,0],[0,0,0,252,252,0,0,0],[0,0,0,0,0,48,48,0],[12,24,24,48,96,96,192,0],[124,198,214,214,214,198,124,0],[24,56,120,24,24,24,24,0],[124,198,6,60,96,192,254,0],[124,198,6,60,6,198,124,0],[204,204,204,204,254,12,12,0],[254,192,252,6,6,198,124,0],[124,192,192,252,198,198,124,0],[254,6,12,24,48,48,48,0],[124,198,198,124,198,198,124,0],[124,198,198,126,6,6,124,0],[0,48,48,0,48,48,0,0],[0,48,48,0,48,48,96,0],[0,12,56,224,56,12,0,0],[0,0,124,0,124,0,0,0],[0,192,112,28,112,192,0,0],[124,198,12,24,24,0,24,0],[60,102,222,214,222,96,60,0],[124,198,198,254,198,198,198,0],[252,198,198,252,198,198,252,0],[124,198,192,192,192,198,124,0],[248,204,198,198,198,204,248,0],[254,192,192,248,192,192,254,0],[254,192,192,248,192,192,192,0],[124,198,192,222,198,198,124,0],[198,198,198,254,198,198,198,0],[252,48,48,48,48,48,252,0],[6,6,6,6,198,198,124,0],[198,204,216,248,204,198,198,0],[192,192,192,192,192,192,254,0],[108,254,214,214,214,198,198,0],[230,230,214,214,214,206,206,0],[124,198,198,198,198,198,124,0],[252,198,198,252,192,192,192,0],[124,198,198,198,214,204,118,0],[252,198,198,252,216,204,198,0],[124,198,192,124,6,198,124,0],[252,48,48,48,48,48,48,0],[198,198,198,198,198,198,124,0],[198,198,198,198,108,56,16,0],[198,198,214,214,214,254,108,0],[198,198,108,56,108,198,198,0],[198,198,108,56,48,48,48,0],[254,6,12,24,48,96,254,0],[124,124,96,96,96,124,124,0],[192,96,96,48,24,24,12,0],[124,124,12,12,12,124,124,0],[48,120,72,204,0,0,0,0],[0,0,0,0,0,0,254,0],[96,48,16,0,0,0,0,0],[124,198,198,254,198,198,198,0],[252,198,198,252,198,198,252,0],[124,198,192,192,192,198,124,0],[248,204,198,198,198,204,248,0],[254,192,192,248,192,192,254,0],[254,192,192,248,192,192,192,0],[124,198,192,222,198,198,124,0],[198,198,198,254,198,198,198,0],[252,48,48,48,48,48,252,0],[6,6,6,6,198,198,124,0],[198,204,216,248,204,198,198,0],[192,192,192,192,192,192,254,0],[108,254,214,214,214,198,198,0],[230,230,214,214,214,206,206,0],[124,198,198,198,198,198,124,0],[252,198,198,252,192,192,192,0],[124,198,198,198,214,204,118,0],[252,198,198,252,216,204,198,0],[124,198,192,124,6,198,124,0],[252,48,48,48,48,48,48,0],[198,198,198,198,198,198,124,0],[198,198,198,198,108,56,16,0],[198,198,214,214,214,254,108,0],[198,198,108,56,108,198,198,0],[198,198,108,56,48,48,48,0],[254,6,12,24,48,96,254,0],[30,48,96,192,96,48,30,0],[48,48,48,48,48,48,48,0],[240,24,12,6,12,24,240,0],[0,0,118,220,0,0,0,0],[255,255,255,255,255,255,255,255],[0,0,0,0,0,0,0,0],[240,240,240,240,0,0,0,0],[15,15,15,15,0,0,0,0],[255,255,255,255,0,0,0,0],[0,0,0,0,240,240,240,240],[240,240,240,240,240,240,240,240],[15,15,15,15,240,240,240,240],[255,255,255,255,240,240,240,240],[0,0,0,0,15,15,15,15],[240,240,240,240,15,15,15,15],[15,15,15,15,15,15,15,15],[255,255,255,255,15,15,15,15],[0,0,0,0,255,255,255,255],[240,240,240,240,255,255,255,255],[15,15,15,15,255,255,255,255],[255,255,255,255,255,255,255,255],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,255],[0,0,0,0,0,0,255,255],[0,0,0,0,0,255,255,255],[0,0,0,0,255,255,255,255],[0,0,0,255,255,255,255,255],[0,0,255,255,255,255,255,255],[0,255,255,255,255,255,255,255],[255,255,255,255,255,255,255,255],[0,0,0,0,0,0,0,0],[128,128,128,128,128,128,128,128],[192,192,192,192,192,192,192,192],[224,224,224,224,224,224,224,224],[240,240,240,240,240,240,240,240],[248,248,248,248,248,248,248,248],[252,252,252,252,252,252,252,252],[254,254,254,254,254,254,254,254],[255,255,255,255,255,255,255,255],[0,0,0,0,0,0,0,0],[0,128,128,128,128,128,128,0],[0,192,192,192,192,192,192,0],[0,224,224,224,224,224,224,0],[0,240,240,240,240,240,240,0],[0,248,248,248,248,248,248,0],[0,252,252,252,252,252,252,0],[0,254,254,254,254,254,254,0],[0,255,255,255,255,255,255,0],[0,0,0,0,0,0,0,0],[136,0,0,0,136,0,0,0],[136,0,34,0,136,0,34,0],[170,0,34,0,170,0,34,0],[170,0,170,0,170,0,170,0],[170,68,170,0,170,68,170,0],[170,68,170,17,170,68,170,17],[170,85,170,17,170,85,170,17],[170,85,170,85,170,85,170,85],[238,85,170,85,238,85,170,85],[238,85,187,85,238,85,187,85],[255,85,187,85,255,85,187,85],[255,85,255,85,255,85,255,85],[255,221,255,85,255,221,255,85],[255,221,255,119,255,221,255,119],[255,255,255,119,255,255,255,119],[255,255,255,255,255,255,255,255],[0,0,0,255,255,0,0,0],[24,24,24,24,24,24,24,24],[0,0,0,31,31,24,24,24],[0,0,0,248,248,24,24,24],[24,24,24,31,31,0,0,0],[24,24,24,248,248,0,0,0],[0,0,0,7,15,24,24,24],[0,0,0,224,240,24,24,24],[24,24,24,15,7,0,0,0],[24,24,24,240,224,0,0,0],[0,0,0,255,255,24,24,24],[24,24,24,255,255,0,0,0],[24,24,24,31,31,24,24,24],[24,24,24,248,248,24,24,24],[24,24,24,255,255,24,24,24],[0,0,0,16,0,0,0,0],[0,0,0,24,24,0,0,0],[0,0,16,56,16,0,0,0],[16,84,56,254,56,84,16,0],[60,126,255,255,255,255,126,60],[0,126,126,126,126,126,126,0],[0,0,0,48,48,0,0,0],[48,120,252,48,48,48,48,0],[48,48,48,48,252,120,48,0],[64,96,112,120,112,96,64,0],[28,22,16,16,112,240,96,0],[0,124,124,124,124,124,0,0],[16,48,126,254,126,48,16,0],[16,24,252,254,252,24,16,0],[240,240,240,0,0,0,0,0],[15,15,15,0,0,0,0,0],[255,255,255,0,0,0,0,0],[136,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0]];
+const PAL = ['#000000','#ffffff','#6a3429','#73a5b4','#6a3c83','#5a8d41','#31287b','#bdc66a','#6a4c20','#413800','#9c655a','#414441','#6a6d6a','#9cd283','#6a5db4','#949594'];
+const C = {black:0,white:1,red:2,cyan:3,purple:4,green:5,blue:6,yellow:7,orange:8,brown:9,lred:10,dgrey:11,grey:12,lgreen:13,lblue:14,lgrey:15};
+
+function mk(){ const c=document.createElement('canvas'); c.width=240; c.height=240; return c; }
+function px(g,x,y,w,h,col){ g.fillStyle=PAL[col]; g.fillRect(x,y,w,h); }
+function glyph(g,code,x,y,s,fg,bg){
+  const rows=FONT[code]||FONT[32];
+  if(bg!=null) px(g,x,y,8*s,8*s,bg);
+  g.fillStyle=PAL[fg];
+  for(let r=0;r<8;r++){ const b=rows[r]; for(let c=0;c<8;c++) if(b&(0x80>>c)) g.fillRect(x+c*s,y+r*s,s,s); }
+}
+function text(g,str,x,y,s,fg,bg){ for(let i=0;i<str.length;i++){ let ch=str.charCodeAt(i); if(ch>=97&&ch<=122) ch-=32; glyph(g,ch,x+i*8*s,y,s,fg,bg); } }
+function box(g,x,y,w,h,col){ px(g,x,y,w,1,col); px(g,x,y+h-1,w,1,col); px(g,x,y,1,h,col); px(g,x+w-1,y,1,h,col); }
+function wave(g,x,y,w,h,col,kind,phase,thick){
+  g.fillStyle=PAL[col]; let prev=null;
+  for(let i=0;i<w;i++){
+    const t=(i/w*2+phase)%1; let v;
+    if(kind==='saw') v=t; else if(kind==='pulse') v=t<0.42?1:0; else if(kind==='tri') v=t<.5?t*2:2-t*2; else v=0.5;
+    const yy=Math.round(y+h-1-v*(h-1));
+    if(prev!=null){ const a=Math.min(prev,yy), b=Math.max(prev,yy); g.fillRect(x+i,a,thick,b-a+thick); } else g.fillRect(x+i,yy,thick,thick);
+    prev=yy;
+  }
+}
+
+// ---- LIVE, as today
+function liveNow(){ const c=mk(), g=c.getContext('2d');
+  px(g,0,0,240,240,C.blue);
+  text(g,'LIVE > 6581 SAW LEAD  OCT+0',0,0,1,C.lblue,C.blue);
+  const v=[['V1 SAW','A-4','SAW','saw'],['V2 SAW','A-4','SAW','saw'],['V3 SAW','---','SAW',null]];
+  v.forEach((d,i)=>{ const y=10+i*44; box(g,2,y,170,40,C.lblue); text(g,d[0],12,y-3,1,C.lblue,C.blue);
+    if(d[3]) wave(g,8,y+8,158,26,C.yellow,d[3],i*.2,1); else px(g,8,y+20,158,1,C.yellow);
+    px(g,176,y,16,40,C.black); text(g,d[1],196,y+2,1,C.lblue,C.blue); text(g,d[2],196,y+12,1,C.yellow,C.blue); });
+  box(g,2,146,150,48,C.lblue); text(g,'FILTER LP',30,143,1,C.lblue,C.blue);
+  px(g,6,152,140,6,C.white); for(let i=0;i<140;i+=2) px(g,6+i,160,1,28,C.lblue);
+  text(g,'FC 11.4K RES 6',10,188,1,C.lblue,C.blue);
+  box(g,156,146,82,48,C.lblue); text(g,'VU',186,143,1,C.lblue,C.blue);
+  [C.lgreen,C.yellow,C.lred].forEach((col,i)=>{ text(g,''+(i+1),160,152+i*8,1,C.yellow,C.blue); px(g,170,153+i*8,40+i*12,5,col); });
+  text(g,'DIST OFF',8,204,1,C.lblue,C.blue); text(g,'MIX',170,204,1,C.lblue,C.blue);
+  text(g,'MOD  OFF',8,214,1,C.lblue,C.blue); text(g,'MIX',170,214,1,C.lblue,C.blue);
+  text(g,'FX   OFF',8,224,1,C.lblue,C.blue); text(g,'MIX',170,224,1,C.lblue,C.blue);
+  return c; }
+
+// ---- LIVE, proposed: voices as coloured lanes, the four knobs as big values in fixed places
+function liveNew(){ const c=mk(), g=c.getContext('2d');
+  px(g,0,0,240,240,C.black);
+  text(g,'SAW LEAD',0,0,2,C.white); text(g,'6581',208,0,1,C.grey); text(g,'OCT+0',200,9,1,C.grey);
+  const lanes=[[C.lred,'A-4','saw'],[C.cyan,'C-5','pulse'],[C.lgreen,'---',null]];
+  lanes.forEach((d,i)=>{ const y=22+i*34;
+    text(g,''+(i+1),0,y+8,2,d[0]);
+    if(d[2]) wave(g,22,y+2,150,28,d[0],d[2],i*.3,2); else px(g,22,y+16,150,2,C.dgrey);
+    text(g,d[1],178,y+8,2,d[2]?C.white:C.dgrey); });
+  const knobs=[['CUTOFF',C.yellow,'11K',.72],['RESO',C.cyan,'6',.4],['PULSE',C.lgreen,'50',.5],['PRESET',C.lred,'SAW',.25]];
+  knobs.forEach((k,i)=>{ const x=i*60; text(g,k[0],x+2,132,1,k[1]); text(g,k[2],x+2,146,2,C.white);
+    px(g,x+2,166,54,4,C.dgrey); px(g,x+2,166,Math.round(54*k[3]),4,k[1]); });
+  text(g,'K1',2,176,1,C.dgrey); text(g,'K2',62,176,1,C.dgrey); text(g,'K3',122,176,1,C.dgrey); text(g,'K4',182,176,1,C.dgrey);
+  text(g,'LP',0,196,2,C.white); text(g,'FILTER',36,196,1,C.grey); text(g,'DIST',36,206,1,C.grey); text(g,'OFF',76,206,1,C.dgrey);
+  [C.lred,C.cyan,C.lgreen].forEach((col,i)=>px(g,120,196+i*10,[96,70,10][i],6,col));
+  text(g,'FX OFF  MOD OFF',0,226,1,C.dgrey);
+  return c; }
+
+// ---- TRACKER, as today: three voices at 8 px
+function trkNow(){ const c=mk(), g=c.getContext('2d');
+  px(g,0,0,240,240,C.blue);
+  text(g,'TRACKER ORD 03 ROW 1A 125',0,0,1,C.lblue,C.blue);
+  text(g,'PUL SAW NOI',8,10,1,C.yellow,C.blue);
+  const notes=['C-4','---','D#4','===','G-3','---','C-4','A#3'];
+  for(let r=0;r<22;r++){ const y=24+r*9, cur=r===8;
+    if(cur) px(g,0,y-1,240,9,C.lblue);
+    const fg=cur?C.blue:C.lblue, bg=cur?C.lblue:C.blue;
+    text(g,(r+18).toString(16).toUpperCase().padStart(2,'0'),0,y,1,fg,bg);
+    for(let v=0;v<3;v++){ const n=notes[(r+v*3)%8]; text(g,n+(n==='---'?' ..':' 0'+(v+1))+(r%4?' ...':' 308'),20+v*73,y,1,fg,bg); } }
+  text(g,'03 05 05 R2 +1 RST00',0,224,1,C.lblue,C.blue);
+  return c; }
+
+// ---- TRACKER, proposed: one voice large, the other two as activity strips
+function trkNew(){ const c=mk(), g=c.getContext('2d');
+  px(g,0,0,240,240,C.black);
+  text(g,'V1',0,0,2,C.lred); text(g,'PAT 03',40,0,2,C.white); text(g,'125',212,0,1,C.grey); text(g,'BPM',212,9,1,C.dgrey);
+  const notes=['C-4','---','D#4','===','G-3','---','C-4','A#3','F-4','---','C-4','D#4'];
+  for(let r=0;r<12;r++){ const y=20+r*17, cur=r===5;
+    if(cur) px(g,0,y-1,214,17,C.dgrey);
+    text(g,(r+21).toString(16).toUpperCase().padStart(2,'0'),0,y+4,1,cur?C.yellow:C.grey);
+    const n=notes[r]; text(g,n,20,y,2,n==='---'?C.dgrey:(cur?C.yellow:C.white));
+    text(g,n==='---'?'..':'01',76,y,2,n==='---'?C.dgrey:C.lred);
+    text(g,r%4?'...':'308',112,y+4,1,C.grey); }
+  // other voices: activity strips with their colour
+  [[C.cyan,'V2'],[C.lgreen,'V3']].forEach((d,i)=>{ const x=218+i*11; text(g,d[1][1],x+1,20,1,d[0]);
+    for(let r=0;r<12;r++){ const on=((r*7+i*3)%5)!==0; px(g,x,32+r*16,8,on?12:2,on?d[0]:C.dgrey); } });
+  text(g,'SELECT: VOICE',0,226,1,C.dgrey);
+  return c; }
+
+// ---- CHIP, as today
+function chipNow(){ const c=mk(), g=c.getContext('2d');
+  px(g,0,0,240,240,C.blue);
+  text(g,'CHIP  [A] B   KEYS:A',0,0,1,C.lblue,C.blue);
+  box(g,2,12,236,88,C.lblue); text(g,'> CHIP 6581 WORN',8,9,1,C.white,C.blue);
+  [['AGE','40'],['DAC','62'],['THUMP','25'],['BLEED','10']].forEach((d,i)=>{ const y=24+i*18; text(g,'K'+(i+1)+' '+d[0],10,y,1,C.lblue,C.blue);
+    px(g,100,y,100,7,C.black); px(g,100,y,d[1]|0,7,C.lblue); text(g,d[1],206,y,1,C.yellow,C.blue); });
+  ['DIST  FUZZ     DRIVE 40 TONE 55','MOD   CHORUS   RATE 20 DEPTH 30','FX    DELAY    TIME 35 FB 40'].forEach((s,i)=>{ box(g,2,108+i*42,236,38,C.lblue); text(g,s.slice(0,29),8,118+i*42,1,C.lblue,C.blue); text(g,'MIX 50',8,130+i*42,1,C.lblue,C.blue); });
+  return c; }
+
+// ---- CHIP, proposed: one section at a time, controls in the knobs' places
+function chipNew(){ const c=mk(), g=c.getContext('2d');
+  px(g,0,0,240,240,C.black);
+  text(g,'CHIP A',0,0,2,C.white); text(g,'KEYS:A',192,4,1,C.grey);
+  ['CHIP','DIST','MOD','FX'].forEach((t,i)=>{ const x=i*60, on=i===0; px(g,x,22,58,14,on?C.yellow:C.dgrey); text(g,t,x+29-t.length*4,25,1,on?C.black:C.grey); });
+  text(g,'6581',0,48,3,C.white); text(g,'WORN',120,48,3,C.yellow);
+  text(g,'ALGORITHM: PROFILE',0,76,1,C.dgrey);
+  const k=[['AGE',C.yellow,'40',.4],['DAC',C.cyan,'62',.62],['THUMP',C.lgreen,'25',.25],['BLEED',C.lred,'10',.1]];
+  k.forEach((d,i)=>{ const x=i*60; text(g,d[0],x+2,104,1,d[1]); text(g,d[2],x+2,118,3,C.white);
+    px(g,x+2,146,54,5,C.dgrey); px(g,x+2,146,Math.round(54*d[3]),5,d[1]); text(g,'K'+(i+1),x+2,156,1,C.dgrey); });
+  text(g,'DIST',0,184,2,C.grey); text(g,'FUZZ',72,184,2,C.white);
+  text(g,'MOD',0,204,2,C.grey); text(g,'OFF',72,204,2,C.dgrey);
+  text(g,'SELECT: SECTION',0,228,1,C.dgrey);
+  return c; }
+
+// ---- the large-text work already being built
+function popup(){ const c=liveNew(), g=c.getContext('2d');
+  px(g,12,56,216,124,C.black); box(g,12,56,216,124,C.yellow); box(g,13,57,214,122,C.yellow);
+  text(g,'CUTOFF',24,70,3,C.yellow); text(g,'11.4K',24,104,3,C.white);
+  px(g,24,146,192,12,C.dgrey); px(g,24,146,138,12,C.yellow);
+  return c; }
+function menu2x(){ const c=mk(), g=c.getContext('2d');
+  px(g,0,0,240,240,C.black); text(g,'MENU',0,0,2,C.grey);
+  const it=[['PRESET','SAW'],['OCTAVE','+0'],['CARDS','ON'],['STORE','193K'],['KEYS','AUTO'],['SOUNDS','OFF']];
+  it.forEach((d,i)=>{ const y=28+i*32, on=i===1; if(on) px(g,0,y-4,240,26,C.dgrey);
+    text(g,d[0],8,y,2,on?C.yellow:C.white); text(g,d[1],232-d[1].length*16,y,2,on?C.yellow:C.cyan); });
+  text(g,'V MORE',176,230,1,C.dgrey);
+  return c; }
+
+const CASES = [
+  ['LIVE', 'What you look at while playing. Today: thin light-blue text on C64 blue, everything at 8 px. Proposal: one colour per voice, scopes drawn 2 px thick, and the four knobs\' values in 16-px digits sitting in the knobs\' own left-to-right order, each in its knob\'s colour.', liveNow, liveNew],
+  ['TRACKER', 'Today: three voices of 8-px rows. Proposal: one voice at 16 px with 12 rows visible; SELECT switches voice, and the other two show as coloured activity strips on the right so you can still see they play.', trkNow, trkNew],
+  ['CHIP', 'Today: every section on one screen at 8 px. Proposal: one section at a time (tabs across the top), its profile at 24 px and the four controls in the knobs\' places at 24 px, the same layout as LIVE\'s knob row.', chipNow, chipNew],
+  ['Already being built', 'The large-text work in progress: a 3× pop-up when you turn any control, and the menu at 2×. Shown here so you can judge it at the same real size.', popup, menu2x, 'Value pop-up (3×)', 'Menu (2×)'],
+];
+
+const ppm = document.getElementById('ppm'), mmw = document.getElementById('mmw'), readout = document.getElementById('readout');
+try { const s = JSON.parse(localStorage.getItem('sidou-readability') || 'null'); if (s) { ppm.value = s.ppm; mmw.value = s.mmw; } } catch (e) {}
+
+const host = document.getElementById('cases'); host.style.display = 'grid'; host.style.gap = '48px';
+const reals = [];
+CASES.forEach(([name, why, a, b, la, lb], idx) => {
+  const sec = document.createElement('section'); sec.className = 'case';
+  sec.innerHTML = `<h2>${idx + 2} · ${name}</h2><p>${why}</p>`;
+  const pair = document.createElement('div'); pair.className = 'pair';
+  [[a, la || 'Today', 'now'], [b, lb || 'Proposal', 'new']].forEach(([fn, lab, kind]) => {
+    const fig = document.createElement('figure');
+    const stage = document.createElement('div'); stage.className = 'stage';
+    const real = fn(); real.setAttribute('aria-label', name + ' ' + lab + ' at real size');
+    const bz = document.createElement('div'); bz.className = 'bezel'; bz.appendChild(real);
+    const zoom = fn(); zoom.className = 'zoom'; zoom.setAttribute('aria-label', name + ' ' + lab + ' pixel view');
+    const bz2 = document.createElement('div'); bz2.className = 'bezel'; bz2.appendChild(zoom);
+    const col1 = document.createElement('div'); col1.style.display = 'grid'; col1.style.gap = '6px'; col1.append(bz, Object.assign(document.createElement('span'), { className: 'scale-note', textContent: 'real size' }));
+    const col2 = document.createElement('div'); col2.style.display = 'grid'; col2.style.gap = '6px'; col2.style.minWidth = '0'; col2.append(bz2, Object.assign(document.createElement('span'), { className: 'scale-note', textContent: '1:1 pixels' }));
+    stage.append(col1, col2);
+    const cap = document.createElement('figcaption');
+    cap.innerHTML = `<span class="tag ${kind}">${kind === 'now' && !la ? 'TODAY' : kind === 'now' ? 'IN PROGRESS' : la ? 'IN PROGRESS' : 'PROPOSAL'}</span><b>${lab}</b>`;
+    fig.append(cap, stage); pair.append(fig); reals.push(real);
+  });
+  sec.append(pair); host.append(sec);
+});
+
+function apply() {
+  const p = parseFloat(ppm.value), w = parseFloat(mmw.value) || 23.4;
+  document.getElementById('cardbar').style.width = (85.6 * p) + 'px';
+  const side = w * p;
+  reals.forEach(c => { c.style.width = side + 'px'; c.style.height = side + 'px'; });
+  readout.textContent = `screen ${w.toFixed(1)} mm = ${side.toFixed(0)} px here · 8-px text = ${(w / 30).toFixed(2)} mm tall · 16-px = ${(w / 15).toFixed(2)} mm · 24-px = ${(w / 10).toFixed(2)} mm`;
+  try { localStorage.setItem('sidou-readability', JSON.stringify({ ppm: ppm.value, mmw: mmw.value })); } catch (e) {}
+}
+ppm.addEventListener('input', apply); mmw.addEventListener('input', apply); apply();
+</script>
