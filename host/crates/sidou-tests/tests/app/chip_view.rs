@@ -1300,7 +1300,7 @@ fn only_explicit_song_chip_edits_notify_the_edit_callback() {
     assert_eq!(edits[3].0.expert, ui.rig.live.user_expert[0]);
 
     ui.turn(PANEL_ENC_SELECT, 4);
-    ui.turn(PANEL_ENC_K2, 1);
+    ui.turn(PANEL_ENC_K1 + 1, 1);
     assert_eq!(edits[4].1, 1 << (KEYS_ROUTE_EDIT_EXPERT_FIRST + 1));
     assert_eq!(edits[4].0.expert[1], 71);
     assert_eq!(
@@ -1378,7 +1378,7 @@ fn refused_song_chip_edits_keep_the_setup_user_identity_and_popup_value() {
         );
     }
     ui.turn(PANEL_ENC_SELECT, 4);
-    for encoder in [PANEL_ENC_K1, PANEL_ENC_K2, PANEL_ENC_K3, PANEL_ENC_K4] {
+    for encoder in PANEL_ENC_K1..=PANEL_ENC_K4 {
         ui.turn(encoder, 1);
         assert_eq!(kr.song_want.expert, before.expert);
         assert_eq!(kr.song_user, 1);

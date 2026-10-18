@@ -87,7 +87,7 @@ patch's value up or down around 64; SIDOU does not.
   Selecting a built-in profile/model releases all overrides; USER profiles recall theirs.
   Outgoing MIDI sends the model/profile/macros before explicit expert overrides, and does
   not emit derived expert NRPNs for a macro move: those would freeze the receiving macro's path.
-  USER schema 2 and settings schema 4 keep the override state, not a quantized copy of defaults.
+  USER schema 2 and settings schema 5 keep the override state, not a quantized copy of defaults.
   The 6581/8580 curves apply to their named model; input bias, non-linearity and the
   external low-pass are 6581-only. Inapplicable knobs are grey and say N/A on EXPERT and
   in the value popup. Combined strength's AVERAGE band is labelled MED on the panel.

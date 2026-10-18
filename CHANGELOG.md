@@ -29,7 +29,8 @@ All notable changes are documented here. The format follows
   Held notes continue through constant changes and sliced filter/DAC rebuilds; no expert
   edit resets the chip. A macro move reclaims only its related expert values.
   USER profiles save the raw overrides (schema 2), and settings save them and their learned
-  CCs (schema 4); older records load with the profile/macro defaults. Built-in profile/model
+  CCs (schema 5, after M2c's schema-4 last-song filename); older records load with the
+  profile/macro defaults. Built-in profile/model
   choices clear overrides, while USER picks recall them. Outgoing MIDI sends explicit
   expert edits after their macros without turning inherited defaults into overrides.
 - **A theme for the screens' colours** (docs/art/README.md "Theme"): the views take their colours

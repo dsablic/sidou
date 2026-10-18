@@ -86,12 +86,12 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
         return 0;
     }
     uint32_t experts = 0;
-    if (rec[0] >= 4u) {
-        if (len < SETTINGS_V3_BYTES + 1u) {
+    if (rec[0] >= 5u) {
+        if (len < SETTINGS_V4_BYTES + 1u) {
             return 0;
         }
-        experts = rec[SETTINGS_V3_BYTES];
-        if (experts < SID_EXPERT_COUNT || len < SETTINGS_V3_BYTES + 1u + 2u * experts) {
+        experts = rec[SETTINGS_V4_BYTES];
+        if (experts < SID_EXPERT_COUNT || len < SETTINGS_V4_BYTES + 1u + 2u * experts) {
             return 0;
         }
     }
@@ -137,13 +137,13 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
     l->expert_active = 0;
     int expert_changed = 0;
     for (uint32_t e = 0; e < SID_EXPERT_COUNT; e++) {
-        uint32_t value = experts ? rec[SETTINGS_V3_BYTES + 1u + e] : SID_EXPERT_DEFAULT;
+        uint32_t value = experts ? rec[SETTINGS_V4_BYTES + 1u + e] : SID_EXPERT_DEFAULT;
         uint8_t raw = value <= SID_CHARACTER_MAX ? (uint8_t)value : SID_EXPERT_DEFAULT;
         expert_changed |= l->expert[e] != raw;
         l->expert[e] = raw;
         l->expert_active |= l->expert[e] != SID_EXPERT_DEFAULT;
         if (s->ml && experts) {
-            uint8_t cc = rec[SETTINGS_V3_BYTES + 1u + experts + e];
+            uint8_t cc = rec[SETTINGS_V4_BYTES + 1u + experts + e];
             if (cc != MIDI_MAP_NO_CC) {
                 (void)midi_learn_bind(s->ml, cc, LIVE_PARAM_EXPERT + e);
             }

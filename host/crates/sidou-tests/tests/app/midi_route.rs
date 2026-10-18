@@ -837,7 +837,10 @@ fn chip_a_macro_cc_releases_only_its_experts_and_an_unchanged_model_keeps_them()
     assert_eq!(kr.song_want.controls[0], 80);
     assert_eq!(&kr.song_want.expert[..4], &[SID_EXPERT_DEFAULT as u8; 4]);
     assert!(kr.song_want.expert[4..].iter().all(|value| *value == 70));
-    assert_eq!(r.rig.live.expert, keys_experts, "the keys keep their own setup");
+    assert_eq!(
+        r.rig.live.expert, keys_experts,
+        "the keys keep their own setup"
+    );
 }
 
 #[test]

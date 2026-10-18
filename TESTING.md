@@ -139,8 +139,8 @@ For one reproducible seed, `SIDOU_STORE_SWEEP=values:1000` (or `files:10000`) wi
 `cargo test --locked --release -p sidou-tests --test app store::power_loss_sweep -- --ignored --nocapture`
 runs that seed only; `values-forked:N` and `files-forked:N` force the forked variant.
 
-`tests/app/settings.rs` checks every persisted field and default, schema-1 through schema-4
-fixtures (schema 1 defaults TRACKER ROWS to BAR; versions before 4 follow profile/macro
+`tests/app/settings.rs` checks every persisted field and default, schema-1 through schema-5
+fixtures (schema 1 defaults TRACKER ROWS to BAR; versions before 5 follow profile/macro
 expert defaults), invalid records/fields, the versioned full
 boot, the 5 s debounce after the last change, explicit commit notification, busy retries,
 the 2 s forced-save path and foreign-store refusal. Volume and transient controllers are
@@ -196,7 +196,8 @@ The CHIP tests cover both tabs, the final EXPERT stop, all four pages' K1–K4 a
 inactive model-specific fields, exact unit readouts, named/coloured popups, MIDI learn,
 and USER saves from either chip. Clamped or empty profile-picker steps preserve edits;
 new built-in profile/model choices release them. Settings v1–3 and USER v1 fixtures
-load with following experts; v4/v2 round trips retain explicit overrides and learned CCs.
+load with following experts; settings v4 retains M2c's last-song filename. Settings v5
+and USER v2 round trips retain explicit overrides and learned CCs.
 
 `expert_transport` replays outgoing packets into a second instrument. It checks macro
 releases after deferred or canceled changes, macro-before-expert restoration, remote

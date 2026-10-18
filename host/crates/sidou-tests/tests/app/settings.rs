@@ -69,8 +69,17 @@ fn schema_four_fixture_keeps_every_earlier_field_and_the_last_song() {
         1
     );
     let migrated = b.gather();
-    assert_eq!(&migrated[1..124], &rec[1..], "exact schema 4 prefix migration");
-    assert!(b.rig.live.expert.iter().all(|&v| v == SID_EXPERT_DEFAULT as u8));
+    assert_eq!(
+        &migrated[1..124],
+        &rec[1..],
+        "exact schema 4 prefix migration"
+    );
+    assert!(b
+        .rig
+        .live
+        .expert
+        .iter()
+        .all(|&v| v == SID_EXPERT_DEFAULT as u8));
 }
 
 #[test]
@@ -117,7 +126,14 @@ fn short_records_are_rejected_before_any_field_changes_for_every_schema() {
         settings_set_song(&mut *s.set, c"OLD SONG".as_ptr());
     }
     let before = s.gather();
-    for (schema, len) in [(1, 106), (2, 107), (3, 108), (4, 124), (5, SETTINGS_BYTES), (6, SETTINGS_BYTES)] {
+    for (schema, len) in [
+        (1, 106),
+        (2, 107),
+        (3, 108),
+        (4, 124),
+        (5, SETTINGS_BYTES),
+        (6, SETTINGS_BYTES),
+    ] {
         let mut rec = Set::blank().gather();
         rec[0] = schema;
         for short in 0..len {
@@ -344,12 +360,41 @@ impl Set {
 }
 
 #[test]
-fn the_record_is_v4s_layout_with_the_original_offsets_and_raw_expert_defaults() {
+fn schema_four_last_song_migrates_without_becoming_expert_values() {
+    let mut rec = std::fs::read(v3_fixture_path()).unwrap();
+    rec[0] = 4;
+    rec.extend_from_slice(b"NIGHT DRIVE\0\0\0\0\0");
+    let mut s = Set::blank();
+    s.set_param(LIVE_PARAM_EXPERT, 12);
+    unsafe { midi_learn_bind(&mut *s.ml, 31, LIVE_PARAM_EXPERT) };
+    assert_eq!(
+        unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
+        1
+    );
+    let migrated = s.gather();
+    assert_eq!(migrated[0], 5);
+    assert_eq!(&migrated[1..124], &rec[1..]);
+    assert!(s
+        .rig
+        .live
+        .expert
+        .iter()
+        .all(|&v| v == SID_EXPERT_DEFAULT as u8));
+    assert_eq!(
+        unsafe { midi_learn_cc_of(&*s.ml, LIVE_PARAM_EXPERT) },
+        MIDI_MAP_NO_CC as u8
+    );
+    assert_eq!(migrated[124], SID_EXPERT_COUNT as u8);
+    assert_eq!(migrated.len(), 125 + 2 * SID_EXPERT_COUNT as usize);
+}
+
+#[test]
+fn the_record_is_v5s_layout_with_the_original_offsets_and_raw_expert_defaults() {
     let s = Set::blank();
     let rec = s.gather();
     assert_eq!(rec.len(), SETTINGS_BYTES as usize);
-    assert_eq!(rec.len(), 109 + 2 * SID_EXPERT_COUNT as usize);
-    assert_eq!(rec[..6], [4, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]);
+    assert_eq!(rec.len(), 125 + 2 * SID_EXPERT_COUNT as usize);
+    assert_eq!(rec[..6], [5, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]);
     let cutoff = s.param(LIVE_PARAM_CUTOFF);
     assert_eq!(
         rec[6..8],
@@ -376,9 +421,9 @@ fn the_record_is_v4s_layout_with_the_original_offsets_and_raw_expert_defaults() 
     assert_eq!(rec[106], 0, "BAR");
     assert_eq!(rec[107], THEME_HIGH_CONTRAST as u8, "HIGH CONTRAST");
     assert_eq!(&rec[108..124], &[0; 16], "built-in song");
-    assert_eq!(rec[108], SID_EXPERT_COUNT as u8);
-    let end = 109 + SID_EXPERT_COUNT as usize;
-    assert!(rec[109..end].iter().all(|&v| v == SID_EXPERT_DEFAULT as u8));
+    assert_eq!(rec[124], SID_EXPERT_COUNT as u8);
+    let end = 125 + SID_EXPERT_COUNT as usize;
+    assert!(rec[125..end].iter().all(|&v| v == SID_EXPERT_DEFAULT as u8));
     assert!(rec[end..].iter().all(|&v| v == MIDI_MAP_NO_CC as u8));
 }
 
@@ -442,7 +487,7 @@ fn malformed_expert_sections_apply_nothing() {
         );
         assert_eq!(s.gather(), before);
     }
-    rec[108] = SID_EXPERT_COUNT as u8 - 1;
+    rec[124] = SID_EXPERT_COUNT as u8 - 1;
     assert_eq!(
         unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
         0
@@ -456,9 +501,9 @@ fn future_expert_values_are_skipped_before_the_learn_bindings() {
     a.set_param(LIVE_PARAM_EXPERT, 17);
     unsafe { midi_learn_bind(&mut *a.ml, 31, LIVE_PARAM_EXPERT) };
     let mut rec = a.gather();
-    let end = 109 + SID_EXPERT_COUNT as usize;
+    let end = 125 + SID_EXPERT_COUNT as usize;
     rec[0] = SETTINGS_VERSION as u8 + 1;
-    rec[108] += 1;
+    rec[124] += 1;
     rec.insert(end, 19);
     rec.push(MIDI_MAP_NO_CC as u8);
     let mut st = fresh(10, 256);
@@ -478,7 +523,7 @@ fn invalid_expert_overrides_fall_back_to_profile_following() {
     let mut s = Set::blank();
     let mut rec = s.gather();
     s.set_param(LIVE_PARAM_EXPERT, 17);
-    rec[109] = 128;
+    rec[125] = 128;
     assert_eq!(
         unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
         1
@@ -487,15 +532,15 @@ fn invalid_expert_overrides_fall_back_to_profile_following() {
 }
 
 #[test]
-fn the_v4_fixture_preserves_the_v3_prefix_and_raw_expert_values() {
-    let rec: Vec<u8> = include_str!("../data/settings-v4.hex")
+fn the_v5_fixture_preserves_the_v4_prefix_and_raw_expert_values() {
+    let rec: Vec<u8> = include_str!("../data/settings-v5.hex")
         .lines()
         .filter(|line| !line.starts_with('#'))
         .flat_map(str::split_whitespace)
         .map(|v| u8::from_str_radix(v, 16).unwrap())
         .collect();
-    let old = std::fs::read(v3_fixture_path()).unwrap();
-    assert_eq!(&rec[1..108], &old[1..]);
+    let old = include_bytes!("../data/settings-v4.bin");
+    assert_eq!(&rec[1..124], &old[1..]);
     let mut s = Set::blank();
     assert_eq!(
         unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
@@ -948,6 +993,7 @@ fn a_schema_2_record_loads_scroll_and_keeps_the_v1_prefix() {
     let mut again = fixture.clone();
     again[0] = SETTINGS_VERSION as u8;
     again.push(THEME_HIGH_CONTRAST as u8);
+    again.extend_from_slice(&[0; 16]);
     again.push(SID_EXPERT_COUNT as u8);
     again.extend(std::iter::repeat_n(
         SID_EXPERT_DEFAULT as u8,
@@ -960,7 +1006,7 @@ fn a_schema_2_record_loads_scroll_and_keeps_the_v1_prefix() {
     assert_eq!(
         s.gather(),
         again,
-        "schema 4 preserves schema 2's bytes and appends default theme and expert fields"
+        "schema 5 preserves schema 2's bytes and appends default theme, song and expert fields"
     );
     s.rig.tick();
     let mut want = Set::blank();

@@ -23,7 +23,7 @@
  * 106  TRACKER ROWS (0 BAR, 1 SCROLL; schema 2)
  * 107  THEME (0 HIGH CONTRAST, 1 C64; schema 3)
  * 108  last song's filename, 16 NUL-padded bytes (schema 4); absent: built-in song
- * 108  expert count, then raw expert overrides, then their learned CCs (schema 4)
+ * 124  expert count, then raw expert overrides, then their learned CCs (schema 5)
  * A later schema only appends fields: an older firmware reads a newer record's v1 part, and a
  * newer one fills what an older record lacks with its defaults (settings_load's migrations).
  *
@@ -53,7 +53,7 @@ extern "C" {
  * user profiles); those below are the emulator tests' (platform/fm1/store_fm1.h's hook). */
 #define SETTINGS_KEY 0x100u
 #define SETTINGS_TYPE 1u
-#define SETTINGS_VERSION 4u
+#define SETTINGS_VERSION 5u
 #define SETTINGS_VERSION_CHARS 14u /* "V" and the version, as the status screen shows it */
 #define SETTINGS_PARAMS_V1 42u
 #define SETTINGS_V1_BYTES (6u + SETTINGS_PARAMS_V1 + 2u + SETTINGS_PARAMS_V1 + SETTINGS_VERSION_CHARS)
@@ -61,7 +61,8 @@ extern "C" {
 #define SETTINGS_V3_BYTES (SETTINGS_V2_BYTES + 1u)
 #define SETTINGS_V4_BYTES (SETTINGS_V3_BYTES + STORE_NAME_MAX)
 enum {
-    SETTINGS_BYTES = SETTINGS_V4_BYTES + 1u + 2u * SID_EXPERT_COUNT
+    SETTINGS_V5_BYTES = SETTINGS_V4_BYTES + 1u + 2u * SID_EXPERT_COUNT,
+    SETTINGS_BYTES = SETTINGS_V5_BYTES
 };
 #define SETTINGS_DEBOUNCE_MS 5000u
 #define SETTINGS_FORCE_MS 2000u
