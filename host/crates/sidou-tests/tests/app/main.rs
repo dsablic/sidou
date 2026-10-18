@@ -48,6 +48,7 @@ mod song_view;
 mod store;
 mod store_layout;
 mod tail_gate;
+mod theme;
 mod title_card;
 mod title_card_bitmap;
 mod tracker_view;

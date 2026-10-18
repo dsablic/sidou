@@ -20,6 +20,7 @@
  *  50  MIDI learn: each parameter's bound CC (MIDI_MAP_NO_CC: none), 42 bytes
  *  92  the firmware version, NUL-padded, SETTINGS_VERSION_CHARS bytes
  * 106  TRACKER ROWS (0 BAR, 1 SCROLL; schema 2)
+ * 107  THEME (0 HIGH CONTRAST, 1 C64; schema 3)
  * A later schema only appends fields: an older firmware reads a newer record's v1 part, and a
  * newer one fills what an older record lacks with its defaults (settings_load's migrations).
  *
@@ -49,12 +50,13 @@ extern "C" {
  * user profiles); those below are the emulator tests' (platform/fm1/store_fm1.h's hook). */
 #define SETTINGS_KEY 0x100u
 #define SETTINGS_TYPE 1u
-#define SETTINGS_VERSION 2u
+#define SETTINGS_VERSION 3u
 #define SETTINGS_VERSION_CHARS 14u /* "V" and the version, as the status screen shows it */
 #define SETTINGS_PARAMS_V1 42u
 #define SETTINGS_V1_BYTES (6u + SETTINGS_PARAMS_V1 + 2u + SETTINGS_PARAMS_V1 + SETTINGS_VERSION_CHARS)
 #define SETTINGS_V2_BYTES (SETTINGS_V1_BYTES + 1u)
-#define SETTINGS_BYTES SETTINGS_V2_BYTES
+#define SETTINGS_V3_BYTES (SETTINGS_V2_BYTES + 1u)
+#define SETTINGS_BYTES SETTINGS_V3_BYTES
 #define SETTINGS_DEBOUNCE_MS 5000u
 #define SETTINGS_FORCE_MS 2000u
 

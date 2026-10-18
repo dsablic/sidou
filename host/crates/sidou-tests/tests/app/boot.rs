@@ -145,12 +145,16 @@ fn the_full_boot_types_loads_and_runs_then_shows_the_title_and_the_status_screen
     assert_eq!(ui.top(), "LIVE");
     // LIVE wipes in, and then nothing is left of the boot.
     ui.settle();
-    assert_eq!(&ui.row(0)[1..5], "LIVE");
-    assert_eq!(&ui.row(1)[2..10], " V1 SAW ");
+    assert_eq!(&ui.row(0)[..8], "SAW LEAD");
+    assert_eq!(&ui.row(3)[..1], "1", "voice 1's lane");
     assert!(ui.v.s.capture.is_none(), "the boot's capture stayed");
     let scope_cell = |i: usize| {
         let (r, c) = (i / COLS, i % COLS);
-        (1..=20).contains(&c) && (1..19).contains(&r) && !matches!((r - 1) % 6, 0 | 5)
+        (LIVE_VIEW_SCOPE_COL as usize..(LIVE_VIEW_SCOPE_COL + LIVE_VIEW_SCOPE_COLS) as usize)
+            .contains(&c)
+            && (LIVE_VIEW_LANE_ROW as usize
+                ..(LIVE_VIEW_LANE_ROW + 3 * LIVE_VIEW_LANE_ROWS) as usize)
+                .contains(&r)
     };
     assert!(
         (0..COLS * COLS).all(|i| ui.g.ovl[i] == 0 || scope_cell(i)),

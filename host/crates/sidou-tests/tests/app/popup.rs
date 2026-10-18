@@ -483,7 +483,7 @@ fn a_view_switch_takes_the_popup_away_in_the_next_frame() {
     assert!(!shown(&ui));
     assert_eq!(ui.v.s.layers, 0);
     ui.settle();
-    assert_eq!(&ui.row(1)[1..15], "MENU   #  1/14");
+    assert_eq!(&ui.row(1)[1..15], "MENU   #  1/15");
 }
 
 #[test]
@@ -594,7 +594,8 @@ fn the_toast_is_large_text_on_two_rows_or_four_when_it_breaks_at_a_space() {
     let mut ui = Ui::without_cards();
     ui.settle();
     let row = SCREEN_TOAST_ROW as usize;
-    let attr = ((GRID_LIGHT_BLUE << 4) | GRID_BLUE) as u8;
+    let th = unsafe { &*theme_get(THEME_HIGH_CONTRAST) };
+    let attr = (th.toast_bg << 4) | th.toast_fg;
     let toast = |ui: &mut Ui, t: &str| {
         let c = std::ffi::CString::new(t).unwrap();
         unsafe { screen_toast(&mut ui.v.s, c.as_ptr(), 100_000) };

@@ -8,8 +8,8 @@
 #include "font.h"
 #include "widget.h"
 
-/* White on the screen's blue: the frame stands out from the light blue text under it. */
-#define ATTR GRID_ATTR(GRID_WHITE, GRID_BLUE)
+/* The theme's values on its background: the frame stands out from the labels under it. */
+#define ATTR_OF(l) THEME_ATTR(theme_get((l)->theme), value)
 #define TEXT_COL (LEARN_VIEW_COL + 2u)
 /* A toast's text, terminator included. */
 #define LINE (SCREEN_TOAST_CHARS + 1u)
@@ -129,11 +129,12 @@ static void compose(screen* s, void* state, grid* g) {
     char a[LINE];
     char b[LINE];
     lines(lv, a, b);
-    widget_frame(g, LEARN_VIEW_COL, LEARN_VIEW_ROW, LEARN_VIEW_W, LEARN_VIEW_H, ATTR,
+    const uint8_t attr = ATTR_OF(lv->l);
+    widget_frame(g, LEARN_VIEW_COL, LEARN_VIEW_ROW, LEARN_VIEW_W, LEARN_VIEW_H, attr,
                  "MIDI LEARN");
-    grid_fill(g, LEARN_VIEW_COL + 1u, LEARN_VIEW_ROW + 1u, LEARN_VIEW_W - 2u, 2, ' ', ATTR);
-    grid_text(g, TEXT_COL, LEARN_VIEW_ROW + 1u, a, ATTR);
-    grid_text(g, TEXT_COL, LEARN_VIEW_ROW + 2u, b, ATTR);
+    grid_fill(g, LEARN_VIEW_COL + 1u, LEARN_VIEW_ROW + 1u, LEARN_VIEW_W - 2u, 2, ' ', attr);
+    grid_text(g, TEXT_COL, LEARN_VIEW_ROW + 1u, a, attr);
+    grid_text(g, TEXT_COL, LEARN_VIEW_ROW + 2u, b, attr);
 }
 
 static int changed(screen* s, void* state) {

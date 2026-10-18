@@ -57,6 +57,7 @@
 #include <stdint.h>
 
 #include "grid.h"
+#include "theme.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -128,9 +129,10 @@ typedef void (*screen_watch_fn)(void* ctx);
 
 /* What the popup shows for the control asked for (screen_popup_ask's `ask`): its name and
  * value into name and value (SCREEN_POPUP_TEXT), and for a continuous value fill out of max
- * for the bar (max 0: no bar). 0: nothing to show. */
+ * for the bar (max 0: no bar), and its accent colour (a GRID_ colour: the knob's; left at
+ * THEME_ACCENT, the theme's `hot`). 0: nothing to show. */
 typedef int (*screen_popup_fn)(void* ctx, uint32_t ask, char* name, char* value, uint32_t* fill,
-                               uint32_t* max);
+                               uint32_t* max, uint32_t* accent);
 
 /* The popup's state, in whoever owns the screen (the views: a screen's fields stay small and
  * where they were), given to screen_popup_source. */
@@ -146,6 +148,11 @@ typedef struct {
     uint8_t fresh;    /* its text was set this frame */
     uint8_t bar;      /* the bar's fill, 0..SCREEN_POPUP_BAR_CELLS * 8 */
     uint8_t has_bar;
+    uint8_t accent;   /* the box's accent colour (the control's knob), a GRID_ colour */
+    /* The theme's id (app/theme.h), read by what the screen draws itself, the toast and the
+     * popup; NULL: the default (screen_theme_source). Here, not in the screen: its fields keep
+     * their offsets. */
+    const uint8_t* theme_id;
     char name[SCREEN_POPUP_TEXT];
     char value[SCREEN_POPUP_TEXT];
 } screen_popup_state;
@@ -259,6 +266,12 @@ void screen_toast(screen* s, const char* text, uint32_t ms);
 /* The popup: its state st (kept by the caller, as long as the screen) and the source of what
  * screen_popup_ask's controls show (views_init). Without one, no popup. */
 void screen_popup_source(screen* s, screen_popup_state* st, screen_popup_fn fn, void* ctx);
+/* The byte holding the theme's id (live.theme), which the toast and the popup take their colours
+ * from as they draw (app/theme.h); until set, the default theme. After screen_popup_source (the
+ * popup's state holds it). */
+void screen_theme_source(screen* s, const uint8_t* id);
+/* The theme in force for s. */
+const theme* screen_theme(const screen* s);
 /* fn(ctx) runs every frame, before the asks of that frame are taken (NULL: none, the default):
  * for a source of asks that has no input to hook (views_popup_midi). A screen with a watcher
  * runs its layers every frame. */
@@ -270,6 +283,8 @@ void screen_popup_ask(screen* s, uint32_t ask);
 /* The popup showing name and value (clipped to SCREEN_POPUP_CHARS) and a bar of fill out of
  * max (max 0: none), opening or kept open another SCREEN_POPUP_MS. */
 void screen_popup(screen* s, const char* name, const char* value, uint32_t fill, uint32_t max);
+/* The same with the accent colour of the box (a GRID_ colour; THEME_ACCENT: the theme's `hot`). */
+void screen_popup_accent(screen* s, uint32_t accent);
 /* 1 while the popup is open, opening or closing. */
 int screen_popup_shows(const screen* s);
 /* Sweeps the raster over the border for steps steps (SCREEN_RASTER_FRAMES frames each). */

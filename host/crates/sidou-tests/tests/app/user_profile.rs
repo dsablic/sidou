@@ -154,8 +154,14 @@ impl Prof {
         self.frames(3);
     }
 
-    fn row(&self, row: u32, from: usize, to: usize) -> String {
-        self.ui.row(row as usize)[from..to].trim_end().to_owned()
+    /// `n` cells of a row from `col`, as text (large text's pieces show their characters).
+    fn small(&self, row: u32, col: usize, n: usize) -> String {
+        self.ui.small(row as usize, col, n).trim_end().to_owned()
+    }
+
+    /// The profile as the choice's second word, `n` characters of 3x text.
+    fn word(&self, n: usize) -> String {
+        self.ui.big(CHIP_VIEW_CHOICE_ROW as usize, 13, 3, n)
     }
 
     fn profile(&self) -> u32 {
@@ -197,18 +203,18 @@ fn a_save_target_stores_the_chips_setup_without_changing_the_chip() {
     let (profile, ctl) = (p.profile(), p.controls());
     p.ui.rig.clear();
     p.target(3);
-    assert_eq!(p.row(CHIP_VIEW_CHIP_ROW, 2, 21), "# SAVE TO USER 3 -");
+    assert_eq!(p.small(CHIP_VIEW_NAMES_ROW, 0, 16), "SAVE TO USER 3 -");
     assert_eq!(
         (p.profile(), p.controls()),
         (profile, ctl),
         "the chip is unchanged"
     );
     assert!(p.ui.rig.log().is_empty(), "no register write");
-    // The title is yellow.
+    // The target is yellow, where the names of the choice stand.
     assert_eq!(
-        p.ui.g.attr[CHIP_VIEW_CHIP_ROW as usize * COLS + 4],
-        ((GRID_BLUE << 4) | GRID_YELLOW) as u8,
-        "the target, yellow on blue"
+        p.ui.g.attr[CHIP_VIEW_NAMES_ROW as usize * COLS + 4],
+        ((GRID_BLACK << 4) | GRID_YELLOW) as u8,
+        "the target, yellow on black"
     );
     p.save();
     let toast = p.toast_within(1000).expect("a toast");
@@ -272,7 +278,11 @@ fn home_keeps_the_slot_and_forgets_the_question_and_the_target() {
     p.frames(3);
     assert_eq!(p.ui.top(), "CHIP");
     assert_eq!(p.ui.v.chip.target, 0);
-    assert_eq!(p.row(CHIP_VIEW_CHIP_ROW, 2, 10), "# CHIP #");
+    assert_eq!(
+        p.small(CHIP_VIEW_NAMES_ROW, 0, 5),
+        "MODEL",
+        "the names are back"
+    );
 }
 
 #[test]
@@ -342,10 +352,7 @@ fn the_picker_runs_the_built_in_profiles_then_the_filled_users_skipping_empty_on
         (SID_CHIP_6581_R2, [1, 2, 3, 4])
     );
     p.settle();
-    assert_eq!(
-        p.row(CHIP_VIEW_CHIP_ROW + 1, 4, 26),
-        "PROFILE         USER 1"
-    );
+    assert_eq!(p.word(5), "USR 1");
     p.ui.turn(ALG, 1); // skips the empty USER 2
     assert_eq!(p.ui.live().user_applied, 3);
     assert_eq!(
@@ -353,10 +360,7 @@ fn the_picker_runs_the_built_in_profiles_then_the_filled_users_skipping_empty_on
         (SID_CHIP_8580_R5, [5, 6, 7, 8])
     );
     p.frames(3);
-    assert_eq!(
-        p.row(CHIP_VIEW_CHIP_ROW + 1, 4, 26),
-        "PROFILE         USER 3"
-    );
+    assert_eq!(p.word(5), "USR 3");
     // Nothing filled beyond: it stays, and says which slot it passed.
     p.ui.turn(ALG, 1);
     assert_eq!(p.ui.live().user_applied, 3);
@@ -442,7 +446,7 @@ fn on_a_songs_chip_a_the_save_target_stores_the_songs_setup_not_the_keys() {
     assert_eq!(unsafe { chip_view_song_tab(&p.ui.v.chip) }, 1);
     let keys = (p.profile(), p.controls());
     p.target(5);
-    assert_eq!(p.row(CHIP_VIEW_CHIP_ROW, 2, 21), "# SAVE TO USER 5 -");
+    assert_eq!(p.small(CHIP_VIEW_NAMES_ROW, 0, 16), "SAVE TO USER 5 -");
     p.save();
     assert_eq!(p.toast_within(1000).as_deref(), Some("SAVED TO USER 5"));
     p.frames(5);

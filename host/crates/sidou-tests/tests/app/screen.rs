@@ -680,7 +680,12 @@ fn a_toast_shows_on_its_row_until_it_times_out() {
     assert_eq!(r.row_text(row, col, 9), "OCTAVE +1");
     assert_eq!(r.row_text(row + 1, col, 9), "OCTAVE +1");
     let a = r.shown[row * COLS + col].1;
-    assert_eq!(a, attr(GRID_BLUE, GRID_LIGHT_BLUE), "reverse video");
+    let th = unsafe { &*theme_get(THEME_HIGH_CONTRAST) };
+    assert_eq!(
+        a,
+        attr(u32::from(th.toast_fg), u32::from(th.toast_bg)),
+        "the theme's toast colours"
+    );
     assert_eq!(r.frame().cells, 0, "a toast that stays costs nothing");
     r.frame(); // 80 ms after its first frame
     assert_eq!(r.row_text(row, col, 9), "OCTAVE +1");

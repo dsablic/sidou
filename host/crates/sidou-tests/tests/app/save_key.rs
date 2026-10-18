@@ -221,6 +221,43 @@ fn a_tracker_rows_change_alone_is_background_saved_after_five_seconds_and_loaded
 }
 
 #[test]
+fn a_theme_change_alone_is_background_saved_after_five_seconds_and_loaded_at_boot() {
+    let mut s = Saving::new();
+    for _ in 0..150 {
+        s.frame();
+    }
+    let before = s.stored().expect("the boot's settings saved");
+    assert_eq!(s.ui.rig.live.settings_dirty, 0);
+    assert_eq!(
+        s.ui.rig.live.theme, THEME_HIGH_CONTRAST as u8,
+        "the default"
+    );
+    s.ui.press(PANEL_BTN_HOME);
+    s.ui.settle();
+    s.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_THEME as i32);
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(s.ui.rig.live.theme, THEME_C64 as u8);
+    s.frame();
+    let changed_at = s.set.changed_at;
+    while s.ui.now - changed_at < SETTINGS_DEBOUNCE_MS {
+        assert_eq!(s.stored(), Some(before.clone()), "not before five seconds");
+        s.frame();
+    }
+    s.frame();
+    s.frame();
+    assert_eq!(s.stored(), Some(s.gather()), "THEME alone must save");
+    assert_ne!(s.stored(), Some(before));
+    let mut st = s.st;
+    st.reset();
+    st.mount();
+    let reboot = Saving::on(st);
+    assert_eq!(
+        reboot.ui.rig.live.theme, THEME_C64 as u8,
+        "the theme comes back at boot"
+    );
+}
+
+#[test]
 fn a_learned_binding_alone_is_background_saved_through_views_frame() {
     let mut s = Saving::new();
     s.ticks_for_the_debounce();

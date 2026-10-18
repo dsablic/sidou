@@ -62,6 +62,7 @@
 #include "song_view.h"
 #include "store.h"
 #include "store_layout.h"
+#include "theme.h"
 #include "title_card.h"
 #include "tracker_view.h"
 #include "ui_sound.h"

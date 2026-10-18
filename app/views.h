@@ -110,6 +110,7 @@
 #include "scope.h"
 #include "screen.h"
 #include "song_view.h"
+#include "theme.h"
 #include "tracker_view.h"
 #include "title_card.h"
 #include "widget.h"
@@ -121,7 +122,7 @@ extern "C" {
 /* The status screen's colours: light blue on blue. */
 #define VIEWS_TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
 /* The menu's items, the title cards' option, and the items that open a view. */
-#define VIEWS_MENU_ITEMS 14u
+#define VIEWS_MENU_ITEMS 15u
 #define VIEWS_MENU_CHIP 0u
 #define VIEWS_MENU_TRACKER 1u
 #define VIEWS_MENU_CARDS 4u
@@ -129,14 +130,15 @@ extern "C" {
 #define VIEWS_MENU_KEYS 6u
 #define VIEWS_MENU_SOUNDS 7u
 #define VIEWS_MENU_ROWS 8u
+#define VIEWS_MENU_THEME 9u
 /* PRESET (the item that shows PRE), and the items the menu shows at once. */
 #define VIEWS_MENU_PRESET 2u
 #define VIEWS_MENU_SHOWN 6u
-#define VIEWS_MENU_STATUS 9u
-#define VIEWS_MENU_SCENE 10u
-#define VIEWS_MENU_CHARSET 11u
-#define VIEWS_MENU_ABOUT 12u
-#define VIEWS_MENU_MIDI 13u
+#define VIEWS_MENU_STATUS 10u
+#define VIEWS_MENU_SCENE 11u
+#define VIEWS_MENU_CHARSET 12u
+#define VIEWS_MENU_ABOUT 13u
+#define VIEWS_MENU_MIDI 14u
 /* The MIDI page's items (app/midi_route.h): MODE, CHANNEL, OPTION, LEGATO, CHORD 2, CHORD 3,
  * ARP RATE, ROWS/BEAT, and the clock's (app/midi_sync.h): CLOCK, CLOCK OUT. */
 #define VIEWS_MIDI_ITEMS 10u

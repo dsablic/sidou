@@ -236,17 +236,18 @@ which printed control did it.
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the status screen and the CHIP view; Mix as LIVE's bar), in every view; EDIT lit while the slot is on | | [ ] |
 | HOME (button 8) | from LIVE, the menu (a wipe down from the top); in the menu, back to LIVE behind THE OSCILLATOR's title card (below; with CARDS OFF, a wipe up from the bottom) | | [ ] |
 | SAVE (button 9) | clean release saves (7.1–7.2); held + knob learns (7) | | [ ] |
-| SEQ (button 11) | from any view, the TRACKER (black, a light blue top line TRACKER, a stop square, the tempo 125, ORD 00 ROW 00; V1 V2 V3 on the second line; SIDOU LOOP's first patterns, a blue bar on row 00, the orderlists on row 28); SEQ again stays there, HOME goes back | | [ ] |
+| SEQ (button 11) | from any view, the TRACKER (black: V1 at 2× in light red, PAT 00, a stop square, the tempo 125; SIDOU LOOP's first pattern in 12 rows at 2× with a dark grey bar on row 00, the other two voices as strips on the right, the orderlist and ORD 00 ROW 00 at the foot); SEQ again stays there, HOME goes back | | [ ] |
+| SELECT (encoder 0), in TRACKER | the voice shown: V2 in cyan with its pattern, then V3 in light green, then V1 again; the other two voices are the strips (their numbers over them); counter-clockwise goes the other way; no popup, no toast | | [ ] |
 | TRACKER ROWS in the menu | BAR: while SIDOU LOOP plays the bar moves down still rows, and the rows change cleanly at each new pattern; SCROLL: the bar stays on the middle row and the rows move up, smoothly at this tempo or a frame behind at most | | [ ] |
-| PLAY (button 12) | SIDOU LOOP plays (a lead, a bass and drums, in time, no clicks between rows), in any view; TRACKER's top line shows a play mark and the rows move; PLAY again stops it and the notes ring out; EDIT + PLAY goes on from there; PLAY's LED lit while it plays | | [ ] |
-| REC (button 13) | REC in red at the right of TRACKER's top line, and off again | | [ ] |
-| A note key in TRACKER, the song stopped | SIDOU LOOP's first instrument on voice 1 (V1's meter moves), nothing of the song plays; let go, it releases; LIVE's keys sound the same as before afterwards | | [ ] |
-| GLO (button 7) held + the leftmost note key | while SIDOU LOOP plays, its voice 1 goes silent; TRACKER's V1 head says MUT in light red, LIVE's top line M1 in the preset's place; the key sounds nothing; again: back. GLO + the fourth key: only voice 1 sounds, SOL on V1 | | [ ] |
-| SELECT (encoder 0), in the menu | the selected line (reverse video) moves between CHIP, TRACKER, PRE (PRESET), OCTAVE, CARDS, STORE, KEYS, SOUNDS, ROWS (TRACKER ROWS), STATUS, SCENE, CHARSET and ABOUT; six lines show at a time and the list scrolls with it, the title bar's arrows telling which way more is | | [ ] |
-| ALGORITHM (encoder 1), in the menu | changes the item under the selection (PRESET; OCTAVE -3..+3; CARDS: counter-clockwise OFF, clockwise ON); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
-| SELECT (encoder 0), on CHIP | the focus (a play mark and white frames) moves CHIP, DIST, MOD, FX and stops at either end; onto a slot that was not the selected one, the toast says SLOT DIST (or MOD, FX); onto the slot already selected (DIST at power-on), no toast | | [ ] |
-| ALGORITHM (encoder 1), on CHIP | on CHIP the PROFILE steps 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581, then filled USER slots (7.2; MODEL follows; held notes attack again on the new chip, as at a model change); on a slot its algorithm, OFF to the last, named in the slot's frame | | [ ] |
-| K1..K4, on CHIP | on CHIP AGE, DAC, THUMP, BLEED (bars and values; the sound darkens with AGE, a released note whispers with DAC); on a slot its four controls, named for the algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX) | | [ ] |
+| PLAY (button 12) | SIDOU LOOP plays (a lead, a bass and drums, in time, no clicks between rows), in any view; TRACKER's header shows a play mark and the rows move (the bar, and the strips' tall bars where the other voices play notes); PLAY again stops it and the notes ring out; EDIT + PLAY goes on from there; PLAY's LED lit while it plays | | [ ] |
+| REC (button 13) | REC in red under TRACKER's play mark, and off again | | [ ] |
+| A note key in TRACKER, the song stopped | SIDOU LOOP's first instrument on the voice shown (after SELECT, on that voice), nothing of the song plays; let go, it releases; LIVE's keys sound the same as before afterwards | | [ ] |
+| GLO (button 7) held + the leftmost note key | while SIDOU LOOP plays, its voice 1 goes silent; TRACKER's V1 turns grey and says MUT in red beside the pattern (a muted voice shown as a strip: grey and short), LIVE's top line M1 in red in the preset's place; the key sounds nothing; again: back. GLO + the fourth key: only voice 1 sounds, SOL beside V1's pattern | | [ ] |
+| SELECT (encoder 0), in the menu | the selected line (reverse video) moves between CHIP, TRACKER, PRE (PRESET), OCTAVE, CARDS, STORE, KEYS, SOUNDS, ROWS (TRACKER ROWS), THEME, STATUS, SCENE, CHARSET and ABOUT; six lines show at a time and the list scrolls with it, the title bar's arrows telling which way more is | | [ ] |
+| ALGORITHM (encoder 1), in the menu | changes the item under the selection (PRESET; OCTAVE -3..+3; CARDS: counter-clockwise OFF, clockwise ON; THEME: counter-clockwise HIGH, the default, clockwise C64: every screen, the menu included, changes colours at once); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
+| SELECT (encoder 0), on CHIP | the focus (the yellow tab, or the yellow title on the A/B tabs) moves CHIP, DIST, MOD, FX and stops at either end; onto a slot that was not the selected one, the toast says SLOT DIST (or MOD, FX); onto the slot already selected (DIST at power-on), no toast | | [ ] |
+| ALGORITHM (encoder 1), on CHIP | on CHIP the PROFILE steps 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581, then filled USER slots (7.2; MODEL follows; held notes attack again on the new chip, as at a model change); on a slot its algorithm, OFF to the last, at 3× under the tabs | | [ ] |
+| K1..K4, on CHIP | on CHIP AGE, DAC, THUMP, BLEED (values at 3× with bars, in the knob's colour; the sound darkens with AGE, a released note whispers with DAC); on a slot its four controls, named for the algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX) | | [ ] |
 
 - [ ] A held note keeps its pitch when the octave changes, and stops when
   the key is released.
@@ -270,7 +271,7 @@ which printed control did it.
   its job, only `app/panel.h` changes: note which id is which. M2d is not done on hardware
   until this passes.
 - [ ] The other buttons and encoders do nothing (record anything they do);
-  SELECT does nothing outside the menu, CHIP and SCENE, ALGORITHM nothing
+  SELECT does nothing outside the menu, CHIP, SCENE and TRACKER, ALGORITHM nothing
   outside the menu and CHIP.
 
 Notes:
@@ -288,19 +289,22 @@ The panel runs at 12 MHz SPI (Felucca's setting).
 
 LIVE (the screen at power-on):
 
-- [ ] At rest the three scopes are flat lines, the envelope bars and the
-  VU meters empty, and nothing flickers.
-- [ ] A held key: its voice's scope shows the waveform (SAW LEAD a sawtooth,
-  PWM BASS a pulse whose width moves, SYNC LEAD voice 1's synced saw, NOISE
-  PERC noise), standing still while the note holds; its envelope bar rises
-  and falls with ATK, DEC, SUS and REL beside it; its VU meter moves. Higher
-  notes show more periods.
-- [ ] Released, the scope goes flat again once the release has faded.
+- [ ] At rest the three scopes are flat dark grey lines two pixels thick, the voice numbers
+  1 2 3 in light red, cyan and light green, the three notes `---`, the VU meters empty, the
+  knob row (CUTOFF, RESO, PULSE, PRESET) in yellow, cyan, light green and light red, and
+  nothing flickers.
+- [ ] A held key: its voice's scope turns its colour and shows the waveform (SAW LEAD a
+  sawtooth, PWM BASS a pulse whose width moves, SYNC LEAD voice 1's synced saw, NOISE PERC
+  noise), standing still while the note holds, two pixels thick; the note's name at 2× on
+  the right and ATK, DEC, SUS, REL under it; its VU bar moves. Higher notes show more periods.
+- [ ] Released, the note's name dims, and the scope goes flat and dark grey again once the
+  release has faded.
 - [ ] A three-note chord: all three scopes move; with noise on all three
   (CC 20 = 64) they keep moving, taking turns, with no tearing.
-- [ ] K1 and K2 move the FILTER curve (the yellow column is the cutoff),
-  and the FC and RES numbers under it; MIDI CC 23 changes its mode (LP, BP,
-  HP, NOTCH...).
+- [ ] K1 and K2 move the CUTOFF and RESO values and their bars (the cutoff as `980`, `1.2K`
+  or `12K`); MIDI CC 23 changes the filter's mode at 2× (LP, BP, HP, NOTCH...). K3 moves
+  PULSE (a percent) and K4 changes the PRESET, its three letters in the fourth column and its
+  name at the top.
 - [ ] The L and R meters follow the output; with REVERB on, the tail shows
   on them after the note.
 - [ ] No click or crackle in the sound while LIVE shows, against the menu
@@ -315,23 +319,52 @@ unreadable on this panel. Look at arm's length, at a desk and held in the hand:
   left or right edge (a cell of margin), and the top line of the title bar is whole. Scroll to
   the end and back: the lines come in a line or two a frame (a short sweep, no tearing, no
   stray cells), the arrows in the title bar say where more is, PRE shows NOISE PERC without
-  touching its label, STORE reads `193K` and ROWS BAR or SCROLL. Every one of the 13 items
-  can be reached and read.
+  touching its label, STORE reads `193K`, ROWS BAR or SCROLL and THEME HIGH or C64. Every one of
+  the 15 items can be reached and read.
 - [ ] **The popup**: turn K1 on LIVE: CUTOFF and its value in Hz (`1.2K`) in large letters
-  over the middle of the screen with a green bar, opening in about a tenth of a second; keep
-  turning and it stays; stop and it goes about a second later, LIVE back whole (scopes, FILTER
-  curve and slots as before, no stray cells). Each of these says its own name and value
+  over the middle of the screen with a bar in the knob's colour (yellow for K1), opening in about a tenth of a second; keep
+  turning and it stays; stop and it goes about a second later, LIVE back whole (scopes, the knob
+  row and the slots as before, no stray cells). Each of these says its own name and value
   readably, in the large size where it fits: K2 RESO, K3 PULSE (a percent), K4 PRESET (a name,
   no bar), EDIT + K1..K4 (`DIST DRIVE` and the like, in the smaller size), MASTER VOLUME, and on
   CHIP K1..K4 AGE, DAC, THUMP, BLEED and ALGORITHM the PROFILE or the slot's algorithm. Over
   the menu, ALGORITHM on OCTAVE shows OCTAVE and `+1`. SELECT opens nothing.
 - [ ] **MIDI never opens it**: sweep a controller (CC 74) over MIDI while LIVE shows: the
-  FILTER curve moves, no popup.
+  CUTOFF value and bar move, no popup.
 - [ ] **A popup while notes sound**: hold a chord on LIVE and turn K1: the scopes under the box
   are hidden, the rest keeps moving, the sound has no click or dropout, and the box goes
   cleanly a second after the last turn.
 - [ ] **Toasts**: OCT+ shows `OCTAVE +1` in large letters on the bottom two rows, readable, for
   about 1.5 s; SAVE shows `SAVED`.
+
+Readability of the redesigned screens ([the theme and layouts](art/README.md#theme)): each is
+drawn to be read at the panel's 23 mm. Hold the FM-1 at arm's length, at a desk and in the
+hand, in the HIGH CONTRAST theme (the default) and again after THEME to C64 in the menu:
+
+- [ ] **LIVE**: from across a desk you can tell, without leaning in, which voices sound (the
+  scopes in their colours against dark grey), each voice's note, and the four knobs' values
+  (the cutoff, resonance, pulse width and preset) in their colours. The 2-pixel traces are
+  clean lines, not a ladder of dots. The small text (the waveform under each number, the stage
+  under each note, the knob names, the slot lines) is the part you read when you look at it,
+  not from across the desk: note which of it you cannot read at all.
+- [ ] **TRACKER**: one voice's twelve rows at 2× are readable at a glance (the note and the
+  instrument), the current row's dark grey bar is clear against black, and the other two
+  voices' strips show where they play; the row numbers and the commands (small) are legible
+  in the hand. SELECT switches voices without a flicker. Mute a voice: its number and strip
+  are visibly grey. Note anything you cannot read.
+- [ ] **CHIP**: the four tabs, the choice at 3× and the four controls at 3× are readable from
+  arm's length; the values in knob order match the knobs under your fingers; three digits at 2×
+  (from 100) are still easy. The A/B title and KEYS marker, and the SAVE TO USER n line (yellow,
+  small), can be found when you look for them.
+- [ ] **STATUS and ABOUT**: the 2× title and the key numbers are readable; the small lines are
+  as before.
+- [ ] **MENU and the MIDI page**: the menu's fifteen items at 2× (THEME and MIDI included)
+  read from arm's length; the MIDI page (HOME, then MIDI) is small text in the theme's colours
+  (the items white, the help lines grey): note whether you can read its ten items in the hand.
+- [ ] **Contrast**: the grey labels and dark grey inactive things are visible but clearly
+  second; in the C64 theme the same is true on blue. Note any pair of colours that vanishes on
+  the panel (the dark grey on black especially, which the panel may show darker than the
+  monitor).
 
 Title cards ([controls](reference/controls.md#title-cards)):
 
@@ -358,15 +391,19 @@ Title cards ([controls](reference/controls.md#title-cards)):
 CHIP (menu, CHIP; [controls](reference/controls.md#chip)):
 
 - [ ] The page as `tests/golden/lcd/chip.png`, its state set over MIDI (the emulator test's
-  CCs): AGE 100, DAC 40, THUMP 64, BLEED 20; DIST OVERDRIVE, MOD CHORUS, FX REVERB, every
-  slot on with its controls named and lit. The A tab in reverse, B M2 greyed, the CHIP and
-  CHARACTER frames white with the play mark, the slot frames light blue.
-- [ ] With every slot OFF (ALGORITHM counter-clockwise on each), a slot's controls are
-  greyed under their generic names (AMT, A, B, MIX).
+  CCs): AGE 100, DAC 40, THUMP 64, BLEED 20; DIST OVERDRIVE, MOD CHORUS, FX REVERB. CHIP A at
+  2× in white, the CHIP tab yellow, `6581` and the profile at 3×, the four controls in yellow,
+  cyan, light green and light red with their values at 3× (AGE's `100` at 2×, which is how
+  three digits fit), and the three slots' algorithms at 2× below.
+- [ ] SELECT through DIST, MOD and FX: each tab turns yellow in turn, the choice at 3× is the
+  slot's algorithm, its controls are named for it (OVERDRIVE: DRIVE, TONE, BIAS, MIX), and the
+  lines below are the chip and the other two slots. With every slot OFF (ALGORITHM
+  counter-clockwise on each), a slot's controls are dark grey under their generic names (AMT,
+  A, B, MIX).
 - [ ] ALGORITHM on CHIP between two 6581 profiles (R2 and R3, R3 and R4AR, either way) shows
   no toast and no raster, by design: only a model change (to or from 8580 R5) says CHIP 6581
-  or CHIP 8580 and sweeps the border. The PROFILE line changes either way.
-- [ ] Turning K1 fast end to end on CHIP: the AGE bar follows without lag or torn cells,
+  or CHIP 8580 and sweeps the border. The profile word changes either way.
+- [ ] Turning K1 fast end to end on CHIP: the AGE value and bar follow without lag or torn cells,
   and the sound darkens smoothly, with no click.
 - [ ] MIDI CCs for every slot and character control at once (a controller's snapshot,
   or a DAW sending them in one go): the page catches up within a few frames, no cell

@@ -9,6 +9,16 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **A theme for the screens' colours** (docs/art/README.md "Theme"): the views take their colours
+  from roles defined once in `app/theme.c`. **HIGH CONTRAST** is the new default (black, white
+  values, grey labels, dark grey for the inactive, light red, cyan and light green for voices
+  1-3 and yellow, cyan, light green and light red for K1-K4, the same everywhere, the
+  popup's bar included); **C64** keeps the old blue look. The menu's **THEME** item chooses, and
+  the choice persists (settings schema 3: schema 1 and 2 records load HIGH CONTRAST).
+- **TRACKER shows one voice at a time at 2× the font** with the other two as activity strips,
+  and **SELECT steps the voice** (1, 2, 3 and round); the note keys audition on the voice shown.
+- docs/hardware-test.md: a readability check of each redesigned screen on the panel, in both
+  themes.
 - M2a storage complete (Tasks 1-7; the hardware timing run remains open): a
   log-structured store in `[0x97000, 0xE0000)`, with per-sector guard bands,
   CRCs, power-loss recovery and an erase-ahead pool. Files up to 64 KiB claim
@@ -49,6 +59,18 @@ All notable changes are documented here. The format follows
 - docs/hardware-test.md: a readability check of the large text on the panel.
 
 ### Changed
+- **LIVE, TRACKER, CHIP and STATUS are drawn to be read at the panel's 23 mm**, after the
+  screen-readability prototype the user chose (assets/prototypes/screen-readability.html).
+  LIVE: the preset's name at 2×; three voice lanes (the voice's number at 2× in its colour, its
+  scope 2 pixels thick, dark grey and flat while the voice is silent, the note at 2×); the
+  knob row (CUTOFF, RESO, PULSE, PRESET: what K1-K4 turn, each value at 2× with a bar in the
+  knob's colour); the filter's mode at 2×, the slots and the VU meters. Dropped from LIVE: the
+  envelope bars, each voice's pulse width, the filter's response curve and each slot's Mix
+  bar. TRACKER: 12 rows at 2× of one voice. CHIP: one section at a time under the tabs CHIP,
+  DIST, MOD, FX, its choice and its four controls at 3× in the knobs' places. STATUS and ABOUT:
+  the titles and key numbers larger.
+- **The menu has 15 items** (THEME after ROWS, MIDI last), its title bar, values and selected line in the
+  theme's colours; the toast, the popup and MIDI learn's frame follow the theme too.
 - Settings persist: CARDS, KEYS, SOUNDS, TRACKER ROWS, the preset and its edits,
   the keys' chip model, base profile and character, effect slots, envelope mode
   and MIDI-learn bindings. A background save runs 5 s after the last persisted

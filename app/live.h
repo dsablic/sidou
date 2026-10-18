@@ -368,6 +368,9 @@ typedef struct {
     uint8_t user_applied;
     uint8_t user_base[LIVE_USER_PROFILES];
     uint8_t user_ctl[LIVE_USER_PROFILES][LIVE_CHAR_FIELDS - 1u];
+    /* The screens' theme (app/theme.h THEME_*; the menu's THEME, persisted). Not an
+     * instrument setting: it is here for every view to reach through its `live`. At the end. */
+    uint8_t theme;
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */
@@ -445,6 +448,10 @@ void live_rewrite_voice(live* l, uint32_t v);
 void live_rewrite(live* l);
 /* The KEYS setting (a live_keys_mode; anything else is AUTO). Not a MIDI parameter. */
 void live_set_keys_mode(live* l, uint32_t mode);
+/* The THEME setting (a THEME_* of app/theme.h, LIVE_THEMES of them; anything else is the default,
+ * HIGH CONTRAST). Not a MIDI parameter. */
+#define LIVE_THEMES 2u
+void live_set_theme(live* l, uint32_t theme);
 /* From now on a model or profile change waits for prepare (above); NULL: none, as after
  * live_init. A preparation already asked for is dropped. */
 void live_set_preparer(live* l, live_prepare_fn prepare, void* ctx);

@@ -49,12 +49,62 @@ fn settle(ui: &mut Ui) {
     drain(&mut ui.g);
 }
 
+/// A voice's lane: its first row.
+fn lane(v: usize) -> usize {
+    LIVE_VIEW_LANE_ROW as usize + LIVE_VIEW_LANE_ROWS as usize * v
+}
+
+/// The scope's first cell column.
+const SCOPE: usize = LIVE_VIEW_SCOPE_COL as usize;
+
+/// `n` cells of a row from `col`, as ordinary text (a large character's piece shows the glyph
+/// it is a piece of).
+fn small(ui: &Ui, row: usize, col: usize, n: usize) -> String {
+    (col..col + n)
+        .map(|c| {
+            let i = row * COLS + c;
+            let b = if usize::from(ui.g.ch[i]).wrapping_sub(GRID_BIG_FIRST as usize)
+                < GRID_BIG_PIECES as usize
+            {
+                ui.g.src[i]
+            } else {
+                ui.g.ch[i]
+            };
+            if (0x20..0x7f).contains(&b) {
+                b as char
+            } else {
+                '#'
+            }
+        })
+        .collect()
+}
+
+/// `n` characters of 2x text from (`row`, `col`): one per two cells.
+fn big(ui: &Ui, row: usize, col: usize, n: usize) -> String {
+    (0..n)
+        .map(|i| {
+            let k = row * COLS + col + 2 * i;
+            assert_eq!(
+                usize::from(ui.g.ch[k]),
+                GRID_BIG_FIRST as usize,
+                "a large character's top left piece at ({row}, {})",
+                col + 2 * i
+            );
+            ui.g.src[k] as char
+        })
+        .collect()
+}
+
+fn theme_of(ui: &Ui) -> &'static theme {
+    unsafe { &*theme_get(u32::from(ui.live().theme)) }
+}
+
 /// The overlay masks of voice v's scope cells (4 rows of 20), empty where none.
 fn scope_masks(ui: &Ui, v: usize) -> Vec<[u8; 8]> {
-    let top = LIVE_VIEW_BOX_ROW as usize + LIVE_VIEW_BOX_ROWS as usize * v + 1;
+    let top = lane(v);
     let mut out = Vec::new();
     for r in top..top + LIVE_VIEW_SCOPE_ROWS as usize {
-        for c in 1..=LIVE_VIEW_SCOPE_COLS as usize {
+        for c in SCOPE..SCOPE + LIVE_VIEW_SCOPE_COLS as usize {
             let o = ui.g.ovl[r * COLS + c];
             out.push(if o == 0 {
                 [0; 8]
@@ -98,48 +148,172 @@ fn live_is_the_root_and_the_tap_runs_only_while_it_shows() {
 }
 
 #[test]
-fn the_header_boxes_and_slots_show_the_instrument() {
+fn the_header_lanes_knobs_and_slots_show_the_instrument() {
     let mut ui = Ui::new();
     ui.settle();
-    let head = ui.row(0);
-    assert_eq!(&head[1..5], "LIVE");
-    assert_eq!(&head[8..12], "6581");
-    assert_eq!(&head[13..21], "SAW LEAD");
-    assert_eq!(&head[24..29], "OCT+0");
-    assert_eq!(
-        ui.g.attr[0],
-        ((GRID_LIGHT_BLUE << 4) | GRID_BLUE) as u8,
-        "reverse video"
-    );
+    let t = theme_of(&ui);
+    // The preset's name at 2x top left, the model and the octave small on the right.
+    assert_eq!(big(&ui, 0, 0, 8), "SAW LEAD");
+    assert_eq!(small(&ui, 0, 26, 4), "6581");
+    assert_eq!(small(&ui, 1, 25, 5), "OCT+0");
+    assert_eq!(ui.g.attr[0] & 15, t.value, "the name in the value colour");
+    assert_eq!(u32::from(ui.g.attr[0] >> 4), GRID_BLACK, "on black");
     for v in 0..3 {
-        let row = 1 + 6 * v;
-        assert_eq!(&ui.row(row)[2..10], format!(" V{} SAW ", v + 1));
-        assert_eq!(&ui.row(row + 2)[25..28], "SAW");
-        assert_eq!(&ui.row(row + 4)[25..28], "---", "the envelope at rest");
+        let row = lane(v);
+        // The voice's number at 2x in its colour, its waveform under it; the note at 2x on the
+        // right and the stage under it, at rest.
+        assert_eq!(big(&ui, row + 1, 0, 1), format!("{}", v + 1));
+        assert_eq!(ui.g.attr[(row + 1) * COLS] & 15, t.voice[v]);
+        assert_eq!(small(&ui, row + 3, 0, 3), "SAW");
+        assert_eq!(big(&ui, row + 1, 24, 3), "---");
+        assert_eq!(small(&ui, row + 3, 24, 3), "---", "the envelope at rest");
         // The scope's centre line: a dotted glyph under the overlay.
-        assert_eq!(ui.g.ch[(row + 3) * COLS + 5], FONT_SCOPE_MID as u8);
+        assert_eq!(ui.g.ch[(row + 2) * COLS + 5], FONT_SCOPE_MID as u8);
     }
-    assert_eq!(&ui.row(19)[2..13], " FILTER LP ");
-    assert_eq!(&ui.row(19)[20..24], " VU ");
-    let bottom = ui.row(26);
-    assert!(
-        bottom[1..].starts_with(" FC ") && bottom.contains(" RES 6 "),
-        "{bottom}"
-    );
-    assert_eq!(&ui.row(27)[1..5], "DIST");
-    assert_eq!(&ui.row(27)[6..9], "OFF");
-    assert_eq!(&ui.row(28)[1..4], "MOD");
-    assert_eq!(&ui.row(29)[1..3], "FX");
-    assert_eq!(ui.g.ch[27 * COLS], FONT_PLAY as u8, "the selected slot");
+    // The knob row in K1..K4's order: label, value, bar, name.
+    for (k, (label, col)) in [("CUTOFF", 0), ("RESO", 8), ("PULSE", 15), ("PRESET", 22)]
+        .into_iter()
+        .enumerate()
+    {
+        assert_eq!(small(&ui, 15, col, label.len()), label);
+        assert_eq!(
+            ui.g.attr[15 * COLS + col] & 15,
+            t.knob[k],
+            "{label}'s colour"
+        );
+        assert_eq!(
+            ui.g.attr[18 * COLS + col] & 15,
+            t.knob[k],
+            "{label}'s bar's colour"
+        );
+        assert_eq!(small(&ui, 19, col, 2), format!("K{}", k + 1));
+        assert_eq!(
+            ui.g.attr[16 * COLS + col] & 15,
+            t.value,
+            "the value in white"
+        );
+    }
+    assert_eq!(big(&ui, 16, 8, 1), "6", "the resonance");
+    assert_eq!(big(&ui, 16, 15, 3), "50%", "the pulse width");
+    assert_eq!(big(&ui, 16, 22, 3), "SAW", "the preset");
+    // The bottom band: the filter's mode, the slots, VU's labels.
+    assert_eq!(small(&ui, 21, 0, 6), "FILTER");
+    assert_eq!(big(&ui, 22, 0, 2), "LP");
+    assert_eq!(small(&ui, 24, 1, 4), "DIST");
+    assert_eq!(small(&ui, 24, 6, 3), "OFF");
+    assert_eq!(small(&ui, 25, 1, 3), "MOD");
+    assert_eq!(small(&ui, 26, 1, 2), "FX");
+    assert_eq!(ui.g.ch[24 * COLS], FONT_PLAY as u8, "the selected slot");
+    assert_eq!(small(&ui, 22, 19, 1), "1");
+    assert_eq!(small(&ui, 24, 19, 1), "3");
+    assert_eq!(small(&ui, 25, 19, 1), "L");
+    assert_eq!(small(&ui, 26, 19, 1), "R");
     ui.press(PANEL_BTN_SCL);
     ui.press(PANEL_BTN_ENV);
     ui.rig.set_preset(1);
     ui.settle();
-    assert_eq!(ui.g.ch[28 * COLS], FONT_PLAY as u8);
-    assert_eq!(&ui.row(28)[6..12], "CHORUS");
-    assert_eq!(&ui.row(1)[2..12], " V1 PULSE ");
-    assert_eq!(&ui.row(4)[25..27], "PW", "a pulse shows its width");
-    assert_eq!(&ui.row(0)[13..21], "PWM BASS");
+    assert_eq!(ui.g.ch[25 * COLS], FONT_PLAY as u8);
+    assert_eq!(small(&ui, 25, 6, 6), "CHORUS");
+    assert_eq!(small(&ui, lane(0) + 3, 0, 3), "PUL");
+    assert_eq!(big(&ui, 0, 0, 8), "PWM BASS");
+    assert_eq!(big(&ui, 16, 22, 3), "PWM");
+}
+
+#[test]
+fn the_knob_row_shows_what_k1_to_k4_turn_and_nothing_else() {
+    let mut ui = Ui::new();
+    ui.settle();
+    let hz =
+        |ui: &Ui| unsafe { sid_cutoff_hz(ui.live().model, 0, u32::from(ui.live().cutoff_out)) };
+    let want = |hz: f32| {
+        let hz = (hz.max(30.0) + 0.5) as u32;
+        if hz < 1000 {
+            format!("{hz}")
+        } else if hz < 9950 {
+            format!("{}.{}K", (hz + 50) / 100 / 10, (hz + 50) / 100 % 10)
+        } else {
+            format!("{}K", (hz + 500) / 1000)
+        }
+    };
+    // K1 is the cutoff: the value follows it down and up, as the popup says it in Hz.
+    for steps in [-70, -30, 20, 60, -200, 200] {
+        ui.turn(PANEL_ENC_K1, steps);
+        ui.settle();
+        let text = want(hz(&ui));
+        assert!(text.len() <= 4, "{text}");
+        assert_eq!(big(&ui, 16, 0, text.len()), text, "after {steps}");
+        assert_eq!(small(&ui, 16, 2 * text.len(), 0), "");
+    }
+    // K2 the resonance, 0..15.
+    for steps in [-30, 1, 4, 30, -1] {
+        ui.turn(PANEL_ENC_K1 + 1, steps);
+        ui.settle();
+        let r = ui.live().resonance;
+        assert_eq!(big(&ui, 16, 8, r.to_string().len()), r.to_string());
+    }
+    // K3 the pulse width in percent, K4 the preset (its three letters), in the header as well.
+    ui.turn(PANEL_ENC_K1 + 2, -9);
+    ui.settle();
+    let pc = (u32::from(ui.live().pulse_width) * 99 + 2047) / 4095;
+    assert_eq!(big(&ui, 16, 15, 3 - usize::from(pc < 10)), format!("{pc}%"));
+    ui.turn(PANEL_ENC_K1 + 3, 1);
+    ui.settle();
+    assert_eq!(ui.live().preset, 1);
+    assert_eq!(big(&ui, 16, 22, 3), "PWM");
+    assert_eq!(big(&ui, 0, 0, 8), "PWM BASS");
+    // A knob's bar is its share of the range, in eighths of cells: K1 at the top is full.
+    ui.rig.live.cutoff_out = LIVE_CUTOFF_MAX as u16;
+    ui.frame();
+    let bar: Vec<u8> = (0..7).map(|c| ui.g.ch[18 * COLS + c]).collect();
+    assert!(bar.iter().all(|&c| c == FONT_BAR8 as u8), "{bar:?}");
+    ui.rig.live.cutoff_out = 0;
+    ui.frame();
+    let bar: Vec<u8> = (0..7).map(|c| ui.g.ch[18 * COLS + c]).collect();
+    assert!(bar.iter().all(|&c| c == FONT_BAR0 as u8), "{bar:?}");
+}
+
+#[test]
+fn the_knob_values_fit_their_columns_for_every_setting() {
+    let mut ui = Ui::new();
+    let text = |ui: &Ui, k: u32| {
+        let mut buf = [0 as std::ffi::c_char; 5];
+        unsafe { live_view_knob_text(ui.live(), k, buf.as_mut_ptr()) };
+        unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }
+            .to_string_lossy()
+            .into_owned()
+    };
+    // K1: a column of 8 cells holds 4 characters at 2x, whatever the cutoff.
+    for c in (0..=LIVE_CUTOFF_MAX).step_by(7) {
+        ui.rig.live.cutoff_out = c as u16;
+        let t = text(&ui, 0);
+        assert!(!t.is_empty() && t.len() <= 4, "cutoff {c}: {t}");
+    }
+    ui.rig.live.cutoff_out = 0;
+    let floor = unsafe { sid_cutoff_hz(ui.live().model, 0, 0) };
+    assert_eq!(
+        text(&ui, 0),
+        format!("{}", (floor.max(30.0) + 0.5) as u32),
+        "the filter's floor"
+    );
+    // K2 and K3 hold 3 characters in their 7 cells, K4 three letters.
+    for r in 0..=LIVE_RESONANCE_MAX {
+        ui.rig.live.resonance = r as u8;
+        assert_eq!(text(&ui, 1), r.to_string());
+    }
+    for pw in [0u16, 1, 2047, 4095] {
+        ui.rig.live.pulse_width = pw;
+        let t = text(&ui, 2);
+        assert!(t.ends_with('%') && t.len() <= 3, "{t}");
+    }
+    ui.rig.live.pulse_width = 4095;
+    assert_eq!(text(&ui, 2), "99%");
+    for p in 0..LIVE_PRESET_COUNT {
+        ui.rig.live.preset = p as u8;
+        let t = text(&ui, 3);
+        assert_eq!(t.len(), 3, "{t}");
+    }
+    ui.rig.live.preset = 0;
+    assert_eq!(text(&ui, 3), "SAW");
 }
 
 #[test]
@@ -147,14 +321,31 @@ fn a_note_draws_a_trace_and_silence_a_flat_line() {
     let mut ui = Ui::new();
     let mut chip = Chip::new();
     settle(&mut ui);
+    // The chip's power-on envelope runs down first: silent is an envelope of nothing.
+    for _ in 0..100 {
+        chip.play(&mut ui, 100);
+        if ui.v.live.env == [0; 3] {
+            break;
+        }
+    }
+    assert_eq!(ui.v.live.env, [0; 3]);
     chip.play(&mut ui, 20);
+    // Flat, 2 pixels thick, at rest, in dark grey.
     let mid = (LIVE_VIEW_SCOPE_PX / 2) as usize;
+    let t = theme_of(&ui);
     for v in 0..3 {
         let rows = trace_rows(&scope_masks(&ui, v));
         assert_eq!(
             rows.into_iter().collect::<Vec<_>>(),
-            [mid],
+            [mid, mid + 1],
             "voice {v} at rest"
+        );
+        let o = ui.g.ovl[(lane(v) + 2) * COLS + SCOPE + 1];
+        assert_ne!(o, 0);
+        assert_eq!(
+            ui.g.ovl_color[usize::from(o - 1)],
+            t.dim,
+            "voice {v}: silent is dark grey"
         );
     }
     ui.rig.note_on(69);
@@ -169,7 +360,7 @@ fn a_note_draws_a_trace_and_silence_a_flat_line() {
         trace_rows(&scope_masks(&ui, 1))
             .into_iter()
             .collect::<Vec<_>>(),
-        [mid],
+        [mid, mid + 1],
         "voice 2 is silent"
     );
     // The trace is the saw: three periods for A4, so three falling edges across the width.
@@ -181,9 +372,21 @@ fn a_note_draws_a_trace_and_silence_a_flat_line() {
         (3..=6).contains(&full_columns),
         "{full_columns} cell columns cross the whole scope"
     );
-    // Its colour is the saw's.
-    let o = ui.g.ovl[4 * COLS + 2]; // on the centre line, crossed by any trace
-    assert_eq!(ui.g.ovl_color[usize::from(o - 1)], GRID_YELLOW as u8);
+    // Its colour is voice 1's (and the silent voice 2's stays dark grey); it is 2 pixels thick:
+    // every column has two pixels on at least, a cell column crossing it from edge to edge.
+    let o = ui.g.ovl[(lane(0) + 2) * COLS + SCOPE + 1]; // on the centre line, crossed by any trace
+    assert_eq!(ui.g.ovl_color[usize::from(o - 1)], theme_of(&ui).voice[0]);
+    let o = ui.g.ovl[(lane(1) + 2) * COLS + SCOPE + 1];
+    assert_eq!(ui.g.ovl_color[usize::from(o - 1)], theme_of(&ui).dim);
+    for c in 0..LIVE_VIEW_SCOPE_COLS as usize * 8 {
+        let ink = (0..LIVE_VIEW_SCOPE_ROWS as usize)
+            .map(|r| {
+                let m = masks[r * LIVE_VIEW_SCOPE_COLS as usize + c / 8];
+                m.iter().filter(|&&b| b >> (7 - c % 8) & 1 == 1).count()
+            })
+            .sum::<usize>();
+        assert!(ink >= 2, "pixel column {c}: {ink} pixels on (a thin trace)");
+    }
     // Released and silent again: flat.
     ui.rig.note_off(69);
     chip.play(&mut ui, 400);
@@ -191,30 +394,31 @@ fn a_note_draws_a_trace_and_silence_a_flat_line() {
         trace_rows(&scope_masks(&ui, 0))
             .into_iter()
             .collect::<Vec<_>>(),
-        [mid],
+        [mid, mid + 1],
         "after the release"
     );
 }
 
 #[test]
-fn the_envelope_bars_and_stage_follow_the_tap() {
+fn the_envelope_stage_and_the_note_follow_the_tap() {
     let mut ui = Ui::new();
     let mut chip = Chip::new();
     ui.rig.note_on(69);
     chip.play(&mut ui, 600);
-    // Sustaining at 0xa: ENV3 0xaa, 21 of 32 eighths.
+    // Sustaining at 0xa: ENV3 0xaa.
     assert_eq!(ui.v.live.env[0], 0xaa);
-    let col = 22;
-    let cells: Vec<u8> = (2..6).map(|r| ui.g.ch[r * COLS + col]).collect();
+    assert_eq!(small(&ui, lane(0) + 3, 24, 3), "SUS");
+    assert_eq!(big(&ui, lane(0) + 1, 24, 3), "A-4");
     assert_eq!(
-        cells,
-        [FONT_V0 as u8, FONT_V5 as u8, FONT_V8 as u8, FONT_V8 as u8]
+        ui.g.attr[(lane(0) + 1) * COLS + 24] & 15,
+        theme_of(&ui).value
     );
-    assert_eq!(&ui.row(5)[25..28], "SUS");
-    assert_eq!(&ui.row(2)[25..28], "A-4");
+    assert_eq!(big(&ui, lane(1) + 1, 24, 3), "---", "the other voices rest");
     ui.rig.note_off(69);
     chip.play(&mut ui, 2);
-    assert_eq!(&ui.row(5)[25..28], "REL");
+    assert_eq!(small(&ui, lane(0) + 3, 24, 3), "REL");
+    // A released note stays in the lane, dimmed; the voice's colour goes with its sound.
+    assert_eq!(ui.g.attr[(lane(0) + 1) * COLS + 24] & 15, theme_of(&ui).dim);
 }
 
 #[test]
@@ -226,12 +430,12 @@ fn the_meters_show_the_peaks_and_fall_back() {
     let meter =
         |ui: &Ui, row: usize| -> Vec<u8> { (20..29).map(|c| ui.g.ch[row * COLS + c]).collect() };
     assert!(
-        meter(&ui, 24).iter().all(|&c| c >= FONT_BAR7 as u8),
+        meter(&ui, 25).iter().all(|&c| c >= FONT_BAR7 as u8),
         "L at full: {:?}",
-        meter(&ui, 24)
+        meter(&ui, 25)
     );
     assert!(
-        meter(&ui, 25).iter().all(|&c| c == FONT_BAR0 as u8),
+        meter(&ui, 26).iter().all(|&c| c == FONT_BAR0 as u8),
         "R silent"
     );
     assert_eq!(ui.sc.peak, [0, 0], "taken");
@@ -246,44 +450,28 @@ fn the_meters_show_the_peaks_and_fall_back() {
 }
 
 #[test]
-fn the_filter_curve_follows_mode_cutoff_and_resonance() {
+fn the_filter_mode_and_the_knob_values_follow_the_filter() {
     let mut ui = Ui::new();
-    // SAW LEAD's 1200 is about 8 kHz on the 6581: down to about 1 kHz.
-    ui.rig.knob(LIVE_KNOB_CUTOFF, -50);
     ui.settle();
-    let heights = |ui: &Ui| ui.v.live.height.to_vec();
-    let lp = heights(&ui);
-    assert!(lp[0] > 30 && lp[15] < lp[0] / 2, "low-pass: {lp:?}");
-    let mark = usize::from(ui.v.live.mark);
-    let attr = ui.g.attr[25 * COLS + 1 + mark];
-    assert_eq!(attr & 15, GRID_YELLOW as u8, "the cutoff's column");
+    assert_eq!(big(&ui, 22, 0, 2), "LP");
+    let before = big(&ui, 16, 0, 3);
     unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_FILTER_MODE, 4) };
     ui.frame();
-    let hp = heights(&ui);
-    assert!(hp[15] > 30 && hp[0] < hp[15] / 2, "high-pass: {hp:?}");
-    assert_eq!(&ui.row(19)[2..13], " FILTER HP ");
-    ui.rig.knob(LIVE_KNOB_CUTOFF, 40);
+    assert_eq!(big(&ui, 22, 0, 2), "HP");
+    unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_FILTER_MODE, 3) };
     ui.frame();
-    assert!(
-        usize::from(ui.v.live.mark) > mark,
-        "the cutoff went up, its column did not"
-    );
+    assert_eq!(big(&ui, 22, 0, 5), "LP+BP");
     unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_FILTER_MODE, 0) };
     ui.frame();
-    assert!(
-        heights(&ui).iter().all(|&h| h == 0),
-        "no output with no mode"
-    );
-    assert_eq!(&ui.row(19)[2..14], " FILTER OFF ");
-    // More resonance, a higher peak.
-    unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_FILTER_MODE, 1) };
-    unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_RESONANCE, 0) };
+    assert_eq!(big(&ui, 22, 0, 3), "OFF");
+    assert_eq!(ui.g.attr[22 * COLS] & 15, theme_of(&ui).dim, "no mode: dim");
+    // The cutoff and the resonance are the first two knobs' columns.
+    ui.rig.knob(LIVE_KNOB_CUTOFF, -50);
     ui.frame();
-    let low = *heights(&ui).iter().max().unwrap();
+    assert_ne!(big(&ui, 16, 0, 3), before);
     unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_RESONANCE, 15) };
     ui.frame();
-    let high = *heights(&ui).iter().max().unwrap();
-    assert!(high > low, "resonance 0: {low}, 15: {high}");
+    assert_eq!(big(&ui, 16, 8, 2), "15");
 }
 
 #[test]
@@ -484,8 +672,7 @@ fn back_from_the_menu_the_scopes_and_envelopes_start_flat() {
         "the trace from before the menu came back"
     );
     assert_eq!(ui.v.live.env, [0; 3], "the envelope from before the menu");
-    let bars: Vec<u8> = (2..6).map(|r| ui.g.ch[r * COLS + 22]).collect();
-    assert_eq!(bars, [FONT_V0 as u8; 4], "voice 1's envelope bar");
+    assert_eq!(small(&ui, lane(0) + 3, 24, 3), "---", "voice 1's stage");
 }
 
 #[test]
@@ -496,15 +683,15 @@ fn a_toast_over_three_voices_of_noise_stays_within_the_frame_budget() {
     noise_chord(&mut ui);
     let mut most = 0;
     // A toast every 7 frames: its first frames meet the scopes at every phase of their turns.
-    // The header's and the bottom slot's rows to go out again every frame (as after
+    // The header's and the first slot's rows to go out again every frame (as after
     // grid_invalidate): 60 cells the scopes' share comes after, so the budget binds.
     for f in 0..420 {
-        for i in (0..COLS).chain(29 * COLS..30 * COLS) {
+        for i in (0..COLS).chain(24 * COLS..25 * COLS) {
             ui.g.stale[i >> 3] |= 1 << (i & 7);
         }
-        ui.g.rows |= 1 | 1 << 29;
+        ui.g.rows |= 1 | 1 << 24;
         if f % 7 == 3 {
-            // As long as a toast gets, and on the slots' row: every cell of it changes.
+            // As long as a toast gets, over the slots' rows: every cell of it changes.
             unsafe { screen_toast(&mut ui.v.s, c"ABCDEFGHIJKLMNOPQRSTUVWXYZ".as_ptr(), 80) };
         }
         let sent = chip.play(&mut ui, 14);

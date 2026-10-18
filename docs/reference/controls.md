@@ -42,7 +42,7 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
    saves on a clean release, or held with a knob opens MIDI learn over any view; SAVE held
    with HOME consumes HOME ([SAVE](#save)); SEQ, PLAY and REC are the song views' ([below](#song-views)),
    in every view;
-3. **the view on top:** the menu and CHIP take SELECT and ALGORITHM, SCENE takes SELECT;
+3. **the view on top:** the menu and CHIP take SELECT and ALGORITHM, SCENE and TRACKER take SELECT;
    LIVE, the status screen, the glyph sheet and About take nothing; MIDI learn's frame passes
    them to the CHIP view under it, and to no other;
 4. **the panel:** everything else plays the instrument as below, in every view. K1..K4 turn
@@ -69,7 +69,7 @@ travels with the keys: chip B always holds it, prepared in the background after 
 so a key sounds the same on either chip. FX, the CHIP view's profile and character, and the
 chip CCs change the keys' setup. When a song starts the keys move to chip B (held keys sound
 again there); when it stops they move back to chip A once it has the keys' setup again and no
-key is held. LIVE says **KEYS:B** in its top line while the keys play chip B; the status
+key is held. LIVE says **KEYS:B** in its bottom band while the keys play chip B; the status
 screen shows both chips and marks the keys'. Until M2c plays songs, nothing starts one, so the
 keys always play chip A. KEYS persists with the settings.
 
@@ -106,12 +106,13 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **REC (button 13)** | record mode on and off |
 | **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; the keys sound nothing while GLO is held |
 | **SELECT (encoder 0)**, in the menu | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), STORE ([format confirmation](#settings-and-store)), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF), TRACKER ROWS (ROWS in the menu; clockwise SCROLL, counter-clockwise BAR); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits, on MIDI [the MIDI page](#the-midi-page) |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), STORE ([format confirmation](#settings-and-store)), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF), TRACKER ROWS (ROWS in the menu; clockwise SCROLL, counter-clockwise BAR), THEME (the screens' colours: clockwise C64, counter-clockwise HIGH CONTRAST, the default; see [the theme](../art/README.md#theme)); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on ABOUT the credits, on MIDI [the MIDI page](#the-midi-page) |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: CHIP (the profile and the character), DIST, MOD, FX; it stops at either end |
 | **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP (EDIT held: the save target), the algorithm on a slot; it stops at either end |
+| **SELECT (encoder 0)**, in TRACKER | the shown voice: voice 1, 2, 3 and round (clockwise the next, counter-clockwise the one before); the note keys then audition on it |
 | **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, RED MOON RITE, and round): it wipes in, and a toast names it |
 
-The other buttons (LFO, ARP) and PRESETS (encoder 6) do nothing yet; SELECT does nothing outside the menu, CHIP and SCENE, ALGORITHM nothing outside
+The other buttons (LFO, ARP) and PRESETS (encoder 6) do nothing yet; SELECT does nothing outside the menu, CHIP, SCENE and TRACKER, ALGORITHM nothing outside
 the menu and CHIP.
 
 ## Value popup
@@ -132,7 +133,7 @@ opens it, and what it says (the text the views show, from one place, `popup_text
 | EDIT held + K1-K4, or a slot's section on CHIP | the slot and its control in the algorithm's own word: `DIST DRIVE`, `MOD DEPTH` (0-127) |
 | MASTER | VOLUME (0-15) |
 | ALGORITHM on CHIP | the profile (`PROFILE`, its name), or a slot's algorithm (`DIST`, `OVERDRIVE`) |
-| ALGORITHM in the menu, on an item with a value | the item in full and its value: `PRESET`, `OCTAVE`, `CARDS`, `STORE`, `KEYS`, `SOUNDS`, `TRACKER ROWS` |
+| ALGORITHM in the menu, on an item with a value | the item in full and its value: `PRESET`, `OCTAVE`, `CARDS`, `STORE`, `KEYS`, `SOUNDS`, `TRACKER ROWS`, `THEME` (`HI-CONTRAST` or `C64`) |
 
 SELECT never opens it (it moves a cursor or a focus, which the screen shows); the buttons
 (OCT-, OCT+, FX, SCL, ENV) say what they changed in a toast, as before, and a control's popup
@@ -150,8 +151,10 @@ words fit neither (`SNG: A-4 PITCH NOT PLAYED`) shows in the font's own size on 
 
 The song views make and play a song (M2d): **STEP**, **TRACKER**, **ORDER**, **INSTR** and
 **TABLE**, all on the same GoatTracker 2 song (`app/song_view.h`). TRACKER is the first made
-(`app/tracker_view.h`; docs/art/README.md "TRACKER" shows it): the patterns of the three
-voices in GoatTracker's layout, the orderlists and the bar row's command. Its rows follow the
+(`app/tracker_view.h`; docs/art/README.md "TRACKER" shows it): the patterns in GoatTracker's
+layout, **one voice at a time at 2× the font** (12 rows) with the other two as activity strips on
+the right, and the shown voice's orderlist and the bar row's command. **SELECT steps the voice
+shown** (the cursor's voice: the note keys audition on it, below). Its rows follow the
 song while it plays, the cursor while it is stopped, as a moving bar over still rows (the
 menu's **TRACKER ROWS** BAR, the default) or scrolling under a still bar (SCROLL, as
 GoatTracker does). TRACKER ROWS is saved with the settings. The song
@@ -170,17 +173,22 @@ is SIDOU LOOP until songs load from the store (M2c Task 8).
 
 GLO's layer works in every view and comes before the panel: a key pressed while GLO is held
 sounds nothing until it is let go, even if GLO is let go first; a key already sounding when GLO
-goes down sounds on. The mutes and solos show on every song view's voice heads (MUT in light
-red, SOL in white, a silent voice's name in grey) and on LIVE's top line, in red in the
-preset's place: **M13 S2** is voices 1 and 3 muted and voice 2 soloed.
+goes down sounds on. The mutes and solos show in TRACKER's header (the shown voice's number
+grey, with MUT in red or SOL in white beside its pattern) and on the other two voices' strips
+(grey, short while silent), and on LIVE's top line, in red at 2× in the preset's place: **M13 S2**
+is voices 1 and 3 muted and voice 2 soloed.
 
-The song views' top line: the view's name, a play mark or a stop square, the tempo in BPM
-(the frame rate times the play routine's calls a frame, over the calls a row and the rows a
-beat, 4; funktempo's two speeds averaged: tempo 6 on PAL is 125.3 BPM, shown 125), the
-position (**ORD 03 ROW 1A**, in hex: the player's while it plays, the cursor's while it is
-stopped) and REC. The second line: V1, V2, V3 in their waveform's colour (pulse cyan, saw
-yellow, triangle light green, noise light grey), the waveform's name and a one-cell envelope
-meter.
+TRACKER's header (rows 0-1): the shown voice **V1** at 2× in its colour (light red, cyan, light
+green), its pattern **PAT 03** at 2× (hex), a play mark or a stop square, the tempo in BPM small (the
+frame rate times the play routine's calls a frame, over the calls a row and the rows a beat, 4;
+funktempo's two speeds averaged: tempo 6 on PAL is 125.3 BPM, shown 125) and REC in red. Row 2
+numbers the strips. The rows: 12 pattern rows of two cell rows, each its number small (yellow on
+the current row), the note at 2×, the instrument at 2× in the voice's colour and the command
+small; the current row a dark grey bar. At the foot: the orderlist from the shown voice's entry,
+the current row's first command spelled out, and **ORD 03 ROW 1A** (hex: the player's while the
+song plays, the cursor's while it is stopped). The other two voices are the **strips** on the
+right: a tall bar where a note sounds on that row of that voice's own pattern, a short one where
+none does, in the voice's colour (dark grey while the song mutes it).
 
 ## Title cards
 
@@ -199,31 +207,31 @@ wipes in, the card holds for a second and the view cuts in, about 2.6 s in all.
 
 ## CHIP
 
-CHIP (the menu's first item) is a chip's sound on one page (`app/chip_view.h`): its profile,
-its character and the three effect slots, in PETSCII frames, for chip **A** or chip **B** (the
-tabs on row 2). What a tab shows and edits follows [which chip the keys
-play](#which-chip-the-keys-play):
+CHIP (the menu's first item) is a chip's sound a section at a time (`app/chip_view.h`; [the art
+page](../art/README.md#chip) draws it): its profile and character, or one of the three effect
+slots, for chip **A** or chip **B** (the title). What a tab shows and edits follows [which chip
+the keys play](#which-chip-the-keys-play):
 
-- the keys' setup (live's), on both tabs, with no song: chip B follows it, so its tab says
+- the keys' setup (live's), on both tabs, with no song: chip B follows it, so its note says
   **FOLLOWS KEYS**;
 - during a song, the A tab is the song's chip: it shows the song's setup and edits it (the
   profile and K1..K4; MIDI learn binds nothing there, since MIDI reaches chip A on its own
   only from M2e), and the B tab shows the keys' setup and edits it.
 
-The effect slots are one chain on the mix of both chips: their frames show on both tabs, and
-the B tab's note under the tabs says **SLOTS SHARED**. **KEYS** marks the tab of the chip the keys play.
+The effect slots are one chain on the mix of both chips: they show on both tabs, and the B
+tab's note says **SLOTS SHARED**. **KEYS:A** or **KEYS:B** at the top right marks the tab of the
+chip the keys play.
 
-| Rows | Section | Shows |
-|---|---|---|
-| 2 | CHIP and the tabs | **A** and **B**, the shown one in reverse video (white while the tabs have the focus), **KEYS** beside the keys' chip |
-| 3 | the tab's note | on the B tab FOLLOWS KEYS  SLOTS SHARED (no song) or SLOTS SHARED WITH CHIP A (the keys on B); on a song's A tab SONG SETUP  SLOTS SHARED; nothing on chip A with no song |
-| 4-7 | CHIP | the profile as asked for (6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581, or USER 1..8 when one was picked) and the model the chip plays; with a save target the frame's title reads **SAVE TO USER 3** in yellow (and **SAVE TO USER 3 -** while that slot is empty) |
-| 8-13 | CHARACTER | AGE, DAC, THUMP and BLEED, each a bar and its value 0..127 |
-| 14-17, 18-21, 22-25 | DIST, MOD, FX | the slot and its algorithm in the frame's title; its Amount, A, B and Mix, each named for what it does in that algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX); a control the algorithm does not use, and every control of a slot that is off, greyed under its plain name (AMT, A, B, MIX) |
-| 26 | | the help line: SELECT MOVE ALGORITHM STEP |
+| Rows | Shows |
+|---|---|
+| 0-1 | the title **CHIP A** or **CHIP B** at 2× (yellow while the focus is on the tabs, below), **KEYS:A / KEYS:B** small on the right on the keys' chip |
+| 2 | the section tabs **CHIP, DIST, MOD, FX**: the focused one yellow (the CHIP tab grey instead while the focus is on the A/B tabs, whose K1..K4 turn the chip's) |
+| 4-6, 7 | the section's choice at 3×, and under it its names: the chip's model (6581, 8580) and profile (R2, R3, R4AR, R5, WORN, or **USR 3** when USER 3 was picked) over MODEL and PROFILE; or the slot's algorithm over ALGORITHM. With a save target the names read **SAVE TO USER 3** in yellow (**SAVE TO USER 3 -** while the slot is empty) |
+| 9-14 | the section's four controls in the knobs' places (K1..K4 left to right, as LIVE's knob row): its label small in the knob's colour (AGE, DAC, THUMP, BLEED; a slot's named for what they do in its algorithm: OVERDRIVE has DRIVE, TONE, BIAS, MIX), its value 0..127 at 3× in white (2× from 100: three digits do not fit a column), a bar in the knob's colour and the knob's name K1..K4. A control the algorithm does not use, and every control of a slot that is off, is dark grey |
+| 16-21 | the other sections at 2×, a line each: DIST, MOD and FX with their algorithms (OFF dark grey); with a slot in focus, the chip's model and profile and the other two slots |
+| 27-28 | the tab's note (SONG SETUP  SLOTS SHARED, FOLLOWS KEYS  SLOTS SHARED, SLOTS SHARED WITH CHIP A; nothing on chip A with no song) and the help line: SELECT MOVE ALGORITHM STEP |
 
-The focus is on the tabs, on the chip (both its frames) or on a slot: a play mark in the
-margin and white frames show it.
+The focus is on the tabs, on the chip or on a slot; the yellow tab (or title) shows it.
 
 | Control | On the tabs | On the chip | On a slot |
 |---|---|---|---|
@@ -249,13 +257,13 @@ stored by name USER 1..8 ([format](profile-format.md)). The picker (ALGORITHM on
 runs the five built-in profiles, then the slots that hold one; an empty slot is skipped, and
 a step that finds only empty ones to its end stays where it is and says which: **USER 4
 EMPTY**. Picking one applies it as any profile change does (the spare chip is prepared a
-slice a tick, then swapped in; its four controls glide), and the PROFILE row reads **USER 3**
+slice a tick, then swapped in; its four controls glide), and the choice's profile word reads **USR 3** (the popup says **USER 3**)
 until another profile or the model (FX) is chosen. CC 85 reaches them too, above the
 built-in ones (values 5..12; an empty slot does nothing).
 
 To store the sound: with the focus on the chip, **EDIT held + ALGORITHM** steps a **save
-target** through USER 1..8 and OFF without changing the chip, shown in the CHIP frame's title
-(**SAVE TO USER 3**, yellow); the target clears when the focus leaves the chip or the view
+target** through USER 1..8 and OFF without changing the chip, shown in yellow under the choice
+(**SAVE TO USER 3**); the target clears when the focus leaves the chip or the view
 closes. **SAVE** then stores the tab's base profile and four controls into the target, or,
 with no target, back into the USER slot the tab was picked from; with neither it saves the
 settings, as elsewhere ([SAVE](#save)). A slot that holds a profile asks first
@@ -588,25 +596,29 @@ checklist confirms it.
 
 ## Screen
 
-**LIVE** is what the screen shows from power-on (the root view, `app/live_view.h`): a header
-line with the chip, preset and octave; each voice in a box with its oscilloscope, its
-envelope as a bar (ENV3), its note, waveform, pulse width and envelope stage (ATK, DEC, SUS,
-REL); the filter's response at its mode, cutoff and resonance; VU meters for each voice and
-for the left and right output after the effect slots; and the three effect slots with their
-algorithm and Mix (the play mark at the one the panel edits). The scopes are flat at rest
-and draw each sounding voice's waveform, still while a note holds, over two to four periods
-(more for higher notes). The trace is the waveform's colour: pulse cyan, saw yellow,
-triangle light green, noise light grey.
+**LIVE** is what the screen shows from power-on (the root view, `app/live_view.h`;
+[the art page](../art/README.md#live) draws it): the preset's name at 2 times the font with the
+chip's model and the octave small on the right; three voice lanes, each the voice's number at 2×
+in its colour (voice 1 light red, voice 2 cyan, voice 3 light green) with the waveform under it, its
+oscilloscope drawn 2 pixels thick in the voice's colour, and its note at 2× with the envelope
+stage (ATK, DEC, SUS, REL) under it; **the knob row, what K1..K4 turn, in their left-to-right order**:
+CUTOFF (K1, yellow), RESO (K2, cyan), PULSE (K3, light green) and PRESET (K4, light red), each
+with its value at 2× and a bar in its colour; and a bottom band with the filter's mode at 2×, the
+three effect slots' algorithms (the play mark at the one the panel edits) and VU meters for each
+voice and for the left and right output after the effect slots. The scopes are flat and dark
+grey at rest and draw each sounding voice's waveform, still while a note holds, over two to
+four periods (more for higher notes). **EDIT held** turns the selected slot's four controls
+on K1..K4 instead: the popup says which, the knob row keeps LIVE's.
 
 The **status screen** (STATUS in the menu) shows the numbers: the chip, preset, octave,
 cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS each slot's
 algorithm and Mix (`>` marks the selected slot) with the selected slot's Amount, A and B.
 
-The menu (HOME) is drawn at 2 times the font, six items of the thirteen at a time (the
+The menu (HOME) is drawn at 2 times the font, six items of the fifteen at a time (the
 selected one a line in reverse video; the title bar says which it is of how many, and an arrow
 up or down when items are out of sight, and the list scrolls with SELECT). It lists CHIP (the
 CHIP view, above), TRACKER (the song views, above), PRE (the preset), OCTAVE, CARDS (the title cards, above), STORE, KEYS,
-SOUNDS and ROWS (TRACKER ROWS) with their values, then STATUS, SCENE (the generative pieces,
+SOUNDS, ROWS (TRACKER ROWS) and THEME with their values, then STATUS, SCENE (the generative pieces,
 above), CHARSET (the glyph sheet: the font and the palette) and ABOUT. A line is 14 characters:
 PRE, ROWS and STORE's kilobytes (`193K`, FOREIGN, FORMAT?, `ERASE 20`) are short so that the
 longest preset name (NOISE PERC) and value fit beside their labels; the

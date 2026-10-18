@@ -50,6 +50,9 @@ typedef struct {
      * does not move draws nothing, cursor_on does not blink it). */
     uint8_t scale;
     uint8_t sel_attr;
+    /* At scale 2: the colour of the values (the unselected lines' right-aligned text), 0: as the
+     * line's. A second colour for what the lines say, as the menu's THEME gives it. */
+    uint8_t value_attr;
     /* At scale 2 (a line is up to 60 cells, a scroll changes them all): menu_draw draws the
      * lines whose text changed since they were drawn, the selected one first, while what the
      * grid has pending (grid_pending) leaves room for another line within `budget` cells (0: no

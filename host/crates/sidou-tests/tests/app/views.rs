@@ -186,6 +186,49 @@ impl Ui {
             .collect()
     }
 
+    /// `n` cells of a row from `col` as ordinary text: a large character's piece shows the glyph it is
+    /// a piece of.
+    pub(crate) fn small(&self, row: usize, col: usize, n: usize) -> String {
+        (col..col + n)
+            .map(|c| {
+                let i = row * COLS + c;
+                let piece = usize::from(self.g.ch[i]).wrapping_sub(GRID_BIG_FIRST as usize);
+                let b = if piece < GRID_BIG_PIECES as usize {
+                    self.g.src[i]
+                } else {
+                    self.g.ch[i]
+                };
+                if (0x20..0x7f).contains(&b) {
+                    b as char
+                } else {
+                    '#'
+                }
+            })
+            .collect()
+    }
+
+    /// `n` characters of text at `scale` times the font from (`row`, `col`): one per `scale` cells,
+    /// each read from the character's own piece (and its top left piece checked).
+    pub(crate) fn big(&self, row: usize, col: usize, scale: usize, n: usize) -> String {
+        (0..n)
+            .map(|i| {
+                let k = row * COLS + col + scale * i;
+                let first = if scale == 2 {
+                    GRID_BIG_FIRST
+                } else {
+                    GRID_BIG_FIRST + 4
+                };
+                assert_eq!(
+                    u32::from(self.g.ch[k]),
+                    first,
+                    "a character's top left piece at ({row}, {})",
+                    col + scale * i
+                );
+                self.g.src[k] as char
+            })
+            .collect()
+    }
+
     pub(crate) fn toast(&self) -> Option<String> {
         (self.v.s.toast_on != 0).then(|| {
             unsafe { CStr::from_ptr(self.v.s.toast.as_ptr()) }
@@ -294,12 +337,13 @@ fn the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video
     ui.settle();
     // The selected item's line (item 0) and the title bar (rows 0-2) are in reverse video:
     // MENU, and which item of how many.
-    assert_eq!(&ui.row(1)[1..15], "MENU   #  1/14");
+    assert_eq!(&ui.row(1)[1..15], "MENU   #  1/15");
     assert_eq!(ui.row(2), ui.row(1), "large text: two rows a line");
+    let t = unsafe { &*theme_get(THEME_HIGH_CONTRAST) };
     assert_eq!(
         ui.g.attr[0],
-        ((GRID_LIGHT_BLUE << 4) | GRID_BLUE) as u8,
-        "the title bar is in reverse video"
+        (t.title_bg << 4) | t.title_fg,
+        "the title bar in the theme's"
     );
     // Items a line every 3 rows: a label after the cursor's column, the value right-aligned
     // (15 characters a line), an arrow for a view. PRE is PRESET, ROWS TRACKER ROWS.
@@ -325,13 +369,13 @@ fn the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video
     // frame, the selected first).
     ui.turn(PANEL_ENC_SELECT, 99);
     menu_settle(&mut ui);
-    assert_eq!(ui.v.home.top, 8);
-    assert_eq!(&ui.row(1)[1..15], "MENU  #  14/14");
-    let at_end: Vec<String> = (8..14).map(|i| ui.menu_line(i)).collect();
+    assert_eq!(ui.v.home.top, 9);
+    assert_eq!(&ui.row(1)[1..15], "MENU  #  15/15");
+    let at_end: Vec<String> = (9..15).map(|i| ui.menu_line(i)).collect();
     assert_eq!(
         at_end,
         [
-            format!("{:<4}{:>10}", "ROWS", "BAR"),
+            format!("{:<5}{:>9}", "THEME", "HIGH"),
             format!("{:<13}#", "STATUS"),
             format!("{:<13}#", "SCENE"),
             format!("{:<13}#", "CHARSET"),
@@ -352,8 +396,8 @@ fn every_menu_item_is_reachable_and_readable_as_the_cursor_walks_down_and_up() {
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     let labels = [
-        "CHIP", "TRACKER", "PRE", "OCTAVE", "CARDS", "STORE", "KEYS", "SOUNDS", "ROWS", "STATUS",
-        "SCENE", "CHARSET", "ABOUT", "MIDI",
+        "CHIP", "TRACKER", "PRE", "OCTAVE", "CARDS", "STORE", "KEYS", "SOUNDS", "ROWS", "THEME",
+        "STATUS", "SCENE", "CHARSET", "ABOUT", "MIDI",
     ];
     assert_eq!(labels.len(), VIEWS_MENU_ITEMS as usize);
     let walk = |ui: &mut Ui, i: usize| {
@@ -398,8 +442,9 @@ fn every_menu_item_is_reachable_and_readable_as_the_cursor_walks_down_and_up() {
     }
     assert_eq!(ui.v.home.top, 0);
     // The selected item's whole line, both rows, is in reverse video, and no other line is.
-    let reverse = ((GRID_LIGHT_BLUE << 4) | GRID_BLUE) as u8;
-    let normal = ((GRID_BLUE << 4) | GRID_LIGHT_BLUE) as u8;
+    let th = unsafe { &*theme_get(THEME_HIGH_CONTRAST) };
+    let reverse = (th.sel_bg << 4) | th.sel_fg;
+    let normal = (th.bg << 4) | th.menu_item;
     for c in 0..COLS {
         assert_eq!(
             ui.g.attr[4 * COLS + c],
@@ -555,17 +600,29 @@ fn a_chip_change_shows_a_toast_and_runs_the_raster() {
 fn the_status_view_shows_the_instrument() {
     let mut ui = Ui::new();
     open_status(&mut ui);
-    assert_eq!(&ui.row(2)[2..7], "SIDOU");
+    assert_eq!(ui.big(2, 2, 2, 5), "SIDOU", "the title at 2x");
     assert_eq!(
-        &ui.row(2)[22..28],
+        ui.small(2, 22, 6),
         "V1.2.3",
         "the version ends before column 28"
     );
     assert_eq!(&ui.row(5)[2..13], "CHIP   6581");
+    // The parameters: the name small, the number at 2x, a bar; two rows each from row 10.
+    for (i, (name, num)) in [
+        ("CUTOFF", ui.live().cutoff.to_string()),
+        ("RESO", "6".into()),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let row = 10 + 2 * i;
+        assert_eq!(ui.small(row + 1, 2, name.len()), name);
+        assert_eq!(ui.big(row, 9, 2, num.len()), num);
+    }
+    assert_eq!(&ui.row(27)[2..8], "READY.");
     ui.press(PANEL_BTN_ENV);
     ui.frame();
-    assert_eq!(&ui.row(19)[2..12], ">DIST TAPE");
-    assert_eq!(&ui.row(26)[2..8], "READY.");
+    assert_eq!(ui.small(22, 2, 10), ">DIST TAPE");
 }
 
 /// With two chips (app/keys_route.h sets live.two_chips): the status screen shows both
@@ -577,13 +634,14 @@ fn the_views_show_both_chips_and_which_the_keys_play() {
     ui.rig.live.two_chips = 1;
     ui.rig.live.other_profile = SID_CHIP_8580_R5 as u8;
     ui.frame();
-    assert_eq!(&ui.row(0)[1..5], "LIVE");
+    assert_eq!(&ui.row(0)[..8], "SAW LEAD");
+    assert_ne!(&ui.row(21)[24..30], "KEYS:B");
     ui.rig.live.keys_chip = 1;
     ui.frame();
     assert_eq!(
-        &ui.row(0)[1..7],
+        &ui.row(21)[24..30],
         "KEYS:B",
-        "LIVE's header with the keys on chip B"
+        "LIVE's bottom band with the keys on chip B"
     );
     open_status(&mut ui);
     assert_eq!(&ui.row(5)[2..24], "CHIP A 8580 R5        ");
@@ -640,11 +698,9 @@ fn an_idle_view_is_not_composed_and_a_change_is() {
         ui.frame();
     }
     assert!(!composed(&ui), "the idle status screen was composed");
-    // Whatever the status screen shows: a note, a knob, a slot field.
+    // Whatever the status screen shows: a knob, a slot field.
     type Change = fn(&mut Ui);
-    let changes: [(&str, Change); 4] = [
-        ("note on", |ui| ui.rig.note_on(60)),
-        ("note off", |ui| ui.rig.note_off(60)),
+    let changes: [(&str, Change); 2] = [
         ("cutoff", |ui| ui.turn(PANEL_ENC_K1, -1)),
         ("slot amount", |ui| ui.rig.cc(LIVE_CC_SLOT_FIRST + 1, 99)),
     ];
@@ -658,6 +714,25 @@ fn an_idle_view_is_not_composed_and_a_change_is() {
         ui.frame();
         assert!(!composed(&ui), "{what}: composed again with nothing new");
     }
+    // A note changes the notes row alone, not the screen: a cell of that row is drawn again and
+    // the probe, elsewhere, is not (a held key costs a row).
+    let notes = 19 * COLS + 25;
+    for (what, change) in [
+        ("note on", (|ui| ui.rig.note_on(60)) as Change),
+        ("note off", |ui| ui.rig.note_off(60)),
+    ] {
+        ui.settle();
+        mark(&mut ui);
+        ui.g.ch[notes] = b'@';
+        change(&mut ui);
+        ui.frame();
+        assert_eq!(ui.g.ch[notes], b' ', "{what}: the notes row was not drawn");
+        assert!(
+            !composed(&ui),
+            "{what}: the whole screen was composed for a note"
+        );
+    }
+    assert_eq!(ui.small(19, 9, 3), "   ", "the note is off");
 }
 
 #[test]
@@ -741,12 +816,12 @@ fn the_update_box_shows_each_step_and_the_result() {
         unsafe { views_update(&mut *ui.v, step, code) };
         assert_eq!(update_line(&ui), text, "step {step}, code {code}");
         assert_eq!(&ui.row(18)[2..12], "# UPDATE #");
-        assert_eq!(&ui.row(26)[2..8], "      ", "READY. under the box");
+        assert_eq!(&ui.row(27)[2..8], "      ", "READY. under the box");
     }
     // Back in the main loop the next frame puts the view back.
     ui.frame();
-    assert_eq!(&ui.row(26)[2..8], "READY.");
-    assert_eq!(&ui.row(20)[3..6], "MOD");
+    assert_eq!(&ui.row(27)[2..8], "READY.");
+    assert_eq!(&ui.row(23)[3..6], "MOD");
 }
 
 /// M2e Task 3: the MIDI page edits MIDI's mode (app/midi_route.h) item by item, clamped at

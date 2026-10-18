@@ -73,24 +73,15 @@ extern "C" {
 #define SONG_VIEW_INSTR 3u
 #define SONG_VIEW_TABLE 4u
 #define SONG_VIEW_COUNT 5u
-/* The header's columns, and the heads' (voice v's from SONG_VIEW_HEAD_COL + 9 v). */
-#define SONG_VIEW_NAME_CHARS 7u
-#define SONG_VIEW_HEAD_COL 3u
-#define SONG_VIEW_HEAD_W 9u
 /* Rows a beat by default (the BPM). */
 #define SONG_VIEW_ROWS_A_BEAT 4u
 /* No key: song_view.jam_key. */
 #define SONG_VIEW_NO_KEY 0xffu
-/* What the header and the heads show, as bytes (song_view_head_look): the state, BPM 2,
- * position 2, REC, and each voice's head (colour, name, meter). */
-#define SONG_VIEW_HEAD_LOOK (6u + 3u * SONG_T_VOICES)
 /* Room for a view's look in song_view.drawn: the head's, then the view's own. */
 #define SONG_VIEW_LOOK 48u
 
-typedef struct {
-    uint8_t ch[GRID_ROWS][GRID_COLS];
-    uint8_t attr[GRID_ROWS][GRID_COLS];
-} song_view_canvas;
+/* Cells, colours and the characters of large text's pieces (app/grid.h grid_canvas). */
+typedef grid_canvas song_view_canvas;
 
 typedef struct {
     const song_transport* t; /* NULL: no player */
@@ -118,6 +109,7 @@ typedef struct {
     uint8_t built;
     uint32_t dirty;    /* rows of the canvas the grid may not have yet (bit r: row r) */
     uint32_t held;     /* frames whose copy the budget cut short (diagnostic) */
+    uint16_t unbuilt;  /* TRACKER: bit j, window row j is not drawn into the canvas yet */
     uint8_t drawn[SONG_VIEW_LOOK];
     song_view_canvas cv;
 } song_view;
@@ -150,19 +142,15 @@ uint32_t song_view_keys(song_view* sv, uint32_t down, uint32_t pressed, uint32_t
 /* Once a frame before the screen's: what the player has not taken yet, and with shows (a song
  * view shows) its status; outside the song views PLAY reads the status when pressed. */
 void song_view_frame(song_view* sv, int shows);
+/* 1 while the song plays or is about to (the header's play mark). */
+int song_view_playing(const song_view* sv);
+/* The tempo as the header shows it, in whole BPM; SONG_VIEW_NO_BPM with no player or no speed. */
+#define SONG_VIEW_NO_BPM 0xFFFFu
+uint32_t song_view_shown_bpm(const song_view* sv);
 /* The tempo in tenths of a BPM, rounded: speed_sum the calls of two rows (2 x the speed, or
  * funktempo's two), multispeed 0-4 (0: 25 Hz), rows_beat > 0. 0 for no speed. */
 uint32_t song_view_bpm10(uint32_t speed_sum, uint32_t multispeed, uint32_t ntsc,
                          uint32_t rows_beat);
-/* Row 0 for the view named name (at most SONG_VIEW_NAME_CHARS) into ch and attr. */
-void song_view_header(const song_view* sv, const char* name, uint8_t ch[GRID_COLS],
-                      uint8_t attr[GRID_COLS]);
-/* Row 1, the heads, on background bg, into ch and attr. */
-void song_view_heads(const song_view* sv, uint8_t bg, uint8_t ch[GRID_COLS],
-                     uint8_t attr[GRID_COLS]);
-/* The header's and the heads' look (SONG_VIEW_HEAD_LOOK bytes): they are drawn again when it
- * changes. */
-void song_view_head_look(const song_view* sv, uint8_t out[SONG_VIEW_HEAD_LOOK]);
 /* Voice v's orderlist entry and row as the views show them: the player's (its row events)
  * while the song plays and one said, the cursor's otherwise. */
 void song_view_position(const song_view* sv, uint32_t v, uint32_t* entry, uint32_t* row);

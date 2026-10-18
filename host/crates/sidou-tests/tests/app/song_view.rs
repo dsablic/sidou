@@ -139,7 +139,7 @@ impl Song {
         s
     }
 
-    fn calls(&mut self) -> Vec<Call> {
+    pub(crate) fn calls(&mut self) -> Vec<Call> {
         std::mem::take(&mut self.f.calls)
     }
 }
@@ -149,7 +149,10 @@ pub(crate) fn settle(ui: &mut Ui) {
     for _ in 0..200 {
         ui.frame();
         drain(&mut ui.g);
-        if unsafe { screen_animating(&ui.v.s) } == 0 && ui.v.song.dirty == 0 {
+        if unsafe { screen_animating(&ui.v.s) } == 0
+            && ui.v.song.dirty == 0
+            && ui.v.song.unbuilt == 0
+        {
             ui.frame();
             drain(&mut ui.g);
             return;
@@ -264,41 +267,50 @@ fn the_header_shows_the_transport_the_tempo_the_position_and_rec() {
     // No player: stopped, no tempo, the cursor's position.
     let mut ui = Ui::without_cards();
     open_tracker(&mut ui);
-    assert_eq!(ui.row(0), "TRACKER# --- ORD 00 ROW 00    ");
-    assert_eq!(ch(&ui, 7, 0), FONT_SQUARE as u8);
-    let header = attr_of(GRID_BLUE, GRID_LIGHT_BLUE);
-    assert!((0..COLS).all(|c| attr(&ui, c, 0) == header));
-    // REC, in red.
+    let alert = unsafe { (*theme_get(THEME_HIGH_CONTRAST)).alert };
+    assert_eq!(ui.small(0, 26, 4), " ---");
+    assert_eq!(ui.small(29, 17, 13), "ORD 00 ROW 00");
+    assert_eq!(ch(&ui, 22, 0), FONT_SQUARE as u8);
+    // REC, in red, under the play mark.
+    assert_eq!(ui.small(1, 22, 3), "   ");
     ui.press(PANEL_BTN_REC);
     settle(&mut ui);
-    assert_eq!(&ui.row(0)[26..], " REC");
-    for c in 27..30 {
-        assert_eq!(attr(&ui, c, 0), attr_of(GRID_RED, GRID_LIGHT_BLUE));
+    assert_eq!(ui.small(1, 22, 3), "REC");
+    for c in 22..25 {
+        assert_eq!(attr(&ui, c, 1) & 15, alert);
     }
     ui.press(PANEL_BTN_REC);
     settle(&mut ui);
-    assert_eq!(&ui.row(0)[26..], "    ");
+    assert_eq!(ui.small(1, 22, 3), "   ");
 
     // With the player: its tempo, and while it plays its position (the cursor's voice's).
     let mut s = Song::new();
     open_tracker(&mut s.ui);
-    assert_eq!(s.ui.row(0), "TRACKER# 125 ORD 00 ROW 00    ");
+    assert_eq!(s.ui.small(0, 26, 4), " 125");
+    assert_eq!(s.ui.small(29, 17, 13), "ORD 00 ROW 00");
     s.ui.press(PANEL_BTN_PLAY);
     s.f.st.order_pos = [3, 4, 5];
     s.f.st.row = [0x1a, 0x1b, 0x1c];
     settle(&mut s.ui);
-    assert_eq!(s.ui.row(0), "TRACKER# 125 ORD 03 ROW 1A    ");
-    assert_eq!(ch(&s.ui, 7, 0), FONT_PLAY as u8);
+    assert_eq!(s.ui.small(0, 26, 4), " 125");
+    assert_eq!(s.ui.small(29, 17, 13), "ORD 03 ROW 1A");
+    assert_eq!(ch(&s.ui, 22, 0), FONT_PLAY as u8);
+    // SELECT: the shown voice's position (the player's).
+    s.ui.turn(PANEL_ENC_SELECT, 1);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.small(29, 17, 13), "ORD 04 ROW 1B");
+    s.ui.turn(PANEL_ENC_SELECT, -1);
+    settle(&mut s.ui);
     // Multispeed 2 and funktempo 5/7: 250.6 rounded.
     s.f.st.multispeed = 2;
     s.f.st.speed = [5, 7];
     settle(&mut s.ui);
-    assert_eq!(&s.ui.row(0)[8..13], " 251 ");
+    assert_eq!(s.ui.small(0, 26, 4), " 251");
     // Stopped: the cursor's position again.
     s.ui.press(PANEL_BTN_PLAY);
     settle(&mut s.ui);
-    assert_eq!(s.ui.row(0), "TRACKER# 251 ORD 00 ROW 00    ");
-    assert_eq!(ch(&s.ui, 7, 0), FONT_SQUARE as u8);
+    assert_eq!(s.ui.small(29, 17, 13), "ORD 00 ROW 00");
+    assert_eq!(ch(&s.ui, 22, 0), FONT_SQUARE as u8);
 }
 
 #[test]
@@ -353,7 +365,7 @@ fn play_waits_for_the_keys_to_leave_chip_a_and_a_second_press_stops() {
     }
     assert_eq!(s.ui.v.song.st.state, SONG_T_STARTING as u8);
     assert_eq!(
-        ch(&s.ui, 7, 0),
+        ch(&s.ui, 22, 0),
         FONT_PLAY as u8,
         "starting shows as playing"
     );
@@ -452,42 +464,36 @@ fn glo_lets_a_key_already_sounding_sound_on() {
 }
 
 #[test]
-fn the_mutes_show_in_the_heads_and_in_lives_header() {
+fn the_mutes_show_in_the_header_the_strips_and_lives_header() {
     let mut s = Song::new();
-    s.f.st.wave = [0x41, 0x21, 0x11];
-    s.f.st.env = [255, 128, 0];
     open_tracker(&mut s.ui);
-    assert_eq!(s.ui.row(1), "   V1 PUL # V2 SAW # V3 TRI # ");
-    let black = GRID_BLACK;
-    for (v, color) in [GRID_CYAN, GRID_YELLOW, GRID_LIGHT_GREEN]
-        .iter()
-        .enumerate()
-    {
-        let x = 3 + 9 * v;
-        assert_eq!(attr(&s.ui, x, 1), attr_of(*color, black), "V{}", v + 1);
-        assert_eq!(attr(&s.ui, x + 3, 1), attr_of(*color, black));
-        assert_eq!(attr(&s.ui, x + 7, 1), attr_of(*color, GRID_DARK_GREY));
-    }
-    // The meters: ENV 255 full, 128 half, 0 empty.
-    assert_eq!(ch(&s.ui, 10, 1), FONT_V8 as u8);
-    assert_eq!(ch(&s.ui, 19, 1), FONT_V4 as u8);
-    assert_eq!(ch(&s.ui, 28, 1), FONT_V0 as u8);
-    // Voice 1 muted, voice 3 soloed: voices 1 and 2 silent.
+    let t = unsafe { &*theme_get(THEME_HIGH_CONTRAST) };
+    // Voice 1 (shown) sounds: its colour, nothing beside its pattern; the strips' numbers 2 and 3.
+    assert_eq!(attr(&s.ui, 0, 0) & 15, t.voice[0]);
+    assert_eq!(s.ui.small(0, 18, 3), "   ");
+    assert_eq!(attr(&s.ui, 26, 2) & 15, t.voice[1]);
+    assert_eq!(attr(&s.ui, 28, 2) & 15, t.voice[2]);
+    // Voice 1 muted, voice 3 soloed: voices 1 and 2 silent, MUT on voice 1.
     s.ui.hold(PANEL_BTN_GLO, true);
     s.ui.note_keys(key(0) | key(5), key(0) | key(5));
     s.ui.note_keys(0, 0);
     s.ui.hold(PANEL_BTN_GLO, false);
     settle(&mut s.ui);
-    assert_eq!(s.ui.row(1), "   V1 MUT # V2 SAW # V3 SOL # ");
-    assert_eq!(attr(&s.ui, 3, 1), attr_of(GRID_GREY, black));
-    assert_eq!(attr(&s.ui, 6, 1), attr_of(GRID_LIGHT_RED, black));
+    assert_eq!(s.ui.small(0, 18, 3), "MUT");
+    assert_eq!(attr(&s.ui, 18, 0) & 15, t.alert);
+    assert_eq!(attr(&s.ui, 0, 0) & 15, t.dim, "V1 grey");
     assert_eq!(
-        attr(&s.ui, 12, 1),
-        attr_of(GRID_GREY, black),
-        "silent under the solo"
+        attr(&s.ui, 26, 2) & 15,
+        t.dim,
+        "voice 2 is silent under the solo"
     );
-    assert_eq!(attr(&s.ui, 21, 1), attr_of(GRID_LIGHT_GREEN, black));
-    assert_eq!(attr(&s.ui, 24, 1), attr_of(GRID_WHITE, black));
+    assert_eq!(attr(&s.ui, 28, 2) & 15, t.voice[2], "voice 3 sounds");
+    // Voice 3, shown: SOL in white beside its pattern, its own colour.
+    s.ui.turn(PANEL_ENC_SELECT, 2);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.small(0, 18, 3), "SOL");
+    assert_eq!(attr(&s.ui, 18, 0) & 15, t.value);
+    assert_eq!(attr(&s.ui, 0, 0) & 15, t.voice[2]);
     assert_eq!(
         s.calls(),
         [Call::Mute(0b011)],
@@ -497,19 +503,19 @@ fn the_mutes_show_in_the_heads_and_in_lives_header() {
     s.ui.press(PANEL_BTN_HOME);
     settle(&mut s.ui);
     assert_eq!(s.ui.top(), "LIVE");
-    assert_eq!(&s.ui.row(0)[13..23], "M1 S3     ");
-    assert_eq!(attr(&s.ui, 13, 0), attr_of(GRID_RED, GRID_LIGHT_BLUE));
+    assert_eq!(&s.ui.row(0)[..5], "M1 S3");
+    assert_eq!(
+        attr(&s.ui, 0, 0),
+        attr_of(GRID_LIGHT_RED, GRID_BLACK),
+        "red on black, 2x"
+    );
     s.ui.hold(PANEL_BTN_GLO, true);
     s.ui.note_keys(key(0) | key(5), key(0) | key(5));
     s.ui.note_keys(0, 0);
     s.ui.hold(PANEL_BTN_GLO, false);
     settle(&mut s.ui);
     let name = crate::preset_name(crate::preset(s.ui.live().preset));
-    assert_eq!(
-        s.ui.row(0)[13..13 + name.len()],
-        name,
-        "none: the preset again"
-    );
+    assert_eq!(s.ui.row(0)[..name.len()], name, "none: the preset again");
 }
 
 #[test]
@@ -596,42 +602,55 @@ fn without_a_player_the_keys_play_the_instrument_in_a_song_view() {
     ui.note_keys(0, 0);
     ui.hold(PANEL_BTN_GLO, false);
     settle(&mut ui);
-    assert_eq!(&ui.row(1)[12..18], "V2 MUT");
+    // The mute of voice 2 is kept and shown: its strip's number is grey, and MUT stands beside
+    // its pattern once it is the shown voice.
+    assert_eq!(ui.small(0, 18, 3), "   ");
+    assert_eq!(attr(&ui, 26, 2) & 15, unsafe { (*theme_get(0)).dim });
+    ui.turn(PANEL_ENC_SELECT, 1);
+    settle(&mut ui);
+    assert_eq!(ui.small(0, 18, 3), "MUT");
 }
 
 #[test]
 fn the_rows_show_the_page_of_the_row_and_the_bar_on_it() {
     let mut s = Song::new();
     open_tracker(&mut s.ui);
-    // Stopped: the cursor's row 0, the page from row -4 (four blank rows).
+    let t = unsafe { &*theme_get(THEME_HIGH_CONTRAST) };
+    let top = |j: usize| TRACKER_VIEW_TOP as usize + 2 * j;
+    // Stopped: the cursor's row 0, the page from row -4 (four blank rows), the bar on row 0.
     for j in 0..4 {
-        assert_eq!(s.ui.row(2 + j)[..29].trim(), "", "row {j}");
+        assert_eq!(s.ui.small(top(j), 0, 25).trim(), "", "row {j}");
     }
-    assert_eq!(&s.ui.row(6)[..2], "00");
-    assert_eq!(attr(&s.ui, 0, 6), attr_of(GRID_WHITE, GRID_BLUE), "the bar");
-    assert_eq!(attr(&s.ui, 28, 6), attr_of(GRID_LIGHT_BLUE, GRID_BLUE));
-    assert_eq!(attr(&s.ui, 0, 7), attr_of(GRID_GREY, GRID_BLACK));
+    assert_eq!(s.ui.small(top(4) + 1, 0, 2), "00");
     assert_eq!(
-        attr(&s.ui, 0, 10),
-        attr_of(GRID_LIGHT_GREY, GRID_BLACK),
-        "row 04"
+        attr(&s.ui, 0, top(4) + 1),
+        attr_of(u32::from(t.hot), u32::from(t.cursor))
     );
-    assert_eq!(&s.ui.row(26)[..2], "14");
-    // Playing row $1A: the page from $0C, the bar on $1A, $10 in yellow.
+    assert_eq!(
+        attr(&s.ui, 17, top(4)) >> 4,
+        t.cursor,
+        "the bar's last column"
+    );
+    assert_eq!(attr(&s.ui, 18, top(4)) >> 4, t.bg, "and no further");
+    assert_eq!(
+        attr(&s.ui, 0, top(5) + 1),
+        attr_of(u32::from(t.label), u32::from(t.bg))
+    );
+    assert_eq!(s.ui.small(top(11) + 1, 0, 2), "07", "twelve rows");
+    // Playing row $1A: the page from $14 (rows $14..$1F), the bar on $1A.
     s.ui.press(PANEL_BTN_PLAY);
     s.f.st.row = [0x1a, 0, 0];
     s.f.st.order_pos = [0, 0, 0];
     settle(&mut s.ui);
-    assert_eq!(&s.ui.row(2)[..2], "0C");
-    assert_eq!(&s.ui.row(6)[..2], "10");
-    assert_eq!(attr(&s.ui, 0, 6), attr_of(GRID_YELLOW, GRID_BLACK));
-    assert_eq!(&s.ui.row(16)[..2], "1A");
-    assert_eq!(attr(&s.ui, 0, 16), attr_of(GRID_WHITE, GRID_BLUE));
+    assert_eq!(s.ui.small(top(0) + 1, 0, 2), "14");
+    assert_eq!(s.ui.small(top(6) + 1, 0, 2), "1A");
+    assert_eq!(attr(&s.ui, 0, top(6) + 1) & 15, t.hot);
+    assert_eq!(attr(&s.ui, 0, top(6) + 1) >> 4, t.cursor);
     // A row step moves the bar: a few cells, within the budget.
     s.f.st.row = [0x1b, 0, 0];
     s.ui.frame();
     let sent = drain(&mut s.ui.g);
-    assert!(sent.cells > 0 && sent.cells <= 70, "{sent:?}");
+    assert!(sent.cells > 0 && sent.cells <= 125, "{sent:?}");
 }
 
 #[test]

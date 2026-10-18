@@ -72,8 +72,17 @@ Follow-ups that aren't tied to a milestone task yet.
   from cells), a value popup over any view when the panel changes a parameter, the menu at
   2× with scroll hints, and large toasts are in (docs/art/README.md "Large text",
   docs/reference/controls.md "Value popup", the readability check in docs/hardware-test.md
-  section 6). Still to do on the dense views at 8×8 (LIVE's scopes, TRACKER, CHIP, STATUS,
-  ABOUT): look at them on the panel and decide which numbers deserve the large size.
+  section 6).
+- **Done: the dense screens redrawn for 23 mm (2026-10-18).** LIVE, TRACKER, CHIP and STATUS
+  follow the screen-readability prototype (assets/prototypes/screen-readability.html) the user
+  chose: a high-contrast theme by default (the menu's THEME keeps the C64 look), voice and knob
+  colours the same everywhere, LIVE's lanes, thick scopes and knob row, one voice of TRACKER at
+  2× with strips and SELECT to switch it, CHIP a section at a time with its four controls at 3×
+  (docs/art/README.md "Theme", "LIVE", "CHIP", "TRACKER"). The panel check is in
+  docs/hardware-test.md section 6 ("Readability of the redesigned screens"). Left for the
+  panel's verdict: ABOUT is unchanged (its credits fade a row at a time, and the first page's
+  heading does not fit at 2×), and the small text (a lane's waveform and stage, the knob names,
+  the footers) is still 8×8.
 
 ## A soft knee on the two chips' mix (if two loud chips clip)
 

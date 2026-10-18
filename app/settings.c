@@ -61,13 +61,14 @@ uint32_t settings_gather(const settings* s, uint8_t* out) {
         out[n - SETTINGS_VERSION_CHARS + i] = (uint8_t)s->version[i];
     }
     out[n++] = *s->tracker_rows;
+    out[n++] = l->theme;
     return n;
 }
 
 int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
     /* Schema 1 or later: the v1 part (a later schema appends). */
     if (len < SETTINGS_V1_BYTES || rec[0] < 1u || rec[5] < SETTINGS_PARAMS_V1 ||
-        (rec[0] >= 2u && len < SETTINGS_V2_BYTES)) {
+        (rec[0] >= 2u && len < SETTINGS_V2_BYTES) || (rec[0] >= 3u && len < SETTINGS_V3_BYTES)) {
         return 0;
     }
     live* l = s->l;
@@ -97,6 +98,7 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
     }
     n += SETTINGS_PARAMS_V1;
     *s->tracker_rows = (uint8_t)(rec[0] >= 2u && rec[SETTINGS_V1_BYTES] == 1u);
+    live_set_theme(l, rec[0] >= 3u ? rec[SETTINGS_V2_BYTES] : 0u); /* an older record: HIGH CONTRAST */
     for (uint32_t i = 0; i < SETTINGS_VERSION_CHARS; i++) {
         char c = s->version[i];
         if ((uint8_t)c != rec[n + i]) {

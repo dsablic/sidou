@@ -3,6 +3,7 @@
 #include "chip_view.h"
 
 #include <stddef.h>
+#include <string.h>
 
 #include "font.h"
 #include "fx/fx_slots.h"
@@ -10,39 +11,28 @@
 #include "sid/sid_character.h"
 #include "views.h"
 
-/* The page's colours: light blue on blue as the status screen, the focus white, what is off or
- * not there yet grey, and the A tab in reverse video. */
-#define TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
-#define FOCUS GRID_ATTR(GRID_WHITE, GRID_BLUE)
-#define DIM GRID_ATTR(GRID_GREY, GRID_BLUE)
-#define TAB GRID_ATTR(GRID_BLUE, GRID_LIGHT_BLUE)
-#define TAB_FOCUS GRID_ATTR(GRID_BLUE, GRID_WHITE)
-#define TARGET GRID_ATTR(GRID_YELLOW, GRID_BLUE)
-/* Inside the frames: names from LABEL_COL, the character's bars from BAR_COL, values ending at
- * VALUE_END; a slot's second column of controls SLOT_HALF further on. */
-#define LABEL_COL 4u
-#define BAR_COL 10u
-#define BAR_CELLS 12u
-#define VALUE_END 26u
-#define SLOT_HALF 12u
-/* The tabs on row 2: " A" and " B", each TAB_W cells from TAB_COL, KEYS beside the keys'. */
-#define TITLE_ROW 2u
-#define TAB_COL 12u
-#define TAB_W 8u
-/* The character's frame: four rows of controls; CHIP's, two of the profile and model. */
-#define CHIP_H 4u
-#define CHARACTER_H 6u
+/* The knobs' columns, as LIVE's knob row has them (app/live_view.c): 8, 7, 7 and 8 cells side by side,
+ * a bar a cell shorter than its column. */
+static const uint8_t KNOB_COL[4] = {0, 8, 15, 22};
+static const uint8_t KNOB_W[4] = {8, 7, 7, 8};
+/* The section tabs: CHIP, DIST, MOD, FX across the width. */
+static const char* const TAB_NAME[CHIP_VIEW_SECTIONS] = {"CHIP", "DIST", "MOD", "FX"};
+static const uint8_t TAB_COL[CHIP_VIEW_SECTIONS] = {0, 8, 15, 22};
+static const uint8_t TAB_W[CHIP_VIEW_SECTIONS] = {8, 7, 7, 8};
+/* The profile's name at 3x starts here, after the model's four characters. */
+#define PROFILE_COL 13u
+/* A section's line among the others at 2x: its name, then its value from SUMMARY_VALUE_COL. */
+#define SUMMARY_VALUE_COL 9u
 
-_Static_assert(CHIP_VIEW_CHIP_ROW + CHIP_H == CHIP_VIEW_CHARACTER_ROW &&
-                   CHIP_VIEW_CHARACTER_ROW + CHARACTER_H == CHIP_VIEW_SLOT_ROW &&
-                   CHIP_VIEW_SLOT_ROW + LIVE_SLOTS * CHIP_VIEW_SLOT_ROWS == CHIP_VIEW_HELP_ROW,
-               "the frames follow each other down to the help line");
-_Static_assert(CHIP_VIEW_HELP_ROW < SCREEN_TOAST_ROW, "the help line is above the toast's");
-_Static_assert(CHIP_VIEW_NOTE_ROW > 2u && CHIP_VIEW_NOTE_ROW < CHIP_VIEW_CHIP_ROW,
-               "the tab's note between the tabs and the CHIP frame");
-_Static_assert(CHIP_VIEW_COL + CHIP_VIEW_W == GRID_COLS - 2u, "the frames end before the margin");
-_Static_assert(BAR_COL + BAR_CELLS < VALUE_END - 3u, "a bar ends before its value");
-_Static_assert(TAB_COL + 2u * TAB_W == CHIP_VIEW_COL + CHIP_VIEW_W, "the tabs end with the frames");
+_Static_assert(CHIP_VIEW_TAB_ROW + 1u < CHIP_VIEW_CHOICE_ROW &&
+                   CHIP_VIEW_CHOICE_ROW + 3u <= CHIP_VIEW_NAMES_ROW &&
+                   CHIP_VIEW_NAMES_ROW < CHIP_VIEW_LABEL_ROW &&
+                   CHIP_VIEW_VALUE_ROW + 3u == CHIP_VIEW_BAR_ROW &&
+                   CHIP_VIEW_TAG_ROW + 1u < CHIP_VIEW_SUMMARY_ROW &&
+                   CHIP_VIEW_SUMMARY_ROW + 2u * CHIP_VIEW_SECTIONS_SHOWN <= CHIP_VIEW_NOTE_ROW &&
+                   CHIP_VIEW_HELP_ROW < GRID_ROWS,
+               "the page's bands follow each other");
+_Static_assert(CHIP_VIEW_NOTE_ROW + 1u == CHIP_VIEW_HELP_ROW, "the note and the help");
 _Static_assert(LIVE_SLOT_FIELDS == 5u && LIVE_SLOT_MIX == 4u,
                "Amount, A, B, Mix after the algorithm");
 
@@ -110,25 +100,30 @@ int chip_view_label(uint32_t slot, uint32_t alg, uint32_t field, char* buf) {
 
 /* ---- the canvas ---- */
 
-static void put(chip_view_canvas* c, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr) {
+typedef chip_view_canvas canvas;
+
+static void put(canvas* c, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr) {
     if (col < GRID_COLS && row < GRID_ROWS) {
         c->ch[row][col] = ch;
         c->attr[row][col] = attr;
     }
 }
 
-static void fill(chip_view_canvas* c, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
-                 uint8_t ch, uint8_t attr) {
-    for (uint32_t r = row; r < row + h; r++) {
-        for (uint32_t k = col; k < col + w; k++) {
-            put(c, k, r, ch, attr);
+static void fill(canvas* c, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint8_t ch,
+                 uint8_t attr) {
+    uint32_t col1 = col + w < GRID_COLS ? col + w : GRID_COLS;
+    uint32_t row1 = row + h < GRID_ROWS ? row + h : GRID_ROWS;
+    for (uint32_t r = row; r < row1; r++) {
+        for (uint32_t k = col; k < col1; k++) {
+            c->ch[r][k] = ch;
+            c->attr[r][k] = attr;
         }
     }
 }
 
 /* Upper case (the profiles' names have lower case, which the font shows as upper case
  * anyway). Returns the column after it. */
-static uint32_t text(chip_view_canvas* c, uint32_t col, uint32_t row, const char* s, uint8_t attr) {
+static uint32_t text(canvas* c, uint32_t col, uint32_t row, const char* s, uint8_t attr) {
     for (; *s && col < GRID_COLS; s++) {
         uint8_t ch = (uint8_t)*s;
         put(c, col++, row, ch >= 'a' && ch <= 'z' ? (uint8_t)(ch - 'a' + 'A') : ch, attr);
@@ -144,54 +139,16 @@ static uint32_t length(const char* s) {
     return n;
 }
 
-/* s right-aligned to end before column end; a text longer than end starts at column 0 (put
- * drops what falls past the grid). */
-static void text_right(chip_view_canvas* c, uint32_t end, uint32_t row, const char* s,
-                       uint8_t attr) {
-    uint32_t n = length(s);
-    text(c, n <= end ? end - n : 0u, row, s, attr);
-}
-
-/* value (0..999) right-aligned in the 3 cells before column end. */
-static void number(chip_view_canvas* c, uint32_t end, uint32_t row, uint32_t value, uint8_t attr) {
-    for (uint32_t i = 1; i <= 3u; i++) {
-        put(c, end - i, row, i == 1u || value ? (uint8_t)('0' + value % 10u) : (uint8_t)' ', attr);
-        value /= 10u;
+/* s at 2 or 3 times the font, upper case, from (col, row). */
+static void big(canvas* c, uint32_t col, uint32_t row, uint32_t scale, const char* s,
+                uint8_t attr) {
+    char up[16];
+    uint32_t n = 0;
+    for (; s[n] && n + 1u < sizeof up; n++) {
+        up[n] = s[n] >= 'a' && s[n] <= 'z' ? (char)(s[n] - 'a' + 'A') : s[n];
     }
-}
-
-/* A meter of BAR_CELLS bar glyphs filled to value / SID_CHARACTER_MAX (as widget_bar). */
-static void bar(chip_view_canvas* c, uint32_t col, uint32_t row, uint32_t value, uint8_t attr) {
-    uint32_t px = value * (BAR_CELLS * 8u) / SID_CHARACTER_MAX;
-    for (uint32_t i = 0; i < BAR_CELLS; i++) {
-        uint32_t f = px >= 8u ? 8u : px;
-        put(c, col + i, row, (uint8_t)(FONT_BAR0 + f), attr);
-        px -= f;
-    }
-}
-
-/* A frame of box glyphs (as widget_frame) around h rows of CHIP_VIEW_W cells from row, its
- * title a and b (NULL: none) set into its top edge; the inside cleared. */
-static void frame(chip_view_canvas* c, uint32_t row, uint32_t h, const char* a, const char* b,
-                  uint8_t attr) {
-    const uint32_t col = CHIP_VIEW_COL;
-    const uint32_t last = col + CHIP_VIEW_W - 1u;
-    fill(c, col + 1u, row, CHIP_VIEW_W - 2u, 1, FONT_BOX_H, attr);
-    fill(c, col + 1u, row + h - 1u, CHIP_VIEW_W - 2u, 1, FONT_BOX_H, attr);
-    fill(c, col, row + 1u, 1, h - 2u, FONT_BOX_V, attr);
-    fill(c, last, row + 1u, 1, h - 2u, FONT_BOX_V, attr);
-    fill(c, col + 1u, row + 1u, CHIP_VIEW_W - 2u, h - 2u, ' ', attr);
-    put(c, col, row, FONT_BOX_TL, attr);
-    put(c, last, row, FONT_BOX_TR, attr);
-    put(c, col, row + h - 1u, FONT_BOX_BL, attr);
-    put(c, last, row + h - 1u, FONT_BOX_BR, attr);
-    uint32_t k = text(c, col + 1u, row, " ", attr);
-    k = text(c, k, row, a, attr);
-    if (b) {
-        k = text(c, k, row, " ", attr);
-        k = text(c, k, row, b, attr);
-    }
-    put(c, k, row, ' ', attr);
+    up[n] = 0;
+    (void)grid_canvas_text_big(c, col, row, scale, up, attr);
 }
 
 /* ---- what it shows ---- */
@@ -267,7 +224,8 @@ static void look(const chip_view* cv, uint8_t out[CHIP_VIEW_LOOK]) {
     out[n++] = l->two_chips ? (uint8_t)(1u + l->keys_chip) : 0u;
     out[n++] = help_kind(cv);
     out[n++] = (uint8_t)(applied(cv) | cv->target << 4);
-    out[n] = (uint8_t)(cv->target && (l->user_valid >> (cv->target - 1u) & 1u));
+    out[n++] = (uint8_t)(cv->target && (l->user_valid >> (cv->target - 1u) & 1u));
+    out[n] = l->theme;
 }
 
 static int looks_changed(const chip_view* cv) {
@@ -281,117 +239,190 @@ static int looks_changed(const chip_view* cv) {
     return 0;
 }
 
-/* The focus's mark in the margin, on its frame's top row. */
-static void mark(chip_view_canvas* c, uint32_t row, int on) {
-    put(c, 1, row, on ? FONT_PLAY : (uint8_t)' ', on ? FOCUS : TEXT);
+/* The section in focus: 0 the chip, 1.. the slots. */
+static uint32_t section(const chip_view* cv) {
+    return cv->chip ? 0u : 1u + cv->l->fx_select % LIVE_SLOTS;
 }
 
-/* The USER profile picked, in the PROFILE row (over the built-in profile's name the base shows),
- * and the save target, yellow, in the CHIP frame's title: the chip is unchanged. An empty slot
- * ends in a dash, as the picker would show it. Cold: drawn only with a slot picked or a target. */
-__attribute__((noinline, unused)) static void draw_user(chip_view* cv, chip_view_canvas* c) {
-    uint8_t a = cv->chip && !cv->tabs ? FOCUS : TEXT;
+/* The profile as the choice's second word, at most 5 characters: the name without the model
+ * ("R4AR", "WORN"), or USR n for a USER slot. */
+static void profile_word(const chip_view* cv, const char* name, char out[6]) {
     uint32_t n = applied(cv);
+    uint32_t k = 0;
     if (n) {
-        char user[7] = {'U', 'S', 'E', 'R', ' ', (char)('0' + n), 0};
-        fill(c, VALUE_END - 12u, CHIP_VIEW_CHIP_ROW + 1u, 12u, 1, ' ', a);
-        text_right(c, VALUE_END, CHIP_VIEW_CHIP_ROW + 1u, user, a);
-    }
-    if (cv->target) {
-        char title[20] = " SAVE TO USER n";
-        title[14] = (char)('0' + cv->target);
-        uint32_t k = text(c, CHIP_VIEW_COL + 1u, CHIP_VIEW_CHIP_ROW, title, TARGET);
-        int empty = !(cv->l->user_valid >> (cv->target - 1u) & 1u);
-        k = text(c, k, CHIP_VIEW_CHIP_ROW, empty ? " -" : "", TARGET);
-        put(c, k, CHIP_VIEW_CHIP_ROW, ' ', TARGET);
-    }
-}
-
-static void draw_chip(chip_view* cv, chip_view_canvas* c) {
-    uint8_t a = cv->chip && !cv->tabs ? FOCUS : TEXT;
-    chip_setup s;
-    uint8_t model;
-    shown(cv, &s, &model);
-    const sid_chip_profile* p = sid_chip_profile_get(s.profile);
-    frame(c, CHIP_VIEW_CHIP_ROW, CHIP_H, "CHIP", NULL, a);
-    mark(c, CHIP_VIEW_CHIP_ROW, cv->chip && !cv->tabs);
-    text(c, LABEL_COL, CHIP_VIEW_CHIP_ROW + 1u, "PROFILE", a);
-    text_right(c, VALUE_END, CHIP_VIEW_CHIP_ROW + 1u, p ? p->name : "?", a);
-    text(c, LABEL_COL, CHIP_VIEW_CHIP_ROW + 2u, "MODEL", a);
-    /* The model asked for, as PROFILE shows the profile asked for: a step shows at once,
-     * while the spare chip for it is prepared (app/reg_ring.h). */
-    text_right(c, VALUE_END, CHIP_VIEW_CHIP_ROW + 2u, model == SID_MODEL_8580 ? "8580" : "6581", a);
-
-    static const char* const NAMES[LIVE_CHAR_FIELDS - 1u] = {"AGE", "DAC", "THUMP", "BLEED"};
-    frame(c, CHIP_VIEW_CHARACTER_ROW, CHARACTER_H, "CHARACTER", NULL, a);
-    mark(c, CHIP_VIEW_CHARACTER_ROW, cv->chip && !cv->tabs);
-    for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; f++) {
-        uint32_t row = CHIP_VIEW_CHARACTER_ROW + 1u + f;
-        text(c, LABEL_COL, row, NAMES[f], a);
-        bar(c, BAR_COL, row, s.controls[f], a);
-        number(c, VALUE_END, row, s.controls[f], a);
-    }
-    if (cv->l->user_applied | (cv->kr ? cv->kr->song_user : 0u) | cv->target) {
-        draw_user(cv, c);
-    }
-}
-
-/* Row 2's tabs: the shown one in reverse video (white with the tabs' focus), KEYS beside the
- * letter of the keys' chip; the focus's mark in the margin. */
-static void draw_tabs(chip_view* cv, chip_view_canvas* c) {
-    const live* l = cv->l;
-    for (uint32_t x = 0; x < 2u; x++) {
-        uint8_t a = x != cv->tab ? TEXT : cv->tabs ? TAB_FOCUS : TAB;
-        uint32_t col = TAB_COL + TAB_W * x;
-        fill(c, col, TITLE_ROW, TAB_W, 1, ' ', x == cv->tab ? a : TEXT);
-        uint32_t k = text(c, col, TITLE_ROW, x ? " B" : " A", a);
-        if (l->two_chips && l->keys_chip == x) {
-            k = text(c, k, TITLE_ROW, " KEYS", a);
+        const char* u = "USR ";
+        for (; *u; u++) {
+            out[k++] = *u;
         }
-        put(c, k, TITLE_ROW, ' ', a);
+        out[k++] = (char)('0' + n);
+        out[k] = 0;
+        return;
     }
-    mark(c, TITLE_ROW, cv->tabs);
+    const char* w = name;
+    if (name[0] >= '0' && name[0] <= '9') { /* "6581 R4AR": what follows the model */
+        while (*w && *w != ' ') {
+            w++;
+        }
+        w += *w == ' ';
+    }
+    for (; *w && *w != ' ' && k < 5u; w++) {
+        out[k++] = *w >= 'a' && *w <= 'z' ? (char)(*w - 'a' + 'A') : *w;
+    }
+    out[k] = 0;
 }
 
-static void draw_slot(chip_view* cv, chip_view_canvas* c, uint32_t k) {
+/* The tab row: the sections across the width, the focused one yellow; with the focus on the tabs
+ * the CHIP section (whose controls K1..K4 turn) is marked in grey instead. */
+static void draw_tabs(const chip_view* cv, canvas* c, const theme* th) {
+    uint32_t sec = section(cv);
+    for (uint32_t i = 0; i < CHIP_VIEW_SECTIONS; i++) {
+        uint8_t a = !cv->tabs && sec == i  ? GRID_ATTR(th->bg, th->hot)
+                    : cv->tabs && i == 0u ? GRID_ATTR(th->bg, th->label)
+                                           : GRID_ATTR(th->label, th->dim);
+        uint32_t w = TAB_W[i];
+        uint32_t n = length(TAB_NAME[i]);
+        fill(c, TAB_COL[i], CHIP_VIEW_TAB_ROW, w, 1, ' ', a);
+        text(c, TAB_COL[i] + (w - n) / 2u, CHIP_VIEW_TAB_ROW, TAB_NAME[i], a);
+    }
+}
+
+/* One control in its knob's column: its label small in the knob's colour, its value at 3x (2x
+ * from 100, which needs 3 digits), a bar and the knob's name. `used` 0: all dark grey. */
+static void draw_control(canvas* c, const theme* th, uint32_t k, const char* name, uint32_t value,
+                         uint32_t max, int used) {
+    uint32_t col = KNOB_COL[k];
+    uint32_t cells = KNOB_W[k] - 1u;
+    uint8_t accent = used ? th->knob[k] : th->dim;
+    text(c, col, CHIP_VIEW_LABEL_ROW, name, GRID_ATTR(accent, th->bg));
+    char v[4];
+    uint32_t n = 0;
+    if (value >= 100u) {
+        v[n++] = (char)('0' + value / 100u);
+    }
+    if (value >= 10u) {
+        v[n++] = (char)('0' + value / 10u % 10u);
+    }
+    v[n++] = (char)('0' + value % 10u);
+    v[n] = 0;
+    uint8_t va = GRID_ATTR(used ? th->value : th->dim, th->bg);
+    if (n <= 2u) {
+        big(c, col, CHIP_VIEW_VALUE_ROW, 3, v, va);
+    } else {
+        big(c, col, CHIP_VIEW_VALUE_ROW + 1u, 2, v, va);
+    }
+    uint32_t px = (value > max ? max : value) * (cells * 8u) / max;
+    for (uint32_t i = 0; i < cells; i++) {
+        uint32_t f = px >= 8u ? 8u : px;
+        px -= f;
+        put(c, col + i, CHIP_VIEW_BAR_ROW, (uint8_t)(FONT_BAR0 + f), GRID_ATTR(accent, th->dim));
+    }
+    char tag[3] = {'K', (char)('1' + k), 0};
+    text(c, col, CHIP_VIEW_TAG_ROW, tag, THEME_ATTR(th, dim));
+}
+
+/* The USER profile picked says USR n in the choice; the save target, yellow, in the names row:
+ * the chip is unchanged. An empty slot ends in a dash, as the picker would show it. */
+static void draw_names(const chip_view* cv, canvas* c, const theme* th) {
     const live* l = cv->l;
-    const uint8_t* s = l->slot[k];
-    uint32_t alg = s[LIVE_SLOT_ALGORITHM];
-    uint32_t row = CHIP_VIEW_SLOT_ROW + CHIP_VIEW_SLOT_ROWS * k;
-    int focus = !cv->chip && !cv->tabs && l->fx_select == k;
-    uint8_t a = focus ? FOCUS : TEXT;
-    frame(c, row, CHIP_VIEW_SLOT_ROWS, views_slot_name(k), views_algorithm_name(k, alg), a);
-    mark(c, row, focus);
-    for (uint32_t f = 0; f < 4u; f++) {
-        char name[CHIP_VIEW_LABEL];
-        uint32_t field = LIVE_SLOT_AMOUNT + f;
-        uint8_t fa = chip_view_label(k, alg, field, name) ? a : DIM;
-        uint32_t r = row + 1u + f / 2u;
-        uint32_t col = LABEL_COL + SLOT_HALF * (f % 2u);
-        text(c, col, r, name, fa);
-        number(c, col + 9u, r, s[field], fa);
+    uint8_t dim = THEME_ATTR(th, dim);
+    if (cv->chip) {
+        if (cv->target) {
+            char title[20] = "SAVE TO USER n";
+            title[13] = (char)('0' + cv->target);
+            uint32_t k = text(c, 0, CHIP_VIEW_NAMES_ROW, title, THEME_ATTR(th, hot));
+            if (!(l->user_valid >> (cv->target - 1u) & 1u)) {
+                text(c, k, CHIP_VIEW_NAMES_ROW, " -", THEME_ATTR(th, hot));
+            }
+        } else {
+            text(c, 0, CHIP_VIEW_NAMES_ROW, "MODEL", dim);
+            text(c, PROFILE_COL, CHIP_VIEW_NAMES_ROW, "PROFILE", dim);
+        }
+    } else {
+        text(c, 0, CHIP_VIEW_NAMES_ROW, "ALGORITHM", dim);
     }
 }
 
 /* The whole page into the canvas, and what it shows remembered. */
 static void build(chip_view* cv) {
     chip_view_canvas* c = &cv->cv;
+    const live* l = cv->l;
+    const theme* th = theme_get(l->theme);
     look(cv, cv->drawn);
-    /* The screen's frame, as widget_screen: the full block on the outer ring. */
-    fill(c, 0, 0, GRID_COLS, GRID_ROWS, FONT_FULL, TEXT);
-    fill(c, 1, 1, GRID_COLS - 2u, GRID_ROWS - 2u, ' ', TEXT);
-    text(c, CHIP_VIEW_COL, TITLE_ROW, "CHIP", TEXT);
-    draw_tabs(cv, c);
-    draw_chip(cv, c);
-    for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
-        draw_slot(cv, c, k);
+    chip_setup s;
+    uint8_t model;
+    shown(cv, &s, &model);
+    uint32_t sec = section(cv);
+    const uint8_t blank = THEME_ATTR(th, value);
+    memset(c->ch, ' ', sizeof c->ch);
+    memset(c->attr, blank, sizeof c->attr);
+    /* The title at 2x, which chip's page; KEYS:A or KEYS:B on the chip the keys play. */
+    char title[7] = "CHIP A";
+    title[5] = cv->tab ? 'B' : 'A';
+    big(c, 0, 0, 2, title, GRID_ATTR(cv->tabs ? th->hot : th->value, th->bg));
+    if (l->two_chips && l->keys_chip == cv->tab) {
+        text(c, GRID_COLS - 6u, 0, cv->tab ? "KEYS:B" : "KEYS:A", THEME_ATTR(th, label));
     }
-    /* Under the tabs, what the tab is (nothing on chip A with no song): the help line keeps
-     * the moves. */
+    draw_tabs(cv, c, th);
+    draw_names(cv, c, th);
+    if (sec == 0u) {
+        const sid_chip_profile* p = sid_chip_profile_get(s.profile);
+        big(c, 0, CHIP_VIEW_CHOICE_ROW, 3, model == SID_MODEL_8580 ? "8580" : "6581",
+            THEME_ATTR(th, value));
+        char word[6];
+        profile_word(cv, p ? p->name : "?", word);
+        big(c, PROFILE_COL, CHIP_VIEW_CHOICE_ROW, 3, word, THEME_ATTR(th, hot));
+        static const char* const NAMES[LIVE_CHAR_FIELDS - 1u] = {"AGE", "DAC", "THUMP", "BLEED"};
+        for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; f++) {
+            draw_control(c, th, f, NAMES[f], s.controls[f], SID_CHARACTER_MAX, 1);
+        }
+    } else {
+        uint32_t k = sec - 1u;
+        const uint8_t* slot = l->slot[k];
+        uint32_t alg = slot[LIVE_SLOT_ALGORITHM];
+        big(c, 0, CHIP_VIEW_CHOICE_ROW, 3, views_algorithm_name(k, alg),
+            alg ? THEME_ATTR(th, value) : THEME_ATTR(th, dim));
+        for (uint32_t f = 0; f < 4u; f++) {
+            char name[CHIP_VIEW_LABEL];
+            uint32_t field = LIVE_SLOT_AMOUNT + f;
+            int used = chip_view_label(k, alg, field, name);
+            draw_control(c, th, f, name, slot[field], LIVE_SLOT_MAX, used);
+        }
+    }
+    /* The other sections, one line each at 2x: the chip's model and profile, the slots' algorithms. */
+    uint32_t line = 0;
+    for (uint32_t i = 0; i < CHIP_VIEW_SECTIONS; i++) {
+        if (i == sec) {
+            continue;
+        }
+        uint32_t row = CHIP_VIEW_SUMMARY_ROW + 2u * line++;
+        big(c, 0, row, 2, TAB_NAME[i], THEME_ATTR(th, label));
+        if (i == 0u) {
+            const sid_chip_profile* p = sid_chip_profile_get(s.profile);
+            char both[16];
+            uint32_t n = 0;
+            const char* m = model == SID_MODEL_8580 ? "8580" : "6581";
+            for (; m[n]; n++) {
+                both[n] = m[n];
+            }
+            both[n++] = ' ';
+            char word[6];
+            profile_word(cv, p ? p->name : "?", word);
+            for (uint32_t j = 0; word[j] && n + 1u < sizeof both; j++) {
+                both[n++] = word[j];
+            }
+            both[n] = 0;
+            big(c, SUMMARY_VALUE_COL, row, 2, both, THEME_ATTR(th, value));
+        } else {
+            uint32_t alg = l->slot[i - 1u][LIVE_SLOT_ALGORITHM];
+            big(c, SUMMARY_VALUE_COL, row, 2, views_algorithm_name(i - 1u, alg),
+                alg ? THEME_ATTR(th, value) : THEME_ATTR(th, dim));
+        }
+    }
+    /* At the foot, what the tab is (nothing on chip A with no song): the help line keeps the moves. */
     static const char* const NOTE[4] = {"", "SONG SETUP  SLOTS SHARED", "FOLLOWS KEYS  SLOTS SHARED",
                                         "SLOTS SHARED WITH CHIP A"};
-    text_right(c, CHIP_VIEW_COL + CHIP_VIEW_W, CHIP_VIEW_NOTE_ROW, NOTE[help_kind(cv)], TEXT);
-    text(c, CHIP_VIEW_COL, CHIP_VIEW_HELP_ROW, "SELECT MOVE ALGORITHM STEP", TEXT);
+    text(c, 0, CHIP_VIEW_NOTE_ROW, NOTE[help_kind(cv)], THEME_ATTR(th, label));
+    text(c, 0, CHIP_VIEW_HELP_ROW, "SELECT MOVE ALGORITHM STEP", THEME_ATTR(th, dim));
     cv->built = 1;
     cv->copying = 1;
 }
@@ -656,18 +687,27 @@ static void compose(screen* s, void* state, grid* g) {
     uint32_t whole = s->redraw && s->wipe != SCREEN_CUT ? s->redraw_rows : 0u;
     for (uint32_t r = 0; r < GRID_ROWS; r++) {
         if (whole >> r & 1u) {
-            grid_row(g, r, c->ch[r], c->attr[r]);
+            grid_canvas_row(g, c, r);
         }
     }
     int raster = s->raster_frames && s->wipe == SCREEN_CUT;
     uint32_t used = screen_pending(s) + screen_layer_cells(s);
     uint32_t left = used < CHIP_VIEW_FRAME_CELLS ? CHIP_VIEW_FRAME_CELLS - used : 0u;
+    /* The scan of the canvas against the grid from the cursor, a cell at a time (the busiest part:
+     * flat planes, the cell's row and column only for a cell that differs). */
+    const uint8_t* cc = &c->ch[0][0];
+    const uint8_t* ca = &c->attr[0][0];
+    const uint8_t* cs = &c->src[0][0];
     uint32_t i = cv->cursor;
     for (uint32_t n = 0; n < GRID_CELLS; n++, i = i + 1u < GRID_CELLS ? i + 1u : 0u) {
+        uint8_t ch = cc[i];
+        if (g->ch[i] == ch && g->attr[i] == ca[i] &&
+            ((uint8_t)(ch - GRID_BIG_FIRST) >= GRID_BIG_PIECES || g->src[i] == cs[i])) {
+            continue;
+        }
         uint32_t r = i / GRID_COLS;
         uint32_t k = i % GRID_COLS;
-        if ((whole >> r & 1u) || (g->ch[i] == c->ch[r][k] && g->attr[i] == c->attr[r][k]) ||
-            screen_covered(s, k, r) || (raster && border(k, r))) {
+        if (screen_covered(s, k, r) || (raster && border(k, r))) {
             continue;
         }
         if (!left) {
@@ -676,7 +716,7 @@ static void compose(screen* s, void* state, grid* g) {
             cv->copying = 1;
             return;
         }
-        grid_put(g, k, r, c->ch[r][k], c->attr[r][k]);
+        grid_canvas_put(g, c, k, r);
         left--;
     }
     /* All of it is on the grid but what the layers hold: those come back when the screen

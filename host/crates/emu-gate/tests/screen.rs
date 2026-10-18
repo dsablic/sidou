@@ -46,6 +46,7 @@ const ALGORITHM: u8 = 1;
 /// common::open_status's), and its cursor cell on the first item.
 const MENU_CHIP: i32 = sidou_sys::VIEWS_MENU_CHIP as i32;
 const MENU_CARDS: i32 = sidou_sys::VIEWS_MENU_CARDS as i32;
+const MENU_THEME: i32 = sidou_sys::VIEWS_MENU_THEME as i32;
 const MENU_SCENE: i32 = sidou_sys::VIEWS_MENU_SCENE as i32;
 const MENU_CHARSET: i32 = sidou_sys::VIEWS_MENU_CHARSET as i32;
 const MENU_ABOUT: i32 = sidou_sys::VIEWS_MENU_ABOUT as i32;
@@ -329,8 +330,8 @@ fn compare_golden_cells(build: &Path, name: &str, fb: &[u16], cells: &[(usize, u
     }
 }
 
-/// LIVE's first voice: its note's cells (app/live_view.c, the info column).
-const VOICE1_NOTE: (usize, usize, usize) = (25, 2, 4);
+/// LIVE's first voice: its note's cells (app/live_view.c, at 2x on the lane's middle rows).
+const VOICE1_NOTE: [(usize, usize, usize); 2] = [(24, 3, 6), (24, 4, 6)];
 
 /// The status screen's version (row 2, right-aligned before column 28): it changes with
 /// every release, so the comparison leaves it out. platform/fm1/ui.c asserts at compile time
@@ -840,9 +841,11 @@ fn a_chip_change_sweeps_the_raster_over_the_border() {
         frames.push(border(&m));
     }
     m.key(FX, false);
+    // The status screen's ring in the theme's dim colour (dark grey); a frame with any other is a band.
+    let ring = unsafe { (*sidou_sys::theme_get(sidou_sys::THEME_HIGH_CONTRAST)).dim };
     let swept: Vec<&Vec<u8>> = frames
         .iter()
-        .filter(|b| b.iter().any(|&c| c != 14))
+        .filter(|b| b.iter().any(|&c| c != ring))
         .collect();
     assert!(swept.len() >= 10, "{} frames of raster", swept.len());
     for b in &swept {
@@ -1238,7 +1241,7 @@ fn a_note_skips_the_boot_and_plays() {
     settle(&mut m, &fw);
     assert_eq!(common::top_view(&mut m, &fw), fw.symbol("live_view_view"));
     // LIVE names the note on voice 1, as when the note plays after the boot.
-    compare_golden_cells(&build, "live-a4", &m.soc.lcd.fb, &[VOICE1_NOTE]);
+    compare_golden_cells(&build, "live-a4", &m.soc.lcd.fb, &VOICE1_NOTE);
     let peak = m.left()[from..]
         .iter()
         .map(|s| s.unsigned_abs())
@@ -1535,27 +1538,27 @@ const CHORD: [u8; 3] = [14 + 57 - 53, 14 + 64 - 53, 14 + 76 - 53];
 /// Between the chord's presses: more than a key scan frame and its debounce.
 const CHORD_STAGGER_MS: u64 = 5;
 
-/// LIVE's three scopes (app/live_view.h): 160 x 32 pixels from (8, 16), (8, 64), (8, 112).
+/// LIVE's three scopes (app/live_view.h): 160 x 32 pixels from (24, 16), (24, 48), (24, 80).
 fn scope_pixels(fb: &[u16]) -> Vec<u16> {
     let mut out = Vec::new();
     for v in 0..3 {
-        let top = (2 + 6 * v) * 8;
+        let top = (2 + 4 * v) * 8;
         for y in top..top + 32 {
-            out.extend_from_slice(&fb[y * W + 8..y * W + 168]);
+            out.extend_from_slice(&fb[y * W + 24..y * W + 184]);
         }
     }
     out
 }
 
-/// The scope pixels in the trace's colours (any but the background, the centre line's and
-/// black), per voice.
+/// The scope pixels that are on (any colour but the background's, black), per voice: a flat
+/// trace is 2 pixels thick across the 160 (the dotted centre line is under it).
 fn trace_pixels(fb: &[u16]) -> [usize; 3] {
     let idx = indexed(fb);
     std::array::from_fn(|v| {
-        let top = (2 + 6 * v) * 8;
+        let top = (2 + 4 * v) * 8;
         (top..top + 32)
-            .flat_map(|y| (8..168).map(move |x| (x, y)))
-            .filter(|&(x, y)| ![BLUE, 14, 0].contains(&idx[y * W + x]))
+            .flat_map(|y| (24..184).map(move |x| (x, y)))
+            .filter(|&(x, y)| idx[y * W + x] != 0)
             .count()
     })
 }
@@ -1592,7 +1595,7 @@ fn live_matches_its_golden_images_and_its_scopes_follow_the_notes() {
     let idle = scope_pixels(&m.soc.lcd.fb);
     let flat = trace_pixels(&m.soc.lcd.fb);
     // At rest each trace is a flat line across the scope.
-    assert_eq!(flat, [160; 3], "the traces at rest");
+    assert_eq!(flat, [320; 3], "the traces at rest: two pixels thick");
 
     // A4, held to its sustain level (SAW LEAD: decay 9).
     m.key(A4_KEY, true);
@@ -1601,7 +1604,7 @@ fn live_matches_its_golden_images_and_its_scopes_follow_the_notes() {
     compare_golden(&build, "live-a4", &m.soc.lcd.fb, &[]);
     let a4 = trace_pixels(&m.soc.lcd.fb);
     assert!(a4[0] > 200, "voice 1's trace with A4: {a4:?}");
-    assert_eq!(&a4[1..], [160, 160], "voices 2 and 3 are silent");
+    assert_eq!(&a4[1..], [320, 320], "voices 2 and 3 are silent");
     // A held note stands still: the trace is folded by the oscillator's phase.
     let held = scope_pixels(&m.soc.lcd.fb);
     m.run_ms(UI_PERIOD_MS);
@@ -1638,6 +1641,48 @@ fn live_matches_its_golden_images_and_its_scopes_follow_the_notes() {
     for k in CHORD {
         m.key(k, false);
     }
+}
+
+/// The menu's THEME turned to `theme_turn` (+1 the C64 theme, -1 HIGH CONTRAST), and back to LIVE
+/// with no card.
+fn theme_and_back_to_live(m: &mut Machine, fw: &Firmware, theme_turn: i32) {
+    cards_off(m, fw);
+    open_menu(m, fw);
+    select(m, MENU_THEME);
+    m.turn(ALGORITHM, theme_turn);
+    m.run_ms(100);
+    m.turn(SELECT, -MENU_ITEMS);
+    m.run_ms(10 * MENU_ITEMS as u64);
+    press(m, HOME);
+    settle(m, fw);
+    assert_eq!(common::top_view(m, fw), fw.symbol("live_view_view"));
+}
+
+/// LIVE in each theme (the menu's THEME): HIGH CONTRAST is `live`'s golden, the C64 look the
+/// same layout in the old colours, and back again it is `live` once more.
+#[test]
+fn live_matches_its_golden_image_in_the_c64_theme_and_back() {
+    let Some((build, fw)) = fixture("the LIVE theme test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    theme_and_back_to_live(&mut m, &fw, 1);
+    m.key(A4_KEY, true);
+    m.run_ms(1500);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "live-c64", &m.soc.lcd.fb, &[]);
+    m.key(A4_KEY, false);
+    m.run_ms(1500);
+    open_menu(&mut m, &fw);
+    select(&mut m, MENU_THEME);
+    m.turn(ALGORITHM, -1);
+    m.run_ms(100);
+    m.turn(SELECT, -MENU_ITEMS);
+    m.run_ms(10 * MENU_ITEMS as u64);
+    press(&mut m, HOME);
+    settle(&mut m, &fw);
+    // (The released note stays in the first lane, dim: leave its cells out.)
+    compare_golden(&build, "live", &m.soc.lcd.fb, &VOICE1_NOTE);
 }
 
 #[test]
@@ -2414,13 +2459,14 @@ fn chip_follows_midi_and_the_knobs_there_and_back() {
     common::to_mid_frame(&mut m, &fw);
     assert_eq!(character(&mut m, &fw), [0, 40, 64, 20]);
     let row = |idx: &[u8], r: usize| idx[r * 8 * W..(r + 1) * 8 * W].to_vec();
-    let age_row = sidou_sys::CHIP_VIEW_CHARACTER_ROW as usize + 1;
+    // The age is K1's column: its value (3x on rows 10-12, 2x on rows 11-12) and its bar.
+    let age_rows = sidou_sys::CHIP_VIEW_VALUE_ROW as usize..=sidou_sys::CHIP_VIEW_BAR_ROW as usize;
     let now = indexed(&m.soc.lcd.fb);
     assert!(
-        row(&now, age_row) != row(&golden, age_row),
-        "the age's row did not change"
+        age_rows.clone().any(|r| row(&now, r) != row(&golden, r)),
+        "the age's column did not change"
     );
-    for r in (0..30).filter(|&r| r != age_row) {
+    for r in (0..30).filter(|r| !age_rows.contains(r)) {
         assert!(row(&now, r) == row(&golden, r), "row {r} changed");
     }
     m.turn(K1_CHIP, 25);
@@ -3140,7 +3186,7 @@ fn open_tracker(m: &mut Machine, fw: &Firmware) {
 }
 
 /// SEQ opens TRACKER: stopped, SIDOU LOOP's patterns and tempo; PLAY plays it (the play mark,
-/// the position, the waveforms and meters), REC in the header; GLO and the leftmost key mute
+/// the position, the other voices' strips), REC in the header, SELECT the shown voice; GLO and the leftmost key mute
 /// voice 1 within the key's pass and sound nothing, and LIVE's header says so.
 #[test]
 fn the_song_views_header_and_heads_match_their_goldens() {
@@ -3149,6 +3195,17 @@ fn the_song_views_header_and_heads_match_their_goldens() {
     };
     let mut m = booted(&fw);
     open_tracker(&mut m, &fw);
+    compare_golden(&build, "tracker", &m.soc.lcd.fb, &[]);
+    // SELECT shows the next voice, and the one after: the other two are the strips.
+    for name in ["tracker-v2", "tracker-v3"] {
+        m.turn(SELECT, 1);
+        m.run_ms(200);
+        common::to_mid_frame(&mut m, &fw);
+        compare_golden(&build, name, &m.soc.lcd.fb, &[]);
+    }
+    m.turn(SELECT, 1); // round to voice 1 again
+    m.run_ms(200);
+    common::to_mid_frame(&mut m, &fw);
     compare_golden(&build, "tracker", &m.soc.lcd.fb, &[]);
     press(&mut m, PLAY);
     m.run_ms(2_000);
@@ -3421,11 +3478,23 @@ fn applied_song_edits_refresh_the_tracker_before_and_after_playback() {
         m.soc.write32(hook, 1);
         m.run_ms(200);
         assert_eq!(m.soc.read32(hook), 0, "the edit was taken");
-        let cells = fw.symbol("cells") + sidou_sys::ilp32::grid::ch as u32;
-        let note: Vec<u8> = (0..8)
-            .map(|i| m.soc.read8(cells + 6 * 30 + 3 + i))
-            .collect();
-        assert_eq!(note, b"D-401422", "played first: {played}");
+        // Row 0 is window row 4 (the page from row -4): its note and instrument at 2x from
+        // cell row 11 (each character's top left piece, its character in the grid's src), the
+        // command small on row 12.
+        let grid = fw.symbol("cells");
+        let ch = grid + sidou_sys::ilp32::grid::ch as u32;
+        let src = grid + sidou_sys::ilp32::grid::src as u32;
+        let mut big = |col: u32, n: u32| -> Vec<u8> {
+            (0..n)
+                .map(|i| m.soc.read8(src + 11 * 30 + col + 2 * i))
+                .collect()
+        };
+        let note = big(3, 3);
+        let instrument = big(10, 2);
+        let cmd: Vec<u8> = (0..3).map(|i| m.soc.read8(ch + 12 * 30 + 15 + i)).collect();
+        assert_eq!(note, b"D-4", "played first: {played}");
+        assert_eq!(instrument, b"01", "played first: {played}");
+        assert_eq!(cmd, b"422", "played first: {played}");
     }
 }
 

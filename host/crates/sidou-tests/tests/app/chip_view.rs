@@ -71,9 +71,78 @@ fn param(ui: &Ui, p: u32) -> u32 {
     unsafe { live_param_get(&*ui.rig.live, p) }
 }
 
-/// Cells [from, to) of a row, trimmed at the end.
-fn text(ui: &Ui, row: u32, from: usize, to: usize) -> String {
-    ui.row(row as usize)[from..to].trim_end().to_owned()
+/// The knobs' columns on the page: where each control's label, value and bar start, and its width.
+const KNOB_COL: [usize; 4] = [0, 8, 15, 22];
+const KNOB_W: [usize; 4] = [8, 7, 7, 8];
+
+fn big(ui: &Ui, row: u32, col: usize, scale: usize, n: usize) -> String {
+    ui.big(row as usize, col, scale, n)
+}
+
+fn small(ui: &Ui, row: u32, col: usize, n: usize) -> String {
+    ui.small(row as usize, col, n)
+}
+
+/// The theme the page is drawn in.
+fn theme_of(ui: &Ui) -> &'static theme {
+    unsafe { &*theme_get(u32::from(ui.live().theme)) }
+}
+
+/// Control k's (0..4) label and value as the page shows them: the label small, the value at 3x
+/// (rows 10-12) or, from 100, at 2x (rows 11-12).
+fn control(ui: &Ui, k: usize) -> (String, String) {
+    let col = KNOB_COL[k];
+    let label = small(ui, CHIP_VIEW_LABEL_ROW, col, KNOB_W[k] - 1)
+        .trim_end()
+        .to_owned();
+    let mut value = String::new();
+    for i in 0..3 {
+        let at = CHIP_VIEW_VALUE_ROW as usize * COLS + col + 3 * i;
+        if u32::from(ui.g.ch[at]) == GRID_BIG_FIRST + 4 {
+            value.push(ui.g.src[at] as char);
+        }
+    }
+    if value.is_empty() {
+        for i in 0..3 {
+            let at = (CHIP_VIEW_VALUE_ROW as usize + 1) * COLS + col + 2 * i;
+            if u32::from(ui.g.ch[at]) == GRID_BIG_FIRST {
+                value.push(ui.g.src[at] as char);
+            }
+        }
+    }
+    (label, value)
+}
+
+/// The choice at 3x: its first word (the model, or the slot's algorithm) and the second (the
+/// profile), blank for a slot.
+fn choice(ui: &Ui, n: usize) -> String {
+    big(ui, CHIP_VIEW_CHOICE_ROW, 0, 3, n)
+}
+
+fn profile_word(ui: &Ui, n: usize) -> String {
+    big(ui, CHIP_VIEW_CHOICE_ROW, 13, 3, n)
+}
+
+/// The profile's short word as the page says it: the name without the model, "R4AR", "WORN".
+fn word_of(id: u32) -> String {
+    let name = profile_name(id);
+    if name.starts_with(|c: char| c.is_ascii_digit()) {
+        name.split_once(' ').unwrap().1.to_owned()
+    } else {
+        name.split(' ').next().unwrap().to_owned()
+    }
+}
+
+/// The 2x line of the other sections: the row of the `line`th of them, its name and its value.
+fn summary(ui: &Ui, line: u32, name_len: usize, value_len: usize) -> (String, String) {
+    let row = CHIP_VIEW_SUMMARY_ROW + 2 * line;
+    (big(ui, row, 0, 2, name_len), big(ui, row, 9, 2, value_len))
+}
+
+/// Which tab of the row has what background: the focused one yellow, the others dark grey.
+fn tab_bg(ui: &Ui, section: usize) -> u8 {
+    let cols = [0usize, 8, 15, 22];
+    ui.g.attr[CHIP_VIEW_TAB_ROW as usize * COLS + cols[section]] >> 4
 }
 
 /// A slot field's name for an algorithm, and whether the algorithm uses it.
@@ -91,29 +160,6 @@ fn profile_name(id: u32) -> String {
     unsafe { CStr::from_ptr(p.name) }
         .to_string_lossy()
         .to_uppercase()
-}
-
-/// The character row r (0 age .. 3 bleed): its label and its value.
-fn character_row(ui: &Ui, r: u32) -> (String, String) {
-    let row = CHIP_VIEW_CHARACTER_ROW + 1 + r;
-    (text(ui, row, 4, 9), text(ui, row, 23, 26).trim().to_owned())
-}
-
-/// A slot frame's title, the text between the corner's space and the next space-run.
-fn slot_title(ui: &Ui, slot: u32) -> String {
-    let row = CHIP_VIEW_SLOT_ROW + CHIP_VIEW_SLOT_ROWS * slot;
-    let r = ui.row(row as usize);
-    r[4..27].split("##").next().unwrap().trim().to_owned()
-}
-
-/// A slot's field `k` (0 Amount, 1 A, 2 B, 3 Mix): its label and value as the page shows them.
-fn slot_field(ui: &Ui, slot: u32, k: u32) -> (String, String) {
-    let row = CHIP_VIEW_SLOT_ROW + CHIP_VIEW_SLOT_ROWS * slot + 1 + k / 2;
-    let at = 4 + 12 * (k as usize % 2);
-    (
-        text(ui, row, at, at + 5),
-        text(ui, row, at + 6, at + 9).trim().to_owned(),
-    )
 }
 
 #[test]
@@ -140,59 +186,77 @@ fn chip_opens_from_the_menu_behind_the_chip_card() {
 }
 
 #[test]
-fn the_page_shows_the_profile_the_character_and_the_slots() {
+fn the_page_shows_the_profile_the_character_and_the_other_sections() {
     let ui = chip_ui();
-    assert_eq!(text(&ui, 2, 2, 6), "CHIP");
-    // The tabs (M2b Task 5): A shown, in reverse video, then B.
-    assert_eq!(text(&ui, 2, 12, 28), " A       B");
-    let at = |ui: &Ui, c: usize, r: usize| ui.g.attr[r * COLS + c];
-    assert_eq!(at(&ui, 13, 2), ((GRID_LIGHT_BLUE << 4) | GRID_BLUE) as u8);
-    assert_eq!(at(&ui, 21, 2), ((GRID_BLUE << 4) | GRID_LIGHT_BLUE) as u8);
-    // The frames and their titles.
-    assert_eq!(text(&ui, CHIP_VIEW_CHIP_ROW, 3, 9), " CHIP");
-    assert_eq!(text(&ui, CHIP_VIEW_CHARACTER_ROW, 3, 14), " CHARACTER");
+    let t = theme_of(&ui);
+    // The title at 2x says which chip's page, in white while the tabs have no focus.
+    assert_eq!(big(&ui, 0, 0, 2, 6), "CHIP A");
+    assert_eq!(ui.g.attr[0] & 15, t.value);
+    assert_eq!(u32::from(ui.g.attr[0] >> 4), GRID_BLACK);
+    // The section tabs across the width: CHIP focused (yellow), the others dark grey.
+    for (i, (name, col)) in [("CHIP", 2), ("DIST", 9), ("MOD", 17), ("FX", 25)]
+        .into_iter()
+        .enumerate()
+    {
+        assert_eq!(small(&ui, CHIP_VIEW_TAB_ROW, col, name.len()), name);
+        assert_eq!(
+            tab_bg(&ui, i),
+            if i == 0 { t.hot } else { t.dim },
+            "tab {name}"
+        );
+    }
+    // The choice at 3x: the model and the profile; their names under it.
+    assert_eq!(choice(&ui, 4), "6581");
+    assert_eq!(profile_word(&ui, 4), "R4AR");
     assert_eq!(
-        text(&ui, CHIP_VIEW_CHIP_ROW + 1, 4, 26),
-        format!("PROFILE{:>15}", "6581 R4AR")
+        ui.g.attr[CHIP_VIEW_CHOICE_ROW as usize * COLS] & 15,
+        t.value
     );
     assert_eq!(
-        text(&ui, CHIP_VIEW_CHIP_ROW + 2, 4, 26),
-        format!("MODEL{:>17}", "6581")
+        ui.g.attr[CHIP_VIEW_CHOICE_ROW as usize * COLS + 13] & 15,
+        t.hot
     );
-    for (r, name) in ["AGE", "DAC", "THUMP", "BLEED"].iter().enumerate() {
-        assert_eq!(character_row(&ui, r as u32), (name.to_string(), "0".into()));
+    assert_eq!(small(&ui, CHIP_VIEW_NAMES_ROW, 0, 5), "MODEL");
+    assert_eq!(small(&ui, CHIP_VIEW_NAMES_ROW, 13, 7), "PROFILE");
+    // The character in the knobs' places: label in the knob's colour, value, bar, name.
+    for (k, name) in ["AGE", "DAC", "THUMP", "BLEED"].iter().enumerate() {
+        assert_eq!(control(&ui, k), (name.to_string(), "0".into()));
+        let col = KNOB_COL[k];
+        assert_eq!(
+            ui.g.attr[CHIP_VIEW_LABEL_ROW as usize * COLS + col] & 15,
+            t.knob[k],
+            "{name}'s colour"
+        );
+        assert_eq!(
+            ui.g.attr[CHIP_VIEW_BAR_ROW as usize * COLS + col] & 15,
+            t.knob[k]
+        );
+        assert_eq!(
+            ui.g.attr[CHIP_VIEW_VALUE_ROW as usize * COLS + col] & 15,
+            t.value
+        );
+        assert_eq!(small(&ui, CHIP_VIEW_TAG_ROW, col, 2), format!("K{}", k + 1));
     }
-    for (slot, name) in ["DIST OFF", "MOD OFF", "FX OFF"].iter().enumerate() {
-        assert_eq!(slot_title(&ui, slot as u32), *name);
-        for (k, l) in ["AMT", "A", "B", "MIX"].iter().enumerate() {
-            assert_eq!(
-                slot_field(&ui, slot as u32, k as u32),
-                (l.to_string(), "0".into())
-            );
-        }
+    // The other sections, one line each at 2x: DIST, MOD and FX.
+    for (line, (name, value)) in [("DIST", "OFF"), ("MOD", "OFF"), ("FX", "OFF")]
+        .into_iter()
+        .enumerate()
+    {
+        assert_eq!(
+            summary(&ui, line as u32, name.len(), value.len()),
+            (name.to_string(), value.to_string())
+        );
+        assert_eq!(
+            ui.g.attr[(CHIP_VIEW_SUMMARY_ROW as usize + 2 * line) * COLS + 9] & 15,
+            t.dim,
+            "OFF is dark grey"
+        );
     }
     assert_eq!(
-        text(&ui, CHIP_VIEW_HELP_ROW, 2, 28),
+        small(&ui, CHIP_VIEW_HELP_ROW, 0, 26),
         "SELECT MOVE ALGORITHM STEP"
     );
-    // The focus on the chip: its two frames white, the play mark in the margin.
     assert_eq!(focus(&ui), CHIP_VIEW_CHIP);
-    assert_eq!(
-        ui.g.ch[CHIP_VIEW_CHIP_ROW as usize * COLS + 1],
-        FONT_PLAY as u8
-    );
-    assert_eq!(
-        at(&ui, 2, CHIP_VIEW_CHIP_ROW as usize) & 15,
-        GRID_WHITE as u8
-    );
-    assert_eq!(
-        at(&ui, 2, CHIP_VIEW_CHARACTER_ROW as usize) & 15,
-        GRID_WHITE as u8
-    );
-    assert_eq!(
-        at(&ui, 2, CHIP_VIEW_SLOT_ROW as usize) & 15,
-        GRID_LIGHT_BLUE as u8
-    );
 }
 
 #[test]
@@ -271,14 +335,17 @@ fn select_moves_the_focus_and_selects_the_slot() {
     ui.turn(PANEL_ENC_SELECT, 1);
     ui.press(PANEL_BTN_SCL);
     assert_eq!((focus(&ui), ui.live().fx_select), (2, 1));
-    // The page shows the focus: the play mark and the white frame move.
+    // The page shows the focus: the MOD tab is yellow and its section the page, the others
+    // are the lines below.
     settle(&mut ui);
-    let mark = |ui: &Ui, row: u32| ui.g.ch[row as usize * COLS + 1] == FONT_PLAY as u8;
-    let mod_row = CHIP_VIEW_SLOT_ROW + CHIP_VIEW_SLOT_ROWS;
-    assert!(mark(&ui, mod_row) && !mark(&ui, CHIP_VIEW_CHIP_ROW));
+    let t = theme_of(&ui);
+    assert_eq!(tab_bg(&ui, 2), t.hot);
+    assert_eq!(tab_bg(&ui, 0), t.dim);
+    assert_eq!(small(&ui, CHIP_VIEW_NAMES_ROW, 0, 9), "ALGORITHM");
     assert_eq!(
-        ui.g.attr[mod_row as usize * COLS + 2] & 15,
-        GRID_WHITE as u8
+        summary(&ui, 0, 4, 9),
+        ("CHIP".into(), "6581 R4AR".into()),
+        "the chip's line among the others"
     );
     // The focus stays between visits.
     ui.press(PANEL_BTN_HOME);
@@ -299,11 +366,8 @@ fn algorithm_steps_the_profile_and_the_model_follows() {
     ui.rig.tick();
     assert_eq!(ui.live().model, SID_MODEL_8580);
     settle(&mut ui);
-    assert_eq!(
-        text(&ui, CHIP_VIEW_CHIP_ROW + 1, 4, 26),
-        format!("PROFILE{:>15}", "8580 R5")
-    );
-    assert_eq!(text(&ui, CHIP_VIEW_CHIP_ROW + 2, 22, 26), "8580");
+    assert_eq!(choice(&ui, 4), "8580");
+    assert_eq!(profile_word(&ui, 2), "R5");
     // Clamped at both ends; every profile in order on the way.
     ui.turn(PANEL_ENC_ALGORITHM, 9);
     assert_eq!(profile(&ui), SID_CHIPS - 1);
@@ -311,10 +375,8 @@ fn algorithm_steps_the_profile_and_the_model_follows() {
         ui.rig.tick();
         settle(&mut ui);
         assert_eq!(profile(&ui), id);
-        assert_eq!(
-            text(&ui, CHIP_VIEW_CHIP_ROW + 1, 4, 26),
-            format!("PROFILE{:>15}", profile_name(id))
-        );
+        let word = word_of(id);
+        assert_eq!(profile_word(&ui, word.len()), word, "profile {id}");
         ui.turn(PANEL_ENC_ALGORITHM, -1);
     }
     assert_eq!(profile(&ui), 0);
@@ -332,9 +394,9 @@ fn algorithm_steps_the_focused_slots_algorithm() {
         ui.turn(PANEL_ENC_ALGORITHM, 1);
         assert_eq!(alg(&ui), 1);
         settle(&mut ui);
-        let title = slot_title(&ui, slot);
-        let names = ["DIST TAPE", "MOD CHORUS", "FX DELAY"];
-        assert_eq!(title, names[slot as usize]);
+        let names = ["TAPE", "CHORUS", "DELAY"];
+        let name = names[slot as usize];
+        assert_eq!(choice(&ui, name.len()), name);
         ui.turn(PANEL_ENC_ALGORITHM, 99);
         assert_eq!(alg(&ui), last, "clamped at the last");
         ui.turn(PANEL_ENC_ALGORITHM, -99);
@@ -347,8 +409,10 @@ fn algorithm_steps_the_focused_slots_algorithm() {
     }
     assert_eq!(param(&ui, LIVE_PARAM_PROFILE), SID_CHIP_6581_R4AR);
     settle(&mut ui);
-    assert_eq!(slot_title(&ui, 0), "DIST OVERDRIVE");
-    assert_eq!(slot_field(&ui, 0, 1).0, "TONE");
+    ui.turn(PANEL_ENC_SELECT, -2);
+    settle(&mut ui);
+    assert_eq!(choice(&ui, 9), "OVERDRIVE");
+    assert_eq!(control(&ui, 1).0, "TONE");
 }
 
 #[test]
@@ -372,15 +436,14 @@ fn the_knobs_turn_the_character_on_the_chip() {
         "K1..K4 also turned LIVE's knobs"
     );
     settle(&mut ui);
-    assert_eq!(character_row(&ui, 0).1, "12");
-    assert_eq!(character_row(&ui, 3).1, "24");
-    // The bar: 12 cells for 0..127.
-    let bar_row = (CHIP_VIEW_CHARACTER_ROW + 1) as usize;
-    let bar: Vec<u8> = (10..22).map(|c| ui.g.ch[bar_row * COLS + c]).collect();
-    let px = 12 * 12 * 8 / 127; // 12 of 127 over 96 pixels: 9
-    assert_eq!(bar[0], FONT_BAR8 as u8);
-    assert_eq!(bar[1], FONT_BAR0 as u8 + px as u8 - 8);
-    assert_eq!(bar[2], FONT_BAR0 as u8);
+    assert_eq!(control(&ui, 0).1, "12");
+    assert_eq!(control(&ui, 3).1, "24");
+    // The bar: K1's column is 7 cells for 0..127, 12 of 127 over 56 pixels: 5.
+    let bar: Vec<u8> = (0..7)
+        .map(|c| ui.g.ch[CHIP_VIEW_BAR_ROW as usize * COLS + c])
+        .collect();
+    assert_eq!(bar[0], FONT_BAR0 as u8 + 5);
+    assert_eq!(bar[1], FONT_BAR0 as u8);
     // Clamped at both ends.
     ui.turn(K1, 99);
     assert_eq!(param(&ui, LIVE_PARAM_AGE), 127);
@@ -415,8 +478,14 @@ fn the_knobs_turn_the_focused_slot() {
     }
     assert_eq!(ui.live().cutoff, cutoff);
     settle(&mut ui);
-    assert_eq!(slot_field(&ui, 2, 3), ("MIX".into(), "24".into()));
-    assert_eq!(slot_field(&ui, 1, 0), ("AMT".into(), "8".into()));
+    assert_eq!(
+        control(&ui, 3),
+        ("MIX".into(), "24".into()),
+        "FX is in focus"
+    );
+    ui.turn(PANEL_ENC_SELECT, -1);
+    settle(&mut ui);
+    assert_eq!(control(&ui, 0), ("AMT".into(), "8".into()), "MOD's Amount");
 }
 
 /// The EDIT layer stays a shortcut in every view: on the CHIP view, EDIT held turns the
@@ -548,7 +617,7 @@ fn midi_learn_binds_a_chip_view_knob() {
     settle(&mut ui);
     assert_eq!(ui.top(), "CHIP");
     assert_eq!(param(&ui, LIVE_PARAM_AGE), 100);
-    assert_eq!(character_row(&ui, 0).1, "100");
+    assert_eq!(control(&ui, 0).1, "100", "three digits: 2x");
     // On the FX slot, K4 is its Mix.
     ui.turn(PANEL_ENC_SELECT, 3);
     ui.learn_on(K1 + 3);
@@ -663,7 +732,7 @@ fn midi_out_sends_the_chip_views_knobs() {
 fn midi_changes_show_on_the_page() {
     let mut ui = chip_ui();
     // An idle page: nothing sent, no compose (the probe cell stays).
-    let probe = 28 * COLS + 20;
+    let probe = 24 * COLS + 20;
     ui.g.ch[probe] = b'@';
     for _ in 0..30 {
         assert_eq!(step(&mut ui), Sent::default());
@@ -680,19 +749,21 @@ fn midi_changes_show_on_the_page() {
         ui.rig.cc(cc, value);
         step(&mut ui);
         let want = unsafe { live_param_get(&*ui.rig.live, LIVE_PARAM_AGE + row) };
-        assert_eq!(character_row(&ui, row).1, want.to_string(), "CC {cc}");
+        assert_eq!(control(&ui, row as usize).1, want.to_string(), "CC {cc}");
     }
     ui.rig.cc(LIVE_CC_SLOT_FIRST + 5, 127); // MOD's algorithm: the last, WOW
     ui.rig.cc(LIVE_CC_SLOT_FIRST + 6, 50);
     step(&mut ui);
-    assert_eq!(slot_title(&ui, 1), "MOD WOW");
-    assert_eq!(slot_field(&ui, 1, 0), ("WOW".into(), "50".into()));
+    assert_eq!(summary(&ui, 1, 3, 3), ("MOD".into(), "WOW".into()));
+    ui.turn(PANEL_ENC_SELECT, 2);
+    settle(&mut ui);
+    assert_eq!(choice(&ui, 3), "WOW");
+    assert_eq!(control(&ui, 0), ("WOW".into(), "50".into()));
+    ui.turn(PANEL_ENC_SELECT, -2);
+    settle(&mut ui);
     ui.rig.cc(CC_PROFILE, 40); // 4, worn: CC 85 spans the five built-in profiles, then USER 1..8
     step(&mut ui);
-    assert_eq!(
-        text(&ui, CHIP_VIEW_CHIP_ROW + 1, 4, 26),
-        format!("PROFILE{:>15}", "WORN 6581")
-    );
+    assert_eq!(profile_word(&ui, 4), "WORN");
 }
 
 /// Everything changing at once from MIDI, with a toast and the chip's raster: no frame sends
@@ -742,53 +813,64 @@ fn a_burst_of_changes_stays_within_the_budget() {
 }
 
 /// The tabs (M2b Task 5): SELECT moves up from CHIP into them (clamped), ALGORITHM there
-/// switches A and B (clamped); the shown tab in reverse video (white with the tabs' focus),
-/// KEYS beside the keys' chip; with no song the B tab shows the keys' setup, FOLLOWS KEYS and
-/// the slots SHARED in its help line, and K1..K4 turn the keys' setup on either tab.
+/// switches A and B (clamped); the title says which chip's page, in yellow with the tabs' focus,
+/// KEYS:A or KEYS:B on the keys' chip; with no song the B tab shows the keys' setup, FOLLOWS KEYS
+/// and the slots SHARED in its note, and K1..K4 turn the keys' setup on either tab.
 #[test]
 fn the_tabs_switch_mark_the_keys_and_show_the_keys_setup() {
     let mut ui = chip_ui();
     ui.rig.live.two_chips = 1;
     unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_AGE, 40) };
     settle(&mut ui);
-    assert_eq!(text(&ui, 2, 12, 28), " A KEYS  B");
+    let t = theme_of(&ui);
+    assert_eq!(big(&ui, 0, 0, 2, 6), "CHIP A");
+    assert_eq!(small(&ui, 0, 24, 6), "KEYS:A", "the keys play chip A");
     ui.turn(PANEL_ENC_SELECT, -1);
     assert_eq!(focus(&ui), CHIP_VIEW_TABS);
     ui.turn(PANEL_ENC_SELECT, -3);
     assert_eq!(focus(&ui), CHIP_VIEW_TABS, "clamped above the tabs");
     settle(&mut ui);
-    let at = |ui: &Ui, c: usize, r: usize| ui.g.attr[r * COLS + c];
     assert_eq!(
-        at(&ui, 13, 2),
-        ((GRID_WHITE << 4) | GRID_BLUE) as u8,
-        "the tabs' focus"
+        ui.g.attr[0] & 15,
+        t.hot,
+        "the tabs' focus: the title yellow"
     );
-    assert_eq!(ui.g.ch[2 * COLS + 1], FONT_PLAY as u8);
-    let a_page: Vec<String> = (CHIP_VIEW_CHIP_ROW..=CHIP_VIEW_HELP_ROW)
-        .map(|r| ui.row(r as usize))
-        .collect();
+    assert_eq!(
+        tab_bg(&ui, 0),
+        t.label,
+        "CHIP, whose controls K1..K4 turn, marked grey"
+    );
+    let rows = |ui: &Ui| -> Vec<String> {
+        (2..CHIP_VIEW_NOTE_ROW)
+            .map(|r| ui.row(r as usize))
+            .collect()
+    };
+    let a_page = rows(&ui);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(ui.v.chip.tab, 1);
     ui.turn(PANEL_ENC_ALGORITHM, 3);
     assert_eq!(ui.v.chip.tab, 1, "clamped at B");
     settle(&mut ui);
-    let b_page: Vec<String> = (CHIP_VIEW_CHIP_ROW..=CHIP_VIEW_HELP_ROW)
-        .map(|r| ui.row(r as usize))
-        .collect();
+    assert_eq!(big(&ui, 0, 0, 2, 6), "CHIP B");
     assert_eq!(
-        b_page, a_page,
+        small(&ui, 0, 24, 6),
+        "      ",
+        "the keys play chip A, not B"
+    );
+    assert_eq!(
+        rows(&ui),
+        a_page,
         "with no song the B tab shows the keys' setup, the slots shared"
     );
     assert_eq!(
-        text(&ui, CHIP_VIEW_NOTE_ROW, 2, 28).trim(),
+        small(&ui, CHIP_VIEW_NOTE_ROW, 0, 26).trim(),
         "FOLLOWS KEYS  SLOTS SHARED"
     );
     assert_eq!(
-        text(&ui, CHIP_VIEW_HELP_ROW, 2, 28),
+        small(&ui, CHIP_VIEW_HELP_ROW, 0, 26),
         "SELECT MOVE ALGORITHM STEP",
         "the help line keeps the moves"
     );
-    assert_eq!(at(&ui, 21, 2), ((GRID_WHITE << 4) | GRID_BLUE) as u8);
     // K1 on the tabs and on the chip turns the keys' age, on the B tab too.
     assert_eq!(unsafe { chip_view_page(&ui.v.chip) }, PANEL_PAGE_CHARACTER);
     ui.turn(PANEL_ENC_K1, 1);
@@ -796,16 +878,16 @@ fn the_tabs_switch_mark_the_keys_and_show_the_keys_setup() {
     ui.turn(PANEL_ENC_SELECT, 1);
     ui.turn(PANEL_ENC_K1, 1);
     assert_eq!(param(&ui, LIVE_PARAM_AGE), 48);
-    // The keys on chip B: KEYS moves, and the B tab's help says the slots are A's too.
+    // The keys on chip B: KEYS moves, and the B tab's note says the slots are A's too.
     ui.rig.live.keys_chip = 1;
     settle(&mut ui);
-    assert_eq!(text(&ui, 2, 12, 28), " A       B KEYS");
+    assert_eq!(small(&ui, 0, 24, 6), "KEYS:B");
     assert_eq!(
-        text(&ui, CHIP_VIEW_NOTE_ROW, 2, 28).trim(),
+        small(&ui, CHIP_VIEW_NOTE_ROW, 0, 26).trim(),
         "SLOTS SHARED WITH CHIP A"
     );
     assert_eq!(
-        text(&ui, CHIP_VIEW_HELP_ROW, 2, 28),
+        small(&ui, CHIP_VIEW_HELP_ROW, 0, 26),
         "SELECT MOVE ALGORITHM STEP",
         "the help line keeps the moves"
     );
@@ -831,17 +913,14 @@ fn during_a_song_the_a_tab_edits_the_songs_setup() {
     unsafe { chip_view_set_keys(&mut ui.v.chip, &mut *kr) };
     settle(&mut ui);
     assert_eq!(unsafe { chip_view_song_tab(&ui.v.chip) }, 1);
+    assert_eq!(profile_word(&ui, 2), "R2");
+    assert_eq!(control(&ui, 0).1, "10");
     assert_eq!(
-        text(&ui, CHIP_VIEW_CHIP_ROW + 1, 4, 26),
-        "PROFILE        6581 R2"
-    );
-    assert_eq!(text(&ui, CHIP_VIEW_CHARACTER_ROW + 1, 23, 26), " 10");
-    assert_eq!(
-        text(&ui, CHIP_VIEW_NOTE_ROW, 2, 28).trim(),
+        small(&ui, CHIP_VIEW_NOTE_ROW, 0, 26).trim(),
         "SONG SETUP  SLOTS SHARED"
     );
     assert_eq!(
-        text(&ui, CHIP_VIEW_HELP_ROW, 2, 28),
+        small(&ui, CHIP_VIEW_HELP_ROW, 0, 26),
         "SELECT MOVE ALGORITHM STEP",
         "the help line keeps the moves"
     );
@@ -864,7 +943,7 @@ fn during_a_song_the_a_tab_edits_the_songs_setup() {
         (age, profile)
     );
     settle(&mut ui);
-    assert_eq!(text(&ui, CHIP_VIEW_CHARACTER_ROW + 1, 23, 26), " 18");
+    assert_eq!(control(&ui, 0).1, "18");
     // The B tab: the keys' setup, the knobs on it.
     ui.turn(PANEL_ENC_SELECT, -1);
     ui.turn(PANEL_ENC_ALGORITHM, 1);

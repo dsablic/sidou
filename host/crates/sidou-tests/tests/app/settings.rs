@@ -197,12 +197,12 @@ impl Set {
 }
 
 #[test]
-fn the_record_is_v2s_layout_with_the_defaults() {
+fn the_record_is_v3s_layout_with_the_defaults() {
     let s = Set::blank();
     let rec = s.gather();
     assert_eq!(rec.len(), SETTINGS_BYTES as usize);
-    assert_eq!(rec.len(), 107);
-    assert_eq!(rec[..6], [2, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]);
+    assert_eq!(rec.len(), 108);
+    assert_eq!(rec[..6], [3, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]);
     let cutoff = s.param(LIVE_PARAM_CUTOFF);
     assert_eq!(
         rec[6..8],
@@ -227,6 +227,7 @@ fn the_record_is_v2s_layout_with_the_defaults() {
     assert_eq!(&rec[92..98], b"V1.2.3");
     assert!(rec[98..106].iter().all(|&b| b == 0), "NUL-padded");
     assert_eq!(rec[106], 0, "BAR");
+    assert_eq!(rec[107], THEME_HIGH_CONTRAST as u8, "HIGH CONTRAST");
 }
 
 #[test]
@@ -253,8 +254,8 @@ fn tracker_rows_round_trips_both_modes() {
         let mut a = Set::blank();
         *a.rows = rows;
         let rec = a.gather();
-        assert_eq!(rec.len(), 107);
-        assert_eq!(rec[0], 2);
+        assert_eq!(rec.len(), 108);
+        assert_eq!(rec[0], SETTINGS_VERSION as u8);
         assert_eq!(rec[106], rows);
         let mut b = Set::blank();
         *b.rows = 1 - rows;
@@ -620,9 +621,87 @@ fn a_schema_2_record_loads_scroll_and_keeps_the_v1_prefix() {
         1
     );
     assert_eq!(*s.rows, 1);
-    assert_eq!(s.gather(), fixture, "schema 2 encodes the same bytes");
+    let mut again = fixture.clone();
+    again[0] = 3;
+    again.push(THEME_HIGH_CONTRAST as u8);
+    assert_eq!(
+        s.gather(),
+        again,
+        "schema 3 encodes schema 2's bytes and the theme"
+    );
     s.rig.tick();
     let mut want = Set::blank();
     want.change_everything();
     assert_eq!(s.snapshot(), want.snapshot());
+}
+
+fn v3_fixture_path() -> std::path::PathBuf {
+    fixture_path().with_file_name("settings-v3.bin")
+}
+
+/// `tests/data/settings-v3.bin` is a schema 3 record, checked in: schema 2's with the version
+/// bumped and the THEME byte appended (C64).
+#[test]
+fn a_schema_3_record_loads_the_c64_theme_and_keeps_the_v2_prefix() {
+    let mut rec = std::fs::read(fixture_path().with_file_name("settings-v2.bin")).unwrap();
+    rec[0] = 3;
+    rec.push(THEME_C64 as u8);
+    let fixture = std::fs::read(v3_fixture_path()).unwrap();
+    assert_eq!(
+        fixture, rec,
+        "only the version and the appended byte differ from v2"
+    );
+    let mut s = Set::blank();
+    assert_eq!(
+        unsafe { settings_apply(&mut *s.set, fixture.as_ptr(), fixture.len() as u32) },
+        1
+    );
+    assert_eq!(s.rig.live.theme, THEME_C64 as u8);
+    assert_eq!(*s.rows, 1);
+    assert_eq!(s.gather(), fixture, "schema 3 encodes the same bytes");
+}
+
+#[test]
+fn the_theme_round_trips_and_an_older_record_loads_high_contrast() {
+    for theme in [THEME_HIGH_CONTRAST, THEME_C64] {
+        let mut a = Set::blank();
+        unsafe { live_set_theme(&mut *a.rig.live, theme) };
+        let rec = a.gather();
+        assert_eq!(rec.len(), 108);
+        assert_eq!(rec[107], theme as u8);
+        let mut b = Set::blank();
+        unsafe { live_set_theme(&mut *b.rig.live, THEME_COUNT - 1 - theme) };
+        assert_eq!(
+            unsafe { settings_apply(&mut *b.set, rec.as_ptr(), rec.len() as u32) },
+            1
+        );
+        assert_eq!(u32::from(b.rig.live.theme), theme);
+    }
+    // Schemas 1 and 2 have no theme: it loads as the default, after any other choice.
+    for v in ["settings-v1.bin", "settings-v2.bin"] {
+        let rec = std::fs::read(fixture_path().with_file_name(v)).unwrap();
+        let mut s = Set::blank();
+        unsafe { live_set_theme(&mut *s.rig.live, THEME_C64) };
+        assert_eq!(
+            unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
+            1
+        );
+        assert_eq!(s.rig.live.theme, THEME_HIGH_CONTRAST as u8, "{v}");
+    }
+    // A theme the firmware does not know is the default, and a schema 3 record needs its byte.
+    let mut s = Set::blank();
+    let mut rec = s.gather();
+    rec[107] = 9;
+    unsafe { live_set_theme(&mut *s.rig.live, THEME_C64) };
+    assert_eq!(
+        unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
+        1
+    );
+    assert_eq!(s.rig.live.theme, THEME_HIGH_CONTRAST as u8);
+    rec.truncate(107);
+    assert_eq!(
+        unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
+        0,
+        "a schema 3 record that stops short is no record"
+    );
 }

@@ -1,33 +1,36 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* CHIP, from the menu: a chip's profile, its character and the effect slots on one page, for
- * chip A or chip B (design doc section 7; docs/reference/controls.md "CHIP").
+/* CHIP, from the menu: a chip's profile, its character and the effect slots, a section at a time,
+ * for chip A or chip B (design doc section 7; docs/reference/controls.md "CHIP"; drawn to be read
+ * at 23 mm after the screen-readability prototype's chipNew).
  *
- * The tabs (M2b Task 5): A and B, the one shown in reverse video, KEYS beside the letter of
- * the chip the keys play (app/keys_route.h). What a tab shows and edits follows which chip the
- * keys play: chip A during a song is the song's, so its tab shows the song's setup and edits it
+ * The tabs (M2b Task 5): A and B, which chip the page shows, in the title "CHIP A" at 2x (yellow
+ * while the tabs have the focus), with KEYS:A or KEYS:B on the right for the chip the keys
+ * play (app/keys_route.h). What a tab shows and edits follows which chip the keys play: chip A
+ * during a song is the song's, so its tab shows the song's setup and edits it
  * (keys_route_song_wants; K1..K4 turned by the view itself, PANEL_PAGE_NONE, which MIDI
  * learn binds nothing to); every other tab shows the keys' setup, live's, and edits it (the
- * other chip follows it in the background: with no song the B tab says FOLLOWS KEYS). The
- * effect slots are one chain on the mix of both chips: their frames show on both tabs, and the
- * B tab's note under the tabs (row 3) says SHARED; the help line keeps the moves.
+ * other chip follows it in the background: with no song the B tab's note says FOLLOWS KEYS).
+ * The effect slots are one chain on the mix of both chips: the note says SLOTS SHARED.
  *
- * The page, in PETSCII frames (docs/art/README.md "CHIP"):
- * - row 2: CHIP and the tabs, the shown one in reverse video (white while the tab focus is on);
- * - row 3: the tab's note, right-aligned (none on chip A with no song);
- * - CHIP (rows 4-7): the profile (6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581) and its
- *   model as asked for (the chip plays them once its spare is prepared, 70 to 150 ms later:
- *   app/reg_ring.h);
- * - CHARACTER (rows 8-13): age/heat, DAC sloppiness, output thump and filter bleed, each a bar
- *   and its value 0..127;
- * - DIST, MOD and FX (4 rows each from row 14): the slot and its algorithm in the frame's
- *   title, and its Amount, A, B and Mix, each named for what it does in that algorithm
- *   (OVERDRIVE: DRIVE, TONE, BIAS); an unused control and a slot that is off are greyed;
- * - row 26: the help line.
+ * The page (docs/art/README.md "CHIP"), on the theme's colours (app/theme.h):
+ * - row 2: the section tabs CHIP, DIST, MOD, FX across the width; the focused one yellow;
+ * - rows 4-6, the section's choice at 3x: the chip's model (6581, 8580) and its profile (R2, R3,
+ *   R4AR, R5, WORN, USR 3), or the slot's algorithm; row 7 names them small (and says SAVE TO
+ *   USER 3 in yellow once a save target is picked, where the names stand);
+ * - rows 9-14, the section's four controls in the knobs' places (K1..K4, as LIVE's knob row):
+ *   each a label small in the knob's colour (AGE, DAC, THUMP, BLEED; a slot's, named for what
+ *   they do in its algorithm), its value at 3x in white (at 2x from 100: three digits do not fit
+ *   a column), a bar in the knob's colour and the knob's name K1..K4;
+ * - rows 16-21, the other sections' state at 2x, one line each: DIST, MOD and FX with their
+ *   algorithms, or, with a slot in focus, the chip's profile and the other two slots;
+ * - rows 27-28: the tab's note (SONG SETUP, FOLLOWS KEYS, SLOTS SHARED...) and the help line.
+ * An unused control (the algorithm has no use for it) and every control of a slot that is off are
+ * dark grey.
  *
- * Focus: the tabs, the chip (its profile and character, both frames) or a slot. A play mark in
- * the margin and white frames show it. SELECT moves it, clamped at both ends: the tabs, CHIP,
- * DIST, MOD, FX. ALGORITHM on the tabs switches A and B; K1..K4 there turn the chip's.
+ * Focus: the tabs (A and B), the chip (the CHIP section) or a slot. SELECT moves it, clamped at
+ * both ends: the tabs, CHIP, DIST, MOD, FX. ALGORITHM on the tabs switches A and B; K1..K4 there
+ * turn the chip's.
  * The slot focus is live's selected slot (fx_select), the one SCL selects and EDIT + K1..K4
  * turns everywhere: SELECT onto a slot selects it, and SCL on a slot moves the focus with it.
  * ALGORITHM steps the focused section's choice, clamped: the profile on the chip, the
@@ -66,34 +69,35 @@ extern "C" {
 /* The sections SELECT moves between: the chip, then the slots. */
 #define CHIP_VIEW_CHIP 0u
 #define CHIP_VIEW_SECTIONS (1u + LIVE_SLOTS)
+/* The other sections' lines on the page: all but the one in focus. */
+#define CHIP_VIEW_SECTIONS_SHOWN LIVE_SLOTS
 /* chip_view_focus with the focus on the tabs, above the chip. */
 #define CHIP_VIEW_TABS 0xffu
-/* The frames: CHIP from row CHIP_VIEW_CHIP_ROW, CHARACTER from CHIP_VIEW_CHARACTER_ROW, slot k
- * from CHIP_VIEW_SLOT_ROW + CHIP_VIEW_SLOT_ROWS * k; each from column CHIP_VIEW_COL,
- * CHIP_VIEW_W wide. */
-#define CHIP_VIEW_COL 2u
-#define CHIP_VIEW_W 26u
-#define CHIP_VIEW_CHIP_ROW 4u
-#define CHIP_VIEW_CHARACTER_ROW 8u
-#define CHIP_VIEW_SLOT_ROW 14u
-#define CHIP_VIEW_SLOT_ROWS 4u
-#define CHIP_VIEW_HELP_ROW 26u
-/* The tab's note, right-aligned under the tabs (FOLLOWS KEYS, SONG SETUP, SLOTS SHARED). */
-#define CHIP_VIEW_NOTE_ROW 3u
+/* The page's rows (docs/art/README.md "CHIP"): the title at 2x on rows 0-1, the tabs, the
+ * choice at 3x, the names under it, the four controls (labels, values at 3x, bars, K names), the
+ * other sections' lines at 2x, and the tab's note and the help at the foot. */
+#define CHIP_VIEW_TAB_ROW 2u
+#define CHIP_VIEW_CHOICE_ROW 4u
+#define CHIP_VIEW_NAMES_ROW 7u
+#define CHIP_VIEW_LABEL_ROW 9u
+#define CHIP_VIEW_VALUE_ROW 10u
+#define CHIP_VIEW_BAR_ROW 13u
+#define CHIP_VIEW_TAG_ROW 14u
+#define CHIP_VIEW_SUMMARY_ROW 16u
+#define CHIP_VIEW_NOTE_ROW 27u
+#define CHIP_VIEW_HELP_ROW 28u
 /* A control's name on the page, terminator included ("DEPTH"). */
 #define CHIP_VIEW_LABEL 6u
 /* What the page shows, as bytes (chip_view.c look): the tab's profile and model (asked for),
  * its four character controls, every slot field, the selected slot, the focus, the tab and the
  * tabs' focus in one byte, the keys' chip, what the tab's note says, then the applied USER slot
- * with the save target, and whether the target holds a profile. */
-#define CHIP_VIEW_LOOK (2u + (LIVE_CHAR_FIELDS - 1u) + LIVE_SLOTS * LIVE_SLOT_FIELDS + 6u)
+ * with the save target, whether the target holds a profile, and the theme. */
+#define CHIP_VIEW_LOOK (2u + (LIVE_CHAR_FIELDS - 1u) + LIVE_SLOTS * LIVE_SLOT_FIELDS + 7u)
 /* A toast's text, terminator included ("OVERWRITE USER 3?"). */
 #define CHIP_VIEW_MSG 24u
 
-typedef struct {
-    uint8_t ch[GRID_ROWS][GRID_COLS];
-    uint8_t attr[GRID_ROWS][GRID_COLS];
-} chip_view_canvas;
+/* Cells, colours and the characters of large text's pieces (app/grid.h grid_canvas). */
+typedef grid_canvas chip_view_canvas;
 
 typedef struct {
     live* l;

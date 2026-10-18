@@ -10,7 +10,6 @@ const uint8_t screen_ramp[SCREEN_RAMP] = {GRID_WHITE, GRID_YELLOW,     GRID_LIGH
                                           GRID_CYAN,  GRID_LIGHT_BLUE, GRID_PURPLE,
                                           GRID_LIGHT_RED};
 
-#define TOAST_ATTR GRID_ATTR(GRID_BLUE, GRID_LIGHT_BLUE)
 #define EDGE_ATTR GRID_ATTR(GRID_WHITE, GRID_BLACK)
 #define RASTER_MAX 255u
 #define TOAST_SHOWING 1u
@@ -275,10 +274,12 @@ static void toast(screen* s) {
         return;
     }
     uint32_t row = toast_row(s);
+    const theme* th = screen_theme(s);
+    uint8_t ta = GRID_ATTR(th->toast_fg, th->toast_bg);
     if (s->toast_h == 1u) {
-        grid_text(g, SCREEN_TOAST_COL, SCREEN_TOAST_ROW, s->toast, TOAST_ATTR);
+        grid_text(g, SCREEN_TOAST_COL, SCREEN_TOAST_ROW, s->toast, ta);
     } else if (s->toast_h == 2u) {
-        grid_text_big(g, SCREEN_TOAST_COL, row, 2, s->toast, TOAST_ATTR);
+        grid_text_big(g, SCREEN_TOAST_COL, row, 2, s->toast, ta);
     } else {
         char line[SCREEN_TOAST_LINE + 1u];
         uint32_t brk = s->toast_brk;
@@ -286,18 +287,17 @@ static void toast(screen* s) {
             line[i] = s->toast[i];
         }
         line[brk] = 0;
-        grid_text_big(g, SCREEN_TOAST_COL, row, 2, line, TOAST_ATTR);
-        grid_text_big(g, SCREEN_TOAST_COL, row + 2u, 2, s->toast + brk + 1u, TOAST_ATTR);
+        grid_text_big(g, SCREEN_TOAST_COL, row, 2, line, ta);
+        grid_text_big(g, SCREEN_TOAST_COL, row + 2u, 2, s->toast + brk + 1u, ta);
     }
     redraw(s, rows_mask(row, s->toast_h));
 }
 
 /* ---- the popup ---- */
 
-#define POPUP_FRAME GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLACK)
-#define POPUP_BODY GRID_ATTR(GRID_WHITE, GRID_BLACK)
-#define POPUP_NAME GRID_ATTR(GRID_YELLOW, GRID_BLACK)
-#define POPUP_BAR GRID_ATTR(GRID_LIGHT_GREEN, GRID_DARK_GREY)
+/* The box's colours, from the theme and the control's accent (screen_popup_state.accent). */
+#define POPUP_ROLE(th, role, accent) ((th)->role == THEME_ACCENT ? (accent) : (th)->role)
+#define POPUP_BODY(th) GRID_ATTR((th)->value, (th)->popup_bg)
 /* The box's row of the name's text, of the value's, and of the bar (from the box's top). */
 #define POPUP_NAME_ROW 1u
 #define POPUP_VALUE_ROW 4u
@@ -329,6 +329,7 @@ void screen_popup(screen* s, const char* name, const char* value, uint32_t fill,
     copy_clipped(p->name, name);
     copy_clipped(p->value, value);
     p->has_bar = (uint8_t)(max != 0);
+    p->accent = screen_theme(s)->hot;
     p->bar = (uint8_t)(max ? (fill > max ? max : fill) * (SCREEN_POPUP_BAR_CELLS * 8u) / max
                            : 0u);
     p->alive = 2; /* its time runs from its first frame, as the toast's */
@@ -342,6 +343,17 @@ void screen_popup_source(screen* s, screen_popup_state* st, screen_popup_fn fn, 
     st->source = fn;
     st->source_ctx = ctx;
     s->popup = st;
+}
+
+void screen_theme_source(screen* s, const uint8_t* id) {
+    if (s->popup) {
+        s->popup->theme_id = id;
+    }
+}
+
+const theme* screen_theme(const screen* s) {
+    const uint8_t* id = s->popup ? s->popup->theme_id : NULL;
+    return theme_get(id ? *id : THEME_HIGH_CONTRAST);
 }
 
 void screen_popup_watch(screen* s, screen_watch_fn fn, void* ctx) {
@@ -404,9 +416,11 @@ __attribute__((noinline, unused)) static void popup_step(screen* s) {
         char value[SCREEN_POPUP_TEXT];
         uint32_t fill = 0;
         uint32_t max = 0;
+        uint32_t accent = THEME_ACCENT;
         s->popup_ask = 0;
-        if (p->source && p->source(p->source_ctx, ask, name, value, &fill, &max)) {
+        if (p->source && p->source(p->source_ctx, ask, name, value, &fill, &max, &accent)) {
             screen_popup(s, name, value, fill, max);
+            p->accent = (uint8_t)(accent == THEME_ACCENT ? screen_theme(s)->hot : accent);
             asked = 1;
         }
     }
@@ -435,7 +449,8 @@ __attribute__((noinline, unused)) static void popup_step(screen* s) {
     }
     grid* g = s->g;
     for (uint32_t r = next; r < rows; r++) {
-        grid_fill(g, SCREEN_POPUP_COL, SCREEN_POPUP_ROW + r, SCREEN_POPUP_W, 1, ' ', POPUP_BODY);
+        grid_fill(g, SCREEN_POPUP_COL, SCREEN_POPUP_ROW + r, SCREEN_POPUP_W, 1, ' ',
+                  POPUP_BODY(screen_theme(s)));
         redraw(s, 1u << (SCREEN_POPUP_ROW + r));
     }
     p->next = (uint8_t)next;
@@ -481,6 +496,11 @@ static void popup_text(screen* s, uint32_t row, const char* t, uint8_t attr) {
 __attribute__((noinline, unused)) static void popup_draw(screen* s) {
     screen_popup_state* p = s->popup;
     grid* g = s->g;
+    const theme* th = screen_theme(s);
+    uint8_t body = POPUP_BODY(th);
+    uint8_t frame = GRID_ATTR(POPUP_ROLE(th, popup_frame, p->accent), th->popup_bg);
+    uint8_t name_attr = GRID_ATTR(POPUP_ROLE(th, popup_name, p->accent), th->popup_bg);
+    uint8_t bar_attr = GRID_ATTR(POPUP_ROLE(th, popup_bar, p->accent), th->popup_track);
     uint32_t guard = g->big_guard;
     uint32_t last = SCREEN_POPUP_COL + SCREEN_POPUP_W - 1u;
     uint32_t rows = p->next;
@@ -496,16 +516,16 @@ __attribute__((noinline, unused)) static void popup_draw(screen* s) {
         uint32_t y = SCREEN_POPUP_ROW + r;
         if (r == 0 || r == SCREEN_POPUP_ROWS - 1u) {
             grid_fill_top(g, SCREEN_POPUP_COL + 1u, y, SCREEN_POPUP_W - 2u, 1, FONT_BOX_H,
-                          POPUP_FRAME);
+                          frame);
             grid_put_top(g, SCREEN_POPUP_COL, y, r == 0 ? FONT_ROUND_TL : FONT_ROUND_BL,
-                         POPUP_FRAME);
-            grid_put_top(g, last, y, r == 0 ? FONT_ROUND_TR : FONT_ROUND_BR, POPUP_FRAME);
+                         frame);
+            grid_put_top(g, last, y, r == 0 ? FONT_ROUND_TR : FONT_ROUND_BR, frame);
             continue;
         }
-        grid_put_top(g, SCREEN_POPUP_COL, y, FONT_BOX_V, POPUP_FRAME);
-        grid_put_top(g, last, y, FONT_BOX_V, POPUP_FRAME);
-        grid_put_top(g, SCREEN_POPUP_COL + 1u, y, ' ', POPUP_BODY); /* the margins */
-        grid_put_top(g, last - 1u, y, ' ', POPUP_BODY);
+        grid_put_top(g, SCREEN_POPUP_COL, y, FONT_BOX_V, frame);
+        grid_put_top(g, last, y, FONT_BOX_V, frame);
+        grid_put_top(g, SCREEN_POPUP_COL + 1u, y, ' ', body); /* the margins */
+        grid_put_top(g, last - 1u, y, ' ', body);
         if ((name && r - POPUP_NAME_ROW < ns) || (value && r - POPUP_VALUE_ROW < vs)) {
             continue; /* the text's */
         }
@@ -513,19 +533,19 @@ __attribute__((noinline, unused)) static void popup_draw(screen* s) {
             uint32_t px = p->bar;
             for (uint32_t i = 0; i < SCREEN_POPUP_BAR_CELLS; i++) {
                 uint32_t fill = px >= 8u ? 8u : px;
-                grid_put_top(g, POPUP_COL + i, y, (uint8_t)(FONT_H0 + fill), POPUP_BAR);
+                grid_put_top(g, POPUP_COL + i, y, (uint8_t)(FONT_H0 + fill), bar_attr);
                 px -= fill;
             }
             continue;
         }
-        grid_fill_top(g, POPUP_COL, y, SCREEN_POPUP_BAR_CELLS, 1, ' ', POPUP_BODY);
+        grid_fill_top(g, POPUP_COL, y, SCREEN_POPUP_BAR_CELLS, 1, ' ', body);
     }
     /* The text, once its rows are in (drawn whole again when `from` is 0 or it was not in before). */
     if (name && (from == 0 || from < POPUP_NAME_ROW + ns)) {
-        popup_text(s, POPUP_NAME_ROW, p->name, POPUP_NAME);
+        popup_text(s, POPUP_NAME_ROW, p->name, name_attr);
     }
     if (value && (from == 0 || from < POPUP_VALUE_ROW + vs)) {
-        popup_text(s, POPUP_VALUE_ROW, p->value, POPUP_BODY);
+        popup_text(s, POPUP_VALUE_ROW, p->value, body);
     }
     /* Cells the view's overlays changed under the box are not sent for it (they show none), unless
      * a piece's character changed. */

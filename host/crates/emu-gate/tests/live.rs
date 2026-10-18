@@ -21,10 +21,10 @@ const A4: u8 = 69;
 const E4: u8 = 64;
 /// A block of 128 frames at 44118 Hz, in instructions at 240 MHz: 2.90 ms.
 const BLOCK_BUDGET: u64 = 128 * 240_000_000 / 44_118;
-/// docs/art/README.md: the palette's blue (background) and light blue (text and border), as
-/// the panel received them (RGB565, high byte first).
-const BLUE: u16 = 0x314F;
-const LIGHT_BLUE: u16 = 0x6AF6;
+/// docs/art/README.md, the HIGH CONTRAST theme (the default): black background, dark grey
+/// border, as the panel received them (RGB565, high byte first).
+const BLACK: u16 = 0x0000;
+const DIM: u16 = 0x4228;
 const LCD_W: usize = 240;
 
 fn fixture(what: &str) -> Option<(std::path::PathBuf, Firmware)> {
@@ -176,23 +176,18 @@ fn the_lcd_shows_the_status_screen_and_redraws_only_on_change() {
         at(4, 4),
         lcd.frames
     );
-    assert_eq!(at(120, 20), BLUE, "the background is not the C64 blue");
-    assert_eq!(at(4, 4), LIGHT_BLUE, "the border is not the C64 light blue");
-    let fg = fb.iter().filter(|&&p| p == LIGHT_BLUE).count();
-    let bg = fb.iter().filter(|&&p| p == BLUE).count();
-    assert_eq!(
-        fg + bg,
-        fb.len(),
-        "colours other than the two of the palette"
-    );
+    assert_eq!(at(120, 20), BLACK, "the background is not black");
+    assert_eq!(at(4, 4), DIM, "the border is not the dark grey");
+    let fg = fb.iter().filter(|&&p| p != BLACK).count();
+    let bg = fb.iter().filter(|&&p| p == BLACK).count();
     assert!(
         fg > 240 * 4 * 8 && bg > fb.len() / 2,
-        "not a status screen: {fg} light blue, {bg} blue pixels"
+        "not a status screen: {fg} lit, {bg} black pixels"
     );
-    // Text inside: some light blue pixels away from the border.
+    // Text inside: some lit pixels away from the border.
     let inner = (8..232)
         .flat_map(|y| (8..232).map(move |x| (x, y)))
-        .filter(|&(x, y)| at(x, y) == LIGHT_BLUE)
+        .filter(|&(x, y)| at(x, y) != BLACK)
         .count();
     assert!(inner > 500, "no text on the screen ({inner} pixels)");
 

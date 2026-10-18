@@ -8,9 +8,6 @@
 #include "live_view.h"
 #include "tracker_view.h"
 
-#define HEADER GRID_ATTR(GRID_BLUE, GRID_LIGHT_BLUE)
-#define REC_ATTR GRID_ATTR(GRID_RED, GRID_LIGHT_BLUE)
-
 /* A PLAY the player has not taken yet. */
 #define WANT_NONE 0u
 #define WANT_PLAY 1u
@@ -28,8 +25,6 @@
 /* live's notes are MIDI's: GoatTracker's C-0 is MIDI's 12. */
 #define GT2_NOTE0 12u
 #define GT2_NOTES 96u
-
-static const char HEX[] = "0123456789ABCDEF";
 
 /* ---- the song views, SEQ's order ---- */
 
@@ -100,6 +95,7 @@ void song_view_init(song_view* sv, live* l) {
     sv->built = 0;
     sv->dirty = 0;
     sv->held = 0;
+    sv->unbuilt = 0;
 }
 
 uint32_t song_view_mute_mask(const song_view* sv) {
@@ -256,7 +252,7 @@ void song_view_frame(song_view* sv, int shows) {
     send_jam_off(sv);
 }
 
-/* ---- the header and the heads ---- */
+/* ---- the tempo and the position the views show ---- */
 
 uint32_t song_view_bpm10(uint32_t speed_sum, uint32_t multispeed, uint32_t ntsc,
                          uint32_t rows_beat) {
@@ -272,19 +268,6 @@ uint32_t song_view_bpm10(uint32_t speed_sum, uint32_t multispeed, uint32_t ntsc,
     return (x + d * 128u) / (d * 256u);
 }
 
-static void row_text(uint8_t ch[GRID_COLS], uint8_t attr[GRID_COLS], uint32_t col,
-                     const char* s, uint8_t a) {
-    for (; *s && col < GRID_COLS; s++, col++) {
-        ch[col] = (uint8_t)*s;
-        attr[col] = a;
-    }
-}
-
-static void hex2(char* out, uint32_t v) {
-    out[0] = HEX[v >> 4 & 15u];
-    out[1] = HEX[v & 15u];
-}
-
 void song_view_position(const song_view* sv, uint32_t v, uint32_t* order_pos, uint32_t* row) {
     if (going(sv->st.state) && sv->st.row[v] != SONG_T_NOWHERE) {
         *order_pos = sv->st.order_pos[v];
@@ -293,6 +276,10 @@ void song_view_position(const song_view* sv, uint32_t v, uint32_t* order_pos, ui
         *order_pos = sv->order_pos;
         *row = sv->row;
     }
+}
+
+int song_view_playing(const song_view* sv) {
+    return going(sv->st.state);
 }
 
 /* The BPM as the header shows it, rounded; 0xFFFF: none. */
@@ -305,107 +292,11 @@ static uint32_t shown_bpm(const song_view* sv) {
     return b ? (b + 5u) / 10u : 0xffffu;
 }
 
-void song_view_header(const song_view* sv, const char* name, uint8_t ch[GRID_COLS],
-                      uint8_t attr[GRID_COLS]) {
-    for (uint32_t c = 0; c < GRID_COLS; c++) {
-        ch[c] = ' ';
-        attr[c] = HEADER;
-    }
-    for (uint32_t c = 0; name[c] && c < SONG_VIEW_NAME_CHARS; c++) {
-        ch[c] = (uint8_t)name[c];
-    }
-    ch[7] = going(sv->st.state) ? FONT_PLAY : FONT_SQUARE;
-    uint32_t bpm = shown_bpm(sv);
-    char t[5] = " ---";
-    if (bpm != 0xffffu) {
-        bpm = bpm > 9999u ? 9999u : bpm;
-        for (int i = 3; i >= 0; i--) {
-            t[i] = (char)(bpm || i == 3 ? '0' + bpm % 10u : ' ');
-            bpm /= 10u;
-        }
-    }
-    row_text(ch, attr, 8, t, HEADER);
-    uint32_t pos, row;
-    song_view_position(sv, sv->voice, &pos, &row);
-    char p[14] = "ORD 00 ROW 00";
-    hex2(&p[4], pos);
-    hex2(&p[11], row);
-    row_text(ch, attr, 13, p, HEADER);
-    if (sv->rec) {
-        row_text(ch, attr, 27, "REC", REC_ATTR);
-    }
-}
-
-static const char* wave3(uint8_t control) {
-    switch (control >> 4) {
-    case 0: return "---";
-    case 1: return "TRI";
-    case 2: return "SAW";
-    case 4: return "PUL";
-    case 8: return "NOI";
-    default: return "MIX";
-    }
-}
-
-/* Voice v's head: its label's colour, what its name says (0 the waveform, 1 MUT, 2 SOL) and
- * its meter, 0..8. */
-typedef struct {
-    uint8_t color, says, meter;
-} head;
-
-static head head_of(const song_view* sv, uint32_t v) {
-    head h;
-    uint8_t ctrl = sv->st.wave[v];
-    h.color = (song_view_mute_mask(sv) >> v & 1u) ? GRID_GREY : live_view_wave_color(ctrl);
-    h.says = (uint8_t)(sv->solo >> v & 1u ? 2u : sv->mute >> v & 1u ? 1u : 0u);
-    h.meter = (uint8_t)(((uint32_t)sv->st.env[v] * 8u + 127u) / 255u);
-    return h;
-}
-
-void song_view_heads(const song_view* sv, uint8_t bg, uint8_t ch[GRID_COLS],
-                     uint8_t attr[GRID_COLS]) {
-    for (uint32_t c = 0; c < GRID_COLS; c++) {
-        ch[c] = ' ';
-        attr[c] = GRID_ATTR(GRID_LIGHT_BLUE, bg);
-    }
-    for (uint32_t v = 0; v < SONG_T_VOICES; v++) {
-        uint32_t x = SONG_VIEW_HEAD_COL + SONG_VIEW_HEAD_W * v;
-        head h = head_of(sv, v);
-        uint8_t wc = live_view_wave_color(sv->st.wave[v]);
-        char label[3] = {'V', (char)('1' + v), 0};
-        row_text(ch, attr, x, label, GRID_ATTR(h.color, bg));
-        if (h.says == 1u) {
-            row_text(ch, attr, x + 3u, "MUT", GRID_ATTR(GRID_LIGHT_RED, bg));
-        } else if (h.says == 2u) {
-            row_text(ch, attr, x + 3u, "SOL", GRID_ATTR(GRID_WHITE, bg));
-        } else {
-            row_text(ch, attr, x + 3u, wave3(sv->st.wave[v]), GRID_ATTR(wc, bg));
-        }
-        ch[x + 7u] = (uint8_t)(FONT_V0 + h.meter);
-        attr[x + 7u] = GRID_ATTR(wc, GRID_DARK_GREY);
-    }
+uint32_t song_view_shown_bpm(const song_view* sv) {
+    return shown_bpm(sv);
 }
 
 /* ---- the shared canvas ---- */
-
-void song_view_head_look(const song_view* sv, uint8_t out[SONG_VIEW_HEAD_LOOK]) {
-    uint32_t n = 0;
-    uint32_t pos, row;
-    song_view_position(sv, sv->voice, &pos, &row);
-    uint32_t bpm = shown_bpm(sv);
-    out[n++] = (uint8_t)going(sv->st.state);
-    out[n++] = (uint8_t)bpm;
-    out[n++] = (uint8_t)(bpm >> 8);
-    out[n++] = (uint8_t)pos;
-    out[n++] = (uint8_t)row;
-    out[n++] = sv->rec;
-    for (uint32_t v = 0; v < SONG_T_VOICES; v++) {
-        head h = head_of(sv, v);
-        out[n++] = (uint8_t)(h.color | live_view_wave_color(sv->st.wave[v]) << 4);
-        out[n++] = (uint8_t)(h.says | (sv->st.wave[v] & 0xf0u));
-        out[n++] = h.meter;
-    }
-}
 
 /* 1 for a cell of the screen's outer ring. */
 static int border(uint32_t c, uint32_t r) {
@@ -417,7 +308,7 @@ void song_view_copy(song_view* sv, screen* s, grid* g) {
     uint32_t whole = s->redraw && s->wipe != SCREEN_CUT ? s->redraw_rows : 0u;
     for (uint32_t r = 0; r < GRID_ROWS; r++) {
         if (whole >> r & 1u) {
-            grid_row(g, r, c->ch[r], c->attr[r]);
+            grid_canvas_row(g, c, r);
         }
     }
     int raster = s->raster_frames && s->wipe == SCREEN_CUT;
@@ -430,9 +321,13 @@ void song_view_copy(song_view* sv, screen* s, grid* g) {
         }
         const uint8_t* gc = &g->ch[r * GRID_COLS];
         const uint8_t* ga = &g->attr[r * GRID_COLS];
+        const uint8_t* gs = &g->src[r * GRID_COLS];
         for (uint32_t k = 0; k < GRID_COLS; k++) {
-            if ((gc[k] == c->ch[r][k] && ga[k] == c->attr[r][k]) || screen_covered(s, k, r) ||
-                (raster && border(k, r))) {
+            uint8_t ch = c->ch[r][k];
+            /* The same as !grid_canvas_differs, inline: this scan is the busiest part. */
+            if ((gc[k] == ch && ga[k] == c->attr[r][k] &&
+                 ((uint8_t)(ch - GRID_BIG_FIRST) >= GRID_BIG_PIECES || gs[k] == c->src[r][k])) ||
+                screen_covered(s, k, r) || (raster && border(k, r))) {
                 continue;
             }
             if (!left) {
@@ -440,7 +335,16 @@ void song_view_copy(song_view* sv, screen* s, grid* g) {
                 sv->held++;
                 return;
             }
-            grid_put(g, k, r, c->ch[r][k], c->attr[r][k]);
+            /* grid_canvas_put, inline: this is the busiest loop of a page turn. */
+            uint32_t i = r * GRID_COLS + k;
+            g->ch[i] = ch;
+            g->attr[i] = c->attr[r][k];
+            g->rows |= 1u << r;
+            if ((uint8_t)(ch - GRID_BIG_FIRST) < GRID_BIG_PIECES && gs[k] != c->src[r][k]) {
+                g->src[i] = c->src[r][k];
+                g->big_touched = 1;
+                g->stale[i >> 3] |= (uint8_t)(1u << (i & 7u));
+            }
             left--;
         }
     }

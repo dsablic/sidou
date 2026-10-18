@@ -6,17 +6,22 @@
 
 #include "font.h"
 
-#define TEXT VIEWS_TEXT
 /* The status screen's version: right-aligned to end before this column. */
 #define VERSION_END_COL 28u
-#define BAR_COL 14u
-#define BAR_CELLS 14u
+/* STATUS: the parameters' rows (two each from STATUS_PARAM_ROW), the notes', the effects' header and
+ * the prompt's; the bars after their number at 2x. LOOK_NOTES is where the notes are in `look`. */
+#define STATUS_PARAM_ROW 10u
+#define STATUS_NOTES_ROW 19u
+#define STATUS_SLOTS_ROW 21u
+#define STATUS_READY_ROW 27u
+#define STATUS_BAR_COL 18u
+#define STATUS_BAR_CELLS 10u
+#define LOOK_NOTES 13u
 /* The menu: large text over the whole width, 14 characters a line with a cell of margin either
  * side. The title bar in rows 0-2 (its text in rows 1-2: the position, and an arrow up and down
  * for the items out of sight), the items from row MENU_ROW, a line every 3 rows, the help in
  * rows 24-27. */
 #define MENU_ROW 4u
-#define MENU_HEAD GRID_ATTR(GRID_BLUE, GRID_LIGHT_BLUE)
 #define MENU_HELP_ROW 24u
 #define MENU_CHARS ((GRID_COLS - 2u) / 2u)
 /* The cells a frame of the menu sends at most (LIVE, SCENE and CHIP hold to 200: 17.5 ms of SPI
@@ -61,9 +66,9 @@ static uint32_t length(const char* s) {
 }
 
 /* Text inside the border. */
-static void put(grid* g, uint32_t row, uint32_t col, const char* s) {
+static void put(grid* g, uint8_t attr, uint32_t row, uint32_t col, const char* s) {
     while (*s && col < GRID_COLS - 1u) {
-        grid_put(g, col++, row, (uint8_t)*s++, TEXT);
+        grid_put(g, col++, row, (uint8_t)*s++, attr);
     }
 }
 
@@ -102,12 +107,6 @@ static void number_text(char* buf, uint32_t n) {
         buf[i] = d[k - 1u - i];
     }
     buf[k] = 0;
-}
-
-static void put_param(grid* g, uint32_t row, const char* label, uint32_t value, uint32_t max) {
-    put(g, row, 2, label);
-    widget_number(g, 9, row, 4, (int32_t)value, 0, TEXT);
-    widget_bar(g, BAR_COL, row, BAR_CELLS, value, max, TEXT);
 }
 
 /* A UI sound (app/ui_sound.h), if there are UI sounds: ui_sound_play does nothing with
@@ -208,14 +207,67 @@ static int status_changed(screen* s, void* state) {
     return looks_changed(state, 0, 0);
 }
 
+/* The notes held, on the NOTES row from column 9. */
+static void status_notes(grid* g, uint8_t attr, const live* l) {
+    grid_fill(g, 9, STATUS_NOTES_ROW, GRID_COLS - 10u, 1, ' ', attr);
+    uint32_t col = 9;
+    for (int k = 0; k < LIVE_VOICES; k++) {
+        uint8_t n = l->voice[k].note;
+        if (!l->voice[k].gate || n == LIVE_NO_NOTE) {
+            continue;
+        }
+        const char* name = NOTE_NAMES[n % 12u];
+        put(g, attr, STATUS_NOTES_ROW, col, name);
+        uint32_t oc = col + (name[1] ? 2u : 1u);
+        if (n < 12u) {
+            put(g, attr, STATUS_NOTES_ROW, oc, "-1");
+        } else {
+            widget_number(g, oc, STATUS_NOTES_ROW, 1, n / 12 - 1, 0, attr);
+        }
+        col += 5u;
+    }
+}
+
+/* One parameter of the sound, two rows: its name small, its number at 2x, its bar. */
+static void status_param(grid* g, const theme* th, uint32_t row, const char* label, uint32_t value,
+                         uint32_t max, uint8_t color) {
+    char num[6];
+    number_text(num, value);
+    put(g, THEME_ATTR(th, label), row + 1u, 2, label);
+    grid_text_big(g, 9, row, 2, num, THEME_ATTR(th, value));
+    widget_bar(g, STATUS_BAR_COL, row + 1u, STATUS_BAR_CELLS, value, max, GRID_ATTR(color, th->dim));
+}
+
 static void status_compose(screen* s, void* state, grid* g) {
-    (void)s;
     views* v = state;
     const live* l = v->l;
-    look(v, 0, v->drawn);
-    widget_screen(g, FONT_FULL, TEXT);
-    put(g, 2, 2, "SIDOU");
-    put(g, 2, VERSION_END_COL - length(v->version), v->version);
+    const theme* th = theme_get(l->theme);
+    const uint8_t a = THEME_ATTR(th, value);
+    const uint8_t lbl = THEME_ATTR(th, label);
+    /* Only the notes changed: their row alone (a held key costs a row, not the screen). */
+    uint8_t now[COMMON_LOOK];
+    look(v, 0, now);
+    uint32_t other = 0; /* something but the notes changed */
+    for (uint32_t i = 0; i < COMMON_LOOK; i++) {
+        other |= (uint32_t)(now[i] != v->drawn[i]) & (uint32_t)!(i >= LOOK_NOTES && i < LOOK_NOTES + LIVE_VOICES);
+    }
+    for (uint32_t i = 0; i < COMMON_LOOK; i++) {
+        v->drawn[i] = now[i];
+    }
+    if (!other && !s->redraw) {
+        status_notes(g, a, l);
+        return;
+    }
+    /* The ring of full blocks in the dim colour, and the blank every view shares inside it: each
+     * cell written once (widget_screen's way), so an unchanged compose marks no row. */
+    const uint8_t ring = THEME_ATTR(th, dim);
+    grid_fill(g, 0, 0, GRID_COLS, 1, FONT_FULL, ring);
+    grid_fill(g, 0, GRID_ROWS - 1u, GRID_COLS, 1, FONT_FULL, ring);
+    grid_fill(g, 0, 1, 1, GRID_ROWS - 2u, FONT_FULL, ring);
+    grid_fill(g, GRID_COLS - 1u, 1, 1, GRID_ROWS - 2u, FONT_FULL, ring);
+    grid_fill(g, 1, 1, GRID_COLS - 2u, GRID_ROWS - 2u, ' ', a);
+    grid_text_big(g, 2, 2, 2, "SIDOU", THEME_ATTR(th, hot));
+    put(g, lbl, 2, VERSION_END_COL - length(v->version), v->version);
 
     uint32_t top = 5;
     if (l->two_chips) {
@@ -224,67 +276,54 @@ static void status_compose(screen* s, void* state, grid* g) {
         for (uint32_t x = 0; x < 2u; x++, top++) {
             uint32_t id = x == l->keys_chip ? l->profile_req : l->other_profile;
             const sid_chip_profile* cp = sid_chip_profile_get(id);
-            put(g, top, 2, x ? "CHIP B" : "CHIP A");
-            put(g, top, 9, cp ? cp->name : "--"); /* not made yet */
+            put(g, lbl, top, 2, x ? "CHIP B" : "CHIP A");
+            put(g, a, top, 9, cp ? cp->name : "--"); /* not made yet */
             if (x == l->keys_chip) {
-                put(g, top, 20, "KEYS");
+                put(g, THEME_ATTR(th, hot), top, 20, "KEYS");
             }
         }
     } else {
-        put(g, 5, 2, "CHIP");
-        put(g, 5, 9, l->model_req == SID_MODEL_8580 ? "8580" : "6581");
+        put(g, lbl, 5, 2, "CHIP");
+        put(g, a, 5, 9, l->model_req == SID_MODEL_8580 ? "8580" : "6581");
         top = 6;
     }
-    put(g, top, 2, "PRESET");
+    put(g, lbl, top, 2, "PRESET");
     const live_preset* p = live_preset_get(l->preset);
-    put(g, top, 9, p ? p->name : "?");
-    put(g, top + 1u, 2, "OCTAVE");
-    widget_number(g, 9, top + 1u, 2, l->octave, 1, TEXT);
+    put(g, a, top, 9, p ? p->name : "?");
+    put(g, lbl, top + 1u, 2, "OCTAVE");
+    widget_number(g, 9, top + 1u, 2, l->octave, 1, a);
 
-    put_param(g, 10, "CUTOFF", l->cutoff, LIVE_CUTOFF_MAX);
-    put_param(g, 11, "RESO", l->resonance, LIVE_RESONANCE_MAX);
-    put_param(g, 12, "PULSE", l->pulse_width, LIVE_PULSE_WIDTH_MAX);
-    put_param(g, 13, "VOLUME", l->volume, 15);
+    status_param(g, th, STATUS_PARAM_ROW, "CUTOFF", l->cutoff, LIVE_CUTOFF_MAX, th->knob[0]);
+    status_param(g, th, STATUS_PARAM_ROW + 2u, "RESO", l->resonance, LIVE_RESONANCE_MAX, th->knob[1]);
+    status_param(g, th, STATUS_PARAM_ROW + 4u, "PULSE", l->pulse_width, LIVE_PULSE_WIDTH_MAX,
+                 th->knob[2]);
+    status_param(g, th, STATUS_PARAM_ROW + 6u, "VOLUME", l->volume, 15, th->value);
 
-    put(g, 16, 2, "NOTES");
-    uint32_t col = 9;
-    for (int k = 0; k < LIVE_VOICES; k++) {
-        uint8_t n = l->voice[k].note;
-        if (!l->voice[k].gate || n == LIVE_NO_NOTE) {
-            continue;
-        }
-        const char* name = NOTE_NAMES[n % 12u];
-        put(g, 16, col, name);
-        uint32_t oc = col + (name[1] ? 2u : 1u);
-        if (n < 12u) {
-            put(g, 16, oc, "-1");
-        } else {
-            widget_number(g, oc, 16, 1, n / 12 - 1, 0, TEXT);
-        }
-        col += 5u;
-    }
+    put(g, lbl, STATUS_NOTES_ROW, 2, "NOTES");
+    status_notes(g, a, l);
 
     /* The effect slots: '>' marks the one EDIT + K1-K4 and ENV act on (SCL moves it). */
-    put(g, 18, 2, "EFFECTS");
+    put(g, lbl, STATUS_SLOTS_ROW, 2, "EFFECTS");
     for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
-        uint32_t row = 19u + k;
+        uint32_t row = STATUS_SLOTS_ROW + 1u + k;
         if (k == l->fx_select) {
-            put(g, row, 2, ">");
+            put(g, THEME_ATTR(th, hot), row, 2, ">");
         }
-        put(g, row, 3, SLOT_NAMES[k]);
-        put(g, row, 8, views_algorithm_name(k, l->slot[k][LIVE_SLOT_ALGORITHM]));
-        put(g, row, 19, "MIX");
-        widget_number(g, 23, row, 3, l->slot[k][LIVE_SLOT_MIX], 0, TEXT);
+        put(g, lbl, row, 3, SLOT_NAMES[k]);
+        put(g, a, row, 8, views_algorithm_name(k, l->slot[k][LIVE_SLOT_ALGORITHM]));
+        put(g, lbl, row, 19, "MIX");
+        widget_number(g, 23, row, 3, l->slot[k][LIVE_SLOT_MIX], 0, a);
     }
     const uint8_t* sel = l->slot[l->fx_select];
-    put(g, 22, 3, "AMT");
-    widget_number(g, 7, 22, 3, sel[LIVE_SLOT_AMOUNT], 0, TEXT);
-    put(g, 22, 12, "A");
-    widget_number(g, 14, 22, 3, sel[LIVE_SLOT_A], 0, TEXT);
-    put(g, 22, 19, "B");
-    widget_number(g, 21, 22, 3, sel[LIVE_SLOT_B], 0, TEXT);
+    uint32_t arow = STATUS_SLOTS_ROW + 1u + LIVE_SLOTS;
+    put(g, lbl, arow, 3, "AMT");
+    widget_number(g, 7, arow, 3, sel[LIVE_SLOT_AMOUNT], 0, a);
+    put(g, lbl, arow, 12, "A");
+    widget_number(g, 14, arow, 3, sel[LIVE_SLOT_A], 0, a);
+    put(g, lbl, arow, 19, "B");
+    widget_number(g, 21, arow, 3, sel[LIVE_SLOT_B], 0, a);
 
-    put(g, 26, 2, "READY.");
+    put(g, lbl, STATUS_READY_ROW, 2, "READY.");
 }
 
 const view views_status = {"STATUS", NULL, NULL, NULL, status_compose, status_changed};
@@ -436,6 +475,20 @@ static void rows_turn(void* ctx, int32_t steps) {
     }
 }
 
+static void theme_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    join(buf, MENU_VALUE_CHARS, theme_get(v->l->theme)->menu_name, "");
+}
+
+/* Clockwise C64, counter-clockwise HIGH CONTRAST. Every view draws again in the new colours. */
+static void theme_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    if (steps != 0) {
+        live_set_theme(v->l, steps > 0 ? THEME_C64 : THEME_HIGH_CONTRAST);
+        screen_redraw(&v->s);
+    }
+}
+
 static void tracker_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
@@ -482,16 +535,19 @@ static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"PRE", preset_value, preset_turn},    {"OCTAVE", octave_value, octave_turn},
     {"CARDS", cards_value, cards_turn},    {"STORE", store_value, store_turn},
     {"KEYS", keys_value, keys_turn},       {"SOUNDS", sounds_value, sounds_turn},
-    {"ROWS", rows_value, rows_turn},       {"STATUS", NULL, status_open},
-    {"SCENE", NULL, scene_open},           {"CHARSET", NULL, charset_open},
-    {"ABOUT", NULL, about_open},           {"MIDI", NULL, midi_open},
+    {"ROWS", rows_value, rows_turn},       {"THEME", theme_value, theme_turn},
+    {"STATUS", NULL, status_open},         {"SCENE", NULL, scene_open},
+    {"CHARSET", NULL, charset_open},       {"ABOUT", NULL, about_open},
+    {"MIDI", NULL, midi_open},
 };
 _Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_PRESET == 2u &&
                    VIEWS_MENU_CARDS == 4u && VIEWS_MENU_STORE == 5u && VIEWS_MENU_KEYS == 6u &&
-                   VIEWS_MENU_SOUNDS == 7u && VIEWS_MENU_ROWS == 8u && VIEWS_MENU_STATUS == 9u &&
-                   VIEWS_MENU_SCENE == 10u && VIEWS_MENU_CHARSET == 11u &&
-                   VIEWS_MENU_ABOUT == 12u && VIEWS_MENU_MIDI == 13u,
+                   VIEWS_MENU_SOUNDS == 7u && VIEWS_MENU_ROWS == 8u && VIEWS_MENU_THEME == 9u &&
+                   VIEWS_MENU_STATUS == 10u && VIEWS_MENU_SCENE == 11u &&
+                   VIEWS_MENU_CHARSET == 12u && VIEWS_MENU_ABOUT == 13u &&
+                   VIEWS_MENU_MIDI == 14u,
                "the menu's items");
+_Static_assert(LIVE_THEMES == THEME_COUNT, "live.theme holds a theme's id");
 
 static int menu_input(screen* s, void* state, const screen_event* e) {
     (void)s;
@@ -531,11 +587,19 @@ static int menu_changed(screen* s, void* state) {
 
 static void menu_compose(screen* s, void* state, grid* g) {
     views* v = state;
+    const theme* th = theme_get(v->l->theme);
+    const uint8_t text = GRID_ATTR(th->label, th->bg);
+    /* Every blank cell the menu draws has this attribute: the lines' own (menu_draw's) and the
+     * rest of the screen's, so that a scroll sends no blank for a colour nobody sees. */
+    const uint8_t blank = GRID_ATTR(th->menu_item, th->bg);
+    const uint8_t head_attr = GRID_ATTR(th->title_fg, th->title_bg);
+    v->home.sel_attr = GRID_ATTR(th->sel_fg, th->sel_bg); /* the selected line */
+    v->home.value_attr = GRID_ATTR(th->menu_value, th->bg);
     menu_look(v, 0, v->drawn);
     /* Not the lines (menu_draw): the rest of the screen blank, the title bar and the help. */
-    grid_fill(g, 0, 0, GRID_COLS, MENU_ROW, ' ', TEXT);
+    grid_fill(g, 0, 0, GRID_COLS, MENU_ROW, ' ', blank);
     grid_fill(g, 0, MENU_ROW + 3u * VIEWS_MENU_SHOWN, GRID_COLS,
-              GRID_ROWS - MENU_ROW - 3u * VIEWS_MENU_SHOWN, ' ', TEXT);
+              GRID_ROWS - MENU_ROW - 3u * VIEWS_MENU_SHOWN, ' ', blank);
     /* The title bar: MENU and the item the cursor is on, of how many. */
     char head[MENU_CHARS + 1u];
     char pos[8];
@@ -553,8 +617,8 @@ static void menu_compose(screen* s, void* state, grid* g) {
     append(head, sizeof head, pos);
     head[6] = v->home.top > 0 ? (char)FONT_ARROW_UP : ' ';
     head[7] = v->home.top + VIEWS_MENU_SHOWN < VIEWS_MENU_ITEMS ? (char)FONT_ARROW_DOWN : ' ';
-    grid_fill(g, 0, 0, GRID_COLS, 3, ' ', MENU_HEAD);
-    grid_text_big(g, 1, 1, 2, head, MENU_HEAD);
+    grid_fill(g, 0, 0, GRID_COLS, 3, ' ', head_attr);
+    grid_text_big(g, 1, 1, 2, head, head_attr);
     /* Lines while the frame stays within MENU_FRAME_CELLS, less what the popup or a toast draws
      * the same frame (screen_layer_cells): a line is up to 60 cells, a scroll in one frame
      * would send 250. Except the lines something drew over or a view switch left. */
@@ -562,10 +626,10 @@ static void menu_compose(screen* s, void* state, grid* g) {
     v->home.budget = (uint16_t)(MENU_FRAME_CELLS > layers ? MENU_FRAME_CELLS - layers : 1u);
     v->home.force_rows = s->redraw ? s->redraw_rows : 0u;
     v->home.force_rows |= layers ? MENU_BUDGET_FORCED : 0u;
-    menu_draw(&v->home, g, 0, MENU_ROW, GRID_COLS, TEXT, 0);
+    menu_draw(&v->home, g, 0, MENU_ROW, GRID_COLS, blank, 0);
     /* What the encoders do (ALG is ALGORITHM): HOME goes back, as everywhere. */
-    grid_text_big(g, 1, MENU_HELP_ROW, 2, "SELECT  MOVE", TEXT);
-    grid_text_big(g, 1, MENU_HELP_ROW + 2u, 2, "ALG   CHANGE", TEXT);
+    grid_text_big(g, 1, MENU_HELP_ROW, 2, "SELECT  MOVE", text);
+    grid_text_big(g, 1, MENU_HELP_ROW + 2u, 2, "ALG   CHANGE", text);
 }
 
 const view views_menu = {"MENU", NULL, NULL, menu_input, menu_compose, menu_changed};
@@ -826,18 +890,23 @@ static int midi_changed(screen* s, void* state) {
 
 static void midi_compose(screen* s, void* state, grid* g) {
     views* v = state;
+    const theme* th = theme_get(v->l->theme);
+    const uint8_t ring = THEME_ATTR(th, dim);
+    const uint8_t text = GRID_ATTR(th->label, th->bg);
+    const uint8_t item = GRID_ATTR(th->menu_item, th->bg);
     midi_look(v, (uint32_t)screen_blink(s), v->midi_drawn);
-    widget_screen(g, FONT_FULL, TEXT);
-    put(g, 2, 2, "SIDOU");
-    put(g, 2, VERSION_END_COL - length(v->version), v->version);
-    widget_frame(g, MIDI_MENU_COL, MENU_ROW, MIDI_MENU_W, v->midi.rows + 2u, TEXT, "MIDI");
-    menu_draw(&v->midi, g, MIDI_MENU_COL + 1u, MENU_ROW + 1u, MIDI_MENU_W - 2u, TEXT,
+    widget_screen(g, FONT_FULL, ring);
+    grid_text(g, 2, 2, "SIDOU", GRID_ATTR(th->hot, th->bg));
+    grid_text(g, VERSION_END_COL - length(v->version), 2, v->version, text);
+    widget_frame(g, MIDI_MENU_COL, MENU_ROW, MIDI_MENU_W, v->midi.rows + 2u, text, "MIDI");
+    v->midi.value_attr = 0;
+    menu_draw(&v->midi, g, MIDI_MENU_COL + 1u, MENU_ROW + 1u, MIDI_MENU_W - 2u, item,
               screen_blink(s));
     uint32_t help = MENU_ROW + v->midi.rows + 3u;
-    put(g, help, 2, "SELECT     MOVE");
-    put(g, help + 1u, 2, "ALGORITHM  CHANGE");
-    put(g, help + 2u, 2, "HOME       BACK");
-    put(g, 26, 2, "READY.");
+    grid_text(g, 2, help, "SELECT     MOVE", text);
+    grid_text(g, 2, help + 1u, "ALGORITHM  CHANGE", text);
+    grid_text(g, 2, help + 2u, "HOME       BACK", text);
+    grid_text(g, 2, 26, "READY.", GRID_ATTR(th->value, th->bg));
 }
 
 const view views_midi = {"MIDI", NULL, NULL, midi_input, midi_compose, midi_changed};
@@ -974,7 +1043,7 @@ void views_set_song(views* v, const song_transport* t) {
 }
 
 static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t* fill,
-                      uint32_t* max);
+                      uint32_t* max, uint32_t* accent);
 
 /* The parameters views_popup_midi watches: the knobs' and the volume. */
 static const uint8_t WATCHED[4] = {LIVE_PARAM_CUTOFF, LIVE_PARAM_RESONANCE,
@@ -1023,7 +1092,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     save_key_init(&v->key);
     menu_init(&v->home, MENU_ITEMS, VIEWS_MENU_ITEMS, VIEWS_MENU_SHOWN, v);
     v->home.scale = 2;
-    v->home.sel_attr = MENU_HEAD; /* the selected line in reverse video */
+    v->home.sel_attr = GRID_ATTR(theme_get(l->theme)->sel_fg, theme_get(l->theme)->sel_bg);
     menu_init(&v->midi, MIDI_ITEMS, VIEWS_MIDI_ITEMS, VIEWS_MIDI_ITEMS, v);
     v->route = NULL;
     v->sync = NULL;
@@ -1039,6 +1108,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     screen_init(&v->s, g, &live_view_view, &v->live);
     screen_global(&v->s, global, v);
     screen_popup_source(&v->s, &v->popup, popup_text, v);
+    screen_theme_source(&v->s, &l->theme);
     if (VIEWS_POPUP_MIDI) {
         views_popup_midi(v, 1);
     }
@@ -1217,7 +1287,11 @@ static int menu_choice_text(const views* v, char* name, char* value) {
          "");
     char text[MENU_VALUE_CHARS]; /* (the menu's values have room for a longer text) */
     text[0] = 0;
-    it->value((void*)v, text);
+    if (i == VIEWS_MENU_THEME) {
+        join(text, sizeof text, theme_get(v->l->theme)->name, ""); /* in full, not the menu's */
+    } else {
+        it->value((void*)v, text);
+    }
     text[SCREEN_POPUP_CHARS] = 0;
     join(value, SCREEN_POPUP_TEXT, text, "");
     return 1;
@@ -1227,7 +1301,7 @@ static int menu_choice_text(const views* v, char* name, char* value) {
  * shows has it. 0 under the boot, a title card and MIDI learn's frame, and for what has no
  * value to show. Incoming MIDI never asks (docs/reference/controls.md "Value popup"). */
 static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t* fill,
-                      uint32_t* max) {
+                      uint32_t* max, uint32_t* accent) {
     const views* v = ctx;
     const live* l = v->l;
     if (curtain(v) || learn_view_is_open(&v->learn)) {
@@ -1241,6 +1315,7 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
         return param_text(v, LIVE_PARAM_VOLUME, name, value, fill, max);
     }
     if (enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4) {
+        *accent = theme_get(l->theme)->knob[enc - PANEL_ENC_K1]; /* the knob's colour, as on the page */
         uint32_t held = ask & ASK_EDIT ? 1u << PANEL_BTN_EDIT : 0u;
         uint32_t param = panel_knob_param(v->p, l, held, enc);
         if (param != LIVE_PARAM_COUNT) {
@@ -1560,16 +1635,17 @@ void views_update(views* v, uint32_t step, int32_t code) {
     static const char* const STEP[6] = {"", "PACKAGE", "CHECK HEAD", "LOADER", "CONFIRM",
                                         "RESTART"};
     grid* g = v->s.g;
-    widget_frame(g, 2, 18, 26, 5, TEXT, "UPDATE");
-    grid_fill(g, 3, 19, 24, 3, ' ', TEXT);
+    const uint8_t a = THEME_ATTR(theme_get(v->l->theme), value);
+    widget_frame(g, 2, 18, 26, 5, a, "UPDATE");
+    grid_fill(g, 3, 19, 24, 3, ' ', a);
     if (step < 9u) {
-        grid_text(g, 4, 20, STEP[step < 6u ? step : 0u], TEXT);
+        grid_text(g, 4, 20, STEP[step < 6u ? step : 0u], a);
     } else if (code == 1) {
-        grid_text(g, 4, 20, "DRY RUN OK", TEXT);
+        grid_text(g, 4, 20, "DRY RUN OK", a);
     } else {
-        grid_text(g, 4, 20, "FAILED", TEXT);
-        widget_number(g, 11, 20, 3, code, 1, TEXT);
+        grid_text(g, 4, 20, "FAILED", a);
+        widget_number(g, 11, 20, 3, code, 1, a);
     }
-    grid_fill(g, 2, 26, 6, 1, ' ', TEXT); /* READY. */
+    grid_fill(g, 2, STATUS_READY_ROW, 6, 1, ' ', a); /* READY. */
     screen_redraw(&v->s);
 }

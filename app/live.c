@@ -535,6 +535,7 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->other_model = (uint8_t)model;
     l->other_profile = (uint8_t)sid_chip_default(model);
     l->keys_mode = LIVE_KEYS_AUTO;
+    l->theme = 0;
     l->ui_voice = 0;
     l->settings_dirty = 0;
     l->user_valid = 0;
@@ -1207,6 +1208,11 @@ void live_rewrite(live* l) {
 void live_set_keys_mode(live* l, uint32_t mode) {
     l->settings_dirty = 1;
     l->keys_mode = mode == LIVE_KEYS_A ? (uint8_t)LIVE_KEYS_A : (uint8_t)LIVE_KEYS_AUTO;
+}
+
+void live_set_theme(live* l, uint32_t theme) {
+    l->settings_dirty = 1;
+    l->theme = (uint8_t)(theme < LIVE_THEMES ? theme : 0u);
 }
 
 void live_set_preparer(live* l, live_prepare_fn prepare, void* ctx) {

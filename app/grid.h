@@ -144,6 +144,16 @@ typedef struct {
     uint8_t big_touched; /* a piece's character changed (grid_big_touched) */
 } grid;
 
+/* A frame composed off the grid by a view that copies it onto the grid cell by cell (app/chip_view.c,
+ * app/song_view.c): each cell's code and colour, and for a piece of large text (ch in
+ * GRID_BIG_FIRST..GRID_BIG_FIRST + GRID_BIG_PIECES - 1) the character it is a piece of, as the
+ * grid keeps it. */
+typedef struct {
+    uint8_t ch[GRID_ROWS][GRID_COLS];
+    uint8_t attr[GRID_ROWS][GRID_COLS];
+    uint8_t src[GRID_ROWS][GRID_COLS];
+} grid_canvas;
+
 /* Every cell ch in attr, no overlays, no region, and all of it to be sent: what the panel
  * shows is unknown. */
 void grid_init(grid* g, uint8_t ch, uint8_t attr);
@@ -166,6 +176,19 @@ uint32_t grid_text(grid* g, uint32_t col, uint32_t row, const char* s, uint8_t a
  * as any other. */
 uint32_t grid_text_big(grid* g, uint32_t col, uint32_t row, uint32_t scale, const char* s,
                        uint8_t attr);
+/* s at scale 2 or 3 from (col, row) into the canvas c, as grid_text_big does into the grid
+ * (clipped at the row's end, whole characters); none of the grid's guards apply. Returns the
+ * column after it. */
+uint32_t grid_canvas_text_big(grid_canvas* c, uint32_t col, uint32_t row, uint32_t scale,
+                              const char* s, uint8_t attr);
+/* 1 if canvas cell (col, row) differs from the grid's: its code or colour, or for a piece its
+ * character. */
+int grid_canvas_differs(const grid* g, const grid_canvas* c, uint32_t col, uint32_t row);
+/* Canvas cell (col, row) onto the grid, its piece's character too (a changed one is sent again). */
+void grid_canvas_put(grid* g, const grid_canvas* c, uint32_t col, uint32_t row);
+/* A whole row of the canvas onto the grid, as grid_row does for a row without pieces (a row that
+ * shows what it showed marks nothing to send), the pieces' characters too. */
+void grid_canvas_row(grid* g, const grid_canvas* c, uint32_t row);
 /* Cell (col, row) in glyph ch at its own size, over everything: no overlay shows on it (a layer
  * drawing over a view that has overlays, app/screen.h's popup). Cells outside are ignored. */
 void grid_put_top(grid* g, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr);
@@ -192,6 +215,9 @@ void grid_box(grid* g, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint8
  * when all GRID_OVERLAYS slots are taken (the cell keeps its glyph alone). */
 int grid_overlay(grid* g, uint32_t col, uint32_t row, const uint8_t mask[8], uint8_t color);
 void grid_overlay_clear(grid* g, uint32_t col, uint32_t row);
+/* The colour of the cell's overlay, its mask as it is (sent again only if the colour differs);
+ * nothing for a cell with no overlay. */
+void grid_overlay_color(grid* g, uint32_t col, uint32_t row, uint8_t color);
 /* Every overlay (a view switch). */
 void grid_overlay_clear_all(grid* g);
 /* 1 if the cell's overlay is mask in colour already, or if it has none and mask is empty: then

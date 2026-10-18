@@ -110,7 +110,7 @@ fn save_held_and_a_knob_open_the_frame_on_its_parameter_and_a_cc_learns() {
     t.ui.frame();
     assert!(t.ui.row(ROW).contains(" MIDI LEARN "), "{}", t.ui.row(ROW));
     // LIVE still shows under the frame.
-    assert_eq!(&t.ui.row(0)[1..5], "LIVE");
+    assert_eq!(&t.ui.row(0)[..8], "SAW LEAD");
     assert_eq!(
         t.lines(),
         (

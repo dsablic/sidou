@@ -1,22 +1,23 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* LIVE, the root view: what the instrument is doing, after the browser prototype's LIVE
- * (docs/art/README.md "LIVE").
+/* LIVE, the root view: what the instrument is doing, drawn to be read at 23 mm
+ * (docs/art/README.md "LIVE"), after the screen-readability prototype's liveNew.
  *
- * - a header line: the chip, the preset and the octave, in reverse video; while the song's
- *   voices are muted or soloed (GLO, app/song_view.h), which ones in red instead of the preset
- *   ("M13 S2": voices 1 and 3 muted, voice 2 soloed);
- * - each voice in a box (rows 1-6, 7-12, 13-18): its oscilloscope (160 x 32 pixels, the
- *   trace an overlay on each cell it crosses, over a dotted centre line), its envelope as a
- *   bar of lower eighths (ENV3), its note, waveform, pulse width and envelope stage. The
- *   trace's colour is the waveform's: pulse cyan, saw yellow, triangle light green, noise light
- *   grey;
- * - FILTER: the response of the filter's mode at its cutoff and resonance, 16 columns over
- *   30 Hz..12 kHz on a log scale, -36..+12 dB, the cutoff's column in yellow; recomputed only
- *   when one of them (or the chip) changes;
- * - VU: each voice's level and the output's left and right peaks after the effect slots, on
- *   a log scale (6 dB a cell), falling back slowly;
- * - the three effect slots: algorithm and Mix, '>' at the one the panel edits.
+ * - rows 0-1: the preset's name at 2 times the font (a song's mutes and solos in red in its
+ *   place: "M13 S2", voices 1 and 3 muted, voice 2 soloed), the chip's model and the octave
+ *   small on the right;
+ * - rows 2-13, three voice lanes of 4 rows: the voice's number at 2x in its colour with the
+ *   waveform's name under it, its oscilloscope (160 x 32 pixels from column 3, the trace an
+ *   overlay on each cell it crosses, 2 pixels thick, over a dotted centre line) in the voice's
+ *   colour (dark grey and flat when the voice is silent), and the note at 2x on the right with
+ *   the envelope's stage under it;
+ * - rows 15-19, the four knobs in their left-to-right order, what K1..K4 turn on LIVE: each a
+ *   label small in the knob's colour (CUTOFF, RESO, PULSE, PRESET), its value at 2x in white
+ *   (11K, 6, 50%, SAW), a bar in the knob's colour and its name K1..K4;
+ * - rows 21-26: FILTER's mode at 2x (and KEYS:B while the keys play chip B), the three effect
+ *   slots' algorithms (> at the one the panel edits), and VU: each voice's level in its colour
+ *   and the output's left and right peaks after the effect slots, 6 dB a cell.
+ * The colours are the theme's roles (app/theme.h).
  *
  * The scopes come from the audio interrupt's tap (app/scope.h): the newest points, folded by
  * the oscillator's phase (scope_trace), `cycles` periods across the width, more for higher
@@ -26,13 +27,14 @@
  * It composes every frame (no changed function), within a budget of LIVE_VIEW_FRAME_CELLS
  * cells: the scopes get what the rest of the frame and the screen's toast, raster and cover
  * (screen_layer_cells: MIDI learn's frame over it) leave, and a trace that does not fit waits
- * for a later frame (three voices of noise take turns). The canvas is built whole once; after that each part (the
- * header, a voice's box, FILTER, VU, the slots) is drawn again only when what it shows
- * changed, and an envelope bar or a meter only its own cells: a frame of moving meters costs
- * a few cells, not the 900 of the canvas. While a wipe or a raster runs it draws
- * what it drew last (screen_animating), as About does: the transitions are sized for a still
- * view. The tap runs only while LIVE (or SCENE) shows (live_view_tap): the audio interrupt
- * pays for it only then.
+ * for a later frame (three voices of noise take turns). The canvas (small text and bars) is
+ * built whole once; after that each part (the header, a voice's lane, the knob row, the bottom
+ * band) is drawn again only when what it shows changed, and a meter only its own cells: a
+ * frame of moving meters costs a few cells, not the 900 of the canvas. The large text is
+ * drawn on the grid itself (grid_text_big) for the rows that were copied. While a wipe or a
+ * raster runs it draws what it drew last (screen_animating), as About does: the transitions
+ * are sized for a still view. The tap runs only while LIVE (or SCENE) shows (live_view_tap): the
+ * audio interrupt pays for it only then.
  *
  * Portable C with no hardware access and no allocation. */
 #ifndef SIDOU_LIVE_VIEW_H
@@ -49,11 +51,12 @@
 extern "C" {
 #endif
 
-/* Each voice's box: from row LIVE_VIEW_BOX_ROW + LIVE_VIEW_BOX_ROWS * voice, 22 cells wide;
- * its scope from LIVE_VIEW_SCOPE_COL, one row in. */
-#define LIVE_VIEW_BOX_ROW 1u
-#define LIVE_VIEW_BOX_ROWS 6u
-#define LIVE_VIEW_SCOPE_COL 1u
+/* Each voice's lane: from row LIVE_VIEW_LANE_ROW + LIVE_VIEW_LANE_ROWS * voice; its scope from
+ * LIVE_VIEW_SCOPE_COL, on the lane's rows; the voice's number and the note on the lane's
+ * middle two. */
+#define LIVE_VIEW_LANE_ROW 2u
+#define LIVE_VIEW_LANE_ROWS 4u
+#define LIVE_VIEW_SCOPE_COL 3u
 #define LIVE_VIEW_SCOPE_COLS (SCOPE_W / 8u)
 #define LIVE_VIEW_SCOPE_ROWS 4u
 #define LIVE_VIEW_SCOPE_PX (LIVE_VIEW_SCOPE_ROWS * 8u)
@@ -62,15 +65,27 @@ extern "C" {
 /* The cells a frame of LIVE sends at most, its scopes held to what the rest leaves: 200 cells
  * and their windows are about 17.5 ms of SPI, inside the 20 ms budget (docs/art/README.md). */
 #define LIVE_VIEW_FRAME_CELLS 200u
-/* The filter's columns, and the VU meters' fall per frame in meter steps (scope_meter). */
-#define LIVE_VIEW_FILTER_COLS 16u
+/* The knob row: four columns of 8, 7, 7 and 8 cells side by side (a bar a cell shorter than its
+ * column); a label on LIVE_VIEW_KNOB_ROW, the value at 2x on the two rows after it, the bar and
+ * the knob's name K1..K4 on the rows after those. */
+#define LIVE_VIEW_KNOB_ROW 15u
+#define LIVE_VIEW_KNOB_VALUE_ROW 16u
+#define LIVE_VIEW_KNOB_BAR_ROW 18u
+#define LIVE_VIEW_KNOB_TAG_ROW 19u
+/* The bottom band: FILTER's label, the mode at 2x on the rows after it; the effect slots'
+ * lines from LIVE_VIEW_SLOT_ROW; VU's meters from LIVE_VIEW_METER_ROW, a row each. */
+#define LIVE_VIEW_BAND_ROW 21u
+#define LIVE_VIEW_MODE_ROW 22u
+#define LIVE_VIEW_SLOT_ROW 24u
+#define LIVE_VIEW_METER_ROW 22u
+#define LIVE_VIEW_BAND_ROWS 6u
+/* The VU meters' fall per frame in meter steps (scope_meter). */
 #define LIVE_VIEW_FALL 3u
 /* VU rows: the voices, then left and right. */
 #define LIVE_VIEW_METERS (SCOPE_VOICES + 2u)
-/* What the canvas shows besides the scopes, as bytes (live_view.c look): the header 4, each
- * voice's box 5 and envelope 1, FILTER 1, VU 3 and the meters, the slots 1 + 2 each. */
-#define LIVE_VIEW_LOOK                                                                         \
-    (4u + 6u * SCOPE_VOICES + 1u + SCOPE_VOICES + LIVE_VIEW_METERS + 1u + 2u * LIVE_SLOTS)
+/* What the canvas shows besides the scopes, as bytes (live_view.c look): the header 5, each
+ * voice's lane 6, the knob row 4, the bottom band's mode and slots 5 and the meters. */
+#define LIVE_VIEW_LOOK (5u + 6u * SCOPE_VOICES + 4u + 5u + LIVE_VIEW_METERS)
 
 /* A frame composed off the grid, each cell then written to it once (live_view.c). */
 typedef struct {
@@ -93,16 +108,6 @@ typedef struct {
     uint8_t state[SCOPE_VOICES];
     uint8_t sustain[SCOPE_VOICES];
     uint8_t meter[LIVE_VIEW_METERS]; /* 0..SCOPE_METER_MAX */
-    /* The filter curve and what it was computed for. */
-    uint8_t height[LIVE_VIEW_FILTER_COLS]; /* pixels, 0..48 */
-    uint8_t mark;                          /* the cutoff's column */
-    uint8_t curve_valid;
-    uint16_t curve_cutoff;
-    uint8_t curve_resonance;
-    uint8_t curve_mode;
-    uint8_t curve_model;
-    uint8_t curve_serial;             /* counts the curve's computations */
-    uint16_t curve_hz;                /* the cutoff in Hz */
     uint8_t color[SCOPE_VOICES];      /* each drawn trace's colour */
     uint8_t drawn;                    /* the traces have been drawn once */
     uint8_t stale;                    /* bit v: voice v's overlays are to be drawn again */
@@ -130,9 +135,13 @@ void live_view_init(live_view* lv, const live* l, scope* sc);
  * traces go flat and the envelopes and meters to zero: what LIVE shows when it comes back,
  * until the tap has points, is the instrument at rest, not what it was when it went. */
 void live_view_tap(live_view* lv, int on);
-/* The filter's cutoff in Hz as LIVE's FILTER frame says it, "1234" or "11.4K" for the cutoff the
- * chip has now (cutoff_out), into buf (8 characters). */
+/* The filter's cutoff in Hz as the popup says it, "1234" or "11.4K" for the cutoff the chip has
+ * now (cutoff_out), into buf (8 characters). */
 void live_view_cutoff_text(const live* l, char* buf);
+/* Knob k's value (0 K1: the cutoff, 1 the resonance, 2 the pulse width in percent, 3 the preset's
+ * first three letters) as LIVE's knob row says it at 2x: "980", "1.2K", "12K", "6", "50%", "SAW",
+ * into buf (5 bytes). */
+void live_view_knob_text(const live* l, uint32_t k, char* buf);
 /* The control register voice v plays with, without the gate: 0 for a voice that makes no sound
  * (SYNC LEAD's voices 2 and 3, voice 3 only clocking the sync). */
 uint8_t live_view_voice_control(const live* l, uint32_t v);

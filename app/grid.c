@@ -156,25 +156,118 @@ uint32_t grid_text_big(grid* g, uint32_t col, uint32_t row, uint32_t scale, cons
             continue;
         }
         uint32_t cell = r * GRID_COLS + col;
+        uint8_t* ch = &g->ch[cell];
+        uint8_t* at = &g->attr[cell];
+        uint8_t* src = &g->src[cell];
+        uint8_t* stale = &g->stale[cell >> 3];
+        uint32_t bit = cell & 7u;
         uint32_t changed = 0;
+        uint32_t touched = 0;
         for (uint32_t i = 0; i < n; i++) {
-            for (uint32_t x = 0; x < scale; x++, cell++) {
-                uint8_t piece = (uint8_t)(first + y * scale + x);
-                changed |= (uint32_t)(g->ch[cell] ^ piece) | (uint32_t)(g->attr[cell] ^ attr);
-                g->ch[cell] = piece;
-                g->attr[cell] = attr;
-                if (g->src[cell] != (uint8_t)s[i]) {
-                    g->src[cell] = (uint8_t)s[i];
-                    g->big_touched = 1;
-                    mark_stale(g, cell);
+            uint8_t real = (uint8_t)s[i];
+            uint8_t piece = (uint8_t)(first + y * scale);
+            for (uint32_t x = 0; x < scale; x++, piece++) {
+                changed |= (uint32_t)(*ch ^ piece) | (uint32_t)(*at ^ attr);
+                *ch++ = piece;
+                *at++ = attr;
+                if (*src != real) {
+                    *src = real;
+                    *stale |= (uint8_t)(1u << bit);
+                    touched = 1;
+                }
+                src++;
+                if (++bit == 8u) {
+                    bit = 0;
+                    stale++;
                 }
             }
         }
-        if (changed) {
+        if (touched) {
+            g->big_touched = 1;
+        }
+        if (changed | touched) {
             g->rows |= 1u << r;
         }
     }
     return col + n * scale;
+}
+
+uint32_t grid_canvas_text_big(grid_canvas* c, uint32_t col, uint32_t row, uint32_t scale,
+                              const char* s, uint8_t attr) {
+    uint32_t n = 0;
+    while (s[n]) {
+        n++;
+    }
+    if (col >= GRID_COLS || scale < 2u || scale > 3u) {
+        return col;
+    }
+    if (n * scale > GRID_COLS - col) {
+        n = (GRID_COLS - col) / scale;
+    }
+    uint32_t first = scale == 2u ? GRID_BIG_FIRST : GRID_BIG_FIRST + 4u;
+    for (uint32_t y = 0; y < scale && row + y < GRID_ROWS; y++) {
+        uint8_t* ch = &c->ch[row + y][col];
+        uint8_t* at = &c->attr[row + y][col];
+        uint8_t* src = &c->src[row + y][col];
+        uint8_t piece = (uint8_t)(first + y * scale);
+        for (uint32_t i = 0; i < n; i++) {
+            for (uint32_t x = 0; x < scale; x++) {
+                *ch++ = (uint8_t)(piece + x);
+                *at++ = attr;
+                *src++ = (uint8_t)s[i];
+            }
+        }
+    }
+    return col + n * scale;
+}
+
+int grid_canvas_differs(const grid* g, const grid_canvas* c, uint32_t col, uint32_t row) {
+    uint32_t i = row * GRID_COLS + col;
+    uint8_t ch = c->ch[row][col];
+    return g->ch[i] != ch || g->attr[i] != c->attr[row][col] ||
+           ((uint8_t)(ch - GRID_BIG_FIRST) < GRID_BIG_PIECES && g->src[i] != c->src[row][col]);
+}
+
+void grid_canvas_put(grid* g, const grid_canvas* c, uint32_t col, uint32_t row) {
+    uint32_t i = row * GRID_COLS + col;
+    uint8_t ch = c->ch[row][col];
+    grid_put(g, col, row, ch, c->attr[row][col]);
+    if ((uint8_t)(ch - GRID_BIG_FIRST) < GRID_BIG_PIECES && g->src[i] != c->src[row][col]) {
+        g->src[i] = c->src[row][col];
+        g->big_touched = 1;
+        mark_stale(g, i);
+    }
+}
+
+void grid_canvas_row(grid* g, const grid_canvas* c, uint32_t row) {
+    if (row >= GRID_ROWS) {
+        return;
+    }
+    uint8_t* gc = &g->ch[row * GRID_COLS];
+    uint8_t* ga = &g->attr[row * GRID_COLS];
+    const uint8_t* cc = c->ch[row];
+    const uint8_t* ca = c->attr[row];
+    uint32_t changed = 0;
+    uint32_t pieces = 0;
+    for (uint32_t i = 0; i < GRID_COLS; i++) {
+        changed |= (uint32_t)(gc[i] ^ cc[i]) | (uint32_t)(ga[i] ^ ca[i]);
+        pieces |= (uint32_t)((uint8_t)(cc[i] - GRID_BIG_FIRST) < GRID_BIG_PIECES);
+        gc[i] = cc[i];
+        ga[i] = ca[i];
+    }
+    if (changed) {
+        g->rows |= 1u << row;
+    }
+    if (pieces) {
+        for (uint32_t i = 0; i < GRID_COLS; i++) {
+            uint32_t k = row * GRID_COLS + i;
+            if ((uint8_t)(cc[i] - GRID_BIG_FIRST) < GRID_BIG_PIECES && g->src[k] != c->src[row][i]) {
+                g->src[k] = c->src[row][i];
+                g->big_touched = 1;
+                mark_stale(g, k);
+            }
+        }
+    }
 }
 
 void grid_put_top(grid* g, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr) {
@@ -267,6 +360,17 @@ void grid_overlay_clear(grid* g, uint32_t col, uint32_t row) {
     uint32_t i = row * GRID_COLS + col;
     if (g->ovl[i]) {
         overlay_free(g, i);
+    }
+}
+
+void grid_overlay_color(grid* g, uint32_t col, uint32_t row, uint8_t color) {
+    if (col >= GRID_COLS || row >= GRID_ROWS) {
+        return;
+    }
+    uint32_t i = row * GRID_COLS + col;
+    if (g->ovl[i] && g->ovl_color[g->ovl[i] - 1u] != color) {
+        g->ovl_color[g->ovl[i] - 1u] = color;
+        mark_stale(g, i);
     }
 }
 

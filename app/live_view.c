@@ -9,47 +9,38 @@
 #include "sid/sid_filter.h"
 #include "views.h"
 
-#define TEXT VIEWS_TEXT
-#define HEADER GRID_ATTR(GRID_BLUE, GRID_LIGHT_BLUE)
-#define BRIGHT GRID_ATTR(GRID_WHITE, GRID_BLUE)
 #define MID (LIVE_VIEW_SCOPE_PX / 2u)
 
-/* The lower boxes: FILTER and VU from row 19, 8 rows; the slots below them. */
-#define LOWER_ROW 19u
-#define LOWER_ROWS 8u
-#define FILTER_W 18u
-#define VU_COL FILTER_W
-#define VU_W (GRID_COLS - FILTER_W)
-#define VU_METER_COL (VU_COL + 2u)
+/* A lane's cells: the voice's number from column 0, the note from NOTE_COL, the stage under it. */
+#define NOTE_COL 24u
+/* VU: a label, then meters of VU_METER_CELLS from VU_METER_COL. */
+#define VU_LABEL_COL 19u
+#define VU_METER_COL 20u
 #define VU_METER_CELLS 9u
-#define SLOT_ROW (LOWER_ROW + LOWER_ROWS)
-/* The filter's area: 6 rows of 8 pixels, -36 dB at the bottom, +12 at the top. */
-#define CURVE_ROWS 6u
-#define CURVE_PX (CURVE_ROWS * 8u)
-#define CURVE_FLOOR_DB 36.0f
-/* The info column right of the envelope bars. */
-#define ENV_COL 22u
-#define INFO_COL 25u
+/* Rows as a mask. */
+#define ROWS(row, n) (((1u << (n)) - 1u) << (row))
+#define ALL_ROWS ((1u << GRID_ROWS) - 1u)
+#define HEADER_ROWS ROWS(0u, 2u)
+#define KNOB_ROWS ROWS(LIVE_VIEW_KNOB_ROW, LIVE_VIEW_KNOB_TAG_ROW + 1u - LIVE_VIEW_KNOB_ROW)
+#define BAND_ROWS ROWS(LIVE_VIEW_BAND_ROW, LIVE_VIEW_BAND_ROWS)
+/* The knobs' columns: 8, 7, 7 and 8 cells wide, side by side; a bar is a cell shorter. */
+static const uint8_t KNOB_COL[4] = {0, 8, 15, 22};
+static const uint8_t KNOB_W[4] = {8, 7, 7, 8};
+static const char* const KNOB_LABEL[4] = {"CUTOFF", "RESO", "PULSE", "PRESET"};
 
-_Static_assert(LIVE_VIEW_SCOPE_COL + LIVE_VIEW_SCOPE_COLS <= ENV_COL - 1u,
-               "the scope fits inside its box");
-_Static_assert(LIVE_VIEW_BOX_ROW + SCOPE_VOICES * LIVE_VIEW_BOX_ROWS <= LOWER_ROW,
-               "the voices' boxes end above FILTER and VU");
-_Static_assert(SLOT_ROW + LIVE_SLOTS == GRID_ROWS, "the slots fill the bottom rows");
+_Static_assert(LIVE_VIEW_SCOPE_COL + LIVE_VIEW_SCOPE_COLS < NOTE_COL, "the scope ends before the note");
+_Static_assert(LIVE_VIEW_LANE_ROW + SCOPE_VOICES * LIVE_VIEW_LANE_ROWS < LIVE_VIEW_KNOB_ROW,
+               "the lanes end above the knobs");
+_Static_assert(LIVE_VIEW_SLOT_ROW + LIVE_SLOTS <= LIVE_VIEW_BAND_ROW + LIVE_VIEW_BAND_ROWS &&
+                   LIVE_VIEW_METER_ROW + LIVE_VIEW_METERS <= LIVE_VIEW_BAND_ROW + LIVE_VIEW_BAND_ROWS,
+               "the slots and the meters are inside the bottom band");
+_Static_assert(VU_METER_COL + VU_METER_CELLS <= GRID_COLS, "the meters fit the row");
 _Static_assert(SCOPE_VOICES == LIVE_VOICES, "a scope per voice");
 
 static const char* const NOTE_NAMES[12] = {"C-", "C#", "D-", "D#", "E-", "F-",
                                            "F#", "G-", "G#", "A-", "A#", "B-"};
 static const char* const MODE_NAMES[8] = {"OFF", "LP",    "BP",    "LP+BP",
                                           "HP",  "NOTCH", "BP+HP", "ALL"};
-
-static uint32_t length(const char* s) {
-    uint32_t n = 0;
-    while (s[n]) {
-        n++;
-    }
-    return n;
-}
 
 /* ---- the instrument's side ---- */
 
@@ -88,63 +79,6 @@ static uint32_t cycles_for(uint8_t note) {
     }
     uint32_t c = note > 24u ? (note - 24u) / 12u : 0u;
     return c < 1u ? 1u : c > 4u ? 4u : c;
-}
-
-/* ---- the filter curve ---- */
-
-/* log2(x) for x > 0, within 0.005: the exponent, and a quadratic on the mantissa. */
-static float log2_approx(float x) {
-    union {
-        float f;
-        uint32_t u;
-    } v = {x};
-    float e = (float)((int32_t)((v.u >> 23) & 255u) - 127);
-    v.u = (v.u & 0x7FFFFFu) | 0x3F800000u;
-    float m = v.f - 1.0f;
-    return e + m * (1.3466f - 0.3466f * m);
-}
-
-/* The response of the state-variable filter sid.c runs, at the chip's fitted cutoff and
- * damping (sid_cutoff_hz, sid_resonance_k; curve 0, the model's default), for the mode's
- * outputs summed: (lp + bp s + hp s^2) / (s^2 + k s + 1) at s = j f / fc. The column centres
- * step by 400^(1/16) from 30 Hz * 400^(1/32). */
-static void curve(live_view* lv, const live* l) {
-    uint8_t mode = (uint8_t)(l->filter_mode >> 4 & 7u);
-    if (lv->curve_valid && lv->curve_cutoff == l->cutoff_out &&
-        lv->curve_resonance == l->resonance && lv->curve_mode == mode &&
-        lv->curve_model == (uint8_t)l->model) {
-        return;
-    }
-    lv->curve_valid = 1;
-    lv->curve_serial++;
-    lv->curve_cutoff = l->cutoff_out;
-    lv->curve_resonance = l->resonance;
-    lv->curve_mode = mode;
-    lv->curve_model = (uint8_t)l->model;
-    float fc = sid_cutoff_hz(l->model, 0, l->cutoff_out);
-    fc = fc < 30.0f ? 30.0f : fc; /* as sid.c clamps it */
-    lv->curve_hz = (uint16_t)(fc + 0.5f);
-    float k = sid_resonance_k(l->model, 0, l->resonance);
-    const float step = 1.454215f; /* 400^(1/16) */
-    float lo = 30.0f;
-    float f = 36.1773f; /* 30 * 400^(1/32) */
-    lv->mark = LIVE_VIEW_FILTER_COLS - 1u;
-    int marked = 0;
-    for (uint32_t i = 0; i < LIVE_VIEW_FILTER_COLS; i++, f *= step) {
-        float r = f / fc;
-        float nre = ((mode & 1u) ? 1.0f : 0.0f) - ((mode & 4u) ? r * r : 0.0f);
-        float nim = (mode & 2u) ? r : 0.0f;
-        float dre = 1.0f - r * r;
-        float dim = k * r;
-        float h2 = (nre * nre + nim * nim) / (dre * dre + dim * dim);
-        float px = h2 > 1e-12f ? 3.0103f * log2_approx(h2) + CURVE_FLOOR_DB : 0.0f;
-        lv->height[i] = (uint8_t)(px <= 0.0f ? 0.0f : px >= (float)CURVE_PX ? (float)CURVE_PX : px);
-        lo *= step;
-        if (!marked && fc < lo) {
-            lv->mark = (uint8_t)i;
-            marked = 1;
-        }
-    }
 }
 
 static void columns(const uint8_t y[SCOPE_W], uint32_t w[SCOPE_W]);
@@ -281,10 +215,37 @@ uint8_t live_view_wave_color(uint8_t control) {
     return wave_color(control);
 }
 
+/* "1234" or "1.2K" for hz. */
+static void hz_text(char* buf, uint32_t hz) {
+    uint32_t n = 0;
+    char digits[8];
+    uint32_t k = 0;
+    uint32_t whole = hz < 1000u ? hz : (hz + 50u) / 1000u;
+    do {
+        digits[k++] = (char)('0' + whole % 10u);
+        whole /= 10u;
+    } while (whole);
+    while (k) {
+        buf[n++] = digits[--k];
+    }
+    if (hz >= 1000u) {
+        buf[n++] = '.';
+        buf[n++] = (char)('0' + (hz + 50u) / 100u % 10u);
+        buf[n++] = 'K';
+    }
+    buf[n] = 0;
+}
+
+void live_view_cutoff_text(const live* l, char* buf) {
+    float fc = sid_cutoff_hz(l->model, 0, l->cutoff_out);
+    hz_text(buf, (uint32_t)((fc < 30.0f ? 30.0f : fc) + 0.5f)); /* the filter clamps it at 30 Hz */
+}
+
 /* ---- drawing ---- */
 
 /* The frame is composed here, overwriting freely, and goes to the grid a row at a time: each
- * cell is written once, so a row that shows what it showed marks nothing to send. */
+ * cell is written once, so a row that shows what it showed marks nothing to send. The large
+ * text is drawn on the grid itself afterwards (big_items). */
 typedef live_view_canvas canvas;
 
 static void put(canvas* cv, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr) {
@@ -303,78 +264,34 @@ static uint32_t text(canvas* cv, uint32_t col, uint32_t row, const char* s, uint
 
 static void fill(canvas* cv, uint32_t col, uint32_t row, uint32_t w, uint32_t h, uint8_t ch,
                  uint8_t attr) {
+    if (col >= GRID_COLS || row >= GRID_ROWS) {
+        return;
+    }
+    w = w < GRID_COLS - col ? w : GRID_COLS - col;
+    h = h < GRID_ROWS - row ? h : GRID_ROWS - row;
     for (uint32_t r = row; r < row + h; r++) {
-        for (uint32_t c = col; c < col + w; c++) {
-            put(cv, c, r, ch, attr);
-        }
+        memset(&cv->ch[r][col], ch, w);
+        memset(&cv->attr[r][col], attr, w);
     }
 }
 
-/* A rounded frame with its title set into the top edge, between spaces. */
-static void box(canvas* cv, uint32_t col, uint32_t row, uint32_t w, uint32_t h, const char* title) {
-    uint32_t right = col + w - 1u;
-    uint32_t bottom = row + h - 1u;
-    fill(cv, col + 1u, row, w - 2u, 1, FONT_BOX_H, TEXT);
-    fill(cv, col + 1u, bottom, w - 2u, 1, FONT_BOX_H, TEXT);
-    fill(cv, col, row + 1u, 1, h - 2u, FONT_BOX_V, TEXT);
-    fill(cv, right, row + 1u, 1, h - 2u, FONT_BOX_V, TEXT);
-    put(cv, col, row, FONT_ROUND_TL, TEXT);
-    put(cv, right, row, FONT_ROUND_TR, TEXT);
-    put(cv, col, bottom, FONT_ROUND_BL, TEXT);
-    put(cv, right, bottom, FONT_ROUND_BR, TEXT);
-    uint32_t c = text(cv, col + 2u, row, " ", TEXT);
-    c = text(cv, c, row, title, TEXT);
-    put(cv, c, row, ' ', TEXT);
+/* Voice v is silent in the song's mutes and solos (app/song_view.h song_view_mutes). */
+static int muted(const live_view* lv, uint32_t v) {
+    uint32_t solo = (uint32_t)lv->mutes >> 3 & 7u;
+    return solo ? !(solo >> v & 1u) : (int)((uint32_t)lv->mutes >> v & 1u);
 }
 
-static void header(const live_view* lv, canvas* cv) {
-    const live* l = lv->l;
-    fill(cv, 0, 0, GRID_COLS, 1, ' ', HEADER);
-    if (l->two_chips && l->keys_chip) {
-        text(cv, 1, 0, "KEYS:B", HEADER); /* the keys play chip B (app/keys_route.h) */
-    } else {
-        text(cv, 1, 0, "LIVE", HEADER);
-        put(cv, 6, 0, FONT_PLAY, HEADER);
-    }
-    text(cv, 8, 0, l->model == SID_MODEL_8580 ? "8580" : "6581", HEADER);
-    if (lv->mutes) {
-        /* The song's mutes and solos (app/song_view.h) in place of the preset. */
-        char m[10];
-        uint32_t n = 0;
-        for (uint32_t part = 0; part < 2u; part++) {
-            uint32_t bits = (uint32_t)lv->mutes >> (3u * part) & 7u;
-            if (!bits) {
-                continue;
-            }
-            if (n) {
-                m[n++] = ' ';
-            }
-            m[n++] = part ? 'S' : 'M';
-            for (uint32_t v = 0; v < 3u; v++) {
-                if (bits >> v & 1u) {
-                    m[n++] = (char)('1' + v);
-                }
-            }
-        }
-        m[n] = 0;
-        text(cv, 13, 0, m, GRID_ATTR(GRID_RED, GRID_LIGHT_BLUE));
-    } else {
-        const live_preset* p = live_preset_get(l->preset);
-        text(cv, 13, 0, p ? p->name : "?", HEADER);
-    }
-    char oct[6] = "OCT+0";
-    int32_t o = l->octave;
-    oct[3] = o < 0 ? '-' : '+';
-    oct[4] = (char)('0' + (o < 0 ? -o : o));
-    text(cv, GRID_COLS - 1u - 5u, 0, oct, HEADER);
+/* A voice's lane: its first row. */
+static uint32_t lane_row(uint32_t v) {
+    return LIVE_VIEW_LANE_ROW + v * LIVE_VIEW_LANE_ROWS;
 }
 
 static uint32_t scope_top(uint32_t v) {
-    return LIVE_VIEW_BOX_ROW + v * LIVE_VIEW_BOX_ROWS + 1u;
+    return lane_row(v);
 }
 
 /* A trace as a word per pixel column, bit 31 - p for pixel row p, each column joined to the
- * one before it. */
+ * one before it and 2 pixels thick (a pixel more below). */
 static void columns(const uint8_t y[SCOPE_W], uint32_t w[SCOPE_W]) {
     uint32_t prev = y[0];
     for (uint32_t x = 0; x < SCOPE_W; x++) {
@@ -383,6 +300,7 @@ static void columns(const uint8_t y[SCOPE_W], uint32_t w[SCOPE_W]) {
         prev = y[x];
         hi = hi < LIVE_VIEW_SCOPE_PX ? hi : LIVE_VIEW_SCOPE_PX - 1u;
         lo = lo < hi ? lo : hi;
+        hi += hi + 1u < LIVE_VIEW_SCOPE_PX ? 1u : 0u;
         /* Bits 31 - lo down to 31 - hi. */
         w[x] = (0xFFFFFFFFu >> lo) & (0xFFFFFFFFu << (31u - hi));
     }
@@ -464,16 +382,29 @@ static uint32_t changed_cells(const live_view* lv, const grid* g, uint32_t v,
     return n;
 }
 
+/* The colour of voice v's trace: its own while it sounds, dark grey and flat when it is silent. */
+static uint8_t trace_color(const live_view* lv, const theme* th, uint32_t v) {
+    return lv->env[v] ? th->voice[v] : th->dim;
+}
+
 /* Voice v's drawn trace (lv->y) onto every cell of its scope. */
-static void redraw_voice(live_view* lv, grid* g, uint32_t v) {
+static void redraw_voice(live_view* lv, grid* g, uint32_t v, uint8_t color) {
     uint32_t* w = lv->cols[v];
-    uint8_t color = wave_color(voice_control(lv->l, v));
     for (uint32_t c = 0; c < LIVE_VIEW_SCOPE_COLS; c++) {
         for (uint32_t r = 0; r < LIVE_VIEW_SCOPE_ROWS; r++) {
             cell_apply(g, v, c, r, w, color);
         }
     }
     lv->color[v] = color;
+}
+
+/* Every overlay cell of voice v's scope in `color`, the traces as they are. */
+static void recolor_voice(grid* g, uint32_t v, uint8_t color) {
+    for (uint32_t r = 0; r < LIVE_VIEW_SCOPE_ROWS; r++) {
+        for (uint32_t c = 0; c < LIVE_VIEW_SCOPE_COLS; c++) {
+            grid_overlay_color(g, LIVE_VIEW_SCOPE_COL + c, scope_top(v) + r, color);
+        }
+    }
 }
 
 /* The traces as overlays over the dotted centre lines (the canvas has those).
@@ -490,7 +421,7 @@ static void redraw_voice(live_view* lv, grid* g, uint32_t v) {
  * pend (a wipe or a raster runs) the drawn traces stay; voices to draw again go one a frame,
  * top first, which keeps ahead of a wipe (it reveals voice 1's scope in its first frame,
  * voice 2's in its second, voice 3's in its fourth) and keeps the wipe's first frame cheap. */
-static void scopes(live_view* lv, const screen* s, grid* g,
+static void scopes(live_view* lv, const screen* s, grid* g, const theme* th,
                    uint8_t pend[SCOPE_VOICES][SCOPE_W]) {
     uint32_t w[SCOPE_W];
     uint32_t cells[3];
@@ -501,7 +432,7 @@ static void scopes(live_view* lv, const screen* s, grid* g,
     if (!pend) {
         for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
             if (lv->stale >> v & 1u) {
-                redraw_voice(lv, g, v);
+                redraw_voice(lv, g, v, trace_color(lv, th, v));
                 lv->stale &= (uint8_t)~(1u << v);
                 break;
             }
@@ -509,14 +440,24 @@ static void scopes(live_view* lv, const screen* s, grid* g,
         lv->ovl_free = g->ovl_nfree;
         return;
     }
+    /* A voice that began to sound or fell silent keeps its trace and takes its new colour in
+     * place; the cells recoloured are pending before the budget below is worked out, and only
+     * the cells whose shape changed are drawn again. */
+    for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
+        uint8_t color = trace_color(lv, th, v);
+        if (color != lv->color[v] && !(lv->stale >> v & 1u)) {
+            recolor_voice(g, v, color);
+            lv->color[v] = color;
+        }
+    }
     uint32_t used = screen_pending(s) + screen_layer_cells(s);
     uint32_t left = used < LIVE_VIEW_FRAME_CELLS ? LIVE_VIEW_FRAME_CELLS - used : 0u;
     uint32_t first = lv->next_voice % SCOPE_VOICES;
     uint32_t skipped = SCOPE_VOICES;
     for (uint32_t k = 0; k < SCOPE_VOICES; k++) {
         uint32_t v = (first + k) % SCOPE_VOICES;
-        uint8_t color = wave_color(voice_control(lv->l, v));
-        int known = !(lv->stale >> v & 1u) && color == lv->color[v];
+        uint8_t color = trace_color(lv, th, v);
+        int known = !(lv->stale >> v & 1u);
         if (known) {
             uint32_t x = 0;
             while (x < SCOPE_W && pend[v][x] == lv->y[v][x]) {
@@ -572,224 +513,280 @@ static void cell(canvas* cv, grid* g, uint32_t col, uint32_t row, uint8_t ch, ui
     }
 }
 
-/* Voice v's envelope: 32 eighths over the 4 rows, ENV3 / 8. */
-static void env_bar(const live_view* lv, canvas* cv, grid* g, uint32_t v) {
-    uint32_t row = LIVE_VIEW_BOX_ROW + v * LIVE_VIEW_BOX_ROWS;
-    uint8_t attr = GRID_ATTR(wave_color(voice_control(lv->l, v)), GRID_BLACK);
-    uint32_t level = ((uint32_t)lv->env[v] + 4u) >> 3;
-    for (uint32_t j = 0; j < LIVE_VIEW_SCOPE_ROWS; j++) {
-        uint32_t below = (LIVE_VIEW_SCOPE_ROWS - 1u - j) * 8u;
-        uint32_t fill8 = level > below ? level - below : 0u;
-        fill8 = fill8 > 8u ? 8u : fill8;
-        cell(cv, g, ENV_COL, row + 1u + j, (uint8_t)(FONT_V0 + fill8), attr);
-        cell(cv, g, ENV_COL + 1u, row + 1u + j, (uint8_t)(FONT_V0 + fill8), attr);
-    }
-}
-
-static void voice(const live_view* lv, canvas* cv, uint32_t v) {
-    const live* l = lv->l;
-    uint32_t row = LIVE_VIEW_BOX_ROW + v * LIVE_VIEW_BOX_ROWS;
-    uint8_t ctrl = voice_control(l, v);
-    uint8_t color = wave_color(ctrl);
-    char title[10] = "V1 ";
-    title[1] = (char)('1' + v);
-    const char* wn = wave_name(ctrl);
-    for (uint32_t i = 0; wn[i] && i < 5u; i++) {
-        title[3u + i] = wn[i];
-        title[4u + i] = 0;
-    }
-    box(cv, 0, row, ENV_COL, LIVE_VIEW_BOX_ROWS, title);
-    fill(cv, LIVE_VIEW_SCOPE_COL, scope_top(v) + MID / 8u, LIVE_VIEW_SCOPE_COLS, 1,
-         FONT_SCOPE_MID, TEXT);
-
-    env_bar(lv, cv, NULL, v);
-
-    const live_voice* x = &l->voice[v];
-    char note[5] = "---";
-    if (ctrl && x->note != LIVE_NO_NOTE) {
+/* Voice v's note as the lane says it: "A-4", "C#5", "---" (an octave below C0: "A--"). */
+static void note_text(const live_view* lv, uint32_t v, char note[4]) {
+    const live_voice* x = &lv->l->voice[v];
+    note[0] = note[1] = note[2] = '-';
+    note[3] = 0;
+    if (voice_control(lv->l, v) && x->note != LIVE_NO_NOTE) {
         note[0] = NOTE_NAMES[x->note % 12u][0];
         note[1] = NOTE_NAMES[x->note % 12u][1];
-        if (x->note < 12u) {
-            note[2] = '-';
-            note[3] = '1';
-            note[4] = 0;
-        } else {
-            note[2] = (char)('0' + x->note / 12u - 1u);
-        }
+        note[2] = x->note < 12u ? '-' : (char)('0' + x->note / 12u - 1u);
     }
-    text(cv, INFO_COL, row + 1u, note, ctrl && x->gate ? BRIGHT : TEXT);
-    char wave4[5] = {0};
-    for (uint32_t i = 0; wn[i] && i < 4u; i++) {
-        wave4[i] = wn[i];
-    }
-    text(cv, INFO_COL, row + 2u, wave4, GRID_ATTR(color, GRID_BLUE));
-    if (ctrl & 0x40u) {
-        char pw[5] = "PW00";
-        uint32_t pc = ((uint32_t)x->pw_out * 99u + 2047u) / 4095u;
-        pw[2] = (char)('0' + pc / 10u);
-        pw[3] = (char)('0' + pc % 10u);
-        text(cv, INFO_COL, row + 3u, pw, TEXT);
-    }
-    const char* st = stage_name(lv->state[v], lv->env[v], lv->sustain[v]);
-    text(cv, INFO_COL, row + 4u, st, st[0] == '-' ? TEXT : BRIGHT);
 }
 
-/* "1234" or "1.2K" for hz. */
-static void hz_text(char* buf, uint32_t hz) {
-    uint32_t n = 0;
-    char digits[8];
-    uint32_t k = 0;
-    uint32_t whole = hz < 1000u ? hz : (hz + 50u) / 1000u;
-    do {
-        digits[k++] = (char)('0' + whole % 10u);
-        whole /= 10u;
-    } while (whole);
-    while (k) {
-        buf[n++] = digits[--k];
+static void header(const live_view* lv, canvas* cv, const theme* th) {
+    const live* l = lv->l;
+    const uint8_t blank = THEME_ATTR(th, value);
+    const uint8_t label = THEME_ATTR(th, label);
+    fill(cv, 0, 0, GRID_COLS, 2, ' ', blank);
+    text(cv, GRID_COLS - 4u, 0, l->model == SID_MODEL_8580 ? "8580" : "6581", label);
+    char oct[6] = "OCT+0";
+    int32_t o = l->octave;
+    oct[3] = o < 0 ? '-' : '+';
+    oct[4] = (char)('0' + (o < 0 ? -o : o));
+    text(cv, GRID_COLS - 5u, 1, oct, label);
+}
+
+/* The header's large text: the preset's name, or the song's mutes and solos in red in its
+ * place ("M13 S2": voices 1 and 3 muted, voice 2 soloed). */
+static void header_big(const live_view* lv, grid* g, const theme* th) {
+    char m[10];
+    if (lv->mutes) {
+        uint32_t n = 0;
+        for (uint32_t part = 0; part < 2u; part++) {
+            uint32_t bits = (uint32_t)lv->mutes >> (3u * part) & 7u;
+            if (!bits) {
+                continue;
+            }
+            if (n) {
+                m[n++] = ' ';
+            }
+            m[n++] = part ? 'S' : 'M';
+            for (uint32_t v = 0; v < 3u; v++) {
+                if (bits >> v & 1u) {
+                    m[n++] = (char)('1' + v);
+                }
+            }
+        }
+        m[n] = 0;
+        grid_text_big(g, 0, 0, 2, m, THEME_ATTR(th, alert));
+        return;
     }
-    if (hz >= 1000u) {
+    const live_preset* p = live_preset_get(lv->l->preset);
+    grid_text_big(g, 0, 0, 2, p ? p->name : "?", THEME_ATTR(th, value));
+}
+
+/* Voice v's lane in the canvas, but for the large text (lane_big): the waveform's name under
+ * the number, the stage under the note, the scope's dotted centre line. */
+static void lane(const live_view* lv, canvas* cv, const theme* th, uint32_t v) {
+    uint32_t row = lane_row(v);
+    const uint8_t blank = THEME_ATTR(th, value);
+    fill(cv, 0, row, GRID_COLS, LIVE_VIEW_LANE_ROWS, ' ', blank);
+    fill(cv, LIVE_VIEW_SCOPE_COL, row + MID / 8u, LIVE_VIEW_SCOPE_COLS, 1, FONT_SCOPE_MID,
+         THEME_ATTR(th, dim));
+    const char* wn = wave_name(voice_control(lv->l, v));
+    char w3[4] = {wn[0], wn[1], wn[2], 0};
+    text(cv, 0, row + 3u, w3, THEME_ATTR(th, label));
+    const char* st = stage_name(lv->state[v], lv->env[v], lv->sustain[v]);
+    text(cv, NOTE_COL, row + 3u, st, st[0] == '-' ? THEME_ATTR(th, dim) : THEME_ATTR(th, label));
+}
+
+/* Voice v's number and note at 2x, on the lane's middle two rows. */
+static void lane_big(const live_view* lv, grid* g, const theme* th, uint32_t v) {
+    uint32_t row = lane_row(v) + 1u;
+    char digit[2] = {(char)('1' + v), 0};
+    grid_text_big(g, 0, row, 2, digit, GRID_ATTR(muted(lv, v) ? th->dim : th->voice[v], th->bg));
+    char note[4];
+    note_text(lv, v, note);
+    const live_voice* x = &lv->l->voice[v];
+    int on = voice_control(lv->l, v) && x->gate;
+    grid_text_big(g, NOTE_COL, row, 2, note, GRID_ATTR(on ? th->value : th->dim, th->bg));
+}
+
+/* "980", "1.2K" or "12K" for hz: at most 4 characters, what a knob's column holds at 2x. */
+static void hz_short(char* buf, uint32_t hz) {
+    uint32_t n = 0;
+    if (hz < 1000u) {
+        if (hz >= 100u) {
+            buf[n++] = (char)('0' + hz / 100u);
+        }
+        if (hz >= 10u) {
+            buf[n++] = (char)('0' + hz / 10u % 10u);
+        }
+        buf[n++] = (char)('0' + hz % 10u);
+    } else if (hz < 9950u) {
+        uint32_t t = (hz + 50u) / 100u; /* tenths of a kilohertz, 10..99 */
+        buf[n++] = (char)('0' + t / 10u);
         buf[n++] = '.';
-        buf[n++] = (char)('0' + (hz + 50u) / 100u % 10u);
+        buf[n++] = (char)('0' + t % 10u);
+        buf[n++] = 'K';
+    } else {
+        uint32_t k = (hz + 500u) / 1000u;
+        if (k >= 10u) {
+            buf[n++] = (char)('0' + k / 10u % 10u);
+        }
+        buf[n++] = (char)('0' + k % 10u);
         buf[n++] = 'K';
     }
     buf[n] = 0;
 }
 
-void live_view_cutoff_text(const live* l, char* buf) {
-    float fc = sid_cutoff_hz(l->model, 0, l->cutoff_out);
-    hz_text(buf, (uint32_t)((fc < 30.0f ? 30.0f : fc) + 0.5f)); /* as curve() clamps it */
-}
-
-static void filter(const live_view* lv, canvas* cv) {
-    const live* l = lv->l;
-    char title[16] = "FILTER ";
-    const char* mode = MODE_NAMES[l->filter_mode >> 4 & 7u];
-    for (uint32_t i = 0; mode[i]; i++) {
-        title[7u + i] = mode[i];
-        title[8u + i] = 0;
+/* Knob k's value as its column says it (K1 the cutoff, K2 the resonance, K3 the pulse width in
+ * percent, K4 the preset's first three letters), at most 4 characters and a terminator. */
+void live_view_knob_text(const live* l, uint32_t k, char* buf) {
+    uint32_t n = 0;
+    switch (k) {
+    case 0: {
+        float fc = sid_cutoff_hz(l->model, 0, l->cutoff_out);
+        hz_short(buf, (uint32_t)((fc < 30.0f ? 30.0f : fc) + 0.5f));
+        return;
     }
-    box(cv, 0, LOWER_ROW, FILTER_W, LOWER_ROWS, title);
-    for (uint32_t i = 0; i < LIVE_VIEW_FILTER_COLS; i++) {
-        uint32_t h = lv->height[i];
-        int mark = i == lv->mark;
-        uint8_t cap = GRID_ATTR(mark ? GRID_YELLOW : GRID_WHITE, GRID_BLUE);
-        uint8_t body = GRID_ATTR(mark ? GRID_YELLOW : GRID_LIGHT_BLUE, GRID_BLUE);
-        for (uint32_t j = 0; j < CURVE_ROWS; j++) {
-            uint32_t row = LOWER_ROW + CURVE_ROWS - j; /* j = 0: the bottom row */
-            uint32_t below = j * 8u;
-            uint32_t fill8 = h > below ? h - below : 0u;
-            if (fill8 > 8u && j + 1u < CURVE_ROWS) {
-                put(cv, 1u + i, row, FONT_D8, body);
-            } else if (fill8) {
-                put(cv, 1u + i, row, (uint8_t)(FONT_V0 + (fill8 > 8u ? 8u : fill8)), cap);
-            }
+    case 1:
+        if (l->resonance >= 10u) {
+            buf[n++] = '1';
         }
+        buf[n++] = (char)('0' + l->resonance % 10u);
+        break;
+    case 2: {
+        uint32_t pc = ((uint32_t)l->pulse_width * 99u + 2047u) / 4095u;
+        if (pc >= 10u) {
+            buf[n++] = (char)('0' + pc / 10u);
+        }
+        buf[n++] = (char)('0' + pc % 10u);
+        buf[n++] = '%';
+        break;
     }
-    /* " FC 1.2K RES 15 " on the bottom edge. */
-    char line[20] = " FC ";
-    char hz[8];
-    hz_text(hz, lv->curve_hz);
-    uint32_t n = length(line);
-    for (uint32_t i = 0; hz[i]; i++) {
-        line[n++] = hz[i];
+    default: {
+        const live_preset* p = live_preset_get(l->preset);
+        const char* name = p ? p->name : "?";
+        for (; n < 3u && name[n]; n++) {
+            buf[n] = name[n];
+        }
+        break;
     }
-    const char* res = " RES ";
-    for (uint32_t i = 0; res[i]; i++) {
-        line[n++] = res[i];
     }
-    if (l->resonance >= 10u) {
-        line[n++] = '1';
-    }
-    line[n++] = (char)('0' + l->resonance % 10u);
-    line[n++] = ' ';
-    line[n] = 0;
-    text(cv, 1, LOWER_ROW + LOWER_ROWS - 1u, line, TEXT);
+    buf[n] = 0;
 }
 
-static const uint8_t METER_ROWS[LIVE_VIEW_METERS] = {1, 2, 3, 5, 6};
+/* Knob k's bar in pixels of `cells` cells: the cutoff, resonance and pulse width out of their
+ * range, the preset's place of the presets. */
+static uint32_t knob_px(const live* l, uint32_t k, uint32_t cells) {
+    uint32_t value = k == 0u   ? l->cutoff_out
+                     : k == 1u ? l->resonance
+                     : k == 2u ? l->pulse_width
+                               : (uint32_t)l->preset + 1u;
+    uint32_t max = k == 0u   ? LIVE_CUTOFF_MAX
+                   : k == 1u ? LIVE_RESONANCE_MAX
+                   : k == 2u ? LIVE_PULSE_WIDTH_MAX
+                             : LIVE_PRESET_COUNT;
+    return (value > max ? max : value) * (cells * 8u) / max;
+}
 
-/* Meter m's bar. */
-static void meter_bar(const live_view* lv, canvas* cv, grid* g, uint32_t m) {
-    uint32_t row = LOWER_ROW + METER_ROWS[m];
+/* The knob row in the canvas, but for the values at 2x (knobs_big): the labels in each knob's
+ * colour, the bars, the names K1..K4. */
+static void knobs(const live_view* lv, canvas* cv, const theme* th) {
+    fill(cv, 0, LIVE_VIEW_KNOB_ROW, GRID_COLS, LIVE_VIEW_KNOB_TAG_ROW + 1u - LIVE_VIEW_KNOB_ROW, ' ',
+         THEME_ATTR(th, value));
+    for (uint32_t k = 0; k < 4u; k++) {
+        uint32_t col = KNOB_COL[k];
+        uint32_t cells = KNOB_W[k] - 1u;
+        text(cv, col, LIVE_VIEW_KNOB_ROW, KNOB_LABEL[k], GRID_ATTR(th->knob[k], th->bg));
+        uint32_t px = knob_px(lv->l, k, cells);
+        for (uint32_t i = 0; i < cells; i++) {
+            uint32_t f = px >= 8u ? 8u : px;
+            px -= f;
+            put(cv, col + i, LIVE_VIEW_KNOB_BAR_ROW, (uint8_t)(FONT_BAR0 + f),
+                GRID_ATTR(th->knob[k], th->dim));
+        }
+        char tag[3] = {'K', (char)('1' + k), 0};
+        text(cv, col, LIVE_VIEW_KNOB_TAG_ROW, tag, THEME_ATTR(th, dim));
+    }
+}
+
+static void knobs_big(const live_view* lv, grid* g, const theme* th) {
+    for (uint32_t k = 0; k < 4u; k++) {
+        char v[5];
+        live_view_knob_text(lv->l, k, v);
+        grid_text_big(g, KNOB_COL[k], LIVE_VIEW_KNOB_VALUE_ROW, 2, v, THEME_ATTR(th, value));
+    }
+}
+
+static const uint8_t METER_LABEL[LIVE_VIEW_METERS] = {'1', '2', '3', 'L', 'R'};
+
+/* Meter m's bar: a voice's in its colour, the output's in white. */
+static void meter_bar(const live_view* lv, canvas* cv, grid* g, const theme* th, uint32_t m) {
+    uint32_t row = LIVE_VIEW_METER_ROW + m;
     uint32_t px = lv->meter[m];
+    uint8_t fg = m < SCOPE_VOICES ? th->voice[m] : th->value;
     for (uint32_t c = 0; c < VU_METER_CELLS; c++) {
         uint32_t fill8 = px >= 8u ? 8u : px;
         px -= fill8;
-        uint8_t fg = c < 5u ? GRID_LIGHT_GREEN : c < 7u ? GRID_YELLOW : GRID_LIGHT_RED;
-        cell(cv, g, VU_METER_COL + c, row, (uint8_t)(FONT_BAR0 + fill8), GRID_ATTR(fg, GRID_BLACK));
+        cell(cv, g, VU_METER_COL + c, row, (uint8_t)(FONT_BAR0 + fill8), GRID_ATTR(fg, th->bg));
     }
 }
 
-static void meters(const live_view* lv, canvas* cv) {
-    static const char LABELS[LIVE_VIEW_METERS] = {'1', '2', '3', 'L', 'R'};
-    box(cv, VU_COL, LOWER_ROW, VU_W, LOWER_ROWS, "VU");
-    for (uint32_t m = 0; m < LIVE_VIEW_METERS; m++) {
-        uint32_t row = LOWER_ROW + METER_ROWS[m];
-        uint8_t color = m < SCOPE_VOICES ? wave_color(voice_control(lv->l, m)) : GRID_WHITE;
-        put(cv, VU_COL + 1u, row, (uint8_t)LABELS[m], GRID_ATTR(color, GRID_BLUE));
-        meter_bar(lv, cv, NULL, m);
-    }
-}
-
-static void slots(const live_view* lv, canvas* cv) {
+/* The bottom band in the canvas, but for the mode at 2x: FILTER's label and KEYS:B, the three
+ * slots' algorithms, and VU's labels and meters. */
+static void band(const live_view* lv, canvas* cv, const theme* th) {
     const live* l = lv->l;
+    fill(cv, 0, LIVE_VIEW_BAND_ROW, GRID_COLS, LIVE_VIEW_BAND_ROWS, ' ', THEME_ATTR(th, value));
+    text(cv, 0, LIVE_VIEW_BAND_ROW, "FILTER", THEME_ATTR(th, label));
+    if (l->two_chips && l->keys_chip) {
+        text(cv, GRID_COLS - 6u, LIVE_VIEW_BAND_ROW, "KEYS:B", THEME_ATTR(th, hot));
+    }
     for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
-        uint32_t row = SLOT_ROW + k;
+        uint32_t row = LIVE_VIEW_SLOT_ROW + k;
         uint8_t alg = l->slot[k][LIVE_SLOT_ALGORITHM];
         if (k == l->fx_select) {
-            put(cv, 0, row, FONT_PLAY, BRIGHT);
+            put(cv, 0, row, FONT_PLAY, THEME_ATTR(th, hot));
         }
-        text(cv, 1, row, views_slot_name(k), TEXT);
-        text(cv, 6, row, views_algorithm_name(k, alg), alg ? BRIGHT : TEXT);
-        text(cv, 17, row, "MIX", TEXT);
-        /* The mix in bar eighths: 8 cells, 64 steps. */
-        uint32_t px = (uint32_t)l->slot[k][LIVE_SLOT_MIX] * 64u / LIVE_SLOT_MAX;
-        for (uint32_t c = 0; c < 8u; c++) {
-            uint32_t fill8 = px >= 8u ? 8u : px;
-            px -= fill8;
-            put(cv, 21u + c, row, (uint8_t)(FONT_BAR0 + fill8), alg ? BRIGHT : TEXT);
-        }
+        text(cv, 1, row, views_slot_name(k), THEME_ATTR(th, label));
+        text(cv, 6, row, views_algorithm_name(k, alg), alg ? THEME_ATTR(th, value) : THEME_ATTR(th, dim));
     }
+    for (uint32_t m = 0; m < LIVE_VIEW_METERS; m++) {
+        uint8_t color = m < SCOPE_VOICES ? th->voice[m] : th->label;
+        put(cv, VU_LABEL_COL, LIVE_VIEW_METER_ROW + m, METER_LABEL[m], GRID_ATTR(color, th->bg));
+        meter_bar(lv, cv, NULL, th, m);
+    }
+}
+
+static void band_big(const live_view* lv, grid* g, const theme* th) {
+    uint32_t mode = lv->l->filter_mode >> 4 & 7u;
+    grid_text_big(g, 0, LIVE_VIEW_MODE_ROW, 2, MODE_NAMES[mode],
+                  GRID_ATTR(mode ? th->value : th->dim, th->bg));
 }
 
 /* What each part of the canvas shows, as bytes (LIVE_VIEW_LOOK of them): a part is drawn
  * again when its bytes change. */
-#define KEY_HEADER 0u
-#define KEY_VOICE 4u /* 5 a voice */
-#define KEY_ENV (KEY_VOICE + 5u * SCOPE_VOICES)
-#define KEY_FILTER (KEY_ENV + SCOPE_VOICES)
-#define KEY_VU (KEY_FILTER + 1u)
-#define KEY_METER (KEY_VU + SCOPE_VOICES)
-#define KEY_SLOTS (KEY_METER + LIVE_VIEW_METERS)
-#define KEY_END (KEY_SLOTS + 1u + 2u * LIVE_SLOTS)
+#define KEY_HEADER 0u /* the model and the keys' chip, the preset, the octave, the mutes, the theme */
+#define KEY_THEME (KEY_HEADER + 4u)
+#define KEY_VOICE 5u /* 6 a voice: control, note, gate, stage, sounding, muted */
+#define KEY_KNOBS (KEY_VOICE + 6u * SCOPE_VOICES) /* the cutoff 2, the resonance, the pulse width */
+#define KEY_BAND (KEY_KNOBS + 4u)                 /* the mode, the slot, each slot's algorithm */
+#define KEY_METER (KEY_BAND + 5u)
+#define KEY_END (KEY_METER + LIVE_VIEW_METERS)
 _Static_assert(KEY_END == LIVE_VIEW_LOOK, "LIVE_VIEW_LOOK holds every part's bytes");
 
 static void look(const live_view* lv, uint8_t out[LIVE_VIEW_LOOK]) {
     const live* l = lv->l;
-    out[KEY_HEADER] = (uint8_t)(l->model | (l->keys_chip & 1u) << 1);
+    out[KEY_HEADER] = (uint8_t)(l->model | (l->two_chips && l->keys_chip) << 1);
     out[KEY_HEADER + 1u] = l->preset;
     out[KEY_HEADER + 2u] = (uint8_t)l->octave;
     out[KEY_HEADER + 3u] = lv->mutes;
+    out[KEY_THEME] = l->theme;
     for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
         uint8_t ctrl = voice_control(l, v);
         const live_voice* x = &l->voice[v];
-        uint8_t* k = &out[KEY_VOICE + 5u * v];
+        uint8_t* k = &out[KEY_VOICE + 6u * v];
         k[0] = ctrl;
         k[1] = ctrl ? x->note : LIVE_NO_NOTE;
         k[2] = (uint8_t)(ctrl && x->gate);
-        k[3] = (ctrl & 0x40u) ? (uint8_t)(((uint32_t)x->pw_out * 99u + 2047u) / 4095u) : 0xFFu;
-        k[4] = (uint8_t)stage_name(lv->state[v], lv->env[v], lv->sustain[v])[0];
-        out[KEY_ENV + v] = (uint8_t)((lv->env[v] + 4u) >> 3);
-        out[KEY_VU + v] = wave_color(ctrl);
+        k[3] = (uint8_t)stage_name(lv->state[v], lv->env[v], lv->sustain[v])[0];
+        k[4] = (uint8_t)(lv->env[v] != 0u);
+        k[5] = (uint8_t)muted(lv, v);
     }
-    out[KEY_FILTER] = lv->curve_serial; /* the mode, cutoff and resonance (curve) */
+    out[KEY_KNOBS] = (uint8_t)l->cutoff_out;
+    out[KEY_KNOBS + 1u] = (uint8_t)(l->cutoff_out >> 8);
+    out[KEY_KNOBS + 2u] = l->resonance;
+    out[KEY_KNOBS + 3u] = (uint8_t)(l->pulse_width >> 5);
+    out[KEY_BAND] = (uint8_t)(l->filter_mode >> 4 & 7u);
+    out[KEY_BAND + 1u] = l->fx_select;
+    for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
+        out[KEY_BAND + 2u + k] = l->slot[k][LIVE_SLOT_ALGORITHM];
+    }
     for (uint32_t m = 0; m < LIVE_VIEW_METERS; m++) {
         out[KEY_METER + m] = lv->meter[m];
-    }
-    out[KEY_SLOTS] = l->fx_select;
-    for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
-        out[KEY_SLOTS + 1u + 2u * k] = l->slot[k][LIVE_SLOT_ALGORITHM];
-        out[KEY_SLOTS + 2u + 2u * k] = l->slot[k][LIVE_SLOT_MIX];
     }
 }
 
@@ -803,48 +800,72 @@ static int differs(const live_view* lv, const uint8_t* now, uint32_t from, uint3
     return 0;
 }
 
-#define ALL_ROWS ((1u << GRID_ROWS) - 1u)
-#define LOWER_MASK (((1u << LOWER_ROWS) - 1u) << LOWER_ROW)
-
 /* The parts whose bytes changed, drawn again into the canvas: the rows they cover. */
-static uint32_t parts(live_view* lv, canvas* cv, const uint8_t now[LIVE_VIEW_LOOK]) {
+static uint32_t parts(live_view* lv, canvas* cv, const theme* th,
+                      const uint8_t now[LIVE_VIEW_LOOK]) {
     uint32_t rows = 0;
     if (differs(lv, now, KEY_HEADER, 4u)) {
-        header(lv, cv); /* fills its row */
-        rows |= 1u;
+        header(lv, cv, th); /* fills its rows */
+        rows |= HEADER_ROWS;
     }
     for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
-        if (differs(lv, now, KEY_VOICE + 5u * v, 5u)) {
-            uint32_t row = LIVE_VIEW_BOX_ROW + v * LIVE_VIEW_BOX_ROWS;
-            fill(cv, 0, row, GRID_COLS, LIVE_VIEW_BOX_ROWS, ' ', TEXT);
-            voice(lv, cv, v);
-            rows |= ((1u << LIVE_VIEW_BOX_ROWS) - 1u) << row;
+        if (differs(lv, now, KEY_VOICE + 6u * v, 6u)) {
+            lane(lv, cv, th, v);
+            rows |= ROWS(lane_row(v), LIVE_VIEW_LANE_ROWS);
         }
     }
-    if (differs(lv, now, KEY_FILTER, 1u)) {
-        fill(cv, 0, LOWER_ROW, FILTER_W, LOWER_ROWS, ' ', TEXT);
-        filter(lv, cv);
-        rows |= LOWER_MASK;
+    if (differs(lv, now, KEY_KNOBS, 4u) || differs(lv, now, KEY_HEADER + 1u, 1u)) {
+        knobs(lv, cv, th);
+        rows |= KNOB_ROWS;
     }
-    if (differs(lv, now, KEY_VU, SCOPE_VOICES)) {
-        fill(cv, VU_COL, LOWER_ROW, VU_W, LOWER_ROWS, ' ', TEXT);
-        meters(lv, cv);
-        rows |= LOWER_MASK;
-    }
-    if (differs(lv, now, KEY_SLOTS, 1u + 2u * LIVE_SLOTS)) {
-        fill(cv, 0, SLOT_ROW, GRID_COLS, LIVE_SLOTS, ' ', TEXT);
-        slots(lv, cv);
-        rows |= ((1u << LIVE_SLOTS) - 1u) << SLOT_ROW;
+    if (differs(lv, now, KEY_BAND, 5u) || differs(lv, now, KEY_HEADER, 1u)) {
+        band(lv, cv, th);
+        rows |= BAND_ROWS;
     }
     return rows;
+}
+
+/* Everything, into the canvas. */
+static void build(live_view* lv, canvas* cv, const theme* th) {
+    /* The parts below blank their own rows; these lie between them or after them. */
+    const uint8_t blank = THEME_ATTR(th, value);
+    fill(cv, 0, LIVE_VIEW_KNOB_ROW - 1u, GRID_COLS, 1, ' ', blank);
+    fill(cv, 0, LIVE_VIEW_KNOB_TAG_ROW + 1u, GRID_COLS, 1, ' ', blank);
+    fill(cv, 0, LIVE_VIEW_BAND_ROW + LIVE_VIEW_BAND_ROWS, GRID_COLS,
+         GRID_ROWS - LIVE_VIEW_BAND_ROW - LIVE_VIEW_BAND_ROWS, ' ', blank);
+    header(lv, cv, th);
+    for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
+        lane(lv, cv, th, v);
+    }
+    knobs(lv, cv, th);
+    band(lv, cv, th);
+}
+
+/* The large text of the parts in `rows` (the rows just copied onto the grid, which put blanks
+ * where it goes). */
+static void big_items(const live_view* lv, grid* g, const theme* th, uint32_t rows) {
+    if (rows & HEADER_ROWS) {
+        header_big(lv, g, th);
+    }
+    for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
+        if (rows & ROWS(lane_row(v) + 1u, 2u)) {
+            lane_big(lv, g, th, v);
+        }
+    }
+    if (rows & ROWS(LIVE_VIEW_KNOB_VALUE_ROW, 2u)) {
+        knobs_big(lv, g, th);
+    }
+    if (rows & ROWS(LIVE_VIEW_MODE_ROW, 2u)) {
+        band_big(lv, g, th);
+    }
 }
 
 static void live_compose(screen* s, void* state, grid* g) {
     live_view* lv = state;
     canvas* cv = &lv->cv;
+    const theme* th = theme_get(lv->l->theme);
     /* Still while a wipe or a raster runs (app/screen.h): the last frame's look again. */
     int fresh = !screen_animating(s);
-    curve(lv, lv->l); /* changes only with the filter's settings: not held */
     if (fresh) {
         /* Mid-frame, the main loop prepared it (live_view_prepare); otherwise now. */
         if (!lv->prepared) {
@@ -855,40 +876,31 @@ static void live_compose(screen* s, void* state, grid* g) {
     uint8_t now[LIVE_VIEW_LOOK];
     look(lv, now);
     uint32_t rows;
-    if (!lv->built) {
+    if (!lv->built || now[KEY_THEME] != lv->drawn_look[KEY_THEME]) {
         lv->built = 1;
         lv->rebuilds++;
-        fill(cv, 0, 0, GRID_COLS, GRID_ROWS, ' ', TEXT);
-        header(lv, cv);
-        for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
-            voice(lv, cv, v);
-        }
-        filter(lv, cv);
-        meters(lv, cv);
-        slots(lv, cv);
+        build(lv, cv, th);
         rows = ALL_ROWS;
     } else {
         /* The rows the screen drew over (a switch, a toast, a raster) are the canvas's again. */
-        rows = parts(lv, cv, now) | (s->redraw ? s->redraw_rows : 0u);
+        rows = parts(lv, cv, th, now) | (s->redraw ? s->redraw_rows : 0u);
     }
     for (uint32_t r = 0; r < GRID_ROWS; r++) {
         if (rows >> r & 1u) {
             grid_row(g, r, cv->ch[r], cv->attr[r]);
         }
     }
-    /* The envelope bars and the meters, cell by cell where only they changed. */
-    for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
-        if (now[KEY_ENV + v] != lv->drawn_look[KEY_ENV + v]) {
-            env_bar(lv, cv, g, v);
-        }
+    if (rows) {
+        big_items(lv, g, th, rows);
     }
+    /* The meters, cell by cell where only they changed. */
     for (uint32_t m = 0; m < LIVE_VIEW_METERS; m++) {
         if (now[KEY_METER + m] != lv->drawn_look[KEY_METER + m]) {
-            meter_bar(lv, cv, g, m);
+            meter_bar(lv, cv, g, th, m);
         }
     }
     memcpy(lv->drawn_look, now, sizeof now);
-    scopes(lv, s, g, fresh ? lv->pend : NULL);
+    scopes(lv, s, g, th, fresh ? lv->pend : NULL);
 }
 
 /* Composed every frame (no changed function). */

@@ -40,14 +40,48 @@ pixels the SPI sends from memory reach the panel high byte first.
 
 RGB565 keeps the top 5, 6 and 5 bits of red, green and blue.
 
-Default use:
+Default use (the C64 theme, below; the boot's READY. screen is always this):
 - **Screen:** light blue text on blue, inside a light blue border (the
   READY. screen).
-- **Voices, by waveform:** pulse cyan, saw yellow, triangle light green,
-  noise light grey.
+- **Voices, by waveform** (in the C64 look of the boot and the scenes): pulse cyan, saw yellow,
+  triangle light green, noise light grey.
 - **Raster ramp** (logo stripes, raster bars): white, yellow, light green,
   cyan, light blue, purple, light red.
 - **Warnings and errors:** light red; **OK:** light green.
+
+## Theme
+
+The 23 mm screen is read at arm's length while playing, so the views take their colours from
+**roles**, defined once in `app/theme.c` (`app/theme.h`, a `theme` table in flash). A view never
+names a colour of the 16 for a purpose of its own: it asks the theme for the role and builds its
+cell attribute with `THEME_ATTR`. There are two themes, the menu's **THEME** item (persisted in
+the settings record, schema 3: `live.theme`, so every view reaches it through its `live`):
+
+- **HIGH CONTRAST**, the default: black, white values, grey labels, dark grey for what is
+  inactive, one accent colour per thing.
+- **C64**: the old look, light blue on blue, with the same accents and the old reverse-video bar
+  of the menu, the toast and the popup's old colours.
+
+| Role (`theme.`) | HIGH CONTRAST | C64 | Used for |
+|---|---|---|---|
+| `bg` | black | blue | the screen |
+| `value` | white | white | values, the focused text, the notes |
+| `label` | grey | light blue | names and labels |
+| `dim` | dark grey | grey | inactive things: a silent voice, a rest, an OFF slot, the key names |
+| `hot` | yellow | yellow | the focused tab, the current row's number, the popup's default accent |
+| `alert` | light red | light red | mute, REC, a refusal |
+| `cursor` | dark grey | dark grey | the current row's background (TRACKER) |
+| `voice[0..2]` | light red, cyan, light green | the same | voice 1, 2, 3: their lane, scope, row and strip |
+| `knob[0..3]` | yellow, cyan, light green, light red | the same | K1, K2, K3, K4: LIVE's and CHIP's columns, the popup's name and bar |
+| `title_*`, `menu_item`, `menu_value`, `sel_*` | grey on black, white, cyan, yellow on dark grey | blue on light blue, light blue, light blue, blue on light blue | the menu |
+| `toast_*` | black on yellow | blue on light blue | the toast |
+| `popup_*` | the control's accent for the frame, name and bar fill, over a dark grey track | light blue frame, yellow name, light green bar | the value popup |
+
+The accents are one per thing and the same everywhere: a knob's colour is its column on LIVE,
+its column on CHIP and its popup's bar, so a turn is followed by colour without reading. A
+role colour must read against its background and the cursor row's (a host test checks both
+themes). The theme change redraws every view at once (`screen_redraw`); the toast and the popup
+read it as they draw (`screen_theme`).
 
 ## Layout grid
 
@@ -77,8 +111,10 @@ top; a cell is at pixel (8 × column, 8 × row).
   switch; the renderer tests one cell code to tell a piece (about 2 instructions a cell,
   the pieces' own pixels cost about as much as an ordinary cell). 2× is 16-pixel characters
   (15 to a row), 3× 24-pixel (10 to a row); the font's 7×7 ink and one-pixel gap become 14
-  and 2, 21 and 3. Used by the value popup, the toasts and the menu (below); the dense
-  views (LIVE's scopes, TRACKER, CHIP, STATUS, ABOUT) keep the 8×8.
+  and 2, 21 and 3. Used by the value popup, the toasts and the menu (below), and by LIVE, TRACKER,
+  CHIP and STATUS for what is read while playing (their sections below); About keeps the
+  8×8. A view that copies a canvas onto the grid cell by cell (CHIP, the song views) keeps the
+  character of each piece in the canvas (`grid_canvas`, `grid_canvas_text_big`).
 
 ## Font
 
@@ -190,11 +226,14 @@ does not take plays the instrument (`app/views.h`,
 - **Menus:** a list of items, each a label and a value right-aligned against
   the edge (an arrow for an item that opens a view), SELECT moves the selection, ALGORITHM
   changes the value. The main menu (HOME) is drawn at **2× text** with six items of the
-  thirteen showing: a title bar in reverse video (MENU, an arrow up and down for the items out
-  of sight, the item's number of the count) in rows 0-2, a line of 14 characters every 3 rows
-  from row 4 (a cell of margin each side: a panel's bezel hides its edge), and the selected
-  item's whole line in reverse video (no blinking block: a 2×2-cell block would send two
-  windows a blink, and a bar reads better at a glance). A line is up to 60 cells, so a scroll
+  fifteen showing: a title bar (MENU, an arrow up and down for the items out
+  of sight, the item's number of the count; grey on black in HIGH CONTRAST, reverse video in C64)
+  in rows 0-2, a line of 14 characters every 3 rows
+  from row 4 (a cell of margin each side: a panel's bezel hides its edge), the items white with
+  their values cyan (C64: all light blue), and the selected item's whole line in a bar of its own
+  (yellow on dark grey; C64 reverse video; no blinking block: a 2×2-cell block would send two
+  windows a blink, and a bar reads better at a glance). The lines something drew over are drawn
+  first, and what is left of the budget goes to the others, so a frame stays within it. A line is up to 60 cells, so a scroll
   (every line changes) is drawn a line or two a frame, the selected line first, within 190
   cells less what a popup or a toast draws the same frame (`MENU_FRAME_CELLS`, `menu.budget`),
   and at once for the rows a layer let go or a view switch left (`menu.force_rows`). Labels
@@ -204,15 +243,21 @@ does not take plays the instrument (`app/views.h`,
   (`SELECT  MOVE`, `ALG   CHANGE`: ALG is ALGORITHM) is large too. The menus of M2's views
   (and a CHIP-sized menu of the song's) can use the same widget at either size
   (`menu.scale`).
-- **Toast:** reverse-video text (blue on light blue) in **2× text** on rows 27-28 for 1.5 s,
+- **The MIDI page** (the menu's last item) is a framed menu at 1×, in the theme's colours: the
+  ring in the dim colour, SIDOU in the hot colour, the frame, its help lines and the
+  version in the label colour, the items in the menu-item colour and the cursor a full
+  block in the same colour (it blinks).
+- **Toast:** reverse-video text (black on yellow; C64 blue on light blue) in **2× text** on rows 27-28 for 1.5 s,
   saying what changed: up to 13 characters; a longer one breaks at a space into two lines
   (rows 25-28, up to 26 characters), and one whose words fit neither (`SNG: A-4 PITCH NOT
   PLAYED`) shows at the font's own size on row 27.
 - **Popup:** a change of a parameter from the panel (a K knob, ALGORITHM, MASTER) opens a box
-  over the middle of the view, rows 10-18 and columns 1-28: a PETSCII frame in light blue on
-  black, the parameter's name in yellow at **3× text** (24-pixel characters, up to 8; 2×, up to
+  over the middle of the view, rows 10-18 and columns 1-28: a PETSCII frame on
+  black, the parameter's name at **3× text** (24-pixel characters, up to 8; 2×, up to
   12, for a longer name), its value in white as large, and for a continuous value a bar of
-  24 cells (green on dark grey, eighths of a cell, `FONT_H0..8`). It opens 3 rows a frame (78
+  24 cells (eighths of a cell, `FONT_H0..8`, on dark grey); the frame, the name and the bar's fill
+  are **the turned knob's colour** (K1 yellow, K2 cyan, K3 light green, K4 light red; yellow for
+  the other controls; C64: a light blue frame, a yellow name, a light green bar). It opens 3 rows a frame (78
   cells), stays 1 s after the last change and closes 3 rows a frame, bottom first, the rows it
   lets go composed again by the view under it (the screen forces that). It is a screen layer
   like the toast, over any view: it covers its rows (`screen_cover`, so a view holding to a
@@ -531,16 +576,49 @@ SIDOU emulates.
 
 ## LIVE
 
-LIVE (`app/live_view.h`) is the root view, what the screen shows from power-on, after the
-prototype's: a header line in reverse video (chip, preset, octave); each voice in a box
-(rows 1-6, 7-12, 13-18) with its oscilloscope, 160 x 32 pixels, its envelope as two columns
-of lower eighths (ENV3, 32 levels), and its note, waveform, pulse width and envelope stage;
-FILTER, the response of the mode at the cutoff and resonance in 16 columns of lower eighths
-(30 Hz..12 kHz, -36..+12 dB, the cutoff's column yellow, recomputed only when they change,
-from the core's fitted filter tables); VU, each voice's level and the output's left and
-right peaks after the effect slots, 6 dB a cell; and the three effect slots with their
-algorithm and Mix. The status screen moves to the menu (STATUS). M2's STEP view will be the
-default then.
+LIVE (`app/live_view.h`) is the root view, what the screen shows from power-on, drawn after the
+screen-readability prototype's `liveNew` for a 23 mm screen: large text for what is read while
+playing, one colour per voice and per knob, black behind it
+([the theme](#theme)). Each part is placed on the cell grid, at 2× text where it is read:
+
+![LIVE, a chord held](../../tests/golden/lcd/live-chord.png)
+![LIVE at rest](../../tests/golden/lcd/live.png)
+![LIVE in the C64 theme, A4 held](../../tests/golden/lcd/live-c64.png)
+
+- **Rows 0-1:** the preset's name at 2× (white), the chip's model (6581, 8580) and the octave
+  small on the right. While the song's voices are muted or soloed (GLO), the name's place says
+  which in red at 2× (**M13 S2**: voices 1 and 3 muted, voice 2 soloed).
+- **Rows 2-13, three voice lanes of 4 rows:** the voice's number at 2× in its colour (grey while
+  the song mutes it) with the waveform's name small under it (SAW, PUL, TRI, NOI, MIX); its
+  oscilloscope from column 3, 160 × 32 pixels, **drawn 2 pixels thick** in the voice's colour
+  (light red, cyan, light green) over a dotted centre line, and **dark grey and flat while the
+  voice is silent** (its envelope at nothing); the note at 2× on the right (white while its key
+  is held, dark grey once let go) with the envelope's stage small under it (ATK, DEC, SUS,
+  REL).
+- **Rows 15-19, the knob row:** what K1..K4 turn on LIVE, in their left-to-right order, four
+  columns of 8, 7, 7 and 8 cells: CUTOFF, RESO, PULSE and PRESET small in the knob's colour
+  (yellow, cyan, light green, light red), each value at 2× in white under it (the cutoff as
+  `980`, `1.2K` or `12K`, the resonance `0..15`, the pulse width `50%`, the preset's first three
+  letters `SAW`), a bar in the knob's colour on a dark grey track, and the knob's name K1..K4
+  small in dark grey. (EDIT held turns the selected slot's four controls instead: the popup
+  says so; the row keeps LIVE's.)
+- **Rows 21-26, the bottom band:** FILTER's label with the **mode at 2×** (LP, BP, LP+BP, HP,
+  NOTCH, BP+HP, ALL, or OFF in dark grey), **KEYS:B** in yellow on the right while the keys
+  play chip B; the three **effect slots** (DIST, MOD, FX and its algorithm, OFF in dark grey, `>`
+  at the slot the panel edits); and **VU**, a bar for each voice in its colour and the output's
+  left and right peaks after the effect slots in white, 6 dB a cell.
+
+**What moved or went.** LIVE had more on it than the 23 mm screen can show at a readable size.
+Each item below moved to the place that shows it better, or is gone:
+
+| Was on LIVE | Now |
+|---|---|
+| a header line in reverse video: `LIVE` and the play mark, `KEYS:B`, the chip, the preset, the octave | the preset at 2× on rows 0-1, the chip and octave small on the right; `KEYS:B` in the bottom band; the title `LIVE` is gone (the screen is the root view) |
+| each voice in a box with its title `V1 SAW`, its envelope as two columns of lower eighths (ENV3), its pulse width `PW50` | the number and waveform's name in the lane; the **envelope bar is dropped** (the scope's height is the waveform times the envelope, and the stage stays under the note); **the per-voice pulse width is dropped** (K3's PULSE is the setting) |
+| FILTER, the response of the mode at the cutoff and resonance in 16 columns, and ` FC 11.4K RES 6 ` | the **response curve is dropped** (no room at a readable size, and nothing else shows the filter's shape); the mode is at 2×, the cutoff and the resonance are the knob row's first two columns (the popup still says the cutoff as `11.4K`) |
+| VU in a box | the same meters in the bottom band, no box |
+| the three slots, `DIST OVERDRIVE MIX` and their mix as a bar | the algorithm of each slot stays; **each slot's Mix bar moves to the CHIP view** (and the popup says it when EDIT + K4 turns it) |
+| the preset, in the header only | also the fourth knob column, as K4 turns it |
 
 **The tap.** The audio interrupt renders a block in chunks of 16 samples and after each
 writes a point into a ring of 256 (`app/scope.h`): each voice's waveform output (its top 8
@@ -557,7 +635,7 @@ copies the newest 224 and drops the copy if the interrupt came round to it meanw
 | Points | 2,757 a second (a frame: 110; a read: 224, 81 ms) |
 | Audio interrupt | +4.44 instructions a sample (406.71 against 402.27, a chord held, LIVE against the menu, since M1b Task 6's 6581 filter and the points from inside one render a block, `sid_render_tap`; 4.8 at M1e), bounded at 4.5 (`TAP_PER_SAMPLE`, which the effect gates count) |
 | Code in `.ram_text` | 32,472 of 49,152 bytes (+308: `scope_render`, `scope_peaks` and their calls) |
-| RAM | the ring and envelopes 1,560 bytes; LIVE's state 6,152 (its traces and their columns, the points it reads, its canvas) |
+| RAM | the ring and envelopes 1,560 bytes; LIVE's state 6,116 (its traces and their columns, the points it reads, its canvas) |
 
 **The scopes are folded by phase** (an equivalent-time display): each point lands in the
 column its oscillator's phase belongs to, two to four periods across (more for higher
@@ -566,48 +644,48 @@ neighbours. A held note's trace stands still at any pitch, and 110 points a fram
 whole where a time base would need 20 times as many. A hard-synced voice is folded by its
 sync source's phase, so the sync shape shows. The height is the waveform times the envelope:
 flat at rest. A trace that moved by a pixel at most stays as drawn (the fold's wobble), so a
-held chord sends about 5 cells a frame.
+held chord sends about 5 cells a frame. The trace is two pixels thick (a pixel more under
+each column's span): the cells it crosses are the same four rows by twenty, so the budget
+below holds, but more of them have ink, and a voice's colour (its own while it sounds, dark
+grey flat once its envelope is nothing) changes in place (`grid_overlay_color`: the cells of its
+last trace are recoloured, only the cells whose shape changed are drawn again).
 
 **The budget.** Each trace is an overlay per cell it crosses (at most 240 of the pool's 255).
 Three voices of noise change about 240 cells a frame, 20.5 ms of SPI: over the budget. LIVE
 holds itself to 200 cells a frame (`LIVE_VIEW_FRAME_CELLS`, about 17.5 ms with the windows):
 the scopes get what the rest of the frame and the screen's toast and raster leave
 (`screen_layer_cells`), and a trace that does not fit keeps its last look and goes first next
-frame, so the voices take turns. The canvas (everything but the scopes) is composed off the
-grid, built whole once and then a part at a time: the header, a voice's box, FILTER, VU and
-the slots are drawn again only when what they show changes, an envelope bar or a meter only
-its own cells, and a toast's frames put back only the toast's row. Going back to the menu
-leaves the traces flat and the envelopes and meters empty, so LIVE comes back at rest rather
+frame, so the voices take turns. The canvas (the small text and the bars) is composed off the
+grid, built whole once and then a part at a time: the header, a voice's lane, the knob row and
+the bottom band are drawn again only when what they show changes, a meter only its own cells,
+and a toast's frames put back only the toast's rows. The large text is drawn on the grid
+itself (`grid_text_big`) for the rows that were copied, so a part that did not change draws
+none. Going back to the menu
+leaves the traces flat and the meters empty, so LIVE comes back at rest rather
 than showing what it showed when it went. The tap is
 read half way between frames (`views_prepare`), so no main-loop pass is long enough to hold
 up MIDI (the M1d latency gate). While a wipe or a raster runs LIVE holds still, redrawing the
 overlays a view switch cleared one voice a frame, ahead of the wipe.
 
-Measured in fm1-emu (`live_stays_within_its_budgets`):
+Measured in fm1-emu (`live_stays_within_its_budgets`; the redesign's numbers, with the numbers
+before it in brackets):
 
 | LIVE | Cells a frame (average, most) | Windows a frame | SPI a frame (average, worst) | Main loop a frame (average, busiest `ui_poll`) |
 |---|---|---|---|---|
-| At rest | 0, 0 | 0 | 0, 0 | 13.7k, 4.2k instructions |
-| A chord of saws, from the note-ons (75 frames) | 4.5, 160 | 1.8 | 0.4 ms, 13.9 ms | 47.5k, 59.1k |
-| Three voices of noise (75 frames) | 146, 161 | 23.7 | 12.6 ms, 14.0 ms | 141k, 60.5k |
+| At rest | 0, 0 | 0 | 0, 0 | 13.2k (13.8k), 3.7k (4.3k) instructions |
+| A chord of saws, from the note-ons (75 frames) | 4.5 (4.4), 154 (158) | 1.3 (1.5) | 0.4 ms, 13.4 ms (13.8 ms) | 46.8k (47.2k), 60.5k (59.3k) |
+| Three voices of noise (75 frames) | 155.9 (146.2), 172 (160) | 26.6 (24.0) | 13.5 ms (12.6 ms), 14.9 ms (13.9 ms) | 154.5k (147.9k), 63.4k (60.7k) |
 
-The noise case costs 3.5M instructions a second (1.5 % of the core at 240 MHz). Where a
-frame of it goes (each function with its callees): rendering the 146 cells 33k, finding
-the runs 16k, LIVE's compose 52k (setting the scope cells' overlays 27k of it), reading and
-folding the tap half way between frames 30k. Before the canvas was drawn a part at a time
-and the pixels two at a store it was 206k (the compose 84k, the rendering 64k), and the
-busiest `ui_poll` 89k. The plan's 70-90k a frame holds for a held chord, not for noise;
-the busiest `ui_poll` is half the latency gate's poll allowance (0.5 ms, 120k instructions,
-which `screen.rs` holds every view's worst to). With the TRS jack at full speed (a note-on
-and its note-off every 1.92 ms, `midi.rs`), LIVE's frames cost 84k (115k before) and the
-main loop runs 5.7M instructions a second, 2.4 % of the core. The status screen, idle,
-still composes nothing: 7.4k a frame (7.3k before LIVE).
+The thick trace costs the noise case 4.5 % more instructions a frame (the bound is 155k: 0.5k
+to spare) and 10 more cells a frame: every voice's four rows by twenty are inked in noise
+whatever the thickness, and a voice that fits the budget is 80 cells.
 
 ## CHIP
 
-CHIP (`app/chip_view.h`, from the menu behind THE CHIP's card) is a chip's sound on one page,
-chip A or chip B, on the status screen's colours: light blue on blue inside the full-block
-border, the focus in white, what is off in grey.
+CHIP (`app/chip_view.h`, from the menu behind THE CHIP's card) is a chip's sound a section at a
+time, chip A or chip B, drawn after the screen-readability prototype's `chipNew` on the theme's
+colours ([the theme](#theme)): black, the section's choice and its four controls at 3× in the
+knobs' places.
 
 ![CHIP, the focus on the chip](../../tests/golden/lcd/chip.png)
 ![CHIP, the focus on DIST](../../tests/golden/lcd/chip-dist.png)
@@ -615,102 +693,180 @@ border, the focus in white, what is off in grey.
 ![CHIP's B tab with the keys on chip B](../../tests/golden/lcd/chip-b-keys.png)
 ![CHIP's A tab during a song, the song's chip](../../tests/golden/lcd/chip-a-song.png)
 
-- **Row 2:** CHIP, and the chips' tabs from column 12, 8 cells each: **A** and **B**, the
-  shown one in reverse video (blue on light blue; on white while the tabs have the focus,
-  with the play mark in the margin), **KEYS** beside the letter of the keys' chip.
-- **Frames** from column 2, 26 wide, one after the other: CHIP (rows 4-7: the profile and the
-  model, values right-aligned against the frame), CHARACTER (rows 8-13: AGE, DAC, THUMP,
-  BLEED, each a 12-cell bar of `BAR` eighths and its value), then DIST, MOD and FX (4 rows
-  each: the slot and its algorithm set into the frame's top edge, and two columns of two
-  controls, each its name for the algorithm and its value).
-- **The focus:** the focused section's frames and text in white, and a play mark (`PLAY`) in
-  the margin at column 1 on each of its frames' top rows; the chip's focus is both its frames.
-- **Grey:** a slot's control its algorithm does not use (TAPE's A and B), and every control
-  of a slot that is off, under its plain name (AMT, A, B, MIX).
-- **Row 3:** the tab's note, right-aligned against the frames: on the B tab FOLLOWS KEYS
-  SLOTS SHARED, or SLOTS SHARED WITH CHIP A while the keys play chip B; on a song's A tab SONG
-  SETUP  SLOTS SHARED; nothing on chip A with no song.
-- **Row 26:** the help line, SELECT MOVE ALGORITHM STEP, on every tab. The toast keeps row 27.
+- **Rows 0-1:** the title **CHIP A** or **CHIP B** at 2× (white; yellow while the focus is on the A/B
+  tabs, which is how the A/B tab shows its focus), and on the right, small, **KEYS:A** or
+  **KEYS:B** on the tab of the chip the keys play (where the old `KEYS` beside the tab
+  letter stood).
+- **Row 2:** the section tabs **CHIP, DIST, MOD, FX** across the width, the focused one yellow
+  with black letters, the others dark grey bars with grey letters; with the focus on the A/B
+  tabs the CHIP tab is grey (its controls are what K1..K4 turn there). SELECT moves the focus as
+  it always has: the A/B tabs, CHIP, DIST, MOD, FX, clamped at both ends.
+- **Rows 4-6, 7:** the section's main choice at 3×: for CHIP the chip's model (`6581`, white) and
+  its profile (`R4AR`, yellow: the name without the model, `WORN`, or **USR 3** for a picked
+  USER slot), over the small names MODEL and PROFILE; for a slot its algorithm (white, OFF dark
+  grey) over ALGORITHM. **With a save target** (EDIT + ALGORITHM on the chip) the names row
+  reads **SAVE TO USER 3** (and ` -` while that slot is empty) in yellow: the old CHIP frame's
+  title had no room, and here it sits under the profile it will store.
+- **Rows 9-14, the four controls in the knobs' places** (the same columns as LIVE's knob row):
+  the label small in the knob's colour (yellow, cyan, light green, light red: AGE, DAC, THUMP,
+  BLEED; or the slot's names for what Amount, A, B and Mix do in its algorithm), the value
+  0..127 at 3× in white, a bar in the knob's colour on dark grey, and the knob's name K1..K4 small.
+  **A value of 100 or more is drawn at 2× instead** (on the lower two rows of its three): three
+  digits at 3× are 9 cells and a column is 7 or 8, so it cannot be 3× at 100..127 without
+  running into the next column. A control the algorithm does not use and every control of a
+  slot that is off are dark grey, with their generic names (AMT, A, B, MIX).
+- **Rows 16-21, the other sections** at 2×, a line each (the name in grey, its state in white): on
+  the chip, DIST, MOD and FX with their algorithms; on a slot, the chip's model and profile
+  (`6581 R4AR`) and the other two slots.
+- **Rows 27-28:** the tab's note (nothing on chip A with no song; on the B tab FOLLOWS KEYS  SLOTS
+  SHARED, or SLOTS SHARED WITH CHIP A while the keys play chip B; on a song's A tab SONG SETUP
+  SLOTS SHARED) and the help line, SELECT MOVE ALGORITHM STEP, small and dim. The toast keeps
+  rows 27-28 while it shows.
 
-**The budget.** The page is built in a canvas off the grid whenever what it shows changes
-(a byte each for the profile, the model, the character, every slot field, the selected slot
-and the focus), and its changed cells are copied onto the grid within 200 cells a frame
+**Where the old page's pieces went.** The three effect slots' four controls each, at 8×8 on
+one page, are now a slot at a time (a SELECT to see them; they were never what K1..K4 turned
+with the chip in focus). The CHARACTER frame is the CHIP section's controls; the PROFILE and
+MODEL rows are the choice at 3×; the play mark in the margin and the white frames are the yellow
+tab; the frames' own titles (DIST OVERDRIVE...) are the choice at 3× and the lines at 2×.
+
+**The budget.** The page is built in a canvas off the grid whenever what it shows changes (a byte
+each for the profile, the model, the character, every slot field, the selected slot, the focus and
+the theme), and its changed cells are copied onto the grid within 200 cells a frame
 (`CHIP_VIEW_FRAME_CELLS`) less what the toast, the raster and a cover take, as SCENE copies its
-canvas: a frame that changes more spreads over the next ones. The cells MIDI learn's frame or
-a toast covers are left alone, and the border while the raster runs. Idle it compares its
-bytes and composes nothing. Measured in fm1-emu (`chip_stays_within_its_budgets`):
+canvas: a frame that changes more spreads over the next ones. The canvas holds the characters
+the large text's pieces are pieces of (`grid_canvas`), so a changed digit costs the cells of that
+digit. The cells MIDI learn's frame or a toast covers are left alone, and the border while the
+raster runs. Idle it compares its bytes and composes nothing. Measured in fm1-emu
+(`chip_stays_within_its_budgets`):
 
 | CHIP | Cells a frame (average, most) | Worst SPI | Main loop a frame (average, busiest `ui_poll`) |
 |---|---|---|---|
-| Idle | 0, 0 | 0 | 6.3k, 0.3k instructions |
-| A knob's detent (25 frames) | 0.08, 2 | 0.19 ms | 7.7k, 34.2k |
-| A tab switch (25 frames; M2b Task 5) | 1.6, 40 | 3.44 ms | 8.3k, 34.8k |
-| The busiest: every control over MIDI at once, a focus move and a chip change (50 frames) | 26.9, 200 | 17.62 ms | 37.4k, 28.6k |
+| Idle | 0, 0 | 0 | 6.8k, 6.6k instructions |
+| A knob's detent (25 frames) | 0.2, 5 | 0.45 ms | 8.0k, 29.9k |
+| A tab switch (25 frames) | 1.4, 36 | 3.1 ms | 8.2k, 29.0k |
+| The busiest: every control over MIDI at once, a focus move and a chip change (50 frames) | 24.7, 200 | 17.58 ms | 38.7k, 27.6k |
 
-The busiest `ui_poll` is a build of the page and the scan of its 900 cells. SELECT,
-ALGORITHM and a knob cost the input's call at most 198 instructions, and the busiest main-loop
-pass after one 44.5k (SELECT from FX to the chip, three frames changing colour), within the
-latency gate's 120k poll allowance together. ALGORITHM on the chip, a profile step, is the
-exception: its pass is the chip reset (decision record 0006, "Cost"), as the FX button's and
-CC 85's are. At the page's character a step to the 8580 costs 362.6k (bounded at 400k); the
-worst, onto WORN at full character, 471.5k (ALGORITHM; CC 85 471.4k, FX 470.7k), bounded at
-520k for all three. RAM: the view's state 1,840 bytes, most of it the canvas.
+Before the redesign (the numbers the bounds were set from): idle 6.8k, a detent 8.1k with a busiest
+`ui_poll` of 35.9k, a tab switch 8.4k, the busiest 39.0k. The new page builds a bigger canvas
+(more text, large pieces), so its build and its scan of 900 cells were made cheaper to pay for
+it (rows written by pointer, the blank by `memset`, the scan one flat comparison a cell), and
+the busiest `ui_poll` fell by 6k. At the page's character a step to the 8580 and the others cost
+what they did (the profile change is the chip reset, decision record 0006, "Cost").
+
+RAM: the view's state 2,780 bytes (1,880 before), most of it the canvas (cells, colours and the
+characters of the large text's pieces: 2,700 bytes).
 
 ## TRACKER
 
-TRACKER (`app/tracker_view.h`, from SEQ or the menu) is the song's patterns in GoatTracker
-2's layout, squeezed to the 30 x 30 grid after the prototype
-(`assets/prototypes/sidou-screens.html`): black, the header in reverse video.
+TRACKER (`app/tracker_view.h`, from SEQ or the menu) is the song's patterns in GoatTracker 2's
+layout, drawn after the screen-readability prototype's `trkNew`: **one voice at a time at 2×**,
+12 rows visible, the other two voices as activity strips ([the theme](#theme)).
 
-![TRACKER, stopped](../../tests/golden/lcd/tracker.png)
+![TRACKER, stopped, voice 1](../../tests/golden/lcd/tracker.png)
+![TRACKER, voice 2](../../tests/golden/lcd/tracker-v2.png)
+![TRACKER, voice 3](../../tests/golden/lcd/tracker-v3.png)
 ![TRACKER, SIDOU LOOP playing, the moving bar](../../tests/golden/lcd/tracker-play.png)
 ![TRACKER, scrolling](../../tests/golden/lcd/tracker-scroll.png)
 ![TRACKER, voice 1 muted, REC](../../tests/golden/lcd/tracker-mute-rec.png)
 
-- **Row 0:** the song views' header (`app/song_view.h`): TRACKER, a play mark or a stop
-  square, the tempo in BPM, ORD and ROW in hex, REC in red.
-- **Row 1:** the voice heads, from columns 3, 12 and 21: V1-V3 in the waveform's colour, its
-  name (MUT in light red, SOL in white), a one-cell envelope meter on dark grey.
-- **Rows 2-26:** 25 pattern rows. Columns 0-1 the row number (white on the bar, yellow every
-  16, light grey every 4, grey); then each voice's row of its pattern, eight cells
-  `C-401308`: the note in white (`---` a rest in dark grey, `===` a key off and `+++` a key on
-  in grey), the instrument in light blue (`..` none), the command in yellow and its data in
-  light green (`...` none). The bar is light blue on blue across columns 0-28, its
-  instruments cyan and its empty cells light blue. A silent voice is all dark grey.
-- **Column 29:** a dark grey rule and a light blue pip where the bar's row is in its pattern.
-- **Row 27:** a rule. **Row 28:** OL, and each voice's orderlist from its entry: the entry in
-  white on blue, the two after it in grey (a pattern in hex, `R2` a repeat, `+3` or `-1` a
-  transpose, `RST00` the end and its restart position). **Row 29:** the bar row's first
-  command, of the voices that sound, spelled out in yellow (`V2 4 22 VIBRATO`).
+- **Rows 0-1, the header:** the shown voice **V1** at 2× in its colour (light red, cyan, light
+  green; grey while the song mutes it), its pattern **PAT 03** (hex) at 2× in white, **MUT** in
+  red or **SOL** in white small beside it, and on the right a play mark or a stop square, the
+  tempo in BPM small (with BPM under it) and **REC** in red.
+- **Row 2:** the other two voices' numbers, over their strips, in their colours.
+- **Rows 3-26, 12 pattern rows** of two cell rows: the row's number small at the left (hex; yellow
+  on the current row, grey otherwise), the note at 2× (`C-4`, white; `---` a rest in dark grey,
+  `===` a key off and `+++` a key on in grey; yellow on the current row), the instrument at 2× in
+  the voice's colour (`..` none, dark grey) and the command small (`308`: the command and its
+  data, grey; `...` none, dark grey). **The current row is a dark grey bar** across columns 0-17,
+  the rests and blanks on it in grey so that they stay visible. A voice the song mutes is grey from
+  the note to the command. Each row's cells are the voice's own pattern's, from its orderlist entry.
+- **Columns 26 and 28, the other two voices as strips:** a bar a row, bottom-aligned in the row's 16
+  pixels, **tall (12 px) where a note sounds on that row of that voice's own pattern, short (2 px)
+  where none does**, in the voice's colour; nothing past the end of its pattern; dark grey and short
+  while the song mutes it. They show that the other voices play, and where.
+- **Rows 27-29:** OL and the shown voice's orderlist from its entry (the entry in white on the bar's
+  grey, the two after it in grey: a pattern in hex, `R2` a repeat, `+3` or `-1` a transpose, `RST00`
+  the end and its restart position); the current row's first command, of the voices that sound,
+  spelled out in yellow (`V2 4 22 VIBRATO`); the hint `SELECT: VOICE` in dark grey and, on the right,
+  `ORD 03 ROW 1A` in hex (the position the old header said).
+
+**The cursor.** The cursor is a voice (`song_view.voice`) and a row. **SELECT, turned, steps the
+voice** (1, 2, 3 and round, either way: [controls](../reference/controls.md#song-views)); SELECT was
+free in the song views (it did nothing outside the menu, CHIP and SCENE), so there is no
+conflict to resolve. The row is the song's while it plays (each voice's last row event; the shown
+voice's is the bar), the stopped cursor's (`song_view.row`) otherwise; the note keys audition on the
+shown voice. The row drawing (`draw_row`, `draw_window_row`) takes the voice, the row, whether it is
+the cursor's and a field to highlight (`TRACKER_VIEW_FIELD_NOTE`, `_INSTRUMENT`, `_COMMAND`: the
+field's cells on yellow), which an edit cursor reuses as it is; the strips and the footer are
+separate (`draw_strip`, `build_footer`).
 
 Each voice shows the pattern of its orderlist entry: while the song plays the entry and row
 of its last row event, stopped the cursor's. **The moving bar** (TRACKER ROWS BAR, the
-default): the rows stand still and the bar moves down the 16-row page with 4 rows of context
+default): the rows stand still and the bar moves down the 8-row page with 4 rows of context
 above; at the page's end the window moves a page. **Scrolling** (TRACKER ROWS SCROLL,
-GoatTracker's): the bar stays on screen row 14 and the rows move under it.
+GoatTracker's): the bar stays on window row 5 (screen rows 13-14) and the rows move under it.
 
-**The budget.** The header and the heads are built into the song views' shared canvas when
-they change (the meters, REC), the rows when the window, the bar, a pattern or a mute does;
-only the rows built are compared with the grid, and their changed cells go out top first
-within 200 cells a frame (`SONG_VIEW_FRAME_CELLS`) less what the screen's layers take. Measured
-in fm1-emu over 30 s of each (`the_tracker_stays_within_its_budgets_while_a_song_plays`):
+**The budget.** The header and the footer are built into the song views' shared canvas when
+they change (the tempo, REC, a mute, the voice), the rows when the window, a pattern or a mute
+does; **a step of the bar alone redraws only its two rows and the footer** (`build_step`: a test
+checks the canvas against a whole build at every row of a page, with every voice shown and a
+voice muted), and only the rows built are compared with the grid, their changed cells going out
+top first within 200 cells a frame (`SONG_VIEW_FRAME_CELLS`) less what the screen's layers take.
+The bar's grey covers 18 columns, not the row: a step repaints two bars, so the width is what it
+costs (25 columns made the step 100 cells and the playing frame 36k instructions against its 28k
+bound). The canvas holds the characters of the large text's pieces (`grid_canvas`). Measured in
+fm1-emu over 30 s of each (`the_tracker_stays_within_its_budgets_while_a_song_plays`):
 
 | 30 s playing | Cells a frame (average, most) | SPI a frame (average, worst) | Main loop a frame (average, busiest `ui_poll`) | Frames at the cap |
 |---|---|---|---|---|
-| SIDOU LOOP (tempo 6), bar | 25.6, 129 | 2.22, 11.35 ms | 27.6k, 31.4k | 0 of 750 |
-| SIDOU LOOP, scroll | 83.4, 200 | 7.30, 17.56 ms | 51.0k, 34.0k | 256 of 750 |
-| A dense song at tempo 3 (a note on every row of every voice), bar | 61.6, 200 | 5.35, 17.79 ms | 49.8k, 38.4k | 38 of 750 |
-| The same, scroll | 100.4, 200 | 9.08, 17.58 ms | 89.9k, 36.8k | 24 of 750 |
+| SIDOU LOOP (tempo 6), bar | 30.4 (25.6), 161 (129) | 2.62 (2.22), 14.07 ms (11.35) | 27.7k (27.5k), 23.9k (31.3k) | 0 of 750 (0) |
+| SIDOU LOOP, scroll | 59.9 (83.5), 177 (200) | 5.29 (7.31), 15.56 ms (17.56) | 59.8k (51.1k), 22.8k (33.9k) | 0 of 750 (257) |
+| A dense song at tempo 3 (a note on every row of every voice), bar | 56.5 (61.7), 173 (200) | 4.87 (5.36), 15.09 ms (17.79) | 46.5k (49.7k), 24.2k (38.1k) | 0 of 750 (38) |
+| The same, scroll | 41.0 (100.6), 174 (200) | 3.65 (9.08), 15.29 ms (17.58) | 64.9k (90.0k), 21.2k (36.6k) | 0 of 750 (24) |
 
-The bar always keeps up: a row step changes its two rows and the line under the rows (60 to
-90 cells), and only a page turn (up to 725 cells) is spread over up to four frames, top first,
-behind the bar. The scroll changes every row whose text differs from the one above it: with
-SIDOU LOOP, at tempo 6, a third of the frames already reach the cap, so the scroll stops
-keeping up at about tempo 6 on patterns like it (the rows lag the music by up to a frame or
-two, never the sound); a song whose rows look alike (the tempo-3 song, whose cells differ in
-a note's name only) changes fewer cells a step and lags less, even at tempo 3. Idle and
-stopped it composes nothing (the song views' table in `tests/screen.rs`: 8.1k instructions a
-frame idle). RAM: the song views' state 1,920 bytes, most of it their shared canvas.
+(In brackets, before the redesign.) The bar's step is two bars and the footer (30 to 70 cells); a
+page turn (about 300 cells) spreads over two or three frames, the first six window rows built and
+copied, then the rest. The scroll changes every row whose text differs from the one above it,
+and 12 rows of 18 columns is fewer cells than 25 of 29: it keeps up at tempo 6 and at tempo 3,
+where the old layout lagged (the rows ran up to a frame or two behind the music, never the
+sound). The busiest `ui_poll` fell from 31-38k to 21-24k, because the build is split over the
+frames and a page's cells are copied by a loop of their own (`song_view_copy`). Idle and stopped
+it composes nothing (the song views' table in `tests/screen.rs`: 8.0k instructions a frame idle,
+8.3k with REC, 9.6k a mute: against 8.1k, 8.3k and 9.8k before).
+
+RAM: the song views' state 2,824 bytes (1,920 before), most of it their shared canvas (with the
+characters of the large text's pieces). The two canvases and the characters they keep are
+1,788 bytes of the views' 17,280; free RAM went from 14,544 to 12,752 bytes (the gate keeps 9,000).
+
+## STATUS
+
+STATUS (`app/views.c`, the menu's item after THEME) is the numbers: what the instrument has,
+in the theme's colours ([the theme](#theme)) with the titles and the key numbers at 2×:
+
+![STATUS, A4 held](../../tests/golden/lcd/status-a4.png)
+
+- **Rows 2-3:** SIDOU at 2× in yellow, the version small on the right (row 2).
+- **Rows 5-8:** the chip (with two chips both, **KEYS** in yellow on the keys'), the preset, the
+  octave: small, the names grey and the values white.
+- **Rows 10-17, the four parameters of the sound**, two rows each: the name small, **the number at
+  2×** (the cutoff register 0..2047, the resonance, the pulse width, the volume), and a bar in
+  the knob's colour (K1 yellow, K2 cyan, K3 light green; the volume white).
+- **Row 19:** the notes held. **Rows 21-26:** the effect slots (`>` in yellow at the one EDIT +
+  K1..K4 acts on), their algorithms and Mix, and the selected slot's Amount, A and B.
+  **Row 27:** READY.
+- **The ring** of full blocks in dark grey (light blue on blue in C64).
+
+A held note changes the notes row only (`status_notes`: the view compares what it shows with
+the last compose, and when only the notes differ draws that row), so a note costs a row, not
+the screen's 900 cells: a note costs 3.1k instructions above idle where it cost 29.6k (the
+bound is 30k, which a whole compose with the larger text would have passed). Idle it composes
+nothing (7.47k a frame, as before: the bound is 7.5k).
+
+**ABOUT** is unchanged. Its credits are generated pages that fade in and out through colours a
+row at a time, and the first page's heading (`SIDOU V<version>`, up to 20 characters) does not fit
+at 2× (15 characters a row): the larger text would also double what each fade step sends over
+the 163-cell budget the screen is held to.
 
 ## SCENE
 

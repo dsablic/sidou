@@ -100,13 +100,14 @@ void menu_turn(menu* m, int32_t steps) {
 
 /* Line k of the menu at scale 2: n characters in text, the colour into *attr. */
 static void big_line(const menu* m, uint32_t k, uint32_t n, char* line, uint8_t base,
-                     uint8_t* attr) {
+                     uint8_t* attr, uint32_t* value_at) {
     uint32_t i = m->top + k;
     for (uint32_t c = 0; c < n; c++) {
         line[c] = ' ';
     }
     line[n] = 0;
     *attr = base;
+    *value_at = n;
     if (i >= m->count) {
         return;
     }
@@ -131,6 +132,7 @@ static void big_line(const menu* m, uint32_t k, uint32_t n, char* line, uint8_t 
         len++;
     }
     uint32_t v = len + 1u < n - c ? n - len : c + 1u;
+    *value_at = v;
     for (uint32_t j = 0; buf[j] && v < n; j++) {
         line[v++] = buf[j];
     }
@@ -158,30 +160,47 @@ __attribute__((noinline, unused)) static void draw_big(menu* m, grid* g, uint32_
     }
     uint32_t drawn = 0;
     m->pending = 0;
-    /* The selected line first (the cursor's move shows at once), then the others in order. */
+    /* The lines something drew over come first (they are drawn whatever the budget says, so
+     * the others' share is what is left of it), then the others: the selected line first (the
+     * cursor's move shows at once), then in order. */
     uint32_t sel = m->cursor >= m->top ? (uint32_t)m->cursor - m->top : 0u;
-    for (uint32_t j = 0; j < m->rows; j++) {
-        uint32_t k = j == 0 ? sel : j <= sel ? j - 1u : j;
-        uint8_t a;
-        big_line(m, k, n, line, attr, &a);
-        uint16_t sig = big_sig(line, a);
-        uint32_t r = row + 3u * k;
-        int forced = (m->force_rows >> r & 3u) != 0u;
-        if (!forced && (m->valid >> k & 1u) && m->sig[k] == sig) {
-            continue; /* it shows this already */
+    for (uint32_t pass = 0; pass < 2u; pass++) {
+        for (uint32_t j = 0; j < m->rows; j++) {
+            uint32_t k = j == 0 ? sel : j <= sel ? j - 1u : j;
+            uint32_t r = row + 3u * k;
+            int forced = (m->force_rows >> r & 3u) != 0u;
+            if (forced != (pass == 0u)) {
+                continue;
+            }
+            uint8_t a;
+            uint32_t value_at;
+            big_line(m, k, n, line, attr, &a, &value_at);
+            uint16_t sig = big_sig(line, a);
+            if (!forced && (m->valid >> k & 1u) && m->sig[k] == sig) {
+                continue; /* it shows this already */
+            }
+            if ((!forced || (m->force_rows & MENU_BUDGET_FORCED)) && drawn && k != sel &&
+                m->budget && grid_pending(g) + MENU_LINE_CELLS > m->budget) {
+                m->pending = 1; /* the next call */
+                m->valid = (uint8_t)(m->valid & ~(1u << k));
+                continue;
+            }
+            drawn++;
+            m->sig[k] = sig;
+            m->valid = (uint8_t)(m->valid | 1u << k);
+            grid_fill(g, col, r, w, 3, ' ', a); /* the margins, a selected line's bar, the gap row */
+            grid_fill(g, col, r + 2u, w, 1, ' ', attr);
+            if (m->value_attr && a == attr && value_at < n) {
+                /* The label and the gap, then the value in its own colour: no cell twice. */
+                char cut = line[value_at];
+                line[value_at] = 0;
+                grid_text_big(g, col + 1u, r, 2, line, a);
+                line[value_at] = cut;
+                grid_text_big(g, col + 1u + 2u * value_at, r, 2, line + value_at, m->value_attr);
+            } else {
+                grid_text_big(g, col + 1u, r, 2, line, a);
+            }
         }
-        if ((!forced || (m->force_rows & MENU_BUDGET_FORCED)) && drawn && m->budget &&
-            grid_pending(g) + MENU_LINE_CELLS > m->budget) {
-            m->pending = 1; /* the next call */
-            m->valid = (uint8_t)(m->valid & ~(1u << k));
-            continue;
-        }
-        drawn++;
-        m->sig[k] = sig;
-        m->valid = (uint8_t)(m->valid | 1u << k);
-        grid_fill(g, col, r, w, 3, ' ', a); /* the margins, a selected line's bar, the gap row */
-        grid_fill(g, col, r + 2u, w, 1, ' ', attr);
-        grid_text_big(g, col + 1u, r, 2, line, a);
     }
 }
 
