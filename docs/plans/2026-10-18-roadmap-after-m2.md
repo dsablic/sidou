@@ -10,6 +10,12 @@ the 6502 study below.
 
 ## Order
 
+0. **USB-MIDI out on the device, first** (top priority since the second flash,
+   `docs/hardware-results/2026-10-18-second-flash.md`). Nobody else installs SIDOU until, on
+   our unit, SIDOU answers the installer's identity query, updates itself over USB, and
+   returns to V15 over USB. Also an escape hatch that doesn't depend on SIDOU's own USB
+   stack: a power-on gesture into the Felucca update loader, which an ordinary installer
+   can then write through.
 1. **Close M2.** The remaining tasks: M2c Tasks 8-9, M2d Tasks 3-7, M2e Tasks 5-6, M2b
    Tasks 6 and 8, then the end-of-M2 review by area (storage most closely, and the tests that
    were re-aimed during M2).
