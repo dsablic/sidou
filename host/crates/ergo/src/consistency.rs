@@ -21,9 +21,24 @@ fn parameter_label_visible(param: &str, p: &crate::device::Params, text: &[Strin
     use sidou_sys::*;
     let mut buf = [0; 32];
     if let Some((slot, field)) = param.split_once('.') {
-        let Some(s) = ["dist", "mod", "fx"].iter().position(|n| *n == slot) else { return false };
-        let Some(f) = ["algorithm", "amount", "a", "b", "mix"].iter().position(|n| *n == field) else { return false };
-        if unsafe { chip_view_label(s as u32, u32::from(p.slot[s][0]), f as u32, buf.as_mut_ptr()) } == 0 {
+        let Some(s) = ["dist", "mod", "fx"].iter().position(|n| *n == slot) else {
+            return false;
+        };
+        let Some(f) = ["algorithm", "amount", "a", "b", "mix"]
+            .iter()
+            .position(|n| *n == field)
+        else {
+            return false;
+        };
+        if unsafe {
+            chip_view_label(
+                s as u32,
+                u32::from(p.slot[s][0]),
+                f as u32,
+                buf.as_mut_ptr(),
+            )
+        } == 0
+        {
             return false;
         }
     } else {
@@ -40,9 +55,10 @@ fn parameter_label_visible(param: &str, p: &crate::device::Params, text: &[Strin
         unsafe { learn_view_param_name(id, buf.as_mut_ptr()) };
     }
     let label = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }.to_string_lossy();
-    !label.is_empty() && text.iter().any(|t| {
-        format!(" {} ", t.to_uppercase()).contains(&format!(" {label} "))
-    })
+    !label.is_empty()
+        && text
+            .iter()
+            .any(|t| format!(" {} ", t.to_uppercase()).contains(&format!(" {label} ")))
 }
 
 /// The views and how to get to each from LIVE (journeys.txt actions).
@@ -147,7 +163,9 @@ fn after(build: &Path, setup: &str, control: u8, dir: Option<i32>) -> (BTreeSet<
     let p1 = d.params();
     let params = p0.diff(&p1);
     let e = Effect {
-        labelled: params.iter().all(|p| parameter_label_visible(p, &p1, &text)),
+        labelled: params
+            .iter()
+            .all(|p| parameter_label_visible(p, &p1, &text)),
         screen: d.m.soc.lcd.fb != fb0,
         params,
         view_changed: view1 != view0,
@@ -338,15 +356,30 @@ mod tests {
     #[test]
     fn chip_age_on_screen_or_in_a_popup_is_consistent() {
         let mut e = fx(true, &["age"], false, 0);
-        e.labelled = parameter_label_visible("age", &crate::device::Params::default(), &["AGE 32".into()]);
+        e.labelled =
+            parameter_label_visible("age", &crate::device::Params::default(), &["AGE 32".into()]);
         let mut m = BTreeMap::from([(("chip".into(), "K1".into()), e)]);
-        assert!(!analyse(&m).findings.iter().any(|f| f.id == "CONS.k-meaning"));
+        assert!(!analyse(&m)
+            .findings
+            .iter()
+            .any(|f| f.id == "CONS.k-meaning"));
         m.get_mut(&("chip".into(), "K1".into())).unwrap().labelled = false;
-        assert!(analyse(&m).findings.iter().any(|f| f.id == "CONS.k-meaning"));
-        assert!(!parameter_label_visible("age", &crate::device::Params::default(), &["MESSAGE".into()]));
+        assert!(analyse(&m)
+            .findings
+            .iter()
+            .any(|f| f.id == "CONS.k-meaning"));
+        assert!(!parameter_label_visible(
+            "age",
+            &crate::device::Params::default(),
+            &["MESSAGE".into()]
+        ));
         let mut p = crate::device::Params::default();
         p.slot[0][0] = 2;
-        assert!(parameter_label_visible("dist.amount", &p, &["DIST DRIVE".into()]));
+        assert!(parameter_label_visible(
+            "dist.amount",
+            &p,
+            &["DIST DRIVE".into()]
+        ));
     }
 
     #[test]

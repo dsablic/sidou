@@ -410,10 +410,20 @@ mod tests {
         destructive.changed_params = vec!["cutoff".into()];
         let mut recalled = step("back", None, 1, 1, "live");
         recalled.expects = vec![("recalled parameters".into(), true)];
-        let mut j = JourneyResult { id: "jam".into(), title: "Jam".into(), tour: false,
-            steps: vec![remembered, destructive, recalled], captured: vec![], settings_drift: None };
-        let safe = |j: &JourneyResult| !journey_findings(j, &json!({}), &Config::default()).0.iter()
-            .any(|f| f.id.starts_with("SAFE.destructive"));
+        let mut j = JourneyResult {
+            id: "jam".into(),
+            title: "Jam".into(),
+            tour: false,
+            steps: vec![remembered, destructive, recalled],
+            captured: vec![],
+            settings_drift: None,
+        };
+        let safe = |j: &JourneyResult| {
+            !journey_findings(j, &json!({}), &Config::default())
+                .0
+                .iter()
+                .any(|f| f.id.starts_with("SAFE.destructive"))
+        };
         assert!(safe(&j));
         j.steps[2].expects[0].1 = false;
         assert!(!safe(&j));

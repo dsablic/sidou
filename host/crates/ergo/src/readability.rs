@@ -73,7 +73,9 @@ impl Pat {
             Pat::Hex => {
                 let tokens: Vec<_> = text.split_whitespace().collect();
                 !tokens.is_empty()
-                    && tokens.iter().all(|t| t.len() == 2 && t.bytes().all(|b| b.is_ascii_hexdigit()))
+                    && tokens
+                        .iter()
+                        .all(|t| t.len() == 2 && t.bytes().all(|b| b.is_ascii_hexdigit()))
             }
             Pat::Note => text.split_whitespace().any(is_note),
             Pat::Value => text.split_whitespace().any(is_value),
@@ -494,7 +496,11 @@ mod tests {
         let s = shot_with("live", "OFF", th.dim | th.bg << 4);
         let r = judge(&s, &parse_rules(DEFAULT_RULES).unwrap(), &Config::default());
         assert!(r[0].contrast_ok);
-        let r = judge(&s, &parse_rules("* | hint | any").unwrap(), &Config::default());
+        let r = judge(
+            &s,
+            &parse_rules("* | hint | any").unwrap(),
+            &Config::default(),
+        );
         assert!(!r[0].contrast_ok);
     }
 

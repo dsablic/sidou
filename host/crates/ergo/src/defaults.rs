@@ -215,7 +215,9 @@ mod tests {
         }
         let stats = preset_stats(&a, 0, &cfg);
         assert!((stats["rms_dbfs"].as_f64().unwrap() + 27.39).abs() < 0.1);
-        assert!(!judge("hit", "hit", &stats, &cfg).iter().any(|f| f.id == "MUS.quiet.hit"));
+        assert!(!judge("hit", "hit", &stats, &cfg)
+            .iter()
+            .any(|f| f.id == "MUS.quiet.hit"));
         assert!(preset_stats(&a, 8, &cfg)["rms_dbfs"].as_f64().unwrap() < cfg.first_rms_min_db);
     }
 

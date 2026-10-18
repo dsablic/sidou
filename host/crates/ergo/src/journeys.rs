@@ -1260,7 +1260,10 @@ mod tests {
         let s = &j[0].steps[0];
         assert!(!performance_hands(s, &count_effort(&[Effort::HoldTurn(1)])));
         let j = parse_table("journey t | T\nstep a | A | - | holdturn EDIT K1 1").unwrap();
-        assert!(performance_hands(&j[0].steps[0], &count_effort(&[Effort::HoldTurn(1)])));
+        assert!(performance_hands(
+            &j[0].steps[0],
+            &count_effort(&[Effort::HoldTurn(1)])
+        ));
     }
 
     #[test]
