@@ -51,6 +51,16 @@ the 6502 study below.
    the study), run a frame ahead with cycle-stamped SID writes, on one core; FM-1 SID's
    BSD-2-Clause PSID environment design with its bounds bug and five other gaps fixed;
    m6502.h and FM-1 SID's player as a host-side oracle only.
+9. **Generative play (after v0.1).** Patterns that change while they play, as the newest FM-1
+   firmwares do (checked 2026-10-18: JIANT FM's generate / mutate / dice, Felucca's RANDOM,
+   COOK and per-step chance, Felucca_seq_per_track's generative arps), aimed at C64 music:
+   - **STEP and TRACKER:** per-step chance, MUTATE (changes the pattern a little on each
+     press), and random notes in a scale on a fixed rhythm;
+   - **C64 idioms, generated:** arpeggio chords, drums multiplexed into a voice, filter
+     sweeps (the tricks of the showcase songs, made playable);
+   - **pattern DICE,** next to the ergonomics pass's patch DICE.
+   Everything stays plain GoatTracker 2 data, so a generated song opens in GoatTracker. Its
+   own plan when we get there; first candidate: per-step chance plus MUTATE in STEP.
 8. **The resource-heavy UX:** help cards, first-run guidance, suggested automations.
 
 ## Alongside
