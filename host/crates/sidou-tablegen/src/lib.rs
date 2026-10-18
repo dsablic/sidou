@@ -58,12 +58,13 @@ pub const PROFILES: [(CombinedWaveforms, &str); 3] = [
     (CombinedWaveforms::Strong, "STRONG"),
 ];
 
-/// Bytes of one profile's packed table for one model.
+/// Bytes of one profile's table for one model, packed but not shared: what a profile
+/// would cost without the shared blocks (gen/pulldown.h).
 pub const PROFILE_BYTES: usize = 5 * 6144;
 
 /// The define that compiles all three of a model's combined-waveform profiles, not just
 /// AVERAGE: each model has its own, since the device's chip profiles play WEAK and STRONG
-/// on the 6581 only (gen/profiles.h), and 61,440 bytes of 8580 tables would sit unused.
+/// on the 6581 only (gen/profiles.h), and the 8580's would sit unused.
 pub fn all_profiles_flag(model: Model) -> &'static str {
     match model {
         Model::Mos6581 => "SIDOU_ALL_COMBINED_PROFILES",
@@ -71,26 +72,146 @@ pub fn all_profiles_flag(model: Model) -> &'static str {
     }
 }
 
-fn wave_header(model: Model) -> Generated {
-    let (name, guard, path, sampled) = match model {
-        Model::Mos6581 => (
-            "6581",
-            "SIDOU_GEN_WAVE_6581_H",
-            "core/sid/gen/wave_6581.h",
-            "MOS6581",
-        ),
-        Model::Csg8580 => (
-            "8580",
-            "SIDOU_GEN_WAVE_8580_H",
-            "core/sid/gen/wave_8580.h",
-            "CSG8580",
-        ),
-    };
+/// Entries in one block of a pulldown row, and its bytes packed (pack12).
+pub const PD_BLOCK: usize = 16;
+pub const PD_BLOCK_BYTES: usize = PD_BLOCK * 3 / 2;
+/// Bytes of one row's index: a u16 for each of its blocks.
+pub const PD_INDEX_BYTES: usize = 4096 / PD_BLOCK * 2;
+
+/// The profiles compiled for a model, in table order: all three with its flag, else
+/// AVERAGE alone.
+pub fn compiled_profiles(all: bool) -> Vec<(CombinedWaveforms, &'static str)> {
+    PROFILES
+        .iter()
+        .copied()
+        .filter(|&(cws, _)| all || cws == CombinedWaveforms::Average)
+        .collect()
+}
+
+/// reSIDfp's pulldown rows for every profile of both models, PROFILES order.
+pub struct PulldownSource {
+    pub mos6581: Vec<Vec<[u16; 4096]>>,
+    pub csg8580: Vec<Vec<[u16; 4096]>>,
+}
+
+impl PulldownSource {
+    pub fn new() -> Self {
+        let all = |m| {
+            PROFILES
+                .iter()
+                .map(|&(c, _)| pulldown_table(m, c))
+                .collect()
+        };
+        Self {
+            mos6581: all(Model::Mos6581),
+            csg8580: all(Model::Csg8580),
+        }
+    }
+
+    /// One profile's five rows for a model.
+    pub fn profile(&self, model: Model, cws: CombinedWaveforms) -> &[[u16; 4096]] {
+        let i = PROFILES.iter().position(|p| p.0 == cws).unwrap();
+        match model {
+            Model::Mos6581 => &self.mos6581[i],
+            Model::Csg8580 => &self.csg8580[i],
+        }
+    }
+
+    /// The rows SID_PD holds with the flags given: the 6581's compiled profiles, then the
+    /// 8580's, five rows each.
+    pub fn compiled_rows(&self, all_6581: bool, all_8580: bool) -> Vec<[u16; 4096]> {
+        let mut rows = Vec::new();
+        for (model, all) in [(Model::Mos6581, all_6581), (Model::Csg8580, all_8580)] {
+            for (cws, _) in compiled_profiles(all) {
+                rows.extend_from_slice(self.profile(model, cws));
+            }
+        }
+        rows
+    }
+}
+
+impl Default for PulldownSource {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// SID_PD's bytes as the device holds them (gen/pulldown.h): each row's index, PD_INDEX_BYTES
+/// of little-endian u16s, then the pool of distinct blocks, PD_BLOCK_BYTES each. Index
+/// entry k of row r is the offset from the row's first byte to the block holding the
+/// row's entries 16k .. 16k + 15, so the audio path needs no other base address.
+pub struct PulldownLayout {
+    pub rows: usize,
+    pub blocks: usize,
+    pub bytes: Vec<u8>,
+}
+
+impl PulldownLayout {
+    pub fn new(rows: &[[u16; 4096]]) -> Self {
+        let mut pool: Vec<u8> = Vec::new();
+        let mut seen = std::collections::HashMap::new();
+        let mut index = Vec::with_capacity(rows.len() * PD_INDEX_BYTES);
+        let pool_at = rows.len() * PD_INDEX_BYTES;
+        for (r, row) in rows.iter().enumerate() {
+            for block in row.chunks(PD_BLOCK) {
+                let at = *seen.entry(block.to_vec()).or_insert_with(|| {
+                    let at = pool.len();
+                    let mut full = [0u16; 4096];
+                    full[..PD_BLOCK].copy_from_slice(block);
+                    pool.extend_from_slice(&pack12(&full)[..PD_BLOCK_BYTES]);
+                    at
+                });
+                let offset = pool_at + at - r * PD_INDEX_BYTES;
+                let offset = u16::try_from(offset).expect("a pulldown block beyond a u16 offset");
+                index.extend_from_slice(&offset.to_le_bytes());
+            }
+        }
+        let blocks = pool.len() / PD_BLOCK_BYTES;
+        index.extend_from_slice(&pool);
+        Self {
+            rows: rows.len(),
+            blocks,
+            bytes: index,
+        }
+    }
+
+    /// Index entry k of row r.
+    pub fn index(&self, r: usize, k: usize) -> u16 {
+        let at = r * PD_INDEX_BYTES + k * 2;
+        u16::from_le_bytes([self.bytes[at], self.bytes[at + 1]])
+    }
+
+    /// The pool, after the indexes.
+    pub fn pool(&self) -> &[u8] {
+        &self.bytes[self.rows * PD_INDEX_BYTES..]
+    }
+}
+
+/// Entry x of row r of SID_PD's bytes, as sid_pulldown() in sid_osc.h reads it.
+pub fn pulldown_entry(sid_pd: &[u8], r: usize, x: usize) -> u16 {
+    let row = r * PD_INDEX_BYTES;
+    let k = row + (x >> 4) * 2;
+    let offset = usize::from(u16::from_le_bytes([sid_pd[k], sid_pd[k + 1]]));
+    let p = &sid_pd[row + offset + ((x >> 1) & 7) * 3..];
+    if x & 1 == 1 {
+        u16::from(p[1] >> 4) | (u16::from(p[2]) << 4)
+    } else {
+        u16::from(p[0]) | (u16::from(p[1] & 0x0f) << 8)
+    }
+}
+
+/// The four combinations of the two models' flags, the device's (the 6581's three, the
+/// 8580's AVERAGE) first.
+pub const PULLDOWN_SETS: [(bool, bool); 4] =
+    [(true, false), (true, true), (false, false), (false, true)];
+
+fn pulldown_header(src: &PulldownSource) -> Generated {
     let mut s = String::new();
     // REUSE-IgnoreStart
     s.push_str(
         "// SPDX-FileCopyrightText: 2011-2026 Leandro Nini <drfiemost@users.sourceforge.net>\n\
          // SPDX-FileCopyrightText: 2007-2010 Antti Lankila\n\
+         // SPDX-FileCopyrightText: 2026 SIDOU contributors\n\
          // SPDX-License-Identifier: GPL-2.0-or-later\n",
     );
     // REUSE-IgnoreEnd
@@ -99,48 +220,84 @@ fn wave_header(model: Model) -> Generated {
         "/* Generated by sidou-tablegen; do not edit. To regenerate, from host/:\n\
          \x20*   cargo run --release -p sidou-tablegen\n\
          \x20* Source: reSIDfp (libresidfp {RESIDFP_REV}),\n\
-         \x20* WaveformCalculator::buildPulldownTable({sampled}, profile): the combined-waveform\n\
+         \x20* WaveformCalculator::buildPulldownTable(model, profile): the combined-waveform\n\
          \x20* pulldown, which maps a 12-bit waveform output (the AND of the selected\n\
-         \x20* waveforms) to what the chip outputs. One table per compiled profile\n\
-         \x20* (gen/grid.h), each with rows in reSIDfp's order: {}.\n\
-         \x20* Each row packs 4096 12-bit entries into 6144 bytes, two entries per three\n\
-         \x20* bytes; sid_pulldown() in sid_osc.h unpacks them. {} bytes per profile. */",
+         \x20* waveforms) to what the chip outputs, five rows a profile in reSIDfp's order\n\
+         \x20* ({}): the 6581's compiled profiles (gen/grid.h), then the 8580's from row\n\
+         \x20* SID_PD_8580_ROW.\n\
+         \x20*\n\
+         \x20* Lossless and shared: a row is 256 blocks of 16 entries, and every distinct block\n\
+         \x20* is stored once, in `pool`, {PD_BLOCK_BYTES} bytes packing its entries two to three bytes.\n\
+         \x20* Entry x of row r is in the block that starts idx[r][x >> 4] bytes after\n\
+         \x20* &idx[r][0]; sid_pulldown() in sid_osc.h unpacks it. Unshared, a profile would\n\
+         \x20* take {PROFILE_BYTES} bytes a model. By the models' flags:",
         PULLDOWN_ROWS.join(", "),
-        PROFILE_BYTES
     )
     .unwrap();
+    let layouts: Vec<PulldownLayout> = PULLDOWN_SETS
+        .iter()
+        .map(|&(a, b)| PulldownLayout::new(&src.compiled_rows(a, b)))
+        .collect();
+    let condition = |(a, b): (bool, bool)| {
+        let def = |on: bool, model| {
+            format!(
+                "{}defined({})",
+                if on { "" } else { "!" },
+                all_profiles_flag(model)
+            )
+        };
+        format!("{} && {}", def(a, Model::Mos6581), def(b, Model::Csg8580))
+    };
+    for (&set, l) in PULLDOWN_SETS.iter().zip(&layouts) {
+        writeln!(
+            s,
+            " *   {}: {} rows, {} blocks, {} bytes ({} unshared)",
+            condition(set),
+            l.rows,
+            l.blocks,
+            l.bytes.len(),
+            l.rows / 5 * PROFILE_BYTES
+        )
+        .unwrap();
+    }
     writeln!(
         s,
-        "#ifndef {guard}\n#define {guard}\n\n#include <stdint.h>\n\n#include \"grid.h\"\n"
+        " */\n#ifndef SIDOU_GEN_PULLDOWN_H\n#define SIDOU_GEN_PULLDOWN_H\n\n\
+         #include <stdint.h>\n\n#include \"grid.h\"\n\n\
+         /* The 8580's first row. */\n\
+         #define SID_PD_8580_ROW (5 * SID_COMBINED_TABLES_6581)\n"
     )
     .unwrap();
-    writeln!(
-        s,
-        "static const uint8_t SID_PULLDOWN_{name}[SID_COMBINED_TABLES_{name}][5][6144] = {{"
-    )
-    .unwrap();
-    for (cws, label) in PROFILES {
-        let optional = cws != CombinedWaveforms::Average;
-        if optional {
-            writeln!(s, "#ifdef {}", all_profiles_flag(model)).unwrap();
-        }
-        let table = pulldown_table(model, cws);
-        writeln!(s, "    /* {label} */ {{").unwrap();
-        for (row, row_label) in table.iter().zip(PULLDOWN_ROWS) {
-            writeln!(s, "        /* {row_label} */ {{").unwrap();
-            for line in pack12(row).chunks(14) {
-                let bytes: Vec<String> = line.iter().map(|b| format!("0x{b:02x}")).collect();
-                writeln!(s, "            {},", bytes.join(", ")).unwrap();
+    for (n, (&set, l)) in PULLDOWN_SETS.iter().zip(&layouts).enumerate() {
+        let directive = if n == 0 { "#if" } else { "#elif" };
+        writeln!(s, "{directive} {}", condition(set)).unwrap();
+        writeln!(
+            s,
+            "static const struct {{\n    uint16_t idx[{}][256];\n    uint8_t pool[{}];\n}} SID_PD = {{\n    {{",
+            l.rows,
+            l.pool().len()
+        )
+        .unwrap();
+        for r in 0..l.rows {
+            writeln!(s, "        {{").unwrap();
+            let entries: Vec<String> = (0..256).map(|k| l.index(r, k).to_string()).collect();
+            for line in entries.chunks(16) {
+                writeln!(s, "            {},", line.join(", ")).unwrap();
             }
             writeln!(s, "        }},").unwrap();
         }
-        writeln!(s, "    }},").unwrap();
-        if optional {
-            writeln!(s, "#endif").unwrap();
+        writeln!(s, "    }},\n    {{").unwrap();
+        for block in l.pool().chunks(PD_BLOCK_BYTES) {
+            let bytes: Vec<String> = block.iter().map(|b| format!("0x{b:02x}")).collect();
+            writeln!(s, "        {},", bytes.join(", ")).unwrap();
         }
+        writeln!(s, "    }},\n}};").unwrap();
     }
-    writeln!(s, "}};\n\n#endif").unwrap();
-    Generated { path, contents: s }
+    writeln!(s, "#endif\n\n#endif").unwrap();
+    Generated {
+        path: "core/sid/gen/pulldown.h",
+        contents: s,
+    }
 }
 
 fn grid_header() -> Generated {
@@ -157,13 +314,11 @@ fn grid_header() -> Generated {
         "/* Generated by sidou-tablegen; do not edit. Which generated tables are compiled.\n\
          \x20*\n\
          \x20* Combined-waveform profiles: reSIDfp's {} sampled chips. Per model,\n\
-         \x20* only AVERAGE, reSIDfp's default, is compiled ({} bytes) unless the model's\n\
-         \x20* flag is defined (all three, {} bytes): {} for the 6581,\n\
+         \x20* only AVERAGE, reSIDfp's default, is compiled (gen/pulldown.h) unless the\n\
+         \x20* model's flag is defined (all three): {} for the 6581,\n\
          \x20* {} for the 8580. */\n\
          #ifndef SIDOU_GEN_GRID_H\n#define SIDOU_GEN_GRID_H\n",
         names.join(", "),
-        PROFILE_BYTES,
-        PROFILE_BYTES * PROFILES.len(),
         all_profiles_flag(Model::Mos6581),
         all_profiles_flag(Model::Csg8580),
     )
@@ -356,8 +511,7 @@ pub fn generate_computed() -> Vec<Generated> {
         grid_header(),
         noise_jump_header(),
         profiles::profiles_header(),
-        wave_header(Model::Mos6581),
-        wave_header(Model::Csg8580),
+        pulldown_header(&PulldownSource::new()),
     ]
 }
 
@@ -430,6 +584,46 @@ mod tests {
         ] {
             assert!(differs_beyond_last_digit(a, b).is_some(), "{b:?}");
         }
+    }
+
+    /// SID_PD is lossless: under every combination of the flags, each compiled row of
+    /// each profile and model reads back, entry for entry, as reSIDfp's table; the
+    /// device's set holds the 6581's three profiles and the 8580's AVERAGE, and every
+    /// block in a pool is one a row uses.
+    #[test]
+    fn shared_pulldown_blocks_read_back_as_residfps_tables() {
+        let src = PulldownSource::new();
+        for (all_6581, all_8580) in PULLDOWN_SETS {
+            let l = PulldownLayout::new(&src.compiled_rows(all_6581, all_8580));
+            let mut r = 0;
+            let mut used = std::collections::HashSet::new();
+            for (model, all) in [(Model::Mos6581, all_6581), (Model::Csg8580, all_8580)] {
+                for (cws, label) in compiled_profiles(all) {
+                    for (row, row_label) in src.profile(model, cws).iter().zip(PULLDOWN_ROWS) {
+                        for (x, &want) in row.iter().enumerate() {
+                            assert_eq!(
+                                pulldown_entry(&l.bytes, r, x),
+                                want,
+                                "{model:?} {label} {row_label} entry {x} ({all_6581}, {all_8580})"
+                            );
+                        }
+                        for k in 0..256 {
+                            used.insert(r * PD_INDEX_BYTES + usize::from(l.index(r, k)));
+                        }
+                        r += 1;
+                    }
+                }
+            }
+            assert_eq!(r, l.rows);
+            assert_eq!(used.len(), l.blocks, "a block no row uses");
+        }
+        let device = PulldownLayout::new(&src.compiled_rows(true, false));
+        assert_eq!(device.rows, 20);
+        assert!(
+            device.bytes.len() < 4 * PROFILE_BYTES / 2,
+            "{}",
+            device.bytes.len()
+        );
     }
 
     #[test]

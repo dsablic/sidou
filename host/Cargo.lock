@@ -265,8 +265,10 @@ dependencies = [
  "gt2-ref",
  "object",
  "png",
+ "residfp-sys",
  "serde_json",
  "sidou-sys",
+ "sidou-tablegen",
  "sidou-tests",
 ]
 

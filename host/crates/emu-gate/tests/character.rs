@@ -278,26 +278,37 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
     );
 }
 
-/// The size of a data symbol in the firmware ELF.
-fn symbol_size(fw: &Firmware, name: &str) -> u64 {
-    use object::{Object, ObjectSymbol};
+/// A data symbol's bytes in the firmware ELF.
+fn symbol_bytes(fw: &Firmware, name: &str) -> Vec<u8> {
+    use object::{Object, ObjectSection, ObjectSymbol};
     let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
-    file.symbols()
+    let sym = file
+        .symbols()
         .find(|s| s.name() == Ok(name))
-        .unwrap_or_else(|| panic!("no symbol {name} in the firmware ELF"))
-        .size()
+        .unwrap_or_else(|| panic!("no symbol {name} in the firmware ELF"));
+    let (addr, size) = (sym.address(), sym.size());
+    file.sections()
+        .find_map(|sec| sec.data_range(addr, size).ok().flatten())
+        .unwrap_or_else(|| panic!("{name}'s {size} bytes at {addr:#x} are in no section"))
+        .to_vec()
 }
 
 /// The device compiles the combined-waveform tables its profiles play and no others: all
 /// three 6581 strengths (R2 WEAK, R3 and R4AR AVERAGE, worn STRONG), the 8580's AVERAGE
-/// alone (the R5). The host keeps all six (sidou-sys).
+/// alone (the R5), as SID_PD's shared blocks (gen/pulldown.h). Each of those profiles reads
+/// back as reSIDfp's table, its blocks are the ones sidou-tablegen lays out for it, and the
+/// pool holds no block they leave unused. The host keeps all six (sidou-sys).
 #[test]
 fn the_firmware_holds_only_the_combined_tables_its_profiles_use() {
+    use residfp_sys::Model;
     use sidou_sys::{sid_chip_profile_get, SID_CHIPS, SID_MODEL_8580, SID_PROFILE_AVERAGE};
+    use sidou_tablegen::{
+        compiled_profiles, pulldown_entry, PulldownLayout, PulldownSource, PD_BLOCK_BYTES,
+        PD_INDEX_BYTES, PROFILE_BYTES,
+    };
     let Some(fw) = fixture() else {
         return;
     };
-    const TABLE: u64 = 5 * 6144;
     for id in 0..SID_CHIPS {
         let p = unsafe { &*sid_chip_profile_get(id) };
         if u32::from(p.model) == SID_MODEL_8580 {
@@ -308,8 +319,57 @@ fn the_firmware_holds_only_the_combined_tables_its_profiles_use() {
             );
         }
     }
-    assert_eq!(symbol_size(&fw, "SID_PULLDOWN_6581"), 3 * TABLE);
-    assert_eq!(symbol_size(&fw, "SID_PULLDOWN_8580"), TABLE);
+    let src = PulldownSource::new();
+    let want = PulldownLayout::new(&src.compiled_rows(true, false));
+    let sid_pd = symbol_bytes(&fw, "SID_PD");
+    assert_eq!(
+        sid_pd.len(),
+        want.bytes.len(),
+        "SID_PD: {} rows and {} blocks expected",
+        want.rows,
+        want.blocks
+    );
+    let block_of = |l: &[u8], r: usize, k: usize| {
+        let at = r * PD_INDEX_BYTES + k * 2;
+        r * PD_INDEX_BYTES + usize::from(u16::from_le_bytes([l[at], l[at + 1]]))
+    };
+    let (mut r, mut all_used) = (0, std::collections::HashSet::new());
+    for (model, all) in [(Model::Mos6581, true), (Model::Csg8580, false)] {
+        for (cws, label) in compiled_profiles(all) {
+            let (mut ours, mut theirs) = (
+                std::collections::HashSet::new(),
+                std::collections::HashSet::new(),
+            );
+            for row in src.profile(model, cws) {
+                for (x, &v) in row.iter().enumerate() {
+                    assert_eq!(
+                        pulldown_entry(&sid_pd, r, x),
+                        v,
+                        "{model:?} {label} row {r} entry {x}"
+                    );
+                }
+                for k in 0..256 {
+                    ours.insert(block_of(&sid_pd, r, k));
+                    theirs.insert(block_of(&want.bytes, r, k));
+                }
+                r += 1;
+            }
+            println!(
+                "{model:?} {label}: {} blocks, {} bytes of them (unshared, {PROFILE_BYTES})",
+                ours.len(),
+                ours.len() * PD_BLOCK_BYTES
+            );
+            assert_eq!(ours, theirs, "{model:?} {label}'s blocks");
+            all_used.extend(ours);
+        }
+    }
+    assert_eq!(r, want.rows, "SID_PD's rows");
+    assert_eq!(
+        all_used.len(),
+        want.blocks,
+        "SID_PD's pool holds blocks no profile uses"
+    );
+    assert_eq!(sid_pd, want.bytes);
 }
 
 // ---- the CHIP view's knobs (M1c Task 4) ----

@@ -86,11 +86,28 @@ Notes on the table:
 
 | Table | Bytes | Read by |
 |---|---|---|
-| Combined-waveform pulldown, `gen/wave_6581.h` + `wave_8580.h` (AVERAGE; 5 rows of 4,096 packed 12-bit entries per model) | 61,440 (184,320 with `SIDOU_ALL_COMBINED_PROFILES`) | the oscillators, in the audio interrupt, through `sid_osc.pulldown` |
+| Combined-waveform pulldown, `gen/wave_6581.h` + `wave_8580.h` (AVERAGE; 5 rows of 4,096 packed 12-bit entries per model; since M2, `gen/pulldown.h`'s shared blocks: see below) | 61,440 (184,320 with `SIDOU_ALL_COMBINED_PROFILES`) | the oscillators, in the audio interrupt, through `sid_osc.pulldown` |
 | Filter cutoff and damping, `gen/filter.h` (`SID_CUTOFF_HZ_*` 2 x 8,192, `SID_RES_K_*` 2 x 64; one curve row per model) | 16,512 | `sid_init` and `sid_set_filter_curve` only |
 | **Total** | **77,952** | 64 KB was the pulldown tables' target |
 
 M0's reSID 0.16 cutoff points (`sid_curves_resid016.h`) are gone.
+
+**Since M2: the pulldown rows share 16-entry blocks** (`gen/pulldown.h`, `SID_PD`). Most of
+a row repeats elsewhere: the NP row is the same in all three 6581 profiles, and long runs
+of zeros and identities recur across rows, profiles and models. sidou-tablegen splits
+every compiled row into 256 blocks of 16 entries, stores each distinct block once (24
+bytes, packed as before), and gives each row an index of 256 u16 offsets from the row to
+its blocks. It is lossless: sidou-tablegen's `shared_pulldown_blocks_read_back_as_residfps_tables`
+reads every row of every profile and model back against reSIDfp's tables, and emu-gate's
+`character.rs` does the same on the firmware's own `SID_PD`. The device's set (the 6581's
+three profiles and the 8580's AVERAGE, 122,880 bytes as packed rows) takes 39,256 bytes:
+20 rows of index and 1,209 blocks. The image shrank from 493,628 to 410,260 bytes.
+
+The lookup (`sid_pulldown`) reads the row's index entry first, a second flash load and
+three more instructions: +12.0 instructions a sample per chip with three voices on
+pulse+saw, +8.0 in the combined scenario. The worst blocks, combined noise, call it
+rarely and did not rise. `.ram_text` grew 160 bytes, as the lookup is inlined at five
+places.
 
 **RAM:**
 
@@ -219,7 +236,8 @@ off throughout, and the reverse.
 **Flash reads in the audio interrupt.** The audio code names no flash data:
 `ram_audio.rs` checks that no address relocation in `.ram_text` points into
 XIP (17 address loads, none into flash). The combined waveforms' pulldown
-rows (61,440 bytes) stay in flash by design and are read through a pointer,
+rows (61,440 bytes; since M2 `gen/pulldown.h`'s shared blocks, 39,256 bytes on the device)
+stay in flash by design and are read through a pointer,
 which the check cannot see. What they cost on the device is a hardware open
 check ([docs/hardware.md](../hardware.md), "Combined waveforms from flash").
 If they cost too much, the default profile's rows move to POOL.

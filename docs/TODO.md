@@ -162,15 +162,15 @@ Follow-ups that aren't tied to a milestone task yet.
 
 ## Generate the active profile's combined-waveform rows into POOL (M2/M3 fallback)
 
-- **Where:** `core/sid/gen/wave_6581.h` and `wave_8580.h` (`SID_PULLDOWN_*`),
+- **Where:** `core/sid/gen/pulldown.h` (`SID_PD`),
   `sid_osc_set_profile` (`core/sid/sid_osc.h`), `chips` in POOL
   (`platform/fm1/audio.c`), and `sidou-tablegen`, which samples the tables
   from reSIDfp.
-- **Problem:** the combined-waveform tables are flash data: 30,720 bytes per
-  model and strength. The firmware holds the 6581's three (its chip profiles
-  play WEAK, AVERAGE and STRONG) and the 8580's AVERAGE, 122,880 bytes, half
-  the image's data (decision record 0006, Cost). If M2's storage or M3's 6502
-  needs the flash, they can go. The audio interrupt also reads them from
+- **Problem:** the combined-waveform tables are flash data. The firmware holds
+  the 6581's three (its chip profiles play WEAK, AVERAGE and STRONG) and the
+  8580's AVERAGE: 122,880 bytes as rows, 39,256 since M2 shares their
+  16-entry blocks (decision record 0003, Costs). If M3's 6502 needs the
+  flash, they can go. The audio interrupt also reads them from
   flash, a row lookup per combined-waveform sample, whose cost is M1b's open
   hardware check ([hardware.md](hardware.md), "Combined waveforms from
   flash").

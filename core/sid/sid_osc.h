@@ -7,8 +7,7 @@
 
 #include "gen/grid.h"
 #include "gen/noise_jump.h"
-#include "gen/wave_6581.h"
-#include "gen/wave_8580.h"
+#include "gen/pulldown.h"
 
 /* An internal invariant, checked in host builds (the tests and fuzzers trap on it, as
  * UBSan does) and compiled out on the device and with NDEBUG. No <assert.h>: the
@@ -32,7 +31,7 @@
  * enough that OSC3 reads the same values at the same cycles, for every waveform.
  *
  * Combined waveforms: the AND of the selected waveforms goes through a pulldown table
- * generated from reSIDfp (gen/wave_*.h, rows ST, PT, PS, PST and NP), one per
+ * generated from reSIDfp (gen/pulldown.h, rows ST, PT, PS, PST and NP), one per
  * combined-waveform profile (gen/grid.h; reSIDfp's AVERAGE by default). On the 6581, a
  * combination with sawtooth whose output has its top bit low pulls the accumulator's
  * MSB low too; since the output's top bit is always low when the accumulator enters
@@ -63,7 +62,7 @@ typedef struct {
     uint32_t no_pulse; /* 0xfff without pulse, else 0 */
     uint32_t no_noise; /* 0xfff without noise, else 0 */
     uint32_t wf_mask;  /* 0xfff with any waveform, else 0 */
-    const uint8_t* pd_row; /* the pulldown row, or 0 for none */
+    const uint16_t* pd_row; /* the pulldown row (SID_PD.idx), or 0 for none */
     uint8_t slow;      /* sid_osc_advance needs sid_osc_advance_slow */
     uint8_t pull_low;  /* 6581, sawtooth combination in the lower half: every MSB rise is
                         * pulled low at once (sid_osc_advance's inline path) */
@@ -93,7 +92,7 @@ typedef struct {
     uint32_t quiet;
     uint32_t quiet_src;      /* with ring modulation: the source's accumulator and */
     uint32_t quiet_src_freq; /* frequency the quiet stretch assumed for the next step */
-    const uint8_t (*pulldown)[6144]; /* the model's pulldown rows */
+    const uint16_t (*pulldown)[256]; /* the profile's pulldown rows (SID_PD.idx) */
     /* The ring source's accumulator as this voice sees it, cycle by cycle: masked to its
      * lower half when the source pulls every MSB rise low before this voice's output
      * looks at it (reSIDfp clocks outputs in voice order; clock_voices sets it). */
@@ -109,9 +108,11 @@ typedef struct {
 #define SID_NOISE_RESET_8580 986000u
 #define SID_NOISE_FADE_8580 314300u
 
-/* Entry x of a packed pulldown row (see gen/wave_6581.h). */
-static inline uint32_t sid_pulldown(const uint8_t* row, uint32_t x) {
-    const uint8_t* p = row + (x >> 1) * 3;
+/* Entry x of a pulldown row (gen/pulldown.h): its block starts row[x >> 4] bytes after the
+ * row, and holds 16 entries packed two to three bytes. Both reads are flash (XIP), through
+ * the pointer sid_osc_update_mode set up. */
+static inline uint32_t sid_pulldown(const uint16_t* row, uint32_t x) {
+    const uint8_t* p = (const uint8_t*)row + row[x >> 4] + ((x >> 1) & 7u) * 3u;
     return x & 1u ? (uint32_t)(p[1] >> 4) | ((uint32_t)p[2] << 4)
                   : (uint32_t)p[0] | ((uint32_t)(p[1] & 0x0f) << 8);
 }
@@ -222,8 +223,9 @@ static inline void sid_osc_set_profile(sid_osc* o, uint32_t profile) {
     if (profile >= SID_PROFILES) {
         profile = SID_PROFILE_AVERAGE;
     }
-    o->pulldown = o->is6581 ? SID_PULLDOWN_6581[SID_COMBINED_TABLE_6581(profile)]
-                            : SID_PULLDOWN_8580[SID_COMBINED_TABLE_8580(profile)];
+    o->pulldown = o->is6581
+                      ? &SID_PD.idx[5u * SID_COMBINED_TABLE_6581(profile)]
+                      : &SID_PD.idx[SID_PD_8580_ROW + 5u * SID_COMBINED_TABLE_8580(profile)];
     sid_osc_update_mode(o);
 }
 
@@ -492,7 +494,7 @@ static inline void sid_osc_cycle(sid_osc* o, uint32_t src_acc) {
         uint32_t ix = sid_wave_index(c, o->acc, src_acc);
         uint32_t mask = (o->no_noise | o->noise) & (o->no_pulse | o->pulse);
         uint32_t ramp = sid_wave_ramp(o->ramp_kind, ix);
-        const uint8_t* row = o->pd_row;
+        const uint16_t* row = o->pd_row;
         uint32_t x = ramp & mask;
         o->out = row ? sid_pulldown(row, x) : x;
         if (!o->is6581 && o->ramp_kind) {

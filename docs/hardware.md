@@ -238,8 +238,9 @@ The rules for keeping it that way:
   every address the `.ram_text` code loads. Other constant tables stay in
   flash.
 - **One flash read remains, by design:** the combined waveforms' pulldown
-  rows (`gen/wave_*.h`, 122,880 bytes since M1c's chip profiles: the 6581's
-  three strengths and the 8580's AVERAGE), which the
+  rows (`gen/pulldown.h`, the 6581's three strengths and the 8580's AVERAGE:
+  122,880 bytes of rows since M1c's chip profiles, 39,256 since M2 shares
+  their 16-entry blocks; a lookup reads the row's index, then the block), which the
   oscillator reads through `sid_osc.pulldown` while a combined waveform
   plays. They are too big for RAM, and the relocation check cannot see a
   read through a pointer. Whether they cost cache misses in the audio
@@ -510,7 +511,7 @@ erase is built: a spike that needs another mode fails `store_fm1.h`'s
 | Actual CPU clock | Melodee measured 360 MHz; the budget assumes 240. | Time a dependent-add loop against TIMER4, or read the `TL_CKCNT` counter. |
 | Cycles vs instructions | The emulator counts instructions, not cycles. Flash (XIP) fetches and divides cost more. | Read the per-core counters around an audio block; compare `.text` with `.ram_text`. |
 | The audio path from SRAM | fm1-emu doesn't model the I-cache, so Task 5b's benefit is unmeasured. | Cycles per audio block (TIMER4 or `TL_CKCNT`) and fetch misses (`IF_UACNT`), with the LCD redrawing, in a build with `.ram_text`'s audio rules and one without. |
-| Combined waveforms from flash | The pulldown rows (6 KB per waveform and chip, `.rodata`) are the audio interrupt's only flash data reads. | Cycles per audio block with two chips on combined waveforms against single waveforms (TIMER4 or `TL_CKCNT`), and D-cache misses if a counter shows them. If they cost, move the default profile's rows to POOL (a loaded section, copied at boot). |
+| Combined waveforms from flash | The pulldown rows (`SID_PD`, `.rodata`: a row's index entry, then its 16-entry block) are the audio interrupt's only flash data reads. | Cycles per audio block with two chips on combined waveforms against single waveforms (TIMER4 or `TL_CKCNT`), and D-cache misses if a counter shows them. If they cost, move the default profile's rows to POOL (a loaded section, copied at boot). |
 | The USB retry's stall | Without a cable, the attach `usb_retry` runs once a second times out three SIE writes in one main-loop pass (300k instructions in fm1-emu). | Time `usb_attach_now` against TIMER4 on a unit powered on without a cable. If it is well over a millisecond, poll less or stop at the first timeout. |
 | Flash program and erase times (M2a Task 3b) | The store's write windows and held erases are sized from them; fm1-emu's flash is instantaneous. Also partial programs per page, reprogramming, ECC, page erase, erase suspend, and whether the stock firmware writes the store's range. | The flash spike ([hardware-test.md](hardware-test.md) section 12); the table and the decision rule are in "The flash part's timings" above. |
 | Unknown latencies | Divide latency, IRQ entry latency, `IPMASK` semantics, and whether IRQ priorities have 4 or 8 levels | Microbenchmarks on the device. |

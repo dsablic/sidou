@@ -217,7 +217,7 @@ fn main() {
             ),
         )
         // `static const` tables private to the headers; they have no symbol to link to.
-        .blocklist_item("SID_ENV_RATE_POS|SID_ENV_THRESHOLDS|SID_PULLDOWN_.*|SID_NOISE_WB")
+        .blocklist_item("SID_ENV_RATE_POS|SID_ENV_THRESHOLDS|SID_PD|SID_NOISE_WB")
         .prepend_enum_name(false)
         .derive_default(true)
         .derive_debug(true)
