@@ -59,6 +59,8 @@ fn step_json(s: &journeys::StepResult) -> Value {
         "actions": {"presses": s.effort.presses, "holds": s.effort.holds, "turns": s.effort.turns,
                     "detents": s.effort.detents, "notes": s.effort.notes, "counted": s.effort.actions},
         "two_handed": s.two_handed, "note_blocked": s.note_blocked,
+        "remember": s.remember,
+        "remembered_before": s.remembered_before,
         "forced_wait_ms": s.wait_ms, "frames_to_done": s.frames_to_done,
         "view_before": s.view_before, "view_after": s.view_after,
         "stack_depth_after": s.depth_after, "screenshot": s.shot, "clip": s.clip,

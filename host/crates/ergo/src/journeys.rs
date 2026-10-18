@@ -620,6 +620,8 @@ pub enum Status {
 
 #[derive(Clone, Debug)]
 pub struct StepResult {
+    pub remember: bool,
+    pub remembered_before: bool,
     pub id: String,
     pub label: String,
     pub caption: Option<String>,
@@ -912,6 +914,8 @@ pub fn run_step(
     let depth_before = d.depth();
     let start_ms = d.ms();
     let mut r = StepResult {
+        remember: false,
+        remembered_before: false,
         id: s.id.clone(),
         label: s.label.clone(),
         caption: s.caption.clone(),
@@ -949,6 +953,7 @@ pub fn run_step(
     d.mid_frame();
     let before = d.shot();
     let params_before = d.params();
+    r.remembered_before = ctx.remembered.as_ref() == Some(&params_before);
     let audio_from = d.audio_mark();
     let pre = d.audio_since(audio_from.saturating_sub((FS * 0.4) as usize));
     let mut waited = 0u64;
@@ -975,6 +980,7 @@ pub fn run_step(
     let _ = detents;
     if s.remember {
         ctx.remembered = Some(d.params());
+        r.remember = true;
     }
     let inputs_end = d.ms();
     // Wait for the expectations (a toast or popup shows within a few frames; a wipe or a card

@@ -240,7 +240,7 @@ pub fn journey_findings(
             .numbers(json!({"journey": j.id})),
         );
     }
-    for s in &j.steps {
+    for (index, s) in j.steps.iter().enumerate() {
         let id = format!("{}.{}", j.id, s.id);
         match &s.status {
             Status::NotPossible(why) => {
@@ -323,7 +323,20 @@ pub fn journey_findings(
                 }
                 fs.push(f);
             }
-            if s.destructive && !s.changed_params.is_empty() && !s.confirm_seen {
+            let remembered = j.steps[..index].iter().any(|s| s.remember);
+            let recovered = remembered
+                && s.remembered_before
+                && !s.remember
+                && j.steps[index + 1..]
+                    .iter()
+                    .take_while(|s| !s.remember)
+                    .any(|s| {
+                        matches!(s.status, Status::Ok)
+                            && s.expects
+                                .iter()
+                                .any(|(name, ok)| name == "recalled parameters" && *ok)
+                    });
+            if s.destructive && !s.changed_params.is_empty() && !s.confirm_seen && !recovered {
                 let mut f = Finding::new(
                     format!("SAFE.destructive.{id}"),
                     Sev::Medium,
@@ -387,8 +400,38 @@ mod tests {
     use super::*;
     use crate::metrics::EffortCount;
 
+    #[test]
+    fn a_later_passing_recall_recovers_a_destructive_step() {
+        let mut remembered = step("shape", None, 1, 1, "live");
+        remembered.remember = true;
+        let mut destructive = step("next", None, 1, 1, "live");
+        destructive.destructive = true;
+        destructive.remembered_before = true;
+        destructive.changed_params = vec!["cutoff".into()];
+        let mut recalled = step("back", None, 1, 1, "live");
+        recalled.expects = vec![("recalled parameters".into(), true)];
+        let mut j = JourneyResult { id: "jam".into(), title: "Jam".into(), tour: false,
+            steps: vec![remembered, destructive, recalled], captured: vec![], settings_drift: None };
+        let safe = |j: &JourneyResult| !journey_findings(j, &json!({}), &Config::default()).0.iter()
+            .any(|f| f.id.starts_with("SAFE.destructive"));
+        assert!(safe(&j));
+        j.steps[2].expects[0].1 = false;
+        assert!(!safe(&j));
+        j.steps[2].expects[0].1 = true;
+        j.steps[0].remember = false;
+        assert!(!safe(&j));
+        j.steps[0].remember = true;
+        j.steps[2].remember = true;
+        assert!(!safe(&j));
+        j.steps[2].remember = false;
+        j.steps[1].remembered_before = false;
+        assert!(!safe(&j));
+    }
+
     fn step(id: &str, task: Option<&str>, actions: u32, depth: u8, view: &str) -> StepResult {
         StepResult {
+            remember: false,
+            remembered_before: false,
             id: id.into(),
             label: id.into(),
             caption: None,
