@@ -62,24 +62,26 @@ the 6502 study below.
    - **pattern DICE,** next to the ergonomics pass's patch DICE.
    Everything stays plain GoatTracker 2 data, so a generated song opens in GoatTracker. Its
    own plan when we get there; first candidate: per-step chance plus MUTATE in STEP.
-10. **BLE MIDI, published (after v0.1; the licence work starts now).** The user's decision
-   (2026-10-18): BLE MIDI ships in the published firmware through a carved-out licence, not
-   only as a user-built variant (design doc section 17 is superseded on this point).
-   - **SIDOU's own code** gets a GPL-3.0 section 7 additional permission to link with
-     M-VAVE's FM1 binary SDK (`libfm1_engine.a`, which holds the BLE stack) and convey the
-     result, worded as FM1 Open's (<https://github.com/m-vave/fm1_open>, `LICENSE.md`).
-   - **M-VAVE's grant** (FM1 Open `THIRD_PARTY.md`) allows redistributing the library as part
-     of firmware for M-VAVE FM1 devices, commercial or not: an FM-1-only build is covered.
-     Confirm the reading with M-VAVE before the release (shown to the user first).
-   - **Code SIDOU doesn't own:** Felucca's HAL, USB stack and TRS MIDI driver (GPL-3.0-only,
-     `platform/fm1/VENDORED.md`) need their author's same permission, or replacing (FM1 Open's
-     own HAL carries M-VAVE's exception). The update loader is a separate binary, not
-     linked with the SDK. Any other third-party code in the image is checked the same way
-     (the licence audit).
-   - **Engineering:** the spike as section 17 describes, with FM1 Open's BLE MIDI path as the
-     working reference: RAM, flash, the SDK's runtime next to SIDOU's bare-metal loop, and
-     radio interrupts against the audio deadline. Wi-Fi stays out (never certified).
-
+10. **BLE MIDI, a user-built variant (after v0.1).** The user's decision (2026-10-18), after the
+   licence audit of the app image: published SIDOU links only code whose owners allow it,
+   and about a third of the image is others' copyleft (Felucca's HAL, USB and update code,
+   GPL-3.0-only; the reSIDfp-derived filter and waveform tables and DAC, GPL-2.0-or-later;
+   the GoatTracker-derived player and format code). Linking M-VAVE's closed BLE library
+   (`libfm1_engine.a`, from FM1 Open) into a *published* image would need all of them to
+   agree. So, as design doc section 17 planned:
+   - **Source only:** SIDOU publishes the BLE integration and an opt-in build setting
+     (`SIDOU_WIRELESS=ble`). The user's build fetches M-VAVE's SDK library on their own
+     machine and links it there; GPL allows a private combination that isn't distributed.
+   - **Never published:** CI never builds or ships the variant; no release artefact holds
+     the vendor library.
+   - **Our own BLE stack is not an option:** the radio's controller is undocumented and
+     exists only inside the closed library, so an open host stack would still link it.
+   - **Engineering:** the spike as section 17 describes, with FM1 Open's BLE MIDI path as
+     the working reference: RAM, flash, the SDK's runtime next to SIDOU's bare-metal loop,
+     radio interrupts against the audio deadline. BLE MIDI feeds the same timestamped MIDI
+     path as USB and TRS. Wi-Fi stays out (never certified).
+   - **Later, if wanted:** the owners' permissions could still make it a published feature;
+     not pursued now.
 ## Alongside
 
 - **Reports for other projects** are collected in `docs/upstream-reports.md` (FM-1 SID's
