@@ -55,7 +55,6 @@ pub const CONTROLS: [(&str, u8); 7] = [
 pub const DOCUMENTED_INERT: &[(&str, &str)] = &[
     ("live", "SELECT"),
     ("live", "ALGORITHM"),
-    ("tracker", "SELECT"),
     ("tracker", "ALGORITHM"),
     ("status", "SELECT"),
     ("status", "ALGORITHM"),
@@ -177,12 +176,12 @@ pub fn analyse(effects: &BTreeMap<(String, String), Effect>) -> ConsistencyResul
             "documented_inert": documented_inert,
         }));
         if !e.acts() {
-            if documented_inert {
+            if documented_inert && !["status", "about", "charset"].contains(&view.as_str()) {
                 inert
                     .entry(control_static(control))
                     .or_default()
                     .push(view_static(view));
-            } else {
+            } else if !documented_inert {
                 findings.push(
                     finding(
                         format!("CONS.drift.{view}.{}", crate::slug(control)),
@@ -299,6 +298,22 @@ fn finding(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tracker_select_is_documented_and_read_only_views_do_not_count_as_inert() {
+        let mut m = BTreeMap::new();
+        m.insert(("tracker".into(), "SELECT".into()), fx(true, &[], false, 0));
+        for view in ["status", "about"] {
+            m.insert((view.into(), "SELECT".into()), fx(false, &[], false, 0));
+            m.insert((view.into(), "ALGORITHM".into()), fx(false, &[], false, 0));
+        }
+        assert!(analyse(&m).findings.is_empty());
+        m.insert(("live".into(), "SELECT".into()), fx(false, &[], false, 0));
+        let f = analyse(&m).findings;
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].id, "CONS.inert.select");
+        assert_eq!(f[0].numbers["views"], json!(["live"]));
+    }
 
     fn fx(screen: bool, params: &[&str], view_changed: bool, depth: i32) -> Effect {
         Effect {
