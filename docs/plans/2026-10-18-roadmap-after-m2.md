@@ -60,6 +60,30 @@ the 6502 study below.
 - **fm1-emu:** bump the pinned revision (decoder fixes, speed); offer the USB host model built
   for SIDOU's tests and the decoder gap SIDOU found (`docs/TODO.md`) back upstream. Anything
   posted to another project is shown to the user first.
+- **FM-1 Live Link, a companion for the whole FM-1 community** (after USB-MIDI out works on
+  the device, before v0.1). A browser page (Web MIDI: Chrome and Edge on desktop, Chrome on
+  Android; iOS needs a native app later) that shows the device on a large screen and
+  controls it, built as a module any FM-1 firmware can adopt:
+  - **Protocol:** SysEx over the normal USB-MIDI port, no special USB mode, with an open
+    spec. Two display modes: **cells** (changed character + colour cells, plus a one-time
+    font and palette upload, a few hundred bytes a frame; SIDOU's 30x30 grid) and
+    **pixels** (changed rectangles, run-length coded RGB565, for firmwares that draw pixels).
+    Plus **state** streams a firmware may offer: SID or synth register writes (SIDOU: about
+    25 bytes a frame per chip), transport and the current view. Opt-in on the device, with a
+    rate cap. Its cost is measured against the main-loop and USB gates and stays within them.
+  - **Device side:** a small C module, MIT-licensed so GPL-3.0-only firmwares (FM1 Open,
+    Felucca's family) can take it as easily as SIDOU (GPL-3.0-or-later). It sends what the
+    firmware already draws, changed cells or rectangles; nothing new is rendered for it.
+  - **Viewer:** the mirror drawn with the device's own font and palette at any size; for
+    SIDOU, live per-voice scopes and the filter curve from the streamed register writes run
+    through SIDOU's own SID core in WASM (`tools/web-demo`), and all three TRACKER voices
+    side by side. Remote control both ways through the MIDI the panel already sends.
+  - **One companion page:** the mirror, the scopes, remote control and the GoatTracker song
+    transfer below.
+  - **Prior art:** the Dirtywave M8's headless mode with m8c (a screen stream over USB
+    serial); nothing like it exists for the FM-1 (checked 2026-10-18).
+  - **Offered to the other FM-1 firmwares** once SIDOU ships it, through
+    `docs/upstream-reports.md`'s offers, shown to the user first.
 - **The GoatTracker round trip:** M2e Task 5's SysEx song dumps, then a small browser page
   (Web MIDI) to send a song between the FM-1 and a computer, as a recipe and a video.
 - **Recording into a DAW now:** check SIDOU in fm1-emu's AU / VST3 / CLAP plugin and document

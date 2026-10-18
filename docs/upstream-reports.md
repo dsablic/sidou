@@ -20,7 +20,7 @@ open.
 
 **Offers rather than bugs** (also shown to the user first): SIDOU's USB host model for
 fm1-emu's tests (`docs/TODO.md`), and macOS support for the FM-1's ROM-boot recovery
-(`tools/fm1-unbrick-mac`) for MvaveFM1Unbricker / jl-uboot-tool.
+(`tools/fm1-unbrick-mac`) for MvaveFM1Unbricker / jl-uboot-tool. Later: FM-1 Live Link (the roadmap's companion module) for the other FM-1 firmwares.
 
 ## 1. FM-1 SID: psid_load out-of-bounds read
 

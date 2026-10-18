@@ -152,6 +152,8 @@ Follow-ups that aren't tied to a milestone task yet.
   full-rate frames).
 - **Problem:** demos, screen recordings and the browser editor would benefit from seeing
   the device's screen live on the computer.
+- **Update, 2026-10-18:** now FM-1 Live Link in the roadmap (`plans/2026-10-18-roadmap-after-m2.md`,
+  Alongside): changed cells rather than tile pixels, a few hundred bytes a frame.
 - **Action:** an opt-in mode that copies each sent tile run to USB as well (about
   2.5–20 KB a frame at typical change rates), plus a viewer in the web companion. Measure
   the USB cost against the main-loop budget, and add hardware checks. The same transport
