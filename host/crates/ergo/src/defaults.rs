@@ -12,6 +12,32 @@ use crate::config::Config;
 use crate::device::{key_of_note, Dev};
 use crate::findings::{metric, Finding, Metric, Sev};
 use crate::journeys::{audio_stats, write_clip, FS};
+use crate::metrics::rms_dbfs;
+
+fn preset_stats(a: &[f32], sustain: u8, cfg: &Config) -> Value {
+    let from = (FS * 0.02) as usize;
+    let to = (FS * 0.42) as usize;
+    let mut stats = audio_stats(&a[from.min(a.len())..to.min(a.len())], cfg);
+    if sustain == 0 {
+        let attack = &a[..a.len().min((FS * 0.3) as usize)];
+        let w = (FS * 0.05) as usize;
+        let loudest = if attack.len() < w {
+            rms_dbfs(attack)
+        } else {
+            let mut energy: f64 = attack[..w].iter().map(|s| f64::from(*s).powi(2)).sum();
+            let mut peak = energy;
+            for i in w..attack.len() {
+                energy += f64::from(attack[i]).powi(2) - f64::from(attack[i - w]).powi(2);
+                peak = peak.max(energy);
+            }
+            crate::metrics::db((peak / w as f64).sqrt() / 32768.0)
+        };
+        stats["held_rms_dbfs"] = stats["rms_dbfs"].clone();
+        stats["rms_dbfs"] = json!(loudest);
+        stats["level_window"] = json!("loudest 50 ms in first 300 ms");
+    }
+    stats
+}
 
 pub fn preset_names() -> Vec<String> {
     (0..16u8)
@@ -130,10 +156,8 @@ pub fn run_all(build: &Path, cfg: &Config, out: &Path) -> DefaultsResult {
         {
             // The attack and what follows it: 20 to 420 ms after the key (a percussive preset
             // has decayed to nothing by the end of a long note, which is its design).
-            let from = (FS * 0.02) as usize;
-            let to = (FS * 0.42) as usize;
-            let win = &a[from.min(a.len())..to.min(a.len())];
-            let stats = audio_stats(win, cfg);
+            let preset = unsafe { &*sidou_sys::live_preset_get(*i as u8) };
+            let stats = preset_stats(&a, preset.sustain_release >> 4, cfg);
             let id = format!("{}.{}", crate::slug(name), nname.to_lowercase());
             let label = format!("preset {name}, {nname}");
             let clip = format!("defaults/{id}.wav");
@@ -163,6 +187,19 @@ pub fn run_all(build: &Path, cfg: &Config, out: &Path) -> DefaultsResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_percussive_preset_is_judged_by_its_attack() {
+        let cfg = Config::default();
+        let mut a = vec![0.0; (FS * 0.9) as usize];
+        for (i, sample) in a.iter_mut().take((FS * 0.05) as usize).enumerate() {
+            *sample = if i % 2 == 0 { 1400.0 } else { -1400.0 };
+        }
+        let stats = preset_stats(&a, 0, &cfg);
+        assert!((stats["rms_dbfs"].as_f64().unwrap() + 27.39).abs() < 0.1);
+        assert!(!judge("hit", "hit", &stats, &cfg).iter().any(|f| f.id == "MUS.quiet.hit"));
+        assert!(preset_stats(&a, 8, &cfg)["rms_dbfs"].as_f64().unwrap() < cfg.first_rms_min_db);
+    }
 
     #[test]
     fn silence_clipping_and_level_are_judged() {
