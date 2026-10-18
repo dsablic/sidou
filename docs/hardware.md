@@ -169,16 +169,37 @@ from the SPL after a reset, never next to the app. The layout:
 
 | Region | Range | Size |
 |---|---|---|
-| RAMTEXT | 0x01C00000–0x01C0C000 | 48 KB |
-| RAM-run debug area (crt0.S's boot words at 0x01C0DF20) | 0x01C0C000–0x01C0E000 | 8 KB |
-| RAM | 0x01C0E000–0x01C1E000 | 64 KB |
-| POOL | 0x01C1E000–0x01C74000 | 344 KB: the song's content region first (`__song_region`, 0x01C1E000–0x01C2E000, 64 KiB, 4 KiB aligned), then the chips, the slots' pool and the rest |
+| RAMTEXT | 0x01C00000–0x01C0C000 | 48 KiB |
+| RAM-run debug area (crt0.S's boot words at 0x01C0DF20) | 0x01C0C000–0x01C0E000 | 8 KiB |
+| RAM | 0x01C0E000–0x01C1E000 | 64 KiB |
+| POOL | 0x01C1E000–0x01C74000 | 344 KiB |
+
+POOL starts with the song's content region: `__song_region` to `__song_region_end`,
+**[0x01C1E000, 0x01C2E000)**, 65,536 bytes, 4 KiB aligned. The chips, the slots'
+pool and the rest follow it. M3 overlays this same region with the C64's 64 KiB
+address space: a song and a `.sid` never play together.
 
 M2c Task 6 moved the RAM/POOL boundary 8 KiB down (from 0x01C20000) so POOL holds
-the song's 64 KiB content region beside chip B. Measured at M2c Task 6 (no M2b Task 3
-yet): the RAM region 48,948 bytes used, 16,588 free; POOL 346,656 used, 5,600 free;
-22,188 free together (the gate after M2c is 22,000, each region at least 4 KiB:
-emu-gate `tests/song.rs`).
+the song's 64 KiB content region beside chip B. The original standalone M2c floor
+was 22,000 bytes free across RAM and POOL. With M2a, M2d, M2e and M2f merged, the
+overview's budget accounting makes that **7,000** (22,000 − 2,000 − 6,000 − 2,000 −
+5,000); **each region still needs 4,096 bytes free**. These gates are unchanged.
+The [M2c status](plans/2026-10-15-m2c-song-engine.md#m2c-status) records the current
+measurement and the RAM margin left open for the end-of-M2 review.
+
+Measured on `3b6d28d` (M2c Task 9, with the other merged M2 work):
+
+| Region | Used | Capacity | Free | Gate |
+|---|---|---|---|---|
+| RAMTEXT | 45,216 B | 49,152 B | 3,936 B | used ≤49,152 B |
+| RAM (`.data` + `.bss` + `.song_ram`) | 61,420 B | 65,536 B | 4,116 B | free ≥4,096 B |
+| POOL | 346,560 B | 352,256 B | 5,696 B | free ≥4,096 B |
+| RAM + POOL | 407,980 B | 417,792 B | 9,812 B | free ≥7,000 B |
+
+The RAM region has **only 20 bytes above its floor**; combined slack of 2,812 bytes
+does not make those regions interchangeable. This remains an end-of-M2 review item,
+not permission to lower a bound. The firmware image is **454,288 bytes**, 57,712 below
+the active **512,000-byte M2f ceiling** (the fixed app slot is 581,564 bytes).
 
 **The song player (M2c Task 6)** runs in the audio interrupt too: the whole of
 `core/player/gt2_play.c` (the frame path, at `-Os` and without jump tables, which
@@ -191,7 +212,24 @@ wait (`lcd_init`'s `during`), and the boot's zeroing skips them (`.song_ram` and
 budgets depend on where the audio blocks fall against the frames). Its analysis (`gt2_shape.c`) and `song_ctl`'s
 main-loop side stay in flash and reach the frame path through pointers (`far_start`,
 `far_frame`). The player's frequency tables are in `.data`; the shapes it follows and
-the song are in RAM. `.ram_text` grew from 36,460 to **42,844 bytes** (of 49,152).
+the song are in RAM. At Task 6, `.ram_text` grew from 36,460 to 42,844 bytes;
+the integrated M2c measurement is **45,216 of 49,152 bytes** (3,936 left).
+
+On `3b6d28d`, the two-chip/slot-switch budget leaves **205.21875 instructions/sample**
+before chip B's mix and MASTER. Their measured costs (8.05946 and up to 12.08567)
+are run averages: subtracting them leaves an illustrative **185.07363/sample** with
+the song player absent, not proven worst-block headroom. Allowances of 10 and 12.5
+would leave **182.71875**, conditional on holding per block; existing tests only
+bound run averages (constant gain for MASTER). Per-block accounting remains for the
+end-of-M2 audio review. M3's CPU runs outside the ISR (decision record 0008), but its
+stamped writes must fit there. See the M2c status for the player's separate worst
+block with edits and the full accounting.
+
+The player sweep on that commit covers 193 runs of 145 song/subtune/options cases.
+Its worst block, a locked `sixpack.sng` with eight cell edits, is **5,070 + 592
+isolated row-accounting instructions = 5,662/block**, **44.234375/sample** against
+the unchanged **60** gate. The song test's 161.3/sample remainder includes the player
+but excludes mix/MASTER; it must not be mistaken for M3's no-player reserve.
 
 Headroom beyond 48 KB, if the audio path ever needs it:
 - `-Os` for `core/fx` (about 3.3 KB smaller, at a cycle cost not yet

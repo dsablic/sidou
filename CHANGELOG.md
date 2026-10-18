@@ -9,6 +9,12 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- M2c song engine complete (Tasks 1-9): native GoatTracker `.sng` files with SIDOU's
+  trailer, the host 6502 reference and register-matched C player, frame-exact interrupt
+  playback with bounded live edits, parameter locks, SONG's store actions and About's
+  original music. [The M2c status](docs/plans/2026-10-15-m2c-song-engine.md#m2c-status)
+  records the remeasured costs, memory, image and coverage. The narrow RAM-region margin
+  and the GoatTracker licence-audit findings remain open for the end-of-M2 review.
 - **A theme for the screens' colours** (docs/art/README.md "Theme"): the views take their colours
   from roles defined once in `app/theme.c`. **HIGH CONTRAST** is the new default (black, white
   values, grey labels, dark grey for the inactive, light red, cyan and light green for voices
@@ -69,8 +75,9 @@ All notable changes are documented here. The format follows
   bar. TRACKER: 12 rows at 2× of one voice. CHIP: one section at a time under the tabs CHIP,
   DIST, MOD, FX, its choice and its four controls at 3× in the knobs' places. STATUS and ABOUT:
   the titles and key numbers larger.
-- **The menu has 15 items** (THEME after ROWS, MIDI last), its title bar, values and selected line in the
-  theme's colours; the toast, the popup and MIDI learn's frame follow the theme too.
+- **The menu has 16 items** (THEME after ROWS, SONG before ABOUT, MIDI last), its title bar,
+  values and selected line in the theme's colours; the toast, the popup and MIDI learn's
+  frame follow the theme too.
 - Settings persist: CARDS, KEYS, SOUNDS, TRACKER ROWS, the preset and its edits,
   the keys' chip model, base profile and character, effect slots, envelope mode
   and MIDI-learn bindings. A background save runs 5 s after the last persisted
@@ -80,9 +87,9 @@ All notable changes are documented here. The format follows
   still forces the full sequence. Schema-1 settings load TRACKER ROWS as BAR.
 - SAVE saves on a clean **release**, not on press; any encoder turn or other
   button pressed while held cancels that release's save. With CHIP's chip focus
-  and a USER target/applied slot it saves the profile; elsewhere on current main
-  it saves settings (song-file saves remain M2c Task 8's work). SAVE held + a
-  knob opens MIDI learn on that parameter without moving it. A fresh SAVE forgets
+  and a USER target/applied slot it saves the profile; in the song views it saves
+  the song; elsewhere it saves settings. SAVE held + a knob opens MIDI learn on
+  that parameter without moving it. A fresh SAVE forgets
   its binding; SAVE held + HOME in the frame asks to clear all, then a fresh
   SAVE confirms. HOME or 10 s cancels; outside the frame SAVE held + HOME consumes
   HOME. Explicit saves report completion and forced gaps, with the drive chunk

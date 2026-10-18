@@ -39,12 +39,13 @@ SIDOU builds on, or learns from, the work of these people and projects.
   Timmermann's measurements of the VIC-II colours
 
 ## Trackers and music
-- **GoatTracker**: Lasse Öörni (Cadaver) and contributors: SIDOU's song format
-  and its player's reference
+- **GoatTracker**: Lasse Öörni (Cadaver) and contributors: SIDOU's
+  [song format](docs/decisions/0007-gt2-song-format.md)
+  and its [player's reference](third_party/goattracker2/VENDORED.md)
 - **Cadaver, Randall, Richard Bayliss, Hein, Jammer and No-XS**: GoatTracker's
-  example songs
-- **Klaus Dormann**: the 6502 functional test
-- **The 6502-rs developers**: the `mos6502` crate
+  [example songs](LICENSING.md#music-and-content)
+- **Klaus Dormann**: the [6502 functional test](third_party/6502-tests/VENDORED.md)
+- **The 6502-rs developers**: the [`mos6502` crate](TESTING.md#song-player-reference)
 - **SID-Wizard**: Mihály Horváth (Hermit)
 - **High Voltage SID Collection (HVSC)** team
 

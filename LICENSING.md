@@ -50,6 +50,24 @@ The Rust crates above are the direct dependencies of the `host/` workspace.
 Their transitive dependencies are pinned in `host/Cargo.lock`; none of them
 ends up in the firmware.
 
+### Song engine attribution (M2c)
+
+The vendored GoatTracker packer and assembled 6502 player are **host-only references**;
+neither is linked into the device. The device does include SIDOU's C song reader/writer,
+player and shape analysis (`core/song/`, `core/player/gt2_play.c`, `gt2_shape.c` and their
+headers). Those follow GoatTracker's format, save-count rules, playroutine and packer
+analysis, and carry forward its frequency data and arithmetic. GoatTracker-derived GPL
+code is used under GPL-3.0-or-later through its GPL-2.0-or-later grant; the playroutines'
+separate notice is listed above. Lasse Öörni and GoatTracker's contributors remain the
+upstream authors. The firmware's combined GPL-3.0-only distribution terms are unchanged.
+
+The licence audit's missing GoatTracker copyright lines in `gt2_sng.h` and `gt2_song.h`
+remain open under the
+[licence audit](docs/TODO.md#licence-labels-that-dont-match-the-codes-origin-release-blocker)
+("Licence labels that don't match the code's origin").
+Passing REUSE checks label coverage, not whether every label correctly reflects origin;
+M2c's documentation completion does not close that release blocker.
+
 M0's filter cutoff points from reSID 0.16 (`core/sid/sid_curves_resid016.h`,
 Dag Lem, GPL-2.0-or-later) were removed in M1b: the filter tables above
 replace them ([decision record 0003](docs/decisions/0003-m1b-accuracy.md)).
@@ -59,10 +77,20 @@ Candidates under evaluation are listed in section 11 of the
 
 ## Music and content
 
-No tunes ship yet. Each tune in the starter pack will have a metadata file
-next to it, recording the composer, the licence or written permission, and
-the source. SIDOU does not redistribute HVSC tunes; users load them from their
-own copy.
+**SIDOU LOOP**, by SIDOU contributors, is an original GPL-3.0-or-later tune embedded in
+the firmware for the initial song and About's music. Its [metadata](assets/songs/sidou-loop.md)
+records the source and licence; `app/demo_song.c` and `sidou-loop.sng` are generated from
+the same song data. About plays it only when the loaded song is clean and stopped, and
+restores that song afterwards.
+
+The original showcase songs **CHROME COMET**, **IRON RITE**, **NEON HIGHWAY** and
+**PAPER LANTERNS**, also by SIDOU contributors under GPL-3.0-or-later, live in
+`assets/songs/`, each with adjacent metadata; they are store/demo/starter-pack files,
+not embedded firmware tunes. GoatTracker's example songs remain host test fixtures,
+credited to their own authors above and in [CREDITS.md](CREDITS.md).
+Every starter-pack tune needs metadata recording its composer, licence or written
+permission, and source. SIDOU does not redistribute HVSC tunes; users load them from
+their own copy.
 
 ## Trademarks
 

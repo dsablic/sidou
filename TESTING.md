@@ -182,7 +182,10 @@ skips empty slots. These complement the store's device-level cuts and cost gates
   and `gt2_sng_check_plain` warns of after a plain export; with a trailer, always, those
   ambiguous files included (the trailer records the count);
 - **refusals and caps:** each message, the song unchanged after it; a song over the
-  device's arena (`SNG: TOO BIG`), multispeed 0 and 8 on the device's caps;
+  device's arena (`SNG: TOO BIG`), multispeed 0 and 8 on the device's caps; device songs
+  also enforce the 65,536-byte canonical saved-size cap, including the trailer
+  (`song_capacity.rs`): accepted edits remain saveable, refused edits leave the model
+  unchanged, and queued edits/cancellation keep the cached size exact;
 - **edits:** each primitive's refusals (readme 3.1's orderlist rules, 128 rows, 208
   patterns, 254 entries, the spare); random edit sequences with compaction, compared after
   every step with an independent Rust model, the bitmap checked against the index and the
@@ -295,6 +298,14 @@ both write lists, the last calls before it and the C player's channels.
   mean, 99.9th percentile and worst call); the device's instructions a sample are gated in
   the emulator (M2c Task 6).
 
+The ordinary run covers 14 example songs and every subtune at 3,000 frames per
+configuration: defaults plus 16 individual/paired option sets, a 256-combination
+matrix on three examples, and 300 generated seeds (0..299). The canonicalisation
+test in `song.rs` prints how many shipped examples were already canonical and loads
+all of them into the device-sized region. The measured totals and the out-of-range
+pitch exception's counts are recorded in the
+[M2c status](docs/plans/2026-10-15-m2c-song-engine.md#m2c-status).
+
 To look at a mismatch by hand, `gt2-trace` prints the reference's writes for the same song
 and options.
 
@@ -339,6 +350,45 @@ RAM one at a time, eight cell writes or swaps a block); the analysis's slices an
 while the largest example loads; the multispeed 8 refusal's toast; stop's releases and chip
 A's hand-back; the map (the song's region, the free RAM). `ram_audio.rs` runs the song in
 the interrupt for its SRAM checks.
+
+### Songs on the store and About (M2c Task 8)
+
+Host tests cover the sliced reader/writer (`song_stream.rs`), saved-size accounting
+(`song_capacity.rs`), store I/O and its runtime bindings (`tests/app/song_io.rs`), the
+SONG menu and SAVE routing (`tests/app/views.rs`, `save_key.rs`), and schema-1/2/3/4
+migration (`settings.rs`). Schema 4 keeps THEME at byte 107 and adds last-song at
+108..123. A refusal before destructive loading leaves the old song and runtime state
+alone; a later failure reloads the old file. Saves freeze model edits from acceptance,
+including the wait for store space, while playback and performance controls continue.
+
+After an fm1 build, run from `host/`:
+
+```sh
+SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --locked --release -p emu-gate \
+    --test song --test song_store --test song_bank --test ram_audio --test flash_budget \
+    -- --nocapture --test-threads=1
+```
+
+`song_store.rs` checks save/reboot/load against the host audio, bad CRC/capacity/setup
+refusals and runtime restoration, unchanged saves writing nothing, frozen edits and the
+SAVE snapshot, NEW/SAVE AS/DELETE, boot recall, concurrent forced song/settings saves,
+and About's music/restoration or silence for a dirty song. `song_bank.rs` checks bank-1
+name-order lookup, missing/busy/dirty recalls, request replacement, stored MIDI setup,
+and TRACKER refresh after a same-shaped recall. Both bound complete main-loop passes
+by 120,000 instructions. `screen.rs` covers the four SONG pages and their golden/cell/
+SPI costs; `tests/app/credits.rs` checks that `CREDITS.md` still generates the checked-in
+About pages. Docs-only attribution links must leave that generated output unchanged.
+
+The map test reports RAMTEXT, RAM and POOL separately, with `__song_region` at POOL's
+start (65,536 bytes, 4 KiB aligned). Each data region must retain 4,096 bytes; the
+combined floor is 7,000 in this integrated tree: M2c's 22,000 less M2a 2,000, M2d 6,000,
+M2e 2,000 and M2f 5,000. The active image ceiling stays M2f's 512,000 bytes, not M2c's
+historical 414,000. `song.rs` charges eight edits plus isolated row-accounting cost to
+the player's worst block (≤60 instructions/sample); its printed remaining budget
+includes the player. `slots_budget.rs` reports the headroom without the player, and
+`chip_b.rs` measures the extra mix/MASTER costs. A song and M3's 6502 never run together;
+[decision record 0008](docs/decisions/0008-m3-6502-and-fm1-sid.md) places M3's CPU outside
+the interrupt, leaving this headroom for its stamped register writes.
 
 ### Golden renders
 

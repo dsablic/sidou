@@ -2,6 +2,11 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # M2c: The song engine, implementation plan
 
+**Status:** Tasks 1-9 done. [M2c status](#m2c-status) records measurements on
+`3b6d28d`, including the merged plans' gates and the open end-of-M2 review items.
+The Task 8 results below retain both historical integration sections; they are
+not measurements of the current tree.
+
 <!-- REUSE-IgnoreStart -->
 
 > **For Claude:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development
@@ -62,6 +67,9 @@ line, stage only your own files, the host, device and emulator commands, the GCC
   with a clear message, never a crash.
 
 **Budgets:**
+These are M2c's original standalone budgets. In the integrated tree, the overview's
+merged-plan accounting applies: combined free RAM ≥7,000 bytes, each data region
+≥4,096, and M2f's image ceiling 512,000 bytes. Neither gate is changed by Task 9.
 - the player's tick **and the block's song edits** ≤ 60 instructions a sample in their
   worst 128-sample block (`PLAYER_WORST_BLOCK`, Task 6), and the whole interrupt within
   2,700 with two chips, the slots and the player;
@@ -79,7 +87,7 @@ line, stage only your own files, the host, device and emulator commands, the GCC
 
 ---
 
-### Task 1: The format decision and the extension's specification
+### Task 1: The format decision and the extension's specification — done
 
 A research and writing task; no code. Everything later in M2 cites it.
 
@@ -188,7 +196,7 @@ the readme.
 
 ---
 
-### Task 2: The song model, the `.sng` reader and writer, the trailer
+### Task 2: The song model, the `.sng` reader and writer, the trailer — done
 
 **Files:**
 - `core/song/gt2_song.h`, `gt2_song.c` (new, portable C11, no allocation): the model.
@@ -265,7 +273,7 @@ the readme.
 
 ---
 
-### Task 3: The reference harness: GoatTracker's player in a host 6502
+### Task 3: The reference harness: GoatTracker's player in a host 6502 — done
 
 **Files:**
 - `third_party/goattracker2/` (new): from the official `GoatTracker_2.77.zip`, unmodified,
@@ -319,7 +327,7 @@ tests for illegal opcodes), `BUILDING.md` (nothing new to install, if `cc` build
 
 ---
 
-### Task 4: The C player, part 1: orderlists, patterns, notes, instruments, the wavetable
+### Task 4: The C player, part 1: orderlists, patterns, notes, instruments, the wavetable — done
 
 **Files:** `core/player/gt2_play.h`, `gt2_play.c` (new, portable, no allocation, no libm, no
 calls into libc: the device runs it from SRAM, Task 6), tests.
@@ -350,7 +358,7 @@ default options. On a mismatch, report the frame, the channel's state and both w
 
 ---
 
-### Task 5a: The C player, part 2: pulse, filter and speed tables, every command
+### Task 5a: The C player, part 2: pulse, filter and speed tables, every command — done
 
 **Files:** `core/player/gt2_play.c`, tests.
 
@@ -371,7 +379,7 @@ frame equal. Report the examples' coverage (songs, subtunes, frames).
 
 ---
 
-### Task 5b: The C player, part 3: the options, generated songs, the events
+### Task 5b: The C player, part 3: the options, generated songs, the events — done
 
 **Files:** `core/player/gt2_play.c`, a Rust song generator
 (`host/crates/gt2-ref/src/gen.rs`), tests.
@@ -403,7 +411,7 @@ frame equal. Report the examples' coverage (songs, subtunes, frames).
 
 ---
 
-### Task 6: The player on the device: in the audio interrupt, frame-exact
+### Task 6: The player on the device: in the audio interrupt, frame-exact — done
 
 **Needs:** M2b Tasks 3 and 4 (`chip_ctl`, `keys_route`).
 
@@ -581,7 +589,7 @@ derive the model's entry from the packed byte in the main loop when it reads an 
 
 ---
 
-### Task 7: Parameter locks
+### Task 7: Parameter locks — done
 
 **Needs:** Task 6 and M2b Task 4 (`chip_ctl`, for the character locks).
 
@@ -620,7 +628,7 @@ still ≤ 60 with locks on every row.
 
 ---
 
-### Task 8: Songs on the device: the store, the SONG menu, About's music
+### Task 8: Songs on the device: the store, the SONG menu, About's music — done
 
 **Needs:** M2a Task 4 (the store on the device) and M2a Task 5 (SAVE's gesture, `save_key`).
 
@@ -851,17 +859,178 @@ TRACKER recall regression peaks at 53,265. The player sweep covers 193 runs of
 145 songs: **5,070 + 592 = 5,662 instructions/block**, **44.2/sample ≤60**, leaving
 161.3/sample of the 2,700 target under the two-chip/slot worst-case assumptions.
 
-### Task 9: Docs and the M2c status
+### Task 9: Docs and the M2c status — done
 
 - `CHANGELOG.md`, `TESTING.md`, `LICENSING.md`, `CREDITS.md`, `docs/hardware.md`, this
   plan's tasks marked done with their results: the player's worst block with edits, the
   6502's remaining headroom, RAMTEXT, POOL and the RAM region (free RAM against the
   ≥ 22,000 gate), the region's address, the image against the ceiling, the register-match
   coverage (songs, subtunes, option combinations, generated seeds, examples canonical as
-  shipped); `flash_budget.rs`'s `IMAGE_CEILING` moved to the schedule's M2c entry
-  (414,000) or lowered to the measured image plus a margin.
+  shipped).
+- **Integrated ceiling decision:** leave `flash_budget.rs` unchanged. M2f is already
+  merged, so its **512,000-byte** `IMAGE_CEILING` applies. M2c's original 414,000-byte
+  entry is historical, not the ceiling for this combined image; moving back to it
+  would incorrectly charge other merged plans to M2c. No code or bounds change here.
 
 **Commit:** `docs: M2c complete, the song engine's results`
+
+---
+
+## M2c status
+
+Tasks 1-9 are complete; this is not an end-of-M2 or hardware acceptance sign-off.
+Measurements below use the firmware built from **`3b6d28d`** on 2026-10-18, not the
+Task 6 or either Task 8 integration build. Task 9 changes documentation only;
+`CREDITS.md` adds links while producing exactly the same `app/credits.c`.
+
+### Completed tasks and coverage
+
+- **Task 1:** decision record 0007 and the song-format reference specify canonical
+  GTS5 saves, legacy conversion, stereo detection, the trailer and per-call
+  equivalence. Compatibility limits are recorded, not hidden.
+- **Task 2:** the device-sized model, deferred edits, parser/writer and trailer pass
+  30 ordinary song tests (six long tests ignored). All 14 shipped examples load in
+  the 65,536-byte region and round-trip identically after canonicalisation;
+  **14/14 are canonical as shipped**.
+- **Task 3:** GoatTracker's host-only packer/playroutine reference uses mos6502 with
+  opcode/hang/placement traps. Its 18 tests pass, including Dormann's functional
+  test with decimal mode (**30,646,176 instructions**). SIDOU's own assembler
+  replaces the non-commercial upstream assembler; the download-based cross-check
+  remains opt-in and was not run for Task 9.
+- **Tasks 4, 5a, 5b:** register-match suite **21 passed**, two long tests ignored;
+  **14 songs, 17 subtunes, 3,000 frames each** by default (51,000 frames,
+  **765,516 SID writes** compared). The same subtunes pass all **16 individual/paired
+  option sets**. Three examples pass the full **256-combination matrix** at 3,000
+  frames each. Generated seeds **0..299** pass with no unknown-frequency calls;
+  SIDOU LOOP and command/corner/event fixtures also pass. Events checked:
+  **486,801 rows, 179,459 notes, 225,074 gate-ons**.
+- **Task 6:** frame-exact playback, bounded edits, SRAM placement and the memory/image
+  gates are remeasured below. The emulator compares host/device audio sample for
+  sample, including multispeed 4 and edits while playing.
+- **Task 7:** LOCK round trips, row-edit movement and the CRC rule are covered by
+  host tests; emulator playback checks locked cutoff against host audio and spectrum,
+  and the player budget includes heavily locked example songs. Character locks keep
+  chip_ctl's coarse glide.
+- **Task 8:** store streaming, SONG actions, SAVE's frozen snapshot, schema-4
+  migration, bank-1 recall and About restoration are complete, including
+  readable-screens integration. Both integration records above retain their
+  measured results and deviations.
+- **Task 9:** changelog, testing, licensing, credits and hardware reference updated;
+  active gates retained; end-of-M2 review items below left open.
+
+The pitch exception remains decision record 0007's: a note beyond B-7 lets the packed
+6502 read past its frequency table. The current default and each individual-option
+run report **63 affected calls in `everlasting.sng`, subtune 0**; only the two
+frequency registers may differ on marked calls. The full matrix also covers
+`hyperspace.sng`, the other known out-of-range example. No tolerance is loosened.
+The long 30,000-frame and 5,000-seed match runs were not included in Task 9's checks.
+
+### Memory and image measured on `3b6d28d`
+
+| Resource | Used | Capacity / gate | Free / margin |
+|---|---|---|---|
+| RAMTEXT | 45,216 B | 49,152 B | 3,936 B free |
+| RAM (`.data` + `.bss` + `.song_ram`) | 61,420 B | 65,536 B; free ≥4,096 B | 4,116 B free; 20 B margin |
+| POOL | 346,560 B | 352,256 B; free ≥4,096 B | 5,696 B free; 1,600 B margin |
+| RAM + POOL | 407,980 B | 417,792 B; free ≥7,000 B | 9,812 B free; 2,812 B margin |
+| App image (`sidou-pack` output) | 454,288 B | M2f ceiling 512,000 B | 57,712 B below ceiling |
+| App slot | 454,288 B | 581,564 B | 127,276 B left |
+
+The 7,000-byte combined gate is **22,000 − M2a 2,000 − M2d 6,000 − M2e 2,000 −
+M2f 5,000**, as required by the overview for merged plans. This tree is not an isolated
+M2c build; it does not claim to meet the original unadjusted 22,000-byte floor.
+`FREE_RAM_MIN`, both 4,096-byte regional floors and `IMAGE_CEILING` are unchanged.
+
+`__song_region` is exactly **[0x01C1E000, 0x01C2E000)**: 65,536 bytes, 4 KiB aligned,
+at POOL's start. It includes the model header, tables, extension and arena; there is
+no second song region. M3's C64 memory overlays it. Task 8's capacity decision keeps
+the canonical serialized file, trailer included, within 65,536 bytes as well.
+`sidou-pack --offline` reports a **610,090-byte package** and **8,216-byte loader**.
+
+### Audio headroom measured on `3b6d28d`
+
+The player sweep passes **193 runs of 145 song/subtune/options cases**: shipped
+examples at multispeed 1 and 4, heavily locked examples and generated seeds 0..39,
+with cell writes every block and swaps on a quarter of runs. Each successful run
+covers about 3,000 calls. Worst is **`sixpack.sng`, subtune 0, locked, cell edits**:
+**5,070 + 592 isolated row-apply instructions = 5,662/block**, or exactly
+**44.234375/sample ≤60**. The separately measured eight real row applies increase
+the microcase's worst block from **2,673 to 3,265**; their 592-instruction delta is
+charged on top of the sweep maximum, not omitted as bookkeeping. A block of eight
+edits without a player call costs at most 578; the call adds at most 4,492 besides.
+The main loop's submission of eight edits peaks at 16,240 instructions.
+
+The song test's printed **161.3/sample** remainder is **161.265625** using its fixed
+1,426 SID + 4.5 tap + 100 ISR + 964 slot-switch assumptions and the charged player
+block. It includes the player but excludes the separate mix/MASTER costs; it is not
+M3's no-player headroom. None of the player's 60/sample bound or audio target changed.
+
+All costs here are pi32v2 instructions per sample (a stereo output frame), not
+hardware cycles. The slot-switch benchmark's worst two-chip block is **964.28125**;
+with the fixed SID worst-block allowance 1,426, tap 4.5 and ISR allowance 100, that
+leaves **205.21875/sample** of the **2,700** target before the mix, MASTER or player.
+
+The device test measures chip B's mix at **8.05946/sample**, MASTER's constant
+gain at **12.0625/sample**, and the run with one pot move at **12.08567/sample**.
+These are **run averages**, not the most expensive 128-sample block. Subtracting
+the larger measured MASTER run average and mix average gives an **illustrative
+185.07363/sample remainder** with no song player. Reserving 10 for the mix and 12.5
+for MASTER would leave **182.71875/sample**, conditional on those allowances holding
+per block: the existing tests assert the mix's run average <10 and constant MASTER's
+average ≤12.5, not the moving pot's worst block. Neither subtraction establishes
+worst-block headroom for stamped writes or measures a 6502 core.
+The device's tested two-chip/heaviest-slots interrupt peaks at **2,392.30469/sample**,
+below 2,700; the separate switch benchmark supplies the more conservative sum above.
+
+M3's 6502 and the song player never run together. Decision record 0008 now runs M3's
+CPU outside the interrupt, a frame ahead; its cycle-stamped SID writes must fit the
+ISR remainder, not the execution cost of the CPU itself. The end-of-M2 audio review
+still needs per-block mix/MASTER accounting before treating that remainder as a reserve.
+
+### Task 9 verification
+
+All selected checks exit **0** on this docs-only task:
+
+- fm1 configure/build, repeated after the docs: no further build work; the binary's
+  SHA-256 stays `556b64dab3e5181bf5a7a285c500a5def4163350d1f20c75c8321f3b91dff596`.
+  Offline `sidou-pack` supplies the image/package measurements above.
+- `cargo fmt --all --check`, REUSE lint and `git diff --check`.
+- Native app tests: **916 passed**, three long tests ignored; the final CREDITS-only
+  rerun passes all **10** tests with generated About output unchanged. Register-match
+  and song-file results are above; song control, locks, capacity, streaming, keys and
+  showcase tests add **58 passes**; the reference harness adds **18**.
+- Ergo's two recipe tests pass with `SIDOU_FM1_BUILD` set, including actual emulator
+  execution as well as the checked-in recipe drift/validation test. No separate
+  plan-reading test was found.
+- Selected emulator tests (`song`, `song_bank`, `song_store`, `ram_audio`,
+  `flash_budget`, `slots_budget`, `chip_b`): **40 passed, none skipped**. These verify
+  the measurements, sample-exact playback, store/bank behavior and SRAM placement.
+  Song analysis peaks at **33,807/39,000 instructions per slice**, the combined pass
+  at **70,114/120,000**, and PLAY-to-first-call at **10 blocks / 29 ms**. Bank/store
+  combined-pass maxima are **104,262 / 70,114 of 120,000**, respectively; the
+  same-shaped TRACKER recall regression peaks at **53,261**.
+
+No code, generated C, SPDX labels or goldens changed. This task runs the requested
+docs-relevant and measurement checks, not a fresh full COMMON/code-change checklist;
+the Task 8 full-suite results above remain historical. All inputs were local/offline,
+and no hardware was accessed.
+
+### Open for the end-of-M2 review
+
+- **RAM-region margin:** previously measured at `4ce0844` after Task 8's
+  readable-screens integration, and confirmed on `3b6d28d`: **4,116 bytes free,
+  only 20 bytes above 4,096**. Keep this explicitly
+  open for the end-of-M2 resource review even though the gate passes. Do not spend
+  that margin or lower the gate; review the shape-buffer lever recorded under Task 6
+  before any further RAM growth. POOL's free bytes do not erase the separate RAM floor.
+- **GoatTracker licence audit:**
+  [docs/TODO.md's release blocker](../TODO.md#licence-labels-that-dont-match-the-codes-origin-release-blocker),
+  "Licence labels that don't match the code's origin", identifies missing Lasse
+  Öörni copyright lines in `core/song/gt2_sng.h` and `gt2_song.h`. Review the
+  GoatTracker-derived code's provenance/notices as part of that audit. **No SPDX or
+  copyright labels are fixed in Task 9**, and a passing REUSE lint does not close it.
+- Hardware acceptance remains open: real flash timing, save/power-cycle/load and
+  About/audio checks belong to the user's hardware checklist. No device was accessed.
 
 ---
 
@@ -875,9 +1044,12 @@ TRACKER recall regression peaks at 53,265. The player sweep covers 193 runs of
   fallback. If even that fails, run `gt2reloc` as an external tool built once, with its
   path in an environment variable, and skip the match tests without it (as the emulator
   tests skip without a build): weaker, so prefer the library.
-- **RAMTEXT** (projected ~43 KB of 48): the player at `-Os`; M3 needs room (overview).
-- **The arena** (about 56 KB usable after the spare) refuses some big GT2 songs on the
-  device; the host and the companion still handle them. Report how many of the examples fit.
+- **RAMTEXT:** 45,216 of 49,152 bytes, 3,936 left; the player at `-Os`.
+  M3 still needs room (overview).
+- **The arena:** Task 8's model header leaves 51,992 bytes before the 1,040-byte spare
+  (50,952 usable). The device also caps the canonical saved file at 65,536 bytes with
+  its trailer. All 14 shipped examples fit, but larger songs may be refused; the host
+  and companion can retain the larger host region's capacity.
 - **Frame timing inside a frame** differs from the 6502's by design (0007).
 
 <!-- REUSE-IgnoreEnd -->
