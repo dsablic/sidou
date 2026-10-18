@@ -137,6 +137,36 @@ fn th() -> &'static theme {
 }
 
 #[test]
+fn a_streaming_load_keeps_the_previous_canvas_until_the_model_is_complete() {
+    let mut s = tracker();
+    settle(&mut s.ui);
+    let before = (s.ui.g.ch, s.ui.g.attr, s.ui.g.src);
+    let song = s.ui.v.song.song;
+    let mut io = Box::<song_io>::default();
+    unsafe { views_song_io(&mut *s.ui.v, &mut *io) };
+    for state in [SONG_IO_STOP, SONG_IO_READ, SONG_IO_VERIFY] {
+        io.state = state as u8;
+        s.ui.v.song.song = std::ptr::null();
+        s.ui.v.song.built = 0;
+        for _ in 0..12 {
+            s.ui.frame();
+            drain(&mut s.ui.g);
+        }
+        assert_eq!(
+            (s.ui.g.ch, s.ui.g.attr, s.ui.g.src),
+            before,
+            "a partial load must not replace the displayed rows: state {state}"
+        );
+    }
+    io.state = SONG_IO_IDLE as u8;
+    s.ui.v.song.song = song;
+    s.ui.v.song.built = 0;
+    settle(&mut s.ui);
+    assert_eq!(s.ui.big(0, 5, 2, 6), "PAT 00");
+    assert_eq!((s.ui.g.ch, s.ui.g.attr, s.ui.g.src), before);
+}
+
+#[test]
 fn the_rows_show_the_shown_voices_pattern_from_the_cursors_entry() {
     let s = tracker();
     let t = th();

@@ -9,6 +9,7 @@
 _Static_assert(GT2_SAVED_MAX == STORE_FILE_MAX, "device song edits keep the store's file cap");
 
 enum { LOAD_FILE = 1, LOAD_NEW, LOAD_ABOUT, LOAD_RESTORE };
+enum { ROLLBACK_SNAPSHOT = 1, ROLLBACK_APPLIED = 2 };
 
 static void text(char out[32], const char* in) {
     uint32_t i = 0;
@@ -307,6 +308,13 @@ static void forget_player(song_io* io) {
 static void start_read(song_io* io) {
     gt2_read_fn read = read_file;
     void* ctx = io;
+    if ((io->restoring || io->action == LOAD_RESTORE) && io->rollback) {
+        /* Restore inherited metadata before VERIFY reuses the shared byte buffer. */
+        if (io->rollback & ROLLBACK_APPLIED) {
+            io->hooks.restore(io->hooks.ctx, io->data);
+        }
+        io->rollback = 0;
+    }
     io->builtin = 0;
     if (io->action == LOAD_NEW) {
         read = read_template;
@@ -338,6 +346,7 @@ static void read_failed(song_io* io, const char* reason, int touched) {
     } else if (!touched) {
         text(io->message, reason);
         io->state = SONG_IO_IDLE;
+        io->rollback = 0;
         if (io->action == LOAD_ABOUT) {
             io->about = io->about_close = 0;
         }
@@ -350,22 +359,16 @@ static void read_failed(song_io* io, const char* reason, int touched) {
 
 static void read_done(song_io* io) {
     if (io->hooks.loaded) {
-        io->hooks.loaded(io->hooks.ctx);
+        if (!io->hooks.loaded(io->hooks.ctx)) {
+            read_failed(io, io->failure[0] ? io->failure : "SNG: SAVED FORM TOO BIG", 1);
+            return;
+        }
+        if (io->rollback & ROLLBACK_SNAPSHOT) {
+            io->rollback |= ROLLBACK_APPLIED;
+        }
     }
     if (io->hooks.prepare && !io->hooks.prepare(io->hooks.ctx)) {
-        if (io->restoring || io->action == LOAD_RESTORE) {
-            text(io->message, "SONG: RELOAD FAILED");
-            io->state = SONG_IO_IDLE;
-            io->dirty = 1;
-            io->about = 0;
-            io->restoring = 0;
-        } else {
-            if (!io->failure[0]) {
-                text(io->failure, "SNG: SAVED FORM TOO BIG");
-            }
-            io->restoring = 1;
-            start_read(io);
-        }
+        read_failed(io, io->failure[0] ? io->failure : "SNG: SAVED FORM TOO BIG", 1);
         return;
     }
     if (io->action == LOAD_ABOUT && !io->restoring) {
@@ -387,6 +390,9 @@ static void read_done(song_io* io) {
         io->saved_live = io->hooks.generation(io->hooks.ctx);
     }
     io->state = SONG_IO_IDLE;
+    if (io->action != LOAD_ABOUT || io->restoring) {
+        io->rollback = 0;
+    }
     if (io->failure[0]) {
         text(io->message, io->failure);
         io->failure[0] = 0;
@@ -451,7 +457,16 @@ void song_io_poll(song_io* io, uint32_t now_ms) {
         break;
     case SONG_IO_READ: {
         gt2_stream* w = io->work;
+        if (!io->rollback && !io->restoring && io->action != LOAD_RESTORE &&
+            io->hooks.snapshot && io->hooks.restore) {
+            io->hooks.snapshot(io->hooks.ctx, io->data);
+            io->rollback = ROLLBACK_SNAPSHOT;
+        }
         if (w->wipe_at && !io->invalidated) {
+            if (!io->restoring && io->action != LOAD_RESTORE && io->hooks.generation &&
+                io->hooks.generation(io->hooks.ctx) != io->saved_live) {
+                io->dirty = 1;
+            }
             forget_player(io);
             io->invalidated = 1;
         }

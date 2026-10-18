@@ -740,7 +740,7 @@ the larger host region's capacity.
 
 ---
 
-### Task 8 integration results: `051a1a1` base
+### Task 8 historical integration results: `051a1a1` base
 
 Task 8 now includes the base's large-text menu/popups/toasts, USER profiles,
 MASTER/tail gate and M2e transport changes. SONG's headings, actions and
@@ -796,6 +796,60 @@ GCC 13, fmt, Clippy, workspace release, UBSan, sidou-pack and subsequent tests,
 full emu-gate with both build variables, REUSE and web-demo. The full emulator
 run passes **182 tests**, including all 58 screen tests. Each long check has its
 own recorded exit code; externally interrupted earlier runs were not counted.
+
+### Task 8 readable-screens integration: `64b6f97` base
+
+Schema 4 uses the real schema-3 THEME byte at 107 and appends last-song at
+108..123. The four migration fixtures keep their earlier prefixes; theme IDs
+use `live_set_theme` validation and older schemas default to HIGH CONTRAST.
+The 16-item menu retains THEME and MIDI, adding SONG before ABOUT. The redrawn
+LIVE/TRACKER/CHIP, four showcase songs and ergo harness remain intact.
+
+SONG uses the shared title, menu/selection, value, hot, alert and label roles,
+including a theme change while a page is open. The new TRACKER header shows
+SAVING in place of PAT. During STOP/READ/VERIFY it retains the previous canvas;
+completed loads invalidate cached rows, including same-shaped bank-1 recalls.
+
+Load validation and a pure extension/serialized-capacity preflight precede
+runtime changes. A shared snapshot restores inherited metadata only when it was
+actually applied; early refusals do not release held notes or clear RPN bend
+ownership. About retains the original snapshot through close. Restoration
+resets stale MIDI transport requests, and retained unsaved runtime metadata
+stays dirty after refusal. Native and emulator regressions reproduce each bug.
+
+The new UI initially left only 4,020 bytes in RAM (<4,096). The bounded producer
+buffer is now 160 rather than 256 bytes, and metadata fits it by static assertion;
+SLOT derives from captured live parameters instead of duplicating them.
+Target alignment recovers 96 bytes. Compared with exact `64b6f97`: application
+425,140 → **454,284 bytes**, RAMTEXT 45,108 → **45,216 / 49,152**, RAM free
+5,796 → **4,116**, POOL free **5,696**, combined 11,492 → **9,812 bytes** against
+the unchanged **7,000-byte** floor. The RAM-region floor remains 4,096: only
+20 bytes of margin remain. Package 610,090 bytes; loader 8,216 bytes.
+
+Viewed old/new menu and four SONG goldens: count 1/15 → 1/16; scrolled THEME moves
+above the viewport as SONG is added; SONG switches from fixed C64 blue to the
+theme's roles. Three RED MOON RITE song/disarm/stuck images change only pose/
+sword animation phase after the longer menu/startup path. No art, palette,
+layout, tolerance or cost bound was changed. The complete COMMON checklist
+exits **0**, including both firmware builds, strict GCC 13, fmt, Clippy,
+workspace release, UBSan, packaging and subsequent tests, full emu-gate with
+both build variables, REUSE and web-demo. Native release/UBSan each pass 915
+application tests (three intentionally ignored); full emu-gate passes **185**,
+including all **59 screen tests**, six bank tests and seven song-store tests.
+The About harness now waits for all encoder detents to reach item 14 and asserts
+the actual top view: its old 100 ms wait opened SONG instead. The existing About
+golden is unchanged, and its corrected golden/performance tests pass.
+
+Final tight gates: STATUS **7,480.2/frame <7,500**, HOME **426 <430**, CHIP K1
+**211 <215**, SELECT to RULE 30 **227 <230**. Mapped/learned CC floods are
+**4,818,232 / 4,801,583 instructions/s <5M**; LIVE flood **6,162,829.5/s <6.3M**;
+USB 16k CC flood **10,464,866/s <10.5M**, USB drain **7,991 <8,000**. The full-speed/
+program-change floods lose no input bytes and have no restarts. Large SONG
+pages peak at **35,603 ui_poll instructions**, **200 cells / 17.15 ms SPI**.
+Bank/store combined-pass maxima are **104,262 / 70,114 of 120,000**; the same-shaped
+TRACKER recall regression peaks at 53,265. The player sweep covers 193 runs of
+145 songs: **5,070 + 592 = 5,662 instructions/block**, **44.2/sample ≤60**, leaving
+161.3/sample of the 2,700 target under the two-chip/slot worst-case assumptions.
 
 ### Task 9: Docs and the M2c status
 

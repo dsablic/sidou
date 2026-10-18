@@ -99,6 +99,7 @@ void ui_set_song_io(song_io* io) {
 
 void ui_song_rows(uint8_t rows_per_beat) {
     ui.song.rows_beat = rows_per_beat;
+    ui.song.built = 0;
 }
 
 settings* ui_settings(void) {

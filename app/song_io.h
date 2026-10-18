@@ -8,16 +8,20 @@
 #include "song/gt2_sng.h"
 #include "store.h"
 
+#define SONG_IO_BUFFER_BYTES 160u
+
 typedef struct {
     /* Capture the song's own setup (not a character lock) and live keys/slots before SAVE. */
     int (*prepare)(void* ctx);
-    /* Invalidate cursors and restore the loaded song's keys and slots. */
-    void (*loaded)(void* ctx);
+    /* Validate before applying runtime metadata; 0 refuses the loaded song. */
+    int (*loaded)(void* ctx);
     gt2_read_fn builtin;
     void* ctx;
     uint32_t (*generation)(void* ctx);
     void (*force)(int on);
-    void (*snapshot)(void* ctx, uint8_t* storage); /* STORE_WINDOW_MAX bytes, before edits freeze */
+    /* SONG_IO_BUFFER_BYTES bytes: before SAVE freezes, or before a destructive READ. */
+    void (*snapshot)(void* ctx, uint8_t* storage);
+    void (*restore)(void* ctx, const uint8_t* storage);
 } song_io_hooks;
 
 enum {
@@ -65,7 +69,8 @@ typedef struct {
     uint8_t invalidated;
     uint8_t snapshot;
     uint8_t index_remaining;
-    uint8_t data[STORE_WINDOW_MAX];
+    uint8_t rollback;
+    uint8_t data[SONG_IO_BUFFER_BYTES];
 } song_io;
 
 void song_io_init(song_io* io, song_ctl* ctl, store* st, settings* set, void* workspace,

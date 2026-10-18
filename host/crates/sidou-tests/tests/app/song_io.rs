@@ -499,3 +499,190 @@ fn a_corrupt_load_reloads_the_previous_file_and_new_uses_the_three_instrument_te
     assert_eq!(r.song.raw().instr[2][GT2_INS_FIRSTWAVE as usize], 0x81);
     assert_ne!(r.io.dirty, 0);
 }
+
+struct LoadRuntime {
+    value: u16,
+    song: *mut gt2_song,
+    snapshots: u32,
+    restores: u32,
+    builtin: Vec<u8>,
+}
+
+unsafe extern "C" fn snapshot_runtime(ctx: *mut std::ffi::c_void, storage: *mut u8) {
+    let runtime = unsafe { &mut *ctx.cast::<LoadRuntime>() };
+    runtime.snapshots += 1;
+    unsafe { std::ptr::copy_nonoverlapping(runtime.value.to_le_bytes().as_ptr(), storage, 2) };
+}
+
+unsafe extern "C" fn restore_runtime(ctx: *mut std::ffi::c_void, storage: *const u8) {
+    let runtime = unsafe { &mut *ctx.cast::<LoadRuntime>() };
+    runtime.restores += 1;
+    runtime.value = unsafe { u16::from_le_bytes([*storage, *storage.add(1)]) };
+}
+
+unsafe extern "C" fn loaded_runtime(ctx: *mut std::ffi::c_void) -> i32 {
+    let runtime = unsafe { &mut *ctx.cast::<LoadRuntime>() };
+    let mut keys = song_keys::default();
+    if unsafe { song_ext_get_keys(runtime.song, &mut keys) } != 0 {
+        runtime.value = keys.param[0];
+    }
+    1
+}
+
+unsafe extern "C" fn prepare_runtime(ctx: *mut std::ffi::c_void) -> i32 {
+    i32::from(unsafe { &*ctx.cast::<LoadRuntime>() }.value != 99)
+}
+
+unsafe extern "C" fn runtime_generation(ctx: *mut std::ffi::c_void) -> u32 {
+    u32::from(unsafe { &*ctx.cast::<LoadRuntime>() }.value)
+}
+
+unsafe extern "C" fn preflight_runtime(ctx: *mut std::ffi::c_void) -> i32 {
+    let runtime = unsafe { &*ctx.cast::<LoadRuntime>() };
+    let mut keys = song_keys::default();
+    if unsafe { song_ext_get_keys(runtime.song, &mut keys) } != 0 && keys.param[0] == 99 {
+        return 0;
+    }
+    unsafe { loaded_runtime(ctx) }
+}
+
+unsafe extern "C" fn runtime_builtin(
+    ctx: *mut std::ffi::c_void,
+    off: u32,
+    buf: *mut u8,
+    n: u32,
+) -> u32 {
+    let runtime = unsafe { &mut *ctx.cast::<LoadRuntime>() };
+    unsafe { builtin_read((&mut runtime.builtin as *mut Vec<u8>).cast(), off, buf, n) }
+}
+
+#[test]
+fn load_refusal_restores_only_applied_runtime_and_keeps_unsaved_metadata_dirty() {
+    for reject_before_runtime in [false, true] {
+        for unsaved_source in 0..3 {
+            let unsaved_metadata = unsaved_source == 1;
+            let mut r = Rig::new();
+            r.save(c"PLAIN");
+            let before = r.song.write(true);
+            let mut candidate = Song::device();
+            candidate.read(&before, SONG_MULTISPEED_MAX as u8).unwrap();
+            let mut keys = song_keys {
+                count: 1,
+                preset: SONG_KEYS_PRESET_NONE as u8,
+                ..Default::default()
+            };
+            keys.param[0] = 99;
+            assert_eq!(unsafe { song_ext_set_keys(candidate.ptr_mut(), &keys) }, 0);
+            r.typed_file(c"TOO BIG", STORE_FILE_SONG as u8, &candidate.write(true));
+            let mut runtime = Box::new(LoadRuntime {
+                value: 23,
+                song: r.song.ptr_mut(),
+                snapshots: 0,
+                restores: 0,
+                builtin: Vec::new(),
+            });
+            r.io.hooks.ctx = (&mut *runtime as *mut LoadRuntime).cast();
+            r.io.hooks.snapshot = Some(snapshot_runtime);
+            r.io.hooks.restore = Some(restore_runtime);
+            r.io.hooks.loaded = if reject_before_runtime {
+                Some(preflight_runtime)
+            } else {
+                Some(loaded_runtime)
+            };
+            r.io.hooks.prepare = Some(prepare_runtime);
+            r.io.hooks.generation = Some(runtime_generation);
+            r.io.saved_live = 23;
+            runtime.value += u16::from(unsaved_metadata);
+            let before_runtime = runtime.value;
+            if unsaved_source == 2 {
+                let mut edit = gt2_edit::default();
+                let row = [GT2_FIRSTNOTE as u8, 1, 0, 0];
+                unsafe {
+                    assert_eq!(
+                        gt2_set_row(r.song.ptr_mut(), 0, 0, row.as_ptr(), &mut edit),
+                        GT2_OK
+                    );
+                    gt2_edit_commit(r.song.ptr_mut(), &edit);
+                }
+            }
+            assert_eq!(r.io.dirty, 0, "metadata dirtiness starts generation-only");
+            assert_eq!(
+                unsafe { song_io_changed(&*r.io) },
+                i32::from(unsaved_source != 0)
+            );
+            assert_eq!(
+                unsafe { song_io_load(&mut *r.io, c"TOO BIG".as_ptr(), 1) },
+                1
+            );
+            r.finish();
+            assert_eq!(
+                runtime.value, before_runtime,
+                "missing KEYS inherited refused runtime"
+            );
+            assert_eq!(runtime.snapshots, 1);
+            assert_eq!(runtime.restores, u32::from(!reject_before_runtime));
+            assert_eq!(r.song.write(true), before);
+            assert_eq!(r.message(), "SNG: SAVED FORM TOO BIG");
+            assert_eq!(
+                unsafe { song_io_changed(&*r.io) },
+                i32::from(unsaved_metadata),
+                "retained unsaved metadata was incorrectly marked clean"
+            );
+            assert_eq!(
+                r.io.snapshot, 0,
+                "read backup is not a frozen SAVE snapshot"
+            );
+            assert_eq!(
+                unsafe { std::ffi::CStr::from_ptr(r.io.name.as_ptr()) },
+                c"PLAIN"
+            );
+            assert_eq!(unsafe { song_io_load(&mut *r.io, c"PLAIN".as_ptr(), 1) }, 1);
+            r.finish();
+            assert_eq!(
+                unsafe { song_io_changed(&*r.io) },
+                0,
+                "accepted LOAD clears dirtiness"
+            );
+        }
+    }
+}
+
+#[test]
+fn about_keeps_the_original_runtime_snapshot_until_close_and_restore_verification() {
+    let mut r = Rig::new();
+    r.save(c"PLAIN");
+    let before = r.song.write(true);
+    let mut demo = Song::device();
+    demo.read(&before, SONG_MULTISPEED_MAX as u8).unwrap();
+    let mut keys = song_keys {
+        count: 1,
+        ..Default::default()
+    };
+    keys.param[0] = 77;
+    assert_eq!(unsafe { song_ext_set_keys(demo.ptr_mut(), &keys) }, 0);
+    let mut runtime = Box::new(LoadRuntime {
+        value: 23,
+        song: r.song.ptr_mut(),
+        snapshots: 0,
+        restores: 0,
+        builtin: demo.write(true),
+    });
+    r.io.hooks.ctx = (&mut *runtime as *mut LoadRuntime).cast();
+    r.io.hooks.snapshot = Some(snapshot_runtime);
+    r.io.hooks.restore = Some(restore_runtime);
+    r.io.hooks.loaded = Some(loaded_runtime);
+    r.io.hooks.prepare = Some(prepare_runtime);
+    r.io.hooks.builtin = Some(runtime_builtin);
+    assert_eq!(unsafe { song_io_about(&mut *r.io, 1) }, 1);
+    r.finish();
+    assert_eq!(runtime.value, 77);
+    assert_eq!(runtime.restores, 0);
+    assert_eq!(unsafe { song_io_about(&mut *r.io, 0) }, 1);
+    r.finish();
+    assert_eq!(runtime.value, 23);
+    assert_eq!(runtime.snapshots, 1);
+    assert_eq!(runtime.restores, 1);
+    assert_eq!(r.song.write(true), before);
+    assert_eq!(r.io.about, 0);
+    assert_eq!(r.io.dirty, 0);
+}

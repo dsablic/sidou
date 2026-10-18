@@ -1359,13 +1359,18 @@ fn home_tapped_as_soon_as_the_card_shows_skips_it() {
     compare_golden(&build, "live", &m.soc.lcd.fb, &[]);
 }
 
-/// About, from the menu's last item.
+/// About, after every detent has reached its menu item.
 fn open_about(m: &mut Machine, fw: &Firmware) {
     open_menu(m, fw);
     m.turn(SELECT, MENU_ABOUT); // from the first item: the menu's first opening
-    m.run_ms(100);
+    m.run_ms(10 * MENU_ABOUT as u64);
     m.turn(ALGORITHM, 1);
     settle(m, fw);
+    assert_eq!(
+        common::top_view(m, fw),
+        fw.symbol("about_view"),
+        "the menu did not open ABOUT"
+    );
 }
 
 /// The first credits page names SIDOU and its version (app/about.h ABOUT_HEADING_ROW).

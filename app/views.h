@@ -12,9 +12,9 @@
  *   another firmware's data, which ALGORITHM turned clockwise twice formats), KEYS (AUTO or A:
  *   which chip the keys play during a song, app/keys_route.h), SOUNDS (the UI sounds on chip
  *   B's spare voice, OFF by default, app/ui_sound.h) and ROWS (TRACKER ROWS: BAR, the moving
- *   bar, or SCROLL: app/tracker_view.h), then STATUS, SCENE, CHARSET, SONG, ABOUT and MIDI. SELECT
+ *   bar, or SCROLL: app/tracker_view.h), THEME, then STATUS, SCENE, CHARSET, SONG, ABOUT and MIDI. SELECT
  *   moves the selection (a line in reverse video; the list scrolls with it, a line or two a
- *   frame), ALGORITHM changes the value under it or opens the view. CARDS, KEYS, SOUNDS and ROWS
+ *   frame), ALGORITHM changes the value under it or opens the view. CARDS, KEYS, SOUNDS, ROWS and THEME
  *   persist (app/settings.h).
  * - CHIP (from the menu, behind THE CHIP's card): chip A's profile, character and effect slots
  *   (app/chip_view.h); SELECT moves the focus, ALGORITHM steps its choice, K1..K4 turn its
@@ -164,7 +164,7 @@ extern "C" {
 typedef struct {
     const view* return_view;
     uint8_t page, cursor, action, confirm, direct, built;
-    uint8_t scanning, skip, count, directory_page, io_state;
+    uint8_t scanning, skip, count, directory_page, io_state, drawn_theme;
     char after[17];
     char name[17];
     char files[VIEWS_SONG_FILES][17];

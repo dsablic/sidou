@@ -440,6 +440,142 @@ fn assert_song_want(m: &mut Machine, fw: &Firmware, expected: &song_chip_setup) 
 }
 
 #[test]
+fn refused_chip_setup_restores_plain_song_and_runtime_metadata() {
+    let Some(fw) = fixture() else { return };
+    let mut flash = Machine::boot(&fw.image).soc.flash.mem.clone();
+    let plain = sidou_tests::song::SngSpec::new().encode();
+    put_file(&mut flash, "PLAIN", &plain);
+    let mut candidate = Song::device();
+    candidate.read(&plain, SONG_MULTISPEED_MAX as u8).unwrap();
+    let bad_chip = song_chip_setup {
+        model: 1,
+        profile: SID_CHIP_6581_R3 as u8,
+        envelope: 1,
+        ..Default::default()
+    };
+    let mut midi = midi_route_setup::default();
+    unsafe { midi_route_setup_default(&mut midi) };
+    midi.mode = MIDI_MODE_MULTI as u8;
+    midi.base = 7;
+    midi.rows_per_beat = 9;
+    let mut keys = song_keys {
+        count: LIVE_PARAM_COUNT as u8,
+        preset: 1,
+        ..Default::default()
+    };
+    keys.param[LIVE_PARAM_CUTOFF as usize] = 1379;
+    let slots = song_slots {
+        count: 1,
+        slot: [[1, 23, 24, 25, 26]; SONG_SLOTS_MAX as usize],
+    };
+    unsafe {
+        assert_eq!(midi_route_setup_to_song(candidate.ptr_mut(), &midi), 0);
+        assert_eq!(song_ext_set_keys(candidate.ptr_mut(), &keys), 0);
+        assert_eq!(song_ext_set_slots(candidate.ptr_mut(), &slots), 0);
+        assert_eq!(
+            song_ext_set_chip(candidate.ptr_mut(), sidou_tests::song::TAG_CHPA, &bad_chip),
+            0
+        );
+    }
+    put_file(&mut flash, "BAD CHIP", &candidate.write(true));
+    let valid_chip = song_chip_setup {
+        model: 0,
+        ..bad_chip
+    };
+    assert_eq!(
+        unsafe {
+            song_ext_set_chip(
+                candidate.ptr_mut(),
+                sidou_tests::song::TAG_CHPA,
+                &valid_chip,
+            )
+        },
+        0
+    );
+    let padding = vec![1; (SONG_EXT_BYTES - candidate.raw().ext_used - SONG_CHUNK_HEADER) as usize];
+    assert_eq!(
+        unsafe {
+            song_ext_set(
+                candidate.ptr_mut(),
+                sidou_tests::song::tag(b"TEST"),
+                padding.as_ptr(),
+                padding.len() as u32,
+            )
+        },
+        0
+    );
+    put_file(&mut flash, "FULL SETUP", &candidate.write(true));
+    let mut m = Machine::boot_blank(&fw.image);
+    m.soc.flash.mem.copy_from_slice(&flash);
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    run_past_boot(&mut m, &fw);
+    idle(&mut m, &fw);
+    complete(&mut m, &fw, LOAD, "PLAIN");
+    let bend_range = byte(&mut m, &fw, "instrument", ilp32::live::bend_range);
+    m.midi(&[
+        0xb0, 101, 0, 0xb0, 100, 0, 0xb0, 6, bend_range, 0x90, 60, 100,
+    ]);
+    let held_keys = |m: &mut Machine| {
+        (0..LIVE_VOICES as usize)
+            .map(|voice| {
+                byte(
+                    m,
+                    &fw,
+                    "instrument",
+                    ilp32::live::voice + voice * ilp32::live_voice::SIZE + ilp32::live_voice::gate,
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    until(&mut m, "live key and RPN bend ownership are active", |m| {
+        byte(m, &fw, "instrument", ilp32::live::bend_range_rpn) == 1 && held_keys(m).contains(&1)
+    });
+    let before_held = held_keys(&mut m);
+    let before_song = song(&mut m, &fw).write(true);
+    let before_midi = setup(&mut m, &fw);
+    let runtime_keys = |m: &mut Machine| {
+        [
+            (ilp32::live::preset, 1),
+            (ilp32::live::cutoff, 2),
+            (ilp32::live::slot, (LIVE_SLOTS * LIVE_SLOT_FIELDS) as usize),
+        ]
+        .into_iter()
+        .flat_map(|(offset, count)| offset..offset + count)
+        .map(|offset| m.soc.read8(fw.symbol("instrument") + offset as u32))
+        .collect::<Vec<_>>()
+    };
+    let before_keys = runtime_keys(&mut m);
+    for (candidate, reason) in [
+        ("BAD CHIP", "SNG: BAD CHIP SETUP"),
+        ("FULL SETUP", "SNG: SAVED FORM TOO BIG"),
+    ] {
+        complete(&mut m, &fw, LOAD, candidate);
+        assert_eq!(toast(&mut m, &fw), reason);
+        assert_eq!(
+            held_keys(&mut m),
+            before_held,
+            "refusal released held live keys"
+        );
+        assert_eq!(
+            byte(&mut m, &fw, "instrument", ilp32::live::bend_range_rpn),
+            1,
+            "refusal cleared RPN bend ownership"
+        );
+        assert_eq!(name(&mut m, &fw), "PLAIN");
+        assert_eq!(setup(&mut m, &fw), before_midi, "refused MIDI leaked");
+        assert_eq!(
+            runtime_keys(&mut m),
+            before_keys,
+            "refused KEYS/SLOT leaked"
+        );
+        assert_eq!(song(&mut m, &fw).write(true), before_song);
+        assert_eq!(byte(&mut m, &fw, "songs", ilp32::song_io::dirty), 0);
+        assert_stopped(&mut m, &fw);
+    }
+    check_passes(&m);
+}
+
+#[test]
 fn stopped_multi_load_refreshes_chpa_and_cc_save_keeps_the_loaded_base() {
     let Some(fw) = fixture() else { return };
     let mut flash = Machine::boot(&fw.image).soc.flash.mem.clone();

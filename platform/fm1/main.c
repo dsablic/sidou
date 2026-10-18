@@ -341,12 +341,12 @@ static void setup_decode(chip_setup* out, const song_chip_setup* chip) {
 typedef struct {
     song_chip_setup chip;
     gt2_options opts;
-    song_slots slots;
-    song_keys keys;
+    uint16_t param[LIVE_PARAM_COUNT];
     midi_route_setup midi;
+    uint8_t preset;
 } song_save_data;
 
-_Static_assert(sizeof(song_save_data) <= STORE_WINDOW_MAX, "save metadata reuses the IO buffer");
+_Static_assert(sizeof(song_save_data) <= SONG_IO_BUFFER_BYTES, "metadata reuses the IO buffer");
 
 __attribute__((noinline, unused)) static void song_collect(song_save_data* out) {
     song_ctl* sc = audio_song();
@@ -366,24 +366,13 @@ __attribute__((noinline, unused)) static void song_collect(song_save_data* out) 
     }
     gt2_options opts;
     (void)song_ext_get_options(s, &opts);
-    song_slots slots = {0, {{0}}};
-    slots.count = LIVE_SLOTS;
-    for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
-        for (uint32_t f = 0; f < LIVE_SLOT_FIELDS; f++) {
-            slots.slot[k][f] = instrument.slot[k][f];
-        }
-    }
-    song_keys keys = {0, 0, {0}};
-    keys.count = LIVE_PARAM_COUNT;
-    keys.preset = instrument.preset;
     for (uint32_t p = 0; p < LIVE_PARAM_COUNT; p++) {
-        keys.param[p] = (uint16_t)(p == LIVE_PARAM_VOLUME ? 0u : live_param_get(&instrument, p));
+        out->param[p] = (uint16_t)(p == LIVE_PARAM_VOLUME ? 0u : live_param_get(&instrument, p));
     }
     out->chip = chip;
     out->opts = opts;
-    out->slots = slots;
-    out->keys = keys;
     out->midi = midi_routed()->setup;
+    out->preset = instrument.preset;
 }
 
 static void song_snapshot(void* ctx, uint8_t* storage) {
@@ -391,6 +380,52 @@ static void song_snapshot(void* ctx, uint8_t* storage) {
     song_save_data data;
     song_collect(&data);
     memcpy(storage, &data, sizeof data);
+}
+
+typedef struct {
+    uint32_t sizes[5];
+    uint32_t old_sizes[5];
+} song_capture_plan;
+
+__attribute__((noinline, unused)) static int song_capture_fits(
+    const gt2_song* s, uint32_t expert_count, uint32_t midi_count, song_capture_plan* plan) {
+    const uint32_t tags[] = {SONG_TAG_CHPA, SONG_TAG_OPTS, SONG_TAG_SLOT, SONG_TAG_KEYS, SONG_TAG_MIDI};
+    plan->sizes[0] = 9u + expert_count;
+    plan->sizes[1] = SONG_OPTS_BYTES;
+    plan->sizes[2] = 2u + LIVE_SLOTS * SONG_SLOT_FIELDS;
+    plan->sizes[3] = 3u + LIVE_PARAM_COUNT * 2u;
+    plan->sizes[4] = 4u + midi_count + SONG_MIDI_OPTION_BYTES;
+    uint32_t ext = s->ext_used;
+    for (uint32_t i = 0; i < 5u; i++) {
+        uint32_t old = 0;
+        if (song_ext_find(s, tags[i], &old)) {
+            ext -= SONG_CHUNK_HEADER + old;
+            plan->old_sizes[i] = SONG_CHUNK_HEADER + old;
+        } else {
+            plan->old_sizes[i] = 0u;
+        }
+        ext += SONG_CHUNK_HEADER + plan->sizes[i];
+    }
+    if (ext > SONG_EXT_BYTES || gt2_saved_size(s) - gt2_saved_trailer_size(s->ext_used) +
+            gt2_saved_trailer_size(ext) > STORE_FILE_MAX) {
+        return 0;
+    }
+    /* Shrink before growing; check every intermediate trailer padding transition before
+     * changing a byte, so the sequence cannot fail after a partial capture. */
+    uint32_t at = s->ext_used;
+    for (uint32_t pass = 0; pass < 2u; pass++) {
+        for (uint32_t i = 0; i < 5u; i++) {
+            uint32_t size = SONG_CHUNK_HEADER + plan->sizes[i];
+            if ((size > plan->old_sizes[i]) != (pass != 0u)) {
+                continue;
+            }
+            at = at - plan->old_sizes[i] + size;
+            if (at > SONG_EXT_BYTES || gt2_saved_ext_check(s, at) != 0) {
+                return 0;
+            }
+        }
+    }
+    return 1;
 }
 
 static int song_capture(void* ctx) {
@@ -404,52 +439,27 @@ static int song_capture(void* ctx) {
     }
     const song_chip_setup chip = data.chip;
     const gt2_options opts = data.opts;
-    const song_slots slots = data.slots;
-    const song_keys keys = data.keys;
+    song_slots slots = {LIVE_SLOTS, {{0}}};
+    for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
+        for (uint32_t f = 0; f < LIVE_SLOT_FIELDS; f++) {
+            slots.slot[k][f] = (uint8_t)data.param[LIVE_PARAM_SLOT + k * LIVE_SLOT_FIELDS + f];
+        }
+    }
+    song_keys keys = {LIVE_PARAM_COUNT, data.preset, {0}};
+    memcpy(keys.param, data.param, sizeof data.param);
     song_midi midi;
     midi_route_setup_encode(&data.midi, &midi);
     if (!setup_valid(&chip)) {
         memcpy(songs.failure, "SNG: BAD CHIP SETUP", sizeof "SNG: BAD CHIP SETUP");
         return 0;
     }
-    const uint32_t tags[] = {SONG_TAG_CHPA, SONG_TAG_OPTS, SONG_TAG_SLOT, SONG_TAG_KEYS, SONG_TAG_MIDI};
-    const uint32_t sizes[] = {9u + chip.expert_count, SONG_OPTS_BYTES,
-                              2u + slots.count * SONG_SLOT_FIELDS, 3u + keys.count * 2u,
-                              4u + midi.count + SONG_MIDI_OPTION_BYTES};
-    uint32_t old_sizes[5];
-    uint32_t ext = s->ext_used;
-    for (uint32_t i = 0; i < 5u; i++) {
-        uint32_t old = 0;
-        if (song_ext_find(s, tags[i], &old)) {
-            ext -= SONG_CHUNK_HEADER + old;
-            old_sizes[i] = SONG_CHUNK_HEADER + old;
-        } else {
-            old_sizes[i] = 0u;
-        }
-        ext += SONG_CHUNK_HEADER + sizes[i];
-    }
-    if (ext > SONG_EXT_BYTES || gt2_saved_size(s) - gt2_saved_trailer_size(s->ext_used) +
-            gt2_saved_trailer_size(ext) > STORE_FILE_MAX) {
+    song_capture_plan plan;
+    if (!song_capture_fits(s, chip.expert_count, midi.count, &plan)) {
         return 0;
     }
-    /* Shrink before growing; check every intermediate trailer padding transition before
-     * changing a byte, so the sequence cannot fail after a partial capture. */
-    uint32_t at = s->ext_used;
     for (uint32_t pass = 0; pass < 2u; pass++) {
         for (uint32_t i = 0; i < 5u; i++) {
-            uint32_t size = SONG_CHUNK_HEADER + sizes[i];
-            if ((size > old_sizes[i]) != (pass != 0u)) {
-                continue;
-            }
-            at = at - old_sizes[i] + size;
-            if (at > SONG_EXT_BYTES || gt2_saved_ext_check(s, at) != 0) {
-                return 0;
-            }
-        }
-    }
-    for (uint32_t pass = 0; pass < 2u; pass++) {
-        for (uint32_t i = 0; i < 5u; i++) {
-            if ((SONG_CHUNK_HEADER + sizes[i] > old_sizes[i]) != (pass != 0u)) {
+            if ((SONG_CHUNK_HEADER + plan.sizes[i] > plan.old_sizes[i]) != (pass != 0u)) {
                 continue;
             }
             if (i == 0u) {
@@ -491,31 +501,70 @@ static uint32_t song_generation(void* ctx) {
     return store_crc32(crc, &chip, sizeof chip);
 }
 
-static void song_loaded(void* ctx) {
+static void song_apply_keys(const uint16_t* param, uint32_t count, uint8_t preset) {
+    if (preset < LIVE_PRESET_COUNT) {
+        live_set_preset(&instrument, preset);
+    }
+    for (uint32_t p = 0; p < count && p < LIVE_PARAM_COUNT; p++) {
+        if (p != LIVE_PARAM_VOLUME && param[p] <= live_param_max(p)) {
+            live_param_set(&instrument, p, param[p]);
+        }
+    }
+}
+
+static void song_apply_midi(const midi_route_setup* setup) {
+    midi_route_set(midi_routed(), setup);
+    midi_sync_rows(midi_synced(), setup->rows_per_beat);
+    ui_song_rows(setup->rows_per_beat);
+    midi_sync_song_changed(midi_synced());
+}
+
+static void song_restore(void* ctx, const uint8_t* storage) {
     (void)ctx;
+    song_save_data data;
+    memcpy(&data, storage, sizeof data);
+    song_apply_midi(&data.midi);
+    song_apply_keys(data.param, LIVE_PARAM_COUNT, data.preset);
+    chip_setup base;
+    setup_decode(&base, &data.chip);
+    song_base_set(&base);
+    keys_route_song_wants(&keys_router, &base);
+    keys_router.song_user = 0;
+}
+
+static int song_loaded(void* ctx) {
+    (void)ctx;
+    gt2_song* s = audio_song()->song;
+    song_chip_setup chip;
+    int has_chip = song_ext_get_chip(s, SONG_TAG_CHPA, &chip);
+    if (has_chip && !setup_valid(&chip)) {
+        memcpy(songs.failure, "SNG: BAD CHIP SETUP", sizeof "SNG: BAD CHIP SETUP");
+        return 0;
+    }
+    midi_route_setup setup;
+    (void)midi_route_setup_from_song(s, &midi_routed()->setup, &setup);
+    song_midi midi;
+    midi_route_setup_encode(&setup, &midi);
+    song_capture_plan plan;
+    if (!song_capture_fits(s, has_chip ? chip.expert_count : 0u, midi.count, &plan)) {
+        return 0;
+    }
     song_setup_on = 0;
     song_warned = 0;
-    song_base_valid = 0;
     for (uint32_t f = 0; f < 4u; f++) {
         song_char_on[f] = -1;
     }
+    if (songs.restoring) {
+        /* Runtime was untouched or restored already; reapplying KEYS releases held notes. */
+        ui_song_rows(midi_routed()->setup.rows_per_beat);
+        midi_sync_song_changed(midi_synced());
+        return 1;
+    }
+    song_base_valid = 0;
     song_keys keys;
-    gt2_song* s = audio_song()->song;
-    midi_route_setup setup;
-    (void)midi_route_setup_from_song(s, &midi_routed()->setup, &setup);
-    midi_route_set(midi_routed(), &setup);
-    midi_sync_rows(midi_synced(), setup.rows_per_beat);
-    ui_song_rows(setup.rows_per_beat);
-    midi_sync_song_changed(midi_synced());
+    song_apply_midi(&setup);
     if (song_ext_get_keys(s, &keys)) {
-        if (keys.preset < LIVE_PRESET_COUNT) {
-            live_set_preset(&instrument, keys.preset);
-        }
-        for (uint32_t p = 0; p < keys.count && p < LIVE_PARAM_COUNT; p++) {
-            if (p != LIVE_PARAM_VOLUME && keys.param[p] <= live_param_max(p)) {
-                live_param_set(&instrument, p, keys.param[p]);
-            }
-        }
+        song_apply_keys(keys.param, keys.count, keys.preset);
     }
     song_slots slots;
     if (song_ext_get_slots(s, &slots)) {
@@ -526,12 +575,8 @@ static void song_loaded(void* ctx) {
             }
         }
     }
-    song_chip_setup chip;
     chip_setup base;
-    if (song_ext_get_chip(s, SONG_TAG_CHPA, &chip)) {
-        if (!setup_valid(&chip)) {
-            return; /* capture reports the bad setup and the loader restores the previous file */
-        }
+    if (has_chip) {
         setup_decode(&base, &chip);
     } else {
         chip_setup_of(&instrument, &base);
@@ -541,6 +586,7 @@ static void song_loaded(void* ctx) {
     song_base_set(&base);
     keys_route_song_wants(&keys_router, &base);
     keys_router.song_user = 0;
+    return 1;
 }
 
 static int16_t song_error;    /* the refusal last shown */
@@ -1164,7 +1210,7 @@ static void sidou_main(void) {
     song_bound.song = audio_song()->song;
     ui_set_song(&song_bound);
     song_io_hooks io_hooks = {song_capture, song_loaded, read_demo, 0, song_generation,
-                              ui_song_force, song_snapshot};
+                              ui_song_force, song_snapshot, song_restore};
     (void)song_capture(0);
     song_io_init(&songs, audio_song(), store_fm1(), ui_settings(), &song_stream, &io_hooks);
     ui_set_song_io(&songs);

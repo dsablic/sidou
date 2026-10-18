@@ -410,7 +410,7 @@ stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
 - M2c Task 8: songs load and save on the store in bounded slices. SONG offers LOAD,
   NEW, 16-character SAVE AS and confirmed DELETE; SAVE in a song view saves the song.
   Unchanged saves write nothing, active saves freeze song edits, and settings schema 4
-  remembers the last song after schema 3's reserved THEME byte and schema 2's
+  remembers the last song after schema 3's THEME byte and schema 2's
   TRACKER ROWS. ABOUT plays SIDOU
   LOOP only with a clean, stopped song and restores the loaded song on close.
   Device edits also enforce a 65,536-byte canonical saved-size cap, trailer included:
@@ -419,6 +419,9 @@ stands: "M2 status (preview)" below and `docs/plans/2026-10-15-m2-overview.md`.
   Integrated with the large-text menu/popups and M2e: bank 1 recalls songs in name
   order, stopped; song saves and loads preserve MIDI setup and rows per beat. CHIP
   and MIDI USER selections retain explicit control intent under parameter locks.
+  SONG follows both themes' colour roles, and TRACKER refreshes same-shaped recalls
+  without displaying a partially loaded model. Refused loads preserve held notes,
+  RPN ownership and inherited runtime settings; validation precedes runtime changes.
 - M2f Task 4: the compositor's caps came down to 4 cells a run and 8 candidates a scan slice
   (RED MOON RITE's own tiles cost up to 5,930 instructions, and a song's analysis slice may
   share the pass); MIDI learn's frame (`SCREEN_OVER`) keeps the grid's pixel region as it keeps

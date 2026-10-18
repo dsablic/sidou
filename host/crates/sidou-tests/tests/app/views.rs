@@ -21,6 +21,137 @@ fn song_frames(ui: &mut Ui) {
     }
 }
 
+fn song_attr(ui: &Ui, row: usize, col: usize, width: usize, fg: u8, bg: u8) {
+    let expected = (bg << 4) | fg;
+    for c in col..col + width {
+        assert_eq!(
+            ui.g.attr[row * COLS + c],
+            expected,
+            "theme {}, row {row}, column {c}",
+            ui.live().theme
+        );
+    }
+}
+
+#[test]
+fn song_root_rebuilds_its_theme_and_moves_selection_without_reopening() {
+    let mut ui = Ui::without_cards();
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    song_frames(&mut ui);
+    for id in [THEME_HIGH_CONTRAST, THEME_C64, THEME_HIGH_CONTRAST] {
+        unsafe { live_set_theme(&mut *ui.rig.live, id) };
+        song_frames(&mut ui);
+        let th = unsafe { &*theme_get(id) };
+        assert_eq!(ui.top(), "SONG");
+        assert_eq!(ui.big(2, 2, 2, 4), "SONG");
+        for row in [2, 3] {
+            song_attr(&ui, row, 2, 8, th.title_fg, th.title_bg);
+        }
+        for row in [6, 7] {
+            song_attr(&ui, row, 2, 8, th.sel_fg, th.sel_bg);
+        }
+        song_attr(&ui, 10, 2, 6, th.menu_item, th.bg);
+        song_attr(&ui, 25, 2, 15, th.label, th.bg);
+        ui.turn(PANEL_ENC_SELECT, 1);
+        song_frames(&mut ui);
+        song_attr(&ui, 6, 2, 8, th.menu_item, th.bg);
+        for row in [10, 11] {
+            song_attr(&ui, row, 2, 6, th.sel_fg, th.sel_bg);
+        }
+        ui.turn(PANEL_ENC_SELECT, -1);
+        song_frames(&mut ui);
+    }
+}
+
+#[test]
+fn song_directory_selection_and_hints_follow_theme_changes_after_scanning() {
+    let mut ui = Ui::without_cards();
+    let mut flash = crate::store::fresh(809, STORE_WINDOW_MAX);
+    for name in ["FIRST", "SECOND"] {
+        assert_eq!(flash.file_now(name, &[0]), STORE_OK);
+    }
+    let mut io = Box::new(song_io {
+        st: &mut *flash.st,
+        ..Default::default()
+    });
+    unsafe { views_song_io(&mut *ui.v, &mut *io) };
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    song_frames(&mut ui);
+    for id in [THEME_HIGH_CONTRAST, THEME_C64] {
+        unsafe { live_set_theme(&mut *ui.rig.live, id) };
+        song_frames(&mut ui);
+        let th = unsafe { &*theme_get(id) };
+        assert!(ui.row(6).contains("FIRST"));
+        assert!(ui.row(8).contains("SECOND"));
+        song_attr(&ui, 2, 2, 8, th.title_fg, th.title_bg);
+        song_attr(&ui, 6, 6, 5, th.sel_fg, th.sel_bg);
+        song_attr(&ui, 8, 6, 6, th.menu_item, th.bg);
+        song_attr(&ui, 23, 4, 16, th.label, th.bg);
+        ui.turn(PANEL_ENC_SELECT, 1);
+        song_frames(&mut ui);
+        song_attr(&ui, 6, 6, 5, th.menu_item, th.bg);
+        song_attr(&ui, 8, 6, 6, th.sel_fg, th.sel_bg);
+        ui.turn(PANEL_ENC_SELECT, -1);
+        song_frames(&mut ui);
+    }
+}
+
+#[test]
+fn song_name_editor_and_confirmation_keep_distinct_roles_when_the_theme_changes() {
+    let mut ui = Ui::without_cards();
+    let mut io = Box::new(song_io {
+        dirty: 1,
+        ..Default::default()
+    });
+    unsafe { views_song_io(&mut *ui.v, &mut *io) };
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(PANEL_ENC_SELECT, 2);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    song_frames(&mut ui);
+    for id in [THEME_HIGH_CONTRAST, THEME_C64] {
+        unsafe { live_set_theme(&mut *ui.rig.live, id) };
+        song_frames(&mut ui);
+        let th = unsafe { &*theme_get(id) };
+        assert_eq!(ui.big(2, 2, 2, 7), "SAVE AS");
+        song_attr(&ui, 2, 2, 14, th.title_fg, th.title_bg);
+        song_attr(&ui, 8, 2, 16, th.value, th.bg);
+        song_attr(&ui, 10, 2, 2, th.hot, th.bg);
+        song_attr(&ui, 19, 2, 16, th.label, th.bg);
+        ui.turn(PANEL_ENC_SELECT, STORE_NAME_MAX as i32);
+        song_frames(&mut ui);
+        song_attr(&ui, 16, 2, 8, th.sel_fg, th.sel_bg);
+        ui.turn(PANEL_ENC_SELECT, -(STORE_NAME_MAX as i32));
+        song_frames(&mut ui);
+    }
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, -1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    song_frames(&mut ui);
+    for id in [THEME_HIGH_CONTRAST, THEME_C64] {
+        unsafe { live_set_theme(&mut *ui.rig.live, id) };
+        song_frames(&mut ui);
+        let th = unsafe { &*theme_get(id) };
+        assert!(ui.row(6).contains("DISCARD"));
+        song_attr(&ui, 6, 2, 14, th.alert, th.bg);
+        song_attr(&ui, 8, 2, 26, th.alert, th.bg);
+        song_attr(&ui, 14, 2, 4, th.sel_fg, th.sel_bg);
+        song_attr(&ui, 14, 16, 6, th.menu_item, th.bg);
+        ui.turn(PANEL_ENC_SELECT, 1);
+        song_frames(&mut ui);
+        song_attr(&ui, 14, 2, 4, th.menu_item, th.bg);
+        song_attr(&ui, 14, 16, 6, th.sel_fg, th.sel_bg);
+        ui.turn(PANEL_ENC_SELECT, -1);
+        song_frames(&mut ui);
+    }
+}
+
 #[test]
 fn song_menu_has_load_new_save_as_delete_and_home_cancels_a_page() {
     let mut ui = Ui::without_cards();
@@ -54,7 +185,8 @@ fn song_pages_use_large_labels_and_reverse_selection_without_losing_changed_glyp
     song_frames(&mut ui);
     assert_eq!(ui.row(2), ui.row(3), "the SONG heading is two rows tall");
     assert_eq!(ui.g.src[2 * COLS + 2], b'S');
-    let reverse = ((GRID_LIGHT_BLUE << 4) | GRID_BLUE) as u8;
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    let reverse = (th.sel_bg << 4) | th.sel_fg;
     assert_eq!(ui.g.attr[6 * COLS + 2], reverse);
     ui.turn(PANEL_ENC_SELECT, 2);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
@@ -134,17 +266,19 @@ fn new_requires_confirmation_and_home_keeps_the_unsaved_song() {
 #[test]
 fn song_header_shows_saving_and_returns_to_tracker_after_save() {
     let mut ui = Ui::without_cards();
-    let mut io = Box::new(song_io {
-        state: SONG_IO_WRITE as u8,
-        ..Default::default()
-    });
+    let mut io = Box::<song_io>::default();
     unsafe { views_song_io(&mut *ui.v, &mut *io) };
     ui.press(PANEL_BTN_SEQ);
     song_frames(&mut ui);
-    assert!(ui.row(0).starts_with("SAVING"));
+    assert_eq!(ui.big(0, 5, 2, 6), "PAT --");
+    io.state = SONG_IO_WRITE as u8;
+    song_frames(&mut ui);
+    assert_eq!(ui.big(0, 0, 2, 2), "V1");
+    assert_eq!(ui.big(0, 5, 2, 6), "SAVING");
     io.state = SONG_IO_IDLE as u8;
     song_frames(&mut ui);
-    assert!(ui.row(0).starts_with("TRACKER"));
+    assert_eq!(ui.big(0, 0, 2, 2), "V1");
+    assert_eq!(ui.big(0, 5, 2, 6), "PAT --");
 }
 
 #[test]
@@ -174,7 +308,8 @@ fn song_pages_share_the_canvas_without_leaking_it_into_tracker() {
         ui.frame();
         crate::drain(&mut ui.g);
     }
-    assert!(ui.row(0).starts_with("TRACKER"));
+    assert_eq!(ui.big(0, 0, 2, 2), "V1");
+    assert_eq!(ui.big(0, 5, 2, 6), "PAT --");
     assert!(!(0..GRID_ROWS as usize).any(|r| ui.row(r).contains("WRITE SONG")));
 }
 

@@ -233,6 +233,71 @@ fn assert_stopped(m: &mut Machine, fw: &Firmware) {
     assert_eq!(ctl_byte(m, fw, ilp32::song_ctl::audition), 0);
 }
 
+fn tracker_first_note(m: &mut Machine, fw: &Firmware) -> String {
+    let grid = fw.symbol("cells");
+    let row = TRACKER_VIEW_TOP + TRACKER_VIEW_CONTEXT * TRACKER_VIEW_ROW_CELLS;
+    (0..3)
+        .map(|i| {
+            let cell = row * GRID_COLS + TRACKER_VIEW_NOTE_COL + 2 * i;
+            assert_eq!(
+                u32::from(m.soc.read8(grid + ilp32::grid::ch as u32 + cell)),
+                GRID_BIG_FIRST,
+                "TRACKER note is not drawn at 2x"
+            );
+            m.soc.read8(grid + ilp32::grid::src as u32 + cell) as char
+        })
+        .collect()
+}
+
+#[test]
+fn tracker_refreshes_same_shaped_song_rows_after_load_and_bank_recall() {
+    let Some(fw) = fixture() else { return };
+    let mut m = boot(&fw, None);
+    complete(&mut m, &fw, NEW, "");
+    let c4 = [GT2_FIRSTNOTE as u8 + 48, 1, 0, 0];
+    let g4 = [GT2_FIRSTNOTE as u8 + 55, 1, 0, 0];
+    row_write(&mut m, &fw, 0, 0, c4);
+    complete(&mut m, &fw, SAVE, "ALPHA");
+    let alpha = song(&mut m, &fw);
+    row_write(&mut m, &fw, 0, 0, g4);
+    complete(&mut m, &fw, SAVE, "ZED");
+    let zed = song(&mut m, &fw);
+    for voice in 0..3 {
+        assert_eq!(alpha.order(0, voice), zed.order(0, voice));
+        assert_eq!(
+            alpha.pattern(voice).unwrap().len(),
+            zed.pattern(voice).unwrap().len()
+        );
+    }
+    press(&mut m, PANEL_BTN_SEQ as u8);
+    m.run_ms(SETTLE_MS);
+    assert_eq!(top_view(&mut m, &fw), fw.symbol("tracker_view_view"));
+    assert_eq!(tracker_first_note(&mut m, &fw), "G-4");
+
+    complete(&mut m, &fw, LOAD, "ALPHA");
+    m.run_ms(SETTLE_MS);
+    assert_eq!(top_view(&mut m, &fw), fw.symbol("tracker_view_view"));
+    assert_eq!(song(&mut m, &fw).pattern(0).unwrap()[0], c4);
+    let after_load = tracker_first_note(&mut m, &fw);
+
+    m.midi(&[0xb0, 0, 0, 0xb0, 32, 1, 0xc0, 1]);
+    until(&mut m, "bank-1 recalls ZED without leaving TRACKER", |m| {
+        assert_eq!(top_view(m, &fw), fw.symbol("tracker_view_view"));
+        name(m, &fw) == "ZED" && io_byte(m, &fw, ilp32::song_io::state) == SONG_IO_IDLE as u8
+    });
+    m.run_ms(SETTLE_MS);
+    assert_eq!(top_view(&mut m, &fw), fw.symbol("tracker_view_view"));
+    assert_eq!(song(&mut m, &fw).pattern(0).unwrap()[0], g4);
+    let after_bank = tracker_first_note(&mut m, &fw);
+    assert_eq!(
+        (after_load.as_str(), after_bank.as_str()),
+        ("C-4", "G-4"),
+        "TRACKER kept rows cached from a different same-shaped song"
+    );
+    assert_stopped(&mut m, &fw);
+    check_passes(&m, "same-shaped song loads while TRACKER stays open");
+}
+
 fn assert_bit_exact(m: &mut Machine, fw: &Firmware, expected: &Song) {
     assert!(
         !m.buffer_snapshots.is_empty(),

@@ -28,21 +28,10 @@
  * (song_view_frame): PLAY's, the mutes, a jam's release; a jam note that cannot go is
  * dropped, late notes being worse than none.
  *
- * Row 0, the header (reverse video): the view's name (columns 0-6), a play mark or a stop
- * square (7), the tempo in BPM, rounded (8-11; "---" with no player), the position as
- * "ORD 03 ROW 1A" in hex (13-25: the player's while it plays, the cursor's otherwise) and REC
- * in red while recording (27-29). The tempo: the frame rate (PAL 985,248 / 19,656 Hz, NTSC
- * 1,022,727 / 17,095), times the play routine's calls a frame (gt2reloc's CIA period for
- * multispeed: 0x4cc7 / N + 1 cycles PAL, 0x42c6 / N + 1 NTSC, decision record 0007), over the
- * calls a row (funktempo: their average) and the rows a beat (4; the MIDI chunk's once M2e
- * lands).
- * While io streams a save, SAVING replaces the view name; transport, mutes and jam keep running.
- *
- * Row 1, the voice heads, from columns 3, 12 and 21: V1, V2 and V3 in their waveform's colour
- * (pulse cyan, saw yellow, triangle light green, noise light grey, combined white; grey
- * while silent), the waveform's name (TRI, SAW, PUL, NOI, MIX, ---), MUT in light red when
- * muted or SOL in white when soloed instead, and a one-cell envelope meter in the waveform's
- * colour on dark grey.
+ * Each view chooses its own themed header and voice strips (app/tracker_view.h). While io
+ * streams a save, TRACKER shows SAVING in place of its pattern heading; transport, mutes
+ * and jam keep running. The tempo uses the PAL/NTSC frame rate, the play routine's calls a
+ * frame, the average funktempo speed and the MIDI setup's rows per beat.
  *
  * The views compose when what they show changed, built into the shared canvas and copied onto
  * the grid within SONG_VIEW_FRAME_CELLS cells a frame less what the toast, the raster and a

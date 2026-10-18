@@ -768,9 +768,17 @@ cursor underneath and a SAVE action at row 16. Confirmations use large text and
 default to reverse-video NO. Help is at the
 bottom, with HOME consistently returning to the preceding page.
 
+Both themes use the shared colour roles: title foreground/background for the
+heading, menu-item and selection colours for actions and filenames, value for
+the edited name, hot for its cursor and busy status, alert for destructive
+questions, and label for help. Changing THEME rebuilds the open page without
+leaving it.
+
 Only changed cells are copied, at most 200 per frame including overlays. The
 reference images are `song`, `song-load`, `song-save-as` and `song-confirm`.
-Song-view headers show SAVING while a file is being written.
+TRACKER shows SAVING in place of its pattern heading while a file is being
+written. During a streamed load it retains the previous canvas; the completed
+load invalidates cached rows before showing the new song.
 
 ## TRACKER
 

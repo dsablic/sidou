@@ -140,7 +140,7 @@ static void head_look(const song_view* sv, uint8_t out[HEAD_LOOK]) {
     out[0] = (uint8_t)song_view_playing(sv);
     out[1] = (uint8_t)bpm;
     out[2] = (uint8_t)(bpm >> 8);
-    out[3] = sv->rec;
+    out[3] = (uint8_t)(sv->rec | (sv->io && song_io_saving(sv->io) ? 2u : 0u));
     out[4] = sv->voice;
     out[5] = (uint8_t)(sv->mute | sv->solo << 3);
     out[6] = lane_of(sv, sv->voice).pattern;
@@ -214,7 +214,7 @@ static void build_head(song_view* sv) {
         pat[4] = HEX[ln.pattern >> 4 & 15u];
         pat[5] = HEX[ln.pattern & 15u];
     }
-    big(c, 5, 0, pat, base);
+    big(c, 5, 0, sv->io && song_io_saving(sv->io) ? "SAVING" : pat, base);
     /* MUT or SOL small by the pattern; the play mark, the tempo and REC on the right. */
     if (sv->solo >> v & 1u) {
         small(c, 18, 0, "SOL", base);
@@ -534,15 +534,27 @@ static int looks_changed(const song_view* sv) {
     return 0;
 }
 
+static int model_loading(const song_view* sv) {
+    return sv->io && (sv->io->state == SONG_IO_STOP || sv->io->state == SONG_IO_READ ||
+                      sv->io->state == SONG_IO_VERIFY);
+}
+
 static int changed(screen* s, void* state) {
     (void)s;
     const song_view* sv = state;
+    if (model_loading(sv)) {
+        return sv->dirty != 0;
+    }
     return !sv->built || sv->dirty || sv->unbuilt || looks_changed(sv) ||
            sv->which != SONG_VIEW_TRACKER;
 }
 
 static void compose(screen* s, void* state, grid* g) {
     song_view* sv = state;
+    if (model_loading(sv)) {
+        song_view_copy(sv, s, g);
+        return;
+    }
     uint8_t head[HEAD_LOOK], rows[ROWS_LOOK];
     head_look(sv, head);
     rows_look(sv, rows);
