@@ -2102,6 +2102,707 @@ fn pending_edits_are_refused() {
     check_arena(&s);
 }
 
+type LockRecord = (u8, u8, u8, u16);
+
+fn tracker_locks(s: &Song) -> Vec<LockRecord> {
+    let mut out = vec![song_lock::default(); SONG_LOCKS_MAX as usize];
+    let n = unsafe { song_ext_get_locks(s.ptr(), out.as_mut_ptr(), out.len() as u32) };
+    out.into_iter()
+        .take(n as usize)
+        .map(|l| (l.pattern, l.row, l.param, l.value))
+        .collect()
+}
+
+fn tracker_fixture(rows: usize) -> Song {
+    let mut spec = SngSpec::new();
+    spec.patterns[0] = (
+        (0..rows)
+            .map(|i| {
+                [
+                    0x60 + (i % 93) as u8,
+                    (i % 64) as u8,
+                    (i % 16) as u8,
+                    i as u8,
+                ]
+            })
+            .collect(),
+        [0xff, 37, 11, 193],
+    );
+    let mut s = Song::device();
+    s.read(&spec.encode(), 4).unwrap();
+    for row in 0..rows as u32 {
+        for param in [SONG_LOCK_CUTOFF, SONG_LOCK_PULSE] {
+            assert_eq!(
+                unsafe { song_lock_put(s.ptr_mut(), 0, row, param, row + 100) },
+                0
+            );
+        }
+    }
+    assert_eq!(
+        unsafe { song_lock_put(s.ptr_mut(), 1, 3, SONG_LOCK_AGE, 99) },
+        0
+    );
+    assert_eq!(s.ext_set(tag(b"ZZZ9"), &[1, 8, 9]), 0);
+    s
+}
+
+fn tracker_shift(s: &mut Song, push: bool, row: u32, edit: &mut gt2_edit) -> gt2_err {
+    unsafe {
+        if push {
+            gt2_pattern_push_row(s.ptr_mut(), 0, row, edit)
+        } else {
+            gt2_pattern_pull_row(s.ptr_mut(), 0, row, edit)
+        }
+    }
+}
+
+#[test]
+fn tracker_fixed_length_rows_match_independent_model_and_move_locks() {
+    for rows in [1, 2, 7, 64, GT2_MAX_ROWS as usize] {
+        for push in [false, true] {
+            for row in 0..rows {
+                let mut s = tracker_fixture(rows);
+                let mut model = Model::of(&s);
+                let mut locks = tracker_locks(&s);
+                let v = model.patterns[0].as_mut().unwrap();
+                if push {
+                    v.insert(row, EMPTY);
+                    v.remove(rows);
+                } else {
+                    v.remove(row);
+                    v.insert(rows - 1, EMPTY);
+                }
+                locks = locks
+                    .into_iter()
+                    .filter_map(|(p, r, param, value)| {
+                        if p != 0 || (r as usize) < row {
+                            return Some((p, r, param, value));
+                        }
+                        if push {
+                            ((r as usize) + 1 < rows).then_some((p, r + 1, param, value))
+                        } else {
+                            ((r as usize) != row).then(|| (p, r - 1, param, value))
+                        }
+                    })
+                    .collect();
+                let before = in_use(&s);
+                let ext = s.ext_chunks();
+                let used = s.raw().used_units;
+                let mut edit = e();
+                assert_eq!(tracker_shift(&mut s, push, row as u32, &mut edit), GT2_OK);
+                assert_eq!(edit.kind as u32, GT2_EDIT_SWAP);
+                assert_eq!(in_use(&s), before, "rebuild must touch only free space");
+                assert_eq!(s.ext_chunks(), ext, "locks wait for acknowledgement");
+                assert_eq!(s.raw().used_units, used + rows as u32 + 1);
+                unsafe { gt2_edit_apply(s.ptr_mut(), &edit) };
+                assert_eq!(Model::of(&s), model, "rows {rows} row {row} push {push}");
+                assert_eq!(
+                    s.ext_chunks(),
+                    ext,
+                    "interrupt application must not walk locks"
+                );
+                assert_eq!(s.raw().pending, 1);
+                unsafe { gt2_edit_release(s.ptr_mut(), &edit) };
+                assert_eq!(
+                    tracker_locks(&s),
+                    locks,
+                    "rows {rows} row {row} push {push}"
+                );
+                assert_eq!(s.ext_find(tag(b"ZZZ9")).unwrap(), &[1, 8, 9]);
+                assert_eq!(s.raw().used_units, used);
+                assert_eq!(s.raw().pending, 0);
+                check_arena(&s);
+            }
+        }
+    }
+}
+
+#[test]
+fn tracker_fixed_length_rows_refuse_ranges_and_pending_and_cancel_cleanly() {
+    for push in [false, true] {
+        for rows in [0, 1, 8, 128] {
+            let mut s = tracker_fixture(rows);
+            for row in [rows as u32, rows as u32 + 1, u32::MAX] {
+                let before = s.bytes().to_vec();
+                assert_eq!(tracker_shift(&mut s, push, row, &mut e()), GT2_ERR_RANGE);
+                assert_eq!(s.bytes(), before);
+            }
+            for pattern in [3, GT2_MAX_PATTERNS, u32::MAX] {
+                let before = s.bytes().to_vec();
+                let r = unsafe {
+                    if push {
+                        gt2_pattern_push_row(s.ptr_mut(), pattern, 0, &mut e())
+                    } else {
+                        gt2_pattern_pull_row(s.ptr_mut(), pattern, 0, &mut e())
+                    }
+                };
+                assert_eq!(r, GT2_ERR_RANGE);
+                assert_eq!(s.bytes(), before);
+            }
+            if rows == 0 {
+                continue;
+            }
+            let mut cell = e();
+            assert_eq!(
+                unsafe { gt2_set_row(s.ptr_mut(), 0, 0, EMPTY.as_ptr(), &mut cell) },
+                GT2_OK
+            );
+            let before = s.bytes().to_vec();
+            assert_eq!(tracker_shift(&mut s, push, 0, &mut e()), GT2_ERR_PENDING);
+            assert_eq!(s.bytes(), before);
+            unsafe { gt2_edit_cancel(s.ptr_mut(), &cell) };
+            let model = Model::of(&s);
+            let ext = s.ext_chunks();
+            let used = s.raw().used_units;
+            let mut edit = e();
+            assert_eq!(tracker_shift(&mut s, push, 0, &mut edit), GT2_OK);
+            for applied in [false, true] {
+                if applied {
+                    unsafe { gt2_edit_apply(s.ptr_mut(), &edit) };
+                }
+                let before = s.bytes().to_vec();
+                assert_eq!(tracker_shift(&mut s, !push, 0, &mut e()), GT2_ERR_PENDING);
+                assert_eq!(
+                    unsafe { gt2_set_row(s.ptr_mut(), 0, 0, EMPTY.as_ptr(), &mut e()) },
+                    GT2_ERR_PENDING
+                );
+                assert_eq!(unsafe { gt2_compact_step(s.ptr_mut(), &mut e()) }, -1);
+                assert_eq!(s.bytes(), before);
+                if !applied {
+                    unsafe { gt2_edit_cancel(s.ptr_mut(), &edit) };
+                    assert_eq!(Model::of(&s), model);
+                    assert_eq!(s.ext_chunks(), ext);
+                    assert_eq!(s.raw().used_units, used);
+                    check_arena(&s);
+                    assert_eq!(tracker_shift(&mut s, push, 0, &mut edit), GT2_OK);
+                }
+            }
+            unsafe { gt2_edit_release(s.ptr_mut(), &edit) };
+            check_arena(&s);
+        }
+    }
+}
+
+#[test]
+fn tracker_order_replace_matches_model_and_refuses_without_changes() {
+    let mut rng = Rng(0x5eed_d003);
+    let mut s = Song::device();
+    let mut accepted = 0;
+    for step in 0..400 {
+        let n = rng.below(GT2_MAX_ORDER + 2);
+        let mut entries: Vec<u8> = (0..n)
+            .map(|_| match rng.below(8) {
+                0 => 0xd0 + rng.below(16) as u8,
+                1 => 0xe0 + rng.below(31) as u8,
+                2 => 3,
+                3 => 0xff,
+                _ => rng.below(3) as u8,
+            })
+            .collect();
+        if step % 2 == 0 {
+            entries.clear();
+            for _ in 0..rng.below(85) {
+                if rng.chance(50) {
+                    entries.push(0xe0 + rng.below(31) as u8);
+                }
+                if rng.chance(50) {
+                    entries.push(0xd0 + rng.below(16) as u8);
+                }
+                entries.push(rng.below(3) as u8);
+            }
+        }
+        let n = entries.len() as u32;
+        let restart = rng.below(n + 2) as u8;
+        let ok = n <= GT2_MAX_ORDER
+            && entries
+                .iter()
+                .all(|&v| v != 0xff && !(3..0xd0).contains(&v))
+            && order_valid(&entries)
+            && if n == 0 {
+                restart == 0
+            } else {
+                (restart as u32) < n
+            };
+        let mut model = Model::of(&s);
+        let before = s.bytes().to_vec();
+        let r = rebuild(&mut s, &mut |p, edit| unsafe {
+            gt2_order_replace(p, 0, 0, entries.as_ptr(), n, restart, edit)
+        });
+        assert_eq!(
+            r == GT2_OK,
+            ok,
+            "step {step}: {entries:?} restart {restart}"
+        );
+        if ok {
+            accepted += 1;
+            model.orders[0][0] = (entries, restart);
+        } else {
+            assert_eq!(s.bytes(), before);
+        }
+        assert_eq!(Model::of(&s), model);
+        check_arena(&s);
+    }
+    assert!(
+        accepted > 100,
+        "the seeded stream must exercise successful replacements"
+    );
+    for (entries, restart) in [
+        (vec![], 0),
+        (vec![0; GT2_MAX_ORDER as usize], 253),
+        (vec![0xe3, 0xd2, 2, 0, 1], 4),
+    ] {
+        assert_eq!(
+            rebuild(&mut s, &mut |p, edit| unsafe {
+                gt2_order_replace(
+                    p,
+                    0,
+                    0,
+                    entries.as_ptr(),
+                    entries.len() as u32,
+                    restart,
+                    edit,
+                )
+            }),
+            GT2_OK
+        );
+        assert_eq!(s.order(0, 0).unwrap(), (entries, restart));
+        check_arena(&s);
+    }
+}
+
+#[test]
+fn tracker_order_replace_obeys_deferred_conflicts_and_owns_its_copy() {
+    let mut s = Song::device();
+    let mut edit = e();
+    let mut entries = [0xe2, 0xd3, 1, 2];
+    let model = Model::of(&s);
+    let before = in_use(&s);
+    assert_eq!(
+        unsafe { gt2_order_replace(s.ptr_mut(), 0, 0, entries.as_ptr(), 4, 3, &mut edit) },
+        GT2_OK
+    );
+    entries.fill(0xff);
+    assert_eq!(in_use(&s), before);
+    for applied in [false, true] {
+        if applied {
+            unsafe { gt2_edit_apply(s.ptr_mut(), &edit) };
+            assert_eq!(s.order(0, 0).unwrap(), (vec![0xe2, 0xd3, 1, 2], 3));
+        }
+        let before = s.bytes().to_vec();
+        assert_eq!(
+            unsafe { gt2_order_replace(s.ptr_mut(), 0, 0, [0].as_ptr(), 1, 0, &mut e()) },
+            GT2_ERR_PENDING
+        );
+        assert_eq!(
+            unsafe { gt2_order_delete(s.ptr_mut(), 0, 0, 0, &mut e()) },
+            GT2_ERR_PENDING
+        );
+        assert_eq!(
+            unsafe { gt2_pattern_remove(s.ptr_mut(), 2, &mut e()) },
+            GT2_ERR_PENDING
+        );
+        assert_eq!(s.bytes(), before);
+        if !applied {
+            unsafe { gt2_edit_cancel(s.ptr_mut(), &edit) };
+            assert_eq!(Model::of(&s), model);
+            check_arena(&s);
+            assert_eq!(
+                unsafe {
+                    gt2_order_replace(
+                        s.ptr_mut(),
+                        0,
+                        0,
+                        [0xe2, 0xd3, 1, 2].as_ptr(),
+                        4,
+                        3,
+                        &mut edit,
+                    )
+                },
+                GT2_OK
+            );
+        }
+    }
+    unsafe { gt2_edit_release(s.ptr_mut(), &edit) };
+    for (subtune, channel) in [(1, 0), (0, 3), (u32::MAX, 0), (0, u32::MAX)] {
+        let before = s.bytes().to_vec();
+        assert_eq!(
+            unsafe {
+                gt2_order_replace(s.ptr_mut(), subtune, channel, [0].as_ptr(), 1, 0, &mut e())
+            },
+            GT2_ERR_RANGE
+        );
+        assert_eq!(s.bytes(), before);
+    }
+    let mut pattern = 0;
+    assert_eq!(
+        unsafe { gt2_pattern_add(s.ptr_mut(), 1, &mut pattern, &mut edit) },
+        GT2_OK
+    );
+    for applied in [false, true] {
+        if applied {
+            unsafe { gt2_edit_apply(s.ptr_mut(), &edit) };
+        }
+        let before = s.bytes().to_vec();
+        assert_eq!(
+            unsafe {
+                gt2_order_replace(s.ptr_mut(), 0, 1, [pattern as u8].as_ptr(), 1, 0, &mut e())
+            },
+            GT2_ERR_PENDING
+        );
+        assert_eq!(s.bytes(), before);
+    }
+    unsafe { gt2_edit_release(s.ptr_mut(), &edit) };
+    assert_eq!(
+        unsafe { gt2_pattern_remove(s.ptr_mut(), pattern, &mut edit) },
+        GT2_OK
+    );
+    for applied in [false, true] {
+        if applied {
+            unsafe { gt2_edit_apply(s.ptr_mut(), &edit) };
+        }
+        let before = s.bytes().to_vec();
+        assert_eq!(
+            unsafe {
+                gt2_order_replace(s.ptr_mut(), 0, 1, [pattern as u8].as_ptr(), 1, 0, &mut e())
+            },
+            GT2_ERR_PENDING
+        );
+        assert_eq!(s.bytes(), before);
+    }
+    unsafe { gt2_edit_release(s.ptr_mut(), &edit) };
+    check_arena(&s);
+}
+
+#[test]
+fn tracker_order_replace_reports_each_rule_and_accepts_null_empty_input() {
+    let mut s = Song::device();
+    for (entries, restart, error) in [
+        (vec![0; GT2_MAX_ORDER as usize + 1], 0, GT2_ERR_ORDER_FULL),
+        (vec![0xff], 0, GT2_ERR_RANGE),
+        (vec![3], 0, GT2_ERR_RANGE),
+        (vec![0xd0, 0xe1, 0], 0, GT2_ERR_ORDER_RULE),
+        (vec![0, 0xd1], 0, GT2_ERR_ORDER_RULE),
+        (vec![0xe1, 0xe2, 0], 0, GT2_ERR_ORDER_RULE),
+        (vec![0], 1, GT2_ERR_RANGE),
+        (vec![], 1, GT2_ERR_RANGE),
+    ] {
+        let before = s.bytes().to_vec();
+        assert_eq!(
+            unsafe {
+                gt2_order_replace(
+                    s.ptr_mut(),
+                    0,
+                    0,
+                    entries.as_ptr(),
+                    entries.len() as u32,
+                    restart,
+                    &mut e(),
+                )
+            },
+            error
+        );
+        assert_eq!(s.bytes(), before);
+    }
+    let before = s.bytes().to_vec();
+    assert_eq!(
+        unsafe { gt2_order_replace(s.ptr_mut(), 0, 0, std::ptr::null(), 1, 0, &mut e()) },
+        GT2_ERR_RANGE
+    );
+    assert_eq!(s.bytes(), before);
+    let mut edit = e();
+    assert_eq!(
+        unsafe { gt2_order_replace(s.ptr_mut(), 0, 0, std::ptr::null(), 0, 0, &mut edit) },
+        GT2_OK
+    );
+    unsafe { gt2_edit_commit(s.ptr_mut(), &edit) };
+    assert_eq!(s.order(0, 0).unwrap(), (vec![], 0));
+    check_arena(&s);
+}
+
+fn capped_tracker_fixture(slack: usize) -> Song {
+    let mut spec = SngSpec::new();
+    spec.instr.clear();
+    spec.orders[0][0].0 = vec![0; 110 - slack];
+    spec.patterns = (0..208)
+        .map(|p| {
+            let count = if p < 42 {
+                128
+            } else if p == 207 {
+                2
+            } else {
+                64
+            };
+            let note = if p < 40 || p == 207 { 0x60 } else { 0xbd };
+            let mut body = vec![[note, 0, 0, 0]; count];
+            if p == 207 {
+                body[1] = EMPTY;
+            }
+            (body, [0xff, 0, 0, 0])
+        })
+        .collect();
+    let mut song = Song::device();
+    song.read(&spec.encode(), 4).unwrap();
+    for (pattern, row) in [(0, 0), (207, 1)] {
+        assert_eq!(
+            unsafe { song_lock_put(song.ptr_mut(), pattern, row, 0, 100) },
+            0
+        );
+    }
+    assert_eq!(song.ext_set(tag(b"CAPT"), &[1; 224]), 0);
+    assert_eq!(song.raw().ext_used, 253);
+    assert_eq!(song.write(true).len(), GT2_SAVED_MAX as usize - slack);
+    assert_eq!(
+        unsafe { gt2_saved_size(song.ptr()) } as usize,
+        song.write(true).len()
+    );
+    song
+}
+
+fn capped_tracker_shift(song: &mut Song, push: bool, edit: &mut gt2_edit) -> gt2_err {
+    unsafe {
+        if push {
+            gt2_pattern_push_row(song.ptr_mut(), 207, 1, edit)
+        } else {
+            gt2_pattern_pull_row(song.ptr_mut(), 207, 1, edit)
+        }
+    }
+}
+
+#[test]
+fn capped_tracker_tail_lock_padding_growth_is_refused_before_allocation() {
+    for push in [false, true] {
+        let mut song = capped_tracker_fixture(0);
+        let next_ext = unsafe {
+            song_locks_pattern_size(
+                song.ptr(),
+                if push {
+                    SONG_LOCKS_PUSH
+                } else {
+                    SONG_LOCKS_DELETE
+                },
+                207,
+                if push { 1 | 2 << 8 } else { 1 },
+            )
+        };
+        assert_eq!(next_ext, 248);
+        assert_eq!(
+            unsafe { gt2_saved_trailer_size(next_ext) },
+            unsafe { gt2_saved_trailer_size(song.raw().ext_used) } + 4
+        );
+        let before = song.bytes().to_vec();
+        assert_eq!(
+            capped_tracker_shift(&mut song, push, &mut e()),
+            GT2_ERR_SONG_FULL
+        );
+        assert_eq!(
+            song.bytes(),
+            before,
+            "push {push}: cap refusal must not allocate or reserve"
+        );
+        let before = song.bytes().to_vec();
+        assert_eq!(
+            unsafe { gt2_order_replace(song.ptr_mut(), 0, 1, [1, 1].as_ptr(), 2, 0, &mut e()) },
+            GT2_ERR_SONG_FULL
+        );
+        assert_eq!(song.bytes(), before);
+    }
+}
+
+#[test]
+fn capped_tracker_growth_reservations_cancel_and_accepted_edits_finish_while_frozen() {
+    for push in [false, true] {
+        let mut song = capped_tracker_fixture(4);
+        let revision = song.raw().revision;
+        let mut shift = e();
+        assert_eq!(capped_tracker_shift(&mut song, push, &mut shift), GT2_OK);
+        assert_eq!(shift.reserved, 4);
+        assert_eq!(song.raw().saved_growth, 4);
+        let before = song.bytes().to_vec();
+        assert_eq!(
+            unsafe { gt2_order_replace(song.ptr_mut(), 0, 1, [1, 1].as_ptr(), 2, 0, &mut e()) },
+            GT2_ERR_SONG_FULL
+        );
+        assert_eq!(song.bytes(), before);
+        unsafe { gt2_edit_cancel(song.ptr_mut(), &shift) };
+        assert_eq!(song.raw().saved_growth, 0);
+        assert_eq!(song.raw().revision, revision);
+        let mut replacement = e();
+        assert_eq!(
+            unsafe {
+                gt2_order_replace(
+                    song.ptr_mut(),
+                    0,
+                    1,
+                    [1, 1].as_ptr(),
+                    2,
+                    0,
+                    &mut replacement,
+                )
+            },
+            GT2_OK
+        );
+        assert_eq!(replacement.reserved, 1);
+        unsafe { gt2_edit_cancel(song.ptr_mut(), &replacement) };
+        assert_eq!(capped_tracker_shift(&mut song, push, &mut shift), GT2_OK);
+        let mut loose = e();
+        assert_eq!(
+            unsafe { gt2_set_instr(song.ptr_mut(), 1, GT2_INS_NAME, b'X', &mut loose) },
+            GT2_OK
+        );
+        unsafe { (*song.ptr_mut()).frozen = 1 };
+        let before = song.bytes().to_vec();
+        assert_eq!(
+            capped_tracker_shift(&mut song, push, &mut e()),
+            GT2_ERR_SAVING
+        );
+        assert_eq!(
+            unsafe { gt2_order_replace(song.ptr_mut(), 0, 1, [1].as_ptr(), 1, 0, &mut e()) },
+            GT2_ERR_SAVING
+        );
+        assert_eq!(song.bytes(), before);
+        unsafe { gt2_edit_commit(song.ptr_mut(), &shift) };
+        assert_eq!(song.raw().frozen, 1);
+        assert_eq!(
+            song.raw().saved_growth,
+            4,
+            "reservations last until the whole batch settles"
+        );
+        assert_eq!(tracker_locks(&song), vec![(0, 0, 0, 100)]);
+        assert!(song.raw().revision > revision);
+        unsafe { gt2_edit_cancel(song.ptr_mut(), &loose) };
+        assert_eq!(song.raw().saved_growth, 0);
+        assert_eq!(unsafe { gt2_saved_size(song.ptr()) }, GT2_SAVED_MAX);
+        assert_eq!(song.write(true).len(), GT2_SAVED_MAX as usize);
+    }
+}
+
+#[test]
+fn capped_tracker_new_primitives_prioritize_the_save_freeze() {
+    let mut song = Song::device();
+    unsafe { (*song.ptr_mut()).frozen = 1 };
+    let before = song.bytes().to_vec();
+    for pattern in [0, GT2_MAX_PATTERNS] {
+        assert_eq!(
+            unsafe { gt2_pattern_push_row(song.ptr_mut(), pattern, 0, &mut e()) },
+            GT2_ERR_SAVING
+        );
+        assert_eq!(
+            unsafe { gt2_pattern_pull_row(song.ptr_mut(), pattern, 0, &mut e()) },
+            GT2_ERR_SAVING
+        );
+    }
+    for subtune in [0, GT2_MAX_SUBTUNES] {
+        assert_eq!(
+            unsafe { gt2_order_replace(song.ptr_mut(), subtune, 0, [0].as_ptr(), 1, 0, &mut e()) },
+            GT2_ERR_SAVING
+        );
+    }
+    assert_eq!(song.bytes(), before);
+}
+
+#[test]
+fn capped_tracker_host_region_retains_its_larger_capacity() {
+    let file = capped_tracker_fixture(0).write(true);
+    for push in [false, true] {
+        let mut song = Song::host();
+        song.read(&file, 0).unwrap();
+        let mut edit = e();
+        assert_eq!(capped_tracker_shift(&mut song, push, &mut edit), GT2_OK);
+        assert_eq!(edit.reserved, 0);
+        unsafe { gt2_edit_commit(song.ptr_mut(), &edit) };
+        assert_eq!(song.write(true).len(), GT2_SAVED_MAX as usize + 4);
+        assert_eq!(
+            unsafe { gt2_saved_size(song.ptr()) } as usize,
+            song.write(true).len()
+        );
+        assert_eq!(
+            unsafe { gt2_order_replace(song.ptr_mut(), 0, 1, [1, 1].as_ptr(), 2, 0, &mut edit) },
+            GT2_OK
+        );
+        assert_eq!(edit.reserved, 0);
+        unsafe { gt2_edit_commit(song.ptr_mut(), &edit) };
+        assert_eq!(song.write(true).len(), GT2_SAVED_MAX as usize + 5);
+        assert_eq!(
+            unsafe { gt2_saved_size(song.ptr()) } as usize,
+            song.write(true).len()
+        );
+    }
+}
+
+#[test]
+fn capped_tracker_order_replace_respects_pending_prefix_trim() {
+    for cancel in [false, true] {
+        let mut spec = SngSpec::new();
+        spec.patterns = vec![(vec![EMPTY; 64], [0xff, 0, 0, 0]); 208];
+        spec.patterns[206] = (vec![[0x60, 0, 0, 0]], [0xff, 0, 0, 0]);
+        spec.patterns[207] = (vec![EMPTY], [0xff, 0, 0, 0]);
+        let mut song = Song::device();
+        song.read(&spec.encode(), 4).unwrap();
+        let mut removal = e();
+        assert_eq!(
+            unsafe { gt2_pattern_remove(song.ptr_mut(), 206, &mut removal) },
+            GT2_OK
+        );
+        for applied in [false, true] {
+            if applied {
+                unsafe { gt2_edit_apply(song.ptr_mut(), &removal) };
+            }
+            let before = song.bytes().to_vec();
+            assert_eq!(
+                unsafe { gt2_order_replace(song.ptr_mut(), 0, 0, [207].as_ptr(), 1, 0, &mut e()) },
+                GT2_ERR_PENDING
+            );
+            assert_eq!(song.bytes(), before);
+            if cancel {
+                break;
+            }
+        }
+        unsafe {
+            if cancel {
+                gt2_edit_cancel(song.ptr_mut(), &removal)
+            } else {
+                gt2_edit_release(song.ptr_mut(), &removal)
+            }
+        };
+        let mut replacement = e();
+        assert_eq!(
+            unsafe {
+                gt2_order_replace(song.ptr_mut(), 0, 0, [207].as_ptr(), 1, 0, &mut replacement)
+            },
+            GT2_OK
+        );
+        unsafe { gt2_edit_commit(song.ptr_mut(), &replacement) };
+        assert_eq!(
+            unsafe { gt2_saved_size(song.ptr()) } as usize,
+            song.write(true).len()
+        );
+        assert!(song.write(true).len() <= GT2_SAVED_MAX as usize);
+    }
+}
+
+#[test]
+fn capped_tracker_same_length_order_replacement_marks_dirty_but_compaction_does_not() {
+    let mut song = Song::device();
+    let revision = song.raw().revision;
+    let mut replacement = e();
+    assert_eq!(
+        unsafe { gt2_order_replace(song.ptr_mut(), 0, 0, [1].as_ptr(), 1, 0, &mut replacement) },
+        GT2_OK
+    );
+    assert_eq!(song.raw().revision, revision);
+    unsafe { gt2_edit_commit(song.ptr_mut(), &replacement) };
+    assert!(song.raw().revision > revision);
+    let revision = song.raw().revision;
+    if unsafe { gt2_compact_step(song.ptr_mut(), &mut replacement) } == 1 {
+        unsafe { gt2_edit_commit(song.ptr_mut(), &replacement) };
+        assert_eq!(song.raw().revision, revision);
+    }
+    assert_eq!(
+        unsafe { gt2_saved_size(song.ptr()) } as usize,
+        song.write(true).len()
+    );
+}
+
 fn e() -> gt2_edit {
     gt2_edit::default()
 }

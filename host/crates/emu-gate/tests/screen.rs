@@ -3447,7 +3447,7 @@ fn open_tracker(m: &mut Machine, fw: &Firmware) {
 }
 
 /// SEQ opens TRACKER: stopped, SIDOU LOOP's patterns and tempo; PLAY plays it (the play mark,
-/// the position, the other voices' strips), REC in the header, SELECT the shown voice; GLO and the leftmost key mute
+/// the position, the other voices' strips), REC in the header, ALGORITHM the shown voice; GLO and the leftmost key mute
 /// voice 1 within the key's pass and sound nothing, and LIVE's header says so.
 #[test]
 fn the_song_views_header_and_heads_match_their_goldens() {
@@ -3457,14 +3457,14 @@ fn the_song_views_header_and_heads_match_their_goldens() {
     let mut m = booted(&fw);
     open_tracker(&mut m, &fw);
     compare_golden(&build, "tracker", &m.soc.lcd.fb, &[]);
-    // SELECT shows the next voice, and the one after: the other two are the strips.
+    // ALGORITHM shows the next voice, and the one after: the other two are the strips.
     for name in ["tracker-v2", "tracker-v3"] {
-        m.turn(SELECT, 1);
+        m.turn(ALGORITHM, 1);
         m.run_ms(200);
         common::to_mid_frame(&mut m, &fw);
         compare_golden(&build, name, &m.soc.lcd.fb, &[]);
     }
-    m.turn(SELECT, 1); // round to voice 1 again
+    m.turn(ALGORITHM, 1); // round to voice 1 again
     m.run_ms(200);
     common::to_mid_frame(&mut m, &fw);
     compare_golden(&build, "tracker", &m.soc.lcd.fb, &[]);
@@ -3757,6 +3757,157 @@ fn applied_song_edits_refresh_the_tracker_before_and_after_playback() {
         assert_eq!(instrument, b"01", "played first: {played}");
         assert_eq!(cmd, b"422", "played first: {played}");
     }
+}
+
+#[test]
+fn tracker_edits_from_the_panel_are_readable_and_bounded() {
+    const K1: u8 = sidou_sys::PANEL_ENC_K1 as u8;
+    let Some((build, fw)) = fixture("the TRACKER panel editor test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_tracker(&mut m, &fw);
+    press(&mut m, REC);
+    m.run_ms(200);
+    m.watch_calls(fw.symbol("ui_encoder"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    for (what, encoder, steps) in [
+        ("row", SELECT, 1),
+        ("instrument", K1, 1),
+        ("command", K1 + 1, 4),
+        ("data high", K1 + 2, 2),
+        ("data low", K1 + 3, 3),
+    ] {
+        let (input, pass) = start_cost(&mut m, 200, |m| m.turn(encoder, steps));
+        println!("TRACKER edit {what}: input {input}, busiest pass {pass}");
+        assert!(input < TRACKER_INPUT, "{what}: input {input}");
+        assert!(pass < TRACKER_PASS, "{what}: pass {pass}");
+    }
+    m.run_ms(1500);
+    common::to_mid_frame(&mut m, &fw);
+    let src = fw.symbol("cells") + sidou_sys::ilp32::grid::src as u32;
+    let command: Vec<_> = (0..3)
+        .map(|i| m.soc.read8(src + 13 * 30 + 15 + 2 * i))
+        .collect();
+    assert_eq!(command, b"423", "every encoder detent must reach the model");
+    compare_golden(&build, "tracker-edited", &m.soc.lcd.fb, &[]);
+    m.turn(K1, 1);
+    m.run_ms(200);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "tracker-instrument-popup", &m.soc.lcd.fb, &[]);
+    m.run_ms(1500);
+    m.key(sidou_sys::PANEL_BTN_EDIT as u8, true);
+    m.run_ms(30);
+    for (what, steps) in [("insert row", 1), ("delete row", -1)] {
+        let (input, pass) = start_cost(&mut m, 200, |m| m.turn(6, steps));
+        println!("TRACKER edit {what}: input {input}, busiest pass {pass}");
+        assert!(input < TRACKER_INPUT, "{what}: input {input}");
+        assert!(pass < TRACKER_PASS, "{what}: pass {pass}");
+    }
+    m.watch_calls(fw.symbol("ui_buttons"));
+    for what in ["undo", "redo"] {
+        let (input, pass) = start_cost(&mut m, 200, |m| press(m, sidou_sys::PANEL_BTN_LFO as u8));
+        println!("TRACKER edit {what}: input {input}, busiest pass {pass}");
+        assert!(input < TRACKER_INPUT, "{what}: input {input}");
+        assert!(pass < TRACKER_PASS, "{what}: pass {pass}");
+    }
+    m.key(sidou_sys::PANEL_BTN_EDIT as u8, false);
+    m.run_ms(30);
+    for (what, button) in [
+        ("key off", sidou_sys::PANEL_BTN_ARP),
+        ("rest", sidou_sys::PANEL_BTN_LFO),
+        ("clear row", sidou_sys::PANEL_BTN_LFO),
+    ] {
+        let (input, pass) = start_cost(&mut m, 200, |m| press(m, button as u8));
+        println!("TRACKER edit {what}: input {input}, busiest pass {pass}");
+        assert!(input < TRACKER_INPUT, "{what}: input {input}");
+        assert!(pass < TRACKER_PASS, "{what}: pass {pass}");
+    }
+    press(&mut m, PLAY);
+    m.run_ms(500);
+    m.watch_calls(fw.symbol("ui_encoder"));
+    for (what, encoder, steps) in [
+        ("playing instrument", K1, 1),
+        ("playing command", K1 + 1, 4),
+        ("playing data", K1 + 2, 2),
+    ] {
+        let (input, pass) = start_cost(&mut m, 500, |m| m.turn(encoder, steps));
+        println!("TRACKER edit {what}: input {input}, busiest pass {pass}");
+        assert!(input < TRACKER_INPUT, "{what}: input {input}");
+        assert!(pass < TRACKER_PASS, "{what}: pass {pass}");
+    }
+    m.key(sidou_sys::PANEL_BTN_EDIT as u8, true);
+    m.run_ms(30);
+    let (input, pass) = start_cost(&mut m, 500, |m| m.turn(6, 1));
+    println!("TRACKER edit playing insert: input {input}, busiest pass {pass}");
+    assert!(input < TRACKER_INPUT, "playing insert: input {input}");
+    assert!(pass < TRACKER_PASS, "playing insert: pass {pass}");
+}
+
+#[test]
+fn tracker_compaction_is_bounded_and_shows_tidying() {
+    use sidou_sys::*;
+    let Some((_, fw)) = fixture("the TRACKER compaction test") else {
+        return;
+    };
+    let mut song = sidou_tests::song::Song::new(unsafe { gt2_region_min() });
+    let mut edit = gt2_edit::default();
+    unsafe {
+        assert_eq!(
+            gt2_pattern_resize(song.ptr_mut(), 0, GT2_MAX_ROWS, &mut edit),
+            GT2_OK
+        );
+        gt2_edit_commit(song.ptr_mut(), &edit);
+        loop {
+            let mut pattern = 0;
+            let result = gt2_pattern_add(song.ptr_mut(), 2, &mut pattern, &mut edit);
+            if result != GT2_OK {
+                assert_eq!(result, GT2_ERR_FULL);
+                break;
+            }
+            gt2_edit_commit(song.ptr_mut(), &edit);
+        }
+        assert_eq!(
+            gt2_pattern_resize(song.ptr_mut(), 1, GT2_DEFAULT_ROWS, &mut edit),
+            GT2_OK
+        );
+        gt2_edit_commit(song.ptr_mut(), &edit);
+        assert!(gt2_arena_largest_hole(song.ptr()) < GT2_PATTERN_MAX_BYTES);
+    }
+    let mut m = booted(&fw);
+    let region = fw.symbol("__song_region");
+    for (i, &byte) in song.bytes().iter().enumerate() {
+        m.soc.write8(region + i as u32, byte);
+    }
+    open_tracker(&mut m, &fw);
+    press(&mut m, REC);
+    m.run_ms(200);
+    m.watch_calls(fw.symbol("ui_encoder"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    m.key(PANEL_BTN_EDIT as u8, true);
+    m.run_ms(30);
+    let pending = fw.symbol("ui") + (ilp32::views::song + ilp32::song_view::edit_pending) as u32;
+    let blocks = GT2_MAX_PATTERNS + u32::from(song.raw().subtunes) * u32::from(song.raw().channels);
+    // At most two moves per block, with a preparation and an acknowledgement poll each.
+    let max_frames = 4 * blocks + 4;
+    let mut frames = 0;
+    let (input, pass) = start_cost(&mut m, 0, |m| {
+        m.turn(6, 1);
+        m.run_ms(100);
+        assert_eq!(toast_text(m, &fw), "TIDYING");
+        while m.soc.read8(pending) != 0 && frames < max_frames {
+            m.run_ms(UI_PERIOD_MS);
+            frames += 1;
+        }
+    });
+    println!("TRACKER compaction: input {input}, busiest pass {pass}, {frames} completion frames");
+    assert!(input < TRACKER_INPUT);
+    assert!(pass < TRACKER_PASS, "compaction pass {pass}");
+    assert_eq!(
+        m.soc.read8(pending),
+        0,
+        "compaction and the user's swap complete"
+    );
 }
 
 /// TRACKER's costs while a song plays, 30 s each (docs/art/README.md "TRACKER"):

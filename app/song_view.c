@@ -94,9 +94,15 @@ void song_view_init(song_view* sv, live* l) {
     sv->scroll = 0;
     sv->which = SONG_VIEW_CANVAS_NONE;
     sv->built = 0;
+    sv->edit_pending = 0;
     sv->dirty = 0;
     sv->held = 0;
     sv->unbuilt = 0;
+    sv->editor = NULL;
+    sv->edit_screen = NULL;
+    sv->step = 1;
+    sv->field = TRACKER_VIEW_FIELD_NOTE;
+    sv->clear_armed = 0;
 }
 
 uint32_t song_view_mute_mask(const song_view* sv) {
@@ -148,6 +154,9 @@ static void send_jam_off(song_view* sv) {
 }
 
 void song_view_set_transport(song_view* sv, const song_transport* t) {
+    if (sv->editor && sv->editor->pending) {
+        return;
+    }
     sv->t = t;
     sv->song = t ? t->song : NULL;
     sv->built = 0;
@@ -155,11 +164,31 @@ void song_view_set_transport(song_view* sv, const song_transport* t) {
     sv->want = WANT_NONE;
     sv->jam_off = 0;
     sv->jam_key = SONG_VIEW_NO_KEY;
+    if (sv->editor) {
+        song_edit_init(sv->editor, t);
+    }
+    sv->clear_armed = 0;
     if (t) {
         t->status(t->ctx, &sv->st);
         sv->sent = sv->st.mute; /* what the player has: nothing to send for it */
         send_mutes(sv);
     }
+}
+
+void song_view_loaded(song_view* sv) {
+    if (sv->editor) {
+        song_edit_init(sv->editor, sv->t);
+    }
+    sv->edit_pending = 0;
+    sv->clear_armed = 0;
+    sv->order_pos = sv->row = sv->voice = 0;
+    sv->instr = 1;
+    sv->want = WANT_NONE;
+    sv->jam_key = SONG_VIEW_NO_KEY;
+    sv->jam_keys = 0;
+    sv->jam_off = 0;
+    sv->built = 0;
+    sv->unbuilt = 0;
 }
 
 /* 1 while the song plays or is about to. */
@@ -223,6 +252,9 @@ uint32_t song_view_keys(song_view* sv, uint32_t down, uint32_t pressed, uint32_t
                 sv->jam_off = 0; /* the new note takes the voice over */
             }
             send_jam_off(sv);
+            if (sv->rec && sv->edit_screen && sv->which == SONG_VIEW_TRACKER) {
+                tracker_view_note(sv->edit_screen, sv, n - GT2_NOTE0);
+            }
             /* A note that cannot go now is dropped. */
             (void)sv->t->jam(sv->t->ctx, sv->voice, n - GT2_NOTE0, sv->instr);
             sv->jam_voice = sv->voice;
@@ -238,10 +270,20 @@ uint32_t song_view_keys(song_view* sv, uint32_t down, uint32_t pressed, uint32_t
     return taken;
 }
 
+__attribute__((noinline, unused)) static void edit_poll(song_view* sv) {
+    uint32_t previous = sv->editor->status;
+    (void)song_edit_poll(sv->editor);
+    sv->edit_pending = sv->editor->pending;
+    const char* msg = song_edit_message(sv->editor);
+    if (sv->edit_screen && msg && *msg && previous != sv->editor->status) {
+        screen_toast(sv->edit_screen, msg, SCREEN_TOAST_MS);
+    }
+}
+
 void song_view_frame(song_view* sv, int shows) {
     const song_transport* t = sv->t;
     if (!t || (!shows && sv->want == WANT_NONE && !sv->jam_off &&
-               song_view_mute_mask(sv) == sv->sent)) {
+               song_view_mute_mask(sv) == sv->sent && !sv->edit_pending)) {
         return; /* outside the song views, most frames: nothing waits */
     }
     send_play(sv);
@@ -251,6 +293,9 @@ void song_view_frame(song_view* sv, int shows) {
     }
     send_mutes(sv);
     send_jam_off(sv);
+    if (sv->edit_pending) {
+        edit_poll(sv);
+    }
 }
 
 /* ---- the tempo and the position the views show ---- */

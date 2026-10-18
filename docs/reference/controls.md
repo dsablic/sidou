@@ -42,7 +42,7 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
    saves on a clean release, or held with a knob opens MIDI learn over any view; SAVE held
    with HOME consumes HOME ([SAVE](#save)); SEQ, PLAY and REC are the song views' ([below](#song-views)),
    in every view;
-3. **the view on top:** the menu and CHIP take SELECT and ALGORITHM, SCENE and TRACKER take SELECT;
+3. **the view on top:** the menu, CHIP and TRACKER take SELECT and ALGORITHM; SCENE takes SELECT;
    LIVE, the status screen, the glyph sheet and About take nothing; MIDI learn's frame passes
    them to the CHIP view under it, and to no other;
 4. **the panel:** everything else plays the instrument as below, in every view. K1..K4 turn
@@ -109,10 +109,11 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, KEYS, SOUNDS, TRACKER ROWS (ROWS), CARDS ([title cards](#title-cards)), STORE ([format confirmation](#settings-and-store)), THEME; turned clockwise on CHIP opens the CHIP view, on TRACKER the song views, on SCENE the generative pieces, on SONG the [song-file actions](#song), on STATUS the status screen, on MIDI the MIDI page, on CHARSET the glyph sheet, on ABOUT the credits |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: A/B tabs, CHIP (the profile and the character), DIST, MOD, FX, EXPERT; it stops at either end |
 | **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP, the algorithm on a slot, or the four-control page on EXPERT; EDIT held on CHIP or EXPERT selects the USER save target |
-| **SELECT (encoder 0)**, in TRACKER | the shown voice: voice 1, 2, 3 and round (clockwise the next, counter-clockwise the one before); the note keys then audition on it |
+| **SELECT (encoder 0)**, in TRACKER | moves the cursor one row, or one 8-row page with EDIT held; stops at the first and last body rows |
+| **ALGORITHM (encoder 1)**, in TRACKER | the shown voice: voice 1, 2, 3 and round; the cursor's voice and the audition always match the voice on screen |
 | **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, RED MOON RITE, and round): it wipes in, and a toast names it |
 
-The other buttons (LFO, ARP) and PRESETS (encoder 6) do nothing yet; SELECT does nothing outside the menu, CHIP, SCENE and TRACKER, ALGORITHM nothing outside
+LFO, ARP and PRESETS (encoder 6) edit TRACKER with REC on (below); SELECT does nothing outside the menu, CHIP, SCENE and TRACKER, ALGORITHM nothing outside
 the menu and CHIP.
 
 ## Value popup
@@ -154,9 +155,10 @@ The song views make and play a song (M2d): **STEP**, **TRACKER**, **ORDER**, **I
 **TABLE**, all on the same GoatTracker 2 song (`app/song_view.h`). TRACKER is the first made
 (`app/tracker_view.h`; docs/art/README.md "TRACKER" shows it): the patterns in GoatTracker's
 layout, **one voice at a time at 2× the font** (12 rows) with the other two as activity strips on
-the right, and the shown voice's orderlist and the bar row's command. **SELECT steps the voice
-shown** (the cursor's voice: the note keys audition on it, below). Its rows follow the
-song while it plays, the cursor while it is stopped, as a moving bar over still rows (the
+the right, and the shown voice's orderlist and the bar row's command. **SELECT moves the row;
+ALGORITHM steps the voice shown** (the cursor's voice: the note keys audition on it, below).
+With REC off its rows follow the song while it plays, the cursor while it is stopped; with
+REC on the edit cursor stays on screen. The moving bar over still rows (the
 menu's **TRACKER ROWS** BAR, the default) or scrolling under a still bar (SCROLL, as
 GoatTracker does). TRACKER ROWS is saved with the settings. The song
 is SIDOU LOOP until songs load from the store (M2c Task 8).
@@ -190,6 +192,32 @@ the current row's first command spelled out, and **ORD 03 ROW 1A** (hex: the pla
 song plays, the cursor's while it is stopped). The other two voices are the **strips** on the
 right: a tall bar where a note sounds on that row of that voice's own pattern, a short one where
 none does, in the voice's colour (dark grey while the song mutes it).
+
+### Editing TRACKER
+
+**REC on** enables pattern editing. The row number is a yellow block; the selected note or
+instrument is reverse yellow at 2×. When editing a command or its data, the whole command/data
+field expands to 2× in reverse yellow. Other voices remain activity strips.
+
+| Control | With REC on |
+|---|---|
+| Note key | writes its note and the current instrument into the cursor's row, auditions it, then advances by the edit step (wrapping within the pattern) |
+| ARP | writes key off (`===`), keeping the row's other fields |
+| LFO | clears the note to a rest; a second press on the same row clears all four fields |
+| EDIT + LFO | undoes the last edit; the next press redoes it (also available with REC off) |
+| K1 | instrument number, 00–3F (00 leaves the playing instrument unchanged) |
+| K2 | command, 0–F |
+| K3 / K4 | data's high / low nibble, independently clamped to 0–F |
+| PRESETS | current instrument for note entry and audition, 01–3F |
+| EDIT + PRESETS | clockwise inserts an empty row and drops the tail; counter-clockwise removes this row and appends a rest; pattern length stays fixed and locks follow their rows |
+| EDIT + ALGORITHM | edit step, 0–16; 0 stays on the same row |
+
+K1–K4 show the instrument, command or data being set in the large value popup. Navigation and
+the step/current-instrument selectors do not change the song. With REC off keys only audition
+and K1–K4 keep their LIVE functions. An edit waits for the player's acknowledgement before it
+can be undone. While arena compaction runs, further edits wait: **TIDYING**. Refusals use large
+toasts: **SAVING**, **SONG FULL**, **INVALID EDIT**, or **WAITING** while another edit completes.
+The save-stream and stored-song-size checks are integration hooks until songs on the store land.
 
 ## Title cards
 

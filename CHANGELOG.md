@@ -56,7 +56,10 @@ All notable changes are documented here. The format follows
   popup's bar included); **C64** keeps the old blue look. The menu's **THEME** item chooses, and
   the choice persists (settings schema 3: schema 1 and 2 records load HIGH CONTRAST).
 - **TRACKER shows one voice at a time at 2× the font** with the other two as activity strips,
-  and **SELECT steps the voice** (1, 2, 3 and round); the note keys audition on the voice shown.
+  and **ALGORITHM steps the voice** (1, 2, 3 and round); SELECT moves rows (EDIT: an 8-row page).
+  REC enables note entry, key-off/rest/whole-row clear, instrument/command/data editing with
+  the value popup, fixed-length row insertion/deletion and one-step undo/redo (EDIT + LFO).
+  Edits are queued cell writes or index swaps; locks follow shifted rows, including undo.
 - docs/hardware-test.md: a readability check of each redesigned screen on the panel, in both
   themes.
 - M2a storage complete (Tasks 1-7; the hardware timing run remains open): a

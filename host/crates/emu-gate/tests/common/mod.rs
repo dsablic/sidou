@@ -1108,6 +1108,11 @@ pub fn render_host_song_master(frames: usize, p: &SongPlay, master: u16) -> Vec<
                     song_ctl_poll(&mut *sc, SONG_POLL_SLICE | SONG_POLL_RING);
                 }
             }
+            if p.edits.iter().any(|e| e.0 == i) {
+                // The device releases the preceding block's acknowledged swaps between
+                // blocks, before preparing the next recorded edit.
+                song_ctl_poll(&mut *sc, SONG_POLL_RING);
+            }
             for (_, prim) in p.edits.iter().filter(|e| e.0 == i) {
                 let mut e = gt2_edit::default();
                 assert_eq!(prim(song.ptr_mut(), &mut e), GT2_OK, "the host's edit");

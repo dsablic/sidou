@@ -162,6 +162,7 @@ fn transport(sc: *mut song_ctl) -> song_transport {
         seek: Some(t_seek),
         seek_further: Some(t_seek_further),
         clock: Some(t_clock),
+        ..Default::default()
     }
 }
 

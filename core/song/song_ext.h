@@ -161,11 +161,23 @@ int song_lock_remove(gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param
 /* What a pattern's rebuild does to its locks (gt2_song.c, once the swap is applied): a row
  * inserted at row (the locks at it and after move down one; any reaching 128 go), deleted
  * at row (its locks go, those after move up), the rows cut to row (the locks past them go),
- * or the pattern removed (all go). */
-enum { SONG_LOCKS_INSERT = 1, SONG_LOCKS_DELETE, SONG_LOCKS_RESIZE, SONG_LOCKS_REMOVE };
+ * or the pattern removed (all go). PUSH keeps the length: row's low byte is the insertion
+ * row, its next byte the body length (locks reaching that length go). A fixed-length pull
+ * uses DELETE: the removed row's locks go, later rows move up, the new empty tail has none.
+ * Main-loop only: the interrupt reads song_ctl's resolved copies, never this chunk. */
+enum { SONG_LOCKS_INSERT = 1, SONG_LOCKS_DELETE, SONG_LOCKS_RESIZE, SONG_LOCKS_REMOVE,
+       SONG_LOCKS_PUSH };
 void song_locks_pattern_edit(gt2_song* s, uint32_t op, uint32_t pattern, uint32_t row);
 /* Extension length after that edit, without changing the chunk or its records. */
 uint32_t song_locks_pattern_size(const gt2_song* s, uint32_t op, uint32_t pattern, uint32_t row);
+/* A shift undo's final extension size, including its discarded row's packed locks. No
+ * mutation; the records must name the restored row and be sorted/distinct. */
+gt2_err song_locks_restore_check(const gt2_song* s, uint32_t op, uint32_t pattern,
+                                uint32_t row, uint32_t restored_row, const uint8_t* locks,
+                                uint32_t n, uint32_t* ext_used);
+/* Only after the matching checked shift applies, before its pending reservation ends.
+ * Storage and serialized growth were reserved by song_locks_restore_check's caller. */
+void song_locks_restore_reserved(gt2_song* s, const uint8_t* locks, uint32_t n);
 
 /* MIDI: the song's MIDI setup (M2e Task 3, app/midi_route.h gives the fields meaning). The
  * options follow the channels in the chunk (M2e); a chunk without them reads as has_options

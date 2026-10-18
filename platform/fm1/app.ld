@@ -100,7 +100,7 @@ SECTIONS
     } > RAMTEXT AT > XIP
     _rt_load = LOADADDR(.ram_text);
     /* Lookup constants need 16-byte alignment: keep padding inside the packed sections. */
-    .text : {
+    .text (LOADADDR(.ram_text) + SIZEOF(.ram_text)) : {
         *(.text*) *(.rodata*)
         . = ALIGN(16);
         __init_array_start = .; KEEP(*(.init_array*)) __init_array_end = .;

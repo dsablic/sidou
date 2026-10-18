@@ -76,7 +76,7 @@ static keys_route keys_router;
 /* The UI sounds on chip B's spare voice, off by default (app/ui_sound.h). */
 static ui_sound ui_sounds;
 static panel front;
-static song_io songs;
+static song_io songs __attribute__((section(".pool")));
 static union {
     gt2_stream stream;
     gt2_ins_import_state instrument;
@@ -613,6 +613,7 @@ static int song_loaded(void* ctx) {
     for (uint32_t f = 0; f < 4u; f++) {
         song_char_on[f] = -1;
     }
+    ui_song_loaded();
     if (songs.restoring) {
         /* Runtime was untouched or restored already; reapplying KEYS releases held notes. */
         ui_song_rows(midi_routed()->setup.rows_per_beat);
@@ -1156,6 +1157,42 @@ static void st_clock(void* ctx, song_clock* out) {
     } while (samples != sc->samples);
 }
 
+static int st_edit(void* ctx, const gt2_edit* edit, uint32_t* ticket) {
+    song_ctl* sc = ctx;
+    if (!song_ctl_edit(sc, edit))
+        return 0;
+    *ticket = sc->edits_submitted;
+    return 1;
+}
+
+static int st_edit_done(void* ctx, uint32_t ticket) {
+    const song_ctl* sc = ctx;
+    return (int32_t)(sc->edits_completed - ticket) >= 0;
+}
+
+static int st_edit_with_locks(void* ctx, const gt2_edit* edit, const uint8_t* locks,
+                               uint32_t nlocks, uint32_t* ticket) {
+    song_ctl* sc = ctx;
+    if (!song_ctl_edit_with_locks(sc, edit, locks, nlocks))
+        return 0;
+    *ticket = sc->edits_submitted;
+    return 1;
+}
+
+/* The primitives make the authoritative prospective size reservation. Only an edit
+ * prepared before a save freeze may still drain through the transport. */
+static int st_song_edit_saving_and_size_guard(void* ctx, const song_edit_request* request) {
+    (void)request;
+    const song_ctl* sc = ctx;
+    if (song_io_busy(&songs) && !song_io_saving(&songs)) {
+        return SONG_EDIT_GUARD_BUSY;
+    }
+    if (song_io_saving(&songs) || sc->song->frozen) {
+        return SONG_EDIT_GUARD_SAVING;
+    }
+    return SONG_EDIT_GUARD_OK;
+}
+
 static const song_transport song_binding = {
     .play = st_play,
     .stop = st_stop,
@@ -1169,6 +1206,10 @@ static const song_transport song_binding = {
     .seek = st_seek,
     .seek_further = st_seek_further,
     .clock = st_clock,
+    .edit = st_edit,
+    .edit_done = st_edit_done,
+    .edit_guard = st_song_edit_saving_and_size_guard,
+    .edit_with_locks = st_edit_with_locks,
 };
 static song_transport song_bound;
 

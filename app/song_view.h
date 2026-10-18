@@ -50,6 +50,7 @@
 #include "screen.h"
 #include "song_transport.h"
 #include "song_io.h"
+#include "song_edit.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -103,11 +104,18 @@ typedef struct {
     /* The shared canvas and its copy (song_view_copy). */
     uint8_t which;     /* the canvas owner: SONG_VIEW_* or SONG_VIEW_CANVAS_* */
     uint8_t built;
+    uint8_t edit_pending;
     uint32_t dirty;    /* rows of the canvas the grid may not have yet (bit r: row r) */
     uint32_t held;     /* frames whose copy the budget cut short (diagnostic) */
     uint16_t unbuilt;  /* TRACKER: bit j, window row j is not drawn into the canvas yet */
     uint8_t drawn[SONG_VIEW_LOOK];
     song_view_canvas cv;
+    song_editor* editor;
+    screen* edit_screen;
+    uint8_t step;
+    uint8_t field;
+    uint8_t clear_pattern, clear_row;
+    uint8_t clear_armed;
 } song_view;
 
 /* No player, nothing muted, the cursor at entry 0 row 0 of voice 1, instrument 1. */
@@ -115,8 +123,12 @@ void song_view_init(song_view* sv, live* l);
 /* Acquire before building, never on enter/exit: a covered view may still compose and a pop
  * does not re-enter the view below. Returns 1 on transfer, invalidating the song build/copy. */
 int song_view_acquire_canvas(song_view* sv, uint32_t owner);
-/* The player's binding (app/song_transport.h), or NULL: none. */
+/* The player's binding (app/song_transport.h), or NULL: none. While an edit is pending the
+ * existing binding is retained; finish it before retrying a rebind or replacing its song. */
 void song_view_set_transport(song_view* sv, const song_transport* t);
+/* After the loader has drained edits and replaced the model: no history or PLAY/jam
+ * request from the previous song may act on the new one. */
+void song_view_loaded(song_view* sv);
 /* SONG's large-text rows borrow the same canvas: each 2x2 block, aligned to even columns
  * and rows, holds its source character in all four cells. Other rows remain ordinary text.
  * big_rows marks both rows of each large-text line. The copy keeps the ordinary frame budget. */

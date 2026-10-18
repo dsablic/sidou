@@ -838,8 +838,8 @@ layout, drawn after the screen-readability prototype's `trkNew`: **one voice at 
   `===` a key off and `+++` a key on in grey; yellow on the current row), the instrument at 2× in
   the voice's colour (`..` none, dark grey) and the command small (`308`: the command and its
   data, grey; `...` none, dark grey). **The current row is a dark grey bar** across columns 0-17,
-  the rests and blanks on it in grey so that they stay visible. A voice the song mutes is grey from
-  the note to the command. Each row's cells are the voice's own pattern's, from its orderlist entry.
+  the rests and blanks on it in grey so that they stay visible. Muted rows keep their colours;
+  the header and strips show the mute. Each row's cells are the voice's own pattern's, from its orderlist entry.
 - **Columns 26 and 28, the other two voices as strips:** a bar a row, bottom-aligned in the row's 16
   pixels, **tall (12 px) where a note sounds on that row of that voice's own pattern, short (2 px)
   where none does**, in the voice's colour; nothing past the end of its pattern; dark grey and short
@@ -847,15 +847,17 @@ layout, drawn after the screen-readability prototype's `trkNew`: **one voice at 
 - **Rows 27-29:** OL and the shown voice's orderlist from its entry (the entry in white on the bar's
   grey, the two after it in grey: a pattern in hex, `R2` a repeat, `+3` or `-1` a transpose, `RST00`
   the end and its restart position); the current row's first command, of the voices that sound,
-  spelled out in yellow (`V2 4 22 VIBRATO`); the hint `SELECT: VOICE` in dark grey and, on the right,
+  spelled out in yellow (`V2 4 22 VIBRATO`); the hint `SELECT: ROW` in dark grey and, on the right,
   `ORD 03 ROW 1A` in hex (the position the old header said).
 
-**The cursor.** The cursor is a voice (`song_view.voice`) and a row. **SELECT, turned, steps the
-voice** (1, 2, 3 and round, either way: [controls](../reference/controls.md#song-views)); SELECT was
-free in the song views (it did nothing outside the menu, CHIP and SCENE), so there is no
-conflict to resolve. The row is the song's while it plays (each voice's last row event; the shown
-voice's is the bar), the stopped cursor's (`song_view.row`) otherwise; the note keys audition on the
-shown voice. The row drawing (`draw_row`, `draw_window_row`) takes the voice, the row, whether it is
+**The cursor.** The cursor is a voice and a row. **SELECT steps rows** (EDIT held: an 8-row page),
+**ALGORITHM steps the shown voice**, 1, 2, 3 and round, either way
+([controls](../reference/controls.md#song-views)). With REC off the row is the song's while it
+plays, the stopped cursor's otherwise. REC keeps the edit cursor on screen while playback
+continues. The row number is a yellow block and the edited field is black on yellow at 2×;
+command/data expands to 2× while selected. K1–K4 use the large value popup, in the knob's colour;
+refusals and TIDYING use large toasts. The note keys audition on the shown voice.
+The row drawing (`draw_row`, `draw_window_row`) takes the voice, the row, whether it is
 the cursor's and a field to highlight (`TRACKER_VIEW_FIELD_NOTE`, `_INSTRUMENT`, `_COMMAND`: the
 field's cells on yellow), which an edit cursor reuses as it is; the strips and the footer are
 separate (`draw_strip`, `build_footer`).

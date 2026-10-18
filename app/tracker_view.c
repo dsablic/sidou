@@ -13,7 +13,7 @@
  * window's top (2), the bar's row, whether there is a song, the shown voice, the theme, the
  * orderlist position, each voice's pattern, entry and silence, the song's edit count (4). */
 #define HEAD_LOOK 8u
-#define ROWS_LOOK (8u + 3u * SONG_T_VOICES + 4u)
+#define ROWS_LOOK (8u + 3u * SONG_T_VOICES + 4u + 2u)
 _Static_assert(HEAD_LOOK + ROWS_LOOK <= SONG_VIEW_LOOK, "the looks fit");
 /* The rows' look bytes the bar's step changes alone (rows_look): the bar's row, the position. */
 #define ROWS_BAR 3u
@@ -112,6 +112,10 @@ static lane lane_of(const song_view* sv, uint32_t v) {
     lane ln = {0xffu, 0xffu, 0u, 0u};
     uint32_t entry, row;
     song_view_position(sv, v, &entry, &row);
+    if (sv->rec && v == sv->voice) {
+        entry = sv->order_pos;
+        row = sv->row;
+    }
     ln.row = (uint8_t)row;
     ln.silent = (uint8_t)(song_view_mute_mask(sv) >> v & 1u);
     const gt2_song* s = sv->song;
@@ -160,7 +164,7 @@ static void rows_look(const song_view* sv, uint8_t out[ROWS_LOOK]) {
     out[n++] = sv->l->theme;
     uint32_t pos, row;
     song_view_position(sv, sv->voice, &pos, &row);
-    out[n++] = (uint8_t)pos;
+    out[n++] = sv->rec ? sv->order_pos : (uint8_t)pos;
     for (uint32_t v = 0; v < SONG_T_VOICES; v++) {
         lane ln = lane_of(sv, v);
         out[n++] = ln.pattern;
@@ -170,6 +174,8 @@ static void rows_look(const song_view* sv, uint8_t out[ROWS_LOOK]) {
     for (uint32_t i = 0; i < 4u; i++) {
         out[n++] = (uint8_t)(sv->song_edits >> (8u * i));
     }
+    out[n++] = sv->rec;
+    out[n++] = sv->field;
 }
 
 /* ---- the canvas ---- */
@@ -260,7 +266,8 @@ static void draw_row(canvas* c, const theme* th, uint32_t r, uint32_t voice, uin
     blank(c, TRACKER_VIEW_BAND_W, r, GRID_COLS - TRACKER_VIEW_BAND_W, TRACKER_VIEW_ROW_CELLS,
           THEME_ATTR(th, value));
     char num[3] = {HEX[u >> 4 & 15u], HEX[u & 15u], 0};
-    small(c, TRACKER_VIEW_NUM_COL, r + 1u, num, GRID_ATTR(on ? th->hot : th->label, bg));
+    small(c, TRACKER_VIEW_NUM_COL, r + 1u, num,
+          field ? GRID_ATTR(th->bg, th->hot) : GRID_ATTR(on ? th->hot : th->label, bg));
     if (!cell) {
         return;
     }
@@ -286,7 +293,11 @@ static void draw_row(canvas* c, const theme* th, uint32_t r, uint32_t voice, uin
     big(c, TRACKER_VIEW_NOTE_COL, r, note3, na);
     char cmd3[4] = {t[5], t[6], t[7], 0};
     big(c, TRACKER_VIEW_INS_COL, r, ins2, ia);
-    small(c, TRACKER_VIEW_CMD_COL, r + 1u, cmd3, ca);
+    if (field == TRACKER_VIEW_FIELD_COMMAND) {
+        big(c, TRACKER_VIEW_CMD_COL, r, cmd3, ca);
+    } else {
+        small(c, TRACKER_VIEW_CMD_COL, r + 1u, cmd3, ca);
+    }
 }
 
 /* Voice v's pattern as a strip reads it: its rows (not counting the end row) and its cells. */
@@ -351,7 +362,8 @@ static void draw_window_row(song_view* sv, const theme* th, const lane lanes[SON
         cell = d ? d + u * GT2_ROW_BYTES : EMPTY;
     }
     if (u < shown) {
-        draw_row(c, th, r, shown_v, u, cell, on, TRACKER_VIEW_FIELD_NONE);
+        draw_row(c, th, r, shown_v, u, cell, on,
+                 on && sv->rec ? sv->field : TRACKER_VIEW_FIELD_NONE);
     } else {
         blank(c, 0, r, GRID_COLS, TRACKER_VIEW_ROW_CELLS, THEME_ATTR(th, value));
     }
@@ -419,10 +431,14 @@ static void build_footer(song_view* sv, const theme* th, const lane lanes[SONG_T
         small(c, 8, TRACKER_VIEW_SAY_ROW, tracker_view_command_name(cell[2]), a);
         break;
     }
-    small(c, 0, TRACKER_VIEW_HINT_ROW, "SELECT: VOICE", dim);
+    small(c, 0, TRACKER_VIEW_HINT_ROW, "SELECT: ROW", dim);
     /* the position as the song views have always said it: the orderlist entry and the row, hex */
     uint32_t pos, row;
     song_view_position(sv, shown_v, &pos, &row);
+    if (sv->rec) {
+        pos = sv->order_pos;
+        row = sv->row;
+    }
     char at[14] = "ORD 00 ROW 00";
     at[4] = HEX[pos >> 4 & 15u];
     at[5] = HEX[pos & 15u];
@@ -490,9 +506,9 @@ static uint32_t build_step(song_view* sv, uint32_t from) {
 
 /* Built anew at its first compose: what changed while it was away. */
 static void enter(screen* s, void* state) {
-    (void)s;
     song_view* sv = state;
     sv->built = 0;
+    sv->edit_screen = s;
 }
 
 /* Left: no rows wait to be built; the next visit builds all of them. */
@@ -501,18 +517,206 @@ static void leave(screen* s, void* state) {
     song_view* sv = state;
     sv->unbuilt = 0;
     sv->built = 0;
+    sv->edit_screen = NULL;
 }
 
-/* SELECT, turned: the shown voice, 1 2 3 and round. The cursor row is the song's (or the
- * stopped cursor's); only the voice is TRACKER's to move. */
-static int input(screen* s, void* state, const screen_event* e) {
-    (void)s;
-    if (e->kind != SCREEN_TURN || e->id != PANEL_ENC_SELECT) {
+static uint8_t clamp(int32_t value, uint32_t max) {
+    return (uint8_t)(value < 0 ? 0 : (uint32_t)value > max ? max : (uint32_t)value);
+}
+
+static void feedback(screen* s, const song_view* sv) {
+    const char* msg = sv->editor && sv->song ? song_edit_message(sv->editor) : "NO SONG";
+    if (msg && *msg) {
+        screen_toast(s, msg, SCREEN_TOAST_MS);
+        s->popup_ask = 0;
+    }
+}
+
+static int read_cell(const song_view* sv, lane* ln, uint8_t cell[4]) {
+    *ln = lane_of(sv, sv->voice);
+    return sv->editor && song_edit_read_row(sv->editor, ln->pattern, sv->row, cell);
+}
+
+static int write_cell(screen* s, song_view* sv, const lane* ln, const uint8_t cell[4]) {
+    int ok = song_edit_row(sv->editor, ln->pattern, sv->row, cell);
+    sv->edit_pending = sv->editor->pending;
+    if (!ok || sv->editor->status == SONG_EDIT_TIDYING) {
+        feedback(s, sv);
+    }
+    return ok;
+}
+
+static void finish_ready_edit(song_view* sv) {
+    if (sv->edit_pending && sv->editor->sent) {
+        (void)song_edit_poll(sv->editor);
+        sv->edit_pending = sv->editor->pending;
+    }
+}
+
+void tracker_view_note(screen* s, song_view* sv, uint32_t note) {
+    finish_ready_edit(sv);
+    if (note > GT2_LASTNOTE - GT2_FIRSTNOTE) {
+        screen_toast(s, "NOTE OUT OF RANGE", SCREEN_TOAST_MS);
+        return;
+    }
+    lane ln;
+    uint8_t cell[4];
+    if (!read_cell(sv, &ln, cell)) {
+        feedback(s, sv);
+        return;
+    }
+    cell[0] = (uint8_t)(GT2_FIRSTNOTE + note);
+    cell[1] = sv->instr;
+    sv->field = TRACKER_VIEW_FIELD_NOTE;
+    sv->clear_armed = 0;
+    if (write_cell(s, sv, &ln, cell)) {
+        uint32_t n = rows_of(sv->song, ln.pattern);
+        sv->row = (uint8_t)((sv->row + sv->step) % n);
+    }
+}
+
+int tracker_view_popup(const song_view* sv, uint32_t encoder, int edit, char* name, char* value,
+                       uint32_t* fill, uint32_t* max) {
+    uint32_t v;
+    const char* label;
+    if (encoder == 6u && !edit) {
+        v = sv->instr;
+        label = "INSTRUMENT";
+    } else if (encoder == PANEL_ENC_ALGORITHM && edit) {
+        v = sv->step;
+        label = "EDIT STEP";
+    } else if (encoder >= PANEL_ENC_K1 && encoder <= PANEL_ENC_K4) {
+        lane ln;
+        uint8_t cell[4];
+        if (!read_cell(sv, &ln, cell)) {
+            return 0;
+        }
+        uint32_t k = encoder - PANEL_ENC_K1;
+        label = k == 0u ? "INSTRUMENT" : k == 1u ? "COMMAND" : "DATA";
+        v = k == 0u ? cell[1] : k == 1u ? cell[2] : cell[3];
+    } else {
         return 0;
     }
+    do {
+        *name++ = *label;
+    } while (*label++);
+    value[0] = HEX[v >> 4 & 15u];
+    value[1] = HEX[v & 15u];
+    value[2] = 0;
+    *fill = v;
+    *max = encoder == PANEL_ENC_ALGORITHM ? 16u : encoder == PANEL_ENC_K1 || encoder == 6u
+                         ? GT2_MAX_INSTR : encoder == PANEL_ENC_K1 + 1u ? 15u : 255u;
+    return 1;
+}
+
+static int input(screen* s, void* state, const screen_event* e) {
     song_view* sv = state;
-    int32_t v = ((int32_t)sv->voice + e->steps) % (int32_t)SONG_T_VOICES;
-    sv->voice = (uint8_t)(v < 0 ? v + (int32_t)SONG_T_VOICES : v);
+    int edit = (int)(e->held >> PANEL_BTN_EDIT & 1u);
+    if (sv->rec) {
+        finish_ready_edit(sv);
+    }
+    if (e->kind == SCREEN_PRESS && edit && e->id == PANEL_BTN_LFO) {
+        finish_ready_edit(sv);
+        if (sv->editor) {
+            (void)song_edit_undo(sv->editor);
+            sv->edit_pending = sv->editor->pending;
+        }
+        sv->clear_armed = 0;
+        feedback(s, sv);
+        return 1;
+    }
+    if (e->kind == SCREEN_PRESS && sv->rec &&
+        (e->id == PANEL_BTN_ARP || e->id == PANEL_BTN_LFO)) {
+        lane ln;
+        uint8_t cell[4];
+        if (read_cell(sv, &ln, cell)) {
+            if (e->id == PANEL_BTN_ARP) {
+                cell[0] = GT2_KEYOFF;
+                sv->clear_armed = 0;
+            } else if (sv->clear_armed && sv->clear_pattern == ln.pattern && sv->clear_row == sv->row) {
+                cell[0] = GT2_REST;
+                cell[1] = cell[2] = cell[3] = 0;
+            } else {
+                cell[0] = GT2_REST;
+            }
+            if (write_cell(s, sv, &ln, cell) && e->id == PANEL_BTN_LFO) {
+                sv->clear_armed = 1;
+                sv->clear_pattern = ln.pattern;
+                sv->clear_row = sv->row;
+            }
+            sv->field = TRACKER_VIEW_FIELD_NOTE;
+        } else {
+            feedback(s, sv);
+        }
+        return 1;
+    }
+    if (e->kind != SCREEN_TURN) {
+        return 0;
+    }
+    if (e->id == PANEL_ENC_SELECT) {
+        uint32_t n = rows_of(sv->song, lane_of(sv, sv->voice).pattern);
+        int32_t step = edit ? TRACKER_VIEW_PAGE : 1u;
+        int32_t row = (int32_t)sv->row + e->steps * step;
+        sv->row = (uint8_t)(row < 0 || !n ? 0 : (uint32_t)row >= n ? n - 1u : (uint32_t)row);
+        sv->clear_armed = 0;
+        return 1;
+    }
+    if (e->id == PANEL_ENC_ALGORITHM) {
+        if (edit) {
+            sv->step = clamp((int32_t)sv->step + e->steps, 16u);
+            return 1;
+        }
+        int32_t v = ((int32_t)sv->voice + e->steps) % (int32_t)SONG_T_VOICES;
+        sv->voice = (uint8_t)(v < 0 ? v + (int32_t)SONG_T_VOICES : v);
+        uint32_t n = rows_of(sv->song, lane_of(sv, sv->voice).pattern);
+        if (n && sv->row >= n) {
+            sv->row = (uint8_t)(n - 1u);
+        }
+        sv->clear_armed = 0;
+        return 1;
+    }
+    if (!sv->rec) {
+        return 0;
+    }
+    if (e->id == 6u && !edit) {
+        sv->instr = clamp((int32_t)sv->instr + e->steps, GT2_MAX_INSTR);
+        if (!sv->instr) {
+            sv->instr = 1;
+        }
+        return 1;
+    }
+    lane ln;
+    uint8_t cell[4];
+    if (e->id < PANEL_ENC_K1 || e->id > 6u) {
+        return 0;
+    }
+    if (!read_cell(sv, &ln, cell)) {
+        feedback(s, sv);
+        return 1;
+    }
+    sv->clear_armed = 0;
+    if (e->id == 6u) {
+        int ok = song_edit_shift(sv->editor, ln.pattern, sv->row, e->steps > 0);
+        sv->edit_pending = sv->editor->pending;
+        if (!ok || sv->editor->status == SONG_EDIT_TIDYING) {
+            feedback(s, sv);
+        }
+    } else {
+        uint32_t k = e->id - PANEL_ENC_K1;
+        if (k == 0u) {
+            cell[1] = clamp((int32_t)cell[1] + e->steps, GT2_MAX_INSTR);
+            sv->field = TRACKER_VIEW_FIELD_INSTRUMENT;
+        } else if (k == 1u) {
+            cell[2] = clamp((int32_t)cell[2] + e->steps, 15u);
+            sv->field = TRACKER_VIEW_FIELD_COMMAND;
+        } else {
+            uint32_t shift = k == 2u ? 4u : 0u;
+            uint32_t nibble = clamp((int32_t)(cell[3] >> shift & 15u) + e->steps, 15u);
+            cell[3] = (uint8_t)((cell[3] & ~(15u << shift)) | nibble << shift);
+            sv->field = TRACKER_VIEW_FIELD_COMMAND;
+        }
+        (void)write_cell(s, sv, &ln, cell);
+    }
     return 1;
 }
 

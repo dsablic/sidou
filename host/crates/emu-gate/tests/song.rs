@@ -241,6 +241,61 @@ fn play_plays_the_first_song_bit_exact_with_the_host() {
     println!("{} blocks from power-on to the play", p.play_block);
 }
 
+#[test]
+fn a_four_note_tracker_phrase_is_the_expected_song_and_plays_bit_exact() {
+    let Some((_, fw)) = fixture("the TRACKER phrase test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    let mut expected = demo();
+    let order = unsafe { gt2_order_data(expected.ptr(), 0, 0) };
+    let pattern = u32::from(unsafe { *order });
+    press(&mut m, PANEL_BTN_SEQ as u8);
+    m.run_ms(500);
+    press(&mut m, PANEL_BTN_REC as u8);
+    for (row, key) in [16u8, 18, 20, 23].into_iter().enumerate() {
+        press(&mut m, PANEL_KEY_ID0 as u8 + key);
+        m.run_ms(300);
+        let old = unsafe { gt2_pattern_data(expected.ptr(), pattern).add(row * 4) };
+        let mut cell: [u8; 4] = unsafe { std::slice::from_raw_parts(old, 4) }
+            .try_into()
+            .unwrap();
+        cell[0] = (GT2_FIRSTNOTE + PANEL_BASE_NOTE + u32::from(key) - 12) as u8;
+        cell[1] = 1;
+        let mut edit = gt2_edit::default();
+        unsafe {
+            assert_eq!(
+                gt2_set_row(
+                    expected.ptr_mut(),
+                    pattern,
+                    row as u32,
+                    cell.as_ptr(),
+                    &mut edit
+                ),
+                GT2_OK
+            );
+            gt2_edit_commit(expected.ptr_mut(), &edit);
+        }
+    }
+    let mut actual = Song::device();
+    let base = fw.symbol("__song_region");
+    let bytes = unsafe {
+        std::slice::from_raw_parts_mut(actual.ptr_mut().cast::<u8>(), SONG_REGION_BYTES as usize)
+    };
+    for (i, byte) in bytes.iter_mut().enumerate() {
+        *byte = m.soc.read8(base + i as u32);
+    }
+    assert_eq!(
+        actual.write(true),
+        expected.write(true),
+        "the panel programmed the expected phrase"
+    );
+    // A fresh playback starts from the same SID state on both builds, independent of the
+    // audition's oscillator/envelope history while entering the notes.
+    check_song("TRACKER four-note phrase", &fw, Some(&actual));
+}
+
 /// The first song while SCENE shows RED MOON RITE, which the song's events drive
 /// (app/scene_song.h): the audio is the host's, sample for sample, the vignette touching none
 /// of it.

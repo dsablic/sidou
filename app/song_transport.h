@@ -87,6 +87,14 @@ typedef struct {
     uint32_t period_q16;
 } song_clock;
 
+enum { SONG_EDIT_ROW = 1, SONG_EDIT_PUSH, SONG_EDIT_PULL };
+typedef struct {
+    uint32_t kind;
+    uint32_t pattern, row;
+    uint8_t cell[GT2_ROW_BYTES];
+} song_edit_request;
+enum { SONG_EDIT_GUARD_OK, SONG_EDIT_GUARD_SAVING, SONG_EDIT_GUARD_FULL, SONG_EDIT_GUARD_BUSY };
+
 /* The player's side. Every member up to ctx is set; the MIDI clock's after it may be NULL
  * (a binding without them: MIDI clock and transport do nothing). */
 typedef struct {
@@ -117,6 +125,18 @@ typedef struct {
     int (*seek)(void* ctx, uint32_t call);
     int (*seek_further)(void* ctx, uint32_t call);
     void (*clock)(void* ctx, song_clock* out);
+    /* Main-loop edits: a 1 transfers ownership and returns an edit ticket. Completion means
+     * applied AND released (including the main-loop lock move), not just a command ack.
+     * The prospective guard runs before any primitive; absent edit hooks refuse editing.
+     * A save must not start while accepted edits await completion; guard refusals cannot
+     * revoke an edit after ownership has transferred to the player. */
+    int (*edit)(void* ctx, const gt2_edit* edit, uint32_t* ticket);
+    int (*edit_done)(void* ctx, uint32_t ticket);
+    int (*edit_guard)(void* ctx, const song_edit_request* request);
+    /* Undo of a shift restores its lost row's packed locks with the swap. The bytes stay
+     * alive until completion; the player prepares the prospective lock cache before send. */
+    int (*edit_with_locks)(void* ctx, const gt2_edit* edit, const uint8_t* locks,
+                           uint32_t nlocks, uint32_t* ticket);
 } song_transport;
 
 #ifdef __cplusplus

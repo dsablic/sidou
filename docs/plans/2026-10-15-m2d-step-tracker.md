@@ -226,13 +226,14 @@ and provisional flash timings remain unchanged; no hardware was accessed.
 `core/player/song_ctl.c` (the edit commands), tests.
 
 **Controls in TRACKER** (proposed; documented in `controls.md`):
-- **SELECT** moves the cursor a row (EDIT held: a page of 16); **ALGORITHM** moves it to
-  the next voice; the cursor is a block on the row number and a frame round the voice's
-  eight cells.
+- **SELECT** moves the cursor a row (EDIT held: a readable page of 8); **ALGORITHM** moves it to
+  the next voice and switches the shown voice. Editing uses the redesigned 2×, 12-row view,
+  not the original three-column layout. The row number is a block and the edited field is
+  reverse yellow at 2×, including command/data while selected.
 - **REC on (edit mode):** a note key writes its note (the panel's octave) and the current
   instrument into the cursor's row and voice, and the cursor advances by the step size;
-  **ARP** writes a key off (`===`); **LFO** clears the row's note (rest) or, with EDIT held,
-  the whole row; **K1** the row's instrument, **K2** its command (0-F), **K3** the data's
+  **ARP** writes a key off (`===`); **LFO** clears the row's note (rest), a second LFO press
+  on the same row clears the whole row; **K1** the row's instrument, **K2** its command (0-F), **K3** the data's
   high nibble, **K4** the low one (so a row is edited without moving across its columns);
   **PRESETS** turned sets the current instrument (shown in row 29 when it changes);
   **EDIT held + PRESETS** inserts (clockwise) or deletes (counter-clockwise) a row at the
@@ -268,6 +269,122 @@ host's render of the expected song; the edit's pass within the poll allowance; g
 
 **Commit:** `feat(tracker): edit patterns from the keys and encoders, through the player's edit queue`
 
+**As built — Task 3 (base `64b6f97`):** editing uses the readable, one-voice, 12-row TRACKER.
+SELECT moves rows and EDIT + SELECT moves its **8-row page**, rather than the old plan's 16;
+ALGORITHM changes both cursor and shown voice. REC pins the edit cursor while the song keeps
+playing; with REC off the bar follows playback. The number is a yellow block, note/instrument
+focus is reverse yellow at 2×, and command/data expands to 2× while selected. K1–K4 use the
+value popup. LFO clears the note, a second press on the same row clears all four fields;
+EDIT + LFO toggles undo/redo, also with REC off. PRESETS selects the entry/audition instrument;
+EDIT + ALGORITHM selects step 0–16. Note entry wraps within the pattern after advancing.
+
+The old WIP primitives were ported, not cherry-picked: fixed-length push/pull, order replacement
+and PUSH lock movement. Independent Rust models cover 404 shifts at every position of lengths
+1/2/7/64/128, dropped-tail locks, cancellation, pending conflicts and 400 seeded replacements.
+The editor retains a private rebuild under backpressure, compacts one acknowledged swap at a
+time, and retains just the lost row and its locks for undo (**200 B on ILP32**). Idle edits now
+use the interrupt queue too. Host-only hooks count CELL and SWAP applications; no bulk edit
+operation was added to the interrupt. The 32-subtune deletion regression performs 96 order
+replacements followed by pattern removal: **97 swaps, zero cell writes**, at most **8/block**
+idle and **1/block** playing, valid intermediate songs, acknowledged arena reuse, and playback
+state comparison against an independently edited song.
+
+Live lock edits required more than moving the extension records: old lookahead caches could
+apply a moved lock to its old row. Prospective caches now publish with the pattern swap; if a
+row advances before publication the command waits for a refreshed sequence-checked snapshot.
+Undo restores discarded locks before its completion ticket advances. Character-row updates
+continue while the edit owns the lookahead buffers. Regressions cover these races, sequence
+wrap, guard changes after acceptance, cancellation of unsubmitted FULL edits, and keeping a
+pending edit's transport alive across HOME/rebinding attempts. A diff-only review found these
+lifecycle/cache issues; they were fixed, not waived.
+
+The input cost of preparing an insert was **6,629 instructions**, failing the unchanged
+4,600 input bound. Rebuild preparation moved to the frame's bounded editor poll: insert is
+now **410**, delete **412**, undo **392**, redo **383**; their busiest passes are
+**19,995 / 19,979 / 23,249 / 23,233** (bound 55,000). Fast value turns finish the preceding
+acknowledgement before reading the next value; the emulator checks that a multi-detent command
+and nibble edit really produces `423`, rather than silently dropping detents. Other edit
+inputs/passes: row **243 / 15,795**, instrument **1,146 / 30,872**, command
+**1,409 / 28,530**, high data **1,421 / 28,002**, low data **1,422 / 27,597**,
+key off **1,232 / 20,661**, rest **1,205 / 20,476**, whole-row clear **1,215 / 20,476**.
+While playing: instrument **1,547 / 30,872**, command **1,829 / 29,045**, data
+**1,433 / 28,244**, insert **414 / 35,960**, under the same unchanged bounds.
+The fragmented-arena emulator test shows TIDYING and finishes within the primitive's move
+bound: input **410**, busiest pass **27,547**, **281** further display frames to completion.
+It awaits the algorithmic preparation/acknowledgement bound rather than assuming that a
+multi-slice compaction completes within a fixed four-second observation window.
+The four-note emulator test compares the panel-built song with the independently expected
+serialized song, then checks its playback bit-exact against the host from a fresh SID state:
+the audition's oscillator/envelope history is deliberately excluded from that comparison.
+The existing live-edit stream test separately covers uninterrupted host/target playback.
+The first full emulator run found that this replay helper prepared a later edit before
+consuming the preceding block's swap acknowledgement. It now polls acknowledgements before
+replaying edits at their recorded blocks, as the device does between blocks. The unchanged
+bit-exact test passes at edit blocks **1214, 1214, 1215, 1215**; neither its audio comparison
+nor any performance bound was weakened.
+
+Resources, base → Task 3: sidou-pack app **425,140 → 431,364 B** (≤440,000);
+RAM region used **59,740 → 60,012 B** of 65,536; POOL **346,560 B** of 352,256,
+unchanged; free RAM together **11,492 → 11,220 B**. The merged-plan floor is **7,000 B**
+(M2c 22,000 less M2a 2,000, M2d 6,000, M2e 2,000 and M2f 5,000), not the standalone
+16,000 projection above. RAMTEXT **45,108 → 45,232 B** of 49,152. The existing 2,700-byte
+canvas is reused; the editor adds no canvas. The link script explicitly starts `.text` after
+the RAMTEXT image so newly aligned flash constants cannot insert an unrepresented binary gap;
+the contiguous-image assertion and every resource bound remain unchanged.
+
+TRACKER costs, base → Task 3 (instructions/frame and busiest `ui_poll`):
+
+| Case | Instructions/frame | Busiest `ui_poll` | Cells/frame, average / most | SPI ms/frame, average / most |
+|---|---:|---:|---:|---:|
+| Idle | 8,016.52 → 8,117.52 | 1,268 → 1,369 | 0 / 0 | 0 / 0 |
+| REC entry | 8,283.44 → 9,938.56 | 5,379 → 19,473 | 0.68 / 17 | 0.059 / 1.480 |
+| Playing with REC on | 25,776.50 → 8,191.32 | 23,900 → 16,091 | 0.01 / 1 | 0.001 / 0.093 |
+| GLO and a key | 9,585.72 → 9,735.80 | 18,843 → 19,283 | 0.44 / 11 | 0.038 / 0.961 |
+| LOOP BAR, 30 s | 27,660.83 → 27,820.17 | 23,900 → 24,264 | 30.42 / 161 | 2.625 / 14.069 |
+| LOOP SCROLL, 30 s | 59,823.88 → 60,035.58 | 22,811 → 23,127 | 59.86 / 177 | 5.285 / 15.559 |
+| Tempo 3 BAR, 30 s | 46,521.16 → 46,743.55 | 24,193 → 24,559 | 56.53 / 173 | 4.869 / 15.093 |
+| Tempo 3 SCROLL, 30 s | 64,910.23 → 65,209.19 | 21,169 → 21,535 | 41.04 / 174 | 3.646 / 15.288 |
+
+The four 30-second runs' cells/SPI are unchanged, with **zero** cut-short frames in both
+builds. REC entry changes the cursor as well as the header; playing with REC on now keeps
+that cursor still, explaining the lower cost. All existing TRACKER bounds are unchanged.
+Common view housekeeping adds **2 instructions/frame** outside song views: STATUS idle
+**7,469.4 → 7,471.4** (<7,500), LIVE noise **154,438.13 → 154,440.13** (<155,000).
+HOME is **426** (<430), CHIP K1 **211** (<215), SELECT to RULE 30 **227** (<230), and the USB 16-CC drain
+**7,991** (<8,000), with zero losses in the MIDI flood cases.
+PLAYER_WORST_BLOCK remains **60**. Across 193 runs of 145 songs, the measured worst block
+is **5,052 → 5,121 instructions**, **39.47 → 40.01/sample**; eight edits without a call
+cost **560 → 629**, and the worst call remains **4,492**. The analysis slice remains
+**33,819** (≤39,000), its worst complete main-loop pass **70,111** (≤120,000).
+With both chips, the tap, ISR and worst slot switch, the song player leaves **165.5
+instructions/sample** below the 2,700 audio target. No gate or tolerance was loosened.
+
+Task 3 final checks (all exit **0**): fm1 configure/build; flash-spike configure/build;
+GCC 13 on every changed app/core C file; `cargo fmt --all --check`; workspace/all-target
+Clippy with `-D warnings`; locked release workspace tests; locked UBSan workspace tests;
+CI-argument sidou-pack and fresh sidou-pack tests; the complete emu-gate with both
+`SIDOU_FM1_BUILD` and `SIDOU_FM1_SPIKE_BUILD`, `--nocapture --test-threads=1`
+(the corrected full rerun, with `--no-fail-fast`); offline REUSE lint; and
+`tools/web-demo --check` using cached dependencies. Release and UBSan app suites each
+pass **891 tests**, with 3 pre-existing ignored tests. The targeted four-note phrase,
+live-edit replay, stopped/playing edit-cost and algorithm-bounded TIDYING tests also exit
+**0**. The base build, base screen-budget run, base pack and base player-budget run exit
+**0**. Initial red tests and the first full replay failure are described above; all final
+production checks are green. Task 4's unregistered preflight regressions are not claimed
+as passing production tests.
+
+Goldens: `tracker`, `tracker-v2`, `tracker-v3`, `tracker-play` and `tracker-scroll` only change
+the hint to SELECT: ROW; `tracker-mute-rec` also shows the pinned pattern/row and yellow edit
+cursor instead of following the playing row. New `tracker-edited` shows row 01's reverse-yellow
+2× `423`; `tracker-instrument-popup` shows the large INSTRUMENT / 02 popup. Old and new PNGs
+were viewed. No unrelated screen golden was regenerated.
+
+Storage integration remains explicit: `st_song_edit_saving_and_size_guard` is the named
+prospective guard for M2c Task 8's save exclusion and serialized-size cap, neither present on
+main at this base. Host/UI tests exercise SAVING and SONG FULL refusals with large toasts.
+Save/load initiation must finish pending UI requests and accepted commands; even a fixed-length cell edit can grow
+serialized instrument/table counts. No hardware was accessed; the button-id flags remain.
+
 ---
 
 ### Task 4: ORDER, INSTR and TABLE pages
@@ -297,6 +414,22 @@ each page; an instrument edited on INSTR changes the sound of the next note (aud
 the host's render of the expected song).
 
 **Commit:** `feat(app): the ORDER, INSTR and TABLE pages`
+
+**Task 4 preflight — audition decision required:** the readable pages and their tests are
+prepared but remain outside the registered build while Task 3 finishes its gates. Native
+regressions exposed an existing engine limitation newly reachable through INSTR: an unused
+instrument's filter program is skipped, a jam on an unpacked third voice never starts, and a
+note below the packed song's range can have zero frequency. A used-instrument control passes.
+The existing incompatible-shape handover replays sequenced state; during stopped audition it
+can sound a song voice that was never jammed. Reusing that path without a policy would be a
+behavioral guess, so production integration pauses here under COMMON.md's decision rule.
+
+The policy choices are: restart frozen audition state when stopped and refuse incompatible
+jams during playback (with a clear toast); preserve all held state through an explicit
+conversion/snapshot design; or permit playback handovers to replace existing audition state.
+No choice has been assumed, no related production patch applied, and no budget weakened.
+The reproduction tests are unregistered until this boundary is resolved; the current
+production build is unchanged by them. The hardware flags and pending storage guard remain.
 
 ---
 

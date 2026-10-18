@@ -62,6 +62,7 @@
 #include "song_transport.h"
 #include "song_io.h"
 #include "song_view.h"
+#include "song_edit.h"
 #include "store.h"
 #include "sysex.h"
 #include "store_layout.h"

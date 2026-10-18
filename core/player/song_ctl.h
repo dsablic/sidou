@@ -212,7 +212,7 @@ typedef struct song_ctl {
     song_lock_set lock_next[GT2_PLAY_CHANNELS][2];
     volatile uint8_t lock_pub[GT2_PLAY_CHANNELS];
     volatile uint8_t row_seq[GT2_PLAY_CHANNELS];
-    uint8_t row_pat[GT2_PLAY_CHANNELS], row_row[GT2_PLAY_CHANNELS];
+    uint8_t row_pat[GT2_PLAY_CHANNELS], row_row[GT2_PLAY_CHANNELS]; /* pattern $FF: no row yet */
     uint8_t row_ord[GT2_PLAY_CHANNELS];
     uint8_t lock_n[GT2_PLAY_CHANNELS];
     song_row_lock lock_cur[GT2_PLAY_CHANNELS][SONG_ROW_LOCKS];
@@ -227,6 +227,7 @@ typedef struct song_ctl {
     uint32_t blocks;              /* blocks since init (tests read it) */
     uint32_t play_block;          /* the block the last play started in (tests read it) */
     uint32_t edits_block_max;     /* the most edits one block applied */
+    uint32_t edit_cells, edit_swaps; /* host-only counters; no target interrupt stores */
     /* --- the main loop's --- */
     gt2_shape* shapes[2];
     song_work* w;
@@ -269,7 +270,13 @@ typedef struct song_ctl {
     uint8_t auditioning;    /* jams sound with the song stopped (song_ctl_audition) */
     uint8_t chip_held;      /* chip A is the song's: from a load's chip hook to the hand-back */
     uint8_t load_for;       /* what SONG_LOADING ends in (song_ctl.c LOAD_*) */
-    uint32_t idle_edits;    /* edits committed before a player exists, without a command */
+    uint32_t idle_edits;    /* legacy status field, now zero: idle edits use the command ring */
+    uint32_t edits_submitted, edits_completed; /* edit tickets, completed after release */
+    uint32_t lock_edit_seq; /* the edit command that owns the unpublished lookahead buffers */
+    volatile uint32_t lock_edit_rows; /* row-sequence snapshot the reserved buffers describe */
+    volatile uint8_t lock_edit_refresh; /* ISR requests a fresh snapshot before applying */
+    const uint8_t* edit_restore; /* a shift undo's packed locks, alive through its release */
+    uint8_t edit_restore_n;
     uint8_t hold_next;      /* song_ctl_hold: the next PLAY or CONTINUE waits for an align */
 } song_ctl;
 
@@ -327,6 +334,10 @@ int song_ctl_jam_ready(const song_ctl* sc);
  * edit that widens the shape is held while the shape is derived again, a slice a poll, and
  * goes with it; the next edit waits (0) until then. */
 int song_ctl_edit(song_ctl* sc, const gt2_edit* e);
+/* A gt2_pattern_shift_restore undo's lost row locks: prospective lookahead is published
+ * with the swap, and the records restored after the normal lock move, before completion.
+ * locks holds n packed SONG_LOCK_BYTES records, alive until edits_completed advances. */
+int song_ctl_edit_with_locks(song_ctl* sc, const gt2_edit* e, const uint8_t* locks, uint32_t n);
 int song_ctl_set_period(song_ctl* sc, song_period p);
 /* Fast-forwards a player from the play's start to call `call` and hands it over at the
  * interrupt's next call (M2d's seeks). */

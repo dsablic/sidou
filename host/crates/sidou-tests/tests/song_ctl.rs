@@ -656,6 +656,322 @@ fn a_flood_of_edits_waits_and_is_never_lost() {
     );
 }
 
+struct SplitDeleteSwap {
+    edit: gt2_edit,
+    old_bytes: Vec<u8>,
+}
+
+fn split_delete_units(edit: &gt2_edit, span: gt2_span) -> std::ops::Range<u32> {
+    let units = if edit.slot as u32 >= GT2_SLOT_ORDER {
+        span_len(span).div_ceil(GT2_UNIT)
+    } else {
+        span_len(span)
+    };
+    span_off4(span)..span_off4(span) + units
+}
+
+fn split_delete_old_bytes(song: &Song, edit: &gt2_edit) -> Vec<u8> {
+    let units = split_delete_units(edit, edit.old_span);
+    let start = song.raw().arena_offset as usize + units.start as usize * GT2_UNIT as usize;
+    song.bytes()[start..start + units.len() * GT2_UNIT as usize].to_vec()
+}
+
+fn split_delete_check_model(song: &Song, model: &SngSpec) {
+    assert_eq!(song.raw().subtunes as usize, model.orders.len());
+    assert_eq!(song.raw().channels, 3);
+    for (subtune, channels) in model.orders.iter().enumerate() {
+        for (channel, (entries, restart)) in channels.iter().enumerate() {
+            let mut prefix = 0;
+            for &entry in entries {
+                match entry {
+                    0..=0xcf => {
+                        assert!(
+                            (entry as usize) < model.patterns.len(),
+                            "a dangling pattern"
+                        );
+                        prefix = 0;
+                    }
+                    0xd0..=0xdf if prefix <= 1 => prefix = 2,
+                    0xe0..=0xfe if prefix == 0 => prefix = 1,
+                    _ => panic!("an invalid intermediate orderlist: {entries:?}"),
+                }
+            }
+            assert_eq!(prefix, 0, "an unfinished orderlist prefix");
+            assert!(!entries.is_empty() && (*restart as usize) < entries.len());
+            assert_eq!(
+                song.order(subtune as u32, channel as u32).unwrap(),
+                (entries.clone(), *restart),
+                "subtune {subtune} channel {channel}"
+            );
+        }
+    }
+    for pattern in 0..GT2_MAX_PATTERNS as usize {
+        let expected = model.patterns.get(pattern).map(|(body, end)| {
+            let mut rows = body.clone();
+            rows.push(*end);
+            rows
+        });
+        assert_eq!(song.pattern(pattern as u32), expected, "pattern {pattern}");
+    }
+}
+
+fn split_delete_tick(
+    t: &mut Transport,
+    song: &mut Song,
+    model: &mut SngSpec,
+    swaps: &[SplitDeleteSwap],
+    applied: &mut usize,
+    released: &mut usize,
+    max_per_block: &mut u32,
+) {
+    split_delete_check_model(song, model);
+    let bitmap = song.bitmap();
+    for swap in &swaps[*released..] {
+        assert!(split_delete_units(&swap.edit, swap.edit.old_span).all(|u| bitmap[u as usize]));
+        assert_eq!(split_delete_old_bytes(song, &swap.edit), swap.old_bytes);
+    }
+    t.pass();
+    let bitmap = song.bitmap();
+    for swap in &swaps[*released..*applied] {
+        assert!(
+            split_delete_units(&swap.edit, swap.edit.old_span).all(|u| !bitmap[u as usize]),
+            "acknowledged old copies must be released by the poll"
+        );
+    }
+    *released = *applied;
+    split_delete_check_model(song, model);
+    let before = t.sc.edit_swaps;
+    t.block_silent();
+    let count = t.sc.edit_swaps - before;
+    assert!(count <= SONG_EDITS_PER_BLOCK, "{count} swaps in one block");
+    assert_eq!(t.sc.edit_cells, 0, "the split edit must use swaps only");
+    *max_per_block = (*max_per_block).max(count);
+    let now_applied = *applied + count as usize;
+    assert!(
+        now_applied <= swaps.len(),
+        "an unsubmitted swap was counted"
+    );
+    for index in *applied..now_applied {
+        if index < 96 {
+            let entries = &mut model.orders[index / 3][index % 3].0;
+            for entry in entries {
+                if *entry == 3 {
+                    *entry = 0;
+                }
+            }
+        } else {
+            assert_eq!(index, 96);
+            model.patterns.pop();
+        }
+    }
+    *applied = now_applied;
+    split_delete_check_model(song, model);
+    let bitmap = song.bitmap();
+    for swap in &swaps[*released..] {
+        assert!(
+            split_delete_units(&swap.edit, swap.edit.old_span).all(|u| bitmap[u as usize]),
+            "the interrupt must retain old copies until acknowledgement"
+        );
+        assert_eq!(split_delete_old_bytes(song, &swap.edit), swap.old_bytes);
+    }
+    if *applied == 97 && *released < 97 {
+        let mut pattern = 0;
+        let mut probe = gt2_edit::default();
+        assert_eq!(
+            unsafe { gt2_pattern_add(song.ptr_mut(), 1, &mut pattern, &mut probe) },
+            GT2_OK
+        );
+        assert_ne!(
+            pattern, 3,
+            "a removed pattern number cannot be reused before release"
+        );
+        unsafe { gt2_edit_cancel(song.ptr_mut(), &probe) };
+    }
+}
+
+#[test]
+fn deleting_a_pattern_across_32_subtunes_uses_97_bounded_acknowledged_swaps() {
+    for playing in [false, true] {
+        split_delete_case(playing);
+    }
+}
+
+fn split_delete_case(playing: bool) {
+    let mut fixture = SngSpec::new();
+    fixture.orders = (0..32)
+        .map(|subtune| {
+            (0..3)
+                .map(|channel| {
+                    (
+                        vec![0, 0xe0 + subtune % 16, 0xd0 + channel, 3, 3],
+                        if subtune % 2 == 0 { 0 } else { 4 },
+                    )
+                })
+                .collect()
+        })
+        .collect();
+    fixture.instr = vec![ins(0x09, 0x00, 1, 0, 0, 0, 0, 2, 0x09)];
+    fixture.tables = vec![vec![(0x41, 0x00), (0xff, 0x00)], vec![], vec![], vec![]];
+    let mut body = vec![R; GT2_MAX_ROWS as usize];
+    body[0] = row(n(3, 0), 1);
+    fixture.patterns = vec![(body, [0xff, 0, 0, 0]); 4];
+    let mut model = fixture.clone();
+    let mut song = Song::device();
+    song.read(&fixture.encode(), 4).unwrap();
+    let mut t = Transport::new(&mut song);
+    if playing {
+        assert!(t.play(0, 0));
+        transport_states(&mut t, 3);
+        t.pass();
+    }
+    assert_eq!((t.sc.edit_cells, t.sc.edit_swaps), (0, 0));
+    let mut queued = 0;
+    for _ in 0..=SONG_CMD_RING {
+        if !t.mute(0) {
+            break;
+        }
+        queued += 1;
+    }
+    assert!(
+        queued > 0 && !t.mute(0),
+        "exercise a genuinely full command ring"
+    );
+    let mut swaps = Vec::<SplitDeleteSwap>::new();
+    let (mut applied, mut released) = (0, 0);
+    let (mut refused, mut removal_waits, mut reused_after_ack, mut max_per_block) = (0, 0, 0, 0);
+    let mut pending = None;
+    for _ in 0..20_000 {
+        if released == 97 {
+            break;
+        }
+        if swaps.len() < 97 {
+            if pending.is_none() {
+                let index = swaps.len();
+                let mut edit = gt2_edit::default();
+                let before = song.bytes().to_vec();
+                let result = if index < 96 {
+                    let (entries, restart) = &fixture.orders[index / 3][index % 3];
+                    let replacement: Vec<u8> = entries
+                        .iter()
+                        .map(|&p| if p == 3 { 0 } else { p })
+                        .collect();
+                    unsafe {
+                        gt2_order_replace(
+                            song.ptr_mut(),
+                            (index / 3) as u32,
+                            (index % 3) as u32,
+                            replacement.as_ptr(),
+                            replacement.len() as u32,
+                            *restart,
+                            &mut edit,
+                        )
+                    }
+                } else {
+                    unsafe { gt2_pattern_remove(song.ptr_mut(), 3, &mut edit) }
+                };
+                match result {
+                    GT2_OK => {
+                        assert_eq!(edit.kind as u32, GT2_EDIT_SWAP);
+                        if edit.span != 0 {
+                            let new = split_delete_units(&edit, edit.span);
+                            for (old_index, old) in swaps.iter().enumerate() {
+                                let old = split_delete_units(&old.edit, old.edit.old_span);
+                                let overlaps = new.start < old.end && old.start < new.end;
+                                if old_index < released {
+                                    reused_after_ack += usize::from(overlaps);
+                                } else {
+                                    assert!(
+                                        !overlaps,
+                                        "a new copy reused an unacknowledged old span"
+                                    );
+                                }
+                            }
+                        }
+                        pending = Some(edit);
+                    }
+                    GT2_ERR_PENDING => {
+                        assert_eq!(
+                            index, 96,
+                            "only the removal must wait for order acknowledgements"
+                        );
+                        removal_waits += 1;
+                        assert_eq!(song.bytes(), before);
+                    }
+                    error => panic!("split edit {index}: {error}"),
+                }
+                split_delete_check_model(&song, &model);
+            }
+            if let Some(edit) = pending {
+                if t.edit(&edit) {
+                    swaps.push(SplitDeleteSwap {
+                        edit,
+                        old_bytes: split_delete_old_bytes(&song, &edit),
+                    });
+                    pending = None;
+                    continue;
+                }
+                refused += 1;
+            }
+        }
+        split_delete_tick(
+            &mut t,
+            &mut song,
+            &mut model,
+            &swaps,
+            &mut applied,
+            &mut released,
+            &mut max_per_block,
+        );
+    }
+    assert_eq!((swaps.len(), applied, released), (97, 97, 97));
+    assert!(pending.is_none());
+    assert!(refused > 0, "the stream must fill the queue and retry");
+    assert!(
+        removal_waits > 0,
+        "removal must wait for the orderlist acknowledgements"
+    );
+    assert!(
+        reused_after_ack > 0,
+        "released old space must actually be reused"
+    );
+    assert!(max_per_block > 0 && max_per_block <= SONG_EDITS_PER_BLOCK);
+    if !playing {
+        assert_eq!(
+            max_per_block, SONG_EDITS_PER_BLOCK,
+            "exercise a full block of swaps"
+        );
+    }
+    assert_eq!(t.sc.edits_block_max, max_per_block);
+    assert_eq!((t.sc.edit_cells, t.sc.edit_swaps), (0, 97));
+    assert_eq!((song.raw().pending, song.raw().pending_old_units), (0, 0));
+    let mut number = 0;
+    let mut probe = gt2_edit::default();
+    assert_eq!(
+        unsafe { gt2_pattern_add(song.ptr_mut(), 1, &mut number, &mut probe) },
+        GT2_OK
+    );
+    assert_eq!(number, 3, "the acknowledged pattern number is reusable");
+    unsafe { gt2_edit_cancel(song.ptr_mut(), &probe) };
+    split_delete_check_model(&song, &model);
+    let reference = song_of(&model.encode(), None);
+    if !playing {
+        assert!(t.play(0, 0));
+        transport_states(&mut t, 3);
+    }
+    let first = t.calls();
+    let got = transport_states(&mut t, first + 24);
+    let expected = player_states(&reference, 0, &default_options(), first + 24);
+    assert_eq!(
+        got,
+        expected[first as usize..],
+        "playback after the split edit"
+    );
+    eprintln!(
+        "playing={playing}: 97 swaps, {refused} queue retries, {removal_waits} removal waits, \
+         {reused_after_ack} acknowledged reuses, at most {max_per_block} swaps/block"
+    );
+}
+
 /// A rebuild's old copy stays allocated until the interrupt has applied its swap.
 #[test]
 fn a_swapped_patterns_old_space_is_freed_only_after_it_is_applied() {

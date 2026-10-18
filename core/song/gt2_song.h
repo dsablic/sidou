@@ -14,7 +14,7 @@
  * Edits come in two steps, so the player never reads half an edit (M2c Task 6):
  * - a cell write: one store of at most 4 bytes in place (a pattern row, an instrument byte,
  *   a table row, an orderlist entry or restart position);
- * - a rebuild: anything that changes a length (rows inserted or deleted, a resize, entries
+ * - a rebuild: anything that moves rows or changes a length (a push/pull, a resize, entries
  *   inserted or deleted, a pattern added or removed) builds the new pattern or orderlist in
  *   free arena space, touching no byte in use, and yields a swap: the index entry's new
  *   value, one aligned 32-bit store. The old space stays allocated until the swap is known
@@ -247,6 +247,9 @@ typedef struct {
 void gt2_edit_apply(gt2_song* s, const gt2_edit* e);
 /* After the edit is applied: frees a swap's old span, and ends the edit's pending. */
 void gt2_edit_release(gt2_song* s, const gt2_edit* e);
+/* Release of a checked shift restore: the same packed locks supplied at preparation,
+ * still alive and unchanged. Restores them before accounting/completion, even if frozen. */
+void gt2_edit_release_with_locks(gt2_song* s, const gt2_edit* e, const uint8_t* locks, uint32_t n);
 /* An edit never applied (taken out of the queue): frees a swap's new span, and ends its
  * pending. */
 void gt2_edit_cancel(gt2_song* s, const gt2_edit* e);
@@ -268,6 +271,18 @@ gt2_err gt2_set_order(gt2_song* s, uint32_t subtune, uint32_t channel, uint32_t 
 gt2_err gt2_pattern_resize(gt2_song* s, uint32_t pattern, uint32_t rows, gt2_edit* e);
 gt2_err gt2_pattern_insert_row(gt2_song* s, uint32_t pattern, uint32_t row, gt2_edit* e);
 gt2_err gt2_pattern_delete_row(gt2_song* s, uint32_t pattern, uint32_t row, gt2_edit* e);
+/* Tracker INS/DEL on a body row: keep the length and end row. Push inserts an empty row
+ * and drops the last body row; pull drops row and appends an empty body row. Locks follow
+ * the retained rows; the dropped row's locks go. row must be below the end row. */
+gt2_err gt2_pattern_push_row(gt2_song* s, uint32_t pattern, uint32_t row, gt2_edit* e);
+gt2_err gt2_pattern_pull_row(gt2_song* s, uint32_t pattern, uint32_t row, gt2_edit* e);
+/* Fixed-length shift plus the inverse's lost row and packed row locks. insert selects
+ * push (restored row at cursor) or pull (restored row at tail). Complete preflight occurs
+ * before allocation; the private copy must not be patched afterwards. Keep locks unchanged
+ * through gt2_edit_release_with_locks when n is nonzero. */
+gt2_err gt2_pattern_shift_restore(gt2_song* s, uint32_t pattern, uint32_t row, int insert,
+                                 const uint8_t cell[4], const uint8_t* locks, uint32_t n,
+                                 gt2_edit* e);
 /* The lowest pattern number not held and not named, made with rows empty rows. */
 gt2_err gt2_pattern_add(gt2_song* s, uint32_t rows, uint32_t* pattern, gt2_edit* e);
 /* Only a pattern no orderlist names; it becomes "not held". */
@@ -276,6 +291,10 @@ gt2_err gt2_order_insert(gt2_song* s, uint32_t subtune, uint32_t channel, uint32
                          uint8_t value, gt2_edit* e);
 gt2_err gt2_order_delete(gt2_song* s, uint32_t subtune, uint32_t channel, uint32_t pos,
                          gt2_edit* e);
+/* Replace all entries and restart in one swap, with the same rules and deferred contract
+ * as the other order edits. entries may be NULL only when n == 0 (restart then 0). */
+gt2_err gt2_order_replace(gt2_song* s, uint32_t subtune, uint32_t channel,
+                          const uint8_t* entries, uint32_t n, uint8_t restart, gt2_edit* e);
 
 /* One compaction move (a rebuild): returns 1 and the move's swap if it moved a block, 0 if
  * the free space is already one hole at the arena's end, -1 (nothing done) while an edit is

@@ -1532,6 +1532,11 @@ void views_song_io(views* v, song_io* io) {
     v->song.io = io;
 }
 
+void views_song_loaded(views* v) {
+    song_view_loaded(&v->song);
+    v->songs.built = 0;
+}
+
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->l = l;
     v->sc = sc;
@@ -1562,6 +1567,8 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     song_view_init(&v->song, l);
     v->songs.built = 0;
     v->songs.scanning = 0;
+    v->song.editor = &v->editor;
+    song_edit_init(&v->editor, NULL);
     screen_init(&v->s, g, &live_view_view, &v->live);
     screen_global(&v->s, global, v);
     screen_popup_source(&v->s, &v->popup, popup_text, v);
@@ -1804,6 +1811,11 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
     uint32_t enc = ask & 7u;
     if (enc == ASK_MASTER) {
         return param_text(v, LIVE_PARAM_VOLUME, name, value, fill, max);
+    }
+    if (shows(v) == &tracker_view_view && v->song.rec) {
+        *accent = theme_get(l->theme)->knob[enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4
+                                                    ? enc - PANEL_ENC_K1 : 0u];
+        return tracker_view_popup(&v->song, enc, (ask & ASK_EDIT) != 0u, name, value, fill, max);
     }
     if (enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4) {
         *accent = theme_get(l->theme)->knob[enc - PANEL_ENC_K1]; /* the knob's colour, as on the page */

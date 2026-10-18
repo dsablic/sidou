@@ -46,6 +46,7 @@ mod scope;
 mod screen;
 mod settings;
 mod song_io;
+mod song_edit;
 mod song_view;
 mod store;
 mod store_layout;

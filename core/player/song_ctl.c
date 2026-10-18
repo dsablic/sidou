@@ -67,6 +67,7 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
             sc->jam[ch][0] = 0u;
             sc->lock_n[ch] = 0u;
+            sc->row_pat[ch] = 0xffu;
         }
         /* the keys' registers out: the song starts from a silent chip */
         for (uint32_t r = 0u; r < GT2_SID_REGS; r++) {
@@ -142,6 +143,17 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         break;
     case SONG_CMD_EDIT:
         gt2_edit_apply(sc->song, &c->u.edit);
+        if (c->a) {
+            COMPILER_FENCE();
+            for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++)
+                sc->lock_pub[ch] = (uint8_t)((c->b >> ch) & 1u);
+        }
+#ifdef SIDOU_REG_RING_RACE_HOOK
+        if (c->u.edit.kind == GT2_EDIT_CELL)
+            sc->edit_cells++;
+        else if (c->u.edit.kind == GT2_EDIT_SWAP)
+            sc->edit_swaps++;
+#endif
         break;
     case SONG_CMD_ALIGN: {
         int32_t d = (int32_t)(c->u.p.x - sc->samples);
@@ -170,6 +182,12 @@ void song_ctl_block(song_ctl* sc, sid* chip) {
     while (tail != head) {
         const song_cmd* c = &sc->cmd[tail & CMD_MASK];
         if (c->kind == SONG_CMD_EDIT) {
+            if (c->a && (sc->lock_edit_refresh || sc->lock_edit_rows !=
+                ((uint32_t)sc->row_seq[0] | (uint32_t)sc->row_seq[1] << 8 |
+                 (uint32_t)sc->row_seq[2] << 16))) {
+                sc->lock_edit_refresh = 1u;
+                break;
+            }
             if (edits == SONG_EDITS_PER_BLOCK)
                 break; /* the rest wait for the next block */
             edits++;
@@ -376,6 +394,8 @@ void song_ctl_render(song_ctl* sc, sid* chip, int16_t* out, uint32_t n) {
 
 static void lock_prime(song_ctl* sc);
 static void lock_character(song_ctl* sc);
+static void lock_prepare_edit(song_ctl* sc, song_cmd* c, const gt2_edit* e);
+static void lock_refresh_edit(song_ctl* sc);
 
 static void zero(void* p, uint32_t n) {
     uint8_t* q = p;
@@ -670,7 +690,10 @@ static void send_edit(song_ctl* sc, const gt2_edit* e) {
     song_cmd c;
     cmd_init(&c, SONG_CMD_EDIT);
     c.u.edit = *e;
+    lock_prepare_edit(sc, &c, e);
     uint32_t seq = push(sc, &c);
+    if (c.a || sc->edit_restore)
+        sc->lock_edit_seq = seq;
     if (sc->inflight_n > 0u && w->inflight_seq[sc->inflight_n - 1u] == 0u) {
         w->inflight_seq[sc->inflight_n - 1u] = seq; /* the held one goes */
     } else {
@@ -702,11 +725,15 @@ static int finish_widen(song_ctl* sc) {
     return 1;
 }
 
-int song_ctl_edit(song_ctl* sc, const gt2_edit* e) {
+static int edit_main(song_ctl* sc, const gt2_edit* e) {
     song_work* w = sc->w;
     if (sc->state == SONG_IDLE) {
-        gt2_edit_commit(sc->song, e); /* no player reads the song */
-        sc->idle_edits++;
+        if (sc->inflight_n == SONG_INFLIGHT || room(sc) < 1u) {
+            sc->busy++;
+            return 0;
+        }
+        send_edit(sc, e);
+        sc->edits_submitted++;
         return 1;
     }
     /* A shape command in flight holds the spare a widening may need: the edit waits a pass
@@ -731,10 +758,32 @@ int song_ctl_edit(song_ctl* sc, const gt2_edit* e) {
         gt2_shape_derive_begin(&w->cur);
         sc->deriving = SONG_DERIVE_EDIT;
         sc->deriving_for = SONG_DERIVE_EDIT;
+        sc->edits_submitted++;
         return 1;
     }
     send_edit(sc, e);
+    sc->edits_submitted++;
     return 1;
+}
+
+int song_ctl_edit_with_locks(song_ctl* sc, const gt2_edit* e, const uint8_t* locks, uint32_t n) {
+    if (sc->lock_edit_seq || sc->edit_restore || n > SONG_LOCK_PARAMS ||
+        (n && (!locks || e->kind != GT2_EDIT_SWAP || e->slot >= GT2_MAX_PATTERNS))) {
+        sc->busy++;
+        return 0;
+    }
+    sc->edit_restore = n ? locks : 0;
+    sc->edit_restore_n = (uint8_t)n;
+    int result = edit_main(sc, e);
+    if (!result) {
+        sc->edit_restore = 0;
+        sc->edit_restore_n = 0u;
+    }
+    return result;
+}
+
+int song_ctl_edit(song_ctl* sc, const gt2_edit* e) {
+    return song_ctl_edit_with_locks(sc, e, 0, 0u);
 }
 
 /* The player's frame path runs from SRAM on the device (platform/fm1/app.ld), beyond the
@@ -799,12 +848,24 @@ static void discard(void* ctx, uint8_t reg, uint8_t value) {
 
 /* What the interrupt has applied since the last poll. */
 static void poll_applied(song_ctl* sc, int may_ring) {
+    if (sc->lock_edit_seq && sc->lock_edit_refresh)
+        lock_refresh_edit(sc);
     song_work* w = sc->w;
     uint32_t a = sc->applied;
     uint32_t k = 0u;
     while (k < sc->inflight_n && w->inflight_seq[k] != 0u &&
            (int32_t)(a - w->inflight_seq[k]) >= 0) {
-        gt2_edit_release(sc->song, &w->inflight[k]);
+        if (w->inflight_seq[k] == sc->lock_edit_seq && sc->edit_restore_n)
+            gt2_edit_release_with_locks(sc->song, &w->inflight[k], sc->edit_restore, sc->edit_restore_n);
+        else
+            gt2_edit_release(sc->song, &w->inflight[k]);
+        if (w->inflight_seq[k] == sc->lock_edit_seq) {
+            sc->edit_restore = 0;
+            sc->edit_restore_n = 0u;
+            sc->lock_edit_seq = 0u;
+            sc->lock_edit_refresh = 0u;
+        }
+        sc->edits_completed++;
         k++;
     }
     if (k > 0u) {
@@ -1008,41 +1069,129 @@ static int next_pattern(const song_ctl* sc, uint32_t ch, uint32_t pos) {
 
 /* A row's filter and pulse locks into set (at most SONG_ROW_LOCKS). */
 static void lock_add_row(const song_ctl* sc, song_lock_set* set, uint32_t pattern,
-                         uint32_t row) {
+                         uint32_t row, const gt2_edit* edit) {
+    uint32_t source = row;
+    int empty = 0;
+    if (edit && edit->slot == pattern) {
+        uint32_t cut = edit->bytes[1];
+        if (edit->span == 0u || row + 1u >= GT2_SPAN_LEN(edit->span)) {
+            empty = 1;
+        } else switch (edit->bytes[0]) {
+        case SONG_LOCKS_INSERT:
+        case SONG_LOCKS_PUSH:
+            if (row == cut)
+                empty = 1;
+            else if (row > cut)
+                source--;
+            break;
+        case SONG_LOCKS_DELETE:
+            if (row >= cut)
+                source++;
+            break;
+        case SONG_LOCKS_REMOVE:
+            empty = 1;
+            break;
+        default:
+            break;
+        }
+    }
     uint32_t n = 0u;
-    const uint8_t* rec = song_locks_row(sc->song, pattern, row, &n);
+    const uint8_t* rec = empty ? 0 : song_locks_row(sc->song, pattern, source, &n);
     for (uint32_t i = 0u; i < n && set->n < SONG_ROW_LOCKS; i++, rec += SONG_LOCK_BYTES) {
         if (rec[2] > SONG_LOCK_PULSE)
             continue; /* the character's: the hook's */
         song_row_lock* l = &set->e[set->n++];
         l->pattern = rec[0];
-        l->row = rec[1];
+        l->row = (uint8_t)row;
         l->param = rec[2];
         l->lo = rec[3];
         l->hi = rec[4];
+    }
+    if (edit) {
+        for (uint32_t i = 0u; i < sc->edit_restore_n && set->n < SONG_ROW_LOCKS; i++) {
+            rec = sc->edit_restore + i * SONG_LOCK_BYTES;
+            if (rec[0] != pattern || rec[1] != row || rec[2] > SONG_LOCK_PULSE)
+                continue;
+            song_row_lock* l = &set->e[set->n++];
+            l->pattern = rec[0];
+            l->row = rec[1];
+            l->param = rec[2];
+            l->lo = rec[3];
+            l->hi = rec[4];
+        }
     }
 }
 
 /* The locks channel ch's next row may have after its row (pattern, row, its entry ord),
  * into the table the interrupt does not read, then published. */
-static void lock_resolve(song_ctl* sc, uint32_t ch, uint32_t pattern, uint32_t row,
-                         uint32_t ord, int first) {
+static void lock_build(song_ctl* sc, uint32_t ch, uint32_t pattern, uint32_t row,
+                       uint32_t ord, int first, const gt2_edit* edit) {
     song_lock_set* set = &sc->lock_next[ch][(sc->lock_pub[ch] & 1u) ^ 1u];
     set->n = 0u;
     uint32_t rows = gt2_pattern_rows(sc->song, pattern) - 1u;
+    if (edit && edit->slot == pattern)
+        rows = edit->span ? GT2_SPAN_LEN(edit->span) - 1u : 0u;
     if (first) {
-        lock_add_row(sc, set, pattern, 0u);
+        lock_add_row(sc, set, pattern, 0u, edit);
     } else if (row + 1u < rows) {
-        lock_add_row(sc, set, pattern, row + 1u);
+        lock_add_row(sc, set, pattern, row + 1u, edit);
     } else {
         /* the pattern's end: the pattern again (a repeat), or the orderlist's next */
-        lock_add_row(sc, set, pattern, 0u);
+        lock_add_row(sc, set, pattern, 0u, edit);
         int next = ord != 0xffu ? next_pattern(sc, ch, ord) : -1;
         if (next >= 0 && (uint32_t)next != pattern)
-            lock_add_row(sc, set, (uint32_t)next, 0u);
+            lock_add_row(sc, set, (uint32_t)next, 0u, edit);
     }
+}
+
+static void lock_resolve(song_ctl* sc, uint32_t ch, uint32_t pattern, uint32_t row,
+                         uint32_t ord, int first) {
+    lock_build(sc, ch, pattern, row, ord, first, 0);
     COMPILER_FENCE(); /* the table before the index that publishes it */
     sc->lock_pub[ch] = (uint8_t)(sc->lock_pub[ch] ^ 1u);
+}
+
+static void lock_prepare_edit(song_ctl* sc, song_cmd* c, const gt2_edit* e) {
+    if (!sc->shapes_used || e->kind != GT2_EDIT_SWAP || e->slot >= GT2_MAX_PATTERNS || !e->bytes[0])
+        return;
+    uint32_t rows = 0u;
+    for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
+        uint8_t seq, pattern, row, ord;
+        do {
+            seq = sc->row_seq[ch];
+            COMPILER_FENCE();
+            pattern = sc->row_pat[ch];
+            row = sc->row_row[ch];
+            ord = sc->row_ord[ch];
+            COMPILER_FENCE();
+        } while (seq != sc->row_seq[ch]);
+        rows |= (uint32_t)seq << (ch * 8u);
+        if (pattern == 0xffu) {
+            int first = next_pattern(sc, ch, (uint32_t)sc->start_pos - 1u);
+            if (first >= 0)
+                lock_build(sc, ch, (uint32_t)first, 0u, 0xffu, 1, e);
+            else
+                sc->lock_next[ch][(sc->lock_pub[ch] & 1u) ^ 1u].n = 0u;
+        } else {
+            lock_build(sc, ch, pattern, row, ord, 0, e);
+        }
+        c->b |= (uint8_t)(((sc->lock_pub[ch] & 1u) ^ 1u) << ch);
+    }
+    sc->lock_edit_rows = rows;
+    c->a = 1u;
+}
+
+static void lock_refresh_edit(song_ctl* sc) {
+    /* The ISR leaves this command queued while refresh is set, so its reserved buffers
+     * can be rebuilt without either publishing half a table or racing a second edit. */
+    sc->lock_edit_refresh = 1u;
+    COMPILER_FENCE();
+    if ((int32_t)(sc->applied - sc->lock_edit_seq) < 0) {
+        song_cmd* c = &sc->cmd[(sc->lock_edit_seq - 1u) & CMD_MASK];
+        lock_prepare_edit(sc, c, &c->u.edit);
+    }
+    COMPILER_FENCE();
+    sc->lock_edit_refresh = 0u;
 }
 
 /* At PLAY: each channel's first row, from the play's entry. */
@@ -1084,7 +1233,10 @@ static void poll_locks(song_ctl* sc) {
         if (sc->row_seq[ch] != seq)
             continue; /* another row started while read: the next poll */
         sc->row_seen[ch] = seq;
-        lock_resolve(sc, ch, pattern, row, ord, 0);
+        /* Only lookahead publication waits for the edit's reserved buffers; the current
+         * row's character locks still reach their main-loop hook on this pass. */
+        if (!sc->lock_edit_seq)
+            lock_resolve(sc, ch, pattern, row, ord, 0);
         uint32_t n = 0u;
         const uint8_t* rec = song_locks_row(sc->song, pattern, row, &n);
         for (uint32_t f = 0u; f < 4u; f++)

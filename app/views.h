@@ -211,6 +211,7 @@ typedef struct {
     menu midi;
     uint8_t midi_drawn[VIEWS_MIDI_LOOK];
     uint8_t menu_ask; /* the item ALGORITHM changed, retained while its popup waits */
+    song_editor editor;
 } views;
 
 extern const view views_status;
@@ -221,6 +222,7 @@ extern const view views_song_menu_view;
 
 /* LIVE, the root view, on g, showing l and the audio's tap sc (NULL: none). */
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version);
+void views_song_loaded(views* v);
 /* Whether MIDI's changes of the knobs' parameters (cutoff, resonance, pulse width, volume) open
  * the value popup: 0, they do not (a controller sweep or a song would flood the screen with it).
  * The one switch: 1 here, or views_popup_midi at run time, turns the watcher on; nothing else

@@ -278,16 +278,16 @@ fn the_rows_show_the_shown_voices_pattern_from_the_cursors_entry() {
         attr_of(u32::from(t.value), u32::from(t.cursor))
     );
     assert_eq!(s.ui.small(28, 0, 22), "V1 3 08 TONEPORTAMENTO");
-    assert_eq!(s.ui.small(29, 0, 13), "SELECT: VOICE");
+    assert_eq!(s.ui.small(29, 0, 13).trim_end(), "SELECT: ROW");
     assert_eq!(s.ui.small(29, 17, 13), "ORD 00 ROW 00");
 }
 
 #[test]
-fn select_steps_the_shown_voice_and_round() {
+fn algorithm_steps_the_shown_voice_and_round() {
     let mut s = tracker();
     let t = th();
     assert_eq!(s.ui.v.song.voice, 0);
-    s.ui.turn(PANEL_ENC_SELECT, 1);
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
     assert_eq!(s.ui.v.song.voice, 1);
     // V2 in cyan, its pattern (voice 2 starts at the orderlist's transpose, pattern 2 is its
@@ -308,21 +308,21 @@ fn select_steps_the_shown_voice_and_round() {
     assert_eq!(s.ui.small(27, 0, 14).trim_end(), "OL 02 RST00");
     // Voice 1 is a strip now: tall on its row 0, its instrument shows no more.
     assert_eq!(ch(&s.ui, 26, top(4)), FONT_V4 as u8);
-    s.ui.turn(PANEL_ENC_SELECT, 1);
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
     assert_eq!(s.ui.big(0, 0, 2, 2), "V3");
     assert_eq!(attr(&s.ui, 0, 0) & 15, t.voice[2]);
     assert_eq!(s.ui.big(0, 5, 2, 6), "PAT 03");
     assert_eq!(s.ui.big(top(4), 3, 2, 3), "C-5");
     // Round: 1 again, and the other way: 3.
-    s.ui.turn(PANEL_ENC_SELECT, 1);
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
     assert_eq!(s.ui.v.song.voice, 0);
     assert_eq!(s.ui.big(0, 0, 2, 2), "V1");
-    s.ui.turn(PANEL_ENC_SELECT, -1);
+    s.ui.turn(PANEL_ENC_ALGORITHM, -1);
     settle(&mut s.ui);
     assert_eq!(s.ui.v.song.voice, 2);
-    s.ui.turn(PANEL_ENC_SELECT, -5);
+    s.ui.turn(PANEL_ENC_ALGORITHM, -5);
     settle(&mut s.ui);
     assert_eq!(
         s.ui.v.song.voice, 0,
@@ -330,7 +330,7 @@ fn select_steps_the_shown_voice_and_round() {
     );
     // The cursor row is the song's, not the voice's: it stays.
     assert_eq!(s.ui.v.song.row, 0);
-    // SELECT is TRACKER's: no popup, no toast, and the panel did nothing with it.
+    // ALGORITHM is TRACKER's: no toast, and the panel did nothing with it.
     assert!(s.ui.toast().is_none());
     assert_eq!(s.ui.v.s.popup_ask, 0);
 }
@@ -338,7 +338,7 @@ fn select_steps_the_shown_voice_and_round() {
 #[test]
 fn the_keys_audition_on_the_shown_voice() {
     let mut s = tracker();
-    s.ui.turn(PANEL_ENC_SELECT, 2);
+    s.ui.turn(PANEL_ENC_ALGORITHM, 2);
     settle(&mut s.ui);
     s.calls();
     s.ui.note_keys(1 << 16, 1 << 16); // A4 on the panel at octave 0
@@ -587,7 +587,7 @@ fn finish_building(s: &mut Song) {
 fn a_step_of_the_bar_draws_what_a_whole_build_would() {
     for voice in 0..3u32 {
         let mut s = tracker();
-        s.ui.turn(PANEL_ENC_SELECT, voice as i32);
+        s.ui.turn(PANEL_ENC_ALGORITHM, voice as i32);
         settle(&mut s.ui);
         s.ui.press(PANEL_BTN_PLAY);
         s.f.st.order_pos = [0, 1, 1];
@@ -609,4 +609,185 @@ fn a_step_of_the_bar_draws_what_a_whole_build_would() {
             );
         }
     }
+}
+
+#[test]
+fn select_moves_rows_and_edit_select_moves_a_readable_page() {
+    let mut s = tracker();
+    s.ui.turn(PANEL_ENC_SELECT, 3);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.v.song.row, 3);
+    assert_eq!(s.ui.v.song.voice, 0);
+    s.ui.hold(PANEL_BTN_EDIT, true);
+    s.ui.turn(PANEL_ENC_SELECT, 1);
+    s.ui.hold(PANEL_BTN_EDIT, false);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.v.song.row, 3 + TRACKER_VIEW_PAGE as u8);
+    s.ui.turn(PANEL_ENC_SELECT, 1000);
+    assert_eq!(s.ui.v.song.row, 31, "the end row cannot be edited");
+    s.ui.turn(PANEL_ENC_SELECT, -1000);
+    assert_eq!(s.ui.v.song.row, 0);
+}
+
+fn row(s: &Song, pattern: u32, row: usize) -> [u8; 4] {
+    let data = unsafe { gt2_pattern_data(s.ui.v.song.song, pattern) };
+    unsafe { std::slice::from_raw_parts(data.add(row * 4), 4) }
+        .try_into()
+        .unwrap()
+}
+
+#[test]
+fn rec_keys_and_knobs_edit_the_shown_pattern_with_one_step_undo() {
+    let mut s = tracker();
+    s.ui.press(PANEL_BTN_REC);
+    s.ui.note_keys(1 << 16, 1 << 16);
+    s.ui.note_keys(0, 0);
+    settle(&mut s.ui);
+    assert_eq!(row(&s, 0, 0), [GT2_FIRSTNOTE as u8 + 57, 1, 3, 8]);
+    assert_eq!(s.ui.v.song.row, 1);
+    s.ui.turn(PANEL_ENC_K1, 2);
+    settle(&mut s.ui);
+    assert_eq!(row(&s, 0, 1), [GT2_KEYOFF as u8, 2, 0, 0]);
+    assert_eq!(
+        unsafe { CStr::from_ptr(s.ui.v.popup.name.as_ptr()) }.to_str(),
+        Ok("INSTRUMENT")
+    );
+    s.ui.turn(PANEL_ENC_K1 + 1, 4);
+    settle(&mut s.ui);
+    s.ui.turn(PANEL_ENC_K1 + 2, 2);
+    settle(&mut s.ui);
+    s.ui.turn(PANEL_ENC_K4, 3);
+    settle(&mut s.ui);
+    assert_eq!(row(&s, 0, 1), [GT2_KEYOFF as u8, 2, 4, 0x23]);
+    s.ui.press(PANEL_BTN_REC);
+    s.ui.hold(PANEL_BTN_EDIT, true);
+    s.ui.press(PANEL_BTN_LFO);
+    s.ui.hold(PANEL_BTN_EDIT, false);
+    settle(&mut s.ui);
+    assert_eq!(row(&s, 0, 1)[3], 0x20);
+    s.ui.hold(PANEL_BTN_EDIT, true);
+    s.ui.press(PANEL_BTN_LFO);
+    s.ui.hold(PANEL_BTN_EDIT, false);
+    settle(&mut s.ui);
+    assert_eq!(row(&s, 0, 1)[3], 0x23);
+    assert_eq!(s.f.cell_writes, 7);
+    assert_eq!(s.f.index_swaps, 0);
+}
+
+#[test]
+fn a_second_lfo_on_the_same_row_clears_the_whole_row_and_arp_sets_keyoff() {
+    let mut s = tracker();
+    s.ui.press(PANEL_BTN_REC);
+    s.ui.press(PANEL_BTN_LFO);
+    settle(&mut s.ui);
+    assert_eq!(row(&s, 0, 0), [GT2_REST as u8, 1, 3, 8]);
+    s.ui.press(PANEL_BTN_LFO);
+    settle(&mut s.ui);
+    assert_eq!(row(&s, 0, 0), R);
+    s.ui.press(PANEL_BTN_ARP);
+    settle(&mut s.ui);
+    assert_eq!(row(&s, 0, 0), [GT2_KEYOFF as u8, 0, 0, 0]);
+}
+
+#[test]
+fn saving_and_full_refuse_an_edit_with_a_large_toast() {
+    for (guard, message) in [
+        (SONG_EDIT_GUARD_SAVING, "SAVING"),
+        (SONG_EDIT_GUARD_FULL, "SONG FULL"),
+    ] {
+        let mut s = tracker();
+        s.f.edit_guard = guard as i32;
+        s.ui.press(PANEL_BTN_REC);
+        s.ui.turn(PANEL_ENC_K1, 1);
+        settle(&mut s.ui);
+        assert_eq!(row(&s, 0, 0), [C4, 1, 3, 8]);
+        assert_eq!(s.ui.toast().as_deref(), Some(message));
+        assert!(s.ui.v.s.toast_h >= 2);
+        assert_eq!(s.f.cell_writes, 0);
+    }
+}
+
+#[test]
+fn the_edit_cursor_and_each_edited_field_are_visible_at_two_times() {
+    let mut s = tracker();
+    s.ui.press(PANEL_BTN_REC);
+    settle(&mut s.ui);
+    assert_eq!(
+        attr(&s.ui, 0, top(4) + 1),
+        attr_of(th().bg.into(), th().hot.into())
+    );
+    assert_eq!(
+        attr(&s.ui, 3, top(4)),
+        attr_of(th().bg.into(), th().hot.into())
+    );
+    s.ui.turn(PANEL_ENC_K1, 1);
+    s.ui.frame();
+    s.ui.now += 1500;
+    settle(&mut s.ui);
+    assert_eq!(s.ui.big(top(4), 10, 2, 2), "02");
+    assert_eq!(
+        attr(&s.ui, 10, top(4)),
+        attr_of(th().bg.into(), th().hot.into())
+    );
+    s.ui.turn(PANEL_ENC_K1 + 1, 1);
+    s.ui.frame();
+    s.ui.now += 1500;
+    settle(&mut s.ui);
+    assert_eq!(s.ui.big(top(4), 15, 2, 3), "408");
+    assert_eq!(
+        attr(&s.ui, 15, top(4)),
+        attr_of(th().bg.into(), th().hot.into())
+    );
+}
+
+#[test]
+fn presets_step_size_and_shift_keep_the_length_and_undo_the_lost_tail() {
+    let mut s = tracker();
+    s.ui.press(PANEL_BTN_REC);
+    s.ui.turn(6, 2);
+    s.ui.hold(PANEL_BTN_EDIT, true);
+    s.ui.turn(PANEL_ENC_ALGORITHM, -1);
+    s.ui.hold(PANEL_BTN_EDIT, false);
+    assert_eq!(s.ui.v.song.instr, 3);
+    assert_eq!(s.ui.v.song.step, 0);
+    s.ui.note_keys(1 << 16, 1 << 16);
+    s.ui.note_keys(0, 0);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.v.song.row, 0);
+    assert_eq!(row(&s, 0, 0)[1], 3);
+    let before: Vec<_> = (0..32).map(|r| row(&s, 0, r)).collect();
+    s.ui.hold(PANEL_BTN_EDIT, true);
+    s.ui.turn(6, 1);
+    s.ui.hold(PANEL_BTN_EDIT, false);
+    settle(&mut s.ui);
+    assert_eq!(row(&s, 0, 0), R);
+    assert_eq!(row(&s, 0, 1), before[0]);
+    assert_eq!(unsafe { gt2_pattern_rows(s.ui.v.song.song, 0) }, 33);
+    s.ui.hold(PANEL_BTN_EDIT, true);
+    s.ui.press(PANEL_BTN_LFO);
+    s.ui.hold(PANEL_BTN_EDIT, false);
+    settle(&mut s.ui);
+    assert_eq!((0..32).map(|r| row(&s, 0, r)).collect::<Vec<_>>(), before);
+    assert_eq!(s.f.index_swaps, 2);
+}
+
+#[test]
+fn a_pending_edit_finishes_after_home_and_cannot_lose_its_binding() {
+    let mut s = tracker();
+    s.ui.press(PANEL_BTN_REC);
+    s.f.refuse = true;
+    s.ui.turn(PANEL_ENC_K1, 1);
+    assert_ne!(s.ui.v.editor.pending, 0);
+    let old = s.ui.v.song.t;
+    unsafe { song_view_set_transport(&mut s.ui.v.song, std::ptr::null()) };
+    assert_eq!(
+        s.ui.v.song.t, old,
+        "pending ownership keeps its original binding"
+    );
+    s.ui.press(PANEL_BTN_HOME);
+    s.f.refuse = false;
+    settle(&mut s.ui);
+    assert_eq!(s.ui.v.editor.pending, 0);
+    assert_eq!(row(&s, 0, 0)[1], 2);
+    assert_eq!(s.f.cell_writes, 1);
 }

@@ -30,8 +30,12 @@ pub(crate) struct Fake {
     pub(crate) calls: Vec<Call>,
     pub(crate) st: song_status,
     ready: bool,
-    refuse: bool,
+    pub(crate) refuse: bool,
     statuses: u32,
+    song: *mut gt2_song,
+    pub(crate) edit_guard: i32,
+    pub(crate) cell_writes: u32,
+    pub(crate) index_swaps: u32,
 }
 
 impl Fake {
@@ -85,6 +89,31 @@ unsafe extern "C" fn status(ctx: *mut c_void, out: *mut song_status) {
     unsafe { *out = f.st };
 }
 
+unsafe extern "C" fn edit(ctx: *mut c_void, edit: *const gt2_edit, ticket: *mut u32) -> i32 {
+    let f = fake(ctx);
+    if f.refuse {
+        return 0;
+    }
+    let e = unsafe { &*edit };
+    match u32::from(e.kind) {
+        GT2_EDIT_CELL => f.cell_writes += 1,
+        GT2_EDIT_SWAP => f.index_swaps += 1,
+        _ => panic!("an edit is not a cell or swap"),
+    }
+    unsafe { gt2_edit_commit(f.song, edit) };
+    f.st.applied += 1;
+    unsafe { *ticket = f.st.applied };
+    1
+}
+
+unsafe extern "C" fn edit_done(ctx: *mut c_void, ticket: u32) -> i32 {
+    i32::from(fake(ctx).st.applied >= ticket)
+}
+
+unsafe extern "C" fn edit_guard(ctx: *mut c_void, _: *const song_edit_request) -> i32 {
+    fake(ctx).edit_guard
+}
+
 /// The views with the fake bound (both boxed: C keeps pointers to them), and the song it
 /// plays, if any.
 pub(crate) struct Song {
@@ -114,6 +143,12 @@ impl Song {
             ready: true,
             refuse: false,
             statuses: 0,
+            song: song
+                .as_ref()
+                .map_or(std::ptr::null_mut(), |s| s.ptr().cast_mut()),
+            edit_guard: SONG_EDIT_GUARD_OK as i32,
+            cell_writes: 0,
+            index_swaps: 0,
         });
         let ctx: *mut Fake = &mut *f;
         let t = Box::new(song_transport {
@@ -125,6 +160,9 @@ impl Song {
             status: Some(status),
             ctx: ctx.cast(),
             song: song.as_ref().map_or(std::ptr::null(), |s| s.ptr()),
+            edit: Some(edit),
+            edit_done: Some(edit_done),
+            edit_guard: Some(edit_guard),
             ..Default::default() // M2e's clock members: none
         });
         unsafe { views_set_song(&mut *ui.v, &*t) };
@@ -295,11 +333,11 @@ fn the_header_shows_the_transport_the_tempo_the_position_and_rec() {
     assert_eq!(s.ui.small(0, 26, 4), " 125");
     assert_eq!(s.ui.small(29, 17, 13), "ORD 03 ROW 1A");
     assert_eq!(ch(&s.ui, 22, 0), FONT_PLAY as u8);
-    // SELECT: the shown voice's position (the player's).
-    s.ui.turn(PANEL_ENC_SELECT, 1);
+    // ALGORITHM: the shown voice's position (the player's).
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
     assert_eq!(s.ui.small(29, 17, 13), "ORD 04 ROW 1B");
-    s.ui.turn(PANEL_ENC_SELECT, -1);
+    s.ui.turn(PANEL_ENC_ALGORITHM, -1);
     settle(&mut s.ui);
     // Multispeed 2 and funktempo 5/7: 250.6 rounded.
     s.f.st.multispeed = 2;
@@ -311,6 +349,33 @@ fn the_header_shows_the_transport_the_tempo_the_position_and_rec() {
     settle(&mut s.ui);
     assert_eq!(s.ui.small(29, 17, 13), "ORD 00 ROW 00");
     assert_eq!(ch(&s.ui, 22, 0), FONT_SQUARE as u8);
+}
+
+#[test]
+fn a_loaded_song_discards_old_edit_history_and_pending_transport_intent() {
+    let mut s = Song::playing(Some(sidou_tests::song::Song::device()));
+    open_tracker(&mut s.ui);
+    s.ui.press(PANEL_BTN_REC);
+    s.ui.note_keys(key(16), key(16));
+    s.ui.note_keys(0, 0);
+    settle(&mut s.ui);
+    assert_ne!(s.ui.v.editor.can_undo, 0);
+    let binding = s.ui.v.song.t;
+    let mode = s.ui.v.song.rec;
+    s.ui.v.song.row = 31;
+    s.ui.v.song.order_pos = 1;
+    s.ui.v.song.instr = 3;
+    s.ui.v.song.want = 1;
+    unsafe { song_view_loaded(&mut s.ui.v.song) };
+    assert_eq!(s.ui.v.song.t, binding);
+    assert_eq!(s.ui.v.song.rec, mode);
+    assert_eq!(s.ui.v.song.row, 0);
+    assert_eq!(s.ui.v.song.order_pos, 0);
+    assert_eq!(s.ui.v.song.instr, 1);
+    assert_eq!(s.ui.v.song.want, 0);
+    assert_eq!(s.ui.v.editor.can_undo, 0);
+    assert_eq!(s.ui.v.song.edit_pending, 0);
+    assert_eq!(s.ui.v.song.jam_keys, 0);
 }
 
 #[test]
@@ -489,7 +554,7 @@ fn the_mutes_show_in_the_header_the_strips_and_lives_header() {
     );
     assert_eq!(attr(&s.ui, 28, 2) & 15, t.voice[2], "voice 3 sounds");
     // Voice 3, shown: SOL in white beside its pattern, its own colour.
-    s.ui.turn(PANEL_ENC_SELECT, 2);
+    s.ui.turn(PANEL_ENC_ALGORITHM, 2);
     settle(&mut s.ui);
     assert_eq!(s.ui.small(0, 18, 3), "SOL");
     assert_eq!(attr(&s.ui, 18, 0) & 15, t.value);
@@ -606,7 +671,7 @@ fn without_a_player_the_keys_play_the_instrument_in_a_song_view() {
     // its pattern once it is the shown voice.
     assert_eq!(ui.small(0, 18, 3), "   ");
     assert_eq!(attr(&ui, 26, 2) & 15, unsafe { (*theme_get(0)).dim });
-    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut ui);
     assert_eq!(ui.small(0, 18, 3), "MUT");
 }

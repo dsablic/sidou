@@ -52,6 +52,7 @@ add_library(sidou_live STATIC
     sine.c
     song_view.c
     song_io.c
+    song_edit.c
     store.c
     sysex.c
     theme.c

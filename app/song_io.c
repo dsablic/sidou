@@ -456,7 +456,8 @@ void song_io_poll(song_io* io, uint32_t now_ms) {
             break;
         }
         if (song_ctl_state(sc) == SONG_LOADING || sc->isr_playing || sc->audition ||
-            sc->cmd_head != sc->cmd_tail || sc->inflight_n || sc->handback) {
+            sc->cmd_head != sc->cmd_tail || sc->inflight_n || sc->handback ||
+            sc->song->pending || sc->song->pending_loose) {
             break;
         }
         start_read(io);

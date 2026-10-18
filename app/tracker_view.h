@@ -21,12 +21,13 @@
  * - row 27: OL and the shown voice's orderlist from its entry (the entry in white on the band,
  *   the two after it in grey: a pattern in hex, Rn a repeat, +n / -n a transpose, RST and the
  *   restart position at the end); row 28: the current row's first command, of the voices
- *   that sound, spelled out (V2 4 22 VIBRATO); row 29: SELECT: VOICE.
+ *   that sound, spelled out (V2 4 22 VIBRATO); row 29: SELECT: ROW.
  *
  * The cursor is a voice (song_view.voice, the shown one) and a row: while the song plays the
  * row its player's row events say for that voice (app/song_transport.h status), stopped the
- * cursor's (the first pattern at or after its entry, its row: song_view.row). SELECT, turned,
- * steps the voice 1, 2, 3 and round; the note keys audition on it (app/song_view.h). The
+ * cursor's (the first pattern at or after its entry, its row: song_view.row). With REC on the
+ * cursor stays on screen. SELECT steps rows (EDIT held: an 8-row page), ALGORITHM steps the
+ * voice 1, 2, 3 and round; the note keys audition on it (app/song_view.h). The
  * other voices' rows are those of their own patterns at the same row number.
  *
  * Two modes (the menu's TRACKER ROWS, song_view.scroll, kept with the settings):
@@ -105,6 +106,9 @@ void tracker_view_cell(const uint8_t cell[4], char out[9]);
 void tracker_view_order_entry(uint8_t entry, char out[3]);
 /* A command's name (GoatTracker's readme, 4.x), "" for none. */
 const char* tracker_view_command_name(uint32_t cmd);
+void tracker_view_note(screen* s, song_view* sv, uint32_t note);
+int tracker_view_popup(const song_view* sv, uint32_t encoder, int edit, char* name, char* value,
+                       uint32_t* fill, uint32_t* max);
 
 #ifdef __cplusplus
 }
