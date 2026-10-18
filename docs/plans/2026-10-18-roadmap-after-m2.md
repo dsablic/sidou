@@ -79,7 +79,24 @@ the 6502 study below.
     through SIDOU's own SID core in WASM (`tools/web-demo`), and all three TRACKER voices
     side by side. Remote control both ways through the MIDI the panel already sends.
   - **One companion page:** the mirror, the scopes, remote control and the GoatTracker song
-    transfer below.
+    transfer below. A PWA, so it installs and works offline once loaded.
+  - **Works with most devices, nothing to install:**
+    - **Host** (the device the FM-1 is plugged into): Chrome or Edge on Windows, macOS or
+      Linux; Firefox after its Web MIDI permission prompt; Chrome on an Android phone or
+      tablet over a USB-C cable.
+    - **Watchers on any screen:** a Share button on the host page shows a QR code and a
+      link; any browser that opens it (iPhone Safari, tablets, smart-TV browsers,
+      projectors) gets the live mirror and scopes, relayed peer-to-peer from the host over
+      WebRTC. It needs only a small signalling service to connect the browsers (a free
+      serverless function or an existing public one; the stream itself never passes
+      through it). View only by default; remote control only when the host allows it.
+    - **The big TV:** cast the host page with what the OS already has (AirPlay from a Mac,
+      Chrome's "Cast tab", Miracast from Windows), or open the share link in the TV's
+      browser. AirPlay from the FM-1 itself is out: it has no network, AirPlay needs Apple's
+      certification, and the chip can't encode video.
+    - **Later: an iPhone and iPad host app** (a web view with a CoreMIDI bridge), since
+      Safari has no Web MIDI. Needs an Apple developer account; the user's call when we get
+      there.
   - **Prior art:** the Dirtywave M8's headless mode with m8c (a screen stream over USB
     serial); nothing like it exists for the FM-1 (checked 2026-10-18).
   - **Offered to the other FM-1 firmwares** once SIDOU ships it, through
