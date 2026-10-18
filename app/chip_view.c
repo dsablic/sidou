@@ -204,6 +204,12 @@ int chip_view_song_tab(const chip_view* cv) {
     return cv->kr && cv->kr->song && cv->tab == 0u;
 }
 
+static uint32_t applied(const chip_view* cv);
+
+int chip_view_user(const chip_view* cv) {
+    return (int)applied(cv);
+}
+
 /* The USER slot the tab's setup was picked from, n + 1, or 0. */
 static uint32_t applied(const chip_view* cv) {
     if (!chip_view_song_tab(cv)) {

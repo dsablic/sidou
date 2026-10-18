@@ -644,3 +644,34 @@ fn the_menu_stays_within_the_cell_and_spi_budgets_as_it_scrolls_and_under_a_popu
         assert!(!ui.menu_line(k).trim().is_empty(), "item {k}");
     }
 }
+
+#[test]
+fn the_chip_views_user_profiles_and_save_target_are_named() {
+    let mut ui = Ui::without_cards();
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.settle();
+    assert_eq!(ui.top(), "CHIP");
+    // USER 1 holds a profile (its base the 8580 R5), USER 2 is empty.
+    ui.rig.live.user_valid = 0b01;
+    ui.rig.live.user_base[0] = SID_CHIP_8580_R5 as u8;
+    // EDIT + ALGORITHM picks the save target, the chip unchanged: an empty slot ends in a dash.
+    ui.down(PANEL_BTN_EDIT);
+    ui.turn(PANEL_ENC_ALGORITHM, 2);
+    open(&mut ui);
+    assert_eq!(says(&ui), ("SAVE TO".to_owned(), "USER 2 -".to_owned()));
+    ui.popup_gone();
+    ui.turn(PANEL_ENC_ALGORITHM, -1);
+    open(&mut ui);
+    assert_eq!(says(&ui), ("SAVE TO".to_owned(), "USER 1".to_owned()));
+    ui.popup_gone();
+    ui.turn(PANEL_ENC_ALGORITHM, -9);
+    open(&mut ui);
+    assert_eq!(says(&ui), ("SAVE TO".to_owned(), "OFF".to_owned()));
+    ui.up(PANEL_BTN_EDIT);
+    ui.popup_gone();
+    // The picker runs past the built-in profiles to the filled USER slots.
+    ui.turn(PANEL_ENC_ALGORITHM, 9);
+    open(&mut ui);
+    assert_eq!(says(&ui), ("PROFILE".to_owned(), "USER 1".to_owned()));
+}

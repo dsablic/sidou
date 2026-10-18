@@ -881,7 +881,7 @@ static const char* profile_name(uint32_t id) {
 
 /* The CHIP view's ALGORITHM: the profile on the chip (the song's on a song's chip A), the
  * algorithm on a slot. The tabs' switch shows nothing of its own. */
-static int chip_choice_text(const views* v, char* name, char* value) {
+static int chip_choice_text(const views* v, char* name, char* value, int edit) {
     const chip_view* cv = &v->chip;
     const live* l = v->l;
     if (cv->tabs) {
@@ -894,9 +894,24 @@ static int chip_choice_text(const views* v, char* name, char* value) {
              "");
         return 1;
     }
+    char user[10] = "USER n";
+    if (edit) { /* EDIT held: the save target, USER 1..8 or OFF; an empty slot ends in a dash */
+        uint32_t t = CHIP_VIEW_TARGET(cv);
+        user[5] = (char)('0' + t);
+        if (t && !(l->user_valid >> (t - 1u) & 1u)) {
+            append(user, sizeof user, " -");
+        }
+        join(name, SCREEN_POPUP_TEXT, "SAVE TO", "");
+        join(value, SCREEN_POPUP_TEXT, t ? user : "OFF", "");
+        return 1;
+    }
     join(name, SCREEN_POPUP_TEXT, "PROFILE", "");
+    uint32_t n = (uint32_t)chip_view_user(cv); /* a USER slot picked: its number, not its base */
+    user[5] = (char)('0' + n);
     join(value, SCREEN_POPUP_TEXT,
-         profile_name(chip_view_song_tab(cv) ? cv->kr->song_want.profile : l->profile_req), "");
+         n ? user
+           : profile_name(chip_view_song_tab(cv) ? cv->kr->song_want.profile : l->profile_req),
+         "");
     return 1;
 }
 
@@ -957,7 +972,7 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
     if (enc == PANEL_ENC_ALGORITHM) {
         const view* top = shows(v);
         if (top == &chip_view_view) {
-            return chip_choice_text(v, name, value);
+            return chip_choice_text(v, name, value, (ask & ASK_EDIT) != 0u);
         }
         if (top == &views_menu) {
             return menu_choice_text(v, name, value);

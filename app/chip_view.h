@@ -144,6 +144,11 @@ typedef enum {
     CHIP_VIEW_SAVE_MSG = 2      /* toast cv->msg now */
 } chip_view_save_result;
 chip_view_save_result chip_view_save(chip_view* cv, uint32_t now_ms);
+/* The USER slot the tab's setup was picked from, 1..8, or 0 (the CHIP frame's PROFILE row says
+ * USER n then, and the popup). */
+int chip_view_user(const chip_view* cv);
+/* The save target (EDIT + ALGORITHM on the chip): USER slot 1..8, or 0 none. */
+#define CHIP_VIEW_TARGET(cv) ((cv)->target)
 /* 1 while the tab shows a song's chip A: its setup is the song's (keys_route.song_want). */
 int chip_view_song_tab(const chip_view* cv);
 /* The name of a slot's field (LIVE_SLOT_AMOUNT, _A, _B, _MIX) for its algorithm alg, as the
