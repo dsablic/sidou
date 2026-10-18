@@ -48,6 +48,11 @@ All notable changes are documented here. The format follows
   uses let chains.
 
 ### Fixed
+- A faint tone (about -50 dBFS, the voice DACs' leak) no longer stays after notes: with the
+  filter bleed at 0 the output fades to exact silence once every voice has been done for
+  46 ms, and comes back at the next note (found on the first real FM-1); a nonzero bleed
+  keeps it. The chips are untouched (the stage mutes their block), so every reSIDfp
+  comparison holds.
 - USB-MIDI out, which on v0.2.0-m2-preview almost never reached the host (the update
   protocol's replies, K1's CCs, K4's program changes): the main loop no longer sleeps in
   `idle` while a host has the device configured, USB is never polled inside the audio

@@ -13,7 +13,7 @@ fn gain(pot: u32) -> u32 {
 fn apply(lr: &[i16], from: u32, to: u32) -> Vec<i16> {
     assert_eq!(lr.len(), 2 * MASTER_BLOCK as usize);
     let mut out = lr.to_vec();
-    unsafe { master_gain_apply(out.as_mut_ptr(), from, to) };
+    unsafe { master_gain_apply(out.as_mut_ptr(), MASTER_BLOCK_LOG2, from, to) };
     out
 }
 

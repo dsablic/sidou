@@ -10,6 +10,7 @@
 #include "player/song_ctl.h"
 #include "reg_ring.h"
 #include "scope.h"
+#include "tail_gate.h"
 #include "sid/sid.h"
 #include "song/gt2_song.h"
 
@@ -48,6 +49,8 @@ static uint8_t b_on;
  * set it, master_now the gain the last block ended on (the interrupt's). */
 static volatile uint32_t master_to = 0;
 static uint32_t master_now = 0;
+/* The tail gate's state (app/tail_gate.h): the interrupt's. */
+static tail_gate tail_state;
 /* The chip the tap reads (audio_tap_chip): 0 A, 1 B. */
 static volatile uint8_t tap_chip;
 
@@ -282,6 +285,7 @@ void audio_fill(int32_t* buf) {
     uint32_t tails = b_on ? (uint32_t)b->env[0].counter | b->env[1].counter | b->env[2].counter
                           : 0u;
     uint8_t want = (uint8_t)((b_want || tails) && b->sample_rate);
+    const sid* b_rendered = 0;
     if (!want && !b_on) {
         /* Chip A alone, as M1: sid_render's samples, and the tap's points while LIVE shows. */
         render_a(a, s, 1);
@@ -297,6 +301,12 @@ void audio_fill(int32_t* buf) {
         chip_mix(s, sb, AUDIO_HALF_FRAMES,
                  want == b_on ? CHIP_MIX_FULL : want ? CHIP_MIX_IN : CHIP_MIX_OUT);
         b_on = want;
+        b_rendered = b;
+    }
+    /* The tail after notes (app/tail_gate.h): the chips' own leak muted once they have been done
+     * a while. One compare while a note sounds. */
+    if (!tail_gate_sounding(&tail_state, a)) {
+        tail_gate_run(&tail_state, a, b_rendered, s);
     }
     song_ctl_block_end(&song_transport, AUDIO_HALF_FRAMES);
     /* With every slot off this writes the chip's output to both sides unchanged. */
@@ -304,7 +314,7 @@ void audio_fill(int32_t* buf) {
     /* MASTER: a digital gain on everything, after the chips and the slots. */
     uint32_t to = master_to;
     if ((to | master_now) != 0u) { /* full MASTER: no call at all */
-        master_gain_apply(lr, MASTER_UNITY - master_now, MASTER_UNITY - to);
+        master_gain_apply(lr, MASTER_BLOCK_LOG2, MASTER_UNITY - master_now, MASTER_UNITY - to);
         master_now = to;
     }
     if (hold_want) {
@@ -325,7 +335,12 @@ void audio_fill(int32_t* buf) {
         quiet_blocks = m < AUDIO_QUIET_PEAK ? quiet_blocks + 1u : 0u;
     }
     scope_peaks(&tap, lr, AUDIO_HALF_FRAMES);
-    for (uint32_t i = 0; i < 2u * AUDIO_HALF_FRAMES; i++) {
-        buf[i] = (int32_t)lr[i] * 256;
+    /* Four words a pass: the loop's own instructions are most of what a word costs here. */
+    for (uint32_t i = 0; i < 2u * AUDIO_HALF_FRAMES; i += 4u) {
+        int32_t x0 = lr[i], x1 = lr[i + 1u], x2 = lr[i + 2u], x3 = lr[i + 3u];
+        buf[i] = x0 * 256;
+        buf[i + 1u] = x1 * 256;
+        buf[i + 2u] = x2 * 256;
+        buf[i + 3u] = x3 * 256;
     }
 }

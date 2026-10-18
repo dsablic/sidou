@@ -359,9 +359,9 @@ and measurements: [decision record 0006](../decisions/0006-chip-profiles.md)):
 |---|---|---|---|
 | Profile | 85 | 2/0 | 0 6581 R2, 1 6581 R3, 2 6581 R4AR (power-on with the 6581), 3 8580 R5, 4 worn 6581 (artistic), 5..12 USER 1..8 (an empty slot does nothing) |
 | Age/heat | 86 | 2/1 | 0..127: the filter drifts darker, the 6581's non-linearity rises |
-| DAC sloppiness | 87 | 2/2 | 0..127: leakier, more kinked voice DACs (a released voice still whispers) |
+| DAC sloppiness | 87 | 2/2 | 0..127: leakier, more kinked voice DACs (a released voice still whispers, with BLEED above 0) |
 | Output thump | 89 | 2/3 | 0..127: a volume change steps the output, as the 6581's operating point does |
-| Filter bleed | 90 | 2/4 | 0..127: the unfiltered voices also reach the filter, up to half |
+| Filter bleed | 90 | 2/4 | 0..127: the unfiltered voices also reach the filter, up to half; above 0 a released voice's DAC leak is kept as well (below) |
 
 A profile is a chip and a model: changing it resets the chip (held notes attack again on the
 new chip, as at a model change), and the model follows it. The model (CC 25, the FX button) selects
@@ -376,6 +376,13 @@ than that, a profile every 70 ms or less, restart the preparation each time: the
 once they stop. All of them keep the last value received and
 survive preset and model changes. Every control at 0 is the profile as reSIDfp has it (the
 worn 6581 aside, which goes beyond reSIDfp on purpose).
+
+**The tail after notes:** the voice DACs leak a faint tone (about -50 dBFS) through a
+released voice's envelope. With the bleed at 0 (the default) the output is faded to silence over
+3 ms once every voice's envelope has ended and stayed ended for about 46 ms, and stays exactly
+silent until the next note: the tail ends about 50 ms after the release's end. The sound itself
+is untouched (the stage mutes the block the chips produce), and notes closer than 46 ms play as
+they always did. Any bleed above 0 keeps the leak, a deliberate part of the sound.
 
 **The MASTER pot** is a digital gain on the final stereo output, after both chips and the
 effect slots, so it scales everything that plays: the keys, a song on either chip and the UI

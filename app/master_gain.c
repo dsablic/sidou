@@ -13,9 +13,9 @@ static int16_t master_scaled(int32_t x, int32_t g) {
     return (int16_t)((x * g + (int32_t)(MASTER_UNITY / 2u)) >> 15);
 }
 
-_Static_assert(MASTER_BLOCK == 1u << 7, "the ramp's divide is a shift");
+_Static_assert(MASTER_BLOCK == 1u << MASTER_BLOCK_LOG2, "the block is a power of two");
 
-void master_gain_apply(int16_t* lr, uint32_t from, uint32_t to) {
+void master_gain_apply(int16_t* lr, uint32_t frames_log2, uint32_t from, uint32_t to) {
     if (from == MASTER_UNITY && to == MASTER_UNITY) {
         return;
     }
@@ -23,7 +23,7 @@ void master_gain_apply(int16_t* lr, uint32_t from, uint32_t to) {
         /* Four samples a pass: the loop's own instructions are a quarter of a sample's. */
         const int32_t g = (int32_t)to;
         int16_t* p = lr;
-        for (uint32_t i = 0; i < 2u * MASTER_BLOCK; i += 4u, p += 4) {
+        for (uint32_t i = 0; i < 2u << frames_log2; i += 4u, p += 4) {
             int32_t x0 = p[0], x1 = p[1], x2 = p[2], x3 = p[3];
             p[0] = master_scaled(x0, g);
             p[1] = master_scaled(x1, g);
@@ -33,8 +33,8 @@ void master_gain_apply(int16_t* lr, uint32_t from, uint32_t to) {
         return;
     }
     const int32_t a = (int32_t)from, d = (int32_t)to - (int32_t)from;
-    for (uint32_t f = 0; f < MASTER_BLOCK; f++) {
-        int32_t g = a + ((d * (int32_t)(f + 1u)) >> 7);
+    for (uint32_t f = 0; f < 1u << frames_log2; f++) {
+        int32_t g = a + ((d * (int32_t)(f + 1u)) >> frames_log2);
         lr[2u * f] = master_scaled(lr[2u * f], g);
         lr[2u * f + 1u] = master_scaled(lr[2u * f + 1u], g);
     }

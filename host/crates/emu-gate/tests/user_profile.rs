@@ -13,8 +13,8 @@ mod common;
 use fm1_core::Bus;
 
 use common::{
-    build_dir, max_diff, run_past_boot, stored_value, top_view, Firmware, Machine, HALF_FRAMES,
-    POT, SAMPLE_RATE, SLOTS_SEED,
+    build_dir, master_stage, max_diff, run_past_boot, stored_value, tail_stage, top_view, Firmware,
+    Machine, HALF_FRAMES, POT, SAMPLE_RATE, SLOTS_SEED,
 };
 use sidou_sys::*;
 
@@ -183,6 +183,7 @@ fn render_host(frames: usize, cc_block: usize, note_block: usize, ticks: &[u32])
     let t: *mut fx_live_target = &mut *target;
     let mut out = vec![0i16; 2 * frames];
     let mut mono = vec![0i16; HALF_FRAMES];
+    let mut gate = tail_gate::default();
     // SAFETY: everything C keeps a pointer to is boxed and outlives the calls.
     unsafe {
         sid_slots_init(&mut *slots, SAMPLE_RATE, SLOTS_SEED, &mut *pool);
@@ -211,7 +212,9 @@ fn render_host(frames: usize, cc_block: usize, note_block: usize, ticks: &[u32])
             }
             let n = half.len() / 2;
             sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
+            tail_stage(&mut gate, &chip, None, &mut mono, n);
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+            master_stage(half, POT);
         }
     }
     out

@@ -13,7 +13,8 @@ mod common;
 use fm1_core::Bus;
 
 use common::{
-    build_dir, master_stage, max_diff, Firmware, Machine, HALF_FRAMES, POT, SAMPLE_RATE, SLOTS_SEED,
+    build_dir, master_stage, max_diff, tail_stage, Firmware, Machine, HALF_FRAMES, POT,
+    SAMPLE_RATE, SLOTS_SEED,
 };
 use sidou_sys::{ilp32, SID_CHIP_6581_WORN, SID_MODEL_6581};
 
@@ -85,6 +86,7 @@ fn render_host(frames: usize, blocks: &[usize], note_block: usize, ticks: &[u32]
     let t: *mut fx_live_target = &mut *target;
     let mut out = vec![0i16; 2 * frames];
     let mut mono = vec![0i16; HALF_FRAMES];
+    let mut gate = tail_gate::default();
     // SAFETY: everything C keeps a pointer to is boxed and outlives the calls.
     unsafe {
         sid_slots_init(&mut *slots, SAMPLE_RATE, SLOTS_SEED, &mut *pool);
@@ -114,6 +116,7 @@ fn render_host(frames: usize, blocks: &[usize], note_block: usize, ticks: &[u32]
             }
             let n = half.len() / 2;
             sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
+            tail_stage(&mut gate, &chip, None, &mut mono, n);
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
             master_stage(half, POT);
         }
@@ -353,6 +356,7 @@ fn render_host_ages(
     let t: *mut fx_live_target = &mut *target;
     let mut out = vec![0i16; 2 * frames];
     let mut mono = vec![0i16; HALF_FRAMES];
+    let mut gate = tail_gate::default();
     // SAFETY: everything C keeps a pointer to is boxed and outlives the calls.
     unsafe {
         sid_slots_init(&mut *slots, SAMPLE_RATE, SLOTS_SEED, &mut *pool);
@@ -385,6 +389,7 @@ fn render_host_ages(
             }
             let n = half.len() / 2;
             sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
+            tail_stage(&mut gate, &chip, None, &mut mono, n);
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
             master_stage(half, POT);
         }

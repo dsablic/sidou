@@ -695,6 +695,13 @@ you can.
   silence at the bottom. Start a song with MASTER low and raise it. Press keys over a
   playing song (KEYS AUTO plays chip B): they follow MASTER too, and a UI sound (the
   menu's) is quiet when MASTER is. With MASTER full the song is as loud as before.
+- [ ] The tail goes silent (M2 hardware fix): play a chord on a saw or pulse
+  preset with the character at 0 (BLEED 0), release it and wait. Headphones
+  or a quiet amp, volume up: about 50 ms after the release ends there is no
+  faint tone and no hiss left over from the voices, and no click when it
+  ends or when the next note starts. Then set BLEED up (CHIP view, K4) and
+  repeat: the leak stays, as it should. Play two notes less than 40 ms
+  apart (a fast trill): nothing drops out or changes.
 - [ ] A hold's gap: release a chord and wait for its tail to fade; a pool
   refill (after a few saves) may follow 500 ms after the input stops. Listen
   for each held erase (a fade out and back, up to 35 ms): note whether it is

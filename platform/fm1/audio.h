@@ -88,8 +88,9 @@ int audio_held(void);
 /* The quiet detector's peak scan (store_fm1.c): on only while the store wants a held operation
  * and no song plays; off it costs nothing. While on, audio_quiet_blocks counts the blocks in
  * a row whose output stayed under AUDIO_QUIET_PEAK; off, it is 0. -48 dBFS, not the plan's
- * -60: after notes the 6581's bleed leaves a floor of about -55 dBFS that never decays
- * (measured in fm1-emu, emu-gate store.rs), so -60 would never come. */
+ * -60: before the tail gate (app/tail_gate.h) the 6581 left a floor of about -55 dBFS after
+ * notes that never decayed (measured in fm1-emu, emu-gate store.rs), and a chip with a filter
+ * bleed still does, so -60 would never come there. */
 #define AUDIO_QUIET_PEAK 128
 void audio_peak_scan(int on);
 uint32_t audio_quiet_blocks(void);

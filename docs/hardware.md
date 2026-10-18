@@ -472,8 +472,11 @@ to the store's range and never touches a sector's guard band.
   no MIDI input but real-time bytes (F8, FA-FC, FE) for 500 ms, and the
   output under -48 dBFS for as long (a peak scan in `audio_fill`, under 2
   instructions a sample, on only while the store wants a held operation and
-  no song plays). -48 dBFS rather than -60: after notes the 6581 model's
-  bleed leaves a floor of about -55 dBFS that never decays.
+  no song plays). -48 dBFS rather than -60, from before the tail gate: the 6581
+  model left a floor of about -55 dBFS after notes that never decayed. With the
+  chip's filter bleed at 0 the output is now exactly silent about 50 ms after the
+  last envelope ends (`app/tail_gate.h`), but a nonzero bleed keeps the floor, so
+  the threshold stays.
 - **The main loop** runs `store_fm1_service` once a pass after
   `midi_service`: the quiet detector, then `store_poll`, never in a pass that
   ran a chip preparation slice; a store with work in hand runs at every

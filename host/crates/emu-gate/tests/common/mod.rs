@@ -700,9 +700,31 @@ pub fn master_stage(half: &mut [i16], master: u16) {
     // SAFETY: block holds the 128 frames master_gain_apply scales.
     unsafe {
         let g = sidou_sys::master_gain_of(u32::from(master), sidou_sys::LIVE_MASTER_MAX);
-        sidou_sys::master_gain_apply(block.as_mut_ptr(), g, g);
+        sidou_sys::master_gain_apply(block.as_mut_ptr(), sidou_sys::MASTER_BLOCK_LOG2, g, g);
     }
     half.copy_from_slice(&block[..n]);
+}
+/// The tail gate audio_fill runs on the mixed mono block before the slots (platform/fm1/audio.c,
+/// app/tail_gate.h): chip A's, and chip B's if it rendered. A partial block (the last of a render
+/// that is not whole blocks) is not run: the device renders whole blocks only.
+pub fn tail_stage(
+    gate: &mut sidou_sys::tail_gate,
+    a: &sidou_sys::sid,
+    b: Option<&sidou_sys::sid>,
+    mono: &mut [i16],
+    n: usize,
+) {
+    if n == HALF_FRAMES {
+        // SAFETY: mono holds the block's 128 samples; the chips are alive and not rendering.
+        unsafe {
+            sidou_sys::tail_gate_run(
+                gate,
+                a,
+                b.map_or(std::ptr::null(), |b| b as *const _),
+                mono.as_mut_ptr(),
+            )
+        };
+    }
 }
 /// platform/fm1/audio.c SLOTS_SEED.
 pub const SLOTS_SEED: u32 = 0x51D0;
@@ -741,6 +763,7 @@ pub fn render_host(
     let t: *mut fx_live_target = &mut *target;
     let mut out = vec![0i16; 2 * frames];
     let mut mono = vec![0i16; HALF_FRAMES];
+    let mut gate = tail_gate::default();
     // SAFETY: everything C keeps a pointer to is boxed and outlives the calls; the buffers
     // hold the samples asked for.
     unsafe {
@@ -765,6 +788,7 @@ pub fn render_host(
             }
             let n = half.len() / 2;
             sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
+            tail_stage(&mut gate, &chip, None, &mut mono, n);
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
             master_stage(half, POT);
         }
@@ -833,6 +857,7 @@ pub fn render_host_chips(frames: usize, events: &[ChipEvent]) -> ChipsRender {
         b: vec![0i16; frames],
     };
     let mut mono = vec![0i16; HALF_FRAMES];
+    let mut gate = tail_gate::default();
     let mut mono_b = vec![0i16; HALF_FRAMES];
     let mut b_on = false;
     let mut b_want = false;
@@ -876,6 +901,7 @@ pub fn render_host_chips(frames: usize, events: &[ChipEvent]) -> ChipsRender {
             // (platform/fm1/audio.c audio_fill).
             let tails = b_on && chip_b.env.iter().any(|e| e.counter != 0);
             let b_in = b_want || tails;
+            let b_rendered = b_in || b_on;
             if b_in || b_on {
                 sid_render(&mut *chip_b, mono_b.as_mut_ptr(), n as u32);
                 r.b[i * HALF_FRAMES..i * HALF_FRAMES + n].copy_from_slice(&mono_b[..n]);
@@ -889,6 +915,13 @@ pub fn render_host_chips(frames: usize, events: &[ChipEvent]) -> ChipsRender {
                 chip_mix(mono.as_mut_ptr(), mono_b.as_ptr(), n as u32, fade);
                 b_on = b_in;
             }
+            tail_stage(
+                &mut gate,
+                &chip,
+                b_rendered.then_some(&*chip_b),
+                &mut mono,
+                n,
+            );
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
             master_stage(half, POT);
         }
@@ -1010,6 +1043,7 @@ pub fn render_host_song_master(frames: usize, p: &SongPlay, master: u16) -> Vec<
     let mut work = Box::<song_work>::default();
     let mut out = vec![0i16; 2 * frames];
     let mut mono = vec![0i16; HALF_FRAMES];
+    let mut gate = tail_gate::default();
     // SAFETY: everything C keeps a pointer to is boxed and outlives the calls; the buffers
     // hold the samples asked for.
     unsafe {
@@ -1093,6 +1127,7 @@ pub fn render_host_song_master(frames: usize, p: &SongPlay, master: u16) -> Vec<
             song_ctl_render(&mut *sc, &mut *chip, mono.as_mut_ptr(), n as u32);
             let tails = b_on && chip_b.env.iter().any(|e| e.counter != 0);
             let b_in = b_want || tails;
+            let b_rendered = b_in || b_on;
             if b_in || b_on {
                 sid_render(&mut *chip_b, mono_b.as_mut_ptr(), n as u32);
                 let fade = if b_in == b_on {
@@ -1105,6 +1140,13 @@ pub fn render_host_song_master(frames: usize, p: &SongPlay, master: u16) -> Vec<
                 chip_mix(mono.as_mut_ptr(), mono_b.as_ptr(), n as u32, fade);
                 b_on = b_in;
             }
+            tail_stage(
+                &mut gate,
+                &chip,
+                b_rendered.then_some(&*chip_b),
+                &mut mono,
+                n,
+            );
             song_ctl_block_end(&mut *sc, n as u32);
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
             master_stage(half, master);

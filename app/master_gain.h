@@ -23,18 +23,20 @@ extern "C" {
 
 #define MASTER_UNITY 32768u
 /* The block it scales: the audio block (platform/fm1/audio.h AUDIO_HALF_FRAMES). */
-#define MASTER_BLOCK 128u
+#define MASTER_BLOCK_LOG2 7u
+#define MASTER_BLOCK (1u << MASTER_BLOCK_LOG2)
 
 /* The Q15 gain for a MASTER value, 0..max (live.h LIVE_MASTER_MAX, 1023; larger is max):
  * round(value * MASTER_UNITY / max). */
 uint32_t master_gain_of(uint32_t value, uint32_t max);
 
-/* Scales MASTER_BLOCK interleaved stereo frames (L, R) in place from gain `from` to gain
- * `to`: frame i by from + (to - from) * (i + 1) / MASTER_BLOCK, so the block ends on `to`.
- * Nothing is touched when both are MASTER_UNITY; a constant gain (from == to) is one multiply
- * per sample. Rounds to nearest (half up), so 0 stays 0: the silent tail stays exactly
- * silent. */
-void master_gain_apply(int16_t* lr, uint32_t from, uint32_t to);
+/* Scales 2^frames_log2 interleaved stereo frames (L, R) in place from gain `from` to gain `to`:
+ * frame i by from + (to - from) * (i + 1) / 2^frames_log2, so the block ends on `to`. The
+ * firmware's block is MASTER_BLOCK_LOG2; the tail gate (tail_gate.h) fades a mono block of 128
+ * samples as 64 frames with one less. Nothing is touched when both gains are MASTER_UNITY; a
+ * constant gain (from == to) is one multiply per sample. Rounds to nearest (half up), so 0 stays
+ * 0: a silent tail stays exactly silent. At least 2 frames. */
+void master_gain_apply(int16_t* lr, uint32_t frames_log2, uint32_t from, uint32_t to);
 
 #ifdef __cplusplus
 }

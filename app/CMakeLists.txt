@@ -44,6 +44,7 @@ add_library(sidou_live STATIC
     scene_view.c
     save_key.c
     scope.c
+    tail_gate.c
     screen.c
     settings.c
     sine.c

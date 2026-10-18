@@ -28,6 +28,7 @@
 #include "font.h"
 #include "fx_live.h"
 #include "master_gain.h"
+#include "tail_gate.h"
 #include "grid.h"
 #include "learn_view.h"
 #include "keys_route.h"

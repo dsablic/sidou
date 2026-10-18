@@ -567,7 +567,9 @@ fn the_peak_scan_costs_at_most_2_instructions_a_sample() {
         d.start(FILE, seed, &[], 20_000);
         assert_eq!(d.finish(60_000), STORE_OK);
     }
-    d.m.run_ms(300); // the next ask (store_erase_wanted) turns the scan on
+    // The next ask (store_erase_wanted) turns the scan on: asked once a second (WANT_MS), so
+    // a wait of a full period and a little over, whatever phase the last write left it in.
+    d.m.run_ms(1_300);
     let on = block_mean(&mut d, 600);
     let per_sample = (on - off) / 128.0;
     println!("audio interrupt: {off:.0} instructions a block, {on:.0} with the scan on ({per_sample:.2} a sample)");
