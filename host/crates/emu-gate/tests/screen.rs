@@ -379,7 +379,7 @@ fn the_menu_matches_its_golden_images_at_the_top_and_scrolled_and_does_not_blink
     let mut m = booted(&fw);
     open_menu(&mut m, &fw);
     // 2 times the font, 6 items at a time: the selected line in reverse video.
-    compare_golden(&build, "menu", &m.soc.lcd.fb, &[]);
+    let top = m.soc.lcd.fb.clone();
     // The selection is a line in reverse video that does not blink (a 2 x 2 cell block would
     // send 2 windows each phase, over screen_changes_and_transitions_stay_within_the_budgets'
     // bound for the menu idle): the panel stands still.
@@ -391,6 +391,7 @@ fn the_menu_matches_its_golden_images_at_the_top_and_scrolled_and_does_not_blink
     m.run_ms(300);
     common::to_mid_frame(&mut m, &fw);
     compare_golden(&build, "menu-scrolled", &m.soc.lcd.fb, &[]);
+    compare_golden(&build, "menu", &top, &[]);
 }
 
 /// A knob's popup (app/screen.h) is gone this long after its last detent: a second, and the three
@@ -662,6 +663,31 @@ fn the_midi_page_matches_its_golden_image_and_stays_within_the_budgets() {
 /// the wipe that opens it; an edit of MODE 20.3k).
 const MIDI_PAGE_WORST_POLL: u64 = 23_000;
 const _: () = assert!(MIDI_PAGE_WORST_POLL <= common::POLL_INSTRUCTIONS);
+
+#[test]
+fn midi_rows_edits_update_the_song_header_rows() {
+    let Some((_, fw)) = fixture("the MIDI song-header rows test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_menu(&mut m, &fw);
+    select(&mut m, MENU_MIDI);
+    m.turn(ALGORITHM, 1);
+    settle(&mut m, &fw);
+    let header_rows = sidou_sys::ilp32::views::song + sidou_sys::ilp32::song_view::rows_beat;
+    let route_rows = fw.symbol("routing")
+        + (sidou_sys::ilp32::midi_route::setup + sidou_sys::ilp32::midi_route_setup::rows_per_beat)
+            as u32;
+    let was = m.soc.read8(route_rows);
+    assert_eq!(ui_byte(&mut m, &fw, header_rows), was);
+    m.turn(SELECT, 7); // ROWS/BEAT
+    m.run_ms(100);
+    m.turn(ALGORITHM, 1);
+    settle(&mut m, &fw);
+    let now = m.soc.read8(route_rows);
+    assert_ne!(now, was, "ROWS/BEAT must change the routing setup");
+    assert_eq!(ui_byte(&mut m, &fw, header_rows), now);
+}
 
 #[test]
 fn the_song_pages_match_their_goldens_and_stay_within_the_frame_budget() {

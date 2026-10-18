@@ -188,8 +188,8 @@ typedef struct {
     uint8_t format_arm; /* the menu's STORE on a foreign store: turned clockwise once */
     panel* p; /* the panel of the last event (views_buttons, views_encoder); NULL before */
     boot boot;
-    about about;
     chip_view chip;
+    about about;
     learn_view learn;
     live_view live;
     scene_view scene;
@@ -236,7 +236,7 @@ void views_set_keys(views* v, keys_route* kr);
  * the toasts play them; NULL until set (and the SOUNDS item then reads OFF and does nothing). */
 void views_set_sounds(views* v, ui_sound* us);
 /* MIDI's mode (app/midi_route.h), which the MIDI page edits; NULL until set (the page then
- * shows "-" and changes nothing). */
+ * shows "-" and changes nothing). Binding also sets the song header's rows a beat. */
 void views_route(views* v, midi_route* route);
 /* MIDI's clock (app/midi_sync.h): the MIDI page's CLOCK and CLOCK OUT; NULL until set (they
  * show "-"). */

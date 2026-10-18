@@ -211,9 +211,8 @@ fn live_byte(m: &mut Machine, fw: &Firmware, offset: usize) -> u8 {
 }
 
 /// M2e Task 4 over TRS: bank 2's program 3 picks the 8580 R5 profile for the instrument (its
-/// chip prepared and swapped in), bank 1's program 0 asks for the first stored song (the
-/// request waits for the song loader, M2c Task 8) and changes no preset, and bank 0 is the
-/// presets again.
+/// chip prepared and swapped in). Bank 1's request is consumed by the song loader, which
+/// protects the changed setup from being discarded. Bank 0 is the presets again.
 #[test]
 fn bank_select_picks_profiles_and_songs_over_trs() {
     let Some(fw) = fixture("the MIDI banks test") else {
@@ -231,9 +230,15 @@ fn bank_select_picks_profiles_and_songs_over_trs() {
     m.run_ms(50);
     assert_eq!(
         route_byte(&mut m, &fw, ilp32::midi_route::song_req),
-        0,
-        "the first song asked for"
+        sidou_sys::MIDI_ROUTE_NO_REQUEST as u8,
+        "the song loader consumed the program change"
     );
+    let toast = fw.symbol("ui") + ilp32::screen::toast as u32;
+    let message: Vec<u8> = (0..sidou_sys::SCREEN_TOAST_CHARS)
+        .map(|i| m.soc.read8(toast + i))
+        .take_while(|&b| b != 0)
+        .collect();
+    assert_eq!(message, b"SAVE YOUR SONG FIRST");
     assert_eq!(preset(&mut m), 0);
     m.midi(&[0xB0, 32, 0, 0xC0, 2]);
     m.run_ms(50);

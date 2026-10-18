@@ -36,6 +36,7 @@ void ui_set_panel(panel* p);
  * song_ctl). */
 void ui_set_song(const song_transport* t);
 void ui_set_song_io(song_io* io);
+void ui_song_rows(uint8_t rows_per_beat);
 settings* ui_settings(void);
 /* Independent force ownership: a settings save cannot release a song save's holds. */
 void ui_song_force(int on);

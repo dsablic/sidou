@@ -957,20 +957,24 @@ fn during_a_song_the_a_tab_edits_the_songs_setup() {
 
 #[test]
 fn only_explicit_song_chip_edits_notify_the_edit_callback() {
-    unsafe extern "C" fn edited(ctx: *mut std::ffi::c_void, want: *const chip_setup) -> i32 {
-        let edits = unsafe { &mut *ctx.cast::<Vec<chip_setup>>() };
-        edits.push(unsafe { *want });
+    unsafe extern "C" fn edited(
+        ctx: *mut std::ffi::c_void,
+        want: *const chip_setup,
+        mask: u32,
+    ) -> i32 {
+        let edits = unsafe { &mut *ctx.cast::<Vec<(chip_setup, u32)>>() };
+        edits.push((unsafe { *want }, mask));
         1
     }
 
     let mut ui = chip_ui();
-    let mut edits = Vec::<chip_setup>::new();
+    let mut edits = Vec::<(chip_setup, u32)>::new();
     let mut kr = Box::<keys_route>::default();
     kr.l = &mut *ui.rig.live;
     kr.song = 1;
     kr.song_want.controls = [10, 20, 30, 40];
     kr.song_edit = Some(edited);
-    kr.song_edit_ctx = (&mut edits as *mut Vec<chip_setup>).cast();
+    kr.song_edit_ctx = (&mut edits as *mut Vec<(chip_setup, u32)>).cast();
     unsafe { chip_view_set_keys(&mut ui.v.chip, &mut *kr) };
 
     let locked = chip_setup {
@@ -983,14 +987,28 @@ fn only_explicit_song_chip_edits_notify_the_edit_callback() {
     ui.turn(PANEL_ENC_K4, -1);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(edits.len(), 3);
-    assert_eq!(edits[0].controls, [94, 20, 30, 40]);
-    assert_eq!(edits[1].controls, [90, 20, 30, 36]);
-    assert_eq!(edits[2].profile, locked.profile + 1);
+    assert_eq!(edits[0].0.controls, [94, 20, 30, 40]);
+    assert_eq!(edits[1].0.controls, [90, 20, 30, 36]);
+    assert_eq!(edits[2].0.profile, locked.profile + 1);
+    assert_eq!(
+        edits.iter().map(|e| e.1).collect::<Vec<_>>(),
+        [1, 8, KEYS_ROUTE_EDIT_PROFILE]
+    );
     assert_eq!(
         kr.song_want.controls, locked.controls,
         "callback owns acceptance"
     );
     assert_eq!(kr.song_want.profile, locked.profile);
+    ui.rig.live.user_valid = 1;
+    ui.rig.live.user_base[0] = locked.profile;
+    ui.rig.live.user_ctl[0] = locked.controls;
+    ui.turn(PANEL_ENC_ALGORITHM, SID_CHIPS as i32);
+    assert_eq!(edits[3].0.controls, locked.controls);
+    assert_eq!(
+        edits[3].1,
+        KEYS_ROUTE_EDIT_PROFILE | KEYS_ROUTE_EDIT_CONTROLS,
+        "USER selection explicitly supplies every control"
+    );
 
     ui.hold(PANEL_BTN_EDIT, true);
     ui.turn(PANEL_ENC_K1, 1);
@@ -1005,7 +1023,7 @@ fn only_explicit_song_chip_edits_notify_the_edit_callback() {
     ui.turn(PANEL_ENC_K1, 1);
     assert_eq!(
         edits.len(),
-        3,
+        4,
         "slots and keys must not edit the song setup"
     );
     unsafe { chip_view_set_keys(&mut ui.v.chip, std::ptr::null_mut()) };
@@ -1013,7 +1031,7 @@ fn only_explicit_song_chip_edits_notify_the_edit_callback() {
 
 #[test]
 fn refused_song_chip_edits_keep_the_setup_user_identity_and_popup_value() {
-    unsafe extern "C" fn refuse(ctx: *mut std::ffi::c_void, _: *const chip_setup) -> i32 {
+    unsafe extern "C" fn refuse(ctx: *mut std::ffi::c_void, _: *const chip_setup, _: u32) -> i32 {
         unsafe { *ctx.cast::<u32>() += 1 };
         0
     }

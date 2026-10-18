@@ -217,8 +217,10 @@ fn main() {
                 "SID_.*|SIDOU_.*|GT2_.*|SONG_.*|WORKLOAD_.*|LIVE_.*|MIDI_.*|PANEL_.*|REG_RING_.*|BOOTGUARD_.*|",
                 "live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*|",
                 "LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*|LEARN_VIEW_.*|SCOPE_.*|",
-                "SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|MASTER_.*|TAIL_.*|UI_SOUND_.*|",
-                "demo_song_.*|song_view_.*|STORE_.*|SAVE_KEY_.*|SETTINGS_.*|tracker_view_.*|TRACKER_VIEW_.*|USER_PROFILE.*|user_profile.*|THEME_.*|theme_.*",
+                "SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|MASTER_.*|",
+                "TAIL_.*|UI_SOUND_.*|KEYS_ROUTE_.*|",
+                "demo_song_.*|song_view_.*|STORE_.*|SAVE_KEY_.*|SETTINGS_.*|tracker_view_.*|TRACKER_VIEW_.*|",
+                "USER_PROFILE.*|user_profile.*|THEME_.*|theme_.*",
             ),
         )
         // `static const` tables private to the headers; they have no symbol to link to.

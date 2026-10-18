@@ -61,7 +61,7 @@ void keys_route_init(keys_route* kr, live* l, live_sink_fn sink, live_prepare_fn
     kr->taken = 0;
     kr->song_seen = 0;
     kr->song_user = 0;
-    kr->song_want = (chip_setup){0};
+    kr->song_want = (chip_setup){0, {0}, 0};
     kr->moved = 0;
     kr->moved_ctx = 0;
     kr->song_edit = 0;
@@ -157,9 +157,9 @@ void keys_route_song_wants(keys_route* kr, const chip_setup* setup) {
     kr->song_want = *setup; /* the one writer of song_want */
 }
 
-int keys_route_song_edit(keys_route* kr, const chip_setup* setup) {
+int keys_route_song_edit(keys_route* kr, const chip_setup* setup, uint32_t edit_mask) {
     if (kr->song_edit) {
-        return kr->song_edit(kr->song_edit_ctx, setup);
+        return kr->song_edit(kr->song_edit_ctx, setup, edit_mask);
     }
     keys_route_song_wants(kr, setup);
     return 1;

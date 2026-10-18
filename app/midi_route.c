@@ -506,7 +506,8 @@ static void chip_profile(midi_route* r, uint32_t pick) {
             s.controls[f] = r->l->user_ctl[slot][f];
         }
     }
-    if (keys_route_song_edit(r->kr, &s)) {
+    uint32_t edit_mask = KEYS_ROUTE_EDIT_PROFILE | (user ? KEYS_ROUTE_EDIT_CONTROLS : 0u);
+    if (keys_route_song_edit(r->kr, &s, edit_mask)) {
         r->kr->song_user = user;
     }
 }
@@ -522,11 +523,13 @@ static void chip_cc(midi_route* r, uint8_t cc, uint8_t value) {
     }
     chip_setup s = r->kr->song_want;
     uint32_t v = midi_map_from_cc(e, value);
+    uint32_t edit_mask = 0;
     switch (e->param) {
     case LIVE_PARAM_PROFILE:
         chip_profile(r, v);
         return;
     case LIVE_PARAM_MODEL: {
+        edit_mask = KEYS_ROUTE_EDIT_PROFILE;
         const sid_chip_profile* p = sid_chip_profile_get(s.profile);
         sid_model now = p ? p->model : SID_MODEL_6581;
         if ((uint32_t)now != v) {
@@ -534,14 +537,20 @@ static void chip_cc(midi_route* r, uint8_t cc, uint8_t value) {
         }
         break;
     }
-    case LIVE_PARAM_ENVELOPE_MODE: s.gate_reset = v == LIVE_ENVELOPE_INSTANT; break;
+    case LIVE_PARAM_ENVELOPE_MODE:
+        s.gate_reset = v == LIVE_ENVELOPE_INSTANT;
+        edit_mask = KEYS_ROUTE_EDIT_ENVELOPE;
+        break;
     case LIVE_PARAM_AGE:
     case LIVE_PARAM_DAC:
     case LIVE_PARAM_THUMP:
-    case LIVE_PARAM_BLEED: s.controls[e->param - LIVE_PARAM_AGE] = (uint8_t)v; break;
+    case LIVE_PARAM_BLEED:
+        s.controls[e->param - LIVE_PARAM_AGE] = (uint8_t)v;
+        edit_mask = 1u << (e->param - LIVE_PARAM_AGE);
+        break;
     default: return;
     }
-    keys_route_song_edit(r->kr, &s);
+    keys_route_song_edit(r->kr, &s, edit_mask);
 }
 
 static void filter_cc(midi_route* r, uint8_t cc, uint8_t value) {

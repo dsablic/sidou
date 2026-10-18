@@ -822,8 +822,52 @@ fn bank_select_on_the_instruments_channel_never_reaches_live() {
 }
 
 #[test]
+fn chip_a_midi_edits_mark_explicit_controls_even_when_the_value_is_unchanged() {
+    unsafe extern "C" fn edited(ctx: *mut c_void, _: *const chip_setup, mask: u32) -> i32 {
+        unsafe { &mut *ctx.cast::<Vec<u32>>() }.push(mask);
+        1
+    }
+
+    let mut r = Route::with(MIDI_MODE_MULTI, 0, |_| {});
+    let mut masks = Vec::<u32>::new();
+    let mut kr = Box::<keys_route>::default();
+    r.route.kr = &mut *kr;
+    kr.song = 1;
+    kr.song_want.controls = [80, 80, 80, 80];
+    kr.song_edit = Some(edited);
+    kr.song_edit_ctx = (&mut masks as *mut Vec<u32>).cast();
+    r.rig.live.user_valid = 0xff;
+    for slot in 0..LIVE_USER_PROFILES as usize {
+        r.rig.live.user_base[slot] = kr.song_want.profile;
+        r.rig.live.user_ctl[slot] = kr.song_want.controls;
+    }
+    for pick in 0..SID_CHIPS + LIVE_USER_PROFILES {
+        let cc = unsafe { midi_map_to_cc(midi_map_for_cc(85), pick) };
+        r.trs(&[0xB0, 32, 2, 0xC0, pick as u8, 0xB0, 85, cc]);
+        let expected = KEYS_ROUTE_EDIT_PROFILE
+            | if pick < SID_CHIPS {
+                0
+            } else {
+                KEYS_ROUTE_EDIT_CONTROLS
+            };
+        assert_eq!(&masks[masks.len() - 2..], [expected, expected]);
+    }
+    for (field, cc) in [86, 87, 89, 90].into_iter().enumerate() {
+        r.trs(&[0xB0, cc, 80]);
+        assert_eq!(masks.last(), Some(&(1 << field)));
+    }
+    for (cc, expected) in [
+        (25, KEYS_ROUTE_EDIT_PROFILE),
+        (26, KEYS_ROUTE_EDIT_ENVELOPE),
+    ] {
+        r.trs(&[0xB0, cc, 127]);
+        assert_eq!(masks.last(), Some(&expected));
+    }
+}
+
+#[test]
 fn refused_chip_a_midi_edits_keep_the_setup_and_user_identity() {
-    unsafe extern "C" fn refuse(ctx: *mut c_void, _: *const chip_setup) -> i32 {
+    unsafe extern "C" fn refuse(ctx: *mut c_void, _: *const chip_setup, _: u32) -> i32 {
         unsafe { *ctx.cast::<u32>() += 1 };
         0
     }

@@ -582,7 +582,7 @@ __attribute__((noinline, unused)) static void pick(screen* s, chip_view* cv, int
         if (song) {
             chip_setup want = cv->kr->song_want;
             want.profile = (uint8_t)at;
-            if (keys_route_song_edit(cv->kr, &want)) {
+            if (keys_route_song_edit(cv->kr, &want, KEYS_ROUTE_EDIT_PROFILE)) {
                 cv->kr->song_user = 0;
             }
         } else {
@@ -595,7 +595,7 @@ __attribute__((noinline, unused)) static void pick(screen* s, chip_view* cv, int
         for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; f++) {
             want.controls[f] = l->user_ctl[n][f];
         }
-        if (keys_route_song_edit(cv->kr, &want)) {
+        if (keys_route_song_edit(cv->kr, &want, KEYS_ROUTE_EDIT_PROFILE | KEYS_ROUTE_EDIT_CONTROLS)) {
             cv->kr->song_user = (uint8_t)(n + 1u);
         }
     } else {
@@ -638,7 +638,7 @@ static int input(screen* s, void* state, const screen_event* e) {
         int32_t d = e->steps > 64 ? 64 : e->steps < -64 ? -64 : e->steps;
         want.controls[f] = (uint8_t)step_clamped(want.controls[f], d * PANEL_CHARACTER_DETENT,
                                                  SID_CHARACTER_MAX);
-        keys_route_song_edit(cv->kr, &want);
+        keys_route_song_edit(cv->kr, &want, 1u << f);
         return 1;
     }
     if (e->id != PANEL_ENC_ALGORITHM) {

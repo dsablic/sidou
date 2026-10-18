@@ -596,8 +596,8 @@ void song_io_poll(song_io* io, uint32_t now_ms) {
         if (!io->set->asked) {
             uint8_t rec[SETTINGS_BYTES];
             int n = store_get(io->st, SETTINGS_KEY, rec, sizeof rec, NULL);
-            if (n == (int)sizeof rec && rec[0] >= 3u &&
-                memcmp(rec + SETTINGS_V2_BYTES, io->target, STORE_NAME_MAX) == 0) {
+            if (n == (int)sizeof rec && rec[0] >= 4u &&
+                memcmp(rec + SETTINGS_V3_BYTES, io->target, STORE_NAME_MAX) == 0) {
                 (void)settings_take_result(io->set);
                 finish_save(io, 1);
             } else if (io->remembering == 1u) {

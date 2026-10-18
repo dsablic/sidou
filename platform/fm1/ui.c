@@ -97,6 +97,10 @@ void ui_set_song_io(song_io* io) {
     views_song_io(&ui, io);
 }
 
+void ui_song_rows(uint8_t rows_per_beat) {
+    ui.song.rows_beat = rows_per_beat;
+}
+
 settings* ui_settings(void) {
     return &persisted;
 }

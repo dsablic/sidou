@@ -810,6 +810,8 @@ static int song_menu_dirty(screen* s, void* state) {
 static void song_menu_compose(screen* s, void* state, grid* g) {
     views* v = state;
     views_song_menu* m = &v->songs;
+    const uint8_t text = VIEWS_TEXT;
+    const uint8_t selected = GRID_ATTR(GRID_BLUE, GRID_LIGHT_BLUE);
     if (m->scanning && m->page == SONG_MENU_DIR) {
         song_directory_step(v);
         m->built = 0;
@@ -818,53 +820,53 @@ static void song_menu_compose(screen* s, void* state, grid* g) {
         for (uint32_t r = 0; r < GRID_ROWS; r++) {
             for (uint32_t c = 0; c < GRID_COLS; c++) {
                 v->song.cv.ch[r][c] = ' ';
-                v->song.cv.attr[r][c] = TEXT;
+                v->song.cv.attr[r][c] = text;
             }
         }
-        song_canvas_big(v, 2, 2, m->page == SONG_MENU_ROOT ? "SONG" : SONG_ACTIONS[m->action], TEXT);
+        song_canvas_big(v, 2, 2, m->page == SONG_MENU_ROOT ? "SONG" : SONG_ACTIONS[m->action], text);
         if (v->song.io && song_io_busy(v->song.io)) {
-            song_canvas_big(v, 4, 2, song_io_saving(v->song.io) ? "SAVING" : "BUSY", TEXT);
+            song_canvas_big(v, 4, 2, song_io_saving(v->song.io) ? "SAVING" : "BUSY", text);
         }
         if (m->page == SONG_MENU_ROOT) {
             for (uint32_t i = 0; i < 4u; i++) {
-                song_canvas_big(v, 6u + i * 4u, 2, SONG_ACTIONS[i], i == m->cursor ? MENU_HEAD : TEXT);
+                song_canvas_big(v, 6u + i * 4u, 2, SONG_ACTIONS[i], i == m->cursor ? selected : text);
             }
         } else if (m->page == SONG_MENU_DIR) {
             for (uint32_t i = 0; i < m->count; i++) {
-                song_canvas_text(v, 6u + i * 2u, 4, i == m->cursor ? ">" : " ", TEXT);
-                song_canvas_text(v, 6u + i * 2u, 6, m->files[i], TEXT);
+                song_canvas_text(v, 6u + i * 2u, 4, i == m->cursor ? ">" : " ", text);
+                song_canvas_text(v, 6u + i * 2u, 6, m->files[i], text);
             }
             song_canvas_text(v, 23, 4, m->scanning ? "READING..." : m->count ? "SELECT TO BROWSE" : "NO SONGS",
-                             TEXT);
+                             text);
         } else if (m->page == SONG_MENU_NAME) {
             char half[9];
             for (uint32_t i = 0; i < 2u; i++) {
                 memcpy(half, &m->name[i * 8u], 8);
                 half[8] = 0;
-                song_canvas_big(v, 8u + i * 4u, 2, half, TEXT);
+                song_canvas_big(v, 8u + i * 4u, 2, half, text);
             }
             if (m->cursor < STORE_NAME_MAX) {
-                song_canvas_text(v, 10u + m->cursor / 8u * 4u, 2u + m->cursor % 8u * 2u, "^^", TEXT);
+                song_canvas_text(v, 10u + m->cursor / 8u * 4u, 2u + m->cursor % 8u * 2u, "^^", text);
             }
-            song_canvas_big(v, 16, 2, "SAVE", m->cursor == STORE_NAME_MAX ? MENU_HEAD : TEXT);
-            song_canvas_text(v, 19, 2, "SELECT     CURSOR", TEXT);
-            song_canvas_text(v, 20, 2, "ALGORITHM  CHARACTER", TEXT);
-            song_canvas_text(v, 21, 2, "SAVE       WRITE SONG", TEXT);
+            song_canvas_big(v, 16, 2, "SAVE", m->cursor == STORE_NAME_MAX ? selected : text);
+            song_canvas_text(v, 19, 2, "SELECT     CURSOR", text);
+            song_canvas_text(v, 20, 2, "ALGORITHM  CHARACTER", text);
+            song_canvas_text(v, 21, 2, "SAVE       WRITE SONG", text);
         } else {
-            song_canvas_big(v, 6, 2, m->action == SONG_MENU_DELETE ? "DELETE SONG?" : "DISCARD", TEXT);
+            song_canvas_big(v, 6, 2, m->action == SONG_MENU_DELETE ? "DELETE SONG?" : "DISCARD", text);
             if (m->action != SONG_MENU_DELETE) {
-                song_canvas_big(v, 8, 2, "UNSAVED SONG?", TEXT);
+                song_canvas_big(v, 8, 2, "UNSAVED SONG?", text);
             }
             if (m->action != SONG_MENU_NEW) {
-                song_canvas_text(v, 11, 6, m->name, TEXT);
+                song_canvas_text(v, 11, 6, m->name, text);
             }
-            song_canvas_big(v, 14, 2, "NO", m->confirm ? TEXT : MENU_HEAD);
-            song_canvas_big(v, 14, 16, "YES", m->confirm ? MENU_HEAD : TEXT);
+            song_canvas_big(v, 14, 2, "NO", m->confirm ? text : selected);
+            song_canvas_big(v, 14, 16, "YES", m->confirm ? selected : text);
         }
         if (m->page != SONG_MENU_NAME) {
-            song_canvas_text(v, 24, 2, "ALGORITHM  OPEN / CONFIRM", TEXT);
+            song_canvas_text(v, 24, 2, "ALGORITHM  OPEN / CONFIRM", text);
         }
-        song_canvas_text(v, 25, 2, "HOME       BACK", TEXT);
+        song_canvas_text(v, 25, 2, "HOME       BACK", text);
         v->song.which = SONG_MENU_CANVAS;
         v->song.dirty = (1u << GRID_ROWS) - 1u;
         m->built = 1;
@@ -1174,10 +1176,12 @@ static void midi_rows_value(void* ctx, char* buf) {
 }
 
 static void midi_rows_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
     midi_route_setup s;
-    if (midi_setup(ctx, &s)) {
+    if (midi_setup(v, &s)) {
         s.rows_per_beat = stepped(s.rows_per_beat, steps, 1, MIDI_ROUTE_ROWS_MAX);
-        midi_apply(ctx, &s);
+        midi_apply(v, &s);
+        v->song.rows_beat = s.rows_per_beat;
     }
 }
 
@@ -1451,6 +1455,9 @@ void views_popup_midi(views* v, int on) {
 
 void views_route(views* v, midi_route* route) {
     v->route = route;
+    if (route) {
+        v->song.rows_beat = route->setup.rows_per_beat;
+    }
 }
 
 void views_sync(views* v, midi_sync* sync) {

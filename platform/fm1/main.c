@@ -258,27 +258,24 @@ static void song_chip_character(void* ctx, uint32_t field, int32_t value) {
 }
 
 static const midi_sync* sync_state; /* midi_synced(), for play()'s look at CLOCK OUT */
-static int song_chip_edit(void* ctx, const chip_setup* setup) {
+static int song_chip_edit(void* ctx, const chip_setup* setup, uint32_t fields) {
     keys_route* kr = ctx;
     if (audio_song()->song->frozen) {
         ui_toast("SAVING", 2000u);
         return 0;
     }
-    int any = 0;
-    for (uint32_t f = 0; f < 4u; f++) {
-        any |= song_char_on[f] >= 0;
+    if (!song_base_valid) {
+        song_char_base = kr->song_want;
     }
-    if (!any) {
-        song_char_base = *setup;
-        song_base_valid = 1;
-        keys_route_song_wants(kr, setup);
-        return 1;
+    song_base_valid = 1;
+    if (fields & KEYS_ROUTE_EDIT_PROFILE) {
+        song_char_base.profile = setup->profile;
     }
-    song_char_base.profile = setup->profile;
-    song_char_base.gate_reset = setup->gate_reset;
+    if (fields & KEYS_ROUTE_EDIT_ENVELOPE) {
+        song_char_base.gate_reset = setup->gate_reset;
+    }
     for (uint32_t f = 0; f < 4u; f++) {
-        /* Unchanged locked controls in the view's copy are runtime values, not edits. */
-        if (song_char_on[f] < 0 || setup->controls[f] != kr->song_want.controls[f]) {
+        if (fields >> f & 1u) {
             song_char_base.controls[f] = setup->controls[f];
         }
     }
@@ -301,6 +298,19 @@ static void song_boot(void) {
 
 static midi_route* route_state;
 
+__attribute__((noinline, unused)) static void song_mode_setup(void) {
+    if (!keys_router.player || !song_base_valid) {
+        return;
+    }
+    chip_setup want = song_char_base;
+    for (uint32_t f = 0; f < 4u; f++) {
+        if (song_char_on[f] >= 0) {
+            want.controls[f] = (uint8_t)song_char_on[f];
+        }
+    }
+    keys_route_song_wants(&keys_router, &want);
+}
+
 static void setup_encode(song_chip_setup* out, const chip_setup* in) {
     const sid_chip_profile* profile = sid_chip_profile_get(in->profile);
     out->model = profile ? (uint8_t)profile->model : 0u;
@@ -310,6 +320,22 @@ static void setup_encode(song_chip_setup* out, const chip_setup* in) {
     out->thump = in->controls[2];
     out->bleed = in->controls[3];
     out->envelope = !in->gate_reset;
+}
+
+static int setup_valid(const song_chip_setup* chip) {
+    const sid_chip_profile* profile = sid_chip_profile_get(chip->profile);
+    uint32_t controls = chip->age | chip->dac | chip->thump | chip->bleed;
+    return profile && (uint32_t)profile->model == chip->model &&
+           !(controls & 0x80u) && chip->envelope <= 1u;
+}
+
+static void setup_decode(chip_setup* out, const song_chip_setup* chip) {
+    out->profile = chip->profile;
+    out->controls[0] = chip->age;
+    out->controls[1] = chip->dac;
+    out->controls[2] = chip->thump;
+    out->controls[3] = chip->bleed;
+    out->gate_reset = chip->envelope == 0u;
 }
 
 typedef struct {
@@ -382,9 +408,7 @@ static int song_capture(void* ctx) {
     const song_keys keys = data.keys;
     song_midi midi;
     midi_route_setup_encode(&data.midi, &midi);
-    const sid_chip_profile* profile = sid_chip_profile_get(chip.profile);
-    if (!profile || (uint32_t)profile->model != chip.model || chip.age > 127u ||
-        chip.dac > 127u || chip.thump > 127u || chip.bleed > 127u || chip.envelope > 1u) {
+    if (!setup_valid(&chip)) {
         memcpy(songs.failure, "SNG: BAD CHIP SETUP", sizeof "SNG: BAD CHIP SETUP");
         return 0;
     }
@@ -441,6 +465,11 @@ static int song_capture(void* ctx) {
             }
         }
     }
+    if (!song_base_valid) {
+        chip_setup base;
+        setup_decode(&base, &chip);
+        song_base_set(&base);
+    }
     return 1;
 }
 
@@ -476,6 +505,7 @@ static void song_loaded(void* ctx) {
     (void)midi_route_setup_from_song(s, &midi_routed()->setup, &setup);
     midi_route_set(midi_routed(), &setup);
     midi_sync_rows(midi_synced(), setup.rows_per_beat);
+    ui_song_rows(setup.rows_per_beat);
     midi_sync_song_changed(midi_synced());
     if (song_ext_get_keys(s, &keys)) {
         if (keys.preset < LIVE_PRESET_COUNT) {
@@ -496,6 +526,21 @@ static void song_loaded(void* ctx) {
             }
         }
     }
+    song_chip_setup chip;
+    chip_setup base;
+    if (song_ext_get_chip(s, SONG_TAG_CHPA, &chip)) {
+        if (!setup_valid(&chip)) {
+            return; /* capture reports the bad setup and the loader restores the previous file */
+        }
+        setup_decode(&base, &chip);
+    } else {
+        chip_setup_of(&instrument, &base);
+        base.profile = instrument.profile_req;
+        base.gate_reset = 0; /* plain songs default to AUTHENTIC */
+    }
+    song_base_set(&base);
+    keys_route_song_wants(&keys_router, &base);
+    keys_router.song_user = 0;
 }
 
 static int16_t song_error;    /* the refusal last shown */
@@ -936,6 +981,11 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         live_tick(&instrument);
         ui_sound_tick(&ui_sounds);
         midi_tick(); /* MIDI's mode: its bends, filter and ARP steps */
+        static uint8_t player_seen;
+        if (player_seen != keys_router.player) {
+            player_seen = keys_router.player;
+            song_mode_setup();
+        }
         if (route_state->song_req != MIDI_ROUTE_NO_REQUEST) {
             int32_t program = midi_route_take_song(route_state);
             (void)song_io_program(&songs, (uint32_t)program);

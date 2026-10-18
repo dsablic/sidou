@@ -70,6 +70,11 @@
 extern "C" {
 #endif
 
+#define KEYS_ROUTE_EDIT_CONTROLS 0x0fu
+#define KEYS_ROUTE_EDIT_PROFILE 0x10u
+#define KEYS_ROUTE_EDIT_ENVELOPE 0x20u
+#define KEYS_ROUTE_EDIT_ALL 0x3fu
+
 typedef struct {
     live* l;
     live_sink_fn sink;       /* each chip's writes: reg_ring_sink on the device */
@@ -90,7 +95,7 @@ typedef struct {
     uint8_t song_user; /* USER slot n + 1 that supplied song_want, or 0 */
     void (*moved)(void* ctx, uint32_t chip); /* NULL: nobody to tell */
     void* moved_ctx;
-    int (*song_edit)(void* ctx, const chip_setup* setup); /* 1 accepted, 0 refused; NULL: wants */
+    int (*song_edit)(void* ctx, const chip_setup* setup, uint32_t edit_mask);
     void* song_edit_ctx;
 } keys_route;
 
@@ -126,8 +131,9 @@ int keys_route_ready_for_song(const keys_route* kr);
 void keys_route_song_wants(keys_route* kr, const chip_setup* setup);
 /* Explicit CHIP A edit, distinct from runtime locks: the callback owns acceptance and the
  * unlocked song base; without one, goes straight to keys_route_song_wants. Returns 1 if
- * accepted, 0 if refused, with the setup and USER identity unchanged. */
-int keys_route_song_edit(keys_route* kr, const chip_setup* setup);
+ * accepted, 0 if refused, with the setup and USER identity unchanged. edit_mask marks only
+ * intended fields: bits 0..3 AGE through BLEED, bit 4 PROFILE, bit 5 ENVELOPE. */
+int keys_route_song_edit(keys_route* kr, const chip_setup* setup, uint32_t edit_mask);
 /* A setup chip A already holds (nothing is sent): recorded as what it has, and wanted. */
 void keys_route_song_setup(keys_route* kr, const chip_setup* setup);
 

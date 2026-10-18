@@ -167,7 +167,8 @@ fn a_new_song_clears_user_identity_even_when_its_base_profile_is_unchanged() {
 
 #[test]
 fn a_refused_explicit_edit_leaves_the_song_setup_and_identity_unchanged() {
-    unsafe extern "C" fn refuse(ctx: *mut c_void, _: *const chip_setup) -> i32 {
+    unsafe extern "C" fn refuse(ctx: *mut c_void, _: *const chip_setup, mask: u32) -> i32 {
+        assert_eq!(mask, KEYS_ROUTE_EDIT_ALL);
         unsafe { *ctx.cast::<u32>() += 1 };
         0
     }
@@ -183,7 +184,10 @@ fn a_refused_explicit_edit_leaves_the_song_setup_and_identity_unchanged() {
         controls: [10, 20, 30, 40],
         gate_reset: 0,
     };
-    assert_eq!(unsafe { keys_route_song_edit(&mut *k.kr, &edit) }, 0);
+    assert_eq!(
+        unsafe { keys_route_song_edit(&mut *k.kr, &edit, KEYS_ROUTE_EDIT_ALL) },
+        0
+    );
     assert_eq!(calls, 1);
     assert_eq!(k.kr.song_want.profile, before.profile);
     assert_eq!(k.kr.song_want.controls, before.controls);
@@ -677,7 +681,10 @@ fn an_edit_of_the_songs_setup_brings_chip_a_to_it() {
     };
     assert!(k.kr.song_edit.is_none());
     assert!(k.kr.song_edit_ctx.is_null());
-    assert_eq!(unsafe { keys_route_song_edit(&mut *k.kr, &song) }, 1);
+    assert_eq!(
+        unsafe { keys_route_song_edit(&mut *k.kr, &song, KEYS_ROUTE_EDIT_ALL) },
+        1
+    );
     k.ticks(40);
     assert_eq!(k.chip(0).filter_curve, 3, "chip A has the song's WORN");
     assert_eq!(k.chips.ramp[0].now.thump, 64, "and its thump");
@@ -898,14 +905,14 @@ int main(void) {{
     edit.profile = 3;
     edit.gate_reset = 0;
     edit.controls[2] = 50;
-    assert(song_chip_edit(&kr, &edit) == 1);
+    assert(song_chip_edit(&kr, &edit, KEYS_ROUTE_EDIT_PROFILE | KEYS_ROUTE_EDIT_ENVELOPE | (1u << 2)) == 1);
     assert(song_char_base.profile == 3 && song_char_base.gate_reset == 0);
     assert(song_char_base.controls[0] == 10 && song_char_base.controls[1] == 20);
     assert(song_char_base.controls[2] == 50);
     assert(kr.song_want.controls[0] == 90 && kr.song_want.controls[1] == 80);
     edit = kr.song_want;
     edit.controls[0] = 94;
-    assert(song_chip_edit(&kr, &edit) == 1);
+    assert(song_chip_edit(&kr, &edit, 1u << 0) == 1);
     assert(song_char_base.controls[0] == 94 && song_char_base.controls[1] == 20);
     assert(kr.song_want.controls[0] == 90);
     song_chip_character(&kr, 1, 70);
@@ -914,7 +921,7 @@ int main(void) {{
     song.frozen = 1;
     edit.profile = 4;
     edit.controls[0] = 100;
-    assert(song_chip_edit(&kr, &edit) == 0);
+    assert(song_chip_edit(&kr, &edit, 1u << 0) == 0);
     assert(toasts == 1 && song_char_base.profile == 3 && song_char_base.controls[0] == 94);
     assert(kr.song_want.profile == 3 && kr.song_want.controls[0] == 90);
     song.frozen = 0;
@@ -925,13 +932,41 @@ int main(void) {{
     edit = kr.song_want;
     edit.profile = 2;
     song.frozen = 1;
-    assert(song_chip_edit(&kr, &edit) == 0);
+    assert(song_chip_edit(&kr, &edit, KEYS_ROUTE_EDIT_PROFILE) == 0);
     assert(toasts == 2 && kr.song_want.profile == 3);
     song.frozen = 0;
-    assert(song_chip_edit(&kr, &edit) == 1);
+    assert(song_chip_edit(&kr, &edit, KEYS_ROUTE_EDIT_PROFILE) == 1);
     assert(kr.song_want.profile == 2);
     song_chip_character(&kr, 3, 60);
     assert(song_char_base.profile == 2 && song_char_base.controls[0] == 94);
+    song_chip_character(&kr, 3, -1);
+    base.controls[0] = 20;
+    keys_route_song_wants(&kr, &base);
+    song_chip_character(&kr, 0, 80);
+    edit = kr.song_want;
+    edit.controls[0] = 80; /* USER profile's explicit AGE matches the runtime lock. */
+    edit.controls[1] = 50;
+    assert(song_chip_edit(&kr, &edit, KEYS_ROUTE_EDIT_PROFILE | KEYS_ROUTE_EDIT_CONTROLS) == 1);
+    assert(song_char_base.controls[0] == 80 && song_char_base.controls[1] == 50);
+    song_chip_character(&kr, 0, -1);
+    assert(kr.song_want.controls[0] == 80);
+    keys_route_song_wants(&kr, &base);
+    song_chip_character(&kr, 0, 80);
+    edit = kr.song_want; /* CC AGE 80 is an edit even though the lock already asks for 80. */
+    assert(song_chip_edit(&kr, &edit, 1u << 0) == 1);
+    song_chip_character(&kr, 0, -1);
+    assert(kr.song_want.controls[0] == 80);
+    song_base_set(&base);
+    edit = base;
+    edit.profile = 4;
+    edit.gate_reset = 0;
+    edit.controls[0] = 70;
+    edit.controls[1] = 110;
+    keys_route_song_wants(&kr, &edit); /* A temporary MIDI ownership setup is not the song base. */
+    assert(song_chip_edit(&kr, &edit, 1u << 0) == 1);
+    assert(song_char_base.profile == base.profile && song_char_base.gate_reset == base.gate_reset);
+    assert(song_char_base.controls[0] == 70 && song_char_base.controls[1] == base.controls[1]);
+    assert(kr.song_want.profile == base.profile && kr.song_want.gate_reset == base.gate_reset);
     return 0;
 }}
 "#,

@@ -27,8 +27,20 @@ fn loading_a_song_cancels_old_transport_requests_without_resetting_clock_configu
     sync.seek_on = 1;
     sync.clock.clocks = 123;
     unsafe { midi_sync_song_changed(&mut sync) };
-    assert_eq!((sync.want, sync.held, sync.aligning, sync.synced, sync.seek_on), (0, 0, 0, 0, 0));
-    assert_eq!((u32::from(sync.mode), sync.clock_out), (MIDI_SYNC_FOLLOW, 1));
+    assert_eq!(
+        (
+            sync.want,
+            sync.held,
+            sync.aligning,
+            sync.synced,
+            sync.seek_on
+        ),
+        (0, 0, 0, 0, 0)
+    );
+    assert_eq!(
+        (u32::from(sync.mode), sync.clock_out),
+        (MIDI_SYNC_FOLLOW, 1)
+    );
     assert_eq!(sync.clock.clocks, 123);
 }
 

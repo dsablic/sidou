@@ -39,7 +39,7 @@ path = ["assets/prototypes/*.html"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
-# Test data made by SIDOU's own tests: a format 1 store region and schema 1/2/3 settings
+# Test data made by SIDOU's own tests: a format 1 store region and schema 1–4 settings
 # (host/crates/sidou-tests/tests/app/store.rs and settings.rs).
 [[annotations]]
 path = [
@@ -47,6 +47,7 @@ path = [
     "host/crates/sidou-tests/tests/data/settings-v1.bin",
     "host/crates/sidou-tests/tests/data/settings-v2.bin",
     "host/crates/sidou-tests/tests/data/settings-v3.bin",
+    "host/crates/sidou-tests/tests/data/settings-v4.bin",
 ]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"

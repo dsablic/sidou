@@ -694,7 +694,7 @@ are refused with a read error and a size reason. No pattern renumbering, silent
 data loss, or store-format change is permitted. Host reference songs can retain
 the larger host region's capacity.
 
-**Results (2026-10-18): complete, on top of `6e41eb6`.**
+**Original results (2026-10-18, `6e41eb6` base; superseded by the integration results below).**
 - `song_io` loads and saves store files through a bounded `gt2_stream` state machine;
   there is no second content region. Store-file CRCs are checked before destructive
   loading. A preflight refusal preserves RAM; a later failure reloads the previous file.
@@ -719,8 +719,10 @@ the larger host region's capacity.
   51,992 bytes, inside the same 65,536-byte region.
 - CHPA captures the unlocked song setup, including explicit CHIP edits during a lock.
   KEYS also appends the preset identity, which determines voice allocation; older readers
-  ignore that optional byte. Settings schema 3 appends the last song after schema 2's
-  TRACKER ROWS; schemas 1, 2 and 3 have migration fixtures.
+  ignore that optional byte. Settings schema 4 appends the last song after schema 3's
+  THEME byte and schema 2's TRACKER ROWS; all four schemas have migration fixtures.
+  On the `051a1a1` base THEME is reserved and retained, default 0 HIGH CONTRAST,
+  until the readable-screens implementation lands.
 - About uses the existing original SIDOU LOOP, from `demo_song`, and restores the loaded
   song stopped. Dirty songs stay silent with SAVE YOUR SONG FOR MUSIC. No PUT or large-song
   autosave was added. Flash timings remain M2a's provisional datasheet timings.
@@ -737,6 +739,63 @@ the larger host region's capacity.
   were viewed. Other existing LCD goldens are unchanged.
 
 ---
+
+### Task 8 integration results: `051a1a1` base
+
+Task 8 now includes the base's large-text menu/popups/toasts, USER profiles,
+MASTER/tail gate and M2e transport changes. SONG's headings, actions and
+confirmations use 2× text; SAVE AS splits 16 characters into two eight-character
+lines, while directory filenames remain 1× to fit completely.
+
+Bank 1 recalls the zero-based song in name order, stopped. Lookup advances one
+directory entry per eligible poll and skips other file types. Dirty or busy
+recalls are refused, missing programs preserve the song, and a newer request can
+replace a pending lookup. Only MIDI programs 0..127 are addressable; recalls do
+not queue behind a file operation. Saves/loads include MIDI mode/options and
+rows per beat; missing MIDI chunks retain the current setup. CLOCK/CLOCK OUT
+stay global, and successful loads discard stale transport requests.
+
+Schema 4 is 124 bytes: TRACKER ROWS at 106, reserved THEME at 107 (default 0,
+HIGH CONTRAST), last-song at 108..123. Schema 1/2/3/4 fixtures and per-schema
+host tests verify defaults, unchanged prefixes, exact round trips and short
+record refusal. THEME is retained opaquely until readable-screens lands; the
+coordinator's next rebase remains separate from this `051a1a1` integration.
+
+The authoritative unlocked CHPA base is initialized on every load, including
+stopped MIDI ownership. Explicit profile/envelope/four-control edit masks keep
+USER/CC values that equal active locks, while rejected edits preserve identity.
+The inherited MULTI/WHOLE A device player-callback gap and USER-profile saves
+capturing shown lock values remain follow-up work, not Task 8 implementations.
+
+Compared with `051a1a1`: application 423,736 → **452,276 bytes** (sidou-pack),
+RAMTEXT 45,108 → **45,216 / 49,152 bytes**, combined free RAM 13,284 →
+**11,508 bytes** against the unchanged **7,000-byte** floor. The final free RAM
+is 5,812 in RAM plus 5,696 in POOL. Package 610,090 bytes, loader 8,216 bytes.
+
+All seven changed old/new goldens were viewed: menu count 1/14 → 1/15; scrolled
+menu moves ROWS offscreen and includes SONG; four SONG pages become large text;
+RULE 30's lower rows change only in animation phase. No tolerances were changed.
+
+The full schema-4 screen run passes all 58 tests: STATUS idle **7,472.4/frame**
+against <7,500; HOME to THE OSCILLATOR **426** against <430; CHIP K1 maximum
+**211** against <215; SELECT to RULE 30 **227** against <230. HOME's integration
+regression at 430 was removed by ordering the CHIP route before ABOUT. Large
+SONG pages peak at **35,410 ui_poll instructions**, **200 cells / 17.15 ms SPI**.
+MIDI mapped/learned CC floods are **4,942,343 / 4,937,099.5 instructions/s**
+against <5M; LIVE full-speed flood **5,927,048/s** against <6.3M; USB 16k CC
+flood **10,479,408/s** against <10.5M; USB drain **7,991** against <8,000.
+The full-speed stream and program-change floods lose no bytes or restarts.
+The player sweep covers **193 runs of 145 songs**: worst block **5,070 + 592
+isolated row-apply instructions = 5,662**, **44.2/sample** against 60; two-chip
+and slot worst-case assumptions leave **161.3/sample** of the 2,700 target.
+All five bank and six song-store emulator tests pass. Their maximum combined
+passes are **93,335 / 120,000** for bank integration and **60,800 / 120,000**
+for store operations, including concurrent forced song/settings saves.
+The complete COMMON checklist exits **0** on schema 4: fm1/spike builds, strict
+GCC 13, fmt, Clippy, workspace release, UBSan, sidou-pack and subsequent tests,
+full emu-gate with both build variables, REUSE and web-demo. The full emulator
+run passes **182 tests**, including all 58 screen tests. Each long check has its
+own recorded exit code; externally interrupted earlier runs were not counted.
 
 ### Task 9: Docs and the M2c status
 

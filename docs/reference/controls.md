@@ -514,6 +514,19 @@ The last song loads stopped at power-on. A device song must fit both the content
 arena and the **65,536-byte saved-file limit**, including its trailer. An edit
 that would cross the latter limit reports **SONG FULL** and changes nothing.
 
+MIDI bank 1 program `n` loads the store's zero-based `n`-th song in name order,
+stopped. Other file types do not count. Lookup and loading are asynchronous;
+transport requests during a load are not queued for the new song. An out-of-range
+program keeps the current song. Unsaved changes refuse MIDI recall with
+**SAVE YOUR SONG FIRST**; save or discard them through SONG before recalling.
+The loaded song restores its MIDI mode/options and rows per beat. A file without
+a MIDI chunk retains the current MIDI setup; CLOCK and CLOCK OUT remain global.
+Recall is limited to programs 0..127 and does not queue behind an active file
+operation. A new program can replace a pending directory lookup before loading
+starts. The current device build retains the inherited MIDI limitation: MULTI
+and WHOLE A jam-channel notes, bends and filter changes are not connected to the
+song player; restoring their setup does not add that connection.
+
 ABOUT plays its original tune only when the loaded song is stopped and clean.
 Closing ABOUT restores that song, stopped. With unsaved changes the music is
 silent and the scroller says **SAVE YOUR SONG FOR MUSIC**.
