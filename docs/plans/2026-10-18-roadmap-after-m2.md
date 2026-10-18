@@ -45,8 +45,8 @@ the 6502 study below.
 
 ## Alongside
 
-- **FM-1 SID:** report its PSID loader's bounds bug (decision record 0008), shown to the
-  user before it is posted.
+- **Reports for other projects** are collected in `docs/upstream-reports.md` (FM-1 SID's
+  PSID loader bug, fm1-emu's decoder gaps) and filed later, after the user reviews them.
 - **fm1-emu:** bump the pinned revision (decoder fixes, speed); offer the USB host model built
   for SIDOU's tests and the decoder gap SIDOU found (`docs/TODO.md`) back upstream. Anything
   posted to another project is shown to the user first.
