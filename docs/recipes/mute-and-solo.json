@@ -1,0 +1,294 @@
+{
+  "goal": "Play the built-in song and mute or solo a voice without stopping it.",
+  "id": "mute-and-solo",
+  "prerequisites": {
+    "start": "live",
+    "text": "On LIVE after the boot. SIDOU LOOP is the song loaded."
+  },
+  "related": [
+    "first-sound",
+    "shape-a-sound"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "opening the song views",
+    "PLAY",
+    "GLO mutes",
+    "GLO solos"
+  ],
+  "steps": [
+    {
+      "caption": "SEQ opens the TRACKER over LIVE.",
+      "control": "Press SEQ",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "tracker"
+        },
+        {
+          "kind": "text",
+          "value": "TRACKER"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "open-the-song",
+      "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        }
+      ],
+      "needs": [],
+      "title": "Open the song views"
+    },
+    {
+      "caption": "PLAY starts it; the rows move and the song sounds.",
+      "control": "Press PLAY",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "play-the-song",
+      "inputs": [
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Play the song"
+    },
+    {
+      "caption": "Hold GLO and press the second note key (the leftmost keys are the mutes): voice 2 goes silent.",
+      "control": "Hold GLO and press note key 2",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "MUT"
+        },
+        {
+          "assert": "quieter",
+          "kind": "audio"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "mute-voice-2",
+      "inputs": [
+        {
+          "button": "GLO",
+          "note": "F#3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Mute voice 2"
+    },
+    {
+      "caption": "The same keys again undo it.",
+      "control": "Hold GLO and press note key 2 again",
+      "expect": [
+        {
+          "kind": "text_absent",
+          "value": "MUT"
+        },
+        {
+          "assert": "louder",
+          "kind": "audio"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "let-voice-2-back",
+      "inputs": [
+        {
+          "button": "GLO",
+          "note": "F#3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Let voice 2 sound again"
+    },
+    {
+      "caption": "Hold GLO and press the fourth note key: only voice 1 sounds.",
+      "control": "Hold GLO and press note key 4",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "SOL"
+        },
+        {
+          "assert": "quieter",
+          "kind": "audio"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "solo-voice-1",
+      "inputs": [
+        {
+          "button": "GLO",
+          "note": "G#3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Solo voice 1"
+    },
+    {
+      "caption": "Again to unsolo.",
+      "control": "Hold GLO and press note key 4 again",
+      "expect": [
+        {
+          "kind": "text_absent",
+          "value": "SOL"
+        },
+        {
+          "assert": "louder",
+          "kind": "audio"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "unsolo-voice-1",
+      "inputs": [
+        {
+          "button": "GLO",
+          "note": "G#3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Bring the others back"
+    },
+    {
+      "caption": "PLAY again stops it; each voice's release rings on.",
+      "control": "Press PLAY",
+      "expect": [
+        {
+          "assert": "silent",
+          "kind": "audio"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "stop",
+      "inputs": [
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 1200,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Stop the song"
+    },
+    {
+      "caption": "HOME goes back one view.",
+      "control": "Press HOME",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "live"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "back",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        }
+      ],
+      "needs": [],
+      "title": "Back to LIVE"
+    }
+  ],
+  "title": "Mute and solo while a song plays"
+}

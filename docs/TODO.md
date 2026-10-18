@@ -31,6 +31,13 @@ Follow-ups that aren't tied to a milestone task yet.
 
 ## A UX pass: make SIDOU a joy to use (after the features)
 
+- **The harness for it is built:** `cargo run --release -p ergo` (host/crates/ergo,
+  [TESTING.md](../TESTING.md#the-ergonomics-harness-ergo)) measures readability (text scale,
+  glyph size in mm, contrast), knob and encoder feel (steps in cents, dB and %, dead zones,
+  curves), effort per common task, feedback speed, consistency across views and the player's
+  journeys, and writes a report with a stable id for every finding. Run it before and after each
+  UX change, with `--baseline`, and use its findings as this pass's starting list.
+
 - **Where:** every view, `docs/reference/controls.md`, the design doc's UI section.
 - **Problem:** the features are built control by control; nobody has yet looked at the whole
   as a player would. Gestures have piled up (EDIT layer, SAVE held, HOME held, menus, CHIP

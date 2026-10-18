@@ -28,6 +28,7 @@ lists the prerequisites.
 | Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
 | Emulator tests (gates incl. effects, boot, live instrument, screen, MIDI, latency, SRAM audio, package, flash budget) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
 | Flash timing spike (a test firmware, M2a Task 3b) | build it with `-DSIDOU_FLASH_SPIKE=ON` into `build/fm1-spike` (BUILDING.md), then `SIDOU_FM1_BUILD=$PWD/../build/fm1 SIDOU_FM1_SPIKE_BUILD=$PWD/../build/fm1-spike cargo test --release -p emu-gate --test flash_spike -- --nocapture`; its bounds `cargo test --release -p sidou-pack --test flash_spike_guard` | `crates/emu-gate/tests/flash_spike.rs`, `crates/sidou-pack/tests/flash_spike_guard.rs` |
+| Ergonomics harness (readability, knob feel, effort per task, feedback speed, consistency, journeys; a report for review, not a gate) | `cargo run --release -p ergo -- --out ../build/ergo` (needs the fm1 build); its unit tests run with the workspace | `crates/ergo/`, [the section below](#the-ergonomics-harness-ergo) |
 | Browser demo smoke test (from the repository root) | `tools/web-demo --check` | `web/check.mjs`, `web/check.sh` |
 
 Use `--release` for the tests. The C code is optimised either way (the test
@@ -1288,6 +1289,107 @@ its browser into `build/web-check/` on first use). It fails when:
 It saves a screenshot with the note held to
 `build/web-check/screenshot.png` (`SIDOU_WEB_SCREENSHOT` overrides). The
 Pages workflow runs it before every deploy.
+
+## The ergonomics harness (`ergo`)
+
+`host/crates/ergo` drives the firmware in fm1-emu the way a player does, scores it against
+explicit ergonomic rules, and writes a report for the user to review. It is not a pass/fail
+gate: the emu-gate tests stay separate, and the long run is the binary, never `cargo test`.
+It reuses emu-gate's helpers (`tests/common/mod.rs`, included by path) for booting, keys,
+encoders and the pot, and reads the screen from the firmware's own cell grid and the live
+instrument from its RAM. It never opens, enumerates or sends to a USB or MIDI device.
+
+```
+cd host
+cargo run --release -p ergo -- --out ../build/ergo                    # everything (a few minutes)
+cargo run --release -p ergo -- --out ../build/ergo --baseline ../build/ergo-old/metrics.json
+cargo run --release -p ergo -- --only readability,journeys            # some checks
+cargo run --release -p ergo -- --only knobs --knob K1.live            # one sweep
+cargo run --release -p ergo -- --capture full --journey jam --out ../build/ergo   # a capture
+cargo run --release -p ergo -- --print-config                         # the thresholds
+```
+
+The fm1 build is `$SIDOU_FM1_BUILD`, else `--build`, else `../build/fm1`. Output, under `--out`:
+`report.html` (one self-contained page: the summary first, then the findings, the journey
+strips, the tables), `findings.json` (every finding with a stable id, for a review to record
+accept or reject per id), `journeys.json` (each journey's steps, screenshot and clip paths and
+metrics, for an automatic review), `metrics.json` (the numbers `--baseline` compares), and
+the screenshots and clips themselves (`journeys/`, `knobs/`, `defaults/`).
+
+### What is measured, and the rules
+
+Every threshold lives in `crates/ergo/src/config.rs` with its source (psychophysics, a standard,
+or judgement) and can be overridden with `--config FILE` (`key = value` lines). A finding's
+severity is high, medium, low or info.
+
+| Check | Measured | Rule |
+|---|---|---|
+| Readability (`READ.size.<view>`, `READ.contrast.<view>`) | each text on each captured screen: its scale (1x, 2x, 3x) from the grid's cell codes, its physical glyph height at 23.4 mm per 240 px (8 px x scale x 0.0975 mm), its colour pair's WCAG contrast from the 16-colour palette | text read while playing (values, notes, names) is at least 1.5 mm (2x); contrast at least 4.5:1 at 1x and 3:1 at 2x and larger. Which text is "read while playing" is the table `tables/readability.txt` (per view, by content: notes, values, names), editable, and it adapts to a redesign because it reads the grid, not coordinates |
+| Knob feel (`KNOB.<rule>.<control>.<view>`) | each of K1-K4 (LIVE page, EDIT held, CHIP), MASTER and the CHIP profile encoder swept end to end a detent at a time: the parameter read from the live instrument, the detent count, the step in cents (cutoff, from the firmware's own cutoff curve), dB (level) or % (others), and the spectral centroid and RMS of a held note rendered after each step | `range`: a cutoff sweep covers 3 octaves or more; `audible`: the whole travel changes brightness by 600 cents or level by 3 dB; `dead`: no 4 detents leave both brightness (5%) and level (1 dB) unchanged; `fine`: a step is above its just-noticeable difference; `jump`: no step above its limit; `mono`: monotonic; `uneven`: step spread under 0.5; `detents`: 8 to 64 detents end to end |
+| Effort per task (`TASK.*`) | the journeys' steps tagged `task NAME`: presses, holds, turns and detents, menu levels (views pushed on the stack, a title card not counted), frames, forced waiting | at most 3 actions and 1 menu level (`task_max_actions`, `task_max_menu_levels`); a task that cannot be done is `TASK.missing` |
+| Feedback speed (`FEED.*`) | milliseconds from an input to the first changed pixel and to the value popup, over four phases of the 40 ms frame | the screen answers within 100 ms, the popup within 200 ms |
+| Consistency (`CONS.*`) | each of K1-K4, SELECT, ALGORITHM and HOME tried in LIVE, the menu, CHIP, TRACKER, SCENE, STATUS, MIDI and About: did the screen, a parameter or the view change | K1-K4 change a parameter, SELECT moves a focus or cursor (and no parameter), ALGORITHM steps a choice, HOME goes back; a control that does nothing is an exception, listed and compared with `docs/reference/controls.md` (`DOCUMENTED_INERT` in `consistency.rs`); drift between the two is a finding |
+| Journeys (`JOUR.*`, `SAFE.*`) | the table `tables/journeys.txt`: pick up and jam, sketch a loop, build a song, perform, keep what you made, explore; per journey the time and actions to the first sound and first loop, mode switches, menu trips, dead ends, steps that take both hands off the keys or leave a note unable to sound, forced waiting | a step the firmware cannot do yet is recorded `not yet possible` (`JOUR.nyp`), not failed; an expectation that does not hold is a dead end (`JOUR.dead`); two hands off the keys is `JOUR.hands`; a step that overwrites edits unasked is `SAFE.destructive`; no undo is `SAFE.undo` |
+| Musical defaults (`MUS.*`) | each factory preset's held note (F3 and A4), rendered: RMS, peak, clipped samples, DC, centroid | audible, between -30 and -8 dBFS RMS, no clipping, DC under 0.5%, centroid 150 to 5,000 Hz |
+
+### Editing the tables
+
+`crates/ergo/tables/journeys.txt` is the journeys table (its header documents the grammar:
+one line a step with actions, a caption and flags). Add a journey or a step and run again;
+`--journeys FILE` runs another table. Steps tagged `task NAME` are the common tasks for the
+effort check, and the same journeys are the screens for readability. A step names a feature it
+`needs` (`theme undo help order_view instr_view pattern_edit new_song song_save`): features are
+detected from the firmware (strings, symbols, and for `pattern_edit` a probe of REC in TRACKER),
+so a step that main cannot do yet is recorded as not yet possible and starts to run when the
+feature lands, with no edit. `tables/readability.txt` classifies the text (see its header).
+
+### Recipes: journeys as executable how-tos
+
+A journey is also a **recipe**: a goal, a starting state, skills taught, related recipes, and
+steps that each carry the physical control in panel terms, a caption and the outcome the harness
+checks (a view, text on the screen, a parameter in a range, sounding or silent, brighter or
+darker, a level). `tables/recipes.txt` holds the example recipes (first sound, shape a sound
+with K1 to K4, mute and solo while a song plays); `--export-recipes ../docs/recipes` writes them
+as JSON, one file each, in the schema of [docs/reference/recipe-schema.md](docs/reference/recipe-schema.md);
+`--check-recipes ../docs/recipes` runs every JSON recipe in fm1-emu and exits 1 when one no
+longer runs (a step the firmware cannot do) or no longer meets its expectations, naming the
+step. `crates/ergo/tests/recipes.rs` checks without the emulator that the committed JSON parses,
+lints and is what the table exports, and with `SIDOU_FM1_BUILD` that every recipe passes.
+
+### Baselines
+
+Each run writes `metrics.json`. `--baseline OLD/metrics.json` lists every metric that got worse
+(by more than 5%), every new finding and every finding whose severity rose, in the report and on
+the console; `--fail-on-regression` makes that the exit status.
+
+### Reusing captures for the manual and for videos
+
+`--capture full --journey ID` writes `OUT/capture/ID/`:
+
+- `frames/00001.png`, ...: every LCD frame at the UI's 25 fps (one every 40 ms of emulated
+  time), 240 x 240, 4-bit indexed in the art palette;
+- `audio.wav`: the whole journey's audio, 16-bit stereo at 44,118 Hz;
+- `frames.json`: the sidecar: `fps`, each frame's file and `ms` from the first frame, the audio's
+  `offset_ms` (the audio's first sample against the first frame, within one audio block of
+  2.9 ms) and the step `captions` with their `ms`.
+
+Captions come from the journeys table (the third field of a step): they are the manual's and the
+subtitles' text. Nothing reads a clock or a random number, so the same build and the same journey
+give the same bytes; the capture changes only when the UI or the sound does
+(`tests/capture.rs` runs a short journey twice and compares every byte).
+
+The video encoding is not built in; with ffmpeg the capture is:
+
+```
+cd build/ergo/capture/jam
+ffmpeg -framerate 25 -i frames/%05d.png -itsoffset OFFSET_MS/1000 -i audio.wav \
+  -vf "scale=960:960:flags=neighbor,format=yuv420p" -c:v libx264 -crf 16 \
+  -c:a aac -b:a 160k -shortest jam.mp4
+```
+
+`flags=neighbor` keeps the pixels square at a whole multiple (4x). Take `OFFSET_MS` from
+`frames.json` (`audio.offset_ms`; leave `-itsoffset` out when it is 0). The captions become
+subtitles with a few lines of `jq` on `captions[]` (each runs until the next one starts).
 
 ## Sanitizers
 

@@ -1,0 +1,248 @@
+{
+  "goal": "Open and close the filter, add resonance and change the sound while a note holds.",
+  "id": "shape-a-sound",
+  "prerequisites": {
+    "start": "live",
+    "text": "On LIVE after the boot, with the first preset (SAW LEAD) playing."
+  },
+  "related": [
+    "first-sound",
+    "mute-and-solo"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "K1 cutoff",
+    "K2 resonance",
+    "K4 preset",
+    "holding a note while turning"
+  ],
+  "steps": [
+    {
+      "caption": "Hold a key down and keep holding it while you turn the knobs.",
+      "control": "Hold the note key A (the lower one) down",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "hold-a-note",
+      "inputs": [
+        {
+          "note": "A3",
+          "op": "down"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Hold a note"
+    },
+    {
+      "caption": "Turn K1 counter-clockwise about a third of a turn: the sound darkens.",
+      "control": "Turn K1 counter-clockwise about a third of a turn",
+      "expect": [
+        {
+          "assert": "darker",
+          "kind": "audio"
+        },
+        {
+          "kind": "popup"
+        },
+        {
+          "kind": "param",
+          "max": 1100,
+          "min": 0,
+          "name": "cutoff"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "close-the-filter",
+      "inputs": [
+        {
+          "detents": -60,
+          "encoder": "K1",
+          "op": "turn"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Close the filter"
+    },
+    {
+      "caption": "Turn K1 clockwise a full turn: the sound brightens.",
+      "control": "Turn K1 clockwise about a full turn",
+      "expect": [
+        {
+          "assert": "brighter",
+          "kind": "audio"
+        },
+        {
+          "kind": "param",
+          "max": 2047,
+          "min": 1100,
+          "name": "cutoff"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "open-the-filter",
+      "inputs": [
+        {
+          "detents": 100,
+          "encoder": "K1",
+          "op": "turn"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Open the filter"
+    },
+    {
+      "caption": "Turn K2 clockwise: the filter rings at its cutoff.",
+      "control": "Turn K2 clockwise about a quarter turn",
+      "expect": [
+        {
+          "kind": "popup"
+        },
+        {
+          "kind": "param",
+          "max": 15,
+          "min": 10,
+          "name": "resonance"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "add-resonance",
+      "inputs": [
+        {
+          "detents": 6,
+          "encoder": "K2",
+          "op": "turn"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Add resonance"
+    },
+    {
+      "caption": "Turn K4 one click: the next preset, PWM BASS.",
+      "control": "Turn K4 one click clockwise",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "PWM BASS"
+        },
+        {
+          "kind": "param",
+          "max": 1,
+          "min": 1,
+          "name": "preset"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "next-sound",
+      "inputs": [
+        {
+          "detents": 1,
+          "encoder": "K4",
+          "op": "turn"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Pick another sound"
+    },
+    {
+      "caption": "Let go of the key: the sound ends.",
+      "control": "Let go of the note key",
+      "expect": [
+        {
+          "assert": "silent",
+          "kind": "audio"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "let-go",
+      "inputs": [
+        {
+          "note": "A3",
+          "op": "up"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Let go"
+    }
+  ],
+  "title": "Shape a sound with K1 to K4"
+}

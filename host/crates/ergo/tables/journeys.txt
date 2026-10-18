@@ -1,0 +1,171 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The ergonomics harness's journeys: what a player does, step by step, in fm1-emu. Edit this
+# file (or pass another with --journeys FILE) to add or change a journey; nothing else needs
+# touching. The same table gives the "common tasks" for the effort and consistency checks.
+#
+#   journey ID | title [| tour] [| poweron]
+#                              a journey, starting on LIVE after the boot, or at power-on
+#                              with `poweron`; `tour` only visits screens (readability)
+#   goal / prereq / skills / related   the recipe header, lines under `journey`
+#                                       (skills and related: `;`-separated)
+#   step ID | label | caption | actions [| flags]
+#
+#   caption   text for the manual and video subtitles, or - for none
+#   actions   `;`-separated, run in order:
+#               boot                      wait for the boot to end by itself
+#               press BTN                 a button pressed and released
+#               hold BTN MS               a button held
+#               turn ENC N                an encoder, N detents (negative: counter-clockwise)
+#               holdturn BTN ENC N        a button held while an encoder turns (two hands)
+#               holdkey BTN NOTE          a button held while a note key is pressed (GLO + key)
+#               note NOTE [NOTE..] MS     keys held together (F3..G5, C4 = middle C)
+#               down NOTE / up NOTE       a key held down / let go (to play while turning)
+#               select-item TEXT          the menu's selection onto the line showing TEXT (one turn)
+#               midi HEX..  cc N V  pc N  bytes into the TRS jack
+#               pot V                     the MASTER pot, 0..1023
+#               clock BPM MS [start]      MIDI clock for MS ms, after a start if given
+#               wait MS                   do nothing (counts as forced waiting)
+#               powercycle                switch off and on again over the same flash
+#   flags     `;`-separated:
+#               view V | sound | silent | change | popup | toast | text T | recalled
+#                                         what must hold when the step is done (else a dead end)
+#               needs F                   a feature (theme undo help order_view instr_view
+#                                         pattern_edit new_song song_save); missing: the step is
+#                                         recorded "not yet possible" instead of failing
+#               clip MS                   keep the audio around the step (+ MS after) as a clip
+#               probe                     afterwards press a note: can one still sound?
+#               task NAME                 the step belongs to a common task (consecutive steps
+#                                         with one NAME are one task: its actions, menu levels
+#                                         and frames are scored against the effort limit)
+#               milestone first_loop      the step is where the first loop plays
+#               destructive               the step may overwrite work: is it confirmed?
+#               remember                  keep the parameters (for `recalled` later)
+#               defaults                  judge the audio as a musical default
+#               do TEXT                   the control in panel terms (else made from the actions)
+#               value NAME MIN MAX | absent TEXT | brighter | darker | louder | quieter
+#               level MIN MAX         more outcomes: a parameter in a range, text absent, the sound
+#                                     against the 400 ms before the step, the last 400 ms's dBFS
+# View names are the firmware's view tables: live menu chip tracker status scene about charset
+# midi learn.
+
+journey jam | Pick up and jam | poweron
+  goal Go from switched off to a played, shaped sound.
+  prereq The FM-1 running SIDOU, just switched on.
+  skills playing; shaping with K1-K4; presets; volume; octave
+  related sketch; perform; explore
+  step note-at-power-on | Press a key straight after power-on | Press a key: it sounds | note A4 600 | sound; clip 400; probe; milestone first_sound; defaults
+  step boot-settles | Let the boot end | - | wait 2500 | view live
+  step chord | Play a chord | Play a chord | note C4 E4 G4 700 | sound; clip 300
+  step shape-cutoff | Turn K1 while holding a note | Turn K1 to open and close the filter | down A3; turn K1 -24; turn K1 24; up A3 | popup; clip 300
+  step shape-resonance | Turn K2 | Turn K2 for resonance | down A3; turn K2 8; turn K2 -8; up A3 | popup; clip 300
+  step shape-pulse | Turn K3 | Turn K3 for pulse width | down A3; turn K3 16; turn K3 -16; up A3 | popup; clip 300
+  step next-preset | Turn K4 to the next sound | Turn K4 to change the sound | turn K4 1; note A3 600 | popup; sound; clip 300; task change preset; destructive; defaults
+  step master | Turn MASTER down | MASTER sets the volume | down A3; pot 300; pot 1000; up A3 | popup; clip 300
+  step octave | Octave up | OCT+ steps the octave | press OCT+ | toast; task change octave
+
+journey sketch | Sketch a loop
+  goal Open the song views, enter notes, hear a loop and tweak it while it plays.
+  prereq On LIVE after the boot.
+  skills song views; audition; REC; PLAY; tweaking while playing
+  related jam; build
+  step open-song | Open the song views | SEQ opens the tracker | press SEQ | view tracker; task open TRACKER
+  step audition | Audition the instrument | Play the keys: they audition the song's instrument | note A4 400 | sound; clip 300
+  step enter-notes | Record notes into a pattern | Press REC and play notes into the pattern | press REC; note A4 300; note C5 300; press REC | needs pattern_edit; change
+  step play-loop | Hear it loop | PLAY starts the song | press PLAY; wait 1200 | sound; clip 1200; milestone first_loop; task play a song
+  step tweak | Tweak while it plays | Turn K1 while it plays | turn K1 -16; turn K1 16 | popup; sound; clip 400
+  step stop | Stop | PLAY again stops it | press PLAY; wait 600 | silent; task stop a song
+  step back | Go back to LIVE | HOME goes back | press HOME | view live; task get back to LIVE
+
+journey build | Build a song
+  goal Arrange loops into a song, change an instrument and save it.
+  prereq On LIVE after the boot.
+  skills order list; instruments; saving a song
+  related sketch; keep
+  step open-song | Open the song views | SEQ opens the tracker | press SEQ | view tracker
+  step to-order | Step to the order list | SEQ steps to the next song view | press SEQ | needs order_view; change
+  step arrange | Put a pattern in the arrangement | Turn to choose the pattern | turn ALGORITHM 1 | needs order_view; change
+  step to-instr | Step to the instrument | SEQ steps to the instrument view | press SEQ | needs instr_view; change
+  step edit-instr | Change the instrument | Turn a knob to change the instrument | turn K1 8 | needs instr_view; change
+  step save-song | Save the song | SAVE keeps the song | press SAVE | needs song_save; toast
+  step back | Back to LIVE | HOME goes back | press HOME | view live
+
+journey perform | Perform
+  goal Play along with a MIDI clock, switch sounds, mute and solo live.
+  prereq On LIVE after the boot; a sequencer on the TRS jack.
+  skills MIDI clock; program change; GLO mutes and solos; MIDI learn
+  related jam; sketch
+  step clock-start | Follow the MIDI clock | Start the clock from a sequencer | clock 120 1500 start | sound; clip 1500; probe
+  step program-change | Switch sound by program change | A program change picks the sound | pc 2; wait 300 | text SYNC; clip 300
+  step panel-preset | Switch sound from the panel | K4 picks the sound | turn K4 -2 | popup; task change preset
+  step mute-voice-2 | Mute voice 2 | Hold GLO and press key 2 | holdkey GLO F#3 | text M2; task mute voice 2; probe
+  step unmute-voice-2 | Let voice 2 sound again | Again to unmute | holdkey GLO F#3 | -; task unmute voice 2
+  step solo-voice-1 | Solo voice 1 | Hold GLO and press key 4 | holdkey GLO G#3 | text S1; task solo voice 1; probe
+  step unsolo-voice-1 | Unsolo voice 1 | Again to unsolo | holdkey GLO G#3 | -; task unsolo voice 1
+  step learn-cc | Learn a CC for K1 | Hold SAVE and turn K1, then move a controller | holdturn SAVE K1 1; cc 21 64 | text LEARNED; task learn a CC
+  step stop-clock | The clock stops | - | wait 800 | -
+
+journey keep | Keep what you made
+  goal Save, switch off and recall; start fresh; recover from a mistake.
+  prereq On LIVE after the boot.
+  skills SAVE; recalling settings; undo; themes
+  related build
+  step shape | Shape a sound | Turn K1 | turn K1 -20 | popup; remember
+  step save | Save settings | SAVE keeps your settings | press SAVE; wait 400 | toast; task save settings
+  step recall | Switch off and on again | Your sound is still there after power-off | powercycle | recalled
+  step fresh | Start a new song | A new, empty song | press SEQ | needs new_song; change
+  step undo | Undo a mistake | Undo | press ARP | needs undo; change
+  step theme | Change the theme | Choose a theme | press HOME; select-item THEME; turn ALGORITHM 1 | needs theme; change; task change THEME
+
+journey explore | Explore the chip, the effects and the scene
+  goal Try the chip profiles, the character controls, the effects and the SCENE pieces.
+  prereq On LIVE after the boot.
+  skills CHIP view; profiles; effect slots; EDIT shortcut; SCENE
+  related jam
+  step open-chip | Open CHIP from LIVE | HOME, then ALGORITHM on CHIP | press HOME; turn ALGORITHM 1 | -; task open CHIP and change the profile
+  step chip-wait | Wait out THE CHIP's title card | - | wait 2800 | view chip; task open CHIP and change the profile
+  step chip-profile | Pick the next profile | ALGORITHM steps the profile | turn ALGORITHM 1; note A3 500 | text PROFILE; sound; clip 300; task open CHIP and change the profile
+  step chip-age | Turn the chip's age | K1 turns AGE here | down A3; turn K1 40; up A3 | popup; clip 600
+  step chip-dist | Pick DIST's algorithm on CHIP | SELECT to DIST, ALGORITHM to step | turn SELECT 1; turn ALGORITHM 1; note A3 500 | sound; clip 300; task change DIST algorithm (from CHIP)
+  step chip-back | Back to LIVE | HOME twice | press HOME; press HOME; wait 2800 | view live; task get back to LIVE (from CHIP)
+  step dist-shortcut | DIST's algorithm with ENV | ENV steps the effect | press ENV; note A3 500 | toast; sound; clip 300; task change DIST algorithm
+  step drive | Set DIST's drive with EDIT | Hold EDIT and turn K1 | down A3; holdturn EDIT K1 20; up A3 | popup; clip 300
+  step scene | Open SCENE | Pick SCENE in the menu | press HOME; select-item SCENE; turn ALGORITHM 1; wait 2800 | view scene
+  step scene-next | Next piece | SELECT picks the next piece | turn SELECT 1; wait 700; note A4 400 | toast; clip 300
+  step scene-home | Back from SCENE | HOME | press HOME; press HOME; wait 2800 | view live
+
+journey tour | Screens for the readability check | tour
+  step live-idle | LIVE at rest | - | wait 100 | view live
+  step live-chord | LIVE with a chord | - | down C4; down E4; down G4; wait 500 | sound
+  step live-popup | LIVE with a popup | - | turn K1 -6 | popup
+  step live-release | Release | - | up C4; up E4; up G4; wait 200 | -
+  step live-toast | LIVE with a toast | - | press OCT+ | toast
+  step live-octave-back | Octave back | - | press OCT-; wait 1700 | -
+  step menu | The menu | - | press HOME | view menu
+  step menu-scrolled | The menu scrolled | - | turn SELECT 8 | change
+  step status | STATUS | - | select-item STATUS; turn ALGORITHM 1; wait 800 | view status
+  step status-home | Back to the menu | - | press HOME | view menu
+  step charset | The glyph sheet | - | select-item CHARSET; turn ALGORITHM 1; wait 800 | view charset
+  step charset-home | Back | - | press HOME | view menu
+  step about | About | - | select-item ABOUT; turn ALGORITHM 1; wait 1500 | view about
+  step about-home | Back | - | press HOME | view menu
+  step midi-page | The MIDI page | - | select-item MIDI; turn ALGORITHM 1; wait 800 | view midi
+  step midi-home | Back | - | press HOME | view menu
+  step chip | CHIP | - | select-item CHIP; turn ALGORITHM 1; wait 3000 | view chip
+  step chip-chipfocus | CHIP, chip focus | - | turn SELECT 1 | change
+  step chip-popup | CHIP profile popup | - | turn ALGORITHM 1 | popup
+  step chip-dist | CHIP, DIST focus | - | wait 1200; turn SELECT 1 | change
+  step chip-dist-algo | CHIP, DIST algorithm | - | turn ALGORITHM 2 | change
+  step chip-tab-b | CHIP, tab B | - | turn SELECT -2; turn ALGORITHM 1; wait 400 | change
+  step chip-home | Back to the menu | - | press HOME | view menu
+  step scene | SCENE | - | select-item SCENE; turn ALGORITHM 1; wait 3000 | view scene
+  step scene-toast | SCENE piece named | - | turn SELECT 1 | toast
+  step scene-home | Back | - | press HOME; wait 200 | view menu
+  step live-again | LIVE | - | press HOME; wait 3000 | view live
+  step tracker | TRACKER | - | press SEQ | view tracker
+  step tracker-play | TRACKER playing | - | press PLAY; wait 900 | sound
+  step tracker-popup | TRACKER with a popup | - | turn K1 3 | popup
+  step tracker-stop | TRACKER stopped | - | press PLAY; wait 500 | -
+  step learn | MIDI learn frame | - | holdturn SAVE K1 1 | view learn
+  step learn-cancel | Cancel | - | press HOME | view tracker

@@ -1,0 +1,163 @@
+{
+  "goal": "Make the synth sound the moment it is switched on.",
+  "id": "first-sound",
+  "prerequisites": {
+    "start": "power-on",
+    "text": "The FM-1 running SIDOU, just switched on; nothing else plugged in but headphones or speakers."
+  },
+  "related": [
+    "shape-a-sound",
+    "mute-and-solo"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "playing the keys",
+    "skipping the boot",
+    "reading LIVE's header"
+  ],
+  "steps": [
+    {
+      "caption": "Press any note key. It sounds at once, and the boot gives way to LIVE.",
+      "control": "Press the note key marked A (the middle of the keys)",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        },
+        {
+          "kind": "audio_level",
+          "max_dbfs": -8.0,
+          "min_dbfs": -45.0
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "press-a-key",
+      "inputs": [
+        {
+          "ms": 600,
+          "notes": [
+            "A4"
+          ],
+          "op": "note"
+        }
+      ],
+      "needs": [],
+      "title": "Press a key"
+    },
+    {
+      "caption": "LIVE shows the chip, the sound and the octave in its top line.",
+      "control": "Wait a moment: the title card ends by itself",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "live"
+        },
+        {
+          "kind": "text",
+          "value": "SAW LEAD"
+        },
+        {
+          "kind": "text",
+          "value": "OCT+0"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "boot-ends",
+      "inputs": [
+        {
+          "ms": 2500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Let the title end"
+    },
+    {
+      "caption": "Hold three keys together: SIDOU has three voices.",
+      "control": "Press three keys at once",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "play-a-chord",
+      "inputs": [
+        {
+          "ms": 700,
+          "notes": [
+            "C4",
+            "E4",
+            "G4"
+          ],
+          "op": "note"
+        }
+      ],
+      "needs": [],
+      "title": "Play a chord"
+    },
+    {
+      "caption": "OCT+ shifts every key up an octave, and says so.",
+      "control": "Press OCT+",
+      "expect": [
+        {
+          "kind": "toast"
+        },
+        {
+          "kind": "text",
+          "value": "OCTAVE"
+        },
+        {
+          "kind": "param",
+          "max": 1,
+          "min": 1,
+          "name": "octave"
+        }
+      ],
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "octave-up",
+      "inputs": [
+        {
+          "button": "OCT+",
+          "op": "press"
+        }
+      ],
+      "needs": [],
+      "title": "Move up an octave"
+    }
+  ],
+  "title": "First sound"
+}

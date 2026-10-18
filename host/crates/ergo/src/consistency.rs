@@ -1,0 +1,332 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! Consistency: does each physical control mean the same kind of thing in every view? K1-K4
+//! are a parameter row, SELECT moves a focus or a cursor, ALGORITHM steps a choice, HOME goes
+//! back. Each control is tried in each view and what it did is measured; the exceptions that
+//! docs/reference/controls.md documents are marked as such, anything else is a finding.
+
+use std::collections::BTreeMap;
+use std::path::Path;
+
+use serde_json::{json, Value};
+
+use crate::device::{panel, Dev};
+use crate::findings::{Finding, Sev};
+use crate::journeys::{run_script, view_depth};
+
+/// The views and how to get to each from LIVE (journeys.txt actions).
+pub const VIEWS: &[(&str, &str)] = &[
+    ("live", ""),
+    ("menu", "press HOME; wait 900"),
+    ("chip", "press HOME; turn ALGORITHM 1; wait 3000"),
+    ("tracker", "press SEQ"),
+    (
+        "scene",
+        "press HOME; select-item SCENE; turn ALGORITHM 1; wait 3000",
+    ),
+    (
+        "status",
+        "press HOME; select-item STATUS; turn ALGORITHM 1; wait 900",
+    ),
+    (
+        "midi",
+        "press HOME; select-item MIDI; turn ALGORITHM 1; wait 900",
+    ),
+    (
+        "about",
+        "press HOME; select-item ABOUT; turn ALGORITHM 1; wait 1500",
+    ),
+];
+
+pub const CONTROLS: [(&str, u8); 7] = [
+    ("K1", panel::K1),
+    ("K2", panel::K2),
+    ("K3", panel::K3),
+    ("K4", panel::K4),
+    ("SELECT", panel::SELECT),
+    ("ALGORITHM", panel::ALGORITHM),
+    ("HOME", panel::HOME),
+];
+
+/// What docs/reference/controls.md says does nothing: (view, control). Everything else is
+/// documented to act. Views missing from the doc's lists are marked `?` and not compared.
+pub const DOCUMENTED_INERT: &[(&str, &str)] = &[
+    ("live", "SELECT"),
+    ("live", "ALGORITHM"),
+    ("tracker", "SELECT"),
+    ("tracker", "ALGORITHM"),
+    ("status", "SELECT"),
+    ("status", "ALGORITHM"),
+    ("about", "SELECT"),
+    ("about", "ALGORITHM"),
+    ("scene", "ALGORITHM"),
+];
+
+/// What one control did in one view.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Effect {
+    pub screen: bool,
+    pub params: Vec<String>,
+    pub view_changed: bool,
+    pub depth_delta: i32,
+    pub popup: bool,
+}
+
+impl Effect {
+    pub fn acts(&self) -> bool {
+        self.screen || !self.params.is_empty() || self.view_changed
+    }
+}
+
+/// The panel after `setup` and a control used (`input`: None leaves it alone), 1.2 s later.
+fn after(build: &Path, setup: &str, control: u8, dir: Option<i32>) -> (Vec<u16>, Effect, bool) {
+    let mut d = Dev::boot(build);
+    run_script(&mut d, setup);
+    d.settle();
+    let view0 = d.view();
+    let depth0 = i32::from(view_depth(&view0, d.depth()));
+    let fb0 = d.m.soc.lcd.fb.clone();
+    let p0 = d.params();
+    let mut popup = false;
+    match dir {
+        Some(n) if control == panel::HOME => {
+            let _ = n;
+            d.key_down(control);
+            d.run(30);
+            d.key_up(control);
+        }
+        Some(n) => d.m.turn(control, n),
+        None => {}
+    }
+    for _ in 0..30 {
+        d.run(40);
+        popup |= d.popup_rows() > 0;
+    }
+    let view1 = d.view();
+    let changed = d.m.soc.lcd.fb != fb0;
+    let e = Effect {
+        screen: changed,
+        params: p0.diff(&d.params()),
+        view_changed: view1 != view0,
+        depth_delta: i32::from(view_depth(&view1, d.depth())) - depth0,
+        popup,
+    };
+    (d.m.soc.lcd.fb.clone(), e, changed)
+}
+
+/// What a control does in the view `setup` reaches. A view that animates by itself (About) is
+/// compared with the same run left alone, so only what the control caused counts; a control
+/// at the end of its range is tried the other way as well.
+pub fn try_control(build: &Path, setup: &str, control: u8) -> Effect {
+    let (idle_fb, _, animates) = after(build, setup, control, None);
+    let mut best = Effect::default();
+    for dir in [1, -1] {
+        let (fb, mut e, _) = after(build, setup, control, Some(dir));
+        if animates {
+            e.screen = fb != idle_fb;
+        }
+        if e.acts() {
+            return e;
+        }
+        best = e;
+        if control == panel::HOME {
+            break;
+        }
+    }
+    best
+}
+
+/// The kind of thing a control is expected to do.
+pub fn kind_ok(control: &str, e: &Effect) -> Result<(), String> {
+    match control {
+        "K1" | "K2" | "K3" | "K4" if !e.params.is_empty() => Ok(()),
+        "K1" | "K2" | "K3" | "K4" => Err("changed no parameter".into()),
+        "SELECT" if !e.params.is_empty() => {
+            Err(format!("changed a parameter ({})", e.params.join(", ")))
+        }
+        "SELECT" => Ok(()),
+        "ALGORITHM" => Ok(()),
+        "HOME" if e.depth_delta < 0 || e.view_changed => Ok(()),
+        "HOME" => Err("did not go back or open the menu".into()),
+        _ => Ok(()),
+    }
+}
+
+pub struct ConsistencyResult {
+    pub findings: Vec<Finding>,
+    pub matrix: Vec<Value>,
+}
+
+pub fn analyse(effects: &BTreeMap<(String, String), Effect>) -> ConsistencyResult {
+    let mut findings: Vec<Finding> = Vec::new();
+    let mut matrix = Vec::new();
+    let mut inert: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for ((view, control), e) in effects {
+        let documented_inert = DOCUMENTED_INERT.contains(&(view.as_str(), control.as_str()));
+        matrix.push(json!({
+            "view": view, "control": control, "acts": e.acts(), "screen": e.screen,
+            "params": e.params, "view_changed": e.view_changed, "popup": e.popup,
+            "documented_inert": documented_inert,
+        }));
+        if !e.acts() {
+            if documented_inert {
+                inert
+                    .entry(control_static(control))
+                    .or_default()
+                    .push(view_static(view));
+            } else {
+                findings.push(
+                    finding(
+                        format!("CONS.drift.{view}.{}", crate::slug(control)),
+                        Sev::Medium,
+                        format!("{control} does nothing in {view}, and controls.md says it acts"),
+                        "A control does what docs/reference/controls.md says in every view.",
+                    )
+                    .numbers(json!({"view": view, "control": control})),
+                );
+            }
+        } else if documented_inert {
+            findings.push(
+                finding(
+                    format!("CONS.drift.{view}.{}", crate::slug(control)),
+                    Sev::Low,
+                    format!("{control} acts in {view}, and controls.md says it does nothing"),
+                    "A control does what docs/reference/controls.md says in every view.",
+                )
+                .numbers(json!({"view": view, "control": control, "params": e.params})),
+            );
+        }
+        if e.acts() {
+            if let Err(why) = kind_ok(control, e) {
+                findings.push(
+                    finding(
+                        format!("CONS.kind.{view}.{}", crate::slug(control)),
+                        Sev::Medium,
+                        format!("{control} in {view} {why}"),
+                        "K1-K4 are a parameter row; SELECT moves a focus or cursor; ALGORITHM steps a choice; HOME goes back.",
+                    )
+                    .numbers(json!({"view": view, "control": control, "params": e.params, "depth_delta": e.depth_delta})),
+                );
+            }
+        }
+    }
+    for (control, views) in &inert {
+        findings.push(
+            finding(
+                format!("CONS.inert.{}", crate::slug(control)),
+                Sev::Low,
+                format!("{control} does nothing in {} of {} views ({})", views.len(), VIEWS.len(), views.join(", ")),
+                "The same physical control means the same kind of thing in every view: it acts, or the screen says it is idle. (controls.md documents these.)",
+            )
+            .detail("Documented in controls.md; the harness checks that the document and the firmware agree and lists the exception here.")
+            .numbers(json!({"views": views})),
+        );
+    }
+    // K1-K4's meaning across views: the parameter families they move.
+    let mut fam: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for ((view, control), e) in effects {
+        if control == "K1" && !e.params.is_empty() {
+            fam.entry(e.params.join("+"))
+                .or_default()
+                .push(view.clone());
+        }
+    }
+    if fam.len() > 1 {
+        findings.push(
+            finding(
+                "CONS.k-meaning",
+                Sev::Low,
+                format!("K1 moves {} different parameters depending on the view", fam.len()),
+                "K1-K4 are one parameter row; where the row changes, the screen says what each knob does now.",
+            )
+            .detail(
+                fam.iter()
+                    .map(|(p, v)| format!("{p}: {}", v.join(", ")))
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            )
+            .numbers(json!(fam)),
+        );
+    }
+    ConsistencyResult { findings, matrix }
+}
+
+fn control_static(s: &str) -> &'static str {
+    CONTROLS
+        .iter()
+        .find(|(n, _)| *n == s)
+        .map_or("?", |(n, _)| *n)
+}
+
+fn view_static(s: &str) -> &'static str {
+    VIEWS.iter().find(|(n, _)| *n == s).map_or("?", |(n, _)| *n)
+}
+
+pub fn run_all(build: &Path) -> ConsistencyResult {
+    let jobs: Vec<(&str, &str, &str, u8)> = VIEWS
+        .iter()
+        .flat_map(|(v, s)| CONTROLS.iter().map(move |(n, id)| (*v, *s, *n, *id)))
+        .collect();
+    let done = crate::par_map(&jobs, |(v, setup, n, id)| {
+        eprintln!("  consistency {v} {n}");
+        try_control(build, setup, *id)
+    });
+    let effects: BTreeMap<(String, String), Effect> = jobs
+        .iter()
+        .zip(done)
+        .map(|((v, _, n, _), e)| ((v.to_string(), n.to_string()), e))
+        .collect();
+    analyse(&effects)
+}
+
+fn finding(
+    id: impl Into<String>,
+    sev: Sev,
+    title: impl Into<String>,
+    rule: impl Into<String>,
+) -> Finding {
+    Finding::new(id, sev, "consistency", title, rule)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fx(screen: bool, params: &[&str], view_changed: bool, depth: i32) -> Effect {
+        Effect {
+            screen,
+            params: params.iter().map(|s| s.to_string()).collect(),
+            view_changed,
+            depth_delta: depth,
+            popup: false,
+        }
+    }
+
+    #[test]
+    fn kinds_are_checked_per_control() {
+        assert!(kind_ok("K1", &fx(true, &["cutoff"], false, 0)).is_ok());
+        assert!(kind_ok("K1", &fx(true, &[], false, 0)).is_err());
+        assert!(kind_ok("SELECT", &fx(true, &[], false, 0)).is_ok());
+        assert!(kind_ok("SELECT", &fx(true, &["cutoff"], false, 0)).is_err());
+        assert!(kind_ok("HOME", &fx(true, &[], true, 1)).is_ok());
+        assert!(kind_ok("HOME", &fx(true, &[], false, 0)).is_err());
+    }
+
+    #[test]
+    fn an_undocumented_dead_control_is_drift_and_a_documented_one_is_an_exception() {
+        let mut m = BTreeMap::new();
+        m.insert(
+            ("live".to_string(), "SELECT".to_string()),
+            fx(false, &[], false, 0),
+        );
+        m.insert(
+            ("menu".to_string(), "K1".to_string()),
+            fx(false, &[], false, 0),
+        );
+        let r = analyse(&m);
+        let ids: Vec<&str> = r.findings.iter().map(|f| f.id.as_str()).collect();
+        assert!(ids.contains(&"CONS.inert.select"), "{ids:?}");
+        assert!(ids.contains(&"CONS.drift.menu.k1"), "{ids:?}");
+        assert!(!ids.contains(&"CONS.drift.live.select"));
+    }
+}

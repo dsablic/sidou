@@ -1,0 +1,1050 @@
+{
+  "findings": {
+    "CONS.inert.algorithm": "low",
+    "CONS.inert.select": "low",
+    "CONS.k-meaning": "low",
+    "JOUR.hands.explore.drive": "medium",
+    "JOUR.hands.perform.learn-cc": "medium",
+    "JOUR.hands.perform.mute-voice-2": "medium",
+    "JOUR.hands.perform.solo-voice-1": "medium",
+    "JOUR.hands.perform.unmute-voice-2": "medium",
+    "JOUR.hands.perform.unsolo-voice-1": "medium",
+    "JOUR.nyp.build.arrange": "medium",
+    "JOUR.nyp.build.edit-instr": "medium",
+    "JOUR.nyp.build.save-song": "medium",
+    "JOUR.nyp.build.to-instr": "medium",
+    "JOUR.nyp.build.to-order": "medium",
+    "JOUR.nyp.keep.fresh": "medium",
+    "JOUR.nyp.keep.theme": "low",
+    "JOUR.nyp.keep.undo": "medium",
+    "JOUR.nyp.sketch.enter-notes": "medium",
+    "KNOB.dead.K1.edit": "medium",
+    "KNOB.dead.K2.edit": "medium",
+    "KNOB.dead.K3.edit": "medium",
+    "KNOB.detents.K1.live": "low",
+    "KNOB.detents.K3.live": "low",
+    "KNOB.fine.K1.live": "low",
+    "KNOB.fine.K3.live": "low",
+    "KNOB.fine.MASTER": "low",
+    "KNOB.jump.MASTER": "medium",
+    "KNOB.mono.K1.live": "high",
+    "KNOB.uneven.K1.live": "low",
+    "KNOB.uneven.MASTER": "low",
+    "MUS.bright.sync-lead.a4": "low",
+    "MUS.quiet.noise-perc.a4": "medium",
+    "MUS.quiet.noise-perc.f3": "medium",
+    "READ.contrast.chip": "high",
+    "READ.contrast.learn": "high",
+    "READ.contrast.live": "high",
+    "READ.contrast.menu": "high",
+    "READ.contrast.midi": "high",
+    "READ.contrast.scene": "low",
+    "READ.contrast.tracker": "high",
+    "READ.size.chip": "high",
+    "READ.size.learn": "high",
+    "READ.size.live": "high",
+    "READ.size.midi": "high",
+    "READ.size.tracker": "high",
+    "SAFE.destructive.jam.next-preset": "medium",
+    "SAFE.undo": "medium",
+    "TASK.effort.open-chip-and-change-the-profile.explore": "medium",
+    "TASK.missing.change-theme.keep": "low",
+    "TASK.wait.get-back-to-live-from-chip.explore": "low",
+    "TASK.wait.open-chip-and-change-the-profile.explore": "low"
+  },
+  "firmware": {
+    "image_bytes": 423736,
+    "image_fnv1a": "49580491d331120c"
+  },
+  "metrics": {
+    "feedback.ALGORITHM (CHIP profile).first_change_ms": {
+      "value": 41.0,
+      "worse_when_higher": true
+    },
+    "feedback.ALGORITHM (menu, OCTAVE).first_change_ms": {
+      "value": 31.0,
+      "worse_when_higher": true
+    },
+    "feedback.EDIT+K1.first_change_ms": {
+      "value": 81.0,
+      "worse_when_higher": true
+    },
+    "feedback.FX.first_change_ms": {
+      "value": 41.0,
+      "worse_when_higher": true
+    },
+    "feedback.HOME (open the menu).first_change_ms": {
+      "value": 41.0,
+      "worse_when_higher": true
+    },
+    "feedback.K1 (CHIP).first_change_ms": {
+      "value": 41.0,
+      "worse_when_higher": true
+    },
+    "feedback.K1 (TRACKER).first_change_ms": {
+      "value": 81.0,
+      "worse_when_higher": true
+    },
+    "feedback.K1.first_change_ms": {
+      "value": 41.0,
+      "worse_when_higher": true
+    },
+    "feedback.K2.first_change_ms": {
+      "value": 41.0,
+      "worse_when_higher": true
+    },
+    "feedback.K3.first_change_ms": {
+      "value": 81.0,
+      "worse_when_higher": true
+    },
+    "feedback.K4.first_change_ms": {
+      "value": 41.0,
+      "worse_when_higher": true
+    },
+    "feedback.MASTER.first_change_ms": {
+      "value": 81.0,
+      "worse_when_higher": true
+    },
+    "feedback.OCT+.first_change_ms": {
+      "value": 41.0,
+      "worse_when_higher": true
+    },
+    "feedback.SELECT (menu).first_change_ms": {
+      "value": 41.0,
+      "worse_when_higher": true
+    },
+    "feedback.SEQ (open the song views).first_change_ms": {
+      "value": 41.0,
+      "worse_when_higher": true
+    },
+    "journey.build.actions": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "journey.build.dead_ends": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.build.forced_wait_ms": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.build.menu_trips": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.build.mode_switches": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "journey.build.not_yet_possible": {
+      "value": 5.0,
+      "worse_when_higher": true
+    },
+    "journey.build.stops_playing_steps": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.explore.actions": {
+      "value": 17.0,
+      "worse_when_higher": true
+    },
+    "journey.explore.actions_to_first_sound": {
+      "value": 3.0,
+      "worse_when_higher": true
+    },
+    "journey.explore.dead_ends": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.explore.forced_wait_ms": {
+      "value": 13800.0,
+      "worse_when_higher": true
+    },
+    "journey.explore.menu_trips": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.explore.mode_switches": {
+      "value": 5.0,
+      "worse_when_higher": true
+    },
+    "journey.explore.not_yet_possible": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.explore.stops_playing_steps": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "journey.explore.time_to_first_sound_ms": {
+      "value": 3015.0,
+      "worse_when_higher": true
+    },
+    "journey.jam.actions": {
+      "value": 10.0,
+      "worse_when_higher": true
+    },
+    "journey.jam.actions_to_first_sound": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "journey.jam.dead_ends": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.jam.forced_wait_ms": {
+      "value": 4400.0,
+      "worse_when_higher": true
+    },
+    "journey.jam.menu_trips": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.jam.mode_switches": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "journey.jam.not_yet_possible": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.jam.stops_playing_steps": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.jam.time_to_first_sound_ms": {
+      "value": 5.0,
+      "worse_when_higher": true
+    },
+    "journey.keep.actions": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "journey.keep.dead_ends": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.keep.forced_wait_ms": {
+      "value": 400.0,
+      "worse_when_higher": true
+    },
+    "journey.keep.menu_trips": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.keep.mode_switches": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.keep.not_yet_possible": {
+      "value": 3.0,
+      "worse_when_higher": true
+    },
+    "journey.keep.stops_playing_steps": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.perform.actions": {
+      "value": 11.0,
+      "worse_when_higher": true
+    },
+    "journey.perform.actions_to_first_sound": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "journey.perform.dead_ends": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.perform.forced_wait_ms": {
+      "value": 2600.0,
+      "worse_when_higher": true
+    },
+    "journey.perform.menu_trips": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.perform.mode_switches": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.perform.not_yet_possible": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.perform.stops_playing_steps": {
+      "value": 5.0,
+      "worse_when_higher": true
+    },
+    "journey.perform.time_to_first_sound_ms": {
+      "value": 10.0,
+      "worse_when_higher": true
+    },
+    "journey.sketch.actions": {
+      "value": 6.0,
+      "worse_when_higher": true
+    },
+    "journey.sketch.actions_to_first_loop": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "journey.sketch.actions_to_first_sound": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "journey.sketch.dead_ends": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.sketch.forced_wait_ms": {
+      "value": 2200.0,
+      "worse_when_higher": true
+    },
+    "journey.sketch.menu_trips": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.sketch.mode_switches": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "journey.sketch.not_yet_possible": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "journey.sketch.stops_playing_steps": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "journey.sketch.time_to_first_loop_ms": {
+      "value": 2440.0,
+      "worse_when_higher": true
+    },
+    "journey.sketch.time_to_first_sound_ms": {
+      "value": 330.0,
+      "worse_when_higher": true
+    },
+    "knob.ALGORITHM.chip.audible_cents": {
+      "value": 0.0,
+      "worse_when_higher": false
+    },
+    "knob.ALGORITHM.chip.audible_db": {
+      "value": 0.0,
+      "worse_when_higher": false
+    },
+    "knob.ALGORITHM.chip.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.ALGORITHM.chip.detents": {
+      "value": 14.0,
+      "worse_when_higher": true
+    },
+    "knob.ALGORITHM.chip.max_step": {
+      "value": 33.333333333333336,
+      "worse_when_higher": true
+    },
+    "knob.ALGORITHM.chip.median_step": {
+      "value": 0.0,
+      "worse_when_higher": false
+    },
+    "knob.K1.chip.audible_cents": {
+      "value": 1349.0390324464036,
+      "worse_when_higher": false
+    },
+    "knob.K1.chip.audible_db": {
+      "value": 0.7424746243971718,
+      "worse_when_higher": false
+    },
+    "knob.K1.chip.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K1.chip.detents": {
+      "value": 32.0,
+      "worse_when_higher": true
+    },
+    "knob.K1.chip.max_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": true
+    },
+    "knob.K1.chip.median_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": false
+    },
+    "knob.K1.edit.audible_cents": {
+      "value": 102.25841508359959,
+      "worse_when_higher": false
+    },
+    "knob.K1.edit.audible_db": {
+      "value": 0.22196256025025463,
+      "worse_when_higher": false
+    },
+    "knob.K1.edit.dead_zone": {
+      "value": 5.0,
+      "worse_when_higher": true
+    },
+    "knob.K1.edit.detents": {
+      "value": 32.0,
+      "worse_when_higher": true
+    },
+    "knob.K1.edit.max_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": true
+    },
+    "knob.K1.edit.median_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": false
+    },
+    "knob.K1.live.audible_cents": {
+      "value": 3082.052787748468,
+      "worse_when_higher": false
+    },
+    "knob.K1.live.audible_db": {
+      "value": 2.592274837703215,
+      "worse_when_higher": false
+    },
+    "knob.K1.live.dead_zone": {
+      "value": 5.0,
+      "worse_when_higher": true
+    },
+    "knob.K1.live.detents": {
+      "value": 128.0,
+      "worse_when_higher": true
+    },
+    "knob.K1.live.max_step": {
+      "value": 358.46450373250116,
+      "worse_when_higher": true
+    },
+    "knob.K1.live.median_step": {
+      "value": 36.53949370451895,
+      "worse_when_higher": false
+    },
+    "knob.K2.chip.audible_cents": {
+      "value": 119.17384858593232,
+      "worse_when_higher": false
+    },
+    "knob.K2.chip.audible_db": {
+      "value": 0.6788820805071474,
+      "worse_when_higher": false
+    },
+    "knob.K2.chip.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K2.chip.detents": {
+      "value": 32.0,
+      "worse_when_higher": true
+    },
+    "knob.K2.chip.max_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": true
+    },
+    "knob.K2.chip.median_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": false
+    },
+    "knob.K2.edit.audible_cents": {
+      "value": 102.25841508359959,
+      "worse_when_higher": false
+    },
+    "knob.K2.edit.audible_db": {
+      "value": 0.22196256025025463,
+      "worse_when_higher": false
+    },
+    "knob.K2.edit.dead_zone": {
+      "value": 5.0,
+      "worse_when_higher": true
+    },
+    "knob.K2.edit.detents": {
+      "value": 32.0,
+      "worse_when_higher": true
+    },
+    "knob.K2.edit.max_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": true
+    },
+    "knob.K2.edit.median_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": false
+    },
+    "knob.K2.live.audible_cents": {
+      "value": 630.7526126098779,
+      "worse_when_higher": false
+    },
+    "knob.K2.live.audible_db": {
+      "value": 0.24055951376460882,
+      "worse_when_higher": false
+    },
+    "knob.K2.live.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K2.live.detents": {
+      "value": 15.0,
+      "worse_when_higher": true
+    },
+    "knob.K2.live.max_step": {
+      "value": 6.666666666666667,
+      "worse_when_higher": true
+    },
+    "knob.K2.live.median_step": {
+      "value": 6.666666666666667,
+      "worse_when_higher": false
+    },
+    "knob.K3.chip.audible_cents": {
+      "value": 102.49617084957075,
+      "worse_when_higher": false
+    },
+    "knob.K3.chip.audible_db": {
+      "value": 1.236551211384132,
+      "worse_when_higher": false
+    },
+    "knob.K3.chip.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K3.chip.detents": {
+      "value": 32.0,
+      "worse_when_higher": true
+    },
+    "knob.K3.chip.max_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": true
+    },
+    "knob.K3.chip.median_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": false
+    },
+    "knob.K3.edit.audible_cents": {
+      "value": 102.25841508359959,
+      "worse_when_higher": false
+    },
+    "knob.K3.edit.audible_db": {
+      "value": 0.22196256025025463,
+      "worse_when_higher": false
+    },
+    "knob.K3.edit.dead_zone": {
+      "value": 5.0,
+      "worse_when_higher": true
+    },
+    "knob.K3.edit.detents": {
+      "value": 32.0,
+      "worse_when_higher": true
+    },
+    "knob.K3.edit.max_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": true
+    },
+    "knob.K3.edit.median_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": false
+    },
+    "knob.K3.live.audible_cents": {
+      "value": 105.79675831229478,
+      "worse_when_higher": false
+    },
+    "knob.K3.live.audible_db": {
+      "value": 0.22521599445232,
+      "worse_when_higher": false
+    },
+    "knob.K3.live.dead_zone": {
+      "value": 5.0,
+      "worse_when_higher": true
+    },
+    "knob.K3.live.detents": {
+      "value": 128.0,
+      "worse_when_higher": true
+    },
+    "knob.K3.live.max_step": {
+      "value": 0.7814407814407814,
+      "worse_when_higher": true
+    },
+    "knob.K3.live.median_step": {
+      "value": 0.7814407814407814,
+      "worse_when_higher": false
+    },
+    "knob.K4.chip.audible_cents": {
+      "value": 102.65951226983383,
+      "worse_when_higher": false
+    },
+    "knob.K4.chip.audible_db": {
+      "value": 0.2237293674789811,
+      "worse_when_higher": false
+    },
+    "knob.K4.chip.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K4.chip.detents": {
+      "value": 32.0,
+      "worse_when_higher": true
+    },
+    "knob.K4.chip.max_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": true
+    },
+    "knob.K4.chip.median_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": false
+    },
+    "knob.K4.edit.audible_cents": {
+      "value": 1244.0987609779938,
+      "worse_when_higher": false
+    },
+    "knob.K4.edit.audible_db": {
+      "value": 0.5579306137042366,
+      "worse_when_higher": false
+    },
+    "knob.K4.edit.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K4.edit.detents": {
+      "value": 32.0,
+      "worse_when_higher": true
+    },
+    "knob.K4.edit.max_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": true
+    },
+    "knob.K4.edit.median_step": {
+      "value": 3.1496062992125986,
+      "worse_when_higher": false
+    },
+    "knob.K4.live.audible_cents": {
+      "value": 0.0,
+      "worse_when_higher": false
+    },
+    "knob.K4.live.audible_db": {
+      "value": 0.0,
+      "worse_when_higher": false
+    },
+    "knob.K4.live.dead_zone": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.K4.live.detents": {
+      "value": 3.0,
+      "worse_when_higher": true
+    },
+    "knob.K4.live.max_step": {
+      "value": 33.333333333333336,
+      "worse_when_higher": true
+    },
+    "knob.K4.live.median_step": {
+      "value": 33.333333333333336,
+      "worse_when_higher": false
+    },
+    "knob.MASTER.audible_cents": {
+      "value": 250.9043607633829,
+      "worse_when_higher": false
+    },
+    "knob.MASTER.audible_db": {
+      "value": 35.890007784049175,
+      "worse_when_higher": false
+    },
+    "knob.MASTER.dead_zone": {
+      "value": 5.0,
+      "worse_when_higher": true
+    },
+    "knob.MASTER.detents": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "knob.MASTER.max_step": {
+      "value": 6.020599913279624,
+      "worse_when_higher": true
+    },
+    "knob.MASTER.median_step": {
+      "value": 0.2757656897126657,
+      "worse_when_higher": false
+    },
+    "musical.noise-perc.a4.centroid_hz": {
+      "value": 4094.466157819364,
+      "worse_when_higher": false
+    },
+    "musical.noise-perc.a4.peak_dbfs": {
+      "value": -19.365816272646008,
+      "worse_when_higher": true
+    },
+    "musical.noise-perc.a4.rms_dbfs": {
+      "value": -30.484273882857565,
+      "worse_when_higher": false
+    },
+    "musical.noise-perc.f3.centroid_hz": {
+      "value": 2798.065558431079,
+      "worse_when_higher": false
+    },
+    "musical.noise-perc.f3.peak_dbfs": {
+      "value": -20.309761387270555,
+      "worse_when_higher": true
+    },
+    "musical.noise-perc.f3.rms_dbfs": {
+      "value": -30.414689791352693,
+      "worse_when_higher": false
+    },
+    "musical.pwm-bass.a4.centroid_hz": {
+      "value": 1870.7689693604366,
+      "worse_when_higher": false
+    },
+    "musical.pwm-bass.a4.peak_dbfs": {
+      "value": -19.930827225366073,
+      "worse_when_higher": true
+    },
+    "musical.pwm-bass.a4.rms_dbfs": {
+      "value": -26.486711400237866,
+      "worse_when_higher": false
+    },
+    "musical.pwm-bass.f3.centroid_hz": {
+      "value": 1528.5025908736936,
+      "worse_when_higher": false
+    },
+    "musical.pwm-bass.f3.peak_dbfs": {
+      "value": -19.532498920436282,
+      "worse_when_higher": true
+    },
+    "musical.pwm-bass.f3.rms_dbfs": {
+      "value": -26.495186126169642,
+      "worse_when_higher": false
+    },
+    "musical.saw-lead.a4.centroid_hz": {
+      "value": 3085.8554081084117,
+      "worse_when_higher": false
+    },
+    "musical.saw-lead.a4.peak_dbfs": {
+      "value": -20.56340237033298,
+      "worse_when_higher": true
+    },
+    "musical.saw-lead.a4.rms_dbfs": {
+      "value": -28.36060886455545,
+      "worse_when_higher": false
+    },
+    "musical.saw-lead.f3.centroid_hz": {
+      "value": 2401.1161188410047,
+      "worse_when_higher": false
+    },
+    "musical.saw-lead.f3.peak_dbfs": {
+      "value": -20.92434384906212,
+      "worse_when_higher": true
+    },
+    "musical.saw-lead.f3.rms_dbfs": {
+      "value": -28.285941493850085,
+      "worse_when_higher": false
+    },
+    "musical.sync-lead.a4.centroid_hz": {
+      "value": 5202.01734811228,
+      "worse_when_higher": false
+    },
+    "musical.sync-lead.a4.peak_dbfs": {
+      "value": -19.946619756331298,
+      "worse_when_higher": true
+    },
+    "musical.sync-lead.a4.rms_dbfs": {
+      "value": -27.75238865475746,
+      "worse_when_higher": false
+    },
+    "musical.sync-lead.f3.centroid_hz": {
+      "value": 4118.786650769458,
+      "worse_when_higher": false
+    },
+    "musical.sync-lead.f3.peak_dbfs": {
+      "value": -20.18160435728428,
+      "worse_when_higher": true
+    },
+    "musical.sync-lead.f3.rms_dbfs": {
+      "value": -27.584444824459506,
+      "worse_when_higher": false
+    },
+    "read.chip.contrast_failing_pairs": {
+      "value": 3.0,
+      "worse_when_higher": true
+    },
+    "read.chip.play_below_min": {
+      "value": 8.0,
+      "worse_when_higher": true
+    },
+    "read.chip.play_texts": {
+      "value": 9.0,
+      "worse_when_higher": false
+    },
+    "read.learn.contrast_failing_pairs": {
+      "value": 3.0,
+      "worse_when_higher": true
+    },
+    "read.learn.play_below_min": {
+      "value": 26.0,
+      "worse_when_higher": true
+    },
+    "read.learn.play_texts": {
+      "value": 26.0,
+      "worse_when_higher": false
+    },
+    "read.live.contrast_failing_pairs": {
+      "value": 4.0,
+      "worse_when_higher": true
+    },
+    "read.live.play_below_min": {
+      "value": 26.0,
+      "worse_when_higher": true
+    },
+    "read.live.play_texts": {
+      "value": 35.0,
+      "worse_when_higher": false
+    },
+    "read.menu.contrast_failing_pairs": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "read.menu.play_below_min": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "read.menu.play_texts": {
+      "value": 18.0,
+      "worse_when_higher": false
+    },
+    "read.midi.contrast_failing_pairs": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "read.midi.play_below_min": {
+      "value": 6.0,
+      "worse_when_higher": true
+    },
+    "read.midi.play_texts": {
+      "value": 6.0,
+      "worse_when_higher": false
+    },
+    "read.scene.contrast_failing_pairs": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "read.scene.play_below_min": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "read.scene.play_texts": {
+      "value": 0.0,
+      "worse_when_higher": false
+    },
+    "read.tracker.contrast_failing_pairs": {
+      "value": 4.0,
+      "worse_when_higher": true
+    },
+    "read.tracker.play_below_min": {
+      "value": 55.0,
+      "worse_when_higher": true
+    },
+    "read.tracker.play_texts": {
+      "value": 59.0,
+      "worse_when_higher": false
+    },
+    "task.change-dist-algorithm-from-chip.explore.actions": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "task.change-dist-algorithm-from-chip.explore.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.change-dist-algorithm-from-chip.explore.wait_ms": {
+      "value": 500.0,
+      "worse_when_higher": true
+    },
+    "task.change-dist-algorithm.explore.actions": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "task.change-dist-algorithm.explore.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.change-dist-algorithm.explore.wait_ms": {
+      "value": 500.0,
+      "worse_when_higher": true
+    },
+    "task.change-octave.jam.actions": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "task.change-octave.jam.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.change-octave.jam.wait_ms": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.change-preset.jam.actions": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "task.change-preset.jam.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.change-preset.jam.wait_ms": {
+      "value": 600.0,
+      "worse_when_higher": true
+    },
+    "task.change-preset.perform.actions": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "task.change-preset.perform.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.change-preset.perform.wait_ms": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.get-back-to-live-from-chip.explore.actions": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "task.get-back-to-live-from-chip.explore.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.get-back-to-live-from-chip.explore.wait_ms": {
+      "value": 2800.0,
+      "worse_when_higher": true
+    },
+    "task.get-back-to-live.sketch.actions": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "task.get-back-to-live.sketch.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.get-back-to-live.sketch.wait_ms": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.learn-a-cc.perform.actions": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "task.learn-a-cc.perform.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.learn-a-cc.perform.wait_ms": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.mute-voice-2.perform.actions": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "task.mute-voice-2.perform.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.mute-voice-2.perform.wait_ms": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.open-chip-and-change-the-profile.explore.actions": {
+      "value": 3.0,
+      "worse_when_higher": true
+    },
+    "task.open-chip-and-change-the-profile.explore.levels": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "task.open-chip-and-change-the-profile.explore.wait_ms": {
+      "value": 3300.0,
+      "worse_when_higher": true
+    },
+    "task.open-tracker.sketch.actions": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "task.open-tracker.sketch.levels": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "task.open-tracker.sketch.wait_ms": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.play-a-song.sketch.actions": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "task.play-a-song.sketch.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.play-a-song.sketch.wait_ms": {
+      "value": 1200.0,
+      "worse_when_higher": true
+    },
+    "task.save-settings.keep.actions": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "task.save-settings.keep.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.save-settings.keep.wait_ms": {
+      "value": 400.0,
+      "worse_when_higher": true
+    },
+    "task.solo-voice-1.perform.actions": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "task.solo-voice-1.perform.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.solo-voice-1.perform.wait_ms": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.stop-a-song.sketch.actions": {
+      "value": 1.0,
+      "worse_when_higher": true
+    },
+    "task.stop-a-song.sketch.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.stop-a-song.sketch.wait_ms": {
+      "value": 600.0,
+      "worse_when_higher": true
+    },
+    "task.unmute-voice-2.perform.actions": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "task.unmute-voice-2.perform.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.unmute-voice-2.perform.wait_ms": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.unsolo-voice-1.perform.actions": {
+      "value": 2.0,
+      "worse_when_higher": true
+    },
+    "task.unsolo-voice-1.perform.levels": {
+      "value": 0.0,
+      "worse_when_higher": true
+    },
+    "task.unsolo-voice-1.perform.wait_ms": {
+      "value": 0.0,
+      "worse_when_higher": true
+    }
+  },
+  "schema": 1
+}

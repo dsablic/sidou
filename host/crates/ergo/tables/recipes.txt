@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The example recipes: journeys written as executable how-tos (docs/reference/recipe-schema.md).
+# `ergo --export-recipes docs/recipes` writes them as JSON (one file each, the machine form);
+# `ergo --check-recipes docs/recipes` runs every JSON recipe in the emulator and fails one that no
+# longer runs or no longer meets its expectations. Grammar: tables/journeys.txt's header, plus the
+# recipe header lines under `journey` (goal, prereq, skills, related) and, on a step, the flags
+#   do TEXT                  the control in panel terms, for the manual
+#   value NAME MIN MAX       a parameter in a range (cutoff resonance pulse_width preset master ...)
+#   absent TEXT              text not on the screen
+#   brighter darker louder quieter
+#                            the sound against the 400 ms before the step
+#   level MIN MAX            the last 400 ms's RMS in dBFS
+# Every step has a caption and at least one expected outcome.
+
+journey first-sound | First sound | poweron
+  goal Make the synth sound the moment it is switched on.
+  prereq The FM-1 running SIDOU, just switched on; nothing else plugged in but headphones or speakers.
+  skills playing the keys; skipping the boot; reading LIVE's header
+  related shape-a-sound; mute-and-solo
+  step press-a-key | Press a key | Press any note key. It sounds at once, and the boot gives way to LIVE. | note A4 600 | sound; level -45 -8; do Press the note key marked A (the middle of the keys)
+  step boot-ends | Let the title end | LIVE shows the chip, the sound and the octave in its top line. | wait 2500 | view live; text SAW LEAD; text OCT+0; do Wait a moment: the title card ends by itself
+  step play-a-chord | Play a chord | Hold three keys together: SIDOU has three voices. | note C4 E4 G4 700 | sound; do Press three keys at once
+  step octave-up | Move up an octave | OCT+ shifts every key up an octave, and says so. | press OCT+ | toast; text OCTAVE; value octave 1 1; do Press OCT+
+
+journey shape-a-sound | Shape a sound with K1 to K4 | 
+  goal Open and close the filter, add resonance and change the sound while a note holds.
+  prereq On LIVE after the boot, with the first preset (SAW LEAD) playing.
+  skills K1 cutoff; K2 resonance; K4 preset; holding a note while turning
+  related first-sound; mute-and-solo
+  step hold-a-note | Hold a note | Hold a key down and keep holding it while you turn the knobs. | down A3; wait 500 | sound; do Hold the note key A (the lower one) down
+  step close-the-filter | Close the filter | Turn K1 counter-clockwise about a third of a turn: the sound darkens. | turn K1 -60; wait 400 | darker; popup; value cutoff 0 1100; do Turn K1 counter-clockwise about a third of a turn
+  step open-the-filter | Open the filter | Turn K1 clockwise a full turn: the sound brightens. | turn K1 100; wait 400 | brighter; value cutoff 1100 2047; do Turn K1 clockwise about a full turn
+  step add-resonance | Add resonance | Turn K2 clockwise: the filter rings at its cutoff. | turn K2 6; wait 400 | popup; value resonance 10 15; do Turn K2 clockwise about a quarter turn
+  step next-sound | Pick another sound | Turn K4 one click: the next preset, PWM BASS. | turn K4 1; wait 400 | text PWM BASS; value preset 1 1; sound; do Turn K4 one click clockwise
+  step let-go | Let go | Let go of the key: the sound ends. | up A3; wait 900 | silent; do Let go of the note key
+
+journey mute-and-solo | Mute and solo while a song plays
+  goal Play the built-in song and mute or solo a voice without stopping it.
+  prereq On LIVE after the boot. SIDOU LOOP is the song loaded.
+  skills opening the song views; PLAY; GLO mutes; GLO solos
+  related first-sound; shape-a-sound
+  step open-the-song | Open the song views | SEQ opens the TRACKER over LIVE. | press SEQ | view tracker; text TRACKER; do Press SEQ
+  step play-the-song | Play the song | PLAY starts it; the rows move and the song sounds. | press PLAY; wait 1500 | sound; do Press PLAY
+  step mute-voice-2 | Mute voice 2 | Hold GLO and press the second note key (the leftmost keys are the mutes): voice 2 goes silent. | holdkey GLO F#3; wait 600 | text MUT; quieter; do Hold GLO and press note key 2
+  step let-voice-2-back | Let voice 2 sound again | The same keys again undo it. | holdkey GLO F#3; wait 600 | absent MUT; louder; do Hold GLO and press note key 2 again
+  step solo-voice-1 | Solo voice 1 | Hold GLO and press the fourth note key: only voice 1 sounds. | holdkey GLO G#3; wait 600 | text SOL; quieter; do Hold GLO and press note key 4
+  step unsolo-voice-1 | Bring the others back | Again to unsolo. | holdkey GLO G#3; wait 600 | absent SOL; louder; do Hold GLO and press note key 4 again
+  step stop | Stop the song | PLAY again stops it; each voice's release rings on. | press PLAY; wait 1200 | silent; do Press PLAY
+  step back | Back to LIVE | HOME goes back one view. | press HOME | view live; do Press HOME

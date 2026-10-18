@@ -273,6 +273,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ergo"
+version = "0.0.0"
+dependencies = [
+ "fm1-core",
+ "fm1-soc",
+ "gt2-ref",
+ "object",
+ "png",
+ "residfp-sys",
+ "serde_json",
+ "sidou-sys",
+ "sidou-tablegen",
+ "sidou-tests",
+]
+
+[[package]]
 name = "fdeflate"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

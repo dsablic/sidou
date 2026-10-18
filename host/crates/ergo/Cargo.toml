@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "ergo"
+description = "The ergonomics harness: drives the firmware in fm1-emu, scores it against explicit ergonomic rules and writes a report"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# The emulator helpers are emu-gate's tests/common/mod.rs, included by path (src/lib.rs), so
+# its dependencies are ours.
+[dependencies]
+fm1-core = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "e52f4640157f490f8c3af778dd044e9d33e989e8" }
+fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "e52f4640157f490f8c3af778dd044e9d33e989e8" }
+object = { version = "0.36", default-features = false, features = ["read", "elf", "std"] }
+png = "0.18"
+residfp-sys = { path = "../residfp-sys" }
+serde_json = "1"
+sidou-sys = { path = "../sidou-sys" }
+sidou-tablegen = { path = "../sidou-tablegen" }
+sidou-tests = { path = "../sidou-tests" }
+gt2-ref = { path = "../gt2-ref" }

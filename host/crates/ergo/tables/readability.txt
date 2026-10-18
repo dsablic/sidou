@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Which text a player reads while playing. One rule a line: view | class | pattern.
+#
+#   view     a view's name as the firmware's view table is named (live, menu, chip, tracker,
+#            status, scene, about, charset, midi, learn, title_card, boot) or * for every view
+#   class    play   - read while playing (values, notes, names): must be big and contrasty
+#            glance - read between sets, labels and help: contrast only
+#            ignore - not judged (art, credits, the boot)
+#   pattern  any | note | value | words A,B,C | contains TEXT
+#            note: starts like A-4 or C#3; value: a token of digits with an optional unit
+#            (11.4K, +0, 125%); words: any of the names, case-insensitive; contains: a substring
+#
+# The first rule that matches (view, then pattern) decides; nothing matching is `glance`.
+# The table reads text from the firmware's own grid, whatever its scale and place, so a
+# redesign needs no edit here unless it adds a view or a name.
+about   | ignore | any
+charset | ignore | any
+boot    | ignore | any
+title_card | ignore | any
+menu    | play   | any
+tracker | play   | any
+*       | play   | note
+*       | play   | value
+*       | play   | words SAW LEAD,PWM BASS,SYNC LEAD,NOISE PERC,6581 R2,6581 R3,6581 R4AR,8580 R5,WORN 6581,USER
+*       | play   | words TAPE,OVERDRIVE,FUZZ,CRUSH,LO-FI,CHORUS,FLANGER,PHASER,TREMOLO,AUTO-PAN,WOW,DELAY,PING-PONG,REVERB,LUSH
+status  | glance | any
