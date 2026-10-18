@@ -261,7 +261,7 @@ pub fn describe(acts: &[Act]) -> String {
 }
 
 pub fn step_json(s: &Step) -> Value {
-    json!({
+    let mut value = json!({
         "id": s.id,
         "title": s.label,
         "caption": s.caption,
@@ -273,7 +273,11 @@ pub fn step_json(s: &Step) -> Value {
             "clip_ms": s.clip_ms, "probe": s.probe, "task": s.task, "milestone": s.milestone,
             "destructive": s.destructive, "remember": s.remember, "defaults": s.defaults,
         },
-    })
+    });
+    if s.setup {
+        value["harness"]["setup"] = json!(true);
+    }
+    value
 }
 
 pub fn recipe_json(j: &Journey) -> Value {
@@ -358,6 +362,7 @@ pub fn parse_recipe(v: &Value) -> Result<Journey, String> {
             return Err(format!("{at}: `caption` is required (the manual's text)"));
         }
         steps.push(Step {
+            setup: h.get("setup").and_then(Value::as_bool).unwrap_or(false),
             id: get_str(s, "id", &at)?.to_string(),
             label: get_str(s, "title", &at)?.to_string(),
             caption,
@@ -533,6 +538,23 @@ pub fn schema_keys() -> Map<String, Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn setup_survives_recipe_export_and_import() {
+        let j = parse_table(concat!(
+            "journey t | T\n goal G\n prereq P\n skills S\n related t\n",
+            "step a | Learn | Hold SAVE | holdturn SAVE K1 1 | setup"
+        ))
+        .unwrap()
+        .remove(0);
+        let mut value = recipe_json(&j);
+        assert!(parse_recipe(&value).unwrap().steps[0].setup);
+        value["steps"][0]["harness"]
+            .as_object_mut()
+            .unwrap()
+            .remove("setup");
+        assert!(!parse_recipe(&value).unwrap().steps[0].setup);
+    }
 
     const T: &str = "journey r | Recipe\n goal Make a sound\n prereq Power on\n skills first sound; keys\n related other\n\
         step a | Play | Play a note | note A4 500; turn K1 -3; holdkey GLO F#3; midi 90 45 7f | sound; brighter; value cutoff 0 100; text M2; absent XYZ; level -40 -10; do Press a key\n\

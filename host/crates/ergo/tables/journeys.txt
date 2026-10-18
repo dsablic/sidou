@@ -31,6 +31,7 @@
 #               wait MS                   do nothing (counts as forced waiting)
 #               powercycle                switch off and on again over the same flash
 #   flags     `;`-separated:
+#               setup                     set-up step: two hands allowed (not JOUR.hands)
 #               view V | sound | silent | change | popup | toast | text T | recalled
 #                                         what must hold when the step is done (else a dead end)
 #               needs F                   a feature (theme undo help order_view instr_view
@@ -105,7 +106,7 @@ journey perform | Perform
   step unmute-voice-2 | Let voice 2 sound again | Again to unmute | holdkey GLO F#3 | -; task unmute voice 2
   step solo-voice-1 | Solo voice 1 | Hold GLO and press key 4 | holdkey GLO G#3 | text S1; task solo voice 1; probe
   step unsolo-voice-1 | Unsolo voice 1 | Again to unsolo | holdkey GLO G#3 | -; task unsolo voice 1
-  step learn-cc | Learn a CC for K1 | Hold SAVE and turn K1, then move a controller | holdturn SAVE K1 1; cc 21 64 | text LEARNED; task learn a CC
+  step learn-cc | Learn a CC for K1 | Hold SAVE and turn K1, then move a controller | holdturn SAVE K1 1; cc 21 64 | text LEARNED; task learn a CC; setup
   step stop-clock | The clock stops | - | wait 800 | -
 
 journey keep | Keep what you made
@@ -118,7 +119,7 @@ journey keep | Keep what you made
   step recall | Switch off and on again | Your sound is still there after power-off | powercycle | recalled
   step fresh | Start a new song | A new, empty song | press SEQ | needs new_song; change
   step undo | Undo a mistake | Undo | press ARP | needs undo; change
-  step theme | Change the theme | Choose a theme | press HOME; select-item THEME; turn ALGORITHM 1 | needs theme; change; task change THEME
+  step theme | Change the theme | Choose a theme | press HOME; select-item THEME; turn ALGORITHM 1 | needs theme; change; task change THEME; setup
 
 journey explore | Explore the chip, the effects and the scene
   goal Try the chip profiles, the character controls, the effects and the SCENE pieces.

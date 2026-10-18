@@ -75,6 +75,7 @@ pub enum Expect {
 
 #[derive(Clone, Debug)]
 pub struct Step {
+    pub setup: bool,
     pub id: String,
     pub label: String,
     pub caption: Option<String>,
@@ -340,6 +341,7 @@ pub fn parse_table(text: &str) -> Result<Vec<Journey>, String> {
                 return Err(at("step ID | label | caption | actions [| flags]".into()));
             }
             let mut s = Step {
+                setup: false,
                 id: p[0].to_string(),
                 label: p[1].to_string(),
                 caption: (p[2] != "-").then(|| p[2].to_string()),
@@ -413,6 +415,7 @@ pub fn parse_table(text: &str) -> Result<Vec<Journey>, String> {
                     "destructive" => s.destructive = true,
                     "remember" => s.remember = true,
                     "defaults" => s.defaults = true,
+                    "setup" => s.setup = true,
                     "needs" => {
                         if !FEATURES.contains(&v) {
                             return Err(at(format!("unknown feature {v} (known: {FEATURES:?})")));
@@ -1060,7 +1063,7 @@ pub fn run_step(
     r.max_depth = r.max_depth.max(r.depth_after);
     r.effort = count_effort(&efforts);
     r.wait_ms = waited;
-    r.two_handed = r.effort.two_handed > 0;
+    r.two_handed = performance_hands(s, &r.effort);
     r.changed_params = params_before.diff(&d.params());
 
     let all_audio = d.audio_since(audio_from);
@@ -1098,6 +1101,10 @@ pub fn run_step(
 
 /// Level, peak, clipping, DC and brightness of a note. The level is the loudest 100 ms RMS
 /// (a percussive preset has decayed by the end of the window, which is its design).
+fn performance_hands(s: &Step, effort: &EffortCount) -> bool {
+    !s.setup && effort.two_handed > 0
+}
+
 pub fn audio_stats(x: &[f32], cfg: &Config) -> Value {
     let clipped = x
         .iter()
@@ -1240,6 +1247,15 @@ pub fn journey_metrics(j: &JourneyResult, cfg: &Config) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn setup_allows_two_hands_but_performance_does_not() {
+        let j = parse_table("journey t | T\nstep a | A | - | holdturn SAVE K1 1 | setup").unwrap();
+        let s = &j[0].steps[0];
+        assert!(!performance_hands(s, &count_effort(&[Effort::HoldTurn(1)])));
+        let j = parse_table("journey t | T\nstep a | A | - | holdturn EDIT K1 1").unwrap();
+        assert!(performance_hands(&j[0].steps[0], &count_effort(&[Effort::HoldTurn(1)])));
+    }
 
     #[test]
     fn the_default_table_parses() {
