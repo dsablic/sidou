@@ -159,6 +159,19 @@ Follow-ups that aren't tied to a milestone task yet.
   the USB cost against the main-loop budget, and add hardware checks. The same transport
   is half of the separate "remote panel" idea: fm1-emu issue #4.
 
+## A stale CMake cache builds a different firmware without saying so
+
+- **Where:** `core/CMakeLists.txt`'s `option()`s (`SIDOU_ALL_COMBINED_PROFILES_8580` and the
+  others): CMake keeps a cached value over a changed default.
+- **Problem (2026-10-19):** after M2b turned `SIDOU_ALL_COMBINED_PROFILES_8580` on, an older
+  `build/fm1` kept it OFF, so the firmware lacked the 8580 tables the expert layer selects.
+  The emulator's character test caught it (SID_PD 39,256 bytes, 58,488 expected); a fresh
+  build is correct. A package built from such a tree for a flash day would be wrong, silently.
+- **Action:** make the fm1 preset fail when a release-relevant option differs from its
+  default (a configure-time check, or record the options in the image and have
+  `tools/preflash` / `sidou-pack --verify` check them), and say in `docs/flash-day.md` that
+  the package is built from a fresh build directory.
+
 ## Licence labels that don't match the code's origin (release blocker)
 
 - **Where:** found by the licence audit of the app image (2026-10-18; a copy is at
