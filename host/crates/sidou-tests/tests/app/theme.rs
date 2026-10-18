@@ -22,11 +22,66 @@ fn bg(attr: u8) -> u8 {
 }
 
 #[test]
+fn theme_roles_pass_contrast() {
+    let luminance = unsafe { grid_palette }.map(|c| {
+        let (r, g, b) = ((c >> 11) as u8 & 31, (c >> 5) as u8 & 63, c as u8 & 31);
+        let rgb = [r << 3 | r >> 2, g << 2 | g >> 4, b << 3 | b >> 2].map(|v| {
+            let s = f64::from(v) / 255.0;
+            if s <= 0.04045 {
+                s / 12.92
+            } else {
+                ((s + 0.055) / 1.055).powf(2.4)
+            }
+        });
+        0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+    });
+    for id in 0..THEME_COUNT {
+        let t = theme(id);
+        let check = |fg: u8, bg: u8, minimum: f64| {
+            let a = luminance[usize::from(fg)];
+            let b = luminance[usize::from(bg)];
+            let ratio = (a.max(b) + 0.05) / (a.min(b) + 0.05);
+            assert!(
+                ratio >= minimum,
+                "theme {id}: {fg} on {bg}: {ratio:.3} < {minimum}"
+            );
+        };
+        for colour in [t.value, t.label, t.hint, t.hot]
+            .into_iter()
+            .chain(t.knob_text)
+            .chain(t.voice_text)
+        {
+            check(colour, t.bg, 4.5);
+        }
+        for colour in [t.alert, t.menu_item, t.menu_value]
+            .into_iter()
+            .chain(t.voice)
+            .chain(t.knob)
+        {
+            check(colour, t.bg, 3.0);
+        }
+        check(t.sel_fg, t.sel_bg, 3.0);
+        check(t.title_fg, t.title_bg, 3.0);
+        check(t.toast_fg, t.toast_bg, 4.5);
+        check(t.value, t.cursor, 4.5);
+        check(t.hot, t.cursor, 4.5);
+        for accent in t.knob {
+            let name = if t.popup_name == THEME_ACCENT as u8 {
+                accent
+            } else {
+                t.popup_name
+            };
+            check(name, t.popup_bg, 3.0);
+        }
+    }
+}
+
+#[test]
 fn high_contrast_is_the_default_and_has_the_agreed_roles() {
     let t = theme(THEME_HIGH_CONTRAST);
     assert_eq!(u32::from(t.bg), GRID_BLACK);
     assert_eq!(u32::from(t.value), GRID_WHITE);
-    assert_eq!(u32::from(t.label), GRID_GREY);
+    assert_eq!(u32::from(t.label), GRID_LIGHT_GREY);
     assert_eq!(u32::from(t.dim), GRID_DARK_GREY);
     assert_eq!(u32::from(t.cursor), GRID_DARK_GREY);
     assert_eq!(u32::from(t.hot), GRID_YELLOW);
@@ -53,6 +108,7 @@ fn every_role_is_a_palette_colour_and_reads_on_the_background_and_the_cursor_row
         let on_bg = [
             t.value,
             t.label,
+            t.hint,
             t.dim,
             t.hot,
             t.alert,
@@ -96,26 +152,26 @@ fn every_role_is_a_palette_colour_and_reads_on_the_background_and_the_cursor_row
 }
 
 #[test]
-fn the_c64_theme_keeps_the_old_look() {
+fn the_c64_theme_keeps_blue_and_readable_reverse_video() {
     let t = theme(THEME_C64);
     assert_eq!(u32::from(t.bg), GRID_BLUE);
-    assert_eq!(u32::from(t.label), GRID_LIGHT_BLUE);
+    assert_eq!(u32::from(t.label), GRID_CYAN);
     assert_eq!(
         (u32::from(t.toast_fg), u32::from(t.toast_bg)),
-        (GRID_BLUE, GRID_LIGHT_BLUE)
+        (GRID_BLUE, GRID_WHITE)
     );
     assert_eq!(
         (u32::from(t.title_fg), u32::from(t.title_bg)),
-        (GRID_BLUE, GRID_LIGHT_BLUE)
+        (GRID_BLACK, GRID_LIGHT_BLUE)
     );
     assert_eq!(u32::from(t.popup_frame), GRID_LIGHT_BLUE);
     assert_eq!(u32::from(t.popup_name), GRID_YELLOW);
     assert_eq!(u32::from(t.popup_bar), GRID_LIGHT_GREEN);
     assert_eq!(u32::from(t.popup_track), GRID_DARK_GREY);
-    // The accents are the same in both themes: one colour per voice and per knob.
+    // Cyan and light green retain their voice and knob accents on blue.
     let hc = theme(THEME_HIGH_CONTRAST);
-    assert_eq!(t.voice, hc.voice);
-    assert_eq!(t.knob, hc.knob);
+    assert_eq!(t.voice[1..], hc.voice[1..]);
+    assert_eq!(t.knob[..3], hc.knob[..3]);
 }
 
 fn to_theme_item(ui: &mut Ui) {

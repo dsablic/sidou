@@ -57,30 +57,36 @@ names a colour of the 16 for a purpose of its own: it asks the theme for the rol
 cell attribute with `THEME_ATTR`. There are two themes, the menu's **THEME** item (persisted in
 the settings record, schema 3: `live.theme`, so every view reaches it through its `live`):
 
-- **HIGH CONTRAST**, the default: black, white values, grey labels, dark grey for what is
+- **HIGH CONTRAST**, the default: black, white values, light grey labels, dark grey for what is
   inactive, one accent colour per thing.
-- **C64**: the old look, light blue on blue, with the same accents and the old reverse-video bar
-  of the menu, the toast and the popup's old colours.
+- **C64**: readable text on blue, with the menu's black-on-light-blue reverse-video bar
+  and a blue-on-white toast. The popup keeps its old colours.
 
 | Role (`theme.`) | HIGH CONTRAST | C64 | Used for |
 |---|---|---|---|
 | `bg` | black | blue | the screen |
 | `value` | white | white | values, the focused text, the notes |
-| `label` | grey | light blue | names and labels |
-| `dim` | dark grey | grey | inactive things: a silent voice, a rest, an OFF slot, the key names |
+| `label` | light grey | cyan | names and labels |
+| `hint` | light grey | cyan | legends, help lines, names under a choice |
+| `dim` | dark grey | light blue | inactive things: a silent voice, a rest, an OFF slot, an unused control |
 | `hot` | yellow | yellow | the focused tab, the current row's number, the popup's default accent |
-| `alert` | light red | light red | mute, REC, a refusal |
+| `alert` | light red | yellow | mute, REC, a refusal |
 | `cursor` | dark grey | dark grey | the current row's background (TRACKER) |
-| `voice[0..2]` | light red, cyan, light green | the same | voice 1, 2, 3: their lane, scope, row and strip |
-| `knob[0..3]` | yellow, cyan, light green, light red | the same | K1, K2, K3, K4: LIVE's and CHIP's columns, the popup's name and bar |
-| `title_*`, `menu_item`, `menu_value`, `sel_*` | grey on black, white, cyan, yellow on dark grey | blue on light blue, light blue, light blue, blue on light blue | the menu |
-| `toast_*` | black on yellow | blue on light blue | the toast |
+| `voice[0..2]` | light red, cyan, light green | light grey, cyan, light green | voice 1, 2, 3: scopes, bars and large text |
+| `voice_text[0..2]` | light grey, cyan, light green | white, cyan, light green | voice names at 1× |
+| `knob[0..3]` | yellow, cyan, light green, light red | yellow, cyan, light green, light grey | K1-K4: bars, large text and the popup's accent |
+| `knob_text[0..3]` | yellow, cyan, light green, light grey | yellow, cyan, light green, white | knob names at 1× |
+| `title_*`, `menu_item`, `menu_value`, `sel_*` | light grey on black, white, cyan, yellow on dark grey | black on light blue, light grey, white, black on light blue | the menu |
+| `toast_*` | black on yellow | blue on white | the toast |
 | `popup_*` | the control's accent for the frame, name and bar fill, over a dark grey track | light blue frame, yellow name, light green bar | the value popup |
 
 The accents are one per thing and the same everywhere: a knob's colour is its column on LIVE,
 its column on CHIP and its popup's bar, so a turn is followed by colour without reading. A
-role colour must read against its background and the cursor row's (a host test checks both
-themes). The theme change redraws every view at once (`screen_redraw`); the toast and the popup
+role colour must read against its background: 1× text has at least 4.5:1 WCAG contrast,
+large text and accents at least 3:1. The text roles separate small names from their accents:
+light red on black passes for large text, not for 1× names. A host test measures both themes
+from the panel's RGB565 palette, including cursor, menu, toast and popup pairs.
+The theme change redraws every view at once (`screen_redraw`); the toast and the popup
 read it as they draw (`screen_theme`).
 
 ## Layout grid
