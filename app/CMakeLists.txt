@@ -72,4 +72,6 @@ if(CMAKE_CROSSCOMPILING)
     # (STORE_POLL_WORK), not speed: built for size (about a third smaller than -O2). The
     # settings, which run a few times a second in the UI's frame, too.
     set_source_files_properties(store.c settings.c user_profile.c song_io.c PROPERTIES COMPILE_OPTIONS -Os)
+    # Cold routing and song-view controls: each file's size build keeps every emulator gate.
+    set_source_files_properties(midi_route.c song_view.c PROPERTIES COMPILE_OPTIONS -Os)
 endif()
