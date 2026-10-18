@@ -89,7 +89,7 @@ impl P {
             P::Cutoff => {
                 f64::from(unsafe { sidou_sys::sid_cutoff_hz(u32::from(model), 0, raw as u32) })
             }
-            P::Master => raw / 1023.0,
+            P::Master => f64::from(unsafe { sidou_sys::master_gain_of(raw as u32, 1023) }) / 32768.0,
             _ => raw,
         }
     }
@@ -434,13 +434,18 @@ pub fn stats(s: &Sweep, cfg: &Config) -> SweepStats {
     // The MASTER pot's first value is silence: leave it out of the dB steps.
     let skip = usize::from(unit == Unit::Db && s.phys.first() == Some(&0.0));
     let vals = &s.phys[skip..];
-    let st = steps(unit, vals, full);
+    let indexed: Vec<_> = s.phys.windows(2).enumerate()
+        .filter(|(_, w)| s.detents.is_some() || unit != Unit::Db || (w[0] >= 0.01 && w[1] >= 0.01))
+        .filter(|(i, _)| *i >= skip)
+        .map(|(i, w)| (i, steps(unit, w, full)[0]))
+        .collect();
+    let st: Vec<_> = indexed.iter().map(|(_, step)| *step).collect();
     let ss = step_stats(&st, 0.0);
     let max_at = st
         .iter()
         .enumerate()
         .max_by(|a, b| a.1.abs().partial_cmp(&b.1.abs()).unwrap())
-        .map_or(0, |(i, _)| i + skip);
+        .map_or(0, |(i, _)| indexed[i].0);
     let span = match unit {
         Unit::Cents => cents(
             vals.iter().cloned().fold(f64::MAX, f64::min).max(1e-9),
@@ -741,7 +746,7 @@ pub fn judge(s: &Sweep, cfg: &Config, out: &Path) -> (Vec<Finding>, Vec<Metric>,
                 format!("From {word} {} to {} the parameter moves and the sound does not.", st.dead_zone_at, st.dead_zone_at + st.dead_zone),
             ));
         }
-        if st.median_step < jnd && (!s.spec.audio || st.median_audio_pct < cfg.jnd_centroid_pct) {
+        if s.detents.is_some() && st.median_step < jnd && (!s.spec.audio || st.median_audio_pct < cfg.jnd_centroid_pct) {
             fs.push(mk(
                 "fine",
                 Sev::Low,
@@ -891,6 +896,25 @@ mod tests {
             .0
             .iter()
             .any(|f| f.id == "KNOB.dead.T"));
+    }
+
+    #[test]
+    fn pots_have_no_fine_detents_and_ignore_steps_below_minus_40_db() {
+        let phys = vec![0.0, 0.0001, 0.009, 0.01, 0.011, 0.012];
+        let mut s = sweep(P::Master, vec![0.0, 16.0, 32.0, 48.0, 64.0, 80.0], phys, vec![], vec![]);
+        s.detents = None;
+        let st = stats(&s, &Config::default());
+        assert!(st.max_step < 1.0, "{}", st.max_step);
+        assert_eq!(st.max_step_at, 3);
+        let (findings, _, _) = judge(&s, &Config::default(), Path::new("/nonexistent"));
+        assert!(!findings.iter().any(|f| f.id == "KNOB.fine.T"));
+        s.detents = Some(5);
+        let (findings, _, _) = judge(&s, &Config::default(), Path::new("/nonexistent"));
+        assert!(findings.iter().any(|f| f.id == "KNOB.jump.T"));
+        let mut s = sweep(P::Master, vec![100.0, 101.0, 102.0], vec![0.1, 0.101, 0.102], vec![], vec![]);
+        assert!(judge(&s, &Config::default(), Path::new("/nonexistent")).0.iter().any(|f| f.id == "KNOB.fine.T"));
+        s.detents = None;
+        assert!(!judge(&s, &Config::default(), Path::new("/nonexistent")).0.iter().any(|f| f.id == "KNOB.fine.T"));
     }
 
     #[test]
