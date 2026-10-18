@@ -24,10 +24,6 @@
         {
           "kind": "view",
           "value": "tracker"
-        },
-        {
-          "kind": "text",
-          "value": "TRACKER"
         }
       ],
       "harness": {
@@ -82,13 +78,9 @@
       "title": "Play the song"
     },
     {
-      "caption": "Hold GLO and press the second note key (the leftmost keys are the mutes): voice 2 goes silent.",
+      "caption": "Hold GLO and press the second note key (the leftmost keys are the mutes): voice 2 goes silent and its number above the rows turns grey.",
       "control": "Hold GLO and press note key 2",
       "expect": [
-        {
-          "kind": "text",
-          "value": "MUT"
-        },
         {
           "assert": "quieter",
           "kind": "audio"
@@ -119,13 +111,9 @@
       "title": "Mute voice 2"
     },
     {
-      "caption": "The same keys again undo it.",
+      "caption": "The same keys again undo it, and its number takes its colour back.",
       "control": "Hold GLO and press note key 2 again",
       "expect": [
-        {
-          "kind": "text_absent",
-          "value": "MUT"
-        },
         {
           "assert": "louder",
           "kind": "audio"
@@ -156,7 +144,7 @@
       "title": "Let voice 2 sound again"
     },
     {
-      "caption": "Hold GLO and press the fourth note key: only voice 1 sounds.",
+      "caption": "Hold GLO and press the fourth note key: only voice 1 sounds, and SOL shows by its pattern.",
       "control": "Hold GLO and press note key 4",
       "expect": [
         {
