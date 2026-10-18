@@ -31,6 +31,10 @@ fn main() {
         fm1.join("ota_flash.h").display()
     );
     println!("cargo:rerun-if-changed={}", usb.join("ota.c").display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        fm1.join("loader/ldr_core.c").display()
+    );
     let mut build = cc::Build::new();
     build
         .file(manifest.join("harness/ota_harness.c"))

@@ -80,6 +80,35 @@ static void ota_commit(const uint8_t* parm) {
 
 #include "ota.c"
 
+/* The update loader's session (platform/fm1/loader/ldr_core.c, Felucca's, unmodified) on the same
+ * host: its flash hooks count every erase, program and record clear, so a test can show that a
+ * refused package touched nothing. */
+static uint32_t ldr_writes;
+static int ldr_fread(uint32_t off, void* p, uint32_t n);
+static int ldr_erase(uint32_t off);
+static int ldr_prog(uint32_t off, const void* p, uint32_t n);
+static void ldr_record_clear(void);
+static void ldr_progress(uint32_t done, uint32_t total);
+#include "../loader/ldr_core.c"
+static int ldr_fread(uint32_t off, void* p, uint32_t n) {
+    return ota_fread(off, p, n);
+}
+static int ldr_erase(uint32_t off) {
+    ldr_writes++;
+    return ota_erase(off);
+}
+static int ldr_prog(uint32_t off, const void* p, uint32_t n) {
+    ldr_writes++;
+    return ota_prog(off, p, n);
+}
+static void ldr_record_clear(void) {
+    ldr_writes++;
+}
+static void ldr_progress(uint32_t done, uint32_t total) {
+    (void)done;
+    (void)total;
+}
+
 void ota_h_service(ota_host* h);
 int ota_h_session(ota_host* h);
 int ota_h_boot_cleanup(ota_host* h);
@@ -97,4 +126,14 @@ int ota_h_session(ota_host* h) {
 int ota_h_boot_cleanup(ota_host* h) {
     H = h;
     return ota_boot_cleanup();
+}
+
+int ldr_h_session(ota_host* h) {
+    H = h;
+    ldr_writes = 0;
+    return ldr_session();
+}
+
+uint32_t ldr_h_writes(void) {
+    return ldr_writes;
 }

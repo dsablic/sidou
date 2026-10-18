@@ -233,3 +233,25 @@ Laid out as in Felucca's `firmware/` tree, so the loader's relative includes
   builds; distinct digits are for later, with the community).
 - `src/usb.c` is the loader's only: the app uses the adapted copy in
   `usb/usb.c`.
+
+### Checked against the v1.6.1 tag (2026-10-18)
+
+Felucca's tag `v1.6.1` is commit `a53ecf4` itself, so the copies above already are
+1.6.1's, and nothing was re-vendored. `loader/crt0_ldr.S`, `ldr_core.c`, `loader.c`,
+`loader.ld` and `src/ota.c`, `src/usb.c`, `src/libc.c` were compared byte for byte with the
+tag: no difference (diff summary: empty). The 1.6.1 release note, "a package made for
+another device is refused before anything is erased", is therefore already in both places:
+
+- the loader (`ldr_core.c`, `ldr_session`): `flash.bin` must be exactly `LDR_APP_HI`
+  (0x93000) bytes, else it returns -14 before the chip-key check, the CRC pass and every
+  erase;
+- step 1 (`src/ota.c`, `update_session`, the app's own copy): `flash.bin` must be exactly
+  `OTA_FL_LEN`, else FAILED -15 before the staging area is erased.
+
+Tests, in `host/crates/sidou-pack/tests/ota_step1.rs`:
+`another_boards_package_is_refused_before_anything_is_erased` (step 1, -15, flash
+untouched) and `the_loader_refuses_another_boards_package_before_anything_is_erased` (the
+loader's `ldr_session` on `harness/ota_harness.c`, which includes the unmodified
+`loader/ldr_core.c` with counting flash hooks: a flash.bin 4 KiB short and 4 KiB over give
+-14 with zero erases, programs and record clears; the right size, as the control, writes).
+Felucca commits after the tag (to 2026-10-16) change only `eng_phase.c` and `ui_menu.c`, which SIDOU does not vendor.

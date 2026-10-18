@@ -14,7 +14,9 @@ use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::sync::{Mutex, MutexGuard};
 
-use sidou_pack::harness::{ota_h_boot_cleanup, ota_h_service, ota_h_session, OtaHost};
+use sidou_pack::harness::{
+    ldr_h_session, ldr_h_writes, ota_h_boot_cleanup, ota_h_service, ota_h_session, OtaHost,
+};
 use sidou_pack::{
     crc16, default_cache, enc, logical_image, sha256_hex, ufw, ufw_file, wrap_loader, Inputs,
     CHIP_KEY, HEAD_SIZE,
@@ -108,7 +110,7 @@ impl Installer {
                 let addr = u32::from_le_bytes(d[7..11].try_into().unwrap());
                 let len = u32::from_le_bytes([d[11], d[12], d[13], 0]);
                 self.reads.push((addr, len));
-                if addr == 0xE000_0000 {
+                if addr == 0xE000_0000 || addr == 0xF000_0000 {
                     self.respond(addr, b"success\0");
                 } else {
                     let (a, n) = (addr as usize, len as usize);
@@ -174,6 +176,12 @@ impl Device {
 
     fn session(&mut self) -> i32 {
         unsafe { ota_h_session(&mut *self.host) }
+    }
+
+    /// The update loader's session; its erases, programs and record clears are counted.
+    fn loader_session(&mut self) -> (i32, u32) {
+        let rc = unsafe { ldr_h_session(&mut *self.host) };
+        (rc, unsafe { ldr_h_writes() })
     }
 }
 
@@ -347,6 +355,31 @@ fn another_boards_package_is_refused_before_anything_is_erased() {
     assert_eq!(dev.session(), -15);
     assert_eq!(dev.host.committed, 0);
     assert!(dev.flash == before, "flash written");
+}
+
+#[test]
+fn the_loader_refuses_another_boards_package_before_anything_is_erased() {
+    let _one = exclusive();
+    let inputs = inputs();
+    let full = sidou_pack::flash_image(&inputs, &app()).unwrap();
+    let ota = wrap_loader(&loader()).unwrap();
+    // The control: the right size goes through, so the harness drives the loader's session.
+    let pkg = ufw(&full, &ota, PRODUCT).unwrap();
+    let mut inst = Installer::new(&pkg);
+    let mut dev = Device::new(&synthetic_head(), &mut inst);
+    let (rc, writes) = dev.loader_session();
+    assert_eq!((rc, writes > 0), (0, true), "the control package");
+    // 4 KiB short, and 4 KiB over (the other direction): refused with -14, nothing written.
+    for len in [full.len() - 0x1000, full.len() + 0x1000] {
+        let mut flash = full.clone();
+        flash.resize(len, 0xFF);
+        let pkg = ufw(&flash, &ota, PRODUCT).unwrap();
+        let mut inst = Installer::new(&pkg);
+        let mut dev = Device::new(&synthetic_head(), &mut inst);
+        let before = dev.flash.clone();
+        assert_eq!(dev.loader_session(), (-14, 0), "flash.bin of {len} bytes");
+        assert!(dev.flash == before, "flash written");
+    }
 }
 
 #[test]

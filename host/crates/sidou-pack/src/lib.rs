@@ -797,6 +797,8 @@ pub mod harness {
         pub fn ota_h_service(h: *mut OtaHost);
         pub fn ota_h_session(h: *mut OtaHost) -> i32;
         pub fn ota_h_boot_cleanup(h: *mut OtaHost) -> i32;
+        pub fn ldr_h_session(h: *mut OtaHost) -> i32;
+        pub fn ldr_h_writes() -> u32;
     }
 }
 
