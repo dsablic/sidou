@@ -14,6 +14,7 @@ here.
 | 3 | fm1-emu | The and-not read-modify-write on memory, `[rX+imm] &= ~rY` (`64 e8 0b ..`, `64 e8 0f ..`), does not decode | M2d Task 1 | `docs/TODO.md`, "Report fm1-emu: the and-not read-modify-write on memory is not decoded" | not drafted |
 | 4 | fm1-emu | A 6-byte compare and branch (`43 ff …`), which JieLi clang emits for the 6502 prototype's dispatch, does not decode | 2026-10-18, 6502 study | decision record 0008, Risks | not drafted |
 | 5 | fm1-emu | P33 and the watchdog are not modelled (`P33_CON`/`P33_DAT` read 0) | M1 | `docs/TODO.md`, "fm1-emu does not model P33 or the watchdog" | feature request, not drafted |
+| 6 | ChoralRoot (`tools/fm1_install.py`) | Can't return an FM-1 running M-VAVE's FM1 Open to V15: the port "FM1 Community" isn't matched without `--port`, and after step 1 the model check refuses FM1 Open's loader (`ota-FM1C_…`) for the V15 package, with no override. M-VAVE's own updater accepts any `ota-` loader for a stock package. | 2026-10-18, second flash | `docs/hardware-results/2026-10-18-second-flash.md` | not drafted |
 
 Items 2-5 are against the pinned `e52f4640`. The fm1-emu bump will show which are still
 open.
