@@ -19,6 +19,7 @@ pub const DEFAULT_RULES: &str = include_str!("../tables/readability.txt");
 pub enum Class {
     Play,
     Glance,
+    Hint,
     Ignore,
 }
 
@@ -27,6 +28,7 @@ impl Class {
         match self {
             Class::Play => "play",
             Class::Glance => "glance",
+            Class::Hint => "hint",
             Class::Ignore => "ignore",
         }
     }
@@ -95,6 +97,7 @@ pub fn parse_rules(text: &str) -> Result<Vec<Rule>, String> {
         let class = match p[1] {
             "play" => Class::Play,
             "glance" => Class::Glance,
+            "hint" => Class::Hint,
             "ignore" => Class::Ignore,
             c => {
                 return Err(format!(
@@ -150,11 +153,25 @@ pub fn judge(shot: &Shot, rules: &[Rule], cfg: &Config) -> Vec<RunReport> {
         .into_iter()
         .map(|run| {
             // Dots and dashes alone (an empty tracker row) are not text to read.
-            let class = if run.text.chars().any(char::is_alphanumeric) {
+            let mut class = if run.text.chars().any(char::is_alphanumeric) {
                 classify(rules, &shot.view, &run.text)
             } else {
                 Class::Ignore
             };
+            let mut inactive = false;
+            for id in 0..2 {
+                let th = unsafe { &*sidou_sys::theme_get(id) };
+                #[cfg(theme_hint)]
+                let hint = th.hint;
+                #[cfg(not(theme_hint))]
+                let hint = th.label;
+                if run.bg == th.bg {
+                    inactive |= run.fg == th.dim;
+                    if class == Class::Play && [th.label, hint, th.dim].contains(&run.fg) {
+                        class = Class::Glance;
+                    }
+                }
+            }
             let mm = glyph_mm(run.scale, cfg.screen_mm);
             let contrast = contrast_ratio(pal[run.fg as usize], pal[run.bg as usize]);
             let need = if run.scale >= 2 {
@@ -164,7 +181,9 @@ pub fn judge(shot: &Shot, rules: &[Rule], cfg: &Config) -> Vec<RunReport> {
             };
             RunReport {
                 size_ok: class != Class::Play || mm + 1e-9 >= cfg.play_min_mm,
-                contrast_ok: class == Class::Ignore || contrast + 1e-9 >= need,
+                contrast_ok: class == Class::Ignore
+                    || (inactive && class != Class::Hint)
+                    || contrast + 1e-9 >= need,
                 run,
                 class,
                 mm,
@@ -411,6 +430,33 @@ mod tests {
     use super::*;
     use crate::device::Cell;
 
+    #[test]
+    fn label_and_hint_coloured_text_is_not_play_text() {
+        for id in 0..2 {
+            let th = unsafe { &*sidou_sys::theme_get(id) };
+            #[cfg(theme_hint)]
+            let roles = [th.label, th.hint, th.dim];
+            #[cfg(not(theme_hint))]
+            let roles = [th.label, th.dim];
+            for role in roles {
+                let s = shot_with("live", "125", role | th.bg << 4);
+                let r = judge(&s, &parse_rules(DEFAULT_RULES).unwrap(), &Config::default());
+                assert_eq!(r[0].class, Class::Glance);
+                assert!(r[0].size_ok);
+            }
+        }
+    }
+
+    #[test]
+    fn dim_text_is_exempt_unless_it_is_a_hint() {
+        let th = unsafe { &*sidou_sys::theme_get(0) };
+        let s = shot_with("live", "OFF", th.dim | th.bg << 4);
+        let r = judge(&s, &parse_rules(DEFAULT_RULES).unwrap(), &Config::default());
+        assert!(r[0].contrast_ok);
+        let r = judge(&s, &parse_rules("* | hint | any").unwrap(), &Config::default());
+        assert!(!r[0].contrast_ok);
+    }
+
     fn shot_with(view: &str, scale1_text: &str, attr: u8) -> Shot {
         let mut cells = vec![Cell::default(); 900];
         for (i, b) in scale1_text.bytes().enumerate() {
@@ -444,7 +490,8 @@ mod tests {
         let rules = parse_rules(DEFAULT_RULES).unwrap();
         let cfg = Config::default();
         // light blue on blue (14 on 6), the LIVE colours.
-        let s = shot_with("live", "FC 11.4K", 0x6e);
+        let th = unsafe { &*sidou_sys::theme_get(1) };
+        let s = shot_with("live", "FC 11.4K", th.value | th.bg << 4);
         let r = judge(&s, &rules, &cfg);
         assert_eq!(r.len(), 1);
         assert_eq!(r[0].class, Class::Play);
