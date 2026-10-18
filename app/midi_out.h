@@ -17,6 +17,7 @@
  *   parameters so none starves; the mod target first, since it says what CC 1 is (the pulse
  *   width or the wheel), and nothing before it while it waits for room. What does not fit (the budget, or the room the caller has)
  *   stays pending, one flag per parameter: nothing queues beyond that.
+ *   Cold expert metadata/restoration halves that tick's packet budget.
  * - A value that encodes as the one last sent (or received) sends nothing: a pulse-width
  *   move within one CC step, or a knob turned there and back within a tick.
  * - Banks (M2e Task 4, app/midi_route.h): a preset's program change is bank 0's; when the last
@@ -85,6 +86,9 @@ typedef struct {
     uint32_t deferred;      /* ticks that left something pending for lack of room or budget */
     uint32_t dropped;       /* pending changes midi_out_drop forgot */
     const midi_learn* learn; /* MIDI learn's bindings (midi_out_learn), or NULL */
+    uint32_t expert_seen;   /* live.expert_version at the last expert look */
+    uint16_t expert_pending; /* explicit experts that need macro-before-expert ordering */
+    uint16_t release_pending; /* macro-follow transitions not yet carried by an emitted message */
 } midi_out;
 
 /* Nothing pending: the instrument's state now is what the other side is taken to have.

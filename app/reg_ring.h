@@ -203,6 +203,7 @@ typedef struct {
      * preparation spends them, done or not, so the count is a function of this flag and the
      * request on the host and the device alike */
     uint8_t default_8580_spent;
+    uint8_t filter_leases;
 } reg_ring_chips;
 
 /* Chip A is chip[0], initialised for model, and chip B chip[1], left zeroed until its first
@@ -241,9 +242,8 @@ typedef struct {
     uint32_t character_defers; /* ticks that found both stages queued (reg_ring_chips) */
     uint32_t slices;            /* reg_ring_prepare_step's slices run */
     uint32_t unprepared_resets; /* resets that found no preparation and prepared at once */
-    /* Set by every pass that runs a slice. M2a Task 4's store reads and clears it, and skips
-     * its own work in that pass, so a slice and the store's never share one; until the store
-     * is in, nothing reads it. */
+    /* Set by a pass that runs a preparation or character-table slice. The store clears it
+     * and skips its own work, so a slice and the store's never share one. */
     uint8_t sliced;
 } reg_ring_out;
 

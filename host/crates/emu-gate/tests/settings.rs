@@ -220,7 +220,8 @@ fn the_full_boot_plays_once_after_an_install_then_the_short_one() {
     let mut m = power_on(&fw, &flash);
     assert!(!full_boot(&mut m, &fw), "then the short one");
     // An older firmware's record: the full boot once, its settings kept, then the short one.
-    let mut old = rec.clone();
+    let mut old = rec[..SETTINGS_V1_BYTES as usize].to_vec();
+    old[0] = 1;
     let v = SETTINGS_V1_BYTES as usize - SETTINGS_VERSION_CHARS as usize;
     old[v..].fill(0);
     old[v..v + 6].copy_from_slice(b"V0.0.1");

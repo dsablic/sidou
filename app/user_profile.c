@@ -9,6 +9,8 @@
 _Static_assert(USER_PROFILE_V1_BYTES == 3u + (LIVE_CHAR_FIELDS - 1u),
                "version, base, count, then the controls");
 _Static_assert(LIVE_USER_PROFILES <= 8u, "the queue is one byte of bits");
+_Static_assert(SID_EXPERT_COUNT <= UINT8_MAX, "the expert count fits one byte");
+_Static_assert(USER_PROFILE_BYTES <= STORE_VALUE_MAX, "the profile fits a store value");
 
 void user_profiles_init(user_profiles* u, live* l, store* st) {
     u->l = l;
@@ -25,7 +27,7 @@ void user_profiles_init(user_profiles* u, live* l, store* st) {
  * extra bytes are ignored. */
 static int take(live* l, uint32_t n, const uint8_t* rec, uint32_t len) {
     uint32_t count = len > 2u ? rec[2] : 0u;
-    if (len < 3u || rec[0] < USER_PROFILE_VERSION || count < LIVE_CHAR_FIELDS - 1u ||
+    if (len < 3u || rec[0] < 1u || count < LIVE_CHAR_FIELDS - 1u ||
         len < 3u + count || rec[1] >= SID_CHIPS) {
         return 0;
     }
@@ -34,9 +36,25 @@ static int take(live* l, uint32_t n, const uint8_t* rec, uint32_t len) {
             return 0;
         }
     }
+    uint32_t expert_at = 3u + count;
+    if (rec[0] >= 2u) {
+        if (len <= expert_at || rec[expert_at] < SID_EXPERT_COUNT ||
+            len < expert_at + 1u + rec[expert_at]) {
+            return 0;
+        }
+        for (uint32_t e = 0; e < SID_EXPERT_COUNT; ++e) {
+            uint8_t value = rec[expert_at + 1u + e];
+            if (value > SID_CHARACTER_MAX && value != SID_EXPERT_DEFAULT) {
+                return 0;
+            }
+        }
+    }
     l->user_base[n] = rec[1];
     for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
         l->user_ctl[n][f] = rec[3u + f];
+    }
+    for (uint32_t e = 0; e < SID_EXPERT_COUNT; ++e) {
+        l->user_expert[n][e] = rec[0] >= 2u ? rec[expert_at + 1u + e] : SID_EXPERT_DEFAULT;
     }
     l->user_valid = (uint8_t)(l->user_valid | 1u << n);
     return 1;
@@ -49,7 +67,7 @@ void user_profiles_load(user_profiles* u) {
         return;
     }
     for (uint32_t n = 0; n < LIVE_USER_PROFILES; ++n) {
-        uint8_t rec[USER_PROFILE_V1_BYTES + 16u];
+        uint8_t rec[STORE_VALUE_MAX];
         int len = store_get(u->st, STORE_KEY_PROFILE(n), rec, sizeof rec, NULL);
         if (len > 0) {
             (void)take(l, n, rec, (uint32_t)len > sizeof rec ? (uint32_t)sizeof rec : (uint32_t)len);
@@ -65,11 +83,15 @@ void user_profiles_forget(user_profiles* u) {
 }
 
 int user_profile_save(user_profiles* u, uint32_t slot, uint32_t profile,
-                      const uint8_t controls[LIVE_CHAR_FIELDS - 1u], uint32_t now_ms) {
+                      const uint8_t controls[LIVE_CHAR_FIELDS - 1u],
+                      const uint8_t expert[SID_EXPERT_COUNT], uint32_t now_ms) {
     live* l = u->l;
     l->user_base[slot] = (uint8_t)profile;
     for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
         l->user_ctl[slot][f] = controls[f];
+    }
+    for (uint32_t e = 0; e < SID_EXPERT_COUNT; ++e) {
+        l->user_expert[slot][e] = expert[e];
     }
     l->user_valid = (uint8_t)(l->user_valid | 1u << slot);
     if (!u->st) {
@@ -99,6 +121,10 @@ __attribute__((noinline, unused)) static void submit(user_profiles* u) {
     u->rec[2] = LIVE_CHAR_FIELDS - 1u;
     for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
         u->rec[3u + f] = l->user_ctl[n][f];
+    }
+    u->rec[USER_PROFILE_V1_BYTES] = SID_EXPERT_COUNT;
+    for (uint32_t e = 0; e < SID_EXPERT_COUNT; ++e) {
+        u->rec[USER_PROFILE_V1_BYTES + 1u + e] = l->user_expert[n][e];
     }
     int rc = store_put(u->st, STORE_KEY_PROFILE(n), USER_PROFILE_TYPE, u->rec, sizeof u->rec);
     if (rc == STORE_OK) {

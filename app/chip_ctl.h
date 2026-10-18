@@ -31,11 +31,13 @@ typedef struct {
     uint8_t profile;
     uint8_t controls[LIVE_CHAR_FIELDS - 1u];
     uint8_t gate_reset;
+    uint8_t expert[SID_EXPERT_COUNT];
 } chip_setup;
 
 /* The keys' setup: live's, as its chip has it (the profile applied, the controls asked for,
  * the envelope mode). */
 void chip_setup_of(const live* l, chip_setup* out);
+void chip_setup_control(chip_setup* setup, uint32_t field, uint8_t value);
 
 typedef struct {
     live_sink_fn sink;

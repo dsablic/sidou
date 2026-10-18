@@ -29,7 +29,7 @@
  * dark grey.
  *
  * Focus: the tabs (A and B), the chip (the CHIP section) or a slot. SELECT moves it, clamped at
- * both ends: the tabs, CHIP, DIST, MOD, FX. ALGORITHM on the tabs switches A and B; K1..K4 there
+ * both ends: the tabs, CHIP, DIST, MOD, FX, EXPERT. ALGORITHM on the tabs switches A and B; K1..K4 there
  * turn the chip's.
  * The slot focus is live's selected slot (fx_select), the one SCL selects and EDIT + K1..K4
  * turns everywhere: SELECT onto a slot selects it, and SCL on a slot moves the focus with it.
@@ -37,6 +37,10 @@
  * algorithm on a slot. K1..K4 turn the focused section's four values (panel_knob_param, which
  * MIDI learn reads too, follows chip_view_page): age, DAC, thump and bleed on the chip; Amount,
  * A, B and Mix on a slot. Everything else plays as on LIVE.
+ * EXPERT pages four independent controls with ALGORITHM, K1/K2 above K3/K4 in two readable
+ * pairs: names at 2x in the knob's colour, values with units at 2x/3x. Empty positions do
+ * nothing. EDIT + ALGORITHM and SAVE retain the USER target behavior on EXPERT too.
+ * Macro moves release their related expert overrides; the page keeps that reminder visible.
  *
  * It composes when what it shows changed (its changed function): a change from the panel or
  * from MIDI shows at the next frame. The page is built off the grid in a canvas, then its
@@ -66,9 +70,11 @@ extern "C" {
 /* The cells a frame of CHIP sends at most: 200 cells and their windows are about 17.5 ms of
  * SPI, inside the 20 ms budget (LIVE, SCENE and the title cards hold to the same). */
 #define CHIP_VIEW_FRAME_CELLS 200u
-/* The sections SELECT moves between: the chip, then the slots. */
+/* The ordinary four-section strip; EXPERT is a separate final SELECT stop. */
 #define CHIP_VIEW_CHIP 0u
 #define CHIP_VIEW_SECTIONS (1u + LIVE_SLOTS)
+#define CHIP_VIEW_EXPERT CHIP_VIEW_SECTIONS
+#define CHIP_VIEW_EXPERT_PAGES ((SID_EXPERT_COUNT + 3u) / 4u)
 /* The other sections' lines on the page: all but the one in focus. */
 #define CHIP_VIEW_SECTIONS_SHOWN LIVE_SLOTS
 /* chip_view_focus with the focus on the tabs, above the chip. */
@@ -102,9 +108,11 @@ typedef grid_canvas chip_view_canvas;
 typedef struct {
     live* l;
     keys_route* kr;  /* NULL: one chip's setup (live's) on both tabs, no song (host tests) */
-    uint8_t chip;    /* 1: the focus is on the chip; 0: on the selected slot (live's fx_select) */
+    uint8_t chip;    /* 1: the focus is on the chip; 0: selected slot or expert */
     uint8_t tabs;    /* 1: the focus is on the tabs (chip is 1 too: K1..K4 turn the chip's) */
     uint8_t tab;     /* the tab shown: 0 A, 1 B */
+    uint8_t expert;  /* final SELECT stop; chip and tabs are both 0 */
+    uint8_t expert_page; /* four direct K1..K4 controls per page */
     uint8_t built;   /* the canvas shows drawn */
     uint8_t copying; /* the canvas has cells the grid does not have yet (the budget) */
     uint16_t cursor; /* the cell the copy goes on from */
@@ -127,16 +135,16 @@ extern const view chip_view_view;
 void chip_view_init(chip_view* cv, live* l);
 /* The two chips' routing (the device's, app/keys_route.h): which the keys play, the song. */
 void chip_view_set_keys(chip_view* cv, keys_route* kr);
-/* The section in focus: CHIP_VIEW_TABS, CHIP_VIEW_CHIP, or 1 + the selected slot. */
+/* CHIP_VIEW_TABS, CHIP_VIEW_CHIP, 1 + the selected slot, or CHIP_VIEW_EXPERT. */
 uint32_t chip_view_focus(const chip_view* cv);
 /* What K1..K4 turn while the page shows (app/panel.h panel.page): PANEL_PAGE_CHARACTER on the
  * tabs and the chip, PANEL_PAGE_NONE there on a song's chip A (the view turns them),
- * PANEL_PAGE_SLOT on a slot. */
+ * PANEL_PAGE_SLOT on a slot, PANEL_PAGE_EXPERT_FIRST + the page on EXPERT (NONE on song A). */
 uint32_t chip_view_page(const chip_view* cv);
 /* Where a saved USER slot is written (app/user_profile.h); NULL until set. */
 void chip_view_set_users(chip_view* cv, user_profiles* users);
 /* SAVE's press and release while the view shows (app/save_key.h, the precedence of
- * app/views.c), with the focus on the chip: into the save target; else into the USER slot the
+ * app/views.c), with the focus on the chip or EXPERT: into the save target; else into the USER slot the
  * tab's setup was picked from; else nothing (CHIP_VIEW_SAVE_NONE: the settings save). A slot
  * that holds a profile asks first (the message OVERWRITE USER 3?; SAVE again stores). The tab's
  * setup is stored: the keys' on the keys' tabs, the song's (keys_route.song_want, never a
@@ -159,6 +167,14 @@ int chip_view_song_tab(const chip_view* cv);
  * and 1, or its generic name (AMT, A, B, MIX) and 0 for a field the algorithm does not use and
  * every field of a slot that is off. */
 int chip_view_label(uint32_t slot, uint32_t alg, uint32_t field, char* buf);
+/* Expert names and values fit the popup's 12 characters. Values are resolved raw 0..127;
+ * the formatter adds the parameter's units or its discrete choice. */
+const char* chip_view_expert_name(uint32_t index);
+void chip_view_expert_text(uint32_t index, uint32_t value, char* out);
+/* Unit readouts use the setup's effective physical value, preserving unquantized defaults. */
+void chip_view_expert_setup_text(const chip_setup* setup, uint32_t index, char* out);
+/* The shown tab's resolved expert value (the song's setup on song A, the keys' elsewhere). */
+uint32_t chip_view_expert_value(const chip_view* cv, uint32_t index);
 
 #ifdef __cplusplus
 }

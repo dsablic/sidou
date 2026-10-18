@@ -61,6 +61,8 @@ void learn_view_param_name(uint32_t param, char* buf) {
         uint32_t i = param - LIVE_PARAM_SLOT;
         append(buf, LEARN_VIEW_NAME, SLOTS[i / LIVE_SLOT_FIELDS]);
         append(buf, LEARN_VIEW_NAME, FIELDS[i % LIVE_SLOT_FIELDS]);
+    } else if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
+        append(buf, LEARN_VIEW_NAME, chip_view_expert_name(param - LIVE_PARAM_EXPERT));
     } else { /* not on a knob: the panel never picks it */
         append(buf, LEARN_VIEW_NAME, "PARAM ");
         append_number(buf, LEARN_VIEW_NAME, param);

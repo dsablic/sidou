@@ -84,12 +84,14 @@ fn song_controls_pass_fits_its_ring_provision() {
             profile: SID_CHIP_6581_R4AR as u8,
             controls: [0; 4],
             gate_reset: 1,
+            expert: [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize],
         };
         while chip_ctl_follow(&mut *c, &keys) == 0 {}
         let song = chip_setup {
             profile: SID_CHIP_8580_R5 as u8,
             controls: [100, 50, 20, 127],
             gate_reset: 0,
+            expert: [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize],
         };
         loop {
             n = 0;

@@ -6,6 +6,9 @@
 #include "midi_map.h"
 
 #include <stddef.h>
+#include <string.h>
+
+__attribute__((noinline, unused)) static void macro_changed(live* l, uint32_t field);
 
 #define CTRL_GATE 0x01u
 #define REG_FC_LO 0x15u
@@ -93,6 +96,10 @@ _Static_assert(LIVE_REG_CHAR(LIVE_CHAR_FIELDS) == LIVE_REG_CHAR_TICK,
                "the settings, then the tick");
 
 void live_char_store(sid_character* c, uint8_t reg, uint8_t value) {
+    if (reg >= LIVE_REG_EXPERT_FIRST && reg < LIVE_REG_EXPERT(SID_EXPERT_COUNT)) {
+        sid_character_expert_set(c, SID_MODEL_6581, reg - LIVE_REG_EXPERT_FIRST, value);
+        return;
+    }
     switch (reg) {
     case LIVE_REG_CHAR(0): c->profile = value < SID_CHIPS ? (uint8_t)(value + 1u) : 0u; break;
     case LIVE_REG_CHAR(1): c->age = value; break;
@@ -112,6 +119,29 @@ static sid_dac* host_free_dac(const live_sid_target* t) {
     return t->chip->dac == &t->dacs[0] ? &t->dacs[1] : &t->dacs[0];
 }
 
+static int host_free_filter(const live_sid_target* t, sid_filter_row rows[2]) {
+    if (!t->spare) {
+        return 0;
+    }
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < 4u; i++) {
+        sid_filter_row row = sid_filter_backing(i < 2u ? t->chip : t->spare, i & 1u);
+        int used = row.cutoff == t->chip->filter_rows[0].cutoff ||
+                   row.cutoff == t->chip->filter_rows[1].cutoff;
+        if (t->ramp.filter_building) {
+            used |= row.cutoff == t->ramp.filter_job.rows[0].cutoff ||
+                    row.cutoff == t->ramp.filter_job.rows[1].cutoff;
+        }
+        if (!used) {
+            rows[n++] = row;
+            if (n == 2u) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 int live_sid_prepare(void* ctx, uint8_t profile) {
     live_sid_target* t = ctx;
     const sid_chip_profile* p = sid_chip_profile_get(profile);
@@ -127,11 +157,17 @@ int live_sid_prepare(void* ctx, uint8_t profile) {
         sid_character want = t->ramp.target;
         want.profile = (uint8_t)(profile + 1u);
         t->ramp.building = 0;
+        t->ramp.filter_building = 0;
+        sid_filter_row rows[2];
+        if (!host_free_filter(t, rows)) {
+            return 0;
+        }
         uint32_t defaults = p->model == SID_MODEL_8580 && !t->default_8580_spent
                                 ? SID_DAC_BUILD_STEPS
                                 : 0u;
         sid_character_prep_start(&t->prep, t->spare, (sid_model)p->model, t->clock_hz,
                                  t->sample_rate, &want, defaults);
+        sid_character_prep_rows(&t->prep, rows);
         t->prep_on = 1;
         t->prep_profile = profile;
     } else {
@@ -152,7 +188,16 @@ static int take_prepared(live_sid_target* t, sid_model model) {
         t->prep.c.profile != t->ramp.target.profile) {
         return 0;
     }
-    *t->chip = *t->spare;
+    /* Borrowed rows may live inside either sid: copying backing arrays would overwrite them. */
+    memcpy(t->chip, t->spare, offsetof(sid, cutoff_g));
+    memcpy((uint8_t*)t->chip + offsetof(sid, filter_t),
+           (const uint8_t*)t->spare + offsetof(sid, filter_t),
+           sizeof(sid) - offsetof(sid, filter_t));
+    for (uint32_t v = 0; v < LIVE_VOICES; v++) {
+        if (t->chip->osc[v].writeback_keep) {
+            t->chip->osc[v].writeback = (const uint32_t (*)[16])t->chip->noise_wb;
+        }
+    }
     sid_character want = t->ramp.target;
     sid_character_ramp_reset(&t->ramp, &t->prep.c, t->prep.table);
     t->ramp.target = want;
@@ -171,15 +216,18 @@ void live_sid_sink(void* ctx, uint8_t reg, uint8_t value) {
                 sid_character_apply(t->chip, &t->ramp.target, host_free_dac(t));
             sid_character_ramp_reset(&t->ramp, &t->ramp.target, table);
         }
-    } else if (reg >= LIVE_REG_CHAR(0) && reg < LIVE_REG_CHAR(LIVE_CHAR_FIELDS)) {
+    } else if ((reg >= LIVE_REG_CHAR(0) && reg < LIVE_REG_CHAR(LIVE_CHAR_FIELDS)) ||
+               (reg >= LIVE_REG_EXPERT_FIRST && reg < LIVE_REG_EXPERT(SID_EXPERT_COUNT))) {
         live_char_store(&t->ramp.target, reg, value);
     } else if (reg == LIVE_REG_CHAR_TICK) {
         sid_character_stage st;
         /* No table while preparing, nor in the tick that ran a slice (the last one's
          * included): reg_ring.c's character_tick, a tick standing for a pass. */
         sid_dac* table = t->prep_on || t->prep_tick ? NULL : host_free_dac(t);
+        sid_filter_row rows[2];
+        int filter_free = !t->prep_on && !t->prep_tick && host_free_filter(t, rows);
         t->prep_tick = 0;
-        if (sid_character_ramp_tick(&t->ramp, t->chip, table, &st)) {
+        if (sid_character_ramp_tick_tables(&t->ramp, t->chip, table, filter_free ? rows : NULL, &st)) {
             sid_character_commit(t->chip, &st);
         }
     } else if (reg == LIVE_REG_GATE_RESET) {
@@ -378,6 +426,12 @@ static void write_character(live* l) {
         put(l, (uint8_t)LIVE_REG_CHAR(f + 1u), l->character[f]);
         l->character_sent[f] = l->character[f];
     }
+    for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+        if (l->expert[f] != l->expert_sent[f]) {
+            put(l, (uint8_t)LIVE_REG_EXPERT(f), l->expert[f]);
+            l->expert_sent[f] = l->expert[f];
+        }
+    }
 }
 
 /* A chip reset with the model, after the character's settings (the sink gives them to the
@@ -568,6 +622,16 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
         l->character[f] = 0;
     }
+    for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+        l->expert[f] = SID_EXPERT_DEFAULT;
+        l->expert_sent[f] = SID_EXPERT_DEFAULT;
+        for (uint32_t n = 0; n < LIVE_USER_PROFILES; n++) {
+            l->user_expert[n][f] = SID_EXPERT_DEFAULT;
+        }
+    }
+    l->expert_dirty = 0;
+    l->expert_active = 0;
+    l->expert_version = 0;
     load_preset(l, 0);
     reset_chip(l);
     write_all(l);
@@ -778,6 +842,15 @@ __attribute__((noinline, unused)) static void apply_user(live* l, uint32_t n) {
     for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
         l->character[f] = l->user_ctl[n][f];
     }
+    l->expert_active = 0;
+    uint32_t changed = 0;
+    for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+        changed |= l->expert[f] != l->user_expert[n][f];
+        l->expert[f] = l->user_expert[n][f];
+        l->expert_active |= l->expert[f] != SID_EXPERT_DEFAULT;
+    }
+    l->expert_dirty = 1;
+    l->expert_version += changed != 0;
     l->user_applied = (uint8_t)(n + 1u);
 }
 
@@ -825,6 +898,9 @@ void live_button(live* l, live_button_id button) {
         }
         break;
     case LIVE_BUTTON_FX:
+        if (l->expert_active) {
+            macro_changed(l, 0);
+        }
         if (l->prepare) { /* the other model than the one asked for: live_tick prepares it */
             sid_model m = l->model_req == SID_MODEL_6581 ? SID_MODEL_8580 : SID_MODEL_6581;
             l->user_applied = 0;
@@ -937,6 +1013,9 @@ uint32_t live_param_max(uint32_t param) {
     case LIVE_PARAM_THUMP:
     case LIVE_PARAM_BLEED: return SID_CHARACTER_MAX;
     default:
+        if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
+            return SID_CHARACTER_MAX;
+        }
         if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {
             uint32_t slot = (param - LIVE_PARAM_SLOT) / LIVE_SLOT_FIELDS;
             uint32_t field = (param - LIVE_PARAM_SLOT) % LIVE_SLOT_FIELDS;
@@ -956,7 +1035,57 @@ static int set_bits(uint8_t* field, uint32_t mask, uint32_t value) {
     return 1;
 }
 
+__attribute__((noinline, unused)) static void macro_changed(live* l, uint32_t field) {
+    uint32_t mask;
+    switch (field) {
+    case 0:
+        mask = (1u << SID_EXPERT_COUNT) - 1u;
+        l->expert_active = 0;
+        break;
+    case 1:
+        mask = (1u << SID_EXPERT_FILTER_6581_CURVE) | (1u << SID_EXPERT_FILTER_6581_RANGE) |
+               (1u << SID_EXPERT_FILTER_8580_CURVE) | (1u << SID_EXPERT_NONLINEARITY);
+        break;
+    case 2:
+        mask = (1u << SID_EXPERT_DAC_KINK) | (1u << SID_EXPERT_DAC_LEAKAGE);
+        break;
+    case 3: mask = 1u << SID_EXPERT_THUMP; break;
+    case 4: mask = 1u << SID_EXPERT_BLEED; break;
+    default: return;
+    }
+    uint32_t changed = 0;
+    for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+        if ((mask & (1u << f)) && l->expert[f] != SID_EXPERT_DEFAULT) {
+            l->expert[f] = SID_EXPERT_DEFAULT;
+            changed = 1;
+        }
+    }
+    if (changed) {
+        l->expert_dirty = 1;
+        l->expert_version++;
+    }
+}
+
+__attribute__((noinline, unused)) static uint32_t expert_get(const live* l, uint32_t f) {
+    if (l->expert[f] != SID_EXPERT_DEFAULT) {
+        return l->expert[f];
+    }
+    sid_character c;
+    c.profile = (uint8_t)(l->profile_req + 1u);
+    c.age = l->character[0];
+    c.dac = l->character[1];
+    c.thump = l->character[2];
+    c.bleed = l->character[3];
+    c.expert_mask = 0;
+    return sid_character_expert_get(&c, l->model_req, f);
+}
+
 void live_param_set(live* l, uint32_t param, uint32_t value) {
+    if (param == LIVE_PARAM_CUTOFF) {
+        l->settings_dirty = 1;
+        set_cutoff(l, (uint16_t)(value > LIVE_CUTOFF_MAX ? LIVE_CUTOFF_MAX : value));
+        return;
+    }
     if (param >= LIVE_PARAM_COUNT) {
         return;
     }
@@ -968,7 +1097,6 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
         l->settings_dirty = 1;
     }
     switch (param) {
-    case LIVE_PARAM_CUTOFF: set_cutoff(l, (uint16_t)value); break;
     case LIVE_PARAM_RESONANCE: set_resonance(l, (uint8_t)value); break;
     case LIVE_PARAM_PULSE_WIDTH: set_pulse_width(l, (uint16_t)value); break;
     case LIVE_PARAM_VOLUME: live_set_master(l, (uint16_t)value); break;
@@ -1018,11 +1146,17 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
         }
         break;
     case LIVE_PARAM_MODEL: /* only recorded: live_tick applies it */
+        if (l->expert_active) {
+            macro_changed(l, 0);
+        }
         l->user_applied = 0;
         request_profile(l, model_profile(l, value ? SID_MODEL_8580 : SID_MODEL_6581));
         break;
     case LIVE_PARAM_PROFILE: /* the same; USER 1..8 above the built-in ones */
         if (value < SID_CHIPS) {
+            if (l->expert_active) {
+                macro_changed(l, 0);
+            }
             l->user_applied = 0;
             request_profile(l, value);
         } else {
@@ -1033,6 +1167,9 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
     case LIVE_PARAM_DAC:
     case LIVE_PARAM_THUMP:
     case LIVE_PARAM_BLEED: /* recorded: live_tick sends them */
+        if (l->expert_active && l->character[param - LIVE_PARAM_AGE] != value) {
+            macro_changed(l, param - LIVE_PARAM_AGE + 1u);
+        }
         l->character[param - LIVE_PARAM_AGE] = (uint8_t)value;
         break;
     /* Expression: recorded; live_tick writes what they change, except the velocity target,
@@ -1064,8 +1201,17 @@ void live_param_set(live* l, uint32_t param, uint32_t value) {
         }
         break;
     default:
-        live_slot_set(l, (param - LIVE_PARAM_SLOT) / LIVE_SLOT_FIELDS,
-                      (param - LIVE_PARAM_SLOT) % LIVE_SLOT_FIELDS, (int32_t)value);
+        if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
+            if (l->expert[param - LIVE_PARAM_EXPERT] != value) {
+                l->expert[param - LIVE_PARAM_EXPERT] = (uint8_t)value;
+                l->expert_active = 1;
+                l->expert_dirty = 1;
+                l->expert_version++;
+            }
+        } else {
+            live_slot_set(l, (param - LIVE_PARAM_SLOT) / LIVE_SLOT_FIELDS,
+                          (param - LIVE_PARAM_SLOT) % LIVE_SLOT_FIELDS, (int32_t)value);
+        }
         break;
     }
 }
@@ -1100,6 +1246,9 @@ uint32_t live_param_get(const live* l, uint32_t param) {
     case LIVE_PARAM_THUMP:
     case LIVE_PARAM_BLEED: return l->character[param - LIVE_PARAM_AGE];
     default:
+        if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
+            return expert_get(l, param - LIVE_PARAM_EXPERT);
+        }
         if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {
             return l->slot[(param - LIVE_PARAM_SLOT) / LIVE_SLOT_FIELDS]
                           [(param - LIVE_PARAM_SLOT) % LIVE_SLOT_FIELDS];
@@ -1108,7 +1257,7 @@ uint32_t live_param_get(const live* l, uint32_t param) {
     }
 }
 
-void live_params(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
+void live_params_base(const live* l, uint16_t out[LIVE_PARAM_EXPERT]) {
     out[LIVE_PARAM_CUTOFF] = l->cutoff;
     out[LIVE_PARAM_RESONANCE] = l->resonance;
     out[LIVE_PARAM_PULSE_WIDTH] = l->pulse_width;
@@ -1139,6 +1288,20 @@ void live_params(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
     out[LIVE_PARAM_PROFILE] = l->profile_req;
     for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; ++f) {
         out[LIVE_PARAM_AGE + f] = l->character[f];
+    }
+}
+
+void live_params_wire(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
+    live_params_base(l, out);
+    for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+        out[LIVE_PARAM_EXPERT + f] = l->expert[f];
+    }
+}
+
+void live_params(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
+    live_params_base(l, out);
+    for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+        out[LIVE_PARAM_EXPERT + f] = (uint16_t)expert_get(l, f);
     }
 }
 
@@ -1246,6 +1409,17 @@ static void apply_profile(live* l) {
 }
 
 void live_tick(live* l) {
+    if (l->expert_dirty) {
+        l->expert_active = 0;
+        for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+            l->expert_active |= l->expert[f] != SID_EXPERT_DEFAULT;
+            if (l->expert[f] != l->expert_sent[f]) {
+                put(l, (uint8_t)LIVE_REG_EXPERT(f), l->expert[f]);
+                l->expert_sent[f] = l->expert[f];
+            }
+        }
+        l->expert_dirty = 0;
+    }
     apply_profile(l);
     update_character(l);
     const live_preset* p = cur(l);

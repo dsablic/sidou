@@ -31,13 +31,13 @@ target_compile_options(sidou_core PRIVATE -Wall -Wextra -Wshadow)
 # default since M1c Task 3), compiles reSIDfp's WEAK, AVERAGE and STRONG 6581 tables, 92,160
 # bytes, which the chip profiles (gen/profiles.h) need: the 6581 R2 plays WEAK, the worn
 # 6581 STRONG. OFF keeps AVERAGE only (30,720 bytes), and those profiles play AVERAGE.
-# SIDOU_ALL_COMBINED_PROFILES_8580, OFF, does the same for the 8580, whose one profile (the
-# R5) plays AVERAGE: ON would add 61,440 bytes no profile reads. The host tests build both.
+# SIDOU_ALL_COMBINED_PROFILES_8580 is also ON: the expert layer selects all three sampled
+# strengths on either model. gen/pulldown.h stores them as shared, packed blocks.
 option(SIDOU_ALL_COMBINED_PROFILES "Compile all three 6581 combined-waveform profiles" ON)
 if(SIDOU_ALL_COMBINED_PROFILES)
     target_compile_definitions(sidou_core PUBLIC SIDOU_ALL_COMBINED_PROFILES)
 endif()
-option(SIDOU_ALL_COMBINED_PROFILES_8580 "Compile all three 8580 combined-waveform profiles" OFF)
+option(SIDOU_ALL_COMBINED_PROFILES_8580 "Compile all three 8580 combined-waveform profiles" ON)
 if(SIDOU_ALL_COMBINED_PROFILES_8580)
     target_compile_definitions(sidou_core PUBLIC SIDOU_ALL_COMBINED_PROFILES_8580)
 endif()

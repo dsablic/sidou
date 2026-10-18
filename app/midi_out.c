@@ -16,7 +16,10 @@
 
 _Static_assert(LIVE_PARAM_COUNT <= 255u, "midi_out.next is a uint8_t");
 _Static_assert(MIDI_OUT_TICK_PACKETS >= MIDI_OUT_NRPN_PACKETS, "an NRPN must fit a tick");
+_Static_assert(MIDI_OUT_TICK_PACKETS / 2u >= MIDI_OUT_NRPN_PACKETS, "a cold expert tick can send an NRPN");
 _Static_assert(LIVE_PARAM_COUNT <= 64u, "PRESET_LOADS is a uint64_t");
+_Static_assert(LIVE_PARAM_EXPERT % 2u == 0, "the frozen legacy snapshot consists of parameter pairs");
+_Static_assert(offsetof(midi_out, seen) % 4u == 0, "snapshot parameter pairs are word-aligned");
 
 #define BIT(p) ((uint64_t)1 << (p))
 /* Exactly the parameters live_set_preset sets (live.h): not the volume, the chip model or the
@@ -30,6 +33,23 @@ static const uint64_t PRESET_LOADS =
     BIT(LIVE_PARAM_BEND_RANGE) | BIT(LIVE_PARAM_VELOCITY_TARGET) | BIT(LIVE_PARAM_MOD_TARGET) |
     BIT(LIVE_PARAM_PRESSURE_TARGET) | BIT(LIVE_PARAM_VIBRATO_RATE) |
     BIT(LIVE_PARAM_VIBRATO_DEPTH) | BIT(LIVE_PARAM_VIBRATO_DELAY);
+
+static const uint16_t macro_releases[LIVE_PARAM_EXPERT] = {
+    [LIVE_PARAM_MODEL] = (1u << SID_EXPERT_COUNT) - 1u,
+    [LIVE_PARAM_PROFILE] = (1u << SID_EXPERT_COUNT) - 1u,
+    [LIVE_PARAM_AGE] = (1u << SID_EXPERT_FILTER_6581_CURVE) | (1u << SID_EXPERT_FILTER_6581_RANGE) |
+                       (1u << SID_EXPERT_FILTER_8580_CURVE) | (1u << SID_EXPERT_NONLINEARITY),
+    [LIVE_PARAM_DAC] = (1u << SID_EXPERT_DAC_KINK) | (1u << SID_EXPERT_DAC_LEAKAGE),
+    [LIVE_PARAM_THUMP] = 1u << SID_EXPERT_THUMP,
+    [LIVE_PARAM_BLEED] = 1u << SID_EXPERT_BLEED,
+};
+
+/* Loaded masks avoid the register-index bit-clear opcode missing from fm1-emu. */
+static const uint16_t expert_bits[16] = {
+    1u, 2u, 4u, 8u, 16u, 32u, 64u, 128u,
+    256u, 512u, 1024u, 2048u, 4096u, 8192u, 16384u, 32768u
+};
+_Static_assert(SID_EXPERT_COUNT <= 16u, "pending experts fit their mask");
 
 static uint32_t packet(uint32_t cin, uint32_t status, uint32_t d1, uint32_t d2) {
     return MIDI_OUT_CABLE << 4 | cin | status << 8 | d1 << 16 | d2 << 24;
@@ -57,25 +77,89 @@ static uint32_t wire_cc(const midi_out* o, const live* l, uint32_t p, const midi
 }
 
 static void resync(midi_out* o, const live* l) {
-    live_params(l, o->seen);
+    live_params_wire(l, o->seen);
+    o->expert_seen = l->expert_version;
+    o->expert_pending = 0;
+    o->release_pending = 0;
     for (uint32_t p = 0; p < LIVE_PARAM_COUNT; ++p) {
         o->wire[p] = o->seen[p];
         o->pending[p] = 0;
     }
 }
 
-/* What changed since the last look: the panel's (remote 0) or MIDI input's (remote 1). Every
- * parameter in one snapshot (live_params), not a live_param_get each: a CC flood pays for two
- * looks a pass. */
-static void look(midi_out* o, const live* l, int remote) {
-    uint16_t now[LIVE_PARAM_COUNT];
-    live_params(l, now);
+__attribute__((noinline, unused)) static void restore_experts(midi_out* o, const live* l,
+                                                            uint32_t released) {
+    for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+        uint32_t p = LIVE_PARAM_EXPERT + f;
+        if ((released & expert_bits[f]) && l->expert[f] != SID_EXPERT_DEFAULT) {
+            o->pending[p] = 1;
+            o->wire[p] = SID_EXPERT_DEFAULT;
+            o->expert_pending |= expert_bits[f];
+        }
+    }
+}
+
+__attribute__((noinline, unused)) static void look_experts(midi_out* o, const live* l, int remote,
+                                                         uint32_t released) {
+    uint32_t follows = 0;
+    o->expert_seen = l->expert_version;
+    for (uint32_t f = 0; f < SID_EXPERT_COUNT; ++f) {
+        uint32_t p = LIVE_PARAM_EXPERT + f;
+        uint16_t v = l->expert[f];
+        if (v == o->seen[p]) {
+            continue;
+        }
+        if (v == SID_EXPERT_DEFAULT) {
+            follows |= expert_bits[f];
+        }
+        o->seen[p] = v;
+        if (remote || v == SID_EXPERT_DEFAULT) {
+            o->wire[p] = v;
+            o->pending[p] = 0;
+            o->expert_pending &= (uint16_t)~expert_bits[f];
+        } else {
+            o->pending[p] = 1;
+            o->expert_pending |= expert_bits[f];
+        }
+    }
+    if (!remote) {
+        o->release_pending |= (uint16_t)follows;
+    }
+    if (released && !remote && l->expert_active) {
+        restore_experts(o, l, released);
+    }
+}
+
+__attribute__((noinline, unused)) static void carry_releases(midi_out* o, const live* l) {
+    uint32_t carried = 0;
+    for (uint32_t i = 0; i < LIVE_CHAR_FIELDS + 1u; i++) {
+        uint32_t p = i ? LIVE_PARAM_PROFILE + i - 1u : LIVE_PARAM_MODEL;
+        if (o->pending[p] && o->seen[p] != o->wire[p]) {
+            carried |= macro_releases[p];
+        }
+    }
+    if (o->release_pending & ~carried) {
+        /* A canceled macro or same-base USER pick still owes the receiver a release. */
+        o->pending[LIVE_PARAM_PROFILE] = 1;
+        o->wire[LIVE_PARAM_PROFILE] = UINT16_MAX;
+        if (l->expert_active) {
+            restore_experts(o, l, (1u << SID_EXPERT_COUNT) - 1u);
+        }
+    }
+}
+
+/* Ordinary CC input compares only the original prefix. The raw expert layer is revisited
+ * only after an edit or a macro that can release overrides at the receiver. */
+static int look(midi_out* o, const live* l, int remote) {
+    _Alignas(4) uint16_t now[LIVE_PARAM_EXPERT];
+    uint32_t released = 0;
+    live_params_base(l, now);
     if (l->preset != o->preset_seen) {
         /* A preset change: the program change carries every parameter it loaded. The rest
          * are diffed as usual below, so a pending change of one survives it. */
         o->preset_seen = l->preset;
         o->preset_pending = remote ? 0u : 1u;
-        for (uint32_t p = 0; p < LIVE_PARAM_COUNT; ++p) {
+        for (uint32_t p = 0; p < LIVE_PARAM_EXPERT; ++p) {
             if (PRESET_LOADS >> p & 1u) {
                 o->seen[p] = now[p];
                 o->wire[p] = now[p];
@@ -83,19 +167,36 @@ static void look(midi_out* o, const live* l, int remote) {
             }
         }
     }
-    for (uint32_t p = 0; p < LIVE_PARAM_COUNT; ++p) {
-        uint16_t v = now[p];
-        if (v == o->seen[p]) {
+    for (uint32_t pair = 0; pair < LIVE_PARAM_EXPERT / 2u; ++pair) {
+        uint32_t p = pair * 2u;
+        uint32_t current, previous;
+        __builtin_memcpy(&current, &now[p], sizeof current);
+        __builtin_memcpy(&previous, &o->seen[p], sizeof previous);
+        if (current == previous) {
             continue;
         }
-        o->seen[p] = v;
-        if (remote) {
-            o->wire[p] = v; /* the sender has it */
-            o->pending[p] = 0;
-        } else {
-            o->pending[p] = 1;
+        for (uint32_t end = p + 2u; p < end; ++p) {
+            uint16_t v = now[p];
+            if (v == o->seen[p]) {
+                continue;
+            }
+            o->seen[p] = v;
+            if (p >= LIVE_PARAM_MODEL) {
+                released |= macro_releases[p];
+            }
+            if (remote) {
+                o->wire[p] = v;
+                o->pending[p] = 0;
+            } else {
+                o->pending[p] = 1;
+            }
         }
     }
+    int expert_work = o->expert_seen != l->expert_version || (released && l->expert_active);
+    if (expert_work) {
+        look_experts(o, l, remote, released);
+    }
+    return expert_work;
 }
 
 void midi_out_init(midi_out* o, const live* l, uint8_t channel, uint8_t hires) {
@@ -157,14 +258,18 @@ static int send(midi_out* o, const live* l, uint32_t p, uint32_t budget, uint32_
                 uint32_t* n) {
     const midi_map_entry* e = o->row[p]; /* midi_map_for_param searches the table */
     uint32_t v = o->seen[p]; /* the latest: look just ran */
-    if (v == o->wire[p]) {
+    uint32_t wire = o->wire[p];
+    if (v == wire || (p >= LIVE_PARAM_EXPERT && v == SID_EXPERT_DEFAULT)) {
         o->pending[p] = 0; /* back where it was: nothing new however it would go */
         return 1;
     }
     uint32_t on = e ? wire_cc(o, l, p, e) : MIDI_MAP_NO_CC;
     int nrpn = on == MIDI_MAP_NO_CC;
+    /* CC encoding is injective over a bounded 0..127 native range. */
     if (!e || (nrpn && e->nrpn == MIDI_MAP_NO_NRPN) ||
-        (nrpn ? v == o->wire[p] : midi_map_to_cc(e, v) == midi_map_to_cc(e, o->wire[p]))) {
+        (!nrpn && !(p >= LIVE_PARAM_EXPERT && wire == SID_EXPERT_DEFAULT) &&
+         (e->max > 127u || v > e->max || wire > e->max) &&
+         midi_map_to_cc(e, v) == midi_map_to_cc(e, wire))) {
         o->pending[p] = 0; /* nothing to send it as, or nothing new on the wire */
         return 1;
     }
@@ -182,13 +287,31 @@ static int send(midi_out* o, const live* l, uint32_t p, uint32_t budget, uint32_
     }
     o->wire[p] = (uint16_t)v;
     o->pending[p] = 0;
+    if (p >= LIVE_PARAM_MODEL && p < LIVE_PARAM_EXPERT &&
+        (l->expert_active || o->release_pending)) {
+        uint32_t released = macro_releases[p];
+        o->release_pending &= (uint16_t)~released;
+        if (released && l->expert_active) {
+            /* A remote expert edit may have arrived after this macro was queued. */
+            restore_experts(o, l, released);
+        }
+    }
     return 1;
 }
 
 uint32_t midi_out_tick(midi_out* o, const live* l, uint32_t room,
                        uint32_t out[MIDI_OUT_TICK_PACKETS]) {
-    look(o, l, 0);
-    uint32_t budget = room < MIDI_OUT_TICK_PACKETS ? room : MIDI_OUT_TICK_PACKETS;
+    int expert_work = look(o, l, 0);
+    if (o->release_pending) {
+        carry_releases(o, l);
+    }
+    int macros = o->expert_pending &&
+                 (o->pending[LIVE_PARAM_MODEL] | o->pending[LIVE_PARAM_PROFILE] |
+                  o->pending[LIVE_PARAM_AGE] | o->pending[LIVE_PARAM_DAC] |
+                  o->pending[LIVE_PARAM_THUMP] | o->pending[LIVE_PARAM_BLEED]);
+    /* A cold snapshot or macro restoration halves the packet work in its tick. */
+    uint32_t limit = expert_work || macros ? MIDI_OUT_TICK_PACKETS / 2u : MIDI_OUT_TICK_PACKETS;
+    uint32_t budget = room < limit ? room : limit;
     uint32_t n = 0;
     if (o->song_pending) {
         if (!program_change(o, 1u, o->song_program, budget, out, &n)) {
@@ -212,12 +335,32 @@ uint32_t midi_out_tick(midi_out* o, const live* l, uint32_t room,
         o->packets += n;
         return n;
     }
-    for (uint32_t i = 0; i < LIVE_PARAM_COUNT; ++i) {
-        uint32_t p = (o->next + i) % LIVE_PARAM_COUNT;
-        if (o->pending[p] && !send(o, l, p, budget, out, &n)) {
-            o->next = (uint8_t)p; /* the next tick starts here */
-            o->deferred++;
-            break;
+    /* Model/profile and macros release overrides at the receiver. Send them before any
+     * explicit experts, even when round-robin resumes in the expert rows after a full tick. */
+    if (o->expert_pending) {
+        for (uint32_t i = 0; i < LIVE_CHAR_FIELDS + 1u; i++) {
+            uint32_t p = i ? LIVE_PARAM_PROFILE + i - 1u : LIVE_PARAM_MODEL;
+            if (o->pending[p] && !send(o, l, p, budget, out, &n)) {
+                o->deferred++;
+                o->packets += n;
+                return n;
+            }
+        }
+    }
+    uint32_t p = o->next;
+    for (uint32_t i = 0; i < LIVE_PARAM_COUNT; ++i, ++p) {
+        if (p == LIVE_PARAM_COUNT) {
+            p = 0;
+        }
+        if (o->pending[p]) {
+            if (!send(o, l, p, budget, out, &n)) {
+                o->next = (uint8_t)p; /* the next tick starts here */
+                o->deferred++;
+                break;
+            }
+            if (p >= LIVE_PARAM_EXPERT) {
+                o->expert_pending &= (uint16_t)~expert_bits[p - LIVE_PARAM_EXPERT];
+            }
         }
     }
     o->packets += n;
@@ -229,6 +372,8 @@ void midi_out_drop(midi_out* o, const live* l) {
     uint32_t n = o->preset_pending + o->song_pending;
     o->preset_pending = 0;
     o->song_pending = 0;
+    o->expert_pending = 0;
+    o->release_pending = 0;
     for (uint32_t p = 0; p < LIVE_PARAM_COUNT; ++p) {
         n += o->pending[p];
         o->pending[p] = 0;

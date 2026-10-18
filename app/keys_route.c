@@ -61,7 +61,10 @@ void keys_route_init(keys_route* kr, live* l, live_sink_fn sink, live_prepare_fn
     kr->taken = 0;
     kr->song_seen = 0;
     kr->song_user = 0;
-    kr->song_want = (chip_setup){0, {0}, 0};
+    kr->song_want = (chip_setup){0};
+    for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+        kr->song_want.expert[f] = SID_EXPERT_DEFAULT;
+    }
     kr->moved = 0;
     kr->moved_ctx = 0;
     kr->song_edit = 0;
@@ -78,7 +81,8 @@ void keys_route_start(keys_route* kr) {
 
 static int setup_reg(uint8_t reg) {
     return reg == LIVE_REG_RESET || reg == LIVE_REG_GATE_RESET || reg == LIVE_REG_CHAR_TICK ||
-           (reg >= LIVE_REG_CHAR(0) && reg < LIVE_REG_CHAR(LIVE_CHAR_FIELDS));
+           (reg >= LIVE_REG_CHAR(0) && reg < LIVE_REG_CHAR(LIVE_CHAR_FIELDS)) ||
+           (reg >= LIVE_REG_EXPERT_FIRST && reg < LIVE_REG_EXPERT(SID_EXPERT_COUNT));
 }
 
 void keys_route_sink(void* ctx, uint8_t reg, uint8_t value) {

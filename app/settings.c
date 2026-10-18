@@ -4,8 +4,10 @@
 
 #include <string.h>
 
-_Static_assert(LIVE_PARAM_COUNT == SETTINGS_PARAMS_V1,
+_Static_assert(LIVE_PARAM_EXPERT == SETTINGS_PARAMS_V1 && LIVE_PARAM_COUNT == LIVE_PARAM_EXPERT_END,
                "a new live parameter: append it to the record in a new schema version");
+_Static_assert(LIVE_PARAM_EXPERT_END - LIVE_PARAM_EXPERT == SID_EXPERT_COUNT, "the expert parameter range");
+_Static_assert(SID_EXPERT_COUNT <= UINT8_MAX, "the expert count fits one byte");
 _Static_assert(LIVE_PARAM_CUTOFF < LIVE_PARAM_PULSE_WIDTH, "the two wide parameters, in order");
 _Static_assert(SETTINGS_BYTES <= STORE_VALUE_MAX, "the record fits a store value");
 
@@ -65,6 +67,13 @@ uint32_t settings_gather(const settings* s, uint8_t* out) {
     for (uint32_t i = 0; i < STORE_NAME_MAX; i++) {
         out[n++] = (uint8_t)s->last_song[i];
     }
+    out[n++] = SID_EXPERT_COUNT;
+    for (uint32_t e = 0; e < SID_EXPERT_COUNT; e++) {
+        out[n++] = l->expert[e];
+    }
+    for (uint32_t e = 0; e < SID_EXPERT_COUNT; e++) {
+        out[n++] = s->ml ? midi_learn_cc_of(s->ml, LIVE_PARAM_EXPERT + e) : (uint8_t)MIDI_MAP_NO_CC;
+    }
     return n;
 }
 
@@ -75,6 +84,16 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
         (rec[0] >= 3u && len < SETTINGS_V3_BYTES) ||
         (rec[0] >= 4u && len < SETTINGS_V4_BYTES)) {
         return 0;
+    }
+    uint32_t experts = 0;
+    if (rec[0] >= 4u) {
+        if (len < SETTINGS_V3_BYTES + 1u) {
+            return 0;
+        }
+        experts = rec[SETTINGS_V3_BYTES];
+        if (experts < SID_EXPERT_COUNT || len < SETTINGS_V3_BYTES + 1u + 2u * experts) {
+            return 0;
+        }
     }
     live* l = s->l;
     *s->cards = (uint8_t)(rec[1] != 0);
@@ -115,6 +134,23 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
             s->last_song[i] = (char)c;
         }
     }
+    l->expert_active = 0;
+    int expert_changed = 0;
+    for (uint32_t e = 0; e < SID_EXPERT_COUNT; e++) {
+        uint32_t value = experts ? rec[SETTINGS_V3_BYTES + 1u + e] : SID_EXPERT_DEFAULT;
+        uint8_t raw = value <= SID_CHARACTER_MAX ? (uint8_t)value : SID_EXPERT_DEFAULT;
+        expert_changed |= l->expert[e] != raw;
+        l->expert[e] = raw;
+        l->expert_active |= l->expert[e] != SID_EXPERT_DEFAULT;
+        if (s->ml && experts) {
+            uint8_t cc = rec[SETTINGS_V3_BYTES + 1u + experts + e];
+            if (cc != MIDI_MAP_NO_CC) {
+                (void)midi_learn_bind(s->ml, cc, LIVE_PARAM_EXPERT + e);
+            }
+        }
+    }
+    l->expert_version += (uint32_t)expert_changed;
+    l->expert_dirty = 1;
     for (uint32_t i = 0; i < SETTINGS_VERSION_CHARS; i++) {
         char c = s->version[i];
         if ((uint8_t)c != rec[n + i]) {
@@ -128,7 +164,7 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
 }
 
 int settings_load(settings* s, uint32_t now_ms) {
-    uint8_t rec[SETTINGS_BYTES];
+    uint8_t rec[STORE_VALUE_MAX];
     int same = 0;
     if (s->st) {
         int n = store_get(s->st, SETTINGS_KEY, rec, sizeof rec, 0);

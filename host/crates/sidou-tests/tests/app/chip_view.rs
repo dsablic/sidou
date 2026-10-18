@@ -67,6 +67,280 @@ fn focus(ui: &Ui) -> u32 {
     unsafe { chip_view_focus(&ui.v.chip) }
 }
 
+#[test]
+fn expert_is_one_more_select_stop_without_changing_the_selected_slot() {
+    let mut ui = chip_ui();
+    ui.turn(PANEL_ENC_SELECT, 3);
+    assert_eq!(focus(&ui), 3);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    assert_eq!(focus(&ui), 4, "EXPERT follows FX");
+    assert_eq!(
+        ui.live().fx_select,
+        2,
+        "expert pages do not select another effect"
+    );
+    ui.turn(PANEL_ENC_SELECT, 99);
+    assert_eq!(focus(&ui), 4, "SELECT clamps at EXPERT");
+    ui.turn(PANEL_ENC_SELECT, -1);
+    assert_eq!(focus(&ui), 3, "one move returns directly to FX");
+}
+
+#[test]
+fn expert_pages_bind_four_direct_knobs_and_leave_unused_knobs_inert() {
+    let mut ui = chip_ui();
+    ui.turn(PANEL_ENC_SELECT, 4);
+    for page in 0..SID_EXPERT_COUNT.div_ceil(4) {
+        if page != 0 {
+            ui.turn(PANEL_ENC_ALGORITHM, 1);
+        }
+        for k in 0..4 {
+            let index = page * 4 + k;
+            let want = if index < SID_EXPERT_COUNT {
+                LIVE_PARAM_EXPERT + index
+            } else {
+                LIVE_PARAM_COUNT
+            };
+            let preset = ui.live().preset;
+            if index < SID_EXPERT_COUNT {
+                unsafe { live_param_set(&mut *ui.rig.live, want, 40) };
+                ui.turn(K1 + k, 1);
+                assert_eq!(
+                    param(&ui, want),
+                    41,
+                    "expert controls have one raw step per detent"
+                );
+            } else {
+                ui.turn(K1 + k, 1);
+                assert_eq!(
+                    ui.live().preset,
+                    preset,
+                    "an empty expert cell is not LIVE's K4"
+                );
+            }
+            let named = unsafe { panel_knob_param(&*ui.p, ui.live(), 0, K1 + k) };
+            assert_eq!(named, want, "page {page}, K{}", k + 1);
+        }
+    }
+    ui.turn(PANEL_ENC_ALGORITHM, 99);
+    assert_eq!(
+        unsafe { chip_view_page(&ui.v.chip) },
+        PANEL_PAGE_EXPERT_FIRST + 3
+    );
+    ui.turn(PANEL_ENC_ALGORITHM, -99);
+    assert_eq!(
+        unsafe { chip_view_page(&ui.v.chip) },
+        PANEL_PAGE_EXPERT_FIRST
+    );
+    ui.p.held = 1 << PANEL_BTN_EDIT;
+    let effect =
+        LIVE_PARAM_SLOT + u32::from(ui.live().fx_select) * LIVE_SLOT_FIELDS + LIVE_SLOT_AMOUNT;
+    assert_eq!(
+        unsafe { panel_knob_param(&*ui.p, ui.live(), ui.p.held, K1) },
+        effect
+    );
+    ui.turn(K1, 1);
+    assert_eq!(param(&ui, effect), LIVE_SLOT_DETENT);
+}
+
+#[test]
+fn first_expert_detent_starts_at_the_resolved_macro_value_not_the_follow_sentinel() {
+    let mut ui = chip_ui();
+    assert_eq!(ui.live().expert[0], SID_EXPERT_DEFAULT as u8);
+    let before = param(&ui, LIVE_PARAM_EXPERT);
+    assert!(before < 127);
+    ui.turn(PANEL_ENC_SELECT, 4);
+    ui.turn(K1, 1);
+    assert_eq!(param(&ui, LIVE_PARAM_EXPERT), before + 1);
+    ui.turn(K1, i32::MAX);
+    assert_eq!(param(&ui, LIVE_PARAM_EXPERT), 127);
+    ui.turn(K1, i32::MIN);
+    assert_eq!(param(&ui, LIVE_PARAM_EXPERT), 0);
+}
+
+#[test]
+fn expert_uses_readable_coloured_pairs_and_refreshes_after_an_external_edit() {
+    let mut ui = chip_ui();
+    ui.turn(PANEL_ENC_SELECT, 4);
+    settle(&mut ui);
+    assert_eq!(choice(&ui, 10), "EXPERT 1/4");
+    assert_eq!(
+        big(&ui, 20, 15, 3, 4),
+        "100%",
+        "unedited values retain exact profile defaults"
+    );
+    let t = theme_of(&ui);
+    for (k, label) in ["81CURVE", "81RANGE", "80CURVE", "NONLIN"]
+        .into_iter()
+        .enumerate()
+    {
+        let col = k % 2 * 15;
+        let row = 9 + k / 2 * 8;
+        assert_eq!(big(&ui, row as u32, col, 2, label.len()), label);
+        let active = unsafe { sid_character_expert_active(SID_MODEL_6581, k as u32) } != 0;
+        assert_eq!(
+            ui.g.attr[row * COLS + col] & 15,
+            if active { t.knob[k] } else { t.dim }
+        );
+        if !active {
+            assert_eq!(big(&ui, row as u32 + 3, col, 3, 3), "N/A");
+        }
+        assert_eq!(small(&ui, row as u32 - 1, col, 2), format!("K{}", k + 1));
+    }
+    unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_EXPERT, 127) };
+    settle(&mut ui);
+    let value = format!("{}%", (SID_EXPERT_CURVE_6581_MAX * 100.0).round() as u32);
+    assert_eq!(
+        big(&ui, 12, 0, 3, value.len()),
+        value,
+        "units are part of the large value"
+    );
+    ui.turn(PANEL_ENC_ALGORITHM, 3);
+    settle(&mut ui);
+    assert_eq!(choice(&ui, 10), "EXPERT 4/4");
+    assert_eq!(big(&ui, 9, 0, 2, 6), "EXT HP");
+    assert_eq!(big(&ui, 9, 15, 2, 7), "VOICEDC");
+    assert_eq!(
+        small(&ui, 17, 0, 30).trim(),
+        "",
+        "unused controls are blank"
+    );
+}
+
+#[test]
+fn clamped_or_empty_profile_steps_do_not_discard_expert_edits() {
+    let mut ui = chip_ui();
+    for (profile, step) in [(SID_CHIP_6581_R2, -1), (SID_CHIP_6581_WORN, 1)] {
+        unsafe {
+            live_param_set(&mut *ui.rig.live, LIVE_PARAM_PROFILE, profile);
+            live_param_set(&mut *ui.rig.live, LIVE_PARAM_EXPERT, 99);
+        }
+        ui.turn(PANEL_ENC_ALGORITHM, step);
+        assert_eq!(
+            ui.live().expert[0],
+            99,
+            "profile {profile}: a no-op changed the sound"
+        );
+    }
+    ui.rig.live.user_valid = 1 << (LIVE_USER_PROFILES - 1);
+    ui.rig.live.user_base[LIVE_USER_PROFILES as usize - 1] = SID_CHIP_6581_R4AR as u8;
+    unsafe {
+        live_param_set(
+            &mut *ui.rig.live,
+            LIVE_PARAM_PROFILE,
+            SID_CHIPS + LIVE_USER_PROFILES - 1,
+        );
+        live_param_set(&mut *ui.rig.live, LIVE_PARAM_EXPERT, 99);
+    }
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(
+        ui.live().expert[0],
+        99,
+        "the USER end stop must not reload its cached sound"
+    );
+}
+
+#[test]
+fn expert_pages_and_their_popups_stay_within_the_frame_budget() {
+    let mut ui = chip_ui();
+    ui.turn(PANEL_ENC_SELECT, 4);
+    for page in 0..SID_EXPERT_COUNT.div_ceil(4) {
+        if page != 0 {
+            ui.turn(PANEL_ENC_ALGORITHM, 1);
+        }
+        for k in 0..4 {
+            let index = page * 4 + k;
+            if index < SID_EXPERT_COUNT {
+                unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_EXPERT + index, 126) };
+                ui.turn(K1 + k, 1);
+            }
+            for frame in 0..50 {
+                let sent = step(&mut ui);
+                assert!(
+                    sent.cells <= CHIP_VIEW_FRAME_CELLS as usize && sent.spi_ms() <= SPI_BUDGET_MS,
+                    "expert page {page}, K{}, frame {frame}: {sent:?}",
+                    k + 1
+                );
+            }
+            assert_eq!(
+                ui.v.chip.copying, 0,
+                "page {page} finishes after its popup closes"
+            );
+        }
+    }
+}
+
+#[test]
+fn song_expert_edits_and_macro_releases_do_not_touch_the_keys_setup() {
+    let mut ui = chip_ui();
+    unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_EXPERT, 20) };
+    let mut kr = Box::<keys_route>::default();
+    kr.l = &mut *ui.rig.live;
+    kr.song = 1;
+    kr.song_want.profile = SID_CHIP_6581_R2 as u8;
+    kr.song_want.expert.fill(70);
+    unsafe { chip_view_set_keys(&mut ui.v.chip, &mut *kr) };
+    ui.turn(PANEL_ENC_SELECT, 4);
+    ui.turn(K1, 1);
+    assert_eq!(kr.song_want.expert[0], 71);
+    assert_eq!(param(&ui, LIVE_PARAM_EXPERT), 20);
+    assert_eq!(ui.p.page, PANEL_PAGE_NONE as u8);
+    ui.turn(PANEL_ENC_SELECT, -4);
+    ui.turn(K1, 1);
+    assert_eq!(&kr.song_want.expert[..4], &[SID_EXPERT_DEFAULT as u8; 4]);
+    assert_eq!(kr.song_want.expert[SID_EXPERT_DAC_KINK as usize], 70);
+    assert_eq!(param(&ui, LIVE_PARAM_EXPERT), 20);
+    unsafe { chip_view_set_keys(&mut ui.v.chip, std::ptr::null_mut()) };
+}
+
+#[test]
+fn expert_save_targets_user_profiles_and_song_picker_restores_the_expert_tail() {
+    let mut ui = chip_ui();
+    let mut users = Box::<user_profiles>::default();
+    unsafe {
+        user_profiles_init(&mut *users, &mut *ui.rig.live, std::ptr::null_mut());
+        chip_view_set_users(&mut ui.v.chip, &mut *users);
+        live_param_set(
+            &mut *ui.rig.live,
+            LIVE_PARAM_EXPERT + SID_EXPERT_VOICE_DC,
+            91,
+        );
+    }
+    ui.turn(PANEL_ENC_SELECT, 4);
+    ui.p.held = 1 << PANEL_BTN_EDIT;
+    ui.turn(PANEL_ENC_ALGORITHM, 2);
+    ui.p.held = 0;
+    assert_eq!(ui.v.chip.target, 2);
+    assert_eq!(
+        ui.v.chip.expert_page, 0,
+        "EDIT selects a save target, not a page"
+    );
+    let now = ui.now;
+    assert_eq!(
+        unsafe { chip_view_save(&mut ui.v.chip, now) },
+        CHIP_VIEW_SAVE_MSG
+    );
+    assert_eq!(ui.live().user_expert[1][SID_EXPERT_VOICE_DC as usize], 91);
+    assert_eq!(
+        ui.live().user_expert[1][0],
+        SID_EXPERT_DEFAULT as u8,
+        "follow stays follow"
+    );
+    let mut kr = Box::<keys_route>::default();
+    kr.l = &mut *ui.rig.live;
+    kr.song = 1;
+    kr.song_want.profile = (SID_CHIPS - 1) as u8;
+    kr.song_want.expert.fill(SID_EXPERT_DEFAULT as u8);
+    unsafe { chip_view_set_keys(&mut ui.v.chip, &mut *kr) };
+    ui.turn(PANEL_ENC_SELECT, -4);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(kr.song_user, 2, "empty USER 1 is skipped");
+    assert_eq!(kr.song_want.expert, ui.live().user_expert[1]);
+    unsafe {
+        chip_view_set_keys(&mut ui.v.chip, std::ptr::null_mut());
+        chip_view_set_users(&mut ui.v.chip, std::ptr::null_mut());
+    }
+}
+
 fn param(ui: &Ui, p: u32) -> u32 {
     unsafe { live_param_get(&*ui.rig.live, p) }
 }
@@ -318,7 +592,7 @@ fn select_moves_the_focus_and_selects_the_slot() {
     }
     // Clamped at both ends.
     ui.turn(PANEL_ENC_SELECT, 5);
-    assert_eq!(focus(&ui), CHIP_VIEW_SECTIONS - 1);
+    assert_eq!(focus(&ui), CHIP_VIEW_EXPERT);
     ui.turn(PANEL_ENC_SELECT, -9);
     assert_eq!(
         focus(&ui),
@@ -552,11 +826,17 @@ fn the_knobs_parameters_follow_the_view() {
                 ui.turn(PANEL_ENC_SELECT, f as i32);
                 ui.hold(PANEL_BTN_EDIT, held != 0);
                 let want = unsafe { panel_knob_param(&*ui.p, &*ui.rig.live, held, enc) };
-                let before: Vec<u32> = (0..LIVE_PARAM_COUNT).map(|q| param(&ui, q)).collect();
+                let before: Vec<u32> = (0..LIVE_PARAM_EXPERT).map(|q| param(&ui, q)).collect();
+                let expert_before = ui.live().expert;
                 ui.turn(enc, 1);
-                let changed: Vec<u32> = (0..LIVE_PARAM_COUNT)
+                let changed: Vec<u32> = (0..LIVE_PARAM_EXPERT)
                     .filter(|&q| param(&ui, q) != before[q as usize])
                     .collect();
+                assert_eq!(
+                    ui.live().expert,
+                    expert_before,
+                    "macro-follow values stay unpinned"
+                );
                 if want == LIVE_PARAM_COUNT {
                     assert!(changed.is_empty(), "focus {f} enc {enc}: {changed:?}");
                     continue;
@@ -909,6 +1189,7 @@ fn during_a_song_the_a_tab_edits_the_songs_setup() {
         profile: SID_CHIP_6581_R2 as u8,
         controls: [10, 20, 30, 40],
         gate_reset: 1,
+        expert: [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize],
     };
     unsafe { chip_view_set_keys(&mut ui.v.chip, &mut *kr) };
     settle(&mut ui);
@@ -973,6 +1254,7 @@ fn only_explicit_song_chip_edits_notify_the_edit_callback() {
     kr.l = &mut *ui.rig.live;
     kr.song = 1;
     kr.song_want.controls = [10, 20, 30, 40];
+    kr.song_want.expert.fill(70);
     kr.song_edit = Some(edited);
     kr.song_edit_ctx = (&mut edits as *mut Vec<(chip_setup, u32)>).cast();
     unsafe { chip_view_set_keys(&mut ui.v.chip, &mut *kr) };
@@ -992,23 +1274,40 @@ fn only_explicit_song_chip_edits_notify_the_edit_callback() {
     assert_eq!(edits[2].0.profile, locked.profile + 1);
     assert_eq!(
         edits.iter().map(|e| e.1).collect::<Vec<_>>(),
-        [1, 8, KEYS_ROUTE_EDIT_PROFILE]
+        [1, 8, KEYS_ROUTE_EDIT_PROFILE | KEYS_ROUTE_EDIT_EXPERT]
     );
     assert_eq!(
         kr.song_want.controls, locked.controls,
         "callback owns acceptance"
     );
     assert_eq!(kr.song_want.profile, locked.profile);
+    assert_eq!(kr.song_want.expert, locked.expert);
+    assert_eq!(
+        edits[2].0.expert,
+        [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize]
+    );
     ui.rig.live.user_valid = 1;
     ui.rig.live.user_base[0] = locked.profile;
     ui.rig.live.user_ctl[0] = locked.controls;
+    ui.rig.live.user_expert[0].fill(90);
     ui.turn(PANEL_ENC_ALGORITHM, SID_CHIPS as i32);
     assert_eq!(edits[3].0.controls, locked.controls);
     assert_eq!(
         edits[3].1,
-        KEYS_ROUTE_EDIT_PROFILE | KEYS_ROUTE_EDIT_CONTROLS,
-        "USER selection explicitly supplies every control"
+        KEYS_ROUTE_EDIT_PROFILE | KEYS_ROUTE_EDIT_CONTROLS | KEYS_ROUTE_EDIT_EXPERT,
+        "USER selection explicitly supplies every control and expert"
     );
+    assert_eq!(edits[3].0.expert, ui.rig.live.user_expert[0]);
+
+    ui.turn(PANEL_ENC_SELECT, 4);
+    ui.turn(PANEL_ENC_K2, 1);
+    assert_eq!(edits[4].1, 1 << (KEYS_ROUTE_EDIT_EXPERT_FIRST + 1));
+    assert_eq!(edits[4].0.expert[1], 71);
+    assert_eq!(
+        kr.song_want.expert, locked.expert,
+        "expert acceptance is the callback's"
+    );
+    ui.turn(PANEL_ENC_SELECT, -4);
 
     ui.hold(PANEL_BTN_EDIT, true);
     ui.turn(PANEL_ENC_K1, 1);
@@ -1023,7 +1322,7 @@ fn only_explicit_song_chip_edits_notify_the_edit_callback() {
     ui.turn(PANEL_ENC_K1, 1);
     assert_eq!(
         edits.len(),
-        4,
+        5,
         "slots and keys must not edit the song setup"
     );
     unsafe { chip_view_set_keys(&mut ui.v.chip, std::ptr::null_mut()) };
@@ -1043,6 +1342,7 @@ fn refused_song_chip_edits_keep_the_setup_user_identity_and_popup_value() {
     kr.song = 1;
     kr.song_want.profile = SID_CHIP_6581_R3 as u8;
     kr.song_want.controls = [10, 20, 30, 40];
+    kr.song_want.expert.fill(70);
     kr.song_user = 1;
     kr.song_edit = Some(refuse);
     kr.song_edit_ctx = (&mut calls as *mut u32).cast();
@@ -1061,6 +1361,7 @@ fn refused_song_chip_edits_keep_the_setup_user_identity_and_popup_value() {
         ui.turn(encoder, steps);
         assert_eq!(kr.song_want.profile, before.profile);
         assert_eq!(kr.song_want.controls, before.controls);
+        assert_eq!(kr.song_want.expert, before.expert);
         assert_eq!(kr.song_user, 1);
         assert_eq!(unsafe { chip_view_user(&ui.v.chip) }, 1);
         ui.frame();
@@ -1076,7 +1377,13 @@ fn refused_song_chip_edits_keep_the_setup_user_identity_and_popup_value() {
             }
         );
     }
-    assert_eq!(calls, 3);
+    ui.turn(PANEL_ENC_SELECT, 4);
+    for encoder in [PANEL_ENC_K1, PANEL_ENC_K2, PANEL_ENC_K3, PANEL_ENC_K4] {
+        ui.turn(encoder, 1);
+        assert_eq!(kr.song_want.expert, before.expert);
+        assert_eq!(kr.song_user, 1);
+    }
+    assert_eq!(calls, 7);
     unsafe { chip_view_set_keys(&mut ui.v.chip, std::ptr::null_mut()) };
 }
 

@@ -99,7 +99,7 @@ int audio_held(void);
 #define AUDIO_QUIET_PEAK 128
 void audio_peak_scan(int on);
 uint32_t audio_quiet_blocks(void);
-/* Reads and clears whether a pass ran a slice of a chip's preparation (reg_ring_out.sliced, of
+/* Reads and clears whether a pass ran a preparation, character-table or song slice (of
  * either chip's writer): the store skips its work in such a pass. */
 int audio_pass_sliced(void);
 /* AUDIO_HALF_WORDS words: the SID's output through the effect slots (core/fx/fx_slots.h),

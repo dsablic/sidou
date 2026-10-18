@@ -23,6 +23,7 @@
  * 106  TRACKER ROWS (0 BAR, 1 SCROLL; schema 2)
  * 107  THEME (0 HIGH CONTRAST, 1 C64; schema 3)
  * 108  last song's filename, 16 NUL-padded bytes (schema 4); absent: built-in song
+ * 108  expert count, then raw expert overrides, then their learned CCs (schema 4)
  * A later schema only appends fields: an older firmware reads a newer record's v1 part, and a
  * newer one fills what an older record lacks with its defaults (settings_load's migrations).
  *
@@ -59,7 +60,9 @@ extern "C" {
 #define SETTINGS_V2_BYTES (SETTINGS_V1_BYTES + 1u)
 #define SETTINGS_V3_BYTES (SETTINGS_V2_BYTES + 1u)
 #define SETTINGS_V4_BYTES (SETTINGS_V3_BYTES + STORE_NAME_MAX)
-#define SETTINGS_BYTES SETTINGS_V4_BYTES
+enum {
+    SETTINGS_BYTES = SETTINGS_V4_BYTES + 1u + 2u * SID_EXPERT_COUNT
+};
 #define SETTINGS_DEBOUNCE_MS 5000u
 #define SETTINGS_FORCE_MS 2000u
 

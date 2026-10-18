@@ -64,7 +64,7 @@ typedef struct {
     uint8_t curve;      /* a midi_map_curve, for the CC */
 } midi_map_entry;
 
-#define MIDI_MAP_ROWS 42u
+enum { MIDI_MAP_ROWS = 42u + SID_EXPERT_COUNT };
 
 /* Row i in table order, or NULL past the last (MIDI learn keeps its bindings as row indexes,
  * midi_learn.h). */

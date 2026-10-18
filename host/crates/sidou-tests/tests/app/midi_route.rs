@@ -766,11 +766,13 @@ fn bank_2_and_cc_85_pick_the_same_builtin_and_saved_profiles_on_chip_a() {
     for slot in 0..LIVE_USER_PROFILES as usize {
         r.rig.live.user_base[slot] = SID_CHIP_6581_R3 as u8;
         r.rig.live.user_ctl[slot] = [slot as u8 + 10, 20, 30, 40];
+        r.rig.live.user_expert[slot].fill(slot as u8 + 90);
     }
     for pick in 0..SID_CHIPS + LIVE_USER_PROFILES {
         let initial = chip_setup {
             profile: SID_CHIP_6581_R4AR as u8,
             controls: [1, 2, 3, 4],
+            expert: [70; SID_EXPERT_COUNT as usize],
             ..Default::default()
         };
         kr.song_want = initial;
@@ -784,6 +786,12 @@ fn bank_2_and_cc_85_pick_the_same_builtin_and_saved_profiles_on_chip_a() {
         };
         assert_eq!(want.profile, profile, "program {pick}");
         assert_eq!(want.controls, controls, "program {pick}");
+        let experts = if pick < SID_CHIPS {
+            [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize]
+        } else {
+            r.rig.live.user_expert[(pick - SID_CHIPS) as usize]
+        };
+        assert_eq!(want.expert, experts, "program {pick}");
         let user = if pick < SID_CHIPS {
             0
         } else {
@@ -799,6 +807,7 @@ fn bank_2_and_cc_85_pick_the_same_builtin_and_saved_profiles_on_chip_a() {
         r.trs(&[0xB0, 85, cc]);
         assert_eq!(kr.song_want.profile, want.profile, "CC 85 pick {pick}");
         assert_eq!(kr.song_want.controls, want.controls, "CC 85 pick {pick}");
+        assert_eq!(kr.song_want.expert, want.expert, "CC 85 pick {pick}");
         assert_eq!(
             unsafe { chip_view_user(&cv) },
             user,
@@ -810,6 +819,25 @@ fn bank_2_and_cc_85_pick_the_same_builtin_and_saved_profiles_on_chip_a() {
     r.trs(&[0xC0, 5, 12, 13]);
     assert_eq!(kr.song_want.profile, before.profile);
     assert_eq!(kr.song_want.controls, before.controls);
+}
+
+#[test]
+fn chip_a_macro_cc_releases_only_its_experts_and_an_unchanged_model_keeps_them() {
+    let mut r = Route::with(MIDI_MODE_MULTI, 0, |_| {});
+    let mut kr = Box::<keys_route>::default();
+    r.route.kr = &mut *kr;
+    kr.song = 1;
+    kr.song_want.profile = SID_CHIP_6581_R3 as u8;
+    kr.song_want.expert.fill(70);
+    let keys_experts = r.rig.live.expert;
+
+    r.trs(&[0xB0, 25, 0]);
+    assert_eq!(kr.song_want.expert, [70; SID_EXPERT_COUNT as usize]);
+    r.trs(&[0xB0, 86, 80]);
+    assert_eq!(kr.song_want.controls[0], 80);
+    assert_eq!(&kr.song_want.expert[..4], &[SID_EXPERT_DEFAULT as u8; 4]);
+    assert!(kr.song_want.expert[4..].iter().all(|value| *value == 70));
+    assert_eq!(r.rig.live.expert, keys_experts, "the keys keep their own setup");
 }
 
 #[test]
@@ -845,6 +873,7 @@ fn chip_a_midi_edits_mark_explicit_controls_even_when_the_value_is_unchanged() {
         let cc = unsafe { midi_map_to_cc(midi_map_for_cc(85), pick) };
         r.trs(&[0xB0, 32, 2, 0xC0, pick as u8, 0xB0, 85, cc]);
         let expected = KEYS_ROUTE_EDIT_PROFILE
+            | KEYS_ROUTE_EDIT_EXPERT
             | if pick < SID_CHIPS {
                 0
             } else {
@@ -857,7 +886,7 @@ fn chip_a_midi_edits_mark_explicit_controls_even_when_the_value_is_unchanged() {
         assert_eq!(masks.last(), Some(&(1 << field)));
     }
     for (cc, expected) in [
-        (25, KEYS_ROUTE_EDIT_PROFILE),
+        (25, KEYS_ROUTE_EDIT_PROFILE | KEYS_ROUTE_EDIT_EXPERT),
         (26, KEYS_ROUTE_EDIT_ENVELOPE),
     ] {
         r.trs(&[0xB0, cc, 127]);
@@ -881,6 +910,7 @@ fn refused_chip_a_midi_edits_keep_the_setup_and_user_identity() {
         profile: SID_CHIP_6581_R3 as u8,
         controls: [10, 20, 30, 40],
         gate_reset: 1,
+        expert: [70; SID_EXPERT_COUNT as usize],
     };
     kr.song_user = 1;
     kr.song_edit = Some(refuse);
@@ -897,6 +927,7 @@ fn refused_chip_a_midi_edits_keep_the_setup_and_user_identity() {
             r.trs(&bytes);
             assert_eq!(kr.song_want.profile, before.profile, "pick {pick}");
             assert_eq!(kr.song_want.controls, before.controls, "pick {pick}");
+            assert_eq!(kr.song_want.expert, before.expert, "pick {pick}");
             assert_eq!(kr.song_user, 1, "pick {pick}");
         }
     }
@@ -905,6 +936,7 @@ fn refused_chip_a_midi_edits_keep_the_setup_and_user_identity() {
         assert_eq!(kr.song_want.profile, before.profile, "CC {cc}");
         assert_eq!(kr.song_want.controls, before.controls, "CC {cc}");
         assert_eq!(kr.song_want.gate_reset, before.gate_reset, "CC {cc}");
+        assert_eq!(kr.song_want.expert, before.expert, "CC {cc}");
         assert_eq!(kr.song_user, 1, "CC {cc}");
     }
     assert_eq!(calls, 2 * (SID_CHIPS + LIVE_USER_PROFILES) + 6);

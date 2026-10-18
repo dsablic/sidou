@@ -5,6 +5,11 @@
 #include <stddef.h>
 #include <string.h>
 
+#ifdef __PI32V2__
+__attribute__((section(".data.sid_noise_wb")))
+#endif
+const uint32_t SID_NOISE_WB[2][16] = {SID_WB_ROW(SID_WB_LO), SID_WB_ROW(SID_WB_HI)};
+
 #define OUTPUT_GAIN (0.1f * 32767.0f) /* leaves headroom for the 6581 DC offset and filter peaks */
 /* reSIDfp's output level relative to OUTPUT_GAIN: the RMS of one unfiltered voice at
  * volume 15 (sawtooth, triangle and 50% pulse, at 0x08d6 and 0x1d45), measured
@@ -94,7 +99,7 @@ static inline void update_mix(sid* s) {
     update_mix_bpn(s);
     s->mix_bp = -MIX_GAIN_HP * 2.0f * MIX_LEAK * hp;
     s->mix_hp = -MIX_GAIN_HP * hp;
-    s->dc_in = DC_FILTER_INPUT * (float)routed;
+    s->dc_in = s->filter_bias * (float)routed;
     s->svf.load_at = s->nl.load_ref - s->dc_in;
 }
 
@@ -110,6 +115,12 @@ static float exp_neg(float x) {
         e *= e;
     }
     return e;
+}
+
+void sid_external_coefficients(uint32_t sample_rate, float lp_hz, float hp_hz,
+                               float* out_c, float* dc_r) {
+    *out_c = 1.0f - exp_neg(2.0f * SIDOU_PI * lp_hz / (float)sample_rate);
+    *dc_r = 1.0f - 2.0f * SIDOU_PI * hp_hz / (float)sample_rate;
 }
 
 /* A cutoff in Hz, clamped to 30 Hz .. 0.45 fs, as the angle pi f / fs (the second filter
@@ -129,7 +140,8 @@ static float cutoff_g(const sid* s, float hz) {
     return sidou_tanf(cutoff_x(s, hz));
 }
 
-void sid_nonlin_for(const sid* s, float amount, float t, sid_nonlin* out) {
+void sid_nonlin_for_rows(const sid* s, float amount, float t, const sid_filter_row* rows,
+                         sid_nonlin* out) {
     if (!(amount >= 0.0f)) { /* NaN too */
         amount = 0.0f;
     } else if (amount > 2.0f) {
@@ -144,8 +156,12 @@ void sid_nonlin_for(const sid* s, float amount, float t, sid_nonlin* out) {
      * blended as sid_update_filter blends it, against the default curve setting's (1 exactly
      * at the default), and the amount scales it only up to 1 (0: none, the filter linear). */
     float scale = amount < 1.0f ? amount : 1.0f;
-    float table = sid_blended_cutoff(s, 0, t) / cutoff_g(s, sid_cutoff_hz(s->model, 0, 0));
+    float table = sid_filter_cutoff(rows, 0, t) / cutoff_g(s, sid_cutoff_hz(s->model, 0, 0));
     out->floor = scale * sidou_tanf(SIDOU_PI * NL_FLOOR_HZ / fs) * table;
+}
+
+void sid_nonlin_for(const sid* s, float amount, float t, sid_nonlin* out) {
+    sid_nonlin_for_rows(s, amount, t, s->filter_rows, out);
 }
 
 void sid_set_filter_nonlinearity(sid* s, float amount) {
@@ -179,15 +195,16 @@ static void build_filter_tables(sid* s, uint32_t curve, uint32_t toward) {
     if (toward == curve) {
         for (uint32_t fc = 0; fc < SID_FC_STEPS; ++fc) {
             float x = cutoff_x(s, sid_cutoff_hz(s->model, curve, fc));
-            s->cutoff_g[fc] = sidou_tanf(x);
-            s->cutoff_x_to[fc] = x;
+            s->filter_rows[0].cutoff[fc] = sidou_tanf(x);
+            s->filter_rows[1].cutoff[fc] = x;
         }
         for (uint32_t r = 0; r < 16u; ++r) {
-            s->res_k[r] = s->res_k_to[r] = sid_resonance_k(s->model, curve, r);
+            s->filter_rows[0].res[r] = s->filter_rows[1].res[r] =
+                sid_resonance_k(s->model, curve, r);
         }
     } else {
-        build_filter_row(s, curve, 0, s->cutoff_g, s->res_k);
-        build_filter_row(s, toward, 1, s->cutoff_x_to, s->res_k_to);
+        build_filter_row(s, curve, 0, s->filter_rows[0].cutoff, s->filter_rows[0].res);
+        build_filter_row(s, toward, 1, s->filter_rows[1].cutoff, s->filter_rows[1].res);
     }
     s->filter_curve = (uint8_t)curve;
     s->filter_toward = (uint8_t)toward;
@@ -198,7 +215,7 @@ int sid_set_filter_toward(sid* s, uint32_t toward) {
         return -1;
     }
     if (toward != s->filter_toward) {
-        build_filter_row(s, toward, 1, s->cutoff_x_to, s->res_k_to);
+        build_filter_row(s, toward, 1, s->filter_rows[1].cutoff, s->filter_rows[1].res);
         s->filter_toward = (uint8_t)toward;
     }
     return 0;
@@ -236,6 +253,10 @@ void sid_init_begin(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_
     memset(s, 0, offsetof(sid, cutoff_g));
     memset(&s->filter_t, 0, sizeof *s - offsetof(sid, filter_t));
     s->model = model;
+    s->filter_rows[0] = sid_filter_backing(s, 0);
+    s->filter_rows[1] = sid_filter_backing(s, 1);
+    s->filter_bias = DC_FILTER_INPUT;
+    s->noise_writeback = 127u;
     s->dac = sid_dac_default(model == SID_MODEL_6581);
     s->output_gain = OUTPUT_GAIN * (model == SID_MODEL_6581 ? LEVEL_6581 : LEVEL_8580);
     s->cycles_per_sample_q16 = ((clock_hz / sample_rate) << 16) |
@@ -257,7 +278,7 @@ void sid_init_begin(sid* s, sid_model model, uint32_t clock_hz, uint32_t sample_
 }
 
 void sid_filter_row_part(sid* s, int second, uint32_t curve, uint32_t from, uint32_t to) {
-    float* row = second ? s->cutoff_x_to : s->cutoff_g;
+    float* row = s->filter_rows[second != 0].cutoff;
     if (to > SID_FC_STEPS) {
         to = SID_FC_STEPS;
     }
@@ -266,7 +287,7 @@ void sid_filter_row_part(sid* s, int second, uint32_t curve, uint32_t from, uint
         row[fc] = second ? cutoff_x(s, hz) : cutoff_g(s, hz);
     }
     if (to == SID_FC_STEPS) {
-        float* k = second ? s->res_k_to : s->res_k;
+        float* k = s->filter_rows[second != 0].res;
         for (uint32_t r = 0; r < 16u; ++r) {
             k[r] = sid_resonance_k(s->model, curve, r);
         }
@@ -422,6 +443,14 @@ void sid_set_gate_reset(sid* s, int on) {
     for (int v = 0; v < 3; ++v) {
         s->env[v].gate_reset = on ? 1u : 0u;
     }
+}
+
+const uint16_t (*sid_combined_table(sid_model model, uint32_t profile))[256] {
+    if (profile >= SID_PROFILES) {
+        profile = SID_PROFILE_AVERAGE;
+    }
+    return model == SID_MODEL_6581 ? &SID_PD.idx[5u * SID_COMBINED_TABLE_6581(profile)]
+                                   : &SID_PD.idx[SID_PD_8580_ROW + 5u * SID_COMBINED_TABLE_8580(profile)];
 }
 
 void sid_set_combined_profile(sid* s, int profile) {

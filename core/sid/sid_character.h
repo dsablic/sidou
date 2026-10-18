@@ -25,7 +25,8 @@
  *   filter's input (sid.h, bleed).
  *
  * Nothing here runs in the audio path but the commit. What the audio interrupt reads that a
- * control sets is a stage (sid_character_stage: a dozen words and a DAC table pointer), made
+ * control sets is a stage (sid_character_stage: constants, borrowed table pointers and a
+ * small noise-feedback LUT), made
  * in the main loop, and it changes in one place, sid_character_commit, which the register
  * ring's drain runs at a block boundary (app/reg_ring.h).
  *
@@ -63,6 +64,39 @@ extern "C" {
 #define SID_CHARACTER_BLEED_RAMP 1u
 #define SID_CHARACTER_DAC_RAMP 3u
 
+#define SID_EXPERT_DEFAULT 255u
+enum {
+    SID_EXPERT_FILTER_6581_CURVE,
+    SID_EXPERT_FILTER_6581_RANGE,
+    SID_EXPERT_FILTER_8580_CURVE,
+    SID_EXPERT_NONLINEARITY,
+    SID_EXPERT_FILTER_BIAS,
+    SID_EXPERT_BLEED,
+    SID_EXPERT_DAC_KINK,
+    SID_EXPERT_DAC_LEAKAGE,
+    SID_EXPERT_COMBINED,
+    SID_EXPERT_NOISE_WRITEBACK,
+    SID_EXPERT_THUMP,
+    SID_EXPERT_EXTERNAL_LP,
+    SID_EXPERT_EXTERNAL_HP,
+    SID_EXPERT_VOICE_DC,
+    SID_EXPERT_COUNT
+};
+
+/* Physical edited ranges, linearly mapped from 0..127. The filter coordinates are
+ * reSIDfp settings, not a claim that interpolation between sampled rows is measured. */
+#define SID_EXPERT_KINK_MIN 1.8f
+#define SID_EXPERT_CURVE_6581_MIN 0.0f
+#define SID_EXPERT_CURVE_6581_MAX 1.0f
+#define SID_EXPERT_RANGE_6581_MIN 0.0f
+#define SID_EXPERT_KINK_MAX 2.6f
+#define SID_EXPERT_LEAKAGE_MAX 0.15f
+#define SID_EXPERT_BIAS_MAX 2.3125f
+#define SID_EXPERT_EXTERNAL_LP_MIN 1000.0f
+#define SID_EXPERT_EXTERNAL_LP_MAX 20000.0f
+#define SID_EXPERT_EXTERNAL_HP_MAX 100.0f
+#define SID_EXPERT_VOICE_DC_MAX 0.6f
+
 /* One profile (gen/profiles.h, SID_CHIP_PROFILE_ROWS). */
 typedef struct {
     const char* name;
@@ -79,7 +113,8 @@ const sid_chip_profile* sid_chip_profile_get(uint32_t id);
 /* The model's default profile: SID_CHIP_6581_R4AR or SID_CHIP_8580_R5, reSIDfp's defaults. */
 uint32_t sid_chip_default(sid_model model);
 
-/* The settings: a profile and the four controls. */
+/* The initial five bytes stay the legacy profile/macros. Overrides use raw MIDI
+ * values with a validity mask, so zero-initialized legacy settings remain exact. */
 typedef struct {
     uint8_t profile; /* 1 + a SID_CHIP_*, or 0 for the chip's model's default (what
                       * zero-initialised settings give); a profile of another model than
@@ -88,20 +123,62 @@ typedef struct {
     uint8_t dac;
     uint8_t thump;
     uint8_t bleed;
+    uint8_t expert[SID_EXPERT_COUNT];
+    uint16_t expert_mask; /* zero-initialised legacy settings continue to follow macros */
 } sid_character;
+
+/* Edited raw values are 0..127; 255 releases an override. Invalid indices are ignored
+ * (get returns SID_EXPERT_DEFAULT). Use the setter, which also maintains expert_mask. */
+uint32_t sid_character_expert_get(const sid_character* c, sid_model model, uint32_t index);
+/* Whether this model/build implements the control; views should mark others inactive. */
+int sid_character_expert_active(sid_model model, uint32_t index);
+/* Offline-reference grid, interpolated in physical curve/range/FC coordinates.
+ * Main context only: the generated anchors are in flash. */
+float sid_character_expert_cutoff_hz(sid_model model, float curve, float range, uint32_t fc);
+/* Resolved physical value; defaults retain the exact unquantized profile/macro path. */
+float sid_character_expert_value(const sid_character* c, sid_model model, uint32_t index);
+void sid_character_expert_set(sid_character* c, sid_model model, uint32_t index, uint32_t value);
+/* Existing character field indices: profile 0, age 1, DAC 2, thump 3, bleed 4.
+ * A macro move releases only the independent controls on that macro's path. */
+void sid_character_macro_changed(sid_character* c, uint32_t field);
 
 /* The model's default profile (profile 0, so the settings suit either model) and every
  * control at 0: what sid_init leaves. */
 void sid_character_init(sid_character* c);
 
 /* What the audio interrupt reads that the character sets, computed in the main loop and
- * copied into the chip by sid_character_commit. */
+ * copied into the chip by sid_character_commit. Filter rows and DACs are borrowed;
+ * noise feedback is a scalar mask (its tiny LUT changes only with the mask). */
 typedef struct {
     sid_nonlin nl;
     const sid_dac* dac;
     float thump, bleed, output_gain;
     float filter_t; /* age/heat: the filter's blend towards the hot row (sid.h) */
+    float filter_bias, out_c, dc_r;
+    const uint16_t (*pulldown)[256];
+    sid_filter_row filter_rows[2];
+    uint8_t noise_writeback;
+    uint32_t writeback_keep;
+    uint32_t noise_keep;
+    uint8_t filter_curve, filter_toward;
 } sid_character_stage;
+
+/* Writable rows are supplied by the caller's shared-spare arbitration. Neither may
+ * be read by any chip or queued stage until the finished stage publishes them. */
+typedef struct {
+    sid_filter_row rows[2];
+    sid_character c;
+    uint32_t sample_rate;
+    uint16_t at;
+    uint8_t model, phase;
+    uint8_t transition;
+    sid_filter_row source_rows[2];
+    float source_t;
+} sid_character_filter_job;
+
+void sid_character_filter_job_start(sid_character_filter_job* job, const sid* s,
+                                    const sid_character* c, const sid_filter_row* rows);
+int sid_character_filter_job_step(sid_character_filter_job* job);
 
 /* 1 if the character's DACs differ from the model's defaults (sid_dac_default): a table
  * must be built for them (sid_character_build_dac). */
@@ -122,9 +199,13 @@ void sid_character_stage_for(const sid* s, const sid_character* c, const sid_dac
                              sid_character_stage* out);
 
 /* Copies the stage into the chip and recomputes the filter's coefficients for its age
- * (sid_update_filter): a dozen words and a coefficient update, no table, so it is safe where
+ * (sid_update_filter): constants, borrowed row/table pointers and a coefficient update;
+ * the 32-word noise LUT only when its mask changes (16 integer ORs). It is safe where
  * register writes are applied (the audio interrupt draining the register ring). Inline:
  * called from the drain's SRAM code (platform/fm1/app.ld) and from flash. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
 static inline void sid_character_commit(sid* s, const sid_character_stage* st) {
     s->nl.level = st->nl.level;
     s->nl.level_off = st->nl.level_off;
@@ -135,6 +216,36 @@ static inline void sid_character_commit(sid* s, const sid_character_stage* st) {
     s->bleed = st->bleed;
     s->output_gain = st->output_gain;
     s->filter_t = st->filter_t;
+    s->filter_rows[0] = st->filter_rows[0];
+    s->filter_rows[1] = st->filter_rows[1];
+    s->filter_curve = st->filter_curve;
+    s->filter_toward = st->filter_toward;
+    s->filter_bias = st->filter_bias;
+    uint32_t routed = (s->routing & 1u) + ((s->routing >> 1) & 1u) +
+                      ((s->routing >> 2) & 1u) + ((s->routing >> 3) & 1u);
+    s->dc_in = s->filter_bias * (float)routed;
+    s->out_c = st->out_c;
+    s->dc_r = st->dc_r;
+    s->noise_writeback = st->noise_writeback;
+    if (s->osc[0].writeback_keep != st->writeback_keep) {
+        for (uint32_t i = 0; i < 16u; ++i) {
+            s->noise_wb[0][i] = SID_NOISE_WB[0][i] | st->writeback_keep;
+            s->noise_wb[1][i] = SID_NOISE_WB[1][i];
+        }
+        for (uint32_t v = 0; v < 3u; ++v) {
+            s->osc[v].writeback = st->writeback_keep == 0u ?
+                                     SID_NOISE_WB : (const uint32_t (*)[16])s->noise_wb;
+            s->osc[v].writeback_keep = st->writeback_keep;
+            s->osc[v].noise_keep = st->noise_keep;
+            s->osc[v].quiet = 0;
+        }
+    }
+    for (uint32_t v = 0; v < 3u; ++v) {
+        if (s->osc[v].pulldown != st->pulldown) {
+            s->osc[v].pulldown = st->pulldown;
+            sid_osc_update_mode(&s->osc[v]);
+        }
+    }
     sid_update_filter(s);
 }
 
@@ -171,6 +282,8 @@ typedef struct {
     sid_character c;      /* the settings it prepares the chip for */
     const sid_dac* table; /* the DAC table the chip got: NULL for the model's default */
     sid_dac_job job;
+    sid_filter_row rows[2];
+    sid_character_filter_job filter_job;
     uint32_t clock_hz, sample_rate;
     uint16_t at;   /* the next FC value of the row being built */
     uint8_t model; /* a sid_model */
@@ -188,6 +301,9 @@ void sid_character_prep_update(sid_character_prep* p, const sid_character* c);
 void sid_character_prep_start(sid_character_prep* p, sid* s, sid_model model,
                               uint32_t clock_hz, uint32_t sample_rate, const sid_character* c,
                               uint32_t default_steps);
+/* Override the default embedded backing before the first step; required if any of
+ * the spare's backing is leased by another rendering chip or a queued stage. */
+void sid_character_prep_rows(sid_character_prep* p, const sid_filter_row* rows);
 /* One slice. dac is a table for the character's DACs, taken by the slice that starts them
  * (only when they are custom: sid_character_dac_custom), and then built into over the
  * following slices: never a table a chip renders from or will (sid.h, sid_set_dac). NULL
@@ -200,6 +316,7 @@ int sid_character_prep_done(const sid_character_prep* p);
  * that needs a DAC table gets one, with no default_steps (add them). */
 uint32_t sid_character_prep_slices(sid_model model, const sid_character* c);
 
+
 /* The ramp from what the chip has to what was asked, a tick at a time: the register ring's
  * sink (app/reg_ring.c) and the host's (app/live.c, live_sid_sink) run the same one, so
  * their chips change at the same ticks to the same stages. */
@@ -210,6 +327,14 @@ typedef struct {
     sid_dac_job job;      /* the DAC table being built, while building */
     uint8_t building;     /* 1 while a table is being built */
     uint8_t next_dac;     /* the DAC setting it is for */
+    sid_character dac_next;
+    sid_character filter_now;
+    sid_character_filter_job filter_job;
+    uint8_t filter_building;
+    uint8_t filter_fading, filter_fade, filter_restore;
+    sid_filter_row filter_rows[2];
+    float filter_t;
+    uint8_t filter_rows_valid, filter_managed;
 } sid_character_ramp;
 
 /* After a reset that applied c to a chip whose DAC table is table (sid_character_apply):
@@ -217,7 +342,8 @@ typedef struct {
 void sid_character_ramp_reset(sid_character_ramp* r, const sid_character* c,
                               const sid_dac* table);
 /* One tick on the chip the stage is for: age and thump move up to SID_CHARACTER_RAMP towards
- * the target, the bleed up to SID_CHARACTER_BLEED_RAMP; the DACs, if they differ, run the next step of the table being built,
+ * the target, the bleed up to SID_CHARACTER_BLEED_RAMP; the DACs, if they differ, run the
+ * next step of the table being built,
  * or start the next one (up to SID_CHARACTER_DAC_RAMP on, into free_table, a table no chip
  * and no queued stage points at; NULL: none is free, the DACs wait), or, if the next setting
  * is the model's default, take it at once. Returns 1 with the stage in *out when anything
@@ -226,6 +352,14 @@ void sid_character_ramp_reset(sid_character_ramp* r, const sid_character* c,
  * a quarter of sid_dac_build's 94k instructions) and a stage (about 300) a tick. */
 int sid_character_ramp_tick(sid_character_ramp* r, const sid* s, sid_dac* free_table,
                             sid_character_stage* out);
+int sid_character_ramp_tick_tables(sid_character_ramp* r, const sid* s, sid_dac* free_table,
+                                   const sid_filter_row* free_rows, sid_character_stage* out);
+/* The table-aware entry flattens the current effective cutoff into the first leased
+ * row and builds the target angles in the second, 27 slices total, then crossfades
+ * over 127 ticks. Releasing overrides rebuilds the exact macro/profile rows after
+ * that fade. One table slice total per tick; constants still advance during builds.
+ * A completed stage owns its rows until consumed: callers must include queued
+ * stages when looking for free rows, not merely chips and filter_building jobs. */
 /* 1 if the ramp's next tick would start a DAC table given one: not building, and its DACs
  * not yet at the target's. */
 int sid_character_ramp_wants_table(const sid_character_ramp* r);

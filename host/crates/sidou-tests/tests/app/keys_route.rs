@@ -183,6 +183,7 @@ fn a_refused_explicit_edit_leaves_the_song_setup_and_identity_unchanged() {
         profile: SID_CHIP_6581_WORN as u8,
         controls: [10, 20, 30, 40],
         gate_reset: 0,
+        expert: [70; SID_EXPERT_COUNT as usize],
     };
     assert_eq!(
         unsafe { keys_route_song_edit(&mut *k.kr, &edit, KEYS_ROUTE_EDIT_ALL) },
@@ -192,6 +193,7 @@ fn a_refused_explicit_edit_leaves_the_song_setup_and_identity_unchanged() {
     assert_eq!(k.kr.song_want.profile, before.profile);
     assert_eq!(k.kr.song_want.controls, before.controls);
     assert_eq!(k.kr.song_want.gate_reset, before.gate_reset);
+    assert_eq!(k.kr.song_want.expert, before.expert);
     assert_eq!(k.kr.song_user, 2);
 }
 
@@ -202,6 +204,7 @@ fn chip_ctl_follows_a_setup_and_records_what_it_saw() {
         profile: SID_CHIP_6581_WORN as u8,
         controls: [40, 127, 64, 10],
         gate_reset: 0,
+        expert: [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize],
     };
     let mut ctl = Box::<chip_ctl>::default();
     let b: *mut reg_ring_out = &mut *k.outs[1];
@@ -229,6 +232,61 @@ fn chip_ctl_follows_a_setup_and_records_what_it_saw() {
     unsafe { chip_ctl_saw(&mut *ctl, LIVE_REG_CHAR_FIRST as u8 + 2, 3) };
     assert_eq!(ctl.has.controls[1], 3);
     assert_eq!(unsafe { chip_ctl_has(&*ctl, &want) }, 0);
+}
+
+#[test]
+fn expert_setup_follows_the_keys_without_resetting_a_held_note() {
+    let mut k = Keys::new();
+    k.ticks(20);
+    unsafe {
+        live_note_on(&mut *k.live, 60, 100);
+        live_param_set(&mut *k.live, LIVE_PARAM_EXPERT + SID_EXPERT_DAC_KINK, 100);
+        live_param_set(
+            &mut *k.live,
+            LIVE_PARAM_EXPERT + SID_EXPERT_FILTER_6581_CURVE,
+            90,
+        );
+    }
+    let active = k.chips.active[0];
+    k.ticks(1200);
+    assert_eq!(
+        k.chips.active[0], active,
+        "an expert edit must not swap/reset a SID"
+    );
+    assert_eq!(
+        k.chip(0).env[0].gate,
+        1,
+        "held gate survived the table swaps"
+    );
+    assert_eq!(
+        unsafe {
+            chip_ctl_has(&k.kr.ctl[1], &{
+                let mut setup = chip_setup::default();
+                chip_setup_of(&*k.live, &mut setup);
+                setup
+            })
+        },
+        1,
+        "chip B must carry the same expert setup"
+    );
+    for chip in 0..2 {
+        let c = &k.chips.ramp[chip].now;
+        assert_eq!(
+            unsafe { sid_character_expert_get(c, SID_MODEL_6581, SID_EXPERT_DAC_KINK) },
+            100
+        );
+        assert_eq!(
+            unsafe { sid_character_expert_get(c, SID_MODEL_6581, SID_EXPERT_FILTER_6581_CURVE) },
+            90
+        );
+    }
+    unsafe { live_note_off(&mut *k.live, 60) };
+    k.tick();
+    assert_eq!(
+        k.chip(0).env[0].gate,
+        0,
+        "the release still reaches the same voice"
+    );
 }
 
 /// With no song the keys play chip A as in M1; chip B is made with the keys' setup in the
@@ -561,6 +619,7 @@ fn the_songs_setup_on_chip_a_is_taken_back_after_the_song() {
             profile: SID_CHIP_6581_R2 as u8,
             controls: [0; 4],
             gate_reset: 1,
+            expert: [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize],
         };
         unsafe { keys_route_song_setup(&mut *k.kr, &song) };
         k.tick();
@@ -678,6 +737,7 @@ fn an_edit_of_the_songs_setup_brings_chip_a_to_it() {
         profile: SID_CHIP_6581_WORN as u8,
         controls: [0, 0, 64, 0],
         gate_reset: 1,
+        expert: [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize],
     };
     assert!(k.kr.song_edit.is_none());
     assert!(k.kr.song_edit_ctx.is_null());
@@ -717,11 +777,13 @@ fn edits_and_the_songs_chpa_go_through_one_want_path() {
         profile: SID_CHIP_6581_WORN as u8,
         controls: [32, 0, 0, 0],
         gate_reset: 1,
+        expert: [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize],
     };
     let chpa = chip_setup {
         profile: SID_CHIP_6581_R2 as u8,
         controls: [0, 0, 64, 0],
         gate_reset: 1,
+        expert: [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize],
     };
     let mut again = chpa;
     again.controls[0] = 48;
@@ -763,6 +825,7 @@ fn chip_a_comes_back_to_the_keys_setup_after_a_tab_edits() {
             profile: SID_CHIP_6581_WORN as u8,
             controls: [100, 40, 80, 10],
             gate_reset: 1,
+            expert: [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize],
         };
         unsafe { keys_route_song_wants(&mut *k.kr, &edit) };
         k.ticks(200);

@@ -1596,6 +1596,26 @@ static void number_value(char* value, uint32_t n, uint32_t* fill, uint32_t* max,
     *max = top;
 }
 
+__attribute__((noinline, unused)) static int expert_value_text(uint32_t index, uint32_t raw,
+                                                             const chip_setup* setup, char* name, char* value,
+                                                             uint32_t* fill, uint32_t* max) {
+    if (index >= SID_EXPERT_COUNT) {
+        return 0;
+    }
+    join(name, SCREEN_POPUP_TEXT, chip_view_expert_name(index), "");
+    const sid_chip_profile* p = sid_chip_profile_get(setup->profile);
+    sid_model model = p ? (sid_model)p->model : SID_MODEL_6581;
+    if (!sid_character_expert_active(model, index)) {
+        join(value, SCREEN_POPUP_TEXT, "N/A", "");
+        *fill = *max = 0;
+        return 1;
+    }
+    chip_view_expert_setup_text(setup, index, value);
+    *fill = raw;
+    *max = SID_CHARACTER_MAX;
+    return 1;
+}
+
 /* A control of the instrument by its parameter (live.h): its name as MIDI learn says it and its
  * value as the views show it (cutoff in Hz as LIVE's filter, the rest as numbers and names).
  * The one place the popup's names and values come from. */
@@ -1627,6 +1647,12 @@ static int param_text(const views* v, uint32_t param, char* name, char* value, u
         join(name, SCREEN_POPUP_TEXT, SLOT_NAMES[slot], " ");
         append(name, SCREEN_POPUP_TEXT, label);
         number_value(value, l->slot[slot][field], fill, max, LIVE_SLOT_MAX);
+    } else if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
+        chip_setup setup;
+        chip_setup_of(l, &setup);
+        setup.profile = l->profile_req;
+        return expert_value_text(param - LIVE_PARAM_EXPERT, live_param_get(l, param),
+                                 &setup, name, value, fill, max);
     } else {
         return 0;
     }
@@ -1647,7 +1673,7 @@ static int chip_choice_text(const views* v, char* name, char* value, int edit) {
     if (cv->tabs) {
         return 0;
     }
-    if (!cv->chip) {
+    if (!cv->chip && !cv->expert) {
         uint32_t k = l->fx_select % LIVE_SLOTS;
         join(name, SCREEN_POPUP_TEXT, SLOT_NAMES[k], "");
         join(value, SCREEN_POPUP_TEXT, views_algorithm_name(k, l->slot[k][LIVE_SLOT_ALGORITHM]),
@@ -1663,6 +1689,14 @@ static int chip_choice_text(const views* v, char* name, char* value, int edit) {
         }
         join(name, SCREEN_POPUP_TEXT, "SAVE TO", "");
         join(value, SCREEN_POPUP_TEXT, t ? user : "OFF", "");
+        return 1;
+    }
+    if (cv->expert) {
+        char page[] = "1/4";
+        page[0] = (char)('1' + cv->expert_page);
+        page[2] = (char)('0' + CHIP_VIEW_EXPERT_PAGES);
+        join(name, SCREEN_POPUP_TEXT, "EXPERT PAGE", "");
+        join(value, SCREEN_POPUP_TEXT, page, "");
         return 1;
     }
     join(name, SCREEN_POPUP_TEXT, "PROFILE", "");
@@ -1722,12 +1756,21 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
             return param_text(v, param, name, value, fill, max);
         }
         if (v->p && v->p->page == PANEL_PAGE_NONE) {
+            if (v->chip.expert) {
+                uint32_t index = v->chip.expert_page * 4u + enc - PANEL_ENC_K1;
+                return expert_value_text(index, chip_view_expert_value(&v->chip, index),
+                                         &v->chip.kr->song_want,
+                                         name, value, fill, max);
+            }
             /* a song's chip A: the CHIP view turns the song's character itself */
             uint32_t k = enc - PANEL_ENC_K1;
             learn_view_param_name(LIVE_PARAM_AGE + k, name);
             number_value(value, v->chip.kr->song_want.controls[k], fill, max,
                          live_param_max(LIVE_PARAM_AGE + k));
             return 1;
+        }
+        if (v->p && v->p->page >= PANEL_PAGE_EXPERT_FIRST) {
+            return 0;
         }
         join(name, SCREEN_POPUP_TEXT, "PRESET", ""); /* K4 on LIVE's page */
         const live_preset* p = live_preset_get(l->preset);

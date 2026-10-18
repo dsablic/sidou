@@ -42,6 +42,7 @@ typedef struct {
     sid_dac* d;
     float kink, leakage;
     float zero; /* the waveform DAC's output at the voice's zero, saturated */
+    float voice_dc; /* added inside the DAC table, before its factor of two */
     uint8_t is6581;
     uint8_t step; /* the next step, 0..SID_DAC_BUILD_STEPS */
 } sid_dac_job;

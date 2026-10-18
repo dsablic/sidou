@@ -148,6 +148,10 @@ __attribute__((noinline, unused)) static void between(void) {
     at_rest = (uint8_t)(shown && !idle_work);
 }
 
+__attribute__((noinline, unused)) static uint32_t unheld_rows(uint32_t rows) {
+    return rows & ~cells.hold;
+}
+
 void ui_poll(uint32_t now_ms) {
     /* A frame, half a frame later its preparation (views_prepare), and the runs: each in a
      * call of its own, so no call is long and the main loop drains MIDI between them. */
@@ -166,7 +170,7 @@ void ui_poll(uint32_t now_ms) {
         }
         return;
     }
-    if (!pending && !(cells.rows & ~cells.hold)) {
+    if (!pending && (!cells.rows || !unheld_rows(cells.rows))) {
         /* nothing to send: most calls, between frames and on an idle screen */
         if (!at_rest) {
             between();

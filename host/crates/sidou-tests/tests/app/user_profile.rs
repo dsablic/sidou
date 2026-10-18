@@ -3,7 +3,7 @@
 //! The USER chip profiles (`app/user_profile.c`, the CHIP view's picker and save target,
 //! M2a Task 6): the record on the store, the picker's order and its skipped empty slots, EDIT +
 //! ALGORITHM's save target and SAVE into it (asking before an overwrite), the song's chip A,
-//! CC 85, and the write's retries.
+//! CC 85, the write's retries, and M2b's schema-2 raw expert overrides and v1 migration.
 
 use std::cell::Cell;
 
@@ -181,13 +181,27 @@ impl Prof {
 }
 
 fn record(base: u32, ctl: [u8; 4]) -> Vec<u8> {
-    vec![1, base as u8, 4, ctl[0], ctl[1], ctl[2], ctl[3]]
+    let mut rec = vec![
+        2,
+        base as u8,
+        4,
+        ctl[0],
+        ctl[1],
+        ctl[2],
+        ctl[3],
+        SID_EXPERT_COUNT as u8,
+    ];
+    rec.extend(std::iter::repeat_n(
+        SID_EXPERT_DEFAULT as u8,
+        SID_EXPERT_COUNT as usize,
+    ));
+    rec
 }
 
 #[test]
-fn the_record_is_seven_bytes_under_its_own_key() {
+fn the_record_keeps_the_v1_prefix_under_its_own_key() {
     assert_eq!(USER_PROFILE_V1_BYTES, 7);
-    assert_eq!(USER_PROFILE_VERSION, 1);
+    assert_eq!(USER_PROFILE_VERSION, 2);
     assert_eq!(USER_PROFILE_TYPE, 2);
     // Beside the settings' 0x100, one key a slot.
     assert_eq!(SETTINGS_KEY, 0x100);
@@ -440,6 +454,7 @@ fn on_a_songs_chip_a_the_save_target_stores_the_songs_setup_not_the_keys() {
         profile: SID_CHIP_6581_R3 as u8,
         controls: [11, 22, 33, 44],
         gate_reset: 1,
+        expert: [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize],
     };
     unsafe { chip_view_set_keys(&mut p.ui.v.chip, &mut *kr) };
     p.frames(3);
@@ -479,7 +494,7 @@ fn the_slots_load_at_boot_and_a_record_that_is_not_a_profile_is_an_empty_slot() 
     let mut st = fresh(11, 256);
     let good = record(SID_CHIP_8580_R5, [1, 2, 3, 4]);
     let mut longer = record(SID_CHIP_6581_R3, [9, 8, 7, 6]);
-    longer[0] = 2;
+    longer[0] = USER_PROFILE_VERSION as u8 + 1;
     longer.extend_from_slice(&[0xAA, 0xBB]); // a later schema's fields
     let cases: [(u32, Vec<u8>); 8] = [
         (0, good.clone()),
@@ -507,6 +522,138 @@ fn the_slots_load_at_boot_and_a_record_that_is_not_a_profile_is_an_empty_slot() 
         (SID_CHIP_6581_R3 as u8, [9, 8, 7, 6])
     );
     assert_eq!(l.user_ctl[7], [127; 4]);
+}
+
+#[test]
+fn the_v1_fixture_loads_with_profile_following_expert_defaults() {
+    let text = include_str!("../data/profile-v1.hex");
+    let rec: Vec<u8> = text
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .flat_map(str::split_whitespace)
+        .map(|v| u8::from_str_radix(v, 16).unwrap())
+        .collect();
+    let mut st = fresh(11, 256);
+    assert_eq!(
+        st.put_typed(key(2), USER_PROFILE_TYPE as u8, &rec),
+        STORE_OK
+    );
+    st.settle();
+    let p = Prof::on(st);
+    assert_eq!(p.ui.live().user_valid, 1 << 2);
+    assert_eq!(p.ui.live().user_base[2], SID_CHIP_8580_R5 as u8);
+    assert_eq!(p.ui.live().user_ctl[2], [11, 22, 33, 44]);
+    assert!(p.ui.live().user_expert[2]
+        .iter()
+        .all(|&v| v == SID_EXPERT_DEFAULT as u8));
+}
+
+#[test]
+fn saving_expert_overrides_keeps_raw_sentinels_across_a_reboot() {
+    let mut p = Prof::new();
+    let mut expert = [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize];
+    for (e, value) in expert.iter_mut().enumerate().skip(1) {
+        *value = (e * 7 % 128) as u8;
+    }
+    let controls = [11, 22, 33, 44];
+    unsafe {
+        user_profile_save(
+            &mut p.ui.v.users,
+            2,
+            SID_CHIP_8580_R5,
+            controls.as_ptr(),
+            expert.as_ptr(),
+            p.ui.now,
+        );
+    }
+    for _ in 0..5 {
+        unsafe { user_profiles_tick(&mut p.ui.v.users, p.ui.now, Some(force)) };
+        p.frame();
+    }
+    let rec =
+        p.st.get(key(2))
+            .expect("the explicitly ticked save commits");
+    assert_eq!(rec[0], 2);
+    assert_eq!(&rec[1..7], &[3, 4, 11, 22, 33, 44]);
+    assert_eq!(rec[7], SID_EXPERT_COUNT as u8);
+    assert_eq!(&rec[8..], &expert);
+    let mut st = p.st;
+    st.reset();
+    st.mount();
+    let p = Prof::on(st);
+    assert_eq!(p.ui.live().user_expert[2], expert);
+}
+
+#[test]
+fn malformed_v2_expert_sections_leave_the_slot_empty() {
+    let good = record(SID_CHIP_8580_R5, [11, 22, 33, 44]);
+    let mut invalid = vec![good[..7].to_vec(), good[..good.len() - 1].to_vec()];
+    let mut short_count = good.clone();
+    short_count[7] -= 1;
+    invalid.push(short_count);
+    let mut invalid_value = good;
+    invalid_value[8] = 128;
+    invalid.push(invalid_value);
+    for rec in invalid {
+        let mut st = fresh(12, 256);
+        assert_eq!(
+            st.put_typed(key(0), USER_PROFILE_TYPE as u8, &rec),
+            STORE_OK
+        );
+        st.settle();
+        let mut p = Prof::on(st);
+        assert_eq!(p.ui.live().user_valid, 0);
+        p.ui.rig.live.user_base[0] = SID_CHIP_6581_R4AR as u8;
+        p.ui.rig.live.user_ctl[0] = [9; 4];
+        p.ui.rig.live.user_expert[0] = [17; SID_EXPERT_COUNT as usize];
+        unsafe { user_profiles_load(&mut p.ui.v.users) };
+        assert_eq!(p.ui.live().user_valid, 0);
+        assert_eq!(p.ui.live().user_base[0], SID_CHIP_6581_R4AR as u8);
+        assert_eq!(p.ui.live().user_ctl[0], [9; 4]);
+        assert_eq!(p.ui.live().user_expert[0], [17; SID_EXPERT_COUNT as usize]);
+    }
+}
+
+#[test]
+fn the_v2_fixture_loads_raw_overrides_and_picking_it_restores_them() {
+    let rec: Vec<u8> = include_str!("../data/profile-v2.hex")
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .flat_map(str::split_whitespace)
+        .map(|v| u8::from_str_radix(v, 16).unwrap())
+        .collect();
+    let mut st = fresh(11, 256);
+    assert_eq!(
+        st.put_typed(key(2), USER_PROFILE_TYPE as u8, &rec),
+        STORE_OK
+    );
+    st.settle();
+    let mut p = Prof::on(st);
+    assert_eq!(&p.ui.live().user_expert[2][..], &rec[8..]);
+    p.ui.rig.cc(CC_PROFILE, 69); // USER 3
+    assert_eq!(p.ui.live().user_applied, 3);
+    assert_eq!(p.ui.live().expert, p.ui.live().user_expert[2]);
+}
+
+#[test]
+fn future_profile_counts_skip_unknown_controls_and_experts() {
+    let mut rec = record(SID_CHIP_8580_R5, [11, 22, 33, 44]);
+    rec[0] = USER_PROFILE_VERSION as u8 + 1;
+    rec[2] += 1;
+    rec[7] += 1;
+    rec.insert(7, 99);
+    rec[9] = 17;
+    rec.push(19);
+    let mut st = fresh(11, 256);
+    assert_eq!(
+        st.put_typed(key(2), USER_PROFILE_TYPE as u8, &rec),
+        STORE_OK
+    );
+    st.settle();
+    let p = Prof::on(st);
+    assert_eq!(p.ui.live().user_valid, 1 << 2);
+    assert_eq!(p.ui.live().user_ctl[2], [11, 22, 33, 44]);
+    assert_eq!(p.ui.live().user_expert[2][0], 17);
 }
 
 #[test]

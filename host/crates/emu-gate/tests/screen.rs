@@ -2409,6 +2409,14 @@ fn chip_focus(m: &mut Machine, fw: &Firmware) -> u8 {
     if tabs != 0 {
         return sidou_sys::CHIP_VIEW_TABS as u8;
     }
+    if ui_byte(
+        m,
+        fw,
+        sidou_sys::ilp32::views::chip + sidou_sys::ilp32::chip_view::expert,
+    ) != 0
+    {
+        return sidou_sys::CHIP_VIEW_EXPERT as u8;
+    }
     let on_chip = ui_byte(
         m,
         fw,
@@ -2752,6 +2760,56 @@ fn chip_input_holds_the_main_loop_within_the_poll_allowance() {
     assert!(over.is_empty(), "{over:#?}");
 }
 
+#[test]
+fn expert_pages_are_readable_and_stay_inside_the_chip_frame_and_poll_budgets() {
+    let Some((build, fw)) = fixture("the EXPERT page test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_chip(&mut m, &fw);
+    no_popup(&mut m, &fw);
+    m.turn(SELECT, 4);
+    m.run_ms(u64::from(sidou_sys::SCREEN_TOAST_MS) + 200);
+    assert_eq!(chip_focus(&mut m, &fw), sidou_sys::CHIP_VIEW_EXPERT as u8);
+    m.watch_calls(fw.symbol("ui_poll"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    for page in 0..4 {
+        if page != 0 {
+            m.turn(ALGORITHM, 1);
+            m.run_ms(600);
+        }
+        common::to_mid_frame(&mut m, &fw);
+        compare_golden(
+            &build,
+            &format!("chip-expert-{}", page + 1),
+            &m.soc.lcd.fb,
+            &[],
+        );
+        let idle = measure(&mut m, &fw, 25, |_| {});
+        println!("EXPERT page {} idle: {}", page + 1, animated_json(&idle));
+        assert_eq!(
+            idle.total().windows,
+            0,
+            "an idle EXPERT page must compose nothing"
+        );
+        assert!(
+            idle.instructions_per_frame() < CHIP_IDLE_PER_FRAME,
+            "EXPERT idle {} instructions/frame",
+            idle.instructions_per_frame()
+        );
+        let cost = measure(&mut m, &fw, 25, |m| m.turn(K1_CHIP, 1));
+        println!("EXPERT page {}: {}", page + 1, animated_json(&cost));
+        assert!(cost.worst_poll < CHIP_WORST_POLL);
+        assert!(cost.instructions_per_frame() < CHIP_KNOB_PER_FRAME);
+        assert!(cost.worst_frame_ms() <= SPI_BUDGET_MS);
+        assert!(
+            cost.frames.iter().map(cells).max().unwrap_or(0) <= sidou_sys::CHIP_VIEW_FRAME_CELLS
+        );
+    }
+    let worst = m.passes.iter().copied().max().unwrap_or(0);
+    assert!(worst < common::POLL_INSTRUCTIONS, "EXPERT pass {worst}");
+}
+
 /// The profile live has (live.profile, a SID_CHIP_*).
 fn profile(m: &mut Machine, fw: &Firmware) -> u8 {
     let l = m
@@ -2801,6 +2859,7 @@ fn chip_resets_at_full_character_stay_within_the_poll_allowance() {
             dac: 127,
             thump: 127,
             bleed: 127,
+            ..Default::default()
         };
         let mut expect = unsafe { sidou_sys::sid_character_prep_slices(model.into(), &c) };
         if !built {

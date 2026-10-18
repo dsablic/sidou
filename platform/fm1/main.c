@@ -166,6 +166,7 @@ static uint8_t song_setup_on; /* chip A's setup for the song is asked for */
 static chip_setup song_want;
 static int song_base_get(chip_setup* setup);
 static void song_base_set(const chip_setup* setup);
+static void setup_decode(chip_setup* out, const song_chip_setup* chip);
 
 static int song_chip_ready(void* ctx, const song_chip_setup* c) {
     keys_route* kr = ctx;
@@ -176,12 +177,7 @@ static int song_chip_ready(void* ctx, const song_chip_setup* c) {
         if (!song_base_get(&song_want)) {
             song_want = kr->ctl[0].has; /* chip A as the song finds it (the keys' setup) */
             if (c) {
-                song_want.profile = c->profile;
-                song_want.controls[0] = c->age;
-                song_want.controls[1] = c->dac;
-                song_want.controls[2] = c->thump;
-                song_want.controls[3] = c->bleed;
-                song_want.gate_reset = c->envelope == 0u; /* 0 INSTANT */
+                setup_decode(&song_want, c);
             } else {
                 song_want.gate_reset = 0u; /* AUTHENTIC */
             }
@@ -251,7 +247,7 @@ static void song_chip_character(void* ctx, uint32_t field, int32_t value) {
     chip_setup want = song_char_base;
     for (uint32_t f = 0; f < 4u; f++) {
         if (song_char_on[f] >= 0) {
-            want.controls[f] = (uint8_t)song_char_on[f];
+            chip_setup_control(&want, f, (uint8_t)song_char_on[f]);
         }
     }
     keys_route_song_wants(kr, &want);
@@ -276,13 +272,18 @@ static int song_chip_edit(void* ctx, const chip_setup* setup, uint32_t fields) {
     }
     for (uint32_t f = 0; f < 4u; f++) {
         if (fields >> f & 1u) {
-            song_char_base.controls[f] = setup->controls[f];
+            chip_setup_control(&song_char_base, f, setup->controls[f]);
+        }
+    }
+    for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+        if (fields & (1u << (KEYS_ROUTE_EDIT_EXPERT_FIRST + f))) {
+            song_char_base.expert[f] = setup->expert[f];
         }
     }
     chip_setup want = song_char_base;
     for (uint32_t f = 0; f < 4u; f++) {
         if (song_char_on[f] >= 0) {
-            want.controls[f] = (uint8_t)song_char_on[f];
+            chip_setup_control(&want, f, (uint8_t)song_char_on[f]);
         }
     }
     keys_route_song_wants(kr, &want);
@@ -305,13 +306,14 @@ __attribute__((noinline, unused)) static void song_mode_setup(void) {
     chip_setup want = song_char_base;
     for (uint32_t f = 0; f < 4u; f++) {
         if (song_char_on[f] >= 0) {
-            want.controls[f] = (uint8_t)song_char_on[f];
+            chip_setup_control(&want, f, (uint8_t)song_char_on[f]);
         }
     }
     keys_route_song_wants(&keys_router, &want);
 }
 
 static void setup_encode(song_chip_setup* out, const chip_setup* in) {
+    memset(out, 0, sizeof *out);
     const sid_chip_profile* profile = sid_chip_profile_get(in->profile);
     out->model = profile ? (uint8_t)profile->model : 0u;
     out->profile = in->profile;
@@ -320,11 +322,21 @@ static void setup_encode(song_chip_setup* out, const chip_setup* in) {
     out->thump = in->controls[2];
     out->bleed = in->controls[3];
     out->envelope = !in->gate_reset;
+    out->expert_count = SID_EXPERT_COUNT;
+    memcpy(out->expert, in->expert, SID_EXPERT_COUNT);
 }
 
 static int setup_valid(const song_chip_setup* chip) {
     const sid_chip_profile* profile = sid_chip_profile_get(chip->profile);
     uint32_t controls = chip->age | chip->dac | chip->thump | chip->bleed;
+    if (chip->expert_count > SONG_EXPERT_MAX) {
+        return 0;
+    }
+    for (uint32_t f = 0; f < chip->expert_count && f < SID_EXPERT_COUNT; f++) {
+        if (chip->expert[f] > SID_CHARACTER_MAX && chip->expert[f] != SID_EXPERT_DEFAULT) {
+            return 0;
+        }
+    }
     return profile && (uint32_t)profile->model == chip->model &&
            !(controls & 0x80u) && chip->envelope <= 1u;
 }
@@ -336,6 +348,9 @@ static void setup_decode(chip_setup* out, const song_chip_setup* chip) {
     out->controls[2] = chip->thump;
     out->controls[3] = chip->bleed;
     out->gate_reset = chip->envelope == 0u;
+    for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+        out->expert[f] = f < chip->expert_count ? chip->expert[f] : SID_EXPERT_DEFAULT;
+    }
 }
 
 typedef struct {
@@ -366,9 +381,8 @@ __attribute__((noinline, unused)) static void song_collect(song_save_data* out) 
     }
     gt2_options opts;
     (void)song_ext_get_options(s, &opts);
-    for (uint32_t p = 0; p < LIVE_PARAM_COUNT; p++) {
-        out->param[p] = (uint16_t)(p == LIVE_PARAM_VOLUME ? 0u : live_param_get(&instrument, p));
-    }
+    live_params_wire(&instrument, out->param);
+    out->param[LIVE_PARAM_VOLUME] = 0u;
     out->chip = chip;
     out->opts = opts;
     out->midi = midi_routed()->setup;
@@ -486,9 +500,8 @@ static int song_capture(void* ctx) {
 static uint32_t song_generation(void* ctx) {
     (void)ctx;
     uint16_t values[LIVE_PARAM_COUNT];
-    for (uint32_t p = 0; p < LIVE_PARAM_COUNT; p++) {
-        values[p] = (uint16_t)(p == LIVE_PARAM_VOLUME ? 0u : live_param_get(&instrument, p));
-    }
+    live_params_wire(&instrument, values);
+    values[LIVE_PARAM_VOLUME] = 0u;
     uint32_t crc = store_crc32(0u, values, sizeof values);
     crc = store_crc32(crc, &instrument.preset, sizeof instrument.preset);
     crc = store_crc32(crc, &midi_routed()->setup, sizeof(midi_route_setup));
@@ -505,11 +518,23 @@ static void song_apply_keys(const uint16_t* param, uint32_t count, uint8_t prese
     if (preset < LIVE_PRESET_COUNT) {
         live_set_preset(&instrument, preset);
     }
-    for (uint32_t p = 0; p < count && p < LIVE_PARAM_COUNT; p++) {
+    for (uint32_t p = 0; p < count && p < LIVE_PARAM_EXPERT; p++) {
         if (p != LIVE_PARAM_VOLUME && param[p] <= live_param_max(p)) {
             live_param_set(&instrument, p, param[p]);
         }
     }
+    uint32_t changed = 0;
+    instrument.expert_active = 0;
+    for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+        uint32_t p = LIVE_PARAM_EXPERT + f;
+        uint32_t value = p < count ? param[p] : SID_EXPERT_DEFAULT;
+        uint8_t raw = value <= SID_CHARACTER_MAX ? (uint8_t)value : SID_EXPERT_DEFAULT;
+        changed |= instrument.expert[f] != raw;
+        instrument.expert[f] = raw;
+        instrument.expert_active |= raw != SID_EXPERT_DEFAULT;
+    }
+    instrument.expert_dirty = 1;
+    instrument.expert_version += changed != 0;
 }
 
 static void song_apply_midi(const midi_route_setup* setup) {
@@ -546,7 +571,7 @@ static int song_loaded(void* ctx) {
     song_midi midi;
     midi_route_setup_encode(&setup, &midi);
     song_capture_plan plan;
-    if (!song_capture_fits(s, has_chip ? chip.expert_count : 0u, midi.count, &plan)) {
+    if (!song_capture_fits(s, SID_EXPERT_COUNT, midi.count, &plan)) {
         return 0;
     }
     song_setup_on = 0;
@@ -1051,8 +1076,8 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
     }
     /* The store (store_fm1.h): at every key-scan frame (about 1.1 kHz) while it has work in
      * hand, else once a tick; its share of the pass within STORE_POLL_WORST, none in a pass
-     * that ran a chip preparation slice. Here, not after every wake: an idle store costs the
-     * main loop nothing between frames. */
+     * that ran a chip, character-table or song slice. Here, not after every wake: an idle
+     * store costs the main loop nothing between frames. */
     if (tick_due || store_fm1_active || songs.state) {
         store_fm1_service(now, &instrument, &keys_router, ui_sound_busy(&ui_sounds));
     }

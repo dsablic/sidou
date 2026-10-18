@@ -495,6 +495,9 @@ static void chip_profile(midi_route* r, uint32_t pick) {
     uint8_t user = 0;
     if (pick < SID_CHIPS) {
         s.profile = (uint8_t)pick;
+        for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+            s.expert[f] = SID_EXPERT_DEFAULT;
+        }
     } else {
         uint32_t slot = pick - SID_CHIPS;
         if (!(r->l->user_valid >> slot & 1u)) {
@@ -505,8 +508,12 @@ static void chip_profile(midi_route* r, uint32_t pick) {
         for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; f++) {
             s.controls[f] = r->l->user_ctl[slot][f];
         }
+        for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+            s.expert[f] = r->l->user_expert[slot][f];
+        }
     }
-    uint32_t edit_mask = KEYS_ROUTE_EDIT_PROFILE | (user ? KEYS_ROUTE_EDIT_CONTROLS : 0u);
+    uint32_t edit_mask = KEYS_ROUTE_EDIT_PROFILE | KEYS_ROUTE_EDIT_EXPERT |
+                         (user ? KEYS_ROUTE_EDIT_CONTROLS : 0u);
     if (keys_route_song_edit(r->kr, &s, edit_mask)) {
         r->kr->song_user = user;
     }
@@ -534,6 +541,10 @@ static void chip_cc(midi_route* r, uint8_t cc, uint8_t value) {
         sid_model now = p ? p->model : SID_MODEL_6581;
         if ((uint32_t)now != v) {
             s.profile = v == SID_MODEL_8580 ? SID_CHIP_8580_R5 : SID_CHIP_6581_R4AR;
+            for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
+                s.expert[f] = SID_EXPERT_DEFAULT;
+            }
+            edit_mask |= KEYS_ROUTE_EDIT_EXPERT;
         }
         break;
     }
@@ -545,7 +556,7 @@ static void chip_cc(midi_route* r, uint8_t cc, uint8_t value) {
     case LIVE_PARAM_DAC:
     case LIVE_PARAM_THUMP:
     case LIVE_PARAM_BLEED:
-        s.controls[e->param - LIVE_PARAM_AGE] = (uint8_t)v;
+        chip_setup_control(&s, e->param - LIVE_PARAM_AGE, (uint8_t)v);
         edit_mask = 1u << (e->param - LIVE_PARAM_AGE);
         break;
     default: return;

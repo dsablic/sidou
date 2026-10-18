@@ -513,6 +513,97 @@ unsafe extern "C" fn interrupt_once(ctx: *mut c_void) {
     }
 }
 
+#[test]
+fn expert_rows_never_build_over_a_rendered_or_queued_lease() {
+    let mut dev = Device::new(SID_MODEL_6581);
+    dev.block();
+    unsafe {
+        live_note_on(&mut *dev.live, 60, 100);
+        live_param_set(
+            &mut *dev.live,
+            LIVE_PARAM_EXPERT + SID_EXPERT_FILTER_6581_CURVE,
+            90,
+        );
+    }
+    dev.block();
+    let active = dev.chips.active[0];
+    let o: *mut reg_ring_out = &mut *dev.out;
+    for tick in 0..220 {
+        dev.out.sliced = 0;
+        let rows = dev.chip().filter_rows;
+        let before: Vec<_> = rows
+            .iter()
+            .map(|row| unsafe {
+                std::slice::from_raw_parts(row.cutoff, SID_FC_STEPS as usize).to_vec()
+            })
+            .collect();
+        unsafe {
+            live_tick(&mut *dev.live);
+            reg_ring_commit(&mut *dev.ring);
+        }
+        if dev.chips.build_pass != 0 {
+            assert_ne!(
+                dev.out.sliced, 0,
+                "tick {tick}: the store must yield to a table slice"
+            );
+        }
+        unsafe {
+            reg_ring_pass_end(&mut *dev.chips);
+        }
+        for (row, values) in rows.iter().zip(&before) {
+            assert_eq!(
+                unsafe { std::slice::from_raw_parts(row.cutoff, SID_FC_STEPS as usize) },
+                values,
+                "tick {tick}: live_tick overwrote the currently rendered row"
+            );
+        }
+        unsafe {
+            reg_ring_set_race_hook(Some(interrupt_once), o.cast());
+            live_tick(&mut *dev.live);
+            reg_ring_set_race_hook(None, std::ptr::null_mut());
+        }
+        dev.block();
+        assert_eq!(
+            dev.chips.active[0], active,
+            "an expert row swap reset the chip"
+        );
+        assert_eq!(dev.chip().env[0].gate, 1);
+    }
+    assert_eq!(
+        unsafe {
+            sid_character_expert_get(
+                &dev.chips.ramp[0].now,
+                SID_MODEL_6581,
+                SID_EXPERT_FILTER_6581_CURVE,
+            )
+        },
+        90
+    );
+    unsafe { live_param_set(&mut *dev.live, LIVE_PARAM_AGE, 127) };
+    for _ in 0..400 {
+        unsafe { live_tick(&mut *dev.live) };
+        dev.block();
+    }
+    assert_eq!(
+        dev.chips.ramp[0].filter_managed, 0,
+        "macro restoration must finish"
+    );
+    assert_eq!(
+        dev.chip().filter_t,
+        1.0,
+        "AGE must regain its original filter path"
+    );
+    unsafe { live_param_set(&mut *dev.live, LIVE_PARAM_PROFILE, SID_CHIP_6581_R2) };
+    for _ in 0..30 {
+        unsafe { live_tick(&mut *dev.live) };
+        dev.block();
+    }
+    assert_eq!(
+        dev.chips.lost_resets, 0,
+        "a later profile preparation reused leased backing"
+    );
+}
+
 /// A stage that names table A is queued while the chip plays B, and the interrupt commits it
 /// in the middle of the next tick's choice of a free table (free_dac): the choice must not be
 /// A, which the chip now plays, or the ramp would build its next table over it. The DACs from
@@ -542,6 +633,7 @@ fn a_commit_during_the_choice_of_a_free_table_never_frees_the_one_it_plays() {
         queued,
         "the third table was never queued while the chip played the second"
     );
+    unsafe { reg_ring_pass_end(&mut *dev.chips) };
     let o: *mut reg_ring_out = &mut *dev.out;
     unsafe {
         reg_ring_set_race_hook(Some(interrupt_once), o.cast());
@@ -562,6 +654,40 @@ fn a_commit_during_the_choice_of_a_free_table_never_frees_the_one_it_plays() {
         second,
         "the fourth table is being built over the one the chip plays"
     );
+}
+
+#[test]
+fn catch_up_ticks_share_one_character_table_slice_and_make_the_store_yield() {
+    for param in [
+        LIVE_PARAM_EXPERT + SID_EXPERT_FILTER_6581_CURVE,
+        LIVE_PARAM_DAC,
+    ] {
+        let mut dev = Device::new(SID_MODEL_6581);
+        dev.block();
+        unsafe {
+            live_param_set(&mut *dev.live, param, 127);
+            live_tick(&mut *dev.live);
+        }
+        let progress = |dev: &Device| {
+            let r = &dev.chips.ramp[0];
+            (r.job.step, r.filter_job.phase, r.filter_job.at)
+        };
+        let first = progress(&dev);
+        assert_ne!(dev.out.sliced, 0, "the store must yield to the table build");
+        unsafe { live_tick(&mut *dev.live) };
+        assert_eq!(
+            progress(&dev),
+            first,
+            "a catch-up tick ran a second table slice"
+        );
+        dev.block();
+        unsafe { live_tick(&mut *dev.live) };
+        assert_ne!(
+            progress(&dev),
+            first,
+            "the next pass did not resume the table build"
+        );
+    }
 }
 
 /// One main-loop pass at its worst (reg_ring.c, REG_RING_WORST_PASS), in the order the
@@ -715,6 +841,7 @@ fn character(id: u32, v: u8) -> sid_character {
         dac: v,
         thump: v,
         bleed: v,
+        ..Default::default()
     }
 }
 
@@ -726,6 +853,13 @@ fn profile_model(id: u32) -> sid_model {
 fn chip_bytes(s: &sid) -> Vec<u8> {
     let mut c = Box::new(*s);
     c.dac = std::ptr::null();
+    for row in &mut c.filter_rows {
+        row.cutoff = std::ptr::null_mut();
+        row.res = std::ptr::null_mut();
+    }
+    for osc in &mut c.osc {
+        osc.writeback = std::ptr::null();
+    }
     let p: *const sid = &*c;
     unsafe { std::slice::from_raw_parts(p.cast::<u8>(), size_of::<sid>()) }.to_vec()
 }

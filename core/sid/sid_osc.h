@@ -97,6 +97,9 @@ typedef struct {
      * lower half when the source pulls every MSB rise low before this voice's output
      * looks at it (reSIDfp clocks outputs in voice order; clock_voices sets it). */
     uint32_t src_mask;
+    const uint32_t (*writeback)[16];
+    uint32_t writeback_keep;
+    uint32_t noise_keep;
 } sid_osc;
 
 /* The accumulator at power-on, as in reSIDfp: its even bits come up high. */
@@ -150,13 +153,36 @@ static inline uint32_t sid_noise_output(uint32_t sr) {
 #define SID_WB_ROW(f)                                                                      \
     {f(0u), f(1u), f(2u),  f(3u),  f(4u),  f(5u),  f(6u),  f(7u),                            \
      f(8u), f(9u), f(10u), f(11u), f(12u), f(13u), f(14u), f(15u)}
+extern const uint32_t SID_NOISE_WB[2][16];
+
+#define SID_WB_BYTE_ENTRY(h, l) (SID_WB_HI(h) | SID_WB_LO(l))
+#define SID_WB_BYTE_ROW(h)                                                                 \
+    SID_WB_BYTE_ENTRY(h, 0u), SID_WB_BYTE_ENTRY(h, 1u), SID_WB_BYTE_ENTRY(h, 2u),              \
+    SID_WB_BYTE_ENTRY(h, 3u), SID_WB_BYTE_ENTRY(h, 4u), SID_WB_BYTE_ENTRY(h, 5u),              \
+    SID_WB_BYTE_ENTRY(h, 6u), SID_WB_BYTE_ENTRY(h, 7u), SID_WB_BYTE_ENTRY(h, 8u),              \
+    SID_WB_BYTE_ENTRY(h, 9u), SID_WB_BYTE_ENTRY(h, 10u), SID_WB_BYTE_ENTRY(h, 11u),             \
+    SID_WB_BYTE_ENTRY(h, 12u), SID_WB_BYTE_ENTRY(h, 13u), SID_WB_BYTE_ENTRY(h, 14u),            \
+    SID_WB_BYTE_ENTRY(h, 15u)
 #ifdef __PI32V2__
-__attribute__((section(".data.sid_noise_wb")))
+__attribute__((section(".data.sid_noise_wb_byte")))
 #endif
-static const uint32_t SID_NOISE_WB[2][16] = {SID_WB_ROW(SID_WB_LO), SID_WB_ROW(SID_WB_HI)};
+static const uint32_t SID_NOISE_WB_BYTE[256] = {
+    SID_WB_BYTE_ROW(0u), SID_WB_BYTE_ROW(1u), SID_WB_BYTE_ROW(2u), SID_WB_BYTE_ROW(3u),
+    SID_WB_BYTE_ROW(4u), SID_WB_BYTE_ROW(5u), SID_WB_BYTE_ROW(6u), SID_WB_BYTE_ROW(7u),
+    SID_WB_BYTE_ROW(8u), SID_WB_BYTE_ROW(9u), SID_WB_BYTE_ROW(10u), SID_WB_BYTE_ROW(11u),
+    SID_WB_BYTE_ROW(12u), SID_WB_BYTE_ROW(13u), SID_WB_BYTE_ROW(14u), SID_WB_BYTE_ROW(15u),
+};
 
 static inline uint32_t sid_noise_writeback(uint32_t out) {
     return SID_NOISE_WB[0][(out >> 4) & 15u] | SID_NOISE_WB[1][(out >> 8) & 15u];
+}
+
+static inline uint32_t sid_noise_writeback_for(const sid_osc* o, uint32_t out) {
+    SID_DEBUG_ASSERT(out <= 0xfffu);
+    if (!o->noise_keep) {
+        return SID_NOISE_WB_BYTE[out >> 4];
+    }
+    return o->writeback[0][(out >> 4) & 15u] | o->writeback[1][(out >> 8) & 15u];
 }
 
 /* reSIDfp's do_writeback: whether a shift's second phase takes the output's bits. */
@@ -178,7 +204,11 @@ static inline int sid_noise_do_writeback(uint32_t wf_old, uint32_t wf_new, int i
  * (bit 0 | TEST or reset) ^ bit 5 of the latch. */
 static inline void sid_noise_shift_phase2(sid_osc* o, uint32_t wf_old, uint32_t wf_new) {
     if (sid_noise_do_writeback(wf_old, wf_new, o->is6581)) {
-        o->latch = (o->sr & ~SID_NOISE_TAPS) | sid_noise_writeback(o->out);
+        uint32_t wb = sid_noise_writeback_for(o, o->out);
+        if (o->writeback_keep) {
+            wb &= ~o->writeback_keep | o->sr;
+        }
+        o->latch = (o->sr & ~SID_NOISE_TAPS) | wb;
     }
     uint32_t bit = ((o->test_or_reset | o->latch) ^ (o->latch >> 5)) & 1u;
     o->sr = (o->latch >> 1) | (bit << 22);
@@ -189,6 +219,9 @@ static inline void sid_noise_shift_phase2(sid_osc* o, uint32_t wf_old, uint32_t 
 enum { SID_OUT_ANY, SID_OUT_NONE, SID_OUT_TRI, SID_OUT_SAW, SID_OUT_PULSE, SID_OUT_NOISE };
 
 /* Recomputes the fields derived from the control register and the tables. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
 static inline void sid_osc_update_mode(sid_osc* o) {
     uint32_t wf = (uint32_t)o->control >> 4;
     o->quiet = 0;
@@ -231,6 +264,9 @@ static inline void sid_osc_set_profile(sid_osc* o, uint32_t profile) {
 
 static inline void sid_osc_set_model(sid_osc* o, int is6581) {
     o->is6581 = (uint8_t)(is6581 != 0);
+    o->writeback = SID_NOISE_WB;
+    o->writeback_keep = 0;
+    o->noise_keep = 0;
     sid_osc_set_profile(o, SID_PROFILE_AVERAGE);
 }
 
@@ -239,6 +275,9 @@ static inline void sid_osc_set_model(sid_osc* o, int is6581) {
  * released reset shifts it once, which clears the new bit. sid_init sets
  * SID_OSC_POWER_ON_ACC and the model first. */
 static inline void sid_osc_reset(sid_osc* o) {
+    if (!o->writeback) {
+        o->writeback = SID_NOISE_WB;
+    }
     o->freq = 0;
     o->pw = 0;
     o->overshoot = 0;
@@ -511,10 +550,10 @@ static inline void sid_osc_cycle(sid_osc* o, uint32_t src_acc) {
         }
         if (wf > 8u) {
             if (o->shift_pipeline != 1 && !test) {
-                o->sr &= ~SID_NOISE_TAPS | sid_noise_writeback(o->out);
-                o->noise &= o->out;
+                o->sr &= ~SID_NOISE_TAPS | sid_noise_writeback_for(o, o->out);
+                o->noise &= o->out | o->noise_keep;
             } else {
-                o->noise = o->out;
+                o->noise = (o->out & ~o->noise_keep) | (o->noise & o->noise_keep);
             }
         }
     }
@@ -730,7 +769,7 @@ static inline void sid_osc_bulk_commit(sid_osc* o, uint32_t left, uint32_t src_a
     }
     o->acc = next & 0xffffffu;
     o->pulled_last = 0;
-    o->sr &= ~SID_NOISE_TAPS | sid_noise_writeback(n);
+    o->sr &= ~SID_NOISE_TAPS | sid_noise_writeback_for(o, n);
     o->out = n;
     if (wf & 3u) {
         o->tri_saw = sid_wave_ramp(wf, sid_wave_index(o->control, o->acc,

@@ -8,6 +8,7 @@
 use sidou_sys::*;
 
 const FS: u32 = 44100;
+static EXPERT_REFERENCE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn chip(model: sid_model) -> Box<sid> {
     let mut s = Box::<sid>::default();
@@ -23,6 +24,7 @@ fn character(profile: u32, age: u8, dac: u8, thump: u8, bleed: u8) -> sid_charac
         dac,
         thump,
         bleed,
+        ..Default::default()
     }
 }
 
@@ -93,6 +95,634 @@ fn rms(x: &[i16]) -> f64 {
 fn brightness(x: &[i16]) -> f64 {
     let d: Vec<i16> = x.windows(2).map(|w| w[1].wrapping_sub(w[0])).collect();
     rms(&d) / rms(x)
+}
+
+#[test]
+fn expert_dac_edits_are_independent_and_macro_changes_release_them() {
+    let mut c = sid_character::default();
+    unsafe {
+        sid_character_init(&mut c);
+        sid_character_expert_set(&mut c, SID_MODEL_6581, SID_EXPERT_DAC_KINK, 127);
+    }
+    let s = chip(SID_MODEL_6581);
+    let mut d = Box::<sid_dac>::default();
+    let mut reference = Box::<sid_dac>::default();
+    unsafe {
+        sid_character_build_dac(&*s, &c, &mut *d);
+        sid_dac_build(&mut *reference, 1, 2.6, SID_DAC_LEAKAGE_6581 as f32);
+    }
+    assert_eq!(d.wave, reference.wave);
+    c.dac = 127;
+    unsafe { sid_character_macro_changed(&mut c, 2) };
+    unsafe {
+        sid_character_build_dac(&*s, &c, &mut *d);
+        sid_dac_build(
+            &mut *reference,
+            1,
+            (SID_DAC_KINK_6581 as f32) + (SID_CHARACTER_KINK as f32),
+            (SID_DAC_LEAKAGE_6581 as f32) * (SID_CHARACTER_LEAK as f32),
+        );
+    }
+    assert_eq!(d.wave, reference.wave);
+}
+
+#[test]
+fn expert_constants_change_the_stage_without_resetting_held_voices() {
+    let mut s = chip(SID_MODEL_6581);
+    write(&mut s, &CHORD);
+    render(&mut s, 5000);
+    let before: Vec<_> = s
+        .osc
+        .iter()
+        .zip(s.env.iter())
+        .map(|(o, e)| (o.acc, o.control, e.counter))
+        .collect();
+    let mut c = sid_character::default();
+    unsafe {
+        sid_character_init(&mut c);
+        sid_character_expert_set(&mut c, SID_MODEL_6581, SID_EXPERT_NONLINEARITY, 0);
+        sid_character_expert_set(&mut c, SID_MODEL_6581, SID_EXPERT_FILTER_BIAS, 0);
+        sid_character_expert_set(&mut c, SID_MODEL_6581, SID_EXPERT_EXTERNAL_HP, 127);
+        sid_character_expert_set(&mut c, SID_MODEL_6581, SID_EXPERT_EXTERNAL_LP, 0);
+    }
+    let mut stage = sid_character_stage::default();
+    unsafe {
+        sid_character_stage_for(&*s, &c, std::ptr::null(), &mut stage);
+        sid_character_commit(&mut *s, &stage);
+    }
+    assert_eq!((s.nl.level, s.dc_in), (0.0, 0.0));
+    assert!((s.dc_r - (1.0 - 2.0 * std::f32::consts::PI * 100.0 / FS as f32)).abs() < 1e-6);
+    assert!(s.out_c < 0.15);
+    let after: Vec<_> = s
+        .osc
+        .iter()
+        .zip(s.env.iter())
+        .map(|(o, e)| (o.acc, o.control, e.counter))
+        .collect();
+    assert_eq!(after, before);
+    write(&mut s, &[(0x17, 0x87)]);
+    assert_eq!(s.dc_in, 0.0, "routing writes must retain the expert bias");
+}
+
+#[test]
+fn expert_strength_recomputes_the_fast_combined_oscillators_derived_mode() {
+    let mut actual = chip(SID_MODEL_6581);
+    let mut expected = chip(SID_MODEL_6581);
+    for s in [&mut actual, &mut expected] {
+        write(s, &CHORD);
+        write(s, &[(0x04, 0x31)]);
+        render(s, 10000);
+    }
+    assert_eq!((actual.osc[0].slow, actual.osc[0].pull_low), (0, 1));
+    let before = actual.osc[0].acc;
+    let mut c = sid_character::default();
+    let mut stage = sid_character_stage::default();
+    unsafe {
+        sid_character_expert_set(&mut c, actual.model, SID_EXPERT_COMBINED, 127);
+        sid_character_stage_for(&*actual, &c, actual.dac, &mut stage);
+        sid_character_commit(&mut *actual, &stage);
+        sid_set_combined_profile(&mut *expected, SID_PROFILE_STRONG as i32);
+    }
+    assert_eq!(actual.osc[0].acc, before);
+    assert_eq!((actual.osc[0].slow, actual.osc[0].pull_low), (1, 0));
+    assert_eq!(render(&mut actual, 20000), render(&mut expected, 20000));
+}
+
+#[test]
+fn expert_voice_dc_is_baked_into_every_dac_entry_without_changing_the_envelope() {
+    let s = chip(SID_MODEL_6581);
+    let mut c = sid_character::default();
+    let mut baseline = Box::<sid_dac>::default();
+    let mut edited = Box::<sid_dac>::default();
+    unsafe {
+        sid_character_init(&mut c);
+        sid_character_build_dac(&*s, &c, &mut *baseline);
+        sid_character_expert_set(&mut c, s.model, SID_EXPERT_VOICE_DC, 0);
+        sid_character_build_dac(&*s, &c, &mut *edited);
+    }
+    assert_eq!(baseline.env, edited.env);
+    for (a, b) in baseline.wave.iter().zip(edited.wave.iter()) {
+        assert!((a - b - 2.0 * (0.2143 / 1.5)).abs() < 5e-7);
+    }
+}
+
+#[test]
+fn expert_dac_ramp_builds_offline_and_preserves_gates() {
+    let mut s = chip(SID_MODEL_6581);
+    write(&mut s, &CHORD);
+    render(&mut s, 5000);
+    let c = sid_character::default();
+    let mut ramp = sid_character_ramp::default();
+    unsafe {
+        sid_character_ramp_reset(&mut ramp, &c, std::ptr::null());
+        sid_character_expert_set(&mut ramp.target, s.model, SID_EXPERT_DAC_KINK, 127);
+    }
+    let mut tables = [Box::<sid_dac>::default(), Box::<sid_dac>::default()];
+    for _ in 0..600 {
+        let index = usize::from(std::ptr::eq(s.dac, &*tables[0]));
+        let mut st = sid_character_stage::default();
+        let acc = s.osc[0].acc;
+        let updated =
+            unsafe { sid_character_ramp_tick(&mut ramp, &*s, &mut *tables[index], &mut st) };
+        assert_eq!(
+            s.osc[0].acc, acc,
+            "producer must not advance/reset the oscillator"
+        );
+        if updated != 0 {
+            unsafe { sid_character_commit(&mut *s, &st) };
+        }
+        assert!(s.osc.iter().all(|o| o.control & 1 != 0));
+        render(&mut s, 441);
+    }
+    let mut target = Box::<sid_dac>::default();
+    unsafe { sid_character_build_dac(&*s, &ramp.target, &mut *target) };
+    assert_eq!(unsafe { &*s.dac }.wave, target.wave);
+}
+
+#[test]
+fn preparing_with_leased_rows_does_not_overwrite_the_spares_own_backing() {
+    let mut spare = chip(SID_MODEL_6581);
+    let mut backing = chip(SID_MODEL_6581);
+    spare.cutoff_g.fill(123.0);
+    spare.cutoff_x_to.fill(456.0);
+    let rows = unsafe {
+        [
+            sid_filter_backing(&mut *backing, 0),
+            sid_filter_backing(&mut *backing, 1),
+        ]
+    };
+    let mut prep = sid_character_prep::default();
+    let c = character(SID_CHIP_6581_R2, 0, 0, 0, 0);
+    unsafe {
+        sid_character_prep_start(
+            &mut prep,
+            &mut *spare,
+            SID_MODEL_6581,
+            SID_CLOCK_PAL,
+            FS,
+            &c,
+            0,
+        );
+        sid_character_prep_rows(&mut prep, rows.as_ptr());
+        while sid_character_prep_step(&mut prep, std::ptr::null_mut()) == 0 {}
+    }
+    assert!(spare.cutoff_g.iter().all(|&v| v == 123.0));
+    assert!(spare.cutoff_x_to.iter().all(|&v| v == 456.0));
+    assert_eq!(spare.filter_rows[0].cutoff, rows[0].cutoff);
+    assert!(backing.cutoff_g.iter().any(|&v| v != 123.0));
+}
+
+#[test]
+fn independent_expert_filter_coordinates_move_cutoff_monotonically() {
+    for (model, index, increasing) in [
+        (SID_MODEL_6581, SID_EXPERT_FILTER_6581_CURVE, true),
+        (SID_MODEL_6581, SID_EXPERT_FILTER_6581_RANGE, true),
+        (SID_MODEL_8580, SID_EXPERT_FILTER_8580_CURVE, false),
+    ] {
+        let mut s = chip(model);
+        let rows = unsafe {
+            [
+                sid_filter_backing(&mut *s, 0),
+                sid_filter_backing(&mut *s, 1),
+            ]
+        };
+        let mut c = sid_character::default();
+        let mut previous = None;
+        for value in 0..=127 {
+            unsafe {
+                sid_character_expert_set(&mut c, model, index, value);
+                let mut job = sid_character_filter_job::default();
+                sid_character_filter_job_start(&mut job, &*s, &c, rows.as_ptr());
+                while sid_character_filter_job_step(&mut job) == 0 {}
+            }
+            let cutoff = s.cutoff_g[1024];
+            if let Some(previous) = previous {
+                assert!(
+                    if increasing {
+                        cutoff > previous
+                    } else {
+                        cutoff < previous
+                    },
+                    "model {model} index {index} value {value}: {cutoff} after {previous}"
+                );
+            }
+            previous = Some(cutoff);
+        }
+    }
+}
+
+#[test]
+fn expert_filter_endpoints_reach_the_offline_reference_cutoff() {
+    use sidou_tablegen::filter_fit::{self, CurveSetting};
+    let _reference_guard = EXPERT_REFERENCE_LOCK.lock().unwrap();
+
+    for (model, index) in [
+        (SID_MODEL_6581, SID_EXPERT_FILTER_6581_CURVE),
+        (SID_MODEL_6581, SID_EXPERT_FILTER_6581_RANGE),
+        (SID_MODEL_8580, SID_EXPERT_FILTER_8580_CURVE),
+    ] {
+        for value in [0, 127] {
+            let mut c = sid_character::default();
+            let mut s = chip(model);
+            unsafe {
+                sid_character_expert_set(&mut c, model, index, value);
+                sid_character_filter(&mut *s, &c);
+            }
+            let curve_index = if model == SID_MODEL_6581 {
+                SID_EXPERT_FILTER_6581_CURVE
+            } else {
+                SID_EXPERT_FILTER_8580_CURVE
+            };
+            let setting = CurveSetting {
+                model: if model == SID_MODEL_6581 {
+                    residfp_sys::Model::Mos6581
+                } else {
+                    residfp_sys::Model::Csg8580
+                },
+                curve: unsafe { sid_character_expert_value(&c, model, curve_index) } as f64,
+                range6581: Some(unsafe {
+                    sid_character_expert_value(&c, model, SID_EXPERT_FILTER_6581_RANGE)
+                } as f64),
+            };
+            filter_fit::apply_range(&setting);
+            let direct = filter_fit::direct_spectra(&setting);
+            let response = filter_fit::measure_modes(&setting, &direct, 1024, 8);
+            let expected = filter_fit::fit(&response, None).f0.clamp(30.0, 19845.0);
+            let actual = f64::from(s.cutoff_g[1024]).atan() * f64::from(FS) / std::f64::consts::PI;
+            assert!(
+                (actual / expected - 1.0).abs() < 1e-4,
+                "model {model} index {index} value {value}: {actual} vs reference {expected}"
+            );
+        }
+    }
+}
+
+#[test]
+fn generated_expert_grid_matches_reference_at_every_curve_range_anchor() {
+    use sidou_tablegen::filter_fit::{self, CurveSetting, Mode};
+    let _reference_guard = EXPERT_REFERENCE_LOCK.lock().unwrap();
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        let curves: &[f64] = if model == SID_MODEL_6581 {
+            &[0.0, 0.25, 0.5, 0.75, 1.0]
+        } else {
+            &[0.0, 0.5, 1.0]
+        };
+        let ranges: &[f64] = if model == SID_MODEL_6581 {
+            &[0.0, 0.3, 19.0 / 39.0, 1.0]
+        } else {
+            &[19.0 / 39.0]
+        };
+        for &range in ranges {
+            for &curve in curves {
+                let setting = CurveSetting {
+                    model: if model == SID_MODEL_6581 {
+                        residfp_sys::Model::Mos6581
+                    } else {
+                        residfp_sys::Model::Csg8580
+                    },
+                    curve,
+                    range6581: Some(range),
+                };
+                filter_fit::apply_range(&setting);
+                let direct = filter_fit::direct_spectra(&setting);
+                let response = filter_fit::measure_modes(&setting, &direct, 1024, 8);
+                let fit = filter_fit::fit(&response, None);
+                let expected = if fit.f0 > 19845.0 && fit.rms_db == [0.0; 3] {
+                    let bp = &response
+                        .iter()
+                        .find(|(mode, _)| *mode == Mode::Bp)
+                        .unwrap()
+                        .1;
+                    if bp.db.iter().copied().fold(f64::NEG_INFINITY, f64::max) < -30.0 {
+                        30.0
+                    } else {
+                        19845.0
+                    }
+                } else {
+                    fit.f0.clamp(30.0, 19845.0)
+                };
+                let actual = unsafe {
+                    sid_character_expert_cutoff_hz(model, curve as f32, range as f32, 1024)
+                };
+                assert!(
+                    (f64::from(actual) / expected - 1.0).abs() < 1e-4,
+                    "model {model} curve {curve} range {range}: {actual} vs reference {expected}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn expert_filter_crossfades_leased_rows_then_restores_exact_macro_tables() {
+    let mut s = chip(SID_MODEL_6581);
+    let plain = chip(SID_MODEL_6581);
+    let mut banks = [chip(SID_MODEL_6581), chip(SID_MODEL_6581)];
+    write(&mut s, &CHORD);
+    render(&mut s, 5000);
+    let c = sid_character::default();
+    let mut ramp = sid_character_ramp::default();
+    unsafe {
+        sid_character_ramp_reset(&mut ramp, &c, std::ptr::null());
+        sid_character_expert_set(&mut ramp.target, s.model, SID_EXPERT_FILTER_6581_CURVE, 127);
+    }
+    for release in [false, true] {
+        if release {
+            unsafe { sid_character_macro_changed(&mut ramp.target, 1) };
+        }
+        for _ in 0..200 {
+            let free = banks
+                .iter_mut()
+                .find(|bank| {
+                    bank.cutoff_g.as_ptr() != s.filter_rows[0].cutoff
+                        && bank.cutoff_g.as_ptr() != s.filter_rows[1].cutoff
+                        && bank.cutoff_x_to.as_ptr() != s.filter_rows[0].cutoff
+                        && bank.cutoff_x_to.as_ptr() != s.filter_rows[1].cutoff
+                })
+                .expect("one unleased row pair");
+            let rows = unsafe {
+                [
+                    sid_filter_backing(&mut **free, 0),
+                    sid_filter_backing(&mut **free, 1),
+                ]
+            };
+            let mut st = sid_character_stage::default();
+            let acc = s.osc[0].acc;
+            let updated = unsafe {
+                sid_character_ramp_tick_tables(
+                    &mut ramp,
+                    &*s,
+                    std::ptr::null_mut(),
+                    rows.as_ptr(),
+                    &mut st,
+                )
+            };
+            if updated != 0 {
+                unsafe { sid_character_commit(&mut *s, &st) };
+            }
+            assert_eq!(s.osc[0].acc, acc);
+            assert!(s.osc.iter().all(|o| o.control & 1 != 0));
+            render(&mut s, 441);
+        }
+        assert_eq!(
+            (
+                ramp.filter_building,
+                ramp.filter_fading,
+                ramp.filter_restore
+            ),
+            (0, 0, 0)
+        );
+        let actual =
+            unsafe { std::slice::from_raw_parts(s.filter_rows[0].cutoff, SID_FC_STEPS as usize) };
+        if release {
+            assert_eq!(actual, plain.cutoff_g);
+            assert_eq!(s.filter_t, 0.0);
+        } else {
+            assert!(unsafe { sid_blended_cutoff(&*s, 1024, s.filter_t) } > plain.cutoff_g[1024]);
+            assert_eq!(s.filter_t, 1.0);
+        }
+    }
+}
+
+#[test]
+fn disabling_noise_writeback_keeps_the_lfsr_alive_in_combined_waveforms() {
+    let mut survivors = Vec::new();
+    for value in [SID_EXPERT_DEFAULT, 0] {
+        let mut s = chip(SID_MODEL_6581);
+        let mut c = sid_character::default();
+        unsafe {
+            sid_character_expert_set(&mut c, s.model, SID_EXPERT_NOISE_WRITEBACK, value);
+            sid_character_apply(&mut *s, &c, std::ptr::null_mut());
+        }
+        write(&mut s, &[(0x00, 0xff), (0x01, 0xff), (0x04, 0x91)]);
+        unsafe { sid_clock(&mut *s, 100000) };
+        survivors.push(s.osc[0].sr);
+    }
+    assert_eq!(
+        survivors[0], 0,
+        "the physical writeback locks up this combination"
+    );
+    assert_ne!(
+        survivors[1], 0,
+        "disabled writeback must preserve shifted noise bits"
+    );
+    let mut pure = chip(SID_MODEL_6581);
+    write(&mut pure, &[(0x00, 0xff), (0x01, 0xff), (0x04, 0x81)]);
+    unsafe {
+        sid_clock(&mut *pure, 100000);
+        sid_noise_settle(&mut pure.osc[0]);
+    }
+    assert_eq!(
+        survivors[1], pure.osc[0].sr,
+        "no feedback means the unmodified LFSR sequence"
+    );
+}
+
+fn freeze_filter_rows(stage: &mut sid_character_stage) -> [Box<[f32]>; 4] {
+    let mut data: [Box<[f32]>; 4] = unsafe {
+        [
+            std::slice::from_raw_parts(stage.filter_rows[0].cutoff, SID_FC_STEPS as usize).into(),
+            std::slice::from_raw_parts(stage.filter_rows[0].res, 16).into(),
+            std::slice::from_raw_parts(stage.filter_rows[1].cutoff, SID_FC_STEPS as usize).into(),
+            std::slice::from_raw_parts(stage.filter_rows[1].res, 16).into(),
+        ]
+    };
+    stage.filter_rows[0].cutoff = data[0].as_mut_ptr();
+    stage.filter_rows[0].res = data[1].as_mut_ptr();
+    stage.filter_rows[1].cutoff = data[2].as_mut_ptr();
+    stage.filter_rows[1].res = data[3].as_mut_ptr();
+    data
+}
+
+fn expert_click_residual(model: sid_model, index: u32, at: usize, release_age: bool) -> i32 {
+    let mut c = sid_character::default();
+    unsafe { sid_character_expert_set(&mut c, model, index, 0) };
+    let mut active = chip(model);
+    let mut smooth = chip(model);
+    let mut initial = Box::<sid_dac>::default();
+    let mut reference_initial = Box::<sid_dac>::default();
+    let mut banks = [chip(model), chip(model)];
+    let mut dacs = [Box::<sid_dac>::default(), Box::<sid_dac>::default()];
+    let table = unsafe { sid_character_apply(&mut *active, &c, &mut *initial) };
+    unsafe { sid_character_apply(&mut *smooth, &c, &mut *reference_initial) };
+    let control = match index {
+        SID_EXPERT_FILTER_6581_CURVE
+        | SID_EXPERT_FILTER_6581_RANGE
+        | SID_EXPERT_FILTER_8580_CURVE
+        | SID_EXPERT_NONLINEARITY
+        | SID_EXPERT_FILTER_BIAS => 0,
+        SID_EXPERT_BLEED => 3,
+        _ => 1,
+    };
+    write(&mut active, &triangle(control));
+    write(&mut smooth, &triangle(control));
+    render(&mut active, FS as usize);
+    render(&mut smooth, FS as usize);
+    let mut ramp = sid_character_ramp::default();
+    unsafe { sid_character_ramp_reset(&mut ramp, &c, table) };
+    let mut first = sid_character_stage::default();
+    unsafe { sid_character_stage_for(&*active, &c, active.dac, &mut first) };
+    let mut first_dac = Box::new(unsafe { *first.dac });
+    first.dac = &mut *first_dac;
+    let mut row_ids = vec![[first.filter_rows[0].cutoff, first.filter_rows[1].cutoff]];
+    let mut row_snapshots = vec![freeze_filter_rows(&mut first)];
+    let mut events = vec![(0usize, first, first_dac)];
+    let mut stepped = Vec::new();
+    let ticks = at + if release_age { 820 } else { 520 };
+    for tick in 0..ticks {
+        if tick == at {
+            unsafe { sid_character_expert_set(&mut ramp.target, model, index, 127) };
+        }
+        if release_age && tick == at + 180 {
+            unsafe { sid_character_macro_changed(&mut ramp.target, 1) };
+        }
+        if release_age && tick == at + 240 {
+            ramp.target.age = 127;
+        }
+        if release_age && tick == at + 495 {
+            ramp.target.age = 0;
+        }
+        let bank = banks
+            .iter_mut()
+            .find(|bank| {
+                bank.cutoff_g.as_ptr() != active.filter_rows[0].cutoff
+                    && bank.cutoff_g.as_ptr() != active.filter_rows[1].cutoff
+                    && bank.cutoff_x_to.as_ptr() != active.filter_rows[0].cutoff
+                    && bank.cutoff_x_to.as_ptr() != active.filter_rows[1].cutoff
+            })
+            .expect("free filter pair");
+        let rows = unsafe {
+            [
+                sid_filter_backing(&mut **bank, 0),
+                sid_filter_backing(&mut **bank, 1),
+            ]
+        };
+        let free_dac = usize::from(active.dac == &*dacs[0]);
+        let mut stage = sid_character_stage::default();
+        let updated = unsafe {
+            sid_character_ramp_tick_tables(
+                &mut ramp,
+                &*active,
+                &mut *dacs[free_dac],
+                rows.as_ptr(),
+                &mut stage,
+            )
+        };
+        if updated != 0 {
+            unsafe { sid_character_commit(&mut *active, &stage) };
+            let mut snapshot = Box::new(unsafe { *stage.dac });
+            stage.dac = &mut *snapshot;
+            row_ids.push([stage.filter_rows[0].cutoff, stage.filter_rows[1].cutoff]);
+            row_snapshots.push(freeze_filter_rows(&mut stage));
+            events.push((tick * TICK, stage, snapshot));
+        }
+        stepped.extend(render(&mut active, TICK));
+    }
+    assert_eq!(
+        (ramp.building, ramp.filter_building, ramp.filter_fading),
+        (0, 0, 0)
+    );
+    let end = events.last().unwrap();
+    let final_stage = end.1;
+    let mut final_dac = Box::new(*end.2);
+    let mut final_stage = final_stage;
+    final_stage.dac = &mut *final_dac;
+    row_ids.push(*row_ids.last().unwrap());
+    events.push((ticks * TICK, final_stage, final_dac));
+    let centers: Vec<usize> = events.windows(2).map(|w| (w[0].0 + w[1].0) / 2).collect();
+    let mut between = Box::<sid_dac>::default();
+    let mut reference = Vec::with_capacity(stepped.len());
+    let mut event = 0usize;
+    let dac_control = [
+        SID_EXPERT_DAC_KINK,
+        SID_EXPERT_DAC_LEAKAGE,
+        SID_EXPERT_VOICE_DC,
+    ]
+    .contains(&index);
+    for sample in 0..stepped.len() {
+        while event + 1 < centers.len() && sample >= centers[event + 1] {
+            event += 1;
+        }
+        let next = (event + 1).min(centers.len() - 1);
+        let t = if next == event || sample < centers[event] {
+            0.0
+        } else {
+            (sample - centers[event]) as f32 / (centers[next] - centers[event]) as f32
+        };
+        let a = events[event].1;
+        let b = events[next].1;
+        let mut stage = b;
+        stage.nl.level = lerp(a.nl.level, b.nl.level, t);
+        stage.nl.level_off = lerp(a.nl.level_off, b.nl.level_off, t);
+        stage.nl.load = lerp(a.nl.load, b.nl.load, t);
+        stage.nl.floor = lerp(a.nl.floor, b.nl.floor, t);
+        stage.thump = lerp(a.thump, b.thump, t);
+        stage.bleed = lerp(a.bleed, b.bleed, t);
+        stage.output_gain = lerp(a.output_gain, b.output_gain, t);
+        let from_t = if row_ids[event] == row_ids[next] {
+            a.filter_t
+        } else if b.filter_curve == SID_EXPERT_DEFAULT as u8 {
+            0.0
+        } else {
+            b.filter_t
+        };
+        stage.filter_t = lerp(from_t, b.filter_t, t);
+        stage.filter_bias = lerp(a.filter_bias, b.filter_bias, t);
+        stage.out_c = lerp(a.out_c, b.out_c, t);
+        stage.dc_r = lerp(a.dc_r, b.dc_r, t);
+        if dac_control {
+            if sample % 16 == 0 {
+                let (da, db) = unsafe { (&*a.dac, &*b.dac) };
+                for (out, (&a, &b)) in between
+                    .wave
+                    .iter_mut()
+                    .zip(da.wave.iter().zip(db.wave.iter()))
+                {
+                    *out = lerp(a, b, t);
+                }
+                for (out, (&a, &b)) in between.env.iter_mut().zip(da.env.iter().zip(db.env.iter()))
+                {
+                    *out = lerp(a, b, t);
+                }
+            }
+            stage.dac = &*between;
+        }
+        unsafe { sid_character_commit(&mut *smooth, &stage) };
+        reference.extend(render(&mut smooth, 1));
+    }
+    residual(&stepped, &reference)
+}
+
+#[test]
+fn expert_jumps_stay_within_the_existing_click_residual_bound() {
+    for index in 0..SID_EXPERT_COUNT {
+        if index == SID_EXPERT_FILTER_8580_CURVE {
+            continue;
+        }
+        for phase in 0..3 {
+            let error = expert_click_residual(SID_MODEL_6581, index, BEFORE + phase, false);
+            assert!(
+                error <= RESIDUAL_MAX,
+                "expert {index} phase {phase}: {error} LSB"
+            );
+        }
+    }
+}
+
+#[test]
+fn age_changes_during_override_release_and_restore_do_not_click() {
+    for phase in 0..3 {
+        let error = expert_click_residual(
+            SID_MODEL_6581,
+            SID_EXPERT_FILTER_6581_CURVE,
+            BEFORE + phase,
+            true,
+        );
+        assert!(
+            error <= RESIDUAL_MAX,
+            "AGE during release phase {phase}: {error} LSB"
+        );
+    }
 }
 
 #[test]

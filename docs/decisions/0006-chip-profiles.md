@@ -357,11 +357,218 @@ The exception in "Cost" is gone: no main-loop pass is over the poll allowance an
 - **The store:** a pass that runs a slice sets `reg_ring_out.sliced`, for M2a Task 4's store
   to skip its work in that pass.
 
-## Not done here
+## Amendment: independent expert controls (M2b Task 6)
 
-Panel access is the CHIP view (Task 4, done): the profile on its ALGORITHM, the four controls
-on K1..K4. The plan's expert layer (every analogue parameter as its own control) did not come
-with it and goes to M2, with the M1d map's NRPN rows after 2/4. User-saved profiles are done
-(M2a Task 6): eight USER slots, each a base profile and the four controls, on the store
-([profile-format.md](../reference/profile-format.md)); the expert layer's fields join them
-through a schema migration (M2b Task 6).
+This amendment replaces M1c's deferral of the expert layer. The inventory comes from the
+character resolver, DAC builder, filter model and oscillator, not just the four macros.
+It separates fourteen editable settings from the fixed calibration constants below.
+The earlier measurements in this record describe the profile/macro path; they are not
+measurements of the new expert range.
+
+### Inventory and encoding
+
+Indices are the zero-based `SID_EXPERT_*` order. Each parameter has NRPN MSB 2 and
+LSB `5 + index`, with raw edited values 0..127. Except for combined strength and noise
+write-back, the raw range maps linearly to the physical range shown here. `255` is the
+stored/API sentinel for following the profile/macros, **not** an NRPN data value.
+The override mask distinguishes legacy zero-initialized settings from explicit raw zero.
+
+“Rebuild” means a large filter/DAC table built in main context, not a coefficient update
+or selection of an existing table. Model-specific settings remain addressable on both
+models, but only affect the model named in their description.
+
+| Index | NRPN | Parameter | Edited range | Unit | Rebuild? |
+|---|---|---|---|---|---|
+| 0 | 2/5 | 6581 filter curve | 0..1 | reSIDfp coordinate | Yes: filter rows |
+| 1 | 2/6 | 6581 filter range | 0..1 | reSIDfp coordinate | Yes: filter rows |
+| 2 | 2/7 | 8580 filter curve | 0..1 | reSIDfp coordinate | Yes: filter rows |
+| 3 | 2/8 | 6581 non-linearity | 0..2 | multiplier | No |
+| 4 | 2/9 | Filter-input DC bias (6581) | 0..2.3125 | voice-DAC units per routed input | No |
+| 5 | 2/10 | Filter bleed | 0..0.5 | fraction of unfiltered voices | No |
+| 6 | 2/11 | DAC ladder kink | 1.8..2.6 | 2R/R ratio | Yes: voice/envelope DACs |
+| 7 | 2/12 | DAC leakage | 0..0.15 | fraction of an off bit's weight | Yes: voice/envelope DACs |
+| 8 | 2/13 | Combined-waveform strength | WEAK / AVERAGE / STRONG | sampled-table choice | No |
+| 9 | 2/14 | Noise write-back | 0..1 | tap-selection strength | No: small stage masks |
+| 10 | 2/15 | Volume thump | 0..1 | voice-DAC units at volume 15 | No |
+| 11 | 2/16 | External low-pass corner (6581) | 1000..20000 | Hz | No |
+| 12 | 2/17 | External high-pass corner | 0..100 | Hz | No |
+| 13 | 2/18 | Envelope-following voice DC | 0..0.6 | voice-DAC units before envelope scaling | Yes: DACs |
+
+The curve/range coordinates are not Hz. The 6581 range corresponds to reSIDfp's
+`uCox = 1 + 39 × range` in µA/V²; increasing the 8580 curve darkens its response.
+Combined strength selects WEAK for raw 0..31, AVERAGE for 32..95, STRONG for 96..127;
+the panel calls AVERAGE “MED”. Noise write-back selects `ceil(raw × 8 / 127)` writable
+taps, so it has nine effective tap counts, not 128 continuously different strengths.
+It retains the model's noise timing and existing register state rather than reseeding it.
+
+The three DC controls are distinct: filter bias changes the 6581 non-linearity's load
+per routed voice/EXT IN; thump changes the transient caused by a volume-register write;
+voice DC is embedded in each waveform DAC entry and follows that voice's envelope.
+The last is specified after the DAC builder's factor of two, not in volts. External HP
+is the output DC blocker on both models; zero removes its DC rejection. The current
+external LP is the fitted 6581 output pole: the 8580 render does not consume that pole.
+
+### Defaults for every profile
+
+These are resolved physical defaults with all four macros at zero and no overrides,
+not rounded raw values. `r = 19/39` and `d = 2 × (0.2143/1.5)` retain the resolver's
+unquantized expressions (`d` is approximately 0.28573333 voice-DAC units). Parenthesized
+values are retained/resolved defaults for settings inactive on that profile's model.
+
+| Index / parameter | 6581 R2 | 6581 R3 | 6581 R4AR | 8580 R5 | Worn 6581 |
+|---|---|---|---|---|---|
+| 0 / 6581 curve | 0.58 | 0.42 | 0.5 | (0.5) | 0.35 |
+| 1 / 6581 range | r | r | r | (r) | 0.4 |
+| 2 / 8580 curve | (0.5) | (0.5) | (0.5) | 0.5 | (0.5) |
+| 3 / non-linearity | 1 | 1 | 1 | (1) | 1.5 |
+| 4 / filter bias | 1.15625 | 1.15625 | 1.15625 | (1.15625) | 1.15625 |
+| 5 / bleed | 0 | 0 | 0 | 0 | 0 |
+| 6 / DAC kink | 2.2 | 2.2 | 2.2 | 2.0 | 2.3 |
+| 7 / DAC leakage | 0.0075 | 0.0075 | 0.0075 | 0.0035 | 0.0225 |
+| 8 / combined | WEAK | AVERAGE | AVERAGE | AVERAGE | STRONG |
+| 9 / noise write-back | 1 | 1 | 1 | 1 | 1 |
+| 10 / thump | 0 | 0 | 0 | 0 | 0 |
+| 11 / external LP | 13154 | 13154 | 13154 | (13154) | 13154 |
+| 12 / external HP | 16 | 16 | 16 | 16 | 16 |
+| 13 / voice DC | d | d | d | 0 | d |
+
+Following a default never round-trips it through seven-bit encoding. Raw NRPN/getter
+readback rounds to seven bits, while unit readouts format the effective physical value.
+The unedited audio path uses the exact profile value and existing profile/hot filter tables.
+Editing to the corresponding raw value creates an override and need not reproduce the
+unquantized default exactly.
+
+For nonzero macros, with `a = age/127` and `s = DAC/127`, the independent defaults follow
+the macro paths:
+
+- AGE reports the 6581 curve interpolated towards 0.25 and range towards 0.3, the 8580
+  curve `0.5 + 0.25a`, and non-linearity `min(profile amount × (1 + a), 2)`.
+  Without a filter override the actual filter remains the existing Hz/damping blend of
+  complete profile and hot rows, not a fresh interpolation in reSIDfp coordinates.
+- DAC gives `profile kink + 0.3s` and `profile leakage × (1 + 5s)`.
+- THUMP gives `thump/127` voice-DAC units; BLEED gives `0.5 × bleed/127`.
+- Other defaults remain those in the table.
+
+### Fixed calibration, not additional expert parameters
+
+The underlying implementation also contains the following model constants. They are
+inventoried here so “every parameter” does not silently imply an adjustable transistor
+model or an independently editable coefficient for every intermediate calculation:
+
+- The 6581 non-linearity fit has level 0.055 (scaled from 44.1 kHz), level reference
+  0.13875, load 0.13125, load reference 1.7375, and floor 240.7 Hz. The amount scales
+  level/load and the floor as described earlier; the floor also follows the filter row.
+  Load multipliers stay clamped to 0.35..1.3. These are fixed fit/stability constants,
+  not six more controls.
+- Filter damping is the profile's sixteen-entry `k = 1/Q` row, addressed by the SID
+  resonance register. Expert curve/range fitting does not independently refit damping.
+  The existing filter cutoff clamp remains 30 Hz..0.45 × sample rate.
+- The 6581 filter mix gains are LP 0.6875, BP 0.8125, HP 0.5, with integrator leakage
+  `1/3.375` and the existing output polarities/cross-mode terms. They are fixed calibration.
+- Output calibration remains `0.1 × 32767` times 1.4736 (6581) or 1.1288 (8580), with
+  derived thump headroom. Neither calibration gain nor the digital MASTER is an expert
+  analogue control.
+- The 6581 waveform DAC's cubic saturation uses gain 1.1 and saturation factor 1.1;
+  zero codes remain `0x380` (6581) and `0x800` (8580). Ladder termination is model-specific
+  (unterminated 6581, terminated 8580), not another override. Kink/leakage affect both
+  waveform and envelope ladders together, not per voice or per DAC independently.
+- Combined-waveform pulldown fits remain the three sampled tables per model, not exposed
+  per-bit fitting coefficients. Noise TEST reset/fade delays remain 50000/15000 cycles
+  (6581) and 986000/314300 cycles (8580). Noise taps and waveform pipeline timings,
+  oscillator power-on state, ADSR timing tables and gate-reset policy are digital/model
+  behaviour, outside this analogue inventory.
+
+### Application without a chip reset
+
+An expert edit must not call `sid_init`, retrigger a gate, reset oscillator/envelope
+state, or replace the chip with a freshly reset spare. Constants and existing-table
+choices travel in the character stage; filter and DAC jobs build in bounded main-loop
+slices and publish only finished tables at an audio block boundary. The old tables
+continue playing until publication. Ramp steps and table jobs retain the existing
+poll, click and audio-cost bounds; the old measured costs above are not new measurements.
+
+Filter rows are pointer-backed so their build storage can be borrowed from the shared
+spare SID's existing embedded backing. This avoids adding another 8 KiB cutoff buffer
+(a complete cutoff-plus-resonance row is 8256 bytes). The shared DAC build table remains
+shared too. Arbitration must exclude backing read by either active chip, any queued
+stage or pending swap, and any preparation/build already using it. A spare chip's own
+embedded memory is not automatically free after row pointers have been exchanged.
+When no backing is available, the edit waits rather than overwriting live tables.
+Expert rows build in 27 slices (128 tangent/source entries or 192 angle entries per
+slice), then fade for 127 ticks. The shared per-pass flag also makes the song's sliced
+work and store yield to character-table work, including a two-tick catch-up pass.
+
+Noise feedback keeps a 256-entry byte lookup in SRAM for the authentic fast path;
+the small nibble lookup is shared rather than copied into each translation unit.
+Stages carry the feedback mask, not four redundant 128-byte lookup copies. At commit,
+the chip's small masked lookup changes only when that mask changes. The entry, RAMTEXT
+and text image sections end on 16-byte boundaries so compiler-generated lookup constants
+keep their required alignment without gaps between the concatenated sections. The normal
+and flash-spike builds retain every contiguous-image and RAMTEXT linker assertion.
+
+The expert filter uses **approximate sparse reSIDfp-derived anchors**, generated offline
+from the pinned reference. The 6581 grid samples curves 0, 0.25, 0.5, 0.75 and 1 and ranges
+0, 0.3, 19/39 and 1; the 8580 samples curves 0, 0.5 and 1. Each fits resonance 8 at
+FC 0, 64, …, 1984, 2047. Invalid sub-noise-floor fits clamp to 30 Hz and above-band fits
+to 19845 Hz before interpolation.
+Interpolation is linear between FC anchors and curve/range coordinates; damping stays
+the profile's. This is not an exact full-range reSIDfp model. The unit tests check fitted
+cutoff at FC 1024/resonance 8 against fresh measurements at all 23 curve/range coordinates
+and the six single-control endpoints (relative error below 0.0001), and monotonic cutoff
+at FC 1024 over all 128 settings. They do not establish full-response equivalence between
+anchors. Expert jumps retain the existing 30-LSB click-residual ceiling, including AGE
+retargets during override release/restoration and held combined-waveform changes.
+The original measured profile rows remain the unedited default path.
+
+Combined strength needs the requested tables compiled in. A model built without its
+`SIDOU_ALL_COMBINED_PROFILES` / `SIDOU_ALL_COMBINED_PROFILES_8580` flag substitutes AVERAGE
+for missing WEAK/STRONG tables. In particular, the earlier 8580 AVERAGE-only build cannot
+provide three audible expert choices merely by exposing the selector.
+Both models' table flags are now on by default; an old CMake cache must enable the 8580
+flag explicitly. Inapplicable controls are grey and show N/A on the page; their popups also show N/A.
+
+### Macro ownership, panel and persistence
+
+An expert edit overrides only that field. A subsequent macro movement releases **only
+the related overrides**, restoring their exact profile/macro path:
+
+| Change | Overrides released |
+|---|---|
+| AGE | Both filter curves, 6581 range, non-linearity (indices 0..3) |
+| DAC | Kink and leakage (6, 7); voice DC remains independent |
+| THUMP | Volume thump (10) |
+| BLEED | Filter bleed (5) |
+| Base profile | All fourteen |
+
+EXPERT is one additional, end-clamped SELECT stop after FX on the chosen CHIP tab.
+ALGORITHM steps through four groups in inventory order, four controls per group;
+K1..K4 directly edit those four settings. The last group contains external HP and
+voice DC, with two inactive knob positions. This replaces the plan's scrolling
+selection/coarse-fine pair: direct knob assignment keeps four physical controls visible
+at once. Names are 2×, values 2×/3× with units and knob-colour identification.
+EDIT held + ALGORITHM remains the USER save target, not an alternate expert gesture.
+The page states **MACRO MOVES RESET ITS OVERRIDES**; the scope is the related fields
+above, not unrelated settings. See [panel controls](../reference/controls.md#chip).
+
+[USER schema 2](../reference/profile-format.md) stores the fourteen raw overrides along
+with the base profile and four macros; schema 1 loads them as following defaults.
+[Settings schema 4](../reference/settings-format.md) stores the keys' raw overrides and
+their learned CCs; schemas 1..3 load following defaults with expert learn unbound.
+Migration preserves stored macros, so following means their resolved path, not a
+quantized snapshot or forced macro zero. These encodings retain the default sentinel
+and restore explicit overrides after macro fields. The generated
+[MIDI map](../reference/midi.md) assigns the NRPN rows in inventory order; its single
+raw default column is not a substitute for the five-profile physical-default table.
+
+Outgoing MIDI snapshots the raw override state separately from resolved UI values.
+Model/profile and macro messages precede explicit expert edits; inherited defaults do
+not generate additional NRPN edits. A USER pick that releases overrides but keeps the
+same base/macros sends the base profile again, then its retained explicit overrides,
+so the receiver releases the same fields instead of retaining a stale expert value.
+Release obligations remain pending until a releasing message actually goes out, even
+if a macro returns to its old wire value while USB is full. Explicit maximum values
+learned to a CC are distinct from raw 255 and are never deduplicated against that sentinel.
+Unchanged input compares the original 42-parameter prefix in aligned, alias-safe pairs;
+expert bytes are revisited only after a raw revision or a relevant macro change.
+Ticks doing cold expert metadata or mixed macro restoration use half the normal packet
+budget, retaining the original per-tick instruction ceiling without queueing stale edits.

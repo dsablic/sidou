@@ -145,6 +145,10 @@ _Static_assert(REG_RING_IS_SLOT(LIVE_REG_SLOT(0, 0)) &&
 _Static_assert(REG_RING_CHIP_B == 1u << 6 && REG_RING_CHIP_OF(REG_RING_CHIP_B) == 1u,
                "a chip's bit is its number << 6 (reg_ring_sink)");
 _Static_assert(REG_RING_SIDS == 3u, "the spare is the sid neither chip renders: 3 - a - b");
+_Static_assert(LIVE_REG_EXPERT(SID_EXPERT_COUNT) <= 0xa0u &&
+                   !REG_RING_IS_SLOT(LIVE_REG_EXPERT_FIRST) &&
+                   !REG_RING_IS_SLOT(LIVE_REG_EXPERT_FIRST | REG_RING_CHIP_B),
+               "expert settings stay outside SID, character and shared-slot registers");
 
 void reg_ring_chips_init(reg_ring_chips* c, sid_model model, uint32_t clock_hz,
                          uint32_t sample_rate) {
@@ -179,6 +183,7 @@ void reg_ring_chips_init(reg_ring_chips* c, sid_model model, uint32_t clock_hz,
     c->prep_wait[0] = c->prep_wait[1] = 0;
     c->prep_age[0] = c->prep_age[1] = 0;
     c->default_8580_spent = 0;
+    c->filter_leases = 0;
 }
 
 sid* reg_ring_chip(reg_ring_chips* c) {
@@ -306,6 +311,55 @@ static sid_dac* free_dac(reg_ring_chips* c) {
     return NULL;
 }
 
+/* Read queued leases before rendered leases, as free_dac does: a drain may move a lease
+ * from a pending stage to a chip between these reads, but cannot hide it from both. */
+__attribute__((noinline, unused)) static int free_filter(reg_ring_chips* c, sid_filter_row rows[2]) {
+    const float* taken[24];
+    uint32_t n = 0;
+    for (uint32_t x = 0; x < REG_RING_CHIPS; x++) {
+        for (uint32_t k = 0; k < 2u; k++) {
+            if (c->stage_pending[x][k]) {
+                taken[n++] = c->stage[x][k].filter_rows[0].cutoff;
+                taken[n++] = c->stage[x][k].filter_rows[1].cutoff;
+            }
+        }
+    }
+    COMPILER_FENCE();
+    RACE_POINT();
+    for (uint32_t x = 0; x < REG_RING_CHIPS; x++) {
+        uint8_t active = c->active[x], next = c->next[x];
+        taken[n++] = c->chip[next].filter_rows[0].cutoff;
+        taken[n++] = c->chip[next].filter_rows[1].cutoff;
+        if (active != next) {
+            taken[n++] = c->chip[active].filter_rows[0].cutoff;
+            taken[n++] = c->chip[active].filter_rows[1].cutoff;
+        }
+        if (c->ramp[x].filter_building) {
+            taken[n++] = c->ramp[x].filter_job.rows[0].cutoff;
+            taken[n++] = c->ramp[x].filter_job.rows[1].cutoff;
+        }
+    }
+    if (c->prep_on) {
+        taken[n++] = c->prep.rows[0].cutoff;
+        taken[n++] = c->prep.rows[1].cutoff;
+    }
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < 2u * REG_RING_SIDS; i++) {
+        sid_filter_row row = sid_filter_backing(&c->chip[i / 2u], i & 1u);
+        uint32_t k = 0;
+        while (k < n && taken[k] != row.cutoff) {
+            k++;
+        }
+        if (k == n) {
+            rows[count++] = row;
+            if (count == 2u) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 /* Initialises the spare for chip x for model with its character, at once (sid_init resets
  * it); the ring must be empty (no swap or stage queued). Any ramp still running on the chip
  * ends there: the spare has every control as asked. */
@@ -314,9 +368,23 @@ static void prepare_spare(reg_ring_chips* c, uint32_t x, uint8_t model) {
     uint8_t spare = third(c->active);
     c->prep_on = 0; /* its sid is this one */
     sid* s = &c->chip[spare];
-    sid_init(s, m, c->clock_hz, c->sample_rate);
     c->ramp[x].building = 0;
-    const sid_dac* table = sid_character_apply(s, &c->ramp[x].target, free_dac(c));
+    c->ramp[x].filter_building = 0;
+    const sid_dac* table;
+    if (!c->filter_leases) {
+        sid_init(s, m, c->clock_hz, c->sample_rate);
+        table = sid_character_apply(s, &c->ramp[x].target, free_dac(c));
+    } else {
+        sid_filter_row rows[2];
+        if (!free_filter(c, rows)) {
+            return;
+        }
+        sid_character_prep_start(&c->prep, s, m, c->clock_hz, c->sample_rate, &c->ramp[x].target, 0);
+        sid_character_prep_rows(&c->prep, rows);
+        while (!sid_character_prep_step(&c->prep, free_dac(c))) {
+        }
+        table = c->prep.table;
+    }
     sid_character_ramp_reset(&c->ramp[x], &c->ramp[x].target, table);
     c->next[x] = spare;
     c->spare_model = (uint8_t)m;
@@ -381,27 +449,38 @@ int reg_ring_prepare_step(void* ctx, uint8_t profile) {
     if (same && sid_character_prep_done(&c->prep)) {
         return 1;
     }
-    if (c->prep_pass || (!keys && c->build_pass)) {
+    if (c->prep_pass || c->build_pass) {
         if (!keys) {
             wait_tick(c, x);
         }
         return 0; /* one build's work a pass: the next tick's pass takes it */
     }
     if (!same) {
-        if (c->spare_ready || (!keys && c->ramp[x ^ 1u].building)) {
+        if (c->spare_ready || (!keys && (c->ramp[x ^ 1u].building || c->ramp[x ^ 1u].filter_building))) {
             c->prep_on = 0;
             wait_tick(c, x);
             return 0;
         }
         c->ramp[x ^ 1u].building = 0; /* the other's table, unplayed: it starts it again */
+        c->ramp[x ^ 1u].filter_building = 0;
         sid_character want = c->ramp[x].target;
         want.profile = (uint8_t)(profile + 1u);
         c->ramp[x].building = 0;
+        c->ramp[x].filter_building = 0;
+        c->prep_on = 0;
+        sid_filter_row rows[2];
+        if (c->filter_leases && !free_filter(c, rows)) {
+            wait_tick(c, x);
+            return 0;
+        }
         uint32_t defaults = p->model == SID_MODEL_8580 && !c->default_8580_spent
                                 ? SID_DAC_BUILD_STEPS
                                 : 0u;
         sid_character_prep_start(&c->prep, &c->chip[third(c->next)], (sid_model)p->model,
                                  c->clock_hz, c->sample_rate, &want, defaults);
+        if (c->filter_leases) {
+            sid_character_prep_rows(&c->prep, rows);
+        }
         c->prep_on = 1;
         c->prep_profile = profile;
         c->prep_chip = (uint8_t)x;
@@ -450,8 +529,8 @@ static uint8_t character_tick(reg_ring_out* o) {
     uint32_t y = x ^ 1u;
     int keys = x == c->keys;
     sid_character_ramp* ramp = &c->ramp[x];
-    if (!keys && ramp->building && (c->prep_pass || c->build_pass)) {
-        return REG_RING_NO_STAGE; /* the keys' chip built this pass: a tick later */
+    if ((ramp->building || ramp->filter_building) && (c->prep_pass || c->build_pass)) {
+        return REG_RING_NO_STAGE;
     }
     const volatile uint8_t* pending = c->stage_pending[x];
     uint32_t k = !pending[0] ? 0u : !pending[1] ? 1u : 2u;
@@ -462,8 +541,9 @@ static uint8_t character_tick(reg_ring_out* o) {
     /* The other chip's request has waited REG_RING_YIELD_TICKS: the keys' ramp starts no new
      * table, and takes nothing back from it, until it is served (its preparation done). */
     int yield = keys && c->prep_age[y] >= REG_RING_YIELD_TICKS;
-    int busy = keys ? (c->prep_on && c->prep_chip == x) || c->prep_pass || yield
+    int busy = keys ? (c->prep_on && c->prep_chip == x) || c->prep_pass || c->build_pass || yield
                     : c->prep_on || c->prep_pass || c->build_pass || c->ramp[y].building ||
+                          c->ramp[y].filter_building ||
                           c->prep_wait[y];
     sid_dac* table = busy ? NULL : free_dac(c);
     if (keys && !busy && !table && sid_character_ramp_wants_table(ramp)) {
@@ -477,9 +557,23 @@ static uint8_t character_tick(reg_ring_out* o) {
         table = free_dac(c);
     }
     uint8_t was = ramp->building;
-    int changed = sid_character_ramp_tick(ramp, &c->chip[c->next[x]], table, &c->stage[x][k]);
-    if (was || ramp->building) {
+    uint8_t filter_was = ramp->filter_building;
+    sid_filter_row rows[2];
+    uint32_t filter_mask = (1u << SID_EXPERT_FILTER_6581_CURVE) |
+                           (1u << SID_EXPERT_FILTER_6581_RANGE) |
+                           (1u << SID_EXPERT_FILTER_8580_CURVE);
+    int filter_free = !busy && !ramp->filter_building &&
+                      (ramp->filter_restore ||
+                       ((ramp->target.expert_mask | ramp->filter_now.expert_mask) & filter_mask)) &&
+                      free_filter(c, rows);
+    if (filter_free) {
+        c->filter_leases = 1;
+    }
+    int changed = sid_character_ramp_tick_tables(ramp, &c->chip[c->next[x]], table,
+                                                filter_free ? rows : NULL, &c->stage[x][k]);
+    if (was || ramp->building || filter_was || ramp->filter_building) {
         c->build_pass = 1;
+        o->sliced = 1;
     }
     if (!changed) {
         return REG_RING_NO_STAGE;
@@ -514,7 +608,8 @@ void reg_ring_sink(void* ctx, uint8_t reg, uint8_t value) {
         push_waiting(o, (uint8_t)(reg | x << 6), value);
         return;
     }
-    if (reg >= LIVE_REG_CHAR(0) && reg < LIVE_REG_CHAR(LIVE_CHAR_FIELDS)) {
+    if ((reg >= LIVE_REG_CHAR(0) && reg < LIVE_REG_CHAR(LIVE_CHAR_FIELDS)) ||
+        (reg >= LIVE_REG_EXPERT_FIRST && reg < LIVE_REG_EXPERT(SID_EXPERT_COUNT))) {
         live_char_store(&o->chips->ramp[x].target, reg, value);
         return;
     }

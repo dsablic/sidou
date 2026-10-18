@@ -119,7 +119,7 @@ uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t
     uint32_t page = p ? p->page : PANEL_PAGE_LIVE;
     if ((held & (1u << PANEL_BTN_EDIT)) || page == PANEL_PAGE_SLOT) {
         /* K1..K4: Amount, A, B, Mix */
-        return LIVE_PARAM_SLOT + (l->fx_select % LIVE_SLOTS) * LIVE_SLOT_FIELDS +
+        return LIVE_PARAM_SLOT + l->fx_select * LIVE_SLOT_FIELDS +
                LIVE_SLOT_AMOUNT + k;
     }
     if (page == PANEL_PAGE_CHARACTER) {
@@ -127,6 +127,10 @@ uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t
     }
     if (page == PANEL_PAGE_NONE) {
         return LIVE_PARAM_COUNT;
+    }
+    if (page >= PANEL_PAGE_EXPERT_FIRST && page < PANEL_PAGE_EXPERT_END) {
+        uint32_t index = (page - PANEL_PAGE_EXPERT_FIRST) * 4u + k;
+        return index < SID_EXPERT_COUNT ? LIVE_PARAM_EXPERT + index : LIVE_PARAM_COUNT;
     }
     return KNOBS[k];
 }
@@ -142,12 +146,20 @@ _Static_assert(LIVE_KNOB_CUTOFF == 0 && LIVE_KNOB_RESONANCE == 1 && LIVE_KNOB_PU
                    LIVE_KNOB_PRESET == 3 && PANEL_ENC_K4 - PANEL_ENC_K1 == 3,
                "K1..K4 are live_knob's knobs");
 
+__attribute__((noinline, unused)) static void expert_turn(live* l, uint32_t param, int32_t steps) {
+    if (param >= LIVE_PARAM_EXPERT && param < LIVE_PARAM_EXPERT_END) {
+        int32_t d = steps > 127 ? 127 : steps < -127 ? -127 : steps;
+        int32_t value = (int32_t)live_param_get(l, param) + d;
+        live_param_set(l, param, (uint32_t)(value < 0 ? 0 : value > 127 ? 127 : value));
+    }
+}
+
 void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps) {
     if (steps == 0 || enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4) {
         return;
     }
     uint32_t param = panel_knob_param(p, l, p->held, enc);
-    if (param == LIVE_PARAM_COUNT && p->page == PANEL_PAGE_NONE) {
+    if (param == LIVE_PARAM_COUNT && p->page >= PANEL_PAGE_NONE) {
         return; /* the view's own */
     }
     if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {
@@ -159,6 +171,10 @@ void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps) {
         int32_t max = (int32_t)live_param_max(param);
         live_param_set(l, param, (uint32_t)(v < 0 ? 0 : v > max ? max : v));
     } else {
+        if (p->page >= PANEL_PAGE_EXPERT_FIRST) {
+            expert_turn(l, param, steps);
+            return;
+        }
         live_knob(l, (live_knob_id)(enc - PANEL_ENC_K1), steps);
     }
 }

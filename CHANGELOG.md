@@ -15,6 +15,16 @@ All notable changes are documented here. The format follows
   original music. [The M2c status](docs/plans/2026-10-15-m2c-song-engine.md#m2c-status)
   records the remeasured costs, memory, image and coverage. The narrow RAM-region margin
   and the GoatTracker licence-audit findings remain open for the end-of-M2 review.
+- **The character's expert layer** (M2b Task 6): fourteen independent analogue controls,
+  each on NRPN 2/5..18 and available to MIDI learn. CHIP's final **EXPERT** SELECT stop has
+  four directly mapped knobs per page, in two readable pairs, with names and unit-bearing
+  values at 2×/3× and the theme's K1-K4 colours. The value popup names every expert too.
+  Held notes continue through constant changes and sliced filter/DAC rebuilds; no expert
+  edit resets the chip. A macro move reclaims only its related expert values.
+  USER profiles save the raw overrides (schema 2), and settings save them and their learned
+  CCs (schema 4); older records load with the profile/macro defaults. Built-in profile/model
+  choices clear overrides, while USER picks recall them. Outgoing MIDI sends explicit
+  expert edits after their macros without turning inherited defaults into overrides.
 - **A theme for the screens' colours** (docs/art/README.md "Theme"): the views take their colours
   from roles defined once in `app/theme.c`. **HIGH CONTRAST** is the new default (black, white
   values, grey labels, dark grey for the inactive, light red, cyan and light green for voices
@@ -40,7 +50,7 @@ All notable changes are documented here. The format follows
   window path is exercised explicitly in fm1-emu; background saves wait for quiet,
   while an explicit save can force gaps after 2 s.
 - Eight USER chip profiles (M2a Task 6). Each is a built-in base profile and the character's
-  four controls, kept on the store under its own key (`0x101`..`0x108`, 7 bytes, apart from
+  controls and expert overrides, kept on the store under its own key (`0x101`..`0x108`, apart from
   the settings record: [`docs/reference/profile-format.md`](docs/reference/profile-format.md)).
   On the CHIP view, ALGORITHM on the chip runs the five built-in profiles, then the filled
   USER slots (an empty one is skipped: **USER 4 EMPTY**); picking one is an ordinary profile

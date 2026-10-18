@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The USER chip profiles on the device (app/user_profile.h, M2a Task 6), in fm1-emu with its
 //! flash kept across a power cycle: a sound saved from the CHIP view into USER 3 (EDIT held +
-//! ALGORITHM, then SAVE) is one 7-byte record under its own key and leaves the settings alone;
+//! ALGORITHM, then SAVE) is one versioned record under its own key and leaves the settings alone;
 //! after a power cycle CC 85 picks it, and the chip plays what was saved: the rendered chip's
 //! character and the audio match the host build sample for sample (as character.rs does for the
 //! character's CCs), the profile change prepared and swapped as any other. The panel's picker
@@ -32,6 +32,13 @@ const LATE_BLOCKS: usize = 8;
 /// character's four controls.
 const KEY_USER_3: u32 = 0x103;
 const SAVED_CONTROLS: [u8; 4] = [100, 127, 64, 90];
+const SAVED_LOW_PASS: u8 = 40;
+
+fn saved_expert() -> [u8; SID_EXPERT_COUNT as usize] {
+    let mut expert = [SID_EXPERT_DEFAULT as u8; SID_EXPERT_COUNT as usize];
+    expert[SID_EXPERT_EXTERNAL_LP as usize] = SAVED_LOW_PASS;
+    expert
+}
 /// CC 85 over the five profiles and eight USER slots (0..12 in steps of 128/13): 43 is 4 (worn),
 /// 70 is 7 (USER 3).
 const CC_WORN: u8 = 43;
@@ -85,7 +92,18 @@ fn open_chip(m: &mut Machine, fw: &Firmware) {
 }
 
 fn record(base: u32, ctl: [u8; 4]) -> Vec<u8> {
-    vec![1, base as u8, 4, ctl[0], ctl[1], ctl[2], ctl[3]]
+    let mut rec = vec![
+        2,
+        base as u8,
+        4,
+        ctl[0],
+        ctl[1],
+        ctl[2],
+        ctl[3],
+        SID_EXPERT_COUNT as u8,
+    ];
+    rec.extend(saved_expert());
+    rec
 }
 
 /// Saves the sound the CCs set into USER 3 from the CHIP view, restores the settings' defaults
@@ -99,6 +117,17 @@ fn flash_with_user_3(fw: &Firmware) -> Vec<u8> {
         burst.extend([cc, v]);
     }
     m.midi(&burst);
+    m.midi(&[
+        0xB0,
+        99,
+        2,
+        98,
+        (5 + SID_EXPERT_EXTERNAL_LP) as u8,
+        6,
+        0,
+        38,
+        SAVED_LOW_PASS,
+    ]);
     m.run_ms(2500);
     open_chip(&mut m, fw);
     // EDIT held + ALGORITHM: the save target USER 3; the chip does not change.
@@ -200,6 +229,7 @@ fn render_host(frames: usize, cc_block: usize, note_block: usize, ticks: &[u32])
         l.user_valid = 1 << 2;
         l.user_base[2] = SID_CHIP_6581_WORN as u8;
         l.user_ctl[2] = SAVED_CONTROLS;
+        l.user_expert[2] = saved_expert();
         for (i, half) in out.chunks_mut(2 * HALF_FRAMES).enumerate() {
             if i == cc_block {
                 live_cc(&mut *l, 85, CC_USER_3);
@@ -284,6 +314,16 @@ fn a_user_profile_saved_from_the_chip_view_survives_a_power_cycle_and_sounds_as_
     for (i, c) in SAVED_CONTROLS.iter().enumerate() {
         assert_eq!(live_u8(&mut m, &fw, ilp32::live::user_ctl + 4 * 2 + i), *c);
     }
+    for (i, value) in saved_expert().iter().enumerate() {
+        assert_eq!(
+            live_u8(
+                &mut m,
+                &fw,
+                ilp32::live::user_expert + SID_EXPERT_COUNT as usize * 2 + i
+            ),
+            *value
+        );
+    }
     assert_eq!(
         live_u8(&mut m, &fw, ilp32::live::profile),
         SID_CHIP_6581_R4AR as u8
@@ -331,6 +371,12 @@ fn a_user_profile_saved_from_the_chip_view_survives_a_power_cycle_and_sounds_as_
             SAVED_CONTROLS[3]
         ],
         "the ramp got to the saved setup"
+    );
+    assert_eq!(
+        m.soc
+            .read8(now + ilp32::sid_character::expert as u32 + SID_EXPERT_EXTERNAL_LP),
+        SAVED_LOW_PASS,
+        "the saved expert control reached the rendered chip"
     );
 
     // The audio: the host with the same slot and CC, its ticks where the device's were.

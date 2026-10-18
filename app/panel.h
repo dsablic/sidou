@@ -75,6 +75,8 @@ extern "C" {
 /* Nothing: the view turns K1..K4 itself (the CHIP view on a song's chip A, whose controls are
  * no live parameter: MIDI learn binds nothing there). EDIT held still turns the slot. */
 #define PANEL_PAGE_NONE 3u
+#define PANEL_PAGE_EXPERT_FIRST 4u
+#define PANEL_PAGE_EXPERT_END (PANEL_PAGE_EXPERT_FIRST + (SID_EXPERT_COUNT + 3u) / 4u)
 /* A detent moves a character control this many steps: 32 detents end to end, as a slot's. */
 #define PANEL_CHARACTER_DETENT 4
 
@@ -134,7 +136,8 @@ void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held);
  * EDIT held, K1..K4 the selected slot's Amount, A, B and Mix on any page; without, on
  * PANEL_PAGE_LIVE K1..K3 the cutoff, resonance and pulse width, on PANEL_PAGE_CHARACTER K1..K4
  * age/heat, DAC sloppiness, output thump and filter bleed, on PANEL_PAGE_SLOT the selected
- * slot's Amount, A, B and Mix. LIVE_PARAM_COUNT for K4 on PANEL_PAGE_LIVE without EDIT (the
+ * slot's Amount, A, B and Mix, on an EXPERT page its four consecutive parameters (one raw
+ * step per detent). LIVE_PARAM_COUNT for unused final-page expert controls, K4 on PANEL_PAGE_LIVE without EDIT (the
  * preset, which is no parameter), for K1..K4 on PANEL_PAGE_NONE without EDIT, and every other
  * encoder. p NULL: PANEL_PAGE_LIVE.
  * panel_encoder turns what this names, and MIDI learn picks the knob's parameter here, so the

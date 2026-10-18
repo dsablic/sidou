@@ -937,12 +937,33 @@ fn a_tick_of_midi_out_costs_little_at_worst() {
         m.soc
             .write16(base + ilp32::midi_out::wire as u32 + 2 * p, wire);
     });
+    let write = m.soc.read32(fw.symbol("mo_w"));
+    m.soc.write32(fw.symbol("mo_r"), write);
+    let instrument = fw.symbol("instrument");
+    for e in 0..sidou_sys::SID_EXPERT_COUNT {
+        m.soc
+            .write8(instrument + ilp32::live::expert as u32 + e, 127);
+    }
+    let revision = instrument + ilp32::live::expert_version as u32;
+    let before = m.soc.read32(revision);
+    m.soc.write32(revision, before.wrapping_add(1));
+    m.soc
+        .write8(instrument + ilp32::live::expert_active as u32, 1);
+    let changed_experts = worst_send(&mut m, &fw, |m, base, p| {
+        pending(m, base, p);
+        let seen = m.soc.read16(base + ilp32::midi_out::seen as u32 + 2 * p);
+        let max = unsafe { sidou_sys::live_param_max(p) } as u16;
+        let wire = if seen == 0 { max } else { 0 };
+        m.soc
+            .write16(base + ilp32::midi_out::wire as u32 + 2 * p, wire);
+    });
     let (packets, _, _) = out_counters(&mut m, &fw);
     let report = serde_json::json!({
         "midi_send_instructions_idle": idle,
         "midi_send_instructions_all_deduplicated": deduplicated,
         "midi_send_instructions_all_changed": changed,
         "midi_send_instructions_all_changed_and_learned": changed_learned,
+        "midi_send_instructions_expert_snapshot_and_learned": changed_experts,
         "packets": packets,
     });
     println!("{report}");
@@ -961,9 +982,11 @@ fn a_tick_of_midi_out_costs_little_at_worst() {
         per_param(idle) < IDLE_PER_PARAM
             && per_param(deduplicated) < DEDUPLICATED_PER_PARAM
             && changed < 3_000
-            && changed_learned < 3_000,
+            && changed_learned < 3_000
+            && changed_experts < 3_000,
         "a tick of MIDI out: {idle} instructions idle, {deduplicated} with every parameter \
-         deduplicated, {changed} with every parameter changed, {changed_learned} also learned"
+          deduplicated, {changed} with every parameter changed, {changed_learned} also learned, \
+          {changed_experts} with a cold expert snapshot"
     );
 }
 

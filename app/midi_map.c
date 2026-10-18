@@ -56,6 +56,10 @@
         SLOT_ROW(slot, g, 3, "B", "0..127", LIVE_SLOT_MAX, LINEAR),                                \
         SLOT_ROW(slot, g, 4, "Mix", "0 dry .. 127 wet", LIVE_SLOT_MAX, LINEAR)
 
+#define EXPERT_ROW(field, name, values, def) \
+    ROW("Expert", name, values, LIVE_PARAM_EXPERT + (field), NO_CC, \
+        NRPN(NRPN_CHARACTER, 5u + (field)), SID_CHARACTER_MAX, def, LINEAR)
+
 /* clang-format off */
 static const midi_map_entry rows[MIDI_MAP_ROWS] = {
     ROW("Live", "Cutoff", "0..2047, the SID's 11 bits", LIVE_PARAM_CUTOFF,
@@ -147,6 +151,25 @@ static const midi_map_entry rows[MIDI_MAP_ROWS] = {
     ROW("Expression", "Vibrato delay", "0..1.27 s after each note-on, in 10 ms",
         LIVE_PARAM_VIBRATO_DELAY, LIVE_CC_VIBRATO_DELAY, NRPN(NRPN_EXPRESSION, 6),
         LIVE_EXPRESSION_MAX, 0, LINEAR),
+
+    EXPERT_ROW(SID_EXPERT_FILTER_6581_CURVE, "6581 filter curve", "0..127 = reSIDfp curve 0..1", 64),
+    EXPERT_ROW(SID_EXPERT_FILTER_6581_RANGE, "6581 filter range", "0..127 = reSIDfp range 0..1",
+        (uint16_t)((19.0f / 39.0f - SID_EXPERT_RANGE_6581_MIN) *
+                   127.0f / (1.0f - SID_EXPERT_RANGE_6581_MIN) + 0.5f)),
+    EXPERT_ROW(SID_EXPERT_FILTER_8580_CURVE, "8580 filter curve", "0..127 = reSIDfp curve 0..1", 64),
+    EXPERT_ROW(SID_EXPERT_NONLINEARITY, "6581 non-linearity", "0..127 = amount 0..2", 64),
+    EXPERT_ROW(SID_EXPERT_FILTER_BIAS, "6581 filter input DC bias", "0..127 = 0..2.3125 voice-DAC units", 64),
+    EXPERT_ROW(SID_EXPERT_BLEED, "Filter bleed", "0..127 = 0..50 percent of unfiltered voices", 0),
+    EXPERT_ROW(SID_EXPERT_DAC_KINK, "DAC ladder kink", "0..127 = 2R/R ratio 1.8..2.6", 64),
+    EXPERT_ROW(SID_EXPERT_DAC_LEAKAGE, "DAC leakage", "0..127 = leakage 0..0.15", 6),
+    EXPERT_ROW(SID_EXPERT_COMBINED, "Combined-waveform strength",
+        "0..31 WEAK, 32..95 AVERAGE, 96..127 STRONG", 64),
+    EXPERT_ROW(SID_EXPERT_NOISE_WRITEBACK, "Noise write-back",
+        "0 off; 1..127 progressively connect 1..8 write-back taps; 127 authentic", 127),
+    EXPERT_ROW(SID_EXPERT_THUMP, "Volume thump", "0..127 = 0..1 voice-DAC units at volume 15", 0),
+    EXPERT_ROW(SID_EXPERT_EXTERNAL_LP, "6581 external low-pass", "0..127 = 1000..20000 Hz", 81),
+    EXPERT_ROW(SID_EXPERT_EXTERNAL_HP, "External high-pass", "0..127 = 0..100 Hz", 20),
+    EXPERT_ROW(SID_EXPERT_VOICE_DC, "Voice DC offset", "0..127 = 0..0.6 voice-DAC units", 60),
 };
 /* clang-format on */
 
@@ -226,13 +249,17 @@ uint32_t midi_map_from_cc(const midi_map_entry* e, uint8_t value) {
 }
 
 uint8_t midi_map_to_cc(const midi_map_entry* e, uint32_t value) {
-    if (e->max == 0) {
+    uint32_t max = e->max;
+    if (max == 0 || value == 0) {
         return 0;
     }
-    if (value > e->max) {
-        value = e->max;
+    if (value >= max) {
+        return 127;
     }
-    return (uint8_t)((value * 127u + e->max / 2u) / e->max);
+    if (max == 127u) {
+        return (uint8_t)value;
+    }
+    return (uint8_t)((value * 127u + max / 2u) / max);
 }
 
 static void deselect(midi_map_channel* c) {

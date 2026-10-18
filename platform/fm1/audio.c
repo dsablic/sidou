@@ -159,10 +159,13 @@ void audio_song_anchor(uint32_t* ticks, uint32_t* samples) {
 }
 
 void audio_song_poll(void) {
-    /* no slice in a pass that ran one of the spare chip's preparation (reg_ring_pass_end);
-     * the ring's writes for song control in any pass until M2b's keys_route shares it */
+    uint32_t slices = song_transport.slices;
     song_ctl_poll(&song_transport,
-                  (chips.prep_pass ? 0u : SONG_POLL_SLICE) | SONG_POLL_RING);
+                  (chips.prep_pass || chips.build_pass ? 0u : SONG_POLL_SLICE) | SONG_POLL_RING);
+    if (song_transport.slices != slices) {
+        chips.prep_pass = 1;
+        out.sliced = 1;
+    }
 }
 
 int audio_work_slice(void) {

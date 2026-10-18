@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The settings that persist (`app/settings.c`, M2a Task 5): the record and its schema, the
 //! load at boot (the full boot once after an install), the debounced background save, the
-//! explicit save and its forced held operations, and a foreign store.
+//! explicit save and its forced held operations, a foreign store, and M2b's raw expert
+//! overrides and bindings with migrations from the original 42-parameter layout.
 
 use std::cell::Cell;
 use std::ffi::CStr;
@@ -49,7 +50,9 @@ fn schema_four_fixture_keeps_every_earlier_field_and_the_last_song() {
     );
     assert_eq!(a.set.last_song[0], 0);
     unsafe { settings_set_song(&mut *a.set, c"NIGHT DRIVE".as_ptr()) };
-    let rec = a.gather();
+    let mut rec = a.gather();
+    rec.truncate(124);
+    rec[0] = 4;
     assert_eq!(rec.len(), 124);
     assert_eq!(rec[0], 4);
     assert_eq!(&rec[1..108], &v3[1..]);
@@ -65,7 +68,9 @@ fn schema_four_fixture_keeps_every_earlier_field_and_the_last_song() {
         unsafe { settings_apply(&mut *b.set, rec.as_ptr(), rec.len() as u32) },
         1
     );
-    assert_eq!(b.gather(), rec, "exact schema 4 round trip");
+    let migrated = b.gather();
+    assert_eq!(&migrated[1..124], &rec[1..], "exact schema 4 prefix migration");
+    assert!(b.rig.live.expert.iter().all(|&v| v == SID_EXPERT_DEFAULT as u8));
 }
 
 #[test]
@@ -112,7 +117,7 @@ fn short_records_are_rejected_before_any_field_changes_for_every_schema() {
         settings_set_song(&mut *s.set, c"OLD SONG".as_ptr());
     }
     let before = s.gather();
-    for (schema, len) in [(1, 106), (2, 107), (3, 108), (4, 124), (5, 124)] {
+    for (schema, len) in [(1, 106), (2, 107), (3, 108), (4, 124), (5, SETTINGS_BYTES), (6, SETTINGS_BYTES)] {
         let mut rec = Set::blank().gather();
         rec[0] = schema;
         for short in 0..len {
@@ -128,14 +133,16 @@ fn short_records_are_rejected_before_any_field_changes_for_every_schema() {
 
 #[test]
 fn theme_validation_applies_to_schema_three_four_and_future_prefixes() {
-    for schema in [3, 4, 5] {
+    for schema in [3, 4, 5, 6] {
         for theme in [THEME_HIGH_CONTRAST, THEME_C64, THEME_COUNT, 255] {
             let mut rec = Set::blank().gather();
             rec[0] = schema;
             rec[107] = theme as u8;
             if schema == 3 {
                 rec.truncate(108);
-            } else if schema == 5 {
+            } else if schema == 4 {
+                rec.truncate(124);
+            } else if schema == 6 {
                 rec.extend_from_slice(&[0xa5; 20]);
             }
             let mut s = Set::blank();
@@ -337,15 +344,12 @@ impl Set {
 }
 
 #[test]
-fn the_record_is_v4s_layout_with_the_defaults() {
+fn the_record_is_v4s_layout_with_the_original_offsets_and_raw_expert_defaults() {
     let s = Set::blank();
     let rec = s.gather();
     assert_eq!(rec.len(), SETTINGS_BYTES as usize);
-    assert_eq!(rec.len(), 124);
-    assert_eq!(
-        rec[..6],
-        [SETTINGS_VERSION as u8, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]
-    );
+    assert_eq!(rec.len(), 109 + 2 * SID_EXPERT_COUNT as usize);
+    assert_eq!(rec[..6], [4, 1, 0, LIVE_KEYS_AUTO as u8, 0, 42]);
     let cutoff = s.param(LIVE_PARAM_CUTOFF);
     assert_eq!(
         rec[6..8],
@@ -360,7 +364,7 @@ fn the_record_is_v4s_layout_with_the_defaults() {
         "the pulse width, two bytes"
     );
     assert_eq!(rec[11], 0, "the volume is the pot's");
-    for p in 4..LIVE_PARAM_COUNT {
+    for p in 4..SETTINGS_PARAMS_V1 {
         assert_eq!(u32::from(rec[p as usize + 8]), s.param(p), "parameter {p}");
     }
     assert!(
@@ -372,6 +376,133 @@ fn the_record_is_v4s_layout_with_the_defaults() {
     assert_eq!(rec[106], 0, "BAR");
     assert_eq!(rec[107], THEME_HIGH_CONTRAST as u8, "HIGH CONTRAST");
     assert_eq!(&rec[108..124], &[0; 16], "built-in song");
+    assert_eq!(rec[108], SID_EXPERT_COUNT as u8);
+    let end = 109 + SID_EXPERT_COUNT as usize;
+    assert!(rec[109..end].iter().all(|&v| v == SID_EXPERT_DEFAULT as u8));
+    assert!(rec[end..].iter().all(|&v| v == MIDI_MAP_NO_CC as u8));
+}
+
+#[test]
+fn expert_raw_overrides_and_learn_bindings_survive_loading_after_macros() {
+    let mut a = Set::blank();
+    a.change_everything();
+    for e in 0..SID_EXPERT_COUNT {
+        a.set_param(LIVE_PARAM_EXPERT + e, (e * 7) % 128);
+    }
+    a.rig.live.expert[0] = SID_EXPERT_DEFAULT as u8;
+    unsafe { midi_learn_bind(&mut *a.ml, 31, LIVE_PARAM_EXPERT + SID_EXPERT_COUNT - 1) };
+    let rec = a.gather();
+    let mut b = Set::blank();
+    assert_eq!(
+        unsafe { settings_apply(&mut *b.set, rec.as_ptr(), rec.len() as u32) },
+        1
+    );
+    assert_eq!(b.rig.live.expert, a.rig.live.expert);
+    assert_ne!(b.rig.live.expert_dirty, 0);
+    assert_ne!(b.rig.live.expert_active, 0);
+    assert_eq!(b.gather(), rec);
+}
+
+#[test]
+fn older_settings_clear_expert_overrides_and_bindings() {
+    for version in 1..=4 {
+        let rec = std::fs::read(fixture_path().with_file_name(format!("settings-v{version}.bin")))
+            .unwrap();
+        let mut s = Set::blank();
+        s.set_param(LIVE_PARAM_EXPERT, 12);
+        unsafe { midi_learn_bind(&mut *s.ml, 31, LIVE_PARAM_EXPERT) };
+        assert_eq!(
+            unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
+            1
+        );
+        assert!(s
+            .rig
+            .live
+            .expert
+            .iter()
+            .all(|&v| v == SID_EXPERT_DEFAULT as u8));
+        assert_eq!(s.rig.live.expert_active, 0);
+        assert_eq!(
+            unsafe { midi_learn_cc_of(&*s.ml, LIVE_PARAM_EXPERT) },
+            MIDI_MAP_NO_CC as u8
+        );
+    }
+}
+
+#[test]
+fn malformed_expert_sections_apply_nothing() {
+    let mut s = Set::blank();
+    let before = s.gather();
+    let mut rec = before.clone();
+    rec[1] ^= 1;
+    for len in SETTINGS_V3_BYTES as usize..rec.len() {
+        assert_eq!(
+            unsafe { settings_apply(&mut *s.set, rec.as_ptr(), len as u32) },
+            0
+        );
+        assert_eq!(s.gather(), before);
+    }
+    rec[108] = SID_EXPERT_COUNT as u8 - 1;
+    assert_eq!(
+        unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
+        0
+    );
+    assert_eq!(s.gather(), before);
+}
+
+#[test]
+fn future_expert_values_are_skipped_before_the_learn_bindings() {
+    let mut a = Set::blank();
+    a.set_param(LIVE_PARAM_EXPERT, 17);
+    unsafe { midi_learn_bind(&mut *a.ml, 31, LIVE_PARAM_EXPERT) };
+    let mut rec = a.gather();
+    let end = 109 + SID_EXPERT_COUNT as usize;
+    rec[0] = SETTINGS_VERSION as u8 + 1;
+    rec[108] += 1;
+    rec.insert(end, 19);
+    rec.push(MIDI_MAP_NO_CC as u8);
+    let mut st = fresh(10, 256);
+    assert_eq!(
+        st.put_typed(SETTINGS_KEY, SETTINGS_TYPE as u8, &rec),
+        STORE_OK
+    );
+    st.settle();
+    let mut b = Set::new(st, VERSION);
+    assert!(b.load());
+    assert_eq!(b.rig.live.expert, a.rig.live.expert);
+    assert_eq!(unsafe { midi_learn_cc_of(&*b.ml, LIVE_PARAM_EXPERT) }, 31);
+}
+
+#[test]
+fn invalid_expert_overrides_fall_back_to_profile_following() {
+    let mut s = Set::blank();
+    let mut rec = s.gather();
+    s.set_param(LIVE_PARAM_EXPERT, 17);
+    rec[109] = 128;
+    assert_eq!(
+        unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
+        1
+    );
+    assert_eq!(s.rig.live.expert[0], SID_EXPERT_DEFAULT as u8);
+}
+
+#[test]
+fn the_v4_fixture_preserves_the_v3_prefix_and_raw_expert_values() {
+    let rec: Vec<u8> = include_str!("../data/settings-v4.hex")
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .flat_map(str::split_whitespace)
+        .map(|v| u8::from_str_radix(v, 16).unwrap())
+        .collect();
+    let old = std::fs::read(v3_fixture_path()).unwrap();
+    assert_eq!(&rec[1..108], &old[1..]);
+    let mut s = Set::blank();
+    assert_eq!(
+        unsafe { settings_apply(&mut *s.set, rec.as_ptr(), rec.len() as u32) },
+        1
+    );
+    assert_eq!(&s.rig.live.expert[..3], &[SID_EXPERT_DEFAULT as u8, 0, 127]);
+    assert_eq!(s.gather(), rec);
 }
 
 #[test]
@@ -413,7 +544,7 @@ fn tracker_rows_round_trips_both_modes() {
 
 #[test]
 fn invalid_tracker_rows_falls_back_to_bar() {
-    for (schema, len) in [(2, 107), (3, 108), (4, 124), (5, 144)] {
+    for (schema, len) in [(2, 107), (3, 108), (4, 124), (5, SETTINGS_BYTES as usize)] {
         for rows in [2, 255] {
             let mut s = Set::blank();
             let mut rec = s.gather();
@@ -432,7 +563,7 @@ fn invalid_tracker_rows_falls_back_to_bar() {
 
 #[test]
 fn filename_validation_clears_invalid_records_but_keeps_a_full_length_name() {
-    for schema in [4, 5] {
+    for schema in [4, 5, 6] {
         for name in [
             b" SIXTEEN CHARS!!".as_slice(),
             b"LOWERcase",
@@ -815,13 +946,21 @@ fn a_schema_2_record_loads_scroll_and_keeps_the_v1_prefix() {
     );
     assert_eq!(*s.rows, 1);
     let mut again = fixture.clone();
-    again[0] = 4;
+    again[0] = SETTINGS_VERSION as u8;
     again.push(THEME_HIGH_CONTRAST as u8);
-    again.extend_from_slice(&[0; 16]);
+    again.push(SID_EXPERT_COUNT as u8);
+    again.extend(std::iter::repeat_n(
+        SID_EXPERT_DEFAULT as u8,
+        SID_EXPERT_COUNT as usize,
+    ));
+    again.extend(std::iter::repeat_n(
+        MIDI_MAP_NO_CC as u8,
+        SID_EXPERT_COUNT as usize,
+    ));
     assert_eq!(
         s.gather(),
         again,
-        "schema 4 keeps schema 2's bytes and defaults the theme and song"
+        "schema 4 preserves schema 2's bytes and appends default theme and expert fields"
     );
     s.rig.tick();
     let mut want = Set::blank();
@@ -867,7 +1006,7 @@ fn the_theme_round_trips_and_an_older_record_loads_high_contrast() {
         let mut a = Set::blank();
         unsafe { live_set_theme(&mut *a.rig.live, theme) };
         let rec = a.gather();
-        assert_eq!(rec.len(), 124);
+        assert_eq!(rec.len(), SETTINGS_BYTES as usize);
         assert_eq!(rec[107], theme as u8);
         let mut b = Set::blank();
         unsafe { live_set_theme(&mut *b.rig.live, THEME_COUNT - 1 - theme) };

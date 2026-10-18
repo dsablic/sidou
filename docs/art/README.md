@@ -706,7 +706,7 @@ knobs' places.
 - **Row 2:** the section tabs **CHIP, DIST, MOD, FX** across the width, the focused one yellow
   with black letters, the others dark grey bars with grey letters; with the focus on the A/B
   tabs the CHIP tab is grey (its controls are what K1..K4 turn there). SELECT moves the focus as
-  it always has: the A/B tabs, CHIP, DIST, MOD, FX, clamped at both ends.
+  the A/B tabs, CHIP, DIST, MOD, FX, then EXPERT, clamped at both ends.
 - **Rows 4-6, 7:** the section's main choice at 3×: for CHIP the chip's model (`6581`, white) and
   its profile (`R4AR`, yellow: the name without the model, `WORN`, or **USR 3** for a picked
   USER slot), over the small names MODEL and PROFILE; for a slot its algorithm (white, OFF dark
@@ -728,6 +728,24 @@ knobs' places.
   SHARED, or SLOTS SHARED WITH CHIP A while the keys play chip B; on a song's A tab SONG SETUP
   SLOTS SHARED) and the help line, SELECT MOVE ALGORITHM STEP, small and dim. The toast keeps
   rows 27-28 while it shows.
+
+**EXPERT keeps the readable design.** It is one final SELECT stop, not another menu. The
+ordinary four-section strip and the chip/slot layouts stay unchanged; on EXPERT the strip
+becomes one yellow EXPERT marker and the 3× choice says **EXPERT 1/4** through **EXPERT 4/4**.
+ALGORITHM pages four direct controls at a time, rather than selecting a scrolling item and
+repurposing K1/K2 as coarse/fine. This keeps all four physical knobs useful and bounds every
+control's reach to at most three page detents, with no menu diving.
+
+The long units need more width than CHIP's seven-cell columns. EXPERT therefore uses two
+pairs: K1/K2 at columns 0/15, names on rows 9-10 and values from row 12; K3/K4 on rows 17-18
+and from row 20. Names are at 2× in the knob's colour, preceded by a small K1..K4 tag; values
+include their units at 3× up to four characters, otherwise 2×. Even `20000HZ` fits its
+half-screen without clipping. The last page's unused lower pair stays blank. Every turn's
+popup uses the same named parameter and unit formatter, in the corresponding knob colour.
+The summary lines give way to this second pair; row 25 says **MACRO MOVES RESET ITS
+OVERRIDES**, while the chip/song note and help remain at the foot. The help becomes SELECT
+MOVE ALGORITHM PAGE. EDIT + ALGORITHM retains the USER save target here too, in the same
+yellow names row; SAVE includes the independent expert settings.
 
 **Where the old page's pieces went.** The three effect slots' four controls each, at 8×8 on
 one page, are now a slot at a time (a SELECT to see them; they were never what K1..K4 turned

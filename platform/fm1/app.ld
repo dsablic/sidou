@@ -26,7 +26,7 @@ MEMORY
 SECTIONS
 {
     /* crt0 alone first: the SPL enters the image's first byte. */
-    .entry : { KEEP(*(.text.crt0)) . = ALIGN(4); } > XIP
+    .entry : { KEEP(*(.text.crt0)) . = ALIGN(16); } > XIP
     /* .ram_text before .text: the first rule that matches an input section places it, and
      * .text takes every other .text.*. It loads right after .entry (AT > XIP), and
      * fm1_cstart copies it to SRAM before anything calls into it.
@@ -95,13 +95,14 @@ SECTIONS
         *(.text.song_lock_row .text.song_lock_apply)
         *(.text.render_a .text.render_part)         /* audio.c: chip A split at the call */
         *(.text.gt2_edit_apply)
-        . = ALIGN(4);
+        . = ALIGN(16);
         _rt_end = .;
     } > RAMTEXT AT > XIP
     _rt_load = LOADADDR(.ram_text);
+    /* Lookup constants need 16-byte alignment: keep padding inside the packed sections. */
     .text : {
         *(.text*) *(.rodata*)
-        . = ALIGN(4);
+        . = ALIGN(16);
         __init_array_start = .; KEEP(*(.init_array*)) __init_array_end = .;
         _etext = .;
     } > XIP

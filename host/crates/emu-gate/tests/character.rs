@@ -136,6 +136,113 @@ fn read_f32(m: &mut Machine, addr: u32) -> f32 {
 }
 
 #[test]
+fn expert_nrpn_changes_a_held_notes_sound_without_a_reset() {
+    let Some(fw) = fixture() else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    common::run_past_boot(&mut m, &fw);
+    m.key(A4_KEY, true);
+    m.run_ms(400);
+    let s = active_sid(&mut m, &fw);
+    let pole = read_f32(&mut m, s + ilp32::sid::out_c as u32);
+    let energy = |audio: &[i16]| -> f64 {
+        audio[audio.len().saturating_sub(8192)..]
+            .iter()
+            .map(|&v| f64::from(v).powi(2))
+            .sum::<f64>()
+            / 8192.0
+    };
+    let before = energy(&m.soc.periph.audio);
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    m.midi(&[
+        0xb0,
+        99,
+        2,
+        98,
+        (5 + sidou_sys::SID_EXPERT_EXTERNAL_LP) as u8,
+        6,
+        0,
+        38,
+        0,
+    ]);
+    m.run_ms(2000);
+    assert_eq!(
+        active_sid(&mut m, &fw),
+        s,
+        "expert edits must not swap/reset a chip"
+    );
+    assert!(read_f32(&mut m, s + ilp32::sid::out_c as u32) < pole);
+    let gate = s + ilp32::sid::env as u32 + ilp32::sid_env::gate as u32;
+    assert_eq!(m.soc.read8(gate), 1, "the held gate was lost");
+    let after = energy(&m.soc.periph.audio);
+    println!("EXPERT external LP NRPN: held-note energy {before:.1} -> {after:.1}");
+    assert!(before > 0.0 && after > 0.0);
+    assert!(
+        (after / before - 1.0).abs() > 0.02,
+        "the NRPN did not change the sound"
+    );
+    assert!(m
+        .passes
+        .iter()
+        .all(|&pass| pass < common::POLL_INSTRUCTIONS));
+    m.key(A4_KEY, false);
+    m.run_ms(40);
+    assert_eq!(m.soc.read8(gate), 0, "the release was lost");
+}
+
+#[test]
+fn expert_filter_builds_are_sliced_and_never_reset_a_held_gate() {
+    let Some(fw) = fixture() else {
+        return;
+    };
+    for model in [SID_MODEL_6581, sidou_sys::SID_MODEL_8580] {
+        let mut m = Machine::boot(&fw.image);
+        common::run_past_boot(&mut m, &fw);
+        if model == sidou_sys::SID_MODEL_8580 {
+            m.midi(&[0xb0, 25, 127]);
+            m.run_ms(400);
+        }
+        m.key(A4_KEY, true);
+        m.run_ms(400);
+        let s = active_sid(&mut m, &fw);
+        m.watch_calls(fw.symbol("sid_character_filter_job_step"));
+        m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+        let fields: &[u32] = if model == SID_MODEL_6581 {
+            &[
+                sidou_sys::SID_EXPERT_FILTER_6581_CURVE,
+                sidou_sys::SID_EXPERT_FILTER_6581_RANGE,
+            ]
+        } else {
+            &[sidou_sys::SID_EXPERT_FILTER_8580_CURVE]
+        };
+        for &field in fields {
+            for raw in [0, 127] {
+                m.watched_calls.clear();
+                m.passes.clear();
+                m.midi(&[0xb0, 99, 2, 98, (5 + field) as u8, 6, 0, 38, raw]);
+                m.run_ms(2000);
+                let slice = m
+                    .watched_calls
+                    .iter()
+                    .copied()
+                    .max()
+                    .expect("a filter build ran");
+                let pass = m.passes.iter().copied().max().expect("the main loop ran");
+                println!(
+                    "EXPERT model {model} field {field} raw {raw}: slice {slice}, pass {pass}"
+                );
+                assert!(slice < u64::from(sidou_sys::REG_RING_PREPARE_SLICE));
+                assert!(pass < common::POLL_INSTRUCTIONS);
+                assert_eq!(active_sid(&mut m, &fw), s, "the expert edit reset a SID");
+                let gate = s + ilp32::sid::env as u32 + ilp32::sid_env::gate as u32;
+                assert_eq!(m.soc.read8(gate), 1, "the held gate was lost");
+            }
+        }
+    }
+}
+
+#[test]
 fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
     let Some(fw) = fixture() else {
         return;
@@ -215,6 +322,7 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
         dac: 127,
         thump: 64,
         bleed: 90,
+        ..Default::default()
     };
     unsafe {
         sidou_sys::sid_init(
@@ -293,13 +401,13 @@ fn symbol_bytes(fw: &Firmware, name: &str) -> Vec<u8> {
         .to_vec()
 }
 
-/// The device compiles the combined-waveform tables its profiles play and no others: all
-/// three 6581 strengths (R2 WEAK, R3 and R4AR AVERAGE, worn STRONG), the 8580's AVERAGE
-/// alone (the R5), as SID_PD's shared blocks (gen/pulldown.h). Each of those profiles reads
+/// The device compiles all three strengths for both models: built-in profiles and the
+/// independent expert selector use them, as SID_PD's shared blocks (gen/pulldown.h).
+/// Each of those profiles reads
 /// back as reSIDfp's table, its blocks are the ones sidou-tablegen lays out for it, and the
 /// pool holds no block they leave unused. The host keeps all six (sidou-sys).
 #[test]
-fn the_firmware_holds_only_the_combined_tables_its_profiles_use() {
+fn the_firmware_holds_the_combined_tables_its_profiles_and_expert_layer_use() {
     use residfp_sys::Model;
     use sidou_sys::{sid_chip_profile_get, SID_CHIPS, SID_MODEL_8580, SID_PROFILE_AVERAGE};
     use sidou_tablegen::{
@@ -315,12 +423,12 @@ fn the_firmware_holds_only_the_combined_tables_its_profiles_use() {
             assert_eq!(
                 u32::from(p.combined),
                 SID_PROFILE_AVERAGE,
-                "an 8580 profile plays a table the device leaves out"
+                "the built-in R5 keeps its AVERAGE default"
             );
         }
     }
     let src = PulldownSource::new();
-    let want = PulldownLayout::new(&src.compiled_rows(true, false));
+    let want = PulldownLayout::new(&src.compiled_rows(true, true));
     let sid_pd = symbol_bytes(&fw, "SID_PD");
     assert_eq!(
         sid_pd.len(),
@@ -334,7 +442,7 @@ fn the_firmware_holds_only_the_combined_tables_its_profiles_use() {
         r * PD_INDEX_BYTES + usize::from(u16::from_le_bytes([l[at], l[at + 1]]))
     };
     let (mut r, mut all_used) = (0, std::collections::HashSet::new());
-    for (model, all) in [(Model::Mos6581, true), (Model::Csg8580, false)] {
+    for (model, all) in [(Model::Mos6581, true), (Model::Csg8580, true)] {
         for (cws, label) in compiled_profiles(all) {
             let (mut ours, mut theirs) = (
                 std::collections::HashSet::new(),
@@ -528,6 +636,7 @@ fn the_chip_views_k1_turns_the_chips_age_and_matches_the_host_sample_exact() {
         dac: 0,
         thump: 0,
         bleed: 0,
+        ..Default::default()
     };
     unsafe {
         sidou_sys::sid_init(

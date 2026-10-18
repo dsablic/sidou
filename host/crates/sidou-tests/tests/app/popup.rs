@@ -62,6 +62,106 @@ fn cutoff_text(ui: &Ui) -> String {
 }
 
 #[test]
+fn expert_formatter_uses_the_core_ranges_and_noise_tap_bands() {
+    let percent = |value: f64| format!("{}%", (value * 100.0).round() as u32);
+    for (index, raw, expected) in [
+        (
+            SID_EXPERT_FILTER_6581_CURVE,
+            0,
+            percent(SID_EXPERT_CURVE_6581_MIN),
+        ),
+        (
+            SID_EXPERT_FILTER_6581_CURVE,
+            127,
+            percent(SID_EXPERT_CURVE_6581_MAX),
+        ),
+        (
+            SID_EXPERT_FILTER_6581_RANGE,
+            0,
+            percent(SID_EXPERT_RANGE_6581_MIN),
+        ),
+        (SID_EXPERT_NOISE_WRITEBACK, 0, "OFF".to_owned()),
+        (SID_EXPERT_NOISE_WRITEBACK, 1, "1 TAP".to_owned()),
+        (SID_EXPERT_NOISE_WRITEBACK, 15, "1 TAP".to_owned()),
+        (SID_EXPERT_NOISE_WRITEBACK, 16, "2 TAPS".to_owned()),
+        (SID_EXPERT_NOISE_WRITEBACK, 127, "8 TAPS".to_owned()),
+    ] {
+        let mut text = [0; SCREEN_POPUP_TEXT as usize];
+        unsafe { chip_view_expert_text(index, raw, text.as_mut_ptr()) };
+        let actual = unsafe { CStr::from_ptr(text.as_ptr()) }.to_string_lossy();
+        assert_eq!(actual, expected, "expert {index}, raw {raw}");
+    }
+}
+
+#[test]
+fn every_expert_knob_popup_has_its_name_and_physical_units() {
+    let mut ui = Ui::without_cards();
+    ui.settle();
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_CHIP as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.settle();
+    ui.turn(PANEL_ENC_SELECT, 4);
+    ui.turn(PANEL_ENC_K1 + 2, 1);
+    open(&mut ui);
+    assert_eq!(says(&ui), ("8580 CURVE".to_owned(), "N/A".to_owned()));
+    ui.popup_gone();
+    let curve_max = format!("{}%", (SID_EXPERT_CURVE_6581_MAX * 100.0).round() as u32);
+    for (index, (name, value)) in [
+        ("6581 CURVE", curve_max.as_str()),
+        ("6581 RANGE", "100%"),
+        ("8580 CURVE", "100%"),
+        ("NONLINEARITY", "200%"),
+        ("FILTER BIAS", "2.31DC"),
+        ("FILTER BLEED", "50%"),
+        ("DAC KINK", "2.60R"),
+        ("DAC LEAKAGE", "15.00%"),
+        ("COMBINED", "STRONG"),
+        ("NOISE WRITE", "8 TAPS"),
+        ("OUTPUT THUMP", "1.00DC"),
+        ("EXTERNAL LP", "20000HZ"),
+        ("EXTERNAL HP", "100HZ"),
+        ("VOICE DC", "0.60DC"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if index == SID_EXPERT_FILTER_8580_CURVE as usize {
+            unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_MODEL, 1) };
+        } else if index == SID_EXPERT_NONLINEARITY as usize {
+            unsafe { live_param_set(&mut *ui.rig.live, LIVE_PARAM_MODEL, 0) };
+        }
+        if index > 0 && index % 4 == 0 {
+            ui.turn(PANEL_ENC_ALGORITHM, 1);
+            ui.popup_gone();
+        }
+        let param = LIVE_PARAM_EXPERT + index as u32;
+        unsafe { live_param_set(&mut *ui.rig.live, param, 126) };
+        let knob = index % 4;
+        ui.turn(PANEL_ENC_K1 + knob as u32, 1);
+        open(&mut ui);
+        assert_eq!(
+            says(&ui),
+            (name.to_owned(), value.to_owned()),
+            "expert {index}"
+        );
+        let t = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+        assert_eq!(
+            ui.v.popup.accent, t.knob[knob],
+            "the physical knob's colour"
+        );
+        ui.popup_gone();
+    }
+    ui.turn(PANEL_ENC_K4, 1);
+    ui.frame();
+    assert!(
+        !shown(&ui),
+        "the unused final-page knob has no preset popup"
+    );
+}
+
+#[test]
 fn the_midi_page_names_each_edited_value_in_the_popup() {
     let mut ui = Ui::without_cards();
     let mut route = Box::<midi_route>::default();

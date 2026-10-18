@@ -73,7 +73,9 @@ extern "C" {
 #define KEYS_ROUTE_EDIT_CONTROLS 0x0fu
 #define KEYS_ROUTE_EDIT_PROFILE 0x10u
 #define KEYS_ROUTE_EDIT_ENVELOPE 0x20u
-#define KEYS_ROUTE_EDIT_ALL 0x3fu
+#define KEYS_ROUTE_EDIT_EXPERT_FIRST 6u
+#define KEYS_ROUTE_EDIT_EXPERT (((1u << SID_EXPERT_COUNT) - 1u) << KEYS_ROUTE_EDIT_EXPERT_FIRST)
+#define KEYS_ROUTE_EDIT_ALL (0x3fu | KEYS_ROUTE_EDIT_EXPERT)
 
 typedef struct {
     live* l;
@@ -132,7 +134,9 @@ void keys_route_song_wants(keys_route* kr, const chip_setup* setup);
 /* Explicit CHIP A edit, distinct from runtime locks: the callback owns acceptance and the
  * unlocked song base; without one, goes straight to keys_route_song_wants. Returns 1 if
  * accepted, 0 if refused, with the setup and USER identity unchanged. edit_mask marks only
- * intended fields: bits 0..3 AGE through BLEED, bit 4 PROFILE, bit 5 ENVELOPE. */
+ * intended fields: bits 0..3 AGE through BLEED, bit 4 PROFILE, bit 5 ENVELOPE, then one bit
+ * per expert. Macro edits release only their own experts in the unlocked base; runtime
+ * locks may have released a different set, which must not be copied back into that base. */
 int keys_route_song_edit(keys_route* kr, const chip_setup* setup, uint32_t edit_mask);
 /* A setup chip A already holds (nothing is sent): recorded as what it has, and wanted. */
 void keys_route_song_setup(keys_route* kr, const chip_setup* setup);

@@ -107,8 +107,8 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; the keys sound nothing while GLO is held |
 | **SELECT (encoder 0)**, in the menu | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
 | **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), STORE ([format confirmation](#settings-and-store)), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF), TRACKER ROWS (ROWS in the menu; clockwise SCROLL, counter-clockwise BAR), THEME (the screens' colours: clockwise C64, counter-clockwise HIGH CONTRAST, the default; see [the theme](../art/README.md#theme)); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on SONG the [song-file actions](#song), on ABOUT the credits, on MIDI [the MIDI page](#the-midi-page) |
-| **SELECT (encoder 0)**, on CHIP | moves the focus: CHIP (the profile and the character), DIST, MOD, FX; it stops at either end |
-| **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP (EDIT held: the save target), the algorithm on a slot; it stops at either end |
+| **SELECT (encoder 0)**, on CHIP | moves the focus: A/B tabs, CHIP (the profile and the character), DIST, MOD, FX, EXPERT; it stops at either end |
+| **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP, the algorithm on a slot, or the four-control page on EXPERT; EDIT held on CHIP or EXPERT selects the USER save target |
 | **SELECT (encoder 0)**, in TRACKER | the shown voice: voice 1, 2, 3 and round (clockwise the next, counter-clockwise the one before); the note keys then audition on it |
 | **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, RED MOON RITE, and round): it wipes in, and a toast names it |
 
@@ -130,6 +130,7 @@ opens it, and what it says (the text the views show, from one place, `popup_text
 | K1 / K2 / K3 on LIVE's page (every view but CHIP) | CUTOFF (in Hz as LIVE's FILTER frame says it, `11.4K`), RESO (0-15), PULSE (a percent) |
 | K4 on LIVE's page | PRESET, the preset's name (no bar) |
 | K1-K4 on CHIP's chip section | AGE, DAC, THUMP, BLEED (0-127; on a song's chip A, the song's) |
+| K1-K4 on CHIP's EXPERT section | the named expert control in its units: percent, DAC ratio `R`, voice-DAC DC units `DC`, Hz, WEAK / MED / STRONG, or noise write-back tap count |
 | EDIT held + K1-K4, or a slot's section on CHIP | the slot and its control in the algorithm's own word: `DIST DRIVE`, `MOD DEPTH` (0-127) |
 | MASTER | VOLUME (0-15) |
 | ALGORITHM on CHIP | the profile (`PROFILE`, its name), or a slot's algorithm (`DIST`, `OVERDRIVE`) |
@@ -231,11 +232,11 @@ chip the keys play.
 | 16-21 | the other sections at 2×, a line each: DIST, MOD and FX with their algorithms (OFF dark grey); with a slot in focus, the chip's model and profile and the other two slots |
 | 27-28 | the tab's note (SONG SETUP  SLOTS SHARED, FOLLOWS KEYS  SLOTS SHARED, SLOTS SHARED WITH CHIP A; nothing on chip A with no song) and the help line: SELECT MOVE ALGORITHM STEP |
 
-The focus is on the tabs, on the chip or on a slot; the yellow tab (or title) shows it.
+The focus is on the tabs, the chip, a slot or EXPERT; the yellow tab (or title) shows it.
 
 | Control | On the tabs | On the chip | On a slot |
 |---|---|---|---|
-| SELECT | moves the focus: the tabs, CHIP, DIST, MOD, FX (it stops at either end) | the same | the same |
+| SELECT | moves the focus: the tabs, CHIP, DIST, MOD, FX, EXPERT (it stops at either end) | the same | the same |
 | ALGORITHM | the B tab clockwise, the A tab counter-clockwise | the next profile clockwise, the one before counter-clockwise: the five built-in ones, then USER 1..8 (it stops at either end) | the slot's next algorithm clockwise, the one before counter-clockwise (it stops at OFF and at the last) |
 | EDIT held + ALGORITHM | | steps the **save target**: USER 1..8, or OFF (below) | |
 | K1 / K2 / K3 / K4 | as on the chip | age / DAC sloppiness / output thump / filter bleed (32 detents end to end) | the slot's Amount / A / B / Mix (32 detents end to end) |
@@ -252,7 +253,36 @@ for MIDI learn, which picks the parameter K1..K4 turn on the page: AGE for K1 on
 and HOME back to the menu. A change
 from MIDI shows on the page at the next frame.
 
-**USER profiles.** A USER profile is a base profile and the four character controls,
+**EXPERT.** One SELECT stop after FX opens four pages of independent controls; ALGORITHM
+steps pages, clamped at either end. K1 and K2 are the upper pair, K3 and K4 the lower pair,
+each explicitly tagged in its physical knob's colour. Names are at 2×; values, including
+their units, are at 2× or 3×. Empty positions on the last page do nothing. Each detent moves
+one raw step out of 127; the popup names the parameter, shows its value in units and keeps
+the knob's colour. EDIT + K1..K4 still turns the selected effect slot.
+
+| Page | K1 | K2 | K3 | K4 |
+|---|---|---|---|---|
+| 1/4 | 6581 curve | 6581 range | 8580 curve | nonlinearity |
+| 2/4 | filter bias | filter bleed | DAC kink | DAC leakage |
+| 3/4 | combined waveform strength | noise write-back | output thump | external low-pass corner |
+| 4/4 | external high-pass corner | voice DC offset | unused | unused |
+
+Curve and range are normalized percentages of the model's setting coordinates, not Hz.
+Nonlinearity shows 100% for a factor of one; bleed and leakage show fractions as percentages.
+`R` is the DAC's 2R/R ladder ratio; `DC` is a voice-DAC unit, not volts. External corners show
+Hz. Combined strength uses three bands of the raw range (WEAK, MED, STRONG); noise write-back
+shows OFF or the number of connected taps (1 TAP through 8 TAPS). Model-specific controls
+remain named on both models; an inapplicable control is grey and says **N/A** on the page.
+Its popup also says **N/A**.
+
+Expert edits stay until a related macro moves: AGE releases the two curves, range and
+nonlinearity; DAC releases kink and leakage; THUMP releases output thump; BLEED releases filter
+bleed. Other independent settings stay. A new base profile releases all expert overrides.
+The page reminds: **MACRO MOVES RESET ITS OVERRIDES**. During a song the A tab edits the song's
+expert setup, not the keys'; its knobs cannot be MIDI-learned. B edits the keys' setup.
+
+**USER profiles.** A USER profile is a base profile, the four character controls and the
+expert overrides (including values that follow the profile/macros),
 stored by name USER 1..8 ([format](profile-format.md)). The picker (ALGORITHM on the chip)
 runs the five built-in profiles, then the slots that hold one; an empty slot is skipped, and
 a step that finds only empty ones to its end stays where it is and says which: **USER 4
@@ -261,10 +291,10 @@ slice a tick, then swapped in; its four controls glide), and the choice's profil
 until another profile or the model (FX) is chosen. CC 85 reaches them too, above the
 built-in ones (values 5..12; an empty slot does nothing).
 
-To store the sound: with the focus on the chip, **EDIT held + ALGORITHM** steps a **save
+To store the sound: with the focus on the chip or EXPERT, **EDIT held + ALGORITHM** steps a **save
 target** through USER 1..8 and OFF without changing the chip, shown in yellow under the choice
-(**SAVE TO USER 3**); the target clears when the focus leaves the chip or the view
-closes. **SAVE** then stores the tab's base profile and four controls into the target, or,
+(**SAVE TO USER 3**); the target clears on the A/B tabs, an effect slot, or when the view
+closes. **SAVE** then stores the tab's base profile, four controls and expert overrides into the target, or,
 with no target, back into the USER slot the tab was picked from; with neither it saves the
 settings, as elsewhere ([SAVE](#save)). A slot that holds a profile asks first
 (**OVERWRITE USER 3?**): SAVE again stores, HOME keeps it. The toast **SAVED TO USER 3** comes

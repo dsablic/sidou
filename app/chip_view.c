@@ -154,7 +154,7 @@ static void big(canvas* c, uint32_t col, uint32_t row, uint32_t scale, const cha
 /* ---- what it shows ---- */
 
 static uint32_t profile_of(const live* l) {
-    return live_param_get(l, LIVE_PARAM_PROFILE);
+    return l->profile_req;
 }
 
 int chip_view_song_tab(const chip_view* cv) {
@@ -191,6 +191,154 @@ static void shown(const chip_view* cv, chip_setup* s, uint8_t* model) {
     *model = (uint8_t)l->model_req;
 }
 
+const char* chip_view_expert_name(uint32_t index) {
+    static const char* const NAMES[] = {
+        "6581 CURVE", "6581 RANGE", "8580 CURVE", "NONLINEARITY", "FILTER BIAS",
+        "FILTER BLEED", "DAC KINK", "DAC LEAKAGE", "COMBINED", "NOISE WRITE",
+        "OUTPUT THUMP", "EXTERNAL LP", "EXTERNAL HP", "VOICE DC"
+    };
+    _Static_assert(sizeof NAMES / sizeof NAMES[0] == SID_EXPERT_COUNT, "every expert has a popup name");
+    return index < SID_EXPERT_COUNT ? NAMES[index] : "";
+}
+
+static uint32_t expert_number(char* out, uint32_t value) {
+    char reverse[10];
+    uint32_t n = 0;
+    do {
+        reverse[n++] = (char)('0' + value % 10u);
+        value /= 10u;
+    } while (value);
+    for (uint32_t i = 0; i < n; i++) {
+        out[i] = reverse[n - 1u - i];
+    }
+    return n;
+}
+
+static void expert_copy(char* out, const char* value) {
+    uint32_t n = 0;
+    for (; n < SCREEN_POPUP_CHARS && value[n]; n++) {
+        out[n] = value[n];
+    }
+    out[n] = 0;
+}
+
+__attribute__((noinline, unused)) static void format_expert(uint32_t index, uint32_t value,
+                                                          float physical, char* out) {
+    const char* unit = "%";
+    int decimals = 0;
+    if (index >= SID_EXPERT_COUNT) {
+        out[0] = 0;
+        return;
+    }
+    if (value > SID_CHARACTER_MAX) {
+        value = SID_CHARACTER_MAX;
+    }
+    if (index == SID_EXPERT_NOISE_WRITEBACK) {
+        uint32_t taps = (value * 8u + 126u) / 127u;
+        if (!taps) {
+            expert_copy(out, "OFF");
+        } else {
+            uint32_t n = expert_number(out, taps);
+            expert_copy(out + n, taps == 1u ? " TAP" : " TAPS");
+        }
+        return;
+    }
+    float scale = 100.0f;
+    switch (index) {
+    case SID_EXPERT_COMBINED: {
+        static const char* const CHOICES[3] = {"WEAK", "MED", "STRONG"};
+        const char* choice = CHOICES[(uint32_t)physical];
+        expert_copy(out, choice);
+        return;
+    }
+    case SID_EXPERT_FILTER_BIAS:
+    case SID_EXPERT_THUMP:
+    case SID_EXPERT_VOICE_DC:
+        decimals = 1;
+        unit = "DC";
+        break;
+    case SID_EXPERT_DAC_KINK:
+        decimals = 1;
+        unit = "R";
+        break;
+    case SID_EXPERT_DAC_LEAKAGE:
+        scale = 10000.0f;
+        decimals = 1;
+        break;
+    case SID_EXPERT_EXTERNAL_LP:
+    case SID_EXPERT_EXTERNAL_HP:
+        scale = 1.0f;
+        unit = "HZ";
+        break;
+    default: break;
+    }
+    uint32_t scaled = (uint32_t)(physical * scale + 0.5f);
+    uint32_t n = expert_number(out, decimals ? scaled / 100u : scaled);
+    if (decimals) {
+        out[n++] = '.';
+        out[n++] = (char)('0' + scaled / 10u % 10u);
+        out[n++] = (char)('0' + scaled % 10u);
+    }
+    for (; *unit; unit++) {
+        out[n++] = *unit;
+    }
+    out[n] = 0;
+}
+
+void chip_view_expert_text(uint32_t index, uint32_t value, char* out) {
+    if (index >= SID_EXPERT_COUNT) {
+        out[0] = 0;
+        return;
+    }
+    if (value > SID_CHARACTER_MAX) {
+        value = SID_CHARACTER_MAX;
+    }
+    sid_character c;
+    sid_character_init(&c);
+    sid_character_expert_set(&c, SID_MODEL_6581, index, value);
+    format_expert(index, value, sid_character_expert_value(&c, SID_MODEL_6581, index), out);
+}
+
+void chip_view_expert_setup_text(const chip_setup* setup, uint32_t index, char* out) {
+    if (index >= SID_EXPERT_COUNT) {
+        out[0] = 0;
+        return;
+    }
+    const sid_chip_profile* p = sid_chip_profile_get(setup->profile);
+    sid_model model = p ? (sid_model)p->model : SID_MODEL_6581;
+    sid_character c;
+    sid_character_init(&c);
+    c.profile = (uint8_t)(setup->profile + 1u);
+    c.age = setup->controls[0];
+    c.dac = setup->controls[1];
+    c.thump = setup->controls[2];
+    c.bleed = setup->controls[3];
+    sid_character_expert_set(&c, model, index, setup->expert[index]);
+    uint32_t raw = index == SID_EXPERT_NOISE_WRITEBACK ? sid_character_expert_get(&c, model, index) : 0u;
+    format_expert(index, raw, sid_character_expert_value(&c, model, index), out);
+}
+
+uint32_t chip_view_expert_value(const chip_view* cv, uint32_t index) {
+    if (!chip_view_song_tab(cv)) {
+        return index < SID_EXPERT_COUNT ? live_param_get(cv->l, LIVE_PARAM_EXPERT + index)
+                                        : SID_EXPERT_DEFAULT;
+    }
+    const chip_setup* s = &cv->kr->song_want;
+    const sid_chip_profile* p = sid_chip_profile_get(s->profile);
+    sid_model model = p ? (sid_model)p->model : SID_MODEL_6581;
+    sid_character c;
+    sid_character_init(&c);
+    c.profile = (uint8_t)(s->profile + 1u);
+    c.age = s->controls[0];
+    c.dac = s->controls[1];
+    c.thump = s->controls[2];
+    c.bleed = s->controls[3];
+    if (index < SID_EXPERT_COUNT) {
+        sid_character_expert_set(&c, model, index, s->expert[index]);
+    }
+    return sid_character_expert_get(&c, model, index);
+}
+
 /* What the note under the tabs says: 0 nothing, 1 the song's setup, 2 chip B following the
  * keys, 3 chip B the keys'. */
 static uint8_t help_kind(const chip_view* cv) {
@@ -206,21 +354,32 @@ static uint8_t help_kind(const chip_view* cv) {
 static void look(const chip_view* cv, uint8_t out[CHIP_VIEW_LOOK]) {
     const live* l = cv->l;
     uint32_t n = 0;
-    chip_setup s;
-    uint8_t model;
-    shown(cv, &s, &model);
-    out[n++] = s.profile;
-    out[n++] = model;
+    int song = chip_view_song_tab(cv);
+    uint8_t profile = song ? cv->kr->song_want.profile : l->profile_req;
+    const uint8_t* character = song ? cv->kr->song_want.controls : l->character;
+    const uint8_t* experts = song ? cv->kr->song_want.expert : l->expert;
+    const sid_chip_profile* p = song ? sid_chip_profile_get(profile) : NULL;
+    out[n++] = profile;
+    out[n++] = song ? (p ? p->model : (uint8_t)SID_MODEL_6581) : (uint8_t)l->model_req;
     for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; f++) {
-        out[n++] = s.controls[f];
+        out[n++] = character[f];
     }
     for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
         for (uint32_t f = 0; f < LIVE_SLOT_FIELDS; f++) {
             out[n++] = l->slot[k][f];
         }
     }
+    if (cv->expert) {
+        /* The four visible values reuse slot bytes; the normal page's fingerprint stays small. */
+        for (uint32_t i = 0; i < 4u; i++) {
+            uint32_t index = cv->expert_page * 4u + i;
+            out[2u + LIVE_CHAR_FIELDS - 1u + i] =
+                index < SID_EXPERT_COUNT ? experts[index] : SID_EXPERT_DEFAULT;
+        }
+    }
     out[n++] = l->fx_select;
-    out[n++] = (uint8_t)(cv->chip | cv->tab << 1 | cv->tabs << 2);
+    out[n++] = (uint8_t)(cv->chip | cv->tab << 1 | cv->tabs << 2 |
+                         cv->expert << 3 | cv->expert_page << 4);
     out[n++] = l->two_chips ? (uint8_t)(1u + l->keys_chip) : 0u;
     out[n++] = help_kind(cv);
     out[n++] = (uint8_t)(applied(cv) | cv->target << 4);
@@ -241,7 +400,7 @@ static int looks_changed(const chip_view* cv) {
 
 /* The section in focus: 0 the chip, 1.. the slots. */
 static uint32_t section(const chip_view* cv) {
-    return cv->chip ? 0u : 1u + cv->l->fx_select % LIVE_SLOTS;
+    return cv->chip ? 0u : cv->expert ? CHIP_VIEW_EXPERT : 1u + cv->l->fx_select % LIVE_SLOTS;
 }
 
 /* The profile as the choice's second word, at most 5 characters: the name without the model
@@ -274,6 +433,11 @@ static void profile_word(const chip_view* cv, const char* name, char out[6]) {
 /* The tab row: the sections across the width, the focused one yellow; with the focus on the tabs
  * the CHIP section (whose controls K1..K4 turn) is marked in grey instead. */
 static void draw_tabs(const chip_view* cv, canvas* c, const theme* th) {
+    if (cv->expert) {
+        fill(c, 0, CHIP_VIEW_TAB_ROW, GRID_COLS, 1, ' ', GRID_ATTR(th->bg, th->hot));
+        text(c, 12, CHIP_VIEW_TAB_ROW, "EXPERT", GRID_ATTR(th->bg, th->hot));
+        return;
+    }
     uint32_t sec = section(cv);
     for (uint32_t i = 0; i < CHIP_VIEW_SECTIONS; i++) {
         uint8_t a = !cv->tabs && sec == i  ? GRID_ATTR(th->bg, th->hot)
@@ -325,7 +489,7 @@ static void draw_control(canvas* c, const theme* th, uint32_t k, const char* nam
 static void draw_names(const chip_view* cv, canvas* c, const theme* th) {
     const live* l = cv->l;
     uint8_t dim = THEME_ATTR(th, dim);
-    if (cv->chip) {
+    if (cv->chip || cv->expert) {
         if (cv->target) {
             char title[20] = "SAVE TO USER n";
             title[13] = (char)('0' + cv->target);
@@ -333,6 +497,8 @@ static void draw_names(const chip_view* cv, canvas* c, const theme* th) {
             if (!(l->user_valid >> (cv->target - 1u) & 1u)) {
                 text(c, k, CHIP_VIEW_NAMES_ROW, " -", THEME_ATTR(th, hot));
             }
+        } else if (cv->expert) {
+            text(c, 0, CHIP_VIEW_NAMES_ROW, "DIRECT K1-K4   ALGORITHM PAGE", dim);
         } else {
             text(c, 0, CHIP_VIEW_NAMES_ROW, "MODEL", dim);
             text(c, PROFILE_COL, CHIP_VIEW_NAMES_ROW, "PROFILE", dim);
@@ -340,6 +506,46 @@ static void draw_names(const chip_view* cv, canvas* c, const theme* th) {
     } else {
         text(c, 0, CHIP_VIEW_NAMES_ROW, "ALGORITHM", dim);
     }
+}
+
+__attribute__((noinline, unused)) static void draw_expert(chip_view* cv, canvas* c,
+                                                        const theme* th, sid_model model,
+                                                        const chip_setup* setup) {
+    static const char* const LABEL[] = {
+        "81CURVE", "81RANGE", "80CURVE", "NONLIN", "BIAS", "BLEED", "KINK", "LEAK",
+        "COMB", "NOISE", "THUMP", "EXT LP", "EXT HP", "VOICEDC"
+    };
+    _Static_assert(sizeof LABEL / sizeof LABEL[0] == SID_EXPERT_COUNT, "every expert has a page label");
+    char title[] = "EXPERT 1/4";
+    title[7] = (char)('1' + cv->expert_page);
+    title[9] = (char)('0' + CHIP_VIEW_EXPERT_PAGES);
+    big(c, 0, CHIP_VIEW_CHOICE_ROW, 3, title, THEME_ATTR(th, hot));
+    for (uint32_t k = 0; k < 4u; k++) {
+        uint32_t index = cv->expert_page * 4u + k;
+        if (index >= SID_EXPERT_COUNT) {
+            continue;
+        }
+        uint32_t col = k % 2u * 15u;
+        uint32_t row = 9u + k / 2u * 8u;
+        int active = sid_character_expert_active(model, index);
+        uint8_t accent = GRID_ATTR(active ? th->knob[k] : th->dim, th->bg);
+        char tag[] = "K1";
+        tag[1] = (char)('1' + k);
+        text(c, col, row - 1u, tag, accent);
+        big(c, col, row, 2, LABEL[index], accent);
+        char value[16];
+        if (active) {
+            chip_view_expert_setup_text(setup, index, value);
+        } else {
+            value[0] = 'N';
+            value[1] = '/';
+            value[2] = 'A';
+            value[3] = 0;
+        }
+        uint32_t scale = length(value) <= 4u ? 3u : 2u;
+        big(c, col, row + 3u, scale, value, GRID_ATTR(active ? th->value : th->dim, th->bg));
+    }
+    text(c, 0, 25, "MACRO MOVES RESET ITS OVERRIDES", THEME_ATTR(th, label));
 }
 
 /* The whole page into the canvas, and what it shows remembered. */
@@ -364,7 +570,9 @@ static void build(chip_view* cv) {
     }
     draw_tabs(cv, c, th);
     draw_names(cv, c, th);
-    if (sec == 0u) {
+    if (cv->expert) {
+        draw_expert(cv, c, th, (sid_model)model, &s);
+    } else if (sec == 0u) {
         const sid_chip_profile* p = sid_chip_profile_get(s.profile);
         big(c, 0, CHIP_VIEW_CHOICE_ROW, 3, model == SID_MODEL_8580 ? "8580" : "6581",
             THEME_ATTR(th, value));
@@ -390,7 +598,7 @@ static void build(chip_view* cv) {
     }
     /* The other sections, one line each at 2x: the chip's model and profile, the slots' algorithms. */
     uint32_t line = 0;
-    for (uint32_t i = 0; i < CHIP_VIEW_SECTIONS; i++) {
+    for (uint32_t i = 0; !cv->expert && i < CHIP_VIEW_SECTIONS; i++) {
         if (i == sec) {
             continue;
         }
@@ -422,7 +630,8 @@ static void build(chip_view* cv) {
     static const char* const NOTE[4] = {"", "SONG SETUP  SLOTS SHARED", "FOLLOWS KEYS  SLOTS SHARED",
                                         "SLOTS SHARED WITH CHIP A"};
     text(c, 0, CHIP_VIEW_NOTE_ROW, NOTE[help_kind(cv)], THEME_ATTR(th, label));
-    text(c, 0, CHIP_VIEW_HELP_ROW, "SELECT MOVE ALGORITHM STEP", THEME_ATTR(th, dim));
+    text(c, 0, CHIP_VIEW_HELP_ROW,
+         cv->expert ? "SELECT MOVE ALGORITHM PAGE" : "SELECT MOVE ALGORITHM STEP", THEME_ATTR(th, dim));
     cv->built = 1;
     cv->copying = 1;
 }
@@ -435,6 +644,8 @@ void chip_view_init(chip_view* cv, live* l) {
     cv->chip = 1;
     cv->tabs = 0;
     cv->tab = 0;
+    cv->expert = 0;
+    cv->expert_page = 0;
     cv->built = 0;
     cv->copying = 0;
     cv->cursor = 0;
@@ -454,7 +665,7 @@ void chip_view_set_keys(chip_view* cv, keys_route* kr) {
 }
 
 uint32_t chip_view_focus(const chip_view* cv) {
-    return cv->tabs ? CHIP_VIEW_TABS : cv->chip ? CHIP_VIEW_CHIP : 1u + cv->l->fx_select % LIVE_SLOTS;
+    return cv->tabs ? CHIP_VIEW_TABS : section(cv);
 }
 
 /* msg = a, the digit of USER slot n (1..8), b. */
@@ -490,7 +701,7 @@ __attribute__((noinline, unused)) static chip_view_save_result save_user(chip_vi
     chip_setup s;
     uint8_t model;
     shown(cv, &s, &model);
-    int done = user_profile_save(cv->users, slot, s.profile, s.controls, now_ms);
+    int done = user_profile_save(cv->users, slot, s.profile, s.controls, s.expert, now_ms);
     l->settings_dirty |= 2u; /* the views' frame ticks the write (app/views.c store_frame) */
     if (done) {
         message(cv, "SAVED TO USER ", slot1, "");
@@ -500,7 +711,7 @@ __attribute__((noinline, unused)) static chip_view_save_result save_user(chip_vi
 }
 
 chip_view_save_result chip_view_save(chip_view* cv, uint32_t now_ms) {
-    if (!cv->users || !cv->chip || cv->tabs) {
+    if (!cv->users || (!cv->chip && !cv->expert) || cv->tabs) {
         return CHIP_VIEW_SAVE_NONE;
     }
     return save_user(cv, now_ms);
@@ -508,6 +719,9 @@ chip_view_save_result chip_view_save(chip_view* cv, uint32_t now_ms) {
 
 uint32_t chip_view_page(const chip_view* cv) {
     if (!cv->chip) {
+        if (cv->expert) {
+            return chip_view_song_tab(cv) ? PANEL_PAGE_NONE : PANEL_PAGE_EXPERT_FIRST + cv->expert_page;
+        }
         return PANEL_PAGE_SLOT;
     }
     return chip_view_song_tab(cv) ? PANEL_PAGE_NONE : PANEL_PAGE_CHARACTER;
@@ -552,6 +766,7 @@ __attribute__((noinline, unused)) static void pick(screen* s, chip_view* cv, int
     int32_t last = (int32_t)(SID_CHIPS + LIVE_USER_PROFILES) - 1;
     uint32_t was = applied(cv);
     int32_t at = was ? (int32_t)(SID_CHIPS - 1u + was) : (int32_t)(song ? cv->kr->song_want.profile : profile_of(l));
+    int32_t original = at;
     int32_t dir = steps < 0 ? -1 : 1;
     for (int32_t n = steps < 0 ? -steps : steps; n > 0; n--) {
         int32_t k = at;
@@ -578,11 +793,17 @@ __attribute__((noinline, unused)) static void pick(screen* s, chip_view* cv, int
         }
         at = k;
     }
+    if (at == original) {
+        return;
+    }
     if (at < (int32_t)SID_CHIPS) {
         if (song) {
             chip_setup want = cv->kr->song_want;
+            if (want.profile != (uint32_t)at || was) {
+                memset(want.expert, SID_EXPERT_DEFAULT, sizeof want.expert);
+            }
             want.profile = (uint8_t)at;
-            if (keys_route_song_edit(cv->kr, &want, KEYS_ROUTE_EDIT_PROFILE)) {
+            if (keys_route_song_edit(cv->kr, &want, KEYS_ROUTE_EDIT_PROFILE | KEYS_ROUTE_EDIT_EXPERT)) {
                 cv->kr->song_user = 0;
             }
         } else {
@@ -595,12 +816,38 @@ __attribute__((noinline, unused)) static void pick(screen* s, chip_view* cv, int
         for (uint32_t f = 0; f + 1u < LIVE_CHAR_FIELDS; f++) {
             want.controls[f] = l->user_ctl[n][f];
         }
-        if (keys_route_song_edit(cv->kr, &want, KEYS_ROUTE_EDIT_PROFILE | KEYS_ROUTE_EDIT_CONTROLS)) {
+        memcpy(want.expert, l->user_expert[n], sizeof want.expert);
+        if (keys_route_song_edit(cv->kr, &want,
+                                 KEYS_ROUTE_EDIT_PROFILE | KEYS_ROUTE_EDIT_CONTROLS | KEYS_ROUTE_EDIT_EXPERT)) {
             cv->kr->song_user = (uint8_t)(n + 1u);
         }
     } else {
         live_param_set(l, LIVE_PARAM_PROFILE, (uint32_t)at);
     }
+}
+
+__attribute__((noinline, unused)) static int expert_knob(chip_view* cv, const screen_event* e) {
+    if ((e->held & (1u << PANEL_BTN_EDIT)) || !chip_view_song_tab(cv)) {
+        return 0;
+    }
+    uint32_t index = cv->expert_page * 4u + e->id - PANEL_ENC_K1;
+    if (index < SID_EXPERT_COUNT) {
+        chip_setup want = cv->kr->song_want;
+        int32_t d = e->steps > 127 ? 127 : e->steps < -127 ? -127 : e->steps;
+        want.expert[index] = (uint8_t)step_clamped(chip_view_expert_value(cv, index), d, 127u);
+        keys_route_song_edit(cv->kr, &want, 1u << (KEYS_ROUTE_EDIT_EXPERT_FIRST + index));
+    }
+    return 1;
+}
+
+__attribute__((noinline, unused)) static int song_knob(chip_view* cv, const screen_event* e) {
+    chip_setup want = cv->kr->song_want;
+    uint32_t f = e->id - PANEL_ENC_K1;
+    int32_t d = e->steps > 64 ? 64 : e->steps < -64 ? -64 : e->steps;
+    chip_setup_control(&want, f, (uint8_t)step_clamped(want.controls[f], d * PANEL_CHARACTER_DETENT,
+                                                     SID_CHARACTER_MAX));
+    keys_route_song_edit(cv->kr, &want, 1u << f);
+    return 1;
 }
 
 /* SELECT moves the focus (the tabs, the chip, the slots), ALGORITHM switches the tab, steps
@@ -614,14 +861,15 @@ static int input(screen* s, void* state, const screen_event* e) {
     }
     if (e->id == PANEL_ENC_SELECT) {
         /* 0 the tabs, 1 the chip, 2.. the slots */
-        uint32_t at = cv->tabs ? 0u : cv->chip ? 1u : 2u + l->fx_select % LIVE_SLOTS;
-        uint32_t f = step_clamped(at, e->steps, CHIP_VIEW_SECTIONS);
+        uint32_t at = cv->tabs ? 0u : 1u + section(cv);
+        uint32_t f = step_clamped(at, e->steps, CHIP_VIEW_EXPERT + 1u);
         cv->tabs = (uint8_t)(f == 0u);
         cv->chip = (uint8_t)(f <= 1u);
-        if (!cv->chip) {
+        cv->expert = (uint8_t)(f == CHIP_VIEW_EXPERT + 1u);
+        if (!cv->chip && !cv->expert) {
             live_fx_select(l, f - 2u);
         }
-        if ((cv->target | cv->confirm) && f != 1u) {
+        if ((cv->target | cv->confirm) && f != 1u && !cv->expert) {
             target_clear(cv);
         }
         return 1;
@@ -630,16 +878,13 @@ static int input(screen* s, void* state, const screen_event* e) {
         /* The panel turns them (the CHIP view's input is gated by its cost: emu-gate screen.rs
          * CHIP_INPUT), but on a song's chip A without EDIT: the song's controls, as
          * panel_encoder turns the keys', 4 a detent. */
-        if (!cv->chip || (e->held & (1u << PANEL_BTN_EDIT)) || !chip_view_song_tab(cv)) {
+        if (!cv->chip) {
+            return cv->expert ? expert_knob(cv, e) : 0;
+        }
+        if ((e->held & (1u << PANEL_BTN_EDIT)) || !chip_view_song_tab(cv)) {
             return 0;
         }
-        chip_setup want = cv->kr->song_want;
-        uint32_t f = e->id - PANEL_ENC_K1;
-        int32_t d = e->steps > 64 ? 64 : e->steps < -64 ? -64 : e->steps;
-        want.controls[f] = (uint8_t)step_clamped(want.controls[f], d * PANEL_CHARACTER_DETENT,
-                                                 SID_CHARACTER_MAX);
-        keys_route_song_edit(cv->kr, &want, 1u << f);
-        return 1;
+        return song_knob(cv, e);
     }
     if (e->id != PANEL_ENC_ALGORITHM) {
         return 0;
@@ -649,6 +894,15 @@ static int input(screen* s, void* state, const screen_event* e) {
         return 1;
     }
     if (!cv->chip) {
+        if (cv->expert) {
+            if (e->held & (1u << PANEL_BTN_EDIT)) {
+                target_step(cv, e->steps);
+            } else {
+                cv->expert_page = (uint8_t)step_clamped(cv->expert_page, e->steps,
+                                                       CHIP_VIEW_EXPERT_PAGES - 1u);
+            }
+            return 1;
+        }
         uint32_t k = l->fx_select % LIVE_SLOTS;
         live_slot_set(l, k, LIVE_SLOT_ALGORITHM,
                       (int32_t)step_clamped(l->slot[k][LIVE_SLOT_ALGORITHM], e->steps,
@@ -658,7 +912,11 @@ static int input(screen* s, void* state, const screen_event* e) {
     } else if (chip_view_song_tab(cv)) {
         pick(s, cv, e->steps);
     } else if (!l->user_applied && (int32_t)profile_of(l) + e->steps < (int32_t)SID_CHIPS) {
-        live_param_set(l, LIVE_PARAM_PROFILE, step_clamped(profile_of(l), e->steps, SID_CHIPS - 1u));
+        uint32_t before = profile_of(l);
+        uint32_t next = step_clamped(before, e->steps, SID_CHIPS - 1u);
+        if (next != before) {
+            live_param_set(l, LIVE_PARAM_PROFILE, next);
+        }
     } else {
         pick(s, cv, e->steps);
     }

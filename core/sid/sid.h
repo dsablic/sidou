@@ -17,6 +17,11 @@ extern "C" {
 
 #define SID_FC_STEPS 2048
 
+typedef struct {
+    float* cutoff;
+    float* res;
+} sid_filter_row;
+
 /* One SID chip. Fields are private to sid.c; the struct is public so callers can
  * allocate it statically. */
 typedef struct {
@@ -72,7 +77,18 @@ typedef struct {
      * the share of the unfiltered voices that also reaches the filter's input (a multiply and
      * an add per sample, in a copy of the render that runs only while it is not 0). */
     float thump, bleed;
+    float filter_bias;
+    sid_filter_row filter_rows[2];
+    uint32_t noise_wb[2][16];
+    uint8_t noise_writeback;
 } sid;
+
+/* Embedded backing, which may be leased by another chip after a stage swap. */
+static inline sid_filter_row sid_filter_backing(sid* s, uint32_t second) {
+    sid_filter_row row = {second ? s->cutoff_x_to : s->cutoff_g,
+                          second ? s->res_k_to : s->res_k};
+    return row;
+}
 
 /* The 6581's band-pass mix gain (sid.c: its filter outputs against its unfiltered voices). */
 #define SID_MIX_GAIN_BP 0.8125f
@@ -83,13 +99,17 @@ typedef struct {
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
-static inline float sid_blended_cutoff(const sid* s, uint32_t fc, float t) {
-    float g = s->cutoff_g[fc];
+static inline float sid_filter_cutoff(const sid_filter_row* rows, uint32_t fc, float t) {
+    float g = rows[0].cutoff[fc];
     if (t != 0.0f) {
         float x = sidou_atanf(g);
-        g = sidou_tanf_fast(x + t * (s->cutoff_x_to[fc] - x));
+        g = sidou_tanf_fast(x + t * (rows[1].cutoff[fc] - x));
     }
     return g;
+}
+
+static inline float sid_blended_cutoff(const sid* s, uint32_t fc, float t) {
+    return sid_filter_cutoff(s->filter_rows, fc, t);
 }
 
 /* The filter's coefficients from its tables at the chip's FC and resonance, filter_t of the
@@ -108,9 +128,9 @@ __attribute__((always_inline))
 #endif
 static inline void sid_update_filter(sid* s) {
     const float t = s->filter_t;
-    float g = sid_blended_cutoff(s, s->fc, t), k = s->res_k[s->res];
+    float g = sid_blended_cutoff(s, s->fc, t), k = s->filter_rows[0].res[s->res];
     if (t != 0.0f) {
-        k += t * (s->res_k_to[s->res] - k);
+        k += t * (s->filter_rows[1].res[s->res] - k);
     }
     if (s->model == SID_MODEL_6581) {
         sid_svf_set_6581(&s->svf, &s->nl, g, k, s->dc_in);
@@ -181,6 +201,8 @@ uint8_t sid_read(sid* s, uint8_t reg);
  * register writes are applied, through the register ring, never concurrently with
  * sid_render. */
 void sid_set_combined_profile(sid* s, int profile);
+/* Main-context table selection, shared with character-stage preparation. */
+const uint16_t (*sid_combined_table(sid_model model, uint32_t profile))[256];
 
 /* Gate reset, an option the real chip does not have: with it on, each gate edge restarts
  * the voice's envelope rate counter, so the attack (rising) or the release (falling) takes
@@ -233,12 +255,16 @@ void sid_filter_refresh(sid* s);
 /* The output gain sid_init sets for the chip's model (int16 per unit of the mix): what
  * sid_character scales for the thump's headroom. */
 float sid_base_output_gain(const sid* s);
+void sid_external_coefficients(uint32_t sample_rate, float lp_hz, float hp_hz,
+                               float* out_c, float* dc_r);
 
 /* The non-linearity sid_set_filter_nonlinearity would give the chip for an amount with its
  * filter blended t of the way (filter_t's, sid_set_filter_blend; the lowest cutoff follows
  * the blended cutoff at FC 0), without changing the chip: for code that applies it later
  * (sid_character_stage_for). */
 void sid_nonlin_for(const sid* s, float amount, float t, sid_nonlin* out);
+void sid_nonlin_for_rows(const sid* s, float amount, float t, const sid_filter_row* rows,
+                         sid_nonlin* out);
 
 /* Scales the 6581 filter's non-linearity (sid_filter.h, sid_nonlin): its cutoff's
  * rise with the swing in the threshold region, its fall under the DC load of the voices

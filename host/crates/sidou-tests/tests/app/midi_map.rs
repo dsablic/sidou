@@ -1089,8 +1089,9 @@ fn intro() -> String {
 edit. SIDOU_MIDI_DOC_UPDATE=1 regenerates it. -->
 # MIDI: the CC and NRPN map
 
-Every parameter of the live instrument has an NRPN (14-bit, full resolution), and all but
-the bend range and the three expression targets also a CC (7-bit). The map is fixed: the same numbers on every channel, on TRS and USB. Notes
+Every parameter of the live instrument has an NRPN (14-bit, full resolution). All except
+the bend range, three expression targets and expert layer also have a fixed CC (7-bit).
+MIDI learn can bind a CC to any expert knob. The map uses the same numbers on every channel, on TRS and USB. Notes
 play on every channel (omni) by default; MIDI's mode (Modes, below) can give the instrument
 one channel and chip A's voices channels of their own. Program change 0..{last} selects the
 preset (in bank 0, the power-on bank: Program change and banks, below). A program change
@@ -1162,7 +1163,20 @@ patch's value up or down around 64; SIDOU does not.
   output thump and filter bleed change the playing chip without a reset; they too go from
   the next tick, the last value received, and glide there so a jump does not click (age
   and thump 0 to 127 in 0.32 s, the bleed in 1.27 s, the DACs in 1.72 s). The profiles, their sources and
-  what each control does: docs/decisions/0006-chip-profiles.md.
+   what each control does: docs/decisions/0006-chip-profiles.md.
+- **Expert character (NRPN 2/5..18):** fourteen independent controls, each a raw value
+  0..127 mapped to the physical units in the table. Send CC 99 = 2, CC 98 = the LSB,
+  CC 6 = 0, then CC 38 = the value. They never reset the chip or interrupt a held note;
+  table builds run in slices and their stages swap at an audio block boundary.
+  A macro move releases only its related overrides (AGE: curves/range/non-linearity;
+  DAC: kink/leakage; THUMP and BLEED: their namesakes). Other experts stay edited.
+  Selecting a built-in profile/model releases all overrides; USER profiles recall theirs.
+  Outgoing MIDI sends the model/profile/macros before explicit expert overrides, and does
+  not emit derived expert NRPNs for a macro move: those would freeze the receiving macro's path.
+  USER schema 2 and settings schema 4 keep the override state, not a quantized copy of defaults.
+  The 6581/8580 curves apply to their named model; input bias, non-linearity and the
+  external low-pass are 6581-only. Inapplicable knobs are grey and say N/A on EXPERT and
+  in the value popup. Combined strength's AVERAGE band is labelled MED on the panel.
 - **Envelope mode:** 0 INSTANT (the default) restarts each voice's envelope rate counter at
   each gate edge, so a note's attack, and its release at the note-off, take their first
   step within one rate period and 3 chip cycles (12 cycles at attack 0). 1 AUTHENTIC is
@@ -1237,17 +1251,22 @@ jack, which is MIDI IN only.
 - **Channel:** 1 by default. Until M2 stores settings, the channel and the
   high-resolution option are build options (CMake `SIDOU_MIDI_OUT_CHANNEL`, 1..16, and
   `SIDOU_MIDI_OUT_NRPN`). The input follows MIDI's mode (Modes, below).
-- **No echo:** a change that came in over MIDI, from either port, is never sent back:
+- **No echo:** a MIDI-only change, from either port, is never sent back:
   the sender has it, and a DAW recording with MIDI thru on would otherwise loop. If
   MIDI changes a parameter after the panel did, and before the panel's change went out,
   MIDI's wins and nothing is sent. So TRS input is not passed on to USB: SIDOU is no
   MIDI thru, and only the panel's changes go out.
+  If an earlier local profile/macro is still pending when a remote expert edit arrives,
+  that expert is restored after the local message so the local release cannot erase it.
 - **Rate:** at the instrument's {hz} Hz tick, at most one message per parameter (its
   latest value) and {tick} packets in all a tick. A value that sends as the one last
   sent (or received), such as a pulse-width move within one CC step, sends nothing.
   What does not fit waits for the next tick, still as one latest value: nothing queues
   up. With no host (no cable, or the computer asleep) the changes are dropped, so a host
   that comes later gets none stale.
+  A cold expert snapshot or mixed macro/expert restoration uses half the packet limit
+  for that tick, keeping input handling inside the same instruction budget. Later ticks
+  continue with the latest values; no obsolete intermediate edits are queued.
 - **Limit:** a parameter the preset loads (not the volume, the chip model, the effect
   slots or a bend range set by RPN 0) that the panel also changes in the same tick as the
   preset counts as loaded by it and is not sent.
@@ -1592,14 +1611,13 @@ fn the_rows_without_a_cc_are_the_ones_the_reference_names() {
         .map(|r| u32::from(r.param))
         .collect();
     no_cc.sort_unstable();
-    assert_eq!(
-        no_cc,
-        [
-            LIVE_PARAM_BEND_RANGE,
-            LIVE_PARAM_VELOCITY_TARGET,
-            LIVE_PARAM_MOD_TARGET,
-            LIVE_PARAM_PRESSURE_TARGET
-        ]
-    );
-    assert!(intro().contains("all but\nthe bend range and the three expression targets"));
+    let mut expected = vec![
+        LIVE_PARAM_BEND_RANGE,
+        LIVE_PARAM_VELOCITY_TARGET,
+        LIVE_PARAM_MOD_TARGET,
+        LIVE_PARAM_PRESSURE_TARGET,
+    ];
+    expected.extend(LIVE_PARAM_EXPERT..LIVE_PARAM_EXPERT + SID_EXPERT_COUNT);
+    assert_eq!(no_cc, expected);
+    assert!(intro().contains("expert layer also have a fixed CC"));
 }

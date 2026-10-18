@@ -80,6 +80,7 @@ void sid_dac_job_start(sid_dac_job* j, sid_dac* d, int is6581, float kink, float
     j->kink = kink;
     j->leakage = leakage;
     j->zero = 0.0f;
+    j->voice_dc = is6581 ? VOICE_DC_6581 : 0.0f;
     j->is6581 = (uint8_t)(is6581 != 0);
     j->step = 0;
 }
@@ -107,7 +108,7 @@ int sid_dac_job_step(sid_dac_job* j) {
         /* Saturated (the 6581), twice reSIDfp's scale, the voice DC added (riding on the
          * envelope DAC). */
         const float zero = j->zero;
-        const float dc = is6581 ? VOICE_DC_6581 : 0.0f;
+        const float dc = j->voice_dc;
         uint32_t from = (j->step - 1u) * FINISH_SHARE;
         uint32_t to = from + FINISH_SHARE < 4096u ? from + FINISH_SHARE : 4096u;
         for (uint32_t i = from; i < to; ++i) {

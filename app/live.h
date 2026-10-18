@@ -59,6 +59,8 @@ extern "C" {
 #define LIVE_REG_CHAR_FIRST 0x82u
 #define LIVE_REG_CHAR(field) (LIVE_REG_CHAR_FIRST + (field))
 #define LIVE_REG_CHAR_TICK 0x87u
+#define LIVE_REG_EXPERT_FIRST 0x90u
+#define LIVE_REG_EXPERT(field) (LIVE_REG_EXPERT_FIRST + (field))
 
 #define LIVE_OCTAVE_MIN (-3)
 #define LIVE_OCTAVE_MAX 3
@@ -371,6 +373,12 @@ typedef struct {
     /* The screens' theme (app/theme.h THEME_*; the menu's THEME, persisted). Not an
      * instrument setting: it is here for every view to reach through its `live`. At the end. */
     uint8_t theme;
+    uint8_t expert[SID_EXPERT_COUNT];
+    uint8_t expert_sent[SID_EXPERT_COUNT];
+    uint8_t user_expert[LIVE_USER_PROFILES][SID_EXPERT_COUNT];
+    uint8_t expert_dirty;
+    uint8_t expert_active;
+    uint32_t expert_version; /* raw expert changes, including transitions to macro-following */
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */
@@ -424,13 +432,15 @@ typedef enum {
     LIVE_PARAM_DAC = 39,
     LIVE_PARAM_THUMP = 40,
     LIVE_PARAM_BLEED = 41,
-    LIVE_PARAM_COUNT = 42
+    LIVE_PARAM_EXPERT = 42,
+    LIVE_PARAM_COUNT = LIVE_PARAM_EXPERT + SID_EXPERT_COUNT
 } live_param;
 
 /* One past the last slot parameter, i.e. LIVE_PARAM_BEND_RANGE (live.c asserts it). A macro,
  * not an enumerator: the enum gives each value one name, so a switch over live_param cannot
  * meet the same value under two case labels. */
 #define LIVE_PARAM_SLOT_END (LIVE_PARAM_SLOT + LIVE_SLOTS * LIVE_SLOT_FIELDS)
+#define LIVE_PARAM_EXPERT_END (LIVE_PARAM_EXPERT + SID_EXPERT_COUNT)
 
 /* Preset 0, octave 0, full volume, every effect slot off, the envelope instant, the model's
  * default profile (6581 R4AR, 8580 R5) and every character control at 0. Sends the
@@ -501,6 +511,11 @@ uint32_t live_param_get(const live* l, uint32_t param);
 /* Every parameter's value at once, out[p] as live_param_get(l, p): straight-line, for MIDI out,
  * which compares them all several times a tick. */
 void live_params(const live* l, uint16_t out[LIVE_PARAM_COUNT]);
+/* The original parameter prefix only, without resolving or copying the expert layer. */
+void live_params_base(const live* l, uint16_t out[LIVE_PARAM_EXPERT]);
+/* MIDI snapshots keep 255 for macro-following experts: the macro carries that change,
+ * so it must not also emit a burst of independent NRPN edits that would freeze its path. */
+void live_params_wire(const live* l, uint16_t out[LIVE_PARAM_COUNT]);
 /* RPN 0, pitch-bend sensitivity: sets the bend range (clamped to 0..LIVE_BEND_RANGE_MAX) as
  * the channel's setting, which program changes keep (RP-015 makes RPN values channel state)
  * until power-off. Setting LIVE_PARAM_BEND_RANGE (NRPN 6/0) is a preset edit and ends that:
