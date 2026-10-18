@@ -192,7 +192,7 @@ pub fn specs() -> Vec<Spec> {
         false,
     );
     // EDIT held: the DIST slot at OVERDRIVE (ENV twice: TAPE, OVERDRIVE).
-    let od = "press ENV; press ENV";
+    let od = "press ENV; press ENV; holdturn EDIT K4 32";
     add(
         "K1.edit",
         "K1",
@@ -269,6 +269,7 @@ pub fn specs() -> Vec<Spec> {
 
 #[derive(Clone, Debug)]
 pub struct Sweep {
+    pub skipped: bool,
     pub spec: Spec,
     /// Raw value at each detent, from the bottom.
     pub raw: Vec<f64>,
@@ -285,6 +286,15 @@ pub struct Sweep {
 }
 
 const WINDOW_MS: u64 = 47;
+
+fn control_used(param: P, algorithm: u8) -> bool {
+    if let P::Slot(slot, field) = param {
+        let mut label = [0; 16];
+        unsafe { sidou_sys::chip_view_label(slot as u32, u32::from(algorithm), field as u32, label.as_mut_ptr()) != 0 }
+    } else {
+        true
+    }
+}
 
 fn window(d: &mut Dev, audio: bool) -> (f64, f64, Vec<f32>) {
     if !audio {
@@ -310,6 +320,7 @@ pub fn run_sweep(build: &Path, spec: &Spec) -> Sweep {
         d.run(30);
     }
     let mut sw = Sweep {
+        skipped: false,
         spec: spec.clone(),
         raw: Vec::new(),
         phys: Vec::new(),
@@ -320,6 +331,12 @@ pub fn run_sweep(build: &Path, spec: &Spec) -> Sweep {
         detents: None,
         initial: 0.0,
     };
+    if let P::Slot(slot, _) = spec.param {
+        if !control_used(spec.param, d.params().slot[slot][0]) {
+            sw.skipped = true;
+            return sw;
+        }
+    }
     let read = |d: &mut Dev| {
         let p = d.params();
         (spec.param.raw(&p), p.model)
@@ -515,7 +532,7 @@ pub fn stats(s: &Sweep, cfg: &Config) -> SweepStats {
             };
             let moved = s.raw[j] != s.raw[j + n];
             if moved
-                && dc < cfg.jnd_centroid_pct
+                && dc < cfg.dead_zone_centroid_pct
                 && dr < cfg.jnd_level_db
                 && ds < cfg.jnd_spectral_db
             {
@@ -538,9 +555,10 @@ pub fn stats(s: &Sweep, cfg: &Config) -> SweepStats {
             }
         }
         if best > 0 {
-            out.dead_zone = best + n;
+            out.dead_zone = best + n - 1;
             out.dead_zone_at = best_at;
-            out.dead_zone_share = (best + n) as f64 / s.centroid.len() as f64;
+            out.dead_zone_share =
+                out.dead_zone as f64 / s.raw.len().saturating_sub(1).max(1) as f64;
         }
     }
     out
@@ -633,6 +651,10 @@ pub struct KnobResult {
 
 /// Judges a sweep: pure over the measured series (unit-tested with synthetic ones).
 pub fn judge(s: &Sweep, cfg: &Config, out: &Path) -> (Vec<Finding>, Vec<Metric>, Value) {
+    if s.skipped {
+        return (Vec::new(), Vec::new(), json!({"id": s.spec.id, "skipped": true,
+            "reason": "algorithm does not use this control"}));
+    }
     let st = stats(s, cfg);
     let id = &s.spec.id;
     let label = format!(
@@ -714,7 +736,7 @@ pub fn judge(s: &Sweep, cfg: &Config, out: &Path) -> (Vec<Finding>, Vec<Metric>,
                 format!("{label}: a dead zone of {} {word} ({:.0}% of the travel)", st.dead_zone, 100.0 * st.dead_zone_share),
                 format!(
                     "No run of {} detents leaves both brightness (under {}%) and level (under {} dB) unchanged.",
-                    cfg.dead_zone_detents, cfg.jnd_centroid_pct, cfg.jnd_level_db
+                    cfg.dead_zone_detents, cfg.dead_zone_centroid_pct, cfg.jnd_level_db
                 ),
                 format!("From {word} {} to {} the parameter moves and the sound does not.", st.dead_zone_at, st.dead_zone_at + st.dead_zone),
             ));
@@ -818,6 +840,7 @@ fn series_json(s: &Sweep) -> Value {
         "id": s.spec.id, "control": s.spec.control, "view": s.spec.view,
         "parameter": s.spec.param.name(), "unit": s.spec.param.unit().name(),
         "detents": s.detents, "initial": s.initial,
+        "skipped": s.skipped,
         "raw": s.raw, "physical": s.phys, "centroid_hz": s.centroid, "rms_dbfs": s.rms,
     })
 }
@@ -856,6 +879,42 @@ pub fn run_all(build: &Path, cfg: &Config, out: &Path, only: Option<&str>) -> Kn
 mod tests {
     use super::*;
 
+    #[test]
+    fn one_four_detent_window_is_not_a_five_detent_dead_zone() {
+        let raw: Vec<_> = (0..10).map(f64::from).collect();
+        let centroid = vec![
+            500.0, 1000.0, 1010.0, 1020.0, 1030.0, 1040.0, 2000.0, 3000.0, 4000.0, 5000.0,
+        ];
+        let s = sweep(P::Slot(0, 1), raw.clone(), raw, centroid, vec![-20.0; 10]);
+        assert_eq!(stats(&s, &Config::default()).dead_zone, 4);
+        assert!(!judge(&s, &Config::default(), Path::new("/nonexistent"))
+            .0
+            .iter()
+            .any(|f| f.id == "KNOB.dead.T"));
+    }
+
+    #[test]
+    fn edit_sweeps_are_wet_and_unused_controls_are_skipped() {
+        for s in specs().iter().filter(|s| ["K1.edit", "K2.edit", "K3.edit"].contains(&s.id.as_str())) {
+            assert!(s.setup.contains("holdturn EDIT K4 32"));
+        }
+        assert!(!control_used(P::Slot(0, 2), 1));
+        assert!(control_used(P::Slot(0, 2), 2));
+        let mut s = sweep(P::Slot(0, 2), vec![0.0], vec![0.0], vec![], vec![]);
+        s.skipped = true;
+        let (findings, metrics, row) = judge(&s, &Config::default(), Path::new("/nonexistent"));
+        assert!(findings.is_empty() && metrics.is_empty());
+        assert_eq!(row["skipped"], true);
+    }
+
+    #[test]
+    fn centroid_jitter_below_eight_percent_is_a_dead_zone() {
+        let raw: Vec<_> = (0..20).map(f64::from).collect();
+        let centroid = (0..20).map(|i| if i % 8 < 4 { 1000.0 } else { 1060.0 }).collect();
+        let s = sweep(P::Slot(0, 1), raw.clone(), raw, centroid, vec![-20.0; 20]);
+        assert!(stats(&s, &Config::default()).dead_zone >= 16);
+    }
+
     fn spec(param: P, audio: bool) -> Spec {
         Spec {
             id: "T".into(),
@@ -874,6 +933,7 @@ mod tests {
         let n = raw.len();
         let initial = raw[n / 2];
         Sweep {
+            skipped: false,
             initial,
             spec: spec(param, !centroid.is_empty()),
             raw,

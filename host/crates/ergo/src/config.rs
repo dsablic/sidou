@@ -37,6 +37,8 @@ pub struct Config {
     /// Brightness (spectral centroid) JND, percent of the centroid. Judgement: published
     /// timbre-discrimination thresholds are a few percent; 5% is used (about 85 cents).
     pub jnd_centroid_pct: f64,
+    /// Brightness noise floor for dead zones (fixed-note captures jitter about 6%).
+    pub dead_zone_centroid_pct: f64,
     /// Timbre JND: the RMS difference of two log spectra (metrics::spectral_distance_db), dB.
     /// Judgement: centroid and level miss changes of tone (pulse width, a distortion's tone
     /// control) that the spectrum shows; 1.5 dB over the bins that carry the sound is above what
@@ -112,6 +114,7 @@ impl Default for Config {
             jnd_cutoff_cents: 50.0,
             jnd_level_db: 1.0,
             jnd_centroid_pct: 5.0,
+            dead_zone_centroid_pct: 8.0,
             jnd_spectral_db: 1.5,
             min_audible_spectral_db: 4.0,
             jnd_percent: 1.0,
@@ -155,6 +158,7 @@ impl Config {
             "jnd_cutoff_cents" => self.jnd_cutoff_cents = f,
             "jnd_level_db" => self.jnd_level_db = f,
             "jnd_centroid_pct" => self.jnd_centroid_pct = f,
+            "dead_zone_centroid_pct" => self.dead_zone_centroid_pct = f,
             "jnd_percent" => self.jnd_percent = f,
             "jnd_spectral_db" => self.jnd_spectral_db = f,
             "min_audible_spectral_db" => self.min_audible_spectral_db = f,
@@ -211,6 +215,7 @@ impl Config {
             "contrast_small": self.contrast_small, "contrast_large": self.contrast_large,
             "jnd_pitch_cents": self.jnd_pitch_cents, "jnd_cutoff_cents": self.jnd_cutoff_cents,
             "jnd_level_db": self.jnd_level_db, "jnd_centroid_pct": self.jnd_centroid_pct,
+            "dead_zone_centroid_pct": self.dead_zone_centroid_pct,
             "jnd_percent": self.jnd_percent, "jnd_spectral_db": self.jnd_spectral_db,
             "min_audible_spectral_db": self.min_audible_spectral_db, "max_step_cutoff_cents": self.max_step_cutoff_cents,
             "max_step_db": self.max_step_db, "max_step_percent": self.max_step_percent,
