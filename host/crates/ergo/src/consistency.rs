@@ -5,7 +5,9 @@
 //! back. Each control is tried in each view and what it did is measured; the exceptions that
 //! docs/reference/controls.md documents are marked as such, anything else is a finding.
 
-use std::collections::BTreeMap;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{BTreeMap, BTreeSet};
+use std::hash::{Hash, Hasher};
 use std::path::Path;
 
 use serde_json::{json, Value};
@@ -78,8 +80,14 @@ impl Effect {
     }
 }
 
-/// The panel after `setup` and a control used (`input`: None leaves it alone), 1.2 s later.
-fn after(build: &Path, setup: &str, control: u8, dir: Option<i32>) -> (Vec<u16>, Effect, bool) {
+/// What the panel showed over the 1.2 s after `setup` and a control used (`dir`: None leaves it
+/// alone): the distinct frames (a hash each), and what the control did.
+fn after(build: &Path, setup: &str, control: u8, dir: Option<i32>) -> (BTreeSet<u64>, Effect) {
+    let frame = |d: &Dev| {
+        let mut h = DefaultHasher::new();
+        d.m.soc.lcd.fb.hash(&mut h);
+        h.finish()
+    };
     let mut d = Dev::boot(build);
     run_script(&mut d, setup);
     d.settle();
@@ -98,33 +106,33 @@ fn after(build: &Path, setup: &str, control: u8, dir: Option<i32>) -> (Vec<u16>,
         Some(n) => d.m.turn(control, n),
         None => {}
     }
+    let mut seen = BTreeSet::new();
     for _ in 0..30 {
         d.run(40);
         popup |= d.popup_rows() > 0;
+        seen.insert(frame(&d));
     }
     let view1 = d.view();
-    let changed = d.m.soc.lcd.fb != fb0;
     let e = Effect {
-        screen: changed,
+        screen: d.m.soc.lcd.fb != fb0,
         params: p0.diff(&d.params()),
         view_changed: view1 != view0,
         depth_delta: i32::from(view_depth(&view1, d.depth())) - depth0,
         popup,
     };
-    (d.m.soc.lcd.fb.clone(), e, changed)
+    (seen, e)
 }
 
-/// What a control does in the view `setup` reaches. A view that animates by itself (About) is
-/// compared with the same run left alone, so only what the control caused counts; a control
-/// at the end of its range is tried the other way as well.
+/// What a control does in the view `setup` reaches. A view that changes by itself (About, or a
+/// blinking cursor) is compared with the same run left alone: the control did something on
+/// screen when it made a frame the idle run never showed. A control at the end of its range is
+/// tried the other way as well.
 pub fn try_control(build: &Path, setup: &str, control: u8) -> Effect {
-    let (idle_fb, _, animates) = after(build, setup, control, None);
+    let (idle, _) = after(build, setup, control, None);
     let mut best = Effect::default();
     for dir in [1, -1] {
-        let (fb, mut e, _) = after(build, setup, control, Some(dir));
-        if animates {
-            e.screen = fb != idle_fb;
-        }
+        let (seen, mut e) = after(build, setup, control, Some(dir));
+        e.screen = !seen.is_subset(&idle);
         if e.acts() {
             return e;
         }

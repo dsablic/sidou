@@ -9,7 +9,7 @@ use crate::device::{Cell, Shot};
 
 /// app/grid.h: large text's pieces are codes GRID_BIG_FIRST.., 2x then 3x, then the plain
 /// piece.
-const BIG_FIRST: u8 = 0x01;
+pub(crate) const BIG_FIRST: u8 = 0x01;
 const PLAIN_PIECE: u8 = BIG_FIRST + 13;
 
 /// The art palette as the panel shows it: the firmware's RGB565 table expanded to 8 bits.

@@ -343,6 +343,39 @@ impl Dev {
             .read32(self.fw.symbol("ui") + ilp32::views::l as u32)
     }
 
+    /// The menu's own cursor and first visible item, read from the firmware's RAM (views.home).
+    pub fn menu_cursor(&mut self) -> (u8, u8) {
+        let home = self.fw.symbol("ui") + ilp32::views::home as u32;
+        (
+            self.m.soc.read8(home + ilp32::menu::cursor as u32),
+            self.m.soc.read8(home + ilp32::menu::top as u32),
+        )
+    }
+
+    /// How many items the menu has.
+    pub fn menu_count(&mut self) -> u8 {
+        let home = self.fw.symbol("ui") + ilp32::views::home as u32;
+        self.m.soc.read8(home + ilp32::menu::count as u32)
+    }
+
+    /// What the menu persists, as bytes: the MIDI setup, the theme, KEYS and CARDS. A journey that
+    /// is meant to leave the settings alone compares this before and after.
+    pub fn settings_bytes(&mut self) -> Vec<u8> {
+        let ui = self.fw.symbol("ui");
+        let route = self.m.soc.read32(ui + ilp32::views::route as u32);
+        let mut out: Vec<u8> = (0..ilp32::midi_route_setup::SIZE as u32)
+            .map(|i| {
+                self.m
+                    .soc
+                    .read8(route + ilp32::midi_route::setup as u32 + i)
+            })
+            .collect();
+        out.push(self.live_u8(ilp32::live::theme));
+        out.push(self.live_u8(ilp32::live::keys_mode));
+        out.push(self.m.soc.read8(ui + ilp32::views::cards as u32));
+        out
+    }
+
     pub fn live_u8(&mut self, off: usize) -> u8 {
         let l = self.live_addr();
         self.m.soc.read8(l + off as u32)

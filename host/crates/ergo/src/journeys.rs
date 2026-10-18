@@ -541,20 +541,67 @@ fn probe_pattern_edit(build: &Path) -> bool {
     rows(&before) != rows(&after)
 }
 
-/// The selected line of the menu: its text (the run whose colours differ from its neighbours').
-pub fn menu_selected(shot: &Shot) -> Option<String> {
-    let runs: Vec<_> = text_runs(&shot.cells)
+/// The first grid row of the menu's items and the rows each takes (app/views.c MENU_ROW, and
+/// the 2x lines every 3 rows).
+const MENU_FIRST_ROW: usize = 4;
+const MENU_LINE_ROWS: usize = 3;
+
+/// The text of the menu's selected line. Which line is the firmware's own cursor and first
+/// visible item (`Dev::menu_cursor`), never the colours: a theme can colour a value like the bar.
+pub fn menu_selected(shot: &Shot, cursor: u8, top: u8) -> Option<String> {
+    let row = MENU_FIRST_ROW + MENU_LINE_ROWS * usize::from(cursor.checked_sub(top)?);
+    let mut runs: Vec<_> = text_runs(&shot.cells)
         .into_iter()
-        .filter(|r| r.scale >= 2 && r.row >= 3)
+        .filter(|r| r.scale >= 2 && r.row == row)
         .collect();
-    let mut count: BTreeMap<(u8, u8), usize> = BTreeMap::new();
-    for r in &runs {
-        *count.entry((r.fg, r.bg)).or_default() += 1;
+    runs.sort_by_key(|r| r.col);
+    let text = runs
+        .iter()
+        .map(|r| r.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!text.is_empty()).then_some(text)
+}
+
+/// Whether the menu's selected line, as drawn, starts with `text`; the screen may trail the
+/// cursor by a frame or two, so it gets a few before a no.
+fn menu_shows(d: &mut Dev, text: &str) -> bool {
+    for _ in 0..4 {
+        let (cursor, top) = d.menu_cursor();
+        let s = d.shot();
+        if s.view == "menu" && menu_selected(&s, cursor, top).is_some_and(|t| t.starts_with(text)) {
+            return true;
+        }
+        d.run(FRAME_MS);
     }
-    let modal = count.iter().max_by_key(|(_, n)| **n).map(|(k, _)| *k)?;
-    runs.into_iter()
-        .find(|r| (r.fg, r.bg) != modal)
-        .map(|r| r.text)
+    false
+}
+
+/// Turns SELECT until the menu's selected line starts with `text`: forward, then back from the
+/// end of the menu (it does not wrap). False if no line ever does.
+fn select_menu_item(d: &mut Dev, text: &str, detents: &mut i32) -> bool {
+    let mut dir = 1;
+    let mut flips = 0;
+    for _ in 0..=2 * u32::from(d.menu_count()) + 2 {
+        if menu_shows(d, text) {
+            return true;
+        }
+        if d.view() != "menu" {
+            return false;
+        }
+        let was = d.menu_cursor();
+        d.turn(panel::SELECT, dir);
+        d.run(FRAME_MS * 2);
+        *detents += 1;
+        if d.menu_cursor() == was {
+            flips += 1;
+            if flips > 1 {
+                return false;
+            }
+            dir = -dir;
+        }
+    }
+    false
 }
 
 /// What a step measured.
@@ -563,6 +610,8 @@ pub enum Status {
     Ok,
     /// Ran, and an expectation did not hold.
     DeadEnd(String),
+    /// The step did not get to the view it meant to: what followed measured another screen.
+    NavFailed(String),
     NotPossible(String),
 }
 
@@ -603,6 +652,8 @@ pub struct JourneyResult {
     pub tour: bool,
     pub steps: Vec<StepResult>,
     pub captured: Vec<Captured>,
+    /// A tour only looks: the persisted settings before and after, when they differ.
+    pub settings_drift: Option<(Vec<u8>, Vec<u8>)>,
 }
 
 fn expect_name(e: &Expect) -> String {
@@ -644,6 +695,10 @@ pub fn write_clip(path: &Path, x: &[f32]) {
 #[derive(Default)]
 pub struct Ctx {
     pub remembered: Option<Params>,
+    /// The last view a step said it would reach.
+    pub intended: Option<String>,
+    /// A step did not arrive and none has since: what follows is on the wrong screen.
+    pub off_course: bool,
 }
 
 /// The first 5 ms window of `x` whose RMS is above `silence_db`: its start, in ms.
@@ -654,7 +709,8 @@ pub fn first_sound_ms(x: &[f32], silence_db: f64) -> Option<f64> {
         .map(|i| i as f64 * 5.0)
 }
 
-fn run_act(d: &mut Dev, act: &Act, waited: &mut u64, n_detents: &mut i32) {
+/// Runs one action; false when it was a navigation that did not arrive (a menu item not found).
+fn run_act(d: &mut Dev, act: &Act, waited: &mut u64, n_detents: &mut i32) -> bool {
     match act {
         Act::Boot => {
             let t = d.wait_boot();
@@ -702,17 +758,8 @@ fn run_act(d: &mut Dev, act: &Act, waited: &mut u64, n_detents: &mut i32) {
             d.run(30);
         }
         Act::SelectItem(text) => {
-            let mut moved = 0;
-            for _ in 0..24 {
-                let s = d.shot();
-                if menu_selected(&s).is_some_and(|t| t.contains(text.as_str())) {
-                    break;
-                }
-                d.turn(panel::SELECT, 1);
-                d.run(FRAME_MS * 2);
-                moved += 1;
-            }
-            *n_detents = moved;
+            *n_detents = 0;
+            return select_menu_item(d, text, n_detents);
         }
         Act::Midi(b) => {
             d.m.midi(b);
@@ -748,6 +795,7 @@ fn run_act(d: &mut Dev, act: &Act, waited: &mut u64, n_detents: &mut i32) {
             *waited += 0;
         }
     }
+    true
 }
 
 /// Runs `;`-separated actions with no measuring (a setup).
@@ -755,7 +803,10 @@ pub fn run_script(d: &mut Dev, text: &str) {
     let (mut waited, mut det) = (0, 0);
     for a in text.split(';').map(str::trim).filter(|a| !a.is_empty()) {
         let act = parse_act(a).unwrap_or_else(|e| panic!("setup script: {e}"));
-        run_act(d, &act, &mut waited, &mut det);
+        assert!(
+            run_act(d, &act, &mut waited, &mut det),
+            "setup script: {a} did not arrive"
+        );
     }
 }
 
@@ -900,9 +951,17 @@ pub fn run_step(
     let mut waited = 0u64;
     let mut efforts = Vec::new();
     let mut detents = 0i32;
+    let mut nav_failed: Option<String> = None;
     for a in &s.acts {
         detents = 0;
-        run_act(d, a, &mut waited, &mut detents);
+        if !run_act(d, a, &mut waited, &mut detents) {
+            let Act::SelectItem(text) = a else {
+                unreachable!("only a menu selection can fail to arrive")
+            };
+            nav_failed = Some(format!("no menu line {text} was reached, on {}", d.view()));
+            efforts.push(Effort::Turn(detents.unsigned_abs()));
+            break;
+        }
         let mut e = effort_of(a);
         if matches!(a, Act::SelectItem(_)) {
             e = Effort::Turn(detents.unsigned_abs());
@@ -944,6 +1003,10 @@ pub fn run_step(
         let ok = check(d, e, &cx, cfg);
         r.expects.push((expect_name(e), ok));
     }
+    let intended = s.expects.iter().find_map(|e| match e {
+        Expect::View(v) => Some(v.clone()),
+        _ => None,
+    });
     if r.expects.iter().any(|(_, ok)| !ok) {
         let bad: Vec<_> = r
             .expects
@@ -951,7 +1014,27 @@ pub fn run_step(
             .filter(|(_, ok)| !ok)
             .map(|(n, _)| n.clone())
             .collect();
-        r.status = Status::DeadEnd(format!("expected {}", bad.join(", ")));
+        r.status = if intended.is_some() && bad.iter().any(|n| n.starts_with("view ")) {
+            Status::NavFailed(format!("expected {}, on {}", bad.join(", "), d.view()))
+        } else {
+            Status::DeadEnd(format!("expected {}", bad.join(", ")))
+        };
+    }
+    if let Some(why) = nav_failed {
+        r.status = Status::NavFailed(why);
+    }
+    if let Some(v) = &intended {
+        ctx.intended = Some(v.clone());
+        ctx.off_course = matches!(r.status, Status::NavFailed(_));
+    } else if matches!(r.status, Status::NavFailed(_)) {
+        ctx.off_course = true;
+    } else if ctx.off_course && matches!(r.status, Status::Ok) {
+        let now = d.view();
+        if let Some(want) = ctx.intended.as_ref().filter(|w| **w != now) {
+            r.status = Status::NavFailed(format!(
+                "off course after an earlier step: on {now}, meant {want}"
+            ));
+        }
     }
     r.frames_to_done =
         (settled_at.saturating_sub(start_ms).saturating_sub(waited)) as f64 / FRAME_MS as f64;
@@ -1060,7 +1143,9 @@ pub fn run_journey(
         tour: j.tour,
         steps: Vec::new(),
         captured: Vec::new(),
+        settings_drift: None,
     };
+    let settings_start = d.settings_bytes();
     if capture_full {
         d.start_capture();
     }
@@ -1084,6 +1169,10 @@ pub fn run_journey(
         }
         res.steps.push(r);
     }
+    let settings_end = d.settings_bytes();
+    if j.tour && settings_end != settings_start {
+        res.settings_drift = Some((settings_start, settings_end));
+    }
     let cap = d
         .stop_capture()
         .map(|rec| crate::capture::Capture::from(rec, &d, marks, j));
@@ -1104,7 +1193,7 @@ pub fn journey_metrics(j: &JourneyResult, cfg: &Config) -> Value {
                 np += 1;
                 continue;
             }
-            Status::DeadEnd(_) => dead += 1,
+            Status::DeadEnd(_) | Status::NavFailed(_) => dead += 1,
             Status::Ok => {}
         }
         actions += s.effort.actions;
@@ -1191,6 +1280,72 @@ mod tests {
         assert!(parse_table("journey t | T\nstep a | b | - | zap")
             .unwrap_err()
             .contains("line 2"));
+    }
+
+    /// A menu screen of 2x lines every 3 rows from row 4, as app/views.c draws it: each line
+    /// `(label, value)` with its colours; the label and the value are separate runs.
+    fn menu_screen(lines: &[(&str, &str, u8, u8)]) -> Shot {
+        use crate::device::Cell;
+        let mut cells = vec![
+            Cell {
+                ch: b' ',
+                attr: 0x00,
+                src: 0,
+                ovl: false,
+            };
+            900
+        ];
+        for (k, (label, value, label_attr, value_attr)) in lines.iter().enumerate() {
+            let row = 4 + 3 * k;
+            let mut put = |col: usize, text: &str, attr: u8| {
+                for (i, ch) in text.bytes().enumerate() {
+                    cells[row * 30 + col + 2 * i] = Cell {
+                        ch: crate::screen::BIG_FIRST,
+                        attr,
+                        src: ch,
+                        ovl: false,
+                    };
+                }
+            };
+            put(1, label, *label_attr);
+            put(30 - 1 - 2 * value.len(), value, *value_attr);
+        }
+        Shot {
+            fb: Vec::new(),
+            cells,
+            view: "menu".into(),
+            ms: 0,
+        }
+    }
+
+    #[test]
+    fn the_selected_menu_line_is_the_cursors_whatever_the_colours() {
+        // HIGH theme: a cyan value (3) above the bar (black on white, 0x10 | 0) which is not the
+        // first line whose colours differ from the others'.
+        let high = menu_screen(&[
+            ("CHIP", "", 0x61, 0x61),
+            ("TRACKER", "", 0x61, 0x61),
+            ("PRE", "SAW LEAD", 0x61, 0x63),
+            ("OCTAVE", "0", 0x00, 0x00),
+            ("THEME", "HIGH", 0x61, 0x63),
+            ("STATUS", "", 0x61, 0x61),
+        ]);
+        let text = |s: &Shot, cursor, top| menu_selected(s, cursor, top);
+        assert_eq!(text(&high, 3, 0).as_deref(), Some("OCTAVE 0"));
+        assert_eq!(text(&high, 4, 0).as_deref(), Some("THEME HIGH"));
+        assert_eq!(text(&high, 5, 0).as_deref(), Some("STATUS"));
+        // The menu scrolled by two: item 4 is the third line.
+        assert_eq!(text(&high, 4, 2).as_deref(), Some("PRE SAW LEAD"));
+        // C64 theme: light blue on blue everywhere, the bar the reverse.
+        let c64 = menu_screen(&[
+            ("CHIP", "", 0x6e, 0x6e),
+            ("TRACKER", "", 0xe6, 0xe6),
+            ("PRE", "PWM BASS", 0x6e, 0x6e),
+        ]);
+        assert_eq!(text(&c64, 1, 0).as_deref(), Some("TRACKER"));
+        assert_eq!(text(&c64, 0, 0).as_deref(), Some("CHIP"));
+        // A cursor above the first visible line is nothing.
+        assert_eq!(text(&c64, 0, 1), None);
     }
 
     #[test]

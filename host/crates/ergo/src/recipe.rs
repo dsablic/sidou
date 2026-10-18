@@ -465,6 +465,9 @@ pub fn validate(
                     match &s.status {
                         Status::Ok => {}
                         Status::DeadEnd(w) => rep.problems.push(format!("step {}: {w}", s.id)),
+                        Status::NavFailed(w) => rep
+                            .problems
+                            .push(format!("step {}: navigation failed: {w}", s.id)),
                         Status::NotPossible(w) => {
                             rep.problems.push(format!("step {}: cannot run: {w}", s.id))
                         }

@@ -22,7 +22,9 @@
 #               holdkey BTN NOTE          a button held while a note key is pressed (GLO + key)
 #               note NOTE [NOTE..] MS     keys held together (F3..G5, C4 = middle C)
 #               down NOTE / up NOTE       a key held down / let go (to play while turning)
-#               select-item TEXT          the menu's selection onto the line showing TEXT (one turn)
+#               select-item TEXT          the menu's selection onto the line starting with TEXT, read from
+#                                         the firmware's cursor (forward, then back: not found, or a
+#                                         `view V` that is not reached, is "navigation failed")
 #               midi HEX..  cc N V  pc N  bytes into the TRS jack
 #               pot V                     the MASTER pot, 0..1023
 #               clock BPM MS [start]      MIDI clock for MS ms, after a start if given

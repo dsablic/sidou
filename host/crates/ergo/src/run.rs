@@ -51,6 +51,7 @@ fn step_json(s: &journeys::StepResult) -> Value {
     let (status, reason) = match &s.status {
         Status::Ok => ("ok", String::new()),
         Status::DeadEnd(w) => ("dead_end", w.clone()),
+        Status::NavFailed(w) => ("navigation_failed", w.clone()),
         Status::NotPossible(w) => ("not_yet_possible", w.clone()),
     };
     json!({
@@ -409,6 +410,7 @@ fn build_report(
             let (cls, st) = match &s.status {
                 Status::Ok => ("", "ok".to_string()),
                 Status::DeadEnd(w) => ("dead", format!("dead end: {w}")),
+                Status::NavFailed(w) => ("dead", format!("navigation failed: {w}")),
                 Status::NotPossible(w) => ("nyp", format!("not yet possible: {w}")),
             };
             let shot = match &s.shot {

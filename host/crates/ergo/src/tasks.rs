@@ -78,7 +78,7 @@ fn task_of(name: &str, journey: &str, g: &[&StepResult]) -> Task {
                 t.possible = false;
                 t.why = w.clone();
             }
-            Status::DeadEnd(w) => {
+            Status::DeadEnd(w) | Status::NavFailed(w) => {
                 t.ok = false;
                 t.why = w.clone();
             }
@@ -227,6 +227,19 @@ pub fn journey_findings(
             overlays: vec![],
         })
     };
+    if let Some((was, now)) = &j.settings_drift {
+        fs.push(
+            Finding::new(
+                format!("HARN.settings.{}", j.id),
+                Sev::High,
+                "harness",
+                format!("{} changed the settings it only meant to look at", j.title),
+                "A tour only looks: MIDI setup, theme, KEYS and CARDS are what they were at its start.",
+            )
+            .detail(format!("The persisted settings bytes went from {was:?} to {now:?}."))
+            .numbers(json!({"journey": j.id})),
+        );
+    }
     for s in &j.steps {
         let id = format!("{}.{}", j.id, s.id);
         match &s.status {
@@ -258,6 +271,24 @@ pub fn journey_findings(
                     "Every step of a journey leads to the state the player expects.",
                 )
                 .detail(format!("{why}; the screen shows {}.", s.view_after))
+                .numbers(json!({"journey": j.id, "step": s.id, "view": s.view_after}));
+                if let Some(sh) = shot(s, "where it ended".into()) {
+                    f = f.shot(sh);
+                }
+                fs.push(f);
+            }
+            Status::NavFailed(why) => {
+                let mut f = Finding::new(
+                    format!("HARN.nav.{id}"),
+                    Sev::High,
+                    "harness",
+                    format!("{}: navigation failed at \"{}\"", j.title, s.label),
+                    "A journey step arrives at the view it means to measure; one that does not measures something else.",
+                )
+                .detail(format!(
+                    "{why}; the screen shows {}. What this step and the ones after it report is not about the screen they name.",
+                    s.view_after
+                ))
                 .numbers(json!({"journey": j.id, "step": s.id, "view": s.view_after}));
                 if let Some(sh) = shot(s, "where it ended".into()) {
                     f = f.shot(sh);
@@ -399,6 +430,7 @@ mod tests {
             title: "J".into(),
             tour: false,
             captured: vec![],
+            settings_drift: None,
             steps: vec![
                 step("a", Some("open CHIP"), 2, 4, "title_card"),
                 step("b", Some("open CHIP"), 1, 3, "chip"),
