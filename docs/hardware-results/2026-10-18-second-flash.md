@@ -13,15 +13,15 @@ the readable screens (`64b6f97`).
 | Unit | the same FM-1 as [the first flash](2026-10-17-first-flash.md) |
 | Firmware before | **FM1 Open** (M-VAVE's open firmware, <https://github.com/m-vave/fm1_open>): USB 3654:7756 "FM1 Community", handshake identity `FM-1_8000013`, no INFO answer |
 | SIDOU package | `build/fm1/sidou.fwsc` from `a123730`, SHA-256 `58f2eee4894c3f0adf4334a47ab8297d327a72fd78f0b419637ab8065ec451fa`; `tools/preflash` (branch `preflash-safety`): 13 PASS |
-| Installer | ChoralRoot's `tools/fm1_install.py` |
+| Installer | a Felucca-family `tools/fm1_install.py` (from here on: Felucca 1.6.1's own) |
 | Firmware after | SIDOU (USB 1209:0001 "SIDOU") |
 
 ## The install
 
-1. **Over FM1 Open, via V15.** ChoralRoot's installer only recognises the port with
-   `--port "FM1 Community"`, and classifies `FM-1_8000013` as an unknown firmware it does not
-   install over (its `docs/INSTALL-COMPAT.md`: installs over unknown firmware have left FM-1s
-   that do not start). The way out is official V15, which the installer never refuses.
+1. **Over FM1 Open, via V15.** The installer only finds the port with
+   `--port "FM1 Community"`, and treats `FM-1_8000013` as an unknown firmware: installs over
+   unknown firmware have left FM-1s that do not start, because of the data the old firmware
+   leaves in the flash. The way out is official V15, which installers never refuse.
 2. **V15's step 1 put the unit into FM1 Open's update mode.** It answered as
    `ota-FM1C_0000000000000000` (USB 4D4A:4155 "USB Composite Device"), and the installer
    stopped: "the device is in the update mode of ota-FM1C_…, the package is for FM-1_015:
@@ -54,4 +54,4 @@ the readable screens (`64b6f97`).
   writes the firmware region (0x4000-0x92FFF) of any recognised FM-1 package after a
   verified double backup, and reads it back.
 - **The flash-day checklist needs an FM1 Open case:** install V15 first, through M-VAVE's
-  rule above. Added to `docs/upstream-reports.md` for ChoralRoot's installer.
+  rule above (`sidou-flash/v15_over_open.py`).
