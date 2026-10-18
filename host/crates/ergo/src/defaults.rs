@@ -114,14 +114,19 @@ pub fn judge(label: &str, id: &str, stats: &Value, cfg: &Config) -> Vec<Finding>
         ));
     }
     let c = f("centroid_hz");
-    if c < cfg.centroid_min_hz || c > cfg.centroid_max_hz {
+    let ceiling = if stats["sync_or_ring"].as_bool().unwrap_or(false) {
+        cfg.centroid_max_hz_lead
+    } else {
+        cfg.centroid_max_hz
+    };
+    if c < cfg.centroid_min_hz || c > ceiling {
         out.push(mk(
             "bright",
             Sev::Low,
             format!("{label}: spectral centroid {c:.0} Hz"),
             format!(
                 "Brightness (centroid) is between {} and {} Hz.",
-                cfg.centroid_min_hz, cfg.centroid_max_hz
+                cfg.centroid_min_hz, ceiling
             ),
         ));
     }
@@ -157,7 +162,8 @@ pub fn run_all(build: &Path, cfg: &Config, out: &Path) -> DefaultsResult {
             // The attack and what follows it: 20 to 420 ms after the key (a percussive preset
             // has decayed to nothing by the end of a long note, which is its design).
             let preset = unsafe { &*sidou_sys::live_preset_get(*i as u8) };
-            let stats = preset_stats(&a, preset.sustain_release >> 4, cfg);
+            let mut stats = preset_stats(&a, preset.sustain_release >> 4, cfg);
+            stats["sync_or_ring"] = json!(preset.mono_sync != 0 || preset.control & 0x06 != 0);
             let id = format!("{}.{}", crate::slug(name), nname.to_lowercase());
             let label = format!("preset {name}, {nname}");
             let clip = format!("defaults/{id}.wav");
@@ -187,6 +193,18 @@ pub fn run_all(build: &Path, cfg: &Config, out: &Path) -> DefaultsResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sync_and_ring_leads_have_their_own_brightness_ceiling() {
+        let cfg = Config::default();
+        let mut stats = json!({"rms_dbfs": -20.0, "centroid_hz": 5200.0, "sync_or_ring": true});
+        assert!(judge("lead", "lead", &stats, &cfg).is_empty());
+        stats["sync_or_ring"] = json!(false);
+        assert_eq!(judge("pad", "pad", &stats, &cfg)[0].id, "MUS.bright.pad");
+        stats["sync_or_ring"] = json!(true);
+        stats["centroid_hz"] = json!(6600.0);
+        assert_eq!(judge("lead", "lead", &stats, &cfg)[0].id, "MUS.bright.lead");
+    }
 
     #[test]
     fn a_percussive_preset_is_judged_by_its_attack() {

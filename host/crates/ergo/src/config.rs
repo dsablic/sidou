@@ -99,6 +99,8 @@ pub struct Config {
     /// A reasonable spectral centroid of a first sound, Hz.
     pub centroid_min_hz: f64,
     pub centroid_max_hz: f64,
+    /// Hard-sync and ring-modulated leads are intentionally brighter.
+    pub centroid_max_hz_lead: f64,
     /// Below this RMS (dBFS) a window counts as silent.
     pub silence_db: f64,
 }
@@ -138,6 +140,7 @@ impl Default for Config {
             max_dc: 0.005,
             centroid_min_hz: 150.0,
             centroid_max_hz: 5000.0,
+            centroid_max_hz_lead: 6500.0,
             silence_db: -60.0,
         }
     }
@@ -182,6 +185,7 @@ impl Config {
             "max_dc" => self.max_dc = f,
             "centroid_min_hz" => self.centroid_min_hz = f,
             "centroid_max_hz" => self.centroid_max_hz = f,
+            "centroid_max_hz_lead" => self.centroid_max_hz_lead = f,
             "silence_db" => self.silence_db = f,
             _ => return false,
         }
@@ -229,6 +233,7 @@ impl Config {
             "first_rms_min_db": self.first_rms_min_db, "first_rms_max_db": self.first_rms_max_db,
             "clip_level": self.clip_level, "max_dc": self.max_dc,
             "centroid_min_hz": self.centroid_min_hz, "centroid_max_hz": self.centroid_max_hz,
+            "centroid_max_hz_lead": self.centroid_max_hz_lead,
             "silence_db": self.silence_db,
         })
     }
