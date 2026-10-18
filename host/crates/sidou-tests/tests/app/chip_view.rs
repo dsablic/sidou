@@ -68,6 +68,112 @@ fn focus(ui: &Ui) -> u32 {
 }
 
 #[test]
+fn shared_canvas_rebuilds_chip_after_tracker_is_popped_without_enter() {
+    let mut ui = chip_ui();
+    ui.turn(PANEL_ENC_SELECT, 4);
+    ui.turn(PANEL_ENC_ALGORITHM, 2);
+    settle(&mut ui);
+    let chip = (ui.g.ch, ui.g.attr);
+    assert_eq!(ui.v.song.cv.ch.as_flattened(), &chip.0);
+    assert_eq!(ui.v.song.cv.attr.as_flattened(), &chip.1);
+    for partial in [false, true] {
+        ui.press(PANEL_BTN_SEQ);
+        assert_eq!(ui.top(), "TRACKER");
+        if partial {
+            step(&mut ui);
+            assert_ne!(ui.v.song.unbuilt, 0);
+        } else {
+            crate::song_view::settle(&mut ui);
+        }
+        ui.press(PANEL_BTN_HOME);
+        assert_eq!(ui.top(), "CHIP");
+        settle(&mut ui);
+        assert_eq!((ui.g.ch, ui.g.attr), chip);
+        assert_eq!(ui.v.chip.expert_page, 2);
+        assert_eq!(ui.v.song.built, 0);
+        assert_eq!(ui.v.song.dirty, 0);
+        assert_eq!(ui.v.song.unbuilt, 0);
+    }
+    ui.press(PANEL_BTN_SEQ);
+    crate::song_view::settle(&mut ui);
+    assert_eq!(ui.big(0, 0, 2, 2), "V1");
+    assert_eq!(ui.v.song.unbuilt, 0);
+}
+
+#[test]
+fn shared_canvas_is_acquired_by_the_view_composed_under_midi_learn_not_by_input() {
+    let mut ui = chip_ui();
+    let mut ml = Box::<midi_learn>::default();
+    unsafe {
+        midi_learn_init(&mut *ml);
+        views_learn(&mut *ui.v, &mut *ml);
+    }
+    let chip_canvas = ui.v.song.cv;
+    ui.press(PANEL_BTN_SEQ);
+    assert_eq!(u32::from(ui.v.song.which), SONG_VIEW_CANVAS_CHIP);
+    assert_eq!(ui.v.song.cv.ch, chip_canvas.ch);
+    step(&mut ui);
+    assert_eq!(u32::from(ui.v.song.which), SONG_VIEW_TRACKER);
+    assert_ne!(ui.v.song.unbuilt, 0);
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(u32::from(ui.v.song.which), SONG_VIEW_TRACKER);
+    ui.learn_on(K1);
+    assert_eq!(ui.top(), "LEARN");
+    step(&mut ui);
+    assert_eq!(u32::from(ui.v.song.which), SONG_VIEW_CANVAS_CHIP);
+    assert_eq!(ui.v.song.built, 0);
+    assert_eq!(ui.v.song.dirty, 0);
+    assert_eq!(ui.v.song.unbuilt, 0);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    for _ in 0..8 {
+        step(&mut ui);
+    }
+    assert_eq!(ui.top(), "LEARN");
+    assert_eq!(u32::from(ui.v.song.which), SONG_VIEW_CANVAS_CHIP);
+    ui.press(PANEL_BTN_HOME);
+    settle(&mut ui);
+    assert_eq!(choice(&ui, 3), "OFF");
+    ui.press(PANEL_BTN_SEQ);
+    crate::song_view::settle(&mut ui);
+    assert_eq!(ui.big(0, 0, 2, 2), "V1");
+}
+
+#[test]
+fn shared_canvas_restores_song_menu_after_tracker_and_chip_used_it() {
+    let mut ui = Ui::without_cards();
+    unsafe {
+        screen_push(
+            &mut ui.v.s,
+            &views_song_menu_view,
+            (&mut *ui.v as *mut views).cast(),
+            SCREEN_CUT,
+        );
+    }
+    crate::song_view::settle(&mut ui);
+    let menu = (ui.g.ch, ui.g.attr);
+    ui.press(PANEL_BTN_SEQ);
+    crate::song_view::settle(&mut ui);
+    let tracker = (ui.g.ch, ui.g.attr);
+    unsafe {
+        screen_push(
+            &mut ui.v.s,
+            &chip_view_view,
+            (&mut ui.v.chip as *mut chip_view).cast(),
+            SCREEN_CUT,
+        );
+    }
+    settle(&mut ui);
+    assert_eq!(u32::from(ui.v.song.which), SONG_VIEW_CANVAS_CHIP);
+    ui.press(PANEL_BTN_HOME);
+    crate::song_view::settle(&mut ui);
+    assert_eq!((ui.g.ch, ui.g.attr), tracker);
+    ui.press(PANEL_BTN_HOME);
+    crate::song_view::settle(&mut ui);
+    assert_eq!(ui.top(), "SONG");
+    assert_eq!((ui.g.ch, ui.g.attr), menu);
+}
+
+#[test]
 fn expert_is_one_more_select_stop_without_changing_the_selected_slot() {
     let mut ui = chip_ui();
     ui.turn(PANEL_ENC_SELECT, 3);

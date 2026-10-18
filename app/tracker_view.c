@@ -492,7 +492,6 @@ static uint32_t build_step(song_view* sv, uint32_t from) {
 static void enter(screen* s, void* state) {
     (void)s;
     song_view* sv = state;
-    sv->which = SONG_VIEW_TRACKER;
     sv->built = 0;
 }
 
@@ -543,7 +542,7 @@ static int changed(screen* s, void* state) {
     (void)s;
     const song_view* sv = state;
     if (model_loading(sv)) {
-        return sv->dirty != 0;
+        return sv->which == SONG_VIEW_TRACKER && sv->dirty != 0;
     }
     return !sv->built || sv->dirty || sv->unbuilt || looks_changed(sv) ||
            sv->which != SONG_VIEW_TRACKER;
@@ -552,9 +551,12 @@ static int changed(screen* s, void* state) {
 static void compose(screen* s, void* state, grid* g) {
     song_view* sv = state;
     if (model_loading(sv)) {
-        song_view_copy(sv, s, g);
+        if (sv->which == SONG_VIEW_TRACKER) {
+            song_view_copy(sv, s, g);
+        }
         return;
     }
+    song_view_acquire_canvas(sv, SONG_VIEW_TRACKER);
     uint8_t head[HEAD_LOOK], rows[ROWS_LOOK];
     head_look(sv, head);
     rows_look(sv, rows);
@@ -604,7 +606,6 @@ static void compose(screen* s, void* state, grid* g) {
             build_window(sv, first, upto - first);
         }
     }
-    sv->which = SONG_VIEW_TRACKER;
     sv->built = 1;
     song_view_copy(sv, s, g);
 }

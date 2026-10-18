@@ -18,8 +18,8 @@ All notable changes are documented here. The format follows
 - **M2b complete on its branch** (Tasks 1–8): sliced preparation, two SIDs, keys on B
   during a song, both CHIP tabs, expert controls and off-by-default UI sounds. The
   [M2b status](docs/plans/2026-10-15-m2b-chip-b.md#m2b-status) records the integrated
-  image (466,528 bytes), RAMTEXT (45,920), free RAM + POOL (8,844), chip B's marginal
-  state (35,216) and passing two-chip ISR/full emulator gates. TESTING documents the
+  image (497,088 bytes), RAMTEXT (46,016), free RAM + POOL (9,852), chip B's marginal
+  state (35,216) and passing two-chip ISR/screen gates. TESTING documents the
   new coverage; hardware checklist 6.3–6.4 adds two-chip routing, voice-safe sounds,
   expert readability, continuous notes and persistence. Hardware acceptance remains open.
 - **The character's expert layer** (M2b Task 6): fourteen independent analogue controls,
@@ -83,6 +83,11 @@ All notable changes are documented here. The format follows
 - docs/hardware-test.md: a readability check of the large text on the panel.
 
 ### Changed
+- Expert settings use **schema 5**, retaining M2c Task 8's schema-4 last-song filename
+  at offsets 108–123; v1–4 migrate without turning filename bytes into expert overrides.
+  CHIP and the song views share their inactive drawing canvas to retain the unchanged
+  RAM floors after integration. Song snapshots preserve raw following values and wide
+  cutoff/pulse parameters in the existing 160-byte I/O buffer.
 - **LIVE, TRACKER, CHIP and STATUS are drawn to be read at the panel's 23 mm**, after the
   screen-readability prototype the user chose (assets/prototypes/screen-readability.html).
   LIVE: the preset's name at 2×; three voice lanes (the voice's number at 2× in its colour, its

@@ -356,12 +356,29 @@ static void setup_decode(chip_setup* out, const song_chip_setup* chip) {
 typedef struct {
     song_chip_setup chip;
     gt2_options opts;
-    uint16_t param[LIVE_PARAM_COUNT];
+    uint8_t param[LIVE_PARAM_COUNT];
+    uint8_t wide[2];
     midi_route_setup midi;
     uint8_t preset;
 } song_save_data;
 
 _Static_assert(sizeof(song_save_data) <= SONG_IO_BUFFER_BYTES, "metadata reuses the IO buffer");
+
+static void song_save_params(song_save_data* data, const uint16_t* param) {
+    for (uint32_t p = 0; p < LIVE_PARAM_COUNT; p++) {
+        data->param[p] = (uint8_t)param[p];
+    }
+    data->wide[0] = (uint8_t)(param[LIVE_PARAM_CUTOFF] >> 8);
+    data->wide[1] = (uint8_t)(param[LIVE_PARAM_PULSE_WIDTH] >> 8);
+}
+
+static void song_saved_params(const song_save_data* data, uint16_t* out) {
+    for (uint32_t p = 0; p < LIVE_PARAM_COUNT; p++) {
+        out[p] = data->param[p];
+    }
+    out[LIVE_PARAM_CUTOFF] |= (uint16_t)data->wide[0] << 8;
+    out[LIVE_PARAM_PULSE_WIDTH] |= (uint16_t)data->wide[1] << 8;
+}
 
 __attribute__((noinline, unused)) static void song_collect(song_save_data* out) {
     song_ctl* sc = audio_song();
@@ -381,7 +398,9 @@ __attribute__((noinline, unused)) static void song_collect(song_save_data* out) 
     }
     gt2_options opts;
     (void)song_ext_get_options(s, &opts);
-    live_params_wire(&instrument, out->param);
+    uint16_t param[LIVE_PARAM_COUNT];
+    live_params_wire(&instrument, param);
+    song_save_params(out, param);
     out->param[LIVE_PARAM_VOLUME] = 0u;
     out->chip = chip;
     out->opts = opts;
@@ -460,7 +479,7 @@ static int song_capture(void* ctx) {
         }
     }
     song_keys keys = {LIVE_PARAM_COUNT, data.preset, {0}};
-    memcpy(keys.param, data.param, sizeof data.param);
+    song_saved_params(&data, keys.param);
     song_midi midi;
     midi_route_setup_encode(&data.midi, &midi);
     if (!setup_valid(&chip)) {
@@ -549,7 +568,9 @@ static void song_restore(void* ctx, const uint8_t* storage) {
     song_save_data data;
     memcpy(&data, storage, sizeof data);
     song_apply_midi(&data.midi);
-    song_apply_keys(data.param, LIVE_PARAM_COUNT, data.preset);
+    uint16_t param[LIVE_PARAM_COUNT];
+    song_saved_params(&data, param);
+    song_apply_keys(param, LIVE_PARAM_COUNT, data.preset);
     chip_setup base;
     setup_decode(&base, &data.chip);
     song_base_set(&base);

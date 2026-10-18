@@ -160,7 +160,7 @@ M2b Task 3 adds chip B's render beside chip A's, while chip B is in use, and the
 (`chip_mix`): `.ram_text` 36,720 bytes. Out of use chip B is not rendered (a silent chip
 still has a level of its own); its use changes at a block boundary, faded over that block.
 
-**M2b completion, integrated build on `m2b` at `fbbba3f`:** chip A carries the song;
+**M2b completion, schema-5 build on `m2b`, rebased onto `82f7357`:** chip A carries the song;
 with KEYS AUTO, the keys play A without a song and B while it plays. B always follows
 the keys' setup. KEYS A borrows song voices until key-up instead. UI sounds borrow a free
 B voice only, never steal a held note, and are off by default. Both chips mix before the
@@ -175,10 +175,10 @@ slices in the same main-loop pass.
 
 | Integrated resource | Measured | Existing limit |
 |---|---:|---:|
-| Packaged app image | 466,528 bytes | 512,000 bytes (latest merged stage, M2f) |
-| RAMTEXT | 45,920 bytes | 49,152 bytes |
-| Free RAM region / POOL | 4,372 / 4,472 bytes | ≥4,096 each |
-| Free RAM region + POOL | 8,844 bytes | ≥7,000 bytes |
+| Packaged app image | 497,088 bytes | 512,000 bytes (latest merged stage, M2f) |
+| RAMTEXT | 46,016 bytes | 49,152 bytes |
+| Free RAM region / POOL | 5,380 / 4,472 bytes | ≥4,096 each |
+| Free RAM region + POOL | 9,852 bytes | ≥7,000 bytes |
 | POOL used | 347,784 bytes | 352,256 bytes |
 | Three-SID ring object | 105,408 bytes | Expert growth 1,224 bytes |
 | Chip B's marginal state | 35,216 bytes | Original estimate 35,300 bytes |
@@ -188,10 +188,19 @@ standalone M2b 384,000-byte image and 92,000-free-RAM projection is not this bui
 Before the expert layer (`64b6f97`), the image was 425,140 bytes, RAMTEXT 45,108 and
 combined free RAM 11,492. Both 4 KiB region floors remain unchanged.
 
+M2c Task 8 reserves settings schema 4 for the last-song filename; experts append as
+schema 5, keeping those 124 bytes intact. Its larger runtime state initially left
+only 2,676 RAM bytes free when combined with experts. CHIP and the song views now
+share one 2,700-byte drawing canvas, with compose-time ownership and independent view
+state, recovering 2,704 aligned RAM bytes. The song snapshot packs narrow parameters
+and cutoff/pulse-width high bytes into the unchanged 160-byte I/O buffer; raw expert
+255 stays profile-following. These are main-loop/UI storage changes, not audio changes.
+
 The emulator's real two-chip ISR with every slot at its heaviest measures 2,387.1172
-instructions/sample against 2,700. The conservative 6502 allowance is about **185.35
-instructions/sample** after the mix (8.05946) and MASTER gain (12.0625 steady,
-12.08567 with one pot move), not the earlier mix-only 197.44. Song playback and a future
+instructions/sample against 2,700. The conservative 6502 allowance is about **185.07
+instructions/sample** after the measured slot-switch peak (964.28125), mix (8.05946)
+and MASTER gain (12.0625 steady, 12.08567 with one pot move), not the earlier mix-only
+197.44 or fixed-964-slot estimate of 185.35. Song playback and a future
 6502 do not run together. The SID-only worst blocks are 705.3516 / 1,419.5469 for one/two
 chips against 711 / 1,426; audio remains bit-exact with the host. These are instruction
 counts, not hardware cycle measurements. Listening, clock/cache costs and the real LCD

@@ -932,14 +932,46 @@ fn chip_level_ccs_on_chip_as_channels_set_chip_as_setup() {
     assert_eq!(k.chips.lost_resets, 0);
 }
 
+/// Extract the device callbacks and their real setup/character dependencies. Only audio_song
+/// and ui_toast stand in for platform services; this checks setup state, not rendered audio.
 #[test]
 fn chip_edits_under_character_locks_preserve_the_unlocked_song_base() {
     use std::{fs, path::Path, process::Command};
+
+    fn between<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
+        let from = source.find(start).unwrap();
+        let to = source[from..].find(end).unwrap() + from;
+        &source[from..to]
+    }
 
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let main = fs::read_to_string(root.join("platform/fm1/main.c")).unwrap();
     let start = main.find("static chip_setup song_char_base;").unwrap();
     let end = main[start..].find("static void song_boot(void)").unwrap() + start;
+    let chip_ctl = fs::read_to_string(root.join("app/chip_ctl.c")).unwrap();
+    let character = fs::read_to_string(root.join("core/sid/sid_character.c")).unwrap();
+    let keys_route = fs::read_to_string(root.join("app/keys_route.c")).unwrap();
+    let setup_control = between(&chip_ctl, "void chip_setup_control(", "void chip_ctl_init(");
+    let character_bits = between(
+        &character,
+        "static const uint16_t expert_bits[",
+        "_Static_assert(",
+    );
+    let character_init = between(
+        &character,
+        "void sid_character_init(",
+        "/* The character's profile",
+    );
+    let character_edits = between(
+        &character,
+        "void sid_character_expert_set(",
+        "static void dac_params_for(",
+    );
+    let song_wants = between(
+        &keys_route,
+        "void keys_route_song_wants(",
+        "int keys_route_song_edit(",
+    );
     let source = format!(
         r#"
 #include <assert.h>
@@ -955,15 +987,24 @@ static void ui_toast(const char* text, uint32_t ms) {{
     assert(strcmp(text, "SAVING") == 0 && ms == 2000u);
     toasts++;
 }}
-void keys_route_song_wants(keys_route* kr, const chip_setup* setup) {{ kr->song_want = *setup; }}
+{character_bits}
+{character_init}
+{character_edits}
+{setup_control}
+{song_wants}
 {}
 int main(void) {{
     ctl.song = &song;
     keys_route kr = {{0}};
-    chip_setup base = {{1, {{10, 20, 30, 40}}, 1}};
+    chip_setup base = {{.profile = 1, .controls = {{10, 20, 30, 40}}, .gate_reset = 1}};
+    memset(base.expert, 70, sizeof base.expert);
     keys_route_song_wants(&kr, &base);
     song_chip_character(&kr, 0, 90);
     song_chip_character(&kr, 1, 80);
+    assert(memcmp(song_char_base.expert, base.expert, sizeof base.expert) == 0);
+    assert(kr.song_want.expert[SID_EXPERT_FILTER_6581_CURVE] == SID_EXPERT_DEFAULT);
+    assert(kr.song_want.expert[SID_EXPERT_DAC_KINK] == SID_EXPERT_DEFAULT);
+    assert(kr.song_want.expert[SID_EXPERT_THUMP] == 70);
     chip_setup edit = kr.song_want;
     edit.profile = 3;
     edit.gate_reset = 0;
@@ -972,11 +1013,24 @@ int main(void) {{
     assert(song_char_base.profile == 3 && song_char_base.gate_reset == 0);
     assert(song_char_base.controls[0] == 10 && song_char_base.controls[1] == 20);
     assert(song_char_base.controls[2] == 50);
+    assert(song_char_base.expert[SID_EXPERT_FILTER_6581_CURVE] == 70);
+    assert(song_char_base.expert[SID_EXPERT_DAC_KINK] == 70);
+    assert(song_char_base.expert[SID_EXPERT_THUMP] == SID_EXPERT_DEFAULT);
     assert(kr.song_want.controls[0] == 90 && kr.song_want.controls[1] == 80);
+    edit = kr.song_want;
+    edit.expert[SID_EXPERT_FILTER_6581_CURVE] = 91;
+    assert(song_chip_edit(&kr, &edit,
+                         1u << (KEYS_ROUTE_EDIT_EXPERT_FIRST + SID_EXPERT_FILTER_6581_CURVE)) == 1);
+    assert(song_char_base.expert[SID_EXPERT_FILTER_6581_CURVE] == 91);
+    assert(song_char_base.expert[SID_EXPERT_FILTER_6581_RANGE] == 70);
+    assert(song_char_base.expert[SID_EXPERT_DAC_KINK] == 70);
+    assert(kr.song_want.expert[SID_EXPERT_FILTER_6581_CURVE] == SID_EXPERT_DEFAULT);
     edit = kr.song_want;
     edit.controls[0] = 94;
     assert(song_chip_edit(&kr, &edit, 1u << 0) == 1);
     assert(song_char_base.controls[0] == 94 && song_char_base.controls[1] == 20);
+    assert(song_char_base.expert[SID_EXPERT_FILTER_6581_CURVE] == SID_EXPERT_DEFAULT);
+    assert(song_char_base.expert[SID_EXPERT_DAC_KINK] == 70);
     assert(kr.song_want.controls[0] == 90);
     song_chip_character(&kr, 1, 70);
     assert(kr.song_want.profile == 3 && kr.song_want.gate_reset == 0);
@@ -1030,6 +1084,55 @@ int main(void) {{
     assert(song_char_base.profile == base.profile && song_char_base.gate_reset == base.gate_reset);
     assert(song_char_base.controls[0] == 70 && song_char_base.controls[1] == base.controls[1]);
     assert(kr.song_want.profile == base.profile && kr.song_want.gate_reset == base.gate_reset);
+
+    keys_route_song_wants(&kr, &base);
+    song_chip_character(&kr, 0, 90);
+    edit = kr.song_want;
+    edit.expert[SID_EXPERT_FILTER_6581_CURVE] = 93;
+    assert(song_chip_edit(&kr, &edit,
+                         1u << (KEYS_ROUTE_EDIT_EXPERT_FIRST + SID_EXPERT_FILTER_6581_CURVE)) == 1);
+    song_chip_character(&kr, 0, -1);
+    assert(kr.song_want.expert[SID_EXPERT_FILTER_6581_CURVE] == 93);
+    assert(kr.song_want.expert[SID_EXPERT_FILTER_6581_RANGE] == 70);
+    assert(kr.song_want.expert[SID_EXPERT_DAC_KINK] == 70);
+
+    song_chip_character(&kr, 0, 90);
+    edit = kr.song_want;
+    edit.profile = 4;
+    edit.controls[0] = 90; /* USER AGE matches the lock but replaces the unlocked base. */
+    memset(edit.expert, 88, sizeof edit.expert);
+    assert(song_chip_edit(&kr, &edit,
+                         KEYS_ROUTE_EDIT_PROFILE | KEYS_ROUTE_EDIT_CONTROLS | KEYS_ROUTE_EDIT_EXPERT) == 1);
+    assert(song_char_base.controls[0] == 90 && song_char_base.profile == 4);
+    assert(memcmp(song_char_base.expert, edit.expert, sizeof edit.expert) == 0);
+    song_chip_character(&kr, 0, -1);
+    assert(memcmp(kr.song_want.expert, edit.expert, sizeof edit.expert) == 0);
+
+    song_chip_character(&kr, 0, 110);
+    kr.song_user = 2;
+    chip_setup saved_base = song_char_base;
+    chip_setup saved_runtime = kr.song_want;
+    song.frozen = 1;
+    edit.expert[SID_EXPERT_FILTER_6581_CURVE] = 12;
+    assert(song_chip_edit(&kr, &edit,
+                         1u << (KEYS_ROUTE_EDIT_EXPERT_FIRST + SID_EXPERT_FILTER_6581_CURVE)) == 0);
+    edit.profile = 2;
+    memset(edit.expert, SID_EXPERT_DEFAULT, sizeof edit.expert);
+    assert(song_chip_edit(&kr, &edit, KEYS_ROUTE_EDIT_ALL) == 0);
+    assert(toasts == 4 && kr.song_user == 2);
+    assert(memcmp(&song_char_base, &saved_base, sizeof saved_base) == 0);
+    assert(memcmp(&kr.song_want, &saved_runtime, sizeof saved_runtime) == 0);
+    song.frozen = 0;
+    song_chip_character(&kr, 0, -1);
+    assert(memcmp(kr.song_want.expert, saved_base.expert, sizeof saved_base.expert) == 0);
+
+    edit = kr.song_want;
+    edit.profile = 2;
+    memset(edit.expert, SID_EXPERT_DEFAULT, sizeof edit.expert);
+    assert(song_chip_edit(&kr, &edit, KEYS_ROUTE_EDIT_PROFILE | KEYS_ROUTE_EDIT_EXPERT) == 1);
+    assert(song_char_base.profile == 2 && kr.song_want.profile == 2 && kr.song_user == 0);
+    assert(memcmp(song_char_base.expert, edit.expert, sizeof edit.expert) == 0);
+    assert(memcmp(kr.song_want.expert, edit.expert, sizeof edit.expert) == 0);
     return 0;
 }}
 "#,

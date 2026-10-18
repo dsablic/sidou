@@ -411,6 +411,10 @@ CHIP (menu, CHIP; [controls](reference/controls.md#chip)):
 - [ ] SELECT one stop after FX opens EXPERT. ALGORITHM steps its four pages and stops
   at either end; SELECT back returns to FX. The four physical knobs turn the labelled
   controls (K1/K2 upper pair, K3/K4 lower pair); the last page's unused positions do nothing.
+- [ ] From CHIP and from EXPERT, press SEQ for TRACKER, then HOME immediately and again
+  after TRACKER has finished drawing: CHIP returns whole, with no tracker rows left in it.
+  Repeat with MIDI LEARN open over the returned CHIP page. Open SONG, return to TRACKER,
+  and check its rows/name are restored rather than stale CHIP or SONG text.
 - [ ] In both HIGH CONTRAST and C64 themes, the expert names at 2× and unit values at
   2×/3× are readable in the hand and at arm's length. Knob tags and popup bars keep K1 yellow,
   K2 cyan, K3 light green and K4 light red. Every popup names its own control; no value

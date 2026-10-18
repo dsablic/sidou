@@ -92,7 +92,7 @@ void song_view_init(song_view* sv, live* l) {
     sv->song = NULL;
     sv->song_edits = 0;
     sv->scroll = 0;
-    sv->which = 0xffu;
+    sv->which = SONG_VIEW_CANVAS_NONE;
     sv->built = 0;
     sv->dirty = 0;
     sv->held = 0;
@@ -298,6 +298,17 @@ uint32_t song_view_shown_bpm(const song_view* sv) {
 }
 
 /* ---- the shared canvas ---- */
+
+int song_view_acquire_canvas(song_view* sv, uint32_t owner) {
+    if (sv->which == owner) {
+        return 0;
+    }
+    sv->which = (uint8_t)owner;
+    sv->built = 0;
+    sv->dirty = 0;
+    sv->unbuilt = 0;
+    return 1;
+}
 
 /* 1 for a cell of the screen's outer ring. */
 static int border(uint32_t c, uint32_t r) {

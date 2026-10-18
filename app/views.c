@@ -519,7 +519,7 @@ static void charset_open(void* ctx, int32_t steps) {
 
 enum { SONG_MENU_ROOT, SONG_MENU_DIR, SONG_MENU_NAME, SONG_MENU_CONFIRM };
 enum { SONG_MENU_LOAD, SONG_MENU_NEW, SONG_MENU_SAVE, SONG_MENU_DELETE };
-#define SONG_MENU_CANVAS 0xffu
+#define SONG_MENU_CANVAS SONG_VIEW_CANVAS_MENU
 
 static const char* const SONG_ACTIONS[] = {"LOAD", "NEW", "SAVE AS", "DELETE"};
 static int song_menu_input(void* ctx, const screen_event* e);
@@ -728,7 +728,6 @@ static void song_menu_enter(screen* s, void* state) {
 static void song_menu_exit(screen* s, void* state) {
     views* v = state;
     v->song.built = 0;
-    v->song.which = SONG_VIEW_TRACKER;
     screen_global(s, global, v);
     for (uint32_t i = 0; i + 1u < s->depth; i++) {
         if (s->stack[i].v == &views_song_menu_view) {
@@ -811,6 +810,9 @@ static int song_menu_dirty(screen* s, void* state) {
 static void song_menu_compose(screen* s, void* state, grid* g) {
     views* v = state;
     views_song_menu* m = &v->songs;
+    if (song_view_acquire_canvas(&v->song, SONG_MENU_CANVAS)) {
+        m->built = 0;
+    }
     const theme* th = theme_get(v->l->theme);
     const uint8_t text = THEME_ATTR(th, menu_item);
     const uint8_t label = THEME_ATTR(th, label);
@@ -876,7 +878,6 @@ static void song_menu_compose(screen* s, void* state, grid* g) {
             song_canvas_text(v, 24, 2, "ALGORITHM  OPEN / CONFIRM", label);
         }
         song_canvas_text(v, 25, 2, "HOME       BACK", label);
-        v->song.which = SONG_MENU_CANVAS;
         v->song.dirty = (1u << GRID_ROWS) - 1u;
         m->built = 1;
         m->io_state = song_menu_io_state(v);
@@ -1497,7 +1498,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     remember(v);
     v->p = NULL;
     learn_view_init(&v->learn, l, NULL);
-    chip_view_init(&v->chip, l);
+    chip_view_init(&v->chip, l, &v->song);
     user_profiles_init(&v->users, l, NULL);
     chip_view_set_users(&v->chip, &v->users);
     live_view_init(&v->live, l, sc);

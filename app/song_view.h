@@ -64,6 +64,10 @@ extern "C" {
 #define SONG_VIEW_INSTR 3u
 #define SONG_VIEW_TABLE 4u
 #define SONG_VIEW_COUNT 5u
+/* Non-song owners of the same canvas; ownership changes only when composing. */
+#define SONG_VIEW_CANVAS_NONE 0xfdu
+#define SONG_VIEW_CANVAS_CHIP 0xfeu
+#define SONG_VIEW_CANVAS_MENU 0xffu
 /* Rows a beat by default (the BPM). */
 #define SONG_VIEW_ROWS_A_BEAT 4u
 /* No key: song_view.jam_key. */
@@ -97,7 +101,7 @@ typedef struct {
     uint32_t song_edits;  /* edits sent: a view reading the song reads it again */
     uint8_t scroll;       /* TRACKER's rows: 0 the moving bar, 1 scrolling (the menu's) */
     /* The shared canvas and its copy (song_view_copy). */
-    uint8_t which;     /* the song view it holds, SONG_VIEW_*; 0xFF none */
+    uint8_t which;     /* the canvas owner: SONG_VIEW_* or SONG_VIEW_CANVAS_* */
     uint8_t built;
     uint32_t dirty;    /* rows of the canvas the grid may not have yet (bit r: row r) */
     uint32_t held;     /* frames whose copy the budget cut short (diagnostic) */
@@ -108,6 +112,9 @@ typedef struct {
 
 /* No player, nothing muted, the cursor at entry 0 row 0 of voice 1, instrument 1. */
 void song_view_init(song_view* sv, live* l);
+/* Acquire before building, never on enter/exit: a covered view may still compose and a pop
+ * does not re-enter the view below. Returns 1 on transfer, invalidating the song build/copy. */
+int song_view_acquire_canvas(song_view* sv, uint32_t owner);
 /* The player's binding (app/song_transport.h), or NULL: none. */
 void song_view_set_transport(song_view* sv, const song_transport* t);
 /* SONG's large-text rows borrow the same canvas: each 2x2 block, aligned to even columns

@@ -195,14 +195,24 @@ and KEYS A's temporary borrowing of song voices.
 The CHIP tests cover both tabs, the final EXPERT stop, all four pages' K1–K4 assignments,
 inactive model-specific fields, exact unit readouts, named/coloured popups, MIDI learn,
 and USER saves from either chip. Clamped or empty profile-picker steps preserve edits;
-new built-in profile/model choices release them. Settings v1–3 and USER v1 fixtures
+new built-in profile/model choices release them. Settings v1–4 and USER v1 fixtures
 load with following experts; settings v4 retains M2c's last-song filename. Settings v5
 and USER v2 round trips retain explicit overrides and learned CCs.
+CHIP and the song views borrow the same drawing canvas: regressions interrupt a TRACKER
+build, return with HOME without re-entering CHIP, compose under MIDI LEARN, and restore
+SONG/TRACKER after a different owner. The view state remains separate; ownership changes
+invalidate rendering caches rather than clearing or copying a canvas in an input handler.
 
 `expert_transport` replays outgoing packets into a second instrument. It checks macro
 releases after deferred or canceled changes, macro-before-expert restoration, remote
 edits after a queued local macro, explicit learned 127 versus the internal following
 sentinel, and input that must not echo or freeze inherited values.
+
+`song_snapshot` compiles the device's metadata packing/unpacking helpers and checks
+all 128 raw settings, including cutoff/pulse-width high bytes and expert-following 255.
+The snapshot fits the unchanged 160-byte I/O buffer; MASTER remains excluded from
+song restoration. The extracted song callback regression in `keys_route` covers expert
+base/runtime separation under locks and save-time refusal without changing either setup.
 
 After both firmware builds, run the complete emulator gate (not just these focused checks):
 

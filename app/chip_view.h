@@ -61,6 +61,7 @@
 #include "keys_route.h"
 #include "live.h"
 #include "screen.h"
+#include "song_view.h"
 #include "user_profile.h"
 
 #ifdef __cplusplus
@@ -118,7 +119,7 @@ typedef struct {
     uint16_t cursor; /* the cell the copy goes on from */
     uint32_t held;   /* frames whose copy the budget cut short (diagnostic) */
     uint8_t drawn[CHIP_VIEW_LOOK];
-    chip_view_canvas cv;
+    song_view* canvas; /* borrows canvas->cv; all other CHIP and song state stays separate */
     /* USER profiles (M2a Task 6). users: where a saved slot is written (NULL: only live keeps
      * it). target: n + 1, the slot SAVE stores into (EDIT + ALGORITHM), 0 none; confirm: n + 1,
      * an overwrite SAVE asked about. keys_route.song_user tracks the song tab's USER setup,
@@ -131,8 +132,8 @@ typedef struct {
 
 extern const view chip_view_view;
 
-/* The focus on the chip, on l, tab A, no keys_route. */
-void chip_view_init(chip_view* cv, live* l);
+/* The focus on the chip, on l, tab A, no keys_route. shared must outlive this view. */
+void chip_view_init(chip_view* cv, live* l, song_view* shared);
 /* The two chips' routing (the device's, app/keys_route.h): which the keys play, the song. */
 void chip_view_set_keys(chip_view* cv, keys_route* kr);
 /* CHIP_VIEW_TABS, CHIP_VIEW_CHIP, 1 + the selected slot, or CHIP_VIEW_EXPERT. */

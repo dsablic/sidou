@@ -550,7 +550,7 @@ __attribute__((noinline, unused)) static void draw_expert(chip_view* cv, canvas*
 
 /* The whole page into the canvas, and what it shows remembered. */
 static void build(chip_view* cv) {
-    chip_view_canvas* c = &cv->cv;
+    chip_view_canvas* c = &cv->canvas->cv;
     const live* l = cv->l;
     const theme* th = theme_get(l->theme);
     look(cv, cv->drawn);
@@ -638,8 +638,9 @@ static void build(chip_view* cv) {
 
 /* ---- the view ---- */
 
-void chip_view_init(chip_view* cv, live* l) {
+void chip_view_init(chip_view* cv, live* l, song_view* shared) {
     cv->l = l;
+    cv->canvas = shared;
     cv->kr = NULL;
     cv->chip = 1;
     cv->tabs = 0;
@@ -926,7 +927,8 @@ static int input(screen* s, void* state, const screen_event* e) {
 static int changed(screen* s, void* state) {
     (void)s;
     const chip_view* cv = state;
-    return !cv->built || cv->copying || looks_changed(cv);
+    return cv->canvas->which != SONG_VIEW_CANVAS_CHIP || !cv->built || cv->copying ||
+           looks_changed(cv);
 }
 
 /* 1 for a cell of the screen's outer ring. */
@@ -940,10 +942,14 @@ static int border(uint32_t c, uint32_t r) {
  * draws over it. */
 static void compose(screen* s, void* state, grid* g) {
     chip_view* cv = state;
+    if (song_view_acquire_canvas(cv->canvas, SONG_VIEW_CANVAS_CHIP)) {
+        cv->built = 0;
+        cv->cursor = 0;
+    }
     if (!cv->built || looks_changed(cv)) {
         build(cv);
     }
-    const chip_view_canvas* c = &cv->cv;
+    const chip_view_canvas* c = &cv->canvas->cv;
     uint32_t whole = s->redraw && s->wipe != SCREEN_CUT ? s->redraw_rows : 0u;
     for (uint32_t r = 0; r < GRID_ROWS; r++) {
         if (whole >> r & 1u) {
