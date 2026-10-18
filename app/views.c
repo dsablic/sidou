@@ -978,7 +978,7 @@ static int menu_changed(screen* s, void* state) {
 static void menu_compose(screen* s, void* state, grid* g) {
     views* v = state;
     const theme* th = theme_get(v->l->theme);
-    const uint8_t text = GRID_ATTR(th->label, th->bg);
+    const uint8_t text = THEME_ATTR(th, hint);
     /* Every blank cell the menu draws has this attribute: the lines' own (menu_draw's) and the
      * rest of the screen's, so that a scroll sends no blank for a colour nobody sees. */
     const uint8_t blank = GRID_ATTR(th->menu_item, th->bg);

@@ -519,7 +519,7 @@ fn summary(ui: &Ui, line: u32, name_len: usize, value_len: usize) -> (String, St
     (big(ui, row, 0, 2, name_len), big(ui, row, 9, 2, value_len))
 }
 
-/// Which tab of the row has what background: the focused one yellow, the others dark grey.
+/// Which tab of the row has what background: the focused one yellow, the others the screen's.
 fn tab_bg(ui: &Ui, section: usize) -> u8 {
     let cols = [0usize, 8, 15, 22];
     ui.g.attr[CHIP_VIEW_TAB_ROW as usize * COLS + cols[section]] >> 4
@@ -540,6 +540,77 @@ fn profile_name(id: u32) -> String {
     unsafe { CStr::from_ptr(p.name) }
         .to_string_lossy()
         .to_uppercase()
+}
+
+#[test]
+fn chip_text_uses_readable_roles() {
+    for id in 0..THEME_COUNT {
+        for section in [CHIP_VIEW_CHIP, 1] {
+            for algorithm in [0u32, 1, 2] {
+                let mut ui = chip_ui();
+                unsafe { live_set_theme(&mut *ui.rig.live, id) };
+                ui.turn(PANEL_ENC_SELECT, section as i32);
+                if section != CHIP_VIEW_CHIP {
+                    unsafe {
+                        live_slot_set(&mut *ui.rig.live, 0, LIVE_SLOT_ALGORITHM, algorithm as i32)
+                    };
+                }
+                settle(&mut ui);
+                let t = theme_of(&ui);
+                let used: [bool; 4] = std::array::from_fn(|k| {
+                    section == CHIP_VIEW_CHIP || label(0, algorithm, LIVE_SLOT_AMOUNT + k as u32).1
+                });
+                for (k, &col) in KNOB_COL.iter().enumerate() {
+                    assert_eq!(
+                        ui.g.attr[CHIP_VIEW_LABEL_ROW as usize * COLS + col] & 15,
+                        if used[k] { t.knob_text[k] } else { t.dim }
+                    );
+                    assert_eq!(
+                        ui.g.attr[CHIP_VIEW_TAG_ROW as usize * COLS + col] & 15,
+                        t.hint
+                    );
+                    assert_eq!(
+                        tab_bg(&ui, k),
+                        if k == section as usize { t.hot } else { t.bg }
+                    );
+                }
+                assert_eq!(ui.g.attr[CHIP_VIEW_NAMES_ROW as usize * COLS] & 15, t.hint);
+                assert_eq!(ui.g.attr[CHIP_VIEW_HELP_ROW as usize * COLS] & 15, t.hint);
+                for row in 0..GRID_ROWS as usize {
+                    if row == CHIP_VIEW_BAR_ROW as usize {
+                        continue;
+                    }
+                    for col in 0..COLS {
+                        let at = row * COLS + col;
+                        let ch = ui.g.ch[at];
+                        let ch = if (GRID_BIG_FIRST as u8..GRID_PIECE_PLAIN as u8).contains(&ch) {
+                            ui.g.src[at]
+                        } else {
+                            ch
+                        };
+                        if ch == b' ' || ui.g.attr[at] & 15 != t.dim {
+                            continue;
+                        }
+                        let unused = (0..4).any(|k| {
+                            !used[k]
+                                && (KNOB_COL[k]..KNOB_COL[k] + KNOB_W[k] - 1).contains(&col)
+                                && (CHIP_VIEW_LABEL_ROW as usize..=CHIP_VIEW_VALUE_ROW as usize + 2)
+                                    .contains(&row)
+                        });
+                        let off = (row >= CHIP_VIEW_SUMMARY_ROW as usize && col >= 9
+                            || algorithm == 0
+                                && (CHIP_VIEW_CHOICE_ROW as usize..CHIP_VIEW_NAMES_ROW as usize)
+                                    .contains(&row))
+                            && matches!(ch, b'O' | b'F');
+                        assert!(
+                            unused || off,
+                            "theme {id}, section {section}, cell {col},{row}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[test]
@@ -566,7 +637,7 @@ fn chip_opens_from_the_menu_behind_the_chip_card() {
 }
 
 #[test]
-fn chip_labels_and_legends_use_t1_roles_without_changing_tabs() {
+fn chip_labels_legends_and_tabs_use_readable_roles() {
     for id in [THEME_HIGH_CONTRAST, THEME_C64] {
         let mut ui = chip_ui();
         unsafe { live_set_theme(&mut *ui.rig.live, id) };
@@ -582,7 +653,7 @@ fn chip_labels_and_legends_use_t1_roles_without_changing_tabs() {
             assert_eq!(fg(&ui, CHIP_VIEW_BAR_ROW, col), t.knob[k]);
         }
         for i in 0..4 {
-            assert_eq!(tab_bg(&ui, i), if i == 0 { t.hot } else { t.dim });
+            assert_eq!(tab_bg(&ui, i), if i == 0 { t.hot } else { t.bg });
         }
         ui.turn(PANEL_ENC_SELECT, 1);
         for alg in [SID_DIST_OVERDRIVE, 0] {
@@ -644,7 +715,7 @@ fn the_page_shows_the_profile_the_character_and_the_other_sections() {
         assert_eq!(small(&ui, CHIP_VIEW_TAB_ROW, col, name.len()), name);
         assert_eq!(
             tab_bg(&ui, i),
-            if i == 0 { t.hot } else { t.dim },
+            if i == 0 { t.hot } else { t.bg },
             "tab {name}"
         );
     }
@@ -783,7 +854,7 @@ fn select_moves_the_focus_and_selects_the_slot() {
     settle(&mut ui);
     let t = theme_of(&ui);
     assert_eq!(tab_bg(&ui, 2), t.hot);
-    assert_eq!(tab_bg(&ui, 0), t.dim);
+    assert_eq!(tab_bg(&ui, 0), t.bg);
     assert_eq!(small(&ui, CHIP_VIEW_NAMES_ROW, 0, 9), "ALGORITHM");
     assert_eq!(
         summary(&ui, 0, 4, 9),

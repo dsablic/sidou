@@ -704,8 +704,9 @@ knobs' places.
   **KEYS:B** on the tab of the chip the keys play (where the old `KEYS` beside the tab
   letter stood).
 - **Row 2:** the section tabs **CHIP, DIST, MOD, FX** across the width, the focused one yellow
-  with black letters, the others dark grey bars with grey letters; with the focus on the A/B
-  tabs the CHIP tab is grey (its controls are what K1..K4 turn there). SELECT moves the focus as
+  with the background's colour for its letters, the others in the label colour on the screen's
+  background; with the focus on the A/B tabs the CHIP tab is reversed in the label colour
+  (its controls are what K1..K4 turn there). SELECT moves the focus as
   the A/B tabs, CHIP, DIST, MOD, FX, then EXPERT, clamped at both ends.
 - **Rows 4-6, 7:** the section's main choice at 3×: for CHIP the chip's model (`6581`, white) and
   its profile (`R4AR`, yellow: the name without the model, `WORN`, or **USR 3** for a picked

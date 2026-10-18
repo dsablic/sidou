@@ -442,7 +442,7 @@ static void draw_tabs(const chip_view* cv, canvas* c, const theme* th) {
     for (uint32_t i = 0; i < CHIP_VIEW_SECTIONS; i++) {
         uint8_t a = !cv->tabs && sec == i  ? GRID_ATTR(th->bg, th->hot)
                     : cv->tabs && i == 0u ? GRID_ATTR(th->bg, th->label)
-                                           : GRID_ATTR(th->label, th->dim);
+                                           : GRID_ATTR(th->label, th->bg);
         uint32_t w = TAB_W[i];
         uint32_t n = length(TAB_NAME[i]);
         fill(c, TAB_COL[i], CHIP_VIEW_TAB_ROW, w, 1, ' ', a);
