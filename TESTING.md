@@ -89,6 +89,77 @@ The drives, delays and reverbs run their click tests at low input levels.
 At full level their outputs saturate, or carry broadband tails, that differ
 between two runs by more than any click. The tests say where.
 
+### Store, settings and SAVE (M2a)
+
+Run the host coverage with `cargo test --locked --release -p sidou-tests --test app store::`;
+repeat with `settings::`, `save_key::`, `user_profile::`, `learn_view::` and `midi_learn::`.
+After an fm1 build, run the device tests from `host/`:
+
+```sh
+SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --locked --release -p emu-gate \
+    --test store --test settings --test user_profile -- --nocapture --test-threads=1
+```
+
+`tests/app/store_layout.rs` checks the store's range against the loader, OTA area, app slot
+and package VM descriptor, including the erased 256-byte guard band in every sector.
+`tests/app/store.rs` exercises the portable store (`app/store.c`) against a Rust NOR model:
+programs AND bits, wrap within a 256-byte page, and can be deferred with `STORE_LATER`;
+erases and programs can tear, leave faint bits that read differently on later boots, or fail.
+This is stronger than the emulator's instantaneous, non-tearing flash model.
+
+- Values and deletions survive remounts, collection and cuts; recovery copies the newest
+  record forward and evacuates ambiguous sectors before the session writes. Regression
+  cases cover torn claims, erase headers, kills, copy commits and tombstones, repeated short
+  boots and near-capacity use. Guard bands remain erased, and an interrupted erase is redone
+  before use. Foreign data and newer formats are never silently formatted.
+- The erase-ahead pool reserves at least 20 sectors and refills toward 22; short-pool and
+  full-store refusals write nothing. Wear counts spread by at most 8 after 10,000 erases.
+  Public API calls and mount/poll slices stay within their work allowance.
+- Files of up to 65,536 bytes claim all their sectors before writing (18 for the maximum),
+  stream with back-pressure and commit whole. Replacement cuts leave the old or new file,
+  never neither or mixed data. Tests cover directory order, rename, delete, abort, a sender's
+  5 s timeout, every read offset/length, and write offers of 1..1,000 bytes.
+- The checked-in format-1 fixture still mounts to the same values and files. Random bytes
+  and damaged regions mount safely. The ordinary app tests include bounded power-loss runs;
+  the longer runs below are ignored by default.
+
+Run the long value and file sweeps explicitly, from `host/` (they print cut counts):
+
+```sh
+cargo test --locked --release -p sidou-tests --test app store::power_loss_long -- --ignored --nocapture
+cargo test --locked --release -p sidou-tests --test app store::files_power_loss_long -- --ignored --nocapture
+```
+
+The value run uses 400 forked-cut seeds (1,000..1,400) and 3,000 continuing-cut seeds
+(10,000..13,000), windows of 1..256 bytes and faint bits for three seeds in four. The file
+run uses 60 forked-cut and 300 continuing-cut seeds, the latter with files up to 64 KiB.
+For one reproducible seed, `SIDOU_STORE_SWEEP=values:1000` (or `files:10000`) with
+`cargo test --locked --release -p sidou-tests --test app store::power_loss_sweep -- --ignored --nocapture`
+runs that seed only; `values-forked:N` and `files-forked:N` force the forked variant.
+
+`tests/app/settings.rs` checks every persisted field and default, schema-1 and schema-2
+fixtures (schema 1 defaults TRACKER ROWS to BAR), invalid records/fields, the versioned full
+boot, the 5 s debounce after the last change, explicit commit notification, busy retries,
+the 2 s forced-save path and foreign-store refusal. Volume and transient controllers are
+not restored. Setters and learn edits wake background saves; an unchanged frame does not
+gather the record.
+
+`tests/app/save_key.rs`, `learn_view.rs` and `midi_learn.rs` check clean-release SAVE,
+cancellation by an encoder or another button, routing through the views, SAVE-held + knob
+learning without changing the parameter, forgetting one binding, SAVE-held + HOME and a
+fresh SAVE confirmation to clear all, HOME/timeout cancellation and STORE's two-turn format
+confirmation. `tests/app/user_profile.rs` checks the separate seven-byte records, eight-slot
+picker and empty-slot skipping, target changes without chip writes, overwrite confirmation,
+both keys and song-chip setups, profile preparation/ramping, boot load, retries and forced
+gaps, foreign-store refusal and clearing the slots on format.
+
+In fm1-emu, `settings.rs` changes CARDS, envelope mode and a learned TRS CC, then reboots
+with the same flash and checks all three. It checks the full boot once per firmware version,
+an explicit SAVE within a second without the debounce, and menu-confirmed foreign formatting.
+`user_profile.rs` saves USER 3 from CHIP, reboots, picks it over CC 85 and compares the sound
+bit for bit with the host using the saved setup; a separate panel walk checks the picker
+skips empty slots. These complement the store's device-level cuts and cost gates below.
+
 ### Song files
 
 `tests/song.rs` covers `core/song` (decision record 0007, `docs/reference/song-format.md`):
@@ -644,7 +715,11 @@ the tests that need windows set `store_fm1_window` in RAM. The tests:
   old value or the new, the old file or the new, never a mix;
 - in 16-byte windows, every program starts within `STORE_WINDOW_LEAD_US` of
   an audio block's end, some wait for a window, none is held, no block is
-  missed, and the driver's masked instructions are within its estimate;
+  missed, and the driver's masked instructions are within its 100 µs estimate
+  at 240 MHz. The printed cost is `fl_prog_ram`, not the whole interrupts-off
+  stretch or a measured flash busy time. The window bound is 1,000 µs; held
+  operations are bounded at 35 ms, with 10 ms between quiet operations. The
+  test checks the hold's silent DMA halves, not a longest masked duration;
 - no erase while a chord plays, a CC every 100 ms comes in, or a song plays;
   once quiet (a DAW's clock and active sensing do not count), the erase comes,
   with the output faded to silence;
@@ -689,7 +764,7 @@ panel (keys, encoders, the MASTER pot) and checks:
 it costs. It reaches each view through the panel, as a player would (HOME,
 SELECT, ALGORITHM):
 - **snapshots:** the status screen after boot, with a note held and with the
-  toast OCT+ shows, MIDI learn's frame asking for a knob and for a CC and its
+  toast OCT+ shows, MIDI learn's frame asking for a CC and its
   LEARNED toast, the menu, the glyph sheet (every glyph, the palette
   and a pixel overlay), the boot's prompt, loading and title card, About,
   each SCENE piece a second into a held chord, each CHIP page (the focus on

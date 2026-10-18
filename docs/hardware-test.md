@@ -1,12 +1,14 @@
 <!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-# M1a hardware checklist
+# SIDOU hardware checklist (M1 and M2)
 
-A manual checklist for SIDOU M1a on a real M-VAVE FM-1. Anyone with a unit
-can run it. Copy this file, fill in the boxes and notes, and attach it to an
-issue. Everything here has been tested only in fm1-emu so far: CI boots the
-package, plays the instrument and checks the update protocol's step 1 on the
-host, but no FM-1 has run SIDOU yet.
+A manual checklist for SIDOU on a real M-VAVE FM-1. Anyone with a unit can
+run it. Copy this file, fill in the boxes and notes, and attach it to an
+issue. The [first hardware run](hardware-results/2026-10-17-first-flash.md)
+booted and played, but USB-MIDI output failed and recovery to V15 was needed.
+That partial run does not mark the items below passed for the current build.
+The flash timing spike has not run on a unit: program/erase timings remain
+the datasheet's provisional maxima, not measured results.
 
 > **Risk.** Installing custom firmware can leave the unit unable to boot. Do
 > it only if you can recover it (section 0) and return to stock (section 9).
@@ -233,7 +235,7 @@ which printed control did it.
 | ENV (button 4) | the selected slot's next algorithm (the name on LIVE's slot line changes) | | [ ] |
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the status screen and the CHIP view; Mix as LIVE's bar), in every view; EDIT lit while the slot is on | | [ ] |
 | HOME (button 8) | from LIVE, the menu (a wipe down from the top); in the menu, back to LIVE behind THE OSCILLATOR's title card (below; with CARDS OFF, a wipe up from the bottom) | | [ ] |
-| SAVE (button 9) | press alone opens nothing; a clean release saves settings and shows SAVED when committed (or SAVED (GAPS)); held + K1 opens MIDI LEARN on CUTOFF, HOME closes it (section 7) | | [ ] |
+| SAVE (button 9) | clean release saves (7.1–7.2); held + knob learns (7) | | [ ] |
 | SEQ (button 11) | from any view, the TRACKER (black, a light blue top line TRACKER, a stop square, the tempo 125, ORD 00 ROW 00; V1 V2 V3 on the second line; SIDOU LOOP's first patterns, a blue bar on row 00, the orderlists on row 28); SEQ again stays there, HOME goes back | | [ ] |
 | TRACKER ROWS in the menu | BAR: while SIDOU LOOP plays the bar moves down still rows, and the rows change cleanly at each new pattern; SCROLL: the bar stays on the middle row and the rows move up, smoothly at this tempo or a frame behind at most | | [ ] |
 | PLAY (button 12) | SIDOU LOOP plays (a lead, a bass and drums, in time, no clicks between rows), in any view; TRACKER's top line shows a play mark and the rows move; PLAY again stops it and the notes ring out; EDIT + PLAY goes on from there; PLAY's LED lit while it plays | | [ ] |
@@ -243,7 +245,7 @@ which printed control did it.
 | SELECT (encoder 0), in the menu | the selected line (reverse video) moves between CHIP, TRACKER, PRE (PRESET), OCTAVE, CARDS, STORE, KEYS, SOUNDS, ROWS (TRACKER ROWS), STATUS, SCENE, CHARSET and ABOUT; six lines show at a time and the list scrolls with it, the title bar's arrows telling which way more is | | [ ] |
 | ALGORITHM (encoder 1), in the menu | changes the item under the selection (PRESET; OCTAVE -3..+3; CARDS: counter-clockwise OFF, clockwise ON); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
 | SELECT (encoder 0), on CHIP | the focus (a play mark and white frames) moves CHIP, DIST, MOD, FX and stops at either end; onto a slot that was not the selected one, the toast says SLOT DIST (or MOD, FX); onto the slot already selected (DIST at power-on), no toast | | [ ] |
-| ALGORITHM (encoder 1), on CHIP | on CHIP the PROFILE steps 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581 (MODEL follows; held notes attack again on the new chip, as at a model change); on a slot its algorithm, OFF to the last, named in the slot's frame | | [ ] |
+| ALGORITHM (encoder 1), on CHIP | on CHIP the PROFILE steps 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581, then filled USER slots (7.2; MODEL follows; held notes attack again on the new chip, as at a model change); on a slot its algorithm, OFF to the last, named in the slot's frame | | [ ] |
 | K1..K4, on CHIP | on CHIP AGE, DAC, THUMP, BLEED (bars and values; the sound darkens with AGE, a released note whispers with DAC); on a slot its four controls, named for the algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX) | | [ ] |
 
 - [ ] A held note keeps its pitch when the octave changes, and stops when
@@ -419,8 +421,8 @@ only the real LCD shows.
   brightens the sky in three palettes, wiped down a row at a time.
 - [ ] PLAY again (stop): once the notes have faded the duel settles and the torches hold
   still; the picture stays clean (no stale or flickering cell).
-- [ ] SAVE (MIDI learn's frame) over it: the frame reads as over the other pieces (white on
-  blue), the duel goes on around it, and HOME brings the duel back whole.
+- [ ] Hold SAVE and turn K1 (MIDI learn's frame) over it: the frame reads as over the other
+  pieces (white on blue), the duel goes on around it, and HOME brings the duel back whole.
 
 Notes:
 
@@ -488,11 +490,13 @@ Notes:
 
 ## 7.1 Settings, SAVE and STORE (M2a Task 5)
 
-Use a writable store for the persistence checks. If STORE says FOREIGN, read the destructive
-format check below before deciding whether to format; nothing persists until then.
+Use a writable store for the persistence checks. Previous ChoralRoot/Felucca data in the
+store's range reads as FOREIGN, not as a blank store. Read the destructive format check
+below before deciding whether to format; nothing persists until then. SIDOU never formats
+it without the menu's confirmation; preserve wanted data with the previous firmware first.
 
-- [ ] Change CARDS, KEYS and SOUNDS, the preset and a preset edit, the chip profile and a
-  character control, an effect algorithm and Mix, and the envelope mode (CC 26). Release
+- [ ] Change CARDS, KEYS, SOUNDS and ROWS (TRACKER ROWS), the preset and a preset edit, the
+  chip profile and a character control, an effect algorithm and Mix, and the envelope mode (CC 26). Release
   notes and wait at least 6 s after the last change, without further persisted changes:
   no background-save toast. Power-cycle: all those values and the learn binding return.
   Octave returns to 0, no notes are held, LIVE opens and volume follows MASTER.
@@ -516,6 +520,41 @@ format check below before deciding whether to format; nothing persists until the
   gaps), then STORE FORMATTED and nK. Let settings save, power-cycle, and check that
   STORE is no longer FOREIGN and settings persist. Never format automatically just to
   proceed with the checklist.
+
+Notes:
+
+## 7.2 USER chip profiles (M2a Task 6)
+
+Use a writable store (section 7.1). CHIP's chip focus, not its tabs or effect slots, owns
+profile saves. A saved slot contains a base profile and AGE, DAC, THUMP and BLEED; the
+settings keep the base setup, not the identity of the USER slot picked.
+
+- [ ] On CHIP, select a built-in profile and set recognisable character values. Hold EDIT
+  and turn ALGORITHM to target an empty USER slot: the yellow title says SAVE TO USER n
+  (with `-` for empty), and the popup names the target. Neither the current profile nor
+  the sound changes. Step through USER 1..8 and OFF; leaving chip focus or closing CHIP
+  clears the target.
+- [ ] Target an empty slot again, then press and cleanly release SAVE. Wait for
+  SAVED TO USER n (or SAVED TO USER n (GAPS), after the 2 s forced path). The chip's setup
+  has not changed. Power-cycle after completion: the slot remains. ALGORITHM's picker
+  runs the five built-ins then filled USER slots, skipping empty ones with USER n EMPTY
+  at an empty end. Pick the saved slot: its base model and four controls, and its sound,
+  return; the PROFILE row and popup name USER n.
+- [ ] Change a character control while that USER slot is applied, then SAVE with no target:
+  OVERWRITE USER n? first. HOME keeps the old slot and leaves the view, clearing the
+  question/target. Repeat, then a fresh SAVE press and release confirms. Reboot and pick
+  the slot: only the confirmed changes survived.
+- [ ] Target a filled slot without applying it: SAVE asks before overwriting, and the
+  current sound is stored only after the second SAVE. With a built-in profile and no
+  target, SAVE instead saves settings (SAVED), not a USER slot.
+- [ ] Repeat the save on chip B's tab showing the keys' setup. During a song, save chip A's
+  setup from the A tab: the slot holds the song's setup, not the keys' or a temporary lock.
+- [ ] CC 85 / NRPN 2/0 can pick a filled USER slot (profile range 0..12); an empty one changes
+  nothing. Use the current [MIDI chart](reference/midi.md), since the CC scaling changed
+  when the eight slots were added.
+- [ ] If testing an unformatted foreign store, a profile save says STORE FOREIGN: NOT SAVED;
+  it does not format or replace the foreign data. A RAM-only slot may work until reboot,
+  but it is not persistent. Only the destructive confirmation in section 7.1 formats it.
 
 Notes:
 
@@ -646,8 +685,8 @@ Notes:
 
 ## 11. Measurements for later work
 
-Optional; each needs a measuring build that does not exist yet. Record what
-you can.
+Record what you can. Counter/CRC microbenchmarks need a measuring build;
+the store's listening checks use normal SIDOU, and section 12's flash spike is built.
 
 - [ ] A photo of the chip's part number (docs/hardware.md expects AC7911B8).
 - [ ] The real CPU clock (360 MHz expected after the SPL; the budget assumes

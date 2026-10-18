@@ -284,6 +284,25 @@ These follow from the facts above. Each needs measuring before it's adopted.
   ([hardware-test.md](hardware-test.md)); back to stock with M-VAVE's
   updater or "Return to official V15".
 
+### First real-hardware run (2026-10-17)
+
+[The first-flash report](hardware-results/2026-10-17-first-flash.md) records
+v0.2.0-m2-preview installed over ChoralRoot 0.24-beta2. SIDOU booted and played:
+the title card, LIVE, keys, knobs, screen and USB-MIDI input worked. USB-MIDI
+output almost never reached the host, so identity replies, panel CCs and the
+update protocol's read requests failed. Recovery to V15 succeeded from a Mac
+through externally entered ROM boot (Flipper Zero and `tools/fm1-unbrick-mac`);
+that recovery does not establish store survival through stock firmware.
+
+The run also found a faint tone after releases, MASTER not controlling songs,
+and a narrow knob range; macOS retained the previous firmware's USB-MIDI name.
+Main now has the USB changes and OCT- power-on recovery gesture, a tail gate,
+and MASTER as final digital gain. Those fixes still need their hardware
+rechecks; the knob-range UX work is open. See [hardware-test.md](hardware-test.md),
+especially the mandatory USB-output release gate in section 8.1.
+**The flash timing spike has not run on a unit.** Neither that run nor the
+emulator supplies measured program/erase times; the maxima below remain provisional.
+
 ## The flash part's timings (open: M2a Task 3b)
 
 The store (M2a) programs and erases the flash while SIDOU runs. With XIP off
@@ -368,7 +387,7 @@ for every time):
   record's data, then its header, then its commit flag, and a sector's
   header in two steps (M2a Task 2), often into one page. If PARTIAL, REZERO
   or BITWALK is not OK, or TWICE shows the part does not AND what it is
-  given, the format changes before Task 4: one program per page region, no
+  given, the format must change before hardware acceptance: one program per page region, no
   bit cleared twice.
 - **The clock:** at 360 MHz every instruction-count margin in M2 grows by
   half; at 240 MHz they are as written.
@@ -384,12 +403,23 @@ the loader, the update protocol, `app.ld` and the package):
 | Range | Size | Owner |
 |---|---|---|
 | `[0x000000, 0x004000)` | 16 KiB | the device's flash head (SPL, isd_config): never written by anyone but the vendor |
-| `[0x004000, 0x093000)` | 572 KiB | the app area; the update loader writes it; SIDOU's image is 0x8DFBC of it from 0x02000120. **Fixed:** the store's size is not a lever for the image |
+| `[0x004000, 0x093000)` | 572 KiB | The update loader's app area; SIDOU's slot is fixed (below). |
 | `[0x093000, 0x097000)` | 16 KiB | the first 16 KiB of the package's VM region; inside the loader's record scan (it erases update records it finds there); the stock firmware's VM data may live here. Neither SIDOU nor Felucca writes it |
 | `[0x097000, 0x0E0000)` | 292 KiB, 73 sectors | **SIDOU's store** (Felucca's main store on Felucca); inside the VM region; the loader's scan skips it |
 | `[0x0E0000, 0x0E5000)` | 20 KiB | the update protocol's staging area and its record (0xE4F00); inside the VM region |
 | `[0x0E5000, 0x0E9000)` | 16 KiB | the end of the VM region: Felucca's autosave and voice bank, the stock OTA's VM backup (0xE8000); never written by SIDOU |
 | `[0x0E9000, 0x100000)` | 92 KiB | not SIDOU's: Felucca's globals (0xFC000) and the rest; never written |
+
+SIDOU's app slot is 581,564 bytes (0x8DFBC), mapped at 0x02000120. The store's
+size is not a lever for the image.
+
+**Previous firmware's data is FOREIGN.** Nonblank ChoralRoot/Felucca data in
+`[0x97000, 0xE0000)` with no SIDOU headers is not imported or silently erased.
+STORE reads FOREIGN, and settings and USER profiles cannot persist there.
+Only the menu's explicit confirmation (two clockwise ALGORITHM steps on STORE,
+without leaving the item) formats it, destroying that data. A cancelled
+confirmation writes nothing. Back up wanted data with the previous firmware
+before choosing to format; merely booting SIDOU is not consent.
 
 **The firmware may erase and program two ranges only:** the staging area
 and the store (`platform/fm1/midi.c`'s `FL_RANGE_OK`, which the RAM flash
@@ -452,11 +482,17 @@ straight through the plain XIP window, programs and erases through
 `midi.c`'s RAM driver (`flash_store_prog`, `flash_store_erase`), which keeps
 to the store's range and never touches a sector's guard band.
 
-- **At boot**, in the LCD's 120 ms wake-up wait (before the audio starts;
-  the wait is to a deadline, so the boot's later timing does not move): the
+- **At boot**, during the LCD's 120 ms wake-up wait (before the audio starts;
+  work fitting that deadline does not move the boot's later timing): the
   mount, the recovery after a cut, and the pool's fill to its target, with no
-  holds. A blank region's first format is up to 22 erases (440 ms at the
-  datasheet's worst), once.
+  holds. The wait absorbs work only until its deadline: a blank region's first
+  format is up to 22 erases (440 ms at the datasheet's worst), so that first
+  boot can take longer. Foreign data is left untouched, not filled or formatted.
+- **The erase-ahead pool** has a minimum of 20 clean sectors and a target of
+  22. Writers claim space before programming; a 64 KiB file claims 18 sectors
+  and reserves its commit record before accepting data. Short-pool requests
+  return BUSY without starting a partial write. Quiet maintenance copies live
+  records, then erases victims and dirty sectors to replenish the pool.
 - **A program in a window**: interrupts masked, at most
   `STORE_WINDOW_LEAD_US` (250 us) after the end of an audio block (the
   ALNK0 interrupt stamps `audio_block_end` as its last act) and with no
@@ -484,14 +520,18 @@ to the store's range and never touches a sector's guard band.
   pass, an idle one looks once a tick (10 ms) and asks whether maintenance has
   work (a plan of a few thousand instructions) once a second, never in a pass
   whose `store_poll` had work.
-- **A forced save** (`store_fm1_force`, for Task 5's explicit SAVE with the
-  pool short): held erases without quiet, 100 ms apart.
+- **A forced save**: explicit settings and USER-profile saves bypass the 5 s
+  background debounce. If still pending after 2 s, they enable `store_fm1_force`:
+  held operations (programs too under the provisional timings) can run without
+  quiet, 100 ms apart when not quiet. Completion says `SAVED (GAPS)` or
+  `SAVED TO USER n (GAPS)`. Background saves wait and never force gaps.
 
 **The numbers are provisional**: the P25Q80H datasheet's maxima (Table
 5-4): a page program up to 3 ms, a 4 KiB sector erase up to 20 ms, erase
 suspend latency 30 us. By the decision rule below no window fits a 3 ms
-program, so programs are held operations for now and a settings save waits
-for quiet; the sector erase fits a hold. Task 3b's spike replaces
+program, so `STORE_WINDOW_BYTES` is 0: programs are held operations for now.
+Background saves wait for quiet; an explicit save can force gaps after 2 s.
+The sector erase fits a hold. Task 3b's spike replaces
 `STORE_PROG16_MAX_US`, `STORE_PROG64_MAX_US`, `STORE_PROG256_MAX_US` and
 `STORE_ERASE_MAX_US` in `store_fm1.h`, and `STORE_WINDOW_BYTES` follows.
 
@@ -502,6 +542,15 @@ sector erase if its worst fits 30 ms; else 16 held page erases (0x81) if each
 fits; else erase-suspend slices; else erases only at boot. Only the sector
 erase is built: a spike that needs another mode fails `store_fm1.h`'s
 `_Static_assert`.
+
+**Timing evidence, not hardware measurements:** emu-gate's `store.rs` enables
+16-byte windows in RAM and checks their placement and the program driver's
+instructions against the 100 µs overhead estimate at 240 MHz. On main
+`b38b8ed`, the longest reported `fl_prog_ram` call is 763 instructions (about
+3.18 µs at that assumed clock); the flash busy time is zero in this model. It does not
+report a longest complete interrupts-off stretch for either windows or holds.
+The bounds remain 1,000 µs per window and 35 ms per held operation (below the
+TRS input ring's 40.96 ms capacity), pending the spike and listening/TRS checks.
 
 ## Open checks on a real unit
 
@@ -516,9 +565,9 @@ erase is built: a spike that needs another mode fails `store_fm1.h`'s
 | Flash program and erase times (M2a Task 3b) | The store's write windows and held erases are sized from them; fm1-emu's flash is instantaneous. Also partial programs per page, reprogramming, ECC, page erase, erase suspend, and whether the stock firmware writes the store's range. | The flash spike ([hardware-test.md](hardware-test.md) section 12); the table and the decision rule are in "The flash part's timings" above. |
 | Unknown latencies | Divide latency, IRQ entry latency, `IPMASK` semantics, and whether IRQ priorities have 4 or 8 levels | Microbenchmarks on the device. |
 | The SPL and the VM descriptor | The package declares `[0x93000, 0xE9000)` as the SDK's VM region, which holds the store (see "Flash map"). Whether the stock SPL or stock V15 acts on it is not documented. | M2a Task 3b: a test pattern in the store survives a round trip through stock V15 and back. |
-| Partial programs per page | The store programs a page up to 34 times between erases (`STORE_PAGE_PROGS`, one more for each cut in the page) and programs bytes already programmed two ways (the claim's erase header again, the kill's 1 bits of the magic). Some NOR parts limit partial programs per page or programs over programmed bits. | M2a Task 3b, from the datasheet and the spike: (a) any limit on partial programs per page, or on reprogramming; the spike programs one page in 34 programs and reads it back. |
-| Zeros over zeros | The claim programs an erase header's bytes again (and a claim read as never made its own bytes again), the same bytes (zeros over zeros), to fix bits a cut left faint. A kill after a kill cut short programs again the bits it left faint and reading 1. | M2a Task 3b: (b) whether programming 0 over bits already 0 is within the part's spec; the spike programs a page's bytes again 100 times and reads them back. If not, the claim programs bytes 20-31 only and every clean sector a mount finds is erased again before its first claim (at most 22 erases a boot). |
-| ECC | A part with ECC would need the store's format reworked into 16-byte units each programmed once. | M2a Task 3b: (c) whether the part has ECC (datasheet, SFDP); the spike programs one byte of a 16-byte unit, then another, and reads both back. |
+| Partial programs per page | Store needs up to 34, plus cuts. | Task 3b: check limits; PARTIAL reads 64 × 4 bytes. |
+| Zeros over zeros | Claims reprogram the same bytes. | Task 3b: check the spec, REZERO (3), BITWALK (8). |
+| ECC | May require single-shot units. | Task 3b: spec/SFDP and TWICE's two-page-program AND readback. |
 | The store's timings | `store_fm1.h`'s program and erase times are the P25Q80H datasheet's maxima; by them no write window fits and settings saves wait for quiet. | M2a Task 3b's spike: page programs of 16, 64 and 256 bytes and sector erases, timed. |
 | A write window on the device | A program masks interrupts up to 1,000 us right after a block: it must never drop an audio block or a TRS byte. | hardware-test.md section 11: a save while a chord plays, listened to; MIDI clock into the TRS jack during saves. |
 | A hold's gap | A held erase silences the output up to 35 ms when quiet (faded out over a block, back in over one). | hardware-test.md section 11: a pool refill after a chord's release tail, listened to. |
@@ -526,3 +575,10 @@ erase is built: a spike that needs another mode fails `store_fm1.h`'s
 
 [hardware-test.md](hardware-test.md), sections 11 and 12, turn these into checklist
 items; its other sections cover installing, recovery and the instrument.
+
+For the partial-program checks, readback success alone does not establish the
+part's specification. If zeros-over-zeros is prohibited, the plan's fallback
+changes claims to bytes 20-31 only and re-erases clean sectors before first use
+(at most 22 a boot). A kill after a cut can still program bits left faint and
+reading 1. If the part has ECC, the store needs a format rework into single-shot
+units before hardware acceptance; these are not changes already made on main.
