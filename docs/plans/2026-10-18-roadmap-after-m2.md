@@ -36,14 +36,17 @@ the 6502 study below.
    - a small group of testers who already have a recovery route (also to measure the power
      cost of the main loop's spin while USB is attached);
    - a submission to the FM-1 Firmware Hub (thefirmwarehub.com) for the release, not before.
-7. **M3, leaner.** `.sid` playback, approached as the 6502 study recommends (reusing
-   FM-1 SID's MIT 6502 core and PSID loader, or SIDOU's own, measured). The FM-1's second core
-   is evaluated for the 6502's audio time; the community's dual-core code is GPL-3.0-only, so
-   using it makes the combination GPL-3.0-only: the user's call.
+7. **M3, leaner.** `.sid` playback as [decision record 0008](../decisions/0008-m3-6502-and-fm1-sid.md)
+   sets it: SIDOU's own 6502 (about ten times fewer instructions than FM-1 SID's m6502.h in
+   the study), run a frame ahead with cycle-stamped SID writes, on one core; FM-1 SID's
+   BSD-2-Clause PSID environment design with its bounds bug and five other gaps fixed;
+   m6502.h and FM-1 SID's player as a host-side oracle only.
 8. **The resource-heavy UX:** help cards, first-run guidance, suggested automations.
 
 ## Alongside
 
+- **FM-1 SID:** report its PSID loader's bounds bug (decision record 0008), shown to the
+  user before it is posted.
 - **fm1-emu:** bump the pinned revision (decoder fixes, speed); offer the USB host model built
   for SIDOU's tests and the decoder gap SIDOU found (`docs/TODO.md`) back upstream. Anything
   posted to another project is shown to the user first.

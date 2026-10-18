@@ -159,6 +159,8 @@ Follow-ups that aren't tied to a milestone task yet.
 
 ## Decide on RSID playback (M3 plan)
 
+- **Update, 2026-10-18:** with the look-ahead of decision record 0008, the 6502's audio
+  headroom is no longer the limit; CIA and NMI timing within a frame is.
 - **Where:** M3's 6502 and `.sid` player (design doc section 5 currently rejects RSID).
 - **Problem:** RSID tunes need CIA timer and NMI emulation, and some need cycle-exact
   interrupt timing. The 6502 has only about 200 instructions a sample of headroom (see
@@ -403,6 +405,10 @@ working.
 
 ## The 6502 must fit the audio headroom the gates leave
 
+- **Update, 2026-10-18:** [decision record 0008](decisions/0008-m3-6502-and-fm1-sid.md)
+  runs the 6502 a frame ahead outside the ISR, with cycle-stamped SID writes, so it no
+  longer needs this headroom (about 76 instructions a sample of main-loop time in the
+  study). The headroom still bounds applying the stamped writes in the ISR.
 - **Where:** `host/crates/emu-gate/tests/slots_budget.rs` (it prints
   `headroom_for_6502_instructions_per_sample`), `tests/common/mod.rs`,
   [decision record 0004](decisions/0004-effect-algorithms.md), "Worst blocks".
