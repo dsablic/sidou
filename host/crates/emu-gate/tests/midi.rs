@@ -767,7 +767,16 @@ fn the_panel_goes_out_over_usb_and_midi_in_is_not_echoed() {
     m.turn(K1, 3);
     m.run_ms(50);
     let c = cutoff(&mut m, &fw);
-    assert_eq!(c, SAW_LEAD_CUTOFF + 4 * 16);
+    // The preset's 1200 is off K1's table: the first detent lands on the next entry up, two more
+    // walk the table (the 6581: the device starts as one).
+    let (steps, up) = unsafe {
+        (
+            sidou_sys::live_cutoff_steps[0],
+            sidou_sys::live_cutoff_up[0],
+        )
+    };
+    let first = usize::from(up[(SAW_LEAD_CUTOFF >> 5) as usize] as u8) - 1;
+    assert_eq!(c, u32::from(steps[first + 3]));
     let (k1, w) = queued(&mut m, &fw, w);
     assert!((1..=3).contains(&k1.len()), "{k1:08x?}");
     assert_eq!(k1.last(), Some(&cc_packet(CC_CUTOFF, cutoff_cc(c))));

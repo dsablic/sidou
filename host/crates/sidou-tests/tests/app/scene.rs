@@ -9,6 +9,7 @@ use std::ffi::CStr;
 
 use sidou_sys::*;
 
+use crate::cutoff_after;
 use crate::views::Ui;
 use crate::{
     assert_wipe_holds_still, drain, petscii, petscii_mut, wipe_frames, Sent, SPI_BUDGET_MS,
@@ -1083,7 +1084,8 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
     // Every other control plays: K1 the cutoff, the octave.
     let cutoff = ui.live().cutoff;
     ui.turn(PANEL_ENC_K1, 3);
-    assert_eq!(ui.live().cutoff, cutoff + 3 * LIVE_CUTOFF_DETENT as u16);
+    assert_eq!(ui.live().cutoff, cutoff_after(ui.live().model, cutoff, 3));
+    assert!(ui.live().cutoff > cutoff);
     ui.press(PANEL_BTN_OCT_UP);
     assert_eq!(ui.live().octave, 1);
     // HOME goes back; SCENE comes back with the piece it showed, from its start.

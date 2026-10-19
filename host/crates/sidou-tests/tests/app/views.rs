@@ -9,7 +9,7 @@ use sidou_sys::*;
 
 use crate::piece_part;
 
-use crate::Rig;
+use crate::{cutoff_after, Rig};
 
 const COLS: usize = GRID_COLS as usize;
 
@@ -973,10 +973,11 @@ fn the_panel_plays(ui: &mut Ui, view: &str) {
     ui.turn(PANEL_ENC_K1, -2);
     assert_eq!(
         ui.live().cutoff,
-        l0.2 - 2 * LIVE_CUTOFF_DETENT as u16,
+        cutoff_after(ui.live().model, l0.2, -2),
         "{view}: K1"
     );
     ui.turn(PANEL_ENC_K1, 2);
+    let before_edit = ui.live().cutoff;
     let sel = ui.live().fx_select;
     ui.press(PANEL_BTN_SCL);
     assert_eq!(
@@ -1013,12 +1014,12 @@ fn the_panel_plays(ui: &mut Ui, view: &str) {
     }
     let cutoff = ui.live().cutoff;
     assert_eq!(
-        cutoff, l0.2,
+        cutoff, before_edit,
         "{view}: K1 moved the cutoff while EDIT was held"
     );
     ui.hold(PANEL_BTN_EDIT, false);
     ui.turn(PANEL_ENC_K1, -1);
-    assert_eq!(ui.live().cutoff, cutoff - LIVE_CUTOFF_DETENT as u16);
+    assert_eq!(ui.live().cutoff, cutoff_after(ui.live().model, cutoff, -1));
     ui.turn(PANEL_ENC_K1, 1);
 }
 

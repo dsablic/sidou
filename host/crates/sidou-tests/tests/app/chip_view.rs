@@ -11,7 +11,7 @@ use std::ffi::CStr;
 use sidou_sys::*;
 
 use crate::views::Ui;
-use crate::{drain, Sent, SPI_BUDGET_MS};
+use crate::{cutoff_after, drain, Sent, SPI_BUDGET_MS};
 
 const COLS: usize = GRID_COLS as usize;
 const K1: u32 = PANEL_ENC_K1;
@@ -1027,7 +1027,7 @@ fn the_edit_shortcut_turns_the_selected_slot_in_every_view() {
     assert_eq!(ui.p.page, PANEL_PAGE_LIVE as u8);
     let cutoff = ui.live().cutoff;
     ui.turn(K1, -1);
-    assert_eq!(ui.live().cutoff, cutoff - LIVE_CUTOFF_DETENT as u16);
+    assert_eq!(ui.live().cutoff, cutoff_after(ui.live().model, cutoff, -1));
     ui.hold(PANEL_BTN_EDIT, true);
     ui.turn(K1, 1);
     ui.hold(PANEL_BTN_EDIT, false);

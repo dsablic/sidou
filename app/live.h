@@ -65,7 +65,6 @@ extern "C" {
 #define LIVE_OCTAVE_MIN (-3)
 #define LIVE_OCTAVE_MAX 3
 #define LIVE_CUTOFF_MAX 2047u
-#define LIVE_CUTOFF_DETENT 16
 #define LIVE_RESONANCE_MAX 15u
 #define LIVE_PULSE_WIDTH_MAX 4095u
 #define LIVE_PULSE_WIDTH_DETENT 32
@@ -213,7 +212,7 @@ int live_sid_prepare(void* ctx, uint8_t profile);
 void live_char_store(sid_character* c, uint8_t reg, uint8_t value);
 
 typedef enum {
-    LIVE_KNOB_CUTOFF = 0,      /* K1: one detent = LIVE_CUTOFF_DETENT steps of 0..2047 */
+    LIVE_KNOB_CUTOFF = 0,      /* K1: one detent = one entry of live_cutoff_steps */
     LIVE_KNOB_RESONANCE = 1,   /* K2: 0..15 */
     LIVE_KNOB_PULSE_WIDTH = 2, /* K3: one detent = LIVE_PULSE_WIDTH_DETENT of 0..4095 */
     LIVE_KNOB_PRESET = 3       /* K4: one detent = one preset, clamped at both ends */
@@ -275,6 +274,17 @@ extern const uint32_t live_freq_fine_q20[65];
  * for each 1/8192 semitone. Clamped to note 0 and 0xffff. Integers only (32-bit). */
 uint16_t live_freq_at(uint8_t note, int32_t offset);
 
+/* K1's walk (live_cutoff.c, generated; checked by the host tests): per chip model (a
+ * sid_model, 0 6581, 1 8580), LIVE_CUTOFF_STEPS registers rising strictly in register and in Hz,
+ * from the first one a semitone above the chip's lowest cutoff to the highest, spaced evenly in
+ * pitch. live_cutoff_up[m][b] and live_cutoff_down[m][b], for b = the register >> 5: the first
+ * entry above every register of the bucket (LIVE_CUTOFF_STEPS if none), and the last entry below
+ * every register of it (-1 if none). */
+#define LIVE_CUTOFF_STEPS 65u
+extern const uint16_t live_cutoff_steps[2][LIVE_CUTOFF_STEPS];
+extern const int8_t live_cutoff_up[2][64];
+extern const int8_t live_cutoff_down[2][64];
+
 typedef struct {
     uint8_t note;           /* the last note it played, LIVE_NO_NOTE if none */
     uint8_t gate;           /* 1 while the note is held */
@@ -299,7 +309,7 @@ typedef struct {
     uint8_t resonance;    /* 0..15 */
     uint16_t pulse_width; /* 0..4095, before PWM */
     uint16_t master;      /* 0..1023 */
-    uint8_t volume;       /* 0..15, master's top 4 bits, rounded: what the views show */
+    uint8_t volume;       /* 0..100, the pot's travel in percent: what the views show */
     uint16_t cutoff_out;  /* the cutoff last written, after expression */
     uint16_t lfo_phase;
     uint32_t clock;
@@ -379,6 +389,8 @@ typedef struct {
     uint8_t expert_dirty;
     uint8_t expert_active;
     uint32_t expert_version; /* raw expert changes, including transitions to macro-following */
+    /* K1's place in live_cutoff_steps: valid while the table holds l->cutoff there. */
+    uint8_t cutoff_pos;
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */
@@ -531,8 +543,8 @@ void live_bend_range_rpn(live* l, uint32_t semitones);
 void live_set_preset(live* l, uint8_t index);
 /* The MASTER pot, 0..1023 (clamped). It scales the final output digitally (app/master_gain.h,
  * applied by the audio path after the chips and the effect slots, from l->master): the
- * chip's volume register stays at LIVE_CHIP_VOLUME whatever it is. l->volume, its top 4
- * bits rounded, is only for display. */
+ * chip's volume register stays at LIVE_CHIP_VOLUME whatever it is. l->volume, the pot's
+ * travel in percent (0..100, rounded), is only for display. */
 void live_set_master(live* l, uint16_t value);
 /* Applies a chip model or profile asked for since the last tick (live_param_set; with a
  * preparer, one slice of its preparation, and the reset once it is whole), sends the

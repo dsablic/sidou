@@ -91,11 +91,11 @@ the sound. Off, they write nothing and chip B stays out of use.
 | Note keys (14..40) | play F3..G5 at the current octave, at velocity 127: they sound as velocity off does, whatever the preset's velocity target |
 | OCT- / OCT+ (buttons 0, 1) | octave -1 / +1 (-3..+3); their LEDs show the direction |
 | FX (button 2) | chip 6581 / 8580; lit for the 8580 |
-| K1 (encoder 2) | cutoff (on the CHIP view: its focused section's first value, [below](#chip)) |
+| K1 (encoder 2) | cutoff: 64 detents from a semitone above the chip's lowest cutoff to its highest, even in pitch (on the CHIP view: its focused section's first value, [below](#chip)) |
 | K2 (encoder 3) | resonance (CHIP: the second) |
 | K3 (encoder 4) | pulse width (CHIP: the third) |
 | K4 (encoder 5) | preset (CHIP: the fourth) |
-| MASTER (pot) | volume: a digital gain on the final output, for everything that plays (the keys, a song on either chip, UI sounds) |
+| MASTER (pot) | volume: a digital gain on the final output, for everything that plays (the keys, a song on either chip, UI sounds), on an audio taper from -60 dB to full in even steps of dB, shown in percent of the pot's travel |
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end), in every view; K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last); it starts from a musical setting, so it is heard at once ([Effect slots](#effect-slots)) |
@@ -133,7 +133,7 @@ opens it, and what it says (the text the views show, from one place, `popup_text
 | K1-K4 on CHIP's chip section | AGE, DAC, THUMP, BLEED (0-127; on a song's chip A, the song's) |
 | K1-K4 on CHIP's EXPERT section | the named expert control in its units: percent, DAC ratio `R`, voice-DAC DC units `DC`, Hz, WEAK / MED / STRONG, or noise write-back tap count |
 | EDIT held + K1-K4, or a slot's section on CHIP | the slot and its control in the algorithm's own word: `DIST DRIVE`, `MOD DEPTH` (0-127) |
-| MASTER | VOLUME (0-15) |
+| MASTER | VOLUME (0-100%, the bar the pot's travel) |
 | ALGORITHM on CHIP | the profile (`PROFILE`, its name), or a slot's algorithm (`DIST`, `OVERDRIVE`) |
 | ALGORITHM in the menu, on an item with a value | the item in full and its value: `PRESET`, `OCTAVE`, `CARDS`, `STORE`, `KEYS`, `SOUNDS`, `TRACKER ROWS`, `THEME` (`HI-CONTRAST` or `C64`) |
 
@@ -528,13 +528,14 @@ they always did. Any bleed above 0 keeps the leak, a deliberate part of the soun
 **The MASTER pot** is a digital gain on the final stereo output, after both chips and the
 effect slots, so it scales everything that plays: the keys, a song on either chip and the UI
 sounds. Full is exactly the chips' output (the stage does nothing); 0 is silence; between,
-the gain is linear in the pot (a gain of pot / 1023) and a change ramps over one 2.9 ms
-block, so turning it never zippers. The chips' own volume registers keep their musical
+the gain follows an audio taper (-60 dB just above 0, rising 0.94 dB per 16 steps of the pot to
+0 dB at full: even steps of dB, where a linear gain would put its whole travel in the top
+6 dB) and a change ramps over one 2.9 ms block, so turning it never zippers. The chips' own volume registers keep their musical
 meaning: live leaves $D418's volume at 15, and a song's fades and 6581 volume digi trick
 play relative to MASTER. (Until this fix MASTER set the chip's volume register in 15 steps,
 which a song's own writes overrode, so a playing song ignored it, and with output thump
 above 0 each step thumped. MASTER no longer thumps, whatever the thump.) The gain differs from
-the old register's 15 steps by at most half a step, 1/30 of full scale.
+the old register's 15 steps by the taper: the register's steps were linear in gain.
 
 ## MIDI
 

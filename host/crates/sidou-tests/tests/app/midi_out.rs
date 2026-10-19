@@ -166,7 +166,11 @@ fn a_knob_move_is_its_cc_once_a_tick_with_the_latest_value() {
     o.rig.knob(LIVE_KNOB_CUTOFF, 4);
     o.rig.knob(LIVE_KNOB_CUTOFF, -1);
     let c = o.get(LIVE_PARAM_CUTOFF);
-    assert_eq!(c, 1200 + 7 * 16);
+    assert_eq!(
+        u32::from(c),
+        u32::from(crate::cutoff_after(SID_MODEL_6581, 1200, 7))
+    );
+    assert!(c > 1200);
     assert_eq!(
         o.tick(),
         [cc_packet(

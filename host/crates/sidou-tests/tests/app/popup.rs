@@ -413,15 +413,16 @@ fn the_master_pot_asks_for_the_volume_when_it_moves() {
     unsafe { panel_master(&mut *ui.p, &mut *ui.rig.live, 700) };
     open(&mut ui);
     let want = u32::from(ui.live().volume);
-    assert_eq!(says(&ui), ("VOLUME".to_owned(), want.to_string()));
-    let px = want * 192 / 15;
+    assert_eq!(want, 68);
+    assert_eq!(says(&ui), ("VOLUME".to_owned(), format!("{want}%")));
+    let px = u32::from(ui.live().master) * 192 / LIVE_MASTER_MAX;
     let bar: u32 = (0..24)
         .map(|i| u32::from(ui.g.src[BAR * COLS + 3 + i]) - FONT_H0)
         .sum();
     assert_eq!(bar, px);
     unsafe { panel_master(&mut *ui.p, &mut *ui.rig.live, 0) };
     ui.frame();
-    assert_eq!(says(&ui), ("VOLUME".to_owned(), "0".to_owned()));
+    assert_eq!(says(&ui), ("VOLUME".to_owned(), "0%".to_owned()));
 }
 
 #[test]

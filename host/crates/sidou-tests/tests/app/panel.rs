@@ -4,7 +4,7 @@
 
 use sidou_sys::*;
 
-use crate::{freq_table, Rig};
+use crate::{cutoff_after, freq_table, Rig};
 
 struct Panel {
     rig: Rig,
@@ -178,7 +178,7 @@ fn k1_to_k4_are_cutoff_resonance_pulse_width_and_preset() {
         p.rig.live.pulse_width,
     );
     p.enc(PANEL_ENC_K1, -2);
-    assert_eq!(p.rig.live.cutoff, c - 2 * LIVE_CUTOFF_DETENT as u16);
+    assert_eq!(p.rig.live.cutoff, cutoff_after(p.rig.live.model, c, -2));
     p.enc(PANEL_ENC_K1 + 1, 1);
     assert_eq!(p.rig.live.resonance, r + 1);
     p.enc(PANEL_ENC_K1 + 2, 3);
@@ -203,7 +203,7 @@ fn master_follows_the_pot_with_hysteresis() {
     let mut p = Panel::new();
     p.master(900);
     assert_eq!(p.rig.live.master, 900);
-    assert_eq!(p.rig.live.volume, 13);
+    assert_eq!(p.rig.live.volume, 88);
     p.master(902);
     p.master(897);
     assert_eq!(p.rig.live.master, 900, "ADC noise is ignored");
@@ -213,7 +213,7 @@ fn master_follows_the_pot_with_hysteresis() {
     assert_eq!(p.rig.live.master, 904, "an ADC timeout is ignored");
     p.master(1022);
     p.master(1023);
-    assert_eq!(p.rig.live.volume, 15, "the top end always lands");
+    assert_eq!(p.rig.live.volume, 100, "the top end always lands");
     p.master(2);
     p.master(0);
     assert_eq!((p.rig.live.master, p.rig.live.volume), (0, 0));

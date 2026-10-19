@@ -2,11 +2,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "master_gain.h"
 
+/* MASTER_TAPER[0] = 0 and MASTER_TAPER[i] = round(32768 * 10^(-3 * (1 - i / 64))), i = 1..64:
+ * -60 dB at 1, rising 0.94 dB an entry to unity at 64, so the pot's steps are even in dB. */
+static const uint16_t MASTER_TAPER[65] = {
+    0, 37, 41, 45, 50, 56, 63, 70, 78, 87, 96, 107, 120,
+    133, 148, 165, 184, 205, 229, 255, 284, 316, 352, 392, 437, 487,
+    542, 604, 673, 750, 835, 930, 1036, 1154, 1286, 1432, 1596, 1778, 1980,
+    2206, 2457, 2737, 3049, 3397, 3784, 4215, 4696, 5231, 5827, 6491, 7231, 8055,
+    8973, 9996, 11135, 12404, 13818, 15393, 17147, 19102, 21279, 23704, 26406, 29415, 32768,
+};
+
 uint32_t master_gain_of(uint32_t value, uint32_t max) {
     if (value >= max) {
         return MASTER_UNITY;
     }
-    return (value * MASTER_UNITY + max / 2u) / max;
+    uint32_t x = (value * 1024u + max / 2u) / max; /* 0..1023 */
+    uint32_t i = x >> 4, f = x & 15u;
+    return (MASTER_TAPER[i] * (16u - f) + MASTER_TAPER[i + 1u] * f + 8u) >> 4;
 }
 
 static int16_t master_scaled(int32_t x, int32_t g) {

@@ -23,8 +23,40 @@ fn block(f: impl Fn(usize) -> i32) -> Vec<i16> {
         .collect()
 }
 
+fn db(g: u32) -> f64 {
+    20.0 * (f64::from(g) / f64::from(MASTER_UNITY)).log10()
+}
+
+/// The taper's table: 0, then round(32768 * 10^(-3 (1 - i / 64))) for i = 1..64 (-60 dB at 1,
+/// 0 dB at 64), a pot step 16 apart sitting on the entries.
 #[test]
-fn the_gain_spans_zero_to_unity_linearly() {
+fn the_taper_table_is_the_formula() {
+    let table = |i: u32| {
+        if i == 0 {
+            0.0
+        } else {
+            (f64::from(MASTER_UNITY) * 10f64.powf(-3.0 * (1.0 - f64::from(i) / 64.0))).round()
+        }
+    };
+    // The pots whose x = (p * 1024 + 511) / 1023 is 16 i exactly sit on the entry itself.
+    let mut found = 0;
+    for p in 0..LIVE_MASTER_MAX {
+        let x = (p * 1024 + 511) / 1023;
+        if x % 16 == 0 {
+            assert_eq!(
+                f64::from(gain(p)),
+                table(x / 16),
+                "entry {} at pot {p}",
+                x / 16
+            );
+            found += 1;
+        }
+    }
+    assert!(found >= 60, "{found} entries checked");
+}
+
+#[test]
+fn master_has_an_even_db_taper() {
     assert_eq!(gain(0), 0);
     assert_eq!(gain(LIVE_MASTER_MAX), MASTER_UNITY);
     assert_eq!(gain(LIVE_MASTER_MAX + 500), MASTER_UNITY, "clamped");
@@ -33,11 +65,16 @@ fn the_gain_spans_zero_to_unity_linearly() {
         let g = gain(p);
         assert!(g >= last, "monotonic at {p}");
         last = g;
-        let ideal = f64::from(p) * f64::from(MASTER_UNITY) / f64::from(LIVE_MASTER_MAX);
-        assert!(
-            (f64::from(g) - ideal).abs() <= 0.5,
-            "{p}: {g} against {ideal}"
-        );
+    }
+    // From -40 dB up, every 16 pot steps rise between 0.8 and 1.1 dB: even in dB.
+    let first = (1..=LIVE_MASTER_MAX)
+        .find(|&p| db(gain(p)) >= -40.0)
+        .unwrap();
+    let mut p = first;
+    while p + 16 <= LIVE_MASTER_MAX {
+        let rise = db(gain(p + 16)) - db(gain(p));
+        assert!((0.8..=1.1).contains(&rise), "pot {p}: {rise:.2} dB");
+        p += 16;
     }
 }
 
@@ -102,7 +139,7 @@ fn a_change_ramps_linearly_over_the_block() {
     }
     let last = got[2 * 127];
     assert!(
-        (i32::from(last) - 20000 * 256 / 1023).abs() <= 1,
+        (i32::from(last) - (20000 * i64::from(to) / i64::from(MASTER_UNITY)) as i32).abs() <= 1,
         "ends on the new gain"
     );
     let step = got
@@ -156,23 +193,16 @@ fn chord(volume: u8) -> Vec<i16> {
     out
 }
 
-/// What the move from the volume register to a digital gain does to live play. Before, MASTER
-/// was the register's 4 bits, round(pot * 15 / 1023) of 15; now it is pot / 1023, continuous. The
-/// chip's volume is a linear scale of its output (the thump, which would add a DC, is 0 by
-/// default), so the two outputs differ by the gain's quantisation only: at most half a register
-/// step, 1/30 of full scale, of the loudest sample, plus the rounding of the integer gain stage
-/// (a LSB or two). At full MASTER the register is 15 as before and the stage is not there: the
-/// output is identical, bit for bit.
+/// MASTER as a digital gain on live play: the chip's volume register stays at 15, and the output at
+/// any pot is the chip's output scaled by the taper's gain, within the integer stage's rounding (a
+/// LSB). At full MASTER the register is 15 and the stage is not there: the output is the chip's,
+/// bit for bit.
 #[test]
-fn live_play_sounds_as_before_to_within_the_volume_registers_quantisation() {
+fn live_play_is_the_chips_output_scaled_by_the_taper() {
     let full = chord(0x0f);
     let peak = full.iter().map(|&v| i32::from(v).abs()).max().unwrap();
     assert!(peak > 3000, "a chord that sounds: {peak}");
-    let tolerance = peak / 30 + 2;
-    let mut worst_seen = 0;
     for pot in (0..=LIVE_MASTER_MAX).step_by(7).chain([LIVE_MASTER_MAX]) {
-        let volume = ((pot * 15 + LIVE_MASTER_MAX / 2) / LIVE_MASTER_MAX) as u8;
-        let before = chord(volume);
         let g = gain(pot);
         let mut after = Vec::with_capacity(full.len());
         for c in full.chunks(128).filter(|c| c.len() == 128) {
@@ -180,24 +210,21 @@ fn live_play_sounds_as_before_to_within_the_volume_registers_quantisation() {
             let scaled = apply(&lr, g, g);
             after.extend(scaled.chunks(2).map(|f| f[0]));
         }
-        for (i, (&a, &b)) in after.iter().zip(&before).enumerate() {
-            let d = (i32::from(a) - i32::from(b)).abs();
-            worst_seen = worst_seen.max(d);
+        for (i, (&a, &b)) in after.iter().zip(&full).enumerate() {
+            let ideal = f64::from(b) * f64::from(g) / f64::from(MASTER_UNITY);
             assert!(
-                d <= tolerance,
-                "pot {pot} (register {volume}), sample {i}: {a} against {b}, tolerance {tolerance}"
+                (f64::from(a) - ideal).abs() <= 1.0,
+                "pot {pot}, sample {i}: {a} against {ideal}"
             );
         }
         if pot == LIVE_MASTER_MAX {
-            assert_eq!(volume, 15);
             assert_eq!(
                 after,
-                before[..after.len()],
+                full[..after.len()],
                 "full MASTER is the chip's output"
             );
         }
     }
-    println!("worst difference {worst_seen} LSB of a {peak} peak (tolerance {tolerance})");
 }
 
 /// MASTER's gain scales a song's own volume writes: a fade to volume 8 reaches half of what

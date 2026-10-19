@@ -158,6 +158,11 @@ void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps) {
     if (steps == 0 || enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4) {
         return;
     }
+    if (p->page == PANEL_PAGE_LIVE && !(p->held >> PANEL_BTN_EDIT & 1u)) {
+        /* LIVE's page, the common case: K1..K4 are live's knobs (what panel_knob_param names) */
+        live_knob(l, (live_knob_id)(enc - PANEL_ENC_K1), steps);
+        return;
+    }
     uint32_t param = panel_knob_param(p, l, p->held, enc);
     if (param == LIVE_PARAM_COUNT && p->page >= PANEL_PAGE_NONE) {
         return; /* the view's own */

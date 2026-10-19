@@ -598,7 +598,8 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->model_req = model;
     l->octave = 0;
     l->master = LIVE_MASTER_MAX;
-    l->volume = 15;
+    l->volume = 100;
+    l->cutoff_pos = 0;
     l->clock = 0;
     for (int v = 0; v < LIVE_VOICES; ++v) {
         l->voice[v].note = LIVE_NO_NOTE;
@@ -795,9 +796,27 @@ void live_set_preset(live* l, uint8_t index) {
 
 void live_knob(live* l, live_knob_id knob, int32_t delta) {
     switch (knob) {
-    case LIVE_KNOB_CUTOFF:
-        set_cutoff(l, step_clamped(l->cutoff, delta, LIVE_CUTOFF_DETENT, LIVE_CUTOFF_MAX));
+    case LIVE_KNOB_CUTOFF: {
+        /* 64 detents along live_cutoff_steps, even in pitch. The table rises strictly, so from
+         * an entry a turn lands on a different one (set_cutoff ignores the same, at an end). */
+        const uint16_t* t = live_cutoff_steps[l->model];
+        int32_t pos = l->cutoff_pos;
+        if (t[pos] != l->cutoff) {
+            /* A cutoff the table does not hold (MIDI, a preset, the model): start just before
+             * the first entry beyond it in the turn's direction (the buckets of live_cutoff_up
+             * and _down). With none that way, those give 64 and 0: the cutoff stays. */
+            uint32_t b = l->cutoff >> 5;
+            pos = delta > 0 ? live_cutoff_up[l->model][b] - 1 : live_cutoff_down[l->model][b] + 1;
+            if (pos == (delta > 0 ? 64 : 0)) {
+                break;
+            }
+        }
+        pos += delta > 128 ? 128 : delta < -128 ? -128 : delta;
+        pos = pos < 0 ? 0 : pos > 64 ? 64 : pos;
+        l->cutoff_pos = (uint8_t)pos;
+        set_cutoff(l, t[pos]);
         break;
+    }
     case LIVE_KNOB_RESONANCE:
         set_resonance(l, (uint8_t)step_clamped(l->resonance, delta, 1, LIVE_RESONANCE_MAX));
         break;
@@ -922,7 +941,7 @@ void live_set_master(live* l, uint16_t value) {
      * the audio path): the chip's volume register stays at LIVE_CHIP_VOLUME, so a song's own
      * writes to it (a fade, the 6581's volume digi trick) keep their meaning relative to MASTER. */
     l->master = value;
-    l->volume = (uint8_t)((value * 15u + LIVE_MASTER_MAX / 2u) / LIVE_MASTER_MAX);
+    l->volume = (uint8_t)((value * 100u + LIVE_MASTER_MAX / 2u) / LIVE_MASTER_MAX);
 }
 
 void live_cc(live* l, uint8_t cc, uint8_t value) {

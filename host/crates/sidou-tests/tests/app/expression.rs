@@ -434,7 +434,9 @@ fn the_wheel_on_cutoff_opens_the_filter_above_the_knob() {
     rig.tick();
     assert_eq!(fc(&rig), base + 64 * 8);
     rig.knob(LIVE_KNOB_CUTOFF, -10);
-    assert_eq!(fc(&rig), base - 160 + 512, "the knob moves under the wheel");
+    let knob = u32::from(rig.live.cutoff);
+    assert!(knob < base);
+    assert_eq!(fc(&rig), knob + 512, "the knob moves under the wheel");
     rig.cc(LIVE_CC_MOD_WHEEL, 127);
     rig.cc(LIVE_CC_CUTOFF, 127);
     rig.tick();

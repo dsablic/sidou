@@ -163,7 +163,7 @@ fn init_state_is_preset_0_octave_0_full_volume() {
     assert_eq!(l.cutoff, p.cutoff);
     assert_eq!(l.resonance, p.resonance);
     assert_eq!(l.pulse_width, p.pulse_width);
-    assert_eq!((l.master, l.volume), (1023, 15));
+    assert_eq!((l.master, l.volume), (1023, 100));
     assert_eq!(rig.reg(0x18), p.filter_mode | 15);
     assert_eq!(rig.reg(0x17), p.resonance << 4 | p.filter_voices);
     assert_eq!(gates(&rig), [false; 3]);
@@ -459,7 +459,7 @@ fn preset_knob_switches_and_loads_the_preset() {
         p.cutoff
     );
     assert_eq!(rig.reg(0x17), p.resonance << 4 | p.filter_voices);
-    assert_eq!(rig.reg(0x18), p.filter_mode | rig.live.volume);
+    assert_eq!(rig.reg(0x18), p.filter_mode | LIVE_CHIP_VOLUME as u8);
 }
 
 #[test]
@@ -530,14 +530,73 @@ fn sync_ratio_saturates_for_high_notes() {
 
 // --- knobs ---
 
+fn k1_table(model: sid_model) -> [u16; LIVE_CUTOFF_STEPS as usize] {
+    let all = unsafe { live_cutoff_steps };
+    all[model as usize]
+}
+
 #[test]
-fn one_cutoff_detent_is_16_steps() {
-    let mut rig = Rig::new(SID_MODEL_8580);
-    let c = rig.live.cutoff;
-    rig.knob(LIVE_KNOB_CUTOFF, -1);
-    assert_eq!(rig.live.cutoff, c - 16);
-    rig.knob(LIVE_KNOB_CUTOFF, 3);
-    assert_eq!(rig.live.cutoff, c + 32);
+fn k1_walks_the_table_and_snaps_once() {
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        let t = k1_table(model);
+        let mut rig = Rig::new(model);
+        // From the preset's 1200, which the table need not hold: +1 lands above it and on the
+        // table, -1 below it and on the table.
+        let c = rig.live.cutoff;
+        assert_eq!(c, 1200);
+        rig.knob(LIVE_KNOB_CUTOFF, 1);
+        assert!(
+            rig.live.cutoff > c && t.contains(&rig.live.cutoff),
+            "{model}"
+        );
+        let up = rig.live.cutoff;
+        rig.set_preset(0);
+        rig.knob(LIVE_KNOB_CUTOFF, -1);
+        assert!(
+            rig.live.cutoff < c && t.contains(&rig.live.cutoff),
+            "{model}"
+        );
+        let down = rig.live.cutoff;
+        assert!(down < up);
+        // On the table, each detent is the next entry, and back is back.
+        let at = t.iter().position(|&e| e == down).unwrap();
+        rig.knob(LIVE_KNOB_CUTOFF, 3);
+        assert_eq!(rig.live.cutoff, t[at + 3], "{model}");
+        rig.knob(LIVE_KNOB_CUTOFF, -3);
+        assert_eq!(rig.live.cutoff, down, "{model}");
+        // 64 detents span the table, both ways, and stay at its ends.
+        rig.knob(LIVE_KNOB_CUTOFF, 64);
+        assert_eq!(rig.live.cutoff, t[64], "{model}");
+        rig.knob(LIVE_KNOB_CUTOFF, 1);
+        assert_eq!(rig.live.cutoff, t[64], "{model}");
+        rig.knob(LIVE_KNOB_CUTOFF, -64);
+        assert_eq!(rig.live.cutoff, t[0], "{model}");
+        // A cutoff MIDI put between two entries is left in the turn's direction.
+        for between in [t[10] + 1, t[30] + 1, t[50] - 1] {
+            for (steps, ok) in [(1, true), (-1, false)] {
+                unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_CUTOFF, u32::from(between)) };
+                rig.knob(LIVE_KNOB_CUTOFF, steps);
+                let c = rig.live.cutoff;
+                assert!(t.contains(&c), "{model} {between}: {c}");
+                assert_eq!(c > between, ok, "{model} {between} {steps}: {c}");
+            }
+        }
+        // Past the table's ends (MIDI): a turn outwards leaves the cutoff, a turn inwards walks
+        // the table from there.
+        unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_CUTOFF, 0) };
+        rig.knob(LIVE_KNOB_CUTOFF, -1);
+        assert_eq!(rig.live.cutoff, 0, "{model}");
+        rig.knob(LIVE_KNOB_CUTOFF, 1);
+        assert!(
+            rig.live.cutoff > 0 && t.contains(&rig.live.cutoff),
+            "{model}"
+        );
+        unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_CUTOFF, 2047) };
+        rig.knob(LIVE_KNOB_CUTOFF, 1);
+        assert_eq!(rig.live.cutoff, 2047, "{model}");
+        rig.knob(LIVE_KNOB_CUTOFF, -1);
+        assert_eq!(rig.live.cutoff, t[63], "{model}");
+    }
 }
 
 #[test]
@@ -545,7 +604,7 @@ fn cutoff_is_written_as_11_bits() {
     let mut rig = Rig::new(SID_MODEL_8580);
     rig.knob(LIVE_KNOB_CUTOFF, -1000);
     rig.cc(LIVE_CC_CUTOFF, 0);
-    rig.knob(LIVE_KNOB_CUTOFF, 0x5a); // 0x5a * 16 = 0x5a0
+    unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_CUTOFF, 0x5a0) };
     assert_eq!(rig.live.cutoff, 0x5a0);
     assert_eq!((rig.reg(0x15), rig.reg(0x16)), (0x00, 0xb4));
     rig.cc(LIVE_CC_CUTOFF, 127);
@@ -578,7 +637,11 @@ fn knobs_clamp_and_write_nothing_past_their_limits() {
     rig.knob(LIVE_KNOB_RESONANCE, -1000);
     rig.knob(LIVE_KNOB_PULSE_WIDTH, -1000);
     let l = &*rig.live;
-    assert_eq!((l.cutoff, l.resonance, l.pulse_width), (0, 0, 0));
+    assert_eq!(
+        (l.cutoff, l.resonance, l.pulse_width),
+        (k1_table(SID_MODEL_8580)[0], 0, 0),
+        "K1 stops at the table's first entry"
+    );
     assert_eq!(rig.reg(0x17) >> 4, 0);
     assert_eq!(rig.voice_pw(0), 0);
 }
@@ -598,7 +661,7 @@ fn resonance_and_pulse_width_reach_the_registers() {
 
 /// MASTER no longer touches the chip: its volume register stays at 15 (a digital gain after the
 /// chips scales the output, app/master_gain.h, so a song's own $D418 writes keep their meaning),
-/// and the displayed volume, master's top 4 bits rounded, follows.
+/// and the displayed volume, the pot's travel in percent, follows.
 #[test]
 fn master_leaves_the_chips_volume_register_alone() {
     let mut rig = Rig::new(SID_MODEL_8580);
@@ -607,10 +670,10 @@ fn master_leaves_the_chips_volume_register_alone() {
     rig.set_master(0);
     assert_eq!((rig.live.volume, rig.live.master), (0, 0));
     rig.set_master(512);
-    assert_eq!(rig.live.volume, 8);
+    assert_eq!(rig.live.volume, 50);
     rig.set_master(5000);
     assert_eq!(u32::from(rig.live.master), LIVE_MASTER_MAX);
-    assert_eq!(rig.live.volume, 15);
+    assert_eq!(rig.live.volume, 100);
     rig.set_master(1020);
     assert!(
         rig.log().is_empty(),

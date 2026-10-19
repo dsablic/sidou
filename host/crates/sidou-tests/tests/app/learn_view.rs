@@ -10,6 +10,7 @@ use std::ffi::CStr;
 
 use sidou_sys::*;
 
+use crate::cutoff_after;
 use crate::views::Ui;
 
 const SAVE: u32 = SAVE_KEY_BUTTON;
@@ -180,7 +181,7 @@ fn save_held_and_a_knob_open_the_frame_on_its_parameter_and_a_cc_learns() {
     t.ui.turn(K1, -1);
     assert_eq!(
         t.ui.live().cutoff,
-        LIVE_CUTOFF_MAX as u16 - LIVE_CUTOFF_DETENT as u16
+        cutoff_after(t.ui.live().model, LIVE_CUTOFF_MAX as u16, -1)
     );
     // The capture went with the view: HOME opens the menu again.
     t.ui.settle();

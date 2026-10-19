@@ -300,7 +300,7 @@ static void status_compose(screen* s, void* state, grid* g) {
     status_param(g, th, STATUS_PARAM_ROW + 2u, "RESO", l->resonance, LIVE_RESONANCE_MAX, th->knob[1]);
     status_param(g, th, STATUS_PARAM_ROW + 4u, "PULSE", l->pulse_width, LIVE_PULSE_WIDTH_MAX,
                  th->knob[2]);
-    status_param(g, th, STATUS_PARAM_ROW + 6u, "VOLUME", l->volume, 15, th->value);
+    status_param(g, th, STATUS_PARAM_ROW + 6u, "VOLUME", l->volume, 100, th->value);
 
     put(g, lbl, STATUS_NOTES_ROW, 2, "NOTES");
     status_notes(g, a, l);
@@ -1708,7 +1708,11 @@ static int param_text(const views* v, uint32_t param, char* name, char* value, u
         *max = LIVE_PULSE_WIDTH_MAX;
     } else if (param == LIVE_PARAM_VOLUME) {
         join(name, SCREEN_POPUP_TEXT, "VOLUME", "");
-        number_value(value, l->volume, fill, max, 15u);
+        char pct[4];
+        number_text(pct, l->volume);
+        join(value, SCREEN_POPUP_TEXT, pct, "%");
+        *fill = l->master;
+        *max = LIVE_MASTER_MAX;
     } else if (param >= LIVE_PARAM_AGE && param <= LIVE_PARAM_BLEED) {
         number_value(value, live_param_get(l, param), fill, max, live_param_max(param));
     } else if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {

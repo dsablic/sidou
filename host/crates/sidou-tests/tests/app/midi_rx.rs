@@ -143,7 +143,7 @@ fn ccs_follow_the_default_mapping() {
     m.trs(&[0xB0, 7, 0]);
     assert_eq!(m.live().volume, 0);
     m.trs(&[0xB0, 7, 127]);
-    assert_eq!(m.live().volume, 15);
+    assert_eq!(m.live().volume, 100);
 
     m.trs(&[0x90, C4, 100, E4, 100]);
     m.trs(&[0xB0, 123, 0]);

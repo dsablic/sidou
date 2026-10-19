@@ -16,6 +16,7 @@ mod grid;
 mod gt2_ins;
 mod keys_route;
 mod learn_view;
+mod live_cutoff;
 mod live_freq;
 mod live_instrument;
 mod live_view;
@@ -201,6 +202,29 @@ pub fn preset_name(p: &live_preset) -> String {
         .to_str()
         .unwrap()
         .to_owned()
+}
+
+/// Where K1 leaves a cutoff after `steps` detents (K1's walk, live.h): from the table's entry that
+/// holds it, `steps` entries on; from any other register, the first entry past it in the turn's
+/// direction (by the buckets of live_cutoff_up and _down) and the rest of the steps from there.
+pub fn cutoff_after(model: u32, cutoff: u16, steps: i32) -> u16 {
+    let t = unsafe { live_cutoff_steps }[model as usize];
+    let top = t.len() as i32 - 1;
+    let pos = match t.iter().position(|&e| e == cutoff) {
+        Some(i) => i as i32,
+        None if steps > 0 => {
+            i32::from(unsafe { live_cutoff_up }[model as usize][usize::from(cutoff >> 5)]) - 1
+        }
+        None => {
+            i32::from(unsafe { live_cutoff_down }[model as usize][usize::from(cutoff >> 5)]) + 1
+        }
+    };
+    let e = t[(pos + steps).clamp(0, top) as usize];
+    if (steps > 0 && e > cutoff) || (steps < 0 && e < cutoff) {
+        e
+    } else {
+        cutoff
+    }
 }
 
 pub fn freq_table() -> [u16; 128] {

@@ -28,6 +28,9 @@ Follow-ups that aren't tied to a milestone task yet.
     generated `midi.md` documents each curve;
   - check by ear on hardware with players, recorded in `docs/hardware-test.md`.
 - The user's priority (2026-10-16): after the features, with the UX pass.
+- **Done (ergonomics pass, ergo-live L1):** K1 walks 64 detents of an even-in-pitch cutoff
+  table per chip model, MASTER has a -60 dB..0 dB audio taper and reads in percent. (K3 follows
+  in L3.)
 
 ## A UX pass: make SIDOU a joy to use (after the features)
 
