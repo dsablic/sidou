@@ -93,18 +93,19 @@ copyrighted, so we link to them rather than copy them into this repo.
   - the 10-bit SARADC for the MASTER pot and battery sense;
   - TIMER4 as a 24 MHz tick and TIMER5 for the 10 kHz key scan and the
     2 kHz USB and UART polls.
-- **A main-loop stall once a second while USB is off.** With no cable at
-  power-on the SIE does not answer, and `usb_retry` (platform/fm1/usb/usb.c)
-  attaches again every second. Each SIE write in the attach polls for up to
-  20000 iterations, and the attach gives up at the third timeout. That is
-  about 300k instructions in one main-loop pass. fm1-emu, whose SIE never
-  answers, shows it: `usb_attach_now` takes 300,085 instructions, so one
-  10 ms window a second runs 316k main-loop instructions against 17k in the
-  others. At 240 MHz that is about 1.3 ms, longer if the register reads are
-  slow. Meanwhile MIDI input waits in its ring and the tick catches up
-  (`TICK_CATCH_UP`). MIDI out is not involved. Polling less, or giving up at
-  the first timeout, would change Felucca's hardware-tested attach, so this
-  waits for a measurement on a unit (below).
+- **A short main-loop step once a second while USB is off.** With no cable at
+  power-on the SIE does not answer. `midi.c`'s `usb_retry_quiet` tries again
+  every second, a step per main-loop pass:
+  - the controller's reset;
+  - 25 ms later, `usb_probe`, the attach and one SIE write given 2000 polls;
+  - only if the SIE answered, Felucca's own `usb_retry` and `usb_start`, after
+    25 ms more in reset.
+
+  fm1-emu, whose SIE never answers, shows the probe at 8,040 instructions, about
+  34 µs at 240 MHz. `usb.c`'s `usb_retry` alone would stop the main loop for
+  about 28 ms: the 25 ms wait, then six SIE writes timing out at 20000 polls
+  each. Meanwhile MIDI input waits in its ring
+  (platform/fm1/VENDORED.md).
 
 ## Instruction set features
 
@@ -647,7 +648,7 @@ TRS input ring's 40.96 ms capacity), pending the spike and listening/TRS checks.
 | Cycles vs instructions | The emulator counts instructions, not cycles. Flash (XIP) fetches and divides cost more. | Read the per-core counters around an audio block; compare `.text` with `.ram_text`. |
 | The audio path from SRAM | fm1-emu doesn't model the I-cache, so Task 5b's benefit is unmeasured. | Cycles per audio block (TIMER4 or `TL_CKCNT`) and fetch misses (`IF_UACNT`), with the LCD redrawing, in a build with `.ram_text`'s audio rules and one without. |
 | Combined waveforms from flash | The pulldown rows (`SID_PD`, `.rodata`: a row's index entry, then its 16-entry block) are the audio interrupt's only flash data reads. | Cycles per audio block with two chips on combined waveforms against single waveforms (TIMER4 or `TL_CKCNT`), and D-cache misses if a counter shows them. If they cost, move the default profile's rows to POOL (a loaded section, copied at boot). |
-| The USB retry's stall | Without a cable, the attach `usb_retry` runs once a second times out three SIE writes in one main-loop pass (300k instructions in fm1-emu). | Time `usb_attach_now` against TIMER4 on a unit powered on without a cable. If it is well over a millisecond, poll less or stop at the first timeout. |
+| The USB retry's probe | Without a cable, `usb_probe` runs once a second: the attach and one SIE write given 2000 polls (8,040 instructions in fm1-emu). | Time `usb_probe` against TIMER4 on a unit powered on without a cable, and check that a cable plugged in later still enumerates (the probe's 2000 polls are enough for an SIE that answers). |
 | Flash program and erase times (M2a Task 3b) | The store's write windows and held erases are sized from them; fm1-emu's flash is instantaneous. Also partial programs per page, reprogramming, ECC, page erase, erase suspend, and whether the stock firmware writes the store's range. | The flash spike ([hardware-test.md](hardware-test.md) section 12); the table and the decision rule are in "The flash part's timings" above. |
 | Unknown latencies | Divide latency, IRQ entry latency, `IPMASK` semantics, and whether IRQ priorities have 4 or 8 levels | Microbenchmarks on the device. |
 | The SPL and the VM descriptor | The package declares `[0x93000, 0xE9000)` as the SDK's VM region, which holds the store (see "Flash map"). Whether the stock SPL or stock V15 acts on it is not documented. | M2a Task 3b: a test pattern in the store survives a round trip through stock V15 and back. |

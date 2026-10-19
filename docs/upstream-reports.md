@@ -14,7 +14,8 @@ here.
 | 3 | fm1-emu | The and-not read-modify-write on memory, `[rX+imm] &= ~rY` (`64 e8 0b ..`, `64 e8 0f ..`), does not decode | M2d Task 1 | `docs/TODO.md`, "Report fm1-emu: the and-not read-modify-write on memory is not decoded" | fixed upstream (fm1-emu #33, 2026-10-21; #35 open for the shifted form): check at the bump, then drop |
 | 4 | fm1-emu | A 6-byte compare and branch (`43 ff …`), which JieLi clang emits for the 6502 prototype's dispatch, does not decode | 2026-10-18, 6502 study | decision record 0008, Risks | not drafted |
 | 5 | fm1-emu | P33 and the watchdog are not modelled (`P33_CON`/`P33_DAT` read 0) | M1 | `docs/TODO.md`, "fm1-emu does not model P33 or the watchdog" | P33 modelled upstream (fm1-emu #34, 2026-10-21); the watchdog to check at the bump |
-| 6 | Felucca (`firmware/src/usb.c:50-56`) | The USB DMA buffers (`ep0buf`, `ep1tx`, `ep1rx`, …) are declared `aligned(4)`, but on the FM-1 an EP1 IN buffer at 4 mod 8 is never sent (TxPktRdy stays set). Felucca's own builds happen to place them 8-aligned; a layout change would break USB-MIDI out. Fix: `aligned(8)` or more. | 2026-10-18, SIDOU's USB-out diagnosis | `usbdbg` branch, `docs/hardware-results/usb-out-diagnosis.md` (rungs 0 and 1) | not drafted |
+| 6 | Felucca (`firmware/src/usb.c:50-56`) | The USB DMA buffers (`ep0buf`, `ep1tx`, `ep1rx`, …) are declared `aligned(4)`, but on the FM-1 an EP1 IN buffer at 4 mod 8 is never sent (TxPktRdy stays set). Felucca's own builds happen to place them 8-aligned; a layout change would break USB-MIDI out. Fix: `aligned(8)` or more. | 2026-10-18, SIDOU's USB-out diagnosis | [Below](#6-felucca-usb-dma-buffers-need-8-byte-alignment); [usb-out-diagnosis.md](hardware-results/usb-out-diagnosis.md) | drafted |
+| 7 | Felucca (`firmware/src/usb.c`, `sie_wr`, `sie_rd`) | Built with `-mcpu=r3 -mfprev1 -O2`, `usb.c` stops sending on EP1 IN on the FM-1 (enumeration and OUT keep working); with Felucca's own flags (no `-mcpu`, `-Os`) it works. At `-O2` the SIE accessors are inlined and back-to-back SIE accesses follow each other within a few cycles. Fix: `noinline` on `sie_rd`/`sie_wr`, or a read-back between accesses, so the file doesn't depend on its build flags. | 2026-10-19, SIDOU's USB-out diagnosis | [Below](#7-felucca-usbc-breaks-when-built-at--o2--mcpur3) | drafted |
 
 Items 2-5 are against the pinned `e52f4640`. The fm1-emu bump will show which are still
 open: upstream has since fuzzed its decoder against the vendor objdump (#18, four decode
@@ -66,3 +67,53 @@ if (!p->info.load) {
 then compute `len = n - off` only after those checks.
 
 Thanks for FM-1 SID; it's a very useful reference for the FM-1 community.
+
+## 6. Felucca: USB DMA buffers need 8-byte alignment
+
+**Title:** usb.c: the EP DMA buffers need 8-byte alignment, but are declared aligned(4)
+
+`firmware/src/usb.c` (at `a53ecf4`, 1.6.1) declares the endpoint buffers
+`__attribute__((aligned(4)))` (lines 50-56: `ep0buf`, `ep1tx`, `ep1rx`, `ep2tx`, `ep3tx`,
+`ep3rx`). On the FM-1, an EP1 IN buffer at an address that is 4 mod 8 is never sent:
+`TXCSR1` keeps TxPktRdy set, and the host sees nothing on EP1 IN, while EP1 OUT and
+enumeration keep working.
+
+Felucca's own builds happen to put `ep1tx` on an 8-byte boundary, so Felucca works. Any
+change to the variables in front of it can move it to 4 mod 8 and silently break USB-MIDI
+out and the update protocol's replies. SIDOU found this when its own layout put `ep1tx` at
+4 mod 8 (the counters showed TxPktRdy never clearing).
+
+**Suggested fix:** `aligned(8)` on the DMA buffers (or 64, one packet, to be safe); the
+same for the update loader, which builds from the same file.
+
+## 7. Felucca: usb.c breaks when built at -O2 -mcpu=r3
+
+**Title:** usb.c depends on its build flags: built with `-mcpu=r3 -O2`, EP1 IN stops on the
+FM-1
+
+SIDOU builds its firmware with `-mcpu=r3 -mfprev1 -O2`. Built that way, Felucca's
+`firmware/src/usb.c` (at `a53ecf4`, unmodified) enumerates and receives on EP1 OUT, but EP1
+IN stops after the first packet or two: the installer's identity request (cmd 0x11) gets
+no reply. The same source, in the same image, compiled as `tools/build.py` compiles
+Felucca (no `-mcpu`, `-Os`) answers every time. Results on one unit, 10 handshakes each:
+0/10 with SIDOU's flags, 10/10 with Felucca's, the rest of the image unchanged. Only the
+flags of the translation unit that includes `usb.c` matter.
+
+The generated code has no unusual instructions on the USB path with `r3`. The SFR accesses
+are the same forms and there is the same `csync` after each CON1 write. The difference is
+inlining: at `-O2`, `sie_wr` and `sie_rd` are inlined into `usb_poll`, so consecutive SIE
+accesses (INDEX then TXCSR1, TXCSR1's read then its write, the EP count/address then
+TxPktRdy) run a few cycles apart. At `-Os` each is a call. Our guess, not proven: the SIE
+sets the done bit (CON1 bit 15) before it has really latched the access, so a following
+access issued that soon hits stale state.
+
+Felucca's own build hides this, but a different compiler version or flag choice would
+bring it back.
+
+**Suggested fix (either):**
+
+- `__attribute__((noinline))` on `sie_wr` and `sie_rd`, which keeps the spacing Felucca's
+  build has today; or
+- a read-back of CON1 (or a few cycles' delay) after the done bit, before the next access.
+
+We can test a patch on our unit with SIDOU's flags if that helps.

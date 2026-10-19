@@ -102,8 +102,12 @@ Follow-ups that aren't tied to a milestone task yet.
 
 ## Apply for a pid.codes PID before 1.0
 
-- **Where:** `platform/fm1/usb/usb.c`, the device descriptor
-  (`FELUCCA_USB_PID`).
+- **Where:** `platform/fm1/src/usb.c` (Felucca's, unmodified), the device
+  descriptor (`FELUCCA_USB_PID`, which `midi.c` can define before the include)
+  and its strings: SIDOU now presents itself as Felucca's "Felucca" by
+  "Hügelton Instruments", the strings `usb.c` has, which a `midi.c` macro can't
+  change. Ask upstream for `FELUCCA_USB_STR_*` overrides as `FELUCCA_USB_PID`
+  has.
 - **Problem:** SIDOU enumerates as VID/PID 0x1209:0x0001, pid.codes' test
   id, as Felucca does. It is meant for the bench only, and hosts may mix
   SIDOU up with Felucca or anything else that uses it.
@@ -113,12 +117,11 @@ Follow-ups that aren't tied to a milestone task yet.
 
 ## USB audio out, so a computer can record SIDOU over the cable
 
-- **Where:** `platform/fm1/usb/usb.c` (SIDOU's USB-MIDI-only copy) and
-  `platform/fm1/audio.c`.
-- **Problem:** SIDOU's USB is MIDI only. Felucca's USB audio input
-  (`FELUCCA_UAC`) was left out of SIDOU's copy, so a DAW can't record the
-  FM-1 without an audio interface. Felucca's original
-  (`platform/fm1/src/usb.c`, which the update loader builds from) has it,
+- **Where:** `platform/fm1/midi.c` (`FELUCCA_UAC 0` before it includes
+  `src/usb.c`) and `platform/fm1/audio.c`.
+- **Problem:** SIDOU's USB is MIDI only. `midi.c` builds Felucca's
+  `src/usb.c` without its USB audio input (`FELUCCA_UAC`), so a DAW can't
+  record the FM-1 without an audio interface. `usb.c` has it,
   tested on units: class compliant UAC1, the master output as 16-bit stereo
   at 44.1 kHz on an isochronous asynchronous IN endpoint (EP4), 48 kHz
   through a polyphase resampler, one packet per USB frame from the TIMER5
@@ -289,30 +292,26 @@ Follow-ups that aren't tied to a milestone task yet.
 
 ## USB retry without a host costs main-loop time on hardware too
 
-- **Where:** `platform/fm1/usb/usb.c`, `usb_retry` and `usb_attach_now`.
+- **Where:** `platform/fm1/midi.c` `usb_retry_quiet`, and `platform/fm1/src/usb.c`
+  (Felucca's) `usb_retry` and `usb_start`.
 - **Problem:** Felucca found that the SIE does not answer without a cable,
   which is also how a battery-powered FM-1 runs. While USB is off,
-  `usb_retry` runs once a second: `fm1_usb_reset` (controller off, pads
-  detached), then 25 ms later `usb_attach_now`, whose `fm1_usb_attach`
-  turns on the PLL48 USB clock, the PHY and the D+ pull-up, and whose SIE
-  writes then time out three times at 20000 polls each. Nothing turns the
-  controller off after that failed attach, so the clock, PHY and pull-up
-  stay on until the next retry's reset: on for about 975 ms of every
-  second, off for 25 ms. The cost in fm1-emu, which behaves the same way:
-  the main loop went from 1.4M to 2.0M instructions/s idle with MIDI in,
-  0.4M/s of it these timeouts (about 1.75 ms of blocked main loop a second
-  at 240 MHz on hardware, if the hardware's timeouts are as long) and the
-  rest the per-wake MIDI drain check. The supply current with the PHY on
-  and no cable is unmeasured.
-- **Action:** on hardware without a cable, measure the main loop's blocked
-  time and the supply current across a retry. If either matters, back the
-  retry off (e.g. after a few failures, retry every 10 s, or only when VBUS
-  is seen, if the chip reports it) and shorten the attach's timeout.
+  `usb_retry_quiet` runs once a second: `fm1_usb_reset` (controller off, pads
+  detached), then 25 ms later `usb_probe`, whose `fm1_usb_attach` turns on
+  the PLL48 USB clock, the PHY and the D+ pull-up, and whose one SIE write
+  times out at 2000 polls; then the reset again, so the controller is off
+  between tries (the old fork left the clock, PHY and pull-up on for about
+  975 ms of every second). The probe is 8,040 instructions in fm1-emu. The
+  supply current with no cable is unmeasured.
+- **Action:** on hardware without a cable, measure the probe's time and the
+  supply current, and check that a cable plugged in later enumerates within
+  a few seconds (the probe's 2000 polls must be enough for an SIE that
+  answers).
 
 ## SIE timeouts spin inside the TIMER5 interrupt
 
-- **Where:** `platform/fm1/usb/usb.c`, `sie_wr` and `sie_rd` (inherited
-  from Felucca), called by `usb_poll` from TIMER5 at 2 kHz.
+- **Where:** `platform/fm1/src/usb.c` (Felucca's), `sie_wr` and `sie_rd`,
+  called by `usb_poll` from TIMER5 at 2 kHz.
 - **Problem:** each SIE access waits for the controller for up to 20000
   polls. If the SIE stops answering while USB is up (a dead clock, an
   unplug the stack does not notice), every `usb_poll` spends several

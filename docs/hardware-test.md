@@ -721,8 +721,10 @@ Notes:
 
 ## 8. MIDI over USB
 
-- [ ] The unit enumerates as a USB-MIDI device "SIDOU" by "SIDOU
-  contributors" (pid.codes test VID/PID 1209:0001). Record what the OS shows:
+- [ ] The unit enumerates as a USB-MIDI device "Felucca" by "Hügelton
+  Instruments" (pid.codes test VID/PID 1209:0001): since the USB-out fix SIDOU
+  runs Felucca's USB stack unmodified, strings included
+  ([VENDORED.md](../platform/fm1/VENDORED.md)). Record what the OS shows:
 - [ ] The same note, CC and program tests as section 7 pass over USB.
 - [ ] TRS and USB at the same time both play.
 - [ ] **MIDI out (M1d):** in a DAW (or a MIDI monitor) on the SIDOU input, turn K1:
@@ -767,9 +769,11 @@ Notes:
 ### 8.1 Before any release: USB-MIDI out (must pass)
 
 v0.2.0-m2-preview received USB-MIDI (notes, the upgrade request) but almost
-nothing it sent reached the host. The USB fix (no `idle` while a host has the
-device configured, no USB poll nested in the audio interrupt, IN packets of
-16 bytes) is checked in fm1-emu against a modelled host
+nothing it sent reached the host. The cause was the build flags of the file that
+includes the USB stack. The fix runs Felucca's `usb.c` unmodified, compiled with
+Felucca's flags, with its EP buffers 64-byte aligned
+([hardware-results/usb-out-diagnosis.md](hardware-results/usb-out-diagnosis.md)).
+fm1-emu checks it against a modelled host
 (`host/crates/emu-gate/tests/usb.rs`), which cannot show the chip's own
 behaviour. **No release goes out unless every item here passes on a real
 FM-1 with that release's package**, each from a cold boot and again after a
@@ -790,6 +794,16 @@ If an item fails, record it, and get back to a working firmware with the
 power-on gesture (section 0) rather than the installer.
 
 Notes:
+
+**Passed on 2026-10-19** with FULL-FIX and FULL-FIX-NC, the fix's builds on the
+`usbdbg` branch ([hardware-results/usb-out-diagnosis.md](hardware-results/usb-out-diagnosis.md)):
+
+- `--info` answered `FM-1_900`, and the handshake answered 10 times out of 10.
+- Reinstalls over USB worked: FULL-FIX to FULL-FIX-NC, then FULL-FIX-NC to stock
+  V15 and back.
+- K1 sent CC 74 (326 messages in the monitor).
+
+The release package itself still goes through this section before it ships.
 
 ## 8b. MIDI clock and transport (M2e Task 2)
 
