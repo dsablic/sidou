@@ -67,8 +67,9 @@ _Static_assert(SIDOU_MIDI_OUT_CHANNEL >= 1 && SIDOU_MIDI_OUT_CHANNEL <= 16,
 static midi_ring in_ring;
 static midi_rx rx;
 /* MIDI learn's bindings (176 bytes, app/midi_learn.h); read by the emulator tests through the
- * ELF symbol. */
-static midi_learn learned __attribute__((used));
+ * ELF symbol. In POOL (zeroed at boot like .bss): the RAM region keeps its 4 KiB free with
+ * Felucca's usb.c and its own MIDI-in ring (emu-gate tests/song.rs). */
+static midi_learn learned __attribute__((used, section(".pool")));
 /* MIDI's mode (app/midi_route.h); read by the emulator tests through the ELF symbol. */
 static midi_route routing __attribute__((used));
 /* MIDI clock and transport (app/midi_sync.h); read by the emulator tests through the ELF
