@@ -411,6 +411,13 @@ static void packed_byte(sysex* s, sysex_parser* p, uint8_t byte) {
     if (++p->group == 8) p->group = 0;
 }
 
+/* The clock only moves forward: sysex_poll's now_ms comes from the start of the caller's
+ * main-loop pass, and the bytes taken in that pass may carry a later millisecond, so a smaller
+ * now_ms than the last one seen is kept out (else now - last wraps and times the transfer out). */
+static void advance(sysex* s, uint32_t now_ms) {
+    if ((int32_t)(now_ms - s->now) > 0) s->now = now_ms;
+}
+
 static int expired(sysex* s) {
     for (unsigned i = 0; i < 2; ++i) {
         sysex_parser* p = &s->parser[i];
@@ -434,7 +441,7 @@ static int expired(sysex* s) {
 
 void sysex_byte(sysex* s, uint8_t port, uint8_t byte, uint32_t now_ms) {
     if (port > SYSEX_TRS || byte >= 0xF8) return;
-    s->now = now_ms;
+    advance(s, now_ms);
     if (sysex_active(s) && s->owner != port) return;
     if (upload_failed(s)) return;
     if (expired(s)) return;
@@ -506,7 +513,7 @@ void sysex_byte(sysex* s, uint8_t port, uint8_t byte, uint32_t now_ms) {
 }
 
 void sysex_poll(sysex* s, uint32_t now_ms) {
-    s->now = now_ms;
+    advance(s, now_ms);
     upload_failed(s);
     expired(s);
     if (s->claimed && s->storage->f.fid == s->file.fid && (s->state == PROGRAM || s->tx_active))
