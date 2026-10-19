@@ -37,6 +37,7 @@ const SOURCES: &[&str] = &[
     "app/fx_defaults.c",
     "app/fx_live.c",
     "app/grid.c",
+    "app/help_view.c",
     "app/keys_route.c",
     "app/live.c",
     "app/learn_view.c",
@@ -214,11 +215,11 @@ fn main() {
                 "sid_.*|sidou_.*|gt2_.*|song_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|",
                 "fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|",
                 "learn_view_.*|scope_.*|scene_.*|title_card_.*|chip_view_.*|chip_mix|master_.*|tail_gate_.*|chip_ctl_.*|chip_setup_.*|",
-                "keys_route_.*|ui_sound_.*|store_.*|sysex_.*|save_key_.*|settings_.*|step_view_.*|tracker_view_.*|user_profile_.*|user_profiles_.*|theme_.*",
+                "keys_route_.*|ui_sound_.*|store_.*|sysex_.*|save_key_.*|settings_.*|step_view_.*|tracker_view_.*|user_profile_.*|user_profiles_.*|theme_.*|help_view_.*",
             ),
         )
         .allowlist_type(
-            "sid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|title_card.*|chip_view.*|chip_mix.*|master.*|tail_gate.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|step_view.*|user_profile.*|theme.*",
+            "sid.*|gt2_.*|song_.*|live.*|midi_.*|panel.*|reg_ring.*|bootguard|fx_live.*|grid.*|screen.*|view.*|menu.*|logo.*|credits.*|boot.*|about.*|learn_view.*|scope.*|scene.*|title_card.*|chip_view.*|chip_mix.*|master.*|tail_gate.*|chip_ctl.*|chip_setup.*|keys_route.*|ui_sound.*|store.*|save_key.*|settings.*|step_view.*|user_profile.*|theme.*|help_.*",
         )
         .allowlist_var(
             concat!(
@@ -226,7 +227,7 @@ fn main() {
                 "live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*|",
                 "LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*|LEARN_VIEW_.*|SCOPE_.*|",
                 "SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|MASTER_.*|",
-                "TAIL_.*|UI_SOUND_.*|KEYS_ROUTE_.*|SYSEX_.*|",
+                "TAIL_.*|UI_SOUND_.*|KEYS_ROUTE_.*|SYSEX_.*||HELP_.*|help_.*",
                 "demo_song_.*|song_view_.*|song_pages_.*|STORE_.*|SAVE_KEY_.*|SETTINGS_.*|step_view_.*|STEP_VIEW_.*|tracker_view_.*|TRACKER_VIEW_.*|",
                 "USER_PROFILE.*|user_profile.*|THEME_.*|theme_.*",
             ),
@@ -260,7 +261,7 @@ fn main() {
         .allowlist_type(concat!(
             "sid|sid_osc|sid_env|reg_ring|reg_ring_entry|reg_ring_chips|reg_ring_out|keys_route|",
             "chip_ctl|chip_setup|midi_out|midi_ring|midi_ring_entry|midi_learn|live|scope|grid|views|",
-            "title_card|song_ctl|screen|store|store_writer|store_file_writer|boot|gt2_stream|",
+            "title_card|help_view|song_ctl|screen|store|store_writer|store_file_writer|boot|gt2_stream|",
             "midi_route|midi_sync|midi_clock|sysex",
         ))
         .generate()

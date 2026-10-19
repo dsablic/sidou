@@ -107,6 +107,15 @@ fn press(m: &mut Machine, id: u8) {
     m.run_ms(30);
 }
 
+/// HOME down two frames and let go: it acts on its release, at the next frame (app/views.c
+/// `views_flow`), so the frames that follow are the navigation's. Two frame periods keep the
+/// time to the middle of a frame as it was.
+fn tap_home(m: &mut Machine) {
+    m.key(HOME, true);
+    m.run_ms(2 * UI_PERIOD_MS);
+    m.key(HOME, false);
+}
+
 /// Long enough for a wipe (8 frames) or a raster (14 frames) to end.
 const SETTLE_MS: u64 = 700;
 
@@ -1373,9 +1382,8 @@ fn a_wipe_opens_the_menu_from_the_top_and_closes_it_from_the_bottom() {
     assert!(m.soc.lcd.fb == status);
 
     common::to_mid_frame(&mut m, &fw);
-    m.key(HOME, true);
+    tap_home(&mut m);
     let down = wipe_samples(&mut m, &status, &menu);
-    m.key(HOME, false);
     let menu_rows = |r: &String| r.chars().filter(|&c| c == 'M').count();
     let edges = down.iter().filter(|r| r.contains('E')).count();
     assert!(edges >= 6, "{edges} frames with an edge: {down:#?}");
@@ -1391,9 +1399,8 @@ fn a_wipe_opens_the_menu_from_the_top_and_closes_it_from_the_bottom() {
 
     settle(&mut m, &fw);
     common::to_mid_frame(&mut m, &fw);
-    m.key(HOME, true);
+    tap_home(&mut m);
     let up = wipe_samples(&mut m, &status, &menu);
-    m.key(HOME, false);
     let edge_rows: Vec<usize> = up.iter().filter_map(|r| r.find('E')).collect();
     assert!(edge_rows.len() >= 6, "{up:#?}");
     assert!(edge_rows.windows(2).all(|w| w[1] < w[0]), "{edge_rows:?}");
@@ -1600,8 +1607,7 @@ fn screen_changes_and_transitions_stay_within_the_budgets() {
     m.key(A4_KEY, false);
     m.run_ms(200);
     // HOME goes back from the status screen to the menu; ALGORITHM on STATUS opens it again.
-    let menu = measure(&mut m, &fw, 16, |m| m.key(HOME, true));
-    m.key(HOME, false);
+    let menu = measure(&mut m, &fw, 16, tap_home);
     settle(&mut m, &fw);
     let menu_idle = measure(&mut m, &fw, 16, |_| {});
     let back = measure(&mut m, &fw, 16, |m| m.turn(ALGORITHM, 1));
@@ -3622,12 +3628,21 @@ fn cards_always(m: &mut Machine, fw: &Firmware) {
         .write8(fw.symbol("ui") + sidou_sys::ilp32::views::cards as u32, 2);
 }
 
-/// HOME from the menu, from LIVE: THE OSCILLATOR's card (the cards at ALWAYS).
-fn into_oscillator_card(m: &mut Machine, fw: &Firmware) {
+/// HOME from the menu, from LIVE, let go and not waited for: THE OSCILLATOR's card (the cards at
+/// ALWAYS) comes in at the next frame, the first of those a test counts.
+fn tap_to_oscillator_card(m: &mut Machine, fw: &Firmware) {
     cards_always(m, fw);
     open_menu(m, fw);
     common::to_mid_frame(m, fw);
-    press(m, HOME);
+    m.key(HOME, true);
+    m.run_ms(30);
+    m.key(HOME, false);
+}
+
+/// HOME from the menu, from LIVE: THE OSCILLATOR's card (the cards at ALWAYS), up.
+fn into_oscillator_card(m: &mut Machine, fw: &Firmware) {
+    tap_to_oscillator_card(m, fw);
+    m.run_ms(2 * UI_PERIOD_MS);
 }
 
 /// A frame at a time until the card holds (TITLE_CARD_HOLD), then a frame more, and on to half
@@ -3673,6 +3688,7 @@ fn title_cards_match_their_goldens_and_their_sources() {
         return;
     };
     let mut m = booted(&fw);
+    cards_always(&mut m, &fw); // THE OSCILLATOR plays only then
     into_chip_card(&mut m, &fw);
     m.run_ms(UI_PERIOD_MS);
     assert!(showing_card(&mut m, &fw), "no card into CHIP");
@@ -3781,6 +3797,141 @@ fn cards_always_and_off() {
     assert_eq!(common::top_view(&mut m, &fw), fw.symbol("scene_view_view"));
 }
 
+// ---- the help card (app/help_view.h) and HOME acting on its release ----
+
+fn showing_help(m: &mut Machine, fw: &Firmware) -> bool {
+    common::top_view(m, fw) == fw.symbol("help_view_view")
+}
+
+/// HOME held until its help card shows (a second at most), the card drawn whole (six frames),
+/// and on to half way between two frames. HOME stays down.
+fn hold_for_help(m: &mut Machine, fw: &Firmware) {
+    m.key(HOME, true);
+    let from = m.ms();
+    while !showing_help(m, fw) {
+        assert!(
+            m.ms() < from + 1500,
+            "no help card after {} ms",
+            m.ms() - from
+        );
+        m.run_ms(UI_PERIOD_MS);
+    }
+    assert!(
+        m.ms() - from >= 560,
+        "the card came after {} ms",
+        m.ms() - from
+    );
+    m.run_ms(400);
+    common::to_mid_frame(m, fw);
+}
+
+/// HOME let go (the card stays), then SELECT closes it and does nothing else.
+fn close_help(m: &mut Machine, fw: &Firmware) {
+    m.key(HOME, false);
+    m.run_ms(200);
+    assert!(showing_help(m, fw), "the release closed the card");
+    m.turn(SELECT, 1);
+    m.run_ms(SETTLE_MS);
+    assert!(!showing_help(m, fw), "SELECT did not close the card");
+}
+
+fn fx_select(m: &mut Machine, fw: &Firmware) -> u8 {
+    let l = m
+        .soc
+        .read32(fw.symbol("ui") + sidou_sys::ilp32::views::l as u32);
+    m.soc.read8(l + sidou_sys::ilp32::live::fx_select as u32)
+}
+
+/// A tap of HOME opens the menu from LIVE and goes back from it, as ever (on its release); HOME
+/// held 600 ms shows the help card of LIVE (golden help-live.png) and the release leaves it;
+/// SELECT closes it, LIVE is back and its selection untouched.
+#[test]
+fn holding_home_shows_the_help_card_and_a_tap_still_goes_home() {
+    let Some((build, fw)) = fixture("the help card test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    press(&mut m, HOME);
+    settle(&mut m, &fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("views_menu"));
+    press(&mut m, HOME);
+    settle(&mut m, &fw);
+    assert_eq!(
+        common::top_view(&mut m, &fw),
+        fw.symbol("live_view_view"),
+        "no card back"
+    );
+    let fx = fx_select(&mut m, &fw);
+    hold_for_help(&mut m, &fw);
+    compare_golden(&build, "help-live", &m.soc.lcd.fb, &[]);
+    close_help(&mut m, &fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("live_view_view"));
+    assert_eq!(fx_select(&mut m, &fw), fx, "the selection untouched");
+}
+
+/// The cards of the menu, CHIP, the song views and SCENE, each a golden.
+#[test]
+fn help_cards_match_their_goldens() {
+    let Some((build, fw)) = fixture("the help card test") else {
+        return;
+    };
+    for name in ["menu", "chip", "tracker", "scene"] {
+        let mut m = booted(&fw);
+        match name {
+            "menu" => open_menu(&mut m, &fw),
+            "chip" => {
+                into_chip_card(&mut m, &fw);
+                m.run_ms(2 * UI_PERIOD_MS);
+                assert!(showing_card(&mut m, &fw));
+                past_card(&mut m, &fw);
+            }
+            "tracker" => press(&mut m, SEQ),
+            _ => {
+                into_scene_card(&mut m, &fw);
+                m.run_ms(2 * UI_PERIOD_MS);
+                assert!(showing_card(&mut m, &fw));
+                past_card(&mut m, &fw);
+            }
+        }
+        settle(&mut m, &fw);
+        hold_for_help(&mut m, &fw);
+        compare_golden(&build, &format!("help-{name}"), &m.soc.lcd.fb, &[]);
+        close_help(&mut m, &fw);
+    }
+}
+
+/// Every frame of a card over LIVE (a chord held: its busiest) and over the menu sends at most
+/// 200 cells, and nothing once it is drawn.
+#[test]
+fn the_help_card_stays_within_the_frame_budget() {
+    let Some((_, fw)) = fixture("the help card budget test") else {
+        return;
+    };
+    for over_menu in [false, true] {
+        let mut m = booted(&fw);
+        if over_menu {
+            open_menu(&mut m, &fw);
+        } else {
+            m.midi(&[0xB0, 20, 64, 0xB0, 79, 127]);
+            for k in CHORD {
+                m.key(k, true);
+            }
+        }
+        settle(&mut m, &fw);
+        let c = measure(&mut m, &fw, 40, |m| m.key(HOME, true));
+        let per = cells_sent(&c);
+        let most = per.iter().copied().max().unwrap_or(0);
+        println!(
+            "help card over {}: at most {most} cells, {per:?}",
+            if over_menu { "the menu" } else { "LIVE" }
+        );
+        assert!(showing_help(&mut m, &fw));
+        assert!(most <= 200, "a frame sent {most} cells");
+        assert!(c.worst_frame_ms() <= SPI_BUDGET_MS);
+        assert_eq!(per.last().copied(), Some(0), "the drawn card still sends");
+    }
+}
+
 /// Any button or knob on a card ends it at the next frame and does nothing else: FX would
 /// toggle the chip, OCT+ step the octave, SELECT pick a piece; the view under it cuts in.
 #[test]
@@ -3874,7 +4025,7 @@ fn title_cards_stay_within_their_budgets() {
         let enter = |m: &mut Machine| match name {
             "chip" => into_chip_card(m, &fw),
             "scene" => into_scene_card(m, &fw),
-            _ => into_oscillator_card(m, &fw),
+            _ => tap_to_oscillator_card(m, &fw),
         };
         // The frames and ui_poll, with the passes.
         let mut m = booted(&fw);
@@ -3926,9 +4077,11 @@ fn title_cards_stay_within_their_budgets() {
                 serde_json::json!(m.watched_calls[n..].iter().max()),
             );
         } else {
+            cards_always(&mut m, &fw);
             open_menu(&mut m, &fw);
             let n = m.watched_calls.len();
             press(&mut m, HOME);
+            m.run_ms(100);
             assert!(showing_card(&mut m, &fw));
             report.insert(
                 format!("{name}_input"),

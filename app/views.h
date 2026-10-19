@@ -35,6 +35,7 @@
  *   edits a 16-character name (SELECT the cursor, ALGORITHM the character, SAVE writes it).
  *   Its large-text pages share the song views' canvas and their 200-cell frame budget; the
  *   directory keeps full 16-character filenames at the font's own size.
+ * - HELP: the help card (app/help_view.h), over the view that shows, from HOME held (views_flow).
  * - BOOT: the boot sequence (app/boot.h), over LIVE at power-on (views_boot).
  * - LEARN: MIDI learn (app/learn_view.h), a frame over any view, from SAVE held while a knob
  *   turns (views_learn).
@@ -62,9 +63,11 @@
  *    is a control as any other: it ends them;
  * 1. the capture (screen_capture), if a view set one: it sees HOME too, so it can take HOME
  *    as "cancel";
- * 2. global (screen_global): HOME opens the menu on the root view, and goes back one view
- *    anywhere else; SEQ opens the song views or steps through them, PLAY plays or stops the
- *    song (EDIT held: goes on), REC turns record mode on and off (app/song_view.h);
+ * 2. global (screen_global): HOME's press starts it (home_down) and its release, in the frame
+ *    (views_flow), opens the menu on the root view and goes back one view anywhere else; held
+ *    600 ms it opens the help card of the view that shows instead (app/help_view.h), and the
+ *    release then does nothing; SEQ opens the song views or steps through them, PLAY plays or
+ *    stops the song (EDIT held: goes on), REC turns record mode on and off (app/song_view.h);
  * 3. the view on top;
  * 4. the panel (app/panel.h): what nobody consumed plays the instrument as in M1a and M1c,
  *    in every view: OCT-/OCT+, FX, K1..K4, and the effect slots' EDIT shortcut (EDIT held +
@@ -102,6 +105,7 @@
 #include "boot.h"
 #include "chip_view.h"
 #include "grid.h"
+#include "help_view.h"
 #include "learn_view.h"
 #include "live.h"
 #include "live_view.h"
@@ -220,6 +224,12 @@ typedef struct {
     uint32_t glo_tap_ms;
     step_view step;
     uint8_t cards_seen; /* ONCE: bit id, the card id has played since power-on */
+    /* HOME acts on its release (views_flow): 0 up, 1 pressed (it goes home when let go, or opens
+     * the help card when held long enough), 2 held and a help card opened (the release only
+     * clears it). */
+    uint8_t home_down;
+    uint32_t home_at; /* the frame time of its press, ms */
+    help_view help;
 } views;
 
 extern const view views_status;
@@ -287,6 +297,12 @@ int views_idle(views* v);
 /* Once a main-loop pass: the song control (NULL: none) and the events its ring gave this
  * pass (platform/fm1/main.c drains it, the ring's one reader, and hands each reader them). */
 void views_song(views* v, const song_ctl* sc, const song_event* ev, uint32_t n);
+/* The flow step of a frame (views_frame runs it when HOME is down or a help card is up; the host
+ * tests run it alone, after a tap of HOME, as the next frame would): HOME let go goes home (the
+ * menu from LIVE, back one view elsewhere), HOME held 600 ms opens the help card of the view
+ * that shows, a help card that was closed is popped. Nothing before the first event (no panel
+ * yet). */
+void views_flow(views* v, uint32_t now_ms);
 /* One frame: the boot's progress, a title card's end, the toasts and raster of what changed,
  * MIDI learn's end (learn_view_frame), then screen_frame. */
 void views_frame(views* v, uint32_t now_ms);

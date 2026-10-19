@@ -38,7 +38,7 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
 1. **a capture:** a view waiting for one control (M1d's MIDI learn, the boot animation, a
    title card) sees everything first, HOME included, so HOME can cancel it; it ends when its
    view closes;
-2. **global:** HOME opens the menu from LIVE and goes back one view anywhere else; SAVE
+2. **global:** HOME's press only starts it, and on its release it opens the menu from LIVE and goes back one view anywhere else (held 600 ms it opens the [help card](#help) and the release does nothing); SAVE
    saves on a clean release, or held with a knob opens MIDI learn over any view; SAVE held
    with HOME consumes HOME ([SAVE](#save)); SEQ, PLAY and REC are the song views' ([below](#song-views)),
    in every view;
@@ -100,7 +100,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end), in every view; K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last); it starts from a musical setting, so it is heard at once ([Effect slots](#effect-slots)) |
-| **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, CHIP, the song views, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE behind THE OSCILLATOR's title card (below) |
+| **HOME (button 8)** | acts when it is let go: the menu, from LIVE; back one view from any other (the menu, CHIP, the song views, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE (a wipe; behind THE OSCILLATOR's title card only with CARDS at ALWAYS). **Held 600 ms** it opens the [help card](#help) of the view that shows instead, and letting go then does nothing |
 | **SAVE (button 9)** | clean press and release: save a USER profile on CHIP's chip focus, the song in a song view, settings elsewhere; hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
 | **SEQ (button 11)** | opens the song views, and steps through them ([below](#song-views)) |
 | **PLAY (button 12)** | plays the loaded song from the song views' position, and stops it (each voice's release rings on); with EDIT held, goes on from where it stopped; lit while it plays. While it plays the keys play chip B (KEYS AUTO), or take voices from the song on chip A (KEYS A). A song the device cannot play is refused with a toast (`SNG: MULTISPEED 8 (MAX 4)`) |
@@ -349,6 +349,21 @@ power-on and not again; the way back to LIVE never plays a card, it is a wipe.
   ONCE, ALWAYS, counter-clockwise back, and it stops at the ends). **ONCE** is the default:
   THE CHIP and THE SCENE the first time each since power-on, none on the way back to LIVE.
   **ALWAYS** plays all three every time; **OFF** none. The setting persists across power-off.
+
+## Help
+
+**Hold HOME for 600 ms** in any view and a help card opens over it: the title bar (**HELP** and
+the card's name, `app/help_view.h`), then up to eight lines at 2×, the control on the left and
+what it does on the right. LIVE, the menu and the MIDI page, CHIP, the song views, SCENE and
+every other view (**ALL**: STATUS, About, the glyph sheet) each have a card of their own.
+
+- HOME only opens the menu or goes back when it is **let go before 600 ms**: a tap acts in the
+  next frame after the release, so a hold never opens the menu first.
+- **Any button or encoder** closes the card and does nothing else (SELECT does not move, FX does
+  not toggle the chip, SAVE saves nothing). **A note** plays as ever and the card stays. The card
+  stays after HOME is let go until a control closes it.
+- Over the boot, a title card and MIDI learn's frame HOME keeps its own meaning (it ends the
+  boot or the card, or cancels the learn frame): no card there.
 
 ## CHIP
 

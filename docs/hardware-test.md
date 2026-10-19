@@ -270,7 +270,7 @@ which printed control did it.
 | SCL (button 3) | selects the next effect slot (the play mark on LIVE's DIST, MOD and FX lines moves) | | [ ] |
 | ENV (button 4) | the selected slot's next algorithm (the name on LIVE's slot line changes) | | [ ] |
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the status screen and the CHIP view; Mix as LIVE's bar), in every view; EDIT lit while the slot is on | | [ ] |
-| HOME (button 8) | from LIVE, the menu (a wipe down from the top); in the menu, back to LIVE (a wipe up from the bottom; behind THE OSCILLATOR's title card only with CARDS at ALWAYS, below) | | [ ] |
+| HOME (button 8) | acts on its release: from LIVE, the menu (a wipe down from the top); held 600 ms it opens the help card of the view that shows instead (below); in the menu, back to LIVE (a wipe up from the bottom; behind THE OSCILLATOR's title card only with CARDS at ALWAYS, below) | | [ ] |
 | SAVE (button 9) | clean release saves (7.1–7.2); held + knob learns (7) | | [ ] |
 | SEQ (button 11) | from any view, STEP; then TRACKER, ORDER, INSTR, TABLE and back to STEP. Each page's primary values are readable at 2×; HOME returns to the previous non-song view | | [ ] |
 | SELECT / ALGORITHM, in TRACKER | SELECT moves one row (EDIT held: an 8-row page); ALGORITHM shows V2 in cyan, V3 in light green, then V1 again; the cursor's voice and audition follow the voice shown | | [ ] |
@@ -435,6 +435,19 @@ Title cards ([controls](reference/controls.md#title-cards)):
   wait at least 6 s with no further changes and the keys released, then power-cycle:
   CARDS stays OFF; set ALWAYS and power-cycle: it stays ALWAYS. Restore ALWAYS or ONCE for the
   remaining title-card checks (they need every card to play).
+
+Help card ([controls](reference/controls.md#help)):
+
+- [ ] On LIVE, a quick tap of HOME opens the menu, and a tap in the menu goes back to LIVE; a
+  tap never shows the card. Holding HOME about half a second shows HELP LIVE (title bar with the
+  name on the right, eight lines: SELECT PAGE, ALG PROFILE, PRESETS SOUND, EDIT+K FX, GLO+KEY
+  MUTE, SAVE+K LEARN, SEQ SONG, HOME MENU), drawn in a few frames with no flicker, and the
+  menu does not open under it. Let HOME go: the card stays.
+- [ ] Any button or knob closes the card and does nothing else (no octave step, no chip
+  toggle, no knob change, no save); a note key plays and the card stays. SAVE closes it and
+  saves nothing.
+- [ ] The card of the menu, CHIP, TRACKER (SEQ), SCENE and STATUS each names its view and
+  reads right at 2x in the C64 and the high-contrast themes (yellow controls, white actions).
 
 CHIP (menu, CHIP; [controls](reference/controls.md#chip)):
 

@@ -1465,8 +1465,9 @@ __attribute__((noinline, unused)) LIVE_COLD static void glo_tap(views* v) {
     v->glo_tap_ms = now;
 }
 
-/* HOME: the menu from the root view, back one view from any other: from the menu to LIVE,
- * behind THE OSCILLATOR's card. SEQ, PLAY and REC: the song views'. */
+/* HOME's press only starts it (views_flow): it acts when it is let go, so that a hold can open the
+ * help card instead. A capture (learn, the boot, a card) and SAVE held take the press first.
+ * SEQ, PLAY and REC: the song views'. */
 static int global(void* ctx, const screen_event* e) {
     views* v = ctx;
     if (e->kind != SCREEN_PRESS) {
@@ -1474,12 +1475,8 @@ static int global(void* ctx, const screen_event* e) {
     }
     if (e->id == PANEL_BTN_HOME) { /* first: the tightest of the input gates (emu-gate screen.rs) */
         v->format_arm = 0;
-        const view* from = screen_top(&v->s);
-        if (screen_pop(&v->s, SCREEN_WIPE_UP) != 0) {
-            screen_push(&v->s, &views_menu, v, SCREEN_WIPE_DOWN);
-        } else if (from == &views_menu && screen_top(&v->s) == &live_view_view) {
-            show_card(v, TITLE_CARD_OSCILLATOR);
-        }
+        v->home_down = 1;
+        v->home_at = v->s.now;
         return 1;
     }
     if (e->id == PANEL_BTN_SEQ) {
@@ -1588,6 +1585,8 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->version = version;
     v->cards = 1;
     v->cards_seen = 0;
+    v->home_down = 0;
+    v->help.done = 0;
     v->snd = NULL;
     v->set = NULL;
     v->format_arm = 0;
@@ -1689,7 +1688,73 @@ static void knob_page(views* v, panel* p) {
 /* The boot or a title card on top: they take every control, SAVE included (it ends them). */
 static int curtain(const views* v) {
     const view* top = screen_top(&v->s);
-    return top == &boot_view || top == &title_card_view;
+    return top == &boot_view || top == &title_card_view || top == &help_view_view;
+}
+
+/* ---- HOME: its release, and a hold ---- */
+
+/* HOME held this long opens the help card of the view that shows. */
+#define HOME_HELP_MS 600u
+
+/* The menu from the root view, back one view from any other: from the menu to LIVE (behind THE
+ * OSCILLATOR's card with CARDS at ALWAYS). What HOME's press did, on its release. */
+__attribute__((noinline, unused)) static void home_go(views* v) {
+    const view* from = screen_top(&v->s);
+    if (curtain(v) || from == &learn_view_view) {
+        return; /* a capture that appeared during the hold took HOME's place */
+    }
+    if (screen_pop(&v->s, SCREEN_WIPE_UP) != 0) {
+        screen_push(&v->s, &views_menu, v, SCREEN_WIPE_DOWN);
+    } else if (from == &views_menu && screen_top(&v->s) == &live_view_view) {
+        show_card(v, TITLE_CARD_OSCILLATOR);
+    }
+}
+
+/* The help card for the view that shows. */
+static uint32_t help_card_of(const views* v) {
+    const view* top = shows(v);
+    if (top == &live_view_view) {
+        return HELP_CARD_LIVE;
+    }
+    if (top == &views_menu || top == &views_midi) {
+        return HELP_CARD_MENU;
+    }
+    if (top == &chip_view_view) {
+        return HELP_CARD_CHIP;
+    }
+    if (top == &scene_view_view) {
+        return HELP_CARD_SCENE;
+    }
+    return song_view_is(top) ? HELP_CARD_TRACKER : HELP_CARD_ALL;
+}
+
+/* HOME let go goes home_go, HOME held HOME_HELP_MS opens the help card, a card that was closed is
+ * popped (views_flow in app/views.h). */
+void views_flow(views* v, uint32_t now_ms) {
+    if (!v->p) {
+        return;
+    }
+    if (v->help.done && screen_top(&v->s) == &help_view_view) {
+        screen_pop(&v->s, SCREEN_BANDS);
+        v->s.popup_ask = 0; /* the control that closed it did nothing else */
+    }
+    v->help.done = 0;
+    if (!v->home_down) {
+        return;
+    }
+    if (v->p->held >> PANEL_BTN_HOME & 1u) {
+        if (v->home_down == 1u && now_ms - v->home_at >= HOME_HELP_MS && !curtain(v) &&
+            screen_top(&v->s) != &learn_view_view) {
+            (void)help_view_open(&v->help, &v->s, help_card_of(v));
+            v->home_down = 2u;
+        }
+        return;
+    }
+    uint8_t acts = v->home_down == 1u;
+    v->home_down = 0;
+    if (acts) {
+        home_go(v);
+    }
 }
 
 /* ---- the popup: what a control shows ---- */
@@ -2320,20 +2385,22 @@ __attribute__((noinline, unused)) LIVE_COLD static void live_frame(views* v, con
 void views_frame(views* v, uint32_t now_ms) {
     boot_frame(v, now_ms);
     card_frame(v);
-    const view* top = screen_top(&v->s);
-    if (top == &boot_view || top == &title_card_view) {
-        /* Nothing over the boot or a card (app/boot.h, app/title_card.h), and nothing of what
-         * changed meanwhile after them. */
+    if (curtain(v)) {
+        /* Nothing over the boot or a card (app/boot.h, app/title_card.h, app/help_view.h), and
+         * nothing of what changed meanwhile after them. */
         remember(v);
     } else {
         tell(v);
     }
     learn_view_frame(&v->learn, &v->s, now_ms);
+    if (v->home_down | v->help.done) {
+        views_flow(v, now_ms);
+    }
     if (v->l->settings_dirty) {
         store_frame(v, now_ms);
     }
     /* The tap runs while LIVE or SCENE shows: the audio interrupt pays for it only then. */
-    top = shows(v);
+    const view* top = shows(v);
     song_view_frame(&v->song, song_view_is(top));
     if (v->pages.pending) {
         uint8_t previous = v->pages.status;

@@ -169,6 +169,8 @@ journey tour | Screens for the readability check | tour
   step scene-toast | SCENE piece named | - | turn SELECT 1 | toast
   step scene-home | Back | - | press HOME; wait 200 | view menu
   step live-again | LIVE | - | press HOME; wait 3000 | view live
+  step help | The help card | - | hold HOME 800 | text HELP
+  step help-close | Close it | - | turn SELECT 1 | view live
   step tracker | TRACKER | - | press SEQ; press SEQ | view tracker
   step tracker-play | TRACKER playing | - | press PLAY; wait 900 | sound
   step tracker-popup | TRACKER with a popup | - | turn K1 3 | popup

@@ -525,11 +525,16 @@ impl Ui {
         ui
     }
 
-    /// Presses button b (and lets it go, unless it is held with hold()).
+    /// Presses button b (and lets it go, unless it is held with hold()). HOME acts on its release,
+    /// in the frame: a tap runs the frame's flow step at once, as the next frame would, so that
+    /// the view has changed when this returns.
     pub(crate) fn press(&mut self, b: u32) {
         let held = self.held | (1 << b);
         unsafe { views_buttons(&mut *self.v, &mut *self.p, 1 << b, held) };
         unsafe { views_buttons(&mut *self.v, &mut *self.p, 0, self.held) };
+        if b == PANEL_BTN_HOME {
+            unsafe { views_flow(&mut *self.v, self.now) };
+        }
     }
 
     /// Button b's press edge, and it stays held until up(b): as the key scan reports it.

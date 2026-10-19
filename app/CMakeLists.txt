@@ -18,6 +18,7 @@ add_library(sidou_live STATIC
     fx_defaults.c
     fx_live.c
     grid.c
+    help_view.c
     learn_view.c
     keys_route.c
     live.c

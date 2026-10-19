@@ -1,0 +1,126 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include "help_view.h"
+
+#include <stddef.h>
+
+#include "grid.h"
+#include "theme.h"
+
+/* What the controls do in each view, a line the control and what it does (a NUL between), 14
+ * characters with a space between the two (a host test checks). TRACKER's follow
+ * docs/reference/controls.md. */
+static const char* const LIVE_LINES[] = {"SELECT\0PAGE",    "ALG\0PROFILE", "PRESETS\0SOUND",
+                                         "EDIT+K\0FX",     "GLO+KEY\0MUTE", "SAVE+K\0LEARN",
+                                         "SEQ\0SONG",      "HOME\0MENU"};
+static const char* const MENU_LINES[] = {"SELECT\0MOVE", "ALG\0CHANGE", "ALG\0OPEN",
+                                         "SAVE\0KEEP",   "HOME\0BACK",  "HOLD HOME\0HELP"};
+static const char* const CHIP_LINES[] = {"SELECT\0FOCUS", "ALG\0STEP",    "K1-K4\0VALUES",
+                                         "EDIT+ALG\0SAVE", "SAVE\0STORE", "HOME\0BACK"};
+static const char* const TRACKER_LINES[] = {"SELECT\0ROW",  "ALG\0VOICE",       "KEYS\0AUDITION",
+                                            "PLAY\0PLAY",   "REC\0RECORD",      "GLO+KEY\0MUTE",
+                                            "SEQ\0NEXT VIEW", "HOME\0BACK"};
+static const char* const SCENE_LINES[] = {"SELECT\0PIECE", "ALG\0PIECE", "K1 K2\0MOOD",
+                                          "KEYS\0PLAY",    "HOME\0BACK"};
+static const char* const ALL_LINES[] = {"HOME\0BACK", "SAVE\0KEEP", "SEQ\0SONG",
+                                        "GLO+KEY\0MUTE", "HOLD HOME\0HELP"};
+
+#define CARD(name, lines) {name, lines, (uint8_t)(sizeof lines / sizeof lines[0])}
+const help_card help_cards[HELP_CARDS] = {
+    [HELP_CARD_LIVE] = CARD("LIVE", LIVE_LINES),       [HELP_CARD_MENU] = CARD("MENU", MENU_LINES),
+    [HELP_CARD_CHIP] = CARD("CHIP", CHIP_LINES),       [HELP_CARD_TRACKER] = CARD("TRACKER", TRACKER_LINES),
+    [HELP_CARD_SCENE] = CARD("SCENE", SCENE_LINES),    [HELP_CARD_ALL] = CARD("ALL", ALL_LINES),
+};
+
+/* The text rows: the title bar's three and the row after it (unit 0), then a line every three
+ * rows from row 4 (two rows of text and one blank); the last line owns the rows under it too. */
+#define HELP_ROW 4u
+#define HELP_LINE_ROWS 3u
+#define HELP_TITLE_CELLS (4u * GRID_COLS)
+#define HELP_LINE_CELLS (HELP_LINE_ROWS * GRID_COLS)
+#define HELP_LAST_ROWS (GRID_ROWS - HELP_ROW - HELP_LINE_ROWS * (HELP_LINES - 1u))
+
+static uint32_t length(const char* s) {
+    uint32_t n = 0;
+    while (s[n]) {
+        n++;
+    }
+    return n;
+}
+
+/* Text of n characters at 2x ends at the margin: column 1 + 28 on the right. */
+static uint32_t right(const char* s) {
+    return GRID_COLS - 1u - 2u * length(s);
+}
+
+int help_view_capture(void* ctx, const screen_event* e) {
+    (void)e;
+    ((help_view*)ctx)->done = 1;
+    return 1;
+}
+
+int help_view_open(help_view* h, screen* s, uint32_t card) {
+    h->drawn = 0;
+    h->done = 0;
+    h->card = (uint8_t)(card < HELP_CARDS ? card : HELP_CARD_ALL);
+    return screen_push(s, &help_view_view, h, SCREEN_CUT);
+}
+
+static void enter(screen* s, void* state) {
+    screen_capture(s, help_view_capture, state);
+}
+
+static void draw_unit(grid* g, const theme* th, const help_card* c, uint32_t u) {
+    const uint8_t blank = THEME_ATTR(th, value);
+    if (u == 0) {
+        const uint8_t head = GRID_ATTR(th->title_fg, th->title_bg);
+        grid_fill(g, 0, 0, GRID_COLS, 3, ' ', head);
+        grid_fill(g, 0, 3, GRID_COLS, 1, ' ', blank);
+        grid_text_big(g, 1, 1, 2, "HELP", head);
+        grid_text_big(g, right(c->name), 1, 2, c->name, head);
+        return;
+    }
+    uint32_t i = u - 1u;
+    uint32_t row = HELP_ROW + HELP_LINE_ROWS * i;
+    grid_fill(g, 0, row, GRID_COLS, i == HELP_LINES - 1u ? HELP_LAST_ROWS : HELP_LINE_ROWS, ' ',
+              blank);
+    if (i < c->count) {
+        const char* key = c->lines[i];
+        const char* what = key + length(key) + 1u; /* after the NUL */
+        grid_text_big(g, 1, row, 2, key, GRID_ATTR(th->hot, th->bg));
+        grid_text_big(g, right(what), row, 2, what, blank);
+    }
+}
+
+static int changed(screen* s, void* state) {
+    (void)s;
+    return ((const help_view*)state)->drawn != (1u << HELP_UNITS) - 1u;
+}
+
+/* The units not on the grid yet, in order, while the frame stays within HELP_FRAME_CELLS (a
+ * unit is all or nothing; one always goes out). Whatever drew over it, or a view switch, has
+ * them drawn again. */
+static void compose(screen* s, void* state, grid* g) {
+    help_view* h = state;
+    if (s->redraw) {
+        h->drawn = 0;
+    }
+    const theme* th = screen_theme(s);
+    const help_card* c = &help_cards[h->card];
+    uint32_t used = screen_pending(s);
+    for (uint32_t u = 0; u < HELP_UNITS; u++) {
+        if (h->drawn >> u & 1u) {
+            continue;
+        }
+        uint32_t cost = u == 0 ? HELP_TITLE_CELLS
+                               : (u == HELP_UNITS - 1u ? HELP_LAST_ROWS * GRID_COLS : HELP_LINE_CELLS);
+        if (used && used + cost > HELP_FRAME_CELLS) {
+            break;
+        }
+        draw_unit(g, th, c, u);
+        h->drawn |= (uint16_t)(1u << u);
+        used += cost;
+    }
+}
+
+const view help_view_view = {"HELP", enter, NULL, NULL, compose, changed};

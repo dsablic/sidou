@@ -23,6 +23,10 @@ All notable changes are documented here. The format follows
 - Ergonomics: title cards play once per power-on by default (CARDS: OFF, ONCE, ALWAYS); the
   way back to LIVE never plays one unless ALWAYS. Settings byte 1 holds 0, 1 or 2 (an old
   record's ON reads as ONCE); no schema change.
+- Ergonomics: hold HOME for a help card of the view that shows (LIVE, the menu and MIDI, CHIP,
+  the song views, SCENE, and one for the rest); HOME now acts when it is let go, so a tap goes
+  home as before and a hold of 600 ms opens the card. Any control closes the card and does
+  nothing else.
 - Ergonomics: SCENE's FIRE keeps a low flame in silence, the piece's name is toasted on entry,
   and ALGORITHM steps the piece like SELECT.
 - Ergonomics: an effect algorithm picked from the panel (ENV, CHIP's ALGORITHM on a slot) starts

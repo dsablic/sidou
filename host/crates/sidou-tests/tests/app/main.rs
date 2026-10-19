@@ -14,6 +14,7 @@ mod font;
 mod fx_live;
 mod grid;
 mod gt2_ins;
+mod help_view;
 mod keys_route;
 mod learn_view;
 mod live_cutoff;

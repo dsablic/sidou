@@ -1404,9 +1404,9 @@ For any song (M2f Task 4) the fill's leader disarms the other fighter, whichever
 A major view entered from the menu opens behind a **title card** (`app/title_card.h`), after
 the logo page's chapter cards: THE and the view's name in Metal Chrome's lettering on a
 dithered purple and red glow with stars, a rule under the title and a glint on its last
-letter. There is no "CHAPTER" line. **THE SCENE** comes before SCENE, **THE OSCILLATOR**
-before LIVE when HOME goes back to it from the menu (not at power-on: the boot's title card
-is enough), and **THE CHIP** before the CHIP view. The held frames are `assets/logo/title-oscillator.png`,
+letter. There is no "CHAPTER" line. **THE SCENE** comes before SCENE, **THE CHIP** before the
+CHIP view and, with CARDS at ALWAYS only, **THE OSCILLATOR** before LIVE when HOME goes back to
+it from the menu (not at power-on: the boot's title card is enough). The held frames are `assets/logo/title-oscillator.png`,
 `title-scene.png` and `title-chip.png`, drawn by `assets/logo/metal-chrome.js` (`titleCard`,
 the page's `chapterCard` adapted to the cell grid) with the glow alone in `title-glow.png`:
 
@@ -1438,9 +1438,11 @@ instrument's note-on count, so however short the note; a note held from before d
 The audio, the keys and MIDI run as always; nothing holds them up. No toast or raster draws
 over it, and what changed meanwhile is not toasted after it.
 
-**The option.** CARDS in the menu (after OCTAVE) turns the cards off (ALGORITHM
-counter-clockwise) and on (clockwise); on at power-on, not stored yet. With them off, SCENE
-and LIVE wipe in as the other views do.
+**The option.** CARDS in the menu (after OCTAVE) is OFF, ONCE or ALWAYS (ALGORITHM steps it,
+clamped at the ends), stored with the settings. ONCE, the default, plays THE CHIP and THE
+SCENE the first time each since power-on and never THE OSCILLATOR; ALWAYS plays all three every
+time. Where no card plays, SCENE, CHIP and LIVE wipe in as the other views do (LIVE, back from
+the menu, with a wipe up from the bottom).
 
 **The bitmaps.** A card's bitmap holds its pixels only in the cells that differ from the glow
 (the letters, their halos, the rule, the glint, the stars: 251 cells for THE OSCILLATOR, 331
@@ -1473,3 +1475,21 @@ together are 73.4k, within the latency gate's 120k poll allowance (a compile-tim
 measured check, as for SCENE). The held frames are checked against their PNGs pixel for
 pixel on the host and in fm1-emu (all three, also against the goldens
 `tests/golden/lcd/title-chip.png`, `title-scene.png` and `title-oscillator.png`).
+
+## Help card
+
+HOME held 600 ms opens a **help card** over the view that shows (`app/help_view.h`; the keys
+are in [controls](../reference/controls.md#help)). It is drawn in the menu's style at 2x,
+14 characters across, in the theme's roles, never a colour of its own:
+
+- **Rows 0-2:** the title bar in `title_fg` on `title_bg`: `HELP` from column 1 and the card's
+  name (`LIVE`, `MENU`, `CHIP`, `TRACKER`, `SCENE`, `ALL`) right-aligned.
+- **Rows 4-27:** up to eight lines, one every three rows (two of text, one blank): the control
+  on the left in `hot`, what it does right-aligned in `value`, on the screen's own background;
+  the rows a card does not use stay blank.
+- It is drawn in **units** (the title bar with the row under it, then each line, the last with
+  the rows under it) that go out whole, as many a frame as fit 190 cells: six frames, and no
+  frame over 200 cells whatever it covers (a view's pixel region or overlays included). Nothing
+  draws over it (no toast, raster or popup); once drawn it sends nothing.
+- It ends on any button or encoder (its capture takes the event and does nothing else), and the
+  view under it cuts back in in bands, as after a title card. A note plays and does not end it.

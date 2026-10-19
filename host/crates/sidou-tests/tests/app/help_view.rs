@@ -1,0 +1,303 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! The help card (app/help_view.c) and HOME acting on its release (app/views.c `views_flow`): a
+//! tap goes home, a hold of 600 ms opens the card of the view that shows, any button or encoder
+//! closes it and does nothing else, and no frame of it sends more than 200 cells.
+
+use std::ffi::CStr;
+
+use sidou_sys::*;
+
+use crate::views::Ui;
+use crate::{drain, SPI_BUDGET_MS};
+
+/// A frame, and what it sent (the panel's drain): the card draws against the cells pending.
+fn frame(ui: &mut Ui) {
+    ui.frame();
+    drain(&mut ui.g);
+}
+
+/// HOME down and the frames until the card shows (at most a second), HOME still down.
+fn hold_until_card(ui: &mut Ui) -> u32 {
+    drain(&mut ui.g);
+    ui.down(PANEL_BTN_HOME);
+    for n in 0..25 {
+        frame(ui);
+        if ui.top() == "HELP" {
+            return n;
+        }
+    }
+    panic!("no help card after a second");
+}
+
+/// n characters of large text from (row, col): a blank cell is a space (the grid keeps the
+/// character a blank cell was last a piece of).
+fn big(ui: &Ui, row: usize, col: usize, n: usize) -> String {
+    (0..n)
+        .map(|i| {
+            let k = row * 30 + col + 2 * i;
+            if ui.g.ch[k] == b' ' {
+                ' '
+            } else {
+                ui.g.src[k] as char
+            }
+        })
+        .collect()
+}
+
+fn card_name(ui: &Ui) -> String {
+    let head = big(ui, 1, 1, 14);
+    assert!(head.starts_with("HELP"), "title bar: {head:?}");
+    head["HELP".len()..].trim().to_string()
+}
+
+fn text(p: *const std::os::raw::c_char) -> String {
+    unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned()
+}
+
+/// Line `l` of a card: the control and what it does (one string with a NUL between).
+fn line(card: &help_card, l: usize) -> (String, String) {
+    let p = unsafe { *card.lines.add(l) };
+    let key = unsafe { CStr::from_ptr(p) };
+    let what = unsafe { CStr::from_ptr(p.add(key.to_bytes().len() + 1)) };
+    (
+        key.to_string_lossy().into_owned(),
+        what.to_string_lossy().into_owned(),
+    )
+}
+
+#[test]
+fn a_tap_goes_home_and_a_hold_shows_the_help_card() {
+    let mut ui = Ui::without_cards();
+    ui.settle();
+    drain(&mut ui.g);
+    // A tap in 100 ms: the menu.
+    ui.down(PANEL_BTN_HOME);
+    frame(&mut ui);
+    frame(&mut ui);
+    assert_eq!(ui.top(), "LIVE", "the press alone does not navigate");
+    ui.up(PANEL_BTN_HOME);
+    frame(&mut ui);
+    assert_eq!(ui.top(), "MENU");
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "LIVE");
+    ui.settle();
+    // Held: the card, never the menu.
+    let fx = ui.v.fx_select;
+    let frames = hold_until_card(&mut ui);
+    assert!(
+        (13..=15).contains(&frames),
+        "after about 600 ms, not {frames} frames"
+    );
+    assert_eq!(card_name(&ui), "LIVE");
+    for _ in 0..12 {
+        frame(&mut ui);
+    }
+    ui.up(PANEL_BTN_HOME);
+    frame(&mut ui);
+    assert_eq!(ui.top(), "HELP", "it stays open after the release");
+    for _ in 0..10 {
+        frame(&mut ui);
+    }
+    assert_eq!(ui.top(), "HELP");
+    ui.turn(PANEL_ENC_SELECT, 1);
+    frame(&mut ui);
+    ui.settle();
+    assert_eq!(ui.top(), "LIVE");
+    assert_eq!(ui.v.fx_select, fx, "the selection untouched");
+}
+
+#[test]
+fn the_card_is_the_one_of_the_view_that_shows() {
+    for (name, open) in [
+        ("MENU", 0),
+        ("CHIP", 1),
+        ("SCENE", 2),
+        ("TRACKER", 3),
+        ("ALL", 4),
+        ("MENU", 5), // the MIDI page
+    ] {
+        let mut ui = Ui::without_cards();
+        ui.settle();
+        match open {
+            0 => ui.press(PANEL_BTN_HOME),
+            1 | 2 | 4 | 5 => {
+                ui.press(PANEL_BTN_HOME);
+                ui.settle();
+                ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
+                let item = [
+                    0,
+                    VIEWS_MENU_CHIP,
+                    VIEWS_MENU_SCENE,
+                    0,
+                    VIEWS_MENU_STATUS,
+                    VIEWS_MENU_MIDI,
+                ][open];
+                ui.turn(PANEL_ENC_SELECT, item as i32);
+                frame(&mut ui);
+                ui.turn(PANEL_ENC_ALGORITHM, 1);
+            }
+            _ => ui.press(PANEL_BTN_SEQ),
+        }
+        ui.settle();
+        hold_until_card(&mut ui);
+        for _ in 0..12 {
+            frame(&mut ui);
+        }
+        assert_eq!(card_name(&ui), name, "open {open}");
+        ui.up(PANEL_BTN_HOME);
+        ui.turn(PANEL_ENC_K1, 1);
+        frame(&mut ui);
+        ui.settle();
+        assert_ne!(ui.top(), "HELP", "open {open}");
+        assert_ne!(ui.top(), "LIVE", "open {open}: still in the view");
+    }
+}
+
+#[test]
+fn a_held_home_in_the_menu_keeps_the_menu() {
+    let mut ui = Ui::without_cards();
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    hold_until_card(&mut ui);
+    ui.up(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    frame(&mut ui);
+    ui.settle();
+    assert_eq!(ui.top(), "MENU");
+}
+
+#[test]
+fn any_control_closes_the_card_and_does_nothing_else_but_a_note_plays() {
+    for what in ["OCT+", "FX", "K1", "ALGORITHM", "SAVE"] {
+        let mut ui = Ui::without_cards();
+        ui.settle();
+        hold_until_card(&mut ui);
+        for _ in 0..12 {
+            frame(&mut ui);
+        }
+        ui.up(PANEL_BTN_HOME);
+        let cutoff = |ui: &Ui| unsafe { live_param_get(&*ui.rig.live, LIVE_PARAM_CUTOFF) };
+        let (octave, model, c, preset) = (
+            ui.live().octave,
+            ui.live().model,
+            cutoff(&ui),
+            ui.live().preset,
+        );
+        match what {
+            "OCT+" => ui.press(PANEL_BTN_OCT_UP),
+            "FX" => ui.press(PANEL_BTN_FX),
+            "K1" => ui.turn(PANEL_ENC_K1, 5),
+            "ALGORITHM" => ui.turn(PANEL_ENC_ALGORITHM, 1),
+            _ => ui.press(SAVE_KEY_BUTTON),
+        }
+        frame(&mut ui);
+        ui.settle();
+        assert_eq!(ui.top(), "LIVE", "{what}: the card closes");
+        assert_eq!(
+            (
+                ui.live().octave,
+                ui.live().model,
+                cutoff(&ui),
+                ui.live().preset
+            ),
+            (octave, model, c, preset),
+            "{what} did something"
+        );
+        assert!(ui.toast().is_none(), "{what}: a toast");
+    }
+    let mut ui = Ui::without_cards();
+    ui.settle();
+    hold_until_card(&mut ui);
+    for _ in 0..12 {
+        frame(&mut ui);
+    }
+    ui.rig.note_on(69);
+    for _ in 0..4 {
+        frame(&mut ui);
+    }
+    assert!(
+        ui.live().voice.iter().any(|v| v.gate != 0 && v.note == 69),
+        "the note plays"
+    );
+    assert_eq!(ui.top(), "HELP", "and the card stays");
+}
+
+#[test]
+fn every_line_fits_14_characters_with_a_space_between() {
+    let cards = unsafe { &help_cards };
+    assert_eq!(cards.len(), HELP_CARDS as usize);
+    for (c, card) in cards.iter().enumerate() {
+        assert!(card.count as u32 <= HELP_LINES && card.count > 0);
+        assert!(!text(card.name).is_empty() && text(card.name).len() <= 10);
+        for l in 0..card.count as usize {
+            let (key, what) = line(card, l);
+            assert!(!key.is_empty() && !what.is_empty());
+            assert!(
+                key.len() + 1 + what.len() <= HELP_LINE_CHARS as usize,
+                "card {c} line {l}: {key} {what}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_card_draws_its_lines_and_the_help_card_stays_within_the_frame_budget() {
+    for open in 0..4 {
+        let mut ui = Ui::without_cards();
+        ui.settle();
+        match open {
+            1 => {
+                ui.press(PANEL_BTN_HOME);
+                ui.settle();
+            }
+            2 => {
+                ui.press(PANEL_BTN_SEQ);
+                ui.settle();
+            }
+            3 => {
+                ui.rig.note_on(60);
+                ui.settle();
+            }
+            _ => {}
+        }
+        drain(&mut ui.g);
+        ui.down(PANEL_BTN_HOME);
+        let mut shown = false;
+        for _ in 0..40 {
+            ui.frame();
+            let sent = drain(&mut ui.g);
+            assert!(sent.cells <= 200, "open {open}: {} cells", sent.cells);
+            assert!(sent.spi_ms() <= SPI_BUDGET_MS);
+            shown |= ui.top() == "HELP";
+        }
+        assert!(shown);
+        let card = unsafe { &help_cards[ui.v.help.card as usize] };
+        for l in 0..card.count as usize {
+            let (key, what) = line(card, l);
+            let want = format!("{:<14}", format!("{key} {what}"));
+            let got = big(&ui, 4 + 3 * l, 1, 14);
+            assert!(
+                got.starts_with(&key) && got.trim_end().ends_with(&what),
+                "{got:?} for {want:?}"
+            );
+        }
+        // Nothing left to send once it is drawn.
+        for _ in 0..3 {
+            ui.frame();
+            assert_eq!(drain(&mut ui.g).cells, 0);
+        }
+        ui.up(PANEL_BTN_HOME);
+        ui.turn(PANEL_ENC_SELECT, 1);
+        for _ in 0..30 {
+            ui.frame();
+            let sent = drain(&mut ui.g);
+            assert!(
+                sent.cells <= 200,
+                "closing, open {open}: {} cells",
+                sent.cells
+            );
+        }
+        assert_ne!(ui.top(), "HELP");
+    }
+}
