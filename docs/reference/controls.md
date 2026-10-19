@@ -93,8 +93,9 @@ the sound. Off, they write nothing and chip B stays out of use.
 | FX (button 2) | chip 6581 / 8580; lit for the 8580 |
 | K1 (encoder 2) | cutoff: 64 detents from a semitone above the chip's lowest cutoff to its highest, even in pitch (on the CHIP view: its focused section's first value, [below](#chip)) |
 | K2 (encoder 3) | resonance (CHIP: the second) |
-| K3 (encoder 4) | pulse width (CHIP: the third) |
-| K4 (encoder 5) | preset (CHIP: the fourth) |
+| K3 (encoder 4) | **the sound's own control**: RATIO on a sync sound (SYNC LEAD: the sync ratio, -12..+12 semitones from the preset's, a semitone a detent; the panel's alone, with no CC), PULSE on a sound with the pulse waveform (PWM BASS: the pulse width, 31 positions from 3 % to 50 %, 1.6 % a detent, clockwise wider), DECAY on the others (SAW LEAD, NOISE PERC: 0-15) (CHIP: the third) |
+| K4 (encoder 5) | the release, 0-15 (CHIP: the fourth) |
+| **PRESETS (encoder 6)** | the preset: clockwise the next, clamped at both ends; with EDIT held it puts the current preset back to its factory settings; in every view (TRACKER takes it with REC on) |
 | MASTER (pot) | volume: a digital gain on the final output, for everything that plays (the keys, a song on either chip, UI sounds), on an audio taper from -60 dB to full in even steps of dB, shown in percent of the pot's travel |
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end), in every view; K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
@@ -107,14 +108,17 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; the keys sound nothing while GLO is held |
 | **SELECT (encoder 0)**, in the menu | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
 | **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, KEYS, SOUNDS, TRACKER ROWS (ROWS), CARDS ([title cards](#title-cards)), STORE ([format confirmation](#settings-and-store)), THEME; turned clockwise on CHIP opens the CHIP view, on TRACKER the song views, on SCENE the generative pieces, on SONG the [song-file actions](#song), on STATUS the status screen, on MIDI the MIDI page, on CHARSET the glyph sheet, on ABOUT the credits |
+| **SELECT (encoder 0)**, on LIVE | pages the knob row: TONE, DIST, MOD, FX; on a slot's page K1-K4 turn that slot's Amount, A, B and Mix and SCL moves the page with the slot; it stops at either end |
+| **ALGORITHM (encoder 1)**, on LIVE | steps the chip's profile on TONE (R2, R3, R4AR, R5, WORN; it stops at either end; the band's profile word shows the change), or the selected slot's algorithm on a slot's page or with EDIT held |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: A/B tabs, CHIP (the profile and the character), DIST, MOD, FX, EXPERT; it stops at either end |
 | **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP, the algorithm on a slot, or the four-control page on EXPERT; EDIT held on CHIP or EXPERT selects the USER save target |
 | **SELECT (encoder 0)**, in TRACKER | moves the cursor one row, or one 8-row page with EDIT held; stops at the first and last body rows |
 | **ALGORITHM (encoder 1)**, in TRACKER | the shown voice: voice 1, 2, 3 and round; the cursor's voice and the audition always match the voice on screen |
 | **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, RED MOON RITE, and round): it wipes in, and a toast names it |
 
-LFO, ARP and PRESETS (encoder 6) edit TRACKER with REC on (below); SELECT does nothing outside the menu, CHIP, SCENE and TRACKER, ALGORITHM nothing outside
-the menu and CHIP.
+LFO, ARP and PRESETS (encoder 6) edit TRACKER with REC on (below); the other buttons (LFO, ARP) do
+nothing else yet, and PRESETS steps the preset everywhere else. SELECT does nothing on STATUS and
+ABOUT, ALGORITHM nothing on STATUS and ABOUT.
 
 ## Value popup
 
@@ -128,8 +132,10 @@ opens it, and what it says (the text the views show, from one place, `popup_text
 
 | Control | Popup |
 |---|---|
-| K1 / K2 / K3 on LIVE's page (every view but LIVE and CHIP, which show the knob instead: below) | CUTOFF (in Hz as LIVE's FILTER frame says it, `11.4K`), RESO (0-15), PULSE (a percent) |
-| K4 on LIVE's page (the same views) | PRESET, the preset's name (no bar) |
+| K1 / K2 on LIVE's page (every view but LIVE and CHIP, which show the knob instead: below) | CUTOFF (in Hz as LIVE's FILTER frame says it, `11.4K`), RESO (0-15) |
+| K3 on LIVE's page (the same views) | the sound's own control: DECAY (0-15), PULSE (a percent of the full width), or on a sync sound RATIO (`+3`, in semitones) |
+| K4 on LIVE's page (the same views) | RELEASE (0-15) |
+| PRESETS (encoder 6) | PRESET and the preset's name (no bar), in every view but LIVE (whose header says it) |
 | K1-K4 on CHIP's EXPERT section | the named expert control in its units: percent, DAC ratio `R`, voice-DAC DC units `DC`, Hz, WEAK / MED / STRONG, or noise write-back tap count |
 | EDIT held + K1-K4 with the focus on CHIP's chip section | the slot and its control in the algorithm's own word: `DIST DRIVE`, `MOD DEPTH` (0-127) (the slot is not on that page) |
 | EDIT held + K1-K4 on STATUS, the menu and SCENE | the same |
@@ -448,7 +454,8 @@ release the torches hold still, and once the duel has settled nothing changes.
 
 ## Presets
 
-SAW LEAD, PWM BASS, SYNC LEAD and NOISE PERC (K4; program change 0..3). SYNC LEAD plays
+SAW LEAD, PWM BASS, SYNC LEAD and NOISE PERC (PRESETS, the big encoder, or the menu's PRE; program
+change 0..3). SYNC LEAD plays
 one note at a time: voice 3 runs silently at the note's pitch and voice 1, hard-synced to
 it, 2.75 times higher, so voice 3 sets the pitch and the ratio the timbre.
 
@@ -753,12 +760,14 @@ Any knob's parameter can follow a CC of your choice, from a controller on TRS or
 1. **Hold SAVE** (button 9) **and turn a knob.** A frame, MIDI LEARN, opens over the screen
    on the turn and names its parameter (CUTOFF
    &larr; SEND A CC) and does not move it. The knob is the parameter it turns on the panel, in
-   the view under the frame: K1..K3 the cutoff, resonance and pulse width; on the CHIP view,
+   the view under the frame: K1..K4 the cutoff, resonance, the sound's own control (the pulse width on
+   PWM BASS, the decay on the saw and noise sounds) and the release; on a slot's page of LIVE, the
+   slot's controls; on the CHIP view,
    K1..K4 its focused section's (AGE, DAC, THUMP, BLEED on the chip; a slot's Amount, A, B and
    Mix on a slot; SELECT moves the focus while the frame shows); with **EDIT held**, K1..K4
    the selected effect slot's Amount, A, B and Mix in any view (SCL first to pick the slot; it
-   works while the frame shows). K4 alone on LIVE's page is the preset, which has no CC
-   (program changes select it); trying it shows K4: THE PRESET, NO CC and opens no frame.
+   works while the frame shows). K3 on SYNC LEAD is the sync ratio, which has no CC; trying it
+   shows RATIO: NO CC and opens no frame. K4 is the release, which has one (CC 72).
    Release SAVE once the frame opens: the frame keeps waiting and that release saves nothing.
 2. **Send the CC** (move the controller's knob). The frame closes with LEARNED CC 21 &rarr;
    CUTOFF, the parameter jumps to the controller's value, and from then on follows it.
@@ -805,9 +814,10 @@ the octave is not 0, the octave at 2× in yellow on the right (`+1`, `-3`); thre
 the voice's number at 2× in its colour (voice 1 light red, voice 2 cyan, voice 3 light green) with
 the waveform under it, its oscilloscope drawn 2 pixels thick in the voice's colour, and its note
 at 2× with the envelope stage (ATK, DEC, SUS, REL) under it; **the knob row, what K1..K4 turn, in
-their left-to-right order**, under the page's name in yellow (`TONE`): CUTOFF (K1, yellow), RESO
-(K2, cyan), PULSE (K3, light green) and PRESET (K4, light red), each label in the knob's readable
-colour, its value at 2× (three characters at most: `980`, `7K2`, `12K`, `15`, `50%`) with a bar
+their left-to-right order**, under the page's name in yellow (`TONE`, which SELECT pages to the
+slots'): CUTOFF (K1, yellow), RESO (K2, cyan), K3's own control (K3, light green: RATIO, PULSE or
+DECAY, by the sound) and RELEASE (K4, light red), each label in the knob's readable
+colour, its value at 2× (three characters at most: `980`, `7K2`, `12K`, `15`, `50%`, `-3`) with a bar
 in the knob's colour and its name K1..K4 in the legend colour, a knob that just turned reversed
 for a second ([above](#value-popup)); and a bottom band with the filter's mode at 2× and the
 chip's model and profile (`CHIP 6581`, `R4AR`), the three effect slots' names across one row (the

@@ -85,11 +85,12 @@ pub const VIEWS: &[(&str, &str)] = &[
     ),
 ];
 
-pub const CONTROLS: [(&str, u8); 7] = [
+pub const CONTROLS: [(&str, u8); 8] = [
     ("K1", panel::K1),
     ("K2", panel::K2),
     ("K3", panel::K3),
     ("K4", panel::K4),
+    ("PRESETS", panel::PRESETS),
     ("SELECT", panel::SELECT),
     ("ALGORITHM", panel::ALGORITHM),
     ("HOME", panel::HOME),
@@ -98,8 +99,6 @@ pub const CONTROLS: [(&str, u8); 7] = [
 /// What docs/reference/controls.md says does nothing: (view, control). Everything else is
 /// documented to act. Views missing from the doc's lists are marked `?` and not compared.
 pub const DOCUMENTED_INERT: &[(&str, &str)] = &[
-    ("live", "SELECT"),
-    ("live", "ALGORITHM"),
     ("tracker", "ALGORITHM"),
     ("status", "SELECT"),
     ("status", "ALGORITHM"),
@@ -389,12 +388,16 @@ mod tests {
             m.insert((view.into(), "SELECT".into()), fx(false, &[], false, 0));
             m.insert((view.into(), "ALGORITHM".into()), fx(false, &[], false, 0));
         }
+        m.insert(("menu".into(), "ALGORITHM".into()), fx(true, &[], false, 0));
         assert!(analyse(&m).findings.is_empty());
-        m.insert(("live".into(), "SELECT".into()), fx(false, &[], false, 0));
+        m.insert(
+            ("tracker".into(), "ALGORITHM".into()),
+            fx(false, &[], false, 0),
+        );
         let f = analyse(&m).findings;
         assert_eq!(f.len(), 1);
-        assert_eq!(f[0].id, "CONS.inert.select");
-        assert_eq!(f[0].numbers["views"], json!(["live"]));
+        assert_eq!(f[0].id, "CONS.inert.algorithm");
+        assert_eq!(f[0].numbers["views"], json!(["tracker"]));
     }
 
     fn fx(screen: bool, params: &[&str], view_changed: bool, depth: i32) -> Effect {
@@ -422,17 +425,27 @@ mod tests {
     fn an_undocumented_dead_control_is_drift_and_a_documented_one_is_an_exception() {
         let mut m = BTreeMap::new();
         m.insert(
-            ("live".to_string(), "SELECT".to_string()),
+            ("tracker".to_string(), "ALGORITHM".to_string()),
             fx(false, &[], false, 0),
+        );
+        m.insert(
+            ("menu".to_string(), "ALGORITHM".to_string()),
+            fx(true, &[], false, 0),
         );
         m.insert(
             ("menu".to_string(), "K1".to_string()),
             fx(false, &[], false, 0),
         );
+        m.insert(
+            ("live".to_string(), "SELECT".to_string()),
+            fx(false, &[], false, 0),
+        );
         let r = analyse(&m);
         let ids: Vec<&str> = r.findings.iter().map(|f| f.id.as_str()).collect();
-        assert!(ids.contains(&"CONS.inert.select"), "{ids:?}");
+        assert!(ids.contains(&"CONS.inert.algorithm"), "{ids:?}");
         assert!(ids.contains(&"CONS.drift.menu.k1"), "{ids:?}");
-        assert!(!ids.contains(&"CONS.drift.live.select"));
+        assert!(!ids.contains(&"CONS.drift.tracker.algorithm"));
+        // LIVE's SELECT pages the knob row now: dead there is drift.
+        assert!(ids.contains(&"CONS.drift.live.select"), "{ids:?}");
     }
 }

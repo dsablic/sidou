@@ -656,10 +656,11 @@ fn the_knobs_parameters_are_the_ones_the_panel_turns() {
                     .filter(|&q| unsafe { live_param_get(&*rig.live, q) } != before[q as usize])
                     .collect();
                 if param == LIVE_PARAM_COUNT {
-                    // K4 without EDIT is the preset; SELECT, ALGORITHM and PRESETS nothing.
-                    let k4 = held == 0 && enc == PANEL_ENC_K4;
-                    assert_eq!(rig.live.preset != preset, k4, "enc {enc}");
-                    if !k4 {
+                    // PRESETS steps the preset (EDIT held: reverts it); SELECT and ALGORITHM
+                    // are the views'; nothing else turns anything.
+                    let presets = held == 0 && enc == PANEL_ENC_PRESETS;
+                    assert_eq!(rig.live.preset != preset, presets, "enc {enc}");
+                    if enc != PANEL_ENC_PRESETS {
                         assert!(changed.is_empty(), "enc {enc} held {held}: {changed:?}");
                     }
                 } else {
@@ -674,10 +675,19 @@ fn the_knobs_parameters_are_the_ones_the_panel_turns() {
         knob_param(&l.live, 0, PANEL_ENC_K1 + 1),
         LIVE_PARAM_RESONANCE
     );
+    // K3 is the sound's own control: the decay on SAW LEAD, the pulse width on PWM BASS, the
+    // ratio (no parameter) on SYNC LEAD; K4 is the release.
+    assert_eq!(knob_param(&l.live, 0, PANEL_ENC_K1 + 2), LIVE_PARAM_DECAY);
+    assert_eq!(knob_param(&l.live, 0, PANEL_ENC_K4), LIVE_PARAM_RELEASE);
+    let mut l = l;
+    l.set_preset(1);
     assert_eq!(
         knob_param(&l.live, 0, PANEL_ENC_K1 + 2),
         LIVE_PARAM_PULSE_WIDTH
     );
+    l.set_preset(2);
+    assert_eq!(knob_param(&l.live, 0, PANEL_ENC_K1 + 2), LIVE_PARAM_COUNT);
+    l.set_preset(0);
     assert_eq!(
         knob_param(&l.live, edit, PANEL_ENC_K1),
         LIVE_PARAM_SLOT + LIVE_SLOT_AMOUNT

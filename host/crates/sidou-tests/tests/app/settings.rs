@@ -736,7 +736,7 @@ fn direct_persisted_setters_are_background_saved_but_controllers_are_not() {
     let changes: &[fn(&mut Set)] = &[
         |s| unsafe { live_knob(&mut *s.rig.live, LIVE_KNOB_CUTOFF, 1) },
         |s| unsafe { live_knob(&mut *s.rig.live, LIVE_KNOB_RESONANCE, 1) },
-        |s| unsafe { live_knob(&mut *s.rig.live, LIVE_KNOB_PULSE_WIDTH, 1) },
+        |s| unsafe { live_knob(&mut *s.rig.live, LIVE_KNOB_RELEASE, 1) },
         |s| s.rig.set_preset(1),
         |s| unsafe { live_button(&mut *s.rig.live, LIVE_BUTTON_FX) },
         |s| unsafe { live_slot_set(&mut *s.rig.live, 0, LIVE_SLOT_MIX, 100) },

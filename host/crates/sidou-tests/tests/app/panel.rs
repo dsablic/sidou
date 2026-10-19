@@ -170,32 +170,83 @@ fn buttons_turn_the_octave_and_toggle_the_model() {
 }
 
 #[test]
-fn k1_to_k4_are_cutoff_resonance_pulse_width_and_preset() {
+fn k1_to_k4_are_cutoff_resonance_the_sounds_own_control_and_release() {
     let mut p = Panel::new();
-    let (c, r, w) = (
-        p.rig.live.cutoff,
-        p.rig.live.resonance,
-        p.rig.live.pulse_width,
-    );
+    let (c, r) = (p.rig.live.cutoff, p.rig.live.resonance);
     p.enc(PANEL_ENC_K1, -2);
     assert_eq!(p.rig.live.cutoff, cutoff_after(p.rig.live.model, c, -2));
     p.enc(PANEL_ENC_K1 + 1, 1);
     assert_eq!(p.rig.live.resonance, r + 1);
-    p.enc(PANEL_ENC_K1 + 2, 3);
-    assert_eq!(
-        p.rig.live.pulse_width,
-        w + 3 * LIVE_PULSE_WIDTH_DETENT as u16
-    );
-    p.enc(PANEL_ENC_K4, 1);
-    assert_eq!(p.rig.live.preset, 1);
+    // SAW LEAD: K3 is the decay (9 in the preset), K4 the release (6).
+    p.enc(PANEL_ENC_K1 + 2, -3);
+    assert_eq!(p.rig.live.attack_decay & 15, 6);
+    p.enc(PANEL_ENC_K4, 2);
+    assert_eq!(p.rig.live.sustain_release & 15, 8);
+    assert_eq!(p.rig.live.preset, 0, "K4 is no longer the preset");
     p.rig.clear();
-    for e in [0, 1, 6] {
+    for e in [0, 1] {
         p.enc(e, 5);
     }
     assert!(
         p.rig.log().is_empty(),
-        "SELECT, ALGORITHM and PRESETS do nothing yet"
+        "SELECT and ALGORITHM are the views'"
     );
+}
+
+#[test]
+fn k4_turns_the_release() {
+    let mut p = Panel::new();
+    assert_eq!(
+        unsafe { live_param_get(&*p.rig.live, LIVE_PARAM_RELEASE) },
+        6
+    );
+    p.enc(PANEL_ENC_K4, 3);
+    assert_eq!(
+        unsafe { live_param_get(&*p.rig.live, LIVE_PARAM_RELEASE) },
+        9
+    );
+    p.enc(PANEL_ENC_K4, -100);
+    assert_eq!(
+        unsafe { live_param_get(&*p.rig.live, LIVE_PARAM_RELEASE) },
+        0
+    );
+    p.enc(PANEL_ENC_K4, 100);
+    assert_eq!(
+        unsafe { live_param_get(&*p.rig.live, LIVE_PARAM_RELEASE) },
+        15
+    );
+    // The release is the SID's: the note's envelope ends on the register.
+    assert_eq!(p.rig.live.sustain_release & 15, 15);
+    assert_eq!(p.rig.reg(6) & 15, 15, "voice 1's sustain/release register");
+    // MIDI learn and the popup find it as a parameter.
+    assert_eq!(
+        unsafe { panel_knob_param(&*p.p, &*p.rig.live, 0, PANEL_ENC_K4) },
+        LIVE_PARAM_RELEASE
+    );
+}
+
+#[test]
+fn presets_steps_the_preset_in_every_view() {
+    let mut p = Panel::new();
+    p.enc(PANEL_ENC_PRESETS, 1);
+    assert_eq!(p.rig.live.preset, 1);
+    p.enc(PANEL_ENC_PRESETS, 100);
+    assert_eq!(
+        u32::from(p.rig.live.preset),
+        LIVE_PRESET_COUNT - 1,
+        "clamped at the end"
+    );
+    p.enc(PANEL_ENC_PRESETS, -2);
+    assert_eq!(u32::from(p.rig.live.preset), LIVE_PRESET_COUNT - 3);
+    p.enc(PANEL_ENC_PRESETS, -100);
+    assert_eq!(p.rig.live.preset, 0, "and at the start");
+    // The pages other than LIVE's turn it as well (the panel's own rule is the same everywhere).
+    for page in [PANEL_PAGE_CHARACTER, PANEL_PAGE_SLOT, PANEL_PAGE_NONE] {
+        p.p.page = page as u8;
+        p.enc(PANEL_ENC_PRESETS, 1);
+        assert_eq!(p.rig.live.preset, 1, "page {page}");
+        p.enc(PANEL_ENC_PRESETS, -1);
+    }
 }
 
 #[test]

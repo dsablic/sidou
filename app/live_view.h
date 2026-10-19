@@ -12,7 +12,8 @@
  *   colour (dark grey and flat when the voice is silent), and the note at 2x on the right with
  *   the envelope's stage under it;
  * - rows 14-19, the four knobs in their left-to-right order, what K1..K4 turn: the page's name on
- *   row 14 (TONE, or the selected slot's name while a slot page shows or EDIT is held), each knob
+ *   row 14 (TONE, or the selected slot's name while a slot page shows or EDIT is held; SELECT pages
+ *   it TONE, DIST, MOD, FX), each knob
  *   a label small in the knob's readable colour, its value at 2x in white (at most 3 characters:
  *   7K2, 50%), a bar in the knob's colour and its name K1..K4 in the hint colour. A knob that
  *   just turned has its label reversed for a second (the popup does not open over LIVE for
@@ -106,7 +107,7 @@ typedef struct {
 } live_view_canvas;
 
 typedef struct {
-    const live* l;
+    live* l;
     scope* sc;      /* NULL: no tap, flat scopes and empty meters */
     uint32_t since; /* the tap's head when it went on: older points are stale */
     uint8_t on;     /* the tap is on */
@@ -143,12 +144,17 @@ typedef struct {
     uint8_t edit;
     uint8_t hl;
     uint32_t hl_until;
+    /* Rows the screen drew over that the last frame left for this one (live_view.c compose). */
+    uint32_t owed;
 } live_view;
 
+/* LIVE's own input: SELECT pages the knob row (TONE, DIST, MOD, FX; a slot page selects that
+ * slot), ALGORITHM steps the chip's profile on TONE and the selected slot's algorithm on a slot page
+ * (or with EDIT held), and K1..K4 on a slot page turn the slot's Amount, A, B and Mix. */
 extern const view live_view_view;
 
 /* Shows l, and the tap sc (may be NULL). Flat scopes until the tap has points. */
-void live_view_init(live_view* lv, const live* l, scope* sc);
+void live_view_init(live_view* lv, live* l, scope* sc);
 /* The tap is LIVE's or not; on: only points written from now on are used. Every frame, before
  * the screen's (views_frame): on while LIVE shows (on top, or under MIDI learn's frame); the
  * tap itself (scope.on) is switched by views_frame, for SCENE as well. Off, the
@@ -161,9 +167,10 @@ void live_view_flash(live_view* lv, uint32_t what, uint32_t now_ms);
 /* The filter's cutoff in Hz as the popup says it, "1234" or "11.4K" for the cutoff the chip has
  * now (cutoff_out), into buf (8 characters). */
 void live_view_cutoff_text(const live* l, char* buf);
-/* Knob k's value on the TONE page (0 K1: the cutoff, 1 the resonance, 2 the pulse width in
- * percent, 3 the preset's first three letters) as LIVE's knob row says it at 2x, at most 3
- * characters: "980", "7K2", "12K", "6", "50%", "SAW", into buf (5 bytes). */
+/* Knob k's value on the TONE page (0 K1: the cutoff, 1 the resonance, 2 K3's control by the
+ * sound: the pulse width in percent, the decay, or the sync ratio's semitones, 3 the release) as
+ * LIVE's knob row says it at 2x, at most 3 characters: "980", "7K2", "12K", "6", "50%", "-12",
+ * into buf (5 bytes). */
 void live_view_knob_text(const live* l, uint32_t k, char* buf);
 /* The control register voice v plays with, without the gate: 0 for a voice that makes no sound
  * (SYNC LEAD's voices 2 and 3, voice 3 only clocking the sync). */

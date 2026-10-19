@@ -62,6 +62,9 @@ extern "C" {
 #define PANEL_ENC_ALGORITHM 1u
 #define PANEL_ENC_K1 2u
 #define PANEL_ENC_K4 5u
+/* The big encoder PRESETS steps the preset in every view that does not take it: EDIT held reverts
+ * the current preset to its factory settings (live_preset_step). */
+#define PANEL_ENC_PRESETS 6u
 #define PANEL_ENCODERS 7u
 
 /* The MASTER pot moves the volume only when it changed by at least this much (ADC noise). */
@@ -69,7 +72,7 @@ extern "C" {
 
 /* What K1..K4 turn without EDIT held (panel.page): the views set it for the view that shows
  * (app/views.h), so the panel and MIDI learn, which both ask panel_knob_param, agree. */
-#define PANEL_PAGE_LIVE 0u      /* the cutoff, resonance, pulse width and preset: every view */
+#define PANEL_PAGE_LIVE 0u      /* the cutoff, resonance, the sound's own control and release */
 #define PANEL_PAGE_CHARACTER 1u /* age/heat, DAC sloppiness, output thump, filter bleed */
 #define PANEL_PAGE_SLOT 2u      /* the selected slot's Amount, A, B and Mix */
 /* Nothing: the view turns K1..K4 itself (the CHIP view on a song's chip A, whose controls are
@@ -134,12 +137,12 @@ void panel_quiet_keys(panel* p, live* l, uint32_t mask);
 void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held);
 /* The parameter encoder enc turns with the buttons held (bit i: button i) on p's page: with
  * EDIT held, K1..K4 the selected slot's Amount, A, B and Mix on any page; without, on
- * PANEL_PAGE_LIVE K1..K3 the cutoff, resonance and pulse width, on PANEL_PAGE_CHARACTER K1..K4
+ * PANEL_PAGE_LIVE K1 the cutoff, K2 the resonance, K3 the sound's own control (the pulse width,
+ * the decay, or on a sync sound the ratio, which is no parameter) and K4 the release, on PANEL_PAGE_CHARACTER K1..K4
  * age/heat, DAC sloppiness, output thump and filter bleed, on PANEL_PAGE_SLOT the selected
  * slot's Amount, A, B and Mix, on an EXPERT page its four consecutive parameters (one raw
- * step per detent). LIVE_PARAM_COUNT for unused final-page expert controls, K4 on PANEL_PAGE_LIVE without EDIT (the
- * preset, which is no parameter), for K1..K4 on PANEL_PAGE_NONE without EDIT, and every other
- * encoder. p NULL: PANEL_PAGE_LIVE.
+ * step per detent). LIVE_PARAM_COUNT for unused final-page expert controls, K3 on PANEL_PAGE_LIVE without EDIT on a
+ * sync sound (the ratio), for K1..K4 on PANEL_PAGE_NONE without EDIT, and every other encoder. p NULL: PANEL_PAGE_LIVE.
  * panel_encoder turns what this names, and MIDI learn picks the knob's parameter here, so the
  * two cannot disagree. */
 uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t enc);

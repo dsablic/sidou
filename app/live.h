@@ -67,7 +67,13 @@ extern "C" {
 #define LIVE_CUTOFF_MAX 2047u
 #define LIVE_RESONANCE_MAX 15u
 #define LIVE_PULSE_WIDTH_MAX 4095u
-#define LIVE_PULSE_WIDTH_DETENT 32
+/* K3 on a pulse sound: positions 0..LIVE_PULSE_POSITIONS - 1, the width LIVE_PULSE_FIRST +
+ * LIVE_PULSE_STEP * position (3 % to 50 %, 1.6 % a detent), clockwise wider. */
+#define LIVE_PULSE_FIRST 128
+#define LIVE_PULSE_STEP 64
+#define LIVE_PULSE_POSITIONS 31
+/* K3 on a sync sound: the sync ratio's offset in semitones, a detent each way. */
+#define LIVE_RATIO_SEMIS 12
 #define LIVE_MASTER_MAX 1023u
 /* The volume the live instrument leaves in the chip's $D418 bits 0-3, always: MASTER is a
  * digital gain after the chips (live_set_master). */
@@ -212,11 +218,18 @@ int live_sid_prepare(void* ctx, uint8_t profile);
 void live_char_store(sid_character* c, uint8_t reg, uint8_t value);
 
 typedef enum {
-    LIVE_KNOB_CUTOFF = 0,      /* K1: one detent = one entry of live_cutoff_steps */
-    LIVE_KNOB_RESONANCE = 1,   /* K2: 0..15 */
-    LIVE_KNOB_PULSE_WIDTH = 2, /* K3: one detent = LIVE_PULSE_WIDTH_DETENT of 0..4095 */
-    LIVE_KNOB_PRESET = 3       /* K4: one detent = one preset, clamped at both ends */
+    LIVE_KNOB_CUTOFF = 0,    /* K1: one detent = one entry of live_cutoff_steps */
+    LIVE_KNOB_RESONANCE = 1, /* K2: 0..15 */
+    LIVE_KNOB_TONE = 2,      /* K3: the sound's own control (live_tone) */
+    LIVE_KNOB_RELEASE = 3    /* K4: 0..15, a step a detent */
 } live_knob_id;
+
+/* What K3 turns, by the sound (live_tone). */
+typedef enum {
+    LIVE_TONE_RATIO = 0, /* the sync ratio in semitones, -12..+12 from the preset's (SYNC LEAD) */
+    LIVE_TONE_PULSE = 1, /* the pulse width, one side of the square (a sound with the pulse bit) */
+    LIVE_TONE_DECAY = 2  /* LIVE_PARAM_DECAY, 0..15 (the saw and the noise) */
+} live_tone_kind;
 
 typedef enum {
     LIVE_BUTTON_OCT_DOWN = 0,
@@ -391,6 +404,11 @@ typedef struct {
     uint32_t expert_version; /* raw expert changes, including transitions to macro-following */
     /* K1's place in live_cutoff_steps: valid while the table holds l->cutoff there. */
     uint8_t cutoff_pos;
+    /* K3 on a sync sound: the ratio's offset in semitones, and the ratio in 1/256 as voice 1 plays
+     * it (the preset's times 2^(sync_semis / 12)). Not a MIDI parameter and not saved: the panel's
+     * alone; a preset load puts them back to the preset's. */
+    int8_t sync_semis;
+    uint16_t sync_q8;
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */
@@ -489,6 +507,14 @@ void live_all_notes_off(live* l);
  * the octave may change while the key is held. */
 uint8_t live_key_note(const live* l, uint8_t base_note);
 void live_knob(live* l, live_knob_id knob, int32_t delta);
+/* What K3 turns now (a live_tone_kind): RATIO on a mono-sync preset, else PULSE while the waveform
+ * has the pulse bit, else DECAY. */
+uint32_t live_tone(const live* l);
+/* round(65536 * 2^((k - 12) / 12)) for k = 0..24: the sync ratio's semitones (live.c). */
+extern const uint32_t live_ratio_q16[2 * LIVE_RATIO_SEMIS + 1];
+/* PRESETS: steps the preset a detent each (clockwise the next), clamped at both ends; revert (EDIT
+ * held) loads the current preset's factory settings again instead. */
+void live_preset_step(live* l, int32_t steps, int revert);
 void live_button(live* l, live_button_id button);
 /* A CC through the published map (midi_map.h): the parameter's value from the CC's by its
  * curve. CC 1 is the modulation wheel: the pulse width's row while that is its target, else

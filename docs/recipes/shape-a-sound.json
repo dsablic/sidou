@@ -13,7 +13,7 @@
   "skills": [
     "K1 cutoff",
     "K2 resonance",
-    "K4 preset",
+    "PRESETS",
     "holding a note while turning"
   ],
   "steps": [
@@ -58,7 +58,7 @@
           "kind": "audio"
         },
         {
-          "kind": "popup"
+          "kind": "screen_changes"
         },
         {
           "kind": "param",
@@ -135,7 +135,7 @@
       "control": "Turn K2 clockwise about a quarter turn",
       "expect": [
         {
-          "kind": "popup"
+          "kind": "screen_changes"
         },
         {
           "kind": "param",
@@ -169,8 +169,8 @@
       "title": "Add resonance"
     },
     {
-      "caption": "Turn K4 one click: the next preset, PWM BASS.",
-      "control": "Turn K4 one click clockwise",
+      "caption": "Turn PRESETS one click: the next preset, PWM BASS.",
+      "control": "Turn PRESETS one click clockwise",
       "expect": [
         {
           "kind": "text",
@@ -200,7 +200,7 @@
       "inputs": [
         {
           "detents": 1,
-          "encoder": "K4",
+          "encoder": "PRESETS",
           "op": "turn"
         },
         {

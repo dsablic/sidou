@@ -139,13 +139,14 @@ pub const BUTTONS: [(&str, u8); 14] = [
     ("REC", panel::REC),
 ];
 
-pub const ENCODERS: [(&str, u8); 6] = [
+pub const ENCODERS: [(&str, u8); 7] = [
     ("SELECT", panel::SELECT),
     ("ALGORITHM", panel::ALGORITHM),
     ("K1", panel::K1),
     ("K2", panel::K2),
     ("K3", panel::K3),
     ("K4", panel::K4),
+    ("PRESETS", panel::PRESETS),
 ];
 
 fn button(s: &str) -> Result<u8, String> {

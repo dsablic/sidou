@@ -61,10 +61,10 @@ journey jam | Pick up and jam | poweron
   step note-at-power-on | Press a key straight after power-on | Press a key: it sounds | note A4 600 | sound; clip 400; probe; milestone first_sound; defaults
   step boot-settles | Let the boot end | - | wait 2500 | view live
   step chord | Play a chord | Play a chord | note C4 E4 G4 700 | sound; clip 300
-  step shape-cutoff | Turn K1 while holding a note | Turn K1 to open and close the filter | down A3; turn K1 -24; turn K1 24; up A3 | popup; clip 300
-  step shape-resonance | Turn K2 | Turn K2 for resonance | down A3; turn K2 8; turn K2 -8; up A3 | popup; clip 300
-  step shape-pulse | Turn K3 | Turn K3 for pulse width | down A3; turn K3 16; turn K3 -16; up A3 | popup; clip 300
-  step next-preset | Turn K4 to the next sound | Turn K4 to change the sound | turn K4 1; note A3 600 | popup; sound; clip 300; task change preset; destructive; defaults
+  step shape-cutoff | Turn K1 while holding a note | Turn K1 to open and close the filter | down A3; turn K1 -24; turn K1 24; up A3 | change; clip 300
+  step shape-resonance | Turn K2 | Turn K2 for resonance | down A3; turn K2 8; turn K2 -8; up A3 | change; clip 300
+  step shape-pulse | Turn K3 | Turn K3 for the sound's own control | down A3; turn K3 6; turn K3 -6; up A3 | change; clip 300
+  step next-preset | Turn PRESETS to the next sound | Turn PRESETS to change the sound | turn PRESETS 1; note A3 600 | sound; clip 300; task change preset; destructive; defaults
   step master | Turn MASTER down | MASTER sets the volume | down A3; pot 300; pot 1000; up A3 | popup; clip 300
   step octave | Octave up | OCT+ steps the octave | press OCT+ | toast; task change octave
 
@@ -101,7 +101,7 @@ journey perform | Perform
   related jam; sketch
   step clock-start | Follow the MIDI clock | Start the clock from a sequencer | clock 120 1500 start | sound; clip 1500; probe
   step program-change | Switch sound by program change | A program change picks the sound | pc 2; wait 300 | text SYNC; clip 300
-  step panel-preset | Switch sound from the panel | K4 picks the sound | turn K4 -2 | popup; task change preset
+  step panel-preset | Switch sound from the panel | PRESETS picks the sound | turn PRESETS -2 | text SAW LEAD; task change preset
   step mute-voice-2 | Mute voice 2 | Hold GLO and press key 2 | holdkey GLO F#3 | text M2; task mute voice 2; probe
   step unmute-voice-2 | Let voice 2 sound again | Again to unmute | holdkey GLO F#3 | -; task unmute voice 2
   step solo-voice-1 | Solo voice 1 | Hold GLO and press key 4 | holdkey GLO G#3 | text S1; task solo voice 1; probe
@@ -114,7 +114,7 @@ journey keep | Keep what you made
   prereq On LIVE after the boot.
   skills SAVE; recalling settings; undo; themes
   related build
-  step shape | Shape a sound | Turn K1 | turn K1 -20 | popup; remember
+  step shape | Shape a sound | Turn K1 | turn K1 -20 | change; remember
   step save | Save settings | SAVE keeps your settings | press SAVE; wait 400 | toast; task save settings
   step recall | Switch off and on again | Your sound is still there after power-off | powercycle | recalled
   step fresh | Start a new song | A new, empty song | press SEQ | needs new_song; change
@@ -126,14 +126,15 @@ journey explore | Explore the chip, the effects and the scene
   prereq On LIVE after the boot.
   skills CHIP view; profiles; effect slots; EDIT shortcut; SCENE
   related jam
-  step open-chip | Open CHIP from LIVE | HOME, then ALGORITHM on CHIP | press HOME; turn ALGORITHM 1 | -; task open CHIP and change the profile
-  step chip-wait | Wait out THE CHIP's title card | - | wait 2800 | view chip; task open CHIP and change the profile
-  step chip-profile | Pick the next profile | ALGORITHM steps the profile | turn ALGORITHM 1; note A3 500 | text PROFILE; sound; clip 300; task open CHIP and change the profile
-  step chip-age | Turn the chip's age | K1 turns AGE here | down A3; turn K1 40; up A3 | popup; clip 600
+  step live-profile | Pick the next profile on LIVE | ALGORITHM steps the profile | turn ALGORITHM 1; note A3 500 | sound; clip 300; task change the profile
+  step open-chip | Open CHIP from LIVE | HOME, then ALGORITHM on CHIP | press HOME; turn ALGORITHM 1 | -
+  step chip-wait | Wait out THE CHIP's title card | - | wait 2800 | view chip
+  step chip-profile | Pick the next profile | ALGORITHM steps the profile | turn ALGORITHM 1; note A3 500 | text PROFILE; sound; clip 300
+  step chip-age | Turn the chip's age | K1 turns AGE here | down A3; turn K1 40; up A3 | change; clip 600
   step chip-dist | Pick DIST's algorithm on CHIP | SELECT to DIST, ALGORITHM to step | turn SELECT 1; turn ALGORITHM 1; note A3 500 | sound; clip 300; task change DIST algorithm (from CHIP)
   step chip-back | Back to LIVE | HOME twice | press HOME; press HOME; wait 2800 | view live; task get back to LIVE (from CHIP)
-  step dist-shortcut | DIST's algorithm with ENV | ENV steps the effect | press ENV; note A3 500 | toast; sound; clip 300; task change DIST algorithm
-  step drive | Set DIST's drive with EDIT | Hold EDIT and turn K1 | down A3; holdturn EDIT K1 20; up A3 | popup; clip 300
+  step dist-shortcut | DIST's algorithm with ENV | ENV steps the effect | press ENV; note A3 500 | change; sound; clip 300; task change DIST algorithm
+  step drive | Set DIST's drive on its page | SELECT to DIST, then K1 | down A3; turn SELECT 1; turn K1 20; turn SELECT -1; up A3 | change; clip 300
   step scene | Open SCENE | Pick SCENE in the menu | press HOME; select-item SCENE; turn ALGORITHM 1; wait 2800 | view scene
   step scene-next | Next piece | SELECT picks the next piece | turn SELECT 1; wait 700; note A4 400 | toast; clip 300
   step scene-home | Back from SCENE | HOME | press HOME; press HOME; wait 2800 | view live
@@ -141,7 +142,7 @@ journey explore | Explore the chip, the effects and the scene
 journey tour | Screens for the readability check | tour
   step live-idle | LIVE at rest | - | wait 100 | view live
   step live-chord | LIVE with a chord | - | down C4; down E4; down G4; wait 500 | sound
-  step live-popup | LIVE with a popup | - | turn K1 -6 | popup
+  step live-popup | LIVE with a popup | - | turn K1 -6 | change
   step live-release | Release | - | up C4; up E4; up G4; wait 200 | -
   step live-toast | LIVE with a toast | - | press OCT+ | toast
   step live-octave-back | Octave back | - | press OCT-; wait 1700 | -
@@ -157,7 +158,7 @@ journey tour | Screens for the readability check | tour
   step midi-home | Back | - | press HOME | view menu
   step chip | CHIP | - | select-item CHIP; turn ALGORITHM 1; wait 3000 | view chip
   step chip-chipfocus | CHIP, chip focus | - | turn SELECT 1 | change
-  step chip-popup | CHIP profile popup | - | turn ALGORITHM 1 | popup
+  step chip-popup | CHIP profile popup | - | turn ALGORITHM 1 | change
   step chip-dist | CHIP, DIST focus | - | wait 1200; turn SELECT 1 | change
   step chip-dist-algo | CHIP, DIST algorithm | - | turn ALGORITHM 2 | change
   step chip-tab-b | CHIP, tab B | - | turn SELECT -2; turn ALGORITHM 1; wait 400 | change

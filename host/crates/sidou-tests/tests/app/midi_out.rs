@@ -181,7 +181,7 @@ fn a_knob_move_is_its_cc_once_a_tick_with_the_latest_value() {
     );
     assert_eq!(o.tick(), [], "sent once");
     o.rig.knob(LIVE_KNOB_RESONANCE, 1);
-    o.rig.knob(LIVE_KNOB_PULSE_WIDTH, 1);
+    o.rig.pulse(1);
     let pw = o.get(LIVE_PARAM_PULSE_WIDTH);
     let res = o.get(LIVE_PARAM_RESONANCE);
     // Round robin from where the last tick left off; both in the one tick.
@@ -213,7 +213,7 @@ fn the_packets_are_usb_midi_event_packets() {
     assert_eq!(u32::from(b[2]), LIVE_CC_RESONANCE);
     assert_eq!(b[3], to_cc(LIVE_PARAM_RESONANCE, 7));
     // A preset from the panel: a program change, CIN 0xC, with one data byte.
-    o.rig.knob(LIVE_KNOB_PRESET, 1);
+    o.rig.preset_step(1);
     let p = o.tick();
     assert_eq!(p, [u32::from_le_bytes([0x0C, 0xC9, 1, 0])]);
     assert_eq!(bytes(&p), [0xC9, 1]);
@@ -304,7 +304,7 @@ fn the_pulse_width_leaves_cc_1_to_the_wheel_when_the_wheel_drives_another_target
     let mut o = Out::new();
     o.trs(&[0xB0, 99, 6, 98, 2, 6, 0, 38, LIVE_MOD_VIBRATO as u8]);
     assert_eq!(o.get(LIVE_PARAM_MOD_TARGET), LIVE_MOD_VIBRATO);
-    o.rig.knob(LIVE_KNOB_PULSE_WIDTH, 3);
+    o.rig.pulse(3);
     let pw = o.get(LIVE_PARAM_PULSE_WIDTH);
     assert_eq!(
         o.drain(),
@@ -396,12 +396,12 @@ fn the_fx_button_sends_the_chip_model() {
 fn a_panel_preset_is_a_program_change_without_the_parameters_it_loads() {
     let mut o = Out::new();
     o.rig.knob(LIVE_KNOB_CUTOFF, 3); // pending, then replaced by the preset's
-    o.rig.knob(LIVE_KNOB_PRESET, 1);
+    o.rig.preset_step(1);
     assert_eq!(o.tick(), [u32::from_le_bytes([0x0C, 0xC0, 1, 0])]);
     assert_eq!(o.tick(), []);
     // A knob moved in the same tick as the preset counts as the preset's: a known limit
     // (midi_out.h). Its next move goes out.
-    o.rig.knob(LIVE_KNOB_PRESET, 1);
+    o.rig.preset_step(1);
     o.rig.knob(LIVE_KNOB_CUTOFF, 3);
     assert_eq!(o.tick(), [u32::from_le_bytes([0x0C, 0xC0, 2, 0])]);
     o.rig.knob(LIVE_KNOB_CUTOFF, 1);
@@ -409,7 +409,7 @@ fn a_panel_preset_is_a_program_change_without_the_parameters_it_loads() {
     assert_eq!(o.tick(), [cc_packet(0, 74, to_cc(LIVE_PARAM_CUTOFF, c))]);
     // A knob seen after the preset (MIDI input came between) goes in the same tick, after
     // the program change.
-    o.rig.knob(LIVE_KNOB_PRESET, -1);
+    o.rig.preset_step(-1);
     unsafe { midi_out_local(&mut *o.out, &*o.rig.live) };
     o.rig.knob(LIVE_KNOB_CUTOFF, 1);
     let c = o.get(LIVE_PARAM_CUTOFF);
@@ -421,8 +421,8 @@ fn a_panel_preset_is_a_program_change_without_the_parameters_it_loads() {
         ]
     );
     // The last of several preset moves within a tick wins.
-    o.rig.knob(LIVE_KNOB_PRESET, 1);
-    o.rig.knob(LIVE_KNOB_PRESET, -3);
+    o.rig.preset_step(1);
+    o.rig.preset_step(-3);
     assert_eq!(o.tick(), [u32::from_le_bytes([0x0C, 0xC0, 0, 0])]);
 }
 
@@ -496,7 +496,7 @@ fn without_a_host_pending_changes_are_dropped() {
     let mut o = Out::new();
     o.rig.knob(LIVE_KNOB_CUTOFF, 1);
     o.rig.knob(LIVE_KNOB_RESONANCE, 1);
-    o.rig.knob(LIVE_KNOB_PRESET, 1);
+    o.rig.preset_step(1);
     unsafe { midi_out_drop(&mut *o.out, &*o.rig.live) };
     assert_eq!(
         o.out.dropped, 1,
@@ -577,7 +577,7 @@ fn a_deferred_panel_change_the_preset_does_not_load_goes_after_the_program_chang
     o.set(LIVE_PARAM_VOLUME, 500);
     unsafe { live_slot_turn(&mut *o.rig.live, 1, LIVE_SLOT_MIX, 8) };
     assert_eq!(o.tick_room(0), [], "no room: pending");
-    o.rig.knob(LIVE_KNOB_PRESET, 1);
+    o.rig.preset_step(1);
     let got = o.tick();
     assert_eq!(got[0], u32::from_le_bytes([0x0C, 0xC0, 1, 0]));
     let mut rest = got[1..].to_vec();
@@ -601,7 +601,7 @@ fn the_mod_target_goes_before_a_pulse_width_that_depends_on_it() {
     // The panel puts the wheel back on the pulse width and moves it in the same tick: the
     // receiver must hear the target first, or it takes CC 1 as the vibrato wheel.
     o.set(LIVE_PARAM_MOD_TARGET, LIVE_MOD_PULSE_WIDTH);
-    o.rig.knob(LIVE_KNOB_PULSE_WIDTH, 3);
+    o.rig.pulse(3);
     let pw = o.get(LIVE_PARAM_PULSE_WIDTH);
     let mut want = nrpn_packets(0, row(LIVE_PARAM_MOD_TARGET).nrpn, LIVE_MOD_PULSE_WIDTH);
     want.push(cc_packet(0, 1, to_cc(LIVE_PARAM_PULSE_WIDTH, pw)));
@@ -609,7 +609,7 @@ fn the_mod_target_goes_before_a_pulse_width_that_depends_on_it() {
     // No room for the target's NRPN: nothing goes before it.
     o.trs(&[0xB0, 99, 6, 98, 2, 6, 0, 38, LIVE_MOD_VIBRATO as u8]);
     o.set(LIVE_PARAM_MOD_TARGET, LIVE_MOD_PULSE_WIDTH);
-    o.rig.knob(LIVE_KNOB_PULSE_WIDTH, 3);
+    o.rig.pulse(3);
     let pw = o.get(LIVE_PARAM_PULSE_WIDTH);
     assert_eq!(o.tick_room(3), []);
     let mut want = nrpn_packets(0, row(LIVE_PARAM_MOD_TARGET).nrpn, LIVE_MOD_PULSE_WIDTH);
@@ -707,12 +707,12 @@ fn a_song_goes_out_in_bank_1_and_a_preset_after_it_selects_bank_0_again() {
         o.tick(),
         [cc_packet(2, 0, 0), cc_packet(2, 32, 1), pc_packet(2, 5)]
     );
-    o.rig.knob(LIVE_KNOB_PRESET, 1);
+    o.rig.preset_step(1);
     assert_eq!(
         o.tick(),
         [cc_packet(2, 0, 0), cc_packet(2, 32, 0), pc_packet(2, 1)]
     );
-    o.rig.knob(LIVE_KNOB_PRESET, 1);
+    o.rig.preset_step(1);
     assert_eq!(o.tick(), [pc_packet(2, 2)]);
     // Without room for the whole message, it waits.
     unsafe { midi_out_song(&mut *o.out, 9) };

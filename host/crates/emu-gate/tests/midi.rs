@@ -697,10 +697,11 @@ fn a_full_speed_stream_loses_nothing() {
 
 /// usb/usb.c's MIDI out ring, `midi_out_q[MQ]`, and its write index.
 const MQ: u32 = 64;
-/// Felucca's ids: the FX button, K1 and K4.
+/// Felucca's ids: the FX button, K1 and PRESETS.
 const FX_BUTTON: u8 = 2;
 const K1: u8 = 2;
-const K4: u8 = 5;
+/// PRESETS (the big encoder) steps the preset: a program change.
+const PRESETS: u8 = 6;
 
 /// A host has configured the device: `usb.config`, the second byte of usb.c's `usb` (after
 /// `up`). USB itself stays off in fm1-emu, so the ring is never sent.
@@ -792,7 +793,7 @@ fn the_panel_goes_out_over_usb_and_midi_in_is_not_echoed() {
     let (p, w) = queued(&mut m, &fw, w);
     assert!(p.is_empty(), "MIDI in echoed: {p:08x?}");
     // The FX button: the chip model on CC 25, and the profile that follows it on CC 85 (the
-    // 8580 R5). K4: a program change, without the parameters the preset loads.
+    // 8580 R5). PRESETS: a program change, without the parameters the preset loads.
     press(&mut m, FX_BUTTON);
     let (p, w) = queued(&mut m, &fw, w);
     let r5 = unsafe {
@@ -802,7 +803,7 @@ fn the_panel_goes_out_over_usb_and_midi_in_is_not_echoed() {
         )
     };
     assert_eq!(p, [cc_packet(25, 127), cc_packet(85, r5)]);
-    m.turn(K4, 1);
+    m.turn(PRESETS, 1);
     m.run_ms(50);
     let (p, w) = queued(&mut m, &fw, w);
     assert_eq!(p, [u32::from_le_bytes([0x0C, 0xC0, 1, 0])]);

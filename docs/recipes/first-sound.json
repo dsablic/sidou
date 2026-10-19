@@ -65,8 +65,10 @@
           "value": "SAW LEAD"
         },
         {
-          "kind": "text",
-          "value": "OCT+0"
+          "kind": "param",
+          "max": 0,
+          "min": 0,
+          "name": "octave"
         }
       ],
       "harness": {

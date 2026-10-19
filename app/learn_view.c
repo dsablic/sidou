@@ -48,6 +48,7 @@ _Static_assert(LIVE_PARAM_BLEED - LIVE_PARAM_PROFILE + 1 == LIVE_CHAR_FIELDS,
 
 void learn_view_param_name(uint32_t param, char* buf) {
     static const char* const KNOBS[] = {"CUTOFF", "RESO", "PULSE"};
+    static const char* const ENVELOPE[] = {"ATTACK", "DECAY", "SUSTAIN", "RELEASE"};
     static const char* const CHARACTER[LIVE_CHAR_FIELDS] = {"PROFILE", "AGE", "DAC", "THUMP",
                                                            "BLEED"};
     static const char* const SLOTS[LIVE_SLOTS] = {"DIST ", "MOD ", "FX "};
@@ -55,6 +56,8 @@ void learn_view_param_name(uint32_t param, char* buf) {
     buf[0] = 0;
     if (param <= LIVE_PARAM_PULSE_WIDTH) {
         append(buf, LEARN_VIEW_NAME, KNOBS[param]);
+    } else if (param >= LIVE_PARAM_ATTACK && param <= LIVE_PARAM_RELEASE) {
+        append(buf, LEARN_VIEW_NAME, ENVELOPE[param - LIVE_PARAM_ATTACK]);
     } else if (param >= LIVE_PARAM_PROFILE && param <= LIVE_PARAM_BLEED) {
         append(buf, LEARN_VIEW_NAME, CHARACTER[param - LIVE_PARAM_PROFILE]);
     } else if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {
@@ -227,15 +230,15 @@ static void finish(learn_view* lv) {
 }
 
 /* Knob enc's parameter (with the buttons held), picked: 1, or 0 and a toast when it has no
- * CC (the CHIP view's song tab turns the song's setup, which no CC reaches; K4 on LIVE's page
- * is the preset). */
+ * CC (the CHIP view's song tab turns the song's setup, which no CC reaches; K3 on a sync sound
+ * is the ratio, the panel's alone). */
 static int pick(learn_view* lv, screen* s, const panel* p, uint32_t enc, uint32_t held) {
     uint32_t param = panel_knob_param(p, lv->l, held, enc);
     if (midi_learn_open(lv->ml, param, s->now)) {
         return 1;
     }
     int none = p && p->page == PANEL_PAGE_NONE && !(held & (1u << PANEL_BTN_EDIT));
-    screen_toast(s, none ? "SONG SETUP: NO CC" : "K4: THE PRESET, NO CC", SCREEN_TOAST_MS);
+    screen_toast(s, none ? "SONG SETUP: NO CC" : "RATIO: NO CC", SCREEN_TOAST_MS);
     return 0;
 }
 

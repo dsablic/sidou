@@ -162,6 +162,18 @@ impl Rig {
         unsafe { live_note_off(&mut *self.live, note) }
     }
 
+    /// The preset stepped, as PRESETS and the menu's PRE do.
+    pub fn preset_step(&mut self, steps: i32) {
+        unsafe { live_preset_step(&mut *self.live, steps, 0) };
+    }
+
+    /// The pulse width moved by `detents` of 32 (what K3 turned before it became the sound's own
+    /// control): a test helper, through the parameter.
+    pub fn pulse(&mut self, detents: i32) {
+        let pw = (i64::from(self.live.pulse_width) + i64::from(detents) * 32).clamp(0, 4095);
+        unsafe { live_param_set(&mut *self.live, LIVE_PARAM_PULSE_WIDTH, pw as u32) };
+    }
+
     pub fn knob(&mut self, knob: live_knob_id, delta: i32) {
         unsafe { live_knob(&mut *self.live, knob, delta) }
     }

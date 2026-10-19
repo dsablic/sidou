@@ -35,6 +35,7 @@ pub mod panel {
     pub const K2: u8 = 3;
     pub const K3: u8 = 4;
     pub const K4: u8 = 5;
+    pub const PRESETS: u8 = 6;
 }
 
 /// The frame period (platform/fm1/ui.c: 25 fps).
@@ -426,6 +427,11 @@ pub struct Params {
     pub model: u8,
     pub profile: u8,
     pub fx_select: u8,
+    /// K3's and K4's envelope nibbles (attack/decay's decay, sustain/release's release) and the
+    /// sync ratio's semitones.
+    pub decay: u8,
+    pub release: u8,
+    pub sync_semis: i8,
     pub character: [u8; 4],
     /// Each slot: algorithm, amount, A, B, mix.
     pub slot: [[u8; 5]; 3],
@@ -444,6 +450,9 @@ impl Params {
             ("model".to_string(), i64::from(self.model)),
             ("profile".to_string(), i64::from(self.profile)),
             ("fx_select".to_string(), i64::from(self.fx_select)),
+            ("decay".to_string(), i64::from(self.decay)),
+            ("release".to_string(), i64::from(self.release)),
+            ("sync_semis".to_string(), i64::from(self.sync_semis)),
         ];
         for (i, c) in ["age", "dac", "thump", "bleed"].iter().enumerate() {
             v.push(((*c).to_string(), i64::from(self.character[i])));
@@ -483,6 +492,9 @@ impl Dev {
             model: self.live_u8(ilp32::live::model),
             profile: self.live_u8(ilp32::live::profile),
             fx_select: self.live_u8(ilp32::live::fx_select),
+            decay: self.live_u8(ilp32::live::attack_decay) & 15,
+            release: self.live_u8(ilp32::live::sustain_release) & 15,
+            sync_semis: self.live_u8(ilp32::live::sync_semis) as i8,
             ..Params::default()
         };
         for i in 0..4 {

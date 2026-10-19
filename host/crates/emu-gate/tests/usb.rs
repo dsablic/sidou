@@ -3,7 +3,7 @@
 //! USB-MIDI end to end in fm1-emu, with a host and the device controller modelled in the test
 //! crate (common::usb_host; fm1-emu itself has no USB controller). The host enumerates the
 //! device, asks for its identity as Felucca's installer does (the update protocol's handshake,
-//! cmd 0x11), and reads EP1 IN while K1 and K4 turn. On v0.2.0-m2-preview the device received
+//! cmd 0x11), and reads EP1 IN while K1 and PRESETS turn. On v0.2.0-m2-preview the device received
 //! all of this and a host saw almost none of what it sent (docs/hardware-test.md, section 8).
 //! What this checks is the firmware's side, as the USB fix made it:
 //! - every IN packet carries at most 16 bytes (usb/usb.c EP1_IN_MAX), so the identity reply
@@ -23,9 +23,9 @@ use common::usb_host::UsbHost;
 use common::{build_dir, run_past_boot, skip_message, Firmware, Machine};
 use fm1_core::Bus;
 
-/// Felucca's ids: K1 (cutoff, CC 74) and K4 (the preset, a program change).
+/// Felucca's ids: K1 (cutoff, CC 74) and PRESETS (the preset, a program change).
 const K1: u8 = 2;
-const K4: u8 = 5;
+const PRESETS: u8 = 6;
 const CC_CUTOFF: u8 = 74;
 /// The identity SIDOU's development builds answer (CMakeLists.txt SIDOU_PRODUCT).
 const IDENTITY: &str = "FM-1_900";
@@ -326,15 +326,15 @@ fn a_host_gets_the_identity_and_the_knobs_over_usb() {
         !ev.is_empty() && ev.iter().all(|p| p[..3] == [0x0B, 0xB0, CC_CUTOFF]),
         "K1 sent no CC 74 alone"
     );
-    // K4: a program change.
+    // PRESETS: a program change.
     host(&mut m).in1.clear();
-    m.turn(K4, 1);
+    m.turn(PRESETS, 1);
     m.usb_frames(60);
     let ev = events(&host(&mut m).in1);
-    println!("K4: {ev:02x?}");
+    println!("PRESETS: {ev:02x?}");
     assert!(
         ev.iter().any(|p| p[..2] == [0x0C, 0xC0]),
-        "K4 sent no program change"
+        "PRESETS sent no program change"
     );
     assert!(host(&mut m).in1.iter().all(|p| p.len() <= IN_MAX));
 

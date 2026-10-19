@@ -26,6 +26,11 @@ pub enum P {
     Master,
     Preset,
     Profile,
+    /// K3 on a saw or noise sound, and K4: the envelope's decay and release (0..15).
+    Decay,
+    Release,
+    /// K3 on a sync sound: the ratio's semitones from the preset's, -12..+12.
+    SyncSemis,
     Character(usize),
     /// slot (0 DIST, 1 MOD, 2 FX), field (1 amount, 2 A, 3 B, 4 mix).
     Slot(usize, usize),
@@ -40,6 +45,10 @@ impl P {
             P::Master => f64::from(p.master),
             P::Preset => f64::from(p.preset),
             P::Profile => f64::from(p.profile),
+            P::Decay => f64::from(p.decay),
+            P::Release => f64::from(p.release),
+            // shifted up so that the sweep's raw values are positive
+            P::SyncSemis => f64::from(i32::from(p.sync_semis) + 12),
             P::Character(i) => f64::from(p.character[i]),
             P::Slot(s, f) => f64::from(p.slot[s][f]),
         }
@@ -53,6 +62,9 @@ impl P {
             P::Master => "master volume".into(),
             P::Preset => "preset".into(),
             P::Profile => "chip profile".into(),
+            P::Decay => "decay".into(),
+            P::Release => "release".into(),
+            P::SyncSemis => "sync ratio".into(),
             P::Character(i) => ["age", "DAC sloppiness", "thump", "filter bleed"][i].into(),
             P::Slot(s, f) => format!(
                 "{} {}",
@@ -79,6 +91,8 @@ impl P {
             P::Master => 1023.0,
             P::Preset => 3.0,
             P::Profile => 12.0,
+            P::Decay | P::Release => 15.0,
+            P::SyncSemis => 24.0,
             P::Character(_) | P::Slot(..) => 127.0,
         }
     }
@@ -160,11 +174,13 @@ pub fn specs() -> Vec<Spec> {
         true,
         false,
     );
+    // K3 is the sound's own control: the decay on SAW LEAD (the first preset), the pulse width on
+    // PWM BASS, the sync ratio on SYNC LEAD, the decay on NOISE PERC.
     add(
         "K3.live",
         "K3",
         "LIVE page",
-        P::PulseWidth,
+        P::Decay,
         "",
         None,
         Some(panel::K3),
@@ -172,13 +188,58 @@ pub fn specs() -> Vec<Spec> {
         false,
     );
     add(
+        "K3.pwm",
+        "K3",
+        "LIVE page (PWM BASS)",
+        P::PulseWidth,
+        "turn PRESETS 1",
+        None,
+        Some(panel::K3),
+        true,
+        false,
+    );
+    add(
+        "K3.sync",
+        "K3",
+        "LIVE page (SYNC LEAD)",
+        P::SyncSemis,
+        "turn PRESETS 2",
+        None,
+        Some(panel::K3),
+        true,
+        false,
+    );
+    add(
+        "K3.perc",
+        "K3",
+        "LIVE page (NOISE PERC)",
+        P::Decay,
+        "turn PRESETS 3",
+        None,
+        Some(panel::K3),
+        true,
+        false,
+    );
+    // K4 is the release: heard after the note, so the sweep renders no held note.
+    add(
         "K4.live",
         "K4",
         "LIVE page",
-        P::Preset,
+        P::Release,
         "",
         None,
         Some(panel::K4),
+        false,
+        false,
+    );
+    add(
+        "PRESETS.live",
+        "PRESETS",
+        "every view",
+        P::Preset,
+        "",
+        None,
+        Some(panel::PRESETS),
         false,
         true,
     );

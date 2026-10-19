@@ -177,7 +177,7 @@ void live_view_prepare(live_view* lv) {
     }
 }
 
-void live_view_init(live_view* lv, const live* l, scope* sc) {
+void live_view_init(live_view* lv, live* l, scope* sc) {
     memset(lv, 0, sizeof *lv); /* not a const template: 6 KB of zeros in flash */
     lv->l = l;
     lv->sc = sc;
@@ -639,20 +639,39 @@ void live_view_knob_text(const live* l, uint32_t k, char* buf) {
         buf[n++] = (char)('0' + l->resonance % 10u);
         break;
     case 2: {
-        uint32_t pc = ((uint32_t)l->pulse_width * 99u + 2047u) / 4095u;
-        if (pc >= 10u) {
-            buf[n++] = (char)('0' + pc / 10u);
+        uint32_t tone = live_tone(l);
+        if (tone == LIVE_TONE_RATIO) {
+            int32_t s = l->sync_semis;
+            uint32_t a = (uint32_t)(s < 0 ? -s : s);
+            buf[n++] = s < 0 ? '-' : '+';
+            if (a >= 10u) {
+                buf[n++] = (char)('0' + a / 10u);
+            }
+            buf[n++] = (char)('0' + a % 10u);
+        } else if (tone == LIVE_TONE_PULSE) {
+            /* one side of the square: 3 % (the narrowest) to 50 % */
+            uint32_t pw = l->pulse_width > 2048u ? 4096u - l->pulse_width : l->pulse_width;
+            uint32_t pc = (pw * 99u + 2047u) / 4095u;
+            if (pc >= 10u) {
+                buf[n++] = (char)('0' + pc / 10u);
+            }
+            buf[n++] = (char)('0' + pc % 10u);
+            buf[n++] = '%';
+        } else {
+            uint32_t d = l->attack_decay & 15u;
+            if (d >= 10u) {
+                buf[n++] = '1';
+            }
+            buf[n++] = (char)('0' + d % 10u);
         }
-        buf[n++] = (char)('0' + pc % 10u);
-        buf[n++] = '%';
         break;
     }
     default: {
-        const live_preset* p = live_preset_get(l->preset);
-        const char* name = p ? p->name : "?";
-        for (; n < 3u && name[n]; n++) {
-            buf[n] = name[n];
+        uint32_t r = l->sustain_release & 15u;
+        if (r >= 10u) {
+            buf[n++] = '1';
         }
+        buf[n++] = (char)('0' + r % 10u);
         break;
     }
     }
@@ -666,9 +685,10 @@ static int slot_page(const live_view* lv) {
 
 /* Knob k's label, and whether the control is used (a slot page: by the slot's algorithm). */
 static int knob_label(const live_view* lv, uint32_t k, char* buf) {
-    static const char* const TONE[4] = {"CUTOFF", "RESO", "PULSE", "PRESET"};
+    static const char* const TONE[4] = {"CUTOFF", "RESO", "PULSE", "RELEASE"};
+    static const char* const K3[3] = {"RATIO", "PULSE", "DECAY"};
     if (!slot_page(lv)) {
-        const char* t = TONE[k];
+        const char* t = k == 2u ? K3[live_tone(lv->l)] : TONE[k];
         uint32_t n = 0;
         for (; t[n]; n++) {
             buf[n] = t[n];
@@ -709,14 +729,20 @@ static uint32_t knob_px(const live_view* lv, uint32_t k, uint32_t cells) {
         value = l->slot[l->fx_select % LIVE_SLOTS][LIVE_SLOT_AMOUNT + k];
         max = LIVE_SLOT_MAX;
     } else {
+        uint32_t tone = live_tone(l);
         value = k == 0u   ? l->cutoff_out
                 : k == 1u ? l->resonance
-                : k == 2u ? l->pulse_width
-                          : (uint32_t)l->preset + 1u;
+                : k == 3u ? (uint32_t)(l->sustain_release & 15u)
+                : tone == LIVE_TONE_RATIO ? (uint32_t)(l->sync_semis + LIVE_RATIO_SEMIS)
+                : tone == LIVE_TONE_PULSE ? (l->pulse_width > 2048u ? 4096u - l->pulse_width
+                                                                   : l->pulse_width)
+                                          : (uint32_t)(l->attack_decay & 15u);
         max = k == 0u   ? LIVE_CUTOFF_MAX
               : k == 1u ? LIVE_RESONANCE_MAX
-              : k == 2u ? LIVE_PULSE_WIDTH_MAX
-                        : LIVE_PRESET_COUNT;
+              : k == 3u ? 15u
+              : tone == LIVE_TONE_RATIO ? 2u * LIVE_RATIO_SEMIS
+              : tone == LIVE_TONE_PULSE ? 2048u
+                                        : 15u;
     }
     return (value > max ? max : value) * (cells * 8u) / max;
 }
@@ -770,7 +796,13 @@ static void meter_bar(const live_view* lv, canvas* cv, grid* g, const theme* th,
     for (uint32_t c = 0; c < VU_METER_CELLS; c++) {
         uint32_t fill8 = px >= 8u ? 8u : px;
         px -= fill8;
-        cell(cv, g, VU_METER_COL + c, row, (uint8_t)(FONT_BAR0 + fill8), GRID_ATTR(fg, th->bg));
+        /* An empty cell is a blank, as the screen's own (a frame that clears the rows and gives
+         * them back sends none of them): it shows the same black. */
+        if (fill8) {
+            cell(cv, g, VU_METER_COL + c, row, (uint8_t)(FONT_BAR0 + fill8), GRID_ATTR(fg, th->bg));
+        } else {
+            cell(cv, g, VU_METER_COL + c, row, ' ', THEME_ATTR(th, value));
+        }
     }
 }
 
@@ -849,8 +881,8 @@ static void band_big(const live_view* lv, grid* g, const theme* th, uint32_t hl)
 #define KEY_VOICE 4u  /* 6 a voice: control, note, gate, stage, sounding, muted */
 #define KEY_KNOBS (KEY_VOICE + 6u * SCOPE_VOICES)
 /* The knob row: the page (a slot's, its number), the highlight, the slot's algorithm, then
- * 8 bytes of values: the slot's four controls, or the cutoff 2, the resonance, the pulse width 2
- * and the preset. */
+ * 8 bytes of values: the slot's four controls, or the cutoff 2, the resonance, the pulse width 2,
+ * the release, the decay, and the sync ratio's semitones with what K3 turns. */
 #define KEY_BAND (KEY_KNOBS + 11u)
 /* The band: the mode, the chip, the profile 2, the slot, the three algorithms, and which of
  * the profile's and the slot's algorithm is reversed. */
@@ -900,10 +932,11 @@ static void look(const live_view* lv, uint8_t out[LIVE_VIEW_LOOK], uint32_t now)
         k[3] = (uint8_t)l->cutoff_out;
         k[4] = (uint8_t)(l->cutoff_out >> 8);
         k[5] = l->resonance;
-        k[6] = (uint8_t)l->pulse_width;
+        k[6] = (uint8_t)l->pulse_width; /* K3's: the width, the decay or the ratio */
         k[7] = (uint8_t)(l->pulse_width >> 8);
-        k[8] = l->preset;
-        k[9] = k[10] = 0;
+        k[8] = (uint8_t)(l->sustain_release & 15u);
+        k[9] = (uint8_t)(l->attack_decay & 15u);
+        k[10] = (uint8_t)((uint8_t)l->sync_semis ^ live_tone(l) << 6);
     }
     uint8_t* b = &out[KEY_BAND];
     b[0] = (uint8_t)(l->filter_mode >> 4 & 7u);
@@ -992,6 +1025,52 @@ static void big_items(const live_view* lv, grid* g, const theme* th, uint32_t ro
     }
 }
 
+/* SELECT pages the knob row, ALGORITHM steps the profile or the slot's algorithm, K1..K4 turn the
+ * slot on a slot page; everything else (K1..K4 on TONE, the buttons) is the panel's. */
+static int input(screen* s, void* state, const screen_event* e) {
+    (void)s;
+    live_view* lv = state;
+    /* K1..K4 on TONE (and the buttons with those ids): the panel's, and the commonest turn. */
+    if (e->id - PANEL_ENC_K1 <= 3u && !lv->page) {
+        return 0;
+    }
+    if (e->kind != SCREEN_TURN) {
+        return 0;
+    }
+    live* l = lv->l;
+    if (e->id <= PANEL_ENC_ALGORITHM) {
+        uint32_t slot_held = lv->page || (e->held >> PANEL_BTN_EDIT & 1u);
+        if (e->id == PANEL_ENC_SELECT) {
+            /* TONE, DIST, MOD, FX: a slot page selects that slot */
+            int32_t at = lv->page ? 1 + (int32_t)(l->fx_select % LIVE_SLOTS) : 0;
+            int32_t to = at + e->steps;
+            to = to < 0 ? 0 : to > (int32_t)LIVE_SLOTS ? (int32_t)LIVE_SLOTS : to;
+            lv->page = (uint8_t)(to != 0);
+            if (to) {
+                live_fx_select(l, (uint32_t)to - 1u);
+            }
+            return 1;
+        }
+        if (slot_held) {
+            uint32_t k = l->fx_select % LIVE_SLOTS;
+            int32_t to = (int32_t)l->slot[k][LIVE_SLOT_ALGORITHM] + e->steps;
+            int32_t top = (int32_t)live_slot_algorithms(k) - 1;
+            live_slot_set(l, k, LIVE_SLOT_ALGORITHM, to < 0 ? 0 : to > top ? top : to);
+            return 1;
+        }
+        /* the chip's profile, from the built-in one a USER profile is based on if one is applied */
+        int32_t base = l->user_applied ? l->user_base[l->user_applied - 1u] : l->profile_req;
+        int32_t to = base + e->steps;
+        live_param_set(l, LIVE_PARAM_PROFILE, (uint32_t)(to < 0 ? 0 : to > (int32_t)SID_CHIPS - 1 ? (int32_t)SID_CHIPS - 1 : to));
+        return 1;
+    }
+    if (lv->page && e->id - PANEL_ENC_K1 <= 3u) {
+        live_slot_turn(l, l->fx_select % LIVE_SLOTS, LIVE_SLOT_AMOUNT + e->id - PANEL_ENC_K1, e->steps);
+        return 1;
+    }
+    return 0;
+}
+
 static void live_compose(screen* s, void* state, grid* g) {
     live_view* lv = state;
     canvas* cv = &lv->cv;
@@ -1008,17 +1087,30 @@ static void live_compose(screen* s, void* state, grid* g) {
     uint8_t now[LIVE_VIEW_LOOK];
     look(lv, now, s->now);
     uint32_t rows;
+    uint32_t soft = 0; /* rows the screen drew over, which may wait a frame for room */
     if (!lv->built || now[KEY_THEME] != lv->drawn_look[KEY_THEME]) {
         lv->built = 1;
         lv->rebuilds++;
         build(lv, cv, th, now);
         rows = ALL_ROWS;
+        lv->owed = 0;
     } else {
         /* The rows the screen drew over (a switch, a toast, a raster) are the canvas's again. */
-        rows = parts(lv, cv, th, now) | (s->redraw ? s->redraw_rows : 0u);
+        rows = parts(lv, cv, th, now);
+        soft = ((s->redraw ? s->redraw_rows : 0u) | lv->owed) & ~rows;
+        rows |= soft;
+        lv->owed = 0;
     }
     for (uint32_t r = 0; r < GRID_ROWS; r++) {
         if (rows >> r & 1u) {
+            if ((soft >> r & 1u) && fresh &&
+                screen_pending(s) + screen_layer_cells(s) + GRID_COLS > LIVE_VIEW_FRAME_CELLS) {
+                /* A frame that gives rows back (MIDI learn's, a toast's) over a view that is
+                 * nearly all text would send more than the frame's cells: the rest next frame. */
+                lv->owed |= 1u << r;
+                rows &= ~(1u << r);
+                continue;
+            }
             grid_row(g, r, cv->ch[r], cv->attr[r]);
         }
     }
@@ -1036,4 +1128,4 @@ static void live_compose(screen* s, void* state, grid* g) {
 }
 
 /* Composed every frame (no changed function). */
-const view live_view_view = {"LIVE", NULL, NULL, NULL, live_compose, NULL};
+const view live_view_view = {"LIVE", NULL, NULL, input, live_compose, NULL};

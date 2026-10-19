@@ -608,10 +608,11 @@ playing, one colour per voice and per knob, black behind it
   REL).
 - **Rows 14-19, the knob row:** what K1..K4 turn on LIVE, in their left-to-right order, four
   columns of 8, 7, 7 and 8 cells, under the page's name in yellow on row 14 (`TONE`; the selected
-  slot's, `DIST`, while EDIT is held): CUTOFF, RESO, PULSE and PRESET small in the knob's readable
-  colour (yellow, cyan, light green, light red), each value at 2× in white under it **in at most 3
-  characters** (the cutoff as `980`, `7K2` or `12K`, the resonance `0..15`, the pulse width
-  `50%`, the preset's first three letters `SAW`), a bar in the knob's colour on a dark grey
+  slot's, `DIST`, while EDIT is held or SELECT has paged to it): CUTOFF, RESO, K3's control and
+  RELEASE small in the knob's readable colour (yellow, cyan, light green, light red), each value
+  at 2× in white under it **in at most 3 characters** (the cutoff as `980`, `7K2` or `12K`, the
+  resonance `0..15`, K3's by the sound: `RATIO` the sync ratio's semitones `-12`..`+12`, `PULSE` the
+  pulse width as one side's percent `50%`, `DECAY` `0..15`; the release `0..15`), a bar in the knob's colour on a dark grey
   track, and the knob's name K1..K4 small in the legend colour. **A knob that just turned has its
   label in reverse video for a second**: no popup opens over LIVE for the knobs. EDIT held turns
   the selected slot's four controls, and the row says so: the page tag is the slot's and the
@@ -637,7 +638,7 @@ Each item below moved to the place that shows it better, or is gone:
 | FILTER, the response of the mode at the cutoff and resonance in 16 columns, and ` FC 11.4K RES 6 ` | the **response curve is dropped** (no room at a readable size, and nothing else shows the filter's shape); the mode is at 2×, the cutoff and the resonance are the knob row's first two columns (the popup still says the cutoff as `11.4K`) |
 | VU in a box | the same meters in the bottom band, no box |
 | the three slots, `DIST OVERDRIVE MIX` and their mix as a bar | the algorithm of each slot stays; **each slot's Mix bar moves to the CHIP view** (and the popup says it when EDIT + K4 turns it) |
-| the preset, in the header only | also the fourth knob column, as K4 turns it |
+| the preset, in the header only | the header only; PRESETS (the big encoder) turns it, and K4 became the release |
 
 **The tap.** The audio interrupt renders a block in chunks of 16 samples and after each
 writes a point into a ring of 256 (`app/scope.h`): each voice's waveform output (its top 8

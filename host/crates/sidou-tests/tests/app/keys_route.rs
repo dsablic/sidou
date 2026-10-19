@@ -678,7 +678,7 @@ fn keys_a_leaves_the_songs_other_voices_byte_for_byte() {
     for t in 0..20 {
         unsafe {
             match t {
-                3 => live_knob(&mut *k.live, LIVE_KNOB_PULSE_WIDTH, 9),
+                3 => live_param_set(&mut *k.live, LIVE_PARAM_PULSE_WIDTH, 2048 + 9 * 32),
                 5 => live_param_set(&mut *k.live, LIVE_PARAM_ATTACK, 3),
                 7 => live_param_set(&mut *k.live, LIVE_PARAM_SUSTAIN, 2),
                 9 => live_param_set(&mut *k.live, LIVE_PARAM_PULSE_WIDTH, 100),

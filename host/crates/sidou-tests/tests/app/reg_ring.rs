@@ -702,7 +702,7 @@ fn worst_pass(l: &mut live, p: &mut panel, fx: bool) {
         // the selected effect slot's next algorithm (EDIT not held: the knobs stay knobs)
         panel_buttons(p, l, 1 << PANEL_BTN_ENV, 0);
         // the sync lead: every note-on also sets the sync voice's frequency
-        panel_encoder(p, l, PANEL_ENC_K4, 1);
+        panel_encoder(p, l, PANEL_ENC_PRESETS, 1);
         // Expression MIDI set earlier (here after K4, so the preset does not reset it): the
         // velocity lowers the cutoff, aftertouch raises the pulse width and starts again at 0
         // with each note, the vibrato and the bend move every frequency at the ticks.

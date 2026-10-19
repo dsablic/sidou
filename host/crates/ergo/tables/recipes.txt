@@ -20,20 +20,20 @@ journey first-sound | First sound | poweron
   skills playing the keys; skipping the boot; reading LIVE's header
   related shape-a-sound; mute-and-solo
   step press-a-key | Press a key | Press any note key. It sounds at once, and the boot gives way to LIVE. | note A4 600 | sound; level -45 -8; do Press the note key marked A (the middle of the keys)
-  step boot-ends | Let the title end | LIVE shows the chip, the sound and the octave in its top line. | wait 2500 | view live; text SAW LEAD; text OCT+0; do Wait a moment: the title card ends by itself
+  step boot-ends | Let the title end | LIVE shows the chip, the sound and the octave in its top line. | wait 2500 | view live; text SAW LEAD; value octave 0 0; do Wait a moment: the title card ends by itself
   step play-a-chord | Play a chord | Hold three keys together: SIDOU has three voices. | note C4 E4 G4 700 | sound; do Press three keys at once
   step octave-up | Move up an octave | OCT+ shifts every key up an octave, and says so. | press OCT+ | toast; text OCTAVE; value octave 1 1; do Press OCT+
 
 journey shape-a-sound | Shape a sound with K1 to K4 | 
   goal Open and close the filter, add resonance and change the sound while a note holds.
   prereq On LIVE after the boot, with the first preset (SAW LEAD) playing.
-  skills K1 cutoff; K2 resonance; K4 preset; holding a note while turning
+  skills K1 cutoff; K2 resonance; PRESETS; holding a note while turning
   related first-sound; mute-and-solo
   step hold-a-note | Hold a note | Hold a key down and keep holding it while you turn the knobs. | down A3; wait 500 | sound; do Hold the note key A (the lower one) down
-  step close-the-filter | Close the filter | Turn K1 counter-clockwise about a third of a turn: the sound darkens. | turn K1 -60; wait 400 | darker; popup; value cutoff 0 1100; do Turn K1 counter-clockwise about a third of a turn
+  step close-the-filter | Close the filter | Turn K1 counter-clockwise about a third of a turn: the sound darkens. | turn K1 -60; wait 400 | darker; change; value cutoff 0 1100; do Turn K1 counter-clockwise about a third of a turn
   step open-the-filter | Open the filter | Turn K1 clockwise a full turn: the sound brightens. | turn K1 100; wait 400 | brighter; value cutoff 1100 2047; do Turn K1 clockwise about a full turn
-  step add-resonance | Add resonance | Turn K2 clockwise: the filter rings at its cutoff. | turn K2 6; wait 400 | popup; value resonance 10 15; do Turn K2 clockwise about a quarter turn
-  step next-sound | Pick another sound | Turn K4 one click: the next preset, PWM BASS. | turn K4 1; wait 400 | text PWM BASS; value preset 1 1; sound; do Turn K4 one click clockwise
+  step add-resonance | Add resonance | Turn K2 clockwise: the filter rings at its cutoff. | turn K2 6; wait 400 | change; value resonance 10 15; do Turn K2 clockwise about a quarter turn
+  step next-sound | Pick another sound | Turn PRESETS one click: the next preset, PWM BASS. | turn PRESETS 1; wait 400 | text PWM BASS; value preset 1 1; sound; do Turn PRESETS one click clockwise
   step let-go | Let go | Let go of the key: the sound ends. | up A3; wait 900 | silent; do Let go of the note key
 
 journey mute-and-solo | Mute and solo while a song plays

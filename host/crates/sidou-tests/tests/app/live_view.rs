@@ -177,7 +177,7 @@ fn the_header_lanes_knobs_and_slots_show_the_instrument() {
     // The knob row in K1..K4's order: the page, label, value, bar, name.
     assert_eq!(small(&ui, 14, 0, 4), "TONE");
     assert_eq!(ui.g.attr[14 * COLS] & 15, t.hot);
-    for (k, (label, col)) in [("CUTOFF", 0), ("RESO", 8), ("PULSE", 15), ("PRESET", 22)]
+    for (k, (label, col)) in [("CUTOFF", 0), ("RESO", 8), ("DECAY", 15), ("RELEASE", 22)]
         .into_iter()
         .enumerate()
     {
@@ -205,8 +205,12 @@ fn the_header_lanes_knobs_and_slots_show_the_instrument() {
         );
     }
     assert_eq!(big(&ui, 16, 8, 1), "6", "the resonance");
-    assert_eq!(big(&ui, 16, 15, 3), "50%", "the pulse width");
-    assert_eq!(big(&ui, 16, 22, 3), "SAW", "the preset");
+    assert_eq!(
+        big(&ui, 16, 15, 1),
+        "9",
+        "the decay: SAW LEAD's own control"
+    );
+    assert_eq!(big(&ui, 16, 22, 1), "6", "the release");
     // The bottom band: the filter's mode, the chip and its profile, the slots (the selected one
     // reversed), the selected slot's algorithm at 2x, VU's labels.
     assert_eq!(small(&ui, 21, 0, 6), "FILTER");
@@ -245,7 +249,9 @@ fn the_header_lanes_knobs_and_slots_show_the_instrument() {
     assert_eq!(big(&ui, 25, 0, 6), "CHORUS");
     assert_eq!(small(&ui, lane(0) + 3, 0, 3), "PUL");
     assert_eq!(big(&ui, 0, 0, 8), "PWM BASS");
-    assert_eq!(big(&ui, 16, 22, 3), "PWM");
+    assert_eq!(small(&ui, 15, 15, 5), "PULSE", "PWM BASS's own control");
+    assert_eq!(big(&ui, 16, 15, 3), "25%");
+    assert_eq!(big(&ui, 16, 22, 1), "4", "its release");
     assert_eq!(big(&ui, 0, 26, 2), "+1", "the octave at 2x");
     assert_eq!(ui.g.attr[26] & 15, t.hot);
 }
@@ -282,16 +288,34 @@ fn the_knob_row_shows_what_k1_to_k4_turn_and_nothing_else() {
         let r = ui.live().resonance;
         assert_eq!(big(&ui, 16, 8, r.to_string().len()), r.to_string());
     }
-    // K3 the pulse width in percent, K4 the preset (its three letters), in the header as well.
+    // K3 the sound's own control (the decay on SAW LEAD), K4 the release, 0..15.
+    for steps in [-30, 2, 5, 30, -1] {
+        ui.turn(PANEL_ENC_K1 + 2, steps);
+        ui.settle();
+        let d = (ui.live().attack_decay & 15).to_string();
+        assert_eq!(small(&ui, 15, 15, 5), "DECAY");
+        assert_eq!(big(&ui, 16, 15, d.len()), d);
+        ui.turn(PANEL_ENC_K1 + 3, steps);
+        ui.settle();
+        let r = (ui.live().sustain_release & 15).to_string();
+        assert_eq!(big(&ui, 16, 22, r.len()), r);
+    }
+    // PRESETS steps the sound: the header says it, and K3 changes with it (the pulse width on
+    // PWM BASS, in percent of one side, the ratio's semitones on SYNC LEAD).
+    ui.turn(PANEL_ENC_PRESETS, 1);
+    ui.settle();
+    assert_eq!(ui.live().preset, 1);
+    assert_eq!(big(&ui, 0, 0, 8), "PWM BASS");
     ui.turn(PANEL_ENC_K1 + 2, -9);
     ui.settle();
     let pc = (u32::from(ui.live().pulse_width) * 99 + 2047) / 4095;
+    assert_eq!(small(&ui, 15, 15, 5), "PULSE");
     assert_eq!(big(&ui, 16, 15, 3 - usize::from(pc < 10)), format!("{pc}%"));
-    ui.turn(PANEL_ENC_K1 + 3, 1);
+    ui.turn(PANEL_ENC_PRESETS, 1);
+    ui.turn(PANEL_ENC_K1 + 2, -3);
     ui.settle();
-    assert_eq!(ui.live().preset, 1);
-    assert_eq!(big(&ui, 16, 22, 3), "PWM");
-    assert_eq!(big(&ui, 0, 0, 8), "PWM BASS");
+    assert_eq!(small(&ui, 15, 15, 5), "RATIO");
+    assert_eq!(big(&ui, 16, 15, 2), "-3");
     // A knob's bar is its share of the range, in eighths of cells: K1 at the top is full.
     ui.rig.live.cutoff_out = LIVE_CUTOFF_MAX as u16;
     ui.frame();
@@ -334,25 +358,36 @@ fn every_knob_value_fits_its_column() {
         format!("{}", (floor.max(30.0) + 0.5) as u32),
         "the filter's floor"
     );
-    // K2 and K3 hold 3 characters in their 7 cells, K4 three letters.
+    // K2 holds 2 characters, K3 3 in its 7 cells (the pulse width as one side's percent, the
+    // sync ratio's semitones, the decay), K4 the release 0..15.
     for r in 0..=LIVE_RESONANCE_MAX {
         ui.rig.live.resonance = r as u8;
         assert_eq!(text(&ui, 1), r.to_string());
     }
-    for pw in [0u16, 1, 2047, 4095] {
-        ui.rig.live.pulse_width = pw;
+    ui.rig.set_preset(1); // PWM BASS: K3 is the pulse width, either side of the square
+    for pw in 0..=LIVE_PULSE_WIDTH_MAX {
+        ui.rig.live.pulse_width = pw as u16;
         let t = text(&ui, 2);
-        assert!(t.ends_with('%') && t.len() <= 3, "{t}");
+        assert!(t.ends_with('%') && t.len() <= 3, "{pw}: {t}");
     }
-    ui.rig.live.pulse_width = 4095;
-    assert_eq!(text(&ui, 2), "99%");
-    for p in 0..LIVE_PRESET_COUNT {
-        ui.rig.live.preset = p as u8;
-        let t = text(&ui, 3);
-        assert_eq!(t.len(), 3, "{t}");
+    ui.rig.live.pulse_width = 2048;
+    assert_eq!(text(&ui, 2), "50%");
+    ui.rig.live.pulse_width = 128;
+    assert_eq!(text(&ui, 2), "3%");
+    ui.rig.set_preset(2); // SYNC LEAD: the ratio's semitones, -12..+12
+    for s in -(LIVE_RATIO_SEMIS as i8)..=LIVE_RATIO_SEMIS as i8 {
+        ui.rig.live.sync_semis = s;
+        let t = text(&ui, 2);
+        assert!(t.len() <= 3, "{s}: {t}");
+        assert_eq!(t, format!("{s:+}"));
     }
-    ui.rig.live.preset = 0;
-    assert_eq!(text(&ui, 3), "SAW");
+    ui.rig.set_preset(0); // SAW LEAD: the decay
+    for d in 0..=15u8 {
+        ui.rig.live.attack_decay = d;
+        ui.rig.live.sustain_release = d;
+        assert_eq!(text(&ui, 2), d.to_string());
+        assert_eq!(text(&ui, 3), d.to_string());
+    }
     // The slot page's four controls, 0..127, are numbers of at most 3 digits in their columns.
     ui.v.live.page = 1;
     for v in [0u8, 7, 9, 10, 99, 100, 127] {
@@ -490,8 +525,8 @@ fn the_meters_show_the_peaks_and_fall_back() {
         meter(&ui, 25)
     );
     assert!(
-        meter(&ui, 26).iter().all(|&c| c == FONT_BAR0 as u8),
-        "R silent"
+        meter(&ui, 26).iter().all(|&c| c == b' '),
+        "R silent: blank cells, as the screen's own"
     );
     assert_eq!(ui.sc.peak, [0, 0], "taken");
     for _ in 0..8 {

@@ -198,13 +198,11 @@ fn another_knob_with_save_held_or_not_picks_instead() {
     t.ui.down(SAVE);
     t.ui.turn(K1 + 2, -1);
     t.ui.up(SAVE);
-    assert_eq!(u32::from(t.ml.param), LIVE_PARAM_PULSE_WIDTH);
+    // K3 on SAW LEAD is the decay.
+    assert_eq!(u32::from(t.ml.param), LIVE_PARAM_DECAY);
     assert_eq!(t.ui.top(), "LEARN");
     t.cc(21, 0);
-    assert_eq!(
-        unsafe { midi_learn_cc_of(&*t.ml, LIVE_PARAM_PULSE_WIDTH) },
-        21
-    );
+    assert_eq!(unsafe { midi_learn_cc_of(&*t.ml, LIVE_PARAM_DECAY) }, 21);
 }
 
 #[test]
@@ -309,23 +307,27 @@ fn save_or_home_after_a_cc_learned_and_before_the_frame_keep_the_toast() {
 }
 
 #[test]
-fn k4_is_the_preset_and_has_no_cc() {
+fn k3_ratio_has_no_cc() {
     let mut t = Learn::new();
-    t.open(PANEL_ENC_K4);
-    assert_eq!(t.ui.live().preset, 0, "K4 did not turn");
+    t.ui.rig.set_preset(2); // SYNC LEAD: K3 is the ratio
+    t.open(PANEL_ENC_K1 + 2);
+    assert_eq!(t.ui.live().sync_semis, 0, "K3 did not turn");
     assert_eq!(t.state(), MIDI_LEARN_IDLE);
-    assert_eq!(t.ui.toast().as_deref(), Some("K4: THE PRESET, NO CC"));
+    assert_eq!(t.ui.toast().as_deref(), Some("RATIO: NO CC"));
     assert_eq!(t.ui.top(), "LIVE", "the frame does not open on it");
-    // In the frame, K4 says the same and the pick stays.
+    // In the frame, K3 says the same and the pick stays.
     t.open(K1);
     t.ui.settle();
-    t.ui.turn(PANEL_ENC_K4, 1);
-    assert_eq!(t.ui.toast().as_deref(), Some("K4: THE PRESET, NO CC"));
+    t.ui.turn(PANEL_ENC_K1 + 2, 1);
+    assert_eq!(t.ui.toast().as_deref(), Some("RATIO: NO CC"));
     assert_eq!(
         (t.ui.top().as_str(), u32::from(t.ml.param)),
         ("LEARN", LIVE_PARAM_CUTOFF)
     );
-    assert_eq!(t.ui.live().preset, 0, "K4 did not turn");
+    assert_eq!(t.ui.live().sync_semis, 0, "K3 did not turn");
+    // K4 is the release: a parameter like any other.
+    t.ui.turn(PANEL_ENC_K4, 1);
+    assert_eq!(u32::from(t.ml.param), LIVE_PARAM_RELEASE);
 }
 
 #[test]

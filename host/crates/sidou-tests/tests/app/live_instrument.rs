@@ -440,7 +440,7 @@ fn preset_knob_switches_and_loads_the_preset() {
     let mut rig = Rig::new(SID_MODEL_8580);
     rig.knob(LIVE_KNOB_CUTOFF, -5);
     rig.note_on(60);
-    rig.knob(LIVE_KNOB_PRESET, 1);
+    rig.preset_step(1);
     let p = preset(PULSE_BASS);
     let l = &*rig.live;
     assert_eq!(l.preset, PULSE_BASS);
@@ -465,13 +465,13 @@ fn preset_knob_switches_and_loads_the_preset() {
 #[test]
 fn preset_knob_clamps_at_both_ends() {
     let mut rig = Rig::new(SID_MODEL_8580);
-    rig.knob(LIVE_KNOB_PRESET, -1);
+    rig.preset_step(-1);
     assert_eq!(rig.live.preset, 0);
-    rig.knob(LIVE_KNOB_PRESET, 100);
+    rig.preset_step(100);
     assert_eq!(rig.live.preset, 3);
     rig.set_preset(200);
     assert_eq!(rig.live.preset, 3);
-    rig.knob(LIVE_KNOB_PRESET, -2);
+    rig.preset_step(-2);
     assert_eq!(rig.live.preset, 1);
 }
 
@@ -617,7 +617,7 @@ fn knobs_clamp_and_write_nothing_past_their_limits() {
     let mut rig = Rig::new(SID_MODEL_8580);
     rig.knob(LIVE_KNOB_CUTOFF, 1000);
     rig.knob(LIVE_KNOB_RESONANCE, 1000);
-    rig.knob(LIVE_KNOB_PULSE_WIDTH, 1000);
+    rig.pulse(1000);
     let l = &*rig.live;
     assert_eq!(
         (
@@ -630,12 +630,12 @@ fn knobs_clamp_and_write_nothing_past_their_limits() {
     rig.clear();
     rig.knob(LIVE_KNOB_CUTOFF, 1);
     rig.knob(LIVE_KNOB_RESONANCE, 1);
-    rig.knob(LIVE_KNOB_PULSE_WIDTH, i32::MAX);
+    rig.pulse(i32::MAX);
     assert!(rig.log().is_empty());
 
     rig.knob(LIVE_KNOB_CUTOFF, i32::MIN);
     rig.knob(LIVE_KNOB_RESONANCE, -1000);
-    rig.knob(LIVE_KNOB_PULSE_WIDTH, -1000);
+    rig.pulse(-1000);
     let l = &*rig.live;
     assert_eq!(
         (l.cutoff, l.resonance, l.pulse_width),
@@ -652,8 +652,8 @@ fn resonance_and_pulse_width_reach_the_registers() {
     rig.knob(LIVE_KNOB_RESONANCE, -100);
     rig.knob(LIVE_KNOB_RESONANCE, 9);
     assert_eq!(rig.reg(0x17), 9 << 4 | preset(SAW_LEAD).filter_voices);
-    rig.knob(LIVE_KNOB_PULSE_WIDTH, -1000);
-    rig.knob(LIVE_KNOB_PULSE_WIDTH, 10);
+    rig.pulse(-1000);
+    rig.pulse(10);
     for v in 0..3 {
         assert_eq!(rig.voice_pw(v), 320);
     }
@@ -737,7 +737,7 @@ fn pwm_sweeps_the_pulse_width_around_the_knob() {
 fn pwm_clamps_at_the_pulse_width_limits() {
     let mut rig = Rig::new(SID_MODEL_8580);
     rig.set_preset(PULSE_BASS);
-    rig.knob(LIVE_KNOB_PULSE_WIDTH, 1000);
+    rig.pulse(1000);
     for _ in 0..(LIVE_TICK_HZ * 10) {
         rig.tick();
         assert!(u32::from(rig.voice_pw(0)) <= LIVE_PULSE_WIDTH_MAX);
@@ -762,7 +762,7 @@ fn fx_toggles_the_model_and_keeps_every_parameter() {
     rig.set_preset(PULSE_BASS);
     rig.knob(LIVE_KNOB_CUTOFF, -7);
     rig.knob(LIVE_KNOB_RESONANCE, 3);
-    rig.knob(LIVE_KNOB_PULSE_WIDTH, -4);
+    rig.pulse(-4);
     rig.set_master(700);
     rig.button(LIVE_BUTTON_OCT_UP);
     rig.note_on(48);
@@ -1229,4 +1229,207 @@ fn a_midi_algorithm_loads_nothing() {
             assert_eq!(&rig.live.slot[slot as usize][1..], &[0; 4]);
         }
     }
+}
+
+// --- K3 and K4 on LIVE: the sound's own control and the release ---
+
+const PWM_BASS_PRESET: u8 = 1;
+const SYNC_LEAD_PRESET: u8 = 2;
+const NOISE_PERC_PRESET: u8 = 3;
+
+fn tone(l: &live) -> u32 {
+    unsafe { live_tone(l) }
+}
+
+#[test]
+fn k3_follows_the_sound() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    // SAW LEAD and NOISE PERC: the decay (a nibble of the attack/decay register, 9 and 8).
+    for (preset, decay) in [(SAW_LEAD, 9), (NOISE_PERC_PRESET, 8)] {
+        rig.set_preset(preset);
+        assert_eq!(tone(&rig.live), LIVE_TONE_DECAY, "preset {preset}");
+        assert_eq!(rig.live.attack_decay & 15, decay);
+        rig.knob(LIVE_KNOB_TONE, -3);
+        assert_eq!(rig.live.attack_decay & 15, decay - 3);
+        assert_eq!(rig.reg(5) & 15, decay - 3, "the register");
+        rig.knob(LIVE_KNOB_TONE, 100);
+        assert_eq!(rig.live.attack_decay & 15, 15, "clamped");
+        rig.knob(LIVE_KNOB_TONE, -100);
+        assert_eq!(rig.live.attack_decay & 15, 0);
+    }
+    // PWM BASS: the pulse width, positions 128 + 64 i (3 % to 50 %), clockwise wider.
+    rig.set_preset(PWM_BASS_PRESET);
+    assert_eq!(tone(&rig.live), LIVE_TONE_PULSE);
+    assert_eq!(rig.live.pulse_width, 1024);
+    rig.knob(LIVE_KNOB_TONE, 1);
+    assert_eq!(rig.live.pulse_width, 1088);
+    rig.knob(LIVE_KNOB_TONE, -3);
+    assert_eq!(rig.live.pulse_width, 896);
+    rig.knob(LIVE_KNOB_TONE, 100);
+    assert_eq!(rig.live.pulse_width, 2048, "50 % is the widest");
+    rig.knob(LIVE_KNOB_TONE, -100);
+    assert_eq!(rig.live.pulse_width, 128, "3 % the narrowest");
+    // 31 positions: 30 detents from end to end, and one side only.
+    rig.knob(LIVE_KNOB_TONE, 30);
+    assert_eq!(rig.live.pulse_width, 2048);
+    // A width off the grid (MIDI) is mirrored above a half and rounded to the nearest position
+    // before the step.
+    for (set, one_up) in [
+        (1100u32, 1152u16),
+        (3000, 1152),
+        (4000, 192),
+        (100, 192),
+        (2048, 2048),
+    ] {
+        unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_PULSE_WIDTH, set) };
+        rig.knob(LIVE_KNOB_TONE, 1);
+        assert_eq!(rig.live.pulse_width, one_up, "from {set}");
+    }
+    // A sound the CC switched to the pulse waveform follows: K3 is the pulse width on any preset.
+    rig.set_preset(SAW_LEAD);
+    assert_eq!(tone(&rig.live), LIVE_TONE_DECAY);
+    unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_WAVEFORM, 4) };
+    assert_eq!(tone(&rig.live), LIVE_TONE_PULSE);
+    unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_WAVEFORM, 2) };
+    assert_eq!(tone(&rig.live), LIVE_TONE_DECAY);
+    // SYNC LEAD: the ratio, -12..+12 semitones from the preset's 2.75, a semitone a detent.
+    rig.set_preset(SYNC_LEAD_PRESET);
+    assert_eq!(tone(&rig.live), LIVE_TONE_RATIO);
+    assert_eq!((rig.live.sync_semis, rig.live.sync_q8), (0, 704));
+    rig.note_on(57);
+    let a3 = freq_table()[57];
+    assert_eq!(u32::from(rig.voice_freq(0)), (u32::from(a3) * 704) >> 8);
+    rig.knob(LIVE_KNOB_TONE, 12);
+    assert_eq!(rig.live.sync_semis, 12);
+    assert_eq!(rig.live.sync_q8, 1408, "an octave up doubles the ratio");
+    rig.tick();
+    assert_eq!(
+        u32::from(rig.voice_freq(0)),
+        (u32::from(a3) * 1408) >> 8,
+        "voice 1"
+    );
+    assert_eq!(rig.voice_freq(2), a3, "voice 3 keeps the pitch");
+    rig.knob(LIVE_KNOB_TONE, 100);
+    assert_eq!(rig.live.sync_semis, 12);
+    rig.knob(LIVE_KNOB_TONE, -100);
+    assert_eq!((rig.live.sync_semis, rig.live.sync_q8), (-12, 352));
+    rig.knob(LIVE_KNOB_TONE, 12);
+    assert_eq!((rig.live.sync_semis, rig.live.sync_q8), (0, 704));
+    // A preset load puts the ratio back; no parameter carries it (it has no CC, and is not saved).
+    rig.knob(LIVE_KNOB_TONE, 5);
+    rig.set_preset(SYNC_LEAD_PRESET);
+    assert_eq!((rig.live.sync_semis, rig.live.sync_q8), (0, 704));
+    assert_eq!(
+        unsafe { panel_knob_param(std::ptr::null(), &*rig.live, 0, PANEL_ENC_K1 + 2) },
+        LIVE_PARAM_COUNT
+    );
+}
+
+#[test]
+fn ratio_table_is_exact() {
+    let q16 = unsafe { live_ratio_q16 };
+    assert_eq!(q16.len(), 25);
+    for (k, &q) in q16.iter().enumerate() {
+        let exact = 65536.0 * 2f64.powf((k as f64 - 12.0) / 12.0);
+        assert!(
+            (f64::from(q) - exact).abs() <= 1.0,
+            "entry {k}: {q} against {exact}"
+        );
+        assert!(
+            (exact.fract() - 0.5).abs() > 1e-6,
+            "entry {k} is far from a rounding tie"
+        );
+    }
+    assert_eq!(q16[12], 65536, "no change is exactly 1");
+}
+
+/// Renders A3 for half a second on the real chip, after `turn` detents of K3 (or K4) on `preset`.
+fn render_a3(preset: u8, knob: live_knob_id, turn: i32) -> Vec<i16> {
+    let mut c = Chip::new(SID_MODEL_6581);
+    unsafe { live_set_preset(&mut *c.live, preset) };
+    unsafe { live_knob(&mut *c.live, knob, turn) };
+    unsafe { live_note_on(&mut *c.live, 57, 127) };
+    let mut out = Vec::new();
+    for _ in 0..22050 / 441 {
+        unsafe { live_tick(&mut *c.live) };
+        out.extend(c.render(441));
+    }
+    out
+}
+
+fn rms(v: &[i16]) -> f64 {
+    (v.iter().map(|&x| f64::from(x).powi(2)).sum::<f64>() / v.len().max(1) as f64).sqrt()
+}
+
+#[test]
+fn k3_is_audible_on_every_preset() {
+    for (preset, detents) in [
+        (SAW_LEAD, -8),
+        (PWM_BASS_PRESET, 8),
+        (SYNC_LEAD_PRESET, 8),
+        (NOISE_PERC_PRESET, -8),
+    ] {
+        let base = render_a3(preset, LIVE_KNOB_TONE, 0);
+        let turned = render_a3(preset, LIVE_KNOB_TONE, detents);
+        let diff: Vec<i16> = base
+            .iter()
+            .zip(&turned)
+            .map(|(&a, &b)| a.wrapping_sub(b))
+            .collect();
+        let db = 20.0 * (rms(&diff) / rms(&base)).log10();
+        println!("preset {preset}: K3 {detents:+} detents differ by {db:.1} dB of the note");
+        assert!(
+            db >= -30.0,
+            "preset {preset}: K3 {detents:+} is inaudible ({db:.1} dB)"
+        );
+    }
+}
+
+#[test]
+fn k4_release_is_audible() {
+    // The note's tail after the note-off: the release 6 against 14.
+    for preset in [
+        SAW_LEAD,
+        PWM_BASS_PRESET,
+        SYNC_LEAD_PRESET,
+        NOISE_PERC_PRESET,
+    ] {
+        let tail = |turn: i32| {
+            let mut c = Chip::new(SID_MODEL_6581);
+            unsafe { live_set_preset(&mut *c.live, preset) };
+            // a sound with a sustain: the release is what ends it
+            unsafe { live_param_set(&mut *c.live, LIVE_PARAM_SUSTAIN, 12) };
+            unsafe { live_knob(&mut *c.live, LIVE_KNOB_RELEASE, turn) };
+            unsafe { live_note_on(&mut *c.live, 57, 127) };
+            c.render(44100 / 4);
+            unsafe { live_note_off(&mut *c.live, 57) };
+            c.render(44100 / 4)
+        };
+        let base = tail(0);
+        let longer = tail(8);
+        let diff: Vec<i16> = base
+            .iter()
+            .zip(&longer)
+            .map(|(&a, &b)| a.wrapping_sub(b))
+            .collect();
+        let db = 20.0 * (rms(&diff) / rms(&longer).max(1.0)).log10();
+        println!("preset {preset}: release +8 differs by {db:.1} dB of the tail");
+        assert!(db >= -30.0, "preset {preset}: {db:.1} dB");
+    }
+}
+
+#[test]
+fn k4_steps_the_release_a_detent_at_a_time_and_clamps() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    assert_eq!(unsafe { live_param_get(&*rig.live, LIVE_PARAM_RELEASE) }, 6);
+    rig.knob(LIVE_KNOB_RELEASE, 1);
+    assert_eq!(rig.live.sustain_release & 15, 7);
+    assert_eq!(rig.live.sustain_release >> 4, 0xa, "the sustain stays");
+    rig.knob(LIVE_KNOB_RELEASE, -1000);
+    assert_eq!(rig.live.sustain_release & 15, 0);
+    rig.knob(LIVE_KNOB_RELEASE, i32::MAX);
+    assert_eq!(rig.live.sustain_release & 15, 15);
+    rig.clear();
+    rig.knob(LIVE_KNOB_RELEASE, 1);
+    assert!(rig.log().is_empty(), "no write past the end");
 }

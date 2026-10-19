@@ -341,7 +341,7 @@ static void preset_value(void* ctx, char* buf) {
 
 static void preset_turn(void* ctx, int32_t steps) {
     views* v = ctx;
-    live_knob(v->l, LIVE_KNOB_PRESET, steps);
+    live_preset_step(v->l, steps, 0);
 }
 
 static void octave_value(void* ctx, char* buf) {
@@ -1655,6 +1655,14 @@ static int curtain(const views* v) {
 
 /* ---- the popup: what a control shows ---- */
 
+/* "+3" for a sync ratio's semitones, "-12", "+0". */
+static void ratio_text(char* buf, int32_t semis) {
+    char num[3];
+    number_text(num, (uint32_t)(semis < 0 ? -semis : semis));
+    char sign[2] = {semis < 0 ? '-' : '+', 0};
+    join(buf, SCREEN_POPUP_TEXT, sign, num);
+}
+
 /* "63%" for a pulse width (0..4095): LIVE's PW00..PW99, as a percent. */
 static void pulse_text(char* buf, uint32_t pw) {
     char num[4];
@@ -1713,7 +1721,8 @@ static int param_text(const views* v, uint32_t param, char* name, char* value, u
         join(value, SCREEN_POPUP_TEXT, pct, "%");
         *fill = l->master;
         *max = LIVE_MASTER_MAX;
-    } else if (param >= LIVE_PARAM_AGE && param <= LIVE_PARAM_BLEED) {
+    } else if ((param >= LIVE_PARAM_AGE && param <= LIVE_PARAM_BLEED) || param == LIVE_PARAM_DECAY ||
+               param == LIVE_PARAM_RELEASE) {
         number_value(value, live_param_get(l, param), fill, max, live_param_max(param));
     } else if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {
         uint32_t i = param - LIVE_PARAM_SLOT;
@@ -1860,8 +1869,16 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
         if (v->p && v->p->page >= PANEL_PAGE_EXPERT_FIRST) {
             return 0;
         }
-        join(name, SCREEN_POPUP_TEXT, "PRESET", ""); /* K4 on LIVE's page */
+        /* K3 on a sync sound: the ratio, no parameter (its MIDI learn says so) */
+        join(name, SCREEN_POPUP_TEXT, "RATIO", "");
+        ratio_text(value, l->sync_semis);
+        *fill = (uint32_t)(l->sync_semis + LIVE_RATIO_SEMIS);
+        *max = 2u * LIVE_RATIO_SEMIS;
+        return 1;
+    }
+    if (enc == PANEL_ENC_PRESETS) {
         const live_preset* p = live_preset_get(l->preset);
+        join(name, SCREEN_POPUP_TEXT, "PRESET", "");
         join(value, SCREEN_POPUP_TEXT, p ? p->name : "?", "");
         return 1;
     }
@@ -2011,7 +2028,11 @@ void views_encoder(views* v, panel* p, uint32_t enc, int32_t steps) {
         save_key_spoil(&v->key); /* a knob while SAVE is down: its release saves nothing */
         if (enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4 && !learn_view_is_open(&v->learn) &&
             !curtain(v) && v->learn.ml) {
-            (void)learn_view_open(&v->learn, &v->s, p, enc, p->held); /* the knob picks */
+            /* the knob picks; on a slot page of LIVE, the slot's control, as with EDIT held */
+            uint32_t held = shows(v) == &live_view_view && v->live.page
+                                ? p->held | 1u << PANEL_BTN_EDIT
+                                : p->held;
+            (void)learn_view_open(&v->learn, &v->s, p, enc, held);
             return;
         }
     }
@@ -2183,6 +2204,15 @@ static void live_frame(views* v, const view* top, uint32_t now_ms) {
         if (control) {
             live_view_flash(&v->live, enc - PANEL_ENC_K1 + 1u, now_ms);
             v->s.popup_ask = 0;
+        } else if ((ask & (ASK_BASE | ASK_PARAM)) == ASK_BASE) {
+            if (enc == PANEL_ENC_ALGORITHM) { /* the profile (TONE) or the slot's algorithm */
+                live_view_flash(&v->live, v->live.page || v->live.edit ? LIVE_VIEW_HL_ALGORITHM
+                                                                       : LIVE_VIEW_HL_PROFILE,
+                                now_ms);
+                v->s.popup_ask = 0;
+            } else if (enc == PANEL_ENC_PRESETS) {
+                v->s.popup_ask = 0; /* the header says the preset */
+            }
         }
         return;
     }

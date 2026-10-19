@@ -111,7 +111,7 @@ void panel_buttons(panel* p, live* l, uint32_t pressed, uint32_t held) {
 
 uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t enc) {
     static const uint8_t KNOBS[] = {LIVE_PARAM_CUTOFF, LIVE_PARAM_RESONANCE,
-                                    LIVE_PARAM_PULSE_WIDTH, LIVE_PARAM_COUNT};
+                                    LIVE_PARAM_PULSE_WIDTH, LIVE_PARAM_RELEASE};
     if (enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4) {
         return LIVE_PARAM_COUNT;
     }
@@ -132,6 +132,12 @@ uint32_t panel_knob_param(const panel* p, const live* l, uint32_t held, uint32_t
         uint32_t index = (page - PANEL_PAGE_EXPERT_FIRST) * 4u + k;
         return index < SID_EXPERT_COUNT ? LIVE_PARAM_EXPERT + index : LIVE_PARAM_COUNT;
     }
+    if (k == 2u) { /* the sound's own control */
+        uint32_t tone = live_tone(l);
+        return tone == LIVE_TONE_PULSE ? LIVE_PARAM_PULSE_WIDTH
+               : tone == LIVE_TONE_DECAY ? LIVE_PARAM_DECAY
+                                         : LIVE_PARAM_COUNT;
+    }
     return KNOBS[k];
 }
 
@@ -140,10 +146,10 @@ _Static_assert(LIVE_PARAM_DAC == LIVE_PARAM_AGE + 1 && LIVE_PARAM_THUMP == LIVE_
                "K1..K4 are the character's controls in order");
 _Static_assert(LIVE_SLOT_MIX == LIVE_SLOT_AMOUNT + 3, "K1..K4 are a slot's controls in order");
 
-/* live_knob's knobs are K1..K4 in order: the cutoff, resonance and pulse width that
- * panel_knob_param names, then the preset. */
-_Static_assert(LIVE_KNOB_CUTOFF == 0 && LIVE_KNOB_RESONANCE == 1 && LIVE_KNOB_PULSE_WIDTH == 2 &&
-                   LIVE_KNOB_PRESET == 3 && PANEL_ENC_K4 - PANEL_ENC_K1 == 3,
+/* live_knob's knobs are K1..K4 in order: the cutoff, resonance, the sound's own control and the
+ * release that panel_knob_param names. */
+_Static_assert(LIVE_KNOB_CUTOFF == 0 && LIVE_KNOB_RESONANCE == 1 && LIVE_KNOB_TONE == 2 &&
+                   LIVE_KNOB_RELEASE == 3 && PANEL_ENC_K4 - PANEL_ENC_K1 == 3,
                "K1..K4 are live_knob's knobs");
 
 __attribute__((noinline, unused)) static void expert_turn(live* l, uint32_t param, int32_t steps) {
@@ -155,7 +161,13 @@ __attribute__((noinline, unused)) static void expert_turn(live* l, uint32_t para
 }
 
 void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps) {
-    if (steps == 0 || enc < PANEL_ENC_K1 || enc > PANEL_ENC_K4) {
+    if (steps == 0) {
+        return;
+    }
+    if (enc - PANEL_ENC_K1 > PANEL_ENC_K4 - PANEL_ENC_K1) { /* not K1..K4 */
+        if (enc == PANEL_ENC_PRESETS) {
+            live_preset_step(l, steps, p->held >> PANEL_BTN_EDIT & 1u);
+        }
         return;
     }
     if (p->page == PANEL_PAGE_LIVE && !(p->held >> PANEL_BTN_EDIT & 1u)) {

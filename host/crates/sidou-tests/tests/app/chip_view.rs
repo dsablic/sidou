@@ -1059,8 +1059,9 @@ fn the_knobs_parameters_follow_the_view() {
     for f in 0..CHIP_VIEW_SECTIONS {
         for held in [0, edit] {
             for enc in 0..PANEL_ENCODERS {
-                if enc == PANEL_ENC_SELECT || enc == PANEL_ENC_ALGORITHM {
-                    continue; // the view's own
+                if enc == PANEL_ENC_SELECT || enc == PANEL_ENC_ALGORITHM || enc == PANEL_ENC_PRESETS
+                {
+                    continue; // the view's own, and the preset's
                 }
                 let mut ui = chip_ui();
                 ui.turn(PANEL_ENC_SELECT, f as i32);

@@ -352,17 +352,16 @@ fn select_never_asks_and_nor_does_a_turn_with_nothing_to_show() {
         ui.frame();
     }
     assert!(!shown(&ui));
-    // ALGORITHM on an item that opens a view opens it, with no popup; PRESETS (encoder 6) does
-    // nothing yet.
+    // ALGORITHM on an item that opens a view opens it, with no popup; PRESETS (encoder 6) steps
+    // the preset and opens its popup, over any view but LIVE.
     ui.turn(PANEL_ENC_SELECT, -2);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
     assert_eq!(ui.top(), "CHIP");
-    ui.turn(6, 1);
-    for _ in 0..4 {
-        ui.frame();
-    }
-    assert!(!shown(&ui));
+    ui.turn(PANEL_ENC_PRESETS, 1);
+    open(&mut ui);
+    assert_eq!(says(&ui).0, "PRESET");
+    assert_eq!(ui.live().preset, 1);
 }
 
 #[test]
@@ -456,12 +455,26 @@ fn every_knob_and_algorithm_shows_its_name_and_value_as_the_views_say_them() {
         says(&ui),
         ("RESO".to_owned(), ui.live().resonance.to_string())
     );
+    // K3 is the sound's own control: the decay on SAW LEAD, the pulse width on PWM BASS, the sync
+    // ratio on SYNC LEAD; K4 the release.
     ui.turn(K3, 2);
+    ui.frame();
+    assert_eq!(says(&ui), ("DECAY".to_owned(), "11".to_owned()));
+    ui.rig.set_preset(1);
+    ui.turn(K3, -2);
     ui.frame();
     let pc = (u32::from(ui.live().pulse_width) * 99 + 2047) / 4095;
     assert_eq!(says(&ui), ("PULSE".to_owned(), format!("{pc}%")));
-    // K4: the preset, by name, with no bar.
-    ui.turn(PANEL_ENC_K4, 1);
+    ui.rig.set_preset(2);
+    ui.turn(K3, 3);
+    ui.frame();
+    assert_eq!(says(&ui), ("RATIO".to_owned(), "+3".to_owned()));
+    ui.turn(PANEL_ENC_K4, 2);
+    ui.frame();
+    assert_eq!(says(&ui), ("RELEASE".to_owned(), "10".to_owned()));
+    ui.rig.set_preset(0);
+    // PRESETS: the preset, by name, with no bar.
+    ui.turn(PANEL_ENC_PRESETS, 1);
     ui.frame();
     let p = unsafe { &*live_preset_get(ui.live().preset) };
     let name = unsafe { CStr::from_ptr(p.name) }

@@ -336,7 +336,7 @@ static uint16_t voice_freq(const live* l, int v) {
      * and the vibrato. */
     uint32_t f = live_freq_at(note, pitch_offset(l, src));
     if (p->mono_sync && v == 0) {
-        f = (f * p->sync_ratio_q8) >> 8;
+        f = (f * l->sync_q8) >> 8;
         /* A known limit (docs/reference/controls.md, Presets): at 2.75 times the pitch the
          * register is full from note 90 (F#6) at rest, from lower notes bent or vibrato'd up
          * (88 at +2 semitones). Voice 3 still sets the pitch; the ratio, and the timbre,
@@ -378,10 +378,14 @@ static void write_pw(live* l, int v) {
     put(l, (uint8_t)(v * 7 + 3), (uint8_t)(pw >> 8));
 }
 
+static void write_cutoff_as(live* l, uint16_t c) {
+    l->cutoff_out = c;
+    put(l, REG_FC_LO, (uint8_t)(c & 7u));
+    put(l, REG_FC_HI, (uint8_t)(c >> 3));
+}
+
 static void write_cutoff(live* l) {
-    l->cutoff_out = cutoff_effective(l);
-    put(l, REG_FC_LO, (uint8_t)(l->cutoff_out & 7u));
-    put(l, REG_FC_HI, (uint8_t)(l->cutoff_out >> 3));
+    write_cutoff_as(l, cutoff_effective(l));
 }
 
 /* The voice's sustain/release: the sustain level scaled by its velocity when that is the
@@ -541,8 +545,9 @@ static void update_pws(live* l) {
 }
 
 static void update_cutoff(live* l) {
-    if (cutoff_effective(l) != l->cutoff_out) {
-        write_cutoff(l);
+    uint16_t c = cutoff_effective(l); /* once: a K1 detent pays for it on the input path */
+    if (c != l->cutoff_out) {
+        write_cutoff_as(l, c);
     }
 }
 
@@ -569,6 +574,8 @@ static void load_preset(live* l, uint8_t index) {
     l->vibrato_rate = p->vibrato_rate;
     l->vibrato_depth = p->vibrato_depth;
     l->vibrato_delay = p->vibrato_delay;
+    l->sync_semis = 0;
+    l->sync_q8 = p->sync_ratio_q8;
     l->lfo_phase = LFO_CENTRE;
     for (int v = 0; v < LIVE_VOICES; ++v) {
         if (l->voice[v].gate) {
@@ -794,6 +801,51 @@ void live_set_preset(live* l, uint8_t index) {
     write_all(l);
 }
 
+const uint32_t live_ratio_q16[2 * LIVE_RATIO_SEMIS + 1] = {
+    32768,  34716,  36781,  38968,  41285,  43740,  46341,  49097,  52016,
+    55109,  58386,  61858,  65536,  69433,  73562,  77936,  82570,  87480,
+    92682,  98193,  104032, 110218, 116772, 123715, 131072,
+};
+
+uint32_t live_tone(const live* l) {
+    if (cur(l)->mono_sync) {
+        return LIVE_TONE_RATIO;
+    }
+    return l->control & 0x40u ? LIVE_TONE_PULSE : LIVE_TONE_DECAY;
+}
+
+/* K3: the sync ratio, the pulse width or the decay, by the sound (live_tone). */
+__attribute__((noinline, unused)) static void tone_turn(live* l, int32_t delta) {
+    delta = delta > 64 ? 64 : delta < -64 ? -64 : delta;
+    switch (live_tone(l)) {
+    case LIVE_TONE_RATIO: {
+        int32_t semis = l->sync_semis + delta;
+        semis = semis < -LIVE_RATIO_SEMIS ? -LIVE_RATIO_SEMIS
+                : semis > LIVE_RATIO_SEMIS ? LIVE_RATIO_SEMIS
+                                           : semis;
+        l->sync_semis = (int8_t)semis;
+        l->sync_q8 = (uint16_t)((cur(l)->sync_ratio_q8 * live_ratio_q16[semis + LIVE_RATIO_SEMIS] +
+                                 32768u) >> 16);
+        update_freq(l, 0);
+        break;
+    }
+    case LIVE_TONE_PULSE: {
+        /* The grid's positions, one side of the square: a width off it, or above a half (MIDI),
+         * is mirrored and taken to the nearest position first. */
+        int32_t pw = l->pulse_width > 2048u ? 4096 - (int32_t)l->pulse_width : (int32_t)l->pulse_width;
+        int32_t pos = (pw - LIVE_PULSE_FIRST + LIVE_PULSE_STEP / 2) / LIVE_PULSE_STEP;
+        pos = pw < LIVE_PULSE_FIRST ? 0 : pos;
+        pos += delta;
+        pos = pos < 0 ? 0 : pos > LIVE_PULSE_POSITIONS - 1 ? LIVE_PULSE_POSITIONS - 1 : pos;
+        set_pulse_width(l, (uint16_t)(LIVE_PULSE_FIRST + LIVE_PULSE_STEP * pos));
+        break;
+    }
+    default:
+        live_param_set(l, LIVE_PARAM_DECAY, step_clamped(l->attack_decay & 15u, delta, 1, 15));
+        break;
+    }
+}
+
 void live_knob(live* l, live_knob_id knob, int32_t delta) {
     switch (knob) {
     case LIVE_KNOB_CUTOFF: {
@@ -820,18 +872,25 @@ void live_knob(live* l, live_knob_id knob, int32_t delta) {
     case LIVE_KNOB_RESONANCE:
         set_resonance(l, (uint8_t)step_clamped(l->resonance, delta, 1, LIVE_RESONANCE_MAX));
         break;
-    case LIVE_KNOB_PULSE_WIDTH:
-        set_pulse_width(l, step_clamped(l->pulse_width, delta, LIVE_PULSE_WIDTH_DETENT,
-                                        LIVE_PULSE_WIDTH_MAX));
+    case LIVE_KNOB_TONE:
+        tone_turn(l, delta);
         break;
-    case LIVE_KNOB_PRESET: {
-        uint8_t p = (uint8_t)step_clamped(l->preset, delta, 1, LIVE_PRESET_COUNT - 1);
-        if (p != l->preset) {
-            live_set_preset(l, p);
-        }
+    case LIVE_KNOB_RELEASE:
+        live_param_set(l, LIVE_PARAM_RELEASE,
+                       step_clamped(l->sustain_release & 15u, delta, 1, 15));
         break;
-    }
     default: break;
+    }
+}
+
+void live_preset_step(live* l, int32_t steps, int revert) {
+    if (revert) {
+        live_set_preset(l, l->preset);
+        return;
+    }
+    uint8_t p = (uint8_t)step_clamped(l->preset, steps, 1, LIVE_PRESET_COUNT - 1);
+    if (p != l->preset) {
+        live_set_preset(l, p);
     }
 }
 

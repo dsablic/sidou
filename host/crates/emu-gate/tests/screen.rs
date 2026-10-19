@@ -613,6 +613,88 @@ fn a_toast_closes_an_open_popup() {
     assert_ne!(toast, 0, "the toast shows");
 }
 
+/// A byte of the instrument (app/live.h) at `field` in the device's layout (ilp32::live).
+fn live_byte(m: &mut Machine, fw: &Firmware, field: usize) -> u8 {
+    let l = m
+        .soc
+        .read32(fw.symbol("ui") + sidou_sys::ilp32::views::l as u32);
+    m.soc.read8(l + field as u32)
+}
+
+/// SELECT pages LIVE's knob row (TONE, DIST, MOD, FX) and ALGORITHM steps the chip's profile on
+/// TONE, each with no popup: the band says R5, the page tag says the slot.
+#[test]
+fn select_pages_and_algorithm_steps_the_profile_on_live() {
+    let Some((_, fw)) = fixture("the LIVE encoders test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    settle(&mut m, &fw);
+    let page = |m: &mut Machine| {
+        ui_byte(
+            m,
+            &fw,
+            sidou_sys::ilp32::views::live + sidou_sys::ilp32::live_view::page,
+        )
+    };
+    let tone = indexed(&m.soc.lcd.fb);
+    let region = |idx: &[u8], row: usize| idx[row * 8 * W..(row + 1) * 8 * W].to_vec();
+    assert_eq!(page(&mut m), 0);
+    m.turn(SELECT, 1);
+    m.run_ms(300);
+    common::to_mid_frame(&mut m, &fw);
+    assert_eq!(page(&mut m), 1, "the slot page");
+    assert_eq!(live_byte(&mut m, &fw, sidou_sys::ilp32::live::fx_select), 0);
+    assert_eq!(popup_rows(&mut m, &fw), 0, "no popup for SELECT");
+    let dist = indexed(&m.soc.lcd.fb);
+    assert!(
+        region(&dist, 14) != region(&tone, 14),
+        "row 14 says DIST, not TONE"
+    );
+    m.turn(SELECT, 1);
+    m.run_ms(300);
+    assert_eq!(live_byte(&mut m, &fw, sidou_sys::ilp32::live::fx_select), 1);
+    m.turn(SELECT, -5);
+    m.run_ms(300);
+    assert_eq!(page(&mut m), 0, "clamped at TONE");
+    common::to_mid_frame(&mut m, &fw);
+    assert!(indexed(&m.soc.lcd.fb) == tone, "TONE is back as it was");
+    // ALGORITHM on TONE: the profile R4AR (2) to R5 (3), the band says R5 for a second.
+    let profile = |m: &mut Machine| live_byte(m, &fw, sidou_sys::ilp32::live::profile_req);
+    assert_eq!(profile(&mut m), 2);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(300);
+    common::to_mid_frame(&mut m, &fw);
+    assert_eq!(profile(&mut m), 3);
+    assert_eq!(popup_rows(&mut m, &fw), 0, "no popup over LIVE");
+    let now = indexed(&m.soc.lcd.fb);
+    let white = 1u8;
+    let ink = |idx: &[u8], cols: std::ops::Range<usize>| -> usize {
+        cols.map(|c| {
+            (22..24)
+                .map(|r| cell_colour(idx, r, c, white))
+                .sum::<usize>()
+        })
+        .sum()
+    };
+    // Reversed: the word is black on white, so white is the ground; a second on it is white on
+    // black. R5's two characters (cells 10-13), and nothing in R4AR's third and fourth.
+    m.run_ms(1_300);
+    common::to_mid_frame(&mut m, &fw);
+    let later = indexed(&m.soc.lcd.fb);
+    assert!(
+        ink(&now, 10..14) > ink(&later, 10..14) + 50,
+        "R5 is reversed while it shows the change: {} then {}",
+        ink(&now, 10..14),
+        ink(&later, 10..14)
+    );
+    assert_eq!(
+        ink(&now, 14..18),
+        0,
+        "R5 is two characters: R4AR's third and fourth are gone"
+    );
+}
+
 /// The octave is large when it is not 0: cells 26-29 of rows 0-1 (nothing at 0).
 #[test]
 fn the_octave_shows_at_2x_when_not_0() {
