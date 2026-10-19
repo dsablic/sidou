@@ -905,10 +905,9 @@ static int input(screen* s, void* state, const screen_event* e) {
             }
             return 1;
         }
-        uint32_t k = l->fx_select % LIVE_SLOTS;
-        live_slot_pick(l, k,
-                       step_clamped(l->slot[k][LIVE_SLOT_ALGORITHM], e->steps,
-                                    live_slot_algorithms(k) - 1u));
+        /* the slot's algorithm stepped (live_slot_pick clamps above); fx_select is below LIVE_SLOTS */
+        int32_t to = (int32_t)l->slot[l->fx_select][LIVE_SLOT_ALGORITHM] + e->steps;
+        live_slot_pick(l, l->fx_select, to < 0 ? 0u : (uint32_t)to);
     } else if (e->held & (1u << PANEL_BTN_EDIT)) {
         target_step(cv, e->steps);
     } else if (chip_view_song_tab(cv)) {

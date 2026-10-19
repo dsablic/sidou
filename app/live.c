@@ -1305,9 +1305,13 @@ void live_params(const live* l, uint16_t out[LIVE_PARAM_COUNT]) {
     }
 }
 
+/* Each slot's algorithm count; live_slot_pick's own table, its algorithms are below 8
+ * (live_fx_defaults). */
+static const uint8_t SLOT_ALGORITHMS[LIVE_SLOTS] = {SID_DIST_COUNT, SID_MOD_COUNT,
+                                                    SID_FXSLOT_COUNT};
+
 uint32_t live_slot_algorithms(uint32_t slot) {
-    static const uint8_t COUNT[LIVE_SLOTS] = {SID_DIST_COUNT, SID_MOD_COUNT, SID_FXSLOT_COUNT};
-    return slot < LIVE_SLOTS ? COUNT[slot] : 0u;
+    return slot < LIVE_SLOTS ? SLOT_ALGORITHMS[slot] : 0u;
 }
 
 void live_slot_set(live* l, uint32_t slot, uint32_t field, int32_t value) {
@@ -1330,21 +1334,41 @@ void live_slot_turn(live* l, uint32_t slot, uint32_t field, int32_t detents) {
     }
 }
 
+/* A slot's field to value (already in range), sent when it changed. */
+static void slot_store(live* l, uint32_t slot, uint32_t field, uint8_t value) {
+    uint8_t* s = l->slot[slot];
+    if (s[field] != value) {
+        s[field] = value;
+        l->settings_dirty = 1;
+        put(l, (uint8_t)LIVE_REG_SLOT(slot, field), value);
+    }
+}
+
 void live_slot_pick(live* l, uint32_t slot, uint32_t algorithm) {
     if (slot >= LIVE_SLOTS) {
         return;
     }
-    uint32_t last = live_slot_algorithms(slot) - 1u;
+    const uint8_t* s = l->slot[slot];
+    uint32_t last = SLOT_ALGORITHMS[slot] - 1u;
     algorithm = algorithm > last ? last : algorithm;
-    uint8_t* s = l->slot[slot];
-    /* silent, or still what the algorithm it has started with */
-    int fresh = (!s[LIVE_SLOT_AMOUNT] && !s[LIVE_SLOT_MIX]) ||
-                !memcmp(&s[LIVE_SLOT_AMOUNT], live_fx_defaults[slot][s[LIVE_SLOT_ALGORITHM] & 7u], 4);
-    live_slot_set(l, slot, LIVE_SLOT_ALGORITHM, (int32_t)algorithm);
-    if (algorithm && fresh) {
-        for (uint32_t f = 0; f < 4u; f++) {
-            live_slot_set(l, slot, LIVE_SLOT_AMOUNT + f, live_fx_defaults[slot][algorithm][f]);
-        }
+    uint32_t had = s[LIVE_SLOT_ALGORITHM];
+    if (had == algorithm) {
+        return;
+    }
+    slot_store(l, slot, LIVE_SLOT_ALGORITHM, (uint8_t)algorithm);
+    if (!algorithm) {
+        return; /* OFF keeps the controls: the next algorithm starts from them */
+    }
+    /* silent, or still what the algorithm it had started with */
+    const uint8_t* was = live_fx_defaults[slot][had & 7u];
+    if ((s[LIVE_SLOT_AMOUNT] | s[LIVE_SLOT_MIX]) &&
+        (s[LIVE_SLOT_AMOUNT] != was[0] || s[LIVE_SLOT_A] != was[1] ||
+         s[LIVE_SLOT_B] != was[2] || s[LIVE_SLOT_MIX] != was[3])) {
+        return; /* edited: the player's values stay */
+    }
+    const uint8_t* d = live_fx_defaults[slot][algorithm];
+    for (uint32_t f = 0; f < 4u; f++) {
+        slot_store(l, slot, LIVE_SLOT_AMOUNT + f, d[f]);
     }
 }
 
