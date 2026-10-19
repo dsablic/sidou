@@ -65,6 +65,11 @@ typedef struct {
      * says lines were left for the next call. The caller sets budget and
      * force_rows before each call. */
     uint16_t budget;
+    /* At scale 2: lines drawn at most in one call, the selected one first (0: no limit; the
+     * budget's rule alone), and then their empty quadrants are sent as blank cells
+     * (widget_blank_pieces): what a page whose compose and runs must stay within a small ui_poll
+     * asks for. */
+    uint8_t lines;
     uint8_t pending;
     uint8_t valid; /* bit k: line k's source text and colours can be compared in the grid */
     uint32_t force_rows;

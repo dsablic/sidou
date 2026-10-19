@@ -69,6 +69,7 @@ void menu_init(menu* m, const menu_item* items, uint32_t count, uint32_t rows, v
     m->scale = 1;
     m->sel_attr = 0;
     m->budget = 0;
+    m->lines = 0;
     m->pending = 0;
     m->valid = 0;
     m->barred = 0;
@@ -204,8 +205,10 @@ __attribute__((noinline, unused)) static void draw_big(menu* m, grid* g, uint32_
                     continue;
                 }
             }
-            if ((!forced || (m->force_rows & MENU_BUDGET_FORCED)) && drawn && !urgent &&
-                m->budget && grid_pending(g) + MENU_LINE_CELLS > m->budget) {
+            if (!urgent && drawn &&
+                (m->lines ? drawn >= m->lines
+                          : ((!forced || (m->force_rows & MENU_BUDGET_FORCED)) && m->budget &&
+                             grid_pending(g) + MENU_LINE_CELLS > m->budget))) {
                 m->pending = 1; /* the next call */
                 m->valid = (uint8_t)(m->valid & ~(1u << k));
                 if (forced) {
@@ -236,6 +239,9 @@ __attribute__((noinline, unused)) static void draw_big(menu* m, grid* g, uint32_
                 grid_text_big(g, col + 1u + 2u * value_at, r, 2, line + value_at, m->value_attr);
             } else {
                 grid_text_big(g, col + 1u, r, 2, line, a);
+            }
+            if (m->lines) {
+                widget_blank_pieces(g, col, r, w);
             }
         }
     }

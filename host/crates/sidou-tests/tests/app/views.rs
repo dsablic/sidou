@@ -621,7 +621,10 @@ impl Ui {
             (top..top + VIEWS_MENU_SHOWN as usize).contains(&i),
             "item {i} is out of sight"
         );
-        self.row(4 + 3 * (i - top))[1..15].to_string()
+        self.big(4 + 3 * (i - top), 1, 2, 14)
+            .chars()
+            .map(|c| if c.is_ascii() { c } else { '#' })
+            .collect()
     }
 
     /// A row's text, one character a cell; large text (grid_text_big) one a character, whatever
@@ -1307,6 +1310,128 @@ fn the_update_box_shows_each_step_and_the_result() {
 /// M2e Task 3: the MIDI page edits MIDI's mode (app/midi_route.h) item by item, clamped at
 /// both ends, and shows "-" with no router.
 #[test]
+fn the_midi_page_uses_six_large_rows_within_190_cells() {
+    let mut ui = Ui::without_cards();
+    for _ in 0..20 {
+        ui.frame();
+        crate::drain(&mut ui.g);
+    }
+    ui.press(PANEL_BTN_HOME);
+    for _ in 0..12 {
+        ui.frame();
+        crate::drain(&mut ui.g);
+    }
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_MIDI as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(ui.v.midi.scale, 2);
+    assert_eq!(u32::from(ui.v.midi.rows), VIEWS_MENU_SHOWN);
+    for step in 0..10 {
+        if step != 0 {
+            ui.turn(PANEL_ENC_SELECT, 1);
+        }
+        for frame in 0..12 {
+            ui.frame();
+            let sent = crate::drain(&mut ui.g);
+            assert!(sent.cells <= 190, "step {step}, frame {frame}: {sent:?}");
+            assert!(sent.spi_ms() <= crate::SPI_BUDGET_MS, "{sent:?}");
+        }
+        let row = 4 + 3 * (usize::from(ui.v.midi.cursor) - usize::from(ui.v.midi.top));
+        assert_eq!(u32::from(ui.g.ch[row * COLS + 1]), GRID_BIG_FIRST);
+        assert_eq!(ui.v.midi.pending, 0);
+    }
+    assert!(ui.row(1).contains("MIDI"));
+    assert!(midi_line(&mut ui, 9).contains("CLOCK OUT"));
+}
+
+/// The MIDI page opens as a ui_poll of 23k instructions allows (app/views.c midi_compose): the
+/// first frame the blank, the title bar and the help, then two lines a frame, none at once; the
+/// cell the frame's first run is has the title bar's background (it is not seen).
+#[test]
+fn the_midi_page_builds_up_two_lines_a_frame_after_its_title_and_help() {
+    let mut ui = Ui::without_cards();
+    for _ in 0..20 {
+        ui.frame();
+        crate::drain(&mut ui.g);
+    }
+    ui.press(PANEL_BTN_HOME);
+    for _ in 0..12 {
+        ui.frame();
+        crate::drain(&mut ui.g);
+    }
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_MIDI as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    let mut valid = Vec::new();
+    for frame in 0..6 {
+        ui.frame();
+        let sent = crate::drain(&mut ui.g);
+        assert!(sent.cells <= 190, "frame {frame}: {sent:?}");
+        valid.push(ui.v.midi.valid.count_ones());
+        if frame == 0 {
+            assert!(ui.row(1).contains("MIDI"), "{:?}", ui.row(1));
+            assert_eq!(ui.big(24, 1, 2, 12), "SELECT  MOVE");
+            assert_eq!(ui.v.midi.valid, 0, "no line in the first frame");
+        }
+        let head_bg = ui.g.attr[COLS] >> 4;
+        assert_eq!(
+            ui.g.attr[0] >> 4,
+            head_bg,
+            "frame {frame}: the first cell shows the bar"
+        );
+        assert_eq!(ui.g.ch[0], b' ');
+    }
+    assert_eq!(valid, [0, 2, 4, 6, 6, 6]);
+    assert_eq!(ui.v.midi.pending, 0);
+}
+
+fn midi_line(ui: &mut Ui, item: usize) -> String {
+    ui.frame();
+    ui.popup_gone();
+    for _ in 0..8 {
+        ui.frame();
+        crate::drain(&mut ui.g);
+    }
+    ui.big(4 + 3 * (item - usize::from(ui.v.midi.top)), 1, 2, 14)
+}
+
+#[test]
+fn the_midi_page_sounds_moves_changes_and_refusals() {
+    unsafe extern "C" fn silent(_: *mut std::ffi::c_void, _: u8, _: u8) {}
+    let mut ui = Ui::without_cards();
+    let mut snd = Box::<ui_sound>::default();
+    let mut route = Box::<midi_route>::default();
+    unsafe {
+        ui_sound_init(
+            &mut *snd,
+            &mut *ui.rig.live,
+            Some(silent),
+            std::ptr::null_mut(),
+        );
+        ui_sound_set(&mut *snd, 1);
+        views_set_sounds(&mut *ui.v, &mut *snd);
+        midi_route_init(
+            &mut *route,
+            &mut *ui.rig.live,
+            std::ptr::null_mut(),
+            std::ptr::null(),
+        );
+    }
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_MIDI as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(PANEL_ENC_SELECT, -1);
+    assert_eq!(u32::from(snd.id), UI_SOUND_BUZZ);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    assert_eq!(u32::from(snd.id), UI_SOUND_BLIP);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(u32::from(snd.id), UI_SOUND_BUZZ, "no router: no change");
+    unsafe { views_route(&mut *ui.v, &mut *route) };
+    ui.turn(PANEL_ENC_ALGORITHM, 99);
+    assert_eq!(u32::from(snd.id), UI_SOUND_CONFIRM);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(u32::from(snd.id), UI_SOUND_BUZZ, "already at channel 16");
+}
+
+#[test]
 fn the_midi_page_edits_midis_mode() {
     let mut ui = Ui::without_cards();
     let mut route = Box::<midi_route>::default();
@@ -1324,12 +1449,7 @@ fn the_midi_page_edits_midis_mode() {
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
     assert_eq!(ui.top(), "MIDI");
-    let value = |ui: &Ui, item: usize| {
-        ui.row(5 + item - usize::from(ui.v.midi.top))[4..27]
-            .trim_end()
-            .to_string()
-    };
-    let row = value(&ui, 0);
+    let row = midi_line(&mut ui, 0);
     assert!(
         row.starts_with("MODE") && row.ends_with(" -"),
         "no router: {row:?}"
@@ -1348,12 +1468,14 @@ fn the_midi_page_edits_midis_mode() {
         ("ROWS/BEAT", "4"),
     ];
     for (i, (label, v)) in want.iter().enumerate() {
-        let row = value(&ui, i);
+        ui.turn(PANEL_ENC_SELECT, i as i32 - i32::from(ui.v.midi.cursor));
+        let row = midi_line(&mut ui, i);
         assert!(
             row.starts_with(label) && row.ends_with(v),
             "item {i}: {row:?}"
         );
     }
+    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MIDI_ITEMS as i32));
     ui.turn(PANEL_ENC_ALGORITHM, -3);
     assert_eq!(route.setup.mode, MIDI_MODE_MULTI as u8);
     ui.turn(PANEL_ENC_ALGORITHM, -9);
@@ -1362,7 +1484,7 @@ fn the_midi_page_edits_midis_mode() {
     ui.turn(PANEL_ENC_ALGORITHM, 20);
     assert_eq!(route.setup.base, 15, "clamped at channel 16");
     ui.frame();
-    assert!(value(&ui, 1).ends_with("16"));
+    assert!(midi_line(&mut ui, 1).trim_end().ends_with("16"));
     ui.turn(PANEL_ENC_SELECT, 1);
     ui.turn(PANEL_ENC_ALGORITHM, 2);
     assert_eq!(route.setup.option, MIDI_WHOLE_ARP as u8);
@@ -1373,7 +1495,7 @@ fn the_midi_page_edits_midis_mode() {
     ui.turn(PANEL_ENC_ALGORITHM, -5);
     assert_eq!(route.setup.arp_rate, 0);
     ui.frame();
-    assert!(value(&ui, 6).ends_with("CLOCK"));
+    assert!(midi_line(&mut ui, 6).trim_end().ends_with("CLOCK"));
     ui.turn(PANEL_ENC_SELECT, 1);
     ui.turn(PANEL_ENC_ALGORITHM, -9);
     assert_eq!(route.setup.rows_per_beat, 1);
@@ -1393,17 +1515,13 @@ fn the_midi_pages_clock_items_set_the_clock() {
     ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_MIDI as i32);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
-    let value = |ui: &Ui, item: usize| {
-        ui.row(5 + item - usize::from(ui.v.midi.top))[4..27]
-            .trim_end()
-            .to_string()
-    };
     ui.turn(PANEL_ENC_SELECT, 8);
     ui.frame();
-    assert!(value(&ui, 8).starts_with("CLOCK") && value(&ui, 8).ends_with(" -"));
+    let row = midi_line(&mut ui, 8);
+    assert!(row.starts_with("CLOCK") && row.trim_end().ends_with(" -"));
     unsafe { views_sync(&mut *ui.v, &mut *sync) };
     ui.frame();
-    assert!(value(&ui, 8).ends_with("AUTO"), "{:?}", value(&ui, 8));
+    assert!(midi_line(&mut ui, 8).trim_end().ends_with("AUTO"));
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(u32::from(sync.mode), MIDI_SYNC_FOLLOW);
     ui.turn(PANEL_ENC_ALGORITHM, 5);
@@ -1411,10 +1529,10 @@ fn the_midi_pages_clock_items_set_the_clock() {
     ui.turn(PANEL_ENC_SELECT, 1);
     ui.popup_gone();
     ui.frame();
-    assert!(value(&ui, 9).ends_with("OFF"), "{:?}", value(&ui, 9));
+    assert!(midi_line(&mut ui, 9).trim_end().ends_with("OFF"));
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(sync.clock_out, 1);
     ui.popup_gone();
     ui.frame();
-    assert!(value(&ui, 9).ends_with("ON"));
+    assert!(midi_line(&mut ui, 9).trim_end().ends_with("ON"));
 }

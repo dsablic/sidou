@@ -254,10 +254,9 @@ does not take plays the instrument (`app/views.h`,
   (`SELECT  MOVE`, `ALG   CHANGE`: ALG is ALGORITHM) is large too. The menus of M2's views
   (and a CHIP-sized menu of the song's) can use the same widget at either size
   (`menu.scale`).
-- **The MIDI page** is a framed menu at 1×, in the theme's colours: the
-  ring in the dim colour, SIDOU in the hot colour, the frame, its help lines and the
-  version in the label colour, the items in the menu-item colour and the cursor a full
-  block in the same colour (it blinks).
+- **The MIDI page** uses the same 2× menu renderer: six of its ten items, a MIDI title bar
+  with the selected item's number, a reverse-video selected line and help in the hint
+  colour. It has no border, version, READY. prompt or blinking cursor.
 
   The main menu puts playing views first: CHIP, TRACKER, SCENE, SONG, then PRE, OCTAVE,
   KEYS, SOUNDS, ROWS, CARDS, STORE, THEME, STATUS, MIDI, CHARSET and ABOUT.

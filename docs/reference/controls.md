@@ -611,8 +611,11 @@ moves the cursor, ALGORITHM changes the value under it, HOME goes back). The mod
 releases what MIDI was playing. The page's setup stays in RAM and is not included in saved
 settings; a song carries its own mode in its `MIDI` chunk.
 
-MIDI follows STATUS in the large main menu. The options page shows ten compact rows
-at the font's own size, including CLOCK and CLOCK OUT. Turning ALGORITHM names the selected item
+MIDI follows STATUS in the large main menu. The options page shows six rows at 2×, like the
+main menu; its title bar says which of the ten items is selected, and it scrolls to CLOCK and
+CLOCK OUT. It opens in a cut, the title bar and the help first and then its lines two a frame
+(four frames, 0.16 s: a frame of it stays within the page's `ui_poll` bound). Turning ALGORITHM
+names the selected item
 and its value in the large value popup; closing it restores the page underneath.
 
 | Item | Values | What |

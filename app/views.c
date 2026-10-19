@@ -28,6 +28,8 @@
 /* The cells a frame of the menu sends at most (LIVE, SCENE and CHIP hold to 200: 17.5 ms of SPI
  * with their windows). */
 #define MENU_FRAME_CELLS 190u
+/* The lines the MIDI page draws in a frame: the compose's cost is its ui_poll's. */
+#define MIDI_LINES 2u
 /* A control asked for the popup (views_encoder, master_moved): ASK_BASE, its encoder (a K
  * knob, ALGORITHM, ASK_MASTER for the MASTER pot) and ASK_EDIT when EDIT was held. */
 #define ASK_BASE 0x20u
@@ -914,7 +916,7 @@ static void about_open(void* ctx, int32_t steps) {
 static void midi_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
-    screen_push(&v->s, &views_midi, v, SCREEN_WIPE_DOWN);
+    screen_push(&v->s, &views_midi, v, SCREEN_CUT);
 }
 
 /* PRE is PRESET and ROWS TRACKER ROWS: the 14-character lines hold the longest preset name
@@ -980,40 +982,55 @@ static int menu_changed(screen* s, void* state) {
     return v->home.pending || looks_changed(v, 0, 1);
 }
 
-static void menu_compose(screen* s, void* state, grid* g) {
-    views* v = state;
+/* What a menu page at 2x draws besides its lines (big_menu_compose). */
+#define MENU_PART_BLANK 1u /* the rest of the screen */
+#define MENU_PART_TITLE 2u /* the title bar */
+#define MENU_PART_HELP 4u  /* what the encoders do */
+#define MENU_PART_LINES 8u /* the items */
+
+/* A menu page at 2x: the title bar (title, and the item the cursor is on, of how many), the
+ * lines, the help; `parts` says which of the others are drawn. The main menu draws all every
+ * frame; a page with menu.lines only what its own compose finds missing. */
+static void big_menu_compose(screen* s, views* v, menu* m, const char* title, grid* g,
+                             uint32_t parts) {
     const theme* th = theme_get(v->l->theme);
     const uint8_t text = THEME_ATTR(th, hint);
     /* Every blank cell the menu draws has this attribute: the lines' own (menu_draw's) and the
      * rest of the screen's, so that a scroll sends no blank for a colour nobody sees. */
     const uint8_t blank = GRID_ATTR(th->menu_item, th->bg);
     const uint8_t head_attr = GRID_ATTR(th->title_fg, th->title_bg);
-    v->home.sel_attr = GRID_ATTR(th->sel_fg, th->sel_bg); /* the selected line */
-    v->home.value_attr = GRID_ATTR(th->menu_value, th->bg);
-    menu_look(v, 0, v->drawn);
-    /* Not the lines (menu_draw): the rest of the screen blank, the title bar and the help. */
-    grid_fill(g, 0, 0, GRID_COLS, MENU_ROW, ' ', blank);
-    grid_fill(g, 0, MENU_ROW + 3u * VIEWS_MENU_SHOWN, GRID_COLS,
-              GRID_ROWS - MENU_ROW - 3u * VIEWS_MENU_SHOWN, ' ', blank);
-    /* The title bar: MENU and the item the cursor is on, of how many. */
-    char head[MENU_CHARS + 1u];
-    char pos[8];
-    char num[4];
-    number_text(num, v->home.cursor + 1u);
-    join(pos, sizeof pos, num, "/");
-    number_text(num, VIEWS_MENU_ITEMS);
-    append(pos, sizeof pos, num);
-    join(head, sizeof head, "MENU", "");
-    uint32_t n = length(head);
-    while (n < sizeof head - 1u - length(pos)) {
-        head[n++] = ' ';
+    m->sel_attr = GRID_ATTR(th->sel_fg, th->sel_bg); /* the selected line */
+    m->value_attr = GRID_ATTR(th->menu_value, th->bg);
+    if (parts & MENU_PART_BLANK) {
+        /* Not the lines (menu_draw), the title bar or the help's text: the rest of the screen
+         * blank. */
+        grid_fill(g, 0, 0, GRID_COLS, MENU_ROW, ' ', blank);
+        grid_fill(g, 0, MENU_ROW + 3u * m->rows, GRID_COLS,
+                  MENU_HELP_ROW - MENU_ROW - 3u * m->rows, ' ', blank);
+        grid_fill(g, 0, MENU_HELP_ROW, 1, 4, ' ', blank);
+        grid_fill(g, 25, MENU_HELP_ROW, GRID_COLS - 25u, 4, ' ', blank);
+        grid_fill(g, 0, MENU_HELP_ROW + 4u, GRID_COLS, GRID_ROWS - MENU_HELP_ROW - 4u, ' ', blank);
     }
-    head[n] = 0;
-    append(head, sizeof head, pos);
-    head[6] = v->home.top > 0 ? (char)FONT_ARROW_UP : ' ';
-    head[7] = v->home.top + VIEWS_MENU_SHOWN < VIEWS_MENU_ITEMS ? (char)FONT_ARROW_DOWN : ' ';
-    grid_fill(g, 0, 0, GRID_COLS, 3, ' ', head_attr);
-    grid_text_big(g, 1, 1, 2, head, head_attr);
+    if (parts & MENU_PART_TITLE) {
+        char head[MENU_CHARS + 1u];
+        char pos[8];
+        char num[4];
+        number_text(num, m->cursor + 1u);
+        join(pos, sizeof pos, num, "/");
+        number_text(num, m->count);
+        append(pos, sizeof pos, num);
+        join(head, sizeof head, title, "");
+        uint32_t n = length(head);
+        while (n < sizeof head - 1u - length(pos)) {
+            head[n++] = ' ';
+        }
+        head[n] = 0;
+        append(head, sizeof head, pos);
+        head[6] = m->top > 0 ? (char)FONT_ARROW_UP : ' ';
+        head[7] = m->top + m->rows < m->count ? (char)FONT_ARROW_DOWN : ' ';
+        grid_fill(g, 0, 0, GRID_COLS, 3, ' ', head_attr);
+        grid_text_big(g, 1, 1, 2, head, head_attr);
+    }
     /* Lines while the frame stays within MENU_FRAME_CELLS, less what the popup or a toast draws
      * the same frame (screen_layer_cells): a line is up to 60 cells, a scroll in one frame
      * would send 250. Except the lines something drew over or a view switch left. */
@@ -1021,21 +1038,41 @@ static void menu_compose(screen* s, void* state, grid* g) {
     if (s->popup && s->popup->rows) {
         layers += MENU_LINE_CELLS;
     }
-    v->home.budget = (uint16_t)(MENU_FRAME_CELLS > layers ? MENU_FRAME_CELLS - layers : 1u);
-    v->home.force_rows = s->redraw ? s->redraw_rows : 0u;
-    v->home.force_rows |= layers || s->redraw_rows != (1u << GRID_ROWS) - 1u ? MENU_BUDGET_FORCED : 0u;
-    menu_draw(&v->home, g, 0, MENU_ROW, GRID_COLS, blank, 0);
-    /* What the encoders do (ALG is ALGORITHM): HOME goes back, as everywhere. */
-    grid_text_big(g, 1, MENU_HELP_ROW, 2, "SELECT  MOVE", text);
-    grid_text_big(g, 1, MENU_HELP_ROW + 2u, 2, "ALG   CHANGE", text);
+    m->budget = (uint16_t)(MENU_FRAME_CELLS > layers ? MENU_FRAME_CELLS - layers : 1u);
+    m->force_rows = s->redraw ? s->redraw_rows : 0u;
+    if (m->lines) {
+        m->lines = layers || s->redraw ? 1u : MIDI_LINES;
+        /* A whole redraw, a view switch, is no reason to draw what the grid shows already: the
+         * lines are compared with it. */
+        if (s->redraw_rows == (1u << GRID_ROWS) - 1u) {
+            m->force_rows = 0;
+        }
+        m->force_rows |= MENU_BUDGET_FORCED;
+    } else {
+        m->force_rows |= layers || s->redraw_rows != (1u << GRID_ROWS) - 1u ? MENU_BUDGET_FORCED : 0u;
+    }
+    if (parts & MENU_PART_LINES) {
+        menu_draw(m, g, 0, MENU_ROW, GRID_COLS, blank, 0);
+    } else {
+        m->pending = 1; /* the next frame */
+    }
+    if (parts & MENU_PART_HELP) {
+        /* What the encoders do (ALG is ALGORITHM): HOME goes back, as everywhere. */
+        grid_text_big(g, 1, MENU_HELP_ROW, 2, "SELECT  MOVE", text);
+        grid_text_big(g, 1, MENU_HELP_ROW + 2u, 2, "ALG   CHANGE", text);
+    }
+}
+
+static void menu_compose(screen* s, void* state, grid* g) {
+    views* v = state;
+    menu_look(v, 0, v->drawn);
+    big_menu_compose(s, v, &v->home, "MENU", g,
+                     MENU_PART_BLANK | MENU_PART_TITLE | MENU_PART_HELP | MENU_PART_LINES);
 }
 
 const view views_menu = {"MENU", NULL, NULL, menu_input, menu_compose, menu_changed};
 
 /* ---- MIDI ---- */
-
-#define MIDI_MENU_COL 2u
-#define MIDI_MENU_W 26u
 
 /* The page's items edit a copy of the setup, which midi_route_set takes whole. */
 static int midi_setup(const views* v, midi_route_setup* out) {
@@ -1238,7 +1275,7 @@ static const menu_item MIDI_ITEMS[VIEWS_MIDI_ITEMS] = {
     {"CLOCK", clock_value, clock_turn},      {"CLOCK OUT", clock_out_value, clock_out_turn},
 };
 
-static void midi_look(const views* v, uint32_t blink, uint8_t out[VIEWS_MIDI_LOOK]) {
+static void midi_look(const views* v, uint8_t out[VIEWS_MIDI_LOOK]) {
     midi_route_setup s;
     if (!midi_setup(v, &s)) {
         midi_route_setup_default(&s);
@@ -1253,7 +1290,7 @@ static void midi_look(const views* v, uint32_t blink, uint8_t out[VIEWS_MIDI_LOO
     out[7] = s.rows_per_beat;
     out[8] = v->midi.cursor;
     out[9] = v->midi.top;
-    out[10] = (uint8_t)blink;
+    out[10] = 0;
     out[11] = v->route != NULL;
     out[12] = v->sync ? v->sync->mode : 0xffu;
     out[13] = v->sync ? v->sync->clock_out : 0xffu;
@@ -1266,47 +1303,55 @@ static int midi_input(screen* s, void* state, const screen_event* e) {
         return 0;
     }
     if (e->id == PANEL_ENC_SELECT) {
+        uint8_t was = v->midi.cursor;
         menu_move(&v->midi, e->steps);
+        sound(v, v->midi.cursor != was ? UI_SOUND_BLIP : UI_SOUND_BUZZ);
         return 1;
     }
     if (e->id == PANEL_ENC_ALGORITHM) {
+        uint8_t before[VIEWS_MIDI_LOOK];
+        uint8_t after[VIEWS_MIDI_LOOK];
+        midi_look(v, before);
         menu_turn(&v->midi, e->steps);
+        midi_look(v, after);
+        sound(v, memcmp(before, after, sizeof before) ? UI_SOUND_CONFIRM : UI_SOUND_BUZZ);
         return 1;
     }
     return 0;
 }
 
 static int midi_changed(screen* s, void* state) {
+    (void)s;
     const views* v = state;
     uint8_t now[VIEWS_MIDI_LOOK];
-    midi_look(v, (uint32_t)screen_blink(s), now);
-    for (uint32_t i = 0; i < VIEWS_MIDI_LOOK; i++) {
-        if (now[i] != v->midi_drawn[i]) {
-            return 1;
-        }
-    }
-    return 0;
+    midi_look(v, now);
+    return v->midi.pending || memcmp(now, v->midi_drawn, sizeof now) != 0;
 }
 
 static void midi_compose(screen* s, void* state, grid* g) {
     views* v = state;
-    const theme* th = theme_get(v->l->theme);
-    const uint8_t ring = THEME_ATTR(th, dim);
-    const uint8_t text = GRID_ATTR(th->label, th->bg);
-    const uint8_t item = GRID_ATTR(th->menu_item, th->bg);
-    midi_look(v, (uint32_t)screen_blink(s), v->midi_drawn);
-    widget_screen(g, FONT_FULL, ring);
-    grid_text(g, 2, 2, "SIDOU", GRID_ATTR(th->hot, th->bg));
-    grid_text(g, VERSION_END_COL - length(v->version), 2, v->version, text);
-    widget_frame(g, MIDI_MENU_COL, MENU_ROW, MIDI_MENU_W, v->midi.rows + 2u, text, "MIDI");
-    v->midi.value_attr = 0;
-    menu_draw(&v->midi, g, MIDI_MENU_COL + 1u, MENU_ROW + 1u, MIDI_MENU_W - 2u, item,
-              screen_blink(s));
-    uint32_t help = MENU_ROW + v->midi.rows + 3u;
-    grid_text(g, 2, help, "SELECT     MOVE", text);
-    grid_text(g, 2, help + 1u, "ALGORITHM  CHANGE", text);
-    grid_text(g, 2, help + 2u, "HOME       BACK", text);
-    grid_text(g, 2, 26, "READY.", GRID_ATTR(th->value, th->bg));
+    uint8_t cursor = v->midi_drawn[8];
+    uint8_t top = v->midi_drawn[9];
+    midi_look(v, v->midi_drawn);
+    uint32_t parts = MENU_PART_LINES;
+    if (s->redraw) {
+        /* A view switch: the screen's own parts first, the lines from the next frame (a frame
+         * is a ui_poll of at most 23k instructions: the blank, the title bar and the help, or
+         * two lines); something drew over the page: all of it, the lines at one a frame. */
+        parts |= MENU_PART_BLANK | MENU_PART_TITLE | MENU_PART_HELP;
+        if (s->redraw_rows == (1u << GRID_ROWS) - 1u) {
+            parts &= ~MENU_PART_LINES;
+        }
+    } else if (cursor != v->midi_drawn[8] || top != v->midi_drawn[9]) {
+        parts |= MENU_PART_TITLE;
+    }
+    big_menu_compose(s, v, &v->midi, "MIDI", g, parts);
+    /* The frame's first ui_poll renders two runs: of a page's big lines, the two rows of one
+     * line, 23.5k instructions against the page's 23k. A first run of one cell makes it one run
+     * and the next: the top left cell, blank in either colour, scanned first. */
+    g->scan_row = 0;
+    g->scan_col = 0;
+    grid_put(g, 0, 0, ' ', (uint8_t)(g->shown_attr[0] ^ 1u));
 }
 
 const view views_midi = {"MIDI", NULL, NULL, midi_input, midi_compose, midi_changed};
@@ -1501,7 +1546,9 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     menu_init(&v->home, MENU_ITEMS, VIEWS_MENU_ITEMS, VIEWS_MENU_SHOWN, v);
     v->home.scale = 2;
     v->home.sel_attr = GRID_ATTR(theme_get(l->theme)->sel_fg, theme_get(l->theme)->sel_bg);
-    menu_init(&v->midi, MIDI_ITEMS, VIEWS_MIDI_ITEMS, VIEWS_MIDI_ITEMS, v);
+    menu_init(&v->midi, MIDI_ITEMS, VIEWS_MIDI_ITEMS, VIEWS_MENU_SHOWN, v);
+    v->midi.scale = 2;
+    v->midi.lines = MIDI_LINES;
     v->route = NULL;
     v->sync = NULL;
     remember(v);

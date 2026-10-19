@@ -441,3 +441,58 @@ fn a_menu_at_scale_two_draws_large_lines_a_quota_at_a_time_and_only_what_changed
     assert!(line.starts_with("OPEN"), "{line}");
     assert_eq!(line.chars().last().unwrap() as u32, FONT_ARROW_RIGHT);
 }
+
+#[test]
+fn a_menu_with_a_line_limit_draws_that_many_a_call_with_the_pixels_of_one_without() {
+    let its = items();
+    let a = attr(GRID_LIGHT_BLUE, GRID_BLUE);
+    let sel = attr(GRID_BLUE, GRID_LIGHT_BLUE);
+    let mut c1 = Ctx {
+        level: 7,
+        ..Ctx::default()
+    };
+    let mut c2 = Ctx {
+        level: 7,
+        ..Ctx::default()
+    };
+    let mut free = new_menu(&its, 5, &mut c1);
+    let mut capped = new_menu(&its, 5, &mut c2);
+    for m in [&mut free, &mut capped] {
+        m.scale = 2;
+        m.sel_attr = sel;
+    }
+    capped.lines = 2;
+    let mut gf = new_grid();
+    let mut gc = new_grid();
+    unsafe { menu_draw(&mut free, &mut *gf, 0, 4, 30, a, 0) };
+    assert_eq!(free.pending, 0);
+    let mut calls = 0;
+    loop {
+        // Whatever the budget says, `lines` is the limit: 190 cells would fit three lines.
+        capped.budget = 190;
+        unsafe { menu_draw(&mut capped, &mut *gc, 0, 4, 30, a, 0) };
+        let drawn = capped.valid.count_ones();
+        calls += 1;
+        assert_eq!(drawn as usize, (2 * calls).min(5), "call {calls}");
+        if capped.pending == 0 {
+            break;
+        }
+        assert!(calls < 4);
+    }
+    assert_eq!(calls, 3, "five lines, two a call");
+    let palette = unsafe { grid_palette };
+    for row in 4..19u8 {
+        let run = grid_run {
+            row,
+            col: 0,
+            len: 30,
+        };
+        let mut x = vec![0u16; 240 * 8];
+        let mut y = x.clone();
+        unsafe {
+            grid_render_run(&*gf, &run, palette.as_ptr(), x.as_mut_ptr());
+            grid_render_run(&*gc, &run, palette.as_ptr(), y.as_mut_ptr());
+        }
+        assert_eq!(x, y, "row {row}");
+    }
+}

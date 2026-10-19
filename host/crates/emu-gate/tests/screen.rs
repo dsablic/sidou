@@ -52,7 +52,6 @@ const MENU_CHARSET: i32 = sidou_sys::VIEWS_MENU_CHARSET as i32;
 const MENU_ABOUT: i32 = sidou_sys::VIEWS_MENU_ABOUT as i32;
 const MENU_ITEMS: i32 = sidou_sys::VIEWS_MENU_ITEMS as i32;
 const MENU_MIDI: i32 = sidou_sys::VIEWS_MENU_MIDI as i32;
-const MENU_CURSOR: (usize, usize, usize) = (3, 5, 1);
 /// app/screen.h: the toast's row.
 const TOAST_ROW: usize = 27;
 /// The art palette (docs/art/README.md) in sRGB; the panel gets its RGB565 truncation.
@@ -631,7 +630,34 @@ fn a_popup_ask_keeps_the_input_and_the_passes_within_the_allowance() {
 /// The MIDI page (M2e Task 3, app/views.c): its golden image, the wipe that opens it and an
 /// edit of MODE within the views' budgets, and the edit reaching MIDI's mode.
 #[test]
-fn the_midi_page_matches_its_golden_image_and_stays_within_the_budgets() {
+fn the_midi_page_popup_names_the_item_and_its_value() {
+    let Some((build, fw)) = fixture("the MIDI page popup") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_menu(&mut m, &fw);
+    select(&mut m, MENU_MIDI);
+    m.turn(ALGORITHM, 1);
+    settle(&mut m, &fw);
+    m.turn(SELECT, 1);
+    m.run_ms(40);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(200);
+    common::to_mid_frame(&mut m, &fw);
+    let mut text = |offset: usize| {
+        let bytes: Vec<u8> = (0..sidou_sys::SCREEN_POPUP_TEXT as usize)
+            .map(|i| ui_byte(&mut m, &fw, sidou_sys::ilp32::views::popup + offset + i))
+            .take_while(|&b| b != 0)
+            .collect();
+        String::from_utf8(bytes).unwrap()
+    };
+    assert_eq!(text(sidou_sys::ilp32::screen_popup_state::name), "CHANNEL");
+    assert_eq!(text(sidou_sys::ilp32::screen_popup_state::value), "2");
+    compare_golden(&build, "midi-popup", &m.soc.lcd.fb, &[]);
+}
+
+#[test]
+fn the_midi_page_at_2x_matches_its_golden_and_stays_within_190_cells() {
     let Some((build, fw)) = fixture("the MIDI page test") else {
         return;
     };
@@ -643,7 +669,7 @@ fn the_midi_page_matches_its_golden_image_and_stays_within_the_budgets() {
     settle(&mut m, &fw);
     let open = measure(&mut m, &fw, 16, |m| m.turn(ALGORITHM, 1));
     settle(&mut m, &fw);
-    compare_golden(&build, "midi", &m.soc.lcd.fb, &[VERSION_CELLS, MENU_CURSOR]);
+    compare_golden(&build, "midi", &m.soc.lcd.fb, &[]);
     let idle = measure(&mut m, &fw, 16, |_| {});
     let edit = measure(&mut m, &fw, 8, |m| m.turn(ALGORITHM, -3));
     let mode = m.soc.read8(
@@ -656,6 +682,9 @@ fn the_midi_page_matches_its_golden_image_and_stays_within_the_budgets() {
         sidou_sys::MIDI_MODE_MULTI as u8,
         "MODE did not reach the router"
     );
+    let scroll: Vec<Cost> = (0..9)
+        .map(|_| measure(&mut m, &fw, 4, |m| m.turn(SELECT, 1)))
+        .collect();
     println!(
         "{}",
         serde_json::json!({
@@ -664,7 +693,14 @@ fn the_midi_page_matches_its_golden_image_and_stays_within_the_budgets() {
             "midi_page_mode_edit": edit.json(),
         })
     );
-    for (what, c) in [("open", &open), ("idle", &idle), ("edit", &edit)] {
+    for (what, c) in [("open", &open), ("idle", &idle), ("edit", &edit)]
+        .into_iter()
+        .chain(scroll.iter().map(|c| ("scroll", c)))
+    {
+        assert!(
+            c.frames.iter().all(|f| cells(f) <= 190),
+            "MIDI {what}: over 190 cells"
+        );
         assert!(
             c.worst_frame_ms() <= SPI_BUDGET_MS,
             "the MIDI page's {what}: a frame took {:.1} ms of SPI",
@@ -676,10 +712,10 @@ fn the_midi_page_matches_its_golden_image_and_stays_within_the_budgets() {
             c.worst_poll
         );
     }
-    assert!(
-        idle.total().windows <= 2,
-        "{} windows idle on the MIDI page",
-        idle.total().windows
+    assert_eq!(
+        idle.total().windows,
+        0,
+        "the large MIDI list must not blink"
     );
 }
 
