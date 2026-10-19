@@ -12,6 +12,14 @@ All notable changes are documented here. The format follows
 - Ergonomics: **DICE**, a place after NOISE PERC on PRESETS: each turn rolls a new sound (waveform,
   envelope, cutoff, resonance, filter, pulse width, now and then a vibrato) and leaves the effect
   slots alone; turning back and forth brings the last roll back. MIDI program changes stay 0..3.
+- **STEP, the song made like a drum machine** (M2d Task 5): the 16 leftmost note keys are
+  steps 1-16 of the selected voice's pattern (a tap toggles a note, with a key off after it on
+  a staccato lane, or none on a legato one: ARP), SELECT picks the lane, ALGORITHM pages,
+  PRESETS sets the lane's instrument or a held step's note. A **held step plus a knob** is a
+  parameter lock for that row only (K1 cutoff, K2 resonance, K3 pulse width, with EDIT the
+  character), and K4 writes GoatTracker's own `7XY` waveform command, which holds as it does
+  there: two kinds, one meaning each, shown apart (`LOCK` yellow, `SET` cyan). SEQ now steps
+  STEP, TRACKER, ORDER, INSTR, TABLE and round.
 - Ergonomics: SCENE's FIRE keeps a low flame in silence, the piece's name is toasted on entry,
   and ALGORITHM steps the piece like SELECT.
 - Ergonomics: an effect algorithm picked from the panel (ENV, CHIP's ALGORITHM on a slot) starts

@@ -670,6 +670,7 @@ fn rec_keys_before_compose_follow_tracker_not_the_borrowed_canvas() {
                 s.ui.press(PANEL_BTN_HOME);
                 s.ui.press(PANEL_BTN_HOME);
                 s.ui.press(PANEL_BTN_SEQ);
+                s.ui.press(PANEL_BTN_SEQ);
             }
             assert_eq!(s.ui.top(), "TRACKER");
             if covered {
@@ -701,6 +702,7 @@ fn rec_keys_survive_a_nested_tracker_above_midi_learn() {
     s.ui.learn_on(PANEL_ENC_K1);
     assert_eq!(s.ui.top(), "LEARN");
     s.ui.press(PANEL_BTN_SEQ);
+    s.ui.press(PANEL_BTN_SEQ);
     assert_eq!(s.ui.top(), "TRACKER");
     settle(&mut s.ui);
     s.ui.press(PANEL_BTN_HOME);
@@ -728,6 +730,7 @@ fn learn_completion_under_a_nested_tracker_waits_to_pop_its_own_view() {
         }
         s.ui.learn_on(PANEL_ENC_K1);
         assert_eq!(s.ui.top(), "LEARN");
+        s.ui.press(PANEL_BTN_SEQ);
         s.ui.press(PANEL_BTN_SEQ);
         assert_eq!(s.ui.top(), "TRACKER");
         if save {
@@ -792,6 +795,7 @@ fn rec_keys_and_knobs_edit_the_shown_pattern_with_one_step_undo() {
 #[test]
 fn rec_dispatch_uses_the_active_view_before_the_first_compose_not_the_canvas_owner() {
     let mut s = Song::playing(Some(fixed_song()));
+    s.ui.press(PANEL_BTN_SEQ);
     s.ui.press(PANEL_BTN_SEQ);
     assert_ne!(s.ui.v.song.which, SONG_VIEW_TRACKER as u8);
     s.ui.press(PANEL_BTN_REC);

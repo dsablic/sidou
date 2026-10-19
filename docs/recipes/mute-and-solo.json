@@ -18,8 +18,8 @@
   ],
   "steps": [
     {
-      "caption": "SEQ opens the TRACKER over LIVE.",
-      "control": "Press SEQ",
+      "caption": "SEQ opens STEP over LIVE, SEQ again the TRACKER.",
+      "control": "Press SEQ twice",
       "expect": [
         {
           "kind": "view",
@@ -37,6 +37,10 @@
       },
       "id": "open-the-song",
       "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
         {
           "button": "SEQ",
           "op": "press"

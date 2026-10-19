@@ -272,8 +272,10 @@ which printed control did it.
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the status screen and the CHIP view; Mix as LIVE's bar), in every view; EDIT lit while the slot is on | | [ ] |
 | HOME (button 8) | from LIVE, the menu (a wipe down from the top); in the menu, back to LIVE behind THE OSCILLATOR's title card (below; with CARDS OFF, a wipe up from the bottom) | | [ ] |
 | SAVE (button 9) | clean release saves (7.1–7.2); held + knob learns (7) | | [ ] |
-| SEQ (button 11) | from any view, TRACKER; then ORDER, INSTR, TABLE and back to TRACKER. Each page's primary values are readable at 2×; HOME returns to the previous non-song view | | [ ] |
+| SEQ (button 11) | from any view, STEP; then TRACKER, ORDER, INSTR, TABLE and back to STEP. Each page's primary values are readable at 2×; HOME returns to the previous non-song view | | [ ] |
 | SELECT / ALGORITHM, in TRACKER | SELECT moves one row (EDIT held: an 8-row page); ALGORITHM shows V2 in cyan, V3 in light green, then V1 again; the cursor's voice and audition follow the voice shown | | [ ] |
+| STEP (SEQ from LIVE) | the 16 leftmost keys are steps: tap one, a ball appears on the lane (V1 selected, the arrow) and the key's pad turns the lane's colour; tap again, it goes. Staccato (the default) writes a key off on the next empty row; ARP switches the lane to LEGATO and back. SELECT picks V2, V3; ALGORITHM pages (the page follows the playing step while the song plays); PRESETS sets the lane's instrument, or with a step held that step's note | | [ ] |
+| STEP, a step held | hold a step key and turn K1: the HELD STEP frame comes alive, K1 CUTOFF shows LOCK in yellow with a bar, a yellow notch stays under the step after the key is let go, and nothing toggles; played, only that step's row is darker. K4 on a held step shows SET in cyan (waveform), a cyan notch; on a row that has a command it says ROW HAS A COMMAND. LFO with the step held clears them. Save, then open the song in GoatTracker: the SETs play there as here | | [ ] |
 | TRACKER ROWS in the menu | BAR: while SIDOU LOOP plays the bar moves down still rows, and the rows change cleanly at each new pattern; SCROLL: the bar stays on the middle row and the rows move up, smoothly at this tempo or a frame behind at most | | [ ] |
 | PLAY (button 12) | SIDOU LOOP plays (a lead, a bass and drums, in time, no clicks between rows), in any view; TRACKER's header shows a play mark and the rows move (the bar, and the strips' tall bars where the other voices play notes); PLAY again stops it and the notes ring out; EDIT + PLAY goes on from there; PLAY's LED lit while it plays | | [ ] |
 | REC (button 13) | REC in red under TRACKER's play mark, and off again | | [ ] |
@@ -390,6 +392,10 @@ hand, in the HIGH CONTRAST theme (the default) and again after THEME to C64 in t
   voices' strips show where they play; the row numbers and the commands (small) are legible
   in the hand. SELECT switches voices without a flicker. Mute a voice: its number and strip
   are visibly grey. Note anything you cannot read.
+- [ ] **STEP**: the lanes' balls (a note) against the dark squares (none) and the white
+  playing step read from across the desk; the pads under them show the same steps in the lane's
+  colour, the held one yellow. The HELD STEP frame's names (K1 CUTOFF ...), LOCK and SET are
+  small: note which of it you cannot read in the hand.
 - [ ] **CHIP**: the four tabs, the choice at 3× and the four controls at 3× are readable from
   arm's length; the values in knob order match the knobs under your fingers; three digits at 2×
   (from 100) are still easy. The A/B title and KEYS marker, and the SAVE TO USER n line (yellow,

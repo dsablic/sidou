@@ -100,7 +100,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "K1 (TRACKER)",
-        setup: "press SEQ",
+        setup: "press SEQ; press SEQ",
         input: Input::Turn(panel::K1),
     },
 ];

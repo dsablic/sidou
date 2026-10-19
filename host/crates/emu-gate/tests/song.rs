@@ -251,6 +251,8 @@ fn a_four_note_tracker_phrase_is_the_expected_song_and_plays_bit_exact() {
     let mut expected = demo();
     let order = unsafe { gt2_order_data(expected.ptr(), 0, 0) };
     let pattern = u32::from(unsafe { *order });
+    press(&mut m, PANEL_BTN_SEQ as u8); // STEP, then TRACKER
+    m.run_ms(300);
     press(&mut m, PANEL_BTN_SEQ as u8);
     m.run_ms(500);
     press(&mut m, PANEL_BTN_REC as u8);
@@ -320,6 +322,263 @@ fn a_four_note_tracker_phrase_is_the_expected_song_and_plays_bit_exact() {
     check_song("TRACKER four-note phrase", &fw, Some(&actual));
 }
 
+/// What STEP's toggle does to a pattern (app/step_view.h): a rest or key off becomes the lane's
+/// note C-3 with instrument 1, an existing note a rest, and on a staccato lane the key off after
+/// a note (on the next row if that is a rest; where the row before holds a note, the removed
+/// note's row is a key off).
+fn step_toggle(song: &mut Song, pattern: u32, row: u32) {
+    let rows = unsafe { gt2_pattern_rows(song.ptr(), pattern) } - 1;
+    let cell = |s: &Song, r: u32| -> [u8; 4] {
+        let d = unsafe {
+            std::slice::from_raw_parts(gt2_pattern_data(s.ptr(), pattern), 4 * rows as usize)
+        };
+        d[4 * r as usize..4 * r as usize + 4].try_into().unwrap()
+    };
+    let is_note = |n: u8| (GT2_FIRSTNOTE as u8..=GT2_LASTNOTE as u8).contains(&n);
+    let write = |s: &mut Song, r: u32, c: [u8; 4]| {
+        let mut edit = gt2_edit::default();
+        unsafe {
+            assert_eq!(
+                gt2_set_row(s.ptr_mut(), pattern, r, c.as_ptr(), &mut edit),
+                GT2_OK
+            );
+            gt2_edit_commit(s.ptr_mut(), &edit);
+        }
+    };
+    let mut c = cell(song, row);
+    let next = (row + 1 < rows).then(|| cell(song, row + 1));
+    if is_note(c[0]) {
+        let after_note = row > 0 && is_note(cell(song, row - 1)[0]);
+        c[0] = if after_note {
+            GT2_KEYOFF as u8
+        } else {
+            GT2_REST as u8
+        };
+        c[1] = 0;
+        write(song, row, c);
+        if let Some(mut n) = next {
+            if n[0] == GT2_KEYOFF as u8 && n[1] == 0 && n[2] == 0 {
+                n[0] = GT2_REST as u8;
+                write(song, row + 1, n);
+            }
+        }
+    } else {
+        c[0] = GT2_FIRSTNOTE as u8 + 36;
+        c[1] = 1;
+        write(song, row, c);
+        if let Some(mut n) = next {
+            if n[0] == GT2_REST as u8 {
+                n[0] = GT2_KEYOFF as u8;
+                write(song, row + 1, n);
+            }
+        }
+    }
+}
+
+/// STEP (M2d Task 5): steps toggled from the keys, a lock on one held step and a SET on another,
+/// make the expected song (the model's own edits, independently applied), and it plays bit-exact
+/// with the host, the lock in the host's render too.
+#[test]
+fn a_pattern_programmed_on_step_is_the_expected_song_and_plays_bit_exact() {
+    let Some((_, fw)) = fixture("the STEP programming test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    let mut expected = demo();
+    // V2's first pattern.
+    let order = unsafe { gt2_order_data(expected.ptr(), 0, 1) };
+    let pattern = u32::from(unsafe { *order });
+    let rows = unsafe { gt2_pattern_rows(expected.ptr(), pattern) } - 1;
+    press(&mut m, PANEL_BTN_SEQ as u8);
+    m.run_ms(500);
+    m.turn(PANEL_ENC_SELECT as u8, 1);
+    m.run_ms(300);
+    let key = |m: &mut Machine, k: u32, down: bool| m.key(PANEL_KEY_ID0 as u8 + k as u8, down);
+    for step in [2u32, 9, 12, 5, 2] {
+        key(&mut m, step, true);
+        m.run_ms(30);
+        key(&mut m, step, false);
+        m.run_ms(400);
+        step_toggle(&mut expected, pattern, step);
+    }
+    // A lock on step 7 (K1 four detents up from the middle), a SET on a step whose command
+    // column is free (K4 two detents: sawtooth).
+    assert!(rows >= 16);
+    key(&mut m, 7, true);
+    m.run_ms(60);
+    m.turn(PANEL_ENC_K1 as u8, 4);
+    m.run_ms(300);
+    key(&mut m, 7, false);
+    m.run_ms(300);
+    let free = (0..16u32)
+        .find(|&r| {
+            let d = unsafe { gt2_pattern_data(expected.ptr(), pattern) };
+            let c = unsafe { std::slice::from_raw_parts(d.add(4 * r as usize), 4) };
+            r != 7 && c[2] == 0
+        })
+        .expect("a row with no command");
+    key(&mut m, free, true);
+    m.run_ms(60);
+    m.turn(PANEL_ENC_K1 as u8 + 3, 2);
+    m.run_ms(300);
+    key(&mut m, free, false);
+    m.run_ms(300);
+    {
+        let d = unsafe { gt2_pattern_data(expected.ptr(), pattern) };
+        let mut c: [u8; 4] = unsafe { std::slice::from_raw_parts(d.add(4 * free as usize), 4) }
+            .try_into()
+            .unwrap();
+        c[2] = 7;
+        c[3] = 0x21;
+        let mut edit = gt2_edit::default();
+        unsafe {
+            assert_eq!(
+                gt2_set_row(expected.ptr_mut(), pattern, free, c.as_ptr(), &mut edit),
+                GT2_OK
+            );
+            gt2_edit_commit(expected.ptr_mut(), &edit);
+        }
+    }
+    let mut actual = Song::device();
+    let base = fw.symbol("__song_region");
+    let bytes = unsafe {
+        std::slice::from_raw_parts_mut(actual.ptr_mut().cast::<u8>(), SONG_REGION_BYTES as usize)
+    };
+    for (i, byte) in bytes.iter_mut().enumerate() {
+        *byte = m.soc.read8(base + i as u32);
+    }
+    assert_eq!(
+        actual.write(false),
+        expected.write(false),
+        "the keys programmed the expected GT2 data"
+    );
+    for (tag, data) in actual.ext_chunks() {
+        if tag != sidou_tests::song::TAG_LOCK && expected.ext_find(tag).is_none() {
+            assert!(
+                [
+                    sidou_tests::song::TAG_CHPA,
+                    sidou_tests::song::TAG_CHPB,
+                    sidou_tests::song::TAG_OPTS,
+                    sidou_tests::song::TAG_KEYS,
+                    sidou_tests::song::TAG_SLOT,
+                    sidou_tests::song::TAG_MIDI
+                ]
+                .contains(&tag),
+                "unexpected audition metadata tag {tag:#x}"
+            );
+            assert_eq!(expected.ext_set(tag, &data), 0);
+        }
+    }
+    // The lock went in after the audition's chunks, as the chunks stand in the file.
+    assert_eq!(
+        unsafe {
+            song_lock_put(
+                expected.ptr_mut(),
+                pattern,
+                7,
+                SONG_LOCK_CUTOFF,
+                1024 + 4 * 32,
+            )
+        },
+        0
+    );
+    assert_eq!(
+        actual.write(true),
+        expected.write(true),
+        "the keys programmed the expected song, lock included"
+    );
+    check_song("STEP-programmed pattern", &fw, Some(&actual));
+}
+
+/// STEP (M2d Task 5): a step held and K1 turned down locks that step's cutoff; SIDOU LOOP's
+/// lead bar locked step by step from the keys plays bit-exact with the host and is darker than
+/// the song without the locks (less of its power above 1.5 kHz), the bar after it as it was.
+#[test]
+fn a_held_step_and_k1_darkens_that_step_bit_exact_with_the_host() {
+    let Some((_, fw)) = fixture("the STEP lock spectrum test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    let key = |m: &mut Machine, k: u32, down: bool| m.key(PANEL_KEY_ID0 as u8 + k as u8, down);
+    press(&mut m, PANEL_BTN_SEQ as u8);
+    m.run_ms(500); // STEP, V1: the lead's first bar (pattern 4), 16 steps
+    for step in 0..16u32 {
+        key(&mut m, step, true);
+        m.run_ms(60);
+        m.turn(PANEL_ENC_K1 as u8, -30); // 1024 - 30 * 32; the emulator turns a detent every 8 ms
+        m.run_ms(300);
+        key(&mut m, step, false);
+        m.run_ms(100);
+    }
+    let mut song = Song::device();
+    let base = fw.symbol("__song_region");
+    let bytes = unsafe {
+        std::slice::from_raw_parts_mut(song.ptr_mut().cast::<u8>(), SONG_REGION_BYTES as usize)
+    };
+    for (i, byte) in bytes.iter_mut().enumerate() {
+        *byte = m.soc.read8(base + i as u32);
+    }
+    let mut got = vec![song_lock::default(); SONG_LOCKS_MAX as usize];
+    let n = unsafe { song_ext_get_locks(song.ptr(), got.as_mut_ptr(), SONG_LOCKS_MAX) } as usize;
+    let got: Vec<_> = got[..n]
+        .iter()
+        .map(|l| (l.pattern, l.row, l.param, l.value))
+        .collect();
+    let want: Vec<_> = (0..16u8)
+        .map(|r| (4u8, r, SONG_LOCK_CUTOFF as u8, 64u16))
+        .collect();
+    assert_eq!(got, want, "a lock on each of the bar's 16 steps");
+    let plain = demo();
+    assert_eq!(song.write(false), plain.write(false), "no step was toggled");
+    let p = check_song("STEP-locked lead", &fw, Some(&song));
+    let host = |s: &Song| {
+        render_host_song(
+            (p.play_block + 400) * HALF_FRAMES + 40 * 6 * 880,
+            &SongPlay {
+                song: s,
+                play_block: p.play_block,
+                ccs: &[],
+                ticks: &[],
+                edits: &[],
+                stop_block: None,
+                b_use_block: p.b_use,
+                b_rewrite_block: p.b_use,
+            },
+        )
+    };
+    let (locked, unlocked) = (host(&song), host(&plain));
+    let left = |v: &[i16], from: usize, n: usize| -> Vec<f32> {
+        v.iter()
+            .step_by(2)
+            .skip(from)
+            .take(n)
+            .map(|&s| f32::from(s))
+            .collect()
+    };
+    let from = p.play_block * HALF_FRAMES + 20 * 880;
+    let dark = power_above(&left(&locked, from, 8192), 1500.0);
+    let bright = power_above(&left(&unlocked, from, 8192), 1500.0);
+    let later = from + 32 * 6 * 880;
+    let (l2, p2) = (
+        power_above(&left(&locked, later, 8192), 1500.0),
+        power_above(&left(&unlocked, later, 8192), 1500.0),
+    );
+    println!(
+        "STEP's locks: the power above 1.5 kHz of the locked bar {dark:.4}, unlocked {bright:.4}; \
+         two bars on {l2:.4} and {p2:.4}"
+    );
+    assert!(
+        dark < 0.85 * bright,
+        "the locked bar is not darker: {dark} against {bright}"
+    );
+    assert!(
+        (l2 - p2).abs() <= 0.05 * p2,
+        "the song's cutoff did not return: {l2} against {p2}"
+    );
+}
+
 #[test]
 fn an_instrument_page_edit_changes_the_next_notes_bit_exact_with_the_host() {
     let Some((_, fw)) = fixture("the INSTR edit audio test") else {
@@ -340,7 +599,7 @@ fn an_instrument_page_edit_changes_the_next_notes_bit_exact_with_the_host() {
     ];
     m.snapshot_buffer(Some((fw.symbol("abuf"), 1)));
     run_past_boot(&mut m, &fw);
-    for _ in 0..3 {
+    for _ in 0..4 {
         press(&mut m, PANEL_BTN_SEQ as u8);
         m.run_ms(400);
     }
@@ -1134,6 +1393,7 @@ fn a_key_in_tracker_auditions_on_chip_a_with_the_song_stopped() {
     };
     let mut m = Machine::boot(&fw.image);
     run_past_boot(&mut m, &fw);
+    press(&mut m, SEQ);
     press(&mut m, SEQ);
     m.run_ms(500);
     let t = transport(&fw);

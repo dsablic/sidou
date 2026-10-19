@@ -815,7 +815,7 @@ fn selected_subtune_drives_play_and_tracker_but_playback_uses_the_actual_subtune
     assert_eq!(h.f.last_subtune, 1);
     assert!(h.calls().contains(&Call::Play(1)));
     h.ui.press(PANEL_BTN_PLAY);
-    for _ in 0..3 {
+    for _ in 0..4 {
         h.ui.press(PANEL_BTN_SEQ);
         settle(&mut h.ui);
     }

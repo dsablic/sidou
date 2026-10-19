@@ -6,6 +6,7 @@
 
 #include "font.h"
 #include "live_view.h"
+#include "step_view.h"
 #include "tracker_view.h"
 #include "song_pages.h"
 
@@ -31,7 +32,7 @@
 
 /* NULL: not made yet (SEQ skips it). */
 static const view* const VIEWS[SONG_VIEW_COUNT] = {
-    NULL, &tracker_view_view, &song_pages_order_view, &song_pages_instr_view, &song_pages_table_view
+    &step_view_view, &tracker_view_view, &song_pages_order_view, &song_pages_instr_view, &song_pages_table_view
 };
 
 int song_view_is(const view* v) {

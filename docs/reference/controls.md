@@ -182,7 +182,7 @@ is SIDOU LOOP until songs load from the store (M2c Task 8).
 
 | Control | Does |
 |---|---|
-| **SEQ** | from any view, opens the first song view over it (HOME goes back to that view); in a song view, the next one: STEP, TRACKER, ORDER, INSTR, TABLE and round (the views not made yet are skipped). The menu's TRACKER opens them too |
+| **SEQ** | from any view, opens the first song view over it (HOME goes back to that view); in a song view, the next one: STEP, TRACKER, ORDER, INSTR, TABLE and round. The menu's TRACKER opens TRACKER |
 | **PLAY** | in every view: plays the song from the orderlist entry the song views show (the cursor's), or stops it (releases ring on). While it starts (the keys moving off chip A, [which chip the keys play](#which-chip-the-keys-play)) it shows as playing; PLAY again stops it |
 | **EDIT held + PLAY** | goes on from where the song stopped (from the cursor if it never played) |
 | **REC** | record mode on and off: REC in red on the song views' top line |
@@ -216,6 +216,51 @@ song plays, the cursor's while it is stopped). The other two voices are the **st
 right: a tall bar where a note sounds on that row of that voice's own pattern, a short one where
 none does, in the voice's colour (dark grey while the song mutes it).
 
+### STEP
+
+STEP (`app/step_view.h`; docs/art/README.md "STEP" shows it) is the song made like a drum
+machine: **the 16 leftmost note keys are steps 1-16** of the selected voice's pattern, and a
+**held step plus a knob is a parameter lock**. It edits the same pattern TRACKER shows, so a
+song made here opens in GoatTracker. The voice is the song views' voice (the lane marked by the
+arrow); a page is 16 rows of its pattern (the pattern's length says how many pages: 64 rows,
+4 pages); B is chip B's lane, greyed until M5. It needs no REC.
+
+| Control | Does |
+|---|---|
+| Step key 1-16, pressed and let go | toggles a note at that step on the selected lane: the lane's note (C-3 until PRESETS with a step held changes it) and instrument; off writes a rest. The key also auditions the step's note, as TRACKER's keys do. A key held with a knob turned on it is a lock (below) and toggles nothing |
+| SELECT | selects the lane, V1, V2, V3 and round |
+| ALGORITHM | pages through the pattern; while the song plays the page follows the playing step |
+| PRESETS | the lane's instrument, 01-3F; with a step held, that step's note (and the lane's note for the steps toggled after it) |
+| ARP | the lane's gate: **STACCATO** (the default) or **LEGATO**, shown under the lane |
+| Step held + K1 | cutoff **LOCK** on that step: 32 of 2047 a detent, from the middle (1024) |
+| Step held + K2 | resonance LOCK, 0-15 |
+| Step held + K3 | pulse width LOCK, 64 of 4095 a detent from the middle (2048) |
+| Step held + K4 | waveform **SET**: OFF, TRI, SAW, PULSE, NOISE |
+| Step held + EDIT + K1-K4 | the character's LOCKs: age/heat, DAC, thump, bleed (0-127) |
+| Step held + LFO | clears that step's locks and its SET |
+| EDIT + LFO | undoes the last cell edit, then redoes it (TRACKER's one step) |
+| Keys 17-27 | audition, as in the other song views |
+| GLO + a step key | the mute or solo of the layer; no step toggles |
+
+**Two kinds, one meaning each.** A **SET** is GoatTracker's own `7XY` command written into the
+step's row (a row with a command already refuses it: `ROW HAS A COMMAND`): the player holds the
+waveform from that row until the next waveform change, as GoatTracker plays it, and a song with
+SETs plays in GoatTracker as it does here. It shows as `SET` in cyan, and on the step as a cyan
+notch. A **LOCK** is SIDOU's: one parameter replaced for that row only (the `LOCK` chunk,
+[song format](song-format.md#sidous-trailer)); the song's own value is back at the next row. It
+shows as `LOCK` in yellow, and on the step as a yellow notch (both: the yellow one, and the
+frame says both). A persistent cutoff change is TRACKER's `CXY` command.
+
+**Gate.** A staccato lane writes a key off on the next row if that row has no note, and takes
+it away with the note; where the row before a removed note holds a note, the removed note's row
+becomes that note's key off. A legato lane writes nothing but the note. Both are real key-off
+rows, so GoatTracker plays them the same.
+
+The edits go to the player one at a time between its blocks; the first key after a pause starts
+the audition, which holds edits for a short time. Taps and knob turns in that time wait in order
+(at most four besides the one being written; a fifth is refused with `WAITING`). Refusals use
+the large toast (`SAVING`, `SONG FULL`, `INVALID EDIT`, `NO SONG`, `LOCKS FULL`).
+
 ### Editing TRACKER
 
 **REC on** enables pattern editing. The row number is a yellow block; the selected note or
@@ -244,7 +289,7 @@ The save-stream and stored-song-size checks are integration hooks until songs on
 
 ### ORDER, INSTR and TABLE
 
-SEQ cycles **TRACKER → ORDER → INSTR → TABLE → TRACKER** (STEP joins when implemented).
+SEQ cycles **STEP → TRACKER → ORDER → INSTR → TABLE → STEP**.
 These pages share TRACKER's high-contrast, 2× values and bounded redraws. They edit the same
 song through the player's queue; no separate instrument or table copy is edited. Values may
 wait for acknowledgement. **SONG FULL**, **SAVING**, **SONG BUSY**, **TIDYING** and invalid-edit

@@ -3953,6 +3953,7 @@ fn live_gated(m: &mut Machine, fw: &Firmware) -> usize {
 
 /// TRACKER from SEQ, settled.
 fn open_tracker(m: &mut Machine, fw: &Firmware) {
+    press(m, SEQ); // STEP, then TRACKER
     press(m, SEQ);
     settle(m, fw);
     assert_eq!(
@@ -4118,7 +4119,7 @@ fn the_song_views_stay_within_their_budgets() {
     let mut costs = Vec::new();
     for (what, id) in [
         ("SEQ from LIVE", SEQ),
-        ("SEQ in TRACKER", SEQ),
+        ("SEQ in STEP", SEQ),
         ("REC", REC),
         ("PLAY", PLAY),
         ("REC again", REC),
@@ -4147,6 +4148,246 @@ fn the_song_views_stay_within_their_budgets() {
     }
     assert!(over.is_empty(), "{over:#?}");
 }
+
+/// STEP from SEQ, settled.
+fn open_step(m: &mut Machine, fw: &Firmware) {
+    press(m, SEQ);
+    settle(m, fw);
+    assert_eq!(
+        common::top_view(m, fw),
+        fw.symbol("step_view_view"),
+        "SEQ did not open STEP"
+    );
+}
+
+/// A step key held while a knob turns: the knob's first turn and the settling before the key
+/// goes up (a lock) or the key alone (a toggle).
+fn step_hold(m: &mut Machine, key: u8, knob: Option<(u8, i32)>) {
+    m.key(KEY0 + key, true);
+    m.run_ms(60);
+    if let Some((enc, clicks)) = knob {
+        m.turn(enc, clicks);
+        m.run_ms(200);
+    }
+}
+
+fn step_release(m: &mut Machine, key: u8) {
+    m.key(KEY0 + key, false);
+    m.run_ms(200);
+}
+
+/// STEP, stopped: SIDOU LOOP's lead (V1, its bar of 16 steps), a step held with a lock on it
+/// (its frame alive, LOCK), the lock's notch after the key goes up, and the song playing (the
+/// white step, the pads).
+#[test]
+fn the_step_view_matches_its_goldens() {
+    let Some((build, fw)) = fixture("the STEP golden test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_step(&mut m, &fw);
+    compare_golden(&build, "step", &m.soc.lcd.fb, &[]);
+    step_hold(&mut m, 5, Some((K1, 6)));
+    m.run_ms(1500); // the popup goes
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "step-held", &m.soc.lcd.fb, &[]);
+    step_release(&mut m, 5);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "step-lock", &m.soc.lcd.fb, &[]);
+    press(&mut m, PLAY);
+    m.run_ms(2_000);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "step-play", &m.soc.lcd.fb, &[]);
+}
+
+/// STEP playing for `ms`: the song (None: SIDOU LOOP) injected, STEP from SEQ, PLAY; the frames'
+/// costs and the frames whose copy the budget cut short.
+fn step_run(fw: &Firmware, song: Option<&sidou_tests::song::Song>, ms: u64) -> (Cost, u32) {
+    let mut m = Machine::boot(&fw.image);
+    m.watch_calls(fw.symbol("ui_poll"));
+    common::run_past_boot(&mut m, fw);
+    if let Some(s) = song {
+        let base = fw.symbol("__song_region");
+        for (i, &b) in s.bytes().iter().enumerate() {
+            m.soc.write8(base + i as u32, b);
+        }
+    }
+    open_step(&mut m, fw);
+    press(&mut m, PLAY);
+    m.run_ms(500);
+    let held_at = fw.symbol("ui")
+        + (sidou_sys::ilp32::views::song + sidou_sys::ilp32::song_view::held) as u32;
+    let held = m.soc.read32(held_at);
+    let c = measure(&mut m, fw, ms / UI_PERIOD_MS, |_| {});
+    (c, m.soc.read32(held_at) - held)
+}
+
+/// STEP's main-loop costs (M2d Task 5), SIDOU LOOP bound, bounded about 10 % above what was
+/// measured (see STEP_* below; the numbers are in docs/art/README.md "STEP").
+#[test]
+fn the_step_view_stays_within_its_budgets() {
+    let Some((_, fw)) = fixture("the STEP budget test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    m.watch_calls(fw.symbol("ui_poll"));
+    common::run_past_boot(&mut m, &fw);
+    open_step(&mut m, &fw);
+    let idle = measure(&mut m, &fw, 25, |_| {});
+    // A step held and a lock turned (K1 six detents), then a step toggled by a tap.
+    m.key(KEY0 + 5, true);
+    m.run_ms(60);
+    let lock = measure(&mut m, &fw, 25, |m| m.turn(K1, 6));
+    m.key(KEY0 + 5, false);
+    m.run_ms(300);
+    let tap = measure(&mut m, &fw, 25, |m| {
+        m.key(KEY0 + 9, true);
+        m.run_ms(30);
+        m.key(KEY0 + 9, false);
+    });
+    let page = measure(&mut m, &fw, 25, |m| m.turn(ALGORITHM, 1));
+    let playing = measure(&mut m, &fw, 100, |m| m.key(PLAY, true));
+    m.key(PLAY, false);
+    let report = serde_json::json!({
+        "step_idle": animated_json(&idle),
+        "step_lock": animated_json(&lock),
+        "step_tap": animated_json(&tap),
+        "step_page": animated_json(&page),
+        "step_playing": animated_json(&playing),
+    });
+    println!("{report}");
+    assert_eq!(idle.total().windows, 0, "the idle STEP sent something");
+    for (what, c, per_frame) in [
+        ("idle", &idle, STEP_IDLE_PER_FRAME),
+        ("lock", &lock, STEP_CHANGE_PER_FRAME),
+        ("tap", &tap, STEP_CHANGE_PER_FRAME),
+        ("page", &page, STEP_CHANGE_PER_FRAME),
+        ("playing", &playing, STEP_PLAYING_PER_FRAME),
+    ] {
+        let most = c.frames.iter().map(cells).max().unwrap_or(0);
+        println!(
+            "STEP {what}: {:.0} instructions a frame, busiest ui_poll {}, most cells {most}, \
+             worst SPI {:.2} ms",
+            c.instructions_per_frame(),
+            c.worst_poll,
+            c.worst_frame_ms()
+        );
+        assert!(
+            c.worst_frame_ms() <= SPI_BUDGET_MS,
+            "{what}: a frame took {:.1} ms of SPI",
+            c.worst_frame_ms()
+        );
+        assert!(
+            most <= sidou_sys::SONG_VIEW_FRAME_CELLS,
+            "{what}: a frame sent {most} cells"
+        );
+        assert!(
+            c.worst_poll < STEP_WORST_POLL,
+            "{what}: a ui_poll took {} instructions",
+            c.worst_poll
+        );
+        assert!(
+            c.instructions_per_frame() < per_frame,
+            "{what}: {:.0} instructions a frame",
+            c.instructions_per_frame()
+        );
+    }
+
+    // The inputs and the busiest pass after each.
+    let mut m = booted(&fw);
+    m.watch_calls(fw.symbol("ui_buttons"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let mut costs = Vec::new();
+    costs.push(("SEQ from LIVE", start_cost(&mut m, 1000, |m| press(m, SEQ))));
+    costs.push((
+        "ARP (gate)",
+        start_cost(&mut m, 300, |m| press(m, sidou_sys::PANEL_BTN_ARP as u8)),
+    ));
+    costs.push(("PLAY", start_cost(&mut m, 1000, |m| press(m, PLAY))));
+    // The step keys go through the note keys' pass: the pass alone.
+    let key = |m: &mut Machine, k: u8| {
+        m.key(KEY0 + k, true);
+        m.run_ms(30);
+        m.key(KEY0 + k, false);
+        m.run_ms(30);
+    };
+    costs.push(("a step key", start_cost(&mut m, 1000, |m| key(m, 3))));
+    m.watch_calls(fw.symbol("ui_encoder"));
+    m.key(KEY0 + 6, true);
+    m.run_ms(60);
+    for (what, enc, steps) in [
+        ("K1 lock", K1, 3),
+        ("K2 lock", K1 + 1, 2),
+        ("K3 lock", K1 + 2, 4),
+    ] {
+        costs.push((what, start_cost(&mut m, 300, |m| m.turn(enc, steps))));
+    }
+    costs.push(("K4 set", start_cost(&mut m, 500, |m| m.turn(K1 + 3, 2))));
+    costs.push(("PRESETS note", start_cost(&mut m, 500, |m| m.turn(6, 3))));
+    m.key(KEY0 + 6, false);
+    m.run_ms(300);
+    costs.push((
+        "ALGORITHM page",
+        start_cost(&mut m, 300, |m| m.turn(ALGORITHM, 1)),
+    ));
+    let mut over = Vec::new();
+    for (what, (input, pass)) in &costs {
+        println!("STEP {what}: the input {input}, the busiest pass {pass}");
+        if *input >= STEP_INPUT || *pass >= STEP_PASS {
+            over.push(format!(
+                "{what}: the input {input}, the busiest pass {pass}"
+            ));
+        }
+    }
+    assert!(over.is_empty(), "{over:#?}");
+}
+
+/// STEP playing 30 s: SIDOU LOOP (tempo 6) and the tempo 3 song, as TRACKER's runs.
+#[test]
+fn the_step_view_stays_within_its_budgets_while_a_song_plays() {
+    let Some((_, fw)) = fixture("the STEP playing budget test") else {
+        return;
+    };
+    let fast = tempo_3_song();
+    let mut over = Vec::new();
+    for (name, song) in [("loop", None), ("tempo3", Some(&fast))] {
+        let (c, held) = step_run(&fw, song, 30_000);
+        let per: Vec<u32> = c.frames.iter().map(cells).collect();
+        let most = per.iter().copied().max().unwrap_or(0);
+        let avg = f64::from(per.iter().sum::<u32>()) / per.len() as f64;
+        println!(
+            "STEP {name}: cells a frame {avg:.1} (most {most}), SPI {:.2} ms a frame (worst \
+             {:.2}), {:.1}k instructions a frame, busiest ui_poll {:.1}k, {held} of {} frames cut \
+             short",
+            c.total().spi_ms() / per.len() as f64,
+            c.worst_frame_ms(),
+            c.instructions_per_frame() / 1000.0,
+            c.worst_poll as f64 / 1000.0,
+            per.len()
+        );
+        if most > sidou_sys::SONG_VIEW_FRAME_CELLS
+            || c.worst_frame_ms() > SPI_BUDGET_MS
+            || held != 0
+            || c.worst_poll >= STEP_WORST_POLL
+            || c.instructions_per_frame() >= STEP_PLAYING_PER_FRAME
+        {
+            over.push(format!(
+                "{name}: {most} cells, {:.1} ms, {held} cut short, poll {}, {:.0} a frame",
+                c.worst_frame_ms(),
+                c.worst_poll,
+                c.instructions_per_frame()
+            ));
+        }
+    }
+    assert!(over.is_empty(), "{over:#?}");
+}
+
+const STEP_IDLE_PER_FRAME: f64 = 7_900.0;
+const STEP_CHANGE_PER_FRAME: f64 = 19_900.0;
+const STEP_PLAYING_PER_FRAME: f64 = 24_500.0;
+const STEP_WORST_POLL: u64 = 50_000;
+const STEP_INPUT: u64 = 3_900;
+const STEP_PASS: u64 = 61_000;
 
 /// A song at tempo 3 (a row every 3 calls, 251 BPM): every voice a note on every row of a
 /// 64-row pattern, voice 1's first row setting the tempo.
@@ -4719,6 +4960,8 @@ const _: () = assert!(CHIP_INPUT + CHIP_PASS <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(TRACKER_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(TRACKER_PLAY_WORST_POLL <= common::POLL_INSTRUCTIONS);
 const _: () = assert!(TRACKER_INPUT + TRACKER_PASS <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(STEP_WORST_POLL <= common::POLL_INSTRUCTIONS);
+const _: () = assert!(STEP_INPUT + STEP_PASS <= common::POLL_INSTRUCTIONS);
 // A pass that runs a slice of the spare's preparation (reg_ring_prepare_step) and the busiest
 // view's work still fits.
 // One slice a pass, however many ticks a pass catches up (reg_ring_pass_end, platform/fm1/
@@ -4733,6 +4976,10 @@ const _: () = assert!(
 );
 const _: () = assert!(
     TRACKER_INPUT + TRACKER_PASS + PREPARE_SLICES_PER_PASS * REG_RING_PREPARE_SLICE
+        <= common::POLL_INSTRUCTIONS
+);
+const _: () = assert!(
+    STEP_INPUT + STEP_PASS + PREPARE_SLICES_PER_PASS * REG_RING_PREPARE_SLICE
         <= common::POLL_INSTRUCTIONS
 );
 

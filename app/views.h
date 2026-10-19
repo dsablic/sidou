@@ -116,6 +116,7 @@
 #include "screen.h"
 #include "song_view.h"
 #include "song_pages.h"
+#include "step_view.h"
 #include "theme.h"
 #include "tracker_view.h"
 #include "title_card.h"
@@ -216,6 +217,7 @@ typedef struct {
     song_pages pages;
     /* When GLO was last pressed, plus 1 (0: never), for the double tap that latches its layer. */
     uint32_t glo_tap_ms;
+    step_view step;
 } views;
 
 extern const view views_status;

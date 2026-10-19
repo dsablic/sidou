@@ -517,6 +517,7 @@ fn tracker_text(d: &mut Dev) -> String {
 /// Does REC plus a key change what TRACKER shows? (Behaviour, not a symbol: it follows main.)
 fn probe_pattern_edit(build: &Path) -> bool {
     let mut d = Dev::boot(build);
+    d.press(panel::SEQ); // STEP, then TRACKER
     d.press(panel::SEQ);
     d.settle();
     if d.view() != "tracker" {

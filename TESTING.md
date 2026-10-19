@@ -219,6 +219,18 @@ their idle frames send nothing. `an_instrument_page_edit_changes_the_next_notes_
 edits AD on INSTR during playback and compares every sample with the host's same-block edit; an
 unedited control must differ, so the check is not vacuous.
 
+STEP's portable tests are `step_view` in the app suite: the layout, toggles (staccato's key
+offs, legato, the last row), paging and the playing page, the lanes, PRESETS, LOCK and SET
+shown apart with the value popups, the refusal of a SET on a row with a command, the queue that
+keeps taps and knob turns in order while the editor is busy, and two player checks: a STEP-made
+song against GoatTracker's own player call for call (the SET holds over the following rows; no
+chunk locks in the file), and a lock made on a held step holding for its row only in song
+control's output. In the emulator, `the_step_view_matches_its_goldens` and
+`the_step_view_stays_within_its_budgets` (with the 30 s runs at both tempos) cover the frames, and
+`a_pattern_programmed_on_step_is_the_expected_song_and_plays_bit_exact` and
+`a_held_step_and_k1_darkens_that_step_bit_exact_with_the_host` (song.rs) run the keys against the
+model's own edits and the host's render, the darkening measured as the song lock test does.
+
 `expert_transport` replays outgoing packets into a second instrument. It checks macro
 releases after deferred or canceled changes, macro-before-expert restoration, remote
 edits after a queued local macro, explicit learned 127 versus the internal following

@@ -210,6 +210,7 @@ fn a_tracker_rows_change_alone_is_background_saved_after_five_seconds_and_loaded
     st.mount();
     let mut reboot = Saving::on(st);
     reboot.ui.press(PANEL_BTN_SEQ);
+    reboot.ui.press(PANEL_BTN_SEQ);
     reboot.ui.settle();
     assert_eq!(reboot.ui.top(), "TRACKER");
     assert_eq!(reboot.ui.v.song.scroll, 1, "opens in the loaded mode");

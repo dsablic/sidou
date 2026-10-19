@@ -66,7 +66,7 @@ pub const VIEWS: &[(&str, &str)] = &[
     ("live", ""),
     ("menu", "press HOME; wait 900"),
     ("chip", "press HOME; turn ALGORITHM 1; wait 3000"),
-    ("tracker", "press SEQ"),
+    ("tracker", "press SEQ; press SEQ"),
     (
         "scene",
         "press HOME; select-item SCENE; turn ALGORITHM 1; wait 3000",

@@ -6,8 +6,8 @@
  *
  * The song views are STEP, TRACKER, ORDER, INSTR and TABLE. SEQ opens the first of them from
  * any view (on top of it: HOME goes back to it) and, in one, steps to the next:
- * STEP, TRACKER, ORDER, INSTR, TABLE and round. A view not made yet is skipped (TRACKER,
- * app/tracker_view.h, is the first made).
+ * STEP (app/step_view.h), TRACKER (app/tracker_view.h), ORDER, INSTR and TABLE
+ * (app/song_pages.h) and round; a view not made yet (a NULL in song_view.c's list) is skipped.
  *
  * The transport goes through the player's binding (app/song_transport.h: song_ctl on the
  * device; with none bound the transport stays stopped):

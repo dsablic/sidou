@@ -634,6 +634,53 @@ the host, a held step + K1 darkens that step (spectrum), the costs as Task 2's.
 
 **Commit:** `feat(step): the STEP view, 16 keys as steps and parameter locks on held steps`
 
+**As built — Task 5 (base `d76b57a`):** STEP is `app/step_view.c`/`.h`, the first song view (SEQ now
+steps STEP, TRACKER, ORDER, INSTR, TABLE and round; the tests that reached TRACKER with one SEQ
+press two, and the ergo harness's journeys, tables and recipes say so). Layout and controls are
+the plan's, in TRACKER's readable 2x style and the theme's roles, with these decisions the plan
+left open:
+
+- **A step toggles when its key is let go**, not when it goes down, and only if no knob was turned
+  while it was held: pressing a key to hold it for a lock must not also write a note. The key
+  still auditions the step's note as it goes down.
+- **The gate is ARP** (staccato, the default, or legato, per lane, shown under the lane); a
+  staccato lane writes a key off on the next row if that row has no note (a row with only a
+  command counts as empty and keeps its command) and takes it away with the note; where the row
+  before a removed note holds a note, the removed note's row becomes its key off.
+- **PRESETS** sets the lane's instrument; with a step held, that step's note, which is then the
+  lane's note for the steps toggled after it. **LFO** with a step held clears its locks and SET.
+- **K1-K4 values:** a lock starts from the middle of its range (cutoff 1024, resonance 8, pulse
+  width 2048, the character 64) and a detent steps it by 32, 1, 64 and 2; K4's waveform is OFF,
+  TRI, SAW, PULSE, NOISE (`7XY` with `$11 $21 $41 $81`), turning OFF removes the command.
+- **ALGORITHM pages while stopped; while the song plays the page follows the playing step**, and
+  stopping leaves it there. The pads are the keys' picture (a note, the held step), not the playhead.
+- **Edits wait their turn.** The first key after a pause starts the audition, which holds edits
+  for a while, and the editor takes one cell write at a time; detents of K4 or PRESETS and
+  toggles that arrive meanwhile wait in a queue of four besides the one in flight (turns of one
+  knob on one step join), the key off after a note is a second write sent when the first is
+  applied, and a fifth is refused with `WAITING`. A first version dropped them: the emulator's two
+  detents of K4 right after a key went down gave one.
+- **Locks are the main loop's** `song_lock_put` (song_ctl resolves them at the row's start, as
+  M2c Task 7 built it); nothing was left to do in `core/song/song_ext.c`.
+- **Not done here:** the menu lists TRACKER only (Task 1's "STEP and TRACKER" menu items are not
+  added: SEQ reaches STEP, and a menu item would move the menu's goldens); REC's recording while
+  the song plays is Task 6.
+
+Resources: the image 477,184 -> **486,832 B (+9,648)**, the RAM region free 4,464 -> **4,368 B (-96)**
+with POOL free 4,456 unchanged and RAMTEXT 46,592 unchanged (together 8,920 -> 8,824, floor 7,000;
+each region keeps 4,096). `step_view.c` is built `-Os -fno-inline-functions -fno-jump-tables` as
+`song_pages.c` is. The unchanged tight gates are identical on the base and this build: STATUS idle
+6,364.5 instructions/frame, THE OSCILLATOR's input 427 (THE CHIP 415, THE SCENE 417), CHIP K1 211,
+SELECT to RULE 30 input 156, LIVE noise 153,357; no existing golden changed. STEP's own costs
+(new code, bounds set from these) are in docs/art/README.md "STEP": idle 7.2k instructions a
+frame, the busiest `ui_poll` 45.7k (a PLAY's analysis slice with a compose), SEQ's pass 49.6k
+(68.4k before the view built its zones as the wipe reaches them), PRESETS' pass 54.4k.
+
+Tests: `tests/app/step_view.rs` (22), `song.rs`'s two key-driven tests (the expected song and bit
+exact audio, SET and lock included; the darkened lead bar), `screen.rs`'s goldens (`step`,
+`step-held`, `step-lock`, `step-play`) and budgets. A STEP-made song plays as GoatTracker's
+player plays it, call for call, with the SET holding over the following rows.
+
 ---
 
 ### Task 6: REC from the keys while the song plays

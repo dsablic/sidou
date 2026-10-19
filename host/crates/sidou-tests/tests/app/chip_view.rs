@@ -78,6 +78,7 @@ fn shared_canvas_rebuilds_chip_after_tracker_is_popped_without_enter() {
     assert_eq!(ui.v.song.cv.attr.as_flattened(), &chip.1);
     for partial in [false, true] {
         ui.press(PANEL_BTN_SEQ);
+        ui.press(PANEL_BTN_SEQ);
         assert_eq!(ui.top(), "TRACKER");
         if partial {
             step(&mut ui);
@@ -109,6 +110,7 @@ fn shared_canvas_is_acquired_by_the_view_composed_under_midi_learn_not_by_input(
         views_learn(&mut *ui.v, &mut *ml);
     }
     let chip_canvas = ui.v.song.cv;
+    ui.press(PANEL_BTN_SEQ);
     ui.press(PANEL_BTN_SEQ);
     assert_eq!(u32::from(ui.v.song.which), SONG_VIEW_CANVAS_CHIP);
     assert_eq!(ui.v.song.cv.ch, chip_canvas.ch);

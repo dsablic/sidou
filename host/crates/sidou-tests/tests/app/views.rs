@@ -234,7 +234,7 @@ fn save_in_an_unnamed_song_opens_the_name_editor_not_settings() {
     ui.press(PANEL_BTN_HOME);
     assert_eq!(
         ui.top(),
-        "TRACKER",
+        "STEP",
         "SAVE AS cancellation returns to the song view"
     );
 }
@@ -324,7 +324,7 @@ fn unnamed_save_works_when_the_song_view_already_fills_the_stack() {
     ui.press(SAVE_KEY_BUTTON);
     assert_eq!(ui.top(), "SONG");
     ui.press(PANEL_BTN_HOME);
-    assert_eq!(ui.top(), "TRACKER");
+    assert_eq!(ui.top(), "STEP");
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.top(), "CHIP");
 }
@@ -450,7 +450,7 @@ fn save_routes_named_songs_to_io_and_save_as_accepts_all_sixteen_characters() {
     unsafe { views_song_io(&mut *ui.v, &mut *io) };
     ui.press(PANEL_BTN_SEQ);
     ui.press(SAVE_KEY_BUTTON);
-    assert_eq!(ui.top(), "TRACKER");
+    assert_eq!(ui.top(), "STEP");
     assert_eq!(io.state, SONG_IO_SAVE_WAIT as u8);
     assert_eq!(unsafe { CStr::from_ptr(io.target.as_ptr()) }, c"EXISTING");
     assert_eq!(model.frozen, 1);
@@ -467,7 +467,7 @@ fn save_routes_named_songs_to_io_and_save_as_accepts_all_sixteen_characters() {
         ui.turn(PANEL_ENC_ALGORITHM, i32::from(*want) - i32::from(*was));
     }
     ui.press(SAVE_KEY_BUTTON);
-    assert_eq!(ui.top(), "TRACKER");
+    assert_eq!(ui.top(), "STEP");
     assert_eq!(io.state, SONG_IO_SAVE_WAIT as u8);
     assert_eq!(
         unsafe { CStr::from_ptr(io.target.as_ptr()) },

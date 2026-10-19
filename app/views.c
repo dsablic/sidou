@@ -520,6 +520,12 @@ static void charset_open(void* ctx, int32_t steps) {
 
 /* ---- SONG: its pages borrow the song views' canvas ---- */
 
+/* The state a song view runs on: TRACKER the song view's, STEP its own, the pages theirs. */
+static void* song_state(views* v, const view* w) {
+    return w == &tracker_view_view ? (void*)&v->song : w == &step_view_view ? (void*)&v->step :
+           (void*)&v->pages;
+}
+
 enum { SONG_MENU_ROOT, SONG_MENU_DIR, SONG_MENU_NAME, SONG_MENU_CONFIRM };
 enum { SONG_MENU_LOAD, SONG_MENU_NEW, SONG_MENU_SAVE, SONG_MENU_DELETE };
 #define SONG_MENU_CANVAS SONG_VIEW_CANVAS_MENU
@@ -580,8 +586,7 @@ static void song_menu_done(views* v) {
         v->songs.scanning = 0;
         song_menu_changed(v);
         if (direct == 2u) {
-            screen_push(&v->s, back, back == &tracker_view_view ? (void*)&v->song :
-                        (void*)&v->pages, SCREEN_WIPE_UP);
+            screen_push(&v->s, back, song_state(v, back), SCREEN_WIPE_UP);
         }
     } else {
         v->songs.page = SONG_MENU_ROOT;
@@ -1429,8 +1434,7 @@ static void song_step(views* v) {
     if (song_view_is(top)) {
         screen_pop(&v->s, SCREEN_CUT);
     }
-    screen_push(&v->s, next, next == &tracker_view_view ? (void*)&v->song :
-                (void*)&v->pages, SCREEN_WIPE_DOWN);
+    screen_push(&v->s, next, song_state(v, next), SCREEN_WIPE_DOWN);
 }
 
 /* GLO's press: a second press within GLO_TAP_MS of the last latches the layer (the keys are the
@@ -1563,6 +1567,7 @@ void views_song_loaded(views* v) {
     uint8_t page = v->pages.page;
     song_pages_init(&v->pages, &v->song);
     v->pages.page = page;
+    step_view_init(&v->step, &v->song);
     v->songs.built = 0;
 }
 
@@ -1595,6 +1600,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     scene_view_init(&v->scene, l, sc);
     song_view_init(&v->song, l);
     song_pages_init(&v->pages, &v->song);
+    step_view_init(&v->step, &v->song);
     v->songs.built = 0;
     v->songs.scanning = 0;
     v->song.editor = &v->editor;
@@ -1860,7 +1866,14 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
                                                     ? enc - PANEL_ENC_K1 : 0u];
         return tracker_view_popup(&v->song, enc, (ask & ASK_EDIT) != 0u, name, value, fill, max);
     }
+    if (shows(v) == &step_view_view &&
+        step_view_popup(&v->step, enc, (ask & ASK_EDIT) != 0u, name, value, fill, max)) {
+        *accent = theme_get(l->theme)->knob[enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4 ?
+                                          enc - PANEL_ENC_K1 : 0u];
+        return 1;
+    }
     if (song_view_is(shows(v)) && shows(v) != &tracker_view_view &&
+        shows(v) != &step_view_view &&
         song_pages_popup(&v->pages, shows(v), enc, (ask & ASK_EDIT) != 0u, name, value, fill, max)) {
         *accent = theme_get(l->theme)->knob[enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4 ?
                                           enc - PANEL_ENC_K1 : 0u];
@@ -2020,11 +2033,19 @@ static uint32_t panel_owned(const panel* p, uint32_t keys) {
 void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed) {
     song_view* sv = &v->song;
     /* Most passes: no key, and no jam to let go: the panel's (releases) alone. */
-    if (down | pressed | sv->jam_keys) {
+    if (down | pressed | sv->jam_keys | v->step.down) {
         const view* top = shows(v);
-        int take = !(p->held >> PANEL_BTN_GLO & 1u) && sv->t && song_view_is(top);
-        uint32_t owned = take ? panel_owned(p, down & ~pressed & ~sv->jam_keys) : 0u;
-        uint32_t taken = song_view_keys(sv, down, pressed, owned, take,
+        int glo = (int)(p->held >> PANEL_BTN_GLO & 1u);
+        int take = !glo && sv->t && song_view_is(top);
+        uint32_t steps = 0u, jam_down = down, jam_pressed = pressed;
+        if (top == &step_view_view) {
+            /* The 16 leftmost keys are STEP's; the rest are the jam's. */
+            steps = step_view_keys(&v->step, &v->s, down, pressed, !glo);
+            jam_down &= ~((1u << STEP_VIEW_STEPS) - 1u);
+            jam_pressed &= ~((1u << STEP_VIEW_STEPS) - 1u);
+        }
+        uint32_t owned = take ? panel_owned(p, jam_down & ~jam_pressed & ~sv->jam_keys) : 0u;
+        uint32_t taken = steps | song_view_keys(sv, jam_down, jam_pressed, owned, take,
                                         top == &tracker_view_view ? &v->s : NULL);
         if (taken) {
             panel_quiet_keys(p, v->l, taken);

@@ -211,7 +211,9 @@ pub(crate) fn settle(ui: &mut Ui) {
     panic!("the screen kept changing");
 }
 
+/// SEQ twice: STEP, then TRACKER.
 pub(crate) fn open_tracker(ui: &mut Ui) {
+    ui.press(PANEL_BTN_SEQ);
     ui.press(PANEL_BTN_SEQ);
     settle(ui);
     assert_eq!(ui.top(), "TRACKER");
@@ -273,7 +275,7 @@ fn the_bpm_follows_the_frame_rate_the_multispeed_and_the_rows_a_beat() {
 fn seq_opens_the_tracker_from_any_view_and_home_goes_back() {
     let mut ui = Ui::without_cards();
     open_tracker(&mut ui);
-    for page in ["ORDER", "INSTR", "TABLE", "TRACKER"] {
+    for page in ["ORDER", "INSTR", "TABLE", "STEP", "TRACKER"] {
         ui.press(PANEL_BTN_SEQ);
         settle(&mut ui);
         assert_eq!(ui.top(), page);
@@ -302,18 +304,21 @@ fn seq_opens_the_tracker_from_any_view_and_home_goes_back() {
 
 #[test]
 fn seq_steps_to_the_next_song_view_and_round() {
+    let step: *const view = unsafe { &step_view_view };
     let tracker: *const view = unsafe { &tracker_view_view };
     unsafe {
-        assert_eq!(song_view_next(std::ptr::null()), tracker);
-        assert_eq!(song_view_next(&views_menu), tracker);
+        assert_eq!(song_view_next(std::ptr::null()), step);
+        assert_eq!(song_view_next(&views_menu), step);
         let order: *const view = &song_pages_order_view;
         let instr: *const view = &song_pages_instr_view;
         let table: *const view = &song_pages_table_view;
+        assert_eq!(song_view_next(step), tracker);
         assert_eq!(song_view_next(tracker), order);
         assert_eq!(song_view_next(order), instr);
         assert_eq!(song_view_next(instr), table);
-        assert_eq!(song_view_next(table), tracker);
+        assert_eq!(song_view_next(table), step);
         assert_eq!(song_view_is(tracker), 1);
+        assert_eq!(song_view_is(step), 1);
         for page in [order, instr, table] {
             assert_eq!(song_view_is(page), 1);
         }

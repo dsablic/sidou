@@ -288,6 +288,15 @@ player's own state is not changed, so its tables run on underneath.
 | 4 pulse width | 0-4095 | the row's voice's `$D402`, `$D403`'s low nybble |
 | 5-8 age/heat, DAC sloppiness, thump, bleed | 0-127 | chip A's character, with chip_ctl's glide (0.32 s end to end: coarse by nature) |
 
+**Locks and the waveform command.** The STEP view (M2d) writes both kinds, and each means one
+thing. A **lock** (K1 cutoff, K2 resonance, K3 pulse width; with EDIT the character) lives in this
+chunk and holds for its row only. The **waveform** (K4) is not a lock: it is GoatTracker's own
+`7XY` command (command 7, data the control register's waveform byte with the gate bit, `$11`
+triangle, `$21` sawtooth, `$41` pulse, `$81` noise) written into the row, which the player
+holds until the next waveform change, as GoatTracker's does; it is refused where the row's command
+column is taken. So a cutoff written as `CXY` would persist where a lock does not: a persistent
+cutoff change is the pattern command, entered in TRACKER, never a lock.
+
 The filter and pulse locks are written over the player's registers after each call of the
 row, in the audio interrupt; at most 8 resolve for a channel's next row (a pattern's next
 row, or at its end the pattern again and the orderlist's next one). A pattern's rebuild

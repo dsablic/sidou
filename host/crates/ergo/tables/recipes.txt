@@ -41,7 +41,7 @@ journey mute-and-solo | Mute and solo while a song plays
   prereq On LIVE after the boot. SIDOU LOOP is the song loaded.
   skills opening the song views; PLAY; GLO mutes; GLO solos
   related first-sound; shape-a-sound
-  step open-the-song | Open the song views | SEQ opens the TRACKER over LIVE. | press SEQ | view tracker; do Press SEQ
+  step open-the-song | Open the song views | SEQ opens STEP over LIVE, SEQ again the TRACKER. | press SEQ; press SEQ | view tracker; do Press SEQ twice
   step play-the-song | Play the song | PLAY starts it; the rows move and the song sounds. | press PLAY; wait 1500 | sound; do Press PLAY
   step mute-voice-2 | Mute voice 2 | Hold GLO and press the second note key (the leftmost keys are the mutes): voice 2 goes silent and its number above the rows turns grey. | holdkey GLO F#3; wait 600 | quieter; do Hold GLO and press note key 2
   step let-voice-2-back | Let voice 2 sound again | The same keys again undo it, and its number takes its colour back. | holdkey GLO F#3; wait 600 | louder; do Hold GLO and press note key 2 again

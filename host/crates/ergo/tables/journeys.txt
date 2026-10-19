@@ -74,7 +74,7 @@ journey sketch | Sketch a loop
   prereq On LIVE after the boot.
   skills song views; audition; REC; PLAY; tweaking while playing
   related jam; build
-  step open-song | Open the song views | SEQ opens the tracker | press SEQ | view tracker; task open TRACKER
+  step open-song | Open the song views | SEQ opens STEP, SEQ again the tracker | press SEQ; press SEQ | view tracker; task open TRACKER
   step audition | Audition the instrument | Play the keys: they audition the song's instrument | note A4 400 | sound; clip 300
   step enter-notes | Record notes into a pattern | Press REC and play notes into the pattern | press REC; note A4 300; note C5 300; press REC | needs pattern_edit; change
   step play-loop | Hear it loop | PLAY starts the song | press PLAY; wait 1200 | sound; clip 1200; milestone first_loop; task play a song
@@ -87,7 +87,7 @@ journey build | Build a song
   prereq On LIVE after the boot.
   skills order list; instruments; saving a song
   related sketch; keep
-  step open-song | Open the song views | SEQ opens the tracker | press SEQ | view tracker
+  step open-song | Open the song views | SEQ opens STEP, SEQ again the tracker | press SEQ; press SEQ | view tracker
   step to-order | Step to the order list | SEQ steps to the next song view | press SEQ | needs order_view; change
   step arrange | Put a pattern in the arrangement | Turn to choose the pattern | turn ALGORITHM 1 | needs order_view; change
   step to-instr | Step to the instrument | SEQ steps to the instrument view | press SEQ | needs instr_view; change
@@ -169,7 +169,7 @@ journey tour | Screens for the readability check | tour
   step scene-toast | SCENE piece named | - | turn SELECT 1 | toast
   step scene-home | Back | - | press HOME; wait 200 | view menu
   step live-again | LIVE | - | press HOME; wait 3000 | view live
-  step tracker | TRACKER | - | press SEQ | view tracker
+  step tracker | TRACKER | - | press SEQ; press SEQ | view tracker
   step tracker-play | TRACKER playing | - | press PLAY; wait 900 | sound
   step tracker-popup | TRACKER with a popup | - | turn K1 3 | popup
   step tracker-stop | TRACKER stopped | - | press PLAY; wait 500 | -

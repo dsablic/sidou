@@ -290,6 +290,7 @@ fn tracker_refreshes_same_shaped_song_rows_after_load_and_bank_recall() {
             zed.pattern(voice).unwrap().len()
         );
     }
+    press(&mut m, PANEL_BTN_SEQ as u8); // STEP, then TRACKER
     press(&mut m, PANEL_BTN_SEQ as u8);
     m.run_ms(SETTLE_MS);
     assert_eq!(top_view(&mut m, &fw), fw.symbol("tracker_view_view"));

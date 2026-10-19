@@ -825,6 +825,68 @@ TRACKER shows SAVING in place of its pattern heading while a file is being
 written. During a streamed load it retains the previous canvas; the completed
 load invalidates cached rows before showing the new song.
 
+## STEP
+
+STEP (`app/step_view.h`, the first song view: SEQ from anywhere) is the song made like a drum
+machine, in TRACKER's readable style and the theme's roles ([the theme](#theme)): **the 16
+leftmost note keys are 16 steps** of the selected voice's pattern, and a **held step plus a
+knob is a parameter lock** ([controls](../reference/controls.md#step)).
+
+![STEP, stopped: SIDOU LOOP's lead, V1 selected](../../tests/golden/lcd/step.png)
+![STEP, step 6 held with a cutoff lock](../../tests/golden/lcd/step-held.png)
+![STEP, the lock's notch after the key is let go](../../tests/golden/lcd/step-lock.png)
+![STEP, playing: the white step](../../tests/golden/lcd/step-play.png)
+
+- **Rows 0-1, the header:** as TRACKER's: **V1** at 2× in the voice's colour, its pattern
+  **PAT 04** at 2×, MUT or SOL, the play mark, the tempo and REC.
+- **Row 2:** `PAGE` and the page numbers (the shown page reversed yellow) and the pattern's length
+  (`64 STEPS`); **row 3** the ruler: the number of each group's first step (`1 5 9 13`).
+- **Rows 4-15, four lanes of three rows:** V1, V2 and V3 at 2× in their colours, and **B**
+  greyed (`CHIP B IN M5`). The selected lane has the arrow. A lane's 16 steps are in columns
+  5-23 in groups of four: **a dark square for an empty step, a ball in the voice's colour for a
+  note, the playing step white**, and under it the notch row: a **yellow** notch is a LOCK, a
+  **cyan** one a SET (a step with both shows the yellow one); the held step is a yellow block.
+  The line under each lane says its note, its instrument and its gate (`C-3 I01 STACCATO`).
+- **Rows 17-22, the HELD STEP frame:** `HELD STEP 6` (and the step's note), then the four knobs
+  as `K1 CUTOFF`, `K2 RESO`, `K3 PULSE` and `K4 WAVE`, each with a bar in the knob's colour and
+  its value (a percentage for the cutoff and the pulse width, 0-15 the resonance, `TRI`,
+  `SAW`, `PUL` or `NOI` the waveform), `LOCK` in yellow on a locked one and `SET` in cyan on the
+  waveform command. They are grey until a step is held. The last line says what EDIT turns the
+  knobs into: `EDIT: AGE DAC THUMP BLEED`.
+- **Rows 24-28, the pads:** the 16 keys as two rows of eight, a step with a note in the lane's
+  colour, the held one yellow, the others dark grey; steps past the pattern's end are blank.
+  **Row 29:** `HOLD KEY+KNOB LOCK  ENC PAGE`.
+
+The value popup names what a knob on a held step sets, in the knob's colour: `CUTOFF`,
+`RESONANCE`, `PULSE WIDTH`, `WAVEFORM` (`OFF`, `TRI`, `SAW`, `PULSE`, `NOISE`), the character's
+four, `PAGE` (`2/4`), `NOTE` and `INSTRUMENT`.
+
+**The budget.** The view builds into the song views' shared canvas in three zones, each only
+when its own look changes: the header with the pages and the ruler (rows 0-3), the lanes
+(rows 4-15: the playing step moves, the edits and the locks) and the frame and pads
+(rows 16-29: only the edits, the locks, the held step and the page do). While a wipe shows the
+view a zone is built when its rows are reached, so the SEQ pass is not the whole canvas at once
+(68.4k instructions built whole, 49.6k this way). The copy sends the changed cells top first
+within 200 cells a frame (`song_view_copy`). Idle it composes nothing. Measured in fm1-emu
+(`the_step_view_stays_within_its_budgets`):
+
+| STEP | Cells a frame (most) | Worst SPI | Main loop a frame | Busiest `ui_poll` |
+|---|---|---|---|---|
+| Idle (25 frames) | 0 (0) | 0 | 7.2k | 1.7k |
+| A lock turned on a held step (K1, 25 frames) | 14.5 (132) | 11.3 ms | 18.1k | 35.2k |
+| A step tapped | 1.9 (47) | 4.1 ms | 11.3k | 34.9k |
+| ALGORITHM, a page turn | 13.9 (132) | 11.3 ms | 15.1k | 30.8k |
+| Playing SIDOU LOOP, 100 frames, from PLAY | 5.5 (133) | 11.4 ms | 16.3k | 45.7k |
+| SIDOU LOOP, 30 s | 2.1 (16) | 1.45 ms | 14.6k | 36.8k |
+| A dense song at tempo 3, 30 s | 4.4 (16) | 1.45 ms | 22.3k | 36.4k |
+
+The inputs and the busiest pass after each (bounded at 3.9k and 61k, inside the poll allowance
+with a register-ring slice): SEQ from LIVE 3.5k / 49.6k, PLAY 2.0k / 34.6k, a step key (the note
+keys' pass) 39.9k, K1, K2, K3 locks 1.4k, 1.3k, 1.3k / 39.2k, 44.8k, 32.7k, K4 SET 2.5k / 49.7k,
+PRESETS' note 3.2k / 54.4k, ALGORITHM 0.5k / 31.1k, ARP 0.2k / 20.2k. No frame was cut short in
+the 30 s runs. RAM: the view's state is 96 bytes of the RAM region (its look, a four-action
+queue and the lanes' notes), and its code and strings about 9.6 KB of the image.
+
 ## TRACKER
 
 TRACKER (`app/tracker_view.h`, from SEQ or the menu) is the song's patterns in GoatTracker 2's
