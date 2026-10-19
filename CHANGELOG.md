@@ -163,6 +163,9 @@ All notable changes are documented here. The format follows
   uses let chains.
 
 ### Fixed
+- TRACKER records the first note after navigation even before its shared canvas is rebuilt,
+  and resumes recording after nested MIDI-learn visits. Learn capture/completion no longer
+  closes a child view or leaves a stale capture installed.
 - A faint tone (about -50 dBFS, the voice DACs' leak) no longer stays after notes: with the
   filter bleed at 0 the output fades to exact silence once every voice has been done for
   46 ms, and comes back at the next note (found on the first real FM-1); a nonzero bleed

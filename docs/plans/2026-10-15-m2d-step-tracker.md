@@ -454,6 +454,27 @@ golden was regenerated during this integration; the earlier intended TRACKER gol
 are unchanged. No hardware was accessed. Task 4's audition-policy checkpoint below
 remains open and its preparation is not registered in production builds.
 
+Task 3 completion snapshot, before Task 4 integration (`git log --oneline -5`):
+
+```text
+5d5d4c7 fix(tracker): validate editing with stored songs and the size cap
+d9c1b11 feat(tracker): edit patterns from the keys and encoders, through the player's edit queue
+82f7357 fix(app): integrate stored songs with readable screens
+b478453 fix(app): integrate songs with large-text UI and MIDI
+9248402 feat(app): songs on the store: load, save, new, About's music
+```
+
+`git status --short` at that boundary (only unregistered Task 4 preparation):
+
+```text
+?? app/song_pages.c
+?? app/song_pages.h
+?? host/crates/sidou-tests/tests/app/song_audition_shape.rs
+?? host/crates/sidou-tests/tests/app/song_order_locks.rs
+?? host/crates/sidou-tests/tests/app/song_pages.rs
+?? host/crates/sidou-tests/tests/app/song_pattern_at.rs
+```
+
 ---
 
 ### Task 4: ORDER, INSTR and TABLE pages
@@ -484,21 +505,81 @@ the host's render of the expected song).
 
 **Commit:** `feat(app): the ORDER, INSTR and TABLE pages`
 
-**Task 4 preflight — audition decision required:** the readable pages and their tests are
-prepared but remain outside the registered build while Task 3 finishes its gates. Native
-regressions exposed an existing engine limitation newly reachable through INSTR: an unused
-instrument's filter program is skipped, a jam on an unpacked third voice never starts, and a
-note below the packed song's range can have zero frequency. A used-instrument control passes.
-The existing incompatible-shape handover replays sequenced state; during stopped audition it
-can sound a song voice that was never jammed. Reusing that path without a policy would be a
-behavioral guess, so production integration pauses here under COMMON.md's decision rule.
+**Task 4 audition-policy checkpoint — decided:** Task 4 is not
+registered on `m2d`. Preparation had grown into an uncommitted page integration and an
+experimental state-preserving audition implementation before the controller's explicit hold.
+All of it is now parked as **`71e6856`**, branch **`m2d-task4-preparation-170e182`**, outside
+the production rebase. It is not a completed Task 4.
 
-The policy choices are: restart frozen audition state when stopped and refuse incompatible
-jams during playback (with a clear toast); preserve all held state through an explicit
-conversion/snapshot design; or permit playback handovers to replace existing audition state.
-No choice has been assumed, no related production patch applied, and no budget weakened.
-The reproduction tests are unregistered until this boundary is resolved; the current
-production build is unchanged by them. The hardware flags and pending storage guard remain.
+**Decided 2026-10-19 by the controller: B** — preserve live state, with conversion at a
+block boundary after bounded main-loop preparation. A new note triggers normally; an
+explicit edit retains its intended effect. Never sound unrequested song notes while
+stopped. If B cannot meet every unchanged gate after real effort, stop and report the
+measurements; do not fall back to A or C. Task 4 proceeds as separate commits after the
+cleaned Task 3 delivery below. The options and recommendation following this decision are
+retained as its rationale, not as an open policy question.
+
+**What needs a decision.** An audition can require a player shape different from the one
+derived from the song: an instrument not used by any pattern, a third voice omitted by the
+packed song, a valid 0–95 note outside its packed frequency range, or a new pulse/wave table
+encoding. Native reproductions show skipped filter processing, an unpacked third voice that
+never starts, and zero/wrong frequency outside the packed note range. Existing used-shape
+auditions work. The decision is how an incompatible request affects a running song and any
+already-held audition: preserve them, refuse the request, or explicitly allow a reset.
+This is a shared-engine limitation, not just a page-layout issue: TRACKER's instrument
+control can also select an instrument outside the packed song's used set. INSTR makes that
+boundary central by exposing all instruments and their tables.
+The transition can come from a new key, an instrument/table edit while a note is held, or
+background narrowing after editing. Refusing only new keys would not protect an existing
+held audition from the latter two paths.
+
+**What the plan does and does not say.** The shared contract at lines 63–75 assigns transport
+to PLAY and audition of the current instrument/cursor voice to the keys; Task 4's INSTR
+specification above says its keys audition the selected instrument. There is no direct
+contradiction in that intent. The plan does not specify packed-shape transitions, whether a
+held envelope/table may retrigger, or whether an incompatible audition may be refused while
+playing. A stop-only limitation or an implicit restart would therefore be a product-policy
+addition, not an implementation detail already authorized by the text.
+
+**Current engine boundary (rebased production sources).** `song_ctl_jam` only queues the
+voice/note/instrument (`core/player/song_ctl.c:610`); `song_ctl_audition` prepares a paused
+song-derived player, not an arbitrary-instrument audition shape (`:633`). Frequency reads
+are relative to `first_note`/`last_note` (`core/player/gt2_play.c:202–222`), filter execution
+depends on the derived feature flag (`:742`), and channel work is bounded by the derived
+channel count (`:874`). Incompatibility includes channel count and pulse/wave state encoding
+(`core/player/gt2_shape.c:976–982`). The existing edit/narrowing paths use a fresh player and
+fast-forward handover (`core/player/song_ctl.c:708–724`, `:803–814`, `:905–914`, `:1038–1046`);
+the handover copies that player's state/registers (`:209–230`). It does not preserve arbitrary
+held jam history and can introduce sequenced notes during stopped audition. That last effect
+is a bug to prevent under every option, not a proposed feature.
+
+1. **A: bounded safe restart/refusal.** When stopped, rebuild a frozen audition-only state
+   and retrigger held audition voices; never start other song voices. While playing, accept
+   compatible auditions but refuse an incompatible one with **STOP TO AUDITION**; leave
+   playback and held notes unchanged. Also refuse an incompatible shape-changing edit while
+   an audition is held (**RELEASE TO EDIT**), and postpone narrowing until release. This has
+   the smallest state/conversion surface, but
+   held notes can audibly restart when stopped and some live auditions are unavailable.
+   It changes the unrestricted audition expectation.
+2. **B: preserve live state.** Prepare the needed capabilities in bounded main-loop slices,
+   convert/retain current voice, pulse/wave encoding and held-jam state, then publish at a
+   block boundary. Playback position and held envelopes/table phases do not restart; stopped
+   audition never advances unjammed song sequencers. A requested new note still triggers
+   normally, and an explicit edit still has its intended musical effect; preservation means
+   no additional whole-player reset or replay. This best matches the stated controls,
+   but adds engine state/lifetime complexity and needs stricter conversion/audio tests.
+3. **C: explicit reset policy.** Permit an incompatible request to visibly stop/restart
+   playback or replace/retrigger held audition state, with the transition shown to the user.
+   Never silently sound song notes while claiming to be stopped. This makes replay reuse
+   simpler, but is musically disruptive and needs approval plus amended transport/audition
+   documentation.
+
+**Recommendation: B**, with the preservation behavior above as the acceptance contract and
+all current image/RAM/IRQ/input gates unchanged. It satisfies the plan without a new stop-only
+restriction or an audible transport surprise. The parked prototype is evidence to evaluate,
+not permission to proceed; it found real cancellation/encoding hazards and needs rebase and
+full validation if approved. If B cannot meet the gates, stop and report rather than silently
+falling back to A or C. A is the conservative alternative if reduced scope is preferred.
 
 ---
 
@@ -589,6 +670,256 @@ rows (compare the pattern through a test hook) and plays back bit-exact with the
 **Commit:** `docs: M2d complete, STEP and TRACKER`
 
 ---
+
+## Task 3 revalidation on main `170e182`
+
+Task 4 is on hold for the controller's audition-policy answer (checkpoint above). All of its
+uncommitted preparation, including the experimental audition conversion, was parked as
+`71e6856` on `m2d-task4-preparation-170e182` before rebasing. That commit is not an ancestor
+of `m2d`; no ORDER/INSTR/TABLE source or test module is registered here.
+
+The three completed TRACKER commits rebased without conflicts onto `170e182` as `5350083`,
+`8f85b3b` and `3c1f076`. Main's CHIP/song shared inactive canvas, schema-5 settings, SONG
+store/save/load behavior, theme T1, emulator `7ca5b96` pin and preflash tooling are retained.
+Preflash and real-device tools were not run. SDK inputs were already cached; no access to
+the controller's main worktree or web fetch was needed. The web emulator revision was
+imported from the local Cargo git cache.
+
+The final default fm1 and spike directories were recreated rather than reusing the old
+CMake caches. Both `SIDOU_ALL_COMBINED_PROFILES` and
+`SIDOU_ALL_COMBINED_PROFILES_8580` are explicitly **ON**, confirmed in the fresh cache.
+
+Two Task 3 integration corrections, not Task 4 implementation:
+
+- The first fresh link had **5,524 B RAM free / 4,056 B POOL free**: combined RAM passed,
+  but POOL failed its unchanged 4,096-B floor by 40 B. Returning the 416-B song-I/O object
+  from POOL to ordinary RAM gives **5,108 B / 4,472 B**, with the same **9,580 B** combined.
+  The shared canvas now leaves room in RAM; no state or memory floor was reduced.
+- Recording now takes its screen from the actual routed TRACKER view, including beneath
+  MIDI learn, not the last canvas owner or an enter/leave pointer. Red-first cases exposed
+  a lost first REC note after navigation and lost recording after nested learn/SEQ/HOME.
+  The latter also exposed a learn capture/completion lifetime crash: learn now yields to a
+  child and cannot pop it when finishing. Three regressions cover CHIP/SONG/SAVE-AS before
+  composition, nested learn and deferred SAVE completion. The focused full app suite has
+  **977 passing / 3 ignored** cases; fresh diff review found no further concrete defect.
+  Canvas ownership still changes only at compose, never on enter/exit. Audition behavior
+  and the song-edit cell/swap protocol are unchanged.
+
+The six retained TRACKER goldens were viewed before and after and regenerated on only their
+two named tests. The ordinary/voice/play/scroll footer says **SELECT: ROW** rather than
+SELECT: VOICE, as Task 3's redesigned controls require. Muted REC pins the manual cursor at
+**PAT 04 / ORD 00 / ROW 00**, with the selected note highlighted, rather than following
+playback to PAT 05 / ORD 01 / ROW 03. No other golden, including `live-mutes.png`, changed.
+
+Fresh linked snapshot: image **504,016 B** versus main's
+**497,120 B** (**+6,896 B**; **7,984 B below** the unchanged 512,000-B ceiling), RAM free
+**5,108 B**, POOL free **4,472 B**, combined **9,580 B** (floor 7,000), RAMTEXT **46,144 B**
+(limit 49,152). Main's firmware sources are unchanged between `1e2bb90` and `170e182`, so
+the directly measured main-image baseline still applies. No bound or tolerance was loosened.
+
+**Validation outcome: blocked, not a green integration.** The first full emulator invocation
+was interrupted before its overall exit file was written. After the server restart, that
+missing result was not treated as success: the complete invocation was rerun fully detached,
+with both fresh build variables and `--nocapture --test-threads=1` (plus `--no-fail-fast`).
+The resumed run completed every binary and doctests, recording **exit 101: 190 passed,
+2 failed, 0 ignored**. The only failing target is `screen` (**61 passed / 2 failed**). The
+song binary passed all **15** cases, including the phrase's bit-exact audio and the player
+budget. Focused reruns and the completed full run confirm the same two screen failures:
+
+- `live_matches_its_golden_images_and_its_scopes_follow_the_notes`: **183 pixels** differ in
+  `live-chord.png`, first `(63,23)`. Old/new PNGs were viewed: notes, controls and layout match,
+  while the saw scopes differ in phase/shape. No LIVE drawing change is intended here; the
+  cause is not established. COMMON's animation-phase exception names SCENE, not LIVE.
+- `tracker_edits_from_the_panel_are_readable_and_bounded`: **1,059 pixels** differ in
+  `tracker-edited.png`, first `(219,0)`, including header colour and activity strips. The
+  selected field and entered row data look the same; that is not sufficient evidence to
+  accept the remaining differences.
+
+Neither unexpected golden was regenerated, masked or given a tolerance. Work stops for the
+controller under COMMON's unexpected-golden rule. The separate Task 4 policy hold also
+remains. The checklist has finished, but it is not green.
+
+| Check | Recorded exit |
+|---|---:|
+| Fresh fm1 configure/build, final rebuild | 0 |
+| Fresh flash-spike configure/build, final rebuild | 0 |
+| GCC 13 on every changed app/core C source | 0 |
+| Workspace formatting | 0 |
+| Locked workspace/all-target Clippy with `-D warnings` | 0 |
+| Locked release workspace tests | 0 |
+| Locked workspace tests with C/C++ UBSan | 0 |
+| sidou-pack using the CI app/loader arguments | 0 |
+| Locked release sidou-pack tests | 0 |
+| REUSE (cached offline invocation) | 0 |
+| `tools/web-demo --check`, emulator `7ca5b96` | 0 |
+| Two named TRACKER header/scroll golden updates | 0 each |
+| Focused unexpected LIVE golden confirmation | **101** |
+| Focused unexpected edited-TRACKER golden confirmation | **101** |
+| Complete detached emulator rerun | **101: 190 passed, 2 failed** |
+
+Measured assertions in the completed emulator rerun:
+
+| Gate | Measured | Unchanged bound |
+|---|---:|---:|
+| STATUS idle | **6,341.0 instr/frame** | <7,500 |
+| HOME / THE OSCILLATOR input | **426** | <430 |
+| CHIP K1 | **209** | <215 |
+| SELECT → RULE30 input | **227** | <230 |
+| LIVE noise | **153,324.11 instr/frame** | <155,000 |
+| USB drain, 16 CCs | **7,917** | <8,000 |
+| PLAYER worst block | **5,738 / 128 = 44.83 instr/sample** | ≤60 |
+| TRACKER compaction request | **439 input / 27,776 busiest pass** | <4,600 / <55,000 |
+| TRACKER cell edits | **max 2,048 input / 30,875 busiest pass** | <4,600 / <55,000 |
+
+MIDI flood assertions and TRACKER idle/input/playing cost assertions reached in the run
+passed; the edited-TRACKER test then failed on its golden, so later assertions in that test
+are not claimed. The 30-second playing measurements were:
+
+| Case | Instr/frame | Worst poll | Most cells | Worst SPI ms |
+|---|---:|---:|---:|---:|
+| LOOP BAR | 26,848.61 | 24,371 | 161 | 14.069 |
+| LOOP SCROLL | 59,135.35 | 23,218 | 177 | 15.559 |
+| Tempo 3 BAR | 45,787.53 | 24,681 | 173 | 15.093 |
+| Tempo 3 SCROLL | 64,318.51 | 21,657 | 174 | 15.288 |
+
+Each completed case reported zero frames cut short. Existing 200-cell, 20-ms, per-mode
+instruction and poll limits remain unchanged. Files in the uncommitted rebase correction
+were reviewed with fresh context; no further concrete code defect was found. They are
+parked as WIP because validation is blocked, not presented as a passing feature commit.
+
+Rebased integration snapshot: **`6ddf5f7`** (WIP). The following log/status was captured
+after that commit and before the report-only commit recording this snapshot:
+
+```text
+6ddf5f7 wip: revalidate TRACKER on main 170e182
+3c1f076 docs: record the rebased TRACKER verification snapshot
+8f85b3b fix(tracker): validate editing with stored songs and the size cap
+5350083 feat(tracker): edit patterns from the keys and encoders, through the player's edit queue
+170e182 docs(hardware): the store check names Felucca only
+```
+
+`git status --short`: empty. Task 4 preparation remains on its separate WIP branch; no push,
+tag, real-device access or unexpected-golden update was performed. The temporary baseline
+worktree was removed; blocked-run logs and actual PNGs remain as diagnostic evidence.
+
+The resumed verification above was run from report HEAD `a564041`, with the same code as
+`6ddf5f7`. Its result is recorded in `build/scratch/m2d-170e182/emu-resumed.exit` (101), with
+the full log alongside it. Every other final checklist exit file is 0. No source or golden
+was changed during the rerun, and no verification process remains running. This completion
+record is documentation only; Task 4 still awaits the controller's policy answer.
+
+## Rebase onto the flash win-back, main `c1831e9`
+
+Before this rebase, all previously running checks were finished and their exit files read:
+release workspace **0**, UBSan workspace **0**, and the completed emulator rerun **101**
+(190 passed, 2 unexpected golden failures). No old check was left running or treated as an
+unrecorded success.
+
+Rebased onto `c1831e9` without conflicts. `app/CMakeLists.txt` was verified to retain both
+TRACKER's `song_edit.c` source and main's cold-file `-Os` settings for `midi_route.c` and
+`song_view.c`. The tighter bitmap codec is retained unchanged. Task 4 preparation remains
+separate at `71e6856`; no page or audition-policy implementation was applied.
+
+Fresh default fm1 and spike directories were created, with both combined-profile options
+explicitly ON. sidou-pack reports **492,480 B** of app image versus main's **485,568 B**:
+**+6,912 B**, with **19,520 B** left below the unchanged 512,000-B ceiling. This is
+**11,536 B smaller** than the preceding M2d image. RAM remains **5,108 B free + 4,472 B
+POOL free = 9,580 B**, and RAMTEXT remains **46,144 B**. No floor, bound, profile or behavior
+was removed to achieve the image result.
+
+Post-rebase verification completed, with every command judged by its own exit file:
+
+| Check | Exit |
+|---|---:|
+| Fresh fm1 configure/build | 0 |
+| Fresh flash-spike configure/build | 0 |
+| GCC 13 on every changed app/core C source | 0 |
+| Workspace formatting | 0 |
+| Locked workspace/all-target Clippy, `-D warnings` | 0 |
+| Locked release workspace tests | 0 |
+| Locked workspace tests with C/C++ UBSan | 0 |
+| sidou-pack, using the CI app/loader arguments | 0 |
+| Locked release sidou-pack tests | 0 |
+| REUSE, cached offline invocation | 0 |
+| `tools/web-demo --check` | 0 |
+| Free-RAM/region map gate | 0 |
+| Full detached emulator run, both build variables | **101: 190 passed, 2 failed** |
+
+All binaries and doctests finished. The only failing target is still `screen`, with **61
+passed / 2 failed**: `live-chord.png` differs by **183 pixels**, and `tracker-edited.png` by
+**1,059 pixels**, at the same first coordinates as the preceding rebase. Neither unexpected
+golden was regenerated, masked or loosened, and no golden was changed on this rebase. The
+bitmap codec was retained, not modified to accommodate the failures. The integration is
+therefore still **blocked, not green** under COMMON's unexpected-golden rule. Task 4's
+separate audition-policy hold also remains.
+
+Numeric gate measurements before → after the flash-win-back rebase:
+
+| Gate | Before (`170e182` base) | After (`c1831e9` base) | Unchanged bound |
+|---|---:|---:|---:|
+| STATUS idle instr/frame | 6,341.0 | **6,362.0** | <7,500 |
+| HOME input | 426 | **426** | <430 |
+| CHIP K1 | 209 | **209** | <215 |
+| SELECT → RULE30 | 227 | **227** | <230 |
+| LIVE noise instr/frame | 153,324.11 | **153,371.99** | <155,000 |
+| USB drain, 16 CCs | 7,917 | **7,917** | <8,000 |
+| PLAYER worst instr/sample | 44.83 | **44.83** | ≤60 |
+
+TRACKER's measured compaction request remains **439** input instructions, with busiest
+pass **27,802**. Cell edits reached at most **2,048** input instructions and **30,933** for
+the busiest pass. The completed 30-second playing cases remain within all existing
+instruction/poll/cell/SPI bounds and report zero frames cut short. As before, the edited
+TRACKER test fails at its golden, so assertions later in that particular function are not
+claimed as executed. The song binary passes all 15 cases, including bit-exact phrase audio
+and the 193-run / 145-song player budget matrix.
+
+The tested code was frozen at rebase HEAD `89dfc60`; only this report changed during the
+checks. There are no running checks left. Results and actual PNGs are retained under the
+worktree's `build/` directories as blocker evidence. No push, tag or real-device operation
+was performed, and no Task 4 page or audition-policy implementation was applied.
+
+Rebased log captured before this report-only update:
+
+```text
+89dfc60 docs: record completed rebase emulator verification
+6134ff4 docs: record blocked TRACKER revalidation on 170e182
+5475468 wip: revalidate TRACKER on main 170e182
+8c44ced docs: record the rebased TRACKER verification snapshot
+e1bc8b3 fix(tracker): validate editing with stored songs and the size cap
+```
+
+At capture, `git status --short` listed only this report; all tested source and goldens were
+unchanged. `c1831e9` is an ancestor of this branch, and Task 4 WIP `71e6856` is not.
+
+## Controller approval and Task 3 history cleanup
+
+The controller viewed reference, actual and diff images and approved these updates on
+2026-10-19:
+
+- **`tracker-edited.png`:** all differing pixels are label roles moving grey → light grey
+  (row numbers, BPM, the orderlist, ORD/ROW and empty-note dashes). This is theme T1's
+  `e88d2e7` role change, merged after the golden was made, not an editing regression.
+  An independent indexed-pixel check confirms **1,059 differences, all palette 12 → 15**.
+- **`live-chord.png`:** layout, notes and controls are identical; only the scope traces
+  differ in capture phase. TRACKER's code shifts main-loop timing, so the capture samples
+  a slightly different audio moment. Bit-exact song tests establish unchanged audio.
+  The indexed-pixel check confirms **183** changed pixels, confined to trace colours and
+  background, with the same palette and no layout/note/control change.
+- **`tracker-instrument-popup.png`:** accepting the edited-row golden exposed this next
+  comparison, previously unreachable after the first failure. Both images were viewed and
+  an indexed-pixel check confirms **830 differences, all palette 12 → 15**. The controller
+  explicitly approved this third T1 label-role update; the popup, layout and data agree.
+
+For this rebase only, the controller also approved any further TRACKER golden whose changed
+pixels are exclusively palette 12 → 15, provided each image is checked and its count recorded.
+The two TRACKER images listed above are the updates using that rule; no other image was
+updated under it. Any other change still requires a stop and report.
+
+Only the two named emulator tests were run with `SIDOU_LCD_GOLDEN_UPDATE=1`. A temporary
+filename restriction ensured only the approved files could be rewritten and kept all other
+comparisons strict; it was removed afterwards, leaving the test helper unchanged. No
+tolerance or numeric gate changed. These controller decisions supersede the corresponding
+unexpected-golden and audition-policy holds recorded above.
 
 ## Risks
 
