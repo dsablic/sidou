@@ -48,6 +48,7 @@ struct {
     uint8_t holding;     /* audio_hold is on */
     uint8_t polled;      /* the last store_poll had work */
     uint8_t file;        /* the test hook's file: 1 streaming, 2 ended */
+    uint8_t sysex_turn;
 } store_fm1_state;
 #define fm store_fm1_state
 
@@ -67,8 +68,11 @@ static const uint8_t* map(void* ctx, uint32_t off) {
 /* A held operation may run now: the device quiet (or a forced save), the gap since the last
  * one passed, and the audio silent. Asks for the hold if it is not on. */
 static int hold_ready(void) {
-    if (!fm.quiet && !fm.force) {
+    if (!fm.quiet && !fm.force && !midi_sysex_writing) {
         return 0;
+    }
+    if (midi_sysex_writing && fm.now - fm.last_hold < STORE_FORCE_GAP_MS) {
+        return 0; /* let the reused hold ramp back up between explicit packet programs */
     }
     if (!fm.holding) {
         audio_hold(1);
@@ -106,6 +110,10 @@ static int operate(uint32_t off, const void* p, uint32_t n, int erase) {
     if (held) {
         fm.last_hold = fm.now;
         store_fm1_counts.holds++;
+        if (midi_sysex_writing) {
+            audio_hold(0);
+            fm.holding = 0;
+        }
     }
     if (rc) {
         store_fm1_counts.errors++;
@@ -157,7 +165,8 @@ static int quiet(const live* l, const keys_route* kr, int sounding) {
         fm.inputs = in;
         fm.input_ms = fm.now;
     }
-    if (kr->song || sounding || input_buttons() || fm.now - fm.input_ms < STORE_QUIET_MS) {
+    if (midi_sysex_running || kr->song || sounding || input_buttons() ||
+        fm.now - fm.input_ms < STORE_QUIET_MS) {
         return 0;
     }
     for (uint32_t v = 0; v < LIVE_VOICES; v++) {
@@ -237,11 +246,16 @@ void store_fm1_service(uint32_t now_ms, const live* l, keys_route* kr, int sound
     store* s = &store_fm1_store;
     int writing = s->w.phase || s->f.phase || s->state == STORE_STATE_MOUNTING;
     if (!fm.wanted && !fm.polled && !store_fm1_hook.op && !fm.holding && !writing &&
+        !midi_sysex_running &&
         now_ms - fm.wanted_at < WANT_MS) {
         fm.last_ms = now_ms; /* idle: nothing until the next ask */
+        store_fm1_active = 0;
         return;
     }
     fm.now = now_ms;
+    if (midi_sysex_running && (++fm.sysex_turn & 1u) && audio_work_slice()) {
+        midi_sysex_service(now_ms);
+    }
     if (store_fm1_hook.op) {
         test_hook(kr);
     }
@@ -257,11 +271,11 @@ void store_fm1_service(uint32_t now_ms, const live* l, keys_route* kr, int sound
     /* A held operation is wanted: maintenance, or (no window) a write. */
     int want_hold = fm.wanted || (!store_fm1_window && writing);
     audio_peak_scan(want_hold && !kr->song);
-    if (fm.holding && (!want_hold || (!fm.quiet && !fm.force))) {
+    if (fm.holding && (!want_hold || (!fm.quiet && !fm.force && !midi_sysex_writing))) {
         audio_hold(0);
         fm.holding = 0;
     }
-    store_quiet(&store_fm1_store, (fm.quiet || fm.force) && fm.wanted);
+    store_quiet(&store_fm1_store, !midi_sysex_running && (fm.quiet || fm.force) && fm.wanted);
     fm.polled = 0;
     int sliced = audio_pass_sliced(); /* read every pass: it is this pass's */
     if (!ask && !sliced) {
@@ -272,5 +286,6 @@ void store_fm1_service(uint32_t now_ms, const live* l, keys_route* kr, int sound
     }
     store_file_idle(&store_fm1_store, now_ms - fm.last_ms);
     fm.last_ms = now_ms;
-    store_fm1_active = (uint8_t)(fm.polled || fm.holding || store_fm1_hook.op || writing);
+    store_fm1_active = (uint8_t)(fm.polled || fm.holding || store_fm1_hook.op || writing ||
+                                midi_sysex_running);
 }

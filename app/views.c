@@ -747,7 +747,7 @@ static void song_directory_step(views* v) {
         return;
     }
     join(m->after, sizeof m->after, file.name, "");
-    if (file.type != STORE_FILE_SONG) {
+    if (!song_io_listed(&file)) {
         return;
     }
     if (m->skip) {

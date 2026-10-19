@@ -27,6 +27,7 @@
 #include "reg_ring.h"
 #include "ui.h"
 #include "update.h"
+#include "store_fm1.h"
 
 /* The register writes one MIDI entry can cause at most. A program change writes every register
  * (live_set_preset, 25). A CC writes at most 6 (the pulse width or the envelopes on every
@@ -74,6 +75,33 @@ static midi_out midi_tx __attribute__((used));
 /* fm1_ticks() at the start of the poll that is running: every entry it pushes gets it. */
 static uint32_t poll_stamp;
 
+static sysex sidou_sysex __attribute__((used));
+uint8_t midi_sysex_running;
+uint8_t midi_sysex_writing;
+static const volatile uint32_t* sysex_ms;
+static uint8_t sidou_outstanding;
+
+static void sidou_trs(void* ctx, midi_sysex_event event, uint8_t byte) {
+    ((midi_rx*)ctx)->inputs++;
+    (void)event;
+    sysex_byte(&sidou_sysex, SYSEX_TRS, byte, *sysex_ms);
+    midi_sysex_running = (uint8_t)sysex_active(&sidou_sysex);
+    store_fm1_active |= midi_sysex_running;
+}
+
+static void sidou_usb(void* ctx, midi_sysex_event event, uint8_t byte) {
+    ((midi_rx*)ctx)->inputs++;
+    (void)event;
+    sysex_byte(&sidou_sysex, SYSEX_USB, byte, *sysex_ms);
+    midi_sysex_running = (uint8_t)sysex_active(&sidou_sysex);
+    store_fm1_active |= midi_sysex_running;
+}
+
+static void sidou_callbacks(void) {
+    rx.trs.on_sysex = sidou_trs;
+    rx.usb.on_sysex = sidou_usb;
+}
+
 /* Diagnostics, read by the emulator tests through the ELF symbol: six uint32_t, in this order. */
 static struct {
     uint32_t entries;        /* ring entries taken onto live */
@@ -109,12 +137,57 @@ static void midi_lost(uint32_t n) {
 }
 
 /* clang-format off */
+#define sysex_byte ota_sysex_byte
 #include "usb/usb.c"
+#undef sysex_byte
 #include "usb/midi_uart.c"
 #include "src/ota.c"
 /* clang-format on */
 
 _Static_assert(MIDI_SRC_USB == 1u && MIDI_SRC_TRS == 2u, "usb.c and midi_uart.c push 1 and 2");
+
+static int sidou_send(void* ctx, const uint8_t packet[4]) {
+    (void)ctx;
+    if (!midi_usb_live() || mo_w - mo_r >= MQ || so_w != so_r || sx_busy) {
+        return 0;
+    }
+    uint32_t word = (uint32_t)packet[0] | (uint32_t)packet[1] << 8 |
+                    (uint32_t)packet[2] << 16 | (uint32_t)packet[3] << 24;
+    midi_out_event(word);
+    sidou_outstanding = 1;
+    return 1;
+}
+
+static void sidou_writing(void* ctx, int on) {
+    (void)ctx;
+    midi_sysex_writing = (uint8_t)(on != 0);
+}
+
+void midi_sysex_bind(const sysex_hooks* hooks, const volatile uint32_t* now_ms) {
+    sysex_hooks bound = *hooks;
+    bound.send = sidou_send;
+    bound.writing = sidou_writing;
+    sysex_ms = now_ms;
+    static const uint8_t version[4] = {SIDOU_VERSION_MAJOR, SIDOU_VERSION_MINOR,
+                                      SIDOU_VERSION_PATCH, 0};
+    sysex_init(&sidou_sysex, store_fm1(), &bound, version, store_fm1_window != 0);
+}
+
+void midi_sysex_service(uint32_t now_ms) {
+    if (!midi_sysex_running) {
+        return;
+    }
+    if (sidou_sysex.owner == SYSEX_USB && !midi_usb_live()) {
+        sysex_reset(&sidou_sysex);
+        if (!sysex_active(&sidou_sysex)) {
+            midi_sysex_running = 0;
+            return;
+        }
+    }
+    sidou_sysex.windows = store_fm1_window != 0;
+    sysex_poll(&sidou_sysex, now_ms);
+    midi_sysex_running = (uint8_t)sysex_active(&sidou_sysex);
+}
 
 /* ---- midi.h ---- */
 
@@ -130,6 +203,7 @@ void midi_init(live* l, keys_route* kr) {
     midi_learn_init(&learned);
     midi_rx_learn(&rx, &learned);
     midi_out_learn(&midi_tx, &learned);
+    sidou_callbacks();
     uart_midi_init();
     usb_start();
 }
@@ -195,15 +269,10 @@ uint32_t midi_inputs(void) {
     return rx.inputs;
 }
 
-int midi_drain(void) {
+__attribute__((noinline, unused)) static int drain_pending(uint8_t epoch) {
     midi_ring_entry e;
     uint32_t n = 0;
     uint32_t restarts = rx.restarts;
-    /* The epoch first, then the emptiness: a gap after this read is caught next time. */
-    uint8_t epoch = in_ring.epoch;
-    if (in_ring.head == in_ring.tail && epoch == rx.epoch) {
-        return 0; /* the main loop wakes at 10 kHz: keep the usual case to a few loads */
-    }
     /* Leave the entry, a later gap and the rest of the pass their worst cases
      * (MIDI_DRAIN_RESERVE); what stays in the ring is taken after the next audio block. */
     while (audio_queued() + MIDI_DRAIN_RESERVE <= REG_RING_SIZE &&
@@ -230,6 +299,9 @@ int midi_drain(void) {
     }
     midi_stats.entries += n;
     if (rx.restarts != restarts) {
+        sysex_reset(&sidou_sysex);
+        midi_sysex_running = (uint8_t)sysex_active(&sidou_sysex);
+        sidou_callbacks();
         midi_stats.lost = midi_ring_lost(&in_ring);
         midi_stats.restarts = rx.restarts;
         return 1; /* the restart released the notes: there are writes to commit */
@@ -237,7 +309,20 @@ int midi_drain(void) {
     return n != 0;
 }
 
+int midi_drain(void) {
+    /* The epoch first, then the emptiness: a gap after this read is caught next time.
+     * Keep the worker's saved registers and packet workspace out of this 10 kHz path. */
+    uint8_t epoch = in_ring.epoch;
+    if (in_ring.head == in_ring.tail && epoch == rx.epoch) {
+        return 0;
+    }
+    return drain_pending(epoch);
+}
+
 void midi_send(void) {
+    if (sidou_sysex.tx_active) {
+        return; /* channel status must not split a SysEx frame */
+    }
     /* No host, or one asleep or gone (usb.c: the frame number stopped): forget the changes
      * rather than queue them for a host that may come back much later. Both flags change in
      * the TIMER5 interrupt, so both are read through volatile: suspended is declared so, and
@@ -376,6 +461,26 @@ int flash_store_ok(void) {
 int update_poll(void) {
     if (!sx_ready && !usb.ota_req) {
         return 0; /* the usual case, at every main-loop wake */
+    }
+    if (sx_ready && sx_frame_len &&
+        (sx_frame[0] == 0x7Eu ||
+         (sx_frame_len >= 3u && sx_frame[0] == 0x7Du && sx_frame[1] == 0x53u &&
+          sx_frame[2] == 0x44u))) {
+        /* The raw USB stream already reached SIDOU's parser. Free the updater's
+         * unrelated copy now, so it can collect a request while our reply streams. */
+        ota_frame_done();
+        if (!usb.ota_req) {
+            return 0;
+        }
+    }
+    if (sidou_sysex.tx_active) {
+        return 0; /* finish this frame before the updater's independent reply producer */
+    }
+    if (sidou_outstanding) {
+        if (mo_w != mo_r) {
+            return 0; /* OTA's higher-priority queue must not overtake the queued F7 */
+        }
+        sidou_outstanding = 0;
     }
     ota_service();
     if (usb.ota_req) {

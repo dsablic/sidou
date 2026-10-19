@@ -71,6 +71,8 @@ typedef struct {
     uint8_t index_remaining;
     uint8_t rollback;
     uint8_t data[SONG_IO_BUFFER_BYTES];
+    /* A main-loop workspace lease: internal loading advances, new file actions refuse. */
+    uint8_t external;
 } song_io;
 
 void song_io_init(song_io* io, song_ctl* ctl, store* st, settings* set, void* workspace,
@@ -78,6 +80,8 @@ void song_io_init(song_io* io, song_ctl* ctl, store* st, settings* set, void* wo
 int song_io_changed(const song_io* io);
 int song_io_busy(const song_io* io);
 int song_io_saving(const song_io* io);
+/* User-facing SONG/bank directory: the MIDI loader's staging file is private. */
+int song_io_listed(const store_file* file);
 /* 1 accepted, 0 refused (message); confirmation is required before losing edits. */
 int song_io_load(song_io* io, const char* name, int confirmed);
 /* 1 lookup accepted, 0 refused (message). Load the zero-based song in name order, stopped.

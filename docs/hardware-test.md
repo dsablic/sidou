@@ -775,6 +775,77 @@ menu; CLOCK is AUTO and CLOCK OUT OFF at power-on.
 
 Notes:
 
+## 8c. SysEx files, instruments and songs (M2e Task 5)
+
+These are manual acceptance checks, not recorded hardware passes. **USB-MIDI
+output is still a separate blocker**: section 8.1 must pass before USB replies
+can establish a successful dump or upload. The protocol and exact payloads are
+in [SysEx protocol, version 1](reference/sysex.md). `sidou-sysex` is a host-only
+packet library, not a CLI or a MIDI transport. Use a SysEx utility that supports
+per-frame ACK handling for USB and an explicit frame gap for TRS.
+
+Use a writable store (section 7.1), back up wanted songs and choose disposable
+filenames. Never format a foreign store just to proceed. Do not use updater
+commands for these checks.
+
+- [ ] **Inquiry, USB:** send `F0 7D 53 44 01 00 7F F7`. The INQ reply reports
+  protocol 1, the installed firmware version, store format, free bytes, clean
+  pool size and write-window flag. Universal inquiry to id 0 and broadcast id
+  `7F` returns the documented SIDOU identity. Record the replies; the updater's
+  independent identity still works.
+- [ ] **Directory and download, USB:** request DIR, ACK every entry and its
+  final END. GET a disposable named file; ACK PUT metadata, every DATA and END.
+  Reassemble exactly the declared length and compare CRC-32 and bytes with the
+  original. Reserved `MIDI INSTRUMENT` and `MIDI SONG` entries are not listed.
+- [ ] **Upload and delete, USB:** PUT a disposable file, waiting for the
+  metadata ACK before DATA and each DATA ACK before the next frame. Send
+  nonfinal payloads in multiples of 16 bytes, at most 256; allow a short final
+  payload. Wait for END's ACK, GET and compare bytes/CRC, then DEL and wait for
+  its ACK. DIR no longer lists it. Repeat with a 65,536-byte file.
+- [ ] **Production-default programs with a chord:** INQ's window flag is zero.
+  Upload the large file while holding keys. It is accepted, not refused solely
+  because windows are disabled. Listen for the explicit SAVE-style short
+  mute/ramp gaps and recovery between programs; the transfer must not leave
+  audio held continuously. Record what is heard and any stuck or missed note.
+- [ ] **Refusal before streaming:** if the clean pool cannot cover a file,
+  metadata receives BUSY with pool size (or STORE BUSY: RESEND on TRS), before
+  accepting DATA. Stop the transfer and allow quiet refill before retrying.
+  A file beyond 65,536 bytes receives FULL; it does not trigger a mid-transfer
+  erase. Do not erase wanted files to manufacture this condition.
+- [ ] **Abort and damaged uploads:** overwrite a disposable file, then test
+  ABORT, a bad packet checksum, a wrong DATA sequence, a nonfinal 15-byte DATA,
+  a wrong final CRC and a pause over two seconds between frames. Each upload
+  ends with the documented NAK/toast, leaves the old file intact and allows a
+  fresh transfer. Real-time MIDI clock bytes between SysEx bytes do not corrupt
+  framing. While USB owns a transfer, TRS cannot continue or interrupt it.
+- [ ] **Instrument:** stop the song and release all audition notes. GET an instrument as
+  GTI5, then PUT it into a disposable instrument slot. Its four tables are
+  relocated and it sounds as before. Invalid content and insufficient trailing
+  table rows refuse without changing the song. Interior holes are not reused;
+  valid GTI5 content can still receive FULL. `MIDI INSTRUMENT` is not offered as
+  a song by the song browser or bank-1 recall.
+- [ ] **Current song:** GET the current song as GTS5 with SIDOU's trailer and
+  open it in a compatible editor. With no unsaved edits, PUT it to target 2;
+  wait for END's ACK and then for the stopped loader to finish. ACK/SAVED
+  confirms storage and load-request acceptance, not completed loading. Invalid
+  song content may report a later song-error toast. Unsaved edits or a busy
+  save are refused rather than silently discarded.
+- [ ] **TRS upload:** send PUT, DATA and END with **one second after EACH
+  complete frame**, including metadata and END, using at most 256 decoded
+  bytes per DATA and the alignment rule above. Check RECEIVING then SAVED or
+  the refusal toast; there is no TRS reply and no USB reply to a TRS request.
+  After completion, load the song or, once USB output passes, GET and compare
+  the file. This conservative gap is not a measured hardware throughput claim.
+- [ ] **Hold-free programs, only after section 12 validates windows:** repeat
+  the large upload with a chord on a build using validated timing values.
+  INQ reports windows enabled; no program hold, dropout or click is heard.
+  Emulator window-override results do not satisfy this hardware item.
+
+Record the package hash, port, payload size, frame gap, elapsed time, observed
+toasts and any failure. Keep sections 8.1 and 12 open until separately passed.
+
+Notes:
+
 ## 9. Reinstall, back to stock V15, and SIDOU again
 
 - [ ] From SIDOU, install `sidou.fwsc` again (SIDOU to SIDOU): it installs,

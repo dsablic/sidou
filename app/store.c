@@ -1441,6 +1441,8 @@ static int file_step(store* s) {
         k = k > s->window ? s->window : k;
         k = k > page ? page : k;
         k = k > STORE_WINDOW_MAX - f->start ? STORE_WINDOW_MAX - f->start : k; /* the ring's end */
+        if (f->flush && f->fill < k) k = f->fill;
+        if (!k) return 0;
         if (f->fill < k) {
             return 0; /* waiting for bytes */
         }
@@ -1451,6 +1453,7 @@ static int file_step(store* s) {
         if (rc > 0) {
             f->crc = crc(s, f->crc, src, k);
             f->fill = (uint16_t)(f->fill - k);
+            if (!f->fill) f->flush = 0;
             f->start = (uint16_t)((f->start + k) % STORE_WINDOW_MAX);
             f->cdone = (uint16_t)(f->cdone + k);
             if (f->cdone == len) {
@@ -1800,6 +1803,7 @@ int store_file_begin(store* s, const char* name, uint8_t type, uint32_t length) 
     f->fill = 0;
     f->start = 0;
     f->closing = 0;
+    f->flush = 0;
     f->idle = 0;
     f->type = type;
     f->nsec = (uint8_t)nsec;
@@ -1826,6 +1830,15 @@ uint32_t store_file_write(store* s, const void* p, uint32_t n) {
     f->taken += n;
     f->idle = 0;
     return n;
+}
+
+void store_file_flush(store* s) {
+    store_file_writer* f = &s->f;
+    if (f->fill && (f->taken == f->length || (f->fill >= 16 && !(f->taken & 15u)))) f->flush = 1;
+}
+
+int store_file_pending(const store* s) {
+    return s->f.phase != F_IDLE && (s->f.fill || (s->f.phase != F_DATA && s->f.phase != F_SEALED));
 }
 
 int store_file_end(store* s) {

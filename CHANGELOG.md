@@ -9,6 +9,22 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- M2e Task 5: [version-1 SysEx](docs/reference/sysex.md) for inquiry, streamed
+  directory/file GET and PUT, deletion, GTI5 instruments with table relocation,
+  and current-song dumps/imports. USB uses per-frame ACK/NAK; TRS accepts paced
+  uploads without replies. Nonfinal upload DATA is a multiple of 16 bytes;
+  the final packet may contain any 1–256 bytes. All sectors are claimed before
+  the first PUT ACK, DATA ACKs wait for programming, and incomplete uploads
+  do not replace existing files. No-window PUT/DEL uses explicit program holds
+  with SAVE's mute/ramp, released between programs; transfers remain not quiet
+  and never authorize maintenance erases. Window-enabled programs are hold-free,
+  with hardware timing acceptance still pending section 12 of the checklist.
+  Current-song END ACK means the committed file's load request was accepted;
+  normal loader validation can still report a later error. The host-only
+  `sidou-sysex` packet library opens no devices and has no CLI. The generated
+  MIDI chart includes SysEx commands; checklist 8c covers manual acceptance.
+  USB-MIDI output remains broken on hardware pending its separate fix and
+  section 8.1 acceptance; host/emulator checks do not establish a hardware pass.
 - M2c song engine complete (Tasks 1-9): native GoatTracker `.sng` files with SIDOU's
   trailer, the host 6502 reference and register-matched C player, frame-exact interrupt
   playback with bounded live edits, parameter locks, SONG's store actions and About's

@@ -35,6 +35,7 @@
 #include "reg_ring.h"
 #include "song/gt2_sng.h"
 #include "song/gt2_stream.h"
+#include "song/gt2_ins.h"
 #include "song_io.h"
 #include "store_fm1.h"
 #include "ui.h"
@@ -76,7 +77,19 @@ static keys_route keys_router;
 static ui_sound ui_sounds;
 static panel front;
 static song_io songs;
-static gt2_stream song_stream;
+static union {
+    gt2_stream stream;
+    gt2_ins_import_state instrument;
+} song_stream;
+static struct {
+    gt2_ins_export instrument;
+    uint32_t offset;
+    uint8_t target, index, owned, loaded, staging_busy;
+} midi_object;
+enum { MIDI_OBJECT_FROZEN = 1u, MIDI_OBJECT_WORKSPACE = 2u };
+
+_Static_assert(sizeof(sysex) + sizeof(midi_object) + 16u <= 1024u,
+               "MIDI dump state, packet buffer and binding globals fit the new RAM budget");
 
 /* The audio interrupt renders: a TIMER5 tick nested in it leaves USB's poll for later
  * (fm1_timer5_irq). */
@@ -632,7 +645,187 @@ static int song_loaded(void* ctx) {
     song_base_set(&base);
     keys_route_song_wants(&keys_router, &base);
     keys_router.song_user = 0;
+    if (midi_object.target == 2u && midi_object.offset == UINT32_MAX &&
+        (midi_object.owned & MIDI_OBJECT_WORKSPACE)) {
+        midi_object.loaded = 1;
+    }
     return 1;
+}
+
+static int midi_object_stopped(const song_ctl* sc) {
+    return song_ctl_state(sc) != SONG_PLAYING && song_ctl_state(sc) != SONG_LOADING &&
+           !sc->isr_playing && !sc->auditioning && !sc->audition && !sc->handback &&
+           !sc->inflight_n && !sc->ff_on && !sc->deriving && !sc->spare_wait &&
+           !sc->bg_on && !sc->widened && !sc->want_handover &&
+           sc->stage == sc->cmd_tail;
+}
+
+static int midi_object_open(void* ctx, uint8_t target, uint8_t index, int writing,
+                            uint32_t length) {
+    (void)ctx;
+    (void)length;
+    song_ctl* sc = audio_song();
+    gt2_song* s = sc->song;
+    if (writing && target == 2u && memcmp(songs.name, "MIDI SONG", 10u) == 0) {
+        midi_object.staging_busy = 1;
+        return SYSEX_BUSY; /* keep the current import's rollback file immutable */
+    }
+    if (song_io_busy(&songs) || songs.about || songs.external || s->frozen || s->pending || s->pending_loose ||
+        (target == 1u && !midi_object_stopped(sc)) ||
+        (writing && target == 2u && song_io_changed(&songs))) {
+        return SYSEX_BUSY;
+    }
+    if (!writing) {
+        if (target == 1u) {
+            if (gt2_ins_export_begin(&midi_object.instrument, s, index) != GT2_OK) {
+                return SYSEX_IO;
+            }
+        } else if (!song_capture(0)) {
+            return SYSEX_FULL;
+        }
+    }
+    midi_object.target = target;
+    midi_object.index = index;
+    midi_object.offset = 0;
+    midi_object.loaded = 0;
+    midi_object.owned = MIDI_OBJECT_FROZEN;
+    s->frozen = 1;
+    return 0;
+}
+
+static int midi_object_available(void* ctx) {
+    (void)ctx;
+    return song_io_busy(&songs) || songs.external || audio_song()->song->frozen ? SYSEX_BUSY : 0;
+}
+
+static uint32_t midi_object_size(void* ctx) {
+    (void)ctx;
+    return midi_object.target == 1u ? midi_object.instrument.length :
+                                    gt2_saved_size(audio_song()->song);
+}
+
+static int midi_object_read(void* ctx, uint32_t offset, void* buf, uint32_t n) {
+    (void)ctx;
+    if (midi_object.target == 1u) {
+        return (int)gt2_ins_export_read(&midi_object.instrument, offset, buf, n);
+    }
+    if (!offset) {
+        gt2_stream_write_begin(&song_stream.stream, audio_song()->song, 1);
+        midi_object.offset = 0;
+    }
+    if (offset != midi_object.offset) {
+        return -1;
+    }
+    uint32_t done = 0;
+    while (done < n) {
+        int got = gt2_stream_write_step(&song_stream.stream, (uint8_t*)buf + done, n - done);
+        if (got <= 0) {
+            return -1;
+        }
+        done += (uint32_t)got;
+    }
+    midi_object.offset += done;
+    return (int)done;
+}
+
+static uint32_t midi_file_read(void* ctx, uint32_t offset, uint8_t* buf, uint32_t n) {
+    const store_file* file = ctx;
+    int got = store_file_read(store_fm1(), file, offset, buf, n);
+    return got > 0 ? (uint32_t)got : 0u;
+}
+
+static int midi_object_complete(void* ctx, const store_file* file) {
+    (void)ctx;
+    song_ctl* sc = audio_song();
+    if (midi_object.target == 1u) {
+        if (midi_object.offset != UINT32_MAX && !midi_object_stopped(sc)) {
+            return SYSEX_BUSY;
+        }
+        gt2_ins_import_state* work = &song_stream.instrument;
+        if (midi_object.offset != UINT32_MAX) {
+            gt2_err error = gt2_ins_import_begin(work, sc->song, midi_object.index, midi_file_read,
+                                                (void*)file, file->length, 1);
+            if (error != GT2_OK) {
+                return SYSEX_IO;
+            }
+            midi_object.offset = UINT32_MAX;
+        }
+        int result = gt2_ins_import_step(work);
+        if (result == 0) {
+            return SYSEX_PENDING;
+        }
+        if (result > 0) {
+            sc->state = SONG_IDLE;
+            sc->shapes_used = 0;
+            sc->player.shape = NULL;
+            sc->bg_on = sc->bg_dirty = sc->widened = sc->ff_on = sc->deriving = 0;
+            sc->want_handover = sc->spare_wait = sc->hold_next = 0;
+        }
+        return result > 0 ? 0 : work->error == GT2_ERR_FULL || work->error == GT2_ERR_SONG_FULL ?
+               SYSEX_FULL : SYSEX_IO;
+    }
+    if (midi_object.offset != UINT32_MAX) {
+        sc->song->frozen = 0;
+        midi_object.owned = 0;
+        if (!song_io_load(&songs, file->name, 0)) {
+            return SYSEX_BUSY;
+        }
+        songs.external = 1;
+        midi_object.owned = MIDI_OBJECT_WORKSPACE;
+        midi_object.offset = UINT32_MAX;
+        return SYSEX_PENDING;
+    }
+    if (song_io_busy(&songs)) {
+        if (songs.restoring || songs.failure[0]) {
+            midi_object.loaded = 0;
+        }
+        return SYSEX_PENDING;
+    }
+    return midi_object.loaded ? 0 : SYSEX_IO;
+}
+
+static void midi_object_close(void* ctx) {
+    (void)ctx;
+    if (midi_object.owned & MIDI_OBJECT_FROZEN) {
+        audio_song()->song->frozen = 0;
+    }
+    if (midi_object.owned & MIDI_OBJECT_WORKSPACE) {
+        songs.external = 0;
+    }
+    midi_object.owned = 0;
+    midi_object.target = 0;
+    midi_object.offset = 0;
+}
+
+static void midi_sysex_toast(void* ctx, uint8_t reason) {
+    (void)ctx;
+    const char* text = "MIDI: BAD PACKET";
+    switch (reason) {
+    case SYSEX_RECEIVING: text = "RECEIVING"; break;
+    case SYSEX_SAVED: text = "SAVED"; break;
+    case SYSEX_BUSY: text = "STORE BUSY: RESEND"; break;
+    case SYSEX_FULL: text = "STORE FULL"; break;
+    case SYSEX_NOT_FOUND: text = "MIDI: NOT FOUND"; break;
+    case SYSEX_CHECKSUM: text = "MIDI: CHECKSUM"; break;
+    case SYSEX_TIMEOUT: text = "MIDI: TIMEOUT"; break;
+    case SYSEX_ABORTED: text = "MIDI: ABORTED"; break;
+    case SYSEX_IO: text = "MIDI: FILE ERROR"; break;
+    default: break;
+    }
+    if (reason == SYSEX_BUSY && midi_object.staging_busy) {
+        text = "SAVE AS FIRST";
+    }
+    midi_object.staging_busy = 0;
+    ui_toast(text, 2000u);
+}
+
+__attribute__((noinline, unused)) static void midi_objects_bind(void) {
+    const sysex_hooks binding = {
+        .open = midi_object_open, .size = midi_object_size, .read = midi_object_read,
+        .complete = midi_object_complete, .close = midi_object_close, .toast = midi_sysex_toast,
+        .available = midi_object_available
+    };
+    midi_sysex_bind(&binding, &uptime_ms);
 }
 
 static int16_t song_error;    /* the refusal last shown */
@@ -755,6 +948,9 @@ static uint32_t jam_last_ms;  /* the last jam's time */
 
 static int st_play(void* ctx, uint32_t pos) {
     song_ctl* sc = ctx;
+    if (midi_object.owned && midi_object.target == 1u) {
+        return 1;
+    }
     if (song_io_busy(&songs) && !song_io_saving(&songs)) {
         return 1; /* transport requests during a load do not play a half-read model */
     }
@@ -776,6 +972,9 @@ static int st_stop(void* ctx) {
 
 static int st_resume(void* ctx) {
     song_ctl* sc = ctx;
+    if (midi_object.owned && midi_object.target == 1u) {
+        return 1;
+    }
     if (song_io_busy(&songs) && !song_io_saving(&songs)) {
         return 1;
     }
@@ -791,6 +990,9 @@ static int st_mute(void* ctx, uint32_t mask) {
  * take a few ticks to start (chip A taken for the song): the note waits for it. */
 static int st_jam(void* ctx, uint32_t voice, uint32_t note, uint32_t instr) {
     song_ctl* sc = ctx;
+    if (midi_object.owned && midi_object.target == 1u) {
+        return 1;
+    }
     if (song_io_busy(&songs) && !song_io_saving(&songs)) {
         return 1;
     }
@@ -870,6 +1072,9 @@ static void st_status(void* ctx, song_status* out) {
 /* M2e's MIDI clock (app/midi_sync.h): the held start, the align, the period, the seeks and
  * the calls' samples, through the same transport as the song views'. */
 static int st_hold(void* ctx, uint32_t on) {
+    if (midi_object.owned && midi_object.target == 1u) {
+        return 1;
+    }
     if (song_io_busy(&songs) && !song_io_saving(&songs)) {
         return 1;
     }
@@ -878,6 +1083,9 @@ static int st_hold(void* ctx, uint32_t on) {
 }
 
 static int st_align(void* ctx, uint32_t sample) {
+    if (midi_object.owned && midi_object.target == 1u) {
+        return 1;
+    }
     if (song_io_busy(&songs) && !song_io_saving(&songs)) {
         return 1;
     }
@@ -885,6 +1093,9 @@ static int st_align(void* ctx, uint32_t sample) {
 }
 
 static int st_period(void* ctx, uint32_t q16) {
+    if (midi_object.owned && midi_object.target == 1u) {
+        return 1;
+    }
     if (song_io_busy(&songs) && !song_io_saving(&songs)) {
         return 1;
     }
@@ -901,6 +1112,9 @@ static int st_period(void* ctx, uint32_t q16) {
 }
 
 static int st_seek(void* ctx, uint32_t call) {
+    if (midi_object.owned && midi_object.target == 1u) {
+        return 1;
+    }
     if (song_io_busy(&songs) && !song_io_saving(&songs)) {
         return 1;
     }
@@ -908,6 +1122,9 @@ static int st_seek(void* ctx, uint32_t call) {
 }
 
 static int st_seek_further(void* ctx, uint32_t call) {
+    if (midi_object.owned && midi_object.target == 1u) {
+        return 1;
+    }
     if (song_io_busy(&songs) && !song_io_saving(&songs)) {
         return 1;
     }
@@ -1200,6 +1417,7 @@ static void boot_feed(void) {
 static void while_lcd_wakes(void) {
     flash_plain_window();
     store_fm1_boot(boot_feed);
+    midi_objects_bind();
 }
 
 static void sidou_main(void) {
@@ -1258,7 +1476,7 @@ static void sidou_main(void) {
     song_io_hooks io_hooks = {song_capture, song_loaded, read_demo, 0, song_generation,
                               ui_song_force, song_snapshot, song_restore};
     (void)song_capture(0);
-    song_io_init(&songs, audio_song(), store_fm1(), ui_settings(), &song_stream, &io_hooks);
+    song_io_init(&songs, audio_song(), store_fm1(), ui_settings(), &song_stream.stream, &io_hooks);
     ui_set_song_io(&songs);
     if (ui_settings()->last_song[0]) {
         (void)song_io_load(&songs, ui_settings()->last_song, 1);

@@ -63,6 +63,7 @@
 #include "song_io.h"
 #include "song_view.h"
 #include "store.h"
+#include "sysex.h"
 #include "store_layout.h"
 #include "theme.h"
 #include "title_card.h"
@@ -74,3 +75,4 @@
 #include "workload_fx.h"
 #include "workload_slots.h"
 #include "workload_scene.h"
+#include "song/gt2_ins.h"

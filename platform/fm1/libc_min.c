@@ -7,6 +7,8 @@
 void* memset(void* dst, int c, size_t n);
 void* memcpy(void* dst, const void* src, size_t n);
 int memcmp(const void* a, const void* b, size_t n);
+int strcmp(const char* a, const char* b);
+char* strcpy(char* dst, const char* src);
 
 void* memset(void* dst, int c, size_t n) {
     unsigned char* d = dst;
@@ -34,4 +36,19 @@ int memcmp(const void* a, const void* b, size_t n) {
         }
     }
     return 0;
+}
+
+int strcmp(const char* a, const char* b) {
+    while (*a && *a == *b) {
+        a++;
+        b++;
+    }
+    return (unsigned char)*a - (unsigned char)*b;
+}
+
+char* strcpy(char* dst, const char* src) {
+    char* out = dst;
+    while ((*out++ = *src++) != 0) {
+    }
+    return dst;
 }

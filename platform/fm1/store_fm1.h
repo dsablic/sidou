@@ -107,6 +107,7 @@ void store_fm1_boot(void (*feed)(void));
 void store_fm1_service(uint32_t now_ms, const live* l, keys_route* kr, int sounding);
 /* 1 while the store has work in hand: a write, a job, a hold, the test hook. */
 extern uint8_t store_fm1_active;
+extern volatile uint32_t store_fm1_window;
 /* An explicit SAVE that found the pool short (Task 5): held erases go without quiet, each
  * STORE_FORCE_GAP_MS apart (short gaps the user asked for), until it is off again. */
 void store_fm1_force(int on);

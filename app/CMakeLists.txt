@@ -53,6 +53,7 @@ add_library(sidou_live STATIC
     song_view.c
     song_io.c
     store.c
+    sysex.c
     theme.c
     title_card.c
     title_card_bitmap.c
@@ -71,7 +72,7 @@ if(CMAKE_CROSSCOMPILING)
     # The store runs in the main loop, never the audio path, and its polls are bounded by work
     # (STORE_POLL_WORK), not speed: built for size (about a third smaller than -O2). The
     # settings, which run a few times a second in the UI's frame, too.
-    set_source_files_properties(store.c settings.c user_profile.c song_io.c PROPERTIES COMPILE_OPTIONS -Os)
+    set_source_files_properties(store.c settings.c user_profile.c song_io.c sysex.c PROPERTIES COMPILE_OPTIONS -Os)
     # Cold routing and song-view controls: each file's size build keeps every emulator gate.
     set_source_files_properties(midi_route.c song_view.c PROPERTIES COMPILE_OPTIONS -Os)
 endif()

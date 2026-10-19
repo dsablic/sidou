@@ -44,14 +44,15 @@ extern "C" {
 
 typedef struct {
     live* l;
+    /* Hot per-pass flags stay directly addressable, ahead of the large port maps. */
+    uint8_t epoch;     /* the ring's epoch the parsers are in */
+    uint8_t looked;    /* midi_out_local ran this pass: midi_rx_settle owes midi_out_remote */
     midi_in trs;
     midi_in usb;
     midi_map_port trs_map; /* each source's NRPN state */
     midi_map_port usb_map;
-    uint8_t epoch;     /* the ring's epoch the parsers are in */
     uint32_t restarts; /* times lost input restarted the parsers */
     midi_out* out;     /* told which changes are MIDI's (midi_rx_watch), or NULL */
-    uint8_t looked;    /* midi_out_local ran this pass: midi_rx_settle owes midi_out_remote */
     midi_learn* learn; /* MIDI learn's bindings, both ports' (midi_rx_learn), or NULL */
     /* Messages taken other than real-time ones (F8 clock, FA-FC transport, FE active sensing):
      * the store's quiet detector watches it (platform/fm1/store_fm1.c), so a DAW's steady

@@ -19,6 +19,7 @@ const SOURCES: &[&str] = &[
     "core/song/gt2_song.c",
     "core/song/gt2_sng.c",
     "core/song/gt2_stream.c",
+    "core/song/gt2_ins.c",
     "core/song/song_ext.c",
     "core/player/gt2_play.c",
     "core/player/gt2_shape.c",
@@ -71,6 +72,7 @@ const SOURCES: &[&str] = &[
     "app/song_view.c",
     "app/song_io.c",
     "app/store.c",
+    "app/sysex.c",
     "app/theme.c",
     "app/title_card.c",
     "app/title_card_bitmap.c",
@@ -206,7 +208,7 @@ fn main() {
                 "sid_.*|sidou_.*|gt2_.*|song_.*|workload_.*|live_.*|midi_.*|panel_.*|reg_ring_.*|bootguard_.*|",
                 "fx_live.*|grid_.*|screen_.*|menu_.*|widget_.*|views_.*|logo_.*|sine_.*|boot_.*|about_.*|",
                 "learn_view_.*|scope_.*|scene_.*|title_card_.*|chip_view_.*|chip_mix|master_.*|tail_gate_.*|chip_ctl_.*|chip_setup_.*|",
-                "keys_route_.*|ui_sound_.*|store_.*|save_key_.*|settings_.*|tracker_view_.*|user_profile_.*|user_profiles_.*|theme_.*",
+                "keys_route_.*|ui_sound_.*|store_.*|sysex_.*|save_key_.*|settings_.*|tracker_view_.*|user_profile_.*|user_profiles_.*|theme_.*",
             ),
         )
         .allowlist_type(
@@ -218,7 +220,7 @@ fn main() {
                 "live_.*|FONT_.*|font_.*|GRID_.*|grid_.*|SCREEN_.*|screen_.*|MENU_.*|VIEWS_.*|views_.*|",
                 "LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*|LEARN_VIEW_.*|SCOPE_.*|",
                 "SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|MASTER_.*|",
-                "TAIL_.*|UI_SOUND_.*|KEYS_ROUTE_.*|",
+                "TAIL_.*|UI_SOUND_.*|KEYS_ROUTE_.*|SYSEX_.*|",
                 "demo_song_.*|song_view_.*|STORE_.*|SAVE_KEY_.*|SETTINGS_.*|tracker_view_.*|TRACKER_VIEW_.*|",
                 "USER_PROFILE.*|user_profile.*|THEME_.*|theme_.*",
             ),
@@ -253,7 +255,7 @@ fn main() {
             "sid|sid_osc|sid_env|reg_ring|reg_ring_entry|reg_ring_chips|reg_ring_out|keys_route|",
             "chip_ctl|chip_setup|midi_out|midi_ring|midi_ring_entry|midi_learn|live|scope|grid|views|",
             "title_card|song_ctl|screen|store|store_writer|store_file_writer|boot|gt2_stream|",
-            "midi_route|midi_sync|midi_clock",
+            "midi_route|midi_sync|midi_clock|sysex",
         ))
         .generate()
         .expect("bindgen (ILP32 layout) failed")

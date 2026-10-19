@@ -70,8 +70,12 @@ int song_io_saving(const song_io* io) {
     return io->state >= SONG_IO_SAVE_WAIT && io->state <= SONG_IO_REMEMBER;
 }
 
+int song_io_listed(const store_file* file) {
+    return file->type == STORE_FILE_SONG && memcmp(file->name, "MIDI SONG", 10u) != 0;
+}
+
 static int ready(song_io* io, int confirmed) {
-    if (song_io_busy(io) || io->about) {
+    if (song_io_busy(io) || io->about || io->external || (io->ctl && io->ctl->song->frozen)) {
         text(io->message, song_io_saving(io) ? "SAVING" : "LOADING");
         return 0;
     }
@@ -100,7 +104,8 @@ int song_io_load(song_io* io, const char* name, int confirmed) {
 }
 
 int song_io_program(song_io* io, uint32_t program) {
-    if ((song_io_busy(io) && io->state != SONG_IO_INDEX) || io->about) {
+    if ((song_io_busy(io) && io->state != SONG_IO_INDEX) || io->about || io->external ||
+        (io->ctl && io->ctl->song->frozen)) {
         text(io->message, song_io_saving(io) ? "SAVING" : "LOADING");
         return 0;
     }
@@ -130,7 +135,7 @@ int song_io_new(song_io* io, int confirmed) {
 }
 
 int song_io_save(song_io* io, const char* name, uint32_t now_ms) {
-    if (song_io_busy(io) || io->about) {
+    if (song_io_busy(io) || io->about || io->external || (io->ctl && io->ctl->song->frozen)) {
         text(io->message, song_io_saving(io) ? "SAVING" : "LOADING");
         return 0;
     }
@@ -154,7 +159,8 @@ int song_io_delete(song_io* io, const char* name, int confirmed) {
         text(io->message, "DELETE SONG?");
         return 0;
     }
-    if (song_io_busy(io) || io->about || !io->st || !name_copy(io->target, name)) {
+    if (song_io_busy(io) || io->about || io->external || (io->ctl && io->ctl->song->frozen) ||
+        !io->st || !name_copy(io->target, name)) {
         return 0;
     }
     io->state = SONG_IO_DELETE;
@@ -163,7 +169,7 @@ int song_io_delete(song_io* io, const char* name, int confirmed) {
 
 int song_io_about(song_io* io, int opening) {
     if (opening) {
-        if (!io->ctl || song_io_busy(io) || song_io_changed(io) ||
+        if (!io->ctl || io->external || io->ctl->song->frozen || song_io_busy(io) || song_io_changed(io) ||
             song_ctl_state(io->ctl) == SONG_PLAYING || song_ctl_state(io->ctl) == SONG_LOADING ||
             io->ctl->auditioning || !io->hooks.builtin) {
             return 0;
@@ -429,7 +435,7 @@ void song_io_poll(song_io* io, uint32_t now_ms) {
         } else if (!store_dir_next(io->st, &io->file)) {
             text(io->message, "SONG NOT FOUND");
             io->state = SONG_IO_IDLE;
-        } else if (io->file.type == STORE_FILE_SONG) {
+        } else if (song_io_listed(&io->file)) {
             if (io->index_remaining) {
                 io->index_remaining--;
             } else {

@@ -99,6 +99,74 @@ impl Rig {
 }
 
 #[test]
+fn an_external_dump_freeze_refuses_every_workspace_or_model_replacement() {
+    let mut r = Rig::new();
+    r.save(c"CURRENT");
+    let before = r.song.write(true);
+    unsafe { (*r.song.ptr_mut()).frozen = 1 };
+    unsafe {
+        assert_eq!(song_io_load(&mut *r.io, c"CURRENT".as_ptr(), 1), 0);
+        assert_eq!(song_io_new(&mut *r.io, 1), 0);
+        assert_eq!(song_io_save(&mut *r.io, c"OTHER".as_ptr(), r.now), 0);
+        assert_eq!(song_io_delete(&mut *r.io, c"CURRENT".as_ptr(), 1), 0);
+        assert_eq!(song_io_program(&mut *r.io, 0), 0);
+        assert_eq!(song_io_about(&mut *r.io, 1), 0);
+    }
+    assert_eq!(r.io.state, SONG_IO_IDLE as u8);
+    assert_eq!(r.song.write(true), before);
+    assert_eq!(unsafe { (*r.song.ptr_mut()).frozen }, 1);
+    unsafe { (*r.song.ptr_mut()).frozen = 0 };
+    assert_eq!(
+        unsafe { song_io_load(&mut *r.io, c"CURRENT".as_ptr(), 1) },
+        1
+    );
+    r.finish();
+}
+
+#[test]
+fn an_external_workspace_lease_blocks_new_actions_even_after_io_becomes_idle() {
+    let mut r = Rig::new();
+    r.save(c"CURRENT");
+    r.io.external = 1;
+    assert_eq!(unsafe { song_io_busy(&*r.io) }, 0);
+    assert_eq!(unsafe { (*r.song.ptr()).frozen }, 0);
+    assert_eq!(
+        unsafe { song_io_load(&mut *r.io, c"CURRENT".as_ptr(), 1) },
+        0
+    );
+    assert_eq!(
+        unsafe { song_io_save(&mut *r.io, c"NEXT".as_ptr(), r.now) },
+        0
+    );
+    assert_eq!(unsafe { song_io_new(&mut *r.io, 1) }, 0);
+    assert_eq!(unsafe { song_io_program(&mut *r.io, 0) }, 0);
+    assert_eq!(
+        unsafe { song_io_delete(&mut *r.io, c"CURRENT".as_ptr(), 1) },
+        0
+    );
+    r.io.external = 0;
+    assert_eq!(
+        unsafe { song_io_load(&mut *r.io, c"CURRENT".as_ptr(), 1) },
+        1
+    );
+    r.finish();
+}
+
+#[test]
+fn internal_midi_staging_songs_do_not_take_a_bank_program_number() {
+    let mut r = Rig::new();
+    let bytes = sidou_tests::song::SngSpec::new().encode();
+    r.typed_file(c"MIDI SONG", STORE_FILE_SONG as u8, &bytes);
+    r.typed_file(c"NAMED", STORE_FILE_SONG as u8, &bytes);
+    assert_eq!(unsafe { song_io_program(&mut *r.io, 0) }, 1);
+    r.finish();
+    assert_eq!(
+        unsafe { std::ffi::CStr::from_ptr(r.io.name.as_ptr()) },
+        c"NAMED"
+    );
+}
+
+#[test]
 fn program_lookup_walks_one_name_per_poll_and_counts_only_songs() {
     let mut r = Rig::new();
     let mut spec = sidou_tests::song::SngSpec::new();

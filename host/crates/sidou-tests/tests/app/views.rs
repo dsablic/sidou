@@ -453,7 +453,9 @@ fn save_routes_named_songs_to_io_and_save_as_accepts_all_sixteen_characters() {
     assert_eq!(ui.top(), "TRACKER");
     assert_eq!(io.state, SONG_IO_SAVE_WAIT as u8);
     assert_eq!(unsafe { CStr::from_ptr(io.target.as_ptr()) }, c"EXISTING");
+    assert_eq!(model.frozen, 1);
     io.state = SONG_IO_IDLE as u8;
+    model.frozen = 0; // Complete the mocked save, including its model-freeze release.
     io.name[0] = 0;
     ui.press(SAVE_KEY_BUTTON);
     assert_eq!(ui.top(), "SONG");

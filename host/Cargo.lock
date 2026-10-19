@@ -676,6 +676,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "sidou-sysex"
+version = "0.0.0"
+
+[[package]]
 name = "sidou-sys"
 version = "0.0.0"
 dependencies = [
@@ -700,6 +704,7 @@ dependencies = [
  "png",
  "residfp-sys",
  "sidou-pack",
+ "sidou-sysex",
  "sidou-sys",
  "sidou-tablegen",
 ]

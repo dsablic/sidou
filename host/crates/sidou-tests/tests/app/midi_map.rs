@@ -1475,6 +1475,90 @@ FOLLOW, OFF; AUTO at power-on) and CLOCK OUT (OFF at power-on) set it
     )
 }
 
+fn sysex_section() -> String {
+    use sidou_sysex::{ABORT, ACK, DATA, DEL, DIR, END, GET, INQ, NAK, PUT};
+
+    let mut section = String::from(
+        "\
+## SysEx
+
+[SysEx protocol, version 1](sysex.md) specifies framing, packing, payload fields,
+CRC-32, refusals and transfer pacing. SIDOU frames begin `F0 7D 53 44` (`SD`);
+they are separate from the firmware updater. Universal device inquiry to id 0
+or broadcast `7F` has an identity reply on USB only.
+
+| Byte | Command | Function |
+|---|---|---|
+",
+    );
+    for (command, name, function) in [
+        (
+            INQ,
+            "INQ",
+            "Protocol/firmware version, store format, free bytes, clean pool and window flag",
+        ),
+        (
+            DIR,
+            "DIR",
+            "Stream directory name, type, length and CRC; omit reserved temporary imports",
+        ),
+        (
+            GET,
+            "GET",
+            "Download a named file, current-song GTI5 instrument or current GTS5 song with trailer",
+        ),
+        (
+            PUT,
+            "PUT",
+            "Declare target, type, length and CRC before uploading",
+        ),
+        (
+            DATA,
+            "DATA",
+            "1–256 decoded file bytes; nonfinal uploads must be multiples of 16",
+        ),
+        (END, "END", "Finish a transfer or directory listing"),
+        (
+            DEL,
+            "DEL",
+            "Delete a named store file; USB ACK follows commit",
+        ),
+        (
+            ABORT,
+            "ABORT",
+            "Cancel the owning port's transfer at any sequence",
+        ),
+        (ACK, "ACK", "Acknowledge one frame's sequence"),
+        (
+            NAK,
+            "NAK",
+            "Refusal reason and current clean-pool sector count",
+        ),
+    ] {
+        section.push_str(&format!("| `{command:02X}` | {name} | {function} |\n"));
+    }
+    section.push_str(
+        "\n\
+- **USB:** stop-and-wait in both directions. PUT claims all sectors before its first
+  ACK; DATA ACKs wait for programming. ACK every GET/DIR response, including END.
+- **TRS:** PUT/DATA/END/ABORT only, without replies. Wait **one second after EACH
+  complete frame**, including metadata, DATA and END; wire rate alone is not safe.
+- **Storage:** active transfers block maintenance erases. With windows disabled,
+  explicit PUT/DEL programs use SAVE-style audio mute/ramp holds, released between
+  programs. Window-enabled programs are hold-free; hardware timings still require
+  checklist section 12. Disabled windows alone do not cause BUSY.
+- **Imports:** instrument tables need contiguous trailing rows; holes are not reused.
+  Current-song END ACK means storage committed and the normal stopped loader accepted
+  the request, not that loading finished; later validation failures use a song toast.
+- **Host tooling:** `sidou-sysex` is a packet/packing library only: no CLI, no device
+  access. USB-MIDI output remains a separate hardware blocker (checklist 8.1);
+  host/emulator checks are not hardware acceptance.
+
+",
+    );
+    section
+}
+
 fn cc_text(r: &Row) -> String {
     if r.has_cc() {
         r.cc.to_string()
@@ -1507,6 +1591,7 @@ fn doc() -> String {
     s.push_str(&modes_section());
     s.push_str(&banks_section());
     s.push_str(&clock_section());
+    s.push_str(&sysex_section());
     s.push_str("## The map\n\nIn NRPN order.\n\n");
     s.push_str("| Group | Parameter | CC | NRPN (MSB/LSB) | Range | Curve | Default | Values |\n");
     s.push_str("|---|---|---|---|---|---|---|---|\n");
@@ -1570,6 +1655,29 @@ fn the_reference_is_up_to_date() {
         "{} is stale; rerun with SIDOU_MIDI_DOC_UPDATE=1",
         path.display()
     );
+}
+
+#[test]
+fn the_reference_lists_every_sysex_command() {
+    let reference = doc();
+    for (command, name) in [
+        (sidou_sysex::INQ, "INQ"),
+        (sidou_sysex::DIR, "DIR"),
+        (sidou_sysex::GET, "GET"),
+        (sidou_sysex::PUT, "PUT"),
+        (sidou_sysex::DATA, "DATA"),
+        (sidou_sysex::END, "END"),
+        (sidou_sysex::DEL, "DEL"),
+        (sidou_sysex::ABORT, "ABORT"),
+        (sidou_sysex::ACK, "ACK"),
+        (sidou_sysex::NAK, "NAK"),
+    ] {
+        assert!(
+            reference.contains(&format!("| `{command:02X}` | {name} |")),
+            "missing SysEx command {name}"
+        );
+    }
+    assert!(reference.contains("[SysEx protocol, version 1](sysex.md)"));
 }
 
 #[test]

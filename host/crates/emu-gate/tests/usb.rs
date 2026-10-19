@@ -191,6 +191,78 @@ fn main_share(m: &mut Machine, ms: u64) -> f64 {
 }
 
 #[test]
+fn an_updater_identity_reply_cannot_overtake_sidous_queued_end_packet() {
+    let Some(fw) = fixture("SysEx producer arbitration") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    m.usb = Some(UsbHost::default());
+    run_past_boot(&mut m, &fw);
+    enumerate(&mut m, &fw);
+    host(&mut m).in1.clear();
+    send(
+        &mut m,
+        &sysex_packets(&[0xf0, 0x7d, 0x53, 0x44, 1, 0, 0x7f, 0xf7]),
+    );
+    let state = fw.symbol("sidou_sysex");
+    for _ in 0..100 {
+        if m.soc
+            .read8(state + sidou_sys::ilp32::sysex::tx_active as u32)
+            != 0
+            && m.soc
+                .read16(state + sidou_sys::ilp32::sysex::tx_position as u32)
+                >= 12
+        {
+            break;
+        }
+        m.usb_frames(1);
+    }
+    assert_ne!(
+        m.soc
+            .read8(state + sidou_sys::ilp32::sysex::tx_active as u32),
+        0
+    );
+    send(&mut m, &sysex_packets(&message(0x11, &[])));
+    m.usb_frames(100);
+    let packets = host(&mut m).in1.clone();
+    let mut frames = Vec::new();
+    let mut frame = Vec::new();
+    for packet in packets.concat().as_chunks::<4>().0 {
+        let n = match packet[0] & 15 {
+            4 | 7 => 3,
+            5 => 1,
+            6 => 2,
+            _ => 0,
+        };
+        for &b in &packet[1..=n] {
+            if b >= 0xf8 {
+                continue;
+            }
+            if b == 0xf0 {
+                assert!(
+                    frame.is_empty(),
+                    "a producer split an unfinished SysEx frame"
+                );
+            }
+            if b == 0xf0 || !frame.is_empty() {
+                frame.push(b);
+            }
+            if b == 0xf7 && !frame.is_empty() {
+                frames.push(std::mem::take(&mut frame));
+            }
+        }
+    }
+    assert!(frame.is_empty(), "unterminated SysEx response");
+    assert_eq!(frames.len(), 2);
+    assert_eq!(&frames[0][..4], &[0xf0, 0x7d, 0x53, 0x44]);
+    assert_eq!(
+        replies(&packets).len(),
+        1,
+        "the updater identity still replies"
+    );
+}
+
+#[test]
 fn a_host_gets_the_identity_and_the_knobs_over_usb() {
     let Some(fw) = fixture("the USB test") else {
         return;

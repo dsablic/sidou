@@ -253,7 +253,7 @@ typedef struct {
     int8_t result; /* the last file's: STORE_OK, STORE_BUSY while open, an error */
     char name[STORE_NAME_MAX];
     uint8_t sectors[STORE_FILE_SECTORS];
-    uint8_t pad;
+    uint8_t flush;
     uint16_t idle; /* ms without a byte (store_file_idle) */
 } store_file_writer;
 
@@ -383,6 +383,16 @@ int store_file_begin(store* s, const char* name, uint8_t type, uint32_t length);
 /* Offers bytes of the open file: takes what fits the 256-byte staging buffer and returns how
  * many (0 while it is full: offer the rest after a store_poll). store_poll programs them. */
 uint32_t store_file_write(store* s, const void* p, uint32_t n);
+/* Drains a stop-and-wait batch without changing the platform's program window.
+ * Nonfinal batches end at a 16-byte file offset and contain at least 16 buffered
+ * bytes; the final file tail may be shorter. Once requested, any smaller remainder
+ * at a page/ring/chunk boundary also drains. Wait for !store_file_pending before
+ * offering the next batch. No extra staging buffer is used. */
+void store_file_flush(store* s);
+/* Nonzero until buffered bytes and their chunk headers/commits have finished.
+ * Zero for a writer waiting for more data or store_file_end (and when idle).
+ * This is not the whole-file commit result; use store_file_result for that. */
+int store_file_pending(const store* s);
 /* Commits the open file once store_poll has programmed it: its FILE record follows its last
  * chunk. With fewer bytes taken than its length, the file is aborted and STORE_INVALID returned.
  * store_file_result tells when it is done. */

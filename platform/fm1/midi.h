@@ -16,6 +16,7 @@
 #include "midi_learn.h"
 #include "midi_route.h"
 #include "midi_sync.h"
+#include "sysex.h"
 
 /* Interrupts off, before TIMER5 starts: the UART (a port H read-modify-write) and USB (which
  * waits 25 ms for the controller's reset). l receives the messages, through MIDI's mode
@@ -57,10 +58,14 @@ void midi_service(uint32_t now_ms);
 /* 1 while a host has the device configured and is awake (its frame number moves): the main
  * loop then never sleeps in `idle` (main.c wait_for_interrupt). */
 int midi_usb_live(void);
-/* The MIDI messages taken so far other than real-time ones (midi_rx.inputs): a count, for the
- * store's quiet detector (platform/fm1/store_fm1.c), which a DAW's steady clock and sensing do
- * not disturb. */
+/* Non-real-time activity (midi_rx.inputs): completed messages and every SysEx byte,
+ * for the store's quiet detector. Clock and sensing do not disturb it. */
 uint32_t midi_inputs(void);
+/* Main-loop binding and bounded service for SIDOU's independent SysEx stream. */
+void midi_sysex_bind(const sysex_hooks* hooks, const volatile uint32_t* now_ms);
+void midi_sysex_service(uint32_t now_ms);
+extern uint8_t midi_sysex_running;
+extern uint8_t midi_sysex_writing;
 
 #if defined(SIDOU_FLASH_SPIKE)
 /* The flash spike only (flash_spike.c), which plays nothing: empties the input ring, and gives
