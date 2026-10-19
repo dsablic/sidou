@@ -294,17 +294,21 @@ fn a_change_restores_the_view_beneath_cell_for_cell_once_the_popup_is_gone() {
             }
             _ => {}
         }
+        drain(&mut ui.g);
         ui.turn(K2, 2);
         open(&mut ui);
         assert!(shown(&ui), "{view}");
+        drain(&mut ui.g);
         ui.popup_gone();
         for _ in 0..4 {
             ui.frame();
+            drain(&mut ui.g);
         }
         let after = grid_copy(&ui);
         unsafe { screen_redraw(&mut ui.v.s) };
         for _ in 0..4 {
             ui.frame();
+            drain(&mut ui.g);
         }
         let again = grid_copy(&ui);
         assert!(
@@ -779,8 +783,8 @@ fn the_menu_stays_within_the_cell_and_spi_budgets_as_it_scrolls_and_under_a_popu
         "menu: at most {} cells a frame, {:.2} ms of SPI: {frames:?}",
         worst.0, worst.1
     );
-    assert!(worst.0 <= 200, "a frame sent {} cells: {frames:?}", worst.0);
-    assert!(worst.1 <= SPI_BUDGET_MS, "{:.2} ms of SPI", worst.1);
+    assert!(worst.0 <= 176, "a frame sent {} cells: {frames:?}", worst.0);
+    assert!(worst.1 <= 15.10, "{:.2} ms of SPI", worst.1);
     // Every line is whole once it settles: each item reads as its own.
     ui.popup_gone();
     for _ in 0..4 {

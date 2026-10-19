@@ -65,8 +65,7 @@ typedef struct {
      * force_rows before each call. */
     uint16_t budget;
     uint8_t pending;
-    uint8_t valid; /* bit k: sig[k] is what line k shows */
-    uint16_t sig[MENU_MAX_ROWS];
+    uint8_t valid; /* bit k: line k's source text and colours can be compared in the grid */
     uint32_t force_rows;
 } menu;
 

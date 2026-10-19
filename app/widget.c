@@ -138,15 +138,6 @@ static void big_line(const menu* m, uint32_t k, uint32_t n, char* line, uint8_t 
     }
 }
 
-/* What a line shows, as 16 bits: its text and colour. */
-static uint16_t big_sig(const char* line, uint8_t attr) {
-    uint32_t h = attr;
-    for (; *line; line++) {
-        h = h * 31u + (uint8_t)*line;
-    }
-    return (uint16_t)(h ^ h >> 16);
-}
-
 /* The menu at scale 2: each item a line of (w - 2) / 2 characters in large text, a cell in from
  * each side (a panel's bezel hides the edge): the label, the value right-aligned or the
  * action's arrow, the selected one in sel_attr (its whole line, the margins too). Lines are
@@ -160,33 +151,49 @@ __attribute__((noinline, unused)) static void draw_big(menu* m, grid* g, uint32_
     }
     uint32_t drawn = 0;
     m->pending = 0;
-    /* The lines something drew over come first (they are drawn whatever the budget says, so
-     * the others' share is what is left of it), then the others: the selected line first (the
-     * cursor's move shows at once), then in order. */
+    /* The selected line makes progress first; forced restorations then share the remaining
+     * quota with ordinary changes. */
     uint32_t sel = m->cursor >= m->top ? (uint32_t)m->cursor - m->top : 0u;
-    for (uint32_t pass = 0; pass < 2u; pass++) {
+    for (uint32_t pass = 0; pass < 3u; pass++) {
         for (uint32_t j = 0; j < m->rows; j++) {
             uint32_t k = j == 0 ? sel : j <= sel ? j - 1u : j;
             uint32_t r = row + 3u * k;
+            uint32_t guarded = g->big_guard >> r & 3u;
             int forced = (m->force_rows >> r & 3u) != 0u;
-            if (forced != (pass == 0u)) {
+            uint32_t priority = k == sel ? 0u : forced ? 1u : 2u;
+            if (priority != pass) {
                 continue;
             }
             uint8_t a;
             uint32_t value_at;
             big_line(m, k, n, line, attr, &a, &value_at);
-            uint16_t sig = big_sig(line, a);
-            if (!forced && (m->valid >> k & 1u) && m->sig[k] == sig) {
-                continue; /* it shows this already */
+            if (!forced && (m->valid >> k & 1u) && g->attr[r * GRID_COLS + col] == a) {
+                uint32_t c = 0;
+                for (; c < n; c++) {
+                    uint32_t i = (r + (guarded & 1u)) * GRID_COLS + col + 1u + 2u * c;
+                    uint8_t want = m->value_attr && a == attr && c >= value_at ? m->value_attr : a;
+                    if (g->src[i] != (uint8_t)line[c] || g->attr[i] != want) {
+                        break;
+                    }
+                }
+                if (c == n) {
+                    continue;
+                }
             }
             if ((!forced || (m->force_rows & MENU_BUDGET_FORCED)) && drawn && k != sel &&
                 m->budget && grid_pending(g) + MENU_LINE_CELLS > m->budget) {
                 m->pending = 1; /* the next call */
                 m->valid = (uint8_t)(m->valid & ~(1u << k));
+                if (forced) {
+                    for (uint32_t y = r; y < r + 3u && y < GRID_ROWS; y++) {
+                        if (m->force_rows >> y & 1u) {
+                            grid_row(g, y, &g->shown_ch[y * GRID_COLS], &g->shown_attr[y * GRID_COLS]);
+                        }
+                    }
+                }
                 continue;
             }
             drawn++;
-            m->sig[k] = sig;
             m->valid = (uint8_t)(m->valid | 1u << k);
             grid_fill(g, col, r, w, 3, ' ', a); /* the margins, a selected line's bar, the gap row */
             grid_fill(g, col, r + 2u, w, 1, ' ', attr);

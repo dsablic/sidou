@@ -1013,9 +1013,12 @@ static void menu_compose(screen* s, void* state, grid* g) {
      * the same frame (screen_layer_cells): a line is up to 60 cells, a scroll in one frame
      * would send 250. Except the lines something drew over or a view switch left. */
     uint32_t layers = screen_layer_cells(s);
+    if (s->popup && s->popup->rows) {
+        layers += MENU_LINE_CELLS;
+    }
     v->home.budget = (uint16_t)(MENU_FRAME_CELLS > layers ? MENU_FRAME_CELLS - layers : 1u);
     v->home.force_rows = s->redraw ? s->redraw_rows : 0u;
-    v->home.force_rows |= layers ? MENU_BUDGET_FORCED : 0u;
+    v->home.force_rows |= layers || s->redraw_rows != (1u << GRID_ROWS) - 1u ? MENU_BUDGET_FORCED : 0u;
     menu_draw(&v->home, g, 0, MENU_ROW, GRID_COLS, blank, 0);
     /* What the encoders do (ALG is ALGORITHM): HOME goes back, as everywhere. */
     grid_text_big(g, 1, MENU_HELP_ROW, 2, "SELECT  MOVE", text);

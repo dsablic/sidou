@@ -181,6 +181,29 @@ fn new_menu(items: &[menu_item], rows: u32, c: &mut Ctx) -> menu {
 }
 
 #[test]
+fn colliding_menu_rows_never_keep_the_old_value() {
+    unsafe extern "C" fn frames(c: *mut c_void, buf: *mut c_char) {
+        let value = unsafe { ctx(c) }.level;
+        unsafe { put(buf, &format!("{value} FR")) };
+    }
+    let its = [item(c"ARP RATE", Some(frames), Some(level_turn))];
+    let mut c = Ctx {
+        level: 19,
+        ..Ctx::default()
+    };
+    let mut m = new_menu(&its, 1, &mut c);
+    m.scale = 2;
+    let mut g = new_grid();
+    let a = attr(GRID_WHITE, GRID_BLACK);
+    unsafe { menu_draw(&mut m, &mut *g, 0, 4, 30, a, 0) };
+    assert_eq!(big_line(&g, 4, 1, 14), "ARP RATE 19 FR");
+    crate::drain(&mut g);
+    unsafe { menu_turn(&mut m, 13) };
+    unsafe { menu_draw(&mut m, &mut *g, 0, 4, 30, a, 0) };
+    assert_eq!(big_line(&g, 4, 1, 14), "ARP RATE 32 FR");
+}
+
+#[test]
 fn the_cursor_moves_clamped_and_the_rows_shown_follow_it() {
     let its = items();
     let mut c = Ctx::default();
