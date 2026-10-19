@@ -233,11 +233,11 @@ fn presets_steps_the_preset_in_every_view() {
     p.enc(PANEL_ENC_PRESETS, 100);
     assert_eq!(
         u32::from(p.rig.live.preset),
-        LIVE_PRESET_COUNT - 1,
-        "clamped at the end"
+        LIVE_PRESET_SLOTS - 1,
+        "clamped at the end, DICE"
     );
     p.enc(PANEL_ENC_PRESETS, -2);
-    assert_eq!(u32::from(p.rig.live.preset), LIVE_PRESET_COUNT - 3);
+    assert_eq!(u32::from(p.rig.live.preset), LIVE_PRESET_SLOTS - 3);
     p.enc(PANEL_ENC_PRESETS, -100);
     assert_eq!(p.rig.live.preset, 0, "and at the start");
     // The pages other than LIVE's turn it as well (the panel's own rule is the same everywhere).

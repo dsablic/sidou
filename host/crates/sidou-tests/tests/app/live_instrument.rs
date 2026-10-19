@@ -402,7 +402,11 @@ fn there_are_four_named_presets() {
     let names: BTreeSet<String> = (0..4).map(|i| preset_name(preset(i))).collect();
     assert_eq!(names.len(), 4);
     assert!(names.iter().all(|n| !n.is_empty() && n.len() <= 16));
-    assert!(unsafe { live_preset_get(4) }.is_null());
+    assert!(
+        !unsafe { live_preset_get(4) }.is_null(),
+        "DICE, after the four"
+    );
+    assert!(unsafe { live_preset_get(5) }.is_null());
 }
 
 #[test]
@@ -468,11 +472,11 @@ fn preset_knob_clamps_at_both_ends() {
     rig.preset_step(-1);
     assert_eq!(rig.live.preset, 0);
     rig.preset_step(100);
-    assert_eq!(rig.live.preset, 3);
+    assert_eq!(rig.live.preset, 4, "DICE is the last");
     rig.set_preset(200);
-    assert_eq!(rig.live.preset, 3);
+    assert_eq!(rig.live.preset, 4);
     rig.preset_step(-2);
-    assert_eq!(rig.live.preset, 1);
+    assert_eq!(rig.live.preset, 2);
 }
 
 #[test]

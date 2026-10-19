@@ -9,6 +9,9 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Ergonomics: **DICE**, a place after NOISE PERC on PRESETS: each turn rolls a new sound (waveform,
+  envelope, cutoff, resonance, filter, pulse width, now and then a vibrato) and leaves the effect
+  slots alone; turning back and forth brings the last roll back. MIDI program changes stay 0..3.
 - Ergonomics: SCENE's FIRE keeps a low flame in silence, the piece's name is toasted on entry,
   and ALGORITHM steps the piece like SELECT.
 - Ergonomics: an effect algorithm picked from the panel (ENV, CHIP's ALGORITHM on a slot) starts

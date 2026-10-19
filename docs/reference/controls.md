@@ -95,7 +95,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | K2 (encoder 3) | resonance (CHIP: the second) |
 | K3 (encoder 4) | **the sound's own control**: RATIO on a sync sound (SYNC LEAD: the sync ratio, -12..+12 semitones from the preset's, a semitone a detent; the panel's alone, with no CC), PULSE on a sound with the pulse waveform (PWM BASS: the pulse width, 31 positions from 3 % to 50 %, 1.6 % a detent, clockwise wider), DECAY on the others (SAW LEAD, NOISE PERC: 0-15) (CHIP: the third) |
 | K4 (encoder 5) | the release, 0-15 (CHIP: the fourth) |
-| **PRESETS (encoder 6)** | the preset: clockwise the next, clamped at both ends; with EDIT held it puts the current preset back to its factory settings; in every view (TRACKER takes it with REC on) |
+| **PRESETS (encoder 6)** | the preset: clockwise the next (DICE after NOISE PERC), clamped at both ends; with EDIT held it puts the current preset back to its factory settings; in every view (TRACKER takes it with REC on) |
 | MASTER (pot) | volume: a digital gain on the final output, for everything that plays (the keys, a song on either chip, UI sounds), on an audio taper from -60 dB to full in even steps of dB, shown in percent of the pot's travel |
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end), in every view; K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
@@ -482,6 +482,25 @@ from the preset's factory values.
 (F#6), and from lower notes bent or with vibrato upward (note 88 at a bend of +2
 semitones, lower at wider bend ranges). Voice 1 then stays there: the pitch is still
 right, but the ratio falls, and the timbre thins, toward the top.
+
+### DICE
+
+One more place on PRESETS, after NOISE PERC: **DICE, a new sound at every turn**. Turning
+clockwise from NOISE PERC lands on DICE and rolls a sound; clockwise again, while on DICE, rolls
+another at each turn (the header says `DICE 07`, the number of the roll, two digits, counting from
+power-on). Counter-clockwise goes back to NOISE PERC; clockwise again brings back the last roll,
+not a new one. A roll picks a waveform (saw, pulse, triangle or noise; ring on some triangles,
+sync on some saws and pulses), an envelope, a cutoff in the middle of K1's range, a resonance, a
+filter mode (mostly low-pass, sometimes band-pass, high-pass or a notch) with every voice in the
+filter, a pulse width on a pulse, and now and then a vibrato. It leaves the effect slots, the
+chip, the octave and the volume as they are: they are the instrument's, not a preset's. The
+knobs turn a roll like any sound, and DICE shows no `*`. EDIT held + PRESETS on DICE puts back
+its base (SAW LEAD's settings) and forgets the roll.
+
+DICE is the panel's: a MIDI program change selects 0..3 only (a program of 4 or more is refused),
+and on MIDI out the roll goes as CCs, parameter by parameter, with no program change. The
+settings keep the roll's parameters like any sound's and bring DICE back on power-up (its number
+starts from 0 again).
 
 ## Effect slots
 

@@ -9,6 +9,13 @@
   silent. Select Modulation (SCL) and FX and step their algorithms: each is audible.
 - [ ] Turn one control with EDIT held, then step the algorithm: the control keeps your value.
 
+## Ergonomics: DICE
+
+- [ ] On LIVE turn PRESETS clockwise past NOISE PERC: the header reads DICE 01 and the sound
+  changes; play a note. Turn again: DICE 02, a different sound each time, none broken or silent.
+- [ ] Turn PRESETS counter-clockwise (NOISE PERC) and clockwise again: the same DICE 02 sound.
+- [ ] Set an effect slot, roll DICE a few times: the slot stays as you set it.
+
 ## Ergonomics: SCENE
 
 - [ ] Open SCENE (FIRE) and play nothing: a low red flame flickers along the bottom; it is

@@ -22,6 +22,7 @@ add_library(sidou_live STATIC
     keys_route.c
     live.c
     live_cutoff.c
+    live_dice.c
     live_freq.c
     live_view.c
     master_gain.c

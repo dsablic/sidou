@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "live.h"
+#include "live_dice.h"
 
 #include "fx_live.h"
 #include "midi_map.h"
@@ -37,7 +38,7 @@ _Static_assert(LIVE_PITCH_SEMITONE == 8192 && LIVE_BEND_CENTRE == 8192u,
     .mod_target = LIVE_MOD_PULSE_WIDTH, .pressure_target = LIVE_PRESSURE_OFF,                      \
     .vibrato_rate = LIVE_VIBRATO_RATE_DEFAULT, .vibrato_depth = 0, .vibrato_delay = 0
 
-static const live_preset presets[LIVE_PRESET_COUNT] = {
+static const live_preset presets[LIVE_PRESET_SLOTS] = {
     {
         .name = "SAW LEAD",
         .control = 0x20, /* saw */
@@ -88,6 +89,18 @@ static const live_preset presets[LIVE_PRESET_COUNT] = {
         .resonance = 2,
         .filter_voices = 0x07,
         .filter_mode = 0x50, /* low-pass + high-pass: a notch */
+        EXPRESSION_DEFAULTS,
+    },
+    {
+        .name = "DICE", /* the base a roll starts from: SAW LEAD's values */
+        .control = 0x20,
+        .attack_decay = 0x09,
+        .sustain_release = 0xa6,
+        .pulse_width = 2048,
+        .cutoff = 1200,
+        .resonance = 6,
+        .filter_voices = 0x07,
+        .filter_mode = 0x10,
         EXPRESSION_DEFAULTS,
     },
 };
@@ -240,7 +253,7 @@ void live_sid_sink(void* ctx, uint8_t reg, uint8_t value) {
 }
 
 const live_preset* live_preset_get(uint8_t index) {
-    return index < LIVE_PRESET_COUNT ? &presets[index] : NULL;
+    return index < LIVE_PRESET_SLOTS ? &presets[index] : NULL;
 }
 
 static const live_preset* cur(const live* l) {
@@ -609,7 +622,8 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->master = LIVE_MASTER_MAX;
     l->volume = 100;
     l->cutoff_pos = 0;
-    for (uint32_t i = 0; i < LIVE_PRESET_COUNT; ++i) {
+    l->dice_rolls = 0;
+    for (uint32_t i = 0; i < LIVE_PRESET_SLOTS; ++i) {
         l->edits[i].valid = 0;
     }
     l->clock = 0;
@@ -799,8 +813,8 @@ static void set_pulse_width(live* l, uint16_t value) {
 
 void live_set_preset(live* l, uint8_t index) {
     l->settings_dirty = 1;
-    if (index >= LIVE_PRESET_COUNT) {
-        index = LIVE_PRESET_COUNT - 1;
+    if (index >= LIVE_PRESET_SLOTS) {
+        index = LIVE_PRESET_SLOTS - 1; /* the settings load DICE back */
     }
     load_preset(l, index);
     l->edits[index].valid = 0; /* the factory's, over any edits it kept */
@@ -857,8 +871,8 @@ LIVE_COLD static void edit_apply(live* l, const live_edit* e) {
 }
 
 LIVE_COLD void live_recall_preset(live* l, uint8_t q) {
-    if (q >= LIVE_PRESET_COUNT) {
-        q = LIVE_PRESET_COUNT - 1;
+    if (q >= LIVE_PRESET_SLOTS) {
+        q = LIVE_PRESET_SLOTS - 1;
     }
     l->settings_dirty = 1;
     edit_store(l, &l->edits[l->preset]);
@@ -871,7 +885,7 @@ LIVE_COLD void live_recall_preset(live* l, uint8_t q) {
 
 uint32_t live_preset_edited(const live* l) {
     const live_preset* p = cur(l);
-    return l->cutoff != p->cutoff || l->resonance != p->resonance ||
+    return l->preset != LIVE_PRESET_DICE && (l->cutoff != p->cutoff || l->resonance != p->resonance ||
            l->pulse_width != p->pulse_width || l->control != p->control ||
            l->attack_decay != p->attack_decay || l->sustain_release != p->sustain_release ||
            l->filter_voices != p->filter_voices || l->filter_mode != p->filter_mode ||
@@ -879,12 +893,24 @@ uint32_t live_preset_edited(const live* l) {
            l->velocity_target != p->velocity_target || l->mod_target != p->mod_target ||
            l->pressure_target != p->pressure_target || l->vibrato_rate != p->vibrato_rate ||
            l->vibrato_depth != p->vibrato_depth || l->vibrato_delay != p->vibrato_delay ||
-           l->sync_semis != 0;
+           l->sync_semis != 0);
 }
 
 LIVE_COLD void live_preset_name(const live* l, char* buf) {
     const char* name = cur(l)->name;
     uint32_t n = 0;
+    if (l->preset == LIVE_PRESET_DICE) {
+        /* DICE and the number of the roll it holds, two digits */
+        uint32_t r = l->dice_rolls % 100u;
+        for (; name[n]; n++) {
+            buf[n] = name[n];
+        }
+        buf[n++] = ' ';
+        buf[n++] = (char)('0' + r / 10u);
+        buf[n++] = (char)('0' + r % 10u);
+        buf[n] = 0;
+        return;
+    }
     for (; name[n] && n + 2u < LIVE_PRESET_NAME_CHARS; n++) {
         buf[n] = name[n];
     }
@@ -999,14 +1025,26 @@ void live_knob(live* l, live_knob_id knob, int32_t delta) {
     }
 }
 
+/* What a roll starts from: the notes played, the clock and the LFO's phase are what no two turns
+ * share (the roll adds its own count). */
+static uint32_t dice_seed(const live* l) {
+    return l->note_ons * 2654435761u ^ l->clock * 40503u ^ l->lfo_phase;
+}
+
 LIVE_COLD void live_preset_step(live* l, int32_t steps, int revert) {
     if (revert) {
         live_set_preset(l, l->preset);
         return;
     }
-    uint8_t p = (uint8_t)step_clamped(l->preset, steps, 1, LIVE_PRESET_COUNT - 1);
+    uint8_t p = (uint8_t)step_clamped(l->preset, steps, 1, LIVE_PRESET_SLOTS - 1);
     if (p != l->preset) {
+        uint32_t fresh = p == LIVE_PRESET_DICE && !l->edits[p].valid;
         live_recall_preset(l, p);
+        if (fresh) {
+            live_dice_roll(l, dice_seed(l));
+        }
+    } else if (p == LIVE_PRESET_DICE) {
+        live_dice_roll(l, dice_seed(l)); /* DICE again: a new roll */
     }
 }
 

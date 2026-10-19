@@ -40,7 +40,8 @@ fn preset_stats(a: &[f32], sustain: u8, cfg: &Config) -> Value {
 }
 
 pub fn preset_names() -> Vec<String> {
-    (0..16u8)
+    // The presets a program change selects: DICE, after them, is a new sound at every turn.
+    (0..sidou_sys::LIVE_PRESET_COUNT as u8)
         .map_while(|i| {
             let p = unsafe { sidou_sys::live_preset_get(i) };
             (!p.is_null()).then(|| {

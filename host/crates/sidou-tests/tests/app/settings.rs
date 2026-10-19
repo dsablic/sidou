@@ -569,6 +569,29 @@ fn every_persisted_value_round_trips_and_the_volume_does_not() {
 }
 
 #[test]
+fn dice_is_saved_and_loaded() {
+    let mut a = Set::blank();
+    a.rig.preset_step(4);
+    assert_eq!(a.rig.live.preset, LIVE_PRESET_COUNT as u8);
+    a.rig.tick();
+    let rec = a.gather();
+    assert_eq!(
+        rec[4], LIVE_PRESET_COUNT as u8,
+        "the preset byte holds DICE"
+    );
+    let mut b = Set::blank();
+    let same = unsafe { settings_apply(&mut *b.set, rec.as_ptr(), rec.len() as u32) };
+    assert_eq!(same, 1);
+    b.rig.tick();
+    assert_eq!(b.rig.live.preset, LIVE_PRESET_COUNT as u8, "back on DICE");
+    assert_eq!(
+        b.snapshot(),
+        a.snapshot(),
+        "the roll's parameters came back"
+    );
+}
+
+#[test]
 fn tracker_rows_round_trips_both_modes() {
     for rows in [0, 1] {
         let mut a = Set::blank();

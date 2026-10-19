@@ -41,6 +41,7 @@ const SOURCES: &[&str] = &[
     "app/live.c",
     "app/learn_view.c",
     "app/live_cutoff.c",
+    "app/live_dice.c",
     "app/live_freq.c",
     "app/live_view.c",
     "app/master_gain.c",

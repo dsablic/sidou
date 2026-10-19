@@ -34,6 +34,7 @@
 #include "learn_view.h"
 #include "keys_route.h"
 #include "live.h"
+#include "live_dice.h"
 #include "live_view.h"
 #include "logo.h"
 #include "midi_clock.h"

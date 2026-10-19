@@ -906,7 +906,7 @@ __attribute__((noinline, unused)) LIVE_COLD static void band_big(const live_view
 /* What each part of the canvas shows, as bytes (LIVE_VIEW_LOOK of them): a part is drawn
  * again when its bytes change. */
 #define KEY_THEME 0u
-#define KEY_HEADER 1u /* the preset, the octave, edited, the play mark's beat */
+#define KEY_HEADER 1u /* the preset, the octave, edited (DICE: its roll), the play mark's beat */
 #define KEY_VOICE 5u  /* 6 a voice: control, note, gate, stage, sounding, muted */
 #define KEY_STRIP (KEY_VOICE + 6u * SCOPE_VOICES) /* the song: playing, the tempo 2, the mutes */
 #define KEY_KNOBS (KEY_STRIP + 4u)
@@ -936,7 +936,8 @@ static void look(const live_view* lv, uint8_t out[LIVE_VIEW_LOOK], uint32_t now)
     out[KEY_THEME] = l->theme;
     out[KEY_HEADER] = l->preset;
     out[KEY_HEADER + 1u] = (uint8_t)l->octave;
-    out[KEY_HEADER + 2u] = (uint8_t)live_preset_edited(l);
+    /* the star; on DICE (which has none) the roll's number, which its name shows */
+    out[KEY_HEADER + 2u] = l->preset == LIVE_PRESET_DICE ? l->dice_rolls : (uint8_t)live_preset_edited(l);
     out[KEY_HEADER + 3u] = (uint8_t)(lv->playing | lv->beat << 1);
     out[KEY_STRIP] = lv->playing;
     out[KEY_STRIP + 1u] = (uint8_t)lv->bpm;
@@ -1094,8 +1095,7 @@ static int input(screen* s, void* state, const screen_event* e) {
         if (slot_held) {
             uint32_t k = l->fx_select % LIVE_SLOTS;
             int32_t to = (int32_t)l->slot[k][LIVE_SLOT_ALGORITHM] + e->steps;
-            int32_t top = (int32_t)live_slot_algorithms(k) - 1;
-            live_slot_set(l, k, LIVE_SLOT_ALGORITHM, to < 0 ? 0 : to > top ? top : to);
+            live_slot_pick(l, k, to < 0 ? 0u : (uint32_t)to); /* clamps; starts from a musical setting */
             return 1;
         }
         /* the chip's profile, from the built-in one a USER profile is based on if one is applied */

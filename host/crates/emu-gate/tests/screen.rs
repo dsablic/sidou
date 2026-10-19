@@ -743,6 +743,52 @@ fn a_preset_remembers_its_edits_and_shows_a_star() {
     );
 }
 
+/// PRESETS past NOISE PERC reaches DICE, which rolls a new sound at every detent: the name says
+/// the roll's number, and the instrument's waveform and cutoff change with it.
+#[test]
+fn presets_reaches_dice_and_rolls() {
+    let Some((build, fw)) = fixture("the DICE test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    settle(&mut m, &fw);
+    let live = |m: &mut Machine, f: usize| live_byte(m, &fw, f);
+    m.turn(PRESETS, 3);
+    m.run_ms(500);
+    assert_eq!(live(&mut m, sidou_sys::ilp32::live::preset), 3);
+    m.turn(PRESETS, 1);
+    m.run_ms(1_700);
+    common::to_mid_frame(&mut m, &fw);
+    assert_eq!(live(&mut m, sidou_sys::ilp32::live::preset), 4, "DICE");
+    assert_eq!(live(&mut m, sidou_sys::ilp32::live::dice_rolls), 1);
+    let first = indexed(&m.soc.lcd.fb);
+    // the number is the header's: cells 10-13 of row 0 (`DICE 01`, 2x)
+    let digits = |idx: &[u8]| -> Vec<u8> {
+        (0..16)
+            .flat_map(|y| idx[y * W + 10 * 8..y * W + 14 * 8].to_vec())
+            .collect()
+    };
+    let first_digits = digits(&first);
+    compare_golden(&build, "live-dice", &m.soc.lcd.fb, &[]);
+    m.turn(PRESETS, 1);
+    m.run_ms(1_700);
+    common::to_mid_frame(&mut m, &fw);
+    assert_eq!(
+        live(&mut m, sidou_sys::ilp32::live::preset),
+        4,
+        "still DICE"
+    );
+    assert_eq!(live(&mut m, sidou_sys::ilp32::live::dice_rolls), 2);
+    assert!(indexed(&m.soc.lcd.fb) != first, "a new roll, a new screen");
+    assert!(
+        digits(&indexed(&m.soc.lcd.fb)) != first_digits,
+        "the header's number moved to 02"
+    );
+    m.turn(PRESETS, -1);
+    m.run_ms(500);
+    assert_eq!(live(&mut m, sidou_sys::ilp32::live::preset), 3);
+}
+
 /// LIVE shows the song (the play mark, the tempo, the voices' badges) and GLO's layer: PLAY on
 /// LIVE, then GLO tapped twice and key 2: the layer latched, its M2 lit, voice 2's badge dark.
 #[test]

@@ -390,6 +390,32 @@ fn the_fx_button_sends_the_chip_model() {
 }
 
 #[test]
+fn dice_goes_out_as_ccs_without_a_program_change() {
+    let mut o = Out::new();
+    o.rig.preset_step(3);
+    assert_eq!(o.tick(), [u32::from_le_bytes([0x0C, 0xC0, 3, 0])]);
+    assert_eq!(o.tick(), []);
+    o.rig.preset_step(1);
+    let sent = o.drain();
+    assert!(!sent.is_empty(), "the roll's parameters go out");
+    for p in &sent {
+        assert_ne!(
+            p.to_le_bytes()[0] & 0x0f,
+            0x0C,
+            "no program change: {p:08x}"
+        );
+    }
+    // a new roll sends what changed, still no program change
+    o.rig.preset_step(1);
+    for p in o.drain() {
+        assert_ne!(p.to_le_bytes()[0] & 0x0f, 0x0C);
+    }
+    // back to NOISE PERC: its program change
+    o.rig.preset_step(-1);
+    assert_eq!(o.tick()[0], u32::from_le_bytes([0x0C, 0xC0, 3, 0]));
+}
+
+#[test]
 fn a_panel_preset_is_a_program_change_without_the_parameters_it_loads() {
     let mut o = Out::new();
     o.rig.knob(LIVE_KNOB_CUTOFF, 3); // pending, then replaced by the preset's

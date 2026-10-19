@@ -268,7 +268,11 @@ typedef struct {
 } live_preset;
 
 #define LIVE_PRESET_COUNT 4u
-/* NULL past the last preset. */
+/* The four presets and DICE at index 4 (live_dice.h): what PRESETS steps through. A program change
+ * and the menu's MIDI side know LIVE_PRESET_COUNT only. */
+#define LIVE_PRESET_SLOTS 5u
+#define LIVE_PRESET_DICE 4u
+/* NULL past DICE. */
 const live_preset* live_preset_get(uint8_t index);
 
 /* round(f * 2^24 / SID_CLOCK_PAL) for MIDI note n with f = 440 * 2^((n - 69) / 12).
@@ -423,7 +427,9 @@ typedef struct {
     int8_t sync_semis;
     uint16_t sync_q8;
     /* Each preset's edits while another preset plays (live_recall_preset). */
-    live_edit edits[LIVE_PRESET_COUNT];
+    live_edit edits[LIVE_PRESET_SLOTS];
+    /* DICE's rolls so far (wraps), the number in its name. Not saved. */
+    uint8_t dice_rolls;
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */

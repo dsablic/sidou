@@ -17,6 +17,7 @@ mod gt2_ins;
 mod keys_route;
 mod learn_view;
 mod live_cutoff;
+mod live_dice;
 mod live_freq;
 mod live_instrument;
 mod live_view;

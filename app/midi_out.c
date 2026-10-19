@@ -158,13 +158,14 @@ static int look(midi_out* o, const live* l, int remote) {
         /* A preset change: the program change carries every parameter it loaded. The rest
          * are diffed as usual below, so a pending change of one survives it. */
         o->preset_seen = l->preset;
-        o->preset_pending = remote ? 0u : 1u;
+        o->preset_pending = remote || l->preset == LIVE_PRESET_DICE ? 0u : 1u;
         /* The program change carries the preset's factory settings; what PRESETS brought back
          * of its edits goes after it as the CCs of the parameters that differ. (The bend range
          * is the one RPN 0 may have set: its wire is its value, as PRESET_LOADS says.) */
         _Alignas(4) uint16_t factory[LIVE_PARAM_EXPERT];
         live_preset_params(l->preset, factory);
-        for (uint32_t p = 0; p < LIVE_PARAM_EXPERT; ++p) {
+        /* DICE has no program change: its parameters are the diff's below, like a knob's */
+        for (uint32_t p = 0; p < LIVE_PARAM_EXPERT && l->preset != LIVE_PRESET_DICE; ++p) {
             if (PRESET_LOADS >> p & 1u) {
                 uint16_t carried = remote || p == LIVE_PARAM_BEND_RANGE ? now[p] : factory[p];
                 o->seen[p] = now[p];
