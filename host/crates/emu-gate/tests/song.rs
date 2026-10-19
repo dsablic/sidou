@@ -1215,9 +1215,8 @@ fn master_scales_a_playing_song_and_full_master_leaves_it_alone() {
             );
         } else {
             // the audio taper (app/master_gain.h): the pot's gain as a share of unity
-            let gain =
-                unsafe { sidou_sys::master_gain_of(u32::from(pot), sidou_sys::LIVE_MASTER_MAX) };
-            let want = f64::from(full_peak) * f64::from(gain) / f64::from(sidou_sys::MASTER_UNITY);
+            let gain = unsafe { master_gain_of(u32::from(pot), LIVE_MASTER_MAX) };
+            let want = f64::from(full_peak) * f64::from(gain) / f64::from(MASTER_UNITY);
             assert!(
                 (f64::from(loudest) - want).abs() <= want * 0.02 + 2.0,
                 "pot {pot}: peak {loudest}, wanted {want:.0} of {full_peak}"
