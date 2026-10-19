@@ -1,11 +1,15 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* MIDI in (midi.h) and the update protocol's step 1 (update.h). This file includes Felucca's
- * USB stack, TRS UART driver and update protocol (usb/usb.c, usb/midi_uart.c, src/ota.c,
- * GPL-3.0-only): like the HAL, they are static code for one translation unit, and they call
- * back into the hooks defined here before them; ota.c talks through usb.c's static SysEx
- * plumbing. Only this file includes fm1_usb.h, fm1_uart.h and fm1_flash.h
- * (platform/fm1/VENDORED.md). */
+ * USB stack and update protocol as they are (src/usb.c, src/ota.c) and SIDOU's version of its
+ * TRS UART driver (usb/midi_uart.c), all GPL-3.0-only: like the HAL, they are static code for
+ * one translation unit, and they call back into the hooks defined here before them; ota.c talks
+ * through usb.c's static SysEx plumbing. Only this file includes fm1_usb.h, fm1_uart.h and
+ * fm1_flash.h (platform/fm1/VENDORED.md).
+ *
+ * This file is compiled as Felucca compiles its firmware, not with SIDOU's flags
+ * (CMakeLists.txt, SIDOU_USB_FIX): built with -mcpu=r3 -O2, usb.c's SIE accesses run too close
+ * together and EP1 IN stops on the FM-1 (docs/hardware-results/usb-out-diagnosis.md). */
 #include <stdint.h>
 
 #include "fm1_sys.h"
@@ -116,35 +120,160 @@ static struct {
 
 /* The ring's index stores are ordered by midi_ring.c itself; this orders usb.c's own rings. */
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
-/* The update protocol's SysEx frames and TX queue in usb.c (ota.c below). Never the stock UBOOT
- * soft key F0 22 24 35 7D F7: usb.c no longer knows it. */
+/* The update protocol's SysEx frames and TX queue in usb.c (ota.c below). usb.c also sets
+ * usb.uboot_req on the stock UBOOT soft key F0 22 24 35 7D F7; nothing here reads it, and SIDOU
+ * never sends it. */
 #define FELUCCA_OTA 1
+/* Felucca's build switches as its default firmware leaves them, but without the CDC console and
+ * the USB audio input: MIDI streaming alone on EP1. */
+#define FELUCCA_CDC 0
+#define FELUCCA_UAC 0
 /* The identity the protocol answers (cmd 0x11), == the package's (sidou-pack --product):
  * "FM-1_900" for development builds, as every community firmware's; CMakeLists.txt. */
 #define FELUCCA_ID SIDOU_PRODUCT
 
-/* source: 1 a USB-MIDI packet, 2 a TRS byte (MIDI_SRC_*). 0 when the ring is full. */
-static int midi_enqueue(uint32_t data, uint32_t source) {
+/* usb_start's wait after the controller's reset (usb.c's only fm1_delay_ms): 25 ms, unless
+ * usb_retry_quiet below has already held the controller in reset that long. */
+static uint8_t usb_reset_waited;
+
+static void usb_reset_wait(uint32_t ms) {
+    if (!usb_reset_waited) {
+        fm1_delay_ms(ms);
+    }
+}
+
+/* usb.c's SysEx assembler is renamed: app/sysex.h has a sysex_byte too. Its one delay goes
+ * through usb_reset_wait. */
+/* clang-format off */
+#define sysex_byte ota_sysex_byte
+#define fm1_delay_ms usb_reset_wait
+#include "src/usb.c"
+#undef sysex_byte
+#undef fm1_delay_ms
+/* clang-format on */
+
+/* usb.c's usb_retry from the main loop, without stopping it. While no host answers (no cable:
+ * the SIE stays silent), usb_retry would run usb_start once a second: the controller's reset, a
+ * 25 ms wait, the attach and six SIE writes that each time out at 20000 polls, about 28 ms of
+ * main loop, and MIDI from the TRS jack waiting with it. Instead, a step a pass:
+ * - once a second, the controller into reset (fm1_usb_reset, usb_start's first step);
+ * - 25 ms on, a probe: the attach (fm1_usb_attach) and one SIE write (S_POWER, usb_start's
+ *   first), given USB_PROBE_POLLS polls to finish, then the reset again. A silent SIE ends the
+ *   try there;
+ * - an SIE that answered: 25 ms more in reset, then usb_retry, whose usb_start resets (the same
+ *   three register writes) and attaches without the wait (usb_reset_wait).
+ * The probe's attach lasts microseconds, far below a host's attach debounce. */
+#define USB_PROBE_POLLS 2000u
+
+/* The probe: 1 when the SIE answered. Its own function, so the emulator tests find the main
+ * loop's longest USB step by its symbol (tests/latency.rs). */
+__attribute__((noinline)) static int usb_probe(void) {
+    uint32_t n = USB_PROBE_POLLS;
+    fm1_usb_attach(ep0buf);
+    fm1_usb_sie_wr_start(S_POWER, 0x60u);
+    while (!fm1_usb_sie_done() && --n) {
+    }
+    fm1_usb_reset();
+    return n != 0;
+}
+
+static void usb_retry_quiet(uint32_t now_ms) {
+    static uint32_t t;
+    static uint8_t step; /* 0 idle, 1 reset before the probe, 2 reset before the attach */
+    if (usb.up || usb.detached) {
+        step = 0;
+        return;
+    }
+    if (step == 0) {
+        if (now_ms - t < 1000u) {
+            return; /* usb_retry's own pace */
+        }
+        t = now_ms;
+        fm1_usb_reset();
+        step = 1;
+        return;
+    }
+    if (now_ms - t <= 25u) {
+        return; /* > 25 whole ms: at least 25 ms */
+    }
+    t = now_ms;
+    if (step == 1) {
+        step = usb_probe() ? 2 : 0;
+        return;
+    }
+    step = 0;
+    usb_reset_waited = 1;
+    usb_retry(now_ms); /* its last call was at least 1 s ago */
+    usb_reset_waited = 0;
+}
+
+/* A TRS byte into SIDOU's ring (source 2), stamped by its poll. 0 when the ring is full.
+ * midi_uart.c calls midi_enqueue and midi_lost, renamed: usb.c has its own midi_enqueue, the
+ * entry into its own MIDI-in ring. */
+static int trs_enqueue(uint32_t data, uint32_t source) {
     return midi_ring_push(&in_ring, (uint8_t)source, data, poll_stamp);
 }
 
-static uint32_t midi_in_room(void) {
-    return midi_ring_room(&in_ring);
-}
-
-static void midi_lost(uint32_t n) {
+static void trs_lost(uint32_t n) {
     midi_ring_lose(&in_ring, n);
 }
 
 /* clang-format off */
-#define sysex_byte ota_sysex_byte
-#include "usb/usb.c"
-#undef sysex_byte
+#define midi_enqueue trs_enqueue
+#define midi_lost trs_lost
 #include "usb/midi_uart.c"
+#undef midi_enqueue
+#undef midi_lost
 #include "src/ota.c"
 /* clang-format on */
 
-_Static_assert(MIDI_SRC_USB == 1u && MIDI_SRC_TRS == 2u, "usb.c and midi_uart.c push 1 and 2");
+_Static_assert(MIDI_SRC_USB == 1u && MIDI_SRC_TRS == 2u, "USB packets are 1, TRS bytes 2");
+
+/* usb.c's MIDI-in ring into SIDOU's (main loop). usb.c keeps channel messages and the clock,
+ * start, continue and stop bytes as USB-MIDI packets (its midi_in_event; SysEx goes to its
+ * frame, usb_sysex below); each becomes a USB entry, stamped as it is moved. A broken stream
+ * (usb.c's ring overflowed: midi_in_overflow) is a gap for SIDOU's parser. */
+static void usb_in_pump(void) {
+    while (mi_r != mi_w) {
+        RING_PUBLISH();
+        if (!midi_ring_push(&in_ring, MIDI_SRC_USB, midi_in_q[mi_r % MQ], fm1_ticks())) {
+            break; /* SIDOU's ring full: the rest after the next drain */
+        }
+        RING_PUBLISH();
+        mi_r++;
+    }
+    if (midi_in_overflow) {
+        uint32_t f = irq_save();
+        mi_r = mi_w;
+        midi_in_overflow = 0;
+        irq_restore(f);
+        midi_ring_lose(&in_ring, 1);
+    }
+}
+
+/* A SysEx frame usb.c collected (sx_frame, the bytes between F0 and F7), when it is SIDOU's
+ * (docs/reference/sysex.md: F0 7D 53 44 or a universal F0 7E), into SIDOU's SysEx parser as the
+ * USB parser would pass it, F0 to F7; the frame is freed for the next. USB is stop-and-wait, so
+ * usb.c's one frame at a time (it drops a frame that comes while one is pending) loses nothing.
+ * 1 when it took a frame. */
+static int usb_sysex(void) {
+    if (!sx_ready) {
+        return 0;
+    }
+    RING_PUBLISH();
+    uint32_t n = sx_frame_len;
+    if (!n || !(sx_frame[0] == 0x7Eu || (n >= 3u && sx_frame[0] == 0x7Du &&
+                                         sx_frame[1] == 0x53u && sx_frame[2] == 0x44u))) {
+        return 0; /* the update protocol's (ota_service) */
+    }
+    sidou_usb(&rx, MIDI_SYSEX_START, 0xF0u);
+    for (uint32_t i = 0; i < n; i++) {
+        sidou_usb(&rx, MIDI_SYSEX_DATA, sx_frame[i]);
+    }
+    sidou_usb(&rx, MIDI_SYSEX_END, 0xF7u);
+    ota_frame_done();
+    return 1;
+}
 
 static int sidou_send(void* ctx, const uint8_t packet[4]) {
     (void)ctx;
@@ -310,6 +439,7 @@ __attribute__((noinline, unused)) static int drain_pending(uint8_t epoch) {
 }
 
 int midi_drain(void) {
+    usb_in_pump();
     /* The epoch first, then the emptiness: a gap after this read is caught next time.
      * Keep the worker's saved registers and packet workspace out of this 10 kHz path. */
     uint8_t epoch = in_ring.epoch;
@@ -346,7 +476,7 @@ void midi_send(void) {
 }
 
 void midi_service(uint32_t now_ms) {
-    usb_retry(now_ms);
+    usb_retry_quiet(now_ms);
 }
 
 int midi_usb_live(void) {
@@ -462,16 +592,8 @@ int update_poll(void) {
     if (!sx_ready && !usb.ota_req) {
         return 0; /* the usual case, at every main-loop wake */
     }
-    if (sx_ready && sx_frame_len &&
-        (sx_frame[0] == 0x7Eu ||
-         (sx_frame_len >= 3u && sx_frame[0] == 0x7Du && sx_frame[1] == 0x53u &&
-          sx_frame[2] == 0x44u))) {
-        /* The raw USB stream already reached SIDOU's parser. Free the updater's
-         * unrelated copy now, so it can collect a request while our reply streams. */
-        ota_frame_done();
-        if (!usb.ota_req) {
-            return 0;
-        }
+    if (usb_sysex() && !usb.ota_req) {
+        return 0; /* SIDOU's frame: the updater's frame is free for its next request */
     }
     if (sidou_sysex.tx_active) {
         return 0; /* finish this frame before the updater's independent reply producer */

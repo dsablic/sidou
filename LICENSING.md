@@ -9,7 +9,7 @@ or is covered by [REUSE.toml](REUSE.toml). Full licence texts live in
 specification, and CI runs `reuse lint`.
 
 The firmware image links Felucca's GPL-3.0-only HAL (`platform/fm1/hal/`)
-and USB stack (`platform/fm1/usb/`), so the firmware image as a whole is distributed under **GPL-3.0-only**. Our
+and USB stack (`platform/fm1/src/usb.c`) and the TRS MIDI driver (`platform/fm1/usb/`), so the firmware image as a whole is distributed under **GPL-3.0-only**. Our
 own files keep their GPL-3.0-or-later licence.
 
 ## Third-party components
@@ -20,7 +20,7 @@ component. "Use" says whether a component ends up in the firmware image.
 | Component | Origin | Licence | Use | Status |
 |---|---|---|---|---|
 | Felucca HAL @ `a53ecf42` (`platform/fm1/hal/`, see [VENDORED.md](platform/fm1/VENDORED.md)) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | linked into the firmware | in use |
-| Felucca USB stack, TRS MIDI driver and update protocol @ `a53ecf42` (`platform/fm1/usb/`, adapted, see [VENDORED.md](platform/fm1/VENDORED.md)) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | linked into the firmware | in use |
+| Felucca USB stack @ `a53ecf42` (`platform/fm1/src/usb.c`, unmodified) and TRS MIDI driver (`platform/fm1/usb/midi_uart.c`, adapted), see [VENDORED.md](platform/fm1/VENDORED.md) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | linked into the firmware | in use |
 | `host/crates/sidou-pack` (`.fwsc` format, loader wrapping, LZ4 compressor) | a port of Felucca's `tools/fm1pkg_make.py`, `tools/build.py` and `tools/lz4blk.py` @ `a53ecf42`, © 2026 Leo Kuroshita | GPL-3.0-only | host tool | in use |
 | JieLi AC79 SDK `uboot.boot`, `cfg_tool.bin`, `cfg/eq_cfg_hw.bin` @ `AC79NN_SDK_V1.2.1_2023-12-13` | JieLi Technology | Apache-2.0 (`LICENSES/Apache-2.0.txt`, ship it with every package) | in every `.fwsc` package (the SPL in the head, the other two in the app area); fetched by `sidou-pack` into `build/ac79/`, never committed | in use |
 | Felucca update loader and the sources it includes @ `a53ecf42` (`platform/fm1/loader/`, `platform/fm1/src/`, unmodified, see [VENDORED.md](platform/fm1/VENDORED.md)) | Felucca, © 2026 Leo Kuroshita, Hügelton Instruments | GPL-3.0-only | the package's update loader (`ota.bin`), byte-identical to Felucca's | in use |

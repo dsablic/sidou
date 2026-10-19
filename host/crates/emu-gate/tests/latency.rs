@@ -66,7 +66,7 @@
 //!
 //! The busy case keeps the screen redrawing: K1-K3 turning all the time move three bars, so
 //! every compose marks strips dirty and the main loop draws one a pass. The USB case puts the
-//! note-on around the main loop's longest stall, `usb_retry`'s attach once a second while USB
+//! note-on around the main loop's longest stall, the USB retry's attach once a second while USB
 //! is off (docs/hardware.md), which fm1-emu, with no USB controller, always has.
 //!
 //! The sweep case plays a stream of the chip's character CCs (M1c Task 3) all through the
@@ -175,7 +175,7 @@ enum Scenario {
     Idle,
     /// K1-K3 turning: the screen redraws all the time.
     Busy,
-    /// The note-on lands around `usb_retry`'s attach.
+    /// The note-on lands around the USB retry's attach (`usb_probe`).
     UsbRetry,
     /// The character's CCs sweeping all the while (the module's doc).
     CharacterSweep,
@@ -358,12 +358,14 @@ fn boot(fw: &Firmware, scenario: Scenario, envelope: Envelope) -> Machine {
     m
 }
 
-/// The first `usb_attach_now` after `boot`: its start, in cycles after `boot`, and its
-/// instructions.
+/// The first USB retry's attach after `boot`: its start, in cycles after `boot`, and its
+/// instructions. With no host (fm1-emu's SIE never answers) that is `usb_probe`
+/// (platform/fm1/midi.c usb_retry_quiet: the attach and one SIE write that times out), the
+/// main loop's longest USB step; usb.c's `usb_start` runs only after a probe that answered.
 fn usb_attach(fw: &Firmware, envelope: Envelope) -> (u64, u64) {
     let mut m = boot(fw, Scenario::UsbRetry, envelope);
     let from = m.soc.periph.cycles;
-    m.watch_calls(fw.symbol("usb_attach_now"));
+    m.watch_calls(fw.symbol("usb_probe"));
     m.run_ms(1100);
     assert!(
         !m.watched_calls.is_empty(),

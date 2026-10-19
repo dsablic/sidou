@@ -58,6 +58,23 @@ if(SIDOU_FLASH_SPIKE)
     target_compile_definitions(${t} PRIVATE SIDOU_FLASH_SPIKE=1)
 endif()
 target_compile_options(${t} PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wshadow>)
+# The USB-MIDI out fix (docs/hardware-results/usb-out-diagnosis.md). midi.c, the file that
+# includes Felucca's USB stack (src/usb.c), is compiled as Felucca compiles its firmware: no
+# -mcpu (clang's generic pi32v2, no FPU) and -Os, instead of SIDOU's -mcpu=r3 -mfprev1 -O2. With
+# SIDOU's flags the compiler inlines usb.c's SIE accessors into its poll and the controller's
+# indexed accesses run back to back; on the FM-1, EP1 IN then stops after the first replies
+# (enumeration and EP1 OUT still work, so nothing else shows it). Keep this file free of
+# floating point: generic has no FPU, and soft-float helpers are not linked. -fdata-sections puts
+# usb.c's EP buffers in their own sections, which app.ld aligns to 64 bytes: usb.c declares
+# them aligned(4), and an EP1 IN buffer at 4 mod 8 sends nothing. Off only to reproduce the
+# failure on a device.
+option(SIDOU_USB_FIX "midi.c (the USB stack) with Felucca's build flags" ON)
+set_property(SOURCE midi.c APPEND PROPERTY COMPILE_OPTIONS -fdata-sections)
+if(SIDOU_USB_FIX)
+    set_property(SOURCE midi.c APPEND PROPERTY COMPILE_OPTIONS -mcpu=generic -mno-fprev1 -Os)
+else()
+    message(WARNING "SIDOU_USB_FIX=OFF: midi.c with SIDOU's flags, USB-MIDI out dead on the FM-1")
+endif()
 # --gc-sections drops functions nothing calls (e.g. live_sid_sink, which only the host uses):
 # besides the size, an unused call between flash and SRAM code would otherwise have to link.
 # --emit-relocs keeps the relocations in the ELF (not in the image) for the emulator test

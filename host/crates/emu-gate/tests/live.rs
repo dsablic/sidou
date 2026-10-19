@@ -336,7 +336,7 @@ fn the_main_loop_is_cheap_when_idle() {
         return;
     };
     let mut m = booted(&fw);
-    // Past the first USB retry (once a second while no host answers, platform/fm1/usb/usb.c),
+    // Past the first USB retry (once a second while no host answers, platform/fm1/midi.c usb_retry_quiet),
     // and whole seconds from then on, so each window holds exactly one retry.
     m.run_ms(1000);
     let idle = main_rate(&mut m, 1000);

@@ -113,6 +113,13 @@ SECTIONS
      * naming (sid_dac.c.obj); an assert below catches the tables falling back into .bss. */
     .bss (NOLOAD) : {
         _bss_start = .;
+        /* usb.c's USB DMA buffers (midi.c is built with -fdata-sections): usb.c declares them
+         * aligned(4), and on the FM-1 an EP1 IN buffer at 4 mod 8 sends nothing
+         * (docs/hardware-results/usb-out-diagnosis.md). EP1 IN's on a 64-byte boundary, as on
+         * the device test, the other two right after it on 8-byte ones, packed: RAM is tight. */
+        . = ALIGN(64); *(.bss.ep1tx)
+        . = ALIGN(8); *(.bss.ep0buf)
+        . = ALIGN(8); *(.bss.ep1rx)
         *(EXCLUDE_FILE(*sid_dac.c.obj) .bss*) *(.sbss*) *(COMMON)
         . = ALIGN(4);
         _bss_end = .;

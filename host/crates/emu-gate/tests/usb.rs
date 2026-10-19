@@ -6,8 +6,8 @@
 //! cmd 0x11), and reads EP1 IN while K1 and PRESETS turn. On v0.2.0-m2-preview the device received
 //! all of this and a host saw almost none of what it sent (docs/hardware-test.md, section 8).
 //! What this checks is the firmware's side, as the USB fix made it:
-//! - every IN packet carries at most 16 bytes (usb/usb.c EP1_IN_MAX), so the identity reply
-//!   goes as several;
+//! - every IN packet carries at most 64 bytes, whole event packets (Felucca's src/usb.c ep1_tx,
+//!   SysEx first);
 //! - no SIE access happens while an audio interrupt is open: USB's poll waits for the render's
 //!   end (main.c fm1_timer5_irq), as Felucca's does;
 //! - while the host has the device configured the main loop never sleeps in `idle`: it spins
@@ -29,9 +29,9 @@ const PRESETS: u8 = 6;
 const CC_CUTOFF: u8 = 74;
 /// The identity SIDOU's development builds answer (CMakeLists.txt SIDOU_PRODUCT).
 const IDENTITY: &str = "FM-1_900";
-/// usb/usb.c EP1_IN_MAX.
-const IN_MAX: usize = 16;
-/// The config descriptor's length (usb/usb.c CFG_LEN_PLAIN).
+/// src/usb.c ep1_tx: one full-speed bulk packet.
+const IN_MAX: usize = 64;
+/// The config descriptor's length (src/usb.c CFG_LEN_PLAIN).
 const CONFIG_LEN: usize = 101;
 
 fn fixture(what: &str) -> Option<Firmware> {
@@ -46,7 +46,7 @@ fn host(m: &mut Machine) -> &mut UsbHost {
     m.usb.as_mut().expect("a host")
 }
 
-/// usb/usb.c's `usb`: up, config, ...
+/// src/usb.c's `usb`: up, config, ...
 fn up_and_config(m: &mut Machine, fw: &Firmware) -> (u8, u8) {
     let usb = fw.symbol("usb");
     (m.soc.read8(usb), m.soc.read8(usb + 1))
@@ -310,11 +310,9 @@ fn a_host_gets_the_identity_and_the_knobs_over_usb() {
         .map(|&c| c as char)
         .collect();
     assert_eq!(id, IDENTITY);
+    // Whole event packets, at most one bulk packet each: the 56-byte reply goes in one, as
+    // Felucca sends it (the device answers it so: docs/hardware-results/usb-out-diagnosis.md).
     assert!(sizes.iter().all(|&n| n > 0 && n <= IN_MAX && n % 4 == 0));
-    assert!(
-        sizes.len() > 1,
-        "the reply fits one packet: the cap is untested"
-    );
 
     // K1: CC 74 on channel 1.
     host(&mut m).in1.clear();
@@ -361,7 +359,7 @@ fn an_upgrade_request_gets_the_first_read_request_out() {
     m.usb_frames(20);
     enumerate(&mut m, &fw);
     host(&mut m).in1.clear();
-    // The upgrade request (usb/usb.c sysex_byte), then step 1's first read request (cmd 0x30).
+    // The upgrade request (src/usb.c sysex_byte), then step 1's first read request (cmd 0x30).
     send(
         &mut m,
         &sysex_packets(&[0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7]),

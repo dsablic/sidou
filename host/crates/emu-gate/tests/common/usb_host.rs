@@ -6,7 +6,7 @@
 //! `Machine::usb` is set, and the model answers what the instruction asked of the SIE, so the
 //! firmware's next instruction finds it done, as on the chip.
 //!
-//! What it models, from platform/fm1/hal/fm1_usb.h and usb/usb.c (Felucca's driver):
+//! What it models, from platform/fm1/hal/fm1_usb.h and src/usb.c (Felucca's driver):
 //! - the SIE behind CON1 (MUSB's byte map): a write `(r << 8) | v` or a read
 //!   `(r << 8) | 0x4000` while CON0 bit 2 (USB_NRST) is set, done with bit 15 and, for a read,
 //!   the byte in bits 0..7; the indexed endpoint registers 16..23 of EP0 and EP1;

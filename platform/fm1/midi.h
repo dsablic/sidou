@@ -49,7 +49,7 @@ void midi_uart_isr(void);
  * 1 if it may have written registers: the caller then commits them (audio_commit). */
 int midi_drain(void);
 /* Main loop, once per live tick (100 Hz): the panel's parameter changes out over USB as
- * CCs, NRPNs and program changes (app/midi_out.h), into the IN endpoint's ring (usb/usb.c),
+ * CCs, NRPNs and program changes (app/midi_out.h), into the IN endpoint's ring (src/usb.c),
  * which the TIMER5 interrupt sends. Never waits: with no room, a change stays pending (its
  * latest value goes later); with no host, it is dropped. */
 void midi_send(void);

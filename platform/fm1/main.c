@@ -12,7 +12,15 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "fm1_sys.h" /* before fm1_irq.h: FM1_RESET_PREP */
+/* The HAL's second-core hold (fm1_cpu1_halt), which Felucca's fm1_cstart runs first at every
+ * boot and before every reset. SIDOU never starts the second core, but one left running (by the
+ * ROM, another firmware, a reset that did not hold it) would run whatever its PC points at while
+ * SIDOU clears and fills RAM. The HAL builds the hold only with FM1_CPU1_USED; fm1_irq.h's
+ * second-core fault paths, which need Felucca's fm1_cpu1.S, stay out (FM1_CPU1_USED 0 for it). */
+#define FM1_CPU1_USED 1
+#include "fm1_sys.h" /* before fm1_irq.h: FM1_RESET_PREP, here the hold */
+#undef FM1_CPU1_USED
+#define FM1_CPU1_USED 0
 
 #include "fm1_audio.h"
 #include "fm1_irq.h"
@@ -1591,6 +1599,7 @@ static void uboot_gesture(void) {
 
 void fm1_cstart(void) {
     uint32_t *d, *s;
+    fm1_cpu1_halt(); /* first thing, as Felucca's fm1_cstart (registers only) */
     fm1_time_init();
     fm1_wdt_arm(WDT_TIMEOUT);
 #if !defined(SIDOU_TEST_DEATH_MS)

@@ -6,7 +6,7 @@
 //! USB MIDI in is not tested here: fm1-emu does not emulate the USB controller (its registers
 //! are plain storage, so the device sees no host and leaves USB off). The USB packet
 //! conversion and the ring are host-tested (sidou-tests, `tests/app/midi_*.rs`). MIDI out is
-//! checked where it leaves the main loop: the IN endpoint's ring in usb/usb.c, with the test
+//! checked where it leaves the main loop: the IN endpoint's ring in src/usb.c, with the test
 //! playing a host that configured the device (`usb.config`) but never reads (USB stays off,
 //! so nothing drains the ring).
 
@@ -698,7 +698,7 @@ fn a_full_speed_stream_loses_nothing() {
 
 // --- MIDI out ---
 
-/// usb/usb.c's MIDI out ring, `midi_out_q[MQ]`, and its write index.
+/// src/usb.c's MIDI out ring, `midi_out_q[MQ]`, and its write index.
 const MQ: u32 = 64;
 /// Felucca's ids: the FX button, K1 and PRESETS.
 const FX_BUTTON: u8 = 2;

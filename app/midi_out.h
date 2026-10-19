@@ -63,7 +63,7 @@
 extern "C" {
 #endif
 
-/* The one cable of the USB-MIDI function (platform/fm1/usb/usb.c: one embedded jack each way). */
+/* The one cable of the USB-MIDI function (platform/fm1/src/usb.c: one embedded jack each way). */
 #define MIDI_OUT_CABLE 0u
 /* Packets midi_out_tick writes at most: four NRPNs, or sixteen CCs. */
 #define MIDI_OUT_TICK_PACKETS 16u
