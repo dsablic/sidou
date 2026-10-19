@@ -6,6 +6,8 @@
 
 mod common;
 
+use fm1_core::Bus;
+
 use common::{
     build_dir, max_diff, peak, power_above, render_host, Firmware, Machine, AUDIO_TARGET,
     HALF_FRAMES,
@@ -377,4 +379,19 @@ fn every_slots_heaviest_fits_the_audio_budget_and_runs_from_sram() {
         l[n - 10_000..] != r[n - 10_000..],
         "the output is still mono"
     );
+}
+
+#[test]
+fn env_on_live_is_heard() {
+    let Some(fw) = fixture("the effects test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    tap(&mut m, ENV);
+    let l = m
+        .soc
+        .read32(fw.symbol("ui") + sidou_sys::ilp32::views::l as u32);
+    let slot = l + sidou_sys::ilp32::live::slot as u32;
+    let got: Vec<u8> = (0..5).map(|i| m.soc.read8(slot + i)).collect();
+    assert_eq!(got, [1, 80, 0, 0, 127], "TAPE at its musical start");
 }

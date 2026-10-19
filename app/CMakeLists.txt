@@ -15,6 +15,7 @@ add_library(sidou_live STATIC
     credits.c
     demo_song.c
     font.c
+    fx_defaults.c
     fx_live.c
     grid.c
     learn_view.c

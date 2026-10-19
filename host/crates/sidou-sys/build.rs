@@ -34,6 +34,7 @@ const SOURCES: &[&str] = &[
     "app/credits.c",
     "app/demo_song.c",
     "app/font.c",
+    "app/fx_defaults.c",
     "app/fx_live.c",
     "app/grid.c",
     "app/keys_route.c",

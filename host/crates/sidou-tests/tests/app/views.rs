@@ -997,10 +997,16 @@ fn the_panel_plays(ui: &mut Ui, view: &str) {
     for k in 0..4 {
         let field = LIVE_SLOT_AMOUNT as usize + k;
         let before = ui.live().slot[s][field];
-        ui.turn(PANEL_ENC_K1 + k as u32, 1);
+        // a control the algorithm's defaults put at the top turns down
+        let steps = if before > LIVE_SLOT_MAX as u8 - LIVE_SLOT_DETENT as u8 {
+            -1
+        } else {
+            1
+        };
+        ui.turn(PANEL_ENC_K1 + k as u32, steps);
         assert_eq!(
             ui.live().slot[s][field],
-            before + LIVE_SLOT_DETENT as u8,
+            before.wrapping_add_signed(steps as i8 * LIVE_SLOT_DETENT as i8),
             "{view}: EDIT + K{}",
             k + 1
         );

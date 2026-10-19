@@ -47,10 +47,13 @@ fn algorithms_cycle_and_controls_turn_by_detents() {
     assert_eq!(rig.live.slot[1][0], 0, "wraps from the last to NONE");
     unsafe { live_slot_next_algorithm(&mut *rig.live, 1) };
     assert_eq!(rig.live.slot[1][0], SID_MOD_CHORUS as u8);
+    // CHORUS starts from its defaults (live_fx_defaults); the detents add to them.
+    let a = unsafe { live_fx_defaults[1][SID_MOD_CHORUS as usize] }[1];
+    assert_eq!(rig.live.slot[1][LIVE_SLOT_A as usize], a);
     unsafe { live_slot_turn(&mut *rig.live, 1, LIVE_SLOT_A, 3) };
     assert_eq!(
         rig.live.slot[1][LIVE_SLOT_A as usize],
-        (3 * LIVE_SLOT_DETENT) as u8
+        a + (3 * LIVE_SLOT_DETENT) as u8
     );
     unsafe { live_slot_turn(&mut *rig.live, 1, LIVE_SLOT_A, 100) };
     assert_eq!(rig.live.slot[1][LIVE_SLOT_A as usize], LIVE_SLOT_MAX as u8);
@@ -142,13 +145,18 @@ fn edit_held_turns_k1_k4_into_the_selected_slots_controls() {
     }
     let s = pn.rig.live.slot[2];
     let d = LIVE_SLOT_DETENT as u8;
-    assert_eq!(&s[1..], &[d, 2 * d, 3 * d, 4 * d], "Amount, A, B, Mix");
+    let f = unsafe { live_fx_defaults[2][SID_FXSLOT_DELAY as usize] };
+    assert_eq!(
+        &s[1..],
+        &[f[0] + d, f[1] + 2 * d, f[2] + 3 * d, f[3] + 4 * d],
+        "Amount, A, B, Mix from DELAY's defaults"
+    );
     assert_eq!(pn.rig.live.cutoff, cutoff, "K1 did not move the cutoff");
     // Let go of EDIT: K1 is the cutoff again.
     pn.buttons(0, 0);
     pn.enc(PANEL_ENC_K1, -1);
     assert_ne!(pn.rig.live.cutoff, cutoff);
-    assert_eq!(pn.rig.live.slot[2][1], d);
+    assert_eq!(pn.rig.live.slot[2][1], f[0] + d);
     // SCL wraps back to Distortion, which is off: EDIT dark.
     pn.buttons(1 << PANEL_BTN_SCL, 0);
     assert_eq!(pn.rig.live.fx_select, 0);
@@ -332,4 +340,69 @@ fn the_host_sink_never_writes_a_slot_register_to_the_chip() {
         )
     };
     assert_eq!(format!("{:?}", chip.osc[0]), before);
+}
+
+fn rms(x: &[f64]) -> f64 {
+    (x.iter().map(|v| v * v).sum::<f64>() / x.len() as f64).sqrt()
+}
+
+/// What a slot adds to a 220 Hz saw at the algorithm's defaults: the RMS of wet minus dry
+/// over the last 0.4 s, both channels, against the dry RMS.
+fn added_by(slot: u32, alg: u32) -> f64 {
+    let n = 22050usize;
+    let saw: Vec<i16> = (0..n)
+        .map(|i| (((i as f64 * 220.0 / 44100.0).fract() * 2.0 - 1.0) * 16384.0) as i16)
+        .collect();
+    let d = unsafe { live_fx_defaults[slot as usize][alg as usize] };
+    let run = |p: sid_slot_params| {
+        let (mut s, _pool) = slots_box();
+        unsafe { sid_slots_set(&mut *s, slot, &p) };
+        let mut out = Vec::new();
+        for b in saw.chunks(128) {
+            let mut o = vec![0i16; 2 * b.len()];
+            unsafe { sid_slots_process(&mut *s, b.as_ptr(), o.as_mut_ptr(), b.len() as u32) };
+            out.extend(o);
+        }
+        out
+    };
+    let f = |v: u8| f32::from(v) / 127.0;
+    let wet = run(sid_slot_params {
+        algorithm: alg,
+        amount: f(d[0]),
+        a: f(d[1]),
+        b: f(d[2]),
+        mix: f(d[3]),
+    });
+    let dry = run(sid_slot_params {
+        algorithm: 0,
+        amount: 0.0,
+        a: 0.0,
+        b: 0.0,
+        mix: 0.0,
+    });
+    let from = 2 * (n - 17640);
+    let diff: Vec<f64> = (from..2 * n)
+        .map(|i| f64::from(wet[i]) - f64::from(dry[i]))
+        .collect();
+    let dry: Vec<f64> = dry[from..].iter().map(|&v| f64::from(v)).collect();
+    rms(&diff) / rms(&dry)
+}
+
+#[test]
+fn every_default_is_audible() {
+    for slot in 0..LIVE_SLOTS {
+        for alg in 1..unsafe { live_slot_algorithms(slot) } {
+            let r = added_by(slot, alg);
+            assert!(
+                r >= 0.1,
+                "slot {slot} algorithm {alg}: adds {:.1} dB of the dry",
+                20.0 * r.log10()
+            );
+        }
+        assert_eq!(
+            unsafe { live_fx_defaults[slot as usize][0] },
+            [0; 4],
+            "OFF's row is zeros"
+        );
+    }
 }

@@ -2,6 +2,13 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # SIDOU hardware checklist (M1 and M2)
 
+## Ergonomics: effects you hear on pick
+
+- [ ] On LIVE with a held note, press ENV once on Distortion: the sound changes at once (TAPE
+  warms it). Press again for OVERDRIVE, FUZZ, CRUSH, LO-FI: each sounds different, none
+  silent. Select Modulation (SCL) and FX and step their algorithms: each is audible.
+- [ ] Turn one control with EDIT held, then step the algorithm: the control keeps your value.
+
 ## Ergonomics: menu spin
 
 - [ ] Open HOME's menu and spin SELECT quickly down past the first six items,

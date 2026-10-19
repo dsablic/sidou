@@ -518,7 +518,10 @@ fn the_effect_slots_go_out_on_their_ccs() {
     let fx = LIVE_PARAM_SLOT + 2 * LIVE_SLOT_FIELDS;
     let mut want = vec![
         cc_packet(0, 112, to_cc(fx, 1)),
-        cc_packet(0, 116, to_cc(fx + LIVE_SLOT_MIX, 32)),
+        cc_packet(0, 113, to_cc(fx + LIVE_SLOT_AMOUNT, 48)),
+        cc_packet(0, 114, to_cc(fx + LIVE_SLOT_A, 64)),
+        cc_packet(0, 115, to_cc(fx + LIVE_SLOT_B, 48)),
+        cc_packet(0, 116, to_cc(fx + LIVE_SLOT_MIX, 72)),
     ];
     want.sort_unstable();
     assert_eq!(got, want);

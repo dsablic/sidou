@@ -1330,11 +1330,28 @@ void live_slot_turn(live* l, uint32_t slot, uint32_t field, int32_t detents) {
     }
 }
 
+void live_slot_pick(live* l, uint32_t slot, uint32_t algorithm) {
+    if (slot >= LIVE_SLOTS) {
+        return;
+    }
+    uint32_t last = live_slot_algorithms(slot) - 1u;
+    algorithm = algorithm > last ? last : algorithm;
+    uint8_t* s = l->slot[slot];
+    /* silent, or still what the algorithm it has started with */
+    int fresh = (!s[LIVE_SLOT_AMOUNT] && !s[LIVE_SLOT_MIX]) ||
+                !memcmp(&s[LIVE_SLOT_AMOUNT], live_fx_defaults[slot][s[LIVE_SLOT_ALGORITHM] & 7u], 4);
+    live_slot_set(l, slot, LIVE_SLOT_ALGORITHM, (int32_t)algorithm);
+    if (algorithm && fresh) {
+        for (uint32_t f = 0; f < 4u; f++) {
+            live_slot_set(l, slot, LIVE_SLOT_AMOUNT + f, live_fx_defaults[slot][algorithm][f]);
+        }
+    }
+}
+
 void live_slot_next_algorithm(live* l, uint32_t slot) {
     if (slot < LIVE_SLOTS) {
         uint32_t next = l->slot[slot][LIVE_SLOT_ALGORITHM] + 1u;
-        live_slot_set(l, slot, LIVE_SLOT_ALGORITHM,
-                      next < live_slot_algorithms(slot) ? (int32_t)next : 0);
+        live_slot_pick(l, slot, next < live_slot_algorithms(slot) ? next : 0u);
     }
 }
 

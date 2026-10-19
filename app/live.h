@@ -550,7 +550,15 @@ uint32_t live_slot_algorithms(uint32_t slot);
 void live_slot_set(live* l, uint32_t slot, uint32_t field, int32_t value);
 /* Turns a slot control by detents (LIVE_SLOT_DETENT steps each), clamped at both ends. */
 void live_slot_turn(live* l, uint32_t slot, uint32_t field, int32_t detents);
-/* The slot's next algorithm, wrapping from the last to NONE. */
+/* Amount, A, B and Mix (0..127) an algorithm starts from when picked from the panel
+ * (app/fx_defaults.c): [slot][algorithm]; NONE's row is zeros. */
+extern const uint8_t live_fx_defaults[LIVE_SLOTS][8][4];
+/* Picks a slot's algorithm from the panel. A slot still silent (Amount and Mix 0) or still at
+ * the controls of the algorithm it has (untouched since it was picked) takes the new
+ * algorithm's defaults with it, unless that is NONE; an edited slot keeps its controls. MIDI's
+ * algorithm CC (live_param_set) loads nothing: it is live_slot_set. */
+void live_slot_pick(live* l, uint32_t slot, uint32_t algorithm);
+/* The slot's next algorithm (live_slot_pick), wrapping from the last to NONE. */
 void live_slot_next_algorithm(live* l, uint32_t slot);
 /* The panel's slot: the next one, wrapping. */
 void live_fx_select_next(live* l);

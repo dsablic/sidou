@@ -1239,15 +1239,17 @@ fn midi_out_sends_the_chip_views_knobs() {
         [cc(LIVE_PARAM_AGE, 8), cc(LIVE_PARAM_THUMP, 4)]
     );
     ui.turn(PANEL_ENC_SELECT, 1);
-    ui.turn(K1 + 1, 3);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(K1 + 1, 3);
     let dist = LIVE_PARAM_SLOT;
     assert_eq!(cc(dist + LIVE_SLOT_A, 12)[2], LIVE_CC_SLOT_FIRST as u8 + 2);
     assert_eq!(
         tick(&ui, &mut out),
         [
             cc(dist + LIVE_SLOT_ALGORITHM, 1),
-            cc(dist + LIVE_SLOT_A, 12)
+            cc(dist + LIVE_SLOT_AMOUNT, 80),
+            cc(dist + LIVE_SLOT_A, 12),
+            cc(dist + LIVE_SLOT_MIX, 127)
         ]
     );
 }

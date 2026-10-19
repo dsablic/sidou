@@ -1105,3 +1105,65 @@ fn a_profile_resets_the_chip_and_the_model_follows_it() {
     assert_eq!(get_param(&rig, LIVE_PARAM_PROFILE), SID_CHIP_6581_WORN);
     assert_eq!(get_param(&rig, LIVE_PARAM_AGE), 7);
 }
+
+// --- effect slots picked from the panel ---
+
+#[test]
+fn a_silent_slot_picks_up_a_musical_start() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    for slot in 0..LIVE_SLOTS {
+        let s = slot as usize;
+        assert_eq!(rig.live.slot[s], [0; 5]);
+        for alg in 1..unsafe { live_slot_algorithms(slot) } {
+            unsafe { live_slot_pick(&mut *rig.live, slot, alg) };
+            let d = unsafe { live_fx_defaults[s][alg as usize] };
+            assert_eq!(
+                rig.live.slot[s],
+                [alg as u8, d[0], d[1], d[2], d[3]],
+                "slot {slot} algorithm {alg}: each algorithm its own start while untouched"
+            );
+            assert!(d[0] > 0 && d[3] > 0, "audible: Amount and Mix above 0");
+        }
+        unsafe { live_slot_pick(&mut *rig.live, slot, 0) };
+        assert_eq!(rig.live.slot[s][0], 0);
+    }
+    // ENV's step is the same pick.
+    let mut rig = Rig::new(SID_MODEL_6581);
+    unsafe { live_slot_next_algorithm(&mut *rig.live, 0) };
+    assert_eq!(rig.live.slot[0], [1, 80, 0, 0, 127]);
+}
+
+#[test]
+fn an_edited_slot_keeps_its_values() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    unsafe {
+        live_slot_pick(&mut *rig.live, 1, SID_MOD_CHORUS);
+        live_slot_turn(&mut *rig.live, 1, LIVE_SLOT_A, 2);
+    }
+    let edited = rig.live.slot[1];
+    unsafe { live_slot_pick(&mut *rig.live, 1, SID_MOD_PHASER) };
+    assert_eq!(rig.live.slot[1][0], SID_MOD_PHASER as u8);
+    assert_eq!(
+        &rig.live.slot[1][1..],
+        &edited[1..],
+        "the player's controls stay"
+    );
+    // Off and on again: still the player's.
+    unsafe { live_slot_pick(&mut *rig.live, 1, 0) };
+    unsafe { live_slot_pick(&mut *rig.live, 1, SID_MOD_FLANGER) };
+    assert_eq!(&rig.live.slot[1][1..], &edited[1..]);
+}
+
+#[test]
+fn a_midi_algorithm_loads_nothing() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    rig.cc(LIVE_CC_SLOT_FIRST + LIVE_SLOT_FIELDS, 40);
+    assert_ne!(rig.live.slot[1][0], 0);
+    assert_eq!(&rig.live.slot[1][1..], &[0; 4]);
+    for slot in 0..LIVE_SLOTS {
+        for v in (0..128u8).step_by(9) {
+            rig.cc(LIVE_CC_SLOT_FIRST + slot * LIVE_SLOT_FIELDS, v);
+            assert_eq!(&rig.live.slot[slot as usize][1..], &[0; 4]);
+        }
+    }
+}

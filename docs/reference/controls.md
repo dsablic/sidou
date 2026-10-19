@@ -98,7 +98,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | MASTER (pot) | volume: a digital gain on the final output, for everything that plays (the keys, a song on either chip, UI sounds) |
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end), in every view; K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
-| **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last) |
+| **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last); it starts from a musical setting, so it is heard at once ([Effect slots](#effect-slots)) |
 | **HOME (button 8)** | the menu, from LIVE; back one view from any other (the menu, CHIP, the song views, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE behind THE OSCILLATOR's title card (below) |
 | **SAVE (button 9)** | clean press and release: save a USER profile on CHIP's chip focus, the song in a song view, settings elsewhere; hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
 | **SEQ (button 11)** | opens the song views, and steps through them ([below](#song-views)) |
@@ -417,6 +417,34 @@ Distortion, Modulation and FX run after the chip, in that order, in stereo
 Mix is dry/wet. Every control is smoothed, and changing algorithm crossfades through
 the dry sound (slots take turns, so a full change takes up to ~150 ms). Everything is off
 by default; saved slot settings are restored at power-on.
+
+**An algorithm picked from the panel starts from a musical setting** (ENV, and ALGORITHM on
+CHIP's slot line), so it is heard at once. The slot takes the algorithm's four values when it
+is still silent (Amount and Mix 0) or still at the values of the algorithm it has (untouched
+since it was picked); a slot you have edited keeps your values. Stepping OFF, TAPE,
+OVERDRIVE gives each its own start until you turn a control. MIDI never loads these: an
+algorithm CC sets the algorithm alone.
+
+| Slot | Algorithm | Amount | A | B | Mix |
+|---|---|---|---|---|---|
+| Distortion | TAPE | 80 | 0 | 0 | 127 |
+| Distortion | OVERDRIVE | 52 | 64 | 32 | 127 |
+| Distortion | FUZZ | 48 | 0 | 32 | 127 |
+| Distortion | CRUSH | 64 | 32 | 0 | 127 |
+| Distortion | LO-FI | 64 | 16 | 16 | 127 |
+| Modulation | CHORUS | 64 | 32 | 0 | 64 |
+| Modulation | FLANGER | 64 | 24 | 96 | 64 |
+| Modulation | PHASER | 64 | 32 | 64 | 64 |
+| Modulation | TREMOLO | 100 | 64 | 0 | 127 |
+| Modulation | AUTO-PAN | 96 | 32 | 0 | 127 |
+| Modulation | WOW | 48 | 32 | 0 | 127 |
+| FX | DELAY | 48 | 64 | 48 | 40 |
+| FX | PING-PONG | 48 | 64 | 48 | 40 |
+| FX | REVERB | 72 | 48 | 80 | 40 |
+| FX | LUSH | 80 | 48 | 96 | 40 |
+
+Each changes a 220 Hz saw at half scale by at least -20 dB of its own level (the RMS of the
+difference from the dry sound; the test `every_default_is_audible`).
 
 ## Chip character
 

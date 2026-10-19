@@ -9,6 +9,8 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Ergonomics: an effect algorithm picked from the panel (ENV, CHIP's ALGORITHM on a slot) starts
+  from a musical setting per algorithm, so it is heard at once; MIDI's algorithm CC loads nothing.
 - M2e Task 5: [version-1 SysEx](docs/reference/sysex.md) for inquiry, streamed
   directory/file GET and PUT, deletion, GTI5 instruments with table relocation,
   and current-song dumps/imports. USB uses per-frame ACK/NAK; TRS accepts paced
