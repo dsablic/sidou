@@ -162,39 +162,34 @@ __attribute__((noinline, unused)) static void expert_turn(live* l, uint32_t para
 }
 
 void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps) {
-    if (steps == 0) {
-        return;
-    }
-    if (enc - PANEL_ENC_K1 > PANEL_ENC_K4 - PANEL_ENC_K1) { /* not K1..K4 */
-        if (enc == PANEL_ENC_PRESETS) {
+    uint32_t k = enc - PANEL_ENC_K1;
+    if (steps == 0 || k > PANEL_ENC_K4 - PANEL_ENC_K1) { /* not K1..K4 */
+        if (steps != 0 && enc == PANEL_ENC_PRESETS) {
             live_preset_step(l, steps, p->held >> PANEL_BTN_EDIT & 1u);
         }
         return;
     }
-    if (p->page == PANEL_PAGE_LIVE && !(p->held >> PANEL_BTN_EDIT & 1u)) {
-        /* LIVE's page, the common case: K1..K4 are live's knobs (what panel_knob_param names) */
-        live_knob(l, (live_knob_id)(enc - PANEL_ENC_K1), steps);
-        return;
-    }
-    uint32_t param = panel_knob_param(p, l, p->held, enc);
-    if (param == LIVE_PARAM_COUNT && p->page >= PANEL_PAGE_NONE) {
-        return; /* the view's own */
-    }
-    if (param >= LIVE_PARAM_SLOT && param < LIVE_PARAM_SLOT_END) {
-        uint32_t i = param - LIVE_PARAM_SLOT;
-        live_slot_turn(l, i / LIVE_SLOT_FIELDS, i % LIVE_SLOT_FIELDS, steps);
-    } else if (param >= LIVE_PARAM_AGE && param <= LIVE_PARAM_BLEED) {
+    /* What panel_knob_param names, by the page: each page's own turn, without the parameter's
+     * number between (the K1 input is gated by its cost: emu-gate screen.rs CHIP_INPUT and
+     * POPUP_INPUT). */
+    uint32_t page = p->page;
+    uint32_t edit = p->held >> PANEL_BTN_EDIT & 1u;
+    if (page == PANEL_PAGE_LIVE && !edit) {
+        live_knob(l, (live_knob_id)k, steps); /* the common case */
+    } else if (edit || page == PANEL_PAGE_SLOT) {
+        live_slot_turn(l, l->fx_select, LIVE_SLOT_AMOUNT + k, steps); /* Amount, A, B, Mix */
+    } else if (page == PANEL_PAGE_CHARACTER) {
+        uint32_t param = LIVE_PARAM_AGE + k; /* age, DAC, thump, bleed */
         int32_t d = steps > 64 ? 64 : steps < -64 ? -64 : steps; /* 0..127 end to end in 32 */
         int32_t v = (int32_t)live_param_get(l, param) + d * PANEL_CHARACTER_DETENT;
         int32_t max = (int32_t)live_param_max(param);
         live_param_set(l, param, (uint32_t)(v < 0 ? 0 : v > max ? max : v));
-    } else {
-        if (p->page >= PANEL_PAGE_EXPERT_FIRST) {
+    } else if (page >= PANEL_PAGE_EXPERT_FIRST) {
+        uint32_t param = panel_knob_param(p, l, p->held, enc);
+        if (param != LIVE_PARAM_COUNT) {
             expert_turn(l, param, steps);
-            return;
         }
-        live_knob(l, (live_knob_id)(enc - PANEL_ENC_K1), steps);
-    }
+    } /* PANEL_PAGE_NONE: the view's own */
 }
 
 void panel_master(panel* p, live* l, int32_t raw) {

@@ -2214,7 +2214,7 @@ void views_song(views* v, const song_ctl* sc, const song_event* ev, uint32_t n) 
 /* The song's state for LIVE: its tempo, and the play mark's beat (a beat's first row, a bar's
  * being the first of four beats), held 120 ms (SONG_BEAT_MS). */
 #define SONG_BEAT_MS 120u
-__attribute__((noinline, unused)) static void live_song(views* v, uint32_t now_ms) {
+__attribute__((noinline, unused)) LIVE_COLD static void live_song(views* v, uint32_t now_ms) {
     live_view* lv = &v->live;
     uint32_t bpm = song_view_shown_bpm(&v->song);
     lv->bpm = bpm == SONG_VIEW_NO_BPM ? 0u : (uint16_t)(bpm > 999u ? 999u : bpm);

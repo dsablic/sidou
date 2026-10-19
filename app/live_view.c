@@ -24,6 +24,13 @@
 #define KNOB_ROWS ROWS(LIVE_VIEW_PAGE_ROW, LIVE_VIEW_TAG_ROW_END - LIVE_VIEW_PAGE_ROW)
 #define BAND_ROWS ROWS(LIVE_VIEW_BAND_ROW, LIVE_VIEW_BAND_ROWS)
 /* The knobs' columns: 8, 7, 7 and 8 cells wide, side by side; a bar is a cell shorter. */
+/* A loop of a fixed count that stays a loop: unrolled, it is a function of its own size in flash. */
+#if defined(__clang__)
+#define NO_UNROLL _Pragma("clang loop unroll(disable)")
+#else
+#define NO_UNROLL
+#endif
+
 static const uint8_t KNOB_COL[4] = {0, 8, 15, 22};
 static const uint8_t KNOB_W[4] = {8, 7, 7, 8};
 /* The band: the chip's model and the profile from MODEL_COL; the slots' names across row 24. */
@@ -270,8 +277,19 @@ static void put(canvas* cv, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr
 }
 
 static uint32_t text(canvas* cv, uint32_t col, uint32_t row, const char* s, uint8_t attr) {
-    while (*s) {
-        put(cv, col++, row, (uint8_t)*s++, attr);
+    if (row >= GRID_ROWS) { /* off the canvas: nothing is written */
+        for (; *s; s++) {
+            col++;
+        }
+        return col;
+    }
+    uint8_t* ch = cv->ch[row];
+    uint8_t* at = cv->attr[row];
+    for (; *s; s++, col++) {
+        if (col < GRID_COLS) {
+            ch[col] = (uint8_t)*s;
+            at[col] = attr;
+        }
     }
     return col;
 }
@@ -518,15 +536,6 @@ static const char* stage_name(uint8_t state, uint8_t env, uint8_t sustain) {
     return env == sustain ? "SUS" : "DEC";
 }
 
-/* A cell into the canvas and, with g, onto the grid as well: a part drawn on its own, with
- * the rows around it as they are. */
-static void cell(canvas* cv, grid* g, uint32_t col, uint32_t row, uint8_t ch, uint8_t attr) {
-    put(cv, col, row, ch, attr);
-    if (g) {
-        grid_put(g, col, row, ch, attr);
-    }
-}
-
 /* Voice v's note as the lane says it: "A-4", "C#5", "---" (an octave below C0: "A--"). */
 static void note_text(const live_view* lv, uint32_t v, char note[4]) {
     const live_voice* x = &lv->l->voice[v];
@@ -649,7 +658,7 @@ void live_view_knob_text(const live* l, uint32_t k, char* buf) {
 }
 
 /* The knob row shows the selected slot's controls: a slot page, or EDIT held. */
-static int slot_page(const live_view* lv) {
+static inline __attribute__((always_inline)) int slot_page(const live_view* lv) {
     return lv->page || lv->edit;
 }
 
@@ -737,8 +746,9 @@ LIVE_COLD static void knobs(const live_view* lv, canvas* cv, const theme* th, ui
         for (uint32_t i = 0; i < cells; i++) {
             uint32_t f = px >= 8u ? 8u : px;
             px -= f;
-            put(cv, col + i, LIVE_VIEW_KNOB_BAR_ROW, (uint8_t)(FONT_BAR0 + f),
-                GRID_ATTR(used ? th->knob[k] : th->dim, th->dim));
+            cv->ch[LIVE_VIEW_KNOB_BAR_ROW][col + i] = (uint8_t)(FONT_BAR0 + f); /* in the row */
+            cv->attr[LIVE_VIEW_KNOB_BAR_ROW][col + i] =
+                GRID_ATTR(used ? th->knob[k] : th->dim, th->dim);
         }
         char tag[3] = {'K', (char)('1' + k), 0};
         text(cv, col, LIVE_VIEW_KNOB_TAG_ROW, tag, THEME_ATTR(th, hint));
@@ -748,8 +758,11 @@ LIVE_COLD static void knobs(const live_view* lv, canvas* cv, const theme* th, ui
 __attribute__((noinline, unused)) LIVE_COLD static void knobs_big(const live_view* lv, grid* g, const theme* th) {
     for (uint32_t k = 0; k < 4u; k++) {
         char v[5];
-        char name[CHIP_VIEW_LABEL + 2u];
-        int used = knob_label(lv, k, name);
+        int used = 1; /* the TONE page's knobs all are */
+        if (slot_page(lv)) {
+            char name[CHIP_VIEW_LABEL + 2u];
+            used = knob_label(lv, k, name);
+        }
         knob_value(lv, k, v);
         grid_text_big(g, KNOB_COL[k], LIVE_VIEW_KNOB_VALUE_ROW, 2, v,
                       used ? THEME_ATTR(th, value) : THEME_ATTR(th, dim));
@@ -763,15 +776,23 @@ static void meter_bar(const live_view* lv, canvas* cv, grid* g, const theme* th,
     uint32_t row = LIVE_VIEW_METER_ROW + m;
     uint32_t px = lv->meter[m];
     uint8_t fg = m < SCOPE_VOICES ? th->voice[m] : th->value;
+    uint8_t* ch = &cv->ch[row][VU_METER_COL]; /* in the canvas (the static assert above) */
+    uint8_t* at = &cv->attr[row][VU_METER_COL];
+    uint8_t on = GRID_ATTR(fg, th->bg);
+    /* An empty cell is a blank, as the screen's own (a frame that clears the rows and gives
+     * them back sends none of them): it shows the same black. */
+    uint8_t off = THEME_ATTR(th, value);
+NO_UNROLL
     for (uint32_t c = 0; c < VU_METER_CELLS; c++) {
         uint32_t fill8 = px >= 8u ? 8u : px;
         px -= fill8;
-        /* An empty cell is a blank, as the screen's own (a frame that clears the rows and gives
-         * them back sends none of them): it shows the same black. */
-        if (fill8) {
-            cell(cv, g, VU_METER_COL + c, row, (uint8_t)(FONT_BAR0 + fill8), GRID_ATTR(fg, th->bg));
-        } else {
-            cell(cv, g, VU_METER_COL + c, row, ' ', THEME_ATTR(th, value));
+        ch[c] = fill8 ? (uint8_t)(FONT_BAR0 + fill8) : (uint8_t)' ';
+        at[c] = fill8 ? on : off;
+    }
+    if (g) {
+NO_UNROLL
+        for (uint32_t c = 0; c < VU_METER_CELLS; c++) {
+            grid_put(g, VU_METER_COL + c, row, ch[c], at[c]);
         }
     }
 }
