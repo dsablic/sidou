@@ -14,10 +14,10 @@
 /* A toast's text, terminator included. */
 #define LINE (SCREEN_TOAST_CHARS + 1u)
 
-_Static_assert(LEARN_VIEW_COL + LEARN_VIEW_W <= GRID_COLS - 2u &&
+_Static_assert(LEARN_VIEW_COL + LEARN_VIEW_W <= GRID_COLS &&
                    LEARN_VIEW_ROW + LEARN_VIEW_H <= SCREEN_TOAST_ROW,
-               "the frame stays inside the border and above the toast");
-_Static_assert(LEARN_VIEW_CHARS == LEARN_VIEW_W - 4u, "the text has a cell either side");
+               "the band stays on the grid and above the toast");
+_Static_assert(LEARN_VIEW_CHARS * 2u + 2u == LEARN_VIEW_W, "a cell of margin either side");
 
 /* s after buf's text, buf holding at most cap - 1 characters. */
 static void append(char* buf, uint32_t cap, const char* s) {
@@ -69,31 +69,37 @@ void learn_view_param_name(uint32_t param, char* buf) {
     }
 }
 
-/* The frame's two lines for the state learn is in. */
-static void lines(const learn_view* lv, char a[LINE], char b[LINE]) {
+/* The band's three 2x lines, with the same short expert names as CHIP. */
+static void lines(const learn_view* lv, char out[3][LEARN_VIEW_CHARS + 1u]) {
     const midi_learn* ml = lv->ml;
     char name[LEARN_VIEW_NAME];
-    a[0] = 0;
-    b[0] = 0;
+    uint32_t cap = LEARN_VIEW_CHARS + 1u;
+    out[0][0] = out[1][0] = out[2][0] = 0;
     switch (ml->state) {
     case MIDI_LEARN_CC: {
-        static const char arrow[] = {' ', (char)FONT_ARROW_LEFT, ' ', 0};
         uint8_t cc = midi_learn_cc_of(ml, ml->param);
         learn_view_param_name(ml->param, name);
-        append(a, LINE, name);
-        append(a, LINE, arrow);
-        append(a, LINE, "SEND A CC");
+        static const char* const EXPERT[SID_EXPERT_COUNT] = {
+            "81CURVE", "81RANGE", "80CURVE", "NONLIN", "BIAS", "BLEED", "KINK",
+            "LEAK", "COMB", "NOISE", "THUMP", "EXT LP", "EXT HP", "VOICEDC"
+        };
+        const char* shown = ml->param >= LIVE_PARAM_EXPERT && ml->param < LIVE_PARAM_EXPERT_END
+                                ? EXPERT[ml->param - LIVE_PARAM_EXPERT] : name;
+        append(out[0], cap, "LEARN ");
+        append(out[0], cap, shown);
+        append(out[1], cap, "SEND A CC");
         if (cc != MIDI_MAP_NO_CC) {
-            append(b, LINE, "SAVE: FORGET CC ");
-            append_number(b, LINE, cc);
+            append(out[2], cap, cc < 100u ? "SAVE FORGET " : "SAVE FORGET");
+            append_number(out[2], cap, cc);
         } else {
-            append(b, LINE, "HOME: CANCEL");
+            append(out[2], cap, "HOME CANCEL");
         }
         break;
     }
     default: /* MIDI_LEARN_CONFIRM */
-        append(a, LINE, "CLEAR ALL MAPPINGS?");
-        append(b, LINE, "SAVE: YES  HOME: NO");
+        append(out[0], cap, "CLEAR ALL?");
+        append(out[1], cap, "SAVE YES");
+        append(out[2], cap, "HOME NO");
         break;
     }
 }
@@ -120,7 +126,7 @@ static void compose(screen* s, void* state, grid* g) {
     int fresh = now[0] != lv->drawn[0] || now[1] != lv->drawn[1] || now[2] != lv->drawn[2] ||
                 (s->redraw && (s->redraw_rows & FRAME_ROWS));
     screen_cover(s, LEARN_VIEW_COL, LEARN_VIEW_ROW, LEARN_VIEW_W, LEARN_VIEW_H,
-                 fresh ? LEARN_VIEW_W * LEARN_VIEW_H : 0u);
+                 fresh ? LEARN_VIEW_FRAME_CELLS : 0u);
     below->v->compose(s, below->state, g);
     for (uint32_t r = LEARN_VIEW_ROW; r < LEARN_VIEW_ROW + LEARN_VIEW_H; ++r) {
         for (uint32_t c = LEARN_VIEW_COL; c < LEARN_VIEW_COL + LEARN_VIEW_W; ++c) {
@@ -128,15 +134,30 @@ static void compose(screen* s, void* state, grid* g) {
         }
     }
     look(lv, lv->drawn);
-    char a[LINE];
-    char b[LINE];
-    lines(lv, a, b);
-    const uint8_t attr = ATTR_OF(lv->l);
-    widget_frame(g, LEARN_VIEW_COL, LEARN_VIEW_ROW, LEARN_VIEW_W, LEARN_VIEW_H, attr,
-                 "MIDI LEARN");
-    grid_fill(g, LEARN_VIEW_COL + 1u, LEARN_VIEW_ROW + 1u, LEARN_VIEW_W - 2u, 2, ' ', attr);
-    grid_text(g, TEXT_COL, LEARN_VIEW_ROW + 1u, a, attr);
-    grid_text(g, TEXT_COL, LEARN_VIEW_ROW + 2u, b, attr);
+    char text[3][LEARN_VIEW_CHARS + 1u];
+    lines(lv, text);
+    const theme* th = theme_get(lv->l->theme);
+    grid_fill(g, LEARN_VIEW_COL, LEARN_VIEW_ROW, LEARN_VIEW_W, LEARN_VIEW_H, ' ', THEME_ATTR(th, value));
+    for (uint32_t i = 0; i < 3u; i++) {
+        uint32_t n = 0;
+        while (text[i][n]) {
+            n++;
+        }
+        while (n < LEARN_VIEW_CHARS) {
+            text[i][n++] = ' ';
+        }
+        text[i][n] = 0;
+        grid_text_big(g, 1, LEARN_VIEW_ROW + 2u * i, 2, text[i],
+                      i == 0u ? THEME_ATTR(th, hot) : THEME_ATTR(th, value));
+        widget_blank_pieces(g, 1, LEARN_VIEW_ROW + 2u * i, LEARN_VIEW_CHARS * 2u);
+    }
+    for (uint32_t r = LEARN_VIEW_ROW; r < LEARN_VIEW_ROW + LEARN_VIEW_H; r++) {
+        for (uint32_t c = 0; c < GRID_COLS; c++) {
+            if (g->ch[r * GRID_COLS + c] == ' ') {
+                grid_put(g, c, r, ' ', THEME_ATTR(th, value));
+            }
+        }
+    }
 }
 
 static int changed(screen* s, void* state) {
@@ -197,6 +218,8 @@ static void finish(learn_view* lv) {
     }
     screen_toast(lv->s, t, SCREEN_TOAST_MS);
     screen_pop(lv->s, SCREEN_OVER);
+    lv->s->redraw = 1;
+    lv->s->redraw_rows |= FRAME_ROWS;
     lv->s = NULL;
 }
 

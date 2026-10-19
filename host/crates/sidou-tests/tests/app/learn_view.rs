@@ -15,7 +15,6 @@ use crate::views::Ui;
 const SAVE: u32 = SAVE_KEY_BUTTON;
 const K1: u32 = PANEL_ENC_K1;
 const ROW: usize = LEARN_VIEW_ROW as usize;
-const ARROW_LEFT: char = '#'; // Ui::row shows glyphs outside ASCII as '#'
 
 struct Learn {
     ui: Ui,
@@ -56,12 +55,9 @@ impl Learn {
     }
 
     /// The frame's two lines of text, checked to keep a blank cell inside either edge.
-    fn lines(&self) -> (String, String) {
-        let cut = |s: String| {
-            assert_eq!((&s[3..4], &s[26..27]), (" ", " "), "{s}");
-            s[4..26].trim_end().to_owned()
-        };
-        (cut(self.ui.row(ROW + 1)), cut(self.ui.row(ROW + 2)))
+    fn lines(&self) -> (String, String, String) {
+        let line = |row| self.ui.big(row, 1, 2, 14).trim_end().to_owned();
+        (line(ROW), line(ROW + 2), line(ROW + 4))
     }
 
     fn state(&self) -> u32 {
@@ -92,6 +88,59 @@ fn name(param: u32) -> String {
 }
 
 #[test]
+fn learn_view_lines_fit_at_2x() {
+    let params = [
+        LIVE_PARAM_CUTOFF,
+        LIVE_PARAM_RESONANCE,
+        LIVE_PARAM_PULSE_WIDTH,
+    ]
+    .into_iter()
+    .chain(LIVE_PARAM_PROFILE..=LIVE_PARAM_BLEED)
+    .chain(LIVE_PARAM_SLOT..LIVE_PARAM_SLOT + LIVE_SLOTS * LIVE_SLOT_FIELDS)
+    .chain(LIVE_PARAM_EXPERT..LIVE_PARAM_EXPERT + SID_EXPERT_COUNT);
+    for param in params {
+        if unsafe { midi_learn_param(param) } == 0 {
+            continue;
+        }
+        for cc in [None, Some(21), Some(119)] {
+            let mut t = Learn::new();
+            t.open(K1);
+            t.ml.param = param as u8;
+            if let Some(cc) = cc {
+                assert_ne!(unsafe { midi_learn_bind(&mut *t.ml, cc, param) }, 0);
+            }
+            t.ui.frame();
+            assert_eq!(t.ui.g.src[20 * GRID_COLS as usize + 1], b'L');
+            let lines = [20, 22, 24].map(|row| t.ui.big(row, 1, 2, 14).trim_end().to_owned());
+            let expected = if param >= LIVE_PARAM_EXPERT {
+                [
+                    "81CURVE", "81RANGE", "80CURVE", "NONLIN", "BIAS", "BLEED", "KINK", "LEAK",
+                    "COMB", "NOISE", "THUMP", "EXT LP", "EXT HP", "VOICEDC",
+                ][(param - LIVE_PARAM_EXPERT) as usize]
+                    .to_owned()
+            } else {
+                name(param)
+            };
+            assert_eq!(lines[0], format!("LEARN {expected}"));
+            assert_eq!(lines[1], "SEND A CC");
+            assert_eq!(
+                lines[2],
+                match cc {
+                    None => "HOME CANCEL".into(),
+                    Some(n) if n < 100 => format!("SAVE FORGET {n}"),
+                    Some(n) => format!("SAVE FORGET{n}"),
+                }
+            );
+            t.save_home();
+            t.ui.frame();
+            assert_eq!(t.ui.big(20, 1, 2, 14).trim_end(), "CLEAR ALL?");
+            assert_eq!(t.ui.big(22, 1, 2, 14).trim_end(), "SAVE YES");
+            assert_eq!(t.ui.big(24, 1, 2, 14).trim_end(), "HOME NO");
+        }
+    }
+}
+
+#[test]
 fn save_held_and_a_knob_open_the_frame_on_its_parameter_and_a_cc_learns() {
     let mut t = Learn::new();
     let cutoff = t.ui.live().cutoff;
@@ -108,14 +157,15 @@ fn save_held_and_a_knob_open_the_frame_on_its_parameter_and_a_cc_learns() {
     t.ui.up(SAVE);
     assert_eq!(t.state(), MIDI_LEARN_CC, "the release forgets nothing");
     t.ui.frame();
-    assert!(t.ui.row(ROW).contains(" MIDI LEARN "), "{}", t.ui.row(ROW));
+    assert_eq!(t.lines().0, "LEARN CUTOFF");
     // LIVE still shows under the frame.
     assert_eq!(&t.ui.row(0)[..8], "SAW LEAD");
     assert_eq!(
         t.lines(),
         (
-            format!("CUTOFF {ARROW_LEFT} SEND A CC"),
-            "HOME: CANCEL".into()
+            "LEARN CUTOFF".into(),
+            "SEND A CC".into(),
+            "HOME CANCEL".into()
         )
     );
     t.cc(21, 127);
@@ -202,7 +252,7 @@ fn edit_held_picks_the_selected_slots_controls() {
     assert_eq!(u32::from(t.ml.param), mix);
     assert_eq!(t.ui.live().slot[1][LIVE_SLOT_MIX as usize], 0, "not turned");
     t.ui.frame();
-    assert_eq!(t.lines().0, format!("MOD MIX {ARROW_LEFT} SEND A CC"));
+    assert_eq!(t.lines().0, "LEARN MOD MIX");
     t.cc(30, 127);
     assert_eq!(
         t.ui.toast().as_deref(),
@@ -301,7 +351,7 @@ fn save_held_and_home_ask_and_save_clears_every_mapping() {
     t.ui.frame();
     assert_eq!(
         t.lines(),
-        ("CLEAR ALL MAPPINGS?".into(), "SAVE: YES  HOME: NO".into())
+        ("CLEAR ALL?".into(), "SAVE YES".into(), "HOME NO".into())
     );
     t.ui.press(SAVE);
     assert_eq!(t.ui.top(), "LIVE");
@@ -359,8 +409,9 @@ fn save_after_a_knob_forgets_that_knobs_cc() {
     assert_eq!(
         t.lines(),
         (
-            format!("CUTOFF {ARROW_LEFT} SEND A CC"),
-            "SAVE: FORGET CC 21".into()
+            "LEARN CUTOFF".into(),
+            "SEND A CC".into(),
+            "SAVE FORGET 21".into()
         )
     );
     t.ui.press(SAVE);
@@ -385,7 +436,7 @@ fn learn_opens_over_the_menu_and_closes_back_to_it() {
     t.open(K1);
     assert_eq!(t.ui.top(), "LEARN");
     t.ui.frame();
-    assert!(t.ui.row(1).contains("MENU"));
+    assert_eq!(t.ui.big(1, 1, 2, 4), "MENU");
     t.ui.press(PANEL_BTN_HOME);
     assert_eq!(t.ui.top(), "MENU");
 }
@@ -432,7 +483,12 @@ fn the_frame_is_clear_of_the_overlays_of_the_view_under_it() {
         }
         assert_eq!(t.ui.top(), what);
         let under = overlays_on_the_frame(&t.ui);
-        assert!(under > 0, "{what} draws no overlay where the frame goes");
+        if what == "CHARSET" {
+            assert_eq!(under, 0, "the charset wave is below the new band");
+            assert_ne!(t.ui.g.ovl[26 * GRID_COLS as usize + 7], 0);
+        } else {
+            assert!(under > 0, "{what} draws no overlay where the frame goes");
+        }
         t.open(K1);
         for f in 0..10 {
             t.ui.frame();
@@ -442,7 +498,8 @@ fn the_frame_is_clear_of_the_overlays_of_the_view_under_it() {
         t.ui.frame();
         assert_eq!(t.ui.top(), what);
         assert!(
-            overlays_on_the_frame(&t.ui) > 0,
+            overlays_on_the_frame(&t.ui) == under
+                || what == "ABOUT" && overlays_on_the_frame(&t.ui) > 0,
             "{what}'s overlays stay off"
         );
     }
@@ -468,6 +525,10 @@ fn an_idle_frame_composes_nothing_and_a_step_composes() {
     t.open(K1);
     t.ui.frame();
     crate::drain(&mut t.ui.g);
+    for _ in 0..8 {
+        t.ui.frame();
+        crate::drain(&mut t.ui.g);
+    }
     t.ui.frame();
     assert_eq!(crate::drain(&mut t.ui.g).cells, 0, "idle");
     t.ui.turn(K1 + 1, 1);

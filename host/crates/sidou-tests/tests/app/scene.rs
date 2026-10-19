@@ -1326,9 +1326,9 @@ fn learns_frame_over_every_piece_and_over_live_stays_within_the_budget() {
             "learn over {name}: a frame sent {most} cells"
         );
         assert!(
-            ui.row(LEARN_VIEW_ROW as usize + 1).contains("SEND A CC"),
+            ui.big(LEARN_VIEW_ROW as usize + 2, 1, 2, 14).trim_end() == "SEND A CC",
             "learn over {name}: {:?}",
-            ui.row(LEARN_VIEW_ROW as usize + 1)
+            ui.big(LEARN_VIEW_ROW as usize + 2, 1, 2, 14)
         );
     }
 }

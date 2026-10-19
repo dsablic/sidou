@@ -142,6 +142,24 @@ static void big_line(const menu* m, uint32_t k, uint32_t n, char* line, uint8_t 
  * each side (a panel's bezel hides the edge): the label, the value right-aligned or the
  * action's arrow, the selected one in sel_attr (its whole line, the margins too). Lines are
  * drawn as menu.budget and menu.force_rows say. */
+void widget_blank_pieces(grid* g, uint32_t col, uint32_t row, uint32_t w) {
+    for (uint32_t y = row; y < row + 2u && y < GRID_ROWS; y++) {
+        for (uint32_t x = col; x < col + w && x < GRID_COLS; x++) {
+            uint32_t i = y * GRID_COLS + x;
+            uint32_t piece = (uint32_t)g->ch[i] - GRID_BIG_FIRST;
+            if (piece >= 4u) {
+                continue;
+            }
+            const uint8_t* glyph = font_glyphs[g->src[i]] + (piece >> 1) * 4u;
+            uint32_t bits = glyph[0] | glyph[1] | glyph[2] | glyph[3];
+            if (!(bits & (piece & 1u ? 0x0fu : 0xf0u))) {
+                grid_overlay_clear(g, x, y);
+                grid_put(g, x, y, ' ', g->attr[i]);
+            }
+        }
+    }
+}
+
 __attribute__((noinline, unused)) static void draw_big(menu* m, grid* g, uint32_t col,
                                                     uint32_t row, uint32_t w, uint8_t attr) {
     uint32_t n = (w - 2u) / 2u; /* characters a line */

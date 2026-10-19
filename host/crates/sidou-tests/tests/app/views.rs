@@ -680,6 +680,9 @@ impl Ui {
                 } else {
                     GRID_BIG_FIRST + 4
                 };
+                if self.g.ch[k] == b' ' {
+                    return self.g.src[k] as char;
+                }
                 assert_eq!(
                     u32::from(self.g.ch[k]),
                     first,

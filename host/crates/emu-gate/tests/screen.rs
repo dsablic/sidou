@@ -756,10 +756,10 @@ const K1: u8 = 2;
 
 /// Rows 0..22, every cell: what the views under MIDI learn's frame show, theirs to test.
 /// The frame is rows 23..26 (app/learn_view.h LEARN_VIEW_ROW), the toast row 27.
-const ABOVE_THE_LEARN_FRAME: [(usize, usize, usize); 23] = {
-    let mut rows = [(0, 0, W / 8); 23];
+const ABOVE_THE_LEARN_FRAME: [(usize, usize, usize); 20] = {
+    let mut rows = [(0, 0, W / 8); 20];
     let mut r = 0;
-    while r < 23 {
+    while r < 20 {
         rows[r].1 = r;
         r += 1;
     }
@@ -769,6 +769,30 @@ const ABOVE_THE_LEARN_FRAME: [(usize, usize, usize); 23] = {
 /// MIDI learn's frame (app/learn_view.h) over LIVE as SAVE held + K1 open it on the cutoff and
 /// it asks for a CC, and the toast once CC 21 came over TRS. Only rows 23..27 count, the
 /// frame's and the toast's (and the border): the view under the frame is not this test's.
+#[test]
+fn learn_leaves_nothing_when_it_closes() {
+    let Some((_, fw)) = fixture("learn restores TRACKER") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_tracker(&mut m, &fw);
+    m.run_ms(2000);
+    common::to_mid_frame(&mut m, &fw);
+    let band = 20 * 8 * W..26 * 8 * W;
+    let before = m.soc.lcd.fb[band.clone()].to_vec();
+    m.key(SAVE, true);
+    m.run_ms(30);
+    m.turn(K1, 1);
+    m.run_ms(200);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("learn_view_view"));
+    m.key(SAVE, false);
+    m.run_ms(30);
+    press(&mut m, HOME);
+    m.run_ms(2000);
+    common::to_mid_frame(&mut m, &fw);
+    assert_eq!(&m.soc.lcd.fb[band], before.as_slice());
+}
+
 #[test]
 fn midi_learn_prompts_match_their_golden_images() {
     let Some((build, fw)) = fixture("the screen test") else {

@@ -83,6 +83,9 @@ void widget_number(grid* g, uint32_t col, uint32_t row, uint32_t width, int32_t 
 void widget_bar(grid* g, uint32_t col, uint32_t row, uint32_t cells, uint32_t value, uint32_t max,
                 uint8_t attr);
 
+/* Empty 2x quadrants as pixel-identical blanks; their source stays in grid.src. */
+void widget_blank_pieces(grid* g, uint32_t col, uint32_t row, uint32_t w);
+
 /* The cursor on the first item, scrolled to the top. */
 void menu_init(menu* m, const menu_item* items, uint32_t count, uint32_t rows, void* ctx);
 /* The cursor steps items down (+) or up, clamped at both ends; the rows shown follow it. */

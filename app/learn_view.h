@@ -44,14 +44,14 @@
 extern "C" {
 #endif
 
-/* The frame: columns 2..27, rows 23..26 (over the status screen's READY.), the toast's row
- * below it free. Its text: two lines from column 4, a cell in from the frame,
- * LEARN_VIEW_CHARS each. */
-#define LEARN_VIEW_COL 2u
-#define LEARN_VIEW_ROW 23u
-#define LEARN_VIEW_W 26u
-#define LEARN_VIEW_H 4u
-#define LEARN_VIEW_CHARS 22u
+/* The full-width band, rows 20..25, above the toast: three 2x lines from column 1,
+ * LEARN_VIEW_CHARS each, with a cell of margin either side. */
+#define LEARN_VIEW_COL 0u
+#define LEARN_VIEW_ROW 20u
+#define LEARN_VIEW_W 30u
+#define LEARN_VIEW_H 6u
+#define LEARN_VIEW_CHARS 14u
+#define LEARN_VIEW_FRAME_CELLS 200u
 /* A parameter's name on the screen, terminator included ("DIST MIX"). */
 #define LEARN_VIEW_NAME 10u
 

@@ -1116,8 +1116,14 @@ fn midi_learn_binds_a_chip_view_knob() {
     assert_eq!(u32::from(ml.param), LIVE_PARAM_AGE);
     assert_eq!(param(&ui, LIVE_PARAM_AGE), 0, "the knob picked and turned");
     step(&mut ui);
-    let row = ui.row(LEARN_VIEW_ROW as usize + 1);
-    assert!(row[4..].starts_with("AGE # SEND A CC"), "{row}");
+    assert_eq!(
+        ui.big(LEARN_VIEW_ROW as usize, 1, 2, 14).trim_end(),
+        "LEARN AGE"
+    );
+    assert_eq!(
+        ui.big(LEARN_VIEW_ROW as usize + 2, 1, 2, 14).trim_end(),
+        "SEND A CC"
+    );
     // A CC from MIDI binds, closes the frame, and from then on moves the age.
     let cc = 21u8;
     let route = |ui: &mut Ui, ml: &mut midi_learn, value: u8| {

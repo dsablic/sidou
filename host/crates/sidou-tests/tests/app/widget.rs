@@ -181,6 +181,35 @@ fn new_menu(items: &[menu_item], rows: u32, c: &mut Ctx) -> menu {
 }
 
 #[test]
+fn blank_large_quadrants_preserve_every_pixel() {
+    let palette = unsafe { grid_palette };
+    for label in [c"LEARN CUTOFF", c"SEND A CC", c"HOME CANCEL", c"I_ +-"] {
+        let mut actual = new_grid();
+        let mut expected = new_grid();
+        let a = attr(GRID_YELLOW, GRID_BLACK);
+        unsafe {
+            grid_text_big(&mut *actual, 1, 20, 2, label.as_ptr(), a);
+            grid_text_big(&mut *expected, 1, 20, 2, label.as_ptr(), a);
+            widget_blank_pieces(&mut *actual, 1, 20, 28);
+        }
+        for row in 20..22 {
+            let run = grid_run {
+                row,
+                col: 0,
+                len: 30,
+            };
+            let mut a = vec![0u16; 240 * 8];
+            let mut b = a.clone();
+            unsafe {
+                grid_render_run(&*actual, &run, palette.as_ptr(), a.as_mut_ptr());
+                grid_render_run(&*expected, &run, palette.as_ptr(), b.as_mut_ptr());
+            }
+            assert_eq!(a, b, "{label:?}, row {row}");
+        }
+    }
+}
+
+#[test]
 fn colliding_menu_rows_never_keep_the_old_value() {
     unsafe extern "C" fn frames(c: *mut c_void, buf: *mut c_char) {
         let value = unsafe { ctx(c) }.level;
