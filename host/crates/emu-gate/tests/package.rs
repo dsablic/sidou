@@ -124,7 +124,10 @@ fn the_package_boots_and_plays_as_the_bare_image() {
         "the package boot played {} frames",
         a.len()
     );
-    assert!(peak(&tail) > 2000.0, "the package boot is silent");
+    assert!(
+        peak(&tail) > 2000.0 * common::boot_gain(),
+        "the package boot is silent"
+    );
     assert!(
         (f0 / 440.0 - 1.0).abs() < 0.005,
         "the package boot plays {f0:.2} Hz"

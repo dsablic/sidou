@@ -106,7 +106,11 @@ fn boots_and_plays_a_held_key_sample_exact() {
         "the firmware's audio matches no host render with the note-on in blocks \
          0..{MAX_NOTE_BLOCK}: closest max difference {min_diff} LSB"
     );
-    assert!(peak > 2000, "the output is silent (peak {peak})");
+    // 2000 at the chips' own output, at the MASTER pot's gain (the audio taper)
+    assert!(
+        f64::from(peak) > 2000.0 * f64::from(common::boot_gain()),
+        "the output is silent (peak {peak})"
+    );
     assert!(
         (f0 / TONE_HZ - 1.0).abs() < 0.005,
         "the tone is at {f0:.2} Hz, expected {TONE_HZ} Hz"
