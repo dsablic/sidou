@@ -913,11 +913,12 @@ fn integrated_page_popups_use_page_values_and_unused_knobs_keep_live_behavior() 
         old.saturating_add(16)
     );
     assert_ne!(h.ui.v.song.which, SONG_VIEW_TRACKER as u8);
+    // K3 is the sound's own control since the knob-row change: the decay on the saw preset
     h.ui.turn(PANEL_ENC_K1 + 2, 1);
     settle(&mut h.ui);
     assert_eq!(
         unsafe { CStr::from_ptr(h.ui.v.popup.name.as_ptr()) }.to_str(),
-        Ok("PULSE")
+        Ok("DECAY")
     );
 }
 
