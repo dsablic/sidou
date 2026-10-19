@@ -612,6 +612,8 @@ fn the_popup_covers_its_rows_and_guards_them_from_the_views_large_text() {
     ui.frame();
     let g = &ui.v.s.g;
     assert!(!g.is_null());
+    assert_eq!(unsafe { (*ui.v.s.g).big_guard }, ((1u32 << 6) - 1) << ROW);
+    ui.frame();
     assert_eq!(unsafe { (*ui.v.s.g).big_guard }, ((1u32 << 9) - 1) << ROW);
     // The menu's own large text under the box was not redrawn over it (the guard): the box's
     // cells hold the popup's pieces, whatever the menu composed there.
@@ -743,6 +745,107 @@ fn a_large_toast_ends_and_gives_its_rows_back() {
         before == grid_copy(&ui),
         "the status screen was not given back"
     );
+}
+
+#[test]
+fn a_delayed_menu_popup_keeps_the_item_that_algorithm_changed() {
+    let octave = VIEWS_MENU_PRESET + 1;
+    for target in [VIEWS_MENU_KEYS, VIEWS_MENU_CHIP] {
+        let mut ui = Ui::without_cards();
+        ui.press(PANEL_BTN_HOME);
+        ui.settle();
+        drain(&mut ui.g);
+        ui.turn(PANEL_ENC_SELECT, octave as i32);
+        ui.turn(PANEL_ENC_ALGORITHM, 1);
+        ui.frame();
+        drain(&mut ui.g);
+        ui.turn(PANEL_ENC_SELECT, target as i32 - octave as i32);
+        ui.frame();
+        drain(&mut ui.g);
+        for _ in 0..4 {
+            ui.frame();
+            assert!(drain(&mut ui.g).cells <= 176);
+        }
+        assert_eq!(rows(&ui), SCREEN_POPUP_ROWS as usize);
+        assert_eq!(says(&ui), ("OCTAVE".to_owned(), "+1".to_owned()));
+    }
+}
+
+#[test]
+fn a_popup_open_waits_for_a_jump_between_uncovered_menu_bars() {
+    let octave = VIEWS_MENU_PRESET + 1;
+    let mut ui = Ui::without_cards();
+    ui.rig.live.theme = THEME_C64 as u8;
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    ui.turn(PANEL_ENC_SELECT, octave as i32);
+    ui.frame();
+    drain(&mut ui.g);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.frame();
+    drain(&mut ui.g);
+    assert_eq!(rows(&ui), 0);
+    ui.turn(PANEL_ENC_SELECT, -(octave as i32));
+    for frame in 0..4 {
+        ui.frame();
+        let sent = drain(&mut ui.g);
+        assert!(sent.cells <= 176, "frame {frame}: {sent:?}");
+        assert_eq!(
+            (0..6)
+                .filter(|&k| ui.g.attr[(4 + 3 * k) * COLS] == ui.v.home.sel_attr)
+                .count(),
+            1
+        );
+    }
+    assert_eq!(
+        rows(&ui),
+        SCREEN_POPUP_ROWS as usize,
+        "fully drawn within four frames"
+    );
+}
+
+#[test]
+fn a_fresh_popup_waits_for_a_menu_bar_move() {
+    let mut ui = Ui::without_cards();
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    drain(&mut ui.g);
+    ui.turn(PANEL_ENC_K1, 1);
+    for _ in 0..3 {
+        ui.frame();
+        drain(&mut ui.g);
+    }
+    assert_eq!(rows(&ui), 6);
+    ui.turn(K2, 1);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    for frame in 0..4 {
+        ui.frame();
+        let sent = drain(&mut ui.g);
+        assert!(sent.cells <= 176, "frame {frame}: {sent:?}");
+    }
+    assert_eq!(rows(&ui), SCREEN_POPUP_ROWS as usize);
+    assert_eq!(says(&ui).0, "RESO");
+}
+
+#[test]
+fn a_popup_delayed_by_continuous_menu_moves_does_not_expire_unseen() {
+    let mut ui = Ui::without_cards();
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    drain(&mut ui.g);
+    ui.turn(PANEL_ENC_K1, 1);
+    ui.frame();
+    drain(&mut ui.g);
+    for n in 0..40 {
+        ui.turn(PANEL_ENC_SELECT, if n % 2 == 0 { 1 } else { -1 });
+        ui.frame();
+        assert!(drain(&mut ui.g).cells <= 176);
+    }
+    for _ in 0..4 {
+        ui.frame();
+        assert!(drain(&mut ui.g).cells <= 176);
+    }
+    assert_eq!(rows(&ui), SCREEN_POPUP_ROWS as usize);
 }
 
 #[test]

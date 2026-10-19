@@ -377,6 +377,7 @@ int screen_popup_shows(const screen* s) {
 /* The popup goes at once: the next compose has all the rows. */
 static void popup_cancel(screen* s) {
     s->popup_ask = 0;
+    s->popup_defer = 0;
     if (s->popup) {
         s->popup->rows = 0;
         s->popup->next = 0;
@@ -394,6 +395,7 @@ __attribute__((noinline, unused)) static void popup_step(screen* s) {
     screen_popup_state* p = s->popup;
     if (!p) {
         s->popup_ask = 0; /* none to show */
+        s->popup_defer = 0;
         s->layers = (uint8_t)(s->toast_on != 0);
         return;
     }
@@ -406,6 +408,16 @@ __attribute__((noinline, unused)) static void popup_step(screen* s) {
         if (!s->layers) {
             return;
         }
+    }
+    if (s->popup_defer) {
+        s->popup_defer = 0;
+        if (p->alive) {
+            p->until = s->now + SCREEN_POPUP_MS;
+        }
+        p->next = p->rows;
+        grid_big_guard(s->g, rows_mask(SCREEN_POPUP_ROW, p->rows));
+        screen_cover(s, SCREEN_POPUP_COL, SCREEN_POPUP_ROW, SCREEN_POPUP_W, p->rows, 0u);
+        return;
     }
     if (p->watch) {
         p->watch(p->watch_ctx);
@@ -438,7 +450,7 @@ __attribute__((noinline, unused)) static void popup_step(screen* s) {
     if (p->alive) {
         /* The frame that asks for it opens nothing (the view's own compose of a changed control
          * costs the frame most of its budget: the box starts in the next one). */
-        if (rows < SCREEN_POPUP_ROWS && !screen_animating(s) && !(asked && !rows)) {
+        if (rows < SCREEN_POPUP_ROWS && !screen_animating(s) && !asked) {
             next = rows + SCREEN_POPUP_STEP;
             next = next < SCREEN_POPUP_ROWS ? next : SCREEN_POPUP_ROWS;
         } else if (!rows) {
@@ -456,8 +468,8 @@ __attribute__((noinline, unused)) static void popup_step(screen* s) {
     p->next = (uint8_t)next;
     grid_big_guard(g, next ? rows_mask(SCREEN_POPUP_ROW, next) : 0u);
     if (next) {
-        uint32_t cells = next > rows ? SCREEN_POPUP_STEP * SCREEN_POPUP_W
-                                     : p->fresh ? 4u * SCREEN_POPUP_W : 0u;
+        uint32_t cells = p->fresh ? next * SCREEN_POPUP_W
+                                 : next > rows ? SCREEN_POPUP_STEP * SCREEN_POPUP_W : 0u;
         screen_cover(s, SCREEN_POPUP_COL, SCREEN_POPUP_ROW, SCREEN_POPUP_W, next, cells);
     }
 }
@@ -567,8 +579,8 @@ __attribute__((noinline, unused)) static void layers_post(screen* s) {
         p->fresh = 0;
     }
     s->composed = 0;
-    s->layers = (uint8_t)(s->toast_on != 0 || (p && (p->alive != 0 || p->rows != 0 ||
-                                                   p->watch != NULL)));
+    s->layers = (uint8_t)(s->toast_on != 0 || s->popup_ask != 0 ||
+                          (p && (p->alive != 0 || p->rows != 0 || p->watch != NULL)));
 }
 
 /* The toast draws this frame (toast() above, at s->now): from its first frame to its last. */

@@ -229,6 +229,7 @@ struct screen {
      * offsets, and these (M2f) must not move them. */
     uint8_t popup_ask; /* the control asked for, 0: none (screen_popup_ask) */
     uint8_t composed;  /* the view composed this frame (the popup draws again) */
+    uint8_t popup_defer; /* preserve the current popup for one frame; retain its queued ask */
     /* The view on top that the ask was made on, and the popup is for (NULL: whichever is on top
      * when the frame takes the ask): a popup whose view is not on top any more goes. */
     const view* popup_view;

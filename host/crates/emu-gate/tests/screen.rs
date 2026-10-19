@@ -372,6 +372,30 @@ fn a_button_change_shows_a_toast_that_goes_away() {
 }
 
 #[test]
+fn a_fast_select_spin_leaves_one_selected_line() {
+    let Some((_, fw)) = fixture("fast menu spin") else {
+        return;
+    };
+    for reverse in [false, true] {
+        let mut m = booted(&fw);
+        open_menu(&mut m, &fw);
+        let selected = unsafe { sidou_sys::grid_palette[sidou_sys::GRID_DARK_GREY as usize] };
+        m.turn(SELECT, 8);
+        for frame in 0..6 {
+            m.run_ms(40);
+            common::to_mid_frame(&mut m, &fw);
+            let bars = (0..6)
+                .filter(|&k| m.soc.lcd.fb[(4 + 3 * k) * 8 * W] == selected)
+                .count();
+            assert_eq!(bars, 1, "frame {frame}, reverse {reverse}");
+            if reverse && frame == 0 {
+                m.turn(SELECT, -1);
+            }
+        }
+    }
+}
+
+#[test]
 fn the_menu_matches_its_golden_images_at_the_top_and_scrolled_and_does_not_blink() {
     let Some((build, fw)) = fixture("the screen test") else {
         return;

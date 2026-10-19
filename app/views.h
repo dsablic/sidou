@@ -209,6 +209,7 @@ typedef struct {
     midi_sync* sync;   /* MIDI's clock, for the MIDI page's CLOCK items; NULL: none */
     menu midi;
     uint8_t midi_drawn[VIEWS_MIDI_LOOK];
+    uint8_t menu_ask; /* the item ALGORITHM changed, retained while its popup waits */
 } views;
 
 extern const view views_status;

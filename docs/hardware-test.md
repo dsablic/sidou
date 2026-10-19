@@ -2,6 +2,16 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # SIDOU hardware checklist (M1 and M2)
 
+## Ergonomics: menu spin
+
+- [ ] Open HOME's menu and spin SELECT quickly down past the first six items,
+  then immediately back up. Exactly one selected bar remains at each step;
+  no old selected row stays highlighted. After stopping, every row settles to
+  the selected page without stale labels. Repeat with a value popup visible.
+  On OCTAVE, turn ALGORITHM, then immediately jump back to CHIP: the old bar
+  clears before the popup opens; after the jump the whole popup appears within
+  four UI frames. Repeat while changing another knob during an opening popup.
+
 A manual checklist for SIDOU on a real M-VAVE FM-1. Anyone with a unit can
 run it. Copy this file, fill in the boxes and notes, and attach it to an
 issue. The [first hardware run](hardware-results/2026-10-17-first-flash.md)

@@ -71,6 +71,7 @@ void menu_init(menu* m, const menu_item* items, uint32_t count, uint32_t rows, v
     m->budget = 0;
     m->pending = 0;
     m->valid = 0;
+    m->barred = 0;
     m->force_rows = 0;
 }
 
@@ -168,6 +169,7 @@ __attribute__((noinline, unused)) static void draw_big(menu* m, grid* g, uint32_
         n = sizeof line - 1u;
     }
     uint32_t drawn = 0;
+    uint32_t done = 0;
     m->pending = 0;
     /* The selected line makes progress first; forced restorations then share the remaining
      * quota with ordinary changes. */
@@ -175,10 +177,14 @@ __attribute__((noinline, unused)) static void draw_big(menu* m, grid* g, uint32_
     for (uint32_t pass = 0; pass < 3u; pass++) {
         for (uint32_t j = 0; j < m->rows; j++) {
             uint32_t k = j == 0 ? sel : j <= sel ? j - 1u : j;
+            if (done >> k & 1u) {
+                continue;
+            }
             uint32_t r = row + 3u * k;
             uint32_t guarded = g->big_guard >> r & 3u;
             int forced = (m->force_rows >> r & 3u) != 0u;
-            uint32_t priority = k == sel ? 0u : forced ? 1u : 2u;
+            int urgent = k == sel || (m->barred >> k & 1u);
+            uint32_t priority = urgent ? 0u : forced ? 1u : 2u;
             if (priority != pass) {
                 continue;
             }
@@ -198,7 +204,7 @@ __attribute__((noinline, unused)) static void draw_big(menu* m, grid* g, uint32_
                     continue;
                 }
             }
-            if ((!forced || (m->force_rows & MENU_BUDGET_FORCED)) && drawn && k != sel &&
+            if ((!forced || (m->force_rows & MENU_BUDGET_FORCED)) && drawn && !urgent &&
                 m->budget && grid_pending(g) + MENU_LINE_CELLS > m->budget) {
                 m->pending = 1; /* the next call */
                 m->valid = (uint8_t)(m->valid & ~(1u << k));
@@ -212,6 +218,12 @@ __attribute__((noinline, unused)) static void draw_big(menu* m, grid* g, uint32_
                 continue;
             }
             drawn++;
+            done |= 1u << k;
+            if (m->sel_attr && a == m->sel_attr) {
+                m->barred = (uint8_t)(m->barred | 1u << k);
+            } else {
+                m->barred = (uint8_t)(m->barred & ~(1u << k));
+            }
             m->valid = (uint8_t)(m->valid | 1u << k);
             grid_fill(g, col, r, w, 3, ' ', a); /* the margins, a selected line's bar, the gap row */
             grid_fill(g, col, r + 2u, w, 1, ' ', attr);

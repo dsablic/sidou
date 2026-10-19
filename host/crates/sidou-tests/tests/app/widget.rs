@@ -210,6 +210,61 @@ fn blank_large_quadrants_preserve_every_pixel() {
 }
 
 #[test]
+fn a_fast_spin_never_shows_two_selected_lines() {
+    let labels: Vec<_> = (0..15)
+        .map(|i| std::ffi::CString::new(vec![b'A' + i; 13]).unwrap())
+        .collect();
+    let its: Vec<_> = labels
+        .iter()
+        .map(|s| menu_item {
+            label: s.as_ptr(),
+            value: None,
+            turn: None,
+        })
+        .collect();
+    let mut c = Ctx::default();
+    let mut m = new_menu(&its, 6, &mut c);
+    m.scale = 2;
+    m.budget = 190;
+    m.sel_attr = attr(GRID_YELLOW, GRID_DARK_GREY);
+    let base = attr(GRID_WHITE, GRID_BLACK);
+    let mut g = new_grid();
+    crate::drain(&mut g);
+    for _ in 0..8 {
+        unsafe { menu_draw(&mut m, &mut *g, 0, 4, 30, base, 0) };
+        crate::drain(&mut g);
+    }
+    for step in [1, 1, 1, 1, 1, 1, -1, -1] {
+        unsafe {
+            menu_move(&mut m, step);
+            menu_draw(&mut m, &mut *g, 0, 4, 30, base, 0);
+        }
+        let selected = (0..6)
+            .filter(|&k| g.attr[(4 + 3 * k) * COLS] == m.sel_attr)
+            .count();
+        assert_eq!(selected, 1, "cursor {}, top {}", m.cursor, m.top);
+        assert!(crate::drain(&mut g).cells <= 190);
+    }
+    for _ in 0..3 {
+        unsafe { menu_draw(&mut m, &mut *g, 0, 4, 30, base, 0) };
+        crate::drain(&mut g);
+    }
+    let mut fresh = new_grid();
+    let mut reference = new_menu(&its, 6, &mut c);
+    reference.scale = 2;
+    reference.sel_attr = m.sel_attr;
+    reference.cursor = m.cursor;
+    reference.top = m.top;
+    unsafe { menu_draw(&mut reference, &mut *fresh, 0, 4, 30, base, 0) };
+    assert_eq!(&g.ch[4 * COLS..22 * COLS], &fresh.ch[4 * COLS..22 * COLS]);
+    assert_eq!(
+        &g.attr[4 * COLS..22 * COLS],
+        &fresh.attr[4 * COLS..22 * COLS]
+    );
+    assert_eq!(&g.src[4 * COLS..22 * COLS], &fresh.src[4 * COLS..22 * COLS]);
+}
+
+#[test]
 fn colliding_menu_rows_never_keep_the_old_value() {
     unsafe extern "C" fn frames(c: *mut c_void, buf: *mut c_char) {
         let value = unsafe { ctx(c) }.level;

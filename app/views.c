@@ -948,6 +948,10 @@ static int menu_input(screen* s, void* state, const screen_event* e) {
     if (e->id == PANEL_ENC_SELECT) {
         uint8_t was = v->home.cursor;
         menu_move(&v->home, e->steps);
+        if (v->home.cursor != was) {
+            s->popup_defer = 1;
+            s->layers = 1;
+        }
         v->format_arm = 0; /* the confirm is two turns on the item, nothing between */
         sound(v, v->home.cursor != was ? UI_SOUND_BLIP : UI_SOUND_BUZZ); /* the end: refused */
         return 1;
@@ -955,6 +959,7 @@ static int menu_input(screen* s, void* state, const screen_event* e) {
     if (e->id == PANEL_ENC_ALGORITHM) {
         /* menu_turn's own rule: an item with a value turns both ways, an action only
          * clockwise; else refused. */
+        v->menu_ask = v->home.cursor;
         const menu_item* it = &v->home.items[v->home.cursor];
         int does = it->turn && (it->value || e->steps > 0);
         if (v->home.cursor == VIEWS_MENU_STORE) {
@@ -1491,6 +1496,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->set = NULL;
     v->format_arm = 0;
     v->formatting = 0;
+    v->menu_ask = 0;
     save_key_init(&v->key);
     menu_init(&v->home, MENU_ITEMS, VIEWS_MENU_ITEMS, VIEWS_MENU_SHOWN, v);
     v->home.scale = 2;
@@ -1715,11 +1721,11 @@ static int chip_choice_text(const views* v, char* name, char* value, int edit) {
 
 /* The menu's ALGORITHM on a value item: its name (in full) and value, as the menu shows them. */
 static int menu_choice_text(const views* v, char* name, char* value) {
-    const menu_item* it = &v->home.items[v->home.cursor];
+    const menu_item* it = &v->home.items[v->menu_ask];
     if (!it->value) {
         return 0; /* an action opens its view */
     }
-    uint32_t i = v->home.cursor;
+    uint32_t i = v->menu_ask;
     join(name, SCREEN_POPUP_TEXT,
          i == VIEWS_MENU_PRESET ? "PRESET" : i == VIEWS_MENU_ROWS ? "TRACKER ROWS" : it->label,
          "");

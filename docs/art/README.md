@@ -241,8 +241,10 @@ does not take plays the instrument (`app/views.h`,
   from row 4 (a cell of margin each side: a panel's bezel hides its edge), the items white with
   their values cyan (C64: all light blue), and the selected item's whole line in a bar of its own
   (yellow on dark grey; C64 reverse video; no blinking block: a 2×2-cell block would send two
-  windows a blink, and a bar reads better at a glance). The lines something drew over are drawn
-  first, and what is left of the budget goes to the others, so a frame stays within it. A line is up to 60 cells, so a scroll
+  windows a blink, and a bar reads better at a glance). Moving the bar and clearing its old
+  row take priority; forced restorations then share the remaining quota with other rows.
+  A coincident popup opening or refresh waits a frame for the bar, retaining its ask and
+  lifetime. A refresh does not expand the box on the same frame. A line is up to 60 cells, so a scroll
   (every line changes) is drawn a line or two a frame, the selected line first, within 190
   cells less what a popup or a toast draws the same frame (`MENU_FRAME_CELLS`, `menu.budget`),
   and at once for the rows a layer let go or a view switch left (`menu.force_rows`). Labels
