@@ -1049,6 +1049,25 @@ fn a_change_of_octave_slot_or_algorithm_shows_a_toast() {
     ui.press(PANEL_BTN_OCT_UP);
     ui.frame();
     assert_eq!(ui.toast().as_deref(), Some("OCTAVE +1"));
+    // LIVE says the slot and its algorithm in its band: no toast for them there.
+    for _ in 0..SCREEN_TOAST_MS.div_ceil(40) {
+        ui.frame();
+    }
+    assert_eq!(ui.toast(), None);
+    ui.rig.cc(LIVE_CC_SLOT_FIRST + 10, 127);
+    ui.press(PANEL_BTN_SCL);
+    ui.frame();
+    assert_eq!(ui.toast(), None, "LIVE's band says it");
+    ui.press(PANEL_BTN_SCL);
+    ui.press(PANEL_BTN_SCL);
+    ui.rig.cc(LIVE_CC_SLOT_FIRST + 10, 0);
+    ui.frame();
+    // Over another view they toast.
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_STATUS as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.settle();
     ui.press(PANEL_BTN_SCL);
     ui.frame();
     assert_eq!(ui.toast().as_deref(), Some("SLOT MOD"));

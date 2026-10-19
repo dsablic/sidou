@@ -19,6 +19,23 @@ const NAME: usize = ROW + 1;
 const VALUE: usize = ROW + 4;
 const BAR: usize = ROW + 7;
 
+/// A Ui over STATUS, which keeps its value popups (LIVE and CHIP highlight their knob instead).
+fn status_ui() -> Ui {
+    let mut ui = Ui::without_cards();
+    ui.settle();
+    open_status(&mut ui);
+    ui.settle();
+    ui
+}
+
+/// The MASTER pot moved to `raw`, which opens its popup over any view.
+fn master(ui: &mut Ui, raw: i32) {
+    unsafe {
+        views_set_panel(&mut *ui.v, &mut *ui.p);
+        panel_master(&mut *ui.p, &mut *ui.rig.live, raw);
+    }
+}
+
 fn shown(ui: &Ui) -> bool {
     unsafe { screen_popup_shows(&ui.v.s) != 0 }
 }
@@ -213,8 +230,7 @@ fn grid_copy(ui: &Ui) -> (Vec<u8>, Vec<u8>) {
 
 #[test]
 fn a_knob_turn_opens_the_popup_three_rows_a_frame_then_closes_a_second_after_the_last_change() {
-    let mut ui = Ui::without_cards();
-    ui.settle();
+    let mut ui = status_ui();
     assert!(!shown(&ui));
     ui.turn(PANEL_ENC_K1, 3);
     let mut open_rows = Vec::new();
@@ -295,7 +311,14 @@ fn a_change_restores_the_view_beneath_cell_for_cell_once_the_popup_is_gone() {
             _ => {}
         }
         drain(&mut ui.g);
-        ui.turn(K2, 2);
+        if view == "LIVE" || view == "CHIP" {
+            // Their knobs highlight instead; the pot's popup stays.
+            master(&mut ui, 300);
+            ui.frame();
+            master(&mut ui, 600);
+        } else {
+            ui.turn(K2, 2);
+        }
         open(&mut ui);
         assert!(shown(&ui), "{view}");
         drain(&mut ui.g);
@@ -344,8 +367,7 @@ fn select_never_asks_and_nor_does_a_turn_with_nothing_to_show() {
 
 #[test]
 fn midi_changes_never_open_the_popup() {
-    let mut ui = Ui::without_cards();
-    ui.settle();
+    let mut ui = status_ui();
     for n in 0..60u32 {
         // What MIDI does to the instrument: controllers, program changes and the volume.
         ui.rig.cc(74, (n * 2 % 128) as u8);
@@ -427,8 +449,7 @@ fn the_master_pot_asks_for_the_volume_when_it_moves() {
 
 #[test]
 fn every_knob_and_algorithm_shows_its_name_and_value_as_the_views_say_them() {
-    let mut ui = Ui::without_cards();
-    ui.settle();
+    let mut ui = status_ui();
     ui.turn(K2, 4);
     open(&mut ui);
     assert_eq!(
@@ -509,31 +530,42 @@ fn the_menus_algorithm_shows_the_item_in_full_and_no_toast_says_it_again() {
 }
 
 #[test]
-fn the_chip_views_algorithm_shows_the_profile_or_the_slots_algorithm() {
+fn the_chip_view_highlights_its_knobs_and_shows_its_choice_with_no_popup() {
     let mut ui = Ui::without_cards();
     ui.press(PANEL_BTN_HOME);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
     assert_eq!(ui.top(), "CHIP");
+    // ALGORITHM: the profile (or the slot's algorithm) shows at 3x on the page: no popup, no toast.
+    let profile = ui.live().profile_req;
     ui.turn(PANEL_ENC_ALGORITHM, 1);
-    open(&mut ui);
-    let p = unsafe { &*sid_chip_profile_get(u32::from(ui.live().profile_req)) };
-    let name = unsafe { CStr::from_ptr(p.name) }
-        .to_string_lossy()
-        .to_uppercase();
-    assert_eq!(says(&ui), ("PROFILE".to_owned(), name));
-    ui.popup_gone();
+    for _ in 0..4 {
+        ui.frame();
+    }
+    assert_ne!(ui.live().profile_req, profile);
+    assert!(!shown(&ui) && ui.toast().is_none());
     ui.turn(PANEL_ENC_SELECT, 1); // DIST
     ui.turn(PANEL_ENC_ALGORITHM, 1);
-    open(&mut ui);
-    assert_eq!(says(&ui), ("DIST".to_owned(), "TAPE".to_owned()));
-    assert_eq!(ui.toast(), None);
-    // K1 on the chip page: the character's first control.
-    ui.popup_gone();
+    for _ in 0..4 {
+        ui.frame();
+    }
+    assert_eq!(ui.live().slot[0][LIVE_SLOT_ALGORITHM as usize], 1);
+    assert!(!shown(&ui) && ui.toast().is_none());
+    // K1 on the chip page: the character's first control, its label highlighted.
     ui.turn(PANEL_ENC_SELECT, -1);
     ui.turn(PANEL_ENC_K1, 3);
+    for _ in 0..4 {
+        ui.frame();
+    }
+    assert!(!shown(&ui));
+    assert_eq!(ui.v.chip.hl, 1);
+    assert_eq!(unsafe { live_param_get(&*ui.rig.live, LIVE_PARAM_AGE) }, 12);
+    // EDIT + K1 with the focus on the chip turns a slot that is not on the page: its popup.
+    ui.down(PANEL_BTN_EDIT);
+    ui.turn(PANEL_ENC_K1, 1);
     open(&mut ui);
-    assert_eq!(says(&ui), ("AGE".to_owned(), "12".to_owned()));
+    assert!(says(&ui).0.starts_with("DIST"), "{:?}", says(&ui));
+    ui.up(PANEL_BTN_EDIT);
 }
 
 #[test]
@@ -584,7 +616,9 @@ fn nothing_opens_under_the_boot_a_title_card_or_midi_learn() {
 fn a_view_switch_takes_the_popup_away_in_the_next_frame() {
     let mut ui = Ui::without_cards();
     ui.settle();
-    ui.turn(PANEL_ENC_K1, 1);
+    master(&mut ui, 300);
+    ui.frame();
+    master(&mut ui, 600);
     open(&mut ui);
     ui.press(PANEL_BTN_HOME); // the menu, wiped in
     ui.frame(); // the view on top is not the popup's: it goes in the first frame of the wipe
@@ -725,7 +759,8 @@ fn the_toast_is_large_text_on_two_rows_or_four_when_it_breaks_at_a_space() {
     assert_eq!(ui.g.ch[(row + 1) * COLS + 3], (GRID_BIG_FIRST + 3) as u8);
     // Longer: two lines broken at the last space that fits, rows 25 to 28.
     toast(&mut ui, "NOT SAVED: FOREIGN STORE");
-    assert!(line(&ui, row - 2).starts_with("NOT SAVED:"));
+    // Row 25 is LIVE's slot algorithm at 2x: its first letter shows left of the toast.
+    assert!(ui.row(row - 2).contains("NOT SAVED:"));
     assert!(line(&ui, row).starts_with("FOREIGN STORE"));
     assert_eq!(ui.v.s.toast_h, 4);
     // Back to one line: the rows above go back to the view's.
@@ -935,6 +970,65 @@ fn the_chip_views_user_profiles_and_save_target_are_named() {
     ui.popup_gone();
     // The picker runs past the built-in profiles to the filled USER slots.
     ui.turn(PANEL_ENC_ALGORITHM, 9);
+    for _ in 0..4 {
+        ui.frame();
+    }
+    assert!(!shown(&ui), "the choice shows at 3x on the page");
+    assert_eq!(ui.live().user_applied, 1);
+}
+
+#[test]
+fn a_knob_on_live_highlights_its_label_and_opens_no_popup() {
+    let mut ui = Ui::without_cards();
+    ui.settle();
+    assert_eq!(ui.top(), "LIVE");
+    for k in 0..4u32 {
+        ui.turn(PANEL_ENC_K1 + k, 1);
+        assert_ne!(ui.v.s.popup_ask, 0, "the input asks as for any view");
+        for _ in 0..4 {
+            ui.frame();
+        }
+        assert!(!shown(&ui), "K{}", k + 1);
+        assert_eq!(ui.v.s.popup_ask, 0);
+        assert_eq!(u32::from(ui.v.live.hl), k + 1);
+    }
+    // MASTER keeps its popup over LIVE; PRESETS and ALGORITHM have none to show.
+    master(&mut ui, 200);
+    ui.frame();
+    master(&mut ui, 700);
     open(&mut ui);
-    assert_eq!(says(&ui), ("PROFILE".to_owned(), "USER 1".to_owned()));
+    assert_eq!(says(&ui).0, "VOLUME");
+    // EDIT held is the slot's page on the knob row.
+    ui.popup_gone();
+    assert_eq!(ui.v.live.edit, 0);
+    ui.hold(PANEL_BTN_EDIT, true);
+    ui.frame();
+    assert_eq!(ui.v.live.edit, 1);
+    ui.hold(PANEL_BTN_EDIT, false);
+    ui.frame();
+    assert_eq!(ui.v.live.edit, 0);
+}
+
+#[test]
+fn a_toast_closes_an_open_popup() {
+    let mut ui = Ui::without_cards();
+    ui.settle();
+    master(&mut ui, 200);
+    ui.frame();
+    master(&mut ui, 700);
+    open(&mut ui);
+    assert!(shown(&ui));
+    ui.press(PANEL_BTN_OCT_UP);
+    ui.frame();
+    assert!(
+        !shown(&ui),
+        "the popup is gone in the frame the toast shows"
+    );
+    assert_eq!(rows(&ui), 0);
+    assert_eq!(ui.toast().as_deref(), Some("OCTAVE +1"));
+    // The popup's rows are the view's again.
+    for _ in 0..4 {
+        ui.frame();
+    }
+    assert!(ui.row(ROW + 4).trim_end().chars().all(|c| c != '%'));
 }

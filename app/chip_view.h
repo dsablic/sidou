@@ -98,8 +98,8 @@ extern "C" {
 /* What the page shows, as bytes (chip_view.c look): the tab's profile and model (asked for),
  * its four character controls, every slot field, the selected slot, the focus, the tab and the
  * tabs' focus in one byte, the keys' chip, what the tab's note says, then the applied USER slot
- * with the save target, whether the target holds a profile, and the theme. */
-#define CHIP_VIEW_LOOK (2u + (LIVE_CHAR_FIELDS - 1u) + LIVE_SLOTS * LIVE_SLOT_FIELDS + 7u)
+ * with the save target, whether the target holds a profile, the theme and the highlight. */
+#define CHIP_VIEW_LOOK (2u + (LIVE_CHAR_FIELDS - 1u) + LIVE_SLOTS * LIVE_SLOT_FIELDS + 8u)
 /* A toast's text, terminator included ("OVERWRITE USER 3?"). */
 #define CHIP_VIEW_MSG 24u
 
@@ -128,6 +128,9 @@ typedef struct {
     uint8_t target;
     uint8_t confirm;
     char msg[CHIP_VIEW_MSG];
+    /* The knob that just turned (1..4), its label shown reversed until hl_until; 0 none. */
+    uint8_t hl;
+    uint32_t hl_until;
 } chip_view;
 
 extern const view chip_view_view;
@@ -156,6 +159,9 @@ typedef enum {
     CHIP_VIEW_SAVE_MSG = 2      /* toast cv->msg now */
 } chip_view_save_result;
 chip_view_save_result chip_view_save(chip_view* cv, uint32_t now_ms);
+/* Knob k (0..3) just turned: its label is shown reversed for SCREEN_POPUP_MS from now_ms, in
+ * place of the value popup (app/views.c live_frame). A label the control does not use stays dim. */
+void chip_view_flash(chip_view* cv, uint32_t k, uint32_t now_ms);
 /* The USER slot the tab's setup was picked from, 1..8, or 0 (the CHIP frame's PROFILE row says
  * USER n then, and the popup). */
 int chip_view_user(const chip_view* cv);

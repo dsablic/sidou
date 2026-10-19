@@ -128,18 +128,28 @@ opens it, and what it says (the text the views show, from one place, `popup_text
 
 | Control | Popup |
 |---|---|
-| K1 / K2 / K3 on LIVE's page (every view but CHIP) | CUTOFF (in Hz as LIVE's FILTER frame says it, `11.4K`), RESO (0-15), PULSE (a percent) |
-| K4 on LIVE's page | PRESET, the preset's name (no bar) |
-| K1-K4 on CHIP's chip section | AGE, DAC, THUMP, BLEED (0-127; on a song's chip A, the song's) |
+| K1 / K2 / K3 on LIVE's page (every view but LIVE and CHIP, which show the knob instead: below) | CUTOFF (in Hz as LIVE's FILTER frame says it, `11.4K`), RESO (0-15), PULSE (a percent) |
+| K4 on LIVE's page (the same views) | PRESET, the preset's name (no bar) |
 | K1-K4 on CHIP's EXPERT section | the named expert control in its units: percent, DAC ratio `R`, voice-DAC DC units `DC`, Hz, WEAK / MED / STRONG, or noise write-back tap count |
-| EDIT held + K1-K4, or a slot's section on CHIP | the slot and its control in the algorithm's own word: `DIST DRIVE`, `MOD DEPTH` (0-127) |
-| MASTER | VOLUME (0-100%, the bar the pot's travel) |
-| ALGORITHM on CHIP | the profile (`PROFILE`, its name), or a slot's algorithm (`DIST`, `OVERDRIVE`) |
+| EDIT held + K1-K4 with the focus on CHIP's chip section | the slot and its control in the algorithm's own word: `DIST DRIVE`, `MOD DEPTH` (0-127) (the slot is not on that page) |
+| EDIT held + K1-K4 on STATUS, the menu and SCENE | the same |
+| MASTER | VOLUME (0-100%, the bar the pot's travel), in every view |
+| ALGORITHM + EDIT on CHIP | the USER slot to save to (`SAVE TO`, `USER 2 -`) |
 | ALGORITHM in the menu, on an item with a value | the item in full and its value: `PRESET`, `OCTAVE`, `CARDS`, `STORE`, `KEYS`, `SOUNDS`, `TRACKER ROWS`, `THEME` (`HI-CONTRAST` or `C64`) |
+
+**LIVE and CHIP show a turned knob where it is instead of opening the popup over it** (the popup
+would hide the very controls and meters being tuned): the knob's label (on LIVE, in row 15; on
+CHIP, its label under the choice) is shown in reverse video, in the knob's own colour, for a
+second after its last detent. The profile word and the selected slot's algorithm on LIVE do the
+same when ALGORITHM changes them, and on CHIP the choice at 3x is the display of ALGORITHM. A
+control the slot does not use stays dim. MASTER keeps its popup everywhere. STATUS, the menu and
+SCENE keep every popup.
 
 SELECT never opens it (it moves a cursor or a focus, which the screen shows); the buttons
 (OCT-, OCT+, FX, SCL, ENV) say what they changed in a toast, as before, and a control's popup
-replaces its toast. Nothing opens under the boot, a title card or MIDI learn's frame (a knob there
+replaces its toast; **a toast closes a popup that is open** (the two would stack over the same
+rows). LIVE does not toast the selected slot or a slot's algorithm: its bottom band shows both
+at 2x. Nothing opens under the boot, a title card or MIDI learn's frame (a knob there
 does what it did), and a view change takes an open popup away at once. **MIDI never opens
 it**: a controller sweep or a song would flood the screen. That is one switch,
 `VIEWS_POPUP_MIDI` in `app/views.h` (0), or `views_popup_midi` at run time: on, a change of the
@@ -790,18 +800,24 @@ checklist confirms it.
 ## Screen
 
 **LIVE** is what the screen shows from power-on (the root view, `app/live_view.h`;
-[the art page](../art/README.md#live) draws it): the preset's name at 2 times the font with the
-chip's model and the octave small on the right; three voice lanes, each the voice's number at 2×
-in its colour (voice 1 light red, voice 2 cyan, voice 3 light green) with the waveform under it, its
-oscilloscope drawn 2 pixels thick in the voice's colour, and its note at 2× with the envelope
-stage (ATK, DEC, SUS, REL) under it; **the knob row, what K1..K4 turn, in their left-to-right order**:
-CUTOFF (K1, yellow), RESO (K2, cyan), PULSE (K3, light green) and PRESET (K4, light red), each
-with its value at 2× and a bar in its colour; and a bottom band with the filter's mode at 2×, the
-three effect slots' algorithms (the play mark at the one the panel edits) and VU meters for each
-voice and for the left and right output after the effect slots. The scopes are flat and dark
-grey at rest and draw each sounding voice's waveform, still while a note holds, over two to
+[the art page](../art/README.md#live) draws it): the preset's name at 2 times the font and, when
+the octave is not 0, the octave at 2× in yellow on the right (`+1`, `-3`); three voice lanes, each
+the voice's number at 2× in its colour (voice 1 light red, voice 2 cyan, voice 3 light green) with
+the waveform under it, its oscilloscope drawn 2 pixels thick in the voice's colour, and its note
+at 2× with the envelope stage (ATK, DEC, SUS, REL) under it; **the knob row, what K1..K4 turn, in
+their left-to-right order**, under the page's name in yellow (`TONE`): CUTOFF (K1, yellow), RESO
+(K2, cyan), PULSE (K3, light green) and PRESET (K4, light red), each label in the knob's readable
+colour, its value at 2× (three characters at most: `980`, `7K2`, `12K`, `15`, `50%`) with a bar
+in the knob's colour and its name K1..K4 in the legend colour, a knob that just turned reversed
+for a second ([above](#value-popup)); and a bottom band with the filter's mode at 2× and the
+chip's model and profile (`CHIP 6581`, `R4AR`), the three effect slots' names across one row (the
+selected one in reverse video) with the selected slot's algorithm at 2× under them, and VU meters
+for each voice and for the left and right output after the effect slots. The scopes are flat and
+dark grey at rest and draw each sounding voice's waveform, still while a note holds, over two to
 four periods (more for higher notes). **EDIT held** turns the selected slot's four controls
-on K1..K4 instead: the popup says which, the knob row keeps LIVE's.
+on K1..K4 and the knob row says so: the page's name is the slot's (`DIST`) and the labels are
+the controls' own names (`DRIVE`, `TONE`, `BIAS`, `MIX`; one the algorithm does not use is dim),
+and the slot's algorithm at 2× in the band is in reverse video.
 
 The **status screen** (STATUS in the menu) shows the numbers: the chip, preset, octave,
 cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS each slot's

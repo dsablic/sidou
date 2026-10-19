@@ -152,10 +152,14 @@ fn the_header_lanes_knobs_and_slots_show_the_instrument() {
     let mut ui = Ui::new();
     ui.settle();
     let t = theme_of(&ui);
-    // The preset's name at 2x top left, the model and the octave small on the right.
+    // The preset's name at 2x top left; the octave only when it is not 0.
     assert_eq!(big(&ui, 0, 0, 8), "SAW LEAD");
-    assert_eq!(small(&ui, 0, 26, 4), "6581");
-    assert_eq!(small(&ui, 1, 25, 5), "OCT+0");
+    assert_eq!(
+        small(&ui, 0, 22, 8),
+        "        ",
+        "no octave at 0, no chip model here"
+    );
+    assert_eq!(small(&ui, 1, 22, 8), "        ");
     assert_eq!(ui.g.attr[0] & 15, t.value, "the name in the value colour");
     assert_eq!(u32::from(ui.g.attr[0] >> 4), GRID_BLACK, "on black");
     for v in 0..3 {
@@ -170,7 +174,9 @@ fn the_header_lanes_knobs_and_slots_show_the_instrument() {
         // The scope's centre line: a dotted glyph under the overlay.
         assert_eq!(ui.g.ch[(row + 2) * COLS + 5], FONT_SCOPE_MID as u8);
     }
-    // The knob row in K1..K4's order: label, value, bar, name.
+    // The knob row in K1..K4's order: the page, label, value, bar, name.
+    assert_eq!(small(&ui, 14, 0, 4), "TONE");
+    assert_eq!(ui.g.attr[14 * COLS] & 15, t.hot);
     for (k, (label, col)) in [("CUTOFF", 0), ("RESO", 8), ("PULSE", 15), ("PRESET", 22)]
         .into_iter()
         .enumerate()
@@ -178,8 +184,8 @@ fn the_header_lanes_knobs_and_slots_show_the_instrument() {
         assert_eq!(small(&ui, 15, col, label.len()), label);
         assert_eq!(
             ui.g.attr[15 * COLS + col] & 15,
-            t.knob[k],
-            "{label}'s colour"
+            t.knob_text[k],
+            "{label}'s readable colour"
         );
         assert_eq!(
             ui.g.attr[18 * COLS + col] & 15,
@@ -187,6 +193,11 @@ fn the_header_lanes_knobs_and_slots_show_the_instrument() {
             "{label}'s bar's colour"
         );
         assert_eq!(small(&ui, 19, col, 2), format!("K{}", k + 1));
+        assert_eq!(
+            ui.g.attr[19 * COLS + col] & 15,
+            t.hint,
+            "the name's legend colour"
+        );
         assert_eq!(
             ui.g.attr[16 * COLS + col] & 15,
             t.value,
@@ -196,27 +207,47 @@ fn the_header_lanes_knobs_and_slots_show_the_instrument() {
     assert_eq!(big(&ui, 16, 8, 1), "6", "the resonance");
     assert_eq!(big(&ui, 16, 15, 3), "50%", "the pulse width");
     assert_eq!(big(&ui, 16, 22, 3), "SAW", "the preset");
-    // The bottom band: the filter's mode, the slots, VU's labels.
+    // The bottom band: the filter's mode, the chip and its profile, the slots (the selected one
+    // reversed), the selected slot's algorithm at 2x, VU's labels.
     assert_eq!(small(&ui, 21, 0, 6), "FILTER");
+    assert_eq!(small(&ui, 21, 10, 9), "CHIP 6581");
     assert_eq!(big(&ui, 22, 0, 2), "LP");
-    assert_eq!(small(&ui, 24, 1, 4), "DIST");
-    assert_eq!(small(&ui, 24, 6, 3), "OFF");
-    assert_eq!(small(&ui, 25, 1, 3), "MOD");
-    assert_eq!(small(&ui, 26, 1, 2), "FX");
-    assert_eq!(ui.g.ch[24 * COLS], FONT_PLAY as u8, "the selected slot");
+    assert_eq!(big(&ui, 22, 10, 4), "R4AR");
+    assert_eq!(small(&ui, 24, 0, 4), "DIST");
+    assert_eq!(small(&ui, 24, 5, 3), "MOD");
+    assert_eq!(small(&ui, 24, 9, 2), "FX");
+    assert_eq!(
+        ui.g.attr[24 * COLS],
+        (t.hot << 4) | t.bg,
+        "the selected slot reversed"
+    );
+    assert_eq!(
+        ui.g.attr[24 * COLS + 5],
+        (t.bg << 4) | t.dim,
+        "a slot that is off, dim"
+    );
+    assert_eq!(big(&ui, 25, 0, 3), "OFF");
     assert_eq!(small(&ui, 22, 19, 1), "1");
     assert_eq!(small(&ui, 24, 19, 1), "3");
     assert_eq!(small(&ui, 25, 19, 1), "L");
     assert_eq!(small(&ui, 26, 19, 1), "R");
+    assert_eq!(
+        ui.g.attr[22 * COLS + 19] & 15,
+        t.hint,
+        "VU labels in the legend colour"
+    );
     ui.press(PANEL_BTN_SCL);
     ui.press(PANEL_BTN_ENV);
     ui.rig.set_preset(1);
+    ui.press(PANEL_BTN_OCT_UP);
     ui.settle();
-    assert_eq!(ui.g.ch[25 * COLS], FONT_PLAY as u8);
-    assert_eq!(small(&ui, 25, 6, 6), "CHORUS");
+    assert_eq!(ui.g.attr[24 * COLS + 5], (t.hot << 4) | t.bg);
+    assert_eq!(big(&ui, 25, 0, 6), "CHORUS");
     assert_eq!(small(&ui, lane(0) + 3, 0, 3), "PUL");
     assert_eq!(big(&ui, 0, 0, 8), "PWM BASS");
     assert_eq!(big(&ui, 16, 22, 3), "PWM");
+    assert_eq!(big(&ui, 0, 26, 2), "+1", "the octave at 2x");
+    assert_eq!(ui.g.attr[26] & 15, t.hot);
 }
 
 #[test]
@@ -230,7 +261,7 @@ fn the_knob_row_shows_what_k1_to_k4_turn_and_nothing_else() {
         if hz < 1000 {
             format!("{hz}")
         } else if hz < 9950 {
-            format!("{}.{}K", (hz + 50) / 100 / 10, (hz + 50) / 100 % 10)
+            format!("{}K{}", (hz + 50) / 100 / 10, (hz + 50) / 100 % 10)
         } else {
             format!("{}K", (hz + 500) / 1000)
         }
@@ -240,7 +271,7 @@ fn the_knob_row_shows_what_k1_to_k4_turn_and_nothing_else() {
         ui.turn(PANEL_ENC_K1, steps);
         ui.settle();
         let text = want(hz(&ui));
-        assert!(text.len() <= 4, "{text}");
+        assert!(text.len() <= 3, "{text}");
         assert_eq!(big(&ui, 16, 0, text.len()), text, "after {steps}");
         assert_eq!(small(&ui, 16, 2 * text.len(), 0), "");
     }
@@ -273,7 +304,7 @@ fn the_knob_row_shows_what_k1_to_k4_turn_and_nothing_else() {
 }
 
 #[test]
-fn the_knob_values_fit_their_columns_for_every_setting() {
+fn every_knob_value_fits_its_column() {
     let mut ui = Ui::new();
     let text = |ui: &Ui, k: u32| {
         let mut buf = [0 as std::ffi::c_char; 5];
@@ -282,12 +313,20 @@ fn the_knob_values_fit_their_columns_for_every_setting() {
             .to_string_lossy()
             .into_owned()
     };
-    // K1: a column of 8 cells holds 4 characters at 2x, whatever the cutoff.
-    for c in (0..=LIVE_CUTOFF_MAX).step_by(7) {
-        ui.rig.live.cutoff_out = c as u16;
-        let t = text(&ui, 0);
-        assert!(!t.is_empty() && t.len() <= 4, "cutoff {c}: {t}");
+    // K1: three characters at 2x (6 cells of a column of 8, a blank after them), whatever the
+    // cutoff, on both chips.
+    for model in [SID_MODEL_6581, SID_MODEL_8580] {
+        ui.rig.live.model = model;
+        for c in 0..=LIVE_CUTOFF_MAX {
+            ui.rig.live.cutoff_out = c as u16;
+            let t = text(&ui, 0);
+            assert!(
+                !t.is_empty() && t.len() <= 3,
+                "model {model}, cutoff {c}: {t}"
+            );
+        }
     }
+    ui.rig.live.model = SID_MODEL_6581;
     ui.rig.live.cutoff_out = 0;
     let floor = unsafe { sid_cutoff_hz(ui.live().model, 0, 0) };
     assert_eq!(
@@ -314,6 +353,22 @@ fn the_knob_values_fit_their_columns_for_every_setting() {
     }
     ui.rig.live.preset = 0;
     assert_eq!(text(&ui, 3), "SAW");
+    // The slot page's four controls, 0..127, are numbers of at most 3 digits in their columns.
+    ui.v.live.page = 1;
+    for v in [0u8, 7, 9, 10, 99, 100, 127] {
+        for f in 0..4 {
+            ui.rig.live.slot[0][LIVE_SLOT_AMOUNT as usize + f] = v;
+        }
+        ui.frame();
+        for (k, col) in [0usize, 8, 15, 22].into_iter().enumerate() {
+            assert_eq!(
+                big(&ui, 16, col, v.to_string().len()),
+                v.to_string(),
+                "K{}",
+                k + 1
+            );
+        }
+    }
 }
 
 #[test]
@@ -743,4 +798,113 @@ fn the_tap_runs_while_live_is_under_midi_learns_frame() {
         ui.sc.on, 0,
         "the tap runs under learn's frame over the menu"
     );
+}
+
+#[test]
+fn the_slot_page_names_the_slot_controls() {
+    let mut ui = Ui::new();
+    ui.settle();
+    let t = theme_of(&ui);
+    // DIST OVERDRIVE: DRIVE, TONE, BIAS, MIX, in the knobs' readable colours, the page DIST.
+    unsafe { live_slot_set(&mut *ui.rig.live, 0, LIVE_SLOT_ALGORITHM, 2) };
+    ui.v.live.page = 1;
+    ui.settle();
+    assert_eq!(small(&ui, 14, 0, 4), "DIST");
+    for (k, (label, col)) in [("DRIVE", 0), ("TONE", 8), ("BIAS", 15), ("MIX", 22)]
+        .into_iter()
+        .enumerate()
+    {
+        assert_eq!(small(&ui, 15, col, label.len()), label);
+        assert_eq!(ui.g.attr[15 * COLS + col] & 15, t.knob_text[k], "{label}");
+        assert_eq!(ui.g.attr[18 * COLS + col] & 15, t.knob[k], "{label}'s bar");
+    }
+    assert_eq!(big(&ui, 25, 0, 9), "OVERDRIVE");
+    assert_eq!(
+        ui.g.attr[25 * COLS],
+        (t.hot << 4) | t.bg,
+        "the slot's algorithm reversed while its page shows"
+    );
+    // TAPE has no use for A and B: their label, value and bar are dim.
+    unsafe { live_slot_set(&mut *ui.rig.live, 0, LIVE_SLOT_ALGORITHM, 1) };
+    ui.settle();
+    for (col, used) in [(0, true), (8, false), (15, false), (22, true)] {
+        let want = if used { t.value } else { t.dim };
+        assert_eq!(ui.g.attr[16 * COLS + col] & 15, want, "value at {col}");
+        let label = if used { t.knob_text[col / 8] } else { t.dim };
+        let _ = label;
+        assert_eq!(
+            ui.g.attr[15 * COLS + col] & 15 == t.dim,
+            !used,
+            "label at {col}"
+        );
+        assert_eq!(
+            ui.g.attr[18 * COLS + col] & 15 == t.dim,
+            !used,
+            "bar at {col}"
+        );
+    }
+    // Back on TONE: the page's own labels.
+    ui.v.live.page = 0;
+    ui.settle();
+    assert_eq!(small(&ui, 14, 0, 4), "TONE");
+    assert_eq!(small(&ui, 15, 0, 6), "CUTOFF");
+}
+
+#[test]
+fn a_flash_reverses_a_knobs_label_for_a_second() {
+    let mut ui = Ui::new();
+    ui.settle();
+    let t = theme_of(&ui);
+    let label_attr = |ui: &Ui, col: usize| ui.g.attr[15 * COLS + col];
+    assert_eq!(label_attr(&ui, 0), (t.bg << 4) | t.knob_text[0]);
+    unsafe { live_view_flash(&mut ui.v.live, 1, ui.now) };
+    ui.frame();
+    assert_eq!(label_attr(&ui, 0), (t.knob_text[0] << 4) | t.bg, "reversed");
+    assert_eq!(
+        label_attr(&ui, 8),
+        (t.bg << 4) | t.knob_text[1],
+        "only that knob's"
+    );
+    for _ in 0..20 {
+        ui.frame();
+    }
+    assert_eq!(
+        label_attr(&ui, 0),
+        (t.knob_text[0] << 4) | t.bg,
+        "still, 800 ms on"
+    );
+    for _ in 0..8 {
+        ui.frame();
+    }
+    assert_eq!(
+        label_attr(&ui, 0),
+        (t.bg << 4) | t.knob_text[0],
+        "normal after 1,000 ms"
+    );
+    // The profile and the slot's algorithm reverse the same way.
+    unsafe { live_view_flash(&mut ui.v.live, LIVE_VIEW_HL_PROFILE, ui.now) };
+    ui.frame();
+    assert_eq!(ui.g.attr[22 * COLS + 10], (t.value << 4) | t.bg);
+    unsafe { live_view_flash(&mut ui.v.live, LIVE_VIEW_HL_ALGORITHM, ui.now) };
+    ui.frame();
+    assert_eq!(ui.g.attr[25 * COLS], (t.hot << 4) | t.bg);
+}
+
+#[test]
+fn the_octave_shows_at_2x_when_not_0() {
+    let mut ui = Ui::new();
+    ui.settle();
+    let t = theme_of(&ui);
+    assert_eq!(small(&ui, 0, 26, 4), "    ");
+    ui.press(PANEL_BTN_OCT_DOWN);
+    ui.press(PANEL_BTN_OCT_DOWN);
+    ui.press(PANEL_BTN_OCT_DOWN);
+    ui.settle();
+    assert_eq!(big(&ui, 0, 26, 2), "-3");
+    assert_eq!(ui.g.attr[26] & 15, t.hot);
+    for _ in 0..3 {
+        ui.press(PANEL_BTN_OCT_UP);
+    }
+    ui.settle();
+    assert_eq!(small(&ui, 0, 26, 4), "    ", "nothing at 0");
 }

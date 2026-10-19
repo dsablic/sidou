@@ -2037,31 +2037,40 @@ static void tell(views* v) {
     char buf[SCREEN_TOAST_CHARS + 1u];
     char num[3];
     int changed = 0;
+    int toast = 0;
+    /* LIVE says the slot and its algorithm in its bottom band at 2x: no toast for those there. */
+    int says = screen_top(&v->s) != &live_view_view;
     if (l->octave != v->octave) {
         octave_text(num, l->octave);
         join(buf, sizeof buf, "OCTAVE ", num);
-        changed = 1;
+        changed = toast = 1;
     }
     if (l->fx_select != v->fx_select) {
-        join(buf, sizeof buf, "SLOT ", SLOT_NAMES[l->fx_select % LIVE_SLOTS]);
+        if (says) {
+            join(buf, sizeof buf, "SLOT ", SLOT_NAMES[l->fx_select % LIVE_SLOTS]);
+            toast = 1;
+        }
         changed = 1;
     }
     for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
         uint8_t alg = l->slot[k][LIVE_SLOT_ALGORITHM];
         if (alg != v->algorithm[k]) {
-            join(buf, sizeof buf, SLOT_NAMES[k], " ");
-            append(buf, sizeof buf, views_algorithm_name(k, alg));
+            if (says) {
+                join(buf, sizeof buf, SLOT_NAMES[k], " ");
+                append(buf, sizeof buf, views_algorithm_name(k, alg));
+                toast = 1;
+            }
             changed = 1;
         }
     }
     if ((uint8_t)l->model_req != v->model) {
         join(buf, sizeof buf, "CHIP ", l->model_req == SID_MODEL_8580 ? "8580" : "6581");
         screen_raster(&v->s, VIEWS_RASTER_STEPS);
-        changed = 1;
+        changed = toast = 1;
     }
     if (changed) {
         /* A control's own popup (a K knob, ALGORITHM, MASTER) says it: no toast as well. */
-        if (!(v->s.popup_ask & 7u)) {
+        if (toast && !(v->s.popup_ask & 7u)) {
             screen_toast(&v->s, buf, SCREEN_TOAST_MS);
         }
         sound(v, UI_SOUND_CHIME);
@@ -2156,6 +2165,38 @@ void views_song(views* v, const song_ctl* sc, const song_event* ev, uint32_t n) 
     scene_view_song(&v->scene, sc, ev, n);
 }
 
+/* LIVE and CHIP show a control's change in the control's own place, so the value popup that a
+ * K knob (or ALGORITHM) would open over them is dropped here, in the frame, and the place
+ * highlights for a second instead (live_view_flash, chip_view_flash): the input paths stay as
+ * they were. `top` is the view that shows. Other views keep their popups. On STATUS and the menu
+ * this costs two tests. */
+static void live_frame(views* v, const view* top, uint32_t now_ms) {
+    if (top != &live_view_view && top != &chip_view_view) {
+        return;
+    }
+    uint32_t ask = v->s.popup_ask;
+    uint32_t enc = ask & 7u;
+    int control = (ask & (ASK_BASE | ASK_PARAM)) == ASK_BASE && enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4;
+    if (top == &live_view_view) {
+        const panel* p = v->p;
+        v->live.edit = p ? (uint8_t)(p->held >> PANEL_BTN_EDIT & 1u) : 0u;
+        if (control) {
+            live_view_flash(&v->live, enc - PANEL_ENC_K1 + 1u, now_ms);
+            v->s.popup_ask = 0;
+        }
+        return;
+    }
+    /* CHIP: K1..K4 with the chip focus and EDIT held turn a slot that is not on the page: the
+     * popup says which; the expert pages keep theirs (their values carry units). */
+    const chip_view* cv = &v->chip;
+    if (control && !cv->expert && (!(ask & ASK_EDIT) || !cv->chip)) {
+        chip_view_flash(&v->chip, enc - PANEL_ENC_K1, now_ms);
+        v->s.popup_ask = 0;
+    } else if ((ask & (ASK_BASE | ASK_PARAM | ASK_EDIT)) == ASK_BASE && enc == PANEL_ENC_ALGORITHM) {
+        v->s.popup_ask = 0; /* the choice shows at 3x on the page */
+    }
+}
+
 void views_frame(views* v, uint32_t now_ms) {
     boot_frame(v, now_ms);
     card_frame(v);
@@ -2189,6 +2230,7 @@ void views_frame(views* v, uint32_t now_ms) {
     if (v->sc) {
         v->sc->on = (uint8_t)(top == &live_view_view || top == &scene_view_view);
     }
+    live_frame(v, top, now_ms);
     screen_frame(&v->s, now_ms);
 }
 

@@ -571,8 +571,10 @@ fn trial(
         .max()
         .unwrap();
     // At least half the held note's peak on the host core: clearly a note, whatever level
-    // the preset and the filter give it.
-    let reference = host_held_peak();
+    // the preset and the filter give it, at the MASTER pot's gain (the audio taper's at the
+    // pot's power-on reading: the host core's peak is the chip's own).
+    let gain = unsafe { sidou_sys::master_gain_of(u32::from(common::POT), sidou_sys::LIVE_MASTER_MAX) };
+    let reference = (i64::from(host_held_peak()) * i64::from(gain) / i64::from(sidou_sys::MASTER_UNITY)) as i32;
     assert!(
         2 * held > reference,
         "the note is silent: {held}, against {reference} on the host"

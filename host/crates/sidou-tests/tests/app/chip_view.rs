@@ -1613,17 +1613,11 @@ fn refused_song_chip_edits_keep_the_setup_user_identity_and_popup_value() {
         assert_eq!(kr.song_user, 1);
         assert_eq!(unsafe { chip_view_user(&ui.v.chip) }, 1);
         ui.frame();
-        let value = unsafe { CStr::from_ptr(ui.v.popup.value.as_ptr()) }
-            .to_str()
-            .unwrap();
-        assert_eq!(
-            value,
-            if encoder == PANEL_ENC_ALGORITHM {
-                "USER 1"
-            } else {
-                "10"
-            }
-        );
+        // The page shows the choice (ALGORITHM) and the knob's label highlights (K1): no popup.
+        assert_eq!(ui.v.s.popup_ask, 0);
+        if encoder != PANEL_ENC_ALGORITHM {
+            assert_eq!(ui.v.chip.hl, 1);
+        }
     }
     ui.turn(PANEL_ENC_SELECT, 4);
     for encoder in PANEL_ENC_K1..=PANEL_ENC_K4 {

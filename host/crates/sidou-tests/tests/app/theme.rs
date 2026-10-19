@@ -5,7 +5,7 @@
 
 use sidou_sys::*;
 
-use crate::views::Ui;
+use crate::views::{open_status, Ui};
 
 const COLS: usize = GRID_COLS as usize;
 
@@ -248,6 +248,9 @@ fn the_popup_bar_and_name_take_the_knobs_colour_in_both_themes() {
         for k in 0..4u32 {
             let mut ui = Ui::without_cards();
             unsafe { live_set_theme(&mut *ui.rig.live, id) };
+            ui.settle();
+            // STATUS keeps its popups (LIVE and CHIP highlight the knob instead).
+            open_status(&mut ui);
             ui.settle();
             let t = theme(id);
             // K1..K3 turn a parameter with a bar; K4 the preset, which has none.

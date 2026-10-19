@@ -384,7 +384,8 @@ static void look(const chip_view* cv, uint8_t out[CHIP_VIEW_LOOK]) {
     out[n++] = help_kind(cv);
     out[n++] = (uint8_t)(applied(cv) | cv->target << 4);
     out[n++] = (uint8_t)(cv->target && (l->user_valid >> (cv->target - 1u) & 1u));
-    out[n] = l->theme;
+    out[n++] = l->theme;
+    out[n] = cv->hl;
 }
 
 static int looks_changed(const chip_view* cv) {
@@ -549,6 +550,26 @@ __attribute__((noinline, unused)) static void draw_expert(chip_view* cv, canvas*
     text(c, 0, 25, "MACRO MOVES RESET ITS OVERRIDES", THEME_ATTR(th, hint));
 }
 
+/* The turned knob's label, reversed in the knob's readable colour (a dim label stays dim): the
+ * canvas, after the page is built. */
+static void highlight(chip_view* cv) {
+    uint32_t k = cv->hl - 1u;
+    if (k >= 4u || cv->expert) {
+        return;
+    }
+    chip_view_canvas* c = &cv->canvas->cv;
+    const theme* th = theme_get(cv->l->theme);
+    for (uint32_t col = KNOB_COL[k]; col < KNOB_COL[k] + KNOB_W[k] && col < GRID_COLS; col++) {
+        if (c->ch[CHIP_VIEW_LABEL_ROW][col] == ' ') {
+            break;
+        }
+        uint8_t* a = &c->attr[CHIP_VIEW_LABEL_ROW][col];
+        if (*a != GRID_ATTR(th->dim, th->bg)) {
+            *a = GRID_ATTR(th->bg, th->knob_text[k]);
+        }
+    }
+}
+
 /* The whole page into the canvas, and what it shows remembered. */
 static void build(chip_view* cv) {
     chip_view_canvas* c = &cv->canvas->cv;
@@ -637,6 +658,13 @@ static void build(chip_view* cv) {
     cv->copying = 1;
 }
 
+/* A highlight whose time is up goes: the look changes with it, so the page is built again. */
+static void expire(chip_view* cv, const screen* s) {
+    if (cv->hl && (int32_t)(s->now - cv->hl_until) >= 0) {
+        cv->hl = 0;
+    }
+}
+
 /* ---- the view ---- */
 
 void chip_view_init(chip_view* cv, live* l, song_view* shared) {
@@ -656,6 +684,13 @@ void chip_view_init(chip_view* cv, live* l, song_view* shared) {
     cv->target = 0;
     cv->confirm = 0;
     cv->msg[0] = 0;
+    cv->hl = 0;
+    cv->hl_until = 0;
+}
+
+void chip_view_flash(chip_view* cv, uint32_t k, uint32_t now_ms) {
+    cv->hl = (uint8_t)(k + 1u);
+    cv->hl_until = now_ms + SCREEN_POPUP_MS;
 }
 
 void chip_view_set_users(chip_view* cv, user_profiles* users) {
@@ -925,8 +960,8 @@ static int input(screen* s, void* state, const screen_event* e) {
 }
 
 static int changed(screen* s, void* state) {
-    (void)s;
-    const chip_view* cv = state;
+    chip_view* cv = state;
+    expire(cv, s);
     return cv->canvas->which != SONG_VIEW_CANVAS_CHIP || !cv->built || cv->copying ||
            looks_changed(cv);
 }
@@ -946,8 +981,12 @@ static void compose(screen* s, void* state, grid* g) {
         cv->built = 0;
         cv->cursor = 0;
     }
+    expire(cv, s);
     if (!cv->built || looks_changed(cv)) {
         build(cv);
+        if (cv->hl) {
+            highlight(cv);
+        }
     }
     const chip_view_canvas* c = &cv->canvas->cv;
     uint32_t whole = s->redraw && s->wipe != SCREEN_CUT ? s->redraw_rows : 0u;

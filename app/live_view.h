@@ -4,19 +4,23 @@
  * (docs/art/README.md "LIVE"), after the screen-readability prototype's liveNew.
  *
  * - rows 0-1: the preset's name at 2 times the font (a song's mutes and solos in red in its
- *   place: "M13 S2", voices 1 and 3 muted, voice 2 soloed), the chip's model and the octave
- *   small on the right;
+ *   place: "M13 S2", voices 1 and 3 muted, voice 2 soloed), and the octave at 2x in yellow on the
+ *   right when it is not 0 (+1, -3);
  * - rows 2-13, three voice lanes of 4 rows: the voice's number at 2x in its colour with the
  *   waveform's name under it, its oscilloscope (160 x 32 pixels from column 3, the trace an
  *   overlay on each cell it crosses, 2 pixels thick, over a dotted centre line) in the voice's
  *   colour (dark grey and flat when the voice is silent), and the note at 2x on the right with
  *   the envelope's stage under it;
- * - rows 15-19, the four knobs in their left-to-right order, what K1..K4 turn on LIVE: each a
- *   label small in the knob's colour (CUTOFF, RESO, PULSE, PRESET), its value at 2x in white
- *   (11K, 6, 50%, SAW), a bar in the knob's colour and its name K1..K4;
- * - rows 21-26: FILTER's mode at 2x (and KEYS:B while the keys play chip B), the three effect
- *   slots' algorithms (> at the one the panel edits), and VU: each voice's level in its colour
- *   and the output's left and right peaks after the effect slots, 6 dB a cell.
+ * - rows 14-19, the four knobs in their left-to-right order, what K1..K4 turn: the page's name on
+ *   row 14 (TONE, or the selected slot's name while a slot page shows or EDIT is held), each knob
+ *   a label small in the knob's readable colour, its value at 2x in white (at most 3 characters:
+ *   7K2, 50%), a bar in the knob's colour and its name K1..K4 in the hint colour. A knob that
+ *   just turned has its label reversed for a second (the popup does not open over LIVE for
+ *   it); a control the slot's algorithm does not use is dim;
+ * - rows 21-26: FILTER's mode at 2x with the chip's model and profile (KEYS:B while the keys play
+ *   chip B), the three effect slots' names (the selected one reversed) and the selected slot's
+ *   algorithm at 2x, and VU: each voice's level in its colour and the output's left and right
+ *   peaks after the effect slots, 6 dB a cell.
  * The colours are the theme's roles (app/theme.h).
  *
  * The scopes come from the audio interrupt's tap (app/scope.h): the newest points, folded by
@@ -66,26 +70,34 @@ extern "C" {
  * and their windows are about 17.5 ms of SPI, inside the 20 ms budget (docs/art/README.md). */
 #define LIVE_VIEW_FRAME_CELLS 200u
 /* The knob row: four columns of 8, 7, 7 and 8 cells side by side (a bar a cell shorter than its
- * column); a label on LIVE_VIEW_KNOB_ROW, the value at 2x on the two rows after it, the bar and
- * the knob's name K1..K4 on the rows after those. */
+ * column); the page's name on LIVE_VIEW_PAGE_ROW, a label on LIVE_VIEW_KNOB_ROW, the value at 2x
+ * on the two rows after it (at most 3 characters), the bar and the knob's name K1..K4 on the rows
+ * after those. */
+#define LIVE_VIEW_PAGE_ROW 14u
 #define LIVE_VIEW_KNOB_ROW 15u
 #define LIVE_VIEW_KNOB_VALUE_ROW 16u
 #define LIVE_VIEW_KNOB_BAR_ROW 18u
 #define LIVE_VIEW_KNOB_TAG_ROW 19u
-/* The bottom band: FILTER's label, the mode at 2x on the rows after it; the effect slots'
- * lines from LIVE_VIEW_SLOT_ROW; VU's meters from LIVE_VIEW_METER_ROW, a row each. */
+#define LIVE_VIEW_TAG_ROW_END 20u
+/* live_view.hl: what is shown reversed besides a knob's label (1..4). */
+#define LIVE_VIEW_HL_PROFILE 5u
+#define LIVE_VIEW_HL_ALGORITHM 6u
+/* The bottom band: FILTER's label (and the chip's model), the mode and the profile at 2x on the
+ * rows after it; the effect slots' names on LIVE_VIEW_SLOT_ROW and the selected one's algorithm at
+ * 2x on the rows after; VU's meters from LIVE_VIEW_METER_ROW, a row each. */
 #define LIVE_VIEW_BAND_ROW 21u
 #define LIVE_VIEW_MODE_ROW 22u
 #define LIVE_VIEW_SLOT_ROW 24u
+#define LIVE_VIEW_ALG_ROW 25u
 #define LIVE_VIEW_METER_ROW 22u
 #define LIVE_VIEW_BAND_ROWS 6u
 /* The VU meters' fall per frame in meter steps (scope_meter). */
 #define LIVE_VIEW_FALL 3u
 /* VU rows: the voices, then left and right. */
 #define LIVE_VIEW_METERS (SCOPE_VOICES + 2u)
-/* What the canvas shows besides the scopes, as bytes (live_view.c look): the header 5, each
- * voice's lane 6, the knob row 4, the bottom band's mode and slots 5 and the meters. */
-#define LIVE_VIEW_LOOK (5u + 6u * SCOPE_VOICES + 4u + 5u + LIVE_VIEW_METERS)
+/* What the canvas shows besides the scopes, as bytes (live_view.c look): the theme 1, the header
+ * 3, each voice's lane 6, the knob row 11, the bottom band 9 and the meters. */
+#define LIVE_VIEW_LOOK (1u + 3u + 6u * SCOPE_VOICES + 11u + 9u + LIVE_VIEW_METERS)
 
 /* A frame composed off the grid, each cell then written to it once (live_view.c). */
 typedef struct {
@@ -123,6 +135,14 @@ typedef struct {
     scope_point pts[SCOPE_READ_MAX];
     uint8_t pend[SCOPE_VOICES][SCOPE_W];
     live_view_canvas cv;
+    /* The knob row's page (set by the views: 0 TONE's, 1 the selected slot's) and EDIT held (the
+     * row shows the selected slot's controls then too); what just changed and is shown reversed
+     * until hl_until (live_view_flash): 0 none, 1..4 a knob's label, 5 the profile, 6 the slot's
+     * algorithm. */
+    uint8_t page;
+    uint8_t edit;
+    uint8_t hl;
+    uint32_t hl_until;
 } live_view;
 
 extern const view live_view_view;
@@ -135,12 +155,15 @@ void live_view_init(live_view* lv, const live* l, scope* sc);
  * traces go flat and the envelopes and meters to zero: what LIVE shows when it comes back,
  * until the tap has points, is the instrument at rest, not what it was when it went. */
 void live_view_tap(live_view* lv, int on);
+/* `what` (live_view.hl: 1..4 a knob, 5 the profile, 6 the slot's algorithm) is shown reversed
+ * until now_ms + SCREEN_POPUP_MS: what a control that turned shows over LIVE instead of a popup. */
+void live_view_flash(live_view* lv, uint32_t what, uint32_t now_ms);
 /* The filter's cutoff in Hz as the popup says it, "1234" or "11.4K" for the cutoff the chip has
  * now (cutoff_out), into buf (8 characters). */
 void live_view_cutoff_text(const live* l, char* buf);
-/* Knob k's value (0 K1: the cutoff, 1 the resonance, 2 the pulse width in percent, 3 the preset's
- * first three letters) as LIVE's knob row says it at 2x: "980", "1.2K", "12K", "6", "50%", "SAW",
- * into buf (5 bytes). */
+/* Knob k's value on the TONE page (0 K1: the cutoff, 1 the resonance, 2 the pulse width in
+ * percent, 3 the preset's first three letters) as LIVE's knob row says it at 2x, at most 3
+ * characters: "980", "7K2", "12K", "6", "50%", "SAW", into buf (5 bytes). */
 void live_view_knob_text(const live* l, uint32_t k, char* buf);
 /* The control register voice v plays with, without the gate: 0 for a voice that makes no sound
  * (SYNC LEAD's voices 2 and 3, voice 3 only clocking the sync). */

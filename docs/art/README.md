@@ -595,9 +595,10 @@ playing, one colour per voice and per knob, black behind it
 ![LIVE at rest](../../tests/golden/lcd/live.png)
 ![LIVE in the C64 theme, A4 held](../../tests/golden/lcd/live-c64.png)
 
-- **Rows 0-1:** the preset's name at 2× (white), the chip's model (6581, 8580) and the octave
-  small on the right. While the song's voices are muted or soloed (GLO), the name's place says
-  which in red at 2× (**M13 S2**: voices 1 and 3 muted, voice 2 soloed).
+- **Rows 0-1:** the preset's name at 2× (white) and, when the octave is not 0, the octave at 2×
+  in yellow on the right (`+1`, `-3`; nothing at 0). While the song's voices are muted or soloed
+  (GLO), the name's place says which in red at 2× (**M13 S2**: voices 1 and 3 muted, voice 2
+  soloed).
 - **Rows 2-13, three voice lanes of 4 rows:** the voice's number at 2× in its colour (grey while
   the song mutes it) with the waveform's name small under it (SAW, PUL, TRI, NOI, MIX); its
   oscilloscope from column 3, 160 × 32 pixels, **drawn 2 pixels thick** in the voice's colour
@@ -605,18 +606,26 @@ playing, one colour per voice and per knob, black behind it
   voice is silent** (its envelope at nothing); the note at 2× on the right (white while its key
   is held, dark grey once let go) with the envelope's stage small under it (ATK, DEC, SUS,
   REL).
-- **Rows 15-19, the knob row:** what K1..K4 turn on LIVE, in their left-to-right order, four
-  columns of 8, 7, 7 and 8 cells: CUTOFF, RESO, PULSE and PRESET small in the knob's colour
-  (yellow, cyan, light green, light red), each value at 2× in white under it (the cutoff as
-  `980`, `1.2K` or `12K`, the resonance `0..15`, the pulse width `50%`, the preset's first three
-  letters `SAW`), a bar in the knob's colour on a dark grey track, and the knob's name K1..K4
-  small in dark grey. (EDIT held turns the selected slot's four controls instead: the popup
-  says so; the row keeps LIVE's.)
-- **Rows 21-26, the bottom band:** FILTER's label with the **mode at 2×** (LP, BP, LP+BP, HP,
-  NOTCH, BP+HP, ALL, or OFF in dark grey), **KEYS:B** in yellow on the right while the keys
-  play chip B; the three **effect slots** (DIST, MOD, FX and its algorithm, OFF in dark grey, `>`
-  at the slot the panel edits); and **VU**, a bar for each voice in its colour and the output's
-  left and right peaks after the effect slots in white, 6 dB a cell.
+- **Rows 14-19, the knob row:** what K1..K4 turn on LIVE, in their left-to-right order, four
+  columns of 8, 7, 7 and 8 cells, under the page's name in yellow on row 14 (`TONE`; the selected
+  slot's, `DIST`, while EDIT is held): CUTOFF, RESO, PULSE and PRESET small in the knob's readable
+  colour (yellow, cyan, light green, light red), each value at 2× in white under it **in at most 3
+  characters** (the cutoff as `980`, `7K2` or `12K`, the resonance `0..15`, the pulse width
+  `50%`, the preset's first three letters `SAW`), a bar in the knob's colour on a dark grey
+  track, and the knob's name K1..K4 small in the legend colour. **A knob that just turned has its
+  label in reverse video for a second**: no popup opens over LIVE for the knobs. EDIT held turns
+  the selected slot's four controls, and the row says so: the page tag is the slot's and the
+  labels its controls' names (`DRIVE`, `TONE`, `BIAS`, `MIX`), dim where the algorithm has no use
+  for them.
+- **Rows 21-26, the bottom band:** FILTER's label, **CHIP 6581** (the model) and **KEYS:B** in
+  yellow on the right while the keys play chip B; the **mode at 2×** (LP, BP, LP+BP, HP, NOTCH,
+  BP+HP, ALL, or OFF in dark grey) and the chip's **profile at 2×** (`R4AR`, `WORN`, `USR3`, in
+  reverse video for a second after ALGORITHM changes it); the three **effect slots' names**
+  (DIST, MOD, FX; OFF ones in dark grey, the one the panel edits in reverse video) with the
+  selected slot's **algorithm at 2×** under them (`OVERDRIVE`, OFF in dark grey; in reverse video
+  in yellow while the knob row shows the slot, and for a second after ALGORITHM changes it);
+  and **VU**, a bar for each voice in its colour and the output's left and right peaks after the
+  effect slots in white, 6 dB a cell, its labels in the legend colour.
 
 **What moved or went.** LIVE had more on it than the 23 mm screen can show at a readable size.
 Each item below moved to the place that shows it better, or is gone:

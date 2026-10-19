@@ -32,6 +32,7 @@ const A4_KEY: u8 = 14 + 69 - 53;
 /// app/panel.h: buttons and encoders.
 const OCT_UP: u8 = 1;
 const FX: u8 = 2;
+const EDIT: u8 = 6;
 const HOME: u8 = 8;
 /// app/panel.h: the song views' buttons (Felucca's ids, unconfirmed on a SIDOU unit) and the
 /// first note key's id.
@@ -429,37 +430,210 @@ fn no_popup(m: &mut Machine, fw: &Firmware) {
     m.soc.write32(at, 0);
 }
 
-/// The value popup (app/screen.h) in the device's firmware: over LIVE and over CHIP, K1's
-/// parameter in the largest text with its bar; a second after the last turn it goes and LIVE is
-/// back as it was.
+/// The pixels of cell (col, row) of an indexed screen that are colour `c`.
+fn cell_colour(idx: &[u8], row: usize, col: usize, c: u8) -> usize {
+    (row * 8..row * 8 + 8)
+        .map(|y| {
+            idx[y * W + col * 8..y * W + col * 8 + 8]
+                .iter()
+                .filter(|&&p| p == c)
+                .count()
+        })
+        .sum()
+}
+
+/// A cell in reverse video, background colour `c`: its corners are `c` (a glyph leaves them).
+fn reversed(idx: &[u8], row: usize, col: usize, c: u8) -> usize {
+    let top = row * 8 * W + col * 8;
+    let bottom = (row * 8 + 7) * W + col * 8;
+    [top, top + 7, bottom, bottom + 7]
+        .iter()
+        .filter(|&&i| idx[i] == c)
+        .count()
+}
+
+/// The palette index of yellow (K1's readable colour).
+const YELLOW: u8 = 7;
+
+/// The popup's rows drawn (app/screen.h screen_popup_state.rows): 0 when it is closed.
+fn popup_rows(m: &mut Machine, fw: &Firmware) -> u8 {
+    ui_byte(
+        m,
+        fw,
+        sidou_sys::ilp32::views::popup + sidou_sys::ilp32::screen_popup_state::rows,
+    )
+}
+
+/// A knob over LIVE opens no popup: its column's label is shown reversed for a second instead
+/// (app/views.c live_frame), and LIVE is as it was after that.
 #[test]
-fn a_knob_popup_matches_its_goldens_over_live_and_chip_and_gives_the_view_back() {
-    let Some((build, fw)) = fixture("the popup test") else {
+fn a_knob_on_live_highlights_its_column_and_opens_no_popup() {
+    let Some((build, fw)) = fixture("the highlight test") else {
         return;
     };
     let mut m = booted(&fw);
     settle(&mut m, &fw);
-    let live = m.soc.lcd.fb.clone();
+    // The preset's cutoff is off K1's table: one detent first, so that the turn back lands.
+    m.turn(K1, 1);
+    m.run_ms(1_700);
+    common::to_mid_frame(&mut m, &fw);
+    let before = indexed(&m.soc.lcd.fb);
+    let label = |idx: &[u8]| {
+        (0..6)
+            .map(|c| reversed(idx, 15, c, YELLOW))
+            .collect::<Vec<_>>()
+    };
+    assert!(
+        label(&before).iter().all(|&n| n <= 1),
+        "{:?}",
+        label(&before)
+    );
     m.turn(K1, 5);
     m.run_ms(300);
     common::to_mid_frame(&mut m, &fw);
-    compare_golden(&build, "popup-live", &m.soc.lcd.fb, &[]);
-    // The cutoff back where it was; a second after that turn the popup closes (3 rows a
-    // frame) and the panel shows LIVE as before the knob.
-    m.turn(K1, -5);
-    m.run_ms(1700);
+    assert_eq!(popup_rows(&mut m, &fw), 0, "no popup over LIVE");
+    let now = indexed(&m.soc.lcd.fb);
+    assert!(
+        label(&now).iter().all(|&n| n >= 3),
+        "CUTOFF is reversed in yellow: {:?}",
+        label(&now)
+    );
+    assert!(
+        (8..12).all(|c| reversed(&now, 15, c, YELLOW) <= 1),
+        "RESO is not"
+    );
+    compare_golden(&build, "live-highlight", &m.soc.lcd.fb, &[]);
+    // A second after the last detent LIVE is back as it was, with the cutoff moved.
+    m.run_ms(1_200);
     common::to_mid_frame(&mut m, &fw);
-    assert!(m.soc.lcd.fb == live, "LIVE differs after the popup");
+    let after = indexed(&m.soc.lcd.fb);
+    assert!(label(&after).iter().all(|&n| n <= 1), "{:?}", label(&after));
+    assert_eq!(popup_rows(&mut m, &fw), 0);
+    m.turn(K1, -5);
+    m.run_ms(1_700);
+    common::to_mid_frame(&mut m, &fw);
+    assert!(
+        indexed(&m.soc.lcd.fb) == before,
+        "LIVE differs after the knob"
+    );
+}
+
+/// The same on CHIP: the turned control's label reversed, no popup (EDIT + K1 with the focus on
+/// the chip turns a slot that is not on the page: its popup stays).
+#[test]
+fn a_knob_on_chip_highlights_and_opens_no_popup() {
+    let Some((build, fw)) = fixture("the highlight test") else {
+        return;
+    };
+    let mut m = booted(&fw);
     open_chip(&mut m, &fw);
-    let chip = m.soc.lcd.fb.clone();
+    let chip = indexed(&m.soc.lcd.fb);
+    let label = |idx: &[u8]| {
+        (0..3)
+            .map(|c| reversed(idx, 9, c, YELLOW))
+            .collect::<Vec<_>>()
+    };
+    assert!(label(&chip).iter().all(|&n| n <= 1), "{:?}", label(&chip));
     m.turn(K1, 3);
     m.run_ms(300);
     common::to_mid_frame(&mut m, &fw);
-    compare_golden(&build, "popup-chip", &m.soc.lcd.fb, &[]);
+    assert_eq!(popup_rows(&mut m, &fw), 0, "no popup over CHIP");
+    assert!(
+        label(&indexed(&m.soc.lcd.fb)).iter().all(|&n| n >= 3),
+        "AGE is reversed"
+    );
+    compare_golden(&build, "chip-highlight", &m.soc.lcd.fb, &[]);
     m.turn(K1, -3);
-    m.run_ms(1700);
+    m.run_ms(1_700);
     common::to_mid_frame(&mut m, &fw);
-    assert!(m.soc.lcd.fb == chip, "CHIP differs after the popup");
+    assert!(
+        indexed(&m.soc.lcd.fb) == chip,
+        "CHIP differs after the knob"
+    );
+    // EDIT held turns the selected slot's Amount, which this page does not show: the popup.
+    m.key(EDIT, true);
+    m.run_ms(60);
+    m.turn(K1, 1);
+    m.run_ms(300);
+    m.key(EDIT, false);
+    assert_eq!(popup_rows(&mut m, &fw), 9, "EDIT + K1 keeps its popup");
+}
+
+/// EDIT held is the selected slot's page on LIVE's knob row (the page tag and the labels).
+#[test]
+fn edit_held_relabels_the_knob_row() {
+    let Some((_, fw)) = fixture("the EDIT layer test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    settle(&mut m, &fw);
+    let tone = indexed(&m.soc.lcd.fb);
+    let region = |idx: &[u8], row: usize| idx[row * 8 * W..(row + 1) * 8 * W].to_vec();
+    m.key(EDIT, true);
+    m.run_ms(200);
+    common::to_mid_frame(&mut m, &fw);
+    let held = indexed(&m.soc.lcd.fb);
+    assert!(
+        region(&held, 14) != region(&tone, 14),
+        "the page tag says DIST, not TONE"
+    );
+    assert!(
+        region(&held, 15) != region(&tone, 15),
+        "the labels are the slot's"
+    );
+    m.key(EDIT, false);
+    m.run_ms(200);
+    common::to_mid_frame(&mut m, &fw);
+    assert!(indexed(&m.soc.lcd.fb) == tone, "LIVE is back after EDIT");
+}
+
+/// A toast closes a popup that is open (the OCTAVE +1 over VOLUME stacked).
+#[test]
+fn a_toast_closes_an_open_popup() {
+    let Some((_, fw)) = fixture("the toast test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    settle(&mut m, &fw);
+    m.pot(300);
+    m.run_ms(200);
+    m.pot(700);
+    m.run_ms(300);
+    assert_eq!(popup_rows(&mut m, &fw), 9, "MASTER's popup over LIVE");
+    m.key(OCT_UP, true);
+    m.run_ms(30);
+    m.key(OCT_UP, false);
+    m.run_ms(120);
+    assert_eq!(popup_rows(&mut m, &fw), 0, "the popup is gone");
+    let toast = ui_byte(
+        &mut m,
+        &fw,
+        sidou_sys::ilp32::views::s + sidou_sys::ilp32::screen::toast_on,
+    );
+    assert_ne!(toast, 0, "the toast shows");
+}
+
+/// The octave is large when it is not 0: cells 26-29 of rows 0-1 (nothing at 0).
+#[test]
+fn the_octave_shows_at_2x_when_not_0() {
+    let Some((_, fw)) = fixture("the octave test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    settle(&mut m, &fw);
+    let ink = |m: &Machine| {
+        let idx = indexed(&m.soc.lcd.fb);
+        (0..2usize)
+            .flat_map(|r| (26..30usize).map(move |c| (r, c)))
+            .map(|(r, c)| (cell_colour(&idx, r, c, 0), r, c))
+            .filter(|&(black, _, _)| black < 64)
+            .count()
+    };
+    assert_eq!(ink(&m), 0, "nothing at octave 0");
+    press(&mut m, OCT_UP);
+    m.run_ms(300);
+    common::to_mid_frame(&mut m, &fw);
+    assert!(ink(&m) >= 4, "+1 at 2x: {} cells with ink", ink(&m));
 }
 
 /// The value popup's costs over each view (app/screen.h popup_step, popup_draw, app/views.c
@@ -512,12 +686,23 @@ fn the_popup_stays_within_its_budgets_over_every_view() {
             m.run_ms(300);
         }
         let idle = measure(&mut m, &fw, 10, |_| {});
+        // K1 opens no popup over LIVE and CHIP (they highlight the knob), so the MASTER pot,
+        // whose popup stays everywhere, stands for it there.
+        let pot = std::cell::Cell::new(600i32);
+        let nudge = |m: &mut Machine, d: i32| {
+            if matches!(view, "live" | "chip") {
+                pot.set((pot.get() + d * 30).clamp(100, 1000));
+                m.pot(pot.get() as u16);
+            } else {
+                m.turn(K1, d);
+            }
+        };
         // K1 once: it opens, stays a second and closes within the 70 frames.
-        let run = measure(&mut m, &fw, POPUP_OPEN_FRAMES, |m| m.turn(K1, 3));
+        let run = measure(&mut m, &fw, POPUP_OPEN_FRAMES, |m| nudge(m, 3));
         // Held open: a turn every other frame for a second, then the popup static.
         let turning = measure_frames(&mut m, &fw, 30, |m, f| {
             if f % 2 == 0 {
-                m.turn(K1, if f % 4 == 0 { 3 } else { -3 });
+                nudge(m, if f % 4 == 0 { 3 } else { -3 });
             }
         });
         m.run_ms(200); // the last detents' values go out
