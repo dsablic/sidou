@@ -429,7 +429,19 @@ fn c_floats(s: &mut String, values: &[f64], decimals: usize, per_line: usize) {
     }
 }
 
-/// gen/filter.h: per model and curve setting, the cutoff in Hz for each FC value and the
+const CUTOFF_CODE_BIAS: u32 = 126;
+
+fn cutoff_code(hz: f64) -> u16 {
+    // Preserve the measured table's 0.1 Hz precision before encoding its float bits.
+    let hz = format!("{hz:.1}").parse::<f32>().unwrap().max(0.5);
+    let code = (hz.to_bits() - (CUTOFF_CODE_BIAS << 23) + (1 << 10)) >> 11;
+    let code = u16::try_from(code).expect("cutoff fits in a 16-bit code");
+    let decoded = f32::from_bits((u32::from(code) << 11) + (CUTOFF_CODE_BIAS << 23));
+    assert!((f64::from(decoded) / f64::from(hz) - 1.0).abs() <= 2.5e-4);
+    code
+}
+
+/// gen/filter.h: per model and curve setting, the cutoff code for each FC value and the
 /// damping k = 1/Q for each resonance value.
 pub fn filter_header(fits: &[FilterFit]) -> Generated {
     let mut s = String::new();
@@ -453,11 +465,15 @@ pub fn filter_header(fits: &[FilterFit]) -> Generated {
          \x20* state-variable filter fitted to each around its cutoff. Data derived from\n\
          \x20* reSIDfp's output, so under its licence.\n\
          \x20*\n\
-         \x20* SID_CUTOFF_HZ_*[curve][fc]: the cutoff in Hz for each FC value, interpolated\n\
+         \x20* SID_CUTOFF_HZ_*[curve][fc]: uint16_t cutoff codes for each FC value, interpolated\n\
          \x20* between the measured ones along what the chip's cutoff DAC outputs, so it is\n\
          \x20* monotonic where reSIDfp's is (the 6581's DAC is kinked: 1023 -> 1024 drops).\n\
          \x20* Out of the measurement's reach (below about 40 Hz, above about 15 kHz) it is\n\
-         \x20* extrapolated. SID_RES_K_*[curve][res]: k = 1/Q for each resonance value.\n\
+         \x20* extrapolated. Float bits, rounded to the top 12 mantissa bits, with the exponent\n\
+         \x20* rebased to 0.5 Hz (smaller cutoffs clamp there; the filter clamps below 30 Hz):\n\
+         \x20* bits = (code << 11) + (SID_CUTOFF_CODE_BIAS << 23), within 2.5e-4 relative.\n\
+         \x20* Decoded in the main loop, never the audio interrupt.\n\
+         \x20* SID_RES_K_*[curve][res]: k = 1/Q for each resonance value.\n\
          \x20* Curve settings, by index:"
     )
     .unwrap();
@@ -468,7 +484,8 @@ pub fn filter_header(fits: &[FilterFit]) -> Generated {
     }
     writeln!(
         s,
-        " */\n#ifndef SIDOU_GEN_FILTER_H\n#define SIDOU_GEN_FILTER_H\n"
+        " */\n#ifndef SIDOU_GEN_FILTER_H\n#define SIDOU_GEN_FILTER_H\n\n\
+         #include <stdint.h>\n\n#define SID_CUTOFF_CODE_BIAS {CUTOFF_CODE_BIAS}u\n"
     )
     .unwrap();
     for (model, name) in [(Model::Mos6581, "6581"), (Model::Csg8580, "8580")] {
@@ -476,12 +493,16 @@ pub fn filter_header(fits: &[FilterFit]) -> Generated {
         writeln!(s, "#define SID_FILTER_CURVES_{name} {}\n", mine.len()).unwrap();
         writeln!(
             s,
-            "static const float SID_CUTOFF_HZ_{name}[SID_FILTER_CURVES_{name}][2048] = {{"
+            "static const uint16_t SID_CUTOFF_HZ_{name}[SID_FILTER_CURVES_{name}][2048] = {{"
         )
         .unwrap();
         for f in &mine {
             writeln!(s, "    /* {} */ {{", f.setting.describe()).unwrap();
-            c_floats(&mut s, &f.cutoff_hz, 1, 8);
+            for line in f.cutoff_hz.chunks(8) {
+                let codes: Vec<String> =
+                    line.iter().map(|&hz| cutoff_code(hz).to_string()).collect();
+                writeln!(s, "        {},", codes.join(", ")).unwrap();
+            }
             writeln!(s, "    }},").unwrap();
         }
         writeln!(s, "}};\n").unwrap();
@@ -567,6 +588,17 @@ pub fn differs_beyond_last_digit(a: &str, b: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cutoff_codes_clamp_and_round_across_exponents() {
+        for hz in [0.0, 0.1, 0.4, 0.5] {
+            assert_eq!(cutoff_code(hz), 0);
+        }
+        assert_eq!(cutoff_code(1.0), 4096);
+        assert_eq!(cutoff_code(8191.5), 57344);
+        assert_eq!(cutoff_code(8192.0), 57344);
+        assert_eq!(cutoff_code(8193.0), 57345);
+    }
 
     #[test]
     fn float_tables_compare_up_to_the_last_digit() {

@@ -20,12 +20,24 @@ uint32_t sid_filter_curves(sid_model model) {
 }
 
 float sid_cutoff_hz(sid_model model, uint32_t curve, uint32_t fc) {
-    fc &= 2047u;
-    if (curve >= sid_filter_curves(model)) {
-        curve = 0;
+    /* Separate model branches pay for decoding with cheaper bounds and address selection. */
+    uint32_t code;
+    if (model == SID_MODEL_6581) {
+        if (curve >= SID_FILTER_CURVES_6581) {
+            curve = 0;
+        }
+        code = SID_CUTOFF_HZ_6581[curve][fc & 2047u];
+    } else {
+        if (curve >= SID_FILTER_CURVES_8580) {
+            curve = 0;
+        }
+        code = SID_CUTOFF_HZ_8580[curve][fc & 2047u];
     }
-    return model == SID_MODEL_6581 ? SID_CUTOFF_HZ_6581[curve][fc]
-                                   : SID_CUTOFF_HZ_8580[curve][fc];
+    union {
+        uint32_t bits;
+        float hz;
+    } value = {(code << 11) + (SID_CUTOFF_CODE_BIAS << 23)};
+    return value.hz;
 }
 
 float sid_resonance_k(sid_model model, uint32_t curve, uint32_t res) {
