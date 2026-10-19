@@ -5,13 +5,13 @@
 //! generate, `app/logo_bitmap.c`, a `grid_bitmap` (app/grid.h) each for the renderer's pixel
 //! region. `tests/app/logo_bitmap.rs` keeps the generated file in step with the PNGs.
 //!
-//! The encoding: each pixel row run-length coded, a byte a run of 1..16 pixels
-//! (`(length - 1) << 4 | colour`), and a table of where each row's runs start, so that any
-//! row can be decoded on its own. Rows alike share their runs.
+//! The encoding is `bitmap_codec`'s run dictionary and checkpointed row packets
+//! (docs/art/bitmap-codec.md): any row or span decodes without another row or a scratch buffer.
 
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
+use crate::bitmap_codec;
 use crate::font::repo_root;
 
 /// The art palette (docs/art/README.md, app/grid.h's GRID_ colours) in sRGB.
@@ -52,12 +52,20 @@ pub struct Encoded {
 /// The longest run a byte holds.
 const RUN: usize = 16;
 
+/// app/grid.h GRID_BITMAP_SEEK: pixels between a bitmap row's checkpoints.
+pub const SEEK: usize = 64;
+pub const FORMAT: bitmap_codec::Format = bitmap_codec::Format {
+    seek: SEEK,
+    raw: false,
+};
+
 /// A logo's scene: `assets/logo/<name>.png`, compiled into `app/logo_bitmap.c` as `symbol`.
 #[derive(Clone, Copy, Debug)]
 pub struct Logo {
     pub name: &'static str,
     pub title: &'static str,
     pub symbol: &'static str,
+    pub format: bitmap_codec::Format,
 }
 
 /// The logos with a bitmap, the default first (app/logo.h).
@@ -66,11 +74,19 @@ pub const LOGOS: [Logo; 2] = [
         name: "metal-chrome",
         title: "Metal Chrome",
         symbol: "logo_metal_chrome_bitmap",
+        format: bitmap_codec::Format {
+            seek: 256,
+            raw: true,
+        },
     },
     Logo {
         name: "cracktro-chrome",
         title: "Cracktro Chrome",
         symbol: "logo_cracktro_chrome_bitmap",
+        format: bitmap_codec::Format {
+            seek: 256,
+            raw: false,
+        },
     },
 ];
 
@@ -151,7 +167,7 @@ fn row_runs(row: &[u8]) -> Vec<u8> {
 }
 
 pub fn encode(img: &Image) -> Encoded {
-    let (mut rows, data) = encode_shared(&[img]);
+    let (mut rows, data, _) = encode_shared(&[(img, FORMAT)]);
     Encoded {
         rows: rows.remove(0),
         data,
@@ -160,36 +176,26 @@ pub fn encode(img: &Image) -> Encoded {
 
 /// Several images into one array of runs: each image's row offsets, and the runs, which rows
 /// alike share within an image and across them.
-pub fn encode_shared(imgs: &[&Image]) -> (Vec<Vec<u16>>, Vec<u8>) {
-    let mut data: Vec<u8> = Vec::new();
-    let mut seen: std::collections::HashMap<Vec<u8>, u16> = std::collections::HashMap::new();
-    let rows = imgs
+pub fn encode_shared(
+    imgs: &[(&Image, bitmap_codec::Format)],
+) -> (Vec<Vec<u16>>, Vec<u8>, Vec<usize>) {
+    let rows: Vec<Vec<Vec<u8>>> = imgs
         .iter()
-        .map(|img| {
-            img.px
-                .chunks(img.w)
-                .map(|row| {
-                    let runs = row_runs(row);
-                    *seen.entry(runs).or_insert_with_key(|runs| {
-                        let at = u16::try_from(data.len()).expect("runs past 64 KB");
-                        data.extend_from_slice(runs);
-                        at
-                    })
-                })
-                .collect()
-        })
+        .map(|(img, _)| img.px.chunks(img.w).map(row_runs).collect())
         .collect();
-    (rows, data)
+    bitmap_codec::encode_formats(
+        &rows,
+        &imgs.iter().map(|(_, format)| *format).collect::<Vec<_>>(),
+    )
 }
 
 pub fn decode(enc: &Encoded, w: usize, h: usize) -> Vec<u8> {
     let mut px = Vec::with_capacity(w * h);
-    for &at in &enc.rows[..h] {
+    for &row in &enc.rows[..h] {
+        let (mut at, _) = bitmap_codec::seek_row(&enc.data, row, w, 0);
         let mut n = 0;
-        for &b in &enc.data[usize::from(at)..] {
-            if n == w {
-                break;
-            }
+        while n < w {
+            let b = bitmap_codec::next(&enc.data, &mut at);
             let len = usize::from(b >> 4) + 1;
             px.extend(std::iter::repeat_n(b & 15, len));
             n += len;
@@ -220,15 +226,27 @@ pub(crate) fn table<T: std::fmt::Display>(
 }
 
 /// What an image costs alone: its runs and row offsets, in bytes.
-pub fn size(img: &Image) -> (usize, usize) {
-    let enc = encode(img);
-    (enc.data.len(), 2 * enc.rows.len())
+pub fn size(img: &Image, format: bitmap_codec::Format) -> (usize, usize) {
+    let (rows, data, _) = encode_shared(&[(img, format)]);
+    (data.len(), 2 * rows[0].len())
+}
+
+/// The original byte-run representation, retained as the whole-PNG comparison's control.
+pub fn byte_run_size(img: &Image) -> usize {
+    let rows: std::collections::HashSet<_> = img.px.chunks(img.w).map(row_runs).collect();
+    rows.iter().map(Vec::len).sum::<usize>() + 2 * img.h
 }
 
 /// `app/logo_bitmap.c`, from the logos' PNGs.
 pub fn c_source() -> String {
     let imgs: Vec<Image> = LOGOS.iter().map(|l| load(l.name)).collect();
-    let (rows, data) = encode_shared(&imgs.iter().collect::<Vec<_>>());
+    let (rows, data, bases) = encode_shared(
+        &imgs
+            .iter()
+            .zip(LOGOS)
+            .map(|(img, l)| (img, l.format))
+            .collect::<Vec<_>>(),
+    );
     let mut s = String::from(SPDX);
     let files: Vec<String> = LOGOS
         .iter()
@@ -239,13 +257,12 @@ pub fn c_source() -> String {
         s,
         "/* Generated by host/crates/sidou-tests/src/logo.rs from {};\n \
          * do not edit.\n \
-         * The logos' scenes (app/logo.h), each a grid_bitmap (app/grid.h): a pixel row's runs, a\n \
-         * byte each, (length - 1) << 4 | colour, and a table of where each row's runs start.\n \
-         * Rows alike share their runs, within a scene and across them.\n",
+         * The logos' scenes (app/logo.h), each a grid_bitmap (app/grid.h): run dictionaries\n \
+         * and checkpointed row packets (docs/art/bitmap-codec.md), shared where smaller.\n",
         files
     );
     for (l, img) in LOGOS.iter().zip(&imgs) {
-        let (runs, offs) = size(img);
+        let (runs, offs) = size(img, l.format);
         let _ = writeln!(
             s,
             " * {}: {} x {} pixels, {runs} bytes of runs and {offs} of row offsets alone,\n \
@@ -268,17 +285,18 @@ pub fn c_source() -> String {
         data.len(),
         table(&data, 16, |v| format!("0x{v:02x}")),
     );
-    for ((l, img), r) in LOGOS.iter().zip(&imgs).zip(&rows) {
+    for (((l, img), r), &base) in LOGOS.iter().zip(&imgs).zip(&rows).zip(&bases) {
         let rows_name = l.name.replace('-', "_").to_uppercase();
         let _ = write!(
             s,
             "\nstatic const uint16_t {rows_name}[{}] = {{\n{}}};\n\n\
-             const grid_bitmap {} = {{{}, {}, {rows_name}, RUNS}};\n",
+             const grid_bitmap {} =\n    {{{}, {}, {rows_name}, {}}};\n",
             img.h,
             table(r, 12, |v| format!("{v:5}")),
             l.symbol,
             img.w,
             img.h,
+            bitmap_codec::data_ref(base),
         );
     }
     s

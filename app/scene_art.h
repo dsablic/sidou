@@ -6,14 +6,14 @@
  * A scene_image is a picture with transparency: a frame of fw x fh stored pixels, of which
  * the w x h rectangle from (x, y) is coded; the rest of the frame is transparent, or, for a
  * patch, the base image's. Each stored pixel is gx screen pixels wide (2 for the C64's wide
- * multicolour pixels, 1 for backgrounds). Rows are run-length coded as grid_bitmap's
- * (app/grid.h): row r of the rectangle starts at data[rows[r]], a byte a run,
- * ((length - 1) << 4) | colour for 1..16 pixels, the runs adding up to w exactly; rows alike
- * share their runs, within an image and across images. The colour `clear` (one the image
+ * multicolour pixels, 1 for backgrounds). Rows use the shared pool format in raw-run mode
+ * at SCENE_ART_SEEK pixels (docs/art/bitmap-codec.md): rows[r] is a byte offset from data,
+ * the runs adding up to w exactly. Row packets share byte substrings within a pool.
+ * The colour `clear` (one the image
  * never shows; the converter picks one that no image of the set uses) codes a transparent
  * run, so a row decodes with the same loop as an opaque bitmap. A row wider than
  * SCENE_ART_SEEK has a run start at every SCENE_ART_SEEK pixels of it (the converter splits a
- * run there), and `seek` holds where those runs are, so a span part way along a row is found
+ * run there), and the row packet holds its checkpoints, so a span part way along a row is found
  * from the checkpoint before it instead of from the row's start.
  *
  * The decoders trust the converter for what they do not check: every row's runs add up to
@@ -43,7 +43,8 @@ extern "C" {
 /* What scene_image_row writes for a transparent pixel. */
 #define SCENE_ART_CLEAR 0xffu
 /* Stored pixels between a row's checkpoints (a power of 2). */
-#define SCENE_ART_SEEK 32u
+#define SCENE_ART_SEEK_LOG2 5u
+#define SCENE_ART_SEEK (1u << SCENE_ART_SEEK_LOG2)
 
 typedef struct scene_image scene_image;
 struct scene_image {
@@ -55,10 +56,6 @@ struct scene_image {
     uint8_t ax, ay;   /* the anchor, in screen pixels */
     const uint16_t* rows; /* h offsets into data */
     const uint8_t* data;
-    /* NULL when w <= SCENE_ART_SEEK; else k = (w - 1) / SCENE_ART_SEEK checkpoints a row,
-     * seek[r * k + j - 1] the offset from row r's first run of the run that starts at pixel
-     * j * SCENE_ART_SEEK of the rectangle. */
-    const uint8_t* seek;
     const scene_image* base; /* NULL, or a patch's base: the frame outside the rectangle */
 };
 

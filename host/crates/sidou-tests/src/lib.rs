@@ -7,6 +7,7 @@
 //! model's Rust side (`song`), the song player's (`player`) and its transport's
 //! (`transport`), the first song (`song_embed`) and the showcase songs (`showcase`).
 
+pub mod bitmap_codec;
 pub mod credits;
 pub mod filter_limits;
 pub mod filter_sweeps;

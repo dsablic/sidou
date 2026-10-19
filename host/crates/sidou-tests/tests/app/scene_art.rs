@@ -81,6 +81,7 @@ fn the_header_and_the_converter_agree_on_the_set() {
     assert_eq!(SCENE_RMR_UNARMED_POSES as usize, scene_art::UNARMED.len());
     assert_eq!(SCENE_RMR_SKIES as usize, scene_art::SKIES.len());
     assert_eq!(SCENE_RMR_SKY_Y as usize, SKY_Y);
+    assert_eq!(SCENE_ART_SEEK as usize, scene_art::SEEK);
     assert_eq!(compiled().len(), scene_art::sources().len());
     let srcs = scene_art::sources();
     let clear = scene_art::clear_colour(&srcs);
@@ -93,6 +94,12 @@ fn the_header_and_the_converter_agree_on_the_set() {
         );
         assert_eq!((s.gx, s.clear), (src.gx, clear), "{}", src.png);
         assert_eq!((s.ax, s.ay), src.anchor, "{}", src.png);
+        assert_eq!(
+            unsafe { *s.data.add(15) },
+            128 | SCENE_ART_SEEK_LOG2 as u8,
+            "{}: SCENE's fixed raw-run profile",
+            src.png
+        );
     }
     // A fighter's anchor is his feet: the prototype drew him from (x - 58, FEET - 112), and
     // mirrored from (x - 70, ...): 70 = 128 - 58.
@@ -286,12 +293,31 @@ fn the_converter_takes_art_colours_and_full_transparency_only() {
 /// The run that holds pixel x of a coded row (x from the coded rectangle's left), and the
 /// pixel it starts at, walking from the row's start.
 fn runs_of(s: &scene_image, r: usize) -> Vec<(usize, usize)> {
-    let row = unsafe { s.data.add(usize::from(*s.rows.add(r))) };
-    let (mut at, mut off, mut out) = (0, 0, Vec::new());
+    let row = usize::from(unsafe { *s.rows.add(r) });
+    let flags = unsafe { *s.data.add(15) };
+    let step = 1usize << (flags & 15);
+    let k = (usize::from(s.w) - 1) / step;
+    let begin = 2 * (row + k);
+    let (mut at, mut off, mut out) = (0, begin, Vec::new());
+    let nibble = |i: usize| (unsafe { *s.data.add(i / 2) } >> ((i & 1) * 4)) & 15;
     while at < usize::from(s.w) {
-        out.push((off, at));
-        at += usize::from(unsafe { *row.add(off) } >> 4) + 1;
-        off += 1;
+        out.push((off - begin, at));
+        let byte = if flags & 128 != 0 {
+            let byte = unsafe { *s.data.add(off / 2) };
+            off += 2;
+            byte
+        } else {
+            let code = nibble(off);
+            off += 1;
+            if code == 15 {
+                let byte = nibble(off) | (nibble(off + 1) << 4);
+                off += 2;
+                byte
+            } else {
+                unsafe { *s.data.add(usize::from(code)) }
+            }
+        };
+        at += usize::from(byte >> 4) + 1;
     }
     assert_eq!(at, usize::from(s.w), "row {r}'s runs add up to w");
     out
@@ -299,25 +325,31 @@ fn runs_of(s: &scene_image, r: usize) -> Vec<(usize, usize)> {
 
 #[test]
 fn wide_rows_have_a_checkpoint_every_seek_pixels() {
-    let step = SCENE_ART_SEEK as usize;
-    assert_eq!(step, scene_art::SEEK);
-    assert!(step.is_power_of_two());
+    assert_eq!(SCENE_ART_SEEK as usize, scene_art::SEEK);
     let mut wide = 0;
     for (src, s) in scene_art::sources().iter().zip(compiled()) {
+        let flags = unsafe { *s.data.add(15) };
+        let step = 1usize << (flags & 15);
+        assert!(step.is_power_of_two() && step <= scene_art::SEEK);
         let k = (usize::from(s.w) - 1) / step;
         if k == 0 {
-            assert!(s.seek.is_null(), "{}: no checkpoint to keep", src.png);
             continue;
         }
         wide += 1;
-        assert!(!s.seek.is_null(), "{}", src.png);
         for r in 0..usize::from(s.h) {
             let runs = runs_of(s, r);
+            let row = unsafe { s.data.add(usize::from(*s.rows.add(r))) };
+            let mut off = 0;
             for j in 1..=k {
-                let off = usize::from(unsafe { *s.seek.add(r * k + j - 1) });
+                let checkpoint = usize::from(unsafe { *row.add(j - 1) });
+                if flags & 128 != 0 {
+                    off = 2 * checkpoint;
+                } else {
+                    off += checkpoint;
+                }
                 assert!(
                     runs.contains(&(off, j * step)),
-                    "{} row {r}: checkpoint {j} at byte {off} is not the run from {}",
+                    "{} row {r}: checkpoint {j} at nibble {off} is not the run from {}",
                     src.png,
                     j * step
                 );

@@ -17,6 +17,7 @@
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
+use crate::bitmap_codec;
 use crate::font::repo_root;
 use crate::logo::{self, Image};
 
@@ -213,7 +214,13 @@ pub fn load() -> Cards {
 
 /// What the cards cost in flash: runs, row offsets, cell bits and the glow table, in bytes.
 pub fn size(cards: &Cards) -> (usize, usize, usize, usize) {
-    let (rows, data) = logo::encode_shared(&cards.bitmaps.iter().collect::<Vec<_>>());
+    let (rows, data, _) = logo::encode_shared(
+        &cards
+            .bitmaps
+            .iter()
+            .map(|img| (img, logo::FORMAT))
+            .collect::<Vec<_>>(),
+    );
     let offs = rows.iter().map(|r| 2 * r.len()).sum();
     (data.len(), offs, 4 * CELLS * cards.cells.len(), HALF * HALF)
 }
@@ -222,7 +229,13 @@ pub fn size(cards: &Cards) -> (usize, usize, usize, usize) {
 pub fn c_source() -> String {
     let cards = load();
     let q = quarter(&cards.glow).unwrap_or_else(|e| panic!("title-glow.png: {e}"));
-    let (rows, data) = logo::encode_shared(&cards.bitmaps.iter().collect::<Vec<_>>());
+    let (rows, data, bases) = logo::encode_shared(
+        &cards
+            .bitmaps
+            .iter()
+            .map(|img| (img, logo::FORMAT))
+            .collect::<Vec<_>>(),
+    );
     let (runs, offs, bits, glow) = size(&cards);
     let mut s = String::from(logo::SPDX);
     let _ = write!(
@@ -232,7 +245,8 @@ pub fn c_source() -> String {
          * The title cards (app/title_card.h): the glow's level in each cell of the screen's\n \
          * top-left quarter, and each card's bitmap (its pixels in the cells that differ from\n \
          * the glow, the glow's background stop flat in the others) with a bit a cell for the\n \
-         * cells that differ. {runs} bytes of runs, shared by the cards, {offs} of row offsets,\n \
+         * cells that differ. Run dictionaries and row packets (docs/art/bitmap-codec.md):\n \
+         * {runs} bytes of coded data, {offs} of row offsets,\n \
          * {bits} of cell bits and {glow} of glow levels: {} in all. */\n\
          #include \"title_card.h\"\n\n\
          const uint8_t title_card_glow[TITLE_CARD_GLOW_HALF][TITLE_CARD_GLOW_HALF] = {{\n",
@@ -273,7 +287,12 @@ pub fn c_source() -> String {
         "\nconst grid_bitmap title_card_bitmaps[TITLE_CARDS] = {{\n{}}};\n",
         TITLES
             .iter()
-            .map(|t| format!("    {{240, 240, {}, RUNS}},\n", t.word))
+            .zip(bases)
+            .map(|(t, base)| format!(
+                "    {{240, 240, {}, {}}},\n",
+                t.word,
+                bitmap_codec::data_ref(base)
+            ))
             .collect::<String>()
     );
     s

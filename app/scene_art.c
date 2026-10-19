@@ -10,15 +10,16 @@ static const uint8_t BAYER[16] = {0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7,
 
 /* The run of coded row r that holds frame pixel `from` (s->x <= from < s->x + s->w), from the
  * checkpoint before it; *at is the frame pixel the run starts at. */
-static const uint8_t* seek_run(const scene_image* s, uint32_t r, uint32_t from, uint32_t* at) {
-    const uint8_t* p = s->data + s->rows[r];
-    uint32_t a = s->x;
-    uint32_t j = (from - a) / SCENE_ART_SEEK;
-    if (j && s->seek) {
-        uint32_t k = ((uint32_t)s->w - 1u) / SCENE_ART_SEEK;
-        p += s->seek[r * k + j - 1u];
-        a += j * SCENE_ART_SEEK;
+__attribute__((always_inline)) static inline const uint8_t* seek_run(
+    const scene_image* s, uint32_t r, uint32_t from, uint32_t* at) {
+    uint32_t j = (from - s->x) / SCENE_ART_SEEK;
+    uint32_t k = ((uint32_t)s->w - 1u) / SCENE_ART_SEEK;
+    uint32_t row = s->rows[r];
+    const uint8_t* p = s->data + row + k;
+    if (j) {
+        p += s->data[row + j - 1u];
     }
+    uint32_t a = (uint32_t)s->x + j * SCENE_ART_SEEK;
     uint32_t len = (uint32_t)(*p >> 4) + 1u;
     while (a + len <= from) {
         a += len;
@@ -74,21 +75,19 @@ void scene_image_row(const scene_image* s, uint32_t x, uint32_t y, uint32_t n, i
 /* What scene_image_blend draws into: screen pixels [sx, ex) of the image as drawn, sx at out,
  * each row stride after the last. */
 typedef struct {
-    uint8_t* out;
     uint32_t stride;
     uint32_t sx, ex;
-    uint32_t fw;
-    uint32_t sh; /* log2 of gx */
     int mirror;
     const uint8_t* remap;
 } blend_span;
 
 /* Draws the runs of coded row r of s (no patch) over frame pixels [from, to), within its
  * rectangle, into the row at out: p the run that holds pixel from, starting at pixel at. */
-static inline void blend_runs(const scene_image* s, const uint8_t* p, uint32_t at, uint32_t from,
-                              uint32_t to, const blend_span* b, uint8_t* out) {
+__attribute__((always_inline)) static inline void blend_runs(
+    const scene_image* s, const uint8_t* p, uint32_t at, uint32_t from, uint32_t to,
+    const blend_span* b, uint8_t* restrict out) {
     /* Locals: a store through out could alias b's fields. */
-    uint32_t clear = s->clear, sh = b->sh, sx = b->sx, ex = b->ex, fw = b->fw;
+    uint32_t clear = s->clear, sh = s->gx >> 1, sx = b->sx, ex = b->ex, fw = s->fw;
     int mirror = b->mirror;
     const uint8_t* remap = b->remap;
     uint32_t end = at + (uint32_t)(*p >> 4) + 1u;
@@ -127,7 +126,7 @@ static inline void blend_runs(const scene_image* s, const uint8_t* p, uint32_t a
 /* Draws frame pixels [u0, u1) of rows [y, y + h) of s, and of its base where the base shows.
  * Row y goes to out. */
 static void blend_rows(const scene_image* s, uint32_t u0, uint32_t u1, uint32_t y, uint32_t h,
-                       const blend_span* b, uint8_t* out) {
+                       const blend_span* b, uint8_t* restrict out) {
     uint32_t r0 = s->x, r1 = r0 + s->w;
     if (s->base) {
         /* A patch: its own rows over its rectangle, the base's round it. */
@@ -155,16 +154,17 @@ static void blend_rows(const scene_image* s, uint32_t u0, uint32_t u1, uint32_t 
     if (from >= to || ya >= yb) {
         return;
     }
-    /* The same checkpoint on every row. */
     uint32_t j = (from - r0) / SCENE_ART_SEEK;
-    const uint8_t* seek = j && s->seek ? s->seek + j - 1u : NULL;
     uint32_t k = ((uint32_t)s->w - 1u) / SCENE_ART_SEEK;
-    uint32_t start = seek ? r0 + j * SCENE_ART_SEEK : r0;
+    uint32_t start = r0 + j * SCENE_ART_SEEK;
+    const uint8_t* data = s->data;
+    const uint16_t* rows = s->rows;
     out += (ya - y) * b->stride;
     for (uint32_t r = ya - s->y; r < yb - s->y; r++, out += b->stride) {
-        const uint8_t* p = s->data + s->rows[r];
-        if (seek) {
-            p += seek[r * k];
+        uint32_t row = rows[r];
+        const uint8_t* p = data + row + k;
+        if (j) {
+            p += data[row + j - 1u];
         }
         blend_runs(s, p, start, from, to, b, out);
     }
@@ -175,12 +175,13 @@ void scene_image_blend(const scene_image* s, uint32_t x, uint32_t y, uint32_t n,
     if (!n || !h) {
         return;
     }
-    blend_span b = {out, stride, x, x + n, s->fw, s->gx >> 1, mirror, remap};
+    blend_span b = {stride, x, x + n, mirror, remap};
+    uint32_t sh = s->gx >> 1;
     /* The stored pixels under screen pixels [x, x + n). */
-    uint32_t u0 = x >> b.sh, u1 = ((x + n - 1u) >> b.sh) + 1u;
+    uint32_t u0 = x >> sh, u1 = ((x + n - 1u) >> sh) + 1u;
     if (mirror) {
-        uint32_t t = b.fw - u1;
-        u1 = b.fw - u0;
+        uint32_t t = s->fw - u1;
+        u1 = s->fw - u0;
         u0 = t;
     }
     blend_rows(s, u0, u1, y, h, &b, out);

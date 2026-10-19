@@ -5,9 +5,8 @@
 //! `scene_image` (app/scene_art.h) each. `tests/app/scene_art.rs` keeps the generated file in
 //! step with the PNGs.
 //!
-//! The encoding is the logo bitmaps' (`logo.rs`): each pixel row run-length coded, a byte a
-//! run of 1..16 pixels (`(length - 1) << 4 | colour`), a table of where each row's runs start,
-//! rows alike sharing their runs across every image. Transparency is a colour no image of the
+//! The encoding is `bitmap_codec`'s run dictionaries and checkpointed row packets
+//! (docs/art/bitmap-codec.md). Transparency is a colour no image of the
 //! set uses (`clear`). Each image is cropped to the rectangle its pixels cover; an unarmed pose
 //! is a patch over its armed pose (the rectangle where they differ) when that is smaller; a sky
 //! is a gradient computed on the device and the pixels the gradient does not give (the moon,
@@ -16,6 +15,7 @@
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
+use crate::bitmap_codec;
 use crate::font::repo_root;
 use crate::logo::{check_or_write_file, table, PALETTE, SPDX};
 
@@ -509,55 +509,20 @@ pub fn code(srcs: &[Source], clear: u8) -> Vec<Coded> {
         .collect()
 }
 
-/// The checkpoints of a coded image's rows (app/scene_art.h `seek`), None when it is no wider
-/// than SEEK: for each row, the offset of the run that starts at each multiple of SEEK.
-pub fn seek_table(c: &Coded) -> Option<Vec<u8>> {
-    let w = c.rect.2;
-    let k = (w - 1) / SEEK;
-    if k == 0 {
-        return None;
-    }
-    let mut out = Vec::with_capacity(k * c.rows.len());
-    for (r, runs) in c.rows.iter().enumerate() {
-        let mut at = 0;
-        let mut next = SEEK;
-        for (off, &b) in runs.iter().enumerate() {
-            if at == next && next < w {
-                out.push(u8::try_from(off).expect("a row's runs within 256 bytes"));
-                next += SEEK;
-            }
-            at += usize::from(b >> 4) + 1;
-        }
-        assert_eq!(
-            out.len(),
-            (r + 1) * k,
-            "row {r}: a run starts at every checkpoint"
-        );
-    }
-    Some(out)
-}
-
 /// The set's rows in one array of runs, rows alike shared across every image: each image's
-/// row offsets, and the runs.
-pub fn share(coded: &[Coded]) -> (Vec<Vec<u16>>, Vec<u8>) {
-    let mut data: Vec<u8> = Vec::new();
-    let mut seen: std::collections::HashMap<Vec<u8>, u16> = std::collections::HashMap::new();
-    let rows = coded
-        .iter()
-        .map(|c| {
-            c.rows
-                .iter()
-                .map(|runs| {
-                    *seen.entry(runs.clone()).or_insert_with(|| {
-                        let at = u16::try_from(data.len()).expect("runs past 64 KB");
-                        data.extend_from_slice(runs);
-                        at
-                    })
-                })
-                .collect()
-        })
-        .collect();
-    (rows, data)
+/// row byte offsets, coded pools, and each image's byte offset to its pool.
+pub fn share(coded: &[Coded]) -> (Vec<Vec<u16>>, Vec<u8>, Vec<usize>) {
+    let rows: Vec<_> = coded.iter().map(|c| c.rows.clone()).collect();
+    bitmap_codec::encode_formats(
+        &rows,
+        &vec![
+            bitmap_codec::Format {
+                seek: SEEK,
+                raw: true
+            };
+            coded.len()
+        ],
+    )
 }
 
 /// Decodes a coded image back to its frame (the model the C decoder is checked against).
@@ -624,8 +589,8 @@ pub fn skies_both_ways() -> (usize, usize) {
     (rows_cost(&whole), rows_cost(&overlays) + gradients)
 }
 
-/// sizeof(scene_image) on the pi32v2 (ILP32): ten bytes, two of padding, four pointers.
-pub const IMAGE_STRUCT: usize = 28;
+/// sizeof(scene_image) on the pi32v2 (ILP32): ten bytes, two of padding, three pointers.
+pub const IMAGE_STRUCT: usize = 24;
 /// sizeof(scene_gradient): four bytes and a pointer; and a stop.
 pub const GRADIENT_STRUCT: usize = 8;
 pub const STOP: usize = 2;
@@ -635,13 +600,8 @@ pub const STOP: usize = 2;
 pub fn flash() -> (usize, usize, usize, usize) {
     let srcs = sources();
     let coded = code(&srcs, clear_colour(&srcs));
-    let (rows, data) = share(&coded);
-    let offs: usize = rows.iter().map(|r| 2 * r.len()).sum::<usize>()
-        + coded
-            .iter()
-            .filter_map(seek_table)
-            .map(|t| t.len())
-            .sum::<usize>();
+    let (rows, data, _) = share(&coded);
+    let offs: usize = rows.iter().map(|r| 2 * r.len()).sum();
     let structs = IMAGE_STRUCT * srcs.len()
         + SKIES
             .iter()
@@ -756,7 +716,7 @@ pub fn c_source() -> String {
     let srcs = sources();
     let clear = clear_colour(&srcs);
     let coded = code(&srcs, clear);
-    let (rows, data) = share(&coded);
+    let (rows, data, bases) = share(&coded);
     let (runs, offs, structs, total) = flash();
     let mut s = String::from(SPDX);
     let _ = write!(
@@ -764,14 +724,13 @@ pub fn c_source() -> String {
         "/* Generated by host/crates/sidou-tests/src/scene_art.rs from the PNGs and the motion\n \
          * tables in assets/scene/ (drawn by assets/scene/red-moon-rite.js); do not edit.\n \
          * RED MOON RITE's art (app/scene_art.h): each image cropped to the pixels it covers,\n \
-         * a pixel row's runs a byte each, (length - 1) << 4 | colour, colour {clear} coding\n \
-         * transparency (no image uses it), and a table of where each row's runs start; rows\n \
-         * alike share their runs across every image. The unarmed poses are patches over their\n \
+         * run dictionaries and row packets (docs/art/bitmap-codec.md), colour {clear} coding\n \
+         * transparency (no image uses it). The unarmed poses are patches over their\n \
          * armed poses where that is smaller; the skies are a gradient computed on the device\n \
          * and what it does not give (the moon, wisps and hills). A row wider than {SEEK}\n \
-         * pixels has a run start every {SEEK}, and a checkpoint table says where they are.\n \
-         * In flash: {runs} bytes of runs, {offs} of row offsets and checkpoints and {structs}\n \
-         * of tables, {total} in all.\n"
+         * pixels has a run start every {SEEK}, with checkpoints in its row packets.\n \
+         * In flash: {runs} bytes of coded data, {offs} of row offsets and {structs}\n \
+         * of tables, {total} in all. Per-image costs below are the byte-run crop/patch model.\n"
     );
     for (src, c) in srcs.iter().zip(&coded) {
         let (x, y, w, h) = c.rect;
@@ -799,14 +758,6 @@ pub fn c_source() -> String {
             r.len(),
             table(r, 12, |v| format!("{v:5}")),
         );
-        if let Some(t) = seek_table(&coded[i]) {
-            let _ = write!(
-                s,
-                "\nstatic const uint8_t SEEK_{i}[{}] = {{\n{}}};\n",
-                t.len(),
-                table(&t, 16, |v| format!("{v:3}")),
-            );
-        }
     }
     let init = |i: usize| {
         let src = &srcs[i];
@@ -828,13 +779,9 @@ pub fn c_source() -> String {
             })
             .unwrap_or_else(|| " NULL".into());
         assert!(matches!(src.gx, 1 | 2), "{}: gx is 1 or 2", src.png);
-        let seek = if seek_table(c).is_some() {
-            format!("SEEK_{i}")
-        } else {
-            "NULL".into()
-        };
+        let data = bitmap_codec::data_ref(bases[i]);
         format!(
-            "{{{}, {}, {x}, {y}, {w}, {h}, {}, {clear}, {}, {}, ROWS_{i}, RUNS, {seek},{base}}}",
+            "{{{}, {}, {x}, {y}, {w}, {h}, {}, {clear}, {}, {}, ROWS_{i}, {data},{base}}}",
             src.frame.w, src.frame.h, src.gx, src.anchor.0, src.anchor.1
         )
     };

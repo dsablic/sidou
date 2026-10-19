@@ -146,15 +146,33 @@ fn in_region(g: &grid, col: usize, row: usize) -> Option<(usize, usize)> {
 fn bitmap_px(b: *const grid_bitmap, x: usize, y: usize) -> u8 {
     let b = unsafe { &*b };
     assert!(x < usize::from(b.w) && y < usize::from(b.h));
-    let mut p = unsafe { b.data.add(usize::from(*b.rows.add(y))) };
+    let row = usize::from(unsafe { *b.rows.add(y) });
+    let flags = unsafe { *b.data.add(15) };
+    let step = 1usize << (flags & 15);
+    let header = (usize::from(b.w) - 1) / step;
+    let mut cursor = 2 * (row + header);
+    let nibble = |i: usize| (unsafe { *b.data.add(i / 2) } >> ((i & 1) * 4)) & 15;
     let mut at = 0;
     loop {
-        let run = unsafe { *p };
+        let run = if flags & 128 != 0 {
+            let run = unsafe { *b.data.add(cursor / 2) };
+            cursor += 2;
+            run
+        } else {
+            let code = nibble(cursor);
+            cursor += 1;
+            if code == 15 {
+                let run = nibble(cursor) | (nibble(cursor + 1) << 4);
+                cursor += 2;
+                run
+            } else {
+                unsafe { *b.data.add(usize::from(code)) }
+            }
+        };
         at += usize::from(run >> 4) + 1;
         if x < at {
             return run & 15;
         }
-        p = unsafe { p.add(1) };
     }
 }
 

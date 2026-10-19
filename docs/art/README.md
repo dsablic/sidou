@@ -12,6 +12,9 @@ The look: an 80s home computer, C64 culture in spirit. Art is original only:
 no Commodore marks, logos or trade dress, and no characters, sprites or names
 from existing games.
 
+Bitmap assets use the shared [row format](bitmap-codec.md); its reference covers the encoder,
+the tile readers, checkpoints, RAM use and regeneration.
+
 ## Palette
 
 Sixteen colours, the C64's, after Philip "Pepto" Timmermann's measurements of
@@ -470,19 +473,16 @@ renderer's pixel region.
   whose pixels are art palette colours exactly (its palette in any order); anything else is
   an error.
 - **Conversion:** `host/crates/sidou-tests/src/logo.rs` (as `src/font.rs` is for the font)
-  writes `app/logo_bitmap.c`, a `grid_bitmap` (`app/grid.h`) for each logo: each pixel row
-  run-length coded, a byte a run of 1..16 pixels (`(length - 1) << 4 | colour`), with a table
-  of where each row's runs start so any row decodes on its own; rows alike share their runs,
-  within a scene and across the scenes (one array of runs). A test fails
+  writes `app/logo_bitmap.c`, a `grid_bitmap` (`app/grid.h`) for each logo, using
+  [run dictionaries and checkpointed row packets](bitmap-codec.md). Rows share packet
+  substrings within a pool; any row or span decodes without another row or a buffer. A test fails
   when the file falls behind the PNGs (`SIDOU_LOGO_UPDATE=1` rewrites it, as
   `SIDOU_FONT_UPDATE` and `SIDOU_CREDITS_UPDATE` do), and others check the round trip and
   that the compiled table decodes to the PNG pixel for pixel.
-- **Size:** Metal Chrome's whole scene is **9,753 bytes** of flash: 9,273 of runs and 480
-  of row offsets, 33.9 % of its 28,800 bytes at 4 bits a pixel; its glow's dither makes runs
-  of one and two pixels. Cracktro Chrome's is 4,526 bytes (4,046 and 480, 15.7 %; 6,739
-  without sharing rows: the black rows and the 2-pixel bars repeat). Together, sharing their
-  black rows, 14,234. So the whole scene goes on the device, and About takes its band from
-  the same bitmap.
+- **Size:** Metal Chrome's whole scene is **9,730 bytes** of coded data and row offsets;
+  Cracktro Chrome's is **3,971**, together **13,701**. The original byte-run encoding took
+  9,753, 4,526 and 14,234 respectively; either logo raw at 4 bits a pixel is 28,800 bytes.
+  The whole scene goes on the device, and About takes its band from the same bitmap.
 - **Drawing:** `grid_region(g, col, row, w, h, bitmap, bx, by)` makes w x h cells take their
   background, pixel for pixel, from the bitmap's cells from (bx, by). Their glyphs'
   foreground and their overlays still draw over it, so text and overlays work on a picture
@@ -1143,29 +1143,30 @@ eight square pips a side were replaced after the review below.
 tile a run at a time by `scene_image_blend`:
 
 - **Run-length rows with transparency.** Each image is cropped to the rectangle its pixels
-  cover inside its frame; each pixel row of the rectangle is coded as the logo bitmaps' are (a
-  byte a run of 1..16 pixels, `(length - 1) << 4 | colour`, and a table of where each row's runs
-  start), with one colour that no image of the set uses (cyan) coding a transparent run, so a
-  row decodes with the bitmaps' loop. Rows alike share their runs across every image. A sprite
+  cover inside its frame; each row uses the logos' [row format](bitmap-codec.md), with one
+  colour that no image of the set uses (cyan) coding transparency. Row packets share byte
+  substrings within a pool. A sprite
   keeps its frame's size, its anchor (a fighter's feet at (58, 112) of the 128 x 124 screen
   frame; a sword's grip) and `gx`; drawn mirrored, a row is read from its end and the anchor is
   (frame width - 58, 112), so no mirrored copies are stored.
-- **Checkpoints.** A row wider than 32 pixels has a run start at every 32 pixels of it (the
-  converter splits a run there) and a byte for each in a checkpoint table, so a span part way
-  along a row is found from the checkpoint before it, not from the row's start: a tile of the
-  arena once walked 40 runs on average (118 at most) to reach its pixels, 2.6k of a tile's
-  4.8k. It takes 4,715 bytes of tables and 1,121 of split runs.
+- **Checkpoints.** Runs are split at each pool's interval (at most 32 stored pixels).
+  Checkpoints live in the row packets, so repeated rows share the checkpoints too. A span
+  starts at its preceding checkpoint rather than walking the whole prefix.
 - **Patches.** An unarmed pose is coded as the rectangle where it differs from its armed pose
-  (the arm and the sword), over that pose, when that is smaller: guard, guard2 and hit, 120 to
-  188 bytes each instead of 813 to 931; reach has no armed pose and is whole.
+  (the arm and the sword), over that pose, when that is smaller. The byte-run selection model
+  measures guard, guard2 and hit at 120 to 188 bytes each instead of 813 to 931, before dictionary
+  packing; reach has no armed pose and is whole.
 - **The skies** are a gradient computed on the device (`scene_gradient_row`: the prototype's
   stops and 6-row Bayer seams) and an overlay of the pixels it does not give (the moon, wisps
-  and hills): **7,472 bytes for the three, against 11,284 coded whole** (rows shared across
+  and hills): the byte-run selection model measures **7,472 bytes for the three, against
+  11,284 coded whole** (rows shared across
   the three, checkpoint tables aside). The gradient costs a fill a pixel on its flat rows and
   a Bayer compare a pixel on its seam rows (24 of its 124): measured in fm1-emu, 230
   instructions a tile averaged over the screen (about 430 on each of the 480 tiles it
   covers), so it was chosen.
 - **The arena** is one image of the whole screen, transparent where the sky shows.
+
+Original byte-run measurements, before the status and motion tables:
 
 | What | Bytes |
 |---|---|
@@ -1179,8 +1180,9 @@ The kinds are each image's runs and offsets alone; sharing rows across images br
 down to the total. A test prints the total and fails over 48 KB (`the_art_fits_its_flash_ceiling`),
 and another decodes every image, mirrored too and from any pixel, back to its PNG pixel for
 pixel. Since M2f Task 4 the set also holds the status bar (`hud.png` and the blade meter
-empty, full and its tip, 4 images) and the motion tables (below): **43,413 bytes** (42.4 KB of
-the 48 KB ceiling), all in the image now that the vignette draws them.
+empty, full and its tip, 4 images) and the motion tables (below). That complete byte-run set
+was **43,413 bytes**. With the shared row format it is **41,694 bytes**: 34,538 coded data,
+5,338 row offsets and 1,818 of image/gradient/motion metadata, all below the unchanged 48 KB ceiling.
 
 ### On the device
 

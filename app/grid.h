@@ -31,6 +31,8 @@ extern "C" {
 #define GRID_ROWS 30u
 #define GRID_CELLS (GRID_COLS * GRID_ROWS)
 #define GRID_CELL_PX 8u
+/* The tools' default; each pool carries its actual interval (docs/art/bitmap-codec.md). */
+#define GRID_BITMAP_SEEK 64u
 /* Cells that can carry a pixel overlay at once: LIVE's three scopes (M1e Task 4) take about
  * 240. 255 keeps a slot index (plus 1) in the cell's byte. A slot costs 10 bytes of RAM
  * (mask, colour, free-list entry): 2,550 bytes, 2.3 KB more than M1e Task 1's 32 slots. */
@@ -74,11 +76,10 @@ _Static_assert(GRID_OVERLAYS <= 255u,
 /* The palette as RGB565 (red in the top 5 bits), in flash. */
 extern const uint16_t grid_palette[16];
 
-/* A bitmap of w x h pixels (whole cells), each a colour (0..15), in flash, run-length coded
- * row by row so that any row decodes on its own: row y's runs start at data[rows[y]], each a
- * byte, ((length - 1) << 4) | colour for 1..16 pixels, and they add up to w exactly. Rows
- * alike may share their runs. host/crates/sidou-tests/src/logo.rs writes them from indexed
- * PNGs (app/logo_bitmap.c). */
+/* A bitmap of w x h pixels (whole cells), each a colour (0..15), in flash. data points to a
+ * run-dictionary pool; rows[y] is the byte offset of its checkpointed row packet
+ * (docs/art/bitmap-codec.md). Any row or span decodes without another row or a buffer.
+ * host/crates/sidou-tests/src/logo.rs writes them from indexed PNGs (app/logo_bitmap.c). */
 typedef struct {
     uint16_t w;
     uint16_t h;

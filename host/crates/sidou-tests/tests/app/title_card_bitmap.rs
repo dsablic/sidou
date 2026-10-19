@@ -134,20 +134,25 @@ fn the_compiled_tables_are_the_pngs() {
 #[test]
 fn encoding_the_cards_together_round_trips() {
     let cards = tc::load();
-    let (rows, data) = logo::encode_shared(&cards.bitmaps.iter().collect::<Vec<_>>());
-    for (img, rows) in cards.bitmaps.iter().zip(rows) {
+    let (rows, data, bases) = logo::encode_shared(
+        &cards
+            .bitmaps
+            .iter()
+            .map(|img| (img, logo::FORMAT))
+            .collect::<Vec<_>>(),
+    );
+    for ((img, rows), base) in cards.bitmaps.iter().zip(rows).zip(bases) {
         let enc = logo::Encoded {
             rows,
-            data: data.clone(),
+            data: data[base..].to_vec(),
         };
         assert_eq!(logo::decode(&enc, img.w, img.h), img.px);
     }
 }
 
 /// What the cards cost in flash, all three, their glow drawn in glyphs from 225 bytes of
-/// levels: 27,087 bytes, most of it the letters' dithered halos (runs of one or two pixels).
-/// Drawn into each bitmap pixel for pixel instead, the glow's dither would make them twice as
-/// large (57,190 bytes).
+/// levels, against the original whole-PNG byte-run control (57,190 bytes). The numeric
+/// ceilings stay the same even though the new codec also shrinks that counterfactual.
 #[test]
 fn the_cards_are_small() {
     let cards = tc::load();
@@ -155,10 +160,7 @@ fn the_cards_are_small() {
     let total = runs + offs + bits + glow;
     let whole: usize = TITLES
         .iter()
-        .map(|t| {
-            let (r, o) = logo::size(&logo::load(&format!("title-{}", t.name)));
-            r + o
-        })
+        .map(|t| logo::byte_run_size(&logo::load(&format!("title-{}", t.name))))
         .sum();
     println!(
         "title cards: {runs} bytes of runs + {offs} of row offsets + {bits} of cell bits + \

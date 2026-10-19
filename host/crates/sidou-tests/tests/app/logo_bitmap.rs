@@ -32,6 +32,7 @@ fn the_generated_file_is_up_to_date() {
         "{stale:?} is stale; rerun with SIDOU_LOGO_UPDATE=1"
     );
     assert_eq!(logo::LOGOS[0].name, logo::DEFAULT, "the default first");
+    assert_eq!(GRID_BITMAP_SEEK as usize, logo::SEEK);
     for line in logo::c_source().lines() {
         assert!(
             line.len() <= 100,
@@ -113,20 +114,26 @@ fn encoding_round_trips_every_kind_of_row() {
     let enc = logo::encode(&img);
     assert_eq!(logo::decode(&enc, img.w, img.h), img.px);
     assert_eq!(enc.rows[3], enc.rows[4], "rows alike share their runs");
-    assert_eq!(
-        enc.data[usize::from(enc.rows[0])..][..3],
-        [0xf5, 0xf5, 0x75]
-    );
+    let (mut at, _) = sidou_tests::bitmap_codec::seek_row(&enc.data, enc.rows[0], img.w, 0);
+    let runs: Vec<u8> = (0..3)
+        .map(|_| sidou_tests::bitmap_codec::next(&enc.data, &mut at))
+        .collect();
+    assert_eq!(runs, [0xf5, 0xf5, 0x75]);
     let imgs: Vec<Image> = logo::LOGOS.iter().map(|l| logo::load(l.name)).collect();
     for img in &imgs {
         assert_eq!(logo::decode(&logo::encode(img), img.w, img.h), img.px);
     }
     // Encoded together, each image decodes to itself from the shared runs.
-    let (rows, data) = logo::encode_shared(&imgs.iter().collect::<Vec<_>>());
-    for (img, rows) in imgs.iter().zip(rows) {
+    let input: Vec<_> = imgs
+        .iter()
+        .zip(logo::LOGOS)
+        .map(|(img, l)| (img, l.format))
+        .collect();
+    let (rows, data, bases) = logo::encode_shared(&input);
+    for ((img, rows), base) in imgs.iter().zip(rows).zip(bases) {
         let enc = logo::Encoded {
             rows,
-            data: data.clone(),
+            data: data[base..].to_vec(),
         };
         assert_eq!(logo::decode(&enc, img.w, img.h), img.px);
     }
@@ -167,7 +174,8 @@ fn the_bitmaps_are_a_quarter_and_a_third_of_their_raw_size() {
     let mut total = 0;
     for (name, most) in [("cracktro-chrome", 4526), ("metal-chrome", 9753)] {
         let img = logo::load(name);
-        let (runs, offs) = logo::size(&img);
+        let format = logo::LOGOS.iter().find(|l| l.name == name).unwrap().format;
+        let (runs, offs) = logo::size(&img, format);
         let bytes = runs + offs;
         let raw = img.w * img.h / 2;
         println!(
@@ -178,7 +186,12 @@ fn the_bitmaps_are_a_quarter_and_a_third_of_their_raw_size() {
         total += bytes;
     }
     let imgs: Vec<Image> = logo::LOGOS.iter().map(|l| logo::load(l.name)).collect();
-    let (rows, data) = logo::encode_shared(&imgs.iter().collect::<Vec<_>>());
+    let input: Vec<_> = imgs
+        .iter()
+        .zip(logo::LOGOS)
+        .map(|(img, l)| (img, l.format))
+        .collect();
+    let (rows, data, _) = logo::encode_shared(&input);
     let together = data.len() + rows.iter().map(|r| 2 * r.len()).sum::<usize>();
     println!("together: {together} bytes ({total} apart)");
     assert!(
