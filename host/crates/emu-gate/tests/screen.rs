@@ -605,7 +605,7 @@ fn a_popup_ask_keeps_the_input_and_the_passes_within_the_allowance() {
             "status" => common::open_status(&mut m, &fw),
             "menu" => {
                 open_menu(&mut m, &fw);
-                select(&mut m, 3); // OCTAVE
+                select(&mut m, sidou_sys::VIEWS_MENU_OCTAVE as i32);
             }
             "scene" => open_scene(&mut m, &fw, 0),
             _ => settle(&mut m, &fw),
@@ -1413,7 +1413,20 @@ fn open_about(m: &mut Machine, fw: &Firmware) {
     m.turn(SELECT, MENU_ABOUT); // from the first item: the menu's first opening
     m.run_ms(10 * MENU_ABOUT as u64);
     m.turn(ALGORITHM, 1);
-    settle(m, fw);
+    let at = sidou_sys::ilp32::views::about + sidou_sys::ilp32::about::frame;
+    let _ = ui_byte(m, fw, at);
+    let phase_at = fw.symbol("ui") + at as u32;
+    // The existing golden is animation frame 9, independent of the menu walk's duration.
+    for _ in 0..SETTLE_MS {
+        m.run_ms(1);
+        let phase = m.soc.read32(phase_at);
+        if phase >= 9 {
+            assert_eq!(phase, 9);
+            break;
+        }
+    }
+    common::to_mid_frame(m, fw);
+    assert_eq!(m.soc.read32(phase_at), 9);
     assert_eq!(
         common::top_view(m, fw),
         fw.symbol("about_view"),
@@ -1794,7 +1807,20 @@ fn theme_and_back_to_live(m: &mut Machine, fw: &Firmware, theme_turn: i32) {
     m.turn(SELECT, -MENU_ITEMS);
     m.run_ms(10 * MENU_ITEMS as u64);
     press(m, HOME);
-    settle(m, fw);
+    let at = sidou_sys::ilp32::views::s + sidou_sys::ilp32::screen::frame;
+    let _ = ui_byte(m, fw, at);
+    let phase_at = fw.symbol("ui") + at as u32;
+    // The existing C64 golden starts its note on frame 139, independent of the menu order.
+    for _ in 0..SETTLE_MS {
+        let phase = m.soc.read32(phase_at);
+        assert!(phase <= 139);
+        if phase == 139 {
+            break;
+        }
+        m.run_ms(1);
+    }
+    common::to_mid_frame(m, fw);
+    assert_eq!(m.soc.read32(phase_at), 139);
     assert_eq!(common::top_view(m, fw), fw.symbol("live_view_view"));
 }
 

@@ -235,11 +235,11 @@ does not take plays the instrument (`app/views.h`,
 - **Menus:** a list of items, each a label and a value right-aligned against
   the edge (an arrow for an item that opens a view), SELECT moves the selection, ALGORITHM
   changes the value. The main menu (HOME) is drawn at **2× text** with six items of the
-  fifteen showing: a title bar (MENU, an arrow up and down for the items out
-  of sight, the item's number of the count; grey on black in HIGH CONTRAST, reverse video in C64)
+  sixteen showing: a title bar (MENU, an arrow up and down for the items out
+  of sight, the item's number of the count; light grey on black in HIGH CONTRAST, reverse video in C64)
   in rows 0-2, a line of 14 characters every 3 rows
   from row 4 (a cell of margin each side: a panel's bezel hides its edge), the items white with
-  their values cyan (C64: all light blue), and the selected item's whole line in a bar of its own
+  their values cyan (C64: light grey labels and white values), and the selected item's whole line in a bar of its own
   (yellow on dark grey; C64 reverse video; no blinking block: a 2×2-cell block would send two
   windows a blink, and a bar reads better at a glance). Moving the bar and clearing its old
   row take priority; forced restorations then share the remaining quota with other rows.
@@ -247,17 +247,20 @@ does not take plays the instrument (`app/views.h`,
   lifetime. A refresh does not expand the box on the same frame. A line is up to 60 cells, so a scroll
   (every line changes) is drawn a line or two a frame, the selected line first, within 190
   cells less what a popup or a toast draws the same frame (`MENU_FRAME_CELLS`, `menu.budget`),
-  and at once for the rows a layer let go or a view switch left (`menu.force_rows`). Labels
+  with forced restorations marked by `menu.force_rows`; deferred rows follow within the quota. Labels
   are short so that value and label fit a line: **PRE** is PRESET (the longest preset name,
   NOISE PERC, is 10 characters), **ROWS** TRACKER ROWS, and STORE shows `193K` (kilobytes
   free), `FOREIGN`, `FORMAT?` or `ERASE 20`; the popup says the whole names. The help below
   (`SELECT  MOVE`, `ALG   CHANGE`: ALG is ALGORITHM) is large too. The menus of M2's views
   (and a CHIP-sized menu of the song's) can use the same widget at either size
   (`menu.scale`).
-- **The MIDI page** (the menu's last item) is a framed menu at 1×, in the theme's colours: the
+- **The MIDI page** is a framed menu at 1×, in the theme's colours: the
   ring in the dim colour, SIDOU in the hot colour, the frame, its help lines and the
   version in the label colour, the items in the menu-item colour and the cursor a full
   block in the same colour (it blinks).
+
+  The main menu puts playing views first: CHIP, TRACKER, SCENE, SONG, then PRE, OCTAVE,
+  KEYS, SOUNDS, ROWS, CARDS, STORE, THEME, STATUS, MIDI, CHARSET and ABOUT.
 - **Toast:** reverse-video text (black on yellow; C64 blue on light blue) in **2× text** on rows 27-28 for 1.5 s,
   saying what changed: up to 13 characters; a longer one breaks at a space into two lines
   (rows 25-28, up to 26 characters), and one whose words fit neither (`SNG: A-4 PITCH NOT

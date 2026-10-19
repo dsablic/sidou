@@ -106,7 +106,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **REC (button 13)** | record mode on and off |
 | **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; the keys sound nothing while GLO is held |
 | **SELECT (encoder 0)**, in the menu | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, CARDS (the title cards: clockwise ON, counter-clockwise OFF), STORE ([format confirmation](#settings-and-store)), KEYS (clockwise A, counter-clockwise AUTO: [which chip the keys play](#which-chip-the-keys-play)), SOUNDS (the UI sounds, below: clockwise ON, counter-clockwise OFF), TRACKER ROWS (ROWS in the menu; clockwise SCROLL, counter-clockwise BAR), THEME (the screens' colours: clockwise C64, counter-clockwise HIGH CONTRAST, the default; see [the theme](../art/README.md#theme)); turned clockwise on CHIP, opens the CHIP view (behind THE CHIP's title card), on TRACKER the song views, on STATUS the status screen, on SCENE the generative pieces (behind THE SCENE's title card), on CHARSET the glyph sheet, on SONG the [song-file actions](#song), on ABOUT the credits, on MIDI [the MIDI page](#the-midi-page) |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, KEYS, SOUNDS, TRACKER ROWS (ROWS), CARDS ([title cards](#title-cards)), STORE ([format confirmation](#settings-and-store)), THEME; turned clockwise on CHIP opens the CHIP view, on TRACKER the song views, on SCENE the generative pieces, on SONG the [song-file actions](#song), on STATUS the status screen, on MIDI the MIDI page, on CHARSET the glyph sheet, on ABOUT the credits |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: A/B tabs, CHIP (the profile and the character), DIST, MOD, FX, EXPERT; it stops at either end |
 | **ALGORITHM (encoder 1)**, on CHIP | steps the focused section's choice: the profile on CHIP, the algorithm on a slot, or the four-control page on EXPERT; EDIT held on CHIP or EXPERT selects the USER save target |
 | **SELECT (encoder 0)**, in TRACKER | the shown voice: voice 1, 2, 3 and round (clockwise the next, counter-clockwise the one before); the note keys then audition on it |
@@ -611,8 +611,8 @@ moves the cursor, ALGORITHM changes the value under it, HOME goes back). The mod
 releases what MIDI was playing. The page's setup stays in RAM and is not included in saved
 settings; a song carries its own mode in its `MIDI` chunk.
 
-MIDI is the last item in the large main menu. The options page shows eight compact rows
-at a time and scrolls to CLOCK and CLOCK OUT. Turning ALGORITHM names the selected item
+MIDI follows STATUS in the large main menu. The options page shows ten compact rows
+at the font's own size, including CLOCK and CLOCK OUT. Turning ALGORITHM names the selected item
 and its value in the large value popup; closing it restores the page underneath.
 
 | Item | Values | What |
@@ -703,12 +703,12 @@ The **status screen** (STATUS in the menu) shows the numbers: the chip, preset, 
 cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS each slot's
 algorithm and Mix (`>` marks the selected slot) with the selected slot's Amount, A and B.
 
-The menu (HOME) is drawn at 2 times the font, six items of the fifteen at a time (the
+The menu (HOME) is drawn at 2 times the font, six items of the sixteen at a time (the
 selected one a line in reverse video; the title bar says which it is of how many, and an arrow
 up or down when items are out of sight, and the list scrolls with SELECT). It lists CHIP (the
-CHIP view, above), TRACKER (the song views, above), PRE (the preset), OCTAVE, CARDS (the title cards, above), STORE, KEYS,
-SOUNDS, ROWS (TRACKER ROWS) and THEME with their values, then STATUS, SCENE (the generative pieces,
-above), CHARSET (the glyph sheet: the font and the palette) and ABOUT. A line is 14 characters:
+CHIP view, above), TRACKER (the song views), SCENE (the generative pieces), SONG (the song-file
+actions), PRE (the preset), OCTAVE, KEYS, SOUNDS, ROWS (TRACKER ROWS), CARDS (title cards),
+STORE, THEME, STATUS, MIDI, CHARSET (the glyph sheet) and ABOUT. A line is 14 characters:
 PRE, ROWS and STORE's kilobytes (`193K`, FOREIGN, FORMAT?, `ERASE 20`) are short so that the
 longest preset name (NOISE PERC) and value fit beside their labels; the
 [popup](#value-popup) says the whole names. LIVE's scopes, TRACKER, CHIP, STATUS and ABOUT keep

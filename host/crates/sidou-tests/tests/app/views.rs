@@ -802,8 +802,14 @@ fn the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video
     ui.settle();
     // The selected item's line (item 0) and the title bar (rows 0-2) are in reverse video:
     // MENU, and which item of how many.
-    assert_eq!(&ui.row(1)[1..15], format!("MENU   #  1/{VIEWS_MENU_ITEMS}"));
-    assert_eq!(ui.row(2), ui.row(1), "large text: two rows a line");
+    let heading = |ui: &Ui| {
+        ui.big(1, 1, 2, 14)
+            .chars()
+            .map(|c| if c.is_ascii() { c } else { '#' })
+            .collect::<String>()
+    };
+    assert_eq!(heading(&ui), format!("MENU   #  1/{VIEWS_MENU_ITEMS}"));
+    assert!((0..14).all(|i| ui.g.src[COLS + 1 + 2 * i] == ui.g.src[2 * COLS + 1 + 2 * i]));
     let t = unsafe { &*theme_get(THEME_HIGH_CONTRAST) };
     assert_eq!(
         ui.g.attr[0],
@@ -818,10 +824,10 @@ fn the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video
         [
             format!("{:<13}#", "CHIP"),
             format!("{:<13}#", "TRACKER"),
+            format!("{:<13}#", "SCENE"),
+            format!("{:<13}#", "SONG"),
             format!("{:<3}{:>11}", "PRE", "SAW LEAD"),
             format!("{:<6}{:>8}", "OCTAVE", "+0"),
-            format!("{:<5}{:>9}", "CARDS", "ON"),
-            format!("{:<5}{:>9}", "STORE", "NONE"),
         ]
     );
     // The arrow of an item that opens a view, in the line's last character (2 cells).
@@ -837,7 +843,7 @@ fn the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video
     let end_top = VIEWS_MENU_ITEMS - VIEWS_MENU_SHOWN;
     assert_eq!(u32::from(ui.v.home.top), end_top);
     assert_eq!(
-        &ui.row(1)[1..15],
+        heading(&ui),
         format!("MENU  #  {VIEWS_MENU_ITEMS}/{VIEWS_MENU_ITEMS}")
     );
     let at_end: Vec<String> = (end_top..VIEWS_MENU_ITEMS)
@@ -846,19 +852,19 @@ fn the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video
     assert_eq!(
         at_end,
         [
+            format!("{:<5}{:>9}", "STORE", "NONE"),
+            format!("{:<5}{:>9}", "THEME", "HIGH"),
             format!("{:<13}#", "STATUS"),
-            format!("{:<13}#", "SCENE"),
-            format!("{:<13}#", "CHARSET"),
-            format!("{:<13}#", "SONG"),
-            format!("{:<13}#", "ABOUT"),
             format!("{:<13}#", "MIDI"),
+            format!("{:<13}#", "CHARSET"),
+            format!("{:<13}#", "ABOUT"),
         ]
     );
     assert_eq!(ui.g.src[COLS + 13], FONT_ARROW_UP as u8);
     assert_eq!(ui.g.src[COLS + 15], b' ');
     // The help under the items, large text as well.
-    assert!(ui.row(24).contains("SELECT  MOVE"));
-    assert!(ui.row(26).contains("ALG   CHANGE"));
+    assert_eq!(ui.big(24, 1, 2, 12), "SELECT  MOVE");
+    assert_eq!(ui.big(26, 1, 2, 12), "ALG   CHANGE");
 }
 
 #[test]
@@ -867,8 +873,8 @@ fn every_menu_item_is_reachable_and_readable_as_the_cursor_walks_down_and_up() {
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     let labels = [
-        "CHIP", "TRACKER", "PRE", "OCTAVE", "CARDS", "STORE", "KEYS", "SOUNDS", "ROWS", "THEME",
-        "STATUS", "SCENE", "CHARSET", "SONG", "ABOUT", "MIDI",
+        "CHIP", "TRACKER", "SCENE", "SONG", "PRE", "OCTAVE", "KEYS", "SOUNDS", "ROWS", "CARDS",
+        "STORE", "THEME", "STATUS", "MIDI", "CHARSET", "ABOUT",
     ];
     assert_eq!(labels.len(), VIEWS_MENU_ITEMS as usize);
     let walk = |ui: &mut Ui, i: usize| {

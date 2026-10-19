@@ -492,7 +492,10 @@ fn the_menus_algorithm_shows_the_item_in_full_and_no_toast_says_it_again() {
     assert_eq!(says(&ui), ("OCTAVE".to_owned(), "+1".to_owned()));
     assert_eq!(ui.toast(), None, "the popup says it: no toast over it");
     ui.popup_gone();
-    ui.turn(PANEL_ENC_SELECT, (VIEWS_MENU_ROWS - 3) as i32);
+    ui.turn(
+        PANEL_ENC_SELECT,
+        (VIEWS_MENU_ROWS - VIEWS_MENU_OCTAVE) as i32,
+    );
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     open(&mut ui);
     assert_eq!(says(&ui), ("TRACKER ROWS".to_owned(), "SCROLL".to_owned()));
@@ -587,7 +590,12 @@ fn a_view_switch_takes_the_popup_away_in_the_next_frame() {
     assert!(!shown(&ui));
     assert_eq!(ui.v.s.layers, 0);
     ui.settle();
-    assert_eq!(&ui.row(1)[1..15], format!("MENU   #  1/{VIEWS_MENU_ITEMS}"));
+    let heading: String = ui
+        .big(1, 1, 2, 14)
+        .chars()
+        .map(|c| if c.is_ascii() { c } else { '#' })
+        .collect();
+    assert_eq!(heading, format!("MENU   #  1/{VIEWS_MENU_ITEMS}"));
 }
 
 #[test]
@@ -625,7 +633,7 @@ fn the_popup_covers_its_rows_and_guards_them_from_the_views_large_text() {
     }
     // The menu is whole again under it: its lines read as before.
     assert_eq!(
-        ui.menu_line(2).trim_end(),
+        ui.menu_line(VIEWS_MENU_PRESET as usize).trim_end(),
         format!("{:<3}{:>11}", "PRE", "SAW LEAD")
     );
 }

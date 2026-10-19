@@ -922,20 +922,20 @@ static void midi_open(void* ctx, int32_t steps) {
  * them. The popup (below) says the whole names. */
 static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"CHIP", NULL, chip_open},             {"TRACKER", NULL, tracker_open},
+    {"SCENE", NULL, scene_open},           {"SONG", NULL, song_open},
     {"PRE", preset_value, preset_turn},    {"OCTAVE", octave_value, octave_turn},
-    {"CARDS", cards_value, cards_turn},    {"STORE", store_value, store_turn},
     {"KEYS", keys_value, keys_turn},       {"SOUNDS", sounds_value, sounds_turn},
-    {"ROWS", rows_value, rows_turn},       {"THEME", theme_value, theme_turn},
-    {"STATUS", NULL, status_open},         {"SCENE", NULL, scene_open},
-    {"CHARSET", NULL, charset_open},       {"SONG", NULL, song_open},
-    {"ABOUT", NULL, about_open},           {"MIDI", NULL, midi_open},
+    {"ROWS", rows_value, rows_turn},       {"CARDS", cards_value, cards_turn},
+    {"STORE", store_value, store_turn},    {"THEME", theme_value, theme_turn},
+    {"STATUS", NULL, status_open},         {"MIDI", NULL, midi_open},
+    {"CHARSET", NULL, charset_open},       {"ABOUT", NULL, about_open},
 };
-_Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_PRESET == 2u &&
-                   VIEWS_MENU_CARDS == 4u && VIEWS_MENU_STORE == 5u && VIEWS_MENU_KEYS == 6u &&
-                   VIEWS_MENU_SOUNDS == 7u && VIEWS_MENU_ROWS == 8u && VIEWS_MENU_THEME == 9u &&
-                   VIEWS_MENU_STATUS == 10u && VIEWS_MENU_SCENE == 11u &&
-                   VIEWS_MENU_CHARSET == 12u && VIEWS_MENU_SONG == 13u &&
-                   VIEWS_MENU_ABOUT == 14u && VIEWS_MENU_MIDI == 15u,
+_Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_SCENE == 2u &&
+                   VIEWS_MENU_SONG == 3u && VIEWS_MENU_PRESET == 4u && VIEWS_MENU_OCTAVE == 5u &&
+                   VIEWS_MENU_KEYS == 6u && VIEWS_MENU_SOUNDS == 7u && VIEWS_MENU_ROWS == 8u &&
+                   VIEWS_MENU_CARDS == 9u && VIEWS_MENU_STORE == 10u && VIEWS_MENU_THEME == 11u &&
+                   VIEWS_MENU_STATUS == 12u && VIEWS_MENU_MIDI == 13u &&
+                   VIEWS_MENU_CHARSET == 14u && VIEWS_MENU_ABOUT == 15u,
                "the menu's items");
 _Static_assert(LIVE_THEMES == THEME_COUNT, "live.theme holds a theme's id");
 

@@ -130,21 +130,22 @@ extern "C" {
 #define VIEWS_MENU_ITEMS 16u
 #define VIEWS_MENU_CHIP 0u
 #define VIEWS_MENU_TRACKER 1u
-#define VIEWS_MENU_CARDS 4u
-#define VIEWS_MENU_STORE 5u
+#define VIEWS_MENU_CARDS 9u
+#define VIEWS_MENU_STORE 10u
 #define VIEWS_MENU_KEYS 6u
 #define VIEWS_MENU_SOUNDS 7u
 #define VIEWS_MENU_ROWS 8u
-#define VIEWS_MENU_THEME 9u
+#define VIEWS_MENU_THEME 11u
 /* PRESET (the item that shows PRE), and the items the menu shows at once. */
-#define VIEWS_MENU_PRESET 2u
+#define VIEWS_MENU_PRESET 4u
+#define VIEWS_MENU_OCTAVE 5u
 #define VIEWS_MENU_SHOWN 6u
-#define VIEWS_MENU_STATUS 10u
-#define VIEWS_MENU_SCENE 11u
-#define VIEWS_MENU_CHARSET 12u
-#define VIEWS_MENU_SONG 13u
-#define VIEWS_MENU_ABOUT 14u
-#define VIEWS_MENU_MIDI 15u
+#define VIEWS_MENU_STATUS 12u
+#define VIEWS_MENU_SCENE 2u
+#define VIEWS_MENU_CHARSET 14u
+#define VIEWS_MENU_SONG 3u
+#define VIEWS_MENU_ABOUT 15u
+#define VIEWS_MENU_MIDI 13u
 /* The MIDI page's items (app/midi_route.h): MODE, CHANNEL, OPTION, LEGATO, CHORD 2, CHORD 3,
  * ARP RATE, ROWS/BEAT, and the clock's (app/midi_sync.h): CLOCK, CLOCK OUT. */
 #define VIEWS_MIDI_ITEMS 10u
