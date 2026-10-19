@@ -334,17 +334,21 @@ the song stopped, only the voices you jam sound; the song's own notes never play
 ## Title cards
 
 A major view entered from the menu opens behind a short title card in the logo's metal
-lettering (`app/title_card.h`): **THE CHIP** before CHIP, **THE SCENE** before SCENE, and
-**THE OSCILLATOR** before LIVE when HOME goes back to it from the menu (not at power-on, after
-the boot, nor when MIDI learn's frame closes). The glow fades in, the title
-wipes in, the card holds for a second and the view cuts in, about 2.6 s in all.
+lettering (`app/title_card.h`): **THE CHIP** before CHIP, **THE SCENE** before SCENE, and,
+with CARDS at ALWAYS, **THE OSCILLATOR** before LIVE when HOME goes back to it from the menu
+(not at power-on, after the boot, nor when MIDI learn's frame closes). The glow fades in, the
+title wipes in, the card holds for a second and the view cuts in, about 2.6 s in all. By
+default (ONCE) each of THE CHIP and THE SCENE plays the first time you open that view after
+power-on and not again; the way back to LIVE never plays a card, it is a wipe.
 
 - **Any button or encoder** ends the card at once and does nothing else (FX does not toggle
   the chip, OCT+ does not step the octave, SELECT does not pick a piece or move CHIP's focus).
 - **A note**, from the keys or MIDI, plays as ever and ends the card. The keys, MIDI and the
   audio are never held up by it.
-- **CARDS** in the menu turns the title cards off (ALGORITHM counter-clockwise on it) and on
-  again (clockwise). They are on by default; the setting persists across power-off.
+- **CARDS** in the menu is **OFF**, **ONCE** or **ALWAYS** (ALGORITHM clockwise steps OFF,
+  ONCE, ALWAYS, counter-clockwise back, and it stops at the ends). **ONCE** is the default:
+  THE CHIP and THE SCENE the first time each since power-on, none on the way back to LIVE.
+  **ALWAYS** plays all three every time; **OFF** none. The setting persists across power-off.
 
 ## CHIP
 

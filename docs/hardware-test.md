@@ -270,7 +270,7 @@ which printed control did it.
 | SCL (button 3) | selects the next effect slot (the play mark on LIVE's DIST, MOD and FX lines moves) | | [ ] |
 | ENV (button 4) | the selected slot's next algorithm (the name on LIVE's slot line changes) | | [ ] |
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the status screen and the CHIP view; Mix as LIVE's bar), in every view; EDIT lit while the slot is on | | [ ] |
-| HOME (button 8) | from LIVE, the menu (a wipe down from the top); in the menu, back to LIVE behind THE OSCILLATOR's title card (below; with CARDS OFF, a wipe up from the bottom) | | [ ] |
+| HOME (button 8) | from LIVE, the menu (a wipe down from the top); in the menu, back to LIVE (a wipe up from the bottom; behind THE OSCILLATOR's title card only with CARDS at ALWAYS, below) | | [ ] |
 | SAVE (button 9) | clean release saves (7.1–7.2); held + knob learns (7) | | [ ] |
 | SEQ (button 11) | from any view, STEP; then TRACKER, ORDER, INSTR, TABLE and back to STEP. Each page's primary values are readable at 2×; HOME returns to the previous non-song view | | [ ] |
 | SELECT / ALGORITHM, in TRACKER | SELECT moves one row (EDIT held: an 8-row page); ALGORITHM shows V2 in cyan, V3 in light green, then V1 again; the cursor's voice and audition follow the voice shown | | [ ] |
@@ -284,7 +284,7 @@ which printed control did it.
 | ORDER / INSTR / TABLE | ORDER: SELECT entries, ALGORITHM voice (subtune on its selector), K1 value, K2 kind, EDIT + PRESETS insert/delete, ARP restart, PLAY from that subtune/entry. INSTR: PRESETS instrument, SELECT parameter/name character, K1 coarse/K2 fine; keys audition. EDIT + SEQ on a pointer opens its table. TABLE: ALGORITHM kind, SELECT row, K1/K2 bytes; meanings at the foot | | [ ] |
 | GLO (button 7) held + the leftmost note key | while SIDOU LOOP plays, its voice 1 goes silent; TRACKER's V1 turns grey and says MUT in red beside the pattern (a muted voice shown as a strip: grey and short), LIVE's top line M1 in red in the preset's place; the key sounds nothing; again: back. GLO + the fourth key: only voice 1 sounds, SOL beside V1's pattern | | [ ] |
 | SELECT (encoder 0), in the menu | the selected line (reverse video) moves between CHIP, TRACKER, PRE (PRESET), OCTAVE, CARDS, STORE, KEYS, SOUNDS, ROWS (TRACKER ROWS), THEME, STATUS, SCENE, CHARSET and ABOUT; six lines show at a time and the list scrolls with it, the title bar's arrows telling which way more is | | [ ] |
-| ALGORITHM (encoder 1), in the menu | changes the item under the selection (PRESET; OCTAVE -3..+3; CARDS: counter-clockwise OFF, clockwise ON; THEME: counter-clockwise HIGH, the default, clockwise C64: every screen, the menu included, changes colours at once); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
+| ALGORITHM (encoder 1), in the menu | changes the item under the selection (PRESET; OCTAVE -3..+3; CARDS: OFF, ONCE (the default), ALWAYS, one step a detent; THEME: counter-clockwise HIGH, the default, clockwise C64: every screen, the menu included, changes colours at once); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
 | SELECT (encoder 0), on CHIP | the focus (the yellow tab, or the yellow title on the A/B tabs) moves tabs, CHIP, DIST, MOD, FX, EXPERT and stops at either end; onto a slot that was not the selected one, the toast says SLOT DIST (or MOD, FX); onto the slot already selected (DIST at power-on), no toast | | [ ] |
 | ALGORITHM (encoder 1), on CHIP | on CHIP the PROFILE steps 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581, then filled USER slots (7.2; MODEL follows; held notes attack again on the new chip, as at a model change); on a slot its algorithm, OFF to the last, at 3× under the tabs | | [ ] |
 | K1..K4, on CHIP | on CHIP AGE, DAC, THUMP, BLEED (values at 3× with bars, in the knob's colour; the sound darkens with AGE, a released note whispers with DAC); on a slot its four controls, named for the algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX) | | [ ] |
@@ -412,6 +412,9 @@ hand, in the HIGH CONTRAST theme (the default) and again after THEME to C64 in t
 
 Title cards ([controls](reference/controls.md#title-cards)):
 
+- [ ] With CARDS at ONCE (the default, set it first in the menu), the first SCENE and the first
+  CHIP after power-on play their card and the second opening of either does not; the way back
+  to LIVE plays none. With ALWAYS every opening plays it, THE OSCILLATOR's included.
 - [ ] Menu, SCENE: THE SCENE's card first (as `assets/logo/title-scene.png`):
   a dark blue to purple dithered glow fading in over about a second in four
   steps, THE and SCENE in the metal lettering wiping in from the left, a
@@ -420,17 +423,18 @@ Title cards ([controls](reference/controls.md#title-cards)):
   flashes. Time from the turn to SCENE (about 2.6 s):
 - [ ] Menu, CHIP: THE CHIP's card (as `assets/logo/title-chip.png`), then the
   CHIP view in bands.
-- [ ] Menu, HOME: THE OSCILLATOR's card, then LIVE. Not at power-on, not
+- [ ] CARDS at ALWAYS, menu, HOME: THE OSCILLATOR's card, then LIVE. Not at power-on, not
   after the boot, and not when MIDI learn's frame closes.
 - [ ] OCT+, FX or SELECT on a card: the view comes in at once, and the
   octave, the chip and SCENE's piece stay as they were.
 - [ ] A note key on a card, and a note over MIDI: it sounds at once (no
   delay against playing on LIVE) and the view comes in.
 - [ ] A chord held and played through a card: no click, crackle or late note.
-- [ ] Menu, CARDS turned counter-clockwise: OFF; SCENE and HOME back to LIVE
-  now wipe in with no card. Clockwise: ON, and the cards are back. Set OFF,
+- [ ] Menu, CARDS turned counter-clockwise to OFF: SCENE and HOME back to LIVE
+  now wipe in with no card. Clockwise: ONCE, then ALWAYS, and the cards are back. Set OFF,
   wait at least 6 s with no further changes and the keys released, then power-cycle:
-  CARDS stays OFF. Restore ON if needed for the remaining title-card checks.
+  CARDS stays OFF; set ALWAYS and power-cycle: it stays ALWAYS. Restore ALWAYS or ONCE for the
+  remaining title-card checks (they need every card to play).
 
 CHIP (menu, CHIP; [controls](reference/controls.md#chip)):
 

@@ -45,8 +45,9 @@
  *   over CHIP, THE SCENE over SCENE, THE OSCILLATOR over LIVE when HOME goes back to it from
  *   the menu (not at power-on, after the boot, nor when MIDI learn's frame closes). It ends by
  *   itself, on any control (which does nothing else) or on a note (which plays), and the view
- *   under it cuts in (SCREEN_BANDS). The menu's CARDS item turns the cards off and on (on at
- *   power-on).
+ *   under it cuts in (SCREEN_BANDS). The menu's CARDS item: OFF, ONCE (the default: THE CHIP
+ *   and THE SCENE the first time each since power-on, and never THE OSCILLATOR: the way back to
+ *   LIVE is a wipe) or ALWAYS (all three, every time).
  *
  * Routing, for each button press and encoder turn:
  * 0. SAVE (app/save_key.h), before everything else: its press goes nowhere; its clean release
@@ -199,7 +200,7 @@ typedef struct {
     title_card card;
     song_view song;
     views_song_menu songs;
-    uint8_t cards; /* 1: title cards on (the menu's CARDS) */
+    uint8_t cards; /* the menu's CARDS: 0 OFF, 1 ONCE, 2 ALWAYS */
     ui_sound* snd; /* the UI sounds (the menu's SOUNDS, app/ui_sound.h); NULL: none */
     settings* set; /* what SAVE saves and the menu's STORE shows (views_settings); NULL: none */
     uint8_t formatting; /* a format's erases run (forced: the user asked) */
@@ -218,6 +219,7 @@ typedef struct {
     /* When GLO was last pressed, plus 1 (0: never), for the double tap that latches its layer. */
     uint32_t glo_tap_ms;
     step_view step;
+    uint8_t cards_seen; /* ONCE: bit id, the card id has played since power-on */
 } views;
 
 extern const view views_status;

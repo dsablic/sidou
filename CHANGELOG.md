@@ -20,6 +20,9 @@ All notable changes are documented here. The format follows
   character), and K4 writes GoatTracker's own `7XY` waveform command, which holds as it does
   there: two kinds, one meaning each, shown apart (`LOCK` yellow, `SET` cyan). SEQ now steps
   STEP, TRACKER, ORDER, INSTR, TABLE and round.
+- Ergonomics: title cards play once per power-on by default (CARDS: OFF, ONCE, ALWAYS); the
+  way back to LIVE never plays one unless ALWAYS. Settings byte 1 holds 0, 1 or 2 (an old
+  record's ON reads as ONCE); no schema change.
 - Ergonomics: SCENE's FIRE keeps a low flame in silence, the piece's name is toasted on entry,
   and ALGORITHM steps the piece like SELECT.
 - Ergonomics: an effect algorithm picked from the panel (ENV, CHIP's ALGORITHM on a slot) starts

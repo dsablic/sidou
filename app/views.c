@@ -360,14 +360,17 @@ static void octave_turn(void* ctx, int32_t steps) {
 
 static void cards_value(void* ctx, char* buf) {
     const views* v = ctx;
-    join(buf, MENU_VALUE_CHARS, v->cards ? "ON" : "OFF", "");
+    static const char* const NAME[3] = {"OFF", "ONCE", "ALWAYS"};
+    join(buf, MENU_VALUE_CHARS, NAME[v->cards < 3u ? v->cards : 1u], "");
 }
 
-/* Clockwise on, counter-clockwise off. */
+/* Clockwise steps OFF, ONCE, ALWAYS, counter-clockwise back; clamped at the ends. */
 static void cards_turn(void* ctx, int32_t steps) {
     views* v = ctx;
-    if (steps != 0) {
-        v->cards = (uint8_t)(steps > 0);
+    int32_t to = (int32_t)v->cards + steps;
+    to = to < 0 ? 0 : (to > 2 ? 2 : to);
+    if (to != (int32_t)v->cards) {
+        v->cards = (uint8_t)to;
         v->l->settings_dirty = 1;
     }
 }
@@ -448,9 +451,17 @@ static void store_turn(void* ctx, int32_t steps) {
     }
 }
 
-/* Title card id over the view on top, if the cards are on: from the views' input only (a push
- * from the frame would draw a frame of the view first). */
+/* Title card id over the view on top, as the CARDS option says: ALWAYS every one, ONCE THE CHIP
+ * and THE SCENE the first time each since power-on and never THE OSCILLATOR, OFF none. From the
+ * views' input only (a push from the frame would draw a frame of the view first). */
 static void show_card(views* v, title_card_id id) {
+    uint8_t seen = (uint8_t)(1u << id);
+    if (v->cards == 1u) {
+        if (id == TITLE_CARD_OSCILLATOR || (v->cards_seen & seen)) {
+            return;
+        }
+        v->cards_seen |= seen;
+    }
     if (v->cards) {
         title_card_init(&v->card, id, v->l);
         screen_push(&v->s, &title_card_view, &v->card, SCREEN_CUT);
@@ -1576,6 +1587,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->sc = sc;
     v->version = version;
     v->cards = 1;
+    v->cards_seen = 0;
     v->snd = NULL;
     v->set = NULL;
     v->format_arm = 0;

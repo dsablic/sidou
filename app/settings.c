@@ -41,7 +41,7 @@ uint32_t settings_gather(const settings* s, uint8_t* out) {
     const live* l = s->l;
     uint32_t n = 0;
     out[n++] = SETTINGS_VERSION;
-    out[n++] = (uint8_t)(*s->cards != 0);
+    out[n++] = *s->cards;
     out[n++] = (uint8_t)(s->snd && s->snd->on);
     out[n++] = l->keys_mode;
     out[n++] = l->preset;
@@ -96,7 +96,7 @@ int settings_apply(settings* s, const uint8_t* rec, uint32_t len) {
         }
     }
     live* l = s->l;
-    *s->cards = (uint8_t)(rec[1] != 0);
+    *s->cards = rec[1] <= 2u ? rec[1] : 1u; /* an old record's 1 (ON) is ONCE */
     if (s->snd) {
         ui_sound_set(s->snd, rec[2] != 0);
     }

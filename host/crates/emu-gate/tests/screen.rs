@@ -1312,10 +1312,10 @@ fn the_glyph_sheet_opens_from_the_menu_and_home_goes_back() {
     m.run_ms(300);
     common::to_mid_frame(&mut m, &fw);
     compare_golden(&build, "menu", &m.soc.lcd.fb, &[]);
-    // Back to LIVE behind THE OSCILLATOR's card.
+    // Back to LIVE: a wipe, no card with ONCE (the default).
     press(&mut m, HOME);
-    assert!(showing_card(&mut m, &fw), "no card back to LIVE");
-    past_card(&mut m, &fw);
+    m.run_ms(2 * UI_PERIOD_MS);
+    assert!(!showing_card(&mut m, &fw), "a card back to LIVE");
     settle(&mut m, &fw);
     assert!(m.soc.lcd.fb == live, "LIVE differs after the glyph sheet");
 }
@@ -2859,6 +2859,7 @@ fn starting_a_piece_holds_the_main_loop_within_the_poll_allowance() {
         return;
     };
     let mut m = booted(&fw);
+    cards_always(&mut m, &fw); // THE SCENE every time the menu opens it
     open_scene(&mut m, &fw, 0);
     m.watch_calls(fw.symbol("ui_encoder"));
     m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
@@ -3613,8 +3614,17 @@ fn into_chip_card(m: &mut Machine, fw: &Firmware) {
     m.turn(ALGORITHM, 1);
 }
 
-/// HOME from the menu, from LIVE: THE OSCILLATOR's card.
+/// The CARDS option at ALWAYS (the default, ONCE, plays THE CHIP and THE SCENE the first time
+/// each and never THE OSCILLATOR), set in the views' RAM: the menu's walk to it is the unit
+/// tests'.
+fn cards_always(m: &mut Machine, fw: &Firmware) {
+    m.soc
+        .write8(fw.symbol("ui") + sidou_sys::ilp32::views::cards as u32, 2);
+}
+
+/// HOME from the menu, from LIVE: THE OSCILLATOR's card (the cards at ALWAYS).
 fn into_oscillator_card(m: &mut Machine, fw: &Firmware) {
+    cards_always(m, fw);
     open_menu(m, fw);
     common::to_mid_frame(m, fw);
     press(m, HOME);
@@ -3710,6 +3720,65 @@ fn title_cards_match_their_goldens_and_their_sources() {
     settle(&mut m, &fw);
     assert_eq!(common::top_view(&mut m, &fw), fw.symbol("live_view_view"));
     compare_golden(&build, "live", &m.soc.lcd.fb, &[]);
+}
+
+/// ONCE, the default: THE CHIP plays the first time CHIP opens and not the second; HOME from
+/// the menu to LIVE plays no card; with ALWAYS the second opening plays it again.
+#[test]
+fn a_card_plays_once_then_not() {
+    let Some((_, fw)) = fixture("the title card test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    into_chip_card(&mut m, &fw);
+    m.run_ms(UI_PERIOD_MS);
+    assert!(showing_card(&mut m, &fw), "no card the first time");
+    past_card(&mut m, &fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("chip_view_view"));
+    press(&mut m, HOME);
+    settle(&mut m, &fw);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(2 * UI_PERIOD_MS);
+    assert!(!showing_card(&mut m, &fw), "a card the second time");
+    settle(&mut m, &fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("chip_view_view"));
+    press(&mut m, HOME);
+    settle(&mut m, &fw);
+    press(&mut m, HOME);
+    m.run_ms(2 * UI_PERIOD_MS);
+    assert!(!showing_card(&mut m, &fw), "THE OSCILLATOR under ONCE");
+    settle(&mut m, &fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("live_view_view"));
+}
+
+/// ALWAYS plays every card every time; OFF plays none (the cards byte set in RAM).
+#[test]
+fn cards_always_and_off() {
+    let Some((_, fw)) = fixture("the title card test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    cards_always(&mut m, &fw);
+    for _ in 0..2 {
+        into_chip_card(&mut m, &fw);
+        m.run_ms(2 * UI_PERIOD_MS);
+        assert!(showing_card(&mut m, &fw), "ALWAYS: no THE CHIP");
+        past_card(&mut m, &fw);
+        press(&mut m, HOME);
+        settle(&mut m, &fw);
+        press(&mut m, HOME);
+        m.run_ms(2 * UI_PERIOD_MS);
+        assert!(showing_card(&mut m, &fw), "ALWAYS: no THE OSCILLATOR");
+        past_card(&mut m, &fw);
+    }
+    let mut m = booted(&fw);
+    m.soc
+        .write8(fw.symbol("ui") + sidou_sys::ilp32::views::cards as u32, 0);
+    into_scene_card(&mut m, &fw);
+    m.run_ms(2 * UI_PERIOD_MS);
+    assert!(!showing_card(&mut m, &fw), "OFF: a card");
+    settle(&mut m, &fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("scene_view_view"));
 }
 
 /// Any button or knob on a card ends it at the next frame and does nothing else: FX would

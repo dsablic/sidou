@@ -201,6 +201,7 @@ fn the_glow_fades_in_through_its_dither_levels() {
 #[test]
 fn home_from_the_menu_to_live_shows_the_oscillator_card() {
     let mut ui = at_rest();
+    ui.v.cards = 2; // ALWAYS: ONCE never plays THE OSCILLATOR
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     assert_eq!(ui.top(), "MENU");
@@ -271,6 +272,7 @@ fn a_button_or_a_knob_skips_and_does_nothing_else() {
         PANEL_ENC_K4,
     ] {
         let mut ui = at_rest();
+        ui.v.cards = 2;
         ui.press(PANEL_BTN_HOME);
         ui.settle();
         ui.press(PANEL_BTN_HOME);
@@ -333,23 +335,49 @@ fn nothing_draws_over_the_card() {
     );
 }
 
-/// The menu's CARDS item: on at power-on; counter-clockwise off, and then neither SCENE nor
-/// LIVE shows a card; clockwise on again.
+fn shows_cards(ui: &Ui, value: &str) -> bool {
+    (0..30).any(|r| {
+        let row = ui.row(r);
+        row.contains("CARDS") && row.contains(value)
+    })
+}
+
+/// The menu's CARDS item: OFF, ONCE (the default) and ALWAYS; ALGORITHM steps through them and
+/// stops at the ends. OFF shows neither SCENE's nor LIVE's card.
 #[test]
-fn the_cards_option_turns_them_off_and_on() {
+fn the_cards_option_steps_off_once_always() {
     let mut ui = at_rest();
-    assert_eq!(ui.v.cards, 1, "on at power-on");
+    assert_eq!(ui.v.cards, 1, "ONCE at power-on");
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
     ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_CARDS as i32);
+    ui.frame();
+    assert!(shows_cards(&ui, "ONCE"), "the menu shows CARDS ONCE");
     ui.turn(PANEL_ENC_ALGORITHM, -1);
     assert_eq!(ui.v.cards, 0);
     ui.frame();
-    assert!(
-        (0..30).any(|r| ui.row(r).contains("CARDS") && ui.row(r).contains("OFF")),
-        "the menu shows CARDS OFF"
-    );
+    assert!(shows_cards(&ui, "OFF"), "the menu shows CARDS OFF");
+    ui.turn(PANEL_ENC_ALGORITHM, -1);
+    assert_eq!(ui.v.cards, 0, "OFF is the end");
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(ui.v.cards, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(ui.v.cards, 2);
+    ui.frame();
+    assert!(shows_cards(&ui, "ALWAYS"), "the menu shows CARDS ALWAYS");
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(ui.v.cards, 2, "ALWAYS is the end");
+    ui.turn(PANEL_ENC_ALGORITHM, -1);
+    assert_eq!(ui.v.cards, 1);
+}
+
+#[test]
+fn cards_off_plays_none() {
+    let mut ui = at_rest();
+    ui.v.cards = 0;
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
     ui.press(PANEL_BTN_HOME);
     assert_eq!(ui.top(), "LIVE", "no card back to LIVE");
     ui.settle();
@@ -359,11 +387,70 @@ fn the_cards_option_turns_them_off_and_on() {
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_CARDS as i32);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_CHIP as i32);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
-    assert_eq!(ui.v.cards, 1);
-    ui.turn(PANEL_ENC_ALGORITHM, 1);
-    assert_eq!(ui.v.cards, 1, "on stays on");
+    assert_eq!(ui.top(), "CHIP", "no card into CHIP");
+}
+
+/// ONCE: THE CHIP and THE SCENE the first time each since power-on, never THE OSCILLATOR; the
+/// way back to LIVE is a wipe with no card.
+#[test]
+fn a_card_plays_once_then_not() {
+    let mut ui = at_rest();
+    for (item, id, name) in [
+        (VIEWS_MENU_CHIP, TITLE_CARD_CHIP, "CHIP"),
+        (VIEWS_MENU_SCENE, TITLE_CARD_SCENE, "SCENE"),
+    ] {
+        if ui.top() == "LIVE" {
+            ui.press(PANEL_BTN_HOME);
+            ui.settle();
+        }
+        ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
+        ui.turn(PANEL_ENC_SELECT, item as i32);
+        step(&mut ui);
+        ui.turn(PANEL_ENC_ALGORITHM, 1);
+        assert_eq!(ui.top(), "TITLE", "{name}: the card the first time");
+        assert_eq!(u32::from(card(&ui).id), id);
+        run_card(&mut ui);
+        settle(&mut ui);
+        assert_eq!(ui.top(), name);
+        // Back to the menu and in again: no card.
+        ui.press(PANEL_BTN_HOME);
+        ui.settle();
+        assert_eq!(ui.top(), "MENU");
+        ui.turn(PANEL_ENC_ALGORITHM, 1);
+        assert_ne!(ui.top(), "TITLE", "{name}: not the second time");
+        ui.settle();
+        assert_eq!(ui.top(), name);
+        ui.press(PANEL_BTN_HOME);
+        ui.settle();
+    }
+    // The menu is open: HOME goes to LIVE with no card.
+    assert_eq!(ui.top(), "MENU");
+    ui.press(PANEL_BTN_HOME);
+    assert_eq!(ui.top(), "LIVE", "no THE OSCILLATOR");
+}
+
+#[test]
+fn cards_always_plays_every_card() {
+    let mut ui = at_rest();
+    ui.v.cards = 2;
+    for _ in 0..2 {
+        open_from_menu(&mut ui, VIEWS_MENU_CHIP);
+        assert_eq!(ui.top(), "TITLE");
+        assert_eq!(u32::from(card(&ui).id), TITLE_CARD_CHIP);
+        run_card(&mut ui);
+        settle(&mut ui);
+        assert_eq!(ui.top(), "CHIP");
+        ui.press(PANEL_BTN_HOME);
+        ui.settle();
+        ui.press(PANEL_BTN_HOME);
+        assert_eq!(ui.top(), "TITLE", "the way back to LIVE too");
+        assert_eq!(u32::from(card(&ui).id), TITLE_CARD_OSCILLATOR);
+        run_card(&mut ui);
+        settle(&mut ui);
+        assert_eq!(ui.top(), "LIVE");
+    }
 }
 
 /// THE CHIP before the CHIP view, from the menu's first item: its held frame is its PNG, and

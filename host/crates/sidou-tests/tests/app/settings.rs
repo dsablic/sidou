@@ -16,6 +16,28 @@ use crate::{record, Recorder, Rig};
 const VERSION: &CStr = c"V1.2.3";
 const TICK: u32 = 10;
 
+/// Byte 1 is CARDS: 0 OFF, 1 ONCE (an old record's ON), 2 ALWAYS; anything else reads as the
+/// default, ONCE. No schema change.
+#[test]
+fn cards_byte_reads_old_and_new() {
+    let mut a = Set::blank();
+    let mut rec = a.gather();
+    let version = rec[0];
+    for (byte, want) in [(0u8, 0u8), (1, 1), (2, 2), (3, 1), (255, 1)] {
+        rec[1] = byte;
+        assert_eq!(
+            unsafe { settings_apply(&mut *a.set, rec.as_ptr(), rec.len() as u32) },
+            1
+        );
+        assert_eq!(*a.cards, want, "byte {byte}");
+        let out = a.gather();
+        assert_eq!(out[1], want, "gathered after {byte}");
+        assert_eq!(out[0], version, "no schema change");
+    }
+    *a.cards = 2;
+    assert_eq!(a.gather()[1], 2, "ALWAYS is saved as 2");
+}
+
 #[test]
 fn the_last_song_survives_a_power_cycle_and_old_records_default_to_none() {
     let mut a = Set::blank();

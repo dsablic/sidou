@@ -13,7 +13,7 @@ schema 5 appends the expert overrides and their learned CCs.
 | Offset | Bytes | Value |
 |---|---|---|
 | 0 | 1 | Schema version, `5` |
-| 1 | 1 | CARDS: `0` off, `1` on |
+| 1 | 1 | CARDS: `0` OFF, `1` ONCE (the default), `2` ALWAYS |
 | 2 | 1 | SOUNDS: `0` off, `1` on |
 | 3 | 1 | KEYS: `0` AUTO, `1` A |
 | 4 | 1 | Preset index |
