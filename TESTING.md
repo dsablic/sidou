@@ -1018,6 +1018,28 @@ SIDOU_LCD_GOLDEN_UPDATE=1 SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release
 
 ### MIDI on the host
 
+`sidou-sysex` is a dependency-free packet library, not a MIDI transport or CLI.
+`cargo test --locked --release -p sidou-sysex` covers every packing length through
+256, canonical high-bit masks, checksums and all command payloads. The app tests
+in `sysex.rs` send those frames to the C state machine through a simulated store,
+then decode its USB event packets. They cover stop-and-wait, pool/full refusals,
+CRC/sequence errors, ownership, late bytes, output back-pressure and the two-second
+deadline starting at a completed ACK. Deterministic random/mutated-stream tests
+exercise the same C machine under ASan and UBSan; no real device is opened.
+`gt2_ins.rs` checks indexed GTI5 export, bounded two-pass import, pointer/table
+relocation, untouched old rows, freeze/refusal atomicity and saved-size accounting.
+
+`crates/emu-gate/tests/sysex.rs` sends frames through the emulated TRS jack. It
+checks a stored song byte-for-byte, bank-1 recall and PLAY; current-song loading;
+instrument relocation with a paused player and intervening transport requests;
+and pool refusal before a claim/program. Two 64 KiB/chord cases distinguish the
+emulator window override (no holds or erases) from the production default (every
+program held, no erases, the explicit hold's ramp endpoints and sound between
+programs). DATA back-pressure stays below the documented one-second frame gap;
+object END uses the existing bounded loader/import allowance. Every combined
+main-loop pass remains within `POLL_INSTRUCTIONS`. Emulator timings cannot
+validate hardware windows or physical USB output: see hardware checklist 8c/12.
+
 `crates/sidou-tests/tests/app/`:
 - `midi_map.rs`: the CC/NRPN map (`app/midi_map.c`). Every parameter has one row, CCs
   and NRPNs are unique and keep clear of the numbers MIDI reserves, ranges and defaults

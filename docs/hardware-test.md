@@ -772,6 +772,12 @@ menu; CLOCK is AUTO and CLOCK OUT OFF at power-on.
   PLAY again stops both. Record the tempo the DAW shows:
 - [ ] **No echo:** with CLOCK OUT on and the DAW sending clock to SIDOU, the DAW's MIDI
   monitor shows no clock coming back from SIDOU.
+- [ ] **DAW mode routing over USB:** choose MULTI and base channel N on MIDI.
+  Check that the panel's keys and DAW channel N+3 play the instrument on chip B;
+  OMNI returns the live routing. Check WHOLE B similarly. Record channel/profile
+  selection separately from sound. **Chip-A MULTI/WHOLE jam callbacks remain
+  unbound in this build:** channels N..N+2 are not yet an audio acceptance pass.
+  Do not mark full multitimbral playback passed until that binding is added.
 
 Notes:
 
@@ -826,16 +832,19 @@ commands for these checks.
   a song by the song browser or bank-1 recall.
 - [ ] **Current song:** GET the current song as GTS5 with SIDOU's trailer and
   open it in a compatible editor. With no unsaved edits, PUT it to target 2;
-  wait for END's ACK and then for the stopped loader to finish. ACK/SAVED
-  confirms storage and load-request acceptance, not completed loading. Invalid
-  song content may report a later song-error toast. Unsaved edits or a busy
-  save are refused rather than silently discarded.
+   wait for END's ACK: ACK/SAVED follows completed, stopped loading. Invalid
+   song content produces a refusal and preserves the old model. Unsaved edits or a busy
+   save are refused rather than silently discarded.
+   Before SAVE AS, repeat a current-song PUT: BUSY / SAVE AS FIRST must leave the
+   old model and cache untouched. SAVE AS to a nonreserved filename, then retry.
 - [ ] **TRS upload:** send PUT, DATA and END with **one second after EACH
-  complete frame**, including metadata and END, using at most 256 decoded
+   complete frame**, including metadata and file END, using at most 256 decoded
   bytes per DATA and the alignment rule above. Check RECEIVING then SAVED or
   the refusal toast; there is no TRS reply and no USB reply to a TRS request.
   After completion, load the song or, once USB output passes, GET and compare
-  the file. This conservative gap is not a measured hardware throughput claim.
+   the file. This conservative gap is not a measured hardware throughput claim.
+   For instrument/current-song END, allow the bounded importer/loader up to
+   15 seconds, or wait for its SAVED/refusal toast, before another transfer.
 - [ ] **Hold-free programs, only after section 12 validates windows:** repeat
   the large upload with a chord on a build using validated timing values.
   INQ reports windows enabled; no program hold, dropout or click is heard.

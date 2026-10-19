@@ -326,14 +326,16 @@ or broadcast `7F` has an identity reply on USB only.
 - **USB:** stop-and-wait in both directions. PUT claims all sectors before its first
   ACK; DATA ACKs wait for programming. ACK every GET/DIR response, including END.
 - **TRS:** PUT/DATA/END/ABORT only, without replies. Wait **one second after EACH
-  complete frame**, including metadata, DATA and END; wire rate alone is not safe.
+  complete frame**, including metadata, DATA and file END; wire rate alone is not safe.
+  After instrument/current-song END, allow 15 seconds for the bounded loader/import.
 - **Storage:** active transfers block maintenance erases. With windows disabled,
   explicit PUT/DEL programs use SAVE-style audio mute/ramp holds, released between
   programs. Window-enabled programs are hold-free; hardware timings still require
   checklist section 12. Disabled windows alone do not cause BUSY.
 - **Imports:** instrument tables need contiguous trailing rows; holes are not reused.
-  Current-song END ACK means storage committed and the normal stopped loader accepted
-  the request, not that loading finished; later validation failures use a song toast.
+  Current-song END ACK follows committed storage and completed, stopped loading;
+  validation failures return NAK on USB and a refusal toast. Staging files do not
+  appear in SONG or consume bank-1 program numbers. SAVE AS names an imported song.
 - **Host tooling:** `sidou-sysex` is a packet/packing library only: no CLI, no device
   access. USB-MIDI output remains a separate hardware blocker (checklist 8.1);
   host/emulator checks are not hardware acceptance.

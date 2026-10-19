@@ -495,6 +495,19 @@ sent back, so recording with the DAW's MIDI thru on does not loop, and TRS input
 passed on to USB. The channel and 14-bit NRPNs for cutoff, pulse width and volume are
 build options for now: [midi.md](midi.md), Output.
 
+**SysEx transfers:** [protocol version 1](sysex.md) provides inquiry, the store
+directory, named files, current-song dumps and GTI5 instruments. Replies use USB
+only; TRS accepts paced uploads without replies. PUT claims its space before
+acknowledging. With today's no-window flash configuration, PUT uses explicit
+SAVE-style program holds and the existing mute/ramp; validated windows make it
+hold-free. RECEIVING is followed by SAVED or a refusal toast. A transfer never
+enables refill erases, and partial uploads do not replace files. Instrument
+transfers need the transport stopped; import blocks seeks/audition while it owns the
+model, and requires a fresh PLAY afterward. Song import refuses unsaved changes.
+Use SAVE AS to name an imported song before another current-song upload; the
+private rollback cache stays pinned meanwhile, with **SAVE AS FIRST** on refusal.
+USB output and hold-free flash operation still require their hardware checks.
+
 An algorithm CC picks the algorithm in order (above) by dividing 0..127 evenly
 among the slot's algorithms: for the FX slot's five, 0..25 OFF, 26..51 DELAY, 52..76
 PING-PONG, 77..102 REVERB, 103..127 LUSH. A control CC (0..127) is the control's whole
@@ -548,7 +561,8 @@ arena and the **65,536-byte saved-file limit**, including its trailer. An edit
 that would cross the latter limit reports **SONG FULL** and changes nothing.
 
 MIDI bank 1 program `n` loads the store's zero-based `n`-th song in name order,
-stopped. Other file types do not count. Lookup and loading are asynchronous;
+stopped. Other file types and private MIDI staging files do not count. Lookup and
+loading are asynchronous;
 transport requests during a load are not queued for the new song. An out-of-range
 program keeps the current song. Unsaved changes refuse MIDI recall with
 **SAVE YOUR SONG FIRST**; save or discard them through SONG before recalling.
@@ -614,8 +628,9 @@ and its value in the large value popup; closing it restores the page underneath.
 | CLOCK OUT | OFF (default), ON | the song's clock out over USB, 24 a beat, with start, stop and continue, while no clock comes in |
 
 In MULTI and both WHOLE modes chip A belongs to the player, song or not, so the keys play
-chip B as they do [while a song plays](#which-chip-the-keys-play). Until song control plays
-jam notes (M2c), chip A's channels are routed and sound nothing yet.
+chip B as they do [while a song plays](#which-chip-the-keys-play). The MIDI
+chip-A jam callbacks remain unbound: those channels are routed but sound nothing
+yet. This is an integration follow-up, separate from the panel's working song audition.
 
 ## MIDI learn
 

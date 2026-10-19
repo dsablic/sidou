@@ -706,6 +706,22 @@ can sequence other gear as a SID tracker.
 | M4 | Implementation chart in the manual. |
 | M5 | NRPN high resolution, poly aftertouch, sequencer MIDI out. |
 
+**Amended (M2e completion, 2026-10-19):** the portable MIDI modules live in `app/`,
+not a separate `core/midi/` directory. Version-1 SIDOU SysEx is specified in
+`docs/reference/sysex.md`: universal/own inquiry, streamed directory and file
+GET/PUT/DEL, GTI5 instruments and current GTS5 songs with the trailer. Its
+non-commercial prefix is independent of the unchanged update loader protocol.
+The host library opens no ports. PUT owns explicit program holds with today's
+no-window flash timings; hold-free operation requires validated windows.
+
+The M2 row is an implementation milestone, not hardware acceptance: USB output
+remains unresolved on the unit. Existing MULTI/WHOLE A player jam callbacks are
+still unbound, as the M2e Task 3 results and controls reference record; routing
+and persisted song setup do not imply sounding chip-A jam voices. Live notes
+retain decision 0005's block timing; clocked song transport uses its documented
+fixed alignment delay, not a new sample-accurate live-note mode. Sequencer note/
+CC output remains future work; it is not the panel's CC/program or clock output.
+
 ## 17. Optional wireless (user-built)
 
 The FM-1 ships with BLE MIDI, and its AC791N SoC also has a Wi-Fi radio.

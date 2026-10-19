@@ -19,8 +19,8 @@ All notable changes are documented here. The format follows
   with SAVE's mute/ramp, released between programs; transfers remain not quiet
   and never authorize maintenance erases. Window-enabled programs are hold-free,
   with hardware timing acceptance still pending section 12 of the checklist.
-  Current-song END ACK means the committed file's load request was accepted;
-  normal loader validation can still report a later error. The host-only
+  Current-song END ACK follows completed, stopped loading; validation failures
+  return a refusal instead of an early success. The host-only
   `sidou-sysex` packet library opens no devices and has no CLI. The generated
   MIDI chart includes SysEx commands; checklist 8c covers manual acceptance.
   USB-MIDI output remains broken on hardware pending its separate fix and
