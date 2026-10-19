@@ -459,6 +459,18 @@ change 0..3). SYNC LEAD plays
 one note at a time: voice 3 runs silently at the note's pitch and voice 1, hard-synced to
 it, 2.75 times higher, so voice 3 sets the pitch and the ratio the timbre.
 
+**Each preset keeps your edits** while another plays: turn PRESETS away and back and the
+cutoff, resonance, pulse width, waveform, envelope, filter, expression settings and sync ratio
+you had are back (the effect slots, the chip and the volume are not the preset's and stay as
+they are). A preset that differs from its factory settings shows a `*` after its name on
+LIVE's header, in the popup and in the menu's PRE (`SAW LEAD*`). **EDIT held + PRESETS** puts
+the current preset back to its factory settings and forgets its edits. A MIDI program change
+loads the factory's settings over any edits the preset kept, as before. The memory is not
+saved: a power cycle brings back the preset that was current, with its edits as the settings
+keep them (the settings record is unchanged), and the other presets' edits are gone. On MIDI
+out, PRESETS sends the program change and then, as CCs, the restored parameters that differ
+from the preset's factory values.
+
 **Known limit:** voice 1's frequency register tops out (0xFFFF, 3.85 kHz) from note 90
 (F#6), and from lower notes bent or with vibrato upward (note 88 at a bend of +2
 semitones, lower at wider bend ranges). Voice 1 then stays there: the pitch is still

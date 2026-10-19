@@ -1433,3 +1433,118 @@ fn k4_steps_the_release_a_detent_at_a_time_and_clamps() {
     rig.knob(LIVE_KNOB_RELEASE, 1);
     assert!(rig.log().is_empty(), "no write past the end");
 }
+
+// --- an edit memory per preset ---
+
+fn edited(l: &live) -> bool {
+    unsafe { live_preset_edited(l) != 0 }
+}
+
+fn preset_name_of(l: &live) -> String {
+    let mut buf = [0 as std::ffi::c_char; LIVE_PRESET_NAME_CHARS as usize];
+    unsafe { live_preset_name(l, buf.as_mut_ptr()) };
+    unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }
+        .to_string_lossy()
+        .into_owned()
+}
+
+#[test]
+fn a_preset_remembers_its_edits() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    assert!(!edited(&rig.live));
+    assert_eq!(preset_name_of(&rig.live), "SAW LEAD");
+    rig.knob(LIVE_KNOB_CUTOFF, -10);
+    rig.knob(LIVE_KNOB_RESONANCE, 3);
+    rig.knob(LIVE_KNOB_TONE, 2);
+    unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_WAVEFORM, 8) };
+    let mine = (
+        rig.live.cutoff,
+        rig.live.resonance,
+        rig.live.attack_decay,
+        rig.live.control,
+    );
+    assert!(edited(&rig.live));
+    assert_eq!(preset_name_of(&rig.live), "SAW LEAD*");
+    // On to PWM BASS: its factory settings, no star; back: the edits and the star.
+    rig.preset_step(1);
+    let p = preset(PULSE_BASS);
+    assert_eq!(
+        (rig.live.cutoff, rig.live.resonance, rig.live.pulse_width),
+        (p.cutoff, p.resonance, p.pulse_width)
+    );
+    assert!(!edited(&rig.live));
+    assert_eq!(preset_name_of(&rig.live), "PWM BASS");
+    rig.preset_step(-1);
+    assert_eq!(
+        (
+            rig.live.cutoff,
+            rig.live.resonance,
+            rig.live.attack_decay,
+            rig.live.control
+        ),
+        mine
+    );
+    assert!(edited(&rig.live));
+    // Each preset keeps its own: edit PWM BASS, go through the others and back.
+    rig.preset_step(1);
+    rig.knob(LIVE_KNOB_TONE, 4);
+    let pw = rig.live.pulse_width;
+    assert_ne!(u32::from(pw), p.pulse_width as u32);
+    rig.preset_step(1);
+    assert!(!edited(&rig.live), "SYNC LEAD is not edited");
+    rig.preset_step(-1);
+    assert_eq!(rig.live.pulse_width, pw);
+    rig.preset_step(-1);
+    assert_eq!(
+        rig.live.cutoff, mine.0,
+        "SAW LEAD's edit survived the round"
+    );
+    // The sync ratio is part of the memory and of the star.
+    rig.preset_step(2);
+    rig.knob(LIVE_KNOB_TONE, 5);
+    assert!(edited(&rig.live));
+    rig.preset_step(1);
+    rig.preset_step(-1);
+    assert_eq!((rig.live.sync_semis, rig.live.sync_q8), (5, 940));
+}
+
+#[test]
+fn program_change_loads_the_factory() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    rig.knob(LIVE_KNOB_CUTOFF, -10);
+    assert!(edited(&rig.live));
+    // A program change (MIDI, the settings) loads the preset's settings, over any edits.
+    rig.set_preset(PULSE_BASS);
+    rig.set_preset(SAW_LEAD);
+    assert_eq!(rig.live.cutoff, 1200);
+    assert!(!edited(&rig.live));
+    // And a PRESETS round trip does not bring back what the program change put aside.
+    rig.preset_step(1);
+    rig.preset_step(-1);
+    assert_eq!(rig.live.cutoff, 1200);
+    rig.knob(LIVE_KNOB_CUTOFF, -10);
+    rig.preset_step(1);
+    rig.set_preset(SAW_LEAD);
+    rig.preset_step(1);
+    rig.preset_step(-1);
+    assert_eq!(
+        rig.live.cutoff, 1200,
+        "the kept edit went with the program change"
+    );
+}
+
+#[test]
+fn edit_presets_reverts() {
+    let mut rig = Rig::new(SID_MODEL_6581);
+    rig.knob(LIVE_KNOB_CUTOFF, -10);
+    rig.knob(LIVE_KNOB_RESONANCE, 4);
+    assert!(edited(&rig.live));
+    unsafe { live_preset_step(&mut *rig.live, 1, 1) };
+    assert_eq!(rig.live.preset, 0, "the same preset");
+    assert_eq!((rig.live.cutoff, rig.live.resonance), (1200, 6));
+    assert!(!edited(&rig.live));
+    // The memory of that preset went too.
+    rig.preset_step(1);
+    rig.preset_step(-1);
+    assert_eq!(rig.live.cutoff, 1200);
+}

@@ -97,8 +97,8 @@ extern "C" {
 /* VU rows: the voices, then left and right. */
 #define LIVE_VIEW_METERS (SCOPE_VOICES + 2u)
 /* What the canvas shows besides the scopes, as bytes (live_view.c look): the theme 1, the header
- * 3, each voice's lane 6, the knob row 11, the bottom band 9 and the meters. */
-#define LIVE_VIEW_LOOK (1u + 3u + 6u * SCOPE_VOICES + 11u + 9u + LIVE_VIEW_METERS)
+ * 4, each voice's lane 6, the knob row 11, the bottom band 9 and the meters. */
+#define LIVE_VIEW_LOOK (1u + 4u + 6u * SCOPE_VOICES + 11u + 9u + LIVE_VIEW_METERS)
 
 /* A frame composed off the grid, each cell then written to it once (live_view.c). */
 typedef struct {

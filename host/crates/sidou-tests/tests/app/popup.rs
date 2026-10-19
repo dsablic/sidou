@@ -679,10 +679,10 @@ fn the_popup_covers_its_rows_and_guards_them_from_the_views_large_text() {
     for _ in 0..4 {
         ui.frame();
     }
-    // The menu is whole again under it: its lines read as before.
+    // The menu is whole again under it: its lines read as before (K1 edited the preset: a star).
     assert_eq!(
         ui.menu_line(VIEWS_MENU_PRESET as usize).trim_end(),
-        format!("{:<3}{:>11}", "PRE", "SAW LEAD")
+        format!("{:<3}{:>11}", "PRE", "SAW LEAD*")
     );
 }
 

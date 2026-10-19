@@ -335,8 +335,9 @@ const view views_status = {"STATUS", NULL, NULL, NULL, status_compose, status_ch
 
 static void preset_value(void* ctx, char* buf) {
     const views* v = ctx;
-    const live_preset* p = live_preset_get(v->l->preset);
-    join(buf, MENU_VALUE_CHARS, p ? p->name : "?", "");
+    char name[LIVE_PRESET_NAME_CHARS];
+    live_preset_name(v->l, name);
+    join(buf, MENU_VALUE_CHARS, name, "");
 }
 
 static void preset_turn(void* ctx, int32_t steps) {
@@ -1877,9 +1878,8 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
         return 1;
     }
     if (enc == PANEL_ENC_PRESETS) {
-        const live_preset* p = live_preset_get(l->preset);
         join(name, SCREEN_POPUP_TEXT, "PRESET", "");
-        join(value, SCREEN_POPUP_TEXT, p ? p->name : "?", "");
+        live_preset_name(l, value);
         return 1;
     }
     if (enc == PANEL_ENC_ALGORITHM) {

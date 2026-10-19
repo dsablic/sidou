@@ -11,6 +11,8 @@
 __attribute__((noinline, unused)) static void macro_changed(live* l, uint32_t field);
 
 #define CTRL_GATE 0x01u
+#define CTRL_SYNC 0x02u
+#define CTRL_RING 0x04u
 #define REG_FC_LO 0x15u
 #define REG_FC_HI 0x16u
 #define REG_RES_FILT 0x17u
@@ -607,6 +609,9 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->master = LIVE_MASTER_MAX;
     l->volume = 100;
     l->cutoff_pos = 0;
+    for (uint32_t i = 0; i < LIVE_PRESET_COUNT; ++i) {
+        l->edits[i].valid = 0;
+    }
     l->clock = 0;
     for (int v = 0; v < LIVE_VOICES; ++v) {
         l->voice[v].note = LIVE_NO_NOTE;
@@ -798,7 +803,118 @@ void live_set_preset(live* l, uint8_t index) {
         index = LIVE_PRESET_COUNT - 1;
     }
     load_preset(l, index);
+    l->edits[index].valid = 0; /* the factory's, over any edits it kept */
     write_all(l);
+}
+
+/* The current settings of the fields live_edit keeps. */
+static void edit_store(const live* l, live_edit* e) {
+    e->cutoff = l->cutoff;
+    e->pulse_width = l->pulse_width;
+    e->resonance = l->resonance;
+    e->control = l->control;
+    e->attack_decay = l->attack_decay;
+    e->sustain_release = l->sustain_release;
+    e->filter_voices = l->filter_voices;
+    e->filter_mode = l->filter_mode;
+    e->bend_range = l->bend_range;
+    e->velocity_target = l->velocity_target;
+    e->mod_target = l->mod_target;
+    e->pressure_target = l->pressure_target;
+    e->vibrato_rate = l->vibrato_rate;
+    e->vibrato_depth = l->vibrato_depth;
+    e->vibrato_delay = l->vibrato_delay;
+    e->sync_semis = l->sync_semis;
+    e->valid = 1;
+}
+
+/* e over what load_preset has just loaded (a bend range RPN 0 set stays; a new mod target starts
+ * the wheel at 0, as load_preset does). */
+static void edit_apply(live* l, const live_edit* e) {
+    l->cutoff = e->cutoff;
+    l->pulse_width = e->pulse_width;
+    l->resonance = e->resonance;
+    l->control = e->control;
+    l->attack_decay = e->attack_decay;
+    l->sustain_release = e->sustain_release;
+    l->filter_voices = e->filter_voices;
+    l->filter_mode = e->filter_mode;
+    if (!l->bend_range_rpn) {
+        l->bend_range = e->bend_range;
+    }
+    l->velocity_target = e->velocity_target;
+    if (l->mod_target != e->mod_target) {
+        l->mod_wheel = 0;
+    }
+    l->mod_target = e->mod_target;
+    l->pressure_target = e->pressure_target;
+    l->vibrato_rate = e->vibrato_rate;
+    l->vibrato_depth = e->vibrato_depth;
+    l->vibrato_delay = e->vibrato_delay;
+    l->sync_semis = e->sync_semis;
+    l->sync_q8 = (uint16_t)((cur(l)->sync_ratio_q8 *
+                                 live_ratio_q16[e->sync_semis + LIVE_RATIO_SEMIS] + 32768u) >> 16);
+}
+
+void live_recall_preset(live* l, uint8_t q) {
+    if (q >= LIVE_PRESET_COUNT) {
+        q = LIVE_PRESET_COUNT - 1;
+    }
+    l->settings_dirty = 1;
+    edit_store(l, &l->edits[l->preset]);
+    load_preset(l, q);
+    if (l->edits[q].valid) {
+        edit_apply(l, &l->edits[q]);
+    }
+    write_all(l);
+}
+
+uint32_t live_preset_edited(const live* l) {
+    const live_preset* p = cur(l);
+    return l->cutoff != p->cutoff || l->resonance != p->resonance ||
+           l->pulse_width != p->pulse_width || l->control != p->control ||
+           l->attack_decay != p->attack_decay || l->sustain_release != p->sustain_release ||
+           l->filter_voices != p->filter_voices || l->filter_mode != p->filter_mode ||
+           (!l->bend_range_rpn && l->bend_range != p->bend_range) ||
+           l->velocity_target != p->velocity_target || l->mod_target != p->mod_target ||
+           l->pressure_target != p->pressure_target || l->vibrato_rate != p->vibrato_rate ||
+           l->vibrato_depth != p->vibrato_depth || l->vibrato_delay != p->vibrato_delay ||
+           l->sync_semis != 0;
+}
+
+void live_preset_name(const live* l, char* buf) {
+    const char* name = cur(l)->name;
+    uint32_t n = 0;
+    for (; name[n] && n + 2u < LIVE_PRESET_NAME_CHARS; n++) {
+        buf[n] = name[n];
+    }
+    if (live_preset_edited(l)) {
+        buf[n++] = '*';
+    }
+    buf[n] = 0;
+}
+
+void live_preset_params(uint8_t index, uint16_t out[LIVE_PARAM_EXPERT]) {
+    const live_preset* p = &presets[index < LIVE_PRESET_COUNT ? index : LIVE_PRESET_COUNT - 1u];
+    out[LIVE_PARAM_CUTOFF] = p->cutoff;
+    out[LIVE_PARAM_RESONANCE] = p->resonance;
+    out[LIVE_PARAM_PULSE_WIDTH] = p->pulse_width;
+    out[LIVE_PARAM_WAVEFORM] = (uint16_t)(p->control >> 4);
+    out[LIVE_PARAM_RING] = (p->control & CTRL_RING) ? 1u : 0u;
+    out[LIVE_PARAM_SYNC] = (p->control & CTRL_SYNC) ? 1u : 0u;
+    out[LIVE_PARAM_ATTACK] = (uint16_t)(p->attack_decay >> 4);
+    out[LIVE_PARAM_DECAY] = (uint16_t)(p->attack_decay & 0x0fu);
+    out[LIVE_PARAM_SUSTAIN] = (uint16_t)(p->sustain_release >> 4);
+    out[LIVE_PARAM_RELEASE] = (uint16_t)(p->sustain_release & 0x0fu);
+    out[LIVE_PARAM_FILTER_MODE] = (uint16_t)((p->filter_mode >> 4) & 7u);
+    out[LIVE_PARAM_FILTER_VOICES] = (uint16_t)(p->filter_voices & 7u);
+    out[LIVE_PARAM_BEND_RANGE] = p->bend_range;
+    out[LIVE_PARAM_VELOCITY_TARGET] = p->velocity_target;
+    out[LIVE_PARAM_MOD_TARGET] = p->mod_target;
+    out[LIVE_PARAM_PRESSURE_TARGET] = p->pressure_target;
+    out[LIVE_PARAM_VIBRATO_RATE] = p->vibrato_rate;
+    out[LIVE_PARAM_VIBRATO_DEPTH] = p->vibrato_depth;
+    out[LIVE_PARAM_VIBRATO_DELAY] = p->vibrato_delay;
 }
 
 const uint32_t live_ratio_q16[2 * LIVE_RATIO_SEMIS + 1] = {
@@ -890,7 +1006,7 @@ void live_preset_step(live* l, int32_t steps, int revert) {
     }
     uint8_t p = (uint8_t)step_clamped(l->preset, steps, 1, LIVE_PRESET_COUNT - 1);
     if (p != l->preset) {
-        live_set_preset(l, p);
+        live_recall_preset(l, p);
     }
 }
 
@@ -1027,8 +1143,6 @@ void live_cc(live* l, uint8_t cc, uint8_t value) {
 
 /* The SID parameters' bits. */
 #define CTRL_WAVEFORM 0xf0u
-#define CTRL_RING 0x04u
-#define CTRL_SYNC 0x02u
 
 void live_bend(live* l, uint16_t bend) {
     l->bend = bend > LIVE_BEND_MAX ? (uint16_t)LIVE_BEND_MAX : bend;

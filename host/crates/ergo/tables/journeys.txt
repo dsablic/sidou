@@ -63,8 +63,9 @@ journey jam | Pick up and jam | poweron
   step chord | Play a chord | Play a chord | note C4 E4 G4 700 | sound; clip 300
   step shape-cutoff | Turn K1 while holding a note | Turn K1 to open and close the filter | down A3; turn K1 -24; turn K1 24; up A3 | change; clip 300
   step shape-resonance | Turn K2 | Turn K2 for resonance | down A3; turn K2 8; turn K2 -8; up A3 | change; clip 300
-  step shape-pulse | Turn K3 | Turn K3 for the sound's own control | down A3; turn K3 6; turn K3 -6; up A3 | change; clip 300
+  step shape-pulse | Turn K3 | Turn K3 for the sound's own control | down A3; turn K3 6; turn K3 -6; up A3 | change; remember; clip 300
   step next-preset | Turn PRESETS to the next sound | Turn PRESETS to change the sound | turn PRESETS 1; note A3 600 | sound; clip 300; task change preset; destructive; defaults
+  step back-preset | Back to your sound | Turning back brings your edits back | turn PRESETS -1 | recalled
   step master | Turn MASTER down | MASTER sets the volume | down A3; pot 300; pot 1000; up A3 | popup; clip 300
   step octave | Octave up | OCT+ steps the octave | press OCT+ | toast; task change octave
 

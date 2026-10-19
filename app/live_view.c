@@ -557,8 +557,9 @@ static void header_big(const live_view* lv, grid* g, const theme* th) {
         m[n] = 0;
         grid_text_big(g, 0, 0, 2, m, THEME_ATTR(th, alert));
     } else {
-        const live_preset* p = live_preset_get(lv->l->preset);
-        grid_text_big(g, 0, 0, 2, p ? p->name : "?", THEME_ATTR(th, value));
+        char name[LIVE_PRESET_NAME_CHARS];
+        live_preset_name(lv->l, name); /* a `*` after it once edited */
+        grid_text_big(g, 0, 0, 2, name, THEME_ATTR(th, value));
     }
     int32_t o = lv->l->octave;
     if (o) {
@@ -877,8 +878,8 @@ static void band_big(const live_view* lv, grid* g, const theme* th, uint32_t hl)
 /* What each part of the canvas shows, as bytes (LIVE_VIEW_LOOK of them): a part is drawn
  * again when its bytes change. */
 #define KEY_THEME 0u
-#define KEY_HEADER 1u /* the preset, the octave, the song's mutes */
-#define KEY_VOICE 4u  /* 6 a voice: control, note, gate, stage, sounding, muted */
+#define KEY_HEADER 1u /* the preset, the octave, the song's mutes, edited */
+#define KEY_VOICE 5u  /* 6 a voice: control, note, gate, stage, sounding, muted */
 #define KEY_KNOBS (KEY_VOICE + 6u * SCOPE_VOICES)
 /* The knob row: the page (a slot's, its number), the highlight, the slot's algorithm, then
  * 8 bytes of values: the slot's four controls, or the cutoff 2, the resonance, the pulse width 2,
@@ -907,6 +908,7 @@ static void look(const live_view* lv, uint8_t out[LIVE_VIEW_LOOK], uint32_t now)
     out[KEY_HEADER] = l->preset;
     out[KEY_HEADER + 1u] = (uint8_t)l->octave;
     out[KEY_HEADER + 2u] = lv->mutes;
+    out[KEY_HEADER + 3u] = (uint8_t)live_preset_edited(l);
     for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
         uint8_t ctrl = voice_control(l, v);
         const live_voice* x = &l->voice[v];
@@ -967,7 +969,7 @@ static int differs(const live_view* lv, const uint8_t* now, uint32_t from, uint3
 static uint32_t parts(live_view* lv, canvas* cv, const theme* th,
                       const uint8_t now[LIVE_VIEW_LOOK]) {
     uint32_t rows = 0;
-    if (differs(lv, now, KEY_HEADER, 3u)) {
+    if (differs(lv, now, KEY_HEADER, 4u)) {
         header(lv, cv, th); /* fills its rows */
         rows |= HEADER_ROWS;
     }

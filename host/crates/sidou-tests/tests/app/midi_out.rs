@@ -399,11 +399,18 @@ fn a_panel_preset_is_a_program_change_without_the_parameters_it_loads() {
     o.rig.preset_step(1);
     assert_eq!(o.tick(), [u32::from_le_bytes([0x0C, 0xC0, 1, 0])]);
     assert_eq!(o.tick(), []);
-    // A knob moved in the same tick as the preset counts as the preset's: a known limit
-    // (midi_out.h). Its next move goes out.
+    // A knob moved in the same tick as the preset goes out after the program change: that
+    // carries the preset's factory settings, and the knob's value differs from them.
     o.rig.preset_step(1);
     o.rig.knob(LIVE_KNOB_CUTOFF, 3);
-    assert_eq!(o.tick(), [u32::from_le_bytes([0x0C, 0xC0, 2, 0])]);
+    let c = o.get(LIVE_PARAM_CUTOFF);
+    assert_eq!(
+        o.tick(),
+        [
+            u32::from_le_bytes([0x0C, 0xC0, 2, 0]),
+            cc_packet(0, 74, to_cc(LIVE_PARAM_CUTOFF, c))
+        ]
+    );
     o.rig.knob(LIVE_KNOB_CUTOFF, 1);
     let c = o.get(LIVE_PARAM_CUTOFF);
     assert_eq!(o.tick(), [cc_packet(0, 74, to_cc(LIVE_PARAM_CUTOFF, c))]);
@@ -420,10 +427,17 @@ fn a_panel_preset_is_a_program_change_without_the_parameters_it_loads() {
             cc_packet(0, 74, to_cc(LIVE_PARAM_CUTOFF, c))
         ]
     );
-    // The last of several preset moves within a tick wins.
+    // The last of several preset moves within a tick wins (SAW LEAD brings back its first edit).
     o.rig.preset_step(1);
     o.rig.preset_step(-3);
-    assert_eq!(o.tick(), [u32::from_le_bytes([0x0C, 0xC0, 0, 0])]);
+    let c = o.get(LIVE_PARAM_CUTOFF);
+    assert_eq!(
+        o.tick(),
+        [
+            u32::from_le_bytes([0x0C, 0xC0, 0, 0]),
+            cc_packet(0, 74, to_cc(LIVE_PARAM_CUTOFF, c))
+        ]
+    );
 }
 
 #[test]
@@ -724,4 +738,44 @@ fn a_song_goes_out_in_bank_1_and_a_preset_after_it_selects_bank_0_again() {
         midi_out_drop(&mut *o.out, &*o.rig.live);
     }
     assert!(o.tick().is_empty());
+}
+
+#[test]
+fn a_recall_sends_the_program_and_the_edits() {
+    let mut o = Out::new();
+    // Edit SAW LEAD, and let the edits go out.
+    o.rig.knob(LIVE_KNOB_CUTOFF, 3);
+    o.rig.knob(LIVE_KNOB_RESONANCE, 2);
+    let (c, r) = (o.get(LIVE_PARAM_CUTOFF), o.get(LIVE_PARAM_RESONANCE));
+    assert_eq!(
+        o.tick(),
+        [
+            cc_packet(0, 74, to_cc(LIVE_PARAM_CUTOFF, c)),
+            cc_packet(0, 71, to_cc(LIVE_PARAM_RESONANCE, r))
+        ]
+    );
+    // PRESETS to PWM BASS: a program change alone (its factory settings).
+    o.rig.preset_step(1);
+    assert_eq!(o.tick(), [u32::from_le_bytes([0x0C, 0xC0, 1, 0])]);
+    assert_eq!(o.tick(), []);
+    // And back: the program change carries SAW LEAD's factory settings, and the edits that came
+    // back follow it as CCs.
+    o.rig.preset_step(-1);
+    assert_eq!(
+        (o.get(LIVE_PARAM_CUTOFF), o.get(LIVE_PARAM_RESONANCE)),
+        (c, r)
+    );
+    assert_eq!(
+        o.tick(),
+        [
+            u32::from_le_bytes([0x0C, 0xC0, 0, 0]),
+            cc_packet(0, 74, to_cc(LIVE_PARAM_CUTOFF, c)),
+            cc_packet(0, 71, to_cc(LIVE_PARAM_RESONANCE, r))
+        ]
+    );
+    assert_eq!(o.tick(), [], "and nothing more");
+    // A program change from MIDI is the factory's: nothing follows it.
+    o.usb(&[u32::from_le_bytes([0xC, 0xC0, 1, 0])]);
+    assert_eq!(o.get(LIVE_PARAM_CUTOFF), 700);
+    assert_eq!(o.tick(), []);
 }

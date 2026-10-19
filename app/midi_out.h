@@ -25,11 +25,12 @@
  *   menu (midi_out_song) goes as CC 0 = 0, CC 32 = 1 and its program, before anything else.
  * - A preset change from the panel is a program change, sent before any parameter; the
  *   parameters it loads (live_set_preset: not the volume, the chip model, the effect slots
- *   or a bend range set by RPN 0) are not sent, the program change carries them, and their
- *   pending changes are dropped. From MIDI, it is the sender's, like any other change. The
- *   parameters it keeps are diffed as usual, so their pending changes still go. A known
- *   limit of diffing: a parameter the preset loads that the panel also changed in the same
- *   look counts as loaded and is not sent.
+ *   or a bend range set by RPN 0) go out as the preset's factory values, which the program
+ *   change carries (live_preset_params); the parameters of the edits PRESETS brought back
+ *   (live_recall_preset) or a knob moved in the same look differ from them and follow the
+ *   program change as CCs, in the parameters' order. From MIDI, it is the sender's, like any
+ *   other change. The parameters it keeps are diffed as usual, so their pending changes still
+ *   go.
  *
  * Encoding (the map, midi_map.h): a parameter's CC, value midi_map_to_cc. A parameter of more
  * than 128 values (cutoff, pulse width, volume) goes as its NRPN instead, at full resolution,

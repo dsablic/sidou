@@ -33,6 +33,8 @@ const A4_KEY: u8 = 14 + 69 - 53;
 const OCT_UP: u8 = 1;
 const FX: u8 = 2;
 const EDIT: u8 = 6;
+/// app/panel.h: the PRESETS encoder.
+const PRESETS: u8 = 6;
 const HOME: u8 = 8;
 /// app/panel.h: the song views' buttons (Felucca's ids, unconfirmed on a SIDOU unit) and the
 /// first note key's id.
@@ -667,31 +669,77 @@ fn select_pages_and_algorithm_steps_the_profile_on_live() {
     common::to_mid_frame(&mut m, &fw);
     assert_eq!(profile(&mut m), 3);
     assert_eq!(popup_rows(&mut m, &fw), 0, "no popup over LIVE");
-    let now = indexed(&m.soc.lcd.fb);
-    let white = 1u8;
-    let ink = |idx: &[u8], cols: std::ops::Range<usize>| -> usize {
-        cols.map(|c| {
-            (22..24)
-                .map(|r| cell_colour(idx, r, c, white))
-                .sum::<usize>()
-        })
-        .sum()
+    // The band's profile word, from the grid: reversed (black on white) while the change shows.
+    let attr = |m: &mut Machine, col: u32, row: u32| -> u8 {
+        let g = m.soc.read32(
+            fw.symbol("ui") + (sidou_sys::ilp32::views::s + sidou_sys::ilp32::screen::g) as u32,
+        );
+        m.soc
+            .read8(g + sidou_sys::ilp32::grid::attr as u32 + row * 30 + col)
     };
-    // Reversed: the word is black on white, so white is the ground; a second on it is white on
-    // black. R5's two characters (cells 10-13), and nothing in R4AR's third and fourth.
-    m.run_ms(1_300);
-    common::to_mid_frame(&mut m, &fw);
-    let later = indexed(&m.soc.lcd.fb);
-    assert!(
-        ink(&now, 10..14) > ink(&later, 10..14) + 50,
-        "R5 is reversed while it shows the change: {} then {}",
-        ink(&now, 10..14),
-        ink(&later, 10..14)
-    );
     assert_eq!(
-        ink(&now, 14..18),
+        attr(&mut m, 10, 22),
+        0x10,
+        "R5 is reversed while it shows the change"
+    );
+    let now = indexed(&m.soc.lcd.fb);
+    assert_eq!(
+        cell_colour(&now, 22, 14, 1),
         0,
-        "R5 is two characters: R4AR's third and fourth are gone"
+        "R4AR's third and fourth characters are gone"
+    );
+    m.run_ms(1_300);
+    assert_eq!(attr(&mut m, 10, 22), 0x01, "and plain again after a second");
+}
+
+/// An edited preset says so (a star after its name), and PRESETS away and back brings its edits
+/// back, the whole screen as it was.
+#[test]
+fn a_preset_remembers_its_edits_and_shows_a_star() {
+    let Some((build, fw)) = fixture("the preset memory test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    settle(&mut m, &fw);
+    let factory = indexed(&m.soc.lcd.fb);
+    m.turn(K1, -10);
+    m.run_ms(1_700);
+    common::to_mid_frame(&mut m, &fw);
+    let edited = indexed(&m.soc.lcd.fb);
+    compare_golden(&build, "live-edited", &m.soc.lcd.fb, &[]);
+    let preset = |m: &mut Machine| live_byte(m, &fw, sidou_sys::ilp32::live::preset);
+    // The star is the header's: cells 16-17 of row 0 ("SAW LEAD" is 8 characters at 2x).
+    let region = |idx: &[u8], row: usize, from: usize, to: usize| -> Vec<u8> {
+        (row * 8..row * 8 + 16)
+            .flat_map(|y| idx[y * W + from * 8..y * W + to * 8].to_vec())
+            .collect()
+    };
+    assert!(
+        region(&edited, 0, 16, 18) != region(&factory, 0, 16, 18),
+        "a star after the name"
+    );
+    m.turn(PRESETS, 1);
+    m.run_ms(500);
+    assert_eq!(preset(&mut m), 1);
+    m.turn(PRESETS, -1);
+    m.run_ms(1_700);
+    common::to_mid_frame(&mut m, &fw);
+    assert_eq!(preset(&mut m), 0);
+    assert!(
+        indexed(&m.soc.lcd.fb) == edited,
+        "SAW LEAD's edit is back, star and all"
+    );
+    // EDIT + PRESETS puts the preset back: the factory screen.
+    m.key(EDIT, true);
+    m.run_ms(60);
+    m.turn(PRESETS, 1);
+    m.run_ms(300);
+    m.key(EDIT, false);
+    m.run_ms(1_700);
+    common::to_mid_frame(&mut m, &fw);
+    assert!(
+        indexed(&m.soc.lcd.fb) == factory,
+        "reverted to the factory's"
     );
 }
 

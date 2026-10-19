@@ -310,6 +310,19 @@ typedef struct {
     uint16_t pw_out;        /* the pulse width last written */
 } live_voice;
 
+/* One preset's edits as PRESETS keeps them while another preset plays: the fields of the live
+ * instrument the knobs, the parameters and MIDI change from the preset's own values, as the
+ * preset was left. valid is 0 until the preset has been left once (and after a program change
+ * or a revert has loaded its factory settings over them). */
+typedef struct {
+    uint16_t cutoff, pulse_width;
+    uint8_t resonance, control, attack_decay, sustain_release, filter_voices, filter_mode;
+    uint8_t bend_range, velocity_target, mod_target, pressure_target;
+    uint8_t vibrato_rate, vibrato_depth, vibrato_delay;
+    int8_t sync_semis;
+    uint8_t valid;
+} live_edit;
+
 /* The whole instrument; fields are read-only for callers (the UI shows them). */
 typedef struct {
     live_sink_fn sink;
@@ -409,6 +422,8 @@ typedef struct {
      * alone; a preset load puts them back to the preset's. */
     int8_t sync_semis;
     uint16_t sync_q8;
+    /* Each preset's edits while another preset plays (live_recall_preset). */
+    live_edit edits[LIVE_PRESET_COUNT];
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */
@@ -512,9 +527,25 @@ void live_knob(live* l, live_knob_id knob, int32_t delta);
 uint32_t live_tone(const live* l);
 /* round(65536 * 2^((k - 12) / 12)) for k = 0..24: the sync ratio's semitones (live.c). */
 extern const uint32_t live_ratio_q16[2 * LIVE_RATIO_SEMIS + 1];
-/* PRESETS: steps the preset a detent each (clockwise the next), clamped at both ends; revert (EDIT
- * held) loads the current preset's factory settings again instead. */
+/* PRESETS: steps the preset a detent each (clockwise the next), clamped at both ends, as
+ * live_recall_preset does; revert (EDIT held) puts the current preset back to its factory settings
+ * instead (live_set_preset, which forgets its kept edits too). */
 void live_preset_step(live* l, int32_t steps, int revert);
+/* Goes to preset q (clamped) keeping what it was: the current preset's edits are stored, q's
+ * factory settings loaded and q's stored edits (if it has any) applied over them. live_set_preset
+ * (a MIDI program change, the settings) is the factory's: it loads q's settings over any edits. */
+void live_recall_preset(live* l, uint8_t q);
+/* 1 when the current preset's settings differ from its factory ones (the fields of live_edit; the
+ * sync ratio from 0; a bend range that RPN 0 set does not count). */
+uint32_t live_preset_edited(const live* l);
+/* The current preset's name into buf (at least LIVE_PRESET_NAME_CHARS bytes), then `*` while
+ * live_preset_edited. */
+#define LIVE_PRESET_NAME_CHARS 12u
+void live_preset_name(const live* l, char* buf);
+/* What live_set_preset sets for preset `index` (live_set_preset's loaded parameters; the others of
+ * out[] are not written), as live_param_get would read them: for MIDI out, whose program change
+ * carries them. */
+void live_preset_params(uint8_t index, uint16_t out[LIVE_PARAM_EXPERT]);
 void live_button(live* l, live_button_id button);
 /* A CC through the published map (midi_map.h): the parameter's value from the CC's by its
  * curve. CC 1 is the modulation wheel: the pulse width's row while that is its target, else

@@ -1238,8 +1238,9 @@ jack, which is MIDI IN only.
 
 - **What:** a parameter that changes on the panel (the knobs, MASTER, the FX button,
   the effect-slot controls) goes out as the map's CC: the value as the CC curve gives it,
-  round(value * 127 / max). A preset from the panel (K4) goes out as a program change,
-  and the parameters it loads do not (the program change carries them).
+  round(value * 127 / max). A preset from the panel (PRESETS) goes out as a program change, which carries the
+  preset's factory settings; the edits PRESETS brings back with it (SIDOU keeps each preset's
+  edits while another plays) go after it as the CCs of the parameters that differ.
 - **High resolution:** an option, off by default, sends the parameters of more than
   128 values (cutoff, pulse width, volume) as their NRPNs instead, at full resolution.
   A parameter with no CC (the bend range, the expression targets) always goes as its
@@ -1419,7 +1420,7 @@ channel's bank says. Bank 0, the power-on bank, is M1's meaning on the instrumen
 - **USER profiles:** until the device keeps them (M2a), the request waits and nothing
   changes.
 - **Out:** a preset from the panel goes out as its program change in bank 0, with CC 0 and 32
-  first when the last bank sent was another; a song loaded from the SONG menu goes out as
+  first when the last bank sent was another (and then the parameters of its kept edits); a song loaded from the SONG menu goes out as
   CC 0 = 0, CC 32 = 1 and its program.
 
 ",
