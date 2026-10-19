@@ -16,6 +16,7 @@ here.
 | 5 | fm1-emu | P33 and the watchdog are not modelled (`P33_CON`/`P33_DAT` read 0) | M1 | `docs/TODO.md`, "fm1-emu does not model P33 or the watchdog" | P33 modelled upstream (fm1-emu #34, 2026-10-21); the watchdog to check at the bump |
 | 6 | Felucca (`firmware/src/usb.c:50-56`) | The USB DMA buffers (`ep0buf`, `ep1tx`, `ep1rx`, …) are declared `aligned(4)`, but on the FM-1 an EP1 IN buffer at 4 mod 8 is never sent (TxPktRdy stays set). Felucca's own builds happen to place them 8-aligned; a layout change would break USB-MIDI out. Fix: `aligned(8)` or more. | 2026-10-18, SIDOU's USB-out diagnosis | [Below](#6-felucca-usb-dma-buffers-need-8-byte-alignment); [usb-out-diagnosis.md](hardware-results/usb-out-diagnosis.md) | drafted |
 | 7 | Felucca (`firmware/src/usb.c`, `sie_wr`, `sie_rd`) | Built with `-mcpu=r3 -mfprev1 -O2`, `usb.c` stops sending on EP1 IN on the FM-1 (enumeration and OUT keep working); with Felucca's own flags (no `-mcpu`, `-Os`) it works. At `-O2` the SIE accessors are inlined and back-to-back SIE accesses follow each other within a few cycles. Fix: `noinline` on `sie_rd`/`sie_wr`, or a read-back between accesses, so the file doesn't depend on its build flags. | 2026-10-19, SIDOU's USB-out diagnosis | [Below](#7-felucca-usbc-breaks-when-built-at--o2--mcpur3) | drafted |
+| 8 | Felucca (`firmware/src/usb.c`) | Two small opt-in hooks, so a firmware built on Felucca's USB stack can use it unmodified. (1) `FELUCCA_USB_MANUFACTURER` and `FELUCCA_USB_PRODUCT` for its own string descriptors. (2) `FELUCCA_MIDI_IN_RAW(pkt)` to get every EP1 OUT event packet before `midi_in_event`'s filter, so system common and every real-time byte reach a parser of its own. Both are inert when undefined. | 2026-10-20, SIDOU adopting `usb.c` | [Below](#8-felucca-two-opt-in-hooks-in-usbc); SIDOU's patch in `platform/fm1/src/usb.c` | drafted, a proposed patch |
 
 Items 2-5 are against the pinned `e52f4640`. The fm1-emu bump will show which are still
 open: upstream has since fuzzed its decoder against the vendor objdump (#18, four decode
@@ -117,3 +118,57 @@ bring it back.
 - a read-back of CON1 (or a few cycles' delay) after the done bit, before the next access.
 
 We can test a patch on our unit with SIDOU's flags if that helps.
+
+## 8. Felucca: two opt-in hooks in usb.c
+
+**Title:** usb.c: opt-in hooks for the USB strings and raw MIDI in, so other firmwares can
+use it unmodified
+
+SIDOU now builds Felucca's `firmware/src/usb.c` (at `a53ecf4`) into its app as it is. The
+same file also builds the update loader. Two things kept it from being usable without
+edits. Each is fixed by a hook that is inert when its macro is undefined. Felucca's
+firmware and its loader build byte-identical with the patch applied: we checked the
+loader's `loader.bin`.
+
+1. **The string descriptors.** `STR1` ("Hügelton Instruments") and `STR2` ("Felucca") are
+   fixed, so a firmware that is not Felucca presents as Felucca. The patch: an includer
+   may define `FELUCCA_USB_MANUFACTURER` and `FELUCCA_USB_PRODUCT`, each the bytes of a
+   whole string descriptor (`bLength, 3, UTF-16LE…`), much as `FELUCCA_USB_PID` already
+   overrides the PID. The loader keeps "Felucca Update".
+2. **Raw MIDI in.** `midi_in_event` keeps channel messages and F8/FA/FB/FC for Felucca's
+   engine. It drops system common (song position, song select, tune request) and the
+   other real-time bytes. A firmware with its own MIDI parser needs all of them. The patch:
+   if the includer defines `FELUCCA_MIDI_IN_RAW(pkt)`, `midi_in_event` calls it first with
+   every event packet, then goes on unchanged.
+
+```c
+/* SIDOU hook (upstream candidate): an includer's own manufacturer and product strings, each
+ * the bytes of a whole string descriptor (bLength, 3, UTF-16LE), for a firmware built on this
+ * stack that is not Felucca. Undefined, Felucca's. */
+#ifdef FELUCCA_USB_MANUFACTURER
+static const uint8_t STR1[] = {FELUCCA_USB_MANUFACTURER};
+#else
+static const uint8_t STR1[] = {42, 3, 'H', 0, 0xFC, 0, /* … as now … */};
+#endif
+#ifdef FELUCCA_LOADER
+static const uint8_t STR2[] = {30, 3, 'F', 0, /* "Felucca Update", as now */};
+#elif defined(FELUCCA_USB_PRODUCT)
+static const uint8_t STR2[] = {FELUCCA_USB_PRODUCT};
+#else
+static const uint8_t STR2[] = {16, 3, 'F', 0, /* "Felucca", as now */};
+#endif
+
+static void midi_in_event(uint32_t pkt)
+{
+    uint32_t cin = pkt & 15u, st = (pkt >> 8) & 0xFFu;
+#ifdef FELUCCA_MIDI_IN_RAW
+    /* every event packet as it came, to an includer that parses MIDI itself, before the
+     * filter below, which goes on as it is */
+    FELUCCA_MIDI_IN_RAW(pkt);
+#endif
+    /* … as now … */
+}
+```
+
+Both hooks would let SIDOU, and any other firmware built on the stack, take `usb.c`
+byte for byte. That way fixes like items 6 and 7 reach every firmware.

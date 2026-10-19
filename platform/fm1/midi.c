@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* MIDI in (midi.h) and the update protocol's step 1 (update.h). This file includes Felucca's
- * USB stack and update protocol as they are (src/usb.c, src/ota.c) and SIDOU's version of its
- * TRS UART driver (usb/midi_uart.c), all GPL-3.0-only: like the HAL, they are static code for
- * one translation unit, and they call back into the hooks defined here before them; ota.c talks
- * through usb.c's static SysEx plumbing. Only this file includes fm1_usb.h, fm1_uart.h and
+ * USB stack (src/usb.c, as it is but for two marked hooks), its update protocol (src/ota.c) and
+ * SIDOU's version of its TRS UART driver (usb/midi_uart.c), all GPL-3.0-only: like the HAL, they
+ * are static code for one translation unit, and they call back into the hooks defined here
+ * before them; ota.c talks through usb.c's static SysEx plumbing. Only this file includes fm1_usb.h, fm1_uart.h and
  * fm1_flash.h (platform/fm1/VENDORED.md).
  *
  * This file is compiled as Felucca compiles its firmware, not with SIDOU's flags
@@ -143,6 +143,22 @@ static void usb_reset_wait(uint32_t ms) {
     }
 }
 
+/* usb.c's two SIDOU hooks (platform/fm1/VENDORED.md). The device presents as "SIDOU" by
+ * "SIDOU contributors" (string descriptors: bLength, 3, UTF-16LE). */
+#define FELUCCA_USB_MANUFACTURER                                                                   \
+    38, 3, 'S', 0, 'I', 0, 'D', 0, 'O', 0, 'U', 0, ' ', 0, 'c', 0, 'o', 0, 'n', 0, 't', 0, 'r', 0, \
+        'i', 0, 'b', 0, 'u', 0, 't', 0, 'o', 0, 'r', 0, 's', 0
+#define FELUCCA_USB_PRODUCT 12, 3, 'S', 0, 'I', 0, 'D', 0, 'O', 0, 'U', 0
+/* Every USB-MIDI event packet, as it came (TIMER5 interrupt, usb_poll), into SIDOU's ring:
+ * SIDOU's parser (app/midi_usb.c) takes system common, every real-time byte and SysEx too,
+ * which usb.c's own ring leaves out. A full ring is a gap for the parser. */
+static void usb_raw_in(uint32_t pkt) {
+    if (!midi_ring_push(&in_ring, MIDI_SRC_USB, pkt, poll_stamp)) {
+        midi_ring_lose(&in_ring, 1);
+    }
+}
+#define FELUCCA_MIDI_IN_RAW usb_raw_in
+
 /* usb.c's SysEx assembler is renamed: app/sysex.h has a sysex_byte too. Its one delay goes
  * through usb_reset_wait. */
 /* clang-format off */
@@ -230,50 +246,20 @@ static void trs_lost(uint32_t n) {
 
 _Static_assert(MIDI_SRC_USB == 1u && MIDI_SRC_TRS == 2u, "USB packets are 1, TRS bytes 2");
 
-/* usb.c's MIDI-in ring into SIDOU's (main loop). usb.c keeps channel messages and the clock,
- * start, continue and stop bytes as USB-MIDI packets (its midi_in_event; SysEx goes to its
- * frame, usb_sysex below); each becomes a USB entry, stamped as it is moved. A broken stream
- * (usb.c's ring overflowed: midi_in_overflow) is a gap for SIDOU's parser. */
+/* usb.c's own MIDI-in ring (channel messages and four real-time bytes, from its filter) holds
+ * copies of what usb_raw_in already gave SIDOU's ring: emptied here (main loop), but only while
+ * SIDOU's ring has room for another OUT packet. So usb.c's back-pressure, which NAKs the host
+ * while its own ring is nearly full (ep1_take), follows SIDOU's ring when that one fills. */
 static void usb_in_pump(void) {
-    while (mi_r != mi_w) {
-        RING_PUBLISH();
-        if (!midi_ring_push(&in_ring, MIDI_SRC_USB, midi_in_q[mi_r % MQ], fm1_ticks())) {
-            break; /* SIDOU's ring full: the rest after the next drain */
-        }
-        RING_PUBLISH();
-        mi_r++;
+    if (mi_r == mi_w && !midi_in_overflow) {
+        return;
     }
-    if (midi_in_overflow) {
+    if (midi_ring_room(&in_ring) >= EP1_ROOM) {
         uint32_t f = irq_save();
         mi_r = mi_w;
         midi_in_overflow = 0;
         irq_restore(f);
-        midi_ring_lose(&in_ring, 1);
     }
-}
-
-/* A SysEx frame usb.c collected (sx_frame, the bytes between F0 and F7), when it is SIDOU's
- * (docs/reference/sysex.md: F0 7D 53 44 or a universal F0 7E), into SIDOU's SysEx parser as the
- * USB parser would pass it, F0 to F7; the frame is freed for the next. USB is stop-and-wait, so
- * usb.c's one frame at a time (it drops a frame that comes while one is pending) loses nothing.
- * 1 when it took a frame. */
-static int usb_sysex(void) {
-    if (!sx_ready) {
-        return 0;
-    }
-    RING_PUBLISH();
-    uint32_t n = sx_frame_len;
-    if (!n || !(sx_frame[0] == 0x7Eu || (n >= 3u && sx_frame[0] == 0x7Du &&
-                                         sx_frame[1] == 0x53u && sx_frame[2] == 0x44u))) {
-        return 0; /* the update protocol's (ota_service) */
-    }
-    sidou_usb(&rx, MIDI_SYSEX_START, 0xF0u);
-    for (uint32_t i = 0; i < n; i++) {
-        sidou_usb(&rx, MIDI_SYSEX_DATA, sx_frame[i]);
-    }
-    sidou_usb(&rx, MIDI_SYSEX_END, 0xF7u);
-    ota_frame_done();
-    return 1;
 }
 
 static int sidou_send(void* ctx, const uint8_t packet[4]) {
@@ -593,8 +579,16 @@ int update_poll(void) {
     if (!sx_ready && !usb.ota_req) {
         return 0; /* the usual case, at every main-loop wake */
     }
-    if (usb_sysex() && !usb.ota_req) {
-        return 0; /* SIDOU's frame: the updater's frame is free for its next request */
+    if (sx_ready && sx_frame_len &&
+        (sx_frame[0] == 0x7Eu ||
+         (sx_frame_len >= 3u && sx_frame[0] == 0x7Du && sx_frame[1] == 0x53u &&
+          sx_frame[2] == 0x44u))) {
+        /* The raw USB stream already reached SIDOU's parser (usb_raw_in). Free the updater's
+         * unrelated copy now, so it can collect a request while our reply streams. */
+        ota_frame_done();
+        if (!usb.ota_req) {
+            return 0;
+        }
     }
     if (sidou_sysex.tx_active) {
         return 0; /* finish this frame before the updater's independent reply producer */

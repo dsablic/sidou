@@ -103,11 +103,8 @@ Follow-ups that aren't tied to a milestone task yet.
 ## Apply for a pid.codes PID before 1.0
 
 - **Where:** `platform/fm1/src/usb.c` (Felucca's, unmodified), the device
-  descriptor (`FELUCCA_USB_PID`, which `midi.c` can define before the include)
-  and its strings: SIDOU now presents itself as Felucca's "Felucca" by
-  "Hügelton Instruments", the strings `usb.c` has, which a `midi.c` macro can't
-  change. Ask upstream for `FELUCCA_USB_STR_*` overrides as `FELUCCA_USB_PID`
-  has.
+  descriptor (`FELUCCA_USB_PID`, which `midi.c` can define before the
+  include).
 - **Problem:** SIDOU enumerates as VID/PID 0x1209:0x0001, pid.codes' test
   id, as Felucca does. It is meant for the bench only, and hosts may mix
   SIDOU up with Felucca or anything else that uses it.

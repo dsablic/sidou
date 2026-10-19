@@ -4,11 +4,14 @@
 //! in fm1-emu: SIDOU's first song started, stopped, continued and sought from a 120 BPM clock,
 //! its rows against the clock's 16ths, every main-loop pass within the poll allowance.
 //! The device's own TRS poll (2 kHz) gives the clock its jitter: the bytes go in on time.
+//! One case goes over USB instead (common::usb_host): song position and continue reach SIDOU's
+//! parser through usb.c's raw MIDI-in hook (platform/fm1/VENDORED.md), not its filter.
 
 mod common;
 
 use fm1_core::Bus;
 
+use common::usb_host::UsbHost;
 use common::{build_dir, Firmware, Machine};
 use sidou_sys::ilp32;
 use sidou_tests::song::Song;
@@ -33,6 +36,54 @@ fn booted(fw: &Firmware) -> Machine {
     common::run_past_boot(&mut m, fw);
     m.run_ms(300);
     m
+}
+
+/// A host on the cable that has the device configured (address 7, configuration 1).
+fn booted_on_usb(fw: &Firmware) -> Machine {
+    let mut m = Machine::boot(&fw.image);
+    m.usb = Some(UsbHost::default());
+    common::run_past_boot(&mut m, fw);
+    m.usb_frames(20);
+    let setup = |m: &mut Machine, pkt: [u8; 8]| {
+        m.usb.as_mut().unwrap().setup(&mut m.soc, pkt);
+        m.usb_frames(3);
+    };
+    m.usb.as_mut().unwrap().bus_reset();
+    m.usb_frames(3);
+    setup(&mut m, [0x00, 0x05, 0x07, 0, 0, 0, 0, 0]);
+    setup(&mut m, [0x00, 0x09, 0x01, 0, 0, 0, 0, 0]);
+    let usb = fw.symbol("usb");
+    assert_eq!(m.soc.read8(usb + 1), 1, "not configured");
+    m.usb_frames(300);
+    m
+}
+
+/// One MIDI message as a USB-MIDI event packet on EP1 OUT (cable 0), retried while the
+/// device NAKs.
+fn usb_midi(m: &mut Machine, bytes: &[u8]) {
+    let cin = match bytes[0] {
+        0xF2 => 0x3,
+        0xF3 => 0x2,
+        _ => 0xF,
+    };
+    let mut pkt = [cin, 0, 0, 0];
+    pkt[1..=bytes.len()].copy_from_slice(bytes);
+    loop {
+        let usb = m.usb.as_mut().expect("a host");
+        if usb.out1(&mut m.soc, &pkt) {
+            break;
+        }
+        m.usb_frames(1);
+    }
+}
+
+/// A MIDI message over TRS, or over USB when a host is on the cable.
+fn midi(m: &mut Machine, bytes: &[u8]) {
+    if m.usb.is_some() {
+        usb_midi(m, bytes);
+    } else {
+        m.midi(bytes);
+    }
 }
 
 /// The first song's calls a row, from the host's song control (the same song and player).
@@ -74,14 +125,18 @@ fn run_clocked(
     let mut last = song_field(m, fw, ilp32::song_ctl::calls);
     for t in 0..ms {
         while (next as u64) <= m.soc.periph.cycles {
-            m.midi(&[0xF8]);
+            midi(m, &[0xF8]);
             run.clocks.push(m.soc.periph.cycles);
             next += per;
         }
         if extra(m, t) {
             // a transport byte went in: the clock's next one after it
         }
-        m.run_ms(1);
+        if m.usb.is_some() {
+            m.usb_frames(1);
+        } else {
+            m.run_ms(1);
+        }
         let calls = song_field(m, fw, ilp32::song_ctl::calls);
         if calls != last {
             let s = song_field(m, fw, ilp32::song_ctl::call_sample);
@@ -154,15 +209,30 @@ fn stop_song_position_and_continue_over_trs() {
     let Some(fw) = fixture("the MIDI transport test") else {
         return;
     };
-    let row = row_calls();
     let mut m = booted(&fw);
+    stop_song_position_and_continue(&mut m, &fw);
+}
+
+/// The same over USB: song position (a system common message) and the real-time bytes go
+/// through usb.c's raw MIDI-in hook to SIDOU's parser, as on TRS.
+#[test]
+fn stop_song_position_and_continue_over_usb() {
+    let Some(fw) = fixture("the MIDI transport test") else {
+        return;
+    };
+    let mut m = booted_on_usb(&fw);
+    stop_song_position_and_continue(&mut m, &fw);
+}
+
+fn stop_song_position_and_continue(m: &mut Machine, fw: &Firmware) {
+    let row = row_calls();
     let beat_ms = (60_000.0 / BPM) as u64;
-    let run = run_clocked(&mut m, &fw, beat_ms * 4, |m, t| {
+    let run = run_clocked(m, fw, beat_ms * 4, |m, t| {
         if t == beat_ms - 5 {
-            m.midi(&[0xFA]);
+            midi(m, &[0xFA]);
         }
         if t == 3 * beat_ms - 5 {
-            m.midi(&[0xFC]);
+            midi(m, &[0xFC]);
         }
         false
     });
@@ -173,12 +243,12 @@ fn stop_song_position_and_continue_over_trs() {
     );
     // bar 3: 32 16ths, then continue
     m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
-    let run = run_clocked(&mut m, &fw, beat_ms * 4, |m, t| {
+    let run = run_clocked(m, fw, beat_ms * 4, |m, t| {
         if t == 10 {
-            m.midi(&[0xF2, 32, 0]);
+            midi(m, &[0xF2, 32, 0]);
         }
         if t == beat_ms - 5 {
-            m.midi(&[0xFB]);
+            midi(m, &[0xFB]);
         }
         false
     });

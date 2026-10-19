@@ -108,46 +108,67 @@ windows and SPI bytes sent.
 
 Copy the HAL files above from the new commit, update the commit here and in
 [LICENSING.md](../../LICENSING.md), and describe any local change in this
-file. Copy `src/usb.c` as it is (never edit it: see below). For
+file. Copy `src/usb.c` as it is, then put back its two SIDOU hooks if upstream has not taken them (see below). For
 `usb/midi_uart.c`, diff the new upstream file against this commit's and carry
 the changes over onto SIDOU's version.
 
-## Felucca USB stack (`src/usb.c`, unmodified) and TRS MIDI driver (`usb/`)
+## Felucca USB stack (`src/usb.c`, two hooks) and TRS MIDI driver (`usb/`)
 
 Since the USB-MIDI out fix (2026-10-19), the app uses Felucca's USB stack
-exactly as Felucca ships it: `src/usb.c`, the same byte-for-byte copy the
-update loader builds from (below). SIDOU's adapted copy (`usb/usb.c`) is gone.
+`src/usb.c`. It is the same copy the update loader builds from (below), byte
+for byte but for two marked hooks. SIDOU's adapted copy (`usb/usb.c`) is gone.
 The fork could not send USB-MIDI out on the FM-1, and the reasons were not in
 its source ([docs/hardware-results/usb-out-diagnosis.md](../../docs/hardware-results/usb-out-diagnosis.md)).
-The rule now: **no fork of `usb.c`**. Anything SIDOU needs differently goes
-in `midi.c`, around the file.
 
-- **Use:** `midi.c` defines the hooks, then includes `src/usb.c`, SIDOU's
-  `usb/midi_uart.c` and `src/ota.c` into one translation unit. The hooks are
-  `RING_PUBLISH()`, `FELUCCA_OTA 1`, `FELUCCA_ID`, `FELUCCA_CDC 0` and
-  `FELUCCA_UAC 0`: Felucca's own switches, MIDI streaming alone on EP1, with
-  no CDC console and no USB audio. Its `sysex_byte` is renamed to
-  `ota_sysex_byte` by a macro around the include, because `app/sysex.h` has a
-  `sysex_byte` too. `fm1_delay_ms` goes to `usb_reset_wait` (below). No other
-  token is touched.
-- **MIDI in:** `usb.c` keeps its own MIDI-in ring. Its `midi_in_event` keeps
-  channel messages and the F8/FA/FB/FC real-time bytes, as USB-MIDI packets.
-  `midi.c`'s `usb_in_pump` moves them into SIDOU's ring at each `midi_drain`
-  (USB entries, stamped as they move). An overflow of `usb.c`'s ring
-  (`midi_in_overflow`) becomes a gap for SIDOU's parser.
-- **SysEx in:** `usb.c` collects each SysEx frame (up to 640 bytes, one at a
-  time) for the update protocol. `midi.c`'s `usb_sysex` (from
-  `update_poll`) passes SIDOU's frames (`F0 7D 53 44 …` and universal
-  `F0 7E …`, [docs/reference/sysex.md](../../docs/reference/sysex.md)) to
-  SIDOU's SysEx parser, F0 to F7, then frees the frame. USB transfers are
-  stop-and-wait, so `usb.c` dropping a frame that arrives while one is
-  pending loses nothing.
-- **What `usb.c` drops on the way in, as in Felucca:** system common messages
-  (song position F2, song select F3, tune request F6) and the real-time bytes
-  other than F8/FA/FB/FC (active sensing FE, reset FF). TRS still carries all
-  of them to SIDOU's parser.
-- **Kept as Felucca has it:** the strings "Hügelton Instruments" / "Felucca"
-  and VID/PID 0x1209:0x0001. `sysex_byte` sets `usb.uboot_req` on the stock UBOOT
+The rule now: **no fork of `usb.c`**. The file stays Felucca's, with at most
+one or two hooks, each:
+
+- marked `/* SIDOU hook (upstream candidate): … */`;
+- inert when its macro is undefined;
+- proposed upstream ([docs/upstream-reports.md](../../docs/upstream-reports.md), item 8).
+
+Everything else SIDOU needs goes in `midi.c`, around the file.
+
+### The hooks in `src/usb.c`
+
+| Hook | Where | Undefined (Felucca, the loader) | SIDOU's `midi.c` |
+|---|---|---|---|
+| `FELUCCA_USB_MANUFACTURER`, `FELUCCA_USB_PRODUCT`: the bytes of a whole string descriptor each | `STR1`, `STR2` | "Hügelton Instruments", "Felucca" (the loader keeps "Felucca Update") | "SIDOU contributors", "SIDOU" |
+| `FELUCCA_MIDI_IN_RAW(pkt)`: every EP1 OUT event packet, before `midi_in_event`'s filter | `midi_in_event`, first | nothing | `usb_raw_in`: the packet into SIDOU's ring |
+
+The loader builds from the same file with neither macro defined. Its
+`loader.bin`, and so the package's `ota.bin`, is byte-identical with or
+without the hooks (checked 2026-10-20).
+
+### Use
+
+- **Including it:** `midi.c` defines the hooks, then includes `src/usb.c`,
+  SIDOU's `usb/midi_uart.c` and `src/ota.c` into one translation unit. The
+  hooks are:
+  - `RING_PUBLISH()`, `FELUCCA_OTA 1` and `FELUCCA_ID`;
+  - `FELUCCA_CDC 0` and `FELUCCA_UAC 0`: Felucca's own switches, MIDI
+    streaming alone on EP1, with no CDC console and no USB audio;
+  - the two above.
+
+  `usb.c`'s `sysex_byte` is renamed to `ota_sysex_byte` by a macro around the
+  include, because `app/sysex.h` has a `sysex_byte` too. `fm1_delay_ms` goes to
+  `usb_reset_wait` (below). No other token is touched.
+- **MIDI in:** `usb_raw_in` (the TIMER5 interrupt, in `usb_poll`) puts every
+  event packet as it is into SIDOU's ring, stamped by its poll. SIDOU's parser
+  takes all of it (`app/midi_usb.c`): channel messages, system common (song
+  position, song select, tune request), every real-time byte, and SysEx. A
+  full ring is a gap for the parser.
+
+  `usb.c` still fills its own ring through its filter: channel messages and
+  F8/FA/FB/FC. Those are copies. `midi.c`'s `usb_in_pump` empties that ring
+  at each `midi_drain`, but only while SIDOU's ring has room for another OUT
+  packet. That way `usb.c`'s back-pressure (`ep1_take` NAKs while its own ring
+  is nearly full) also holds the host off when SIDOU's ring fills.
+- **SysEx in:** SIDOU's frames reach its parser in the raw stream. `usb.c` also
+  collects each SysEx frame for the update protocol. `update_poll` frees SIDOU's
+  frames from there (`F0 7D 53 44 …` and universal `F0 7E …`), so the
+  updater's frame is free for its next request.
+- **Kept as Felucca has it:** VID/PID 0x1209:0x0001. `sysex_byte` sets `usb.uboot_req` on the stock UBOOT
   soft key `F0 22 24 35 7D F7`; nothing in SIDOU reads it, and SIDOU never
   sends that SysEx.
 - **The retry without a host:** `usb_retry` runs `usb_start` once a second
@@ -220,7 +241,9 @@ Laid out as in Felucca's `firmware/` tree, so the loader's relative includes
 
 - **Source:** Felucca's `firmware/src/usb.c`, `src/ota.c`, `src/libc.c` and
   `firmware/loader/` (`crt0_ldr.S`, `ldr_core.c`, `loader.c`, `loader.ld`)
-  at the same commit, byte for byte.
+  at the same commit, byte for byte. The one exception is `src/usb.c`'s two
+  SIDOU hooks (above). They are inert in the loader's build, whose
+  `loader.bin` is unchanged by them.
 - **Licence:** GPL-3.0-only, © 2026 Leo Kuroshita, Hügelton Instruments.
 - **The update loader** is built from them unmodified, with exactly the
   commands of Felucca's `tools/build.py` `build_loader()` (CMake target
@@ -245,7 +268,7 @@ Laid out as in Felucca's `firmware/` tree, so the loader's relative includes
   `fm1_enter_update`). `FELUCCA_ID` is SIDOU's identity, `SIDOU_PRODUCT`
   (`FM-1_900` for development builds, the same as Felucca's development
   builds; distinct digits are for later, with the community).
-- `src/usb.c` is also the app's own USB stack, unmodified (above).
+- `src/usb.c` is also the app's own USB stack, with its two hooks (above).
 
 ### Checked against the v1.6.1 tag (2026-10-18)
 

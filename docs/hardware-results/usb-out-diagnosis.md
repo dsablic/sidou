@@ -64,8 +64,13 @@ Two more findings on the way:
 
 ## The fix (`SIDOU_USB_FIX`, on by default)
 
-- **Felucca's `src/usb.c`, byte for byte.** SIDOU's fork (`usb/usb.c`) is
-  gone. Everything SIDOU needs differently is in `midi.c`, around the include
+- **Felucca's `src/usb.c`, byte for byte but for two marked hooks.**
+  SIDOU's fork (`usb/usb.c`) is gone. The hooks are inert in Felucca's own
+  build and the loader's, and are proposed upstream:
+  - SIDOU's USB strings;
+  - every OUT event packet raw to SIDOU's parser.
+
+  Everything else SIDOU needs is in `midi.c`, around the include
   ([VENDORED.md](../../platform/fm1/VENDORED.md)).
 - **`midi.c` compiled with Felucca's flags** (`-mcpu=generic -mno-fprev1 -Os`
   appended to SIDOU's), and with `-fdata-sections`. The rest of SIDOU keeps

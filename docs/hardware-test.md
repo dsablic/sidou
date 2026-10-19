@@ -721,10 +721,8 @@ Notes:
 
 ## 8. MIDI over USB
 
-- [ ] The unit enumerates as a USB-MIDI device "Felucca" by "Hügelton
-  Instruments" (pid.codes test VID/PID 1209:0001): since the USB-out fix SIDOU
-  runs Felucca's USB stack unmodified, strings included
-  ([VENDORED.md](../platform/fm1/VENDORED.md)). Record what the OS shows:
+- [ ] The unit enumerates as a USB-MIDI device "SIDOU" by "SIDOU
+  contributors" (pid.codes test VID/PID 1209:0001). Record what the OS shows:
 - [ ] The same note, CC and program tests as section 7 pass over USB.
 - [ ] TRS and USB at the same time both play.
 - [ ] **MIDI out (M1d):** in a DAW (or a MIDI monitor) on the SIDOU input, turn K1:
@@ -770,7 +768,7 @@ Notes:
 
 v0.2.0-m2-preview received USB-MIDI (notes, the upgrade request) but almost
 nothing it sent reached the host. The cause was the build flags of the file that
-includes the USB stack. The fix runs Felucca's `usb.c` unmodified, compiled with
+includes the USB stack. The fix runs Felucca's `usb.c` (with two marked hooks), compiled with
 Felucca's flags, with its EP buffers 64-byte aligned
 ([hardware-results/usb-out-diagnosis.md](hardware-results/usb-out-diagnosis.md)).
 fm1-emu checks it against a modelled host

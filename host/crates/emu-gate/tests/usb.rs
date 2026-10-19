@@ -6,6 +6,7 @@
 //! cmd 0x11), and reads EP1 IN while K1 and PRESETS turn. On v0.2.0-m2-preview the device received
 //! all of this and a host saw almost none of what it sent (docs/hardware-test.md, section 8).
 //! What this checks is the firmware's side, as the USB fix made it:
+//! - it presents as "SIDOU" by "SIDOU contributors" (usb.c's string hook);
 //! - every IN packet carries at most 64 bytes, whole event packets (Felucca's src/usb.c ep1_tx,
 //!   SysEx first);
 //! - no SIE access happens while an audio interrupt is open: USB's poll waits for the render's
@@ -74,6 +75,20 @@ fn enumerate(m: &mut Machine, fw: &Firmware) {
     let cfg = host(m).in0.concat();
     assert_eq!(cfg.len(), CONFIG_LEN, "the config descriptor over EP0");
     assert_eq!(host(m).in0[0].len(), 64, "in 64-byte data packets");
+    // The strings: SIDOU's, through usb.c's string hook (platform/fm1/VENDORED.md).
+    for (index, text) in [(1u8, "SIDOU contributors"), (2, "SIDOU")] {
+        host(m).in0.clear();
+        setup(m, [0x80, 0x06, index, 0x03, 0x09, 0x04, 0xFF, 0]);
+        m.usb_frames(3);
+        let d = host(m).in0.concat();
+        let utf16: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        assert_eq!(
+            d[..2],
+            [2 + utf16.len() as u8, 3],
+            "string {index}: {d:02x?}"
+        );
+        assert_eq!(d[2..], utf16[..], "string {index}");
+    }
     setup(m, [0x00, 0x09, 0x01, 0, 0, 0, 0, 0]);
     assert_eq!(host(m).address(), 7);
     assert_eq!(host(m).stalls, 0);

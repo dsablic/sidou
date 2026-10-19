@@ -348,11 +348,20 @@ static uint8_t usb_cdc_on = FELUCCA_CDC_DEFAULT != 0;      /* the console is pre
 #endif
 #define UAC_AS_IF (AUD_IF + 2u)
 static const uint8_t STR0[4] = {4, 3, 0x09, 0x04};
+/* SIDOU hook (upstream candidate): an includer's own manufacturer and product strings, each
+ * the bytes of a whole string descriptor (bLength, 3, UTF-16LE), for a firmware built on this
+ * stack that is not Felucca. Undefined, Felucca's. */
+#ifdef FELUCCA_USB_MANUFACTURER
+static const uint8_t STR1[] = {FELUCCA_USB_MANUFACTURER};
+#else
 static const uint8_t STR1[] = {42, 3, 'H', 0, 0xFC, 0, 'g', 0, 'e', 0, 'l', 0, 't', 0, 'o', 0, 'n', 0, ' ', 0, 'I', 0,
                                'n', 0, 's', 0, 't', 0, 'r', 0, 'u', 0, 'm', 0, 'e', 0, 'n', 0, 't', 0, 's', 0};
+#endif
 #ifdef FELUCCA_LOADER
 static const uint8_t STR2[] = {30, 3, 'F', 0, 'e', 0, 'l', 0, 'u', 0, 'c', 0, 'c', 0, 'a', 0, ' ', 0, 'U', 0, 'p', 0,
                                'd', 0, 'a', 0, 't', 0, 'e', 0};
+#elif defined(FELUCCA_USB_PRODUCT)                      /* (the SIDOU hook above) */
+static const uint8_t STR2[] = {FELUCCA_USB_PRODUCT};
 #else
 static const uint8_t STR2[] = {16, 3, 'F', 0, 'e', 0, 'l', 0, 'u', 0, 'c', 0, 'c', 0, 'a', 0};
 #endif
@@ -806,6 +815,12 @@ static void sysex_byte(uint8_t b)
 static void midi_in_event(uint32_t pkt)                 /* one USB-MIDI event packet */
 {
     uint32_t cin = pkt & 15u, st = (pkt >> 8) & 0xFFu;
+#ifdef FELUCCA_MIDI_IN_RAW
+    /* SIDOU hook (upstream candidate): every event packet as it came, to an includer that parses
+     * MIDI itself (system common, every real-time byte, SysEx), before the filter below, which
+     * goes on as it is. Undefined, nothing. */
+    FELUCCA_MIDI_IN_RAW(pkt);
+#endif
     if (cin >= 4u && cin <= 7u) {
         uint32_t k, nb = cin == 4u || cin == 7u ? 3u : cin == 6u ? 2u : 1u;
         for (k = 0; k < nb; k++)
