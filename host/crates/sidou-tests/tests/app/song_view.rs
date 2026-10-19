@@ -514,18 +514,31 @@ fn glo_and_the_leftmost_keys_mute_and_solo_and_sound_nothing() {
     s.ui.note_keys(key(4), key(4));
     assert_eq!(s.calls(), [Call::Mute(0b100)]);
     s.ui.note_keys(0, 0);
-    // Any other key: nothing, and it sounds nothing.
+    // Any other key plays as always, GLO's layer or not.
     s.ui.note_keys(key(16), key(16));
     assert!(s.calls().is_empty());
-    assert_eq!(gated(&s.ui), 0, "a key under GLO sounds nothing");
-    assert!(s.ui.rig.log().is_empty(), "{:?}", s.ui.rig.log());
-    // GLO let go with the key still down: it stays silent until it goes up.
+    assert_eq!(
+        gated(&s.ui),
+        1,
+        "a key beyond the leftmost six plays under GLO"
+    );
+    s.ui.note_keys(0, 0);
+    // A layer key (voice 3's mute) with GLO let go while it is still down: silent until it goes up.
+    s.ui.note_keys(key(2), key(2));
+    assert!(
+        s.calls().is_empty(),
+        "voices 1 and 2 are soloed: the mute of 3 changes nothing yet"
+    );
     s.ui.hold(PANEL_BTN_GLO, false);
-    s.ui.note_keys(key(16), 0);
+    s.ui.note_keys(key(2), 0);
     assert_eq!(gated(&s.ui), 0);
     s.ui.note_keys(0, 0);
-    s.ui.note_keys(key(16), key(16));
+    s.ui.note_keys(key(2), key(2));
     assert_eq!(gated(&s.ui), 1, "pressed again without GLO: it plays");
+    s.ui.note_keys(0, 0);
+    s.ui.hold(PANEL_BTN_GLO, true);
+    s.ui.note_keys(key(2), key(2)); // voice 3 unmuted again
+    assert!(s.calls().is_empty());
     s.ui.note_keys(0, 0);
     // Unsolo both: the mute of voice 1 is back.
     s.ui.hold(PANEL_BTN_GLO, true);
@@ -590,19 +603,20 @@ fn the_mutes_show_in_the_header_the_strips_and_lives_header() {
     s.ui.press(PANEL_BTN_HOME);
     settle(&mut s.ui);
     assert_eq!(s.ui.top(), "LIVE");
-    assert_eq!(&s.ui.row(0)[..5], "M1 S3");
-    assert_eq!(
-        attr(&s.ui, 0, 0),
-        attr_of(GRID_LIGHT_RED, GRID_BLACK),
-        "red on black, 2x"
-    );
+    // The name stays; the voices' badges on row 20 say it: 1 and 2 silent (dark grey), 3 soloed
+    // (reversed yellow).
+    let name = crate::preset_name(crate::preset(s.ui.live().preset));
+    assert_eq!(s.ui.row(0)[..name.len()], name, "the preset's name stays");
+    let badge = |s: &Song, v: usize| (ch(&s.ui, 24 + 2 * v, 20), attr(&s.ui, 24 + 2 * v, 20));
+    assert_eq!(badge(&s, 0), (b'1', attr_of(u32::from(t.dim), GRID_BLACK)));
+    assert_eq!(badge(&s, 1), (b'2', attr_of(u32::from(t.dim), GRID_BLACK)));
+    assert_eq!(badge(&s, 2), (b'3', attr_of(GRID_BLACK, u32::from(t.hot))));
     s.ui.hold(PANEL_BTN_GLO, true);
     s.ui.note_keys(key(0) | key(5), key(0) | key(5));
     s.ui.note_keys(0, 0);
     s.ui.hold(PANEL_BTN_GLO, false);
     settle(&mut s.ui);
-    let name = crate::preset_name(crate::preset(s.ui.live().preset));
-    assert_eq!(s.ui.row(0)[..name.len()], name, "none: the preset again");
+    assert_eq!(ch(&s.ui, 24, 20), b' ', "none, and no song: no badges");
 }
 
 #[test]
@@ -762,4 +776,106 @@ fn an_idle_song_view_composes_nothing_and_a_page_turn_stays_within_the_budget() 
             "row {row}: {sent:?}"
         );
     }
+}
+
+/// GLO pressed twice within 400 ms latches the layer (its LED lit, a toast says so): the leftmost
+/// keys are the mutes and solos without holding GLO, the others play. A press ends it.
+#[test]
+fn glo_double_tap_latches_and_a_tap_releases() {
+    let mut s = Song::new();
+    s.ui.rig.clear();
+    s.ui.settle();
+    s.ui.press(PANEL_BTN_GLO);
+    assert_eq!(s.ui.p.glo_latch, 0, "one tap is no latch");
+    // Later than 400 ms is no double tap either.
+    for _ in 0..12 {
+        s.ui.frame();
+    }
+    s.ui.press(PANEL_BTN_GLO);
+    assert_eq!(s.ui.p.glo_latch, 0, "the second tap came 500 ms later");
+    s.ui.frame();
+    s.ui.press(PANEL_BTN_GLO);
+    assert_eq!(s.ui.p.glo_latch, 1, "two taps within 400 ms");
+    s.ui.frame();
+    assert_eq!(s.ui.toast().as_deref(), Some("GLO LATCHED"));
+    let leds = unsafe { panel_get_leds(&*s.ui.p, &*s.ui.rig.live) };
+    assert_eq!(leds.buttons >> PANEL_BTN_GLO & 1, 1, "GLO is lit");
+    // The layer, GLO not held: key 2 mutes voice 2 and sounds nothing, key 8 plays.
+    s.ui.note_keys(key(1) | key(7), key(1) | key(7));
+    assert_eq!(s.calls(), [Call::Mute(0b010)]);
+    assert_eq!(gated(&s.ui), 1, "only key 8 sounds");
+    s.ui.note_keys(0, 0);
+    // A tap ends it.
+    s.ui.press(PANEL_BTN_GLO);
+    assert_eq!(s.ui.p.glo_latch, 0);
+    s.ui.frame();
+    assert_eq!(s.ui.toast().as_deref(), Some("GLO OFF"));
+    s.ui.note_keys(key(1), key(1));
+    assert_eq!(gated(&s.ui), 1, "key 2 plays again");
+}
+
+/// LIVE shows the song (its play mark beating, its tempo, the voices' badges) and GLO's layer
+/// (its boxes lit) where the mutes used to replace the preset's name.
+#[test]
+fn live_shows_the_song_and_the_mutes() {
+    let mut s = Song::new();
+    s.ui.settle();
+    let t = unsafe { &*theme_get(THEME_HIGH_CONTRAST) };
+    assert_eq!(s.ui.top(), "LIVE");
+    // Stopped: no mark, no tempo, no badges.
+    assert_eq!(ch(&s.ui, 22, 0), b' ');
+    assert_eq!(s.ui.small(20, 0, 7), "       ");
+    assert_eq!(ch(&s.ui, 24, 20), b' ');
+    // Playing: the mark at the first beat of a bar is yellow, then white on a beat, grey between;
+    // the tempo and the badges (all three sounding: in the voices' label colour).
+    s.ui.press(PANEL_BTN_PLAY);
+    s.f.st.row = [0, 0, 0];
+    s.ui.frame();
+    s.ui.frame();
+    assert_eq!(
+        ch(&s.ui, 22, 0),
+        GRID_BIG_FIRST as u8,
+        "the play mark at 2x"
+    );
+    assert_eq!(s.ui.g.src[22], FONT_PLAY as u8);
+    assert_eq!(attr(&s.ui, 22, 0) & 15, t.hot, "a bar's first beat");
+    assert_eq!(s.ui.small(20, 0, 7), "125 BPM");
+    for v in 0..3 {
+        assert_eq!(ch(&s.ui, 24 + 2 * v, 20), b'1' + v as u8);
+        assert_eq!(attr(&s.ui, 24 + 2 * v, 20) & 15, t.label);
+    }
+    for _ in 0..4 {
+        s.ui.frame();
+    }
+    assert_eq!(attr(&s.ui, 22, 0) & 15, t.label, "between beats");
+    s.f.st.row = [4, 4, 4];
+    for _ in 0..20 {
+        s.ui.frame();
+        if s.ui.v.live.row_seen == 4 {
+            break;
+        }
+    }
+    assert_eq!(s.ui.v.live.row_seen, 4, "the row reached LIVE");
+    assert_eq!(
+        attr(&s.ui, 22, 0) & 15,
+        t.value,
+        "a beat that is not a bar's first"
+    );
+    // GLO latched, key 2 mutes voice 2: the layer replaces the band, M2 lit red, voice 2's
+    // badge dark grey, the preset's name untouched.
+    s.ui.press(PANEL_BTN_GLO);
+    s.ui.press(PANEL_BTN_GLO);
+    s.ui.note_keys(key(1), key(1));
+    s.ui.note_keys(0, 0);
+    s.ui.settle();
+    assert_eq!(s.ui.small(21, 0, 11), "GLO LATCHED");
+    assert_eq!(s.ui.big(22, 0, 2, 2), "M1");
+    assert_eq!(attr(&s.ui, 5, 22) >> 4, t.alert, "M2 is lit");
+    assert_ne!(attr(&s.ui, 0, 22) >> 4, t.alert, "M1 is not");
+    assert_eq!(attr(&s.ui, 26, 20) & 15, t.dim, "voice 2's badge");
+    assert_eq!(&s.ui.row(0)[..8], "SAW LEAD");
+    // The layer gone, the band is back.
+    s.ui.press(PANEL_BTN_GLO);
+    s.ui.settle();
+    assert_eq!(s.ui.small(21, 0, 6), "FILTER");
 }

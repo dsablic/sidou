@@ -139,7 +139,7 @@ fn a_trs_note_on_during_the_title_card_plays_and_ends_the_boot() {
         peak(&x)
     );
     assert!(
-        peak(&x) > 1000.0,
+        peak(&x) > 1000.0 * common::boot_gain(),
         "the note did not play: peak {}",
         peak(&x)
     );
@@ -187,7 +187,10 @@ fn a_trs_note_on_plays_c4_and_the_note_off_releases_it() {
         held.freq,
         u32::from(unsafe { live_freq_table }[usize::from(C4)])
     );
-    assert!(peak(&x) > 2000.0, "the note is silent");
+    assert!(
+        peak(&x) > 2000.0 * common::boot_gain(),
+        "the note is silent"
+    );
     assert!(
         (f0 / C4_HZ - 1.0).abs() < 0.005,
         "C4 plays {f0:.2} Hz, expected {C4_HZ} Hz"
@@ -198,7 +201,7 @@ fn a_trs_note_on_plays_c4_and_the_note_off_releases_it() {
         "the note-off left the gate on"
     );
     assert!(
-        peak(&tail) > 500.0,
+        peak(&tail) > 500.0 * common::boot_gain(),
         "the note stopped dead instead of releasing"
     );
     assert!(peak(&after) < 500.0, "the note still sounds after release");
@@ -777,7 +780,11 @@ fn the_panel_goes_out_over_usb_and_midi_in_is_not_echoed() {
         )
     };
     let first = usize::from(up[(SAW_LEAD_CUTOFF >> 5) as usize] as u8) - 1;
-    assert_eq!(c, u32::from(steps[first + 3]));
+    assert_eq!(
+        c,
+        u32::from(steps[first + 4]),
+        "the turn before it counts too"
+    );
     let (k1, w) = queued(&mut m, &fw, w);
     assert!((1..=3).contains(&k1.len()), "{k1:08x?}");
     assert_eq!(k1.last(), Some(&cc_packet(CC_CUTOFF, cutoff_cc(c))));

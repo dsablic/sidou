@@ -256,9 +256,10 @@ which printed control did it.
 | FX (button 2) | CHIP toggles 6581/8580 with no gap in the sound; FX LED lit for the 8580 | | [ ] |
 | K1 (encoder 2) | CUTOFF; turning down takes the highs out | | [ ] |
 | K2 (encoder 3) | RESO 0..15 | | [ ] |
-| K3 (encoder 4) | PULSE (audible on PWM BASS) | | [ ] |
-| K4 (encoder 5) | PRESET: SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC | | [ ] |
-| MASTER (pot) | VOLUME 0..15, quieter turned down | | [ ] |
+| K3 (encoder 4) | the sound's own control: DECAY (SAW LEAD, NOISE PERC), PULSE (PWM BASS: 3 % to 50 %, one side), RATIO (SYNC LEAD: -12..+12 semitones); the label and value change with the preset | | [ ] |
+| K4 (encoder 5) | RELEASE 0..15 (a note let go rings longer) | | [ ] |
+| PRESETS (encoder 6) | the preset: SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC, clamped; each keeps its edits (a `*` after its name); EDIT held puts the preset back | | [ ] |
+| MASTER (pot) | VOLUME 0..100 %, even steps of loudness across the travel (a taper: no jump near the top), quieter turned down | | [ ] |
 | SCL (button 3) | selects the next effect slot (the play mark on LIVE's DIST, MOD and FX lines moves) | | [ ] |
 | ENV (button 4) | the selected slot's next algorithm (the name on LIVE's slot line changes) | | [ ] |
 | EDIT (button 6) held + K1..K4 | the selected slot's Amount, A, B, Mix (the numbers on the status screen and the CHIP view; Mix as LIVE's bar), in every view; EDIT lit while the slot is on | | [ ] |
@@ -333,7 +334,7 @@ LIVE (the screen at power-on):
   (CC 20 = 64) they keep moving, taking turns, with no tearing.
 - [ ] K1 and K2 move the CUTOFF and RESO values and their bars (the cutoff as `980`, `1.2K`
   or `12K`); MIDI CC 23 changes the filter's mode at 2× (LP, BP, HP, NOTCH...). K3 moves
-  PULSE (a percent) and K4 changes the PRESET, its three letters in the fourth column and its
+  PULSE (a percent) and PRESETS changes the preset (the name in the header, a star once edited); K4 is the RELEASE and its
   name at the top.
 - [ ] The L and R meters follow the output; with REVERB on, the tail shows
   on them after the note.

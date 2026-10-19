@@ -743,6 +743,55 @@ fn a_preset_remembers_its_edits_and_shows_a_star() {
     );
 }
 
+/// LIVE shows the song (the play mark, the tempo, the voices' badges) and GLO's layer: PLAY on
+/// LIVE, then GLO tapped twice and key 2: the layer latched, its M2 lit, voice 2's badge dark.
+#[test]
+fn live_shows_the_song_and_the_mutes() {
+    let Some((build, fw)) = fixture("the LIVE song test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    settle(&mut m, &fw);
+    let lv = |m: &mut Machine, field: usize| ui_byte(m, &fw, sidou_sys::ilp32::views::live + field);
+    assert_eq!(lv(&mut m, sidou_sys::ilp32::live_view::playing), 0);
+    press(&mut m, PLAY);
+    m.run_ms(2_000);
+    common::to_mid_frame(&mut m, &fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("live_view_view"));
+    assert_eq!(
+        lv(&mut m, sidou_sys::ilp32::live_view::playing),
+        1,
+        "the song plays"
+    );
+    assert!(
+        lv(&mut m, sidou_sys::ilp32::live_view::bpm) != 0,
+        "its tempo"
+    );
+    compare_golden(&build, "live-song", &m.soc.lcd.fb, &[]);
+    // GLO latched: two taps, then key 2 mutes voice 2.
+    press(&mut m, GLO);
+    press(&mut m, GLO);
+    assert_eq!(
+        lv(&mut m, sidou_sys::ilp32::live_view::glo),
+        3,
+        "the layer is latched"
+    );
+    m.key(KEY0 + 1, true);
+    m.run_ms(60);
+    m.key(KEY0 + 1, false);
+    m.run_ms(300);
+    common::to_mid_frame(&mut m, &fw);
+    assert_eq!(live_gated(&mut m, &fw), 0, "the layer's key sounds nothing");
+    compare_golden(&build, "live-glo", &m.soc.lcd.fb, &[]);
+    // A tap ends it; the song stops.
+    press(&mut m, GLO);
+    m.run_ms(100);
+    assert_eq!(lv(&mut m, sidou_sys::ilp32::live_view::glo), 0);
+    press(&mut m, PLAY);
+    m.run_ms(1_000);
+    assert_eq!(lv(&mut m, sidou_sys::ilp32::live_view::playing), 0);
+}
+
 /// The octave is large when it is not 0: cells 26-29 of rows 0-1 (nothing at 0).
 #[test]
 fn the_octave_shows_at_2x_when_not_0() {

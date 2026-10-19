@@ -87,7 +87,10 @@ fn a_key_sounds_at_its_pitch() {
         let x = record(&mut m, 300);
         let f0 = pitch(&x);
         println!("key {note}: {f0:.2} Hz, peak {}", peak(&x));
-        assert!(peak(&x) > 2000.0, "key {note} is silent");
+        assert!(
+            peak(&x) > 2000.0 * common::boot_gain(),
+            "key {note} is silent"
+        );
         assert!(
             (f0 / hz - 1.0).abs() < 0.005,
             "key {note} plays {f0:.2} Hz, expected {hz} Hz"

@@ -21,6 +21,19 @@ All notable changes are documented here. The format follows
 - The song audition keeps live state: a jam on an unused instrument, an omitted voice, a note
   outside the song's range or a table of another encoding neither restarts nor refuses; it is
   prepared in bounded main-loop slices and converted at a block boundary.
+- Ergonomics pass, LIVE (ergo-live): K1 walks a generated cutoff table (64 detents, even in pitch,
+  per chip model) and MASTER has an audio taper (-60 dB to 0 dB in even steps of dB) and reads in
+  percent; LIVE's knob row says what K1-K4 turn (values of at most 3 characters, the page's
+  name, the slot's controls on EDIT or SELECT's pages) and a knob that turns on LIVE or CHIP
+  highlights its label instead of opening a popup; **PRESETS** (the big encoder) steps the preset
+  in every view, each preset **keeps its edits** (a `*` after its name; EDIT + PRESETS puts it
+  back) and MIDI out sends them after the program change; **SELECT** pages LIVE's knob row and
+  **ALGORITHM** steps the chip's profile or the slot's algorithm, with no popup; **K3** is the
+  sound's own control (the pulse width in 31 positions, the decay, or the sync ratio in
+  semitones) and **K4** the release (learnable); **GLO** latches with a double tap, its layer
+  shows on LIVE, the keys beyond the leftmost six play under GLO, and LIVE shows the song's play
+  mark, tempo and the voices' badges. See [the ergo-live report](docs/plans/2026-10-18-ergonomics-pass.md#track-ergo-live)
+  for the budgets. A toast now closes an open popup.
 - M2e Task 5: [version-1 SysEx](docs/reference/sysex.md) for inquiry, streamed
   directory/file GET and PUT, deletion, GTI5 instruments with table relocation,
   and current-song dumps/imports. USB uses per-frame ACK/NAK; TRS accepts paced

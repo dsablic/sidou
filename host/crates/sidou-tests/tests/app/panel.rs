@@ -334,15 +334,15 @@ fn the_song_buttons_have_feluccas_ids() {
     );
 }
 
-/// GLO's layer: with GLO held a key sounds nothing until it goes up, and the six leftmost
-/// keys' presses are kept for panel_take_glo.
+/// GLO's layer: with GLO held one of the six leftmost keys sounds nothing until it goes up and
+/// its press is kept for panel_take_glo; the other keys play.
 #[test]
-fn glo_held_keeps_the_leftmost_keys_presses_and_sounds_nothing() {
+fn glo_layer_lets_the_other_keys_play() {
     let mut p = Panel::new();
     unsafe { panel_buttons(&mut *p.p, &mut *p.rig.live, 0, 1 << PANEL_BTN_GLO) };
     p.keys(key(0) | key(5) | key(6), key(0) | key(5) | key(6));
-    assert_eq!(p.gated(), 0);
-    assert!(p.rig.log().is_empty());
+    assert_eq!(p.gated(), 1, "key 6 plays, keys 0 and 5 are the layer's");
+    assert_eq!(p.sounding(53 + 6), 1);
     assert_eq!(
         unsafe { panel_take_glo(&mut *p.p) },
         0b100001,
@@ -354,8 +354,9 @@ fn glo_held_keeps_the_leftmost_keys_presses_and_sounds_nothing() {
     assert_eq!(unsafe { panel_take_glo(&mut *p.p) }, 1);
     unsafe { panel_buttons(&mut *p.p, &mut *p.rig.live, 0, 0) };
     p.keys(key(0) | key(5) | key(6), 0);
-    assert_eq!(p.gated(), 0);
+    assert_eq!(p.gated(), 1, "key 6 still sounds");
     p.keys(key(5), 0);
+    assert_eq!(p.gated(), 0);
     p.keys(key(0) | key(5), key(0));
     assert_eq!(
         p.gated(),
@@ -363,6 +364,25 @@ fn glo_held_keeps_the_leftmost_keys_presses_and_sounds_nothing() {
         "key 0 up and down again: it plays; key 5 still quiet"
     );
     assert_eq!(unsafe { panel_take_glo(&mut *p.p) }, 0);
+}
+
+/// GLO latched is the same layer: the leftmost keys are the layer's, the others play, and GLO's
+/// LED is lit.
+#[test]
+fn a_latched_glo_is_the_layer_without_holding_it() {
+    let mut p = Panel::new();
+    assert_eq!(p.leds().buttons >> PANEL_BTN_GLO & 1, 0);
+    p.p.glo_latch = 1;
+    assert_eq!(p.leds().buttons >> PANEL_BTN_GLO & 1, 1, "GLO's LED");
+    p.keys(key(1) | key(7), key(1) | key(7));
+    assert_eq!(p.gated(), 1, "key 7 plays");
+    assert_eq!(unsafe { panel_take_glo(&mut *p.p) }, 0b10);
+    p.p.glo_latch = 0;
+    p.keys(key(1) | key(7), 0);
+    assert_eq!(p.gated(), 1, "key 1 stays quiet until it goes up");
+    p.keys(0, 0);
+    p.keys(key(1), key(1));
+    assert_eq!(p.gated(), 1, "and plays again once pressed");
 }
 
 /// panel_quiet_keys: a view takes keys (the song views' jam); a note they sound is released.

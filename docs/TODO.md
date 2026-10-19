@@ -28,9 +28,11 @@ Follow-ups that aren't tied to a milestone task yet.
     generated `midi.md` documents each curve;
   - check by ear on hardware with players, recorded in `docs/hardware-test.md`.
 - The user's priority (2026-10-16): after the features, with the UX pass.
-- **Done (ergonomics pass, ergo-live L1):** K1 walks 64 detents of an even-in-pitch cutoff
-  table per chip model, MASTER has a -60 dB..0 dB audio taper and reads in percent. (K3 follows
-  in L3.)
+- **Done (ergonomics pass, ergo-live):** K1 walks 64 detents of an even-in-pitch cutoff table
+  per chip model (the 8580's first 29 detents are single registers, the chip's own resolution,
+  which the plan's table rule gives: see the ergo-live report), MASTER has a -60 dB..0 dB audio
+  taper and reads in percent, K3 is the sound's own control (the pulse width in 31 positions of
+  1.6 %, the decay in 16, or the sync ratio in semitones) and K4 the release.
 
 ## A UX pass: make SIDOU a joy to use (after the features)
 

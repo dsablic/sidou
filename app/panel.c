@@ -13,6 +13,7 @@ void panel_init(panel* p) {
     p->page = PANEL_PAGE_LIVE;
     p->playing = 0;
     p->glo = 0;
+    p->glo_latch = 0;
     p->quiet = 0;
     p->sounding = 0;
     p->master_hook = NULL;
@@ -29,7 +30,7 @@ void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed) {
     if (!(down | pressed | p->sounding | p->quiet)) {
         return; /* most calls: no key */
     }
-    int glo = (p->held >> PANEL_BTN_GLO) & 1u;
+    int glo = ((p->held >> PANEL_BTN_GLO) | p->glo_latch) & 1u; /* held, or latched */
     /* Kept in a local and stored once: pi32v2's read-modify-write "and not" on memory, which
      * clearing a bit of p->quiet in place compiles to, is one fm1-emu does not decode. */
     uint32_t quiet = p->quiet;
@@ -37,7 +38,7 @@ void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed) {
     for (uint32_t k = 0; k < PANEL_NOTE_KEYS; ++k) {
         uint32_t bit = 1u << k;
         if (quiet & bit) {
-            if ((pressed & bit) && glo) {
+            if ((pressed & bit) && glo && k < PANEL_GLO_KEYS) {
                 toggles |= bit; /* pressed again */
             }
             if (!(down & bit)) {
@@ -49,7 +50,7 @@ void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed) {
             key_up(p, l, k); /* let go and pressed again since the last call */
         }
         if (p->key_note[k] == LIVE_NO_NOTE && ((down | pressed) & bit)) {
-            if (glo) {
+            if (glo && k < PANEL_GLO_KEYS) {
                 /* GLO's layer: the key is a mute or a solo, and sounds nothing */
                 toggles |= bit;
                 quiet |= down & bit;
@@ -236,6 +237,9 @@ panel_leds panel_get_leds(const panel* p, const live* l) {
     }
     if (p->playing) {
         o.buttons |= 1u << PANEL_BTN_PLAY;
+    }
+    if (p->glo_latch) {
+        o.buttons |= 1u << PANEL_BTN_GLO;
     }
     return o;
 }

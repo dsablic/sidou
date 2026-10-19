@@ -103,10 +103,11 @@ journey perform | Perform
   step clock-start | Follow the MIDI clock | Start the clock from a sequencer | clock 120 1500 start | sound; clip 1500; probe
   step program-change | Switch sound by program change | A program change picks the sound | pc 2; wait 300 | text SYNC; clip 300
   step panel-preset | Switch sound from the panel | PRESETS picks the sound | turn PRESETS -2 | text SAW LEAD; task change preset
-  step mute-voice-2 | Mute voice 2 | Hold GLO and press key 2 | holdkey GLO F#3 | text M2; task mute voice 2; probe
-  step unmute-voice-2 | Let voice 2 sound again | Again to unmute | holdkey GLO F#3 | -; task unmute voice 2
-  step solo-voice-1 | Solo voice 1 | Hold GLO and press key 4 | holdkey GLO G#3 | text S1; task solo voice 1; probe
-  step unsolo-voice-1 | Unsolo voice 1 | Again to unsolo | holdkey GLO G#3 | -; task unsolo voice 1
+  step mute-voice-2 | Latch GLO and press key 2 | Double-tap GLO, then key 2 | press GLO; press GLO; note F#3 200 | quieter; task mute voice 2; probe
+  step unmute-voice-2 | Let voice 2 sound again | Again to unmute | note F#3 200 | louder; task unmute voice 2
+  step solo-voice-1 | Solo voice 1 | Press key 4 | note G#3 200 | quieter; task solo voice 1; probe
+  step unsolo-voice-1 | Unsolo voice 1 | Again to unsolo | note G#3 200 | louder; task unsolo voice 1
+  step unlatch | Let GLO go | A tap on GLO ends the layer | press GLO | -
   step learn-cc | Learn a CC for K1 | Hold SAVE and turn K1, then move a controller | holdturn SAVE K1 1; cc 21 64 | text LEARNED; task learn a CC; setup
   step stop-clock | The clock stops | - | wait 800 | -
 

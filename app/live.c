@@ -808,7 +808,7 @@ void live_set_preset(live* l, uint8_t index) {
 }
 
 /* The current settings of the fields live_edit keeps. */
-static void edit_store(const live* l, live_edit* e) {
+LIVE_COLD static void edit_store(const live* l, live_edit* e) {
     e->cutoff = l->cutoff;
     e->pulse_width = l->pulse_width;
     e->resonance = l->resonance;
@@ -830,7 +830,7 @@ static void edit_store(const live* l, live_edit* e) {
 
 /* e over what load_preset has just loaded (a bend range RPN 0 set stays; a new mod target starts
  * the wheel at 0, as load_preset does). */
-static void edit_apply(live* l, const live_edit* e) {
+LIVE_COLD static void edit_apply(live* l, const live_edit* e) {
     l->cutoff = e->cutoff;
     l->pulse_width = e->pulse_width;
     l->resonance = e->resonance;
@@ -856,7 +856,7 @@ static void edit_apply(live* l, const live_edit* e) {
                                  live_ratio_q16[e->sync_semis + LIVE_RATIO_SEMIS] + 32768u) >> 16);
 }
 
-void live_recall_preset(live* l, uint8_t q) {
+LIVE_COLD void live_recall_preset(live* l, uint8_t q) {
     if (q >= LIVE_PRESET_COUNT) {
         q = LIVE_PRESET_COUNT - 1;
     }
@@ -882,7 +882,7 @@ uint32_t live_preset_edited(const live* l) {
            l->sync_semis != 0;
 }
 
-void live_preset_name(const live* l, char* buf) {
+LIVE_COLD void live_preset_name(const live* l, char* buf) {
     const char* name = cur(l)->name;
     uint32_t n = 0;
     for (; name[n] && n + 2u < LIVE_PRESET_NAME_CHARS; n++) {
@@ -894,7 +894,7 @@ void live_preset_name(const live* l, char* buf) {
     buf[n] = 0;
 }
 
-void live_preset_params(uint8_t index, uint16_t out[LIVE_PARAM_EXPERT]) {
+LIVE_COLD void live_preset_params(uint8_t index, uint16_t out[LIVE_PARAM_EXPERT]) {
     const live_preset* p = &presets[index < LIVE_PRESET_COUNT ? index : LIVE_PRESET_COUNT - 1u];
     out[LIVE_PARAM_CUTOFF] = p->cutoff;
     out[LIVE_PARAM_RESONANCE] = p->resonance;
@@ -931,7 +931,7 @@ uint32_t live_tone(const live* l) {
 }
 
 /* K3: the sync ratio, the pulse width or the decay, by the sound (live_tone). */
-__attribute__((noinline, unused)) static void tone_turn(live* l, int32_t delta) {
+__attribute__((noinline, unused)) LIVE_COLD static void tone_turn(live* l, int32_t delta) {
     delta = delta > 64 ? 64 : delta < -64 ? -64 : delta;
     switch (live_tone(l)) {
     case LIVE_TONE_RATIO: {
@@ -999,7 +999,7 @@ void live_knob(live* l, live_knob_id knob, int32_t delta) {
     }
 }
 
-void live_preset_step(live* l, int32_t steps, int revert) {
+LIVE_COLD void live_preset_step(live* l, int32_t steps, int revert) {
     if (revert) {
         live_set_preset(l, l->preset);
         return;

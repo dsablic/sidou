@@ -485,6 +485,14 @@ typedef enum {
  * not an enumerator: the enum gives each value one name, so a switch over live_param cannot
  * meet the same value under two case labels. */
 #define LIVE_PARAM_SLOT_END (LIVE_PARAM_SLOT + LIVE_SLOTS * LIVE_SLOT_FIELDS)
+
+/* Code that runs once a turn or a redraw, never a tick: built for size where the compiler can say
+ * so (clang's minsize; the device's compiler and the host's). */
+#if defined(__clang__)
+#define LIVE_COLD __attribute__((minsize))
+#else
+#define LIVE_COLD
+#endif
 #define LIVE_PARAM_EXPERT_END (LIVE_PARAM_EXPERT + SID_EXPERT_COUNT)
 
 /* Preset 0, octave 0, full volume, every effect slot off, the envelope instant, the model's

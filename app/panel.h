@@ -38,8 +38,8 @@ extern "C" {
 #define PANEL_BTN_ENV 4u
 #define PANEL_BTN_LFO 5u
 #define PANEL_BTN_EDIT 6u
-/* The song views (app/song_view.h): GLO held turns the leftmost PANEL_GLO_KEYS note keys
- * into the voices' mutes and solos (panel_take_glo), in every view; SEQ steps through the
+/* The song views (app/song_view.h): GLO held, or latched, turns the leftmost PANEL_GLO_KEYS note
+ * keys into the voices' mutes and solos (panel_take_glo), in every view, and the other keys play; SEQ steps through the
  * song views, PLAY plays and stops the song, REC turns record mode on and off. Their ids,
  * like LFO's and ARP's, are Felucca's and not yet confirmed on a SIDOU unit
  * (docs/hardware-test.md). */
@@ -109,6 +109,9 @@ typedef struct {
      * costs nothing. */
     void (*master_hook)(void* ctx);
     void* master_ctx;
+    /* 1 while GLO's layer is latched (a double tap on GLO, app/views.c glo_tap; a tap ends it):
+     * the keys are the mutes and solos as with GLO held. GLO's LED is lit. */
+    uint8_t glo_latch;
 } panel;
 
 /* The LEDs, as Felucca's input state lays out the keys. */
@@ -122,9 +125,10 @@ void panel_init(panel* p);
  * call (Felucca's note edges), which catches a press and release between two calls. A key
  * that goes down plays live_key_note of its base note; a key that goes up releases the note
  * it played; a key pressed again while held retriggers. With GLO held (p->held, from the
- * last panel_buttons) a key that goes down sounds nothing (until it goes up, GLO held or
- * not), and the leftmost PANEL_GLO_KEYS keys' presses are kept for panel_take_glo; a key
- * that sounds already sounds on until it goes up. A quiet key (panel_quiet_keys) sounds
+ * last panel_buttons) or latched (p->glo_latch) one of the leftmost PANEL_GLO_KEYS keys that
+ * goes down sounds nothing (until it goes up, GLO held or not) and its press is kept for
+ * panel_take_glo; the other keys play as always; a key that sounds already sounds on until it
+ * goes up. A quiet key (panel_quiet_keys) sounds
  * nothing until it goes up. */
 void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed);
 /* GLO's presses since the last call (bit k: key k of the PANEL_GLO_KEYS), cleared. */

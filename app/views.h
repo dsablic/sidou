@@ -214,6 +214,8 @@ typedef struct {
     uint8_t menu_ask; /* the item ALGORITHM changed, retained while its popup waits */
     song_editor editor;
     song_pages pages;
+    /* When GLO was last pressed, plus 1 (0: never), for the double tap that latches its layer. */
+    uint32_t glo_tap_ms;
 } views;
 
 extern const view views_status;

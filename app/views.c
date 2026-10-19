@@ -1433,6 +1433,23 @@ static void song_step(views* v) {
                 (void*)&v->pages, SCREEN_WIPE_DOWN);
 }
 
+/* GLO's press: a second press within GLO_TAP_MS of the last latches the layer (the keys are the
+ * mutes and solos without holding GLO), a press while it is latched ends it. The press goes on
+ * to the panel as before (held GLO is the same layer). */
+#define GLO_TAP_MS 400u
+__attribute__((noinline, unused)) LIVE_COLD static void glo_tap(views* v) {
+    panel* p = v->p;
+    uint32_t now = v->s.now + 1u;
+    if (p->glo_latch) {
+        p->glo_latch = 0;
+        screen_toast(&v->s, "GLO OFF", SCREEN_TOAST_MS);
+    } else if (v->glo_tap_ms && now - v->glo_tap_ms <= GLO_TAP_MS) {
+        p->glo_latch = 1;
+        screen_toast(&v->s, "GLO LATCHED", SCREEN_TOAST_MS);
+    }
+    v->glo_tap_ms = now;
+}
+
 /* HOME: the menu from the root view, back one view from any other: from the menu to LIVE,
  * behind THE OSCILLATOR's card. SEQ, PLAY and REC: the song views'. */
 static int global(void* ctx, const screen_event* e) {
@@ -1462,6 +1479,9 @@ static int global(void* ctx, const screen_event* e) {
     if (e->id == PANEL_BTN_REC) {
         song_view_rec(&v->song);
         return 1;
+    }
+    if (e->id == PANEL_BTN_GLO) {
+        glo_tap(v); /* and on to the panel */
     }
     return 0;
 }
@@ -2189,18 +2209,55 @@ void views_song(views* v, const song_ctl* sc, const song_event* ev, uint32_t n) 
 /* LIVE and CHIP show a control's change in the control's own place, so the value popup that a
  * K knob (or ALGORITHM) would open over them is dropped here, in the frame, and the place
  * highlights for a second instead (live_view_flash, chip_view_flash): the input paths stay as
- * they were. `top` is the view that shows. Other views keep their popups. On STATUS and the menu
- * this costs two tests. */
-static void live_frame(views* v, const view* top, uint32_t now_ms) {
-    if (top != &live_view_view && top != &chip_view_view) {
-        return;
+ * they were. `top` is the view that shows; views_frame calls this for LIVE and CHIP only (on
+ * STATUS and the menu it costs two tests). Other views keep their popups. */
+/* The song's state for LIVE: its tempo, and the play mark's beat (a beat's first row, a bar's
+ * being the first of four beats), held 120 ms (SONG_BEAT_MS). */
+#define SONG_BEAT_MS 120u
+__attribute__((noinline, unused)) static void live_song(views* v, uint32_t now_ms) {
+    live_view* lv = &v->live;
+    uint32_t bpm = song_view_shown_bpm(&v->song);
+    lv->bpm = bpm == SONG_VIEW_NO_BPM ? 0u : (uint16_t)(bpm > 999u ? 999u : bpm);
+    uint32_t entry, row;
+    song_view_position(&v->song, 0, &entry, &row);
+    uint32_t rb = v->song.rows_beat ? v->song.rows_beat : 4u;
+    if (row != lv->row_seen) {
+        lv->row_seen = (uint8_t)row;
+        if (row % rb == 0u) {
+            lv->beat = row % (4u * rb) == 0u ? 2u : 1u;
+            lv->beat_until = now_ms + SONG_BEAT_MS;
+        }
     }
+    if (lv->beat && (int32_t)(now_ms - lv->beat_until) >= 0) {
+        lv->beat = 0;
+    }
+}
+
+__attribute__((noinline, unused)) LIVE_COLD static void live_frame(views* v, const view* top,
+                                                                    uint32_t now_ms) {
     uint32_t ask = v->s.popup_ask;
     uint32_t enc = ask & 7u;
     int control = (ask & (ASK_BASE | ASK_PARAM)) == ASK_BASE && enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4;
     if (top == &live_view_view) {
         const panel* p = v->p;
         v->live.edit = p ? (uint8_t)(p->held >> PANEL_BTN_EDIT & 1u) : 0u;
+        /* GLO's layer: held or latched (bit 0), latched (bit 1); the song, while it plays */
+        v->live.glo = p ? (uint8_t)(((p->held >> PANEL_BTN_GLO | p->glo_latch) & 1u) | p->glo_latch << 1)
+                        : 0u;
+        /* The song views read the player's status while they show; LIVE does the same, for the
+         * play mark and the tempo (not while a PLAY waits for the player: its state is stale). */
+        const song_transport* t = v->song.t;
+        if (t && !v->song.want) {
+            t->status(t->ctx, &v->song.st);
+        }
+        v->live.playing = (uint8_t)(song_view_playing(&v->song) != 0);
+        if (v->live.playing) {
+            live_song(v, now_ms);
+        } else {
+            v->live.bpm = 0;
+            v->live.beat = 0;
+            v->live.row_seen = 0xffu; /* the song's first row is a beat */
+        }
         if (control) {
             live_view_flash(&v->live, enc - PANEL_ENC_K1 + 1u, now_ms);
             v->s.popup_ask = 0;
@@ -2260,7 +2317,9 @@ void views_frame(views* v, uint32_t now_ms) {
     if (v->sc) {
         v->sc->on = (uint8_t)(top == &live_view_view || top == &scene_view_view);
     }
-    live_frame(v, top, now_ms);
+    if (top == &live_view_view || top == &chip_view_view) {
+        live_frame(v, top, now_ms);
+    }
     screen_frame(&v->s, now_ms);
 }
 

@@ -689,6 +689,15 @@ pub const SAMPLE_RATE: u32 = 44_118;
 pub const HALF_FRAMES: usize = 128;
 /// fm1-emu's MASTER pot reading at power-on.
 pub const POT: u16 = 900;
+/// The MASTER gain at the pot's power-on reading, as a share of the chips' output (the audio taper,
+/// app/master_gain.h): a peak the chips alone would give is this much of it at the speaker. The
+/// tests' "a note sounds" levels are set for the chips' own output and scale by it.
+pub fn boot_gain() -> f32 {
+    // SAFETY: a pure function of its arguments.
+    let g = unsafe { sidou_sys::master_gain_of(u32::from(POT), sidou_sys::LIVE_MASTER_MAX) };
+    g as f32 / sidou_sys::MASTER_UNITY as f32
+}
+
 /// The MASTER gain stage audio_fill ends with (platform/fm1/audio.c, app/master_gain.h): the
 /// block's interleaved L, R at the gain of `master` (the pot, 0..LIVE_MASTER_MAX), held since
 /// the boot set it: no ramp.

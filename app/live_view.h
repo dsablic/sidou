@@ -3,9 +3,9 @@
 /* LIVE, the root view: what the instrument is doing, drawn to be read at 23 mm
  * (docs/art/README.md "LIVE"), after the screen-readability prototype's liveNew.
  *
- * - rows 0-1: the preset's name at 2 times the font (a song's mutes and solos in red in its
- *   place: "M13 S2", voices 1 and 3 muted, voice 2 soloed), and the octave at 2x in yellow on the
- *   right when it is not 0 (+1, -3);
+ * - rows 0-1: the preset's name at 2 times the font (a `*` after it once edited), the play mark
+ *   at 2x while a song plays (yellow for the first 120 ms of a bar, white of a beat, grey between)
+ *   and the octave at 2x in yellow on the right when it is not 0 (+1, -3);
  * - rows 2-13, three voice lanes of 4 rows: the voice's number at 2x in its colour with the
  *   waveform's name under it, its oscilloscope (160 x 32 pixels from column 3, the trace an
  *   overlay on each cell it crosses, 2 pixels thick, over a dotted centre line) in the voice's
@@ -18,10 +18,14 @@
  *   7K2, 50%), a bar in the knob's colour and its name K1..K4 in the hint colour. A knob that
  *   just turned has its label reversed for a second (the popup does not open over LIVE for
  *   it); a control the slot's algorithm does not use is dim;
+ * - row 20: while a song plays its tempo (`125 BPM`), and, while it plays or a voice is muted or
+ *   soloed, the voices' badges 1 2 3 (dark grey muted, reversed yellow soloed);
  * - rows 21-26: FILTER's mode at 2x with the chip's model and profile (KEYS:B while the keys play
  *   chip B), the three effect slots' names (the selected one reversed) and the selected slot's
  *   algorithm at 2x, and VU: each voice's level in its colour and the output's left and right
- *   peaks after the effect slots, 6 dB a cell.
+ *   peaks after the effect slots, 6 dB a cell. While GLO's layer is on (held or latched) these
+ *   rows are the layer instead: `GLO  MUTE SOLO` (or `GLO LATCHED`) and six boxes at 2x,
+ *   M1 M2 M3 S1 S2 S3, lit red when a mute and yellow when a solo is on.
  * The colours are the theme's roles (app/theme.h).
  *
  * The scopes come from the audio interrupt's tap (app/scope.h): the newest points, folded by
@@ -80,6 +84,8 @@ extern "C" {
 #define LIVE_VIEW_KNOB_BAR_ROW 18u
 #define LIVE_VIEW_KNOB_TAG_ROW 19u
 #define LIVE_VIEW_TAG_ROW_END 20u
+/* Row 20: the song's tempo, and the voices' badges. */
+#define LIVE_VIEW_STRIP_ROW 20u
 /* live_view.hl: what is shown reversed besides a knob's label (1..4). */
 #define LIVE_VIEW_HL_PROFILE 5u
 #define LIVE_VIEW_HL_ALGORITHM 6u
@@ -97,8 +103,9 @@ extern "C" {
 /* VU rows: the voices, then left and right. */
 #define LIVE_VIEW_METERS (SCOPE_VOICES + 2u)
 /* What the canvas shows besides the scopes, as bytes (live_view.c look): the theme 1, the header
- * 4, each voice's lane 6, the knob row 11, the bottom band 9 and the meters. */
-#define LIVE_VIEW_LOOK (1u + 4u + 6u * SCOPE_VOICES + 11u + 9u + LIVE_VIEW_METERS)
+ * 4, each voice's lane 6, the song's strip 4, the knob row 11, the bottom band 11 and the
+ * meters. */
+#define LIVE_VIEW_LOOK (1u + 4u + 6u * SCOPE_VOICES + 4u + 11u + 11u + LIVE_VIEW_METERS)
 
 /* A frame composed off the grid, each cell then written to it once (live_view.c). */
 typedef struct {
@@ -146,6 +153,16 @@ typedef struct {
     uint32_t hl_until;
     /* Rows the screen drew over that the last frame left for this one (live_view.c compose). */
     uint32_t owed;
+    /* GLO's layer (the views set it before each frame): bit 0 it shows (held or latched), bit 1 it
+     * is latched. The song, while it plays: the mark's beat (0 between beats, 1 the first 120 ms
+     * of a beat, 2 of a bar's first), the shown tempo (0: none), and the first voice's row at
+     * the last frame, which tells a new beat. */
+    uint8_t glo;
+    uint8_t playing;
+    uint8_t beat;
+    uint8_t row_seen;
+    uint16_t bpm;
+    uint32_t beat_until;
 } live_view;
 
 /* LIVE's own input: SELECT pages the knob row (TONE, DIST, MOD, FX; a slot page selects that

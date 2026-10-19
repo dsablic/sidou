@@ -387,25 +387,6 @@ static void popup_cancel(screen* s) {
     grid_big_guard(s->g, 0);
 }
 
-/* A popup open, opening or closing goes at once, and the rows it covered are composed again by
- * the view this frame. */
-static void popup_drop(screen* s) {
-    screen_popup_state* p = s->popup;
-    if (!p || !(p->rows | p->alive)) {
-        return;
-    }
-    for (uint32_t r = 0; r < p->rows; r++) {
-        grid_fill(s->g, SCREEN_POPUP_COL, SCREEN_POPUP_ROW + r, SCREEN_POPUP_W, 1, ' ',
-                  POPUP_BODY(screen_theme(s)));
-        redraw(s, 1u << (SCREEN_POPUP_ROW + r));
-    }
-    p->rows = 0;
-    p->next = 0;
-    p->alive = 0;
-    s->popup_defer = 0;
-    grid_big_guard(s->g, 0);
-}
-
 /* The frame's popup before the view composes: the control asked for puts its text up (or keeps
  * it), the time ends, and it opens or closes a step. What the frame draws covers its rows and
  * guards them from the view's large text; the rows it lets go are blanked and composed again
@@ -420,10 +401,13 @@ __attribute__((noinline, unused)) static void popup_step(screen* s) {
     }
     int asked = 0;
     /* A toast replaces a popup that is open, opening or closing (the OCTAVE +1 under VOLUME
-     * would stack): the frame the toast first shows in drops it (not in screen_toast, which an
-     * input calls: SELECT's toast in SCENE has 3 instructions to spare). */
-    if (s->toast_on == TOAST_WAITING && (p->rows | p->alive)) {
-        popup_drop(s);
+     * would stack): the frame the toast first shows in closes it at once, its rows blanked and
+     * composed again by the view below (not in screen_toast, which an input calls: SELECT's toast
+     * in SCENE has 3 instructions to spare). */
+    int dropped = s->toast_on == TOAST_WAITING && (p->rows | p->alive);
+    if (dropped) {
+        p->alive = 0;
+        s->popup_defer = 0;
     }
     /* The view the popup is for goes (a switch, a title card, MIDI learn): it and an ask go. */
     const view* top = s->stack[s->depth - 1u].v;
@@ -482,7 +466,7 @@ __attribute__((noinline, unused)) static void popup_step(screen* s) {
             p->until = s->now + SCREEN_POPUP_MS; /* its time starts when it opens */
         }
     } else if (rows) {
-        next = rows > SCREEN_POPUP_STEP ? rows - SCREEN_POPUP_STEP : 0u;
+        next = dropped || rows <= SCREEN_POPUP_STEP ? 0u : rows - SCREEN_POPUP_STEP;
     }
     grid* g = s->g;
     for (uint32_t r = next; r < rows; r++) {

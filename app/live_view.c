@@ -28,6 +28,9 @@ static const uint8_t KNOB_COL[4] = {0, 8, 15, 22};
 static const uint8_t KNOB_W[4] = {8, 7, 7, 8};
 /* The band: the chip's model and the profile from MODEL_COL; the slots' names across row 24. */
 #define MODEL_COL 10u
+/* The play mark's column (2x, two cells), and the badges' (a cell each, two apart). */
+#define PLAY_COL 22u
+#define BADGE_COL 24u
 static const uint8_t SLOT_COL[LIVE_SLOTS] = {0, 5, 9};
 
 _Static_assert(LIVE_VIEW_SCOPE_COL + LIVE_VIEW_SCOPE_COLS < NOTE_COL, "the scope ends before the note");
@@ -217,12 +220,13 @@ uint8_t live_view_wave_color(uint8_t control) {
     return wave_color(control);
 }
 
-/* "1234" or "1.2K" for hz. */
-static void hz_text(char* buf, uint32_t hz) {
+/* The popup's "980", "7.2K" and "11.4K" for hz, or with `knob` what a knob's column holds at 2x, at
+ * most 3 characters: "980", "7K2", "12K". */
+static void hz_text(char* buf, uint32_t hz, uint32_t knob) {
     uint32_t n = 0;
-    char digits[8];
+    char digits[4];
     uint32_t k = 0;
-    uint32_t whole = hz < 1000u ? hz : (hz + 50u) / 1000u;
+    uint32_t whole = hz < 1000u ? hz : (hz + (knob && hz >= 9950u ? 500u : 50u)) / 1000u;
     do {
         digits[k++] = (char)('0' + whole % 10u);
         whole /= 10u;
@@ -231,16 +235,24 @@ static void hz_text(char* buf, uint32_t hz) {
         buf[n++] = digits[--k];
     }
     if (hz >= 1000u) {
-        buf[n++] = '.';
-        buf[n++] = (char)('0' + (hz + 50u) / 100u % 10u);
-        buf[n++] = 'K';
+        char tenth = (char)('0' + (hz + 50u) / 100u % 10u);
+        if (!knob) {
+            buf[n++] = '.';
+            buf[n++] = tenth;
+            buf[n++] = 'K';
+        } else {
+            buf[n++] = 'K';
+            if (hz < 9950u) {
+                buf[n++] = tenth;
+            }
+        }
     }
     buf[n] = 0;
 }
 
 void live_view_cutoff_text(const live* l, char* buf) {
     float fc = sid_cutoff_hz(l->model, 0, l->cutoff_out);
-    hz_text(buf, (uint32_t)((fc < 30.0f ? 30.0f : fc) + 0.5f)); /* the filter clamps it at 30 Hz */
+    hz_text(buf, (uint32_t)((fc < 30.0f ? 30.0f : fc) + 0.5f), 0); /* the filter clamps it at 30 Hz */
 }
 
 /* ---- drawing ---- */
@@ -532,34 +544,18 @@ static void header(const live_view* lv, canvas* cv, const theme* th) {
     fill(cv, 0, 0, GRID_COLS, 2, ' ', THEME_ATTR(th, value));
 }
 
-/* The header's large text: the preset's name, or the song's mutes and solos in red in its place
- * ("M13 S2": voices 1 and 3 muted, voice 2 soloed), and the octave in yellow on the right when
- * it is not 0. */
-static void header_big(const live_view* lv, grid* g, const theme* th) {
-    char m[10];
-    if (lv->mutes) {
-        uint32_t n = 0;
-        for (uint32_t part = 0; part < 2u; part++) {
-            uint32_t bits = (uint32_t)lv->mutes >> (3u * part) & 7u;
-            if (!bits) {
-                continue;
-            }
-            if (n) {
-                m[n++] = ' ';
-            }
-            m[n++] = part ? 'S' : 'M';
-            for (uint32_t v = 0; v < 3u; v++) {
-                if (bits >> v & 1u) {
-                    m[n++] = (char)('1' + v);
-                }
-            }
-        }
-        m[n] = 0;
-        grid_text_big(g, 0, 0, 2, m, THEME_ATTR(th, alert));
-    } else {
-        char name[LIVE_PRESET_NAME_CHARS];
-        live_preset_name(lv->l, name); /* a `*` after it once edited */
-        grid_text_big(g, 0, 0, 2, name, THEME_ATTR(th, value));
+/* The header's large text: the preset's name, the play mark while a song plays, and the octave in
+ * yellow on the right when it is not 0. */
+__attribute__((noinline, unused)) LIVE_COLD static void header_big(const live_view* lv, grid* g, const theme* th) {
+    char name[LIVE_PRESET_NAME_CHARS];
+    live_preset_name(lv->l, name); /* a `*` after it once edited */
+    grid_text_big(g, 0, 0, 2, name, THEME_ATTR(th, value));
+    if (lv->playing) {
+        /* the play mark beats: yellow for a bar's first beat, white for another, grey between */
+        const char mark[2] = {(char)FONT_PLAY, 0};
+        grid_text_big(g, PLAY_COL, 0, 2, mark,
+                      lv->beat == 2u ? THEME_ATTR(th, hot) : lv->beat ? THEME_ATTR(th, value)
+                                                                      : THEME_ATTR(th, label));
     }
     int32_t o = lv->l->octave;
     if (o) {
@@ -595,33 +591,6 @@ static void lane_big(const live_view* lv, grid* g, const theme* th, uint32_t v) 
     grid_text_big(g, NOTE_COL, row, 2, note, GRID_ATTR(on ? th->value : th->dim, th->bg));
 }
 
-/* "980", "7K2" or "12K" for hz: at most 3 characters, what a knob's column holds at 2x. */
-static void hz_short(char* buf, uint32_t hz) {
-    uint32_t n = 0;
-    if (hz < 1000u) {
-        if (hz >= 100u) {
-            buf[n++] = (char)('0' + hz / 100u);
-        }
-        if (hz >= 10u) {
-            buf[n++] = (char)('0' + hz / 10u % 10u);
-        }
-        buf[n++] = (char)('0' + hz % 10u);
-    } else if (hz < 9950u) {
-        uint32_t t = (hz + 50u) / 100u; /* tenths of a kilohertz, 10..99 */
-        buf[n++] = (char)('0' + t / 10u);
-        buf[n++] = 'K';
-        buf[n++] = (char)('0' + t % 10u);
-    } else {
-        uint32_t k = (hz + 500u) / 1000u;
-        if (k >= 10u) {
-            buf[n++] = (char)('0' + k / 10u % 10u);
-        }
-        buf[n++] = (char)('0' + k % 10u);
-        buf[n++] = 'K';
-    }
-    buf[n] = 0;
-}
-
 /* Knob k's value on the TONE page as its column says it (K1 the cutoff, K2 the resonance, K3 the
  * pulse width in percent, K4 the preset's first three letters), at most 3 characters and a
  * terminator. */
@@ -630,7 +599,7 @@ void live_view_knob_text(const live* l, uint32_t k, char* buf) {
     switch (k) {
     case 0: {
         float fc = sid_cutoff_hz(l->model, 0, l->cutoff_out);
-        hz_short(buf, (uint32_t)((fc < 30.0f ? 30.0f : fc) + 0.5f));
+        hz_text(buf, (uint32_t)((fc < 30.0f ? 30.0f : fc) + 0.5f), 1);
         return;
     }
     case 1:
@@ -685,7 +654,7 @@ static int slot_page(const live_view* lv) {
 }
 
 /* Knob k's label, and whether the control is used (a slot page: by the slot's algorithm). */
-static int knob_label(const live_view* lv, uint32_t k, char* buf) {
+LIVE_COLD static int knob_label(const live_view* lv, uint32_t k, char* buf) {
     static const char* const TONE[4] = {"CUTOFF", "RESO", "PULSE", "RELEASE"};
     static const char* const K3[3] = {"RATIO", "PULSE", "DECAY"};
     if (!slot_page(lv)) {
@@ -703,7 +672,7 @@ static int knob_label(const live_view* lv, uint32_t k, char* buf) {
 }
 
 /* Knob k's value text: the TONE page's, or the slot's control as a number. */
-static void knob_value(const live_view* lv, uint32_t k, char* buf) {
+__attribute__((noinline, unused)) LIVE_COLD static void knob_value(const live_view* lv, uint32_t k, char* buf) {
     if (!slot_page(lv)) {
         live_view_knob_text(lv->l, k, buf);
         return;
@@ -723,7 +692,7 @@ static void knob_value(const live_view* lv, uint32_t k, char* buf) {
 
 /* Knob k's bar in pixels of `cells` cells: the cutoff, resonance and pulse width out of their
  * range, the preset's place of the presets; a slot's control out of its range. */
-static uint32_t knob_px(const live_view* lv, uint32_t k, uint32_t cells) {
+__attribute__((noinline, unused)) LIVE_COLD static uint32_t knob_px(const live_view* lv, uint32_t k, uint32_t cells) {
     const live* l = lv->l;
     uint32_t value, max;
     if (slot_page(lv)) {
@@ -751,7 +720,7 @@ static uint32_t knob_px(const live_view* lv, uint32_t k, uint32_t cells) {
 /* The knob row in the canvas, but for the values at 2x (knobs_big): the page's name, the labels
  * in each knob's readable colour (reversed while the knob's highlight runs), the bars, the names
  * K1..K4. `hl` is the highlight now. */
-static void knobs(const live_view* lv, canvas* cv, const theme* th, uint32_t hl) {
+LIVE_COLD static void knobs(const live_view* lv, canvas* cv, const theme* th, uint32_t hl) {
     fill(cv, 0, LIVE_VIEW_PAGE_ROW, GRID_COLS, LIVE_VIEW_TAG_ROW_END - LIVE_VIEW_PAGE_ROW, ' ',
          THEME_ATTR(th, value));
     text(cv, 0, LIVE_VIEW_PAGE_ROW, slot_page(lv) ? views_slot_name(lv->l->fx_select % LIVE_SLOTS) : "TONE",
@@ -776,7 +745,7 @@ static void knobs(const live_view* lv, canvas* cv, const theme* th, uint32_t hl)
     }
 }
 
-static void knobs_big(const live_view* lv, grid* g, const theme* th) {
+__attribute__((noinline, unused)) LIVE_COLD static void knobs_big(const live_view* lv, grid* g, const theme* th) {
     for (uint32_t k = 0; k < 4u; k++) {
         char v[5];
         char name[CHIP_VIEW_LABEL + 2u];
@@ -809,7 +778,7 @@ static void meter_bar(const live_view* lv, canvas* cv, grid* g, const theme* th,
 
 /* The profile as the band's second word, at most 4 characters: the name without the model
  * ("R4AR", "WORN"), or USR n for the USER profile picked. */
-static void profile_word(const live* l, char out[6]) {
+__attribute__((noinline, unused)) LIVE_COLD static void profile_word(const live* l, char out[6]) {
     uint32_t k = 0;
     if (l->user_applied) {
         out[k++] = 'U';
@@ -833,11 +802,39 @@ static void profile_word(const live* l, char out[6]) {
     out[k] = 0;
 }
 
+/* Row 20 in the canvas: while a song plays its tempo ("125 BPM"), and while it plays or a voice is
+ * muted or soloed the voices' badges (muted: dark grey, soloed: reversed yellow). */
+LIVE_COLD static void strip(const live_view* lv, canvas* cv, const theme* th) {
+    fill(cv, 0, LIVE_VIEW_STRIP_ROW, GRID_COLS, 1, ' ', THEME_ATTR(th, value));
+    if (lv->playing && lv->bpm) {
+        char b[4];
+        uint32_t n = 0;
+        for (uint32_t d = lv->bpm >= 100u ? 100u : lv->bpm >= 10u ? 10u : 1u; d; d /= 10u) {
+            b[n++] = (char)('0' + lv->bpm / d % 10u);
+        }
+        b[n] = 0;
+        text(cv, text(cv, 0, LIVE_VIEW_STRIP_ROW, b, THEME_ATTR(th, label)), LIVE_VIEW_STRIP_ROW,
+             " BPM", THEME_ATTR(th, label));
+    }
+    for (uint32_t v = 0; v < SCOPE_VOICES && (lv->playing || lv->mutes); v++) {
+        put(cv, BADGE_COL + 2u * v, LIVE_VIEW_STRIP_ROW, (uint8_t)('1' + v),
+            lv->mutes >> (3u + v) & 1u ? GRID_ATTR(th->bg, th->hot)
+            : muted(lv, v)             ? THEME_ATTR(th, dim)
+                                       : THEME_ATTR(th, label));
+    }
+}
+
 /* The bottom band in the canvas, but for the large text: FILTER's label, the chip's model and
  * KEYS:B, the three slots' names, and VU's labels and meters. */
-static void band(const live_view* lv, canvas* cv, const theme* th) {
+__attribute__((noinline, unused)) LIVE_COLD static void band(const live_view* lv, canvas* cv, const theme* th) {
     const live* l = lv->l;
     fill(cv, 0, LIVE_VIEW_BAND_ROW, GRID_COLS, LIVE_VIEW_BAND_ROWS, ' ', THEME_ATTR(th, value));
+    if (lv->glo & 1u) {
+        /* GLO's layer instead of the band: its boxes are large text (band_big) */
+        text(cv, 0, LIVE_VIEW_BAND_ROW, lv->glo & 2u ? "GLO LATCHED" : "GLO  MUTE SOLO",
+             THEME_ATTR(th, hot));
+        return;
+    }
     text(cv, 0, LIVE_VIEW_BAND_ROW, "FILTER", THEME_ATTR(th, label));
     text(cv, MODEL_COL, LIVE_VIEW_BAND_ROW, l->model == SID_MODEL_8580 ? "CHIP 8580" : "CHIP 6581",
          THEME_ATTR(th, label));
@@ -858,8 +855,18 @@ static void band(const live_view* lv, canvas* cv, const theme* th) {
 /* The band's large text: the filter's mode, the chip's profile (reversed while ALGORITHM's
  * change shows), and the selected slot's algorithm (reversed in yellow while the knob row shows
  * that slot, and for a second after ALGORITHM changed it). `hl` is the highlight now. */
-static void band_big(const live_view* lv, grid* g, const theme* th, uint32_t hl) {
+__attribute__((noinline, unused)) LIVE_COLD static void band_big(const live_view* lv, grid* g, const theme* th, uint32_t hl) {
     const live* l = lv->l;
+    if (lv->glo & 1u) {
+        /* M1 M2 M3 S1 S2 S3: lit red when a mute and yellow when a solo is on */
+        static const char* const BOX[6] = {"M1", "M2", "M3", "S1", "S2", "S3"};
+        for (uint32_t i = 0; i < 6u; i++) {
+            uint8_t lit = i < 3u ? th->alert : th->hot;
+            grid_text_big(g, 5u * i, LIVE_VIEW_MODE_ROW, 2, BOX[i],
+                          lv->mutes >> i & 1u ? GRID_ATTR(th->bg, lit) : THEME_ATTR(th, label));
+        }
+        return;
+    }
     uint32_t mode = l->filter_mode >> 4 & 7u;
     grid_text_big(g, 0, LIVE_VIEW_MODE_ROW, 2, MODE_NAMES[mode],
                   GRID_ATTR(mode ? th->value : th->dim, th->bg));
@@ -878,16 +885,17 @@ static void band_big(const live_view* lv, grid* g, const theme* th, uint32_t hl)
 /* What each part of the canvas shows, as bytes (LIVE_VIEW_LOOK of them): a part is drawn
  * again when its bytes change. */
 #define KEY_THEME 0u
-#define KEY_HEADER 1u /* the preset, the octave, the song's mutes, edited */
+#define KEY_HEADER 1u /* the preset, the octave, edited, the play mark's beat */
 #define KEY_VOICE 5u  /* 6 a voice: control, note, gate, stage, sounding, muted */
-#define KEY_KNOBS (KEY_VOICE + 6u * SCOPE_VOICES)
+#define KEY_STRIP (KEY_VOICE + 6u * SCOPE_VOICES) /* the song: playing, the tempo 2, the mutes */
+#define KEY_KNOBS (KEY_STRIP + 4u)
 /* The knob row: the page (a slot's, its number), the highlight, the slot's algorithm, then
  * 8 bytes of values: the slot's four controls, or the cutoff 2, the resonance, the pulse width 2,
  * the release, the decay, and the sync ratio's semitones with what K3 turns. */
 #define KEY_BAND (KEY_KNOBS + 11u)
-/* The band: the mode, the chip, the profile 2, the slot, the three algorithms, and which of
- * the profile's and the slot's algorithm is reversed. */
-#define KEY_METER (KEY_BAND + 9u)
+/* The band: the mode, the chip, the profile 2, the slot, the three algorithms, which of the
+ * profile's and the slot's algorithm is reversed, GLO's layer and the mutes. */
+#define KEY_METER (KEY_BAND + 11u)
 #define KEY_END (KEY_METER + LIVE_VIEW_METERS)
 _Static_assert(KEY_END == LIVE_VIEW_LOOK, "LIVE_VIEW_LOOK holds every part's bytes");
 
@@ -907,8 +915,12 @@ static void look(const live_view* lv, uint8_t out[LIVE_VIEW_LOOK], uint32_t now)
     out[KEY_THEME] = l->theme;
     out[KEY_HEADER] = l->preset;
     out[KEY_HEADER + 1u] = (uint8_t)l->octave;
-    out[KEY_HEADER + 2u] = lv->mutes;
-    out[KEY_HEADER + 3u] = (uint8_t)live_preset_edited(l);
+    out[KEY_HEADER + 2u] = (uint8_t)live_preset_edited(l);
+    out[KEY_HEADER + 3u] = (uint8_t)(lv->playing | lv->beat << 1);
+    out[KEY_STRIP] = lv->playing;
+    out[KEY_STRIP + 1u] = (uint8_t)lv->bpm;
+    out[KEY_STRIP + 2u] = (uint8_t)(lv->bpm >> 8);
+    out[KEY_STRIP + 3u] = lv->mutes;
     for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
         uint8_t ctrl = voice_control(l, v);
         const live_voice* x = &l->voice[v];
@@ -950,6 +962,8 @@ static void look(const live_view* lv, uint8_t out[LIVE_VIEW_LOOK], uint32_t now)
         b[5u + i] = l->slot[i][LIVE_SLOT_ALGORITHM];
     }
     b[8] = (uint8_t)((hl >= LIVE_VIEW_HL_PROFILE ? hl : 0u) | slot_page(lv) << 4);
+    b[9] = lv->glo;
+    b[10] = lv->mutes;
     for (uint32_t m = 0; m < LIVE_VIEW_METERS; m++) {
         out[KEY_METER + m] = lv->meter[m];
     }
@@ -979,11 +993,15 @@ static uint32_t parts(live_view* lv, canvas* cv, const theme* th,
             rows |= ROWS(lane_row(v), LIVE_VIEW_LANE_ROWS);
         }
     }
+    if (differs(lv, now, KEY_STRIP, 4u)) {
+        strip(lv, cv, th);
+        rows |= ROWS(LIVE_VIEW_STRIP_ROW, 1u);
+    }
     if (differs(lv, now, KEY_KNOBS, 11u)) {
         knobs(lv, cv, th, now[KEY_KNOBS + 1u]);
         rows |= KNOB_ROWS;
     }
-    if (differs(lv, now, KEY_BAND, 9u)) {
+    if (differs(lv, now, KEY_BAND, 11u)) {
         band(lv, cv, th);
         rows |= BAND_ROWS;
     }
@@ -996,8 +1014,7 @@ static void build(live_view* lv, canvas* cv, const theme* th, const uint8_t now[
     fill(cv, 0, LIVE_VIEW_LANE_ROW + SCOPE_VOICES * LIVE_VIEW_LANE_ROWS,
          GRID_COLS, LIVE_VIEW_PAGE_ROW - LIVE_VIEW_LANE_ROW - SCOPE_VOICES * LIVE_VIEW_LANE_ROWS, ' ',
          THEME_ATTR(th, value));
-    fill(cv, 0, LIVE_VIEW_TAG_ROW_END, GRID_COLS, LIVE_VIEW_BAND_ROW - LIVE_VIEW_TAG_ROW_END, ' ',
-         THEME_ATTR(th, value));
+    strip(lv, cv, th);
     fill(cv, 0, LIVE_VIEW_BAND_ROW + LIVE_VIEW_BAND_ROWS, GRID_COLS,
          GRID_ROWS - LIVE_VIEW_BAND_ROW - LIVE_VIEW_BAND_ROWS, ' ', THEME_ATTR(th, value));
     header(lv, cv, th);
@@ -1121,7 +1138,7 @@ static void live_compose(screen* s, void* state, grid* g) {
     }
     /* The meters, cell by cell where only they changed. */
     for (uint32_t m = 0; m < LIVE_VIEW_METERS; m++) {
-        if (now[KEY_METER + m] != lv->drawn_look[KEY_METER + m]) {
+        if (now[KEY_METER + m] != lv->drawn_look[KEY_METER + m] && !(lv->glo & 1u)) {
             meter_bar(lv, cv, g, th, m);
         }
     }

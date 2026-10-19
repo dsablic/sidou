@@ -50,7 +50,7 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
    MIDI learn's frame), LIVE's knobs in every other view.
 
 The note keys and MASTER always play, whichever view shows, but for two layers before the
-panel: **GLO held** turns the leftmost keys into the song's mutes and solos, and in a **song
+panel: **GLO held** (or latched) turns the leftmost six keys into the song's mutes and solos, and in a **song
 view** the keys audition the song's instrument ([Song views](#song-views)). The effect-slot shortcut (EDIT,
 SCL, ENV) works in every view, the CHIP view included ([CHIP](#chip) says why it stays).
 
@@ -105,7 +105,8 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **SEQ (button 11)** | opens the song views, and steps through them ([below](#song-views)) |
 | **PLAY (button 12)** | plays the loaded song from the song views' position, and stops it (each voice's release rings on); with EDIT held, goes on from where it stopped; lit while it plays. While it plays the keys play chip B (KEYS AUTO), or take voices from the song on chip A (KEYS A). A song the device cannot play is refused with a toast (`SNG: MULTISPEED 8 (MAX 4)`) |
 | **REC (button 13)** | record mode on and off |
-| **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; the keys sound nothing while GLO is held |
+| **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; those six keys sound nothing while GLO is held; **the other keys play** (a change from before: held and latched are one rule) |
+| **GLO tapped twice** (within 400 ms) | **latches** GLO's layer: the keys are the mutes and solos without holding GLO (a toast says `GLO LATCHED`, GLO's LED is lit, and LIVE shows the layer); a tap on GLO ends it (`GLO OFF`) |
 | **SELECT (encoder 0)**, in the menu | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
 | **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, KEYS, SOUNDS, TRACKER ROWS (ROWS), CARDS ([title cards](#title-cards)), STORE ([format confirmation](#settings-and-store)), THEME; turned clockwise on CHIP opens the CHIP view, on TRACKER the song views, on SCENE the generative pieces, on SONG the [song-file actions](#song), on STATUS the status screen, on MIDI the MIDI page, on CHARSET the glyph sheet, on ABOUT the credits |
 | **SELECT (encoder 0)**, on LIVE | pages the knob row: TONE, DIST, MOD, FX; on a slot's page K1-K4 turn that slot's Amount, A, B and Mix and SCL moves the page with the slot; it stops at either end |
@@ -190,12 +191,18 @@ is SIDOU LOOP until songs load from the store (M2c Task 8).
 | **Note keys**, in a song view | audition the song's current instrument on the cursor's voice through the player, on chip A with the song's setup, at the panel's octave, one note at a time (the last key wins). With the song stopped the audition takes chip A for the song (the keys elsewhere move to chip B, as for PLAY; the first note sounds a few tens of milliseconds late) and gives it back two seconds after the last note is let go; no row of the song plays |
 | **SAVE** | a clean release saves the song; an unnamed song opens SAVE AS. Held + K1..K4 opens MIDI learn |
 
-GLO's layer works in every view and comes before the panel: a key pressed while GLO is held
-sounds nothing until it is let go, even if GLO is let go first; a key already sounding when GLO
-goes down sounds on. The mutes and solos show in TRACKER's header (the shown voice's number
-grey, with MUT in red or SOL in white beside its pattern) and on the other two voices' strips
-(grey, short while silent), and on LIVE's top line, in red at 2× in the preset's place: **M13 S2**
-is voices 1 and 3 muted and voice 2 soloed.
+GLO's layer works in every view and comes before the panel: one of the leftmost six keys
+pressed while GLO is held (or latched) sounds nothing until it is let go, even if GLO is let go
+first; the other keys play, and a key already sounding when GLO goes down sounds on. The mutes
+and solos show in TRACKER's header (the shown voice's number grey, with MUT in red or SOL in white
+beside its pattern) and on the other two voices' strips (grey, short while silent). **LIVE shows
+them too**, and the song: its top line keeps the preset's name and, while a song plays, a **play
+mark** at 2× that beats (yellow for the first 120 ms of a bar, white for a beat, grey between); row 20
+says the tempo (`125 BPM`) and the voices' **badges** `1 2 3` (dark grey while a voice is silent,
+reversed yellow while it is soloed), shown while a song plays or a voice is muted or soloed; and
+while GLO's layer is on (held or latched) the bottom band becomes the layer: `GLO  MUTE SOLO` (or
+`GLO LATCHED`) and six boxes at 2×, **M1 M2 M3 S1 S2 S3**, red when a mute is on and yellow when a
+solo is.
 
 TRACKER's header (rows 0-1): the shown voice **V1** at 2× in its colour (light red, cyan, light
 green), its pattern **PAT 03** at 2× (hex), a play mark or a stop square, the tempo in BPM small (the
