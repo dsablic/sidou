@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The help card (app/help_view.c) and HOME acting on its release (app/views.c `views_flow`): a
 //! tap goes home, a hold of 600 ms opens the card of the view that shows, any button or encoder
-//! closes it and does nothing else, and no frame of it sends more than 200 cells.
+//! closes it and does nothing else, and no frame of it sends more than 200 cells; and the
+//! first-run tour (app/views.c `tour_frame`) that follows the full boot an install plays.
 
 use std::ffi::CStr;
 
@@ -300,4 +301,124 @@ fn the_card_draws_its_lines_and_the_help_card_stays_within_the_frame_budget() {
         }
         assert_ne!(ui.top(), "HELP");
     }
+}
+
+// ---- the first-run tour (app/views.c tour_frame) ----
+
+/// The full boot an install plays (HOME not held), frames until it is over, the toast of the
+/// last frame.
+fn after_the_install_boot(ui: &mut Ui, home_held: i32) {
+    drain(&mut ui.g);
+    unsafe { views_boot(&mut *ui.v, 1, home_held) };
+    for _ in 0..400 {
+        frame(ui);
+        if ui.top() == "LIVE" && ui.v.s.wipe == SCREEN_CUT as u8 {
+            return;
+        }
+    }
+    panic!("the boot did not end");
+}
+
+/// Frames until the toast says `text`, at most `ms` of them; its first frame.
+fn until_toast(ui: &mut Ui, text: &str, ms: u32) {
+    let end = ui.now + ms;
+    while ui.now < end {
+        if ui.toast().as_deref() == Some(text) {
+            return;
+        }
+        frame(ui);
+    }
+    panic!(
+        "no toast {text:?} in {ms} ms; the toast is {:?}",
+        ui.toast()
+    );
+}
+
+#[test]
+fn the_tour_follows_the_first_boot_after_an_install() {
+    let mut ui = Ui::without_cards();
+    after_the_install_boot(&mut ui, 0);
+    until_toast(&mut ui, "TURN K1", 400);
+    // K1: the toast goes (the popup is the answer), and the next comes 1.6 s later.
+    let start = ui.now;
+    ui.turn(PANEL_ENC_K1, 3);
+    frame(&mut ui);
+    assert_ne!(
+        ui.toast().as_deref(),
+        Some("TURN K1"),
+        "the step's toast stays"
+    );
+    until_toast(&mut ui, "PRESS ENV", 3000);
+    assert!(
+        ui.now - start >= 1600,
+        "PRESS ENV came after {} ms",
+        ui.now - start
+    );
+    // ENV steps an effect: its own toast, then the last step 1.6 s later.
+    ui.press(PANEL_BTN_ENV);
+    let start = ui.now;
+    frame(&mut ui);
+    assert_ne!(ui.toast().as_deref(), Some("PRESS ENV"));
+    until_toast(&mut ui, "HOLD HOME FOR HELP", 3000);
+    assert!(ui.now - start >= 1600);
+    // HOME held: the card, and no more toasts.
+    ui.down(PANEL_BTN_HOME);
+    for _ in 0..20 {
+        frame(&mut ui);
+    }
+    assert_eq!(ui.top(), "HELP");
+    assert!(ui.toast().is_none(), "a toast over the card");
+    ui.up(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    for _ in 0..600 {
+        frame(&mut ui);
+        assert!(ui.toast().is_none(), "a toast after the tour");
+    }
+}
+
+#[test]
+fn an_unanswered_tour_runs_on_its_own_clock_and_ends() {
+    let mut ui = Ui::without_cards();
+    after_the_install_boot(&mut ui, 0);
+    until_toast(&mut ui, "TURN K1", 400);
+    until_toast(&mut ui, "PRESS ENV", 12_000);
+    let t0 = ui.now;
+    until_toast(&mut ui, "HOLD HOME FOR HELP", 12_000);
+    let gap = ui.now - t0;
+    assert!(
+        (9_600..=9_680).contains(&gap),
+        "8 s and 1.6 s, not {gap} ms"
+    );
+    for _ in 0..400 {
+        frame(&mut ui);
+    }
+    assert!(ui.toast().is_none());
+    assert_eq!(ui.v.tour, 0, "the tour is over");
+}
+
+#[test]
+fn no_tour_when_home_asked_for_the_boot() {
+    let mut ui = Ui::without_cards();
+    drain(&mut ui.g);
+    unsafe { views_boot(&mut *ui.v, 1, 1) };
+    ui.hold(PANEL_BTN_HOME, true);
+    ui.press(PANEL_BTN_HOME);
+    ui.hold(PANEL_BTN_HOME, false);
+    for _ in 0..1500 {
+        frame(&mut ui);
+        assert!(ui.toast().is_none(), "a toast at {} ms", ui.now);
+    }
+    assert_eq!(ui.v.tour, 0);
+}
+
+#[test]
+fn no_tour_on_a_normal_boot() {
+    let mut ui = Ui::without_cards();
+    drain(&mut ui.g);
+    unsafe { views_boot(&mut *ui.v, 0, 0) };
+    for _ in 0..1500 {
+        frame(&mut ui);
+        assert!(ui.toast().is_none(), "a toast at {} ms", ui.now);
+    }
+    assert_eq!(ui.v.tour, 0);
 }

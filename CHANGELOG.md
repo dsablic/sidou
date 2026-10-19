@@ -27,6 +27,8 @@ All notable changes are documented here. The format follows
   the song views, SCENE, and one for the rest); HOME now acts when it is let go, so a tap goes
   home as before and a hold of 600 ms opens the card. Any control closes the card and does
   nothing else.
+- Ergonomics: a first-run tour after the full boot an install plays: TURN K1, PRESS ENV, HOLD
+  HOME FOR HELP, each until you do it or 8 s; not after a boot HOME asked for, and not again.
 - Ergonomics: SCENE's FIRE keeps a low flame in silence, the piece's name is toasted on entry,
   and ALGORITHM steps the piece like SELECT.
 - Ergonomics: an effect algorithm picked from the panel (ENV, CHIP's ALGORITHM on a slot) starts

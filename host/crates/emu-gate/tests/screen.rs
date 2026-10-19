@@ -1799,6 +1799,55 @@ fn home_held_at_power_on_plays_the_full_boot() {
     compare_golden(&build, "live", &m.soc.lcd.fb, &[]);
 }
 
+// ---- the first-run tour (app/views.c tour_frame) ----
+
+/// The tour's step (views.tour): 0 off, 1 the boot, 2 TURN K1, 3 and 5 the gaps, 4 PRESS ENV, 6
+/// HOLD HOME FOR HELP.
+fn tour_step(m: &mut Machine, fw: &Firmware) -> u8 {
+    ui_byte(m, fw, sidou_sys::ilp32::views::tour)
+}
+
+/// The full boot an install plays (a blank flash), then the three toasts: each until its action,
+/// 1.6 s after the one before; HOME held shows the card and ends the tour.
+#[test]
+fn the_tour_follows_the_first_boot_after_an_install() {
+    let Some((_, fw)) = fixture("the tour test") else {
+        return;
+    };
+    let mut m = Machine::boot_blank(&fw.image);
+    common::run_past_boot(&mut m, &fw);
+    m.run_ms(200);
+    assert_eq!(tour_step(&mut m, &fw), 2, "TURN K1 after the boot");
+    m.turn(sidou_sys::PANEL_ENC_K1 as u8, 1);
+    m.run_ms(200);
+    assert_eq!(tour_step(&mut m, &fw), 3, "K1 ended the first toast");
+    m.run_ms(1500);
+    assert_eq!(tour_step(&mut m, &fw), 4, "PRESS ENV 1.6 s later");
+    press(&mut m, sidou_sys::PANEL_BTN_ENV as u8);
+    m.run_ms(200);
+    assert_eq!(tour_step(&mut m, &fw), 5, "ENV ended the second");
+    m.run_ms(1700);
+    assert_eq!(tour_step(&mut m, &fw), 6, "HOLD HOME FOR HELP");
+    hold_for_help(&mut m, &fw);
+    assert_eq!(tour_step(&mut m, &fw), 0, "the card ended the tour");
+    close_help(&mut m, &fw);
+}
+
+#[test]
+fn no_tour_when_home_asked_for_the_boot_or_on_a_normal_boot() {
+    let Some((_, fw)) = fixture("the tour test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    m.run_ms(300);
+    assert_eq!(tour_step(&mut m, &fw), 0, "a normal boot");
+    let mut m = Machine::boot_blank(&fw.image);
+    hold_home_through_power_on(&mut m);
+    common::run_past_boot(&mut m, &fw);
+    m.run_ms(300);
+    assert_eq!(tour_step(&mut m, &fw), 0, "HOME asked for the full boot");
+}
+
 #[test]
 fn a_button_skips_the_boot_and_does_nothing_else() {
     let Some((build, fw)) = fixture("the boot screen test") else {

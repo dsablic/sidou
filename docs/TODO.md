@@ -72,6 +72,11 @@ Follow-ups that aren't tied to a milestone task yet.
   says what the knobs do right now, and nothing is ever hidden behind a mode the screen
   doesn't show.
 - The user's priority (2026-10-16): finish the features first, then this pass.
+- **Done: help cards and the first-run tour (ergonomics pass, flow).** HOLD HOME 600 ms shows a
+  card for the view that shows (docs/reference/controls.md "Help"), HOME acting on its release so
+  a tap still goes home; after the full boot an install plays, three toasts (TURN K1, PRESS ENV,
+  HOLD HOME FOR HELP) lead the way ("At power-on"); title cards play once per power-on by
+  default (CARDS: OFF, ONCE, ALWAYS).
 - **Done: readability on the panel (2026-10-18).** The first hardware run found the 8×8 font on
   the 30×30 grid almost unreadable on the 1.3-inch panel. Large text (2× and 3× the font, built
   from cells), a value popup over any view when the panel changes a parameter, the menu at

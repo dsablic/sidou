@@ -19,6 +19,14 @@ sequence; letting HOME go does not skip it, and anything after that does. Withou
 a HOME press skips it like any button. Allow the settings save to finish before powering
 off; a foreign store cannot remember the version ([Settings and STORE](#settings-and-store)).
 
+**The first-run tour.** After that full boot, when the version changed and HOME was not what asked
+for it, three large toasts lead the way, 1.6 s apart: **TURN K1** (until the cutoff or the
+selected effect slot's amount changes, or 8 s), **PRESS ENV** (until the selected slot's
+algorithm changes, or 8 s), then **HOLD HOME FOR HELP** (until a [help card](#help) opens, or
+8 s). Doing what a toast asks ends it at once; a help card opened on the way ends the tour. The
+tour is not saved: the version is, after the boot, so the next power-on has none, and a boot
+with HOME held or a normal boot never has one.
+
 **OCT- alone held while powering on**, for about a second, enters the chip's ROM boot mode
 (UBOOT, `WL82 UBOOT1.00` on USB): the recovery route that needs nothing of SIDOU but its first
 instructions. The screen stays black (the backlight goes off), and `tools/fm1-unbrick-mac` or

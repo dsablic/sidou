@@ -230,6 +230,11 @@ typedef struct {
     uint8_t home_down;
     uint32_t home_at; /* the frame time of its press, ms */
     help_view help;
+    /* The first-run tour (app/views.c tour_frame): 0 off, else its step; when that step began
+     * (ms) and what it watches for a change. Not saved: the version is, after the boot. */
+    uint8_t tour;
+    uint32_t tour_at;
+    uint16_t tour_ref;
 } views;
 
 extern const view views_status;
@@ -265,7 +270,9 @@ void views_route(views* v, midi_route* route);
 void views_sync(views* v, midi_sync* sync);
 /* The boot sequence over it from the next frame on: the full one if full (the first boot
  * after an install) or if HOME was held at power-on (home_held), whose first HOME press edge is
- * then part of the hold (app/boot.h). */
+ * then part of the hold (app/boot.h). The full boot of an install, with HOME not held, is
+ * followed by the first-run tour: three toasts, TURN K1, PRESS ENV, HOLD HOME FOR HELP
+ * (views_flow). */
 void views_boot(views* v, int full, int home_held);
 /* SAVE held + a knob opens MIDI learn over ml's bindings from now on (app/learn_view.h); NULL:
  * it does nothing (views_init's default). */

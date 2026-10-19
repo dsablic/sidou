@@ -1587,6 +1587,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->cards_seen = 0;
     v->home_down = 0;
     v->help.done = 0;
+    v->tour = 0;
     v->snd = NULL;
     v->set = NULL;
     v->format_arm = 0;
@@ -1635,8 +1636,21 @@ void views_settings(views* v, settings* set) {
     user_profiles_load(&v->users);
 }
 
+/* The first-run tour's steps (tour_frame, below). */
+enum {
+    TOUR_OFF,
+    TOUR_BOOT, /* the boot is still on */
+    /* Step s shows as TOUR_K1 + 2 s (TURN K1, until the cutoff or the selected slot's amount
+     * changes; PRESS ENV, until the selected slot's algorithm changes; HOLD HOME FOR HELP, until
+     * a help card opens) and the gap before step s + 1 as TOUR_K1 + 2 s + 1. */
+    TOUR_K1
+};
+#define TOUR_TOAST_MS 8000u
+#define TOUR_GAP_MS 1600u
+
 void views_boot(views* v, int full, int home_held) {
     boot_init(&v->boot, v->l, v->version, full || home_held, home_held);
+    v->tour = (uint8_t)(full && !home_held ? TOUR_BOOT : TOUR_OFF); /* HOME asked for it: no tour */
     screen_push(&v->s, &boot_view, &v->boot, SCREEN_CUT);
 }
 
@@ -1728,9 +1742,67 @@ static uint32_t help_card_of(const views* v) {
     return song_view_is(top) ? HELP_CARD_TRACKER : HELP_CARD_ALL;
 }
 
+/* ---- the first-run tour: three toasts after the full boot an install plays ---- */
+
+/* A number that changes whenever what step s waits for does: the cutoff or the selected slot's
+ * amount (a step of either moves it by an odd amount, which 16 bits cannot wrap back), then the
+ * selected slot's algorithm. */
+static uint16_t tour_watch(const views* v, uint32_t s) {
+    const live* l = v->l;
+    const uint8_t* slot = l->slot[l->fx_select];
+    return s ? slot[LIVE_SLOT_ALGORITHM]
+             : (uint16_t)(l->cutoff * 129u + slot[LIVE_SLOT_AMOUNT] * 517u);
+}
+
+static void tour_begin(views* v, uint32_t now_ms, uint32_t s) {
+    static const char* const TEXT[3] = {"TURN K1", "PRESS ENV", "HOLD HOME FOR HELP"};
+    v->tour = (uint8_t)(TOUR_K1 + 2u * s);
+    v->tour_at = now_ms;
+    v->tour_ref = tour_watch(v, s);
+    screen_toast(&v->s, TEXT[s], TOUR_TOAST_MS);
+}
+
+/* Once a frame while the tour runs (views_flow): step s toasts, waits for the action it asks for
+ * or TOUR_TOAST_MS, and the next comes TOUR_GAP_MS after, so the action's own toast and popup
+ * have gone. An action ends its step's toast at once (K1's popup is the answer; on another view
+ * than LIVE ENV's own toast replaces it); a help card, opened by the way or as the last step asks, ends the tour. */
+__attribute__((noinline, unused)) static void tour_frame(views* v, uint32_t now_ms) {
+    uint32_t t = v->tour;
+    if (t == TOUR_BOOT) {
+        if (screen_top(&v->s) != &boot_view) {
+            tour_begin(v, now_ms, 0);
+        }
+        return;
+    }
+    if (screen_top(&v->s) == &help_view_view) {
+        screen_toast(&v->s, "", 0); /* nothing over the card */
+        v->tour = TOUR_OFF;
+        return;
+    }
+    uint32_t s = (t - TOUR_K1) >> 1;
+    uint32_t waited = now_ms - v->tour_at;
+    if (t & 1u) { /* the gap before step s + 1 */
+        if (waited >= TOUR_GAP_MS) {
+            tour_begin(v, now_ms, s + 1u);
+        }
+        return;
+    }
+    int acted = s < 2u && tour_watch(v, s) != v->tour_ref;
+    if (acted && (s == 0u || screen_top(&v->s) == &live_view_view)) {
+        screen_toast(&v->s, "", 0); /* LIVE says an algorithm itself: no toast of its own */
+    }
+    if (acted || waited >= TOUR_TOAST_MS) {
+        v->tour = s == 2u ? TOUR_OFF : (uint8_t)(t + 1u);
+        v->tour_at = now_ms;
+    }
+}
+
 /* HOME let go goes home_go, HOME held HOME_HELP_MS opens the help card, a card that was closed is
- * popped (views_flow in app/views.h). */
+ * popped (views_flow in app/views.h); and the tour's steps. */
 void views_flow(views* v, uint32_t now_ms) {
+    if (v->tour) {
+        tour_frame(v, now_ms);
+    }
     if (!v->p) {
         return;
     }
@@ -2393,7 +2465,7 @@ void views_frame(views* v, uint32_t now_ms) {
         tell(v);
     }
     learn_view_frame(&v->learn, &v->s, now_ms);
-    if (v->home_down | v->help.done) {
+    if (v->home_down | v->help.done | v->tour) {
         views_flow(v, now_ms);
     }
     if (v->l->settings_dirty) {

@@ -449,6 +449,15 @@ Help card ([controls](reference/controls.md#help)):
 - [ ] The card of the menu, CHIP, TRACKER (SEQ), SCENE and STATUS each names its view and
   reads right at 2x in the C64 and the high-contrast themes (yellow controls, white actions).
 
+First-run tour ([controls](reference/controls.md#at-power-on)): after an install (or any
+firmware version change), the full boot, then:
+
+- [ ] Three large toasts one after the other, 1.6 s apart at least: TURN K1, PRESS ENV, and HOLD
+  HOME FOR HELP on two lines. Turning K1 ends the first at once and PRESS ENV follows; pressing
+  ENV (the effect's name toasts) ends the second; holding HOME shows the help card with no toast
+  left over it. Left alone each stays 8 s. Power-cycle: no tour. HOME held while powering on, or
+  a normal boot: no tour.
+
 CHIP (menu, CHIP; [controls](reference/controls.md#chip)):
 
 - [ ] The page as `tests/golden/lcd/chip.png`, its state set over MIDI (the emulator test's
