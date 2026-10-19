@@ -240,21 +240,21 @@ static void enter(screen* s, void* state) {
     (void)s;
     scene_view* sv = state;
     sv->starting = 1;
+    sv->say = 1;
     sv->prepared = 0;
     sv->cursor = 0;
 }
 
-/* SELECT: the next piece (or the one before), wiped in, its name in a toast. */
+/* SELECT or ALGORITHM: the next piece (or the one before), wiped in; the compose names it. */
 static int input(screen* s, void* state, const screen_event* e) {
     scene_view* sv = state;
-    if (e->kind != SCREEN_TURN || e->id != PANEL_ENC_SELECT) {
+    if (e->kind != SCREEN_TURN || (e->id != PANEL_ENC_SELECT && e->id != PANEL_ENC_ALGORITHM)) {
         return 0;
     }
     int32_t k = ((int32_t)sv->which + e->steps) % (int32_t)SCENE_PIECES;
     sv->which = (uint8_t)(k < 0 ? k + (int32_t)SCENE_PIECES : k);
     enter(s, sv);
     screen_reveal(s, SCREEN_WIPE_DOWN);
-    screen_toast(s, scene_names[sv->which], SCREEN_TOAST_MS);
     return 1;
 }
 
@@ -265,6 +265,11 @@ static int input(screen* s, void* state, const screen_event* e) {
  * holds the rows it has not reached, and the ones it reveals must be SCENE's. */
 static void compose(screen* s, void* state, grid* g) {
     scene_view* sv = state;
+    /* The piece's name, once, as soon as SCENE shows (not under a title card). */
+    if (sv->say && screen_top(s) == &scene_view_view) {
+        sv->say = 0;
+        screen_toast(s, scene_names[sv->which], SCREEN_TOAST_MS);
+    }
     /* The piece picked (enter) starts as the music now shows it, its canvas drawn as far as
      * the wipe reveals it this frame (scene_fill; PLASMA's rows are costly): whole once no wipe
      * from the top runs. */

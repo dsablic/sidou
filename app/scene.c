@@ -151,6 +151,9 @@ static int32_t clamp(int32_t x, int32_t lo, int32_t hi) {
 /* The ember bed: the bottom heat row glows at least this (brown, 38..45). Above it, heat at or
  * below FIRE_DARK goes out: in silence the bed holds still, and a flame's tail ends dark. */
 #define FIRE_EMBER 38u
+/* What a silent voice's flame falls to, not to nothing: the bed burns at about 94 (FIRE_EMBER is
+ * only the least it glows), so a flame a few rows high flickers in silence. */
+#define FIRE_IDLE_HOT 120u
 #define FIRE_DARK 48u
 
 /* The flame's ramp: red from just above FIRE_DARK, light red from FIRE_LIGHT, then a thin band
@@ -208,7 +211,8 @@ static void fire_burn(scene* s, const scene_music* m) {
             hot -= hot / 16u;
             hot = e > hot ? e : hot;
         } else {
-            hot -= (hot + 3u) / 4u; /* a silent voice's flame dies */
+            hot -= (hot + 3u) / 4u; /* a silent voice's flame dies down to the idle flame */
+            hot = hot < FIRE_IDLE_HOT ? FIRE_IDLE_HOT : hot;
         }
         f->hot[v] = (uint8_t)hot;
     }

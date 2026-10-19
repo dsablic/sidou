@@ -1991,11 +1991,73 @@ fn open_scene(m: &mut Machine, fw: &Firmware, piece: usize) {
         fw.symbol("scene_view_view"),
         "the menu's SCENE did not open SCENE"
     );
+    m.run_ms(1000); // the name's toast (1.5 s from the first frame) gone
     for _ in 0..piece {
         m.turn(SELECT, 1);
         m.run_ms(1600);
     }
     common::to_mid_frame(m, fw);
+}
+
+/// SCENE's FIRE in silence: a low flame, red and light red, in cell rows 22-28.
+#[test]
+fn fire_keeps_a_low_flame_in_silence() {
+    let Some((_, fw)) = fixture("the SCENE test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_scene(&mut m, &fw, 0);
+    m.run_ms(3000);
+    common::to_mid_frame(&mut m, &fw);
+    let px = indexed(&m.soc.lcd.fb);
+    // The cells of rows 22-28 with a pixel of red (2) or light red (10).
+    let lit = (22..=28)
+        .flat_map(|r| (0..30).map(move |c| (r, c)))
+        .filter(|&(r, c)| {
+            (0..8).any(|y| (0..8).any(|x| matches!(px[(r * 8 + y) * W + c * 8 + x], 2 | 10)))
+        })
+        .count();
+    println!("FIRE in silence: {lit} cells of rows 22-28 are red or light red");
+    assert!(lit >= 20, "the idle flame: {lit} cells");
+}
+
+/// The menu's ALGORITHM on SCENE: past THE SCENE's card, FIRE names itself.
+#[test]
+fn entering_scene_names_the_piece() {
+    let Some((_, fw)) = fixture("the SCENE test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    into_scene_card(&mut m, &fw);
+    m.run_ms(100);
+    assert!(showing_card(&mut m, &fw));
+    assert_ne!(toast_text(&mut m, &fw), "FIRE", "named under the card");
+    past_card(&mut m, &fw);
+    m.run_ms(100);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("scene_view_view"));
+    assert_eq!(toast_text(&mut m, &fw), "FIRE");
+}
+
+/// ALGORITHM steps SCENE's piece as SELECT does: the next, and back.
+#[test]
+fn algorithm_steps_the_piece() {
+    let Some((_, fw)) = fixture("the SCENE test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_scene(&mut m, &fw, 0);
+    let which =
+        |m: &mut Machine| usize::from(scene_byte(m, &fw, sidou_sys::ilp32::scene_view::which));
+    assert_eq!(which(&mut m), 0);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(100);
+    assert_eq!(which(&mut m), 1);
+    assert_eq!(toast_text(&mut m, &fw), "PLASMA");
+    m.run_ms(1600);
+    m.turn(ALGORITHM, -1);
+    m.run_ms(100);
+    assert_eq!(which(&mut m), 0);
+    assert_eq!(toast_text(&mut m, &fw), "FIRE");
 }
 
 /// Each piece after a chord held for a second (its note-ons, then its envelopes), from the
@@ -2103,8 +2165,12 @@ fn a_note_moves_every_piece_and_silence_calms_it() {
             chord[..3].iter().any(|&n| n > 0),
             "{name}: nothing changed on the note-ons"
         );
+        // FIRE's idle flame flickers in silence (about half of what a chord moves): the chord
+        // moves it at least half as much again; the other pieces calm to a third.
+        let (num, den) = if *name == "fire" { (3, 2) } else { (3, 1) };
         assert!(
-            sum(&chord) > 3 * sum(&quiet).max(10) && sum(&chord) > 3 * sum(&after).max(10),
+            den * sum(&chord) > num * sum(&quiet).max(10)
+                && den * sum(&chord) > num * sum(&after).max(10),
             "{name}: quiet {}, the chord {}, after {}",
             sum(&quiet),
             sum(&chord),
@@ -2862,6 +2928,46 @@ fn chip_input_holds_the_main_loop_within_the_poll_allowance() {
         let (input, pass) = start_cost(&mut m, 1600, |m| m.turn(ALGORITHM, steps));
         println!("CHIP {what}: the input {input}, the busiest pass {pass}");
         if input >= CHIP_INPUT || pass >= CHIP_PASS + REG_RING_PREPARE_SLICE {
+            over.push(format!(
+                "{what}: the input {input}, the busiest pass {pass}"
+            ));
+        }
+    }
+    assert!(over.is_empty(), "{over:#?}");
+}
+
+/// ALGORITHM on a slot that has not been touched: live_slot_pick loads the algorithm's start
+/// (up to four registers sent from the input, each about 70 instructions through the ring's
+/// sink), so this has its own bound, from its measurement (301, 360 and 389 at most; an
+/// edited slot's, CHIP_INPUT's scenario, only 202, down from 212). Every pass after it
+/// within CHIP_PASS.
+const CHIP_PICK_INPUT: u64 = 400;
+
+#[test]
+fn picking_an_algorithm_on_a_fresh_slot_holds_the_main_loop_within_the_poll_allowance() {
+    let Some((_, fw)) = fixture("the CHIP input test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    open_chip(&mut m, &fw);
+    m.watch_calls(fw.symbol("ui_encoder"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let mut over = Vec::new();
+    for (what, enc, steps) in [
+        ("SELECT down", SELECT, 1),
+        ("ALGORITHM OFF to TAPE", ALGORITHM, 1),
+        ("ALGORITHM TAPE to OVERDRIVE", ALGORITHM, 1),
+        ("SELECT down", SELECT, 2),
+        ("ALGORITHM OFF to DELAY", ALGORITHM, 1),
+    ] {
+        let (input, pass) = start_cost(&mut m, 1600, |m| m.turn(enc, steps));
+        println!("CHIP {what}: the input {input}, the busiest pass {pass}");
+        let bound = if enc == ALGORITHM {
+            CHIP_PICK_INPUT
+        } else {
+            CHIP_INPUT
+        };
+        if input >= bound || pass >= CHIP_PASS {
             over.push(format!(
                 "{what}: the input {input}, the busiest pass {pass}"
             ));

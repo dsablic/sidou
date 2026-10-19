@@ -943,7 +943,7 @@ mood (heat, speed, twist, darker colours). Randomness is a seeded xorshift, so t
 gives the same frames: the fm1-emu goldens (`tests/golden/lcd/scene-*.png`) are each piece a
 second into a held chord.
 
-**FIRE's look.** The flame's ramp is black, red, light red, a thin band of yellow (lime on this
+**FIRE's look.** In silence a low flame still burns (FIRE_IDLE_HOT), so the screen is never dark. The flame's ramp is black, red, light red, a thin band of yellow (lime on this
 palette) and white; brown is only the ember bed's glow, and orange (olive-brown here) is not
 used: with it the fire read as dirt. The cutoff moves where the white starts (heat 196 open,
 beyond any heat shut, on a curve that rises fast, so the presets' cutoffs already burn yellow and
@@ -969,7 +969,7 @@ change most of the screen in the prototype are trimmed to fit, so the cap rarely
 
 | Piece | Prototype (cells a frame) | On the FM-1 |
 |---|---|---|
-| FIRE | 426 (the whole screen) | the bottom 14 rows, three 10-column flames; it burns every other frame (two steps at once, so the flames rise at the prototype's speed) and draws half its rows a frame, the even ones then the odd ones: 12.5 fps, at most 210 cells a frame. Heat at or below 48 goes out above the ember bed, so silence holds still |
+| FIRE | 426 (the whole screen) | the bottom 14 rows, three 10-column flames; it burns every other frame (two steps at once, so the flames rise at the prototype's speed) and draws half its rows a frame, the even ones then the odd ones: 12.5 fps, at most 210 cells a frame. Heat at or below 48 goes out above the ember bed; a silent voice's fuel falls to FIRE_IDLE_HOT (120), not to 0, so silence keeps a low red flame flickering (about 94 at the bed, a cell row or two high, now and then a tongue to eight rows) |
 | PLASMA | 500 | the whole screen, every other row a frame; its top speed is 0.8 rad a second (the prototype's 3.7 changed more cells than the budget has), an eighth of it in silence; a note-on's ripple is one ring growing half a cell a frame, not a train of rings, and voice 3's warmth follows its envelope at most 4 steps a frame |
 | RULE 30 | 20 | as the prototype: a 60 x 60 ring of generations in quadrant glyphs, at most 3 generations a frame |
 | STARS | 25 | 90 stars, a glyph each, drawn far to near |

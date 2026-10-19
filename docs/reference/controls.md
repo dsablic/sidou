@@ -346,13 +346,13 @@ K1..K4 and the view keeps the rest.
 
 SCENE (the menu's item after STATUS) is M1e's prototype of M2's visuals: a
 generative piece on the whole screen that reacts to what the instrument plays
-(`app/scene.h`), and RED MOON RITE, a drawn duel the song plays (below). SELECT steps between the pieces; everything else plays as on
+(`app/scene.h`), and RED MOON RITE, a drawn duel the song plays (below). SELECT and ALGORITHM step between the pieces (the same step; a toast names the piece, on entry too); everything else plays as on
 LIVE, so the keys and MIDI move the piece, and K1 (cutoff) and K2 (resonance) set
 its mood. The piece starts again from its beginning each time it opens.
 
 | Piece | Note-ons | Envelopes (ENV3) | Pitch | Cutoff, resonance |
 |---|---|---|---|---|
-| FIRE | flare that voice's flame (voice 1 the left third, 2 the middle, 3 the right) | heat its flame; silent, it dies down to the embers | higher notes burn higher | the cutoff how hot it looks (red, up to yellow and white near the bed); the resonance a little taller |
+| FIRE | flare that voice's flame (voice 1 the left third, 2 the middle, 3 the right) | heat its flame; silent, it burns low: a flame a cell row or two high, red, never dark | higher notes burn higher | the cutoff how hot it looks (red, up to yellow and white near the bed); the resonance a little taller |
 | PLASMA | drop a bright ring that grows from a place | speed it up (silence runs it at an eighth) and voice 3's warms it | the pitch class sets the ring's place across, the pitch its height | the cutoff its speed, the resonance its twist |
 | RULE 30 | step the automaton a generation in the voice's colour; voice 3's flips a cell first | a held voice keeps it stepping | voice 3's pitch picks the cell it flips | a low cutoff darkens the colours |
 | STARS | light the voice's third of the stars in its colour | speed the voice's stars | the latest note steers the centre across | the cutoff sets the cruising speed |

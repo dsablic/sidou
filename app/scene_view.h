@@ -3,8 +3,9 @@
 /* SCENE, from the menu: the generative pieces of app/scene.h on the whole screen, reacting to
  * what the instrument plays (docs/art/README.md "SCENE", docs/reference/controls.md).
  *
- * SELECT steps between the pieces (FIRE, PLASMA, RULE 30, STARS, ANT, and round): the new one
- * wipes in from the top, and a toast names it. HOME goes back. Everything else plays the
+ * SELECT and ALGORITHM step between the pieces (FIRE, PLASMA, RULE 30, STARS, ANT, and round):
+ * the new one wipes in from the top. A toast names the piece on entry and at each step (the
+ * compose says it, once SCENE is on top: not under a title card). HOME goes back. Everything else plays the
  * instrument, so the knobs move the pieces as well: K1 the cutoff, K2 the resonance.
  *
  * What the pieces hear (scene_music), each frame: the gates, notes and note-ons of the voices
@@ -94,6 +95,7 @@ typedef struct {
     uint8_t which;    /* the piece it shows (its index), kept between visits */
     uint8_t prepared; /* the piece stepped for the next frame (scene_view_prepare) */
     uint8_t starting; /* the piece picked starts at the next compose */
+    uint8_t say;      /* the piece's name is toasted at the next compose that shows SCENE */
     uint32_t stamp[SCENE_VOICES]; /* each voice's stamp at the last frame */
     uint16_t cursor;  /* the cell the copy goes on from */
     uint32_t held;    /* frames whose copy the budget cut short (diagnostic) */

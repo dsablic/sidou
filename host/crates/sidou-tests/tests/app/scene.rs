@@ -612,7 +612,7 @@ fn the_fire_burns_in_its_rows_with_each_voices_envelope() {
         }
     };
     check_above(&s);
-    // In silence only the ember bed glows: nothing above the bottom rows.
+    // In silence only the idle flame burns, low and red: no light red anywhere.
     for _ in 0..60 {
         step(&mut s, &quiet());
     }
@@ -645,6 +645,43 @@ fn the_fire_burns_in_its_rows_with_each_voices_envelope() {
         step(&mut s, &quiet());
     }
     assert_eq!(flame_height(&s, 1), 0);
+}
+
+/// A silent fire is not dark: its flames fall to FIRE_IDLE_HOT and flicker a few cell rows
+/// high in red, and never reach light red or the cell rows above them.
+#[test]
+fn a_silent_fire_keeps_a_low_flame() {
+    let mut s = new_scene(SCENE_FIRE);
+    let (mut flickers, mut tallest) = (0usize, 0usize);
+    for f in 0..200 {
+        step(&mut s, &quiet());
+        if f < 60 {
+            continue;
+        }
+        let lv = fire_levels(&s);
+        // The half cells at level 2 (red) or more above the bed; the highest one's height.
+        let red = |y: usize| lv[y].iter().filter(|&&l| l >= 2).count();
+        flickers += (0..lv.len() - 1).map(red).sum::<usize>();
+        let top = (0..lv.len())
+            .find(|&y| red(y) > 0)
+            .map_or(0, |y| lv.len() - y);
+        tallest = tallest.max(top);
+        assert!(lv.iter().flatten().all(|&l| l <= 2), "frame {f}: above red");
+    }
+    println!("idle fire: {flickers} red half cells above the bed in 140 frames, up to {tallest}");
+    // On average a few half cells a column (a cell row or two), now and then a tongue to
+    // about eight cell rows, nothing taller.
+    let mean = flickers as f64 / (140.0 * COLS as f64);
+    assert!(
+        (2.0..=10.0).contains(&mean),
+        "{mean} red half cells a column"
+    );
+    assert!(
+        (8..=20).contains(&tallest),
+        "the idle flame is {tallest} half cells high"
+    );
+    // Each voice's hot value rests at the idle level.
+    assert!(fire(&s).hot.iter().all(|&h| h == 120), "{:?}", fire(&s).hot);
 }
 
 #[test]
@@ -692,8 +729,8 @@ fn the_fire_burns_up_its_ramp_in_tongues() {
     let lv = fire_levels(&s);
     let bed = lv.len() - 1;
     assert!(
-        lv[bed].iter().all(|&l| l == 1),
-        "the bed in silence: {:?}",
+        lv[bed].iter().all(|&l| l == 2),
+        "the bed in silence burns red (the idle flame): {:?}",
         lv[bed]
     );
     let mut count = [0usize; 6];
@@ -1012,6 +1049,12 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
     assert_eq!(ui.top(), "SCENE");
     assert_eq!(u32::from(ui.v.scene.which), SCENE_FIRE);
     assert_eq!(u32::from(petscii(&ui.v.scene).piece), SCENE_FIRE);
+    assert_eq!(ui.toast().as_deref(), Some("FIRE"), "the name on entry");
+    for _ in 0..40 {
+        ui.frame(); // the toast gone
+        drain(&mut ui.g);
+    }
+    assert!(ui.toast().is_none());
     assert!(grid_is_canvas(&ui), "the grid is not the fire's canvas");
     // SELECT: the next piece wipes in, and a toast names it; round and back.
     for k in 1..=SCENE_PIECES {
@@ -1051,6 +1094,47 @@ fn scene_opens_from_the_menu_and_select_steps_the_pieces() {
     ui.settle();
     assert_eq!(ui.top(), "SCENE");
     assert_eq!(u32::from(petscii(&ui.v.scene).piece), SCENE_PIECES - 2);
+}
+
+/// ALGORITHM steps the piece exactly as SELECT does: the same piece, the wipe, the name.
+#[test]
+fn algorithm_steps_the_piece_as_select_does() {
+    let step_with = |enc: u32, steps: i32| {
+        let mut ui = Ui::without_cards();
+        open_scene(&mut ui);
+        for _ in 0..40 {
+            ui.frame();
+        }
+        ui.turn(enc, steps);
+        ui.frame();
+        let text = ui.toast();
+        let wiping = ui.v.s.wipe;
+        (u32::from(ui.v.scene.which), text, wiping)
+    };
+    for steps in [1, 2, -1, -3] {
+        let by_select = step_with(PANEL_ENC_SELECT, steps);
+        let by_algorithm = step_with(PANEL_ENC_ALGORITHM, steps);
+        assert_eq!(by_select, by_algorithm, "{steps} steps");
+        assert_ne!(by_algorithm.2, 0, "{steps} steps: no wipe");
+        assert_eq!(
+            by_algorithm.1.as_deref(),
+            Some(piece_name(by_algorithm.0).as_str())
+        );
+    }
+}
+
+/// The piece's name is toasted once, when SCENE first shows, and again at each step, never
+/// twice for one entry.
+#[test]
+fn entering_scene_names_the_piece_once() {
+    let mut ui = Ui::without_cards();
+    open_scene(&mut ui);
+    assert_eq!(ui.toast().as_deref(), Some("FIRE"));
+    assert_eq!(ui.v.scene.say, 0);
+    for _ in 0..60 {
+        ui.frame();
+    }
+    assert!(ui.toast().is_none(), "the toast ends and is not said again");
 }
 
 #[test]
@@ -1205,8 +1289,10 @@ fn a_note_moves_the_scene_and_silence_calms_it() {
             "{}: cells in 50 frames quiet {quiet}, playing {playing}, after {calmed}",
             piece_name(piece)
         );
+        // FIRE's idle flame flickers in silence (about a third of what the band moves).
+        let times = if piece == SCENE_FIRE { 2 } else { 3 };
         assert!(
-            playing > 3 * quiet.max(10) && playing > 3 * calmed.max(10),
+            playing > times * quiet.max(10) && playing > times * calmed.max(10),
             "{}: quiet {quiet}, playing {playing}, after {calmed}",
             piece_name(piece)
         );

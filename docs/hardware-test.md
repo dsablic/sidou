@@ -9,6 +9,13 @@
   silent. Select Modulation (SCL) and FX and step their algorithms: each is audible.
 - [ ] Turn one control with EDIT held, then step the algorithm: the control keeps your value.
 
+## Ergonomics: SCENE
+
+- [ ] Open SCENE (FIRE) and play nothing: a low red flame flickers along the bottom; it is
+  never dark. On entry, after the card, a toast reads FIRE.
+- [ ] Turn ALGORITHM clockwise and counter-clockwise: the piece steps like SELECT, with its
+  name in a toast.
+
 ## Ergonomics: menu spin
 
 - [ ] Open HOME's menu and spin SELECT quickly down past the first six items,

@@ -9,6 +9,8 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Ergonomics: SCENE's FIRE keeps a low flame in silence, the piece's name is toasted on entry,
+  and ALGORITHM steps the piece like SELECT.
 - Ergonomics: an effect algorithm picked from the panel (ENV, CHIP's ALGORITHM on a slot) starts
   from a musical setting per algorithm, so it is heard at once; MIDI's algorithm CC loads nothing.
 - M2e Task 5: [version-1 SysEx](docs/reference/sysex.md) for inquiry, streamed

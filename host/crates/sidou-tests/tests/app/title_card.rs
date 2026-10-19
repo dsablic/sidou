@@ -144,7 +144,9 @@ fn scene_from_the_menu_shows_its_card_then_cuts_to_scene() {
     assert!(bands <= 5, "{bands} frames of bands");
     // SCENE started its piece in the cut, and the cut showed all of it.
     assert_eq!(u32::from(petscii(&ui.v.scene).piece), SCENE_FIRE);
-    step(&mut ui);
+    for _ in 0..60 {
+        step(&mut ui); // the name's toast, shown and gone
+    }
     let cv = &petscii(&ui.v.scene).cv;
     assert!(
         (0..30 * 30).all(|i| ui.g.ch[i] == cv.ch[i / 30][i % 30]
@@ -326,8 +328,8 @@ fn nothing_draws_over_the_card() {
     run_card(&mut ui);
     ui.settle();
     assert!(
-        ui.toast().is_none(),
-        "what changed under the card was taken as seen"
+        matches!(ui.toast().as_deref(), None | Some("FIRE")),
+        "what changed under the card was taken as seen (SCENE's own name is the only toast)"
     );
 }
 

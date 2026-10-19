@@ -105,7 +105,6 @@ pub const DOCUMENTED_INERT: &[(&str, &str)] = &[
     ("status", "ALGORITHM"),
     ("about", "SELECT"),
     ("about", "ALGORITHM"),
-    ("scene", "ALGORITHM"),
 ];
 
 /// What one control did in one view.
