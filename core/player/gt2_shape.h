@@ -121,6 +121,10 @@ int gt2_shape_analyse(gt2_analysis* a, const gt2_song* s, uint32_t subtune,
  * is. Bounded: a cell is O(1) besides at most one table walk (255 rows); a pattern's swap
  * scans its rows, an orderlist's its entries and the rows of the patterns it newly names. */
 int gt2_shape_widen(gt2_analysis* a, const gt2_edit* e);
+/* Include live jam instruments and notes without inventing model rows. Constant work;
+ * derive the shape in the usual slices after a 1. lo > hi means no jam notes. */
+int gt2_shape_include_jams(gt2_analysis* a, const uint32_t instruments[2], uint32_t lo,
+                          uint32_t hi);
 /* The shape from a's base and the song (with the pending edits), all at once (about 70k
  * instructions on the device at the worst: more than a main-loop pass has to spare), or in
  * slices: begin, then steps of about budget units each until one returns 1. */

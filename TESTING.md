@@ -206,6 +206,19 @@ invalidate rendering caches rather than clearing or copying a canvas in an input
 control/legend roles in both themes, large-name/bar accents, inactive controls and all
 expert pages, while preserving the existing tab rendering for the separate T2 task.
 
+The song editors' portable tests are `song_pages`, `song_pattern_at`, `song_order_locks` and
+`song_audition_shape` in the app suite. They cover the pages' edits and refusals against the
+model, missing-pattern creation, selected versus played subtunes, popups and shared-canvas
+transfers; `song_audition_shape` checks an unused instrument, an omitted voice and a note outside
+the packed range against independently prepared player state, that a stopped audition never
+plays the song's own voices, and that shape changes keep the running registers and PCM.
+
+The emulator's `all_song_edit_pages_keep_the_existing_input_frame_and_spi_budgets` reuses the
+unchanged TRACKER input, pass, poll, 200-cell and 20 ms SPI bounds for ORDER, INSTR and TABLE;
+their idle frames send nothing. `an_instrument_page_edit_changes_the_next_notes_bit_exact_with_the_host`
+edits AD on INSTR during playback and compares every sample with the host's same-block edit; an
+unedited control must differ, so the check is not vacuous.
+
 `expert_transport` replays outgoing packets into a second instrument. It checks macro
 releases after deferred or canceled changes, macro-before-expert restoration, remote
 edits after a queued local macro, explicit learned 127 versus the internal following

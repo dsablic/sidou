@@ -219,6 +219,50 @@ can be undone. While arena compaction runs, further edits wait: **TIDYING**. Ref
 toasts: **SAVING**, **SONG FULL**, **INVALID EDIT**, or **WAITING** while another edit completes.
 The save-stream and stored-song-size checks are integration hooks until songs on the store land.
 
+### ORDER, INSTR and TABLE
+
+SEQ cycles **TRACKER → ORDER → INSTR → TABLE → TRACKER** (STEP joins when implemented).
+These pages share TRACKER's high-contrast, 2× values and bounded redraws. They edit the same
+song through the player's queue; no separate instrument or table copy is edited. Values may
+wait for acknowledgement. **SONG FULL**, **SAVING**, **SONG BUSY**, **TIDYING** and invalid-edit
+refusals use the large toast. K1/K2 show the actual edited value in the value popup.
+
+| Page | Control | Does |
+|---|---|---|
+| ORDER | SELECT | moves between the subtune selector, entries and the restart marker |
+| ORDER | ALGORITHM | selects the subtune on its selector; elsewhere changes the shown voice |
+| ORDER | K1 / K2 | changes the entry's value / kind (pattern, repeat, transpose) |
+| ORDER | EDIT + PRESETS | clockwise inserts an entry; counter-clockwise deletes it |
+| ORDER | ARP | sets the restart to the cursor's entry |
+| ORDER | PLAY | plays from the selected subtune and cursor entry; again stops |
+| INSTR | PRESETS | selects instrument 01–3F |
+| INSTR | SELECT | selects one of the nine parameters, then a character of its 16-byte GT2 name |
+| INSTR | K1 / K2 | coarse (16) / fine (1) adjustment of the selected byte or name character |
+| INSTR | EDIT + SEQ | on WAVE/PULSE/FILTER/VIBRATO pointer, opens that table at its pointer; otherwise asks SELECT A PTR |
+| TABLE | ALGORITHM | selects WAVE, PULSE, FILTER or SPEED |
+| TABLE | SELECT | selects table row 01–FF |
+| TABLE | K1 / K2 | edits the left / right byte |
+
+ORDER shows one voice's decoded entries at 2×; the other two have compact raw-hex summaries.
+Repeats use `R0` for 16 times; transpose `-10` means minus 16 semitones (hex), not minus zero.
+Choosing an unheld pattern creates an empty 64-row pattern before publishing its reference;
+the whole request is checked against the serialized-size cap first. Invalid repeat/transpose
+sequences are refused without creating a pattern. Instrument names use GT2's 16 raw bytes;
+untouched imported bytes are preserved, and name-only instruments follow GoatTracker's normal
+save rules. TABLE's footer spells out the selected operation, including absolute/relative
+wavetable notes and jumps (SPEED's FF is a speed value, not a jump).
+
+The note keys audition the selected instrument on the cursor's voice. The edit cursor's
+subtune and the actually playing subtune are tracked separately, so selecting another subtune
+does not silently restart playback or make TRACKER show the wrong orderlist.
+
+The audition keeps what already sounds. An instrument the song never uses, a voice the packed
+song omits, a note outside the song's range or a table of another encoding is prepared in
+slices between frames and handed to the player at a block boundary, so the song keeps its
+position and every held note and table its phase. A key you press still starts its note
+normally, and an edit made while a note is held changes that note the way the edit says. With
+the song stopped, only the voices you jam sound; the song's own notes never play.
+
 ## Title cards
 
 A major view entered from the menu opens behind a short title card in the logo's metal

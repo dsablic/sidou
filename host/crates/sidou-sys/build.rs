@@ -71,6 +71,7 @@ const SOURCES: &[&str] = &[
     "app/settings.c",
     "app/sine.c",
     "app/song_view.c",
+    "app/song_pages.c",
     "app/song_io.c",
     "app/song_edit.c",
     "app/store.c",
@@ -223,7 +224,7 @@ fn main() {
                 "LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*|LEARN_VIEW_.*|SCOPE_.*|",
                 "SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|MASTER_.*|",
                 "TAIL_.*|UI_SOUND_.*|KEYS_ROUTE_.*|SYSEX_.*|",
-                "demo_song_.*|song_view_.*|STORE_.*|SAVE_KEY_.*|SETTINGS_.*|tracker_view_.*|TRACKER_VIEW_.*|",
+                "demo_song_.*|song_view_.*|song_pages_.*|STORE_.*|SAVE_KEY_.*|SETTINGS_.*|tracker_view_.*|TRACKER_VIEW_.*|",
                 "USER_PROFILE.*|user_profile.*|THEME_.*|theme_.*",
             ),
         )

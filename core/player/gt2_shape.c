@@ -888,6 +888,24 @@ void gt2_shape_derive(gt2_analysis* a, gt2_shape* out) {
 
 /* --- Widening ---------------------------------------------------------------------------- */
 
+int gt2_shape_include_jams(gt2_analysis* a, const uint32_t instruments[2], uint32_t lo,
+                          uint32_t hi) {
+    a->grew = 0u;
+    for (uint32_t i = 0u; i < 2u; i++)
+        GROW_OR(a, a->base.instrused[i], instruments[i]);
+    if (lo <= hi && hi < NOTES) {
+        if (lo < a->base.note_lo) {
+            a->base.note_lo = (uint8_t)lo;
+            a->grew = 1u;
+        }
+        if (a->base.note_hi == 0xffu || hi > a->base.note_hi) {
+            a->base.note_hi = (uint8_t)hi;
+            a->grew = 1u;
+        }
+    }
+    return a->grew;
+}
+
 /* An orderlist of subtune sub changed (channel ch, or all three if ch is 3): scan it and
  * the patterns it newly names. */
 static void widen_order(gt2_analysis* a, uint32_t sub) {

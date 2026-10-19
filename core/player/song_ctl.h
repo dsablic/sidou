@@ -76,8 +76,10 @@ extern "C" {
 #define SONG_BLOCK 128u            /* samples a block (platform/fm1/audio.h) */
 #define SONG_MULTISPEED_MAX 4u     /* the device's (gt2_caps): a block holds one call */
 /* The main loop's analysis slice, in gt2_shape_step units (fm1-emu measures a slice's
- * instructions against SONG_SLICE_INSTRUCTIONS, tests/song.rs). */
-#define SONG_SLICE_UNITS 300u
+ * instructions against SONG_SLICE_INSTRUCTIONS, tests/song.rs). 200, not 300: gt2_shape.c is
+ * built for size (core/CMakeLists.txt), which costs more an analysis unit, and the slice stays
+ * within its bound. */
+#define SONG_SLICE_UNITS 200u
 #define SONG_SLICE_INSTRUCTIONS 39000u
 /* Calls a fast-forward runs a slice, and how far ahead of the interrupt's call it hands over
  * (the hand-over is armed for that call). */
@@ -175,7 +177,7 @@ typedef struct {
 /* song_ctl_play's refusal besides gt2_shape's (song_ctl.error). */
 #define SONG_ERR_MULTISPEED (-10) /* above SONG_MULTISPEED_MAX: two calls in a block */
 /* What a derivation in slices is for (song_ctl.deriving). */
-enum { SONG_DERIVE_EDIT = 1, SONG_DERIVE_HANDOVER, SONG_DERIVE_DONE };
+enum { SONG_DERIVE_EDIT = 1, SONG_DERIVE_HANDOVER, SONG_DERIVE_DONE, SONG_DERIVE_JAM };
 /* Polls with no edit before a widened shape is narrowed again. */
 #define SONG_QUIET_POLLS 50u
 
@@ -278,6 +280,13 @@ typedef struct song_ctl {
     const uint8_t* edit_restore; /* a shift undo's packed locks, alive through its release */
     uint8_t edit_restore_n;
     uint8_t hold_next;      /* song_ctl_hold: the next PLAY or CONTINUE waits for an align */
+    uint8_t ff_stop;        /* STOP must retire its replay even if chip hand-back is cancelled */
+    /* Main-loop audition preparation. Pins live until the next explicit PLAY, including
+     * release tails. A retained request is 1 (shape pending) or 2 (note pending). */
+    uint32_t jam_instruments[2];
+    uint32_t jam_seq[GT2_PLAY_CHANNELS];
+    uint8_t jam_wait[GT2_PLAY_CHANNELS][3]; /* state, note, instrument */
+    uint8_t jam_lo, jam_hi, jam_live, jam_release;
 } song_ctl;
 
 /* The song in its region, its two shape buffers and its work space, all the caller's;
@@ -309,7 +318,9 @@ int song_ctl_mute(song_ctl* sc, uint32_t mask);
  * back gets the song's registers again at the next block. */
 int song_ctl_take(song_ctl* sc, uint32_t mask);
 /* Voice v takes note (0 C-0 ... 95) and instrument at its next tick 0, as if its next row
- * held them (no command): M2d's audition, M2e's multitimbral mode. */
+ * held them (no command): M2d's audition, M2e's multitimbral mode. An unused instrument
+ * or note range is prepared in main-loop slices: 1 means retained, not necessarily
+ * already queued. One deferred note per voice; a release is retained after that note. */
 int song_ctl_jam(song_ctl* sc, uint32_t voice, uint32_t note, uint32_t instr);
 /* A jam's release: note SONG_JAM_RELEASE to song_ctl_jam lets voice's note go at its next
  * call (the gate off, as a key-off row gives it). */

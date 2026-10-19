@@ -921,6 +921,23 @@ gt2_err gt2_pattern_add(gt2_song* s, uint32_t rows, uint32_t* pattern, gt2_edit*
     return GT2_ERR_PATTERNS;
 }
 
+gt2_err gt2_pattern_add_at(gt2_song* s, uint32_t pattern, uint32_t rows, gt2_edit* e) {
+    if (s->frozen)
+        return GT2_ERR_SAVING;
+    if (pattern >= GT2_MAX_PATTERNS)
+        return GT2_ERR_RANGE;
+    if (rows < 1u || rows > GT2_MAX_ROWS)
+        return GT2_ERR_ROWS;
+    if (pattern_pending(s, pattern) || s->pending_orders != 0u || prefix_pending(s, pattern))
+        return GT2_ERR_PENDING;
+    if (s->pattern[pattern] != 0u)
+        return GT2_ERR_RANGE;
+    if (s->saved_pattern_refs[pattern] != 0u)
+        return GT2_ERR_IN_USE;
+    return with_locks(pattern_rebuild(s, pattern, rows + 1u, -1, -1, e), e,
+                      SONG_LOCKS_REMOVE, 0u);
+}
+
 gt2_err gt2_pattern_remove(gt2_song* s, uint32_t pattern, gt2_edit* e) {
     if (s->frozen)
         return GT2_ERR_SAVING;
@@ -1062,6 +1079,47 @@ gt2_err gt2_order_replace(gt2_song* s, uint32_t subtune, uint32_t channel,
     if (n > 0u ? restart >= n : restart != 0u)
         return GT2_ERR_RANGE;
     return order_rebuild(s, subtune, channel, entries, n, restart, e);
+}
+
+gt2_err gt2_order_pattern_check(const gt2_song* s, uint32_t subtune, uint32_t channel,
+                                uint32_t pos, uint32_t pattern, int insert) {
+    if (s->frozen)
+        return GT2_ERR_SAVING;
+    if (!order_index_ok(s, subtune, channel) || pattern >= GT2_MAX_PATTERNS)
+        return GT2_ERR_RANGE;
+    int missing = s->pattern[pattern] == 0u;
+    if (order_pending(s, order_index(subtune, channel)) || pattern_swap_pending(s, pattern) ||
+        prefix_pending(s, pattern) || (missing && s->pending_orders != 0u))
+        return GT2_ERR_PENDING;
+    if (missing && s->saved_pattern_refs[pattern] != 0u)
+        return GT2_ERR_IN_USE;
+    uint32_t n = gt2_order_entries(s, subtune, channel);
+    if (pos > n || (!insert && pos == n))
+        return GT2_ERR_RANGE;
+    if (insert && n >= GT2_MAX_ORDER)
+        return GT2_ERR_ORDER_FULL;
+    const uint8_t* old = gt2_order_data(s, subtune, channel);
+    uint8_t entries[GT2_MAX_ORDER];
+    for (uint32_t i = 0, j = 0; i < n; i++) {
+        if (insert && i == pos)
+            entries[j++] = (uint8_t)pattern;
+        entries[j++] = !insert && i == pos ? (uint8_t)pattern : old[i];
+    }
+    if (insert && pos == n)
+        entries[n] = (uint8_t)pattern;
+    uint32_t count = n + (insert != 0);
+    if (!gt2_order_valid(entries, count))
+        return GT2_ERR_ORDER_RULE;
+    uint32_t growth = insert ? saved_order_growth(s, subtune, channel, entries, count)
+                             : pattern_growth(s, pattern);
+    if (missing) {
+        uint32_t before = gt2_saved_trailer_size(s->ext_used);
+        uint32_t after = gt2_saved_trailer_size(
+            song_locks_pattern_size(s, SONG_LOCKS_REMOVE, pattern, 0u));
+        if (after > before)
+            growth += after - before;
+    }
+    return saved_check(s, growth);
 }
 
 /* Compaction. */

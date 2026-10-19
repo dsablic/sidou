@@ -947,7 +947,7 @@ static uint8_t jam_wait_off;  /* and its release */
 static uint8_t jam_held;      /* a jam note sounds and is not let go */
 static uint32_t jam_last_ms;  /* the last jam's time */
 
-static int st_play(void* ctx, uint32_t pos) {
+static int st_play_from(void* ctx, uint32_t sub, uint32_t pos) {
     song_ctl* sc = ctx;
     if (midi_object.owned && midi_object.target == 1u) {
         return 1;
@@ -955,7 +955,7 @@ static int st_play(void* ctx, uint32_t pos) {
     if (song_io_busy(&songs) && !song_io_saving(&songs)) {
         return 1; /* transport requests during a load do not play a half-read model */
     }
-    if (!song_ctl_play(sc, 0, pos)) {
+    if (!song_ctl_play(sc, sub, pos)) {
         return 0;
     }
     song_warned = 0;
@@ -965,6 +965,10 @@ static int st_play(void* ctx, uint32_t pos) {
         song_seen.row[v] = SONG_T_NOWHERE;
     }
     return 1;
+}
+
+static int st_play(void* ctx, uint32_t pos) {
+    return st_play_from(ctx, 0u, pos);
 }
 
 static int st_stop(void* ctx) {
@@ -1039,6 +1043,7 @@ static void st_status(void* ctx, song_status* out) {
     *out = song_seen; /* the rows song_events has heard, up to this pass */
     out->applied = sc->applied + sc->idle_edits;
     out->state = (uint8_t)song_ctl_shown_state(sc);
+    out->subtune = sc->play_sub;
     /* the play's options; before one, the song's (or the defaults), read again each second */
     static gt2_options before;
     static uint8_t frames;
@@ -1195,6 +1200,7 @@ static int st_song_edit_saving_and_size_guard(void* ctx, const song_edit_request
 
 static const song_transport song_binding = {
     .play = st_play,
+    .play_from = st_play_from,
     .stop = st_stop,
     .resume = st_resume,
     .mute = st_mute,

@@ -36,6 +36,7 @@ pub(crate) struct Fake {
     pub(crate) edit_guard: i32,
     pub(crate) cell_writes: u32,
     pub(crate) index_swaps: u32,
+    pub(crate) last_subtune: u32,
 }
 
 impl Fake {
@@ -67,6 +68,14 @@ fn fake(ctx: *mut c_void) -> &'static mut Fake {
 
 unsafe extern "C" fn play(ctx: *mut c_void, pos: u32) -> i32 {
     fake(ctx).cmd(Call::Play(pos))
+}
+unsafe extern "C" fn play_from(ctx: *mut c_void, sub: u32, pos: u32) -> i32 {
+    let accepted = unsafe { play(ctx, pos) };
+    if accepted != 0 {
+        fake(ctx).last_subtune = sub;
+        fake(ctx).st.subtune = sub as u8;
+    }
+    accepted
 }
 unsafe extern "C" fn stop(ctx: *mut c_void) -> i32 {
     fake(ctx).cmd(Call::Stop)
@@ -149,10 +158,12 @@ impl Song {
             edit_guard: SONG_EDIT_GUARD_OK as i32,
             cell_writes: 0,
             index_swaps: 0,
+            last_subtune: 0,
         });
         let ctx: *mut Fake = &mut *f;
         let t = Box::new(song_transport {
             play: Some(play),
+            play_from: Some(play_from),
             stop: Some(stop),
             resume: Some(resume),
             mute: Some(mute),
@@ -190,6 +201,7 @@ pub(crate) fn settle(ui: &mut Ui) {
         if unsafe { screen_animating(&ui.v.s) } == 0
             && ui.v.song.dirty == 0
             && ui.v.song.unbuilt == 0
+            && ui.v.pages.unbuilt == 0
         {
             ui.frame();
             drain(&mut ui.g);
@@ -261,10 +273,11 @@ fn the_bpm_follows_the_frame_rate_the_multispeed_and_the_rows_a_beat() {
 fn seq_opens_the_tracker_from_any_view_and_home_goes_back() {
     let mut ui = Ui::without_cards();
     open_tracker(&mut ui);
-    // The only song view so far: SEQ stays on it.
-    ui.press(PANEL_BTN_SEQ);
-    settle(&mut ui);
-    assert_eq!(ui.top(), "TRACKER");
+    for page in ["ORDER", "INSTR", "TABLE", "TRACKER"] {
+        ui.press(PANEL_BTN_SEQ);
+        settle(&mut ui);
+        assert_eq!(ui.top(), page);
+    }
     assert_eq!(ui.v.s.depth, 2);
     ui.press(PANEL_BTN_HOME);
     settle(&mut ui);
@@ -293,8 +306,17 @@ fn seq_steps_to_the_next_song_view_and_round() {
     unsafe {
         assert_eq!(song_view_next(std::ptr::null()), tracker);
         assert_eq!(song_view_next(&views_menu), tracker);
-        assert_eq!(song_view_next(tracker), tracker, "the only one: itself");
+        let order: *const view = &song_pages_order_view;
+        let instr: *const view = &song_pages_instr_view;
+        let table: *const view = &song_pages_table_view;
+        assert_eq!(song_view_next(tracker), order);
+        assert_eq!(song_view_next(order), instr);
+        assert_eq!(song_view_next(instr), table);
+        assert_eq!(song_view_next(table), tracker);
         assert_eq!(song_view_is(tracker), 1);
+        for page in [order, instr, table] {
+            assert_eq!(song_view_is(page), 1);
+        }
         assert_eq!(song_view_is(&views_menu), 0);
         assert_eq!(song_view_is(std::ptr::null()), 0);
     }

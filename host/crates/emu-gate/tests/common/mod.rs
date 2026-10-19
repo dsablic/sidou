@@ -1117,6 +1117,12 @@ pub fn render_host_song_master(frames: usize, p: &SongPlay, master: u16) -> Vec<
                 let mut e = gt2_edit::default();
                 assert_eq!(prim(song.ptr_mut(), &mut e), GT2_OK, "the host's edit");
                 assert_eq!(song_ctl_edit(&mut *sc, &e), 1, "the host's edit went");
+                // The recorded block is application, after the device's main-loop shape
+                // preparation. Instrument/table edits can require that preparation even
+                // when their resulting shape is compatible with the running player.
+                while sc.deriving != 0 {
+                    song_ctl_poll(&mut *sc, SONG_POLL_SLICE | SONG_POLL_RING);
+                }
             }
             if p.stop_block == Some(i) {
                 assert_eq!(song_ctl_stop(&mut *sc), 1);

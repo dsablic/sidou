@@ -13,6 +13,14 @@ All notable changes are documented here. The format follows
   and ALGORITHM steps the piece like SELECT.
 - Ergonomics: an effect algorithm picked from the panel (ENV, CHIP's ALGORITHM on a slot) starts
   from a musical setting per algorithm, so it is heard at once; MIDI's algorithm CC loads nothing.
+- **ORDER, INSTR and TABLE song editors**, using the readable 2x high-contrast style and
+  the shared inactive canvas. Edit order entries, restarts and the subtune, the nine
+  instrument parameters and the GT2 name, and all four tables with their meanings spelled
+  out. EDIT + SEQ on an instrument pointer opens its table. Edits go through the player's
+  save-aware queue; value popups name the field being edited.
+- The song audition keeps live state: a jam on an unused instrument, an omitted voice, a note
+  outside the song's range or a table of another encoding neither restarts nor refuses; it is
+  prepared in bounded main-loop slices and converted at a block boundary.
 - M2e Task 5: [version-1 SysEx](docs/reference/sysex.md) for inquiry, streamed
   directory/file GET and PUT, deletion, GTI5 instruments with table relocation,
   and current-song dumps/imports. USB uses per-frame ACK/NAK; TRS accepts paced

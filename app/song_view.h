@@ -111,11 +111,12 @@ typedef struct {
     uint8_t drawn[SONG_VIEW_LOOK];
     song_view_canvas cv;
     song_editor* editor;
-    screen* edit_screen;
+    screen* edit_screen; /* pending-edit feedback only; keys receive their actual route's screen */
     uint8_t step;
     uint8_t field;
     uint8_t clear_pattern, clear_row;
     uint8_t clear_armed;
+    uint8_t subtune; /* selected orderlist, not necessarily the currently playing one */
 } song_view;
 
 /* No player, nothing muted, the cursor at entry 0 row 0 of voice 1, instrument 1. */

@@ -7,6 +7,7 @@
 #include "font.h"
 #include "live_view.h"
 #include "tracker_view.h"
+#include "song_pages.h"
 
 /* A PLAY the player has not taken yet. */
 #define WANT_NONE 0u
@@ -29,7 +30,9 @@
 /* ---- the song views, SEQ's order ---- */
 
 /* NULL: not made yet (SEQ skips it). */
-static const view* const VIEWS[SONG_VIEW_COUNT] = {NULL, &tracker_view_view, NULL, NULL, NULL};
+static const view* const VIEWS[SONG_VIEW_COUNT] = {
+    NULL, &tracker_view_view, &song_pages_order_view, &song_pages_instr_view, &song_pages_table_view
+};
 
 int song_view_is(const view* v) {
     for (uint32_t i = 0; i < SONG_VIEW_COUNT; i++) {
@@ -67,6 +70,7 @@ void song_view_init(song_view* sv, live* l) {
     sv->st.ntsc = 0;
     sv->st.mute = 0;
     sv->st.applied = 0;
+    sv->st.subtune = 0;
     sv->st.speed[0] = 0;
     sv->st.speed[1] = 0;
     for (uint32_t v = 0; v < SONG_T_VOICES; v++) {
@@ -103,6 +107,7 @@ void song_view_init(song_view* sv, live* l) {
     sv->step = 1;
     sv->field = TRACKER_VIEW_FIELD_NOTE;
     sv->clear_armed = 0;
+    sv->subtune = 0;
 }
 
 uint32_t song_view_mute_mask(const song_view* sv) {
@@ -136,7 +141,8 @@ static void send_play(song_view* sv) {
         ok = t->resume(t->ctx);
         now = SONG_T_PLAYING;
     } else {
-        ok = t->play(t->ctx, sv->order_pos);
+        ok = t->play_from ? t->play_from(t->ctx, sv->subtune, sv->order_pos) :
+                           t->play(t->ctx, sv->order_pos);
         now = SONG_T_STARTING;
     }
     if (ok) {
@@ -182,6 +188,7 @@ void song_view_loaded(song_view* sv) {
     sv->edit_pending = 0;
     sv->clear_armed = 0;
     sv->order_pos = sv->row = sv->voice = 0;
+    sv->subtune = 0;
     sv->instr = 1;
     sv->want = WANT_NONE;
     sv->jam_key = SONG_VIEW_NO_KEY;
@@ -245,6 +252,9 @@ uint32_t song_view_keys(song_view* sv, uint32_t down, uint32_t pressed, uint32_t
             }
             taken |= bit;
             uint8_t n = live_key_note(sv->l, (uint8_t)(PANEL_BASE_NOTE + k));
+            if (sv->rec && recording_screen) {
+                tracker_view_note(recording_screen, sv, n < GT2_NOTE0 ? GT2_NOTES : n - GT2_NOTE0);
+            }
             if (n == LIVE_NO_NOTE || n < GT2_NOTE0 || n - GT2_NOTE0 >= GT2_NOTES) {
                 continue; /* outside the player's notes: the key sounds nothing */
             }
@@ -252,9 +262,6 @@ uint32_t song_view_keys(song_view* sv, uint32_t down, uint32_t pressed, uint32_t
                 sv->jam_off = 0; /* the new note takes the voice over */
             }
             send_jam_off(sv);
-            if (sv->rec && recording_screen) {
-                tracker_view_note(recording_screen, sv, n - GT2_NOTE0);
-            }
             /* A note that cannot go now is dropped. */
             (void)sv->t->jam(sv->t->ctx, sv->voice, n - GT2_NOTE0, sv->instr);
             sv->jam_voice = sv->voice;

@@ -579,7 +579,8 @@ static void song_menu_done(views* v) {
         v->songs.scanning = 0;
         song_menu_changed(v);
         if (direct == 2u) {
-            screen_push(&v->s, back, &v->song, SCREEN_WIPE_UP);
+            screen_push(&v->s, back, back == &tracker_view_view ? (void*)&v->song :
+                        (void*)&v->pages, SCREEN_WIPE_UP);
         }
     } else {
         v->songs.page = SONG_MENU_ROOT;
@@ -1427,7 +1428,8 @@ static void song_step(views* v) {
     if (song_view_is(top)) {
         screen_pop(&v->s, SCREEN_CUT);
     }
-    screen_push(&v->s, next, &v->song, SCREEN_WIPE_DOWN);
+    screen_push(&v->s, next, next == &tracker_view_view ? (void*)&v->song :
+                (void*)&v->pages, SCREEN_WIPE_DOWN);
 }
 
 /* HOME: the menu from the root view, back one view from any other: from the menu to LIVE,
@@ -1448,7 +1450,8 @@ static int global(void* ctx, const screen_event* e) {
         return 1;
     }
     if (e->id == PANEL_BTN_SEQ) {
-        song_step(v);
+        if (!song_pages_jump(&v->pages, &v->s, e))
+            song_step(v);
         return 1;
     }
     if (e->id == PANEL_BTN_PLAY) {
@@ -1484,6 +1487,8 @@ void views_set_keys(views* v, keys_route* kr) {
 }
 
 void views_set_song(views* v, const song_transport* t) {
+    if (v->pages.pending)
+        return;
     song_view_set_transport(&v->song, t);
 }
 
@@ -1534,6 +1539,9 @@ void views_song_io(views* v, song_io* io) {
 
 void views_song_loaded(views* v) {
     song_view_loaded(&v->song);
+    uint8_t page = v->pages.page;
+    song_pages_init(&v->pages, &v->song);
+    v->pages.page = page;
     v->songs.built = 0;
 }
 
@@ -1565,6 +1573,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     live_view_init(&v->live, l, sc);
     scene_view_init(&v->scene, l, sc);
     song_view_init(&v->song, l);
+    song_pages_init(&v->pages, &v->song);
     v->songs.built = 0;
     v->songs.scanning = 0;
     v->song.editor = &v->editor;
@@ -1816,6 +1825,12 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
         *accent = theme_get(l->theme)->knob[enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4
                                                     ? enc - PANEL_ENC_K1 : 0u];
         return tracker_view_popup(&v->song, enc, (ask & ASK_EDIT) != 0u, name, value, fill, max);
+    }
+    if (song_view_is(shows(v)) && shows(v) != &tracker_view_view &&
+        song_pages_popup(&v->pages, shows(v), enc, (ask & ASK_EDIT) != 0u, name, value, fill, max)) {
+        *accent = theme_get(l->theme)->knob[enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4 ?
+                                          enc - PANEL_ENC_K1 : 0u];
+        return 1;
     }
     if (enc >= PANEL_ENC_K1 && enc <= PANEL_ENC_K4) {
         *accent = theme_get(l->theme)->knob[enc - PANEL_ENC_K1]; /* the knob's colour, as on the page */
@@ -2155,6 +2170,15 @@ void views_frame(views* v, uint32_t now_ms) {
     /* The tap runs while LIVE or SCENE shows: the audio interrupt pays for it only then. */
     top = shows(v);
     song_view_frame(&v->song, song_view_is(top));
+    if (v->pages.pending) {
+        uint8_t previous = v->pages.status;
+        (void)song_pages_poll(&v->pages);
+        if (previous != v->pages.status && v->pages.status != SONG_PAGES_WAITING &&
+            *song_pages_message(&v->pages)) {
+            screen_toast(&v->s, song_pages_message(&v->pages), SCREEN_TOAST_MS);
+            v->s.popup_ask = 0u;
+        }
+    }
     v->live.mutes = (uint8_t)song_view_mutes(&v->song);
     live_view_tap(&v->live, top == &live_view_view);
     scene_view_tap(&v->scene, top == &scene_view_view);

@@ -70,6 +70,7 @@ typedef struct {
     uint8_t row[SONG_T_VOICES];       /* and the row, SONG_T_NOWHERE until a row event */
     uint8_t wave[SONG_T_VOICES];      /* each voice's control register as last written */
     uint8_t env[SONG_T_VOICES];       /* each voice's envelope, 0..255 */
+    uint8_t subtune; /* actual playing subtune, independent of the UI selection */
     uint32_t applied; /* command acknowledgements plus idle edits: pattern data may have changed */
 } song_status;
 
@@ -137,6 +138,8 @@ typedef struct {
      * alive until completion; the player prepares the prospective lock cache before send. */
     int (*edit_with_locks)(void* ctx, const gt2_edit* edit, const uint8_t* locks,
                            uint32_t nlocks, uint32_t* ticket);
+    /* Optional selected-subtune PLAY. The original play remains MIDI's subtune-zero start. */
+    int (*play_from)(void* ctx, uint32_t subtune, uint32_t order_pos);
 } song_transport;
 
 #ifdef __cplusplus

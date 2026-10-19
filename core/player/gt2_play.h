@@ -84,6 +84,7 @@ typedef struct {
     /* not player.s's: the row fetched for the next tick 0, for its row event */
     uint8_t orderpos;  /* the orderlist entry the playing pattern came from, $FF: elsewhere */
     uint8_t ev_pending, ev_pattern, ev_row, ev_orderpos;
+    uint16_t encoding; /* retained pulse/wave packing, or 0: follow the shape */
 } gt2_channel;
 
 /* What one call did on a channel, for M2c Task 6's event ring (M2d's views, M2e's clock,
@@ -209,9 +210,10 @@ typedef struct {
     uint8_t unknown;         /* scratch: the last frequency reads hit that region */
     uint8_t gates;           /* each channel's gate bit after the last call */
     /* 1: the sequencer holds (M2d's audition with the song stopped, song_ctl.h): no row,
-     * orderlist or pattern is read, and the channels play on (their instruments, tables and
-     * jams) as if every row were empty. 0 for every song played. */
+     * orderlist or pattern is read. Jammed channels play their instruments and tables as if
+     * every row were empty; unrequested channels hold their state. 0 for every song played. */
     uint8_t frozen;
+    uint8_t jam_voices; /* explicitly jammed voices; unpacked ones are never sequenced */
     uint8_t start[GT2_PLAY_CHANNELS]; /* the packed orderlist byte the song starts each
                                        * channel from (0: its start) */
     uint8_t regs[GT2_SID_REGS]; /* the SID's registers as written (the ghost registers) */
@@ -231,6 +233,10 @@ void gt2_play_start(gt2_player* p, const gt2_song* s, const gt2_shape* shape,
  * channel count: a shape that changes how the player's state reads (gt2_shape.h,
  * gt2_shape_compatible) goes through a hand-over of a fast-forwarded player instead. */
 void gt2_play_set_shape(gt2_player* p, const gt2_shape* shape);
+/* A live audition cannot be reconstructed by replaying the song. Retain every running
+ * table's encoding and all channel/filter state, initializing only newly packed voices.
+ * New table pointers take the new shape's encoding. */
+void gt2_play_retain_shape(gt2_player* p, const gt2_shape* shape);
 
 /* One call of the play routine: its SID writes, in order, to sink; then its events in
  * p->ev. */

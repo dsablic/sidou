@@ -4074,6 +4074,151 @@ fn tracker_refuses_growth_at_the_real_song_size_cap() {
     assert_eq!(actual.raw().pending, 0);
 }
 
+fn open_edit_page(m: &mut Machine, fw: &Firmware, steps: usize, symbol: &str) {
+    open_tracker(m, fw);
+    for _ in 0..steps {
+        press(m, SEQ);
+        settle(m, fw);
+    }
+    assert_eq!(common::top_view(m, fw), fw.symbol(symbol));
+}
+
+#[test]
+fn the_readable_order_instrument_and_table_pages_match_their_goldens() {
+    let Some((build, fw)) = fixture("the readable song edit pages") else {
+        return;
+    };
+    for (steps, symbol, name) in [
+        (1, "song_pages_order_view", "order"),
+        (2, "song_pages_instr_view", "instr"),
+        (3, "song_pages_table_view", "table-wave"),
+    ] {
+        let mut m = booted(&fw);
+        open_edit_page(&mut m, &fw, steps, symbol);
+        compare_golden(&build, name, &m.soc.lcd.fb, &[]);
+    }
+}
+
+#[test]
+fn all_song_edit_pages_keep_the_existing_input_frame_and_spi_budgets() {
+    let Some((_, fw)) = fixture("the song edit pages budgets") else {
+        return;
+    };
+    let k1 = sidou_sys::PANEL_ENC_K1 as u8;
+    for (steps, symbol, name, turns) in [
+        (
+            1,
+            "song_pages_order_view",
+            "ORDER",
+            vec![(SELECT, 1), (ALGORITHM, 1), (k1, 1), (k1 + 1, 1)],
+        ),
+        (
+            2,
+            "song_pages_instr_view",
+            "INSTR",
+            vec![
+                (SELECT, 1),
+                (k1, 1),
+                (k1 + 1, 1),
+                (sidou_sys::SONG_PAGES_ENC_PRESETS as u8, 1),
+            ],
+        ),
+        (
+            3,
+            "song_pages_table_view",
+            "TABLE",
+            vec![(SELECT, 1), (k1, -1), (k1 + 1, 1), (ALGORITHM, 1)],
+        ),
+    ] {
+        let mut m = booted(&fw);
+        open_edit_page(&mut m, &fw, steps, symbol);
+        m.watch_calls(fw.symbol("ui_poll"));
+        let idle = measure(&mut m, &fw, 25, |_| {});
+        println!(
+            "{name} idle: {} instructions/frame, poll {}, {} SPI windows",
+            idle.instructions_per_frame(),
+            idle.worst_poll,
+            idle.total().windows
+        );
+        assert_eq!(idle.total().windows, 0);
+        assert!(idle.instructions_per_frame() < TRACKER_IDLE_PER_FRAME);
+        assert!(idle.worst_poll < TRACKER_WORST_POLL);
+        m.watch_calls(fw.symbol("ui_encoder"));
+        m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+        for (encoder, detents) in turns {
+            let (input, pass) = start_cost(&mut m, 250, |m| m.turn(encoder, detents));
+            println!("{name} encoder {encoder}: input {input}, busiest pass {pass}");
+            assert!(
+                input < TRACKER_INPUT,
+                "{name} encoder {encoder}: input {input}"
+            );
+            assert!(pass < TRACKER_PASS, "{name} encoder {encoder}: pass {pass}");
+            m.run_ms(1500);
+            m.watch_calls(fw.symbol("ui_poll"));
+            let redraw = measure(&mut m, &fw, 12, |m| m.turn(encoder, detents));
+            let most = redraw.frames.iter().map(cells).max().unwrap_or(0);
+            println!(
+                "{name} encoder {encoder} redraw: poll {}, max cells {most}, SPI {} ms",
+                redraw.worst_poll,
+                redraw.worst_frame_ms()
+            );
+            assert!(most <= sidou_sys::SONG_VIEW_FRAME_CELLS);
+            assert!(redraw.worst_frame_ms() <= SPI_BUDGET_MS);
+            assert!(redraw.worst_poll < TRACKER_WORST_POLL);
+            m.watch_calls(fw.symbol("ui_encoder"));
+        }
+        m.watch_calls(fw.symbol("ui_poll"));
+        m.run_ms(1500);
+        let c = measure(&mut m, &fw, 30, |m| m.turn(SELECT, 8));
+        let most = c.frames.iter().map(cells).max().unwrap_or(0);
+        println!(
+            "{name} cursor: {} instructions/frame, poll {}, max cells {most}, SPI {} ms",
+            c.instructions_per_frame(),
+            c.worst_poll,
+            c.worst_frame_ms()
+        );
+        assert!(most <= sidou_sys::SONG_VIEW_FRAME_CELLS);
+        assert!(c.worst_frame_ms() <= SPI_BUDGET_MS);
+        assert!(c.worst_poll < TRACKER_WORST_POLL);
+    }
+    let mut m = booted(&fw);
+    open_edit_page(&mut m, &fw, 1, "song_pages_order_view");
+    m.key(sidou_sys::PANEL_BTN_EDIT as u8, true);
+    m.run_ms(30);
+    m.watch_calls(fw.symbol("ui_encoder"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let order = fw.symbol("__song_region") + sidou_sys::ilp32::gt2_song::order as u32;
+    for (name, steps) in [("insert", 1), ("delete", -1)] {
+        let before = m.soc.read32(order) >> 16;
+        let (input, pass) = start_cost(&mut m, 250, |m| {
+            m.turn(sidou_sys::SONG_PAGES_ENC_PRESETS as u8, steps);
+        });
+        println!("ORDER {name}: input {input}, busiest pass {pass}");
+        assert!(input < TRACKER_INPUT, "ORDER {name}: input {input}");
+        assert!(pass < TRACKER_PASS, "ORDER {name}: pass {pass}");
+        assert_eq!((m.soc.read32(order) >> 16) as i32, before as i32 + steps);
+        m.run_ms(1500);
+        m.watch_calls(fw.symbol("ui_poll"));
+        let redraw = measure(&mut m, &fw, 12, |m| {
+            m.turn(sidou_sys::SONG_PAGES_ENC_PRESETS as u8, steps);
+        });
+        let most = redraw.frames.iter().map(cells).max().unwrap_or(0);
+        println!(
+            "ORDER {name} redraw: poll {}, max cells {most}, SPI {} ms",
+            redraw.worst_poll,
+            redraw.worst_frame_ms()
+        );
+        assert!(most <= sidou_sys::SONG_VIEW_FRAME_CELLS);
+        assert!(redraw.worst_frame_ms() <= SPI_BUDGET_MS);
+        assert!(redraw.worst_poll < TRACKER_WORST_POLL);
+        assert_eq!(
+            (m.soc.read32(order) >> 16) as i32,
+            before as i32 + 2 * steps
+        );
+        m.watch_calls(fw.symbol("ui_encoder"));
+    }
+}
+
 /// TRACKER's costs while a song plays, 30 s each (docs/art/README.md "TRACKER"):
 ///
 /// | 30 s playing | Cells a frame (average, most) | SPI a frame (average, worst) | Instructions a frame | Busiest ui_poll | Frames at the cap |

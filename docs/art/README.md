@@ -900,6 +900,51 @@ RAM: the song views' state 2,824 bytes (1,920 before), most of it their shared c
 characters of the large text's pieces). The two canvases and the characters they keep are
 1,788 bytes of the views' 17,280; free RAM went from 14,544 to 12,752 bytes (the gate keeps 9,000).
 
+## ORDER, INSTR and TABLE
+
+The song editors use the same shared inactive canvas as CHIP, SONG and TRACKER. Canvas
+ownership changes only when composing, not on entry or exit: the view underneath a modal
+frame may still draw, and a popped-to view must acquire and rebuild what another page used.
+The active song page is separate from canvas ownership, so a key before the first frame
+still edits or auditions in the correct context.
+
+- **ORDER:** ORDER and the selected voice at 2×, the subtune selector on row 2; 12 entries
+  below, with the selected voice's decoded pattern/repeat/transpose/restart value at 2×.
+  The other voices use compact raw-hex summaries on the right. Selection is a high-contrast
+  band. `-10` is the full hex transpose minus 16; the compact columns never overlap it.
+- **INSTR:** instrument number and nine named parameter bytes at 2×, followed by the two
+  eight-character lines of its GT2 name. The selected parameter label is yellow; a selected
+  name character is reverse yellow. The footer and popup give the full parameter name.
+- **TABLE:** WAVE, PULSE, FILTER or SPEED as a large title; 12 numbered rows, left and right
+  bytes at 2×. The footer spells out jumps, stops, delays, waveform notes, pulse/filter
+  operations and speeds. Absolute notes do not inherit the pattern format's reserved
+  key-on/key-off/rest byte codes.
+
+The selected subtune is an editing cursor, not a request to restart the song. TRACKER follows
+the actual played subtune when following playback and the selected subtune when editing.
+Each page builds a few rows per frame and uses the existing **200-cell / 20 ms SPI** copy
+limit, less the popup, toast and other layers. Idle pages compose and send nothing. Structural
+ORDER work is prepared in bounded polls; values are shown in the same large popup as the
+other controls, using the knob's accent rather than an unrelated LIVE parameter.
+
+The emulator's page cases reuse the unchanged TRACKER input/pass/poll limits: input <4,600,
+busiest pass <55,000, `ui_poll` <33,000, and idle <8,900 instructions/frame. The measured
+results and image delta are recorded with Task 4 in the implementation plan.
+
+Measured with both combined-wave profile sets enabled, including edit-triggered popups and
+instrument/voice/table changes (not just settled cursor movement):
+
+| Page | Idle instr/frame | Max input | Max pass | Max redraw poll | Max cells/frame | Max SPI/frame |
+|---|---:|---:|---:|---:|---:|---:|
+| ORDER | 6,695.08 | 1,359 | 30,692 | 30,662 | 143 | 12.261 ms |
+| INSTR | 6,686.28 | 1,518 | 30,638 | 31,165 | 148 | 12.681 ms |
+| TABLE | 6,697.88 | 1,075 | 31,185 | 30,816 | 133 | 11.393 ms |
+
+All three idle cases send zero SPI windows. ORDER insert/delete cost **274/275 input
+instructions**, busiest passes **22,596/22,580**, and redraw polls **16,215/16,129**;
+the test checks that both edits actually changed the orderlist length. Existing bounds stay
+input <4,600, pass <55,000, poll <33,000, 200 cells and 20 ms.
+
 ## STATUS
 
 STATUS (`app/views.c`, the menu's item after THEME) is the numbers: what the instrument has,

@@ -115,6 +115,7 @@
 #include "scope.h"
 #include "screen.h"
 #include "song_view.h"
+#include "song_pages.h"
 #include "theme.h"
 #include "tracker_view.h"
 #include "title_card.h"
@@ -212,6 +213,7 @@ typedef struct {
     uint8_t midi_drawn[VIEWS_MIDI_LOOK];
     uint8_t menu_ask; /* the item ALGORITHM changed, retained while its popup waits */
     song_editor editor;
+    song_pages pages;
 } views;
 
 extern const view views_status;

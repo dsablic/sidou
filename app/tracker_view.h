@@ -102,8 +102,8 @@ extern const view tracker_view_view;
 int32_t tracker_view_top(uint32_t row, int scroll);
 /* A row cell's text as the view shows it, into out (9 bytes: 8 and a terminator). */
 void tracker_view_cell(const uint8_t cell[4], char out[9]);
-/* An orderlist entry's two cells (a pattern, Rn, +n, -n), into out (3 bytes). */
-void tracker_view_order_entry(uint8_t entry, char out[3]);
+/* An orderlist entry (a pattern, Rn, +n, -n), into out (4 bytes including -10's terminator). */
+void tracker_view_order_entry(uint8_t entry, char out[4]);
 /* A command's name (GoatTracker's readme, 4.x), "" for none. */
 const char* tracker_view_command_name(uint32_t cmd);
 void tracker_view_note(screen* s, song_view* sv, uint32_t note);

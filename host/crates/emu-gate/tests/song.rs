@@ -320,6 +320,119 @@ fn a_four_note_tracker_phrase_is_the_expected_song_and_plays_bit_exact() {
     check_song("TRACKER four-note phrase", &fw, Some(&actual));
 }
 
+#[test]
+fn an_instrument_page_edit_changes_the_next_notes_bit_exact_with_the_host() {
+    let Some((_, fw)) = fixture("the INSTR edit audio test") else {
+        return;
+    };
+    let source = demo();
+    let old = source.raw().instr[0][GT2_INS_AD as usize];
+    let value = old.saturating_add(16);
+    assert_ne!(old, value);
+    let mut m = Machine::boot(&fw.image);
+    let t = transport(&fw);
+    let ad = fw.symbol("__song_region") + ilp32::gt2_song::instr as u32 + GT2_INS_AD;
+    m.snapshot_bytes = vec![
+        fw.chips() + ilp32::reg_ring_chips::ticks as u32,
+        t + ilp32::song_ctl::applied as u32,
+        fw.symbol("b_on"),
+        ad,
+    ];
+    m.snapshot_buffer(Some((fw.symbol("abuf"), 1)));
+    run_past_boot(&mut m, &fw);
+    for _ in 0..3 {
+        press(&mut m, PANEL_BTN_SEQ as u8);
+        m.run_ms(400);
+    }
+    assert_eq!(top_view(&mut m, &fw), fw.symbol("song_pages_instr_view"));
+    press(&mut m, PLAY);
+    m.run_ms(1000);
+    m.turn(PANEL_ENC_K1 as u8, 1);
+    m.run_ms(2000);
+    assert_eq!(
+        m.soc.read8(ad),
+        value,
+        "INSTR changed the selected instrument's AD byte"
+    );
+    let play_block = field32(&mut m, &fw, ilp32::song_ctl::play_block) as usize - 1;
+    let edit_block = m
+        .buffer_snapshots
+        .iter()
+        .enumerate()
+        .find(|(i, snap)| *i >= play_block && snap.bytes[3] == value)
+        .map(|(i, _)| i)
+        .expect("the instrument edit reached a rendered block");
+    let b_use = m
+        .buffer_snapshots
+        .iter()
+        .position(|snap| snap.bytes[2] != 0);
+    let mut actual = Song::device();
+    let region = fw.symbol("__song_region");
+    let bytes = unsafe {
+        std::slice::from_raw_parts_mut(actual.ptr_mut().cast::<u8>(), SONG_REGION_BYTES as usize)
+    };
+    for (i, byte) in bytes.iter_mut().enumerate() {
+        *byte = m.soc.read8(region + i as u32);
+    }
+    let mut expected = demo();
+    let mut expected_edit = gt2_edit::default();
+    unsafe {
+        assert_eq!(
+            gt2_set_instr(expected.ptr_mut(), 1, GT2_INS_AD, value, &mut expected_edit),
+            GT2_OK
+        );
+        gt2_edit_commit(expected.ptr_mut(), &expected_edit);
+    }
+    assert_eq!(actual.write(false), expected.write(false));
+    let played = Played {
+        audio: m.soc.periph.audio.clone(),
+        play_block,
+        command_blocks: Vec::new(),
+        b_use,
+    };
+    let primitive: SongPrim =
+        Box::new(move |s, edit| unsafe { gt2_set_instr(s, 1, GT2_INS_AD, value, edit) });
+    let edits = vec![(edit_block, primitive)];
+    let make = |rewrite, with_edit| SongPlay {
+        song: &source,
+        play_block,
+        ccs: &[],
+        ticks: &[],
+        edits: if with_edit { &edits } else { &[] },
+        stop_block: None,
+        b_use_block: b_use,
+        b_rewrite_block: rewrite,
+    };
+    let before_edit = Played {
+        audio: played.audio[..2 * (edit_block - 2) * HALF_FRAMES].to_vec(),
+        play_block,
+        command_blocks: Vec::new(),
+        b_use,
+    };
+    let baseline = matches(&before_edit, |frames, rewrite| {
+        render_host_song(frames, &make(rewrite, false))
+    });
+    assert!(
+        baseline.is_ok(),
+        "INSTR navigation changed audio before its edit: {baseline:?}"
+    );
+    let result = matches(&played, |frames, rewrite| {
+        render_host_song(frames, &make(rewrite, true))
+    });
+    println!("INSTR edit AD {old:02X}->{value:02X}, block {edit_block}, bit-exact: {result:?}");
+    assert!(
+        result.is_ok(),
+        "INSTR audio differs from the independently edited host: {result:?}"
+    );
+    let frames = played.audio.len() / 2;
+    let edited = render_host_song(frames, &make(b_use, true));
+    let clean = render_host_song(frames, &make(b_use, false));
+    assert!(
+        max_diff(&edited, &clean) > 0,
+        "AD edit must actually change the next notes' sound"
+    );
+}
+
 /// The first song while SCENE shows RED MOON RITE, which the song's events drive
 /// (app/scene_song.h): the audio is the host's, sample for sample, the vignette touching none
 /// of it.

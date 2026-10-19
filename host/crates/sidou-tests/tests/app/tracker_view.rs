@@ -21,7 +21,7 @@ fn cell(c: [u8; 4]) -> String {
 }
 
 fn entry(e: u8) -> String {
-    let mut out = [0 as std::ffi::c_char; 3];
+    let mut out = [0 as std::ffi::c_char; 4];
     unsafe { tracker_view_order_entry(e, out.as_mut_ptr()) };
     unsafe { CStr::from_ptr(out.as_ptr()) }
         .to_string_lossy()
@@ -787,6 +787,46 @@ fn rec_keys_and_knobs_edit_the_shown_pattern_with_one_step_undo() {
     assert_eq!(row(&s, 0, 1)[3], 0x23);
     assert_eq!(s.f.cell_writes, 7);
     assert_eq!(s.f.index_swaps, 0);
+}
+
+#[test]
+fn rec_dispatch_uses_the_active_view_before_the_first_compose_not_the_canvas_owner() {
+    let mut s = Song::playing(Some(fixed_song()));
+    s.ui.press(PANEL_BTN_SEQ);
+    assert_ne!(s.ui.v.song.which, SONG_VIEW_TRACKER as u8);
+    s.ui.press(PANEL_BTN_REC);
+    s.ui.note_keys(1 << 16, 1 << 16);
+    s.ui.note_keys(0, 0);
+    settle(&mut s.ui);
+    assert_eq!(row(&s, 0, 0)[0], GT2_FIRSTNOTE as u8 + 57);
+    s.ui.press(PANEL_BTN_SEQ);
+    s.ui.press(PANEL_BTN_SEQ);
+    assert_eq!(s.ui.top(), "INSTR");
+    let writes = s.f.cell_writes;
+    s.ui.note_keys(1, 1);
+    s.ui.note_keys(0, 0);
+    settle(&mut s.ui);
+    assert_eq!(
+        s.f.cell_writes, writes,
+        "REC on INSTR auditions without pattern writes"
+    );
+}
+
+#[test]
+fn high_octave_keys_reach_the_record_range_refusal_without_sending_an_invalid_jam() {
+    let mut s = tracker();
+    s.ui.press(PANEL_BTN_REC);
+    s.ui.rig.live.octave = 3;
+    s.calls();
+    let before = row(&s, 0, 0);
+    s.ui.note_keys(1 << 26, 1 << 26);
+    assert_eq!(s.ui.toast().as_deref(), Some("NOTE OUT OF RANGE"));
+    assert_eq!(row(&s, 0, 0), before);
+    assert_eq!(s.ui.v.song.row, 0);
+    assert!(!s
+        .calls()
+        .iter()
+        .any(|call| matches!(call, Call::Jam(_, 96.., _))));
 }
 
 #[test]

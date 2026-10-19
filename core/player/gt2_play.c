@@ -50,6 +50,27 @@ GT2_RAM_DATA static const uint8_t freq_hi[96] = {
 /* The instrument classes the packer sorts by (greloc.c: normal, no-HR, legato). */
 enum { CLASS_HR, CLASS_NOHR, CLASS_LEGATO };
 
+#define HELD_ENCODING 0x8000u
+#define PULSE_PENDING 0x4000u
+#define WAVE_ENCODING (GT2_PF_WAVEDELAY | GT2_PF_WAVECMD)
+#define TABLE_ENCODING (WAVE_ENCODING | GT2_PF_SIMPLEPULSE)
+
+static uint32_t encoding(const gt2_player* p, const gt2_channel* c) {
+    return c->encoding ? c->encoding : p->shape->flags;
+}
+
+static void table_encoding(const gt2_player* p, gt2_channel* c, uint32_t mask) {
+    if (c->encoding) {
+        if (mask & GT2_PF_SIMPLEPULSE) {
+            c->encoding &= (uint16_t)~PULSE_PENDING;
+            if ((c->encoding ^ p->shape->flags) & GT2_PF_SIMPLEPULSE)
+                c->encoding |= PULSE_PENDING;
+            mask &= ~GT2_PF_SIMPLEPULSE;
+        }
+        c->encoding = (uint16_t)((c->encoding & ~mask) | (p->shape->flags & mask));
+    }
+}
+
 typedef struct {
     gt2_player* p;
     gt2_sid_fn sink;
@@ -252,7 +273,7 @@ static void set_sr(out* o, gt2_channel* c, uint32_t x, uint8_t v) {
  * frequency, pulse, AD, SR. With simple pulse both pulse registers get the low byte. With
  * ghost registers the values go to the ghost registers only (wr). */
 static void load_all(out* o, const gt2_channel* c, uint32_t x) {
-    uint8_t ph = (o->p->shape->flags & GT2_PF_SIMPLEPULSE) ? c->pulselo : c->pulsehi;
+    uint8_t ph = (encoding(o->p, c) & GT2_PF_SIMPLEPULSE) ? c->pulselo : c->pulsehi;
     uint8_t w = (uint8_t)(c->wave & c->gate);
     if (o->p->shape->flags & GT2_PF_ALT) {
         wr(o, x + 4u, w);
@@ -330,10 +351,12 @@ static void tick0_cmd(out* o, gt2_channel* c, uint32_t x, uint8_t cmd, uint8_t a
         c->wave = a;
         break;
     case 8u:
+        table_encoding(p, c, WAVE_ENCODING);
         c->waveptr = a;
         c->wavetime = 0u;
         break;
     case 9u:
+        table_encoding(p, c, GT2_PF_SIMPLEPULSE);
         c->pulseptr = a;
         c->pulsetime = 0u;
         break;
@@ -497,9 +520,9 @@ static int instr_class(const gt2_player* p, uint8_t i) {
 /* The wavetable's left byte as the packer writes it (greloc.c, "In wavetable, convert
  * waveform values for the playroutine"): the inaudible waveforms $E0-$EF become $00-$0F,
  * and when the song uses delays every waveform moves up by $10, past them. */
-static uint8_t wave_left(const gt2_player* p, uint8_t l) {
+static uint8_t wave_left(const gt2_player* p, const gt2_channel* c, uint8_t l) {
     uint8_t w = (l >= 0xe0u && l <= 0xefu) ? (uint8_t)(l & 0x0fu) : l;
-    if ((p->shape->flags & GT2_PF_WAVEDELAY) && l > 0x0fu && l <= 0xefu)
+    if ((encoding(p, c) & GT2_PF_WAVEDELAY) && l > 0x0fu && l <= 0xefu)
         w = (uint8_t)(w + 0x10u);
     return w;
 }
@@ -540,10 +563,10 @@ static void sequencer(gt2_player* p, gt2_channel* c, uint32_t ch) {
 /* The pulsetable's byte as packed: with simple pulse a width's high nybble goes into the
  * low byte's low nybble (the one byte is written to both registers), and a modulation
  * speed becomes the same rotated step (greloc.c, "Write table right side"). */
-static uint8_t pulse_right(const gt2_player* p, uint32_t pos) {
+static uint8_t pulse_right(const gt2_player* p, const gt2_channel* c, uint32_t pos) {
     const gt2_song* s = p->song;
     uint8_t l = tl(s, GT2_PTBL, pos), r = tr(s, GT2_PTBL, pos);
-    if (!(p->shape->flags & GT2_PF_SIMPLEPULSE) || l == LOOP)
+    if (!(encoding(p, c) & GT2_PF_SIMPLEPULSE) || l == LOOP)
         return r;
     if (l >= 0x80u)
         return (uint8_t)((l & 0x0fu) | (r & 0xf0u));
@@ -557,7 +580,16 @@ static uint8_t pulse_right(const gt2_player* p, uint32_t pos) {
 static void pulse_exec(out* o, gt2_channel* c, uint32_t x) {
     gt2_player* p = o->p;
     const gt2_song* s = p->song;
-    int simple = (p->shape->flags & GT2_PF_SIMPLEPULSE) != 0;
+    /* Buffered note init still writes the held representation. Quantization to simple
+     * pulse belongs to the new table's first operation, never to that earlier write. */
+    if (c->encoding & PULSE_PENDING) {
+        if (c->encoding & GT2_PF_SIMPLEPULSE)
+            c->pulsehi = c->pulselo;
+        else
+            c->pulselo = (uint8_t)((c->pulselo & 0xf0u) | (c->pulsehi & 0x0fu));
+        c->encoding ^= GT2_PF_SIMPLEPULSE | PULSE_PENDING;
+    }
+    int simple = (encoding(p, c) & GT2_PF_SIMPLEPULSE) != 0;
     uint8_t y = c->pulseptr;
     if (c->pulsetime == 0u) {
         uint8_t l = tl(s, GT2_PTBL, y);
@@ -567,14 +599,14 @@ static void pulse_exec(out* o, gt2_channel* c, uint32_t x) {
             /* mt_setpulse */
             if (!simple)
                 c->pulsehi = l;
-            c->pulselo = pulse_right(p, y);
+            c->pulselo = pulse_right(p, c, y);
             goto next;
         }
         c->pulsetime = l; /* mt_newpulsemod */
     }
     /* mt_pulsemod */
     {
-        uint8_t spd = pulse_right(p, y);
+        uint8_t spd = pulse_right(p, c, y);
         uint32_t sum = (uint32_t)c->pulselo + spd;
         if (simple) {
             c->pulselo = (uint8_t)(sum + (sum >> 8));
@@ -736,6 +768,7 @@ static void exec_channel(out* o, uint32_t ch) {
         if ((p->shape->flags & GT2_PF_ALT) && unbuffered(o))
             loadregs_wave(o, c, x);
         if (ins[GT2_INS_PULSE] != 0u) {
+            table_encoding(p, c, GT2_PF_SIMPLEPULSE);
             c->pulseptr = ins[GT2_INS_PULSE];
             c->pulsetime = 0u;
         }
@@ -743,6 +776,7 @@ static void exec_channel(out* o, uint32_t ch) {
             p->filtstep = ins[GT2_INS_FILTER];
             p->filttime = 0u;
         }
+        table_encoding(p, c, WAVE_ENCODING);
         c->waveptr = ins[GT2_INS_WAVE];
         if (p->shape->flags & GT2_PF_ALT) {
             set_ad(o, c, x, ins[GT2_INS_AD]);
@@ -770,8 +804,8 @@ waveexec:
     y = c->waveptr;
     if (y == 0u)
         goto wavedone;
-    a = wave_left(p, tl(s, GT2_WTBL, y));
-    if (p->shape->flags & GT2_PF_WAVEDELAY) {
+    a = wave_left(p, c, tl(s, GT2_WTBL, y));
+    if (encoding(p, c) & GT2_PF_WAVEDELAY) {
         if (a < 0x10u) {
             if (a == c->wavetime)
                 goto nowavechange;
@@ -782,7 +816,7 @@ waveexec:
     } else if (a == 0u) {
         goto nowavechange;
     }
-    if (!((p->shape->flags & GT2_PF_WAVECMD) && a >= 0xe0u))
+    if (!((encoding(p, c) & GT2_PF_WAVECMD) && a >= 0xe0u))
         c->wave = a;
 nowavechange: {
     /* the next row a jump: take it now */
@@ -790,13 +824,13 @@ nowavechange: {
     uint8_t right = tr(s, GT2_WTBL, y);
     uint32_t next = (uint32_t)y + 1u;
     c->waveptr = tl(s, GT2_WTBL, next) == LOOP ? tr(s, GT2_WTBL, next) : (uint8_t)next;
-    if (p->shape->flags & GT2_PF_WAVEDELAY)
+    if (encoding(p, c) & GT2_PF_WAVEDELAY)
         c->wavetime = 0u;
-    uint8_t packed = wave_left(p, cur);
+    uint8_t packed = wave_left(p, c, cur);
     /* the right byte as packed: a command's parameter as it is, a note with its top bit
      * flipped */
     uint8_t is_cmd = cur >= 0xf0u && cur <= 0xfeu;
-    if ((p->shape->flags & GT2_PF_WAVECMD) && packed >= 0xe0u) {
+    if ((encoding(p, c) & GT2_PF_WAVECMD) && packed >= 0xe0u) {
         /* mt_execwavecmd: commands 0-4 run their effect now (on any tick), the others
          * their tick 0 part; then mt_done */
         uint8_t cmd = (uint8_t)(packed & 0x0fu);
@@ -950,7 +984,10 @@ static void ghost_copy(out* o, int forward) {
 
 /* The call's gate edges and states, from the wave registers as written. */
 static void gate_events(gt2_player* p) {
-    for (uint32_t ch = 0u; ch < p->shape->channels; ch++) {
+    uint32_t channels = p->jam_voices ? GT2_PLAY_CHANNELS : p->shape->channels;
+    for (uint32_t ch = 0u; ch < channels; ch++) {
+        if (p->frozen && !((p->jam_voices >> ch) & 1u))
+            continue;
         uint8_t g = (uint8_t)(p->regs[ch * 7u + 4u] & 1u);
         uint8_t was = (uint8_t)((p->gates >> ch) & 1u);
         gt2_event* e = &p->ev[ch];
@@ -977,7 +1014,16 @@ void gt2_play_frame(gt2_player* p, gt2_sid_fn sink, void* ctx) {
     } else {
         filter_exec(&o);
         for (uint32_t ch = 0u; ch < p->shape->channels; ch++)
-            exec_channel(&o, ch);
+            if (!p->frozen || ((p->jam_voices >> ch) & 1u))
+                exec_channel(&o, ch);
+        if (p->jam_voices) {
+            uint8_t frozen = p->frozen;
+            p->frozen = 1u;
+            for (uint32_t ch = p->shape->channels; ch < GT2_PLAY_CHANNELS; ch++)
+                if ((p->jam_voices >> ch) & 1u)
+                    exec_channel(&o, ch);
+            p->frozen = frozen;
+        }
     }
     if (p->shape->flags & GT2_PF_ZPGHOST) {
         if (alt) {
@@ -1018,10 +1064,29 @@ void gt2_play_set_shape(gt2_player* p, const gt2_shape* shape) {
     p->shape = shape;
 }
 
+void gt2_play_retain_shape(gt2_player* p, const gt2_shape* shape) {
+    for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
+        gt2_channel* c = &p->chn[ch];
+        if (!c->encoding)
+            c->encoding = (uint16_t)(HELD_ENCODING | (p->shape->flags & TABLE_ENCODING));
+        if (ch >= p->shape->channels && ch < shape->channels && !((p->jam_voices >> ch) & 1u)) {
+            c->tempo = shape->default_tempo;
+            c->counter = 1u;
+            c->instr = shape->reset_instr;
+        }
+    }
+    p->shape = shape;
+}
+
 void gt2_play_jam(gt2_player* p, uint32_t ch, uint8_t note, uint8_t instr, gt2_sid_fn sink,
                   void* ctx) {
     out o = {p, sink, ctx};
     gt2_channel* c = &p->chn[ch];
+    if (ch >= p->shape->channels && !((p->jam_voices >> ch) & 1u)) {
+        c->tempo = p->shape->default_tempo;
+        c->counter = 1u;
+    }
+    p->jam_voices |= (uint8_t)(1u << ch);
     if (instr != 0u)
         c->instr = instr;
     c->newfx = 0u;

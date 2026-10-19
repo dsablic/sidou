@@ -286,6 +286,10 @@ gt2_err gt2_pattern_shift_restore(gt2_song* s, uint32_t pattern, uint32_t row, i
                                  gt2_edit* e);
 /* The lowest pattern number not held and not named, made with rows empty rows. */
 gt2_err gt2_pattern_add(gt2_song* s, uint32_t rows, uint32_t* pattern, gt2_edit* e);
+/* Create an empty pattern at an explicit unheld number. Pending order edits or a trim of
+ * its saved prefix must settle first. A subsequent order reference charges sparse-prefix
+ * growth; creation itself reserves the rebuild's length and lock/trailer growth. */
+gt2_err gt2_pattern_add_at(gt2_song* s, uint32_t pattern, uint32_t rows, gt2_edit* e);
 /* Only a pattern no orderlist names; it becomes "not held". */
 gt2_err gt2_pattern_remove(gt2_song* s, uint32_t pattern, gt2_edit* e);
 gt2_err gt2_order_insert(gt2_song* s, uint32_t subtune, uint32_t channel, uint32_t pos,
@@ -296,6 +300,11 @@ gt2_err gt2_order_delete(gt2_song* s, uint32_t subtune, uint32_t channel, uint32
  * as the other order edits. entries may be NULL only when n == 0 (restart then 0). */
 gt2_err gt2_order_replace(gt2_song* s, uint32_t subtune, uint32_t channel,
                           const uint8_t* entries, uint32_t n, uint8_t restart, gt2_edit* e);
+/* Read-only preflight for a pattern entry: insert == 0 replaces an entry, otherwise inserts
+ * one. A missing pattern is the default 64 empty rows. Call before creating that auxiliary
+ * pattern; no allocation, reservation or revision change. Actual edits still recheck. */
+gt2_err gt2_order_pattern_check(const gt2_song* s, uint32_t subtune, uint32_t channel,
+                                uint32_t pos, uint32_t pattern, int insert);
 
 /* One compaction move (a rebuild): returns 1 and the move's swap if it moved a block, 0 if
  * the free space is already one hole at the arena's end, -1 (nothing done) while an edit is

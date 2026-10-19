@@ -52,6 +52,7 @@ add_library(sidou_live STATIC
     settings.c
     sine.c
     song_view.c
+    song_pages.c
     song_io.c
     song_edit.c
     store.c
@@ -77,4 +78,7 @@ if(CMAKE_CROSSCOMPILING)
     set_source_files_properties(store.c settings.c user_profile.c song_io.c sysex.c PROPERTIES COMPILE_OPTIONS -Os)
     # Cold routing and song-view controls: each file's size build keeps every emulator gate.
     set_source_files_properties(midi_route.c song_view.c PROPERTIES COMPILE_OPTIONS -Os)
+    # These editors run bounded main-loop work. Keep their rendering and edit helpers outlined
+    # rather than duplicating them into the page/input paths.
+    set_source_files_properties(song_pages.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-inline-functions;-fno-jump-tables")
 endif()
