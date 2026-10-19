@@ -1965,9 +1965,11 @@ void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed) {
     song_view* sv = &v->song;
     /* Most passes: no key, and no jam to let go: the panel's (releases) alone. */
     if (down | pressed | sv->jam_keys) {
-        int take = !(p->held >> PANEL_BTN_GLO & 1u) && sv->t && song_view_is(shows(v));
+        const view* top = shows(v);
+        int take = !(p->held >> PANEL_BTN_GLO & 1u) && sv->t && song_view_is(top);
         uint32_t owned = take ? panel_owned(p, down & ~pressed & ~sv->jam_keys) : 0u;
-        uint32_t taken = song_view_keys(sv, down, pressed, owned, take);
+        uint32_t taken = song_view_keys(sv, down, pressed, owned, take,
+                                        top == &tracker_view_view ? &v->s : NULL);
         if (taken) {
             panel_quiet_keys(p, v->l, taken);
         }

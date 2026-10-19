@@ -76,7 +76,7 @@ static keys_route keys_router;
 /* The UI sounds on chip B's spare voice, off by default (app/ui_sound.h). */
 static ui_sound ui_sounds;
 static panel front;
-static song_io songs __attribute__((section(".pool")));
+static song_io songs;
 static union {
     gt2_stream stream;
     gt2_ins_import_state instrument;

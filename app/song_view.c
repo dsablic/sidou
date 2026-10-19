@@ -227,7 +227,7 @@ void song_view_glo(song_view* sv, uint32_t toggles) {
 }
 
 uint32_t song_view_keys(song_view* sv, uint32_t down, uint32_t pressed, uint32_t owned,
-                        int take) {
+                        int take, screen* recording_screen) {
     /* Let go (or let go and pressed again, which plays again below). */
     uint32_t gone = sv->jam_keys & (~down | pressed);
     if (sv->jam_key != SONG_VIEW_NO_KEY && (gone >> sv->jam_key & 1u)) {
@@ -252,8 +252,8 @@ uint32_t song_view_keys(song_view* sv, uint32_t down, uint32_t pressed, uint32_t
                 sv->jam_off = 0; /* the new note takes the voice over */
             }
             send_jam_off(sv);
-            if (sv->rec && sv->edit_screen && sv->which == SONG_VIEW_TRACKER) {
-                tracker_view_note(sv->edit_screen, sv, n - GT2_NOTE0);
+            if (sv->rec && recording_screen) {
+                tracker_view_note(recording_screen, sv, n - GT2_NOTE0);
             }
             /* A note that cannot go now is dropped. */
             (void)sv->t->jam(sv->t->ctx, sv->voice, n - GT2_NOTE0, sv->instr);

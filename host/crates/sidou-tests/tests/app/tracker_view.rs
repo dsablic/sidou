@@ -637,6 +637,121 @@ fn row(s: &Song, pattern: u32, row: usize) -> [u8; 4] {
 }
 
 #[test]
+fn rec_keys_before_compose_follow_tracker_not_the_borrowed_canvas() {
+    for borrowed in ["CHIP", "SONG", "SAVE AS"] {
+        for covered in [false, true] {
+            let mut s = tracker();
+            let mut ml = Box::<midi_learn>::default();
+            unsafe {
+                midi_learn_init(&mut *ml);
+                views_learn(&mut *s.ui.v, &mut *ml);
+            }
+            s.ui.press(PANEL_BTN_REC);
+            if borrowed == "SAVE AS" {
+                s.ui.press(SAVE_KEY_BUTTON);
+                assert_eq!(s.ui.top(), "SONG");
+                settle(&mut s.ui);
+                s.ui.press(PANEL_BTN_HOME);
+            } else {
+                s.ui.press(PANEL_BTN_HOME);
+                s.ui.press(PANEL_BTN_HOME);
+                let item = if borrowed == "CHIP" {
+                    VIEWS_MENU_CHIP
+                } else {
+                    VIEWS_MENU_SONG
+                };
+                s.ui.turn(PANEL_ENC_SELECT, item as i32);
+                s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+                settle(&mut s.ui);
+                assert_eq!(s.ui.top(), borrowed);
+                s.ui.note_keys(1 << 16, 1 << 16);
+                s.ui.note_keys(0, 0);
+                assert_eq!(s.f.cell_writes, 0, "REC outside TRACKER only auditions");
+                s.ui.press(PANEL_BTN_HOME);
+                s.ui.press(PANEL_BTN_HOME);
+                s.ui.press(PANEL_BTN_SEQ);
+            }
+            assert_eq!(s.ui.top(), "TRACKER");
+            if covered {
+                s.ui.learn_on(PANEL_ENC_K1);
+                assert_eq!(s.ui.top(), "LEARN");
+            }
+            s.ui.note_keys(1 << 16, 1 << 16);
+            s.ui.note_keys(0, 0);
+            assert_eq!(
+                s.ui.v.song.row, 1,
+                "{borrowed}, learn {covered}: the first note must advance before compose"
+            );
+            settle(&mut s.ui);
+            assert_eq!(row(&s, 0, 0), [GT2_FIRSTNOTE as u8 + 57, 1, 3, 8]);
+            assert_eq!(s.f.cell_writes, 1);
+        }
+    }
+}
+
+#[test]
+fn rec_keys_survive_a_nested_tracker_above_midi_learn() {
+    let mut s = tracker();
+    let mut ml = Box::<midi_learn>::default();
+    unsafe {
+        midi_learn_init(&mut *ml);
+        views_learn(&mut *s.ui.v, &mut *ml);
+    }
+    s.ui.press(PANEL_BTN_REC);
+    s.ui.learn_on(PANEL_ENC_K1);
+    assert_eq!(s.ui.top(), "LEARN");
+    s.ui.press(PANEL_BTN_SEQ);
+    assert_eq!(s.ui.top(), "TRACKER");
+    settle(&mut s.ui);
+    s.ui.press(PANEL_BTN_HOME);
+    assert_eq!(s.ui.top(), "LEARN");
+    s.ui.press(PANEL_BTN_HOME);
+    assert_eq!(s.ui.top(), "TRACKER");
+    settle(&mut s.ui);
+    s.ui.note_keys(1 << 16, 1 << 16);
+    s.ui.note_keys(0, 0);
+    settle(&mut s.ui);
+    assert_eq!(row(&s, 0, 0), [GT2_FIRSTNOTE as u8 + 57, 1, 3, 8]);
+    assert_eq!(s.ui.v.song.row, 1);
+    assert_eq!(s.f.cell_writes, 1);
+}
+
+#[test]
+fn learn_completion_under_a_nested_tracker_waits_to_pop_its_own_view() {
+    for save in [false, true] {
+        let mut s = tracker();
+        let mut ml = Box::<midi_learn>::default();
+        unsafe {
+            midi_learn_init(&mut *ml);
+            midi_learn_bind(&mut *ml, 21, LIVE_PARAM_CUTOFF);
+            views_learn(&mut *s.ui.v, &mut *ml);
+        }
+        s.ui.learn_on(PANEL_ENC_K1);
+        assert_eq!(s.ui.top(), "LEARN");
+        s.ui.press(PANEL_BTN_SEQ);
+        assert_eq!(s.ui.top(), "TRACKER");
+        if save {
+            s.ui.press(SAVE_KEY_BUTTON);
+        } else {
+            unsafe { midi_learn_route(&mut *ml, 22) };
+        }
+        assert_eq!(u32::from(ml.state), MIDI_LEARN_IDLE);
+        assert_eq!(s.ui.top(), "TRACKER", "learn must not pop its child");
+        assert!(!s.ui.v.learn.s.is_null());
+        s.ui.press(PANEL_BTN_HOME);
+        assert_eq!(s.ui.top(), "LEARN", "HOME belongs to the child");
+        settle(&mut s.ui);
+        assert_eq!(s.ui.top(), "TRACKER");
+        assert!(s.ui.v.learn.s.is_null());
+        assert!(s.ui.v.s.capture.is_none());
+        assert_eq!(
+            unsafe { midi_learn_cc_of(&*ml, LIVE_PARAM_CUTOFF) },
+            if save { MIDI_MAP_NO_CC as u8 } else { 22 }
+        );
+    }
+}
+
+#[test]
 fn rec_keys_and_knobs_edit_the_shown_pattern_with_one_step_undo() {
     let mut s = tracker();
     s.ui.press(PANEL_BTN_REC);

@@ -151,9 +151,10 @@ uint32_t song_view_mute_mask(const song_view* sv);
  * it; with take (a song view shows, a player is bound, GLO is not held) keys that went down
  * (pressed, or down and in neither `owned` nor the jam's: owned are the keys the panel sounds
  * or keeps quiet) become the jam note. Returns the keys the jam took this call, for the panel
- * to keep quiet (panel_quiet_keys). */
+ * to keep quiet (panel_quiet_keys). With REC on, recording_screen is the active TRACKER's
+ * screen (also under MIDI learn), or NULL outside TRACKER; canvas ownership is unrelated. */
 uint32_t song_view_keys(song_view* sv, uint32_t down, uint32_t pressed, uint32_t owned,
-                        int take);
+                        int take, screen* recording_screen);
 /* Once a frame before the screen's: what the player has not taken yet, and with shows (a song
  * view shows) its status; outside the song views PLAY reads the status when pressed. */
 void song_view_frame(song_view* sv, int shows);

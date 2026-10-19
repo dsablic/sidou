@@ -192,6 +192,9 @@ void learn_view_init(learn_view* lv, live* l, midi_learn* ml) {
 
 /* Learn has ended: its toast, and the view closes (which releases the capture). */
 static void finish(learn_view* lv) {
+    if (!lv->s || screen_top(lv->s) != &learn_view_view) {
+        return;
+    }
     midi_learn* ml = lv->ml;
     char t[LINE];
     char name[LEARN_VIEW_NAME];
@@ -238,6 +241,9 @@ static int pick(learn_view* lv, screen* s, const panel* p, uint32_t enc, uint32_
 
 static int capture(void* ctx, const screen_event* e) {
     learn_view* lv = ctx;
+    if (!lv->s || screen_top(lv->s) != &learn_view_view) {
+        return 0;
+    }
     midi_learn* ml = lv->ml;
     if (ml->state == MIDI_LEARN_IDLE) {
         /* A CC ended learn since the last frame (learn_view_frame would close it): it closes
