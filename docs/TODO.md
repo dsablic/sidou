@@ -192,23 +192,17 @@ Follow-ups that aren't tied to a milestone task yet.
   `tools/preflash` / `sidou-pack --verify` check them), and say in `docs/flash-day.md` that
   the package is built from a fresh build directory.
 
-## Licence labels that don't match the code's origin (release blocker)
+## Licence labels that don't match the code's origin: done (2026-10-22)
 
-- **Where:** found by the licence audit of the app image (2026-10-18; a copy is at
-  `sidou-flash/licence-audit-20261018.md`).
-- **Problem:**
-  - `platform/fm1/ota_flash.h` is labelled SIDOU GPL-3.0-or-later, but its header says it
-    is adapted from Felucca's `ota_hw.c` (GPL-3.0-only, Leo Kuroshita).
-  - `core/sid/sid_osc.h`, `sid_env.h`, `sid_filter.h`, `sid.c`, `sid_character.h`,
-    `gen/profiles.h` and `gen/grid.h` say they follow reSIDfp "closely" or "cycle for cycle"
-    but carry only SIDOU's notice. If any is a derivative it needs reSIDfp's copyright lines
-    (Leandro Nini, Antti Lankila, Dag Lem) and GPL-2.0-or-later.
-  - `core/song/gt2_sng.h` and `gt2_song.h` lack Lasse Öörni's copyright line.
-  - The Felucca files carry no SPDX copyright line.
-- **Action:** diff `ota_flash.h` against Felucca's `ota_hw.c` and label it by what it is;
-  review each SID file against reSIDfp and add the authors' notices where the code is
-  derived; add the missing GoatTracker and Felucca copyright lines; re-run `reuse lint`.
-  Before v0.3.0.
+Closed by the end-of-M2 review (section 7). Relabelled: `ota_flash.h` (Felucca's `ota_hw.c`,
+GPL-3.0-only, Leo Kuroshita's line), `sid_osc.h` and `sid_env.h` (reSIDfp's
+`WaveformGenerator` and `EnvelopeGenerator`, GPL-2.0-or-later with its authors' lines),
+`gt2_sng.h` and `gt2_song.h` (Lasse Öörni's line), `usb/midi_uart.c` (SIDOU's line added to
+Felucca's). LICENSING.md has rows for each. Judged not derived, labels kept: `sid_filter.h`
+(a Cytomic/Simper trapezoidal filter plus SIDOU's fit to reSIDfp's output), `sid.c` (its own
+structure), `sid_character.h` (SIDOU's design), `gen/grid.h` (macros and enum names),
+`gen/profiles.h` (parameter values, which are facts). The byte-identical Felucca copies keep
+their own `Copyright (C)` lines, which REUSE accepts (the vendor-verbatim rule).
 
 ## Decide on RSID playback (M3 plan)
 

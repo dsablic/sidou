@@ -1,5 +1,6 @@
-/* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+/* SPDX-FileCopyrightText: 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+ * SPDX-FileCopyrightText: 2026 SIDOU contributors
+ * SPDX-License-Identifier: GPL-3.0-only */
 /* MIDI IN on the TRS jack: PH8 -> input channel 1 -> UART1 RX, 31250 baud,
  * RX DMA into a 128-byte ring, polled from the TIMER5 ISR (no UART IRQ).
  * SIDOU: adapted from Felucca's firmware/src/midi_uart.c (platform/fm1/VENDORED.md).

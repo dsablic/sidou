@@ -1,5 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-only
 /* The update protocol's flash hooks for ota.c (Felucca's ota_hw.c, adapted): erases and writes
  * only inside the staging area (ota.c OTA_AREA), with interrupts masked, XIP off and only once
  * the audio is stopped; reads in short interrupt-off windows.

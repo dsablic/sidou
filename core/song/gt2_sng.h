@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-FileCopyrightText: Lasse Öörni and GoatTracker 2's contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* The .sng reader and writer (M2c Task 2; docs/reference/song-format.md).
  *

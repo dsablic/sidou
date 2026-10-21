@@ -1,5 +1,8 @@
+// SPDX-FileCopyrightText: 2011-2025 Leandro Nini <drfiemost@users.sourceforge.net>
+// SPDX-FileCopyrightText: 2007-2010 Antti Lankila
+// SPDX-FileCopyrightText: 2004,2010 Dag Lem <resid@nimrod.no>
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-2.0-or-later
 #ifndef SIDOU_SID_OSC_H
 #define SIDOU_SID_OSC_H
 

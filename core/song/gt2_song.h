@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-FileCopyrightText: Lasse Öörni and GoatTracker 2's contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* The song model (M2c Task 2): a GoatTracker 2 song as SIDOU holds it, in one content region
  * the caller places (decision record 0007, docs/reference/song-format.md).
