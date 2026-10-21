@@ -377,6 +377,24 @@ fn presets_sets_the_lanes_instrument_or_with_a_step_held_the_steps_note() {
 }
 
 #[test]
+fn a_held_steps_note_stops_at_g_sharp_7_the_patterns_last_note() {
+    // Above G#7 (92) a pattern byte is REST, KEYOFF or KEYON, not a note.
+    let last = GT2_LASTNOTE as u8;
+    let mut s = step();
+    hold(&mut s, 8);
+    s.ui.turn(PRESETS, 100);
+    release(&mut s);
+    assert_eq!(pattern(&s, 0)[8][0], last, "the knob stops at G#7");
+    assert_eq!(s.ui.v.step.note[0], last - GT2_FIRSTNOTE as u8);
+    hold(&mut s, 8);
+    s.ui.turn(PRESETS, 3);
+    release(&mut s);
+    assert_eq!(pattern(&s, 0)[8][0], last, "and stays there");
+    tap(&mut s, 10);
+    assert_eq!(pattern(&s, 0)[10][0], last, "the lane's note is G#7 too");
+}
+
+#[test]
 fn algorithm_pages_and_the_page_shows_in_the_selector_and_the_ruler() {
     let mut s = step();
     s.ui.v.song.order_pos = 1;

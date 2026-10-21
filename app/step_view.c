@@ -670,7 +670,7 @@ static void note_now(screen* s, step_view* st, const target* t, int32_t steps) {
     int32_t base = is_note(cell[0]) ? (int32_t)cell[0] - (int32_t)GT2_FIRSTNOTE
                                     : (int32_t)st->note[t->voice];
     base += steps;
-    base = base < 0 ? 0 : base > 95 ? 95 : base;
+    base = base < 0 ? 0 : base > (int32_t)GT2_NOTE_MAX ? (int32_t)GT2_NOTE_MAX : base;
     cell[0] = (uint8_t)(GT2_FIRSTNOTE + (uint32_t)base);
     cell[1] = cell[1] ? cell[1] : st->instr[t->voice];
     st->note[t->voice] = (uint8_t)base;

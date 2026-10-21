@@ -98,6 +98,8 @@ enum {
 #define GT2_LOOPSONG 0xffu
 #define GT2_FIRSTNOTE 0x60u
 #define GT2_LASTNOTE 0xbcu
+/* A pattern note's highest pitch, G#7: the bytes above it are REST, KEYOFF and KEYON. */
+#define GT2_NOTE_MAX (GT2_LASTNOTE - GT2_FIRSTNOTE)
 #define GT2_REST 0xbdu
 #define GT2_KEYOFF 0xbeu
 #define GT2_KEYON 0xbfu

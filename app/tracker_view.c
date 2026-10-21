@@ -568,7 +568,7 @@ __attribute__((noinline, unused)) static void finish_ready_edit(song_view* sv) {
 
 void tracker_view_note(screen* s, song_view* sv, uint32_t note) {
     finish_ready_edit(sv);
-    if (note > GT2_LASTNOTE - GT2_FIRSTNOTE) {
+    if (note > GT2_NOTE_MAX) {
         screen_toast(s, "NOTE OUT OF RANGE", SCREEN_TOAST_MS);
         return;
     }

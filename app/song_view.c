@@ -285,9 +285,7 @@ uint32_t song_view_keys(song_view* sv, uint32_t down, uint32_t pressed, uint32_t
             uint8_t n = live_key_note(sv->l, (uint8_t)(PANEL_BASE_NOTE + k));
             uint32_t pitch = n < GT2_NOTE0 ? GT2_NOTES : n - GT2_NOTE0;
             if (live_screen && song_view_rec_playing(sv)) {
-                if (pitch < GT2_NOTES) {
-                    (void)song_view_record_note(sv, live_screen, pitch, sv->instr, 0);
-                }
+                (void)song_view_record_note(sv, live_screen, pitch, sv->instr, 0);
             } else if (sv->rec && recording_screen) {
                 tracker_view_note(recording_screen, sv, pitch);
             }
@@ -418,6 +416,10 @@ int song_view_record_note(song_view* sv, screen* s, uint32_t note, uint32_t inst
     uint32_t pattern, row;
     if (!song_view_recording(sv) || !sv->editor || !rec_place(sv, 1, &pattern, &row) ||
         !song_view_recording(sv)) {
+        return 0;
+    }
+    if (note > GT2_NOTE_MAX) {
+        rec_toast(sv, s, "NOTE OUT OF RANGE"); /* the bytes above G#7 are REST, KEYOFF, KEYON */
         return 0;
     }
     uint32_t rows = gt2_pattern_rows(sv->song, pattern) - 1u;

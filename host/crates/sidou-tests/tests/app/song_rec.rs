@@ -279,6 +279,60 @@ fn song_full_and_saving_refuse_a_recorded_note_with_a_toast() {
     }
 }
 
+/// GoatTracker's last pattern note, G#7: 0xBD..0xBF are REST, KEYOFF and KEYON.
+const LAST: u8 = GT2_LASTNOTE as u8;
+
+#[test]
+fn rec_writes_up_to_g_sharp_7_and_refuses_the_three_notes_above_it() {
+    // Octave +3: key 15 is G#7 (92), keys 16-18 are 93-95, which would be a rest, a key off
+    // and a key on in the pattern.
+    let mut s = tracker();
+    s.ui.rig.live.octave = 3;
+    s.ui.press(PANEL_BTN_REC);
+    playing(&mut s, 3, 0);
+    tap(&mut s, 15);
+    assert_eq!(
+        cell(&s, 0, 3),
+        [LAST, 1, 0, 0],
+        "G#7 is the last note written"
+    );
+    for k in 16..19 {
+        let writes = s.f.cell_writes;
+        playing(&mut s, 7, 0);
+        s.ui.note_keys(1 << k, 1 << k);
+        assert_eq!(
+            s.ui.toast().as_deref(),
+            Some("NOTE OUT OF RANGE"),
+            "key {k}"
+        );
+        s.ui.note_keys(0, 0);
+        settle(&mut s.ui);
+        assert_eq!(s.f.cell_writes, writes, "key {k}: nothing written");
+        assert_eq!(cell(&s, 0, 7), R, "key {k}");
+    }
+    assert_eq!(s.ui.v.song.rec_n, 0);
+}
+
+#[test]
+fn step_records_its_keys_above_the_steps_up_to_g_sharp_7_only() {
+    let mut s = step();
+    s.ui.rig.live.octave = 3;
+    s.ui.press(PANEL_BTN_REC);
+    for k in 16..19 {
+        playing(&mut s, 4, 0);
+        s.ui.note_keys(1 << k, 1 << k);
+        assert_eq!(
+            s.ui.toast().as_deref(),
+            Some("NOTE OUT OF RANGE"),
+            "key {k}"
+        );
+        s.ui.note_keys(0, 0);
+        settle(&mut s.ui);
+        assert_eq!(cell(&s, 0, 4), R, "key {k}");
+    }
+    assert_eq!(s.f.cell_writes, 0);
+}
+
 #[test]
 fn k1_and_k2_record_cutoff_and_resonance_locks_on_the_row_they_were_turned_in() {
     let mut s = tracker();
