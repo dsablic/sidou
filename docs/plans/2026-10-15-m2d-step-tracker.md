@@ -14,6 +14,62 @@ a STEP view where 16 keys are 16 steps and a held step plus a knob is a paramete
 transport, mute and solo; and REC, recording the keys into the pattern. All of it edits
 the same GT2 song (M2c), so a song started on the FM-1 opens in GoatTracker.
 
+## Status: M2d complete (Tasks 1-7), 2026-10-22
+
+All seven tasks are merged on main. Hardware: nothing of M2d has run on a unit yet; the
+button ids (LFO, GLO, ARP, SEQ, PLAY, REC) and the whole of "make a song on the device"
+([hardware-test.md](../hardware-test.md#14-make-a-song-on-the-device-m2d)) wait for flash day.
+
+| Task | Done | Commit | Result |
+|---|---|---|---|
+| 1. The song views' frame | yes | `64bb04e` | SEQ, PLAY, REC, GLO's mute and solo, the header, jam keys |
+| 2. TRACKER, shown | yes | `95d713e`, `6e41eb6` | the moving bar and scrolling; TRACKER ROWS persists (settings schema 2) |
+| 3. TRACKER, edited | yes | `857250c` and fixes | note, instrument, command and data entry, insert and delete, undo and redo through the player's edit queue |
+| 4. ORDER, INSTR and TABLE | yes | `807b006` | the three pages, with the audition that keeps live state (decision B, below) |
+| 5. STEP | yes | `0caf368` | 16 keys are 16 steps; a held step plus a knob is a lock; K4 writes `7XY` |
+| 6. REC from the keys | yes | `1ac4bb0` | notes at the nearest row, K1 and K2 as locks, NEAREST, OFF and COUNT-IN |
+| 7. Docs and the status | yes | this commit | controls, art, hardware test, TESTING, CHANGELOG, this record |
+
+**Two deviations from the plan's text.** The menu lists TRACKER only; SEQ reaches STEP and the
+pages (Task 5). TRACKER is one voice at 2x with strips for the other two, not the prototype's
+three columns (the readability pass, `64b6f97`). REC's recording leaves TRACKER's cursor pinned
+while the song plays rather than following it; this and the missing latency compensation are
+in [TODO](../TODO.md) for the ergonomics review and flash day.
+
+**Resources at the end of M2d** (measured 2026-10-22 on main `8f530eb`, a fresh `fm1` build):
+
+| | Measured | Bound | Left |
+|---|---:|---:|---:|
+| Image, `sidou_app.bin` | **493,840 B** | 512,000 (M2f's entry, `IMAGE_CEILING`) | 18,160 |
+| Image against M3's start | 493,840 B | 506,000 | 12,160 |
+| RAM region free | **4,256 B** | 4,096 each | 160 |
+| POOL free | **4,264 B** | 4,096 each | 168 |
+| RAM region + POOL free | **8,520 B** | 7,000 (`FREE_RAM_MIN`) | 1,520 |
+| RAMTEXT | **46,592 B** | 49,152 | 2,560 |
+
+Against M3's targets at its start (the M3 plan's "Before M3" table): the image is inside its
+506,000 (12,160 B of room), RAMTEXT has 2,560 B free against the 2,048 asked, but **the RAM
+region (4,256 B) and POOL (4,264 B) are each about 860 B short of the 5,120 B asked**. That is
+the headroom pass's to find before M3 starts; M2d does not close it.
+
+The image is from `ls -l` of the fresh build; the RAM figures are the output of
+`the_song_region_and_the_free_ram` (`host/crates/emu-gate/tests/song.rs`), which reads the
+link map. **The "free RAM >= 16,000" gate above is out of date and is not met, and was not
+the gate in force:** it was a standalone projection. The gate in the code is
+`FREE_RAM_MIN` = 22,000 less the merged plans' RAM budgets (M2a 2,000, M2d 6,000, M2e 2,000,
+M2f 5,000) = **7,000**, with each region keeping 4,096 B; both hold. Likewise the image
+bound "<= 440,000" is M2d's schedule entry, but the schedule's `IN_PROGRESS` is M2f's entry
+(512,000), because the plans landed in parallel; the image is 53,840 B over 440,000 and inside
+the active ceiling. M3 needs the image at or below 506,000 at its start
+([the M3 plan, "Before M3"](2026-10-19-m3-sid-files.md)): 12,160 B of room now. No ceiling or
+floor was raised or lowered by this task.
+
+Task 4's audition policy was decided on 2026-10-19 (B: preserve live state, convert at a block
+boundary); its decision and rationale are kept under Task 4 below. Costs of each view are in
+[the art README](../art/README.md) (STEP, TRACKER, ORDER, INSTR and TABLE); REC's recording has
+no cost bound of its own, since its writes are the editor's cell writes and the lock table,
+measured under TRACKER's and STEP's edits.
+
 **Overview and budgets:** [2026-10-15-m2-overview.md](2026-10-15-m2-overview.md).
 Dependencies: M2c Task 6 (the player on the device, its command and event rings, the edit
 path); M2c Task 7 for STEP's locks; M2a Task 5 and M2c Task 8 for SAVE and the SONG menu.
@@ -46,7 +102,7 @@ line) that must pass before M2d is called done on hardware; if an id differs, on
 
 **Rules:** as in [M2a](2026-10-15-m2a-storage.md) ("Rules").
 
-**Budgets for every task:** free RAM (RAM region plus POOL) ≥ 16,000 bytes after this
+**Budgets for every task** (as planned; the floors and ceilings in force at the end are in the Status above): free RAM (RAM region plus POOL) ≥ 16,000 bytes after this
 plan; each view within 200 cells a frame (17.5 ms of SPI with its
 windows) less what the toast, raster and cover take; an idle view composes nothing; every
 main-loop pass within `POLL_INSTRUCTIONS`, the busiest `ui_poll` and the busiest pass after
@@ -713,6 +769,11 @@ rows (compare the pattern through a test hook) and plays back bit-exact with the
   tasks marked done with their results (free RAM against the ≥ 16,000 gate),
   `flash_budget.rs`'s `IMAGE_CEILING` moved to the schedule's M2d entry (440,000) or lowered
   to the measured image plus a margin.
+
+**Done 2026-10-22** (docs only; no code, bound or golden changed): the tasks are marked in the
+Status at the top, with the measured image and free memory. The 16,000 and 440,000 figures
+are obsolete as the Status explains, so `IMAGE_CEILING` stays at M2f's 512,000 (the schedule
+only rises, and it is the active stage); the image is 18,160 B below it.
 
 **Commit:** `docs: M2d complete, STEP and TRACKER`
 

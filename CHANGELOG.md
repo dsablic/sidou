@@ -9,6 +9,25 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **M2d complete: STEP, TRACKER, the song pages and REC** (Tasks 1-7). Make a song on the FM-1:
+  SEQ steps STEP, TRACKER, ORDER, INSTR and TABLE; PLAY plays and stops it; GLO held and a key
+  mutes or solos a voice; SAVE saves it, and it opens in GoatTracker. The song views' controls
+  are in [controls.md](docs/reference/controls.md#song-views), their costs in
+  [the art README](docs/art/README.md#tracker) and the plan's
+  [status](docs/plans/2026-10-15-m2d-step-tracker.md#status-m2d-complete-tasks-1-7-2026-10-22).
+  The image is 493,840 bytes against M2f's 512,000; the RAM region and POOL have 4,256 and
+  4,264 bytes free (8,520 together, against the gate's 7,000; each region keeps 4,096). Nothing
+  of M2d has run on a unit yet: [hardware-test.md section 14](docs/hardware-test.md#14-make-a-song-on-the-device-m2d)
+  is the check, with the button ids of section 5.
+- **REC records the keys and the filter knobs into the playing pattern** (M2d Task 6): with REC
+  on and the song playing, a note key in TRACKER writes its note and the current instrument on
+  the cursor's voice at the row the voice's player is on (NEAREST rounds a key in a row's second
+  half to the next row; OFF keeps the row it falls in; COUNT-IN is NEAREST after one silent
+  bar), and in STEP a step key writes the lane's note and, on a staccato lane, its key off.
+  K1 and K2 become cutoff and resonance locks on the row they were turned in. The menu's REC
+  item chooses the mode (not saved). TRACKER's cursor stays where it is while recording, and a
+  key's time is not compensated for latency: both are open for the unit
+  ([TODO](docs/TODO.md)).
 - Ergonomics: **DICE**, a place after NOISE PERC on PRESETS: each turn rolls a new sound (waveform,
   envelope, cutoff, resonance, filter, pulse width, now and then a vibrato) and leaves the effect
   slots alone; turning back and forth brings the last roll back. MIDI program changes stay 0..3.

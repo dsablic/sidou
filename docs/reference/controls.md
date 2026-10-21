@@ -177,23 +177,27 @@ words fit neither (`SNG: A-4 PITCH NOT PLAYED`) shows in the font's own size on 
 ## Song views
 
 The song views make and play a song (M2d): **STEP**, **TRACKER**, **ORDER**, **INSTR** and
-**TABLE**, all on the same GoatTracker 2 song (`app/song_view.h`). TRACKER is the first made
-(`app/tracker_view.h`; docs/art/README.md "TRACKER" shows it): the patterns in GoatTracker's
-layout, **one voice at a time at 2× the font** (12 rows) with the other two as activity strips on
+**TABLE**, all on the same GoatTracker 2 song (`app/song_view.h`), the one the [SONG](#song)
+menu loaded (the last song at power-on). Make a song with the keys on STEP, with the cursor and
+the keys on TRACKER, or by recording it ([below](#recording-while-the-song-plays)); a song made
+here opens in GoatTracker. TRACKER (`app/tracker_view.h`; docs/art/README.md "TRACKER" shows it)
+is the patterns in GoatTracker's layout, **one voice at a time at 2× the font** (12 rows) with the other two as activity strips on
 the right, and the shown voice's orderlist and the bar row's command. **SELECT moves the row;
 ALGORITHM steps the voice shown** (the cursor's voice: the note keys audition on it, below).
 With REC off its rows follow the song while it plays, the cursor while it is stopped; with
 REC on the edit cursor stays on screen. The moving bar over still rows (the
 menu's **TRACKER ROWS** BAR, the default) or scrolling under a still bar (SCROLL, as
-GoatTracker does). TRACKER ROWS is saved with the settings. The song
-is SIDOU LOOP until songs load from the store (M2c Task 8).
+GoatTracker does). TRACKER ROWS is saved with the settings.
 
 | Control | Does |
 |---|---|
 | **SEQ** | from any view, opens the first song view over it (HOME goes back to that view); in a song view, the next one: STEP, TRACKER, ORDER, INSTR, TABLE and round. The menu's TRACKER opens TRACKER |
 | **PLAY** | in every view: plays the song from the orderlist entry the song views show (the cursor's), or stops it (releases ring on). While it starts (the keys moving off chip A, [which chip the keys play](#which-chip-the-keys-play)) it shows as playing; PLAY again stops it |
 | **EDIT held + PLAY** | goes on from where the song stopped (from the cursor if it never played) |
-| **REC** | record mode on and off: REC in red on the song views' top line |
+| **REC** | record mode on and off: REC in red on the song views' top line. In TRACKER with the song stopped it enables note entry ([Editing TRACKER](#editing-tracker)); with the song playing, the keys and K1 and K2 are recorded ([below](#recording-while-the-song-plays)). STEP needs no REC to edit; REC there records |
+| **SELECT**, in TRACKER | moves the row; with EDIT held, 8 rows (a page) |
+| **ALGORITHM**, in TRACKER | steps the voice shown, V1, V2, V3 and round; with EDIT held, the edit step (below) |
+| **HOME held** | the help card of the song view shown |
 | **GLO held + note key 1, 2, 3** | mutes voice 1, 2, 3 of the song, or lets it sound again |
 | **GLO held + note key 4, 5, 6** | solos voice 1, 2, 3, or unsolos it: while any voice is soloed the soloed ones sound and the rest are silent; with none, the muted ones are silent |
 | **Note keys**, in a song view | audition the song's current instrument on the cursor's voice through the player, on chip A with the song's setup, at the panel's octave, one note at a time (the last key wins). With the song stopped the audition takes chip A for the song (the keys elsewhere move to chip B, as for PLAY; the first note sounds a few tens of milliseconds late) and gives it back two seconds after the last note is let go; no row of the song plays |
@@ -293,7 +297,8 @@ the step/current-instrument selectors do not change the song. With REC off keys 
 and K1–K4 keep their LIVE functions. An edit waits for the player's acknowledgement before it
 can be undone. While arena compaction runs, further edits wait: **TIDYING**. Refusals use large
 toasts: **SAVING**, **SONG FULL**, **INVALID EDIT**, or **WAITING** while another edit completes.
-The save-stream and stored-song-size checks are integration hooks until songs on the store land.
+While a save runs the header says **SAVING** and edits are refused (see [SONG](#song)); an edit
+that would take the song past 65,536 bytes saved says **SONG FULL**.
 
 ### ORDER, INSTR and TABLE
 
@@ -348,6 +353,13 @@ rows per beat times four, that records nothing: a toast says `COUNT-IN`; it star
 song starts with REC on, or when REC is turned on while it plays). TRACKER keeps its cursor
 where it is while recording; the notes appear in the pattern as they are written. With the
 song stopped REC is TRACKER's cursor entry, as before.
+
+The keys sound during a count-in but record nothing. Recorded notes go to the editor one cell
+write at a time, with at most four waiting (a fifth key is refused with `WAITING`; a staccato
+STEP key's key off counts as a second write). A key's time is read where the audio block starts,
+about 3 ms, with no compensation for the keys' own delay or the sound's. With REC off, or the
+song stopped, nothing is recorded (REC stays on). What was recorded is the song's pattern and lock table, which
+SAVE saves like any edit.
 
 The note keys audition the selected instrument on the cursor's voice. The edit cursor's
 subtune and the actually playing subtune are tracked separately, so selecting another subtune

@@ -1259,6 +1259,52 @@ These checks are for the user to run on hardware; automated testing uses fm1-emu
   its scroller says SAVE YOUR SONG FOR MUSIC.
 - [ ] DELETE asks for confirmation. Cancelling keeps the file; confirming removes it.
 
+## 14. Make a song on the device (M2d)
+
+Do this after the button-id check in section 5 (GLO, SEQ, PLAY, REC) has passed. It is a whole
+song made on the unit: keys, knobs, recording, mute, save, reload. Start with SONG, NEW (a
+silent three-pattern song at tempo 6, so what you hear is what you made). Controls:
+[controls.md, song views](reference/controls.md#song-views).
+
+- [ ] **STEP.** SEQ (STEP shows). Tap steps 1, 5, 9, 13 on V1: a ball on each, the key's note
+  sounds as it goes down. PLAY: the white step runs across the lane, the notes sound in time.
+  SELECT to V2, tap a bass line; to V3, a noise drum. ALGORITHM pages (the page follows the
+  playing step). ARP switches the lane to LEGATO and back.
+- [ ] **A lock.** On a playing STEP, hold a step and turn K1: only that step's row has a
+  different cutoff (yellow notch, `LOCK`); K4 on a held step sets a waveform (`SET`, cyan). LFO
+  with the step held clears both. Save and reload (below): the notches are still there.
+- [ ] **TRACKER, by hand.** SEQ to TRACKER, REC on, SELECT to row 0: four note keys write four
+  notes, each advancing a row; K1 the instrument, K2 the command, K3 and K4 the data nibbles.
+  ARP writes a key off, LFO clears. EDIT + LFO undoes. PLAY: the bar (or, with TRACKER ROWS
+  SCROLL, the rows) follows the song.
+- [ ] **REC, the three modes.** Menu, REC: set it to each and, with REC on and the song looping
+  in TRACKER at tempo 6, play a short line on the keys in time with the song:
+  - **NEAREST** (the default): each note lands on the row it is closest to; a note a little
+    before the beat lands on that beat. Stop, and read the rows: the notes are on the beats you
+    played them on, not a row late all the time.
+  - **OFF**: each note lands on the row it falls in: a note just before a beat lands on the row
+    before it. Compare with NEAREST on the same line.
+  - **COUNT-IN**: stop the song, set COUNT-IN, REC on, PLAY: the toast says COUNT-IN, the keys
+    sound for one bar but nothing is written, then recording begins; REC turned on while it
+    plays counts in too.
+  - Turn K1 and K2 while recording: the row you turned them on gets a cutoff or resonance lock
+    (the popup says CUTOFF or RESONANCE) that plays back.
+  - In STEP, REC on with the song playing: a step key records its note and (staccato) its key
+    off on the lane; the pad toggles nothing.
+- [ ] **Mute.** While the song plays, GLO held + key 1 mutes V1 (MUT in red on TRACKER, M1 on
+  LIVE), key 4 solos it; again undoes each.
+- [ ] **Save and reload.** SAVE (clean release): SONG SAVED, or SAVE AS for an unnamed song.
+  Switch the power off and on: the song loads stopped; PLAY sounds what you made, locks and
+  recorded notes included. Open the song in GoatTracker (through SysEx, section 8c): the same
+  patterns, with SETs playing as here.
+- [ ] **Feel (open question).** Note how recording feels at tempo 6 and at tempo 3: does a
+  note you play on the beat land on that beat? Two things are not decided and the unit decides
+  them (docs/TODO.md, "REC from the keys"): **TRACKER's cursor stays pinned while recording**
+  rather than following the playhead, so notes land in the playing pattern but show only when
+  it is on screen; and **the key-to-row timing is uncompensated** (read at the audio block,
+  about 3 ms, with no latency correction). Write down which of NEAREST and OFF you prefer and
+  whether a fixed offset is wanted, and whether the pinned cursor gets in the way.
+
 ## Result
 
 | Section | Pass / fail | Notes |
@@ -1277,3 +1323,5 @@ These checks are for the user to run on hardware; automated testing uses fm1-emu
 | 10 Guard, watchdog, resets | | |
 | 11 Measurements | | |
 | 12 Flash timing spike | | |
+| 13 Songs on the store | | |
+| 14 Make a song on the device | | |

@@ -231,6 +231,19 @@ control's output. In the emulator, `the_step_view_matches_its_goldens` and
 `a_held_step_and_k1_darkens_that_step_bit_exact_with_the_host` (song.rs) run the keys against the
 model's own edits and the host's render, the darkening measured as the song lock test does.
 
+REC's portable tests are `song_rec` in the app suite: the quantising at each fraction of a row
+(NEAREST, OFF, and halfway rounding up), a note at the row the voice's own player is on rather
+than the cursor's, a key past the pattern's end going to the next entry or round, a recorded
+note replacing the note and keeping the row's command, the four-deep queue and `WAITING`, `SONG
+FULL` and `SAVING` refusals, K1 and K2 as locks (32 and 1 a detent, clamped, from LIVE's values,
+nothing recorded while stopped), the one-bar count-in, the menu's REC item, and STEP's pads (the
+staccato key off, a legato lane, the keys above the steps). In the emulator,
+`rec_records_a_timed_key_script_on_the_expected_rows_and_plays_back_bit_exact` (song.rs) presses
+four keys at chosen calls of SIDOU LOOP's tempo-6 rows and two K1 turns, then checks the pattern
+and the lock table the firmware holds against the expected song, and the song's playback
+bit-exact with the host's. REC's recording has no timing bound of its own; it rides on the
+editor's cell writes, whose costs `tracker_edits_from_the_panel_are_readable_and_bounded` bounds.
+
 `expert_transport` replays outgoing packets into a second instrument. It checks macro
 releases after deferred or canceled changes, macro-before-expert restoration, remote
 edits after a queued local macro, explicit learned 127 versus the internal following

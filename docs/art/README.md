@@ -970,7 +970,41 @@ it composes nothing (the song views' table in `tests/screen.rs`: 8.0k instructio
 
 RAM: the song views' state 2,824 bytes (1,920 before), most of it their shared canvas (with the
 characters of the large text's pieces). The two canvases and the characters they keep are
-1,788 bytes of the views' 17,280; free RAM went from 14,544 to 12,752 bytes (the gate keeps 9,000).
+1,788 bytes of the views' 17,280; free RAM went from 14,544 to 12,752 bytes (the gate keeps 9,000). At the end of M2d the RAM region and POOL together have 8,520 bytes free (4,256 and 4,264; the gate keeps 7,000, each region 4,096) and the image is 493,840 bytes ([the plan](../plans/2026-10-15-m2d-step-tracker.md#status-m2d-complete-tasks-1-7-2026-10-22)).
+
+### TRACKER, edited and recording
+
+With REC on, the edited field is reverse yellow at 2x, the row number a yellow block, and a
+command or its data expands to 2x ([controls](../reference/controls.md#editing-tracker)); K1-K4
+use the large value popup. The edits cost nothing while idle (the same row-and-footer redraw as
+a cursor step). Measured in fm1-emu by `tracker_edits_from_the_panel_are_readable_and_bounded`
+(M2d Task 3, the numbers as the plan records them after its rebase onto `c1831e9`, not re-measured since; the input is the instructions of the panel event, the pass the busiest main-loop
+pass after it; the bounds, unchanged, are 4,600 and 55,000):
+
+| Edit | Input | Busiest pass | While the song plays (input / pass) |
+|---|---:|---:|---|
+| Cursor row | 243 | 15,795 | |
+| Instrument (K1) | 1,146 | 30,872 | 1,547 / 30,872 |
+| Command (K2) | 1,409 | 28,530 | 1,829 / 29,045 |
+| Data, high nibble (K3) | 1,421 | 28,002 | 1,433 / 28,244 (data) |
+| Data, low nibble (K4) | 1,422 | 27,597 | |
+| Key off (ARP) | 1,232 | 20,661 | |
+| Rest (LFO) | 1,205 | 20,476 | |
+| Whole row cleared | 1,215 | 20,476 | |
+| Insert a row | 410 | 19,995 | 414 / 35,960 |
+| Delete a row | 412 | 19,979 | |
+| Undo, redo | 392, 383 | 23,249, 23,233 | |
+| A fragmented arena, TIDYING | 439 | 27,802 | |
+
+An insert's rebuild is prepared in the frame's bounded editor poll, not in the input (it cost
+6,629 instructions there). The 30 s playing runs above are unchanged by editing: every frame
+stays inside 200 cells and 20 ms of SPI, with no frame cut short.
+
+REC while the song plays (M2d Task 6) adds no drawing of its own: a recorded note is a cell
+write through the editor, and the cursor stays where it is, so the redraw is the pattern's
+changed cells (an edit's cost, above) and a K1 or K2 lock is a lock-table write with a popup.
+Its recording has no cost bound of its own; `rec_records_a_timed_key_script_on_the_expected_rows_and_plays_back_bit_exact`
+(`host/crates/emu-gate/tests/song.rs`) checks its rows and its audio, not its time.
 
 ## ORDER, INSTR and TABLE
 
