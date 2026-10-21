@@ -155,6 +155,52 @@ fn the_card_is_the_one_of_the_view_that_shows() {
     }
 }
 
+/// HOME -> SONG -> LOAD's page -> SEQ: STEP on a full stack (SCREEN_DEPTH).
+fn full_stack() -> Ui {
+    let mut ui = Ui::without_cards();
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.press(PANEL_BTN_SEQ);
+    ui.settle();
+    assert_eq!(ui.top(), "STEP");
+    assert_eq!(ui.v.s.depth, SCREEN_DEPTH as u8, "the stack is full");
+    ui
+}
+
+/// With no room for the card, HOME held does what a tap does: no silent hold that eats the
+/// release.
+#[test]
+fn a_held_home_on_a_full_stack_goes_home_as_a_tap_does() {
+    let mut ui = full_stack();
+    ui.down(PANEL_BTN_HOME);
+    for _ in 0..25 {
+        frame(&mut ui);
+    }
+    ui.up(PANEL_BTN_HOME);
+    for _ in 0..3 {
+        frame(&mut ui);
+    }
+    ui.settle();
+    assert_ne!(ui.top(), "STEP", "HOME did not go home");
+    assert_ne!(ui.top(), "HELP");
+}
+
+/// MIDI learn that cannot open on a full stack says so.
+#[test]
+fn midi_learn_on_a_full_stack_says_there_is_no_room() {
+    let mut ui = full_stack();
+    let mut ml = Box::<midi_learn>::default();
+    unsafe {
+        midi_learn_init(&mut *ml);
+        views_learn(&mut *ui.v, &mut *ml);
+    }
+    ui.learn_on(PANEL_ENC_K1);
+    assert_ne!(ui.top(), "LEARN");
+    assert_eq!(ui.toast().as_deref(), Some("NO ROOM FOR LEARN"));
+}
+
 #[test]
 fn a_held_home_in_the_menu_keeps_the_menu() {
     let mut ui = Ui::without_cards();

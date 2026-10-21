@@ -1835,8 +1835,12 @@ void views_flow(views* v, uint32_t now_ms) {
     if (v->p->held >> PANEL_BTN_HOME & 1u) {
         if (v->home_down == 1u && now_ms - v->home_at >= HOME_HELP_MS && !curtain(v) &&
             screen_top(&v->s) != &learn_view_view) {
-            (void)help_view_open(&v->help, &v->s, help_card_of(v));
-            v->home_down = 2u;
+            if (help_view_open(&v->help, &v->s, help_card_of(v)) == 0) {
+                v->home_down = 2u;
+            } else {
+                v->home_down = 0; /* the stack is full: no card, so HOME does what a tap does */
+                home_go(v);
+            }
         }
         return;
     }
@@ -2243,7 +2247,9 @@ void views_encoder(views* v, panel* p, uint32_t enc, int32_t steps) {
             uint32_t held = shows(v) == &live_view_view && v->live.page
                                 ? p->held | 1u << PANEL_BTN_EDIT
                                 : p->held;
-            (void)learn_view_open(&v->learn, &v->s, p, enc, held);
+            if (learn_view_open(&v->learn, &v->s, p, enc, held) != 0 && v->s.depth >= SCREEN_DEPTH) {
+                screen_toast(&v->s, "NO ROOM FOR LEARN", SCREEN_TOAST_MS); /* the stack is full */
+            }
             return;
         }
     }
