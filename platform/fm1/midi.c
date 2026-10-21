@@ -143,12 +143,14 @@ static void usb_reset_wait(uint32_t ms) {
     }
 }
 
-/* usb.c's two SIDOU hooks (platform/fm1/VENDORED.md). The device presents as "SIDOU" by
- * "SIDOU contributors" (string descriptors: bLength, 3, UTF-16LE). */
+/* usb.c's two SIDOU hooks (platform/fm1/VENDORED.md). The device presents as "SIDOU FM-1" by
+ * "SIDOU contributors" (string descriptors: bLength, 3, UTF-16LE). "FM-1" in the name is what
+ * the installers look for (Felucca's fm1_install.py and fm1ota.js, the Firmware Hub), as
+ * Melodee 1.4.5 found. */
 #define FELUCCA_USB_MANUFACTURER                                                                   \
     38, 3, 'S', 0, 'I', 0, 'D', 0, 'O', 0, 'U', 0, ' ', 0, 'c', 0, 'o', 0, 'n', 0, 't', 0, 'r', 0, \
         'i', 0, 'b', 0, 'u', 0, 't', 0, 'o', 0, 'r', 0, 's', 0
-#define FELUCCA_USB_PRODUCT 12, 3, 'S', 0, 'I', 0, 'D', 0, 'O', 0, 'U', 0
+#define FELUCCA_USB_PRODUCT 22, 3, 'S', 0, 'I', 0, 'D', 0, 'O', 0, 'U', 0, ' ', 0, 'F', 0, 'M', 0, '-', 0, '1', 0
 /* Every USB-MIDI event packet, as it came (TIMER5 interrupt, usb_poll), into SIDOU's ring:
  * SIDOU's parser (app/midi_usb.c) takes system common, every real-time byte and SysEx too,
  * which usb.c's own ring leaves out. A full ring is a gap for the parser. */

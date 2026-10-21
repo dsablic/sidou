@@ -721,7 +721,7 @@ Notes:
 
 ## 8. MIDI over USB
 
-- [ ] The unit enumerates as a USB-MIDI device "SIDOU" by "SIDOU
+- [ ] The unit enumerates as a USB-MIDI device "SIDOU FM-1" by "SIDOU
   contributors" (pid.codes test VID/PID 1209:0001). Record what the OS shows:
 - [ ] The same note, CC and program tests as section 7 pass over USB.
 - [ ] TRS and USB at the same time both play.
@@ -805,7 +805,7 @@ Notes:
 `usb.c` with its two hooks, the quiet retry, the packed buffers):
 
 - Installed over FULL-FIX, then reinstalled over itself; `--info` answered
-  `FM-1_900` both times, and the unit presents as "SIDOU" on USB again.
+  `FM-1_900` both times, and the unit presents as "SIDOU" on USB again (renamed "SIDOU FM-1" afterwards, so installers find it).
 - The handshake answered 10 times out of 10; SIDOU's inquiry and the universal
   inquiry answered.
 - K1 sent CC 74 on channel 1, and K4 CC 72.

@@ -41,7 +41,7 @@ yet ([second flash](hardware-results/2026-10-18-second-flash.md)). Two routes:
 - **From V15 or a Felucca-family firmware** (the first SIDOU on a unit): run the commands
   `tools/preflash` printed, one at a time. Step 1 reports no error, the unit restarts as
   "Felucca Update", step 2 reaches 100 %. The final `--info` times out, and that is the
-  known state; what counts is the unit coming back as USB 1209:0001 "SIDOU" and running.
+  known state; what counts is the unit coming back as USB 1209:0001 "SIDOU FM-1" and running.
 - **From a SIDOU build that has the OCT- gesture** (every later build): put the unit into ROM
   boot with OCT- (below), then `sudo <venv>/bin/python fm1_unbrick_mac.py restore sidou.fwsc`
   from `tools/fm1-unbrick-mac`. It writes the firmware region (0x4000-0x92FFF) after a

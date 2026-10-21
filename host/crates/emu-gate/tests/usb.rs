@@ -6,7 +6,7 @@
 //! cmd 0x11), and reads EP1 IN while K1 and PRESETS turn. On v0.2.0-m2-preview the device received
 //! all of this and a host saw almost none of what it sent (docs/hardware-test.md, section 8).
 //! What this checks is the firmware's side, as the USB fix made it:
-//! - it presents as "SIDOU" by "SIDOU contributors" (usb.c's string hook);
+//! - it presents as "SIDOU FM-1" by "SIDOU contributors" (usb.c's string hook);
 //! - every IN packet carries at most 64 bytes, whole event packets (Felucca's src/usb.c ep1_tx,
 //!   SysEx first);
 //! - no SIE access happens while an audio interrupt is open: USB's poll waits for the render's
@@ -76,7 +76,7 @@ fn enumerate(m: &mut Machine, fw: &Firmware) {
     assert_eq!(cfg.len(), CONFIG_LEN, "the config descriptor over EP0");
     assert_eq!(host(m).in0[0].len(), 64, "in 64-byte data packets");
     // The strings: SIDOU's, through usb.c's string hook (platform/fm1/VENDORED.md).
-    for (index, text) in [(1u8, "SIDOU contributors"), (2, "SIDOU")] {
+    for (index, text) in [(1u8, "SIDOU contributors"), (2, "SIDOU FM-1")] {
         host(m).in0.clear();
         setup(m, [0x80, 0x06, index, 0x03, 0x09, 0x04, 0xFF, 0]);
         m.usb_frames(3);

@@ -133,7 +133,7 @@ Everything else SIDOU needs goes in `midi.c`, around the file.
 
 | Hook | Where | Undefined (Felucca, the loader) | SIDOU's `midi.c` |
 |---|---|---|---|
-| `FELUCCA_USB_MANUFACTURER`, `FELUCCA_USB_PRODUCT`: the bytes of a whole string descriptor each | `STR1`, `STR2` | "Hügelton Instruments", "Felucca" (the loader keeps "Felucca Update") | "SIDOU contributors", "SIDOU" |
+| `FELUCCA_USB_MANUFACTURER`, `FELUCCA_USB_PRODUCT`: the bytes of a whole string descriptor each | `STR1`, `STR2` | "Hügelton Instruments", "Felucca" (the loader keeps "Felucca Update") | "SIDOU contributors", "SIDOU FM-1" (the installers find a port by "FM-1") |
 | `FELUCCA_MIDI_IN_RAW(pkt)`: every EP1 OUT event packet, before `midi_in_event`'s filter | `midi_in_event`, first | nothing | `usb_raw_in`: the packet into SIDOU's ring |
 
 The loader builds from the same file with neither macro defined. Its
