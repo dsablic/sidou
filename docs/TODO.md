@@ -493,3 +493,13 @@ working.
   playhead, so notes land in the playing pattern but show only when it is on screen;
   revisit in the ergonomics review. The key-to-row timing is measured at the audio block
   (about 3 ms) with no latency compensation; try the feel on the unit on flash day.
+
+## The end-of-M2 review's findings after v0.2.0 (before v0.3.0)
+
+- **Where:** [docs/reviews/2026-10-22-m2-review.md](reviews/2026-10-22-m2-review.md).
+- **In v0.2.0:** the five blockers (2.1, 3.1, 5.1, 5.2, 5.3 with 5.6), storage and SysEx
+  1.1, 1.2, 1.3 and 4.1, and the licence labels (section 7).
+- **Before v0.3.0, every other finding** (v0.3.0 ships with no known bug): 5.4 and 5.5
+  (REC into a pattern TRACKER doesn't show; song views over ABOUT edit ABOUT's tune), 6.1
+  (`FREE_RAM_MIN` counts M2a's budget twice) and 6.2 (the flash ceiling), the stale-CMake
+  check (section 8), and the 31 minor ones, batched into the ergonomics/UX pass.
