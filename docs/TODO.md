@@ -169,16 +169,6 @@ Follow-ups that aren't tied to a milestone task yet.
   the USB cost against the main-loop budget, and add hardware checks. The same transport
   is half of the separate "remote panel" idea: fm1-emu issue #4.
 
-## The LIVE help card describes LIVE's old controls (end of M2)
-
-- **Where:** `app/help_view.c` (ergo-flow F2's help table), LIVE's card.
-- **Problem:** ergo-flow's help cards were written to the ergonomics plan's text before
-  ergo-live changed LIVE (PRESETS steps the preset, SELECT pages the knob row, ALGORITHM
-  the profile, K3 the sound's own control, K4 RELEASE, DICE, the GLO latch). The card
-  still lists the old meanings.
-- **Action:** rewrite LIVE's card from docs/reference/controls.md as merged, and check
-  every other card against it; update the help goldens.
-
 ## A stale CMake cache builds a different firmware without saying so
 
 - **Where:** `core/CMakeLists.txt`'s `option()`s (`SIDOU_ALL_COMBINED_PROFILES_8580` and the

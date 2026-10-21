@@ -1748,8 +1748,14 @@ static uint32_t help_card_of(const views* v) {
     if (top == &live_view_view) {
         return HELP_CARD_LIVE;
     }
-    if (top == &views_menu || top == &views_midi) {
+    if (top == &views_menu) {
         return HELP_CARD_MENU;
+    }
+    if (top == &views_midi) {
+        return HELP_CARD_MIDI;
+    }
+    if (top == &views_song_menu_view) {
+        return HELP_CARD_SONG;
     }
     if (top == &chip_view_view) {
         return HELP_CARD_CHIP;
@@ -1757,7 +1763,19 @@ static uint32_t help_card_of(const views* v) {
     if (top == &scene_view_view) {
         return HELP_CARD_SCENE;
     }
-    return song_view_is(top) ? HELP_CARD_TRACKER : HELP_CARD_ALL;
+    if (top == &step_view_view) {
+        return HELP_CARD_STEP;
+    }
+    if (top == &tracker_view_view) {
+        return HELP_CARD_TRACKER;
+    }
+    if (top == &song_pages_order_view) {
+        return HELP_CARD_ORDER;
+    }
+    if (top == &song_pages_instr_view) {
+        return HELP_CARD_INSTR;
+    }
+    return top == &song_pages_table_view ? HELP_CARD_TABLE : HELP_CARD_ALL;
 }
 
 /* ---- the first-run tour: three toasts after the full boot an install plays ---- */

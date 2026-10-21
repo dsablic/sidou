@@ -50,8 +50,8 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
    saves on a clean release, or held with a knob opens MIDI learn over any view; SAVE held
    with HOME consumes HOME ([SAVE](#save)); SEQ, PLAY and REC are the song views' ([below](#song-views)),
    in every view;
-3. **the view on top:** the menu, CHIP and TRACKER take SELECT and ALGORITHM; SCENE takes SELECT;
-   LIVE, the status screen, the glyph sheet and About take nothing; MIDI learn's frame passes
+3. **the view on top:** the menu, the MIDI page, CHIP and the song views take SELECT and ALGORITHM (INSTR only SELECT, with K1 and K2); SCENE takes SELECT;
+   LIVE takes SELECT (the knob row's page), ALGORITHM (the profile, or a slot's algorithm) and, on a slot's page, K1-K4; the status screen, the glyph sheet and About take nothing; MIDI learn's frame passes
    them to the CHIP view under it, and to no other;
 4. **the panel:** everything else plays the instrument as below, in every view. K1..K4 turn
    the page of the view that shows: CHIP's focused section on the CHIP view (on top or under
@@ -125,8 +125,9 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **ALGORITHM (encoder 1)**, in TRACKER | the shown voice: voice 1, 2, 3 and round; the cursor's voice and the audition always match the voice on screen |
 | **SELECT (encoder 0)**, in SCENE | the next piece clockwise, the one before counter-clockwise (FIRE, PLASMA, RULE 30, STARS, ANT, RED MOON RITE, and round): it wipes in, and a toast names it |
 
-LFO, ARP and PRESETS (encoder 6) edit TRACKER with REC on (below); the other buttons (LFO, ARP) do
-nothing else yet, and PRESETS steps the preset everywhere else. SELECT does nothing on STATUS and
+LFO, ARP and PRESETS (encoder 6) edit TRACKER with REC on (below), and STEP (ARP is the lane's gate,
+LFO clears a held step, PRESETS the lane's instrument) and ORDER (ARP sets the restart) use them too;
+elsewhere LFO and ARP do nothing yet, and PRESETS steps the preset. SELECT does nothing on STATUS and
 ABOUT, ALGORITHM nothing on STATUS and ABOUT.
 
 ## Value popup
@@ -395,14 +396,21 @@ power-on and not again; the way back to LIVE never plays a card, it is a wipe.
 
 **Hold HOME for 600 ms** in any view and a help card opens over it: the title bar (**HELP** and
 the card's name, `app/help_view.h`), then up to eight lines at 2×, the control on the left and
-what it does on the right. LIVE, the menu and the MIDI page, CHIP, the song views, SCENE and
-every other view (**ALL**: STATUS, About, the glyph sheet) each have a card of their own.
+what it does on the right. Each card says what its own view does: LIVE, the menu, the MIDI
+page (no actions, and its setup is RAM-only, so no SAVE line), CHIP, SCENE, each of the five song
+views (STEP, TRACKER, ORDER, INSTR, TABLE: SEQ goes round them and SAVE saves the song), the SONG
+menu (opened from its list of actions: on its sub-pages HOME goes back at once, so there is no
+hold there) and every other view (**ALL**: STATUS, About, the glyph sheet). A test opens every card
+over its view and each has a golden (`tests/golden/lcd/help-*.png`).
 
 - HOME only opens the menu or goes back when it is **let go before 600 ms**: a tap acts in the
   next frame after the release, so a hold never opens the menu first.
 - **Any button or encoder** closes the card and does nothing else (SELECT does not move, FX does
   not toggle the chip, SAVE saves nothing). **A note** plays as ever and the card stays. The card
   stays after HOME is let go until a control closes it.
+- The screen stack is four deep, LIVE included (LIVE, menu, SONG, a song view): when it is full there is no room for a
+  card, so a held HOME does what a tap does (goes back one view), and MIDI learn (SAVE + a knob)
+  toasts `NO ROOM FOR LEARN`.
 - Over the boot, a title card and MIDI learn's frame HOME keeps its own meaning (it ends the
   boot or the card, or cancels the learn frame): no card there.
 

@@ -1517,7 +1517,7 @@ are in [controls](../reference/controls.md#help)). It is drawn in the menu's sty
 14 characters across, in the theme's roles, never a colour of its own:
 
 - **Rows 0-2:** the title bar in `title_fg` on `title_bg`: `HELP` from column 1 and the card's
-  name (`LIVE`, `MENU`, `CHIP`, `TRACKER`, `SCENE`, `ALL`) right-aligned.
+  name (`LIVE`, `MENU`, `MIDI`, `CHIP`, `SCENE`, `STEP`, `TRACKER`, `ORDER`, `INSTR`, `TABLE`, `SONG`, `ALL`) right-aligned.
 - **Rows 4-27:** up to eight lines, one every three rows (two of text, one blank): the control
   on the left in `hot`, what it does right-aligned in `value`, on the screen's own background;
   the rows a card does not use stay blank.

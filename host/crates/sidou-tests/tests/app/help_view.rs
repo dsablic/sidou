@@ -114,9 +114,9 @@ fn the_card_is_the_one_of_the_view_that_shows() {
         ("MENU", 0),
         ("CHIP", 1),
         ("SCENE", 2),
-        ("TRACKER", 3),
+        ("STEP", 3),
         ("ALL", 4),
-        ("MENU", 5), // the MIDI page
+        ("MIDI", 5),
     ] {
         let mut ui = Ui::without_cards();
         ui.settle();
@@ -199,6 +199,69 @@ fn midi_learn_on_a_full_stack_says_there_is_no_room() {
     ui.learn_on(PANEL_ENC_K1);
     assert_ne!(ui.top(), "LEARN");
     assert_eq!(ui.toast().as_deref(), Some("NO ROOM FOR LEARN"));
+}
+
+/// Every card is the card of a view, and every view with a card of its own opens it: the view
+/// to open (SEQ n times from LIVE, or the menu's item with ALGORITHM turned) and the card's name.
+#[test]
+fn every_card_opens_over_its_own_view() {
+    enum Open {
+        Live,
+        Seq(u32),
+        Menu,
+        Item(u32),
+    }
+    let all = [
+        ("LIVE", Open::Live),
+        ("MENU", Open::Menu),
+        ("CHIP", Open::Item(VIEWS_MENU_CHIP)),
+        ("SCENE", Open::Item(VIEWS_MENU_SCENE)),
+        ("STEP", Open::Seq(1)),
+        ("TRACKER", Open::Seq(2)),
+        ("ORDER", Open::Seq(3)),
+        ("INSTR", Open::Seq(4)),
+        ("TABLE", Open::Seq(5)),
+        ("ALL", Open::Item(VIEWS_MENU_STATUS)),
+        ("MIDI", Open::Item(VIEWS_MENU_MIDI)),
+        ("SONG", Open::Item(VIEWS_MENU_SONG)),
+    ];
+    assert_eq!(all.len(), HELP_CARDS as usize, "a card without a view here");
+    let mut seen = [false; HELP_CARDS as usize];
+    for (name, open) in all {
+        let mut ui = Ui::without_cards();
+        ui.settle();
+        match open {
+            Open::Live => {}
+            Open::Seq(n) => {
+                for _ in 0..n {
+                    ui.press(PANEL_BTN_SEQ);
+                    ui.settle();
+                }
+                assert_eq!(ui.top(), name, "SEQ x{n}");
+            }
+            Open::Menu => {
+                ui.press(PANEL_BTN_HOME);
+                ui.settle();
+            }
+            Open::Item(item) => {
+                ui.press(PANEL_BTN_HOME);
+                ui.settle();
+                ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
+                ui.turn(PANEL_ENC_SELECT, item as i32);
+                frame(&mut ui);
+                ui.turn(PANEL_ENC_ALGORITHM, 1);
+                ui.settle();
+            }
+        }
+        hold_until_card(&mut ui);
+        for _ in 0..12 {
+            frame(&mut ui);
+        }
+        assert_eq!(card_name(&ui), name);
+        seen[ui.v.help.card as usize] = true;
+        ui.up(PANEL_BTN_HOME);
+    }
+    assert!(seen.iter().all(|&s| s), "{seen:?}");
 }
 
 #[test]

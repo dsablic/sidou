@@ -28,12 +28,18 @@ extern "C" {
 /* The cards, by the view they are for. */
 typedef enum {
     HELP_CARD_LIVE = 0,
-    HELP_CARD_MENU = 1,    /* the menu and the MIDI page */
+    HELP_CARD_MENU = 1,    /* the main menu */
     HELP_CARD_CHIP = 2,
-    HELP_CARD_TRACKER = 3, /* the song views */
+    HELP_CARD_TRACKER = 3,
     HELP_CARD_SCENE = 4,
     HELP_CARD_ALL = 5,     /* STATUS, ABOUT, CHARSET and the rest */
-    HELP_CARDS = 6
+    HELP_CARD_STEP = 6,    /* the song views, a card for each */
+    HELP_CARD_ORDER = 7,
+    HELP_CARD_INSTR = 8,
+    HELP_CARD_TABLE = 9,
+    HELP_CARD_MIDI = 10,   /* the MIDI page */
+    HELP_CARD_SONG = 11,   /* the SONG menu */
+    HELP_CARDS = 12
 } help_card_id;
 
 /* Lines a card has at most, characters of a line (the control, a space or more, what it does),

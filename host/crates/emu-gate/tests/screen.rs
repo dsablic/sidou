@@ -55,6 +55,7 @@ const MENU_CHARSET: i32 = sidou_sys::VIEWS_MENU_CHARSET as i32;
 const MENU_ABOUT: i32 = sidou_sys::VIEWS_MENU_ABOUT as i32;
 const MENU_ITEMS: i32 = sidou_sys::VIEWS_MENU_ITEMS as i32;
 const MENU_MIDI: i32 = sidou_sys::VIEWS_MENU_MIDI as i32;
+const MENU_SONG: i32 = sidou_sys::VIEWS_MENU_SONG as i32;
 /// app/screen.h: the toast's row.
 const TOAST_ROW: usize = 27;
 /// The art palette (docs/art/README.md) in sRGB; the panel gets its RGB565 truncation.
@@ -3918,28 +3919,46 @@ fn holding_home_shows_the_help_card_and_a_tap_still_goes_home() {
     assert_eq!(fx_select(&mut m, &fw), fx, "the selection untouched");
 }
 
-/// The cards of the menu, CHIP, the song views and SCENE, each a golden.
+/// Every card but LIVE's (above), over its own view, each a golden: the menu, CHIP, SCENE, the
+/// five song views (SEQ round them), STATUS (the ALL card), the MIDI page and the SONG menu.
 #[test]
 fn help_cards_match_their_goldens() {
     let Some((build, fw)) = fixture("the help card test") else {
         return;
     };
-    for name in ["menu", "chip", "tracker", "scene"] {
+    for name in [
+        "menu", "chip", "scene", "step", "tracker", "order", "instr", "table", "all", "midi",
+        "song",
+    ] {
         let mut m = booted(&fw);
         match name {
             "menu" => open_menu(&mut m, &fw),
-            "chip" => {
-                into_chip_card(&mut m, &fw);
+            "chip" | "scene" => {
+                if name == "chip" {
+                    into_chip_card(&mut m, &fw);
+                } else {
+                    into_scene_card(&mut m, &fw);
+                }
                 m.run_ms(2 * UI_PERIOD_MS);
                 assert!(showing_card(&mut m, &fw));
                 past_card(&mut m, &fw);
             }
-            "tracker" => press(&mut m, SEQ),
+            "all" => common::open_status(&mut m, &fw),
+            "midi" | "song" => {
+                open_menu(&mut m, &fw);
+                select(&mut m, if name == "midi" { MENU_MIDI } else { MENU_SONG });
+                m.run_ms(100);
+                m.turn(ALGORITHM, 1);
+            }
             _ => {
-                into_scene_card(&mut m, &fw);
-                m.run_ms(2 * UI_PERIOD_MS);
-                assert!(showing_card(&mut m, &fw));
-                past_card(&mut m, &fw);
+                let seqs = ["step", "tracker", "order", "instr", "table"]
+                    .iter()
+                    .position(|n| *n == name)
+                    .unwrap();
+                for _ in 0..=seqs {
+                    press(&mut m, SEQ);
+                    settle(&mut m, &fw);
+                }
             }
         }
         settle(&mut m, &fw);
