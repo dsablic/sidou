@@ -813,8 +813,12 @@ Notes:
   later: the unit enumerated, the handshake answered 10/10, both inquiries
   answered, and K1 sent CC 74 within seconds of the port opening.
 
-Not yet repeated after deleting the device in Audio MIDI Setup. The release
-package itself still goes through this section before it ships.
+Then with `USB-FIX-2964aa5` (the product name "SIDOU FM-1"): after deleting the
+device in Audio MIDI Setup and replugging, the port is named "SIDOU FM-1" (before,
+macOS kept the cached "SIDOU"), and `fm1_install.py --info` finds the unit without
+`--port`. The handshake answered 10/10, both inquiries answered, and K1 sent CC 74
+(201 messages). The release package itself still goes through this section before it
+ships.
 
 ## 8b. MIDI clock and transport (M2e Task 2)
 
