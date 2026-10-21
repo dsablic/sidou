@@ -19,7 +19,12 @@ the 6502 study below.
 1. **Close M2.** The remaining tasks: M2c Tasks 8-9, M2d Tasks 3-7, M2e Tasks 5-6, M2b
    Tasks 6 and 8, then the end-of-M2 review by area (storage most closely, and the tests that
    were re-aimed during M2).
-2. **Win back performance headroom.** Several gates pass by very small margins: LIVE noise
+2. **Win back performance headroom.** It starts with the **fm1-emu bump** (added
+   2026-10-21): the pass measures in the emulator, so on the revision SIDOU keeps. Upstream
+   has since fixed the and-not decoding and modelled P33 (`docs/upstream-reports.md`, items
+   3 and 5), fuzzed its decoder against the vendor objdump, and runs its JIT on x86-64
+   Linux, which speeds up CI's emulator tests. Goldens it moves are viewed, then re-blessed
+   once. Several gates pass by very small margins: LIVE noise
    (0.6k of 155k), SELECT into RULE 30 (3 of 230), STATUS idle (about 30 of 7,500), the MIDI
    floods and the USB drain (under 1 %). A pass that measures each hot path against a base
    build and its disassembly, and makes the code cheaper, so later work has room. Bounds only
@@ -41,7 +46,14 @@ the 6502 study below.
    from the ergonomics review (`docs/plans/2026-10-18-ergonomics-pass.md`, including its
    deferred TRACKER and CHIP items), flash day, the testers and `docs/TODO.md`'s bug entries.
    The harness is re-run on the release candidate, and every finding it reports is fixed or
-   shown to be a false positive by a harness fix. It is led by what sets SIDOU apart: writing C64 music on the FM-1, GoatTracker 2
+   shown to be a false positive by a harness fix. Added 2026-10-21, from the community's
+   work:
+   - **A long-run clock-drift test:** at least ten minutes against a steady external MIDI
+     clock in fm1-emu, the song still on the beat at the end (Felucca's issue #269 is this
+     bug in another sequencer; SIDOU's tests cover tempo changes, not accumulated drift).
+   - **Positioning:** SID voices are appearing as one engine among many (Melodee's SID
+     engine, Mini-Tone's), so the release notes and the Hub listing lead with what only SIDOU
+     does: GoatTracker 2 compatibility both ways and two SIDs with the chip character. It is led by what sets SIDOU apart: writing C64 music on the FM-1, GoatTracker 2
    compatible both ways, two authentic SIDs with the chip character. With:
    - a small group of testers who already have a recovery route (also to measure the power
      cost of the main loop's spin while USB is attached);
@@ -86,7 +98,7 @@ the 6502 study below.
 
 - **Reports for other projects** are collected in `docs/upstream-reports.md` (FM-1 SID's
   PSID loader bug, fm1-emu's decoder gaps) and filed later, after the user reviews them.
-- **fm1-emu:** bump the pinned revision (decoder fixes, speed); offer the USB host model built
+- **fm1-emu:** the pin bump moved to item 2 (2026-10-21); offer the USB host model built
   for SIDOU's tests and the decoder gap SIDOU found (`docs/TODO.md`) back upstream. Anything
   posted to another project is shown to the user first.
 - **FM-1 Live Link, a companion for the whole FM-1 community** (after USB-MIDI out works on
