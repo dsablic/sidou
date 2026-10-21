@@ -102,8 +102,7 @@ typedef struct {
 
 enum {
     SONG_CMD_PLAY = 1, SONG_CMD_STOP, SONG_CMD_CONTINUE, SONG_CMD_MUTE, SONG_CMD_SHAPE,
-    SONG_CMD_HANDOVER, SONG_CMD_JAM, SONG_CMD_EDIT, SONG_CMD_PERIOD, SONG_CMD_TAKE,
-    SONG_CMD_ALIGN
+    SONG_CMD_HANDOVER, SONG_CMD_JAM, SONG_CMD_EDIT, SONG_CMD_PERIOD, SONG_CMD_ALIGN
 };
 
 typedef struct {
@@ -186,6 +185,8 @@ typedef struct song_ctl {
     song_cmd cmd[SONG_CMD_RING];
     volatile uint32_t cmd_head; /* commands before it are visible */
     gt2_song* song;
+    volatile uint8_t take; /* the voices the keys hold (song_ctl_take); the interrupt's taken
+                            * follows it at each block's start */
     /* --- written by the interrupt, read by the main loop --- */
     volatile uint32_t cmd_tail;     /* commands before it are applied */
     volatile uint32_t applied;      /* the last applied command's seq */
@@ -206,7 +207,8 @@ typedef struct song_ctl {
     gt2_player player;
     uint8_t shadow[GT2_SID_REGS]; /* the player's writes to chip A */
     uint8_t mute;                 /* bit v: voice v muted */
-    uint8_t taken;                /* bit v: voice v the keys' (KEYS A, M2b's keys_route) */
+    uint8_t taken;                /* bit v: voice v the keys' (KEYS A, M2b's keys_route): take
+                                   * as this block found it */
     uint8_t armed, armed_now;     /* a hand-over waiting for its call */
     uint8_t jam[GT2_PLAY_CHANNELS][3]; /* a jam waiting for the next call: on, note, instr */
     /* the locks: the main loop's resolved tables (two a channel, lock_pub the one to read),
@@ -314,8 +316,14 @@ int song_ctl_stop(song_ctl* sc);
 int song_ctl_continue(song_ctl* sc);
 int song_ctl_mute(song_ctl* sc, uint32_t mask);
 /* The voices the keys hold on chip A (KEYS A: M2b's keys_route_voices_taken): the song's
- * writes to them are dropped and the keys' stand (no gate-off, unlike a mute); a voice given
- * back gets the song's registers again at the next block. */
+ * writes to them are dropped and the keys' stand (no gate-off, unlike a mute, and PLAY's
+ * silent start leaves them sounding); a voice given back gets the song's registers again.
+ * Not a command: a store the interrupt reads at its next block's start, before the block's
+ * register writes and commands, so no ring, pass or edit can hold it up. Always 1. The caller
+ * orders it against the keys' writes (platform/fm1/main.c): a voice taken before its first
+ * register goes to the register ring (keys_route.taking), given back only after the ring has
+ * been committed with the key's gate-off, so the song's registers come back over the keys'
+ * last write, not under it. */
 int song_ctl_take(song_ctl* sc, uint32_t mask);
 /* Voice v takes note (0 C-0 ... 95) and instrument at its next tick 0, as if its next row
  * held them (no command): M2d's audition, M2e's multitimbral mode. An unused instrument

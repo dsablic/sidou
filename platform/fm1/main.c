@@ -1244,10 +1244,21 @@ static const song_transport song_binding = {
 };
 static song_transport song_bound;
 
-/* Once a pass: the voices the keys take from the song under KEYS A, the audition's jam that
- * waited and its end, the transport's poll (a slice of its analysis), and chip A with the
- * song or the keys. */
+/* Once a pass: the audition's jam that waited and its end, the transport's poll (a slice of
+ * its analysis), and chip A with the song or the keys. */
+
+/* The voices the keys take from the song under KEYS A (song_ctl_take, read by the interrupt at
+ * each block's start): taken at once, before the voice's first register goes to the ring
+ * (keys_route.taking), so the song never writes over a key's first note (the M2 review's
+ * 2.1); given back in commit_pass, after the ring is committed with the key's gate-off, so
+ * the song's registers come back after the keys' last write. */
 static uint8_t song_taken;
+
+static void song_keys_take(void* ctx, uint32_t voices) {
+    (void)ctx;
+    song_taken = (uint8_t)(song_taken | voices);
+    (void)song_ctl_take(audio_song(), song_taken);
+}
 
 __attribute__((noinline, unused)) static void song_file_pass(song_ctl* sc, uint32_t slices) {
     static uint8_t turn;
@@ -1289,10 +1300,6 @@ __attribute__((noinline, unused)) static void song_events(song_ctl* sc) {
 
 static void song_pass(void) {
     song_ctl* sc = audio_song();
-    uint8_t taken = keys_route_voices_taken(&keys_router);
-    if (taken != song_taken && song_ctl_take(sc, taken)) {
-        song_taken = taken;
-    }
     if (jam_wait[0] && song_ctl_jam_ready(sc) &&
         song_ctl_jam(sc, jam_wait[1], jam_wait[2], jam_instr)) {
         jam_wait[0] = 0;
@@ -1334,14 +1341,20 @@ static void song_pass(void) {
 }
 
 /* The end of a pass: MASTER (the pot or MIDI's volume) to the audio path as its output gain,
- * and the pass's register writes made visible to the interrupt. */
+ * the pass's register writes made visible to the interrupt, then the voices the keys let go
+ * in them given back to the song (song_taken). */
 static void commit_pass(void) {
-    static uint16_t master_sent = 0xffffu; /* (a pass at idle does only this compare) */
+    static uint16_t master_sent = 0xffffu; /* (a pass at idle does this compare and the take's) */
     if (instrument.master != master_sent) {
         master_sent = instrument.master;
         audio_set_master(master_sent);
     }
     audio_commit();
+    uint8_t taken = keys_route_voices_taken(&keys_router);
+    if (taken != song_taken) {
+        song_taken = taken; /* the voices let go (the gate-offs are in), or held at a start */
+        (void)song_ctl_take(audio_song(), taken);
+    }
 }
 
 /* One main-loop pass: the panel into the instrument, the 100 Hz work, then the queued
@@ -1503,6 +1516,7 @@ static void sidou_main(void) {
     keys_route_init(&keys_router, &instrument, reg_ring_sink, reg_ring_prepare_step,
                     audio_sink_ctx(), audio_sink_ctx_b());
     keys_router.moved = audio_keys;
+    keys_router.taking = song_keys_take;
     live_init(&instrument, keys_route_sink, &keys_router, SID_MODEL_6581);
     /* From here on a profile or model change prepares the spare chip a slice a tick. */
     live_set_preparer(&instrument, keys_route_prepare, &keys_router);

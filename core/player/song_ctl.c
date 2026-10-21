@@ -59,6 +59,28 @@ static void song_set_gate_reset(song_ctl* sc, uint8_t g) {
         sid_set_gate_reset(sc->chip, g);
 }
 
+/* The voices left out of the song's writes: muted (the voice's gate off, then nothing of the
+ * song's) and taken (the keys', KEYS A: nothing of the song's, the keys' writes stand). Back
+ * from either: the song's registers again. */
+static void song_voices(song_ctl* sc, uint8_t mute, uint8_t taken) {
+    uint8_t was = (uint8_t)(sc->mute | sc->taken);
+    uint8_t muting = (uint8_t)(mute & ~sc->mute);
+    sc->mute = mute;
+    sc->taken = taken;
+    uint8_t now = (uint8_t)(mute | taken);
+    for (uint32_t v = 0u; v < GT2_PLAY_CHANNELS; v++) {
+        uint32_t bit = 1u << v;
+        if ((now & bit) && !(was & bit)) {
+            if (muting & bit)
+                song_gate_off(sc, v);
+        } else if (!(now & bit) && (was & bit) &&
+                   (sc->isr_playing || ((sc->player.jam_voices >> v) & 1u))) {
+            for (uint32_t r = v * 7u; r < v * 7u + 7u; r++)
+                sid_write(sc->chip, (uint8_t)r, sc->shadow[r]);
+        }
+    }
+}
+
 static void song_apply(song_ctl* sc, const song_cmd* c) {
     switch (c->kind) {
     case SONG_CMD_PLAY:
@@ -77,10 +99,12 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
             sc->lock_n[ch] = 0u;
             sc->row_pat[ch] = 0xffu;
         }
-        /* the keys' registers out: the song starts from a silent chip */
+        /* the keys' registers out: the song starts from a silent chip, less the voices the
+         * keys hold (KEYS A), whose note sounds on */
         for (uint32_t r = 0u; r < GT2_SID_REGS; r++) {
             sc->shadow[r] = 0u;
-            sid_write(sc->chip, (uint8_t)r, 0u);
+            if (r >= 21u || !((sc->taken >> (r / 7u)) & 1u))
+                sid_write(sc->chip, (uint8_t)r, 0u);
         }
         sc->song_gate = c->a;
         song_set_gate_reset(sc, c->a);
@@ -117,29 +141,8 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
         sc->isr_playing = 1u;
         break;
     case SONG_CMD_MUTE:
-    case SONG_CMD_TAKE: {
-        /* mute: the voice's gate off, then nothing of the song's; taken (the keys, KEYS A):
-         * nothing of the song's, the keys' writes stand. Back from either: the song's
-         * registers again. */
-        uint8_t was = (uint8_t)(sc->mute | sc->taken);
-        if (c->kind == SONG_CMD_MUTE)
-            sc->mute = c->a;
-        else
-            sc->taken = c->a;
-        uint8_t now = (uint8_t)(sc->mute | sc->taken);
-        for (uint32_t v = 0u; v < GT2_PLAY_CHANNELS; v++) {
-            uint32_t bit = 1u << v;
-            if ((now & bit) && !(was & bit)) {
-                if (c->kind == SONG_CMD_MUTE)
-                    song_gate_off(sc, v);
-            } else if (!(now & bit) && (was & bit) &&
-                       (sc->isr_playing || ((sc->player.jam_voices >> v) & 1u))) {
-                for (uint32_t r = v * 7u; r < v * 7u + 7u; r++)
-                    sid_write(sc->chip, (uint8_t)r, sc->shadow[r]);
-            }
-        }
+        song_voices(sc, c->a, sc->taken);
         break;
-    }
     case SONG_CMD_SHAPE:
         if (c->a)
             gt2_play_retain_shape(&sc->player, (const gt2_shape*)c->u.p.ptr);
@@ -200,6 +203,10 @@ static void song_apply(song_ctl* sc, const song_cmd* c) {
 void song_ctl_block(song_ctl* sc, sid* chip) {
     sc->chip = chip;
     sc->blocks++;
+    /* The keys' voices first (KEYS A): from this block's call on, before any command. */
+    uint8_t take = sc->take;
+    if (take != sc->taken)
+        song_voices(sc, sc->mute, take);
     uint32_t edits = 0u;
     uint32_t tail = sc->cmd_tail;
     uint32_t head = sc->cmd_head;
@@ -641,12 +648,7 @@ int song_ctl_mute(song_ctl* sc, uint32_t mask) {
 }
 
 int song_ctl_take(song_ctl* sc, uint32_t mask) {
-    if (room(sc) < 1u)
-        return 0;
-    song_cmd c;
-    cmd_init(&c, SONG_CMD_TAKE);
-    c.a = (uint8_t)(mask & 7u);
-    push(sc, &c);
+    sc->take = (uint8_t)(mask & 7u); /* the one writer; read at the next block's start */
     return 1;
 }
 

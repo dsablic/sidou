@@ -28,6 +28,7 @@ struct Keys {
     kr: Box<keys_route>,
     live: Box<live>,
     moves: Vec<u32>,
+    takes: Vec<(u32, u32)>,
 }
 
 impl Keys {
@@ -58,6 +59,7 @@ impl Keys {
             kr: Box::default(),
             live: Box::default(),
             moves: Vec::new(),
+            takes: Vec::new(),
         });
         let kp: *mut Keys = &mut *k;
         let a: *mut reg_ring_out = &mut *k.outs[0];
@@ -424,6 +426,60 @@ fn during_a_song_the_keys_setup_changes_chip_b_and_a_takes_it_after() {
         "back after {back} ticks: A was not prepared first"
     );
     assert_eq!(k.chips.lost_resets, 0);
+}
+
+unsafe extern "C" fn taking(ctx: *mut c_void, voices: u32) {
+    let k = unsafe { &mut *ctx.cast::<Keys>() };
+    k.takes.push((voices, k.ring.stage));
+}
+
+/// KEYS A over a song (the M2 review's 2.1): keys_route tells the song a voice is the keys'
+/// (keys_route.taking) before the first of that voice's registers goes to the ring, so the
+/// song can leave it alone from the block those registers reach; it tells nothing at the
+/// release (the main loop gives the voice back once the key's gate-off is in), nor with no
+/// song.
+#[test]
+fn keys_a_tells_the_song_a_voice_is_taken_before_its_first_register() {
+    let mut k = Keys::new();
+    let kp: *mut Keys = &mut *k;
+    k.kr.taking = Some(taking);
+    k.kr.taking_ctx = kp.cast();
+    k.ticks(20);
+    unsafe { live_note_on(&mut *k.live, 60, 100) };
+    k.tick();
+    unsafe { live_note_off(&mut *k.live, 60) };
+    k.ticks(5);
+    assert!(k.takes.is_empty(), "no song: nothing taken");
+    unsafe { live_set_keys_mode(&mut *k.live, LIVE_KEYS_A) };
+    k.song(true);
+    k.tick();
+    let before = k.ring.stage;
+    unsafe { live_note_on(&mut *k.live, 64, 100) };
+    let taken = unsafe { keys_route_voices_taken(&*k.kr) };
+    assert_eq!(taken.count_ones(), 1);
+    let v = u32::from(taken.trailing_zeros() as u8);
+    assert_eq!(k.takes.len(), 1, "one take: {:?}", k.takes);
+    let (voices, at) = k.takes[0];
+    assert_eq!(voices, u32::from(taken));
+    let regs = |from: u32, to: u32| -> Vec<u8> {
+        (from..to)
+            .map(|i| k.ring.e[(i % REG_RING_SIZE) as usize].reg)
+            .filter(|&r| r < 0x40 && u32::from(r) / 7 == v && r < 21)
+            .collect()
+    };
+    assert!(
+        regs(before, at).is_empty(),
+        "voice {v}'s registers went before the take"
+    );
+    assert!(
+        !regs(at, k.ring.stage).is_empty(),
+        "the key's registers follow"
+    );
+    k.tick();
+    unsafe { live_note_off(&mut *k.live, 64) };
+    k.ticks(5);
+    assert_eq!(k.takes.len(), 1, "the release tells nothing");
+    assert_eq!(unsafe { keys_route_voices_taken(&*k.kr) }, 0);
 }
 
 /// KEYS A: during a song the keys stay on chip A; a key takes its voice from the song

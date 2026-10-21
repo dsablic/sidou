@@ -31,6 +31,11 @@
  * - a profile change of chip A during a song is a chip reset (prepared, then swapped in): the
  *   reset chip has none of the song's registers, so M2c Task 6's register shadow rewrites them
  *   after the swap;
+ * - a voice the keys take goes to `taking` before the first of its registers goes to chip
+ *   A's sink, so the song can leave it alone from the block those registers reach (song_ctl's
+ *   take, which the interrupt reads at each block's start). The release tells nothing: the
+ *   main loop gives a voice back once keys_route_voices_taken has let it go and the key's
+ *   gate-off is committed;
  * - on the falling edge of a voice's bit in keys_route_voices_taken it rewrites that voice's
  *   registers (the keys' writes to it stop then);
  * - a pass in which the song control writes chip A (28 entries at most) and keys_route moves
@@ -99,6 +104,9 @@ typedef struct {
     uint8_t song_user; /* USER slot n + 1 that supplied song_want, or 0 */
     void (*moved)(void* ctx, uint32_t chip); /* NULL: nobody to tell */
     void* moved_ctx;
+    /* Voices the keys take under a song (bit v), before their first write: NULL, nobody. */
+    void (*taking)(void* ctx, uint32_t voices);
+    void* taking_ctx;
     int (*song_edit)(void* ctx, const chip_setup* setup, uint32_t edit_mask);
     void* song_edit_ctx;
 } keys_route;

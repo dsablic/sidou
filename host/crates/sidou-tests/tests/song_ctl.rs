@@ -1156,6 +1156,66 @@ fn a_voice_the_keys_take_is_left_to_them_and_given_back() {
     assert_eq!(t.chip.env[0].gate, t.sc.shadow[4] & 1);
 }
 
+/// KEYS A (the M2 review's 2.1): a take holds from the interrupt's next block with no command
+/// behind it, so no pass, full ring or edit in the way leaves the song a call in which to write
+/// over the keys' first note; given back the same way, the voice gets the song's registers.
+#[test]
+fn a_take_holds_from_the_next_block_with_no_command_and_no_pass() {
+    let (_song, mut t) = play_simple();
+    transport_states(&mut t, 30);
+    let staged = t.sc.stage;
+    assert!(t.take(1));
+    assert_eq!(t.sc.stage, staged, "no command: nothing waits in the ring");
+    unsafe {
+        sid_write(&mut *t.chip, 0, 0x34);
+        sid_write(&mut *t.chip, 1, 0x12);
+        sid_write(&mut *t.chip, 4, 0x41);
+    }
+    // Blocks alone, no main-loop pass in between: the song's calls go on over the take.
+    let until = t.calls() + 20;
+    while t.calls() < until {
+        t.block_silent();
+        assert_eq!(t.chip.osc[0].freq, 0x1234, "the keys' frequency stands");
+        assert_eq!(t.chip.env[0].gate, 1, "the keys' gate stands");
+    }
+    assert!(t.take(0));
+    t.block_silent();
+    let f = u32::from(t.sc.shadow[0]) | u32::from(t.sc.shadow[1]) << 8;
+    assert_eq!(t.chip.osc[0].freq, f, "the song's frequency again");
+    assert_eq!(t.chip.env[0].gate, t.sc.shadow[4] & 1);
+}
+
+/// PLAY (the M2 review's 2.2) starts the song from a silent chip, less the voices the keys
+/// hold: their note sounds on, and the song gets them when the keys let go.
+#[test]
+fn play_leaves_the_voices_the_keys_hold_sounding() {
+    let (_song, mut t) = play_simple();
+    transport_states(&mut t, 30);
+    assert!(t.take(1));
+    t.block_silent();
+    unsafe {
+        sid_write(&mut *t.chip, 0, 0x34);
+        sid_write(&mut *t.chip, 1, 0x12);
+        sid_write(&mut *t.chip, 4, 0x41);
+    }
+    let block = t.sc.play_block;
+    assert!(t.play(0, 0));
+    assert!(t.run_until(1000, |t| t.sc.play_block != block && t.calls() > 2));
+    assert_eq!(t.chip.osc[0].freq, 0x1234, "the keys' frequency stands");
+    assert_eq!(t.chip.env[0].gate, 1, "the keys' gate stands");
+    for v in 1..3 {
+        assert_eq!(
+            t.chip.osc[v].freq,
+            u32::from(t.sc.shadow[v * 7]) | u32::from(t.sc.shadow[v * 7 + 1]) << 8,
+            "voice {v} is the song's"
+        );
+    }
+    assert!(t.take(0));
+    t.block_silent();
+    let f = u32::from(t.sc.shadow[0]) | u32::from(t.sc.shadow[1]) << 8;
+    assert_eq!(t.chip.osc[0].freq, f, "the song's frequency again");
+}
+
 /// A jam's release while the song plays: the voice's gate goes off at the next call.
 #[test]
 fn a_jam_release_lets_the_voice_go_at_the_next_call() {

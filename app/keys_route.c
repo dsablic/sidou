@@ -67,6 +67,8 @@ void keys_route_init(keys_route* kr, live* l, live_sink_fn sink, live_prepare_fn
     }
     kr->moved = 0;
     kr->moved_ctx = 0;
+    kr->taking = 0;
+    kr->taking_ctx = 0;
     kr->song_edit = 0;
     kr->song_edit_ctx = 0;
 }
@@ -98,6 +100,9 @@ void keys_route_sink(void* ctx, uint8_t reg, uint8_t value) {
             uint8_t now = held_voices(kr->l);
             uint8_t was = kr->taken;
             kr->taken = now;
+            if ((now & ~was) && kr->taking) {
+                kr->taking(kr->taking_ctx, now); /* the song lets them go before this write */
+            }
             if (!(now & 1u << v) && !((was & 1u << v) && reg == v * 7u + 4u)) {
                 return;
             }
@@ -127,6 +132,9 @@ static void update_under(keys_route* kr) {
     if (now && !kr->under) {
         kr->stale = 1; /* chip A's setup is what ctl[0] has: keys_route_song_setup's */
         kr->taken = held_voices(kr->l);
+        if (kr->taken && kr->taking) {
+            kr->taking(kr->taking_ctx, kr->taken); /* keys held as the song starts */
+        }
     }
     if (now != kr->under) {
         kr->under = now;

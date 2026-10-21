@@ -1382,6 +1382,84 @@ fn glo_and_the_first_key_mute_voice_1_and_its_writes_stop() {
     assert!(after.len() > 2, "voice 1 plays again: {after:?}");
 }
 
+/// KEYS A over a playing song (the M2 review's 2.1): a MIDI note takes its voice from the song
+/// before the note's first register reaches chip A, so the song never writes over the note.
+/// SIDOU LOOP plays on chip A with the keys on it; notes come in over TRS at phases spread
+/// over the song's 20 ms calls, and every held note's voice keeps the frequency the keys
+/// wrote (live's freq_out) and its gate until its note-off; the voice then plays the song
+/// again.
+#[test]
+fn keys_a_over_a_playing_song_keeps_every_midi_notes_pitch_and_gate() {
+    let Some((_, fw)) = fixture("the KEYS A song test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    let l = m.soc.read32(fw.symbol("ui") + ilp32::views::l as u32);
+    m.soc
+        .write8(l + ilp32::live::keys_mode as u32, LIVE_KEYS_A as u8);
+    m.run_ms(100);
+    press(&mut m, PLAY);
+    m.run_ms(2_000);
+    let t = transport(&fw);
+    assert_eq!(m.soc.read8(t + ilp32::song_ctl::isr_playing as u32), 1);
+    assert_eq!(
+        m.soc.read8(l + ilp32::live::keys_chip as u32),
+        0,
+        "KEYS A: the keys stay on chip A"
+    );
+    let gated = |m: &mut Machine, v: usize| {
+        let at = l + (ilp32::live::voice + v * ilp32::live_voice::SIZE) as u32;
+        (
+            m.soc.read8(at + ilp32::live_voice::gate as u32),
+            u32::from(m.soc.read16(at + ilp32::live_voice::freq_out as u32)),
+        )
+    };
+    let step = m.soc.periph.cycle_of_ms(1) / 7;
+    let mut overwritten = Vec::new();
+    for i in 0..60u64 {
+        let note = 48 + (i % 24) as u8;
+        m.midi(&[0x90, note, 100]);
+        let from = m.ms();
+        let v = loop {
+            if let Some(v) = (0..3).find(|&v| gated(&mut m, v).0 == 1) {
+                break v;
+            }
+            assert!(m.ms() - from < 30, "attempt {i}: the note took no voice");
+            m.run_ms(1);
+        };
+        // The keys' registers reach chip A within the main loop's latency, and stay.
+        let mut held = 0;
+        for ms in 0..60 {
+            let (gate, freq) = gated(&mut m, v);
+            let (f, control, env) = chip_a_voice(&mut m, &fw, v);
+            let keys = gate == 1 && f == freq && control & 1 == 1 && env == 1;
+            if keys {
+                held += 1;
+            } else if held > 0 || ms >= 30 {
+                overwritten.push((i, v, held, freq, f, control, env));
+                break;
+            }
+            m.run_ms(1);
+        }
+        m.midi(&[0x80, note, 0]);
+        m.run_ms(30 + i % 20);
+        m.run_cycles(step * (i % 7));
+    }
+    assert!(
+        overwritten.is_empty(),
+        "the song wrote over the keys' note (attempt, voice, ms it held, the keys' freq, \
+         chip A's freq, control, envelope gate): {overwritten:?}"
+    );
+    // Given back: the voices play the song again.
+    let mut heard = std::collections::HashSet::new();
+    for _ in 0..100 {
+        m.run_ms(20);
+        heard.insert(chip_a_voice(&mut m, &fw, 0).0);
+    }
+    assert!(heard.len() > 2, "voice 1 plays the song again: {heard:?}");
+}
+
 /// The audition (M2d Task 1): in TRACKER with the song stopped, a key sounds the song's
 /// instrument on the cursor's voice (voice 1) on chip A, its release lets it go, no row is
 /// read (the song stays where it was: never played), and two seconds later chip A goes back
