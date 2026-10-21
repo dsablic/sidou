@@ -716,6 +716,19 @@ fn glo_and_a_step_key_mutes_and_toggles_no_step() {
     assert_eq!(attr(&s.ui, 0, 0) & 15, th().dim, "V1 grey");
 }
 
+/// A latched GLO (a double tap) is the layer too: the key mutes and toggles no step, as held.
+#[test]
+fn a_latched_glo_and_a_step_key_mutes_and_toggles_no_step() {
+    let mut s = step();
+    s.ui.p.glo_latch = 1;
+    s.ui.note_keys(1, 1);
+    s.ui.note_keys(0, 0);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.v.song.mute, 1);
+    assert_eq!(pattern(&s, 0)[0][0], C3 + 7, "no step toggled");
+    assert_eq!(s.f.cell_writes, 0);
+}
+
 #[test]
 fn an_edit_that_waits_is_retried_and_the_second_row_follows_the_first() {
     let mut s = step();

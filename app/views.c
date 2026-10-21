@@ -2203,7 +2203,7 @@ void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed) {
     /* Most passes: no key, and no jam to let go: the panel's (releases) alone. */
     if (down | pressed | sv->jam_keys | v->step.down) {
         const view* top = shows(v);
-        int glo = (int)(p->held >> PANEL_BTN_GLO & 1u);
+        int glo = (int)(((p->held >> PANEL_BTN_GLO) | p->glo_latch) & 1u); /* held, or latched */
         int take = !glo && sv->t && song_view_is(top);
         uint32_t steps = 0u, jam_down = down, jam_pressed = pressed;
         if (top == &step_view_view) {
