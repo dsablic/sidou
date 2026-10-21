@@ -54,6 +54,7 @@ mod song_io;
 mod song_order_locks;
 mod song_pages;
 mod song_pattern_at;
+mod song_rec;
 mod song_view;
 mod step_view;
 mod store;

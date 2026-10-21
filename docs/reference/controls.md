@@ -116,7 +116,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; those six keys sound nothing while GLO is held; **the other keys play** (a change from before: held and latched are one rule) |
 | **GLO tapped twice** (within 400 ms) | **latches** GLO's layer: the keys are the mutes and solos without holding GLO (a toast says `GLO LATCHED`, GLO's LED is lit, and LIVE shows the layer); a tap on GLO ends it (`GLO OFF`) |
 | **SELECT (encoder 0)**, in the menu | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, KEYS, SOUNDS, TRACKER ROWS (ROWS), CARDS ([title cards](#title-cards)), STORE ([format confirmation](#settings-and-store)), THEME; turned clockwise on CHIP opens the CHIP view, on TRACKER the song views, on SCENE the generative pieces, on SONG the [song-file actions](#song), on STATUS the status screen, on MIDI the MIDI page, on CHARSET the glyph sheet, on ABOUT the credits |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, KEYS, SOUNDS, TRACKER ROWS (ROWS), REC QUANTISE (REC), CARDS ([title cards](#title-cards)), STORE ([format confirmation](#settings-and-store)), THEME; turned clockwise on CHIP opens the CHIP view, on TRACKER the song views, on SCENE the generative pieces, on SONG the [song-file actions](#song), on STATUS the status screen, on MIDI the MIDI page, on CHARSET the glyph sheet, on ABOUT the credits |
 | **SELECT (encoder 0)**, on LIVE | pages the knob row: TONE, DIST, MOD, FX; on a slot's page K1-K4 turn that slot's Amount, A, B and Mix and SCL moves the page with the slot; it stops at either end |
 | **ALGORITHM (encoder 1)**, on LIVE | steps the chip's profile on TONE (R2, R3, R4AR, R5, WORN; it stops at either end; the band's profile word shows the change), or the selected slot's algorithm on a slot's page or with EDIT held |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: A/B tabs, CHIP (the profile and the character), DIST, MOD, FX, EXPERT; it stops at either end |
@@ -150,7 +150,7 @@ opens it, and what it says (the text the views show, from one place, `popup_text
 | EDIT held + K1-K4 on STATUS, the menu and SCENE | the same |
 | MASTER | VOLUME (0-100%, the bar the pot's travel), in every view |
 | ALGORITHM + EDIT on CHIP | the USER slot to save to (`SAVE TO`, `USER 2 -`) |
-| ALGORITHM in the menu, on an item with a value | the item in full and its value: `PRESET`, `OCTAVE`, `CARDS`, `STORE`, `KEYS`, `SOUNDS`, `TRACKER ROWS`, `THEME` (`HI-CONTRAST` or `C64`) |
+| ALGORITHM in the menu, on an item with a value | the item in full and its value: `PRESET`, `OCTAVE`, `CARDS`, `STORE`, `KEYS`, `SOUNDS`, `TRACKER ROWS`, `REC QUANTISE`, `THEME` (`HI-CONTRAST` or `C64`) |
 
 **LIVE and CHIP show a turned knob where it is instead of opening the popup over it** (the popup
 would hide the very controls and meters being tuned): the knob's label (on LIVE, in row 15; on
@@ -327,6 +327,27 @@ sequences are refused without creating a pattern. Instrument names use GT2's 16 
 untouched imported bytes are preserved, and name-only instruments follow GoatTracker's normal
 save rules. TABLE's footer spells out the selected operation, including absolute/relative
 wavetable notes and jumps (SPEED's FF is a speed value, not a jump).
+
+### Recording while the song plays
+
+With **REC on and the song playing**, TRACKER and STEP record what you play (the keys still
+sound). Every write goes through the player's edit queue (cell writes) or the lock table, as
+the views' own edits, and is refused with the same large toasts (`SONG FULL`, `SAVING`,
+`WAITING`, `LOCKS FULL`).
+
+| Control | Records |
+|---|---|
+| Note key, in TRACKER | its note and the current instrument on the cursor's voice, in the row the voice's player is on when the key goes down, or the next row if the key is in the second half of it (the nearest row); a note replaces the row's note and keeps its command; a key past the end of the pattern goes to the pattern that plays next |
+| Step key (the 16 leftmost), in STEP | the selected lane's note and instrument the same way, with the key off after it on the next empty row on a staccato lane; the pad toggles nothing |
+| Other keys, in STEP | their own pitch on the selected lane |
+| K1 / K2 | cutoff (32 per detent) and resonance (1 per detent), starting from LIVE's values, as a lock on the row the knob was turned in (never rounded to the next row); the value popup says `CUTOFF` or `RESONANCE` |
+
+The menu's **REC** item (popup `REC QUANTISE`; not saved) chooses `NEAREST` (the default), `OFF`
+(the row the key falls in) or `COUNT-IN` (the nearest row, after one bar of the song's tempo,
+rows per beat times four, that records nothing: a toast says `COUNT-IN`; it starts when the
+song starts with REC on, or when REC is turned on while it plays). TRACKER keeps its cursor
+where it is while recording; the notes appear in the pattern as they are written. With the
+song stopped REC is TRACKER's cursor entry, as before.
 
 The note keys audition the selected instrument on the cursor's voice. The edit cursor's
 subtune and the actually playing subtune are tracked separately, so selecting another subtune
@@ -948,7 +969,7 @@ selected one a line in reverse video; the title bar says which it is of how many
 up or down when items are out of sight, and the list scrolls with SELECT). It lists CHIP (the
 CHIP view, above), TRACKER (the song views), SCENE (the generative pieces), SONG (the song-file
 actions), PRE (the preset), OCTAVE, KEYS, SOUNDS, ROWS (TRACKER ROWS), CARDS (title cards),
-STORE, THEME, STATUS, MIDI, CHARSET (the glyph sheet) and ABOUT. A line is 14 characters:
+STORE, THEME, STATUS, MIDI, CHARSET (the glyph sheet), REC (REC QUANTISE) and ABOUT. A line is 14 characters:
 PRE, ROWS and STORE's kilobytes (`193K`, FOREIGN, FORMAT?, `ERASE 20`) are short so that the
 longest preset name (NOISE PERC) and value fit beside their labels; the
 [popup](#value-popup) says the whole names. LIVE's scopes, TRACKER, CHIP, STATUS and ABOUT keep

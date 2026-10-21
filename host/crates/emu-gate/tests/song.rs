@@ -1484,3 +1484,156 @@ fn master_scales_a_playing_song_and_full_master_leaves_it_alone() {
         }
     }
 }
+
+/// REC while the song plays (M2d Task 6): with SIDOU LOOP playing at tempo 6 (six calls a row)
+/// in TRACKER and REC on, a key script timed against the player's own call count lands on the
+/// expected rows (a key a quarter or less into a row on that row, three quarters or more on the
+/// next: the nearest), the K1 turns become cutoff locks on the rows they were turned in, the
+/// pattern the firmware holds is the expected one (cell writes and the lock table only), and
+/// playing that song again is bit-exact with the host's render.
+#[test]
+fn rec_records_a_timed_key_script_on_the_expected_rows_and_plays_back_bit_exact() {
+    let Some((_, fw)) = fixture("the REC recording test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    let mut expected = demo();
+    let order = unsafe { gt2_order_data(expected.ptr(), 0, 0) };
+    let pattern = u32::from(unsafe { *order });
+    let t = transport(&fw);
+    press(&mut m, SEQ);
+    m.run_ms(300);
+    press(&mut m, SEQ);
+    m.run_ms(500);
+    press(&mut m, PANEL_BTN_REC as u8);
+    m.run_ms(100);
+    press(&mut m, PLAY);
+    let calls = |m: &mut Machine| m.soc.read32(t + ilp32::song_ctl::calls as u32);
+    // The play starts from a fast-forwarded hand-over, so its call count does not begin at
+    // the first row: the calls are counted from the first row the player starts after PLAY.
+    let row_of = |m: &mut Machine| m.soc.read8(t + ilp32::song_ctl::row_row as u32);
+    let from = m.ms();
+    let first = row_of(&mut m);
+    while row_of(&mut m) == first {
+        m.run_ms(1);
+        assert!(m.ms() - from < 3_000, "the song never started");
+    }
+    let (base, row0) = (calls(&mut m) - 1, u32::from(row_of(&mut m)));
+    // (call of the row a key is pressed in, which key): in calls from the play's start,
+    // the row's own call 0, 1, 4 or 5 (the key goes 10 ms into the call: 0.5 of a call).
+    let script: [(u32, u8); 4] = [(1, 16), (4, 18), (5, 20), (0, 23)];
+    let mut landed: Vec<(u32, u8)> = Vec::new(); // (row, key)
+    let mut knob_rows: Vec<u32> = Vec::new();
+    let mut at_row = row0 + 2; // the row the first key's call is on
+    for (i, &(phase, key)) in script.iter().enumerate() {
+        // Wait for call `phase` of row `at_row` (calls from the play's start), then half a call.
+        let want = base + 6 * (at_row - row0) + phase;
+        let from = m.ms();
+        loop {
+            let n = calls(&mut m).wrapping_sub(1);
+            if n == want {
+                break;
+            }
+            assert!(n < want, "missed call {want}: at {n}");
+            m.run_ms(1);
+            assert!(m.ms() - from < 6_000, "call {want} never came");
+        }
+        m.run_ms(10);
+        // The premise: the player is on the row the calls say (tempo 6, from row 0).
+        let row_now = u32::from(row_of(&mut m));
+        assert_eq!(row_now, at_row, "voice 1's row at call {want}");
+        m.key(PANEL_KEY_ID0 as u8 + key, true);
+        m.run_ms(30);
+        m.key(PANEL_KEY_ID0 as u8 + key, false);
+        // phase 0 and 1 are before halfway into the row: that row; 4 and 5: the next.
+        let row = at_row + u32::from(phase >= 3);
+        landed.push((row, key));
+        if i == 1 || i == 3 {
+            // A K1 turn on the row the player is on now.
+            m.run_ms(20);
+            let r = u32::from(row_of(&mut m));
+            m.turn(PANEL_ENC_K1 as u8, if i == 1 { 2 } else { 1 });
+            knob_rows.push(r);
+        }
+        at_row += 3;
+    }
+    m.run_ms(400);
+    press(&mut m, PLAY); // stop
+    m.run_ms(500);
+    for &(row, key) in &landed {
+        let d = unsafe { gt2_pattern_data(expected.ptr(), pattern).add(row as usize * 4) };
+        let mut cell: [u8; 4] = unsafe { std::slice::from_raw_parts(d, 4) }
+            .try_into()
+            .unwrap();
+        cell[0] = (GT2_FIRSTNOTE + PANEL_BASE_NOTE + u32::from(key) - 12) as u8;
+        cell[1] = 1;
+        let mut edit = gt2_edit::default();
+        unsafe {
+            assert_eq!(
+                gt2_set_row(expected.ptr_mut(), pattern, row, cell.as_ptr(), &mut edit),
+                GT2_OK
+            );
+            gt2_edit_commit(expected.ptr_mut(), &edit);
+        }
+    }
+    let mut actual = Song::device();
+    let base = fw.symbol("__song_region");
+    let bytes = unsafe {
+        std::slice::from_raw_parts_mut(actual.ptr_mut().cast::<u8>(), SONG_REGION_BYTES as usize)
+    };
+    for (i, byte) in bytes.iter_mut().enumerate() {
+        *byte = m.soc.read8(base + i as u32);
+    }
+    assert_eq!(
+        actual.write(false),
+        expected.write(false),
+        "the keys, timed, wrote the expected rows ({landed:?})"
+    );
+    // The locks: two K1 turns, the second 32 above the first (1 detent after 2), on the rows
+    // the player was on.
+    let mut recs = vec![song_lock::default(); SONG_LOCKS_MAX as usize];
+    let n = unsafe { song_ext_get_locks(actual.ptr(), recs.as_mut_ptr(), SONG_LOCKS_MAX) } as usize;
+    let got: Vec<(u32, u32, u32)> = recs[..n]
+        .iter()
+        .map(|l| (u32::from(l.pattern), u32::from(l.row), u32::from(l.param)))
+        .collect();
+    let want_rows: Vec<(u32, u32, u32)> = knob_rows
+        .iter()
+        .map(|&r| (pattern, r, SONG_LOCK_CUTOFF))
+        .collect();
+    assert_eq!(
+        got, want_rows,
+        "cutoff locks on the rows the knob was turned in"
+    );
+    assert_eq!(
+        u32::from(recs[1].value),
+        u32::from(recs[0].value) + 32,
+        "K1's detents are 32 apart"
+    );
+    for (tag, data) in actual.ext_chunks() {
+        if tag != sidou_tests::song::TAG_LOCK && expected.ext_find(tag).is_none() {
+            assert_eq!(expected.ext_set(tag, &data), 0, "setup chunk {tag:#x}");
+        }
+    }
+    for l in &recs[..n] {
+        assert_eq!(
+            unsafe {
+                song_lock_put(
+                    expected.ptr_mut(),
+                    u32::from(l.pattern),
+                    u32::from(l.row),
+                    u32::from(l.param),
+                    u32::from(l.value),
+                )
+            },
+            0
+        );
+    }
+    assert_eq!(
+        actual.write(true),
+        expected.write(true),
+        "the recording is the expected song, locks included"
+    );
+    check_song("REC-recorded pattern", &fw, Some(&actual));
+}

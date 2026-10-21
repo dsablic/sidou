@@ -598,6 +598,29 @@ int tracker_view_popup(const song_view* sv, uint32_t encoder, int edit, char* na
     } else if (encoder == PANEL_ENC_ALGORITHM && edit) {
         v = sv->step;
         label = "EDIT STEP";
+    } else if ((encoder == PANEL_ENC_K1 || encoder == PANEL_ENC_K1 + 1u) && !edit &&
+               song_view_rec_playing(sv)) {
+        /* REC while the song plays: K1 and K2 record the cutoff and the resonance */
+        uint32_t k = encoder - PANEL_ENC_K1;
+        v = song_view_rec_value(sv, k);
+        label = k == 0u ? "CUTOFF" : "RESONANCE";
+        char digits[4];
+        uint32_t n = 0;
+        for (uint32_t d = 1000u; d; d /= 10u) {
+            if (n || v / d || d == 1u) {
+                digits[n++] = (char)('0' + v / d % 10u);
+            }
+        }
+        do {
+            *name++ = *label;
+        } while (*label++);
+        for (uint32_t i = 0; i < n; i++) {
+            value[i] = digits[i];
+        }
+        value[n] = 0;
+        *fill = v;
+        *max = k == 0u ? 2047u : 15u;
+        return 1;
     } else if (encoder >= PANEL_ENC_K1 && encoder <= PANEL_ENC_K4) {
         lane ln;
         uint8_t cell[4];
@@ -690,6 +713,12 @@ static int input(screen* s, void* state, const screen_event* e) {
     }
     if (!sv->rec) {
         return 0;
+    }
+    if (!edit && (e->id == PANEL_ENC_K1 || e->id == PANEL_ENC_K1 + 1u) &&
+        song_view_rec_playing(sv)) {
+        /* REC while the song plays: the filter knobs record locks on the row they are turned in */
+        (void)song_view_record_knob(sv, s, e->id - PANEL_ENC_K1, e->steps);
+        return 1;
     }
     if (e->id == 6u && !edit) {
         sv->instr = clamp((int32_t)sv->instr + e->steps, GT2_MAX_INSTR);

@@ -750,10 +750,24 @@ static uint32_t audition_note(const step_view* st, const target* t, const uint8_
     return is_note(cell[0]) ? cell[0] - GT2_FIRSTNOTE : st->note[t->voice];
 }
 
-static void key_down(step_view* st, uint32_t k) {
+static void key_down(step_view* st, screen* s, uint32_t k) {
     song_view* sv = st->sv;
     st->held = (uint8_t)k;
     target t;
+    if (sv->t && song_view_rec_playing(sv)) {
+        /* REC while the song plays: the key is a pad that records the lane's note at the row it
+         * is played in (a staccato lane's key off after it), and sounds it */
+        uint32_t v = sv->voice;
+        (void)song_view_record_note(sv, s, st->note[v], st->instr[v], !(st->gate >> v & 1u));
+        if (sv->jam_off && sv->jam_voice != v) {
+            (void)sv->t->jam(sv->t->ctx, sv->jam_voice, SONG_T_RELEASE, sv->instr);
+        }
+        sv->jam_off = 0;
+        (void)sv->t->jam(sv->t->ctx, v, st->note[v], st->instr[v]);
+        sv->jam_voice = (uint8_t)v;
+        st->touched = (uint16_t)(st->touched | 1u << k); /* it toggles nothing at its release */
+        return;
+    }
     if (!sv->t || !target_of(st, k, &t)) {
         return;
     }
@@ -795,11 +809,11 @@ uint32_t step_view_keys(step_view* st, screen* s, uint32_t down, uint32_t presse
     for (uint32_t k = 0; pressed16 >> k; k++) {
         if (pressed16 >> k & 1u) {
             st->down = (uint16_t)(st->down | 1u << k);
-            key_down(st, k);
+            key_down(st, s, k);
         }
     }
-    if (!st->down) {
-        st->held = STEP_VIEW_NONE;
+    if (!st->down || (take && song_view_rec_playing(sv))) {
+        st->held = STEP_VIEW_NONE; /* (the pads of a recording hold no step) */
     } else if (st->held >= STEP_VIEW_STEPS || !(st->down >> st->held & 1u)) {
         st->held = 0u;
         while (!(st->down >> st->held & 1u)) {
@@ -901,6 +915,13 @@ static int input(screen* s, void* state, const screen_event* e) {
         }
         return 1;
     }
+    if (!held && !edit && (e->id == PANEL_ENC_K1 || e->id == PANEL_ENC_K1 + 1u) &&
+        song_view_rec_playing(sv)) {
+        /* REC while the song plays: K1 and K2 record the cutoff and the resonance as locks on
+         * the row they are turned in */
+        st->rev = (uint8_t)(st->rev + song_view_record_knob(sv, s, e->id - PANEL_ENC_K1, e->steps));
+        return 1;
+    }
     if (e->id < PANEL_ENC_K1 || e->id > PANEL_ENC_K4 || !held) {
         return 0; /* the knobs act as in LIVE until a step is held */
     }
@@ -967,6 +988,13 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
             text[0] = HEX[cur >> 4];
             text[1] = HEX[cur & 15u];
         }
+    } else if ((encoder == PANEL_ENC_K1 || encoder == PANEL_ENC_K1 + 1u) && !held && !edit &&
+               song_view_rec_playing(sv)) {
+        uint32_t k = encoder - PANEL_ENC_K1;
+        label = k == 0u ? "CUTOFF" : "RESONANCE";
+        cur = song_view_rec_value(sv, k);
+        top = k == 0u ? 2047u : 15u;
+        decimal(cur, text);
     } else if (encoder >= PANEL_ENC_K1 && encoder <= PANEL_ENC_K4 && held && sv->song &&
                ln->pattern != 0xffu && at < ln->rows) {
         uint32_t k = encoder - PANEL_ENC_K1;

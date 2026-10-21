@@ -71,6 +71,12 @@ typedef struct {
     uint8_t wave[SONG_T_VOICES];      /* each voice's control register as last written */
     uint8_t env[SONG_T_VOICES];       /* each voice's envelope, 0..255 */
     uint8_t subtune; /* actual playing subtune, independent of the UI selection */
+    /* REC's clock (M2d Task 6): the call each voice's row began on and the last call made, in
+     * the play's count (song_event.frame, low 16 bits), and how far toward the next call it is
+     * now, in 256ths: where in its row a key pressed now falls. */
+    uint16_t row_call[SONG_T_VOICES];
+    uint16_t now_call;
+    uint8_t now_frac;
     uint32_t applied; /* command acknowledgements plus idle edits: pattern data may have changed */
 } song_status;
 

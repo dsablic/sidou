@@ -13,8 +13,8 @@
  * device; with none bound the transport stays stopped):
  * - PLAY plays the song from the orderlist entry the views show (the cursor's) and stops it;
  *   with EDIT held it goes on from where it stopped. In every view: the panel never sees it.
- * - REC turns record mode on and off; the header says REC in red. (What it records is M2d
- *   Task 6's.)
+ * - REC turns record mode on and off; the header says REC in red. With the song playing it
+ *   records the keys and the K1/K2 knobs (song_view_record_note, song_view_record_knob below).
  * - GLO held and one of the three leftmost note keys mutes that voice, or lets it sound
  *   again; GLO held and the next three keys solo voice 1, 2 or 3, or unsolo it. While any
  *   voice is soloed, the soloed ones sound and the rest are silent; otherwise the muted ones
@@ -73,6 +73,14 @@ extern "C" {
 #define SONG_VIEW_ROWS_A_BEAT 4u
 /* No key: song_view.jam_key. */
 #define SONG_VIEW_NO_KEY 0xffu
+/* REC's quantise setting (song_view.quant; the menu's REC QUANT): the nearest row (the
+ * default), the row the key falls in, or the nearest with a bar's count-in. */
+#define SONG_VIEW_QUANT_NEAREST 0u
+#define SONG_VIEW_QUANT_OFF 1u
+#define SONG_VIEW_QUANT_COUNT 2u
+#define SONG_VIEW_QUANTS 3u
+/* Notes recorded and not yet written (the editor takes one cell write at a time). */
+#define SONG_VIEW_REC_QUEUE 4u
 /* Room for a view's look in song_view.drawn: the head's, then the view's own. */
 #define SONG_VIEW_LOOK 48u
 
@@ -117,6 +125,20 @@ typedef struct {
     uint8_t clear_pattern, clear_row;
     uint8_t clear_armed;
     uint8_t subtune; /* selected orderlist, not necessarily the currently playing one */
+    /* REC while the song plays (song_view_record_*): the quantise setting, the count-in's end
+     * (a call of the play's count) while one runs, the running cutoff and resonance a knob
+     * records (rec_knobs: 0 until the first move reads them from LIVE), and the writes waiting
+     * for the editor: pattern, row, note (SONG_VIEW_REC_OFF: a key off where the row is a rest)
+     * and instrument. */
+    uint8_t quant;
+    uint8_t counting;
+    uint8_t was_playing;
+    uint8_t rec_knobs;
+    uint16_t count_end;
+    uint16_t rec_cut;
+    uint8_t rec_res;
+    uint8_t rec_n;
+    uint8_t rec_q[SONG_VIEW_REC_QUEUE][4];
 } song_view;
 
 /* No player, nothing muted, the cursor at entry 0 row 0 of voice 1, instrument 1. */
@@ -144,6 +166,30 @@ const view* song_view_next(const view* top);
 void song_view_play(song_view* sv, int resume);
 /* REC: record mode on or off. */
 void song_view_rec(song_view* sv);
+/* REC while the song plays records (song_view_recording): the note a key plays goes into the
+ * cursor's voice at the row it was played in (song_view_record_note), the K1 and K2 moves
+ * become cutoff and resonance locks on the row they happened in (song_view_record_knob), both
+ * through the editor's cell writes and the lock table, as the views' own edits; "SONG FULL" and
+ * the other refusals toast on s. */
+#define SONG_VIEW_REC_OFF 0xffu
+/* 1: REC is on and the song plays: the keys are for recording (during a count-in too, when they
+ * sound and record nothing). song_view_recording: and any count-in has run out. */
+int song_view_rec_playing(const song_view* sv);
+int song_view_recording(const song_view* sv);
+/* The rows after the one a voice plays that a key pressed `elapsed` of a row (256ths of a call,
+ * row_q8 the row's length in the same) after its start falls in: SONG_VIEW_QUANT_OFF the row it
+ * is in, the others the nearest row (halfway rounds up). */
+uint32_t song_view_quantise(uint32_t quant, uint32_t elapsed_q8, uint32_t row_q8);
+/* Note 0..95 with instrument instr on the cursor's voice; keyoff 1 also writes a key off on
+ * the next row if it is a rest (a staccato lane's). 1: queued (or written), 0: not recorded. */
+int song_view_record_note(song_view* sv, screen* s, uint32_t note, uint32_t instr, int keyoff);
+/* K1 (knob 0, the cutoff) or K2 (1, the resonance) turned by `steps` detents. 1: the lock
+ * is written. */
+int song_view_record_knob(song_view* sv, screen* s, uint32_t knob, int32_t steps);
+/* The knobs' running value, for their popup: 0 cutoff, 1 resonance. */
+uint32_t song_view_rec_value(const song_view* sv, uint32_t knob);
+/* The writes waiting for the editor, once a frame (song_view_frame calls it). */
+void song_view_rec_drain(song_view* sv);
 /* GLO's toggles (panel_take_glo): bit k of the PANEL_GLO_KEYS keys, mutes then solos. */
 void song_view_glo(song_view* sv, uint32_t toggles);
 /* The voices to keep silent: the unsoloed ones while any is soloed, else the muted ones. */
@@ -153,9 +199,11 @@ uint32_t song_view_mute_mask(const song_view* sv);
  * (pressed, or down and in neither `owned` nor the jam's: owned are the keys the panel sounds
  * or keeps quiet) become the jam note. Returns the keys the jam took this call, for the panel
  * to keep quiet (panel_quiet_keys). With REC on, recording_screen is the active TRACKER's
- * screen (also under MIDI learn), or NULL outside TRACKER; canvas ownership is unrelated. */
+ * screen (also under MIDI learn), or NULL outside TRACKER; canvas ownership is unrelated.
+ * While REC records (song_view_recording) each key's note is recorded as well, on live_screen,
+ * the screen of the song view on top (TRACKER's or STEP's), in place of TRACKER's cursor entry. */
 uint32_t song_view_keys(song_view* sv, uint32_t down, uint32_t pressed, uint32_t owned,
-                        int take, screen* recording_screen);
+                        int take, screen* recording_screen, screen* live_screen);
 /* Once a frame before the screen's: what the player has not taken yet, and with shows (a song
  * view shows) its status; outside the song views PLAY reads the status when pressed. */
 void song_view_frame(song_view* sv, int shows);

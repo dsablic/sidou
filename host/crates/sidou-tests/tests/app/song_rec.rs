@@ -1,0 +1,492 @@
+// SPDX-FileCopyrightText: 2026 SIDOU contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! REC while the song plays (app/song_view.c, M2d Task 6): a note key writes its note into the
+//! cursor's voice at the row it was played in, quantised to the nearest row (or the row it falls
+//! in), K1 and K2 become cutoff and resonance locks on the row they were turned in, in TRACKER
+//! and in STEP, through the editor's cell writes, against the fake player (song_view.rs) whose
+//! status says where each voice's row began and how far into the call the clock is.
+
+use std::ffi::CStr;
+
+use sidou_sys::*;
+use sidou_tests::song::{SngSpec, Song as Model};
+
+use crate::song_view::{open_tracker, settle, Song};
+
+const R: [u8; 4] = [GT2_REST as u8, 0, 0, 0];
+const C4: u8 = GT2_FIRSTNOTE as u8 + 48;
+/// The note key 16 plays at the panel's default octave (tracker_view.rs).
+const KEY16: u8 = GT2_FIRSTNOTE as u8 + 57;
+/// Calls a row at tempo 6 (the fake's speed), in 256ths: a row's length in the status's clock.
+const ROW: u32 = 6 * 256;
+
+/// Voice 1 plays patterns 0 and 1 (16 rows each, a note and a command on pattern 0's row 5),
+/// voice 2 pattern 2, voice 3 pattern 3; pattern 1 follows pattern 0, and the list restarts at 0.
+fn song() -> Model {
+    let mut p0 = vec![R; 16];
+    p0[5] = [C4, 2, 4, 0x22];
+    let mut s = SngSpec::new();
+    s.orders = vec![vec![(vec![0, 1], 0), (vec![2], 0), (vec![3], 0)]];
+    s.instr = vec![[0u8; 25], [0u8; 25]];
+    s.patterns = vec![
+        (p0, [0xff, 0, 0, 0]),
+        (vec![R; 16], [0xff, 0, 0, 0]),
+        (vec![R; 16], [0xff, 0, 0, 0]),
+        (vec![R; 16], [0xff, 0, 0, 0]),
+    ];
+    let mut m = Model::host();
+    m.read(&s.encode(), 0).unwrap();
+    m
+}
+
+fn cell(s: &Song, pattern: u32, row: usize) -> [u8; 4] {
+    let d = unsafe { gt2_pattern_data(s.ui.v.song.song, pattern) };
+    unsafe { std::slice::from_raw_parts(d.add(row * 4), 4) }
+        .try_into()
+        .unwrap()
+}
+
+fn locks(s: &Song) -> Vec<(u8, u8, u8, u16)> {
+    let mut out = vec![song_lock::default(); SONG_LOCKS_MAX as usize];
+    let n = unsafe { song_ext_get_locks(s.ui.v.song.song, out.as_mut_ptr(), SONG_LOCKS_MAX) };
+    out[..n as usize]
+        .iter()
+        .map(|l| (l.pattern, l.row, l.param, l.value))
+        .collect()
+}
+
+/// The player at call 100 + `calls` of its play, voice 1 on row `row` since call 100 and the
+/// clock `frac` 256ths on from the last call: a key now falls `calls * 256 + frac` into the row.
+fn at(s: &mut Song, row: u8, elapsed: u32) {
+    let st = &mut s.f.st;
+    st.state = SONG_T_PLAYING as u8;
+    st.order_pos = [0, 0, 0];
+    st.row = [row, 0, 0];
+    st.row_call = [100, 100, 100];
+    st.now_call = 100 + (elapsed >> 8) as u16;
+    st.now_frac = (elapsed & 255) as u8;
+}
+
+fn tracker() -> Song {
+    let mut s = Song::playing(Some(song()));
+    open_tracker(&mut s.ui);
+    s
+}
+
+/// A key (key 16) pressed and let go, and the writes done.
+fn tap(s: &mut Song, k: u32) {
+    s.ui.note_keys(1 << k, 1 << k);
+    s.ui.note_keys(0, 0);
+    for _ in 0..6 {
+        s.ui.frame();
+    }
+    settle(&mut s.ui);
+}
+
+/// The first play frame: the view reads the player's state.
+fn playing(s: &mut Song, row: u8, elapsed: u32) {
+    at(s, row, elapsed);
+    s.ui.frame();
+}
+
+#[test]
+fn quantising_is_the_nearest_row_or_the_row_the_key_falls_in() {
+    let q = |mode, e| unsafe { song_view_quantise(mode, e, ROW) };
+    let (near, off) = (SONG_VIEW_QUANT_NEAREST, SONG_VIEW_QUANT_OFF);
+    // A key at each fraction of a row, in 1/8ths.
+    for eighth in 0..8u32 {
+        let e = eighth * ROW / 8;
+        assert_eq!(q(near, e), u32::from(eighth >= 4), "{eighth}/8 nearest");
+        assert_eq!(q(off, e), 0, "{eighth}/8 off");
+    }
+    assert_eq!(q(near, ROW / 2 - 1), 0);
+    assert_eq!(q(near, ROW / 2), 1, "halfway rounds up");
+    assert_eq!(q(near, ROW - 1), 1);
+    assert_eq!(q(near, ROW), 1, "a row on: this row is the next");
+    assert_eq!(q(near, ROW + ROW / 2 - 1), 1);
+    assert_eq!(q(near, ROW + ROW / 2), 2);
+    assert_eq!(q(off, ROW - 1), 0);
+    assert_eq!(q(off, ROW), 1);
+    assert_eq!(
+        q(SONG_VIEW_QUANT_COUNT, ROW / 2),
+        1,
+        "the count-in quantises as nearest"
+    );
+    assert_eq!(
+        unsafe { song_view_quantise(near, 100, 0) },
+        0,
+        "no tempo: no division"
+    );
+}
+
+#[test]
+fn a_key_while_recording_writes_its_note_at_the_nearest_row_and_sounds() {
+    // (the row the player is on, how far into it, the row the note lands on)
+    let cases: [(u8, u32, usize); 7] = [
+        (3, 0, 3),
+        (3, ROW / 4, 3),
+        (3, ROW / 2 - 1, 3),
+        (3, ROW / 2, 4),
+        (3, ROW * 3 / 4, 4),
+        (3, ROW - 1, 4),
+        (3, ROW + 20, 4), // a stale status: the row has gone by, the next one is the nearest
+    ];
+    for (row, elapsed, lands) in cases {
+        let mut s = tracker();
+        s.ui.press(PANEL_BTN_REC);
+        s.calls();
+        playing(&mut s, row, elapsed);
+        tap(&mut s, 16);
+        assert_eq!(cell(&s, 0, lands), [KEY16, 1, 0, 0], "row {row} +{elapsed}");
+        for r in 0..16 {
+            if r != lands && r != 5 {
+                assert_eq!(cell(&s, 0, r), R, "row {r} untouched");
+            }
+        }
+        assert_eq!((s.f.cell_writes, s.f.index_swaps), (1, 0), "one cell write");
+        assert!(
+            s.calls().contains(&crate::song_view::Call::Jam(
+                0,
+                u32::from(KEY16 - GT2_FIRSTNOTE as u8),
+                1
+            )),
+            "the key sounds"
+        );
+        assert_eq!(s.ui.v.song.row, 0, "the cursor stays where it was");
+    }
+}
+
+#[test]
+fn off_records_the_row_the_key_falls_in() {
+    let mut s = tracker();
+    s.ui.v.song.quant = SONG_VIEW_QUANT_OFF as u8;
+    s.ui.press(PANEL_BTN_REC);
+    playing(&mut s, 3, ROW - 1);
+    tap(&mut s, 16);
+    assert_eq!(cell(&s, 0, 3), [KEY16, 1, 0, 0]);
+    assert_eq!(cell(&s, 0, 4), R);
+}
+
+#[test]
+fn a_recorded_note_replaces_the_note_and_keeps_the_rows_command() {
+    let mut s = tracker();
+    s.ui.press(PANEL_BTN_REC);
+    playing(&mut s, 5, 10);
+    tap(&mut s, 16);
+    assert_eq!(
+        cell(&s, 0, 5),
+        [KEY16, 1, 4, 0x22],
+        "the note and instrument are replaced"
+    );
+}
+
+#[test]
+fn a_key_past_the_end_of_the_pattern_goes_to_the_one_that_plays_next_or_round() {
+    let mut s = tracker();
+    s.ui.press(PANEL_BTN_REC);
+    playing(&mut s, 15, ROW * 3 / 4);
+    tap(&mut s, 16);
+    assert_eq!(
+        cell(&s, 1, 0),
+        [KEY16, 1, 0, 0],
+        "row 16 is pattern 1's row 0"
+    );
+    // The last entry: the restart position's pattern.
+    let mut s = tracker();
+    s.ui.press(PANEL_BTN_REC);
+    at(&mut s, 15, ROW * 3 / 4);
+    s.f.st.order_pos = [1, 0, 0];
+    s.ui.frame();
+    tap(&mut s, 16);
+    assert_eq!(
+        cell(&s, 0, 0),
+        [KEY16, 1, 0, 0],
+        "round to the restart's pattern 0"
+    );
+}
+
+#[test]
+fn the_row_comes_from_the_players_entry_not_the_cursors() {
+    let mut s = tracker();
+    s.ui.press(PANEL_BTN_REC);
+    at(&mut s, 2, 0);
+    s.f.st.order_pos = [1, 0, 0];
+    s.ui.frame();
+    tap(&mut s, 16);
+    assert_eq!(cell(&s, 1, 2), [KEY16, 1, 0, 0]);
+    assert_eq!(cell(&s, 0, 2), R);
+}
+
+#[test]
+fn the_key_goes_to_the_cursors_voice() {
+    let mut s = tracker();
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1); // voice 2
+    s.ui.press(PANEL_BTN_REC);
+    at(&mut s, 7, 0);
+    s.f.st.row = [0, 7, 0];
+    s.ui.frame();
+    tap(&mut s, 16);
+    assert_eq!(cell(&s, 2, 7), [KEY16, 1, 0, 0]);
+}
+
+#[test]
+fn with_rec_off_or_the_song_stopped_nothing_is_recorded_here() {
+    let mut s = tracker();
+    playing(&mut s, 3, 0);
+    tap(&mut s, 16);
+    assert_eq!(s.f.cell_writes, 0, "REC off");
+    // Stopped, REC on: the cursor's entry of Task 3.
+    s.ui.press(PANEL_BTN_REC);
+    s.f.st.state = SONG_T_STOPPED as u8;
+    s.ui.frame();
+    tap(&mut s, 16);
+    assert_eq!(cell(&s, 0, 0), [KEY16, 1, 0, 0]);
+    assert_eq!(s.ui.v.song.row, 1, "and the cursor advances");
+}
+
+#[test]
+fn notes_in_one_pass_all_get_written_in_order() {
+    let mut s = tracker();
+    s.ui.press(PANEL_BTN_REC);
+    playing(&mut s, 3, 0);
+    let keys = (1u32 << 16) | (1 << 18);
+    s.ui.note_keys(keys, keys);
+    s.ui.note_keys(0, 0);
+    for _ in 0..8 {
+        s.ui.frame();
+    }
+    settle(&mut s.ui);
+    // Both keys went to voice 1's row 3: the later key's note stays.
+    assert_eq!(s.f.cell_writes, 2);
+    assert_eq!(cell(&s, 0, 3)[0], KEY16 + 2);
+    assert_eq!(s.ui.v.song.rec_n, 0);
+}
+
+#[test]
+fn song_full_and_saving_refuse_a_recorded_note_with_a_toast() {
+    for (guard, message) in [
+        (SONG_EDIT_GUARD_SAVING, "SAVING"),
+        (SONG_EDIT_GUARD_FULL, "SONG FULL"),
+    ] {
+        let mut s = tracker();
+        s.f.edit_guard = guard as i32;
+        s.ui.press(PANEL_BTN_REC);
+        playing(&mut s, 3, 0);
+        tap(&mut s, 16);
+        assert_eq!(s.f.cell_writes, 0);
+        assert_eq!(cell(&s, 0, 3), R);
+        assert_eq!(s.ui.toast().as_deref(), Some(message));
+    }
+}
+
+#[test]
+fn k1_and_k2_record_cutoff_and_resonance_locks_on_the_row_they_were_turned_in() {
+    let mut s = tracker();
+    s.ui.press(PANEL_BTN_REC);
+    let cut = unsafe { live_param_get(&*s.ui.rig.live, LIVE_PARAM_CUTOFF) };
+    let res = unsafe { live_param_get(&*s.ui.rig.live, LIVE_PARAM_RESONANCE) };
+    playing(&mut s, 3, ROW - 10); // nearly the next row: a lock is the row it happened in
+    s.ui.turn(PANEL_ENC_K1, 2);
+    assert_eq!(locks(&s), vec![(0, 3, 0, (cut + 64) as u16)]);
+    s.ui.turn(PANEL_ENC_K1 + 1, -1);
+    at(&mut s, 4, 30);
+    s.ui.frame();
+    s.ui.turn(PANEL_ENC_K1, 1);
+    s.ui.turn(PANEL_ENC_K1 + 1, 3);
+    assert_eq!(
+        locks(&s),
+        vec![
+            (0, 3, 0, (cut + 64) as u16),
+            (0, 3, 1, (res - 1) as u16),
+            (0, 4, 0, (cut + 96) as u16),
+            (0, 4, 1, (res + 2) as u16),
+        ]
+    );
+    assert_eq!(s.f.cell_writes, 0, "locks are not cell writes");
+    assert_eq!(
+        unsafe { CStr::from_ptr(s.ui.v.popup.name.as_ptr()) }.to_str(),
+        Ok("RESONANCE")
+    );
+}
+
+#[test]
+fn the_knob_values_clamp_and_a_stopped_song_keeps_k1_as_it_was() {
+    let mut s = tracker();
+    s.ui.press(PANEL_BTN_REC);
+    playing(&mut s, 3, 0);
+    s.ui.turn(PANEL_ENC_K1, 1000);
+    s.ui.turn(PANEL_ENC_K1 + 1, 1000);
+    assert_eq!(locks(&s), vec![(0, 3, 0, 2047), (0, 3, 1, 15)]);
+    s.ui.turn(PANEL_ENC_K1, -1000);
+    assert_eq!(locks(&s)[0], (0, 3, 0, 0));
+    // Stopped: K1 is the row's instrument again (Task 3) and no lock appears.
+    s.f.st.state = SONG_T_STOPPED as u8;
+    s.ui.frame();
+    s.ui.turn(PANEL_ENC_K1, 2);
+    settle(&mut s.ui);
+    assert_eq!(cell(&s, 0, 0)[1], 2);
+    assert_eq!(locks(&s).len(), 2);
+}
+
+#[test]
+fn a_frozen_song_refuses_a_lock_with_saving() {
+    let mut s = tracker();
+    s.ui.press(PANEL_BTN_REC);
+    playing(&mut s, 3, 0);
+    unsafe { (*s.ui.v.song.song.cast_mut()).frozen = 1 };
+    s.ui.turn(PANEL_ENC_K1, 1);
+    assert_eq!(locks(&s), vec![]);
+    assert_eq!(s.ui.toast().as_deref(), Some("SAVING"));
+}
+
+#[test]
+fn a_count_in_of_one_bar_runs_before_recording_begins() {
+    let mut s = tracker();
+    s.ui.v.song.quant = SONG_VIEW_QUANT_COUNT as u8;
+    s.ui.press(PANEL_BTN_REC);
+    // PLAY with REC on: the song starts, and a bar (16 rows of 6 calls) is counted in.
+    s.ui.press(PANEL_BTN_PLAY);
+    at(&mut s, 0, 0);
+    s.f.st.now_call = 0;
+    s.f.st.row_call = [0; 3];
+    s.ui.frame();
+    assert_eq!(s.ui.toast().as_deref(), Some("COUNT-IN"));
+    assert_eq!(s.ui.v.song.count_end, 96);
+    s.f.st.now_call = 90;
+    s.f.st.row = [15, 0, 0];
+    s.f.st.row_call = [90, 0, 0];
+    s.ui.frame();
+    tap(&mut s, 16);
+    assert_eq!(
+        s.f.cell_writes, 0,
+        "nothing is recorded during the count-in"
+    );
+    s.ui.turn(PANEL_ENC_K1, 1);
+    assert_eq!(locks(&s), vec![], "nor the knobs");
+    s.f.st.now_call = 96;
+    s.f.st.row = [0, 0, 0];
+    s.f.st.row_call = [96, 0, 0];
+    s.ui.frame();
+    tap(&mut s, 16);
+    assert_eq!(
+        cell(&s, 0, 0),
+        [KEY16, 1, 0, 0],
+        "and from the bar's end it records"
+    );
+}
+
+#[test]
+fn the_menus_rec_item_chooses_the_quantising() {
+    let mut s = Song::playing(Some(song()));
+    s.ui.press(PANEL_BTN_HOME);
+    s.ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
+    s.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_REC as i32);
+    assert_eq!(
+        s.ui.v.song.quant, SONG_VIEW_QUANT_NEAREST as u8,
+        "the default"
+    );
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(s.ui.v.song.quant, SONG_VIEW_QUANT_OFF as u8);
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(s.ui.v.song.quant, SONG_VIEW_QUANT_COUNT as u8);
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(
+        s.ui.v.song.quant, SONG_VIEW_QUANT_COUNT as u8,
+        "it stops at the end"
+    );
+    s.ui.turn(PANEL_ENC_ALGORITHM, -1);
+    s.ui.turn(PANEL_ENC_ALGORITHM, -1);
+    assert_eq!(s.ui.v.song.quant, SONG_VIEW_QUANT_NEAREST as u8);
+}
+
+// ---- STEP ----
+
+fn step() -> Song {
+    let mut s = Song::playing(Some(song()));
+    s.ui.press(PANEL_BTN_SEQ);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.top(), "STEP");
+    s
+}
+
+const C3: u8 = GT2_FIRSTNOTE as u8 + 36;
+
+#[test]
+fn a_step_key_while_recording_writes_the_lanes_note_and_its_key_off() {
+    let mut s = step();
+    s.ui.press(PANEL_BTN_REC);
+    playing(&mut s, 3, ROW * 3 / 4);
+    tap(&mut s, 9); // any of the 16 pads
+    assert_eq!(
+        cell(&s, 0, 4),
+        [C3, 1, 0, 0],
+        "the lane's note at the nearest row"
+    );
+    assert_eq!(
+        cell(&s, 0, 5),
+        [C4, 2, 4, 0x22],
+        "row 5 holds a note: no key off over it"
+    );
+    assert_eq!(cell(&s, 0, 3), R);
+    assert_eq!(s.ui.v.step.held, STEP_VIEW_NONE as u8);
+    // The pad's own step (9) was not toggled by its release.
+    assert_eq!(cell(&s, 0, 8), R);
+    let mut s = step();
+    s.ui.press(PANEL_BTN_REC);
+    playing(&mut s, 8, 0);
+    tap(&mut s, 0);
+    assert_eq!(cell(&s, 0, 8), [C3, 1, 0, 0]);
+    assert_eq!(
+        cell(&s, 0, 9),
+        [GT2_KEYOFF as u8, 0, 0, 0],
+        "staccato: a key off after"
+    );
+    assert_eq!((s.f.cell_writes, s.f.index_swaps), (2, 0));
+}
+
+#[test]
+fn a_legato_lane_records_the_note_alone() {
+    let mut s = step();
+    s.ui.press(PANEL_BTN_ARP); // legato
+    s.ui.press(PANEL_BTN_REC);
+    playing(&mut s, 8, 0);
+    tap(&mut s, 0);
+    assert_eq!(cell(&s, 0, 8), [C3, 1, 0, 0]);
+    assert_eq!(cell(&s, 0, 9), R);
+    assert_eq!(s.f.cell_writes, 1);
+}
+
+#[test]
+fn the_keys_above_the_steps_record_their_own_pitch_on_the_selected_lane() {
+    let mut s = step();
+    s.ui.turn(PANEL_ENC_SELECT, 1); // lane 2
+    s.ui.press(PANEL_BTN_REC);
+    at(&mut s, 4, 0);
+    s.f.st.row = [0, 4, 0];
+    s.ui.frame();
+    tap(&mut s, 16);
+    assert_eq!(cell(&s, 2, 4), [KEY16, 1, 0, 0]);
+}
+
+#[test]
+fn step_with_the_song_stopped_toggles_as_before_and_needs_no_rec() {
+    let mut s = step();
+    s.ui.press(PANEL_BTN_REC);
+    tap(&mut s, 2);
+    assert_eq!(cell(&s, 0, 2), [C3, 1, 0, 0]);
+}
+
+#[test]
+fn k1_and_k2_in_step_record_locks_and_a_held_step_keeps_its_own_lock() {
+    let mut s = step();
+    s.ui.press(PANEL_BTN_REC);
+    let cut = unsafe { live_param_get(&*s.ui.rig.live, LIVE_PARAM_CUTOFF) };
+    playing(&mut s, 6, 20);
+    s.ui.turn(PANEL_ENC_K1, 1);
+    assert_eq!(locks(&s), vec![(0, 6, 0, (cut + 32) as u16)]);
+    s.ui.frame();
+    assert_eq!(
+        unsafe { CStr::from_ptr(s.ui.v.popup.name.as_ptr()) }.to_str(),
+        Ok("CUTOFF")
+    );
+}

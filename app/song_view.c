@@ -3,6 +3,7 @@
 #include "song_view.h"
 
 #include <stddef.h>
+#include <string.h>
 
 #include "font.h"
 #include "live_view.h"
@@ -109,6 +110,14 @@ void song_view_init(song_view* sv, live* l) {
     sv->field = TRACKER_VIEW_FIELD_NOTE;
     sv->clear_armed = 0;
     sv->subtune = 0;
+    sv->quant = SONG_VIEW_QUANT_NEAREST;
+    sv->counting = 0;
+    sv->was_playing = 0;
+    sv->rec_knobs = 0;
+    sv->count_end = 0;
+    sv->rec_cut = 0;
+    sv->rec_res = 0;
+    sv->rec_n = 0;
 }
 
 uint32_t song_view_mute_mask(const song_view* sv) {
@@ -197,6 +206,8 @@ void song_view_loaded(song_view* sv) {
     sv->jam_off = 0;
     sv->built = 0;
     sv->unbuilt = 0;
+    sv->rec_n = 0;
+    sv->counting = 0;
 }
 
 /* 1 while the song plays or is about to. */
@@ -224,8 +235,27 @@ void song_view_play(song_view* sv, int resume) {
     send_play(sv);
 }
 
+/* A count-in of one bar (the rows a beat times four, at the song's tempo) from the last call:
+ * REC records nothing until it has run out. */
+static void count_in(song_view* sv) {
+    uint32_t calls = ((uint32_t)sv->st.speed[0] + sv->st.speed[1]) / 2u;
+    sv->count_end = (uint16_t)(sv->st.now_call + (calls ? calls : 6u) * 4u * sv->rows_beat);
+    sv->counting = 1;
+    if (sv->edit_screen) {
+        screen_toast(sv->edit_screen, "COUNT-IN", SCREEN_TOAST_MS);
+    }
+}
+
 void song_view_rec(song_view* sv) {
+    if (sv->t && sv->want == WANT_NONE) {
+        sv->t->status(sv->t->ctx, &sv->st); /* the state now: no frame may have read it */
+    }
     sv->rec = (uint8_t)!sv->rec;
+    sv->rec_knobs = 0; /* the knobs start from LIVE's values again */
+    sv->counting = 0;
+    if (sv->rec && sv->quant == SONG_VIEW_QUANT_COUNT && sv->t && sv->st.state == SONG_T_PLAYING) {
+        count_in(sv);
+    }
 }
 
 void song_view_glo(song_view* sv, uint32_t toggles) {
@@ -235,7 +265,7 @@ void song_view_glo(song_view* sv, uint32_t toggles) {
 }
 
 uint32_t song_view_keys(song_view* sv, uint32_t down, uint32_t pressed, uint32_t owned,
-                        int take, screen* recording_screen) {
+                        int take, screen* recording_screen, screen* live_screen) {
     /* Let go (or let go and pressed again, which plays again below). */
     uint32_t gone = sv->jam_keys & (~down | pressed);
     if (sv->jam_key != SONG_VIEW_NO_KEY && (gone >> sv->jam_key & 1u)) {
@@ -253,8 +283,13 @@ uint32_t song_view_keys(song_view* sv, uint32_t down, uint32_t pressed, uint32_t
             }
             taken |= bit;
             uint8_t n = live_key_note(sv->l, (uint8_t)(PANEL_BASE_NOTE + k));
-            if (sv->rec && recording_screen) {
-                tracker_view_note(recording_screen, sv, n < GT2_NOTE0 ? GT2_NOTES : n - GT2_NOTE0);
+            uint32_t pitch = n < GT2_NOTE0 ? GT2_NOTES : n - GT2_NOTE0;
+            if (live_screen && song_view_rec_playing(sv)) {
+                if (pitch < GT2_NOTES) {
+                    (void)song_view_record_note(sv, live_screen, pitch, sv->instr, 0);
+                }
+            } else if (sv->rec && recording_screen) {
+                tracker_view_note(recording_screen, sv, pitch);
             }
             if (n == LIVE_NO_NOTE || n < GT2_NOTE0 || n - GT2_NOTE0 >= GT2_NOTES) {
                 continue; /* outside the player's notes: the key sounds nothing */
@@ -288,21 +323,221 @@ __attribute__((noinline, unused)) static void edit_poll(song_view* sv) {
     }
 }
 
+/* ---- REC while the song plays ---- */
+
+int song_view_rec_playing(const song_view* sv) {
+    return sv->rec && sv->t && sv->song && sv->st.state == SONG_T_PLAYING;
+}
+
+int song_view_recording(const song_view* sv) {
+    return song_view_rec_playing(sv) &&
+           !(sv->counting && (int16_t)(sv->st.now_call - sv->count_end) < 0);
+}
+
+uint32_t song_view_quantise(uint32_t quant, uint32_t elapsed_q8, uint32_t row_q8) {
+    if (row_q8 == 0u) {
+        return 0u;
+    }
+    return quant == SONG_VIEW_QUANT_OFF ? elapsed_q8 / row_q8
+                                        : (2u * elapsed_q8 + row_q8) / (2u * row_q8);
+}
+
+/* The first pattern entry at or after `i` in an orderlist of n entries (o[n + 1] is its
+ * restart position), or n for none. */
+static uint32_t pattern_entry(const uint8_t* o, uint32_t i, uint32_t n) {
+    while (i < n && o[i] >= GT2_REPEAT) {
+        i++;
+    }
+    return i;
+}
+
+/* Where a key pressed now falls on the cursor's voice: the pattern and row, `ahead` rows of its
+ * playing row on (the quantised one, or the row it is in), running into the pattern that plays
+ * next, or round, when that is past the end. 0: not placed (no row yet, no orderlist). */
+static int rec_place(song_view* sv, int quantised, uint32_t* pattern, uint32_t* row) {
+    const song_transport* t = sv->t;
+    if (sv->want == WANT_NONE) {
+        t->status(t->ctx, &sv->st); /* the clock now */
+    }
+    uint32_t v = sv->voice;
+    const gt2_song* s = sv->song;
+    if (!song_view_rec_playing(sv) || sv->st.row[v] == SONG_T_NOWHERE) {
+        return 0;
+    }
+    uint32_t sub = sv->st.subtune;
+    const uint8_t* o = gt2_order_data(s, sub, v);
+    uint32_t n = gt2_order_entries(s, sub, v);
+    uint32_t i = o ? pattern_entry(o, sv->st.order_pos[v], n) : n;
+    if (i >= n) {
+        return 0;
+    }
+    uint32_t row_q8 = ((uint32_t)sv->st.speed[0] + sv->st.speed[1]) * 128u;
+    uint32_t elapsed = ((uint32_t)(uint16_t)(sv->st.now_call - sv->st.row_call[v]) << 8) +
+                       sv->st.now_frac;
+    uint32_t ahead = song_view_quantise(quantised ? sv->quant : SONG_VIEW_QUANT_OFF, elapsed,
+                                        row_q8 ? row_q8 : 6u * 256u);
+    ahead = ahead > 1u ? 1u : ahead; /* a stale row would put it further */
+    uint32_t at = sv->st.row[v] + ahead;
+    uint32_t pat = o[i], rows = gt2_pattern_rows(s, pat) - 1u;
+    if (at >= rows) {
+        uint32_t j = pattern_entry(o, i + 1u, n);
+        if (j >= n) {
+            j = pattern_entry(o, o[n + 1u], n); /* the restart position */
+        }
+        at -= rows;
+        if (j < n) {
+            pat = o[j];
+            rows = gt2_pattern_rows(s, pat) - 1u;
+        }
+        at = rows ? at % rows : 0u;
+    }
+    *pattern = pat;
+    *row = at;
+    return 1;
+}
+
+/* A refusal's toast, on the screen the key came on, else the song view's. */
+static void rec_toast(const song_view* sv, screen* s, const char* msg) {
+    screen* on = s ? s : sv->edit_screen;
+    if (on && msg && *msg) {
+        screen_toast(on, msg, SCREEN_TOAST_MS);
+        on->popup_ask = 0;
+    }
+}
+
+__attribute__((noinline, unused)) static void rec_push(song_view* sv, uint32_t pattern, uint32_t row,
+                                                      uint32_t note, uint32_t instr) {
+    uint8_t* q = sv->rec_q[sv->rec_n++];
+    q[0] = (uint8_t)pattern;
+    q[1] = (uint8_t)row;
+    q[2] = (uint8_t)note;
+    q[3] = (uint8_t)instr;
+}
+
+int song_view_record_note(song_view* sv, screen* s, uint32_t note, uint32_t instr, int keyoff) {
+    uint32_t pattern, row;
+    if (!song_view_recording(sv) || !sv->editor || !rec_place(sv, 1, &pattern, &row) ||
+        !song_view_recording(sv)) {
+        return 0;
+    }
+    uint32_t rows = gt2_pattern_rows(sv->song, pattern) - 1u;
+    int off = keyoff && row + 1u < rows;
+    if (sv->rec_n + (off ? 2u : 1u) > SONG_VIEW_REC_QUEUE) {
+        rec_toast(sv, s, "WAITING");
+        return 0;
+    }
+    rec_push(sv, pattern, row, note, instr);
+    if (off) {
+        rec_push(sv, pattern, row + 1u, SONG_VIEW_REC_OFF, 0u);
+    }
+    song_view_rec_drain(sv);
+    return 1;
+}
+
+void song_view_rec_drain(song_view* sv) {
+    song_editor* ed = sv->editor;
+    while (sv->rec_n && ed && sv->song) {
+        if (sv->edit_pending && ed->sent) {
+            (void)song_edit_poll(ed);
+            sv->edit_pending = ed->pending;
+        }
+        if (ed->pending) {
+            return;
+        }
+        uint8_t q[4];
+        memcpy(q, sv->rec_q[0], 4u);
+        sv->rec_n--;
+        for (uint32_t i = 0; i < sv->rec_n; i++) {
+            memcpy(sv->rec_q[i], sv->rec_q[i + 1u], 4u);
+        }
+        uint8_t cell[4];
+        if (!song_edit_read_row(ed, q[0], q[1], cell)) {
+            rec_toast(sv, NULL, song_edit_message(ed));
+            continue;
+        }
+        if (q[2] == SONG_VIEW_REC_OFF) {
+            if (cell[0] != GT2_REST) {
+                continue; /* a note went there meanwhile: it keeps its row */
+            }
+            cell[0] = GT2_KEYOFF;
+        } else {
+            cell[0] = (uint8_t)(GT2_FIRSTNOTE + q[2]);
+            cell[1] = q[3];
+        }
+        int ok = song_edit_row(ed, q[0], q[1], cell);
+        sv->edit_pending = ed->pending;
+        if (!ok || ed->status == SONG_EDIT_TIDYING) {
+            rec_toast(sv, NULL, song_edit_message(ed));
+        }
+        return; /* one write, then wait for its acknowledgement */
+    }
+}
+
+/* The knobs' running values: from LIVE's until the first move. */
+static void rec_knobs_read(song_view* sv) {
+    if (!sv->rec_knobs) {
+        sv->rec_cut = (uint16_t)live_param_get(sv->l, LIVE_PARAM_CUTOFF);
+        sv->rec_res = (uint8_t)live_param_get(sv->l, LIVE_PARAM_RESONANCE);
+        sv->rec_knobs = 1;
+    }
+}
+
+uint32_t song_view_rec_value(const song_view* sv, uint32_t knob) {
+    if (sv->rec_knobs) {
+        return knob ? sv->rec_res : sv->rec_cut;
+    }
+    return live_param_get(sv->l, knob ? LIVE_PARAM_RESONANCE : LIVE_PARAM_CUTOFF);
+}
+
+int song_view_record_knob(song_view* sv, screen* s, uint32_t knob, int32_t steps) {
+    uint32_t pattern, row;
+    if (!song_view_recording(sv) || !rec_place(sv, 0, &pattern, &row) || !song_view_recording(sv)) {
+        return 0;
+    }
+    rec_knobs_read(sv);
+    int32_t v = knob ? (int32_t)sv->rec_res + steps : (int32_t)sv->rec_cut + steps * 32;
+    int32_t max = knob ? 15 : 2047;
+    v = v < 0 ? 0 : v > max ? max : v;
+    int r = song_lock_put((gt2_song*)sv->song, pattern, row,
+                          knob ? SONG_LOCK_RESONANCE : SONG_LOCK_CUTOFF, (uint32_t)v);
+    if (r != 0) {
+        rec_toast(sv, s, r == -(int)GT2_ERR_SAVING ? "SAVING" : r == -(int)GT2_ERR_PENDING ? "WAITING" :
+                      r == -(int)GT2_ERR_SONG_FULL ? "SONG FULL" : "LOCKS FULL");
+        return 0;
+    }
+    if (knob) {
+        sv->rec_res = (uint8_t)v;
+    } else {
+        sv->rec_cut = (uint16_t)v;
+    }
+    return 1;
+}
+
 void song_view_frame(song_view* sv, int shows) {
     const song_transport* t = sv->t;
     if (!t || (!shows && sv->want == WANT_NONE && !sv->jam_off &&
-               song_view_mute_mask(sv) == sv->sent && !sv->edit_pending)) {
+               song_view_mute_mask(sv) == sv->sent && !sv->edit_pending && !sv->rec_n)) {
         return; /* outside the song views, most frames: nothing waits */
     }
     send_play(sv);
     if (shows && sv->want == WANT_NONE) {
         t->status(t->ctx, &sv->st);
         sv->song_edits = sv->st.applied;
+        int on = sv->st.state == SONG_T_PLAYING;
+        if (on && !sv->was_playing && sv->rec && sv->quant == SONG_VIEW_QUANT_COUNT) {
+            count_in(sv); /* a play that starts with REC on */
+        } else if (!on) {
+            sv->counting = 0;
+        }
+        sv->was_playing = (uint8_t)on;
     }
     send_mutes(sv);
     send_jam_off(sv);
     if (sv->edit_pending) {
         edit_poll(sv);
+    }
+    if (sv->rec_n) {
+        song_view_rec_drain(sv);
     }
 }
 

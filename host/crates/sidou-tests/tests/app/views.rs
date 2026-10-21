@@ -860,11 +860,11 @@ fn the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video
     assert_eq!(
         at_end,
         [
-            format!("{:<5}{:>9}", "STORE", "NONE"),
             format!("{:<5}{:>9}", "THEME", "HIGH"),
             format!("{:<13}#", "STATUS"),
             format!("{:<13}#", "MIDI"),
             format!("{:<13}#", "CHARSET"),
+            format!("{:<3}{:>11}", "REC", "NEAREST"),
             format!("{:<13}#", "ABOUT"),
         ]
     );
@@ -882,7 +882,7 @@ fn every_menu_item_is_reachable_and_readable_as_the_cursor_walks_down_and_up() {
     ui.settle();
     let labels = [
         "CHIP", "TRACKER", "SCENE", "SONG", "PRE", "OCTAVE", "KEYS", "SOUNDS", "ROWS", "CARDS",
-        "STORE", "THEME", "STATUS", "MIDI", "CHARSET", "ABOUT",
+        "STORE", "THEME", "STATUS", "MIDI", "CHARSET", "REC", "ABOUT",
     ];
     assert_eq!(labels.len(), VIEWS_MENU_ITEMS as usize);
     let walk = |ui: &mut Ui, i: usize| {

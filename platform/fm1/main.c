@@ -1042,6 +1042,7 @@ static void song_seen_rows(const song_event* ev, uint32_t n) {
         if ((SONG_EV_FLAGS(&ev[i]) & GT2_EV_ROW) && ch < SONG_T_VOICES) {
             song_seen.order_pos[ch] = ev[i].order_pos;
             song_seen.row[ch] = ev[i].row;
+            song_seen.row_call[ch] = ev[i].frame;
         }
     }
 }
@@ -1052,6 +1053,22 @@ static void st_status(void* ctx, song_status* out) {
     out->applied = sc->applied + sc->idle_edits;
     out->state = (uint8_t)song_ctl_shown_state(sc);
     out->subtune = sc->play_sub;
+    /* REC's clock: the last call, and the samples since it over the call period (read as
+     * st_clock does: the interrupt moves them) */
+    {
+        const volatile song_ctl* vc = sc;
+        uint32_t samples, calls, at, q;
+        do {
+            samples = vc->samples;
+            calls = vc->calls;
+            at = vc->call_sample;
+            q = vc->period.q;
+        } while (samples != vc->samples);
+        int32_t d = (int32_t)(samples - at);
+        uint32_t frac = d > 0 && q ? (uint32_t)d * 256u / q : 0u;
+        out->now_call = (uint16_t)(calls ? calls - 1u : 0u);
+        out->now_frac = (uint8_t)(frac > 255u ? 255u : frac);
+    }
     /* the play's options; before one, the song's (or the defaults), read again each second */
     static gt2_options before;
     static uint8_t frames;

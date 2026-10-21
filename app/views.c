@@ -490,6 +490,22 @@ static void rows_turn(void* ctx, int32_t steps) {
     }
 }
 
+static void quant_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    uint8_t q = v->song.quant;
+    join(buf, MENU_VALUE_CHARS, q == SONG_VIEW_QUANT_OFF ? "OFF" : q == SONG_VIEW_QUANT_COUNT ? "COUNT-IN" : "NEAREST", "");
+}
+
+/* REC's quantising: clockwise NEAREST, then OFF, then COUNT-IN (the nearest row, a bar first);
+ * counter-clockwise back. Not saved: it is a take's setting. */
+static void quant_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    if (steps != 0) {
+        int32_t q = (int32_t)v->song.quant + (steps > 0 ? 1 : -1);
+        v->song.quant = (uint8_t)(q < 0 ? 0 : q >= (int32_t)SONG_VIEW_QUANTS ? (int32_t)SONG_VIEW_QUANTS - 1 : q);
+    }
+}
+
 static void theme_value(void* ctx, char* buf) {
     const views* v = ctx;
     join(buf, MENU_VALUE_CHARS, theme_get(v->l->theme)->menu_name, "");
@@ -948,14 +964,16 @@ static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"ROWS", rows_value, rows_turn},       {"CARDS", cards_value, cards_turn},
     {"STORE", store_value, store_turn},    {"THEME", theme_value, theme_turn},
     {"STATUS", NULL, status_open},         {"MIDI", NULL, midi_open},
-    {"CHARSET", NULL, charset_open},       {"ABOUT", NULL, about_open},
+    {"CHARSET", NULL, charset_open},       {"REC", quant_value, quant_turn},
+    {"ABOUT", NULL, about_open},
 };
 _Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_SCENE == 2u &&
                    VIEWS_MENU_SONG == 3u && VIEWS_MENU_PRESET == 4u && VIEWS_MENU_OCTAVE == 5u &&
                    VIEWS_MENU_KEYS == 6u && VIEWS_MENU_SOUNDS == 7u && VIEWS_MENU_ROWS == 8u &&
                    VIEWS_MENU_CARDS == 9u && VIEWS_MENU_STORE == 10u && VIEWS_MENU_THEME == 11u &&
                    VIEWS_MENU_STATUS == 12u && VIEWS_MENU_MIDI == 13u &&
-                   VIEWS_MENU_CHARSET == 14u && VIEWS_MENU_ABOUT == 15u,
+                   VIEWS_MENU_CHARSET == 14u && VIEWS_MENU_REC == 15u &&
+                   VIEWS_MENU_ABOUT == 16u,
                "the menu's items");
 _Static_assert(LIVE_THEMES == THEME_COUNT, "live.theme holds a theme's id");
 
@@ -1979,7 +1997,8 @@ static int menu_choice_text(const views* v, char* name, char* value) {
     }
     uint32_t i = v->menu_ask;
     join(name, SCREEN_POPUP_TEXT,
-         i == VIEWS_MENU_PRESET ? "PRESET" : i == VIEWS_MENU_ROWS ? "TRACKER ROWS" : it->label,
+         i == VIEWS_MENU_PRESET ? "PRESET" : i == VIEWS_MENU_ROWS ? "TRACKER ROWS" :
+         i == VIEWS_MENU_REC ? "REC QUANTISE" : it->label,
          "");
     char text[MENU_VALUE_CHARS]; /* (the menu's values have room for a longer text) */
     text[0] = 0;
@@ -2195,7 +2214,9 @@ void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed) {
         }
         uint32_t owned = take ? panel_owned(p, jam_down & ~jam_pressed & ~sv->jam_keys) : 0u;
         uint32_t taken = steps | song_view_keys(sv, jam_down, jam_pressed, owned, take,
-                                        top == &tracker_view_view ? &v->s : NULL);
+                                        top == &tracker_view_view ? &v->s : NULL,
+                                        top == &tracker_view_view || top == &step_view_view
+                                            ? &v->s : NULL);
         if (taken) {
             panel_quiet_keys(p, v->l, taken);
         }

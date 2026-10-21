@@ -134,7 +134,7 @@ extern "C" {
 /* The status screen's colours: light blue on blue. */
 #define VIEWS_TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
 /* The menu's items, the title cards' option, and the items that open a view. */
-#define VIEWS_MENU_ITEMS 16u
+#define VIEWS_MENU_ITEMS 17u
 #define VIEWS_MENU_CHIP 0u
 #define VIEWS_MENU_TRACKER 1u
 #define VIEWS_MENU_CARDS 9u
@@ -151,7 +151,8 @@ extern "C" {
 #define VIEWS_MENU_SCENE 2u
 #define VIEWS_MENU_CHARSET 14u
 #define VIEWS_MENU_SONG 3u
-#define VIEWS_MENU_ABOUT 15u
+#define VIEWS_MENU_REC 15u
+#define VIEWS_MENU_ABOUT 16u
 #define VIEWS_MENU_MIDI 13u
 /* The MIDI page's items (app/midi_route.h): MODE, CHANNEL, OPTION, LEGATO, CHORD 2, CHORD 3,
  * ARP RATE, ROWS/BEAT, and the clock's (app/midi_sync.h): CLOCK, CLOCK OUT. */
