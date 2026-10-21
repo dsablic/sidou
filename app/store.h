@@ -49,7 +49,11 @@
  *   two (docs/reference/store-format.md, "Faint bits and the head");
  * - a hook error leaves its write undecided, as a cut does: a later mount may read it either
  *   way until maintenance has evacuated and erased its sector, so a value can change across a
- *   reboot with no cut (store_stats.errors counts the errors).
+ *   reboot with no cut (store_stats.errors counts the errors);
+ * - a sector whose maintenance fails twice in a row (its kill, erase or erase header: a worn
+ *   part) is retired for the session (store_stats.retired), so it never holds back the other
+ *   erases, the collections or the writes; while one that may still read otherwise is retired,
+ *   collections keep every tombstone. The next mount finds it as the part left it.
  *
  * The erase-ahead pool: clean, unclaimed sectors. Whoever writes claims its sectors from the
  * pool before the first byte, so no write ever waits for an erase: a small record's new head
@@ -293,7 +297,9 @@ typedef struct {
     uint8_t fix_sec;
     uint8_t fix_kind;    /* ... and whether it is still to copy forward (FIX_*) */
     uint8_t rec;         /* 1 while the mount's recovery has work: the session waits for it */
-    uint8_t pad3[3];
+    uint8_t retired;     /* sectors retired this session (store.c retire) */
+    uint8_t unsure;      /* 1 if one of them may still read otherwise: tombstones are kept */
+    uint8_t pad3;
     uint32_t work;       /* the last store_poll's work: bytes read, and 4 per key compared */
     uint8_t buf[STORE_WINDOW_MAX]; /* a collection's copy, the open file's bytes, a rename */
 } store;
@@ -312,6 +318,7 @@ typedef struct {
     uint32_t keys; /* indexed keys: a deleted key's tombstone holds its slot until collected */
     uint32_t corrupt;
     uint32_t errors;
+    uint32_t retired; /* sectors maintenance failed on twice in a row, out of use this session */
 } store_stats;
 
 /* `window`: the most bytes a program may write (1..STORE_WINDOW_MAX; the device's write

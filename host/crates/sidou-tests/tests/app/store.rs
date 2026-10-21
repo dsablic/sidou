@@ -328,6 +328,9 @@ pub struct Sim {
     /// next call resumes and completes it (Task 4's erase-suspend).
     pub suspend: u64,
     pub erasing: Option<usize>,
+    /// Worn-out sectors: every erase and every program in them fails (the part having done part
+    /// of it), however often the store tries.
+    pub worn: Vec<usize>,
 }
 
 impl Sim {
@@ -358,6 +361,7 @@ impl Sim {
             failed: 0,
             suspend: 0,
             erasing: None,
+            worn: Vec::new(),
         })
     }
 
@@ -518,7 +522,7 @@ impl Sim {
         }
         let over = self.page_progs[page] - self.page_cuts[page];
         self.page_progs_max = self.page_progs_max.max(over);
-        if self.fail > 0 && self.rng.chance(self.fail) {
+        if (self.fail > 0 && self.rng.chance(self.fail)) || self.worn.contains(&sec) {
             self.cells.torn_prog(&mut self.rng, r, &data, tear);
             self.sync();
             self.failed += 1;
@@ -581,7 +585,7 @@ impl Sim {
             self.erasing = Some(sec);
             return STORE_LATER;
         }
-        if self.fail > 0 && self.rng.chance(self.fail) {
+        if (self.fail > 0 && self.rng.chance(self.fail)) || self.worn.contains(&sec) {
             self.cells.torn_erase(&mut self.rng, sec, tear);
             self.sync();
             self.failed += 1;
@@ -3992,4 +3996,140 @@ fn an_unmounted_store_refuses_every_write_for_good() {
     assert_eq!(r.mount(), STORE_STATE_BLANK);
     assert_eq!(r.put_now(1, b"value"), STORE_OK);
     assert_eq!(r.get(1).as_deref(), Some(&b"value"[..]));
+}
+
+/// A sector whose erase always fails (a worn part) is retired for the session after its
+/// second failed job in a row: maintenance goes on with the others, the pool fills, writes and
+/// files go on, and store_stats counts it (review 1.2: maintenance took it again and again, so
+/// nothing else was ever erased). The next boot finds it as the part left it and retires it
+/// again.
+#[test]
+fn a_sector_that_never_erases_is_retired_and_the_store_goes_on() {
+    let mut sim = Sim::new(21);
+    sim.worn = vec![0]; // the first a blank region's refill takes
+    let mut r = Rig::new(sim, 256);
+    assert_eq!(r.mount(), STORE_STATE_BLANK);
+    r.maintain();
+    let s = r.stats();
+    assert_eq!((s.pool, s.retired), (STORE_POOL_TARGET, 1));
+    assert_eq!(s.errors, 2, "two failed erases, then no more");
+    assert!(!r.erase_wanted(), "maintenance rests");
+    assert_eq!(
+        s.free,
+        STORE_CAPACITY - STORE_FILE_SECTOR_DATA,
+        "a sector's worth less"
+    );
+    let data = content(21, 30_000);
+    for round in 0..6u32 {
+        for k in 0..6u32 {
+            assert_eq!(r.put_now(k, &fixture_value(k, round)), STORE_OK);
+        }
+        assert_eq!(r.file_now(["A", "B"][round as usize % 2], &data), STORE_OK);
+        r.maintain();
+        assert!(!r.erase_wanted());
+    }
+    assert_eq!(r.stats().retired, 1);
+    r.reset();
+    assert_eq!(r.mount(), STORE_STATE_SIDOU);
+    r.maintain();
+    assert!(!r.erase_wanted());
+    for k in 0..6u32 {
+        assert_eq!(r.get(k), Some(fixture_value(k, 5)));
+    }
+    assert_eq!(r.file("A").as_deref(), Some(&data[..]));
+    assert_eq!(r.file("B").as_deref(), Some(&data[..]));
+    assert_eq!(r.put_now(7, b"after"), STORE_OK);
+    r.assert_clean();
+}
+
+/// The head sector wears out just as a cut leaves a write in it undecided (review 1.2's worst
+/// case: after the reboot the mount's recovery must evacuate and erase it before the session
+/// writes, and it never erases): recovery copies its records, retires it after its kills and
+/// erases fail twice each, and the store takes writes again; nothing committed is lost, at that
+/// boot and the next.
+#[test]
+fn a_worn_head_after_a_cut_is_evacuated_retired_and_recovery_ends() {
+    // The first cut during the next write that leaves the head ambiguous at the mount.
+    let (mut r, head) = (0..)
+        .find_map(|n| {
+            let mut r = fresh(22, 64);
+            for k in 0..8u32 {
+                assert_eq!(r.put_now(k, &fixture_value(k, 0)), STORE_OK);
+            }
+            let head = usize::from(r.st.head);
+            r.sim.cut_at = Some(r.sim.ops + n);
+            assert_eq!(r.put(8, &[0x5A; 300]), STORE_OK);
+            r.settle();
+            assert!(r.sim.dead, "cut {n}: the write ended first");
+            r.sim.dead = false;
+            r.sim.cut_at = None;
+            r.reset();
+            assert_eq!(r.mount(), STORE_STATE_SIDOU);
+            (r.st.sstate[head] & 0x80 != 0).then_some((r, head))
+        })
+        .unwrap();
+    r.sim.worn = vec![head];
+    let cut = r.get(8);
+    for boot in 0..3 {
+        if boot > 0 {
+            r.reset();
+            assert_eq!(r.mount(), STORE_STATE_SIDOU);
+        }
+        assert_eq!(r.put(9, b"x"), STORE_BUSY, "boot {boot}: recovery first");
+        r.maintain();
+        let s = r.stats();
+        assert_eq!(s.retired, 1, "boot {boot}");
+        assert!(!r.erase_wanted(), "boot {boot}: maintenance rests");
+        for k in 0..8u32 {
+            assert_eq!(r.get(k), Some(fixture_value(k, 0)), "boot {boot}: key {k}");
+        }
+        assert_eq!(
+            r.get(8),
+            cut,
+            "boot {boot}: the cut write as the first mount read it"
+        );
+        assert_eq!(r.put_now(9, b"after"), STORE_OK, "boot {boot}");
+        assert_eq!(r.delete_now(9), STORE_OK, "boot {boot}");
+        r.maintain();
+        assert_eq!(r.get(9), None, "boot {boot}: the deletion holds");
+    }
+    r.assert_clean();
+}
+
+/// Power cuts at every operation with a worn sector among the claimed ones: whatever recovery,
+/// collections and retirement do around it, every key reads its old value or its new one.
+#[test]
+fn power_loss_with_a_worn_sector_leaves_the_old_value_or_the_new() {
+    let (mut tried, mut retired) = (0, 0);
+    for (seed, window) in [(40u64, 16u32), (42, 64), (44, 256), (46, 4)] {
+        let mut run = Run::with(seed, 10, true, window, seed % 4 == 2);
+        run.rig.sim.suspend = 0; // a suspended erase resumes whole: never worn
+                                 // Wear out a claimed sector (not the head), one holding records if there is one.
+        let claimed = |r: &Rig| {
+            let head = usize::from(r.st.head);
+            (0..SECTORS)
+                .filter(|&s| r.st.sstate[s] & 7 == 3 && s != head)
+                .max_by_key(|&s| (r.st.sector[s].live > 0, s))
+        };
+        let mut steps = 0;
+        while steps < 40 || claimed(&run.rig).is_none() {
+            run.step();
+            steps += 1;
+            assert!(steps < 2_000, "seed {seed}: no claimed sector but the head");
+        }
+        let worn = claimed(&run.rig).unwrap();
+        run.rig.sim.worn = vec![worn];
+        let failed = run.rig.sim.failed;
+        for _ in 0..200 {
+            run.step();
+            retired += u64::from(run.rig.stats().retired > 0);
+        }
+        tried += run.rig.sim.failed - failed;
+        run.end();
+    }
+    println!("{tried} operations failed in worn sectors; retired after {retired} steps");
+    assert!(
+        tried > 0 && retired > 0,
+        "the worn sectors were tried and retired"
+    );
 }

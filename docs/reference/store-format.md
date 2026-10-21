@@ -233,6 +233,13 @@ What is left:
   maintenance has evacuated and erased its sector (it does so first, at the
   next quiet). A failed collection copy holds its original's bytes, so it
   reads the same either way.
+- **A worn sector** whose maintenance fails twice in a row (its kill, its
+  erase or its erase header) is retired for the session: it leaves the pool,
+  recovery and collections, so it never holds back the other sectors or the
+  writes. Nothing on the part records it; the next mount finds the sector as
+  the part left it and maintenance tries it twice again. While a retired
+  sector may still read otherwise (ambiguous), collections keep every
+  tombstone.
 - **A kill cut short** whose zeros were left faint and read 1 at the next
   mount leaves the sector reading valid (or partly killed); the next kill
   programs those bits again (zeros over faint zeros: the only such program

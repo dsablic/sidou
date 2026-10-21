@@ -11,7 +11,11 @@ enum {
     SEC_CLEAN = 1,    /* erase header valid, the rest erased: in the pool */
     SEC_RESERVED = 2, /* taken from the pool in RAM; its claim is not programmed yet */
     SEC_CLAIMED = 3,  /* claimed: records from STORE_HEADER up to `free` */
+    /* Retired for the session: maintenance on it failed twice in a row (retire). Out of the pool,
+     * recovery and garbage collection; the next mount finds it as the part left it. */
+    SEC_BAD = 4,
     SEC_STATE = 0x07,
+    SEC_FAILED = 0x08, /* the last maintenance job on it failed (a kill, an erase, its header) */
     SEC_FULL = 0x10,  /* nothing more is written into it */
     SEC_GUESS = 0x20, /* the mount could not read its erase count */
     SEC_FILE = 0x40,  /* a live (or open) file's: never collected, never a head */
@@ -1089,8 +1093,8 @@ static int forget(store* s, uint32_t sec) {
  * leaves no header that reads valid. 1 when it is done and was this call's operation, 2 when
  * there was nothing to kill (no operation: no bit of the magic's to clear, or a bit set that a
  * valid magic has clear: never a valid header, as a blank sector), 0 while it goes on
- * (the hook said later, or a piece went) or when it failed: the job stops, the sector
- * ambiguous, to be killed again (its bits that still read 1) and erased. A kill cut short can
+ * (the hook said later, or a piece went), -1 when it failed: the sector ambiguous, to be killed
+ * again (its bits that still read 1) and erased (the caller stops the job). A kill cut short can
  * leave zeros faint, even reading 0: such a sector is ambiguous at the next mount, and nothing
  * relies on its records being gone before its erase completes (recover_job). */
 static int kill(store* s, uint32_t sec) {
@@ -1110,8 +1114,7 @@ static int kill(store* s, uint32_t sec) {
     s->job_done = (uint8_t)done;
     if (rc < 0) {
         s->sstate[sec] |= SEC_AMBIG;
-        s->job = JOB_NONE;
-        return 0;
+        return -1;
     }
     if (rc > 0) {
         s->job_done = 0;
@@ -1119,11 +1122,38 @@ static int kill(store* s, uint32_t sec) {
     return rc;
 }
 
+/* A maintenance job on `sec` failed (its kill, its erase or its erase header): the job stops,
+ * and maintenance takes the sector again. 1 if the last job on it had failed too: a worn part,
+ * whose sector would otherwise be taken again and again, holding back every other erase and
+ * collection (and, an ambiguous one, every write). */
+static int job_failed(store* s, uint32_t sec) {
+    s->job = JOB_NONE;
+    if (s->sstate[sec] & SEC_FAILED) {
+        return 1;
+    }
+    s->sstate[sec] |= SEC_FAILED;
+    return 0;
+}
+
+/* A dirty sector whose second job in a row failed leaves the store for the session (SEC_BAD):
+ * the pool, recovery and collections go on without it. Nothing live is in it (dirty). One that
+ * may still read otherwise (ambiguous: a kill that failed, or the mount's) could show its records
+ * again at a later mount, so while it is retired no collection drops a tombstone (unsure). The
+ * next mount finds it as the part left it, and maintenance tries it twice more. */
+static void retire(store* s, uint32_t sec) {
+    set_state(s, sec, SEC_BAD);
+    s->retired++;
+    s->unsure |= (uint8_t)((s->sstate[sec] & SEC_AMBIG) != 0);
+}
+
 static void erase_step(store* s) {
     uint32_t sec = s->job_sec;
     if (s->job_phase == E_KILL) {
         int rc = kill(s, sec);
-        if (!rc) {
+        if (rc < 0 && job_failed(s, sec)) {
+            retire(s, sec);
+        }
+        if (rc <= 0) {
             return;
         }
         s->job_phase = E_ERASE;
@@ -1139,7 +1169,9 @@ static void erase_step(store* s) {
         }
         if (rc != STORE_OK) {
             s->errors++;
-            s->job = JOB_NONE;
+            if (job_failed(s, sec)) {
+                retire(s, sec);
+            }
             return;
         }
         s->sector[sec].erases++;
@@ -1153,7 +1185,9 @@ static void erase_step(store* s) {
     int rc = prog_piece(s, sec, 0, h, 20, &done, 0);
     s->job_done = (uint8_t)done;
     if (rc < 0) {
-        s->job = JOB_NONE;
+        if (job_failed(s, sec)) {
+            retire(s, sec);
+        }
     } else if (rc > 0) {
         set_state(s, sec, SEC_CLEAN);
         s->sector[sec].free = STORE_HEADER;
@@ -1215,7 +1249,7 @@ static void collect_step(store* s) {
             if (!e || e->sec != v || e->off != off) {
                 continue; /* superseded: garbage */
             }
-            if (h[0] == STORE_TYPE_TOMB && e->stale <= others_in(s, v, e)) {
+            if (h[0] == STORE_TYPE_TOMB && !s->unsure && e->stale <= others_in(s, v, e)) {
                 continue; /* nothing older outside the victim: dropped with it */
             }
             copy_record(s, v, off);
@@ -1226,6 +1260,15 @@ static void collect_step(store* s) {
     }
     if (s->job_phase == C_KILL) {
         int rc = kill(s, v);
+        if (rc < 0) {
+            if (!job_failed(s, v)) {
+                return;
+            }
+            /* Its kill failed twice: its records (all copied) are forgotten all the same, and it
+             * goes on dirty and ambiguous, so its erase job, failing in turn, retires it. */
+            s->job = JOB_COLLECT;
+            rc = 2;
+        }
         if (!rc) {
             return;
         }
@@ -1737,13 +1780,18 @@ void store_format(store* s) {
     }
     s->fres_sec = NONE;
     s->fres_bytes = 0;
+    s->retired = 0; /* every sector is tried again */
+    s->unsure = 0;
     s->state = STORE_STATE_BLANK;
 }
 
 void store_stats_get(const store* s, store_stats* out) {
     memset(out, 0, sizeof *out);
+    /* A retired sector takes a file's packing out of the capacity. */
+    uint32_t cap = STORE_CAPACITY - s->retired * STORE_FILE_SECTOR_DATA;
     out->live = s->live;
-    out->free = s->live < STORE_CAPACITY ? STORE_CAPACITY - s->live : 0u;
+    out->free = s->live < cap ? cap - s->live : 0u;
+    out->retired = s->retired;
     out->pool = count(s, SEC_CLEAN);
     out->dirty = count(s, SEC_DIRTY);
     out->claimed = count(s, SEC_CLAIMED) + count(s, SEC_RESERVED);
