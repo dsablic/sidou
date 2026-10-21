@@ -286,6 +286,7 @@ static void finish_save(song_io* io, int ok) {
     io->state = SONG_IO_IDLE;
     if (ok) {
         memcpy(io->name, io->target, sizeof io->name);
+        io->fid = io->file.fid; /* SONG_IO_COMMIT opened it */
         io->saved_revision = io->ctl->song->revision;
         io->saved_live = io->captured_live;
         io->dirty = 0;
@@ -395,6 +396,8 @@ static void read_done(song_io* io) {
     if (io->hooks.generation) {
         io->saved_live = io->hooks.generation(io->hooks.ctx);
     }
+    /* The model is now what was read: a stored file (start_read's read_file), or none. */
+    io->fid = io->builtin || io->action == LOAD_NEW ? 0u : io->file.fid;
     io->state = SONG_IO_IDLE;
     if (io->action != LOAD_ABOUT || io->restoring) {
         io->rollback = 0;
@@ -515,9 +518,13 @@ void song_io_poll(song_io* io, uint32_t now_ms) {
             break;
         }
         sc->song->frozen = 1;
+        /* Unchanged, and the file it would replace is still the one it was loaded or saved as
+         * (io->file is free while saving: SONG_IO_COMMIT opens it again). */
         if (!io->dirty && sc->song->revision == io->saved_revision &&
             io->captured_live == io->saved_live &&
-            memcmp(io->name, io->target, sizeof io->name) == 0) {
+            memcmp(io->name, io->target, sizeof io->name) == 0 &&
+            store_file_open(io->st, io->target, &io->file) == STORE_OK && io->fid &&
+            io->file.fid == io->fid) {
             text(io->message, "SONG SAVED");
             io->state = SONG_IO_IDLE;
             sc->song->frozen = 0;
@@ -580,6 +587,9 @@ void song_io_poll(song_io* io, uint32_t now_ms) {
     case SONG_IO_COMMIT: {
         int r = store_file_result(io->st);
         if (r != STORE_BUSY) {
+            if (r != STORE_OK || store_file_open(io->st, io->target, &io->file) != STORE_OK) {
+                io->file.fid = 0; /* unknown: the next SAVE writes */
+            }
             finish_save(io, r == STORE_OK);
         }
         break;

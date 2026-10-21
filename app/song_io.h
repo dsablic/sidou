@@ -55,6 +55,10 @@ typedef struct {
     uint32_t length;
     uint32_t offset;
     uint32_t read_crc;
+    /* The stored file the model is (store_file.fid), loaded or saved as `name`; 0 for none. An
+     * unchanged SAVE is skipped only while `target` is still that file: a SysEx DEL or PUT may
+     * have deleted or replaced it meanwhile. */
+    uint32_t fid;
     uint16_t fill, sent;
     uint8_t state;
     uint8_t dirty;

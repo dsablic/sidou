@@ -774,3 +774,83 @@ fn a_save_on_an_unmounted_store_fails_at_once_and_unfreezes_the_song() {
     assert_eq!(r.io.dirty, 1, "still unsaved");
     assert_eq!(r.store.sim.ops, 0);
 }
+
+/// An unchanged SAVE is skipped only while the file it would save to is still the one the
+/// song was loaded or saved as (review 1.3): after a SysEx DEL of it, or a PUT that replaced
+/// it, SAVE writes the song again.
+#[test]
+fn an_unchanged_save_writes_again_once_its_file_was_deleted_or_replaced() {
+    let mut r = Rig::new();
+    let song = r.song.write(true);
+    r.save(c"NIGHT");
+    assert_eq!(r.store.file("NIGHT"), Some(song.clone()));
+    // A SysEx DEL of the saved file.
+    r.store.maintain();
+    assert_eq!(r.store.file_delete("NIGHT"), STORE_OK);
+    r.store.settle();
+    assert_eq!(
+        unsafe { song_io_changed(&*r.io) },
+        0,
+        "the song itself is unchanged"
+    );
+    assert_eq!(
+        unsafe { song_io_save(&mut *r.io, c"NIGHT".as_ptr(), r.now) },
+        1
+    );
+    r.finish();
+    assert_eq!(r.message(), "SONG SAVED");
+    assert_eq!(r.store.file("NIGHT"), Some(song.clone()), "written again");
+    // A SysEx PUT of other bytes under its name.
+    let other = sidou_tests::song::SngSpec::new().encode();
+    r.typed_file(c"NIGHT", STORE_FILE_SONG as u8, &other);
+    assert_eq!(
+        unsafe { song_io_save(&mut *r.io, c"NIGHT".as_ptr(), r.now) },
+        1
+    );
+    r.finish();
+    assert_eq!(
+        r.store.file("NIGHT"),
+        Some(song.clone()),
+        "the song, not the host's"
+    );
+    // Unchanged and untouched since: skipped, as before.
+    let seq = r.store.st.seq;
+    assert_eq!(
+        unsafe { song_io_save(&mut *r.io, c"NIGHT".as_ptr(), r.now) },
+        1
+    );
+    r.finish();
+    assert_eq!(r.message(), "SONG SAVED");
+    assert_eq!(r.store.st.seq, seq, "nothing written");
+}
+
+/// The same for a song loaded from the store: the load's file is the one an unchanged SAVE
+/// skips for, and a PUT that replaced it meanwhile makes SAVE write the loaded song back.
+#[test]
+fn an_unchanged_save_after_a_load_writes_once_the_loaded_file_was_replaced() {
+    let mut r = Rig::new();
+    let mut spec = sidou_tests::song::SngSpec::new();
+    spec.strings[0][..4].copy_from_slice(b"LOAD");
+    let loaded = spec.encode();
+    r.typed_file(c"FOO", STORE_FILE_SONG as u8, &loaded);
+    assert_eq!(unsafe { song_io_load(&mut *r.io, c"FOO".as_ptr(), 1) }, 1);
+    r.finish();
+    assert_eq!(unsafe { song_io_changed(&*r.io) }, 0);
+    let song = r.song.write(true);
+    let seq = r.store.st.seq;
+    assert_eq!(
+        unsafe { song_io_save(&mut *r.io, c"FOO".as_ptr(), r.now) },
+        1
+    );
+    r.finish();
+    assert_eq!(r.store.st.seq, seq, "unchanged since its load: skipped");
+    let other = sidou_tests::song::SngSpec::new().encode();
+    r.typed_file(c"FOO", STORE_FILE_SONG as u8, &other);
+    assert_eq!(
+        unsafe { song_io_save(&mut *r.io, c"FOO".as_ptr(), r.now) },
+        1
+    );
+    r.finish();
+    assert_eq!(r.message(), "SONG SAVED");
+    assert_eq!(r.store.file("FOO"), Some(song));
+}
