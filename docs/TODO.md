@@ -492,3 +492,9 @@ working.
      first block);
   3. have a slot switch wait a block when the SID's block is heavy.
   Keep the output exact (golden hashes, the bulk-against-cycle fuzz).
+
+- **REC from the keys, for the ergonomics review and flash day** (M2d Task 6, the user
+  2026-10-21): TRACKER's cursor stays pinned while recording rather than following the
+  playhead, so notes land in the playing pattern but show only when it is on screen;
+  revisit in the ergonomics review. The key-to-row timing is measured at the audio block
+  (about 3 ms) with no latency compensation; try the feel on the unit on flash day.
