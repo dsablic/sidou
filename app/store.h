@@ -175,7 +175,9 @@ enum {
     STORE_NOT_FOUND = -3,
     STORE_FOREIGN = -4, /* the region holds another firmware's data: nothing is written */
     STORE_INVALID = -5, /* a bad argument */
-    STORE_ERROR = -6,   /* a flash operation failed */
+    /* A flash operation failed; from a write's start, the store was never mounted (the platform
+     * leaves it so on a flash part it does not know): nothing is written, for good. */
+    STORE_ERROR = -6,
     STORE_EXISTS = -7,  /* a file of that name exists */
     STORE_TIMEOUT = -8, /* an open file took no bytes for STORE_FILE_IDLE_MS: aborted */
 };
@@ -314,7 +316,8 @@ typedef struct {
 
 /* `window`: the most bytes a program may write (1..STORE_WINDOW_MAX; the device's write
  * window, M2a Task 4), but a 4-byte commit word is always one program, so a window under 4
- * still programs 4 bytes then. The store is unmounted until store_mount. */
+ * still programs 4 bytes then. The store is unmounted until store_mount: reads find nothing,
+ * and writes answer STORE_ERROR. */
 void store_init(store* s, const store_flash* flash, uint32_t window);
 /* Starts the mount; store_poll does it in slices. Writes wait (STORE_BUSY) for recovery, which
  * maintenance runs first: the newest record copied forward, and after a cut a sector or two

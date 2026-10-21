@@ -739,3 +739,31 @@ fn song_from_bytes(bytes: &[u8]) -> Song {
     song.read(bytes, SONG_MULTISPEED_MAX as u8).unwrap();
     song
 }
+
+/// On a flash part the store does not know (store_fm1_boot leaves the store unmounted; here
+/// the mounted store is put back so after boot), SAVE says it failed at once and gives the
+/// song back, unfrozen, with no hold or force left on and nothing written (review 1.1: it
+/// waited in SAVE_WAIT for ever, the song frozen and the audio held).
+#[test]
+fn save_on_an_unknown_flash_part_fails_at_once_and_holds_nothing() {
+    let Some(fw) = fixture() else { return };
+    let mut m = boot(&fw, None);
+    let store = fw.symbol("store_fm1_store");
+    m.soc.write8(
+        store + ilp32::store::state as u32,
+        STORE_STATE_UNMOUNTED as u8,
+    );
+    let flash = m.soc.flash.mem.clone();
+    let start = m.ms();
+    assert_eq!(request(&mut m, &fw, SAVE, "NO CHIP"), 1);
+    idle(&mut m, &fw);
+    assert!(m.ms() - start < 500, "SAVE took {} ms", m.ms() - start);
+    assert_eq!(toast(&mut m, &fw), "SONG: SAVE FAILED");
+    assert_eq!(song(&mut m, &fw).raw().frozen, 0);
+    m.run_ms(3 * SETTINGS_FORCE_MS as u64);
+    let service = fw.symbol("store_fm1_state");
+    assert_eq!(m.soc.read8(service + 30), 0, "no forced save left on");
+    assert_eq!(m.soc.read8(service + 31), 0, "the audio is not held");
+    assert!(m.soc.flash.mem == flash, "nothing written");
+    check_passes(&m, "a save on an unknown flash part");
+}

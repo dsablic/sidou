@@ -16,13 +16,16 @@ struct Rig {
 
 impl Rig {
     fn new() -> Self {
+        Self::on(crate::store::fresh(81, 16))
+    }
+
+    fn on(mut store: crate::store::Rig) -> Self {
         let mut song = Song::device();
         let mut ctl = Box::<song_ctl>::default();
         let mut shapes = Box::<[gt2_shape; 2]>::default();
         let mut work = Box::<song_work>::default();
         let mut stream = Box::<gt2_stream>::default();
         let mut io = Box::<song_io>::default();
-        let mut store = crate::store::fresh(81, 16);
         unsafe {
             let (a, b) = shapes.split_at_mut(1);
             song_ctl_init(&mut *ctl, song.ptr_mut(), &mut a[0], &mut b[0], &mut *work);
@@ -753,4 +756,21 @@ fn about_keeps_the_original_runtime_snapshot_until_close_and_restore_verificatio
     assert_eq!(r.song.write(true), before);
     assert_eq!(r.io.about, 0);
     assert_eq!(r.io.dirty, 0);
+}
+
+/// SAVE on a store that was never mounted (an unknown flash part, review 1.1) says it failed
+/// at once and gives the song back: before, it waited on STORE_BUSY for ever, frozen.
+#[test]
+fn a_save_on_an_unmounted_store_fails_at_once_and_unfreezes_the_song() {
+    let mut r = Rig::on(crate::store::Rig::new(crate::store::Sim::new(5), 16));
+    r.io.dirty = 1;
+    assert_eq!(unsafe { song_io_save(&mut *r.io, c"NIGHT".as_ptr(), 0) }, 1);
+    for _ in 0..3 {
+        r.step();
+    }
+    assert_eq!(r.io.state, SONG_IO_IDLE as u8);
+    assert_eq!(r.message(), "SONG: SAVE FAILED");
+    assert_eq!(unsafe { (*r.song.ptr()).frozen }, 0, "edits go on");
+    assert_eq!(r.io.dirty, 1, "still unsaved");
+    assert_eq!(r.store.sim.ops, 0);
 }

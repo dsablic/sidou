@@ -3964,3 +3964,32 @@ fn api_calls_stay_within_a_polls_work() {
     );
     r.assert_clean();
 }
+
+/// A store the platform never mounted (store_fm1 leaves it so on a flash part it does not
+/// know) refuses every write at once and for good with STORE_ERROR: before, write_check said
+/// STORE_BUSY, and a SONG SAVE waited on it for ever with the song frozen (review 1.1). Reads
+/// find nothing and nothing touches the part.
+#[test]
+fn an_unmounted_store_refuses_every_write_for_good() {
+    let mut r = Rig::new(Sim::new(11), 256);
+    assert_eq!(r.state(), STORE_STATE_UNMOUNTED);
+    for _ in 0..3 {
+        assert_eq!(r.put(1, b"value"), STORE_ERROR);
+        assert_eq!(r.delete(1), STORE_ERROR);
+        assert_eq!(r.file_begin("SONG", 100), STORE_ERROR);
+        assert_eq!(r.file_delete("SONG"), STORE_ERROR);
+        assert_eq!(r.file_rename("SONG", "OTHER"), STORE_ERROR);
+        assert_eq!(r.collect(), STORE_ERROR);
+        assert!(!r.poll(), "no work");
+    }
+    assert!(!r.busy());
+    assert!(!r.erase_wanted());
+    assert_eq!(r.get(1), None);
+    assert!(r.file_open("SONG").is_none());
+    assert!(r.dir().is_empty());
+    assert_eq!(r.sim.ops, 0, "the part is never touched");
+    // Mounted after all, it writes.
+    assert_eq!(r.mount(), STORE_STATE_BLANK);
+    assert_eq!(r.put_now(1, b"value"), STORE_OK);
+    assert_eq!(r.get(1).as_deref(), Some(&b"value"[..]));
+}

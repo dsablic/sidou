@@ -1660,9 +1660,16 @@ static int recovering(store* s) {
     return s->rec;
 }
 
+/* Whether a write may start: STORE_FOREIGN on another firmware's region and STORE_ERROR on a
+ * store never mounted (the platform did not mount it: a flash part it does not know), both for
+ * good, so a caller never waits on them; STORE_BUSY while a mount, a write or the mount's
+ * recovery runs. */
 static int write_check(store* s) {
     if (s->state == STORE_STATE_FOREIGN) {
         return STORE_FOREIGN;
+    }
+    if (s->state == STORE_STATE_UNMOUNTED) {
+        return STORE_ERROR;
     }
     if (!writable(s) || s->w.phase != W_IDLE || recovering(s)) {
         return STORE_BUSY;
@@ -1699,7 +1706,7 @@ int store_collect(store* s) {
      * most one: the next boot's wait stays short). */
     if (!writable(s) || s->job != JOB_NONE || s->w.phase != W_IDLE || s->f.phase != F_IDLE ||
         recovering(s) || ambiguous(s, SEC_DIRTY) != NONE) {
-        return writable(s) ? STORE_BUSY : STORE_FOREIGN;
+        return writable(s) || s->state == STORE_STATE_MOUNTING ? STORE_BUSY : write_check(s);
     }
     uint32_t v = victim(s);
     if (v == NONE) {
