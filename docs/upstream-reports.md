@@ -11,13 +11,14 @@ here.
 |---|---|---|---|---|---|
 | 1 | FM-1 SID (`fm1-sid/` in [fm1-emu](https://github.com/joakimeriksson/fm1-emu)) | `psid_load` reads past its buffer when the header's data offset is beyond the file (`psid.c:145`); ASan repro with a 124-byte file | 2026-10-18 | [Below](#1-fm-1-sid-psid_load-out-of-bounds-read); decision record 0008 | drafted |
 | 2 | fm1-emu | The decrementing register block load `{R*4} = [-R]` (`r_4_mov_r_4`) decodes but does not execute | M1b | `docs/TODO.md`, "Report fm1-emu: decrementing register block load is not executed" | not drafted |
-| 3 | fm1-emu | The and-not read-modify-write on memory, `[rX+imm] &= ~rY` (`64 e8 0b ..`, `64 e8 0f ..`), does not decode | M2d Task 1 | `docs/TODO.md`, "Report fm1-emu: the and-not read-modify-write on memory is not decoded" | not drafted |
+| 3 | fm1-emu | The and-not read-modify-write on memory, `[rX+imm] &= ~rY` (`64 e8 0b ..`, `64 e8 0f ..`), does not decode | M2d Task 1 | `docs/TODO.md`, "Report fm1-emu: the and-not read-modify-write on memory is not decoded" | fixed upstream (fm1-emu #33, 2026-10-21; #35 open for the shifted form): check at the bump, then drop |
 | 4 | fm1-emu | A 6-byte compare and branch (`43 ff …`), which JieLi clang emits for the 6502 prototype's dispatch, does not decode | 2026-10-18, 6502 study | decision record 0008, Risks | not drafted |
-| 5 | fm1-emu | P33 and the watchdog are not modelled (`P33_CON`/`P33_DAT` read 0) | M1 | `docs/TODO.md`, "fm1-emu does not model P33 or the watchdog" | feature request, not drafted |
+| 5 | fm1-emu | P33 and the watchdog are not modelled (`P33_CON`/`P33_DAT` read 0) | M1 | `docs/TODO.md`, "fm1-emu does not model P33 or the watchdog" | P33 modelled upstream (fm1-emu #34, 2026-10-21); the watchdog to check at the bump |
 | 6 | Felucca (`firmware/src/usb.c:50-56`) | The USB DMA buffers (`ep0buf`, `ep1tx`, `ep1rx`, …) are declared `aligned(4)`, but on the FM-1 an EP1 IN buffer at 4 mod 8 is never sent (TxPktRdy stays set). Felucca's own builds happen to place them 8-aligned; a layout change would break USB-MIDI out. Fix: `aligned(8)` or more. | 2026-10-18, SIDOU's USB-out diagnosis | `usbdbg` branch, `docs/hardware-results/usb-out-diagnosis.md` (rungs 0 and 1) | not drafted |
 
 Items 2-5 are against the pinned `e52f4640`. The fm1-emu bump will show which are still
-open.
+open: upstream has since fuzzed its decoder against the vendor objdump (#18, four decode
+fixes), which may also cover item 4.
 
 **Offers rather than bugs** (also shown to the user first): SIDOU's USB host model for
 fm1-emu's tests (`docs/TODO.md`), and macOS support for the FM-1's ROM-boot recovery
