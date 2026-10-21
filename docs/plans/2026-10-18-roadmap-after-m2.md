@@ -42,7 +42,7 @@ the 6502 study below.
 5. **The ergonomics pass.** The user reviews the harness's findings and the heuristic review
    (`host/crates/ergo`, `build/ergo/`); the accepted ones become the fix list. Knob ranges and
    curves, gestures, consistency, readability, workflow.
-6. **v0.1**, which ships with **no known bug**: everything spotted by then is fixed first,
+6. **v0.3.0, the first public release** (numbered after v0.2.0, the M2 release; the user, 2026-10-21), which ships with **no known bug**: everything spotted by then is fixed first,
    from the ergonomics review (`docs/plans/2026-10-18-ergonomics-pass.md`, including its
    deferred TRACKER and CHIP items), flash day, the testers and `docs/TODO.md`'s bug entries.
    The harness is re-run on the release candidate, and every finding it reports is fixed or
@@ -64,7 +64,7 @@ the 6502 study below.
    BSD-2-Clause PSID environment design with its bounds bug and five other gaps fixed;
    m6502.h and FM-1 SID's player as a host-side oracle only.
 8. **The resource-heavy UX:** help cards, first-run guidance, suggested automations.
-9. **Generative play (after v0.1).** Patterns that change while they play, as the newest FM-1
+9. **Generative play (after v0.3.0).** Patterns that change while they play, as the newest FM-1
    firmwares do (checked 2026-10-18: JIANT FM's generate / mutate / dice, Felucca's RANDOM,
    COOK and per-step chance, Felucca_seq_per_track's generative arps), aimed at C64 music:
    - **STEP and TRACKER:** per-step chance, MUTATE (changes the pattern a little on each
@@ -74,7 +74,7 @@ the 6502 study below.
    - **pattern DICE,** next to the ergonomics pass's patch DICE.
    Everything stays plain GoatTracker 2 data, so a generated song opens in GoatTracker. Its
    own plan when we get there; first candidate: per-step chance plus MUTATE in STEP.
-10. **BLE MIDI, a user-built variant (after v0.1).** The user's decision (2026-10-18), after the
+10. **BLE MIDI, a user-built variant (after v0.3.0).** The user's decision (2026-10-18), after the
    licence audit of the app image: published SIDOU links only code whose owners allow it,
    and about a third of the image is others' copyleft (Felucca's HAL, USB and update code,
    GPL-3.0-only; the reSIDfp-derived filter and waveform tables and DAC, GPL-2.0-or-later;
@@ -102,7 +102,7 @@ the 6502 study below.
   for SIDOU's tests and the decoder gap SIDOU found (`docs/TODO.md`) back upstream. Anything
   posted to another project is shown to the user first.
 - **FM-1 Live Link, a companion for the whole FM-1 community** (after USB-MIDI out works on
-  the device, before v0.1). A browser page (Web MIDI: Chrome and Edge on desktop, Chrome on
+  the device, before v0.3.0). A browser page (Web MIDI: Chrome and Edge on desktop, Chrome on
   Android; iOS needs a native app later) that shows the device on a large screen and
   controls it, built as a module any FM-1 firmware can adopt:
   - **Protocol:** SysEx over the normal USB-MIDI port, no special USB mode, with an open

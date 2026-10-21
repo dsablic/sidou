@@ -203,7 +203,7 @@ Follow-ups that aren't tied to a milestone task yet.
 - **Action:** diff `ota_flash.h` against Felucca's `ota_hw.c` and label it by what it is;
   review each SID file against reSIDfp and add the authors' notices where the code is
   derived; add the missing GoatTracker and Felucca copyright lines; re-run `reuse lint`.
-  Before v0.1.
+  Before v0.3.0.
 
 ## Decide on RSID playback (M3 plan)
 
