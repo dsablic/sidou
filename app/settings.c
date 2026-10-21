@@ -196,12 +196,13 @@ static int write(settings* s, const uint8_t* rec, uint32_t len, uint32_t crc) {
     int rc = store_put(s->st, SETTINGS_KEY, SETTINGS_TYPE, s->out, len);
     if (rc == STORE_OK) {
         s->saved = crc;
+        s->errors = (uint8_t)s->st->errors;
         return 1;
     }
-    if (rc == STORE_FOREIGN || rc == STORE_FULL || rc == STORE_INVALID) {
+    if (rc == STORE_FOREIGN || rc == STORE_FULL || rc == STORE_INVALID || rc == STORE_ERROR) {
         s->saved = crc; /* nothing to wait for */
         if (s->asked) {
-            s->result = SETTINGS_FOREIGN;
+            s->result = rc == STORE_ERROR ? SETTINGS_FAILED : SETTINGS_FOREIGN;
             s->asked = 0;
         }
     }
@@ -233,7 +234,15 @@ __attribute__((noinline, unused)) static void update(settings* s, uint32_t now_m
         return;
     }
     if (s->asked == 2 && (!s->st || !store_busy(s->st))) {
-        s->result = s->forcing ? SETTINGS_SAVED_GAPS : SETTINGS_SAVED;
+        /* Idle after it took the record: committed, unless a program failed meanwhile (the
+         * write is undecided then): not saved, and the debounce writes it again. */
+        if (s->st && (uint8_t)s->st->errors != s->errors) {
+            s->result = SETTINGS_FAILED;
+            s->saved = ~s->saved;
+            s->changed_at = now_ms;
+        } else {
+            s->result = s->forcing ? SETTINGS_SAVED_GAPS : SETTINGS_SAVED;
+        }
         s->asked = 0;
     } else if (!s->forcing && now_ms - s->asked_at >= SETTINGS_FORCE_MS && s->force) {
         s->forcing = 1;

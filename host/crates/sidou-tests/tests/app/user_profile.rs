@@ -731,3 +731,34 @@ fn a_format_empties_every_slot() {
     assert_eq!(p.ui.live().user_valid, 0);
     assert_eq!(p.ui.live().user_applied, 0);
 }
+
+/// On a store never mounted (an unknown flash part, review 1.1) a slot's save says it was not
+/// saved at once; it still applies for now.
+#[test]
+fn an_unmounted_store_keeps_no_slot_and_says_so() {
+    let mut p = Prof::on(Store::new(crate::store::Sim::new(8), 256));
+    p.open_chip();
+    p.target(1);
+    p.save();
+    assert_eq!(
+        p.toast_within(1000).as_deref(),
+        Some("STORE ERROR: NOT SAVED")
+    );
+    assert_eq!(p.st.sim.ops, 0, "the part is never touched");
+    assert_eq!(p.ui.live().user_valid, 1, "it applies for now");
+}
+
+/// A program error after the store took a slot's record: not SAVED (review 1.4).
+#[test]
+fn a_program_error_after_a_slot_is_taken_says_not_saved() {
+    let mut p = Prof::new();
+    p.open_chip();
+    p.target(2);
+    p.st.sim.fail = 100;
+    p.save();
+    assert_eq!(
+        p.toast_within(1000).as_deref(),
+        Some("STORE ERROR: NOT SAVED")
+    );
+    assert!(p.st.stats().errors > 0);
+}

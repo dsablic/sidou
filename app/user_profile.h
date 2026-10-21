@@ -50,7 +50,8 @@ typedef enum {
     USER_PROFILE_NOTHING = 0,
     USER_PROFILE_SAVED = 1,      /* committed */
     USER_PROFILE_SAVED_GAPS = 2, /* committed, with the held operations forced */
-    USER_PROFILE_FOREIGN = 3     /* the store holds another firmware's data: not saved */
+    USER_PROFILE_FOREIGN = 3,    /* the store holds another firmware's data: not saved */
+    USER_PROFILE_FAILED = 4      /* a flash error, or no usable flash: not saved */
 } user_profile_result;
 
 typedef struct {
@@ -61,6 +62,7 @@ typedef struct {
     uint8_t result;  /* a user_profile_result, until user_profiles_take */
     uint8_t result_slot;
     uint8_t forcing;
+    uint8_t errors;  /* the store's error count (its low byte) when it took slot sent - 1 */
     uint32_t since;  /* when the waiting began */
     uint8_t rec[USER_PROFILE_BYTES]; /* the record being written: the store programs from it */
 } user_profiles;

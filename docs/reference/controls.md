@@ -869,7 +869,8 @@ another button while SAVE is down prevents that release from saving.
 An explicit save waiting for 2 s may force short held flash operations, with gaps in the
 audio; completion then says **SAVED (GAPS)**. Background saves never do this. With SOUNDS on,
 a completed explicit save plays the drive chunk. A foreign store refuses it with
-**STORE FOREIGN: NOT SAVED**. Song saves report **SONG SAVED** or **SONG SAVED (GAPS)**;
+**STORE FOREIGN: NOT SAVED**; a flash error, or a flash part the store does not know, with
+**STORE ERROR: NOT SAVED** (and a song's SAVE with **SONG: SAVE FAILED**). Song saves report **SONG SAVED** or **SONG SAVED (GAPS)**;
 on CHIP, SAVE stores a USER slot as above, and settings otherwise.
 
 ## The MIDI page

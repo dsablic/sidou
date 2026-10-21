@@ -130,9 +130,11 @@ __attribute__((noinline, unused)) static void submit(user_profiles* u) {
     if (rc == STORE_OK) {
         u->queued = (uint8_t)(u->queued & ~(1u << n));
         u->sent = (uint8_t)(n + 1u);
-    } else if (rc == STORE_FOREIGN || rc == STORE_FULL || rc == STORE_INVALID) {
+        u->errors = (uint8_t)u->st->errors;
+    } else if (rc == STORE_FOREIGN || rc == STORE_FULL || rc == STORE_INVALID ||
+               rc == STORE_ERROR) {
         u->queued = (uint8_t)(u->queued & ~(1u << n));
-        u->result = USER_PROFILE_FOREIGN;
+        u->result = rc == STORE_ERROR ? USER_PROFILE_FAILED : USER_PROFILE_FOREIGN;
         u->result_slot = (uint8_t)n;
     } /* STORE_BUSY: asked again next tick */
 }
@@ -144,7 +146,10 @@ __attribute__((noinline, unused)) static void work(user_profiles* u, uint32_t no
         submit(u);
     }
     if (u->sent && !store_busy(u->st)) {
-        u->result = u->forcing ? USER_PROFILE_SAVED_GAPS : USER_PROFILE_SAVED;
+        /* Idle after it took the record: committed, unless a program failed meanwhile. */
+        u->result = (uint8_t)u->st->errors != u->errors ? USER_PROFILE_FAILED
+                    : u->forcing                         ? USER_PROFILE_SAVED_GAPS
+                                                         : USER_PROFILE_SAVED;
         u->result_slot = (uint8_t)(u->sent - 1u);
         u->sent = 0;
         u->since = now_ms; /* the next slot's wait starts when this one ended */

@@ -2348,8 +2348,10 @@ __attribute__((noinline, unused)) static void users_frame(views* v, uint32_t now
     if (r == USER_PROFILE_SAVED || r == USER_PROFILE_SAVED_GAPS) {
         screen_toast(&v->s, buf, SCREEN_TOAST_MS);
         sound(v, UI_SOUND_CHUNK);
-    } else if (r == USER_PROFILE_FOREIGN) {
-        screen_toast(&v->s, "STORE FOREIGN: NOT SAVED", SCREEN_TOAST_MS);
+    } else if (r == USER_PROFILE_FOREIGN || r == USER_PROFILE_FAILED) {
+        screen_toast(&v->s, r == USER_PROFILE_FAILED ? "STORE ERROR: NOT SAVED"
+                                                     : "STORE FOREIGN: NOT SAVED",
+                     SCREEN_TOAST_MS);
         sound(v, UI_SOUND_BUZZ);
     }
     if (user_profiles_busy(&v->users)) {
@@ -2381,6 +2383,10 @@ __attribute__((noinline, unused)) static void store_frame(views* v, uint32_t now
         break;
     case SETTINGS_FOREIGN:
         screen_toast(&v->s, "STORE FOREIGN: NOT SAVED", SCREEN_TOAST_MS);
+        sound(v, UI_SOUND_BUZZ);
+        break;
+    case SETTINGS_FAILED:
+        screen_toast(&v->s, "STORE ERROR: NOT SAVED", SCREEN_TOAST_MS);
         sound(v, UI_SOUND_BUZZ);
         break;
     default: break;

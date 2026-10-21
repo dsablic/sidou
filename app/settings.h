@@ -72,7 +72,8 @@ typedef enum {
     SETTINGS_NOTHING = 0,
     SETTINGS_SAVED = 1,      /* committed */
     SETTINGS_SAVED_GAPS = 2, /* committed, with the held operations forced */
-    SETTINGS_FOREIGN = 3     /* the store holds another firmware's data: nothing saved */
+    SETTINGS_FOREIGN = 3,    /* the store holds another firmware's data: nothing saved */
+    SETTINGS_FAILED = 4      /* a flash error, or no usable flash: not saved */
 } settings_result;
 
 typedef struct {
@@ -93,6 +94,7 @@ typedef struct {
     uint8_t forcing;
     uint8_t result; /* a settings_result, until settings_take_result */
     uint8_t started;
+    uint8_t errors; /* the store's error count (its low byte) when it took the explicit save */
     char last_song[STORE_NAME_MAX + 1u];
 } settings;
 

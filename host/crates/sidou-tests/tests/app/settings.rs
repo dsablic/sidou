@@ -1137,3 +1137,50 @@ fn the_theme_round_trips_and_an_older_record_loads_high_contrast() {
         "a schema 3 record that stops short is no record"
     );
 }
+
+/// A store that was never mounted (an unknown flash part, review 1.1) keeps nothing, and an
+/// explicit save says so at once instead of waiting for ever.
+#[test]
+fn an_unmounted_store_keeps_nothing_and_an_explicit_save_says_it_failed() {
+    let st = Store::new(crate::store::Sim::new(4), 256);
+    let mut s = Set::new(st, VERSION);
+    assert!(!s.load());
+    s.change_everything();
+    unsafe { settings_save_now(&mut *s.set, s.now) };
+    s.tick();
+    assert_eq!(s.result(), SETTINGS_FAILED);
+    assert_eq!(s.set.asked, 0);
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    assert_eq!(s.st.sim.ops, 0, "the part is never touched");
+    assert_eq!(forced(), (0, 0));
+}
+
+/// A program error after the store took an explicit save leaves the record undecided: the
+/// save says it failed, not SAVED (review 1.4), and the debounce writes the record again.
+#[test]
+fn a_program_error_after_an_explicit_save_is_taken_says_failed_and_retries() {
+    let mut s = Set::blank();
+    s.load();
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    *s.cards = 0;
+    s.st.sim.fail = 100;
+    unsafe { settings_save_now(&mut *s.set, s.now) };
+    let mut result = SETTINGS_NOTHING;
+    for _ in 0..100 {
+        s.tick();
+        result = s.result();
+        if result != SETTINGS_NOTHING {
+            break;
+        }
+    }
+    assert_eq!(result, SETTINGS_FAILED);
+    assert!(s.st.stats().errors > 0);
+    s.st.sim.fail = 0;
+    s.ticks(2 * SETTINGS_DEBOUNCE_MS);
+    assert_eq!(
+        s.stored(),
+        Some(s.gather()),
+        "written again by the debounce"
+    );
+    assert_eq!(s.result(), SETTINGS_NOTHING, "background saves say nothing");
+}

@@ -48,7 +48,8 @@ What a slot holds, and when it is read and written:
   included), asking again while the store is busy, and the toast **SAVED TO USER 3**
   comes when it commits. After 2 s of waiting the held flash operations are forced, as
   for an explicit settings save, and the toast says **(GAPS)**. A foreign store keeps
-  nothing (**STORE FOREIGN: NOT SAVED**); the slot serves until the next boot.
+  nothing (**STORE FOREIGN: NOT SAVED**), nor does a flash error or a flash part the store
+  does not know (**STORE ERROR: NOT SAVED**); the slot serves until the next boot.
 - A format of the store empties every slot.
 - The settings record keeps the keys' current profile, controls and raw expert overrides (the base
   profile, never a USER number); which USER slot a pick came from is not stored, so after
