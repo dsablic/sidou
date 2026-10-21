@@ -19,6 +19,14 @@ the 6502 study below.
 1. **Close M2.** The remaining tasks: M2c Tasks 8-9, M2d Tasks 3-7, M2e Tasks 5-6, M2b
    Tasks 6 and 8, then the end-of-M2 review by area (storage most closely, and the tests that
    were re-aimed during M2).
+1b. **Faster tests, so iterations are faster** (the user, 2026-10-21), alongside M2's close
+   and before the headroom pass. The emulator gate is the long pole: it runs every test one
+   at a time (`--test-threads=1`, a default from M0 that no test is known to need; fm1-emu
+   counts instructions, so parallel runs should not change a number), and `screen.rs` alone
+   takes about 10 minutes on a quiet machine. In order: time every test file; show that the
+   gate's numbers are the same in parallel (each test in its own process, e.g. nextest), then
+   run it in parallel locally and in CI; run the merge check's independent stages side by
+   side; the fm1-emu bump's JIT (item 2). A test that truly needs to be alone says why.
 2. **Win back performance headroom.** It starts with the **fm1-emu bump** (added
    2026-10-21): the pass measures in the emulator, so on the revision SIDOU keeps. Upstream
    has since fixed the and-not decoding and modelled P33 (`docs/upstream-reports.md`, items
