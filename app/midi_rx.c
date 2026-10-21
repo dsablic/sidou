@@ -116,24 +116,29 @@ static void on_usb(void* ctx, const midi_msg* msg) {
     take(rx, &rx->usb_map, msg);
 }
 
-/* SysEx is skipped (no midi_sysex_fn) on both sources. The update protocol takes its frames
- * from USB inside the vendored USB stack (platform/fm1/update.h): over USB only, because it
- * needs replies and the TRS jack is MIDI IN only. */
-static void parsers_init(midi_rx* rx) {
-    midi_map_port_init(&rx->trs_map, rx->l);
-    midi_map_port_init(&rx->usb_map, rx->l);
-    rx->trs_map.learn = rx->learn;
-    rx->usb_map.learn = rx->learn;
-    rx->trs_map.banks = rx->route ? rx->route->bank : NULL;
-    rx->usb_map.banks = rx->trs_map.banks;
-    midi_in_init(&rx->trs, on_trs, 0, rx);
-    midi_in_init(&rx->usb, on_usb, 0, rx);
+/* A source's parser and NRPN state, anew. Its SysEx callback stays: the caller's (the platform
+ * sets the parsers' on_sysex after midi_rx_init; none, NULL, skips SysEx). */
+static void port_init(midi_rx* rx, midi_in* in, midi_map_port* map, midi_msg_fn on_msg) {
+    midi_sysex_fn on_sysex = in->on_sysex;
+    midi_map_port_init(map, rx->l);
+    map->learn = rx->learn;
+    map->banks = rx->route ? rx->route->bank : NULL;
+    midi_in_init(in, on_msg, on_sysex, rx);
 }
 
-static void restart(midi_rx* rx, uint8_t epoch) {
+/* A gap: the sources it lost (MIDI_SRC_* bits; 0, unknown: both) restart their parsers, so
+ * a message or a SysEx frame cut by it is dropped, while the other source's go on (a SysEx
+ * transfer on it included). Every note is released and the controllers reset either way. */
+static void restart(midi_rx* rx, uint8_t epoch, uint8_t sources) {
     rx->epoch = epoch;
     rx->restarts++;
-    parsers_init(rx);
+    sources = sources & (MIDI_SRC_USB | MIDI_SRC_TRS) ? sources : MIDI_SRC_USB | MIDI_SRC_TRS;
+    if (sources & MIDI_SRC_TRS) {
+        port_init(rx, &rx->trs, &rx->trs_map, on_trs);
+    }
+    if (sources & MIDI_SRC_USB) {
+        port_init(rx, &rx->usb, &rx->usb_map, on_usb);
+    }
     live_all_notes_off(rx->l);
     live_reset_controllers(rx->l); /* a bend back to the centre may be among the lost */
     if (rx->route) {
@@ -153,7 +158,10 @@ void midi_rx_init(midi_rx* rx, live* l, uint8_t epoch) {
     rx->fast = UNROUTED;
     rx->sync = NULL;
     rx->entry = NULL;
-    parsers_init(rx);
+    rx->trs.on_sysex = NULL; /* SysEx is skipped until the platform sets a callback */
+    rx->usb.on_sysex = NULL;
+    port_init(rx, &rx->trs, &rx->trs_map, on_trs);
+    port_init(rx, &rx->usb, &rx->usb_map, on_usb);
 }
 
 void midi_rx_sync(midi_rx* rx, struct midi_sync* sync) {
@@ -179,7 +187,7 @@ void midi_rx_watch(midi_rx* rx, midi_out* out) {
 
 void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e) {
     if (e->epoch != rx->epoch) {
-        restart(rx, e->epoch);
+        restart(rx, e->epoch, e->gap);
     }
     rx->entry = e;
     if (e->source == MIDI_SRC_TRS) {
@@ -198,10 +206,10 @@ void midi_rx_settle(midi_rx* rx) {
     }
 }
 
-int midi_rx_check_lost(midi_rx* rx, uint8_t epoch) {
+int midi_rx_check_lost(midi_rx* rx, uint8_t epoch, uint8_t sources) {
     if ((int8_t)(uint8_t)(epoch - rx->epoch) <= 0) {
         return 0; /* not newer: an entry taken since the caller read it may be ahead already */
     }
-    restart(rx, epoch);
+    restart(rx, epoch, sources);
     return 1;
 }

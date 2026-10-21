@@ -18,7 +18,9 @@
  * losses with no successful push between them is one gap, and starts a new `epoch`; every
  * entry carries the epoch it was pushed in. So the consumer sees exactly where input went
  * missing: between two entries whose epochs differ (by 1: a gap needs a push to end it), or
- * after the last entry if the ring's epoch is ahead of it (midi_rx.h). The USB side never
+ * after the last entry if the ring's epoch is ahead of it (midi_rx.h). A gap also says whose
+ * input it lost (the sources' bits: the entry after it carries them, `in_gap` until then), so a
+ * SysEx transfer on the other port goes on (docs/reference/sysex.md). The USB side never
  * loses: it leaves a packet in the endpoint (the host is NAKed and retries) while the ring
  * has less room than a packet's events.
  *
@@ -47,6 +49,7 @@ typedef struct {
     uint32_t data;
     uint8_t source; /* MIDI_SRC_* */
     uint8_t epoch;  /* the ring's epoch when it was pushed */
+    uint8_t gap;    /* the sources (MIDI_SRC_* bits) whose input was lost just before it, or 0 */
 } midi_ring_entry;
 
 typedef struct {
@@ -55,7 +58,9 @@ typedef struct {
     volatile uint32_t tail; /* consumer: entries before it have been taken */
     volatile uint32_t lost; /* producer: inputs dropped, by a full ring or before it */
     volatile uint8_t epoch; /* producer: gaps of lost input so far (wraps) */
-    uint8_t in_gap;         /* producer only: the last thing that happened was a loss */
+    /* Producer: the sources (MIDI_SRC_* bits) the gap since the last push lost, 0 if the last
+     * thing that happened was a push. The consumer may read it once the ring is empty. */
+    volatile uint8_t in_gap;
 } midi_ring;
 
 void midi_ring_init(midi_ring* r);
@@ -64,8 +69,9 @@ void midi_ring_init(midi_ring* r);
 int midi_ring_push(midi_ring* r, uint8_t source, uint32_t data, uint32_t stamp);
 /* Producer: free entries. */
 uint32_t midi_ring_room(const midi_ring* r);
-/* Producer: n inputs were lost before they reached the ring (a gap, as for a full ring). */
-void midi_ring_lose(midi_ring* r, uint32_t n);
+/* Producer: n inputs from `source` (MIDI_SRC_*) were lost before they reached the ring (a gap,
+ * as for a full ring). */
+void midi_ring_lose(midi_ring* r, uint8_t source, uint32_t n);
 /* Consumer. 1 and the oldest entry, or 0 when there is none. */
 int midi_ring_pop(midi_ring* r, midi_ring_entry* out);
 /* Either side: inputs lost so far (wraps). Diagnostic. */

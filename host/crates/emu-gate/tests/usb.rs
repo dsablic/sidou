@@ -390,3 +390,120 @@ fn an_upgrade_request_gets_the_first_read_request_out() {
     assert!(in1.iter().all(|p| p.len() <= IN_MAX));
     assert_eq!(m.usb.as_ref().expect("a host").sie_in_audio, 0);
 }
+
+/// SIDOU's frames in what the host read (real-time bytes aside), each from F0 to F7; panics on
+/// a frame cut by another or left open.
+fn sidou_frames(in1: &[Vec<u8>]) -> Vec<Vec<u8>> {
+    let mut frames = Vec::new();
+    let mut frame: Vec<u8> = Vec::new();
+    for packet in in1.concat().chunks(4) {
+        let n = match packet[0] & 15 {
+            4 | 7 => 3,
+            5 => 1,
+            6 => 2,
+            _ => {
+                assert!(frame.is_empty(), "a channel packet inside a SysEx frame");
+                0
+            }
+        };
+        for &b in &packet[1..=n] {
+            if b >= 0xf8 {
+                continue;
+            }
+            if b == 0xf0 {
+                assert!(frame.is_empty(), "a SysEx frame cut by another");
+            }
+            frame.push(b);
+            if b == 0xf7 {
+                frames.push(std::mem::take(&mut frame));
+            }
+        }
+    }
+    assert!(
+        frame.is_empty(),
+        "an unterminated SysEx frame: {frame:02x?}"
+    );
+    frames
+}
+
+/// An INQ, and the main loop until its reply is part way out on the wire.
+fn inquiry_part_way(m: &mut Machine, fw: &Firmware, sequence: u8) {
+    let sum = (1 + sequence).wrapping_neg() & 0x7f;
+    send(
+        m,
+        &sysex_packets(&[0xf0, 0x7d, 0x53, 0x44, 1, sequence, sum, 0xf7]),
+    );
+    let state = fw.symbol("sidou_sysex");
+    for _ in 0..200 {
+        let active = m
+            .soc
+            .read8(state + sidou_sys::ilp32::sysex::tx_active as u32);
+        let at = m
+            .soc
+            .read16(state + sidou_sys::ilp32::sysex::tx_position as u32);
+        if active != 0 && at >= 6 {
+            return;
+        }
+        m.usb_frames(1);
+    }
+    panic!("the INQ reply never started");
+}
+
+/// A gap in SIDOU's MIDI-in ring that lost `sources`' input (MIDI_SRC_* bits), as the
+/// producer leaves it (app/midi_ring.c lose).
+fn ring_gap(m: &mut Machine, fw: &Firmware, sources: u8) {
+    let ring = fw.symbol("in_ring");
+    let epoch = ring + sidou_sys::ilp32::midi_ring::epoch as u32;
+    let e = m.soc.read8(epoch);
+    m.soc.write8(epoch, e.wrapping_add(1));
+    m.soc
+        .write8(ring + sidou_sys::ilp32::midi_ring::in_gap as u32, sources);
+}
+
+/// Lost input aborts only the SysEx transfer of the port that lost it, and never leaves a reply
+/// frame open on the wire (review 4.1): a TRS gap while a USB INQ reply goes out leaves it
+/// whole, with nothing after it; a USB gap lets it finish to its F7, then NAKs ABORTED (9); the
+/// next request is answered. Before, either gap reset SysEx mid-frame: the reply stopped
+/// after its first packets with no F7.
+#[test]
+fn a_ring_gap_aborts_only_its_ports_sysex_and_never_cuts_a_reply() {
+    let Some(fw) = fixture("SysEx across a MIDI-in gap") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    m.usb = Some(UsbHost::default());
+    run_past_boot(&mut m, &fw);
+    enumerate(&mut m, &fw);
+    let restarts = fw.symbol("midi_stats") + 8;
+    let before = m.soc.read32(restarts);
+
+    host(&mut m).in1.clear();
+    inquiry_part_way(&mut m, &fw, 0);
+    ring_gap(&mut m, &fw, sidou_sys::MIDI_SRC_TRS as u8);
+    m.usb_frames(100);
+    let frames = sidou_frames(&host(&mut m).in1);
+    assert_eq!(
+        m.soc.read32(restarts),
+        before + 1,
+        "the gap restarted TRS's parser"
+    );
+    assert_eq!(frames.len(), 1, "the INQ reply alone: {frames:02x?}");
+    assert_eq!(&frames[0][..6], &[0xf0, 0x7d, 0x53, 0x44, 1, 0]);
+
+    host(&mut m).in1.clear();
+    inquiry_part_way(&mut m, &fw, 1);
+    ring_gap(&mut m, &fw, sidou_sys::MIDI_SRC_USB as u8);
+    m.usb_frames(100);
+    let frames = sidou_frames(&host(&mut m).in1);
+    assert_eq!(frames.len(), 2, "the reply, then a NAK: {frames:02x?}");
+    assert_eq!(&frames[0][..6], &[0xf0, 0x7d, 0x53, 0x44, 1, 1]);
+    assert_eq!(&frames[1][4..6], &[0x7f, 1], "a NAK");
+    assert_eq!(frames[1][7], sidou_sys::SYSEX_ABORTED as u8, "ABORTED");
+
+    host(&mut m).in1.clear();
+    inquiry_part_way(&mut m, &fw, 2);
+    m.usb_frames(100);
+    let frames = sidou_frames(&host(&mut m).in1);
+    assert_eq!(frames.len(), 1, "the next INQ is answered: {frames:02x?}");
+    assert_eq!(&frames[0][..6], &[0xf0, 0x7d, 0x53, 0x44, 1, 2]);
+}

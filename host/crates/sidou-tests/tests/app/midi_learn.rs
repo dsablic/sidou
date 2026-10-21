@@ -409,6 +409,7 @@ impl Learned {
             data,
             source,
             epoch,
+            gap: 0,
         };
         unsafe { midi_rx_entry(&mut *self.rx, &e) };
     }

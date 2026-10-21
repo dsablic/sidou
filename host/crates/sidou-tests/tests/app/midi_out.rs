@@ -43,6 +43,7 @@ impl Out {
             data,
             source,
             epoch: 0,
+            gap: 0,
         };
         unsafe { midi_rx_entry(&mut *self.rx, &e) };
     }

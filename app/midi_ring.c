@@ -14,18 +14,18 @@ void midi_ring_init(midi_ring* r) {
     r->in_gap = 0;
 }
 
-static void lose(midi_ring* r, uint32_t n) {
+static void lose(midi_ring* r, uint8_t source, uint32_t n) {
     r->lost += n;
     if (!r->in_gap) {
-        r->in_gap = 1;
         r->epoch++;
     }
+    r->in_gap = (uint8_t)(r->in_gap | (source ? source : 0xFFu)); /* never 0 in a gap */
 }
 
 int midi_ring_push(midi_ring* r, uint8_t source, uint32_t data, uint32_t stamp) {
     uint32_t h = r->head;
     if (h - r->tail >= MIDI_RING_SIZE) {
-        lose(r, 1u);
+        lose(r, source, 1u);
         return 0;
     }
     COMPILER_FENCE(); /* the tail before the slot it handed back */
@@ -34,6 +34,7 @@ int midi_ring_push(midi_ring* r, uint8_t source, uint32_t data, uint32_t stamp) 
     e->data = data;
     e->source = source;
     e->epoch = r->epoch;
+    e->gap = r->in_gap;
     r->in_gap = 0;
     COMPILER_FENCE(); /* the entry before the index that publishes it */
     r->head = h + 1u;
@@ -44,9 +45,9 @@ uint32_t midi_ring_room(const midi_ring* r) {
     return MIDI_RING_SIZE - (r->head - r->tail);
 }
 
-void midi_ring_lose(midi_ring* r, uint32_t n) {
+void midi_ring_lose(midi_ring* r, uint8_t source, uint32_t n) {
     if (n) {
-        lose(r, n);
+        lose(r, source, n);
     }
 }
 

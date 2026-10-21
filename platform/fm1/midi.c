@@ -153,11 +153,10 @@ static void usb_reset_wait(uint32_t ms) {
 #define FELUCCA_USB_PRODUCT 22, 3, 'S', 0, 'I', 0, 'D', 0, 'O', 0, 'U', 0, ' ', 0, 'F', 0, 'M', 0, '-', 0, '1', 0
 /* Every USB-MIDI event packet, as it came (TIMER5 interrupt, usb_poll), into SIDOU's ring:
  * SIDOU's parser (app/midi_usb.c) takes system common, every real-time byte and SysEx too,
- * which usb.c's own ring leaves out. A full ring is a gap for the parser. */
+ * which usb.c's own ring leaves out. A full ring is a gap for the parser: midi_ring_push
+ * counts it, as USB's. */
 static void usb_raw_in(uint32_t pkt) {
-    if (!midi_ring_push(&in_ring, MIDI_SRC_USB, pkt, poll_stamp)) {
-        midi_ring_lose(&in_ring, 1);
-    }
+    (void)midi_ring_push(&in_ring, MIDI_SRC_USB, pkt, poll_stamp);
 }
 #define FELUCCA_MIDI_IN_RAW usb_raw_in
 
@@ -234,7 +233,7 @@ static int trs_enqueue(uint32_t data, uint32_t source) {
 }
 
 static void trs_lost(uint32_t n) {
-    midi_ring_lose(&in_ring, n);
+    midi_ring_lose(&in_ring, MIDI_SRC_TRS, n);
 }
 
 /* clang-format off */
@@ -387,6 +386,22 @@ uint32_t midi_inputs(void) {
     return rx.inputs;
 }
 
+/* A gap in the ring that lost `sources`' input (MIDI_SRC_* bits; 0, unknown: both), where it
+ * is: before the entry after it reaches the parsers. Only a SysEx transfer of a port that lost
+ * input is aborted (sysex_lost: NAK ABORTED on USB once a reply frame in progress has gone out
+ * whole, to its F7); the other port's goes on, and each parser takes the next frame from its
+ * F0 (midi_rx keeps the SysEx callbacks across its restart). */
+static void sysex_gap(uint8_t sources) {
+    sources = sources & (MIDI_SRC_USB | MIDI_SRC_TRS) ? sources : MIDI_SRC_USB | MIDI_SRC_TRS;
+    if (sources & MIDI_SRC_USB) {
+        sysex_lost(&sidou_sysex, SYSEX_USB);
+    }
+    if (sources & MIDI_SRC_TRS) {
+        sysex_lost(&sidou_sysex, SYSEX_TRS);
+    }
+    midi_sysex_running = (uint8_t)sysex_active(&sidou_sysex);
+}
+
 __attribute__((noinline, unused)) static int drain_pending(uint8_t epoch) {
     midi_ring_entry e;
     uint32_t n = 0;
@@ -398,6 +413,9 @@ __attribute__((noinline, unused)) static int drain_pending(uint8_t epoch) {
         uint32_t wait = fm1_ticks() - e.stamp;
         if (wait > midi_stats.max_wait_ticks) {
             midi_stats.max_wait_ticks = wait;
+        }
+        if (e.epoch != rx.epoch) {
+            sysex_gap(e.gap); /* what came before the gap was taken whole */
         }
         midi_rx_entry(&rx, &e);
         n++;
@@ -412,14 +430,18 @@ __attribute__((noinline, unused)) static int drain_pending(uint8_t epoch) {
     }
     if (in_ring.head == in_ring.tail) {
         /* All taken: a gap after the last entry, with nothing behind it yet. Its epoch was
-         * read before the ring was seen empty, so every entry before it has been taken. */
-        midi_rx_check_lost(&rx, epoch);
+         * read before the ring was seen empty, so every entry before it has been taken; its
+         * sources after (a push since then cleared them, or a later gap began: 0, both). */
+        uint8_t sources = in_ring.in_gap;
+        if (in_ring.epoch != epoch) {
+            sources = 0;
+        }
+        if (midi_rx_check_lost(&rx, epoch, sources)) {
+            sysex_gap(sources);
+        }
     }
     midi_stats.entries += n;
     if (rx.restarts != restarts) {
-        sysex_reset(&sidou_sysex);
-        midi_sysex_running = (uint8_t)sysex_active(&sidou_sysex);
-        sidou_callbacks();
         midi_stats.lost = midi_ring_lost(&in_ring);
         midi_stats.restarts = rx.restarts;
         return 1; /* the restart released the notes: there are writes to commit */

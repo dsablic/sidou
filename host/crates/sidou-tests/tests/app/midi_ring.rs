@@ -81,7 +81,7 @@ fn a_full_ring_drops_the_new_entry_and_counts_it() {
 #[test]
 fn input_lost_before_the_ring_is_counted() {
     let mut r = ring();
-    unsafe { midi_ring_lose(&mut *r, 5) };
+    unsafe { midi_ring_lose(&mut *r, TRS, 5) };
     assert_eq!(lost(&r), 5);
     assert_eq!(pop(&mut r), None, "a loss is not an entry");
 }
@@ -103,7 +103,7 @@ fn each_gap_of_losses_starts_one_new_epoch_and_entries_carry_theirs() {
     assert!(!push(&mut r, TRS, 0, 0), "a new gap");
     assert_eq!(epoch(&r), 2);
     // Losses before the ring join the gap they fall into, and start one after a push.
-    unsafe { midi_ring_lose(&mut *r, 7) };
+    unsafe { midi_ring_lose(&mut *r, TRS, 7) };
     assert_eq!(epoch(&r), 2);
     for _ in 0..SIZE - 1 {
         assert_eq!(pop_epoch(&mut r), Some(0));
@@ -111,9 +111,9 @@ fn each_gap_of_losses_starts_one_new_epoch_and_entries_carry_theirs() {
     assert_eq!(pop_epoch(&mut r), Some(1), "pushed after the first gap");
     assert_eq!(pop_epoch(&mut r), None);
     assert!(push(&mut r, TRS, 0, 0));
-    unsafe { midi_ring_lose(&mut *r, 0) };
+    unsafe { midi_ring_lose(&mut *r, TRS, 0) };
     assert_eq!(epoch(&r), 2, "losing nothing is no gap");
-    unsafe { midi_ring_lose(&mut *r, 300) };
+    unsafe { midi_ring_lose(&mut *r, TRS, 300) };
     assert_eq!(epoch(&r), 3, "one gap however many were lost");
     assert!(push(&mut r, TRS, 0, 0));
     assert_eq!(pop_epoch(&mut r), Some(2));
@@ -166,4 +166,38 @@ fn a_long_interleaved_run_keeps_every_entry_in_order() {
     }
     assert!(next_in > 50 * SIZE, "only {next_in} entries went through");
     assert_eq!(lost(&r), 0);
+}
+
+/// A gap says whose input it lost (review 4.1): the ring holds the sources' bits until the
+/// next push, which carries them in its entry and clears them; losses of both sources in one
+/// gap are one gap with both bits.
+#[test]
+fn a_gap_carries_the_sources_it_lost() {
+    let mut r = ring();
+    let mut e = midi_ring_entry::default();
+    assert!(push(&mut r, USB, 0, 0));
+    unsafe { midi_ring_lose(&mut *r, TRS, 3) };
+    assert_eq!(r.in_gap, TRS);
+    assert!(push(&mut r, USB, 1, 0));
+    assert_eq!(r.in_gap, 0, "the push ends the gap");
+    for i in 2..SIZE {
+        assert!(push(&mut r, USB, i, 0));
+    }
+    assert!(!push(&mut r, USB, 0, 0), "full: a USB loss");
+    unsafe { midi_ring_lose(&mut *r, TRS, 1) };
+    assert_eq!(r.in_gap, USB | TRS);
+    assert_eq!(epoch(&r), 2, "one gap");
+    let mut gaps = Vec::new();
+    while unsafe { midi_ring_pop(&mut *r, &mut e) } != 0 {
+        gaps.push((e.epoch, e.gap));
+    }
+    assert_eq!(gaps[0], (0, 0));
+    assert_eq!(gaps[1], (1, TRS), "the entry after the first gap");
+    assert!(gaps[2..].iter().all(|&g| g == (1, 0)));
+    assert!(push(&mut r, TRS, 0, 0));
+    assert!(unsafe { midi_ring_pop(&mut *r, &mut e) } != 0);
+    assert_eq!((e.epoch, e.gap), (2, USB | TRS));
+    // An unknown source still makes a gap, with every bit.
+    unsafe { midi_ring_lose(&mut *r, 0, 1) };
+    assert_eq!((epoch(&r), r.in_gap), (3, 0xFF));
 }

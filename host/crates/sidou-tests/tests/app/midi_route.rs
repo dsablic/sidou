@@ -159,6 +159,7 @@ impl Route {
                 data: u32::from(b),
                 source: TRS,
                 epoch: 0,
+                gap: 0,
             };
             unsafe { midi_rx_entry(&mut *self.rx, &e) };
         }
@@ -421,6 +422,7 @@ fn lost_input_releases_every_jam_note() {
         data: 0xFE,
         source: TRS,
         epoch: 1,
+        gap: 0,
     };
     unsafe { midi_rx_entry(&mut *r.rx, &e) };
     assert_eq!(r.take(), [Ev::Off(0), Ev::Off(2)]);

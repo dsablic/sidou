@@ -603,6 +603,7 @@ impl Midi {
             data,
             source,
             epoch: self.epoch,
+            gap: 0,
         };
         unsafe { midi_rx_entry(&mut *self.rx, &e) };
     }
@@ -1138,7 +1139,8 @@ patch's value up or down around 64; SIDOU does not.
   takes data entry away from the NRPN until CC 99 or 98 comes again. RPN 0/0 (pitch-bend
   sensitivity) sets the bend range: CC 6 the semitones, at once (0..24), CC 96 and 97 a
   semitone up or down; CC 38 (the cents) is ignored. Other RPNs do nothing. CC 121 (reset
-  all controllers) and a gap in the input select nothing.
+  all controllers) and a gap in the input select nothing (a gap: on the port that lost
+  input; the other port's selection stays).
 - **Bend range, RPN 0 and NRPN 6/0:** RPN 0 is the channel's setting, as RP-015 has it, so
   program changes keep it until power-off: a sequencer may send it once, before its
   program change. NRPN 6/0 is the preset's, like every NRPN: a program change replaces it

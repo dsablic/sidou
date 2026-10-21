@@ -34,6 +34,7 @@ impl Midi {
             data,
             source,
             epoch: self.epoch,
+            gap: 0,
         };
         unsafe { midi_rx_entry(&mut *self.rx, &e) };
     }
@@ -314,10 +315,10 @@ fn a_gap_inside_a_sysex_leaves_nothing_behind() {
 fn a_gap_after_the_last_entry_releases_the_notes_at_once() {
     let mut m = Midi::new();
     m.trs(&[0x90, C4, 100]);
-    assert_eq!(unsafe { midi_rx_check_lost(&mut *m.rx, 0) }, 0, "no gap");
+    assert_eq!(unsafe { midi_rx_check_lost(&mut *m.rx, 0, 0) }, 0, "no gap");
     assert_eq!(m.held(), [C4]);
     // The note-off may be among what was lost: nothing comes after it yet.
-    assert_eq!(unsafe { midi_rx_check_lost(&mut *m.rx, 1) }, 1);
+    assert_eq!(unsafe { midi_rx_check_lost(&mut *m.rx, 1, 0) }, 1);
     assert_eq!(m.held(), [] as [u8; 0]);
     // The entries after the gap carry its epoch: no second restart.
     m.epoch = 1;
@@ -334,11 +335,11 @@ fn an_epoch_that_is_not_newer_never_restarts() {
     m.trs(&[0x90, C4, 100]);
     assert_eq!(m.rx.restarts, 1);
     assert_eq!(
-        unsafe { midi_rx_check_lost(&mut *m.rx, 0) },
+        unsafe { midi_rx_check_lost(&mut *m.rx, 0, 0) },
         0,
         "restarted backwards"
     );
-    assert_eq!(unsafe { midi_rx_check_lost(&mut *m.rx, 1) }, 0);
+    assert_eq!(unsafe { midi_rx_check_lost(&mut *m.rx, 1, 0) }, 0);
     assert_eq!(m.held(), [C4]);
 }
 
@@ -347,15 +348,15 @@ fn epochs_wrap() {
     let mut rig = Rig::new(SID_MODEL_6581);
     let mut rx = Box::<midi_rx>::default();
     unsafe { midi_rx_init(&mut *rx, &mut *rig.live, 250) };
-    assert_eq!(unsafe { midi_rx_check_lost(&mut *rx, 250) }, 0);
-    assert_eq!(unsafe { midi_rx_check_lost(&mut *rx, 255) }, 1);
+    assert_eq!(unsafe { midi_rx_check_lost(&mut *rx, 250, 0) }, 0);
+    assert_eq!(unsafe { midi_rx_check_lost(&mut *rx, 255, 0) }, 1);
     assert_eq!(
-        unsafe { midi_rx_check_lost(&mut *rx, 3) },
+        unsafe { midi_rx_check_lost(&mut *rx, 3, 0) },
         1,
         "255 -> 3 is newer"
     );
     assert_eq!(
-        unsafe { midi_rx_check_lost(&mut *rx, 255) },
+        unsafe { midi_rx_check_lost(&mut *rx, 255, 0) },
         0,
         "3 -> 255 is older"
     );
@@ -367,6 +368,125 @@ fn losses_from_before_init_are_not_held_against_it() {
     let mut rig = Rig::new(SID_MODEL_6581);
     let mut rx = Box::<midi_rx>::default();
     unsafe { midi_rx_init(&mut *rx, &mut *rig.live, 41) };
-    assert_eq!(unsafe { midi_rx_check_lost(&mut *rx, 41) }, 0);
-    assert_eq!(unsafe { midi_rx_check_lost(&mut *rx, 42) }, 1);
+    assert_eq!(unsafe { midi_rx_check_lost(&mut *rx, 41, 0) }, 0);
+    assert_eq!(unsafe { midi_rx_check_lost(&mut *rx, 42, 0) }, 1);
+}
+
+thread_local! {
+    /// SysEx events the parsers passed on, by source: (TRS, event, byte).
+    static SYSEX: std::cell::RefCell<Vec<(bool, u32, u8)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+unsafe extern "C" fn trs_sysex(_: *mut std::ffi::c_void, event: midi_sysex_event, byte: u8) {
+    SYSEX.with(|s| s.borrow_mut().push((true, event, byte)));
+}
+
+unsafe extern "C" fn usb_sysex(_: *mut std::ffi::c_void, event: midi_sysex_event, byte: u8) {
+    SYSEX.with(|s| s.borrow_mut().push((false, event, byte)));
+}
+
+impl Midi {
+    /// The parsers pass SysEx on, as the device's platform sets them (platform/fm1/midi.c).
+    fn with_sysex() -> Self {
+        let mut m = Midi::new();
+        m.rx.trs.on_sysex = Some(trs_sysex);
+        m.rx.usb.on_sysex = Some(usb_sysex);
+        SYSEX.with(|s| s.borrow_mut().clear());
+        m
+    }
+
+    fn gap_entry(&mut self, source: u8, data: u32, gap: u8) {
+        self.epoch = self.epoch.wrapping_add(1);
+        let e = midi_ring_entry {
+            stamp: 0,
+            data,
+            source,
+            epoch: self.epoch,
+            gap,
+        };
+        unsafe { midi_rx_entry(&mut *self.rx, &e) };
+    }
+
+    /// The SysEx bytes a source passed on since the last call, and whether a frame ended.
+    fn sysex(&mut self, trs: bool) -> (Vec<u8>, bool) {
+        SYSEX.with(|s| {
+            let mut s = s.borrow_mut();
+            let bytes = s.iter().filter(|e| e.0 == trs).map(|e| e.2).collect();
+            let ended = s.iter().any(|e| e.0 == trs && e.1 == MIDI_SYSEX_END);
+            s.retain(|e| e.0 != trs);
+            (bytes, ended)
+        })
+    }
+}
+
+/// A gap that lost TRS input only leaves a USB SysEx frame alone, and TRS running status
+/// survives a USB gap: only the parser of the source that lost input restarts (review 4.1:
+/// a TRS overflow used to cut a USB transfer). Every note is released either way.
+#[test]
+fn a_gap_restarts_only_the_parser_of_the_source_it_lost() {
+    let mut m = Midi::with_sysex();
+    m.usb(0x4, [0xF0, 0x7D, 0x53]);
+    m.trs(&[0x90, C4, 100]);
+    m.gap_entry(TRS, 0xFE, TRS);
+    assert_eq!(m.rx.restarts, 1);
+    assert_eq!(m.held(), [] as [u8; 0], "the gap releases every note");
+    m.usb(0x4, [0x44, 0x01, 0x00]);
+    m.usb(0x6, [0x7F, 0xF7, 0]);
+    assert_eq!(
+        m.sysex(false),
+        (vec![0xF0, 0x7D, 0x53, 0x44, 0x01, 0x00, 0x7F, 0xF7], true),
+        "the USB frame, whole, across a TRS gap"
+    );
+    // And the other way round: TRS running status across a USB gap.
+    m.trs(&[0x90, C4, 100]);
+    m.gap_entry(USB, u32::from_le_bytes([0xF, 0xFE, 0, 0]), USB);
+    assert_eq!(m.held(), [] as [u8; 0]);
+    m.trs(&[E4, 100]);
+    assert_eq!(m.held(), [E4], "TRS running status kept");
+    // A gap whose sources are unknown restarts both, as before.
+    m.gap_entry(USB, u32::from_le_bytes([0xF, 0xFE, 0, 0]), 0);
+    m.trs(&[C4, 100]);
+    assert_eq!(
+        m.held(),
+        [] as [u8; 0],
+        "no running status across an unknown gap"
+    );
+}
+
+/// A restart keeps the SysEx callbacks (review 4.1: it cleared them, so the rest of the pass,
+/// a whole frame after the gap included, never reached SysEx): the frame cut by the gap is
+/// dropped, and the next one, from its F0, is passed on whole.
+#[test]
+fn a_restart_keeps_sysex_and_takes_the_next_frame_from_its_f0() {
+    let mut m = Midi::with_sysex();
+    m.trs(&[0xF0, 0x7D, 0x53]);
+    assert_eq!(m.sysex(true).0, [0xF0, 0x7D, 0x53]);
+    m.gap_entry(TRS, 0x44, TRS);
+    m.trs(&[0x01, 0x00, 0x7F, 0xF7]);
+    assert_eq!(
+        m.sysex(true),
+        (vec![], false),
+        "the cut frame's tail is dropped"
+    );
+    m.trs(&[0xF0, 0x7D, 0x53, 0x44, 0x01, 0x00, 0x7F, 0xF7]);
+    assert_eq!(
+        m.sysex(true),
+        (vec![0xF0, 0x7D, 0x53, 0x44, 0x01, 0x00, 0x7F, 0xF7], true)
+    );
+    // The same for a gap found at the end of the ring, on USB.
+    m.usb(0x4, [0xF0, 0x7D, 0x53]);
+    let epoch = m.epoch.wrapping_add(1);
+    assert_eq!(unsafe { midi_rx_check_lost(&mut *m.rx, epoch, USB) }, 1);
+    m.epoch = epoch;
+    m.usb(0x4, [0x44, 0x01, 0x00]);
+    m.usb(0x4, [0xF0, 0x7D, 0x53]);
+    m.usb(0x4, [0x44, 0x01, 0x00]);
+    m.usb(0x6, [0x7F, 0xF7, 0]);
+    assert_eq!(
+        m.sysex(false),
+        (
+            vec![0xF0, 0x7D, 0x53, 0xF0, 0x7D, 0x53, 0x44, 0x01, 0x00, 0x7F, 0xF7],
+            true
+        )
+    );
 }

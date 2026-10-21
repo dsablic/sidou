@@ -18,12 +18,16 @@
  * first, so both sources share the one parser implementation with its running status,
  * real-time and SysEx rules.
  *
- * Lost input (midi_ring.h): the parsers restart, every note is released and the controllers
- * reset (bend centred, wheel and pressure 0) exactly where the gap is, so what came before it
- * is taken whole, what was cut by it is dropped (a message is never completed with bytes from
- * after the gap), and a note-off or a bend back to the centre that may be among the lost
- * cannot leave a note hanging or bent. midi_rx_entry finds a gap from the epochs of the entries;
- * midi_rx_check_lost finds one at the end of the ring (no entry after it yet).
+ * Lost input (midi_ring.h): the parsers of the sources it lost restart, every note is released
+ * and the controllers reset (bend centred, wheel and pressure 0) exactly where the gap is, so
+ * what came before it is taken whole, what was cut by it is dropped (a message is never
+ * completed with bytes from after the gap), and a note-off or a bend back to the centre that
+ * may be among the lost cannot leave a note hanging or bent. The other source's parser goes on,
+ * so a SysEx frame on it is not cut by the gap. midi_rx_entry finds a gap from the epochs of the
+ * entries; midi_rx_check_lost finds one at the end of the ring (no entry after it yet).
+ *
+ * SysEx: each parser's on_sysex (midi_in.h) is the platform's to set after midi_rx_init (NULL
+ * skips SysEx); a restart keeps it.
  *
  * Portable C with no hardware access; the main loop owns it. */
 #ifndef SIDOU_MIDI_RX_H
@@ -98,9 +102,11 @@ void midi_rx_settle(midi_rx* rx);
  * was empty). If it is ahead of the parsers' (by 1..127, wrapping), input was lost after the
  * last entry: restart now. An epoch that is not ahead changes nothing: an entry taken after
  * the caller read it may already have moved the parsers on. (With entries left in the ring,
- * the next one's epoch says it instead.) Returns 1 if it restarted.
- * A restart also forgets every NRPN selection: the gap may have changed it. */
-int midi_rx_check_lost(midi_rx* rx, uint8_t epoch);
+ * the next one's epoch says it instead.) Returns 1 if it restarted. `sources`: the ring's
+ * in_gap, read after the epoch (0, unknown: both).
+ * A restart also forgets the NRPN selections of the sources it lost: the gap may have changed
+ * them. */
+int midi_rx_check_lost(midi_rx* rx, uint8_t epoch, uint8_t sources);
 /* The mapping alone: one parsed message onto the port's live, with its NRPN state. */
 void midi_rx_live(midi_map_port* port, const midi_msg* msg);
 

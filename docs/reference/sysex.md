@@ -21,7 +21,10 @@ other status inside a frame aborts it. Oversized, noncanonical and truncated
 packets are refused. Frames from another manufacturer are ignored, including
 the update protocol; SIDOU's parser neither handles nor generates updater frames.
 Transfers belong to one input port; the other port cannot interrupt or continue
-them. Lost input aborts a transfer.
+them. Input lost on a transfer's port (SIDOU's MIDI-in ring overflowed, or the
+TRS UART overran) aborts it: on USB, a reply frame already going out is finished
+to its F7 first, then a NAK with reason 9 follows. Input lost on the other port
+does not touch it. After a loss, each port's parser starts again at its next F0.
 
 All multibyte payload integers are little-endian. Names are 16-byte fields,
 NUL-padded, with one to sixteen characters in `20`–`5F`, not starting with a
