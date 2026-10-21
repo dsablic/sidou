@@ -783,7 +783,7 @@ USB replug:
   completes: the read requests reach the host, the loader writes, and the
   unit boots the new package (`--info` again).
 - [ ] In a MIDI monitor on the SIDOU input, K1 sends CC 74 on channel 1
-  while it turns, and K4 a program change per detent. Record what the
+  while it turns, and K4 (release in LIVE) CC 72. Record what the
   monitor shows:
 - [ ] The same after deleting the device from the OS's MIDI setup (macOS:
   Audio MIDI Setup) and replugging.
@@ -801,7 +801,20 @@ Notes:
   V15 and back.
 - K1 sent CC 74 (326 messages in the monitor).
 
-The release package itself still goes through this section before it ships.
+**Passed again on 2026-10-21** with `USB-FIX-dadffc9`, the merged fix (Felucca's
+`usb.c` with its two hooks, the quiet retry, the packed buffers):
+
+- Installed over FULL-FIX, then reinstalled over itself; `--info` answered
+  `FM-1_900` both times, and the unit presents as "SIDOU" on USB again.
+- The handshake answered 10 times out of 10; SIDOU's inquiry and the universal
+  inquiry answered.
+- K1 sent CC 74 on channel 1, and K4 CC 72.
+- After a replug, and again after a battery boot with the cable plugged in
+  later: the unit enumerated, the handshake answered 10/10, both inquiries
+  answered, and K1 sent CC 74 within seconds of the port opening.
+
+Not yet repeated after deleting the device in Audio MIDI Setup. The release
+package itself still goes through this section before it ships.
 
 ## 8b. MIDI clock and transport (M2e Task 2)
 
