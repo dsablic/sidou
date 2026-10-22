@@ -44,7 +44,7 @@ fn with_chunks(s: &mut Song) {
         song_lock {
             pattern: 0,
             row: 1,
-            param: 2,
+            param: 4, // SONG_LOCK_PULSE (0..4095)
             value: 1000,
         },
         song_lock {

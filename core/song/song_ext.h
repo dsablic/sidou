@@ -142,6 +142,12 @@ enum {
 #define SONG_LOCK_BYTES 5u /* a record: pattern, row, parameter, value (u16) */
 /* A parameter's largest value, 0 for none. */
 uint32_t song_lock_max(uint32_t param);
+/* A file's LOCK chunk (version 1) checked as it is read (gt2_sng_read, gt2_stream): every
+ * record's pattern, row, parameter and value in range (song_lock_max) and the records in
+ * strictly increasing (pattern, row, parameter) order, as song_lock_put keeps them. A chunk
+ * that fails, or whose count or length is malformed, is removed whole: 1. Else 0, the chunk as
+ * it was (another version's is left alone). */
+int song_ext_locks_check(gt2_song* s);
 typedef struct {
     uint8_t pattern, row, param;
     uint16_t value;

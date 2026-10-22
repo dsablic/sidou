@@ -441,6 +441,28 @@ static uint32_t lower_bound(const uint8_t* recs, uint32_t n, uint32_t key) {
     return lo;
 }
 
+int song_ext_locks_check(gt2_song* s) {
+    int32_t at = find_at(s, SONG_TAG_LOCK);
+    if (at < 0)
+        return 0;
+    uint32_t len = rd32(s->ext + at + 4);
+    const uint8_t* d = s->ext + at + SONG_CHUNK_HEADER;
+    if (len < 3u || d[0] != 1u)
+        return 0; /* another version's: kept as it came, never read as locks */
+    uint32_t n = rd16(d + 1);
+    int bad = n > SONG_LOCKS_MAX || len < 3u + n * SONG_LOCK_BYTES;
+    for (uint32_t i = 0; i < n && !bad; i++) {
+        const uint8_t* r = d + 3u + i * SONG_LOCK_BYTES;
+        bad = r[0] >= GT2_MAX_PATTERNS || r[1] >= GT2_MAX_ROWS || r[2] >= SONG_LOCK_PARAMS ||
+              rd16(r + 3) > song_lock_max(r[2]) ||
+              (i && rec_key(r - SONG_LOCK_BYTES) >= rec_key(r));
+    }
+    if (!bad)
+        return 0;
+    remove_at(s, (uint32_t)at, SONG_CHUNK_HEADER + len);
+    return 1;
+}
+
 const uint8_t* song_locks_row(const gt2_song* s, uint32_t pattern, uint32_t row, uint32_t* n) {
     int32_t at;
     uint32_t count = 0;

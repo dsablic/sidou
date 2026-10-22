@@ -776,7 +776,7 @@ int gt2_sng_read(gt2_song* s, gt2_read_fn read, void* ctx, const gt2_caps* caps,
     info->trailer = (uint8_t)t;
     if (t == GT2_TRAILER_DROPPED)
         msg_set(info->msg, "SNG: EXTRAS DROPPED");
-    else if (t == GT2_TRAILER_LOCKS_DROPPED)
+    else if (t == GT2_TRAILER_LOCKS_DROPPED || song_ext_locks_check(s))
         msg_set(info->msg, "SNG: LOCKS DROPPED");
     gt2_saved_recount(s);
     info->saved_bytes = gt2_saved_size(s);

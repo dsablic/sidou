@@ -192,6 +192,10 @@ After the GT2 part, a reader looks for the magic at E:
   without it (`SNG: EXTRAS DROPPED`);
 - a GT2-part CRC that does not match (a tool changed the song but kept the bytes): the
   position-bound chunks (`LOCK`) are dropped (`SNG: LOCKS DROPPED`) and the rest kept;
+- a version-1 `LOCK` chunk with a record out of range (a pattern past 207, a row past 127, a
+  parameter past 8, a value past the parameter's range below) or out of order (not strictly
+  increasing by pattern, row, parameter), or with a count past 512 or past its length: the
+  chunk is dropped whole (`SNG: LOCKS DROPPED`) and the rest kept;
 - bytes after L are ignored.
 
 ### Chunks

@@ -574,6 +574,8 @@ int gt2_stream_read_step(gt2_stream* w) {
                 append(w, ")");
                 w->state = FAILED;
             } else {
+                if (song_ext_locks_check(s))
+                    message(w, "SNG: LOCKS DROPPED");
                 w->index = 0;
                 w->state = R_RECOUNT;
             }

@@ -113,6 +113,104 @@ fn the_gt2_parts_crc_rule_drops_the_locks() {
     assert!(locks(&back).is_empty());
 }
 
+/// The song's LOCK chunk's records (SONG_LOCK_BYTES each), to damage them in place.
+fn lock_records(s: &mut Song) -> &mut [u8] {
+    let mut len = 0u32;
+    let d = unsafe { song_ext_find(s.ptr(), u32::from_le_bytes(*b"LOCK"), &mut len) };
+    assert!(!d.is_null(), "no LOCK chunk");
+    unsafe { std::slice::from_raw_parts_mut(d.cast_mut().add(3), len as usize - 3) }
+}
+
+unsafe extern "C" fn read_bytes(ctx: *mut c_void, at: u32, buf: *mut u8, len: u32) -> u32 {
+    let bytes = unsafe { &*ctx.cast::<Vec<u8>>() };
+    let n = bytes.len().saturating_sub(at as usize).min(len as usize);
+    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr().add(at as usize), buf, n) };
+    n as u32
+}
+
+/// The file through the streamed reader (gt2_stream, as the device loads from the store):
+/// its status and message.
+fn stream_load(s: &mut Song, file: &[u8]) -> (i32, String) {
+    let mut w = gt2_stream::default();
+    let bytes = file.to_vec();
+    let caps = gt2_caps { max_multispeed: 0 };
+    unsafe {
+        gt2_stream_read_begin(
+            &mut w,
+            s.ptr_mut(),
+            Some(read_bytes),
+            (&bytes as *const Vec<u8>).cast_mut().cast(),
+            &caps,
+        )
+    };
+    for _ in 0..100_000 {
+        let status = unsafe { gt2_stream_read_step(&mut w) };
+        if status != 0 {
+            let msg = w.info.msg.iter().take_while(|&&c| c != 0);
+            return (status, msg.map(|&c| c as u8 as char).collect());
+        }
+    }
+    panic!("the reader did not finish")
+}
+
+/// A LOCK chunk whose CRCs hold but whose records are out of range or out of order is dropped
+/// when the file is read, by both readers, with the message (review 3.6): a filter-mode lock of
+/// 8 would set $18's bit 7 (voice 3 off), and unsorted records hide locks from the row search.
+#[test]
+fn a_lock_chunk_out_of_range_or_out_of_order_is_dropped_when_read() {
+    let base = || {
+        let mut s = song();
+        put(&mut s, 0, 1, SONG_LOCK_FILTER_MODE, 2);
+        put(&mut s, 0, 3, SONG_LOCK_CUTOFF, 900);
+        put(&mut s, 1, 2, SONG_LOCK_PULSE, 3000);
+        s
+    };
+    let good = base().write(true);
+    let mut back = Song::host();
+    assert_eq!(back.read(&good, 0).unwrap().msg, "");
+    assert_eq!(locks(&back).len(), 3, "a good chunk stays");
+    assert_eq!(stream_load(&mut Song::host(), &good), (1, String::new()));
+
+    let damage: [(&str, fn(&mut [u8])); 6] = [
+        ("a filter mode of 8", |r| r[3] = 8),
+        ("a cutoff past 2047", |r| {
+            r[5 + 3..5 + 5].copy_from_slice(&2048u16.to_le_bytes())
+        }),
+        ("a parameter past the last", |r| {
+            r[2] = SONG_LOCK_PARAMS as u8
+        }),
+        ("a row past GT2_MAX_ROWS", |r| r[1] = GT2_MAX_ROWS as u8),
+        ("a pattern past GT2_MAX_PATTERNS", |r| {
+            r[10] = GT2_MAX_PATTERNS as u8
+        }),
+        ("two records out of order", |r| {
+            let (a, b) = r.split_at_mut(5);
+            a.swap_with_slice(&mut b[..5]);
+        }),
+    ];
+    for (what, f) in damage {
+        let mut s = base();
+        f(lock_records(&mut s));
+        let file = s.write(true);
+        let mut back = Song::host();
+        let info = back.read(&file, 0).unwrap();
+        assert_eq!(info.msg, "SNG: LOCKS DROPPED", "{what}");
+        assert!(locks(&back).is_empty(), "{what}: the chunk kept");
+        let mut streamed = Song::host();
+        assert_eq!(
+            stream_load(&mut streamed, &file),
+            (1, "SNG: LOCKS DROPPED".to_string()),
+            "{what}: streamed"
+        );
+        assert!(locks(&streamed).is_empty(), "{what}: streamed, kept");
+        assert_eq!(
+            streamed.write(true),
+            back.write(true),
+            "{what}: both readers alike"
+        );
+    }
+}
+
 #[test]
 fn pattern_edits_carry_their_locks() {
     let mut s = song();
