@@ -170,24 +170,29 @@ static uint8_t output_byte(sysex* s) {
     return byte;
 }
 
+/* As much of the frame as send takes, to its F7: a 256-byte DATA is 101 event packets, and one
+ * a poll held each reply to the poll's rate (about 200 ms a packet on the FM-1, whose USB ring
+ * takes 64 and sends 16 a poll). send's back-pressure bounds a call's work. */
 static void transmit(sysex* s) {
-    if (!s->tx_active || !s->hooks.send) return;
-    if (!s->packet_length) {
-        unsigned total = s->tx_identity ? 15 : 8 + s->tx_length + (s->tx_length + 6u) / 7u;
-        unsigned n = total - s->tx_position;
-        if (n > 3) n = 3;
-        s->packet_final = s->tx_position + n == total;
-        s->packet[0] = (uint8_t)(s->packet_final ? 4 + n : 4);
-        memset(s->packet + 1, 0, 3);
-        for (unsigned i = 0; i < n; ++i) s->packet[1 + i] = output_byte(s);
-        s->packet_length = (uint8_t)n;
-    }
-    if (!s->hooks.send(s->hooks.ctx, s->packet)) return;
-    s->packet_length = 0;
-    if (s->packet_final) {
-        s->tx_active = 0;
-        s->tx_identity = 0;
-        s->last = s->now;
+    if (!s->hooks.send) return;
+    while (s->tx_active) {
+        if (!s->packet_length) {
+            unsigned total = s->tx_identity ? 15 : 8 + s->tx_length + (s->tx_length + 6u) / 7u;
+            unsigned n = total - s->tx_position;
+            if (n > 3) n = 3;
+            s->packet_final = s->tx_position + n == total;
+            s->packet[0] = (uint8_t)(s->packet_final ? 4 + n : 4);
+            memset(s->packet + 1, 0, 3);
+            for (unsigned i = 0; i < n; ++i) s->packet[1 + i] = output_byte(s);
+            s->packet_length = (uint8_t)n;
+        }
+        if (!s->hooks.send(s->hooks.ctx, s->packet)) return;
+        s->packet_length = 0;
+        if (s->packet_final) {
+            s->tx_active = 0;
+            s->tx_identity = 0;
+            s->last = s->now;
+        }
     }
 }
 
