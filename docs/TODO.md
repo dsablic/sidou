@@ -489,7 +489,8 @@ working.
   views over ABOUT's tune), 5.10 (E27: ABOUT keeps the song views' places), 3.2 (E04: REC
   past a repeated pattern's last row lands in its next pass), 3.4, 3.5 and 3.7 (E06: no
   parameter lock lost at a pattern boundary, to a pending edit or after an edit applies); 2.2
-  (E07) was already fixed in v0.2.0 with 2.1.
+  (E07) was already fixed in v0.2.0 with 2.1; 2.3 (E08: a chip swap on a locked row keeps
+  the locked cutoff and pulse).
 - **From the v0.2.0 fixes:** a sector the store retires for the session (review 1.2) shows
   only in `store_stats` and a lower free figure in MENU; STATUS should say it. A background
   settings save that fails is still not detected (explicit saves report and retry).

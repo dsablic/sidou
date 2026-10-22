@@ -361,3 +361,33 @@ fn a_row_that_starts_during_an_edits_look_ahead_is_resolved_after_it() {
     }
     assert!(locked > 0);
 }
+
+/// Ergonomics review E08 (M2 review 2.3): chip A swapped (a profile change) on a locked row:
+/// the new chip gets the row's locked cutoff and pulse with the player's registers, not the
+/// song's own until the next call.
+#[test]
+fn a_chip_swapped_on_a_locked_row_gets_the_locked_registers_at_once() {
+    let mut s = song();
+    put(&mut s, 0, 3, SONG_LOCK_CUTOFF, 1234);
+    put(&mut s, 0, 3, SONG_LOCK_PULSE, 0x321);
+    let mut t = Transport::new(&mut s);
+    assert!(t.play(0, 0));
+    let mut guard = 0;
+    while !(t.sc.row_pat[0] == 0 && t.sc.row_row[0] == 3 && t.chip.fc == 1234) {
+        t.pass();
+        t.block_silent();
+        guard += 1;
+        assert!(guard < 10_000);
+    }
+    let mut fresh = Box::<sid>::default();
+    unsafe {
+        sid_init(&mut *fresh, SID_MODEL_6581, SID_CLOCK_PAL, SAMPLE_RATE);
+        song_ctl_chip_swapped((&mut *t.sc as *mut song_ctl).cast(), 0, &mut *fresh);
+    }
+    assert_eq!(fresh.fc, 1234, "the locked cutoff");
+    assert_eq!(fresh.osc[0].pw, 0x321, "the locked pulse");
+    assert_eq!(fresh.mode_vol, t.chip.mode_vol);
+    for v in 1..3 {
+        assert_eq!(fresh.osc[v].pw, t.chip.osc[v].pw, "voice {v}: the song's");
+    }
+}

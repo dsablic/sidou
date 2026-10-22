@@ -406,6 +406,12 @@ void song_ctl_chip_swapped(void* ctx, uint32_t chip, sid* s) {
     if (chip != 0u || !(sc->isr_playing || sc->audition))
         return;
     song_rewrite(sc, s);
+    /* and the row's locked registers over the shadow's, as after its calls: the new chip
+     * would play the song's own cutoff and pulse until the next call */
+    sid* was = sc->chip;
+    sc->chip = s;
+    song_lock_apply(sc);
+    sc->chip = was;
     if (sc->song_gate != NO_GATE)
         sid_set_gate_reset(s, sc->song_gate);
 }
