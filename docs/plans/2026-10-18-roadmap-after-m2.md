@@ -135,12 +135,14 @@ Checked against SID-1, Melodee, Mini-Tone and FM-1 SID's own READMEs; each is SI
 not a copy:
 
 - **Chord arpeggios on LIVE** (Melodee's held-chord chip arpeggios): hold a chord, one voice steps
-  its notes at frame rate, speed and order on the panel. The C64's signature sound, playable. v0.3.x.
+  its notes at frame rate, speed and order on the panel. The C64's signature sound, playable.
+  **In v0.3.0** (the user, 2026-10-23).
 - **A SID drum kit and digi drums** (Melodee's SID KIT and SID DIGI, SID-1's sample kit): drums on
   the chip's own voices for STEP's lanes, and short samples played through the 6581's volume
   register as C64 tunes do. v0.3.x or with M3.
 - **A master soft limiter** (Mini-Tone): several effects at full feedback can still clip the
-  output; a limiter after MASTER makes "no setting clips" true everywhere. Small; v0.3.0 if cheap.
+  output; a limiter after MASTER makes "no setting clips" true everywhere. **In v0.3.0** (the user,
+  2026-10-23), with CHIP SPREAD in the same output-stage track.
 - **USB audio out** (Melodee, Felucca's `FELUCCA_UAC`; TODO.md): moved up, right after v0.3.0.
 - **Instruments from a `.sid` file** (SID-1's web page): with M3's 6502, run a tune and pull out its
   instruments as GoatTracker instruments. With or after M3.
