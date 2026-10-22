@@ -779,11 +779,17 @@ pub const PLAYER_WORST_BLOCK: f64 = 60.0;
 /// 964, M1c Task 3): what the audio target holds besides the chips, the tap and the ISR when
 /// a preset change switches the slots.
 pub const SLOTS_SWITCH_WORST: f64 = 964.0;
-/// Free RAM (the RAM region and POOL): M2c's floor, 22,000, less the overview's RAM budget of
-/// each other M2 plan merged on top of it (docs/plans/2026-10-15-m2-overview.md: M2a 2,000,
-/// M2d 6,000, M2e 2,000, M2f 5,000), whatever order they merge in. In this tree: M2d (6,000),
-/// M2a (2,000), M2e (2,000) and M2f (5,000). Each region keeps 4 KiB as well (song.rs).
-pub const FREE_RAM_MIN: u64 = 22_000 - 6_000 - 2_000 - 2_000 - 5_000;
+/// Free RAM (the RAM region and POOL): the last row of the overview's gate table
+/// (docs/plans/2026-10-15-m2-overview.md, "RAM"), M2f's: 10,000. The table counts each plan's
+/// budget once, and M2a's 2,000 is already spent inside M2c's 22,000, so the plans on top of
+/// it are M2d (6,000), M2e (2,000) and M2f (5,000): 22,000 - 13,000 = 9,000, and the table's
+/// slack makes 10,000. (It was 7,000 until the end-of-M2 review, which counted M2a twice.)
+/// M3's Task 9 lowers it by the 512 bytes M3 takes.
+pub const FREE_RAM_MIN: u64 = 10_000;
+/// Each region (the RAM region, POOL) keeps this free: M3's start target in
+/// docs/plans/2026-10-19-m3-sid-files.md, "Before M3": the 4 KiB floor plus 1 KiB, for M3's 512
+/// bytes plus a margin.
+pub const REGION_FREE_MIN: u64 = 5_120;
 // A song plays with two chips at their worst, the effects at their cap, the ISR, the tap and
 // the player: within the audio target.
 const _: () = assert!(

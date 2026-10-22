@@ -230,9 +230,11 @@ address space: a song and a `.sid` never play together.
 
 M2c Task 6 moved the RAM/POOL boundary 8 KiB down (from 0x01C20000) so POOL holds
 the song's 64 KiB content region beside chip B. The original standalone M2c floor
-was 22,000 bytes free across RAM and POOL. With M2a, M2d, M2e and M2f merged, the
-overview's budget accounting makes that **7,000** (22,000 − 2,000 − 6,000 − 2,000 −
-5,000); **each region still needs 4,096 bytes free**. These gates are unchanged.
+was 22,000 bytes free across RAM and POOL (M2a's 2,000 already spent in it). With M2d, M2e and
+M2f merged, the overview's gate table makes it **10,000** (its M2f row: 22,000 − 6,000 −
+2,000 − 5,000 is 9,000, plus the slack the table keeps); **each region needs 5,120 bytes free**
+(M3's start target, 4,096 plus 1 KiB, `docs/plans/2026-10-19-m3-sid-files.md`, "Before M3").
+Both gates are tightened from 7,000 and 4,096 (end-of-M2 review 6.1).
 The [M2c status](plans/2026-10-15-m2c-song-engine.md#m2c-status) records the current
 measurement and the RAM margin left open for the end-of-M2 review.
 

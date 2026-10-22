@@ -744,7 +744,7 @@ fn the_first_song_at_multispeed_4_is_bit_exact_with_the_host() {
 
 /// app.ld's map: the song's region is 64 KiB, 4 KiB aligned, at POOL's start; RAM (the RAM
 /// region and POOL) keeps at least FREE_RAM_MIN bytes free (common/mod.rs), each region at
-/// least 4 KiB.
+/// least REGION_FREE_MIN (5,120).
 #[test]
 fn the_song_region_and_the_free_ram() {
     let Some((build, fw)) = fixture("the map test") else {
@@ -789,8 +789,8 @@ fn the_song_region_and_the_free_ram() {
         size(".ram_text")
     );
     assert!(
-        ram_free >= 4096 && pool_free >= 4096,
-        "each region keeps 4 KiB"
+        ram_free >= REGION_FREE_MIN && pool_free >= REGION_FREE_MIN,
+        "each region keeps {REGION_FREE_MIN} free: RAM region {ram_free}, POOL {pool_free}"
     );
     assert!(
         ram_free + pool_free >= FREE_RAM_MIN,
