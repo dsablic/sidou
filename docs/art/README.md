@@ -621,7 +621,8 @@ playing, one colour per voice and per knob, black behind it
 - **Rows 21-26, the bottom band:** FILTER's label, **CHIP 6581** (the model) and **KEYS:B** in
   yellow on the right while the keys play chip B; the **mode at 2×** (LP, BP, LP+BP, HP, NOTCH,
   BP+HP, ALL, or OFF in dark grey) and the chip's **profile at 2×** (`R4AR`, `WORN`, `USR3`, in
-  reverse video for a second after ALGORITHM changes it); the three **effect slots' names**
+  reverse video for a second after ALGORITHM changes it) from column 11, with the revision's plain
+  word (BRIGHT, DARK, CLASSIC, CLEAN, GRITTY or USER) after CHIP 6581 on the label row; the three **effect slots' names**
   (DIST, MOD, FX; OFF ones in dark grey, the one the panel edits in reverse video) with the
   selected slot's **algorithm at 2×** under them (`OVERDRIVE`, OFF in dark grey; in reverse video
   in yellow while the knob row shows the slot, and for a second after ALGORITHM changes it);
@@ -724,7 +725,8 @@ knobs' places.
   the A/B tabs, CHIP, DIST, MOD, FX, then EXPERT, clamped at both ends.
 - **Rows 4-6, 7:** the section's main choice at 3×: for CHIP the chip's model (`6581`, white) and
   its profile (`R4AR`, yellow: the name without the model, `WORN`, or **USR 3** for a picked
-  USER slot), over the small names MODEL and PROFILE in the hint colour; for a slot its algorithm
+  USER slot), over the small names MODEL and PROFILE (followed by the profile's word, BRIGHT, DARK, CLASSIC,
+  CLEAN, GRITTY or USER, in the label colour) in the hint colour; for a slot its algorithm
   (white, OFF dark grey) over ALGORITHM in the hint colour. **With a save target** (EDIT +
   ALGORITHM on the chip) the names row reads **SAVE TO USER 3** (and ` -` while that slot is
   empty) in yellow: the old CHIP frame's
@@ -810,8 +812,10 @@ LOAD and DELETE list eight filenames per page; scanning advances one directory
 entry per frame. Filenames remain 1× so all 16 characters fit. SAVE AS splits its
 large 16-character name into two eight-character lines at rows 8 and 12, with the
 cursor underneath and a SAVE action at row 16. Confirmations use large text and
-default to reverse-video NO. Help is at the
-bottom, with HOME consistently returning to the preceding page.
+default to reverse-video NO. Help is at the bottom at 2× in the hint role, as the menu's
+(`SELECT CURSOR`, `ALG CHARACTER`, `SAVE WRITE` on rows 18 to 22 of SAVE AS; `ALG OPEN` or
+`ALG CONFIRM` on rows 24-25; `HOME BACK` on rows 26-27), with HOME consistently returning to
+the preceding page.
 
 Both themes use the shared colour roles: title foreground/background for the
 heading, menu-item and selection colours for actions and filenames, value for
@@ -855,6 +859,8 @@ knob is a parameter lock** ([controls](../reference/controls.md#step)).
   knobs into: `EDIT: AGE DAC THUMP BLEED`.
 - **Rows 24-28, the pads:** the 16 keys as two rows of eight, a step with a note in the lane's
   colour, the held one yellow, the others dark grey; steps past the pattern's end are blank.
+  Each pad's number is at 2× (a pad is two cells wide, so its last digit: 1 to 8, then 9 0 1 2 3 4 5 6
+  for 9 to 16), white on the dark pads. The legend with no step held is in the hint role.
   **Row 29:** `HOLD KEY+KNOB LOCK  ENC PAGE`.
 
 The value popup names what a knob on a held step sets, in the knob's colour: `CUTOFF`,
@@ -902,13 +908,15 @@ layout, drawn after the screen-readability prototype's `trkNew`: **one voice at 
 
 - **Rows 0-1, the header:** the shown voice **V1** at 2× in its colour (light red, cyan, light
   green; grey while the song mutes it), its pattern **PAT 03** (hex) at 2× in white, **MUT** in
-  red or **SOL** in white small beside it, and on the right a play mark or a stop square, the
-  tempo in BPM small (with BPM under it) and **REC** in red.
-- **Row 2:** the other two voices' numbers, over their strips, in their colours.
+  red, **SOL** in white or **REC** in red at 2× at columns 18 to 23 (REC small in yellow under
+  them on row 2 when MUT or SOL takes the place), a play mark (yellow) or a stop square at 2×
+  at columns 24 and 25, and the tempo in BPM small (BPM under it, in the hint role).
+- **Row 2:** all three voices' numbers: the shown one at column 24 and the other two over their
+  strips; dark grey while the song silences the voice, reversed yellow while it is soloed.
 - **Rows 3-26, 12 pattern rows** of two cell rows: the row's number small at the left (hex; yellow
   on the current row, grey otherwise), the note at 2× (`C-4`, white; `---` a rest in dark grey,
   `===` a key off and `+++` a key on in grey; yellow on the current row), the instrument at 2× in
-  the voice's colour (`..` none, dark grey) and the command small (`308`: the command and its
+  the voice's colour (white on the bar; `..` none, dark grey) and the command small (`308`: the command and its
   data, grey; `...` none, dark grey). **The current row is a dark grey bar** across columns 0-17,
   the rests and blanks on it in grey so that they stay visible. Muted rows keep their colours;
   the header and strips show the mute. Each row's cells are the voice's own pattern's, from its orderlist entry.
@@ -919,7 +927,9 @@ layout, drawn after the screen-readability prototype's `trkNew`: **one voice at 
 - **Rows 27-29:** OL and the shown voice's orderlist from its entry (the entry in white on the bar's
   grey, the two after it in grey: a pattern in hex, `R2` a repeat, `+3` or `-1` a transpose, `RST00`
   the end and its restart position); the current row's first command, of the voices that sound,
-  spelled out in yellow (`V2 4 22 VIBRATO`); the hint `SELECT: ROW` in dark grey and, on the right,
+  spelled out in yellow (`V2 4 22 VIBRATO`); the hint `SELECT: ROW` in the hint role (while a key
+  auditions: `I01 BASS`, the instrument and its name; and the bar shows the key's note and the
+  instrument ghosted at 2× in the label role) and, on the right,
   `ORD 03 ROW 1A` in hex (the position the old header said).
 
 **The cursor.** The cursor is a voice and a row. **SELECT steps rows** (EDIT held: an 8-row page),
@@ -1014,15 +1024,18 @@ frame may still draw, and a popped-to view must acquire and rebuild what another
 The active song page is separate from canvas ownership, so a key before the first frame
 still edits or auditions in the correct context.
 
-- **ORDER:** ORDER and the selected voice at 2×, the subtune selector on row 2; 12 entries
-  below, with the selected voice's decoded pattern/repeat/transpose/restart value at 2×.
-  The other voices use compact raw-hex summaries on the right. Selection is a high-contrast
-  band. `-10` is the full hex transpose minus 16; the compact columns never overlap it.
+- **ORDER:** ORDER and the selected voice at 2×, the subtune selector on row 2; 10 entries
+  below, the row's number at 2× at the left (columns 0-3, yellow on the cursor row), the
+  selected voice's decoded pattern/repeat/transpose/restart value at 2× from column 5. The other
+  voices' entries are at 2× on the right (columns 18-21 and 24-27, headed V2 and V3 on row 2).
+  The line on row 29 says what the entry under the cursor is (`PATTERN 04`, `REPEAT 3`,
+  `TRANSPOSE +2`, `RESTART AT 00`). Selection is a high-contrast band. `-10` is the full hex
+  transpose minus 16.
 - **INSTR:** instrument number and nine named parameter bytes at 2×, followed by the two
   eight-character lines of its GT2 name. The selected parameter label is yellow; a selected
   name character is reverse yellow. The footer and popup give the full parameter name.
-- **TABLE:** WAVE, PULSE, FILTER or SPEED as a large title; 12 numbered rows, left and right
-  bytes at 2×. The footer spells out jumps, stops, delays, waveform notes, pulse/filter
+- **TABLE:** WAVE, PULSE, FILTER or SPEED as a large title; 12 rows, the row's number, the left
+  byte (column 5) and the right byte (column 12) at 2×. The footer spells out jumps, stops, delays, waveform notes, pulse/filter
   operations and speeds. Absolute notes do not inherit the pattern format's reserved
   key-on/key-off/rest byte codes.
 
