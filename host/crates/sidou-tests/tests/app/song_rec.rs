@@ -238,7 +238,11 @@ fn a_key_past_the_end_of_a_repeated_pattern_goes_to_its_next_pass() {
     s.f.st.again = 0b110; // the other voices' repeats are not voice 1's
     s.ui.frame();
     tap(&mut s, 16);
-    assert_eq!(cell(&s, 1, 0), [KEY16, 1, 0, 0], "the last pass: the next entry");
+    assert_eq!(
+        cell(&s, 1, 0),
+        [KEY16, 1, 0, 0],
+        "the last pass: the next entry"
+    );
     assert_eq!(cell(&s, 0, 0), R);
 }
 
@@ -640,7 +644,10 @@ fn k1_recording_shows_hz_and_a_count_in_takes_nothing() {
     s.ui.press(PANEL_BTN_REC);
     playing(&mut s, 3, 0);
     s.ui.turn(PANEL_ENC_K1, 1);
-    let (mut name, mut value) = ([0; SCREEN_POPUP_TEXT as usize], [0; SCREEN_POPUP_TEXT as usize]);
+    let (mut name, mut value) = (
+        [0; SCREEN_POPUP_TEXT as usize],
+        [0; SCREEN_POPUP_TEXT as usize],
+    );
     let (mut fill, mut max) = (0, 0);
     let text = |b: &[std::ffi::c_char]| {
         unsafe { CStr::from_ptr(b.as_ptr()) }

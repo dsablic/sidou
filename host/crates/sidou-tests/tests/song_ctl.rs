@@ -1134,7 +1134,14 @@ fn again_says_whether_a_repeated_pattern_plays_once_more() {
     }
     assert_eq!(
         seen,
-        [(0, true), (0, true), (0, false), (1, false), (0, true), (0, true)],
+        [
+            (0, true),
+            (0, true),
+            (0, false),
+            (1, false),
+            (0, true),
+            (0, true)
+        ],
         "D2: three passes of 0, then 1, round"
     );
 }

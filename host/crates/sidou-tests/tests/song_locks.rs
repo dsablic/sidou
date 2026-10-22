@@ -260,7 +260,10 @@ fn a_pattern_boundary_with_five_locks_on_both_first_rows_keeps_all_ten() {
         .collect();
     let mut s = Song::host();
     s.read(&spec.encode(), 0).unwrap();
-    for (p, v) in [(0u32, [100u32, 3, 1, 1, 0x111]), (1, [1500, 9, 2, 0, 0x555])] {
+    for (p, v) in [
+        (0u32, [100u32, 3, 1, 1, 0x111]),
+        (1, [1500, 9, 2, 0, 0x555]),
+    ] {
         for (param, value) in [
             SONG_LOCK_CUTOFF,
             SONG_LOCK_RESONANCE,
@@ -285,8 +288,16 @@ fn a_pattern_boundary_with_five_locks_on_both_first_rows_keeps_all_ten() {
             assert_eq!(t.sc.lock_n[0], 5, "pattern 1's row 0: its five locks");
             assert_eq!(t.chip.fc, 1500);
             assert_eq!(t.chip.osc[0].pw, 0x555, "its PULSE");
-            assert_eq!(t.chip.routing & 1, 0, "its ROUTE: voice 1 out of the filter");
-            assert_eq!((t.chip.res, t.chip.mode_vol >> 4 & 7), (9, 2), "its RESONANCE and MODE");
+            assert_eq!(
+                t.chip.routing & 1,
+                0,
+                "its ROUTE: voice 1 out of the filter"
+            );
+            assert_eq!(
+                (t.chip.res, t.chip.mode_vol >> 4 & 7),
+                (9, 2),
+                "its RESONANCE and MODE"
+            );
             seen += 1;
         }
     }
@@ -319,7 +330,11 @@ fn changing_a_lock_while_an_edit_is_pending_waits() {
         "the same value: nothing to change"
     );
     unsafe { gt2_edit_commit(p, &e) };
-    assert_eq!(locks(&s), vec![(0, 6, 0, 500)], "the lock moved with its row");
+    assert_eq!(
+        locks(&s),
+        vec![(0, 6, 0, 500)],
+        "the lock moved with its row"
+    );
     put(&mut s, 0, 6, SONG_LOCK_CUTOFF, 600);
     assert_eq!(locks(&s), vec![(0, 6, 0, 600)]);
 }

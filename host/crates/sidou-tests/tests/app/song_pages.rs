@@ -907,18 +907,40 @@ fn a_returning_song_keeps_the_cursors_lanes_and_instrument() {
     (st.page, st.gate, st.note, st.instr) = (2, 0b101, [40, 41, 42], [3, 4, 6]);
     st.held = 3;
     let pg = &mut h.ui.v.pages;
-    (pg.order_cursor, pg.subtune, pg.instr_cursor, pg.table, pg.table_row) = (3, 0, 4, 1, 9);
+    (
+        pg.order_cursor,
+        pg.subtune,
+        pg.instr_cursor,
+        pg.table,
+        pg.table_row,
+    ) = (3, 0, 4, 1, 9);
     pg.status = SONG_PAGES_INVALID as u8;
     unsafe { views_song_back(&mut *h.ui.v) };
     let sv = &h.ui.v.song;
-    assert_eq!((sv.voice, sv.instr, sv.order_pos, sv.row, sv.subtune), (2, 5, 1, 17, 0));
-    assert_eq!((sv.rec_n, sv.built), (0, 0), "REC's queue and the canvas start again");
+    assert_eq!(
+        (sv.voice, sv.instr, sv.order_pos, sv.row, sv.subtune),
+        (2, 5, 1, 17, 0)
+    );
+    assert_eq!(
+        (sv.rec_n, sv.built),
+        (0, 0),
+        "REC's queue and the canvas start again"
+    );
     let st = &h.ui.v.step;
-    assert_eq!((st.page, st.gate, st.note, st.instr), (2, 0b101, [40, 41, 42], [3, 4, 6]));
+    assert_eq!(
+        (st.page, st.gate, st.note, st.instr),
+        (2, 0b101, [40, 41, 42], [3, 4, 6])
+    );
     assert_eq!(st.held, STEP_VIEW_NONE as u8);
     let pg = &h.ui.v.pages;
     assert_eq!(
-        (pg.order_cursor, pg.subtune, pg.instr_cursor, pg.table, pg.table_row),
+        (
+            pg.order_cursor,
+            pg.subtune,
+            pg.instr_cursor,
+            pg.table,
+            pg.table_row
+        ),
         (3, 0, 4, 1, 9)
     );
     assert_eq!(pg.status, SONG_PAGES_READY as u8);
@@ -1281,7 +1303,10 @@ fn passing_through_order_keeps_trackers_row() {
     h.ui.press(PANEL_BTN_SEQ);
     settle(&mut h.ui);
     assert_eq!(h.ui.top(), "ORDER");
-    assert_eq!(h.ui.v.pages.order_cursor, u16::from(h.ui.v.song.order_pos) + 1);
+    assert_eq!(
+        h.ui.v.pages.order_cursor,
+        u16::from(h.ui.v.song.order_pos) + 1
+    );
     assert_eq!(h.ui.v.song.row, 17, "ORDER kept the row");
     for _ in 0..4 {
         h.ui.press(PANEL_BTN_SEQ); // INSTR, TABLE, STEP, TRACKER

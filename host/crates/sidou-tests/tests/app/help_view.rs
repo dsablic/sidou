@@ -481,7 +481,11 @@ fn the_tour_follows_the_first_boot_after_an_install() {
     ui.turn(PANEL_ENC_SELECT, 1);
     for _ in 0..600 {
         frame(&mut ui);
-        assert!(ui.toast().is_none(), "a toast after the tour: {:?}", ui.toast());
+        assert!(
+            ui.toast().is_none(),
+            "a toast after the tour: {:?}",
+            ui.toast()
+        );
     }
 }
 

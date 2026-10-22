@@ -478,7 +478,11 @@ fn a_foreign_store_reads_foreign_a_clockwise_turn_arms_and_save_formats_it() {
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     s.frame();
     assert_eq!(s.store_item(), format!("STORE{:>9}", "FORMAT?"));
-    assert_eq!(s.store_popup(), "SAVE FORMATS", "the popup names the confirm");
+    assert_eq!(
+        s.store_popup(),
+        "SAVE FORMATS",
+        "the popup names the confirm"
+    );
     s.ui.turn(PANEL_ENC_SELECT, 1);
     s.ui.turn(PANEL_ENC_SELECT, -1);
     s.frame();
