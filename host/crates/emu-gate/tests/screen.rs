@@ -48,8 +48,6 @@ const ALGORITHM: u8 = 1;
 /// app/views.h: the menu's title cards option and view items (STATUS is
 /// common::open_status's), and its cursor cell on the first item.
 const MENU_CHIP: i32 = sidou_sys::VIEWS_MENU_CHIP as i32;
-const MENU_CARDS: i32 = sidou_sys::VIEWS_MENU_CARDS as i32;
-const MENU_THEME: i32 = sidou_sys::VIEWS_MENU_THEME as i32;
 const MENU_SCENE: i32 = sidou_sys::VIEWS_MENU_SCENE as i32;
 const MENU_CHARSET: i32 = sidou_sys::VIEWS_MENU_CHARSET as i32;
 const MENU_ABOUT: i32 = sidou_sys::VIEWS_MENU_ABOUT as i32;
@@ -208,10 +206,12 @@ fn past_card(m: &mut Machine, fw: &Firmware) -> u64 {
 /// The menu's CARDS off (ALGORITHM counter-clockwise on it), and back to LIVE with no card.
 fn cards_off(m: &mut Machine, fw: &Firmware) {
     open_menu(m, fw);
-    select(m, MENU_CARDS);
+    common::settings_item(m, sidou_sys::VIEWS_SETTINGS_CARDS);
     m.turn(ALGORITHM, -1);
     m.run_ms(100);
     assert_eq!(ui_byte(m, fw, sidou_sys::ilp32::views::cards), 0);
+    press(m, HOME); // SETTINGS, then the menu
+    m.run_ms(100);
     m.turn(SELECT, -MENU_ITEMS); // the cursor back on the first item
     m.run_ms(10 * MENU_ITEMS as u64);
     press(m, HOME);
@@ -2452,8 +2452,10 @@ fn a_chord_on_live_matches_its_golden_image() {
 fn theme_and_back_to_live(m: &mut Machine, fw: &Firmware, theme_turn: i32) {
     cards_off(m, fw);
     open_menu(m, fw);
-    select(m, MENU_THEME);
+    common::settings_item(m, sidou_sys::VIEWS_SETTINGS_THEME);
     m.turn(ALGORITHM, theme_turn);
+    m.run_ms(100);
+    press(m, HOME); // SETTINGS, then the menu
     m.run_ms(100);
     m.turn(SELECT, -MENU_ITEMS);
     m.run_ms(10 * MENU_ITEMS as u64);
@@ -2491,8 +2493,10 @@ fn live_matches_its_golden_image_in_the_c64_theme_and_back() {
     m.key(A4_KEY, false);
     m.run_ms(1500);
     open_menu(&mut m, &fw);
-    select(&mut m, MENU_THEME);
+    common::settings_item(&mut m, sidou_sys::VIEWS_SETTINGS_THEME);
     m.turn(ALGORITHM, -1);
+    m.run_ms(100);
+    press(&mut m, HOME); // SETTINGS, then the menu
     m.run_ms(100);
     m.turn(SELECT, -MENU_ITEMS);
     m.run_ms(10 * MENU_ITEMS as u64);
@@ -4068,20 +4072,63 @@ fn holding_home_shows_the_help_card_and_a_tap_still_goes_home() {
     assert_eq!(fx_select(&mut m, &fw), fx, "the selection untouched");
 }
 
-/// Every card but LIVE's (above), over its own view, each a golden: the menu, CHIP, SCENE, the
-/// five song views (SEQ round them), STATUS (the ALL card), the MIDI page and the SONG menu.
+/// Every card but LIVE's (above), over its own view or page, each a golden: the menu, SETTINGS,
+/// CHIP, SCENE, the five song views (SEQ round them), STATUS, ABOUT, the glyph sheet, the MIDI
+/// page, the SONG menu and its pages (LOAD's files, SAVE AS, NEW's confirmation of an unsaved
+/// song).
 #[test]
 fn help_cards_match_their_goldens() {
     let Some((build, fw)) = fixture("the help card test") else {
         return;
     };
     for name in [
-        "menu", "chip", "scene", "step", "tracker", "order", "instr", "table", "all", "midi",
-        "song",
+        "menu", "settings", "chip", "scene", "step", "tracker", "order", "instr", "table",
+        "status", "about", "charset", "midi", "song", "files", "saveas", "confirm",
     ] {
         let mut m = booted(&fw);
         match name {
             "menu" => open_menu(&mut m, &fw),
+            "settings" => {
+                open_menu(&mut m, &fw);
+                common::settings_item(&mut m, sidou_sys::VIEWS_SETTINGS_KEYS);
+            }
+            "about" | "charset" => {
+                open_menu(&mut m, &fw);
+                select(
+                    &mut m,
+                    if name == "about" {
+                        MENU_ABOUT
+                    } else {
+                        MENU_CHARSET
+                    },
+                );
+                m.run_ms(100);
+                m.turn(ALGORITHM, 1);
+            }
+            "files" | "saveas" | "confirm" => {
+                if name == "confirm" {
+                    // a step toggled on STEP: the song is unsaved, so NEW asks
+                    press(&mut m, SEQ);
+                    settle(&mut m, &fw);
+                    press(&mut m, KEY0);
+                    settle(&mut m, &fw);
+                    press(&mut m, HOME);
+                    settle(&mut m, &fw);
+                }
+                open_menu(&mut m, &fw);
+                select(&mut m, MENU_SONG);
+                m.run_ms(100);
+                m.turn(ALGORITHM, 1);
+                settle(&mut m, &fw);
+                let action = match name {
+                    "files" => 0,
+                    "confirm" => 1,
+                    _ => 2,
+                };
+                m.turn(SELECT, action);
+                m.run_ms(10 * action as u64 + 50);
+                m.turn(ALGORITHM, 1);
+            }
             "chip" | "scene" => {
                 if name == "chip" {
                     into_chip_card(&mut m, &fw);
@@ -4092,7 +4139,7 @@ fn help_cards_match_their_goldens() {
                 assert!(showing_card(&mut m, &fw));
                 past_card(&mut m, &fw);
             }
-            "all" => common::open_status(&mut m, &fw),
+            "status" => common::open_status(&mut m, &fw),
             "midi" | "song" => {
                 open_menu(&mut m, &fw);
                 select(&mut m, if name == "midi" { MENU_MIDI } else { MENU_SONG });
@@ -5481,7 +5528,7 @@ fn ui_sounds_run(fw: &Firmware, sounds: bool, held: bool) -> (Vec<i16>, bool) {
         }
     }
     open_menu(&mut m, fw);
-    select(&mut m, sidou_sys::VIEWS_MENU_SOUNDS as i32);
+    common::settings_item(&mut m, sidou_sys::VIEWS_SETTINGS_SOUNDS);
     if sounds {
         m.turn(ALGORITHM, 1);
     }

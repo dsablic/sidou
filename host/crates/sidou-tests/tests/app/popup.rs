@@ -527,10 +527,7 @@ fn the_menus_algorithm_shows_the_item_in_full_and_no_toast_says_it_again() {
     assert_eq!(says(&ui), ("OCTAVE".to_owned(), "+1".to_owned()));
     assert_eq!(ui.toast(), None, "the popup says it: no toast over it");
     ui.popup_gone();
-    ui.turn(
-        PANEL_ENC_SELECT,
-        (VIEWS_MENU_ROWS - VIEWS_MENU_OCTAVE) as i32,
-    );
+    crate::views::open_setting(&mut ui, VIEWS_SETTINGS_ROWS);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     open(&mut ui);
     assert_eq!(says(&ui), ("TRACKER ROWS".to_owned(), "SCROLL".to_owned()));
@@ -807,7 +804,7 @@ fn a_large_toast_ends_and_gives_its_rows_back() {
 #[test]
 fn a_delayed_menu_popup_keeps_the_item_that_algorithm_changed() {
     let octave = VIEWS_MENU_PRESET + 1;
-    for target in [VIEWS_MENU_KEYS, VIEWS_MENU_CHIP] {
+    for target in [VIEWS_MENU_SETTINGS, VIEWS_MENU_CHIP] {
         let mut ui = Ui::without_cards();
         ui.press(PANEL_BTN_HOME);
         ui.settle();
@@ -922,8 +919,8 @@ fn the_menu_stays_within_the_cell_and_spi_budgets_as_it_scrolls_and_under_a_popu
         .collect();
     for (n, steps) in turns.iter().enumerate() {
         ui.turn(PANEL_ENC_SELECT, *steps);
-        if n == 5 {
-            ui.turn(PANEL_ENC_ALGORITHM, 1);
+        if n == 4 {
+            ui.turn(PANEL_ENC_ALGORITHM, 1); // OCTAVE
         }
         if n == 20 {
             ui.press(PANEL_BTN_OCT_UP);

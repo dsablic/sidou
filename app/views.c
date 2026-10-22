@@ -26,8 +26,9 @@
 #define MENU_HELP_ROW 24u
 #define MENU_CHARS ((GRID_COLS - 2u) / 2u)
 /* The cells a frame of the menu sends at most (LIVE, SCENE and CHIP hold to 200: 17.5 ms of SPI
- * with their windows). */
-#define MENU_FRAME_CELLS 190u
+ * with their windows). 178, not 190 since SETTINGS (ergonomics review E31): a scroll's third
+ * line waits a frame, so a scroll over the shorter menu's action lines stays within 15.1 ms. */
+#define MENU_FRAME_CELLS 178u
 /* The lines the MIDI page draws in a frame: the compose's cost is its ui_poll's. */
 #define MIDI_LINES 2u
 /* A control asked for the popup (views_encoder, master_moved): ASK_BASE, its encoder (a K
@@ -37,9 +38,6 @@
 #define ASK_MASTER 7u
 /* A parameter changed, not a control: ASK_PARAM and its parameter (live.h), from MIDI's watcher. */
 #define ASK_PARAM 0x40u
-
-/* STATUS and MENU's shared snapshot, without STORE's two menu-only bytes. */
-#define COMMON_LOOK (VIEWS_LOOK - 2u)
 
 static const char* const NOTE_NAMES[12] = {"C",  "C#", "D",  "D#", "E",  "F",
                                            "F#", "G",  "G#", "A",  "A#", "B"};
@@ -153,7 +151,7 @@ static uint32_t store_look(const views* v, uint32_t* n) {
 }
 
 /* The fields STATUS and MENU show, as bytes, with the menu's blink phase (0 for STATUS). */
-static void look(const views* v, uint32_t blink, uint8_t out[COMMON_LOOK]) {
+static void look(const views* v, uint32_t blink, uint8_t out[VIEWS_LOOK]) {
     const live* l = v->l;
     uint32_t n = 0;
     out[n++] = (uint8_t)l->model_req;
@@ -183,24 +181,11 @@ static void look(const views* v, uint32_t blink, uint8_t out[COMMON_LOOK]) {
     out[n] = (uint8_t)blink;
 }
 
-/* The common snapshot followed by the menu's STORE state and kilobytes. */
-__attribute__((noinline, unused)) static void menu_look(const views* v, uint32_t blink,
-                                                     uint8_t out[VIEWS_LOOK]) {
-    look(v, blink, out);
-    uint32_t kb = 0;
-    out[COMMON_LOOK] = (uint8_t)store_look(v, &kb);
-    out[COMMON_LOOK + 1u] = (uint8_t)kb;
-}
-
 /* 1 when the view on top would show other fields than at its last compose. */
-static int looks_changed(const views* v, uint32_t blink, int menu_showing) {
+static int looks_changed(const views* v, uint32_t blink) {
     uint8_t now[VIEWS_LOOK];
-    if (menu_showing) {
-        menu_look(v, blink, now);
-    } else {
-        look(v, blink, now);
-    }
-    for (uint32_t i = 0; i < (menu_showing ? VIEWS_LOOK : COMMON_LOOK); i++) {
+    look(v, blink, now);
+    for (uint32_t i = 0; i < VIEWS_LOOK; i++) {
         if (now[i] != v->drawn[i]) {
             return 1;
         }
@@ -212,7 +197,7 @@ static int looks_changed(const views* v, uint32_t blink, int menu_showing) {
 
 static int status_changed(screen* s, void* state) {
     (void)s;
-    return looks_changed(state, 0, 0);
+    return looks_changed(state, 0);
 }
 
 /* The notes held, on the NOTES row from column 9. */
@@ -253,13 +238,13 @@ static void status_compose(screen* s, void* state, grid* g) {
     const uint8_t a = THEME_ATTR(th, value);
     const uint8_t lbl = THEME_ATTR(th, label);
     /* Only the notes changed: their row alone (a held key costs a row, not the screen). */
-    uint8_t now[COMMON_LOOK];
+    uint8_t now[VIEWS_LOOK];
     look(v, 0, now);
     uint32_t other = 0; /* something but the notes changed */
-    for (uint32_t i = 0; i < COMMON_LOOK; i++) {
+    for (uint32_t i = 0; i < VIEWS_LOOK; i++) {
         other |= (uint32_t)(now[i] != v->drawn[i]) & (uint32_t)!(i >= LOOK_NOTES && i < LOOK_NOTES + LIVE_VOICES);
     }
-    for (uint32_t i = 0; i < COMMON_LOOK; i++) {
+    for (uint32_t i = 0; i < VIEWS_LOOK; i++) {
         v->drawn[i] = now[i];
     }
     if (!other && !s->redraw) {
@@ -445,11 +430,11 @@ static void store_turn(void* ctx, int32_t steps) {
     v->format_arm = steps > 0;
 }
 
-/* SAVE on the menu's armed STORE: the format (every sector erased, the erases forced: the user
+/* SAVE on SETTINGS' armed STORE: the format (every sector erased, the erases forced: the user
  * asked for their gaps). 0, nothing done, when STORE is not armed under the cursor. */
 static int store_confirm(views* v) {
     store* st = v->set ? v->set->st : NULL;
-    if (!v->format_arm || v->home.cursor != VIEWS_MENU_STORE || !st ||
+    if (!v->format_arm || v->setup.cursor != VIEWS_SETTINGS_STORE || !st ||
         store_state(st) != STORE_STATE_FOREIGN) {
         return 0;
     }
@@ -710,29 +695,34 @@ static int32_t song_clamp(int32_t n, int32_t max) {
     return n < 0 ? 0 : n > max ? max : n;
 }
 
+/* HOME let go on one of SONG's pages (home_go): back a page, or out of a SAVE AS opened from a
+ * song view. 0 on SONG's actions: HOME goes back a view as anywhere. HOME acts on its release
+ * here as everywhere, so that a hold opens the page's help card. */
+static int song_menu_back(views* v) {
+    views_song_menu* m = &v->songs;
+    if (m->page == SONG_MENU_NAME && m->direct) {
+        song_menu_done(v);
+        return 1;
+    }
+    if (m->page == SONG_MENU_ROOT) {
+        return 0;
+    }
+    if (m->page == SONG_MENU_CONFIRM && m->action != SONG_MENU_NEW) {
+        m->page = m->action == SONG_MENU_SAVE ? SONG_MENU_NAME : SONG_MENU_DIR;
+    } else {
+        m->page = SONG_MENU_ROOT;
+        m->cursor = m->action;
+        m->scanning = 0;
+    }
+    song_menu_changed(v);
+    return 1;
+}
+
 static int song_menu_input(void* ctx, const screen_event* e) {
     views* v = ctx;
     views_song_menu* m = &v->songs;
     if (screen_top(&v->s) != &views_song_menu_view) {
         return 0;
-    }
-    if (e->kind == SCREEN_PRESS && e->id == PANEL_BTN_HOME) {
-        if (m->page == SONG_MENU_NAME && m->direct) {
-            song_menu_done(v);
-            return 1;
-        }
-        if (m->page == SONG_MENU_ROOT) {
-            return 0;
-        }
-        if (m->page == SONG_MENU_CONFIRM && m->action != SONG_MENU_NEW) {
-            m->page = m->action == SONG_MENU_SAVE ? SONG_MENU_NAME : SONG_MENU_DIR;
-        } else {
-            m->page = SONG_MENU_ROOT;
-            m->cursor = m->action;
-            m->scanning = 0;
-        }
-        song_menu_changed(v);
-        return 1;
     }
     if (e->kind != SCREEN_TURN ||
         (e->id != PANEL_ENC_SELECT && e->id != PANEL_ENC_ALGORITHM)) {
@@ -989,28 +979,41 @@ static void midi_open(void* ctx, int32_t steps) {
     screen_push(&v->s, &views_midi, v, SCREEN_CUT);
 }
 
-/* PRE is PRESET and ROWS TRACKER ROWS: the 14-character lines hold the longest preset name
- * (NOISE PERC) and STORE's value (FOREIGN, FORMAT?, ERASE 20; 123K, the kilobytes free) beside
- * them. The popup (below) says the whole names. */
+static void settings_open(void* ctx, int32_t steps) {
+    views* v = ctx;
+    (void)steps;
+    v->format_arm = 0;
+    screen_push(&v->s, &views_settings_view, v, SCREEN_CUT);
+}
+
+/* The menu: the views and the playing values (PRE is PRESET: the 14-character line holds the
+ * longest preset name, NOISE PERC); SETTINGS holds the set-and-forget ones. */
 static const menu_item MENU_ITEMS[VIEWS_MENU_ITEMS] = {
     {"CHIP", NULL, chip_open},             {"TRACKER", NULL, tracker_open},
     {"SCENE", NULL, scene_open},           {"SONG", NULL, song_open},
     {"PRE", preset_value, preset_turn},    {"OCTAVE", octave_value, octave_turn},
-    {"KEYS", keys_value, keys_turn},       {"SOUNDS", sounds_value, sounds_turn},
-    {"ROWS", rows_value, rows_turn},       {"CARDS", cards_value, cards_turn},
-    {"STORE", store_value, store_turn},    {"THEME", theme_value, theme_turn},
-    {"STATUS", NULL, status_open},         {"MIDI", NULL, midi_open},
-    {"CHARSET", NULL, charset_open},       {"REC", quant_value, quant_turn},
+    {"SETTINGS", NULL, settings_open},     {"STATUS", NULL, status_open},
+    {"MIDI", NULL, midi_open},             {"CHARSET", NULL, charset_open},
     {"ABOUT", NULL, about_open},
 };
 _Static_assert(VIEWS_MENU_CHIP == 0u && VIEWS_MENU_TRACKER == 1u && VIEWS_MENU_SCENE == 2u &&
                    VIEWS_MENU_SONG == 3u && VIEWS_MENU_PRESET == 4u && VIEWS_MENU_OCTAVE == 5u &&
-                   VIEWS_MENU_KEYS == 6u && VIEWS_MENU_SOUNDS == 7u && VIEWS_MENU_ROWS == 8u &&
-                   VIEWS_MENU_CARDS == 9u && VIEWS_MENU_STORE == 10u && VIEWS_MENU_THEME == 11u &&
-                   VIEWS_MENU_STATUS == 12u && VIEWS_MENU_MIDI == 13u &&
-                   VIEWS_MENU_CHARSET == 14u && VIEWS_MENU_REC == 15u &&
-                   VIEWS_MENU_ABOUT == 16u,
+                   VIEWS_MENU_SETTINGS == 6u && VIEWS_MENU_STATUS == 7u &&
+                   VIEWS_MENU_MIDI == 8u && VIEWS_MENU_CHARSET == 9u && VIEWS_MENU_ABOUT == 10u,
                "the menu's items");
+/* SETTINGS: ROWS is TRACKER ROWS and REC REC QUANTISE; STORE's value (FOREIGN, FORMAT?, ERASE
+ * 20; 123K, the kilobytes free) fits beside its name. The popup (below) says the whole names. */
+static const menu_item SETTINGS_ITEMS[VIEWS_SETTINGS_ITEMS] = {
+    {"KEYS", keys_value, keys_turn},       {"SOUNDS", sounds_value, sounds_turn},
+    {"ROWS", rows_value, rows_turn},       {"CARDS", cards_value, cards_turn},
+    {"STORE", store_value, store_turn},    {"THEME", theme_value, theme_turn},
+    {"REC", quant_value, quant_turn},
+};
+_Static_assert(VIEWS_SETTINGS_KEYS == 0u && VIEWS_SETTINGS_SOUNDS == 1u &&
+                   VIEWS_SETTINGS_ROWS == 2u && VIEWS_SETTINGS_CARDS == 3u &&
+                   VIEWS_SETTINGS_STORE == 4u && VIEWS_SETTINGS_THEME == 5u &&
+                   VIEWS_SETTINGS_REC == 6u,
+               "the settings' items");
 _Static_assert(LIVE_THEMES == THEME_COUNT, "live.theme holds a theme's id");
 
 static int menu_input(screen* s, void* state, const screen_event* e) {
@@ -1036,9 +1039,6 @@ static int menu_input(screen* s, void* state, const screen_event* e) {
         v->menu_ask = v->home.cursor;
         const menu_item* it = &v->home.items[v->home.cursor];
         int does = it->turn && (it->value || e->steps > 0);
-        if (v->home.cursor == VIEWS_MENU_STORE) {
-            does = v->set && v->set->st && store_state(v->set->st) == STORE_STATE_FOREIGN;
-        }
         menu_turn(&v->home, e->steps);
         sound(v, does ? UI_SOUND_CONFIRM : UI_SOUND_BUZZ);
         return 1;
@@ -1051,7 +1051,7 @@ static int menu_input(screen* s, void* state, const screen_event* e) {
 static int menu_changed(screen* s, void* state) {
     (void)s;
     const views* v = state;
-    return v->home.pending || looks_changed(v, 0, 1);
+    return v->home.pending || looks_changed(v, 0);
 }
 
 /* What a menu page at 2x draws besides its lines (big_menu_compose). */
@@ -1098,8 +1098,10 @@ static void big_menu_compose(screen* s, views* v, menu* m, const char* title, gr
         }
         head[n] = 0;
         append(head, sizeof head, pos);
-        head[6] = m->top > 0 ? (char)FONT_ARROW_UP : ' ';
-        head[7] = m->top + m->rows < m->count ? (char)FONT_ARROW_DOWN : ' ';
+        /* the arrows from column 6, or after a longer title (SETTINGS) */
+        uint32_t at = length(title) > 6u ? length(title) : 6u;
+        head[at] = m->top > 0 ? (char)FONT_ARROW_UP : ' ';
+        head[at + 1u] = m->top + m->rows < m->count ? (char)FONT_ARROW_DOWN : ' ';
         grid_fill(g, 0, 0, GRID_COLS, 3, ' ', head_attr);
         grid_text_big(g, 1, 1, 2, head, head_attr);
     }
@@ -1129,15 +1131,18 @@ static void big_menu_compose(screen* s, views* v, menu* m, const char* title, gr
         m->pending = 1; /* the next frame */
     }
     if (parts & MENU_PART_HELP) {
-        /* What the encoders do (ALG is ALGORITHM): HOME goes back, as everywhere. */
+        /* What the controls do (ALG is ALGORITHM): SAVE opens the main menu's views (its help card
+         * says ALG changes its values), ALG changes the pages' values; HOME goes back, as
+         * everywhere. */
         grid_text_big(g, 1, MENU_HELP_ROW, 2, "SELECT  MOVE", text);
-        grid_text_big(g, 1, MENU_HELP_ROW + 2u, 2, "ALG   CHANGE", text);
+        grid_text_big(g, 1, MENU_HELP_ROW + 2u, 2, m == &v->home ? "SAVE    OPEN" : "ALG   CHANGE",
+                      text);
     }
 }
 
 static void menu_compose(screen* s, void* state, grid* g) {
     views* v = state;
-    menu_look(v, 0, v->drawn);
+    look(v, 0, v->drawn);
     big_menu_compose(s, v, &v->home, "MENU", g,
                      MENU_PART_BLANK | MENU_PART_TITLE | MENU_PART_HELP | MENU_PART_LINES);
 }
@@ -1428,6 +1433,88 @@ static void midi_compose(screen* s, void* state, grid* g) {
 
 const view views_midi = {"MIDI", NULL, NULL, midi_input, midi_compose, midi_changed};
 
+/* ---- SETTINGS ---- */
+
+static void settings_look(const views* v, uint8_t out[VIEWS_SETTINGS_LOOK]) {
+    const live* l = v->l;
+    uint32_t kb = 0;
+    out[0] = l->keys_mode;
+    out[1] = (uint8_t)(v->snd && v->snd->on);
+    out[2] = v->song.scroll;
+    out[3] = v->cards;
+    out[4] = (uint8_t)store_look(v, &kb);
+    out[5] = (uint8_t)kb;
+    out[6] = l->theme;
+    out[7] = v->song.quant;
+    out[8] = v->setup.cursor;
+    out[9] = v->setup.top;
+}
+
+/* As the menu's: SELECT moves, ALGORITHM changes the value; STORE's format is two steps (store_turn
+ * arms, SAVE confirms) and any move disarms it. */
+static int settings_input(screen* s, void* state, const screen_event* e) {
+    views* v = state;
+    if (e->kind != SCREEN_TURN) {
+        return 0;
+    }
+    if (e->id == PANEL_ENC_SELECT) {
+        uint8_t was = v->setup.cursor;
+        menu_move(&v->setup, e->steps);
+        if (v->setup.cursor != was) {
+            s->popup_defer = 1;
+            s->layers = 1;
+        }
+        v->format_arm = 0; /* the confirm is two steps on the item, nothing between */
+        sound(v, v->setup.cursor != was ? UI_SOUND_BLIP : UI_SOUND_BUZZ);
+        return 1;
+    }
+    if (e->id == PANEL_ENC_ALGORITHM) {
+        v->menu_ask = v->setup.cursor;
+        int does = 1;
+        if (v->setup.cursor == VIEWS_SETTINGS_STORE) {
+            does = v->set && v->set->st && store_state(v->set->st) == STORE_STATE_FOREIGN;
+        }
+        menu_turn(&v->setup, e->steps);
+        sound(v, does ? UI_SOUND_CONFIRM : UI_SOUND_BUZZ);
+        return 1;
+    }
+    return 0;
+}
+
+static int settings_changed(screen* s, void* state) {
+    (void)s;
+    const views* v = state;
+    uint8_t now[VIEWS_SETTINGS_LOOK];
+    settings_look(v, now);
+    return v->setup.pending || memcmp(now, v->setup_drawn, sizeof now) != 0;
+}
+
+/* As the MIDI page's compose: a view switch draws the screen's own parts first and the lines from
+ * the next frames, MIDI_LINES at a time. */
+static void settings_compose(screen* s, void* state, grid* g) {
+    views* v = state;
+    uint8_t cursor = v->setup_drawn[8];
+    uint8_t top = v->setup_drawn[9];
+    settings_look(v, v->setup_drawn);
+    uint32_t parts = MENU_PART_LINES;
+    if (s->redraw) {
+        parts |= MENU_PART_BLANK | MENU_PART_TITLE | MENU_PART_HELP;
+        if (s->redraw_rows == (1u << GRID_ROWS) - 1u) {
+            parts &= ~MENU_PART_LINES;
+        }
+    } else if (cursor != v->setup_drawn[8] || top != v->setup_drawn[9]) {
+        parts |= MENU_PART_TITLE;
+    }
+    big_menu_compose(s, v, &v->setup, "SETTINGS", g, parts);
+    /* the frame's first run of one cell, as the MIDI page's (midi_compose) */
+    g->scan_row = 0;
+    g->scan_col = 0;
+    grid_put(g, 0, 0, ' ', (uint8_t)(g->shown_attr[0] ^ 1u));
+}
+
+const view views_settings_view = {"SETTINGS", NULL, NULL, settings_input, settings_compose,
+                                  settings_changed};
+
 /* ---- CHARSET ---- */
 
 /* The 256 glyphs in a 16 x 16 block with hex labels, the 16 colours, and a triangle wave
@@ -1690,6 +1777,9 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     menu_init(&v->midi, MIDI_ITEMS, VIEWS_MIDI_ITEMS, VIEWS_MENU_SHOWN, v);
     v->midi.scale = 2;
     v->midi.lines = MIDI_LINES;
+    menu_init(&v->setup, SETTINGS_ITEMS, VIEWS_SETTINGS_ITEMS, VIEWS_MENU_SHOWN, v);
+    v->setup.scale = 2;
+    v->setup.lines = MIDI_LINES;
     v->route = NULL;
     v->sync = NULL;
     remember(v);
@@ -1807,6 +1897,9 @@ __attribute__((noinline, unused)) static void home_go(views* v) {
     if (curtain(v) || from == &learn_view_view) {
         return; /* a capture that appeared during the hold took HOME's place */
     }
+    if (from == &views_song_menu_view && song_menu_back(v)) {
+        return; /* back a page of SONG's */
+    }
     if (screen_pop(&v->s, SCREEN_WIPE_UP) != 0) {
         screen_push(&v->s, &views_menu, v, SCREEN_WIPE_DOWN);
     } else if (from == &views_menu && screen_top(&v->s) == &live_view_view) {
@@ -1826,8 +1919,21 @@ static uint32_t help_card_of(const views* v) {
     if (top == &views_midi) {
         return HELP_CARD_MIDI;
     }
+    if (top == &views_settings_view) {
+        return HELP_CARD_SETTINGS;
+    }
     if (top == &views_song_menu_view) {
-        return HELP_CARD_SONG;
+        uint8_t page = v->songs.page;
+        return page == SONG_MENU_DIR    ? HELP_CARD_FILES
+               : page == SONG_MENU_NAME ? HELP_CARD_NAME
+               : page == SONG_MENU_CONFIRM ? HELP_CARD_CONFIRM
+                                           : HELP_CARD_SONG;
+    }
+    if (top == &about_view) {
+        return HELP_CARD_ABOUT;
+    }
+    if (top == &views_charset) {
+        return HELP_CARD_CHARSET;
     }
     if (top == &chip_view_view) {
         return HELP_CARD_CHIP;
@@ -1847,7 +1953,7 @@ static uint32_t help_card_of(const views* v) {
     if (top == &song_pages_instr_view) {
         return HELP_CARD_INSTR;
     }
-    return top == &song_pages_table_view ? HELP_CARD_TABLE : HELP_CARD_ALL;
+    return top == &song_pages_table_view ? HELP_CARD_TABLE : HELP_CARD_STATUS;
 }
 
 /* ---- the first-run tour: three toasts after the full boot an install plays ---- */
@@ -2102,24 +2208,25 @@ static int chip_choice_text(const views* v, char* name, char* value, int edit) {
     return 1;
 }
 
-/* The menu's ALGORITHM on a value item: its name (in full) and value, as the menu shows them. */
-static int menu_choice_text(const views* v, char* name, char* value) {
-    const menu_item* it = &v->home.items[v->menu_ask];
+/* ALGORITHM on a value item of the menu or SETTINGS (set, 1): its name (in full) and value, as
+ * the page shows them. */
+static int menu_choice_text(const views* v, int set, char* name, char* value) {
+    const menu_item* it = &(set ? &v->setup : &v->home)->items[v->menu_ask];
     if (!it->value) {
         return 0; /* an action opens its view */
     }
-    uint32_t i = v->menu_ask;
+    uint32_t i = v->menu_ask + (set ? VIEWS_MENU_ITEMS : 0u); /* one numbering for both */
     join(name, SCREEN_POPUP_TEXT,
-         i == VIEWS_MENU_PRESET ? "PRESET" : i == VIEWS_MENU_ROWS ? "TRACKER ROWS" :
-         i == VIEWS_MENU_REC ? "REC QUANTISE" : it->label,
+         i == VIEWS_MENU_PRESET ? "PRESET" : i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_ROWS ? "TRACKER ROWS" :
+         i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_REC ? "REC QUANTISE" : it->label,
          "");
     char text[MENU_VALUE_CHARS]; /* (the menu's values have room for a longer text) */
     text[0] = 0;
-    if (i == VIEWS_MENU_THEME) {
+    if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_THEME) {
         join(text, sizeof text, theme_get(v->l->theme)->name, ""); /* in full, not the menu's */
-    } else if (i == VIEWS_MENU_STORE && v->format_arm) {
+    } else if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_STORE && v->format_arm) {
         join(text, sizeof text, "SAVE FORMATS", ""); /* the confirm the menu's FORMAT? asks for */
-    } else if (i == VIEWS_MENU_STORE && v->set && v->set->st && v->set->st->mount_newer &&
+    } else if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_STORE && v->set && v->set->st && v->set->st->mount_newer &&
                store_state(v->set->st) == STORE_STATE_FOREIGN) {
         join(text, sizeof text, "NEWER SIDOU", "");
     } else {
@@ -2206,8 +2313,8 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
         if (top == &chip_view_view) {
             return chip_choice_text(v, name, value, (ask & ASK_EDIT) != 0u);
         }
-        if (top == &views_menu) {
-            return menu_choice_text(v, name, value);
+        if (top == &views_menu || top == &views_settings_view) {
+            return menu_choice_text(v, top == &views_settings_view, name, value);
         }
         if (top == &views_midi) {
             const menu_item* it = &v->midi.items[v->midi.cursor];
@@ -2257,7 +2364,18 @@ static void save(views* v) {
         }
         return;
     }
-    if (shows(v) == &views_menu && store_confirm(v)) {
+    if (shows(v) == &views_menu) {
+        /* the menu's OK: an action opens its view; a value item, nothing (ALGORITHM changes it) */
+        const menu_item* it = &v->home.items[v->home.cursor];
+        if (!it->value) {
+            v->menu_ask = v->home.cursor;
+            it->turn(v, 1);
+            sound(v, UI_SOUND_CONFIRM);
+        }
+        return;
+    }
+    if (shows(v) == &views_settings_view) {
+        (void)store_confirm(v); /* the armed STORE's format; else nothing: no actions here */
         return;
     }
     if (v->set) {

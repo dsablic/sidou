@@ -65,6 +65,10 @@ fn parameter_label_visible(param: &str, p: &crate::device::Params, text: &[Strin
 pub const VIEWS: &[(&str, &str)] = &[
     ("live", ""),
     ("menu", "press HOME; wait 900"),
+    (
+        "settings",
+        "press HOME; select-item SETTINGS; press SAVE; wait 900",
+    ),
     ("chip", "press HOME; turn ALGORITHM 1; wait 3000"),
     ("tracker", "press SEQ; press SEQ"),
     (

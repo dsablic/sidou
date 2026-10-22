@@ -32,14 +32,20 @@ typedef enum {
     HELP_CARD_CHIP = 2,
     HELP_CARD_TRACKER = 3,
     HELP_CARD_SCENE = 4,
-    HELP_CARD_ALL = 5,     /* STATUS, ABOUT, CHARSET and the rest */
+    HELP_CARD_STATUS = 5,
     HELP_CARD_STEP = 6,    /* the song views, a card for each */
     HELP_CARD_ORDER = 7,
     HELP_CARD_INSTR = 8,
     HELP_CARD_TABLE = 9,
     HELP_CARD_MIDI = 10,   /* the MIDI page */
     HELP_CARD_SONG = 11,   /* the SONG menu */
-    HELP_CARDS = 12
+    HELP_CARD_SETTINGS = 12, /* the menu's SETTINGS page */
+    HELP_CARD_ABOUT = 13,
+    HELP_CARD_CHARSET = 14,
+    HELP_CARD_FILES = 15,    /* the SONG menu's pages: LOAD's and DELETE's list of files, */
+    HELP_CARD_NAME = 16,     /* SAVE AS's name */
+    HELP_CARD_CONFIRM = 17,  /* and a confirmation */
+    HELP_CARDS = 18
 } help_card_id;
 
 /* Lines a card has at most, characters of a line (the control, a space or more, what it does),
@@ -66,7 +72,8 @@ typedef struct {
     uint8_t done;   /* a button or an encoder: close it (the views pop it) */
 } help_view;
 
-/* The card for `card` on top of s, cut in; its capture set. -1 when the stack is full. */
+/* The card for `card` on top of s, cut in, in the stack's slot kept for it (screen_push_over:
+ * over a full stack too); its capture set. -1 when no slot is left (a card already open). */
 int help_view_open(help_view* h, screen* s, uint32_t card);
 /* Its capture (screen_capture): takes every event and marks the card done. */
 int help_view_capture(void* ctx, const screen_event* e);

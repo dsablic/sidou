@@ -276,15 +276,17 @@ which printed control did it.
 | SELECT / ALGORITHM, in TRACKER | SELECT moves one row (EDIT held: an 8-row page); ALGORITHM shows V2 in cyan, V3 in light green, then V1 again; the cursor's voice and audition follow the voice shown | | [ ] |
 | STEP (SEQ from LIVE) | the 16 leftmost keys are steps: tap one, a ball appears on the lane (V1 selected, the arrow) and the key's pad turns the lane's colour; tap again, it goes. Staccato (the default) writes a key off on the next empty row; ARP switches the lane to LEGATO and back. SELECT picks V2, V3; ALGORITHM pages (the page follows the playing step while the song plays); PRESETS sets the lane's instrument, or with a step held that step's note | | [ ] |
 | STEP, a step held | hold a step key and turn K1: the HELD STEP frame comes alive, K1 CUTOFF shows LOCK in yellow with a bar, a yellow notch stays under the step after the key is let go, and nothing toggles; played, only that step's row is darker. K4 on a held step shows SET in cyan (waveform), a cyan notch; on a row that has a command it says ROW HAS A COMMAND. LFO with the step held clears them. Save, then open the song in GoatTracker: the SETs play there as here | | [ ] |
-| TRACKER ROWS in the menu | BAR: while SIDOU LOOP plays the bar moves down still rows, and the rows change cleanly at each new pattern; SCROLL: the bar stays on the middle row and the rows move up, smoothly at this tempo or a frame behind at most | | [ ] |
+| TRACKER ROWS in SETTINGS (menu, SETTINGS) | BAR: while SIDOU LOOP plays the bar moves down still rows, and the rows change cleanly at each new pattern; SCROLL: the bar stays on the middle row and the rows move up, smoothly at this tempo or a frame behind at most | | [ ] |
 | PLAY (button 12) | SIDOU LOOP plays (a lead, a bass and drums, in time, no clicks between rows), in any view; TRACKER's header shows a play mark and the rows move (the bar, and the strips' tall bars where the other voices play notes); PLAY again stops it and the notes ring out; EDIT + PLAY goes on from there; PLAY's LED lit while it plays | | [ ] |
 | REC (button 13) | REC in red under TRACKER's play mark, and off again | | [ ] |
 | A note key in TRACKER, REC off and the song stopped | SIDOU LOOP's first instrument on the voice shown (after ALGORITHM, on that voice), nothing of the song plays; let go, it releases; LIVE's keys sound the same as before afterwards | | [ ] |
 | TRACKER with REC on | enter four notes: each appears at the cursor and advances a row; K1 instrument, K2 command, K3/K4 data show large popups; the selected field is reverse yellow at 2×. ARP writes key off; LFO clears the note, LFO again clears the row. EDIT + LFO undoes/redoes; EDIT + PRESETS inserts/deletes without changing the pattern length | | [ ] |
 | ORDER / INSTR / TABLE | ORDER: SELECT entries, ALGORITHM voice (subtune on its selector), K1 value, K2 kind, EDIT + PRESETS insert/delete, ARP restart, PLAY from that subtune/entry. INSTR: PRESETS instrument, SELECT parameter/name character, K1 coarse/K2 fine; keys audition. EDIT + SEQ on a pointer opens its table. TABLE: ALGORITHM kind, SELECT row, K1/K2 bytes; meanings at the foot | | [ ] |
 | GLO (button 7) held + the leftmost note key | while SIDOU LOOP plays, its voice 1 goes silent; TRACKER's V1 turns grey and says MUT in red beside the pattern (a muted voice shown as a strip: grey and short), LIVE's top line M1 in red in the preset's place; the key sounds nothing; again: back. GLO + the fourth key: only voice 1 sounds, SOL beside V1's pattern | | [ ] |
-| SELECT (encoder 0), in the menu | the selected line (reverse video) moves between CHIP, TRACKER, PRE (PRESET), OCTAVE, CARDS, STORE, KEYS, SOUNDS, ROWS (TRACKER ROWS), THEME, STATUS, SCENE, CHARSET and ABOUT; six lines show at a time and the list scrolls with it, the title bar's arrows telling which way more is | | [ ] |
-| ALGORITHM (encoder 1), in the menu | changes the item under the selection (PRESET; OCTAVE -3..+3; CARDS: OFF, ONCE (the default), ALWAYS, one step a detent; THEME: counter-clockwise HIGH, the default, clockwise C64: every screen, the menu included, changes colours at once); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
+| SELECT (encoder 0), in the menu | the selected line (reverse video) moves between CHIP, TRACKER, SCENE, SONG, PRE (PRESET), OCTAVE, SETTINGS, STATUS, MIDI, CHARSET and ABOUT; six lines show at a time and the list scrolls with it, the title bar's arrows telling which way more is | | [ ] |
+| SAVE (button 9), in the menu | the menu's OK: opens the item under the selection (CHIP, TRACKER, SCENE, SONG, SETTINGS, STATUS, MIDI, CHARSET, ABOUT); on PRE or OCTAVE nothing happens and no SAVED toast shows | | [ ] |
+| ALGORITHM (encoder 1), in SETTINGS | changes the item under the selection (KEYS, SOUNDS, ROWS, CARDS: OFF, ONCE (the default), ALWAYS, one step a detent; STORE; THEME: counter-clockwise HIGH, the default, clockwise C64: every screen, SETTINGS included, changes colours at once; REC); HOME goes back to the menu | | [ ] |
+| ALGORITHM (encoder 1), in the menu | changes the item under the selection (PRESET; OCTAVE -3..+3); clockwise on CHIP opens the CHIP view behind THE CHIP's title card (below), on STATUS the status screen (the numbers), on SCENE the generative pieces (below), on CHARSET the glyph sheet, on ABOUT the credits (the chrome lettering at the top, the credits pages fading over stars, raster bars behind a white sine scroller), and HOME goes back to the menu | | [ ] |
 | SELECT (encoder 0), on CHIP | the focus (the yellow tab, or the yellow title on the A/B tabs) moves tabs, CHIP, DIST, MOD, FX, EXPERT and stops at either end; onto a slot that was not the selected one, the toast says SLOT DIST (or MOD, FX); onto the slot already selected (DIST at power-on), no toast | | [ ] |
 | ALGORITHM (encoder 1), on CHIP | on CHIP the PROFILE steps 6581 R2, 6581 R3, 6581 R4AR, 8580 R5, WORN 6581, then filled USER slots (7.2; MODEL follows; held notes attack again on the new chip, as at a model change); on a slot its algorithm, OFF to the last, at 3× under the tabs | | [ ] |
 | K1..K4, on CHIP | on CHIP AGE, DAC, THUMP, BLEED (values at 3× with bars, in the knob's colour; the sound darkens with AGE, a released note whispers with DAC); on a slot its four controls, named for the algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX) | | [ ] |
@@ -379,7 +381,7 @@ unreadable on this panel. Look at arm's length, at a desk and held in the hand:
 
 Readability of the redesigned screens ([the theme and layouts](art/README.md#theme)): each is
 drawn to be read at the panel's 23 mm. Hold the FM-1 at arm's length, at a desk and in the
-hand, in the HIGH CONTRAST theme (the default) and again after THEME to C64 in the menu:
+hand, in the HIGH CONTRAST theme (the default) and again after THEME to C64 in SETTINGS:
 
 - [ ] **LIVE**: from across a desk you can tell, without leaning in, which voices sound (the
   scopes in their colours against dark grey), each voice's note, and the four knobs' values
@@ -402,7 +404,7 @@ hand, in the HIGH CONTRAST theme (the default) and again after THEME to C64 in t
   small), can be found when you look for them.
 - [ ] **STATUS and ABOUT**: the 2× title and the key numbers are readable; the small lines are
   as before.
-- [ ] **MENU and the MIDI page**: the menu's fifteen items at 2× (THEME and MIDI included)
+- [ ] **MENU, SETTINGS and the MIDI page**: the menu's eleven items and SETTINGS' seven at 2×
   read from arm's length; the MIDI page (HOME, then MIDI) is small text in the theme's colours
   (the items white, the help lines grey): note whether you can read its ten items in the hand.
 - [ ] **Contrast**: the grey labels and dark grey inactive things are visible but clearly
@@ -412,7 +414,7 @@ hand, in the HIGH CONTRAST theme (the default) and again after THEME to C64 in t
 
 Title cards ([controls](reference/controls.md#title-cards)):
 
-- [ ] With CARDS at ONCE (the default, set it first in the menu), the first SCENE and the first
+- [ ] With CARDS at ONCE (the default, set it first in SETTINGS), the first SCENE and the first
   CHIP after power-on play their card and the second opening of either does not; the way back
   to LIVE plays none. With ALWAYS every opening plays it, THE OSCILLATOR's included.
 - [ ] Menu, SCENE: THE SCENE's card first (as `assets/logo/title-scene.png`):
@@ -430,7 +432,7 @@ Title cards ([controls](reference/controls.md#title-cards)):
 - [ ] A note key on a card, and a note over MIDI: it sounds at once (no
   delay against playing on LIVE) and the view comes in.
 - [ ] A chord held and played through a card: no click, crackle or late note.
-- [ ] Menu, CARDS turned counter-clockwise to OFF: SCENE and HOME back to LIVE
+- [ ] SETTINGS, CARDS turned counter-clockwise to OFF: SCENE and HOME back to LIVE
   now wipe in with no card. Clockwise: ONCE, then ALWAYS, and the cards are back. Set OFF,
   wait at least 6 s with no further changes and the keys released, then power-cycle:
   CARDS stays OFF; set ALWAYS and power-cycle: it stays ALWAYS. Restore ALWAYS or ONCE for the
@@ -567,7 +569,7 @@ them passed. Use a moderate headphone level. Keep the USB-output release gate in
   B. The title and KEYS marker follow the chosen chip. With no song, B says FOLLOWS KEYS;
   editing it changes the keys' setup. While a song plays, A edits the song's setup and B
   the keys'. Effects remain one shared chain, with the B tab's shared-slot indication.
-- [ ] Select KEYS A in the menu and play the song: a held key temporarily takes a song
+- [ ] Select KEYS A in SETTINGS and play the song: a held key temporarily takes a song
   voice; releasing it gives the voice back, with no stuck gate. The song keeps its filter
   and volume; the instrument's filter knobs do not take them over. Restore AUTO.
 - [ ] While a chord holds on the keys' chip, step a built-in profile and toggle FX both

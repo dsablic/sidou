@@ -57,7 +57,7 @@ Default use (the C64 theme, below; the boot's READY. screen is always this):
 The 23 mm screen is read at arm's length while playing, so the views take their colours from
 **roles**, defined once in `app/theme.c` (`app/theme.h`, a `theme` table in flash). A view never
 names a colour of the 16 for a purpose of its own: it asks the theme for the role and builds its
-cell attribute with `THEME_ATTR`. There are two themes, the menu's **THEME** item (persisted in
+cell attribute with `THEME_ATTR`. There are two themes, SETTINGS' **THEME** item (persisted in
 the settings record, schema 3: `live.theme`, so every view reaches it through its `live`):
 
 - **HIGH CONTRAST**, the default: black, white values, light grey labels, dark grey for what is
@@ -235,7 +235,7 @@ does not take plays the instrument (`app/views.h`,
 - **Menus:** a list of items, each a label and a value right-aligned against
   the edge (an arrow for an item that opens a view), SELECT moves the selection, ALGORITHM
   changes the value. The main menu (HOME) is drawn at **2× text** with six items of the
-  sixteen showing: a title bar (MENU, an arrow up and down for the items out
+  eleven showing: a title bar (MENU, an arrow up and down for the items out
   of sight, the item's number of the count; light grey on black in HIGH CONTRAST, reverse video in C64)
   in rows 0-2, a line of 14 characters every 3 rows
   from row 4 (a cell of margin each side: a panel's bezel hides its edge), the items white with
@@ -245,13 +245,14 @@ does not take plays the instrument (`app/views.h`,
   row take priority; forced restorations then share the remaining quota with other rows.
   A coincident popup opening or refresh waits a frame for the bar, retaining its ask and
   lifetime. A refresh does not expand the box on the same frame. A line is up to 60 cells, so a scroll
-  (every line changes) is drawn a line or two a frame, the selected line first, within 190
+  (every line changes) is drawn a line or two a frame, the selected line first, within 178
   cells less what a popup or a toast draws the same frame (`MENU_FRAME_CELLS`, `menu.budget`),
   with forced restorations marked by `menu.force_rows`; deferred rows follow within the quota. Labels
   are short so that value and label fit a line: **PRE** is PRESET (the longest preset name,
   NOISE PERC, is 10 characters), **ROWS** TRACKER ROWS, and STORE shows `193K` (kilobytes
   free), `FOREIGN`, `NEWER`, `FORMAT?` or `ERASE 20`; the popup says the whole names. The help below
-  (`SELECT  MOVE`, `ALG   CHANGE`: ALG is ALGORITHM) is large too. The menus of M2's views
+  (`SELECT  MOVE`, then `SAVE    OPEN` on the main menu, whose OK SAVE is, and `ALG   CHANGE`
+  on its pages: ALG is ALGORITHM) is large too. The menus of M2's views
   (and a CHIP-sized menu of the song's) can use the same widget at either size
   (`menu.scale`).
 - **The MIDI page** uses the same 2× menu renderer: six of its ten items, a MIDI title bar
@@ -259,7 +260,10 @@ does not take plays the instrument (`app/views.h`,
   colour. It has no border, version, READY. prompt or blinking cursor.
 
   The main menu puts playing views first: CHIP, TRACKER, SCENE, SONG, then PRE, OCTAVE,
-  KEYS, SOUNDS, ROWS, CARDS, STORE, THEME, STATUS, MIDI, CHARSET and ABOUT.
+  SETTINGS, STATUS, MIDI, CHARSET and ABOUT (eleven: the ergonomics review's E31).
+- **SETTINGS** is a page drawn as the MIDI page is (a line or two a frame, the SETTINGS title
+  bar with the arrows after the longer title): the set-and-forget settings KEYS, SOUNDS, ROWS,
+  CARDS, STORE, THEME and REC.
 - **Toast:** reverse-video text (black on yellow; C64 blue on light blue) in **2× text** on rows 27-28 for 1.5 s,
   saying what changed: up to 13 characters; a longer one breaks at a space into two lines
   (rows 25-28, up to 26 characters), and one whose words fit neither (`SNG: A-4 PITCH NOT
@@ -366,7 +370,7 @@ on the host, at every phase).
 
 ## UI sounds
 
-SOUNDS in the menu (off by default, restored with the settings) plays short sounds on chip B's spare voice
+SOUNDS in SETTINGS (off by default, restored with the settings) plays short sounds on chip B's spare voice
 (`app/ui_sound.h`): a cursor blip when the menu's cursor moves (a triangle C-6, two frames), a
 confirm when ALGORITHM changes a value or opens a view (a pulse arpeggio E-5 G#5 B-5), a chime
 with a toast (a triangle falling E-6 C-6 G-5), an error buzz for a refused action (the
@@ -1067,7 +1071,7 @@ input <4,600, pass <55,000, poll <33,000, 200 cells and 20 ms.
 
 ## STATUS
 
-STATUS (`app/views.c`, the menu's item after THEME) is the numbers: what the instrument has,
+STATUS (`app/views.c`, the menu's item after SETTINGS) is the numbers: what the instrument has,
 in the theme's colours ([the theme](#theme)) with the titles and the key numbers at 2×:
 
 ![STATUS, A4 held](../../tests/golden/lcd/status-a4.png)
@@ -1532,7 +1536,7 @@ are in [controls](../reference/controls.md#help)). It is drawn in the menu's sty
 14 characters across, in the theme's roles, never a colour of its own:
 
 - **Rows 0-2:** the title bar in `title_fg` on `title_bg`: `HELP` from column 1 and the card's
-  name (`LIVE`, `MENU`, `MIDI`, `CHIP`, `SCENE`, `STEP`, `TRACKER`, `ORDER`, `INSTR`, `TABLE`, `SONG`, `ALL`) right-aligned.
+  name (`LIVE`, `MENU`, `SETTINGS`, `MIDI`, `CHIP`, `SCENE`, `STEP`, `TRACKER`, `ORDER`, `INSTR`, `TABLE`, `STATUS`, `ABOUT`, `CHARSET`, `SONG`, and SONG's pages `FILES`, `SAVE AS`, `CONFIRM`) right-aligned.
 - **Rows 4-27:** up to eight lines, one every three rows (two of text, one blank): the control
   on the left in `hot`, what it does right-aligned in `value`, on the screen's own background;
   the rows a card does not use stay blank.

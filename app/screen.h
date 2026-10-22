@@ -63,8 +63,10 @@
 extern "C" {
 #endif
 
-/* Views on the stack at most, the root included. */
+/* Views on the stack at most, the root included; one slot more is kept for the help card
+ * (screen_push_over), so that a held HOME shows it over a full stack too. */
 #define SCREEN_DEPTH 4u
+#define SCREEN_SLOTS (SCREEN_DEPTH + 1u)
 /* The toast's first row (of a one-line toast; large text takes two rows) and its text: columns
  * 2..27, inside the frame and its margin (docs/art/README.md), SCREEN_TOAST_LINE characters a
  * line at 2 times the font, two lines at most. */
@@ -194,7 +196,7 @@ typedef struct {
 
 struct screen {
     grid* g;
-    screen_entry stack[SCREEN_DEPTH];
+    screen_entry stack[SCREEN_SLOTS];
     uint8_t depth;
     uint8_t wipe;      /* screen_wipe; SCREEN_CUT: none running */
     uint8_t wipe_rows; /* rows revealed so far */
@@ -244,6 +246,9 @@ void screen_init(screen* s, grid* g, const view* root, void* state);
 /* v on top, entered and focused. 0, or -1 when the stack is full or from a view's enter or
  * exit (nothing changes). */
 int screen_push(screen* s, const view* v, void* state, screen_wipe w);
+/* As screen_push, with the slot kept past SCREEN_DEPTH: for the help card alone, which closes
+ * before anything else can push (it captures every control). */
+int screen_push_over(screen* s, const view* v, void* state, screen_wipe w);
 /* The top view exited and the one below focused; a capture set above the new depth is
  * released. 0, or -1 at the root or from a view's enter or exit. */
 int screen_pop(screen* s, screen_wipe w);

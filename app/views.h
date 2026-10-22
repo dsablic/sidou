@@ -7,15 +7,17 @@
  * - LIVE, the root (app/live_view.h): the voices' oscilloscopes and envelopes, the filter's
  *   curve, the VU meters and the effect slots. What the screen shows from power-on; the tap
  *   on the audio runs only while it shows: on top, or under MIDI learn's frame.
- * - MENU (HOME), at 2 times the font, six of its items at a time: CHIP and TRACKER, the views
- *   to open, then PRE (PRESET), OCTAVE, CARDS, STORE (the store's free kilobytes, or FOREIGN:
- *   another firmware's data, which ALGORITHM turned clockwise twice formats), KEYS (AUTO or A:
+ * - MENU (HOME), at 2 times the font, six of its items at a time: the views and the playing
+ *   values: CHIP, TRACKER, SCENE, SONG, PRE (PRESET), OCTAVE, SETTINGS, STATUS, MIDI, CHARSET
+ *   and ABOUT. SELECT moves the selection (a line in reverse video; the list scrolls with it, a
+ *   line or two a frame), ALGORITHM changes the value under it or, clockwise, opens the view;
+ *   SAVE is its OK: it opens the view under the selection (on a value it does nothing).
+ * - SETTINGS (from the menu), a page like it of the set-and-forget settings: KEYS (AUTO or A:
  *   which chip the keys play during a song, app/keys_route.h), SOUNDS (the UI sounds on chip
- *   B's spare voice, OFF by default, app/ui_sound.h) and ROWS (TRACKER ROWS: BAR, the moving
- *   bar, or SCROLL: app/tracker_view.h), THEME, then STATUS, SCENE, CHARSET, SONG, ABOUT and MIDI. SELECT
- *   moves the selection (a line in reverse video; the list scrolls with it, a line or two a
- *   frame), ALGORITHM changes the value under it or opens the view. CARDS, KEYS, SOUNDS, ROWS and THEME
- *   persist (app/settings.h).
+ *   B's spare voice, OFF by default, app/ui_sound.h), ROWS (TRACKER ROWS: BAR, the moving bar,
+ *   or SCROLL: app/tracker_view.h), CARDS, STORE (the store's free kilobytes, or FOREIGN:
+ *   another firmware's data, which ALGORITHM clockwise arms and SAVE formats), THEME and REC
+ *   (REC QUANTISE, not saved). CARDS, KEYS, SOUNDS, ROWS and THEME persist (app/settings.h).
  * - CHIP (from the menu, behind THE CHIP's card): chip A's profile, character and effect slots
  *   (app/chip_view.h); SELECT moves the focus, ALGORITHM steps its choice, K1..K4 turn its
  *   values.
@@ -57,7 +59,8 @@
  *    on the CHIP view's chip focus a USER slot, the save target or the applied one
  *    (chip_view_save; toast OVERWRITE USER 3? first when it holds a profile, then SAVED TO USER
  *    3 when the store commits), on a song view the song
- *    (song_io_save; an unnamed song opens SAVE AS),
+ *    (song_io_save; an unnamed song opens SAVE AS), on the menu the view under the selection
+ *    (its OK), on SETTINGS STORE's armed format and nothing else,
  *    anywhere else the settings, now (settings_save_now; the toast SAVED when it commits).
  *    While SAVE is held, K1..K4 open LEARN on the knob's parameter, and HOME asks, in the frame,
  *    to clear every mapping (outside it, HOME does nothing). Over the boot or a title card SAVE
@@ -134,27 +137,34 @@ extern "C" {
 
 /* The status screen's colours: light blue on blue. */
 #define VIEWS_TEXT GRID_ATTR(GRID_LIGHT_BLUE, GRID_BLUE)
-/* The menu's items, the title cards' option, and the items that open a view. */
-#define VIEWS_MENU_ITEMS 17u
+/* The menu's items: the views to open and the playing values. */
+#define VIEWS_MENU_ITEMS 11u
 #define VIEWS_MENU_CHIP 0u
 #define VIEWS_MENU_TRACKER 1u
-#define VIEWS_MENU_CARDS 9u
-#define VIEWS_MENU_STORE 10u
-#define VIEWS_MENU_KEYS 6u
-#define VIEWS_MENU_SOUNDS 7u
-#define VIEWS_MENU_ROWS 8u
-#define VIEWS_MENU_THEME 11u
+#define VIEWS_MENU_SCENE 2u
+#define VIEWS_MENU_SONG 3u
 /* PRESET (the item that shows PRE), and the items the menu shows at once. */
 #define VIEWS_MENU_PRESET 4u
 #define VIEWS_MENU_OCTAVE 5u
 #define VIEWS_MENU_SHOWN 6u
-#define VIEWS_MENU_STATUS 12u
-#define VIEWS_MENU_SCENE 2u
-#define VIEWS_MENU_CHARSET 14u
-#define VIEWS_MENU_SONG 3u
-#define VIEWS_MENU_REC 15u
-#define VIEWS_MENU_ABOUT 16u
-#define VIEWS_MENU_MIDI 13u
+#define VIEWS_MENU_SETTINGS 6u
+#define VIEWS_MENU_STATUS 7u
+#define VIEWS_MENU_MIDI 8u
+#define VIEWS_MENU_CHARSET 9u
+#define VIEWS_MENU_ABOUT 10u
+/* The SETTINGS page's items (the set-and-forget settings): KEYS, SOUNDS, ROWS (TRACKER ROWS),
+ * CARDS (the title cards' option), STORE, THEME and REC (REC QUANTISE). */
+#define VIEWS_SETTINGS_ITEMS 7u
+#define VIEWS_SETTINGS_KEYS 0u
+#define VIEWS_SETTINGS_SOUNDS 1u
+#define VIEWS_SETTINGS_ROWS 2u
+#define VIEWS_SETTINGS_CARDS 3u
+#define VIEWS_SETTINGS_STORE 4u
+#define VIEWS_SETTINGS_THEME 5u
+#define VIEWS_SETTINGS_REC 6u
+/* What it shows: KEYS, SOUNDS, ROWS, CARDS, the store's state and kilobytes, THEME, REC, the
+ * cursor and the first row. */
+#define VIEWS_SETTINGS_LOOK 10u
 /* The MIDI page's items (app/midi_route.h): MODE, CHANNEL, OPTION, LEGATO, CHORD 2, CHORD 3,
  * ARP RATE, ROWS/BEAT, and the clock's (app/midi_sync.h): CLOCK, CLOCK OUT. */
 #define VIEWS_MIDI_ITEMS 10u
@@ -167,8 +177,8 @@ extern "C" {
  * which chip the keys play (with two chips and the KEYS setting), the keys' profile and the
  * other chip's, the preset, octave, cutoff (2), resonance, pulse width (2), volume and selected slot, each
  * voice's sounding note, every slot field, the title cards' option, the menu's cursor,
- * first row and blink, then the store's state and free kilobytes (only MENU compares these two). */
-#define VIEWS_LOOK (19u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
+ * first row and blink. */
+#define VIEWS_LOOK (17u + LIVE_VOICES + LIVE_SLOTS * LIVE_SLOT_FIELDS)
 
 #define VIEWS_SONG_FILES 8u
 typedef struct {
@@ -243,12 +253,16 @@ typedef struct {
     /* The song view that showed last (views_frame), which SEQ reopens from outside them; NULL
      * until one has shown since power-on (SEQ then opens STEP). Not saved. */
     const view* song_last;
+    /* The SETTINGS page (views_settings_view): its menu, and what it showed at its last compose. */
+    menu setup;
+    uint8_t setup_drawn[VIEWS_SETTINGS_LOOK];
 } views;
 
 extern const view views_status;
 extern const view views_menu;
 extern const view views_charset;
 extern const view views_midi;
+extern const view views_settings_view;
 extern const view views_song_menu_view;
 
 /* LIVE, the root view, on g, showing l and the audio's tap sc (NULL: none). */

@@ -22,7 +22,7 @@
 #               holdkey BTN NOTE          a button held while a note key is pressed (GLO + key)
 #               note NOTE [NOTE..] MS     keys held together (F3..G5, C4 = middle C)
 #               down NOTE / up NOTE       a key held down / let go (to play while turning)
-#               select-item TEXT          the menu's selection onto the line starting with TEXT, read from
+#               select-item TEXT          the menu's (or SETTINGS') selection onto the line starting with TEXT, read from
 #                                         the firmware's cursor (forward, then back: not found, or a
 #                                         `view V` that is not reached, is "navigation failed")
 #               midi HEX..  cc N V  pc N  bytes into the TRS jack
@@ -50,8 +50,8 @@
 #               value NAME MIN MAX | absent TEXT | brighter | darker | louder | quieter
 #               level MIN MAX         more outcomes: a parameter in a range, text absent, the sound
 #                                     against the 400 ms before the step, the last 400 ms's dBFS
-# View names are the firmware's view tables: live menu chip tracker status scene about charset
-# midi learn.
+# View names are the firmware's view tables: live menu settings chip tracker status scene about
+# charset midi learn.
 
 journey jam | Pick up and jam | poweron
   goal Go from switched off to a played, shaped sound.
@@ -121,7 +121,7 @@ journey keep | Keep what you made
   step recall | Switch off and on again | Your sound is still there after power-off | powercycle | recalled
   step fresh | Start a new song | A new, empty song | press SEQ | needs new_song; change
   step undo | Undo a mistake | Undo | press ARP | needs undo; change
-  step theme | Change the theme | Choose a theme | press HOME; select-item THEME; turn ALGORITHM 1 | needs theme; change; task change THEME; setup
+  step theme | Change the theme | Choose a theme in SETTINGS | press HOME; select-item SETTINGS; press SAVE; wait 300; select-item THEME; turn ALGORITHM 1 | needs theme; change; task change THEME; setup
 
 journey explore | Explore the chip, the effects and the scene
   goal Try the chip profiles, the character controls, the effects and the SCENE pieces.

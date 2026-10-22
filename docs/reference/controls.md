@@ -68,7 +68,7 @@ SIDOU has two SID chips, A and B. The panel and MIDI play **the keys' chip**:
 
 - **no song playing:** chip A, exactly as with one chip;
 - **a song playing on chip A:** chip B, on top of the song (KEYS **AUTO**, the default), or
-  chip A with KEYS **A** (menu): a key then takes a voice from the song while it sounds, the
+  chip A with KEYS **A** (SETTINGS): a key then takes a voice from the song while it sounds, the
   song keeps the filter and the chip's volume register (K1 and K2 do nothing on it; MASTER
   still scales the whole output, song included) and its chip setup.
 
@@ -83,7 +83,7 @@ keys always play chip A. KEYS persists with the settings.
 
 ## UI sounds
 
-**SOUNDS** in the menu (OFF by default, restored with the settings) turns
+**SOUNDS** in SETTINGS (OFF by default, restored with the settings) turns
 on short sounds on chip B's spare voice: a blip as the menu's cursor moves, a confirm as
 ALGORITHM changes a value or opens a view, a chime with a toast, a buzz when an action is
 refused (the cursor already at the menu's end, an action turned counter-clockwise), and a
@@ -108,15 +108,17 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **EDIT (button 6) held** + K1 / K2 / K3 / K4 | the selected effect slot's **Amount / A / B / Mix** (32 detents end to end), in every view; K1-K4 are the knobs above again once EDIT is let go. EDIT is lit while the selected slot has an algorithm |
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last); it starts from a musical setting, so it is heard at once ([Effect slots](#effect-slots)) |
-| **HOME (button 8)** | acts when it is let go: the menu, from LIVE; back one view from any other (the menu, CHIP, the song views, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE (a wipe; behind THE OSCILLATOR's title card only with CARDS at ALWAYS). **Held 600 ms** it opens the [help card](#help) of the view that shows instead, and letting go then does nothing; a toast raised meanwhile waits and shows once the card closes |
-| **SAVE (button 9)** | clean press and release: save a USER profile on CHIP's chip focus, the song in a song view, settings elsewhere; hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
+| **HOME (button 8)** | acts when it is let go: the menu, from LIVE; back one view from any other (the menu, SETTINGS, CHIP, the song views, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE (a wipe; behind THE OSCILLATOR's title card only with CARDS at ALWAYS). **Held 600 ms** it opens the [help card](#help) of the view that shows instead, and letting go then does nothing; a toast raised meanwhile waits and shows once the card closes |
+| **SAVE (button 9)** | clean press and release: in the menu its **OK**, opening the item under the selection (nothing on a value item; on SETTINGS it only confirms STORE's format); save a USER profile on CHIP's chip focus, the song in a song view, settings elsewhere; hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
 | **SEQ (button 11)** | opens the song views, and steps through them ([below](#song-views)) |
 | **PLAY (button 12)** | plays the loaded song from the song views' position, and stops it (each voice's release rings on); with EDIT held, goes on from where it stopped; lit while it plays. While it plays the keys play chip B (KEYS AUTO), or take voices from the song on chip A (KEYS A). A song the device cannot play is refused with a toast (`SNG: MULTISPEED 8 (MAX 4)`) |
 | **REC (button 13)** | record mode on and off (outside the song views a toast says **REC ON** or **REC OFF**) |
 | **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; those six keys sound nothing while GLO is held; **the other keys play** (a change from before: held and latched are one rule) |
 | **GLO tapped twice** (within 400 ms) | **latches** GLO's layer: the keys are the mutes and solos without holding GLO (a toast says `GLO LATCHED`, GLO's LED is lit, and LIVE shows the layer); a tap on GLO ends it (`GLO OFF`) |
-| **SELECT (encoder 0)**, in the menu | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
-| **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE, KEYS, SOUNDS, TRACKER ROWS (ROWS), REC QUANTISE (REC), CARDS ([title cards](#title-cards)), STORE ([format confirmation](#settings-and-store)), THEME; turned clockwise on CHIP opens the CHIP view, on TRACKER the song views, on SCENE the generative pieces, on SONG the [song-file actions](#song), on STATUS the status screen, on MIDI the MIDI page, on CHARSET the glyph sheet, on ABOUT the credits |
+| **SELECT (encoder 0)**, in the menu or SETTINGS | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
+| **SAVE**, in the menu | the menu's **OK**: opens the item under the selection: CHIP the CHIP view, TRACKER the song views, SCENE the generative pieces, SONG the [song-file actions](#song), SETTINGS the settings page, STATUS the status screen, MIDI the MIDI page, CHARSET the glyph sheet, ABOUT the credits. On PRE or OCTAVE it does nothing (and saves nothing: the settings save themselves) |
+| **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE; turned clockwise on a view's item opens it, as SAVE does |
+| **ALGORITHM (encoder 1)**, in SETTINGS | changes the item under the selection, which the popup also says in full: KEYS, SOUNDS, TRACKER ROWS (ROWS), CARDS ([title cards](#title-cards)), STORE ([format confirmation](#settings-and-store)), THEME, REC QUANTISE (REC) |
 | **SELECT (encoder 0)**, on LIVE | pages the knob row: TONE, DIST, MOD, FX; on a slot's page K1-K4 turn that slot's Amount, A, B and Mix and SCL moves the page with the slot; it stops at either end |
 | **ALGORITHM (encoder 1)**, on LIVE | steps the chip's profile on TONE (R2, R3, R4AR, R5, WORN; it stops at either end; the band's profile word shows the change), or the selected slot's algorithm on a slot's page or with EDIT held |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: A/B tabs, CHIP (the profile and the character), DIST, MOD, FX, EXPERT; it stops at either end |
@@ -151,7 +153,7 @@ opens it, and what it says (the text the views show, from one place, `popup_text
 | EDIT held + K1-K4 on STATUS, the menu and SCENE | the same |
 | MASTER | VOLUME (0-100%, the bar the pot's travel), in every view |
 | ALGORITHM + EDIT on CHIP | the USER slot to save to (`SAVE TO`, `USER 2 -`) |
-| ALGORITHM in the menu, on an item with a value | the item in full and its value: `PRESET`, `OCTAVE`, `CARDS`, `STORE`, `KEYS`, `SOUNDS`, `TRACKER ROWS`, `REC QUANTISE`, `THEME` (`HI-CONTRAST` or `C64`) |
+| ALGORITHM in the menu or SETTINGS, on an item with a value | the item in full and its value: `PRESET`, `OCTAVE`; in SETTINGS `KEYS`, `SOUNDS`, `TRACKER ROWS`, `CARDS`, `STORE`, `THEME` (`HI-CONTRAST` or `C64`), `REC QUANTISE` |
 
 **LIVE and CHIP show a turned knob where it is instead of opening the popup over it** (the popup
 would hide the very controls and meters being tuned): the knob's label (on LIVE, in row 15; on
@@ -187,7 +189,7 @@ the right, and the shown voice's orderlist and the bar row's command. **SELECT m
 ALGORITHM steps the voice shown** (the cursor's voice: the note keys audition on it, below).
 Its rows follow the song while it plays (with REC on too: what is recorded is seen landing),
 the cursor while it is stopped; with REC on and the song stopped the edit cursor shows. The moving bar over still rows (the
-menu's **TRACKER ROWS** BAR, the default) or scrolling under a still bar (SCROLL, as
+**TRACKER ROWS** in SETTINGS: BAR, the default) or scrolling under a still bar (SCROLL, as
 GoatTracker does). TRACKER ROWS is saved with the settings.
 
 | Control | Does |
@@ -348,7 +350,7 @@ the views' own edits, and is refused with the same large toasts (`SONG FULL`, `S
 | Other keys, in STEP | their own pitch on the selected lane |
 | K1 / K2 | cutoff (32 per detent) and resonance (1 per detent), starting from LIVE's values, as a lock on the row the knob was turned in (never rounded to the next row); the value popup says `CUTOFF` (in Hz, as LIVE says it) or `RESONANCE` |
 
-The menu's **REC** item (popup `REC QUANTISE`; not saved) chooses `NEAREST` (the default), `OFF`
+SETTINGS' **REC** item (popup `REC QUANTISE`; not saved) chooses `NEAREST` (the default), `OFF`
 (the row the key falls in) or `COUNT-IN` (the nearest row, after one bar of the song's tempo,
 rows per beat times four, that records nothing: a toast says `COUNT-IN`; it starts when the
 song starts with REC on in a song view, or when REC is turned on there while it plays; a song
@@ -396,7 +398,7 @@ power-on and not again; the way back to LIVE never plays a card, it is a wipe.
   the chip, OCT+ does not step the octave, SELECT does not pick a piece or move CHIP's focus).
 - **A note**, from the keys or MIDI, plays as ever and ends the card. The keys, MIDI and the
   audio are never held up by it.
-- **CARDS** in the menu is **OFF**, **ONCE** or **ALWAYS** (ALGORITHM clockwise steps OFF,
+- **CARDS** in SETTINGS is **OFF**, **ONCE** or **ALWAYS** (ALGORITHM clockwise steps OFF,
   ONCE, ALWAYS, counter-clockwise back, and it stops at the ends). **ONCE** is the default:
   THE CHIP and THE SCENE the first time each since power-on, none on the way back to LIVE.
   **ALWAYS** plays all three every time; **OFF** none. The setting persists across power-off.
@@ -405,12 +407,13 @@ power-on and not again; the way back to LIVE never plays a card, it is a wipe.
 
 **Hold HOME for 600 ms** in any view and a help card opens over it: the title bar (**HELP** and
 the card's name, `app/help_view.h`), then up to eight lines at 2×, the control on the left and
-what it does on the right. Each card says what its own view does: LIVE, the menu, the MIDI
-page (no actions, and its setup is RAM-only, so no SAVE line), CHIP, SCENE, each of the five song
-views (STEP, TRACKER, ORDER, INSTR, TABLE: SEQ goes round them and SAVE saves the song), the SONG
-menu (opened from its list of actions: on its sub-pages HOME goes back at once, so there is no
-hold there) and every other view (**ALL**: STATUS, About, the glyph sheet). A test opens every card
-over its view and each has a golden (`tests/golden/lcd/help-*.png`).
+what it does on the right. It is the one explanation on the device, so every view and page the
+panel reaches has a card of its own: LIVE, the menu, SETTINGS, the MIDI page (its setup is
+RAM-only), CHIP, SCENE, each of the five song views (STEP, TRACKER, ORDER, INSTR, TABLE: SEQ
+goes round them and SAVE saves the song), STATUS, ABOUT, the glyph sheet (CHARSET), and the SONG
+menu's actions and each of its pages: the list of files LOAD and DELETE browse (**FILES**), SAVE
+AS's name and a confirmation. A test walks every view and page, holds HOME and reads the card;
+each card has a golden (`tests/golden/lcd/help-*.png`).
 
 - HOME only opens the menu or goes back when it is **let go before 600 ms**: a tap acts in the
   next frame after the release, so a hold never opens the menu first.
@@ -418,9 +421,11 @@ over its view and each has a golden (`tests/golden/lcd/help-*.png`).
   not toggle the chip, SAVE saves nothing). **A note** plays as ever, as the view under the card
 plays it (over a song view its instrument, and REC records it), and the card stays. The card
   stays after HOME is let go until a control closes it.
-- The screen stack is four deep, LIVE included (LIVE, menu, SONG, a song view): when it is full there is no room for a
-  card, so a held HOME does what a tap does (goes back one view), and MIDI learn (SAVE + a knob)
-  toasts `NO ROOM FOR LEARN`.
+- The screen stack is four deep, LIVE included (LIVE, menu, SONG, a song view), and keeps one
+  slot more for the card: a held HOME shows the card over a full stack too. MIDI learn (SAVE + a
+  knob) has no such slot: on a full stack it toasts `NO ROOM FOR LEARN`.
+- On SONG's pages HOME acts on its release as everywhere (back a page; a hold shows the page's
+  card).
 - Over the boot, a title card and MIDI learn's frame HOME keeps its own meaning (it ends the
   boot or the card, or cancels the learn frame): no card there.
 
@@ -808,7 +813,7 @@ without a toast. A busy store waits; background saves never force audible gaps. 
 current flash timing limits, programs as well as erases wait for quiet. Stop playing and
 let release tails fade before powering off, or use SAVE and wait for its completion toast.
 
-The menu's **STORE** item, immediately after CARDS, shows free space outside the store's
+SETTINGS' **STORE** item, immediately after CARDS, shows free space outside the store's
 reserve pool in kilobytes (for example, **STORE 193K**), **FOREIGN** or **NEWER**. FOREIGN means
 the region contains data SIDOU does not own; NEWER means it is a newer SIDOU version's store
 (after a downgrade: install that version again to keep its songs). Either is left untouched,
@@ -816,8 +821,8 @@ and settings cannot persist.
 
 On FOREIGN or NEWER, turn **ALGORITHM clockwise**: **FORMAT?**, and the popup says **SAVE
 FORMATS**. Then press **SAVE**, without leaving the item, to confirm. Further turns never
-confirm, so a fast spin of ALGORITHM cannot format. Counter-clockwise, moving the menu cursor
-or leaving the menu cancels the confirmation. **Formatting destroys the other firmware's data in the store**, erases
+confirm, so a fast spin of ALGORITHM cannot format. Counter-clockwise, moving SETTINGS' cursor
+or leaving SETTINGS cancels the confirmation. **Formatting destroys the other firmware's data in the store**, erases
 all 73 sectors and can interrupt the sound. STORE shows **ERASE n**, then the toast
 **STORE FORMATTED**. Current settings are then saved when the store can take them. Formatting
 is never automatic; ALGORITHM does not format a SIDOU store.
@@ -875,7 +880,7 @@ another button while SAVE is down prevents that release from saving.
 
 | Gesture | Result |
 |---|---|
-| SAVE pressed and released, no encoder turned or other button pressed while down | saves the song in a song view (above); elsewhere saves settings now, skipping the 5 s debounce; **SAVED** when committed |
+| SAVE pressed and released, no encoder turned or other button pressed while down | saves the song in a song view (above); in the menu opens the item under the selection (its OK; nothing on a value item), and on SETTINGS confirms an armed STORE format and does nothing else (the settings save themselves 5 s after a change); elsewhere saves settings now, skipping the 5 s debounce; **SAVED** when committed |
 | the same, on the CHIP view's chip focus with a USER slot as the save target, or applied | stores the tab's profile and controls into that slot ([USER profiles](#chip)); **OVERWRITE USER 3?** first when it holds one, then **SAVED TO USER 3** |
 | SAVE held + K1..K4, with or without EDIT | opens MIDI LEARN on that knob's parameter on the turn, not the press; the parameter does not move and SAVE's release saves nothing |
 | Another knob turned while the learn frame waits, SAVE held or not | picks that knob's parameter instead |
@@ -1006,12 +1011,16 @@ The **status screen** (STATUS in the menu) shows the numbers: the chip, preset, 
 cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS each slot's
 algorithm and Mix (`>` marks the selected slot) with the selected slot's Amount, A and B.
 
-The menu (HOME) is drawn at 2 times the font, six items of the sixteen at a time (the
+The menu (HOME) is drawn at 2 times the font, six items of the eleven at a time (the
 selected one a line in reverse video; the title bar says which it is of how many, and an arrow
-up or down when items are out of sight, and the list scrolls with SELECT). It lists CHIP (the
-CHIP view, above), TRACKER (the song views), SCENE (the generative pieces), SONG (the song-file
-actions), PRE (the preset), OCTAVE, KEYS, SOUNDS, ROWS (TRACKER ROWS), CARDS (title cards),
-STORE, THEME, STATUS, MIDI, CHARSET (the glyph sheet), REC (REC QUANTISE) and ABOUT. A line is 14 characters:
+up or down when items are out of sight, and the list scrolls with SELECT). It holds the views
+and the playing values: CHIP (the CHIP view, above), TRACKER (the song views), SCENE (the
+generative pieces), SONG (the song-file actions), PRE (the preset), OCTAVE, SETTINGS, STATUS,
+MIDI, CHARSET (the glyph sheet) and ABOUT. **SAVE opens the item under the selection** (the
+menu's OK; ALGORITHM clockwise does too), and the help under the items says so (SAVE OPEN).
+**SETTINGS** is a page like it of the set-and-forget settings: KEYS, SOUNDS, ROWS (TRACKER
+ROWS), CARDS (title cards), STORE, THEME and REC (REC QUANTISE); ALGORITHM changes them (its
+help says ALG CHANGE) and HOME goes back to the menu. A line is 14 characters:
 PRE, ROWS and STORE's kilobytes (`193K`, FOREIGN, NEWER, FORMAT?, `ERASE 20`) are short so that the
 longest preset name (NOISE PERC) and value fit beside their labels; the
 [popup](#value-popup) says the whole names. LIVE's scopes, TRACKER, CHIP, STATUS and ABOUT keep

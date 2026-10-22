@@ -6,9 +6,9 @@
 use ergo::device::{panel, Dev, FRAME_MS};
 use ergo::journeys::{menu_selected, run_script};
 
-const ITEMS: [&str; 15] = [
-    "CHIP", "TRACKER", "PRE", "OCTAVE", "CARDS", "STORE", "KEYS", "SOUNDS", "ROWS", "THEME",
-    "STATUS", "SCENE", "CHARSET", "ABOUT", "MIDI",
+const ITEMS: [&str; 11] = [
+    "CHIP", "TRACKER", "SCENE", "SONG", "PRE", "OCTAVE", "SETTINGS", "STATUS", "MIDI", "CHARSET",
+    "ABOUT",
 ];
 
 fn walk(d: &mut Dev, theme: &str) {
@@ -43,8 +43,14 @@ fn select_item_reaches_every_line_in_both_themes() {
         let line = menu_selected(&d.shot(), cursor, top).unwrap_or_default();
         assert!(line.starts_with(item), "{item}: {line:?}");
     }
+    // SETTINGS (SAVE is the menu's OK) holds THEME.
     let before = d.settings_bytes();
-    run_script(&mut d, "select-item THEME; turn ALGORITHM 1; wait 400");
+    run_script(
+        &mut d,
+        "select-item SETTINGS; press SAVE; wait 400; select-item THEME; turn ALGORITHM 1; wait 400",
+    );
+    assert_eq!(d.view(), "settings");
     assert_ne!(d.settings_bytes(), before, "the theme turned");
+    run_script(&mut d, "press HOME; wait 400");
     walk(&mut d, "second theme");
 }

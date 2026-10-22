@@ -228,10 +228,18 @@ fn the_first_pages_heading_is_at_2x_and_fits() {
         let rows: Vec<usize> = (HEADING..ABOUT_RAMP_BOTTOM as usize)
             .filter(|&r| (0..COLS).any(|c| ui.g.attr[r * COLS + c] != last[r * COLS + c]))
             .collect();
-        assert!(rows.len() <= 2, "frame {} changed rows {rows:?}", about_frame(&ui));
+        assert!(
+            rows.len() <= 2,
+            "frame {} changed rows {rows:?}",
+            about_frame(&ui)
+        );
         last = ui.g.attr;
         if about_frame(&ui) == PAGE / 2 {
-            assert_eq!(ui.big(HEADING, 2, 2, 13), "V10.20.30-RC1", "the version alone");
+            assert_eq!(
+                ui.big(HEADING, 2, 2, 13),
+                "V10.20.30-RC1",
+                "the version alone"
+            );
             assert!(ui.row(LINES).contains("SID SOUNDS FOR THE FM-1"));
         }
     }

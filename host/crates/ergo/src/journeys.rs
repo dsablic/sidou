@@ -568,13 +568,18 @@ pub fn menu_selected(shot: &Shot, cursor: u8, top: u8) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
+/// The menu pages `select-item` works on: the main menu and its SETTINGS page.
+fn is_menu(view: &str) -> bool {
+    view == "menu" || view == "settings"
+}
+
 /// Whether the menu's selected line, as drawn, starts with `text`; the screen may trail the
 /// cursor by a frame or two, so it gets a few before a no.
 fn menu_shows(d: &mut Dev, text: &str) -> bool {
     for _ in 0..4 {
         let (cursor, top) = d.menu_cursor();
         let s = d.shot();
-        if s.view == "menu" && menu_selected(&s, cursor, top).is_some_and(|t| t.starts_with(text)) {
+        if is_menu(&s.view) && menu_selected(&s, cursor, top).is_some_and(|t| t.starts_with(text)) {
             return true;
         }
         d.run(FRAME_MS);
@@ -591,7 +596,7 @@ fn select_menu_item(d: &mut Dev, text: &str, detents: &mut i32) -> bool {
         if menu_shows(d, text) {
             return true;
         }
-        if d.view() != "menu" {
+        if !is_menu(&d.view()) {
             return false;
         }
         let was = d.menu_cursor();

@@ -85,7 +85,7 @@ Follow-ups that aren't tied to a milestone task yet.
   section 6).
 - **Done: the dense screens redrawn for 23 mm (2026-10-18).** LIVE, TRACKER, CHIP and STATUS
   follow the screen-readability prototype (assets/prototypes/screen-readability.html) the user
-  chose: a high-contrast theme by default (the menu's THEME keeps the C64 look), voice and knob
+  chose: a high-contrast theme by default (SETTINGS' THEME keeps the C64 look), voice and knob
   colours the same everywhere, LIVE's lanes, thick scopes and knob row, one voice of TRACKER at
   2× with strips and SELECT to switch it, CHIP a section at a time with its four controls at 3×
   (docs/art/README.md "Theme", "LIVE", "CHIP", "TRACKER"). The panel check is in

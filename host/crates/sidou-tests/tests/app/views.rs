@@ -622,7 +622,11 @@ impl Ui {
     /// Item `i`'s line of the menu (large text, a line every 3 rows from row 4, MENU_ROW in
     /// app/views.c): its 14 characters between the margins.
     pub(crate) fn menu_line(&self, i: usize) -> String {
-        let top = usize::from(self.v.home.top);
+        let top = usize::from(if self.top() == "SETTINGS" {
+            self.v.setup.top
+        } else {
+            self.v.home.top
+        });
         assert!(
             (top..top + VIEWS_MENU_SHOWN as usize).contains(&i),
             "item {i} is out of sight"
@@ -717,6 +721,42 @@ impl Ui {
 }
 
 /// Opens the status screen from the menu: HOME, SELECT to STATUS, ALGORITHM clockwise.
+/// Opens SETTINGS from the menu (HOME first unless the menu or SETTINGS shows) and selects its
+/// item `item` (VIEWS_SETTINGS_*), settled.
+pub(crate) fn open_setting(ui: &mut Ui, item: u32) {
+    if ui.top() != "SETTINGS" {
+        if ui.top() != "MENU" {
+            ui.press(PANEL_BTN_HOME);
+            ui.settle();
+        }
+        assert_eq!(ui.top(), "MENU");
+        ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
+        ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SETTINGS as i32);
+        ui.turn(PANEL_ENC_ALGORITHM, 1);
+        ui.settle();
+        assert_eq!(ui.top(), "SETTINGS");
+    }
+    ui.turn(PANEL_ENC_SELECT, -(VIEWS_SETTINGS_ITEMS as i32));
+    ui.turn(PANEL_ENC_SELECT, item as i32);
+    ui.settle();
+    settings_settle(ui);
+}
+
+/// Frames until SETTINGS has drawn every line it shows (a few a frame, as the MIDI page), with
+/// no popup over them.
+pub(crate) fn settings_settle(ui: &mut Ui) {
+    ui.frame();
+    ui.popup_gone();
+    for n in 0..20 {
+        ui.frame();
+        crate::drain(&mut ui.g);
+        if n >= 8 && ui.v.setup.pending == 0 {
+            return;
+        }
+    }
+    panic!("SETTINGS kept lines pending");
+}
+
 pub(crate) fn open_status(ui: &mut Ui) {
     ui.press(PANEL_BTN_HOME);
     ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
@@ -861,19 +901,93 @@ fn the_menu_draws_six_items_in_large_text_with_the_selected_one_in_reverse_video
     assert_eq!(
         at_end,
         [
-            format!("{:<5}{:>9}", "THEME", "HIGH"),
+            format!("{:<6}{:>8}", "OCTAVE", "+0"),
+            format!("{:<13}#", "SETTINGS"),
             format!("{:<13}#", "STATUS"),
             format!("{:<13}#", "MIDI"),
             format!("{:<13}#", "CHARSET"),
-            format!("{:<3}{:>11}", "REC", "NEAREST"),
             format!("{:<13}#", "ABOUT"),
         ]
     );
     assert_eq!(ui.g.src[COLS + 13], FONT_ARROW_UP as u8);
     assert_eq!(ui.g.src[COLS + 15], b' ');
-    // The help under the items, large text as well.
+    // The help under the items, large text as well: SAVE is the menu's OK.
     assert_eq!(ui.big(24, 1, 2, 12), "SELECT  MOVE");
+    assert_eq!(ui.big(26, 1, 2, 12), "SAVE    OPEN");
+}
+
+/// Ergonomics review E31: SETTINGS holds the set-and-forget settings, a page like the menu's,
+/// its title SETTINGS and the help ALG CHANGE; HOME goes back to the menu.
+#[test]
+fn settings_draws_its_seven_items_like_the_menu_and_home_goes_back() {
+    let mut ui = Ui::new();
+    open_setting(&mut ui, VIEWS_SETTINGS_KEYS);
+    let heading = ui
+        .big(1, 1, 2, 14)
+        .chars()
+        .map(|c| if c.is_ascii() { c } else { '#' })
+        .collect::<String>();
+    assert_eq!(heading, format!("SETTINGS # 1/{VIEWS_SETTINGS_ITEMS}"));
+    assert_eq!(
+        (0..6).map(|i| ui.menu_line(i)).collect::<Vec<_>>(),
+        [
+            format!("{:<4}{:>10}", "KEYS", "AUTO"),
+            format!("{:<6}{:>8}", "SOUNDS", "OFF"),
+            format!("{:<4}{:>10}", "ROWS", "BAR"),
+            format!("{:<5}{:>9}", "CARDS", "ONCE"),
+            format!("{:<5}{:>9}", "STORE", "NONE"),
+            format!("{:<5}{:>9}", "THEME", "HIGH"),
+        ]
+    );
     assert_eq!(ui.big(26, 1, 2, 12), "ALG   CHANGE");
+    open_setting(&mut ui, VIEWS_SETTINGS_REC);
+    assert_eq!(ui.menu_line(6), format!("{:<3}{:>11}", "REC", "NEAREST"));
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    assert_eq!(ui.top(), "MENU");
+    assert_eq!(u32::from(ui.v.home.cursor), VIEWS_MENU_SETTINGS);
+}
+
+/// SAVE is the menu's OK: on an item that opens a view it opens it (CHIP, SETTINGS); on a value
+/// item it changes nothing and saves nothing; ALGORITHM still opens and changes.
+#[test]
+fn save_opens_the_menus_item_and_does_nothing_on_a_value() {
+    let mut ui = Ui::without_cards();
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
+    ui.press(SAVE_KEY_BUTTON);
+    ui.settle();
+    assert_eq!(ui.top(), "CHIP", "SAVE on CHIP opens CHIP");
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    assert_eq!(ui.top(), "MENU");
+    ui.turn(
+        PANEL_ENC_SELECT,
+        (VIEWS_MENU_OCTAVE - VIEWS_MENU_CHIP) as i32,
+    );
+    let octave = ui.live().octave;
+    ui.rig.live.settings_dirty = 0;
+    ui.press(SAVE_KEY_BUTTON);
+    ui.settle();
+    assert_eq!(ui.top(), "MENU", "SAVE on a value opens nothing");
+    assert_eq!(ui.live().octave, octave, "and changes nothing");
+    assert_eq!(ui.toast(), None, "no SAVED: the menu's SAVE is its OK");
+    ui.turn(
+        PANEL_ENC_SELECT,
+        (VIEWS_MENU_SETTINGS - VIEWS_MENU_OCTAVE) as i32,
+    );
+    ui.press(SAVE_KEY_BUTTON);
+    ui.settle();
+    assert_eq!(ui.top(), "SETTINGS");
+    let cards = ui.v.cards;
+    ui.press(SAVE_KEY_BUTTON);
+    ui.settle();
+    assert_eq!(
+        (ui.top(), ui.v.cards),
+        ("SETTINGS".to_owned(), cards),
+        "nothing here"
+    );
 }
 
 #[test]
@@ -882,8 +996,8 @@ fn every_menu_item_is_reachable_and_readable_as_the_cursor_walks_down_and_up() {
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     let labels = [
-        "CHIP", "TRACKER", "SCENE", "SONG", "PRE", "OCTAVE", "KEYS", "SOUNDS", "ROWS", "CARDS",
-        "STORE", "THEME", "STATUS", "MIDI", "CHARSET", "REC", "ABOUT",
+        "CHIP", "TRACKER", "SCENE", "SONG", "PRE", "OCTAVE", "SETTINGS", "STATUS", "MIDI",
+        "CHARSET", "ABOUT",
     ];
     assert_eq!(labels.len(), VIEWS_MENU_ITEMS as usize);
     let walk = |ui: &mut Ui, i: usize| {
@@ -906,9 +1020,6 @@ fn every_menu_item_is_reachable_and_readable_as_the_cursor_walks_down_and_up() {
                 "item {k}: {}",
                 ui.menu_line(k)
             );
-            if k == VIEWS_MENU_THEME as usize {
-                assert_eq!(ui.menu_line(k), format!("{:<5}{:>9}", "THEME", "HIGH"));
-            }
         }
         let up_hint = ui.g.src[COLS + 13] == FONT_ARROW_UP as u8;
         let down_hint = ui.g.src[COLS + 15] == FONT_ARROW_DOWN as u8;
@@ -1178,13 +1289,13 @@ fn the_views_show_both_chips_and_which_the_keys_play() {
     ui.press(PANEL_BTN_HOME);
     ui.settle();
     assert_eq!(ui.top(), "MENU");
-    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_KEYS as i32);
+    open_setting(&mut ui, VIEWS_SETTINGS_KEYS);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(u32::from(ui.live().keys_mode), LIVE_KEYS_A);
     ui.settle();
+    settings_settle(&mut ui);
     assert_eq!(
-        ui.menu_line(VIEWS_MENU_KEYS as usize),
+        ui.menu_line(VIEWS_SETTINGS_KEYS as usize),
         format!("{:<4}{:>10}", "KEYS", "A"),
         "after the cursor"
     );

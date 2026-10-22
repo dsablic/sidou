@@ -14,7 +14,6 @@ use fm1_core::Bus;
 use sidou_sys::ilp32;
 use sidou_sys::*;
 
-const SELECT: u8 = 0;
 const ALGORITHM: u8 = 1;
 const K1: u8 = 2;
 const HOME: u8 = 8;
@@ -75,14 +74,12 @@ fn store_state(m: &mut Machine, fw: &Firmware) -> u8 {
         .read8(fw.symbol("store_fm1_store") + ilp32::store::state as u32)
 }
 
-/// The menu open, its cursor on `item` (fm1-emu turns an encoder a detent every 8 ms).
-fn menu_item(m: &mut Machine, item: u32) {
+/// The menu open, then SETTINGS, its cursor on `item` (fm1-emu turns an encoder a detent every
+/// 8 ms); HOME twice goes back to LIVE.
+fn setting_item(m: &mut Machine, item: u32) {
     press(m, HOME);
     m.run_ms(700);
-    m.turn(SELECT, -(VIEWS_MENU_ITEMS as i32));
-    m.run_ms(10 * u64::from(VIEWS_MENU_ITEMS));
-    m.turn(SELECT, item as i32);
-    m.run_ms(10 * u64::from(item) + 50);
+    common::settings_item(m, item);
 }
 
 /// Until the settings stored differ from `before` (or `ms` passed): the time it took.
@@ -113,9 +110,11 @@ fn cards_the_envelope_mode_and_a_learned_cc_survive_a_power_cycle() {
         (1, LIVE_ENVELOPE_INSTANT as u8)
     );
     // CARDS off in the menu (ALGORITHM counter-clockwise), back to LIVE.
-    menu_item(&mut m, VIEWS_MENU_CARDS);
+    setting_item(&mut m, VIEWS_SETTINGS_CARDS);
     m.turn(ALGORITHM, -1);
     m.run_ms(100);
+    press(&mut m, HOME);
+    m.run_ms(300);
     press(&mut m, HOME);
     m.run_ms(700);
     // The envelope mode over MIDI; CC 14 learned for K1's cutoff.
@@ -265,7 +264,7 @@ fn a_foreign_store_formats_on_the_menus_save_confirm_and_then_keeps_the_settings
     flash[(STORE_LO + 7 * STORE_SECTOR) as usize + 123] = 0x5A; // another firmware's byte
     let mut m = power_on(&fw, &flash);
     assert_eq!(store_state(&mut m, &fw), STORE_STATE_FOREIGN as u8);
-    menu_item(&mut m, VIEWS_MENU_STORE);
+    setting_item(&mut m, VIEWS_SETTINGS_STORE);
     // A turn arms, nothing written; more turns, however fast, only keep it armed (ergonomics
     // review E01); SAVE formats: every sector erased, the audio held through each.
     m.turn(ALGORITHM, 1);

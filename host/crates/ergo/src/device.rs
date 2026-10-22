@@ -347,18 +347,30 @@ impl Dev {
             .read32(self.fw.symbol("ui") + ilp32::views::l as u32)
     }
 
-    /// The menu's own cursor and first visible item, read from the firmware's RAM (views.home).
+    /// The menu whose page shows: SETTINGS' (views.setup) while it shows, else the main one's
+    /// (views.home).
+    fn menu_addr(&mut self) -> u32 {
+        let field = if self.view() == "settings" {
+            ilp32::views::setup
+        } else {
+            ilp32::views::home
+        };
+        self.fw.symbol("ui") + field as u32
+    }
+
+    /// The menu's own cursor and first visible item, read from the firmware's RAM (views.home,
+    /// or views.setup on SETTINGS).
     pub fn menu_cursor(&mut self) -> (u8, u8) {
-        let home = self.fw.symbol("ui") + ilp32::views::home as u32;
+        let home = self.menu_addr();
         (
             self.m.soc.read8(home + ilp32::menu::cursor as u32),
             self.m.soc.read8(home + ilp32::menu::top as u32),
         )
     }
 
-    /// How many items the menu has.
+    /// How many items the menu (or SETTINGS) has.
     pub fn menu_count(&mut self) -> u8 {
-        let home = self.fw.symbol("ui") + ilp32::views::home as u32;
+        let home = self.menu_addr();
         self.m.soc.read8(home + ilp32::menu::count as u32)
     }
 

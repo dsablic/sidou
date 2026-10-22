@@ -64,8 +64,8 @@ void screen_init(screen* s, grid* g, const view* root, void* state) {
     call(s, root->enter);
 }
 
-int screen_push(screen* s, const view* v, void* state, screen_wipe w) {
-    if (s->busy || s->depth >= SCREEN_DEPTH) {
+static int push(screen* s, const view* v, void* state, screen_wipe w, uint32_t slots) {
+    if (s->busy || s->depth >= slots) {
         return -1;
     }
     s->stack[s->depth].v = v;
@@ -74,6 +74,14 @@ int screen_push(screen* s, const view* v, void* state, screen_wipe w) {
     switched(s, w);
     call(s, v->enter);
     return 0;
+}
+
+int screen_push(screen* s, const view* v, void* state, screen_wipe w) {
+    return push(s, v, state, w, SCREEN_DEPTH);
+}
+
+int screen_push_over(screen* s, const view* v, void* state, screen_wipe w) {
+    return push(s, v, state, w, SCREEN_SLOTS);
 }
 
 int screen_pop(screen* s, screen_wipe w) {

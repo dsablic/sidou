@@ -543,16 +543,16 @@ fn scroll_keeps_the_bar_on_the_windows_row_5() {
     settle(&mut s.ui);
     s.ui.press(PANEL_BTN_HOME);
     settle(&mut s.ui);
-    s.ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-    s.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_ROWS as i32);
-    settle(&mut s.ui);
+    crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_ROWS);
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(s.ui.v.song.scroll, 1);
-    s.ui.frame();
+    crate::views::settings_settle(&mut s.ui);
     assert_eq!(
-        s.ui.menu_line(VIEWS_MENU_ROWS as usize),
+        s.ui.menu_line(VIEWS_SETTINGS_ROWS as usize),
         format!("ROWS{:>10}", "SCROLL")
     );
+    s.ui.press(PANEL_BTN_HOME);
+    settle(&mut s.ui);
     s.ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
     s.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_TRACKER as i32);
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);

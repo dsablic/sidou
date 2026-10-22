@@ -335,37 +335,38 @@ fn nothing_draws_over_the_card() {
     );
 }
 
-fn shows_cards(ui: &Ui, value: &str) -> bool {
-    (0..30).any(|r| {
-        let row = ui.row(r);
-        row.contains("CARDS") && row.contains(value)
-    })
-}
-
-/// The menu's CARDS item: OFF, ONCE (the default) and ALWAYS; ALGORITHM steps through them and
+/// SETTINGS' CARDS item: OFF, ONCE (the default) and ALWAYS; ALGORITHM steps through them and
 /// stops at the ends. OFF shows neither SCENE's nor LIVE's card.
 #[test]
 fn the_cards_option_steps_off_once_always() {
     let mut ui = at_rest();
     assert_eq!(ui.v.cards, 1, "ONCE at power-on");
-    ui.press(PANEL_BTN_HOME);
-    ui.settle();
-    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_CARDS as i32);
-    ui.frame();
-    assert!(shows_cards(&ui, "ONCE"), "the menu shows CARDS ONCE");
+    crate::views::open_setting(&mut ui, VIEWS_SETTINGS_CARDS);
+    assert_eq!(
+        ui.menu_line(VIEWS_SETTINGS_CARDS as usize),
+        format!("CARDS{:>9}", "ONCE"),
+        "SETTINGS shows CARDS ONCE"
+    );
     ui.turn(PANEL_ENC_ALGORITHM, -1);
     assert_eq!(ui.v.cards, 0);
-    ui.frame();
-    assert!(shows_cards(&ui, "OFF"), "the menu shows CARDS OFF");
+    crate::views::settings_settle(&mut ui);
+    assert_eq!(
+        ui.menu_line(VIEWS_SETTINGS_CARDS as usize),
+        format!("CARDS{:>9}", "OFF"),
+        "SETTINGS shows CARDS OFF"
+    );
     ui.turn(PANEL_ENC_ALGORITHM, -1);
     assert_eq!(ui.v.cards, 0, "OFF is the end");
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(ui.v.cards, 1);
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(ui.v.cards, 2);
-    ui.frame();
-    assert!(shows_cards(&ui, "ALWAYS"), "the menu shows CARDS ALWAYS");
+    crate::views::settings_settle(&mut ui);
+    assert_eq!(
+        ui.menu_line(VIEWS_SETTINGS_CARDS as usize),
+        format!("CARDS{:>9}", "ALWAYS"),
+        "SETTINGS shows CARDS ALWAYS"
+    );
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(ui.v.cards, 2, "ALWAYS is the end");
     ui.turn(PANEL_ENC_ALGORITHM, -1);

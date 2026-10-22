@@ -1524,14 +1524,15 @@ pub fn run_with(build: &Path, name: &str, marks: usize, setup: impl FnOnce(&mut 
 // ---- the screen's state in emulated RAM ----
 
 /// platform/fm1/ui.c `ui`, an app/views.h `views` whose first field is its `screen`
-/// (app/screen.h), at the device's 32-bit layout: `g` (a pointer), `stack` (4 entries of two
-/// pointers), then `depth`, `wipe`, `wipe_rows` and `raster_frames`, a byte each.
-const SCREEN_STACK: u32 = 4;
-const SCREEN_DEPTH: u32 = 36;
-const SCREEN_WIPE: u32 = 37;
-const SCREEN_RASTER: u32 = 39;
-/// app/screen.h SCREEN_DEPTH.
-const SCREEN_MAX_DEPTH: u8 = 4;
+/// (app/screen.h), at the device's 32-bit layout: `g` (a pointer), `stack` (SCREEN_SLOTS entries
+/// of two pointers: SCREEN_DEPTH views and the help card's slot), then `depth`, `wipe`,
+/// `wipe_rows` and `raster_frames`, a byte each.
+const SCREEN_STACK: u32 = sidou_sys::ilp32::screen::stack as u32;
+const SCREEN_DEPTH: u32 = sidou_sys::ilp32::screen::depth as u32;
+const SCREEN_WIPE: u32 = sidou_sys::ilp32::screen::wipe as u32;
+const SCREEN_RASTER: u32 = sidou_sys::ilp32::screen::raster_frames as u32;
+/// app/screen.h SCREEN_SLOTS: the views and the help card's slot.
+const SCREEN_MAX_DEPTH: u8 = sidou_sys::SCREEN_SLOTS as u8;
 
 /// The view on top of the screen's stack (the address of its `view` table), checked against
 /// the layout above: the stack's depth in range and LIVE, the root, at its bottom.
@@ -1568,6 +1569,21 @@ const SELECT: u8 = 0;
 const ALGORITHM: u8 = 1;
 const MENU_STATUS: i32 = sidou_sys::VIEWS_MENU_STATUS as i32;
 const MENU_ITEMS: i32 = sidou_sys::VIEWS_MENU_ITEMS as i32;
+
+/// With the menu showing: SETTINGS opened from it (SELECT to it, ALGORITHM clockwise) and its
+/// cursor on `item` (app/views.h VIEWS_SETTINGS_*). HOME twice goes back to LIVE.
+pub fn settings_item(m: &mut Machine, item: u32) {
+    m.turn(SELECT, -MENU_ITEMS);
+    m.run_ms(10 * MENU_ITEMS as u64);
+    m.turn(SELECT, sidou_sys::VIEWS_MENU_SETTINGS as i32);
+    m.run_ms(10 * u64::from(sidou_sys::VIEWS_MENU_SETTINGS));
+    m.turn(ALGORITHM, 1);
+    m.run_ms(100); // (a cut: no wipe)
+    m.turn(SELECT, -(sidou_sys::VIEWS_SETTINGS_ITEMS as i32));
+    m.run_ms(10 * u64::from(sidou_sys::VIEWS_SETTINGS_ITEMS));
+    m.turn(SELECT, item as i32);
+    m.run_ms(10 * u64::from(item) + 50);
+}
 
 /// The status screen from LIVE, through the menu (HOME, SELECT to STATUS, ALGORITHM
 /// clockwise), its wipe over, and on to half way between two frames (to_mid_frame).

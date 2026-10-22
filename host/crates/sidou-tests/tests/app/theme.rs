@@ -175,9 +175,7 @@ fn the_c64_theme_keeps_blue_and_readable_reverse_video() {
 }
 
 fn to_theme_item(ui: &mut Ui) {
-    ui.press(PANEL_BTN_HOME);
-    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_THEME as i32);
+    crate::views::open_setting(ui, VIEWS_SETTINGS_THEME);
 }
 
 #[test]
@@ -186,26 +184,33 @@ fn the_menu_item_turns_the_theme_and_the_menu_follows_it() {
     ui.settle();
     to_theme_item(&mut ui);
     ui.settle();
-    assert_eq!(ui.menu_line(VIEWS_MENU_THEME as usize), "THEME     HIGH");
+    assert_eq!(
+        ui.menu_line(VIEWS_SETTINGS_THEME as usize),
+        "THEME     HIGH"
+    );
     // High contrast: the title bar grey on black, the selected line yellow on dark grey, the
     // values cyan.
     let hc = theme(THEME_HIGH_CONTRAST);
     assert_eq!(fg(ui.g.attr[COLS + 1]), hc.title_fg);
     assert_eq!(bg(ui.g.attr[COLS + 1]), hc.title_bg);
-    let item_row = 4 + 3 * (VIEWS_MENU_THEME as usize - usize::from(ui.v.home.top));
+    let item_row = 4 + 3 * (VIEWS_SETTINGS_THEME as usize - usize::from(ui.v.setup.top));
     let sel = ui.g.attr[item_row * COLS + 2];
     assert_eq!((fg(sel), bg(sel)), (hc.sel_fg, hc.sel_bg));
     // Clockwise: C64, saved dirty, every view in its old colours.
     ui.rig.live.settings_dirty = 0;
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     ui.settle();
+    crate::views::settings_settle(&mut ui);
     assert_eq!(u32::from(ui.live().theme), THEME_C64);
     assert_eq!(
         ui.live().settings_dirty,
         1,
         "marked for the settings' debounce"
     );
-    assert_eq!(ui.menu_line(VIEWS_MENU_THEME as usize), "THEME      C64");
+    assert_eq!(
+        ui.menu_line(VIEWS_SETTINGS_THEME as usize),
+        "THEME      C64"
+    );
     let c64 = theme(THEME_C64);
     assert_eq!(fg(ui.g.attr[COLS + 1]), c64.title_fg);
     assert_eq!(bg(ui.g.attr[COLS + 1]), c64.title_bg);

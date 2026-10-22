@@ -167,10 +167,11 @@ impl Saving {
         None
     }
 
-    /// The menu's STORE item's value.
+    /// SETTINGS' STORE item's value.
     fn store_item(&mut self) -> String {
+        crate::views::settings_settle(&mut self.ui);
         self.ui
-            .menu_line(VIEWS_MENU_STORE as usize)
+            .menu_line(VIEWS_SETTINGS_STORE as usize)
             .trim()
             .to_string()
     }
@@ -199,11 +200,7 @@ impl Saving {
     }
 
     fn open_store_item(&mut self) {
-        self.ui.press(PANEL_BTN_HOME);
-        self.ui.settle();
-        assert_eq!(self.ui.top(), "MENU");
-        self.ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-        self.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_STORE as i32);
+        crate::views::open_setting(&mut self.ui, VIEWS_SETTINGS_STORE);
         self.frame();
     }
 }
@@ -216,9 +213,7 @@ fn a_tracker_rows_change_alone_is_background_saved_after_five_seconds_and_loaded
     }
     let before = s.stored().expect("the boot's settings saved");
     assert_eq!(s.ui.rig.live.settings_dirty, 0);
-    s.ui.press(PANEL_BTN_HOME);
-    s.ui.settle();
-    s.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_ROWS as i32);
+    crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_ROWS);
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(s.ui.v.song.scroll, 1);
     s.frame();
@@ -259,9 +254,7 @@ fn a_theme_change_alone_is_background_saved_after_five_seconds_and_loaded_at_boo
         s.ui.rig.live.theme, THEME_HIGH_CONTRAST as u8,
         "the default"
     );
-    s.ui.press(PANEL_BTN_HOME);
-    s.ui.settle();
-    s.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_THEME as i32);
+    crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_THEME);
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(s.ui.rig.live.theme, THEME_C64 as u8);
     s.frame();
@@ -320,9 +313,7 @@ fn a_menu_cards_change_is_background_saved_without_save() {
         s.frame();
     }
     let before = s.stored();
-    s.ui.press(PANEL_BTN_HOME);
-    s.ui.settle();
-    s.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_CARDS as i32);
+    crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_CARDS);
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     for _ in 0..120 {
         s.frame();
@@ -350,10 +341,18 @@ fn saves_press_saves_the_settings_now_on_live_and_says_saved() {
     assert!(!s.forced);
 }
 
+/// In the menu SAVE is its OK (views.rs): on a value it saves nothing.
 #[test]
-fn saves_press_saves_the_settings_in_the_menu_scene_status_and_chip() {
+fn saves_press_saves_the_settings_in_scene_status_and_chip_not_in_the_menu() {
+    let mut s = Saving::new();
+    s.ui.press(PANEL_BTN_HOME);
+    s.ui.settle();
+    s.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_PRESET as i32);
+    let before = s.stored();
+    s.ui.rig.live.preset = 3;
+    assert_eq!(s.save(), None, "the menu's SAVE on PRE");
+    assert_eq!(s.stored(), before);
     for (view, open) in [
-        ("MENU", None),
         ("SCENE", Some(VIEWS_MENU_SCENE)),
         ("STATUS", Some(VIEWS_MENU_STATUS)),
         // A built-in profile and no save target (USER slots: Task 6).
@@ -551,9 +550,10 @@ fn a_fast_algorithm_spin_on_a_foreign_store_never_formats_it() {
     assert!(!FORCE.with(std::cell::Cell::get));
     assert_eq!(s.store_item(), format!("STORE{:>9}", "FORMAT?"));
     assert_eq!(s.st.sim.region(), &region[..], "nothing erased");
-    // Armed, then SELECT moves off STORE: SAVE there saves the settings (refused), no format.
+    // Armed, then SELECT moves off STORE: SAVE there does nothing (SETTINGS has no actions; the
+    // settings save themselves), no format.
     s.ui.turn(PANEL_ENC_SELECT, 1);
-    assert_eq!(s.save().as_deref(), Some("STORE FOREIGN: NOT SAVED"));
+    assert_eq!(s.save(), None);
     assert_eq!(s.st.sim.region(), &region[..], "nothing erased");
     // HOME away and back: the arm is gone too.
     s.ui.turn(PANEL_ENC_SELECT, -1);
@@ -562,7 +562,7 @@ fn a_fast_algorithm_spin_on_a_foreign_store_never_formats_it() {
     s.ui.settle();
     s.open_store_item();
     assert_eq!(s.store_item(), format!("STORE{:>9}", "FOREIGN"));
-    assert_eq!(s.save().as_deref(), Some("STORE FOREIGN: NOT SAVED"));
+    assert_eq!(s.save(), None);
     assert_eq!(s.st.sim.region(), &region[..], "nothing erased");
 }
 

@@ -256,10 +256,7 @@ fn rec_subtracts_the_entrys_transpose_and_refuses_what_leaves_the_range() {
         let mut m = song();
         let mut spec = SngSpec::new();
         spec.orders = vec![vec![
-            (
-                vec![GT2_TRANSUP as u8 + 2, 0, GT2_TRANSDOWN as u8, 1],
-                0,
-            ),
+            (vec![GT2_TRANSUP as u8 + 2, 0, GT2_TRANSDOWN as u8, 1], 0),
             (vec![2], 0),
             (vec![3], 0),
         ]];
@@ -315,7 +312,11 @@ fn tracker_follows_the_playing_pattern_while_recording_and_the_cursor_comes_back
     settle(&mut s.ui);
     s.ui.press(PANEL_BTN_REC);
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(29, 17, 13), "ORD 00 ROW 02", "REC on, stopped: the cursor");
+    assert_eq!(
+        s.ui.small(29, 17, 13),
+        "ORD 00 ROW 02",
+        "REC on, stopped: the cursor"
+    );
     // Playing pattern 1 (entry 1), row 6.
     at(&mut s, 6, 0);
     s.f.st.order_pos = [1, 0, 0];
@@ -327,7 +328,11 @@ fn tracker_follows_the_playing_pattern_while_recording_and_the_cursor_comes_back
     assert_eq!(cell(&s, 1, 6), [KEY16, 1, 0, 0]);
     let j = (6 - unsafe { tracker_view_top(6, 0) }) as usize;
     let r = TRACKER_VIEW_TOP as usize + TRACKER_VIEW_ROW_CELLS as usize * j;
-    assert_eq!(s.ui.big(r, 3, 2, 3), "A-4", "the note landed where it shows");
+    assert_eq!(
+        s.ui.big(r, 3, 2, 3),
+        "A-4",
+        "the note landed where it shows"
+    );
     // The row moves on: the bar follows it.
     at(&mut s, 9, 0);
     s.f.st.order_pos = [1, 0, 0];
@@ -571,9 +576,7 @@ fn a_count_in_of_one_bar_runs_before_recording_begins() {
 #[test]
 fn the_menus_rec_item_chooses_the_quantising() {
     let mut s = Song::playing(Some(song()));
-    s.ui.press(PANEL_BTN_HOME);
-    s.ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-    s.ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_REC as i32);
+    crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_REC);
     assert_eq!(
         s.ui.v.song.quant, SONG_VIEW_QUANT_NEAREST as u8,
         "the default"

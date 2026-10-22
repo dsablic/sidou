@@ -13,8 +13,14 @@
 static const char* const LIVE_LINES[] = {"SELECT\0PAGE",     "ALG\0PROF/SLOT", "PRESETS\0SOUND",
                                          "EDIT+K\0SLOT",     "SCL/ENV\0SLOT",  "GLO+KEY\0MUTE",
                                          "SAVE+K\0LEARN",    "HOME\0MENU"};
-static const char* const MENU_LINES[] = {"SELECT\0MOVE", "ALG\0CHANGE", "ALG\0OPEN",
-                                         "SAVE\0KEEP",   "HOME\0BACK",  "HOLD HOME\0HELP"};
+/* SAVE is the menu's OK: it opens the view under the selection (ALG clockwise does too); the
+ * settings save themselves. */
+static const char* const MENU_LINES[] = {"SELECT\0MOVE", "SAVE\0OPEN", "ALG\0CHANGE",
+                                         "ALG\0OPEN",    "HOME\0BACK", "HOLD HOME\0HELP"};
+/* SETTINGS: values only; they save themselves a few seconds after a change. SAVE confirms STORE's
+ * format only. */
+static const char* const SETTINGS_LINES[] = {"SELECT\0MOVE",  "ALG\0CHANGE", "SETTINGS\0KEPT",
+                                             "HOME\0BACK",    "HOLD HOME\0HELP"};
 /* The MIDI page has no actions, and its setup is RAM-only (not part of the saved settings). */
 static const char* const MIDI_LINES[] = {"SELECT\0MOVE",   "ALG\0CHANGE", "SETUP\0RAM ONLY",
                                          "HOME\0BACK",     "HOLD HOME\0HELP"};
@@ -40,20 +46,39 @@ static const char* const TABLE_LINES[] = {"SELECT\0ROW",      "ALG\0TABLE",     
                                           "HOME\0BACK"};
 static const char* const SCENE_LINES[] = {"SELECT\0PIECE", "ALG\0PIECE", "K1 K2\0MOOD",
                                           "KEYS\0PLAY",    "HOME\0BACK"};
-/* The SONG menu's root: the card opens there only (HOME acts on its press on every page). */
+/* The SONG menu's actions; its pages have their own cards (below). */
 static const char* const SONG_LINES[] = {"SELECT\0ACTION", "ALG\0OPEN", "SEQ\0SONG VIEWS",
                                          "HOME\0BACK"};
-static const char* const ALL_LINES[] = {"HOME\0BACK", "SAVE\0KEEP", "SEQ\0SONG",
-                                        "GLO+KEY\0MUTE", "HOLD HOME\0HELP"};
+/* STATUS, ABOUT and CHARSET show and take no encoder: the keys and the knobs play as on LIVE. */
+static const char* const STATUS_LINES[] = {"KEYS\0PLAY",    "K1-K4\0SOUND",  "SAVE\0KEEP",
+                                           "SEQ\0SONG",     "GLO+KEY\0MUTE", "HOME\0BACK",
+                                           "HOLD HOME\0HELP"};
+/* (SEQ is refused over ABOUT's tune: no SEQ line) */
+static const char* const ABOUT_LINES[] = {"KEYS\0PLAY", "SAVE\0KEEP", "HOME\0BACK",
+                                          "HOLD HOME\0HELP"};
+static const char* const CHARSET_LINES[] = {"KEYS\0PLAY", "SAVE\0KEEP", "SEQ\0SONG",
+                                            "HOME\0BACK", "HOLD HOME\0HELP"};
+/* The SONG menu's pages: LOAD's and DELETE's files, SAVE AS's name and a confirmation. HOME goes
+ * back a page (to SONG's actions). */
+static const char* const FILES_LINES[] = {"SELECT\0FILE", "ALG\0CHOOSE", "HOME\0BACK",
+                                          "HOLD HOME\0HELP"};
+static const char* const NAME_LINES[] = {"SELECT\0CURSOR", "ALG\0CHARACTER", "SAVE\0WRITE",
+                                         "HOME\0BACK",    "HOLD HOME\0HELP"};
+static const char* const CONFIRM_LINES[] = {"SELECT\0NO/YES", "ALG\0CONFIRM", "HOME\0BACK",
+                                            "HOLD HOME\0HELP"};
 
 #define CARD(name, lines) {name, lines, (uint8_t)(sizeof lines / sizeof lines[0])}
 const help_card help_cards[HELP_CARDS] = {
     [HELP_CARD_LIVE] = CARD("LIVE", LIVE_LINES),       [HELP_CARD_MENU] = CARD("MENU", MENU_LINES),
     [HELP_CARD_CHIP] = CARD("CHIP", CHIP_LINES),       [HELP_CARD_TRACKER] = CARD("TRACKER", TRACKER_LINES),
-    [HELP_CARD_SCENE] = CARD("SCENE", SCENE_LINES),    [HELP_CARD_ALL] = CARD("ALL", ALL_LINES),
+    [HELP_CARD_SCENE] = CARD("SCENE", SCENE_LINES),    [HELP_CARD_STATUS] = CARD("STATUS", STATUS_LINES),
     [HELP_CARD_STEP] = CARD("STEP", STEP_LINES),       [HELP_CARD_ORDER] = CARD("ORDER", ORDER_LINES),
     [HELP_CARD_INSTR] = CARD("INSTR", INSTR_LINES),    [HELP_CARD_TABLE] = CARD("TABLE", TABLE_LINES),
     [HELP_CARD_MIDI] = CARD("MIDI", MIDI_LINES),       [HELP_CARD_SONG] = CARD("SONG", SONG_LINES),
+    [HELP_CARD_SETTINGS] = CARD("SETTINGS", SETTINGS_LINES),
+    [HELP_CARD_ABOUT] = CARD("ABOUT", ABOUT_LINES),    [HELP_CARD_CHARSET] = CARD("CHARSET", CHARSET_LINES),
+    [HELP_CARD_FILES] = CARD("FILES", FILES_LINES),    [HELP_CARD_NAME] = CARD("SAVE AS", NAME_LINES),
+    [HELP_CARD_CONFIRM] = CARD("CONFIRM", CONFIRM_LINES),
 };
 
 /* The text rows: the title bar's three and the row after it (unit 0), then a line every three
@@ -86,8 +111,8 @@ int help_view_capture(void* ctx, const screen_event* e) {
 int help_view_open(help_view* h, screen* s, uint32_t card) {
     h->drawn = 0;
     h->done = 0;
-    h->card = (uint8_t)(card < HELP_CARDS ? card : HELP_CARD_ALL);
-    return screen_push(s, &help_view_view, h, SCREEN_CUT);
+    h->card = (uint8_t)(card < HELP_CARDS ? card : HELP_CARD_STATUS);
+    return screen_push_over(s, &help_view_view, h, SCREEN_CUT);
 }
 
 static void enter(screen* s, void* state) {

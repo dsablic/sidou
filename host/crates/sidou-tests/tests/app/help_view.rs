@@ -115,7 +115,7 @@ fn the_card_is_the_one_of_the_view_that_shows() {
         ("CHIP", 1),
         ("SCENE", 2),
         ("STEP", 3),
-        ("ALL", 4),
+        ("STATUS", 4),
         ("MIDI", 5),
     ] {
         let mut ui = Ui::without_cards();
@@ -169,22 +169,26 @@ fn full_stack() -> Ui {
     ui
 }
 
-/// With no room for the card, HOME held does what a tap does: no silent hold that eats the
-/// release.
+/// On a full stack the card has its own slot (screen_push_over): a held HOME shows STEP's card,
+/// a control closes it and STEP is back as it was; a tap still goes home.
 #[test]
-fn a_held_home_on_a_full_stack_goes_home_as_a_tap_does() {
+fn a_held_home_on_a_full_stack_shows_the_card_too() {
     let mut ui = full_stack();
-    ui.down(PANEL_BTN_HOME);
-    for _ in 0..25 {
+    hold_until_card(&mut ui);
+    for _ in 0..12 {
         frame(&mut ui);
     }
+    assert_eq!(card_name(&ui), "STEP");
+    assert_eq!(ui.v.s.depth, SCREEN_SLOTS as u8);
     ui.up(PANEL_BTN_HOME);
-    for _ in 0..3 {
-        frame(&mut ui);
-    }
+    ui.turn(PANEL_ENC_SELECT, 1);
+    frame(&mut ui);
     ui.settle();
-    assert_ne!(ui.top(), "STEP", "HOME did not go home");
-    assert_ne!(ui.top(), "HELP");
+    assert_eq!(ui.top(), "STEP");
+    assert_eq!(ui.v.s.depth, SCREEN_DEPTH as u8);
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    assert_ne!(ui.top(), "STEP", "a tap goes home");
 }
 
 /// MIDI learn that cannot open on a full stack says so.
@@ -201,16 +205,67 @@ fn midi_learn_on_a_full_stack_says_there_is_no_room() {
     assert_eq!(ui.toast().as_deref(), Some("NO ROOM FOR LEARN"));
 }
 
-/// Every card is the card of a view, and every view with a card of its own opens it: the view
-/// to open (SEQ n times from LIVE, or the menu's item with ALGORITHM turned) and the card's name.
-#[test]
-fn every_card_opens_over_its_own_view() {
-    enum Open {
-        Live,
-        Seq(u32),
-        Menu,
-        Item(u32),
+/// How a view (or a page) is reached from LIVE for the walk below.
+enum Open {
+    Live,
+    /// SEQ n times.
+    Seq(u32),
+    Menu,
+    /// The menu's item, ALGORITHM clockwise.
+    Item(u32),
+    /// The menu's SONG, then its action (ALGORITHM clockwise on it), then `then` turns of
+    /// SELECT and of ALGORITHM (a confirmation's YES and its OK).
+    Song(u32, i32, i32),
+    /// SONG's LOAD page, then SEQ: a song view on a full stack.
+    Full,
+}
+
+fn open(ui: &mut Ui, open: &Open) {
+    match *open {
+        Open::Live => {}
+        Open::Seq(n) => {
+            for _ in 0..n {
+                ui.press(PANEL_BTN_SEQ);
+                ui.settle();
+            }
+        }
+        Open::Menu => {
+            ui.press(PANEL_BTN_HOME);
+            ui.settle();
+        }
+        Open::Item(item) => {
+            ui.press(PANEL_BTN_HOME);
+            ui.settle();
+            ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
+            ui.turn(PANEL_ENC_SELECT, item as i32);
+            frame(ui);
+            ui.turn(PANEL_ENC_ALGORITHM, 1);
+            ui.settle();
+        }
+        Open::Song(action, select, alg) => {
+            ui.press(PANEL_BTN_HOME);
+            ui.settle();
+            ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
+            ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
+            ui.turn(PANEL_ENC_ALGORITHM, 1);
+            ui.settle();
+            ui.turn(PANEL_ENC_SELECT, action as i32);
+            ui.turn(PANEL_ENC_ALGORITHM, 1);
+            ui.turn(PANEL_ENC_SELECT, select);
+            ui.turn(PANEL_ENC_ALGORITHM, alg);
+            ui.settle();
+        }
+        Open::Full => {
+            *ui = full_stack();
+        }
     }
+}
+
+/// Every view and page the panel reaches has a card of its own, and a held HOME opens it: the
+/// walk opens each (a fresh power-on each time), holds HOME and reads the card's name; every
+/// card is some view's.
+#[test]
+fn every_view_and_page_holds_home_to_its_own_card() {
     let all = [
         ("LIVE", Open::Live),
         ("MENU", Open::Menu),
@@ -221,47 +276,48 @@ fn every_card_opens_over_its_own_view() {
         ("ORDER", Open::Seq(3)),
         ("INSTR", Open::Seq(4)),
         ("TABLE", Open::Seq(5)),
-        ("ALL", Open::Item(VIEWS_MENU_STATUS)),
+        ("STATUS", Open::Item(VIEWS_MENU_STATUS)),
         ("MIDI", Open::Item(VIEWS_MENU_MIDI)),
         ("SONG", Open::Item(VIEWS_MENU_SONG)),
+        ("SETTINGS", Open::Item(VIEWS_MENU_SETTINGS)),
+        ("ABOUT", Open::Item(VIEWS_MENU_ABOUT)),
+        ("CHARSET", Open::Item(VIEWS_MENU_CHARSET)),
+        // SONG's pages: LOAD's files, SAVE AS's name, and NEW's confirmation (the song is
+        // unsaved).
+        ("FILES", Open::Song(0, 0, 0)),
+        ("SAVE AS", Open::Song(2, 0, 0)),
+        ("CONFIRM", Open::Song(1, 0, 0)),
+        ("STEP", Open::Full),
     ];
-    assert_eq!(all.len(), HELP_CARDS as usize, "a card without a view here");
     let mut seen = [false; HELP_CARDS as usize];
-    for (name, open) in all {
+    for (name, how) in &all {
         let mut ui = Ui::without_cards();
+        let mut io = Box::new(song_io {
+            dirty: 1,
+            ..Default::default()
+        });
+        unsafe { views_song_io(&mut *ui.v, &mut *io) };
         ui.settle();
-        match open {
-            Open::Live => {}
-            Open::Seq(n) => {
-                for _ in 0..n {
-                    ui.press(PANEL_BTN_SEQ);
-                    ui.settle();
-                }
-                assert_eq!(ui.top(), name, "SEQ x{n}");
-            }
-            Open::Menu => {
-                ui.press(PANEL_BTN_HOME);
-                ui.settle();
-            }
-            Open::Item(item) => {
-                ui.press(PANEL_BTN_HOME);
-                ui.settle();
-                ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
-                ui.turn(PANEL_ENC_SELECT, item as i32);
-                frame(&mut ui);
-                ui.turn(PANEL_ENC_ALGORITHM, 1);
-                ui.settle();
-            }
-        }
+        open(&mut ui, how);
+        let under = ui.top();
+        let depth = ui.v.s.depth;
         hold_until_card(&mut ui);
         for _ in 0..12 {
             frame(&mut ui);
         }
-        assert_eq!(card_name(&ui), name);
+        assert_eq!(card_name(&ui), *name, "over {under}");
         seen[ui.v.help.card as usize] = true;
         ui.up(PANEL_BTN_HOME);
+        ui.turn(PANEL_ENC_K1, 1);
+        frame(&mut ui);
+        ui.settle();
+        assert_eq!(
+            (ui.top(), ui.v.s.depth),
+            (under, depth),
+            "{name}: the view as it was"
+        );
     }
-    assert!(seen.iter().all(|&s| s), "{seen:?}");
+    assert!(seen.iter().all(|&s| s), "a card no view opens: {seen:?}");
 }
 
 #[test]
