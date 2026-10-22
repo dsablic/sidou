@@ -30,7 +30,9 @@ enum {
  * produces SAVED or an END ACK. New requests cannot replace its pinned file.
  * send accepts one USB-MIDI event packet, returns 1 accepted / 0 backpressure.
  * Its bytes must be copied before returning. toast receives a SYSEX_* reason/status.
- * writing(1) follows a successful PUT claim (or accepted DEL), before any ACK;
+ * writing(1) follows a successful PUT claim (or accepted DEL), before any ACK; also a
+ * PUT or DEL that waits (at most SYSEX_TIMEOUT_MS, else BUSY) for a record being written
+ * to commit in its holds before it claims or deletes (store_file_wait);
  * writing(0) releases program ownership after completion or failure. Ownership
  * covers any irrevocable commit still draining after abort/reset. It permits
  * explicit program holds, never maintenance erases. open/read/close are unchanged.

@@ -32,6 +32,14 @@ All notable changes are documented here. The format follows
   demo now keeps its flash in the browser, one save per build, with Save now, Export…, Import…
   and a reset, so the first-run tour and anything saved there survive a reload.
 
+### Fixed
+- **A SysEx PUT or DEL is no longer refused BUSY while the device sounds.** On the unit, with a
+  chord held on LIVE (or a song playing, or MIDI notes held), every PUT was refused BUSY although
+  INQ reported a full pool: a record the store was writing (a settings save, or a collection's
+  copy that quiet maintenance had started) waited for quiet, and the PUT gave up on it. Now the
+  transfer waits for that record in its own short hold (at most two seconds), and a collection
+  under way waits for the file; nothing is erased meanwhile.
+
 ## [0.2.0] - 2026-10-22
 
 ### Added

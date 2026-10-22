@@ -92,7 +92,12 @@ whole transfer after a NAK or a lost ACK.
 For incoming PUT, the initial packet declares exact length and CRC. SIDOU claims
 all store sectors with `store_file_begin` before acknowledging it. If the clean
 pool cannot cover the file, it answers BUSY with the current pool size; FULL
-means the file cannot fit. No transfer waits for an erase. ACK of DATA is delayed
+means the file cannot fit. No transfer waits for an erase. A record the store is
+writing when PUT or DEL arrives (a settings save, or a maintenance collection's
+copy, whose programs wait for quiet while keys, a song or MIDI notes sound) does
+not refuse it: the transfer owns that record's programs, waits for it to commit
+(one short hold, at most two seconds, else BUSY), then claims or deletes. A
+collection under way waits for the file and goes on after it. ACK of DATA is delayed
 until its bytes have been programmed. END checks length and CRC before the FILE
 record may commit; its ACK waits for that commit and any object import acceptance.
 An incomplete or CRC-bad upload does not replace an existing file. ABORT before

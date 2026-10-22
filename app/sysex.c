@@ -6,7 +6,7 @@
 
 enum {
     IDLE, UPLOAD, PROGRAM, COMMIT, DELETE, PREPASS, META, DOWNLOAD, FINISH, DIRECTORY, WAIT,
-    DRAIN, IMPORT, IMPORT_DRAIN
+    DRAIN, IMPORT, IMPORT_DRAIN, OPEN, UNLINK
 };
 enum { INQ = 1, DIR, GET, PUT, DATA, END, DEL, ABORT, ACK = 0x7E, NAK };
 
@@ -55,6 +55,7 @@ static int zeroes(const uint8_t* p, unsigned n) {
 
 static void release(sysex* s) {
     s->tx_wait = 0;
+    if (s->state == OPEN || s->state == UNLINK) store_file_wait(s->storage, 0);
     if (s->state == IMPORT || s->state == IMPORT_DRAIN) {
         s->state = IMPORT_DRAIN;
         return;
@@ -120,6 +121,32 @@ static void queue(sysex* s, uint8_t command, uint8_t sequence, uint16_t n, int w
 static void acknowledge(sysex* s, uint8_t sequence) {
     if (s->owner == SYSEX_USB) queue(s, ACK, sequence, 0, 0);
     else s->last = s->now;
+}
+
+/* STORE_BUSY only because a record is being written (a save, a collection's copy), which
+ * waits for quiet while the device sounds: the transfer owns the programs, so its holds finish
+ * the record, and it waits for it (OPEN, UNLINK; store_file_wait). The pool's BUSY is final. */
+static int record_busy(const sysex* s, int result) {
+    return result == STORE_BUSY && store_busy(s->storage) &&
+           store_file_result(s->storage) != STORE_BUSY;
+}
+
+/* Waits for the record, as the owner of its programs, at most SYSEX_TIMEOUT_MS. */
+static void wait_record(sysex* s, uint8_t state) {
+    program_owner(s);
+    store_file_wait(s->storage, 1);
+    s->state = state;
+    s->last = s->now;
+}
+
+/* A PUT's sectors claimed (store_file_begin said yes): ACK its metadata. */
+static void claim(sysex* s) {
+    uint8_t seq = s->sequence;
+    s->claimed = 1;
+    s->file.fid = s->storage->f.fid;
+    s->state = UPLOAD;
+    s->sequence = (seq + 1) & 0x7F;
+    acknowledge(s, seq);
 }
 
 static void accept(sysex* s) {
@@ -355,18 +382,16 @@ static void command(sysex* s, sysex_parser* p) {
         s->expected_crc = crc;
         if (writing) {
             /* GTI5 staging must not appear among the store's playable songs. */
-            uint8_t storage_type = s->target == 1 ? 2 : type;
-            result = store_file_begin(s->storage, s->file.name, storage_type, length);
-            if (result) {
+            s->file.type = s->target == 1 ? 2 : type;
+            result = store_file_begin(s->storage, s->file.name, s->file.type, length);
+            if (record_busy(s, result)) wait_record(s, OPEN);
+            else if (result) {
                 fail(s, reason(result), seq);
                 return;
+            } else {
+                program_owner(s);
+                claim(s);
             }
-            s->claimed = 1;
-            s->file.fid = s->storage->f.fid;
-            program_owner(s);
-            s->state = UPLOAD;
-            s->sequence = (seq + 1) & 0x7F;
-            acknowledge(s, seq);
         } else if (!s->target) {
             result = store_file_open(s->storage, s->file.name, &s->file);
             if (result) fail(s, reason(result), seq);
@@ -387,7 +412,8 @@ static void command(sysex* s, sysex_parser* p) {
         else {
             s->expected_crc = s->storage->errors;
             int result = store_file_delete(s->storage, s->file.name);
-            if (result) fail(s, reason(result), seq);
+            if (record_busy(s, result)) wait_record(s, UNLINK);
+            else if (result) fail(s, reason(result), seq);
             else {
                 program_owner(s);
                 s->state = DELETE;
@@ -437,7 +463,7 @@ static int expired(sysex* s) {
     }
     if (s->state && !s->tx_active && s->state != PROGRAM && s->state != COMMIT && s->state != DELETE &&
         s->state != PREPASS && s->state != DRAIN && s->state != IMPORT && s->state != IMPORT_DRAIN &&
-        s->now - s->last >= SYSEX_TIMEOUT_MS) {
+        s->state != OPEN && s->state != UNLINK && s->now - s->last >= SYSEX_TIMEOUT_MS) {
         fail(s, SYSEX_TIMEOUT, s->sequence);
         return 1;
     }
@@ -539,6 +565,20 @@ void sysex_poll(sysex* s, uint32_t now_ms) {
         return;
     }
     if (s->tx_wait) return;
+    if (s->state == OPEN || s->state == UNLINK) {
+        /* Tried again until the record commits; still busy after SYSEX_TIMEOUT_MS: BUSY. */
+        int result = s->state == OPEN ?
+            store_file_begin(s->storage, s->file.name, s->file.type, s->length) :
+            store_file_delete(s->storage, s->file.name);
+        if (!result) {
+            store_file_wait(s->storage, 0);
+            if (s->state == OPEN) claim(s);
+            else s->state = DELETE;
+        } else if (!record_busy(s, result) || s->now - s->last >= SYSEX_TIMEOUT_MS) {
+            fail(s, reason(result), s->sequence);
+        }
+        return;
+    }
     if (s->state == PROGRAM || s->state == COMMIT) {
         int result = store_file_result(s->storage);
         if (result != STORE_BUSY && !(s->state == COMMIT && result == STORE_OK)) {

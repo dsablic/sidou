@@ -81,12 +81,13 @@ static void hold_off(void) {
 /* A held operation may run now: the device quiet (or a forced save), the gap since the last
  * one passed, and the audio silent. Asks for the hold if it is not on.
  * A SysEx write's programs (midi_sysex_writing, sysex.h) go a batch a hold: a DATA packet's
- * pages, its chunk header and commit word, at END the FILE record (store_file_pending), one a
- * store_poll, at least STORE_PROGRAM_GAP_MS apart with the interrupts on between them; the hold
- * ends with the batch (store_fm1_service). A sounding device plays between two holds,
- * STORE_FORCE_GAP_MS apart, ramped down and back up; a silent one (fm.silent) hears no mute,
- * so its hold stays on between packets, as the quiet store's, and starts STORE_HOLD_GAP_MS
- * after the last. One program a hold, each STORE_FORCE_GAP_MS apart, took 280 ms a 256-byte
+ * pages, its chunk header and commit word, at END the FILE record (store_file_pending); before
+ * a PUT claims (a DEL deletes), the record it waits for (a save, a collection's copy: sysex.c
+ * OPEN, UNLINK); one a store_poll, at least STORE_PROGRAM_GAP_MS apart with the interrupts on
+ * between them; the hold ends with the batch (store_fm1_service). A sounding device plays
+ * between two holds, STORE_FORCE_GAP_MS apart, ramped down and back up; a silent one
+ * (fm.silent) hears no mute, so its hold stays on between packets, as the quiet store's, and
+ * starts STORE_HOLD_GAP_MS after the last. One program a hold, each STORE_FORCE_GAP_MS apart, took 280 ms a 256-byte
  * packet (docs/hardware-results/2026-10-22-flash-day.md). */
 static int hold_ready(void) {
     if (!fm.quiet && !fm.force && !midi_sysex_writing) {
@@ -317,9 +318,10 @@ void store_fm1_service(uint32_t now_ms, const live* l, keys_route* kr, int sound
         if (!fm.polled && (fm.quiet || fm.force) && fm.wanted) {
             fm.wanted = 0; /* maintenance found nothing more to do */
         }
-        /* A SysEx write's hold ends with its batch (hold_ready), on a sounding device. */
+        /* A SysEx write's hold ends with its batch (hold_ready), on a sounding device: a
+         * packet's programs, or a record's that the write waits for (sysex.c OPEN, UNLINK). */
         if (fm.holding && midi_sysex_writing && fm.programmed && !fm.silent &&
-            !store_file_pending(&store_fm1_store)) {
+            !store_file_pending(&store_fm1_store) && !s->w.phase) {
             hold_off();
         }
     }

@@ -586,3 +586,66 @@ fn a_production_full_size_trs_put_holds_every_program_but_never_erases_or_stays_
     );
     check_passes(&m);
 }
+
+/// The device's refusal (2026-10-23), over TRS: a record taken while a chord is held on LIVE's
+/// keys (a settings save) waits for quiet, and a PUT then was refused (STORE BUSY: RESEND).
+/// Now the PUT owns the record's programs, waits for it to commit in its holds, and claims well
+/// within the sender's one-second gap; the upload commits and nothing is erased meanwhile.
+#[test]
+fn a_production_trs_put_with_keys_held_waits_out_a_record_and_commits() {
+    let Some(fw) = fixture() else { return };
+    let mut m = boot(&fw, false);
+    assert_eq!(m.soc.read32(fw.symbol("store_fm1_window")), 0);
+    chord(&mut m);
+    let hook = fw.symbol("store_fm1_hook");
+    m.soc.write32(hook + 4, 0x200);
+    m.soc.write32(hook + 8, 16);
+    for i in 0..16 {
+        m.soc.write8(hook + 16 + i, 0x5a);
+    }
+    m.soc.write32(hook, 1);
+    until(&mut m, "the hook's put", |m| m.soc.read32(hook) == 0);
+    m.run_ms(1_000);
+    let storage = fw.symbol("store_fm1_store");
+    assert_ne!(
+        byte(
+            &mut m,
+            storage,
+            ilp32::store::w + ilp32::store_writer::phase
+        ),
+        0,
+        "the record waits for quiet while the chord sounds"
+    );
+    let counts = fw.symbol("store_fm1_counts");
+    let erases = m.soc.read32(counts + ERASES);
+    let data: Vec<u8> = (0..4096u32).map(|i| (i * 13 + i / 256) as u8).collect();
+    begin(&mut m, 0, 0, "TRS WAITS", &data);
+    let claim = ready(&mut m, &fw, 1);
+    upload(&mut m, &fw, &data, |_, _| {});
+    println!("TRS PUT with keys held: claimed {claim} ms after its metadata");
+    assert_eq!(stored(&mut m, c"TRS WAITS"), Some(data));
+    assert_eq!(
+        m.soc.read32(counts + ERASES),
+        erases,
+        "an erase in the transfer"
+    );
+    let mut flash = m.soc.flash.mem.clone();
+    let st = mount_dump(&mut flash);
+    let mut value = [0u8; 16];
+    // SAFETY: st and value outlive the call.
+    let n = unsafe {
+        store_get(
+            &*st,
+            0x200,
+            value.as_mut_ptr().cast(),
+            16,
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(
+        (n, value),
+        (16, [0x5a; 16]),
+        "the record the PUT waited for"
+    );
+    check_passes(&m);
+}

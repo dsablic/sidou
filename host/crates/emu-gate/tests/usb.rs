@@ -1070,3 +1070,337 @@ fn nothing_sleeps_in_idle_while_a_host_is_there_not_even_the_rings_wait() {
         m.idles
     );
 }
+
+// ---- A PUT while the store's own write waits for quiet (the device, 2026-10-23) ----
+
+/// store_fm1_test's layout (store_fm1.h): the operation, its key, its length, its result, then
+/// its data; and its PUT.
+const HOOK_KEY: u32 = 4;
+const HOOK_LEN: u32 = 8;
+const HOOK_DATA: u32 = 16;
+const HOOK_PUT: u32 = 1;
+const HOOK_COLLECT: u32 = 4;
+/// store.c's maintenance jobs.
+const JOB_COLLECT: u8 = 2;
+/// store_fm1_stats's erases.
+const ERASES: u32 = 4;
+/// A chord: A4, C#5, E5 (Felucca's key ids; app/panel.h).
+const CHORD: [u8; 3] = [30, 34, 37];
+
+fn store_byte(m: &mut Machine, fw: &Firmware, field: usize) -> u8 {
+    m.soc.read8(fw.symbol("store_fm1_store") + field as u32)
+}
+
+fn writer_phase(m: &mut Machine, fw: &Firmware) -> u8 {
+    store_byte(
+        m,
+        fw,
+        sidou_sys::ilp32::store::w + sidou_sys::ilp32::store_writer::phase,
+    )
+}
+
+/// The test hook's put (as a settings or profile save): `key` gets 16 bytes of `fill`; returns
+/// once the store has taken it (it programs on its own polls).
+fn hook_put(m: &mut Machine, fw: &Firmware, key: u32, fill: u8) {
+    let h = fw.symbol("store_fm1_hook");
+    m.soc.write32(h + HOOK_KEY, key);
+    m.soc.write32(h + HOOK_LEN, 16);
+    for i in 0..16 {
+        m.soc.write8(h + HOOK_DATA + i, fill);
+    }
+    m.soc.write32(h, HOOK_PUT);
+    for _ in 0..5_000 {
+        if m.soc.read32(h) == 0 {
+            return;
+        }
+        m.usb_frames(1);
+    }
+    panic!("the hook's put never ran");
+}
+
+/// What the store is busy with when the PUT comes.
+#[derive(Clone, Copy, Debug)]
+enum Pending {
+    /// A record (a settings save) taken while the device sounds: its programs wait for quiet.
+    Record,
+    /// A collection that maintenance started (the device's likely case: its INQ said the pool
+    /// was full, where maintenance moves the coldest sector's records while quiet), then the
+    /// device sounded: its held programs (a copy's, its victim's kill) wait for quiet.
+    Collection,
+}
+
+/// What sounds meanwhile.
+#[derive(Clone, Copy, Debug)]
+enum Sound {
+    /// A chord held on the panel's keys on LIVE.
+    Keys,
+    /// The demo song playing.
+    Song,
+    /// A chord held by USB-MIDI notes.
+    Notes,
+}
+
+fn sound(m: &mut Machine, fw: &Firmware, how: Sound) {
+    match how {
+        Sound::Keys => {
+            for key in CHORD {
+                m.key(key, true);
+            }
+        }
+        Sound::Song => {
+            m.key(sidou_sys::PANEL_BTN_PLAY as u8, true);
+            m.usb_frames(30);
+            m.key(sidou_sys::PANEL_BTN_PLAY as u8, false);
+            let ctl = fw.symbol("song_transport");
+            for _ in 0..5_000 {
+                if m.soc
+                    .read8(ctl + sidou_sys::ilp32::song_ctl::isr_playing as u32)
+                    != 0
+                {
+                    break;
+                }
+                m.usb_frames(1);
+            }
+            assert_ne!(
+                m.soc
+                    .read8(ctl + sidou_sys::ilp32::song_ctl::isr_playing as u32),
+                0,
+                "the demo plays"
+            );
+        }
+        Sound::Notes => {
+            for note in [57, 61, 64] {
+                send(m, &[0x09, 0x90, note, 100]);
+            }
+        }
+    }
+    m.usb_frames(50);
+}
+
+/// The store as the device had it: busy with `pending`, its programs waiting for a quiet that
+/// `how` keeps away. A collection needs a victim: a sector of records, mostly superseded, that
+/// is no longer the head; it is filled in write windows with a chord down (so no maintenance
+/// starts meanwhile), then the collection is asked for (as quiet maintenance on the device
+/// started one) with held programs, and the sound comes before quiet does.
+fn stall(m: &mut Machine, fw: &Firmware, pending: Pending, how: Sound) {
+    if let Pending::Collection = pending {
+        let window = fw.symbol("store_fm1_window");
+        for key in CHORD {
+            m.key(key, true);
+        }
+        m.soc.write32(window, 256);
+        let head = store_byte(m, fw, sidou_sys::ilp32::store::head);
+        let mut k = 0;
+        while store_byte(m, fw, sidou_sys::ilp32::store::head) == head {
+            assert!(k < 400, "the head never moved");
+            hook_put(m, fw, 0x100 + k % 8, k as u8);
+            k += 1;
+        }
+        while writer_phase(m, fw) != 0 {
+            m.usb_frames(1);
+        }
+        for key in CHORD {
+            m.key(key, false);
+        }
+        m.soc.write32(window, 0);
+        let h = fw.symbol("store_fm1_hook");
+        m.soc.write32(h, HOOK_COLLECT);
+        for _ in 0..100 {
+            if store_byte(m, fw, sidou_sys::ilp32::store::job) == JOB_COLLECT
+                && writer_phase(m, fw) != 0
+            {
+                break;
+            }
+            m.usb_frames(1);
+        }
+        assert_eq!(
+            store_byte(m, fw, sidou_sys::ilp32::store::job),
+            JOB_COLLECT,
+            "a collection of the old head"
+        );
+        sound(m, fw, how);
+    } else {
+        sound(m, fw, how);
+        hook_put(m, fw, 0x200, 0x5a);
+    }
+    m.usb_frames(1_000);
+    let job = store_byte(m, fw, sidou_sys::ilp32::store::job);
+    assert!(
+        writer_phase(m, fw) != 0 || job == JOB_COLLECT,
+        "{pending:?}: the store's work waits for quiet while the device sounds"
+    );
+}
+
+/// On the device (2026-10-23) every PUT with a chord held on LIVE's keys was refused BUSY, and
+/// went through as soon as the keys were up: the store had a write under way (quiet maintenance
+/// had started a collection), whose held programs wait for quiet, and store_file_begin refused
+/// while the writer (or a collection) was busy. The emulator's chord test found the store idle.
+/// Now the PUT waits for that write, which runs in the PUT's own paced holds, then claims;
+/// the transfer goes on with one hold a packet, and nothing is erased meanwhile.
+fn put_while_the_store_waits(pending: Pending, how: Sound) {
+    let Some(fw) = fixture("a PUT while the store waits for quiet") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    assert_eq!(m.soc.read32(fw.symbol("store_fm1_window")), 0);
+    stall(&mut m, &fw, pending, how);
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let counts = fw.symbol("store_fm1_counts");
+    let (progs, holds) = (m.soc.read32(counts), m.soc.read32(counts + 16));
+    let data = transfer_file();
+    let mut link = Link::default();
+    let mut meta = vec![0, 0];
+    meta.extend(name16("USB WAITS"));
+    meta.push(2);
+    meta.extend((data.len() as u32).to_le_bytes());
+    // SAFETY: data is valid for its length; the CRC routine does not retain it.
+    let crc = unsafe { sidou_sys::store_crc32(0, data.as_ptr().cast(), data.len() as u32) };
+    meta.extend(crc.to_le_bytes());
+    let asked = m.ms();
+    link.send(&mut m, 4, 10, &meta);
+    let (command, s, payload) = link.recv(&mut m, 2_000);
+    assert_eq!(
+        (command, s),
+        (0x7e, 10),
+        "{pending:?}, {how:?}: the PUT's metadata is accepted, not refused: {payload:02x?}"
+    );
+    let claim = m.ms() - asked;
+    let erases = m.soc.read32(counts + ERASES);
+    let mut seq = 10u8;
+    let start = m.ms();
+    for chunk in data.chunks(256) {
+        seq += 1;
+        link.send(&mut m, 5, seq, chunk);
+        link.ack(&mut m, seq);
+        assert_eq!(
+            m.soc.read32(counts + ERASES),
+            erases,
+            "an erase in the transfer"
+        );
+    }
+    let up = (m.ms() - start) as f64 / data.len().div_ceil(256) as f64;
+    seq += 1;
+    link.send(&mut m, 6, seq, &[]);
+    link.ack(&mut m, seq);
+    assert_eq!(
+        m.soc.read32(counts + ERASES),
+        erases,
+        "an erase in the transfer"
+    );
+    let (progs, holds) = (
+        m.soc.read32(counts) - progs,
+        m.soc.read32(counts + 16) - holds,
+    );
+    let pass = *m.passes.iter().max().expect("passes ran");
+    println!(
+        "PUT while the store waits ({pending:?}, {how:?}): claimed after {claim} ms, then \
+         {up:.1} ms a DATA and its ACK; {progs} programs, all held: {holds}; a pass {pass}"
+    );
+    assert_eq!(progs, holds, "every production program is held");
+    assert!(pass <= common::POLL_INSTRUCTIONS, "a pass {pass}");
+    // Bounds: the measurement (claimed after 22 ms at most, the record's case: its programs in
+    // one hold; 112.0 ms a packet, its first DATA a forced gap after that hold) plus 10 %.
+    assert!(claim <= 25, "the PUT's claim took {claim} ms");
+    assert!(up <= 123.0, "PUT: {up:.1} ms a packet");
+    m.usb_frames(10);
+    assert!(
+        m.soc
+            .periph
+            .audio
+            .iter()
+            .rev()
+            .take(2 * common::HALF_FRAMES)
+            .any(|&s| s != 0),
+        "the sound plays again after the transfer"
+    );
+    let mut flash = m.soc.flash.mem.clone();
+    let st = common::mount_dump(&mut flash);
+    let mut file = sidou_sys::store_file::default();
+    // SAFETY: st, file and the output buffer outlive each store call.
+    unsafe {
+        assert_eq!(
+            sidou_sys::store_file_open(&*st, c"USB WAITS".as_ptr(), &mut file),
+            sidou_sys::STORE_OK
+        );
+        let mut got = vec![0u8; file.length as usize];
+        sidou_sys::store_file_read(&*st, &file, 0, got.as_mut_ptr().cast(), file.length);
+        assert_eq!(got, data, "the file as sent");
+        if let Pending::Record = pending {
+            let mut value = [0u8; 16];
+            let n = sidou_sys::store_get(
+                &*st,
+                0x200,
+                value.as_mut_ptr().cast(),
+                16,
+                std::ptr::null_mut(),
+            );
+            assert_eq!(
+                (n, value),
+                (16, [0x5a; 16]),
+                "the record the PUT waited for"
+            );
+        }
+    }
+
+    // A DEL meets the same: a record taken meanwhile waits for quiet, and the DEL waits for it.
+    hook_put(&mut m, &fw, 0x201, 0xa5);
+    m.usb_frames(200);
+    assert_ne!(writer_phase(&mut m, &fw), 0, "the record waits for quiet");
+    let asked = m.ms();
+    link.send(&mut m, 7, 100, &name16("USB WAITS"));
+    let (command, s, payload) = link.recv(&mut m, 2_000);
+    assert_eq!(
+        (command, s),
+        (0x7e, 100),
+        "{pending:?}, {how:?}: the DEL is accepted, not refused: {payload:02x?}"
+    );
+    let del = m.ms() - asked;
+    println!("DEL while a record waits: ACK after {del} ms");
+    // Bound: the measurement (128 ms at most: a forced gap, then the record and the tombstone
+    // in one hold) plus 10 %.
+    assert!(del <= 141, "the DEL took {del} ms");
+    let mut flash = m.soc.flash.mem.clone();
+    let st = common::mount_dump(&mut flash);
+    let mut file = sidou_sys::store_file::default();
+    let mut value = [0u8; 16];
+    // SAFETY: st, file and value outlive each store call.
+    unsafe {
+        assert_eq!(
+            sidou_sys::store_file_open(&*st, c"USB WAITS".as_ptr(), &mut file),
+            sidou_sys::STORE_NOT_FOUND,
+            "deleted"
+        );
+        let n = sidou_sys::store_get(
+            &*st,
+            0x201,
+            value.as_mut_ptr().cast(),
+            16,
+            std::ptr::null_mut(),
+        );
+        assert_eq!(
+            (n, value),
+            (16, [0xa5; 16]),
+            "the record the DEL waited for"
+        );
+    }
+}
+
+#[test]
+fn a_usb_put_with_keys_held_waits_out_a_collection_and_is_accepted() {
+    put_while_the_store_waits(Pending::Collection, Sound::Keys);
+}
+
+#[test]
+fn a_usb_put_with_keys_held_waits_out_a_record_and_is_accepted() {
+    put_while_the_store_waits(Pending::Record, Sound::Keys);
+}
+
+#[test]
+fn a_usb_put_with_a_song_playing_waits_out_a_collection_and_is_accepted() {
+    put_while_the_store_waits(Pending::Collection, Sound::Song);
+}
+
+#[test]
+fn a_usb_put_with_midi_notes_held_waits_out_a_collection_and_is_accepted() {
+    put_while_the_store_waits(Pending::Collection, Sound::Notes);
+}

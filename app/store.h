@@ -299,7 +299,7 @@ typedef struct {
     uint8_t rec;         /* 1 while the mount's recovery has work: the session waits for it */
     uint8_t retired;     /* sectors retired this session (store.c retire) */
     uint8_t unsure;      /* 1 if one of them may still read otherwise: tombstones are kept */
-    uint8_t pad3;
+    uint8_t file_wait;   /* a file waits to begin (store_file_wait): maintenance takes no step */
     uint32_t work;       /* the last store_poll's work: bytes read, and 4 per key compared */
     uint8_t buf[STORE_WINDOW_MAX]; /* a collection's copy, the open file's bytes, a rename */
 } store;
@@ -386,10 +386,16 @@ typedef struct {
  * characters 0x20..0x5F, the font's upper case, not starting with a space), of `type`
  * (1..STORE_TYPE_MAX). Claims all its sectors and its FILE record's place before it returns,
  * writing nothing yet. A file of that name is replaced when this one commits. STORE_BUSY: not now
- * (the pool, less garbage collection's reserve, cannot cover it until a quiet refill, or a write
- * or a collection runs, or a file is open, or the mount's recovery is not done); STORE_FULL: not even after garbage collection;
- * STORE_INVALID: a bad name, type or length. */
+ * (the pool, less garbage collection's reserve, cannot cover it until a quiet refill, or a record
+ * is being written, or a file is open, or the mount's recovery is not done); STORE_FULL: not even
+ * after garbage collection; STORE_INVALID: a bad name, type or length. A collection under way
+ * waits for the file (between its copies) and goes on after it. */
 int store_file_begin(store* s, const char* name, uint8_t type, uint32_t length);
+/* With `on`, a file waits to begin (or to be deleted): store_file_begin (store_file_delete)
+ * said STORE_BUSY while a record was being written (store_busy), and maintenance takes no
+ * further step, so the record commits on store_poll's own and the next call finds the writer
+ * free. 0 once the caller has begun or gives up. */
+void store_file_wait(store* s, int on);
 /* Offers bytes of the open file: takes what fits the 256-byte staging buffer and returns how
  * many (0 while it is full: offer the rest after a store_poll). store_poll programs them. */
 uint32_t store_file_write(store* s, const void* p, uint32_t n);

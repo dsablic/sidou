@@ -2366,6 +2366,138 @@ fn small_writes_go_on_while_a_file_is_open_and_maintenance_waits() {
     r.assert_clean();
 }
 
+/// store.c's collection job.
+const JOB_COLLECT: u8 = 2;
+
+/// A file begins while a collection is under way: between its copies, or with only its kill or
+/// its forgetting left (a SysEx PUT waits only for the record being written, sysex.c OPEN, so a
+/// PUT with keys held no longer waits for a collection that can only finish when quiet). The
+/// collection waits for the file (store_poll serves the file first) and goes on after it; every
+/// value and the file read back, and again after a power cycle.
+#[test]
+fn a_file_begins_while_a_collection_waits_and_both_finish() {
+    let mut phases = std::collections::BTreeSet::new();
+    for stop in 0..16u64 {
+        let mut r = fresh(31, 256);
+        for k in 100..106u32 {
+            assert_eq!(r.put_now(k, &[k as u8; 40]), STORE_OK); // live in the victim
+        }
+        for round in 0..3u8 {
+            for k in 0..20u32 {
+                assert_eq!(r.put_now(k, &[k as u8 ^ round; 150]), STORE_OK);
+            }
+        }
+        assert_eq!(r.collect(), STORE_OK);
+        // The stop-th place where the writer is idle and the collection not done; half the
+        // operations put off (as held ones wait for quiet on the device), so its kill can wait.
+        r.sim.later = 50;
+        let (mut idle, mut polls) = (0, 0);
+        while r.st.job == JOB_COLLECT && idle < stop {
+            r.poll();
+            idle += u64::from(!r.busy());
+            polls += 1;
+            assert!(polls < 100_000, "the collection never ended");
+        }
+        assert!(!r.busy());
+        r.sim.later = 0;
+        let job = (r.st.job, r.st.job_sec, r.st.job_phase, r.st.job_off);
+        if job.0 == JOB_COLLECT {
+            phases.insert(job.2);
+        }
+        let data = content(31 + stop, 9_000);
+        assert_eq!(r.file_begin("WAITED", data.len()), STORE_OK, "stop {stop}");
+        assert!(!r.erase_wanted(), "maintenance waits for the file");
+        assert_eq!(r.file_stream(&data, 256, None), STORE_OK, "stop {stop}");
+        assert_eq!(
+            (r.st.job, r.st.job_sec, r.st.job_phase, r.st.job_off),
+            job,
+            "stop {stop}: the collection waited for the file"
+        );
+        r.settle();
+        r.maintain();
+        assert_eq!(r.st.job, 0, "stop {stop}: the collection finished");
+        for pass in 0..2 {
+            for k in 0..20u32 {
+                assert_eq!(
+                    r.get(k),
+                    Some(vec![k as u8 ^ 2; 150]),
+                    "stop {stop}, pass {pass}: key {k}"
+                );
+            }
+            for k in 100..106u32 {
+                assert_eq!(r.get(k), Some(vec![k as u8; 40]), "stop {stop}: key {k}");
+            }
+            assert_eq!(r.file("WAITED"), Some(data.clone()), "stop {stop}");
+            r.reset();
+            r.mount();
+        }
+        r.assert_clean();
+    }
+    // store.c's C_SCAN (between copies), C_KILL (the victim's kill to program), C_FORGET.
+    assert_eq!(
+        phases.into_iter().collect::<Vec<_>>(),
+        [0, 1, 2],
+        "where the file began"
+    );
+}
+
+/// While a file waits to begin (store_file_wait), maintenance takes no step: a record being
+/// written commits, then the writer stays free for the file; nothing is erased meanwhile.
+#[test]
+fn a_waiting_file_holds_maintenance_back_until_it_begins() {
+    let mut r = fresh(32, 256);
+    for k in 100..106u32 {
+        assert_eq!(r.put_now(k, &[k as u8; 40]), STORE_OK); // live in the victim
+    }
+    for round in 0..3u8 {
+        for k in 0..20u32 {
+            assert_eq!(r.put_now(k, &[k as u8 ^ round; 150]), STORE_OK);
+        }
+    }
+    assert_eq!(r.collect(), STORE_OK);
+    for _ in 0..1_000 {
+        if r.busy() {
+            break;
+        }
+        r.poll(); // until the collection's first copy is under way
+    }
+    assert!(r.busy(), "the collection copies a live record");
+    assert_eq!(
+        r.file_begin("WAITED", 5_000),
+        STORE_BUSY,
+        "the writer is busy"
+    );
+    unsafe { store_file_wait(&mut *r.st, 1) };
+    let (erases, sec, phase) = (r.sim.erases, r.st.job_sec, r.st.job_phase);
+    unsafe { store_quiet(&mut *r.st, 1) };
+    let mut polls = 0;
+    while r.poll() {
+        polls += 1;
+        assert!(polls < 10_000, "the record never committed");
+    }
+    assert!(!r.busy());
+    assert!(!r.erase_wanted(), "no maintenance while a file waits");
+    for _ in 0..100 {
+        assert!(!r.poll(), "a step while a file waits");
+    }
+    assert_eq!(
+        (r.st.job, r.st.job_sec, r.st.job_phase, r.sim.erases),
+        (JOB_COLLECT, sec, phase, erases)
+    );
+    unsafe { store_quiet(&mut *r.st, 0) };
+    let data = content(32, 5_000);
+    assert_eq!(r.file_begin("WAITED", data.len()), STORE_OK);
+    unsafe { store_file_wait(&mut *r.st, 0) };
+    assert_eq!(r.file_stream(&data, 256, None), STORE_OK);
+    r.maintain();
+    assert_eq!(r.st.job, 0);
+    assert_eq!(r.file("WAITED"), Some(data));
+    for k in 0..20u32 {
+        assert_eq!(r.get(k), Some(vec![k as u8 ^ 2; 150]));
+    }
+    r.assert_clean();
+}
+
 #[test]
 fn the_pool_short_is_busy_and_writes_nothing_until_a_refill() {
     let mut r = fresh(30, 256);

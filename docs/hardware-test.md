@@ -914,6 +914,20 @@ commands for these checks.
   because windows are disabled. Listen for the explicit SAVE-style short
   mute/ramp gaps and recovery between programs; the transfer must not leave
   audio held continuously. Record what is heard and any stuck or missed note.
+  On 2026-10-23 every PUT with a chord held on LIVE was refused BUSY with INQ
+  reporting 22 clean pool sectors: a record the store was writing (a collection
+  that quiet maintenance had started) waited for quiet, and the PUT gave up on
+  it. Now the PUT (and DEL) waits for that record in its own short holds, then
+  claims. Re-check: with the unit silent for a few seconds after an earlier
+  64 KiB round trip (maintenance runs then), hold a three-note chord on LIVE and,
+  still holding it, run `tools/sysex-roundtrip "SIDOU FM-1" 4096`, then
+  `tools/sysex-roundtrip "SIDOU FM-1" 65536`. Both print PUT, GET identical and
+  DEL gone, with no NAK; record the PUT seconds (about 105 ms a 256-byte packet
+  in fm1-emu, so about 1.7 s for 4 KiB and 27 s for 64 KiB). Repeat each with
+  the demo song playing (PLAY) instead of the chord, and with three notes held
+  by another app (a DAW, or a keyboard routed to the FM-1's USB port). Over TRS,
+  hold the chord and repeat the TRS upload below: RECEIVING then SAVED, never
+  STORE BUSY: RESEND.
 - [ ] **Refusal before streaming:** if the clean pool cannot cover a file,
   metadata receives BUSY with pool size (or STORE BUSY: RESEND on TRS), before
   accepting DATA. Stop the transfer and allow quiet refill before retrying.

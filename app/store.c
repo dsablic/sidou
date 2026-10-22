@@ -1644,7 +1644,12 @@ int store_erase_wanted(const store* s) {
         return 0;
     }
     uint32_t sec;
-    return s->f.phase == F_IDLE && (s->job != JOB_NONE || due(s, &sec) != JOB_NONE);
+    return s->f.phase == F_IDLE && !s->file_wait &&
+           (s->job != JOB_NONE || due(s, &sec) != JOB_NONE);
+}
+
+void store_file_wait(store* s, int on) {
+    s->file_wait = on != 0;
 }
 
 int store_poll(store* s) {
@@ -1656,9 +1661,9 @@ int store_poll(store* s) {
     if (!writable(s)) {
         return 0;
     }
-    /* Maintenance waits for an open file. */
-    if (s->w.phase == W_IDLE && s->f.phase == F_IDLE && s->job == JOB_NONE &&
-        !(s->quiet && next_job(s))) {
+    /* Maintenance waits for an open file, and for one waiting to begin. */
+    if (s->w.phase == W_IDLE && s->f.phase == F_IDLE &&
+        (s->file_wait || (s->job == JOB_NONE && !(s->quiet && next_job(s))))) {
         return 0;
     }
     if (s->w.phase != W_IDLE) {
@@ -1817,8 +1822,9 @@ int store_file_begin(store* s, const char* name, uint8_t type, uint32_t length) 
     if (rc) {
         return rc;
     }
-    if (s->f.phase != F_IDLE || s->job == JOB_COLLECT) {
-        return STORE_BUSY; /* one file at a time; a collection's copies use the buffer */
+    if (s->f.phase != F_IDLE) {
+        return STORE_BUSY; /* one file at a time (a collection's copies come from flash: it
+                            * waits, store_poll serving the file first) */
     }
     store_key* e = file_find(s, padded);
     uint32_t key = e ? e->key : file_key(s);
