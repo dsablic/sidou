@@ -160,3 +160,23 @@ Suggested order if you accept: E01, E02, E03 and E04 first (work can be lost), t
   **E32** keeps one undo step and says so on the help card.
 - From the device session: E10, E11, E19, the readability calls in TODO.md, and the SysEx gap
   while sound plays.
+
+## From the device session (2026-10-23)
+
+Run on the FM-1 with the user, on the sysex-speed build (`af7382f6`):
+
+- **Passed:** K1 CC 74 and K4 CC 72 over USB, also after a replug; the OCT- gesture into ROM
+  boot (`WL80UBOOT1.00`) and a normal boot after; CHIP B's names readable; PWM BASS's K3 never
+  drops out at narrow widths (E09 confirmed); a 4 KB SysEx round trip with nothing held.
+- **E10:** loud enough; the level stays.
+- **E11:** DAC, THUMP and BLEED are inaudible: widen their ranges until a player hears them
+  (measured, within the reSIDfp reference tolerances at their defaults).
+- **The 1x text at the bottom of the views is too small to read:** drop it (the user's choice
+  b); each view's help card (HOME held) carries what it said.
+- **STEP's pads:** numbered by beat, 1 2 3 4 | 1 2 3 4 | …, alternate beats shaded, each
+  beat's first step brighter; the exact step number shows in the popup when a step is held.
+- **Bug: an upload while panel keys are held is refused with BUSY** (pool 22, every try), but
+  works at once with nothing held. Hardware-test 8c says it must be accepted; the emulator's
+  "chord sounding" test passed, so it does not hold panel keys the way the device does.
+- **Opening a menu item** by turning ALGORITHM clockwise was not discoverable: the user had to
+  ask. Consider a key press too (the menu work, E31).
