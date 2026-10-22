@@ -246,6 +246,65 @@ fn a_key_past_the_end_of_a_repeated_pattern_goes_to_its_next_pass() {
     assert_eq!(cell(&s, 0, 0), R);
 }
 
+/// Ergonomics review E05 (M2 review 3.3): REC writes the pitch that was heard. Voice 1's
+/// orderlist is `F2 00 E0 01`: pattern 0 transposed +2, pattern 1 -16; a key records its note
+/// less its entry's transpose, so the pattern plays it back as it sounded, and a note the
+/// transpose takes out of C-0..G#7 is refused with NOTE OUT OF RANGE (the key still sounds).
+#[test]
+fn rec_subtracts_the_entrys_transpose_and_refuses_what_leaves_the_range() {
+    let transposed = || {
+        let mut m = song();
+        let mut spec = SngSpec::new();
+        spec.orders = vec![vec![
+            (
+                vec![GT2_TRANSUP as u8 + 2, 0, GT2_TRANSDOWN as u8, 1],
+                0,
+            ),
+            (vec![2], 0),
+            (vec![3], 0),
+        ]];
+        spec.instr = vec![[0u8; 25], [0u8; 25]];
+        spec.patterns = (0..4).map(|_| (vec![R; 16], [0xff, 0, 0, 0])).collect();
+        m.read(&spec.encode(), 0).unwrap();
+        let mut s = Song::playing(Some(m));
+        open_tracker(&mut s.ui);
+        s.ui.press(PANEL_BTN_REC);
+        s
+    };
+    // Pattern 0 (+2): A-4 heard is G-4 in the pattern.
+    let mut s = transposed();
+    at(&mut s, 3, 0);
+    s.f.st.order_pos = [1, 0, 0];
+    s.ui.frame();
+    tap(&mut s, 16);
+    assert_eq!(cell(&s, 0, 3), [KEY16 - 2, 1, 0, 0], "less the +2");
+    // Past pattern 0's end: pattern 1's transpose (-16), not pattern 0's.
+    at(&mut s, 15, ROW * 3 / 4);
+    s.f.st.order_pos = [1, 0, 0];
+    s.ui.frame();
+    tap(&mut s, 16);
+    assert_eq!(cell(&s, 1, 0), [KEY16 + 16, 1, 0, 0], "less the -16");
+    // Octave +3 on pattern 1 (-16): key 0 is F-7 (77), 93 in the pattern: past G#7.
+    let mut s = transposed();
+    s.ui.rig.live.octave = 3;
+    at(&mut s, 4, 0);
+    s.f.st.order_pos = [3, 0, 0];
+    s.ui.frame();
+    s.calls();
+    s.ui.note_keys(1, 1);
+    assert_eq!(s.ui.toast().as_deref(), Some("NOTE OUT OF RANGE"));
+    s.ui.note_keys(0, 0);
+    settle(&mut s.ui);
+    assert_eq!(cell(&s, 1, 4), R, "nothing written");
+    assert_eq!(s.f.cell_writes, 0);
+    assert!(
+        s.calls()
+            .iter()
+            .any(|c| matches!(c, crate::song_view::Call::Jam(0, 77, _))),
+        "the key still sounds"
+    );
+}
+
 #[test]
 fn the_row_comes_from_the_players_entry_not_the_cursors() {
     let mut s = tracker();

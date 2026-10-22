@@ -350,11 +350,25 @@ static uint32_t pattern_entry(const uint8_t* o, uint32_t i, uint32_t n) {
     return i;
 }
 
+/* The transpose the player adds to pattern entry i's notes (gt2_play.c's sequencer: a transpose
+ * entry holds until the next one), as the orderlist says it on the play's first pass: the
+ * nearest transpose before the entry, else none. */
+static int32_t entry_transpose(const uint8_t* o, uint32_t i) {
+    while (i-- > 0) {
+        if (o[i] >= GT2_TRANSDOWN) {
+            return (int32_t)o[i] - (int32_t)GT2_TRANSUP;
+        }
+    }
+    return 0;
+}
+
 /* Where a key pressed now falls on the cursor's voice: the pattern and row, `ahead` rows of its
  * playing row on (the quantised one, or the row it is in), running into the pattern that plays
  * next when that is past the end: the same one again while the player says it plays again (an
- * orderlist repeat: the status's again), else the next entry's, or round. 0: not placed (no row yet, no orderlist). */
-static int rec_place(song_view* sv, int quantised, uint32_t* pattern, uint32_t* row) {
+ * orderlist repeat: the status's again), else the next entry's, or round; and that entry's
+ * transpose. 0: not placed (no row yet, no orderlist). */
+static int rec_place(song_view* sv, int quantised, uint32_t* pattern, uint32_t* row,
+                     int32_t* transpose) {
     const song_transport* t = sv->t;
     if (sv->want == WANT_NONE) {
         t->status(t->ctx, &sv->st); /* the clock now */
@@ -387,6 +401,7 @@ static int rec_place(song_view* sv, int quantised, uint32_t* pattern, uint32_t* 
                 j = pattern_entry(o, o[n + 1u], n); /* the restart position */
             }
             if (j < n) {
+                i = j;
                 pat = o[j];
                 rows = gt2_pattern_rows(s, pat) - 1u;
             }
@@ -395,6 +410,7 @@ static int rec_place(song_view* sv, int quantised, uint32_t* pattern, uint32_t* 
     }
     *pattern = pat;
     *row = at;
+    *transpose = entry_transpose(o, i);
     return 1;
 }
 
@@ -418,12 +434,17 @@ __attribute__((noinline, unused)) static void rec_push(song_view* sv, uint32_t p
 
 int song_view_record_note(song_view* sv, screen* s, uint32_t note, uint32_t instr, int keyoff) {
     uint32_t pattern, row;
-    if (!song_view_recording(sv) || !sv->editor || !rec_place(sv, 1, &pattern, &row) ||
+    int32_t transpose;
+    if (!song_view_recording(sv) || !sv->editor || !rec_place(sv, 1, &pattern, &row, &transpose) ||
         !song_view_recording(sv)) {
         return 0;
     }
+    /* What was heard is what plays back: the note less the transpose the player will add (a
+     * key outside the player's notes, GT2_NOTES and up, stays out) */
+    note = note < GT2_NOTES ? (uint32_t)((int32_t)note - transpose) : note;
     if (note > GT2_NOTE_MAX) {
-        rec_toast(sv, s, "NOTE OUT OF RANGE"); /* the bytes above G#7 are REST, KEYOFF, KEYON */
+        /* below C-0 (wrapped), or the bytes above G#7: REST, KEYOFF, KEYON */
+        rec_toast(sv, s, "NOTE OUT OF RANGE");
         return 0;
     }
     uint32_t rows = gt2_pattern_rows(sv->song, pattern) - 1u;
@@ -497,7 +518,9 @@ uint32_t song_view_rec_value(const song_view* sv, uint32_t knob) {
 
 int song_view_record_knob(song_view* sv, screen* s, uint32_t knob, int32_t steps) {
     uint32_t pattern, row;
-    if (!song_view_recording(sv) || !rec_place(sv, 0, &pattern, &row) || !song_view_recording(sv)) {
+    int32_t transpose;
+    if (!song_view_recording(sv) || !rec_place(sv, 0, &pattern, &row, &transpose) ||
+        !song_view_recording(sv)) {
         return 0;
     }
     rec_knobs_read(sv);

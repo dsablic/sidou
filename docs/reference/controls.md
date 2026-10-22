@@ -357,6 +357,12 @@ do nothing; STEP's act as in LIVE. TRACKER keeps its cursor
 where it is while recording; the notes appear in the pattern as they are written. With the
 song stopped REC is TRACKER's cursor entry, as before.
 
+**Transposes.** A note is written as it was heard: on an orderlist entry with a transpose (ORDER's
+`+n` / `-n`, which holds until the next transpose) the transpose is taken off the note, so the
+pattern plays it back at the pitch that sounded. A note the transpose would take below C-0 or
+above G#7 is refused with `NOTE OUT OF RANGE` (the key still sounds). The transpose is the one
+the orderlist gives the entry on the song's first pass (the nearest transpose before it).
+
 The keys sound during a count-in but record nothing. Recorded notes go to the editor one cell
 write at a time, with at most four waiting (a fifth key is refused with `WAITING`; a staccato
 STEP key's key off counts as a second write). A key's time is read where the audio block starts,

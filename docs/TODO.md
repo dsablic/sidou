@@ -474,7 +474,7 @@ working.
   narrow widths: it now never sweeps below 3 %); 5.7, 5.8 and 5.11 (E23-E25: REC's toast
   outside the song views, no count-in on entering one mid-song, the REC popup in Hz); 5.9
   (E26: ORDER keeps TRACKER's row), 5.13 (E30: the tour clears only its own toast), 5.12 (E29: toasts wait under a help card), 5.14 (E28: keys under a help card play the view
-  under it).
+  under it); 3.3 (E05: REC takes the entry's transpose off the note it writes).
 - **Fixed on the gates track (before v0.3.0):** 6.1 (`FREE_RAM_MIN` 7,000 to 10,000, the
   overview's M2f row, and each region 4,096 to 5,120, M3's start target), 6.2
   (`IMAGE_CEILING` 512,000 to 506,000, M3's start target), and section 8's stale CMake cache
