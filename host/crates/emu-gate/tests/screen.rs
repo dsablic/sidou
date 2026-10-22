@@ -2252,6 +2252,124 @@ fn live_shows_the_keys_on_chip_b() {
     assert!(a4[0] > 200, "voice 1's trace with A4 on chip B: {a4:?}");
 }
 
+/// fm1-emu's audio block: 128 samples of 5,440 cycles (240 MHz, 24 MHz / 544 a sample).
+const BLOCK_CYCLES: u64 = 128 * 5_440;
+/// The key scan's frame (platform/fm1/hal/fm1_input.h): 11 TIMER5 ticks of 100 us.
+const SCAN_FRAME_CYCLES: u64 = 11 * 24_000;
+/// fm1_input.h's `fm1_in.frames` (the scan frames closed), its offset in the struct.
+const SCAN_FRAMES_AT: u32 = 276;
+
+/// Captures LIVE's scopes and meters as a function of the audio alone, not of where the main
+/// loop's passes, its frames and the key scan's frames fall against the audio blocks, which
+/// code changes anywhere move (review 6.6: live-chord flipped between two scope phases; 6.7:
+/// the meters moved by a column with commits that changed no level). Three things decide them:
+/// - which blocks a note's register writes land in: each press goes in right after a scan
+///   frame closes, so the scan takes it a fixed number of frames later, and the frame is
+///   chosen so that falls between 10 % and 50 % into the block it is meant for (the main loop's
+///   note-on and commit then have half a block before the block after);
+/// - which blocks the frame's preparation reads (live_view_prepare: the newest points, the
+///   peaks since the last): the frame shot is one whose preparation falls 40 % to 60 % into a
+///   block, so its own and the last one's (40 ms earlier, 21 % on) are far from either edge;
+/// - the traces' and meters' hold (a trace that moves by a pixel or less, a meter that drops by
+///   two steps or less, stays as drawn): what they held depends on every frame before, so they
+///   are let go just before the frame shot (the drawn traces marked as moved, the meters at
+///   0), and that frame draws them from its own preparation alone.
+/// The voices' oscillators run from the machine's boot (no note before the ones placed here),
+/// so their phases follow from the blocks the notes land in, and the shot is a fixed number of
+/// blocks after them.
+struct LiveShot {
+    /// The cycle of the frame preparation the shot is of.
+    prepare: u64,
+    /// The block its preparation falls in (the first cycle of it).
+    block: u64,
+}
+
+/// A cycle's place in the audio's block grid, 0..1 (the grid from the halves played).
+fn block_phase(m: &Machine, c: u64) -> f64 {
+    let at = *m.half_played.last().expect("audio running");
+    ((c + BLOCK_CYCLES * 1_000 - at) % BLOCK_CYCLES) as f64 / BLOCK_CYCLES as f64
+}
+
+fn run_until(m: &mut Machine, cycle: u64) {
+    let now = m.soc.periph.cycles;
+    if cycle > now {
+        m.run_cycles(cycle - now);
+    }
+}
+
+/// The first frame preparation at least `lead_ms` from now that falls 40 % to 60 % into a
+/// block, from the frames' 40 ms grid.
+fn live_shot(m: &mut Machine, fw: &Firmware, lead_ms: u64) -> LiveShot {
+    m.watch_calls(fw.symbol("live_view_prepare"));
+    let n = m.watched_starts.len();
+    while m.watched_starts.len() == n {
+        m.run_ms(1);
+    }
+    let last = *m.watched_starts.last().unwrap();
+    let frame = m.soc.periph.cycle_of_ms(UI_PERIOD_MS);
+    let earliest = m.soc.periph.cycles + m.soc.periph.cycle_of_ms(lead_ms);
+    let mut prepare = last;
+    while prepare < earliest || !(0.4..0.6).contains(&block_phase(m, prepare)) {
+        prepare += frame;
+    }
+    let block = prepare - (block_phase(m, prepare) * BLOCK_CYCLES as f64) as u64;
+    LiveShot { prepare, block }
+}
+
+/// Key `key` down (or up) so the key scan takes it 10 % to 50 % into the block starting at
+/// `block`: right after a scan frame closes, the scan takes a press 2 frames later and a
+/// release 8 (FM1_DEB_PRESS, FM1_DEB_RELEASE).
+fn key_into_block(m: &mut Machine, fw: &Firmware, key: u8, down: bool, block: u64) {
+    let frames = fw.symbol("fm1_in") + SCAN_FRAMES_AT;
+    let after = if down { 2 } else { 8 } * SCAN_FRAME_CYCLES;
+    let (lo, hi) = (block + BLOCK_CYCLES / 10, block + BLOCK_CYCLES / 2);
+    run_until(m, lo.saturating_sub(after + 2 * SCAN_FRAME_CYCLES));
+    loop {
+        let f = m.soc.read32(frames);
+        while m.soc.read32(frames) == f {
+            m.run_cycles(2_400);
+        }
+        let taken = m.soc.periph.cycles + after;
+        assert!(taken <= hi, "no scan frame puts key {key} into its block");
+        if taken >= lo {
+            m.key(key, down);
+            return;
+        }
+    }
+}
+
+/// The shot: the hold let go after the frame before, and the screen half way to the frame
+/// after the shot's (common::to_mid_frame), drawn whole from the shot's preparation.
+fn take_live_shot(m: &mut Machine, fw: &Firmware, shot: &LiveShot) {
+    let frame = m.soc.periph.cycle_of_ms(UI_PERIOD_MS);
+    run_until(m, shot.prepare - frame / 4);
+    let lv = fw.symbol("ui") + sidou_sys::ilp32::views::live as u32;
+    let held = m.soc.read32(lv + sidou_sys::ilp32::live_view::held as u32);
+    for i in 0..sidou_sys::SCOPE_VOICES * sidou_sys::SCOPE_W {
+        m.soc
+            .write8(lv + sidou_sys::ilp32::live_view::y as u32 + i, 0);
+    }
+    for i in 0..sidou_sys::LIVE_VIEW_METERS {
+        m.soc
+            .write8(lv + sidou_sys::ilp32::live_view::meter as u32 + i, 0);
+    }
+    m.watch_calls(fw.symbol("live_view_prepare"));
+    let n = m.watched_starts.len();
+    run_until(m, shot.prepare + frame / 2);
+    let at = m.watched_starts[n];
+    assert!(
+        at.abs_diff(shot.prepare) < m.soc.periph.cycle_of_ms(1) / 2,
+        "the frame's preparation came {} cycles from the one planned: the frames' grid slipped",
+        at as i64 - shot.prepare as i64
+    );
+    common::to_mid_frame(m, fw);
+    assert_eq!(
+        m.soc.read32(lv + sidou_sys::ilp32::live_view::held as u32),
+        held,
+        "a trace was held back: the shot is not one preparation's"
+    );
+}
+
 #[test]
 fn live_matches_its_golden_images_and_its_scopes_follow_the_notes() {
     let Some((build, fw)) = fixture("the LIVE test") else {
@@ -2266,10 +2384,10 @@ fn live_matches_its_golden_images_and_its_scopes_follow_the_notes() {
     // At rest each trace is a flat line across the scope.
     assert_eq!(flat, [320; 3], "the traces at rest: two pixels thick");
 
-    // A4, held to its sustain level (SAW LEAD: decay 9).
-    m.key(A4_KEY, true);
-    m.run_ms(1500);
-    common::to_mid_frame(&mut m, &fw);
+    // A4, held to its sustain level (SAW LEAD: decay 9), shot 1.5 s on (LiveShot).
+    let shot = live_shot(&mut m, &fw, 1_700);
+    key_into_block(&mut m, &fw, A4_KEY, true, shot.block - 517 * BLOCK_CYCLES);
+    take_live_shot(&mut m, &fw, &shot);
     compare_golden(&build, "live-a4", &m.soc.lcd.fb, &[]);
     let a4 = trace_pixels(&m.soc.lcd.fb);
     assert!(a4[0] > 200, "voice 1's trace with A4: {a4:?}");
@@ -2290,17 +2408,27 @@ fn live_matches_its_golden_images_and_its_scopes_follow_the_notes() {
         scope_pixels(&m.soc.lcd.fb) == idle,
         "the scopes are not flat after the release"
     );
+}
 
-    // A chord: a voice each. The presses are CHORD_STAGGER_MS apart, more than a key scan
-    // frame (~1.1 ms) and its debounce, so each is its own note-on, in order, and live's
-    // voice allocation decides the voices (E5, A3, E4 on voices 1, 2, 3, as M1b recorded
-    // them), not where the main loop's passes fall against the scan.
-    for k in CHORD {
-        m.key(k, true);
-        m.run_ms(CHORD_STAGGER_MS);
+/// A chord on LIVE, a voice each, on a machine of its own (its oscillators from the boot, as
+/// LiveShot needs). The presses are two blocks (5.8 ms) apart, more than a key scan frame
+/// (~1.1 ms) and its debounce, so each is its own note-on, in order, and live's voice
+/// allocation decides the voices (A3, E4, E5 on voices 1, 2, 3: with no note before, as M1b's
+/// E5, A3, E4 followed the A4 the LIVE test played first), not where the main loop's passes
+/// fall against the scan.
+#[test]
+fn a_chord_on_live_matches_its_golden_image() {
+    let Some((build, fw)) = fixture("the LIVE chord test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    assert_eq!(common::top_view(&mut m, &fw), fw.symbol("live_view_view"));
+    let shot = live_shot(&mut m, &fw, 1_700);
+    for (i, k) in CHORD.into_iter().enumerate() {
+        let block = shot.block - (517 - 2 * i as u64) * BLOCK_CYCLES;
+        key_into_block(&mut m, &fw, k, true, block);
     }
-    m.run_ms(1500);
-    common::to_mid_frame(&mut m, &fw);
+    take_live_shot(&mut m, &fw, &shot);
     compare_golden(&build, "live-chord", &m.soc.lcd.fb, &[]);
     let chord = trace_pixels(&m.soc.lcd.fb);
     assert!(
