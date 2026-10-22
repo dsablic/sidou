@@ -506,3 +506,19 @@ working.
   the audio holds its flash programs need: about 105 ms a packet, 28 s for 64 KB. A shorter gap
   during SysEx would be faster but dips the audio more often: an audio-feel decision for the
   user, after hearing the current behaviour on the unit.
+
+## Help cards: context-sensitive, complete, and two pages where needed (the user, 2026-10-23)
+
+With the 1x bottom hints dropped (the device session), the help card (HOME held) is the only
+on-device explanation, so after the menu/SETTINGS work merges:
+
+- **Context-sensitive** where a control's meaning changes: CHIP by focus (the chip: AGE, DAC,
+  THUMP, BLEED; a slot: its algorithm's own four control names; EXPERT), STEP with a step held
+  (the note and locks), TRACKER with REC on (K1/K2 record locks), the SONG pages and the name
+  editor.
+- **A second page** where eight lines aren't enough: SELECT flips pages while the card shows,
+  the title says 1/2.
+- **Complete:** a test checks that every control a view's input handler acts on appears on that
+  view's card (and each context's), so a new control without a line fails it.
+- **Then drop the 1x bottom text** in every view (the user's choice), and number STEP's pads by
+  beat (1 2 3 4 | 1 2 3 4 …, alternate beats shaded, each beat's first step brighter).
