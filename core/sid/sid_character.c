@@ -9,11 +9,6 @@
 static const sid_chip_profile profiles[SID_CHIPS] = SID_CHIP_PROFILE_ROWS;
 #define EXPERT_ROW_G 128u
 #define EXPERT_ROW_X 192u
-/* A loaded mask avoids pi32v2's register-index bit-clear opcode, absent from fm1-emu. */
-static const uint16_t expert_bits[16] = {
-    1u, 2u, 4u, 8u, 16u, 32u, 64u, 128u,
-    256u, 512u, 1024u, 2048u, 4096u, 8192u, 16384u, 32768u
-};
 _Static_assert(SID_EXPERT_COUNT <= 16u, "expert overrides fit their mask");
 static int filter_overridden(const sid_character* c, sid_model model);
 static void expert_copy(sid_character* to, const sid_character* from, uint32_t index);
@@ -60,7 +55,7 @@ static float amount(uint8_t v) {
 }
 
 static int overridden(const sid_character* c, uint32_t index) {
-    return index < SID_EXPERT_COUNT && (c->expert_mask & expert_bits[index]) &&
+    return index < SID_EXPERT_COUNT && (c->expert_mask & (1u << index)) &&
            c->expert[index] != SID_EXPERT_DEFAULT;
 }
 
@@ -180,9 +175,9 @@ void sid_character_expert_set(sid_character* c, sid_model model, uint32_t index,
     c->expert[index] = (uint8_t)(value == SID_EXPERT_DEFAULT ? SID_EXPERT_DEFAULT :
                                value > SID_CHARACTER_MAX ? SID_CHARACTER_MAX : value);
     if (value == SID_EXPERT_DEFAULT) {
-        c->expert_mask &= (uint16_t)~expert_bits[index];
+        c->expert_mask &= (uint16_t)~(1u << index);
     } else {
-        c->expert_mask |= expert_bits[index];
+        c->expert_mask |= (1u << index);
     }
 }
 
@@ -634,7 +629,7 @@ static uint8_t clamped(uint8_t v) {
 }
 
 static void expert_copy(sid_character* to, const sid_character* from, uint32_t index) {
-    uint16_t mask = expert_bits[index];
+    uint16_t mask = (uint16_t)(1u << index);
     to->expert[index] = from->expert[index];
     to->expert_mask = (uint16_t)((to->expert_mask & ~mask) | (from->expert_mask & mask));
 }

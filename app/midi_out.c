@@ -44,11 +44,6 @@ static const uint16_t macro_releases[LIVE_PARAM_EXPERT] = {
     [LIVE_PARAM_BLEED] = 1u << SID_EXPERT_BLEED,
 };
 
-/* Loaded masks avoid the register-index bit-clear opcode missing from fm1-emu. */
-static const uint16_t expert_bits[16] = {
-    1u, 2u, 4u, 8u, 16u, 32u, 64u, 128u,
-    256u, 512u, 1024u, 2048u, 4096u, 8192u, 16384u, 32768u
-};
 _Static_assert(SID_EXPERT_COUNT <= 16u, "pending experts fit their mask");
 
 static uint32_t packet(uint32_t cin, uint32_t status, uint32_t d1, uint32_t d2) {
@@ -91,10 +86,10 @@ __attribute__((noinline, unused)) static void restore_experts(midi_out* o, const
                                                             uint32_t released) {
     for (uint32_t f = 0; f < SID_EXPERT_COUNT; f++) {
         uint32_t p = LIVE_PARAM_EXPERT + f;
-        if ((released & expert_bits[f]) && l->expert[f] != SID_EXPERT_DEFAULT) {
+        if ((released & (1u << f)) && l->expert[f] != SID_EXPERT_DEFAULT) {
             o->pending[p] = 1;
             o->wire[p] = SID_EXPERT_DEFAULT;
-            o->expert_pending |= expert_bits[f];
+            o->expert_pending |= (1u << f);
         }
     }
 }
@@ -110,16 +105,16 @@ __attribute__((noinline, unused)) static void look_experts(midi_out* o, const li
             continue;
         }
         if (v == SID_EXPERT_DEFAULT) {
-            follows |= expert_bits[f];
+            follows |= (1u << f);
         }
         o->seen[p] = v;
         if (remote || v == SID_EXPERT_DEFAULT) {
             o->wire[p] = v;
             o->pending[p] = 0;
-            o->expert_pending &= (uint16_t)~expert_bits[f];
+            o->expert_pending &= (uint16_t)~(1u << f);
         } else {
             o->pending[p] = 1;
-            o->expert_pending |= expert_bits[f];
+            o->expert_pending |= (1u << f);
         }
     }
     if (!remote) {
@@ -366,7 +361,7 @@ uint32_t midi_out_tick(midi_out* o, const live* l, uint32_t room,
                 break;
             }
             if (p >= LIVE_PARAM_EXPERT) {
-                o->expert_pending &= (uint16_t)~expert_bits[p - LIVE_PARAM_EXPERT];
+                o->expert_pending &= (uint16_t)~(1u << (p - LIVE_PARAM_EXPERT));
             }
         }
     }

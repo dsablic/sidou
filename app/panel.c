@@ -31,8 +31,9 @@ void panel_note_keys(panel* p, live* l, uint32_t down, uint32_t pressed) {
         return; /* most calls: no key */
     }
     int glo = ((p->held >> PANEL_BTN_GLO) | p->glo_latch) & 1u; /* held, or latched */
-    /* Kept in a local and stored once: pi32v2's read-modify-write "and not" on memory, which
-     * clearing a bit of p->quiet in place compiles to, is one fm1-emu does not decode. */
+    /* Kept in a local and stored once, a known-set bit cleared with ^= (fewer memory
+     * read-modify-writes in the loop; it began as a dodge of an and-not form fm1-emu could not
+     * decode, fixed upstream in #33). */
     uint32_t quiet = p->quiet;
     uint32_t toggles = 0;
     for (uint32_t k = 0; k < PANEL_NOTE_KEYS; ++k) {

@@ -1008,11 +1008,6 @@ fn chip_edits_under_character_locks_preserve_the_unlocked_song_base() {
     let character = fs::read_to_string(root.join("core/sid/sid_character.c")).unwrap();
     let keys_route = fs::read_to_string(root.join("app/keys_route.c")).unwrap();
     let setup_control = between(&chip_ctl, "void chip_setup_control(", "void chip_ctl_init(");
-    let character_bits = between(
-        &character,
-        "static const uint16_t expert_bits[",
-        "_Static_assert(",
-    );
     let character_init = between(
         &character,
         "void sid_character_init(",
@@ -1043,7 +1038,6 @@ static void ui_toast(const char* text, uint32_t ms) {{
     assert(strcmp(text, "SAVING") == 0 && ms == 2000u);
     toasts++;
 }}
-{character_bits}
 {character_init}
 {character_edits}
 {setup_control}
