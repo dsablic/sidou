@@ -206,78 +206,6 @@ fn main_share(m: &mut Machine, ms: u64) -> f64 {
 }
 
 #[test]
-fn an_updater_identity_reply_cannot_overtake_sidous_queued_end_packet() {
-    let Some(fw) = fixture("SysEx producer arbitration") else {
-        return;
-    };
-    let mut m = Machine::boot(&fw.image);
-    m.usb = Some(UsbHost::default());
-    run_past_boot(&mut m, &fw);
-    enumerate(&mut m, &fw);
-    host(&mut m).in1.clear();
-    send(
-        &mut m,
-        &sysex_packets(&[0xf0, 0x7d, 0x53, 0x44, 1, 0, 0x7f, 0xf7]),
-    );
-    let state = fw.symbol("sidou_sysex");
-    for _ in 0..100 {
-        if m.soc
-            .read8(state + sidou_sys::ilp32::sysex::tx_active as u32)
-            != 0
-            && m.soc
-                .read16(state + sidou_sys::ilp32::sysex::tx_position as u32)
-                >= 12
-        {
-            break;
-        }
-        m.usb_frames(1);
-    }
-    assert_ne!(
-        m.soc
-            .read8(state + sidou_sys::ilp32::sysex::tx_active as u32),
-        0
-    );
-    send(&mut m, &sysex_packets(&message(0x11, &[])));
-    m.usb_frames(100);
-    let packets = host(&mut m).in1.clone();
-    let mut frames = Vec::new();
-    let mut frame = Vec::new();
-    for packet in packets.concat().as_chunks::<4>().0 {
-        let n = match packet[0] & 15 {
-            4 | 7 => 3,
-            5 => 1,
-            6 => 2,
-            _ => 0,
-        };
-        for &b in &packet[1..=n] {
-            if b >= 0xf8 {
-                continue;
-            }
-            if b == 0xf0 {
-                assert!(
-                    frame.is_empty(),
-                    "a producer split an unfinished SysEx frame"
-                );
-            }
-            if b == 0xf0 || !frame.is_empty() {
-                frame.push(b);
-            }
-            if b == 0xf7 && !frame.is_empty() {
-                frames.push(std::mem::take(&mut frame));
-            }
-        }
-    }
-    assert!(frame.is_empty(), "unterminated SysEx response");
-    assert_eq!(frames.len(), 2);
-    assert_eq!(&frames[0][..4], &[0xf0, 0x7d, 0x53, 0x44]);
-    assert_eq!(
-        replies(&packets).len(),
-        1,
-        "the updater identity still replies"
-    );
-}
-
-#[test]
 fn a_host_gets_the_identity_and_the_knobs_over_usb() {
     let Some(fw) = fixture("the USB test") else {
         return;
@@ -426,88 +354,6 @@ fn sidou_frames(in1: &[Vec<u8>]) -> Vec<Vec<u8>> {
     frames
 }
 
-/// An INQ, and the main loop until its reply is part way out on the wire.
-fn inquiry_part_way(m: &mut Machine, fw: &Firmware, sequence: u8) {
-    let sum = (1 + sequence).wrapping_neg() & 0x7f;
-    send(
-        m,
-        &sysex_packets(&[0xf0, 0x7d, 0x53, 0x44, 1, sequence, sum, 0xf7]),
-    );
-    let state = fw.symbol("sidou_sysex");
-    for _ in 0..200 {
-        let active = m
-            .soc
-            .read8(state + sidou_sys::ilp32::sysex::tx_active as u32);
-        let at = m
-            .soc
-            .read16(state + sidou_sys::ilp32::sysex::tx_position as u32);
-        if active != 0 && at >= 6 {
-            return;
-        }
-        m.usb_frames(1);
-    }
-    panic!("the INQ reply never started");
-}
-
-/// A gap in SIDOU's MIDI-in ring that lost `sources`' input (MIDI_SRC_* bits), as the
-/// producer leaves it (app/midi_ring.c lose).
-fn ring_gap(m: &mut Machine, fw: &Firmware, sources: u8) {
-    let ring = fw.symbol("in_ring");
-    let epoch = ring + sidou_sys::ilp32::midi_ring::epoch as u32;
-    let e = m.soc.read8(epoch);
-    m.soc.write8(epoch, e.wrapping_add(1));
-    m.soc
-        .write8(ring + sidou_sys::ilp32::midi_ring::in_gap as u32, sources);
-}
-
-/// Lost input aborts only the SysEx transfer of the port that lost it, and never leaves a reply
-/// frame open on the wire (review 4.1): a TRS gap while a USB INQ reply goes out leaves it
-/// whole, with nothing after it; a USB gap lets it finish to its F7, then NAKs ABORTED (9); the
-/// next request is answered. Before, either gap reset SysEx mid-frame: the reply stopped
-/// after its first packets with no F7.
-#[test]
-fn a_ring_gap_aborts_only_its_ports_sysex_and_never_cuts_a_reply() {
-    let Some(fw) = fixture("SysEx across a MIDI-in gap") else {
-        return;
-    };
-    let mut m = Machine::boot(&fw.image);
-    m.usb = Some(UsbHost::default());
-    run_past_boot(&mut m, &fw);
-    enumerate(&mut m, &fw);
-    let restarts = fw.symbol("midi_stats") + 8;
-    let before = m.soc.read32(restarts);
-
-    host(&mut m).in1.clear();
-    inquiry_part_way(&mut m, &fw, 0);
-    ring_gap(&mut m, &fw, sidou_sys::MIDI_SRC_TRS as u8);
-    m.usb_frames(100);
-    let frames = sidou_frames(&host(&mut m).in1);
-    assert_eq!(
-        m.soc.read32(restarts),
-        before + 1,
-        "the gap restarted TRS's parser"
-    );
-    assert_eq!(frames.len(), 1, "the INQ reply alone: {frames:02x?}");
-    assert_eq!(&frames[0][..6], &[0xf0, 0x7d, 0x53, 0x44, 1, 0]);
-
-    host(&mut m).in1.clear();
-    inquiry_part_way(&mut m, &fw, 1);
-    ring_gap(&mut m, &fw, sidou_sys::MIDI_SRC_USB as u8);
-    m.usb_frames(100);
-    let frames = sidou_frames(&host(&mut m).in1);
-    assert_eq!(frames.len(), 2, "the reply, then a NAK: {frames:02x?}");
-    assert_eq!(&frames[0][..6], &[0xf0, 0x7d, 0x53, 0x44, 1, 1]);
-    assert_eq!(&frames[1][4..6], &[0x7f, 1], "a NAK");
-    assert_eq!(frames[1][7], sidou_sys::SYSEX_ABORTED as u8, "ABORTED");
-
-    host(&mut m).in1.clear();
-    inquiry_part_way(&mut m, &fw, 2);
-    m.usb_frames(100);
-    let frames = sidou_frames(&host(&mut m).in1);
-    assert_eq!(frames.len(), 1, "the next INQ is answered: {frames:02x?}");
-    assert_eq!(&frames[0][..6], &[0xf0, 0x7d, 0x53, 0x44, 1, 2]);
-}
-
 // ---- SIDOU's SysEx file transfers over USB, timed (docs/reference/sysex.md) ----
 
 /// SIDOU's frame: `F0 7D 53 44 cmd seq packed checksum F7` (app/sysex.c's packing: a mask of
@@ -624,10 +470,17 @@ fn usb_machine(fw: &Firmware) -> Machine {
 /// PUT then GET of `data` as a named file (stop-and-wait, 256-byte DATA packets, an ACK
 /// each), as tools/sysex-roundtrip runs it on the device. Returns the emulated ms a DATA packet
 /// and its ACK take, on average, up (PUT) and down (GET).
-fn round_trip(m: &mut Machine, name: &str, data: &[u8]) -> (f64, f64) {
-    let mut link = Link::default();
+fn name16(name: &str) -> Vec<u8> {
+    (0..16)
+        .map(|i| name.as_bytes().get(i).copied().unwrap_or(0))
+        .collect()
+}
+
+/// PUT `data` as a named file (type 2), stop-and-wait from sequence 10; returns the metadata
+/// and the emulated ms a DATA packet and its ACK took, on average.
+fn put_file(m: &mut Machine, link: &mut Link, name: &str, data: &[u8]) -> (Vec<u8>, f64) {
     let mut meta = vec![0, 0];
-    meta.extend((0..16).map(|i| name.as_bytes().get(i).copied().unwrap_or(0)));
+    meta.extend(name16(name));
     meta.push(2);
     meta.extend((data.len() as u32).to_le_bytes());
     // SAFETY: data is valid for its length; the CRC routine does not retain it.
@@ -647,9 +500,19 @@ fn round_trip(m: &mut Machine, name: &str, data: &[u8]) -> (f64, f64) {
     seq += 1;
     link.send(m, 6, seq, &[]);
     link.ack(m, seq);
+    (meta, up)
+}
+
+/// PUT then GET of `data` as a named file (stop-and-wait, 256-byte DATA packets, an ACK
+/// each), as tools/sysex-roundtrip runs it on the device. Returns the emulated ms a DATA packet
+/// and its ACK take, on average, up (PUT) and down (GET).
+fn round_trip(m: &mut Machine, name: &str, data: &[u8]) -> (f64, f64) {
+    let mut link = Link::default();
+    let (meta, up) = put_file(m, &mut link, name, data);
+    let packets = data.len().div_ceil(256);
 
     let mut get = vec![0, 0];
-    get.extend((0..16).map(|i| name.as_bytes().get(i).copied().unwrap_or(0)));
+    get.extend(name16(name));
     link.send(m, 3, 60, &get);
     let (command, s, payload) = link.recv(m, 2_000);
     assert_eq!((command, s), (4, 60), "GET's metadata: {payload:02x?}");
@@ -754,4 +617,159 @@ fn a_sounding_usb_put_keeps_its_gaps_with_one_hold_a_packet() {
     let (up, down) = timed_round_trip(&fw, "USB CHORD", true);
     assert!(up <= 116.0, "PUT: {up:.1} ms a packet");
     assert!(down <= 11.0, "GET: {down:.1} ms a packet");
+}
+
+/// A GET of `name` (256 bytes or more), and the main loop until its first DATA reply (101
+/// event packets, more than USB's ring of 64 holds) is part way out on the wire.
+fn get_part_way(m: &mut Machine, fw: &Firmware, link: &mut Link, name: &str, sequence: u8) {
+    let mut get = vec![0, 0];
+    get.extend(name16(name));
+    link.send(m, 3, sequence, &get);
+    let (command, s, _) = link.recv(m, 2_000);
+    assert_eq!((command, s), (4, sequence), "GET's metadata");
+    link.send(m, 0x7e, sequence, &[]);
+    let state = fw.symbol("sidou_sysex");
+    for _ in 0..200 {
+        let active = m
+            .soc
+            .read8(state + sidou_sys::ilp32::sysex::tx_active as u32);
+        let command = m
+            .soc
+            .read8(state + sidou_sys::ilp32::sysex::tx_command as u32);
+        let at = m
+            .soc
+            .read16(state + sidou_sys::ilp32::sysex::tx_position as u32);
+        if active != 0 && command == 5 && at >= 12 {
+            return;
+        }
+        m.usb_frames(1);
+    }
+    panic!("the DATA reply never was part way out");
+}
+
+/// A file for the arbitration tests: one 256-byte DATA reply.
+fn reply_file() -> Vec<u8> {
+    (0..256u32).map(|i| (i * 7) as u8).collect()
+}
+
+/// The update protocol's reply cannot split a SIDOU reply that is part way out: a GET's DATA,
+/// 101 event packets, more than USB's ring holds (a reply goes out whole as the ring takes it,
+/// so a short one such as INQ's is never part way).
+#[test]
+fn an_updater_identity_reply_cannot_overtake_sidous_queued_end_packet() {
+    let Some(fw) = fixture("SysEx producer arbitration") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    put_file(&mut m, &mut Link::default(), "ARBITRATION", &reply_file());
+    host(&mut m).in1.clear();
+    get_part_way(&mut m, &fw, &mut Link::default(), "ARBITRATION", 20);
+    send(&mut m, &sysex_packets(&message(0x11, &[])));
+    m.usb_frames(100);
+    let packets = host(&mut m).in1.clone();
+    let mut frames = Vec::new();
+    let mut frame = Vec::new();
+    for packet in packets.concat().as_chunks::<4>().0 {
+        let n = match packet[0] & 15 {
+            4 | 7 => 3,
+            5 => 1,
+            6 => 2,
+            _ => 0,
+        };
+        for &b in &packet[1..=n] {
+            if b >= 0xf8 {
+                continue;
+            }
+            if b == 0xf0 {
+                assert!(
+                    frame.is_empty(),
+                    "a producer split an unfinished SysEx frame"
+                );
+            }
+            if b == 0xf0 || !frame.is_empty() {
+                frame.push(b);
+            }
+            if b == 0xf7 && !frame.is_empty() {
+                frames.push(std::mem::take(&mut frame));
+            }
+        }
+    }
+    assert!(frame.is_empty(), "unterminated SysEx response");
+    assert_eq!(
+        frames.len(),
+        3,
+        "GET's metadata, its DATA, the updater's reply"
+    );
+    assert_eq!(&frames[0][..6], &[0xf0, 0x7d, 0x53, 0x44, 4, 20]);
+    assert_eq!(&frames[1][..6], &[0xf0, 0x7d, 0x53, 0x44, 5, 21]);
+    assert_eq!(
+        replies(&packets).len(),
+        1,
+        "the updater identity still replies"
+    );
+}
+
+/// A gap in SIDOU's MIDI-in ring that lost `sources`' input (MIDI_SRC_* bits), as the
+/// producer leaves it (app/midi_ring.c lose).
+fn ring_gap(m: &mut Machine, fw: &Firmware, sources: u8) {
+    let ring = fw.symbol("in_ring");
+    let epoch = ring + sidou_sys::ilp32::midi_ring::epoch as u32;
+    let e = m.soc.read8(epoch);
+    m.soc.write8(epoch, e.wrapping_add(1));
+    m.soc
+        .write8(ring + sidou_sys::ilp32::midi_ring::in_gap as u32, sources);
+}
+
+/// Lost input aborts only the SysEx transfer of the port that lost it, and never leaves a reply
+/// frame open on the wire (review 4.1): a TRS gap while a USB GET's DATA goes out leaves it
+/// whole and the transfer going on; a USB gap lets it finish to its F7, then NAKs ABORTED (9);
+/// the next request is answered. Before, either gap reset SysEx mid-frame: the reply stopped
+/// after its first packets with no F7.
+#[test]
+fn a_ring_gap_aborts_only_its_ports_sysex_and_never_cuts_a_reply() {
+    let Some(fw) = fixture("SysEx across a MIDI-in gap") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    let data = reply_file();
+    put_file(&mut m, &mut Link::default(), "GAP", &data);
+    let restarts = fw.symbol("midi_stats") + 8;
+    let before = m.soc.read32(restarts);
+
+    host(&mut m).in1.clear();
+    let mut link = Link::default();
+    get_part_way(&mut m, &fw, &mut link, "GAP", 20);
+    ring_gap(&mut m, &fw, sidou_sys::MIDI_SRC_TRS as u8);
+    let (command, s, payload) = link.recv(&mut m, 2_000);
+    assert_eq!((command, s), (5, 21));
+    assert_eq!(payload, data, "the DATA whole");
+    link.send(&mut m, 0x7e, 21, &[]);
+    let (command, s, _) = link.recv(&mut m, 2_000);
+    assert_eq!((command, s), (6, 22), "the transfer went on to its END");
+    link.send(&mut m, 0x7e, 22, &[]);
+    m.usb_frames(20);
+    assert_eq!(
+        m.soc.read32(restarts),
+        before + 1,
+        "the gap restarted TRS's parser"
+    );
+    assert_eq!(sidou_frames(&host(&mut m).in1).len(), 3);
+
+    host(&mut m).in1.clear();
+    get_part_way(&mut m, &fw, &mut Link::default(), "GAP", 40);
+    ring_gap(&mut m, &fw, sidou_sys::MIDI_SRC_USB as u8);
+    m.usb_frames(100);
+    let frames = sidou_frames(&host(&mut m).in1);
+    assert_eq!(frames.len(), 3, "the metadata, the DATA, then a NAK");
+    assert_eq!(&frames[1][4..6], &[5, 41], "the DATA, whole to its F7");
+    assert_eq!(frames[1].len(), 8 + 256 + 37);
+    assert_eq!(frames[2][4], 0x7f, "a NAK");
+    assert_eq!(frames[2][7], sidou_sys::SYSEX_ABORTED as u8, "ABORTED");
+
+    host(&mut m).in1.clear();
+    send(&mut m, &sysex_packets(&sd_frame(1, 2, &[])));
+    m.usb_frames(100);
+    let frames = sidou_frames(&host(&mut m).in1);
+    assert_eq!(frames.len(), 1, "the next INQ is answered: {frames:02x?}");
+    assert_eq!(&frames[0][..6], &[0xf0, 0x7d, 0x53, 0x44, 1, 2]);
 }
