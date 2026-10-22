@@ -49,6 +49,8 @@ struct {
     uint8_t polled;      /* the last store_poll had work */
     uint8_t file;        /* the test hook's file: 1 streaming, 2 ended */
     uint8_t sysex_turn;
+    uint8_t silent;      /* as quiet, but for MIDI input (a SysEx transfer's own bytes) */
+    uint8_t programmed;  /* a held operation ran in this hold */
 } store_fm1_state;
 #define fm store_fm1_state
 
@@ -65,18 +67,46 @@ static const uint8_t* map(void* ctx, uint32_t off) {
     return (const uint8_t*)FM1_XIP(off);
 }
 
+static void hold_on(void) {
+    audio_hold(1);
+    fm.holding = 1;
+    fm.programmed = 0;
+}
+
+static void hold_off(void) {
+    audio_hold(0);
+    fm.holding = 0;
+}
+
 /* A held operation may run now: the device quiet (or a forced save), the gap since the last
- * one passed, and the audio silent. Asks for the hold if it is not on. */
+ * one passed, and the audio silent. Asks for the hold if it is not on.
+ * A SysEx write's programs (midi_sysex_writing, sysex.h) go a batch a hold: a DATA packet's
+ * pages, its chunk header and commit word, at END the FILE record (store_file_pending), one a
+ * store_poll, at least STORE_PROGRAM_GAP_MS apart with the interrupts on between them; the hold
+ * ends with the batch (store_fm1_service). A sounding device plays between two holds,
+ * STORE_FORCE_GAP_MS apart, ramped down and back up; a silent one (fm.silent) hears no mute,
+ * so its hold stays on between packets, as the quiet store's, and starts STORE_HOLD_GAP_MS
+ * after the last. One program a hold, each STORE_FORCE_GAP_MS apart, took 280 ms a 256-byte
+ * packet (docs/hardware-results/2026-10-22-flash-day.md). */
 static int hold_ready(void) {
     if (!fm.quiet && !fm.force && !midi_sysex_writing) {
         return 0;
     }
-    if (midi_sysex_writing && fm.now - fm.last_hold < STORE_FORCE_GAP_MS) {
-        return 0; /* let the reused hold ramp back up between explicit packet programs */
+    if (midi_sysex_writing) {
+        uint32_t gap = fm.holding ? STORE_PROGRAM_GAP_MS
+                       : fm.silent ? STORE_HOLD_GAP_MS
+                                   : STORE_FORCE_GAP_MS;
+        if (fm.now - fm.last_hold < gap) {
+            return 0;
+        }
+        if (!fm.holding) {
+            hold_on();
+            return 0;
+        }
+        return audio_held();
     }
     if (!fm.holding) {
-        audio_hold(1);
-        fm.holding = 1;
+        hold_on();
         return 0;
     }
     uint32_t gap = fm.quiet ? STORE_HOLD_GAP_MS : STORE_FORCE_GAP_MS;
@@ -109,11 +139,8 @@ static int operate(uint32_t off, const void* p, uint32_t n, int erase) {
     sti();
     if (held) {
         fm.last_hold = fm.now;
+        fm.programmed = 1;
         store_fm1_counts.holds++;
-        if (midi_sysex_writing) {
-            audio_hold(0);
-            fm.holding = 0;
-        }
     }
     if (rc) {
         store_fm1_counts.errors++;
@@ -156,17 +183,11 @@ void store_fm1_boot(void (*feed)(void)) {
     store_quiet(&store_fm1_store, 0);
 }
 
-/* 1 while the device is quiet: no song plays, no voice is gated, no UI sound plays, no button
- * is down, no MIDI input but real-time bytes for STORE_QUIET_MS, and the output's peak low as
- * long (the peak scan runs while the store wants a held operation). */
-static int quiet(const live* l, const keys_route* kr, int sounding) {
-    uint32_t in = midi_inputs();
-    if (in != fm.inputs) {
-        fm.inputs = in;
-        fm.input_ms = fm.now;
-    }
-    if (midi_sysex_running || kr->song || sounding || input_buttons() ||
-        fm.now - fm.input_ms < STORE_QUIET_MS) {
+/* 1 while the device is silent: no song plays, no voice is gated, no UI sound plays, no button
+ * is down, and the output's peak low for STORE_QUIET_MS (the peak scan runs while the store
+ * wants a held operation). */
+static int silent(const live* l, const keys_route* kr, int sounding) {
+    if (kr->song || sounding || input_buttons()) {
         return 0;
     }
     for (uint32_t v = 0; v < LIVE_VOICES; v++) {
@@ -175,6 +196,18 @@ static int quiet(const live* l, const keys_route* kr, int sounding) {
         }
     }
     return audio_quiet_blocks() * STORE_BLOCK_US >= STORE_QUIET_MS * 1000u;
+}
+
+/* fm.silent, and 1 while the device is quiet: silent, with no MIDI input but real-time bytes
+ * for STORE_QUIET_MS. */
+static int quiet(const live* l, const keys_route* kr, int sounding) {
+    uint32_t in = midi_inputs();
+    if (in != fm.inputs) {
+        fm.inputs = in;
+        fm.input_ms = fm.now;
+    }
+    fm.silent = (uint8_t)silent(l, kr, sounding);
+    return fm.silent && !midi_sysex_running && fm.now - fm.input_ms >= STORE_QUIET_MS;
 }
 
 /* The test hook (store_fm1_test): one operation once the store rests. */
@@ -272,8 +305,7 @@ void store_fm1_service(uint32_t now_ms, const live* l, keys_route* kr, int sound
     int want_hold = fm.wanted || (!store_fm1_window && writing);
     audio_peak_scan(want_hold && !kr->song);
     if (fm.holding && (!want_hold || (!fm.quiet && !fm.force && !midi_sysex_writing))) {
-        audio_hold(0);
-        fm.holding = 0;
+        hold_off();
     }
     store_quiet(&store_fm1_store, !midi_sysex_running && (fm.quiet || fm.force) && fm.wanted);
     fm.polled = 0;
@@ -282,6 +314,11 @@ void store_fm1_service(uint32_t now_ms, const live* l, keys_route* kr, int sound
         fm.polled = (uint8_t)store_poll(&store_fm1_store);
         if (!fm.polled && (fm.quiet || fm.force) && fm.wanted) {
             fm.wanted = 0; /* maintenance found nothing more to do */
+        }
+        /* A SysEx write's hold ends with its batch (hold_ready), on a sounding device. */
+        if (fm.holding && midi_sysex_writing && fm.programmed && !fm.silent &&
+            !store_file_pending(&store_fm1_store)) {
+            hold_off();
         }
     }
     store_file_idle(&store_fm1_store, now_ms - fm.last_ms);

@@ -38,6 +38,7 @@
 #define STORE_HOLD_US 35000u       /* a held operation masks interrupts at most this long */
 #define STORE_HOLD_GAP_MS 10u      /* between held operations: TIMER5 drains the TRS ring */
 #define STORE_FORCE_GAP_MS 100u    /* between a forced save's held erases (store_fm1_force) */
+#define STORE_PROGRAM_GAP_MS 1u    /* between a SysEx write's held programs in one hold */
 #define STORE_QUIET_MS 500u        /* quiet: no key, no MIDI input, the output low, this long */
 
 /* The decision rule (docs/hardware.md, "Open checks"): programs go in windows of the largest of
