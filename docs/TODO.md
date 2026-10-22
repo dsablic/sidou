@@ -330,15 +330,10 @@ their own `Copyright (C)` lines, which REUSE accepts (the vendor-verbatim rule).
 
 ## The identity FM-1_900 is shared with Felucca's development builds
 
-- **Where:** `SIDOU_PRODUCT` (`platform/fm1/CMakeLists.txt`) and
-  `sidou-pack --product`.
-- **Problem:** installers take the identity as `FM-1_<digits>` and use it
-  to check an install; Felucca, sloop and melodee development builds all
-  answer `FM-1_900` (releases `FM-1_9XY`), and so does SIDOU. An installer
-  cannot tell them apart, only that the install reports what the package
-  carries.
-- **Action:** agree distinct digits with the community before SIDOU
-  releases (e.g. a range for SIDOU), and use them in release builds.
+- **Decided 2026-10-23:** release builds answer **`FM-1_964`** (`SIDOU_PRODUCT` and
+  `sidou-pack --product`); development builds keep `FM-1_900`. There is no registry: of the 80
+  Firmware Hub packages checked, 17 ship `FM-1_900` and the rest picked a number, some colliding;
+  none uses 964. Set it in the v0.3.0 release build (preflash accepts `FM-1_9XY`).
 
 ## Hardware results
 

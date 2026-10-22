@@ -85,8 +85,13 @@ the 6502 study below.
      engine, Mini-Tone's), so the release notes and the Hub listing lead with what only SIDOU
      does: GoatTracker 2 compatibility both ways and two SIDs with the chip character. It is led by what sets SIDOU apart: writing C64 music on the FM-1, GoatTracker 2
    compatible both ways, two authentic SIDs with the chip character. With:
-   - a small group of testers who already have a recovery route (also to measure the power
-     cost of the main loop's spin while USB is attached);
+   - no separate tester round (the user, 2026-10-23): the OCT- recovery route, the USB update
+     path and the way back to V15 are proven on hardware, so the release goes out for people to
+     experiment with; the power cost of the main loop's spin while USB is attached is measured
+     when someone can;
+   - SIDOU's own identity **`FM-1_964`** (a nod to the C64): there is no registry; of the 80
+     packages in the Firmware Hub's catalogue on 2026-10-23, 17 ship `FM-1_900` and the rest
+     picked a number (several collide: 950, 910, 955, 985, 700); none uses 964;
    - a submission to the FM-1 Firmware Hub (thefirmwarehub.com) for the release, not before.
 7. **M3, leaner.** `.sid` playback as [decision record 0008](../decisions/0008-m3-6502-and-fm1-sid.md)
    sets it: SIDOU's own 6502 (about ten times fewer instructions than FM-1 SID's m6502.h in
