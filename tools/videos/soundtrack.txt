@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The videos' soundtrack (tools/videos/make.py): CHROME COMET, played by SIDOU in fm1-emu, under
+# the title cards. A journey of the harness (grammar: host/crates/ergo/tables/journeys.txt).
+
+journey soundtrack | Soundtrack
+  goal Play CHROME COMET.
+  prereq On LIVE after the boot, CHROME COMET in the store.
+  skills -
+  songs chrome-comet
+  step menu | Menu | - | press HOME | view menu
+  step song | SONG | - | select-item SONG; turn ALGORITHM 1 | view song_menu
+  step list | LOAD | - | turn ALGORITHM 1; wait 600 | text CHROME COMET
+  step load | Load | - | turn ALGORITHM 1; wait 1500 | absent BUSY; absent SNG:
+  step play | Play | - | press PLAY; wait 36000 | sound

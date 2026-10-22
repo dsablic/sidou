@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SIDOU's how-to videos from docs/recipes (docs/videos.md): one command re-renders them all.
+#   tools/make-videos                 every recipe, into build/videos (MP4, SRT, WebP preview)
+#   tools/make-videos --recipe ID     one recipe (repeatable)
+#   tools/make-videos --fast          half resolution, fast x264: a quick look
+# Needs the fm1 build (build/fm1, or SIDOU_FM1_BUILD), Rust (ergo), uv (Python with Pillow)
+# and ffmpeg (with libx264). Captures are cached in build/videos/cache.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd)
+export PATH="/opt/homebrew/opt/rustup/bin:$PATH"
+(cd "$root/host" && cargo build --locked --release -q -p ergo)
+export PYTHONDONTWRITEBYTECODE=1
+exec uv run --quiet --no-project --with 'pillow==13.0.0' python "$root/tools/videos/make.py" "$@"

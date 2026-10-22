@@ -1,0 +1,41 @@
+{
+  "sidou-intro": {
+    "teaser": false,
+    "title": false,
+    "bed": [
+      "boot",
+      "load"
+    ],
+    "bpm": 150,
+    "preview_step": "stereo"
+  },
+  "whats-new": {
+    "teaser": false,
+    "bpm": 125,
+    "preview_step": "character"
+  },
+  "rec-over-loop": {
+    "bpm": 125
+  },
+  "mute-and-solo": {
+    "bpm": 125
+  },
+  "step-a-beat": {
+    "bpm": 125
+  },
+  "save-and-load": {
+    "bpm": 125
+  },
+  "track-bass": {
+    "bpm": 125
+  },
+  "track-lead": {
+    "bpm": 125
+  },
+  "play-over-a-song": {
+    "bpm": 125
+  },
+  "remix-a-song": {
+    "bpm": 94
+  }
+}

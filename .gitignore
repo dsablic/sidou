@@ -4,3 +4,4 @@
 /host/target/
 *.wav
 .DS_Store
+__pycache__/
