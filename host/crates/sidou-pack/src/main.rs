@@ -107,6 +107,12 @@ fn verify_main(path: &str) -> ExitCode {
     println!("flash_bin {}", v.flash_len);
     println!("app {}", v.app_len);
     println!("loader {}", v.loader_len);
+    println!("loader_sha256 {}", v.loader_sha256);
+    println!("loader_identity {}", v.loader_identity);
+    println!(
+        "loader_release {}",
+        sidou_pack::loader_release(&v.loader_sha256).unwrap_or("unknown")
+    );
     println!(
         "marker {}",
         if v.marker {

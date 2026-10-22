@@ -138,8 +138,9 @@ cargo run --release -p sidou-pack -- \
 `sidou-pack --test-wrong-size` makes a package that SIDOU's update step 1
 refuses (for the checklist's refused-install item).
 `sidou-pack --verify sidou.fwsc` checks a finished package (SHA-256, identity, sizes, CRCs, the
-loader's marker) without any input or device; `tools/preflash sidou.fwsc` runs it and checks
-the recovery route too (`docs/flash-day.md`).
+loader's marker, and which loader it is: Felucca 1.6.1's by its SHA-256, with its identity)
+without any input or device; `tools/preflash sidou.fwsc` runs it and checks the recovery route
+too (`docs/flash-day.md`).
 
 Ship `LICENSES/Apache-2.0.txt` with every package. The package's identity is
 `FM-1_900` (`--product`; it must be the firmware's `SIDOU_PRODUCT`).

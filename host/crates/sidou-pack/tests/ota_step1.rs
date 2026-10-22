@@ -18,8 +18,8 @@ use sidou_pack::harness::{
     ldr_h_session, ldr_h_writes, ota_h_boot_cleanup, ota_h_service, ota_h_session, OtaHost,
 };
 use sidou_pack::{
-    crc16, default_cache, enc, logical_image, sha256_hex, ufw, ufw_file, wrap_loader, Inputs,
-    CHIP_KEY, HEAD_SIZE,
+    crc16, default_cache, enc, loader_identity, loader_release, logical_image, sha256_hex, ufw,
+    ufw_file, wrap_loader, Inputs, CHIP_KEY, FELUCCA_LOADER_ID, FELUCCA_LOADER_SHA256, HEAD_SIZE,
 };
 
 const FLASH: usize = 1 << 20;
@@ -472,4 +472,57 @@ fn the_built_loader_is_staged() {
     let mut inst = Installer::new(&pkg);
     let mut dev = Device::new(&synthetic_head(), &mut inst);
     assert_eq!((dev.session(), dev.host.committed), (0, 1));
+}
+
+#[test]
+fn the_built_loader_is_felucca_1_6_1s() {
+    let Some(l) = built_loader() else {
+        return;
+    };
+    assert_eq!(
+        sha256_hex(&l),
+        FELUCCA_LOADER_SHA256,
+        "loader.bin is not Felucca 1.6.1's: the vendored loader or its build flags changed"
+    );
+    assert_eq!(loader_identity(&l), FELUCCA_LOADER_ID);
+    assert_eq!(loader_release(&sha256_hex(&l)), Some("Felucca 1.6.1"));
+}
+
+#[test]
+fn a_wrong_size_package_with_the_built_loader_is_refused_before_anything_is_erased() {
+    let _one = exclusive();
+    let Some(l) = built_loader() else {
+        return;
+    };
+    let full = sidou_pack::flash_image(&inputs(), &app()).unwrap();
+    let ota = wrap_loader(&l).unwrap();
+    for len in [full.len() - 0x1000, full.len() + 0x1000] {
+        let mut flash = full.clone();
+        flash.resize(len, 0xFF);
+        let pkg = ufw(&flash, &ota, PRODUCT).unwrap();
+        // sidou-pack --verify, and so tools/preflash, refuses it too.
+        let v = sidou_pack::verify(&pkg);
+        assert!(
+            v.problems.iter().any(|p| p.contains("(-14)")),
+            "{:?}",
+            v.problems
+        );
+        // Step 1 in the app: FAILED -15, nothing erased.
+        let mut inst = Installer::new(&pkg);
+        let mut dev = Device::new(&synthetic_head(), &mut inst);
+        let before = dev.flash.clone();
+        assert_eq!(dev.session(), -15, "step 1, flash.bin of {len} bytes");
+        assert_eq!(dev.host.committed, 0);
+        assert!(dev.flash == before, "step 1 wrote the flash");
+        // The loader (after a commit made by an older app's step 1): -14, nothing erased.
+        let mut inst = Installer::new(&pkg);
+        let mut dev = Device::new(&synthetic_head(), &mut inst);
+        let before = dev.flash.clone();
+        assert_eq!(
+            dev.loader_session(),
+            (-14, 0),
+            "the loader, flash.bin of {len} bytes"
+        );
+        assert!(dev.flash == before, "the loader wrote the flash");
+    }
 }

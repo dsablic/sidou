@@ -5,9 +5,9 @@
 //! and skip without it.
 
 use sidou_pack::{
-    default_cache, flash_image, head, head_chip_key, inputs, package, product_of, sha256_hex, ufw,
-    ufw_file, unwrap_loader, verify, wrap_loader, Inputs, APP_SLOT, CHIP_KEY, DEFAULT_PRODUCT,
-    FLASH_SIZE, HEAD_SIZE, LOADER_LOAD,
+    default_cache, flash_image, head, head_chip_key, inputs, loader_identity, loader_release,
+    package, product_of, sha256_hex, ufw, ufw_file, unwrap_loader, verify, wrap_loader, Inputs,
+    APP_SLOT, CHIP_KEY, DEFAULT_PRODUCT, FLASH_SIZE, HEAD_SIZE, LOADER_LOAD,
 };
 
 /// The package of `tiny_app` and `tiny_loader` with the pinned inputs.
@@ -108,6 +108,12 @@ fn verify_accepts_a_sound_package_and_reports_its_facts() {
         (DEFAULT_PRODUCT, FLASH_SIZE, app.len(), loader.len())
     );
     assert!(v.marker);
+    assert_eq!(v.loader_sha256, sha256_hex(&loader));
+    assert_eq!(
+        (v.loader_identity.as_str(), loader_release(&v.loader_sha256)),
+        ("", None),
+        "the tiny loader answers nothing and is no release"
+    );
     let release = package(&inp, &app, &loader, "FM-1_921");
     assert!(
         release.is_err(),
@@ -155,4 +161,18 @@ fn verify_refuses_damage_and_foreign_identities() {
         .problems
         .iter()
         .any(|p| p.contains("FM-1_015")));
+}
+
+#[test]
+fn the_loader_identity_is_its_first_terminated_ota_string() {
+    assert_eq!(
+        loader_identity(b"\x00ota-FM-1_900\x00ota-x\x00"),
+        "ota-FM-1_900"
+    );
+    // Not terminated within 32 bytes, or not printable: skipped for the next one.
+    let mut l = b"ota-".to_vec();
+    l.extend([b'a'; 40]);
+    l.extend_from_slice(b"\x00ota-\x01\x00ota-FM-1_015\x00");
+    assert_eq!(loader_identity(&l), "ota-FM-1_015");
+    assert_eq!(loader_identity(b"no identity here\x00"), "");
 }

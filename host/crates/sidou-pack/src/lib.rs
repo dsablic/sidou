@@ -47,6 +47,17 @@ pub const LOADER_MAX: usize = 0x14000;
 /// How Felucca, sloop and melodee (and SIDOU's ota.c) recognise a package's loader: in the
 /// first literals of ota.bin's first LZ4 block.
 pub const LOADER_MARK: &[u8; 16] = b"FELUCCA-LOADER-1";
+/// Felucca 1.6.1's update loader, the RAM image its tools/build.py `build_loader()` makes from
+/// the tag `v1.6.1` (commit a53ecf42), which SIDOU's fm1 build makes byte for byte from the
+/// vendored copy (platform/fm1/VENDORED.md): its SHA-256. The loader in Felucca's own
+/// felucca-1.6.1.fwsc unwraps to the same bytes. It refuses a flash.bin of any size but
+/// `FLASH_SIZE` (-14) before it erases anything.
+pub const FELUCCA_LOADER_SHA256: &str =
+    "2cde42b729d787a3e591ed4eaaffbbf33cebee7d58421d33bf6b6d27cc03f1aa";
+/// The release `FELUCCA_LOADER_SHA256` is the loader of.
+pub const FELUCCA_LOADER_RELEASE: &str = "Felucca 1.6.1";
+/// What that loader answers the update protocol's handshake with (its loader.c `FELUCCA_ID`).
+pub const FELUCCA_LOADER_ID: &str = "ota-FM-1_900";
 /// ota.c stages at most 0x5000 - 0x200 bytes of ota.bin's body.
 pub const OTA_BODY_MAX: usize = 0x5000 - 0x200;
 /// The identity of development builds, as every community firmware's.
@@ -640,6 +651,11 @@ pub struct Verified {
     pub app_len: usize,
     /// The update loader's RAM image, unwrapped from ota.bin.
     pub loader_len: usize,
+    /// The unwrapped loader's SHA-256.
+    pub loader_sha256: String,
+    /// The handshake identity in the loader's image (the first NUL-terminated `ota-…`
+    /// string), empty if it has none.
+    pub loader_identity: String,
     pub marker: bool,
     /// Every check that failed; empty when the package is sound.
     pub problems: Vec<String>,
@@ -704,6 +720,8 @@ pub fn verify(package: &[u8]) -> Verified {
     match unwrap_loader(&ota) {
         Ok(image) => {
             v.loader_len = image.len();
+            v.loader_sha256 = sha256_hex(&image);
+            v.loader_identity = loader_identity(&image);
             v.marker = image.len() >= 64 && image[..64].windows(16).any(|w| w == LOADER_MARK);
             if image.is_empty() || image.len() > LOADER_MAX {
                 v.problems.push(format!(
@@ -721,6 +739,28 @@ pub fn verify(package: &[u8]) -> Verified {
         Err(e) => v.problems.push(format!("ota.bin: {}", e.0)),
     }
     v
+}
+
+/// The first NUL-terminated printable string starting `ota-` in a loader image: what the loader
+/// answers an installer's handshake with. Empty if there is none.
+pub fn loader_identity(image: &[u8]) -> String {
+    let mut from = 0;
+    while let Some(at) = image[from..].windows(4).position(|w| w == b"ota-") {
+        let start = from + at;
+        let rest = &image[start..];
+        if let Some(end) = rest.iter().take(32).position(|&b| b == 0) {
+            if rest[..end].iter().all(|b| b.is_ascii_graphic()) {
+                return String::from_utf8_lossy(&rest[..end]).into_owned();
+            }
+        }
+        from = start + 4;
+    }
+    String::new()
+}
+
+/// The release a loader image is, by its SHA-256: `FELUCCA_LOADER_RELEASE` or None.
+pub fn loader_release(sha256: &str) -> Option<&'static str> {
+    (sha256 == FELUCCA_LOADER_SHA256).then_some(FELUCCA_LOADER_RELEASE)
 }
 
 fn verify_flash(flash: &[u8], v: &mut Verified) {
