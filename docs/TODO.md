@@ -499,3 +499,11 @@ working.
   only in `store_stats` and a lower free figure in MENU; STATUS should say it. A background
   settings save that fails is still not detected (explicit saves report and retry).
 
+
+## Readability calls for the user (from the 2026-10-22 ergonomics fixes)
+
+- **STEP's pads 10-16** show only their last digit at 2x (9 0 1 2 … 6), since two digits don't
+  fit a two-cell pad. Alternatives: hex, or pads that touch.
+- **Profile words** (BRIGHT, DARK, CLASSIC, CLEAN, GRITTY) show on CHIP and the LIVE band only,
+  1x beside LIVE's 2x revision name; popups and STATUS still show "6581 R4AR".
+- **Still 1x for lack of room:** TABLE's "WAVE 21 REL 00" line, STEP's ruler digits and lane line.
