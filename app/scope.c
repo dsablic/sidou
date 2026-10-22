@@ -10,6 +10,25 @@
 
 #define MASK (SCOPE_RING - 1u)
 
+#ifdef SIDOU_REG_RING_RACE_HOOK
+static _Thread_local void (*race_hook)(void* ctx);
+static _Thread_local void* race_ctx;
+
+void scope_set_race_hook(void (*hook)(void* ctx), void* ctx) {
+    race_hook = hook;
+    race_ctx = ctx;
+}
+
+#define RACE_POINT()                                                                         \
+    do {                                                                                     \
+        if (race_hook) {                                                                     \
+            race_hook(race_ctx);                                                             \
+        }                                                                                    \
+    } while (0)
+#else
+#define RACE_POINT() ((void)0)
+#endif
+
 void scope_init(scope* sc) {
     memset(sc, 0, sizeof *sc); /* not a const template: 1.5 KB of zeros in flash */
 }
@@ -58,8 +77,9 @@ void scope_peaks(scope* sc, const int16_t* lr, uint32_t frames) {
     if (!sc->on) {
         return;
     }
-    uint32_t l = sc->peak[0];
-    uint32_t r = sc->peak[1];
+    volatile uint16_t* pk = sc->peak[sc->peak_slot & 1u];
+    uint32_t l = pk[0];
+    uint32_t r = pk[1];
     for (uint32_t i = 0; i < 2u * frames; i += 2u * SCOPE_PEAK_STRIDE) {
         int32_t a = lr[i];
         int32_t b = lr[i + 1u];
@@ -68,8 +88,8 @@ void scope_peaks(scope* sc, const int16_t* lr, uint32_t frames) {
         l = al > l ? al : l;
         r = ar > r ? ar : r;
     }
-    sc->peak[0] = (uint16_t)l;
-    sc->peak[1] = (uint16_t)r;
+    pk[0] = (uint16_t)l;
+    pk[1] = (uint16_t)r;
 }
 
 uint32_t scope_read(const scope* sc, uint32_t since, scope_point* out, uint32_t n) {
@@ -93,10 +113,16 @@ uint32_t scope_read(const scope* sc, uint32_t since, scope_point* out, uint32_t 
 }
 
 void scope_take_peaks(scope* sc, uint16_t out[2]) {
-    out[0] = sc->peak[0];
-    out[1] = sc->peak[1];
-    sc->peak[0] = 0;
-    sc->peak[1] = 0;
+    /* The producer's next blocks raise the other slot: one byte, a single store. Its block
+     * cannot be under way here (it is the interrupt), so this slot is the consumer's alone. */
+    uint32_t k = sc->peak_slot & 1u;
+    sc->peak_slot = (uint8_t)(k ^ 1u);
+    COMPILER_FENCE();
+    RACE_POINT();
+    out[0] = sc->peak[k][0];
+    out[1] = sc->peak[k][1];
+    sc->peak[k][0] = 0;
+    sc->peak[k][1] = 0;
 }
 
 void scope_trace(const scope_point* p, uint32_t n, uint32_t voice, uint32_t by, uint32_t cycles,

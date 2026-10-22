@@ -520,7 +520,8 @@ fn the_envelope_stage_and_the_note_follow_the_tap() {
 fn the_meters_show_the_peaks_and_fall_back() {
     let mut ui = Ui::new();
     settle(&mut ui);
-    ui.sc.peak = [32767, 0];
+    let k = usize::from(ui.sc.peak_slot & 1); // the producer's slot (app/scope.h)
+    ui.sc.peak[k] = [32767, 0];
     frame(&mut ui);
     let meter =
         |ui: &Ui, row: usize| -> Vec<u8> { (21..30).map(|c| ui.g.ch[row * COLS + c]).collect() };
@@ -533,7 +534,7 @@ fn the_meters_show_the_peaks_and_fall_back() {
         meter(&ui, 26).iter().all(|&c| c == b' '),
         "R silent: blank cells, as the screen's own"
     );
-    assert_eq!(ui.sc.peak, [0, 0], "taken");
+    assert_eq!(ui.sc.peak, [[0, 0], [0, 0]], "taken");
     for _ in 0..8 {
         frame(&mut ui);
     }
@@ -689,7 +690,8 @@ fn meters_envelopes_notes_and_a_toast_redraw_their_cells_not_the_canvas() {
     let built = ui.v.live.rebuilds;
     assert!(built > 0, "never built");
     // The meters jump and fall back.
-    ui.sc.peak = [32767, 20000];
+    let k = usize::from(ui.sc.peak_slot & 1);
+    ui.sc.peak[k] = [32767, 20000];
     for _ in 0..10 {
         frame(&mut ui);
     }

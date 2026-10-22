@@ -72,9 +72,12 @@ typedef struct {
     volatile uint8_t env[SCOPE_VOICES];     /* ENV3: the envelope counter, 0..255 */
     volatile uint8_t state[SCOPE_VOICES];   /* a sid_env_state */
     volatile uint8_t sustain[SCOPE_VOICES]; /* the sustain level, in both nibbles */
-    /* Producer raises, consumer clears (scope_take_peaks): the largest |sample| of the left
-     * and right output since. A clear that races a raise loses one block's peak: harmless. */
-    volatile uint16_t peak[2];
+    /* The largest |sample| of the left and right output since the last take, in two slots:
+     * the producer raises peak[peak_slot]; the consumer (scope_take_peaks) moves peak_slot to
+     * the other slot, then reads and clears the one it left, which no block touches any more,
+     * so a block's peak is never cleared unseen. */
+    volatile uint16_t peak[2][2];
+    volatile uint8_t peak_slot;
     volatile uint8_t on; /* consumer: 1 while it reads; the producer taps only then */
 } scope;
 
@@ -100,6 +103,12 @@ static inline int scope_intact(uint32_t oldest, uint32_t head) {
 }
 /* Consumer. The peaks since the last call into out (left, right), and clears them. */
 void scope_take_peaks(scope* sc, uint16_t out[2]);
+
+#ifdef SIDOU_REG_RING_RACE_HOOK
+/* Host tests only (the device never defines it): hook(ctx) runs inside scope_take_peaks where
+ * the audio interrupt can come. Per thread; NULL turns it off. */
+void scope_set_race_hook(void (*hook)(void* ctx), void* ctx);
+#endif
 
 /* Consumer. Voice `voice`'s trace across SCOPE_W pixels, `cycles` (1..8) periods of the
  * oscillator of voice `by` (the voice itself, or its hard-sync source): each point's waveform

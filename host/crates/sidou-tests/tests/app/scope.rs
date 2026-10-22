@@ -201,6 +201,46 @@ fn the_peaks_rise_with_the_strided_frames_and_clear_when_taken() {
     assert_eq!(out[0], 32768, "the most negative sample");
 }
 
+/// The audio interrupt once, inside the consumer's take (scope_set_race_hook): a block whose
+/// left peak is 2000.
+unsafe extern "C" fn block_once(ctx: *mut std::ffi::c_void) {
+    unsafe {
+        scope_set_race_hook(None, std::ptr::null_mut());
+        let sc = ctx.cast::<scope>();
+        let stride = SCOPE_PEAK_STRIDE as usize;
+        let mut lr = vec![0i16; 2 * 128];
+        lr[2 * stride] = 2000;
+        scope_peaks(sc, lr.as_ptr(), 128);
+    }
+}
+
+/// A block's peak that the interrupt raises while the consumer takes the peaks is never lost:
+/// this take or the next has it (review 2.5: the read and the clear were two plain stores, and
+/// a block between them was cleared unseen).
+#[test]
+fn a_peak_raised_during_a_take_comes_out_of_this_take_or_the_next() {
+    let mut sc = new_scope();
+    sc.on = 1;
+    let stride = SCOPE_PEAK_STRIDE as usize;
+    let mut lr = vec![0i16; 2 * 128];
+    lr[2 * stride] = 500;
+    unsafe { scope_peaks(&mut *sc, lr.as_ptr(), 128) };
+    let mut first = [0u16; 2];
+    let mut second = [0u16; 2];
+    let p: *mut scope = &mut *sc;
+    unsafe {
+        scope_set_race_hook(Some(block_once), p.cast());
+        scope_take_peaks(p, first.as_mut_ptr());
+        scope_set_race_hook(None, std::ptr::null_mut());
+        scope_take_peaks(p, second.as_mut_ptr());
+    }
+    assert!(
+        first[0] == 2000 || second[0] == 2000,
+        "the interrupt's block was lost: {first:?} then {second:?}"
+    );
+    assert!(first[0] >= 500, "the block before the take: {first:?}");
+}
+
 fn trace(points: &[scope_point], voice: u32, by: u32, cycles: u32) -> Vec<u8> {
     let mut out = vec![0u8; SCOPE_W as usize];
     unsafe {
