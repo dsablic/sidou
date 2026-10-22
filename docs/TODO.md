@@ -497,8 +497,8 @@ working.
 
 ## Readability calls for the user (from the 2026-10-22 ergonomics fixes)
 
-- **STEP's pads 10-16** show only their last digit at 2x (9 0 1 2 … 6), since two digits don't
-  fit a two-cell pad. Alternatives: hex, or pads that touch.
+- ~~**STEP's pads 10-16** show only their last digit at 2x~~: numbered by beat now (1 2 3 4
+  four times; the user, 2026-10-23).
 - **Profile words** (BRIGHT, DARK, CLASSIC, CLEAN, GRITTY) show on CHIP and the LIVE band only,
   1x beside LIVE's 2x revision name; popups and STATUS still show "6581 R4AR".
 - **Still 1x for lack of room:** TABLE's "WAVE 21 REL 00" line, STEP's ruler digits and lane line.
@@ -512,21 +512,23 @@ working.
   during SysEx would be faster but dips the audio more often: an audio-feel decision for the
   user, after hearing the current behaviour on the unit.
 
-## Help cards: context-sensitive, complete, and two pages where needed (the user, 2026-10-23)
+## Help cards: context-sensitive, complete, and two pages where needed: done (2026-10-23)
 
-With the 1x bottom hints dropped (the device session), the help card (HOME held) is the only
-on-device explanation, so after the menu/SETTINGS work merges:
+The user's call: the 1x text at the foot of the views is unreadable on the device, so the help
+card (HOME held) is the only on-device explanation. Done:
 
-- **Context-sensitive** where a control's meaning changes: CHIP by focus (the chip: AGE, DAC,
-  THUMP, BLEED; a slot: its algorithm's own four control names; EXPERT), STEP with a step held
-  (the note and locks), TRACKER with REC on (K1/K2 record locks), the SONG pages and the name
-  editor.
-- **A second page** where eight lines aren't enough: SELECT flips pages while the card shows,
-  the title says 1/2.
-- **Complete:** a test checks that every control a view's input handler acts on appears on that
-  view's card (and each context's), so a new control without a line fails it.
-- **Then drop the 1x bottom text** in every view (the user's choice), and number STEP's pads by
-  beat (1 2 3 4 | 1 2 3 4 …, alternate beats shaded, each beat's first step brighter).
+- **Context-sensitive** (`app/views.c` help_card_of): LIVE on a slot's page, CHIP by its focus
+  (the tabs; the chip with K3 NOTE THUMP; a slot, K1-K4 named for its algorithm; EXPERT), STEP
+  with a step held or recording, TRACKER with REC on (editing, or recording: K1/K2 locks and the
+  quantise), SETTINGS on STORE; the SONG pages and the name editor had theirs.
+- **Two pages** where eight lines aren't enough: the title says 1/2, SELECT turns the page.
+- **Complete:** `help_view.rs` `every_control_a_view_takes_is_on_its_card` feeds every view's
+  input handler, in every state, each button and encoder, and fails on a control without a line.
+- **The 1x bottom hints are gone** from CHIP, STEP, TRACKER, ORDER, INSTR and TABLE (status lines
+  stay), and **STEP's pads are numbered by beat** (1 2 3 4 | 1 2 3 4, the second and fourth beats
+  shaded, each beat's first number brighter; the held step's number is the HELD STEP frame's).
+- ABOUT's first page, drawn whole, has its golden (`about-first.png`): the 2x heading clears the
+  logo and the subtitle.
 
 ## CHIP SPREAD: dual-SID stereo (the user, 2026-10-23)
 
