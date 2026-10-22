@@ -2316,6 +2316,9 @@ void views_note_keys(views* v, panel* p, uint32_t down, uint32_t pressed) {
     /* Most passes: no key, and no jam to let go: the panel's (releases) alone. */
     if (down | pressed | sv->jam_keys | v->step.down) {
         const view* top = shows(v);
+        if (top == &help_view_view && v->s.depth >= 2u) {
+            top = v->s.stack[v->s.depth - 2u].v; /* the keys play the view under the card */
+        }
         int glo = (int)(((p->held >> PANEL_BTN_GLO) | p->glo_latch) & 1u); /* held, or latched */
         int take = !glo && sv->t && song_view_is(top);
         uint32_t steps = 0u, jam_down = down, jam_pressed = pressed;

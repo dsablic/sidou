@@ -408,7 +408,8 @@ over its view and each has a golden (`tests/golden/lcd/help-*.png`).
 - HOME only opens the menu or goes back when it is **let go before 600 ms**: a tap acts in the
   next frame after the release, so a hold never opens the menu first.
 - **Any button or encoder** closes the card and does nothing else (SELECT does not move, FX does
-  not toggle the chip, SAVE saves nothing). **A note** plays as ever and the card stays. The card
+  not toggle the chip, SAVE saves nothing). **A note** plays as ever, as the view under the card
+plays it (over a song view its instrument, and REC records it), and the card stays. The card
   stays after HOME is let go until a control closes it.
 - The screen stack is four deep, LIVE included (LIVE, menu, SONG, a song view): when it is full there is no room for a
   card, so a held HOME does what a tap does (goes back one view), and MIDI learn (SAVE + a knob)

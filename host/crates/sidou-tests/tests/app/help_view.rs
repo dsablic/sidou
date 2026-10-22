@@ -577,3 +577,27 @@ fn a_toast_waits_under_the_help_card_and_shows_after_it() {
     assert_ne!(ui.top(), "HELP");
     assert!(seen, "the toast after the card");
 }
+
+/// Ergonomics review E28 (M2 review 5.14): the keys under a help card over TRACKER play the
+/// song view's jam (its instrument, its voice), not LIVE's instrument.
+#[test]
+fn keys_under_a_help_card_play_the_view_under_it() {
+    use crate::song_view::{open_tracker, Call, Song};
+    let mut s = Song::playing(Some(sidou_tests::song::Song::device()));
+    open_tracker(&mut s.ui);
+    hold_until_card(&mut s.ui);
+    s.ui.up(PANEL_BTN_HOME);
+    s.calls();
+    s.ui.note_keys(1 << 16, 1 << 16);
+    s.ui.note_keys(0, 0);
+    s.ui.frame();
+    assert_eq!(s.ui.top(), "HELP", "the card stays");
+    assert!(
+        s.calls().iter().any(|c| matches!(c, Call::Jam(..))),
+        "the jam plays the key"
+    );
+    assert!(
+        s.ui.live().voice.iter().all(|v| v.gate == 0),
+        "LIVE's instrument stays silent"
+    );
+}
