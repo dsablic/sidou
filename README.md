@@ -6,36 +6,112 @@
 
 [![CI](https://github.com/dsablic/sidou/actions/workflows/ci.yml/badge.svg)](https://github.com/dsablic/sidou/actions/workflows/ci.yml)
 
-Custom firmware that turns the M-VAVE FM-1 into a C64 SID instrument. It has a
-live-play mode, a step sequencer with a tracker underneath, and songs in
-GoatTracker 2's format that the device plays. Planned: `.sid` playback and
-importers for GoatTracker and SID-Wizard songs. The SID emulation adds an
-amp-modeller-style "chip character" layer on top.
+SIDOU is free firmware that turns the M-VAVE FM-1 into a C64 SID music machine. It has two
+SID chips, each with its own character: age, DAC sloppiness, thump and filter bleed. It
+plays and saves GoatTracker 2 songs, so a song made on the panel opens in GoatTracker and a
+GoatTracker song plays on the device. You write songs on the panel with STEP and a tracker,
+and you can play the chip live from the keys or over MIDI.
 
-**Status:** M1 (the live instrument) and M2 (songs) are done: chip B, GoatTracker 2 songs
-played by a C player on the device (PLAY, button 12), STEP and TRACKER and the song
-pages, REC, parameter locks, power-loss-safe storage in flash, a first-run tour and help
-cards. The latest version is **[v0.2.0](https://github.com/dsablic/sidou/releases/tag/v0.2.0)**
-([CHANGELOG.md](CHANGELOG.md)), the first to run on a real FM-1 and to update over USB.
-M3 (`.sid` files) is next; **v0.3.0** is the wider public release. See the
-[design document](docs/plans/2026-10-14-sidou-design.md) for where it's going.
+<p align="center"><img src="docs/media/sidou-screens.png" alt="Eight screens of SIDOU on the FM-1's LCD: the boot title, LIVE playing a song with the keys on chip B, the TRACKER, STEP, the CHIP view, the RED MOON RITE scene, an ORDER list and an instrument page" width="1002"></p>
+
+*The boot title, LIVE, TRACKER, STEP, CHIP, the RED MOON RITE scene, ORDER and INSTR, from the
+screenshots the tests check.*
+
+## What you can do
+
+- **Play the SID live.** Four presets (SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC) and DICE,
+  which rolls a new sound at each turn. Cutoff, resonance, the sound's own control and the
+  release are on K1 to K4.
+- **Shape the chip.** The CHIP view picks the model (6581 or 8580) and a profile, and sets
+  its character: age, DAC, thump and bleed. Three effect slots (distortion, modulation, FX)
+  follow the chip in stereo.
+- **Use two SIDs.** Songs play on one chip while the keys play the other, on top of the song.
+- **Make songs on the panel.** STEP is a drum-machine view of a pattern. TRACKER is
+  GoatTracker's layout, one voice at a time. ORDER, INSTR and TABLE edit the rest. REC records
+  the keys and the filter knobs while the song plays, and parameter locks are on STEP.
+- **Keep GoatTracker 2 songs.** SAVE writes a `.sng` to the device's flash. Power loss does not
+  corrupt it.
+- **Play from MIDI.** Notes on every channel, CCs for the main controls, program change for
+  presets and songs ([midi.md](docs/reference/midi.md)).
+- **Look at it.** SCENE has generative pieces, and RED MOON RITE is the first illustrated piece.
+- **Learn it from the device.** A first-run tour, and a help card on every screen.
+
+Coming next: `.sid` file playback (M3).
 
 ## Try it in your browser
 
-**<https://dsablic.github.io/sidou/>** plays the latest tagged release
-(deployed by `.github/workflows/pages.yml` on a `v*` tag): SIDOU running in
-[fm1-emu](https://github.com/joakimeriksson/fm1-emu)'s emulated FM-1, played
-from the computer keyboard, the mouse or touch, or a MIDI keyboard (Web
-MIDI, through the emulated TRS jack).
+**<https://dsablic.github.io/sidou/>** runs the latest release in an emulated FM-1
+([fm1-emu](https://github.com/joakimeriksson/fm1-emu)). Play it from the computer keyboard,
+the mouse, touch or a MIDI keyboard (Web MIDI). The emulated FM-1 keeps its flash in the
+browser, so your settings and songs survive a reload. The page can export and import that
+flash.
 
-To run your working tree's firmware the same way (Docker, Rust and Python 3
-needed; [BUILDING.md](BUILDING.md), "Browser demo"):
+## Install
 
-```sh
-tools/web-demo          # builds everything, then serves http://localhost:8642/
-```
+Installing custom firmware can leave an FM-1 unable to boot. **You do this at your own risk,
+and SIDOU comes with no warranty.** Read [docs/flash-day.md](docs/flash-day.md) first and have
+the way back ready.
 
-## Try it
+1. Download `sidou.fwsc` from the [latest release](https://github.com/dsablic/sidou/releases/latest).
+2. Install it with Felucca's installer (`fm1_install.py sidou.fwsc`), or from the FM-1
+   Firmware Hub. The unit then shows up on USB as "SIDOU FM-1", and later versions install
+   over it the same way.
+3. **Back to stock:** install M-VAVE's official `FM-1.fwsc` (V15) the same way.
+4. **Recovery:** if the unit does not boot, hold OCT- alone while switching on, for about a
+   second. That enters the chip's ROM boot mode, and the unbricker (`tools/fm1-unbrick-mac`, or
+   MvaveFM1Unbricker) can restore a package. It needs nothing of SIDOU.
+
+The installer has no backup, so save your songs first (see below). The
+[hardware checklist](docs/hardware-test.md) says what has passed on a real unit and what has
+not.
+
+## Controls
+
+On LIVE:
+
+| Control | Does |
+|---|---|
+| Note keys | play the chip (F3 to G5 at the current octave) |
+| OCT- / OCT+ | octave down and up |
+| K1, K2 | cutoff, resonance |
+| K3 | the sound's own control: pulse width, decay or sync ratio |
+| K4 | release |
+| PRESETS | the preset (DICE after the fourth) |
+| SELECT / ALGORITHM | the knob page (TONE, DIST, MOD, FX) / the chip profile or effect algorithm |
+| EDIT held + K1 to K4 | the selected effect slot's amount, A, B and mix |
+| SCL / ENV | the next effect slot / its next algorithm |
+| MASTER | volume |
+| SEQ | opens the song views: STEP, TRACKER, ORDER, INSTR, TABLE |
+| PLAY / REC | play and stop the song / record mode |
+| SAVE | saves the song in a song view, the settings elsewhere |
+| HOME | the menu from LIVE, back one view elsewhere |
+
+**Hold HOME on any screen for its help card.** Every control, every screen and every MIDI
+message is in [docs/reference/controls.md](docs/reference/controls.md) and
+[docs/reference/midi.md](docs/reference/midi.md).
+
+## Songs and GoatTracker
+
+SIDOU's songs are GoatTracker 2 `.sng` files ([format notes](docs/reference/song-format.md)).
+
+- **On the device:** SAVE in a song view stores the song in the FM-1's flash. The menu's SONG
+  item loads, creates, saves under a name and deletes songs.
+- **Over USB:** SysEx GET reads a song from the device and PUT writes one to it
+  ([protocol](docs/reference/sysex.md)).
+- **On your computer:** the `.sng` opens in GoatTracker 2, and a GoatTracker 2 song put on the
+  device plays there if it fits the device's limits. The device refuses one it cannot play, with
+  a message.
+
+## For developers
+
+- [BUILDING.md](BUILDING.md): building the host tools, the firmware and the package.
+- [TESTING.md](TESTING.md): the test layers, and what a failure means.
+- [docs/decisions/](docs/decisions/): decision records, starting with
+  [0001](docs/decisions/0001-test-and-benchmark-harness.md) (C on the device, Rust for host
+  tooling) and [0002](docs/decisions/0002-m0-sid-cost.md) (M0 SID cost).
+- [docs/hardware.md](docs/hardware.md) and [docs/hardware-test.md](docs/hardware-test.md):
+  the FM-1, and the checklist for a real unit.
+- [CONTRIBUTING.md](CONTRIBUTING.md): how to report bugs and send changes.
 
 **In the emulator** (no hardware needed). Build the firmware and the package
 ([BUILDING.md](BUILDING.md)), then, from `host/`:
@@ -52,52 +128,35 @@ knobs and MIDI, and check the sound and the screen
 package plays with the A4 key held from power-on. fm1-emu's own command
 line runs the package too (`fm1-emu --fwsc build/fm1/sidou.fwsc --ms 10000`).
 
-**On hardware.** v0.2.0 runs on a real FM-1 (the [release](https://github.com/dsablic/sidou/releases/tag/v0.2.0)
-has the package, `sidou.fwsc`). Installing custom firmware can leave an FM-1 unable to
-boot, so this is entirely at your own risk: SIDOU comes with no warranty.
+To run your working tree's firmware in the browser (Docker, Rust and Python 3 needed;
+[BUILDING.md](BUILDING.md), "Browser demo"):
 
-- **Install and update:** with Felucca's installer (`fm1_install.py sidou.fwsc`). The unit
-  shows up on USB as "SIDOU FM-1", and later versions install over it the same way.
-- **Back to M-VAVE's V15:** the same way, with M-VAVE's official `FM-1.fwsc`.
-- **Recovery:** hold OCT- alone while switching on (about a second) to enter the chip's ROM
-  boot mode, then restore a package with the unbricker (`tools/fm1-unbrick-mac`, or
-  MvaveFM1Unbricker with jl-uboot-tool). This needs nothing of SIDOU but its first
-  instructions.
-- Read [docs/flash-day.md](docs/flash-day.md) first, and have the way back ready; the
-  full [hardware checklist](docs/hardware-test.md) says what has passed on a unit and what
-  has not (the song views, REC and the first-run tour are still to be checked there).
+```sh
+tools/web-demo          # builds everything, then serves http://localhost:8642/
+```
 
-**What it plays:** on LIVE, one SID chip with three voices, four presets (SAW LEAD, PWM
-BASS, SYNC LEAD, NOISE PERC) and DICE after them, which rolls a new sound each turn, three effect
-slots (Distortion, Modulation, FX) after the chip in stereo, and the chip's profiles and
-character (CHIP view). K1 is the cutoff, K2 the resonance, K3 the sound's own control
-(pulse width, decay or sync ratio) and K4 the release; the big PRESETS encoder picks
-the preset; SELECT and ALGORITHM page the knobs and the effects; MASTER is the volume.
-PLAY (button 12) plays SIDOU's first song, SIDOU LOOP, and stops it; SEQ (11) opens the
-song views (STEP, TRACKER, ORDER, INSTR, TABLE), and a song saves in GoatTracker's
-format. MIDI notes play on every channel, with CCs for the main controls and program
-change 0-3 for the first four presets. Every control and CC:
-[docs/reference/controls.md](docs/reference/controls.md) and
-[docs/reference/midi.md](docs/reference/midi.md).
+## Status and roadmap
 
-## For contributors
+- **v0.2.0** is released ([CHANGELOG.md](CHANGELOG.md)): chip B, GoatTracker 2 songs played by a
+  C player on the device, STEP, TRACKER and the song pages, REC, parameter locks, storage in
+  flash that survives power loss, USB update, the first-run tour and help cards. It is the
+  first version to run on a real FM-1.
+- **v0.3.0** is next, the first wider public release. It ships with no known bug.
+- **M3** follows: `.sid` playback.
 
-- [BUILDING.md](BUILDING.md): building the host tools, the firmware and the
-  package.
-- [TESTING.md](TESTING.md): the test layers, and what a failure means.
-- [docs/decisions/](docs/decisions/): decision records, starting with
-  [0001](docs/decisions/0001-test-and-benchmark-harness.md) (C on the device,
-  Rust for host tooling) and
-  [0002](docs/decisions/0002-m0-sid-cost.md) (M0 SID cost).
-- [docs/hardware.md](docs/hardware.md) and
-  [docs/hardware-test.md](docs/hardware-test.md): the FM-1, and the checklist
-  for a real unit.
-- [CONTRIBUTING.md](CONTRIBUTING.md): how to report bugs and send changes.
+The song views, REC and the first-run tour are still to be checked on a real unit. See the
+[roadmap](docs/plans/2026-10-18-roadmap-after-m2.md) and the
+[design document](docs/plans/2026-10-14-sidou-design.md).
+
+## Credits and licence
+
+SIDOU stands on [Felucca](https://github.com/hugelton/Felucca) (the FM-1 platform code and
+installer), reSID and reSIDfp (the SID models), [GoatTracker 2](https://sourceforge.net/projects/goattracker2/)
+(the song format), and [fm1-emu](https://github.com/joakimeriksson/fm1-emu) (the emulator the
+tests and the browser demo run on). The full list is in [CREDITS.md](CREDITS.md).
 
 SIDOU is an independent community project. It is not affiliated with
 M-VAVE or with Commodore trademark holders.
-
-## Licence
 
 SIDOU is free software under the GNU General Public License v3.0 or later.
 Third-party components keep their own licences. See [LICENSING.md](LICENSING.md)

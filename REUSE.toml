@@ -82,3 +82,10 @@ SPDX-License-Identifier = "GPL-2.0-or-later"
 path = ["third_party/6502-tests/6502_functional_test.bin", "third_party/6502-tests/6502_functional_test.lst"]
 SPDX-FileCopyrightText = "2012-2015 Klaus Dormann"
 SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# The README's screens montage: SIDOU's own LCD goldens (tests/golden/lcd/), scaled 2x and
+# tiled by a script, so it is SIDOU's own output.
+[[annotations]]
+path = ["docs/media/*.png"]
+SPDX-FileCopyrightText = "2026 SIDOU contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
