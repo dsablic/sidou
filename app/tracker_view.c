@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "font.h"
+#include "live_view.h"
 #include "song/gt2_song.h"
 
 /* What the header shows, as bytes (song_view.drawn): the play state, the tempo (2), REC, the shown
@@ -600,24 +601,24 @@ int tracker_view_popup(const song_view* sv, uint32_t encoder, int edit, char* na
         label = "EDIT STEP";
     } else if ((encoder == PANEL_ENC_K1 || encoder == PANEL_ENC_K1 + 1u) && !edit &&
                song_view_rec_playing(sv)) {
-        /* REC while the song plays: K1 and K2 record the cutoff and the resonance */
+        if (!song_view_recording(sv)) {
+            return 0; /* a count-in: the knob does nothing yet */
+        }
+        /* REC while the song plays (past a count-in): K1 and K2 record the cutoff, in Hz as
+         * every view says it, and the resonance */
         uint32_t k = encoder - PANEL_ENC_K1;
         v = song_view_rec_value(sv, k);
         label = k == 0u ? "CUTOFF" : "RESONANCE";
-        char digits[4];
-        uint32_t n = 0;
-        for (uint32_t d = 1000u; d; d /= 10u) {
-            if (n || v / d || d == 1u) {
-                digits[n++] = (char)('0' + v / d % 10u);
-            }
+        if (k == 0u) {
+            live_view_fc_text(sv->l, v, value);
+        } else {
+            value[0] = (char)(v >= 10u ? '1' : '0' + v);
+            value[1] = (char)('0' + v % 10u);
+            value[v >= 10u ? 2 : 1] = 0;
         }
         do {
             *name++ = *label;
         } while (*label++);
-        for (uint32_t i = 0; i < n; i++) {
-            value[i] = digits[i];
-        }
-        value[n] = 0;
         *fill = v;
         *max = k == 0u ? 2047u : 15u;
         return 1;
@@ -716,7 +717,8 @@ static int input(screen* s, void* state, const screen_event* e) {
     }
     if (!edit && (e->id == PANEL_ENC_K1 || e->id == PANEL_ENC_K1 + 1u) &&
         song_view_rec_playing(sv)) {
-        /* REC while the song plays: the filter knobs record locks on the row they are turned in */
+        /* REC while the song plays: the filter knobs record locks on the row they are turned in
+         * (during a count-in nothing, and no popup says otherwise) */
         (void)song_view_record_knob(sv, s, e->id - PANEL_ENC_K1, e->steps);
         return 1;
     }

@@ -533,6 +533,8 @@ static void theme_turn(void* ctx, int32_t steps) {
     }
 }
 
+static const view* shows(const views* v);
+
 /* While ABOUT's tune is the player's song (song_io about, until its close has read the user's
  * song back), the song views would edit ABOUT's tune and its close would lose the edits: they
  * do not open, and a toast says why. 1: refused. */
@@ -1535,7 +1537,11 @@ static int global(void* ctx, const screen_event* e) {
         return 1;
     }
     if (e->id == PANEL_BTN_REC) {
-        song_view_rec(&v->song);
+        int in_song = song_view_is(shows(v));
+        song_view_rec(&v->song, in_song);
+        if (!in_song) { /* no REC mark outside the song views: a toast says it */
+            screen_toast(&v->s, v->song.rec ? "REC ON" : "REC OFF", SCREEN_TOAST_MS);
+        }
         return 1;
     }
     if (e->id == PANEL_BTN_GLO) {

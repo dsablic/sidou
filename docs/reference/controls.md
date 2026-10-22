@@ -112,7 +112,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **SAVE (button 9)** | clean press and release: save a USER profile on CHIP's chip focus, the song in a song view, settings elsewhere; hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
 | **SEQ (button 11)** | opens the song views, and steps through them ([below](#song-views)) |
 | **PLAY (button 12)** | plays the loaded song from the song views' position, and stops it (each voice's release rings on); with EDIT held, goes on from where it stopped; lit while it plays. While it plays the keys play chip B (KEYS AUTO), or take voices from the song on chip A (KEYS A). A song the device cannot play is refused with a toast (`SNG: MULTISPEED 8 (MAX 4)`) |
-| **REC (button 13)** | record mode on and off |
+| **REC (button 13)** | record mode on and off (outside the song views a toast says **REC ON** or **REC OFF**) |
 | **GLO (button 7) held** + note key 1..3 / 4..6 | mutes voice 1..3 / solos voice 1..3 of the song (again: back), in every view; those six keys sound nothing while GLO is held; **the other keys play** (a change from before: held and latched are one rule) |
 | **GLO tapped twice** (within 400 ms) | **latches** GLO's layer: the keys are the mutes and solos without holding GLO (a toast says `GLO LATCHED`, GLO's LED is lit, and LIVE shows the layer); a tap on GLO ends it (`GLO OFF`) |
 | **SELECT (encoder 0)**, in the menu | moves the selection (a line in reverse video) up and down the items; the list scrolls with it |
@@ -346,12 +346,14 @@ the views' own edits, and is refused with the same large toasts (`SONG FULL`, `S
 | Note key, in TRACKER | its note and the current instrument on the cursor's voice, in the row the voice's player is on when the key goes down, or the next row if the key is in the second half of it (the nearest row); a note replaces the row's note and keeps its command; a key past the end of the pattern goes to the pattern that plays next (the same pattern again while an orderlist repeat replays it) |
 | Step key (the 16 leftmost), in STEP | the selected lane's note and instrument the same way, with the key off after it on the next empty row on a staccato lane; the pad toggles nothing |
 | Other keys, in STEP | their own pitch on the selected lane |
-| K1 / K2 | cutoff (32 per detent) and resonance (1 per detent), starting from LIVE's values, as a lock on the row the knob was turned in (never rounded to the next row); the value popup says `CUTOFF` or `RESONANCE` |
+| K1 / K2 | cutoff (32 per detent) and resonance (1 per detent), starting from LIVE's values, as a lock on the row the knob was turned in (never rounded to the next row); the value popup says `CUTOFF` (in Hz, as LIVE says it) or `RESONANCE` |
 
 The menu's **REC** item (popup `REC QUANTISE`; not saved) chooses `NEAREST` (the default), `OFF`
 (the row the key falls in) or `COUNT-IN` (the nearest row, after one bar of the song's tempo,
 rows per beat times four, that records nothing: a toast says `COUNT-IN`; it starts when the
-song starts with REC on, or when REC is turned on while it plays). TRACKER keeps its cursor
+song starts with REC on in a song view, or when REC is turned on there while it plays; a song
+view opened while the song already plays records at once). During a count-in TRACKER's K1 and K2
+do nothing; STEP's act as in LIVE. TRACKER keeps its cursor
 where it is while recording; the notes appear in the pattern as they are written. With the
 song stopped REC is TRACKER's cursor entry, as before.
 

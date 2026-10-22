@@ -133,6 +133,7 @@ typedef struct {
     uint8_t quant;
     uint8_t counting;
     uint8_t was_playing;
+    uint8_t shown; /* a song view showed at the last frame: was_playing is current */
     uint8_t rec_knobs;
     uint16_t count_end;
     uint16_t rec_cut;
@@ -164,8 +165,9 @@ const view* song_view_next(const view* top);
 /* PLAY: stops the song if it plays (or is starting), else plays it from the cursor's entry,
  * or with resume (EDIT held) goes on from where it stopped. */
 void song_view_play(song_view* sv, int resume);
-/* REC: record mode on or off. */
-void song_view_rec(song_view* sv);
+/* REC: record mode on or off; shows: a song view shows (a COUNT-IN starts only there, where
+ * the keys record). */
+void song_view_rec(song_view* sv, int shows);
 /* REC while the song plays records (song_view_recording): the note a key plays goes into the
  * cursor's voice at the row it was played in (song_view_record_note), the K1 and K2 moves
  * become cutoff and resonance locks on the row they happened in (song_view_record_knob), both

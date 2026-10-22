@@ -184,6 +184,8 @@ void live_view_flash(live_view* lv, uint32_t what, uint32_t now_ms);
 /* The filter's cutoff in Hz as the popup says it, "1234" or "11.4K" for the cutoff the chip has
  * now (cutoff_out), into buf (8 characters). */
 void live_view_cutoff_text(const live* l, char* buf);
+/* The same for an 11-bit cutoff register value fc (a song's cutoff lock) on the keys' chip. */
+void live_view_fc_text(const live* l, uint32_t fc, char* buf);
 /* Knob k's value on the TONE page (0 K1: the cutoff, 1 the resonance, 2 K3's control by the
  * sound: the pulse width in percent, the decay, or the sync ratio's semitones, 3 the release) as
  * LIVE's knob row says it at 2x, at most 3 characters: "980", "7K2", "12K", "6", "50%", "-12",

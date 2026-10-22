@@ -581,3 +581,139 @@ fn k1_and_k2_in_step_record_locks_and_a_held_step_keeps_its_own_lock() {
         Ok("CUTOFF")
     );
 }
+
+/// Ergonomics review E23 (M2 review 5.7): REC outside the song views says what it did with a
+/// toast (no REC mark shows there), and starts no count-in there, where nothing records.
+#[test]
+fn rec_on_live_toasts_its_state_and_counts_nothing_in() {
+    let mut s = Song::playing(Some(song()));
+    s.ui.v.song.quant = SONG_VIEW_QUANT_COUNT as u8;
+    at(&mut s, 3, 0);
+    assert_eq!(s.ui.top(), "LIVE");
+    s.ui.press(PANEL_BTN_REC);
+    assert_eq!(s.ui.toast().as_deref(), Some("REC ON"));
+    assert_eq!(s.ui.v.song.counting, 0, "no count-in on LIVE");
+    s.ui.frame();
+    assert_eq!(s.ui.toast().as_deref(), Some("REC ON"));
+    s.ui.press(PANEL_BTN_REC);
+    assert_eq!(s.ui.toast().as_deref(), Some("REC OFF"));
+    // In a song view the header's REC says it: no toast.
+    open_tracker(&mut s.ui);
+    for _ in 0..60 {
+        s.ui.frame();
+    }
+    s.ui.press(PANEL_BTN_REC);
+    assert_ne!(s.ui.toast().as_deref(), Some("REC ON"));
+}
+
+/// Ergonomics review E24 (M2 review 5.8): a song view opened while the song already plays
+/// (with REC on and COUNT-IN) starts no count-in: was_playing is read on entering.
+#[test]
+fn opening_a_song_view_mid_song_starts_no_count_in() {
+    let mut s = Song::playing(Some(song()));
+    s.ui.v.song.quant = SONG_VIEW_QUANT_COUNT as u8;
+    s.ui.press(PANEL_BTN_REC); // on LIVE, the song stopped
+    for _ in 0..60 {
+        s.ui.frame();
+    }
+    at(&mut s, 3, 0); // the song plays (started from LIVE)
+    s.ui.frame();
+    open_tracker(&mut s.ui);
+    assert_eq!(s.ui.v.song.counting, 0, "no count-in on entering");
+    assert_ne!(s.ui.toast().as_deref(), Some("COUNT-IN"));
+    tap(&mut s, 16);
+    assert_eq!(cell(&s, 0, 3), [KEY16, 1, 0, 0], "it records at once");
+    // Stopped and played again in the view: that play counts in.
+    s.f.st.state = SONG_T_STOPPED as u8;
+    s.ui.frame();
+    at(&mut s, 0, 0);
+    s.ui.frame();
+    assert_eq!(s.ui.v.song.counting, 1);
+}
+
+/// Ergonomics review E25 (M2 review 5.11): K1 while recording says the cutoff in Hz, as every
+/// other view; during a count-in TRACKER's K1 does nothing and opens no popup, and STEP's acts as
+/// in LIVE (its knobs do with no step held).
+#[test]
+fn k1_recording_shows_hz_and_a_count_in_takes_nothing() {
+    let mut s = tracker();
+    s.ui.press(PANEL_BTN_REC);
+    playing(&mut s, 3, 0);
+    s.ui.turn(PANEL_ENC_K1, 1);
+    let (mut name, mut value) = ([0; SCREEN_POPUP_TEXT as usize], [0; SCREEN_POPUP_TEXT as usize]);
+    let (mut fill, mut max) = (0, 0);
+    let text = |b: &[std::ffi::c_char]| {
+        unsafe { CStr::from_ptr(b.as_ptr()) }
+            .to_string_lossy()
+            .into_owned()
+    };
+    assert_eq!(
+        unsafe {
+            tracker_view_popup(
+                &s.ui.v.song,
+                PANEL_ENC_K1,
+                0,
+                name.as_mut_ptr(),
+                value.as_mut_ptr(),
+                &mut fill,
+                &mut max,
+            )
+        },
+        1
+    );
+    let mut hz = [0; 9];
+    unsafe {
+        live_view_fc_text(
+            &*s.ui.rig.live,
+            u32::from(s.ui.v.song.rec_cut),
+            hz.as_mut_ptr(),
+        )
+    };
+    assert_eq!(text(&name), "CUTOFF");
+    assert_eq!(text(&value), text(&hz), "in Hz");
+    assert!(!text(&value).starts_with(&s.ui.v.song.rec_cut.to_string()));
+    // A count-in in TRACKER: K1 records nothing, edits nothing and has no popup.
+    let mut s = tracker();
+    s.ui.v.song.quant = SONG_VIEW_QUANT_COUNT as u8;
+    s.ui.press(PANEL_BTN_REC);
+    s.ui.press(PANEL_BTN_PLAY);
+    at(&mut s, 0, 0);
+    s.f.st.now_call = 0;
+    s.f.st.row_call = [0; 3];
+    s.ui.frame();
+    assert_eq!(s.ui.v.song.counting, 1);
+    let cutoff = s.ui.live().cutoff;
+    let writes = s.f.cell_writes;
+    s.ui.turn(PANEL_ENC_K1, 1);
+    assert_eq!(s.ui.live().cutoff, cutoff);
+    assert_eq!((locks(&s), s.f.cell_writes), (vec![], writes));
+    assert_eq!(
+        unsafe {
+            tracker_view_popup(
+                &s.ui.v.song,
+                PANEL_ENC_K1,
+                0,
+                name.as_mut_ptr(),
+                value.as_mut_ptr(),
+                &mut fill,
+                &mut max,
+            )
+        },
+        0,
+        "no popup during the count-in"
+    );
+    // In STEP: LIVE's knob.
+    let mut s = step();
+    s.ui.v.song.quant = SONG_VIEW_QUANT_COUNT as u8;
+    s.ui.press(PANEL_BTN_REC);
+    s.ui.press(PANEL_BTN_PLAY);
+    at(&mut s, 0, 0);
+    s.f.st.now_call = 0;
+    s.f.st.row_call = [0; 3];
+    s.ui.frame();
+    assert_eq!(s.ui.v.song.counting, 1);
+    let cutoff = s.ui.live().cutoff;
+    s.ui.turn(PANEL_ENC_K1, 1);
+    assert_ne!(s.ui.live().cutoff, cutoff, "K1 moved LIVE's cutoff");
+    assert_eq!(locks(&s), vec![]);
+}

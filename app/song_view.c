@@ -246,14 +246,15 @@ static void count_in(song_view* sv) {
     }
 }
 
-void song_view_rec(song_view* sv) {
+void song_view_rec(song_view* sv, int shows) {
     if (sv->t && sv->want == WANT_NONE) {
         sv->t->status(sv->t->ctx, &sv->st); /* the state now: no frame may have read it */
     }
     sv->rec = (uint8_t)!sv->rec;
     sv->rec_knobs = 0; /* the knobs start from LIVE's values again */
     sv->counting = 0;
-    if (sv->rec && sv->quant == SONG_VIEW_QUANT_COUNT && sv->t && sv->st.state == SONG_T_PLAYING) {
+    if (shows && sv->rec && sv->quant == SONG_VIEW_QUANT_COUNT && sv->t &&
+        sv->st.state == SONG_T_PLAYING) {
         count_in(sv);
     }
 }
@@ -520,6 +521,10 @@ int song_view_record_knob(song_view* sv, screen* s, uint32_t knob, int32_t steps
 
 void song_view_frame(song_view* sv, int shows) {
     const song_transport* t = sv->t;
+    /* Entering a song view: was_playing is read now, not from before it was left (a song that
+     * plays already is no play that starts: no count-in). */
+    int entered = shows && !sv->shown;
+    sv->shown = (uint8_t)shows;
     if (!t || (!shows && sv->want == WANT_NONE && !sv->jam_off &&
                song_view_mute_mask(sv) == sv->sent && !sv->edit_pending && !sv->rec_n)) {
         return; /* outside the song views, most frames: nothing waits */
@@ -529,7 +534,7 @@ void song_view_frame(song_view* sv, int shows) {
         t->status(t->ctx, &sv->st);
         sv->song_edits = sv->st.applied;
         int on = sv->st.state == SONG_T_PLAYING;
-        if (on && !sv->was_playing && sv->rec && sv->quant == SONG_VIEW_QUANT_COUNT) {
+        if (on && !sv->was_playing && !entered && sv->rec && sv->quant == SONG_VIEW_QUANT_COUNT) {
             count_in(sv); /* a play that starts with REC on */
         } else if (!on) {
             sv->counting = 0;

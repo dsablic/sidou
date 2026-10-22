@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "font.h"
+#include "live_view.h"
 #include "song/gt2_song.h"
 #include "song/song_ext.h"
 
@@ -916,9 +917,9 @@ static int input(screen* s, void* state, const screen_event* e) {
         return 1;
     }
     if (!held && !edit && (e->id == PANEL_ENC_K1 || e->id == PANEL_ENC_K1 + 1u) &&
-        song_view_rec_playing(sv)) {
+        song_view_recording(sv)) {
         /* REC while the song plays: K1 and K2 record the cutoff and the resonance as locks on
-         * the row they are turned in */
+         * the row they are turned in (during a count-in they act as in LIVE) */
         st->rev = (uint8_t)(st->rev + song_view_record_knob(sv, s, e->id - PANEL_ENC_K1, e->steps));
         return 1;
     }
@@ -989,12 +990,16 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
             text[1] = HEX[cur & 15u];
         }
     } else if ((encoder == PANEL_ENC_K1 || encoder == PANEL_ENC_K1 + 1u) && !held && !edit &&
-               song_view_rec_playing(sv)) {
+               song_view_recording(sv)) {
         uint32_t k = encoder - PANEL_ENC_K1;
         label = k == 0u ? "CUTOFF" : "RESONANCE";
         cur = song_view_rec_value(sv, k);
         top = k == 0u ? 2047u : 15u;
-        decimal(cur, text);
+        if (k == 0u) {
+            live_view_fc_text(sv->l, cur, text); /* in Hz, as every view says the cutoff */
+        } else {
+            decimal(cur, text);
+        }
     } else if (encoder >= PANEL_ENC_K1 && encoder <= PANEL_ENC_K4 && held && sv->song &&
                ln->pattern != 0xffu && at < ln->rows) {
         uint32_t k = encoder - PANEL_ENC_K1;

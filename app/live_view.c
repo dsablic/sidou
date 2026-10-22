@@ -257,9 +257,13 @@ static void hz_text(char* buf, uint32_t hz, uint32_t knob) {
     buf[n] = 0;
 }
 
+void live_view_fc_text(const live* l, uint32_t fc, char* buf) {
+    float hz = sid_cutoff_hz(l->model, 0, fc);
+    hz_text(buf, (uint32_t)((hz < 30.0f ? 30.0f : hz) + 0.5f), 0); /* the filter clamps it at 30 Hz */
+}
+
 void live_view_cutoff_text(const live* l, char* buf) {
-    float fc = sid_cutoff_hz(l->model, 0, l->cutoff_out);
-    hz_text(buf, (uint32_t)((fc < 30.0f ? 30.0f : fc) + 0.5f), 0); /* the filter clamps it at 30 Hz */
+    live_view_fc_text(l, l->cutoff_out, buf);
 }
 
 /* ---- drawing ---- */
