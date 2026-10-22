@@ -56,6 +56,18 @@ fn a_short_journey_captured_twice_is_byte_identical() {
         serde_json::from_slice(&std::fs::read(caps[0].join("cap/frames.json")).unwrap()).unwrap();
     assert_eq!(side["captions"][0]["text"], "Turn K1 to open the filter");
     assert_eq!(side["fps"], 25.0);
+    // The step timeline the videos follow: each step's and each input's times, and its control.
+    let steps = side["steps"].as_array().unwrap();
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["id"], "turn");
+    assert_eq!(steps[0]["inputs"][0]["op"], "turn");
+    assert_eq!(steps[0]["inputs"][0]["encoder"], "K1");
+    let (a, b) = (
+        steps[0]["inputs"][0]["ms"].as_u64().unwrap(),
+        steps[0]["inputs"][0]["end_ms"].as_u64().unwrap(),
+    );
+    assert!(a < b && b <= steps[1]["ms"].as_u64().unwrap());
+    assert!(steps[1]["end_ms"].as_u64().unwrap() > steps[1]["ms"].as_u64().unwrap());
     std::fs::remove_dir_all(&dir).ok();
 }
 

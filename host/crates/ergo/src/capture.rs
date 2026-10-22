@@ -13,9 +13,18 @@ use crate::device::{Dev, Recorder, FRAME_MS};
 use crate::journeys::{Journey, FS};
 use crate::screen::png_bytes;
 
+/// A step's times in a capture (emulated ms): its start, its end and each input's start and end.
+pub struct StepTimes {
+    pub start: u64,
+    pub end: u64,
+    pub acts: Vec<(u64, u64)>,
+}
+
 pub struct Capture {
     pub journey: String,
     pub title: String,
+    /// The recipe's steps as the video uses them: what, where to look, and when.
+    pub steps: Vec<serde_json::Value>,
     pub t0: u64,
     pub frames: Vec<(u64, Vec<u16>)>,
     /// Interleaved stereo.
@@ -39,12 +48,41 @@ fn sample_time_ms(dev: &Dev, i: usize) -> f64 {
 }
 
 impl Capture {
-    pub fn from(rec: Recorder, dev: &Dev, marks: Vec<(u64, String)>, j: &Journey) -> Capture {
+    pub fn from(
+        rec: Recorder,
+        dev: &Dev,
+        marks: Vec<(u64, String)>,
+        times: Vec<StepTimes>,
+        j: &Journey,
+    ) -> Capture {
         let all = &dev.m.soc.periph.audio;
         let from = (rec.audio_from * 2).min(all.len());
+        let t0 = rec.t0;
+        let steps = j
+            .steps
+            .iter()
+            .zip(&times)
+            .map(|(s, t)| {
+                let mut v = crate::recipe::step_json(s);
+                let o = v.as_object_mut().unwrap();
+                o.remove("expect");
+                o.remove("harness");
+                o.remove("needs");
+                o.insert("ms".into(), json!(t.start - t0));
+                o.insert("end_ms".into(), json!(t.end - t0));
+                if let Some(inputs) = o.get_mut("inputs").and_then(|i| i.as_array_mut()) {
+                    for (input, (a, b)) in inputs.iter_mut().zip(&t.acts) {
+                        input["ms"] = json!(a - t0);
+                        input["end_ms"] = json!(b - t0);
+                    }
+                }
+                v
+            })
+            .collect();
         Capture {
             journey: j.id.clone(),
             title: j.title.clone(),
+            steps,
             t0: rec.t0,
             frames: rec.frames.into_iter().map(|f| (f.ms, f.fb)).collect(),
             audio: all[from..].to_vec(),
@@ -84,6 +122,7 @@ impl Capture {
                       "offset_ms": (self.audio_offset_ms * 1000.0).round() / 1000.0,
                       "samples": self.audio.len() / 2},
             "captions": captions,
+            "steps": self.steps,
         });
         std::fs::write(
             dir.join("frames.json"),

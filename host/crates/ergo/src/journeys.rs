@@ -46,6 +46,16 @@ pub enum Act {
     /// MIDI clock at bpm for ms, with a start first.
     Clock(u32, u64, bool),
     PowerCycle,
+    /// Note keys played in time: at `bpm`, each event a chord (empty: a rest) lasting `sixteenths`
+    /// 16th notes, the keys held for most of it (`play`).
+    Play(u32, Vec<(Vec<u8>, u32)>),
+    /// Note keys tapped one after another, each held `ms` with a short gap (`taps`: STEP's keys).
+    Taps(Vec<u8>, u64),
+    /// An encoder turned `n` detents spread evenly over `ms` (`sweep`): a hand turning slowly.
+    Sweep(u8, i32, u64),
+    /// Waits for the playing song's voice 1 to reach the first row of a pattern (`sync`): what
+    /// follows starts on the bar.
+    Sync,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -71,6 +81,92 @@ pub enum Expect {
     Quieter,
     /// The RMS level of the last 400 ms, dBFS, within a range.
     Level(f64, f64),
+    /// The song's pattern that voice `v` (1..3) plays at orderlist entry `e` (subtune 0) holds
+    /// these notes (GoatTracker values), in row order, rests and key-offs skipped.
+    Notes(u8, u8, Vec<u8>),
+    /// That pattern holds a note on exactly these rows (0-based).
+    Rows(u8, u8, Vec<u8>),
+}
+
+/// Where a step's video looks (docs/reference/recipe-schema.md, `focus`): the control used (a
+/// button, encoder, MASTER, a note, `device` for the whole FM-1, `screen` for the screen alone,
+/// `card` for a card instead of the device while the step runs),
+/// a region of the screen in cells (col, row, cols, rows of the 30 x 30 grid) and a callout.
+/// Every part is optional; the video derives what is missing from the step's inputs.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Focus {
+    pub control: Option<String>,
+    pub screen: Option<[u8; 4]>,
+    pub callout: Option<String>,
+}
+
+impl Focus {
+    pub fn is_empty(&self) -> bool {
+        *self == Focus::default()
+    }
+}
+
+/// A focus control: a button, an encoder, MASTER, a note key (F3..G5), `device`, `screen` or
+/// `card`.
+pub fn check_focus_control(c: &str) -> Result<(), String> {
+    if BUTTONS.iter().any(|(n, _)| *n == c)
+        || ENCODERS.iter().any(|(n, _)| *n == c)
+        || ["MASTER", "device", "screen", "card"].contains(&c)
+        || note_number(c).is_ok()
+    {
+        Ok(())
+    } else {
+        Err(format!("unknown focus control {c}"))
+    }
+}
+
+/// A screen region inside the 30 x 30 cells, at least one cell.
+pub fn check_screen(r: [u8; 4]) -> Result<(), String> {
+    let [c, row, w, h] = r.map(u32::from);
+    if w == 0 || h == 0 || c + w > 30 || row + h > 30 {
+        Err(format!(
+            "screen region {c} {row} {w} {h} is outside the 30 x 30 cells"
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+/// `C-3`, `D#4` (TRACKER's names) -> GoatTracker's note value.
+pub fn gt_note(s: &str) -> Result<u8, String> {
+    let b = s.as_bytes();
+    if b.len() != 3 {
+        return Err(format!("bad pattern note {s} (C-3, D#4)"));
+    }
+    let base = match b[0] {
+        b'C' => 0,
+        b'D' => 2,
+        b'E' => 4,
+        b'F' => 5,
+        b'G' => 7,
+        b'A' => 9,
+        b'B' => 11,
+        _ => return Err(format!("bad pattern note {s}")),
+    };
+    let sharp = match b[1] {
+        b'-' => 0,
+        b'#' => 1,
+        _ => return Err(format!("bad pattern note {s}")),
+    };
+    let oct = match b[2] {
+        o @ b'0'..=b'7' => o - b'0',
+        _ => return Err(format!("bad pattern note {s}")),
+    };
+    Ok(sidou_sys::GT2_FIRSTNOTE as u8 + oct * 12 + base + sharp)
+}
+
+/// GoatTracker's note value -> `C-3`.
+pub fn gt_note_name(v: u8) -> String {
+    const N: [&str; 12] = [
+        "C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-",
+    ];
+    let n = v.wrapping_sub(sidou_sys::GT2_FIRSTNOTE as u8);
+    format!("{}{}", N[usize::from(n % 12)], n / 12)
 }
 
 #[derive(Clone, Debug)]
@@ -92,6 +188,10 @@ pub struct Step {
     /// The physical control in panel terms ("turn K1 clockwise about a quarter turn"); made from
     /// the actions when absent.
     pub control: Option<String>,
+    /// Where the video looks during the step.
+    pub focus: Focus,
+    /// The step opens a chapter of a long video, with this title.
+    pub chapter: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -108,7 +208,51 @@ pub struct Journey {
     pub prereq: String,
     pub skills: Vec<String>,
     pub related: Vec<String>,
+    /// Showcase songs (assets/songs/<name>.sng) put into the store before power-on.
+    pub songs: Vec<String>,
+    /// Another recipe whose steps run first, unfilmed: this one starts where that one ends.
+    pub after: Option<String>,
+    /// The steps `after` resolves to (its own prelude first), run before step 1, and the songs
+    /// that chain puts in the store.
+    pub prelude: Vec<Step>,
+    pub prelude_songs: Vec<String>,
     pub steps: Vec<Step>,
+}
+
+/// Fills each journey's `prelude` from its `after` chain, and adds the chain's songs to its own.
+pub fn resolve_after(js: &mut [Journey]) -> Result<(), String> {
+    let all: Vec<Journey> = js.to_vec();
+    for j in js.iter_mut() {
+        let mut chain: Vec<&Journey> = Vec::new();
+        let mut next = j.after.clone();
+        while let Some(id) = next {
+            if id == j.id || chain.iter().any(|c| c.id == id) {
+                return Err(format!("{}: `after` goes round in a circle at {id}", j.id));
+            }
+            let p = all
+                .iter()
+                .find(|x| x.id == id)
+                .ok_or_else(|| format!("{}: `after` names no recipe {id}", j.id))?;
+            chain.push(p);
+            next = p.after.clone();
+        }
+        j.prelude.clear();
+        j.prelude_songs.clear();
+        for p in chain.iter().rev() {
+            if p.poweron {
+                return Err(format!("{}: `after` {} starts at power-on", j.id, p.id));
+            }
+            j.prelude.extend(p.steps.iter().cloned());
+            j.prelude_songs.extend(p.songs.iter().cloned());
+        }
+        if j.poweron && j.after.is_some() {
+            return Err(format!(
+                "{}: a recipe with `after` cannot start at power-on",
+                j.id
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub const FEATURES: [&str; 8] = [
@@ -281,8 +425,77 @@ fn parse_act(text: &str) -> Result<Act, String> {
             need(3)?;
             Act::Clock(num(w[1])?, num(w[2])?, w.get(3) == Some(&"start"))
         }
+        "play" => {
+            need(3)?;
+            let bpm: u32 = num(w[1])?;
+            if !(40..=300).contains(&bpm) {
+                return Err(format!("play: {bpm} BPM is not 40..300"));
+            }
+            Act::Play(
+                bpm,
+                w[2..]
+                    .iter()
+                    .map(|t| play_event(t))
+                    .collect::<Result<_, _>>()?,
+            )
+        }
+        "taps" => {
+            need(3)?;
+            let ms = num(w[w.len() - 1])?;
+            let notes = w[1..w.len() - 1]
+                .iter()
+                .map(|n| note_number(n))
+                .collect::<Result<_, _>>()?;
+            Act::Taps(notes, ms)
+        }
+        "sync" => Act::Sync,
+        "sweep" => {
+            need(4)?;
+            let n: i32 = num(w[2])?;
+            if n == 0 {
+                return Err("sweep: turn at least one detent".into());
+            }
+            Act::Sweep(encoder(w[1])?, n, num(w[3])?)
+        }
         a => return Err(format!("unknown action {a}")),
     })
+}
+
+/// One `play` event: `C4`, `C4+E4` (a chord) or `.` (a rest), then `:N` for N 16ths (default 1).
+fn play_event(t: &str) -> Result<(Vec<u8>, u32), String> {
+    let (notes, len) = match t.split_once(':') {
+        Some((n, l)) => (n, num(l)?),
+        None => (t, 1),
+    };
+    if !(1..=64).contains(&len) {
+        return Err(format!("play: {t}: a length of 1..64 16ths"));
+    }
+    let notes = if notes == "." {
+        Vec::new()
+    } else {
+        notes
+            .split('+')
+            .map(note_number)
+            .collect::<Result<_, _>>()?
+    };
+    Ok((notes, len))
+}
+
+/// A `play` event's on and off times, ms from its start: a 16th at `bpm` is 15000 / bpm ms, and
+/// the keys are let go a little before the next event (as a player would, so a repeated key
+/// strikes again).
+pub fn play_times(bpm: u32, events: &[(Vec<u8>, u32)]) -> Vec<(u64, u64)> {
+    let sixteenth = 15_000.0 / f64::from(bpm);
+    let mut t = 0.0;
+    events
+        .iter()
+        .map(|(_, len)| {
+            let on = t;
+            t += sixteenth * f64::from(*len);
+            let off = (t - (sixteenth * 0.25).min(40.0)).max(on + 10.0);
+            (on.round() as u64, off.round() as u64)
+        })
+        .collect()
 }
 
 /// Parses the table (grammar: tables/journeys.txt's header).
@@ -308,9 +521,13 @@ pub fn parse_table(text: &str) -> Result<Vec<Journey>, String> {
                 prereq: String::new(),
                 skills: Vec::new(),
                 related: Vec::new(),
+                songs: Vec::new(),
+                after: None,
+                prelude: Vec::new(),
+                prelude_songs: Vec::new(),
                 steps: Vec::new(),
             });
-        } else if let Some((k, v)) = ["goal", "prereq", "skills", "related"]
+        } else if let Some((k, v)) = ["goal", "prereq", "skills", "related", "songs", "after"]
             .iter()
             .find_map(|k| {
                 line.strip_prefix(k)
@@ -331,6 +548,13 @@ pub fn parse_table(text: &str) -> Result<Vec<Journey>, String> {
                 "goal" => j.goal = v.to_string(),
                 "prereq" => j.prereq = v.to_string(),
                 "skills" => j.skills = list(v),
+                "after" => j.after = Some(v.to_string()),
+                "songs" => {
+                    j.songs = list(v);
+                    for name in &j.songs {
+                        crate::device::showcase_song(name).map_err(at)?;
+                    }
+                }
                 _ => j.related = list(v),
             }
         } else if let Some(rest) = line.strip_prefix("step ") {
@@ -357,6 +581,8 @@ pub fn parse_table(text: &str) -> Result<Vec<Journey>, String> {
                 remember: false,
                 defaults: false,
                 control: None,
+                focus: Focus::default(),
+                chapter: None,
             };
             for a in p[3]
                 .split(';')
@@ -388,6 +614,50 @@ pub fn parse_table(text: &str) -> Result<Vec<Journey>, String> {
                     "louder" => s.expects.push(Expect::Louder),
                     "quieter" => s.expects.push(Expect::Quieter),
                     "do" => s.control = Some(v.to_string()),
+                    "focus" => {
+                        check_focus_control(v).map_err(at)?;
+                        s.focus.control = Some(v.to_string());
+                    }
+                    "screen" => {
+                        let w: Vec<u8> = v
+                            .split_whitespace()
+                            .map(num)
+                            .collect::<Result<_, _>>()
+                            .map_err(at)?;
+                        let r: [u8; 4] = w
+                            .try_into()
+                            .map_err(|_| at("screen COL ROW COLS ROWS".into()))?;
+                        check_screen(r).map_err(at)?;
+                        s.focus.screen = Some(r);
+                    }
+                    "callout" => s.focus.callout = Some(v.to_string()),
+                    "chapter" => s.chapter = Some(v.to_string()),
+                    "notes" | "rows" => {
+                        let w: Vec<&str> = v.split_whitespace().collect();
+                        if w.len() < 2 {
+                            return Err(at(format!("{k} VOICE ENTRY ...")));
+                        }
+                        let voice: u8 = num(w[0]).map_err(at)?;
+                        if !(1..=3).contains(&voice) {
+                            return Err(at(format!("voice {voice} is not 1..3")));
+                        }
+                        let entry: u8 = num(w[1]).map_err(at)?;
+                        if k == "notes" {
+                            let n = w[2..]
+                                .iter()
+                                .map(|x| gt_note(x))
+                                .collect::<Result<_, _>>()
+                                .map_err(at)?;
+                            s.expects.push(Expect::Notes(voice, entry, n));
+                        } else {
+                            let r = w[2..]
+                                .iter()
+                                .map(|x| num(x))
+                                .collect::<Result<_, _>>()
+                                .map_err(at)?;
+                            s.expects.push(Expect::Rows(voice, entry, r));
+                        }
+                    }
                     "value" => {
                         let w: Vec<&str> = v.split_whitespace().collect();
                         if w.len() != 3 {
@@ -431,6 +701,7 @@ pub fn parse_table(text: &str) -> Result<Vec<Journey>, String> {
             return Err(at(format!("unrecognised line: {line}")));
         }
     }
+    resolve_after(&mut out)?;
     Ok(out)
 }
 
@@ -438,14 +709,14 @@ pub fn effort_of(a: &Act) -> Effort {
     match a {
         Act::Press(_) => Effort::Press,
         Act::Hold(..) => Effort::Hold,
-        Act::Turn(_, n) => Effort::Turn(n.unsigned_abs()),
+        Act::Turn(_, n) | Act::Sweep(_, n, _) => Effort::Turn(n.unsigned_abs()),
         Act::HoldTurn(_, _, n) => Effort::HoldTurn(n.unsigned_abs()),
         Act::HoldKey(..) => Effort::HoldKey,
-        Act::Note(..) | Act::Down(_) => Effort::Note,
+        Act::Note(..) | Act::Down(_) | Act::Play(..) | Act::Taps(..) => Effort::Note,
         Act::Pot(_) => Effort::Turn(1),
         Act::Midi(_) | Act::Clock(..) => Effort::Midi,
         Act::SelectItem(_) => Effort::Turn(0),
-        Act::Up(_) | Act::Wait(_) | Act::Boot | Act::PowerCycle => Effort::Wait,
+        Act::Up(_) | Act::Wait(_) | Act::Boot | Act::PowerCycle | Act::Sync => Effort::Wait,
     }
 }
 
@@ -656,6 +927,8 @@ pub struct StepResult {
     pub destructive: bool,
     pub defaults: Option<Value>,
     pub expects: Vec<(String, bool)>,
+    /// Each input's start and end, ms (emulated time).
+    pub act_ms: Vec<(u64, u64)>,
 }
 
 pub struct JourneyResult {
@@ -685,6 +958,20 @@ fn expect_name(e: &Expect) -> String {
         Expect::Louder => "louder".into(),
         Expect::Quieter => "quieter".into(),
         Expect::Level(lo, hi) => format!("level {lo}..{hi} dBFS"),
+        Expect::Notes(v, e, n) => format!(
+            "voice {v} entry {e} notes {}",
+            n.iter()
+                .map(|x| gt_note_name(*x))
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+        Expect::Rows(v, e, r) => format!(
+            "voice {v} entry {e} notes on rows {}",
+            r.iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
     }
 }
 
@@ -806,6 +1093,46 @@ fn run_act(d: &mut Dev, act: &Act, waited: &mut u64, n_detents: &mut i32) -> boo
             d.power_cycle();
             *waited += 0;
         }
+        Act::Play(bpm, events) => {
+            let t0 = d.ms();
+            for ((notes, _), (on, off)) in events.iter().zip(play_times(*bpm, events)) {
+                d.run((t0 + on).saturating_sub(d.ms()));
+                for n in notes {
+                    d.key_down(key_of_note(*n));
+                }
+                d.run((t0 + off).saturating_sub(d.ms()));
+                for n in notes {
+                    d.key_up(key_of_note(*n));
+                }
+            }
+            let (_, end) = play_times(*bpm, events).last().copied().unwrap_or((0, 0));
+            let sixteenth = (15_000 / *bpm) as u64;
+            d.run((t0 + end + sixteenth.min(40)).saturating_sub(d.ms()));
+        }
+        Act::Taps(notes, ms) => {
+            for n in notes {
+                d.key_down(key_of_note(*n));
+                d.run(*ms);
+                d.key_up(key_of_note(*n));
+                d.run(60);
+            }
+        }
+        Act::Sweep(e, n, ms) => {
+            let t0 = d.ms();
+            let k = n.unsigned_abs() as u64;
+            for i in 0..k {
+                d.turn(*e, n.signum());
+                let next = t0 + ms * (i + 1) / k;
+                d.run(next.saturating_sub(d.ms()));
+            }
+        }
+        Act::Sync => {
+            let t0 = d.ms();
+            if !d.sync_to_pattern(20_000) {
+                return false;
+            }
+            *waited += d.ms() - t0;
+        }
     }
     true
 }
@@ -902,6 +1229,18 @@ fn check(d: &mut Dev, e: &Expect, cx: &CheckCtx, cfg: &Config) -> bool {
                 .any(|r| r.text.to_uppercase().contains(t.as_str()))
         }
         Expect::Recalled => remembered.as_ref().is_some_and(|p| *p == d.params()),
+        Expect::Notes(v, e, want) => d
+            .pattern_notes(u32::from(*v) - 1, usize::from(*e))
+            .is_some_and(|rows| rows.iter().filter(|n| **n != 0).eq(want.iter())),
+        Expect::Rows(v, e, want) => d
+            .pattern_notes(u32::from(*v) - 1, usize::from(*e))
+            .is_some_and(|rows| {
+                rows.iter()
+                    .enumerate()
+                    .filter(|(_, n)| **n != 0)
+                    .map(|(i, _)| i)
+                    .eq(want.iter().map(|r| usize::from(*r)))
+            }),
     }
 }
 
@@ -950,6 +1289,7 @@ pub fn run_step(
         destructive: s.destructive,
         defaults: None,
         expects: Vec::new(),
+        act_ms: Vec::new(),
     };
     for need in &s.needs {
         if let Some((false, why)) = features.get(need) {
@@ -969,11 +1309,17 @@ pub fn run_step(
     let mut nav_failed: Option<String> = None;
     for a in &s.acts {
         detents = 0;
-        if !run_act(d, a, &mut waited, &mut detents) {
-            let Act::SelectItem(text) = a else {
-                unreachable!("only a menu selection can fail to arrive")
-            };
-            nav_failed = Some(format!("no menu line {text} was reached, on {}", d.view()));
+        let act_start = d.ms();
+        let arrived = run_act(d, a, &mut waited, &mut detents);
+        r.act_ms.push((act_start, d.ms()));
+        if !arrived {
+            nav_failed = Some(match a {
+                Act::SelectItem(text) => {
+                    format!("no menu line {text} was reached, on {}", d.view())
+                }
+                Act::Sync => "no song played a pattern's first row within 20 s".to_string(),
+                _ => unreachable!("only a menu selection or a sync can fail to arrive"),
+            });
             efforts.push(Effort::Turn(detents.unsigned_abs()));
             break;
         }
@@ -1151,10 +1497,26 @@ pub fn run_journey(
     capture_full: bool,
 ) -> (JourneyResult, Option<crate::capture::Capture>) {
     // A journey starts at power-on, unless its first step boots: then the boot is the step.
-    let mut d = if j.poweron {
-        Dev::power_on(build)
+    let mut songs = j.prelude_songs.clone();
+    for s in &j.songs {
+        if !songs.contains(s) {
+            songs.push(s.clone());
+        }
+    }
+    let mut d = if songs.is_empty() {
+        if j.poweron {
+            Dev::power_on(build)
+        } else {
+            Dev::boot(build)
+        }
     } else {
-        Dev::boot(build)
+        let mut d = Dev::power_on_with(build, &songs);
+        if !j.poweron {
+            crate::common::run_past_boot(&mut d.m, &d.fw);
+            d.m.run_ms(300);
+            d.mid_frame();
+        }
+        d
     };
     let mut ctx = Ctx::default();
     let mut res = JourneyResult {
@@ -1165,11 +1527,32 @@ pub fn run_journey(
         captured: Vec::new(),
         settings_drift: None,
     };
+    // The `after` recipe's steps: where this one starts. A failure there is this one's.
+    let mut prelude_ctx = Ctx::default();
+    for (i, s) in j.prelude.iter().enumerate() {
+        let (r, _) = run_step(
+            &mut d,
+            s,
+            features,
+            cfg,
+            &mut prelude_ctx,
+            out,
+            &format!("journeys/{}/prelude", j.id),
+            i + 1,
+        );
+        if !matches!(r.status, Status::Ok) {
+            let mut r = r;
+            r.id = format!("(after) {}", r.id);
+            res.steps.push(r);
+            return (res, None);
+        }
+    }
     let settings_start = d.settings_bytes();
     if capture_full {
         d.start_capture();
     }
     let mut marks: Vec<(u64, String)> = Vec::new();
+    let mut timeline: Vec<crate::capture::StepTimes> = Vec::new();
     for (i, s) in j.steps.iter().enumerate() {
         if let Some(c) = &s.caption {
             marks.push((d.ms(), c.clone()));
@@ -1187,6 +1570,11 @@ pub fn run_journey(
         if let Some(c) = cap {
             res.captured.push(c);
         }
+        timeline.push(crate::capture::StepTimes {
+            start: r.start_ms,
+            end: r.end_ms,
+            acts: r.act_ms.clone(),
+        });
         res.steps.push(r);
     }
     let settings_end = d.settings_bytes();
@@ -1195,7 +1583,7 @@ pub fn run_journey(
     }
     let cap = d
         .stop_capture()
-        .map(|rec| crate::capture::Capture::from(rec, &d, marks, j));
+        .map(|rec| crate::capture::Capture::from(rec, &d, marks, timeline, j));
     (res, cap)
 }
 
@@ -1260,6 +1648,88 @@ pub fn journey_metrics(j: &JourneyResult, cfg: &Config) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn play_taps_sweep_and_sync_parse() {
+        let j = parse_table(
+            "journey t | T\nstep a | A | - | play 120 A3:2 C4+E4 .:4; taps F3 A3 200; sweep K1 -10 500; sync | sound",
+        )
+        .unwrap();
+        let a = &j[0].steps[0].acts;
+        assert_eq!(
+            a[0],
+            Act::Play(120, vec![(vec![57], 2), (vec![60, 64], 1), (vec![], 4)])
+        );
+        assert_eq!(a[1], Act::Taps(vec![53, 57], 200));
+        assert_eq!(a[2], Act::Sweep(panel::K1, -10, 500));
+        assert_eq!(a[3], Act::Sync);
+        assert!(parse_table("journey t | T\nstep a | A | - | play 20 A3 | sound").is_err());
+        assert!(parse_table("journey t | T\nstep a | A | - | play 120 E3 | sound").is_err());
+        assert!(parse_table("journey t | T\nstep a | A | - | sweep K1 0 100 | sound").is_err());
+    }
+
+    #[test]
+    fn play_times_follow_the_tempo_and_let_go_before_the_next_note() {
+        // At 120 BPM a 16th is 125 ms; a key is let go 31 ms before the next.
+        let t = play_times(120, &[(vec![57], 1), (vec![], 2), (vec![60], 1)]);
+        assert_eq!(t, vec![(0, 94), (125, 344), (375, 469)]);
+    }
+
+    #[test]
+    fn focus_chapter_and_pattern_outcomes_parse() {
+        let j = parse_table(concat!(
+            "journey t | T\n",
+            "step a | A | c | press SEQ | view step; focus SEQ; screen 0 2 30 13; callout SEQ > STEP; chapter One\n",
+            "step b | B | c | wait 1 | notes 2 0 A-2 C#3; rows 3 0 0 4 8 12; rows 3 1\n",
+        ))
+        .unwrap();
+        let s = &j[0].steps;
+        assert_eq!(s[0].focus.control.as_deref(), Some("SEQ"));
+        assert_eq!(s[0].focus.screen, Some([0, 2, 30, 13]));
+        assert_eq!(s[0].focus.callout.as_deref(), Some("SEQ > STEP"));
+        assert_eq!(s[0].chapter.as_deref(), Some("One"));
+        let first = sidou_sys::GT2_FIRSTNOTE as u8;
+        assert_eq!(
+            s[1].expects,
+            vec![
+                Expect::Notes(2, 0, vec![first + 33, first + 37]),
+                Expect::Rows(3, 0, vec![0, 4, 8, 12]),
+                Expect::Rows(3, 1, vec![]),
+            ]
+        );
+        for bad in [
+            "focus KNOB9",
+            "screen 0 0 31 1",
+            "screen 0 0 0 1",
+            "notes 4 0 C-3",
+            "notes 1 0 H-3",
+        ] {
+            let t = format!("journey t | T\nstep a | A | c | wait 1 | {bad}");
+            assert!(parse_table(&t).is_err(), "{bad}");
+        }
+        assert_eq!(gt_note_name(gt_note("D#4").unwrap()), "D#4");
+    }
+
+    #[test]
+    fn after_runs_a_chain_first_and_refuses_a_circle() {
+        let t = concat!(
+            "journey a | A\nsongs chrome-comet\nstep a1 | A1 | c | wait 1 | sound\n",
+            "journey b | B\nafter a\nstep b1 | B1 | c | wait 1 | sound\n",
+            "journey c | C\nafter b\nstep c1 | C1 | c | wait 1 | sound\n",
+        );
+        let j = parse_table(t).unwrap();
+        let c = j.iter().find(|j| j.id == "c").unwrap();
+        let ids: Vec<_> = c.prelude.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, ["a1", "b1"]);
+        assert_eq!(c.prelude_songs, ["chrome-comet"]);
+        assert!(c.songs.is_empty());
+        let circle = "journey a | A\nafter b\nstep a1 | A | c | wait 1 | sound\njourney b | B\nafter a\nstep b1 | B | c | wait 1 | sound\n";
+        assert!(parse_table(circle).unwrap_err().contains("circle"));
+        assert!(
+            parse_table("journey a | A\nafter nope\nstep a1 | A | c | wait 1 | sound\n").is_err()
+        );
+        assert!(parse_table("journey a | A\nsongs no-such-song\n").is_err());
+    }
 
     #[test]
     fn setup_allows_two_hands_but_performance_does_not() {

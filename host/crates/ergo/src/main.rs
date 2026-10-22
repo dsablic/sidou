@@ -28,7 +28,8 @@ const USAGE: &str = "usage: ergo [--out DIR] [--build DIR] [--baseline FILE] [--
   --export-recipes DIR
                    write the recipes of tables/recipes.txt (or --journeys FILE) as JSON into DIR
   --capture full --journey ID
-                   every LCD frame, the audio and a JSON sidecar of one journey";
+                   every LCD frame, the audio and a JSON sidecar of one journey (with
+                   --journeys DIR, a recipe of that directory's JSON recipes)";
 
 fn main() {
     let mut args = std::env::args().skip(1);

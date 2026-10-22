@@ -40,6 +40,17 @@ fn wanted(o: &Opts, k: &str) -> bool {
 }
 
 pub fn load_journeys(o: &Opts) -> Result<Vec<Journey>, String> {
+    // A directory is recipes in their JSON form (docs/recipes): what --check-recipes checks.
+    if let Some(dir) = o.journeys_file.as_ref().filter(|p| p.is_dir()) {
+        let mut js = crate::recipe::load_dir(dir)?
+            .iter()
+            .map(|(p, v)| {
+                crate::recipe::parse_recipe(v).map_err(|e| format!("{}: {e}", p.display()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        journeys::resolve_after(&mut js)?;
+        return Ok(js);
+    }
     let text = match &o.journeys_file {
         Some(p) => std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?,
         None => journeys::DEFAULT_TABLE.to_string(),
@@ -87,7 +98,25 @@ pub fn run(o: &Opts) -> Result<i32, String> {
             .iter()
             .find(|j| &j.id == id)
             .ok_or_else(|| format!("no journey {id}"))?;
-        let (_, cap) = journeys::run_journey(&o.build, j, &features, &cfg, &o.out, true);
+        let (r, cap) = journeys::run_journey(&o.build, j, &features, &cfg, &o.out, true);
+        let failed: Vec<String> = r
+            .steps
+            .iter()
+            .filter(|s| !matches!(s.status, Status::Ok))
+            .map(|s| {
+                format!(
+                    "step {}: {}",
+                    s.id,
+                    step_json(s)["reason"].as_str().unwrap_or("")
+                )
+            })
+            .collect();
+        if !failed.is_empty() {
+            return Err(format!(
+                "{id} did not run as written:\n  {}",
+                failed.join("\n  ")
+            ));
+        }
         let dir = o.out.join("capture").join(id);
         cap.ok_or("no capture")?
             .write(&dir)

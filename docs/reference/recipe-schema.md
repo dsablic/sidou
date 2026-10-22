@@ -34,6 +34,13 @@ cargo run --release -p ergo -- --check-recipes ../docs/recipes    # runs each in
   and the docs link to it.
 - `prerequisites.start`: `power-on` (time 0, the boot running) or `live` (booted, on LIVE with
   the first preset). Anything more is said in `text`.
+- `prerequisites.songs` (optional): showcase songs, file names of `assets/songs/` without
+  `.sng` (`["neon-highway"]`), put into the store before power-on, each under its title
+  (NEON HIGHWAY). The recipe loads one through SONG, LOAD like a player would.
+- `prerequisites.after` (optional): another recipe's id. Its steps (and its own `after`
+  chain's) run first, checked but not filmed, so this recipe starts where that one ends (a
+  bassline after the beat, a lead after the bassline) instead of repeating it. Its songs are
+  put into the store too. A chain cannot go round in a circle or start at power-on.
 - `related` ids must exist (the lint checks).
 
 ### Step
@@ -73,6 +80,10 @@ cargo run --release -p ergo -- --check-recipes ../docs/recipes    # runs each in
   | `pot` | value (0-1023) | the MASTER pot |
   | `clock` | bpm, ms, start | MIDI clock |
   | `wait` | ms | nothing happens |
+  | `play` | bpm, events[] ({notes[], sixteenths}) | keys played in time: each event a chord (no notes: a rest) for that many 16ths at the tempo, let go just before the next |
+  | `taps` | notes[], ms | keys tapped one after another, each held ms (STEP's step keys) |
+  | `sweep` | encoder, detents, ms | turned slowly: the detents spread evenly over ms |
+  | `sync` | | waits (up to 20 s) for the playing song's voice 1 to start a pattern: what follows starts on the bar |
   | `boot`, `power_cycle` | | wait out the boot; switch off and on over the same flash |
 
 - `expect` (at least one): what must hold when the step is done; the harness waits up to about
@@ -85,10 +96,23 @@ cargo run --release -p ergo -- --check-recipes ../docs/recipes    # runs each in
   `{"kind": "audio", "assert": "sounding | silent | brighter | darker | louder | quieter"}`
   (`brighter`/`darker` compare the spectral centroid, `louder`/`quieter` the RMS, of the last
   400 ms against the 400 ms before the step: they need a sound before the step, 5% and 1 dB
-  by default) and `{"kind": "audio_level", "min_dbfs": -45, "max_dbfs": -8}`.
+  by default) and `{"kind": "audio_level", "min_dbfs": -45, "max_dbfs": -8}`. The song:
+  `{"kind": "pattern_notes", "voice": 2, "entry": 0, "notes": ["A-2", "E-3"]}` (the pattern
+  voice 2 plays at its orderlist's first pattern entry holds exactly these notes, in row order,
+  as TRACKER names them; rests and key-offs skipped) and `{"kind": "pattern_rows", "voice": 3,
+  "entry": 0, "rows": [0, 4, 8, 12]}` (it holds a note on exactly these rows).
 - `needs`: a feature the step depends on (`theme undo help order_view instr_view pattern_edit
   new_song song_save`). A journey records a step whose feature is missing as "not yet possible";
   a recipe **fails** on it: a recipe only teaches what the synth does.
+- `focus` (optional, the videos': [docs/videos.md](../videos.md)): `{"control": "K1", "screen":
+  {"col": 0, "row": 15, "cols": 30, "rows": 7}, "callout": "TURN K1"}`, every part optional.
+  `control` is the control the video lights and points its label at (a button, an encoder,
+  MASTER or a note), or `screen` / `device` (no control lit), or `card` (a card in place of the
+  device while the step runs; a `callout` of `A <> B <> C` draws a diagram); without it, the
+  step's first input's control. `screen` is the region of the 30 x 30 cells the picture pushes
+  in on once the inputs are done (the whole screen without it). `callout` is the label in plain
+  words; without it one is made from the inputs (`PRESS SEQ`, `HOLD GLO + KEY 2`).
+- `chapter` (optional): the step starts a chapter of the video, with this title.
 - `harness`: what the ergonomics checks use (`task`: the common-task name for the effort count,
   `destructive`, `clip_ms`, ...); a recipe may leave them out.
 

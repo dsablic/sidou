@@ -74,6 +74,18 @@ pub fn act_json(a: &Act) -> Value {
         Act::Wait(ms) => json!({"op": "wait", "ms": ms}),
         Act::Clock(bpm, ms, start) => json!({"op": "clock", "bpm": bpm, "ms": ms, "start": start}),
         Act::PowerCycle => json!({"op": "power_cycle"}),
+        Act::Play(bpm, events) => {
+            json!({"op": "play", "bpm": bpm, "events": events.iter().map(|(n, len)| {
+            json!({"notes": n.iter().map(|x| note_name(*x)).collect::<Vec<_>>(), "sixteenths": len})
+        }).collect::<Vec<_>>()})
+        }
+        Act::Taps(n, ms) => {
+            json!({"op": "taps", "notes": n.iter().map(|x| note_name(*x)).collect::<Vec<_>>(), "ms": ms})
+        }
+        Act::Sync => json!({"op": "sync"}),
+        Act::Sweep(e, n, ms) => {
+            json!({"op": "sweep", "encoder": encoder_name(*e), "detents": n, "ms": ms})
+        }
     }
 }
 
@@ -142,6 +154,54 @@ pub fn act_from_json(v: &Value, at: &str) -> Result<Act, String> {
             get_i64(v, "ms", at)? as u64,
             v.get("start").and_then(Value::as_bool).unwrap_or(false),
         ),
+        "play" => {
+            let bpm = get_i64(v, "bpm", at)?;
+            if !(40..=300).contains(&bpm) {
+                return Err(format!("{at}: `bpm` must be 40..300"));
+            }
+            let events = v
+                .get("events")
+                .and_then(Value::as_array)
+                .ok_or_else(|| format!("{at}: `events` must be a list"))?
+                .iter()
+                .map(|e| {
+                    let len = get_i64(e, "sixteenths", at)?;
+                    if !(1..=64).contains(&len) {
+                        return Err(format!("{at}: `sixteenths` must be 1..64"));
+                    }
+                    let notes = e
+                        .get("notes")
+                        .and_then(Value::as_array)
+                        .ok_or_else(|| format!("{at}: an event's `notes` must be a list"))?
+                        .iter()
+                        .map(|n| crate::journeys::note_number(n.as_str().unwrap_or("")))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok((notes, len as u32))
+                })
+                .collect::<Result<_, String>>()?;
+            Act::Play(bpm as u32, events)
+        }
+        "taps" => Act::Taps(
+            v.get("notes")
+                .and_then(Value::as_array)
+                .ok_or_else(|| format!("{at}: `notes` must be a list"))?
+                .iter()
+                .map(|n| crate::journeys::note_number(n.as_str().unwrap_or("")))
+                .collect::<Result<_, _>>()?,
+            get_i64(v, "ms", at)? as u64,
+        ),
+        "sync" => Act::Sync,
+        "sweep" => {
+            let n = get_i64(v, "detents", at)? as i32;
+            if n == 0 {
+                return Err(format!("{at}: `detents` must not be 0"));
+            }
+            Act::Sweep(
+                by_name(&ENCODERS, get_str(v, "encoder", at)?)?,
+                n,
+                get_i64(v, "ms", at)? as u64,
+            )
+        }
         o => return Err(format!("{at}: unknown op {o}")),
     })
 }
@@ -163,6 +223,9 @@ pub fn expect_json(e: &Expect) -> Value {
         Expect::Louder => json!({"kind": "audio", "assert": "louder"}),
         Expect::Quieter => json!({"kind": "audio", "assert": "quieter"}),
         Expect::Level(lo, hi) => json!({"kind": "audio_level", "min_dbfs": lo, "max_dbfs": hi}),
+        Expect::Notes(v, e, n) => json!({"kind": "pattern_notes", "voice": v, "entry": e,
+            "notes": n.iter().map(|x| crate::journeys::gt_note_name(*x)).collect::<Vec<_>>()}),
+        Expect::Rows(v, e, r) => json!({"kind": "pattern_rows", "voice": v, "entry": e, "rows": r}),
     }
 }
 
@@ -197,6 +260,46 @@ pub fn expect_from_json(v: &Value, at: &str) -> Result<Expect, String> {
                 .and_then(Value::as_f64)
                 .ok_or_else(|| format!("{at}: `max_dbfs` must be a number"))?,
         ),
+        k @ ("pattern_notes" | "pattern_rows") => {
+            let voice = get_i64(v, "voice", at)?;
+            if !(1..=3).contains(&voice) {
+                return Err(format!("{at}: `voice` must be 1..3"));
+            }
+            let entry = get_i64(v, "entry", at)?;
+            if !(0..=254).contains(&entry) {
+                return Err(format!("{at}: `entry` must be 0..254"));
+            }
+            let list = |key: &str| {
+                v.get(key)
+                    .and_then(Value::as_array)
+                    .ok_or_else(|| format!("{at}: `{key}` must be a list"))
+            };
+            if k == "pattern_notes" {
+                Expect::Notes(
+                    voice as u8,
+                    entry as u8,
+                    list("notes")?
+                        .iter()
+                        .map(|n| crate::journeys::gt_note(n.as_str().unwrap_or("")))
+                        .collect::<Result<_, _>>()
+                        .map_err(|e| format!("{at}: {e}"))?,
+                )
+            } else {
+                Expect::Rows(
+                    voice as u8,
+                    entry as u8,
+                    list("rows")?
+                        .iter()
+                        .map(|r| {
+                            r.as_u64()
+                                .filter(|r| *r < 256)
+                                .map(|r| r as u8)
+                                .ok_or_else(|| format!("{at}: a row is 0..255"))
+                        })
+                        .collect::<Result<_, _>>()?,
+                )
+            }
+        }
         k => return Err(format!("{at}: unknown expectation kind {k}")),
     })
 }
@@ -256,6 +359,29 @@ pub fn describe(acts: &[Act]) -> String {
         Act::Wait(ms) => format!("wait {:.1} s", *ms as f64 / 1000.0),
         Act::Clock(bpm, _, _) => format!("send MIDI clock at {bpm} BPM"),
         Act::PowerCycle => "switch off and on again".to_string(),
+        Act::Play(bpm, ev) => format!(
+            "play {} notes at {bpm} BPM",
+            ev.iter().filter(|e| !e.0.is_empty()).count()
+        ),
+        Act::Taps(n, _) => format!(
+            "tap {}",
+            n.iter()
+                .map(|x| note_name(*x))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Act::Sync => "wait for the song's next pattern".to_string(),
+        Act::Sweep(e, n, ms) => format!(
+            "turn {} slowly {} by {} detents over {:.1} s",
+            encoder_name(*e),
+            if *n >= 0 {
+                "clockwise"
+            } else {
+                "counter-clockwise"
+            },
+            n.abs(),
+            *ms as f64 / 1000.0
+        ),
     };
     acts.iter().map(one).collect::<Vec<_>>().join(", then ")
 }
@@ -277,7 +403,64 @@ pub fn step_json(s: &Step) -> Value {
     if s.setup {
         value["harness"]["setup"] = json!(true);
     }
+    if !s.focus.is_empty() {
+        let mut f = Map::new();
+        if let Some(c) = &s.focus.control {
+            f.insert("control".into(), json!(c));
+        }
+        if let Some([col, row, cols, rows]) = s.focus.screen {
+            f.insert(
+                "screen".into(),
+                json!({"col": col, "row": row, "cols": cols, "rows": rows}),
+            );
+        }
+        if let Some(c) = &s.focus.callout {
+            f.insert("callout".into(), json!(c));
+        }
+        value["focus"] = Value::Object(f);
+    }
+    if let Some(c) = &s.chapter {
+        value["chapter"] = json!(c);
+    }
     value
+}
+
+fn focus_from_json(s: &Value, at: &str) -> Result<crate::journeys::Focus, String> {
+    let mut f = crate::journeys::Focus::default();
+    let Some(v) = s.get("focus") else {
+        return Ok(f);
+    };
+    let at = format!("{at}.focus");
+    if !v.is_object() {
+        return Err(format!("{at}: must be an object"));
+    }
+    if let Some(c) = v.get("control") {
+        let c = c
+            .as_str()
+            .ok_or_else(|| format!("{at}: `control` must be a string"))?;
+        crate::journeys::check_focus_control(c).map_err(|e| format!("{at}: {e}"))?;
+        f.control = Some(c.to_string());
+    }
+    if let Some(r) = v.get("screen") {
+        let n = |k: &str| -> Result<u8, String> {
+            r.get(k)
+                .and_then(Value::as_u64)
+                .filter(|x| *x < 256)
+                .map(|x| x as u8)
+                .ok_or_else(|| format!("{at}.screen: `{k}` must be a cell count"))
+        };
+        let reg = [n("col")?, n("row")?, n("cols")?, n("rows")?];
+        crate::journeys::check_screen(reg).map_err(|e| format!("{at}: {e}"))?;
+        f.screen = Some(reg);
+    }
+    if let Some(c) = v.get("callout") {
+        f.callout = Some(
+            c.as_str()
+                .ok_or_else(|| format!("{at}: `callout` must be a string"))?
+                .to_string(),
+        );
+    }
+    Ok(f)
 }
 
 pub fn recipe_json(j: &Journey) -> Value {
@@ -286,11 +469,22 @@ pub fn recipe_json(j: &Journey) -> Value {
         "id": j.id,
         "title": j.title,
         "goal": j.goal,
-        "prerequisites": {"start": if j.poweron { "power-on" } else { "live" }, "text": j.prereq},
+        "prerequisites": prerequisites_json(j),
         "skills": j.skills,
         "related": j.related,
         "steps": j.steps.iter().map(step_json).collect::<Vec<_>>(),
     })
+}
+
+fn prerequisites_json(j: &Journey) -> Value {
+    let mut p = json!({"start": if j.poweron { "power-on" } else { "live" }, "text": j.prereq});
+    if !j.songs.is_empty() {
+        p["songs"] = json!(j.songs);
+    }
+    if let Some(a) = &j.after {
+        p["after"] = json!(a);
+    }
+    p
 }
 
 pub fn parse_recipe(v: &Value) -> Result<Journey, String> {
@@ -380,6 +574,15 @@ pub fn parse_recipe(v: &Value) -> Result<Journey, String> {
             remember: h.get("remember").and_then(Value::as_bool).unwrap_or(false),
             defaults: h.get("defaults").and_then(Value::as_bool).unwrap_or(false),
             control: s.get("control").and_then(Value::as_str).map(String::from),
+            focus: focus_from_json(s, &at)?,
+            chapter: match s.get("chapter") {
+                None => None,
+                Some(c) => Some(
+                    c.as_str()
+                        .ok_or_else(|| format!("{at}: `chapter` must be a string"))?
+                        .to_string(),
+                ),
+            },
         });
     }
     Ok(Journey {
@@ -391,6 +594,32 @@ pub fn parse_recipe(v: &Value) -> Result<Journey, String> {
         prereq: get_str(pre, "text", "prerequisites")?.to_string(),
         skills: strs("skills")?,
         related: strs("related")?,
+        songs: match pre.get("songs") {
+            None => Vec::new(),
+            Some(list) => list
+                .as_array()
+                .ok_or("prerequisites: `songs` must be a list of strings")?
+                .iter()
+                .map(|x| {
+                    let name = x
+                        .as_str()
+                        .ok_or("prerequisites: `songs` must hold strings")?;
+                    crate::device::showcase_song(name)
+                        .map_err(|e| format!("prerequisites: {e}"))?;
+                    Ok(name.to_string())
+                })
+                .collect::<Result<_, String>>()?,
+        },
+        after: match pre.get("after") {
+            None => None,
+            Some(a) => Some(
+                a.as_str()
+                    .ok_or("prerequisites: `after` must be a recipe id")?
+                    .to_string(),
+            ),
+        },
+        prelude: Vec::new(),
+        prelude_songs: Vec::new(),
         steps,
     })
 }
@@ -450,7 +679,21 @@ pub fn validate(
 ) -> Result<Vec<RecipeReport>, String> {
     let recipes = load_dir(dir)?;
     let features = crate::journeys::detect_features(build);
-    let reports = crate::par_map(&recipes, |(file, v)| {
+    // Parse every recipe first: an `after` names another one.
+    let mut parsed: Vec<Result<Journey, String>> =
+        recipes.iter().map(|(_, v)| parse_recipe(v)).collect();
+    let mut ok: Vec<Journey> = parsed
+        .iter()
+        .filter_map(|p| p.as_ref().ok().cloned())
+        .collect();
+    crate::journeys::resolve_after(&mut ok)?;
+    for j in parsed.iter_mut().flatten() {
+        if let Some(r) = ok.iter().find(|x| x.id == j.id) {
+            *j = r.clone();
+        }
+    }
+    let items: Vec<_> = recipes.iter().zip(parsed).collect();
+    let reports = crate::par_map(&items, |((file, _), parsed)| {
         let mut rep = RecipeReport {
             id: file
                 .file_stem()
@@ -458,14 +701,14 @@ pub fn validate(
             file: file.clone(),
             problems: Vec::new(),
         };
-        match parse_recipe(v) {
+        match parsed {
             Err(e) => rep.problems.push(format!("schema: {e}")),
             Ok(j) => {
                 if rep.id != j.id {
                     rep.problems
                         .push(format!("the file name says {} and the id {}", rep.id, j.id));
                 }
-                let (r, _) = run_journey(build, &j, &features, cfg, &out.join("recipes"), false);
+                let (r, _) = run_journey(build, j, &features, cfg, &out.join("recipes"), false);
                 for s in &r.steps {
                     match &s.status {
                         Status::Ok => {}
@@ -528,6 +771,10 @@ pub fn schema_keys() -> Map<String, Value> {
         prereq: String::new(),
         skills: vec![],
         related: vec![],
+        songs: vec![],
+        after: None,
+        prelude: vec![],
+        prelude_songs: vec![],
         steps: vec![],
     })
     .as_object()
@@ -616,6 +863,42 @@ mod tests {
         assert!(p.iter().any(|x| x.contains("no expected outcome")));
         assert!(p.iter().any(|x| x.contains("used 2 times")));
         assert!(p.iter().any(|x| x.contains("nope")));
+    }
+
+    #[test]
+    fn the_video_fields_and_new_inputs_round_trip() {
+        let j = parse_table(concat!(
+            "journey a | A\n goal G\n skills S\n songs neon-highway\n",
+            " step a | A | c | play 125 E4:2 .:2 G4+B4; taps F3 G3 200; sweep K2 8 400; sync | sound; ",
+            "focus K2; screen 1 2 3 4; callout TURN K2; chapter Intro; notes 1 0 E-4; rows 2 0 0 2\n",
+            "journey b | B\n goal G\n skills S\n after a\n step b | B | c | wait 1 | sound; focus card\n",
+        ))
+        .unwrap();
+        for j in &j {
+            let v = recipe_json(j);
+            let back = parse_recipe(&v).unwrap();
+            assert_eq!(back.steps[0].acts, j.steps[0].acts);
+            assert_eq!(back.steps[0].expects, j.steps[0].expects);
+            assert_eq!(back.steps[0].focus, j.steps[0].focus);
+            assert_eq!(back.steps[0].chapter, j.steps[0].chapter);
+            assert_eq!(back.songs, j.songs);
+            assert_eq!(back.after, j.after);
+        }
+        let v = recipe_json(&j[0]);
+        assert_eq!(v["prerequisites"]["songs"][0], "neon-highway");
+        assert_eq!(v["steps"][0]["focus"]["screen"]["cols"], 3);
+        assert_eq!(recipe_json(&j[1])["prerequisites"]["after"], "a");
+        // A recipe without video fields exports none: the existing files stay as they were.
+        let plain = parse_table("journey c | C\n step c | C | c | wait 1 | sound\n").unwrap();
+        let v = recipe_json(&plain[0]);
+        assert!(v["steps"][0].get("focus").is_none());
+        assert!(v["prerequisites"].get("songs").is_none());
+        let mut bad = recipe_json(&j[0]);
+        bad["steps"][0]["focus"]["control"] = json!("K9");
+        assert!(parse_recipe(&bad).unwrap_err().contains("focus"));
+        let mut bad = recipe_json(&j[0]);
+        bad["prerequisites"]["songs"] = json!(["../etc"]);
+        assert!(parse_recipe(&bad).is_err());
     }
 
     #[test]

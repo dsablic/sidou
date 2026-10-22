@@ -133,6 +133,78 @@ impl Dev {
         }
     }
 
+    /// Powered on as `power_on`, with these showcase songs (assets/songs/<name>.sng) in the
+    /// store, each under its title (`chrome-comet` is CHROME COMET).
+    pub fn power_on_with(build: &Path, songs: &[String]) -> Dev {
+        let mut d = Dev::power_on(build);
+        for name in songs {
+            let bytes = showcase_song(name).expect("a showcase song");
+            put_song(&mut d.m.soc.flash.mem, &store_name(name), &bytes);
+        }
+        d
+    }
+
+    /// The song as the device holds it now (its model region).
+    pub fn song(&mut self) -> sidou_tests::song::Song {
+        let mut song = sidou_tests::song::Song::device();
+        let base = self.fw.symbol("__song_region");
+        let n = sidou_sys::SONG_REGION_BYTES as usize;
+        let bytes: Vec<u8> = (0..n as u32).map(|i| self.m.soc.read8(base + i)).collect();
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), song.ptr_mut().cast::<u8>(), n);
+        }
+        song
+    }
+
+    /// The rows (note value each, 0 for none) of the pattern voice `v` (0..2) plays at its
+    /// orderlist's pattern entry `e` (subtune 0; repeats and transposes are not entries).
+    pub fn pattern_notes(&mut self, v: u32, e: usize) -> Option<Vec<u8>> {
+        let song = self.song();
+        let (order, _) = song.order(0, v)?;
+        let p = order
+            .iter()
+            .copied()
+            .take_while(|x| u32::from(*x) != sidou_sys::GT2_LOOPSONG)
+            .filter(|x| u32::from(*x) < sidou_sys::GT2_REPEAT)
+            .nth(e)?;
+        let rows = song.pattern(u32::from(p))?;
+        Some(
+            rows.iter()
+                .map(|r| {
+                    let n = u32::from(r[0]);
+                    if (sidou_sys::GT2_FIRSTNOTE..=sidou_sys::GT2_LASTNOTE).contains(&n) {
+                        r[0]
+                    } else {
+                        0
+                    }
+                })
+                .collect(),
+        )
+    }
+
+    /// The row voice 1 of the playing song is on (main.c's `song_seen`), or None before one.
+    pub fn song_row(&mut self) -> Option<u8> {
+        // song_status: state, multispeed, ntsc, mute, speed[2], order_pos[3], row[3].
+        let r = self.m.soc.read8(self.fw.symbol("song_seen") + 9);
+        (r != 0xff).then_some(r)
+    }
+
+    /// Waits until voice 1 of the playing song starts a pattern (its row goes back to 0),
+    /// at most `limit` ms; true when it did.
+    pub fn sync_to_pattern(&mut self, limit: u64) -> bool {
+        let end = self.ms() + limit;
+        let mut last = self.song_row();
+        while self.ms() < end {
+            self.run(1);
+            let now = self.song_row();
+            if now == Some(0) && last != Some(0) {
+                return true;
+            }
+            last = now;
+        }
+        false
+    }
+
     /// Waits for the boot to end by itself; returns the milliseconds it took.
     pub fn wait_boot(&mut self) -> u64 {
         let t = common::run_past_boot(&mut self.m, &self.fw);
@@ -530,5 +602,93 @@ impl Dev {
         common::run_past_boot(&mut self.m, &self.fw);
         self.m.run_ms(100);
         self.mid_frame();
+    }
+}
+
+/// A showcase song's file, assets/songs/<name>.sng.
+pub fn showcase_song(name: &str) -> Result<Vec<u8>, String> {
+    if name.is_empty()
+        || !name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    {
+        return Err(format!(
+            "song {name}: a file name of assets/songs, without .sng"
+        ));
+    }
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../assets/songs")
+        .join(format!("{name}.sng"));
+    std::fs::read(&path).map_err(|e| format!("song {name}: {}: {e}", path.display()))
+}
+
+/// The store name a showcase song goes under: `chrome-comet` is CHROME COMET.
+pub fn store_name(name: &str) -> String {
+    name.replace('-', " ").to_uppercase()
+}
+
+unsafe extern "C" fn flash_map(ctx: *mut std::ffi::c_void, off: u32) -> *const u8 {
+    unsafe { ctx.cast::<u8>().add(off as usize) }
+}
+
+unsafe extern "C" fn flash_prog(
+    ctx: *mut std::ffi::c_void,
+    off: u32,
+    data: *const std::ffi::c_void,
+    n: u32,
+) -> i32 {
+    for i in 0..n as usize {
+        unsafe { *ctx.cast::<u8>().add(off as usize + i) &= *data.cast::<u8>().add(i) };
+    }
+    sidou_sys::STORE_OK
+}
+
+unsafe extern "C" fn flash_erase(ctx: *mut std::ffi::c_void, off: u32) -> i32 {
+    for i in 0..sidou_sys::STORE_SECTOR as usize {
+        unsafe { *ctx.cast::<u8>().add(off as usize + i) = 0xff };
+    }
+    sidou_sys::STORE_OK
+}
+
+/// Writes a song file into a flash image's store, as the device's SAVE would (emu-gate's
+/// song_store.rs does the same for its fixtures).
+pub fn put_song(flash: &mut [u8], name: &str, bytes: &[u8]) {
+    use sidou_sys::*;
+    let hooks = store_flash {
+        map: Some(flash_map),
+        prog: Some(flash_prog),
+        erase: Some(flash_erase),
+        ctx: flash.as_mut_ptr().cast(),
+    };
+    let mut st = Box::<store>::default();
+    let name = std::ffi::CString::new(name).unwrap();
+    unsafe {
+        store_init(&mut *st, &hooks, STORE_WINDOW_MAX);
+        store_mount(&mut *st);
+        store_quiet(&mut *st, 1);
+        while store_poll(&mut *st) != 0 {}
+        assert_eq!(
+            store_file_begin(
+                &mut *st,
+                name.as_ptr(),
+                STORE_FILE_SONG as u8,
+                bytes.len() as u32
+            ),
+            STORE_OK
+        );
+        let mut offset = 0;
+        while offset < bytes.len() {
+            offset += store_file_write(
+                &mut *st,
+                bytes.as_ptr().add(offset).cast(),
+                (bytes.len() - offset) as u32,
+            ) as usize;
+            store_poll(&mut *st);
+        }
+        assert_eq!(store_file_end(&mut *st), STORE_OK);
+        while store_file_result(&*st) == STORE_BUSY {
+            store_poll(&mut *st);
+        }
+        assert_eq!(store_file_result(&*st), STORE_OK);
     }
 }
