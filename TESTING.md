@@ -1609,17 +1609,22 @@ line.
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs only on a release tag (`v*`) or when started by
-hand from the Actions tab, never on ordinary pushes or pull requests. Run the
-suite locally before tagging. `.github/workflows/pages.yml` has the same
-triggers; it builds, smoke-tests and deploys the browser demo:
+hand from the Actions tab, never on ordinary pushes or pull requests. It is deliberately
+small (2026-10-22): the in-depth testing happens before a change merges, where every merge
+passes the full local check (both firmware builds, fmt, clippy, the workspace tests, UBSan,
+the packager and its tests, the whole emulator gate, REUSE, the browser demo). Run that suite
+before tagging. CI adds only what the local check cannot. `.github/workflows/pages.yml` has
+the same triggers; it builds, smoke-tests and deploys the browser demo:
 
 | Job | What it runs |
 |---|---|
-| `host` (Ubuntu and macOS) | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --release`, and the tests again with `SIDOU_SANITIZE=undefined`; on Ubuntu also the filter tables' drift test (ignored elsewhere) |
-| `asan` (Ubuntu, nightly Rust) | the tests with `SIDOU_SANITIZE=address` |
-| `msrv` (Ubuntu, Rust 1.88) | `cargo check` |
 | `reuse` | `reuse lint` |
-| `fm1` (Ubuntu) | the `fm1` build in Docker; `sidou-pack` makes `sidou.fwsc` (its inputs cached by `inputs.toml`'s hash) and its tests run with the inputs and with M-VAVE's V15 package (fetched and SHA-checked for the stock-return tests only); the flash timing spike's build (`build/fm1-spike`); the emulator tests (gate, boot, live, MIDI, latency, SRAM, boot guard, package boot, the flash spike); a check that the JSON reports exist. The reports are uploaded as the `sid-budget` artifact, the package with `LICENSES/Apache-2.0.txt` and `LICENSES/GPL-3.0-only.txt` as `sidou-fwsc` |
+| `gcc` (Ubuntu) | `cargo build --workspace --all-targets --release`, which compiles every host C file with GCC (macOS's clang hides some of its errors) |
+| `fm1` (Ubuntu) | the `fm1` build in Docker, clean from the tag; `sidou-pack` makes `sidou.fwsc` (its inputs cached by `inputs.toml`'s hash); the package boots in fm1-emu (`emu-gate --test package`) and a check that its report exists; the package's SHA-256 in the run summary. The package is uploaded with `LICENSES/Apache-2.0.txt` and `LICENSES/GPL-3.0-only.txt` as `sidou-fwsc`: the release's file, published once its SHA-256 matches the locally tested package |
+
+The ASan run (nightly Rust, above) and the MSRV check (`cargo +1.88 check --workspace
+--all-targets`) are no longer in CI; run them by hand when the C/C++ code or the Rust
+version requirement changes.
 
 Before opening a pull request, run at least:
 
