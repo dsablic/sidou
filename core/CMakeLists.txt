@@ -24,6 +24,9 @@ target_include_directories(sidou_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 set_source_files_properties(player/gt2_play.c player/song_ctl.c PROPERTIES
     COMPILE_OPTIONS "-Os;-fno-jump-tables")
 set_source_files_properties(song/gt2_stream.c song/gt2_ins.c PROPERTIES COMPILE_OPTIONS -Os)
+# The whole-file .sng reader (the boot reads its song in the LCD's reset wait) and its helpers:
+# boot and main-loop work, never the interrupt.
+set_source_files_properties(song/gt2_sng.c PROPERTIES COMPILE_OPTIONS -Os)
 # Save/edit bookkeeping and extension lookups are main-loop work; their O(1) IRQ edit
 # application stays in .ram_text unchanged.
 set_source_files_properties(song/gt2_song.c song/song_ext.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-jump-tables")

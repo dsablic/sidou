@@ -1861,8 +1861,9 @@ static void card_frame(views* v) {
 }
 
 /* The view that shows: the one on top, or the one under MIDI learn's frame, which composes it
- * every frame. */
-static const view* shows(const views* v) {
+ * every frame. Inlined into the encoder's input (knob_page) whatever the file's optimisation,
+ * for the popup input's bound (emu-gate screen.rs POPUP_INPUT); shows everywhere else. */
+__attribute__((always_inline)) static inline const view* shown(const views* v) {
     const screen* s = &v->s;
     const view* top = screen_top(s);
     if (top == &learn_view_view && s->depth >= 2u) {
@@ -1871,12 +1872,16 @@ static const view* shows(const views* v) {
     return top;
 }
 
+static const view* shows(const views* v) {
+    return shown(v);
+}
+
 /* What K1..K4 turn (app/panel.h panel.page): the CHIP view's page while it shows, LIVE's
  * anywhere else; and the panel MIDI learn reads it from. Before each event and after the views
  * took it, so the panel, which turns the knob, and learn, which picks it, read the same. */
-static void knob_page(views* v, panel* p) {
+__attribute__((always_inline)) static inline void knob_page(views* v, panel* p) {
     v->p = p;
-    p->page = (uint8_t)(shows(v) == &chip_view_view ? chip_view_page(&v->chip) : PANEL_PAGE_LIVE);
+    p->page = (uint8_t)(shown(v) == &chip_view_view ? chip_view_page(&v->chip) : PANEL_PAGE_LIVE);
 }
 
 /* The boot or a title card on top: they take every control, SAVE included (it ends them). */
