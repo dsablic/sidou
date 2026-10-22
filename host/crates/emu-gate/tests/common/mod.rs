@@ -267,6 +267,9 @@ pub struct Machine {
     /// the interrupts run as usual, as a main-loop pass that long would (a long pass).
     pub busy: Option<(u32, u64)>,
     busy_until: Option<u64>,
+    /// Each main-loop instruction that slept (an `idle` fm1-emu skipped ahead on), by its PC,
+    /// with how many times.
+    pub idles: std::collections::BTreeMap<u32, u64>,
 }
 
 /// Every emulator test's journey checks the stacks when its machine goes: each stack's deepest
@@ -488,6 +491,7 @@ impl Machine {
             stalled: 0,
             busy: None,
             busy_until: None,
+            idles: std::collections::BTreeMap::new(),
         }
     }
 
@@ -684,8 +688,12 @@ impl Machine {
                 }
             }
             feed_trs(&mut self.trs_at, soc);
+            let (pc, skipped) = (cpu.pc, soc.periph.skipped);
             if step(cpu, soc) {
                 self.emulated_block_loads += 1;
+            }
+            if !in_isr && soc.periph.skipped != skipped {
+                *self.idles.entry(pc).or_insert(0) += 1;
             }
             if let Some(usb) = &mut self.usb {
                 usb.after_step(soc, self.alnk_open.is_some());

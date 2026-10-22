@@ -88,6 +88,9 @@ static volatile uint32_t quiet_blocks;
  * odd while the interrupt writes them. */
 static volatile uint32_t anchor_seq, anchor_ticks, anchor_samples;
 
+/* midi.h's (which this file cannot include: its song_transport type is this file's variable). */
+int midi_usb_live(void);
+
 /* reg_ring_out.wait: the producer needs the interrupt to drain. Before audio_irqs_on the
  * interrupts are off, and an idle would never wake: drain here instead. */
 static void wait_for_drain(void* ctx) {
@@ -96,7 +99,13 @@ static void wait_for_drain(void* ctx) {
         far_drain(&ring, &chips);
         return;
     }
-    /* Sleep until the next interrupt (TIMER5 within 100 us, the block within 2.9 ms). */
+    /* While a USB host has the device configured, no `idle` (main.c wait_for_interrupt, and
+     * docs/hardware-test.md section 8): back to the caller, whose loop spins until the
+     * interrupt has made room. Else sleep until the next interrupt (TIMER5 within 100 us, the
+     * block within 2.9 ms). */
+    if (midi_usb_live()) {
+        return;
+    }
     __asm__ volatile("idle" ::: "memory");
 }
 

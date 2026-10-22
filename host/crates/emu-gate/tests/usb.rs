@@ -1019,3 +1019,54 @@ fn a_usb_sysex_flood_is_held_back_by_naks_not_lost() {
         m.key(key, false);
     }
 }
+
+/// While a host has the device configured nothing sleeps in `idle` (hardware-test 8: IN
+/// packets were lost under it), not even the register ring's wait for the audio interrupt
+/// (review 2.4: platform/fm1/audio.c's wait_for_drain idled where main.c's wait_for_interrupt
+/// spins). The ring is filled to the brim (with writes to the SID's unused register $1F, which
+/// do nothing) at the start of a live_tick while a note sounds, so the tick's own writes wait
+/// for the interrupt to make room.
+#[test]
+fn nothing_sleeps_in_idle_while_a_host_is_there_not_even_the_rings_wait() {
+    use sidou_sys::ilp32::reg_ring as rr;
+    let Some(fw) = fixture("no idle with a host") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    m.key(30, true);
+    m.usb_frames(20);
+    let tick = fw.symbol("live_tick");
+    while m.cpu.pc != tick || !m.cpu.irq_levels.is_empty() {
+        m.run_cycles(1);
+    }
+    let ring = fw.symbol("ring");
+    let (tail, stage) = (
+        m.soc.read32(ring + rr::tail as u32),
+        m.soc.read32(ring + rr::stage as u32),
+    );
+    let size = sidou_sys::REG_RING_SIZE;
+    let fill = size - (stage - tail);
+    for k in 0..fill {
+        let at = ring + rr::e as u32 + 2 * ((stage + k) % size);
+        m.soc.write8(at, 0x1f);
+        m.soc.write8(at + 1, 0);
+    }
+    m.soc.write32(ring + rr::stage as u32, stage + fill);
+    m.soc.write32(ring + rr::head as u32, stage + fill);
+    m.watch_calls(fw.symbol("wait_for_drain"));
+    m.idles.clear();
+    m.usb_frames(30);
+    m.key(30, false);
+    m.usb_frames(20);
+    let waits = m.watched_calls.len();
+    println!(
+        "{waits} waits for the ring's room; main-loop idles {:x?}",
+        m.idles
+    );
+    assert!(waits > 0, "the ring was never waited for");
+    assert!(
+        m.idles.is_empty(),
+        "slept in idle with a host: {:x?}",
+        m.idles
+    );
+}
