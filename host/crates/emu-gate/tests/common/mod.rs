@@ -250,8 +250,8 @@ pub struct Machine {
     /// Whether dropping the machine checks its stacks' deepest use (`Drop`): off for a run
     /// that leaves SIDOU (the stock firmware has its own stacks).
     pub stack_check: bool,
-    /// With Some: every main-loop instruction inside a watched call (`watch_calls`, or
-    /// `watch_passes`' stretches), counted by its PC: where a call's instructions go.
+    /// With Some: every main-loop instruction inside a watched call (`watch_calls`; with no
+    /// call watched, `watch_passes`' stretches), counted by its PC: where they go.
     pub profile: Option<std::collections::HashMap<u32, u64>>,
 }
 
@@ -614,7 +614,9 @@ impl Machine {
                     }
                 }
                 if let Some(p) = &mut self.profile {
-                    if self.open_call.is_some() || self.pass_start.is_some() {
+                    if self.open_call.is_some()
+                        || (self.watch.is_none() && self.pass_start.is_some())
+                    {
                         *p.entry(cpu.pc).or_insert(0) += 1;
                     }
                 }
