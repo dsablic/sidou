@@ -333,6 +333,23 @@ fn a_held_home_in_the_menu_keeps_the_menu() {
     assert_eq!(ui.top(), "MENU");
 }
 
+/// Ergonomics review E32: undo keeps one step, and the song views that undo (STEP and TRACKER)
+/// say so on their cards.
+#[test]
+fn the_song_views_cards_say_undo_is_one_step() {
+    for id in [HELP_CARD_STEP, HELP_CARD_TRACKER] {
+        let card = unsafe { &help_cards[id as usize] };
+        let lines: Vec<(String, String)> = (0..usize::from(card.count))
+            .map(|l| line(card, l))
+            .collect();
+        assert!(
+            lines.contains(&("E+LFO".to_owned(), "ONE UNDO".to_owned())),
+            "{}: {lines:?}",
+            text(card.name)
+        );
+    }
+}
+
 #[test]
 fn any_control_closes_the_card_and_does_nothing_else_but_a_note_plays() {
     for what in ["OCT+", "FX", "K1", "ALGORITHM", "SAVE"] {

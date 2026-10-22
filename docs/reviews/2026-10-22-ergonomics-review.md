@@ -109,7 +109,7 @@ Effort: S under half a day, M about a day, L several days. "Review 5.x" means `d
 | E29 | Help card and toasts | A toast other than the tour's draws over the card; a frame can reach about 290 cells against the 200 budget. | Review 5.12, `app/help_view.c:110` | S | **A**. Hold toasts while the card shows. **Fixed:** a toast raised under the card waits (`screen_toast_take`, `views.toast_held`) and shows after it; the card's budget counts the layers' cells. |
 | E30 | First-run tour | Pressing ENV within 8 s of an install boot: "DIST TAPE" never shows (the tour's clear erases it). | Review 5.13, `app/views.c:1805-1832` (`tour_frame`) | S | **A**. **Fixed:** the tour ends only its own toast (`tour_clear`). |
 | E31 | Menu | 17 lines. THEME is the 12th, below KEYS, SOUNDS, ROWS, CARDS and STORE; set-and-forget settings and actions share one list. | `journeys/tour/07-menu.png`; the harness could not measure CHANGE THEME at all (F2) | M | **?** Options: (a) keep one list; (b) a SETTINGS item that holds KEYS, SOUNDS, ROWS, CARDS, STORE, THEME, REC (the menu then has about 11 lines and the TODO's "menus hold only set-and-forget settings" is clearer). I recommend (b), but it moves things the help card and docs name. **Done (b):** the menu has eleven lines (CHIP, TRACKER, SCENE, SONG, PRE, OCTAVE, SETTINGS, STATUS, MIDI, CHARSET, ABOUT); SETTINGS is a page drawn like the MIDI page with KEYS, SOUNDS, ROWS, CARDS, STORE, THEME and REC (its own help card); STORE's two-step format and the fast-spin rule kept; with the user's later decision SAVE is the menu's OK (it opens the item under the selection; ALGORITHM clockwise still does). Changing THEME now takes two menu levels: the harness's `task_max_menu_levels` (1) flags it. |
-| E32 | Undo | One step (EDIT + LFO) on song cell edits only, no undo on STEP's pads. | controls.md "EDIT + LFO", review "Editing TRACKER"; TODO "undo where it matters" | L | **?** Options: keep one step (a row is 200 bytes of RAM per undo level), or add a second level. I recommend keeping one step for v0.3.0 and telling players on the help card. |
+| E32 | Undo | One step (EDIT + LFO) on song cell edits only, no undo on STEP's pads. | controls.md "EDIT + LFO", review "Editing TRACKER"; TODO "undo where it matters" | L | **?** Options: keep one step (a row is 200 bytes of RAM per undo level), or add a second level. I recommend keeping one step for v0.3.0 and telling players on the help card. **Done:** one step kept; STEP's and TRACKER's help cards say E+LFO ONE UNDO (EDIT+LFO UNDO 1 STEP does not fit a card's 14 characters). |
 
 ### Rejected
 
@@ -158,7 +158,7 @@ Suggested order if you accept: E01, E02, E03 and E04 first (work can be lost), t
 - **E05:** REC writes what was heard: the entry's transpose is subtracted, with a toast if the
   note leaves the range. **Done.**
 - Taken with the review's recommendation, not asked: **E20** fixes ABOUT's first heading only (**done**);
-  **E32** keeps one undo step and says so on the help card.
+  **E32** keeps one undo step and says so on the help card (**done**).
 - From the device session: E10, E11, E19, the readability calls in TODO.md, and the SysEx gap
   while sound plays.
 

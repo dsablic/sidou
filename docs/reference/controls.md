@@ -253,7 +253,7 @@ arrow); a page is 16 rows of its pattern (the pattern's length says how many pag
 | Step held + K4 | waveform **SET**: OFF, TRI, SAW, PULSE, NOISE |
 | Step held + EDIT + K1-K4 | the character's LOCKs: age/heat, DAC, thump, bleed (0-127) |
 | Step held + LFO | clears that step's locks and its SET |
-| EDIT + LFO | undoes the last cell edit, then redoes it (TRACKER's one step) |
+| EDIT + LFO | undoes the last cell edit, then redoes it (one step, as TRACKER's; the help card says E+LFO ONE UNDO) |
 | Keys 17-27 | audition, as in the other song views |
 | GLO + a step key | the mute or solo of the layer; no step toggles |
 
@@ -287,7 +287,7 @@ field expands to 2× in reverse yellow. Other voices remain activity strips.
 | Note key | writes its note and the current instrument into the cursor's row, auditions it, then advances by the edit step (wrapping within the pattern) |
 | ARP | writes key off (`===`), keeping the row's other fields |
 | LFO | clears the note to a rest; a second press on the same row clears all four fields |
-| EDIT + LFO | undoes the last edit; the next press redoes it (also available with REC off) |
+| EDIT + LFO | undoes the last edit; the next press redoes it (also available with REC off). Undo keeps **one step**: the help card says E+LFO ONE UNDO |
 | K1 | instrument number, 00–3F (00 leaves the playing instrument unchanged) |
 | K2 | command, 0–F |
 | K3 / K4 | data's high / low nibble, independently clamped to 0–F |
