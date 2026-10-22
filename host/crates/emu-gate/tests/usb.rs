@@ -946,3 +946,76 @@ fn clocks_stamped_late_by_a_flash_hold_stay_out_of_the_clocks_fit() {
     assert!(m.stalled >= 4, "{} holds", m.stalled);
     assert!(after < 0.6, "a clock {after:.2} ms off the fit's line");
 }
+
+/// A host that floods EP1 OUT with a foreign SysEx dump as fast as the device takes it (a
+/// packet again as soon as the last one was read: two a millisecond, at USB's 2 kHz poll, 32
+/// events), while a chord plays and, every 40 ms, the main loop is held 20 ms before it drains
+/// MIDI (a long pass): SIDOU's MIDI-in ring never loses an event, the device NAKs the host
+/// instead (review 4.5: EP1 NAKed only on usb.c's own ring, which never holds SysEx, so a dump
+/// overflowed SIDOU's 256 entries in a long pass, and the gap released every note and reset
+/// SysEx).
+#[test]
+fn a_usb_sysex_flood_is_held_back_by_naks_not_lost() {
+    let Some(fw) = fixture("USB back-pressure on a SysEx flood") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    for key in [30, 34, 37] {
+        m.key(key, true);
+    }
+    m.usb_frames(50);
+    let ring = fw.symbol("in_ring");
+    let lost_at = ring + sidou_sys::ilp32::midi_ring::lost as u32;
+    let lost = m.soc.read32(lost_at);
+    let restarts = fw.symbol("midi_stats") + 8;
+    let restarted = m.soc.read32(restarts);
+    // F0 43 (Yamaha's id), 8 KiB of data bytes, F7: 16 events a packet
+    let dump: Vec<u8> = [0xf0, 0x43]
+        .into_iter()
+        .chain((0..8192u32).map(|i| (i % 127) as u8))
+        .chain(std::iter::once(0xf7))
+        .collect();
+    let packets = sysex_packets(&dump);
+    let step = m.soc.periph.cycle_of_ms(1) / 8;
+    let long_pass = m.soc.periph.cycle_of_ms(20);
+    let drain = fw.symbol("midi_drain");
+    let (start, mut naks, mut held) = (m.ms(), 0u64, 0u32);
+    let mut next_pass = m.ms() + 5;
+    for chunk in packets.chunks(64) {
+        loop {
+            if m.ms() >= next_pass {
+                m.busy = Some((drain, long_pass));
+                held += 1;
+                next_pass = m.ms() + 40;
+            }
+            let usb = m.usb.as_mut().expect("a host");
+            if usb.out1(&mut m.soc, chunk) {
+                break;
+            }
+            naks += 1;
+            let before = m.ms();
+            m.run_cycles(step);
+            if m.ms() != before {
+                let usb = m.usb.as_mut().expect("a host");
+                usb.frame(&mut m.soc);
+            }
+        }
+    }
+    m.usb_frames(200);
+    let lost = m.soc.read32(lost_at) - lost;
+    println!(
+        "{} bytes of SysEx in {} ms with {held} passes of 20 ms, {naks} NAKs: {lost} events lost",
+        dump.len(),
+        m.ms() - start - 200
+    );
+    assert!(held >= 3);
+    assert_eq!(lost, 0, "SIDOU's MIDI-in ring lost events to the flood");
+    assert_eq!(
+        m.soc.read32(restarts),
+        restarted,
+        "a gap restarted the parsers"
+    );
+    for key in [30, 34, 37] {
+        m.key(key, false);
+    }
+}

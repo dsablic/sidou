@@ -263,6 +263,10 @@ pub struct Machine {
     /// instant). `stalled` counts them.
     pub stalls: Vec<(u32, u64)>,
     pub stalled: u64,
+    /// (pc, cycles): once, when the main loop reaches `pc`, it stays there for `cycles` while
+    /// the interrupts run as usual, as a main-loop pass that long would (a long pass).
+    pub busy: Option<(u32, u64)>,
+    busy_until: Option<u64>,
 }
 
 /// Every emulator test's journey checks the stacks when its machine goes: each stack's deepest
@@ -482,6 +486,8 @@ impl Machine {
             trs_at: std::collections::VecDeque::new(),
             stalls: Vec::new(),
             stalled: 0,
+            busy: None,
+            busy_until: None,
         }
     }
 
@@ -645,6 +651,22 @@ impl Machine {
                     }
                 }
                 self.main_steps += 1;
+            }
+            if !in_isr {
+                if let Some((pc, n)) = self.busy {
+                    if cpu.pc == pc {
+                        self.busy = None;
+                        self.busy_until = Some(soc.periph.cycles + n);
+                    }
+                }
+                if let Some(until) = self.busy_until {
+                    if soc.periph.cycles < until {
+                        feed_trs(&mut self.trs_at, soc);
+                        self.steps += 1;
+                        continue; // the pass goes on: the next cycle, interrupts taken
+                    }
+                    self.busy_until = None;
+                }
             }
             if !in_isr && !self.stalls.is_empty() {
                 if let Some(&(_, n)) = self.stalls.iter().find(|s| s.0 == cpu.pc) {

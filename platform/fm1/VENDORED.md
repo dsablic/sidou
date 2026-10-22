@@ -158,6 +158,12 @@ without the hooks (checked 2026-10-20).
   takes all of it (`app/midi_usb.c`): channel messages, system common (song
   position, song select, tune request), every real-time byte, and SysEx. A
   full ring is a gap for the parser.
+- **Back-pressure:** `ep1_take` NAKs the host while `usb.c`'s own MIDI-in ring
+  has fewer than `EP1_ROOM` free, and SysEx never enters that ring. So when
+  SIDOU's ring has fewer than `EP1_ROOM` free, `midi.c` sets `usb.c`'s read
+  index back (SIDOU never reads that ring) until it looks that full, and
+  `usb_in_pump` lets it go once SIDOU's ring has the room again. No hook is
+  needed for it.
 
   `usb.c` still fills its own ring through its filter: channel messages and
   F8/FA/FB/FC. Those are copies. `midi.c`'s `usb_in_pump` empties that ring

@@ -151,13 +151,9 @@ static void usb_reset_wait(uint32_t ms) {
     38, 3, 'S', 0, 'I', 0, 'D', 0, 'O', 0, 'U', 0, ' ', 0, 'c', 0, 'o', 0, 'n', 0, 't', 0, 'r', 0, \
         'i', 0, 'b', 0, 'u', 0, 't', 0, 'o', 0, 'r', 0, 's', 0
 #define FELUCCA_USB_PRODUCT 22, 3, 'S', 0, 'I', 0, 'D', 0, 'O', 0, 'U', 0, ' ', 0, 'F', 0, 'M', 0, '-', 0, '1', 0
-/* Every USB-MIDI event packet, as it came (TIMER5 interrupt, usb_poll), into SIDOU's ring:
- * SIDOU's parser (app/midi_usb.c) takes system common, every real-time byte and SysEx too,
- * which usb.c's own ring leaves out. A full ring is a gap for the parser: midi_ring_push
- * counts it, as USB's. */
-static void usb_raw_in(uint32_t pkt) {
-    (void)midi_ring_push(&in_ring, MIDI_SRC_USB, pkt, poll_stamp);
-}
+/* Every USB-MIDI event packet, as it came (TIMER5 interrupt, usb_poll), into SIDOU's ring
+ * (defined after the include: it uses usb.c's ring). */
+static void usb_raw_in(uint32_t pkt);
 #define FELUCCA_MIDI_IN_RAW usb_raw_in
 
 /* usb.c's SysEx assembler is renamed: app/sysex.h has a sysex_byte too. Its one delay goes
@@ -169,6 +165,32 @@ static void usb_raw_in(uint32_t pkt) {
 #undef sysex_byte
 #undef fm1_delay_ms
 /* clang-format on */
+
+/* SIDOU's parser (app/midi_usb.c) takes system common, every real-time byte and SysEx too,
+ * which usb.c's own ring leaves out. EP1's back-pressure follows SIDOU's ring too: usb.c's
+ * ep1_take leaves an OUT packet in the endpoint (the host is NAKed) while its own ring has
+ * fewer than EP1_ROOM free, and SysEx never enters that ring. So once SIDOU's ring has fewer
+ * than EP1_ROOM free (a packet's 16 events and TRS's 8), usb.c's ring is made to look that
+ * full (its read index set back: SIDOU never reads it, usb_in_pump empties it), and the next
+ * packets wait in the endpoint until usb_in_pump finds the room again. A full ring is still a
+ * gap for the parser (TRS can be neither held nor NAKed): midi_ring_push counts it. */
+static uint32_t in_room(void) {
+    return MIDI_RING_SIZE - (in_ring.head - in_ring.tail);
+}
+
+/* usb.c's ring to look too full for another OUT packet (TIMER5, or with the interrupts off). */
+static void ep1_hold(void) {
+    if (mi_w - mi_r <= MQ - EP1_ROOM) {
+        mi_r = mi_w - (MQ - EP1_ROOM + 1u);
+    }
+}
+
+static void usb_raw_in(uint32_t pkt) {
+    (void)midi_ring_push(&in_ring, MIDI_SRC_USB, pkt, poll_stamp);
+    if (in_room() < EP1_ROOM) {
+        ep1_hold();
+    }
+}
 
 /* usb.c's usb_retry from the main loop, without stopping it. While no host answers (no cable:
  * the SIE stays silent), usb_retry would run usb_start once a second: the controller's reset, a
@@ -250,12 +272,19 @@ _Static_assert(MIDI_SRC_USB == 1u && MIDI_SRC_TRS == 2u, "USB packets are 1, TRS
 /* usb.c's own MIDI-in ring (channel messages and four real-time bytes, from its filter) holds
  * copies of what usb_raw_in already gave SIDOU's ring: emptied here (main loop), but only while
  * SIDOU's ring has room for another OUT packet. So usb.c's back-pressure, which NAKs the host
- * while its own ring is nearly full (ep1_take), follows SIDOU's ring when that one fills. */
+ * while its own ring is nearly full (ep1_take), follows SIDOU's ring when that one fills, by
+ * these copies or by usb_raw_in's setting back of its read index. */
 static void usb_in_pump(void) {
+    uint32_t room = in_room();
     if (mi_r == mi_w && !midi_in_overflow) {
+        if (room < EP1_ROOM) { /* TRS filled it: no USB packet set the hold */
+            uint32_t f = irq_save();
+            ep1_hold();
+            irq_restore(f);
+        }
         return;
     }
-    if (midi_ring_room(&in_ring) >= EP1_ROOM) {
+    if (room >= EP1_ROOM) {
         uint32_t f = irq_save();
         mi_r = mi_w;
         midi_in_overflow = 0;
