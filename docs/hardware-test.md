@@ -699,8 +699,9 @@ it without the menu's confirmation; preserve wanted data with the previous firmw
   A plain SAVE says STORE FOREIGN: NOT SAVED; power-cycling without formatting leaves the
   region foreign. ALGORITHM clockwise once on STORE says FORMAT?; counter-clockwise
   cancels, as does moving SELECT away and back. Nothing is erased by those cancelled steps.
-- [ ] **Destructive confirmation:** on FOREIGN, turn ALGORITHM clockwise twice without
-  leaving STORE. The store's 73 sectors are erased; STORE shows ERASE n (sound can have
+- [ ] On FOREIGN, spin ALGORITHM clockwise fast: STORE says FORMAT? and nothing is erased.
+- [ ] **Destructive confirmation:** on FOREIGN, turn ALGORITHM clockwise (FORMAT?, the popup
+  says SAVE FORMATS), then press SAVE without leaving STORE. The store's 73 sectors are erased; STORE shows ERASE n (sound can have
   gaps), then STORE FORMATTED and nK. Let settings save, power-cycle, and check that
   STORE is no longer FOREIGN and settings persist. Never format automatically just to
   proceed with the checklist.

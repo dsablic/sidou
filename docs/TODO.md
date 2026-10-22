@@ -484,6 +484,8 @@ working.
   (REC into a pattern TRACKER doesn't show; song views over ABOUT edit ABOUT's tune), 6.1
   (`FREE_RAM_MIN` counts M2a's budget twice) and 6.2 (the flash ceiling), the stale-CMake
   check (section 8), and the 31 minor ones, batched into the ergonomics/UX pass.
+- **Fixed after v0.2.0 (the ergonomics review's E items, ergo-logic):** 1.5 (E01: SAVE, not a
+  second turn, confirms STORE's format; NEWER for a newer SIDOU's store).
 - **From the v0.2.0 fixes:** a sector the store retires for the session (review 1.2) shows
   only in `store_stats` and a lower free figure in MENU; STATUS should say it. A background
   settings save that fails is still not detected (explicit saves report and retry).

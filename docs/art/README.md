@@ -250,7 +250,7 @@ does not take plays the instrument (`app/views.h`,
   with forced restorations marked by `menu.force_rows`; deferred rows follow within the quota. Labels
   are short so that value and label fit a line: **PRE** is PRESET (the longest preset name,
   NOISE PERC, is 10 characters), **ROWS** TRACKER ROWS, and STORE shows `193K` (kilobytes
-  free), `FOREIGN`, `FORMAT?` or `ERASE 20`; the popup says the whole names. The help below
+  free), `FOREIGN`, `NEWER`, `FORMAT?` or `ERASE 20`; the popup says the whole names. The help below
   (`SELECT  MOVE`, `ALG   CHANGE`: ALG is ALGORITHM) is large too. The menus of M2's views
   (and a CHIP-sized menu of the song's) can use the same widget at either size
   (`menu.scale`).

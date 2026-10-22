@@ -795,12 +795,15 @@ current flash timing limits, programs as well as erases wait for quiet. Stop pla
 let release tails fade before powering off, or use SAVE and wait for its completion toast.
 
 The menu's **STORE** item, immediately after CARDS, shows free space outside the store's
-reserve pool in kilobytes (for example, **STORE 193K**) or **FOREIGN**. FOREIGN means the region
-contains data SIDOU does not own: it is left untouched, and settings cannot persist.
+reserve pool in kilobytes (for example, **STORE 193K**), **FOREIGN** or **NEWER**. FOREIGN means
+the region contains data SIDOU does not own; NEWER means it is a newer SIDOU version's store
+(after a downgrade: install that version again to keep its songs). Either is left untouched,
+and settings cannot persist.
 
-On FOREIGN, turn **ALGORITHM clockwise once**: **FORMAT?**. Turn clockwise again
-without leaving the item to confirm. Counter-clockwise or moving the menu cursor cancels
-the confirmation. **Formatting destroys the other firmware's data in the store**, erases
+On FOREIGN or NEWER, turn **ALGORITHM clockwise**: **FORMAT?**, and the popup says **SAVE
+FORMATS**. Then press **SAVE**, without leaving the item, to confirm. Further turns never
+confirm, so a fast spin of ALGORITHM cannot format. Counter-clockwise, moving the menu cursor
+or leaving the menu cancels the confirmation. **Formatting destroys the other firmware's data in the store**, erases
 all 73 sectors and can interrupt the sound. STORE shows **ERASE n**, then the toast
 **STORE FORMATTED**. Current settings are then saved when the store can take them. Formatting
 is never automatic; ALGORITHM does not format a SIDOU store.
@@ -991,7 +994,7 @@ up or down when items are out of sight, and the list scrolls with SELECT). It li
 CHIP view, above), TRACKER (the song views), SCENE (the generative pieces), SONG (the song-file
 actions), PRE (the preset), OCTAVE, KEYS, SOUNDS, ROWS (TRACKER ROWS), CARDS (title cards),
 STORE, THEME, STATUS, MIDI, CHARSET (the glyph sheet), REC (REC QUANTISE) and ABOUT. A line is 14 characters:
-PRE, ROWS and STORE's kilobytes (`193K`, FOREIGN, FORMAT?, `ERASE 20`) are short so that the
+PRE, ROWS and STORE's kilobytes (`193K`, FOREIGN, NEWER, FORMAT?, `ERASE 20`) are short so that the
 longest preset name (NOISE PERC) and value fit beside their labels; the
 [popup](#value-popup) says the whole names. LIVE's scopes, TRACKER, CHIP, STATUS and ABOUT keep
 the font's own size. A view opens with a wipe from the top and

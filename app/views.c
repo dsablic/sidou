@@ -123,8 +123,12 @@ static void sound(views* v, ui_sound_id id) {
 /* ---- what the views show ---- */
 
 /* The menu's STORE: its state (STORE_LOOK_*) and, for a store that writes, its free kilobytes
- * (or, while a format runs, the sectors it still erases) in *n. */
-enum { STORE_LOOK_NONE, STORE_LOOK_FREE, STORE_LOOK_FOREIGN, STORE_LOOK_ARMED, STORE_LOOK_ERASING };
+ * (or, while a format runs, the sectors it still erases) in *n. NEWER: a foreign store that is a
+ * newer SIDOU's (store.h mount_newer), told apart because updating, not formatting, keeps it. */
+enum {
+    STORE_LOOK_NONE, STORE_LOOK_FREE, STORE_LOOK_FOREIGN, STORE_LOOK_NEWER, STORE_LOOK_ARMED,
+    STORE_LOOK_ERASING
+};
 static uint32_t store_look(const views* v, uint32_t* n) {
     const store* st = v->set ? v->set->st : NULL;
     if (!st) {
@@ -132,7 +136,8 @@ static uint32_t store_look(const views* v, uint32_t* n) {
     }
     store_state_id state = store_state(st);
     if (state == STORE_STATE_FOREIGN) {
-        return v->format_arm ? STORE_LOOK_ARMED : STORE_LOOK_FOREIGN;
+        return v->format_arm ? STORE_LOOK_ARMED : st->mount_newer ? STORE_LOOK_NEWER
+                                                                   : STORE_LOOK_FOREIGN;
     }
     if (state != STORE_STATE_BLANK && state != STORE_STATE_SIDOU) {
         return STORE_LOOK_NONE; /* not mounted */
@@ -421,13 +426,15 @@ static void store_value(void* ctx, char* buf) {
         break;
     }
     case STORE_LOOK_FOREIGN: join(buf, MENU_VALUE_CHARS, "FOREIGN", ""); break;
+    case STORE_LOOK_NEWER: join(buf, MENU_VALUE_CHARS, "NEWER", ""); break;
     case STORE_LOOK_ARMED: join(buf, MENU_VALUE_CHARS, "FORMAT?", ""); break;
     default: join(buf, MENU_VALUE_CHARS, "NONE", ""); break;
     }
 }
 
-/* On a foreign store: clockwise once arms the format, twice formats (every sector erased, the
- * erases forced: the user asked for their gaps); counter-clockwise disarms. Else nothing. */
+/* On a foreign store: clockwise arms the format, counter-clockwise disarms; more clockwise
+ * turns keep it armed and no more. Only SAVE then formats (store_confirm): a fast spin of
+ * ALGORITHM, however many detents, never erases anything. Else nothing. */
 static void store_turn(void* ctx, int32_t steps) {
     views* v = ctx;
     store* st = v->set ? v->set->st : NULL;
@@ -435,20 +442,26 @@ static void store_turn(void* ctx, int32_t steps) {
         v->format_arm = 0;
         return;
     }
-    if (steps < 0) {
-        v->format_arm = 0;
-    } else if (v->format_arm || steps > 1) {
-        v->format_arm = 0;
-        store_format(st);
-        settings_forget(v->set);
-        user_profiles_forget(&v->users);
-        v->formatting = 1;
-        if (v->set->force) {
-            v->set->force(1);
-        }
-    } else {
-        v->format_arm = 1;
+    v->format_arm = steps > 0;
+}
+
+/* SAVE on the menu's armed STORE: the format (every sector erased, the erases forced: the user
+ * asked for their gaps). 0, nothing done, when STORE is not armed under the cursor. */
+static int store_confirm(views* v) {
+    store* st = v->set ? v->set->st : NULL;
+    if (!v->format_arm || v->home.cursor != VIEWS_MENU_STORE || !st ||
+        store_state(st) != STORE_STATE_FOREIGN) {
+        return 0;
     }
+    v->format_arm = 0;
+    store_format(st);
+    settings_forget(v->set);
+    user_profiles_forget(&v->users);
+    v->formatting = 1;
+    if (v->set->force) {
+        v->set->force(1);
+    }
+    return 1;
 }
 
 /* Title card id over the view on top, as the CARDS option says: ALWAYS every one, ONCE THE CHIP
@@ -2026,6 +2039,11 @@ static int menu_choice_text(const views* v, char* name, char* value) {
     text[0] = 0;
     if (i == VIEWS_MENU_THEME) {
         join(text, sizeof text, theme_get(v->l->theme)->name, ""); /* in full, not the menu's */
+    } else if (i == VIEWS_MENU_STORE && v->format_arm) {
+        join(text, sizeof text, "SAVE FORMATS", ""); /* the confirm the menu's FORMAT? asks for */
+    } else if (i == VIEWS_MENU_STORE && v->set && v->set->st && v->set->st->mount_newer &&
+               store_state(v->set->st) == STORE_STATE_FOREIGN) {
+        join(text, sizeof text, "NEWER SIDOU", "");
     } else {
         it->value((void*)v, text);
     }
@@ -2159,6 +2177,9 @@ static void save(views* v) {
             }
             screen_push(&v->s, &views_song_menu_view, v, SCREEN_WIPE_DOWN);
         }
+        return;
+    }
+    if (shows(v) == &views_menu && store_confirm(v)) {
         return;
     }
     if (v->set) {

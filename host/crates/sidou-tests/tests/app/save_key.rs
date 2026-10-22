@@ -69,6 +69,8 @@ struct Saving {
     set: Box<settings>,
     _ml: Box<midi_learn>,
     forced: bool,
+    /// The views' popup source, kept aside (the popup is off for these tests).
+    popup: screen_popup_fn,
 }
 
 unsafe extern "C" fn force(on: i32) {
@@ -84,7 +86,7 @@ impl Saving {
         let mut ui = Ui::without_cards();
         // These tests read the menu's cells; the value popup (views.rs, screen.rs) would sit on
         // them.
-        ui.v.popup.source = None;
+        let popup = ui.v.popup.source.take();
         let mut set = Box::<settings>::default();
         let mut ml = Box::<midi_learn>::default();
         unsafe {
@@ -114,6 +116,7 @@ impl Saving {
             set,
             _ml: ml,
             forced: false,
+            popup,
         };
         s.settle();
         s
@@ -170,6 +173,29 @@ impl Saving {
             .menu_line(VIEWS_MENU_STORE as usize)
             .trim()
             .to_string()
+    }
+
+    /// The value the popup shows for ALGORITHM on the menu's item under the cursor.
+    fn store_popup(&mut self) -> String {
+        let mut name = [0 as std::ffi::c_char; SCREEN_POPUP_TEXT as usize];
+        let mut value = [0 as std::ffi::c_char; SCREEN_POPUP_TEXT as usize];
+        let (mut fill, mut max, mut accent) = (0, 0, 0);
+        let ctx: *mut views = &mut *self.ui.v;
+        let shown = unsafe {
+            (self.popup.unwrap())(
+                ctx.cast(),
+                PANEL_ENC_ALGORITHM,
+                name.as_mut_ptr(),
+                value.as_mut_ptr(),
+                &mut fill,
+                &mut max,
+                &mut accent,
+            )
+        };
+        assert_eq!(shown, 1);
+        unsafe { std::ffi::CStr::from_ptr(value.as_ptr()) }
+            .to_string_lossy()
+            .into_owned()
     }
 
     fn open_store_item(&mut self) {
@@ -428,11 +454,17 @@ fn the_menus_store_shows_the_free_space() {
     assert_eq!(s.store_item(), format!("STORE{:>9}", "193K"));
 }
 
-#[test]
-fn a_foreign_store_reads_foreign_and_two_clockwise_turns_format_it() {
+/// A region with one stray byte: not blank, no SIDOU headers.
+fn foreign_region() -> Vec<u8> {
     let lo = STORE_LO as usize;
     let mut region = vec![0xFFu8; STORE_HI as usize - lo];
     region[9 * STORE_SECTOR as usize + 300] = 0x17;
+    region
+}
+
+#[test]
+fn a_foreign_store_reads_foreign_a_clockwise_turn_arms_and_save_formats_it() {
+    let region = foreign_region();
     let mut st = Store::new(
         crate::store::Sim::with_region(6, &region, [false; STORE_SECTORS as usize]),
         256,
@@ -442,14 +474,16 @@ fn a_foreign_store_reads_foreign_and_two_clockwise_turns_format_it() {
     assert_eq!(s.save().as_deref(), Some("STORE FOREIGN: NOT SAVED"));
     s.open_store_item();
     assert_eq!(s.store_item(), format!("STORE{:>9}", "FOREIGN"));
-    // Once arms; SELECT away and back disarms; once again arms, twice formats.
+    // Once arms; SELECT away and back disarms; counter-clockwise disarms.
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     s.frame();
     assert_eq!(s.store_item(), format!("STORE{:>9}", "FORMAT?"));
+    assert_eq!(s.store_popup(), "SAVE FORMATS", "the popup names the confirm");
     s.ui.turn(PANEL_ENC_SELECT, 1);
     s.ui.turn(PANEL_ENC_SELECT, -1);
     s.frame();
     assert_eq!(s.store_item(), format!("STORE{:>9}", "FOREIGN"));
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     s.ui.turn(PANEL_ENC_ALGORITHM, -1);
     s.frame();
     assert_eq!(
@@ -457,13 +491,17 @@ fn a_foreign_store_reads_foreign_and_two_clockwise_turns_format_it() {
         format!("STORE{:>9}", "FOREIGN"),
         "counter-clockwise"
     );
+    // Armed, a second clockwise turn is not the confirm.
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    s.frame();
+    assert_eq!(s.store_item(), format!("STORE{:>9}", "FORMAT?"));
     assert_eq!(
         s.st.sim.region(),
         &region[..],
         "not a byte before the confirm"
     );
-    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    s.ui.press(SAVE);
     assert!(FORCE.with(std::cell::Cell::get), "the erases forced");
     s.ui.frame(); // no polls yet
     let item = s.store_item();
@@ -485,6 +523,72 @@ fn a_foreign_store_reads_foreign_and_two_clockwise_turns_format_it() {
     let mut st = s.st;
     st.reset();
     assert_eq!(st.mount(), STORE_STATE_SIDOU);
+}
+
+/// Ergonomics review E01 (M2 review 1.5): a fast spin of ALGORITHM on a foreign store, in one
+/// event or in many, arms the format and never formats; nor does SAVE away from STORE.
+#[test]
+fn a_fast_algorithm_spin_on_a_foreign_store_never_formats_it() {
+    let region = foreign_region();
+    let mut st = Store::new(
+        crate::store::Sim::with_region(6, &region, [false; STORE_SECTORS as usize]),
+        256,
+    );
+    assert_eq!(st.mount(), STORE_STATE_FOREIGN);
+    let mut s = Saving::on(st);
+    s.open_store_item();
+    s.ui.turn(PANEL_ENC_ALGORITHM, 7); // one event of many detents
+    for _ in 0..12 {
+        s.ui.turn(PANEL_ENC_ALGORITHM, 1); // and a stream of single ones
+    }
+    for _ in 0..30 {
+        s.frame();
+    }
+    assert!(!FORCE.with(std::cell::Cell::get));
+    assert_eq!(s.store_item(), format!("STORE{:>9}", "FORMAT?"));
+    assert_eq!(s.st.sim.region(), &region[..], "nothing erased");
+    // Armed, then SELECT moves off STORE: SAVE there saves the settings (refused), no format.
+    s.ui.turn(PANEL_ENC_SELECT, 1);
+    assert_eq!(s.save().as_deref(), Some("STORE FOREIGN: NOT SAVED"));
+    assert_eq!(s.st.sim.region(), &region[..], "nothing erased");
+    // HOME away and back: the arm is gone too.
+    s.ui.turn(PANEL_ENC_SELECT, -1);
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    s.ui.press(PANEL_BTN_HOME);
+    s.ui.settle();
+    s.open_store_item();
+    assert_eq!(s.store_item(), format!("STORE{:>9}", "FOREIGN"));
+    assert_eq!(s.save().as_deref(), Some("STORE FOREIGN: NOT SAVED"));
+    assert_eq!(s.st.sim.region(), &region[..], "nothing erased");
+}
+
+/// A newer SIDOU's store is foreign to this one, but the menu says which kind it is.
+#[test]
+fn a_newer_sidou_store_reads_newer() {
+    let mut r = fresh(11, 256);
+    assert_eq!(r.put_now(1, b"x"), STORE_OK);
+    let mut region = r.sim.region().to_vec();
+    let sector = STORE_SECTOR as usize;
+    let s = (0..STORE_SECTORS as usize)
+        .find(|&s| region[s * sector..s * sector + 8] == *b"SIDOUSTR")
+        .unwrap();
+    let h = &mut region[s * sector..s * sector + 20];
+    h[8] = STORE_FORMAT as u8 + 1;
+    let crc = crate::store::crc32(&h[..16]);
+    h[16..20].copy_from_slice(&crc.to_le_bytes());
+    let mut st = Store::new(
+        crate::store::Sim::with_region(11, &region, [false; STORE_SECTORS as usize]),
+        256,
+    );
+    assert_eq!(st.mount(), STORE_STATE_FOREIGN);
+    let mut s = Saving::on(st);
+    s.open_store_item();
+    assert_eq!(s.store_item(), format!("STORE{:>9}", "NEWER"));
+    s.ui.turn(PANEL_ENC_ALGORITHM, -1); // the popup's ask; counter-clockwise arms nothing
+    assert_eq!(s.store_popup(), "NEWER SIDOU");
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    s.frame();
+    assert_eq!(s.store_item(), format!("STORE{:>9}", "FORMAT?"));
 }
 
 impl Saving {

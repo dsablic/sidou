@@ -960,7 +960,7 @@ pub fn fresh(seed: u64, window: u32) -> Rig {
     r
 }
 
-fn crc32(data: &[u8]) -> u32 {
+pub(crate) fn crc32(data: &[u8]) -> u32 {
     unsafe { store_crc32(0, data.as_ptr().cast(), data.len() as u32) }
 }
 
