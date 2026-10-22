@@ -125,6 +125,9 @@ pub struct Spec {
     pub audio: bool,
     /// A choice (preset, profile): count its detents, no curve rules.
     pub discrete: bool,
+    /// The control acts at a note's start (the thump, the decay): each detent's window is a new
+    /// note from its first sample, not the held one.
+    pub retrigger: bool,
 }
 
 const CHIP_SETUP: &str = "press HOME; turn ALGORITHM 1; wait 3000";
@@ -150,6 +153,7 @@ pub fn specs() -> Vec<Spec> {
             enc,
             audio,
             discrete,
+            retrigger: false,
         });
     };
     add(
@@ -327,6 +331,10 @@ pub fn specs() -> Vec<Spec> {
         false,
         true,
     );
+    // The decay on SAW LEAD and the thump are heard where a note starts.
+    for s in v.iter_mut() {
+        s.retrigger = s.id == "K3.live" || s.id == "K3.chip";
+    }
     v
 }
 
@@ -366,9 +374,23 @@ fn control_used(param: P, algorithm: u8) -> bool {
     }
 }
 
-fn window(d: &mut Dev, audio: bool) -> (f64, f64, Vec<f32>) {
+/// The note a sweep holds (A3).
+const NOTE: u8 = 57;
+/// A retriggered window's release before the new note: SAW LEAD's release (6) has ended.
+const RETRIGGER_GAP_MS: u64 = 600;
+
+fn window(d: &mut Dev, audio: bool, retrigger: bool) -> (f64, f64, Vec<f32>) {
     if !audio {
         return (0.0, -120.0, Vec::new());
+    }
+    if retrigger {
+        d.key_up(key_of_note(NOTE));
+        d.run(RETRIGGER_GAP_MS);
+        let mark = d.audio_mark();
+        d.key_down(key_of_note(NOTE));
+        d.run(WINDOW_MS);
+        let a = d.audio_since(mark);
+        return (spectral_centroid(&a, FS), rms_dbfs(&a), a);
     }
     d.run(40);
     let mark = d.audio_mark();
@@ -382,7 +404,7 @@ pub fn run_sweep(build: &Path, spec: &Spec) -> Sweep {
     run_script(&mut d, &spec.setup);
     d.settle();
     if spec.audio {
-        d.key_down(key_of_note(57));
+        d.key_down(key_of_note(NOTE));
         d.run(300);
     }
     if let Some(h) = spec.hold {
@@ -413,7 +435,7 @@ pub fn run_sweep(build: &Path, spec: &Spec) -> Sweep {
     };
     let record = |d: &mut Dev, sw: &mut Sweep| {
         let (raw, model) = read(d);
-        let (c, r, a) = window(d, spec.audio);
+        let (c, r, a) = window(d, spec.audio, spec.retrigger);
         sw.raw.push(raw);
         sw.phys.push(spec.param.phys(raw, model));
         sw.centroid.push(c);
@@ -1053,6 +1075,7 @@ mod tests {
             enc: Some(2),
             audio,
             discrete: false,
+            retrigger: false,
         }
     }
 

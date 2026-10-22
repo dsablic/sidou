@@ -71,6 +71,20 @@ static void outputs(float* out, const float* w, uint32_t bits, float leakage) {
     }
 }
 
+const float SID_DAC_MISMATCH_WAVE[12] = {0.6f, -0.5f, 0.7f, -0.8f, 0.9f, -1.0f,
+                                         0.8f, -0.6f, 0.5f, -0.4f, 0.3f,  -0.2f};
+const float SID_DAC_MISMATCH_ENV[8] = {1.0f, -0.8f, -0.6f, 0.7f, -0.5f, 0.4f, 0.2f, -0.15f};
+
+/* The bit errors on a ladder's weights (sid_dac.h); nothing at 0. */
+static void mismatch(float* w, const float* pattern, uint32_t bits, float m) {
+    if (m == 0.0f) {
+        return;
+    }
+    for (uint32_t i = 0; i < bits; ++i) {
+        w[i] *= 1.0f + m * pattern[i];
+    }
+}
+
 static float saturate(float v) {
     return SAT_GAIN * v + (1.0f - SAT_GAIN) * SAT * v * v * v;
 }
@@ -79,6 +93,7 @@ void sid_dac_job_start(sid_dac_job* j, sid_dac* d, int is6581, float kink, float
     j->d = d;
     j->kink = kink;
     j->leakage = leakage;
+    j->mismatch = 0.0f;
     j->zero = 0.0f;
     j->voice_dc = is6581 ? VOICE_DC_6581 : 0.0f;
     j->is6581 = (uint8_t)(is6581 != 0);
@@ -99,10 +114,12 @@ int sid_dac_job_step(sid_dac_job* j) {
          * it (the same value the finished table subtracts from every entry). */
         float w[12];
         ladder(w, 12, j->kink, !is6581);
+        mismatch(w, SID_DAC_MISMATCH_WAVE, 12, j->mismatch);
         outputs(d->wave, w, 12, j->leakage);
         float z = d->wave[is6581 ? ZERO_6581 : ZERO_8580];
         j->zero = is6581 ? saturate(z) : z;
         ladder(w, 8, j->kink, !is6581);
+        mismatch(w, SID_DAC_MISMATCH_ENV, 8, j->mismatch);
         outputs(d->env, w, 8, j->leakage);
     } else {
         /* Saturated (the 6581), twice reSIDfp's scale, the voice DC added (riding on the

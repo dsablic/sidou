@@ -14,15 +14,24 @@
  *   rows' tables and blends their coefficients after each filter write (sid.h,
  *   sid_set_filter_blend), so a change is a number, no table; and the 6581's non-linearity
  *   rises to twice the profile's (clamped to 2);
- * - DAC sloppiness: the voice DACs' 2R/R ratio up by SID_CHARACTER_KINK at 127 and their
- *   leakage up to SID_CHARACTER_LEAK times the profile's: a leakier, more kinked table,
- *   built in the main loop;
- * - output thump: a DC the volume register scales (sid.h, thump), up to
- *   SID_CHARACTER_THUMP voice DAC units, so a volume write steps the output as the 6581's
- *   operating point does; the output gain falls by as much, so the step never takes a
- *   signal that reached full scale past it;
- * - filter bleed: up to SID_CHARACTER_BLEED of the unfiltered voices also reaches the
- *   filter's input (sid.h, bleed).
+ * - DAC sloppiness: the voice DACs' 2R/R ratio up by SID_CHARACTER_KINK at 127, their
+ *   leakage up to SID_CHARACTER_LEAK times the profile's, and their bits' weights off by up
+ *   to SID_CHARACTER_MISMATCH (sid_dac.h, SID_DAC_MISMATCH_*): a leakier, kinked table with
+ *   bit errors, built in the main loop. The errors are what is heard: a triangle or a saw
+ *   gets grit where the codes cross the bad bits, and a quiet voice's level steps unevenly
+ *   as its envelope moves (a pulse shows it best: its waveform has no codes to cross);
+ * - output thump: a DC step at each note's start and at each volume write (sid.h, thump),
+ *   up to SID_CHARACTER_THUMP voice DAC units, as the 6581's voice DC jumps when an envelope
+ *   attacks and its operating point when the volume changes; the DC blocker turns each step
+ *   into a decaying thump. The output gain falls by as much, so a step never takes a signal
+ *   that reached full scale past it;
+ * - filter bleed: the voice routing's switches leak (sid.h, bleed): up to
+ *   SID_CHARACTER_BLEED of the voices routed into the filter also reaches the output
+ *   unfiltered, so a closed filter lets the bright, dry signal through (on the 6581, whose
+ *   low-pass inverts, it also thins an open one's lows).
+ *
+ * DAC, thump and bleed follow the control on a perceptual curve (SID_CHARACTER_CURVE_LINEAR:
+ * at 127 the full amount, at 64 about 29 % of it, the first detents a few %); age is linear.
  *
  * Nothing here runs in the audio path but the commit. What the audio interrupt reads that a
  * control sets is a stage (sid_character_stage: constants, borrowed table pointers and a
@@ -55,14 +64,22 @@ extern "C" {
 /* Each control at SID_CHARACTER_MAX. */
 #define SID_CHARACTER_KINK 0.3f   /* added to the DACs' 2R/R ratio */
 #define SID_CHARACTER_LEAK 6.0f   /* times the profile's DAC leakage */
+#define SID_CHARACTER_MISMATCH 0.5f /* the DACs' bit errors (sid_dac_job's mismatch) */
 #define SID_CHARACTER_THUMP 1.0f  /* voice DAC units of DC at volume 15 (sid_dac.h) */
-#define SID_CHARACTER_BLEED 0.5f  /* of the unfiltered voices into the filter */
+#define SID_CHARACTER_BLEED 0.5f  /* of the routed voices past the filter */
+/* DAC, thump and bleed at v/127 = a take a * (L + (1 - L) a) of their amount, L this. */
+#define SID_CHARACTER_CURVE_LINEAR 0.15f
 /* The ramp (sid_character_ramp_tick): age and thump move at most SID_CHARACTER_RAMP a tick,
  * the bleed SID_CHARACTER_BLEED_RAMP, the DACs SID_CHARACTER_DAC_RAMP a table (one table
  * every SID_DAC_BUILD_STEPS ticks). */
 #define SID_CHARACTER_RAMP 4u
 #define SID_CHARACTER_BLEED_RAMP 1u
-#define SID_CHARACTER_DAC_RAMP 3u
+#define SID_CHARACTER_BLEED_RAMP_MAX 4u
+/* The DACs' step a table: as many detents as keep the effect's step within
+ * SID_CHARACTER_DAC_RAMP 127ths of its amount (the curve's slope at the step's top end), at
+ * most SID_CHARACTER_DAC_RAMP_MAX. */
+#define SID_CHARACTER_DAC_RAMP 2.75f
+#define SID_CHARACTER_DAC_RAMP_MAX 6u
 
 #define SID_EXPERT_DEFAULT 255u
 enum {
@@ -339,6 +356,7 @@ typedef struct {
     sid_filter_row filter_rows[2];
     float filter_t;
     uint8_t filter_rows_valid, filter_managed;
+    int8_t bleed_half; /* 1 or -1: the stage's bleed half way to now's next detent that way */
 } sid_character_ramp;
 
 /* After a reset that applied c to a chip whose DAC table is table (sid_character_apply):

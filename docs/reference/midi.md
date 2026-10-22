@@ -77,7 +77,7 @@ patch's value up or down around 64; SIDOU does not.
   the 8580 R5 profile, or goes back to the last 6581 profile. Age/heat, DAC sloppiness,
   output thump and filter bleed change the playing chip without a reset; they too go from
   the next tick, the last value received, and glide there so a jump does not click (age
-  and thump 0 to 127 in 0.32 s, the bleed in 1.27 s, the DACs in 1.72 s). The profiles, their sources and
+  0 to 127 in 0.32 s, the thump in 0.44 s, the bleed in 1.74 s, the DACs in 2.61 s). The profiles, their sources and
    what each control does: docs/decisions/0006-chip-profiles.md.
 - **Expert character (NRPN 2/5..18):** fourteen independent controls, each a raw value
   0..127 mapped to the physical units in the table. Send CC 99 = 2, CC 98 = the LSB,
@@ -366,20 +366,20 @@ In NRPN order.
 | SID | Envelope mode | 26 | 1/10 (138) | 0..1 | steps | 0 | 0 instant (the rate counter restarts at each gate edge), 1 authentic (the chip's ADSR delay: an attack or release up to 33 ms late after a slower rate) |
 | Character | Profile | 85 | 2/0 (256) | 0..12 | steps | 2 | 0 6581 R2, 1 6581 R3, 2 6581 R4AR (reSIDfp's default), 3 8580 R5, 4 worn 6581 (artistic), 5..12 USER 1..8 (an empty slot does nothing: it is skipped); sets the chip model too (a chip reset) |
 | Character | Age/heat | 86 | 2/1 (257) | 0..127 | linear | 0 | 0 the profile .. 127: the filter's cutoff drifts darker, the 6581's non-linearity doubles |
-| Character | DAC sloppiness | 87 | 2/2 (258) | 0..127 | linear | 0 | 0 the profile .. 127: the voice DACs leak up to 6 times as much and kink more |
-| Character | Output thump | 89 | 2/3 (259) | 0..127 | linear | 0 | 0 none .. 127: a volume change steps the output (the 6581's operating point) |
-| Character | Filter bleed | 90 | 2/4 (260) | 0..127 | linear | 0 | 0 none .. 127: half the unfiltered voices also reach the filter |
+| Character | DAC sloppiness | 87 | 2/2 (258) | 0..127 | linear | 0 | 0 the profile .. 127: the voice DACs get bit errors, leak up to 6 times as much and kink more: grit on triangles and saws, quiet notes step |
+| Character | Output thump | 89 | 2/3 (259) | 0..127 | linear | 0 | 0 none .. 127: a thump at each note's start and at a volume change (the 6581's voice DC and operating point) |
+| Character | Filter bleed | 90 | 2/4 (260) | 0..127 | linear | 0 | 0 none .. 127: half the voices routed into the filter also leak past it, unfiltered |
 | Expert | 6581 filter curve | - | 2/5 (261) | 0..127 | linear | 64 | 0..127 = reSIDfp curve 0..1 |
 | Expert | 6581 filter range | - | 2/6 (262) | 0..127 | linear | 62 | 0..127 = reSIDfp range 0..1 |
 | Expert | 8580 filter curve | - | 2/7 (263) | 0..127 | linear | 64 | 0..127 = reSIDfp curve 0..1 |
 | Expert | 6581 non-linearity | - | 2/8 (264) | 0..127 | linear | 64 | 0..127 = amount 0..2 |
 | Expert | 6581 filter input DC bias | - | 2/9 (265) | 0..127 | linear | 64 | 0..127 = 0..2.3125 voice-DAC units |
-| Expert | Filter bleed | - | 2/10 (266) | 0..127 | linear | 0 | 0..127 = 0..50 percent of unfiltered voices |
+| Expert | Filter bleed | - | 2/10 (266) | 0..127 | linear | 0 | 0..127 = 0..50 percent of routed voices past the filter |
 | Expert | DAC ladder kink | - | 2/11 (267) | 0..127 | linear | 64 | 0..127 = 2R/R ratio 1.8..2.6 |
 | Expert | DAC leakage | - | 2/12 (268) | 0..127 | linear | 6 | 0..127 = leakage 0..0.15 |
 | Expert | Combined-waveform strength | - | 2/13 (269) | 0..127 | linear | 64 | 0..31 WEAK, 32..95 AVERAGE, 96..127 STRONG |
 | Expert | Noise write-back | - | 2/14 (270) | 0..127 | linear | 127 | 0 off; 1..127 progressively connect 1..8 write-back taps; 127 authentic |
-| Expert | Volume thump | - | 2/15 (271) | 0..127 | linear | 0 | 0..127 = 0..1 voice-DAC units at volume 15 |
+| Expert | Output thump | - | 2/15 (271) | 0..127 | linear | 0 | 0..127 = 0..1 voice-DAC units: a volume write's step at volume 15, a note's twice it |
 | Expert | 6581 external low-pass | - | 2/16 (272) | 0..127 | linear | 81 | 0..127 = 1000..20000 Hz |
 | Expert | External high-pass | - | 2/17 (273) | 0..127 | linear | 20 | 0..127 = 0..100 Hz |
 | Expert | Voice DC offset | - | 2/18 (274) | 0..127 | linear | 60 | 0..127 = 0..0.6 voice-DAC units |

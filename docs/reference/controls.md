@@ -490,7 +490,8 @@ Its popup also says **N/A**.
 
 Expert edits stay until a related macro moves: AGE releases the two curves, range and
 nonlinearity; DAC releases kink and leakage; THUMP releases output thump; BLEED releases filter
-bleed. Other independent settings stay. A new base profile releases all expert overrides.
+bleed. Other independent settings stay. DAC's bit errors have no expert control of their own:
+they follow DAC whatever kink and leakage are set to. A new base profile releases all expert overrides.
 The page reminds in the hint colour: **MACRO MOVES RESET ITS OVERRIDES**. During a song the A
 tab edits the song's expert setup, not the keys'; its knobs cannot be MIDI-learned. B edits
 the keys' setup.
@@ -671,16 +672,19 @@ and measurements: [decision record 0006](../decisions/0006-chip-profiles.md)):
 |---|---|---|---|
 | Profile | 85 | 2/0 | 0 6581 R2, 1 6581 R3, 2 6581 R4AR (power-on with the 6581), 3 8580 R5, 4 worn 6581 (artistic), 5..12 USER 1..8 (an empty slot does nothing) |
 | Age/heat | 86 | 2/1 | 0..127: the filter drifts darker, the 6581's non-linearity rises |
-| DAC sloppiness | 87 | 2/2 | 0..127: leakier, more kinked voice DACs (a released voice still whispers, with BLEED above 0) |
-| Output thump | 89 | 2/3 | 0..127: a volume change steps the output, as the 6581's operating point does |
-| Filter bleed | 90 | 2/4 | 0..127: the unfiltered voices also reach the filter, up to half; above 0 a released voice's DAC leak is kept as well (below) |
+| DAC sloppiness | 87 | 2/2 | 0..127: worn voice DACs: bit errors, a more kinked ladder and more leakage. Triangles and saws get grit, and a quiet voice's level steps unevenly as its envelope moves (a pulse's decay shows it best); a held loud saw changes little. A released voice still whispers, with BLEED above 0 |
+| Output thump | 89 | 2/3 | 0..127: a thump at each note's start, as the 6581's voice DC jumps when its envelope attacks (a slow attack hardly thumps, a retrigger high in the envelope less), and at a volume change, as its operating point steps. Only note starts change: a held note sounds the same |
+| Filter bleed | 90 | 2/4 | 0..127: the voices routed into the filter leak past it, unfiltered, up to half: a closed filter lets the bright, dry sound through; on the 6581, whose filter inverts, an open one gets thinner and quieter instead. Voices not routed into the filter are untouched. Above 0 a released voice's DAC leak is kept as well (below) |
+
+DAC, thump and bleed follow a perceptual curve: the first detents are subtle, the middle (64)
+gives about 29 % of the full effect, the top is obvious. Age is linear.
 
 A profile is a chip and a model: changing it resets the chip (held notes attack again on the
 new chip, as at a model change), and the model follows it. The model (CC 25, the FX button) selects
 the 8580 R5, or goes back to the last 6581 profile chosen. The four controls change the
 playing chip without a reset, and glide there rather than jump, so they don't click: from
-the next 10 ms tick, age and thump take 0.32 s from 0 to 127, the bleed 1.27 s, the DACs
-1.72 s. A
+the next 10 ms tick, age takes 0.32 s from 0 to 127, the thump 0.44 s, the bleed 1.74 s, the
+DACs 2.61 s (the curved controls slower where a detent changes more). A
 profile applies from the next tick: the new chip is prepared in the background while the old
 one plays on, and swaps in once it is whole, 70 to 110 ms later (the first 8580 after
 power-on about 150 ms; the CHIP view and the toast show the choice at once). Changes faster

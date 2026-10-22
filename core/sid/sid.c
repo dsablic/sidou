@@ -20,6 +20,21 @@ const uint32_t SID_NOISE_WB[2][16] = {SID_WB_ROW(SID_WB_LO), SID_WB_ROW(SID_WB_H
 #define LEVEL_6581 1.4736f
 #define LEVEL_8580 1.1288f
 #define DC_BLOCK_HZ 16.0f
+/* The thump at a note's start (sid_write): the peak a DC rising linearly over the attack (2 ms
+ * to 8 s, SID_ENV_RATE_POS's rates) reaches through the 16 Hz DC blocker, tau / T (1 - e^-T/tau)
+ * with tau = 1 / (2 pi 16 Hz), so a slow attack hardly thumps. Read where register writes are
+ * applied (the audio interrupt's drain): RAM on the device (emu-gate tests/ram_audio.rs). */
+/* A note's thump against the volume write's: the voice DC's rise is the louder transient (at
+ * thump 1, two voice DAC units for a fast attack's note from silence, where a saw at full
+ * envelope swings one either way). The headroom (sid_character.h) is the volume step's: a
+ * note's thump on top of a full-scale signal saturates for the few milliseconds it lasts. */
+#define THUMP_GATE 2.0f
+#ifdef __PI32V2__
+__attribute__((section(".data.sid_thump_attack")))
+#endif
+static const float THUMP_ATTACK[16] = {0.9059f, 0.6871f, 0.4972f, 0.3773f, 0.2560f, 0.1770f,
+                                       0.1461f, 0.1243f, 0.0995f, 0.0398f, 0.0199f, 0.0124f,
+                                       0.0099f, 0.0033f, 0.0020f, 0.0012f};
 
 /* The 6581's filter and output path, fitted to reSIDfp's 6581 at 44.1 kHz (M1b Task 6:
  * filter sweeps at small and full scale and with three loud voices, cutoffs and damping
@@ -345,6 +360,25 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
             uint32_t src_acc = reg >= 7 ? s->osc[reg / 7 - 1].acc : sid_osc_acc_last(&s->osc[2]);
             sid_osc_latch_ramp(o, src_acc);
             sid_osc_write_control(o, v);
+            if (s->thump != 0.0f && (v & SID_CTRL_GATE) && !e->gate) {
+                /* The thump at a note's start (sid.h): the voice DC's rise as the envelope
+                 * attacks from where it is to the top, the volume scaling it, as large as
+                 * the DC blocker lets a ramp of the attack's length peak (THUMP_ATTACK). A DC
+                 * takes the voice's path: straight to the output, or through the filter's
+                 * low-pass if it is routed there (inverted on the 6581, sid.h mix_lp; the
+                 * band- and high-pass block it). Put into the blocker's state as the volume
+                 * write's step is (below). */
+                uint32_t voice = reg / 7u;
+                float path = 1.0f;
+                if (s->routing & (1u << voice)) {
+                    path = s->model == SID_MODEL_6581 ? s->mix_lp
+                                                      : (s->mode_vol & 0x10u) ? 1.0f : 0.0f;
+                } else if (voice == 2u && (s->mode_vol & 0x80u)) {
+                    path = 0.0f;
+                }
+                s->dc_x1 -= s->thump * THUMP_GATE * path * s->volume * THUMP_ATTACK[e->attack] *
+                            (float)(255u - e->counter) * (1.0f / 255.0f);
+            }
             sid_env_set_gate(e, v & SID_CTRL_GATE);
             break;
         }
@@ -541,7 +575,8 @@ void sid_clock(sid* s, uint32_t cycles) {
 /* render_8580's loop, in chunks of `every` samples with a tap after each (sid_render_tap;
  * sid_render's is one chunk and no tap): M0's linear filter and mix, unchanged. With
  * bleed_on (a constant: each model's render has a copy with it and one without, so a chip
- * with no bleed pays nothing for it) the unfiltered voices also reach the filter (sid.h). */
+ * with no bleed pays nothing for it) the routed voices also reach the output unfiltered
+ * (sid.h). */
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((always_inline))
 #endif
@@ -569,7 +604,7 @@ static inline void render_loop(sid* s, int16_t* out, uint32_t frames, uint32_t e
                 }
             }
             if (bleed_on) {
-                filt_in += bleed * direct;
+                direct += bleed * filt_in;
             }
             sid_svf_tick(&s->svf, filt_in);
             float filtered = 0.0f;
@@ -647,7 +682,7 @@ static inline void render_6581_body(sid* s, int16_t* out, uint32_t frames, uint3
                 }
             }
             if (bleed_on) {
-                filt_in += bleed * direct;
+                direct += bleed * filt_in;
             }
             sid_nl_tick(&ic1, &ic2, &lp, &bp, &hp, &bpn, filt_in, &c);
             float filtered = mix_lp * lp + mix_bpn * bpn + mix_bp * bp + mix_hp * hp;

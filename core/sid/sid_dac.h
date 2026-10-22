@@ -27,6 +27,16 @@ typedef struct {
     float env[256]; /* the envelope DAC: about counter / 255, never 0 (leakage) */
 } sid_dac;
 
+/* A worn ladder's bit errors (the DAC sloppiness, sid_character.h): at mismatch m, bit b's
+ * weight is scaled by 1 + m * SID_DAC_MISMATCH_WAVE[b] (the waveform DAC) or
+ * SID_DAC_MISMATCH_ENV[b] (the envelope DAC), each between -1 and 1. One fixed pattern, as one
+ * chip's resistors would have: alternating signs, so codes on either side of a carry land too
+ * high and too low; on the envelope DAC the low bits err the most, so a quiet voice's level
+ * steps unevenly as its envelope moves while a loud one's barely shifts. At 0 the ladders are
+ * reSIDfp's exactly. */
+extern const float SID_DAC_MISMATCH_WAVE[12];
+extern const float SID_DAC_MISMATCH_ENV[8];
+
 /* Builds both DACs for a model, from the ladder's 2R/R ratio and leakage. Pure
  * arithmetic, about 13k float operations (94k instructions on the pi32v2). Never into a
  * table an active chip points at (sid_set_dac, sid.h). */
@@ -41,6 +51,9 @@ void sid_dac_build(sid_dac* d, int is6581, float kink, float leakage);
 typedef struct {
     sid_dac* d;
     float kink, leakage;
+    /* The ladders' bit errors (sid_dac_mismatch): 0 from sid_dac_job_start, reSIDfp's ideal
+     * ladders. Set it before the first step. */
+    float mismatch;
     float zero; /* the waveform DAC's output at the voice's zero, saturated */
     float voice_dc; /* added inside the DAC table, before its factor of two */
     uint8_t is6581;

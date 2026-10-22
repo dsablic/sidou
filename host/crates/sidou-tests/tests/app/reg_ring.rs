@@ -45,6 +45,19 @@ fn render(s: &mut sid, n: usize) -> Vec<i16> {
 
 // --- the ring ---
 
+/// The thump's stage after `ticks` ticks of its ramp from 0 (SID_CHARACTER_RAMP detents a
+/// tick at the bottom of its curve), on the perceptual curve (sid_character.h).
+fn thump_after(ticks: u32) -> f32 {
+    response(ticks * SID_CHARACTER_RAMP) * SID_CHARACTER_THUMP as f32
+}
+
+/// A DAC, thump or bleed setting's share of its amount (sid_character.h, the perceptual curve).
+fn response(v: u32) -> f32 {
+    let a = v as f32 / 127.0;
+    let l = SID_CHARACTER_CURVE_LINEAR as f32;
+    a * (l + (1.0 - l) * a)
+}
+
 #[test]
 fn entries_come_out_in_order_and_only_once_committed() {
     let mut r = ring();
@@ -374,8 +387,8 @@ fn the_character_reaches_the_chip_through_the_ring_and_across_model_changes() {
     let default_dac = |model| unsafe { sid_dac_default(i32::from(model == SID_MODEL_6581)) };
     let waits = (dev.out.full_waits, dev.out.reset_waits);
     // The controls, a note held, then a tick a block until the ramp is done: 32 ticks for
-    // age and thump, 100 for the bleed, 172 for the DACs (43 tables of 3 steps, each over
-    // SID_DAC_BUILD_STEPS ticks).
+    // age, about 20 for the thump, about 130 for the bleed and 261 for the DACs (64 tables,
+    // each over SID_DAC_BUILD_STEPS ticks; sid_character.h, the ramp).
     both(&mut dev, &mut direct, |l| unsafe {
         live_note_on(l, 60, 100);
         live_param_set(l, LIVE_PARAM_AGE, 90);
@@ -383,7 +396,7 @@ fn the_character_reaches_the_chip_through_the_ring_and_across_model_changes() {
         live_param_set(l, LIVE_PARAM_THUMP, 64);
         live_param_set(l, LIVE_PARAM_BLEED, 100);
     });
-    const TICKS: u32 = 180;
+    const TICKS: u32 = 270;
     let mut tables: Vec<*const sid_dac> = Vec::new();
     let mut playing: Option<(*const sid_dac, Vec<f32>)> = None;
     let ticks = dev.chips.ticks[0];
@@ -414,7 +427,11 @@ fn the_character_reaches_the_chip_through_the_ring_and_across_model_changes() {
     let s = dev.chip();
     assert_eq!(
         (s.thump, s.bleed, s.filter_t),
-        (64.0 / 127.0, 0.5 * 100.0 / 127.0, 90.0 / 127.0),
+        (
+            response(64) * SID_CHARACTER_THUMP as f32,
+            0.5 * response(100),
+            90.0 / 127.0
+        ),
         "the ramp got there"
     );
     assert!(
@@ -438,7 +455,7 @@ fn the_character_reaches_the_chip_through_the_ring_and_across_model_changes() {
     assert_eq!(dev.chip().filter_curve, 3, "worn's filter row");
     assert_eq!(
         dev.chip().thump,
-        64.0 / 127.0,
+        response(64) * SID_CHARACTER_THUMP as f32,
         "the reset keeps the controls"
     );
     assert_same_sound(&mut dev, &mut direct);
@@ -489,7 +506,7 @@ fn a_tick_with_both_stages_queued_waits_its_turn() {
     }
     assert_eq!(dev.out.character_defers, 1);
     assert_eq!(dev.chips.stage_pending[0], [1, 1]);
-    let step = |n: f32| n * SID_CHARACTER_RAMP as f32 / 127.0;
+    let step = |n: f32| thump_after(n as u32);
     assert_eq!(
         [dev.chips.stage[0][0].thump, dev.chips.stage[0][1].thump],
         [step(1.0), step(2.0)]
@@ -1079,7 +1096,7 @@ fn a_profile_step_prepares_the_spare_a_slice_a_tick_and_swaps_at_the_hosts_tick(
             live_note_on(l, 57, 100);
         }
     }
-    for _ in 0..200 {
+    for _ in 0..270 {
         let (a, b) = tick_both(&mut dev, &mut host);
         assert_eq!(a, b, "the ramp");
     }
@@ -1401,11 +1418,7 @@ fn every_entry_reaches_the_chip_it_names() {
         assert_eq!(s.env[0].attack, 0x9);
         assert_eq!(s.mode_vol, 0x0c);
         assert!(s.env.iter().all(|e| e.gate_reset == 0));
-        assert_eq!(
-            s.thump,
-            SID_CHARACTER_RAMP as f32 / 127.0,
-            "the tick's stage"
-        );
+        assert_eq!(s.thump, thump_after(1), "the tick's stage");
         assert_eq!(t.chips.ticks[x], 1);
         assert_eq!(t.chips.ticks[1 - x], u32::from(x == 1), "the other's ticks");
         assert_eq!(chip_bytes(t.chip(other)), before, "chip {other} changed");

@@ -1164,7 +1164,7 @@ patch's value up or down around 64; SIDOU does not.
   the 8580 R5 profile, or goes back to the last 6581 profile. Age/heat, DAC sloppiness,
   output thump and filter bleed change the playing chip without a reset; they too go from
   the next tick, the last value received, and glide there so a jump does not click (age
-  and thump 0 to 127 in 0.32 s, the bleed in 1.27 s, the DACs in 1.72 s). The profiles, their sources and
+  0 to 127 in 0.32 s, the thump in 0.44 s, the bleed in 1.74 s, the DACs in 2.61 s). The profiles, their sources and
    what each control does: docs/decisions/0006-chip-profiles.md.
 - **Expert character (NRPN 2/5..18):** fourteen independent controls, each a raw value
   0..127 mapped to the physical units in the table. Send CC 99 = 2, CC 98 = the LSB,

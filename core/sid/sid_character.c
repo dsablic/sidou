@@ -59,6 +59,13 @@ static float amount(uint8_t v) {
     return (float)(v > SID_CHARACTER_MAX ? SID_CHARACTER_MAX : v) / (float)SID_CHARACTER_MAX;
 }
 
+/* A control's effect as 0..1 (sid_character.h, SID_CHARACTER_CURVE_LINEAR): a little linear
+ * and the rest squared, so the first detents are subtle and the top is obvious. */
+static float response(uint8_t v) {
+    float a = amount(v);
+    return a * (SID_CHARACTER_CURVE_LINEAR + (1.0f - SID_CHARACTER_CURVE_LINEAR) * a);
+}
+
 static int overridden(const sid_character* c, uint32_t index) {
     return index < SID_EXPERT_COUNT && (c->expert_mask & (1u << index)) &&
            c->expert[index] != SID_EXPERT_DEFAULT;
@@ -66,7 +73,7 @@ static int overridden(const sid_character* c, uint32_t index) {
 
 static float expert_default(const sid_character* c, sid_model model, uint32_t index) {
     const sid_chip_profile* p = profile_for(model, c);
-    float age = amount(c->age), dac = amount(c->dac);
+    float age = amount(c->age), dac = response(c->dac);
     static const float curve[SID_CHIPS] = {0.58f, 0.42f, 0.5f, 0.5f, 0.35f};
     uint32_t id = (uint32_t)(p - profiles);
     switch (index) {
@@ -82,12 +89,12 @@ static float expert_default(const sid_character* c, sid_model model, uint32_t in
         return nl > 2.0f ? 2.0f : nl;
     }
     case SID_EXPERT_FILTER_BIAS: return 1.15625f;
-    case SID_EXPERT_BLEED: return amount(c->bleed) * SID_CHARACTER_BLEED;
+    case SID_EXPERT_BLEED: return response(c->bleed) * SID_CHARACTER_BLEED;
     case SID_EXPERT_DAC_KINK: return p->kink + dac * SID_CHARACTER_KINK;
     case SID_EXPERT_DAC_LEAKAGE: return p->leakage * (1.0f + dac * (SID_CHARACTER_LEAK - 1.0f));
     case SID_EXPERT_COMBINED: return (float)p->combined;
     case SID_EXPERT_NOISE_WRITEBACK: return 1.0f;
-    case SID_EXPERT_THUMP: return amount(c->thump) * SID_CHARACTER_THUMP;
+    case SID_EXPERT_THUMP: return response(c->thump) * SID_CHARACTER_THUMP;
     case SID_EXPERT_EXTERNAL_LP: return 13154.0f;
     case SID_EXPERT_EXTERNAL_HP: return 16.0f;
     case SID_EXPERT_VOICE_DC: return model == SID_MODEL_6581 ? 2.0f * (0.2143f / 1.5f) : 0.0f;
@@ -217,11 +224,17 @@ static void dac_params(const sid* s, const sid_character* c, float* kink, float*
     dac_params_for(s->model, c, kink, leakage);
 }
 
+/* The DAC macro's bit errors (sid_dac_mismatch): no expert parameter of their own, they
+ * follow the macro whatever the kink and leakage are set to. */
+static float dac_mismatch(const sid_character* c) {
+    return response(c->dac) * SID_CHARACTER_MISMATCH;
+}
+
 static int dac_custom_for(sid_model model, const sid_character* c) {
     float kink, leakage;
     dac_params_for(model, c, &kink, &leakage);
     int is6581 = model == SID_MODEL_6581;
-    return kink != (is6581 ? SID_DAC_KINK_6581 : SID_DAC_KINK_8580) ||
+    return dac_mismatch(c) != 0.0f || kink != (is6581 ? SID_DAC_KINK_6581 : SID_DAC_KINK_8580) ||
            leakage != (is6581 ? SID_DAC_LEAKAGE_6581 : SID_DAC_LEAKAGE_8580) ||
            sid_character_expert_value(c, model, SID_EXPERT_VOICE_DC) !=
                (is6581 ? 2.0f * (0.2143f / 1.5f) : 0.0f);
@@ -242,6 +255,7 @@ void sid_character_dac_job(const sid* s, const sid_character* c, sid_dac* d, sid
     float kink, leakage;
     dac_params(s, c, &kink, &leakage);
     sid_dac_job_start(j, d, s->model == SID_MODEL_6581, kink, leakage);
+    j->mismatch = dac_mismatch(c);
     j->voice_dc = sid_character_expert_value(c, s->model, SID_EXPERT_VOICE_DC) * 0.5f;
 }
 
@@ -618,6 +632,7 @@ void sid_character_ramp_reset(sid_character_ramp* r, const sid_character* c,
     r->filter_building = 0;
     r->filter_fading = r->filter_fade = r->filter_restore = 0;
     r->filter_rows_valid = r->filter_managed = 0;
+    r->bleed_half = 0;
 }
 
 /* v moved towards to by at most step. */
@@ -660,6 +675,27 @@ static int expert_step(sid_character* now, const sid_character* want, sid_model 
     return 1;
 }
 
+/* The most detents (at most max) a ramp moves a control on the perceptual curve from now
+ * towards to in one step, keeping the effect's change within lim 127ths of its amount (what a
+ * detent of a linear control moves it); 0 if even one detent changes it more. */
+static uint32_t ramp_step(uint8_t now, uint8_t to, float lim, uint32_t max) {
+    uint32_t gap = now < to ? (uint32_t)(to - now) : (uint32_t)(now - to);
+    float from = response(now);
+    for (uint32_t step = max < gap ? max : gap; step > 0u; --step) {
+        float d = response((uint8_t)(now < to ? now + step : now - step)) - from;
+        if ((d < 0.0f ? -d : d) * (float)SID_CHARACTER_MAX <= lim) {
+            return step;
+        }
+    }
+    return 0;
+}
+
+/* ramp_step, but at least a detent. */
+static uint8_t ramp_toward(uint8_t now, uint8_t to, float lim, uint32_t max) {
+    uint32_t step = ramp_step(now, to, lim, max);
+    return toward(now, to, step ? step : 1u);
+}
+
 static int dac_differs(const sid_character* a, const sid_character* b) {
     if (a->dac != clamped(b->dac)) {
         return 1;
@@ -677,6 +713,35 @@ static void dac_copy(sid_character* to, const sid_character* from) {
     expert_copy(to, from, SID_EXPERT_DAC_KINK);
     expert_copy(to, from, SID_EXPERT_DAC_LEAKAGE);
     expert_copy(to, from, SID_EXPERT_VOICE_DC);
+}
+
+/* The bleed's tick: up to SID_CHARACTER_BLEED_RAMP_MAX detents where its curve is shallow,
+ * one where it is not, and where one detent moves it more than SID_CHARACTER_BLEED_RAMP 127ths
+ * half a detent a tick (bleed_half: the stage half way to the next detent, sid_character.h).
+ * 1 if the stage's bleed changed. */
+static int bleed_tick(sid_character_ramp* r) {
+    sid_character* now = &r->now;
+    uint8_t to = clamped(r->target.bleed);
+    if (r->bleed_half) {
+        /* The rest of the half detent's way, or back if the target turned. */
+        int ahead = r->bleed_half > 0 ? to > now->bleed : to < now->bleed;
+        if (ahead) {
+            now->bleed = (uint8_t)(now->bleed + r->bleed_half);
+        }
+        r->bleed_half = 0;
+        return 1;
+    }
+    if (now->bleed == to) {
+        return 0;
+    }
+    uint32_t step = ramp_step(now->bleed, to, (float)SID_CHARACTER_BLEED_RAMP,
+                              SID_CHARACTER_BLEED_RAMP_MAX);
+    if (step) {
+        now->bleed = toward(now->bleed, to, step);
+    } else {
+        r->bleed_half = (int8_t)(to > now->bleed ? 1 : -1);
+    }
+    return 1;
 }
 
 int sid_character_ramp_tick(sid_character_ramp* r, const sid* s, sid_dac* free_table,
@@ -748,7 +813,8 @@ int sid_character_ramp_tick_tables(sid_character_ramp* r, const sid* s, sid_dac*
     if (!(now->expert_mask | want->expert_mask) &&
         !(r->building | r->filter_building | r->filter_fading | r->filter_restore | r->filter_managed) &&
         now->age == clamped(want->age) && now->dac == clamped(want->dac) &&
-        now->thump == clamped(want->thump) && now->bleed == clamped(want->bleed)) {
+        now->thump == clamped(want->thump) && now->bleed == clamped(want->bleed) &&
+        !r->bleed_half) {
         return 0;
     }
     sid_character was = *now;
@@ -760,9 +826,10 @@ int sid_character_ramp_tick_tables(sid_character_ramp* r, const sid* s, sid_dac*
         r->filter_managed = (uint8_t)filter_overridden(now, s->model);
     }
     now->age = toward(now->age, clamped(want->age), SID_CHARACTER_RAMP);
-    now->thump = toward(now->thump, clamped(want->thump), SID_CHARACTER_RAMP);
-    now->bleed = toward(now->bleed, clamped(want->bleed), SID_CHARACTER_BLEED_RAMP);
-    int changed = now->age != was.age || now->thump != was.thump || now->bleed != was.bleed;
+    now->thump = ramp_toward(now->thump, clamped(want->thump), (float)SID_CHARACTER_RAMP,
+                             SID_CHARACTER_RAMP);
+    int changed = now->age != was.age || now->thump != was.thump;
+    changed |= bleed_tick(r);
     if (now->expert_mask | want->expert_mask) {
         if (s->model == SID_MODEL_6581) {
             expert_copy(now, want, SID_EXPERT_FILTER_8580_CURVE);
@@ -832,7 +899,8 @@ int sid_character_ramp_tick_tables(sid_character_ramp* r, const sid* s, sid_dac*
         }
     } else if (!filter_work && dac_differs(now, want)) {
         sid_character next = *now;
-        next.dac = toward(now->dac, clamped(want->dac), SID_CHARACTER_DAC_RAMP);
+        next.dac = ramp_toward(now->dac, clamped(want->dac), SID_CHARACTER_DAC_RAMP,
+                               SID_CHARACTER_DAC_RAMP_MAX);
         expert_step(&next, want, s->model, SID_EXPERT_DAC_KINK);
         expert_step(&next, want, s->model, SID_EXPERT_DAC_LEAKAGE);
         expert_step(&next, want, s->model, SID_EXPERT_VOICE_DC);
@@ -850,6 +918,10 @@ int sid_character_ramp_tick_tables(sid_character_ramp* r, const sid* s, sid_dac*
     }
     if (changed) {
         sid_character_stage_for(s, now, r->table, out);
+        if (r->bleed_half && !overridden(now, SID_EXPERT_BLEED)) {
+            uint8_t next = (uint8_t)(now->bleed + r->bleed_half);
+            out->bleed = 0.5f * (out->bleed + response(next) * SID_CHARACTER_BLEED);
+        }
         stage_rows(s, now, r->filter_rows, out);
         if (r->filter_managed && filter_ready != 2) {
             out->filter_t = r->filter_t;

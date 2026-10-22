@@ -69,13 +69,15 @@ typedef struct {
     float out_c, out_lp;
     /* The character's output stage (sid_character.h; both models, 0 from sid_init): thump,
      * a DC the volume register scales (in voice DAC units, sid_dac.h), so a volume change
-     * steps the output (sid_write puts the step into the DC blocker: nothing per sample, and
-     * the 6581's 13 kHz output pole does not smooth it). A thump change itself only moves
-     * output_gain (the headroom, sid_character.h); each volume write's step uses the thump in
-     * force at that write, so a step up and the step down again need not cancel when the
-     * thump changed between them: what is left is a DC, which the DC blocker removes. Bleed:
-     * the share of the unfiltered voices that also reaches the filter's input (a multiply and
-     * an add per sample, in a copy of the render that runs only while it is not 0). */
+     * steps the output, and each gate's rise steps it as the voice's DC rises with its attack
+     * (sid_write puts each step into the DC blocker: nothing per sample, and the 6581's
+     * 13 kHz output pole does not smooth it). A thump change itself only moves output_gain
+     * (the headroom, sid_character.h); each volume write's step uses the thump in force at
+     * that write, so a step up and the step down again need not cancel when the thump changed
+     * between them: what is left is a DC, which the DC blocker removes. Bleed: the voice
+     * routing's switches leak, the share of the voices routed into the filter that also
+     * reaches the output unfiltered (a multiply and an add per sample, in a copy of the
+     * render that runs only while it is not 0). */
     float thump, bleed;
     float filter_bias;
     sid_filter_row filter_rows[2];

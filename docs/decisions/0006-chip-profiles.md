@@ -117,6 +117,8 @@ tick, and ramped there (below):
     MASTER's, so thump would go silent until M3's player writes `$18`. Thump 0, the
     default, keeps MASTER clean. `docs/reference/controls.md` says so.
 - **Filter bleed:** up to half the unfiltered voices also reach the filter's input.
+  (Amended 2026-10-23, below: the routed voices leak past the filter instead, and DAC and
+  thump gained bit errors and a note's thump.)
 
 ### Ramped, and never in the way of the main loop
 
@@ -384,12 +386,12 @@ models, but only affect the model named in their description.
 | 2 | 2/7 | 8580 filter curve | 0..1 | reSIDfp coordinate | Yes: filter rows |
 | 3 | 2/8 | 6581 non-linearity | 0..2 | multiplier | No |
 | 4 | 2/9 | Filter-input DC bias (6581) | 0..2.3125 | voice-DAC units per routed input | No |
-| 5 | 2/10 | Filter bleed | 0..0.5 | fraction of unfiltered voices | No |
+| 5 | 2/10 | Filter bleed | 0..0.5 | fraction of the routed voices past the filter | No |
 | 6 | 2/11 | DAC ladder kink | 1.8..2.6 | 2R/R ratio | Yes: voice/envelope DACs |
 | 7 | 2/12 | DAC leakage | 0..0.15 | fraction of an off bit's weight | Yes: voice/envelope DACs |
 | 8 | 2/13 | Combined-waveform strength | WEAK / AVERAGE / STRONG | sampled-table choice | No |
 | 9 | 2/14 | Noise write-back | 0..1 | tap-selection strength | No: small stage masks |
-| 10 | 2/15 | Volume thump | 0..1 | voice-DAC units at volume 15 | No |
+| 10 | 2/15 | Output thump | 0..1 | voice-DAC units at volume 15 (a volume write's step; a note's is twice it) | No |
 | 11 | 2/16 | External low-pass corner (6581) | 1000..20000 | Hz | No |
 | 12 | 2/17 | External high-pass corner | 0..100 | Hz | No |
 | 13 | 2/18 | Envelope-following voice DC | 0..0.6 | voice-DAC units before envelope scaling | Yes: DACs |
@@ -445,8 +447,9 @@ the macro paths:
   curve `0.5 + 0.25a`, and non-linearity `min(profile amount × (1 + a), 2)`.
   Without a filter override the actual filter remains the existing Hz/damping blend of
   complete profile and hot rows, not a fresh interpolation in reSIDfp coordinates.
-- DAC gives `profile kink + 0.3s` and `profile leakage × (1 + 5s)`.
-- THUMP gives `thump/127` voice-DAC units; BLEED gives `0.5 × bleed/127`.
+- DAC gives `profile kink + 0.3r(DAC)` and `profile leakage × (1 + 5r(DAC))`, with
+  `r(v) = a (0.15 + 0.85a)`, `a = v/127`, the perceptual curve (amended 2026-10-23, below).
+- THUMP gives `r(thump)` voice-DAC units; BLEED gives `0.5 × r(bleed)`.
 - Other defaults remain those in the table.
 
 ### Fixed calibration, not additional expert parameters
@@ -536,7 +539,7 @@ the related overrides**, restoring their exact profile/macro path:
 |---|---|
 | AGE | Both filter curves, 6581 range, non-linearity (indices 0..3) |
 | DAC | Kink and leakage (6, 7); voice DC remains independent |
-| THUMP | Volume thump (10) |
+| THUMP | Output thump (10) |
 | BLEED | Filter bleed (5) |
 | Base profile | All fourteen |
 
@@ -572,3 +575,74 @@ Unchanged input compares the original 42-parameter prefix in aligned, alias-safe
 expert bytes are revisited only after a raw revision or a relevant macro change.
 Ticks doing cold expert metadata or mixed macro restoration use half the normal packet
 budget, retaining the original per-tick instruction ceiling without queueing stale edits.
+
+## Amendment, 2026-10-23: DAC, thump and bleed made audible (review E11)
+
+On the FM-1 the user heard no difference across the whole travel of DAC, THUMP and BLEED, and
+the ergonomics harness agreed (`docs/reviews/2026-10-22-ergonomics-review.md`, E11). Why:
+
+- **DAC:** a 2R/R ratio 0.3 higher and six times the leakage only bend a saw's ramp: on SAW LEAD
+  (a held saw through the low-pass) 0.65 dB and a brightness inside the capture's 6 % jitter.
+- **THUMP:** it stepped the output at a volume write only, and since MASTER became a digital gain
+  the live instrument never writes `$18`: all it did in live play was its headroom (-1.2 dB).
+- **BLEED:** it fed the *unrouted* voices into the filter; every preset routes all its voices
+  into the filter, so there was nothing to feed.
+
+What changed (every control at 0 is unchanged bit for bit: the reSIDfp comparisons, the songs'
+sound and the profiles hold with their tolerances untouched):
+
+- **A perceptual curve** for DAC, thump and bleed: `r(v) = a (0.15 + 0.85a)`, `a = v/127`
+  (`SID_CHARACTER_CURVE_LINEAR`). The first detents are a few % of the effect, 64 about 29 %,
+  127 all of it. Age stays linear (it was already heard).
+- **DAC: bit errors.** Each ladder bit's weight is scaled by `1 + m p[b]`, with `m` up to 0.5
+  (`SID_CHARACTER_MISMATCH`) and one fixed pattern `p` between -1 and 1 per DAC
+  (`SID_DAC_MISMATCH_WAVE`, `_ENV`, `sid_dac.h`): resistor mismatch, as a worn chip's. Signs
+  alternate, so codes either side of a carry land too high and too low: a triangle (whose codes
+  cross every bit) gets grit, its brightness 0.0209 to 0.0541 on the R4AR at 32 to 127
+  (`unit/sid_character.rs`); the envelope DAC's low bits err most, so a quiet voice's level
+  steps unevenly as its envelope moves (the RMS of its steps' error below 1/8 of its range 0.98
+  to 2.42 of the mean step), while its top moves under 1 %. Kink and leakage keep their
+  formulas, on the curve. The bit errors have no expert parameter: they follow the macro
+  whatever kink and leakage are set to. A held loud saw stays close (the harness: level
+  -0.8 dB, brightness in its jitter): a saw's ramp hides DAC errors, physically; a released
+  voice's leak still grows 31 to 173 RMS.
+- **THUMP at a note's start.** At each gate's rise `sid_write` puts a step into the DC blocker,
+  as the volume write does: `thump × 2 × path × volume × A[attack] × (255 - counter)/255`. The
+  voice's DC rises with its envelope; `A` is the peak a linear rise over the attack reaches
+  through the 16 Hz blocker (0.91 at 2 ms, 0.10 at 100 ms, 0.001 at 8 s), so a pad hardly
+  thumps; a retrigger high in the envelope thumps less; `path` is the voice's (1 direct, the
+  6581's `mix_lp` (inverting) or the 8580's low-pass switch when routed, 0 for voice 3 off). The
+  factor 2 (`THUMP_GATE`) makes a note's thump the louder transient; the headroom stays the
+  volume step's, so a note's thump on a full-scale signal saturates for its few ms. Cost: a
+  test and a few multiplies at a gate write, nothing per sample. The CHIP help card says
+  **K3 NOTE THUMP**.
+- **BLEED: the routed voices leak past the filter**, up to half, unfiltered (`direct +=
+  bleed × filt_in` in the bleed's render copy, one multiply-add as before): a closed filter lets
+  the bright, dry signal through; on the 6581, whose low-pass inverts, an open one gets
+  thinner and quieter. Unrouted voices no longer reach the filter: both directions cost
+  another multiply-add a sample, over the worst block's 1.06 of margin.
+- **Ramps** are limited by the effect's step, not the detent's: the DACs move as many detents
+  a table (up to 6) as keep the effect within 2.75/127 of its amount, the thump up to 4 within
+  4/127, the bleed up to 4 within 1/127, and half a detent a tick (`bleed_half`) where one
+  detent is more. 0 to 127: age 0.32 s, thump 0.44 s, bleed 1.74 s, DACs 2.61 s (64 tables).
+  The click test (30 LSB) now reads, R4AR / 8580 R5 / worn: DACs 21, 21, 29; thump 17, 12, 18;
+  bleed 27, 14, 26 (its triangle now routed into a closed low-pass).
+
+**The harness** (SAW LEAD, A3, 32 detents; THUMP's and LIVE K3's windows are now each a new
+note from its first sample, since both act where a note starts: `Spec::retrigger`):
+
+| Control | Before: brightness, level | After |
+|---|---|---|
+| K2 DAC | 2557 to 2587 Hz (jitter), -0.65 dB | 2557 to 2601 Hz (jitter), -0.83 dB |
+| K3 THUMP (note starts) | 2188 to 2251 Hz, -1.42 dB (headroom) | 2188 to 2299 Hz, **+3.96 dB** |
+| K4 BLEED | 2557 to 2555 Hz, -0.03 dB | **2557 to 7157 Hz (1782 cents), -9.9 dB** |
+| LIVE K3 DECAY (note starts) | 2269 to 2274 Hz, +3.2 dB | the same (the firmware did not change) |
+
+No knob finding before or after. The listening files: `character_wavs` in
+`unit/sid_character.rs` (ignored; it writes `build/character/`).
+
+**Cost.** Worst blocks (sid_budget), one chip 705.35 to 703.03, two 1,419.55 to 1,414.70
+(bounds 711 and 1,426); the 6581's bleed copy 2.3 to 4.9 cheaper, the 8580's 6.0 dearer
+(691.02 one chip, 1,408.89 two), every other scenario within 1.2 (a gate write tests the thump). `.ram_text` 46,656 to 46,912
+bytes, `.data` +64 (the attack table, read in the drain), `chips` +12; the image +1,712 bytes
+(498,208 to 499,920).

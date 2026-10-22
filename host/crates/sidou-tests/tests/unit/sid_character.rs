@@ -116,14 +116,20 @@ fn expert_dac_edits_are_independent_and_macro_changes_release_them() {
     unsafe { sid_character_macro_changed(&mut c, 2) };
     unsafe {
         sid_character_build_dac(&*s, &c, &mut *d);
-        sid_dac_build(
+        // The macro at 127: the kink, the leakage and the bit errors at their full amounts.
+        let mut job = sid_dac_job::default();
+        sid_dac_job_start(
+            &mut job,
             &mut *reference,
             1,
             (SID_DAC_KINK_6581 as f32) + (SID_CHARACTER_KINK as f32),
             (SID_DAC_LEAKAGE_6581 as f32) * (SID_CHARACTER_LEAK as f32),
         );
+        job.mismatch = SID_CHARACTER_MISMATCH as f32;
+        while sid_dac_job_step(&mut job) == 0 {}
     }
     assert_eq!(d.wave, reference.wave);
+    assert_eq!(d.env, reference.env);
 }
 
 #[test]
@@ -958,19 +964,18 @@ fn thump_keeps_its_step_inside_full_scale() {
     }
 }
 
-/// Filter bleed: with no voice routed into the filter, the unfiltered voices still reach it,
-/// more with more bleed: the band-pass's resonance at 400 Hz, which a saw an octave and a
-/// half above does not have, grows.
+/// Filter bleed: the voices routed into a closed low-pass (FC 64) also reach the output
+/// unfiltered, more with more bleed at every step of the control, so the sound gets brighter:
+/// the chord's brightness, at five settings.
 #[test]
-fn bleed_feeds_unfiltered_voices_into_the_filter() {
+fn bleed_leaks_routed_voices_past_a_closed_filter() {
     for profile in [SID_CHIP_6581_R4AR, SID_CHIP_8580_R5] {
         let render_with = |bleed: u8| {
             let mut dac = Box::<sid_dac>::default();
             let mut s = chip(model_of(profile));
             unsafe { sid_character_apply(&mut *s, &character(profile, 0, 0, 0, bleed), &mut *dac) };
             write(&mut s, &CHORD);
-            // Nothing routed: the band-pass alone, at full resonance.
-            write(&mut s, &[(0x17, 0xf0), (0x18, 0x2f)]);
+            write(&mut s, &[(0x15, 0x00), (0x16, 0x08)]); // FC 64: closed
             render(&mut s, 4410);
             render(&mut s, 8820)
         };
@@ -985,10 +990,174 @@ fn bleed_feeds_unfiltered_voices_into_the_filter() {
                 .collect();
             let added = rms(&diff);
             if bleed % 42 == 0 || bleed == 127 {
-                println!("profile {profile} bleed {bleed}: the filter adds {added:.1} rms");
+                println!("profile {profile} bleed {bleed}: the leak adds {added:.1} rms");
             }
             assert!(added > last, "profile {profile} bleed {bleed}");
             last = added;
+        }
+        let mut last = brightness(&dry);
+        for bleed in [32u8, 64, 96, 127] {
+            let b = brightness(&render_with(bleed));
+            println!("profile {profile} bleed {bleed}: brightness {b:.4}");
+            assert!(b > last, "profile {profile} bleed {bleed}: no brighter");
+            last = b;
+        }
+    }
+}
+
+/// Output thump at a note's start: a gate's rise steps the output (the voice DC's rise as the
+/// envelope attacks), more with more thump at every step of the control, along the voice's
+/// path (through the 6581's low-pass inverted); a slow attack hardly, a retrigger high in the
+/// envelope less. At 0 a gate adds nothing (the chip without
+/// character, sample for sample). Measured in silence after the DC blocker settled: the step's
+/// signed area against the same note without thump.
+#[test]
+fn thump_steps_the_output_at_a_notes_start() {
+    // A silent voice (no waveform, so only the envelope's DC moves), volume 15.
+    let note = |profile: u32, thump: u8, ad: u8, gate_twice: bool| -> Vec<i16> {
+        let mut dac = Box::<sid_dac>::default();
+        let mut s = chip(model_of(profile));
+        unsafe { sid_character_apply(&mut *s, &character(profile, 0, 0, thump, 0), &mut *dac) };
+        write(&mut s, &[(0x18, 0x0f), (0x05, ad), (0x06, 0xf0)]);
+        render(&mut s, 44100);
+        if gate_twice {
+            write(&mut s, &[(0x04, 0x01)]);
+            render(&mut s, 4410);
+            write(&mut s, &[(0x04, 0x00)]);
+            render(&mut s, 44); // released a millisecond: high in the envelope
+        }
+        write(&mut s, &[(0x04, 0x01)]);
+        render(&mut s, 2205)
+    };
+    let area = |x: &[i16], y: &[i16]| -> i64 {
+        x.iter()
+            .zip(y)
+            .map(|(&a, &b)| i64::from(a) - i64::from(b))
+            .sum()
+    };
+    for profile in [SID_CHIP_6581_R4AR, SID_CHIP_8580_R5] {
+        let plain = note(profile, 0, 0x00, false);
+        let mut s = chip(model_of(profile));
+        write(&mut s, &[(0x18, 0x0f), (0x05, 0x00), (0x06, 0xf0)]);
+        render(&mut s, 44100);
+        write(&mut s, &[(0x04, 0x01)]);
+        assert_eq!(
+            plain,
+            render(&mut s, 2205),
+            "profile {profile}: thump 0 is no thump"
+        );
+        let mut last = 0;
+        for thump in 1..=127u8 {
+            let a = area(&note(profile, thump, 0x00, false), &plain);
+            if thump % 42 == 0 || thump == 127 {
+                println!("profile {profile} thump {thump}: a note's start adds {a}");
+            }
+            assert!(
+                a > last,
+                "profile {profile} thump {thump}: {a} after {last}"
+            );
+            last = a;
+        }
+        // Routed into the low-pass, the DC takes the filter's path: inverted on the 6581.
+        let routed = |thump: u8| {
+            let mut dac = Box::<sid_dac>::default();
+            let mut s = chip(model_of(profile));
+            unsafe { sid_character_apply(&mut *s, &character(profile, 0, 0, thump, 0), &mut *dac) };
+            write(
+                &mut s,
+                &[(0x17, 0x01), (0x18, 0x1f), (0x05, 0x00), (0x06, 0xf0)],
+            );
+            render(&mut s, 44100);
+            write(&mut s, &[(0x04, 0x01)]);
+            render(&mut s, 2205)
+        };
+        let through = area(&routed(127), &routed(0));
+        println!("profile {profile} thump 127: through the low-pass {through}");
+        if model_of(profile) == SID_MODEL_6581 {
+            assert!(
+                through < -last / 4,
+                "the 6581's low-pass inverts: {through}"
+            );
+        } else {
+            assert!(through > last / 4, "the 8580's does not: {through}");
+        }
+        let slow = area(
+            &note(profile, 127, 0xa0, false),
+            &note(profile, 0, 0xa0, false),
+        );
+        let retrigger = area(
+            &note(profile, 127, 0x00, true),
+            &note(profile, 0, 0x00, true),
+        );
+        println!("profile {profile} thump 127: attack 10 adds {slow}, a retrigger {retrigger}");
+        assert!(
+            slow * 10 < last,
+            "a slow attack hardly thumps: {slow} against {last}"
+        );
+        assert!(
+            retrigger < last / 2,
+            "a retrigger high in the envelope: {retrigger}"
+        );
+    }
+}
+
+/// DAC sloppiness's bit errors: a triangle (whose codes cross every bit) gets harmonics at
+/// every step of the control, measured at five, and the envelope DAC's steps at quiet levels
+/// grow uneven (a quiet voice's level steps as its envelope moves), while its top stays close.
+#[test]
+fn dac_sloppiness_roughens_a_triangle_and_a_quiet_envelope() {
+    for profile in [SID_CHIP_6581_R4AR, SID_CHIP_8580_R5, SID_CHIP_6581_WORN] {
+        let tri = |dac: u8| {
+            let mut c = character(profile, 0, dac, 0, 0);
+            c.profile = (profile + 1) as u8;
+            let mut d = Box::<sid_dac>::default();
+            let mut s = chip(model_of(profile));
+            unsafe { sid_character_apply(&mut *s, &c, &mut *d) };
+            write(
+                &mut s,
+                &[
+                    (0x18, 0x0f),
+                    (0x00, 0x51),
+                    (0x01, 0x07),
+                    (0x06, 0xf0),
+                    (0x04, 0x11),
+                ],
+            );
+            render(&mut s, 4410);
+            (brightness(&render(&mut s, 8820)), unsafe { *s.dac })
+        };
+        let (mut last, base) = tri(0);
+        let uneven = |d: &sid_dac| {
+            // The envelope DAC's steps below 1/8 of its range: their RMS difference from the
+            // mean step, against it (the differential non-linearity's RMS).
+            let mean = (d.env[32] - d.env[0]) / 32.0;
+            let ms = d.env[..33]
+                .windows(2)
+                .map(|w| ((w[1] - w[0]) / mean - 1.0).powi(2))
+                .sum::<f32>()
+                / 32.0;
+            ms.sqrt()
+        };
+        let mut last_uneven = uneven(&base);
+        for dac in [32u8, 64, 96, 127] {
+            let (b, d) = tri(dac);
+            let u = uneven(&d);
+            println!(
+                "profile {profile} DAC {dac}: triangle brightness {b:.4}, quiet envelope steps \
+                 {u:.2} off their mean, top {:.3}",
+                d.env[255] / base.env[255]
+            );
+            assert!(b > last, "profile {profile} DAC {dac}: no rougher");
+            assert!(
+                u > last_uneven,
+                "profile {profile} DAC {dac}: no more uneven"
+            );
+            assert!(
+                (d.env[255] / base.env[255] - 1.0).abs() < 0.1,
+                "profile {profile}"
+            );
+            last = b;
+            last_uneven = u;
         }
     }
 }
@@ -1036,10 +1205,10 @@ fn the_settings_clamp() {
 
 /// The live instrument's tick (LIVE_TICK_HZ) in samples at the test's rate.
 const TICK: usize = (FS / 100) as usize;
-/// The ticks rendered before a jump, and after it: the longest ramp's (the DACs': 43 tables,
+/// The ticks rendered before a jump, and after it: the longest ramp's (the DACs': 64 tables,
 /// each over SID_DAC_BUILD_STEPS ticks) and some.
 const BEFORE: usize = 30;
-const AFTER: usize = 190;
+const AFTER: usize = 280;
 /// The click test's reference ramps the control over 0.2 s (TESTING.md, the effect slots'
 /// click tests), one step of 127 at a time.
 const RAMP: usize = FS as usize / 5;
@@ -1055,7 +1224,7 @@ const CLICK: i32 = 100;
 fn triangle(control: usize) -> Vec<(u8, u8)> {
     let (route, mode) = match control {
         0 => (0xf1, 0x1f), // resonance 15, voice 1 into the low-pass
-        3 => (0xf0, 0x4f), // nothing routed, the high-pass
+        3 => (0x01, 0x1f), // voice 1 into the low-pass, closed: the bleed leaks it dry
         _ => (0x00, 0x0f), // no filter
     };
     vec![
@@ -1349,5 +1518,104 @@ fn a_change_back_to_zero_restores_the_profile() {
             (s.thump, s.bleed, s.output_gain),
             (0.0, 0.0, plain.output_gain)
         );
+    }
+}
+
+/// Listening files for DAC, thump and bleed (not a check): `cargo test --release -p
+/// sidou-tests --test unit -- --ignored character_wavs` writes build/character/<control>-<n>.wav,
+/// each control at 0, 25, 50, 75 and 100 % of its travel (0, 32, 64, 95, 127) on the 6581 R4AR,
+/// everything else at 0, 12 dB louder than the chip so they are easy to hear (DAC's 6 dB: its
+/// triangles are unfiltered). DAC: a triangle
+/// melody, then pulse plucks fading slowly (a quiet voice's steps), then SAW LEAD held. THUMP:
+/// SAW LEAD's notes, short and spaced. BLEED: SAW LEAD with its low-pass closed (FC 200), then
+/// at the preset's FC 1200.
+#[test]
+#[ignore]
+fn character_wavs() {
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../build/character");
+    std::fs::create_dir_all(&dir).unwrap();
+    const A3: u16 = 3746; // 220 Hz at PAL
+    let freq = |semis: i32| (f64::from(A3) * 2f64.powf(f64::from(semis) / 12.0)) as u16;
+    // (registers, then samples to render) steps.
+    type Script = Vec<(Vec<(u8, u8)>, usize)>;
+    let note = |f: u16, ctrl: u8, ad: u8, sr: u8, on: usize, off: usize| -> Script {
+        vec![
+            (
+                vec![
+                    (0x00, f as u8),
+                    (0x01, (f >> 8) as u8),
+                    (0x05, ad),
+                    (0x06, sr),
+                    (0x04, ctrl | 1),
+                ],
+                on,
+            ),
+            (vec![(0x04, ctrl)], off),
+        ]
+    };
+    let lead = |fc: u16| -> Vec<(u8, u8)> {
+        vec![
+            (0x15, (fc & 7) as u8),
+            (0x16, (fc >> 3) as u8),
+            (0x17, 0x61),
+            (0x18, 0x1f),
+            (0x02, 0x00),
+            (0x03, 0x08),
+        ]
+    };
+    let ms = |m: usize| m * FS as usize / 1000;
+    let dac_script = || -> Script {
+        let mut s: Script = vec![(vec![(0x17, 0x00), (0x18, 0x0f), (0x02, 0), (0x03, 8)], 0)];
+        for semis in [0, 4, 7, 12, 7, 4, 0, -5] {
+            s.extend(note(freq(semis), 0x10, 0x09, 0xa6, ms(220), ms(30)));
+        }
+        for semis in [0, 3, 7] {
+            s.extend(note(freq(semis - 12), 0x40, 0x0b, 0x0b, ms(40), ms(1400)));
+        }
+        s.extend(lead(1200).into_iter().map(|r| (vec![r], 0)));
+        s.extend(note(freq(0), 0x20, 0x09, 0xa6, ms(2000), ms(400)));
+        s
+    };
+    let thump_script = || -> Script {
+        let mut s: Script = lead(1200).into_iter().map(|r| (vec![r], 0)).collect();
+        for semis in [0, 0, 3, 5, 7, 7, 5, 3] {
+            s.extend(note(freq(semis), 0x20, 0x09, 0xa6, ms(150), ms(350)));
+        }
+        s
+    };
+    let bleed_script = || -> Script {
+        let mut s: Script = lead(200).into_iter().map(|r| (vec![r], 0)).collect();
+        for semis in [0, 7, 3, 12] {
+            s.extend(note(freq(semis), 0x20, 0x09, 0xa6, ms(450), ms(100)));
+        }
+        s.extend(lead(1200).into_iter().map(|r| (vec![r], 0)));
+        for semis in [0, 7, 3, 12] {
+            s.extend(note(freq(semis), 0x20, 0x09, 0xa6, ms(450), ms(100)));
+        }
+        s
+    };
+    let controls: [(&str, usize, &dyn Fn() -> Script); 3] = [
+        ("dac", 1, &dac_script),
+        ("thump", 2, &thump_script),
+        ("bleed", 3, &bleed_script),
+    ];
+    for (name, control, script) in controls {
+        let gain = if control == 1 { 2.0 } else { 4.0 } / 32768.0;
+        for (pct, v) in [(0, 0u8), (25, 32), (50, 64), (75, 95), (100, 127)] {
+            let mut dac = Box::<sid_dac>::default();
+            let mut s = chip(SID_MODEL_6581);
+            let c = with(SID_CHIP_6581_R4AR, control, v);
+            unsafe { sid_character_apply(&mut *s, &c, &mut *dac) };
+            render(&mut s, ms(300)); // the power-on release
+            let mut out: Vec<f32> = Vec::new();
+            for (regs, n) in script() {
+                write(&mut s, &regs);
+                out.extend(render(&mut s, n).iter().map(|&x| f32::from(x) * gain));
+            }
+            out.extend(render(&mut s, ms(300)).iter().map(|&x| f32::from(x) * gain));
+            let path = dir.join(format!("{name}-{pct:03}.wav"));
+            sidou_tests::signal_metrics::write_wav16(&path, &out, FS).unwrap();
+            println!("{}", path.display());
+        }
     }
 }

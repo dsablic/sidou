@@ -18,8 +18,10 @@ static const char* const MENU_LINES[] = {"SELECT\0MOVE", "ALG\0CHANGE", "ALG\0OP
 /* The MIDI page has no actions, and its setup is RAM-only (not part of the saved settings). */
 static const char* const MIDI_LINES[] = {"SELECT\0MOVE",   "ALG\0CHANGE", "SETUP\0RAM ONLY",
                                          "HOME\0BACK",     "HOLD HOME\0HELP"};
-static const char* const CHIP_LINES[] = {"SELECT\0FOCUS", "ALG\0STEP",    "K1-K4\0VALUES",
-                                         "EDIT+ALG\0SAVE", "SAVE\0STORE", "HOME\0BACK"};
+/* CHIP's K3 on the chip, the thump, changes only where a note starts: the card says so. */
+static const char* const CHIP_LINES[] = {"SELECT\0FOCUS",  "ALG\0STEP",    "K1-K4\0VALUES",
+                                         "K3\0NOTE THUMP", "EDIT+ALG\0SAVE", "SAVE\0STORE",
+                                         "HOME\0BACK"};
 /* The song views: SEQ goes round them, SAVE saves the song, not the settings. */
 static const char* const STEP_LINES[] = {"SELECT\0LANE",   "ALG\0PAGE",      "KEYS 1-16\0STEP",
                                          "STEP+K\0LOCK",   "PRESETS\0INSTR", "ARP\0GATE",
