@@ -81,12 +81,12 @@ On LIVE:
 | EDIT held + K1 to K4 | the selected effect slot's amount, A, B and mix |
 | SCL / ENV | the next effect slot / its next algorithm |
 | MASTER | volume |
-| SEQ | opens the song views: STEP, TRACKER, ORDER, INSTR, TABLE |
+| SEQ | the song views, back to the one you used last; again: STEP, TRACKER, ORDER, INSTR, TABLE |
 | PLAY / REC | play and stop the song / record mode |
-| SAVE | saves the song in a song view, the settings elsewhere |
-| HOME | the menu from LIVE, back one view elsewhere |
+| SAVE | in the menu: opens the highlighted item; in a song view: saves the song |
+| HOME | the menu from LIVE, back one view elsewhere (settings are under SETTINGS in the menu) |
 
-**Hold HOME on any screen for its help card.** Every control, every screen and every MIDI
+**Hold HOME on any screen for its help card**: it says what each control does there, for what the screen is doing (SELECT turns a two-page card). Every control, every screen and every MIDI
 message is in [docs/reference/controls.md](docs/reference/controls.md) and
 [docs/reference/midi.md](docs/reference/midi.md).
 
