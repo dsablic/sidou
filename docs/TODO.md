@@ -485,6 +485,14 @@ working.
   (`IMAGE_CEILING` 512,000 to 506,000, M3's start target), and section 8's stale CMake cache
   (the image records its build options; `sidou-pack --verify` and `tools/preflash` fail a
   package whose options are not the defaults; configure warns).
+- **Fixed on the minors track (2026-10-22):** 2.4 (no `idle` in the register ring's wait with a
+  host), 2.5 (the peaks' take loses no block), 3.6 (a file's LOCK chunk checked as it is read),
+  4.2 (CLOCK OUT's SPP after a SysEx reply), 4.3 (FB in IDLE starts the song), 4.4 (flash holds
+  reported to the clock follower, whose fit keeps the ticks' time line), 4.5 (EP1 NAKs on
+  SIDOU's ring), 6.3 and 6.4 (bounds measured again and tightened; TRACKER's "playing" cost now
+  measures a moving bar), 6.5 (33b2bda's goldens recorded in the review; the song plays on
+  under REC), 6.6 and 6.7 (LIVE's goldens shot at a fixed place in the audio blocks), and
+  roadmap item 6's ten-minute clock-drift test. E03 and E05 stay the user's call.
 - **From the v0.2.0 fixes:** a sector the store retires for the session (review 1.2) shows
   only in `store_stats` and a lower free figure in MENU; STATUS should say it. A background
   settings save that fails is still not detected (explicit saves report and retry).

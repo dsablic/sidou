@@ -8,6 +8,24 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **MIDI clock across flash writes:** the clocks that arrive while a flash erase or program
+  masks the interrupts are stamped late; they now stay out of the clock follower's fit, and the
+  fit keeps the timer's own time line across the audio blocks a hold loses, so a USB upload
+  while the song follows a clock no longer throws the song off the beat (review 4.4).
+- **USB-MIDI in no longer drops input in a long main-loop pass:** the device NAKs the host
+  while SIDOU's MIDI-in ring is nearly full, so a long SysEx dump waits instead of being cut,
+  which released every note (review 4.5).
+- **CLOCK OUT's song position no longer cuts a SysEx reply:** it waits for the reply's end
+  (review 4.2).
+- **A MIDI continue (FB) with no song position, for a song never played, starts it** on the
+  clock; it used to wait and hijack the next PLAY (review 4.3).
+- **A song file's parameter locks are checked when it is read:** a LOCK chunk with a value out
+  of range or records out of order is dropped (`SNG: LOCKS DROPPED`); a filter-mode lock of 8
+  turned voice 3 off (review 3.6).
+- **No `idle` while a USB host is attached, also in the register ring's wait** (review 2.4).
+- **LIVE's meters never lose a block's peak** (review 2.5).
+
 ### Changed
 - **The emulator is fm1-emu `db8d472e`** (0.2.0 and later; was `7ca5b96c`), for the emulator
   gate and the browser demo. Every count the gate measures is the same at both. The browser
