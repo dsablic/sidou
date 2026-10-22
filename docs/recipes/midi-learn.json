@@ -274,6 +274,145 @@
       "title": "It turns the *cutoff*"
     },
     {
+      "caption": "Turn your controller back: the filter closes, as K1 would close it.",
+      "control": "send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then send MIDI, then wait 0.2 s, then wait 1.5 s",
+      "expect": [
+        {
+          "assert": "darker",
+          "kind": "audio"
+        },
+        {
+          "kind": "param",
+          "max": 1300,
+          "min": 0,
+          "name": "cutoff"
+        }
+      ],
+      "focus": {
+        "callout": "CC 21 > CUTOFF",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 15,
+          "rows": 7
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "sweep-down",
+      "inputs": [
+        {
+          "bytes": [
+            176,
+            21,
+            110
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 200,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            21,
+            95
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 200,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            21,
+            80
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 200,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            21,
+            65
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 200,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            21,
+            50
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 200,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            21,
+            40
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 200,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            21,
+            30
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 200,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            21,
+            20
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 200,
+          "op": "wait"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "And *back* down"
+    },
+    {
       "caption": "Let go of the keys.",
       "control": "let go of note key A3, then let go of note key C4, then let go of note key E4, then wait 1.2 s",
       "expect": [

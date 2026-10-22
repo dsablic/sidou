@@ -124,6 +124,7 @@ journey midi-learn | MIDI learn on a knob
   step learn | *SAVE* + K1 | Hold SAVE and turn K1: MIDI LEARN opens and waits for a CC. The cutoff does not move. | holdturn SAVE K1 1; wait 2000 | view learn; text LEARN; screen 0 0 30 30; callout HOLD SAVE + TURN K1
   step send | Turn your *controller* | The first CC that comes in is learned: LEARNED CC 21, CUTOFF. | cc 21 20; wait 300 | text LEARNED; screen 0 0 30 30; callout TURN A CONTROLLER KNOB
   step sweep | It turns the *cutoff* | From now on that knob is K1's cutoff, saved with the settings. | cc 21 30; wait 150; cc 21 45; wait 150; cc 21 60; wait 150; cc 21 75; wait 150; cc 21 90; wait 150; cc 21 105; wait 150; cc 21 127; wait 1500 | brighter; value cutoff 1500 2047; screen 0 15 30 7; callout CC 21 > CUTOFF
+  step sweep-down | And *back* down | Turn your controller back: the filter closes, as K1 would close it. | cc 21 110; wait 200; cc 21 95; wait 200; cc 21 80; wait 200; cc 21 65; wait 200; cc 21 50; wait 200; cc 21 40; wait 200; cc 21 30; wait 200; cc 21 20; wait 200; wait 1500 | darker; value cutoff 0 1300; screen 0 15 30 7; callout CC 21 > CUTOFF
   step let-go | Let *go* | Let go of the keys. | up A3; up C4; up E4; wait 1200 | silent; callout LET GO
 
 journey track-bass | A bassline in TRACKER
