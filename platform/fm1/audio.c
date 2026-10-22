@@ -52,6 +52,9 @@ static uint8_t b_on;
  * set it, master_now the gain the last block ended on (the interrupt's). */
 static volatile uint32_t master_to = 0;
 static uint32_t master_now = 0;
+/* The two chips' sum's excess past int16 in a block where every sum fits (app/chip_mix.h):
+ * none. */
+static int16_t no_over[AUDIO_HALF_FRAMES]; /* RAM: the interrupt reads it */
 /* The tail gate's state (app/tail_gate.h): the interrupt's. */
 static tail_gate tail_state;
 /* The chips' thump on the output (app/thump_out.h): the interrupt's. */
@@ -299,6 +302,8 @@ static void audio_ramp(int16_t* lr, int down) {
 
 void audio_fill(int32_t* buf) {
     int16_t s[AUDIO_HALF_FRAMES];
+    int16_t over[AUDIO_HALF_FRAMES]; /* the two chips' sum past int16 (app/chip_mix.h) */
+    const int16_t* sum_over = 0;     /* over, or no_over while every sum fits */
     int16_t lr[2u * AUDIO_HALF_FRAMES];
     if (hold_want && hold_faded) {
         /* Held: silence, nothing rendered (the chips stand still). The ring still drains, so
@@ -339,8 +344,10 @@ void audio_fill(int32_t* buf) {
             render_a(a, s, 1);
             sid_render(b, sb, AUDIO_HALF_FRAMES);
         }
-        chip_mix(s, sb, AUDIO_HALF_FRAMES,
-                 want == b_on ? CHIP_MIX_FULL : want ? CHIP_MIX_IN : CHIP_MIX_OUT);
+        sum_over = chip_mix(s, sb, over, AUDIO_HALF_FRAMES,
+                            want == b_on ? CHIP_MIX_FULL : want ? CHIP_MIX_IN : CHIP_MIX_OUT)
+                       ? over
+                       : no_over;
         b_on = want;
         b_rendered = b;
     }
@@ -350,8 +357,10 @@ void audio_fill(int32_t* buf) {
         tail_gate_run(&tail_state, a, b_rendered, s);
     }
     song_ctl_block_end(&song_transport, AUDIO_HALF_FRAMES);
-    /* With every slot off this writes the chip's output to both sides unchanged. */
-    sid_slots_process(&slots, s, lr, AUDIO_HALF_FRAMES);
+    /* With every slot off this writes chip A's output to both sides unchanged; with chip B the
+     * whole sum, through the soft limiter (core/fx/fx_limit.h) as the slots' output goes. The
+     * tail gate leaves the sum's excess as it is: with both chips quiet there is none. */
+    sid_slots_process_wide(&slots, s, sum_over, lr, AUDIO_HALF_FRAMES);
     /* The chips' thump, fitted into the room the slots' output leaves (app/thump_out.h): one
      * check a block while none sounds. A chip B that did not render was not heard. */
     thump_out_take(&thump, 0, a);

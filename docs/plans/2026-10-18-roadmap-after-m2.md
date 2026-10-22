@@ -142,7 +142,9 @@ not a copy:
   register as C64 tunes do. v0.3.x or with M3.
 - **A master soft limiter** (Mini-Tone): several effects at full feedback can still clip the
   output; a limiter after MASTER makes "no setting clips" true everywhere. **In v0.3.0** (the user,
-  2026-10-23), with CHIP SPREAD in the same output-stage track.
+  2026-10-23), with CHIP SPREAD in the same output-stage track. **Done** (2026-10-23): where the
+  output clamped, before MASTER ([decision record 0004](../decisions/0004-effect-algorithms.md),
+  "The output's soft limiter").
 - **USB audio out** (Melodee, Felucca's `FELUCCA_UAC`; TODO.md): moved up, right after v0.3.0.
 - **Instruments from a `.sid` file** (SID-1's web page): with M3's 6502, run a tune and pull out its
   instruments as GoatTracker instruments. With or after M3.

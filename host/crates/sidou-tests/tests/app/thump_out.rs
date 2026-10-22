@@ -241,9 +241,22 @@ fn chords(thump: u8, fx: Option<(u32, sid_slot_params)>) -> (Rails, Vec<i16>, Ve
             chips.push(ma[i]);
             chips.push(mb[i]);
         }
+        let mut over = vec![0i16; BLOCK]; // none unless chip_mix writes it
         unsafe {
-            chip_mix(ma.as_mut_ptr(), mb.as_ptr(), BLOCK as u32, CHIP_MIX_FULL);
-            sid_slots_process(&mut *slots, ma.as_ptr(), lr.as_mut_ptr(), BLOCK as u32);
+            chip_mix(
+                ma.as_mut_ptr(),
+                mb.as_ptr(),
+                over.as_mut_ptr(),
+                BLOCK as u32,
+                CHIP_MIX_FULL,
+            );
+            sid_slots_process_wide(
+                &mut *slots,
+                ma.as_ptr(),
+                over.as_ptr(),
+                lr.as_mut_ptr(),
+                BLOCK as u32,
+            );
         }
         for (i, &v) in lr.iter().enumerate() {
             if on_a_rail(i32::from(v)) {
@@ -324,7 +337,12 @@ fn no_thump_clips_two_full_scale_chords_through_any_effect() {
     let (plain_rails, plain, plain_chips) = chords(0, None);
     assert_eq!(plain_rails, Rails::default(), "the chords alone are clean");
     let full = peak(&plain);
-    assert!(full > 28_000, "the chords reach {full}: full scale");
+    // 88 % of full scale together at the mix, which the output's soft limiter (where the slots
+    // convert, chip_mix.h) takes to 27,327: past its knee, the loudest the output gives them.
+    assert!(
+        full > SID_FX_LIMIT_KNEE as i32,
+        "the chords reach {full}: past the limiter's knee"
+    );
     let (rails, thumped, chips) = chords(127, None);
     assert_eq!(rails, Rails::default(), "THUMP 100 %, no effect");
     assert_eq!(chips, plain_chips, "the chips carry no thump of their own");

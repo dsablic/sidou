@@ -57,7 +57,7 @@ SECTIONS
         *(.text.isr_alnk0)                          /* hal/fm1_isr.S: the IRQ entry */
         *(.text.fm1_alnk0_irq)                      /* main.c */
         *(.text.audio_fill .text.audio_ramp)        /* audio.c */
-        *(.text.chip_mix .text.mix_sat16)               /* app/chip_mix.c: chip B into chip A */
+        *(.text.chip_mix .text.mix_past)                /* app/chip_mix.c: chip B into chip A */
         *(.text.tail_gate_run .text.tail_busy)          /* app/tail_gate.c: the tail muted after notes */
         *(.text.master_gain_apply .text.master_scaled)         /* app/master_gain.c: MASTER's gain */
         *(.text.thump_out_take .text.thump_out_drop .text.thump_out_apply .text.thump_add .text.thump_run) /* app/thump_out.c: the chips' thump */
@@ -78,9 +78,11 @@ SECTIONS
          * still runs (the cheap ones; sid_slots_init, in flash, builds the others' templates).
          * The patterns for functions the compiler inlines today stay as a safety net. The two
          * reverbs' ticks. live's way in: the drain's pseudo-register handler (app/fx_live.c). */
+        *(.text.sid_slots_process_wide .text.slots_bypass)
         *(.text.sid_slots_process .text.sid_slots_set .text.slot_start .text.step_switch .text.slot_copy)
         *(.text.dist_tick_any .text.mod_tick_any .text.fx_tick_any)
         *(.text.sid_fx_*_tick .text.sid_fx_*_lfo)
+        *(.text.sid_fx_limit_round)                 /* core/fx/fx_limit.c: the soft limiter */
         *(.text.sid_fx_crush_init .text.sid_fx_noise_init .text.sid_fx_chorus_init)
         *(.text.sid_fx_flanger_init .text.sid_fx_tremolo_init .text.sid_fx_wow_init)
         *(.text.fx_live_pseudo .text.fx_live_apply)

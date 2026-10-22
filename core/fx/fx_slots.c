@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "fx_slots.h"
 
+#include <stddef.h>
+
+#include "fx_limit.h"
+
 /* Every 32 samples of the slots' own clock. */
 #define SNAP_MASK 31u
 
@@ -518,6 +522,29 @@ static void fx_run(sid_slots* s, float* l, float* r, uint32_t len) {
 }
 
 void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n) {
+    sid_slots_process_wide(s, in, NULL, out, n);
+}
+
+/* Every slot out of the path: the input to both sides; the whole sum, with over, through the
+ * limiter as the path's output would go. Out of line, so its loops keep their pointers in
+ * registers. */
+__attribute__((noinline, unused)) static void slots_bypass(const int16_t* in, const int16_t* over,
+                                                           int16_t* out, uint32_t n) {
+    if (over) {
+        for (uint32_t i = 0; i < n; ++i) {
+            out[2 * i] = out[2 * i + 1] = sid_fx_limit_i32((int32_t)in[i] + over[i]);
+        }
+        return;
+    }
+    for (uint32_t i = 0; i < n; ++i) {
+        out[2 * i] = in[i];
+        out[2 * i + 1] = in[i];
+    }
+}
+
+__attribute__((noinline)) void sid_slots_process_wide(sid_slots* s, const int16_t* in,
+                                                      const int16_t* over, int16_t* out,
+                                                      uint32_t n) {
     uint32_t live = 0;
     uint32_t awake = 0;
     for (uint32_t k = 0; k < SID_SLOT_COUNT; ++k) {
@@ -534,10 +561,7 @@ void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n
         awake |= sl->awake << k;
     }
     if (!live) {
-        for (uint32_t i = 0; i < n; ++i) {
-            out[2 * i] = in[i];
-            out[2 * i + 1] = in[i];
-        }
+        slots_bypass(in, over, out, n);
         return;
     }
     if (!awake) {
@@ -581,8 +605,14 @@ void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n
         if (len > n - done) {
             len = n - done;
         }
-        for (uint32_t i = 0; i < len; ++i) {
-            x[i] = (float)in[done + i] * (1.0f / 32768.0f);
+        if (over) {
+            for (uint32_t i = 0; i < len; ++i) {
+                x[i] = (float)((int32_t)in[done + i] + over[done + i]) * (1.0f / 32768.0f);
+            }
+        } else {
+            for (uint32_t i = 0; i < len; ++i) {
+                x[i] = (float)in[done + i] * (1.0f / 32768.0f);
+            }
         }
         if (live & 1u) {
             dist_run(s, x, len);
@@ -599,8 +629,8 @@ void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n
             fx_run(s, l, r, len);
         }
         for (uint32_t i = 0; i < len; ++i) {
-            out[2 * (done + i)] = sid_fx_to_i16(l[i]);
-            out[2 * (done + i) + 1] = sid_fx_to_i16(r[i]);
+            out[2 * (done + i)] = sid_fx_to_i16_limited(l[i]);
+            out[2 * (done + i) + 1] = sid_fx_to_i16_limited(r[i]);
         }
         done += len;
         s->clock += len;

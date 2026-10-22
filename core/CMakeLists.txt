@@ -9,6 +9,7 @@ add_library(sidou_core STATIC
     fx/fx_slots.c
     fx/fx_reverb.c
     fx/fx_plate.c
+    fx/fx_limit.c
     song/gt2_song.c
     song/gt2_sng.c
     song/gt2_stream.c

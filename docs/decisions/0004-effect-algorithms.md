@@ -446,3 +446,34 @@ Deviations from the decision above:
 - **The light reverb's LFOs** are this project's phase-accumulator cosine,
   stepped every 32 samples like the original, instead of stmlib's
   oscillator.
+
+## The output's soft limiter (2026-10-23)
+
+Several settings clipped the output: on two loud chips in phase (29,990 out of the mix, two
+saws), the flanger, phaser and auto-pan at full feedback or width, ping-pong and both reverbs at
+full feedback put 25 to 10,275 samples a 3 s run on a rail (`slots.rs`
+`full_feedback_never_reaches_a_rail`; the mono delay peaked at 32,260), and chip B's mix clipped
+two chips at their loudest steady level (20,274 each) by 3.3 dB.
+
+- **What:** `core/fx/fx_limit.h`. Up to the knee, K = 24,576 (-2.5 dBFS), a level passes
+  unchanged; past it, m = |x| becomes C - H^2 / (m - K + H), H = C - K, C = 32,766: slope 1 at the
+  knee, so no corner, and rising ever slower towards C, one inside the rails, which it never
+  reaches (Mini-Tone's idea, the curve the thump stage already fits its excess with).
+- **Where: once, where the slots convert their output to int16.** A soft knee is not
+  idempotent, so the signal must meet it once: chip B's mix keeps the two chips' sum whole
+  (`chip_mix`: in a block where some sum is past int16, saturated into the mono block and the
+  excess beside it) and the slots take both (`sid_slots_process_wide`); their output conversion
+  (`sid_fx_to_i16_limited`) limits, and with every slot out of the path the two chips' whole sum
+  goes through the same limiter, so a slot coming into the path at Mix 0 changes nothing. MASTER
+  only lowers the level and the thump fits itself under the same ceiling, so after the slots
+  nothing reaches a rail: the limiter sits where the excess is, before MASTER, not after it (the
+  int16 path after the slots has clamped already, so a limiter after MASTER would see only flat
+  tops), and the level it acts on does not move with the MASTER pot. Chip A alone out of the
+  slots' path passes as it is: one chip never reaches the knee (its loudest steady sample is
+  20,274, its DC blocker's power-on settling 23,834).
+- **Transparent below the knee:** a signal that never passes it is the same bit for bit.
+- **Cost:** the two compares the clamp cost below the knee; past it a call and a divide, out
+  of line (one copy in SRAM, `sid_fx_limit_round`); the excess only in a block that has one.
+  Measured: chip B's mix 8.11 a sample (8.08 before), a held chord on one chip 397.29 (397.19),
+  every slot's heaviest on one chip 1,194 worst block (1,195), two chips at their worst with every
+  slot's heaviest 2,388.8 (2,389.5). RAMTEXT +416 bytes, RAM +256 (a block of no excess).

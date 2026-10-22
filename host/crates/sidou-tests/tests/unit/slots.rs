@@ -308,8 +308,15 @@ fn none_at_full_mix_is_the_identity() {
     }
     let input = test_noise(FS as usize, 5);
     let out = s.run(&input);
-    assert_eq!(left(&out), input);
-    assert_eq!(right(&out), input);
+    // Full-scale noise: in the path the output's soft limiter shapes what passes its knee, and
+    // only that (sid_fx_to_i16_limited).
+    let limited: Vec<i16> = input
+        .iter()
+        .map(|&v| unsafe { sid_fx_limit_i32(i32::from(v)) })
+        .collect();
+    assert!(limited.iter().zip(&input).any(|(a, b)| a != b));
+    assert_eq!(left(&out), limited);
+    assert_eq!(right(&out), limited);
 }
 
 #[test]
@@ -401,4 +408,49 @@ fn parameter_jumps_are_click_free_in_the_existing_blocks() {
         params(SID_MOD_WOW, 1.0, 1.0, 0.0, 1.0),
         &[(Amount, 0.0, 1.0), (A, 0.0, 1.0), (Mix, 0.0, 1.0)],
     );
+}
+
+/// The output's soft limiter (core/fx/fx_limit.h sid_fx_to_i16_limited): the settings that
+/// clipped before it (the modulations with feedback or gain and every FX at full feedback, on
+/// two chips at their loudest steady level in phase: 29,990 out of the mix, chip_mix.rs) put no
+/// sample on a rail; each still reaches the limiter, so the test sees it work.
+#[test]
+fn full_feedback_never_reaches_a_rail() {
+    // Two saws, 110 Hz and a fifth up, at that level together.
+    let n = 3 * FS as usize;
+    let input: Vec<i16> = (0..n)
+        .map(|i| {
+            let saw = |hz: f64| 2.0 * ((hz * i as f64 / FSF).fract()) - 1.0;
+            (29_990.0 * (0.5 * saw(110.0) + 0.5 * saw(164.8))).round() as i16
+        })
+        .collect();
+    for (slot, alg, name) in [
+        (MOD, SID_MOD_FLANGER, "flanger"),
+        (MOD, SID_MOD_PHASER, "phaser"),
+        (MOD, SID_MOD_AUTOPAN, "auto-pan"),
+        (FX, SID_FXSLOT_DELAY, "delay"),
+        (FX, SID_FXSLOT_PINGPONG, "ping-pong"),
+        (FX, SID_FXSLOT_REVERB_LIGHT, "reverb"),
+        (FX, SID_FXSLOT_REVERB_LUSH, "lush"),
+    ] {
+        let mut s = Slots::new(1);
+        s.set(slot, params(alg, 1.0, 1.0, 1.0, 1.0));
+        let out = s.run(&input);
+        let peak = out.iter().map(|&v| i32::from(v).abs()).max().unwrap();
+        let rails = out
+            .iter()
+            .filter(|&&v| v == i16::MAX || v == i16::MIN)
+            .count();
+        let limited = out
+            .iter()
+            .filter(|&&v| i32::from(v).abs() > SID_FX_LIMIT_KNEE as i32)
+            .count();
+        println!("{name}: peak {peak}, {limited} samples above the knee, {rails} on a rail");
+        assert_eq!(rails, 0, "{name}: {rails} samples on a rail");
+        assert!(peak <= SID_FX_LIMIT_CEILING as i32, "{name}: peak {peak}");
+        assert!(
+            limited > 0,
+            "{name} never reaches the limiter: no test of it"
+        );
+    }
 }

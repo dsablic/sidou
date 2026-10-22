@@ -178,8 +178,15 @@ void sid_slots_init(sid_slots* s, uint32_t sample_rate, uint32_t seed, sid_slot_
  * controls (clamped to [0, 1]; NaN gives 0). */
 void sid_slots_set(sid_slots* s, uint32_t slot, const sid_slot_params* p);
 /* Mono in, interleaved stereo out (out[2i] left, out[2i + 1] right); in and out must not
- * overlap. */
+ * overlap. The output converts to int16 through the soft limiter (fx_limit.h); with every slot
+ * out of the path the input passes as it is. */
 void sid_slots_process(sid_slots* s, const int16_t* in, int16_t* out, uint32_t n);
+/* The same for an input wider than int16: in[i] + over[i] (app/chip_mix.h: the two chips' sum,
+ * saturated, and the rest), or in alone with over NULL (sid_slots_process). With every slot out
+ * of the path the whole sum goes through the soft limiter, as their output would, so a slot
+ * coming into the path at Mix 0 changes nothing. */
+void sid_slots_process_wide(sid_slots* s, const int16_t* in, const int16_t* over, int16_t* out,
+                            uint32_t n);
 
 #ifdef __cplusplus
 }

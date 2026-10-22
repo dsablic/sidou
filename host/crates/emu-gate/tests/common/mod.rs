@@ -1097,6 +1097,7 @@ pub fn render_host_chips(frames: usize, events: &[ChipEvent]) -> ChipsRender {
     let mut gate = tail_gate::default();
     let mut thump = thump_out::default();
     let mut mono_b = vec![0i16; HALF_FRAMES];
+    let mut over = vec![0i16; HALF_FRAMES];
     let mut b_on = false;
     let mut b_want = false;
     // SAFETY: everything C keeps a pointer to is boxed and outlives the calls; the buffers
@@ -1150,7 +1151,17 @@ pub fn render_host_chips(frames: usize, events: &[ChipEvent]) -> ChipsRender {
                 } else {
                     CHIP_MIX_OUT
                 };
-                chip_mix(mono.as_mut_ptr(), mono_b.as_ptr(), n as u32, fade);
+                // The excess where some sum is past int16, else none (audio_fill's no_over).
+                if chip_mix(
+                    mono.as_mut_ptr(),
+                    mono_b.as_ptr(),
+                    over.as_mut_ptr(),
+                    n as u32,
+                    fade,
+                ) == 0
+                {
+                    over.fill(0);
+                }
                 b_on = b_in;
             }
             tail_stage(
@@ -1160,7 +1171,18 @@ pub fn render_host_chips(frames: usize, events: &[ChipEvent]) -> ChipsRender {
                 &mut mono,
                 n,
             );
-            sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+            // The two chips' whole sum past int16 (app/chip_mix.h), as audio_fill passes it.
+            sid_slots_process_wide(
+                &mut *slots,
+                mono.as_ptr(),
+                if b_rendered {
+                    over.as_ptr()
+                } else {
+                    std::ptr::null()
+                },
+                half.as_mut_ptr(),
+                n as u32,
+            );
             if !b_rendered {
                 thump_out_drop(&mut *chip_b);
             }
@@ -1278,6 +1300,7 @@ pub fn render_host_song_master(frames: usize, p: &SongPlay, master: u16) -> Vec<
     });
     let tb: *mut live_sid_target = &mut *target_b;
     let mut mono_b = vec![0i16; HALF_FRAMES];
+    let mut over = vec![0i16; HALF_FRAMES];
     let (mut b_on, mut b_want) = (false, false);
     let mut sink = Box::new(HostSink {
         target: &mut *target,
@@ -1397,7 +1420,17 @@ pub fn render_host_song_master(frames: usize, p: &SongPlay, master: u16) -> Vec<
                 } else {
                     CHIP_MIX_OUT
                 };
-                chip_mix(mono.as_mut_ptr(), mono_b.as_ptr(), n as u32, fade);
+                // The excess where some sum is past int16, else none (audio_fill's no_over).
+                if chip_mix(
+                    mono.as_mut_ptr(),
+                    mono_b.as_ptr(),
+                    over.as_mut_ptr(),
+                    n as u32,
+                    fade,
+                ) == 0
+                {
+                    over.fill(0);
+                }
                 b_on = b_in;
             }
             tail_stage(
@@ -1408,7 +1441,18 @@ pub fn render_host_song_master(frames: usize, p: &SongPlay, master: u16) -> Vec<
                 n,
             );
             song_ctl_block_end(&mut *sc, n as u32);
-            sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+            // The two chips' whole sum past int16 (app/chip_mix.h), as audio_fill passes it.
+            sid_slots_process_wide(
+                &mut *slots,
+                mono.as_ptr(),
+                if b_rendered {
+                    over.as_ptr()
+                } else {
+                    std::ptr::null()
+                },
+                half.as_mut_ptr(),
+                n as u32,
+            );
             if !b_rendered {
                 thump_out_drop(&mut *chip_b);
             }
