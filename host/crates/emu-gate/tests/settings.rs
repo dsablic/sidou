@@ -257,7 +257,7 @@ fn saves_press_on_live_stores_the_settings_within_a_second() {
 }
 
 #[test]
-fn a_foreign_store_formats_on_the_menus_confirm_and_then_keeps_the_settings() {
+fn a_foreign_store_formats_on_the_menus_save_confirm_and_then_keeps_the_settings() {
     let Some(fw) = fixture("the settings test") else {
         return;
     };
@@ -266,8 +266,8 @@ fn a_foreign_store_formats_on_the_menus_confirm_and_then_keeps_the_settings() {
     let mut m = power_on(&fw, &flash);
     assert_eq!(store_state(&mut m, &fw), STORE_STATE_FOREIGN as u8);
     menu_item(&mut m, VIEWS_MENU_STORE);
-    // One turn arms, nothing written; the second formats: every sector erased, the audio held
-    // through each.
+    // A turn arms, nothing written; more turns, however fast, only keep it armed (ergonomics
+    // review E01); SAVE formats: every sector erased, the audio held through each.
     m.turn(ALGORITHM, 1);
     m.run_ms(100);
     let region = (STORE_LO as usize)..(STORE_HI as usize);
@@ -276,7 +276,15 @@ fn a_foreign_store_formats_on_the_menus_confirm_and_then_keeps_the_settings() {
         flash[region.clone()],
         "armed only"
     );
+    m.turn(ALGORITHM, 6);
     m.turn(ALGORITHM, 1);
+    m.run_ms(300);
+    assert_eq!(
+        m.soc.flash.mem[region.clone()],
+        flash[region.clone()],
+        "a fast spin formats nothing"
+    );
+    press(&mut m, SAVE);
     let start = m.ms();
     // Every sector erased (forced: the user asked), then the settings stored again.
     while stored_value(&m.soc.flash.mem, SETTINGS_KEY).is_none() {
