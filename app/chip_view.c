@@ -30,9 +30,8 @@ _Static_assert(CHIP_VIEW_TAB_ROW + 1u < CHIP_VIEW_CHOICE_ROW &&
                    CHIP_VIEW_VALUE_ROW + 3u == CHIP_VIEW_BAR_ROW &&
                    CHIP_VIEW_TAG_ROW + 1u < CHIP_VIEW_SUMMARY_ROW &&
                    CHIP_VIEW_SUMMARY_ROW + 2u * CHIP_VIEW_SECTIONS_SHOWN <= CHIP_VIEW_NOTE_ROW &&
-                   CHIP_VIEW_HELP_ROW < GRID_ROWS,
+                   CHIP_VIEW_NOTE_ROW < GRID_ROWS,
                "the page's bands follow each other");
-_Static_assert(CHIP_VIEW_NOTE_ROW + 1u == CHIP_VIEW_HELP_ROW, "the note and the help");
 _Static_assert(LIVE_SLOT_FIELDS == 5u && LIVE_SLOT_MIX == 4u,
                "Amount, A, B, Mix after the algorithm");
 
@@ -548,7 +547,6 @@ __attribute__((noinline, unused)) static void draw_expert(chip_view* cv, canvas*
         uint32_t scale = length(value) <= 4u ? 3u : 2u;
         big(c, col, row + 3u, scale, value, GRID_ATTR(active ? th->value : th->dim, th->bg));
     }
-    text(c, 0, 25, "MACRO MOVES RESET ITS OVERRIDES", THEME_ATTR(th, hint));
 }
 
 /* The turned knob's label, reversed in the knob's readable colour (a dim label stays dim): the
@@ -649,12 +647,11 @@ static void build(chip_view* cv) {
                 alg ? THEME_ATTR(th, value) : THEME_ATTR(th, dim));
         }
     }
-    /* At the foot, what the tab is (nothing on chip A with no song): the help line keeps the moves. */
+    /* At the foot, what the tab is (nothing on chip A with no song); what the controls do is the
+     * help card's (EXPERT's says a macro resets its overrides). */
     static const char* const NOTE[4] = {"", "SONG SETUP  SLOTS SHARED", "FOLLOWS KEYS  SLOTS SHARED",
                                         "SLOTS SHARED WITH CHIP A"};
     text(c, 0, CHIP_VIEW_NOTE_ROW, NOTE[help_kind(cv)], THEME_ATTR(th, hint));
-    text(c, 0, CHIP_VIEW_HELP_ROW,
-         cv->expert ? "SELECT MOVE ALGORITHM PAGE" : "SELECT MOVE ALGORITHM STEP", THEME_ATTR(th, hint));
     cv->built = 1;
     cv->copying = 1;
 }

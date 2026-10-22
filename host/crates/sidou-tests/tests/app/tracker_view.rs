@@ -289,7 +289,11 @@ fn the_rows_show_the_shown_voices_pattern_from_the_cursors_entry() {
         attr_of(u32::from(t.value), u32::from(t.cursor))
     );
     assert_eq!(s.ui.small(28, 0, 22), "V1 3 08 TONEPORTAMENTO");
-    assert_eq!(s.ui.small(29, 0, 13).trim_end(), "SELECT: ROW");
+    assert_eq!(
+        s.ui.small(29, 0, 13).trim_end(),
+        "",
+        "no help line: the help card says what the controls do"
+    );
     assert_eq!(s.ui.small(29, 17, 13), "ORD 00 ROW 00");
 }
 
@@ -370,7 +374,7 @@ fn a_key_auditioning_shows_its_note_ghosted_on_the_bar_and_names_the_instrument(
     let mut s = tracker();
     let t = th();
     let hint = |s: &Song| s.ui.small(TRACKER_VIEW_HINT_ROW as usize, 0, 11);
-    assert_eq!(hint(&s), "SELECT: ROW");
+    assert_eq!(hint(&s).trim(), "", "no help line");
     // A4 held: the bar's note and instrument are the key's, in the label role, and the hint line
     // names the instrument.
     s.ui.note_keys(1 << 16, 1 << 16);
@@ -380,11 +384,11 @@ fn a_key_auditioning_shows_its_note_ghosted_on_the_bar_and_names_the_instrument(
     assert_eq!(attr(&s.ui, 3, top(4)) & 15, t.label, "ghosted");
     assert_eq!(attr(&s.ui, 10, top(4)) & 15, t.label, "ghosted");
     assert!(hint(&s).starts_with("I01 "), "{}", hint(&s));
-    // Let go: the row and the hint come back.
+    // Let go: the row comes back and the line is blank again.
     s.ui.note_keys(0, 0);
     settle(&mut s.ui);
     assert_ne!(s.ui.big(top(4), 3, 2, 3), "A-4");
-    assert_eq!(hint(&s), "SELECT: ROW");
+    assert_eq!(hint(&s).trim(), "");
 }
 
 #[test]

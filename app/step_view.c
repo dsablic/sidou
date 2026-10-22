@@ -471,7 +471,7 @@ static void knob_cell(step_view* st, const lane* ln, uint32_t at, int held, uint
     }
 }
 
-/* Rows 16-29: the HELD STEP frame, the pads and the help line. */
+/* Rows 16-29: the HELD STEP frame and the pads. */
 static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t page) {
     song_view* sv = st->sv;
     canvas* c = &sv->cv;
@@ -518,7 +518,6 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
     for (uint32_t k = 0; k < 4u; k++) {
         knob_cell(st, ln, at, held, k, 18u + 2u * (k >> 1));
     }
-    small(c, 2, 22u, " EDIT: AGE DAC THUMP BLEED ", THEME_ATTR(th, hint));
     /* The pads: two rows of eight, a step's pad in the lane's colour when it has a note. */
     const uint8_t* pd = s && ln->pattern != 0xffu ? gt2_pattern_data(s, ln->pattern) : NULL;
     for (uint32_t i = 0; i < STEP_VIEW_STEPS; i++) {
@@ -538,7 +537,6 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
         char num[2] = {(char)('0' + (i + 1u) % 10u), 0};
         big(c, col, r, num, a);
     }
-    small(c, 0, STEP_VIEW_HELP_ROW, "HOLD KEY+KNOB LOCK  ENC PAGE", THEME_ATTR(th, hint));
     sv->dirty |= LOWER_ROWS;
 }
 

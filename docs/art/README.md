@@ -749,10 +749,10 @@ knobs' places.
 - **Rows 16-21, the other sections** at 2×, a line each (the name in grey, its state in white): on
   the chip, DIST, MOD and FX with their algorithms; on a slot, the chip's model and profile
   (`6581 R4AR`) and the other two slots.
-- **Rows 27-28:** the tab's note (nothing on chip A with no song; on the B tab FOLLOWS KEYS  SLOTS
+- **Row 27:** the tab's note (nothing on chip A with no song; on the B tab FOLLOWS KEYS  SLOTS
   SHARED, or SLOTS SHARED WITH CHIP A while the keys play chip B; on a song's A tab SONG SETUP
-  SLOTS SHARED) and the help line, SELECT MOVE ALGORITHM STEP, small in the hint colour. The toast keeps
-  rows 27-28 while it shows.
+  SLOTS SHARED), small in the hint colour; row 28 is blank (what the controls do is the
+  [help card](#help-card)'s, by the focus). The toast keeps rows 27-28 while it shows.
 
 **EXPERT keeps the readable design.** It is one final SELECT stop, not another menu. The
 ordinary four-section strip and the chip/slot layouts stay unchanged; on EXPERT the strip
@@ -769,9 +769,8 @@ otherwise 2×. Even `20000HZ` fits its
 half-screen without clipping. The last page's unused lower pair stays blank. Every turn's
 popup uses the same named parameter and unit formatter, retaining the theme's popup colours.
 Inactive names and values are dim, with **N/A** for the value; their knob tags remain readable.
-The summary lines give way to this second pair; row 25 says **MACRO MOVES RESET ITS
-OVERRIDES** in the hint colour, while the chip/song note and help remain at the foot. The help becomes SELECT
-MOVE ALGORITHM PAGE. EDIT + ALGORITHM retains the USER save target here too, in the same
+The summary lines give way to this second pair, and the chip/song note remains at the foot; the
+EXPERT help card says that a macro resets its overrides (MACROS RESET). EDIT + ALGORITHM retains the USER save target here too, in the same
 yellow names row; SAVE includes the independent expert settings.
 
 **Where the old page's pieces went.** The three effect slots' four controls each, at 8×8 on
@@ -859,13 +858,13 @@ knob is a parameter lock** ([controls](../reference/controls.md#step)).
   as `K1 CUTOFF`, `K2 RESO`, `K3 PULSE` and `K4 WAVE`, each with a bar in the knob's colour and
   its value (a percentage for the cutoff and the pulse width, 0-15 the resonance, `TRI`,
   `SAW`, `PUL` or `NOI` the waveform), `LOCK` in yellow on a locked one and `SET` in cyan on the
-  waveform command. They are grey until a step is held. The last line says what EDIT turns the
-  knobs into: `EDIT: AGE DAC THUMP BLEED`.
+  waveform command. They are grey until a step is held (what EDIT turns the knobs into, the
+  character, is the [help card](#help-card)'s: HELD STEP).
 - **Rows 24-28, the pads:** the 16 keys as two rows of eight, a step with a note in the lane's
   colour, the held one yellow, the others dark grey; steps past the pattern's end are blank.
   Each pad's number is at 2× (a pad is two cells wide, so its last digit: 1 to 8, then 9 0 1 2 3 4 5 6
   for 9 to 16), white on the dark pads. The legend with no step held is in the hint role.
-  **Row 29:** `HOLD KEY+KNOB LOCK  ENC PAGE`.
+  **Row 29** is blank: what the controls do is the help card's.
 
 The value popup names what a knob on a held step sets, in the knob's colour: `CUTOFF`,
 `RESONANCE`, `PULSE WIDTH`, `WAVEFORM` (`OFF`, `TRI`, `SAW`, `PULSE`, `NOISE`), the character's
@@ -931,9 +930,9 @@ layout, drawn after the screen-readability prototype's `trkNew`: **one voice at 
 - **Rows 27-29:** OL and the shown voice's orderlist from its entry (the entry in white on the bar's
   grey, the two after it in grey: a pattern in hex, `R2` a repeat, `+3` or `-1` a transpose, `RST00`
   the end and its restart position); the current row's first command, of the voices that sound,
-  spelled out in yellow (`V2 4 22 VIBRATO`); the hint `SELECT: ROW` in the hint role (while a key
-  auditions: `I01 BASS`, the instrument and its name; and the bar shows the key's note and the
-  instrument ghosted at 2× in the label role) and, on the right,
+  spelled out in yellow (`V2 4 22 VIBRATO`); while a key auditions `I01 BASS`, the instrument and
+  its name (and the bar shows the key's note and the instrument ghosted at 2× in the label role),
+  and on the right
   `ORD 03 ROW 1A` in hex (the position the old header said).
 
 **The cursor.** The cursor is a voice and a row. **SELECT steps rows** (EDIT held: an 8-row page),
@@ -1033,7 +1032,7 @@ still edits or auditions in the correct context.
   below, the row's number at 2× at the left (columns 0-3, yellow on the cursor row), the
   selected voice's decoded pattern/repeat/transpose/restart value at 2× from column 5. The other
   voices' entries are at 2× on the right (columns 18-21 and 24-27, headed V2 and V3 on row 2).
-  The line on row 29 says what the entry under the cursor is (`PATTERN 04`, `REPEAT 3`,
+  Rows 27-28 are blank (what the controls do is the [help card](#help-card)'s); the line on row 29 says what the entry under the cursor is (`PATTERN 04`, `REPEAT 3`,
   `TRANSPOSE +2`, `RESTART AT 00`). Selection is a high-contrast band. `-10` is the full hex
   transpose minus 16.
 - **INSTR:** instrument number and nine named parameter bytes at 2×, followed by the two

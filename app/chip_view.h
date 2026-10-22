@@ -24,7 +24,8 @@
  *   a column), a bar in the knob's colour and the knob's name K1..K4;
  * - rows 16-21, the other sections' state at 2x, one line each: DIST, MOD and FX with their
  *   algorithms, or, with a slot in focus, the chip's profile and the other two slots;
- * - rows 27-28: the tab's note (SONG SETUP, FOLLOWS KEYS, SLOTS SHARED...) and the help line.
+ * - row 27: the tab's note (SONG SETUP, FOLLOWS KEYS, SLOTS SHARED...); what the controls do is
+ *   the help card's (app/help_view.h).
  * An unused control (the algorithm has no use for it) and every control of a slot that is off are
  * dark grey.
  *
@@ -92,7 +93,6 @@ extern "C" {
 #define CHIP_VIEW_TAG_ROW 14u
 #define CHIP_VIEW_SUMMARY_ROW 16u
 #define CHIP_VIEW_NOTE_ROW 27u
-#define CHIP_VIEW_HELP_ROW 28u
 /* A control's name on the page, terminator included ("DEPTH"). */
 #define CHIP_VIEW_LABEL 6u
 /* What the page shows, as bytes (chip_view.c look): the tab's profile and model (asked for),

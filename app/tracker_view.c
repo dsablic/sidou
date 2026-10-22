@@ -522,8 +522,6 @@ static void build_footer(song_view* sv, const theme* th, const lane lanes[SONG_T
         }
         say[len] = 0;
         small(c, 0, TRACKER_VIEW_HINT_ROW, say, grey);
-    } else {
-        small(c, 0, TRACKER_VIEW_HINT_ROW, "SELECT: ROW", hint);
     }
     /* the position as the song views have always said it: the orderlist entry and the row, hex */
     uint32_t pos, row;

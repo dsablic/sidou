@@ -484,7 +484,7 @@ chip the keys play.
 | 4-6, 7 | the section's choice at 3×, and under it its names in the hint colour: the chip's model (6581, 8580) and profile (R2, R3, R4AR, R5, WORN, or **USR 3** when USER 3 was picked) over MODEL and PROFILE; or the slot's algorithm over ALGORITHM. With a save target the names read **SAVE TO USER 3** in yellow (**SAVE TO USER 3 -** while the slot is empty) |
 | 9-14 | the section's four controls in the knobs' places (K1..K4 left to right, as LIVE's knob row): its label small in the knob's readable text colour (AGE, DAC, THUMP, BLEED; a slot's named for what they do in its algorithm: OVERDRIVE has DRIVE, TONE, BIAS, MIX), its value 0..127 at 3× in white (2× from 100: three digits do not fit a column), a bar in the knob's accent colour and the knob's name K1..K4 in the neutral hint colour. A control the algorithm does not use, and every control of a slot that is off, has dark grey labels, values and bars; the knob tags remain readable |
 | 16-21 | the other sections at 2×, a line each: DIST, MOD and FX with their algorithms (OFF dark grey); with a slot in focus, the chip's model and profile and the other two slots |
-| 27-28 | the tab's note (SONG SETUP  SLOTS SHARED, FOLLOWS KEYS  SLOTS SHARED, SLOTS SHARED WITH CHIP A; nothing on chip A with no song) and the help line in the hint colour: SELECT MOVE ALGORITHM STEP |
+| 27 | the tab's note (SONG SETUP  SLOTS SHARED, FOLLOWS KEYS  SLOTS SHARED, SLOTS SHARED WITH CHIP A; nothing on chip A with no song) in the hint colour; what the controls do is the [help card](#help)'s, by the focus |
 
 The focus is on the tabs, the chip, a slot or EXPERT; the yellow tab (or title) shows it.
 
@@ -535,7 +535,7 @@ Expert edits stay until a related macro moves: AGE releases the two curves, rang
 nonlinearity; DAC releases kink and leakage; THUMP releases output thump; BLEED releases filter
 bleed. Other independent settings stay. DAC's bit errors have no expert control of their own:
 they follow DAC whatever kink and leakage are set to. A new base profile releases all expert overrides.
-The page reminds in the hint colour: **MACRO MOVES RESET ITS OVERRIDES**. During a song the A
+EXPERT's help card says it: **MACROS RESET**. During a song the A
 tab edits the song's expert setup, not the keys'; its knobs cannot be MIDI-learned. B edits
 the keys' setup.
 

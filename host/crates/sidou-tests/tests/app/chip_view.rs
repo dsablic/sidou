@@ -579,7 +579,6 @@ fn chip_text_uses_readable_roles() {
                     );
                 }
                 assert_eq!(ui.g.attr[CHIP_VIEW_NAMES_ROW as usize * COLS] & 15, t.hint);
-                assert_eq!(ui.g.attr[CHIP_VIEW_HELP_ROW as usize * COLS] & 15, t.hint);
                 for row in 0..GRID_ROWS as usize {
                     if row == CHIP_VIEW_BAR_ROW as usize {
                         continue;
@@ -650,7 +649,6 @@ fn chip_labels_legends_and_tabs_use_readable_roles() {
         let fg = |ui: &Ui, row: u32, col: usize| ui.g.attr[row as usize * COLS + col] & 15;
         assert_eq!(fg(&ui, CHIP_VIEW_NAMES_ROW, 0), t.hint);
         assert_eq!(fg(&ui, CHIP_VIEW_NAMES_ROW, 13), t.hint);
-        assert_eq!(fg(&ui, CHIP_VIEW_HELP_ROW, 0), t.hint);
         for (k, col) in KNOB_COL.into_iter().enumerate() {
             assert_eq!(fg(&ui, CHIP_VIEW_LABEL_ROW, col), t.knob_text[k]);
             assert_eq!(fg(&ui, CHIP_VIEW_TAG_ROW, col), t.hint);
@@ -664,8 +662,7 @@ fn chip_labels_legends_and_tabs_use_readable_roles() {
             unsafe { live_slot_set(&mut *ui.rig.live, 0, LIVE_SLOT_ALGORITHM, alg as i32) };
             settle(&mut ui);
             assert_eq!(fg(&ui, CHIP_VIEW_NAMES_ROW, 0), t.hint);
-            assert_eq!(fg(&ui, CHIP_VIEW_HELP_ROW, 0), t.hint);
-            for (k, col) in KNOB_COL.into_iter().enumerate() {
+                for (k, col) in KNOB_COL.into_iter().enumerate() {
                 let active = alg != 0 && label(0, alg, LIVE_SLOT_AMOUNT + k as u32).1;
                 assert_eq!(
                     fg(&ui, CHIP_VIEW_LABEL_ROW, col),
@@ -682,9 +679,7 @@ fn chip_labels_legends_and_tabs_use_readable_roles() {
         for page in 0..SID_EXPERT_COUNT.div_ceil(4) {
             settle(&mut ui);
             assert_eq!(fg(&ui, CHIP_VIEW_NAMES_ROW, 0), t.hint);
-            assert_eq!(fg(&ui, CHIP_VIEW_HELP_ROW, 0), t.hint);
-            assert_eq!(fg(&ui, 25, 0), t.hint);
-            for k in 0..4 {
+                for k in 0..4 {
                 let index = page * 4 + k;
                 if index >= SID_EXPERT_COUNT {
                     continue;
@@ -771,8 +766,9 @@ fn the_page_shows_the_profile_the_character_and_the_other_sections() {
         );
     }
     assert_eq!(
-        small(&ui, CHIP_VIEW_HELP_ROW, 0, 26),
-        "SELECT MOVE ALGORITHM STEP"
+        small(&ui, CHIP_VIEW_NOTE_ROW + 1, 0, 30).trim(),
+        "",
+        "no help line: the help card says what the controls do"
     );
     assert_eq!(focus(&ui), CHIP_VIEW_CHIP);
 }
@@ -1400,9 +1396,9 @@ fn the_tabs_switch_mark_the_keys_and_show_the_keys_setup() {
         "FOLLOWS KEYS  SLOTS SHARED"
     );
     assert_eq!(
-        small(&ui, CHIP_VIEW_HELP_ROW, 0, 26),
-        "SELECT MOVE ALGORITHM STEP",
-        "the help line keeps the moves"
+        small(&ui, CHIP_VIEW_NOTE_ROW + 1, 0, 30).trim(),
+        "",
+        "no help line: the help card says what the controls do"
     );
     // K1 on the tabs and on the chip turns the keys' age, on the B tab too.
     assert_eq!(unsafe { chip_view_page(&ui.v.chip) }, PANEL_PAGE_CHARACTER);
@@ -1420,9 +1416,9 @@ fn the_tabs_switch_mark_the_keys_and_show_the_keys_setup() {
         "SLOTS SHARED WITH CHIP A"
     );
     assert_eq!(
-        small(&ui, CHIP_VIEW_HELP_ROW, 0, 26),
-        "SELECT MOVE ALGORITHM STEP",
-        "the help line keeps the moves"
+        small(&ui, CHIP_VIEW_NOTE_ROW + 1, 0, 30).trim(),
+        "",
+        "no help line: the help card says what the controls do"
     );
 }
 
@@ -1454,9 +1450,9 @@ fn during_a_song_the_a_tab_edits_the_songs_setup() {
         "SONG SETUP  SLOTS SHARED"
     );
     assert_eq!(
-        small(&ui, CHIP_VIEW_HELP_ROW, 0, 26),
-        "SELECT MOVE ALGORITHM STEP",
-        "the help line keeps the moves"
+        small(&ui, CHIP_VIEW_NOTE_ROW + 1, 0, 30).trim(),
+        "",
+        "no help line: the help card says what the controls do"
     );
     assert_eq!(unsafe { chip_view_page(&ui.v.chip) }, PANEL_PAGE_NONE);
     let (age, profile) = (param(&ui, LIVE_PARAM_AGE), param(&ui, LIVE_PARAM_PROFILE));

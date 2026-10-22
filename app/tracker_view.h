@@ -21,7 +21,8 @@
  * - row 27: OL and the shown voice's orderlist from its entry (the entry in white on the band,
  *   the two after it in grey: a pattern in hex, Rn a repeat, +n / -n a transpose, RST and the
  *   restart position at the end); row 28: the current row's first command, of the voices
- *   that sound, spelled out (V2 4 22 VIBRATO); row 29: SELECT: ROW.
+ *   that sound, spelled out (V2 4 22 VIBRATO); row 29: an auditioned instrument's number and
+ *   name, and the position (ORD 03 ROW 1A); what the controls do is the help card's.
  *
  * The cursor is a voice (song_view.voice, the shown one) and a row: while the song plays the
  * row its player's row events say for that voice (app/song_transport.h status), stopped the

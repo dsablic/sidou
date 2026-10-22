@@ -733,12 +733,8 @@ static void order_kind(const song_pages* p, char out[24]) {
 static void build_footer(song_pages* p) {
     song_view* sv = p->sv;
     const theme* th = theme_get(sv->l->theme);
+    /* What the controls do is the help card's (app/help_view.h): rows 27-28 stay blank. */
     blank(&sv->cv, 27u, 3u, THEME_ATTR(th, value));
-    const char* hint = p->page == SONG_VIEW_ORDER ? "K1 VALUE K2 KIND  ARP RESTART" :
-        p->page == SONG_VIEW_INSTR ? "K1 COARSE K2 FINE EDIT+SEQ PTR" : "ALGORITHM TABLE  SELECT ROW";
-    small(&sv->cv, 0u, 27u, hint, THEME_ATTR(th, hint));
-    small(&sv->cv, 0u, 28u, p->page == SONG_VIEW_ORDER ? "EDIT+PRESETS INSERT/DELETE" :
-        p->page == SONG_VIEW_INSTR ? "SELECT PARAMETER / NAME" : "K1 LEFT  K2 RIGHT", THEME_ATTR(th, hint));
     char meaning[31];
     const char* say = song_pages_message(p);
     char kind[24];

@@ -201,7 +201,10 @@ fn the_layout_is_the_header_the_pages_the_lanes_the_held_frame_and_the_pads() {
         "the legend in the hint role until a step is held (dim is 2.16:1)"
     );
     assert_eq!(attr(&s.ui, 20, 18) & 15, t.hint);
-    assert_eq!(s.ui.small(22, 2, 27), " EDIT: AGE DAC THUMP BLEED ");
+    assert!(
+        !s.ui.small(22, 2, 27).contains("EDIT"),
+        "the frame's foot names nothing: the help card says what EDIT does"
+    );
     // The pads: two rows of eight; a note's pad in the lane's colour.
     // Each pad's number at 2x: the pad is two cells wide, so its last digit (9 to 16 are the
     // second row: 9, 0, 1 ... 6).
@@ -218,7 +221,11 @@ fn the_layout_is_the_header_the_pages_the_lanes_the_held_frame_and_the_pads() {
         attr(&s.ui, 6, 24),
         (u32::from(t.cursor) << 4 | u32::from(t.value)) as u8
     );
-    assert_eq!(s.ui.small(29, 0, 28), "HOLD KEY+KNOB LOCK  ENC PAGE");
+    assert_eq!(
+        s.ui.small(29, 0, 30).trim(),
+        "",
+        "no help line: the help card says what the controls do"
+    );
 }
 
 const PRESETS: u32 = 6;
