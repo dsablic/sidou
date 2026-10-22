@@ -435,7 +435,15 @@ it says HELP on a card of one page, and **SELECT** turns the page, either way; t
 as the card is, within the frame's 200 cells. LIVE, LIVE SLOT, CHIP, STEP and its states,
 TRACKER and its states, ORDER and INSTR have two.
 
-A walk opens every state, holds HOME and reads the card;
+**Every control a view takes is on its card.** A host test (`help_view.rs`,
+`every_control_a_view_takes_is_on_its_card`) opens each view in each state above, feeds the view's
+own input handler every button and encoder, alone and with EDIT held, each on a fresh power-on,
+and looks for a line naming each control the handler takes (E+ or EDIT+ names EDIT held; a control
+alone also covers EDIT + it where the view takes both). It adds what acts outside the handler:
+HOME everywhere, SAVE where it has a meaning of its own (a USER slot on CHIP, the menu's OK, the
+song in a song view, SAVE AS's name, STORE's format), the keys and SEQ in a song view (EDIT + SEQ on
+INSTR), and K1..K4 where the view turns the panel's knobs to its own page (CHIP). A view that
+learns a control without a line fails it. A walk opens every state, holds HOME and reads the card;
 each card (and each second page) has a golden (`tests/golden/lcd/help-*.png`).
 
 - HOME only opens the menu or goes back when it is **let go before 600 ms**: a tap acts in the

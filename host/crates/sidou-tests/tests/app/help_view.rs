@@ -3,9 +3,11 @@
 //! The help card (app/help_view.c) and HOME acting on its release (app/views.c `views_flow`): a
 //! tap goes home, a hold of 600 ms opens the card of the view that shows in the state it is in,
 //! SELECT turns a card of two pages, any other button or encoder closes it and does nothing else,
-//! and no frame of it sends more than 200 cells; and the first-run tour (app/views.c `tour_frame`) that follows the full boot an install
+//! no frame of it sends more than 200 cells, and every control a view's input takes is on its
+//! card; and the first-run tour (app/views.c `tour_frame`) that follows the full boot an install
 //! plays.
 
+use std::collections::BTreeSet;
 use std::ffi::CStr;
 
 use sidou_sys::*;
@@ -534,7 +536,74 @@ fn select_turns_a_card_of_two_pages_and_closes_one_of_one() {
     assert_eq!(ui.top(), "MENU");
 }
 
-// ---- the views' states: each opens its own card ----
+// ---- every control on the card: the views' input handlers fed every button and encoder ----
+
+/// A control of the panel as the cards' lines name it: a button, an encoder or the note keys.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Ctl {
+    Button(u32),
+    Encoder(u32),
+    Keys,
+}
+
+/// The controls (and whether EDIT is held) a card line's control words name: SELECT, ALG,
+/// K1..K4 (K1-K4, K1 K2, K3/K4; K the four), PRESETS (PRE), KEYS..., the buttons; E+ or EDIT+
+/// with EDIT held. Another modifier (STEP+, GLO+, SAVE+) names a gesture no probe makes: nothing.
+/// None for a line that names no control but tells something (SETTINGS KEPT, MACROS RESET).
+fn controls_of(key: &str) -> Option<Vec<(Ctl, bool)>> {
+    const INFO: [&str; 6] = ["SETTINGS", "SETUP", "MACROS", "WIPES", "QUANT", "HOLD HOME"];
+    if INFO.contains(&key) {
+        return None;
+    }
+    let (edit, rest) = match key.split_once('+') {
+        Some(("E" | "EDIT", rest)) => (true, rest),
+        Some(("STEP" | "GLO" | "SAVE", _)) => return Some(Vec::new()),
+        _ => (false, key),
+    };
+    if rest.starts_with("KEY") {
+        return Some(vec![(Ctl::Keys, edit)]);
+    }
+    let knobs = |range: std::ops::RangeInclusive<u32>| {
+        range
+            .map(|k| Ctl::Encoder(PANEL_ENC_K1 + k - 1))
+            .collect::<Vec<_>>()
+    };
+    let mut out = Vec::new();
+    let words: Vec<&str> = if rest == "OCT-/+" {
+        vec!["OCT-", "OCT+"]
+    } else {
+        rest.split([' ', '/']).collect()
+    };
+    for w in words {
+        let ctls = match w {
+            "SELECT" => vec![Ctl::Encoder(PANEL_ENC_SELECT)],
+            "ALG" => vec![Ctl::Encoder(PANEL_ENC_ALGORITHM)],
+            "PRESETS" | "PRE" => vec![Ctl::Encoder(PANEL_ENC_PRESETS)],
+            "K" | "K1-K4" => knobs(1..=4),
+            "K1" => knobs(1..=1),
+            "K2" => knobs(2..=2),
+            "K3" => knobs(3..=3),
+            "K4" => knobs(4..=4),
+            "OCT-" => vec![Ctl::Button(PANEL_BTN_OCT_DOWN)],
+            "OCT+" => vec![Ctl::Button(PANEL_BTN_OCT_UP)],
+            "FX" => vec![Ctl::Button(PANEL_BTN_FX)],
+            "SCL" => vec![Ctl::Button(PANEL_BTN_SCL)],
+            "ENV" => vec![Ctl::Button(PANEL_BTN_ENV)],
+            "LFO" => vec![Ctl::Button(PANEL_BTN_LFO)],
+            "EDIT" => vec![Ctl::Button(PANEL_BTN_EDIT)],
+            "GLO" => vec![Ctl::Button(PANEL_BTN_GLO)],
+            "HOME" => vec![Ctl::Button(PANEL_BTN_HOME)],
+            "SAVE" => vec![Ctl::Button(PANEL_BTN_SAVE)],
+            "ARP" => vec![Ctl::Button(PANEL_BTN_ARP)],
+            "SEQ" => vec![Ctl::Button(PANEL_BTN_SEQ)],
+            "PLAY" => vec![Ctl::Button(PANEL_BTN_PLAY)],
+            "REC" => vec![Ctl::Button(PANEL_BTN_REC)],
+            _ => panic!("{key:?}: no control is called {w:?}"),
+        };
+        out.extend(ctls.into_iter().map(|c| (c, edit)));
+    }
+    Some(out)
+}
 
 /// A view in a state, opened from power-on with a song bound (the device's), and the card its
 /// held HOME opens.
@@ -761,6 +830,191 @@ fn a_slot_card_names_its_algorithms_controls_and_rec_its_quantise() {
     assert!((0..usize::from(card.count))
         .map(|l| line_of(&h, card, l))
         .any(|l| l == ("QUANT".to_string(), "COUNT-IN".to_string())));
+}
+
+/// The buttons and encoders a probe feeds a view: every button but those the global handler
+/// takes first (HOME, SEQ, PLAY, REC; SAVE is save_key's), every encoder both ways; each alone
+/// and with EDIT held.
+fn probes() -> Vec<(screen_event, Ctl, bool)> {
+    let mut out = Vec::new();
+    for edit in [false, true] {
+        let held = if edit { 1 << PANEL_BTN_EDIT } else { 0 };
+        for b in 0..14u32 {
+            if [
+                PANEL_BTN_HOME,
+                PANEL_BTN_SAVE,
+                PANEL_BTN_SEQ,
+                PANEL_BTN_PLAY,
+                PANEL_BTN_REC,
+            ]
+            .contains(&b)
+            {
+                continue;
+            }
+            let e = screen_event {
+                kind: SCREEN_PRESS as u8,
+                id: b as u8,
+                steps: 0,
+                held: held | 1 << b,
+            };
+            out.push((e, Ctl::Button(b), edit));
+        }
+        for enc in 0..PANEL_ENCODERS {
+            for steps in [1i16, -1] {
+                let e = screen_event {
+                    kind: SCREEN_TURN as u8,
+                    id: enc as u8,
+                    steps,
+                    held,
+                };
+                out.push((e, Ctl::Encoder(enc), edit));
+            }
+        }
+    }
+    out
+}
+
+/// Whether the view on top, in its state, takes the event: its own input, or for a turn the
+/// screen's global handler (SONG's pages take their encoders there; the views' global handler
+/// takes no turn).
+fn takes(ui: &mut Ui, e: &screen_event) -> bool {
+    let top = ui.v.s.stack[usize::from(ui.v.s.depth) - 1];
+    let v = unsafe { &*top.v };
+    if let Some(input) = v.input {
+        if unsafe { input(&mut ui.v.s, top.state, e) } != 0 {
+            return true;
+        }
+    }
+    if e.kind == SCREEN_TURN as u8 {
+        if let Some(global) = ui.v.s.global {
+            return unsafe { global(ui.v.s.global_ctx, e) } != 0;
+        }
+    }
+    false
+}
+
+/// What SAVE does on its own in a state (app/views.c save(), mirrored): a USER slot on CHIP's chip
+/// and EXPERT, the song in the song views, the menu's OK, SAVE AS's name, STORE's format.
+fn saves(name: &str) -> bool {
+    matches!(
+        name,
+        "CHIP"
+            | "EXPERT"
+            | "MENU"
+            | "SAVE AS"
+            | "STORE"
+            | "STEP"
+            | "HELD STEP"
+            | "STEP REC"
+            | "TRACKER"
+            | "TRACK EDIT"
+            | "TRACK REC"
+            | "ORDER"
+            | "INSTR"
+            | "TABLE"
+            | "STEP FULL"
+    )
+}
+
+/// The controls a state acts on, from its handlers: each probe on a fresh power-on in that state
+/// (an event changes the state), the view's input; then what acts outside it: HOME everywhere,
+/// SAVE where save() has a meaning of its own, the keys and SEQ (the next view; EDIT + SEQ where
+/// song_pages_jump takes it) in a song view, K1..K4 where the view gives the panel a page of its
+/// own (chip_view_page: the chip's character, a slot's controls).
+fn required(name: &str) -> BTreeSet<(Ctl, bool)> {
+    let mut need = BTreeSet::new();
+    need.insert((Ctl::Button(PANEL_BTN_HOME), false));
+    if saves(name) {
+        need.insert((Ctl::Button(PANEL_BTN_SAVE), false));
+    }
+    for (e, ctl, edit) in probes() {
+        let mut c = open_ctx(name);
+        if takes(&mut c.s.ui, &e) {
+            need.insert((ctl, edit));
+        }
+    }
+    let mut c = open_ctx(name);
+    let ui = &mut c.s.ui;
+    let top = unsafe { screen_top(&ui.v.s) };
+    if unsafe { song_view_is(top) } != 0 {
+        need.insert((Ctl::Keys, false));
+        need.insert((Ctl::Button(PANEL_BTN_SEQ), false));
+        let e = screen_event {
+            kind: SCREEN_PRESS as u8,
+            id: PANEL_BTN_SEQ as u8,
+            steps: 0,
+            held: 1 << PANEL_BTN_SEQ | 1 << PANEL_BTN_EDIT,
+        };
+        if unsafe { song_pages_jump(&mut ui.v.pages, &mut ui.v.s, &e) } != 0 {
+            need.insert((Ctl::Button(PANEL_BTN_SEQ), true));
+        }
+    }
+    if ui.top() == "CHIP" && unsafe { chip_view_page(&ui.v.chip) } != PANEL_PAGE_LIVE {
+        for k in PANEL_ENC_K1..=PANEL_ENC_K4 {
+            need.insert((Ctl::Encoder(k), false));
+        }
+    }
+    need
+}
+
+/// Every control a view's input handler acts on, in each state with a card of its own, has a
+/// line on that card: a control the view takes without its line fails here. A line with EDIT
+/// (E+X) names EDIT + X; X alone covers EDIT + X too where the view takes X as well.
+#[test]
+fn every_control_a_view_takes_is_on_its_card() {
+    let mut missing = Vec::new();
+    for name in CONTEXTS {
+        let (id, _) = card_over(name);
+        let card = unsafe { &help_cards[id as usize] };
+        let mut has = BTreeSet::new();
+        for l in 0..usize::from(card.count) {
+            let (key, _) = line(card, l);
+            has.extend(controls_of(&key).unwrap_or_default());
+        }
+        let need = required(name);
+        for &(ctl, edit) in &need {
+            let ok = has.contains(&(ctl, edit))
+                || (edit && need.contains(&(ctl, false)) && has.contains(&(ctl, false)));
+            if !ok {
+                missing.push(format!(
+                    "{name} ({}): {}{ctl:?}",
+                    text(card.name),
+                    if edit { "EDIT + " } else { "" }
+                ));
+            }
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "controls without a line:\n{}",
+        missing.join("\n")
+    );
+}
+
+/// The probe sees what it should: a control a view takes and its card left out fails. STEP takes
+/// ARP (the lane's gate): a card without ARP's line misses it.
+#[test]
+fn the_completeness_check_finds_a_missing_line() {
+    let need = required("STEP");
+    assert!(
+        need.contains(&(Ctl::Button(PANEL_BTN_ARP), false)),
+        "{need:?}"
+    );
+    assert!(
+        need.contains(&(Ctl::Button(PANEL_BTN_LFO), true)),
+        "{need:?}"
+    );
+    assert!(
+        !need.contains(&(Ctl::Button(PANEL_BTN_FX), false)),
+        "{need:?}"
+    );
+    let card = unsafe { &help_cards[HELP_CARD_STEP as usize] };
+    let without: BTreeSet<(Ctl, bool)> = (0..usize::from(card.count))
+        .map(|l| line(card, l).0)
+        .filter(|k| k != "ARP")
+        .flat_map(|k| controls_of(&k).unwrap_or_default())
+        .collect();
+    assert!(!without.contains(&(Ctl::Button(PANEL_BTN_ARP), false)));
 }
 
 /// Lines dropped for room before two pages: STEP's SEQ NEXT VIEW and TRACKER's HOME BACK.

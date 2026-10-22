@@ -2348,7 +2348,9 @@ static int popup_text(void* ctx, uint32_t ask, char* name, char* value, uint32_t
     return 0;
 }
 
-/* SAVE's clean release (app/save_key.h): the precedence of views.h's routing. */
+/* SAVE's clean release (app/save_key.h): the precedence of views.h's routing. The help cards'
+ * completeness test mirrors which views and states SAVE has a meaning of its own in (help_view.rs
+ * saves()): a new one goes there too, and on its card. */
 static void save(views* v) {
     if (learn_view_is_open(&v->learn)) {
         learn_view_save(&v->learn); /* forget the picked CC, or confirm the clear */
