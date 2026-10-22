@@ -305,7 +305,7 @@ fn follow_for_minutes(fw: &Firmware, bpm: f64) -> (usize, f64, f64, f64) {
         let calls = m.soc.read32(calls_at);
         if calls != last {
             assert_eq!(calls, last + 1, "two calls between two looks");
-            if (calls - 1) % row == 0 {
+            if (calls - 1).is_multiple_of(row) {
                 rows.push((calls - 1, m.soc.read32(sample_at)));
             }
             last = calls;

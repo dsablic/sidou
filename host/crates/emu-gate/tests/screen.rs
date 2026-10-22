@@ -2274,6 +2274,7 @@ const SCAN_FRAMES_AT: u32 = 276;
 ///   two steps or less, stays as drawn): what they held depends on every frame before, so they
 ///   are let go just before the frame shot (the drawn traces marked as moved, the meters at
 ///   0), and that frame draws them from its own preparation alone.
+///
 /// The voices' oscillators run from the machine's boot (no note before the ones placed here),
 /// so their phases follow from the blocks the notes land in, and the shot is a fixed number of
 /// blocks after them.

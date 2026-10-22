@@ -171,7 +171,8 @@ fn a_lock_chunk_out_of_range_or_out_of_order_is_dropped_when_read() {
     assert_eq!(locks(&back).len(), 3, "a good chunk stays");
     assert_eq!(stream_load(&mut Song::host(), &good), (1, String::new()));
 
-    let damage: [(&str, fn(&mut [u8])); 6] = [
+    type Damage = (&'static str, fn(&mut [u8]));
+    let damage: [Damage; 6] = [
         ("a filter mode of 8", |r| r[3] = 8),
         ("a cutoff past 2047", |r| {
             r[5 + 3..5 + 5].copy_from_slice(&2048u16.to_le_bytes())
