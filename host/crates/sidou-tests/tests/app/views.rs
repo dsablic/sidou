@@ -53,7 +53,8 @@ fn song_root_rebuilds_its_theme_and_moves_selection_without_reopening() {
             song_attr(&ui, row, 2, 8, th.sel_fg, th.sel_bg);
         }
         song_attr(&ui, 10, 2, 6, th.menu_item, th.bg);
-        song_attr(&ui, 25, 2, 15, th.label, th.bg);
+        song_attr(&ui, 24, 2, 16, th.hint, th.bg);
+        song_attr(&ui, 26, 2, 18, th.hint, th.bg);
         ui.turn(PANEL_ENC_SELECT, 1);
         song_frames(&mut ui);
         song_attr(&ui, 6, 2, 8, th.menu_item, th.bg);
@@ -91,7 +92,7 @@ fn song_directory_selection_and_hints_follow_theme_changes_after_scanning() {
         song_attr(&ui, 2, 2, 8, th.title_fg, th.title_bg);
         song_attr(&ui, 6, 6, 5, th.sel_fg, th.sel_bg);
         song_attr(&ui, 8, 6, 6, th.menu_item, th.bg);
-        song_attr(&ui, 23, 4, 16, th.label, th.bg);
+        song_attr(&ui, 22, 4, 16, th.label, th.bg);
         ui.turn(PANEL_ENC_SELECT, 1);
         song_frames(&mut ui);
         song_attr(&ui, 6, 6, 5, th.menu_item, th.bg);
@@ -123,7 +124,7 @@ fn song_name_editor_and_confirmation_keep_distinct_roles_when_the_theme_changes(
         song_attr(&ui, 2, 2, 14, th.title_fg, th.title_bg);
         song_attr(&ui, 8, 2, 16, th.value, th.bg);
         song_attr(&ui, 10, 2, 2, th.hot, th.bg);
-        song_attr(&ui, 19, 2, 16, th.label, th.bg);
+        song_attr(&ui, 18, 2, 26, th.hint, th.bg);
         ui.turn(PANEL_ENC_SELECT, STORE_NAME_MAX as i32);
         song_frames(&mut ui);
         song_attr(&ui, 16, 2, 8, th.sel_fg, th.sel_bg);

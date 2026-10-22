@@ -854,10 +854,14 @@ static uint32_t song_menu_big_rows(const views_song_menu* m) {
             rows |= 3u << (6u + i * 4u);
         }
     } else if (m->page == SONG_MENU_NAME) {
-        rows |= (3u << 8) | (3u << 12) | (3u << 16);
+        rows |= (3u << 8) | (3u << 12) | (3u << 16) | (3u << 18) | (3u << 20) | (3u << 22);
     } else if (m->page == SONG_MENU_CONFIRM) {
         rows |= (3u << 6) | (3u << 8) | (3u << 14);
     }
+    if (m->page != SONG_MENU_NAME) {
+        rows |= 3u << 24; /* the legend */
+    }
+    rows |= 3u << 26; /* HOME BACK */
     return rows;
 }
 
@@ -882,6 +886,7 @@ static void song_menu_compose(screen* s, void* state, grid* g) {
     const theme* th = theme_get(v->l->theme);
     const uint8_t text = THEME_ATTR(th, menu_item);
     const uint8_t label = THEME_ATTR(th, label);
+    const uint8_t legend = THEME_ATTR(th, hint);
     const uint8_t value = THEME_ATTR(th, value);
     const uint8_t hot = THEME_ATTR(th, hot);
     const uint8_t alert = THEME_ATTR(th, alert);
@@ -913,7 +918,7 @@ static void song_menu_compose(screen* s, void* state, grid* g) {
                 song_canvas_text(v, 6u + i * 2u, 4, i == m->cursor ? ">" : " ", a);
                 song_canvas_text(v, 6u + i * 2u, 6, m->files[i], a);
             }
-            song_canvas_text(v, 23, 4, m->scanning ? "READING..." : m->count ? "SELECT TO BROWSE" : "NO SONGS",
+            song_canvas_text(v, 22, 4, m->scanning ? "READING..." : m->count ? "SELECT TO BROWSE" : "NO SONGS",
                              label);
         } else if (m->page == SONG_MENU_NAME) {
             char half[9];
@@ -926,9 +931,10 @@ static void song_menu_compose(screen* s, void* state, grid* g) {
                 song_canvas_text(v, 10u + m->cursor / 8u * 4u, 2u + m->cursor % 8u * 2u, "^^", hot);
             }
             song_canvas_big(v, 16, 2, "SAVE", m->cursor == STORE_NAME_MAX ? selected : text);
-            song_canvas_text(v, 19, 2, "SELECT     CURSOR", label);
-            song_canvas_text(v, 20, 2, "ALGORITHM  CHARACTER", label);
-            song_canvas_text(v, 21, 2, "SAVE       WRITE SONG", label);
+            /* The key legend at 2x, as the menu's (the hint role); ALG is ALGORITHM. */
+            song_canvas_big(v, 18, 2, "SELECT CURSOR", legend);
+            song_canvas_big(v, 20, 2, "ALG CHARACTER", legend);
+            song_canvas_big(v, 22, 2, "SAVE WRITE", legend);
         } else {
             song_canvas_big(v, 6, 2, m->action == SONG_MENU_DELETE ? "DELETE SONG?" : "DISCARD", alert);
             if (m->action != SONG_MENU_DELETE) {
@@ -941,9 +947,9 @@ static void song_menu_compose(screen* s, void* state, grid* g) {
             song_canvas_big(v, 14, 16, "YES", m->confirm ? selected : text);
         }
         if (m->page != SONG_MENU_NAME) {
-            song_canvas_text(v, 24, 2, "ALGORITHM  OPEN / CONFIRM", label);
+            song_canvas_big(v, 24, 2, m->page == SONG_MENU_CONFIRM ? "ALG CONFIRM" : "ALG OPEN", legend);
         }
-        song_canvas_text(v, 25, 2, "HOME       BACK", label);
+        song_canvas_big(v, 26, 2, "HOME BACK", legend);
         v->song.dirty = (1u << GRID_ROWS) - 1u;
         m->built = 1;
         m->io_state = song_menu_io_state(v);
