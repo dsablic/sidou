@@ -1579,6 +1579,12 @@ longer runs (a step the firmware cannot do) or no longer meets its expectations,
 step. `crates/ergo/tests/recipes.rs` checks without the emulator that the committed JSON parses,
 lints and is what the table exports, and with `SIDOU_FM1_BUILD` that every recipe passes.
 
+The recipes are also the how-to videos' scripts ([docs/videos.md](docs/videos.md)): a recipe
+can put showcase songs into the store (`songs`), start where another ends (`after`), play the
+keys in time (`play`), tap STEP's keys (`taps`), turn a knob slowly (`sweep`), wait for the
+song's next pattern (`sync`) and check what the song's patterns hold (`notes`, `rows`); a
+step's `focus` says what the video lights and where it looks. A video is a recipe that passes.
+
 ### Baselines
 
 Each run writes `metrics.json`. `--baseline OLD/metrics.json` lists every metric that got worse
@@ -1601,18 +1607,17 @@ subtitles' text. Nothing reads a clock or a random number, so the same build and
 give the same bytes; the capture changes only when the UI or the sound does
 (`tests/capture.rs` runs a short journey twice and compares every byte).
 
-The video encoding is not built in; with ffmpeg the capture is:
+`frames.json` also has the recipe's `steps`: each step's title, caption, `focus`, `chapter`
+and `ms`/`end_ms`, and each input with its own `ms` and `end_ms`, so a video knows which control
+was used when. `--journeys DIR` captures a JSON recipe of that directory (`docs/recipes`), and a
+capture whose step does not run as written is an error rather than a video of it.
 
-```
-cd build/ergo/capture/jam
-ffmpeg -framerate 25 -i frames/%05d.png -itsoffset OFFSET_MS/1000 -i audio.wav \
-  -vf "scale=960:960:flags=neighbor,format=yuv420p" -c:v libx264 -crf 16 \
-  -c:a aac -b:a 160k -shortest jam.mp4
-```
-
-`flags=neighbor` keeps the pixels square at a whole multiple (4x). Take `OFFSET_MS` from
-`frames.json` (`audio.offset_ms`; leave `-itsoffset` out when it is 0). The captions become
-subtitles with a few lines of `jq` on `captions[]` (each runs until the next one starts).
+`tools/make-videos` turns the recipes into the how-to videos ([docs/videos.md](docs/videos.md)):
+it runs the captures (cached under `build/videos/cache`, keyed by the firmware image, the
+recipe and the harness), renders the frames with Pillow on every core straight into ffmpeg and
+writes `build/videos/ID.mp4` (and the square and vertical cuts), `ID.srt`, `ID.wav` and the
+frames' SHA-256. The frames are the same for the same build and recipe; the check is to render
+twice and compare `ID.frames.sha256`.
 
 ## Sanitizers
 

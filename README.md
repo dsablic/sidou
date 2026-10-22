@@ -106,6 +106,8 @@ SIDOU's songs are GoatTracker 2 `.sng` files ([format notes](docs/reference/song
 
 - [BUILDING.md](BUILDING.md): building the host tools, the firmware and the package.
 - [TESTING.md](TESTING.md): the test layers, and what a failure means.
+- [docs/videos.md](docs/videos.md): the how-to videos, made from the recipes in the emulator
+  (`tools/make-videos`).
 - [docs/decisions/](docs/decisions/): decision records, starting with
   [0001](docs/decisions/0001-test-and-benchmark-harness.md) (C on the device, Rust for host
   tooling) and [0002](docs/decisions/0002-m0-sid-cost.md) (M0 SID cost).
