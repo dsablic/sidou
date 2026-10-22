@@ -14,13 +14,15 @@
 //! | M2e | 452,000 |
 //! | M2f | 512,000 |
 //!
-//! `IMAGE_CEILING` is the entry of the plan in progress. Each plan's last task moves it to its
-//! own entry, or lowers it to the measured image plus a margin. The plans land in parallel,
-//! so the stage in progress is the latest whose code is merged, not the next one by
-//! sub-milestone order: M2a's store came after M2b's chip B, M2c's songs and M2d's song views had
-//! merged. The schedule only rises and
-//! ends at or below 512,000 bytes, which leaves at least 69,564 bytes of the 581,564-byte slot
-//! for M3 (the 6502 core, PSID loading, the browser).
+//! M2 is closed (the end-of-M2 review is done) and M3 has not started, so `IMAGE_CEILING` is
+//! M3's start target: 506,000 bytes, the image won back at M2's close
+//! (docs/plans/2026-10-19-m3-sid-files.md, "Before M3"), which M3's own 28,000 then takes to
+//! at most 534,000 and leaves at least 47,564 bytes of the slot for M4 and M5. M3's Task 2
+//! adds `("M3", start + 28,000)` after the M2 schedule, `start` being the image measured
+//! then (at most 506,000), and moves `IMAGE_CEILING` to it. The M2 schedule above is history
+//! (the plans landed in parallel, so each ceiling was the latest stage merged, not the next
+//! by sub-milestone order): it only rises, ends at or below 512,000 bytes and leaves at least
+//! 69,564 bytes of the 581,564-byte slot for M3 (the 6502 core, PSID loading, the browser).
 
 mod common;
 
@@ -36,12 +38,17 @@ const SCHEDULE: [(&str, usize); 6] = [
     ("M2f", 512_000),
 ];
 
-/// The plan in progress: its index in the schedule (the latest stage whose code is merged:
-/// M2f's RED MOON RITE, with M2a's store, M2b's chip B, M2c's songs, M2d's song views and
-/// M2e's clock, transport and routing in).
-const IN_PROGRESS: usize = 5;
-const PLAN: &str = SCHEDULE[IN_PROGRESS].0;
-const IMAGE_CEILING: usize = SCHEDULE[IN_PROGRESS].1;
+/// What the image must hold now that M2 is closed and M3 not started: M3's start target.
+const M3_START: usize = 506_000;
+/// M3's own flash budget (its plan's ceiling), and what M4 and M5 keep of the slot after it.
+const M3_BUDGET: usize = 28_000;
+const M4_M5_RESERVE: usize = 47_564;
+const PLAN: &str = "M3's start";
+const IMAGE_CEILING: usize = M3_START;
+// M3's start target is within M2's schedule, and M3's budget on top of it leaves M4 and M5
+// their share of the slot.
+const _: () = assert!(M3_START <= SCHEDULE[SCHEDULE.len() - 1].1);
+const _: () = assert!(APP_SLOT - (M3_START + M3_BUDGET) >= M4_M5_RESERVE);
 
 /// The app slot (app.ld's XIP region, sidou-pack's APP_SLOT).
 const APP_SLOT: usize = 0x8DFBC;
@@ -70,7 +77,7 @@ fn the_schedule_only_rises_and_leaves_m3_its_share() {
 }
 
 #[test]
-fn the_image_fits_the_ceiling_of_the_plan_in_progress() {
+fn the_image_fits_the_ceiling_of_m3s_start() {
     let Some(build) = build_dir() else {
         common::skip_message("the flash budget");
         return;
