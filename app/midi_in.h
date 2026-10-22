@@ -70,6 +70,10 @@ typedef struct {
 void midi_in_init(midi_in* m, midi_msg_fn on_msg, midi_sysex_fn on_sysex, void* ctx);
 void midi_in_byte(midi_in* m, uint8_t byte);
 void midi_in_feed(midi_in* m, const uint8_t* bytes, size_t n);
+/* As midi_in_feed of a channel message whole: `status` 0x80..0xEF, then its data bytes (d1,
+ * and d2 for the two-byte kinds), each below 0x80. The same messages and state as the bytes
+ * one at a time, without the parse (a USB packet's channel message, midi_rx.c). */
+void midi_in_channel(midi_in* m, uint8_t status, uint8_t d1, uint8_t d2);
 
 #ifdef __cplusplus
 }

@@ -107,6 +107,20 @@ void midi_in_byte(midi_in* m, uint8_t byte) {
     }
 }
 
+void midi_in_channel(midi_in* m, uint8_t status, uint8_t d1, uint8_t d2) {
+    /* midi_in_byte's status branch for a channel status, then its data bytes' */
+    if (m->in_sysex) {
+        sysex(m, MIDI_SYSEX_ABORT, status);
+        m->in_sysex = 0;
+    }
+    m->status = status;
+    m->data[0] = d1;
+    if (data_length(status) == 2u) {
+        m->data[1] = d2;
+    }
+    complete(m);
+}
+
 void midi_in_feed(midi_in* m, const uint8_t* bytes, size_t n) {
     for (size_t i = 0; i < n; ++i) {
         midi_in_byte(m, bytes[i]);

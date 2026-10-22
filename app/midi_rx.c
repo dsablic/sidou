@@ -193,8 +193,17 @@ void midi_rx_entry(midi_rx* rx, const midi_ring_entry* e) {
     if (e->source == MIDI_SRC_TRS) {
         midi_in_byte(&rx->trs, (uint8_t)e->data);
     } else if (e->source == MIDI_SRC_USB) {
+        uint32_t p = e->data;
+        uint32_t cin = p & 0x0fu;
+        /* A channel message whose status is its CIN's and whose data bytes are data (most of
+         * USB's): whole, as the bytes would give it. Anything else byte by byte. */
+        if (cin >= 0x8u && cin <= 0xeu && (p >> 12 & 0x0fu) == cin && !(p & 0x80800000u)) {
+            midi_in_channel(&rx->usb, (uint8_t)(p >> 8), (uint8_t)(p >> 16),
+                            (uint8_t)(p >> 24));
+            return;
+        }
         uint8_t b[3];
-        uint32_t n = midi_usb_bytes(e->data, b);
+        uint32_t n = midi_usb_bytes(p, b);
         midi_in_feed(&rx->usb, b, n);
     }
 }

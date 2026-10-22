@@ -430,3 +430,49 @@ fn random_streams_never_produce_out_of_range_data() {
     }
     assert!(total > 10_000, "the streams produced {total} messages");
 }
+
+/// midi_in_channel (a USB packet's channel message whole, app/midi_rx.c) gives what feeding its
+/// bytes does: the same messages, SysEx events and parser state, over a random stream of channel
+/// messages, running status, SysEx and system messages between them.
+#[test]
+fn a_channel_message_whole_is_its_bytes_one_at_a_time() {
+    let mut seed = 0x1234_5678u32;
+    let mut next = move || {
+        seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        seed >> 8
+    };
+    let (mut whole, mut bytes) = (Parser::new(), Parser::new());
+    for _ in 0..20_000 {
+        let r = next();
+        if r % 4 == 0 {
+            // anything else, byte by byte to both: SysEx, system common, running status, stray data
+            let b = match next() % 6 {
+                0 => 0xf0,
+                1 => 0xf7,
+                2 => 0xf1 + (next() % 7) as u8,
+                3 => 0xf8 + (next() % 8) as u8,
+                _ => (next() % 0x80) as u8,
+            };
+            whole.feed(&[b]);
+            bytes.feed(&[b]);
+        } else {
+            let status = 0x80 + (next() % 0x70) as u8;
+            let (d1, d2) = ((next() % 0x80) as u8, (next() % 0x80) as u8);
+            unsafe { midi_in_channel(&mut *whole.m, status, d1, d2) };
+            let n = if matches!(status & 0xf0, 0xc0 | 0xd0) {
+                2
+            } else {
+                3
+            };
+            bytes.feed(&[status, d1, d2][..n]);
+        }
+        let (w, b) = (&*whole.m, &*bytes.m);
+        assert_eq!(
+            (w.status, w.count, w.data, w.in_sysex),
+            (b.status, b.count, b.data, b.in_sysex)
+        );
+    }
+    assert_eq!(whole.out.events, bytes.out.events);
+    assert_eq!(whole.out.sysex, bytes.out.sysex);
+    assert!(whole.out.events.len() > 10_000);
+}
