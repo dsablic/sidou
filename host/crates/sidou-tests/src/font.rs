@@ -196,8 +196,9 @@ pub fn c_header(font: &Font) -> String {
         );
     }
     s.push_str(
-        "\n/* In flash (.rodata): read by the renderer only. */\n\
-         extern const uint8_t font_glyphs[256][8];\n\n\
+        "\n/* In flash (.rodata): read by the renderer only, 4-byte aligned (grid.c tests a glyph for blank\n\
+         \x20* as two words). */\n\
+         extern const uint8_t font_glyphs[256][8] __attribute__((aligned(4)));\n\n\
          #ifdef __cplusplus\n\
          }\n\
          #endif\n\n\
@@ -218,7 +219,7 @@ pub fn c_source(font: &Font) -> String {
         s,
         "/* {GENERATED} */\n\
          #include \"font.h\"\n\n\
-         const uint8_t font_glyphs[256][8] = {{\n"
+         const uint8_t font_glyphs[256][8] __attribute__((aligned(4))) = {{\n"
     );
     for (code, rows) in font.glyphs.iter().enumerate() {
         let bytes: Vec<String> = rows.iter().map(|b| format!("0x{b:02x}")).collect();
