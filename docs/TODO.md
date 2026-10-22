@@ -503,5 +503,11 @@ working.
 - **Where:** [flash day 2026-10-22](hardware-results/2026-10-22-flash-day.md): a 65,536-byte PUT
   takes 73 s and a GET 53 s on a real FM-1 (about 280 ms and 200 ms per 256-byte packet and its
   ACK), stop-and-wait over USB.
-- **Action:** find where the time goes (the ACK's delay for flash pacing, the main loop's SysEx
-  service rate, the host's USB-MIDI latency) before Live Link and M3's `.sid` uploads rely on it.
+- **Found and fixed in fm1-emu** (which measured the same, 293.5 and 205.5 ms): a reply went
+  out one USB-MIDI event packet a SysEx poll (about 500 a second; a DATA reply is 101), and every
+  PUT program was a hold of its own, 100 ms (`STORE_FORCE_GAP_MS`) after the last, about three
+  a packet. Now a reply goes out whole as USB's ring takes it, and a packet's programs share one
+  hold, kept between packets while the device is silent: 42.4 ms up (about 15 ms once the
+  first 500 ms find the device silent), 10.3 ms down; 105.7 ms up with a chord sounding (emu-gate
+  `usb.rs`).
+- **Action:** confirm on the device with `tools/sysex-roundtrip` (4,096 and 65,536 bytes).

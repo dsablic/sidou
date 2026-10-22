@@ -123,8 +123,12 @@ failure terminates it separately. The store's five-second
 idle backstop excludes storage back-pressure. A running transfer prevents quiet
 maintenance erases. With the provisional no-window flash configuration, a PUT
 is an explicit write owner, like SAVE: its programs use the existing forced-gap
-audio hold/mute/ramp path, not a speculative window. The hold is released between
-programs so audio can ramp back up; ownership never enables refill erases. DEL
+audio hold/mute/ramp path, not a speculative window. A DATA packet's programs (and
+END's FILE record) share one hold, a program a store pass. While the device sounds,
+the hold is released after each packet so audio can ramp back up, and the next one
+starts at least 100 ms later; while it is silent (no song, gated voice, UI sound or
+button, and the output low for 500 ms), the hold stays on between packets.
+Ownership never enables refill erases. DEL
 also owns its explicit programs and can use forced holds with windows disabled.
 Disabled windows alone do not cause BUSY. With write windows enabled, including
 the emulator override, these programs are hold-free. Hold-free hardware operation

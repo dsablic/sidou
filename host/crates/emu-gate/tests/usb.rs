@@ -507,3 +507,251 @@ fn a_ring_gap_aborts_only_its_ports_sysex_and_never_cuts_a_reply() {
     assert_eq!(frames.len(), 1, "the next INQ is answered: {frames:02x?}");
     assert_eq!(&frames[0][..6], &[0xf0, 0x7d, 0x53, 0x44, 1, 2]);
 }
+
+// ---- SIDOU's SysEx file transfers over USB, timed (docs/reference/sysex.md) ----
+
+/// SIDOU's frame: `F0 7D 53 44 cmd seq packed checksum F7` (app/sysex.c's packing: a mask of
+/// the high bits, then up to seven low-seven-bit bytes).
+fn sd_frame(command: u8, sequence: u8, data: &[u8]) -> Vec<u8> {
+    let mut out = vec![0xf0, 0x7d, 0x53, 0x44, command, sequence];
+    for group in data.chunks(7) {
+        out.push(
+            group
+                .iter()
+                .enumerate()
+                .fold(0, |mask, (i, b)| mask | ((b >> 7) << i)),
+        );
+        out.extend(group.iter().map(|b| b & 127));
+    }
+    let sum = out[4..].iter().fold(0u8, |sum, b| sum.wrapping_add(*b));
+    out.extend([sum.wrapping_neg() & 127, 0xf7]);
+    out
+}
+
+/// A host on the far end of the cable, stop-and-wait as tools/sysex-roundtrip: SIDOU's reply
+/// frames as they come out of EP1 IN, decoded.
+#[derive(Default)]
+struct Link {
+    taken: usize,
+    frame: Vec<u8>,
+    frames: std::collections::VecDeque<Vec<u8>>,
+}
+
+impl Link {
+    fn send(&mut self, m: &mut Machine, command: u8, sequence: u8, data: &[u8]) {
+        send(m, &sysex_packets(&sd_frame(command, sequence, data)));
+    }
+
+    /// The next SIDOU frame: (command, sequence, decoded payload); one USB frame (1 ms) at a
+    /// time, at most `timeout` ms.
+    fn recv(&mut self, m: &mut Machine, timeout: u64) -> (u8, u8, Vec<u8>) {
+        let start = m.ms();
+        loop {
+            let in1 = &host(m).in1;
+            for packet in in1[self.taken..].concat().chunks(4) {
+                let n = match packet[0] & 15 {
+                    4 | 7 => 3,
+                    5 => 1,
+                    6 => 2,
+                    _ => 0,
+                };
+                for &b in &packet[1..=n] {
+                    if b >= 0xf8 {
+                        continue;
+                    }
+                    if b == 0xf0 {
+                        self.frame.clear();
+                    }
+                    self.frame.push(b);
+                    if b == 0xf7 {
+                        self.frames.push_back(std::mem::take(&mut self.frame));
+                    }
+                }
+            }
+            self.taken = in1.len();
+            while let Some(f) = self.frames.pop_front() {
+                if f.len() >= 8 && f[1..4] == [0x7d, 0x53, 0x44] {
+                    let sum = f[4..f.len() - 1]
+                        .iter()
+                        .fold(0u8, |s, b| s.wrapping_add(*b));
+                    assert_eq!(sum & 127, 0, "a reply's checksum: {f:02x?}");
+                    let mut payload = Vec::new();
+                    for group in f[6..f.len() - 2].chunks(8) {
+                        let mask = group[0];
+                        payload.extend(
+                            group[1..]
+                                .iter()
+                                .enumerate()
+                                .map(|(i, b)| b | ((mask >> i) & 1) << 7),
+                        );
+                    }
+                    return (f[4], f[5], payload);
+                }
+            }
+            assert!(m.ms() - start < timeout, "no reply in {timeout} ms");
+            m.usb_frames(1);
+        }
+    }
+
+    fn ack(&mut self, m: &mut Machine, sequence: u8) {
+        let (command, s, payload) = self.recv(m, 2_000);
+        assert_eq!(
+            (command, s),
+            (0x7e, sequence),
+            "expected ACK {sequence}: {payload:02x?}"
+        );
+    }
+}
+
+/// A USB host with the device enumerated and the song I/O settled after the boot.
+fn usb_machine(fw: &Firmware) -> Machine {
+    let mut m = Machine::boot(&fw.image);
+    m.usb = Some(UsbHost::default());
+    run_past_boot(&mut m, fw);
+    enumerate(&mut m, fw);
+    let songs = fw.symbol("songs") + sidou_sys::ilp32::song_io::state as u32;
+    for _ in 0..2_000 {
+        if m.soc.read8(songs) == sidou_sys::SONG_IO_IDLE as u8 {
+            break;
+        }
+        m.usb_frames(1);
+    }
+    assert_eq!(m.soc.read8(songs), sidou_sys::SONG_IO_IDLE as u8);
+    host(&mut m).in1.clear();
+    m
+}
+
+/// PUT then GET of `data` as a named file (stop-and-wait, 256-byte DATA packets, an ACK
+/// each), as tools/sysex-roundtrip runs it on the device. Returns the emulated ms a DATA packet
+/// and its ACK take, on average, up (PUT) and down (GET).
+fn round_trip(m: &mut Machine, name: &str, data: &[u8]) -> (f64, f64) {
+    let mut link = Link::default();
+    let mut meta = vec![0, 0];
+    meta.extend((0..16).map(|i| name.as_bytes().get(i).copied().unwrap_or(0)));
+    meta.push(2);
+    meta.extend((data.len() as u32).to_le_bytes());
+    // SAFETY: data is valid for its length; the CRC routine does not retain it.
+    let crc = unsafe { sidou_sys::store_crc32(0, data.as_ptr().cast(), data.len() as u32) };
+    meta.extend(crc.to_le_bytes());
+    let mut seq = 10u8;
+    link.send(m, 4, seq, &meta);
+    link.ack(m, seq);
+    let packets = data.len().div_ceil(256);
+    let start = m.ms();
+    for chunk in data.chunks(256) {
+        seq += 1;
+        link.send(m, 5, seq, chunk);
+        link.ack(m, seq);
+    }
+    let up = (m.ms() - start) as f64 / packets as f64;
+    seq += 1;
+    link.send(m, 6, seq, &[]);
+    link.ack(m, seq);
+
+    let mut get = vec![0, 0];
+    get.extend((0..16).map(|i| name.as_bytes().get(i).copied().unwrap_or(0)));
+    link.send(m, 3, 60, &get);
+    let (command, s, payload) = link.recv(m, 2_000);
+    assert_eq!((command, s), (4, 60), "GET's metadata: {payload:02x?}");
+    assert_eq!(payload[19..27], meta[19..27], "GET's length and CRC");
+    link.send(m, 0x7e, s, &[]);
+    let mut got = Vec::new();
+    let start = m.ms();
+    loop {
+        let (command, s, payload) = link.recv(m, 2_000);
+        link.send(m, 0x7e, s, &[]);
+        match command {
+            5 => got.extend(payload),
+            6 => break,
+            _ => panic!("GET: command {command:#x} {payload:02x?}"),
+        }
+    }
+    let down = (m.ms() - start) as f64 / packets as f64;
+    assert_eq!(got, data, "GET returned what PUT stored");
+    (up, down)
+}
+
+fn transfer_file() -> Vec<u8> {
+    (0..4096u32).map(|i| (i * 31 + i / 256) as u8).collect()
+}
+
+/// SysEx runs in the store's share of a pass (store_fm1_service, emu-gate store.rs's
+/// STORE_POLL_WORST), a whole reply frame a poll as far as USB's ring takes it.
+const STORE_POLL_WORST: u64 = 30_000;
+
+/// A 4 KiB PUT and GET over USB with the production store (no write windows: every program a
+/// held one); returns the emulated ms a DATA packet and its ACK take, up and down, and checks
+/// the store's share and the passes stay within their bounds meanwhile.
+fn timed_round_trip(fw: &Firmware, name: &str, chord: bool) -> (f64, f64) {
+    let mut m = usb_machine(fw);
+    assert_eq!(m.soc.read32(fw.symbol("store_fm1_window")), 0);
+    if chord {
+        for key in [30, 34, 37] {
+            m.key(key, true);
+        }
+        m.usb_frames(50);
+    }
+    m.watch_calls(fw.symbol("store_fm1_service"));
+    m.watch_passes(fw.symbol("midi_drain"), fw.symbol("midi_service"));
+    let counts = fw.symbol("store_fm1_counts");
+    let (progs, holds) = (m.soc.read32(counts), m.soc.read32(counts + 16));
+    let (up, down) = round_trip(&mut m, name, &transfer_file());
+    let (progs, holds) = (
+        m.soc.read32(counts) - progs,
+        m.soc.read32(counts + 16) - holds,
+    );
+    let service = *m.watched_calls.iter().max().expect("store_fm1_service ran");
+    let pass = *m.passes.iter().max().expect("passes ran");
+    println!(
+        "USB SysEx ({}): {up:.1} ms a DATA and its ACK up, {down:.1} ms down; {progs} programs, \
+         all held: {holds}; store_fm1_service {service} at most, a pass {pass}",
+        if chord { "a chord sounding" } else { "silent" }
+    );
+    assert_eq!(progs, holds, "every production program is held");
+    assert!(service <= STORE_POLL_WORST, "store_fm1_service {service}");
+    assert!(pass <= common::POLL_INSTRUCTIONS, "a pass {pass}");
+    if chord {
+        assert!(
+            m.soc
+                .periph
+                .audio
+                .iter()
+                .rev()
+                .take(2 * common::HALF_FRAMES)
+                .any(|&s| s != 0),
+            "the chord plays again after the transfer"
+        );
+    }
+    (up, down)
+}
+
+/// SysEx over USB moves a 256-byte packet in a few ms of USB time (101 event packets, 16 to a
+/// 64-byte IN packet). On flash day (docs/hardware-results/2026-10-22-flash-day.md) the device
+/// took about 280 ms per DATA and its ACK up and 200 ms down, as fm1-emu did (293.5 and 205.5
+/// ms here): the reply went out an event packet a SysEx poll (about 500 a second), and every
+/// program was a hold of its own, STORE_FORCE_GAP_MS (100 ms) after the last. Now a reply goes
+/// out whole, as fast as USB's ring takes it, and a packet's programs share one hold, which
+/// stays on between packets while the device is silent (the first 500 ms of a PUT find that
+/// out). Bounds: the measurement (42.4 up, 10.3 down) plus at most 10 %.
+#[test]
+fn a_silent_usb_put_and_get_move_a_256_byte_packet_quickly() {
+    let Some(fw) = fixture("the SysEx USB timing test") else {
+        return;
+    };
+    let (up, down) = timed_round_trip(&fw, "USB TIMING", false);
+    assert!(up <= 46.0, "PUT: {up:.1} ms a packet");
+    assert!(down <= 11.0, "GET: {down:.1} ms a packet");
+}
+
+/// The same while a chord sounds: a packet's programs share one hold, ramped down and back up,
+/// and the holds stay STORE_FORCE_GAP_MS apart, so the chord plays between packets. Before:
+/// 292.6 ms up, 205.6 down. Bounds: the measurement (105.7 up, 10.4 down) plus at most 10 %.
+#[test]
+fn a_sounding_usb_put_keeps_its_gaps_with_one_hold_a_packet() {
+    let Some(fw) = fixture("the SysEx USB timing test") else {
+        return;
+    };
+    let (up, down) = timed_round_trip(&fw, "USB CHORD", true);
+    assert!(up <= 116.0, "PUT: {up:.1} ms a packet");
+    assert!(down <= 11.0, "GET: {down:.1} ms a packet");
+}
