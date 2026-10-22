@@ -86,3 +86,11 @@ other bytes: the frames' digests are the check.
 
 The previews here are the one place generated media is committed: `docs/media/videos/*.webp`
 (4 s, 480 x 270, under 300 KB each). The MP4s stay in `build/`.
+
+## Credits for the videos
+
+- **Inter Tight**: the Inter Project Authors (OFL-1.1), the videos' headlines.
+- **fm1-emu**: Joakim Eriksson (MIT); its panel drawing gives the videos where each control sits.
+
+These are for the videos only, so they are here rather than in CREDITS.md, whose sections are also
+the device's ABOUT pages.
