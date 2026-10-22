@@ -476,11 +476,18 @@ static void write_all(live* l) {
     write_mode_vol(l);
 }
 
-/* The pulse width after the LFO, clamped to 12 bits. */
+/* The pulse width after the LFO, clamped to 12 bits. The LFO's depth narrows near the ends of
+ * the range, so that its sweep never goes thinner than K3's narrowest width (LIVE_PULSE_FIRST),
+ * nor as thin at the wide end: clamped to 0, a width is no pulse but a DC level, and the voice
+ * went silent for part of every cycle (PWM BASS at a 9 % width, a quarter of its 2 s cycle). */
 static uint16_t pw_effective(const live* l) {
     int32_t pw = l->pulse_width;
-    uint16_t depth = cur(l)->pwm_depth;
-    if (depth) {
+    int32_t depth = cur(l)->pwm_depth;
+    int32_t room = pw - LIVE_PULSE_FIRST;
+    int32_t top = (int32_t)LIVE_PULSE_WIDTH_MAX + 1 - LIVE_PULSE_FIRST - pw;
+    room = room < top ? room : top;
+    depth = depth < room ? depth : room;
+    if (depth > 0) {
         int32_t phase = l->lfo_phase;
         int32_t tri = phase < 32768 ? phase : 65536 - phase; /* 0..32768 */
         pw += (tri - (int32_t)LFO_CENTRE) * depth / (int32_t)LFO_CENTRE;

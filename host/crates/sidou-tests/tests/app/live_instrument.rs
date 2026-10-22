@@ -748,6 +748,38 @@ fn pwm_clamps_at_the_pulse_width_limits() {
     }
 }
 
+/// Ergonomics review E09: on PWM BASS at K3's narrow positions the LFO swept the width below 0,
+/// clamped it there, and a width of 0 is a DC level: the note went silent for part of every
+/// cycle (a quarter of it at 9 %). The sweep now narrows near the ends and never goes thinner
+/// than K3's narrowest width, at every K3 position and at the wide end.
+#[test]
+fn pwm_never_sweeps_thinner_than_k3s_narrowest_width() {
+    let mut rig = Rig::new(SID_MODEL_8580);
+    rig.set_preset(PULSE_BASS);
+    let depth = i32::from(preset(PULSE_BASS).pwm_depth);
+    let widths = (0..LIVE_PULSE_POSITIONS as i32).map(|k| LIVE_PULSE_FIRST as i32 + 64 * k);
+    for base in widths.chain([4096 - 300, 4095]) {
+        unsafe { live_param_set(&mut *rig.live, LIVE_PARAM_PULSE_WIDTH, base as u32) };
+        let (mut lo, mut hi) = (i32::MAX, i32::MIN);
+        for _ in 0..(LIVE_TICK_HZ * 3) {
+            rig.tick();
+            let pw = i32::from(rig.voice_pw(0));
+            lo = lo.min(pw);
+            hi = hi.max(pw);
+        }
+        let floor = LIVE_PULSE_FIRST as i32;
+        if base <= 4096 - floor {
+            assert!(lo >= floor.min(base), "width {base}: down to {lo}");
+            assert!(hi <= 4096 - floor, "width {base}: up to {hi}");
+        }
+        let room = (base - floor).min(4096 - floor - base).max(0);
+        assert!(
+            hi - lo >= depth.min(room) * 3 / 2,
+            "width {base}: the sweep {lo}..{hi} keeps the room it has"
+        );
+    }
+}
+
 #[test]
 fn presets_without_pwm_write_nothing_on_tick() {
     let mut rig = Rig::new(SID_MODEL_8580);
