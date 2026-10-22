@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# `cargo nextest run --locked --release -p emu-gate` (TESTING.md): every emulator test in its own
+# process, as many at once as there are cores. The wall time is then set by the longest test, so
+# the long ones (times from the 2026-10-22 run, a loaded 10-core Mac) start first.
+nextest-version = "0.9.91"
+
+[[profile.default.overrides]]
+filter = 'package(emu-gate) & test(the_players_worst_block_fits_its_budget)'
+priority = 100
+
+[[profile.default.overrides]]
+filter = 'package(emu-gate) & (test(red_moon_rite_stays_within_its_budgets_over_a_minute_of_the_song) | test(the_tracker_stays_within_its_budgets_while_a_song_plays))'
+priority = 90
+
+[[profile.default.overrides]]
+filter = '''package(emu-gate) & (
+    test(the_boot_and_about_stay_within_their_budgets)
+  | test(scene_stays_within_its_budgets)
+  | test(midi_learn_over_scene_and_live_stays_within_the_budget)
+  | test(the_step_view_stays_within_its_budgets_while_a_song_plays)
+  | test(a_note_on_reaches_the_buffer_within_a_block_and_a_poll)
+  | test(a_cut_after_any_operation_leaves_the_old_value_or_the_new)
+  | test(character_ccs_reach_the_chip_and_match_the_host_sample_exact)
+  | test(a_note_moves_every_piece_and_silence_calms_it)
+  | test(a_note_on_keeps_its_bounds_while_the_character_sweeps)
+  | test(a_production_full_size_trs_put_holds_every_program_but_never_erases_or_stays_muted)
+)'''
+priority = 80

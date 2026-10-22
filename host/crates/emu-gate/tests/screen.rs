@@ -245,16 +245,29 @@ fn golden_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../tests/golden/lcd")
 }
 
+/// Written whole under a name of its own, then renamed into place: two tests that write the
+/// same `<name>.actual.png` (the golden test on a mismatch, the review test always) never leave
+/// a torn file for the reader.
 fn write_png(path: &Path, idx: &[u8]) {
-    let file =
-        std::fs::File::create(path).unwrap_or_else(|e| panic!("create {}: {e}", path.display()));
-    let mut enc = png::Encoder::new(std::io::BufWriter::new(file), W as u32, W as u32);
-    enc.set_color(png::ColorType::Indexed);
-    enc.set_depth(png::BitDepth::Four);
-    enc.set_palette(SRGB.concat());
-    let packed: Vec<u8> = idx.chunks(2).map(|p| p[0] << 4 | p[1]).collect();
-    let mut w = enc.write_header().expect("PNG header");
-    w.write_image_data(&packed).expect("PNG data");
+    let tmp = path.with_extension(format!(
+        "png.{}.{:?}.tmp",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    {
+        let file =
+            std::fs::File::create(&tmp).unwrap_or_else(|e| panic!("create {}: {e}", tmp.display()));
+        let mut enc = png::Encoder::new(std::io::BufWriter::new(file), W as u32, W as u32);
+        enc.set_color(png::ColorType::Indexed);
+        enc.set_depth(png::BitDepth::Four);
+        enc.set_palette(SRGB.concat());
+        let packed: Vec<u8> = idx.chunks(2).map(|p| p[0] << 4 | p[1]).collect();
+        let mut w = enc.write_header().expect("PNG header");
+        w.write_image_data(&packed).expect("PNG data");
+        w.finish().expect("PNG end");
+    }
+    std::fs::rename(&tmp, path)
+        .unwrap_or_else(|e| panic!("rename {} to {}: {e}", tmp.display(), path.display()));
 }
 
 fn read_png(path: &Path) -> Vec<u8> {
