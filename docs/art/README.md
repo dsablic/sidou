@@ -558,8 +558,8 @@ out within the budget; the first frame is drawn whole before the display is on.
 
 ABOUT, the menu's last item (`app/about.h`), is the prototype's cracktro trimmed to the SPI
 budget, on black, laid out around Metal Chrome's lettering band: the logo at the top
-(rows 0-8), a ramp line (row 9), the credits over a starfield (heading on row 10, lines from
-row 12), another ramp line, and two raster bars sweeping behind a sine scroller (rows 21-29).
+(rows 0-8), a ramp line (row 9), the credits over a starfield (heading on row 10, the first page's at 2×
+on rows 10-11, lines from row 12), another ramp line, and two raster bars sweeping behind a sine scroller (rows 21-29).
 The bars are Cracktro Chrome's cold and warm ones (blue, light blue, cyan; brown, orange,
 light red), with no white, and the scroller is white, so its letters read over every band.
 HOME goes back.
@@ -1089,10 +1089,11 @@ the screen's 900 cells: a note costs 3.1k instructions above idle where it cost 
 bound is 30k, which a whole compose with the larger text would have passed). Idle it composes
 nothing (7.47k a frame, as before: the bound is 7.5k).
 
-**ABOUT** is unchanged. Its credits are generated pages that fade in and out through colours a
-row at a time, and the first page's heading (`SIDOU V<version>`, up to 20 characters) does not fit
-at 2× (15 characters a row): the larger text would also double what each fade step sends over
-the 163-cell budget the screen is held to.
+**ABOUT** keeps its credits pages at the font's size: they are generated pages that fade in and
+out through colours a row at a time. Only the first page's heading is at 2× (the ergonomics
+review's E20): `SIDOU V<version>` while it fits the 15 characters a 2× row holds, else the
+version alone (at most 14; the logo above says SIDOU). It takes rows 10 and 11, and that page's
+lines run a fade step later than a credits page's, so a frame still changes two rows at most.
 
 ## SCENE
 

@@ -208,6 +208,35 @@ fn the_first_page_names_sidou_and_its_version_and_then_every_credits_page_shows(
     assert!(ui.row(HEADING).contains("SIDOU V1.2.3"));
 }
 
+/// Ergonomics review E20: the first page's heading is at 2x and fits: SIDOU and the version,
+/// centred; a version too long for both, alone. Its two rows still change with at most one
+/// other row a frame.
+#[test]
+fn the_first_pages_heading_is_at_2x_and_fits() {
+    let mut ui = Ui::new();
+    open_about(&mut ui);
+    run_to(&mut ui, PAGE / 2);
+    assert_eq!(ui.big(HEADING, 3, 2, 12), "SIDOU V1.2.3");
+    let long = std::ffi::CString::new("V10.20.30-RC1").unwrap();
+    let mut ui = Ui::new();
+    ui.v.version = long.as_ptr();
+    open_about(&mut ui);
+    let mut last = ui.g.attr;
+    let start = about_frame(&ui);
+    for _ in start..PAGE {
+        ui.frame();
+        let rows: Vec<usize> = (HEADING..ABOUT_RAMP_BOTTOM as usize)
+            .filter(|&r| (0..COLS).any(|c| ui.g.attr[r * COLS + c] != last[r * COLS + c]))
+            .collect();
+        assert!(rows.len() <= 2, "frame {} changed rows {rows:?}", about_frame(&ui));
+        last = ui.g.attr;
+        if about_frame(&ui) == PAGE / 2 {
+            assert_eq!(ui.big(HEADING, 2, 2, 13), "V10.20.30-RC1", "the version alone");
+            assert!(ui.row(LINES).contains("SID SOUNDS FOR THE FM-1"));
+        }
+    }
+}
+
 #[test]
 fn a_page_cascades_in_and_out_two_rows_at_a_time() {
     let mut ui = Ui::new();

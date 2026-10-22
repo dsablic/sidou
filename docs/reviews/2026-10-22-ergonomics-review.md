@@ -92,7 +92,7 @@ Effort: S under half a day, M about a day, L several days. "Review 5.x" means `d
 | E17 | SAVE AS, and the SONG file pages | The key legend on the name editor ("SELECT CURSOR / ALGORITHM CHARACTER / SAVE WRITE SONG") is 1x grey, and the title "SAVE AS" is dim grey at 2x. You see this page once per new song, with both hands on the encoders. | `journeys/build/06-save-song.png`, `extra-views/09-menu.png`. Not measured by the harness. | S | **A**. Same `hint`/`label` roles as the menu; add the pages to the tour. |
 | E18 | LIVE, band under the knobs | With a 5-letter filter name (NOTCH) the name runs into the profile: it reads "NOTCHR4AR". Seen on DICE 01, which picked a notch filter. | `extra-views/14-dice.png` (DICE 01) | S | **A**. Shorten the filter word or move the profile one column. |
 | E19 | LIVE, "TONE" row and the knob tags | The heading TONE sits directly on top of the knob labels (CUTOFF, RESO, DECAY, RELEASE) with no gap, so it reads as one block; "K1 K2 K3 K4" tags and the DIST/MOD/FX tabs are 1x. The harness passes this screen (0 failing pairs, no text under minimum). | `journeys/tour/01-live-idle.png`, `extra-views/13-glo.png` | S | **?** Options: leave as it is for the panel's verdict at flash day (the TODO already says the 8x8 small text waits for that), or drop the TONE heading since the tabs show the page. I recommend deciding from the device. |
-| E20 | ABOUT | The credits fade a row at a time and cut off mid-word in a still frame ("ONG F", "S AVE"); the first page's heading does not fit at 2x. | `journeys/tour/13-about.png`; TODO says "left for the panel's verdict" | S | **?** Options: (a) leave; (b) rework the credit scroller to whole rows. Nobody plays with ABOUT open, so I would only fix the heading. |
+| E20 | ABOUT | The credits fade a row at a time and cut off mid-word in a still frame ("ONG F", "S AVE"); the first page's heading does not fit at 2x. | `journeys/tour/13-about.png`; TODO says "left for the panel's verdict" | S | **?** Options: (a) leave; (b) rework the credit scroller to whole rows. Nobody plays with ABOUT open, so I would only fix the heading. **Done (heading only):** the first page's heading is at 2x, SIDOU and the version while they fit, else the version alone; its lines run a fade step later so a frame still changes two rows at most; the credit scroller is unchanged. |
 | E21 | CHIP and LIVE band, the profile name | R2, R3, R4AR, R5, WORN mean nothing to a new player. | Plan "Later-2" (`HEUR.chip.profile-jargon`) with record 0006's words: BRIGHT, DARK, CLASSIC, CLEAN, GRITTY, USER | M | **A**. Spec is written. |
 
 ### Flow and small bugs the review deferred (5.7 to 5.14)
@@ -156,7 +156,7 @@ Suggested order if you accept: E01, E02, E03 and E04 first (work can be lost), t
   when recording stops. **Done.**
 - **E05:** REC writes what was heard: the entry's transpose is subtracted, with a toast if the
   note leaves the range. **Done.**
-- Taken with the review's recommendation, not asked: **E20** fixes ABOUT's first heading only;
+- Taken with the review's recommendation, not asked: **E20** fixes ABOUT's first heading only (**done**);
   **E32** keeps one undo step and says so on the help card.
 - From the device session: E10, E11, E19, the readability calls in TODO.md, and the SysEx gap
   while sound plays.

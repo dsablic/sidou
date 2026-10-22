@@ -49,9 +49,15 @@ static const char SCROLL[] =
 static const char SILENT_SCROLL[] = "SAVE YOUR SONG FOR MUSIC ...      ";
 _Static_assert(sizeof SILENT_SCROLL - 1u >= GRID_COLS, "the scroller wraps at most once per row");
 
-/* The page before the credits. */
+/* The page before the credits, under its heading at 2x (SIDOU and the version), which takes two
+ * rows: its lines run a step later than a credits page's, so that a frame still changes two
+ * rows at most. */
+#define FIRST_COUNT 4u
 static const char* const FIRST_LINES[CREDITS_LINES] = {
     "SID SOUNDS FOR THE FM-1", "", "FREE SOFTWARE", "GPL-3.0-OR-LATER", NULL, NULL, NULL, NULL};
+_Static_assert(ABOUT_ROW_FRAMES + (FIRST_COUNT + 1u) * ABOUT_ROW_DELAY <= ABOUT_PAGE_FRAMES,
+               "the first page's last row is gone before the next page");
+_Static_assert(ABOUT_HEADING_ROW + 2u <= ABOUT_LINES_ROW, "the 2x heading is above the lines");
 
 _Static_assert(ABOUT_LOGO_ROW + ABOUT_LOGO_ROWS <= ABOUT_RAMP_TOP,
                "the logo's slot is above the first ramp line");
@@ -164,9 +170,12 @@ static void credits(const about* a, grid* g, uint32_t f) {
     const char* heading;
     const char* const* lines;
     uint8_t names;
+    uint32_t skip = 0; /* rows the heading takes past its first */
     char first[24] = "SIDOU ";
     if (page == 0) {
-        uint32_t n = 6;
+        /* SIDOU and the version while both fit at 2x, else the version alone (the logo says
+         * SIDOU) */
+        uint32_t n = length(a->version) + 6u <= GRID_COLS / 2u ? 6u : 0u;
         for (const char* s = a->version; *s && n + 1u < sizeof first;) {
             first[n++] = *s++;
         }
@@ -174,6 +183,7 @@ static void credits(const about* a, grid* g, uint32_t f) {
         heading = first;
         lines = FIRST_LINES;
         names = 0x01u;
+        skip = 1;
     } else {
         const credits_page* p = &credits_pages[page - 1u];
         heading = p->heading;
@@ -182,10 +192,16 @@ static void credits(const about* a, grid* g, uint32_t f) {
     }
     int32_t level = level_at(0, k);
     if (level >= 0) {
-        center(g, ABOUT_HEADING_ROW, heading, GRID_ATTR(FADE_HEADING[level], GRID_BLACK));
+        uint8_t attr = GRID_ATTR(FADE_HEADING[level], GRID_BLACK);
+        if (skip) {
+            uint32_t n = length(heading);
+            grid_text_big(g, (GRID_COLS - 2u * n) / 2u, ABOUT_HEADING_ROW, 2, heading, attr);
+        } else {
+            center(g, ABOUT_HEADING_ROW, heading, attr);
+        }
     }
     for (uint32_t i = 0; i < CREDITS_LINES && lines[i]; i++) {
-        level = level_at(i + 1u, k);
+        level = level_at(i + 1u + skip, k);
         if (level >= 0) {
             const uint8_t* fade = names >> i & 1u ? FADE_NAME : FADE_TEXT;
             center(g, ABOUT_LINES_ROW + i, lines[i], GRID_ATTR(fade[level], GRID_BLACK));

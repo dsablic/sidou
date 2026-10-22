@@ -90,8 +90,8 @@ Follow-ups that aren't tied to a milestone task yet.
   2× with strips and SELECT to switch it, CHIP a section at a time with its four controls at 3×
   (docs/art/README.md "Theme", "LIVE", "CHIP", "TRACKER"). The panel check is in
   docs/hardware-test.md section 6 ("Readability of the redesigned screens"). Left for the
-  panel's verdict: ABOUT is unchanged (its credits fade a row at a time, and the first page's
-  heading does not fit at 2×), and the small text (a lane's waveform and stage, the knob names,
+  panel's verdict: ABOUT's credits still fade a row at a time at the font's size (its first
+  page's heading is at 2× since the ergonomics review's E20), and the small text (a lane's waveform and stage, the knob names,
   the footers) is still 8×8.
 
 ## A soft knee on the two chips' mix (if two loud chips clip)
