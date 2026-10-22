@@ -17,6 +17,7 @@ here.
 | 6 | Felucca (`firmware/src/usb.c:50-56`) | The USB DMA buffers (`ep0buf`, `ep1tx`, `ep1rx`, …) are declared `aligned(4)`, but on the FM-1 an EP1 IN buffer at 4 mod 8 is never sent (TxPktRdy stays set). Felucca's own builds happen to place them 8-aligned; a layout change would break USB-MIDI out. Fix: `aligned(8)` or more. | 2026-10-18, SIDOU's USB-out diagnosis | [Below](#6-felucca-usb-dma-buffers-need-8-byte-alignment); [usb-out-diagnosis.md](hardware-results/usb-out-diagnosis.md) | drafted |
 | 7 | Felucca (`firmware/src/usb.c`, `sie_wr`, `sie_rd`) | Built with `-mcpu=r3 -mfprev1 -O2`, `usb.c` stops sending on EP1 IN on the FM-1 (enumeration and OUT keep working); with Felucca's own flags (no `-mcpu`, `-Os`) it works. At `-O2` the SIE accessors are inlined and back-to-back SIE accesses follow each other within a few cycles. Fix: `noinline` on `sie_rd`/`sie_wr`, or a read-back between accesses, so the file doesn't depend on its build flags. | 2026-10-19, SIDOU's USB-out diagnosis | [Below](#7-felucca-usbc-breaks-when-built-at--o2--mcpur3) | drafted |
 | 8 | Felucca (`firmware/src/usb.c`) | Two small opt-in hooks, so a firmware built on Felucca's USB stack can use it unmodified. (1) `FELUCCA_USB_MANUFACTURER` and `FELUCCA_USB_PRODUCT` for its own string descriptors. (2) `FELUCCA_MIDI_IN_RAW(pkt)` to get every EP1 OUT event packet before `midi_in_event`'s filter, so system common and every real-time byte reach a parser of its own. Both are inert when undefined. | 2026-10-20, SIDOU adopting `usb.c` | [Below](#8-felucca-two-opt-in-hooks-in-usbc); SIDOU's patch in `platform/fm1/src/usb.c` | drafted, a proposed patch |
+| 9 | fm1-emu (`crates/fm1-web`, `web/`) | Feature request: keep the emulated FM-1's SPI flash across page loads in the web player. The wasm exports no way to read or write the flash, so every visit boots with empty flash: firmwares that store settings (SIDOU's first-run tour and saved songs, Felucca-family settings) start over each time. | 2026-10-22, SIDOU's web demo | [Below](#9-fm1-emu-persist-the-flash-in-the-web-player) | drafted |
 
 Items 2-5 are against the pinned `e52f4640`. The fm1-emu bump will show which are still
 open: upstream has since fuzzed its decoder against the vendor objdump (#18, four decode
@@ -172,3 +173,31 @@ static void midi_in_event(uint32_t pkt)
 
 Both hooks would let SIDOU, and any other firmware built on the stack, take `usb.c`
 byte for byte. That way fixes like items 6 and 7 reach every firmware.
+
+## 9. fm1-emu: persist the flash in the web player
+
+**Title:** web: keep the emulated flash between visits (export and import it)
+
+The web player boots a package with `fm1_boot_fwsc`, which builds the machine's SPI flash from
+the package, and `web/main.js` starts it again on every page load. Firmware that keeps data in
+flash (settings, saved songs, a "first run done" record) therefore starts from nothing on each
+visit; SIDOU's demo shows its first-run tour every time, and a song saved in it is lost on
+reload. The wasm has no export for the flash (the machine is a static inside `fm1-web`), so a
+page cannot keep it.
+
+**Proposal:** two small exports in `crates/fm1-web/src/lib.rs`, in the style of the others:
+
+```rust
+/// A pointer to the emulated SPI flash (FLASH_SIZE bytes), for the page to copy out.
+#[no_mangle] pub extern "C" fn fm1_flash() -> *const u8;
+/// Replace the flash with `len` bytes at `ptr` (from fm1_alloc), before or just after boot.
+#[no_mangle] pub extern "C" fn fm1_flash_load(ptr: *mut u8, len: u32);
+```
+
+and in the worklet a `flash` message that posts the bytes back (on request, or when the flash
+changed), which `main.js` can keep in IndexedDB (it already has an `idb()` helper for
+firmwares) and send in with `boot`. The page would save when it hides or unloads and every
+few seconds while the flash changed, and offer a "reset" that clears the kept copy. Where the
+package's own flash image would overwrite the kept bytes (the app and loader regions), the
+kept copy should be applied around it, not over it, or a new firmware version would run
+against the old image.

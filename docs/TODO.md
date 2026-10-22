@@ -496,3 +496,18 @@ working.
 - **From the v0.2.0 fixes:** a sector the store retires for the session (review 1.2) shows
   only in `store_stats` and a lower free figure in MENU; STATUS should say it. A background
   settings save that fails is still not detected (explicit saves report and retry).
+
+## The browser demo forgets its flash on every page load
+
+- **Where:** `web/` (the page), `web/patch-main.sh`, and fm1-emu's `crates/fm1-web` (the wasm).
+- **Problem:** the pinned fm1-emu wasm (`7ca5b96`) boots a fresh machine with empty flash on
+  every load (`fm1_boot_fwsc`), and exports no way to read or write the emulated SPI flash
+  (the machine lives in a static inside the wasm). So SIDOU's first-run tour and full boot play
+  on every visit, and nothing saved in the demo survives a reload. The page says so
+  (`web/index.html`, "The first-run tour").
+- **Action:** the fm1-emu feature request in [upstream-reports.md](upstream-reports.md), item 9
+  (drafted, not posted). When the web player can get and set the flash, keep it per browser in
+  IndexedDB (main.js already has an `idb()` helper): restore it before boot, save it when the page
+  hides and now and then, with a visible "Reset the FM-1" control on SIDOU's page; extend
+  `web/check.mjs` to load, save, reload and see the tour not return. Then drop the page's
+  explanation.
