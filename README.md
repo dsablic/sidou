@@ -52,9 +52,9 @@ Installing custom firmware can leave an FM-1 unable to boot. **You do this at yo
 and SIDOU comes with no warranty.** Read [docs/flash-day.md](docs/flash-day.md) first and have
 the way back ready.
 
-1. Download `sidou.fwsc` from the [latest release](https://github.com/dsablic/sidou/releases/latest).
-2. Install it with Felucca's installer (`fm1_install.py sidou.fwsc`), or from the FM-1
-   Firmware Hub. The unit then shows up on USB as "SIDOU FM-1", and later versions install
+1. Download the `.fwsc` file (for example `sidou-0.2.0.fwsc`) from the [latest release](https://github.com/dsablic/sidou/releases/latest).
+2. Install it with Felucca's installer (`fm1_install.py sidou-0.2.0.fwsc`); from v0.3.0 also
+   from the FM-1 Firmware Hub. The unit then shows up on USB as "SIDOU FM-1", and later versions install
    over it the same way.
 3. **Back to stock:** install M-VAVE's official `FM-1.fwsc` (V15) the same way.
 4. **Recovery:** if the unit does not boot, hold OCT- alone while switching on, for about a
@@ -144,7 +144,7 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 - **v0.3.0** is next, the first wider public release. It ships with no known bug.
 - **M3** follows: `.sid` playback.
 
-The song views, REC and the first-run tour are still to be checked on a real unit. See the
+Installs, updates, the way back to stock, the OCT- recovery, MIDI and SysEx over USB, the song views and REC have run on a real unit; the first-run tour is still to be checked there. See the
 [roadmap](docs/plans/2026-10-18-roadmap-after-m2.md) and the
 [design document](docs/plans/2026-10-14-sidou-design.md).
 
