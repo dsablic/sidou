@@ -44,6 +44,19 @@ fn render(s: &mut sid, n: usize) -> Vec<i16> {
     out
 }
 
+/// The chip's render with its thump as the output stage plays it after the chip
+/// (app/thump_out.h; the chip alone, nothing else on the output): `t` keeps the thump between
+/// calls.
+fn render_out(s: &mut sid, t: &mut thump_out, n: usize) -> Vec<i16> {
+    let mono = render(s, n);
+    let mut lr: Vec<i16> = mono.iter().flat_map(|&v| [v, v]).collect();
+    unsafe {
+        thump_out_take(t, 0, s);
+        thump_out_apply(t, lr.as_mut_ptr(), n as u32);
+    }
+    lr.iter().step_by(2).copied().collect()
+}
+
 /// A held chord of saws (and voice 3 a pulse) through the low-pass at FC 1024, resonance 8:
 /// the filter, the DACs and the output stage all in play.
 const CHORD: [(u8, u8); 22] = [
@@ -912,8 +925,8 @@ fn dac_sloppiness_leaks_more_of_a_released_voice() {
     }
 }
 
-/// Output thump: a volume write steps the output, more with more thump, at every step of the
-/// control; at 0 the 8580 (no voice DC: only its silent voices' DAC offset times the envelope
+/// Output thump: a volume write steps the output (the chip and its output stage,
+/// app/thump_out.h), more with more thump, at every step of the control; at 0 the 8580 (no voice DC: only its silent voices' DAC offset times the envelope
 /// DAC's leakage) barely steps. Measured in silence after the DC blocker: the step's signed
 /// area (the 6581's own step at 0 points the other way, so its size first falls), and its
 /// peak.
@@ -925,10 +938,11 @@ fn thump_steps_the_output_at_a_volume_write() {
             let mut dac = Box::<sid_dac>::default();
             let mut s = chip(model_of(profile));
             unsafe { sid_character_apply(&mut *s, &character(profile, 0, 0, thump, 0), &mut *dac) };
+            let mut t = thump_out::default();
             write(&mut s, &[(0x18, 0x00)]);
-            render(&mut s, 44100); // the power-on release and the DC blocker settle
+            render_out(&mut s, &mut t, 44100); // the power-on release and the DC blocker settle
             write(&mut s, &[(0x18, 0x0f)]);
-            let after = render(&mut s, 2205);
+            let after = render_out(&mut s, &mut t, 2205);
             let area: i64 = after.iter().map(|&v| i64::from(v)).sum();
             let step = after.iter().map(|&v| i32::from(v).abs()).max().unwrap();
             if thump % 42 == 0 || thump == 127 {
@@ -947,20 +961,26 @@ fn thump_steps_the_output_at_a_volume_write() {
     }
 }
 
-/// The thump's headroom: the gain falls by as much as the step, so a signal that just reached
-/// full scale, plus the largest step (volume 0 to 15), still does.
+/// The thump needs no headroom in the chip: the output stage fits it into the room the output
+/// leaves (app/thump_out.h), so the chip's gain is sid_init's at any thump, and its render
+/// carries no thump (the steps wait in thump_pending for the stage).
 #[test]
-fn thump_keeps_its_step_inside_full_scale() {
+fn thump_needs_no_headroom_in_the_chip() {
     for model in [SID_MODEL_6581, SID_MODEL_8580] {
         let mut dac = Box::<sid_dac>::default();
         let profile = unsafe { sid_chip_default(model) };
         let mut s = chip(model);
         let base = s.output_gain;
         unsafe { sid_character_apply(&mut *s, &character(profile, 0, 0, 127, 0), &mut *dac) };
-        let full_scale = 32767.0 / base; // in mix units, before the thump
-        let with_step = (full_scale + s.thump) * s.output_gain;
-        assert!((with_step - 32767.0).abs() < 0.05, "{with_step}");
+        assert_eq!(s.output_gain, base);
         assert_eq!(s.thump, SID_CHARACTER_THUMP as f32);
+        let mut plain = chip(model);
+        unsafe { sid_character_apply(&mut *plain, &character(profile, 0, 0, 0, 0), &mut *dac) };
+        for c in [&mut s, &mut plain] {
+            write(c, &[(0x18, 0x0f), (0x05, 0x00), (0x06, 0xf0), (0x04, 0x41)]);
+        }
+        assert_eq!(render(&mut s, 4410), render(&mut plain, 4410));
+        assert!(s.thump_pending > 1.0, "{}", s.thump_pending);
     }
 }
 
@@ -1006,7 +1026,7 @@ fn bleed_leaks_routed_voices_past_a_closed_filter() {
 }
 
 /// Output thump at a note's start: a gate's rise steps the output (the voice DC's rise as the
-/// envelope attacks), more with more thump at every step of the control, along the voice's
+/// envelope attacks; the chip and its output stage, app/thump_out.h), more with more thump at every step of the control, along the voice's
 /// path (through the 6581's low-pass inverted); a slow attack hardly, a retrigger high in the
 /// envelope less. At 0 a gate adds nothing (the chip without
 /// character, sample for sample). Measured in silence after the DC blocker settled: the step's
@@ -1018,16 +1038,17 @@ fn thump_steps_the_output_at_a_notes_start() {
         let mut dac = Box::<sid_dac>::default();
         let mut s = chip(model_of(profile));
         unsafe { sid_character_apply(&mut *s, &character(profile, 0, 0, thump, 0), &mut *dac) };
+        let mut t = thump_out::default();
         write(&mut s, &[(0x18, 0x0f), (0x05, ad), (0x06, 0xf0)]);
-        render(&mut s, 44100);
+        render_out(&mut s, &mut t, 44100);
         if gate_twice {
             write(&mut s, &[(0x04, 0x01)]);
-            render(&mut s, 4410);
+            render_out(&mut s, &mut t, 4410);
             write(&mut s, &[(0x04, 0x00)]);
-            render(&mut s, 44); // released a millisecond: high in the envelope
+            render_out(&mut s, &mut t, 44); // released a millisecond: high in the envelope
         }
         write(&mut s, &[(0x04, 0x01)]);
-        render(&mut s, 2205)
+        render_out(&mut s, &mut t, 2205)
     };
     let area = |x: &[i16], y: &[i16]| -> i64 {
         x.iter()
@@ -1063,13 +1084,14 @@ fn thump_steps_the_output_at_a_notes_start() {
             let mut dac = Box::<sid_dac>::default();
             let mut s = chip(model_of(profile));
             unsafe { sid_character_apply(&mut *s, &character(profile, 0, 0, thump, 0), &mut *dac) };
+            let mut t = thump_out::default();
             write(
                 &mut s,
                 &[(0x17, 0x01), (0x18, 0x1f), (0x05, 0x00), (0x06, 0xf0)],
             );
-            render(&mut s, 44100);
+            render_out(&mut s, &mut t, 44100);
             write(&mut s, &[(0x04, 0x01)]);
-            render(&mut s, 2205)
+            render_out(&mut s, &mut t, 2205)
         };
         let through = area(&routed(127), &routed(0));
         println!("profile {profile} thump 127: through the low-pass {through}");
@@ -1448,8 +1470,9 @@ fn residual(a: &[i16], b: &[i16]) -> i32 {
 /// (TESTING.md): the run through the sink's ramp against the same move taken a step of 1 at a
 /// time over 0.2 s keeps the 2nd difference of their difference within RESIDUAL_MAX, on a
 /// triangle the jump meets at ten phases. The measure would see a CLICK-sized step, and sees
-/// the same jump at once for every control: age at resonance 15, the DACs, the thump (the 8580's
-/// too) and the bleed.
+/// the same jump at once for every control but the thump: age at resonance 15, the DACs and the
+/// bleed. The thump moves a held note not at all, ramped or at once (it acts at the next note's
+/// start or volume write, on the output stage: app/thump_out.h).
 #[test]
 fn a_jump_of_any_control_is_ramped_and_does_not_click() {
     for profile in [SID_CHIP_6581_R4AR, SID_CHIP_8580_R5, SID_CHIP_6581_WORN] {
@@ -1475,12 +1498,19 @@ fn a_jump_of_any_control_is_ramped_and_does_not_click() {
                 "profile {profile} control {control}: residual ramped {ramped} LSB, at once \
                  {at_once}, a {CLICK} LSB click {click}; the ramp {long} ticks"
             );
+            if control == 2 {
+                assert_eq!(
+                    (ramped, at_once),
+                    (0, 0),
+                    "profile {profile}: the thump moved a held note"
+                );
+            }
             assert!(
                 ramped <= RESIDUAL_MAX,
                 "profile {profile} control {control}: the ramped jump's residual is {ramped} LSB"
             );
             assert!(
-                at_once > RESIDUAL_MAX,
+                control == 2 || at_once > RESIDUAL_MAX,
                 "profile {profile} control {control}: the test misses the jump at once ({at_once})"
             );
             assert!(
@@ -1606,13 +1636,22 @@ fn character_wavs() {
             let mut s = chip(SID_MODEL_6581);
             let c = with(SID_CHIP_6581_R4AR, control, v);
             unsafe { sid_character_apply(&mut *s, &c, &mut *dac) };
-            render(&mut s, ms(300)); // the power-on release
+            let mut t = thump_out::default();
+            render_out(&mut s, &mut t, ms(300)); // the power-on release
             let mut out: Vec<f32> = Vec::new();
             for (regs, n) in script() {
                 write(&mut s, &regs);
-                out.extend(render(&mut s, n).iter().map(|&x| f32::from(x) * gain));
+                out.extend(
+                    render_out(&mut s, &mut t, n)
+                        .iter()
+                        .map(|&x| f32::from(x) * gain),
+                );
             }
-            out.extend(render(&mut s, ms(300)).iter().map(|&x| f32::from(x) * gain));
+            out.extend(
+                render_out(&mut s, &mut t, ms(300))
+                    .iter()
+                    .map(|&x| f32::from(x) * gain),
+            );
             let path = dir.join(format!("{name}-{pct:03}.wav"));
             sidou_tests::signal_metrics::write_wav16(&path, &out, FS).unwrap();
             println!("{}", path.display());

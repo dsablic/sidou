@@ -941,6 +941,26 @@ pub fn tail_stage(
         };
     }
 }
+/// The chips' thump audio_fill plays after the slots (platform/fm1/audio.c, app/thump_out.h):
+/// chip A's steps and chip B's if it rendered the block (`b`; one out of use drops its own,
+/// as the device does), on the block's interleaved L, R.
+pub fn thump_stage(
+    t: &mut sidou_sys::thump_out,
+    a: &mut sidou_sys::sid,
+    b: Option<&mut sidou_sys::sid>,
+    half: &mut [i16],
+    n: usize,
+) {
+    // SAFETY: the chips are alive and not rendering; half holds n frames.
+    unsafe {
+        sidou_sys::thump_out_take(t, 0, a);
+        if let Some(b) = b {
+            sidou_sys::thump_out_take(t, 1, b);
+        }
+        sidou_sys::thump_out_apply(t, half.as_mut_ptr(), n as u32);
+    }
+}
+
 /// platform/fm1/audio.c SLOTS_SEED.
 pub const SLOTS_SEED: u32 = 0x51D0;
 
@@ -979,6 +999,7 @@ pub fn render_host(
     let mut out = vec![0i16; 2 * frames];
     let mut mono = vec![0i16; HALF_FRAMES];
     let mut gate = tail_gate::default();
+    let mut thump = thump_out::default();
     // SAFETY: everything C keeps a pointer to is boxed and outlives the calls; the buffers
     // hold the samples asked for.
     unsafe {
@@ -1005,6 +1026,7 @@ pub fn render_host(
             sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
             tail_stage(&mut gate, &chip, None, &mut mono, n);
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+            thump_stage(&mut thump, &mut chip, None, half, n);
             master_stage(half, POT);
         }
     }
@@ -1073,6 +1095,7 @@ pub fn render_host_chips(frames: usize, events: &[ChipEvent]) -> ChipsRender {
     };
     let mut mono = vec![0i16; HALF_FRAMES];
     let mut gate = tail_gate::default();
+    let mut thump = thump_out::default();
     let mut mono_b = vec![0i16; HALF_FRAMES];
     let mut b_on = false;
     let mut b_want = false;
@@ -1138,6 +1161,16 @@ pub fn render_host_chips(frames: usize, events: &[ChipEvent]) -> ChipsRender {
                 n,
             );
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+            if !b_rendered {
+                thump_out_drop(&mut *chip_b);
+            }
+            thump_stage(
+                &mut thump,
+                &mut chip,
+                b_rendered.then_some(&mut *chip_b),
+                half,
+                n,
+            );
             master_stage(half, POT);
         }
     }
@@ -1259,6 +1292,7 @@ pub fn render_host_song_master(frames: usize, p: &SongPlay, master: u16) -> Vec<
     let mut out = vec![0i16; 2 * frames];
     let mut mono = vec![0i16; HALF_FRAMES];
     let mut gate = tail_gate::default();
+    let mut thump = thump_out::default();
     // SAFETY: everything C keeps a pointer to is boxed and outlives the calls; the buffers
     // hold the samples asked for.
     unsafe {
@@ -1375,6 +1409,16 @@ pub fn render_host_song_master(frames: usize, p: &SongPlay, master: u16) -> Vec<
             );
             song_ctl_block_end(&mut *sc, n as u32);
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+            if !b_rendered {
+                thump_out_drop(&mut *chip_b);
+            }
+            thump_stage(
+                &mut thump,
+                &mut chip,
+                b_rendered.then_some(&mut *chip_b),
+                half,
+                n,
+            );
             master_stage(half, master);
         }
     }

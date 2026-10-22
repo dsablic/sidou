@@ -51,6 +51,7 @@ add_library(sidou_live STATIC
     save_key.c
     scope.c
     tail_gate.c
+    thump_out.c
     screen.c
     settings.c
     sine.c

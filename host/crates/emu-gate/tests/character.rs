@@ -13,8 +13,8 @@ mod common;
 use fm1_core::Bus;
 
 use common::{
-    build_dir, master_stage, max_diff, tail_stage, Firmware, Machine, HALF_FRAMES, POT,
-    SAMPLE_RATE, SLOTS_SEED,
+    build_dir, master_stage, max_diff, tail_stage, thump_stage, Firmware, Machine, HALF_FRAMES,
+    POT, SAMPLE_RATE, SLOTS_SEED,
 };
 use sidou_sys::{ilp32, SID_CHIP_6581_WORN, SID_MODEL_6581};
 
@@ -32,6 +32,24 @@ const SPREAD: usize = 5;
 /// docs/reference/midi.md's Character rows: profile (steps over the five profiles and the eight
 /// USER slots: 43 is 4, worn 6581), age/heat, DAC sloppiness, output thump, filter bleed.
 const CCS: [(u8, u8); 5] = [(85, 43), (86, 100), (87, 127), (89, 64), (90, 90)];
+
+/// The thump's output stage (app/thump_out.c), instructions a sample (a stereo frame) while a
+/// thump sounds: the decay of both chips' levels and, per side, the room left, the soft limit's
+/// test and the rounding; measured 30.86 on this image. A bound set from this measurement (new
+/// code); idle the stage is a take and one test a block. It takes that much from the 6502's
+/// headroom while a thump sounds (chip_b.rs).
+const THUMP_PER_SAMPLE: f64 = 31.0;
+
+/// A function's address range in the firmware ELF.
+fn function(fw: &Firmware, name: &str) -> std::ops::Range<u32> {
+    use object::{Object, ObjectSymbol};
+    let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
+    let s = file
+        .symbols()
+        .find(|s| s.name() == Ok(name))
+        .unwrap_or_else(|| panic!("no symbol {name}"));
+    s.address() as u32..(s.address() + s.size()) as u32
+}
 
 fn fixture() -> Option<Firmware> {
     let Some(build) = build_dir() else {
@@ -87,6 +105,7 @@ fn render_host(frames: usize, blocks: &[usize], note_block: usize, ticks: &[u32]
     let mut out = vec![0i16; 2 * frames];
     let mut mono = vec![0i16; HALF_FRAMES];
     let mut gate = tail_gate::default();
+    let mut thump = thump_out::default();
     // SAFETY: everything C keeps a pointer to is boxed and outlives the calls.
     unsafe {
         sid_slots_init(&mut *slots, SAMPLE_RATE, SLOTS_SEED, &mut *pool);
@@ -118,6 +137,7 @@ fn render_host(frames: usize, blocks: &[usize], note_block: usize, ticks: &[u32]
             sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
             tail_stage(&mut gate, &chip, None, &mut mono, n);
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+            thump_stage(&mut thump, &mut chip, None, half, n);
             master_stage(half, POT);
         }
     }
@@ -262,8 +282,41 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
     m.midi(&burst);
     m.run_ms(100);
     let key_sent = halves(&m);
+    // The thump's output stage (app/thump_out.c) while the note's thump sounds (thump 64: its
+    // first 100 ms, the stage running every sample), instructions a sample (a stereo frame).
+    m.alnk_pcs_inside = 0;
+    // The whole stage: its four functions, side by side in SRAM (app.ld; nothing between).
+    let parts: Vec<_> = [
+        "thump_out_take",
+        "thump_out_drop",
+        "thump_run",
+        "thump_out_apply",
+    ]
+    .iter()
+    .map(|f| function(&fw, f))
+    .collect();
+    let stage =
+        parts.iter().map(|r| r.start).min().unwrap()..parts.iter().map(|r| r.end).max().unwrap();
+    let size: u32 = parts.iter().map(|r| r.end - r.start).sum();
+    assert!(
+        stage.end - stage.start - size < 16,
+        "something between the stage's functions"
+    );
+    m.watch_alnk_pcs(stage);
+    let from = m.alnk_blocks.len();
     m.key(A4_KEY, true);
-    m.run_ms(300);
+    m.run_ms(100);
+    let n = (m.alnk_blocks.len() - from) as f64 * HALF_FRAMES as f64;
+    let thump = m.alnk_pcs_inside as f64 / n;
+    println!(
+        "{}",
+        serde_json::json!({ "thump_out_instructions_per_sample": thump })
+    );
+    assert!(
+        thump <= THUMP_PER_SAMPLE,
+        "the thump's stage costs {thump:.2} a sample"
+    );
+    m.run_ms(200);
 
     // Each block's ticks, from the counts after each block (one ALNK0 interrupt a block).
     let mut ticks = Vec::new();
@@ -525,6 +578,7 @@ fn render_host_ages(
     let mut out = vec![0i16; 2 * frames];
     let mut mono = vec![0i16; HALF_FRAMES];
     let mut gate = tail_gate::default();
+    let mut thump = thump_out::default();
     // SAFETY: everything C keeps a pointer to is boxed and outlives the calls.
     unsafe {
         sid_slots_init(&mut *slots, SAMPLE_RATE, SLOTS_SEED, &mut *pool);
@@ -559,6 +613,7 @@ fn render_host_ages(
             sid_render(&mut *chip, mono.as_mut_ptr(), n as u32);
             tail_stage(&mut gate, &chip, None, &mut mono, n);
             sid_slots_process(&mut *slots, mono.as_ptr(), half.as_mut_ptr(), n as u32);
+            thump_stage(&mut thump, &mut chip, None, half, n);
             master_stage(half, POT);
         }
     }

@@ -60,6 +60,7 @@ SECTIONS
         *(.text.chip_mix .text.mix_sat16)               /* app/chip_mix.c: chip B into chip A */
         *(.text.tail_gate_run .text.tail_busy)          /* app/tail_gate.c: the tail muted after notes */
         *(.text.master_gain_apply .text.master_scaled)         /* app/master_gain.c: MASTER's gain */
+        *(.text.thump_out_take .text.thump_out_drop .text.thump_out_apply .text.thump_add .text.thump_run) /* app/thump_out.c: the chips' thump */
         *(.text.reg_ring_drain .text.reg_ring_pop .text.reg_ring_chip .text.reg_ring_chip_of)   /* app/reg_ring.c */
         *(.text.sid_render .text.sid_render_tap .text.sid_write)   /* core/sid/sid.c (sid_svf_set is inline) */
         *(.text.render_6581 .text.render_8580)     /* sid.c, from sid_render_tap; and with */

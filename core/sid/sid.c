@@ -26,8 +26,8 @@ const uint32_t SID_NOISE_WB[2][16] = {SID_WB_ROW(SID_WB_LO), SID_WB_ROW(SID_WB_H
  * applied (the audio interrupt's drain): RAM on the device (emu-gate tests/ram_audio.rs). */
 /* A note's thump against the volume write's: the voice DC's rise is the louder transient (at
  * thump 1, two voice DAC units for a fast attack's note from silence, where a saw at full
- * envelope swings one either way). The headroom (sid_character.h) is the volume step's: a
- * note's thump on top of a full-scale signal saturates for the few milliseconds it lasts. */
+ * envelope swings one either way). Neither needs headroom in the chip: the output stage
+ * (app/thump_out.h) plays both after the effect slots, within the room the output leaves. */
 #define THUMP_GATE 2.0f
 #ifdef __PI32V2__
 __attribute__((section(".data.sid_thump_attack")))
@@ -334,6 +334,20 @@ void sid_filter_refresh(sid* s) {
 
 static uint8_t read_osc3(const sid* s);
 
+/* A thump step (sid.h): from the next block's first sample, or from this one's sample the
+ * chip has rendered up to. Always inline: sid_write runs in SRAM. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+static inline void thump_step(sid* s, float step) {
+    if (s->thump_rendered == 0u) {
+        s->thump_pending += step;
+    } else {
+        s->thump_late += step;
+        s->thump_late_at = s->thump_rendered;
+    }
+}
+
 void sid_write(sid* s, uint8_t reg, uint8_t v) {
     s->bus = v;
     reg &= 0x1f;
@@ -366,7 +380,7 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
                  * the DC blocker lets a ramp of the attack's length peak (THUMP_ATTACK). A DC
                  * takes the voice's path: straight to the output, or through the filter's
                  * low-pass if it is routed there (inverted on the 6581, sid.h mix_lp; the
-                 * band- and high-pass block it). Put into the blocker's state as the volume
+                 * band- and high-pass block it). Left for the output stage as the volume
                  * write's step is (below). */
                 uint32_t voice = reg / 7u;
                 float path = 1.0f;
@@ -376,8 +390,9 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
                 } else if (voice == 2u && (s->mode_vol & 0x80u)) {
                     path = 0.0f;
                 }
-                s->dc_x1 -= s->thump * THUMP_GATE * path * s->volume * THUMP_ATTACK[e->attack] *
-                            (float)(255u - e->counter) * (1.0f / 255.0f);
+                thump_step(s, s->thump * THUMP_GATE * path * s->volume *
+                                  THUMP_ATTACK[e->attack] * (float)(255u - e->counter) *
+                                  (1.0f / 255.0f));
             }
             sid_env_set_gate(e, v & SID_CTRL_GATE);
             break;
@@ -408,11 +423,10 @@ void sid_write(sid* s, uint8_t reg, uint8_t v) {
         float volume = (float)(v & 0x0f) / 15.0f;
         if (s->thump != 0.0f) {
             /* The thump (sid.h): a DC the volume scales, which the output's DC blocker
-             * removes again, so all it ever does is step the output as the volume changes.
-             * That step is the DC blocker's own response to it, so it is put straight into
-             * the blocker's state (its last input, as if it had carried the DC all along)
-             * here, at the write, and costs the render nothing. */
-            s->dc_x1 -= s->thump * (volume - s->volume);
+             * removes again, so all it ever does is step the output as the volume changes:
+             * the blocker's own response to it, which the output stage plays (sid.h
+             * thump_pending; the render pays nothing). */
+            thump_step(s, s->thump * (volume - s->volume));
         }
         s->mode_vol = v;
         s->volume = volume;
@@ -763,6 +777,7 @@ void sid_render(sid* s, int16_t* out, uint32_t frames) {
 void sid_render_tap(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_tap tap,
                     void* ctx) {
     fold_owed(s);
+    s->thump_rendered += frames; /* where a thump step written next starts (sid.h) */
     if (s->filter_dirty) {
         s->filter_dirty = 0;
         update_filter(s);

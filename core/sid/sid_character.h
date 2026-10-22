@@ -22,9 +22,10 @@
  *   as its envelope moves (a pulse shows it best: its waveform has no codes to cross);
  * - output thump: a DC step at each note's start and at each volume write (sid.h, thump),
  *   up to SID_CHARACTER_THUMP voice DAC units, as the 6581's voice DC jumps when an envelope
- *   attacks and its operating point when the volume changes; the DC blocker turns each step
- *   into a decaying thump. The output gain falls by as much, so a step never takes a signal
- *   that reached full scale past it;
+ *   attacks and its operating point when the volume changes; each step decays as the DC
+ *   blocker turns it into a thump. The output stage after the effect slots plays it
+ *   (app/thump_out.h), within the room the output leaves, so a thump never clips and the
+ *   chip's level does not depend on it;
  * - filter bleed: the voice routing's switches leak (sid.h, bleed): up to
  *   SID_CHARACTER_BLEED of the voices routed into the filter also reaches the output
  *   unfiltered, so a closed filter lets the bright, dry signal through (on the 6581, whose

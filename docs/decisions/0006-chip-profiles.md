@@ -98,7 +98,9 @@ tick, and ramped there (below):
   per sample. Headroom: the output gain falls so that full scale moves out by the thump,
   the largest step a volume write can add (6581 at 127: -1.20 dB), so a signal that reached
   full scale plus the step still does: the clipping M1b saw, matching the step alone,
-  cannot happen. What it is not:
+  cannot happen. (Amended 2026-10-23, the second amendment below: an output stage after the
+  effect slots plays the steps, fitted into the room the output leaves; the chip keeps no
+  headroom, its gain is sid_init's at any thump.) What it is not:
   - **Not M1b's volume step, closed.** M1b left the 6581's volume-register DC step as a gap:
     reSIDfp's step is 2.65 times SIDOU's with one voice, 1.39 times with three; the extra is
     0.33 to 0.47 units, so thump 42 to 60 is about reSIDfp's step, but only about: the
@@ -468,8 +470,8 @@ model or an independently editable coefficient for every intermediate calculatio
   The existing filter cutoff clamp remains 30 Hz..0.45 × sample rate.
 - The 6581 filter mix gains are LP 0.6875, BP 0.8125, HP 0.5, with integrator leakage
   `1/3.375` and the existing output polarities/cross-mode terms. They are fixed calibration.
-- Output calibration remains `0.1 × 32767` times 1.4736 (6581) or 1.1288 (8580), with
-  derived thump headroom. Neither calibration gain nor the digital MASTER is an expert
+- Output calibration remains `0.1 × 32767` times 1.4736 (6581) or 1.1288 (8580) (with a
+  derived thump headroom until the second amendment of 2026-10-23, below: none since). Neither calibration gain nor the digital MASTER is an expert
   analogue control.
 - The 6581 waveform DAC's cubic saturation uses gain 1.1 and saturation factor 1.1;
   zero codes remain `0x380` (6581) and `0x800` (8580). Ladder termination is model-specific
@@ -613,7 +615,8 @@ sound and the profiles hold with their tolerances untouched):
   thumps; a retrigger high in the envelope thumps less; `path` is the voice's (1 direct, the
   6581's `mix_lp` (inverting) or the 8580's low-pass switch when routed, 0 for voice 3 off). The
   factor 2 (`THUMP_GATE`) makes a note's thump the louder transient; the headroom stays the
-  volume step's, so a note's thump on a full-scale signal saturates for its few ms. Cost: a
+  volume step's, so a note's thump on a full-scale signal saturates for its few ms (fixed by
+  the second amendment, below: the output stage). Cost: a
   test and a few multiplies at a gate write, nothing per sample. The CHIP help card says
   **K3 NOTE THUMP**.
 - **BLEED: the routed voices leak past the filter**, up to half, unfiltered (`direct +=
@@ -646,3 +649,54 @@ No knob finding before or after. The listening files: `character_wavs` in
 (691.02 one chip, 1,408.89 two), every other scenario within 1.2 (a gate write tests the thump). `.ram_text` 46,656 to 46,912
 bytes, `.data` +64 (the attack table, read in the drain), `chips` +12; the image +1,712 bytes
 (498,208 to 499,920).
+
+## Amendment, 2026-10-23 (2): the thump on the output, so it never clips
+
+The first amendment left a note's thump (twice a volume write's step) in the chip, inside a
+headroom sized for the volume step only, so a note's thump on a loud signal clipped for a few
+milliseconds. A headroom large enough was weighed and rejected: three voices starting together
+thump 5.4 voice-DAC units at 100 % (the 6581's full scale is 6.8), the second chip can thump at
+the same moment, and the effects raise the level by up to 3.1 times (a lush reverb's tail, a
+fuzz, a flanger's feedback), so the reserve would have cost 5 dB on one chip and over 10 dB with
+both and the effects: far too quiet.
+
+What changed:
+
+- **The chip no longer plays the thump.** `sid_write` adds each step (a note's and a volume
+  write's, as before) to `thump_pending`, or to `thump_late` with its sample if the chip had
+  already rendered part of the block (a song's write in the middle of a block, decision record
+  0005's split render). The render is untouched: at any thump the chips' samples are those at
+  thump 0, bit for bit. The chip keeps no headroom: its gain is `sid_init`'s at any thump.
+- **An output stage plays it** (`app/thump_out.{h,c}`, after the effect slots, before MASTER):
+  each chip's steps at its output gain, decaying at its DC blocker's `dc_r` a sample, exactly
+  the blocker's step response the chip used to play. A song's late step starts at its sample.
+  The thump is fitted into the room the output leaves: on a sample `s` the thump `x` is untouched
+  up to half the room left below 32,766 and softly limited beyond (`h + d h / (d + h)`, `h` half
+  the room, `d` the excess), so it nears the ceiling and never reaches it. A sample without a
+  thump passes bit for bit; one the slots already put on a rail stays there. Under half an LSB
+  the stage goes idle (one test a block). A chip B that did not render drops its steps.
+- **What it gives up:** the thump no longer passes through the slots (an echo or a reverb does
+  not repeat it, a distortion does not shape it): it is a low bump under a note's start, not
+  part of the voice. The LIVE view's tap, reading the chip, does not show it.
+
+**Level.** THUMP 0: unchanged, bit for bit. THUMP 100 %: the chip's level rises back to THUMP
+0's, +1.19 dB on the 6581 and +0.93 dB on the 8580 (the old headroom's cut), and the thump
+itself is as loud as before plus that (a volume step 4,191 to 4,809 LSB on the R4AR, a note's
+area +12.8 %). The level no longer depends on THUMP.
+
+**The test** (`app/thump_out.rs`): two full-scale chords (both chips 6581 R4AR, three 50 %
+pulses each at volume 15 through an open low-pass, as the presets route them; together 28,718,
+-1.15 dB), keys on chip B and a song on chip A, both starting every 81 ms in the same block (A's
+from the song's call mid-block), THUMP 100 % on both: before, chip B's mix saturated 1,705
+samples (every chord start); now no stage reaches a rail, though the thump moves the output by
+up to 26,463 LSB. Through each effect at its loudest corner, the thump adds no sample on a rail
+(some effects clip the chords alone: flanger, phaser, autopan, delay and both reverbs at full
+feedback, an effects matter the thump does not change); the worst effect the chords alone do not
+clip, PING-PONG at full feedback (+1.08 dB), stays clean at THUMP 100 %.
+
+**Cost.** The stage: 30.86 instructions a sample (a stereo frame) while a thump sounds (bound
+31, `emu-gate/character.rs`), a take and a test a block otherwise; it takes that from the
+6502's headroom while a thump sounds. The chips: a render adds one counter (sid_budget's worst
+blocks 703.03 to 703.05 one chip, 1,414.70 to 1,414.74 two); the two-chip device block with
+every slot's heaviest 2,388.88 to 2,389.55. `.ram_text` 46,928 to 47,536 bytes, the image
+500,672 to 501,264.

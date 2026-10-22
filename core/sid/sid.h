@@ -69,16 +69,24 @@ typedef struct {
     float out_c, out_lp;
     /* The character's output stage (sid_character.h; both models, 0 from sid_init): thump,
      * a DC the volume register scales (in voice DAC units, sid_dac.h), so a volume change
-     * steps the output, and each gate's rise steps it as the voice's DC rises with its attack
-     * (sid_write puts each step into the DC blocker: nothing per sample, and the 6581's
-     * 13 kHz output pole does not smooth it). A thump change itself only moves output_gain
-     * (the headroom, sid_character.h); each volume write's step uses the thump in force at
-     * that write, so a step up and the step down again need not cancel when the thump changed
-     * between them: what is left is a DC, which the DC blocker removes. Bleed: the voice
-     * routing's switches leak, the share of the voices routed into the filter that also
-     * reaches the output unfiltered (a multiply and an add per sample, in a copy of the
-     * render that runs only while it is not 0). */
+     * steps the output, and each gate's rise steps it as the voice's DC rises with its attack.
+     * sid_write adds each step to thump_pending (in the units of the DC blocker's output, before
+     * output_gain), or to thump_late if the chip has rendered thump_rendered samples since the
+     * output stage last took them (a song's write in the middle of a block: the step starts
+     * at that sample, thump_late_at; one such point a block, a later write's moves it), and
+     * the chip's render never plays them: the output stage after the effect slots takes them
+     * (app/thump_out.h) and plays them as the DC blocker would have (a step that decays at
+     * dc_r), limited to the room the output leaves, so a thump never clips however loud the
+     * chips and the slots are. A thump change itself changes nothing until the next
+     * step; each volume write's step uses the thump in force at that write, so a step up and
+     * the step down again need not cancel when the thump changed between them: what is left
+     * decays as a DC through the blocker would. Bleed: the voice routing's switches leak, the
+     * share of the voices routed into the filter that also reaches the output unfiltered (a
+     * multiply and an add per sample, in a copy of the render that runs only while it is not
+     * 0). */
     float thump, bleed;
+    float thump_pending, thump_late;
+    uint32_t thump_rendered, thump_late_at;
     float filter_bias;
     sid_filter_row filter_rows[2];
     uint32_t noise_wb[2][16];
@@ -254,8 +262,7 @@ int sid_set_filter_toward(sid* s, uint32_t toward);
  * chip that is not rendering (sid_character_apply after sid_init); in flash on the device. */
 void sid_filter_refresh(sid* s);
 
-/* The output gain sid_init sets for the chip's model (int16 per unit of the mix): what
- * sid_character scales for the thump's headroom. */
+/* The output gain sid_init sets for the chip's model (int16 per unit of the mix). */
 float sid_base_output_gain(const sid* s);
 void sid_external_coefficients(uint32_t sample_rate, float lp_hz, float hp_hz,
                                float* out_c, float* dc_r);

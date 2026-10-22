@@ -306,11 +306,9 @@ void sid_character_stage_for(const sid* s, const sid_character* c, const sid_dac
     uint32_t kept = sid_noise_writeback((0xffu >> taps) << 4);
     out->writeback_keep = kept;
     out->noise_keep = sid_noise_output(kept);
-    /* The thump's headroom: full scale moves out by the thump, which is the largest step a
-     * volume write can add (from 0 to 15), so a signal that peaked at full scale and that
-     * step together still do. At 0 the gain is sid_init's exactly. */
-    float base = sid_base_output_gain(s);
-    out->output_gain = out->thump > 0.0f ? 32767.0f / (32767.0f / base + out->thump) : base;
+    /* sid_init's gain at any thump: the thump needs no headroom in the chip, the output
+     * stage fits it into the room the output leaves (sid.h thump_pending). */
+    out->output_gain = sid_base_output_gain(s);
 }
 
 /* The filter tables, DACs and stage for the character, on a chip that is not rendering;

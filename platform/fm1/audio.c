@@ -13,6 +13,7 @@
 #include "reg_ring.h"
 #include "scope.h"
 #include "tail_gate.h"
+#include "thump_out.h"
 #include "sid/sid.h"
 #include "song/gt2_song.h"
 
@@ -53,6 +54,8 @@ static volatile uint32_t master_to = 0;
 static uint32_t master_now = 0;
 /* The tail gate's state (app/tail_gate.h): the interrupt's. */
 static tail_gate tail_state;
+/* The chips' thump on the output (app/thump_out.h): the interrupt's. */
+static thump_out thump;
 /* The chip the tap reads (audio_tap_chip): 0 A, 1 B. */
 static volatile uint8_t tap_chip;
 
@@ -349,6 +352,15 @@ void audio_fill(int32_t* buf) {
     song_ctl_block_end(&song_transport, AUDIO_HALF_FRAMES);
     /* With every slot off this writes the chip's output to both sides unchanged. */
     sid_slots_process(&slots, s, lr, AUDIO_HALF_FRAMES);
+    /* The chips' thump, fitted into the room the slots' output leaves (app/thump_out.h): one
+     * check a block while none sounds. A chip B that did not render was not heard. */
+    thump_out_take(&thump, 0, a);
+    if (b_rendered) {
+        thump_out_take(&thump, 1, b);
+    } else {
+        thump_out_drop(b);
+    }
+    thump_out_apply(&thump, lr, AUDIO_HALF_FRAMES);
     /* MASTER: a digital gain on everything, after the chips and the slots. */
     uint32_t to = master_to;
     if ((to | master_now) != 0u) { /* full MASTER: no call at all */
