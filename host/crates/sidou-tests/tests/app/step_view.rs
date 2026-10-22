@@ -208,9 +208,15 @@ fn the_layout_is_the_header_the_pages_the_lanes_the_held_frame_and_the_pads() {
     // The pads: two rows of eight in beats of four, numbered by beat at 2x (1 2 3 4  1 2 3 4);
     // the second and fourth beats shaded, a beat's first number white, the others light grey; a
     // note's pad in the lane's colour (steps 1 and 5 have notes).
-    let numbers: String = (0..16).map(|i| s.ui.big(pad_row(i), pad_col(i), 2, 1)).collect();
+    let numbers: String = (0..16)
+        .map(|i| s.ui.big(pad_row(i), pad_col(i), 2, 1))
+        .collect();
     assert_eq!(numbers, "1234123412341234");
-    assert_eq!(pad_col(3) + 2 + 3, pad_col(4), "a beat two cells more apart");
+    assert_eq!(
+        pad_col(3) + 2 + 3,
+        pad_col(4),
+        "a beat two cells more apart"
+    );
     let at = |i: usize| attr(&s.ui, pad_col(i), pad_row(i));
     let a = |fg: u8, bg: u8| (u32::from(bg) << 4 | u32::from(fg)) as u8;
     assert_eq!(at(0), a(t.bg, t.voice[0]), "a note's pad");

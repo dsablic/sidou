@@ -662,7 +662,7 @@ fn chip_labels_legends_and_tabs_use_readable_roles() {
             unsafe { live_slot_set(&mut *ui.rig.live, 0, LIVE_SLOT_ALGORITHM, alg as i32) };
             settle(&mut ui);
             assert_eq!(fg(&ui, CHIP_VIEW_NAMES_ROW, 0), t.hint);
-                for (k, col) in KNOB_COL.into_iter().enumerate() {
+            for (k, col) in KNOB_COL.into_iter().enumerate() {
                 let active = alg != 0 && label(0, alg, LIVE_SLOT_AMOUNT + k as u32).1;
                 assert_eq!(
                     fg(&ui, CHIP_VIEW_LABEL_ROW, col),
@@ -679,7 +679,7 @@ fn chip_labels_legends_and_tabs_use_readable_roles() {
         for page in 0..SID_EXPERT_COUNT.div_ceil(4) {
             settle(&mut ui);
             assert_eq!(fg(&ui, CHIP_VIEW_NAMES_ROW, 0), t.hint);
-                for k in 0..4 {
+            for k in 0..4 {
                 let index = page * 4 + k;
                 if index >= SID_EXPERT_COUNT {
                     continue;
