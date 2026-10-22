@@ -286,7 +286,8 @@ FOLLOW, OFF; AUTO at power-on) and CLOCK OUT (OFF at power-on) set it
   through the last 96 clocks, known after 24; each row's error goes into the next
   beat's period (at most 1 % of a beat), and an error over 2.0 ms re-aligns at once.
 - **Start** plays the song from its start on the next clock; **continue** goes on on the
-  next clock from where it stopped, or from a song position; **stop** stops it, its
+  next clock from where it stopped, or from a song position (for a song not yet played, a
+  continue with no song position is a start); **stop** stops it, its
   releases ringing as the chip's would. **Song position** (in 16ths: rows = 16ths x rows a
   beat / 4) is taken while the song is stopped or not started, and sought in the
   background; a continue that comes during the seek starts when it is done, as far on as

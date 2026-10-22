@@ -13,7 +13,8 @@
  * - continue resumes on the next clock, held and aligned the same way; one that arrives while
  *   a song position's seek runs starts when the seek is done, the seek's target moved on by
  *   the clocks that came meanwhile (song_ctl_seek_further), so the song jumps ahead by the
- *   frames it missed;
+ *   frames it missed; for a song never played, a continue with no song position before it is
+ *   a start (the song from its first call, on the next clock);
  * - stop stops (the releases ring, as song_ctl_stop does);
  * - a song position, while the song is stopped or not started, seeks the player there in the
  *   main loop's slices (song_ctl_seek: a fast-forward handed over at the next call); rows =

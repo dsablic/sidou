@@ -401,6 +401,33 @@ fn stop_and_continue_resume_on_the_clock() {
     assert!(worst <= 1.0, "a resumed row {worst:.3} ms off");
 }
 
+/// A continue with no song position before it, for a song never played (IDLE), is a start:
+/// the song plays from its first call on the clock, and nothing is left pending (review 4.3:
+/// the request waited, and hijacked the next PLAY from the panel, aligning it to the clock).
+#[test]
+fn a_continue_with_no_position_on_a_song_never_played_starts_it_on_the_clock() {
+    let mut r = Rig::new();
+    r.run(20);
+    assert_eq!(r.status().state, MIDI_SYNC_IDLE as u8);
+    let t0 = r.samples() * TPS;
+    let bpm = 120.0;
+    let beat = (24e6 * 60.0 / bpm) as u32;
+    let mut song_clock = clock(t0 + beat, bpm, 10, trs_jitter);
+    r.midi.extend(clock(t0, bpm, 1, trs_jitter));
+    r.midi.push(rt(t0 + beat - beat / 48, 0xFB));
+    r.midi.extend(song_clock.iter().copied());
+    r.run((11.0 * 60.0 / bpm * FS / BLOCK as f64) as u32);
+    assert_eq!(r.status().state, MIDI_SYNC_PLAYING as u8, "it plays");
+    assert_eq!(r.calls.first().expect("it played").0, 0, "from the start");
+    assert_eq!(r.sync.want, 0, "nothing pending");
+    assert!(r.sync.aligns >= 1, "aligned to the clock");
+    song_clock.truncate(10 * 24);
+    let errs = row_errors(&r, &song_clock, 2);
+    assert!(errs.len() > 20, "{} rows", errs.len());
+    let worst = errs.iter().fold(0.0f64, |a, &e| a.max(e.abs()));
+    assert!(worst <= 1.0, "a row {worst:.3} ms off its 16th");
+}
+
 #[test]
 fn a_song_position_seeks_and_continue_plays_from_there() {
     let mut r = Rig::new();

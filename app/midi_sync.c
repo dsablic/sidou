@@ -324,6 +324,17 @@ static void requests(midi_sync* s, const song_clock* st, int following) {
             resumed = resume(s, following);
         } else if (st->state == MIDI_SYNC_PLAYING) {
             resumed = 1; /* a held play from IDLE, sought: it waits for its align */
+        } else if (st->state == MIDI_SYNC_IDLE && !s->seek_on) {
+            /* a continue with no position for a song never played: a start from its first
+             * call, on the next clock from where the clock's position is */
+            if (play(s, following)) {
+                s->want &= (uint8_t)~MIDI_SYNC_WANT_RESUME;
+                s->aligning = (uint8_t)following;
+                s->c_anchor = 0;
+                s->p_anchor = s->clock.position;
+                s->fresh = 0;
+            }
+            return;
         }
         if (resumed) {
             s->want &= (uint8_t)~MIDI_SYNC_WANT_RESUME;
