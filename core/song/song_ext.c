@@ -479,6 +479,8 @@ int song_lock_put(gt2_song* s, uint32_t pattern, uint32_t row, uint32_t param, u
     if (i < n && rec_key(r) == key) {
         if (rd16(r + 3) == value)
             return 0;
+        if (s->pending)
+            return -(int)GT2_ERR_PENDING; /* as an added lock: rows may move under it */
         wr16(r + 3, value);
         gt2_song_changed(s);
         return 0;

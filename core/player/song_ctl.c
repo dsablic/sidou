@@ -1412,11 +1412,14 @@ static void poll_locks(song_ctl* sc) {
         COMPILER_FENCE();
         if (sc->row_seq[ch] != seq)
             continue; /* another row started while read: the next poll */
-        sc->row_seen[ch] = seq;
         /* Only lookahead publication waits for the edit's reserved buffers; the current
-         * row's character locks still reach their main-loop hook on this pass. */
-        if (!sc->lock_edit_seq)
+         * row's character locks still reach their main-loop hook on this pass. The row stays
+         * unseen until its look-ahead is resolved: a row that started after this poll's
+         * poll_applied, with the edit applied meanwhile, is resolved at the next poll. */
+        if (!sc->lock_edit_seq) {
+            sc->row_seen[ch] = seq;
             lock_resolve(sc, ch, pattern, row, ord, 0);
+        }
         uint32_t n = 0u;
         const uint8_t* rec = song_locks_row(sc->song, pattern, row, &n);
         for (uint32_t f = 0u; f < 4u; f++)

@@ -234,3 +234,130 @@ fn a_character_lock_reaches_the_hook_and_goes_after_its_row() {
     let f = SONG_LOCK_THUMP - SONG_LOCK_AGE;
     assert_eq!(got, vec![(f, 90), (f, -1)]);
 }
+
+/// Ergonomics review E06 (1), M2 review 3.4: at a pattern's last row the look-ahead holds row 0
+/// of the pattern and of the next; with all five filter and pulse locks on both, the next
+/// pattern's row 0 plays all five of its own (eight slots lost its ROUTE and PULSE).
+#[test]
+fn a_pattern_boundary_with_five_locks_on_both_first_rows_keeps_all_ten() {
+    let p0 = vec![row(0x60 + 36, 1), R, R, R, R, R, R, R];
+    let p1 = vec![row(0x60 + 24, 1), R, R, R, R, R, R, R];
+    let p2 = vec![row(0x60 + 19, 1), R, R, R, R, R, R, R];
+    let mut spec = SngSpec::new();
+    spec.orders = vec![vec![(vec![0, 1], 0), (vec![2], 0), (vec![2], 0)]];
+    let mut ins = [0u8; 25];
+    ins[..9].copy_from_slice(&[0x09, 0xa0, 1, 1, 0, 0, 0, 2, 0x09]);
+    spec.instr = vec![ins];
+    spec.tables = vec![
+        vec![(0x41, 0x00), (0xff, 0x00)],
+        vec![(0x88, 0x00), (0xff, 0x00)],
+        vec![],
+        vec![],
+    ];
+    spec.patterns = vec![p0, p1, p2]
+        .into_iter()
+        .map(|p| (p, [0xff, 0, 0, 0]))
+        .collect();
+    let mut s = Song::host();
+    s.read(&spec.encode(), 0).unwrap();
+    for (p, v) in [(0u32, [100u32, 3, 1, 1, 0x111]), (1, [1500, 9, 2, 0, 0x555])] {
+        for (param, value) in [
+            SONG_LOCK_CUTOFF,
+            SONG_LOCK_RESONANCE,
+            SONG_LOCK_FILTER_MODE,
+            SONG_LOCK_ROUTE,
+            SONG_LOCK_PULSE,
+        ]
+        .into_iter()
+        .zip(v)
+        {
+            put(&mut s, p, 0, param, value);
+        }
+    }
+    let mut t = Transport::new(&mut s);
+    assert!(t.play(0, 0));
+    let mut seen = 0;
+    while t.calls() < 200 {
+        t.pass();
+        let c = t.calls();
+        t.block_silent();
+        if t.calls() != c && t.sc.row_pat[0] == 1 && t.sc.row_row[0] == 0 {
+            assert_eq!(t.sc.lock_n[0], 5, "pattern 1's row 0: its five locks");
+            assert_eq!(t.chip.fc, 1500);
+            assert_eq!(t.chip.osc[0].pw, 0x555, "its PULSE");
+            assert_eq!(t.chip.routing & 1, 0, "its ROUTE: voice 1 out of the filter");
+            assert_eq!((t.chip.res, t.chip.mode_vol >> 4 & 7), (9, 2), "its RESONANCE and MODE");
+            seen += 1;
+        }
+    }
+    assert!(seen > 3, "{seen} calls on pattern 1's row 0");
+}
+
+/// Ergonomics review E06 (2), M2 review 3.5: changing a lock in place while a row edit is
+/// pending is refused as adding one is, so the value never lands on rows about to move.
+#[test]
+fn changing_a_lock_while_an_edit_is_pending_waits() {
+    let mut s = song();
+    put(&mut s, 0, 5, SONG_LOCK_CUTOFF, 500);
+    let p = s.ptr_mut();
+    let mut e = gt2_edit::default();
+    assert_eq!(unsafe { gt2_pattern_insert_row(p, 0, 3, &mut e) }, GT2_OK);
+    let pending = -(GT2_ERR_PENDING as i32);
+    assert_eq!(
+        unsafe { song_lock_put(p, 0, 5, SONG_LOCK_CUTOFF, 600) },
+        pending,
+        "in place"
+    );
+    assert_eq!(
+        unsafe { song_lock_put(p, 0, 6, SONG_LOCK_CUTOFF, 600) },
+        pending,
+        "added"
+    );
+    assert_eq!(
+        unsafe { song_lock_put(p, 0, 5, SONG_LOCK_CUTOFF, 500) },
+        0,
+        "the same value: nothing to change"
+    );
+    unsafe { gt2_edit_commit(p, &e) };
+    assert_eq!(locks(&s), vec![(0, 6, 0, 500)], "the lock moved with its row");
+    put(&mut s, 0, 6, SONG_LOCK_CUTOFF, 600);
+    assert_eq!(locks(&s), vec![(0, 6, 0, 600)]);
+}
+
+/// Ergonomics review E06 (3), M2 review 3.7: a row that starts while an edit's look-ahead is
+/// in flight (lock_edit_seq) is resolved once it lands, not marked seen and skipped: the next
+/// row's lock still plays.
+#[test]
+fn a_row_that_starts_during_an_edits_look_ahead_is_resolved_after_it() {
+    let mut s = song();
+    put(&mut s, 0, 4, SONG_LOCK_PULSE, 0x777);
+    let mut t = Transport::new(&mut s);
+    assert!(t.play(0, 0));
+    let mut guard = 0;
+    while !(t.sc.row_pat[0] == 0 && t.sc.row_row[0] == 2) {
+        t.pass();
+        t.block_silent();
+        guard += 1;
+        assert!(guard < 10_000);
+    }
+    t.pass();
+    // An edit's look-ahead in flight (as between poll_applied and poll_locks on the device):
+    // row 3 starts and is polled meanwhile.
+    t.sc.lock_edit_seq = t.sc.applied.wrapping_add(1000);
+    while t.sc.row_row[0] != 3 {
+        t.block_silent();
+    }
+    t.pass();
+    t.sc.lock_edit_seq = 0;
+    let mut locked = 0;
+    while t.sc.row_row[0] != 5 {
+        t.pass();
+        let c = t.calls();
+        t.block_silent();
+        if t.calls() != c && t.sc.row_row[0] == 4 {
+            assert_eq!(t.chip.osc[0].pw, 0x777, "row 4's lock");
+            locked += 1;
+        }
+    }
+    assert!(locked > 0);
+}

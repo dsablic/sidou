@@ -164,7 +164,11 @@ enum {
  * the row's calls writes the locked registers over the player's (its own state, and its
  * shadow, untouched), until a row without them. The character's locks go to the main loop's
  * hook (song_chip_hooks.chip_a_character), which moves the controls with chip_ctl's glide. */
-#define SONG_ROW_LOCKS 8u /* a channel's resolved locks for its next row, at most */
+/* A channel's resolved locks for its next row, at most: at a pattern's last row the look-ahead
+ * holds row 0 of the pattern and of the next one, each with up to one lock of each of the five
+ * filter and pulse parameters (a row holds one lock a parameter; an undo's restored locks are
+ * the cut row's, which the model then has none of). */
+#define SONG_ROW_LOCKS (2u * (SONG_LOCK_PULSE + 1u))
 typedef struct {
     uint8_t pattern, row, param, lo, hi;
 } song_row_lock;
