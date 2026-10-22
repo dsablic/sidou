@@ -8,6 +8,8 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-22
+
 ### Added
 - **M2d complete: STEP, TRACKER, the song pages and REC** (Tasks 1-7). Make a song on the FM-1:
   SEQ steps STEP, TRACKER, ORDER, INSTR and TABLE; PLAY plays and stops it; GLO held and a key
@@ -87,15 +89,15 @@ All notable changes are documented here. The format follows
   return a refusal instead of an early success. The host-only
   `sidou-sysex` packet library opens no devices and has no CLI. The generated
   MIDI chart includes SysEx commands; checklist 8c covers manual acceptance.
-  USB-MIDI output remains broken on hardware pending its separate fix and
-  section 8.1 acceptance; host/emulator checks do not establish a hardware pass.
+  USB-MIDI output works on hardware since the USB fix below (section 8.1 passed on
+  2026-10-21).
 - M2c song engine complete (Tasks 1-9): native GoatTracker `.sng` files with SIDOU's
   trailer, the host 6502 reference and register-matched C player, frame-exact interrupt
   playback with bounded live edits, parameter locks, SONG's store actions and About's
   original music. [The M2c status](docs/plans/2026-10-15-m2c-song-engine.md#m2c-status)
   records the remeasured costs, memory, image and coverage. The narrow RAM-region margin
   and the GoatTracker licence-audit findings remain open for the end-of-M2 review.
-- **M2b complete on its branch** (Tasks 1–8): sliced preparation, two SIDs, keys on B
+- **M2b complete** (Tasks 1–8): sliced preparation, two SIDs, keys on B
   during a song, both CHIP tabs, expert controls and off-by-default UI sounds. The
   [M2b status](docs/plans/2026-10-15-m2b-chip-b.md#m2b-status) records the integrated
   image (497,120 bytes), RAMTEXT (46,016), free RAM + POOL (9,852), chip B's marginal
@@ -235,11 +237,40 @@ All notable changes are documented here. The format follows
   46 ms, and comes back at the next note (found on the first real FM-1); a nonzero bleed
   keeps it. The chips are untouched (the stage mutes their block), so every reSIDfp
   comparison holds.
-- USB-MIDI out, which on v0.2.0-m2-preview almost never reached the host (the update
-  protocol's replies, K1's CCs, K4's program changes): the main loop no longer sleeps in
-  `idle` while a host has the device configured, USB is never polled inside the audio
-  interrupt, and IN packets carry at most 16 bytes. Checked in fm1-emu against a modelled
-  host; to be confirmed on hardware (`docs/hardware-test.md`, section 8.1).
+- **USB-MIDI out works on the FM-1.** On v0.2.0-m2-preview almost nothing SIDOU sent reached
+  the host (the update protocol's replies, K1's CCs), so a unit could not be updated over USB
+  from SIDOU. SIDOU now uses Felucca's `usb.c` byte for byte, built with Felucca's compiler
+  flags (at SIDOU's `-O2 -mcpu=r3` its USB register accesses run too close together and the
+  controller stops sending), with its endpoint buffers 8-byte aligned and two marked hooks:
+  SIDOU's own USB strings and every incoming packet to SIDOU's parser (song position, song
+  select, active sensing and reset arrive over USB as before). Without a host, a short check
+  replaces Felucca's retry, which stopped the main loop for 28 ms a second. Hardware test 8.1
+  passed on a real FM-1 (2026-10-21): installs and updates over USB, SysEx replies, K1's CCs,
+  a replug and a cable plugged in after a battery boot. The diagnosis is in
+  [usb-out-diagnosis.md](docs/hardware-results/usb-out-diagnosis.md).
+- **The unit is "SIDOU FM-1" on USB** (was "SIDOU"): the FM-1 installers (Felucca's and the
+  Firmware Hub's) look for "FM-1" in a port's name. macOS keeps a port's old name; delete the
+  device in Audio MIDI Setup to see the new one.
+- SysEx transfers no longer time out on TRS one packet in: their clock could step backwards
+  within a main-loop pass.
+- From the end-of-M2 review ([docs/reviews/2026-10-22-m2-review.md](docs/reviews/2026-10-22-m2-review.md)):
+  - With KEYS A over a playing song, the song can no longer overwrite a key's note before the
+    voice is handed over, and PLAY no longer silences the notes the keys hold.
+  - REC and STEP stop at G#7, GoatTracker's last note; they wrote 93-95 as REST, KEYOFF and
+    KEYON. REC above it toasts NOTE OUT OF RANGE, and the key still sounds.
+  - A latched GLO only mutes in the song views; it also toggled a step or wrote a note.
+  - Four screens deep, holding HOME goes home instead of doing nothing, and MIDI learn says
+    NO ROOM FOR LEARN instead of failing silently.
+  - Every help card says what its own view does: new cards for STEP, ORDER, INSTR, TABLE, the
+    MIDI page and SONG, and LIVE's card corrected.
+  - A flash chip the store doesn't know refuses saves at once (SONG: SAVE FAILED) instead of
+    freezing the song; a sector that never erases is retired for the session instead of
+    stalling the store; SAVE writes again after SysEx deleted or replaced the loaded file;
+    settings and profiles say STORE ERROR: NOT SAVED after a flash error instead of SAVED.
+  - A gap in incoming MIDI aborts only that port's SysEx transfer, and a reply already being
+    sent finishes with its F7.
+- The licence labels of the files derived from Felucca (`ota_flash.h`), reSIDfp (`sid_osc.h`,
+  `sid_env.h`) and GoatTracker (`gt2_song.h`, `gt2_sng.h`) name their authors and licences.
 - MASTER scales a playing song (found on the first real FM-1: a song played at full volume
   whatever the pot said): it is now a digital gain on the final output, after both chips and
   the effect slots, instead of the chip's volume register, which the song's own $D418 writes
