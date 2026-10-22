@@ -11,6 +11,9 @@ extern "C" {
 
 #define SONG_PAGES_ROWS 12u
 #define SONG_PAGES_TOP 3u
+/* ORDER: the other two voices' entries at 2x (4 cells each), and their heads. */
+#define SONG_PAGES_OTHER_COL 18u
+#define SONG_PAGES_OTHER_STEP 6u
 #define SONG_PAGES_BUILD_ROWS 3u
 #define SONG_PAGES_LOOK 40u
 #define SONG_PAGES_ENC_K2 (PANEL_ENC_K1 + 1u)

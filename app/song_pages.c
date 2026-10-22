@@ -577,20 +577,20 @@ static void build_head(song_pages* p) {
         small(c, 0u, 2u, "SUBTUNE", THEME_ATTR(th, hint));
         hex2(p->subtune + 1u, number);
         small(c, 8u, 2u, number, GRID_ATTR(th->value, !p->order_cursor ? th->cursor : th->bg));
-        uint32_t col = 26u;
+        uint32_t col = SONG_PAGES_OTHER_COL;
         for (uint32_t v = 0u; v < SONG_T_VOICES; v++) {
             if (v == sv->voice)
                 continue;
-            char tag[2] = {(char)('1' + v), 0};
+            char tag[3] = {'V', (char)('1' + v), 0};
             small(c, col, 2u, tag, GRID_ATTR(song_view_mute_mask(sv) >> v & 1u ? th->dim : th->voice_text[v], th->bg));
-            col += 2u;
+            col += SONG_PAGES_OTHER_STEP;
         }
     } else if (p->page == SONG_VIEW_INSTR) {
         hex2(sv->instr, number);
         big(c, 12u, 0u, number, GRID_ATTR(th->voice[sv->voice], th->bg));
         small(c, 0u, 2u, "PRESETS: INSTRUMENT", THEME_ATTR(th, hint));
     } else {
-        small(c, 3u, 2u, "K1 LEFT", GRID_ATTR(th->knob_text[0], th->bg));
+        small(c, 4u, 2u, "K1 LEFT", GRID_ATTR(th->knob_text[0], th->bg));
         small(c, 12u, 2u, "K2 RIGHT", GRID_ATTR(th->knob_text[1], th->bg));
     }
     c->ch[0][22] = song_view_playing(sv) ? FONT_PLAY : FONT_SQUARE;
@@ -605,7 +605,7 @@ static void build_head(song_pages* p) {
         }
     }
     small(c, 26u, 0u, tempo, THEME_ATTR(th, label));
-    small(c, 26u, 1u, "BPM", THEME_ATTR(th, dim));
+    small(c, 26u, 1u, "BPM", THEME_ATTR(th, hint));
     if (sv->rec)
         small(c, 22u, 1u, "REC", THEME_ATTR(th, alert));
     if (sv->solo >> sv->voice & 1u)
@@ -635,18 +635,17 @@ static void build_row(song_pages* p, uint32_t j) {
         if (!o || u > n)
             return;
         hex2(u, num);
-        small(c, 0u, r + 1u, num, GRID_ATTR(on ? th->hot : th->label, bg));
+        big(c, 0u, r, num, GRID_ATTR(on ? th->hot : th->label, bg));
         if (u == n) {
             memcpy(text, "RST ", 4u);
             hex2(o[n + 1u], text + 4u);
         } else {
             tracker_view_order_entry(o[u], text);
         }
-        big(c, 4u, r, text, on ? GRID_ATTR(th->bg, th->hot) : base);
-        if (u < n)
-            small(c, 17u, r + 1u, o[u] < GT2_REPEAT ? "PATTERN" :
-                o[u] < GT2_TRANSDOWN ? "REPEAT" : "TRANSPOSE", GRID_ATTR(th->label, bg));
-        uint32_t col = 26u;
+        big(c, 5u, r, text, on ? GRID_ATTR(th->bg, th->hot) : base);
+        /* The other two voices' entries at the same position, at 2x; what kind the entry is
+         * (a pattern, a repeat, a transpose) is in the line under the rows. */
+        uint32_t col = SONG_PAGES_OTHER_COL;
         for (uint32_t v = 0u; v < SONG_T_VOICES; v++) {
             if (v == sv->voice)
                 continue;
@@ -657,9 +656,9 @@ static void build_row(song_pages* p, uint32_t j) {
                     memcpy(num, "RS", 3u);
                 else
                     hex2(other[u], num);
-                small(c, col, r + 1u, num, GRID_ATTR(th->voice_text[v], bg));
+                big(c, col, r, num, GRID_ATTR(th->voice_text[v], bg));
             }
-            col += 2u;
+            col += SONG_PAGES_OTHER_STEP;
         }
     } else if (p->page == SONG_VIEW_INSTR) {
         if (j < GT2_INS_NAME) {
@@ -685,12 +684,50 @@ static void build_row(song_pages* p, uint32_t j) {
         }
     } else if (u < GT2_TABLE_ROWS) {
         hex2(u + 1u, num);
-        small(c, 0u, r + 1u, num, GRID_ATTR(on ? th->hot : th->label, bg));
+        big(c, 0u, r, num, GRID_ATTR(on ? th->hot : th->label, bg));
         hex2(song->ltable[p->table][u], num);
-        big(c, 4u, r, num, on ? GRID_ATTR(th->bg, th->knob[0]) : base);
+        big(c, 5u, r, num, on ? GRID_ATTR(th->bg, th->knob[0]) : base);
         hex2(song->rtable[p->table][u], num);
         big(c, 12u, r, num, on ? GRID_ATTR(th->bg, th->knob[1]) : GRID_ATTR(th->voice[sv->voice], bg));
     }
+}
+
+/* What the orderlist entry under the cursor is, in words: PATTERN 04, REPEAT 3, TRANSPOSE +2,
+ * RESTART AT 00 for the end. */
+static void order_kind(const song_pages* p, char out[24]) {
+    uint32_t u = p->order_cursor - 1u, n = entries(p);
+    const uint8_t* o = order(p);
+    const char* word = "";
+    char value[4] = {0};
+    if (!o || u > n) {
+        out[0] = 0;
+        return;
+    }
+    if (u == n) {
+        word = "RESTART AT ";
+        hex2(o[n + 1u], value);
+    } else if (o[u] < GT2_REPEAT) {
+        word = "PATTERN ";
+        hex2(o[u], value);
+    } else if (o[u] < GT2_TRANSDOWN) {
+        word = "REPEAT ";
+        uint32_t times = o[u] & 15u ? o[u] & 15u : 16u;
+        uint32_t k = 0u;
+        if (times >= 10u)
+            value[k++] = '1';
+        value[k++] = (char)('0' + times % 10u);
+    } else {
+        word = "TRANSPOSE ";
+        char e[4];
+        tracker_view_order_entry(o[u], e);
+        memcpy(value, e, 4u);
+    }
+    uint32_t k = 0u;
+    while (*word)
+        out[k++] = *word++;
+    for (uint32_t i = 0u; value[i]; i++)
+        out[k++] = value[i];
+    out[k] = 0;
 }
 
 static void build_footer(song_pages* p) {
@@ -704,6 +741,11 @@ static void build_footer(song_pages* p) {
         p->page == SONG_VIEW_INSTR ? "SELECT PARAMETER / NAME" : "K1 LEFT  K2 RIGHT", THEME_ATTR(th, hint));
     char meaning[31];
     const char* say = song_pages_message(p);
+    char kind[24];
+    if (!*say && p->page == SONG_VIEW_ORDER && sv->song && p->order_cursor) {
+        order_kind(p, kind);
+        say = kind;
+    }
     if (!*say && p->page == SONG_VIEW_INSTR)
         say = p->instr_cursor < GT2_INS_NAME ? PARAM_NAMES[p->instr_cursor] : "INSTRUMENT NAME";
     if (!*say && p->page == SONG_VIEW_TABLE && sv->song) {

@@ -744,11 +744,11 @@ fn three_character_transposes_fit_primary_order_text_and_tracker_footer() {
     h.ui.press(PANEL_BTN_SEQ);
     h.ui.turn(PANEL_ENC_SELECT, 1);
     settle(&mut h.ui);
-    assert_eq!(h.ui.big(5, 4, 2, 3), "-10");
+    assert_eq!(h.ui.big(5, 5, 2, 3), "-10");
     assert_eq!(
-        h.ui.small(4, 26, 2),
+        h.ui.big(3, 18, 2, 2),
         "E0",
-        "compact strips use two raw hex digits"
+        "the other voices' entries use two raw hex digits"
     );
 }
 
@@ -758,10 +758,15 @@ fn page_values_and_parameter_names_are_readable_at_two_times_the_font() {
     h.settle();
     assert_eq!(h.ui.big(0, 0, 2, 5), "ORDER");
     assert_eq!(h.ui.big(0, 12, 2, 2), "V1");
-    assert_eq!(h.ui.big(3, 4, 2, 2), "00");
-    assert_eq!(h.ui.big(5, 4, 2, 6), "RST 00");
-    assert_eq!(h.ui.small(2, 26, 1), "2");
-    assert_eq!(h.ui.small(2, 28, 1), "3");
+    assert_eq!(h.ui.big(3, 0, 2, 2), "00", "the row's number at 2x");
+    assert_eq!(h.ui.big(3, 5, 2, 2), "00");
+    assert_eq!(h.ui.big(5, 0, 2, 2), "01");
+    assert_eq!(h.ui.big(5, 5, 2, 6), "RST 00");
+    assert_eq!(h.ui.small(2, 18, 2), "V2");
+    assert_eq!(h.ui.small(2, 24, 2), "V3");
+    assert_eq!(h.ui.big(3, 18, 2, 2), "01", "voice 2's entry at 2x");
+    assert_eq!(h.ui.big(5, 18, 2, 2), "RS");
+    assert_eq!(h.ui.small(29, 0, 10), "PATTERN 00", "what the entry is");
     let mut h = Pages::new(unsafe { &song_pages_instr_view });
     h.settle();
     assert_eq!(h.ui.big(3, 0, 2, 7), "ATK/DEC");
@@ -770,8 +775,8 @@ fn page_values_and_parameter_names_are_readable_at_two_times_the_font() {
     let mut h = Pages::new(unsafe { &song_pages_table_view });
     h.settle();
     assert_eq!(h.ui.big(0, 0, 2, 4), "WAVE");
-    assert_eq!(h.ui.small(4, 0, 2), "01");
-    assert_eq!(h.ui.big(3, 4, 2, 2), "00");
+    assert_eq!(h.ui.big(3, 0, 2, 2), "01", "the row's number at 2x");
+    assert_eq!(h.ui.big(3, 5, 2, 2), "00");
     assert_eq!(h.ui.big(3, 12, 2, 2), "00");
 }
 
