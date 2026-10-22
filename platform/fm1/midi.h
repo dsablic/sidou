@@ -38,6 +38,10 @@ midi_sync* midi_synced(void);
  * a transport message, and from main.c's play() while CLOCK OUT is on (about once a
  * millisecond, with the key scan: clock out's times). */
 void midi_sync_pass(void);
+/* Main loop, right after an operation with interrupts masked (store_fm1.c: a flash erase or
+ * program), from `from` to `to` (fm1_ticks()): the clocks the polls stamped late for it stay
+ * out of the clock's fit (midi_clock_hold), before midi_drain takes them. */
+void midi_clock_held(uint32_t from, uint32_t to);
 /* MIDI learn's bindings (app/midi_learn.h), which both inputs and MIDI out use: the screen
  * arms learn on them (platform/fm1/ui.c). In RAM, empty at power-on. */
 midi_learn* midi_learned(void);

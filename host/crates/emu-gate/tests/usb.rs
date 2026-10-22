@@ -874,3 +874,75 @@ fn clock_outs_song_position_waits_for_a_sysex_reply_to_end() {
     println!("{held} of the continues came while the DATA was part way out");
     assert!(held > 0, "no continue came while a reply was part way out");
 }
+
+/// The clock follower's fit (app/midi_clock.h): its clocks' (number, stamp) in samples, oldest
+/// first, and the largest distance of one from the least-squares line through them all, in ms.
+fn fit_residual(m: &mut Machine, fw: &Firmware) -> (usize, f64) {
+    use sidou_sys::ilp32::{midi_clock as mc, midi_sync as ms};
+    let c = fw.symbol("syncing") + ms::clock as u32;
+    let (head, count) = (
+        u32::from(m.soc.read8(c + mc::head as u32)),
+        u32::from(m.soc.read8(c + mc::count as u32)),
+    );
+    let w = sidou_sys::MIDI_CLOCK_WINDOW;
+    let pts: Vec<(f64, f64)> = (0..count)
+        .map(|i| {
+            let k = (head + i) % w;
+            let n = m.soc.read32(c + mc::number as u32 + 4 * k);
+            let t = m.soc.read32(c + mc::stamp as u32 + 4 * k);
+            (f64::from(n), f64::from(t))
+        })
+        .collect();
+    let len = pts.len() as f64;
+    let (mx, my) = (
+        pts.iter().map(|p| p.0).sum::<f64>() / len,
+        pts.iter().map(|p| p.1).sum::<f64>() / len,
+    );
+    let sxx: f64 = pts.iter().map(|p| (p.0 - mx).powi(2)).sum();
+    let sxy: f64 = pts.iter().map(|p| (p.0 - mx) * (p.1 - my)).sum();
+    let b = sxy / sxx;
+    let worst = pts
+        .iter()
+        .map(|p| (p.1 - (my + b * (p.0 - mx))).abs())
+        .fold(0.0, f64::max);
+    (pts.len(), worst / (24e6 / 544.0) * 1e3)
+}
+
+/// A flash operation with interrupts masked stamps the TRS clocks that arrive meanwhile late,
+/// together, at the first poll after it; the clock follower leaves them out of its fit (review
+/// 4.4: midi_clock_hold had no caller, so they went in, and the phase drifted). A 120 BPM clock
+/// on TRS, followed, while a USB PUT stores a file; every flash program and erase is made to
+/// last 30 ms with interrupts masked, as a sector erase does on the chip (fm1-emu's flash is
+/// instant). Afterwards no clock in the fit is more than the TRS poll's jitter off its line.
+#[test]
+fn clocks_stamped_late_by_a_flash_hold_stay_out_of_the_clocks_fit() {
+    let Some(fw) = fixture("the clock follower across flash holds") else {
+        return;
+    };
+    let mut m = usb_machine(&fw);
+    let per = 60.0 / 120.0 / 24.0 * m.soc.periph.hz as f64;
+    let start = m.soc.periph.cycles as f64;
+    m.trs_at = (0..24 * 2 * 8)
+        .map(|i| ((start + f64::from(i) * per) as u64, 0xf8))
+        .collect();
+    m.usb_frames(3_000);
+    let (n, before) = fit_residual(&mut m, &fw);
+    println!("before the PUT: {n} clocks in the fit, the worst {before:.2} ms off its line");
+    assert!(n >= 90 && before < 0.6, "the fit before the holds");
+    let hold = m.soc.periph.cycle_of_ms(30);
+    m.stalls = vec![
+        (fw.symbol("flash_store_prog"), hold),
+        (fw.symbol("flash_store_erase"), hold),
+    ];
+    let data: Vec<u8> = (0..1024u32).map(|i| (i * 13) as u8).collect();
+    put_file(&mut m, &mut Link::default(), "HOLDS", &data);
+    m.stalls.clear();
+    m.usb_frames(100);
+    let (n, after) = fit_residual(&mut m, &fw);
+    println!(
+        "after {} holds of 30 ms: {n} clocks in the fit, the worst {after:.2} ms off its line",
+        m.stalled
+    );
+    assert!(m.stalled >= 4, "{} holds", m.stalled);
+    assert!(after < 0.6, "a clock {after:.2} ms off the fit's line");
+}

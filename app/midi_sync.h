@@ -51,7 +51,10 @@
  * **Time.** The stamps are fm1_ticks() (24 MHz, MIDI_SYNC_TICKS_PER_SAMPLE a sample); the
  * player counts samples (song_ctl.samples). midi_sync_anchor ties the two once a block: the
  * interrupt's block that starts at sample `samples` was rendered at tick `ticks` and plays
- * one block later (MIDI_SYNC_LATENCY). Everything here is in the player's samples, as heard.
+ * one block later (MIDI_SYNC_LATENCY). The player's samples stop while a flash hold masks the
+ * interrupts (no block renders) and the ticks do not, so the clock's fit is kept on the
+ * ticks' own time line (in samples) and its times turned into the player's samples, as
+ * heard, by the latest anchor; the commands and clock out are in the player's samples.
  *
  * The player is the song views' transport (app/song_transport.h, M2d) with its clock members
  * (hold, align, period, seek, seek_further, clock), bound over song control in
@@ -126,9 +129,13 @@ typedef struct midi_sync {
     /* the anchor between calls and clock positions: call c_anchor at clock p_anchor */
     uint32_t c_anchor, p_anchor;
     uint32_t next_row;   /* the call at which the period is looked at again */
-    /* the time base (midi_sync_anchor) */
+    /* the time base (midi_sync_anchor): the latest block's tick and sample */
     uint32_t a_ticks, a_samples;
     uint8_t anchored;
+    /* the clock's own time line, in samples of 544 ticks from the first anchor: r_base at
+     * tick r_ticks. The fit's stamps are on it, so a hold that loses blocks (the player's
+     * samples stop while the ticks go on) leaves the fit whole. */
+    uint32_t r_ticks, r_base;
     /* out */
     uint8_t out_state;   /* the player's state as clock out last saw it */
     /* The caller's, before each poll: 1 while a SysEx frame is part way out on clock out's
@@ -156,6 +163,9 @@ void midi_sync_rows(midi_sync* s, uint32_t rows_per_beat);
 void midi_sync_anchor(midi_sync* s, uint32_t ticks, uint32_t samples);
 /* A stamp (ticks) as the player's sample heard then. */
 uint32_t midi_sync_sample_of(const midi_sync* s, uint32_t ticks);
+/* An operation with the interrupts masked from `from` to `to` (stamps): the clocks stamped
+ * late for it stay out of the fit (midi_clock_hold). Before the messages it stamped late. */
+void midi_sync_held(midi_sync* s, uint32_t from, uint32_t to);
 /* A message from midi_in with its entry's stamp: the real-time ones, song position and song
  * select (anything else is ignored). */
 void midi_sync_msg(midi_sync* s, const midi_msg* msg, uint32_t ticks);

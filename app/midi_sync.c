@@ -66,17 +66,49 @@ void midi_sync_rows(midi_sync* s, uint32_t rows_per_beat) {
     s->rows_per_beat = (uint8_t)(rows_per_beat ? rows_per_beat : 4u);
 }
 
+/* Whole samples in d ticks, toward zero. */
+static int32_t samples_in(int32_t d) {
+    return d >= 0 ? d / (int32_t)MIDI_SYNC_TICKS_PER_SAMPLE
+                  : -((-d) / (int32_t)MIDI_SYNC_TICKS_PER_SAMPLE);
+}
+
 void midi_sync_anchor(midi_sync* s, uint32_t ticks, uint32_t samples) {
+    if (!s->anchored) {
+        s->r_ticks = ticks;
+        s->r_base = samples;
+    } else {
+        /* the clock's time line on by whole samples, the rest of a sample kept in r_ticks */
+        uint32_t n = (ticks - s->r_ticks) / MIDI_SYNC_TICKS_PER_SAMPLE;
+        s->r_base += n;
+        s->r_ticks += n * MIDI_SYNC_TICKS_PER_SAMPLE;
+    }
     s->a_ticks = ticks;
     s->a_samples = samples;
     s->anchored = 1;
 }
 
 uint32_t midi_sync_sample_of(const midi_sync* s, uint32_t ticks) {
-    int32_t d = (int32_t)(ticks - s->a_ticks);
-    int32_t n = d >= 0 ? d / (int32_t)MIDI_SYNC_TICKS_PER_SAMPLE
-                       : -((-d) / (int32_t)MIDI_SYNC_TICKS_PER_SAMPLE);
-    return s->a_samples + (uint32_t)n - MIDI_SYNC_LATENCY;
+    return s->a_samples + (uint32_t)samples_in((int32_t)(ticks - s->a_ticks)) -
+           MIDI_SYNC_LATENCY;
+}
+
+/* A stamp on the clock's own time line: the ticks in samples, which never jump (the clock's
+ * fit and its holds are kept on it). */
+static uint32_t real_of(const midi_sync* s, uint32_t ticks) {
+    return s->r_base + (uint32_t)samples_in((int32_t)(ticks - s->r_ticks));
+}
+
+/* A time on the clock's line as the player's sample heard then, by the latest anchor: the two
+ * differ by the blocks the audio did not render (a flash hold masks the interrupts) and by
+ * any drift between the audio's clock and the ticks. */
+static uint32_t heard_of(const midi_sync* s, uint32_t real) {
+    return real + midi_sync_sample_of(s, s->a_ticks) - real_of(s, s->a_ticks);
+}
+
+void midi_sync_held(midi_sync* s, uint32_t from, uint32_t to) {
+    if (s->anchored) {
+        midi_clock_hold(&s->clock, real_of(s, from), real_of(s, to));
+    }
 }
 
 int midi_sync_following(const midi_sync* s) {
@@ -92,7 +124,7 @@ void midi_sync_msg(midi_sync* s, const midi_msg* msg, uint32_t ticks) {
         (msg->kind != MIDI_REALTIME && msg->kind != MIDI_SONG_POSITION)) {
         return;
     }
-    midi_clock_event ev = midi_clock_msg(&s->clock, msg, midi_sync_sample_of(s, ticks));
+    midi_clock_event ev = midi_clock_msg(&s->clock, msg, real_of(s, ticks));
     if (msg->kind == MIDI_REALTIME && msg->data1 == CLOCK) {
         s->fresh = 1;
     }
@@ -129,13 +161,14 @@ static uint32_t call_of(const midi_sync* s, const song_clock* st, uint32_t pos) 
     return pos * beat2(s, st) / (2u * MIDI_CLOCK_PER_BEAT);
 }
 
-/* When the clock at position whole + frac (clocks) comes, as the fit has it: 1 and *t. */
+/* When the clock at position whole + frac (clocks) comes, as the fit has it, as the player's
+ * sample heard then: 1 and *t. */
 static int clock_time(const midi_sync* s, uint32_t whole, float frac, uint32_t* t) {
     uint32_t at;
     if (!midi_clock_time_of(&s->clock, whole, &at)) {
         return 0;
     }
-    *t = at + (uint32_t)(int32_t)(frac * s->clock.period + 0.5f);
+    *t = heard_of(s, at + (uint32_t)(int32_t)(frac * s->clock.period + 0.5f));
     return 1;
 }
 
@@ -155,7 +188,7 @@ static void align_start(midi_sync* s, const song_clock* st) {
         }
         /* no tempo yet: the clock that just came */
         pos = s->clock.position - 1u;
-        t = s->clock.last;
+        t = heard_of(s, s->clock.last);
     }
     t += MIDI_SYNC_DELAY;
     if ((int32_t)(t - horizon(s)) < 0) {
@@ -434,7 +467,8 @@ uint32_t midi_sync_poll(midi_sync* s, uint32_t ticks, uint32_t out[MIDI_SYNC_OUT
         }
         s->want &= (uint8_t)~MIDI_SYNC_WANT_FREE;
     }
-    if (s->mode != MIDI_SYNC_OFF && midi_clock_poll(&s->clock, now) == MIDI_CLOCK_EV_LOST) {
+    if (s->mode != MIDI_SYNC_OFF &&
+        midi_clock_poll(&s->clock, real_of(s, ticks)) == MIDI_CLOCK_EV_LOST) {
         lost(s, &st);
     }
     int following = midi_sync_following(s);

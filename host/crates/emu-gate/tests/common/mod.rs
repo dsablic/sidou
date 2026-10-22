@@ -253,6 +253,16 @@ pub struct Machine {
     /// With Some: every main-loop instruction inside a watched call (`watch_calls`; with no
     /// call watched, `watch_passes`' stretches), counted by its PC: where they go.
     pub profile: Option<std::collections::HashMap<u32, u64>>,
+    /// TRS bytes to come at their cycles, in order: each goes into the jack (`midi`) once the
+    /// clock reaches its cycle, also while a stall holds the CPU (a clock source that runs on
+    /// whatever the firmware does).
+    pub trs_at: std::collections::VecDeque<(u64, u8)>,
+    /// (pc, cycles): each time the main loop reaches `pc`, the CPU stands still for `cycles`
+    /// while the clock, the peripherals and `trs_at` run on, interrupts left pending, as a
+    /// flash operation the firmware waits on with interrupts masked (fm1-emu's flash is
+    /// instant). `stalled` counts them.
+    pub stalls: Vec<(u32, u64)>,
+    pub stalled: u64,
 }
 
 /// Every emulator test's journey checks the stacks when its machine goes: each stack's deepest
@@ -286,6 +296,17 @@ impl Drop for Machine {
 /// The TRS backlog `Machine::midi_paced` keeps: under a third of fm1-emu's limit, about 0.3 s
 /// of bytes.
 pub const MIDI_PACED_BACKLOG: usize = 900;
+
+/// `Machine::trs_at`'s bytes whose cycle has come, into the jack.
+fn feed_trs(trs_at: &mut std::collections::VecDeque<(u64, u8)>, soc: &mut Soc) {
+    while let Some(&(at, b)) = trs_at.front() {
+        if at > soc.periph.cycles {
+            break;
+        }
+        soc.periph.apply(&fm1_soc::Action::Midi { b });
+        trs_at.pop_front();
+    }
+}
 
 // ---- the store core on the host, over a flash dump (read only) ----
 
@@ -458,6 +479,9 @@ impl Machine {
             usb: None,
             stack_check: true,
             profile: None,
+            trs_at: std::collections::VecDeque::new(),
+            stalls: Vec::new(),
+            stalled: 0,
         }
     }
 
@@ -622,6 +646,22 @@ impl Machine {
                 }
                 self.main_steps += 1;
             }
+            if !in_isr && !self.stalls.is_empty() {
+                if let Some(&(_, n)) = self.stalls.iter().find(|s| s.0 == cpu.pc) {
+                    self.stalled += 1;
+                    for _ in 0..n {
+                        if soc.periph.tick() {
+                            let halves = soc.periph.audio_halves;
+                            soc.advance(0);
+                            if soc.periph.audio_halves != halves {
+                                self.half_played.push(soc.periph.cycles);
+                            }
+                        }
+                        feed_trs(&mut self.trs_at, soc);
+                    }
+                }
+            }
+            feed_trs(&mut self.trs_at, soc);
             if step(cpu, soc) {
                 self.emulated_block_loads += 1;
             }

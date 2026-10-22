@@ -36,8 +36,9 @@
  *
  * **Holds:** the store's held erases (prog, M2a Task 4) mask interrupts for up to 35 ms, so
  * the TRS bytes that arrive meanwhile are stamped late, together, at the first poll after.
- * The caller reports each hold (midi_clock_hold) before it feeds the messages that came in
- * during it; clocks stamped from its start to one clock period after its end count (for the
+ * The caller reports each hold (midi_clock_hold; on the device platform/fm1/store_fm1.c's
+ * operate, through midi.c's midi_clock_held, after every erase or program with interrupts
+ * masked) before it feeds the messages that came in during it; clocks stamped from its start to one clock period after its end count (for the
  * song position) but stay out of the fit, as their stamps say nothing of when they were sent.
  *
  * **Lost:** a clock that does not come for MIDI_CLOCK_LOST_MS (300 ms; below 8.3 BPM) is

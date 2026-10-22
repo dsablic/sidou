@@ -181,6 +181,11 @@ struct Rig {
     out: Vec<(u32, u32)>,
     /// The parser's messages land here, with the stamp they go in with.
     stamp: u32,
+    /// Ticks the audio lost to holds (`hold`): the blocks not rendered while the interrupts
+    /// were masked, so the player's samples fall behind the ticks by them.
+    skipped: u32,
+    /// MIDI that came before this tick (in a hold) is stamped with it: the first poll after.
+    late_until: u32,
 }
 
 unsafe extern "C" fn on_msg(ctx: *mut std::ffi::c_void, msg: *const midi_msg) {
@@ -204,6 +209,8 @@ impl Rig {
             calls: Vec::new(),
             out: Vec::new(),
             stamp: 0,
+            skipped: 0,
+            late_until: 0,
         });
         let rp: *mut Rig = &mut *r;
         let scp: *mut song_ctl = &mut *r.t.sc;
@@ -227,19 +234,23 @@ impl Rig {
         for _ in 0..blocks {
             let s = self.samples();
             let calls_before = self.t.calls();
+            // a call's sample as heard, on the ticks' time line (the holds' lost blocks added)
+            let lost = self.skipped / TPS;
             if let Some(at) = self.t.block_silent() {
                 if self.t.calls() != calls_before {
-                    self.calls.push((self.t.calls() - 1, s + at as u32));
+                    self.calls.push((self.t.calls() - 1, s + at as u32 + lost));
                 }
             }
             // the block at s was rendered at the heard time s - BLOCK
-            let rendered = (s.wrapping_sub(BLOCK as u32)).wrapping_mul(TPS);
+            let rendered = (s.wrapping_sub(BLOCK as u32))
+                .wrapping_mul(TPS)
+                .wrapping_add(self.skipped);
             unsafe { midi_sync_anchor(&mut *self.sync, rendered, s) };
             for j in 0..PASSES {
                 let now = rendered.wrapping_add(j * BLOCK as u32 / PASSES * TPS);
                 while self.next < self.midi.len() && self.midi[self.next].ticks <= now {
                     let m = self.midi[self.next];
-                    self.stamp = m.ticks;
+                    self.stamp = m.ticks.max(self.late_until);
                     unsafe { midi_in_feed(&mut *self.parser, m.bytes.as_ptr(), m.len as usize) };
                     self.next += 1;
                 }
@@ -251,6 +262,21 @@ impl Rig {
                 self.t.pass();
             }
         }
+    }
+
+    /// A flash operation with the interrupts masked for `ms`, before the next block: no
+    /// block renders meanwhile (the player's samples stop while the ticks go on), the MIDI that
+    /// comes in it is stamped at its end, and the hold is reported (midi_sync_held), as
+    /// platform/fm1/store_fm1.c's operate does.
+    fn hold(&mut self, ms: u32) {
+        let s = self.samples();
+        let from = (s.wrapping_sub(BLOCK as u32))
+            .wrapping_mul(TPS)
+            .wrapping_add(self.skipped);
+        let d = ms * 24_000;
+        self.skipped += d;
+        self.late_until = from + d;
+        unsafe { midi_sync_held(&mut *self.sync, from, from + d) };
     }
 
     fn status(&self) -> song_clock {
@@ -426,6 +452,84 @@ fn a_continue_with_no_position_on_a_song_never_played_starts_it_on_the_clock() {
     assert!(errs.len() > 20, "{} rows", errs.len());
     let worst = errs.iter().fold(0.0f64, |a, &e| a.max(e.abs()));
     assert!(worst <= 1.0, "a row {worst:.3} ms off its 16th");
+}
+
+/// The clock's fit: the largest distance of one of its clocks from its least-squares line, in
+/// ms (app/midi_clock.h: stamps in samples against the clocks' numbers).
+fn fit_residual(c: &midi_clock) -> f64 {
+    let pts: Vec<(f64, f64)> = (0..u32::from(c.count))
+        .map(|i| {
+            let k = ((u32::from(c.head) + i) % MIDI_CLOCK_WINDOW) as usize;
+            (
+                f64::from(c.number[k].wrapping_sub(c.ref_number) as i32),
+                f64::from(c.stamp[k].wrapping_sub(c.ref_stamp) as i32),
+            )
+        })
+        .collect();
+    let n = pts.len() as f64;
+    let (mx, my) = (
+        pts.iter().map(|p| p.0).sum::<f64>() / n,
+        pts.iter().map(|p| p.1).sum::<f64>() / n,
+    );
+    let sxx: f64 = pts.iter().map(|p| (p.0 - mx).powi(2)).sum();
+    let b = pts.iter().map(|p| (p.0 - mx) * (p.1 - my)).sum::<f64>() / sxx;
+    let worst = pts
+        .iter()
+        .map(|p| (p.1 - my - b * (p.0 - mx)).abs())
+        .fold(0.0, f64::max);
+    worst / FS * 1e3
+}
+
+/// Flash holds while a song follows a clock (review 4.4): three holds 35 ms each, the
+/// interrupts masked, so the clocks that come meanwhile are stamped late at its end, and no
+/// block renders (the player's samples stop while the clock runs on). The late clocks stay out
+/// of the fit and the fit keeps the clock's own time line across the lost blocks: it stays a
+/// line (within the TRS poll's jitter) and the song realigns at most once a hold. The song
+/// itself lost 105 ms to the holds, which the period takes up at 1 % of a beat a beat
+/// (midi_clock_frame_q16): 21 beats; from then every row is on its 16th again.
+#[test]
+fn rows_land_on_the_clock_again_after_flash_holds() {
+    let mut r = Rig::new();
+    r.run(20);
+    let t0 = r.samples() * TPS;
+    let bpm = 120.0;
+    let beat = (24e6 * 60.0 / bpm) as u32;
+    let beats = 40;
+    let mut song_clock = clock(t0 + beat, bpm, beats, trs_jitter);
+    r.midi.extend(clock(t0, bpm, 1, trs_jitter));
+    start_at(&mut r, t0 + beat - beat / 48);
+    r.midi.extend(song_clock.iter().copied());
+    let blocks_a_beat = 0.5 * FS / BLOCK as f64;
+    r.run((7.0 * blocks_a_beat) as u32);
+    let aligns = r.sync.aligns;
+    let mut worst_fit = 0.0f64;
+    for _ in 0..3 {
+        r.hold(35);
+        for _ in 0..3 {
+            r.run((0.25 * blocks_a_beat) as u32);
+            worst_fit = worst_fit.max(fit_residual(&r.sync.clock));
+        }
+    }
+    r.run(((beats - 9) as f64 * blocks_a_beat) as u32);
+    song_clock.truncate(beats as usize * 24);
+    let errs = row_errors(&r, &song_clock, beats - 8);
+    assert!(errs.len() > 20, "{} rows", errs.len());
+    let worst = errs.iter().fold(0.0f64, |a, &e| a.max(e.abs()));
+    println!(
+        "the fit across the holds: {worst_fit:.3} ms at most off its line; the last {} rows: \
+         worst {worst:.3} ms; aligns since the holds {}",
+        errs.len(),
+        r.sync.aligns - aligns
+    );
+    assert!(worst_fit <= 0.6, "the fit {worst_fit:.3} ms off its line");
+    assert!(
+        r.sync.aligns - aligns <= 3,
+        "the song realigned again and again"
+    );
+    assert!(
+        worst <= 1.0,
+        "a row {worst:.3} ms off its 16th after the holds"
+    );
 }
 
 #[test]

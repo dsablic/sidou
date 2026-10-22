@@ -117,6 +117,7 @@ static int hold_ready(void) {
  * sector erase, else a program. */
 static int operate(uint32_t off, const void* p, uint32_t n, int erase) {
     int rc, held = 0;
+    uint32_t masked = fm1_ticks(); /* MIDI's polls wait from here: midi_clock_held */
     if (!audio_running()) {
         cli();
     } else if (!erase && store_fm1_window) {
@@ -137,6 +138,7 @@ static int operate(uint32_t off, const void* p, uint32_t n, int erase) {
     }
     rc = erase ? flash_store_erase(off) : flash_store_prog(off, p, n);
     sti();
+    midi_clock_held(masked, fm1_ticks());
     if (held) {
         fm.last_hold = fm.now;
         fm.programmed = 1;

@@ -370,6 +370,10 @@ void midi_sync_pass(void) {
     }
 }
 
+void midi_clock_held(uint32_t from, uint32_t to) {
+    midi_sync_held(&syncing, from, to);
+}
+
 void midi_usb_isr(void) {
     poll_stamp = fm1_ticks();
     if (usb.up) {
