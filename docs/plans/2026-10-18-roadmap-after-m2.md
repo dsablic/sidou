@@ -34,8 +34,10 @@ the 6502 study below.
    cargo-nextest (each test its own process, ten at once) it takes 845 to 1251 s over four
    runs, and 1035 s inside the merge check beside the other stages: the wall time is now the
    one test `the_players_worst_block_fits_its_budget` (760 to 845 s alone; `host/.config/nextest.toml`
-   starts it first). Every JSON report (22 files) was identical to the serial run's in four
-   parallel runs, and all 235 tests passed each time; no field is a wall-clock one. Shared
+   starts it first). Every JSON report (22 files) was identical to the serial run's in three
+   parallel runs, and in the fourth (the merge check) all but the spelling of one path in
+   `sidou_package.json`, which follows how SIDOU_FM1_BUILD is written; all 235 tests passed each
+   time and no field is a wall-clock one. Shared
    state found: none that mattered. Every report has its own name, the emulator has no globals
    (only trace environment variables nobody sets), the one in-process cache is behind a
    mutex; the one shared file name, `<name>.actual.png` of the two song-page tests, is now
