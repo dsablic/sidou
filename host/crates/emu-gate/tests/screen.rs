@@ -4277,6 +4277,16 @@ fn the_song_views_header_and_heads_match_their_goldens() {
     let mut m = booted(&fw);
     open_tracker(&mut m, &fw);
     compare_golden(&build, "tracker", &m.soc.lcd.fb, &[]);
+    // A key held auditions: the current row shows its note and the instrument ghosted, and the
+    // hint line names the instrument; letting go brings the row back.
+    m.key(A4_KEY, true);
+    m.run_ms(120);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "tracker-audition", &m.soc.lcd.fb, &[]);
+    m.key(A4_KEY, false);
+    m.run_ms(200);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "tracker", &m.soc.lcd.fb, &[]);
     // ALGORITHM shows the next voice, and the one after: the other two are the strips.
     for name in ["tracker-v2", "tracker-v3"] {
         m.turn(ALGORITHM, 1);

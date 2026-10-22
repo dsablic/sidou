@@ -335,18 +335,19 @@ fn the_header_shows_the_transport_the_tempo_the_position_and_rec() {
     let alert = unsafe { (*theme_get(THEME_HIGH_CONTRAST)).alert };
     assert_eq!(ui.small(0, 26, 4), " ---");
     assert_eq!(ui.small(29, 17, 13), "ORD 00 ROW 00");
-    assert_eq!(ch(&ui, 22, 0), FONT_SQUARE as u8);
-    // REC, in red, under the play mark.
-    assert_eq!(ui.small(1, 22, 3), "   ");
+    // The stop square at 2x after the pattern's flags.
+    assert_eq!(ui.big(0, 24, 2, 1), (FONT_SQUARE as u8 as char).to_string());
+    // REC, in red at 2x, where MUT and SOL stand.
+    assert_eq!(ui.small(1, 18, 6), "      ");
     ui.press(PANEL_BTN_REC);
     settle(&mut ui);
-    assert_eq!(ui.small(1, 22, 3), "REC");
-    for c in 22..25 {
+    assert_eq!(ui.big(0, 18, 2, 3), "REC");
+    for c in 18..24 {
         assert_eq!(attr(&ui, c, 1) & 15, alert);
     }
     ui.press(PANEL_BTN_REC);
     settle(&mut ui);
-    assert_eq!(ui.small(1, 22, 3), "   ");
+    assert_eq!(ui.small(1, 18, 6), "      ");
 
     // With the player: its tempo, and while it plays its position (the cursor's voice's).
     let mut s = Song::new();
@@ -359,7 +360,7 @@ fn the_header_shows_the_transport_the_tempo_the_position_and_rec() {
     settle(&mut s.ui);
     assert_eq!(s.ui.small(0, 26, 4), " 125");
     assert_eq!(s.ui.small(29, 17, 13), "ORD 03 ROW 1A");
-    assert_eq!(ch(&s.ui, 22, 0), FONT_PLAY as u8);
+    assert_eq!(s.ui.big(0, 24, 2, 1), (FONT_PLAY as u8 as char).to_string());
     // ALGORITHM: the shown voice's position (the player's).
     s.ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut s.ui);
@@ -375,7 +376,10 @@ fn the_header_shows_the_transport_the_tempo_the_position_and_rec() {
     s.ui.press(PANEL_BTN_PLAY);
     settle(&mut s.ui);
     assert_eq!(s.ui.small(29, 17, 13), "ORD 00 ROW 00");
-    assert_eq!(ch(&s.ui, 22, 0), FONT_SQUARE as u8);
+    assert_eq!(
+        s.ui.big(0, 24, 2, 1),
+        (FONT_SQUARE as u8 as char).to_string()
+    );
 }
 
 #[test]
@@ -457,8 +461,8 @@ fn play_waits_for_the_keys_to_leave_chip_a_and_a_second_press_stops() {
     }
     assert_eq!(s.ui.v.song.st.state, SONG_T_STARTING as u8);
     assert_eq!(
-        ch(&s.ui, 22, 0),
-        FONT_PLAY as u8,
+        s.ui.big(0, 24, 2, 1),
+        (FONT_PLAY as u8 as char).to_string(),
         "starting shows as playing"
     );
     // A second PLAY while it starts stops it.
@@ -584,7 +588,7 @@ fn the_mutes_show_in_the_header_the_strips_and_lives_header() {
     s.ui.note_keys(0, 0);
     s.ui.hold(PANEL_BTN_GLO, false);
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(0, 18, 3), "MUT");
+    assert_eq!(s.ui.big(0, 18, 2, 3), "MUT");
     assert_eq!(attr(&s.ui, 18, 0) & 15, t.alert);
     assert_eq!(attr(&s.ui, 0, 0) & 15, t.dim, "V1 grey");
     assert_eq!(
@@ -592,11 +596,15 @@ fn the_mutes_show_in_the_header_the_strips_and_lives_header() {
         t.dim,
         "voice 2 is silent under the solo"
     );
-    assert_eq!(attr(&s.ui, 28, 2) & 15, t.voice[2], "voice 3 sounds");
+    assert_eq!(
+        (attr(&s.ui, 28, 2) & 15, attr(&s.ui, 28, 2) >> 4),
+        (t.bg, t.hot),
+        "voice 3 sounds, soloed: its number reversed"
+    );
     // Voice 3, shown: SOL in white beside its pattern, its own colour.
     s.ui.turn(PANEL_ENC_ALGORITHM, 2);
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(0, 18, 3), "SOL");
+    assert_eq!(s.ui.big(0, 18, 2, 3), "SOL");
     assert_eq!(attr(&s.ui, 18, 0) & 15, t.value);
     assert_eq!(attr(&s.ui, 0, 0) & 15, t.voice[2]);
     assert_eq!(
@@ -714,7 +722,7 @@ fn without_a_player_the_keys_play_the_instrument_in_a_song_view() {
     assert_eq!(attr(&ui, 26, 2) & 15, unsafe { (*theme_get(0)).dim });
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut ui);
-    assert_eq!(ui.small(0, 18, 3), "MUT");
+    assert_eq!(ui.big(0, 18, 2, 3), "MUT");
 }
 
 #[test]

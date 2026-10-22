@@ -14,13 +14,21 @@
  * window's top (2), the bar's row, whether there is a song, the shown voice, the theme, the
  * orderlist position, each voice's pattern, entry and silence, the song's edit count (4). */
 #define HEAD_LOOK 8u
-#define ROWS_LOOK (8u + 3u * SONG_T_VOICES + 4u + 3u)
+#define ROWS_LOOK (8u + 3u * SONG_T_VOICES + 4u + 3u + 2u)
 _Static_assert(HEAD_LOOK + ROWS_LOOK <= SONG_VIEW_LOOK, "the looks fit");
 /* The rows' look bytes the bar's step changes alone (rows_look): the bar's row, the position. */
 #define ROWS_BAR 3u
 #define ROWS_POS 7u
 #define ROWS_BAR_BIT (1u << ROWS_BAR)
 #define ROWS_POS_BIT (1u << ROWS_POS)
+/* The last two: the key auditioning on the shown voice (SONG_VIEW_NO_KEY: none) and the
+ * instrument it sounds; they change the bar's two rows and the hint line, nothing else. */
+#define ROWS_JAM (ROWS_LOOK - 2u)
+#define ROWS_JAM_BITS (3u << ROWS_JAM)
+
+/* The player's notes: key note 12 is its note 0 (song_view.c's GT2_NOTE0, GT2_NOTES). */
+#define JAM_NOTE0 12u
+#define JAM_NOTES 96u
 
 static const char HEX[] = "0123456789ABCDEF";
 static const char NOTE_NAMES[12][3] = {"C-", "C#", "D-", "D#", "E-", "F-",
@@ -187,6 +195,9 @@ static void rows_look(const song_view* sv, uint8_t out[ROWS_LOOK]) {
     out[n++] = sv->rec;
     out[n++] = sv->field;
     out[n++] = (uint8_t)subtune_of(sv, sv->voice);
+    int jam = sv->jam_key != SONG_VIEW_NO_KEY && sv->jam_voice == sv->voice;
+    out[n++] = jam ? sv->jam_key : SONG_VIEW_NO_KEY;
+    out[n++] = jam ? sv->instr : 0u;
 }
 
 /* ---- the canvas ---- */
@@ -211,6 +222,24 @@ static void blank(canvas* c, uint32_t col, uint32_t row, uint32_t w, uint32_t h,
     }
 }
 
+/* A key auditioning on the shown voice: its note and the instrument as a row's first five
+ * characters ("A-4" and "02"), for the current row and the hint line. 0: none. */
+static int ghost_of(const song_view* sv, char out[6]) {
+    if (sv->jam_key == SONG_VIEW_NO_KEY || sv->jam_voice != sv->voice) {
+        return 0;
+    }
+    uint8_t n = live_key_note(sv->l, (uint8_t)(PANEL_BASE_NOTE + sv->jam_key));
+    if (n == LIVE_NO_NOTE || n < JAM_NOTE0 || n - JAM_NOTE0 >= JAM_NOTES) {
+        return 0;
+    }
+    const uint8_t cell[4] = {(uint8_t)(GT2_FIRSTNOTE + n - JAM_NOTE0), sv->instr, 0, 0};
+    char t[9];
+    tracker_view_cell(cell, t);
+    memcpy(out, t, 5u);
+    out[5] = 0;
+    return 1;
+}
+
 /* The colour of voice v's number and strip: its own, grey while the song silences it. */
 static uint8_t voice_color(const song_view* sv, const theme* th, uint32_t v) {
     return (song_view_mute_mask(sv) >> v & 1u) ? th->dim : th->voice[v];
@@ -232,14 +261,23 @@ static void build_head(song_view* sv) {
         pat[5] = HEX[ln.pattern & 15u];
     }
     big(c, 5, 0, sv->io && song_io_saving(sv->io) ? "SAVING" : pat, base);
-    /* MUT or SOL small by the pattern; the play mark, the tempo and REC on the right. */
+    /* Columns 18-23: MUT, SOL or REC at 2x (REC then, with MUT or SOL, small below them); the
+     * play mark or the stop square at 2x after them, the tempo and its label at the right. */
+    int rec_big = sv->rec;
     if (sv->solo >> v & 1u) {
-        small(c, 18, 0, "SOL", base);
+        big(c, 18, 0, "SOL", THEME_ATTR(th, value));
+        rec_big = 0;
     } else if (sv->mute >> v & 1u) {
-        small(c, 18, 0, "MUT", THEME_ATTR(th, alert));
+        big(c, 18, 0, "MUT", THEME_ATTR(th, alert));
+        rec_big = 0;
     }
-    c->ch[0][22] = song_view_playing(sv) ? FONT_PLAY : FONT_SQUARE;
-    c->attr[0][22] = base;
+    if (rec_big) {
+        big(c, 18, 0, "REC", THEME_ATTR(th, alert));
+    } else if (sv->rec) {
+        small(c, 18, 2, "REC", THEME_ATTR(th, hot));
+    }
+    const char mark[2] = {(char)(song_view_playing(sv) ? FONT_PLAY : FONT_SQUARE), 0};
+    big(c, 24, 0, mark, song_view_playing(sv) ? THEME_ATTR(th, hot) : THEME_ATTR(th, label));
     uint32_t bpm = song_view_shown_bpm(sv);
     char t[5] = " ---";
     if (bpm != SONG_VIEW_NO_BPM) {
@@ -250,18 +288,18 @@ static void build_head(song_view* sv) {
         }
     }
     small(c, 26, 0, t, THEME_ATTR(th, label));
-    small(c, 26, 1, "BPM", THEME_ATTR(th, dim));
-    if (sv->rec) {
-        small(c, 22, 1, "REC", THEME_ATTR(th, alert));
-    }
-    /* The other voices' numbers over their strips. */
+    small(c, 26, 1, "BPM", THEME_ATTR(th, hint));
+    /* Row 2: all three voices' numbers, the shown one at column 24 and the other two over their
+     * strips: dim while the song silences the voice, reversed while it is soloed. */
     uint32_t col = TRACKER_VIEW_STRIP_COL;
-    for (uint32_t w = 0; w < SONG_T_VOICES; w++) {
-        if (w != v) {
-            char d[2] = {(char)('1' + w), 0};
-            small(c, col, TRACKER_VIEW_TAG_ROW, d, GRID_ATTR(voice_color(sv, th, w), th->bg));
-            col += TRACKER_VIEW_STRIP_STEP;
-        }
+    for (uint32_t w = 0, at = TRACKER_VIEW_STRIP_COL - TRACKER_VIEW_STRIP_STEP; w < SONG_T_VOICES; w++) {
+        uint8_t a = sv->solo >> w & 1u ? GRID_ATTR(th->bg, th->hot)
+                    : (song_view_mute_mask(sv) >> w & 1u) ? THEME_ATTR(th, dim)
+                                                          : GRID_ATTR(th->voice_text[w], th->bg);
+        uint32_t x = w == v ? at : col;
+        col += w == v ? 0u : TRACKER_VIEW_STRIP_STEP;
+        c->ch[TRACKER_VIEW_TAG_ROW][x] = (uint8_t)('1' + w);
+        c->attr[TRACKER_VIEW_TAG_ROW][x] = a;
     }
 }
 
@@ -271,7 +309,7 @@ static void build_head(song_view* sv) {
  * alone). A muted voice's rows keep their colours: the header and the strips say it (a recolour of
  * a whole voice's cells is what a mute would otherwise send). */
 static void draw_row(canvas* c, const theme* th, uint32_t r, uint32_t voice, uint32_t u,
-                     const uint8_t* cell, int on, uint32_t field) {
+                     const uint8_t* cell, int on, uint32_t field, const char* ghost) {
     uint8_t bg = on ? th->cursor : th->bg;
     blank(c, 0, r, TRACKER_VIEW_BAND_W, TRACKER_VIEW_ROW_CELLS, GRID_ATTR(th->value, bg));
     blank(c, TRACKER_VIEW_BAND_W, r, GRID_COLS - TRACKER_VIEW_BAND_W, TRACKER_VIEW_ROW_CELLS,
@@ -289,8 +327,9 @@ static void draw_row(canvas* c, const theme* th, uint32_t r, uint32_t voice, uin
     uint8_t note = t[0] == '-' ? quiet : t[0] == '=' || t[0] == '+' ? th->label
                    : on                                              ? th->hot
                                                                      : th->value;
-    uint8_t ins = !cell[1] ? quiet : th->voice[voice];
-    uint8_t cmd = !cell[2] ? quiet : th->label;
+    /* On the bar the instrument and the command are white: light red on dark grey is 2.05:1. */
+    uint8_t ins = !cell[1] ? quiet : on ? th->value : th->voice[voice];
+    uint8_t cmd = !cell[2] ? quiet : on ? th->value : th->label;
     uint8_t na = GRID_ATTR(note, field == TRACKER_VIEW_FIELD_NOTE ? th->hot : bg);
     uint8_t ia = GRID_ATTR(ins, field == TRACKER_VIEW_FIELD_INSTRUMENT ? th->hot : bg);
     uint8_t ca = GRID_ATTR(cmd, field == TRACKER_VIEW_FIELD_COMMAND ? th->hot : bg);
@@ -298,6 +337,11 @@ static void draw_row(canvas* c, const theme* th, uint32_t r, uint32_t voice, uin
         na = field == TRACKER_VIEW_FIELD_NOTE ? GRID_ATTR(th->bg, th->hot) : na;
         ia = field == TRACKER_VIEW_FIELD_INSTRUMENT ? GRID_ATTR(th->bg, th->hot) : ia;
         ca = field == TRACKER_VIEW_FIELD_COMMAND ? GRID_ATTR(th->bg, th->hot) : ca;
+    }
+    if (ghost) { /* a key auditioning: its note and the instrument, ghosted, over the row's */
+        t[0] = ghost[0], t[1] = ghost[1], t[2] = ghost[2], t[3] = ghost[3], t[4] = ghost[4];
+        na = GRID_ATTR(th->label, bg);
+        ia = GRID_ATTR(th->label, bg);
     }
     char note3[4] = {t[0], t[1], t[2], 0};
     char ins2[3] = {t[3], t[4], 0};
@@ -373,8 +417,9 @@ static void draw_window_row(song_view* sv, const theme* th, const lane lanes[SON
         cell = d ? d + u * GT2_ROW_BYTES : EMPTY;
     }
     if (u < shown) {
-        draw_row(c, th, r, shown_v, u, cell, on,
-                 on && sv->rec ? sv->field : TRACKER_VIEW_FIELD_NONE);
+        char ghost[6];
+        draw_row(c, th, r, shown_v, u, cell, on, on && sv->rec ? sv->field : TRACKER_VIEW_FIELD_NONE,
+                 on && cell && ghost_of(sv, ghost) ? ghost : NULL);
     } else {
         blank(c, 0, r, GRID_COLS, TRACKER_VIEW_ROW_CELLS, THEME_ATTR(th, value));
     }
@@ -399,9 +444,9 @@ static void build_footer(song_view* sv, const theme* th, const lane lanes[SONG_T
     lane bar = lanes[shown_v];
     blank(c, 0, TRACKER_VIEW_ORDER_ROW, GRID_COLS, GRID_ROWS - TRACKER_VIEW_ORDER_ROW,
           THEME_ATTR(th, value));
-    const uint8_t dim = THEME_ATTR(th, dim);
+    const uint8_t hint = THEME_ATTR(th, hint);
     const uint8_t grey = THEME_ATTR(th, label);
-    small(c, 0, TRACKER_VIEW_ORDER_ROW, "OL", dim);
+    small(c, 0, TRACKER_VIEW_ORDER_ROW, "OL", hint);
     uint32_t sub = subtune_of(sv, shown_v);
     const uint8_t* o = s ? gt2_order_data(s, sub, shown_v) : NULL;
     uint32_t n = s ? gt2_order_entries(s, sub, shown_v) : 0u;
@@ -445,7 +490,22 @@ static void build_footer(song_view* sv, const theme* th, const lane lanes[SONG_T
         small(c, 8, TRACKER_VIEW_SAY_ROW, tracker_view_command_name(cell[2]), a);
         break;
     }
-    small(c, 0, TRACKER_VIEW_HINT_ROW, "SELECT: ROW", dim);
+    char ghost[6];
+    if (ghost_of(sv, ghost)) {
+        /* a key auditioning: the instrument's number and its name (16 characters of 1x) */
+        char say[24] = "I00 ";
+        say[1] = HEX[sv->instr >> 4 & 15u];
+        say[2] = HEX[sv->instr & 15u];
+        uint32_t len = 4u;
+        for (uint32_t k = 0; s && sv->instr && sv->instr <= GT2_MAX_INSTR && k < 16u; k++) {
+            uint8_t ch = s->instr[sv->instr - 1u][GT2_INS_NAME + k];
+            say[len++] = ch >= 32u && ch <= 126u ? (char)ch : ' ';
+        }
+        say[len] = 0;
+        small(c, 0, TRACKER_VIEW_HINT_ROW, say, grey);
+    } else {
+        small(c, 0, TRACKER_VIEW_HINT_ROW, "SELECT: ROW", hint);
+    }
     /* the position as the song views have always said it: the orderlist entry and the row, hex */
     uint32_t pos, row;
     song_view_position(sv, shown_v, &pos, &row);
@@ -830,7 +890,8 @@ static void compose(screen* s, void* state, grid* g) {
         for (uint32_t i = 0; i < ROWS_LOOK; i++) {
             changed |= (uint32_t)(rows[i] != sv->drawn[HEAD_LOOK + i]) << i;
         }
-        if (!fresh && !head_new && !sv->unbuilt && !(changed & ~(ROWS_BAR_BIT | ROWS_POS_BIT))) {
+        if (!fresh && !head_new && !sv->unbuilt &&
+            !(changed & ~(ROWS_BAR_BIT | ROWS_POS_BIT | ROWS_JAM_BITS))) {
             sv->dirty |= build_step(sv, sv->drawn[HEAD_LOOK + ROWS_BAR]);
         } else {
             /* The window is built a few rows a frame, as the copy takes their cells (below). */

@@ -175,7 +175,10 @@ fn the_rows_show_the_shown_voices_pattern_from_the_cursors_entry() {
     assert_eq!(s.ui.big(0, 0, 2, 2), "V1");
     assert_eq!(attr(&s.ui, 0, 0) & 15, t.voice[0]);
     assert_eq!(s.ui.big(0, 5, 2, 6), "PAT 00");
-    assert_eq!(ch(&s.ui, 22, 0), FONT_SQUARE as u8);
+    assert_eq!(
+        s.ui.big(0, 24, 2, 1),
+        (FONT_SQUARE as u8 as char).to_string()
+    );
     assert_eq!(s.ui.small(0, 26, 4), " 125");
     assert_eq!(s.ui.small(1, 26, 3), "BPM");
     // The other two voices' numbers over their strips.
@@ -222,8 +225,16 @@ fn the_rows_show_the_shown_voices_pattern_from_the_cursors_entry() {
     }
     assert_eq!(attr(&s.ui, 0, top(4) + 1) & 15, t.hot, "the current number");
     assert_eq!(attr(&s.ui, 3, top(4)) & 15, t.hot, "the current note");
-    assert_eq!(attr(&s.ui, 10, top(4)) & 15, t.voice[0], "the instrument");
-    assert_eq!(attr(&s.ui, 15, top(4) + 1) & 15, t.label, "the command");
+    assert_eq!(
+        attr(&s.ui, 10, top(4)) & 15,
+        t.value,
+        "the instrument, white on the bar"
+    );
+    assert_eq!(
+        attr(&s.ui, 15, top(4) + 1) & 15,
+        t.value,
+        "the command, white on the bar"
+    );
     // Other rows: grey numbers, white notes, dark grey rests and blanks.
     assert_eq!(attr(&s.ui, 0, top(8) + 1) & 15, t.label);
     assert_eq!(attr(&s.ui, 3, top(8)) & 15, t.value, "a note");
@@ -299,11 +310,11 @@ fn algorithm_steps_the_shown_voice_and_round() {
     assert_eq!(s.ui.big(top(4), 10, 2, 2), "02");
     assert_eq!(
         attr(&s.ui, 10, top(4)) & 15,
-        t.voice[1],
-        "the instrument in voice 2's colour"
+        t.value,
+        "the instrument on the bar in white: voice 2's colour is 2.05:1 on the bar"
     );
     assert_eq!(s.ui.small(2, 26, 1), "1");
-    assert_eq!(attr(&s.ui, 26, 2) & 15, t.voice[0]);
+    assert_eq!(attr(&s.ui, 26, 2) & 15, t.voice_text[0]);
     assert_eq!(s.ui.small(2, 28, 1), "3");
     assert_eq!(s.ui.small(27, 0, 14).trim_end(), "OL 02 RST00");
     // Voice 1 is a strip now: tall on its row 0, its instrument shows no more.
@@ -355,6 +366,28 @@ fn the_keys_audition_on_the_shown_voice() {
 }
 
 #[test]
+fn a_key_auditioning_shows_its_note_ghosted_on_the_bar_and_names_the_instrument() {
+    let mut s = tracker();
+    let t = th();
+    let hint = |s: &Song| s.ui.small(TRACKER_VIEW_HINT_ROW as usize, 0, 11);
+    assert_eq!(hint(&s), "SELECT: ROW");
+    // A4 held: the bar's note and instrument are the key's, in the label role, and the hint line
+    // names the instrument.
+    s.ui.note_keys(1 << 16, 1 << 16);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.big(top(4), 3, 2, 3), "A-4");
+    assert_eq!(s.ui.big(top(4), 10, 2, 2), "01");
+    assert_eq!(attr(&s.ui, 3, top(4)) & 15, t.label, "ghosted");
+    assert_eq!(attr(&s.ui, 10, top(4)) & 15, t.label, "ghosted");
+    assert!(hint(&s).starts_with("I01 "), "{}", hint(&s));
+    // Let go: the row and the hint come back.
+    s.ui.note_keys(0, 0);
+    settle(&mut s.ui);
+    assert_ne!(s.ui.big(top(4), 3, 2, 3), "A-4");
+    assert_eq!(hint(&s), "SELECT: ROW");
+}
+
+#[test]
 fn an_applied_edit_refreshes_the_stopped_trackers_rows() {
     let mut s = tracker();
     assert_eq!(s.ui.big(top(4), 3, 2, 3), "C-4");
@@ -384,11 +417,15 @@ fn a_muted_voice_is_grey_in_the_header_and_its_strip_and_says_so() {
     s.ui.hold(PANEL_BTN_GLO, false);
     settle(&mut s.ui);
     assert_eq!(attr(&s.ui, 0, 0) & 15, t.dim, "V1 grey");
-    assert_eq!(s.ui.small(0, 18, 3), "MUT");
+    assert_eq!(s.ui.big(0, 18, 2, 3), "MUT");
     assert_eq!(attr(&s.ui, 18, 0) & 15, t.alert);
     // Its rows keep their colours (the header and the strips say the mute).
     assert_eq!(attr(&s.ui, 3, top(4)) & 15, t.hot, "the bar's note");
-    assert_eq!(attr(&s.ui, 10, top(4)) & 15, t.voice[0], "its instrument");
+    assert_eq!(
+        attr(&s.ui, 10, top(4)) & 15,
+        t.value,
+        "its instrument, white on the bar"
+    );
     assert_eq!(attr(&s.ui, 3, top(8)) & 15, t.value, "another row's note");
     assert_eq!(
         s.ui.small(28, 0, 30).trim_end(),
@@ -413,7 +450,7 @@ fn a_muted_voice_is_grey_in_the_header_and_its_strip_and_says_so() {
     s.ui.note_keys(0, 0);
     s.ui.hold(PANEL_BTN_GLO, false);
     settle(&mut s.ui);
-    assert_eq!(s.ui.small(0, 18, 3), "SOL");
+    assert_eq!(s.ui.big(0, 18, 2, 3), "SOL");
     assert_eq!(attr(&s.ui, 18, 0) & 15, t.value);
     assert_eq!(
         attr(&s.ui, 0, 0) & 15,
