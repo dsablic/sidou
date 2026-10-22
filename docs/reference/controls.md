@@ -343,7 +343,7 @@ the views' own edits, and is refused with the same large toasts (`SONG FULL`, `S
 
 | Control | Records |
 |---|---|
-| Note key, in TRACKER | its note and the current instrument on the cursor's voice, in the row the voice's player is on when the key goes down, or the next row if the key is in the second half of it (the nearest row); a note replaces the row's note and keeps its command; a key past the end of the pattern goes to the pattern that plays next |
+| Note key, in TRACKER | its note and the current instrument on the cursor's voice, in the row the voice's player is on when the key goes down, or the next row if the key is in the second half of it (the nearest row); a note replaces the row's note and keeps its command; a key past the end of the pattern goes to the pattern that plays next (the same pattern again while an orderlist repeat replays it) |
 | Step key (the 16 leftmost), in STEP | the selected lane's note and instrument the same way, with the key off after it on the next empty row on a staccato lane; the pad toggles nothing |
 | Other keys, in STEP | their own pitch on the selected lane |
 | K1 / K2 | cutoff (32 per detent) and resonance (1 per detent), starting from LIVE's values, as a lock on the row the knob was turned in (never rounded to the next row); the value popup says `CUTOFF` or `RESONANCE` |

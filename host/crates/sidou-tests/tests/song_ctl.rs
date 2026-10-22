@@ -157,6 +157,10 @@ fn the_frame_clock_is_the_cia_period_exactly() {
 
 /// A short song: channel 1 plays pattern 0 then pattern 1, channels 2 and 3 their own.
 fn simple_song() -> Vec<u8> {
+    simple_spec().encode()
+}
+
+fn simple_spec() -> SngSpec {
     let mut p0 = vec![row(n(3, 0), 1), R, R, R, row(n(3, 4), 0), R, R, R];
     p0.extend(vec![row(n(3, 7), 1), R, R, R, R, R, R, R]);
     let p1 = vec![row(n(4, 0), 1), R, R, R, R, R, R, R];
@@ -170,7 +174,7 @@ fn simple_song() -> Vec<u8> {
         .into_iter()
         .map(|p| (p, [0xff, 0, 0, 0]))
         .collect();
-    s.encode()
+    s
 }
 
 fn song_of(sng: &[u8], o: Option<&gt2_options>) -> Song {
@@ -1083,6 +1087,55 @@ fn the_events_follow_the_player_and_overflow_drops_the_oldest() {
     assert!(
         frames[frames.len() - 1] + 30 >= (t.calls() - 1) & 0xffff,
         "the newest kept"
+    );
+}
+
+/// song_ctl_again (ergonomics review E04): on channel 1's orderlist `D2 00 01`, at each pass's
+/// last row, from its start to its end, it says whether the pattern plays again, as the next
+/// pass then shows.
+#[test]
+fn again_says_whether_a_repeated_pattern_plays_once_more() {
+    let mut spec = simple_spec();
+    spec.orders[0][0].0 = vec![GT2_REPEAT as u8 + 2, 0, 1];
+    let mut song = song_of(&spec.encode(), None);
+    let mut t = Transport::new(&mut song);
+    assert_eq!(unsafe { song_ctl_again(&*t.sc) }, 0, "nothing plays");
+    assert!(t.play(0, 0));
+    let mut last: Option<(u8, bool)> = None; // a pass's last row: its pattern, and again
+    let mut seen = Vec::new();
+    let mut guard = 0;
+    while seen.len() < 6 {
+        t.pass();
+        t.block_silent();
+        let again = unsafe { song_ctl_again(&*t.sc) } & 1 != 0;
+        let events = t.events();
+        if let Some((_, a)) = last {
+            if events.is_empty() {
+                assert_eq!(again, a, "the whole last row says the same, to its end");
+            }
+        }
+        for e in events {
+            if u32::from(e.flags & 0x1f) & GT2_EV_ROW == 0 || (e.flags >> 5) & 3 != 0 {
+                continue;
+            }
+            let rows = unsafe { gt2_pattern_rows(song.ptr(), u32::from(e.pattern)) } - 1;
+            if e.row == 0 {
+                if let Some((p, a)) = last.take() {
+                    assert_eq!(a, e.pattern == p, "pattern {p} then {}", e.pattern);
+                    seen.push((p, a));
+                }
+            }
+            if u32::from(e.row) + 1 == rows {
+                last = Some((e.pattern, again));
+            }
+        }
+        guard += 1;
+        assert!(guard < 100_000);
+    }
+    assert_eq!(
+        seen,
+        [(0, true), (0, true), (0, false), (1, false), (0, true), (0, true)],
+        "D2: three passes of 0, then 1, round"
     );
 }
 

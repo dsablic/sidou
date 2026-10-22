@@ -351,7 +351,8 @@ static uint32_t pattern_entry(const uint8_t* o, uint32_t i, uint32_t n) {
 
 /* Where a key pressed now falls on the cursor's voice: the pattern and row, `ahead` rows of its
  * playing row on (the quantised one, or the row it is in), running into the pattern that plays
- * next, or round, when that is past the end. 0: not placed (no row yet, no orderlist). */
+ * next when that is past the end: the same one again while the player says it plays again (an
+ * orderlist repeat: the status's again), else the next entry's, or round. 0: not placed (no row yet, no orderlist). */
 static int rec_place(song_view* sv, int quantised, uint32_t* pattern, uint32_t* row) {
     const song_transport* t = sv->t;
     if (sv->want == WANT_NONE) {
@@ -378,14 +379,16 @@ static int rec_place(song_view* sv, int quantised, uint32_t* pattern, uint32_t* 
     uint32_t at = sv->st.row[v] + ahead;
     uint32_t pat = o[i], rows = gt2_pattern_rows(s, pat) - 1u;
     if (at >= rows) {
-        uint32_t j = pattern_entry(o, i + 1u, n);
-        if (j >= n) {
-            j = pattern_entry(o, o[n + 1u], n); /* the restart position */
-        }
         at -= rows;
-        if (j < n) {
-            pat = o[j];
-            rows = gt2_pattern_rows(s, pat) - 1u;
+        if (!(sv->st.again >> v & 1u)) {
+            uint32_t j = pattern_entry(o, i + 1u, n);
+            if (j >= n) {
+                j = pattern_entry(o, o[n + 1u], n); /* the restart position */
+            }
+            if (j < n) {
+                pat = o[j];
+                rows = gt2_pattern_rows(s, pat) - 1u;
+            }
         }
         at = rows ? at % rows : 0u;
     }

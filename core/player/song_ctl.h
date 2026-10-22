@@ -348,6 +348,10 @@ int song_ctl_audition_end(song_ctl* sc);
 uint32_t song_ctl_shown_state(const song_ctl* sc);
 /* 1 when a jam sounds now: the song plays, or the audition is on. */
 int song_ctl_jam_ready(const song_ctl* sc);
+/* The channels whose next row is in the pattern of the row they play now, bit ch; 0 when no
+ * song plays. At a pattern's last row (the sequencer has chosen the next pass at its tick 0)
+ * that is the pattern playing again: an orderlist repeat, or the same pattern next. */
+uint32_t song_ctl_again(const song_ctl* sc);
 /* An edit a gt2_song primitive returned: song_ctl owns it from a 1 on (it releases it once
  * applied); with 0 it is still the caller's (pending: send it again, or gt2_edit_cancel). An
  * edit that widens the shape is held while the shape is derived again, a slice a poll, and

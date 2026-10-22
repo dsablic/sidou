@@ -205,6 +205,43 @@ fn a_key_past_the_end_of_the_pattern_goes_to_the_one_that_plays_next_or_round() 
     );
 }
 
+/// Ergonomics review E04 (M2 review 3.2): orderlist `D3 00 01` (pattern 0 repeated), a key in
+/// the second half of pattern 0's last row on a pass the player repeats goes to pattern 0's
+/// row 0, not to pattern 1's; on the last pass it goes to pattern 1.
+#[test]
+fn a_key_past_the_end_of_a_repeated_pattern_goes_to_its_next_pass() {
+    let repeated = || {
+        let mut m = song();
+        let mut spec = SngSpec::new();
+        spec.orders = vec![vec![
+            (vec![GT2_REPEAT as u8 + 3, 0, 1], 0),
+            (vec![2], 0),
+            (vec![3], 0),
+        ]];
+        spec.instr = vec![[0u8; 25], [0u8; 25]];
+        spec.patterns = (0..4).map(|_| (vec![R; 16], [0xff, 0, 0, 0])).collect();
+        m.read(&spec.encode(), 0).unwrap();
+        let mut s = Song::playing(Some(m));
+        open_tracker(&mut s.ui);
+        s.ui.press(PANEL_BTN_REC);
+        at(&mut s, 15, ROW * 3 / 4);
+        s.f.st.order_pos = [1, 0, 0];
+        s
+    };
+    let mut s = repeated();
+    s.f.st.again = 1; // voice 1's pattern plays again
+    s.ui.frame();
+    tap(&mut s, 16);
+    assert_eq!(cell(&s, 0, 0), [KEY16, 1, 0, 0], "the repeat's next pass");
+    assert_eq!(cell(&s, 1, 0), R);
+    let mut s = repeated();
+    s.f.st.again = 0b110; // the other voices' repeats are not voice 1's
+    s.ui.frame();
+    tap(&mut s, 16);
+    assert_eq!(cell(&s, 1, 0), [KEY16, 1, 0, 0], "the last pass: the next entry");
+    assert_eq!(cell(&s, 0, 0), R);
+}
+
 #[test]
 fn the_row_comes_from_the_players_entry_not_the_cursors() {
     let mut s = tracker();

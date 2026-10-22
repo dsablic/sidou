@@ -1053,6 +1053,7 @@ static void st_status(void* ctx, song_status* out) {
     out->applied = sc->applied + sc->idle_edits;
     out->state = (uint8_t)song_ctl_shown_state(sc);
     out->subtune = sc->play_sub;
+    out->again = (uint8_t)song_ctl_again(sc);
     /* REC's clock: the last call, and the samples since it over the call period (read as
      * st_clock does: the interrupt moves them) */
     {

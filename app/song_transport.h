@@ -77,6 +77,10 @@ typedef struct {
     uint16_t row_call[SONG_T_VOICES];
     uint16_t now_call;
     uint8_t now_frac;
+    /* The voices whose next row is in the pattern of their row now, bit v (song_ctl_again):
+     * at a pattern's last row, whether it plays again (an orderlist repeat), so REC places a
+     * key past that row in the pattern's next pass, not the next entry's. */
+    uint8_t again;
     uint32_t applied; /* command acknowledgements plus idle edits: pattern data may have changed */
 } song_status;
 

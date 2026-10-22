@@ -711,6 +711,26 @@ int song_ctl_jam_ready(const song_ctl* sc) {
     return sc->state == SONG_PLAYING || sc->auditioning;
 }
 
+uint32_t song_ctl_again(const song_ctl* sc) {
+    if (sc->state != SONG_PLAYING)
+        return 0u;
+    const volatile gt2_player* p = &sc->player;
+    uint32_t mask = 0u;
+    for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++) {
+        uint8_t seq, now, next;
+        do { /* the row's pattern and the player's, from one call (row_seq counts the rows) */
+            seq = sc->row_seq[ch];
+            COMPILER_FENCE();
+            now = sc->row_pat[ch];
+            next = p->chn[ch].pattnum;
+            COMPILER_FENCE();
+        } while (seq != sc->row_seq[ch]);
+        if (now != 0xffu && now == next)
+            mask |= 1u << ch;
+    }
+    return mask;
+}
+
 int song_ctl_audition(song_ctl* sc) {
     if (sc->state == SONG_PLAYING || sc->state == SONG_LOADING || sc->auditioning)
         return 1;
