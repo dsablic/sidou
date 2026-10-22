@@ -129,6 +129,27 @@ the 6502 study below.
      path as USB and TRS. Wi-Fi stays out (never certified).
    - **Later, if wanted:** the owners' permissions could still make it a published feature;
      not pursued now.
+## From the other SID firmwares (2026-10-23, candidates)
+
+Checked against SID-1, Melodee, Mini-Tone and FM-1 SID's own READMEs; each is SIDOU's own design,
+not a copy:
+
+- **Chord arpeggios on LIVE** (Melodee's held-chord chip arpeggios): hold a chord, one voice steps
+  its notes at frame rate, speed and order on the panel. The C64's signature sound, playable. v0.3.x.
+- **A SID drum kit and digi drums** (Melodee's SID KIT and SID DIGI, SID-1's sample kit): drums on
+  the chip's own voices for STEP's lanes, and short samples played through the 6581's volume
+  register as C64 tunes do. v0.3.x or with M3.
+- **A master soft limiter** (Mini-Tone): several effects at full feedback can still clip the
+  output; a limiter after MASTER makes "no setting clips" true everywhere. Small; v0.3.0 if cheap.
+- **USB audio out** (Melodee, Felucca's `FELUCCA_UAC`; TODO.md): moved up, right after v0.3.0.
+- **Instruments from a `.sid` file** (SID-1's web page): with M3's 6502, run a tune and pull out its
+  instruments as GoatTracker instruments. With or after M3.
+- **A song as MIDI** (SID-1): a `.sng` exported as a `.mid`, a channel a voice. A Live Link page.
+- **A web editor** for instruments and settings (SID-1, Mini-Tone): Live Link's second page.
+- **Layer mode** (SID-1): patches stacked on one note, beside the live, multitimbral, whole-chip and
+  omni modes. Later.
+- Not taken: 2x oversampling (no CPU to spare), an idle LED glow (cosmetic; the ergonomics list).
+
 ## Alongside
 
 - **Reports for other projects** are collected in `docs/upstream-reports.md` (FM-1 SID's
