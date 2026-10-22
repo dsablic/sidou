@@ -621,7 +621,7 @@ static int song_loaded(void* ctx) {
     for (uint32_t f = 0; f < 4u; f++) {
         song_char_on[f] = -1;
     }
-    ui_song_loaded();
+    ui_song_loaded(song_io_returning(&songs));
     if (songs.restoring) {
         /* Runtime was untouched or restored already; reapplying KEYS releases held notes. */
         ui_song_rows(midi_routed()->setup.rows_per_beat);

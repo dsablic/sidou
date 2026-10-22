@@ -35,7 +35,8 @@ void ui_set_panel(panel* p);
 /* The song's player for the song views (app/song_transport.h, main.c's binding over
  * song_ctl). */
 void ui_set_song(const song_transport* t);
-void ui_song_loaded(void);
+/* A song read; back: song_io_returning's (the song views keep their places). */
+void ui_song_loaded(int back);
 void ui_set_song_io(song_io* io);
 void ui_song_rows(uint8_t rows_per_beat);
 settings* ui_settings(void);

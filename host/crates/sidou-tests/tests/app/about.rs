@@ -122,6 +122,56 @@ fn clean_about_requests_its_tune_once_and_close_requests_restoration() {
     assert_eq!(io.about_play, 0);
 }
 
+/// Ergonomics review E02 (M2 review 5.5): the song views opened over ABOUT edited ABOUT's tune,
+/// and its close lost the edits. While ABOUT's tune is the song (until the close has read the
+/// user's song back), SEQ and the menu's TRACKER are refused with a toast.
+#[test]
+fn the_song_views_do_not_open_while_abouts_tune_is_the_song() {
+    unsafe extern "C" fn builtin(_: *mut std::ffi::c_void, _: u32, _: *mut u8, _: u32) -> u32 {
+        0
+    }
+    let mut ui = Ui::without_cards();
+    let mut model = Box::<gt2_song>::default();
+    let mut ctl = Box::new(song_ctl {
+        song: &mut *model,
+        ..Default::default()
+    });
+    let mut io = Box::new(song_io {
+        ctl: &mut *ctl,
+        hooks: song_io_hooks {
+            builtin: Some(builtin),
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    unsafe { views_song_io(&mut *ui.v, &mut *io) };
+    open_about(&mut ui);
+    assert_eq!(io.about, 1);
+    ui.press(PANEL_BTN_SEQ);
+    ui.settle();
+    assert_eq!(ui.top(), "ABOUT", "SEQ refused");
+    assert_eq!(ui.toast().as_deref(), Some("LEAVE ABOUT FIRST"));
+    // Closed, the user's song is not back yet: the menu's TRACKER and SEQ wait for it.
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    assert_eq!(ui.top(), "MENU");
+    assert_eq!(io.about, 1, "the restore runs");
+    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_TRACKER as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.settle();
+    assert_eq!(ui.top(), "MENU", "TRACKER refused");
+    assert_eq!(ui.toast().as_deref(), Some("LOADING"));
+    ui.press(PANEL_BTN_SEQ);
+    ui.settle();
+    assert_eq!(ui.top(), "MENU", "SEQ refused");
+    // The user's song back: they open.
+    io.about = 0;
+    ui.press(PANEL_BTN_SEQ);
+    ui.settle();
+    assert_eq!(ui.top(), "STEP");
+}
+
 #[test]
 fn the_first_page_names_sidou_and_its_version_and_then_every_credits_page_shows() {
     let mut ui = Ui::new();

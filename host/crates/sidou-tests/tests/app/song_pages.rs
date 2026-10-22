@@ -892,6 +892,45 @@ fn load_clears_page_requests_and_cursors_but_preserves_the_displayed_page() {
     assert_eq!(h.ui.big(0, 0, 2, 4), "WAVE");
 }
 
+/// Ergonomics review E27 (M2 review 5.10): ABOUT's tune and the user's song coming back
+/// (views_song_back) leave the song views' places and choices; what read the song starts again.
+#[test]
+fn a_returning_song_keeps_the_cursors_lanes_and_instrument() {
+    use crate::song_view::{open_tracker, settle, Song};
+    let mut h = Song::playing(Some(Model::device()));
+    open_tracker(&mut h.ui);
+    let sv = &mut h.ui.v.song;
+    (sv.voice, sv.instr, sv.order_pos, sv.row, sv.subtune) = (2, 5, 1, 17, 0);
+    sv.rec_n = 1;
+    sv.built = 1;
+    let st = &mut h.ui.v.step;
+    (st.page, st.gate, st.note, st.instr) = (2, 0b101, [40, 41, 42], [3, 4, 6]);
+    st.held = 3;
+    let pg = &mut h.ui.v.pages;
+    (pg.order_cursor, pg.subtune, pg.instr_cursor, pg.table, pg.table_row) = (3, 0, 4, 1, 9);
+    pg.status = SONG_PAGES_INVALID as u8;
+    unsafe { views_song_back(&mut *h.ui.v) };
+    let sv = &h.ui.v.song;
+    assert_eq!((sv.voice, sv.instr, sv.order_pos, sv.row, sv.subtune), (2, 5, 1, 17, 0));
+    assert_eq!((sv.rec_n, sv.built), (0, 0), "REC's queue and the canvas start again");
+    let st = &h.ui.v.step;
+    assert_eq!((st.page, st.gate, st.note, st.instr), (2, 0b101, [40, 41, 42], [3, 4, 6]));
+    assert_eq!(st.held, STEP_VIEW_NONE as u8);
+    let pg = &h.ui.v.pages;
+    assert_eq!(
+        (pg.order_cursor, pg.subtune, pg.instr_cursor, pg.table, pg.table_row),
+        (3, 0, 4, 1, 9)
+    );
+    assert_eq!(pg.status, SONG_PAGES_READY as u8);
+    assert_eq!(h.ui.top(), "TRACKER");
+    settle(&mut h.ui);
+    // A load proper resets them.
+    unsafe { views_song_loaded(&mut *h.ui.v) };
+    let sv = &h.ui.v.song;
+    assert_eq!((sv.voice, sv.instr, sv.order_pos, sv.row), (0, 1, 0, 0));
+    assert_eq!(h.ui.v.step.note, [36; 3]);
+}
+
 #[test]
 fn integrated_page_popups_use_page_values_and_unused_knobs_keep_live_behavior() {
     use crate::song_view::{open_tracker, settle, Song};

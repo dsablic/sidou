@@ -480,12 +480,13 @@ working.
 - **Where:** [docs/reviews/2026-10-22-m2-review.md](reviews/2026-10-22-m2-review.md).
 - **In v0.2.0:** the five blockers (2.1, 3.1, 5.1, 5.2, 5.3 with 5.6), storage and SysEx
   1.1, 1.2, 1.3 and 4.1, and the licence labels (section 7).
-- **Before v0.3.0, every other finding** (v0.3.0 ships with no known bug): 5.4 and 5.5
-  (REC into a pattern TRACKER doesn't show; song views over ABOUT edit ABOUT's tune), 6.1
+- **Before v0.3.0, every other finding** (v0.3.0 ships with no known bug): 5.4
+  (REC into a pattern TRACKER doesn't show), 6.1
   (`FREE_RAM_MIN` counts M2a's budget twice) and 6.2 (the flash ceiling), the stale-CMake
   check (section 8), and the 31 minor ones, batched into the ergonomics/UX pass.
 - **Fixed after v0.2.0 (the ergonomics review's E items, ergo-logic):** 1.5 (E01: SAVE, not a
-  second turn, confirms STORE's format; NEWER for a newer SIDOU's store).
+  second turn, confirms STORE's format; NEWER for a newer SIDOU's store), 5.5 (E02: no song
+  views over ABOUT's tune), 5.10 (E27: ABOUT keeps the song views' places).
 - **From the v0.2.0 fixes:** a sector the store retires for the session (review 1.2) shows
   only in `store_stats` and a lower free figure in MENU; STATUS should say it. A background
   settings save that fails is still not detected (explicit saves report and retry).

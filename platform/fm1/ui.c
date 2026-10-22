@@ -93,8 +93,12 @@ void ui_set_song(const song_transport* t) {
     views_set_song(&ui, t);
 }
 
-void ui_song_loaded(void) {
-    views_song_loaded(&ui);
+void ui_song_loaded(int back) {
+    if (back) {
+        views_song_back(&ui);
+    } else {
+        views_song_loaded(&ui);
+    }
 }
 
 void ui_set_song_io(song_io* io) {

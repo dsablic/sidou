@@ -247,6 +247,10 @@ extern const view views_song_menu_view;
 /* LIVE, the root view, on g, showing l and the audio's tap sc (NULL: none). */
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version);
 void views_song_loaded(views* v);
+/* As views_song_loaded, for a read song_io_returning calls returning (About's tune and the song
+ * it stood in for): the song views keep their cursors, the instrument, the subtune, STEP's lanes
+ * and page and the pages' cursors; what read the song in between starts again. */
+void views_song_back(views* v);
 /* Whether MIDI's changes of the knobs' parameters (cutoff, resonance, pulse width, volume) open
  * the value popup: 0, they do not (a controller sweep or a song would flood the screen with it).
  * The one switch: 1 here, or views_popup_midi at run time, turns the watcher on; nothing else

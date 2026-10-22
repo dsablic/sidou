@@ -192,6 +192,13 @@ int song_io_about(song_io* io, int opening) {
     return 1;
 }
 
+int song_io_returning(const song_io* io) {
+    if (io->restoring || io->action == LOAD_RESTORE) {
+        return !io->builtin; /* the file, not the built-in standing in for a lost one */
+    }
+    return io->action == LOAD_ABOUT;
+}
+
 static uint32_t read_file(void* ctx, uint32_t off, uint8_t* p, uint32_t n) {
     song_io* io = ctx;
     int got = store_file_read(io->st, &io->file, off, p, n);

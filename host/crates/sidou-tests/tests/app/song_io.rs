@@ -545,6 +545,65 @@ fn a_failed_about_restore_releases_ownership_and_marks_the_remaining_tune_unsave
     assert_eq!(unsafe { song_io_new(&mut *r.io, 1) }, 1);
 }
 
+/// What song_io_returning says to each read's loaded hook, in order.
+struct Returning {
+    io: *const song_io,
+    seen: Vec<i32>,
+    builtin: Vec<u8>,
+}
+
+unsafe extern "C" fn returning_loaded(ctx: *mut std::ffi::c_void) -> i32 {
+    let r = unsafe { &mut *ctx.cast::<Returning>() };
+    r.seen.push(unsafe { song_io_returning(r.io) });
+    1
+}
+
+unsafe extern "C" fn returning_builtin(
+    ctx: *mut std::ffi::c_void,
+    off: u32,
+    buf: *mut u8,
+    n: u32,
+) -> u32 {
+    let r = unsafe { &mut *ctx.cast::<Returning>() };
+    unsafe { builtin_read((&mut r.builtin as *mut Vec<u8>).cast(), off, buf, n) }
+}
+
+/// Ergonomics review E27 (M2 review 5.10): ABOUT's tune and the song coming back at its close
+/// are returning reads (the song views keep their places); a load, NEW and a lost file's
+/// built-in stand-in are not.
+#[test]
+fn abouts_tune_and_its_restore_are_returning_reads_and_a_load_is_not() {
+    let mut r = Rig::new();
+    r.save(c"NIGHT");
+    let mut ret = Box::new(Returning {
+        io: &*r.io,
+        seen: Vec::new(),
+        builtin: sidou_tests::song::SngSpec::new().encode(),
+    });
+    r.io.hooks.ctx = (&mut *ret as *mut Returning).cast();
+    r.io.hooks.loaded = Some(returning_loaded);
+    r.io.hooks.builtin = Some(returning_builtin);
+    assert_eq!(unsafe { song_io_load(&mut *r.io, c"NIGHT".as_ptr(), 1) }, 1);
+    r.finish();
+    assert_eq!(unsafe { song_io_about(&mut *r.io, 1) }, 1);
+    r.finish();
+    assert_eq!(unsafe { song_io_about(&mut *r.io, 0) }, 1);
+    r.finish();
+    assert_eq!(r.io.about, 0);
+    assert_eq!(ret.seen, [0, 1, 1], "load, ABOUT's tune, the song back");
+    assert_eq!(unsafe { song_io_new(&mut *r.io, 1) }, 1);
+    r.finish();
+    // ABOUT with the file gone meanwhile: its close falls back to the built-in, a new song.
+    r.save(c"NIGHT");
+    assert_eq!(unsafe { song_io_about(&mut *r.io, 1) }, 1);
+    r.finish();
+    assert_eq!(r.store.file_delete("NIGHT"), STORE_OK);
+    r.store.settle();
+    assert_eq!(unsafe { song_io_about(&mut *r.io, 0) }, 1);
+    r.finish();
+    assert_eq!(ret.seen[3..], [0, 1, 0], "NEW, ABOUT's tune, the stand-in");
+}
+
 #[test]
 fn a_corrupt_load_reloads_the_previous_file_and_new_uses_the_three_instrument_template() {
     let mut r = Rig::new();

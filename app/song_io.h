@@ -97,6 +97,10 @@ int song_io_save(song_io* io, const char* name, uint32_t now_ms);
 int song_io_delete(song_io* io, const char* name, int confirmed);
 /* 1 if About's music starts; 0 if it must stay silent. Closing always restores stopped. */
 int song_io_about(song_io* io, int opening);
+/* From the loaded hook: 1 when this read is About's tune or the song it stood in for coming
+ * back from its file (About's close, or a failed load's rollback), so the song views keep their
+ * places; 0 for a song that replaces the player's (a load, NEW, a fallback to the built-in). */
+int song_io_returning(const song_io* io);
 /* One bounded slice, only on passes without chip preparation or song analysis. */
 void song_io_poll(song_io* io, uint32_t now_ms);
 int song_io_take_message(song_io* io, char out[32]);

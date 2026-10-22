@@ -533,9 +533,24 @@ static void theme_turn(void* ctx, int32_t steps) {
     }
 }
 
+/* While ABOUT's tune is the player's song (song_io about, until its close has read the user's
+ * song back), the song views would edit ABOUT's tune and its close would lose the edits: they
+ * do not open, and a toast says why. 1: refused. */
+static int song_refused(views* v) {
+    if (!v->song.io || !v->song.io->about) {
+        return 0;
+    }
+    screen_toast(&v->s, screen_top(&v->s) == &about_view ? "LEAVE ABOUT FIRST" : "LOADING",
+                 SCREEN_TOAST_MS);
+    return 1;
+}
+
 static void tracker_open(void* ctx, int32_t steps) {
     views* v = ctx;
     (void)steps;
+    if (song_refused(v)) {
+        return;
+    }
     screen_push(&v->s, &tracker_view_view, &v->song, SCREEN_WIPE_DOWN);
 }
 
@@ -1470,7 +1485,7 @@ static void remember(views* v) {
 static void song_step(views* v) {
     const view* top = screen_top(&v->s);
     const view* next = song_view_next(top);
-    if (!next || next == top) {
+    if (!next || next == top || song_refused(v)) {
         return;
     }
     if (song_view_is(top)) {
@@ -1608,6 +1623,35 @@ void views_song_loaded(views* v) {
     v->pages.page = page;
     step_view_init(&v->step, &v->song);
     v->songs.built = 0;
+}
+
+void views_song_back(views* v) {
+    song_view* sv = &v->song;
+    uint8_t place[5] = {sv->voice, sv->instr, sv->order_pos, sv->row, sv->subtune};
+    step_view* st = &v->step;
+    uint8_t lanes[2 + 2u * SONG_T_VOICES];
+    lanes[0] = st->page;
+    lanes[1] = st->gate;
+    memcpy(lanes + 2, st->note, sizeof st->note);
+    memcpy(lanes + 2 + SONG_T_VOICES, st->instr, sizeof st->instr);
+    song_pages* pg = &v->pages;
+    uint16_t order_cursor = pg->order_cursor;
+    uint8_t cursors[4] = {pg->subtune, pg->instr_cursor, pg->table, pg->table_row};
+    views_song_loaded(v);
+    sv->voice = place[0];
+    sv->instr = place[1];
+    sv->order_pos = place[2];
+    sv->row = place[3];
+    sv->subtune = place[4];
+    st->page = lanes[0];
+    st->gate = lanes[1];
+    memcpy(st->note, lanes + 2, sizeof st->note);
+    memcpy(st->instr, lanes + 2 + SONG_T_VOICES, sizeof st->instr);
+    pg->order_cursor = order_cursor;
+    pg->subtune = cursors[0];
+    pg->instr_cursor = cursors[1];
+    pg->table = cursors[2];
+    pg->table_row = cursors[3];
 }
 
 void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
