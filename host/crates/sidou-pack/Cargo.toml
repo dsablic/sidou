@@ -20,4 +20,4 @@ sha2 = "0.10"
 cc = "1"
 
 [dev-dependencies]
-fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "7ca5b96c9e828dea5176fc60f0b945abbf442895" }
+fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "db8d472e62f35d18e392e3abc66474daed65ffe9" }

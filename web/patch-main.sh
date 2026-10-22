@@ -4,12 +4,13 @@
 # The changes SIDOU's demo makes to fm1-emu's web/main.js (copied at the pinned revision by
 # tools/web-demo). Each must apply exactly once, or the build stops: a new upstream revision
 # gets a look.
-#   1. The status line names the host a package comes from with new URL(url), which throws for
-#      a package served next to the page (sidou.fwsc): resolve it against the page.
-#   2. The default clock is 240 MHz, not 100: the emulator gate measures SIDOU's audio budget at
+#   (A first edit resolved the "downloading from <host>" status line's new URL(url) against the
+#   page, as it threw for sidou.fwsc served next to it; since 1adbd85 upstream's boot no longer
+#   names the host, so it went with the bump to db8d472e.)
+#   1. The default clock is 240 MHz, not 100: the emulator gate measures SIDOU's audio budget at
 #      240 MHz (host/crates/emu-gate), and fewer instructions a second can starve its audio in
 #      emulated time. ?mhz= and the Clock menu still choose another.
-#   3. Start is enabled only once its handler is attached: main.js awaits the catalog and the
+#   2. Start is enabled only once its handler is attached: main.js awaits the catalog and the
 #      wasm first, and a click before then did nothing (index.html starts it disabled).
 #   web/patch-main.sh build/web/main.js
 set -eu
@@ -24,6 +25,5 @@ edit() {
     rm -f "$f.orig"
     grep -qF "$2" "$f"
 }
-edit 'new URL(f.package || f.installer).host' 'new URL(f.package || f.installer, location.href).host'
 edit 'stored("fm1.mhz") || 100)' 'stored("fm1.mhz") || 240)'
 edit 'startBtn.addEventListener("click", async () => {' 'startBtn.disabled = false; startBtn.addEventListener("click", async () => {'

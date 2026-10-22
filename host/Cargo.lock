@@ -316,21 +316,21 @@ dependencies = [
 
 [[package]]
 name = "fm1-core"
-version = "0.0.0"
-source = "git+https://github.com/joakimeriksson/fm1-emu?rev=7ca5b96c9e828dea5176fc60f0b945abbf442895#7ca5b96c9e828dea5176fc60f0b945abbf442895"
+version = "0.2.0"
+source = "git+https://github.com/joakimeriksson/fm1-emu?rev=db8d472e62f35d18e392e3abc66474daed65ffe9#db8d472e62f35d18e392e3abc66474daed65ffe9"
 dependencies = [
  "fm1-isa",
 ]
 
 [[package]]
 name = "fm1-isa"
-version = "0.0.0"
-source = "git+https://github.com/joakimeriksson/fm1-emu?rev=7ca5b96c9e828dea5176fc60f0b945abbf442895#7ca5b96c9e828dea5176fc60f0b945abbf442895"
+version = "0.2.0"
+source = "git+https://github.com/joakimeriksson/fm1-emu?rev=db8d472e62f35d18e392e3abc66474daed65ffe9#db8d472e62f35d18e392e3abc66474daed65ffe9"
 
 [[package]]
 name = "fm1-soc"
-version = "0.0.0"
-source = "git+https://github.com/joakimeriksson/fm1-emu?rev=7ca5b96c9e828dea5176fc60f0b945abbf442895#7ca5b96c9e828dea5176fc60f0b945abbf442895"
+version = "0.2.0"
+source = "git+https://github.com/joakimeriksson/fm1-emu?rev=db8d472e62f35d18e392e3abc66474daed65ffe9#db8d472e62f35d18e392e3abc66474daed65ffe9"
 dependencies = [
  "fm1-core",
 ]
@@ -676,16 +676,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "sidou-sysex"
-version = "0.0.0"
-
-[[package]]
 name = "sidou-sys"
 version = "0.0.0"
 dependencies = [
  "bindgen",
  "cc",
 ]
+
+[[package]]
+name = "sidou-sysex"
+version = "0.0.0"
 
 [[package]]
 name = "sidou-tablegen"
@@ -704,8 +704,8 @@ dependencies = [
  "png",
  "residfp-sys",
  "sidou-pack",
- "sidou-sysex",
  "sidou-sys",
+ "sidou-sysex",
  "sidou-tablegen",
 ]
 

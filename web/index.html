@@ -1,11 +1,12 @@
 <!doctype html>
 <!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-<!-- SIDOU's page around fm1-emu's web frontend (MIT, Joakim Eriksson): main.js, worklet.js, jit.js,
+<!-- SIDOU's page around fm1-emu's web frontend (MIT, Joakim Eriksson): main.js, persistence.js, worklet.js, jit.js,
      fwsc.js and fm1_web.wasm are upstream's, copied at the pinned revision by tools/web-demo.
      main.js finds its elements by id (title, status, fw, mhz, midi, midich, midiact, midiin, open,
      bank, bankname, about, panel, start, fwlist, fullpage, perfwarn and its -text, -fix, -copy and
-     -close) and observes <header> and .bar: keep them all. -->
+     -close, save-status, save-now, export-save, import-save, browse-saves, saved-versions,
+     open-saved-version, update-firmware, reset-save) and observes <header> and .bar: keep them all. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -82,6 +83,16 @@
                      border-radius: 6px; padding: 5px 10px; cursor: pointer; }
   #perfwarn button.primary { background: var(--accent); border-color: var(--accent); color: #0f0c22; font-weight: 600; }
   #perfwarn button[hidden] { display: none; }
+  /* fm1-emu's saves (main.js, persistence.js): the flash kept in this browser, per package */
+  .saves { color: var(--dim); font-size: 13px; }
+  .saves button, .saves summary { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--line);
+                                  border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  .saves details { display: contents; }
+  .saves details[open] summary { border-color: var(--accent); }
+  .saves summary { list-style: none; }
+  .saves summary::-webkit-details-marker { display: none; }
+  #save-status { flex: 1 1 260px; min-width: 0; }
+  #save-status[data-error="true"] { color: var(--yellow); }
   @media (max-width: 600px) { .brand img { width: 160px; } }
 </style>
 </head>
@@ -105,6 +116,20 @@
     <label class="file" hidden>DX7 bank… <input type="file" id="bank"></label>
     <span id="bankname" hidden></span>
     <span id="about"></span>
+  </div>
+  <div class="bar saves" role="group" aria-label="Your save">
+    <span id="save-status" role="status" aria-live="polite">Start to restore your saved settings and songs</span>
+    <button type="button" id="save-now">Save now</button>
+    <button type="button" id="export-save">Export…</button>
+    <label class="file">Import… <input type="file" id="import-save" accept=".json,.fm1save"></label>
+    <details>
+      <summary>More…</summary>
+      <button type="button" id="browse-saves">Saved builds</button>
+      <select id="saved-versions" aria-label="Saved builds"></select>
+      <button type="button" id="open-saved-version">Open saved build</button>
+      <button type="button" id="update-firmware">Check for a newer build</button>
+      <button type="button" id="reset-save">Reset saved flash…</button>
+    </details>
   </div>
   <a id="fullpage" href="./" hidden>full page</a>
   <div id="perfwarn" role="alert" hidden>
@@ -151,9 +176,11 @@
         <b>PRESS ENV</b> (press <kbd>3</kbd>, or click the ENV button) and <b>HOLD HOME FOR HELP</b>
         (hold <kbd>7</kbd>, or hold the mouse on HOME, for a moment: a help card opens, and any control
         closes it). Each goes when you do what it asks, or after 8 seconds. On a real FM-1 the tour runs
-        once, after an install, because the unit remembers it in its flash. This page's emulated FM-1
-        starts with empty flash on every visit, so it shows the tour (and the full boot) each time, and
-        nothing you save here survives a reload.</p>
+        once, after an install, because the unit remembers it in its flash. This page keeps the emulated
+        flash in your browser, one save per SIDOU build: the tour and the full boot come once per build,
+        and what you save (settings, songs) is there on your next visit. <b>Export…</b> writes it to a
+        file and <b>Import…</b> brings it back; <b>More… → Reset saved flash</b> starts over. Clearing
+        the site's data in the browser removes it.</p>
       <table aria-label="Keyboard and panel controls">
         <tr><td><kbd>A</kbd> <kbd>W</kbd> <kbd>S</kbd> … <kbd>;</kbd> <kbd>'</kbd></td><td>the note keys, C4 to F5 (a piano row: <kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd> <kbd>O</kbd> <kbd>P</kbd> are the sharps)</td></tr>
         <tr><td><kbd>Z</kbd> <kbd>X</kbd></td><td>OCT− / OCT+</td></tr>
@@ -185,8 +212,8 @@
       <ul>
         <li><b>No USB.</b> fm1-emu has no USB device, so no USB-MIDI in or out: MIDI from this page reaches
           SIDOU through the emulated TRS MIDI IN jack, and the panel's MIDI out goes nowhere.</li>
-        <li><b>No watchdog or P33.</b> The power and reset block is not modelled, so a hang is not reset as
-          it would be on the chip.</li>
+        <li><b>No watchdog.</b> The power and reset block's registers (P33) keep what SIDOU writes, but
+          nothing acts on them, so a hang is not reset as it would be on the chip.</li>
         <li><b>Instructions, not cycles.</b> The emulator counts instructions; the clock setting is
           instructions per second. A real FM-1's timing can differ. The page starts at 240 MHz, the clock
           SIDOU's audio budget is checked at. If the status line's count of short audio quanta keeps

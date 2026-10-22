@@ -4,7 +4,9 @@
 // SIDOU to boot past its title card, check the LCD shows something and nothing went to the
 // console as an error, then hold a note key and check the screen changes and the audio thread
 // makes sound, and press PLAY (Space, button 12) and check the song sounds and PLAY again
-// stops it. Exits non-zero on any failure. Run by web/check.sh (tools/web-demo --check).
+// stops it. Then save, reload and Start again, and check the boot got the saved flash back
+// (fm1-emu's persistence.js: the sectors SIDOU wrote, kept in IndexedDB per package). Exits
+// non-zero on any failure. Run by web/check.sh (tools/web-demo --check).
 //   node check.mjs http://127.0.0.1:8642/ [screenshot.png]
 import { chromium } from "playwright";
 
@@ -16,11 +18,17 @@ const fail = (msg) => { failures.push(msg); console.error(`FAIL: ${msg}`); };
 // Watches the page's AudioWorkletNode (main.js creates one on Start): every frame message the
 // audio thread posts, summarised, and an analyser on its output.
 function watch() {
-  const w = (window.__sidou = { frames: 0, title: null, last: null, errors: [], analyser: null });
+  const w = (window.__sidou = { frames: 0, title: null, last: null, errors: [], analyser: null, bootSectors: null });
   const Base = window.AudioWorkletNode;
   window.AudioWorkletNode = class extends Base {
     constructor(ctx, name, opts) {
       super(ctx, name, opts);
+      // the flash sectors main.js hands the audio thread with a boot (packed: 4 + 4096 bytes each)
+      const post = this.port.postMessage.bind(this.port);
+      this.port.postMessage = (m, ...rest) => {
+        if (m?.type === "boot") w.bootSectors = m.sectors ? m.sectors.byteLength / 4100 : 0;
+        return post(m, ...rest);
+      };
       w.analyser = ctx.createAnalyser();
       w.analyser.fftSize = 2048;
       this.connect(w.analyser);
@@ -72,14 +80,19 @@ try {
   await page.waitForFunction(() => !/loading/.test(document.getElementById("build").textContent));
   console.log(`page: ${await page.title()} · ${await build.textContent()}`);
 
-  await page.locator("#start").click();
   const status = () => page.locator("#status").textContent();
   // past the title card: 3 s of emulated time (the card is 1.2 s, then the status screen wipes in)
-  try {
-    await page.waitForFunction(() => window.__sidou.last?.ms > 3000 || window.__sidou.errors.length, null, { timeout: 60_000 });
-  } catch {
-    fail(`no 3 s of emulated time within 60 s (status: ${await status()})`);
-  }
+  const start = async () => {
+    await page.locator("#start").click();
+    try {
+      await page.waitForFunction(() => window.__sidou.last?.ms > 3000 || window.__sidou.errors.length, null, { timeout: 60_000 });
+    } catch {
+      fail(`no 3 s of emulated time within 60 s (status: ${await status()})`);
+    }
+  };
+  await start();
+  const first = await page.evaluate(() => window.__sidou.bootSectors);
+  if (first !== 0) fail(`a fresh browser booted with ${first} saved flash sectors`);
   const s = await page.evaluate(() => window.__sidou);
   if (s.errors.length) fail(`audio thread: ${s.errors.join("; ")}`);
   if (s.last) {
@@ -138,6 +151,25 @@ try {
     await page.keyboard.up("h");
     console.log(`screenshot: ${shot}`);
   }
+
+  // the save: SIDOU stored its settings 5 s after the first boot; Save now keeps the flash in
+  // this browser, and the next visit boots with it
+  const saveStatus = () => page.locator("#save-status").textContent();
+  await page.locator("#save-now").click();
+  try {
+    await page.waitForFunction(() => document.getElementById("save-status").textContent === "Saved in this browser",
+      null, { timeout: 20_000 });
+  } catch {
+    fail(`Save now did not save (save status: ${await saveStatus()})`);
+  }
+  await page.reload();
+  await page.waitForFunction(() => !/loading/.test(document.getElementById("build").textContent));
+  await start();
+  const kept = await page.evaluate(() => window.__sidou.bootSectors);
+  console.log(`reload: booted with ${kept} saved flash sectors · save: ${await saveStatus()}`);
+  if (!(kept > 0)) fail("the reload booted without the saved flash");
+  const again = await page.evaluate(() => window.__sidou);
+  if (again.last?.halted) fail("the emulated CPU halted after the reload");
 } finally {
   await browser.close();
 }

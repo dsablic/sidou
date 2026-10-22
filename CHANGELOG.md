@@ -8,6 +8,12 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **The emulator is fm1-emu `db8d472e`** (0.2.0 and later; was `7ca5b96c`), for the emulator
+  gate and the browser demo. Every count the gate measures is the same at both. The browser
+  demo now keeps its flash in the browser, one save per build, with Save now, Export…, Import…
+  and a reset, so the first-run tour and anything saved there survive a reload.
+
 ## [0.2.0] - 2026-10-22
 
 ### Added
