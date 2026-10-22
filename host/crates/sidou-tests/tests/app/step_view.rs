@@ -197,23 +197,26 @@ fn the_layout_is_the_header_the_pages_the_lanes_the_held_frame_and_the_pads() {
     assert_eq!(s.ui.small(20, 17, 7), "K4 WAVE");
     assert_eq!(
         attr(&s.ui, 5, 18) & 15,
-        t.dim,
-        "greyed until a step is held"
+        t.hint,
+        "the legend in the hint role until a step is held (dim is 2.16:1)"
     );
-    assert_eq!(attr(&s.ui, 20, 18) & 15, t.dim);
+    assert_eq!(attr(&s.ui, 20, 18) & 15, t.hint);
     assert_eq!(s.ui.small(22, 2, 27), " EDIT: AGE DAC THUMP BLEED ");
     // The pads: two rows of eight; a note's pad in the lane's colour.
-    assert_eq!(s.ui.small(24, 3, 2), " 1");
-    assert_eq!(s.ui.small(24, 6, 2), " 2");
-    assert_eq!(s.ui.small(27, 3, 2), " 9");
-    assert_eq!(s.ui.small(27, 24, 2), "16");
+    // Each pad's number at 2x: the pad is two cells wide, so its last digit (9 to 16 are the
+    // second row: 9, 0, 1 ... 6).
+    assert_eq!(s.ui.big(24, 3, 2, 1), "1");
+    assert_eq!(s.ui.big(24, 6, 2, 1), "2");
+    assert_eq!(s.ui.big(27, 3, 2, 1), "9");
+    assert_eq!(s.ui.big(27, 6, 2, 1), "0");
+    assert_eq!(s.ui.big(27, 24, 2, 1), "6");
     assert_eq!(
         attr(&s.ui, 3, 24),
         (u32::from(t.voice[0]) << 4 | u32::from(t.bg)) as u8
     );
     assert_eq!(
         attr(&s.ui, 6, 24),
-        (u32::from(t.cursor) << 4 | u32::from(t.label)) as u8
+        (u32::from(t.cursor) << 4 | u32::from(t.value)) as u8
     );
     assert_eq!(s.ui.small(29, 0, 28), "HOLD KEY+KNOB LOCK  ENC PAGE");
 }

@@ -308,7 +308,7 @@ static void build_head(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t 
         }
     }
     small(c, 26, 0, t, THEME_ATTR(th, label));
-    small(c, 26, 1, "BPM", THEME_ATTR(th, dim));
+    small(c, 26, 1, "BPM", THEME_ATTR(th, hint));
     if (sv->rec) {
         small(c, 22, 1, "REC", THEME_ATTR(th, alert));
     }
@@ -435,8 +435,9 @@ static void knob_cell(step_view* st, const lane* ln, uint32_t at, int held, uint
     const theme* th = theme_get(sv->l->theme);
     uint32_t col = k & 1u ? 17u : 2u;
     char tag[3] = {'K', (char)('1' + k), 0};
-    small(c, col, row, tag, held ? THEME_ATTR(th, hint) : THEME_ATTR(th, dim));
-    small(c, col + 3u, row, KNOB_SHORT[k], GRID_ATTR(held ? th->knob_text[k] : th->dim, th->bg));
+    /* The legend reads at 1x with nothing held too: hint, not dim (2.16:1). */
+    small(c, col, row, tag, THEME_ATTR(th, hint));
+    small(c, col + 3u, row, KNOB_SHORT[k], GRID_ATTR(held ? th->knob_text[k] : th->hint, th->bg));
     uint32_t value = 0u, max = 0u;
     int tagged = 0;
     char text[8] = "---";
@@ -528,16 +529,14 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
         }
         const uint8_t* cell = cell_in(pd, row);
         uint8_t a = is_note(cell[0]) ? GRID_ATTR(th->bg, th->voice[v])
-                                     : GRID_ATTR(th->label, th->cursor);
+                                     : GRID_ATTR(th->value, th->cursor);
         if (st->held == i) {
             a = GRID_ATTR(th->bg, th->hot);
         }
-        char num[5];
-        uint32_t len = decimal(i + 1u, num);
-        for (uint32_t k = 0; k < 2u; k++) {
-            put(c, col + k, r, k + len >= 2u ? (uint8_t)num[k + len - 2u] : (uint8_t)' ', a);
-            put(c, col + k, r + 1u, ' ', a);
-        }
+        /* The pad's number at 2x: its last digit (the pad is two cells wide); the second row
+         * of pads is 9 to 16. */
+        char num[2] = {(char)('0' + (i + 1u) % 10u), 0};
+        big(c, col, r, num, a);
     }
     small(c, 0, STEP_VIEW_HELP_ROW, "HOLD KEY+KNOB LOCK  ENC PAGE", THEME_ATTR(th, hint));
     sv->dirty |= LOWER_ROWS;
