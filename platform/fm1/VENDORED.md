@@ -291,3 +291,21 @@ loader's `ldr_session` on `harness/ota_harness.c`, which includes the unmodified
 `loader/ldr_core.c` with counting flash hooks: a flash.bin 4 KiB short and 4 KiB over give
 -14 with zero erases, programs and record clears; the right size, as the control, writes).
 Felucca commits after the tag (to 2026-10-16) change only `eng_phase.c` and `ui_menu.c`, which SIDOU does not vendor.
+
+### Checked again (2026-10-22, pre-flash safety)
+
+- **Still 1.6.1, nothing to re-vendor.** `v1.6.1` is still the newest Felucca release and still
+  `a53ecf42`. Every vendored file (`hal/`, `loader/`, `src/libc.c`, `src/ota.c`) was compared
+  byte for byte with the tag again: identical. `src/usb.c` differs from the tag only by the two
+  SIDOU hooks above (`diff` shows nothing else). No upstream change between the vendored commit
+  and 1.6.1 reaches SIDOU's image, because they are the same commit. Commits after the tag, to
+  `63f88ec1` (2026-10-22), touch `README.md`, `CREDITS.md`, `LICENSING.md`, `eng_phase.c`,
+  `ui_menu.c`, `fx.c`, `tools/gen_waves.py`, the web page and a test: none vendored.
+- **The loader is Felucca 1.6.1's, by its bytes.** The fm1 build's `loader/loader.bin` (8,216
+  bytes, SHA-256 `2cde42b729d787a3e591ed4eaaffbbf33cebee7d58421d33bf6b6d27cc03f1aa`) is the
+  loader that Felucca's own release package `felucca-1.6.1.fwsc` (SHA-256 `dff3a38f…d909`)
+  carries, unwrapped from its `ota.bin`. `sidou-pack --verify` reports it as
+  `loader_release Felucca 1.6.1` and `loader_identity ota-FM-1_900`; `tools/preflash` fails a
+  package whose loader is anything else, and `ota_step1.rs`'s
+  `the_built_loader_is_felucca_1_6_1s` fails the build's. The pinned SHA-256 is
+  `sidou_pack::FELUCCA_LOADER_SHA256`: re-vendoring a newer loader means updating it there.
