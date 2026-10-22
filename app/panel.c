@@ -162,6 +162,10 @@ __attribute__((noinline, unused)) static void expert_turn(live* l, uint32_t para
     }
 }
 
+_Static_assert(LIVE_PARAM_BLEED - LIVE_PARAM_AGE + 1u == PANEL_ENC_K4 - PANEL_ENC_K1 + 1u &&
+                   LIVE_PARAM_BLEED - LIVE_PARAM_AGE + 1u <= sizeof ((live*)0)->character,
+               "the CHARACTER page's knobs are live's character fields, age first");
+
 void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps) {
     uint32_t k = enc - PANEL_ENC_K1;
     if (steps == 0 || k > PANEL_ENC_K4 - PANEL_ENC_K1) { /* not K1..K4 */
@@ -182,8 +186,9 @@ void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps) {
     } else if (page == PANEL_PAGE_CHARACTER) {
         uint32_t param = LIVE_PARAM_AGE + k; /* age, DAC, thump, bleed */
         int32_t d = steps > 64 ? 64 : steps < -64 ? -64 : steps; /* 0..127 end to end in 32 */
-        int32_t v = (int32_t)live_param_get(l, param) + d * PANEL_CHARACTER_DETENT;
-        int32_t max = (int32_t)live_param_max(param);
+        /* live_param_get's and live_param_max's answers for these four, read directly */
+        int32_t v = (int32_t)l->character[k] + d * PANEL_CHARACTER_DETENT;
+        int32_t max = (int32_t)SID_CHARACTER_MAX;
         live_param_set(l, param, (uint32_t)(v < 0 ? 0 : v > max ? max : v));
     } else if (page >= PANEL_PAGE_EXPERT_FIRST) {
         uint32_t param = panel_knob_param(p, l, p->held, enc);

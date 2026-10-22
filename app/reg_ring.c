@@ -145,6 +145,10 @@ _Static_assert(REG_RING_IS_SLOT(LIVE_REG_SLOT(0, 0)) &&
 _Static_assert(REG_RING_CHIP_B == 1u << 6 && REG_RING_CHIP_OF(REG_RING_CHIP_B) == 1u,
                "a chip's bit is its number << 6 (reg_ring_sink)");
 _Static_assert(REG_RING_SIDS == 3u, "the spare is the sid neither chip renders: 3 - a - b");
+_Static_assert(!REG_RING_IS_SLOT(LIVE_REG_CHAR(0)) && !REG_RING_IS_SLOT(LIVE_REG_CHAR(LIVE_CHAR_FIELDS - 1u)) &&
+                   !REG_RING_IS_SLOT(LIVE_REG_CHAR_TICK) && !REG_RING_IS_SLOT(LIVE_REG_RESET) &&
+                   LIVE_REG_CHAR(LIVE_CHAR_FIELDS) <= 0xa0u,
+               "reg_ring_sink takes a slot register before the character's, the tick and the reset");
 _Static_assert(LIVE_REG_EXPERT(SID_EXPERT_COUNT) <= 0xa0u &&
                    !REG_RING_IS_SLOT(LIVE_REG_EXPERT_FIRST) &&
                    !REG_RING_IS_SLOT(LIVE_REG_EXPERT_FIRST | REG_RING_CHIP_B),
@@ -606,6 +610,10 @@ void reg_ring_sink(void* ctx, uint8_t reg, uint8_t value) {
     uint32_t x = o->chip & 1u;
     if (!(reg & 0x80u)) { /* a SID register, most of them: the chip's bit and the push */
         push_waiting(o, (uint8_t)(reg | x << 6), value);
+        return;
+    }
+    if (REG_RING_IS_SLOT(reg)) { /* a shared slot's: as it is (an algorithm's pick sends four) */
+        push_waiting(o, reg, value);
         return;
     }
     if ((reg >= LIVE_REG_CHAR(0) && reg < LIVE_REG_CHAR(LIVE_CHAR_FIELDS)) ||

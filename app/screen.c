@@ -92,10 +92,6 @@ void screen_reveal(screen* s, screen_wipe w) {
     }
 }
 
-const view* screen_top(const screen* s) {
-    return s->stack[s->depth - 1u].v;
-}
-
 void screen_capture(screen* s, screen_capture_fn fn, void* ctx) {
     s->capture = fn;
     s->capture_ctx = fn ? ctx : NULL;

@@ -247,7 +247,10 @@ int screen_push(screen* s, const view* v, void* state, screen_wipe w);
 /* The top view exited and the one below focused; a capture set above the new depth is
  * released. 0, or -1 at the root or from a view's enter or exit. */
 int screen_pop(screen* s, screen_wipe w);
-const view* screen_top(const screen* s);
+/* The view on top (inline: the input paths ask it on every event, and they are costed). */
+static inline const view* screen_top(const screen* s) {
+    return s->stack[s->depth - 1u].v;
+}
 /* Events go to fn before everything else until screen_capture(s, NULL, NULL), or until a pop
  * takes the stack below its depth now. */
 void screen_capture(screen* s, screen_capture_fn fn, void* ctx);

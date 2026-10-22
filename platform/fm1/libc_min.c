@@ -16,12 +16,18 @@ typedef uint32_t __attribute__((may_alias)) word;
 
 void* memset(void* dst, int c, size_t n) {
     unsigned char* d = dst;
-    for (; n && ((uintptr_t)d & 3u); n--) {
-        *d++ = (unsigned char)c;
-    }
-    uint32_t w = (unsigned char)c * 0x01010101u;
-    for (; n >= 4u; n -= 4u, d += 4) {
-        *(word*)(void*)d = w;
+    if (n >= 8u) {
+        for (; (uintptr_t)d & 3u; n--) {
+            *d++ = (unsigned char)c;
+        }
+        word* dw = (word*)(void*)d;
+        uint32_t w = (unsigned char)c * 0x01010101u;
+        size_t k = n >> 2; /* at least one: n was 8 or more, at most 3 went */
+        n &= 3u;
+        do {
+            *dw++ = w;
+        } while (--k);
+        d = (unsigned char*)dw;
     }
     while (n--) {
         *d++ = (unsigned char)c;
@@ -34,13 +40,19 @@ void* memset(void* dst, int c, size_t n) {
 void* memcpy(void* dst, const void* src, size_t n) {
     unsigned char* d = dst;
     const unsigned char* s = src;
-    if (!(((uintptr_t)d ^ (uintptr_t)s) & 3u)) {
-        for (; n && ((uintptr_t)d & 3u); n--) {
+    if (n >= 8u && !(((uintptr_t)d ^ (uintptr_t)s) & 3u)) {
+        for (; (uintptr_t)d & 3u; n--) {
             *d++ = *s++;
         }
-        for (; n >= 4u; n -= 4u, d += 4, s += 4) {
-            *(word*)(void*)d = *(const word*)(const void*)s;
-        }
+        word* dw = (word*)(void*)d;
+        const word* sw = (const word*)(const void*)s;
+        size_t k = n >> 2; /* at least one: n was 8 or more, at most 3 went */
+        n &= 3u;
+        do {
+            *dw++ = *sw++;
+        } while (--k);
+        d = (unsigned char*)dw;
+        s = (const unsigned char*)sw;
     }
     while (n--) {
         *d++ = *s++;
