@@ -2,90 +2,108 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Flash day: the checklist
 
-One page for installing a SIDOU build on a real FM-1, in order. The full checklist is
-[hardware-test.md](hardware-test.md); the first run and its recovery are in
-[hardware-results/2026-10-17-first-flash.md](hardware-results/2026-10-17-first-flash.md).
-Stop at the first step that fails and go to "If a step fails" below. Do not skip ahead.
+One page for putting a SIDOU build on a real FM-1, in order. It is the routine after every
+large merge. The full checklist is [hardware-test.md](hardware-test.md). Stop at the first
+step that fails and go to "If a step fails". Do not skip ahead.
+
+Each step says who does it:
+
+- **[script]**: a script can do it over USB-MIDI, or from files, with nobody at the unit.
+- **[hands]**: a person at the unit: keys, power, cable, a screen to read, sound to hear.
+
+The installer is Felucca 1.6.1's `tools/fm1_install.py` (needs `mido` and `python-rtmidi`).
+It finds a unit running SIDOU without `--port`: the port is "SIDOU FM-1".
 
 ## Before the install
 
-- [ ] **Build the package** from the commit under test (BUILDING.md) or take the release's.
-- [ ] **`tools/preflash build/fm1/sidou.fwsc --unbricker <MvaveFM1Unbricker folder>
-  --installer <fm1_install.py>`** prints only PASS (a SKIP for something you will not use is
-  fine). It reads files only and never touches a device. It checks the package's SHA-256,
-  identity, app and loader sizes, the `FELUCCA-LOADER-1` marker and CRCs, that the OCT- gesture
-  is documented, `tools/fm1-unbrick-mac`, jl-uboot-tool at the pinned commit with a valid wl82
-  loader, the V15 `FM-1.fwsc` (SHA-256 `db1642b2...edb8a`) and the installer. It ends with the
-  exact commands to run. Write the package SHA-256 into hardware-test.md's "Unit and build".
-- [ ] **The way back is ready**: V15 `FM-1.fwsc` and the unbricker on this computer, a USB
-  cable that carries data, nothing else MIDI plugged in.
-- [ ] **The build has the OCT- gesture** (it is not in v0.2.0-m2-preview). Without it, have a
-  Flipper Zero with flipper-fm1-recovery or the FM-1 Transporter at hand
-  ([hardware-test.md, section 0](hardware-test.md#0-before-you-start-recovery)).
-- [ ] `fm1_install.py --info` (Felucca 1.6.1's own, `tools/fm1_install.py`) shows the firmware
-  now on the unit (note it), then `fm1_install.py --backup .` saves its user data.
-- [ ] **If the unit runs M-VAVE's FM1 Open** (handshake identity `FM-1_8000013`, USB port "FM1
-  Community"; the installer needs `--port "FM1 Community"` and treats it as unknown firmware):
-  go to V15 first, never straight to SIDOU. After step 1, FM1 Open's loader answers
-  `ota-FM1C_...`, and the installer's model check refuses it for V15, though M-VAVE's own
-  updater accepts any `ota-` loader for a stock package. Use
-  `tools/fm1_install_v15_over_open.py <Felucca tools dir> FM-1.fwsc --port "FM1 Community"`
-  (the installer's own checks, plus that one rule for the V15 package only), then continue.
-- [ ] After a firmware switch on a Mac: delete the old USB-MIDI device in Audio MIDI Setup.
+- [ ] **[script]** Build the package from the commit under test in a **fresh build
+  directory** (BUILDING.md; a stale CMake cache can build a different firmware), or take the
+  release's.
+- [ ] **[script]** `tools/preflash build/fm1/sidou.fwsc --installer <fm1_install.py>
+  --unbricker <MvaveFM1Unbricker folder> [--v15 FM-1.fwsc]` prints only PASS (a SKIP for
+  something you will not use is fine). It reads files only, never a device: the package's
+  SHA-256, identity, sizes and CRCs, the update loader (Felucca 1.6.1's, which refuses a
+  package of the wrong size before erasing anything), the recovery route and the V15
+  `FM-1.fwsc` (SHA-256 `db1642b2...edb8a`). It ends with the exact commands to run.
+- [ ] **[hands]** Only the FM-1 plugged in as a MIDI device, with a USB cable that carries
+  data. On a Mac, after a firmware switch, delete the old USB-MIDI device in Audio MIDI Setup.
+- [ ] **[script]** `fm1_install.py --info`: note the firmware on the unit now. The installer
+  has no backup: save the songs you want first (SysEx GET,
+  [section 8c](hardware-test.md#8c-sysex-files-instruments-and-songs-m2e-task-5)).
 
-## The install
+## The install: over V15 (or SIDOU) with the normal installer
 
-SIDOU's USB-MIDI out is still dead, so a SIDOU unit cannot be updated through the installer
-yet ([second flash](hardware-results/2026-10-18-second-flash.md)). Two routes:
+- [ ] **[script]** `fm1_install.py sidou.fwsc --yes`. Step 1 (the running firmware stages the
+  loader) reports no error; the unit restarts as "Felucca Update" (USB 1209:0002,
+  `ota-FM-1_900`); step 2 reaches 100 %; the unit restarts.
+- [ ] **[script]** `fm1_install.py --info` answers `FM-1_900` (or the release's `FM-1_9XY`) on
+  port "SIDOU FM-1".
+- [ ] **[hands]** The unit boots SIDOU: the boot screen, then LIVE.
 
-- **From V15 or a Felucca-family firmware** (the first SIDOU on a unit): run the commands
-  `tools/preflash` printed, one at a time. Step 1 reports no error, the unit restarts as
-  "Felucca Update", step 2 reaches 100 %. The final `--info` times out, and that is the
-  known state; what counts is the unit coming back as USB 1209:0001 "SIDOU FM-1" and running.
-- **From a SIDOU build that has the OCT- gesture** (every later build): put the unit into ROM
-  boot with OCT- (below), then `sudo <venv>/bin/python fm1_unbrick_mac.py restore sidou.fwsc`
-  from `tools/fm1-unbrick-mac`. It writes the firmware region (0x4000-0x92FFF) after a
-  verified double backup and reads it back; a power cycle starts the new build.
+The unit runs M-VAVE's FM1 Open (identity `FM-1_8000013`, port "FM1 Community")? Go to V15
+first with `tools/fm1_install_v15_over_open.py <Felucca tools dir> FM-1.fwsc --port "FM1
+Community"`, then install as above.
 
 ## Then, in order
 
-1. **The OCT- gesture** ([section 1](hardware-test.md#1-install), "Right after the first
-   install"; it passed on hardware on 2026-10-18). Switch off, hold OCT- alone, switch on, keep holding about a second: black
-   screen, `WL82 UBOOT1.00` (USB 4C4A:8057) on the computer. Stays five minutes; a power cycle
-   without the key boots SIDOU. A brief OCT- tap, OCT- with OCT+, and OCT- with a note key boot
-   normally. **This must pass before anything else**, because it is what makes every later
-   failure recoverable.
-2. **The USB update gate** ([section 8.1](hardware-test.md#81-before-any-release-usb-midi-out-must-pass)):
-   `--info` answers, a reinstall over SIDOU completes, K1 sends CC 74 and K4 program changes,
-   again after deleting the device in the OS's MIDI setup, each cold and after a replug.
-3. **Readability**: the screens at arm's length: LIVE, TRACKER, CHIP, menus and popups, in
-   both themes ([section 6](hardware-test.md#6-lcd)). Note what cannot be read.
-4. **The audio checks**: the note keys and their LEDs, MASTER (a playing song must follow
+1. **The OCT- gesture** ([section 1](hardware-test.md#1-install)). **[hands]** Switch off,
+   hold OCT- alone, switch on, keep holding about a second: black screen. **[script]** USB
+   shows `WL82 UBOOT1.00` (4C4A:8057; only list it, never open it). **[hands]** It stays
+   there five minutes; a power cycle without the key boots SIDOU; a brief OCT- tap, OCT- with
+   OCT+, and OCT- with a note key boot normally. **This must pass before anything else**: it
+   is what makes every later failure recoverable.
+2. **The USB update gate** ([section 8.1](hardware-test.md#81-before-any-release-usb-midi-out-must-pass)),
+   each from a cold boot and again after a replug **[hands]**:
+   - **[script]** `--info` answers; the handshake answers 10 times out of 10; SIDOU's
+     inquiry and the universal inquiry answer;
+   - **[script]** a reinstall over SIDOU (`fm1_install.py sidou.fwsc --yes`) completes and
+     `--info` answers again;
+   - **[hands]** turn K1: **[script]** a MIDI monitor on "SIDOU FM-1" sees CC 74 on
+     channel 1 (K4 released in LIVE: CC 72);
+   - **[hands]** the same after deleting the device in Audio MIDI Setup and replugging.
+   A failure here blocks any release.
+3. **Readability [hands]**: LIVE, TRACKER, CHIP, menus and popups at arm's length, in both
+   themes ([section 6](hardware-test.md#6-lcd)). Note what cannot be read.
+4. **The audio checks [hands]**: the note keys and their LEDs, MASTER (a playing song follows
    it), the knob ranges, the quiet floor after a release, no clicks while the screen redraws
    ([sections 4 to 6](hardware-test.md#4-note-keys-and-their-leds)).
-5. **The recipes**: `docs/recipes/*.json` on the device, as the ergonomics harness records them.
-   Note every place where the device and the harness disagree.
+5. **The ergonomics recipes [hands]**: `docs/recipes/*.json` on the device, step by step as
+   the ergonomics harness records them. Note every place where the device and the harness
+   disagree.
 
-Record each result in a copy of hardware-test.md, and the findings in a new page under
-`docs/hardware-results/`.
+## The way back to V15
+
+- **While SIDOU answers over USB [script]:** `fm1_install.py FM-1.fwsc --yes` (the
+  unmodified official V15); `--info` then answers `FM-1_015`
+  ([section 9](hardware-test.md#9-reinstall-back-to-stock-v15-and-sidou-again)).
+- **When it does not [hands, then script]:** the OCT- gesture into ROM boot, then from
+  `tools/fm1-unbrick-mac`: `sudo <venv>/bin/python fm1_unbrick_mac.py info` (reads only),
+  then `... restore FM-1.fwsc` (two verified backups, write, read back). If a write or verify
+  fails, do not power off: run `restore` again
+  ([README](../tools/fm1-unbrick-mac/README.md)). Without the gesture: a Flipper Zero
+  (flipper-fm1-recovery) or the FM-1 Transporter into ROM boot
+  ([section 0](hardware-test.md#0-before-you-start-recovery)).
 
 ## If a step fails
 
-- **Step 1 of the install errors, or the install stops before the unit restarts**: nothing is
-  erased yet. Unplug, plug, run `--info`, retry once. A refused package ("FAILED -15", or
-  -14 in the loader) means the wrong package: run `tools/preflash` on it.
-- **The unit sits in "Felucca Update"** (power loss or a cable pull during step 2): plug it
+- **Step 1 errors, or the install stops before the unit restarts:** nothing is erased yet.
+  Replug, `--info`, retry once. "FAILED -15" on the screen (-14 from the loader) is a package
+  of the wrong size: run `tools/preflash` on it.
+- **The unit sits in "Felucca Update"** (power loss or a pulled cable during step 2): plug it
   back and run the same install again; it resumes.
-- **The OCT- gesture fails**: stop. Recover with the fallback in section 0 (a Flipper Zero or
-  the Transporter into ROM boot), then `tools/fm1-unbrick-mac` (Mac) or MvaveFM1Unbricker
-  restores V15. Record what you saw, and do not continue.
-- **The unit is in `WL82 UBOOT1.00`** (any reason): `sudo <venv>/bin/python fm1_unbrick_mac.py
-  info` reads only; `... restore FM-1.fwsc` writes V15 after two verified backups. If a write
-  or verify fails, do not power off: run `restore` again
-  ([tools/fm1-unbrick-mac/README.md](../tools/fm1-unbrick-mac/README.md)).
-- **The USB gate, readability, audio or a recipe fails**: SIDOU is running and recoverable.
-  Record it in the results page, and either stay on the build to look closer or go back with
-  `fm1_install.py FM-1.fwsc` (V15, [section 9](hardware-test.md#9-reinstall-back-to-stock-v15-and-sidou-again))
-  or the OCT- gesture. A failure in step 2 blocks any release.
-- **Nothing responds at all**: it is the ROM's job, not SIDOU's. Use the Flipper or Transporter
-  route to ROM boot; the chip's flash head is never written by SIDOU's path.
+- **The OCT- gesture fails:** stop, record what you saw, and go back to V15 over USB.
+- **The USB gate, readability, audio or a recipe fails:** SIDOU is running and recoverable.
+  Record it, then stay on the build to look closer or go back to V15.
+- **Nothing responds at all:** the Flipper or Transporter route into ROM boot; SIDOU's path
+  never writes the chip's flash head.
+
+## What to record
+
+In a copy of hardware-test.md and a new page under `docs/hardware-results/`:
+
+- the commit, the package's SHA-256 (from `tools/preflash`) and the firmware on the unit
+  before (`--info`);
+- each step above: passed or failed, with what the screen, the installer and the monitor
+  showed (photos of any failure screen);
+- the readability and audio notes, and every recipe step where device and harness disagree;
+- anything done to recover, and how the unit was left.
