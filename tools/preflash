@@ -33,6 +33,10 @@ from typing import List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parent.parent
 V15_SHA256 = "db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a"
+# The update loader a package must carry: sidou-pack --verify names it by its SHA-256
+# (sidou_pack::FELUCCA_LOADER_SHA256), and its handshake identity.
+LOADER_RELEASE = "Felucca 1.6.1"
+LOADER_ID = "ota-FM-1_900"
 
 results: List[Tuple[str, str, str]] = []
 
@@ -110,6 +114,12 @@ def check_package(package: Path) -> Optional[dict]:
         "PASS" if marker_ok else "FAIL",
         "update loader size and its FELUCCA-LOADER-1 marker",
         "; ".join(loader_problems) or "{} bytes".format(facts.get("loader", "?")),
+    )
+    release, loader_id = facts.get("loader_release", "unknown"), facts.get("loader_identity", "")
+    record(
+        "PASS" if release == LOADER_RELEASE and loader_id == LOADER_ID else "FAIL",
+        "update loader is {}'s ({}; it refuses a wrong-size package before erasing)".format(LOADER_RELEASE, LOADER_ID),
+        "{}, answers {}, SHA-256 {}".format(release, loader_id or "nothing", facts.get("loader_sha256", "?")),
     )
     record(
         "FAIL" if structure_problems or facts["exit"] != 0 and not problems else "PASS",
@@ -216,37 +226,49 @@ def check_installer(path: Optional[Path]) -> Optional[Path]:
 
 def steps(package: Path, facts: Optional[dict], installer: Optional[Path], v15: Optional[Path], unbricker: Optional[Path]) -> List[str]:
     inst = shlex.quote(str(installer)) if installer else "fm1_install.py"
-    pkg = shlex.quote(str(package))
+    pkg = shlex.quote(str(package.resolve()))
     sha = facts.get("sha256", "?") if facts else "?"
     ident = facts.get("identity", "FM-1_900") if facts else "FM-1_900"
     unb = shlex.quote(str(unbricker)) if unbricker else "<MvaveFM1Unbricker folder>"
-    v15s = shlex.quote(str(v15)) if v15 else "FM-1.fwsc"
+    v15s = shlex.quote(str(v15.resolve())) if v15 else "FM-1.fwsc"
     return [
         "Run these yourself, one at a time, with only the FM-1 as a USB-MIDI device. Nothing here was run.",
+        "The installer writes only the app area; it has no backup option, so save the songs you want",
+        "first (SysEx GET, docs/hardware-test.md 8c) or the user data of the firmware that is on it.",
         "",
         "  0. shasum -a 256 {}   # expect {}".format(pkg, sha),
         "",
-        "A. The unit runs V15 or a Felucca-family firmware (not SIDOU yet):",
+        "A. The unit runs SIDOU v0.2.0 or later (USB \"SIDOU FM-1\"; the installer finds it without --port):",
+        "  1. python3 {} --info                  # expect FM-1_9XY on port \"SIDOU FM-1\"; stop if it does not answer".format(inst),
+        "  2. python3 {} {} --yes".format(inst, pkg),
+        "  3. python3 {} --info                  # expect {}".format(inst, ident),
+        "  No answer in A.1 means a SIDOU build from before the USB fix: use C.",
+        "",
+        "B. The unit runs V15 or a Felucca-family firmware (the first SIDOU on it):",
         "  1. python3 {} --info                  # the firmware before; stop if the unit does not answer".format(inst),
-        "  2. python3 {} --backup .              # user data of the firmware that is on it".format(inst),
-        "  3. python3 {} {} --yes".format(inst, pkg),
-        "  4. python3 {} --info                  # expect {} (SIDOU's USB-MIDI out is still dead:".format(inst, ident),
-        "     a timeout here, with the unit coming back as USB 1209:0001 \"SIDOU\", is the known state)",
+        "  2. python3 {} {} --yes".format(inst, pkg),
+        "  3. python3 {} --info                  # expect {} on port \"SIDOU FM-1\"".format(inst, ident),
         "  If the unit runs M-VAVE's FM1 Open (identity FM-1_8000013, port \"FM1 Community\"), go to V15 first:",
         "     python3 tools/fm1_install_v15_over_open.py <Felucca tools dir> {} --port \"FM1 Community\" --yes".format(v15s),
-        "  and then A.1 to A.4.",
+        "  and then B.1 to B.3.",
         "",
-        "B. The unit runs a SIDOU build with the OCT- gesture (the way to put a build on it today):",
-        "  1. power off, hold OCT- alone, power on, hold ~1 s: black screen, USB WL80/WL82 UBOOT1.00 (4C4A:8057)",
-        "  2. cd {} && sudo ../venv/bin/python fm1_unbrick_mac.py info      # reads only".format(unb),
-        "  3. sudo ../venv/bin/python fm1_unbrick_mac.py restore {}   # double backup, write, verify".format(pkg),
+        "  During A.2 or B.2 the unit restarts as \"Felucca Update\" (USB 1209:0002, ota-FM-1_900, Felucca 1.6.1's",
+        "  loader). A cut-off install leaves it there: run the same install again and it finishes.",
+        "  \"FAILED -15\" (or -14 in the loader) is a package of the wrong size, refused before any erase.",
         "",
         "Then, in order (docs/flash-day.md): the OCT- gesture check, the USB update gate (docs/hardware-test.md 8.1),",
         "readability, the audio checks, the recipes.",
         "",
+        "C. Recovery, not the normal way: the unit does not answer over USB.",
+        "  1. power off, hold OCT- alone, power on, hold ~1 s: black screen, USB WL82 UBOOT1.00 (4C4A:8057)",
+        "     (needs a SIDOU build with the gesture; otherwise a Flipper Zero (flipper-fm1-recovery) or the",
+        "     FM-1 Transporter puts the unit into ROM boot)",
+        "  2. cd {} && sudo ../venv/bin/python fm1_unbrick_mac.py info      # reads only".format(unb),
+        "  3. sudo ../venv/bin/python fm1_unbrick_mac.py restore {}   # double backup, write, verify".format(pkg),
+        "",
         "If anything fails, back to V15 (nothing below was run either):",
-        "  OCT- gesture:   cd {} && sudo ../venv/bin/python fm1_unbrick_mac.py restore {}".format(unb, v15s),
-        "  or without it:  Flipper Zero (flipper-fm1-recovery) or the FM-1 Transporter into ROM boot, then the same restore.",
+        "  over USB, while SIDOU answers:  python3 {} {} --yes".format(inst, v15s),
+        "  else from ROM boot (C.1):        cd {} && sudo ../venv/bin/python fm1_unbrick_mac.py restore {}".format(unb, v15s),
     ]
 
 
