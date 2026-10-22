@@ -110,6 +110,10 @@ typedef struct {
 
 /* The profile, or NULL past the last (SID_CHIPS). */
 const sid_chip_profile* sid_chip_profile_get(uint32_t id);
+/* The profile's plain word, for the screens beside its revision's name: BRIGHT (6581 R2), DARK
+ * (R3), CLASSIC (R4AR, reSIDfp's default), CLEAN (8580 R5), GRITTY (worn 6581; docs/decisions/0006).
+ * Display only: the profile's id and name stay what saved settings and MIDI know. "?" past the last. */
+const char* sid_chip_profile_word(uint32_t id);
 /* The model's default profile: SID_CHIP_6581_R4AR or SID_CHIP_8580_R5, reSIDfp's defaults. */
 uint32_t sid_chip_default(sid_model model);
 

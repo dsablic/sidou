@@ -20,6 +20,11 @@ const sid_chip_profile* sid_chip_profile_get(uint32_t id) {
     return id < SID_CHIPS ? &profiles[id] : NULL;
 }
 
+const char* sid_chip_profile_word(uint32_t id) {
+    static const char* const WORDS[SID_CHIPS] = {"BRIGHT", "DARK", "CLASSIC", "CLEAN", "GRITTY"};
+    return id < SID_CHIPS ? WORDS[id] : "?";
+}
+
 uint32_t sid_chip_default(sid_model model) {
     return model == SID_MODEL_8580 ? SID_CHIP_8580_R5 : SID_CHIP_6581_R4AR;
 }

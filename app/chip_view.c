@@ -488,7 +488,7 @@ static void draw_control(canvas* c, const theme* th, uint32_t k, const char* nam
 
 /* The USER profile picked says USR n in the choice; the save target, yellow, in the names row:
  * the chip is unchanged. An empty slot ends in a dash, as the picker would show it. */
-static void draw_names(const chip_view* cv, canvas* c, const theme* th) {
+static void draw_names(const chip_view* cv, canvas* c, const theme* th, const char* word) {
     const live* l = cv->l;
     uint8_t hint = THEME_ATTR(th, hint);
     if (cv->chip || cv->expert) {
@@ -503,7 +503,8 @@ static void draw_names(const chip_view* cv, canvas* c, const theme* th) {
             text(c, 0, CHIP_VIEW_NAMES_ROW, "DIRECT K1-K4   ALGORITHM PAGE", hint);
         } else {
             text(c, 0, CHIP_VIEW_NAMES_ROW, "MODEL", hint);
-            text(c, PROFILE_COL, CHIP_VIEW_NAMES_ROW, "PROFILE", hint);
+            uint32_t k = text(c, PROFILE_COL, CHIP_VIEW_NAMES_ROW, "PROFILE ", hint);
+            text(c, k, CHIP_VIEW_NAMES_ROW, word, THEME_ATTR(th, label)); /* what R4AR means */
         }
     } else {
         text(c, 0, CHIP_VIEW_NAMES_ROW, "ALGORITHM", hint);
@@ -591,7 +592,7 @@ static void build(chip_view* cv) {
         text(c, GRID_COLS - 6u, 0, cv->tab ? "KEYS:B" : "KEYS:A", THEME_ATTR(th, hint));
     }
     draw_tabs(cv, c, th);
-    draw_names(cv, c, th);
+    draw_names(cv, c, th, applied(cv) ? "USER" : sid_chip_profile_word(s.profile));
     if (cv->expert) {
         draw_expert(cv, c, th, (sid_model)model, &s);
     } else if (sec == 0u) {

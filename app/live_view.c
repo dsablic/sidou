@@ -14,8 +14,8 @@
 /* A lane's cells: the voice's number from column 0, the note from NOTE_COL, the stage under it. */
 #define NOTE_COL 24u
 /* VU: a label, then meters of VU_METER_CELLS from VU_METER_COL. */
-#define VU_LABEL_COL 19u
-#define VU_METER_COL 20u
+#define VU_LABEL_COL 20u
+#define VU_METER_COL 21u
 #define VU_METER_CELLS 9u
 /* Rows as a mask. */
 #define ROWS(row, n) (((1u << (n)) - 1u) << (row))
@@ -34,7 +34,7 @@
 static const uint8_t KNOB_COL[4] = {0, 8, 15, 22};
 static const uint8_t KNOB_W[4] = {8, 7, 7, 8};
 /* The band: the chip's model and the profile from MODEL_COL; the slots' names across row 24. */
-#define MODEL_COL 10u
+#define MODEL_COL 11u
 /* The play mark's column (2x, two cells), and the badges' (a cell each, two apart). */
 #define PLAY_COL 22u
 #define BADGE_COL 24u
@@ -867,6 +867,11 @@ __attribute__((noinline, unused)) LIVE_COLD static void band(const live_view* lv
          THEME_ATTR(th, label));
     if (l->two_chips && l->keys_chip) {
         text(cv, GRID_COLS - 6u, LIVE_VIEW_BAND_ROW, "KEYS:B", THEME_ATTR(th, hot));
+    } else {
+        /* What the profile's revision means, in a word (BRIGHT, DARK, CLASSIC, CLEAN, GRITTY). */
+        text(cv, MODEL_COL + 10u, LIVE_VIEW_BAND_ROW,
+             l->user_applied ? "USER" : sid_chip_profile_word(l->profile_req),
+             THEME_ATTR(th, label));
     }
     for (uint32_t k = 0; k < LIVE_SLOTS; k++) {
         uint8_t fg = l->slot[k][LIVE_SLOT_ALGORITHM] ? th->value : th->dim;

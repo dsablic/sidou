@@ -701,18 +701,18 @@ fn select_pages_and_algorithm_steps_the_profile_on_live() {
             .read8(g + sidou_sys::ilp32::grid::attr as u32 + row * 30 + col)
     };
     assert_eq!(
-        attr(&mut m, 10, 22),
+        attr(&mut m, 11, 22),
         0x10,
         "R5 is reversed while it shows the change"
     );
     let now = indexed(&m.soc.lcd.fb);
     assert_eq!(
-        cell_colour(&now, 22, 14, 1),
+        cell_colour(&now, 22, 15, 1),
         0,
         "R4AR's third and fourth characters are gone"
     );
     m.run_ms(1_300);
-    assert_eq!(attr(&mut m, 10, 22), 0x01, "and plain again after a second");
+    assert_eq!(attr(&mut m, 11, 22), 0x01, "and plain again after a second");
 }
 
 /// An edited preset says so (a star after its name), and PRESETS away and back brings its edits

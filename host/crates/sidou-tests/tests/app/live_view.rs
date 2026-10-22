@@ -214,9 +214,14 @@ fn the_header_lanes_knobs_and_slots_show_the_instrument() {
     // The bottom band: the filter's mode, the chip and its profile, the slots (the selected one
     // reversed), the selected slot's algorithm at 2x, VU's labels.
     assert_eq!(small(&ui, 21, 0, 6), "FILTER");
-    assert_eq!(small(&ui, 21, 10, 9), "CHIP 6581");
+    assert_eq!(small(&ui, 21, 11, 9), "CHIP 6581");
+    assert_eq!(
+        small(&ui, 21, 21, 7),
+        "CLASSIC",
+        "what R4AR means, in a word"
+    );
     assert_eq!(big(&ui, 22, 0, 2), "LP");
-    assert_eq!(big(&ui, 22, 10, 4), "R4AR");
+    assert_eq!(big(&ui, 22, 11, 4), "R4AR");
     assert_eq!(small(&ui, 24, 0, 4), "DIST");
     assert_eq!(small(&ui, 24, 5, 3), "MOD");
     assert_eq!(small(&ui, 24, 9, 2), "FX");
@@ -231,12 +236,12 @@ fn the_header_lanes_knobs_and_slots_show_the_instrument() {
         "a slot that is off, dim"
     );
     assert_eq!(big(&ui, 25, 0, 3), "OFF");
-    assert_eq!(small(&ui, 22, 19, 1), "1");
-    assert_eq!(small(&ui, 24, 19, 1), "3");
-    assert_eq!(small(&ui, 25, 19, 1), "L");
-    assert_eq!(small(&ui, 26, 19, 1), "R");
+    assert_eq!(small(&ui, 22, 20, 1), "1");
+    assert_eq!(small(&ui, 24, 20, 1), "3");
+    assert_eq!(small(&ui, 25, 20, 1), "L");
+    assert_eq!(small(&ui, 26, 20, 1), "R");
     assert_eq!(
-        ui.g.attr[22 * COLS + 19] & 15,
+        ui.g.attr[22 * COLS + 20] & 15,
         t.hint,
         "VU labels in the legend colour"
     );
@@ -518,7 +523,7 @@ fn the_meters_show_the_peaks_and_fall_back() {
     ui.sc.peak = [32767, 0];
     frame(&mut ui);
     let meter =
-        |ui: &Ui, row: usize| -> Vec<u8> { (20..29).map(|c| ui.g.ch[row * COLS + c]).collect() };
+        |ui: &Ui, row: usize| -> Vec<u8> { (21..30).map(|c| ui.g.ch[row * COLS + c]).collect() };
     assert!(
         meter(&ui, 25).iter().all(|&c| c >= FONT_BAR7 as u8),
         "L at full: {:?}",
@@ -919,7 +924,7 @@ fn a_flash_reverses_a_knobs_label_for_a_second() {
     // The profile and the slot's algorithm reverse the same way.
     unsafe { live_view_flash(&mut ui.v.live, LIVE_VIEW_HL_PROFILE, ui.now) };
     ui.frame();
-    assert_eq!(ui.g.attr[22 * COLS + 10], (t.value << 4) | t.bg);
+    assert_eq!(ui.g.attr[22 * COLS + 11], (t.value << 4) | t.bg);
     unsafe { live_view_flash(&mut ui.v.live, LIVE_VIEW_HL_ALGORITHM, ui.now) };
     ui.frame();
     assert_eq!(ui.g.attr[25 * COLS], (t.hot << 4) | t.bg);
