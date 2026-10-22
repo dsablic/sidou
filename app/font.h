@@ -109,8 +109,9 @@ extern "C" {
 #define FONT_SLOT_LR 0xDBu
 #define FONT_SCOPE_MID 0xDCu
 
-/* In flash (.rodata): read by the renderer only. */
-extern const uint8_t font_glyphs[256][8];
+/* In flash (.rodata): read by the renderer only, 4-byte aligned (grid.c tests a glyph for blank
+ * as two words). */
+extern const uint8_t font_glyphs[256][8] __attribute__((aligned(4)));
 
 #ifdef __cplusplus
 }

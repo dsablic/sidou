@@ -26,6 +26,21 @@ static int dirty(const grid* g, uint32_t i) {
            (g->stale[i >> 3] >> (i & 7u) & 1u);
 }
 
+/* A word of the cell arrays (each starts on a word boundary: grid.h). */
+typedef uint32_t __attribute__((may_alias)) cell_word;
+_Static_assert(offsetof(grid, ch) % 4u == 0u && offsetof(grid, attr) % 4u == 0u &&
+                   offsetof(grid, shown_ch) % 4u == 0u && offsetof(grid, shown_attr) % 4u == 0u,
+               "grid.h: the cell arrays must start on word boundaries");
+
+/* Nonzero if any of the four cells from i (a multiple of 4) is dirty (dirty()). */
+static uint32_t dirty4(const grid* g, uint32_t i) {
+    const cell_word* ch = (const cell_word*)(const void*)&g->ch[i];
+    const cell_word* sch = (const cell_word*)(const void*)&g->shown_ch[i];
+    const cell_word* at = (const cell_word*)(const void*)&g->attr[i];
+    const cell_word* sat = (const cell_word*)(const void*)&g->shown_attr[i];
+    return (*ch ^ *sch) | (*at ^ *sat) | (uint32_t)(g->stale[i >> 3] >> (i & 7u) & 15u);
+}
+
 void grid_invalidate(grid* g) {
     for (uint32_t i = 0; i < sizeof g->stale; i++) {
         g->stale[i] = 0xFFu;
@@ -626,7 +641,16 @@ int grid_next_run(grid* g, grid_run* run) {
         }
         uint32_t base = row * GRID_COLS;
         uint32_t c = g->scan_col;
-        while (c < GRID_COLS && !dirty(g, base + c)) {
+        while (c < GRID_COLS) {
+            uint32_t i = base + c;
+            /* Four clean cells at a time from a word boundary: most of a row is clean. */
+            if (!(i & 3u) && c + 4u <= GRID_COLS && !dirty4(g, i)) {
+                c += 4u;
+                continue;
+            }
+            if (dirty(g, i)) {
+                break;
+            }
             c++;
         }
         if (c == GRID_COLS) {
@@ -668,6 +692,8 @@ int grid_next_run(grid* g, grid_run* run) {
 /* Two pixels a 32-bit store, the left one at the lower address (PAIR): a cell row is four
  * stores. The pairs alias the uint16_t pixels (may_alias). */
 typedef uint32_t __attribute__((may_alias)) pixel_pair;
+/* A glyph's 8 rows as two words (font_glyphs is 4-byte aligned, font.h). */
+typedef uint32_t __attribute__((may_alias)) glyph_word;
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 #define PAIR(left, right) ((uint32_t)(left) << 16 | (uint32_t)(right))
 #else
@@ -911,6 +937,17 @@ void grid_render_run(const grid* g, const grid_run* run, const uint16_t pal[16],
         /* A row of the glyph's background alone (a scope's cells are mostly blank): the
          * overlay over the background, by a pair's two mask bits. */
         const uint32_t olut[4] = {PAIR(bg, bg), PAIR(bg, c), PAIR(c, bg), oc};
+        const glyph_word* gw = (const glyph_word*)(const void*)glyph;
+        if (!(gw[0] | gw[1])) { /* a blank glyph (a scope's cells): the overlay alone */
+            for (uint32_t y = 0; y < 8u; y++, o += stride) {
+                uint32_t over = mask[y];
+                o[0] = olut[over >> 6];
+                o[1] = olut[over >> 4 & 3u];
+                o[2] = olut[over >> 2 & 3u];
+                o[3] = olut[over & 3u];
+            }
+            continue;
+        }
         for (uint32_t y = 0; y < 8u; y++, o += stride) {
             uint32_t bits = glyph[y];
             uint32_t over = mask[y];

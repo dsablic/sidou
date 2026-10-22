@@ -331,14 +331,16 @@ static uint32_t scope_top(uint32_t v) {
 static void columns(const uint8_t y[SCOPE_W], uint32_t w[SCOPE_W]) {
     uint32_t prev = y[0];
     for (uint32_t x = 0; x < SCOPE_W; x++) {
-        uint32_t lo = y[x] < prev ? y[x] : prev;
-        uint32_t hi = y[x] < prev ? prev : y[x];
-        prev = y[x];
-        hi = hi < LIVE_VIEW_SCOPE_PX ? hi : LIVE_VIEW_SCOPE_PX - 1u;
-        lo = lo < hi ? lo : hi;
-        hi += hi + 1u < LIVE_VIEW_SCOPE_PX ? 1u : 0u;
+        uint32_t now = y[x];
+        uint32_t lo = now < prev ? now : prev;
+        uint32_t hi = now < prev ? prev : now;
+        prev = now;
+        /* Within the scope: the top at most its last pixel, the bottom a pixel below hi (the
+         * thickness) unless that is past the last. */
+        lo = lo < LIVE_VIEW_SCOPE_PX - 1u ? lo : LIVE_VIEW_SCOPE_PX - 1u;
+        hi = hi + 1u < LIVE_VIEW_SCOPE_PX - 1u ? hi + 1u : LIVE_VIEW_SCOPE_PX - 1u;
         /* Bits 31 - lo down to 31 - hi. */
-        w[x] = (0xFFFFFFFFu >> lo) & (0xFFFFFFFFu << (31u - hi));
+        w[x] = (0xFFFFFFFFu >> lo) & ~(0x7FFFFFFFu >> hi);
     }
 }
 
