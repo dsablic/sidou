@@ -146,7 +146,7 @@ impl Firmware {
             *by.entry(name).or_insert(0) += n;
         }
         let mut v: Vec<_> = by.into_iter().collect();
-        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.sort_by_key(|a| std::cmp::Reverse(a.1));
         v
     }
 
