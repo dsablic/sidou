@@ -236,6 +236,9 @@ typedef struct {
     uint8_t tour;
     uint32_t tour_at;
     uint16_t tour_ref;
+    /* A toast raised while a help card shows waits under it: the ms it has left (0 none), its
+     * text in the screen's toast (views_frame). */
+    uint16_t toast_held;
 } views;
 
 extern const view views_status;

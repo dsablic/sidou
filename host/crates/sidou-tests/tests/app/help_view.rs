@@ -552,3 +552,28 @@ fn an_action_during_the_tour_keeps_its_own_toast() {
         "ENV's toast is gone: {t:?}"
     );
 }
+
+/// Ergonomics review E29 (M2 review 5.12): a toast raised while a help card shows waits under
+/// it (nothing draws over the card, whose frames stay within 200 cells), then shows.
+#[test]
+fn a_toast_waits_under_the_help_card_and_shows_after_it() {
+    let mut ui = Ui::without_cards();
+    ui.settle();
+    hold_until_card(&mut ui);
+    unsafe { screen_toast(&mut ui.v.s, c"SONG SAVED".as_ptr(), SCREEN_TOAST_MS) };
+    for _ in 0..30 {
+        ui.frame();
+        let sent = drain(&mut ui.g);
+        assert!(sent.cells <= 200, "{} cells", sent.cells);
+        assert!(ui.toast().is_none(), "a toast over the card");
+    }
+    ui.up(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    let mut seen = false;
+    for _ in 0..30 {
+        frame(&mut ui);
+        seen |= ui.toast().as_deref() == Some("SONG SAVED");
+    }
+    assert_ne!(ui.top(), "HELP");
+    assert!(seen, "the toast after the card");
+}

@@ -256,6 +256,17 @@ void screen_toast(screen* s, const char* text, uint32_t ms) {
     redraw(s, rows_mask(SCREEN_TOAST_ROW - 2u, 4u)); /* what it takes, and what it leaves */
 }
 
+uint32_t screen_toast_take(screen* s) {
+    uint32_t left = s->toast_on == TOAST_WAITING ? s->toast_until
+                    : s->toast_on && (int32_t)(s->toast_until - s->now) > 0 ? s->toast_until - s->now
+                                                                            : 0u;
+    if (s->toast_on) {
+        s->toast_on = 0;
+        redraw(s, rows_mask(SCREEN_TOAST_ROW - 2u, 4u)); /* what it took, the view's again */
+    }
+    return left;
+}
+
 /* The toast, drawn over the view: its time runs from its first frame (a toast set before the
  * first frame, or after a long pause between frames, still shows for all of it). */
 static void toast(screen* s) {

@@ -1669,6 +1669,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->home_down = 0;
     v->help.done = 0;
     v->tour = 0;
+    v->toast_held = 0;
     v->snd = NULL;
     v->set = NULL;
     v->format_arm = 0;
@@ -1893,7 +1894,7 @@ __attribute__((noinline, unused)) static void tour_frame(views* v, uint32_t now_
         return;
     }
     if (screen_top(&v->s) == &help_view_view) {
-        tour_clear(v); /* nothing of the tour over the card */
+        tour_clear(v); /* nothing over the card (another toast waits: toast_hold) */
         v->tour = TOUR_OFF;
         return;
     }
@@ -2595,6 +2596,23 @@ __attribute__((noinline, unused)) LIVE_COLD static void live_frame(views* v, con
     }
 }
 
+/* Nothing draws over a help card: a toast raised while it shows (not the tour's: the card ends
+ * the tour) waits, its time left kept, and shows once the card has closed. The card's frame
+ * budget then holds (help_view.c counts the layers too). */
+__attribute__((noinline, unused)) static void toast_hold(views* v) {
+    if (screen_top(&v->s) == &help_view_view) {
+        uint32_t left = screen_toast_take(&v->s);
+        if (left && v->s.toast[0] && !tour_text(v)) { /* the card ends the tour: its toast too */
+            v->toast_held = (uint16_t)(left > 0xffffu ? 0xffffu : left);
+        }
+    } else if (v->toast_held) {
+        if (v->s.toast[0]) {
+            screen_toast(&v->s, v->s.toast, v->toast_held);
+        }
+        v->toast_held = 0;
+    }
+}
+
 void views_frame(views* v, uint32_t now_ms) {
     boot_frame(v, now_ms);
     card_frame(v);
@@ -2624,6 +2642,7 @@ void views_frame(views* v, uint32_t now_ms) {
             v->s.popup_ask = 0u;
         }
     }
+    toast_hold(v);
     v->live.mutes = (uint8_t)song_view_mutes(&v->song);
     live_view_tap(&v->live, top == &live_view_view);
     scene_view_tap(&v->scene, top == &scene_view_view);

@@ -264,6 +264,9 @@ void screen_redraw(screen* s);
 /* Shows text (clipped to SCREEN_TOAST_CHARS) for ms from the next frame on, replacing a toast
  * that shows. */
 void screen_toast(screen* s, const char* text, uint32_t ms);
+/* Takes the toast off before it draws again: the ms it had left (0: none, or its time is up).
+ * Its text stays in s->toast, so screen_toast(s, s->toast, ms) shows it again later. */
+uint32_t screen_toast_take(screen* s);
 /* The popup: its state st (kept by the caller, as long as the screen) and the source of what
  * screen_popup_ask's controls show (views_init). Without one, no popup. */
 void screen_popup_source(screen* s, screen_popup_state* st, screen_popup_fn fn, void* ctx);

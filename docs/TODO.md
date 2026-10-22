@@ -493,7 +493,7 @@ working.
   the locked cutoff and pulse); the ergonomics review's E09 (PWM BASS's modulation silenced
   narrow widths: it now never sweeps below 3 %); 5.7, 5.8 and 5.11 (E23-E25: REC's toast
   outside the song views, no count-in on entering one mid-song, the REC popup in Hz); 5.9
-  (E26: ORDER keeps TRACKER's row), 5.13 (E30: the tour clears only its own toast).
+  (E26: ORDER keeps TRACKER's row), 5.13 (E30: the tour clears only its own toast), 5.12 (E29: toasts wait under a help card).
 - **From the v0.2.0 fixes:** a sector the store retires for the session (review 1.2) shows
   only in `store_stats` and a lower free figure in MENU; STATUS should say it. A background
   settings save that fails is still not detected (explicit saves report and retry).

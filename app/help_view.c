@@ -129,7 +129,7 @@ static void compose(screen* s, void* state, grid* g) {
     }
     const theme* th = screen_theme(s);
     const help_card* c = &help_cards[h->card];
-    uint32_t used = screen_pending(s);
+    uint32_t used = screen_pending(s) + screen_layer_cells(s); /* a layer's cells count too */
     for (uint32_t u = 0; u < HELP_UNITS; u++) {
         if (h->drawn >> u & 1u) {
             continue;
