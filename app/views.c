@@ -1853,12 +1853,31 @@ static uint16_t tour_watch(const views* v, uint32_t s) {
              : (uint16_t)(l->cutoff * 129u + slot[LIVE_SLOT_AMOUNT] * 517u);
 }
 
+static const char* const TOUR_TEXT[3] = {"TURN K1", "PRESS ENV", "HOLD HOME FOR HELP"};
+
 static void tour_begin(views* v, uint32_t now_ms, uint32_t s) {
-    static const char* const TEXT[3] = {"TURN K1", "PRESS ENV", "HOLD HOME FOR HELP"};
     v->tour = (uint8_t)(TOUR_K1 + 2u * s);
     v->tour_at = now_ms;
     v->tour_ref = tour_watch(v, s);
-    screen_toast(&v->s, TEXT[s], TOUR_TOAST_MS);
+    screen_toast(&v->s, TOUR_TEXT[s], TOUR_TOAST_MS);
+}
+
+/* 1 when the screen's toast text is one of the tour's. */
+static int tour_text(const views* v) {
+    for (uint32_t i = 0; i < 3u; i++) {
+        if (strcmp(v->s.toast, TOUR_TEXT[i]) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* Ends the tour's own toast, if one shows: never a toast the action itself raised (ENV's DIST
+ * TAPE, tell()'s). */
+static void tour_clear(views* v) {
+    if (v->s.toast_on && tour_text(v)) {
+        screen_toast(&v->s, "", 0);
+    }
 }
 
 /* Once a frame while the tour runs (views_flow): step s toasts, waits for the action it asks for
@@ -1874,7 +1893,7 @@ __attribute__((noinline, unused)) static void tour_frame(views* v, uint32_t now_
         return;
     }
     if (screen_top(&v->s) == &help_view_view) {
-        screen_toast(&v->s, "", 0); /* nothing over the card */
+        tour_clear(v); /* nothing of the tour over the card */
         v->tour = TOUR_OFF;
         return;
     }
@@ -1888,7 +1907,7 @@ __attribute__((noinline, unused)) static void tour_frame(views* v, uint32_t now_
     }
     int acted = s < 2u && tour_watch(v, s) != v->tour_ref;
     if (acted && (s == 0u || screen_top(&v->s) == &live_view_view)) {
-        screen_toast(&v->s, "", 0); /* LIVE says an algorithm itself: no toast of its own */
+        tour_clear(v); /* LIVE says an algorithm itself: no toast of its own */
     }
     if (acted || waited >= TOUR_TOAST_MS) {
         v->tour = s == 2u ? TOUR_OFF : (uint8_t)(t + 1u);

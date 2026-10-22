@@ -481,7 +481,7 @@ fn the_tour_follows_the_first_boot_after_an_install() {
     ui.turn(PANEL_ENC_SELECT, 1);
     for _ in 0..600 {
         frame(&mut ui);
-        assert!(ui.toast().is_none(), "a toast after the tour");
+        assert!(ui.toast().is_none(), "a toast after the tour: {:?}", ui.toast());
     }
 }
 
@@ -530,4 +530,25 @@ fn no_tour_on_a_normal_boot() {
         assert!(ui.toast().is_none(), "a toast at {} ms", ui.now);
     }
     assert_eq!(ui.v.tour, 0);
+}
+
+/// Ergonomics review E30 (M2 review 5.13): ENV pressed in the menu while the tour's first step
+/// shows: the tour ends its own toast only, and ENV's (its effect's name) shows.
+#[test]
+fn an_action_during_the_tour_keeps_its_own_toast() {
+    let mut ui = Ui::without_cards();
+    after_the_install_boot(&mut ui, 0);
+    until_toast(&mut ui, "TURN K1", 400);
+    ui.press(PANEL_BTN_HOME);
+    frame(&mut ui);
+    assert_eq!(ui.top(), "MENU");
+    ui.press(PANEL_BTN_ENV);
+    for _ in 0..3 {
+        frame(&mut ui);
+    }
+    let t = ui.toast().unwrap_or_default();
+    assert!(
+        !t.is_empty() && t != "TURN K1",
+        "ENV's toast is gone: {t:?}"
+    );
 }
