@@ -760,12 +760,26 @@ fn the_song_region_and_the_free_ram() {
     let size = |name: &str| file.section_by_name(name).map_or(0, |s| s.size());
     const RAM_START: u32 = 0x01C0_E000;
     const POOL_START: u32 = 0x01C1_E000;
-    const POOL_BYTES: u64 = 0x56000;
+    const POOL_BYTES: u64 = 0x59F00;
     let ram_bytes = u64::from(POOL_START - RAM_START);
     let ram_used = size(".data") + size(".bss") + size(".song_ram");
     let ram_free = ram_bytes - ram_used;
     let pool_free = POOL_BYTES - size(".pool");
     assert_eq!(region, POOL_START, "the region starts POOL");
+    assert_eq!(
+        u64::from(POOL_START) + POOL_BYTES + 256,
+        u64::from(fw.symbol("_ustack_lo")),
+        "POOL ends at the user stack's guard band"
+    );
+    // The stacks every machine checks when it goes (common::Machine's Drop).
+    assert_eq!(
+        (fw.symbol("_ustack_lo"), fw.symbol("_ustack_top")),
+        (common::USTACK.start, common::USTACK.end)
+    );
+    assert_eq!(
+        (fw.symbol("_sstack_lo"), fw.symbol("_sstack_top")),
+        (common::SSTACK.start, common::SSTACK.end)
+    );
     println!(
         "RAM region: {} used of {ram_bytes}, {ram_free} free; POOL: {} used of {POOL_BYTES}, \
          {pool_free} free; together {} free; RAMTEXT {} bytes",

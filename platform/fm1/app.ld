@@ -13,14 +13,17 @@
  * POOL   : big zero-initialised buffers (section .pool): first the song's content region
  *          (__song_region, 64 KiB, 4 KiB aligned: M3's 6502 memory overlays it), then the rest.
  * NOINIT : survives resets (the crash record, fm1_irq.h).
- * Stacks with 256-byte guard bands below each. 0x01C7FD50.. is reserved: boot info, the
- * boot-state mailbox and the vector table (0x01C7FE00). */
+ * Stacks with 256-byte guard bands below each. The user stack is 8 KiB, three times the
+ * deepest use the emulator tests measure (2,700 bytes: every test's machine checks both stacks
+ * stay within half, host/crates/emu-gate/tests/common/mod.rs), and POOL ends at its guard band;
+ * the system stack (the interrupts') is 7,936 bytes, the deepest 1,820.
+ * 0x01C7FD50.. is reserved: boot info, the boot-state mailbox and the vector table (0x01C7FE00). */
 MEMORY
 {
     XIP     (rx)  : ORIGIN = 0x02000120, LENGTH = 0x8DFBC
     RAMTEXT (rwx) : ORIGIN = 0x01C00000, LENGTH = 48K
     RAM     (rwx) : ORIGIN = 0x01C0E000, LENGTH = 64K
-    POOL    (rw)  : ORIGIN = 0x01C1E000, LENGTH = 0x56000
+    POOL    (rw)  : ORIGIN = 0x01C1E000, LENGTH = 0x59F00
     NOINIT  (rw)  : ORIGIN = 0x01C7C000, LENGTH = 0x3D50
 }
 SECTIONS
@@ -145,7 +148,7 @@ SECTIONS
         _pool_end = .;
     } > POOL
     .noinit (NOLOAD) : { *(.noinit*) } > NOINIT
-    _guard0 = 0x01C74000; _ustack_lo = 0x01C74100; _ustack_top = 0x01C7A000;
+    _guard0 = 0x01C77F00; _ustack_lo = 0x01C78000; _ustack_top = 0x01C7A000;
     _guard1 = 0x01C7A000; _sstack_lo = 0x01C7A100; _sstack_top = 0x01C7C000;
     /DISCARD/ : { *(.comment) *(.note*) }
 }

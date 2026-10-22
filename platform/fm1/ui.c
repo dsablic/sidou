@@ -23,7 +23,8 @@ _Static_assert(sizeof SIDOU_VERSION <= VERSION_CELLS, "SIDOU_VERSION is too long
 /* A run (one row of up to GRID_COLS cells) is rendered into one LCD buffer. */
 _Static_assert(GRID_RUN_PIXELS <= LCD_BUFFER_PIXELS, "a grid run does not fit an LCD buffer");
 
-static grid cells;
+/* In POOL (app.ld): the grid is big and the RAM region the tighter of the two. */
+static grid cells __attribute__((section(".pool")));
 static views ui;
 /* What persists (app/settings.h): on the device's store, ticked in the views' frame. */
 static settings persisted;

@@ -82,6 +82,14 @@ const PACKAGE_PARAMS: u32 = 0x01C7_FC00;
 const RAM_SIZE: usize = 1 << 20;
 const IRQ_ALNK0: u8 = 11;
 
+/// The stacks (platform/fm1/app.ld `_ustack_lo`.. `_ustack_top`, `_sstack_lo`.. `_sstack_top`;
+/// song.rs checks these against the ELF): the main loop's (user mode) and the interrupts'.
+pub const USTACK: std::ops::Range<u32> = 0x01C7_8000..0x01C7_A000;
+pub const SSTACK: std::ops::Range<u32> = 0x01C7_A100..0x01C7_C000;
+/// What `Machine::start` fills both stacks with before the firmware's first instruction: the
+/// deepest use is where the fill ends (`Machine::stack_use`).
+const STACK_PAINT: u32 = 0x5AC3_A53C;
+
 /// The firmware image (`sidou_app.bin`) and its ELF, from the fm1 build.
 pub struct Firmware {
     pub image: Vec<u8>,
@@ -112,6 +120,34 @@ impl Firmware {
                 )
             })
             .unwrap_or_else(|| format!("{addr:#010x}"))
+    }
+
+    /// A `Machine::profile` summed by function, the costliest first: (name, instructions).
+    pub fn profile_by_function(
+        &self,
+        profile: &std::collections::HashMap<u32, u64>,
+    ) -> Vec<(String, u64)> {
+        use object::{Object, ObjectSymbol, SymbolKind};
+        let file = object::File::parse(&*self.elf).expect("parse the firmware ELF");
+        let mut syms: Vec<(u64, u64, String)> = file
+            .symbols()
+            .filter(|s| s.kind() == SymbolKind::Text && s.size() > 0)
+            .map(|s| (s.address(), s.size(), s.name().unwrap_or("?").to_string()))
+            .collect();
+        syms.sort();
+        let mut by: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+        for (&pc, &n) in profile {
+            let pc = u64::from(pc);
+            let i = syms.partition_point(|s| s.0 <= pc);
+            let name = match i.checked_sub(1).map(|i| &syms[i]) {
+                Some((a, size, name)) if pc < a + size => name.clone(),
+                _ => format!("{pc:#010x}"),
+            };
+            *by.entry(name).or_insert(0) += n;
+        }
+        let mut v: Vec<_> = by.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v
     }
 
     /// The address of a function in the ELF.
@@ -211,6 +247,40 @@ pub struct Machine {
     alnk_entry: u64,
     /// A USB host on the cable (common::usb_host), None: no host, as fm1-emu has none.
     pub usb: Option<usb_host::UsbHost>,
+    /// Whether dropping the machine checks its stacks' deepest use (`Drop`): off for a run
+    /// that leaves SIDOU (the stock firmware has its own stacks).
+    pub stack_check: bool,
+    /// With Some: every main-loop instruction inside a watched call (`watch_calls`, or
+    /// `watch_passes`' stretches), counted by its PC: where a call's instructions go.
+    pub profile: Option<std::collections::HashMap<u32, u64>>,
+}
+
+/// Every emulator test's journey checks the stacks when its machine goes: each stack's deepest
+/// use stays within half of it (docs/plans/2026-10-19-m3-sid-files.md, Before M3 item 5: the
+/// user stack is sized at twice its deepest use). With SIDOU_STACK_LOG set to a file, each
+/// machine appends its test's name and both depths to it (the measurement the sizes come from).
+impl Drop for Machine {
+    fn drop(&mut self) {
+        if !self.stack_check || std::thread::panicking() {
+            return;
+        }
+        let (user, system) = self.stack_use();
+        let name = std::thread::current().name().unwrap_or("?").to_string();
+        if let Some(path) = std::env::var_os("SIDOU_STACK_LOG") {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .expect("SIDOU_STACK_LOG");
+            writeln!(f, "{name} {user} {system}").expect("SIDOU_STACK_LOG");
+        }
+        let (u, s) = (USTACK.end - USTACK.start, SSTACK.end - SSTACK.start);
+        assert!(
+            2 * user <= u && 2 * system <= s,
+            "{name}: the stacks' deepest use, user {user} of {u}, system {system} of {s}: over half"
+        );
+    }
 }
 
 /// The TRS backlog `Machine::midi_paced` keeps: under a third of fm1-emu's limit, about 0.3 s
@@ -351,6 +421,9 @@ impl Machine {
     fn start(mut soc: Soc, entry: u32, r0: u32) -> Self {
         // The firmware's main loop sleeps in `idle`; skip ahead to the next interrupt.
         soc.periph.skip_idle = true;
+        for a in USTACK.step_by(4).chain(SSTACK.step_by(4)) {
+            soc.write32(a, STACK_PAINT);
+        }
         let mut cpu = Cpu::new(entry);
         // The SPL hands cpu0 over in user mode (fm1-emu main.rs).
         cpu.user = true;
@@ -383,7 +456,23 @@ impl Machine {
             snapshot_bytes: Vec::new(),
             alnk_entry: 0,
             usb: None,
+            stack_check: true,
+            profile: None,
         }
+    }
+
+    /// The deepest use of each stack so far, in bytes (user, system): from the top down to the
+    /// lowest word that no longer holds `start`'s fill.
+    pub fn stack_use(&mut self) -> (u32, u32) {
+        let mut deepest = |r: std::ops::Range<u32>| {
+            let top = r.end;
+            let low = r
+                .step_by(4)
+                .find(|&a| self.soc.read32(a) != STACK_PAINT)
+                .unwrap_or(top);
+            top - low
+        };
+        (deepest(USTACK), deepest(SSTACK))
     }
 
     /// Counts the instructions of every call of the function at `entry` from the main loop.
@@ -522,6 +611,11 @@ impl Machine {
                             let b = (0..len).map(|i| soc.read8(addr + i)).collect();
                             self.watched_exit_bytes.push(b);
                         }
+                    }
+                }
+                if let Some(p) = &mut self.profile {
+                    if self.open_call.is_some() || self.pass_start.is_some() {
+                        *p.entry(cpu.pc).or_insert(0) += 1;
                     }
                 }
                 self.main_steps += 1;
