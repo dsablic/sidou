@@ -498,16 +498,11 @@ working.
   1x beside LIVE's 2x revision name; popups and STATUS still show "6581 R4AR".
 - **Still 1x for lack of room:** TABLE's "WAVE 21 REL 00" line, STEP's ruler digits and lane line.
 
-## SysEx over USB is slow: about 1 KB/s
+## SysEx over USB while a chord sounds (the user's call)
 
-- **Where:** [flash day 2026-10-22](hardware-results/2026-10-22-flash-day.md): a 65,536-byte PUT
-  takes 73 s and a GET 53 s on a real FM-1 (about 280 ms and 200 ms per 256-byte packet and its
-  ACK), stop-and-wait over USB.
-- **Found and fixed in fm1-emu** (which measured the same, 293.5 and 205.5 ms): a reply went
-  out one USB-MIDI event packet a SysEx poll (about 500 a second; a DATA reply is 101), and every
-  PUT program was a hold of its own, 100 ms (`STORE_FORCE_GAP_MS`) after the last, about three
-  a packet. Now a reply goes out whole as USB's ring takes it, and a packet's programs share one
-  hold, kept between packets while the device is silent: 42.4 ms up (about 15 ms once the
-  first 500 ms find the device silent), 10.3 ms down; 105.7 ms up with a chord sounding (emu-gate
-  `usb.rs`).
-- **Action:** confirm on the device with `tools/sysex-roundtrip` (4,096 and 65,536 bytes).
+- **Done 2026-10-22:** SysEx over USB went from about 1 KB/s to 12 KB/s up and 27 KB/s down
+  on a real FM-1, silent ([flash day](hardware-results/2026-10-22-flash-day.md)).
+- **Open:** with sound playing, an upload keeps the 100 ms gap (`STORE_FORCE_GAP_MS`) between
+  the audio holds its flash programs need: about 105 ms a packet, 28 s for 64 KB. A shorter gap
+  during SysEx would be faster but dips the audio more often: an audio-feel decision for the
+  user, after hearing the current behaviour on the unit.
