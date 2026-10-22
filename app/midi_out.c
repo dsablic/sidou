@@ -349,12 +349,20 @@ uint32_t midi_out_tick(midi_out* o, const live* l, uint32_t room,
             }
         }
     }
-    uint32_t p = o->next;
-    for (uint32_t i = 0; i < LIVE_PARAM_COUNT; ++i, ++p) {
-        if (p == LIVE_PARAM_COUNT) {
+    /* Round robin from o->next: [next, COUNT), then [0, next). */
+    uint32_t from = o->next;
+    uint32_t p = from;
+    uint32_t end = LIVE_PARAM_COUNT;
+    uint8_t* pending = o->pending;
+    for (;;) {
+        if (p == end) {
+            if (end != LIVE_PARAM_COUNT || !from) {
+                break; /* every parameter looked at once */
+            }
             p = 0;
+            end = from;
         }
-        if (o->pending[p]) {
+        if (pending[p]) {
             if (!send(o, l, p, budget, out, &n)) {
                 o->next = (uint8_t)p; /* the next tick starts here */
                 o->deferred++;
@@ -364,6 +372,7 @@ uint32_t midi_out_tick(midi_out* o, const live* l, uint32_t room,
                 o->expert_pending &= (uint16_t)~(1u << (p - LIVE_PARAM_EXPERT));
             }
         }
+        p++;
     }
     o->packets += n;
     return n;
