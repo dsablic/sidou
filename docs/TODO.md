@@ -451,19 +451,20 @@ working.
   3. have a slot switch wait a block when the SID's block is heavy.
   Keep the output exact (golden hashes, the bulk-against-cycle fuzz).
 
-- **REC from the keys, for the ergonomics review and flash day** (M2d Task 6, the user
-  2026-10-21): TRACKER's cursor stays pinned while recording rather than following the
-  playhead, so notes land in the playing pattern but show only when it is on screen;
-  revisit in the ergonomics review. The key-to-row timing is measured at the audio block
-  (about 3 ms) with no latency compensation; try the feel on the unit on flash day.
+- **REC from the keys, for flash day** (M2d Task 6, the user 2026-10-21): the key-to-row
+  timing is measured at the audio block (about 3 ms) with no latency compensation; try the feel
+  on the unit on flash day. (Closed 2026-10-23, the ergonomics review's E03: TRACKER's cursor
+  no longer stays pinned while recording; it follows the playing pattern and comes back when
+  the song stops.)
 
 ## The end-of-M2 review's findings after v0.2.0 (before v0.3.0)
 
 - **Where:** [docs/reviews/2026-10-22-m2-review.md](reviews/2026-10-22-m2-review.md).
 - **In v0.2.0:** the five blockers (2.1, 3.1, 5.1, 5.2, 5.3 with 5.6), storage and SysEx
   1.1, 1.2, 1.3 and 4.1, and the licence labels (section 7).
-- **Before v0.3.0, every other finding** (v0.3.0 ships with no known bug): 5.4
-  (REC into a pattern TRACKER doesn't show), and the 31 minor ones, batched into the ergonomics/UX pass.
+- **Before v0.3.0, every other finding** (v0.3.0 ships with no known bug): the 31 minor
+  ones, batched into the ergonomics/UX pass (5.4, REC into a pattern TRACKER doesn't show, is
+  fixed: E03 below).
 - **Fixed after v0.2.0 (the ergonomics review's E items, ergo-logic):** 1.5 (E01: SAVE, not a
   second turn, confirms STORE's format; NEWER for a newer SIDOU's store), 5.5 (E02: no song
   views over ABOUT's tune), 5.10 (E27: ABOUT keeps the song views' places), 3.2 (E04: REC
@@ -474,7 +475,8 @@ working.
   narrow widths: it now never sweeps below 3 %); 5.7, 5.8 and 5.11 (E23-E25: REC's toast
   outside the song views, no count-in on entering one mid-song, the REC popup in Hz); 5.9
   (E26: ORDER keeps TRACKER's row), 5.13 (E30: the tour clears only its own toast), 5.12 (E29: toasts wait under a help card), 5.14 (E28: keys under a help card play the view
-  under it); 3.3 (E05: REC takes the entry's transpose off the note it writes).
+  under it); 3.3 (E05: REC takes the entry's transpose off the note it writes); 5.4 (E03:
+  while REC records TRACKER follows the playing pattern, the cursor back when it stops).
 - **Fixed on the gates track (before v0.3.0):** 6.1 (`FREE_RAM_MIN` 7,000 to 10,000, the
   overview's M2f row, and each region 4,096 to 5,120, M3's start target), 6.2
   (`IMAGE_CEILING` 512,000 to 506,000, M3's start target), and section 8's stale CMake cache

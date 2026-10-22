@@ -185,8 +185,8 @@ here opens in GoatTracker. TRACKER (`app/tracker_view.h`; docs/art/README.md "TR
 is the patterns in GoatTracker's layout, **one voice at a time at 2× the font** (12 rows) with the other two as activity strips on
 the right, and the shown voice's orderlist and the bar row's command. **SELECT moves the row;
 ALGORITHM steps the voice shown** (the cursor's voice: the note keys audition on it, below).
-With REC off its rows follow the song while it plays, the cursor while it is stopped; with
-REC on the edit cursor stays on screen. The moving bar over still rows (the
+Its rows follow the song while it plays (with REC on too: what is recorded is seen landing),
+the cursor while it is stopped; with REC on and the song stopped the edit cursor shows. The moving bar over still rows (the
 menu's **TRACKER ROWS** BAR, the default) or scrolling under a still bar (SCROLL, as
 GoatTracker does). TRACKER ROWS is saved with the settings.
 
@@ -353,9 +353,10 @@ The menu's **REC** item (popup `REC QUANTISE`; not saved) chooses `NEAREST` (the
 rows per beat times four, that records nothing: a toast says `COUNT-IN`; it starts when the
 song starts with REC on in a song view, or when REC is turned on there while it plays; a song
 view opened while the song already plays records at once). During a count-in TRACKER's K1 and K2
-do nothing; STEP's act as in LIVE. TRACKER keeps its cursor
-where it is while recording; the notes appear in the pattern as they are written. With the
-song stopped REC is TRACKER's cursor entry, as before.
+do nothing; STEP's act as in LIVE. While recording TRACKER shows the recorded voice's playing
+pattern, its bar on the player's row, so the notes appear where they land; its edit cursor
+stays where it was and shows again when the song stops. With the song stopped REC is TRACKER's
+cursor entry, as before.
 
 **Transposes.** A note is written as it was heard: on an orderlist entry with a transpose (ORDER's
 `+n` / `-n`, which holds until the next transpose) the transpose is taken off the note, so the

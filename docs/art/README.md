@@ -1011,8 +1011,9 @@ An insert's rebuild is prepared in the frame's bounded editor poll, not in the i
 stays inside 200 cells and 20 ms of SPI, with no frame cut short.
 
 REC while the song plays (M2d Task 6) adds no drawing of its own: a recorded note is a cell
-write through the editor, and the cursor stays where it is, so the redraw is the pattern's
-changed cells (an edit's cost, above) and a K1 or K2 lock is a lock-table write with a popup.
+write through the editor, and TRACKER shows the playing pattern as it does with REC off (the
+bar following the player's row), so the redraw is the pattern's changed cells (an edit's cost,
+above) and a K1 or K2 lock is a lock-table write with a popup.
 Its recording has no cost bound of its own; `rec_records_a_timed_key_script_on_the_expected_rows_and_plays_back_bit_exact`
 (`host/crates/emu-gate/tests/song.rs`) checks its rows and its audio, not its time.
 

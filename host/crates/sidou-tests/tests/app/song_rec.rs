@@ -305,6 +305,45 @@ fn rec_subtracts_the_entrys_transpose_and_refuses_what_leaves_the_range() {
     );
 }
 
+/// Ergonomics review E03 (M2 review 5.4): while REC records, TRACKER shows the recorded voice's
+/// playing pattern and follows its row, so the notes are seen landing; when recording stops
+/// (the song stopped, REC on) the edit cursor is back where it was.
+#[test]
+fn tracker_follows_the_playing_pattern_while_recording_and_the_cursor_comes_back() {
+    let mut s = tracker();
+    s.ui.turn(PANEL_ENC_SELECT, 2);
+    settle(&mut s.ui);
+    s.ui.press(PANEL_BTN_REC);
+    settle(&mut s.ui);
+    assert_eq!(s.ui.small(29, 17, 13), "ORD 00 ROW 02", "REC on, stopped: the cursor");
+    // Playing pattern 1 (entry 1), row 6.
+    at(&mut s, 6, 0);
+    s.f.st.order_pos = [1, 0, 0];
+    s.ui.frame();
+    settle(&mut s.ui);
+    assert_eq!(s.ui.big(0, 5, 2, 6), "PAT 01", "the playing pattern");
+    assert_eq!(s.ui.small(29, 17, 13), "ORD 01 ROW 06");
+    tap(&mut s, 16);
+    assert_eq!(cell(&s, 1, 6), [KEY16, 1, 0, 0]);
+    let j = (6 - unsafe { tracker_view_top(6, 0) }) as usize;
+    let r = TRACKER_VIEW_TOP as usize + TRACKER_VIEW_ROW_CELLS as usize * j;
+    assert_eq!(s.ui.big(r, 3, 2, 3), "A-4", "the note landed where it shows");
+    // The row moves on: the bar follows it.
+    at(&mut s, 9, 0);
+    s.f.st.order_pos = [1, 0, 0];
+    s.ui.frame();
+    settle(&mut s.ui);
+    assert_eq!(s.ui.small(29, 17, 13), "ORD 01 ROW 09");
+    assert_eq!(s.ui.v.song.row, 2, "the cursor kept");
+    assert_eq!(s.ui.v.song.order_pos, 0);
+    // The song stops: the edit cursor where it was.
+    s.f.st.state = SONG_T_STOPPED as u8;
+    s.ui.frame();
+    settle(&mut s.ui);
+    assert_eq!(s.ui.big(0, 5, 2, 6), "PAT 00");
+    assert_eq!(s.ui.small(29, 17, 13), "ORD 00 ROW 02");
+}
+
 #[test]
 fn the_row_comes_from_the_players_entry_not_the_cursors() {
     let mut s = tracker();

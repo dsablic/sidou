@@ -119,17 +119,25 @@ typedef struct {
     uint8_t silent;
 } lane;
 
-static uint32_t subtune_of(const song_view* sv, uint32_t v) {
-    return song_view_playing(sv) && !(sv->rec && v == sv->voice) ? sv->st.subtune : sv->subtune;
+/* 1: the shown voice shows the edit cursor's place: REC on with the song not playing. While REC
+ * records it shows the playing pattern instead, its row following the player's (ergonomics
+ * review E03); the cursor is kept for when it stops. */
+static int at_cursor(const song_view* sv) {
+    return sv->rec && !song_view_rec_playing(sv);
 }
 
-/* Voice v's orderlist entry and row (app/song_view.h song_view_position), and the first
- * pattern at or after the entry. */
-static lane lane_of(const song_view* sv, uint32_t v) {
+/* The subtune voice v shows: cursor 1, the shown voice is at the edit cursor (its subtune). */
+static uint32_t subtune_of(const song_view* sv, uint32_t v, int cursor) {
+    return song_view_playing(sv) && !(cursor && v == sv->voice) ? sv->st.subtune : sv->subtune;
+}
+
+/* Voice v's orderlist entry and row (app/song_view.h song_view_position), or with cursor the
+ * shown voice's edit cursor, and the first pattern at or after the entry. */
+static lane lane_at(const song_view* sv, uint32_t v, int cursor) {
     lane ln = {0xffu, 0xffu, 0u, 0u};
     uint32_t entry, row;
     song_view_position(sv, v, &entry, &row);
-    if (sv->rec && v == sv->voice) {
+    if (cursor && v == sv->voice) {
         entry = sv->order_pos;
         row = sv->row;
     }
@@ -139,7 +147,7 @@ static lane lane_of(const song_view* sv, uint32_t v) {
     if (!s || entry == SONG_T_NOWHERE) {
         return ln;
     }
-    uint32_t sub = subtune_of(sv, v);
+    uint32_t sub = subtune_of(sv, v, cursor);
     const uint8_t* o = gt2_order_data(s, sub, v);
     uint32_t n = gt2_order_entries(s, sub, v);
     for (uint32_t i = entry; o && i < n; i++) {
@@ -150,6 +158,17 @@ static lane lane_of(const song_view* sv, uint32_t v) {
         }
     }
     return ln;
+}
+
+/* What voice v shows. */
+static lane lane_of(const song_view* sv, uint32_t v) {
+    return lane_at(sv, v, at_cursor(sv));
+}
+
+/* The shown voice's lane at the edit cursor with REC on (what the edits write), as shown with
+ * it off. */
+static lane edit_lane(const song_view* sv) {
+    return lane_at(sv, sv->voice, sv->rec);
 }
 
 /* A pattern's rows (the end row not counted), 0 for none. */
@@ -182,7 +201,7 @@ static void rows_look(const song_view* sv, uint8_t out[ROWS_LOOK]) {
     out[n++] = sv->l->theme;
     uint32_t pos, row;
     song_view_position(sv, sv->voice, &pos, &row);
-    out[n++] = sv->rec ? sv->order_pos : (uint8_t)pos;
+    out[n++] = at_cursor(sv) ? sv->order_pos : (uint8_t)pos;
     for (uint32_t v = 0; v < SONG_T_VOICES; v++) {
         lane ln = lane_of(sv, v);
         out[n++] = ln.pattern;
@@ -194,7 +213,7 @@ static void rows_look(const song_view* sv, uint8_t out[ROWS_LOOK]) {
     }
     out[n++] = sv->rec;
     out[n++] = sv->field;
-    out[n++] = (uint8_t)subtune_of(sv, sv->voice);
+    out[n++] = (uint8_t)subtune_of(sv, sv->voice, at_cursor(sv));
     int jam = sv->jam_key != SONG_VIEW_NO_KEY && sv->jam_voice == sv->voice;
     out[n++] = jam ? sv->jam_key : SONG_VIEW_NO_KEY;
     out[n++] = jam ? sv->instr : 0u;
@@ -418,7 +437,7 @@ static void draw_window_row(song_view* sv, const theme* th, const lane lanes[SON
     }
     if (u < shown) {
         char ghost[6];
-        draw_row(c, th, r, shown_v, u, cell, on, on && sv->rec ? sv->field : TRACKER_VIEW_FIELD_NONE,
+        draw_row(c, th, r, shown_v, u, cell, on, on && at_cursor(sv) ? sv->field : TRACKER_VIEW_FIELD_NONE,
                  on && cell && ghost_of(sv, ghost) ? ghost : NULL);
     } else {
         blank(c, 0, r, GRID_COLS, TRACKER_VIEW_ROW_CELLS, THEME_ATTR(th, value));
@@ -447,7 +466,7 @@ static void build_footer(song_view* sv, const theme* th, const lane lanes[SONG_T
     const uint8_t hint = THEME_ATTR(th, hint);
     const uint8_t grey = THEME_ATTR(th, label);
     small(c, 0, TRACKER_VIEW_ORDER_ROW, "OL", hint);
-    uint32_t sub = subtune_of(sv, shown_v);
+    uint32_t sub = subtune_of(sv, shown_v, at_cursor(sv));
     const uint8_t* o = s ? gt2_order_data(s, sub, shown_v) : NULL;
     uint32_t n = s ? gt2_order_entries(s, sub, shown_v) : 0u;
     if (o && bar.pattern != 0xffu) {
@@ -509,7 +528,7 @@ static void build_footer(song_view* sv, const theme* th, const lane lanes[SONG_T
     /* the position as the song views have always said it: the orderlist entry and the row, hex */
     uint32_t pos, row;
     song_view_position(sv, shown_v, &pos, &row);
-    if (sv->rec) {
+    if (at_cursor(sv)) {
         pos = sv->order_pos;
         row = sv->row;
     }
@@ -606,7 +625,7 @@ __attribute__((noinline, unused)) static void feedback(screen* s, const song_vie
 }
 
 __attribute__((noinline, unused)) static int read_cell(const song_view* sv, lane* ln, uint8_t cell[4]) {
-    *ln = lane_of(sv, sv->voice);
+    *ln = edit_lane(sv);
     return sv->editor && song_edit_read_row(sv->editor, ln->pattern, sv->row, cell);
 }
 
@@ -751,7 +770,7 @@ static int input(screen* s, void* state, const screen_event* e) {
         return 0;
     }
     if (e->id == PANEL_ENC_SELECT) {
-        uint32_t n = rows_of(sv->song, lane_of(sv, sv->voice).pattern);
+        uint32_t n = rows_of(sv->song, edit_lane(sv).pattern);
         int32_t step = edit ? TRACKER_VIEW_PAGE : 1u;
         int32_t row = (int32_t)sv->row + e->steps * step;
         sv->row = (uint8_t)(row < 0 || !n ? 0 : (uint32_t)row >= n ? n - 1u : (uint32_t)row);
@@ -765,7 +784,7 @@ static int input(screen* s, void* state, const screen_event* e) {
         }
         int32_t v = ((int32_t)sv->voice + e->steps) % (int32_t)SONG_T_VOICES;
         sv->voice = (uint8_t)(v < 0 ? v + (int32_t)SONG_T_VOICES : v);
-        uint32_t n = rows_of(sv->song, lane_of(sv, sv->voice).pattern);
+        uint32_t n = rows_of(sv->song, edit_lane(sv).pattern);
         if (n && sv->row >= n) {
             sv->row = (uint8_t)(n - 1u);
         }

@@ -25,8 +25,10 @@
  *
  * The cursor is a voice (song_view.voice, the shown one) and a row: while the song plays the
  * row its player's row events say for that voice (app/song_transport.h status), stopped the
- * cursor's (the first pattern at or after its entry, its row: song_view.row). With REC on the
- * cursor stays on screen. SELECT steps rows (EDIT held: an 8-row page), ALGORITHM steps the
+ * cursor's (the first pattern at or after its entry, its row: song_view.row). With REC on and
+ * the song stopped the edit cursor shows; while REC records (the song playing) the rows follow
+ * the player as they do with REC off, so the notes are seen landing, and the cursor is kept for
+ * when it stops. SELECT steps rows (EDIT held: an 8-row page), ALGORITHM steps the
  * voice 1, 2, 3 and round; the note keys audition on it (app/song_view.h). The
  * other voices' rows are those of their own patterns at the same row number.
  *

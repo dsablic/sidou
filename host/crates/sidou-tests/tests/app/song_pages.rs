@@ -844,8 +844,15 @@ fn selected_subtune_drives_play_and_tracker_but_playback_uses_the_actual_subtune
     settle(&mut h.ui);
     assert_eq!(
         h.ui.big(0, 5, 2, 6),
+        "PAT 00",
+        "REC records: the playing subtune's pattern (ergonomics review E03)"
+    );
+    h.f.st.state = SONG_T_STOPPED as u8;
+    settle(&mut h.ui);
+    assert_eq!(
+        h.ui.big(0, 5, 2, 6),
         "PAT 01",
-        "REC pins the selected subtune's entry"
+        "stopped, REC shows the edit cursor: the selected subtune's entry"
     );
 }
 

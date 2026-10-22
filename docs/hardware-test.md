@@ -1323,11 +1323,10 @@ silent three-pattern song at tempo 6, so what you hear is what you made). Contro
   patterns, with SETs playing as here.
 - [ ] **Feel (open question).** Note how recording feels at tempo 6 and at tempo 3: does a
   note you play on the beat land on that beat? Two things are not decided and the unit decides
-  them (docs/TODO.md, "REC from the keys"): **TRACKER's cursor stays pinned while recording**
-  rather than following the playhead, so notes land in the playing pattern but show only when
-  it is on screen; and **the key-to-row timing is uncompensated** (read at the audio block,
-  about 3 ms, with no latency correction). Write down which of NEAREST and OFF you prefer and
-  whether a fixed offset is wanted, and whether the pinned cursor gets in the way.
+  them (docs/TODO.md, "REC from the keys"): **the key-to-row timing is uncompensated** (read
+  at the audio block, about 3 ms, with no latency correction). While recording TRACKER follows
+  the playing pattern (the notes show as they land) and its cursor comes back when the song
+  stops. Write down which of NEAREST and OFF you prefer and whether a fixed offset is wanted.
 
 ## Result
 
