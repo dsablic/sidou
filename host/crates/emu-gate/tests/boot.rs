@@ -219,3 +219,21 @@ fn the_store_reads_through_a_plain_xip_window() {
         .iter()
         .all(|&b| b == 0xFF));
 }
+
+/// The settled flash every `Machine::boot` starts from is made with fm1-core's JIT
+/// (`Machine::run_ms_jit`). It must be the flash the stepped run leaves, which is what the
+/// gate's counts were measured on: the JIT runs the same guest instructions.
+#[test]
+fn the_jit_settles_the_flash_as_the_stepped_run_does() {
+    let Some(build) = build_dir() else {
+        common::skip_message("the JIT settle test");
+        return;
+    };
+    let fw = Firmware::load(&build);
+    let mut m = Machine::boot_blank(&fw.image);
+    m.run_ms(common::SETTLE_MS);
+    assert!(
+        m.soc.flash.mem == common::settled_flash(&fw.image),
+        "the JIT's settled flash differs from the stepped run's"
+    );
+}

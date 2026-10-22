@@ -296,7 +296,7 @@ pub const SETTLE_MS: u64 = 7_000;
 /// The flash after a first boot of `image` on a blank chip: its settings stored (app/settings.h:
 /// the defaults and the firmware's version), as a device holds them from its second power-on.
 /// Made once per image and test process.
-fn settled_flash(image: &[u8]) -> Vec<u8> {
+pub fn settled_flash(image: &[u8]) -> Vec<u8> {
     use std::sync::{Mutex, OnceLock};
     type FlashCache = Vec<(Vec<u8>, Vec<u8>)>;
     static MADE: OnceLock<Mutex<FlashCache>> = OnceLock::new();
@@ -306,7 +306,7 @@ fn settled_flash(image: &[u8]) -> Vec<u8> {
         return f.clone();
     }
     let mut m = Machine::boot_blank(image);
-    m.run_ms(SETTLE_MS);
+    m.run_ms_jit(SETTLE_MS);
     let flash = m.soc.flash.mem.clone();
     assert!(
         stored_value(&flash, sidou_sys::SETTINGS_KEY).is_some(),
@@ -425,6 +425,29 @@ impl Machine {
     pub fn run_ms(&mut self, ms: u64) {
         let n = self.soc.periph.cycle_of_ms(ms);
         self.run_cycles(n);
+    }
+
+    /// Runs `ms` milliseconds through fm1-soc's own loop (`machine::run_blocks`) with fm1-core's
+    /// JIT, several times faster than `run_ms`, for a run whose only result is the machine it
+    /// leaves (the settled flash). It keeps none of this Machine's counts (steps, the ALNK0
+    /// blocks, the watches), has no `step_block_load_dec` and no USB host, and it stops within a
+    /// block of the end rather than on it. The JIT runs the same guest instructions as the
+    /// interpreter (fm1-emu stops both at the same one), so the flash it leaves is the stepped
+    /// run's, byte for byte: `boot.rs` checks that.
+    pub fn run_ms_jit(&mut self, ms: u64) {
+        assert!(self.usb.is_none(), "run_ms_jit has no USB host");
+        let end = self.soc.periph.cycles + self.soc.periph.cycle_of_ms(ms);
+        self.cpu.jit_on = true;
+        let mut pending_tick = false;
+        while self.soc.periph.cycles < end {
+            // (the budget is in instructions, while `skip_idle` jumps the clock: a short one, so
+            // the run stops near `end` and not that many instructions later)
+            let n = (end - self.soc.periph.cycles).min(4096) as u32;
+            fm1_soc::machine::run_blocks(&mut self.cpu, &mut self.soc, n, &mut pending_tick)
+                .unwrap_or_else(|e| panic!("cpu fault: {e}"));
+            assert!(!self.soc.cpu1_release, "SIDOU runs on core 0 only");
+        }
+        self.cpu.jit_on = false;
     }
 
     /// Runs `n` CPU cycles of emulated time (fm1-emu: one instruction a cycle).

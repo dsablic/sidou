@@ -273,6 +273,16 @@ starts the long tests first. Without nextest, `cargo test --locked --release -p 
 (no `--test-threads=1`) runs the binaries one after another with their tests side by side.
 No emu-gate test needs to run alone.
 
+The gate steps fm1-core one instruction at a time, since its counts and watches are per
+instruction; fm1-core's JIT (`Cpu::jit_on`, AArch64 macOS and Linux, x86-64 Linux and Windows)
+runs only through `run_fast`'s blocks, so the measuring loop cannot use it. It does make the
+settled flash every `Machine::boot` starts from (`Machine::run_ms_jit`: the first boot's 7 s on
+a blank chip, kept for its flash alone), in 0.6 s instead of 5.1 s, once per test process.
+`the_jit_settles_the_flash_as_the_stepped_run_does` (boot.rs) checks that flash against the
+stepped run's. Every report and printed count was the same with it as without (2026-10-22),
+and the tests' times added up to 5,048 s instead of 6,129 s; the wall time stays the player
+budget test's.
+
 - `chip_b.rs`: B is never rendered before preparation, costs no extra render while unused,
   fades in/out bit-exactly with the host, and fits the real two-chip ISR budget with every
   slot at its heaviest. It measures the mix and MASTER gain separately.
