@@ -56,6 +56,10 @@ option(SIDOU_FLASH_SPIKE "Build the flash timing spike instead of SIDOU (never r
 if(SIDOU_FLASH_SPIKE)
     message(WARNING "SIDOU_FLASH_SPIKE=ON: the flash timing spike, a test firmware, not SIDOU")
     target_sources(${t} PRIVATE flash_spike.c)
+    # Its results and its screen's address are read from the ELF by the emulator tests
+    # (emu-gate tests/flash_spike.rs), and nothing in the spike reads flash_spike_screen_at:
+    # without its own data section, --gc-sections keeps it as before.
+    set_property(SOURCE flash_spike.c APPEND PROPERTY COMPILE_OPTIONS -fno-data-sections)
     target_compile_definitions(${t} PRIVATE SIDOU_FLASH_SPIKE=1)
 endif()
 target_compile_options(${t} PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wshadow>)

@@ -12,8 +12,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(CMAKE_CROSSCOMPILING)
     # One section per function, so platform/fm1/app.ld can place single functions (the audio
-    # path in SRAM) with input-section rules instead of attributes in the portable C.
-    add_compile_options(-ffunction-sections)
+    # path in SRAM) with input-section rules instead of attributes in the portable C. One per
+    # object too, so --gc-sections drops constants nothing reads (a retired logo's runs, the
+    # host-only tables): app.ld's .rodata*, .data* and .bss* patterns take the named sections.
+    add_compile_options(-ffunction-sections -fdata-sections)
 endif()
 
 add_subdirectory(core)
