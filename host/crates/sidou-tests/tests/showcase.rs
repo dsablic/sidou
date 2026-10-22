@@ -45,6 +45,16 @@ fn each_song_reads_and_writes_on_the_device() {
         assert_eq!(found, 1, "{}: the chip's setup", s.name);
         assert_eq!(chip.model, (s.model == SID_MODEL_8580) as u8, "{}", s.name);
         assert_eq!(chip.envelope, 1, "{}", s.name);
+        // The device loads a song only if its CHPA profile is one of its model's
+        // (platform/fm1/main.c setup_valid: else SNG: BAD CHIP SETUP).
+        let profile = unsafe { sid_chip_profile_get(u32::from(chip.profile)) };
+        assert!(!profile.is_null(), "{}: the profile", s.name);
+        assert_eq!(
+            unsafe { (*profile).model } as u8,
+            chip.model,
+            "{}: the profile is not the model's: the device refuses it",
+            s.name
+        );
         let plain = song.write(false);
         let (r, msg) = song.check_plain(&plain);
         assert_eq!(r, 0, "{}: {msg}", s.name);

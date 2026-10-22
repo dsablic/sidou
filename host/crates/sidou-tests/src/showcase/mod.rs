@@ -380,8 +380,16 @@ impl Showcase {
         let mut s = Song::host();
         s.read(&plain, 0)
             .unwrap_or_else(|e| panic!("{}: {}", self.name, e.msg));
+        // The profile must be one of the model's: the device refuses a CHPA whose profile's
+        // model is not its model (SNG: BAD CHIP SETUP). 0, the 6581 R2, suits a 6581 song.
+        let profile = if self.model == SID_MODEL_8580 {
+            unsafe { sid_chip_default(self.model) as u8 }
+        } else {
+            0
+        };
         let c = song_chip_setup {
             model: (self.model == SID_MODEL_8580) as u8,
+            profile,
             envelope: 1, // AUTHENTIC, a song's default (decision record 0005)
             ..Default::default()
         };
