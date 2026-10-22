@@ -40,7 +40,8 @@
  * - LEARN: MIDI learn (app/learn_view.h), a frame over any view, from SAVE held while a knob
  *   turns (views_learn).
  * - The song views (app/song_view.h): STEP, TRACKER, ORDER, INSTR and TABLE, from SEQ in any
- *   view or the menu's TRACKER; SEQ steps through them, HOME goes back to the view before.
+ *   view (the one that showed last, STEP the first time after power-on) or the menu's TRACKER;
+ *   SEQ steps through them, HOME goes back to the view before.
  *   TRACKER shows the patterns (app/tracker_view.h); the other song views come later.
  * - TITLE: a title card (app/title_card.h) over a major view entered from the menu: THE CHIP
  *   over CHIP, THE SCENE over SCENE, THE OSCILLATOR over LIVE when HOME goes back to it from
@@ -239,6 +240,9 @@ typedef struct {
     /* A toast raised while a help card shows waits under it: the ms it has left (0 none), its
      * text in the screen's toast (views_frame). */
     uint16_t toast_held;
+    /* The song view that showed last (views_frame), which SEQ reopens from outside them; NULL
+     * until one has shown since power-on (SEQ then opens STEP). Not saved. */
+    const view* song_last;
 } views;
 
 extern const view views_status;

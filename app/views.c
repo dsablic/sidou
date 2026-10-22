@@ -1489,10 +1489,11 @@ static void remember(views* v) {
     }
 }
 
-/* SEQ: the first song view over the view on top, or in one the next (app/song_view.h). */
+/* SEQ: over the view on top the song view that showed last (STEP the first time), or in one the
+ * next (app/song_view.h). */
 static void song_step(views* v) {
     const view* top = screen_top(&v->s);
-    const view* next = song_view_next(top);
+    const view* next = !song_view_is(top) && v->song_last ? v->song_last : song_view_next(top);
     if (!next || next == top || song_refused(v)) {
         return;
     }
@@ -1676,6 +1677,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->help.done = 0;
     v->tour = 0;
     v->toast_held = 0;
+    v->song_last = NULL;
     v->snd = NULL;
     v->set = NULL;
     v->format_arm = 0;
@@ -2641,7 +2643,11 @@ void views_frame(views* v, uint32_t now_ms) {
     }
     /* The tap runs while LIVE or SCENE shows: the audio interrupt pays for it only then. */
     const view* top = shows(v);
-    song_view_frame(&v->song, song_view_is(top));
+    int in_song = song_view_is(top);
+    if (in_song) {
+        v->song_last = top; /* what SEQ reopens (song_step) */
+    }
+    song_view_frame(&v->song, in_song);
     if (v->pages.pending) {
         uint8_t previous = v->pages.status;
         (void)song_pages_poll(&v->pages);

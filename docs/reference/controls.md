@@ -192,7 +192,7 @@ GoatTracker does). TRACKER ROWS is saved with the settings.
 
 | Control | Does |
 |---|---|
-| **SEQ** | from any view, opens the first song view over it (HOME goes back to that view); in a song view, the next one: STEP, TRACKER, ORDER, INSTR, TABLE and round. The menu's TRACKER opens TRACKER. Not over [ABOUT](#song)'s tune |
+| **SEQ** | from any view, opens the song view used last over it (STEP the first time after power-on; HOME goes back to that view); in a song view, the next one: STEP, TRACKER, ORDER, INSTR, TABLE and round. The menu's TRACKER opens TRACKER. Not over [ABOUT](#song)'s tune |
 | **PLAY** | in every view: plays the song from the orderlist entry the song views show (the cursor's), or stops it (releases ring on). While it starts (the keys moving off chip A, [which chip the keys play](#which-chip-the-keys-play)) it shows as playing; PLAY again stops it |
 | **EDIT held + PLAY** | goes on from where the song stopped (from the cursor if it never played) |
 | **REC** | record mode on and off: REC in red on the song views' top line. In TRACKER with the song stopped it enables note entry ([Editing TRACKER](#editing-tracker)); with the song playing, the keys and K1 and K2 are recorded ([below](#recording-while-the-song-plays)). STEP needs no REC to edit; REC there records |

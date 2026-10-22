@@ -4,8 +4,9 @@
  * transport, the mutes and solos, the jam, the header row and the voice heads, and the canvas
  * they draw into (one shows at a time, so they share it).
  *
- * The song views are STEP, TRACKER, ORDER, INSTR and TABLE. SEQ opens the first of them from
- * any view (on top of it: HOME goes back to it) and, in one, steps to the next:
+ * The song views are STEP, TRACKER, ORDER, INSTR and TABLE. SEQ opens the one that showed last
+ * from any view (STEP the first time after power-on; on top of it: HOME goes back to it) and, in
+ * one, steps to the next:
  * STEP (app/step_view.h), TRACKER (app/tracker_view.h), ORDER, INSTR and TABLE
  * (app/song_pages.h) and round; a view not made yet (a NULL in song_view.c's list) is skipped.
  *

@@ -78,7 +78,9 @@ fn shared_canvas_rebuilds_chip_after_tracker_is_popped_without_enter() {
     assert_eq!(ui.v.song.cv.attr.as_flattened(), &chip.1);
     for partial in [false, true] {
         ui.press(PANEL_BTN_SEQ);
-        ui.press(PANEL_BTN_SEQ);
+        if ui.top() == "STEP" {
+            ui.press(PANEL_BTN_SEQ); // the first time; then SEQ reopens TRACKER, used last
+        }
         assert_eq!(ui.top(), "TRACKER");
         if partial {
             step(&mut ui);

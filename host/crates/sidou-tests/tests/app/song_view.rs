@@ -211,11 +211,15 @@ pub(crate) fn settle(ui: &mut Ui) {
     panic!("the screen kept changing");
 }
 
-/// SEQ twice: STEP, then TRACKER.
+/// SEQ until TRACKER: STEP, then TRACKER the first time; the song view used last first after.
 pub(crate) fn open_tracker(ui: &mut Ui) {
-    ui.press(PANEL_BTN_SEQ);
-    ui.press(PANEL_BTN_SEQ);
-    settle(ui);
+    for _ in 0..SONG_VIEW_COUNT {
+        ui.press(PANEL_BTN_SEQ);
+        settle(ui);
+        if ui.top() == "TRACKER" {
+            break;
+        }
+    }
     assert_eq!(ui.top(), "TRACKER");
 }
 
@@ -300,6 +304,45 @@ fn seq_opens_the_tracker_from_any_view_and_home_goes_back() {
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     settle(&mut ui);
     assert_eq!(ui.top(), "TRACKER");
+}
+
+/// Ergonomics review E22: SEQ from outside the song views reopens the one used last (STEP the
+/// first time after power-on); inside them it still steps; the menu's TRACKER opens TRACKER.
+#[test]
+fn seq_reopens_the_song_view_used_last() {
+    let mut ui = Ui::without_cards();
+    ui.press(PANEL_BTN_SEQ);
+    settle(&mut ui);
+    assert_eq!(ui.top(), "STEP", "the first time: STEP");
+    for page in ["TRACKER", "ORDER"] {
+        ui.press(PANEL_BTN_SEQ);
+        settle(&mut ui);
+        assert_eq!(ui.top(), page, "SEQ in a song view steps");
+    }
+    ui.press(PANEL_BTN_HOME);
+    settle(&mut ui);
+    assert_eq!(ui.top(), "LIVE");
+    ui.press(PANEL_BTN_SEQ);
+    settle(&mut ui);
+    assert_eq!(ui.top(), "ORDER", "the view used last");
+    ui.press(PANEL_BTN_SEQ);
+    settle(&mut ui);
+    assert_eq!(ui.top(), "INSTR");
+    // The menu's TRACKER opens TRACKER, which then is the one SEQ reopens.
+    ui.press(PANEL_BTN_HOME);
+    settle(&mut ui);
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, -(VIEWS_MENU_ITEMS as i32));
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_TRACKER as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    settle(&mut ui);
+    assert_eq!(ui.top(), "TRACKER");
+    ui.press(PANEL_BTN_HOME);
+    settle(&mut ui);
+    assert_eq!(ui.top(), "MENU");
+    ui.press(PANEL_BTN_SEQ);
+    settle(&mut ui);
+    assert_eq!(ui.top(), "TRACKER", "from the menu too");
 }
 
 #[test]

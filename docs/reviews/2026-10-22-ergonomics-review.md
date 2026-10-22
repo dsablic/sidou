@@ -99,7 +99,7 @@ Effort: S under half a day, M about a day, L several days. "Review 5.x" means `d
 
 | ID | Where | What a player experiences | Evidence | Effort | Rec |
 |---|---|---|---|---|---|
-| E22 | SEQ | TRACKER takes two SEQ presses (STEP first), ORDER three, INSTR four, TABLE five, then round; from the menu TRACKER takes two. | `task.open-tracker.sketch.actions` 1 to 2; `journey.sketch.actions_to_first_sound` 1 to 2 | S | **?** Options: (a) keep as is: STEP is the easy first view; (b) SEQ re-opens the song view you used last, STEP the first time. I recommend (b): a player who lives in TRACKER presses SEQ once. |
+| E22 | SEQ | TRACKER takes two SEQ presses (STEP first), ORDER three, INSTR four, TABLE five, then round; from the menu TRACKER takes two. | `task.open-tracker.sketch.actions` 1 to 2; `journey.sketch.actions_to_first_sound` 1 to 2 | S | **?** Options: (a) keep as is: STEP is the easy first view; (b) SEQ re-opens the song view you used last, STEP the first time. I recommend (b): a player who lives in TRACKER presses SEQ once. **Done (b):** SEQ from outside the song views reopens the one that showed last, STEP the first time after power-on; in them it steps as before. Kept in RAM only: the settings record has no similar field, and one would need a schema 6. |
 | E23 | REC on LIVE | REC toggles with no sign outside the song views, and on LIVE a COUNT-IN toast can appear though nothing records. | Review 5.7, `app/song_view.c:253` | S | **A**. **Fixed:** outside the song views REC toasts REC ON / REC OFF and starts no count-in. |
 | E24 | Count-in | Opening a song view while the song already plays starts a count-in. | Review 5.8, `app/song_view.c:523-534` (`was_playing`) | S | **A**. **Fixed:** entering a song view reads `was_playing` afresh (`song_view.shown`): a song that already plays counts nothing in. |
 | E25 | REC knob popup | K1 while recording says `CUTOFF 1024` (a raw lock value) where every other view says Hz; during the count-in K1 opens a popup though it does nothing. | Review 5.11, `app/tracker_view.c:601-618`, `app/step_view.c:986-992` | S | **A**. **Fixed:** the popup says the cutoff in Hz (`live_view_fc_text`); during a count-in TRACKER's K1/K2 do nothing and open no popup, STEP's act as in LIVE. |
@@ -150,7 +150,7 @@ Suggested order if you accept: E01, E02, E03 and E04 first (work can be lost), t
 
 ## The user's decisions (2026-10-23)
 
-- **E22:** SEQ reopens the song view used last (STEP the first time).
+- **E22:** SEQ reopens the song view used last (STEP the first time). **Done.**
 - **E31:** a SETTINGS item holds KEYS, SOUNDS, ROWS, CARDS, STORE, THEME and REC.
 - **E03:** while REC records, TRACKER follows the voice's playing pattern; the cursor comes back
   when recording stops.

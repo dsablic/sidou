@@ -711,8 +711,7 @@ fn rec_keys_before_compose_follow_tracker_not_the_borrowed_canvas() {
                 assert_eq!(s.f.cell_writes, 0, "REC outside TRACKER only auditions");
                 s.ui.press(PANEL_BTN_HOME);
                 s.ui.press(PANEL_BTN_HOME);
-                s.ui.press(PANEL_BTN_SEQ);
-                s.ui.press(PANEL_BTN_SEQ);
+                s.ui.press(PANEL_BTN_SEQ); // TRACKER, the song view used last
             }
             assert_eq!(s.ui.top(), "TRACKER");
             if covered {
@@ -743,8 +742,7 @@ fn rec_keys_survive_a_nested_tracker_above_midi_learn() {
     s.ui.press(PANEL_BTN_REC);
     s.ui.learn_on(PANEL_ENC_K1);
     assert_eq!(s.ui.top(), "LEARN");
-    s.ui.press(PANEL_BTN_SEQ);
-    s.ui.press(PANEL_BTN_SEQ);
+    s.ui.press(PANEL_BTN_SEQ); // TRACKER, the song view used last
     assert_eq!(s.ui.top(), "TRACKER");
     settle(&mut s.ui);
     s.ui.press(PANEL_BTN_HOME);
@@ -772,8 +770,7 @@ fn learn_completion_under_a_nested_tracker_waits_to_pop_its_own_view() {
         }
         s.ui.learn_on(PANEL_ENC_K1);
         assert_eq!(s.ui.top(), "LEARN");
-        s.ui.press(PANEL_BTN_SEQ);
-        s.ui.press(PANEL_BTN_SEQ);
+        s.ui.press(PANEL_BTN_SEQ); // TRACKER, the song view used last
         assert_eq!(s.ui.top(), "TRACKER");
         if save {
             s.ui.press(SAVE_KEY_BUTTON);
