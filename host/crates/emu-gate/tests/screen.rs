@@ -4338,29 +4338,39 @@ fn the_song_views_header_and_heads_match_their_goldens() {
     m.run_ms(30);
 }
 
-/// TRACKER's main-loop costs (M2d Task 2), with SIDOU LOOP bound, bounded about 10 % above
-/// what was measured:
+/// TRACKER's main-loop costs (M2d Task 2), with SIDOU LOOP bound. Measured again on
+/// 2026-10-22 (the end-of-M2 review, 6.3) and bounded at most 10 % above:
 ///
 /// | TRACKER | Cells a frame (average, most) | Worst SPI | Instructions a frame | Busiest ui_poll |
 /// |---|---|---|---|---|
-/// | Idle (25 frames) | 0, 0 | 0 | 8.1k | 1.3k |
-/// | REC on (25 frames) | 0.12, 3 | 0.26 ms | 8.3k | 3.9k |
-/// | Playing, BAR (100 frames) | 21.9, 86 | 7.56 ms | 25.7k | 29.8k |
-/// | GLO and a key: MUT (25 frames) | 1.24, 31 | 2.71 ms | 9.8k | 27.4k |
+/// | Idle (25 frames) | 0, 0 | 0 | 7.2k | 1.6k |
+/// | REC on (25 frames) | 1.04, 26 | 2.26 ms | 9.2k | 19.9k |
+/// | Playing, BAR (100 frames) | 27.1, 158 | 13.8 ms | 24.2k | 24.3k |
+/// | GLO and a key: MUT (25 frames) | 0.84, 21 | 1.83 ms | 9.0k | 19.6k |
+///
+/// TRACKER_IDLE_PER_FRAME 7,900 (7,204 measured; the song pages' idle frames, 6.7k, share
+/// it), TRACKER_CHANGE_PER_FRAME 10,100 (REC's 9,207), TRACKER_PLAYING_PER_FRAME 26,600
+/// (24,230). TRACKER_WORST_POLL stays 33,000: its busiest user is now the song pages' encoder
+/// redraws (all_song_edit_pages_keep_the_existing_input_frame_and_spi_budgets: INSTR's
+/// encoder 6, 30,744), and 33,000 is 7 % above that. History: 95d713e raised the first three
+/// (8,200 to 8,900, 9,400 to 10,800, 31,500 to 33,000) when the real view replaced the
+/// placeholder, and lowered PLAYING from 38,000 to 28,000; until this re-measure, "playing"
+/// ran with REC still on, which since 33b2bda keeps the cursor (and so the bar) still: it
+/// measured a still view (7.4k, 0.04 cells a frame), now REC is turned off first.
 ///
 /// Idle it composes nothing. The header and the heads are built again when they change (REC,
 /// the meters), the rows when the window, the bar, a pattern or a mute does (a row step: the
 /// build reads 25 rows of three patterns), and only the rows built are compared and copied.
 /// The inputs (ui_buttons for SEQ, REC and PLAY; GLO's key goes through the note keys' pass)
 /// and the busiest pass after each, against TRACKER_INPUT and TRACKER_PASS. Measured: SEQ from
-/// LIVE the input 4.2k (the push: the wipe's set-up over LIVE's overlays) and the pass 48.0k
+/// LIVE the input 3.5k (the push: the wipe's set-up over LIVE's overlays) and the pass 45.1k
 /// (the wipe's first frame: the whole canvas built and its rows copied whole); PLAY the input
-/// 1.9k (song_ctl_play) and the pass 29.6k; SEQ in TRACKER and REC the input 0.2k and the pass
-/// 5.0k to 30.4k; GLO's key 29.7k. The playing costs over 30 s, both modes and two tempos, are
+/// 2.0k (song_ctl_play) and the pass 24.1k; SEQ in TRACKER and REC the input 0.4k and the pass
+/// 22.8k to 34.9k; GLO's key 26.5k. The playing costs over 30 s, both modes and two tempos, are
 /// the_tracker_stays_within_its_budgets_while_a_song_plays's.
-const TRACKER_IDLE_PER_FRAME: f64 = 8_900.0;
-const TRACKER_CHANGE_PER_FRAME: f64 = 10_800.0;
-const TRACKER_PLAYING_PER_FRAME: f64 = 28_000.0;
+const TRACKER_IDLE_PER_FRAME: f64 = 7_900.0;
+const TRACKER_CHANGE_PER_FRAME: f64 = 10_100.0;
+const TRACKER_PLAYING_PER_FRAME: f64 = 26_600.0;
 const TRACKER_WORST_POLL: u64 = 33_000;
 const TRACKER_INPUT: u64 = 4_600;
 const TRACKER_PASS: u64 = 55_000;
@@ -4377,6 +4387,11 @@ fn the_song_views_stay_within_their_budgets() {
     let idle = measure(&mut m, &fw, 25, |_| {});
     let rec = measure(&mut m, &fw, 25, |m| m.key(REC, true));
     m.key(REC, false);
+    // REC off again: with REC on, TRACKER's cursor stays where it is (33b2bda), so the bar
+    // would not move and "playing" would measure a still view.
+    m.run_ms(60);
+    press(&mut m, REC);
+    assert_eq!(song_byte(&mut m, &fw, sidou_sys::ilp32::song_view::rec), 0);
     let playing = measure(&mut m, &fw, 100, |m| m.key(PLAY, true));
     m.key(PLAY, false);
     m.run_ms(100);
