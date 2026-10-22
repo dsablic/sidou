@@ -19,6 +19,9 @@ An image's `data` points to a pool in flash. A pool starts with sixteen bytes:
 `rows[y]` is a 16-bit **byte offset** from that image's pool pointer to its row packet.
 Several pools may be concatenated in the generated `RUNS` array; each image's existing
 `data` pointer selects its pool. Offsets are local to that pool, not to the whole array.
+The logos' file instead gives each pool its own array (`METAL_CHROME_RUNS`,
+`CRACKTRO_CHROME_RUNS`), so the firmware's `--gc-sections` drops a pool no shown logo reads:
+Cracktro Chrome, kept for the host tests, costs the image nothing.
 
 ## Row packets and checkpoints
 

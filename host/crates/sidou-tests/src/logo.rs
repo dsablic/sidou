@@ -277,14 +277,38 @@ pub fn c_source() -> String {
     let offs: usize = rows.iter().map(|r| 2 * r.len()).sum();
     let _ = write!(
         s,
-        " * Together: {} bytes of runs and {offs} of row offsets, {} in all. */\n\
-         #include \"logo.h\"\n\n\
-         static const uint8_t RUNS[{}] = {{\n{}}};\n",
+        " * Together: {} bytes of runs and {offs} of row offsets, {} in all.\n \
+         * Each pool is its own array, named after its first logo: the firmware links only the\n \
+         * logos it shows (--gc-sections with -fdata-sections), so a pool no shown logo reads\n \
+         * (Cracktro Chrome's, which the host tests keep) stays out of the image. */\n\
+         #include \"logo.h\"\n",
         data.len(),
         data.len() + offs,
-        data.len(),
-        table(&data, 16, |v| format!("0x{v:02x}")),
     );
+    // The pools, in order: each image's base starts one, or shares an earlier image's.
+    let mut starts: Vec<usize> = bases.clone();
+    starts.sort_unstable();
+    starts.dedup();
+    let pool_name = |base: usize| {
+        let first = bases
+            .iter()
+            .position(|&b| b == base)
+            .expect("a pool's first logo");
+        format!(
+            "{}_RUNS",
+            LOGOS[first].name.replace('-', "_").to_uppercase()
+        )
+    };
+    for (k, &start) in starts.iter().enumerate() {
+        let end = starts.get(k + 1).copied().unwrap_or(data.len());
+        let _ = write!(
+            s,
+            "\nstatic const uint8_t {}[{}] = {{\n{}}};\n",
+            pool_name(start),
+            end - start,
+            table(&data[start..end], 16, |v| format!("0x{v:02x}")),
+        );
+    }
     for (((l, img), r), &base) in LOGOS.iter().zip(&imgs).zip(&rows).zip(&bases) {
         let rows_name = l.name.replace('-', "_").to_uppercase();
         let _ = write!(
@@ -296,7 +320,7 @@ pub fn c_source() -> String {
             l.symbol,
             img.w,
             img.h,
-            bitmap_codec::data_ref(base),
+            pool_name(base),
         );
     }
     s
