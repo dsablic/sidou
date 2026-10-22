@@ -270,6 +270,9 @@ pub struct Machine {
     /// Each main-loop instruction that slept (an `idle` fm1-emu skipped ahead on), by its PC,
     /// with how many times.
     pub idles: std::collections::BTreeMap<u32, u64>,
+    /// run_cycles_jit's tick already spent on the next instruction (machine::run_blocks's
+    /// `pending_tick`), carried from one run to the next.
+    jit_tick: bool,
 }
 
 /// Every emulator test's journey checks the stacks when its machine goes: each stack's deepest
@@ -492,6 +495,7 @@ impl Machine {
             busy: None,
             busy_until: None,
             idles: std::collections::BTreeMap::new(),
+            jit_tick: false,
         }
     }
 
@@ -558,10 +562,16 @@ impl Machine {
     /// interpreter (fm1-emu stops both at the same one), so the flash it leaves is the stepped
     /// run's, byte for byte: `boot.rs` checks that.
     pub fn run_ms_jit(&mut self, ms: u64) {
+        let n = self.soc.periph.cycle_of_ms(ms);
+        self.run_cycles_jit(n);
+    }
+
+    /// `run_ms_jit` for `n` cycles.
+    pub fn run_cycles_jit(&mut self, n: u64) {
         assert!(self.usb.is_none(), "run_ms_jit has no USB host");
-        let end = self.soc.periph.cycles + self.soc.periph.cycle_of_ms(ms);
+        let end = self.soc.periph.cycles + n;
         self.cpu.jit_on = true;
-        let mut pending_tick = false;
+        let mut pending_tick = std::mem::take(&mut self.jit_tick);
         while self.soc.periph.cycles < end {
             // (the budget is in instructions, while `skip_idle` jumps the clock: a short one, so
             // the run stops near `end` and not that many instructions later)
@@ -570,6 +580,7 @@ impl Machine {
                 .unwrap_or_else(|e| panic!("cpu fault: {e}"));
             assert!(!self.soc.cpu1_release, "SIDOU runs on core 0 only");
         }
+        self.jit_tick = pending_tick;
         self.cpu.jit_on = false;
     }
 

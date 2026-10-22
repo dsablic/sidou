@@ -258,3 +258,124 @@ fn stop_song_position_and_continue(m: &mut Machine, fw: &Firmware) {
     println!("after SPP to bar 3: first call {first}; busiest pass {pass} (the seek's)");
     assert!(pass <= common::POLL_INSTRUCTIONS);
 }
+
+/// Ten minutes of emulated time (SIDOU_DRIFT_SECONDS, if set, for a quicker look) following a
+/// steady TRS clock at `bpm`, the song started on the clock: the rows' places on their 16ths
+/// at the end against the first minute's (no drift builds up), and the song's position against
+/// the clock's (not a call gained or lost). fm1-core's JIT runs the machine (Machine::run_cycles_jit);
+/// the clock's bytes go into the jack at their cycles, exactly, over the whole span (24 MHz
+/// ticks wrap every 179 s, three times in it). Returns (rows checked, the last minute's worst
+/// distance from the first minute's mean, every row's from 2 s on, in ms, the wall time in s).
+fn follow_for_minutes(fw: &Firmware, bpm: f64) -> (usize, f64, f64, f64) {
+    let wall = std::time::Instant::now();
+    let seconds: f64 = std::env::var("SIDOU_DRIFT_SECONDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(600.0);
+    let row = row_calls();
+    let mut m = booted(fw);
+    let hz = m.soc.periph.hz as f64;
+    let per = 60.0 / bpm / 24.0 * hz; // cycles a clock
+    let t0 = m.soc.periph.cycles as f64;
+    let clocks = (seconds * bpm / 60.0 * 24.0) as usize + 48;
+    let calls_at = fw.symbol("song_transport") + ilp32::song_ctl::calls as u32;
+    let sample_at = fw.symbol("song_transport") + ilp32::song_ctl::call_sample as u32;
+    // the clock: two beats before the start, the start 5 ms before clock 48, then on
+    let start = t0 + 48.0 * per - m.soc.periph.cycle_of_ms(5) as f64;
+    let step = m.soc.periph.cycle_of_ms(4) as f64;
+    let mut sent: Vec<u64> = Vec::with_capacity(clocks);
+    let mut started = false;
+    let mut last = m.soc.read32(calls_at);
+    let mut rows: Vec<(u32, u32)> = Vec::new(); // (call, sample) of each row's first call
+    let mut i = 0usize;
+    while i < clocks {
+        let next = t0 + i as f64 * per;
+        let due = if started { next } else { next.min(start) };
+        let now = m.soc.periph.cycles as f64;
+        if due > now {
+            m.run_cycles_jit(((due - now).min(step)).ceil() as u64);
+        } else if !started && start <= now {
+            m.midi(&[0xFA]);
+            started = true;
+        } else {
+            m.midi(&[0xF8]);
+            sent.push(m.soc.periph.cycles);
+            i += 1;
+        }
+        let calls = m.soc.read32(calls_at);
+        if calls != last {
+            assert_eq!(calls, last + 1, "two calls between two looks");
+            if (calls - 1) % row == 0 {
+                rows.push((calls - 1, m.soc.read32(sample_at)));
+            }
+            last = calls;
+        }
+    }
+    // Row k's 16th is clock 48 + 6k: its error from it, in samples, less the delay's constant.
+    let errs: Vec<(f64, f64)> = rows
+        .iter()
+        .filter_map(|&(call, sample)| {
+            let k = (call / row) as usize;
+            let at = sent.get(48 + 6 * k)?;
+            let heard = *at as f64 / CYCLES_PER_SAMPLE;
+            // samples wrap at 2^32 (27 hours): none here
+            Some((heard / FS, (f64::from(sample) - heard) / FS * 1e3))
+        })
+        .collect();
+    assert!(errs.len() > 100, "{} rows", errs.len());
+
+    let first_t = errs[0].0;
+    let first: Vec<f64> = errs
+        .iter()
+        .filter(|e| e.0 > first_t + 2.0 && e.0 < first_t + 60.0)
+        .map(|e| e.1)
+        .collect();
+    let mean = first.iter().sum::<f64>() / first.len() as f64;
+    let end_t = errs.last().unwrap().0;
+    let last_minute = errs
+        .iter()
+        .filter(|e| e.0 > end_t - 60.0)
+        .map(|e| (e.1 - mean).abs())
+        .fold(0.0, f64::max);
+    let worst = errs
+        .iter()
+        .filter(|e| e.0 > first_t + 2.0)
+        .map(|e| (e.1 - mean).abs())
+        .fold(0.0, f64::max);
+    // the song's position against the clock's: its rows so far against the clock's 16ths
+    let clock_rows = (sent.len() - 48) / 6;
+    let song_rows = (last / row) as usize;
+    println!(
+        "{bpm} BPM for {:.0} s: {} rows; the first minute's mean {mean:.3} ms after its 16th, \
+         the last minute at most {last_minute:.3} ms from it, every row from 2 s on at most \
+         {worst:.3}; the song at row {song_rows}, the clock at row {clock_rows}; wall {:.1} s",
+        (sent.last().unwrap() - sent[0]) as f64 / hz,
+        errs.len(),
+        wall.elapsed().as_secs_f64()
+    );
+    assert!(
+        song_rows.abs_diff(clock_rows) <= 1,
+        "the song at row {song_rows}, the clock at {clock_rows}"
+    );
+    (errs.len(), last_minute, worst, wall.elapsed().as_secs_f64())
+}
+
+/// The clock-drift test (docs/plans/2026-10-18-roadmap-after-m2.md, item 6): ten minutes
+/// against a steady 120 BPM clock, and 133 BPM, whose clock (18.797 ms) is no whole number of
+/// samples or ticks. Every row stays within 1 ms of where rows sat in the first minute: the
+/// phase never drifts, far inside the one clock (20.8 and 18.8 ms) the plan allows. Measured
+/// (2026-10-22): the last minute at most 0.544 ms (120 BPM) and 0.595 ms (133 BPM) from the
+/// first's mean, the TRS poll's 0.5 ms quantum; about 2 to 4 minutes of wall time each.
+#[test]
+fn a_song_follows_a_steady_clock_for_ten_minutes_without_drifting() {
+    let Some(fw) = fixture("the clock-drift test") else {
+        return;
+    };
+    for bpm in [120.0, 133.0] {
+        let (_, last_minute, worst, _) = follow_for_minutes(&fw, bpm);
+        assert!(
+            worst <= 1.0 && last_minute <= 1.0,
+            "{bpm} BPM: a row {worst:.3} ms off its place"
+        );
+    }
+}

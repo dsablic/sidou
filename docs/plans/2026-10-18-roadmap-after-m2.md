@@ -77,6 +77,10 @@ the 6502 study below.
    - **A long-run clock-drift test:** at least ten minutes against a steady external MIDI
      clock in fm1-emu, the song still on the beat at the end (Felucca's issue #269 is this
      bug in another sequencer; SIDOU's tests cover tempo changes, not accumulated drift).
+     **Done 2026-10-22:** emu-gate's `midi_transport.rs` follows a steady TRS clock for ten
+     minutes at 120 and at 133 BPM (fm1-core's JIT, about 2 to 4 minutes of wall time each):
+     every row stays within 1 ms of where rows sat in the first minute (the last minute at
+     most 0.54 and 0.60 ms off), and the song's row matches the clock's.
    - **Positioning:** SID voices are appearing as one engine among many (Melodee's SID
      engine, Mini-Tone's), so the release notes and the Hub listing lead with what only SIDOU
      does: GoatTracker 2 compatibility both ways and two SIDs with the chip character. It is led by what sets SIDOU apart: writing C64 music on the FM-1, GoatTracker 2
