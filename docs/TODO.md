@@ -527,3 +527,14 @@ on-device explanation, so after the menu/SETTINGS work merges:
   view's card (and each context's), so a new control without a line fails it.
 - **Then drop the 1x bottom text** in every view (the user's choice), and number STEP's pads by
   beat (1 2 3 4 | 1 2 3 4 …, alternate beats shaded, each beat's first step brighter).
+
+## CHIP SPREAD: dual-SID stereo (the user, 2026-10-23)
+
+- **What:** a SETTINGS item **SPREAD** that pans chip A left and chip B right, from 0 (mono, today's
+  sound, bit-identical) to 100 % (A fully left, B fully right), equal-power, before the effect
+  slots, which take the stereo pair (Modulation and FX today take mono in: they need a stereo
+  input path, or the spread goes after them; decide by cost, keep their bounds). A song on both
+  chips, and a song on A with the keys on B, then sit apart, as on HardSID / 2SID setups. Saved
+  with the settings; a CC/NRPN like the other settings; on the SETTINGS help card.
+- **When:** after the help-card track merges (both touch SETTINGS and the cards). Then a video
+  moment (two SIDs, left and right).
