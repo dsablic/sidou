@@ -1,0 +1,496 @@
+{
+  "goal": "Save the beat under a name, start another song, and load the beat back.",
+  "id": "save-and-load",
+  "prerequisites": {
+    "after": "step-a-beat",
+    "start": "live",
+    "text": "The beat from A beat in STEP, on STEP, playing."
+  },
+  "related": [
+    "step-a-beat"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "SAVE",
+    "SAVE AS",
+    "naming a song",
+    "SONG LOAD"
+  ],
+  "steps": [
+    {
+      "caption": "A new song has no name yet, so SAVE opens SAVE AS.",
+      "control": "press PLAY, then wait 0.5 s, then press SAVE, then wait 1.8 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "song_menu"
+        },
+        {
+          "kind": "text",
+          "value": "SAVE"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS SAVE",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 6,
+          "rows": 12
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "save",
+      "inputs": [
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 1800,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Press *SAVE*"
+    },
+    {
+      "caption": "SELECT moves the cursor, ALGORITHM changes the letter: BEAT 1.",
+      "control": "turn ALGORITHM counter-clockwise by 12 detents, then turn SELECT clockwise by 2 detents, then turn ALGORITHM counter-clockwise by 22 detents, then turn SELECT clockwise by 1 detent, then turn ALGORITHM clockwise by 52 detents, then turn SELECT clockwise by 1 detent, then turn ALGORITHM counter-clockwise by 51 detents, then turn SELECT clockwise by 1 detent, then turn ALGORITHM counter-clockwise by 30 detents, then turn SELECT clockwise by 1 detent, then turn ALGORITHM counter-clockwise by 46 detents, then turn SELECT clockwise by 1 detent, then turn ALGORITHM counter-clockwise by 39 detents, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "BEAT 1"
+        }
+      ],
+      "focus": {
+        "callout": "SELECT + ALGORITHM",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 6,
+          "rows": 12
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "name",
+      "inputs": [
+        {
+          "detents": -12,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "detents": 2,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "detents": -22,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "detents": 52,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "detents": -51,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "detents": -30,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "detents": -46,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "detents": -39,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Give it a *name*"
+    },
+    {
+      "caption": "SAVE writes it to the store: SONG SAVED.",
+      "control": "press SAVE, then wait 2.5 s",
+      "expect": [
+        {
+          "kind": "toast"
+        },
+        {
+          "kind": "text",
+          "value": "SAVED"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS SAVE"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "write",
+      "inputs": [
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Save* it"
+    },
+    {
+      "caption": "HOME back to SONG, then NEW: the beat is gone from the song views.",
+      "control": "press HOME, then wait 0.9 s, then turn SELECT counter-clockwise by 3 detents, then wait 0.3 s, then turn SELECT clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "song_menu"
+        },
+        {
+          "kind": "text_absent",
+          "value": "BUSY"
+        },
+        {
+          "entry": 0,
+          "kind": "pattern_rows",
+          "rows": [],
+          "voice": 3
+        }
+      ],
+      "focus": {
+        "callout": "NEW",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 6,
+          "rows": 12
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "new",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "detents": -3,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Start *another*"
+    },
+    {
+      "caption": "LOAD lists the songs in the store. BEAT 1 is there.",
+      "control": "turn SELECT counter-clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "BEAT 1"
+        }
+      ],
+      "focus": {
+        "callout": "LOAD",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 6,
+          "rows": 12
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "load",
+      "inputs": [
+        {
+          "detents": -1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*LOAD* it back"
+    },
+    {
+      "caption": "ALGORITHM loads it. It asks first, as the new song was never saved: SELECT YES, ALGORITHM, done.",
+      "control": "turn ALGORITHM clockwise by 1 detent, then wait 1.5 s, then turn SELECT clockwise by 1 detent, then wait 0.6 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "text_absent",
+          "value": "BUSY"
+        },
+        {
+          "entry": 0,
+          "kind": "pattern_rows",
+          "rows": [
+            0,
+            2,
+            4,
+            6,
+            8,
+            10,
+            12,
+            14,
+            16,
+            18,
+            20,
+            22,
+            24,
+            26,
+            28,
+            30,
+            32,
+            34,
+            36,
+            38,
+            40,
+            42,
+            44,
+            46,
+            48,
+            50,
+            52,
+            54,
+            56,
+            58,
+            60,
+            62
+          ],
+          "voice": 3
+        }
+      ],
+      "focus": {
+        "callout": "ALGORITHM, SELECT YES",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 15
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "loaded",
+      "inputs": [
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "And it is *back*"
+    },
+    {
+      "caption": "SEQ and PLAY: BEAT 1, as you left it.",
+      "control": "press SEQ, then wait 1.0 s, then press PLAY, then wait 4.0 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        },
+        {
+          "kind": "view",
+          "value": "step"
+        }
+      ],
+      "focus": {
+        "callout": "SEQ, PLAY",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "play-it",
+      "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 1000,
+          "op": "wait"
+        },
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 4000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "The same *beat*"
+    }
+  ],
+  "title": "Save a song and load it back"
+}

@@ -1,0 +1,841 @@
+{
+  "goal": "See what SIDOU makes of the FM-1, in a minute, to CHROME COMET.",
+  "id": "sidou-intro",
+  "prerequisites": {
+    "songs": [
+      "chrome-comet"
+    ],
+    "start": "power-on",
+    "text": "A first power-on with HOME held (the full boot); CHROME COMET in the store."
+  },
+  "related": [
+    "first-sound",
+    "mute-and-solo",
+    "play-over-a-song"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "the boot",
+    "songs",
+    "TRACKER and REC",
+    "GoatTracker 2",
+    "STEP and locks",
+    "two SIDs",
+    "CHIP",
+    "effects",
+    "SCENE"
+  ],
+  "steps": [
+    {
+      "caption": "SIDOU: GPL firmware that makes the M-VAVE FM-1 a C64 SID music machine.",
+      "control": "hold HOME for 2.5 s, then wait 3.5 s",
+      "expect": [
+        {
+          "kind": "screen_changes"
+        }
+      ],
+      "focus": {
+        "callout": "LOAD\"SIDOU\",8,1",
+        "control": "screen"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "boot",
+      "inputs": [
+        {
+          "button": "HOME",
+          "ms": 2500,
+          "op": "hold"
+        },
+        {
+          "ms": 3500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*SIDOU* for the FM-1"
+    },
+    {
+      "caption": "SONG, LOAD: the store holds GoatTracker 2 .sng files.",
+      "control": "press HOME, then wait 0.6 s, then press HOME, then wait 0.5 s, then turn SELECT until SONG is selected, then turn ALGORITHM clockwise by 1 detent, then turn ALGORITHM clockwise by 1 detent, then wait 0.9 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "song_menu"
+        },
+        {
+          "kind": "text_absent",
+          "value": "BUSY"
+        },
+        {
+          "kind": "text_absent",
+          "value": "SNG:"
+        }
+      ],
+      "focus": {
+        "callout": "SONG > LOAD",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 15
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "load",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SONG"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Songs are *GoatTracker 2* files"
+    },
+    {
+      "caption": "SEQ twice: the TRACKER, GoatTracker's layout. PLAY, then REC: what you play goes into the pattern.",
+      "control": "press SEQ, then wait 0.6 s, then press SEQ, then wait 0.6 s, then press PLAY, then wait 1.8 s, then press REC, then play 6 notes at 150 BPM, then press REC, then wait 0.8 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "tracker"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SEQ, PLAY, REC",
+        "control": "REC",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 24
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "tracker",
+      "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 1800,
+          "op": "wait"
+        },
+        {
+          "button": "REC",
+          "op": "press"
+        },
+        {
+          "bpm": 150,
+          "events": [
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "F4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        },
+        {
+          "button": "REC",
+          "op": "press"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Write C64 songs in a *tracker*"
+    },
+    {
+      "caption": "It opens in GoatTracker 2.77 and comes back; the player matches GoatTracker's, register for register.",
+      "control": "wait 5.5 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SIDOU TRACKER <> CHROME COMET.SNG <> GOATTRACKER 2",
+        "control": "card"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "goattracker",
+      "inputs": [
+        {
+          "ms": 5500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "The same *.sng*, both ways"
+    },
+    {
+      "caption": "SEQ round the pages to STEP. Hold a step and turn K1: a cutoff LOCK on that step alone.",
+      "control": "press SEQ, then wait 0.5 s, then press SEQ, then wait 0.5 s, then press SEQ, then wait 0.5 s, then press SEQ, then wait 1.3 s, then hold note key F3, then turn K1 clockwise by 12 detents, then wait 1.0 s, then let go of note key F3, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "step"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD A STEP + TURN K1",
+        "control": "K1",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 15,
+          "rows": 15
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "step-locks",
+      "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 1300,
+          "op": "wait"
+        },
+        {
+          "note": "F3",
+          "op": "down"
+        },
+        {
+          "detents": 12,
+          "encoder": "K1",
+          "op": "turn"
+        },
+        {
+          "ms": 1000,
+          "op": "wait"
+        },
+        {
+          "note": "F3",
+          "op": "up"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "STEP, with *locks*"
+    },
+    {
+      "caption": "The song plays chip A, a 6581. The keys play chip B: FX makes it an 8580.",
+      "control": "press HOME, then wait 0.5 s, then press HOME, then wait 0.5 s, then press HOME, then wait 0.9 s, then press FX, then wait 0.6 s, then play 14 notes at 150 BPM",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "live"
+        },
+        {
+          "kind": "text",
+          "value": "KEYS:B"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "FX, THEN THE KEYS",
+        "control": "FX",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 22,
+          "rows": 8
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "two-sids",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "button": "FX",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "bpm": 150,
+          "events": [
+            {
+              "notes": [
+                "D4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "F4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "F4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "D4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "F4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "A song on one SID, you on the *other*"
+    },
+    {
+      "caption": "CHIP: the profiles BRIGHT, DARK, CLASSIC, CLEAN and GRITTY, and AGE, DAC, THUMP and BLEED on the knobs.",
+      "control": "press HOME, then wait 0.6 s, then turn SELECT counter-clockwise by 3 detents, then turn ALGORITHM clockwise by 1 detent, then wait 2.8 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.7 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.7 s, then turn ALGORITHM clockwise by 2 detents, then wait 0.9 s, then turn K1 slowly clockwise by 50 detents over 1.5 s, then turn K4 slowly clockwise by 60 detents over 1.5 s, then wait 0.8 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "chip"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "ALGORITHM, THEN K1-K4",
+        "control": "K1",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "character",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "detents": -3,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 2800,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        },
+        {
+          "detents": 2,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "detents": 50,
+          "encoder": "K1",
+          "ms": 1500,
+          "op": "sweep"
+        },
+        {
+          "detents": 60,
+          "encoder": "K4",
+          "ms": 1500,
+          "op": "sweep"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Dial the chip like an *amp*"
+    },
+    {
+      "caption": "The effects follow both chips, in stereo: AUTO-PAN on MOD.",
+      "control": "press HOME, then wait 0.5 s, then press HOME, then wait 0.9 s, then press SCL, then wait 0.4 s, then press ENV, then press ENV, then press ENV, then press ENV, then press ENV, then wait 3.5 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "live"
+        },
+        {
+          "kind": "text",
+          "value": "AUTO-PAN"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SCL, THEN ENV",
+        "control": "ENV",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 22,
+          "rows": 8
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "stereo",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "button": "SCL",
+          "op": "press"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "button": "ENV",
+          "op": "press"
+        },
+        {
+          "button": "ENV",
+          "op": "press"
+        },
+        {
+          "button": "ENV",
+          "op": "press"
+        },
+        {
+          "button": "ENV",
+          "op": "press"
+        },
+        {
+          "button": "ENV",
+          "op": "press"
+        },
+        {
+          "ms": 3500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Stereo* effects after the chips"
+    },
+    {
+      "caption": "RED MOON RITE duels to the song's drums and bass.",
+      "control": "press HOME, then wait 0.5 s, then turn SELECT clockwise by 2 detents, then turn ALGORITHM clockwise by 1 detent, then wait 2.8 s, then turn SELECT clockwise by 5 detents, then wait 3.5 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "scene"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SCENE > RED MOON RITE",
+        "control": "screen"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "scene",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "detents": 2,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 2800,
+          "op": "wait"
+        },
+        {
+          "detents": 5,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 3500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "A *scene* that plays along"
+    },
+    {
+      "caption": "Try it in your browser at dsablic.github.io/sidou, or on your FM-1: github.com/dsablic/sidou/releases",
+      "control": "wait 5.0 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "control": "card"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "next",
+      "inputs": [
+        {
+          "ms": 5000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Next: *.sid* files on SIDOU"
+    }
+  ],
+  "title": "SIDOU in a minute"
+}

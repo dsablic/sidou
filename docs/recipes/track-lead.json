@@ -1,0 +1,358 @@
+{
+  "goal": "Record a lead over the beat and the bass while they play.",
+  "id": "track-lead",
+  "prerequisites": {
+    "after": "track-bass",
+    "start": "live",
+    "text": "The beat and the bass from A bassline in TRACKER, playing."
+  },
+  "related": [
+    "track-bass",
+    "rec-over-loop"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "REC while the song plays",
+    "recording in time",
+    "the lead's voice and instrument"
+  ],
+  "steps": [
+    {
+      "caption": "ALGORITHM to V1, PRESETS to instrument 01, the lead. OCT+ back to the middle.",
+      "control": "turn ALGORITHM clockwise by 2 detents, then wait 0.5 s, then turn PRESETS counter-clockwise by 1 detent, then wait 0.4 s, then press OCT+, then wait 2.0 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "PAT 00"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "ALGORITHM, PRESETS, OCT+",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 3
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "lead-voice",
+      "inputs": [
+        {
+          "detents": 2,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "detents": -1,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "button": "OCT+",
+          "op": "press"
+        },
+        {
+          "ms": 2000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "The *lead's* voice"
+    },
+    {
+      "caption": "REC on with the song playing: the keys are recorded where the song is.",
+      "control": "press REC, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "REC"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS REC",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 3
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "rec",
+      "inputs": [
+        {
+          "button": "REC",
+          "op": "press"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*REC* while it plays"
+    },
+    {
+      "caption": "Four bars over Am, F, C and G. Each note lands on the nearest row.",
+      "control": "wait for the song's next pattern, then play 23 notes at 125 BPM",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        },
+        {
+          "kind": "screen_changes"
+        }
+      ],
+      "focus": {
+        "callout": "PLAY THE KEYS",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 24
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "melody",
+      "inputs": [
+        {
+          "op": "sync"
+        },
+        {
+          "bpm": 125,
+          "events": [
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "F4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "G5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "Play the *lead*"
+    },
+    {
+      "caption": "REC off. Drums, bass and your lead, round and round.",
+      "control": "press REC, then wait 8.5 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        },
+        {
+          "kind": "text_absent",
+          "value": "REC"
+        }
+      ],
+      "focus": {
+        "callout": "REC OFF",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 30
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "listen",
+      "inputs": [
+        {
+          "button": "REC",
+          "op": "press"
+        },
+        {
+          "ms": 8500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Your *song*"
+    }
+  ],
+  "title": "Record a lead with REC"
+}

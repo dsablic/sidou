@@ -1,0 +1,464 @@
+{
+  "goal": "Open a showcase song in the song views, change it, mute a voice, and save it under a new name.",
+  "id": "remix-a-song",
+  "prerequisites": {
+    "songs": [
+      "paper-lanterns"
+    ],
+    "start": "live",
+    "text": "On LIVE after the boot; PAPER LANTERNS in the store."
+  },
+  "related": [
+    "play-over-a-song",
+    "save-and-load"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "SONG LOAD",
+    "STEP",
+    "GLO",
+    "SAVE AS"
+  ],
+  "steps": [
+    {
+      "caption": "HOME, SONG, LOAD, and ALGORITHM on the song.",
+      "control": "press HOME, then wait 0.5 s, then turn SELECT until SONG is selected, then turn ALGORITHM clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.9 s, then turn ALGORITHM clockwise by 1 detent, then wait 5.0 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "song_menu"
+        },
+        {
+          "kind": "text_absent",
+          "value": "BUSY"
+        },
+        {
+          "kind": "text_absent",
+          "value": "SNG:"
+        }
+      ],
+      "focus": {
+        "callout": "SONG > LOAD",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 15
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "load",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SONG"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 5000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Load *PAPER LANTERNS*"
+    },
+    {
+      "caption": "SEQ, then PLAY: its patterns light up as they play.",
+      "control": "press SEQ, then wait 0.9 s, then press PLAY, then wait 4.0 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "step"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SEQ, PLAY",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "open",
+      "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 4000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Open it in *STEP*"
+    },
+    {
+      "caption": "Tap steps to add or take away notes, while it plays.",
+      "control": "wait for the song's next pattern, then tap G3, B3, D#4, G4, then wait 3.5 s",
+      "expect": [
+        {
+          "kind": "screen_changes"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "TAP THE STEPS",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "change",
+      "inputs": [
+        {
+          "op": "sync"
+        },
+        {
+          "ms": 250,
+          "notes": [
+            "G3",
+            "B3",
+            "D#4",
+            "G4"
+          ],
+          "op": "taps"
+        },
+        {
+          "ms": 3500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Change* a pattern"
+    },
+    {
+      "caption": "PRESETS gives the lane a new instrument; the steps you tap next play it.",
+      "control": "turn PRESETS clockwise by 1 detent, then wait 0.6 s, then tap A3, C#4, then wait 3.0 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESETS, TAP",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 13
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "instrument",
+      "inputs": [
+        {
+          "detents": 1,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "ms": 250,
+          "notes": [
+            "A3",
+            "C#4"
+          ],
+          "op": "taps"
+        },
+        {
+          "ms": 3000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Another *instrument*"
+    },
+    {
+      "caption": "GLO and the second key mutes voice 2.",
+      "control": "hold GLO and press note key F#3, then wait 3.5 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD GLO + KEY 2",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 3
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "mute",
+      "inputs": [
+        {
+          "button": "GLO",
+          "note": "F#3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 3500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Mute* a voice"
+    },
+    {
+      "caption": "Stop. HOME to the menu: SONG, SAVE AS, and the name is the song's.",
+      "control": "press PLAY, then wait 0.3 s, then press HOME, then wait 0.9 s, then turn SELECT clockwise by 2 detents, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "song_menu"
+        },
+        {
+          "kind": "text",
+          "value": "PAPER"
+        }
+      ],
+      "focus": {
+        "callout": "HOME, SONG > SAVE AS",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 6,
+          "rows": 12
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "save-as",
+      "inputs": [
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "detents": 2,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*SAVE AS*"
+    },
+    {
+      "caption": "SELECT to the end, ALGORITHM a 2: PAPER LANTERNS 2.",
+      "control": "turn SELECT clockwise by 15 detents, then wait 0.3 s, then turn ALGORITHM clockwise by 18 detents, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "NTERNS 2"
+        }
+      ],
+      "focus": {
+        "callout": "SELECT + ALGORITHM",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 6,
+          "rows": 12
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "rename",
+      "inputs": [
+        {
+          "detents": 15,
+          "encoder": "SELECT",
+          "op": "turn"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "detents": 18,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "A *new* name"
+    },
+    {
+      "caption": "SAVE writes the remix; the original stays as it was.",
+      "control": "press SAVE, then wait 2.5 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "SAVED"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS SAVE"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "write",
+      "inputs": [
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Saved*"
+    }
+  ],
+  "title": "Remix a showcase song"
+}

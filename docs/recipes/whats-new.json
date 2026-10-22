@@ -1,0 +1,478 @@
+{
+  "goal": "See the release's highlights, one at a time, to SIDOU LOOP.",
+  "id": "whats-new",
+  "prerequisites": {
+    "start": "live",
+    "text": "On LIVE after the boot. SIDOU LOOP is the song loaded."
+  },
+  "related": [
+    "sidou-intro",
+    "rec-over-loop",
+    "chip-character"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "MIDI clock",
+    "REC",
+    "the song pages",
+    "STEP",
+    "CHIP",
+    "help",
+    "SysEx"
+  ],
+  "steps": [
+    {
+      "caption": "A MIDI start and clock on the TRS jack: the song follows it, and keeps the tempo.",
+      "control": "press SEQ, then wait 0.6 s, then press SEQ, then wait 0.6 s, then send MIDI clock at 125 BPM, then wait 0.6 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "tracker"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "MIDI CLOCK IN",
+        "control": "screen",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 3
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "clock",
+      "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "bpm": 125,
+          "ms": 5000,
+          "op": "clock",
+          "start": true
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "A steady *MIDI clock*"
+    },
+    {
+      "caption": "REC on while the song plays: the keys are written where the song is.",
+      "control": "press REC, then wait for the song's next pattern, then play 6 notes at 125 BPM, then press REC, then wait 1.2 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "REC, PLAY THE KEYS",
+        "control": "REC",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 24
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "rec",
+      "inputs": [
+        {
+          "button": "REC",
+          "op": "press"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "bpm": 125,
+          "events": [
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        },
+        {
+          "button": "REC",
+          "op": "press"
+        },
+        {
+          "ms": 1200,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*REC* over a loop"
+    },
+    {
+      "caption": "SEQ goes round ORDER, INSTR and TABLE: the whole song on the device.",
+      "control": "press SEQ, then wait 1.8 s, then press SEQ, then wait 1.8 s, then press SEQ, then wait 1.8 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "song_pages_table"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SEQ: ORDER, INSTR, TABLE",
+        "control": "SEQ"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "pages",
+      "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 1800,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 1800,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 1800,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "The *tracker* pages"
+    },
+    {
+      "caption": "SEQ again: STEP. Sixteen keys, sixteen steps, the page following the song.",
+      "control": "press SEQ, then wait 3.5 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "step"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SEQ: STEP",
+        "control": "SEQ",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 15
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "step",
+      "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 3500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*STEP*, the drum machine"
+    },
+    {
+      "caption": "On CHIP the song's chip gets DAC grit, a thump on each note and the filter's bleed.",
+      "control": "press HOME, then wait 0.6 s, then press HOME, then wait 0.6 s, then turn ALGORITHM clockwise by 1 detent, then wait 2.8 s, then turn K2 slowly clockwise by 90 detents over 1.2 s, then turn K3 slowly clockwise by 100 detents over 1.2 s, then turn K4 slowly clockwise by 90 detents over 1.2 s, then wait 0.6 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "chip"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "K2 DAC, K3 THUMP, K4 BLEED",
+        "control": "K3",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 8,
+          "rows": 8
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "character",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 2800,
+          "op": "wait"
+        },
+        {
+          "detents": 90,
+          "encoder": "K2",
+          "ms": 1200,
+          "op": "sweep"
+        },
+        {
+          "detents": 100,
+          "encoder": "K3",
+          "ms": 1200,
+          "op": "sweep"
+        },
+        {
+          "detents": 90,
+          "encoder": "K4",
+          "ms": 1200,
+          "op": "sweep"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Character you can *hear*"
+    },
+    {
+      "caption": "Hold HOME on any screen: what its controls do.",
+      "control": "hold HOME for 0.9 s, then wait 2.5 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "help"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD HOME",
+        "control": "HOME",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 30
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "help",
+      "inputs": [
+        {
+          "button": "HOME",
+          "ms": 900,
+          "op": "hold"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Help* on HOME"
+    },
+    {
+      "caption": "Over USB: the store's files, the current song and GoatTracker instruments, both ways.",
+      "control": "wait 4.5 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "COMPUTER <> USB SYSEX <> SIDOU",
+        "control": "card"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "sysex",
+      "inputs": [
+        {
+          "ms": 4500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Songs over *SysEx*"
+    },
+    {
+      "caption": "In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest",
+      "control": "wait 5.0 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "control": "card"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "get-it",
+      "inputs": [
+        {
+          "ms": 5000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Get *SIDOU*"
+    }
+  ],
+  "title": "What's new in SIDOU"
+}

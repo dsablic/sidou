@@ -17,7 +17,7 @@
   ],
   "steps": [
     {
-      "caption": "Press any note key. It sounds at once, and the boot gives way to LIVE.",
+      "caption": "No waiting for the boot: a key sounds at once, and LIVE takes over.",
       "control": "Press the note key marked A (the middle of the keys)",
       "expect": [
         {
@@ -30,6 +30,10 @@
           "min_dbfs": -45.0
         }
       ],
+      "focus": {
+        "callout": "PRESS A KEY",
+        "control": "A4"
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -42,7 +46,7 @@
       "id": "press-a-key",
       "inputs": [
         {
-          "ms": 600,
+          "ms": 900,
           "notes": [
             "A4"
           ],
@@ -50,10 +54,10 @@
         }
       ],
       "needs": [],
-      "title": "Press a key"
+      "title": "Press *any* key"
     },
     {
-      "caption": "LIVE shows the chip, the sound and the octave in its top line.",
+      "caption": "The top line says the sound, SAW LEAD. Below: the three voices, the knobs and the chip.",
       "control": "Wait a moment: the title card ends by itself",
       "expect": [
         {
@@ -71,6 +75,15 @@
           "name": "octave"
         }
       ],
+      "focus": {
+        "callout": "LIVE",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 2
+        }
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -83,15 +96,15 @@
       "id": "boot-ends",
       "inputs": [
         {
-          "ms": 2500,
+          "ms": 4500,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Let the title end"
+      "title": "Meet *LIVE*"
     },
     {
-      "caption": "Hold three keys together: SIDOU has three voices.",
+      "caption": "SIDOU plays three voices, like the C64's chip. Hold a chord.",
       "control": "Press three keys at once",
       "expect": [
         {
@@ -99,6 +112,15 @@
           "kind": "audio"
         }
       ],
+      "focus": {
+        "callout": "HOLD THREE KEYS",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 12
+        }
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -111,17 +133,144 @@
       "id": "play-a-chord",
       "inputs": [
         {
-          "ms": 700,
+          "ms": 1800,
           "notes": [
             "C4",
             "E4",
             "G4"
           ],
           "op": "note"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Play a chord"
+      "title": "Three voices, *three* keys"
+    },
+    {
+      "caption": "The keys are F to G, two octaves and a bit.",
+      "control": "Play a few notes",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PLAY THE KEYS"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "play-a-tune",
+      "inputs": [
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "Play a *tune*"
     },
     {
       "caption": "OCT+ shifts every key up an octave, and says so.",
@@ -141,6 +290,15 @@
           "name": "octave"
         }
       ],
+      "focus": {
+        "callout": "PRESS OCT+",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 26,
+          "rows": 4
+        }
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -155,10 +313,93 @@
         {
           "button": "OCT+",
           "op": "press"
+        },
+        {
+          "ms": 200,
+          "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Move up an octave"
+      "title": "*OCT+* for higher"
+    },
+    {
+      "caption": "The same tune, an octave up. OCT- brings it back.",
+      "control": "Play a few notes",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PLAY THE KEYS"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "play-higher",
+      "inputs": [
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Up *there*"
     }
   ],
   "title": "First sound"

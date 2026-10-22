@@ -1,0 +1,604 @@
+{
+  "goal": "Age the chip, wear its DACs, add the note thump and bleed the filter on CHIP.",
+  "id": "chip-character",
+  "prerequisites": {
+    "start": "live",
+    "text": "On LIVE after the boot, SAW LEAD."
+  },
+  "related": [
+    "shape-a-sound",
+    "add-an-effect"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "CHIP",
+    "AGE",
+    "DAC",
+    "THUMP",
+    "BLEED"
+  ],
+  "steps": [
+    {
+      "caption": "HOME for the menu: CHIP is the first line, ALGORITHM opens it.",
+      "control": "press HOME, then wait 0.5 s, then turn ALGORITHM clockwise by 1 detent, then wait 3.2 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "chip"
+        }
+      ],
+      "focus": {
+        "callout": "HOME, ALGORITHM",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 15
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "open-chip",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 3200,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Open *CHIP*"
+    },
+    {
+      "caption": "All four at 0: the 6581 as reSIDfp plays it. Listen first.",
+      "control": "play 15 notes at 120 BPM",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PLAY THE KEYS",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 8,
+          "rows": 8
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "clean",
+      "inputs": [
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "A *clean* chip"
+    },
+    {
+      "caption": "K1 ages it: the filter drifts darker and the 6581 grows rougher.",
+      "control": "turn K1 slowly clockwise by 64 detents over 1.5 s, then play 7 notes at 120 BPM",
+      "expect": [
+        {
+          "kind": "param",
+          "max": 127,
+          "min": 50,
+          "name": "age"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "TURN K1: AGE",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 8,
+          "rows": 8
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "age",
+      "inputs": [
+        {
+          "detents": 64,
+          "encoder": "K1",
+          "ms": 1500,
+          "op": "sweep"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*AGE*: an older chip"
+    },
+    {
+      "caption": "K2 wears the voice DACs: grit on saws, uneven steps as notes fade.",
+      "control": "turn K2 slowly clockwise by 90 detents over 1.5 s, then play 7 notes at 120 BPM",
+      "expect": [
+        {
+          "kind": "param",
+          "max": 127,
+          "min": 60,
+          "name": "dac"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "TURN K2: DAC",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 8,
+          "rows": 8
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "dac",
+      "inputs": [
+        {
+          "detents": 90,
+          "encoder": "K2",
+          "ms": 1500,
+          "op": "sweep"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*DAC*: worn converters"
+    },
+    {
+      "caption": "K3 adds the 6581's thump at each note's start.",
+      "control": "turn K3 slowly clockwise by 100 detents over 1.5 s, then play 8 notes at 120 BPM",
+      "expect": [
+        {
+          "kind": "param",
+          "max": 127,
+          "min": 60,
+          "name": "thump"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "TURN K3: THUMP",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 8,
+          "rows": 8
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "thump",
+      "inputs": [
+        {
+          "detents": 100,
+          "encoder": "K3",
+          "ms": 1500,
+          "op": "sweep"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 1
+            },
+            {
+              "notes": [],
+              "sixteenths": 1
+            },
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 1
+            },
+            {
+              "notes": [],
+              "sixteenths": 1
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 1
+            },
+            {
+              "notes": [],
+              "sixteenths": 1
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 1
+            },
+            {
+              "notes": [],
+              "sixteenths": 1
+            },
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 1
+            },
+            {
+              "notes": [],
+              "sixteenths": 1
+            },
+            {
+              "notes": [
+                "G3"
+              ],
+              "sixteenths": 1
+            },
+            {
+              "notes": [],
+              "sixteenths": 1
+            },
+            {
+              "notes": [
+                "F3"
+              ],
+              "sixteenths": 2
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*THUMP* on every note"
+    },
+    {
+      "caption": "K4 lets the voices leak past the filter: bright, dry, a little dirty.",
+      "control": "turn K4 slowly clockwise by 90 detents over 1.5 s, then play 7 notes at 120 BPM",
+      "expect": [
+        {
+          "kind": "param",
+          "max": 127,
+          "min": 60,
+          "name": "bleed"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "TURN K4: BLEED",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 8,
+          "rows": 8
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "bleed",
+      "inputs": [
+        {
+          "detents": 90,
+          "encoder": "K4",
+          "ms": 1500,
+          "op": "sweep"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*BLEED* past the filter"
+    }
+  ],
+  "title": "Shape the chip's character"
+}

@@ -1,0 +1,321 @@
+{
+  "goal": "Make a controller's knob turn K1's cutoff.",
+  "id": "midi-learn",
+  "prerequisites": {
+    "start": "live",
+    "text": "On LIVE after the boot, a MIDI controller on the TRS jack."
+  },
+  "related": [
+    "shape-a-sound"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "SAVE + a knob",
+    "MIDI learn",
+    "CC"
+  ],
+  "steps": [
+    {
+      "caption": "Something to hear: hold three keys.",
+      "control": "hold note key A3, then hold note key C4, then hold note key E4, then wait 1.5 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD A CHORD"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "hold-a-chord",
+      "inputs": [
+        {
+          "note": "A3",
+          "op": "down"
+        },
+        {
+          "note": "C4",
+          "op": "down"
+        },
+        {
+          "note": "E4",
+          "op": "down"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Hold a *chord*"
+    },
+    {
+      "caption": "Hold SAVE and turn K1: MIDI LEARN opens and waits for a CC. The cutoff does not move.",
+      "control": "hold SAVE and turn K1 clockwise by 1 detents, then wait 2.0 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "learn"
+        },
+        {
+          "kind": "text",
+          "value": "LEARN"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD SAVE + TURN K1",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 30
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "learn",
+      "inputs": [
+        {
+          "button": "SAVE",
+          "detents": 1,
+          "encoder": "K1",
+          "op": "hold_turn"
+        },
+        {
+          "ms": 2000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*SAVE* + K1"
+    },
+    {
+      "caption": "The first CC that comes in is learned: LEARNED CC 21, CUTOFF.",
+      "control": "send MIDI, then wait 0.3 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "LEARNED"
+        }
+      ],
+      "focus": {
+        "callout": "TURN A CONTROLLER KNOB",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 30
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "send",
+      "inputs": [
+        {
+          "bytes": [
+            176,
+            21,
+            20
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Turn your *controller*"
+    },
+    {
+      "caption": "From now on that knob is K1's cutoff, saved with the settings.",
+      "control": "send MIDI, then wait 0.1 s, then send MIDI, then wait 0.1 s, then send MIDI, then wait 0.1 s, then send MIDI, then wait 0.1 s, then send MIDI, then wait 0.1 s, then send MIDI, then wait 0.1 s, then send MIDI, then wait 1.5 s",
+      "expect": [
+        {
+          "assert": "brighter",
+          "kind": "audio"
+        },
+        {
+          "kind": "param",
+          "max": 2047,
+          "min": 1500,
+          "name": "cutoff"
+        }
+      ],
+      "focus": {
+        "callout": "CC 21 > CUTOFF",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 15,
+          "rows": 7
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "sweep",
+      "inputs": [
+        {
+          "bytes": [
+            176,
+            21,
+            30
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 150,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            21,
+            45
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 150,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            21,
+            60
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 150,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            21,
+            75
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 150,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            21,
+            90
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 150,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            21,
+            105
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 150,
+          "op": "wait"
+        },
+        {
+          "bytes": [
+            176,
+            21,
+            127
+          ],
+          "op": "midi"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "It turns the *cutoff*"
+    },
+    {
+      "caption": "Let go of the keys.",
+      "control": "let go of note key A3, then let go of note key C4, then let go of note key E4, then wait 1.2 s",
+      "expect": [
+        {
+          "assert": "silent",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "LET GO"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "let-go",
+      "inputs": [
+        {
+          "note": "A3",
+          "op": "up"
+        },
+        {
+          "note": "C4",
+          "op": "up"
+        },
+        {
+          "note": "E4",
+          "op": "up"
+        },
+        {
+          "ms": 1200,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Let *go*"
+    }
+  ],
+  "title": "MIDI learn on a knob"
+}

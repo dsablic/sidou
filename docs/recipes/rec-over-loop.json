@@ -1,0 +1,349 @@
+{
+  "goal": "Record a melody into the song while the loop plays, in time.",
+  "id": "rec-over-loop",
+  "prerequisites": {
+    "start": "live",
+    "text": "On LIVE after the boot. SIDOU LOOP is the song loaded."
+  },
+  "related": [
+    "step-a-beat",
+    "mute-and-solo"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "TRACKER",
+    "PLAY",
+    "REC",
+    "recording in time"
+  ],
+  "steps": [
+    {
+      "caption": "SEQ twice: the song's patterns, one voice at a time. V1 is SIDOU LOOP's lead.",
+      "control": "press SEQ, then wait 0.9 s, then press SEQ, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "tracker"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS SEQ TWICE",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 3
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "open-tracker",
+      "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Open the *TRACKER*"
+    },
+    {
+      "caption": "Am, F, C, G: eight bars that go round.",
+      "control": "press PLAY, then wait 4.5 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 24
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "play",
+      "inputs": [
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 4500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*PLAY* the loop"
+    },
+    {
+      "caption": "REC turns red in the header: what you play now goes into the pattern.",
+      "control": "press REC, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "REC"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS REC",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 3
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "rec-on",
+      "inputs": [
+        {
+          "button": "REC",
+          "op": "press"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*REC* on"
+    },
+    {
+      "caption": "Play along. Each note lands on the row the song is on, nearest the beat.",
+      "control": "wait for the song's next pattern, then play 12 notes at 125 BPM",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        },
+        {
+          "kind": "screen_changes"
+        }
+      ],
+      "focus": {
+        "callout": "PLAY THE KEYS",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 24
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "play-a-lead",
+      "inputs": [
+        {
+          "op": "sync"
+        },
+        {
+          "bpm": 125,
+          "events": [
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "F4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "Play your *lead*"
+    },
+    {
+      "caption": "REC again stops recording. The loop comes round with your notes in it.",
+      "control": "press REC, then wait 5.5 s",
+      "expect": [
+        {
+          "kind": "text_absent",
+          "value": "REC"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS REC",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 24
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "rec-off",
+      "inputs": [
+        {
+          "button": "REC",
+          "op": "press"
+        },
+        {
+          "ms": 5500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*REC* off, and listen"
+    },
+    {
+      "caption": "PLAY stops the song. SAVE would keep it.",
+      "control": "press PLAY, then wait 1.5 s",
+      "expect": [
+        {
+          "assert": "silent",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS PLAY"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "stop",
+      "inputs": [
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Stop*"
+    }
+  ],
+  "title": "Record with REC over a playing loop"
+}

@@ -1,5 +1,5 @@
 {
-  "goal": "Open and close the filter, add resonance and change the sound while a note holds.",
+  "goal": "Open and close the filter, add resonance and change the sound while a chord holds.",
   "id": "shape-a-sound",
   "prerequisites": {
     "start": "live",
@@ -18,14 +18,17 @@
   ],
   "steps": [
     {
-      "caption": "Hold a key down and keep holding it while you turn the knobs.",
-      "control": "Hold the note key A (the lower one) down",
+      "caption": "Hold three keys and keep holding them while you turn the knobs.",
+      "control": "Hold the note keys A, C and E down",
       "expect": [
         {
           "assert": "sounding",
           "kind": "audio"
         }
       ],
+      "focus": {
+        "callout": "HOLD A CHORD"
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -42,15 +45,23 @@
           "op": "down"
         },
         {
-          "ms": 500,
+          "note": "C4",
+          "op": "down"
+        },
+        {
+          "note": "E4",
+          "op": "down"
+        },
+        {
+          "ms": 1500,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Hold a note"
+      "title": "Hold a *chord*"
     },
     {
-      "caption": "Turn K1 counter-clockwise about a third of a turn: the sound darkens.",
+      "caption": "Turn K1 counter-clockwise, slowly: the sound goes dark and warm.",
       "control": "Turn K1 counter-clockwise about a third of a turn",
       "expect": [
         {
@@ -67,6 +78,14 @@
           "name": "cutoff"
         }
       ],
+      "focus": {
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 15,
+          "rows": 7
+        }
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -81,18 +100,19 @@
         {
           "detents": -60,
           "encoder": "K1",
-          "op": "turn"
+          "ms": 3000,
+          "op": "sweep"
         },
         {
-          "ms": 400,
+          "ms": 1500,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Close the filter"
+      "title": "*K1* closes the filter"
     },
     {
-      "caption": "Turn K1 clockwise a full turn: the sound brightens.",
+      "caption": "Turn it back up and past: bright again, all the way.",
       "control": "Turn K1 clockwise about a full turn",
       "expect": [
         {
@@ -106,6 +126,14 @@
           "name": "cutoff"
         }
       ],
+      "focus": {
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 15,
+          "rows": 7
+        }
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -120,19 +148,20 @@
         {
           "detents": 100,
           "encoder": "K1",
-          "op": "turn"
+          "ms": 3000,
+          "op": "sweep"
         },
         {
-          "ms": 400,
+          "ms": 1200,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Open the filter"
+      "title": "And *opens* it"
     },
     {
-      "caption": "Turn K2 clockwise: the filter rings at its cutoff.",
-      "control": "Turn K2 clockwise about a quarter turn",
+      "caption": "K2 makes the filter ring at its cutoff. Sweep K1 again to hear it sing.",
+      "control": "Turn K2 clockwise about a quarter turn, then K1 down and up",
       "expect": [
         {
           "kind": "screen_changes"
@@ -144,6 +173,15 @@
           "name": "resonance"
         }
       ],
+      "focus": {
+        "callout": "TURN K2, THEN K1",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 15,
+          "rows": 7
+        }
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -156,20 +194,29 @@
       "id": "add-resonance",
       "inputs": [
         {
-          "detents": 6,
+          "detents": 10,
           "encoder": "K2",
-          "op": "turn"
+          "ms": 1200,
+          "op": "sweep"
         },
         {
-          "ms": 400,
-          "op": "wait"
+          "detents": -40,
+          "encoder": "K1",
+          "ms": 2000,
+          "op": "sweep"
+        },
+        {
+          "detents": 40,
+          "encoder": "K1",
+          "ms": 2000,
+          "op": "sweep"
         }
       ],
       "needs": [],
-      "title": "Add resonance"
+      "title": "*K2*: resonance"
     },
     {
-      "caption": "Turn PRESETS one click: the next preset, PWM BASS.",
+      "caption": "The big knob picks the next preset, PWM BASS. Your edits to SAW LEAD are kept.",
       "control": "Turn PRESETS one click clockwise",
       "expect": [
         {
@@ -187,6 +234,14 @@
           "kind": "audio"
         }
       ],
+      "focus": {
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 2
+        }
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -204,22 +259,25 @@
           "op": "turn"
         },
         {
-          "ms": 400,
+          "ms": 2500,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Pick another sound"
+      "title": "*PRESETS*: another sound"
     },
     {
-      "caption": "Let go of the key: the sound ends.",
-      "control": "Let go of the note key",
+      "caption": "Let go of the keys: the release rings out.",
+      "control": "Let go of the note keys",
       "expect": [
         {
           "assert": "silent",
           "kind": "audio"
         }
       ],
+      "focus": {
+        "callout": "LET GO"
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -236,12 +294,20 @@
           "op": "up"
         },
         {
-          "ms": 900,
+          "note": "C4",
+          "op": "up"
+        },
+        {
+          "note": "E4",
+          "op": "up"
+        },
+        {
+          "ms": 1500,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Let go"
+      "title": "Let *go*"
     }
   ],
   "title": "Shape a sound with K1 to K4"

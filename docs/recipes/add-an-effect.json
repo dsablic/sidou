@@ -1,0 +1,445 @@
+{
+  "goal": "Pick an effect slot, choose its algorithm and turn it with EDIT and the knobs.",
+  "id": "add-an-effect",
+  "prerequisites": {
+    "start": "live",
+    "text": "On LIVE after the boot, SAW LEAD."
+  },
+  "related": [
+    "chip-character",
+    "shape-a-sound"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "SCL",
+    "ENV",
+    "EDIT + K1-K4",
+    "the effect slots"
+  ],
+  "steps": [
+    {
+      "caption": "First the sound as it is.",
+      "control": "play 8 notes at 120 BPM",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PLAY THE KEYS"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "dry",
+      "inputs": [
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*Dry*"
+    },
+    {
+      "caption": "SCL steps DIST, MOD, FX. Twice for FX: the echoes and rooms.",
+      "control": "press SCL, then wait 0.7 s, then press SCL, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "FX"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS SCL TWICE",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 22,
+          "rows": 8
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "slot",
+      "inputs": [
+        {
+          "button": "SCL",
+          "op": "press"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        },
+        {
+          "button": "SCL",
+          "op": "press"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*SCL*: pick a slot"
+    },
+    {
+      "caption": "ENV steps the slot's algorithm: DELAY, ready to hear.",
+      "control": "press ENV, then wait 0.5 s, then play 7 notes at 120 BPM",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "DELAY"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS ENV",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 22,
+          "rows": 8
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "delay",
+      "inputs": [
+        {
+          "button": "ENV",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*ENV*: an algorithm"
+    },
+    {
+      "caption": "Hold EDIT: K1 to K4 turn the slot. K1 is the feedback, K4 the mix.",
+      "control": "hold EDIT and turn K1 clockwise by 24 detents, then hold EDIT and turn K4 clockwise by 20 detents, then play 7 notes at 120 BPM",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD EDIT + TURN K1",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 15,
+          "rows": 7
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "more",
+      "inputs": [
+        {
+          "button": "EDIT",
+          "detents": 24,
+          "encoder": "K1",
+          "op": "hold_turn"
+        },
+        {
+          "button": "EDIT",
+          "detents": 20,
+          "encoder": "K4",
+          "op": "hold_turn"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*EDIT* + K1 for more"
+    },
+    {
+      "caption": "ENV twice more: REVERB.",
+      "control": "press ENV, then wait 0.3 s, then press ENV, then wait 0.5 s, then play 8 notes at 120 BPM",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "REVERB"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS ENV TWICE",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 22,
+          "rows": 8
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "reverb",
+      "inputs": [
+        {
+          "button": "ENV",
+          "op": "press"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "button": "ENV",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "bpm": 120,
+          "events": [
+            {
+              "notes": [
+                "A3"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "A *room*"
+    }
+  ],
+  "title": "Add an effect"
+}

@@ -1,0 +1,359 @@
+{
+  "goal": "Write a bassline under the beat, note by note, in TRACKER.",
+  "id": "track-bass",
+  "prerequisites": {
+    "after": "step-a-beat",
+    "start": "live",
+    "text": "The beat from A beat in STEP."
+  },
+  "related": [
+    "step-a-beat",
+    "track-lead"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "TRACKER",
+    "REC with the song stopped",
+    "the edit step",
+    "the current instrument",
+    "OCT-"
+  ],
+  "steps": [
+    {
+      "caption": "Stop, then SEQ: the TRACKER. ALGORITHM shows another voice: V2, the bass's.",
+      "control": "press PLAY, then wait 0.5 s, then press SEQ, then wait 1.2 s, then turn ALGORITHM clockwise by 2 detents, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "tracker"
+        },
+        {
+          "kind": "text",
+          "value": "PAT 01"
+        }
+      ],
+      "focus": {
+        "callout": "SEQ, ALGORITHM",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 3
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "open-tracker",
+      "inputs": [
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 1200,
+          "op": "wait"
+        },
+        {
+          "detents": 2,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "The *TRACKER*"
+    },
+    {
+      "caption": "REC on: the keys write notes. EDIT + ALGORITHM sets the step to 2, PRESETS the bass instrument, OCT- the octave.",
+      "control": "press REC, then wait 0.5 s, then hold EDIT and turn ALGORITHM clockwise by 1 detents, then wait 0.4 s, then turn PRESETS counter-clockwise by 1 detent, then wait 0.4 s, then press OCT-, then wait 1.5 s",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "REC"
+        }
+      ],
+      "focus": {
+        "callout": "REC, EDIT+ALG, PRESETS, OCT-",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 3
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "set-up",
+      "inputs": [
+        {
+          "button": "REC",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "EDIT",
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "hold_turn"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "detents": -1,
+          "encoder": "PRESETS",
+          "op": "turn"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "button": "OCT-",
+          "op": "press"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Ready to *write*"
+    },
+    {
+      "caption": "Each key writes its note on the cursor's row and moves on two rows.",
+      "control": "tap A3, A3, A4, A3, E4, A3, G3, A3, F3, F3, F4, F3, C4, F3, E4, F3, then wait 0.8 s",
+      "expect": [
+        {
+          "kind": "screen_changes"
+        }
+      ],
+      "focus": {
+        "callout": "PLAY THE NOTES",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 24
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "bars-1-2",
+      "inputs": [
+        {
+          "ms": 220,
+          "notes": [
+            "A3",
+            "A3",
+            "A4",
+            "A3",
+            "E4",
+            "A3",
+            "G3",
+            "A3",
+            "F3",
+            "F3",
+            "F4",
+            "F3",
+            "C4",
+            "F3",
+            "E4",
+            "F3"
+          ],
+          "op": "taps"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*A* minor, *F*"
+    },
+    {
+      "caption": "Two more bars, and the cursor is back on the first row.",
+      "control": "tap C4, C4, C5, C4, G4, C4, B3, C4, G3, G3, G4, G3, D4, G3, F4, G3, then wait 0.8 s",
+      "expect": [
+        {
+          "entry": 0,
+          "kind": "pattern_notes",
+          "notes": [
+            "A-2",
+            "A-2",
+            "A-3",
+            "A-2",
+            "E-3",
+            "A-2",
+            "G-2",
+            "A-2",
+            "F-2",
+            "F-2",
+            "F-3",
+            "F-2",
+            "C-3",
+            "F-2",
+            "E-3",
+            "F-2",
+            "C-3",
+            "C-3",
+            "C-4",
+            "C-3",
+            "G-3",
+            "C-3",
+            "B-2",
+            "C-3",
+            "G-2",
+            "G-2",
+            "G-3",
+            "G-2",
+            "D-3",
+            "G-2",
+            "F-3",
+            "G-2"
+          ],
+          "voice": 2
+        }
+      ],
+      "focus": {
+        "callout": "PLAY THE NOTES",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 24
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "bars-3-4",
+      "inputs": [
+        {
+          "ms": 220,
+          "notes": [
+            "C4",
+            "C4",
+            "C5",
+            "C4",
+            "G4",
+            "C4",
+            "B3",
+            "C4",
+            "G3",
+            "G3",
+            "G4",
+            "G3",
+            "D4",
+            "G3",
+            "F4",
+            "G3"
+          ],
+          "op": "taps"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*C*, *G*"
+    },
+    {
+      "caption": "REC off, PLAY: the beat and the bassline go round together.",
+      "control": "press REC, then wait 0.4 s, then press PLAY, then wait 8.0 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        },
+        {
+          "kind": "text_absent",
+          "value": "REC"
+        }
+      ],
+      "focus": {
+        "callout": "REC OFF, PLAY",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 24
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "listen",
+      "inputs": [
+        {
+          "button": "REC",
+          "op": "press"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 8000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Drums* and *bass*"
+    }
+  ],
+  "title": "A bassline in TRACKER"
+}

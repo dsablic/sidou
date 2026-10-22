@@ -26,6 +26,9 @@
           "value": "tracker"
         }
       ],
+      "focus": {
+        "callout": "PRESS SEQ TWICE"
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -42,15 +45,23 @@
           "op": "press"
         },
         {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
           "button": "SEQ",
           "op": "press"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Open the song views"
+      "title": "Open the *song*"
     },
     {
-      "caption": "PLAY starts it; the rows move and the song sounds.",
+      "caption": "SIDOU LOOP plays: the rows move, the strips on the right show the other voices.",
       "control": "Press PLAY",
       "expect": [
         {
@@ -58,6 +69,14 @@
           "kind": "audio"
         }
       ],
+      "focus": {
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 30
+        }
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -74,15 +93,15 @@
           "op": "press"
         },
         {
-          "ms": 1500,
+          "ms": 3500,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Play the song"
+      "title": "Press *PLAY*"
     },
     {
-      "caption": "Hold GLO and press the second note key (the leftmost keys are the mutes): voice 2 goes silent and its number above the rows turns grey.",
+      "caption": "Hold GLO and press the second key: the bass goes quiet, its number turns grey.",
       "control": "Hold GLO and press note key 2",
       "expect": [
         {
@@ -90,6 +109,14 @@
           "kind": "audio"
         }
       ],
+      "focus": {
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 3
+        }
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -107,15 +134,15 @@
           "op": "hold_key"
         },
         {
-          "ms": 600,
+          "ms": 3000,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Mute voice 2"
+      "title": "*Mute* voice 2"
     },
     {
-      "caption": "The same keys again undo it, and its number takes its colour back.",
+      "caption": "The same keys again, and the bass is back in.",
       "control": "Hold GLO and press note key 2 again",
       "expect": [
         {
@@ -123,6 +150,14 @@
           "kind": "audio"
         }
       ],
+      "focus": {
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 3
+        }
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -140,15 +175,15 @@
           "op": "hold_key"
         },
         {
-          "ms": 600,
+          "ms": 2500,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Let voice 2 sound again"
+      "title": "And *back*"
     },
     {
-      "caption": "Hold GLO and press the fourth note key: only voice 1 sounds, and SOL shows by its pattern.",
+      "caption": "GLO and the fourth key: only voice 1 plays, and SOL says so.",
       "control": "Hold GLO and press note key 4",
       "expect": [
         {
@@ -160,6 +195,14 @@
           "kind": "audio"
         }
       ],
+      "focus": {
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 3
+        }
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -177,12 +220,12 @@
           "op": "hold_key"
         },
         {
-          "ms": 600,
+          "ms": 3000,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Solo voice 1"
+      "title": "*Solo* the lead"
     },
     {
       "caption": "Again to unsolo.",
@@ -197,6 +240,14 @@
           "kind": "audio"
         }
       ],
+      "focus": {
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 3
+        }
+      },
       "harness": {
         "clip_ms": null,
         "defaults": false,
@@ -214,12 +265,12 @@
           "op": "hold_key"
         },
         {
-          "ms": 600,
+          "ms": 2500,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Bring the others back"
+      "title": "Everyone *back*"
     },
     {
       "caption": "PLAY again stops it; each voice's release rings on.",
@@ -246,12 +297,12 @@
           "op": "press"
         },
         {
-          "ms": 1200,
+          "ms": 1500,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Stop the song"
+      "title": "*Stop*"
     },
     {
       "caption": "HOME goes back one view.",
@@ -276,10 +327,14 @@
         {
           "button": "HOME",
           "op": "press"
+        },
+        {
+          "ms": 1200,
+          "op": "wait"
         }
       ],
       "needs": [],
-      "title": "Back to LIVE"
+      "title": "Back to *LIVE*"
     }
   ],
   "title": "Mute and solo while a song plays"

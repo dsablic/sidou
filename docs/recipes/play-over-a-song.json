@@ -1,0 +1,681 @@
+{
+  "goal": "Load a showcase song, play it, and jam over it on the second chip: shape it, add an effect, mute a voice and record.",
+  "id": "play-over-a-song",
+  "prerequisites": {
+    "songs": [
+      "neon-highway"
+    ],
+    "start": "live",
+    "text": "On LIVE after the boot; NEON HIGHWAY in the store."
+  },
+  "related": [
+    "mute-and-solo",
+    "add-an-effect",
+    "rec-over-loop"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "loading a song",
+    "PLAY",
+    "KEYS AUTO",
+    "K1",
+    "effects",
+    "GLO",
+    "REC"
+  ],
+  "steps": [
+    {
+      "caption": "HOME, SONG, LOAD: the store's songs. ALGORITHM on one loads it.",
+      "control": "press HOME, then wait 0.5 s, then turn SELECT until SONG is selected, then turn ALGORITHM clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.9 s, then turn ALGORITHM clockwise by 1 detent, then wait 5.0 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "song_menu"
+        },
+        {
+          "kind": "text_absent",
+          "value": "BUSY"
+        },
+        {
+          "kind": "text_absent",
+          "value": "SNG:"
+        }
+      ],
+      "focus": {
+        "callout": "SONG > LOAD",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 15
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "load",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SONG"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 5000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Load *NEON HIGHWAY*"
+    },
+    {
+      "caption": "E minor at 125 BPM, on the first SID.",
+      "control": "press PLAY, then wait 3.0 s, then press HOME, then wait 0.4 s, then press HOME, then wait 2.5 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        },
+        {
+          "kind": "view",
+          "value": "live"
+        }
+      ],
+      "focus": {
+        "callout": "PLAY, HOME",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 2
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "play",
+      "inputs": [
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 3000,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*PLAY*: chip A"
+    },
+    {
+      "caption": "The keys play the second SID on top. LIVE says KEYS:B.",
+      "control": "wait for the song's next pattern, then play 16 notes at 125 BPM",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PLAY THE KEYS",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 22,
+          "rows": 8
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "jam",
+      "inputs": [
+        {
+          "op": "sync"
+        },
+        {
+          "bpm": 125,
+          "events": [
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "F#4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*Jam* on chip B"
+    },
+    {
+      "caption": "The knobs shape the keys' sound, not the song's.",
+      "control": "turn K1 slowly counter-clockwise by 36 detents over 1.5 s, then play 7 notes at 125 BPM",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        },
+        {
+          "kind": "param",
+          "max": 1300,
+          "min": 0,
+          "name": "cutoff"
+        }
+      ],
+      "focus": {
+        "callout": "TURN K1",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 15,
+          "rows": 7
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "shape",
+      "inputs": [
+        {
+          "detents": -36,
+          "encoder": "K1",
+          "ms": 1500,
+          "op": "sweep"
+        },
+        {
+          "bpm": 125,
+          "events": [
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*K1* on your sound"
+    },
+    {
+      "caption": "SCL twice, ENV: DELAY on the mix.",
+      "control": "press SCL, then press SCL, then press ENV, then wait 0.3 s, then play 4 notes at 125 BPM",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "DELAY"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SCL, SCL, ENV",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 22,
+          "rows": 8
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "echo",
+      "inputs": [
+        {
+          "button": "SCL",
+          "op": "press"
+        },
+        {
+          "button": "SCL",
+          "op": "press"
+        },
+        {
+          "button": "ENV",
+          "op": "press"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "bpm": 125,
+          "events": [
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "An *echo*"
+    },
+    {
+      "caption": "GLO and the first key: voice 1 of the song goes quiet. Again: back.",
+      "control": "hold GLO and press note key F3, then wait 2.5 s, then hold GLO and press note key F3, then wait 1.5 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD GLO + KEY 1",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 26,
+          "rows": 4
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "mute",
+      "inputs": [
+        {
+          "button": "GLO",
+          "note": "F3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        },
+        {
+          "button": "GLO",
+          "note": "F3",
+          "op": "hold_key"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Mute* a voice"
+    },
+    {
+      "caption": "SEQ to TRACKER, REC, and play: your notes go into the song.",
+      "control": "press SEQ, then wait 0.7 s, then press SEQ, then wait 0.8 s, then press REC, then wait for the song's next pattern, then play 12 notes at 125 BPM, then press REC, then wait 3.0 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "tracker"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SEQ, REC, PLAY THE KEYS",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 24
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "record",
+      "inputs": [
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 700,
+          "op": "wait"
+        },
+        {
+          "button": "SEQ",
+          "op": "press"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "button": "REC",
+          "op": "press"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "bpm": 125,
+          "events": [
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "F#4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        },
+        {
+          "button": "REC",
+          "op": "press"
+        },
+        {
+          "ms": 3000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*REC* your jam"
+    }
+  ],
+  "title": "Play over a song"
+}
