@@ -843,8 +843,13 @@ Then with `USB-FIX-2964aa5` (the product name "SIDOU FM-1"): after deleting the
 device in Audio MIDI Setup and replugging, the port is named "SIDOU FM-1" (before,
 macOS kept the cached "SIDOU"), and `fm1_install.py --info` finds the unit without
 `--port`. The handshake answered 10/10, both inquiries answered, and K1 sent CC 74
-(201 messages). The release package itself still goes through this section before it
-ships.
+(201 messages).
+
+**v0.2.0's package passed on 2026-10-22** (`sidou-0.2.0.fwsc`, SHA-256 `f1219c72…2d52`):
+`fm1_install.py` found the unit without `--port` and updated it from SIDOU over USB;
+`--info` answered `FM-1_900` and the port is "SIDOU FM-1"; the handshake answered 10/10 and
+both inquiries answered; K1 sent CC 74 on channel 1 (185 messages), and again right after a
+replug. Every later release package goes through this section before it ships.
 
 ## 8b. MIDI clock and transport (M2e Task 2)
 
