@@ -3,7 +3,9 @@
 
 # `cargo nextest run --locked --release -p emu-gate` (TESTING.md): every emulator test in its own
 # process, as many at once as there are cores. The wall time is then set by the longest test, so
-# the long ones (times from the 2026-10-22 run, a loaded 10-core Mac) start first.
+# the long ones (times from the 2026-10-22 run, a loaded 10-core Mac) start first. The player's
+# budget spreads its benches over every core itself (song.rs): 1,077 s on one, 222 s so, and the
+# stage's wall time went from 1,077 s to 890 s.
 nextest-version = "0.9.91"
 
 [[profile.default.overrides]]

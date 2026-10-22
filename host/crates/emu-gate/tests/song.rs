@@ -803,8 +803,13 @@ const SONG_ADDR: u32 = 0x01CA_0000;
 const PARAM_ADDR: u32 = 0x01CB_0000;
 
 fn bench(build: &std::path::Path, song: &Song, sub: u32, blocks: u32, kind: u32) -> Bench {
+    bench_bytes(build, song.bytes(), sub, blocks, kind)
+}
+
+/// `bench` on a song's packed bytes (`Song::bytes`), which a thread may take.
+fn bench_bytes(build: &std::path::Path, song: &[u8], sub: u32, blocks: u32, kind: u32) -> Bench {
     let r = run_with(build, "sid_bench_song", 3 + 2 * blocks as usize, |soc| {
-        for (i, &b) in song.bytes().iter().enumerate() {
+        for (i, &b) in song.iter().enumerate() {
             soc.write8(SONG_ADDR + i as u32, b);
         }
         for (i, v) in [sub, blocks, kind].into_iter().enumerate() {
@@ -949,7 +954,9 @@ fn locked(sng: &[u8]) -> Song {
 /// one block, at most 60 instructions a sample, over every example song and subtune at
 /// multispeed 1 and 4 (3,000 calls each) and generated songs. Then the whole interrupt with
 /// two chips at their worst, the slots' heaviest and the player within the audio target, and
-/// the 6502's headroom (M3: the song player and the 6502 never run together).
+/// the 6502's headroom (M3: the song player and the 6502 never run together). The runs (193,
+/// each a bench in its own fm1-emu) go to every core, and their maxima are taken in their
+/// order, so the numbers are a sequential run's: 14 minutes on one core, under 4 on ten.
 #[test]
 fn the_players_worst_block_fits_its_budget() {
     let Some((build, _)) = fixture("the player's budget") else {
@@ -960,7 +967,6 @@ fn the_players_worst_block_fits_its_budget() {
     let mut worst_call = 0u64; // a call and its block's handling, no edits besides
     let mut edits_main = 0u64;
     let (mut analysis, mut derive) = (0u64, 0u64);
-    let mut runs = 0;
     let mut songs = budget_songs();
     for seed in 0..40u64 {
         let g = gt2_ref::gen::generate(seed);
@@ -980,6 +986,17 @@ fn the_players_worst_block_fits_its_budget() {
             ));
         }
     }
+    // The runs, in order (swaps on a quarter of them: they cost less, reported), each an
+    // independent bench in its own fm1-emu, spread over the cores; their results are then taken
+    // in this order, so the maxima and the worst's name are a sequential run's.
+    struct Job<'a> {
+        name: &'a str,
+        song: Vec<u8>,
+        sub: u32,
+        blocks: u32,
+        kind: u32,
+    }
+    let mut jobs = Vec::new();
     for (name, song, sub) in &songs {
         let ms = unsafe {
             let mut o = gt2_options::default();
@@ -989,28 +1006,60 @@ fn the_players_worst_block_fits_its_budget() {
         // 3,000 calls: a call every 880 / ms samples
         let blocks = (3000 * 880 / ms / HALF_FRAMES as u32) + 8;
         for kind in [0u32, 1] {
-            if kind == 1 && runs % 4 != 0 {
-                continue; // swaps on a quarter of the songs: they cost less (reported)
+            if kind == 1 && jobs.len() % 4 != 0 {
+                continue;
             }
-            let b = bench(&build, song, *sub, blocks, kind);
-            runs += 1;
-            if b.error != 0 {
-                continue; // a subtune the packed song does not hold
-            }
-            assert!(b.calls >= 2900, "{name}: {} calls", b.calls);
-            analysis = analysis.max(b.analysis);
-            derive = derive.max(b.derive);
-            let max = *b.blocks.iter().max().unwrap();
-            let min = *b.blocks.iter().skip(1).min().unwrap();
-            worst_edits = worst_edits.max(min);
-            worst_call = worst_call.max(max - min);
-            edits_main = edits_main.max(b.edits_main);
-            if max > worst.0 {
-                worst = (
-                    max,
-                    format!("{name} ({})", if kind == 0 { "cells" } else { "swaps" }),
-                );
-            }
+            jobs.push(Job {
+                name,
+                song: song.bytes().to_vec(),
+                sub: *sub,
+                blocks,
+                kind,
+            });
+        }
+    }
+    let runs = jobs.len();
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
+    let mut results: Vec<(usize, Bench)> = std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..threads)
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut done = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(j) = jobs.get(i) else {
+                            return done;
+                        };
+                        done.push((i, bench_bytes(&build, &j.song, j.sub, j.blocks, j.kind)));
+                    }
+                })
+            })
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|w| w.join().expect("a bench thread"))
+            .collect()
+    });
+    results.sort_by_key(|&(i, _)| i);
+    for (i, b) in &results {
+        let Job { name, kind, .. } = &jobs[*i];
+        if b.error != 0 {
+            continue; // a subtune the packed song does not hold
+        }
+        assert!(b.calls >= 2900, "{name}: {} calls", b.calls);
+        analysis = analysis.max(b.analysis);
+        derive = derive.max(b.derive);
+        let max = *b.blocks.iter().max().unwrap();
+        let min = *b.blocks.iter().skip(1).min().unwrap();
+        worst_edits = worst_edits.max(min);
+        worst_call = worst_call.max(max - min);
+        edits_main = edits_main.max(b.edits_main);
+        if max > worst.0 {
+            worst = (
+                max,
+                format!("{name} ({})", if *kind == 0 { "cells" } else { "swaps" }),
+            );
         }
     }
     let row_delta = row_delta_apply_cost(&build);
