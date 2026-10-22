@@ -497,9 +497,18 @@ fn clock_out_sends_24_a_beat_at_the_songs_tempo_and_the_transport() {
     // the first clock with the first call
     let first_call = r.calls[0].1;
     assert!(clocks[0] >= first_call && clocks[0] - first_call <= 33);
-    // and continue: SPP then FB
+    // and continue: SPP then FB, which wait while a SysEx frame is part way out (review 4.2:
+    // the SPP, system common, would end the host's frame)
     r.out.clear();
+    r.sync.out_common_wait = 1;
     assert!(r.t.resume());
+    r.run(10);
+    assert!(
+        r.out.iter().all(|p| p.0 & 0xff != 0x03),
+        "a song position inside a SysEx frame: {:x?}",
+        r.out
+    );
+    r.sync.out_common_wait = 0;
     r.run(10);
     assert_eq!(r.out[0].0 & 0xff, 0x03, "a three-byte system common");
     assert_eq!(((r.out[0].0 >> 8) & 0xff) as u8, 0xF2);

@@ -358,6 +358,8 @@ void midi_sync_pass(void) {
     }
     uint32_t now = fm1_ticks();
     midi_sync_rows(&syncing, routing.setup.rows_per_beat);
+    /* A reply frame part way out on USB: clock out's song position waits for its end. */
+    syncing.out_common_wait = sidou_sysex.tx_active;
     uint32_t pkt[MIDI_SYNC_OUT_MAX];
     uint32_t n = midi_sync_poll(&syncing, now, pkt);
     /* No host, or one asleep: clock out's packets are dropped (midi_send's rule). The

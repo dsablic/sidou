@@ -44,7 +44,8 @@
  * MIDI_CLOCK_PER_BEAT clocks a beat from the player's calls (a beat is the song's calls a row
  * now times rows a beat), each sent in the first main-loop pass once its time has come
  * (midi_sync_poll), and start, stop, continue (after a song position) as the player's
- * transport changes. A clock that comes in is never echoed: while one is followed nothing
+ * transport changes. The song position waits while a SysEx frame is part way out
+ * (out_common_wait): real-time bytes may go inside a frame, system common ends it. A clock that comes in is never echoed: while one is followed nothing
  * goes out.
  *
  * **Time.** The stamps are fm1_ticks() (24 MHz, MIDI_SYNC_TICKS_PER_SAMPLE a sample); the
@@ -130,6 +131,10 @@ typedef struct midi_sync {
     uint8_t anchored;
     /* out */
     uint8_t out_state;   /* the player's state as clock out last saw it */
+    /* The caller's, before each poll: 1 while a SysEx frame is part way out on clock out's
+     * cable, so a song position (system common, which would end the frame) waits, and the
+     * continue after it with it (midi_sync_poll sends neither until it is 0). */
+    uint8_t out_common_wait;
     uint32_t out_clock;  /* the next clock's number since the start */
     uint32_t sent;       /* packets written */
     /* counters, for the tests */

@@ -362,10 +362,15 @@ static uint32_t out_packets(midi_sync* s, const song_clock* st, uint32_t now,
     /* a load between (a continue that takes chip A again) is no change */
     if (st->state != s->out_state && st->state != MIDI_SYNC_LOADING) {
         uint8_t was = s->out_state;
+        int spp = on && st->state == MIDI_SYNC_PLAYING && was == MIDI_SYNC_STOPPED && b2 &&
+                  st->calls > 1u;
+        if (spp && s->out_common_wait) {
+            return n; /* the song position after the SysEx frame's end: the next pass's */
+        }
         s->out_state = st->state;
         if (on && st->state == MIDI_SYNC_PLAYING) {
             /* a continue goes on from its calls; a play starts them again */
-            if (was == MIDI_SYNC_STOPPED && b2 && st->calls > 1u) {
+            if (spp) {
                 /* on from where it stopped: the position (in 16ths), then continue */
                 uint32_t clocks = st->calls * (2u * MIDI_CLOCK_PER_BEAT) / b2;
                 uint32_t pos = clocks / MIDI_CLOCK_PER_16TH;

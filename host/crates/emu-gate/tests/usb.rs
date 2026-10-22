@@ -773,3 +773,104 @@ fn a_ring_gap_aborts_only_its_ports_sysex_and_never_cuts_a_reply() {
     assert_eq!(frames.len(), 1, "the next INQ is answered: {frames:02x?}");
     assert_eq!(&frames[0][..6], &[0xf0, 0x7d, 0x53, 0x44, 1, 2]);
 }
+
+/// Whether clock out's song position (CIN 3, F2) went inside a SysEx frame among the host's
+/// IN packets (after an F0, before its F7), real-time bytes aside (they may go anywhere); None
+/// if none went.
+fn spp_inside(in1: &[Vec<u8>]) -> Option<bool> {
+    let mut open = false;
+    for packet in in1.concat().chunks(4) {
+        match packet[0] & 15 {
+            3 if packet[1] == 0xf2 => return Some(open),
+            4 => open = true,
+            5..=7 => open = false,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// CLOCK OUT's song position never lands inside a SysEx reply (review 4.2): the song stopped
+/// mid-way, a GET's DATA part way out on USB, then EDIT + PLAY (go on from where it stopped),
+/// which sends a song position and a continue. SPP is system common: inside the reply it ends
+/// the host's frame. It now waits for the frame's F7. The continue is tried at a range of
+/// times against the reply, so at least one of them falls while the reply is part way out.
+#[test]
+fn clock_outs_song_position_waits_for_a_sysex_reply_to_end() {
+    let Some(fw) = fixture("clock out against a SysEx reply") else {
+        return;
+    };
+    let (play, edit) = (
+        sidou_sys::PANEL_BTN_PLAY as u8,
+        sidou_sys::PANEL_BTN_EDIT as u8,
+    );
+    let mut m = usb_machine(&fw);
+    put_file(&mut m, &mut Link::default(), "SPP", &reply_file());
+    let syncing = fw.symbol("syncing");
+    m.soc
+        .write8(syncing + sidou_sys::ilp32::midi_sync::clock_out as u32, 1);
+    let tap = |m: &mut Machine, keys: &[u8]| {
+        for &k in keys {
+            m.key(k, true);
+        }
+        m.usb_frames(40);
+        for &k in keys.iter().rev() {
+            m.key(k, false);
+        }
+        m.usb_frames(40);
+    };
+    tap(&mut m, &[play]);
+    m.usb_frames(1_500);
+    tap(&mut m, &[play]);
+    m.usb_frames(300);
+    let mut held = 0;
+    for delay in 0..16u64 {
+        host(&mut m).in1.clear();
+        let mut link = Link::default();
+        let mut get = vec![0, 0];
+        get.extend(name16("SPP"));
+        link.send(&mut m, 3, 30, &get);
+        let (command, s, _) = link.recv(&mut m, 2_000);
+        assert_eq!((command, s), (4, 30), "GET's metadata");
+        m.key(edit, true);
+        m.key(play, true);
+        m.usb_frames(delay);
+        link.send(&mut m, 0x7e, 30, &[]);
+        // a ms at a time: does the song play on while the song position waits for the reply?
+        let out_state = syncing + sidou_sys::ilp32::midi_sync::out_state as u32;
+        let waiting = syncing + sidou_sys::ilp32::midi_sync::out_common_wait as u32;
+        let calls = fw.symbol("song_transport") + sidou_sys::ilp32::song_ctl::calls as u32;
+        let stopped_at = m.soc.read32(calls);
+        for _ in 0..60 {
+            m.usb_frames(1);
+            let state = m.soc.read8(out_state);
+            if m.soc.read8(waiting) != 0
+                && m.soc.read32(calls) != stopped_at
+                && state == sidou_sys::MIDI_SYNC_STOPPED as u8
+            {
+                held += 1;
+                break;
+            }
+        }
+        let (command, s, _) = link.recv(&mut m, 2_000);
+        assert_eq!((command, s), (5, 31), "GET's DATA");
+        m.key(play, false);
+        m.key(edit, false);
+        link.send(&mut m, 0x7e, 31, &[]);
+        let (command, s, _) = link.recv(&mut m, 2_000);
+        assert_eq!((command, s), (6, 32), "GET's END");
+        link.send(&mut m, 0x7e, 32, &[]);
+        m.usb_frames(20);
+        let inside = spp_inside(&host(&mut m).in1);
+        println!("continue {delay} ms before the DATA's ACK: song position inside {inside:?}");
+        assert_eq!(
+            inside,
+            Some(false),
+            "the song position landed inside a SysEx reply (or none went)"
+        );
+        tap(&mut m, &[play]); // stop again
+        m.usb_frames(100);
+    }
+    println!("{held} of the continues came while the DATA was part way out");
+    assert!(held > 0, "no continue came while a reply was part way out");
+}
