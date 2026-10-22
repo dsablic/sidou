@@ -147,3 +147,16 @@ Also, not false positives but gaps in what the harness measures (fix them with F
 - **Harness false positives: 21 ids in 5 groups** (F1 to F5), plus one harness commit (F6) for the gaps.
 
 Suggested order if you accept: E01, E02, E03 and E04 first (work can be lost), then E09 (understand it before the flash day), then the readability bundle E12 to E17 with the harness fix F6 so the new screens stay gated, then the 5.x batch E23 to E30 (all S).
+
+## The user's decisions (2026-10-23)
+
+- **E22:** SEQ reopens the song view used last (STEP the first time).
+- **E31:** a SETTINGS item holds KEYS, SOUNDS, ROWS, CARDS, STORE, THEME and REC.
+- **E03:** while REC records, TRACKER follows the voice's playing pattern; the cursor comes back
+  when recording stops.
+- **E05:** REC writes what was heard: the entry's transpose is subtracted, with a toast if the
+  note leaves the range.
+- Taken with the review's recommendation, not asked: **E20** fixes ABOUT's first heading only;
+  **E32** keeps one undo step and says so on the help card.
+- From the device session: E10, E11, E19, the readability calls in TODO.md, and the SysEx gap
+  while sound plays.
