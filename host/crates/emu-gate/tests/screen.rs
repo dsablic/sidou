@@ -33,6 +33,7 @@ const A4_KEY: u8 = 14 + 69 - 53;
 const OCT_UP: u8 = 1;
 const FX: u8 = 2;
 const EDIT: u8 = 6;
+const ENV: u8 = 4;
 /// app/panel.h: the PRESETS encoder.
 const PRESETS: u8 = 6;
 const HOME: u8 = 8;
@@ -4028,14 +4029,15 @@ fn hold_for_help(m: &mut Machine, fw: &Firmware) {
     common::to_mid_frame(m, fw);
 }
 
-/// HOME let go (the card stays), then SELECT closes it and does nothing else.
+/// HOME let go (the card stays), then K1 closes it and does nothing else (SELECT turns a card
+/// of two pages).
 fn close_help(m: &mut Machine, fw: &Firmware) {
     m.key(HOME, false);
     m.run_ms(200);
     assert!(showing_help(m, fw), "the release closed the card");
-    m.turn(SELECT, 1);
+    m.turn(K1, 1);
     m.run_ms(SETTLE_MS);
-    assert!(!showing_help(m, fw), "SELECT did not close the card");
+    assert!(!showing_help(m, fw), "K1 did not close the card");
 }
 
 fn fx_select(m: &mut Machine, fw: &Firmware) -> u8 {
@@ -4160,7 +4162,101 @@ fn help_cards_match_their_goldens() {
         settle(&mut m, &fw);
         hold_for_help(&mut m, &fw);
         compare_golden(&build, &format!("help-{name}"), &m.soc.lcd.fb, &[]);
+        if matches!(name, "step" | "tracker" | "order" | "instr") {
+            // a card of two pages: SELECT turns it
+            m.turn(SELECT, 1);
+            m.run_ms(400);
+            common::to_mid_frame(&mut m, &fw);
+            assert!(showing_help(&mut m, &fw), "SELECT closed {name}'s card");
+            compare_golden(&build, &format!("help-{name}-2"), &m.soc.lcd.fb, &[]);
+        }
         close_help(&mut m, &fw);
+    }
+}
+
+/// The cards of a view's states (app/views.c help_card_of), each a golden: LIVE on a slot's page
+/// and LIVE's second page, CHIP's tabs, a slot (OVERDRIVE: its own names) and EXPERT, a held
+/// step, STEP and TRACKER recording, TRACKER editing (REC, stopped), SETTINGS on STORE.
+#[test]
+fn the_states_help_cards_match_their_goldens() {
+    let Some((build, fw)) = fixture("the help card test") else {
+        return;
+    };
+    for name in [
+        "live-2",
+        "live-slot",
+        "chip-tabs",
+        "chip-slot",
+        "expert",
+        "step-held",
+        "step-rec",
+        "tracker-edit",
+        "tracker-rec",
+        "store",
+    ] {
+        let mut m = booted(&fw);
+        match name {
+            "live-2" => {}
+            "live-slot" => {
+                m.turn(SELECT, 1);
+                m.run_ms(100);
+            }
+            "chip-tabs" | "chip-slot" | "expert" => {
+                if name == "chip-slot" {
+                    press(&mut m, ENV); // DIST: TAPE, then OVERDRIVE
+                    press(&mut m, ENV);
+                }
+                into_chip_card(&mut m, &fw);
+                m.run_ms(2 * UI_PERIOD_MS);
+                past_card(&mut m, &fw);
+                m.turn(SELECT, -8);
+                m.run_ms(100);
+                let to = match name {
+                    "chip-tabs" => 0,
+                    "chip-slot" => 2,
+                    _ => 5,
+                };
+                m.turn(SELECT, to);
+                m.run_ms(100);
+            }
+            "step-held" | "step-rec" => {
+                press(&mut m, SEQ);
+                settle(&mut m, &fw);
+                if name == "step-held" {
+                    m.key(KEY0 + 5, true);
+                    m.run_ms(100);
+                } else {
+                    press(&mut m, PLAY);
+                    press(&mut m, REC);
+                }
+            }
+            "tracker-edit" | "tracker-rec" => {
+                press(&mut m, SEQ);
+                settle(&mut m, &fw);
+                press(&mut m, SEQ);
+                settle(&mut m, &fw);
+                if name == "tracker-rec" {
+                    press(&mut m, PLAY);
+                }
+                press(&mut m, REC);
+            }
+            _ => {
+                open_menu(&mut m, &fw);
+                common::settings_item(&mut m, sidou_sys::VIEWS_SETTINGS_STORE);
+            }
+        }
+        settle(&mut m, &fw);
+        hold_for_help(&mut m, &fw);
+        if name == "live-2" {
+            m.turn(SELECT, 1);
+            m.run_ms(400);
+            common::to_mid_frame(&mut m, &fw);
+        }
+        compare_golden(&build, &format!("help-{name}"), &m.soc.lcd.fb, &[]);
+        close_help(&mut m, &fw);
+        if name == "step-held" {
+            m.key(KEY0 + 5, false);
+        }
     }
 }
 

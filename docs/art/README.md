@@ -1535,14 +1535,20 @@ HOME held 600 ms opens a **help card** over the view that shows (`app/help_view.
 are in [controls](../reference/controls.md#help)). It is drawn in the menu's style at 2x,
 14 characters across, in the theme's roles, never a colour of its own:
 
-- **Rows 0-2:** the title bar in `title_fg` on `title_bg`: `HELP` from column 1 and the card's
-  name (`LIVE`, `MENU`, `SETTINGS`, `MIDI`, `CHIP`, `SCENE`, `STEP`, `TRACKER`, `ORDER`, `INSTR`, `TABLE`, `STATUS`, `ABOUT`, `CHARSET`, `SONG`, and SONG's pages `FILES`, `SAVE AS`, `CONFIRM`) right-aligned.
+- **Rows 0-2:** the title bar in `title_fg` on `title_bg`: `HELP` from column 1, or on a card
+  of two pages the page (`1/2`, `2/2`), and the card's name (`LIVE`, `MENU`, `SETTINGS`, `MIDI`,
+  `CHIP`, `SCENE`, `STEP`, `TRACKER`, `ORDER`, `INSTR`, `TABLE`, `STATUS`, `ABOUT`, `CHARSET`,
+  `SONG`, SONG's pages `FILES`, `SAVE AS`, `CONFIRM`, and the views' states `LIVE SLOT`,
+  `CHIP TABS`, `CHIP SLOT`, `EXPERT`, `HELD STEP`, `STEP REC`, `TRACK EDIT`, `TRACK REC`,
+  `STORE`) right-aligned.
 - **Rows 4-27:** up to eight lines, one every three rows (two of text, one blank): the control
   on the left in `hot`, what it does right-aligned in `value`, on the screen's own background;
-  the rows a card does not use stay blank.
+  the rows a card does not use stay blank. A slot's card names K1..K4 for the slot's algorithm
+  (`DRIVE`, `TONE`; `UNUSED`), a recording card the quantise (`NEAREST`).
 - It is drawn in **units** (the title bar with the row under it, then each line, the last with
   the rows under it) that go out whole, as many a frame as fit 190 cells: six frames, and no
   frame over 200 cells whatever it covers (a view's pixel region or overlays included). Nothing
-  draws over it (no toast, raster or popup); once drawn it sends nothing.
-- It ends on any button or encoder (its capture takes the event and does nothing else), and the
+  draws over it (no toast, raster or popup); once drawn it sends nothing. SELECT on a card of two
+  pages draws the other page the same way.
+- It ends on any button or encoder but SELECT on a card of two pages (its capture takes the event and does nothing else), and the
   view under it cuts back in in bands, as after a title card. A note plays and does not end it.

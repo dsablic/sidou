@@ -4,47 +4,106 @@
 
 #include <stddef.h>
 
+#include "chip_view.h"
 #include "grid.h"
+#include "live.h"
+#include "panel.h"
+#include "song_view.h"
 #include "theme.h"
 
-/* What the controls do in each view, a line the control and what it does (a NUL between), 14
- * characters with a space between the two (a host test checks). Each says what its own view does
- * (docs/reference/controls.md; a test opens every card over its view). */
-static const char* const LIVE_LINES[] = {"SELECT\0PAGE",     "ALG\0PROF/SLOT", "PRESETS\0SOUND",
-                                         "EDIT+K\0SLOT",     "SCL/ENV\0SLOT",  "GLO+KEY\0MUTE",
-                                         "SAVE+K\0LEARN",    "HOME\0MENU"};
+/* What the controls do in each view and state, a line the control and what it does (a NUL
+ * between), 14 characters with a space between the two, eight lines a page and two pages at
+ * most (a host test checks). Each says what its own view does in that state
+ * (docs/reference/controls.md), and every control the view's input takes is on it: a host test
+ * (help_view.rs) feeds each view, in each state, every button and encoder and finds the line of
+ * each one it takes. The control's words: SELECT, ALG (ALGORITHM), K1..K4 (K1-K4, K1 K2, K3/K4;
+ * K alone is the four), PRESETS (PRE), KEYS, a button's name; E+ (or EDIT+) with EDIT held, STEP+
+ * with a step held, GLO+, SAVE+ (a digit after the NUL would be an octal escape). */
+static const char* const LIVE_LINES[] = {
+    "SELECT\0PAGE",   "ALG\0PROFILE",  "K1\0CUTOFF",      "K2\0RESO",
+    "K3\0SOUND'S OWN", "K4\0RELEASE",  "PRESETS\0SOUND",  "E+K\0SLOT",
+    "SCL\0NEXT SLOT", "ENV\0NEXT ALG", "FX\0CHIP MODEL", "OCT-/+\0OCTAVE",
+    "GLO+KEY\0MUTE",  "SAVE+K\0LEARN", "SEQ\0SONG VIEWS", "HOME\0MENU"};
+/* LIVE on a slot's page: K1..K4 the slot's controls, named for its algorithm. */
+static const char* const LIVE_SLOT_LINES[] = {
+    "SELECT\0PAGE",   "ALG\0ALGORITHM", "K1\0\1",         "K2\0\2",
+    "K3\0\3",         "K4\0\4",         "SCL\0NEXT SLOT", "ENV\0NEXT ALG",
+    "PRESETS\0SOUND", "FX\0CHIP MODEL", "OCT-/+\0OCTAVE", "GLO+KEY\0MUTE",
+    "SAVE+K\0LEARN",  "SEQ\0SONG VIEWS", "HOME\0MENU"};
 /* SAVE is the menu's OK: it opens the view under the selection (ALG clockwise does too); the
  * settings save themselves. */
 static const char* const MENU_LINES[] = {"SELECT\0MOVE", "SAVE\0OPEN", "ALG\0CHANGE",
                                          "ALG\0OPEN",    "HOME\0BACK", "HOLD HOME\0HELP"};
-/* SETTINGS: values only; they save themselves a few seconds after a change. SAVE confirms STORE's
- * format only. */
+/* SETTINGS: values only; they save themselves a few seconds after a change. On STORE, ALG arms
+ * the format of a foreign store and SAVE confirms it. */
 static const char* const SETTINGS_LINES[] = {"SELECT\0MOVE",  "ALG\0CHANGE", "SETTINGS\0KEPT",
                                              "HOME\0BACK",    "HOLD HOME\0HELP"};
+static const char* const STORE_LINES[] = {"SELECT\0MOVE", "ALG\0ARM FORMAT", "SAVE\0FORMAT",
+                                          "WIPES\0ALL DATA", "HOME\0BACK"};
 /* The MIDI page has no actions, and its setup is RAM-only (not part of the saved settings). */
 static const char* const MIDI_LINES[] = {"SELECT\0MOVE",   "ALG\0CHANGE", "SETUP\0RAM ONLY",
                                          "HOME\0BACK",     "HOLD HOME\0HELP"};
-/* CHIP's K3 on the chip, the thump, changes only where a note starts: the card says so. */
-static const char* const CHIP_LINES[] = {"SELECT\0FOCUS",  "ALG\0STEP",    "K1-K4\0VALUES",
-                                         "K3\0NOTE THUMP", "EDIT+ALG\0SAVE", "SAVE\0STORE",
-                                         "HOME\0BACK"};
+/* CHIP by its focus: the A/B tabs, the chip (K3, the thump, changes only where a note starts),
+ * a slot (its algorithm's names) and EXPERT. */
+static const char* const CHIP_TABS_LINES[] = {"SELECT\0FOCUS", "ALG\0CHIP A/B", "K1\0AGE",
+                                              "K2\0DAC",       "K3\0NOTE THUMP", "K4\0BLEED",
+                                              "E+K\0SLOT",     "HOME\0BACK"};
+static const char* const CHIP_LINES[] = {"SELECT\0FOCUS",  "ALG\0PROFILE", "E+ALG\0SAVE TO",
+                                         "K1\0AGE",        "K2\0DAC",      "K3\0NOTE THUMP",
+                                         "K4\0BLEED",      "E+K\0SLOT",    "SAVE\0STORE",
+                                         "FX\0CHIP MODEL", "HOME\0BACK"};
+static const char* const CHIP_SLOT_LINES[] = {"SELECT\0FOCUS", "ALG\0ALGORITHM", "K1\0\1",
+                                              "K2\0\2",        "K3\0\3",         "K4\0\4",
+                                              "SCL\0NEXT SLOT", "HOME\0BACK"};
+static const char* const EXPERT_LINES[] = {"SELECT\0FOCUS", "ALG\0PAGE",     "K1-K4\0AS SHOWN",
+                                           "MACROS\0RESET", "E+ALG\0SAVE TO", "SAVE\0STORE",
+                                           "E+K\0SLOT",     "HOME\0BACK"};
 /* The song views: SEQ goes round them, SAVE saves the song, not the settings. STEP and TRACKER
  * undo one step (EDIT + LFO, E+LFO: the line's 14 characters; the ergonomics review's E32). */
-static const char* const STEP_LINES[] = {"SELECT\0LANE",   "ALG\0PAGE",      "KEYS 1-16\0STEP",
-                                         "STEP+K\0LOCK",   "PRESETS\0INSTR", "ARP\0GATE",
-                                         "E+LFO\0ONE UNDO", "SAVE\0SONG"};
-static const char* const TRACKER_LINES[] = {"SELECT\0ROW",    "ALG\0VOICE",     "KEYS\0AUDITION",
-                                            "REC\0RECORD",    "GLO+KEY\0MUTE",  "SEQ\0NEXT VIEW",
-                                            "SAVE\0SONG",     "E+LFO\0ONE UNDO"};
-static const char* const ORDER_LINES[] = {"SELECT\0ENTRY",    "ALG\0TUNE/VOICE", "K1\0VALUE",
-                                          "K2\0KIND",         "ARP\0RESTART",    "PLAY\0FROM HERE",
-                                          "SEQ\0NEXT VIEW",   "SAVE\0SONG"};
-static const char* const INSTR_LINES[] = {"SELECT\0PARAM",    "PRESETS\0INSTR",  "K1\0COARSE",
-                                          "K2\0FINE",         "EDIT+SEQ\0TABLE", "SEQ\0NEXT VIEW",
-                                          "SAVE\0SONG",       "HOME\0BACK"};
+static const char* const STEP_LINES[] = {
+    "KEYS 1-16\0STEP", "STEP+K\0LOCK",   "SELECT\0LANE",    "ALG\0PAGE",
+    "PRESETS\0INSTR",  "ARP\0GATE",      "E+LFO\0ONE UNDO", "KEYS 17+\0PLAY",
+    "GLO+KEY\0MUTE",   "REC\0RECORD",    "PLAY\0PLAY/STOP", "SEQ\0NEXT VIEW",
+    "SAVE\0SONG",      "HOME\0BACK"};
+/* A step held: its locks, its note; let go with no knob turned, it toggles. */
+static const char* const STEP_HELD_LINES[] = {
+    "K1\0CUTOFF LOCK", "K2\0RESO LOCK",  "K3\0PULSE LOCK", "K4\0WAVE SET",
+    "E+K\0CHARACTER",  "PRESETS\0NOTE",  "LFO\0CLEAR LOCK", "KEY UP\0TOGGLE",
+    "SELECT\0LANE",    "ALG\0PAGE",      "ARP\0GATE",      "E+LFO\0ONE UNDO",
+    "SEQ\0NEXT VIEW",  "SAVE\0SONG",     "HOME\0BACK"};
+/* REC on while the song plays: the pads record, K1 and K2 lock on the row they turn in. */
+static const char* const STEP_REC_LINES[] = {
+    "KEYS\0RECORD",   "K1\0CUTOFF LOCK", "K2\0RESO LOCK",   "QUANT\0\5",
+    "SELECT\0LANE",   "ALG\0PAGE",       "PRESETS\0INSTR",  "ARP\0GATE",
+    "E+LFO\0ONE UNDO", "REC\0RECORD OFF", "PLAY\0STOP",     "SEQ\0NEXT VIEW",
+    "SAVE\0SONG",     "HOME\0BACK"};
+static const char* const TRACKER_LINES[] = {
+    "SELECT\0ROW",     "E+SELECT\0PAGE", "ALG\0VOICE",     "E+ALG\0ROW STEP",
+    "KEYS\0AUDITION",  "REC\0EDIT",      "E+LFO\0ONE UNDO", "GLO+KEY\0MUTE",
+    "PLAY\0PLAY/STOP", "SEQ\0NEXT VIEW", "SAVE\0SONG",     "HOME\0BACK"};
+/* REC on, the song stopped: the cursor's row is edited. */
+static const char* const TRACKER_EDIT_LINES[] = {
+    "KEYS\0WRITE",     "ARP\0KEY OFF",   "LFO\0CLEAR NOTE", "K1\0INSTRUMENT",
+    "K2\0COMMAND",     "K3 K4\0DATA",    "PRESETS\0INSTR",  "E+PRE\0INS/DEL",
+    "SELECT\0ROW",     "E+SELECT\0PAGE", "ALG\0VOICE",      "E+ALG\0ROW STEP",
+    "E+LFO\0ONE UNDO", "SEQ\0NEXT VIEW", "SAVE\0SONG",      "HOME\0BACK"};
+/* REC on, the song playing: the keys and K1 and K2 record; EDIT + K1..K4 edit the cursor's row. */
+static const char* const TRACKER_REC_LINES[] = {
+    "KEYS\0RECORD",    "K1\0CUTOFF LOCK", "K2\0RESO LOCK",   "QUANT\0\5",
+    "K3 K4\0DATA",     "E+K\0EDIT CELL",  "ARP\0KEY OFF",    "LFO\0CLEAR NOTE",
+    "PRESETS\0INSTR",  "E+PRE\0INS/DEL",  "SELECT\0ROW",     "ALG\0VOICE",
+    "E+LFO\0ONE UNDO", "SEQ\0NEXT VIEW",  "SAVE\0SONG",      "HOME\0BACK"};
+static const char* const ORDER_LINES[] = {
+    "SELECT\0ENTRY",  "ALG\0TUNE/VOICE", "K1\0VALUE",     "K2\0KIND",
+    "E+PRE\0INS/DEL", "ARP\0RESTART",    "KEYS\0AUDITION", "PLAY\0FROM HERE",
+    "SEQ\0NEXT VIEW", "SAVE\0SONG",      "HOME\0BACK"};
+static const char* const INSTR_LINES[] = {
+    "SELECT\0PARAM",  "PRESETS\0INSTR", "K1\0COARSE",    "K2\0FINE",
+    "E+SEQ\0TABLE",   "KEYS\0AUDITION", "SEQ\0NEXT VIEW", "SAVE\0SONG",
+    "HOME\0BACK"};
 static const char* const TABLE_LINES[] = {"SELECT\0ROW",      "ALG\0TABLE",      "K1\0LEFT BYTE",
-                                          "K2\0RIGHT BYTE",   "SEQ\0NEXT VIEW",  "SAVE\0SONG",
-                                          "HOME\0BACK"};
+                                          "K2\0RIGHT BYTE",   "KEYS\0AUDITION",  "SEQ\0NEXT VIEW",
+                                          "SAVE\0SONG",       "HOME\0BACK"};
 static const char* const SCENE_LINES[] = {"SELECT\0PIECE", "ALG\0PIECE", "K1 K2\0MOOD",
                                           "KEYS\0PLAY",    "HOME\0BACK"};
 /* The SONG menu's actions; its pages have their own cards (below). */
@@ -80,7 +139,20 @@ const help_card help_cards[HELP_CARDS] = {
     [HELP_CARD_ABOUT] = CARD("ABOUT", ABOUT_LINES),    [HELP_CARD_CHARSET] = CARD("CHARSET", CHARSET_LINES),
     [HELP_CARD_FILES] = CARD("FILES", FILES_LINES),    [HELP_CARD_NAME] = CARD("SAVE AS", NAME_LINES),
     [HELP_CARD_CONFIRM] = CARD("CONFIRM", CONFIRM_LINES),
+    [HELP_CARD_LIVE_SLOT] = CARD("LIVE SLOT", LIVE_SLOT_LINES),
+    [HELP_CARD_CHIP_TABS] = CARD("CHIP TABS", CHIP_TABS_LINES),
+    [HELP_CARD_CHIP_SLOT] = CARD("CHIP SLOT", CHIP_SLOT_LINES),
+    [HELP_CARD_EXPERT] = CARD("EXPERT", EXPERT_LINES),
+    [HELP_CARD_STEP_HELD] = CARD("HELD STEP", STEP_HELD_LINES),
+    [HELP_CARD_STEP_REC] = CARD("STEP REC", STEP_REC_LINES),
+    [HELP_CARD_TRACKER_EDIT] = CARD("TRACK EDIT", TRACKER_EDIT_LINES),
+    [HELP_CARD_TRACKER_REC] = CARD("TRACK REC", TRACKER_REC_LINES),
+    [HELP_CARD_STORE] = CARD("STORE", STORE_LINES),
 };
+_Static_assert(sizeof LIVE_LINES / sizeof LIVE_LINES[0] <= HELP_LINES * HELP_PAGES &&
+                   sizeof TRACKER_EDIT_LINES / sizeof TRACKER_EDIT_LINES[0] <= HELP_LINES * HELP_PAGES &&
+                   sizeof TRACKER_REC_LINES / sizeof TRACKER_REC_LINES[0] <= HELP_LINES * HELP_PAGES,
+               "two pages at most");
 
 /* The text rows: the title bar's three and the row after it (unit 0), then a line every three
  * rows from row 4 (two rows of text and one blank); the last line owns the rows under it too. */
@@ -103,15 +175,27 @@ static uint32_t right(const char* s) {
     return GRID_COLS - 1u - 2u * length(s);
 }
 
+/* A card's pages: two when its lines are more than a page's. */
+static uint32_t pages(const help_card* c) {
+    return c->count > HELP_LINES ? HELP_PAGES : 1u;
+}
+
 int help_view_capture(void* ctx, const screen_event* e) {
-    (void)e;
-    ((help_view*)ctx)->done = 1;
+    help_view* h = ctx;
+    if (e->kind == SCREEN_TURN && e->id == PANEL_ENC_SELECT && pages(&help_cards[h->card]) > 1u) {
+        h->page ^= 1u; /* either way: two pages */
+        h->drawn = 0;
+        return 1;
+    }
+    h->done = 1;
     return 1;
 }
 
-int help_view_open(help_view* h, screen* s, uint32_t card) {
+int help_view_open(help_view* h, screen* s, uint32_t card, uint32_t arg) {
     h->drawn = 0;
     h->done = 0;
+    h->page = 0;
+    h->arg = (uint16_t)arg;
     h->card = (uint8_t)(card < HELP_CARDS ? card : HELP_CARD_STATUS);
     return screen_push_over(s, &help_view_view, h, SCREEN_CUT);
 }
@@ -120,23 +204,46 @@ static void enter(screen* s, void* state) {
     screen_capture(s, help_view_capture, state);
 }
 
-static void draw_unit(grid* g, const theme* th, const help_card* c, uint32_t u) {
+const char* help_view_what(const help_view* h, const char* what, char* buf) {
+    static const char* const QUANT[SONG_VIEW_QUANTS] = {"NEAREST", "OFF", "COUNT-IN"};
+    _Static_assert(SONG_VIEW_QUANT_NEAREST == 0u && SONG_VIEW_QUANT_OFF == 1u &&
+                       SONG_VIEW_QUANT_COUNT == 2u && CHIP_VIEW_LABEL <= HELP_TEXT_WORD,
+                   "the quantise's names, a slot's word fits");
+    int code = what[0];
+    if (code >= HELP_TEXT_K1 && code <= HELP_TEXT_K4) {
+        int used = chip_view_label(h->arg & 0xffu, h->arg >> 8,
+                                   LIVE_SLOT_AMOUNT + (uint32_t)(code - HELP_TEXT_K1), buf);
+        return used ? buf : "UNUSED";
+    }
+    if (code == HELP_TEXT_QUANT) {
+        return QUANT[h->arg < SONG_VIEW_QUANTS ? h->arg : 0u];
+    }
+    return what;
+}
+
+/* Unit u of the page shown: 0 the title bar (HELP, or the page on a card of two, and the name),
+ * then the page's lines. */
+static void draw_unit(grid* g, const theme* th, const help_view* h, uint32_t u) {
+    const help_card* c = &help_cards[h->card];
     const uint8_t blank = THEME_ATTR(th, value);
     if (u == 0) {
         const uint8_t head = GRID_ATTR(th->title_fg, th->title_bg);
+        char page[4] = {(char)('1' + h->page), '/', (char)('0' + HELP_PAGES), 0};
         grid_fill(g, 0, 0, GRID_COLS, 3, ' ', head);
         grid_fill(g, 0, 3, GRID_COLS, 1, ' ', blank);
-        grid_text_big(g, 1, 1, 2, "HELP", head);
+        grid_text_big(g, 1, 1, 2, pages(c) > 1u ? page : "HELP", head);
         grid_text_big(g, right(c->name), 1, 2, c->name, head);
         return;
     }
     uint32_t i = u - 1u;
     uint32_t row = HELP_ROW + HELP_LINE_ROWS * i;
+    uint32_t line = h->page * HELP_LINES + i;
     grid_fill(g, 0, row, GRID_COLS, i == HELP_LINES - 1u ? HELP_LAST_ROWS : HELP_LINE_ROWS, ' ',
               blank);
-    if (i < c->count) {
-        const char* key = c->lines[i];
-        const char* what = key + length(key) + 1u; /* after the NUL */
+    if (line < c->count) {
+        char buf[HELP_TEXT_WORD];
+        const char* key = c->lines[line];
+        const char* what = help_view_what(h, key + length(key) + 1u, buf); /* after the NUL */
         grid_text_big(g, 1, row, 2, key, GRID_ATTR(th->hot, th->bg));
         grid_text_big(g, right(what), row, 2, what, blank);
     }
@@ -156,7 +263,6 @@ static void compose(screen* s, void* state, grid* g) {
         h->drawn = 0;
     }
     const theme* th = screen_theme(s);
-    const help_card* c = &help_cards[h->card];
     uint32_t used = screen_pending(s) + screen_layer_cells(s); /* a layer's cells count too */
     for (uint32_t u = 0; u < HELP_UNITS; u++) {
         if (h->drawn >> u & 1u) {
@@ -167,7 +273,7 @@ static void compose(screen* s, void* state, grid* g) {
         if (used && used + cost > HELP_FRAME_CELLS) {
             break;
         }
-        draw_unit(g, th, c, u);
+        draw_unit(g, th, h, u);
         h->drawn |= (uint16_t)(1u << u);
         used += cost;
     }

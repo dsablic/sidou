@@ -1907,11 +1907,16 @@ __attribute__((noinline, unused)) static void home_go(views* v) {
     }
 }
 
-/* The help card for the view that shows. */
-static uint32_t help_card_of(const views* v) {
+/* The help card for the view that shows, in the state it is in (help_view.h: CHIP by its focus,
+ * STEP with a step held or recording, TRACKER with REC on, LIVE on a slot's page, SETTINGS on
+ * STORE), and the state's words for it into *arg. */
+static uint32_t help_card_of(const views* v, uint32_t* arg) {
     const view* top = shows(v);
+    const live* l = v->l;
+    uint32_t slot = l->fx_select % LIVE_SLOTS;
+    *arg = slot | (uint32_t)l->slot[slot][LIVE_SLOT_ALGORITHM] << 8;
     if (top == &live_view_view) {
-        return HELP_CARD_LIVE;
+        return v->live.page ? HELP_CARD_LIVE_SLOT : HELP_CARD_LIVE;
     }
     if (top == &views_menu) {
         return HELP_CARD_MENU;
@@ -1920,7 +1925,7 @@ static uint32_t help_card_of(const views* v) {
         return HELP_CARD_MIDI;
     }
     if (top == &views_settings_view) {
-        return HELP_CARD_SETTINGS;
+        return v->setup.cursor == VIEWS_SETTINGS_STORE ? HELP_CARD_STORE : HELP_CARD_SETTINGS;
     }
     if (top == &views_song_menu_view) {
         uint8_t page = v->songs.page;
@@ -1936,16 +1941,28 @@ static uint32_t help_card_of(const views* v) {
         return HELP_CARD_CHARSET;
     }
     if (top == &chip_view_view) {
-        return HELP_CARD_CHIP;
+        uint32_t f = chip_view_focus(&v->chip);
+        return f == CHIP_VIEW_TABS     ? HELP_CARD_CHIP_TABS
+               : f == CHIP_VIEW_CHIP   ? HELP_CARD_CHIP
+               : f == CHIP_VIEW_EXPERT ? HELP_CARD_EXPERT
+                                       : HELP_CARD_CHIP_SLOT;
     }
     if (top == &scene_view_view) {
         return HELP_CARD_SCENE;
     }
+    int recording = song_view_rec_playing(&v->song);
+    if (recording) {
+        *arg = v->song.quant;
+    }
     if (top == &step_view_view) {
-        return HELP_CARD_STEP;
+        return recording ? HELP_CARD_STEP_REC
+               : v->step.held != STEP_VIEW_NONE ? HELP_CARD_STEP_HELD
+                                                : HELP_CARD_STEP;
     }
     if (top == &tracker_view_view) {
-        return HELP_CARD_TRACKER;
+        return recording ? HELP_CARD_TRACKER_REC
+               : v->song.rec ? HELP_CARD_TRACKER_EDIT
+                             : HELP_CARD_TRACKER;
     }
     if (top == &song_pages_order_view) {
         return HELP_CARD_ORDER;
@@ -2050,7 +2067,9 @@ void views_flow(views* v, uint32_t now_ms) {
     if (v->p->held >> PANEL_BTN_HOME & 1u) {
         if (v->home_down == 1u && now_ms - v->home_at >= HOME_HELP_MS && !curtain(v) &&
             screen_top(&v->s) != &learn_view_view) {
-            if (help_view_open(&v->help, &v->s, help_card_of(v)) == 0) {
+            uint32_t arg;
+            uint32_t card = help_card_of(v, &arg);
+            if (help_view_open(&v->help, &v->s, card, arg) == 0) {
                 v->home_down = 2u;
             } else {
                 v->home_down = 0; /* the stack is full: no card, so HOME does what a tap does */

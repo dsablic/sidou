@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2026 SIDOU contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! The help card (app/help_view.c) and HOME acting on its release (app/views.c `views_flow`): a
-//! tap goes home, a hold of 600 ms opens the card of the view that shows, any button or encoder
-//! closes it and does nothing else, and no frame of it sends more than 200 cells; and the
-//! first-run tour (app/views.c `tour_frame`) that follows the full boot an install plays.
+//! tap goes home, a hold of 600 ms opens the card of the view that shows in the state it is in,
+//! SELECT turns a card of two pages, any other button or encoder closes it and does nothing else,
+//! and no frame of it sends more than 200 cells; and the first-run tour (app/views.c `tour_frame`) that follows the full boot an install
+//! plays.
 
 use std::ffi::CStr;
 
@@ -46,17 +47,37 @@ fn big(ui: &Ui, row: usize, col: usize, n: usize) -> String {
         .collect()
 }
 
-fn card_name(ui: &Ui) -> String {
+/// The title bar: HELP, or the page of a card of two (`1/2`), and the card's name.
+fn title(ui: &Ui) -> (String, String) {
     let head = big(ui, 1, 1, 14);
-    assert!(head.starts_with("HELP"), "title bar: {head:?}");
-    head["HELP".len()..].trim().to_string()
+    let (left, name) = head.split_at(4);
+    let left = left.trim().to_string();
+    assert!(
+        ["HELP", "1/2", "2/2"].contains(&left.as_str()),
+        "title bar: {head:?}"
+    );
+    (left, name.trim().to_string())
+}
+
+fn card_name(ui: &Ui) -> String {
+    title(ui).1
 }
 
 fn text(p: *const std::os::raw::c_char) -> String {
     unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned()
 }
 
-/// Line `l` of a card: the control and what it does (one string with a NUL between).
+/// Line `l` of a card: the control and what it does (one string with a NUL between), the state's
+/// words (HELP_TEXT_*) as `h` gives them.
+fn line_of(h: &help_view, card: &help_card, l: usize) -> (String, String) {
+    let p = unsafe { *card.lines.add(l) };
+    let key = unsafe { CStr::from_ptr(p) };
+    let mut buf = [0 as std::os::raw::c_char; HELP_TEXT_WORD as usize];
+    let what = unsafe { help_view_what(h, p.add(key.to_bytes().len() + 1), buf.as_mut_ptr()) };
+    (key.to_string_lossy().into_owned(), text(what))
+}
+
+/// Line `l` of a card, its own words (a HELP_TEXT_* code as a control character).
 fn line(card: &help_card, l: usize) -> (String, String) {
     let p = unsafe { *card.lines.add(l) };
     let key = unsafe { CStr::from_ptr(p) };
@@ -65,6 +86,15 @@ fn line(card: &help_card, l: usize) -> (String, String) {
         key.to_string_lossy().into_owned(),
         what.to_string_lossy().into_owned(),
     )
+}
+
+/// HOME let go, then K1 (a card of two pages takes SELECT): the card closes.
+fn close(ui: &mut Ui) {
+    ui.up(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_K1, 1);
+    frame(ui);
+    ui.settle();
+    assert_ne!(ui.top(), "HELP");
 }
 
 #[test]
@@ -101,11 +131,17 @@ fn a_tap_goes_home_and_a_hold_shows_the_help_card() {
         frame(&mut ui);
     }
     assert_eq!(ui.top(), "HELP");
-    ui.turn(PANEL_ENC_SELECT, 1);
+    let cutoff = unsafe { live_param_get(&*ui.rig.live, LIVE_PARAM_CUTOFF) };
+    ui.turn(PANEL_ENC_K1, 1);
     frame(&mut ui);
     ui.settle();
     assert_eq!(ui.top(), "LIVE");
     assert_eq!(ui.v.fx_select, fx, "the selection untouched");
+    assert_eq!(
+        unsafe { live_param_get(&*ui.rig.live, LIVE_PARAM_CUTOFF) },
+        cutoff,
+        "the cutoff untouched"
+    );
 }
 
 #[test]
@@ -180,10 +216,7 @@ fn a_held_home_on_a_full_stack_shows_the_card_too() {
     }
     assert_eq!(card_name(&ui), "STEP");
     assert_eq!(ui.v.s.depth, SCREEN_SLOTS as u8);
-    ui.up(PANEL_BTN_HOME);
-    ui.turn(PANEL_ENC_SELECT, 1);
-    frame(&mut ui);
-    ui.settle();
+    close(&mut ui);
     assert_eq!(ui.top(), "STEP");
     assert_eq!(ui.v.s.depth, SCREEN_DEPTH as u8);
     ui.press(PANEL_BTN_HOME);
@@ -207,7 +240,6 @@ fn midi_learn_on_a_full_stack_says_there_is_no_room() {
 
 /// How a view (or a page) is reached from LIVE for the walk below.
 enum Open {
-    Live,
     /// SEQ n times.
     Seq(u32),
     Menu,
@@ -216,13 +248,10 @@ enum Open {
     /// The menu's SONG, then its action (ALGORITHM clockwise on it), then `then` turns of
     /// SELECT and of ALGORITHM (a confirmation's YES and its OK).
     Song(u32, i32, i32),
-    /// SONG's LOAD page, then SEQ: a song view on a full stack.
-    Full,
 }
 
 fn open(ui: &mut Ui, open: &Open) {
     match *open {
-        Open::Live => {}
         Open::Seq(n) => {
             for _ in 0..n {
                 ui.press(PANEL_BTN_SEQ);
@@ -255,69 +284,7 @@ fn open(ui: &mut Ui, open: &Open) {
             ui.turn(PANEL_ENC_ALGORITHM, alg);
             ui.settle();
         }
-        Open::Full => {
-            *ui = full_stack();
-        }
     }
-}
-
-/// Every view and page the panel reaches has a card of its own, and a held HOME opens it: the
-/// walk opens each (a fresh power-on each time), holds HOME and reads the card's name; every
-/// card is some view's.
-#[test]
-fn every_view_and_page_holds_home_to_its_own_card() {
-    let all = [
-        ("LIVE", Open::Live),
-        ("MENU", Open::Menu),
-        ("CHIP", Open::Item(VIEWS_MENU_CHIP)),
-        ("SCENE", Open::Item(VIEWS_MENU_SCENE)),
-        ("STEP", Open::Seq(1)),
-        ("TRACKER", Open::Seq(2)),
-        ("ORDER", Open::Seq(3)),
-        ("INSTR", Open::Seq(4)),
-        ("TABLE", Open::Seq(5)),
-        ("STATUS", Open::Item(VIEWS_MENU_STATUS)),
-        ("MIDI", Open::Item(VIEWS_MENU_MIDI)),
-        ("SONG", Open::Item(VIEWS_MENU_SONG)),
-        ("SETTINGS", Open::Item(VIEWS_MENU_SETTINGS)),
-        ("ABOUT", Open::Item(VIEWS_MENU_ABOUT)),
-        ("CHARSET", Open::Item(VIEWS_MENU_CHARSET)),
-        // SONG's pages: LOAD's files, SAVE AS's name, and NEW's confirmation (the song is
-        // unsaved).
-        ("FILES", Open::Song(0, 0, 0)),
-        ("SAVE AS", Open::Song(2, 0, 0)),
-        ("CONFIRM", Open::Song(1, 0, 0)),
-        ("STEP", Open::Full),
-    ];
-    let mut seen = [false; HELP_CARDS as usize];
-    for (name, how) in &all {
-        let mut ui = Ui::without_cards();
-        let mut io = Box::new(song_io {
-            dirty: 1,
-            ..Default::default()
-        });
-        unsafe { views_song_io(&mut *ui.v, &mut *io) };
-        ui.settle();
-        open(&mut ui, how);
-        let under = ui.top();
-        let depth = ui.v.s.depth;
-        hold_until_card(&mut ui);
-        for _ in 0..12 {
-            frame(&mut ui);
-        }
-        assert_eq!(card_name(&ui), *name, "over {under}");
-        seen[ui.v.help.card as usize] = true;
-        ui.up(PANEL_BTN_HOME);
-        ui.turn(PANEL_ENC_K1, 1);
-        frame(&mut ui);
-        ui.settle();
-        assert_eq!(
-            (ui.top(), ui.v.s.depth),
-            (under, depth),
-            "{name}: the view as it was"
-        );
-    }
-    assert!(seen.iter().all(|&s| s), "a card no view opens: {seen:?}");
 }
 
 #[test]
@@ -406,21 +373,68 @@ fn any_control_closes_the_card_and_does_nothing_else_but_a_note_plays() {
     assert_eq!(ui.top(), "HELP", "and the card stays");
 }
 
+/// The longest word a HELP_TEXT_* code gives: a slot's control name, UNUSED, a quantise.
+fn longest_word(code: u8) -> usize {
+    let mut h = help_view::default();
+    let what = [code as std::os::raw::c_char, 0];
+    let mut most = 0;
+    for arg in 0..=0x0fffu16 {
+        h.arg = arg;
+        let mut buf = [0 as std::os::raw::c_char; HELP_TEXT_WORD as usize];
+        let w = text(unsafe { help_view_what(&h, what.as_ptr(), buf.as_mut_ptr()) });
+        most = most.max(w.len());
+    }
+    most
+}
+
 #[test]
 fn every_line_fits_14_characters_with_a_space_between() {
     let cards = unsafe { &help_cards };
     assert_eq!(cards.len(), HELP_CARDS as usize);
     for (c, card) in cards.iter().enumerate() {
-        assert!(card.count as u32 <= HELP_LINES && card.count > 0);
-        assert!(!text(card.name).is_empty() && text(card.name).len() <= 10);
+        let n = card.count as u32;
+        assert!(n <= HELP_LINES * HELP_PAGES && n > 0, "card {c}: {n} lines");
+        // HELP (four) or the page (three) and a space, then the name, in 14 characters.
+        let name = text(card.name);
+        let room = if n > HELP_LINES { 10 } else { 9 };
+        assert!(
+            !name.is_empty() && name.len() <= room,
+            "card {c}: {name:?} in {room}"
+        );
         for l in 0..card.count as usize {
             let (key, what) = line(card, l);
             assert!(!key.is_empty() && !what.is_empty());
+            let first = what.as_bytes()[0];
+            let len = if first < b' ' {
+                assert_eq!(what.len(), 1, "card {c} line {l}: a code is the whole text");
+                longest_word(first)
+            } else {
+                what.len()
+            };
             assert!(
-                key.len() + 1 + what.len() <= HELP_LINE_CHARS as usize,
-                "card {c} line {l}: {key} {what}"
+                key.len() + 1 + len <= HELP_LINE_CHARS as usize,
+                "card {c} line {l}: {key} {what:?} ({len})"
             );
         }
+    }
+}
+
+/// The page shown: its lines on the grid, a line every three rows from row 4.
+fn assert_page_drawn(ui: &Ui, what: &str) {
+    let h = &ui.v.help;
+    let card = unsafe { &help_cards[h.card as usize] };
+    let first = usize::from(h.page) * HELP_LINES as usize;
+    for i in 0..HELP_LINES as usize {
+        let got = big(ui, 4 + 3 * i, 1, 14);
+        if first + i >= card.count as usize {
+            assert_eq!(got.trim(), "", "{what}: line {i} past the card's");
+            continue;
+        }
+        let (key, what_does) = line_of(h, card, first + i);
+        assert!(
+            got.starts_with(&key) && got.trim_end().ends_with(&what_does),
+            "{what}: {got:?} for {key} {what_does}"
+        );
     }
 }
 
@@ -455,23 +469,14 @@ fn the_card_draws_its_lines_and_the_help_card_stays_within_the_frame_budget() {
             shown |= ui.top() == "HELP";
         }
         assert!(shown);
-        let card = unsafe { &help_cards[ui.v.help.card as usize] };
-        for l in 0..card.count as usize {
-            let (key, what) = line(card, l);
-            let want = format!("{:<14}", format!("{key} {what}"));
-            let got = big(&ui, 4 + 3 * l, 1, 14);
-            assert!(
-                got.starts_with(&key) && got.trim_end().ends_with(&what),
-                "{got:?} for {want:?}"
-            );
-        }
+        assert_page_drawn(&ui, &format!("open {open}"));
         // Nothing left to send once it is drawn.
         for _ in 0..3 {
             ui.frame();
             assert_eq!(drain(&mut ui.g).cells, 0);
         }
         ui.up(PANEL_BTN_HOME);
-        ui.turn(PANEL_ENC_SELECT, 1);
+        ui.turn(PANEL_ENC_K1, 1);
         for _ in 0..30 {
             ui.frame();
             let sent = drain(&mut ui.g);
@@ -482,6 +487,297 @@ fn the_card_draws_its_lines_and_the_help_card_stays_within_the_frame_budget() {
             );
         }
         assert_ne!(ui.top(), "HELP");
+    }
+}
+
+/// A card of two pages (LIVE's) says 1/2; SELECT turns it to 2/2 and back, either way, each
+/// frame of a turn within 200 cells and the page whole after it, and does nothing else (the knob
+/// page stays TONE); K1 closes it. A card of one page (the menu's) says HELP and SELECT closes it.
+#[test]
+fn select_turns_a_card_of_two_pages_and_closes_one_of_one() {
+    let mut ui = Ui::without_cards();
+    ui.settle();
+    hold_until_card(&mut ui);
+    for _ in 0..12 {
+        frame(&mut ui);
+    }
+    assert!(unsafe { help_cards[HELP_CARD_LIVE as usize].count } as u32 > HELP_LINES);
+    assert_eq!(title(&ui), ("1/2".to_string(), "LIVE".to_string()));
+    assert_page_drawn(&ui, "page 1");
+    ui.up(PANEL_BTN_HOME);
+    for (turn, page) in [(1, "2/2"), (1, "1/2"), (-1, "2/2")] {
+        ui.turn(PANEL_ENC_SELECT, turn);
+        for _ in 0..12 {
+            ui.frame();
+            let sent = drain(&mut ui.g);
+            assert!(sent.cells <= 200, "{} cells", sent.cells);
+        }
+        assert_eq!(ui.top(), "HELP", "SELECT closed the card");
+        assert_eq!(title(&ui).0, page);
+        assert_page_drawn(&ui, page);
+    }
+    assert_eq!(ui.v.live.page, 0, "SELECT paged LIVE under the card");
+    close(&mut ui);
+    assert_eq!(ui.top(), "LIVE");
+    // One page: HELP, and SELECT closes it.
+    ui.press(PANEL_BTN_HOME);
+    ui.settle();
+    hold_until_card(&mut ui);
+    for _ in 0..12 {
+        frame(&mut ui);
+    }
+    assert_eq!(title(&ui), ("HELP".to_string(), "MENU".to_string()));
+    ui.up(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, 1);
+    frame(&mut ui);
+    ui.settle();
+    assert_eq!(ui.top(), "MENU");
+}
+
+// ---- the views' states: each opens its own card ----
+
+/// A view in a state, opened from power-on with a song bound (the device's), and the card its
+/// held HOME opens.
+struct Ctx {
+    s: crate::song_view::Song,
+    _io: Box<song_io>,
+}
+
+/// The views and states with a card of their own (and the walk to each).
+const CONTEXTS: [&str; 30] = [
+    "LIVE",
+    "LIVE SLOT",
+    "MENU",
+    "SETTINGS",
+    "STORE",
+    "MIDI",
+    "CHIP TABS",
+    "CHIP",
+    "CHIP SLOT",
+    "EXPERT",
+    "SCENE",
+    "STEP",
+    "HELD STEP",
+    "STEP REC",
+    "TRACKER",
+    "TRACK EDIT",
+    "TRACK REC",
+    "ORDER",
+    "INSTR",
+    "TABLE",
+    "STATUS",
+    "ABOUT",
+    "CHARSET",
+    "SONG",
+    "FILES",
+    "SAVE AS",
+    "CONFIRM",
+    // The same cards reached another way: STEP on a full stack, CHIP's slots MOD and FX.
+    "STEP FULL",
+    "CHIP MOD",
+    "CHIP FX",
+];
+
+fn menu_item(ui: &mut Ui, item: u32) {
+    open(ui, &Open::Item(item));
+}
+
+fn open_ctx(name: &str) -> Ctx {
+    use crate::song_view::{open_tracker, Song};
+    let mut s = Song::playing(Some(sidou_tests::song::Song::device()));
+    let mut io = Box::new(song_io {
+        dirty: 1,
+        ..Default::default()
+    });
+    unsafe { views_song_io(&mut *s.ui.v, &mut *io) };
+    let ui = &mut s.ui;
+    ui.settle();
+    let seq = |ui: &mut Ui, n: u32| open(ui, &Open::Seq(n));
+    match name {
+        "LIVE" => {}
+        "LIVE SLOT" => {
+            ui.turn(PANEL_ENC_SELECT, 1);
+            ui.settle();
+        }
+        "MENU" => open(ui, &Open::Menu),
+        "SETTINGS" => crate::views::open_setting(ui, VIEWS_SETTINGS_KEYS),
+        "STORE" => crate::views::open_setting(ui, VIEWS_SETTINGS_STORE),
+        "MIDI" => menu_item(ui, VIEWS_MENU_MIDI),
+        "SCENE" => menu_item(ui, VIEWS_MENU_SCENE),
+        "STATUS" => menu_item(ui, VIEWS_MENU_STATUS),
+        "ABOUT" => menu_item(ui, VIEWS_MENU_ABOUT),
+        "CHARSET" => menu_item(ui, VIEWS_MENU_CHARSET),
+        "SONG" => menu_item(ui, VIEWS_MENU_SONG),
+        "FILES" => open(ui, &Open::Song(0, 0, 0)),
+        "SAVE AS" => open(ui, &Open::Song(2, 0, 0)),
+        "CONFIRM" => open(ui, &Open::Song(1, 0, 0)),
+        "CHIP TABS" | "CHIP" | "CHIP SLOT" | "EXPERT" | "CHIP MOD" | "CHIP FX" => {
+            menu_item(ui, VIEWS_MENU_CHIP);
+            // From the tabs: the chip, the slots, EXPERT.
+            ui.turn(PANEL_ENC_SELECT, -8);
+            let to = match name {
+                "CHIP TABS" => 0,
+                "CHIP" => 1,
+                "CHIP SLOT" => 2,
+                "CHIP MOD" => 3,
+                "CHIP FX" => 4,
+                _ => 5,
+            };
+            ui.turn(PANEL_ENC_SELECT, to);
+            ui.settle();
+        }
+        "STEP" | "HELD STEP" | "STEP REC" => {
+            seq(ui, 1);
+            if name == "HELD STEP" {
+                ui.note_keys(1 << 5, 1 << 5);
+                ui.frame();
+            } else if name == "STEP REC" {
+                ui.press(PANEL_BTN_PLAY);
+                ui.press(PANEL_BTN_REC);
+                crate::song_view::settle(ui);
+            }
+        }
+        "TRACKER" | "TRACK EDIT" | "TRACK REC" => {
+            open_tracker(ui);
+            if name == "TRACK REC" {
+                ui.press(PANEL_BTN_PLAY);
+            }
+            if name != "TRACKER" {
+                ui.press(PANEL_BTN_REC);
+            }
+            crate::song_view::settle(ui);
+        }
+        "ORDER" => seq(ui, 3),
+        "INSTR" => seq(ui, 4),
+        "TABLE" => seq(ui, 5),
+        "STEP FULL" => {
+            ui.press(PANEL_BTN_HOME);
+            ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
+            ui.turn(PANEL_ENC_ALGORITHM, 1);
+            ui.turn(PANEL_ENC_ALGORITHM, 1);
+            ui.press(PANEL_BTN_SEQ);
+            ui.settle();
+            assert_eq!(ui.v.s.depth, SCREEN_DEPTH as u8, "the stack is full");
+        }
+        _ => panic!("no context {name}"),
+    }
+    Ctx { s, _io: io }
+}
+
+/// The card a held HOME opens over the context (the context left as it was): its id and its
+/// state's words.
+fn card_over(name: &str) -> (u32, u16) {
+    let mut c = open_ctx(name);
+    let ui = &mut c.s.ui;
+    let under = (ui.top(), ui.v.s.depth);
+    hold_until_card(ui);
+    for _ in 0..12 {
+        frame(ui);
+    }
+    let id = (u32::from(ui.v.help.card), ui.v.help.arg);
+    let want = match name {
+        "STEP FULL" => "STEP",
+        "CHIP MOD" | "CHIP FX" => "CHIP SLOT",
+        _ => name,
+    };
+    assert_eq!(card_name(ui), want, "over {under:?}");
+    assert_page_drawn(ui, name);
+    close(ui);
+    assert_eq!(
+        (ui.top(), ui.v.s.depth),
+        under,
+        "{name}: the view as it was"
+    );
+    id
+}
+
+/// Every view and page the panel reaches, in every state with a card of its own, holds HOME to
+/// that card: the walk opens each (a fresh power-on each time), holds HOME and reads the card's
+/// name and lines; every card is some state's.
+#[test]
+fn every_view_and_page_holds_home_to_its_own_card() {
+    let mut seen = [false; HELP_CARDS as usize];
+    for name in CONTEXTS {
+        let (id, _) = card_over(name);
+        seen[id as usize] = true;
+    }
+    assert!(seen.iter().all(|&s| s), "a card no view opens: {seen:?}");
+}
+
+/// The state's words: CHIP's slot card names its algorithm's controls (OVERDRIVE: DRIVE, TONE,
+/// BIAS, MIX; OFF: all four UNUSED), LIVE's slot page the same, and TRACKER's recording card the
+/// quantise SETTINGS chose.
+#[test]
+fn a_slot_card_names_its_algorithms_controls_and_rec_its_quantise() {
+    let words = |name: &str, setup: &dyn Fn(&mut Ui)| {
+        let mut c = open_ctx(name);
+        setup(&mut c.s.ui);
+        let ui = &mut c.s.ui;
+        hold_until_card(ui);
+        for _ in 0..12 {
+            frame(ui);
+        }
+        let h = ui.v.help;
+        let card = unsafe { &help_cards[h.card as usize] };
+        let lines: Vec<(String, String)> = (0..usize::from(card.count))
+            .map(|l| line_of(&h, card, l))
+            .collect();
+        close(ui);
+        lines
+    };
+    let knob = |lines: &[(String, String)], k: &str| {
+        lines
+            .iter()
+            .find(|(key, _)| key == k)
+            .map(|(_, w)| w.clone())
+            .unwrap()
+    };
+    for name in ["CHIP SLOT", "LIVE SLOT"] {
+        let off = words(name, &|_| {});
+        for k in ["K1", "K2", "K3", "K4"] {
+            assert_eq!(knob(&off, k), "UNUSED", "{name}: OFF's {k}");
+        }
+        // ENV steps DIST to TAPE, then OVERDRIVE.
+        let od = words(name, &|ui| {
+            ui.press(PANEL_BTN_ENV);
+            ui.press(PANEL_BTN_ENV);
+            ui.settle();
+        });
+        let got: Vec<String> = ["K1", "K2", "K3", "K4"]
+            .iter()
+            .map(|k| knob(&od, k))
+            .collect();
+        assert_eq!(got, ["DRIVE", "TONE", "BIAS", "MIX"], "{name}");
+    }
+    let mut c = open_ctx("TRACK REC");
+    c.s.ui.v.song.quant = SONG_VIEW_QUANT_COUNT as u8;
+    let ui = &mut c.s.ui;
+    hold_until_card(ui);
+    for _ in 0..12 {
+        frame(ui);
+    }
+    let h = ui.v.help;
+    let card = unsafe { &help_cards[h.card as usize] };
+    assert!((0..usize::from(card.count))
+        .map(|l| line_of(&h, card, l))
+        .any(|l| l == ("QUANT".to_string(), "COUNT-IN".to_string())));
+}
+
+/// Lines dropped for room before two pages: STEP's SEQ NEXT VIEW and TRACKER's HOME BACK.
+#[test]
+fn the_song_views_cards_keep_seq_and_home() {
+    for id in [HELP_CARD_STEP, HELP_CARD_TRACKER] {
+        let card = unsafe { &help_cards[id as usize] };
+        let lines: Vec<(String, String)> = (0..usize::from(card.count))
+            .map(|l| line(card, l))
+            .collect();
+        for want in [("SEQ", "NEXT VIEW"), ("HOME", "BACK")] {
+            assert!(
+                lines.contains(&(want.0.to_owned(), want.1.to_owned())),
+                "{}: {lines:?}",
+                text(card.name)
+            );
+        }
     }
 }
 
@@ -551,7 +847,7 @@ fn the_tour_follows_the_first_boot_after_an_install() {
     assert_eq!(ui.top(), "HELP");
     assert!(ui.toast().is_none(), "a toast over the card");
     ui.up(PANEL_BTN_HOME);
-    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_K1, 1);
     for _ in 0..600 {
         frame(&mut ui);
         assert!(
@@ -645,7 +941,7 @@ fn a_toast_waits_under_the_help_card_and_shows_after_it() {
         assert!(ui.toast().is_none(), "a toast over the card");
     }
     ui.up(PANEL_BTN_HOME);
-    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.turn(PANEL_ENC_K1, 1);
     let mut seen = false;
     for _ in 0..30 {
         frame(&mut ui);

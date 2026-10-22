@@ -200,7 +200,7 @@ GoatTracker does). TRACKER ROWS is saved with the settings.
 | **REC** | record mode on and off: REC in red on the song views' top line. In TRACKER with the song stopped it enables note entry ([Editing TRACKER](#editing-tracker)); with the song playing, the keys and K1 and K2 are recorded ([below](#recording-while-the-song-plays)). STEP needs no REC to edit; REC there records |
 | **SELECT**, in TRACKER | moves the row; with EDIT held, 8 rows (a page) |
 | **ALGORITHM**, in TRACKER | steps the voice shown, V1, V2, V3 and round; with EDIT held, the edit step (below) |
-| **HOME held** | the help card of the song view shown |
+| **HOME held** | the help card of the song view shown, in its state (a step held, REC on: [Help](#help)) |
 | **GLO held + note key 1, 2, 3** | mutes voice 1, 2, 3 of the song, or lets it sound again |
 | **GLO held + note key 4, 5, 6** | solos voice 1, 2, 3, or unsolos it: while any voice is soloed the soloed ones sound and the rest are silent; with none, the muted ones are silent |
 | **Note keys**, in a song view | audition the song's current instrument on the cursor's voice through the player, on chip A with the song's setup, at the panel's octave, one note at a time (the last key wins). With the song stopped the audition takes chip A for the song (the keys elsewhere move to chip B, as for PLAY; the first note sounds a few tens of milliseconds late) and gives it back two seconds after the last note is let go; no row of the song plays |
@@ -407,18 +407,41 @@ power-on and not again; the way back to LIVE never plays a card, it is a wipe.
 
 **Hold HOME for 600 ms** in any view and a help card opens over it: the title bar (**HELP** and
 the card's name, `app/help_view.h`), then up to eight lines at 2×, the control on the left and
-what it does on the right. It is the one explanation on the device, so every view and page the
-panel reaches has a card of its own: LIVE, the menu, SETTINGS, the MIDI page (its setup is
-RAM-only), CHIP, SCENE, each of the five song views (STEP, TRACKER, ORDER, INSTR, TABLE: SEQ
-goes round them and SAVE saves the song), STATUS, ABOUT, the glyph sheet (CHARSET), and the SONG
-menu's actions and each of its pages: the list of files LOAD and DELETE browse (**FILES**), SAVE
-AS's name and a confirmation. A test walks every view and page, holds HOME and reads the card;
-each card has a golden (`tests/golden/lcd/help-*.png`).
+what it does on the right. It is the one explanation on the device (the views draw no help line
+of their own), so every view and page the panel reaches has a card of its own: LIVE, the menu,
+SETTINGS, the MIDI page (its setup is RAM-only), CHIP, SCENE, each of the five song views (STEP,
+TRACKER, ORDER, INSTR, TABLE: SEQ goes round them and SAVE saves the song), STATUS, ABOUT, the
+glyph sheet (CHARSET), and the SONG menu's actions and each of its pages: the list of files LOAD
+and DELETE browse (**FILES**), SAVE AS's name and a confirmation.
+
+**The card is the one for the state the view is in when HOME has been held**, where a control
+means something else there:
+
+| View, state | Card | What changes |
+|---|---|---|
+| LIVE on a slot's page (SELECT) | **LIVE SLOT** | ALG the slot's algorithm; K1..K4 named for that algorithm (OVERDRIVE: DRIVE, TONE, BIAS, MIX; UNUSED where it has none) |
+| CHIP, the A/B tabs | **CHIP TABS** | ALG the tab; K1..K4 the chip's AGE, DAC, THUMP, BLEED |
+| CHIP, the chip | **CHIP** | ALG the profile, EDIT + ALG the save target, SAVE stores it; K3 is NOTE THUMP (it changes where a note starts) |
+| CHIP, a slot | **CHIP SLOT** | ALG the algorithm; K1..K4 named for it, as on LIVE SLOT |
+| CHIP, EXPERT | **EXPERT** | ALG the page; K1..K4 as the page names them; MACROS RESET (a macro releases its overrides) |
+| STEP, a step held | **HELD STEP** | K1..K3 the step's locks, K4 its waveform SET, EDIT + K the character's locks, PRESETS its note, LFO clears it, the key let go toggles it |
+| STEP, REC on and the song playing | **STEP REC** | the keys record, K1 and K2 record locks; QUANT says SETTINGS' REC QUANTISE |
+| TRACKER, REC on and the song stopped | **TRACK EDIT** | the keys write notes, ARP a key off, LFO clears, K1..K4 the row's instrument, command and data, PRESETS the instrument, EDIT + PRESETS inserts or deletes a row |
+| TRACKER, REC on and the song playing | **TRACK REC** | the keys record, K1 and K2 record locks, QUANT the quantise; EDIT + K edits the cursor's row |
+| SETTINGS on STORE | **STORE** | ALG arms a foreign store's format, SAVE formats (WIPES ALL DATA) |
+
+**A card of more than eight lines has two pages**: its title bar says **1/2** (or **2/2**) where
+it says HELP on a card of one page, and **SELECT** turns the page, either way; the page is drawn
+as the card is, within the frame's 200 cells. LIVE, LIVE SLOT, CHIP, STEP and its states,
+TRACKER and its states, ORDER and INSTR have two.
+
+A walk opens every state, holds HOME and reads the card;
+each card (and each second page) has a golden (`tests/golden/lcd/help-*.png`).
 
 - HOME only opens the menu or goes back when it is **let go before 600 ms**: a tap acts in the
   next frame after the release, so a hold never opens the menu first.
-- **Any button or encoder** closes the card and does nothing else (SELECT does not move, FX does
-  not toggle the chip, SAVE saves nothing). **A note** plays as ever, as the view under the card
+- **Any button or encoder** but SELECT on a card of two pages closes the card and does nothing
+  else (SELECT does not move, FX does not toggle the chip, SAVE saves nothing). **A note** plays as ever, as the view under the card
 plays it (over a song view its instrument, and REC records it), and the card stays. The card
   stays after HOME is let go until a control closes it.
 - The screen stack is four deep, LIVE included (LIVE, menu, SONG, a song view), and keeps one
