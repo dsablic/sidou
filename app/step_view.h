@@ -17,8 +17,10 @@
  * - rows 17-22 the HELD STEP frame: K1 CUTOFF, K2 RESONANCE, K3 PULSE WIDTH and K4 WAVEFORM
  *   with their values and bars, LOCK in yellow on a locked one and SET in cyan on the waveform
  *   command (what EDIT turns them into, the character, is the help card's);
- * - rows 24-28 the 16 keys as two rows of eight pads, the pad of a step with a note in the
- *   lane's colour; what the controls do is the help card's (app/help_view.h).
+ * - rows 24-28 the 16 keys as two rows of eight pads in beats of four, numbered by beat at 2x
+ *   (1 2 3 4  1 2 3 4), the second and fourth beats shaded and each beat's first number
+ *   brighter, the pad of a step with a note in the lane's colour; what the controls do is the
+ *   help card's (app/help_view.h).
  *
  * Controls (docs/reference/controls.md "STEP"): a step key pressed and let go with no knob
  * between toggles a note on the selected lane at that step (the lane's default note and
@@ -63,6 +65,8 @@ extern "C" {
 #define STEP_VIEW_LANE_ROWS 3u
 #define STEP_VIEW_HELD_ROW 17u
 #define STEP_VIEW_PADS_ROW 24u
+/* The pads' first column: a pad is two cells and a cell apart, a beat two cells more. */
+#define STEP_VIEW_PAD_COL 2u
 /* A lane's first step column, and the lanes the view draws (V1-V3 and the greyed B). */
 #define STEP_VIEW_STEP_COL 5u
 #define STEP_VIEW_LANES 4u

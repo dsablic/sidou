@@ -238,7 +238,10 @@ machine: **the 16 leftmost note keys are steps 1-16** of the selected voice's pa
 **held step plus a knob is a parameter lock**. It edits the same pattern TRACKER shows, so a
 song made here opens in GoatTracker. The voice is the song views' voice (the lane marked by the
 arrow); a page is 16 rows of its pattern (the pattern's length says how many pages: 64 rows,
-4 pages); B is chip B's lane, greyed until M5. It needs no REC.
+4 pages); B is chip B's lane, greyed until M5. It needs no REC. The pads under the lanes are the
+16 keys in beats of four, numbered by beat (1 2 3 4, four times; the second and fourth beats
+shaded, each beat's first number brighter); a held step's number in the pattern shows in the
+HELD STEP frame (`HELD STEP 22`).
 
 | Control | Does |
 |---|---|

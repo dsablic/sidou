@@ -65,6 +65,11 @@ fn theme_roles_pass_contrast() {
         check(t.toast_fg, t.toast_bg, 4.5);
         check(t.value, t.cursor, 4.5);
         check(t.hot, t.cursor, 4.5);
+        // STEP's pads at 2x: a shaded beat's numbers, a note's and the held one's.
+        check(t.label, t.cursor, 3.0);
+        for colour in t.voice.into_iter().chain([t.hot]) {
+            check(t.bg, colour, 3.0);
+        }
         for accent in t.knob {
             let name = if t.popup_name == THEME_ACCENT as u8 {
                 accent

@@ -518,23 +518,28 @@ static void build_lower(step_view* st, const lane lanes[SONG_T_VOICES], uint32_t
     for (uint32_t k = 0; k < 4u; k++) {
         knob_cell(st, ln, at, held, k, 18u + 2u * (k >> 1));
     }
-    /* The pads: two rows of eight, a step's pad in the lane's colour when it has a note. */
+    /* The pads: two rows of eight, a beat (four steps) apart, each numbered by its place in its
+     * beat at 2x (1 2 3 4  1 2 3 4); the second and fourth beats shaded (the cursor's dark grey),
+     * a beat's first step in the value role and the others in the label role, a step's pad in the
+     * lane's colour when it has a note, the held one yellow. The held step's own number is the
+     * frame's (HELD STEP 22). */
     const uint8_t* pd = s && ln->pattern != 0xffu ? gt2_pattern_data(s, ln->pattern) : NULL;
     for (uint32_t i = 0; i < STEP_VIEW_STEPS; i++) {
         uint32_t row = page * STEP_VIEW_STEPS + i;
-        uint32_t r = STEP_VIEW_PADS_ROW + (i >> 3) * 3u, col = 3u + 3u * (i & 7u);
+        uint32_t j = i & 7u;
+        uint32_t r = STEP_VIEW_PADS_ROW + (i >> 3) * 3u, col = STEP_VIEW_PAD_COL + 3u * j + (j >> 2) * 2u;
         if (row >= ln->rows || !s || ln->pattern == 0xffu) {
             continue;
         }
         const uint8_t* cell = cell_in(pd, row);
-        uint8_t a = is_note(cell[0]) ? GRID_ATTR(th->bg, th->voice[v])
-                                     : GRID_ATTR(th->value, th->cursor);
+        uint8_t a = GRID_ATTR(i & 3u ? th->label : th->value, i & 4u ? th->cursor : th->bg);
+        if (is_note(cell[0])) {
+            a = GRID_ATTR(th->bg, th->voice[v]);
+        }
         if (st->held == i) {
             a = GRID_ATTR(th->bg, th->hot);
         }
-        /* The pad's number at 2x: its last digit (the pad is two cells wide); the second row
-         * of pads is 9 to 16. */
-        char num[2] = {(char)('0' + (i + 1u) % 10u), 0};
+        char num[2] = {(char)('1' + (i & 3u)), 0};
         big(c, col, r, num, a);
     }
     sv->dirty |= LOWER_ROWS;

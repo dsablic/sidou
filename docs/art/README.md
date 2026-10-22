@@ -860,11 +860,14 @@ knob is a parameter lock** ([controls](../reference/controls.md#step)).
   `SAW`, `PUL` or `NOI` the waveform), `LOCK` in yellow on a locked one and `SET` in cyan on the
   waveform command. They are grey until a step is held (what EDIT turns the knobs into, the
   character, is the [help card](#help-card)'s: HELD STEP).
-- **Rows 24-28, the pads:** the 16 keys as two rows of eight, a step with a note in the lane's
-  colour, the held one yellow, the others dark grey; steps past the pattern's end are blank.
-  Each pad's number is at 2× (a pad is two cells wide, so its last digit: 1 to 8, then 9 0 1 2 3 4 5 6
-  for 9 to 16), white on the dark pads. The legend with no step held is in the hint role.
-  **Row 29** is blank: what the controls do is the help card's.
+- **Rows 24-28, the pads:** the 16 keys as two rows of eight in beats of four, a beat two cells
+  further from the next, **numbered by beat** at 2× (`1 2 3 4  1 2 3 4` on each row: a pad is two
+  cells wide, too narrow for 9 to 16). The second and fourth beats are **shaded** (the `cursor`
+  role, dark grey) and the first and third on the screen's own background; **each beat's first
+  number is brighter** (`value`, white) than the other three (`label`, light grey; 2× text on
+  the cursor at least 3:1). A step with a note is in the lane's colour, the held one yellow; steps
+  past the pattern's end are blank. The held step's own number (1-64) is the frame's
+  (`HELD STEP 22`). **Row 29** is blank: what the controls do is the help card's.
 
 The value popup names what a knob on a held step sets, in the knob's colour: `CUTOFF`,
 `RESONANCE`, `PULSE WIDTH`, `WAVEFORM` (`OFF`, `TRI`, `SAW`, `PULSE`, `NOISE`), the character's

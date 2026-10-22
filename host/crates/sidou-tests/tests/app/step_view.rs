@@ -205,27 +205,37 @@ fn the_layout_is_the_header_the_pages_the_lanes_the_held_frame_and_the_pads() {
         !s.ui.small(22, 2, 27).contains("EDIT"),
         "the frame's foot names nothing: the help card says what EDIT does"
     );
-    // The pads: two rows of eight; a note's pad in the lane's colour.
-    // Each pad's number at 2x: the pad is two cells wide, so its last digit (9 to 16 are the
-    // second row: 9, 0, 1 ... 6).
-    assert_eq!(s.ui.big(24, 3, 2, 1), "1");
-    assert_eq!(s.ui.big(24, 6, 2, 1), "2");
-    assert_eq!(s.ui.big(27, 3, 2, 1), "9");
-    assert_eq!(s.ui.big(27, 6, 2, 1), "0");
-    assert_eq!(s.ui.big(27, 24, 2, 1), "6");
-    assert_eq!(
-        attr(&s.ui, 3, 24),
-        (u32::from(t.voice[0]) << 4 | u32::from(t.bg)) as u8
-    );
-    assert_eq!(
-        attr(&s.ui, 6, 24),
-        (u32::from(t.cursor) << 4 | u32::from(t.value)) as u8
-    );
+    // The pads: two rows of eight in beats of four, numbered by beat at 2x (1 2 3 4  1 2 3 4);
+    // the second and fourth beats shaded, a beat's first number white, the others light grey; a
+    // note's pad in the lane's colour (steps 1 and 5 have notes).
+    let numbers: String = (0..16).map(|i| s.ui.big(pad_row(i), pad_col(i), 2, 1)).collect();
+    assert_eq!(numbers, "1234123412341234");
+    assert_eq!(pad_col(3) + 2 + 3, pad_col(4), "a beat two cells more apart");
+    let at = |i: usize| attr(&s.ui, pad_col(i), pad_row(i));
+    let a = |fg: u8, bg: u8| (u32::from(bg) << 4 | u32::from(fg)) as u8;
+    assert_eq!(at(0), a(t.bg, t.voice[0]), "a note's pad");
+    assert_eq!(at(4), a(t.bg, t.voice[0]));
+    assert_eq!(at(1), a(t.label, t.bg));
+    assert_eq!(at(5), a(t.label, t.cursor), "the second beat shaded");
+    assert_eq!(at(8), a(t.value, t.bg), "a beat's first step brighter");
+    assert_eq!(at(12), a(t.value, t.cursor));
+    assert_eq!(at(15), a(t.label, t.cursor));
     assert_eq!(
         s.ui.small(29, 0, 30).trim(),
         "",
         "no help line: the help card says what the controls do"
     );
+}
+
+/// Step i's pad: two rows of eight from STEP_VIEW_PADS_ROW, three rows apart; a pad two cells
+/// and a cell apart, a beat two cells more.
+fn pad_col(i: usize) -> usize {
+    let j = i % 8;
+    STEP_VIEW_PAD_COL as usize + 3 * j + j / 4 * 2
+}
+
+fn pad_row(i: usize) -> usize {
+    STEP_VIEW_PADS_ROW as usize + i / 8 * 3
 }
 
 const PRESETS: u32 = 6;
@@ -242,7 +252,7 @@ fn a_step_pressed_and_let_go_toggles_a_note_with_a_key_off_after_it() {
     assert_eq!(pip(&s, 0, 6).0, FONT_BALL as u8);
     assert_eq!(pip(&s, 0, 6).1 & 15, th().voice[0]);
     assert_eq!(
-        attr(&s.ui, 3 + 3 * 6, 24) >> 4,
+        attr(&s.ui, pad_col(6), pad_row(6)) >> 4,
         th().voice[0],
         "the pad of a note"
     );
@@ -459,7 +469,7 @@ fn while_the_song_plays_the_page_and_the_white_step_follow_it() {
         "voice 1's playing step is white too"
     );
     assert_eq!(
-        attr(&s.ui, 3 + 3 * 6, 24) >> 4,
+        attr(&s.ui, pad_col(6), pad_row(6)) >> 4,
         th().cursor,
         "the pads are the keys, not the playhead"
     );
@@ -513,7 +523,7 @@ fn a_held_step_and_a_knob_is_a_lock_that_the_step_shows_and_keeps_for_its_row_on
         t.hot,
         "the held step is a yellow block"
     );
-    assert_eq!(attr(&s.ui, 3 + 3 * 3, 24) >> 4, t.hot);
+    assert_eq!(attr(&s.ui, pad_col(3), pad_row(3)) >> 4, t.hot);
     assert_eq!(
         attr(&s.ui, 5, 18) & 15,
         t.knob_text[0],
