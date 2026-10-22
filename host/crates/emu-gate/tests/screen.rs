@@ -2415,7 +2415,13 @@ fn live_matches_its_golden_images_and_its_scopes_follow_the_notes() {
 /// (~1.1 ms) and its debounce, so each is its own note-on, in order, and live's voice
 /// allocation decides the voices (A3, E4, E5 on voices 1, 2, 3: with no note before, as M1b's
 /// E5, A3, E4 followed the A4 the LIVE test played first), not where the main loop's passes
-/// fall against the scan.
+/// fall against the scan. The meters (6.7): 31bf4c6 (the tail gate, which runs only once
+/// every note has ended) and af3cc6f (MASTER after the chips, no call at all at full) moved
+/// live-a4's and live-chord's L and R meters by a column with no level changed for a held
+/// note: they moved the main loop and the audio interrupt against the frames, and a meter's
+/// column followed which blocks each frame's peaks covered and what the frames before had
+/// held. LiveShot draws the meters from one preparation's peaks, at a fixed place in the
+/// blocks.
 #[test]
 fn a_chord_on_live_matches_its_golden_image() {
     let Some((build, fw)) = fixture("the LIVE chord test") else {
