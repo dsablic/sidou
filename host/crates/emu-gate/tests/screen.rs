@@ -4268,8 +4268,10 @@ fn open_tracker(m: &mut Machine, fw: &Firmware) {
 }
 
 /// SEQ opens TRACKER: stopped, SIDOU LOOP's patterns and tempo; PLAY plays it (the play mark,
-/// the position, the other voices' strips), REC in the header, ALGORITHM the shown voice; GLO and the leftmost key mute
-/// voice 1 within the key's pass and sound nothing, and LIVE's header says so.
+/// the position, the other voices' strips), REC in the header (the song plays on under it,
+/// its calls counted, while TRACKER's cursor and so the view stay where they were), ALGORITHM
+/// the shown voice; GLO and the leftmost key mute voice 1 within the key's pass and sound
+/// nothing, and LIVE's header says so.
 #[test]
 fn the_song_views_header_and_heads_match_their_goldens() {
     let Some((build, fw)) = fixture("the song views test") else {
@@ -4305,6 +4307,10 @@ fn the_song_views_header_and_heads_match_their_goldens() {
     compare_golden(&build, "tracker-play", &m.soc.lcd.fb, &[]);
     press(&mut m, REC);
     assert_eq!(song_byte(&mut m, &fw, sidou_sys::ilp32::song_view::rec), 1);
+    // The song plays on under REC: its calls go on (TRACKER's cursor stays where it is while
+    // recording, 33b2bda, so the golden below holds still).
+    let calls = fw.symbol("song_transport") + sidou_sys::ilp32::song_ctl::calls as u32;
+    let calls_at_rec = m.soc.read32(calls);
     // GLO and the leftmost key: voice 1 muted at once, shown at the next frame, no sound.
     m.key(GLO, true);
     m.run_ms(30);
@@ -4323,6 +4329,11 @@ fn the_song_views_header_and_heads_match_their_goldens() {
     m.run_ms(200);
     common::to_mid_frame(&mut m, &fw);
     assert_eq!(live_gated(&mut m, &fw), 0);
+    let played = m.soc.read32(calls) - calls_at_rec;
+    assert!(
+        played >= 10,
+        "the song stood still under REC: {played} calls"
+    );
     compare_golden(&build, "tracker-mute-rec", &m.soc.lcd.fb, &[]);
     // Stopped, back in LIVE: its header, in the preset's place.
     press(&mut m, PLAY);
