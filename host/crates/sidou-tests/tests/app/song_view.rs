@@ -764,7 +764,10 @@ fn the_rows_show_the_page_of_the_row_and_the_bar_on_it() {
     s.f.st.row = [0x1b, 0, 0];
     s.ui.frame();
     let sent = drain(&mut s.ui.g);
-    assert!(sent.cells > 0 && sent.cells <= 125, "{sent:?}");
+    // The bar's cells (its rows at 2x, off on the old row and on on the new) and the position:
+    // 73 measured (2026-10-22, review 6.4), at most 10 % above. 64b6f97 raised it from 70 to
+    // 125 with the readable screens' rows at 2x, without a word.
+    assert!(sent.cells > 0 && sent.cells <= 80, "{sent:?}");
 }
 
 #[test]

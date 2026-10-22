@@ -486,13 +486,18 @@ fn the_bar_moves_down_the_page_and_turns_it() {
     s.ui.press(PANEL_BTN_PLAY);
     s.f.st.order_pos = [0, 1, 1];
     let mut most = 0;
+    // Rows 0..7 are every step of the bar on the first page (rows -4..7); row 8 turns the page,
+    // checked below against SONG_VIEW_FRAME_CELLS. 64b6f97 cut the loop from 0..15 when the
+    // readable screens' page became 12 rows: 0..15 now crosses that turn.
     for row in 0..7u8 {
         s.f.st.row = [row, row, row];
         s.ui.frame();
         let sent = drain(&mut s.ui.g);
         most = most.max(sent.cells);
-        // the bar's two rows (2 cell rows of 25 cells each way), and the position
-        assert!(sent.cells <= 130, "row {row}: {sent:?}");
+        // the bar's two rows at 2x (2 cell rows of 25 cells each way), the strips and the
+        // position: 95 measured (2026-10-22, review 6.4), at most 10 % above. 64b6f97 raised
+        // it from 100 to 130 with the rows at 2x, without a word.
+        assert!(sent.cells <= 104, "row {row}: {sent:?}");
     }
     println!("the bar's step: at most {most} cells");
     assert_eq!(s.ui.small(top(4 + 6) + 1, 0, 2), "06");
