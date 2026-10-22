@@ -16,6 +16,8 @@ It finds a unit running SIDOU without `--port`: the port is "SIDOU FM-1".
 
 ## Before the install
 
+- [ ] **[script]** For a release: the whole emulator gate with `--profile release` passed on
+  the commit under test (it adds the ten-minute clock-drift test; TESTING.md).
 - [ ] **[script]** Build the package from the commit under test in a **fresh build
   directory** (BUILDING.md; a stale CMake cache can build a different firmware: the image
   records its build options, and `tools/preflash` fails a package whose options are not the

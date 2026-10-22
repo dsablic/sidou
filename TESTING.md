@@ -262,6 +262,11 @@ SIDOU_FM1_BUILD=$PWD/../build/fm1 SIDOU_FM1_SPIKE_BUILD=$PWD/../build/fm1-spike 
     cargo nextest run --locked --release -p emu-gate --no-fail-fast
 ```
 
+That everyday run leaves out the ten-minute clock-drift test
+(`a_song_follows_a_steady_clock_for_ten_minutes_without_drifting`, about as long as every other
+test together). **Before every release tag**, run the whole gate with `--profile release`,
+which includes it (`host/.config/nextest.toml`).
+
 [cargo-nextest](https://nexte.st) (`cargo install --locked cargo-nextest`) runs each test in
 its own process, one per core. fm1-emu counts instructions, so no number depends on the
 schedule: every JSON report the gate writes (`build/fm1/*.json`, `build/fm1-spike/*.json`) was

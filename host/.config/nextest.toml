@@ -8,6 +8,16 @@
 # stage's wall time went from 1,077 s to 890 s.
 nextest-version = "0.9.91"
 
+# The everyday run (the merge check) leaves out the ten-minute clock-drift test, which alone
+# takes about as long as all the others (2026-10-23); the release profile runs everything:
+#   cargo nextest run --locked --release -p emu-gate --profile release
+# and runs before every release tag (TESTING.md, docs/flash-day.md).
+[profile.default]
+default-filter = 'not test(a_song_follows_a_steady_clock_for_ten_minutes_without_drifting)'
+
+[profile.release]
+default-filter = 'all()'
+
 [[profile.default.overrides]]
 filter = 'package(emu-gate) & test(the_players_worst_block_fits_its_budget)'
 priority = 100
