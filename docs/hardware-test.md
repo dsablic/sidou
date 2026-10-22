@@ -1141,6 +1141,10 @@ cargo run --release -p sidou-pack -- \
     -o ../build/fm1-spike/sidou-spike.fwsc
 ```
 
+`sidou-pack` says "NOT A RELEASE BUILD" for it, and `sidou-pack --verify` and
+`tools/preflash` fail it (SIDOU_FLASH_SPIKE=ON): that is by design, the spike is never
+released; the installer does not check it.
+
 Also build the normal `build/fm1/sidou.fwsc` (section 1), for the way back.
 
 - [ ] SIDOU commit, and the SHA-256 that `sidou-pack` prints for

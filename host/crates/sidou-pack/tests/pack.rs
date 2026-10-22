@@ -7,7 +7,7 @@
 use sidou_pack::{
     default_cache, flash_image, head, head_chip_key, inputs, loader_identity, loader_release,
     package, product_of, sha256_hex, ufw, ufw_file, unwrap_loader, verify, wrap_loader, Inputs,
-    APP_SLOT, CHIP_KEY, DEFAULT_PRODUCT, FLASH_SIZE, HEAD_SIZE, LOADER_LOAD,
+    APP_SLOT, CHIP_KEY, DEFAULT_OPTIONS, DEFAULT_PRODUCT, FLASH_SIZE, HEAD_SIZE, LOADER_LOAD,
 };
 
 /// The package of `tiny_app` and `tiny_loader` with the pinned inputs.
@@ -29,6 +29,23 @@ fn tiny_app() -> Vec<u8> {
     a.extend_from_slice(b"FM-1_900\0");
     a.extend((0..4096u32).map(|i| (i * 7 + 3) as u8));
     a
+}
+
+/// `tiny_app` with the record of a build whose options are the defaults but for `change`'s
+/// (what platform/fm1/CMakeLists.txt makes).
+fn tiny_app_built_with(change: &[(&str, &str)]) -> Vec<u8> {
+    let mut a = tiny_app();
+    a.extend_from_slice(b"SIDOU-OPTIONS 1");
+    for (k, v) in DEFAULT_OPTIONS {
+        let v = change.iter().find(|(n, _)| *n == k).map_or(v, |c| c.1);
+        a.extend_from_slice(format!(" {k}={v}").as_bytes());
+    }
+    a.extend_from_slice(b" SIDOU_PRODUCT=FM-1_900\0");
+    a
+}
+
+fn tiny_release_app() -> Vec<u8> {
+    tiny_app_built_with(&[])
 }
 
 fn tiny_loader() -> Vec<u8> {
@@ -98,7 +115,7 @@ fn verify_accepts_a_sound_package_and_reports_its_facts() {
     let Some(inp) = cached() else {
         return;
     };
-    let (app, loader) = (tiny_app(), tiny_loader());
+    let (app, loader) = (tiny_release_app(), tiny_loader());
     let pkg = package(&inp, &app, &loader, DEFAULT_PRODUCT).unwrap();
     let v = verify(&pkg);
     assert!(v.problems.is_empty(), "{:?}", v.problems);
@@ -118,6 +135,40 @@ fn verify_accepts_a_sound_package_and_reports_its_facts() {
     assert!(
         release.is_err(),
         "the app must carry the identity it is packed with"
+    );
+}
+
+#[test]
+fn verify_refuses_an_app_built_with_other_options_than_the_defaults() {
+    let Some(inp) = cached() else {
+        return;
+    };
+    let pack = |app: &[u8]| package(&inp, app, &tiny_loader(), DEFAULT_PRODUCT).unwrap();
+    let ok = verify(&pack(&tiny_release_app()));
+    assert!(ok.problems.is_empty(), "{:?}", ok.problems);
+    assert!(ok.options.contains("SIDOU_ALL_COMBINED_PROFILES_8580=ON"));
+    // A stale cache: the 8580 tables off.
+    let stale = tiny_app_built_with(&[("SIDOU_ALL_COMBINED_PROFILES_8580", "OFF")]);
+    let v = verify(&pack(&stale));
+    assert_eq!(v.problems.len(), 1, "{:?}", v.problems);
+    assert!(v.problems[0].contains("SIDOU_ALL_COMBINED_PROFILES_8580=OFF"));
+    assert!(v.options.contains("SIDOU_ALL_COMBINED_PROFILES_8580=OFF"));
+    // No record at all (an image of before the record, or not from SIDOU's CMake).
+    let v = verify(&pack(&tiny_app()));
+    assert!(v.problems.iter().any(|p| p.contains("no build options")));
+}
+
+#[test]
+fn verify_refuses_a_package_of_the_flash_spike() {
+    let Some(inp) = cached() else {
+        return;
+    };
+    let app = tiny_app_built_with(&[("SIDOU_FLASH_SPIKE", "ON")]);
+    let v = verify(&package(&inp, &app, &tiny_loader(), DEFAULT_PRODUCT).unwrap());
+    assert!(
+        v.problems.len() == 1 && v.problems[0].contains("SIDOU_FLASH_SPIKE=ON"),
+        "{:?}",
+        v.problems
     );
 }
 

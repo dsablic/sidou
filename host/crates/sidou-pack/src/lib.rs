@@ -63,6 +63,24 @@ pub const OTA_BODY_MAX: usize = 0x5000 - 0x200;
 /// The identity of development builds, as every community firmware's.
 pub const DEFAULT_PRODUCT: &str = "FM-1_900";
 
+/// The record of the build options in the firmware image (platform/fm1/build_options.c):
+/// `SIDOU-OPTIONS 1 NAME=VALUE ...`, NUL-terminated.
+pub const OPTIONS_MARK: &[u8] = b"SIDOU-OPTIONS 1 ";
+/// The defaults of the options that change the image, in the record's order (`-` is empty):
+/// what a release is built with. platform/fm1/CMakeLists.txt's `sidou_option_defaults` is the
+/// same list (SIDOU_PRODUCT aside: it is the identity, per release, checked on its own).
+pub const DEFAULT_OPTIONS: [(&str, &str); 9] = [
+    ("SIDOU_ALL_COMBINED_PROFILES", "ON"),
+    ("SIDOU_ALL_COMBINED_PROFILES_8580", "ON"),
+    ("SIDOU_FLASH_SPIKE", "OFF"),
+    ("SIDOU_USB_FIX", "ON"),
+    ("SIDOU_MIDI_OUT_NRPN", "OFF"),
+    ("SIDOU_MIDI_OUT_CHANNEL", "1"),
+    ("SIDOU_TEST_DEATH", "-"),
+    ("SIDOU_TEST_DEATH_MS", "1000"),
+    ("CMAKE_BUILD_TYPE", "Release"),
+];
+
 /// The file name the SPL looks for in the update record.
 const LOADER_NAME: &[u8; 16] = b"usb_hid_ota.bin\0";
 const UFW_CHIP: &[u8] = b"AC791N";
@@ -633,6 +651,39 @@ pub fn check_app_identity(app: &[u8], product: &str) -> Result<()> {
     }
 }
 
+/// The build options recorded in a firmware image, as `(name, value)` in the record's order;
+/// `None` if the image has no record (built before the record, or not by SIDOU's build).
+pub fn build_options(app: &[u8]) -> Option<Vec<(String, String)>> {
+    let at = app
+        .windows(OPTIONS_MARK.len())
+        .position(|w| w == OPTIONS_MARK)?;
+    let rest = &app[at + OPTIONS_MARK.len()..];
+    let text = std::str::from_utf8(&rest[..rest.iter().position(|&b| b == 0)?]).ok()?;
+    text.split(' ')
+        .map(|kv| {
+            kv.split_once('=')
+                .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        })
+        .collect()
+}
+
+/// Every way a recorded option differs from `DEFAULT_OPTIONS`, as sentences: a release is
+/// built from the defaults. SIDOU_PRODUCT is not among them (the identity says it).
+pub fn option_problems(options: &[(String, String)]) -> Vec<String> {
+    let mut out = Vec::new();
+    for (name, default) in DEFAULT_OPTIONS {
+        match options.iter().find(|(k, _)| k == name) {
+            Some((_, v)) if v == default => {}
+            Some((_, v)) => out.push(format!(
+                "build option {name}={v}, the default is {default}: not a release build \
+                 (a stale or changed CMake cache? build from a fresh build directory)"
+            )),
+            None => out.push(format!("the option record lacks {name}")),
+        }
+    }
+    out
+}
+
 /// The whole package from the firmware image and the loader's RAM image.
 pub fn package(inputs: &Inputs, app: &[u8], loader: &[u8], product: &str) -> Result<Vec<u8>> {
     check_app_identity(app, product)?;
@@ -657,6 +708,9 @@ pub struct Verified {
     /// string), empty if it has none.
     pub loader_identity: String,
     pub marker: bool,
+    /// The build options the app image records, `NAME=VALUE`, space-separated; empty if it
+    /// records none.
+    pub options: String,
     /// Every check that failed; empty when the package is sound.
     pub problems: Vec<String>,
 }
@@ -799,6 +853,20 @@ fn verify_flash(flash: &[u8], v: &mut Verified) {
     v.app_len = end;
     if let Err(e) = check_app_identity(&slot[..end], &v.identity) {
         v.problems.push(e.0);
+    }
+    match build_options(&slot[..end]) {
+        Some(options) => {
+            v.options = options
+                .iter()
+                .map(|(k, val)| format!("{k}={val}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            v.problems.extend(option_problems(&options));
+        }
+        None => v.problems.push(
+            "the app records no build options (not built by SIDOU's CMake, or before the record)"
+                .into(),
+        ),
     }
 }
 

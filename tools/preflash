@@ -95,7 +95,8 @@ def check_package(package: Path) -> Optional[dict]:
     identity_problems = [p for p in problems if "identity" in p]
     size_problems = [p for p in problems if "flash.bin is" in p]
     loader_problems = [p for p in problems if "loader" in p or "ota.bin" in p]
-    classified = identity_problems + size_problems + loader_problems
+    option_problems = [p for p in problems if "build option" in p or "option record" in p]
+    classified = identity_problems + size_problems + loader_problems + option_problems
     structure_problems = [p for p in problems if p not in classified]
     record("PASS", "package SHA-256", facts.get("sha256", "?"))
     record(
@@ -109,6 +110,11 @@ def check_package(package: Path) -> Optional[dict]:
         "; ".join(size_problems) or facts.get("flash_bin", "?") + " bytes",
     )
     record("PASS" if facts.get("app", "0") != "0" else "FAIL", "app size", facts.get("app", "?") + " bytes")
+    record(
+        "FAIL" if option_problems or not facts.get("options") else "PASS",
+        "build options are the defaults (a stale or changed CMake cache builds a different firmware)",
+        "; ".join(option_problems) or facts.get("options", ""),
+    )
     marker_ok = facts.get("marker") == "FELUCCA-LOADER-1" and not loader_problems
     record(
         "PASS" if marker_ok else "FAIL",

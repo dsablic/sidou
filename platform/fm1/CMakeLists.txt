@@ -16,7 +16,8 @@ target_compile_options(fm1_hal_check PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Werr
 
 # The firmware: sidou_app.elf, sidou_app.bin (what the SPL maps at XIP 0x02000120) and .dis.
 set(t sidou_app)
-add_executable(${t} crt0.S main.c audio.c input.c lcd.c midi.c store_fm1.c ui.c libc_min.c hal/fm1_isr.S
+add_executable(${t} crt0.S main.c audio.c input.c lcd.c midi.c store_fm1.c ui.c libc_min.c build_options.c
+    hal/fm1_isr.S
     hal/fm1_vec.S)
 set_target_properties(${t} PROPERTIES SUFFIX ".elf")
 target_link_libraries(${t} PRIVATE fm1_hal sidou_live sidou_core)
@@ -75,6 +76,60 @@ if(SIDOU_USB_FIX)
 else()
     message(WARNING "SIDOU_USB_FIX=OFF: midi.c with SIDOU's flags, USB-MIDI out dead on the FM-1")
 endif()
+# The options that change the image, recorded in it (build_options.c) and checked twice. At
+# configure time: CMake keeps a cached value over a changed default, so an old build directory
+# can build a different firmware without a word (M2b turned SIDOU_ALL_COMBINED_PROFILES_8580 on
+# and a stale build/fm1 kept it OFF); any option that is not at its default warns below, every
+# configure. In the package: `sidou-pack --verify` and `tools/preflash` read the record from the
+# app image and fail a package whose options differ from the defaults. The defaults here, in
+# sidou_pack::DEFAULT_OPTIONS (host/crates/sidou-pack/src/lib.rs) and in the option() lines
+# must agree; sidou-pack's tests compare the last two. A new option that changes code goes
+# into all three.
+set(sidou_option_defaults
+    "SIDOU_ALL_COMBINED_PROFILES=ON" "SIDOU_ALL_COMBINED_PROFILES_8580=ON"
+    "SIDOU_FLASH_SPIKE=OFF" "SIDOU_USB_FIX=ON" "SIDOU_MIDI_OUT_NRPN=OFF"
+    "SIDOU_MIDI_OUT_CHANNEL=1" "SIDOU_TEST_DEATH=" "SIDOU_TEST_DEATH_MS=1000"
+    "SIDOU_PRODUCT=FM-1_900" "CMAKE_BUILD_TYPE=Release")
+set(sidou_options "")
+set(sidou_options_off "")
+foreach(entry IN LISTS sidou_option_defaults)
+    string(FIND "${entry}" "=" eq)
+    string(SUBSTRING "${entry}" 0 ${eq} name)
+    math(EXPR eq1 "${eq} + 1")
+    string(SUBSTRING "${entry}" ${eq1} -1 default)
+    set(value "${${name}}")
+    # ON/OFF, 1/0, TRUE/FALSE are one value; the record says ON or OFF for a switch.
+    if(default STREQUAL "ON" OR default STREQUAL "OFF")
+        if(value)
+            set(value ON)
+        else()
+            set(value OFF)
+        endif()
+    endif()
+    # SIDOU_TEST_DEATH_MS only matters when SIDOU_TEST_DEATH is set.
+    if(name STREQUAL "SIDOU_TEST_DEATH_MS" AND SIDOU_TEST_DEATH STREQUAL "")
+        set(value "${default}")
+    endif()
+    # The product is the package's identity, set per release (FM-1_9XY): not a difference.
+    if(NOT value STREQUAL default AND NOT name STREQUAL "SIDOU_PRODUCT")
+        string(APPEND sidou_options_off "\n    ${name}=${value} (default ${default})")
+    endif()
+    if(value STREQUAL "")
+        set(value "-")
+    endif()
+    string(APPEND sidou_options " ${name}=${value}")
+endforeach()
+if(NOT sidou_options_off STREQUAL "")
+    message(WARNING "\n"
+        "************************************************************************\n"
+        "THIS BUILD DIRECTORY IS NOT A DEFAULT SIDOU BUILD. Options off their defaults:"
+        "${sidou_options_off}\n"
+        "A package of it is not a release (sidou-pack --verify and tools/preflash fail it).\n"
+        "If you did not choose these, the cache is stale: build from a fresh build directory\n"
+        "(rm -rf ${CMAKE_BINARY_DIR}).\n"
+        "************************************************************************")
+endif()
+target_compile_definitions(${t} PRIVATE SIDOU_BUILD_OPTIONS="SIDOU-OPTIONS 1${sidou_options}")
 # --gc-sections drops functions nothing calls (e.g. live_sid_sink, which only the host uses):
 # besides the size, an unused call between flash and SRAM code would otherwise have to link.
 # --emit-relocs keeps the relocations in the ELF (not in the image) for the emulator test

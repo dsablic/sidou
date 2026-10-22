@@ -106,6 +106,7 @@ SECTIONS
     /* Lookup constants need 16-byte alignment: keep padding inside the packed sections. */
     .text (LOADADDR(.ram_text) + SIZEOF(.ram_text)) : {
         *(.text*) *(.rodata*)
+        KEEP(*(.sidou_options))   /* build_options.c: the record of the image's build options */
         . = ALIGN(16);
         __init_array_start = .; KEEP(*(.init_array*)) __init_array_end = .;
         _etext = .;

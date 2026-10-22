@@ -69,6 +69,12 @@ tools/fm1-docker cmake --preset fm1
 tools/fm1-docker cmake --build --preset fm1
 ```
 
+Build a package from a **fresh build directory**: CMake keeps a cached option over a changed
+default, so an old `build/fm1` can build a different firmware. Configure warns when an option
+is off its default, the image records its options (`SIDOU-OPTIONS` in `sidou_app.bin`), and
+`sidou-pack --verify` and `tools/preflash` fail a package whose options are not the defaults
+(the flash spike's and the checklist builds' packages fail them by design).
+
 `tools/fm1-docker` builds the image (`sidou-pi32v2`) if needed and runs the
 command in it, with the repository mounted at the same path. The output goes
 to `build/fm1/`:

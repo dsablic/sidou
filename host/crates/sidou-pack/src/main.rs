@@ -78,6 +78,22 @@ fn run(a: &Args) -> Result<(), String> {
         let ota = sidou_pack::wrap_loader(&loader).map_err(|e| e.to_string())?;
         std::fs::write(p, ota).map_err(|e| format!("{}: {e}", p.display()))?;
     }
+    // A package may be made of any build (the flash spike's, a checklist build's); its
+    // verification is what fails one that is not a release.
+    match sidou_pack::build_options(&app) {
+        Some(o) => {
+            let p = sidou_pack::option_problems(&o);
+            if !p.is_empty() {
+                eprintln!(
+                    "sidou-pack: NOT A RELEASE BUILD, --verify and tools/preflash will fail it:"
+                );
+                for line in p {
+                    eprintln!("  {line}");
+                }
+            }
+        }
+        None => eprintln!("sidou-pack: the app records no build options; --verify will fail it"),
+    }
     println!(
         "{}: {} bytes, identity {}, app {} bytes, loader {} bytes, sha256 {}",
         a.out.display(),
@@ -113,6 +129,7 @@ fn verify_main(path: &str) -> ExitCode {
         "loader_release {}",
         sidou_pack::loader_release(&v.loader_sha256).unwrap_or("unknown")
     );
+    println!("options {}", v.options);
     println!(
         "marker {}",
         if v.marker {

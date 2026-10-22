@@ -169,19 +169,6 @@ Follow-ups that aren't tied to a milestone task yet.
   the USB cost against the main-loop budget, and add hardware checks. The same transport
   is half of the separate "remote panel" idea: fm1-emu issue #4.
 
-## A stale CMake cache builds a different firmware without saying so
-
-- **Where:** `core/CMakeLists.txt`'s `option()`s (`SIDOU_ALL_COMBINED_PROFILES_8580` and the
-  others): CMake keeps a cached value over a changed default.
-- **Problem (2026-10-19):** after M2b turned `SIDOU_ALL_COMBINED_PROFILES_8580` on, an older
-  `build/fm1` kept it OFF, so the firmware lacked the 8580 tables the expert layer selects.
-  The emulator's character test caught it (SID_PD 39,256 bytes, 58,488 expected); a fresh
-  build is correct. A package built from such a tree for a flash day would be wrong, silently.
-- **Action:** make the fm1 preset fail when a release-relevant option differs from its
-  default (a configure-time check, or record the options in the image and have
-  `tools/preflash` / `sidou-pack --verify` check them), and say in `docs/flash-day.md` that
-  the package is built from a fresh build directory.
-
 ## Licence labels that don't match the code's origin: done (2026-10-22)
 
 Closed by the end-of-M2 review (section 7). Relabelled: `ota_flash.h` (Felucca's `ota_hw.c`,
@@ -481,9 +468,7 @@ working.
 - **In v0.2.0:** the five blockers (2.1, 3.1, 5.1, 5.2, 5.3 with 5.6), storage and SysEx
   1.1, 1.2, 1.3 and 4.1, and the licence labels (section 7).
 - **Before v0.3.0, every other finding** (v0.3.0 ships with no known bug): 5.4
-  (REC into a pattern TRACKER doesn't show), 6.1
-  (`FREE_RAM_MIN` counts M2a's budget twice) and 6.2 (the flash ceiling), the stale-CMake
-  check (section 8), and the 31 minor ones, batched into the ergonomics/UX pass.
+  (REC into a pattern TRACKER doesn't show), and the 31 minor ones, batched into the ergonomics/UX pass.
 - **Fixed after v0.2.0 (the ergonomics review's E items, ergo-logic):** 1.5 (E01: SAVE, not a
   second turn, confirms STORE's format; NEWER for a newer SIDOU's store), 5.5 (E02: no song
   views over ABOUT's tune), 5.10 (E27: ABOUT keeps the song views' places), 3.2 (E04: REC
@@ -495,6 +480,11 @@ working.
   outside the song views, no count-in on entering one mid-song, the REC popup in Hz); 5.9
   (E26: ORDER keeps TRACKER's row), 5.13 (E30: the tour clears only its own toast), 5.12 (E29: toasts wait under a help card), 5.14 (E28: keys under a help card play the view
   under it).
+- **Fixed on the gates track (before v0.3.0):** 6.1 (`FREE_RAM_MIN` 7,000 to 10,000, the
+  overview's M2f row, and each region 4,096 to 5,120, M3's start target), 6.2
+  (`IMAGE_CEILING` 512,000 to 506,000, M3's start target), and section 8's stale CMake cache
+  (the image records its build options; `sidou-pack --verify` and `tools/preflash` fail a
+  package whose options are not the defaults; configure warns).
 - **From the v0.2.0 fixes:** a sector the store retires for the session (review 1.2) shows
   only in `store_stats` and a lower free figure in MENU; STATUS should say it. A background
   settings save that fails is still not detected (explicit saves report and retry).

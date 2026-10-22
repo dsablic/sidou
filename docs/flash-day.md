@@ -17,12 +17,13 @@ It finds a unit running SIDOU without `--port`: the port is "SIDOU FM-1".
 ## Before the install
 
 - [ ] **[script]** Build the package from the commit under test in a **fresh build
-  directory** (BUILDING.md; a stale CMake cache can build a different firmware), or take the
-  release's.
+  directory** (BUILDING.md; a stale CMake cache can build a different firmware: the image
+  records its build options, and `tools/preflash` fails a package whose options are not the
+  defaults), or take the release's.
 - [ ] **[script]** `tools/preflash build/fm1/sidou.fwsc --installer <fm1_install.py>
   --unbricker <MvaveFM1Unbricker folder> [--v15 FM-1.fwsc]` prints only PASS (a SKIP for
   something you will not use is fine). It reads files only, never a device: the package's
-  SHA-256, identity, sizes and CRCs, the update loader (Felucca 1.6.1's, which refuses a
+  SHA-256, identity, sizes and CRCs, the build options (the defaults), the update loader (Felucca 1.6.1's, which refuses a
   package of the wrong size before erasing anything), the recovery route and the V15
   `FM-1.fwsc` (SHA-256 `db1642b2...edb8a`). It ends with the exact commands to run.
 - [ ] **[hands]** Only the FM-1 plugged in as a MIDI device, with a USB cable that carries
