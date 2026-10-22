@@ -509,6 +509,11 @@ def callout_near(im: Image.Image, text: str, rect: tuple | None, alpha: float = 
             over = x < screen[2] and x + w > screen[0] and yy < screen[3] and yy + h > screen[1]
             return yy >= b and yy + h <= H - b and not over
 
+        # Beside the screen, never over it: slide left (or right) of it when it would cover it.
+        if cx < screen[0] and x + w > screen[0] - u(16):
+            x = max(b, screen[0] - u(16) - w)
+        elif cx > screen[2] and x < screen[2] + u(16):
+            x = min(W - b - w, screen[2] + u(16))
         y, up = rect[1] - gap - h, True
         if not clear(y) and clear(rect[3] + gap):
             y, up = rect[3] + gap, False
