@@ -27,6 +27,22 @@ the 6502 study below.
    gate's numbers are the same in parallel (each test in its own process, e.g. nextest), then
    run it in parallel locally and in CI; run the merge check's independent stages side by
    side; the fm1-emu bump's JIT (item 2). A test that truly needs to be alone says why.
+   **Done 2026-10-22** (branch `fasttests`; the machine was loaded by other work, so read the
+   times as ratios). Serial emu-gate, per file in seconds: screen 1966, song 1053, latency 432,
+   store 137, sysex 107, character 113, song_store 110, midi 79, song_bank 82, midi_transport 66,
+   settings 56, user_profile 53, the other 14 files under 31 each; 4480 in all. Run with
+   cargo-nextest (each test its own process, ten at once) it takes 845 to 1251 s over four
+   runs, and 1035 s inside the merge check beside the other stages: the wall time is now the
+   one test `the_players_worst_block_fits_its_budget` (760 to 845 s alone; `host/.config/nextest.toml`
+   starts it first). Every JSON report (22 files) was identical to the serial run's in four
+   parallel runs, and all 235 tests passed each time; no field is a wall-clock one. Shared
+   state found: none that mattered. Every report has its own name, the emulator has no globals
+   (only trace environment variables nobody sets), the one in-process cache is behind a
+   mutex; the one shared file name, `<name>.actual.png` of the two song-page tests, is now
+   written whole and renamed. The merge check (`merge-check.new.sh`) runs the two firmware
+   builds, fmt/clippy, the release tests, UBSan (its own target directory), pack and REUSE side by side:
+   19 minutes for the whole check. Left: splitting that one 13-minute test (its closing
+   bounds combine maxima across all songs, so a split must keep them together), and CI.
 2. **Win back performance headroom.** It starts with the **fm1-emu bump** (added
    2026-10-21): the pass measures in the emulator, so on the revision SIDOU keeps. Upstream
    has since fixed the and-not decoding and modelled P33 (`docs/upstream-reports.md`, items

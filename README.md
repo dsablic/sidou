@@ -41,8 +41,10 @@ tools/web-demo          # builds everything, then serves http://localhost:8642/
 ([BUILDING.md](BUILDING.md)), then, from `host/`:
 
 ```sh
-SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1
+SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo nextest run --release -p emu-gate
 ```
+
+(`cargo install --locked cargo-nextest` once; plain `cargo test --release -p emu-gate` also works, more slowly.)
 
 The tests boot the firmware and the package in fm1-emu, play the keys,
 knobs and MIDI, and check the sound and the screen

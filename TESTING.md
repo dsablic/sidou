@@ -27,7 +27,7 @@ lists the prerequisites.
 | Filter comparison | `cargo run --release -p sidou-tests --bin sidou-compare -- <dir>` | `crates/sidou-tests/src/bin/sidou_compare.rs` |
 | Host benchmark | `cargo bench -p sidou-bench` | `crates/sidou-bench/benches/workload.rs` |
 | Packager | `cargo test --release -p sidou-pack` (the round trip and golden tests need `build/ac79/`, which `sidou-pack` fills; the stock-return tests need M-VAVE's V15 package in `build/stock/FM-1.fwsc`; they skip without them) | `crates/sidou-pack/` |
-| Emulator tests (gates incl. effects, boot, live instrument, screen, MIDI, latency, SRAM audio, package, flash budget) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate -- --nocapture --test-threads=1` | `crates/emu-gate/tests/` |
+| Emulator tests (gates incl. effects, boot, live instrument, screen, MIDI, latency, SRAM audio, package, flash budget) | `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo nextest run --release -p emu-gate` | `crates/emu-gate/tests/` |
 | Flash timing spike (a test firmware, M2a Task 3b) | build it with `-DSIDOU_FLASH_SPIKE=ON` into `build/fm1-spike` (BUILDING.md), then `SIDOU_FM1_BUILD=$PWD/../build/fm1 SIDOU_FM1_SPIKE_BUILD=$PWD/../build/fm1-spike cargo test --release -p emu-gate --test flash_spike -- --nocapture`; its bounds `cargo test --release -p sidou-pack --test flash_spike_guard` | `crates/emu-gate/tests/flash_spike.rs`, `crates/sidou-pack/tests/flash_spike_guard.rs` |
 | Ergonomics harness (readability, knob feel, effort per task, feedback speed, consistency, journeys; a report for review, not a gate) | `cargo run --release -p ergo -- --out ../build/ergo` (needs the fm1 build); its unit tests run with the workspace | `crates/ergo/`, [the section below](#the-ergonomics-harness-ergo) |
 | Browser demo smoke test (from the repository root) | `tools/web-demo --check` | `web/check.mjs`, `web/check.sh` |
@@ -98,8 +98,8 @@ repeat with `settings::`, `save_key::`, `user_profile::`, `learn_view::` and `mi
 After an fm1 build, run the device tests from `host/`:
 
 ```sh
-SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --locked --release -p emu-gate \
-    --test store --test settings --test user_profile -- --nocapture --test-threads=1
+SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo nextest run --locked --release -p emu-gate \
+    -E 'binary(store) | binary(settings) | binary(user_profile)'
 ```
 
 `tests/app/store_layout.rs` checks the store's range against the loader, OTA area, app slot
@@ -259,8 +259,19 @@ After both firmware builds, run the complete emulator gate (not just these focus
 
 ```sh
 SIDOU_FM1_BUILD=$PWD/../build/fm1 SIDOU_FM1_SPIKE_BUILD=$PWD/../build/fm1-spike \
-    cargo test --locked --release -p emu-gate -- --nocapture --test-threads=1
+    cargo nextest run --locked --release -p emu-gate --no-fail-fast
 ```
+
+[cargo-nextest](https://nexte.st) (`cargo install --locked cargo-nextest`) runs each test in
+its own process, one per core. fm1-emu counts instructions, so no number depends on the
+schedule: every JSON report the gate writes (`build/fm1/*.json`, `build/fm1-spike/*.json`) was
+byte for byte the same in three parallel runs as in the serial one (2026-10-22). Each test
+writes only files named for itself, and nextest shows a failing test's output (`--no-capture`
+would run them one at a time again). The wall time is that of the longest test,
+`the_players_worst_block_fits_its_budget` (about 13 minutes), so `host/.config/nextest.toml`
+starts the long tests first. Without nextest, `cargo test --locked --release -p emu-gate`
+(no `--test-threads=1`) runs the binaries one after another with their tests side by side.
+No emu-gate test needs to run alone.
 
 - `chip_b.rs`: B is never rendered before preparation, costs no extra render while unused,
   fades in/out bit-exactly with the host, and fits the real two-chip ISR budget with every
@@ -490,9 +501,8 @@ including the wait for store space, while playback and performance controls cont
 After an fm1 build, run from `host/`:
 
 ```sh
-SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --locked --release -p emu-gate \
-    --test song --test song_store --test song_bank --test ram_audio --test flash_budget \
-    -- --nocapture --test-threads=1
+SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo nextest run --locked --release -p emu-gate \
+    -E 'binary(song) | binary(song_store) | binary(song_bank) | binary(ram_audio) | binary(flash_budget)'
 ```
 
 `song_store.rs` checks save/reboot/load against the host audio, bad CRC/capacity/setup
@@ -1190,7 +1200,7 @@ writes it into the fm1 build directory as `latency_<case>_<envelope>.json`.
 [decision record 0005](docs/decisions/0005-midi-note-timing.md) has the numbers of:
 
 ```sh
-SIDOU_LATENCY_TRIALS=64 SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test latency -- --nocapture --test-threads=1
+SIDOU_LATENCY_TRIALS=64 SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo nextest run --release -p emu-gate -E 'binary(latency)'
 ```
 
 fm1-emu does not emulate USB (see [docs/TODO.md](docs/TODO.md)), so USB
