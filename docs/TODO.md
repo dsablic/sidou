@@ -492,7 +492,8 @@ working.
   (E07) was already fixed in v0.2.0 with 2.1; 2.3 (E08: a chip swap on a locked row keeps
   the locked cutoff and pulse); the ergonomics review's E09 (PWM BASS's modulation silenced
   narrow widths: it now never sweeps below 3 %); 5.7, 5.8 and 5.11 (E23-E25: REC's toast
-  outside the song views, no count-in on entering one mid-song, the REC popup in Hz).
+  outside the song views, no count-in on entering one mid-song, the REC popup in Hz); 5.9
+  (E26: ORDER keeps TRACKER's row).
 - **From the v0.2.0 fixes:** a sector the store retires for the session (review 1.2) shows
   only in `store_stats` and a lower free figure in MENU; STATUS should say it. A background
   settings save that fails is still not detected (explicit saves report and retry).

@@ -190,13 +190,17 @@ static void start(song_pages* p, screen* s, uint32_t kind, uint32_t index, uint3
     }
 }
 
+/* ORDER's cursor is the song views' entry; a move to another entry (or subtune) starts it at
+ * row 0, but TRACKER's row stays while the entry does (ORDER passed through keeps it). */
 static void sync_order(song_pages* p) {
     uint32_t n = entries(p);
-    p->sv->subtune = p->subtune;
     p->order_cursor = (uint16_t)clamp(p->order_cursor, 0u, n + 1u);
-    p->sv->order_pos = (uint8_t)(p->order_cursor && n ?
+    uint8_t pos = (uint8_t)(p->order_cursor && n ?
         clamp((int32_t)p->order_cursor - 1, 0u, n - 1u) : 0u);
-    p->sv->row = 0u;
+    if (pos != p->sv->order_pos || p->subtune != p->sv->subtune)
+        p->sv->row = 0u;
+    p->sv->subtune = p->subtune;
+    p->sv->order_pos = pos;
 }
 
 static uint8_t order_value(uint8_t value, int32_t steps) {
@@ -798,8 +802,13 @@ static void enter_page(song_pages* p, uint32_t page) {
     if (p->sv->song && p->subtune >= p->sv->song->subtunes)
         p->subtune = 0u;
     p->sv->instr = (uint8_t)clamp(p->sv->instr, 1u, GT2_MAX_INSTR);
-    if (page == SONG_VIEW_ORDER)
+    if (page == SONG_VIEW_ORDER) {
+        /* the cursor on the song views' entry, as TRACKER left it */
+        if (!p->sv->song || p->sv->subtune < p->sv->song->subtunes)
+            p->subtune = p->sv->subtune;
+        p->order_cursor = (uint16_t)(p->sv->order_pos + 1u);
         sync_order(p);
+    }
 }
 
 static void order_enter(screen* s, void* state) {

@@ -1269,3 +1269,24 @@ fn a_revealed_song_view_routes_keys_and_composes_its_own_page_under_midi_learn()
         assert_eq!(h.ui.top(), if steps == 3 { "TABLE" } else { title });
     }
 }
+
+/// Ergonomics review E26 (M2 review 5.9): passing through ORDER keeps TRACKER's row; ORDER's
+/// cursor starts on the song views' entry, and only a move to another entry starts row 0.
+#[test]
+fn passing_through_order_keeps_trackers_row() {
+    use crate::song_view::{open_tracker, settle, Song};
+    let mut h = Song::playing(Some(Model::device()));
+    open_tracker(&mut h.ui);
+    h.ui.v.song.row = 17;
+    h.ui.press(PANEL_BTN_SEQ);
+    settle(&mut h.ui);
+    assert_eq!(h.ui.top(), "ORDER");
+    assert_eq!(h.ui.v.pages.order_cursor, u16::from(h.ui.v.song.order_pos) + 1);
+    assert_eq!(h.ui.v.song.row, 17, "ORDER kept the row");
+    for _ in 0..4 {
+        h.ui.press(PANEL_BTN_SEQ); // INSTR, TABLE, STEP, TRACKER
+        settle(&mut h.ui);
+    }
+    assert_eq!(h.ui.top(), "TRACKER");
+    assert_eq!(h.ui.v.song.row, 17, "and TRACKER has it");
+}
