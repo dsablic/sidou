@@ -1924,8 +1924,14 @@ fn home_tapped_as_soon_as_the_card_shows_skips_it() {
     compare_golden(&build, "live", &m.soc.lcd.fb, &[]);
 }
 
-/// About, after every detent has reached its menu item.
+/// About, after every detent has reached its menu item, at its animation's frame 9 (the existing
+/// golden's).
 fn open_about(m: &mut Machine, fw: &Firmware) {
+    open_about_at(m, fw, 9);
+}
+
+/// About at its animation's frame `at`, from the first item of the menu.
+fn open_about_at(m: &mut Machine, fw: &Firmware, at_frame: u32) {
     open_menu(m, fw);
     m.turn(SELECT, MENU_ABOUT); // from the first item: the menu's first opening
     m.run_ms(10 * MENU_ABOUT as u64);
@@ -1933,17 +1939,17 @@ fn open_about(m: &mut Machine, fw: &Firmware) {
     let at = sidou_sys::ilp32::views::about + sidou_sys::ilp32::about::frame;
     let _ = ui_byte(m, fw, at);
     let phase_at = fw.symbol("ui") + at as u32;
-    // The existing golden is animation frame 9, independent of the menu walk's duration.
-    for _ in 0..SETTLE_MS {
+    // The frame asked for, independent of the menu walk's duration.
+    for _ in 0..SETTLE_MS + u64::from(at_frame) * UI_PERIOD_MS {
         m.run_ms(1);
         let phase = m.soc.read32(phase_at);
-        if phase >= 9 {
-            assert_eq!(phase, 9);
+        if phase >= at_frame {
+            assert_eq!(phase, at_frame);
             break;
         }
     }
     common::to_mid_frame(m, fw);
-    assert_eq!(m.soc.read32(phase_at), 9);
+    assert_eq!(m.soc.read32(phase_at), at_frame);
     assert_eq!(
         common::top_view(m, fw),
         fw.symbol("about_view"),
@@ -1951,8 +1957,12 @@ fn open_about(m: &mut Machine, fw: &Firmware) {
     );
 }
 
-/// The first credits page names SIDOU and its version (app/about.h ABOUT_HEADING_ROW).
-const ABOUT_VERSION: (usize, usize, usize) = (1, sidou_sys::ABOUT_HEADING_ROW as usize, 28);
+/// The first credits page names SIDOU and its version at 2x (app/about.h ABOUT_HEADING_ROW): two
+/// rows, masked so that a version bump keeps the goldens.
+const ABOUT_VERSION: [(usize, usize, usize); 2] = [
+    (1, sidou_sys::ABOUT_HEADING_ROW as usize, 28),
+    (1, sidou_sys::ABOUT_HEADING_ROW as usize + 1, 28),
+];
 
 #[test]
 fn about_opens_from_the_menu_and_home_goes_back() {
@@ -1961,7 +1971,7 @@ fn about_opens_from_the_menu_and_home_goes_back() {
     };
     let mut m = booted(&fw);
     open_about(&mut m, &fw);
-    compare_golden(&build, "about", &m.soc.lcd.fb, &[ABOUT_VERSION]);
+    compare_golden(&build, "about", &m.soc.lcd.fb, &ABOUT_VERSION);
     // The logo at the top: the scene's lettering band (app/logo.h LOGO_METAL_BAND_ROW).
     let band = sidou_sys::LOGO_METAL_BAND_ROW as usize * 8;
     let top = sidou_sys::ABOUT_LOGO_ROW as usize * 8;
@@ -1971,6 +1981,14 @@ fn about_opens_from_the_menu_and_home_goes_back() {
     let before = m.soc.lcd.fb.clone();
     m.run_ms(UI_PERIOD_MS);
     assert!(m.soc.lcd.fb != before, "About stood still");
+    press(&mut m, HOME);
+    settle(&mut m, &fw);
+    // The first page drawn whole (its last line at full brightness from frame 26, the heading
+    // fading from 80): the 2x heading under the logo and its ramp line, above the subtitle.
+    press(&mut m, HOME);
+    settle(&mut m, &fw);
+    open_about_at(&mut m, &fw, 40);
+    compare_golden(&build, "about-first", &m.soc.lcd.fb, &ABOUT_VERSION);
     press(&mut m, HOME);
     settle(&mut m, &fw);
     // The cursor is on ABOUT now (the menu scrolled to it); back on the first item the menu is

@@ -574,7 +574,9 @@ HOME goes back.
   page starts a page and goes on under `<SECTION> (CONT.)`, cut between who and what; no
   other credit shares a page with its tail, so no sentence runs into the next credit. A test fails when it falls behind the file;
   `SIDOU_CREDITS_UPDATE=1` rewrites it. A page shows 4.8 s; a first page names SIDOU, its
-  version and licence.
+  version and licence. Its heading at 2× takes rows 10-11, under the ramp line and above the
+  subtitle on row 12, clear of both once the page is drawn whole
+  (`tests/golden/lcd/about-first.png`, frame 40; the goldens mask the version's two rows).
 - **The trim**, from the prototype's 240 cells a frame to 87: the logo is still, sent once
   under the wipe; the bars are 5 bands of 4 pixels (two a cell, with a lower-half glyph) and
   move one band at a time, one bar on each odd frame; the credits' rows cascade in and out 4
