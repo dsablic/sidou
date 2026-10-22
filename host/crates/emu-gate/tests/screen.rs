@@ -1434,7 +1434,8 @@ fn a_chip_change_sweeps_the_raster_over_the_border() {
         let idx = indexed(&m.soc.lcd.fb);
         (0..30).map(|r| idx[(r * 8 + 4) * W + 4]).collect()
     };
-    let ramp = [1u8, 7, 13, 3, 14, 4, 10];
+    // screen_ramp, its purple band shown as light grey on the border (app/screen.c raster)
+    let ramp = [1u8, 7, 13, 3, 14, 15, 10];
     common::to_mid_frame(&mut m, &fw);
     m.key(FX, true);
     let mut frames = Vec::new();

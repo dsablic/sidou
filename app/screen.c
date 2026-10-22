@@ -156,6 +156,9 @@ static void raster(screen* s) {
     redraw(s, ALL_ROWS);
     for (uint32_t r = 0; r < GRID_ROWS; r++) {
         uint32_t fg = screen_ramp[(r + phase) % SCREEN_RAMP];
+        /* The border's cells carry the view's text (MODEL, the first digits): purple on black is
+         * 2.6:1, so the band that would be purple is light grey (6.9:1); the ramp itself stays. */
+        fg = fg == GRID_PURPLE ? GRID_LIGHT_GREY : fg;
         uint32_t i = r * GRID_COLS;
         uint32_t step = r == 0 || r == GRID_ROWS - 1u ? 1u : GRID_COLS - 1u;
         for (uint32_t c = 0; c < GRID_COLS; c += step) {

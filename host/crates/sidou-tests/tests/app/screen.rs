@@ -583,7 +583,14 @@ fn the_raster_sweeps_the_border_every_other_frame_and_gives_it_back() {
     let steps = 3;
     unsafe { screen_raster(&mut *r.s, steps) };
     assert!(r.animating());
-    let ramp = unsafe { screen_ramp };
+    // The border carries the view's text, so its purple band is light grey (app/screen.c raster).
+    let ramp = unsafe { screen_ramp }.map(|c| {
+        if u32::from(c) == GRID_PURPLE {
+            GRID_LIGHT_GREY as u8
+        } else {
+            c
+        }
+    });
     let mut sends = Vec::new();
     let mut prev_colours: Option<Vec<u8>> = None;
     for _ in 0..steps * SCREEN_RASTER_FRAMES {
