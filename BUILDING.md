@@ -176,16 +176,17 @@ and git. `--check` also needs Node.js 20 or later. The wasm needs Rust's
    `host/crates/emu-gate/Cargo.toml` pins (one pin for the emulator tests
    and the demo: bump it there) and runs fm1-emu's own `web/build.sh`,
    which builds the `fm1-web` crate to wasm and copies the page's files
-   (`main.js`, `worklet.js`, `jit.js`, `fwsc.js`) into `build/web/`;
+   (`main.js`, `persistence.js`, `worklet.js`, `jit.js`, `fwsc.js`) into
+   `build/web/`;
 3. puts SIDOU's layer from `web/` on top: `index.html` (the SIDOU page, in
    place of upstream's), `sidou.js`, `firmwares.json` (a catalog of SIDOU
    alone, the package served next to the page), the logo, the licence
    texts the package and the emulator need, and `version.json` (the commit,
    its date, whether the tree had local changes);
 4. patches upstream's `main.js` with `web/patch-main.sh` (two lines: a
-   package URL relative to the page, and a default clock of 240 MHz; each
-   edit must apply exactly once, so a new upstream revision that moves them
-   stops the build);
+   default clock of 240 MHz, and Start enabled once its handler is attached;
+   each edit must apply exactly once, so a new upstream revision that moves
+   them stops the build);
 5. serves `build/web/` on 127.0.0.1 with `web/serve.py` (no caching, so a
    rebuild shows on reload).
 

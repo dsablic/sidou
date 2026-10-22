@@ -50,9 +50,7 @@ The tests boot the firmware and the package in fm1-emu, play the keys,
 knobs and MIDI, and check the sound and the screen
 ([TESTING.md](TESTING.md)). `build/fm1/sidou_package.wav` is what the
 package plays with the A4 key held from power-on. fm1-emu's own command
-line (`fm1-emu --fwsc build/fm1/sidou.fwsc`) stops early at the pinned
-revision, at an instruction it does not execute yet; the tests work around
-it ([docs/TODO.md](docs/TODO.md)).
+line runs the package too (`fm1-emu --fwsc build/fm1/sidou.fwsc --ms 10000`).
 
 **On hardware.** v0.2.0 runs on a real FM-1 (the [release](https://github.com/dsablic/sidou/releases/tag/v0.2.0)
 has the package, `sidou.fwsc`). Installing custom firmware can leave an FM-1 unable to

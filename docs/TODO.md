@@ -253,7 +253,8 @@ their own `Copyright (C)` lines, which REUSE accepts (the vendor-verbatim rule).
 
 ## fm1-emu does not emulate USB
 
-- **Where:** fm1-emu at rev `e52f4640157f490f8c3af778dd044e9d33e989e8`.
+- **Where:** fm1-emu at rev `e52f4640157f490f8c3af778dd044e9d33e989e8`, and still at
+  `db8d472e` (2026-10-22).
 - **Problem:** the USB0 registers (`0x11800..0x1183F`) are plain storage:
   the SIE never reports a finished access, so SIDOU's USB stack times out
   at boot, leaves USB off and retries once a second. No USB MIDI reaches
@@ -391,47 +392,37 @@ their own `Copyright (C)` lines, which REUSE accepts (the vendor-verbatim rule).
   fm1-emu's own command line has no workaround: until Task 5 it stopped
   SIDOU in `sid_cutoff_hz` during boot (`fm1-emu --fwsc
   build/fm1/sidou.fwsc`). Remove it once upstream supports the instruction.
+- **Recheck at `db8d472e` (2026-10-22):** still not executed: fm1-isa decodes `41 eb 0a 00` as
+  `r_4_mov_r_4` and `Cpu::step` returns `Unsupported { name: "r_4_mov_r_4" }`, as at
+  `7ca5b96c`. The workaround stays.
 - **Action:** open an issue (and possibly a PR) upstream with the above, then
   bump the pinned rev.
 
-## Report fm1-emu: the and-not read-modify-write on memory is not decoded
+## A gate that decodes every instruction of the image
 
-- **Where:** fm1-emu at the pinned rev (`e52f4640`).
-- **Problem:** fm1-core faults with `Decode(UnknownInstruction)` on pi32v2's
-  read-modify-write "and not" on a memory word with a register mask,
-  `[rX+imm] &= ~rY`: opcodes `64 e8 0b ..` and `64 e8 0f ..` (the `|=` form,
-  `64 e8 08 ..`, and `&= ~(1 << rY)`, `66 e8 03 ..`, decode and run).
-- **Repro:** JieLi clang `-O2` emits it for `s->field &= ~bit;` with `bit` in a
-  register, as `panel_note_keys` and `key_up` in `app/panel.c` did during M2d
-  Task 1 (the keys test, the song views' tests and the browser demo stopped
-  at the first key release).
-- **Our workaround:** none in the emulator: `app/panel.c` keeps the mask in a
-  local and stores it once, and clears a known-set bit with `^=`; no SIDOU
-  code emits the opcode today (`grep -c '\] &= ~r' sidou_app.dis` is 0).
-- **A gate that catches it coming back:** an emu-gate test that walks the
-  image's `.text` and `.ram_text` with fm1-isa's decoder (as `ram_audio.rs`
-  walks `.ram_text` for flash loads) and fails on any word it cannot decode
-  or fm1-core cannot execute, naming the function from the symbol table. It
-  would catch every new compiler idiom the emulator lacks at build time,
-  not when a test happens to run the path.
-- **Recheck at `7ca5b96c` (2026-10-18):** a bare `Cpu::step` on `64 e8 0b 10` and
-  `64 e8 0f 10` (and `0a`, the `&=`) executes them as `[r1+8] &= ~r0`, `[r1+12] &= ~r0` and
-  `[r1+8] &= r0`, at `7ca5b96c` and at `e52f4640` alike, so those encodings decode in the
-  interpreter at both. The original fault (the keys test and the browser demo) could not be
-  recreated that way: it may need other operand bytes, or the JIT path. The workaround stays
-  until a real instance is found.
+- **Why:** a compiler idiom fm1-emu lacks stops the emulator only when a test happens to run
+  its path (the and-not read-modify-write with r8-r15, `64 e8 5f bc`, stopped the keys test and
+  the browser demo at the first key release in M2d Task 1; fixed upstream in fm1-emu #33, in the
+  pin since `db8d472e`).
+- **What:** an emu-gate test that walks `.text` and `.ram_text` and fails on any instruction
+  fm1-core cannot decode or execute, naming the function from the symbol table. Take the
+  boundaries from fm1-core itself (`fm1_core::decode_info`, public since fm1-emu 0.2.0, the
+  decoder `fm1-emu --check-decode` uses), not from the vendor objdump: the objdump shows the
+  6-byte compare-and-branch (`4x ff ..`) as unknown, and it disassembles the jump tables
+  (`.GJTI*`) as code. A first try (2026-10-22) that stepped every objdump line from a fresh
+  `Cpu` also flagged dual-issue tails, which run only after their head: step pairs together.
 
-## fm1-emu does not model P33 or the watchdog
+## fm1-emu does not model the watchdog
 
-- **Where:** fm1-emu at rev `e52f4640157f490f8c3af778dd044e9d33e989e8`.
-- **Problem:** the P33 interface (`P33_CON` 0x13E08, `P33_DAT` 0x13E0C)
-  is not modelled: reads return 0, so `fm1_wdt_arm`, `fm1_wdt_feed` and
-  `fm1_reboot` (Felucca's `fm1_sys.h`) run without effect. The boot test
-  cannot tell whether the firmware feeds the watchdog, or whether a crash
-  would reset the chip.
-- **Action:** ask upstream for a P33 model with a watchdog that resets the
-  emulated chip when it is not fed; until then, check watchdog behaviour on
-  the device.
+- **Where:** fm1-emu at rev `db8d472e` (2026-10-22).
+- **Problem:** since fm1-emu #34 the P33 interface (`P33_CON` 0x13E08, `P33_DAT` 0x13E0C) is
+  modelled as registers that keep what is written (`fm1-soc/src/p33.rs`; before it, reads
+  returned 0 and SIDOU's accesses showed as unknown MMIO), but nothing acts on them: no
+  watchdog and no reset through `PR_PWR`. So `fm1_wdt_arm`, `fm1_wdt_feed` and `fm1_reboot`
+  (Felucca's `fm1_sys.h`) still have no effect, and the boot test cannot tell whether the
+  firmware feeds the watchdog, or whether a crash would reset the chip.
+- **Action:** ask upstream for a watchdog on the P33 model that resets the emulated chip when
+  it is not fed; until then, check watchdog behaviour on the device.
 
 ## Possible fm1-emu contributions (only if profiling needs them)
 
@@ -497,17 +488,3 @@ working.
   only in `store_stats` and a lower free figure in MENU; STATUS should say it. A background
   settings save that fails is still not detected (explicit saves report and retry).
 
-## The browser demo forgets its flash on every page load
-
-- **Where:** `web/` (the page), `web/patch-main.sh`, and fm1-emu's `crates/fm1-web` (the wasm).
-- **Problem:** the pinned fm1-emu wasm (`7ca5b96`) boots a fresh machine with empty flash on
-  every load (`fm1_boot_fwsc`), and exports no way to read or write the emulated SPI flash
-  (the machine lives in a static inside the wasm). So SIDOU's first-run tour and full boot play
-  on every visit, and nothing saved in the demo survives a reload. The page says so
-  (`web/index.html`, "The first-run tour").
-- **Action:** the fm1-emu feature request in [upstream-reports.md](upstream-reports.md), item 9
-  (drafted, not posted). When the web player can get and set the flash, keep it per browser in
-  IndexedDB (main.js already has an `idb()` helper): restore it before boot, save it when the page
-  hides and now and then, with a visible "Reset the FM-1" control on SIDOU's page; extend
-  `web/check.mjs` to load, save, reload and see the tour not return. Then drop the page's
-  explanation.
