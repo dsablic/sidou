@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""SIDOU SysEx v1 over USB (docs/reference/sysex.md): INQ, DIR, then PUT/GET/DEL of a disposable
+file, stop-and-wait. Only manufacturer 7D 'SD' frames are sent.
+
+    sysex_roundtrip.py [PORT] [SIZE]
+"""
+import os, sys, time, zlib, struct
+import mido
+
+PORT = sys.argv[1] if len(sys.argv) > 1 else "SIDOU FM-1"
+SIZE = int(sys.argv[2]) if len(sys.argv) > 2 else 4096
+NAME = b"FLASHDAY TEST"
+HDR = [0x7D, 0x53, 0x44]
+INQ, DIR, GET, PUT, DATA, END, DEL, ABORT, ACK, NAK = 1, 2, 3, 4, 5, 6, 7, 8, 0x7E, 0x7F
+NAKS = {1: "malformed", 2: "checksum", 3: "sequence", 4: "BUSY", 5: "FULL", 6: "not found",
+        7: "I/O", 8: "timeout", 9: "aborted"}
+
+
+def pack(b):
+    out = []
+    for i in range(0, len(b), 7):
+        g = b[i:i + 7]
+        out.append(sum(((x >> 7) & 1) << j for j, x in enumerate(g)))
+        out += [x & 0x7F for x in g]
+    return out
+
+
+def unpack(p):
+    out, i = bytearray(), 0
+    while i < len(p):
+        m = p[i]; g = p[i + 1:i + 8]
+        out += bytes(x | (((m >> j) & 1) << 7) for j, x in enumerate(g))
+        i += 1 + len(g)
+    return bytes(out)
+
+
+def frame(cmd, seq, payload=b""):
+    p = pack(payload)
+    ck = (-(cmd + seq + sum(p))) & 0x7F
+    return mido.Message("sysex", data=HDR + [cmd, seq] + p + [ck])
+
+
+def name16(n):
+    return n.ljust(16, b"\0")
+
+
+class Link:
+    def __init__(self):
+        self.i = mido.open_input(PORT); self.o = mido.open_output(PORT)
+
+    def send(self, cmd, seq, payload=b""):
+        self.o.send(frame(cmd, seq & 0x7F, payload))
+
+    def recv(self, timeout=5.0):
+        t = time.time()
+        while time.time() - t < timeout:
+            for m in self.i.iter_pending():
+                d = list(m.data) if m.type == "sysex" else None
+                if d and d[:3] == HDR:
+                    cmd, seq, body = d[3], d[4], d[5:-1]
+                    if (cmd + seq + sum(body) + d[-1]) & 0x7F:
+                        raise SystemExit(f"bad checksum from device: {d}")
+                    return cmd, seq, unpack(body)
+            time.sleep(0.002)
+        raise SystemExit("timeout waiting for the device")
+
+
+def expect_ack(L, seq):
+    cmd, s, p = L.recv(10)
+    if cmd == NAK:
+        raise SystemExit(f"NAK {NAKS.get(p[0], p[0])} (pool {p[1]}) for seq {seq}")
+    if cmd != ACK or s != seq & 0x7F:
+        raise SystemExit(f"expected ACK {seq & 0x7F}, got cmd {cmd:#x} seq {s}")
+
+
+def dir_list(L, seq):
+    L.send(DIR, seq); out = []
+    while True:
+        cmd, s, p = L.recv()
+        L.send(ACK, s)
+        if cmd == END:
+            return out
+        if cmd == NAK:
+            raise SystemExit(f"DIR NAK {NAKS.get(p[0], p[0])}")
+        nm = p[:16].rstrip(b"\0").decode()
+        typ, ln, crc = struct.unpack("<BII", p[16:25])
+        out.append((nm, typ, ln, crc))
+
+
+def main():
+    L = Link(); t0 = time.time()
+    L.send(INQ, 0); cmd, s, p = L.recv()
+    proto, *ver = p[:5]; store, free, pool, flags = struct.unpack("<HIBB", p[5:13])
+    print(f"INQ: protocol {proto}, firmware {ver}, store format {store}, free {free} B, pool {pool}, flags {flags}")
+    files = dir_list(L, 1)
+    print(f"DIR: {len(files)} files: " + ", ".join(f"{n} ({ln} B)" for n, _, ln, _ in files))
+    if any(n == NAME.decode() for n, *_ in files):
+        raise SystemExit(f"{NAME.decode()} already exists; not touching it")
+
+    data = os.urandom(SIZE); crc = zlib.crc32(data)
+    seq = 10
+    L.send(PUT, seq, bytes([0, 0]) + name16(NAME) + struct.pack("<BII", 2, SIZE, crc)); expect_ack(L, seq)
+    t = time.time()
+    for off in range(0, SIZE, 256):
+        seq += 1; L.send(DATA, seq, data[off:off + 256]); expect_ack(L, seq)
+    seq += 1; L.send(END, seq); expect_ack(L, seq)
+    print(f"PUT {SIZE} B: {time.time() - t:.2f} s")
+
+    seq = 60; t = time.time()
+    L.send(GET, seq, bytes([0, 0]) + name16(NAME)); got = bytearray(); meta = None
+    while True:
+        cmd, s, p = L.recv(10)
+        if cmd == NAK:
+            raise SystemExit(f"GET NAK {NAKS.get(p[0], p[0])}")
+        L.send(ACK, s)
+        if cmd == PUT:
+            meta = struct.unpack("<BII", p[18:27])
+        elif cmd == DATA:
+            got += p
+        elif cmd == END:
+            break
+    ok = bytes(got) == data and meta and meta[1] == SIZE and meta[2] == crc
+    print(f"GET {len(got)} B: {time.time() - t:.2f} s, {'identical' if ok else 'DIFFERENT'} (CRC {zlib.crc32(got):08x} vs {crc:08x})")
+
+    L.send(DEL, 100, name16(NAME)); expect_ack(L, 100)
+    after = dir_list(L, 101)
+    gone = not any(n == NAME.decode() for n, *_ in after)
+    print(f"DEL: {'gone' if gone else 'STILL LISTED'}; {len(after)} files; total {time.time() - t0:.1f} s")
+    sys.exit(0 if ok and gone else 1)
+
+
+main()

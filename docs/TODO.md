@@ -507,3 +507,11 @@ working.
 - **Profile words** (BRIGHT, DARK, CLASSIC, CLEAN, GRITTY) show on CHIP and the LIVE band only,
   1x beside LIVE's 2x revision name; popups and STATUS still show "6581 R4AR".
 - **Still 1x for lack of room:** TABLE's "WAVE 21 REL 00" line, STEP's ruler digits and lane line.
+
+## SysEx over USB is slow: about 1 KB/s
+
+- **Where:** [flash day 2026-10-22](hardware-results/2026-10-22-flash-day.md): a 65,536-byte PUT
+  takes 73 s and a GET 53 s on a real FM-1 (about 280 ms and 200 ms per 256-byte packet and its
+  ACK), stop-and-wait over USB.
+- **Action:** find where the time goes (the ACK's delay for flash pacing, the main loop's SysEx
+  service rate, the host's USB-MIDI latency) before Live Link and M3's `.sid` uploads rely on it.
