@@ -40,7 +40,7 @@ Coming next: `.sid` file playback (M3).
 
 ## Try it in your browser
 
-**<https://dsablic.github.io/sidou/>** runs the latest release in an emulated FM-1
+**<https://dsablic.github.io/sidou/>** runs the newest build in an emulated FM-1 (it follows the main branch, so it can be ahead of the latest release)
 ([fm1-emu](https://github.com/joakimeriksson/fm1-emu)). Play it from the computer keyboard,
 the mouse, touch or a MIDI keyboard (Web MIDI). The emulated FM-1 keeps its flash in the
 browser, so your settings and songs survive a reload. The page can export and import that

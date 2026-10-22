@@ -5,10 +5,15 @@
 # only a build that passes is deployed. Pages must be enabled with "GitHub Actions" as its
 # source (docs/TODO.md).
 name: pages
-# Only on a release tag (v1.2.3) or when started by hand (Actions, Run workflow).
+# On every push to main that changes the firmware, the demo page or the README (the user,
+# 2026-10-23: the demo stays in step with the README and the newest firmware), on a release tag,
+# or by hand (Actions, Run workflow). The page names the build it runs (version.json).
 on:
   push:
+    branches: [main]
     tags: ['v*']
+    paths: ['app/**', 'core/**', 'platform/**', 'assets/**', 'web/**', 'README.md', 'CMakeLists.txt',
+            'tools/web-demo', 'host/crates/emu-gate/Cargo.toml', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read
