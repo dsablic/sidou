@@ -883,9 +883,9 @@ Notes:
 
 ## 8c. SysEx files, instruments and songs (M2e Task 5)
 
-These are manual acceptance checks, not recorded hardware passes. **USB-MIDI
-output is still a separate blocker**: section 8.1 must pass before USB replies
-can establish a successful dump or upload. The protocol and exact payloads are
+These are manual acceptance checks, not recorded hardware passes. USB-MIDI output
+works since v0.2.0 (section 8.1 passed on 2026-10-21 and on v0.2.0's package), so USB
+replies can carry a dump or an upload. The protocol and exact payloads are
 in [SysEx protocol, version 1](reference/sysex.md). `sidou-sysex` is a host-only
 packet library, not a CLI or a MIDI transport. Use a SysEx utility that supports
 per-frame ACK handling for USB and an explicit frame gap for TRS.
