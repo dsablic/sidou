@@ -1703,8 +1703,33 @@ hand from the Actions tab, never on ordinary pushes or pull requests. It is deli
 small (2026-10-23): the in-depth testing happens before a change merges, where every merge
 passes the full local check (both firmware builds, fmt, clippy, the workspace tests, UBSan,
 the GCC check, the packager and its tests, the whole emulator gate, REUSE, the browser demo).
-Run that suite before tagging. CI adds only what the local check cannot: the release package
-built clean from the tag on Linux, and booted in fm1-emu. `.github/workflows/pages.yml` has
+CI adds only what the local check cannot: the release package built clean from the tag on
+Linux, and booted in fm1-emu.
+
+### What runs when (no run that tests nothing new)
+
+The merge check looks at what a change touches against main and runs only what that can affect
+(the user, 2026-10-23: no endless test runs). Every result is the same as the full suite's
+would be; nothing is sampled.
+
+| The change touches | The merge check runs | About |
+|---|---|---|
+| only docs: `*.md`, `docs/`, `LICENSES/`, `.github/` (workflows run on GitHub, not here) | REUSE and `tools/readme-check` | seconds |
+| docs and CMakeLists.txt's version line, nothing else (a release bump) | the `fm1` build, the package, the package boot test in fm1-emu, REUSE, `tools/readme-check` | 1 min |
+| anything else | everything; the emulator gate is skipped when the same firmware, package and test inputs already passed it (fm1-emu is deterministic) | 15 to 20 min |
+
+**A release** therefore costs one full run, on the change that brings the code, and no more:
+
+1. Merge the last code change (full check).
+2. The release commit: CMakeLists.txt's version, CHANGELOG.md, README.md's status (which
+   `tools/readme-check` holds to the CHANGELOG), `docs/release-notes/vX.Y.Z.md`. Version-only
+   check, about a minute.
+3. Build the release package (`-DSIDOU_PRODUCT=FM-1_964`), `tools/preflash` it, and run it on a
+   real unit (an install over the previous release and over Felucca at least).
+4. Tag `vX.Y.Z`. CI builds the package clean from the tag and boots it; publish it once its
+   SHA-256 matches the package tested on the unit.
+
+Do not run the full suite again before tagging: the code it would test has already passed it. `.github/workflows/pages.yml` has
 the same triggers; it builds, smoke-tests and deploys the browser demo.
 
 CI is one job, `fm1`, that runs in the prebuilt build image `ghcr.io/dsablic/sidou-build`
