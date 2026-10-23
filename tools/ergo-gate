@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 SIDOU contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The ergonomics harness as a merge gate: it fails on anything the accepted baseline does not have.
+#   tools/ergo-gate BUILD_DIR            the whole harness, then the recipes (a few minutes)
+#   tools/ergo-gate --quick BUILD_DIR    readability, journeys (the tour) and the recipes only
+#   tools/ergo-gate --out DIR ...        where the run's files go (default BUILD_DIR/../ergo-gate)
+# Exit 0: no new finding, no finding whose severity rose, every recipe passes. Exit 1: one of them
+# (the new ones are printed). Exit 2: the harness could not run. The baseline is
+# docs/ergo-baseline/metrics.json; accepting a change is refreshing it (TESTING.md, "Ergonomics gate").
+set -euo pipefail
+root=$(cd "$(dirname "$0")/.." && pwd)
+quick=0 out="" build=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --quick) quick=1 ;;
+        --out) out=$2; shift ;;
+        -h|--help) sed -n 4,10p "$0"; exit 0 ;;
+        -*) echo "ergo-gate: unknown option $1" >&2; exit 2 ;;
+        *) build=$1 ;;
+    esac
+    shift
+done
+[ -n "$build" ] || { echo "usage: tools/ergo-gate [--quick] [--out DIR] BUILD_DIR" >&2; exit 2; }
+build=$(cd "$build" 2>/dev/null && pwd) || { echo "ergo-gate: no build directory $build" >&2; exit 2; }
+[ -f "$build/platform/fm1/sidou_app.bin" ] || { echo "ergo-gate: $build is not an fm1 build" >&2; exit 2; }
+out=${out:-$build/../ergo-gate}
+mkdir -p "$out"
+out=$(cd "$out" && pwd)
+baseline="$root/docs/ergo-baseline/metrics.json"
+export PATH="/opt/homebrew/opt/rustup/bin:$PATH"
+cd "$root/host"
+only=()
+[ "$quick" = 1 ] && only=(--only readability,journeys)
+start=$(date +%s)
+echo "ergo-gate: harness$([ "$quick" = 1 ] && echo ' (quick: readability, journeys)') and recipes, side by side"
+cargo build --release --locked -q -p ergo
+run() { cargo run --release --locked -q -p ergo -- --build "$build" "$@"; }
+(run --out "$out/run" --baseline "$baseline" ${only[@]+"${only[@]}"} > "$out/harness.log" 2>&1; echo $? > "$out/harness.exit") &
+(run --out "$out/recipes" --check-recipes "$root/docs/recipes" > "$out/recipes.log" 2>&1; echo $? > "$out/recipes.exit") &
+wait
+if [ "$(cat "$out/harness.exit")" != 0 ]; then
+    cat "$out/harness.log" >&2; echo "ergo-gate: the harness failed" >&2; exit 2
+fi
+recipes=$(cat "$out/recipes.exit")
+if [ "$recipes" -ne 0 ]; then
+    grep -A3 '^FAIL' "$out/recipes.log" || cat "$out/recipes.log"
+fi
+status=0
+python3 -I - "$baseline" "$out/run/findings.json" "$quick" <<'PY' || status=$?
+import json, sys
+base_path, run_path, quick = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
+rank = {"info": 0, "low": 1, "medium": 2, "high": 3}
+base = json.load(open(base_path))["findings"]
+run = json.load(open(run_path))
+bad = []
+for f in run["findings"]:
+    sev = f["severity"]
+    old = base.get(f["id"])
+    if old is None and rank[sev] > rank["info"]:
+        bad.append(f"NEW      {f['id']} ({sev}): {f['title']}")
+    elif old is not None and rank[old] < rank[sev]:
+        bad.append(f"ROSE     {f['id']} {old} -> {sev}: {f['title']}")
+gone = sorted(set(base) - {f["id"] for f in run["findings"]})
+if quick:
+    gone = []
+for line in bad:
+    print(line)
+if gone:
+    print(f"fixed since the baseline ({len(gone)}): " + ", ".join(gone))
+    print("  refresh the baseline to keep the fix (TESTING.md, \"Ergonomics gate\")")
+notes = [r for r in run.get("regressions") or [] if not r.startswith(("new finding", "finding "))]
+if notes:
+    print(f"metrics worse than the baseline by over 5% (not gating): {len(notes)}")
+    for r in notes[:10]:
+        print("  " + r)
+print(f"{len(run['findings'])} findings, {len(bad)} new or risen against the baseline")
+sys.exit(1 if bad else 0)
+PY
+echo "ergo-gate: $(( $(date +%s) - start )) s; findings $([ "$status" = 0 ] && echo ok || echo FAILED), recipes $([ "$recipes" = 0 ] && echo ok || echo FAILED); report $out/run/report.html"
+[ "$status" = 0 ] && [ "$recipes" = 0 ]

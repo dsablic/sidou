@@ -1616,6 +1616,41 @@ Each run writes `metrics.json`. `--baseline OLD/metrics.json` lists every metric
 (by more than 5%), every new finding and every finding whose severity rose, in the report and on
 the console; `--fail-on-regression` makes that the exit status.
 
+### Ergonomics gate (`tools/ergo-gate`)
+
+```sh
+tools/ergo-gate build/fm1            # the merge check's command: the whole harness and the recipes
+tools/ergo-gate --quick build/fm1    # readability, journeys (the tour) and the recipes only
+```
+
+It runs the harness (`--baseline docs/ergo-baseline/metrics.json`) and `--check-recipes docs/recipes`
+side by side, and exits 1 on any **new** finding (above info), any finding whose **severity rose**, or
+any failing recipe, printing each one (`NEW id (severity): title`, `ROSE id low -> medium`); exit 2
+means the harness could not run. Findings the baseline already has pass: they are accepted, not
+fixed. A finding that went away is listed, and the baseline should be refreshed to keep the fix.
+Metrics more than 5% worse than the baseline are printed as notes and do not fail. The run's files
+(`run/report.html`, `run/findings.json`, `harness.log`, `recipes.log`) go to `build/ergo-gate/` (`--out`).
+
+Time, on a loaded machine (load 30): about 4.5 minutes for the whole gate, because the two halves run
+at once. Alone, the harness is about 4 minutes (journeys with the tour and readability 105 s,
+consistency 92 s, knobs 35 s, feedback 22 s, defaults 6 s) and the recipes about 2.5 minutes.
+`--quick` skips knobs, feedback, consistency and defaults and so takes what the recipes take.
+
+**Accepting a change.** If the new or risen finding is right to keep (a screen that stays 1x for a
+reason, a knob whose feel is the intent), refresh the baseline in the same commit and say why in the
+message:
+
+```sh
+tools/ergo-gate build/fm1       # fails and prints the finding: read it first
+cd host && cargo run --release -p ergo -- --out ../build/ergo     # the full run
+cp ../build/ergo/metrics.json ../docs/ergo-baseline/metrics.json
+git add ../docs/ergo-baseline/metrics.json    # commit it with the change, "ergo baseline: why"
+```
+
+A fix that removes findings refreshes it the same way, so the next regression is measured against
+the better state. The baseline is refreshed from a full run, never a `--quick` one (that would
+drop the other checks' findings from it).
+
 ### Reusing captures for the manual and for videos
 
 `--capture full --journey ID` writes `OUT/capture/ID/`:
