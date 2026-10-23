@@ -554,6 +554,11 @@ card (HOME held) is the only on-device explanation. Done:
   ALGORITHM only; SAVE opens the highlighted item on every list screen.
 - **A fresh install's LOAD list is empty:** decide how a new user gets songs (starter songs on the
   store at first boot, a page that uploads them, or SIDOU LOOP listed as a built-in).
+- **SPREAD with one chip:** a song alone (chip A) moves to one ear at SPREAD 100. Proposed: a chip
+  sounding alone stays centred; SPREAD applies while both chips sound, gliding about 0.1 s as the
+  second comes in or goes quiet (awaiting the user's yes).
+- **The LOAD list's names are 1x:** 2x like the menu and SETTINGS; the harness's tour never visits
+  LOAD (or the other SONG pages), so add them to it.
 - **Catch this class automatically:** a test that SAVE opens and HOME goes back on every list
   screen; the ergonomics harness in the merge check, failing on any new finding against the last
   accepted run; first-run and per-feature recipes (a fresh install has something to LOAD; a
