@@ -23,9 +23,15 @@ n=$(wc -l < "$out/list")
 # The firmware's own C, as the host tests build it.
 cflags="-O3 -std=c11 -ffp-contract=off -Wall -Wextra -Wshadow -Werror -fPIC -ffunction-sections -fdata-sections"
 cflags="$cflags -DSIDOU_ALL_COMBINED_PROFILES -DSIDOU_ALL_COMBINED_PROFILES_8580 -DSIDOU_MIDI_MAP_DOC -DSIDOU_REG_RING_RACE_HOOK"
-cflags="$cflags -Icore -Ibench -Iapp -Ihost/crates/sidou-sys"
+cflags="$cflags -Icore -Ibench -Iapp -Ihost/crates/sidou-sys -DCPU6502_SMALL"
 # shellcheck disable=SC2086
 xargs -P "$jobs" -I{} sh -c 'gcc '"$cflags"' -c "$1" -o /dev/null || { echo "gcc-check: $1 failed" >&2; exit 255; }' _ {} < "$out/list"
+# The 6502's test-only builds (sidou-sys's build.rs): CPU6502_HOOK_ALL, with and without the
+# I/O accesses out of line.
+for small in -DCPU6502_SMALL -UCPU6502_SMALL; do
+    # shellcheck disable=SC2086
+    gcc $cflags $small -DCPU6502_HOOK_ALL -c core/cpu6502/cpu6502.c -o /dev/null
+done
 
 # bindgen's wrappers for the static inline functions are compiled in the host build; the
 # header-only ones are compiled here as part of the files that include them.

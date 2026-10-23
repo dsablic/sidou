@@ -16,6 +16,7 @@ lists the prerequisites.
 | App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets, the store and its layout) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_LOGO_UPDATE=1` `app/logo_bitmap.c` from `assets/logo/metal-chrome.png` and `cracktro-chrome.png` and `app/title_card_bitmap.c` from `assets/logo/title-*.png`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
 | Song files (the `.sng` reader and writer, the trailer, the song model's edits) | `cargo test --release -p sidou-tests --test song`; the long fuzz and edit runs with `-- --ignored` | `crates/sidou-tests/tests/song.rs`, `src/song.rs` |
 | Song player reference (GoatTracker's packer and player in a host 6502, Dormann's 6502 test) | `cargo test --release -p gt2-ref`; the assembler cross-check with `--test assembler -- --ignored` (fetches GoatTracker 2.77 into `build/`); `cargo run --release -p gt2-ref --bin gt2-trace -- song.sng` prints a song's writes | `crates/gt2-ref/` |
+| SIDOU's 6502 (Tom Harte's tests, the committed subset; Dormann's; slicing, the count's wrap, the stops, the I/O hooks) | `cargo test --release -p sidou-tests --test cpu6502`; the full Harte set with `SIDOU_HARTE_DIR=<6502/v1 JSON dir> ... -- --ignored harte_full_set`; the subset's converter `cargo run --release -p sidou-tests --bin harte-subset` | `crates/sidou-tests/tests/cpu6502.rs`, `src/harte.rs`, [the section below](#sidous-6502-m3) |
 | Song player against GoatTracker's (every frame's SID writes equal) | `cargo test --release -p sidou-tests --test gt2_match`; the long runs (every example for 30,000 frames, 5,000 generated songs) with `-- --ignored` | `crates/sidou-tests/tests/gt2_match.rs`, `crates/gt2-ref/src/gen.rs`, `src/player.rs` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
@@ -413,6 +414,42 @@ remain in [the hardware checklist](docs/hardware-test.md#63-two-chips-routing-an
 then one line a frame, `register=value` in hex, for comparing a player against the
 reference by hand. Its flags are strict: a value out of range, a value on `-N` or `-P`, an
 unknown flag or a second song is an error.
+
+### SIDOU's 6502 (M3)
+
+`tests/cpu6502.rs` checks `core/cpu6502` (decision record 0008) in three builds of the same
+file (`sidou-sys`'s `build.rs`): the device's (`CPU6502_SMALL`), and the test-only
+`CPU6502_HOOK_ALL` as the device builds it and with the I/O accesses inline. With
+`HOOK_ALL` every operand access (the zero page's, the I/O page's, the others) and every push
+goes through the hooks with the cycle stamp the device gives an I/O access.
+- **Tom Harte's SingleStepTests** (`third_party/6502-tests/harte/`: the first 100 tests of
+  each opcode, `VENDORED.md`): the final registers (P with bits 4 and 5 masked) and memory
+  for all 256 opcodes; the cycle count for the 244 that do not JAM; the 12 JAMs stop with
+  `CPU6502_JAM` and the PC on the opcode (Harte's final PC is the byte after it). Each
+  hooked access must be the test's bus cycle at its stamp (a load's on its last cycle, a
+  read-modify-write's read on its third last and its writes, old then new, on its last
+  two, JSR's and BRK's pushes where the real CPU makes them), and with `HOOK_ALL` the
+  writes must be all of the test's writes. Half the tests start 4 cycles before the
+  32-bit count wraps. The device's build runs with and without its I/O page on ($01 at
+  `$37` unless the test sets it), so its own out-of-line accesses are checked where a test
+  touches `$D000-$DFFF`.
+- **The full set** (`--ignored harte_full_set`, `SIDOU_HARTE_DIR` naming a directory of
+  the 256 JSON files, about 80 s): the same over 2,560,000 tests. Measured 2026-10-23: the
+  final state 2,560,000 of 2,560,000 on every build, the cycles 2,440,000 (every non-JAM
+  test), every stamp of the 1,690,000 hooked tests.
+- **The subset's converter** (`src/harte.rs`, `src/bin/harte_subset.rs`):
+  `cargo run --release -p sidou-tests --bin harte-subset -- <json dir> <out dir> [count]`
+  writes each opcode's first tests in the binary the test reads (`VENDORED.md` has the
+  command for the committed files).
+- **Klaus Dormann's functional test** (`third_party/6502-tests`, decimal mode included)
+  reaches its success trap on every build, in the same cycle count.
+- **Slicing:** Dormann's first 100,000 cycles run in slices of every length from 1 to 300
+  cycles give the same registers, count, memory and hooked stream as one run; so does a run
+  across the 32-bit count's wrap.
+- **The stops:** a return to the sentinel (`$0000`/`$0001`) and a jump, return or RTI to the
+  KERNAL's interrupt exits (`$EA31`, `$EA81`, `$FEBC`) end a call only when `stops` is set.
+- **The I/O page:** the device's build hooks `$D000-$DFFF` only while `io` is set and `$01`
+  maps I/O in, with the stamps above.
 
 ### Song player register match
 

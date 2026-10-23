@@ -18,6 +18,21 @@ mod bindings {
 
 pub use bindings::*;
 
+// The 6502's test-only builds (build.rs): `cpu6502_run` with CPU6502_HOOK_ALL, as the device
+// builds it (CPU6502_SMALL) and with the I/O accesses inline.
+extern "C" {
+    pub fn cpu6502_run_hook_all(
+        c: *mut cpu6502,
+        limit: u32,
+        stops: core::ffi::c_int,
+    ) -> core::ffi::c_int;
+    pub fn cpu6502_run_hook_inline(
+        c: *mut cpu6502,
+        limit: u32,
+        stops: core::ffi::c_int,
+    ) -> core::ffi::c_int;
+}
+
 /// Field offsets and sizes of the core's and the app's structs as the pi32v2 firmware lays
 /// them out (ILP32), for reading them from an emulated device's RAM: `ilp32::sid::fc`,
 /// `ilp32::sid::SIZE`. The host's layout differs wherever a struct holds a pointer.

@@ -39,7 +39,8 @@ component. "Use" says whether a component ends up in the firmware image.
 | GoatTracker 2.77's playroutines (`third_party/goattracker2/src/player.s`, `altplayer.s`) | Lasse Öörni | `LicenseRef-GoatTracker-Playroutine` (`LICENSES/`): "use it ... freely for any purpose, commercial or noncommercial" | assembled by the host tests' packer only; SIDOU's player is written from them, not compiled from them | in use |
 | `host/crates/gt2-ref/shim/` (BME and assembler stand-ins, files in memory, the 6502 assembler `gt2ref_asm.c`) | SIDOU | GPL-3.0-or-later | host tests only | in use |
 | Exomizer 2 beta's 6502 assembler, as GoatTracker 2.77 ships it (`src/asm/`) | Magnus Lind | non-commercial use only: **not free, not in SIDOU's tree** | fetched with GoatTracker's release into `build/goattracker2-2.77/` (never committed) only by the `--ignored` cross-check that SIDOU's assembler packs identically (`crates/gt2-ref/tests/assembler.rs`) | test tool, not taken in |
-| Klaus Dormann's 6502 functional test @ `7954e2db` (`third_party/6502-tests`, see [VENDORED.md](third_party/6502-tests/VENDORED.md)) | Klaus Dormann | GPL-3.0-or-later | host tests only: test data for the reference's 6502 | in use |
+| Klaus Dormann's 6502 functional test @ `7954e2db` (`third_party/6502-tests`, see [VENDORED.md](third_party/6502-tests/VENDORED.md)) | Klaus Dormann | GPL-3.0-or-later | host tests only: test data for the reference's 6502 and SIDOU's (`core/cpu6502`) | in use |
+| Tom Harte's SingleStepTests, 6502 v1: the first 100 tests of each opcode, in SIDOU's binary encoding (`third_party/6502-tests/harte/`, see [VENDORED.md](third_party/6502-tests/VENDORED.md)) | Tom Harte and SingleStepTests' contributors | MIT | host tests only: test data for SIDOU's 6502 (`host/crates/sidou-tests/tests/cpu6502.rs`); never built into the firmware | in use |
 | libresidfp @ `c1791383` (`third_party/libresidfp`) | libsidplayfp project | GPL-2.0-or-later | host tests and the table generator (`sidou-tablegen`) only; git submodule, never linked into firmware (the tables generated from it are listed above) | in use |
 | fm1-emu crates `fm1-core`, `fm1-soc`, `fm1-isa` @ `c1c045fc` (`db8d472e` in 0.2.0 to 0.3.1) | Joakim Eriksson | MIT | emulator gate only; fetched by cargo | in use |
 | fm1-emu `fm1-web` crate and web frontend (`web/main.js`, `persistence.js`, `worklet.js`, `jit.js`, `fwsc.js`, `fm1-emu-report.pdf`) @ `c1c045fc` | Joakim Eriksson | MIT (its `LICENSE` ships with the site as `licenses/fm1-emu-MIT.txt`) | browser demo only (`tools/web-demo`, GitHub Pages); fetched into `build/fm1-emu` at build time, `main.js` patched there by `web/patch-main.sh`, never committed | in use |
@@ -55,6 +56,13 @@ component. "Use" says whether a component ends up in the firmware image.
 The Rust crates above are the direct dependencies of the `host/` workspace.
 Their transitive dependencies are pinned in `host/Cargo.lock`; none of them
 ends up in the firmware.
+
+### The 6502 (M3)
+
+SIDOU's 6502 (`core/cpu6502/`) is SIDOU's own code, GPL-3.0-or-later: written in this
+project, from the prototype of M3's 6502 study ([decision record 0008](docs/decisions/0008-m3-6502-and-fm1-sid.md)).
+No other 6502 core's code is in it. Tom Harte's and Klaus Dormann's tests (above) are test
+data the host tests run it on; neither is built into the firmware.
 
 ### Song engine attribution (M2c)
 

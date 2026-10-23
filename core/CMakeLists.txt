@@ -17,7 +17,8 @@ add_library(sidou_core STATIC
     song/song_ext.c
     player/gt2_play.c
     player/gt2_shape.c
-    player/song_ctl.c)
+    player/song_ctl.c
+    cpu6502/cpu6502.c)
 target_include_directories(sidou_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # The song player's frame path and song_ctl run once a frame (a call), not once a sample: -Os
 # keeps their SRAM small (platform/fm1/app.ld; M2c Task 6). No jump tables: a switch's table
@@ -34,6 +35,12 @@ set_source_files_properties(song/gt2_song.c song/song_ext.c PROPERTIES COMPILE_O
 # Shape analysis is bounded main-loop work, outside the interrupt's player frame path; the
 # size build costs more an analysis unit, which SONG_SLICE_UNITS (song_ctl.h) accounts for.
 set_source_files_properties(player/gt2_shape.c PROPERTIES COMPILE_OPTIONS "-Os;-fno-inline-functions;-fno-jump-tables")
+# The 6502 (M3; cpu6502.h) runs a tune's frames in the main loop, from flash: built for size,
+# with the I/O page's accesses out of line (CPU6502_SMALL), about 7 % more instructions a
+# 6502 cycle than -O2 with them inline and some 2,900 bytes smaller. Its switch keeps its
+# jump table (flash .rodata; the 6502 never runs in the audio interrupt).
+set_source_files_properties(cpu6502/cpu6502.c PROPERTIES
+    COMPILE_OPTIONS -Os COMPILE_DEFINITIONS CPU6502_SMALL)
 # Float results must be identical on host and pi32v2 so their outputs can be compared.
 target_compile_options(sidou_core PUBLIC -ffp-contract=off)
 target_compile_options(sidou_core PRIVATE -Wall -Wextra -Wshadow)
