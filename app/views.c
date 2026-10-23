@@ -135,7 +135,7 @@ static uint32_t store_look(const views* v, uint32_t* n) {
     }
     store_state_id state = store_state(st);
     if (state == STORE_STATE_FOREIGN) {
-        return v->format_arm ? STORE_LOOK_ARMED : st->mount_newer ? STORE_LOOK_NEWER
+        return v->format_arm == 1u ? STORE_LOOK_ARMED : st->mount_newer ? STORE_LOOK_NEWER
                                                                    : STORE_LOOK_FOREIGN;
     }
     if (state != STORE_STATE_BLANK && state != STORE_STATE_SIDOU) {
@@ -431,11 +431,37 @@ static void store_turn(void* ctx, int32_t steps) {
     v->format_arm = steps > 0;
 }
 
+static void reset_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    join(buf, MENU_VALUE_CHARS, v->format_arm == 2u ? "RESET?" : "", "");
+}
+
+/* RESET asks the same two steps as a format (RESET ALL SOUNDS AND SETTINGS?): clockwise arms,
+ * counter-clockwise disarms, and only SAVE resets (reset_confirm). */
+static void reset_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    v->format_arm = steps > 0 ? 2u : 0u;
+}
+
+/* SAVE on SETTINGS' armed RESET: every preset's edits and the settings back to factory, saved
+ * now (the toast follows the save). Songs and USER profiles are other store keys: untouched.
+ * 0, nothing done, when RESET is not armed under the cursor. */
+static int reset_confirm(views* v) {
+    if (v->format_arm != 2u || v->setup.cursor != VIEWS_SETTINGS_RESET || !v->set) {
+        return 0;
+    }
+    v->format_arm = 0;
+    settings_reset(v->set);
+    v->resetting = 1;
+    settings_save_now(v->set, v->s.now);
+    return 1;
+}
+
 /* SAVE on SETTINGS' armed STORE: the format (every sector erased, the erases forced: the user
  * asked for their gaps). 0, nothing done, when STORE is not armed under the cursor. */
 static int store_confirm(views* v) {
     store* st = v->set ? v->set->st : NULL;
-    if (!v->format_arm || v->setup.cursor != VIEWS_SETTINGS_STORE || !st ||
+    if (v->format_arm != 1u || v->setup.cursor != VIEWS_SETTINGS_STORE || !st ||
         store_state(st) != STORE_STATE_FOREIGN) {
         return 0;
     }
@@ -1105,11 +1131,13 @@ static const menu_item SETTINGS_ITEMS[VIEWS_SETTINGS_ITEMS] = {
     {"ROWS", rows_value, rows_turn},       {"CARDS", cards_value, cards_turn},
     {"STORE", store_value, store_turn},    {"THEME", theme_value, theme_turn},
     {"REC", quant_value, quant_turn},      {"SPREAD", spread_value, spread_turn},
+    {"RESET", reset_value, reset_turn},
 };
 _Static_assert(VIEWS_SETTINGS_KEYS == 0u && VIEWS_SETTINGS_SOUNDS == 1u &&
                    VIEWS_SETTINGS_ROWS == 2u && VIEWS_SETTINGS_CARDS == 3u &&
                    VIEWS_SETTINGS_STORE == 4u && VIEWS_SETTINGS_THEME == 5u &&
-                   VIEWS_SETTINGS_REC == 6u && VIEWS_SETTINGS_SPREAD == 7u,
+                   VIEWS_SETTINGS_REC == 6u && VIEWS_SETTINGS_SPREAD == 7u &&
+                   VIEWS_SETTINGS_RESET == 8u,
                "the settings' items");
 _Static_assert(LIVE_THEMES == THEME_COUNT, "live.theme holds a theme's id");
 
@@ -1546,6 +1574,7 @@ static void settings_look(const views* v, uint8_t out[VIEWS_SETTINGS_LOOK]) {
     out[8] = l->spread;
     out[9] = v->setup.cursor;
     out[10] = v->setup.top;
+    out[11] = v->format_arm;
 }
 
 /* As the menu's: SELECT moves, ALGORITHM changes the value; STORE's format is two steps (store_turn
@@ -1866,6 +1895,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->snd = NULL;
     v->set = NULL;
     v->format_arm = 0;
+    v->resetting = 0;
     v->formatting = 0;
     v->menu_ask = 0;
     save_key_init(&v->key);
@@ -2028,7 +2058,9 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
         return HELP_CARD_MIDI;
     }
     if (top == &views_settings_view) {
-        return v->setup.cursor == VIEWS_SETTINGS_STORE ? HELP_CARD_STORE : HELP_CARD_SETTINGS;
+        return v->setup.cursor == VIEWS_SETTINGS_STORE   ? HELP_CARD_STORE
+               : v->setup.cursor == VIEWS_SETTINGS_RESET ? HELP_CARD_RESET
+                                                         : HELP_CARD_SETTINGS;
     }
     if (top == &views_song_menu_view) {
         uint8_t page = v->songs.page;
@@ -2346,7 +2378,10 @@ static int menu_choice_text(const views* v, int set, char* name, char* value) {
     text[0] = 0;
     if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_THEME) {
         join(text, sizeof text, theme_get(v->l->theme)->name, ""); /* in full, not the menu's */
-    } else if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_STORE && v->format_arm) {
+    } else if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_RESET && v->format_arm == 2u) {
+        join(name, SCREEN_POPUP_TEXT, "RESET ALL?", "");
+        join(text, sizeof text, "SAVE RESETS", "");
+    } else if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_STORE && v->format_arm == 1u) {
         join(text, sizeof text, "SAVE FORMATS", ""); /* the confirm the menu's FORMAT? asks for */
     } else if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_STORE && v->set && v->set->st && v->set->st->mount_newer &&
                store_state(v->set->st) == STORE_STATE_FOREIGN) {
@@ -2497,7 +2532,9 @@ static void save(views* v) {
         return;
     }
     if (shows(v) == &views_settings_view) {
-        (void)store_confirm(v); /* the armed STORE's format; else nothing: no actions here */
+        if (!store_confirm(v)) { /* the armed STORE's format; else RESET's; else nothing */
+            (void)reset_confirm(v);
+        }
         return;
     }
     if (v->set) {
@@ -2719,7 +2756,7 @@ __attribute__((noinline, unused)) static void store_frame(views* v, uint32_t now
     }
     switch (settings_take_result(v->set)) {
     case SETTINGS_SAVED:
-        screen_toast(&v->s, "SAVED", SCREEN_TOAST_MS);
+        screen_toast(&v->s, v->resetting ? "RESET AND SAVED" : "SAVED", SCREEN_TOAST_MS);
         sound(v, UI_SOUND_CHUNK);
         break;
     case SETTINGS_SAVED_GAPS:
@@ -2736,6 +2773,7 @@ __attribute__((noinline, unused)) static void store_frame(views* v, uint32_t now
         break;
     default: break;
     }
+    v->resetting = 0;
     if (v->formatting && v->set->st && !store_busy(v->set->st)) {
         store_stats stats;
         store_stats_get(v->set->st, &stats);

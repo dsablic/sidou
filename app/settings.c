@@ -286,6 +286,37 @@ void settings_save_now(settings* s, uint32_t now_ms) {
     }
 }
 
+void settings_reset(settings* s) {
+    uint8_t rec[SETTINGS_BYTES];
+    uint32_t len = settings_gather(s, rec); /* the version and the last song stay */
+    uint16_t factory[SETTINGS_PARAMS_V1] = {0};
+    live_preset_params(0, factory);
+    factory[LIVE_PARAM_ENVELOPE_MODE] = LIVE_ENVELOPE_INSTANT;
+    factory[LIVE_PARAM_PROFILE] = (uint16_t)sid_chip_default(SID_MODEL_6581);
+    rec[1] = 1u; /* CARDS: ONCE */
+    rec[2] = 0u; /* SOUNDS off */
+    rec[3] = LIVE_KEYS_AUTO;
+    rec[4] = 0u;
+    uint32_t n = 6;
+    for (uint32_t p = 0; p < SETTINGS_PARAMS_V1; p++) {
+        rec[n++] = (uint8_t)factory[p];
+        if (wide(p)) {
+            rec[n++] = (uint8_t)(factory[p] >> 8);
+        }
+    }
+    memset(rec + n, MIDI_MAP_NO_CC, SETTINGS_PARAMS_V1); /* MIDI learn: no bindings */
+    rec[SETTINGS_V1_BYTES] = 0u;                         /* TRACKER ROWS: BAR */
+    rec[SETTINGS_V2_BYTES] = 0u;                         /* THEME: HIGH CONTRAST */
+    memset(rec + SETTINGS_V4_BYTES + 1u, SID_EXPERT_DEFAULT, SID_EXPERT_COUNT);
+    memset(rec + SETTINGS_V4_BYTES + 1u + SID_EXPERT_COUNT, MIDI_MAP_NO_CC, SID_EXPERT_COUNT);
+    rec[len - 1u] = 0u; /* SPREAD: mono */
+    for (uint32_t i = 0; i < LIVE_PRESET_SLOTS; i++) {
+        s->l->edits[i].valid = 0; /* every preset's edits: the factory's */
+    }
+    (void)settings_apply(s, rec, len);
+    s->l->settings_dirty = 1;
+}
+
 void settings_forget(settings* s) {
     s->saved = 0;
     s->l->settings_dirty |= 2u;

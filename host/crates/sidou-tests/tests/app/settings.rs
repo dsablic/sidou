@@ -1242,3 +1242,90 @@ fn a_program_error_after_an_explicit_save_is_taken_says_failed_and_retries() {
     );
     assert_eq!(s.result(), SETTINGS_NOTHING, "background saves say nothing");
 }
+
+/// RESET (SETTINGS' item): every setting and every preset's edits back to what a first boot has,
+/// the version and the last song kept, other store keys (a song, a USER profile) untouched, and
+/// the factory state saved by an explicit save.
+#[test]
+fn reset_puts_every_setting_and_every_presets_edits_back_to_factory() {
+    let mut s = Set::blank();
+    let factory = s.snapshot();
+    let factory_record = s.gather();
+    s.load();
+    unsafe { settings_set_song(&mut *s.set, c"MY SONG".as_ptr()) };
+    s.change_everything();
+    *s.rows = 1;
+    unsafe { live_set_theme(&mut *s.rig.live, 1) };
+    unsafe { chip_spread_set(&mut *s.rig.live, 40) };
+    unsafe { live_param_set(&mut *s.rig.live, LIVE_PARAM_EXPERT + 3, 10) };
+    // Edit three presets, leaving two of them for the one that plays.
+    for q in [1u8, 3, 4] {
+        unsafe { live_recall_preset(&mut *s.rig.live, q) };
+        s.set_param(LIVE_PARAM_CUTOFF, 100 + u32::from(q));
+        s.set_param(LIVE_PARAM_RESONANCE, 7);
+    }
+    s.rig.tick();
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    let song = vec![0x5a; 40];
+    let user = vec![0x33; 20];
+    assert_eq!(s.st.put_now(0x4000, &song), STORE_OK);
+    assert_eq!(s.st.put_typed(0x101, 2, &user), STORE_OK);
+    s.st.settle();
+
+    unsafe { settings_reset(&mut *s.set) };
+    unsafe { settings_save_now(&mut *s.set, s.now) };
+    s.rig.tick();
+    s.ticks(100);
+    assert_eq!(s.result(), SETTINGS_SAVED);
+    assert_eq!(s.snapshot(), factory, "the settings are the factory's");
+    assert_eq!(*s.rows, 0);
+    assert_eq!(s.rig.live.theme, 0);
+    assert_eq!(s.rig.live.spread, 0);
+    for q in 0..LIVE_PRESET_SLOTS as usize {
+        assert_eq!(s.rig.live.edits[q].valid, 0, "preset {q}'s edits are gone");
+    }
+    assert_eq!(s.rig.live.preset, 0);
+    for q in [1u8, 3, 4] {
+        unsafe { live_recall_preset(&mut *s.rig.live, q) };
+        assert_eq!(unsafe { live_preset_edited(&*s.rig.live) }, 0, "preset {q}");
+    }
+    unsafe { live_recall_preset(&mut *s.rig.live, 0) };
+    let mut record = s.gather();
+    record[92..106].copy_from_slice(&factory_record[92..106]);
+    record[108..124].copy_from_slice(&factory_record[108..124]);
+    assert_eq!(record, factory_record, "the record is a first boot's");
+    assert_eq!(
+        &s.gather()[108..116],
+        b"MY SONG\0",
+        "the last song is not a setting"
+    );
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    assert_eq!(s.stored(), Some(s.gather()), "saved");
+    assert_eq!(s.st.get(0x4000), Some(song), "the song is untouched");
+    assert_eq!(s.st.get(0x101), Some(user), "the USER profile is untouched");
+    // A power cycle keeps it.
+    let want = s.snapshot();
+    let mut st = s.st;
+    st.reset();
+    st.mount();
+    let mut s = Set::new(st, VERSION);
+    assert!(s.load());
+    s.rig.tick();
+    assert_eq!(s.snapshot(), want);
+    assert_eq!(s.snapshot(), factory);
+}
+
+/// Asking is not doing: without settings_reset (HOME, a move, a counter-clockwise turn: the
+/// views' cancel) nothing changes and nothing is written.
+#[test]
+fn reset_not_confirmed_changes_and_writes_nothing() {
+    let mut s = Set::blank();
+    s.load();
+    s.change_everything();
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    let (want, rec, writes) = (s.snapshot(), s.stored(), s.writes);
+    s.ticks(3 * SETTINGS_DEBOUNCE_MS);
+    assert_eq!(s.snapshot(), want);
+    assert_eq!(s.stored(), rec);
+    assert_eq!(s.writes, writes);
+}

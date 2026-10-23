@@ -42,6 +42,9 @@ static const char* const SETTINGS_LINES[] = {"SELECT\0MOVE",  "ALG\0CHANGE", "SE
                                              "SPREAD\0A/B L/R", "HOME\0BACK", "HOLD HOME\0HELP"};
 static const char* const STORE_LINES[] = {"SELECT\0MOVE", "ALG\0ARM FORMAT", "SAVE\0FORMAT",
                                           "WIPES\0ALL DATA", "HOME\0BACK"};
+/* RESET asks first (ALG), then SAVE does it: every preset's edits and setting back to factory. */
+static const char* const RESET_LINES[] = {"SELECT\0MOVE", "ALG\0ARM RESET", "SAVE\0RESET",
+                                          "KEEPS\0SONGS", "HOME\0BACK"};
 /* The MIDI page has no actions, and its setup is RAM-only (not part of the saved settings). */
 static const char* const MIDI_LINES[] = {"SELECT\0MOVE",   "ALG\0CHANGE", "SETUP\0RAM ONLY",
                                          "HOME\0BACK",     "HOLD HOME\0HELP"};
@@ -151,6 +154,7 @@ const help_card help_cards[HELP_CARDS] = {
     [HELP_CARD_TRACKER_EDIT] = CARD("TRACK EDIT", TRACKER_EDIT_LINES),
     [HELP_CARD_TRACKER_REC] = CARD("TRACK REC", TRACKER_REC_LINES),
     [HELP_CARD_STORE] = CARD("STORE", STORE_LINES),
+    [HELP_CARD_RESET] = CARD("RESET", RESET_LINES),
 };
 _Static_assert(sizeof LIVE_LINES / sizeof LIVE_LINES[0] <= HELP_LINES * HELP_PAGES &&
                    sizeof TRACKER_EDIT_LINES / sizeof TRACKER_EDIT_LINES[0] <= HELP_LINES * HELP_PAGES &&

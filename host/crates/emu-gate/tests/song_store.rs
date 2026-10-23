@@ -767,3 +767,75 @@ fn save_on_an_unknown_flash_part_fails_at_once_and_holds_nothing() {
     assert!(m.soc.flash.mem == flash, "nothing written");
     check_passes(&m, "a save on an unknown flash part");
 }
+
+/// SETTINGS' RESET: asked with ALGORITHM and confirmed by SAVE alone, it puts the settings back to
+/// factory and stores them at once; the saved song stays in the store and loads at the next boot.
+#[test]
+fn settings_reset_keeps_the_saved_song_and_stores_the_factory_settings() {
+    const ALGORITHM: u8 = 1;
+    const HOME: u8 = 8;
+    const SELECT: u8 = 0;
+    let Some(fw) = fixture() else { return };
+    let mut m = boot(&fw, None);
+    complete(&mut m, &fw, SAVE, "NIGHT");
+    let (_, bytes) = stored_file(&m.soc.flash.mem, "NIGHT").expect("SAVE stored no song");
+    let cards = |m: &mut Machine| m.soc.read8(fw.symbol("ui") + ilp32::views::cards as u32);
+    let rows = |m: &mut Machine| {
+        m.soc
+            .read8(fw.symbol("ui") + (ilp32::views::song + ilp32::song_view::scroll) as u32)
+    };
+    // CARDS off and TRACKER ROWS scrolling: two settings away from the factory's.
+    press(&mut m, HOME);
+    m.run_ms(700);
+    settings_item(&mut m, VIEWS_SETTINGS_CARDS);
+    m.turn(ALGORITHM, -1);
+    m.run_ms(100);
+    m.turn(
+        SELECT,
+        -((VIEWS_SETTINGS_CARDS - VIEWS_SETTINGS_ROWS) as i32),
+    );
+    m.run_ms(100);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(100);
+    assert_eq!((cards(&mut m), rows(&mut m)), (0, 1));
+    m.run_ms(6_000); // the debounce: they are stored
+    let stored = stored_value(&m.soc.flash.mem, SETTINGS_KEY).expect("settings stored");
+    assert_eq!((stored[1], stored[106]), (0, 1));
+    // Asked and cancelled with HOME: nothing changes.
+    m.turn(SELECT, (VIEWS_SETTINGS_RESET - VIEWS_SETTINGS_ROWS) as i32);
+    m.run_ms(150);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(100);
+    press(&mut m, HOME);
+    m.run_ms(500);
+    assert_eq!((cards(&mut m), rows(&mut m)), (0, 1), "HOME cancelled");
+    assert_eq!(
+        stored_value(&m.soc.flash.mem, SETTINGS_KEY).as_ref(),
+        Some(&stored),
+        "nothing written"
+    );
+    // Asked and confirmed.
+    settings_item(&mut m, VIEWS_SETTINGS_RESET);
+    m.turn(ALGORITHM, 1);
+    m.run_ms(100);
+    let before = stored_value(&m.soc.flash.mem, SETTINGS_KEY).expect("settings stored");
+    press(&mut m, PANEL_BTN_SAVE as u8);
+    assert_eq!((cards(&mut m), rows(&mut m)), (1, 0), "factory at once");
+    let start = m.ms();
+    while stored_value(&m.soc.flash.mem, SETTINGS_KEY).as_ref() == Some(&before) {
+        m.run_ms(10);
+        assert!(m.ms() < start + 3_000, "RESET waited for the debounce");
+    }
+    println!("reset stored after {} ms", m.ms() - start);
+    m.run_ms(500);
+    let rec = stored_value(&m.soc.flash.mem, SETTINGS_KEY).unwrap();
+    assert_eq!((rec[1], rec[106]), (1, 0), "CARDS ONCE, ROWS BAR stored");
+    let (_, kept) = stored_file(&m.soc.flash.mem, "NIGHT").expect("RESET erased the song");
+    assert_eq!(kept, bytes, "the song is untouched");
+    // Power cycle: factory settings, and the last song still loads.
+    let flash = m.soc.flash.mem.clone();
+    let mut m = boot(&fw, Some(&flash));
+    assert_eq!((cards(&mut m), rows(&mut m)), (1, 0));
+    assert_eq!(name(&mut m, &fw), "NIGHT");
+    assert_eq!(song(&mut m, &fw).write(true), bytes);
+}

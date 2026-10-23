@@ -528,6 +528,81 @@ fn a_foreign_store_reads_foreign_a_clockwise_turn_arms_and_save_formats_it() {
     assert_eq!(st.mount(), STORE_STATE_SIDOU);
 }
 
+/// SETTINGS' RESET: ALGORITHM clockwise asks, SAVE alone does it; moving the cursor, counter-
+/// clockwise and HOME cancel and change and write nothing; the reset is saved at once.
+#[test]
+fn reset_asks_first_only_save_confirms_and_cancels_write_nothing() {
+    let mut s = Saving::new();
+    for _ in 0..150 {
+        s.frame();
+    }
+    let reset_item = |s: &mut Saving| {
+        crate::views::settings_settle(&mut s.ui);
+        s.ui.menu_line(VIEWS_SETTINGS_RESET as usize)
+            .trim()
+            .to_string()
+    };
+    crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_ROWS);
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    unsafe { live_param_set(&mut *s.ui.rig.live, LIVE_PARAM_CUTOFF, 1500) };
+    s.ui.rig.tick();
+    s.frame();
+    s.ticks_for_the_debounce();
+    let before = s.stored();
+    assert_eq!(s.ui.v.song.scroll, 1);
+    crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_RESET);
+    s.frame();
+    assert_eq!(reset_item(&mut s), "RESET");
+    // SAVE unarmed does nothing.
+    s.ui.press(SAVE);
+    s.frame();
+    assert_eq!(s.ui.v.song.scroll, 1);
+    // Asked, then cancelled three ways.
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    s.frame();
+    assert_eq!(reset_item(&mut s), format!("{:<5}{:>9}", "RESET", "RESET?"));
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    s.ui.turn(PANEL_ENC_ALGORITHM, -1);
+    s.ui.press(SAVE);
+    s.ticks_for_the_debounce();
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    s.ui.turn(PANEL_ENC_SELECT, -1);
+    s.ui.turn(PANEL_ENC_SELECT, 1);
+    s.ui.press(SAVE);
+    s.ticks_for_the_debounce();
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    s.ui.press(PANEL_BTN_HOME);
+    s.ui.settle();
+    crate::views::open_setting(&mut s.ui, VIEWS_SETTINGS_RESET);
+    s.ui.press(SAVE);
+    s.ticks_for_the_debounce();
+    assert_eq!(s.ui.v.song.scroll, 1, "nothing was reset");
+    assert_eq!(s.ui.live().cutoff, 1500);
+    assert_eq!(s.stored(), before, "nothing was written");
+    // Asked and confirmed.
+    s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+    s.frame();
+    assert_eq!(s.store_popup(), "SAVE RESETS");
+    s.ui.press(SAVE);
+    let mut toast = None;
+    for _ in 0..40 {
+        s.frame();
+        toast = s.ui.toast();
+        if toast.is_some() {
+            break;
+        }
+    }
+    assert_eq!(toast.as_deref(), Some("RESET AND SAVED"));
+    assert_eq!(s.ui.v.song.scroll, 0);
+    assert_ne!(s.ui.live().cutoff, 1500);
+    assert_eq!(
+        s.stored(),
+        Some(s.gather()),
+        "saved now, not after the debounce"
+    );
+    assert_ne!(s.stored(), before);
+}
+
 /// Ergonomics review E01 (M2 review 1.5): a fast spin of ALGORITHM on a foreign store, in one
 /// event or in many, arms the format and never formats; nor does SAVE away from STORE.
 #[test]
