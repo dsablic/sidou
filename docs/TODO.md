@@ -96,6 +96,11 @@ Follow-ups that aren't tied to a milestone task yet.
 
 ## A soft knee on the two chips' mix (if two loud chips clip)
 
+- **Closed (2026-10-23): covered by the output's soft limiter** (v0.3.0, `core/fx/fx_limit.h`,
+  [decision record 0004](decisions/0004-effect-algorithms.md), "The output's soft limiter"), which
+  bends everything above -2.5 dBFS (24,576) where the output used to clamp, the two chips' sum
+  included. The proposal below is kept for the record.
+
 - **Where:** `app/chip_mix.c` (`chip_mix`), decision record 0004 ("M2b Task 3").
 - **Problem:** two chips at their loudest and in phase clip at the mix by up to 3.3 dB (one
   chip's loudest steady sample on the bench is 20,274). A gain on the mix would change chip
