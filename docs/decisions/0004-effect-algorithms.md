@@ -499,8 +499,23 @@ sin phi, phi = SPREAD x pi / 400, so L = mid cos + side sin, R = mid cos - side 
   convert: at SPREAD 0 nothing runs (mono, bit for bit), and at a gain of 1 the stage gives what
   the slots alone give, so it starts and ends without a step. The gains ramp over the block a
   change lands in. The thump stays in the centre (it is added after, as before).
-- **The side:** chip A's own output while chip B is out of use (A moves left), else
+- **The side:** chip A's own output while chip B is out of use, else
   (A - B x chip_mix's fade weight) / 2, its gain doubled; the tail gate mutes it with the mix.
+- **Channel separation, not a pan (amended 2026-10-23, the v0.3.0 device session).** At first a
+  song alone on chip A went to the left at SPREAD 100; the user: "SPREAD should naturally do
+  channel separation". Now the separation acts only while both chips sound: the gains are the
+  mono pair's moved towards SPREAD's by a glide g, 0 to 1 over 32 blocks (93 ms), mid
+  1 + g (cos phi - 1) and side g sin phi, each block's ramping from the last's (linear in g, so
+  within 0.7 dB of equal power half way and exact at either end). Both sound while the quieter
+  chip's envelope counters' OR is at 16 (-24 dB) or more; once held, they stay sounding until it
+  has been under 4 (-36 dB) for 16 blocks (46 ms): hysteresis in level and in time, so the gaps
+  of a phrase do not flutter the image (`chip_spread_glide_step`, once a block in the
+  interrupt: the counters, not the output, so it costs nothing a sample). At g = 0 the stage
+  does not run, so a chip alone is mono bit for bit at any SPREAD. Measured (`chip_b.rs`): a saw
+  alone on A or on B at SPREAD 100 gives L = R at mono's level; both sounding, each chip's
+  fundamental is 49 and 68 dB under on the other side; the glide's largest step on a full-scale
+  side is 6 LSB (`chip_spread.rs`). The stage's own cost with the glide is 50.26 a sample (bound
+  51); RAMTEXT +144 bytes (the glide 58, `audio_fill` 84).
 - **Cost** (`chip_b.rs`, two chips at their worst, every slot's heaviest at full, SPREAD
   100): the stage's own instructions 50.56 a sample (bound 51), of which the slots' own
   conversion, about 17, no longer runs: the interrupt's mean rises by about 35. The worst block

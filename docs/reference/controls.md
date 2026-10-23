@@ -87,9 +87,13 @@ keys always play chip A. KEYS persists with the settings.
 setup: chip A to the left, chip B to the right. **OFF** (0, the default) is mono, the sound as
 it always was; ALGORITHM steps it by 10 % to **100%**, where chip A is on the left alone and
 chip B on the right alone. Between, each chip moves out from the centre at equal power (it is
-as loud at every setting; at 100 % its side is +3 dB, the other silent). A song on both chips,
-or a song on A with the keys on B, then sits apart; with chip B out of use (no song, the keys
-on A) chip A alone moves left. CC 117 and NRPN 0/4 set it from MIDI, 0..100 % at full
+as loud at every setting; at 100 % its side is +3 dB, the other silent). SPREAD separates the
+chips, so it acts only while both sound: a song on both chips, or a song on A with the keys on B,
+sits apart, and a chip sounding alone (a song with no keys, the keys with no song, chip B out of
+use) stays in the centre at any setting, as at OFF. The separation glides in over about 0.1 s
+as the second chip starts and back out once one has been quiet for about 50 ms (a chip sounds
+while one of its envelopes is above about -24 dB, and stops under about -36 dB), so the gaps
+between a phrase's notes leave the image still. CC 117 and NRPN 0/4 set it from MIDI, 0..100 % at full
 resolution ([MIDI](midi.md)); it is saved with the settings (schema 6), not with a preset.
 
 The effect slots keep it: their dry sound stays spread, and their wet sound is made from both

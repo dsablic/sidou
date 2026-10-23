@@ -51,6 +51,27 @@ void chip_spread_apply(int16_t* out, const float* in, const int16_t* side, float
     }
 }
 
+uint32_t chip_spread_glide_step(chip_spread_glide* g, uint32_t a, uint32_t b) {
+    /* Both sound while the quieter does: its level against the threshold, the hold refreshed
+     * while it is loud and run down while it is not. */
+    uint32_t quieter = a < b ? a : b;
+    uint32_t h = g->held;
+    if (quieter >= (h ? CHIP_SPREAD_OFF : CHIP_SPREAD_ON)) {
+        h = CHIP_SPREAD_HOLD;
+    } else if (h) {
+        h--;
+    }
+    g->held = (uint8_t)h;
+    uint32_t w = g->g;
+    if (h) {
+        w += w < CHIP_SPREAD_GLIDE;
+    } else {
+        w -= w != 0u;
+    }
+    g->g = (uint8_t)w;
+    return w;
+}
+
 void chip_spread_set(live* l, uint32_t spread) {
     l->spread = (uint8_t)(spread < CHIP_SPREAD_MAX ? spread : CHIP_SPREAD_MAX);
     l->settings_dirty = 1;

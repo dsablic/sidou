@@ -558,9 +558,6 @@ card (HOME held) is the only on-device explanation. Done:
   clearly audible on every sound, a worn-chip grit (bit errors that step the waveform, a little
   intermodulation) past the physical model if need be; 0 stays bit-identical. THUMP works (it
   acts at note starts, as its card says); BLEED works.
-- **SPREAD with one chip:** a song alone (chip A) moves to one ear at SPREAD 100. Proposed: a chip
-  sounding alone stays centred; SPREAD applies while both chips sound, gliding about 0.1 s as the
-  second comes in or goes quiet (the user, 2026-10-23: yes; "SPREAD should do channel separation").
 - **The LOAD list's names are 1x:** 2x like the menu and SETTINGS; the harness's tour never visits
   LOAD (or the other SONG pages), so add them to it.
 - **Done 2026-10-23:** ORDER, INSTR and TABLE's status line at 2x on rows 28-29 (a longer table meaning

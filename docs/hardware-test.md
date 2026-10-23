@@ -1349,8 +1349,10 @@ Headphones or a stereo pair on the line out. Controls: [controls.md, SPREAD](ref
 - [ ] **SPREAD.** With a song playing on chip A and the keys on chip B (KEYS AUTO), menu,
   SETTINGS, SPREAD: OFF is mono, as before. Step it to 100%: the song is on the left alone, the
   keys on the right alone, neither louder nor quieter than at OFF; between, they move apart
-  smoothly, with no click as you step. Stop the song and play the keys (chip A): at 100% they
-  are on the left. Power off and on: SPREAD is as you left it. CC 117 from a sequencer sets it
+  smoothly, with no click as you step. Release the keys: the song glides back to the centre
+  (about 0.1 s, no click) once they have died away, and moves left again when you play.
+  Stop the song and play the keys (chip A): at 100% they stay in the centre. Play a song alone:
+  it stays in the centre too. Power off and on: SPREAD is as you left it. CC 117 from a sequencer sets it
   too (0..127 over OFF..100%).
 - [ ] **Effects on a spread pair.** At SPREAD 100% put a reverb (FX: REVERB or LUSH) at its
   default Mix: the dry song stays left and the keys right, with a tail across both sides. A

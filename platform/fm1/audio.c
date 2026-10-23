@@ -63,6 +63,8 @@ static int16_t no_over[AUDIO_HALF_FRAMES]; /* RAM: the interrupt reads it */
 static float spread_gains[2][2] = {{1.0f, 0.0f}, {1.0f, 0.0f}};
 static volatile uint8_t spread_pick;
 static float spread_now[2] = {1.0f, 0.0f};
+/* SPREAD's glide between the chips sounding alone (centred) and together (separated). */
+static chip_spread_glide spread_glide;
 /* The tail gate's state (app/tail_gate.h): the interrupt's. */
 static tail_gate tail_state;
 /* The chips' thump on the output (app/thump_out.h): the interrupt's. */
@@ -245,11 +247,7 @@ void audio_set_master(uint32_t master) {
 void audio_set_spread(uint32_t spread) {
     uint8_t j = (uint8_t)(spread_pick ^ 1u);
     chip_spread_gains(spread, &spread_gains[j][0], &spread_gains[j][1]);
-    spread_pick = j;
-    if (!running) { /* before the interrupt runs: no ramp, the first block has it */
-        spread_now[0] = spread_gains[j][0];
-        spread_now[1] = spread_gains[j][1];
-    }
+    spread_pick = j; /* the stage glides to it once both chips sound (audio_fill) */
 }
 
 /* Part of chip A's block: with the LIVE view's tap (tapped) or without. */
@@ -346,14 +344,17 @@ void audio_fill(int32_t* buf) {
      * envelopes are at 0 (the keys' release tails play out, and nothing is frozen to come
      * back later); only once its boot reset has made it (a zeroed sid has a sample rate of 0,
      * and must never render). */
-    uint32_t tails = b_on ? (uint32_t)b->env[0].counter | b->env[1].counter | b->env[2].counter
-                          : 0u;
+    uint32_t tails = b_on ? chip_spread_level(b) : 0u;
     uint8_t want = (uint8_t)((b_want || tails) && b->sample_rate);
     const sid* b_rendered = 0;
-    /* CHIP SPREAD's side (app/chip_spread.h): chip A's own output while B is out of use, else
-     * A - B halved (its gain doubled to match). */
+    /* CHIP SPREAD (app/chip_spread.h): the separation glides in while both chips sound, so a
+     * chip alone stays centred; at none the stage does not run (mono). Its side: chip A's own
+     * output while B is out of use, else A - B halved (its gain doubled to match). */
     const float* spread_to = spread_gains[spread_pick];
-    int spread = spread_to[0] != 1.0f || spread_now[0] != 1.0f;
+    const float glide = (float)chip_spread_glide_step(&spread_glide, chip_spread_level(a), tails) *
+                        (1.0f / (float)CHIP_SPREAD_GLIDE);
+    const float mid_to = 1.0f + glide * (spread_to[0] - 1.0f);
+    int spread = mid_to != 1.0f || spread_now[0] != 1.0f;
     int16_t side_ab[AUDIO_HALF_FRAMES];
     const int16_t* side = s;
     float side_w = 1.0f;
@@ -396,10 +397,10 @@ void audio_fill(int32_t* buf) {
     if (spread) {
         float lrf[2u * AUDIO_HALF_FRAMES];
         sid_slots_process_float(&slots, s, sum_over, lrf, AUDIO_HALF_FRAMES);
-        float k = spread_to[1] * sid_slots_dry(&slots);
-        chip_spread_apply(lr, lrf, side, spread_now[0], spread_to[0], spread_now[1] * side_w,
+        float k = glide * spread_to[1] * sid_slots_dry(&slots);
+        chip_spread_apply(lr, lrf, side, spread_now[0], mid_to, spread_now[1] * side_w,
                           k * side_w);
-        spread_now[0] = spread_to[0];
+        spread_now[0] = mid_to;
         spread_now[1] = k;
     } else {
         sid_slots_process_wide(&slots, s, sum_over, lr, AUDIO_HALF_FRAMES);

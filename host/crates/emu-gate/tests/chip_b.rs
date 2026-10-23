@@ -393,13 +393,27 @@ fn block_costs(m: &Machine, from: usize) -> (f64, f64) {
     (mean, worst)
 }
 
+/// The power of a Hann-windowed block at `hz` (the Goertzel recurrence).
+fn goertzel(x: &[i16], hz: f64, fs: f64) -> f64 {
+    let n = x.len() as f64;
+    let c = 2.0 * (2.0 * std::f64::consts::PI * hz / fs).cos();
+    let (mut s1, mut s2) = (0.0f64, 0.0f64);
+    for (i, &v) in x.iter().enumerate() {
+        let w = 0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / n).cos();
+        let s0 = f64::from(v) * w + c * s1 - s2;
+        s2 = s1;
+        s1 = s0;
+    }
+    s1 * s1 + s2 * s2 - c * s1 * s2
+}
+
 fn rms(x: &[i16]) -> f64 {
     (x.iter().map(|&v| f64::from(v).powi(2)).sum::<f64>() / x.len() as f64).sqrt()
 }
 
-/// SPREAD on the device (CC 117, SETTINGS' SPREAD; app/chip_spread.h): at 100 a saw on chip A
-/// plays on the left alone and one on chip B on the right alone; at 0 both sides are the same
-/// (mono, as ever). Then the cost: two chips at their worst with every slot's heaviest at full,
+/// SPREAD on the device (CC 117, SETTINGS' SPREAD; app/chip_spread.h): at 0 both sides are the
+/// same (mono, as ever); at 100 a saw on chip A sounding alone stays centred, as does one on chip
+/// B alone, and with both sounding A plays on the left and B on the right. Then the cost: two chips at their worst with every slot's heaviest at full,
 /// SPREAD 100 against SPREAD 0: the worst block within the audio target, the stage within its
 /// bound.
 #[test]
@@ -451,22 +465,42 @@ fn spread_sets_chip_a_left_and_chip_b_right_within_the_audio_target() {
     );
     spread(&mut m, 127);
     m.run_ms(50);
+    // A chip sounding alone stays centred: the stage does not run, mono's output bit for bit.
     let (al, ar) = sides(&mut m, true);
     let (bl, br) = sides(&mut m, false);
+    println!("SPREAD 100 alone: chip A's saw L {al:.0} R {ar:.0}, chip B's L {bl:.0} R {br:.0}");
+    assert!(al == ar && bl == br, "a chip alone is centred");
+    assert!((al / mono.0 - 1.0).abs() < 0.02, "at mono's level");
+    // Both sounding (chip A's note held as the keys play it, chip B's from the ring): A on the
+    // left, B on the right, each at its fundamental (A3, 220 Hz; B's E4, 329.6 Hz) more than
+    // 30 dB under on the other side.
+    m.midi(&[0x90, 57, 100]);
+    m.run_ms(100);
+    settle(&mut m, &fw);
+    push(&mut m, &fw, &with_b(&note(0, 0x15ed, 0x21)));
+    m.run_ms(300); // the glide (93 ms) and more
+    let n = m.left().len();
+    let (l, r) = (
+        m.left()[n - 4096..].to_vec(),
+        m.right()[n - 4096..].to_vec(),
+    );
+    m.midi(&[0x80, 57, 0]);
+    settle(&mut m, &fw);
+    push(&mut m, &fw, &with_b(&[(0x04, 0x20)]));
+    m.run_ms(600);
+    let tone = |x: &[i16], hz: f64| goertzel(x, hz, f64::from(common::SAMPLE_RATE));
+    let b_hz = f64::from(0x15ed) * 985_248.0 / 16_777_216.0;
+    let (a_l, a_r) = (tone(&l, 220.0), tone(&r, 220.0));
+    let (b_l, b_r) = (tone(&l, b_hz), tone(&r, b_hz));
     println!(
-        "SPREAD 100: chip A's saw L {al:.0} R {ar:.0} ({:.2} of mono's left), chip B's L {bl:.0} \
-         R {br:.0}",
-        al / mono.0
-    );
-    // The other side has only the other chip's own quiet output (chip A's leak while B plays:
-    // the tail gate mutes it only with both chips quiet), -40 dB under.
-    assert!(
-        ar < al / 100.0 && bl < br / 100.0,
-        "the other side is silent"
+        "SPREAD 100, both: chip A's 220 Hz L {a_l:.3e} R {a_r:.3e} ({:.1} dB), chip B's {b_hz:.1} \
+         Hz L {b_l:.3e} R {b_r:.3e} ({:.1} dB)",
+        10.0 * (a_l / a_r).log10(),
+        10.0 * (b_r / b_l).log10()
     );
     assert!(
-        (al / mono.0 - std::f64::consts::SQRT_2).abs() < 0.05,
-        "A's side is +3 dB: equal power"
+        a_l > 1000.0 * a_r && b_r > 1000.0 * b_l,
+        "both sounding: A on the left, B on the right"
     );
     // The cost: both chips at their worst, every slot's heaviest at full.
     let alg = |a: u32, n: u32| ((2 * a + 1) * 128 / (2 * n)) as u8;
@@ -502,16 +536,16 @@ fn spread_sets_chip_a_left_and_chip_b_right_within_the_audio_target() {
     let from = m.alnk_blocks.len();
     m.run_ms(1000);
     let (mean, steady_worst) = block_costs(&m, from);
-    // The stage's own instructions: the side and the stage (adjacent in SRAM, app.ld), then the
-    // dry gain, each a window of its own.
-    let span = |a: &str, b: &str| {
-        let (x, y) = (function(&fw, a), function(&fw, b));
-        x.start.min(y.start)..x.end.max(y.end)
+    // The stage's own instructions: the side, the stage and the glide (adjacent in SRAM, app.ld),
+    // then the dry gain, each a window of its own.
+    let span = |names: &[&str]| {
+        let r: Vec<_> = names.iter().map(|n| function(&fw, n)).collect();
+        r.iter().map(|x| x.start).min().unwrap()..r.iter().map(|x| x.end).max().unwrap()
     };
     let mut stage = 0.0;
     for range in [
-        span("chip_spread_side", "chip_spread_apply"),
-        span("sid_slots_dry", "slot_dry"),
+        span(&["chip_spread_side", "chip_spread_apply", "chip_spread_glide_step"]),
+        span(&["sid_slots_dry", "slot_dry"]),
     ] {
         m.alnk_pcs_inside = 0;
         m.watch_alnk_pcs(range);

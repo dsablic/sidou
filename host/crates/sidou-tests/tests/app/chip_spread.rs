@@ -184,6 +184,130 @@ fn a_change_ramps_over_the_block() {
     assert!((left[N - 1] - 22_627).abs() <= 1 && right[N - 1] == 0);
 }
 
+/// One glide step with chip A's three voices at envelope level `a` and chip B's at `b` (None: out
+/// of use), the levels as audio_fill takes them (chip_spread_level).
+fn glide_step(g: &mut chip_spread_glide, a: u8, b: Option<u8>) -> u32 {
+    let level = |x: u8| {
+        let mut c = Box::<sid>::default();
+        for v in 0..3 {
+            c.env[v].counter = x;
+        }
+        unsafe { chip_spread_level(&*c) }
+    };
+    unsafe { chip_spread_glide_step(g, level(a), b.map_or(0, level)) }
+}
+
+/// A chip sounding alone stays centred (the glide stays at 0), whether chip B is out of use or in
+/// use and quiet; with both sounding the separation glides in a block at a time over
+/// CHIP_SPREAD_GLIDE blocks (about 0.1 s), and back out once one goes quiet.
+#[test]
+fn spread_separates_only_while_both_chips_sound() {
+    for (a, b, what) in [
+        (200, None, "A alone, B out of use"),
+        (200, Some(0), "A alone, B quiet"),
+        (0, Some(200), "B alone"),
+    ] {
+        let mut g = chip_spread_glide::default();
+        for _ in 0..100 {
+            assert_eq!(glide_step(&mut g, a, b), 0, "{what}");
+        }
+    }
+    let mut g = chip_spread_glide::default();
+    let glide = CHIP_SPREAD_GLIDE;
+    let secs = f64::from(glide * CHIP_SPREAD_BLOCK) / 44_118.0;
+    assert!((0.08..=0.12).contains(&secs), "the glide takes {secs:.3} s");
+    for i in 1..=glide + 10 {
+        assert_eq!(glide_step(&mut g, 200, Some(150)), i.min(glide), "in, block {i}");
+    }
+    // B goes quiet: the hold, then a block at a time back to the centre.
+    for i in 1..=CHIP_SPREAD_HOLD - 1 {
+        assert_eq!(glide_step(&mut g, 200, Some(0)), glide, "held, block {i}");
+    }
+    for i in 1..=glide + 10 {
+        assert_eq!(
+            glide_step(&mut g, 200, Some(0)),
+            glide.saturating_sub(i),
+            "out, block {i}"
+        );
+    }
+}
+
+/// The hysteresis: a level between CHIP_SPREAD_OFF and CHIP_SPREAD_ON does not make a quiet chip
+/// sound but keeps a sounding one sounding, and the gaps of a phrase (a note's release under
+/// CHIP_SPREAD_OFF for less than the hold) never move the image.
+#[test]
+fn the_sounding_test_does_not_flutter() {
+    let between = (CHIP_SPREAD_OFF + CHIP_SPREAD_ON) as u8 / 2;
+    let mut g = chip_spread_glide::default();
+    for _ in 0..50 {
+        assert_eq!(glide_step(&mut g, 200, Some(between)), 0, "B quiet to begin with");
+    }
+    for _ in 0..CHIP_SPREAD_GLIDE {
+        glide_step(&mut g, 200, Some(200));
+    }
+    for _ in 0..200 {
+        assert_eq!(
+            glide_step(&mut g, 200, Some(between)),
+            CHIP_SPREAD_GLIDE,
+            "B decays to between: still sounding"
+        );
+    }
+    // Staccato on B: CHIP_SPREAD_HOLD - 1 blocks of silence between its notes.
+    for _ in 0..20 {
+        for _ in 0..CHIP_SPREAD_HOLD - 1 {
+            assert_eq!(glide_step(&mut g, 200, Some(0)), CHIP_SPREAD_GLIDE);
+        }
+        assert_eq!(glide_step(&mut g, 200, Some(200)), CHIP_SPREAD_GLIDE);
+    }
+    // One voice alone counts (the counters' OR).
+    let mut c = Box::<sid>::default();
+    c.env[2].counter = CHIP_SPREAD_ON as u8;
+    assert_eq!(unsafe { chip_spread_level(&*c) }, CHIP_SPREAD_ON);
+}
+
+/// The glide on the stage as audio_fill runs it (platform/fm1/audio.c: the mid from 1 to cos phi
+/// and the side from 0 to sin phi by the glide's share, each block's gains ramping from the last
+/// block's): from centred to SPREAD 100's separation with no sample stepping by more than a few
+/// LSB, on a loud block whose side is as large as it gets, and the separation reached exactly.
+#[test]
+fn the_glide_moves_the_gains_without_a_step() {
+    let (m, k) = gains(CHIP_SPREAD_MAX);
+    let a = vec![16_000i16; N];
+    let b = vec![-16_000i16; N];
+    let lr_ab = vec![0.0f32; 2 * N]; // A + B: 0 on both sides
+    let side = side_of(&a, &b, CHIP_MIX_FULL);
+    let mut g = chip_spread_glide::default();
+    let (mut m_now, mut k_now) = (1.0f32, 0.0f32);
+    let mut left = Vec::new();
+    for _ in 0..2 * CHIP_SPREAD_GLIDE {
+        let w = glide_step(&mut g, 200, Some(200)) as f32 * (1.0 / CHIP_SPREAD_GLIDE as f32);
+        let (m_to, k_to) = (1.0 + w * (m - 1.0), w * k);
+        let mut out = vec![0i16; 2 * N];
+        unsafe {
+            chip_spread_apply(
+                out.as_mut_ptr(),
+                lr_ab.as_ptr(),
+                side.as_ptr(),
+                m_now,
+                m_to,
+                2.0 * k_now,
+                2.0 * k_to,
+            )
+        };
+        (m_now, k_now) = (m_to, k_to);
+        left.extend(out.iter().step_by(2).map(|&v| i32::from(v)));
+    }
+    let most = left.windows(2).map(|w| (w[1] - w[0]).abs()).max().unwrap();
+    println!(
+        "glide: left {} .. {}, the largest step {most} LSB",
+        left[0],
+        left[left.len() - 1]
+    );
+    assert!(most <= 6, "a step of {most} LSB");
+    assert!(left[0].abs() <= most, "from the centre");
+    assert!((left[left.len() - 1] - 22_627).abs() <= 1);
+}
+
 /// SPREAD as MIDI sets it: CC 117 by the steps curve (0..127 over 0..100), NRPN 0/4 to the
 /// percent, clamped; saved with the settings (the dirty flag). Not a live parameter: learn and
 /// MIDI out leave it alone.
