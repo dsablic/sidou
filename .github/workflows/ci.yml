@@ -5,9 +5,9 @@ name: ci
 #
 # The in-depth testing happens before a change merges: every merge passes the full local check
 # (both firmware builds, fmt, clippy, the workspace tests, UBSan, the packager, the whole
-# emulator gate, REUSE, the browser demo; TESTING.md). CI adds only what that check cannot:
-# the release package built clean from the tag on Linux, the host C compiled by GCC (macOS's
-# clang hides some errors), the licence check, and the package booted in fm1-emu.
+# emulator gate, REUSE, the GCC check, the browser demo; TESTING.md). CI adds only what that
+# check cannot: the release package built clean from the tag on Linux, and booted in fm1-emu.
+# One job, in the prebuilt build image (tools/docker, build-image.yml): nothing is installed.
 on:
   push:
     tags: ['v*']
@@ -21,48 +21,25 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  reuse:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: fsfe/reuse-action@v5
-
-  # Every C file the host tests compile, built by GCC with warnings as errors.
-  gcc:
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: host
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-      - name: Install libclang (bindgen)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev clang
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: host
-      - run: cargo build --locked --workspace --all-targets --release
-
   fm1:
     runs-on: ubuntu-24.04
+    container:
+      # Pinned by digest: the controller fills it in after build-image.yml publishes the image
+      # (the same digest as tools/docker/image.digest).
+      image: ghcr.io/dsablic/sidou-build@sha256:IMAGE_DIGEST_PLACEHOLDER
+    env:
+      # A release tag builds SIDOU's own identity, FM-1_964 (docs/TODO.md); anything else the
+      # development one, FM-1_900.
+      SIDOU_PRODUCT: ${{ startsWith(github.ref, 'refs/tags/v') && 'FM-1_964' || 'FM-1_900' }}
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - name: Install libclang (bindgen)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev clang
-      - name: Configure (pinned pi32v2 toolchain in Docker)
-        # A release tag builds SIDOU's own identity, FM-1_964 (docs/TODO.md); anything else
-        # the development one, FM-1_900.
-        run: tools/fm1-docker cmake --preset fm1 -DSIDOU_PRODUCT=${{ startsWith(github.ref, 'refs/tags/v') && 'FM-1_964' || 'FM-1_900' }}
+      # tools/fm1-docker sees it is inside the image and runs the toolchain directly.
+      - name: Configure
+        run: tools/fm1-docker cmake --preset fm1 -DSIDOU_PRODUCT=${SIDOU_PRODUCT}
       - name: Build
         run: tools/fm1-docker cmake --build --preset fm1
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: host
       # The package's inputs that are not ours (three AC79 SDK files), pinned by SHA-256 in
       # inputs.toml: cached, so a run need not reach gitee; sidou-pack downloads and checks them
       # on a miss.
@@ -74,7 +51,7 @@ jobs:
         working-directory: host
         run: >-
           cargo run --locked --release -p sidou-pack --
-          --product ${{ startsWith(github.ref, 'refs/tags/v') && 'FM-1_964' || 'FM-1_900' }}
+          --product ${SIDOU_PRODUCT}
           --app ../build/fm1/platform/fm1/sidou_app.bin
           --loader ../build/fm1/platform/fm1/loader/loader.bin
           -o ../build/fm1/sidou.fwsc

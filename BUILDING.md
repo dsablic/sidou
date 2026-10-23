@@ -75,9 +75,8 @@ is off its default, the image records its options (`SIDOU-OPTIONS` in `sidou_app
 `sidou-pack --verify` and `tools/preflash` fail a package whose options are not the defaults
 (the flash spike's and the checklist builds' packages fail them by design).
 
-`tools/fm1-docker` builds the image (`sidou-pi32v2`) if needed and runs the
-command in it, with the repository mounted at the same path. The output goes
-to `build/fm1/`:
+`tools/fm1-docker` runs the command in the build image (below), with the repository mounted
+at the same path and your user id. The output goes to `build/fm1/`:
 - `platform/fm1/sidou_app.{elf,bin,dis}`: the firmware. The `.bin` is what
   the FM-1's SPL maps at XIP address `0x02000120`.
 - `platform/fm1/loader/loader.{elf,bin,dis}`: the update loader, Felucca's,
@@ -157,6 +156,44 @@ compiles every float operation to a soft-float library call.
 
 To run the firmware benchmark in the emulator, see "Emulator gate" in
 [TESTING.md](TESTING.md).
+
+## The build image
+
+`ghcr.io/dsablic/sidou-build` (public, `linux/amd64`) holds everything a build needs: JieLi's
+pi32v2 toolchain (pinned by SHA-256 in `tools/docker/toolchain.sha256`), CMake, Ninja, GCC 13,
+clang and libclang (bindgen), a pinned Rust (`RUST_VERSION` in `tools/docker/Dockerfile`), git
+and jq. The release CI (`.github/workflows/ci.yml`) runs in it, pinned by digest, so a run
+installs nothing. Inside it `SIDOU_BUILD_IMAGE` is set, and `tools/fm1-docker` then runs its
+command directly instead of starting Docker.
+
+**Locally**, `tools/fm1-docker` pulls the image once: the digest in `tools/docker/image.digest`
+if that file has one, else `:latest`. If it cannot (offline, or not published yet), or when
+`SIDOU_BUILD_LOCAL=1`, it builds `tools/docker/Dockerfile` itself, tagged `sidou-build:local`
+(the first build takes a few minutes; Docker caches it):
+
+```sh
+docker build --platform linux/amd64 -t sidou-build:local \
+    --build-arg TOOLCHAIN_SHA256="$(cat tools/docker/toolchain.sha256)" tools/docker
+```
+
+**Publishing.** `.github/workflows/build-image.yml` builds and pushes `:latest` and `:<commit>`
+with the repository's `GITHUB_TOKEN` when `tools/docker/**` changes on `main`, or when run by
+hand (Actions, Run workflow). Its summary prints the digest. Then:
+1. put the digest (`sha256:...`) in `tools/docker/image.digest`, and in `ci.yml`'s `container.image`
+   (`...sidou-build@sha256:...`; it reads `IMAGE_DIGEST_PLACEHOLDER` until the first publish);
+2. the first time only: make the package public (GitHub, the package's settings, Change
+   visibility), so CI and everyone else can pull it without a login.
+
+To use the image's tools on the host workspace without installing anything, mount a separate
+target directory, as the Linux build must not share `host/target` with macOS:
+
+```sh
+tools/fm1-docker env HOME=/tmp CARGO_TARGET_DIR=$PWD/build/linux-target \
+    sh -c 'cd host && cargo test --locked --release --workspace'
+```
+
+`tools/gcc-check` runs GCC 13 over the host tests' C files in the same image
+([TESTING.md](TESTING.md), "Continuous integration").
 
 ## Browser demo (`tools/web-demo`)
 
