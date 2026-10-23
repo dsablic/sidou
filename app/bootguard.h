@@ -10,7 +10,11 @@
  *   watchdog reset or a power cut before it was stable;
  * - the boot after BOOTGUARD_FAILED_MAX failed ones enters UBOOT instead of starting;
  * - a boot is stable once the main loop has run BOOTGUARD_STABLE_MS: the count is cleared;
- * - an intentional reset (an update's commit) is not a failure. */
+ * - an intentional reset (an update's commit) is not a failure.
+ * Another firmware's .noinit can lie over these words (Felucca 1.6.1's has a 68-byte crash
+ * record, SIDOU's 64, so Felucca's variables start one word into the guard and keep SIDOU's
+ * magic): every write seals the guard with a check word, and a guard whose check does not
+ * match is taken for power-on noise, so only counts SIDOU wrote can send a boot to UBOOT. */
 #ifndef SIDOU_BOOTGUARD_H
 #define SIDOU_BOOTGUARD_H
 
@@ -23,11 +27,13 @@ extern "C" {
 #define BOOTGUARD_MAGIC 0x53424754u /* "TGBS" */
 #define BOOTGUARD_FAILED_MAX 2u
 #define BOOTGUARD_STABLE_MS 10000u
+#define BOOTGUARD_CHECK 0x9E3779B9u /* mixed into the check word */
 
 typedef struct {
     uint32_t magic;
     uint32_t pending; /* this boot has not been stable yet */
     uint32_t failed;  /* boots in a row that died before they were stable */
+    uint32_t check;   /* magic ^ pending ^ failed ^ BOOTGUARD_CHECK: written by SIDOU */
 } bootguard;
 
 /* First thing at boot. Returns 1 if the firmware must enter UBOOT now (the guard is cleared

@@ -29,14 +29,20 @@ fn fixture(what: &str) -> Option<Firmware> {
     Some(Firmware::load(&build))
 }
 
-/// platform/fm1/main.c `boot_guard` (a `bootguard`: magic, pending, failed).
-fn guard(m: &mut Machine, fw: &Firmware) -> [u32; 3] {
+/// platform/fm1/main.c `boot_guard` (a `bootguard`: magic, pending, failed, check).
+fn words(m: &mut Machine, fw: &Firmware) -> [u32; 4] {
     let at = fw.symbol("boot_guard");
-    [0, 4, 8].map(|o| m.soc.read32(at + o))
+    [0, 4, 8, 12].map(|o| m.soc.read32(at + o))
+}
+
+/// The guard's magic, pending and failed.
+fn guard(m: &mut Machine, fw: &Firmware) -> [u32; 3] {
+    let w = words(m, fw);
+    [w[0], w[1], w[2]]
 }
 
 /// Boots with the guard's words as a reset left them.
-fn boot_with(fw: &Firmware, kept: Option<[u32; 3]>) -> Machine {
+fn boot_with(fw: &Firmware, kept: Option<[u32; 4]>) -> Machine {
     let mut m = Machine::boot(&fw.image);
     if let Some(words) = kept {
         let at = fw.symbol("boot_guard");
@@ -59,16 +65,18 @@ fn two_early_deaths_end_in_uboot() {
     let mut first = boot_with(&fw, None);
     first.run_ms(DIES_AT_MS);
     let after_first = guard(&mut first, &fw);
+    let kept_first = words(&mut first, &fw);
     assert!(
         !first.soc.periph.audio.is_empty(),
         "the first boot did not get to the audio"
     );
 
-    let mut second = boot_with(&fw, Some(after_first));
+    let mut second = boot_with(&fw, Some(kept_first));
     second.run_ms(DIES_AT_MS);
     let after_second = guard(&mut second, &fw);
+    let kept_second = words(&mut second, &fw);
 
-    let mut third = boot_with(&fw, Some(after_second));
+    let mut third = boot_with(&fw, Some(kept_second));
     third.run_ms(DIES_AT_MS);
     let after_third = guard(&mut third, &fw);
     let mb = mailbox(&mut third);
@@ -103,7 +111,7 @@ fn a_stable_boot_clears_an_earlier_death() {
     };
     let mut first = boot_with(&fw, None);
     first.run_ms(DIES_AT_MS);
-    let kept = guard(&mut first, &fw);
+    let kept = words(&mut first, &fw);
     let mut second = boot_with(&fw, Some(kept));
     second.run_ms(DIES_AT_MS);
     let dying = guard(&mut second, &fw);
@@ -117,6 +125,29 @@ fn a_stable_boot_clears_an_earlier_death() {
         b"usb_update_mode",
         "a single death entered UBOOT"
     );
+}
+
+#[test]
+fn another_firmwares_words_over_the_guard_do_not_enter_uboot() {
+    let Some(fw) = fixture("the boot-guard test") else {
+        return;
+    };
+    // After Felucca 1.6.1: SIDOU's magic survives (Felucca's 68-byte crash record only writes
+    // that word on a second-core crash), the words after it are Felucca's.
+    let mut m = boot_with(&fw, Some([BOOTGUARD_MAGIC, 0x4247_5244, 3, 1]));
+    m.run_ms(DIES_AT_MS);
+    let after = guard(&mut m, &fw);
+    println!("guard after a boot over foreign words: {after:x?}");
+    assert_ne!(
+        &mailbox(&mut m)[..15],
+        b"usb_update_mode",
+        "foreign words entered UBOOT"
+    );
+    assert!(
+        !m.soc.periph.audio.is_empty(),
+        "the boot did not get to the audio"
+    );
+    assert_eq!(after, [BOOTGUARD_MAGIC, 1, 0]);
 }
 
 /// Felucca's ids: OCT- and OCT+ (buttons 0 and 1), and a note key.

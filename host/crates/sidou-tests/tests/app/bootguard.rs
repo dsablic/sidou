@@ -20,6 +20,7 @@ fn power_on_noise_starts_a_fresh_guard() {
             magic: noise,
             pending: noise,
             failed: noise,
+            check: noise,
         };
         assert!(!boot(&mut g), "noise {noise:#x} entered UBOOT");
         assert_eq!((g.magic, g.pending, g.failed), (BOOTGUARD_MAGIC, 1, 0));
@@ -64,4 +65,28 @@ fn an_intentional_reset_is_not_a_failure() {
         unsafe { bootguard_leave(&mut g) };
     }
     assert_eq!(g.failed, 0);
+}
+
+#[test]
+fn another_firmwares_words_over_the_guard_start_a_fresh_one() {
+    // SIDOU's magic kept, the rest Felucca's: its boot guard (magic "DRGB", failed, pending)
+    // one word in, or anything else it keeps there.
+    for (pending, failed, check) in [
+        (0x4247_5244, 0, 1),
+        (0x4247_5244, 3, 0),
+        (1, 2, 0),
+        (1, 7, 0xFFFF_FFFF),
+    ] {
+        let mut g = bootguard {
+            magic: BOOTGUARD_MAGIC,
+            pending,
+            failed,
+            check,
+        };
+        assert!(
+            !boot(&mut g),
+            "foreign words {pending:#x} {failed:#x} {check:#x} entered UBOOT"
+        );
+        assert_eq!((g.pending, g.failed), (1, 0));
+    }
 }
