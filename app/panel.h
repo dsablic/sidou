@@ -114,11 +114,48 @@ typedef struct {
     uint8_t glo_latch;
 } panel;
 
-/* The LEDs, as Felucca's input state lays out the keys. */
+/* The LEDs, as Felucca's input state lays out the keys: lit, and dim (the hardware's glow, a
+ * thirtieth of lit: set or available, where lit is active now). A bit in both is lit. */
 typedef struct {
-    uint32_t buttons; /* bit i: button i */
-    uint32_t notes;   /* bit k: note key k */
+    uint32_t buttons;     /* bit i: button i lit */
+    uint32_t notes;       /* bit k: note key k lit */
+    uint32_t buttons_dim; /* dim, and not lit */
+    uint32_t notes_dim;
 } panel_leds;
+
+/* Half a blink's period (ms): the count-in's, SAVE's question's and a solo's, about 2.8 Hz. */
+#define PANEL_BLINK_HALF_MS 180u
+/* PLAY is lit on each beat's first PANEL_BEAT_LIT of its 256 (a quarter). */
+#define PANEL_BEAT_LIT 64u
+#define PANEL_BEAT_NONE 0xffu
+/* The arpeggio's rates of this many frames a step or fewer light ARP once a cycle, not each
+ * step: faster reads as flicker. A step lights its first half. */
+#define PANEL_ARP_FAST_FRAMES 2u
+/* The step view's playhead key is inverted this long (ms) as it moves. */
+#define PANEL_FLICK_MS 50u
+#define PANEL_STEPS 16u
+#define PANEL_NO_STEP 0xffu
+/* REC's LED (panel_led_in.rec). */
+#define PANEL_REC_OFF 0u
+#define PANEL_REC_ARMED 1u /* record mode on, the song not recording: dim */
+#define PANEL_REC_COUNT 2u /* the count-in: blinking */
+#define PANEL_REC_ON 3u    /* recording: lit */
+
+/* What the LEDs need beyond the panel and live (the views fill it, views_leds): all of it zero
+ * but beat and step_head, which are PANEL_BEAT_NONE and PANEL_NO_STEP, shows nothing of it. */
+typedef struct {
+    uint32_t ms;        /* the clock the blinks run on */
+    uint8_t beat;       /* the song's place in its beat, 0..255, PANEL_BEAT_NONE: not playing */
+    uint8_t rec;        /* PANEL_REC_* */
+    uint8_t silent;     /* the voices the mutes and solos keep silent (bit v: voice v) */
+    uint8_t solo;       /* the soloed voices */
+    uint8_t ask;        /* 1: a question waits for SAVE to confirm */
+    uint8_t step_on;    /* 1: the STEP view shows: its page is on the keys */
+    uint8_t step_head;  /* the playhead's step on the page, PANEL_NO_STEP: none */
+    uint16_t step_set;  /* the steps with a note (bit s) */
+    uint16_t step_rows; /* the steps that exist: a pattern's last page may be short */
+    uint32_t head_ms;   /* when the playhead came to step_head */
+} panel_led_in;
 
 void panel_init(panel* p);
 /* down: the debounced note keys (bit k = key k); pressed: keys that went down since the last
@@ -157,8 +194,17 @@ void panel_encoder(panel* p, live* l, uint32_t enc, int32_t steps);
 /* A MASTER pot reading, 0..1023 (a negative reading, an ADC timeout, is ignored). */
 void panel_master(panel* p, live* l, int32_t raw);
 /* Held keys, the octave on OCT- (below 0) or OCT+ (above 0), FX while the 8580 plays, EDIT
- * while the selected slot has an algorithm, and PLAY while the song plays (panel.playing). */
-panel_leds panel_get_leds(const panel* p, const live* l);
+ * while the selected slot has an algorithm, GLO while latched, and with in (NULL: none of
+ * this, the panel's own lights):
+ * - ARP dim while on, lit on each arpeggio step's first half (once a cycle at the fastest rates);
+ * - PLAY dim while the song plays, lit on each beat's first quarter;
+ * - REC dim while armed, blinking through the count-in, lit while recording;
+ * - SAVE blinking while a question waits for it;
+ * - with GLO held or latched, keys 1-3 lit for a voice that sounds, keys 4-6 blinking for a solo
+ *   and dim otherwise;
+ * - in STEP the keys 1-16 show the page, lit a note and dim an empty step, the playhead's key
+ *   inverted for PANEL_FLICK_MS, in place of the held keys' lights. */
+panel_leds panel_get_leds(const panel* p, const live* l, const panel_led_in* in);
 
 #ifdef __cplusplus
 }

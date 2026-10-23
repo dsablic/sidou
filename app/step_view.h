@@ -115,6 +115,11 @@ void step_view_init(step_view* st, song_view* sv);
  * keys it took, for the panel to keep quiet (panel_quiet_keys); keys above the 16 steps are
  * the jam's (song_view_keys). */
 uint32_t step_view_keys(step_view* st, screen* s, uint32_t down, uint32_t pressed, int take);
+/* The page's steps for the LEDs (panel_led_in): set gets bit i for a note at step i of the
+ * selected lane's page, rows the steps that exist (the last page of a pattern may be short, none
+ * with no pattern), head the step the song plays on the page, STEP_VIEW_NONE if it plays
+ * elsewhere or stopped. */
+void step_view_leds(const step_view* st, uint32_t* set, uint32_t* rows, uint32_t* head);
 /* The popup of an encoder (app/screen.h screen_popup_fn's text): PRESETS, ALGORITHM, and with
  * a step held the knobs. 0: nothing to show (the knob acts as in LIVE). */
 int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[SCREEN_POPUP_TEXT],

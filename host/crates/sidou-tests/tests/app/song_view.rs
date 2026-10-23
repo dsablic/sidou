@@ -37,6 +37,8 @@ pub(crate) struct Fake {
     pub(crate) cell_writes: u32,
     pub(crate) index_swaps: u32,
     pub(crate) last_subtune: u32,
+    /// The player's calls since the play, as its clock says.
+    pub(crate) clock_calls: u32,
 }
 
 impl Fake {
@@ -98,6 +100,14 @@ unsafe extern "C" fn status(ctx: *mut c_void, out: *mut song_status) {
     unsafe { *out = f.st };
 }
 
+unsafe extern "C" fn clock(ctx: *mut c_void, out: *mut song_clock) {
+    let f = fake(ctx);
+    let o = unsafe { &mut *out };
+    o.state = f.st.state;
+    o.speed = f.st.speed;
+    o.calls = f.clock_calls;
+}
+
 unsafe extern "C" fn edit(ctx: *mut c_void, edit: *const gt2_edit, ticket: *mut u32) -> i32 {
     let f = fake(ctx);
     if f.refuse {
@@ -133,7 +143,7 @@ pub(crate) struct Song {
 }
 
 impl Song {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::playing(None)
     }
 
@@ -159,6 +169,7 @@ impl Song {
             cell_writes: 0,
             index_swaps: 0,
             last_subtune: 0,
+            clock_calls: 0,
         });
         let ctx: *mut Fake = &mut *f;
         let t = Box::new(song_transport {
@@ -169,12 +180,13 @@ impl Song {
             mute: Some(mute),
             jam: Some(jam),
             status: Some(status),
+            clock: Some(clock),
             ctx: ctx.cast(),
             song: song.as_ref().map_or(std::ptr::null(), |s| s.ptr()),
             edit: Some(edit),
             edit_done: Some(edit_done),
             edit_guard: Some(edit_guard),
-            ..Default::default() // M2e's clock members: none
+            ..Default::default() // M2e's other clock members: none
         });
         unsafe { views_set_song(&mut *ui.v, &*t) };
         let mut s = Song {
@@ -857,7 +869,7 @@ fn glo_double_tap_latches_and_a_tap_releases() {
     assert_eq!(s.ui.p.glo_latch, 1, "two taps within 400 ms");
     s.ui.frame();
     assert_eq!(s.ui.toast().as_deref(), Some("GLO LATCHED"));
-    let leds = unsafe { panel_get_leds(&*s.ui.p, &*s.ui.rig.live) };
+    let leds = unsafe { panel_get_leds(&*s.ui.p, &*s.ui.rig.live, std::ptr::null()) };
     assert_eq!(leds.buttons >> PANEL_BTN_GLO & 1, 1, "GLO is lit");
     // The layer, GLO not held: key 2 mutes voice 2 and sounds nothing, key 8 plays.
     s.ui.note_keys(key(1) | key(7), key(1) | key(7));

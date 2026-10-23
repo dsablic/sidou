@@ -11,6 +11,7 @@
 #include "ui.h"
 
 static panel_leds shown;
+static uint8_t shown_valid;
 
 void input_init(void) {
     fm1_input_init();
@@ -108,19 +109,53 @@ void input_poll(panel* p, live* l) {
     }
 }
 
-static void update(uint32_t now, uint32_t was, uint32_t count, uint32_t id0) {
-    uint32_t changed = now ^ was;
-    for (uint32_t i = 0; changed && i < count; i++, changed >>= 1) {
-        if (changed & 1u) {
-            fm1_led_key(id0 + i, (int)((now >> i) & 1u));
+/* The glow of key id: fm1_led_dim as fm1_led_key sets fm1_led (the HAL's scan pulses it, a
+ * thirtieth of lit, fm1_input.h; vendored code is not touched). */
+static void dim_key(uint32_t id, int on) {
+    for (uint32_t p = 0; p < FM1_NCOL; p++) {
+        for (uint32_t r = 1; r < 5u; r++) {
+            if (FM1_KEYMAP[r][p] == (int8_t)id) {
+                if (on) {
+                    fm1_led_dim[p] |= (uint8_t)(1u << r);
+                } else {
+                    fm1_led_dim[p] &= (uint8_t)~(1u << r);
+                }
+            }
         }
     }
 }
 
-void input_leds(const panel* p, const live* l) {
-    panel_leds now = panel_get_leds(p, l);
-    update(now.buttons, shown.buttons, PANEL_KEY_ID0, 0);
-    update(now.notes, shown.notes, PANEL_NOTE_KEYS, PANEL_KEY_ID0);
+static void update(uint32_t now, uint32_t was, uint32_t count, uint32_t id0,
+                   void (*set)(uint32_t, int)) {
+    uint32_t changed = now ^ was;
+    for (uint32_t i = 0; changed && i < count; i++, changed >>= 1) {
+        if (changed & 1u) {
+            set(id0 + i, (int)((now >> i) & 1u));
+        }
+    }
+}
+
+static void led_key(uint32_t id, int on) {
+    fm1_led_key(id, on);
+}
+
+/* The LEDs follow the panel at most this often: the blinks and the beat move at tens of ms. */
+#define LEDS_PERIOD_MS 10u
+
+void input_leds(const panel* p, const live* l, uint32_t now_ms) {
+    static uint32_t last_ms;
+    if (now_ms - last_ms < LEDS_PERIOD_MS && shown_valid) {
+        return;
+    }
+    last_ms = now_ms;
+    shown_valid = 1;
+    panel_led_in in;
+    ui_leds(now_ms, &in);
+    panel_leds now = panel_get_leds(p, l, &in);
+    update(now.buttons, shown.buttons, PANEL_KEY_ID0, 0, led_key);
+    update(now.notes, shown.notes, PANEL_NOTE_KEYS, PANEL_KEY_ID0, led_key);
+    update(now.buttons_dim, shown.buttons_dim, PANEL_KEY_ID0, 0, dim_key);
+    update(now.notes_dim, shown.notes_dim, PANEL_NOTE_KEYS, PANEL_KEY_ID0, dim_key);
     shown = now;
 }
 

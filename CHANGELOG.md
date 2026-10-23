@@ -8,6 +8,15 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **The button LEDs show more, in two levels:** the hardware's dim glow means set or available,
+  full light active now. ARP is dim while on and flashes on each arpeggio step (once a cycle at
+  1-2 frames a step); PLAY is lit on each beat and dim between while the song plays; REC is dim
+  while armed, blinks through the count-in and is lit while recording; SAVE blinks while a
+  question waits for it. With GLO held or latched, note keys 1-6 show the voices (lit sounding,
+  dark muted, blinking solo), and in STEP the 16 step keys show the page (lit a note, dim an
+  empty step) with the playhead's key flicking as it moves.
+
 ## [0.3.1] - 2026-10-23
 
 ### Fixed

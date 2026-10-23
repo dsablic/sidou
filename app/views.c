@@ -2933,3 +2933,65 @@ void views_update(views* v, uint32_t step, int32_t code) {
     grid_fill(g, 2, STATUS_READY_ROW, 6, 1, ' ', a); /* READY. */
     screen_redraw(&v->s);
 }
+
+/* 1 while a question waits for SAVE: MIDI learn's clear-all, the song menu's confirmation, the
+ * SETTINGS store's format once armed. */
+static int save_asked(const views* v) {
+    if (learn_view_is_open(&v->learn)) {
+        return v->learn.ml && v->learn.ml->state == MIDI_LEARN_CONFIRM;
+    }
+    const view* top = shows(v);
+    if (top == &views_song_menu_view) {
+        return v->songs.page == SONG_MENU_CONFIRM;
+    }
+    return top == &views_settings_view && v->format_arm && v->setup.cursor == VIEWS_SETTINGS_STORE;
+}
+
+/* The song's place in its beat, 0..255 (rows_beat rows of the speed's calls), from the player's
+ * clock (the calls since the play), PANEL_BEAT_NONE without one. */
+static uint32_t beat_phase(const views* v) {
+    const song_transport* t = v->song.t;
+    song_clock c;
+    if (!t || !t->clock) {
+        return PANEL_BEAT_NONE;
+    }
+    t->clock(t->ctx, &c);
+    uint32_t rb = v->song.rows_beat ? v->song.rows_beat : 4u;
+    uint32_t len = (rb * ((uint32_t)c.speed[0] + c.speed[1]) + 1u) / 2u;
+    if (c.state != SONG_T_PLAYING || len == 0u) {
+        return PANEL_BEAT_NONE;
+    }
+    return c.calls % len * 256u / len;
+}
+
+void views_leds(views* v, uint32_t now_ms, panel_led_in* out) {
+    const panel* p = v->p;
+    const view* top = shows(v);
+    int in_song = song_view_is(top);
+    out->ms = now_ms;
+    out->beat = (uint8_t)(p && p->playing ? beat_phase(v) : PANEL_BEAT_NONE);
+    out->rec = !v->song.rec ? PANEL_REC_OFF
+               : !in_song || !song_view_rec_playing(&v->song) ? PANEL_REC_ARMED
+               : song_view_recording(&v->song)                ? PANEL_REC_ON
+                                                              : PANEL_REC_COUNT;
+    out->silent = (uint8_t)song_view_mute_mask(&v->song);
+    out->solo = v->song.solo;
+    out->ask = (uint8_t)save_asked(v);
+    out->step_on = (uint8_t)(top == &step_view_view);
+    out->step_head = PANEL_NO_STEP;
+    out->step_set = out->step_rows = 0;
+    if (out->step_on) {
+        uint32_t set, rows, head;
+        step_view_leds(&v->step, &set, &rows, &head);
+        out->step_set = (uint16_t)set;
+        out->step_rows = (uint16_t)rows;
+        if (head != v->led_head) {
+            v->led_head = (uint8_t)head;
+            v->led_head_ms = now_ms;
+        }
+        out->step_head = head == STEP_VIEW_NONE ? PANEL_NO_STEP : (uint8_t)head;
+    } else {
+        v->led_head = STEP_VIEW_NONE;
+    }
+    out->head_ms = v->led_head_ms;
+}

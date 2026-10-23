@@ -155,6 +155,33 @@ on LIVE, ARP is the [chord arpeggio](#chord-arpeggio); elsewhere LFO and ARP do 
 PRESETS steps the preset. SELECT does nothing on STATUS and
 ABOUT, ALGORITHM nothing on STATUS and ABOUT.
 
+## The button LEDs
+
+Lit is active now; dim, a glow about a thirtieth as bright (the hardware's own), is set or
+available. A key that is held lights, as always.
+
+| LED | What it shows |
+|---|---|
+| OCT- / OCT+ | lit while the octave is below / above 0 |
+| FX | lit while the 8580 plays |
+| EDIT | lit while the selected effect slot has an algorithm |
+| **ARP** | dim while the [chord arpeggio](#chord-arpeggio) is on; lit for the first half of each step. At 1 and 2 frames a step it flashes once a cycle instead (faster would read as flicker) |
+| **PLAY** | dark stopped; while the song plays, dim, and lit for the first quarter of each beat |
+| **REC** | dim while record mode is on; blinking through the count-in; lit while recording |
+| GLO | lit while its layer is latched |
+| **SAVE** | blinks while a question waits for SAVE to confirm (MIDI learn's clear-all, the song menu's confirmation, SETTINGS' armed STORE format) |
+
+With GLO held or latched, the note keys 1-6 show the voices: keys 1-3 are lit while their voice
+sounds and dark while it is muted, keys 4-6 blink for a soloed voice and are dim otherwise.
+
+In [STEP](#step) the 16 leftmost note keys show the page instead of what is held: a lit key is a
+step with a note, a dim one an empty step (a short last page leaves the rest dark), and the key of
+the step the song plays flicks, inverted for 50 ms, as the song reaches it. The keys above 16 light
+as they are held.
+
+Blinks run at about 2.8 Hz. The flash hold of an update or a store erase puts every LED out, as
+before.
+
 ## Value popup
 
 A change of a parameter **from the panel** opens a large overlay over the view on screen, in any
