@@ -1,0 +1,5 @@
+{
+  "what": "Turns the FM-1 into a C64 SID machine: two SIDs (6581 and 8580) with the chip's character dialled in, a GoatTracker 2 compatible tracker and step sequencer, and a live instrument to play over a song.",
+  "kinds": ["tracker"],
+  "play": "https://dsablic.github.io/sidou/"
+}
