@@ -48,12 +48,11 @@ flash.
 
 ## Install
 
-Installing custom firmware can leave an FM-1 unable to boot. **You do this at your own risk,
-and SIDOU comes with no warranty.** Read [docs/flash-day.md](docs/flash-day.md) first and have
-the way back ready.
+Installing is at your own risk, and SIDOU comes with no warranty; the official firmware is one
+install away, and holding OCT- at power-on is a rescue ([docs/flash-day.md](docs/flash-day.md)).
 
-1. Download the `.fwsc` file (for example `sidou-0.2.0.fwsc`) from the [latest release](https://github.com/dsablic/sidou/releases/latest).
-2. Install it with Felucca's installer (`fm1_install.py sidou-0.2.0.fwsc`); from v0.3.0 also
+1. Download the `.fwsc` file (for example `sidou-0.3.0.fwsc`) from the [latest release](https://github.com/dsablic/sidou/releases/latest).
+2. Install it with Felucca's installer (`fm1_install.py sidou-0.3.0.fwsc`); from v0.3.0 also
    from the FM-1 Firmware Hub. The unit then shows up on USB as "SIDOU FM-1", and later versions install
    over it the same way.
 3. **Back to stock:** install M-VAVE's official `FM-1.fwsc` (V15) the same way.
