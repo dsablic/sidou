@@ -816,8 +816,11 @@ characters of the large text's pieces: 2,700 bytes).
 SONG uses the song views' shared canvas, not a second screen-sized buffer. The
 title is at row 2, the 2× LOAD/NEW/SAVE AS/DELETE choices at rows 6, 10, 14 and 18,
 with reverse video marking the selection.
-LOAD and DELETE list eight filenames per page; scanning advances one directory
-entry per frame. Filenames remain 1× so all 16 characters fit. SAVE AS splits its
+LOAD and DELETE list eight filenames per page at 2×, as the menu's lines (rows 6 to
+21, the selected one a reverse bar of 14 cells); a name longer than 14 characters ends
+in an arrow. Under them, at 2× in the label role, READING while the scan advances (one
+directory entry per frame), NO SONGS, or the page with its arrows. A confirmation names
+its file at 2× on rows 10-11. SAVE AS splits its
 large 16-character name into two eight-character lines at rows 8 and 12, with the
 cursor underneath and a SAVE action at row 16. Confirmations use large text and
 default to reverse-video NO. Help is at the bottom at 2× in the hint role, as the menu's

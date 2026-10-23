@@ -92,7 +92,7 @@ fn song_directory_selection_and_hints_follow_theme_changes_after_scanning() {
         song_attr(&ui, 2, 2, 8, th.title_fg, th.title_bg);
         song_attr(&ui, 6, 6, 5, th.sel_fg, th.sel_bg);
         song_attr(&ui, 8, 6, 6, th.menu_item, th.bg);
-        song_attr(&ui, 22, 4, 16, th.label, th.bg);
+        song_attr(&ui, 24, 2, 22, th.hint, th.bg); // SAVE CHOOSE
         ui.turn(PANEL_ENC_SELECT, 1);
         song_frames(&mut ui);
         song_attr(&ui, 6, 6, 5, th.menu_item, th.bg);
@@ -377,6 +377,46 @@ fn load_directory_pages_and_delete_waits_for_yes() {
     ui.turn(PANEL_ENC_ALGORITHM, 1);
     assert_eq!(io.state, SONG_IO_DELETE as u8);
     assert_eq!(unsafe { CStr::from_ptr(io.target.as_ptr()) }, c"SONG 01");
+}
+
+/// LOAD's (and DELETE's) files are large text, as the menu's lines: each name at 2x from column
+/// 2, the selected one a reverse bar of 14 cells; a name longer than 14 characters ends in an
+/// arrow. The confirmation names the file at 2x too.
+#[test]
+fn the_load_list_names_its_files_at_2x() {
+    let mut ui = Ui::without_cards();
+    let mut flash = crate::store::fresh(809, STORE_WINDOW_MAX);
+    for name in ["BEAT", "SIXTEEN CHARS OK"] {
+        assert_eq!(flash.file_now(name, &[0]), STORE_OK);
+    }
+    let mut io = Box::new(song_io {
+        st: &mut *flash.st,
+        dirty: 1,
+        ..Default::default()
+    });
+    unsafe { views_song_io(&mut *ui.v, &mut *io) };
+    ui.press(PANEL_BTN_HOME);
+    ui.turn(PANEL_ENC_SELECT, VIEWS_MENU_SONG as i32);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    ui.turn(PANEL_ENC_ALGORITHM, 1);
+    song_frames(&mut ui);
+    assert_eq!(ui.big(6, 2, 2, 14), "BEAT          ");
+    assert_eq!(ui.row(6), ui.row(7), "a name is two rows tall");
+    let th = unsafe { &*theme_get(u32::from(ui.live().theme)) };
+    song_attr(&ui, 6, 2, 28, th.sel_fg, th.sel_bg);
+    song_attr(&ui, 8, 2, 28, th.menu_item, th.bg);
+    let long = ui.big(8, 2, 2, 14);
+    assert_eq!(&long[..13], "SIXTEEN CHARS");
+    assert_eq!(
+        u32::from(ui.g.src[8 * COLS + 28]),
+        FONT_ARROW_RIGHT,
+        "{long:?}"
+    );
+    ui.turn(PANEL_ENC_SELECT, 1);
+    ui.press(SAVE_KEY_BUTTON);
+    song_frames(&mut ui);
+    assert!(ui.row(6).contains("DISCARD"));
+    assert_eq!(&ui.big(10, 2, 2, 13), "SIXTEEN CHARS");
 }
 
 #[test]

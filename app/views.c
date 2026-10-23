@@ -876,6 +876,27 @@ static void song_canvas_big(views* v, uint32_t row, uint32_t col, const char* te
     }
 }
 
+/* A file's name at 2x from column 2 (a big character starts on an even column), padded to the
+ * 14 characters the row holds so that the selection is a whole bar; a longer name's 14th is an
+ * arrow. */
+#define SONG_NAME_CELLS 14u
+static void song_canvas_name(views* v, uint32_t row, const char* name, uint8_t a) {
+    char line[SONG_NAME_CELLS + 1u];
+    uint32_t n = 0;
+    while (n < SONG_NAME_CELLS && name[n]) {
+        line[n] = name[n];
+        n++;
+    }
+    if (n == SONG_NAME_CELLS && name[n]) {
+        line[n - 1u] = (char)FONT_ARROW_RIGHT;
+    }
+    while (n < SONG_NAME_CELLS) {
+        line[n++] = ' ';
+    }
+    line[n] = 0;
+    song_canvas_big(v, row, 2, line, a);
+}
+
 static uint32_t song_menu_big_rows(const views_song_menu* m) {
     uint32_t rows = 3u << 2; /* heading */
     rows |= 3u << 4; /* busy status, when present */
@@ -885,8 +906,10 @@ static uint32_t song_menu_big_rows(const views_song_menu* m) {
         }
     } else if (m->page == SONG_MENU_NAME) {
         rows |= (3u << 8) | (3u << 12) | (3u << 16) | (3u << 18) | (3u << 20) | (3u << 22);
+    } else if (m->page == SONG_MENU_DIR) {
+        rows |= ((1u << (2u * VIEWS_SONG_FILES + 2u)) - 1u) << 6; /* the files, the status */
     } else if (m->page == SONG_MENU_CONFIRM) {
-        rows |= (3u << 6) | (3u << 8) | (3u << 14);
+        rows |= (3u << 6) | (3u << 8) | (3u << 10) | (3u << 14);
     }
     if (m->page != SONG_MENU_NAME) {
         rows |= 3u << 24; /* the legend */
@@ -943,13 +966,18 @@ static void song_menu_compose(screen* s, void* state, grid* g) {
                 song_canvas_big(v, 6u + i * 4u, 2, SONG_ACTIONS[i], i == m->cursor ? selected : text);
             }
         } else if (m->page == SONG_MENU_DIR) {
+            /* The files at 2x, as the menu's lines; under them, at 2x too, what the scan is doing,
+             * or the page and the arrows SELECT pages with (another page may follow a full one). */
             for (uint32_t i = 0; i < m->count; i++) {
-                uint8_t a = i == m->cursor ? selected : text;
-                song_canvas_text(v, 6u + i * 2u, 4, i == m->cursor ? ">" : " ", a);
-                song_canvas_text(v, 6u + i * 2u, 6, m->files[i], a);
+                song_canvas_name(v, 6u + i * 2u, m->files[i], i == m->cursor ? selected : text);
             }
-            song_canvas_text(v, 22, 4, m->scanning ? "READING..." : m->count ? "SELECT TO BROWSE" : "NO SONGS",
-                             label);
+            char page[] = {'P', 'A', 'G', 'E', ' ', (char)('1' + m->directory_page), ' ',
+                           m->directory_page ? (char)FONT_ARROW_UP : ' ',
+                           m->count == VIEWS_SONG_FILES ? (char)FONT_ARROW_DOWN : ' ', 0};
+            song_canvas_big(v, 22, 2,
+                            m->scanning ? "READING" : !m->count ? "NO SONGS"
+                            : m->directory_page || m->count == VIEWS_SONG_FILES ? page : "",
+                            label);
         } else if (m->page == SONG_MENU_NAME) {
             char half[9];
             for (uint32_t i = 0; i < 2u; i++) {
@@ -971,7 +999,7 @@ static void song_menu_compose(screen* s, void* state, grid* g) {
                 song_canvas_big(v, 8, 2, "UNSAVED SONG?", alert);
             }
             if (m->action != SONG_MENU_NEW) {
-                song_canvas_text(v, 11, 6, m->name, value);
+                song_canvas_name(v, 10, m->name, value);
             }
             song_canvas_big(v, 14, 2, "NO", m->confirm ? text : selected);
             song_canvas_big(v, 14, 16, "YES", m->confirm ? selected : text);
