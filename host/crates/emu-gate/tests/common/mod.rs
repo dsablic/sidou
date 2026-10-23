@@ -856,6 +856,12 @@ pub const TWO_CHIPS_PLUS_EFFECTS: f64 = 2300.0;
 /// it): its call and SONG_EDITS_PER_BLOCK of the costliest edit command, with the block's
 /// command handling (M2c Task 6; the plan's budget, docs/plans/2026-10-15-m2c-song-engine.md).
 pub const PLAYER_WORST_BLOCK: f64 = 60.0;
+/// The digi drums' cost in the audio interrupt (core/player/song_ctl.c song_ctl_block_end: its
+/// trigger and its mix; decision record 0009), instructions a sample while a digi drum plays
+/// without a break (song.rs: a hit every row, each 220 ms long); measured 10.42. A bound set from
+/// this measurement (new code); with no digi playing the function tests one word a block, and no
+/// example song has a DIGI chunk, so it is outside the player's worst block and added here.
+pub const DIGI_PER_SAMPLE: f64 = 10.5;
 /// The effect slots' worst switching block, instructions a sample (slots_budget.rs measures
 /// 964, M1c Task 3): what the audio target holds besides the chips, the tap and the ISR when
 /// a preset change switches the slots.
@@ -871,10 +877,11 @@ pub const FREE_RAM_MIN: u64 = 10_000;
 /// docs/plans/2026-10-19-m3-sid-files.md, "Before M3": the 4 KiB floor plus 1 KiB, for M3's 512
 /// bytes plus a margin.
 pub const REGION_FREE_MIN: u64 = 5_120;
-// A song plays with two chips at their worst, the effects at their cap, the ISR, the tap and
-// the player: within the audio target.
+// A song plays with two chips at their worst, the effects at their cap, the ISR, the tap, the
+// player and a digi drum: within the audio target.
 const _: () = assert!(
-    TWO_CHIPS_PLUS_EFFECTS + TAP_PER_SAMPLE + ISR_OVERHEAD + PLAYER_WORST_BLOCK <= AUDIO_TARGET
+    TWO_CHIPS_PLUS_EFFECTS + TAP_PER_SAMPLE + ISR_OVERHEAD + PLAYER_WORST_BLOCK + DIGI_PER_SAMPLE
+        <= AUDIO_TARGET
 );
 
 /// fm1-emu's CPU clock, one instruction a cycle (latency.rs checks it).
@@ -1440,7 +1447,7 @@ pub fn render_host_song_master(frames: usize, p: &SongPlay, master: u16) -> Vec<
                 &mut mono,
                 n,
             );
-            song_ctl_block_end(&mut *sc, n as u32);
+            song_ctl_block_end(&mut *sc, mono.as_mut_ptr(), n as u32);
             // The two chips' whole sum past int16 (app/chip_mix.h), as audio_fill passes it.
             sid_slots_process_wide(
                 &mut *slots,

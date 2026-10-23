@@ -224,9 +224,26 @@ static uint32_t read_file(void* ctx, uint32_t off, uint8_t* p, uint32_t n) {
 
 /* The template is a plain GTS5 stream: one subtune, three 64-row patterns, a pulse lead and a
  * bass (instruments 1 and 2), then the SID drum kit (core/song/gt2_kit.h) as instruments 3-10,
- * its table rows first (the kit's pointers are rows from 1), the lead's and the bass's after.
- * Producing its bytes instead of holding another model keeps one content region. */
+ * its table rows first (the kit's pointers are rows from 1), the lead's and the bass's after,
+ * and the digi drums 11-14, each a copy of its chip drum (the fallback GoatTracker plays;
+ * read_done adds the DIGI chunk that marks them). Producing its bytes instead of holding
+ * another model keeps one content region. */
 _Static_assert(SONG_IO_KIT == 3u, "the kit follows the lead and the bass");
+_Static_assert(SONG_IO_DIGI == SONG_IO_KIT + GT2_KIT_DRUMS, "the digi drums follow the kit");
+#define DIGI_DRUMS (SONG_DIGI_KINDS - 1u)
+/* Each digi drum's chip drum and name, in SONG_DIGI_* order. */
+static const uint8_t template_digi_kit[DIGI_DRUMS] = {GT2_KIT_KICK, GT2_KIT_SNARE, GT2_KIT_CLAP,
+                                                      GT2_KIT_CLOSED_HAT};
+static const char template_digi_name[DIGI_DRUMS][9] = {"DG KICK", "DG SNARE", "DG CLAP",
+                                                       "DG HAT"};
+static uint8_t template_digi(uint32_t at) {
+    uint32_t d = at / GT2_INSTR_BYTES, b = at % GT2_INSTR_BYTES;
+    if (b < GT2_INS_NAME) {
+        return gt2_kit_instr[template_digi_kit[d]].head[b];
+    }
+    b -= GT2_INS_NAME;
+    return b < sizeof template_digi_name[0] ? (uint8_t)template_digi_name[d][b] : 0u;
+}
 #define LEAD_WAVE (GT2_KIT_WAVE_ROWS + 1u)
 static const uint8_t template_orders[] = {1, 2, 0, 255, 0, 2, 1, 255, 0, 2, 2, 255, 0};
 static const uint8_t template_lead[2][GT2_INSTR_BYTES] = {
@@ -235,7 +252,7 @@ static const uint8_t template_lead[2][GT2_INSTR_BYTES] = {
 /* The lead's and the bass's rows: a pulse held, each looping on itself. */
 static const uint8_t template_lead_wave[2][4] = {{0x41, 255, 0x41, 255},
                                                 {0x80, LEAD_WAVE, 0x80, LEAD_WAVE + 2u}};
-static const uint8_t template_counts[] = {2u + GT2_KIT_DRUMS,
+static const uint8_t template_counts[] = {2u + GT2_KIT_DRUMS + DIGI_DRUMS,
                                           GT2_KIT_WAVE_ROWS + 4u,
                                           GT2_KIT_PULSE_ROWS,
                                           0, 0, 3}; /* filter, speed; the patterns */
@@ -249,6 +266,7 @@ static const template_piece template_pieces[] = {
     {template_counts, 1},
     PIECE(template_lead),
     PIECE(gt2_kit_instr),
+    {NULL, DIGI_DRUMS * GT2_INSTR_BYTES}, /* template_digi */
     {template_counts + 1, 1},
     {gt2_kit_wave[0], GT2_KIT_WAVE_ROWS},
     {template_lead_wave[0], 4},
@@ -259,7 +277,7 @@ static const template_piece template_pieces[] = {
     {template_counts + 3, 3},
 };
 #define TEMPLATE_HEAD 100u
-#define TEMPLATE_PATTERNS (13u + 1u + (2u + GT2_KIT_DRUMS) * GT2_INSTR_BYTES + 1u + \
+#define TEMPLATE_PATTERNS (13u + 1u + (2u + GT2_KIT_DRUMS + DIGI_DRUMS) * GT2_INSTR_BYTES + 1u + \
                            2u * (GT2_KIT_WAVE_ROWS + 4u) + 1u + 2u * GT2_KIT_PULSE_ROWS + 3u)
 #define TEMPLATE_BYTES (TEMPLATE_HEAD + TEMPLATE_PATTERNS + 3u * (1u + (GT2_DEFAULT_ROWS + 1u) * 4u))
 
@@ -274,7 +292,7 @@ static uint8_t template_byte(uint32_t at) {
     at -= TEMPLATE_HEAD;
     for (uint32_t i = 0; i < sizeof template_pieces / sizeof template_pieces[0]; i++) {
         if (at < template_pieces[i].n) {
-            return template_pieces[i].p[at];
+            return template_pieces[i].p ? template_pieces[i].p[at] : template_digi(at);
         }
         at -= template_pieces[i].n;
     }
@@ -426,6 +444,13 @@ static void read_done(song_io* io) {
         if (io->action == LOAD_NEW) {
             memset(io->name, 0, sizeof io->name);
             io->dirty = 1;
+            /* the digi drums: instruments SONG_IO_DIGI on, the built-in samples in order */
+            song_digi digi = {DIGI_DRUMS, {{0}}};
+            for (uint32_t d = 0; d < DIGI_DRUMS; d++) {
+                digi.entry[d][0] = (uint8_t)(SONG_IO_DIGI + d);
+                digi.entry[d][1] = (uint8_t)(SONG_DIGI_KICK + d);
+            }
+            (void)song_ext_set_digi(io->ctl->song, &digi);
         } else {
             memcpy(io->name, io->target, sizeof io->name);
             io->dirty = 0;

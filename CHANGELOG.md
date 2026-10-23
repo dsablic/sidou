@@ -17,6 +17,15 @@ All notable changes are documented here. The format follows
   by rendering it on both chip models, and the kick keeps its weight on the 8580. STEP's and
   TRACKER's PRESETS popup names the instrument (`03 KICK`), so a lane's drum is picked by name.
   Decision record 0009.
+- **Digi drums:** short 4-bit samples (KICK, SNARE, CLAP, HAT) played through chip A's output
+  as a C64 tune plays them through the 6581's volume register, at about 8.8 kHz, from the
+  sample of their note, one at a time. A new `DIGI` chunk in SIDOU's trailer marks the
+  instruments that play them; GoatTracker skips it and plays the instruments' own GT2 content
+  instead, so a song with digi drums still opens and plays there. A NEW song has them as
+  instruments 0B-0E (`DG KICK`, `DG SNARE`, `DG CLAP`, `DG HAT`), copies of the chip kit's drums;
+  while a digi drum plays, its voice's own sound is muted. They sound the same on either chip
+  model (an 8580 plays them as one with the "digi boost"). The samples are synthesized by
+  SIDOU's table generator, no recorded material.
 
 ## [0.3.1] - 2026-10-23
 

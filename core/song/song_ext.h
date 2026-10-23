@@ -32,6 +32,7 @@ extern "C" {
 #define SONG_TAG_MIDI SONG_TAG('M', 'I', 'D', 'I')
 #define SONG_TAG_SCNE SONG_TAG('S', 'C', 'N', 'E')
 #define SONG_TAG_KEYS SONG_TAG('K', 'E', 'Y', 'S')
+#define SONG_TAG_DIGI SONG_TAG('D', 'I', 'G', 'I')
 #define SONG_TAG_PAD SONG_TAG('P', 'A', 'D', ' ')
 #define SONG_TAG_TRKB SONG_TAG('T', 'R', 'K', 'B') /* reserved: chip B's tracks (M5) */
 #define SONG_TAG_RIPD SONG_TAG('R', 'I', 'P', 'D') /* reserved: rip data (M5) */
@@ -231,6 +232,25 @@ typedef struct {
 } song_keys;
 int song_ext_get_keys(const gt2_song* s, song_keys* v);
 int song_ext_set_keys(gt2_song* s, const song_keys* v);
+
+/* DIGI: the digi drums (decision record 0009). Each entry marks an instrument (1-63) as a digi
+ * drum and names a built-in sample (SONG_DIGI_*); the instrument's own GT2 content is what
+ * GoatTracker plays, and what SIDOU's chip holds silent while the sample plays. */
+#define SONG_DIGI_MAX 16u
+enum { SONG_DIGI_NONE, SONG_DIGI_KICK, SONG_DIGI_SNARE, SONG_DIGI_CLAP, SONG_DIGI_HAT,
+       SONG_DIGI_KINDS };
+typedef struct {
+    uint8_t count;
+    uint8_t entry[SONG_DIGI_MAX][2]; /* an instrument and its SONG_DIGI_* */
+} song_digi;
+/* 1 and the entries as the chunk has them (version 1, at most SONG_DIGI_MAX, within its
+ * length), else 0 and none. */
+int song_ext_get_digi(const gt2_song* s, song_digi* v);
+int song_ext_set_digi(gt2_song* s, const song_digi* v);
+/* The chunk as a map: map[i] instrument i's sample (1..SONG_DIGI_KINDS - 1), 0 for none and
+ * for map[0]; an entry with an instrument out of 1-63 or an unknown sample is left out, and a
+ * later entry for the same instrument wins. */
+void song_ext_digi_map(const gt2_song* s, uint8_t map[GT2_MAX_INSTR + 1u]);
 
 #ifdef __cplusplus
 }

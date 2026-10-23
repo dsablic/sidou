@@ -51,7 +51,8 @@ impl Transport {
             song_ctl_block(&mut *self.sc, &mut *self.chip);
             let at = song_ctl_due(&*self.sc, n);
             song_ctl_render(&mut *self.sc, &mut *self.chip, out.as_mut_ptr(), n);
-            song_ctl_block_end(&mut *self.sc, n);
+            // with the digi drums, as audio_fill adds them (after its tail gate)
+            song_ctl_block_end(&mut *self.sc, out.as_mut_ptr(), n);
             (at < n).then_some(at as usize)
         }
     }

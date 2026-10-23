@@ -31,9 +31,10 @@ screenshots the tests check.*
   follow the chip in stereo.
 - **Use two SIDs.** Songs play on one chip while the keys play the other, on top of the song.
 - **Make songs on the panel.** STEP is a drum-machine view of a pattern, and a NEW song comes
-  with a SID drum kit (kick, snare, hats, clap, toms, rim) to put on its lanes. TRACKER is
-  GoatTracker's layout, one voice at a time. ORDER, INSTR and TABLE edit the rest. REC records
-  the keys and the filter knobs while the song plays, and parameter locks are on STEP.
+  with a SID drum kit (kick, snare, hats, clap, toms, rim) and C64-style digi drums to put on
+  its lanes. TRACKER is GoatTracker's layout, one voice at a time. ORDER, INSTR and TABLE edit
+  the rest. REC records the keys and the filter knobs while the song plays, and parameter locks
+  are on STEP.
 - **Keep GoatTracker 2 songs.** SAVE writes a `.sng` to the device's flash. Power loss does not
   corrupt it.
 - **Play from MIDI.** Notes on every channel, CCs for the main controls, program change for

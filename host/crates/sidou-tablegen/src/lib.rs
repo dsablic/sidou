@@ -7,6 +7,7 @@
 //! `cargo run --release -p sidou-tablegen` (from `host/`) rewrites them; the drift test
 //! fails when the checked-in files differ from what this produces.
 
+pub mod digi;
 pub mod filter_fit;
 pub mod profiles;
 
@@ -533,6 +534,7 @@ pub fn generate_computed() -> Vec<Generated> {
         noise_jump_header(),
         profiles::profiles_header(),
         pulldown_header(&PulldownSource::new()),
+        digi::digi_header(),
     ]
 }
 

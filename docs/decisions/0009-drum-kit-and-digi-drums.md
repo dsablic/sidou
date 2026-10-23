@@ -71,11 +71,12 @@ instruments as digi drums, each naming a built-in sample:
 | 1 | 1 | k, the entries (at most 16) |
 | 2 | 2 × k | per entry: an instrument (1-63) and a built-in sample: 1 KICK, 2 SNARE, 3 CLAP, 4 HAT |
 
-The instrument's own GT2 content is the **fallback** GoatTracker plays (and SIDOU's chip keeps
-gated off while the sample plays): in a NEW song the digi instruments 0B-0E (`DG KICK`,
-`DG SNARE`, `DG CLAP`, `DG HAT`) are copies of the matching chip-kit drums. Position-free (kept
-when the GT2 part's CRC fails); an entry with an instrument out of range or an unknown sample is
-ignored, the chunk kept as written. Built-in samples only: no upload in this version.
+The instrument's own GT2 content is the **fallback** GoatTracker plays (and SIDOU mutes on its
+voice while the sample plays): in a NEW song the digi instruments 0B-0E (`DG KICK`, `DG SNARE`,
+`DG CLAP`, `DG HAT`) are copies of the matching chip-kit drums. Position-free (kept when the GT2
+part's CRC fails); an entry with an instrument out of range or an unknown sample is ignored, the
+chunk kept as written. Built-in samples only: no upload in this version. A NEW load adds the
+chunk (`app/song_io.c`); the template itself stays a plain GTS5 stream.
 
 ### The samples
 
@@ -84,9 +85,13 @@ its comments; checked in as `core/player/gen/digi.h`, the drift test keeps them 
 synthesis from a fixed-seed noise generator, sines and exponential envelopes, no recorded
 material: SIDOU's own work, GPL-3.0-or-later (LICENSING.md).
 
-- 4-bit codes, the values a C64 player writes to `$D418`'s low nibble, rest at 8; two a byte.
+- 4-bit codes, the values a C64 player writes to `$D418`'s low nibble, rest at 8, **a code a
+  byte**. Two a byte would halve the data, but choosing the nibble costs the audio interrupt's
+  code about a dozen bytes of SRAM, and SRAM is what the digis are shortest of (below).
 - One code every 5 output samples: 44,118 / 5 = 8,824 Hz.
-- KICK 220 ms, SNARE 180 ms, CLAP 200 ms, HAT 60 ms: about 5,800 codes, about 2.9 KB.
+- KICK 220 ms (1,942 codes), SNARE 117 ms (1,034), CLAP 185 ms (1,631), HAT 29 ms (253), each
+  cut where it falls to the rest: 4,860 bytes, in flash and copied to RAM at boot (the audio
+  interrupt reads no flash).
 
 ### Playback, and its cost
 
@@ -94,18 +99,43 @@ A C64 plays a volume-register digi by writing each code to `$D418`; what is hear
 6581's mixer DC times the volume. SIDOU's chip model carries no such DC (it is the
 character's thump, off by default), and writing the chip's volume 8,824 times a second would
 split each block's render some 23 times and scale the song's voices with it. So SIDOU plays
-what the 6581's volume DAC makes of the codes: `(code - 8) × SONG_DIGI_LEVEL`, held for the
-code's 5 samples, added to chip A's block after the tail gate (so a digi in a quiet song is not
-muted with the chips' leak), before the effect slots. The chip's volume register stays the
-song's. One digi plays at a time (a C64 has one volume register): a new hit cuts the last.
+what the 6581's volume DAC makes of the codes: `(code - 8) × SONG_DIGI_LEVEL` (875, so a full
+code is about a chip kick's peak), held for the code's 5 samples, added to the block after the
+tail gate (so a digi in a quiet song is not muted with the chips' leak), before the effect
+slots, clamped to int16. The chip's volume register stays the song's. One digi plays at a time
+(a C64 has one volume register): a new hit cuts the last.
 
-- **Trigger** (audio interrupt, `song_ctl.c`): at a call's note event (a row, a jam, STEP's
-  audition) whose instrument the chunk marks, the sample starts at the call's own sample, and
-  that voice's gate is held off on chip A (the player's state and shadow untouched) until a note
-  of another instrument. A muted or taken voice plays no digi.
-- **The map**: the main loop turns the chunk into a 64-byte instrument-to-sample table each
-  pass (`song_ctl_poll`), writing only the bytes that change.
-- **Cost**: measured in "Numbers" below.
+- **Trigger and mix** (audio interrupt, `song_ctl_block_end`): when the block held a call (its
+  sample, `call_sample`, is in the block), each of that call's notes (a row, a jam: STEP's
+  audition too) whose instrument the chunk marks starts its sample at the call's own sample;
+  the samples before it are a silent code's. A voice that is muted, soloed out or the keys'
+  plays none (`digi_ok`, the main loop's). Then the codes are added.
+- **The instrument's own sound** (main loop, `song_ctl_poll`): a second reader of the event
+  ring follows each voice's instrument, and the voices whose instrument is a digi drum join the
+  mutes the interrupt is sent (`SONG_CMD_MUTE`, with the user's: a mute's gate off, then none
+  of the song's writes, and the registers back at the next note of another instrument). A digi
+  instrument's first frame is silent with the kit's first wave `$08` (and GoatTracker's default
+  `$09`), and the mute lands within a block or two, before its second frame; a note of another
+  instrument right after a digi drum on that voice so starts a few milliseconds late. Done in
+  the interrupt this would cost about 130 more bytes of SRAM (the sink's, the rewrite's and the
+  mutes' tests, and the note's): there are none.
+- **The map**: the main loop turns the chunk into an instrument-to-sample table each pass,
+  writing only the bytes that change; 256 entries, so any instrument byte indexes it with no
+  test in the interrupt (the reader refuses instruments past 63, and those entries stay 0).
+- **Cost**: 10.42 instructions a sample while a digi plays without a break (emu-gate
+  `a_playing_digi_drum_costs_the_interrupt_its_bound`, bound `DIGI_PER_SAMPLE` 10.5), one
+  test a block while none plays. The audio target's sum (two chips at their worst, the slots'
+  cap, the tap, the ISR, the player's worst block and a digi) is 2,475 of 2,700. The system
+  stack's deepest use is unchanged (3,272 bytes of 7,936 in the emulator tests that play one).
+- **SRAM**: the interrupt's code grew by 176 bytes (`song_ctl_block_end` from 38 to 208, the
+  rest alignment), exactly what RAMTEXT had free. **RAMTEXT is now full** (49,152 of 49,152):
+  the next audio-path code needs room made first (decision for the user: e.g. building the
+  slots' switch path for size, or a smaller debug area).
+
+The host's render (`host/crates/sidou-tests` Transport, emu-gate's `render_host_song`) calls
+`song_ctl_block_end` with its block as the device does, and the device plays a song with the
+kit and a digi drum sample for sample as the host renders it
+(`the_drum_kit_and_a_digi_drum_play_bit_exact_with_the_host`).
 
 ### On an 8580
 
@@ -120,9 +150,11 @@ Measured on the fm1 build (`FM-1_900`), against main at `fd45e64d`:
 
 | | Before | After the kit | After the digis |
 |---|---|---|---|
-| Image (sidou_app.bin) | 485,720 | 486,168 (+448) | |
-| RAMTEXT (.ram_text) | 48,976 of 49,152 | 48,976 | |
-| RAM region free | 11,784 | 11,784 | |
-| POOL free | 12,160 | 12,160 | |
+| Image (sidou_app.bin) | 485,720 | 486,168 (+448) | 491,908 (+5,740: 4,860 the samples) |
+| Left under IMAGE_CEILING (506,000) | 20,280 | 19,832 | 14,092 |
+| RAMTEXT (.ram_text) | 48,976 of 49,152 | 48,976 | **49,152 of 49,152** |
+| RAM region free | 11,784 | 11,784 | 6,632 (the samples 4,860, the state) |
+| POOL free | 12,160 | 12,160 | 12,160 |
+| Free RAM together (FREE_RAM_MIN 10,000) | 23,944 | 23,944 | 18,792 |
 
 <!-- REUSE-IgnoreEnd -->
