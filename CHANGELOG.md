@@ -26,6 +26,23 @@ All notable changes are documented here. The format follows
   factory and are stored at once (toast RESET AND SAVED). Songs, USER chip profiles and MIDI learn mappings stay;
   HOME or moving away cancels with nothing written. Before, the only whole reset was a STORE
   format, which erased the songs too.
+- **A SID drum kit:** a NEW song holds eight drums on the chip's own voices after its lead and
+  bass, as instruments 03-0A: KICK, SNARE, CL HAT, OP HAT, CLAP, TOM LO, TOM HI and RIM. They
+  are plain GoatTracker 2 instruments and table rows (a falling triangle for the kick and the
+  toms, a tonal attack and noise for the snare, short and long noise for the hats, three noise
+  bursts for the clap), so a song made with them plays the same in GoatTracker; each was tuned
+  by rendering it on both chip models, and the kick keeps its weight on the 8580. STEP's and
+  TRACKER's PRESETS popup names the instrument (`03 KICK`), so a lane's drum is picked by name.
+  Decision record 0009.
+- **Digi drums:** short 4-bit samples (KICK, SNARE, CLAP, HAT) played through chip A's output
+  as a C64 tune plays them through the 6581's volume register, at about 8.8 kHz, from the
+  sample of their note, one at a time. A new `DIGI` chunk in SIDOU's trailer marks the
+  instruments that play them; GoatTracker skips it and plays the instruments' own GT2 content
+  instead, so a song with digi drums still opens and plays there. A NEW song has them as
+  instruments 0B-0E (`DG KICK`, `DG SNARE`, `DG CLAP`, `DG HAT`), copies of the chip kit's drums;
+  while a digi drum plays, its voice's own sound is muted. They sound the same on either chip
+  model (an 8580 plays them as one with the "digi boost"). The samples are synthesized by
+  SIDOU's table generator, no recorded material.
 
 ### Changed
 - **The profile's word everywhere:** STATUS names the chip as its model and the profile's word

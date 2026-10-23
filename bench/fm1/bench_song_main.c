@@ -30,6 +30,7 @@ static gt2_shape scratch;
 static song_work work;
 static uint32_t row_region[SONG_REGION_BYTES / sizeof(uint32_t)];
 static gt2_edit row_edits[SONG_EDITS_PER_BLOCK];
+static int16_t block_out[SONG_BLOCK]; /* the block the digi drums add to (none play here) */
 
 __attribute__((noinline)) void bench_mark(void) { __asm__ volatile("" ::: "memory"); }
 
@@ -122,7 +123,7 @@ int main(void) {
         if (at < SONG_BLOCK) {
             song_ctl_call(&sc);
         }
-        song_ctl_block_end(&sc, SONG_BLOCK);
+        song_ctl_block_end(&sc, block_out, SONG_BLOCK);
         bench_mark();
         if (b > 0u && kind == 3u && row_error == GT2_OK)
             for (uint32_t k = 0; k < SONG_EDITS_PER_BLOCK; k++)

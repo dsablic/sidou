@@ -98,6 +98,17 @@ Every starter-pack tune needs metadata recording its composer, licence or writte
 permission, and source. SIDOU does not redistribute HVSC tunes; users load them from
 their own copy.
 
+## The drum kit and the digi drums
+
+The SID drum kit (`core/song/gt2_kit.c`: eight GoatTracker instruments and their table rows)
+and the four built-in digi drum samples (`core/player/gen/digi.h`, KICK, SNARE, CLAP and HAT)
+are SIDOU's own work, GPL-3.0-or-later, made for SIDOU (decision record
+[0009](docs/decisions/0009-drum-kit-and-digi-drums.md)). The kit was tuned by rendering it;
+the samples are synthesized by `sidou-tablegen` (`host/crates/sidou-tablegen/src/digi.rs`
+holds the recipe: a fixed-seed noise generator, sines and exponential envelopes) and contain
+no recorded or third-party material. Melodee's SID KIT and SID DIGI and SID-1's sample kit
+inspired the feature; nothing of theirs was used.
+
 ## Trademarks
 
 "Commodore", "C64", "SID" chip names and "M-VAVE" are used only to describe

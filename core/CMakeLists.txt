@@ -14,6 +14,7 @@ add_library(sidou_core STATIC
     song/gt2_sng.c
     song/gt2_stream.c
     song/gt2_ins.c
+    song/gt2_kit.c
     song/song_ext.c
     player/gt2_play.c
     player/gt2_shape.c

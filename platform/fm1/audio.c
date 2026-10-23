@@ -388,7 +388,10 @@ void audio_fill(int32_t* buf) {
             tail_gate_also(&tail_state, side_ab);
         }
     }
-    song_ctl_block_end(&song_transport, AUDIO_HALF_FRAMES);
+    /* With the song's digi drums (decision record 0009): after the tail gate, so a digi in a
+     * quiet song is not muted with the chips' leak; in the middle (CHIP SPREAD's side is the
+     * chips'). */
+    song_ctl_block_end(&song_transport, s, AUDIO_HALF_FRAMES);
     /* With every slot off this writes chip A's output to both sides unchanged; with chip B the
      * whole sum, through the soft limiter (core/fx/fx_limit.h) as the slots' output goes. The
      * tail gate leaves the sum's excess as it is: with both chips quiet there is none. CHIP

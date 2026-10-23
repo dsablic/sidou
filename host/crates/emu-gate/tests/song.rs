@@ -1816,3 +1816,124 @@ fn the_play_led_is_dim_between_beats_and_lit_on_each_beat() {
         "lit for about a quarter of the time: {lit} windows of 400"
     );
 }
+
+/// The SID drum kit (core/song/gt2_kit.h) on voices 2 and 3, and on voice 1 a digi drum
+/// (decision record 0009): the kit's kick, marked by the DIGI chunk as the built-in KICK, every
+/// row (`every_row`) or on the beat.
+fn kit_digi_song(every_row: bool) -> Song {
+    use sidou_tests::song::SngSpec;
+    let kit = |d: u32| unsafe {
+        std::mem::transmute::<gt2_kit_drum, [u8; 25]>(gt2_kit_instr[d as usize])
+    };
+    let mut s = SngSpec::new();
+    s.instr = (0..GT2_KIT_DRUMS).map(kit).collect();
+    let mut dg = kit(GT2_KIT_KICK);
+    dg[GT2_INS_NAME as usize..].fill(0);
+    dg[GT2_INS_NAME as usize..][..7].copy_from_slice(b"DG KICK");
+    s.instr.push(dg); // instrument 9
+    let (wave, pulse) = unsafe {
+        (
+            (&raw const gt2_kit_wave).read(),
+            (&raw const gt2_kit_pulse).read(),
+        )
+    };
+    s.tables = vec![
+        wave[0]
+            .iter()
+            .copied()
+            .zip(wave[1].iter().copied())
+            .collect(),
+        pulse[0]
+            .iter()
+            .copied()
+            .zip(pulse[1].iter().copied())
+            .collect(),
+        vec![],
+        vec![],
+    ];
+    let r = [GT2_REST as u8, 0, 0, 0];
+    let note = |i: u8| [GT2_FIRSTNOTE as u8 + 36, i, 0, 0];
+    let mut v1 = vec![r; 16];
+    let mut v2 = vec![r; 16];
+    let mut v3 = vec![r; 16];
+    for k in 0..16 {
+        if every_row || k % 4 == 0 {
+            v1[k] = note(9);
+        }
+        v3[k] = note(if k == 14 { 4 } else { 3 }); // the hats
+    }
+    v2[4] = note(2);
+    v2[12] = note(2);
+    v2[10] = note(5); // the clap
+    s.patterns = vec![
+        (v1, [0xff, 0, 0, 0]),
+        (v2, [0xff, 0, 0, 0]),
+        (v3, [0xff, 0, 0, 0]),
+    ];
+    let mut song = device_song(&s.encode(), None);
+    assert_eq!(
+        song.ext_set(sidou_tests::song::tag(b"DIGI"), &[1, 1, 9, 1]),
+        0
+    );
+    song
+}
+
+/// The SID drum kit and a digi drum play on the device as the host renders them, sample for
+/// sample: the digi's codes from its notes' calls on, its voice muted for its instrument's own
+/// sound, the kit on the chip.
+#[test]
+fn the_drum_kit_and_a_digi_drum_play_bit_exact_with_the_host() {
+    let Some((_, fw)) = fixture("the drum kit test") else {
+        return;
+    };
+    check_song("kit and digi", &fw, Some(&kit_digi_song(false)));
+}
+
+/// DIGI_PER_SAMPLE: what the digi drums cost the audio interrupt while one plays.
+#[test]
+fn a_playing_digi_drum_costs_the_interrupt_its_bound() {
+    let Some((_, fw)) = fixture("the digi cost test") else {
+        return;
+    };
+    use object::{Object, ObjectSymbol};
+    let file = object::File::parse(&*fw.elf).expect("parse the firmware ELF");
+    let f = file
+        .symbols()
+        .find(|s| s.name() == Ok("song_ctl_block_end"))
+        .expect("song_ctl_block_end");
+    let range = f.address() as u32..(f.address() + f.size()) as u32;
+    let mut window = None;
+    let song = kit_digi_song(true);
+    play_after(
+        &fw,
+        Some(&song),
+        3000,
+        |_| {},
+        |m, elapsed| {
+            // from a second in (the song started, its digi playing), for a second
+            if elapsed == 1030 {
+                m.watch_alnk_pcs(range.clone());
+                m.alnk_pcs_inside = 0;
+                window = Some((m.alnk_blocks.len(), 0));
+            } else if elapsed == 2030 {
+                let (from, _) = window.unwrap();
+                window = Some((from, m.alnk_blocks.len()));
+                let n = (m.alnk_blocks.len() - from) as f64 * HALF_FRAMES as f64;
+                let digi = m.alnk_pcs_inside as f64 / n;
+                println!(
+                    "{}",
+                    serde_json::json!({ "digi_instructions_per_sample": digi })
+                );
+                assert!(digi > 3.0, "no digi played: {digi:.2} a sample");
+                assert!(
+                    digi <= DIGI_PER_SAMPLE,
+                    "the digi drums cost {digi:.2} a sample, over {DIGI_PER_SAMPLE}"
+                );
+            }
+        },
+    );
+    assert!(
+        matches!(window, Some((_, to)) if to > 0),
+        "the window never closed"
+    );
+}

@@ -441,6 +441,48 @@ fn subtunes_song() -> Vec<u8> {
     s.encode()
 }
 
+/// The SID drum kit (core/song/gt2_kit.h) in a beat: each drum on each voice, on the beat and
+/// off it, with key offs (STEP's staccato) and drums back to back, so the hard restart and the
+/// clap's inaudible waveforms run between them.
+fn kit_song() -> Vec<u8> {
+    let kit: Vec<[u8; 25]> = (0..GT2_KIT_DRUMS as usize)
+        // SAFETY: a kit drum is 25 bytes, an instrument's.
+        .map(|d| unsafe { std::mem::transmute::<gt2_kit_drum, [u8; 25]>(gt2_kit_instr[d]) })
+        .collect();
+    // SAFETY: plain constant data.
+    let (wave, pulse) = unsafe {
+        (
+            (&raw const gt2_kit_wave).read(),
+            (&raw const gt2_kit_pulse).read(),
+        )
+    };
+    let table = |t: &[Vec<u8>; 2]| t[0].iter().copied().zip(t[1].iter().copied()).collect();
+    let wave = [wave[0].to_vec(), wave[1].to_vec()];
+    let pulse = [pulse[0].to_vec(), pulse[1].to_vec()];
+    let beat = |a: u8, b: u8| {
+        let mut p = Vec::new();
+        for k in 0..8u8 {
+            p.push(row(n(3, k % 5), if k % 2 == 0 { a } else { b }));
+            p.push(if k % 3 == 0 { row(OFF, 0) } else { R });
+        }
+        p
+    };
+    song(
+        [(vec![0, 3], 0), (vec![1], 0), (vec![2], 0)],
+        kit,
+        [table(&wave), table(&pulse), vec![], vec![]],
+        vec![beat(1, 2), beat(3, 4), beat(5, 6), beat(7, 8)],
+    )
+}
+
+#[test]
+fn the_drum_kit_matches() {
+    check("kit", &kit_song(), &default_options());
+    let mut o = default_options();
+    o.multispeed = 2;
+    check("kit x2", &kit_song(), &o);
+}
+
 #[test]
 fn notes_orderlists_and_instruments_match() {
     check("notes", &notes_song(), &default_options());

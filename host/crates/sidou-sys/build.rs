@@ -21,6 +21,7 @@ const SOURCES: &[&str] = &[
     "core/song/gt2_sng.c",
     "core/song/gt2_stream.c",
     "core/song/gt2_ins.c",
+    "core/song/gt2_kit.c",
     "core/song/song_ext.c",
     "core/player/gt2_play.c",
     "core/player/gt2_shape.c",
@@ -231,7 +232,7 @@ fn main() {
                 "LOGO_.*|logo_.*|CREDITS_.*|credits_.*|SINE_.*|BOOT_.*|ABOUT_.*|LEARN_VIEW_.*|SCOPE_.*|",
                 "SCENE_.*|scene_.*|TITLE_CARD.*|title_card_.*|CHIP_VIEW_.*|chip_view_.*|CHIP_MIX_.*|CHIP_SPREAD_.*|MASTER_.*|",
                 "TAIL_.*|THUMP_OUT_.*|UI_SOUND_.*|KEYS_ROUTE_.*|SYSEX_.*|HELP_.*|help_.*|",
-                "demo_song_.*|song_view_.*|song_pages_.*|STORE_.*|SAVE_KEY_.*|SETTINGS_.*|step_view_.*|STEP_VIEW_.*|tracker_view_.*|TRACKER_VIEW_.*|",
+                "demo_song_.*|gt2_kit_.*|song_view_.*|song_pages_.*|STORE_.*|SAVE_KEY_.*|SETTINGS_.*|step_view_.*|STEP_VIEW_.*|tracker_view_.*|TRACKER_VIEW_.*|",
                 "USER_PROFILE.*|user_profile.*|THEME_.*|theme_.*",
             ),
         )

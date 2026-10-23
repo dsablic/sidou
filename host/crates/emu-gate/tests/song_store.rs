@@ -647,10 +647,11 @@ fn new_template_save_as_and_delete_keep_the_right_identity() {
         instruments[0][GT2_INS_WAVE as usize],
         instruments[1][GT2_INS_WAVE as usize]
     );
-    assert_ne!(
-        instruments[2][GT2_INS_FIRSTWAVE as usize] & 0x80,
-        0,
-        "drum is not noise"
+    // the SID drum kit from instrument 3 (core/song/gt2_kit.h)
+    assert_eq!(
+        &instruments[SONG_IO_KIT as usize - 1][GT2_INS_NAME as usize..][..4],
+        b"KICK",
+        "the kit is not there"
     );
     complete(&mut m, &fw, SAVE, "TEMPLATE");
     let original = stored_file(&m.soc.flash.mem, "TEMPLATE").unwrap().1;

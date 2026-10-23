@@ -293,6 +293,26 @@ typedef struct song_ctl {
     uint32_t jam_seq[GT2_PLAY_CHANNELS];
     uint8_t jam_wait[GT2_PLAY_CHANNELS][3]; /* state, note, instrument */
     uint8_t jam_lo, jam_hi, jam_live, jam_release;
+    /* the mutes song_ctl_mute was given, and those the interrupt was sent: with the voices whose
+     * instrument is a digi drum (digi_hold, from the events from digi_ev on), whose own sound is
+     * muted while its sample plays */
+    uint8_t mute_user, mute_sent, digi_hold;
+    uint32_t digi_ev;
+    /* --- the digi drums, last (the interrupt's other fields keep their short offsets) --- */
+    /* the digi drums (decision record 0009, song_ctl_block_end): the playing sample's next code
+     * and its end (NULL: none), the code's level and the samples it has left */
+    const uint8_t* digi_at;
+    const uint8_t* digi_end;
+    int16_t digi_level;
+    uint8_t digi_left;
+    /* the main loop's for the interrupt: the voices whose digi drums may sound (not muted, not
+     * the keys'), its map of the song's DIGI chunk (song_ext_digi_map: an instrument's built-in
+     * sample, 0 none; a byte's worth, so any instrument byte indexes it without a test in the
+     * interrupt, 64 and on 0), and where each built-in sample's codes start (sample k's from
+     * [k - 1] up to [k], set at init) */
+    uint8_t digi_ok;
+    uint8_t digi_of[256];
+    const uint8_t* digi_from[SONG_DIGI_KINDS];
 } song_ctl;
 
 /* The song in its region, its two shape buffers and its work space, all the caller's;
@@ -411,14 +431,28 @@ void song_ctl_block(song_ctl* sc, sid* chip);
 uint32_t song_ctl_due(const song_ctl* sc, uint32_t n);
 /* The call due at song_ctl_due's sample: the play routine, writing into chip A. */
 void song_ctl_call(song_ctl* sc);
-/* At the block's end (n samples). */
-void song_ctl_block_end(song_ctl* sc, uint32_t n);
+/* At the block's end (n samples, out): the song's digi drums (decision record 0009) into out,
+ * which holds chip A's samples and chip B's after the tail gate, before the effect slots. A
+ * note in the block's call whose instrument the song's DIGI chunk marks starts its built-in
+ * sample at the call's sample (one at a time, as a C64's one volume register: a hit cuts the
+ * last); a muted voice, or one the keys hold, plays none. The codes play as the 6581's volume
+ * DAC makes them, (code - 8) SONG_DIGI_LEVEL, each held SONG_DIGI_SPAN samples, added to out
+ * and clamped to int16. The voices whose instrument is a digi drum (song_ctl.digi_hold) the
+ * main loop mutes (song_ctl_poll), so the instrument's own sound, which GoatTracker plays,
+ * stays off the chip while its sample plays; a note of another instrument there unmutes it.
+ * Nothing to add while no digi plays (one test). */
+#define SONG_DIGI_SPAN 5u    /* output samples a code: 44,118 / 5, about 8,824 Hz */
+#define SONG_DIGI_LEVEL 875  /* int16 LSBs a code step: a code 15 or 0 about a chip kick's peak */
+void song_ctl_block_end(song_ctl* sc, int16_t* out, uint32_t n);
 /* Chip A was swapped for a prepared one (reg_ring's swap hook): the player's registers go
  * into it again before the block renders, so a song plays on through a profile change. */
 void song_ctl_chip_swapped(void* ctx, uint32_t chip, sid* s);
 /* Chip A's block, split at the call: sid_render, the call, sid_render (the host's render;
  * the device's audio_fill does the same with the LIVE view's tap). */
 void song_ctl_render(song_ctl* sc, sid* chip, int16_t* out, uint32_t n);
+/* A built-in sample (SONG_DIGI_KICK..HAT): its codes (0-15, one a byte) and their count; NULL
+ * for another kind. */
+const uint8_t* song_digi_sample(uint32_t kind, uint32_t* bytes);
 
 #ifdef __cplusplus
 }

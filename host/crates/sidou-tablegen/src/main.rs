@@ -19,6 +19,7 @@ fn main() {
                 write(&g);
             }
         }
+        Some("digi") => write(&sidou_tablegen::digi::digi_header()),
         Some("fit-filter") => {
             let fits = sidou_tablegen::filter_fits();
             for f in &fits {
@@ -27,7 +28,7 @@ fn main() {
             write(&sidou_tablegen::filter_header(&fits));
         }
         Some(other) => {
-            eprintln!("usage: sidou-tablegen [fit-filter] (unknown argument {other})");
+            eprintln!("usage: sidou-tablegen [fit-filter | digi] (unknown argument {other})");
             std::process::exit(2);
         }
     }
