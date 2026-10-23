@@ -17,7 +17,7 @@ use crate::song_view::{attr, ch, Song};
 
 /// The song view whole on the grid, the knob's popup gone from over it, and what the view
 /// holds for the editor written (a frame runs one of its actions).
-fn settle(ui: &mut crate::views::Ui) {
+pub(crate) fn settle(ui: &mut crate::views::Ui) {
     for _ in 0..100 {
         let st = &ui.v.step;
         if st.qn == 0 && st.follow == 0 && ui.v.editor.pending == 0 {
@@ -40,7 +40,7 @@ fn th() -> &'static theme {
 
 /// Three voices with 64-row patterns 0, 1 and 2 (voice 1's with a few notes and a command),
 /// pattern 3 of 128 rows on voice 3's second entry; two instruments.
-fn fixed_song() -> Model {
+pub(crate) fn fixed_song() -> Model {
     let mut p0 = vec![R; 64];
     p0[0] = [C3 + 7, 1, 0, 0];
     p0[4] = [C3 + 12, 2, 0, 0];
@@ -60,13 +60,13 @@ fn fixed_song() -> Model {
     m
 }
 
-fn step() -> Song {
+pub(crate) fn step() -> Song {
     let mut s = Song::playing(Some(fixed_song()));
     open_step(&mut s);
     s
 }
 
-fn open_step(s: &mut Song) {
+pub(crate) fn open_step(s: &mut Song) {
     s.ui.press(PANEL_BTN_SEQ);
     settle(&mut s.ui);
     assert_eq!(s.ui.top(), "STEP");

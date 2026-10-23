@@ -2933,3 +2933,74 @@ void views_update(views* v, uint32_t step, int32_t code) {
     grid_fill(g, 2, STATUS_READY_ROW, 6, 1, ' ', a); /* READY. */
     screen_redraw(&v->s);
 }
+
+/* 1 while a question waits for SAVE: MIDI learn's clear-all, the song menu's confirmation, the
+ * SETTINGS store's format once armed. */
+static int save_asked(const views* v) {
+    if (learn_view_is_open(&v->learn)) {
+        return v->learn.ml && v->learn.ml->state == MIDI_LEARN_CONFIRM;
+    }
+    const view* top = shows(v);
+    if (top == &views_song_menu_view) {
+        return v->songs.page == SONG_MENU_CONFIRM;
+    }
+    return top == &views_settings_view && v->format_arm && v->setup.cursor == VIEWS_SETTINGS_STORE;
+}
+
+/* The song's place in its beat, 0..255, from the player's row position (the first voice with a
+ * row event: its row in the pattern, so a play from mid-pattern, an ORDER jump, a song-position
+ * seek or an external clock all stay on the beat) and how far into the row it is (the calls
+ * since the row began and the fraction of the current one): rows_beat rows make a beat.
+ * PANEL_BEAT_NONE before a row event, or without a player. Integer only. */
+static uint32_t beat_phase(const views* v) {
+    const song_transport* t = v->song.t;
+    song_status st;
+    if (!t) {
+        return PANEL_BEAT_NONE;
+    }
+    t->status(t->ctx, &st);
+    uint32_t n = 0;
+    while (n < SONG_T_VOICES && st.row[n] == SONG_T_NOWHERE) {
+        n++;
+    }
+    uint32_t rb = v->song.rows_beat ? v->song.rows_beat : 4u;
+    uint32_t len = ((uint32_t)st.speed[0] + st.speed[1]) * 128u; /* a row, in 256ths of a call */
+    if (st.state != SONG_T_PLAYING || n == SONG_T_VOICES || len == 0u) {
+        return PANEL_BEAT_NONE;
+    }
+    uint32_t in_row = ((uint32_t)(uint16_t)(st.now_call - st.row_call[n]) << 8) + st.now_frac;
+    uint32_t pos = st.row[n] % rb * len + (in_row < len ? in_row : len - 1u);
+    return pos * 256u / (rb * len);
+}
+
+void views_leds(views* v, uint32_t now_ms, panel_led_in* out) {
+    const panel* p = v->p;
+    const view* top = shows(v);
+    int in_song = song_view_is(top);
+    out->ms = now_ms;
+    out->beat = (uint8_t)(p && p->playing ? beat_phase(v) : PANEL_BEAT_NONE);
+    out->rec = !v->song.rec ? PANEL_REC_OFF
+               : !in_song || !song_view_rec_playing(&v->song) ? PANEL_REC_ARMED
+               : song_view_recording(&v->song)                ? PANEL_REC_ON
+                                                              : PANEL_REC_COUNT;
+    out->silent = (uint8_t)song_view_mute_mask(&v->song);
+    out->solo = v->song.solo;
+    out->ask = (uint8_t)save_asked(v);
+    out->step_on = (uint8_t)(top == &step_view_view);
+    out->step_head = PANEL_NO_STEP;
+    out->step_set = out->step_rows = 0;
+    if (out->step_on) {
+        uint32_t set, rows, head;
+        step_view_leds(&v->step, &set, &rows, &head);
+        out->step_set = (uint16_t)set;
+        out->step_rows = (uint16_t)rows;
+        if (head != v->led_head) {
+            v->led_head = (uint8_t)head;
+            v->led_head_ms = now_ms;
+        }
+        out->step_head = head == STEP_VIEW_NONE ? PANEL_NO_STEP : (uint8_t)head;
+    } else {
+        v->led_head = STEP_VIEW_NONE;
+    }
+    out->head_ms = v->led_head_ms;
+}
