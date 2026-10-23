@@ -8,6 +8,8 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-23
+
 ### Added
 - **Chord arpeggios on LIVE:** ARP switches them on; a chord held is one voice stepping through
   its notes a frame at a time (50 Hz), the C64's signature sound, its gate held so only the

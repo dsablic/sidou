@@ -54,7 +54,9 @@ jobs:
       - name: Install libclang (bindgen)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libclang-dev clang
       - name: Configure (pinned pi32v2 toolchain in Docker)
-        run: tools/fm1-docker cmake --preset fm1
+        # A release tag builds SIDOU's own identity, FM-1_964 (docs/TODO.md); anything else
+        # the development one, FM-1_900.
+        run: tools/fm1-docker cmake --preset fm1 -DSIDOU_PRODUCT=${{ startsWith(github.ref, 'refs/tags/v') && 'FM-1_964' || 'FM-1_900' }}
       - name: Build
         run: tools/fm1-docker cmake --build --preset fm1
       - uses: dtolnay/rust-toolchain@stable
@@ -72,6 +74,7 @@ jobs:
         working-directory: host
         run: >-
           cargo run --locked --release -p sidou-pack --
+          --product ${{ startsWith(github.ref, 'refs/tags/v') && 'FM-1_964' || 'FM-1_900' }}
           --app ../build/fm1/platform/fm1/sidou_app.bin
           --loader ../build/fm1/platform/fm1/loader/loader.bin
           -o ../build/fm1/sidou.fwsc
