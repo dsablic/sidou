@@ -64,7 +64,7 @@ typedef struct {
     uint32_t no_pulse; /* 0xfff without pulse, else 0 */
     uint32_t no_noise; /* 0xfff without noise, else 0 */
     uint32_t wf_mask;  /* 0xfff with any waveform, else 0 */
-    const uint16_t* pd_row; /* the pulldown row (SID_PD.idx), or 0 for none */
+    const uint16_t* pd_row; /* the pulldown row (an SID_PD.idx row), or 0 for none */
     uint8_t slow;      /* sid_osc_advance needs sid_osc_advance_slow */
     uint8_t pull_low;  /* 6581, sawtooth combination in the lower half: every MSB rise is
                         * pulled low at once (sid_osc_advance's inline path) */
@@ -94,7 +94,7 @@ typedef struct {
     uint32_t quiet;
     uint32_t quiet_src;      /* with ring modulation: the source's accumulator and */
     uint32_t quiet_src_freq; /* frequency the quiet stretch assumed for the next step */
-    const uint16_t (*pulldown)[256]; /* the profile's pulldown rows (SID_PD.idx) */
+    const uint16_t* const* pulldown; /* the profile's five pulldown rows (SID_PD_ROWS) */
     /* The ring source's accumulator as this voice sees it, cycle by cycle: masked to its
      * lower half when the source pulls every MSB rise low before this voice's output
      * looks at it (reSIDfp clocks outputs in voice order; clock_voices sets it). */
@@ -112,6 +112,10 @@ typedef struct {
 #define SID_NOISE_FADE_6581 15000u
 #define SID_NOISE_RESET_8580 986000u
 #define SID_NOISE_FADE_8580 314300u
+
+/* Each compiled profile's five pulldown rows, the 6581's then the 8580's (from
+ * SID_PD_8580_ROW): rows of SID_PD.idx, which rows with the same entries share (sid.c). */
+extern const uint16_t* const SID_PD_ROWS[];
 
 /* Entry x of a pulldown row (gen/pulldown.h): its block starts row[x >> 4] bytes after the
  * row, and holds 16 entries packed two to three bytes. Both reads are flash (XIP), through
@@ -247,9 +251,8 @@ static inline void sid_osc_set_profile(sid_osc* o, uint32_t profile) {
     if (profile >= SID_PROFILES) {
         profile = SID_PROFILE_AVERAGE;
     }
-    o->pulldown = o->is6581
-                      ? &SID_PD.idx[5u * SID_COMBINED_TABLE_6581(profile)]
-                      : &SID_PD.idx[SID_PD_8580_ROW + 5u * SID_COMBINED_TABLE_8580(profile)];
+    o->pulldown = o->is6581 ? &SID_PD_ROWS[5u * SID_COMBINED_TABLE_6581(profile)]
+                            : &SID_PD_ROWS[SID_PD_8580_ROW + 5u * SID_COMBINED_TABLE_8580(profile)];
     sid_osc_update_mode(o);
 }
 

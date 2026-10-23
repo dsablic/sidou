@@ -505,14 +505,16 @@ fn the_firmware_holds_the_combined_tables_its_profiles_and_expert_layer_use() {
     }
     let src = PulldownSource::new();
     let want = PulldownLayout::new(&src.compiled_rows(true, true));
-    let sid_pd = symbol_bytes(&fw, "SID_PD");
+    let mut sid_pd = symbol_bytes(&fw, "SID_PD");
+    // The struct's size rounds its bytes up to its u16 index's alignment.
     assert_eq!(
         sid_pd.len(),
-        want.bytes.len(),
-        "SID_PD: {} rows and {} blocks expected",
+        want.bytes.len().next_multiple_of(2),
+        "SID_PD: {} index rows and {} blocks expected",
         want.rows,
         want.blocks
     );
+    sid_pd.truncate(want.bytes.len());
     let block_of = |l: &[u8], r: usize, k: usize| {
         let at = r * PD_INDEX_BYTES + k * 2;
         r * PD_INDEX_BYTES + usize::from(u16::from_le_bytes([l[at], l[at + 1]]))
@@ -527,14 +529,14 @@ fn the_firmware_holds_the_combined_tables_its_profiles_and_expert_layer_use() {
             for row in src.profile(model, cws) {
                 for (x, &v) in row.iter().enumerate() {
                     assert_eq!(
-                        pulldown_entry(&sid_pd, r, x),
+                        pulldown_entry(&sid_pd, want.row_map[r], x),
                         v,
                         "{model:?} {label} row {r} entry {x}"
                     );
                 }
                 for k in 0..256 {
-                    ours.insert(block_of(&sid_pd, r, k));
-                    theirs.insert(block_of(&want.bytes, r, k));
+                    ours.insert(block_of(&sid_pd, want.row_map[r], k));
+                    theirs.insert(block_of(&want.bytes, want.row_map[r], k));
                 }
                 r += 1;
             }
@@ -547,13 +549,26 @@ fn the_firmware_holds_the_combined_tables_its_profiles_and_expert_layer_use() {
             all_used.extend(ours);
         }
     }
-    assert_eq!(r, want.rows, "SID_PD's rows");
+    assert_eq!(r, want.row_map.len(), "SID_PD's rows");
     assert_eq!(
         all_used.len(),
         want.blocks,
         "SID_PD's pool holds blocks no profile uses"
     );
     assert_eq!(sid_pd, want.bytes);
+    // Each compiled row's pointer (SID_PD_ROWS, in RAM: sid_osc_update_mode reads it in the
+    // audio path) is its index row's in SID_PD.
+    let base = fw.symbol("SID_PD");
+    let rows: Vec<u32> = symbol_bytes(&fw, "SID_PD_ROWS")
+        .chunks(4)
+        .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+        .collect();
+    let want_rows: Vec<u32> = want
+        .row_map
+        .iter()
+        .map(|&r| base + (r * PD_INDEX_BYTES) as u32)
+        .collect();
+    assert_eq!(rows, want_rows, "SID_PD_ROWS");
 }
 
 // ---- the CHIP view's knobs (M1c Task 4) ----

@@ -329,8 +329,9 @@ The rules for keeping it that way:
   `.ram_text` code loads. Other constant tables stay in flash.
 - **One flash read remains, by design:** the combined waveforms' pulldown
   rows (`gen/pulldown.h`, three strengths on each model since M2b's expert selector:
-  184,320 bytes before packing, 58,488 after sharing their 16-entry blocks;
-  a lookup reads the row's index, then the block), which the
+  184,320 bytes before packing, 52,407 after sharing and overlapping their
+  16-entry blocks and sharing the rows that are alike; a lookup reads the
+  row's index, then the block), which the
   oscillator reads through `sid_osc.pulldown` while a combined waveform
   plays. They are too big for RAM, and the relocation check cannot see a
   read through a pointer. Whether they cost cache misses in the audio

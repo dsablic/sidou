@@ -184,7 +184,7 @@ typedef struct {
     uint16_t grit;  /* the DAC macro's grit, in 1/SID_GRIT_ONE (sid.h) */
     float filter_t; /* age/heat: the filter's blend towards the hot row (sid.h) */
     float filter_bias, out_c, dc_r;
-    const uint16_t (*pulldown)[256];
+    const uint16_t* const* pulldown;
     sid_filter_row filter_rows[2];
     uint8_t noise_writeback;
     uint32_t writeback_keep;

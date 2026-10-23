@@ -29,6 +29,13 @@ __attribute__((section(".pool.sid_noise_wb_byte")))
 #endif
 uint32_t SID_NOISE_WB_BYTE[256];
 
+/* Each compiled row's index row in SID_PD (gen/pulldown.h): sid_osc_update_mode reads it in
+ * the audio path, so RAM on the device. */
+#ifdef __PI32V2__
+__attribute__((section(".data.sid_pd_rows")))
+#endif
+const uint16_t* const SID_PD_ROWS[] = SID_PD_ROWS_INIT;
+
 #if !defined(__PI32V2__) && (defined(__GNUC__) || defined(__clang__))
 __attribute__((constructor))
 #endif
@@ -537,12 +544,12 @@ void sid_set_gate_reset(sid* s, int on) {
     }
 }
 
-const uint16_t (*sid_combined_table(sid_model model, uint32_t profile))[256] {
+const uint16_t* const* sid_combined_table(sid_model model, uint32_t profile) {
     if (profile >= SID_PROFILES) {
         profile = SID_PROFILE_AVERAGE;
     }
-    return model == SID_MODEL_6581 ? &SID_PD.idx[5u * SID_COMBINED_TABLE_6581(profile)]
-                                   : &SID_PD.idx[SID_PD_8580_ROW + 5u * SID_COMBINED_TABLE_8580(profile)];
+    return model == SID_MODEL_6581 ? &SID_PD_ROWS[5u * SID_COMBINED_TABLE_6581(profile)]
+                                   : &SID_PD_ROWS[SID_PD_8580_ROW + 5u * SID_COMBINED_TABLE_8580(profile)];
 }
 
 void sid_set_combined_profile(sid* s, int profile) {

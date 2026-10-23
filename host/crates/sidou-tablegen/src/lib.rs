@@ -137,46 +137,120 @@ impl Default for PulldownSource {
     }
 }
 
-/// SID_PD's bytes as the device holds them (gen/pulldown.h): each row's index, PD_INDEX_BYTES
-/// of little-endian u16s, then the pool of distinct blocks, PD_BLOCK_BYTES each. Index
-/// entry k of row r is the offset from the row's first byte to the block holding the
-/// row's entries 16k .. 16k + 15, so the audio path needs no other base address.
+/// SID_PD's bytes as the device holds them (gen/pulldown.h): each distinct row's index,
+/// PD_INDEX_BYTES of little-endian u16s, then the pool of distinct blocks, PD_BLOCK_BYTES
+/// each. Index entry k of index row r is the offset from that row's first byte to the block
+/// holding the row's entries 16k .. 16k + 15, so the audio path needs no other base address.
+/// Rows with the same entries share one index row (the 6581's three NP rows are alike, and
+/// so are the 8580's): `row_map` gives each compiled row's. The pool is one string in which
+/// the blocks overlap wherever one ends with the bytes another begins with (greedy, longest
+/// overlap first), since the offsets are byte offsets.
 pub struct PulldownLayout {
     pub rows: usize,
     pub blocks: usize,
+    pub row_map: Vec<usize>,
     pub bytes: Vec<u8>,
+}
+
+/// The blocks laid out as one string, each overlapping the one before it as far as their
+/// bytes agree: greedy merging of chains, the longest overlap first (ties in block order).
+/// Returns the string and each block's offset in it.
+fn overlap_blocks(blocks: &[Vec<u8>]) -> (Vec<u8>, Vec<usize>) {
+    let n = blocks.len();
+    let len = PD_BLOCK_BYTES;
+    let mut next: Vec<Option<(usize, usize)>> = vec![None; n]; // (block, overlap)
+    let mut has_prev = vec![false; n];
+    // For a chain's tail, its head; for a chain's head, its tail.
+    let mut head_of: Vec<usize> = (0..n).collect();
+    let mut tail_of: Vec<usize> = (0..n).collect();
+    for l in (1..len).rev() {
+        let mut by_prefix: std::collections::HashMap<&[u8], Vec<usize>> =
+            std::collections::HashMap::new();
+        for j in (0..n).rev() {
+            if !has_prev[j] {
+                by_prefix.entry(&blocks[j][..l]).or_default().push(j);
+            }
+        }
+        for i in 0..n {
+            if next[i].is_some() {
+                continue;
+            }
+            let Some(heads) = by_prefix.get_mut(&blocks[i][len - l..]) else {
+                continue;
+            };
+            // The first free head that is not this chain's own (no cycles); the others stay.
+            let pos = heads.iter().rposition(|&j| !has_prev[j] && j != head_of[i]);
+            let Some(pos) = pos else {
+                continue;
+            };
+            let j = heads.remove(pos);
+            next[i] = Some((j, l));
+            has_prev[j] = true;
+            let (h, t) = (head_of[i], tail_of[j]);
+            tail_of[h] = t;
+            head_of[t] = h;
+        }
+    }
+    let mut out = Vec::new();
+    let mut at = vec![0; n];
+    for h in (0..n).filter(|&h| !has_prev[h]) {
+        at[h] = out.len();
+        out.extend_from_slice(&blocks[h]);
+        let mut b = h;
+        while let Some((c, l)) = next[b] {
+            at[c] = out.len() - l;
+            out.extend_from_slice(&blocks[c][l..]);
+            b = c;
+        }
+    }
+    (out, at)
 }
 
 impl PulldownLayout {
     pub fn new(rows: &[[u16; 4096]]) -> Self {
-        let mut pool: Vec<u8> = Vec::new();
+        // The distinct rows, and the distinct blocks in the order they first appear.
+        let mut unique: Vec<&[u16; 4096]> = Vec::new();
+        let mut row_map = Vec::with_capacity(rows.len());
+        for row in rows {
+            let r = unique.iter().position(|u| *u == row).unwrap_or_else(|| {
+                unique.push(row);
+                unique.len() - 1
+            });
+            row_map.push(r);
+        }
+        let mut blocks: Vec<Vec<u8>> = Vec::new();
         let mut seen = std::collections::HashMap::new();
-        let mut index = Vec::with_capacity(rows.len() * PD_INDEX_BYTES);
-        let pool_at = rows.len() * PD_INDEX_BYTES;
-        for (r, row) in rows.iter().enumerate() {
+        let mut uses = Vec::with_capacity(unique.len() * 256);
+        for row in &unique {
             for block in row.chunks(PD_BLOCK) {
-                let at = *seen.entry(block.to_vec()).or_insert_with(|| {
-                    let at = pool.len();
+                let b = *seen.entry(block.to_vec()).or_insert_with(|| {
                     let mut full = [0u16; 4096];
                     full[..PD_BLOCK].copy_from_slice(block);
-                    pool.extend_from_slice(&pack12(&full)[..PD_BLOCK_BYTES]);
-                    at
+                    blocks.push(pack12(&full)[..PD_BLOCK_BYTES].to_vec());
+                    blocks.len() - 1
                 });
-                let offset = pool_at + at - r * PD_INDEX_BYTES;
-                let offset = u16::try_from(offset).expect("a pulldown block beyond a u16 offset");
-                index.extend_from_slice(&offset.to_le_bytes());
+                uses.push(b);
             }
         }
-        let blocks = pool.len() / PD_BLOCK_BYTES;
-        index.extend_from_slice(&pool);
+        let (pool, at) = overlap_blocks(&blocks);
+        let pool_at = unique.len() * PD_INDEX_BYTES;
+        let mut bytes = Vec::with_capacity(pool_at + pool.len());
+        for (k, &b) in uses.iter().enumerate() {
+            let r = k / 256;
+            let offset = pool_at + at[b] - r * PD_INDEX_BYTES;
+            let offset = u16::try_from(offset).expect("a pulldown block beyond a u16 offset");
+            bytes.extend_from_slice(&offset.to_le_bytes());
+        }
+        bytes.extend_from_slice(&pool);
         Self {
-            rows: rows.len(),
-            blocks,
-            bytes: index,
+            rows: unique.len(),
+            blocks: blocks.len(),
+            row_map,
+            bytes,
         }
     }
 
-    /// Index entry k of row r.
+    /// Index entry k of index row r.
     pub fn index(&self, r: usize, k: usize) -> u16 {
         let at = r * PD_INDEX_BYTES + k * 2;
         u16::from_le_bytes([self.bytes[at], self.bytes[at + 1]])
@@ -188,7 +262,7 @@ impl PulldownLayout {
     }
 }
 
-/// Entry x of row r of SID_PD's bytes, as sid_pulldown() in sid_osc.h reads it.
+/// Entry x of index row r of SID_PD's bytes, as sid_pulldown() in sid_osc.h reads it.
 pub fn pulldown_entry(sid_pd: &[u8], r: usize, x: usize) -> u16 {
     let row = r * PD_INDEX_BYTES;
     let k = row + (x >> 4) * 2;
@@ -228,10 +302,13 @@ fn pulldown_header(src: &PulldownSource) -> Generated {
          \x20* SID_PD_8580_ROW.\n\
          \x20*\n\
          \x20* Lossless and shared: a row is 256 blocks of 16 entries, and every distinct block\n\
-         \x20* is stored once, in `pool`, {PD_BLOCK_BYTES} bytes packing its entries two to three bytes.\n\
-         \x20* Entry x of row r is in the block that starts idx[r][x >> 4] bytes after\n\
-         \x20* &idx[r][0]; sid_pulldown() in sid_osc.h unpacks it. Unshared, a profile would\n\
-         \x20* take {PROFILE_BYTES} bytes a model. By the models' flags:",
+         \x20* is stored once, in `pool`, {PD_BLOCK_BYTES} bytes packing its entries two to three bytes;\n\
+         \x20* the blocks overlap there wherever one ends with the bytes the next begins with.\n\
+         \x20* Entry x of index row r is in the block that starts idx[r][x >> 4] bytes after\n\
+         \x20* &idx[r][0]; sid_pulldown() in sid_osc.h unpacks it. Rows with the same entries\n\
+         \x20* share an index row (each model's NP rows): SID_PD_ROWS_INIT lists each compiled\n\
+         \x20* row's, five a profile, for SID_PD_ROWS (sid.c). Unshared, a profile would take\n\
+         \x20* {PROFILE_BYTES} bytes a model. By the models' flags:",
         PULLDOWN_ROWS.join(", "),
     )
     .unwrap();
@@ -252,12 +329,13 @@ fn pulldown_header(src: &PulldownSource) -> Generated {
     for (&set, l) in PULLDOWN_SETS.iter().zip(&layouts) {
         writeln!(
             s,
-            " *   {}: {} rows, {} blocks, {} bytes ({} unshared)",
+            " *   {}: {} rows ({} index rows), {} blocks, {} bytes ({} unshared)",
             condition(set),
+            l.row_map.len(),
             l.rows,
             l.blocks,
             l.bytes.len(),
-            l.rows / 5 * PROFILE_BYTES
+            l.row_map.len() / 5 * PROFILE_BYTES
         )
         .unwrap();
     }
@@ -265,7 +343,7 @@ fn pulldown_header(src: &PulldownSource) -> Generated {
         s,
         " */\n#ifndef SIDOU_GEN_PULLDOWN_H\n#define SIDOU_GEN_PULLDOWN_H\n\n\
          #include <stdint.h>\n\n#include \"grid.h\"\n\n\
-         /* The 8580's first row. */\n\
+         /* The 8580's first row in SID_PD_ROWS_INIT. */\n\
          #define SID_PD_8580_ROW (5 * SID_COMBINED_TABLES_6581)\n"
     )
     .unwrap();
@@ -293,6 +371,21 @@ fn pulldown_header(src: &PulldownSource) -> Generated {
             writeln!(s, "        {},", bytes.join(", ")).unwrap();
         }
         writeln!(s, "    }},\n}};").unwrap();
+        let rows: Vec<String> = l
+            .row_map
+            .iter()
+            .map(|r| format!("SID_PD.idx[{r}]"))
+            .collect();
+        writeln!(s, "#define SID_PD_ROWS_INIT \\").unwrap();
+        for (n, line) in rows.chunks(5).enumerate() {
+            let open = if n == 0 { "{" } else { " " };
+            let close = if (n + 1) * 5 >= rows.len() {
+                "}"
+            } else {
+                ", \\"
+            };
+            writeln!(s, "    {open}{}{close}", line.join(", ")).unwrap();
+        }
     }
     writeln!(s, "#endif\n\n#endif").unwrap();
     Generated {
@@ -589,43 +682,68 @@ mod tests {
     }
 
     /// SID_PD is lossless: under every combination of the flags, each compiled row of
-    /// each profile and model reads back, entry for entry, as reSIDfp's table; the
-    /// device's set holds the 6581's three profiles and the 8580's AVERAGE, and every
-    /// block in a pool is one a row uses.
+    /// each profile and model reads back, entry for entry, as reSIDfp's table, through its
+    /// index row; the device's set holds the 6581's three profiles and the 8580's AVERAGE;
+    /// every block in a pool is one a row uses, and every index row one a compiled row uses.
     #[test]
     fn shared_pulldown_blocks_read_back_as_residfps_tables() {
         let src = PulldownSource::new();
         for (all_6581, all_8580) in PULLDOWN_SETS {
             let l = PulldownLayout::new(&src.compiled_rows(all_6581, all_8580));
             let mut r = 0;
-            let mut used = std::collections::HashSet::new();
             for (model, all) in [(Model::Mos6581, all_6581), (Model::Csg8580, all_8580)] {
                 for (cws, label) in compiled_profiles(all) {
                     for (row, row_label) in src.profile(model, cws).iter().zip(PULLDOWN_ROWS) {
                         for (x, &want) in row.iter().enumerate() {
                             assert_eq!(
-                                pulldown_entry(&l.bytes, r, x),
+                                pulldown_entry(&l.bytes, l.row_map[r], x),
                                 want,
                                 "{model:?} {label} {row_label} entry {x} ({all_6581}, {all_8580})"
                             );
-                        }
-                        for k in 0..256 {
-                            used.insert(r * PD_INDEX_BYTES + usize::from(l.index(r, k)));
                         }
                         r += 1;
                     }
                 }
             }
-            assert_eq!(r, l.rows);
+            assert_eq!(r, l.row_map.len());
+            let index_rows: std::collections::HashSet<usize> = l.row_map.iter().copied().collect();
+            assert_eq!(index_rows.len(), l.rows, "an index row no row uses");
+            let used: std::collections::HashSet<usize> = (0..l.rows)
+                .flat_map(|r| (0..256).map(move |k| (r, k)))
+                .map(|(r, k)| r * PD_INDEX_BYTES + usize::from(l.index(r, k)))
+                .collect();
             assert_eq!(used.len(), l.blocks, "a block no row uses");
+            let end = used.iter().max().unwrap() + PD_BLOCK_BYTES;
+            assert_eq!(end, l.bytes.len(), "pool bytes past the last block");
         }
         let device = PulldownLayout::new(&src.compiled_rows(true, false));
-        assert_eq!(device.rows, 20);
+        assert_eq!(device.row_map.len(), 20);
         assert!(
             device.bytes.len() < 4 * PROFILE_BYTES / 2,
             "{}",
             device.bytes.len()
         );
+    }
+
+    /// Overlapping blocks: each block starts where the layout says, in a string no longer
+    /// than the blocks laid end to end, and chains never close on themselves.
+    #[test]
+    fn overlapped_blocks_are_where_their_offsets_say() {
+        let blocks: Vec<Vec<u8>> = (0..200u32)
+            .map(|b| {
+                (0..PD_BLOCK_BYTES as u32)
+                    .map(|i| ((b * 7 + i) % 13) as u8)
+                    .collect()
+            })
+            .collect();
+        let mut distinct = blocks.clone();
+        distinct.sort();
+        distinct.dedup();
+        let (pool, at) = overlap_blocks(&distinct);
+        assert!(pool.len() < distinct.len() * PD_BLOCK_BYTES);
+        for (b, &a) in distinct.iter().zip(&at) {
+            assert_eq!(&pool[a..a + PD_BLOCK_BYTES], &b[..]);
+        }
     }
 
     #[test]
