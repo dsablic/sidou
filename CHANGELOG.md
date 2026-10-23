@@ -8,6 +8,15 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Chord arpeggios on LIVE:** ARP switches them on; a chord held is one voice stepping through
+  its notes a frame at a time (50 Hz), the C64's signature sound, its gate held so only the
+  pitch moves, and the other two voices free. ARP held with K1, K2 and K3 sets the rate (1 to 8
+  frames, or a 32nd, 16th or 8th of a MIDI clock), the order (up, down, up-down, as played) and
+  the span (1 or 2 octaves); they are kept with the preset's edits. MIDI notes arpeggiate too,
+  and CC 27..30 switch it and set the rate, order and span. Row 20 shows `ARP 1F UP 1OCT`; the
+  recipe `chord-arpeggio` walks through it.
+
 ### Fixed
 - **MIDI clock across flash writes:** the clocks that arrive while a flash erase or program
   masks the interrupts are stamped late; they now stay out of the clock follower's fit, and the

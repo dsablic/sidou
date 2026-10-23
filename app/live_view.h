@@ -12,14 +12,16 @@
  *   colour (dark grey and flat when the voice is silent), and the note at 2x on the right with
  *   the envelope's stage under it;
  * - rows 14-19, the four knobs in their left-to-right order, what K1..K4 turn: the page's name on
- *   row 14 (TONE, or the selected slot's name while a slot page shows or EDIT is held; SELECT pages
- *   it TONE, DIST, MOD, FX), each knob
+ *   row 14 (TONE, or the selected slot's name while a slot page shows or EDIT is held, or ARP
+ *   while ARP is held: RATE, ORDER and SPAN; SELECT pages it TONE, DIST, MOD, FX), each knob
  *   a label small in the knob's readable colour, its value at 2x in white (at most 3 characters:
  *   7K2, 50%), a bar in the knob's colour and its name K1..K4 in the hint colour. A knob that
  *   just turned has its label reversed for a second (the popup does not open over LIVE for
  *   it); a control the slot's algorithm does not use is dim;
  * - row 20: while a song plays its tempo (`125 BPM`), and, while it plays or a voice is muted or
- *   soloed, the voices' badges 1 2 3 (dark grey muted, reversed yellow soloed);
+ *   soloed, the voices' badges 1 2 3 (dark grey muted, reversed yellow soloed); while the chord
+ *   arpeggio is on, ARP and its rate, order and span between them (`ARP 1F UP 1OCT`). Its voice's
+ *   lane shows the note it steps to;
  * - rows 21-26: FILTER's mode at 2x with the chip's model and profile (KEYS:B while the keys play
  *   chip B), the three effect slots' names (the selected one reversed) and the selected slot's
  *   algorithm at 2x, and VU: each voice's level in its colour and the output's left and right
@@ -103,9 +105,11 @@ extern "C" {
 /* VU rows: the voices, then left and right. */
 #define LIVE_VIEW_METERS (SCOPE_VOICES + 2u)
 /* What the canvas shows besides the scopes, as bytes (live_view.c look): the theme 1, the header
- * 4, each voice's lane 6, the song's strip 4, the knob row 11, the bottom band 11 and the
- * meters. */
-#define LIVE_VIEW_LOOK (1u + 4u + 6u * SCOPE_VOICES + 4u + 11u + 11u + LIVE_VIEW_METERS)
+ * 4, each voice's lane 6, the song's strip with the arpeggio's 6, the knob row 11, the bottom
+ * band 11 and the meters. */
+#define LIVE_VIEW_LOOK (1u + 4u + 6u * SCOPE_VOICES + 6u + 11u + 11u + LIVE_VIEW_METERS)
+/* Row 20's arpeggio, while it is on: from this column, `ARP 1F UP 1OCT`. */
+#define LIVE_VIEW_ARP_COL 8u
 
 /* A frame composed off the grid, each cell then written to it once (live_view.c). */
 typedef struct {
@@ -139,16 +143,24 @@ typedef struct {
     uint8_t prepared;   /* pend and the meters are this frame's (live_view_prepare) */
     uint8_t built;      /* the canvas has been built */
     uint8_t drawn_look[LIVE_VIEW_LOOK]; /* what it was built from */
-    /* Working space of a compose, here rather than on the main loop's stack. */
-    scope_point pts[SCOPE_READ_MAX];
-    uint8_t pend[SCOPE_VOICES][SCOPE_W];
-    live_view_canvas cv;
+    /* Working space of a compose, here rather than on the main loop's stack: word-aligned, as the
+     * copies and compares that read them a word at a time want (two bytes off cost a frame of a
+     * chord 2.9k instructions more). */
+    _Alignas(4) scope_point pts[SCOPE_READ_MAX];
+    _Alignas(4) uint8_t pend[SCOPE_VOICES][SCOPE_W];
+    _Alignas(4) live_view_canvas cv;
     /* The knob row's page (set by the views: 0 TONE's, 1 the selected slot's) and EDIT held (the
      * row shows the selected slot's controls then too); what just changed and is shown reversed
      * until hl_until (live_view_flash): 0 none, 1..4 a knob's label, 5 the profile, 6 the slot's
      * algorithm. */
     uint8_t page;
     uint8_t edit;
+    /* ARP held (the views set it before each frame: the knob row shows the arpeggio's page), and
+     * ARP's gesture: down since a press on LIVE, and a knob turned since (its release then does
+     * not switch the arpeggio, live_view_buttons). */
+    uint8_t arp;
+    uint8_t arp_down;
+    uint8_t arp_turned;
     uint8_t hl;
     uint32_t hl_until;
     /* Rows the screen drew over that the last frame left for this one (live_view.c compose). */
@@ -167,8 +179,17 @@ typedef struct {
 
 /* LIVE's own input: SELECT pages the knob row (TONE, DIST, MOD, FX; a slot page selects that
  * slot), ALGORITHM steps the chip's profile on TONE and the selected slot's algorithm on a slot page
- * (or with EDIT held), and K1..K4 on a slot page turn the slot's Amount, A, B and Mix. */
+ * (or with EDIT held), and K1..K4 on a slot page turn the slot's Amount, A, B and Mix. ARP's
+ * press starts its gesture; K1..K3 with ARP held turn the arpeggio's rate, order and span (K4
+ * nothing). */
 extern const view live_view_view;
+/* The buttons held, every input frame (views_buttons): ARP let go after its press on LIVE
+ * switches the chord arpeggio on or off, unless a knob turned while it was down. */
+void live_view_buttons(live_view* lv, uint32_t held);
+/* The arpeggio's setting k (0 the rate, 1 the order, 2 the span) as its knob says it at 2x, at
+ * most 3 characters: "1F".."8F", "/32", "/16", "/8"; "UP", "DN", "UD" (up-down), "AS" (as
+ * played); "1", "2" (octaves), into buf (4 bytes). */
+void live_view_arp_text(const live* l, uint32_t k, char* buf);
 
 /* Shows l, and the tap sc (may be NULL). Flat scopes until the tap has points. */
 void live_view_init(live_view* lv, live* l, scope* sc);

@@ -80,6 +80,9 @@ static void take(midi_rx* rx, midi_map_port* port, const midi_msg* msg) {
     rx->inputs += (uint32_t)(msg->kind != MIDI_REALTIME || msg->data1 == 0xFFu);
     /* the instrument's note or CC goes straight on (a CC flood pays one look a message) */
     if (!((rx->fast[msg->channel] >> msg->kind) & 1u)) {
+        if (msg->kind == MIDI_REALTIME) {
+            live_arp_realtime(rx->l, msg->data1); /* the arpeggio's clock rates */
+        }
         if (rx->sync && msg->kind >= MIDI_REALTIME) {
             /* and on: the ARP's clock is the router's */
             midi_sync_msg(rx->sync, msg, rx->entry ? rx->entry->stamp : 0u);

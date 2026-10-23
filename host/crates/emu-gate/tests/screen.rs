@@ -2596,6 +2596,62 @@ fn live_stays_within_its_budgets() {
     );
 }
 
+/// Felucca's ARP button (app/panel.h PANEL_BTN_ARP).
+const ARP: u8 = 10;
+/// LIVE with the chord arpeggio (app/live.h live_arp_set) stepping a chord of saws a note a
+/// frame: its voice's note and trace change every frame (a frame is two steps). Measured at
+/// 58.5k a frame (the saw chord's three still voices 42.5k here; noise's 138.3k), the worst
+/// ui_poll 27.1k, 80 cells at most; set for the new code with the saw chord's margin (11 %).
+const LIVE_ARP_PER_FRAME: f64 = 65_000.0;
+
+/// ARP on LIVE: held, the knob row is ARP's page, RATE, ORDER, SPAN (golden live-arp-page); let
+/// go, the arpeggio is on and row 20 names it (golden live-arp); a chord held then steps one
+/// voice within LIVE's frame budgets.
+#[test]
+fn live_shows_the_arpeggio_and_stays_within_its_budgets() {
+    let Some((build, fw)) = fixture("the LIVE arpeggio test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    m.watch_calls(fw.symbol("ui_poll"));
+    common::run_past_boot(&mut m, &fw);
+    // Held: ARP's page; let go with no knob turned, the arpeggio on.
+    m.key(ARP, true);
+    m.run_ms(200);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "live-arp-page", &m.soc.lcd.fb, &[]);
+    m.key(ARP, false);
+    m.run_ms(200);
+    common::to_mid_frame(&mut m, &fw);
+    compare_golden(&build, "live-arp", &m.soc.lcd.fb, &[]);
+    let arp = measure(&mut m, &fw, 75, |m| {
+        for k in CHORD {
+            m.key(k, true);
+        }
+    });
+    println!(
+        "{}",
+        serde_json::json!({ "live_arp_chord": animated_json(&arp) })
+    );
+    assert!(
+        arp.worst_frame_ms() <= SPI_BUDGET_MS,
+        "a frame took {:.1} ms of SPI",
+        arp.worst_frame_ms()
+    );
+    let most = arp.frames.iter().map(cells).max().unwrap_or(0);
+    assert!(most <= 200, "a frame sent {most} cells");
+    assert!(
+        arp.worst_poll < LIVE_WORST_POLL,
+        "a ui_poll took {} instructions",
+        arp.worst_poll
+    );
+    assert!(
+        arp.instructions_per_frame() < LIVE_ARP_PER_FRAME,
+        "{:.0} instructions a frame",
+        arp.instructions_per_frame()
+    );
+}
+
 /// Main-loop instructions in ui_poll (fm1-emu) on LIVE, at M1e Task 4 (docs/art/README.md,
 /// "LIVE"), each part of the canvas drawn again only when it changes: at rest 13.7k a frame
 /// (it composes, sends nothing); a chord of saws 47.5k (5 cells a frame once it holds still);

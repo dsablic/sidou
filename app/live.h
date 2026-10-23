@@ -111,6 +111,14 @@ extern "C" {
  * algorithms), 1 Amount, 2 A, 3 B, 4 Mix. In General MIDI's undefined block 102..119. */
 #define LIVE_CC_SLOT_FIRST 102u
 #define LIVE_CC_SLOT_LAST 116u
+/* The chord arpeggio (live_arp_set), in General MIDI's undefined block 27..31: on/off (off
+ * below 64), the rate (the value scaled over LIVE_ARP_RATES), the order (over the four) and the
+ * span (1 octave below 64, 2 from 64). Not parameters of the map: no NRPN, and MIDI out does not
+ * send them. */
+#define LIVE_CC_ARP 27u
+#define LIVE_CC_ARP_RATE 28u
+#define LIVE_CC_ARP_ORDER 29u
+#define LIVE_CC_ARP_SPAN 30u
 #define LIVE_CC_ALL_SOUND_OFF 120u
 #define LIVE_CC_RESET_ALL 121u
 #define LIVE_CC_ALL_NOTES_OFF 123u
@@ -129,6 +137,41 @@ typedef enum {
     LIVE_SLOT_B = 3,
     LIVE_SLOT_MIX = 4
 } live_slot_field;
+
+/* The chord arpeggio (live_arp_set): with it on, the notes held (the keys' and MIDI's) are one
+ * voice's, which steps through them, a note every LIVE_ARP_RATES' frames (50 Hz, a C64 player's),
+ * its gate held from the first note to the release of the last: only the frequency moves, at a
+ * tick, so the chip changes pitch between two rendered blocks with no new attack. The other
+ * voices stay free. */
+#define LIVE_ARP_HELD 8u /* notes it keeps; a ninth drops the oldest */
+#define LIVE_ARP_RATES 9u
+/* Rates from here count MIDI clocks (live_arp_steps: a 32nd, a 16th, an 8th) while a clock comes
+ * (one in the last LIVE_ARP_CLOCK_TICKS ticks), else as many frames (a clock a frame: 125 BPM). */
+#define LIVE_ARP_RATE_CLOCK 6u
+#define LIVE_ARP_CLOCK_TICKS 30u
+#define LIVE_ARP_SPAN_MAX 2u
+#define LIVE_ARP_NO_VOICE 0xffu
+/* live_tick's ticks a frame of 50 Hz. */
+#define LIVE_ARP_TICKS_PER_FRAME 2u
+
+typedef enum {
+    LIVE_ARP_UP = 0,      /* lowest to highest, then again */
+    LIVE_ARP_DOWN = 1,    /* highest to lowest */
+    LIVE_ARP_UP_DOWN = 2, /* up then down, the ends once each */
+    LIVE_ARP_PLAYED = 3   /* in the order the keys went down */
+} live_arp_order;
+
+/* live_arp_set's fields. */
+typedef enum {
+    LIVE_ARP_ON = 0,    /* 0 off, 1 on */
+    LIVE_ARP_RATE = 1,  /* 0..LIVE_ARP_RATES - 1: live_arp_steps */
+    LIVE_ARP_ORDER = 2, /* a live_arp_order */
+    LIVE_ARP_SPAN = 3   /* octaves, 1..LIVE_ARP_SPAN_MAX: the notes, then again an octave up */
+} live_arp_field;
+
+/* Frames a step of each rate (1, 2, 3, 4, 6 and 8: 50 Hz to 6.25 Hz), then the clock's: MIDI
+ * clocks a step from LIVE_ARP_RATE_CLOCK (3 a 32nd, 6 a 16th, 12 an 8th). */
+extern const uint8_t live_arp_steps[LIVE_ARP_RATES];
 
 /* What velocity sets, per preset. The SID has no per-voice VCA: these stand in for one. A
  * velocity of 127 sounds as OFF does; lower ones lower the target. */
@@ -324,6 +367,7 @@ typedef struct {
     uint8_t bend_range, velocity_target, mod_target, pressure_target;
     uint8_t vibrato_rate, vibrato_depth, vibrato_delay;
     int8_t sync_semis;
+    uint8_t arp_on, arp_rate, arp_order, arp_span; /* the chord arpeggio's settings */
     uint8_t valid;
 } live_edit;
 
@@ -430,6 +474,23 @@ typedef struct {
     live_edit edits[LIVE_PRESET_SLOTS];
     /* DICE's rolls so far (wraps), the number in its name. Not saved. */
     uint8_t dice_rolls;
+    /* The chord arpeggio (live_arp_set): its settings, per preset like the knobs' (live_edit; a
+     * preset load turns it off); the notes held, in the order played and sorted, and how many;
+     * the voice it plays (LIVE_ARP_NO_VOICE while no note is held); its place in the cycle; the
+     * ticks, and with a clock rate the MIDI clocks, to the next step; and the ticks a MIDI clock
+     * still counts as running. */
+    uint8_t arp_on;
+    uint8_t arp_rate;
+    uint8_t arp_order;
+    uint8_t arp_span;
+    uint8_t arp_held[LIVE_ARP_HELD];
+    uint8_t arp_sorted[LIVE_ARP_HELD];
+    uint8_t arp_n;
+    uint8_t arp_voice;
+    uint8_t arp_pos;
+    uint8_t arp_wait;
+    uint8_t arp_clocks;
+    uint8_t arp_clock_seen;
 } live;
 
 /* live.other_profile for a chip not made yet (the views show "--"). */
@@ -527,7 +588,9 @@ void live_set_preparer(live* l, live_prepare_fn prepare, void* ctx);
 /* Absolute MIDI notes; the octave is not applied here (see live_key_note). Velocity 0
  * is a note-off. A note that is already held is retriggered on its voice. The note starts at
  * the current bend, with its pressure at 0 and its vibrato at the start of the delay; its
- * velocity applies at once (the sustain level before the gate). */
+ * velocity applies at once (the sustain level before the gate). With the chord arpeggio on
+ * (live_arp_set) a note joins its cycle instead (the first starts its voice) and a note-off
+ * leaves it (the last releases the voice). */
 void live_note_on(live* l, uint8_t note, uint8_t velocity);
 void live_note_off(live* l, uint8_t note);
 void live_all_notes_off(live* l);
@@ -625,6 +688,17 @@ void live_set_master(live* l, uint16_t value);
  * change); call at LIVE_TICK_HZ. At most 14 writes besides a model change and the
  * character's. */
 void live_tick(live* l);
+
+/* The chord arpeggio's field (live_arp_field), clamped. ON with notes held takes them into one
+ * voice (the oldest held, its gate kept; the others released); OFF gives each held note a voice
+ * again (a new attack). A rate's change restarts the step's count; an order's or a span's keeps
+ * the note that sounds where the new cycle has it. */
+void live_arp_set(live* l, uint32_t field, uint32_t value);
+/* The rate, the order or the span turned by detents, clamped at both ends. */
+void live_arp_turn(live* l, uint32_t field, int32_t detents);
+/* A MIDI real-time byte (0xF8 clock, 0xFA start): a clock rate steps on the clocks while they
+ * come; a start puts the next step a whole step away. Others do nothing. */
+void live_arp_realtime(live* l, uint8_t status);
 
 /* Effect slots. The number of algorithms slot has (its NONE included). */
 uint32_t live_slot_algorithms(uint32_t slot);

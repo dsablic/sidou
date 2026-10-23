@@ -1,0 +1,384 @@
+{
+  "goal": "Play a chord as C64 tunes do: one voice stepping through its notes fifty times a second.",
+  "id": "chord-arpeggio",
+  "prerequisites": {
+    "start": "live",
+    "text": "On LIVE after the boot, with the first preset (SAW LEAD) playing."
+  },
+  "related": [
+    "first-sound",
+    "shape-a-sound"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "ARP",
+    "holding a chord",
+    "ARP held with K1, K2 and K3"
+  ],
+  "steps": [
+    {
+      "caption": "ARP switches the chord arpeggio on. Row 20 says so: a note a frame, up, one octave.",
+      "control": "Press ARP",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "1F UP 1OCT"
+        },
+        {
+          "kind": "param",
+          "max": 1,
+          "min": 1,
+          "name": "arp_on"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS ARP",
+        "control": "ARP",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 20,
+          "rows": 1
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "arp-on",
+      "inputs": [
+        {
+          "button": "ARP",
+          "op": "press"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Press *ARP*"
+    },
+    {
+      "caption": "One voice plays all three notes in turn, fifty a second: the C64's buzzy chord. The other two voices stay free.",
+      "control": "Hold the note keys C, E and G down",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD A CHORD",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 12
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "hold-a-chord",
+      "inputs": [
+        {
+          "note": "C4",
+          "op": "down"
+        },
+        {
+          "note": "E4",
+          "op": "down"
+        },
+        {
+          "note": "G4",
+          "op": "down"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Hold a *chord*"
+    },
+    {
+      "caption": "Hold ARP and turn K1: a note every three frames, an arpeggio you hear note by note.",
+      "control": "Hold ARP and turn K1 two clicks clockwise",
+      "expect": [
+        {
+          "kind": "param",
+          "max": 2,
+          "min": 2,
+          "name": "arp_rate"
+        },
+        {
+          "kind": "text",
+          "value": "3F UP 1OCT"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD ARP + TURN K1",
+        "control": "K1",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 14,
+          "rows": 7
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "slower",
+      "inputs": [
+        {
+          "button": "ARP",
+          "detents": 2,
+          "encoder": "K1",
+          "op": "hold_turn"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*ARP* + K1: the rate"
+    },
+    {
+      "caption": "K2 turns it round: down, up and down, or as you played it.",
+      "control": "Hold ARP and turn K2 two clicks clockwise",
+      "expect": [
+        {
+          "kind": "param",
+          "max": 2,
+          "min": 2,
+          "name": "arp_order"
+        },
+        {
+          "kind": "text",
+          "value": "3F UD 1OCT"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD ARP + TURN K2",
+        "control": "K2",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 14,
+          "rows": 7
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "order",
+      "inputs": [
+        {
+          "button": "ARP",
+          "detents": 2,
+          "encoder": "K2",
+          "op": "hold_turn"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*ARP* + K2: the order"
+    },
+    {
+      "caption": "K3 spreads the chord over two octaves.",
+      "control": "Hold ARP and turn K3 a click clockwise",
+      "expect": [
+        {
+          "kind": "param",
+          "max": 2,
+          "min": 2,
+          "name": "arp_span"
+        },
+        {
+          "kind": "text",
+          "value": "3F UD 2OCT"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "HOLD ARP + TURN K3",
+        "control": "K3",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 14,
+          "rows": 7
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "span",
+      "inputs": [
+        {
+          "button": "ARP",
+          "detents": 1,
+          "encoder": "K3",
+          "op": "hold_turn"
+        },
+        {
+          "ms": 2500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*ARP* + K3: two octaves"
+    },
+    {
+      "caption": "Let go of the keys: the one voice's release rings out.",
+      "control": "Let go of the note keys",
+      "expect": [
+        {
+          "assert": "silent",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "LET GO"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "let-go",
+      "inputs": [
+        {
+          "note": "C4",
+          "op": "up"
+        },
+        {
+          "note": "E4",
+          "op": "up"
+        },
+        {
+          "note": "G4",
+          "op": "up"
+        },
+        {
+          "ms": 1500,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Let *go*"
+    },
+    {
+      "caption": "The keys play chords on three voices again. ARP's settings stay with the preset.",
+      "control": "Press ARP, then hold a chord",
+      "expect": [
+        {
+          "kind": "text_absent",
+          "value": "ARP"
+        },
+        {
+          "kind": "param",
+          "max": 0,
+          "min": 0,
+          "name": "arp_on"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS ARP",
+        "control": "ARP",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 19
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "arp-off",
+      "inputs": [
+        {
+          "button": "ARP",
+          "op": "press"
+        },
+        {
+          "ms": 800,
+          "op": "wait"
+        },
+        {
+          "ms": 1500,
+          "notes": [
+            "C4",
+            "E4",
+            "G4"
+          ],
+          "op": "note"
+        }
+      ],
+      "needs": [],
+      "title": "*ARP* again: off"
+    }
+  ],
+  "title": "Chord arpeggios with ARP"
+}

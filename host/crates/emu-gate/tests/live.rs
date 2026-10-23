@@ -361,3 +361,109 @@ fn the_main_loop_is_cheap_when_idle() {
         );
     }
 }
+
+/// Felucca's ARP button (app/panel.h PANEL_BTN_ARP).
+const ARP: u8 = 10;
+const C4: u8 = 60;
+const G4: u8 = 67;
+
+/// The sid chip A renders, and its voices' frequency, gate and envelope level.
+fn voices_a(m: &mut Machine, fw: &Firmware) -> [(u32, u8, u8); 3] {
+    let base = fw.chips();
+    let active = m.soc.read8(base + ilp32::reg_ring_chips::active as u32);
+    let s = base + (ilp32::reg_ring_chips::chip + usize::from(active) * ilp32::sid::SIZE) as u32;
+    std::array::from_fn(|v| {
+        let o = s + (ilp32::sid::osc + v * ilp32::sid_osc::SIZE) as u32;
+        let e = s + (ilp32::sid::env + v * ilp32::sid_env::SIZE) as u32;
+        (
+            m.soc.read32(o + ilp32::sid_osc::freq as u32),
+            m.soc.read8(e + ilp32::sid_env::gate as u32),
+            m.soc.read8(e + ilp32::sid_env::counter as u32),
+        )
+    })
+}
+
+/// The chord arpeggio (app/live.h live_arp_set) from the panel: ARP tapped, a three-note chord
+/// held is one voice of chip A cycling the chord's three frequencies, a note a frame (20 ms) and
+/// with ARP held and K1 turned two detents, a note every three frames (60 ms); its gate held
+/// throughout, every other voice silent.
+#[test]
+fn a_held_chord_with_arp_on_is_one_voice_cycling_its_notes_at_the_rate() {
+    let Some((_, fw)) = fixture("the live test") else {
+        return;
+    };
+    let mut m = booted(&fw);
+    tap(&mut m, ARP);
+    let table = unsafe { sidou_sys::live_freq_table };
+    let want: Vec<u32> = [C4, E4, G4]
+        .iter()
+        .map(|&n| u32::from(table[usize::from(n)]))
+        .collect();
+    let mut report = serde_json::Map::new();
+    for (rate_turn, frames) in [(0, 1u64), (2, 3)] {
+        if rate_turn != 0 {
+            m.key(ARP, true);
+            m.run_ms(30);
+            m.turn(K1, rate_turn);
+            m.run_ms(100);
+            m.key(ARP, false);
+            m.run_ms(30);
+        }
+        for n in [C4, E4, G4] {
+            m.key(key_id(n), true);
+        }
+        m.run_ms(200);
+        let mut seen: Vec<(u64, u32)> = Vec::new();
+        let mut voice = None;
+        for t in 0..(frames * 20 * 3 * 6) {
+            let vs = voices_a(&mut m, &fw);
+            let gated: Vec<usize> = (0..3).filter(|&v| vs[v].1 != 0).collect();
+            assert_eq!(gated.len(), 1, "at {t} ms the gates are {vs:?}");
+            let v = *voice.get_or_insert(gated[0]);
+            assert_eq!(gated[0], v, "the arpeggio moved voices");
+            for (o, x) in vs.iter().enumerate() {
+                if o != v {
+                    assert_eq!(x.2, 0, "voice {} sounds at {t} ms: {vs:?}", o + 1);
+                }
+            }
+            let f = vs[v].0;
+            if seen.last().map(|&(_, g)| g) != Some(f) {
+                seen.push((t, f));
+            }
+            m.run_ms(1);
+        }
+        // The frequencies cycle the chord, up.
+        let freqs: Vec<u32> = seen.iter().map(|&(_, f)| f).collect();
+        let start = want
+            .iter()
+            .position(|&f| f == freqs[0])
+            .expect("a chord note");
+        for (i, &f) in freqs.iter().enumerate() {
+            assert_eq!(f, want[(start + i) % 3], "step {i}: {freqs:?}");
+        }
+        // A step every `frames` frames: the interval between changes within a 128-frame block
+        // and a tick of the frame's.
+        let gaps: Vec<u64> = seen.windows(2).skip(1).map(|w| w[1].0 - w[0].0).collect();
+        let period = frames * 20;
+        let mean = gaps.iter().sum::<u64>() as f64 / gaps.len() as f64;
+        println!("rate {frames} frames: steps {gaps:?} ms, mean {mean:.2}");
+        report.insert(format!("gaps_{frames}fr_ms"), serde_json::json!(gaps));
+        assert!(gaps.len() >= 15, "only {} steps", gaps.len());
+        assert!(
+            gaps.iter().all(|&g| g + 4 >= period && g <= period + 4),
+            "steps {gaps:?} against {period} ms"
+        );
+        assert!((mean - period as f64).abs() < 0.5, "mean step {mean:.2} ms");
+        for n in [C4, E4, G4] {
+            m.key(key_id(n), false);
+        }
+        m.run_ms(50);
+        let vs = voices_a(&mut m, &fw);
+        assert!(
+            vs.iter().all(|x| x.1 == 0),
+            "a gate after the release: {vs:?}"
+        );
+        m.run_ms(2000); // the release rings out
+    }
+    println!("{}", serde_json::Value::Object(report));
+}

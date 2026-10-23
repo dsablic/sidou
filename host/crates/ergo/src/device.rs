@@ -519,6 +519,8 @@ pub struct Params {
     pub character: [u8; 4],
     /// Each slot: algorithm, amount, A, B, mix.
     pub slot: [[u8; 5]; 3],
+    /// The chord arpeggio (app/live.h live_arp_set): on, rate, order, span.
+    pub arp: [u8; 4],
 }
 
 impl Params {
@@ -545,6 +547,12 @@ impl Params {
             for (f, field) in ["algorithm", "amount", "a", "b", "mix"].iter().enumerate() {
                 v.push((format!("{name}.{field}"), i64::from(self.slot[s][f])));
             }
+        }
+        for (i, a) in ["arp_on", "arp_rate", "arp_order", "arp_span"]
+            .iter()
+            .enumerate()
+        {
+            v.push(((*a).to_string(), i64::from(self.arp[i])));
         }
         v
     }
@@ -589,6 +597,12 @@ impl Dev {
                 p.slot[s][f] = self.live_u8(ilp32::live::slot + s * 5 + f);
             }
         }
+        p.arp = [
+            self.live_u8(ilp32::live::arp_on),
+            self.live_u8(ilp32::live::arp_rate),
+            self.live_u8(ilp32::live::arp_order),
+            self.live_u8(ilp32::live::arp_span),
+        ];
         p
     }
 

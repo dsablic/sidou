@@ -51,7 +51,7 @@ Each button press and encoder turn goes, in this order (`app/views.h`):
    with HOME consumes HOME ([SAVE](#save)); SEQ, PLAY and REC are the song views' ([below](#song-views)),
    in every view;
 3. **the view on top:** the menu, the MIDI page, CHIP and the song views take SELECT and ALGORITHM (INSTR only SELECT, with K1 and K2); SCENE takes SELECT;
-   LIVE takes SELECT (the knob row's page), ALGORITHM (the profile, or a slot's algorithm) and, on a slot's page, K1-K4; the status screen, the glyph sheet and About take nothing; MIDI learn's frame passes
+   LIVE takes SELECT (the knob row's page), ALGORITHM (the profile, or a slot's algorithm), ARP (the [chord arpeggio](#chord-arpeggio)), K1-K3 while ARP is held and, on a slot's page, K1-K4; the status screen, the glyph sheet and About take nothing; MIDI learn's frame passes
    them to the CHIP view under it, and to no other;
 4. **the panel:** everything else plays the instrument as below, in every view. K1..K4 turn
    the page of the view that shows: CHIP's focused section on the CHIP view (on top or under
@@ -119,6 +119,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **SAVE**, in the menu | the menu's **OK**: opens the item under the selection: CHIP the CHIP view, TRACKER the song views, SCENE the generative pieces, SONG the [song-file actions](#song), SETTINGS the settings page, STATUS the status screen, MIDI the MIDI page, CHARSET the glyph sheet, ABOUT the credits. On PRE or OCTAVE it does nothing (and saves nothing: the settings save themselves) |
 | **ALGORITHM (encoder 1)**, in the menu | changes the item under the selection, which the [popup](#value-popup) also says in full: PRESET (PRE in the menu), OCTAVE; turned clockwise on a view's item opens it, as SAVE does |
 | **ALGORITHM (encoder 1)**, in SETTINGS | changes the item under the selection, which the popup also says in full: KEYS, SOUNDS, TRACKER ROWS (ROWS), CARDS ([title cards](#title-cards)), STORE ([format confirmation](#settings-and-store)), THEME, REC QUANTISE (REC) |
+| **ARP (button 10)**, on LIVE | the [chord arpeggio](#chord-arpeggio) on or off, when ARP is let go; **held**, K1..K3 turn its rate, order and span instead (the knob row shows ARP's page), and the release then switches nothing |
 | **SELECT (encoder 0)**, on LIVE | pages the knob row: TONE, DIST, MOD, FX; on a slot's page K1-K4 turn that slot's Amount, A, B and Mix and SCL moves the page with the slot; it stops at either end |
 | **ALGORITHM (encoder 1)**, on LIVE | steps the chip's profile on TONE (R2, R3, R4AR, R5, WORN; it stops at either end; the band's profile word shows the change), or the selected slot's algorithm on a slot's page or with EDIT held |
 | **SELECT (encoder 0)**, on CHIP | moves the focus: A/B tabs, CHIP (the profile and the character), DIST, MOD, FX, EXPERT; it stops at either end |
@@ -129,7 +130,8 @@ the sound. Off, they write nothing and chip B stays out of use.
 
 LFO, ARP and PRESETS (encoder 6) edit TRACKER with REC on (below), and STEP (ARP is the lane's gate,
 LFO clears a held step, PRESETS the lane's instrument) and ORDER (ARP sets the restart) use them too;
-elsewhere LFO and ARP do nothing yet, and PRESETS steps the preset. SELECT does nothing on STATUS and
+on LIVE, ARP is the [chord arpeggio](#chord-arpeggio); elsewhere LFO and ARP do nothing yet, and
+PRESETS steps the preset. SELECT does nothing on STATUS and
 ABOUT, ALGORITHM nothing on STATUS and ABOUT.
 
 ## Value popup
@@ -630,8 +632,8 @@ one note at a time: voice 3 runs silently at the note's pitch and voice 1, hard-
 it, 2.75 times higher, so voice 3 sets the pitch and the ratio the timbre.
 
 **Each preset keeps your edits** while another plays: turn PRESETS away and back and the
-cutoff, resonance, pulse width, waveform, envelope, filter, expression settings and sync ratio
-you had are back (the effect slots, the chip and the volume are not the preset's and stay as
+cutoff, resonance, pulse width, waveform, envelope, filter, expression settings, sync ratio and
+[chord arpeggio](#chord-arpeggio) you had are back (the effect slots, the chip and the volume are not the preset's and stay as
 they are). A preset that differs from its factory settings shows a `*` after its name on
 LIVE's header, in the popup and in the menu's PRE (`SAW LEAD*`). **EDIT held + PRESETS** puts
 the current preset back to its factory settings and forgets its edits. A MIDI program change
@@ -664,6 +666,45 @@ DICE is the panel's: a MIDI program change selects 0..3 only (a program of 4 or 
 and on MIDI out the roll goes as CCs, parameter by parameter, with no program change. The
 settings keep the roll's parameters like any sound's and bring DICE back on power-up (its number
 starts from 0 again).
+
+## Chord arpeggio
+
+The C64's signature sound, playable: **hold a chord and one voice steps through its notes at the
+frame rate**, the buzzy arpeggio C64 tunes play a major chord as (0, 4, 7) because the chip has
+three voices and the tune needs the other two. **ARP** on LIVE switches it on and off (on its
+release); row 20 says `ARP 1F UP 1OCT` while it is on (the rate, the order and the span).
+
+- **One voice.** The first key held starts a voice on the cycle's first note (an attack as
+  usual); each key after it joins the cycle at once, keeping its time, and every note change is
+  the voice's frequency alone: the gate stays on, so there is no new attack and no click, and
+  the change lands between two of the chip's rendered blocks (2.9 ms) at a 100 Hz tick. Letting
+  go of a key takes it out of the cycle (the note that sounds plays out its step); letting go of
+  the last releases the voice with the preset's release, at the pitch it had. The other two
+  voices are free: nothing else plays on them, and over a song on chip A (KEYS A) the arpeggio
+  takes one voice from it, not three. Its lane on LIVE shows the note it steps to.
+- **ARP held + K1: the rate**, the frames a note: `1F` (50 Hz, the default, a C64 player's
+  frame), `2F` (25 Hz), `3F` (16.7 Hz), `4F`, `6F`, `8F` (6.25 Hz); then the clock's, `/32`,
+  `/16`, `/8`: a note every 32nd, 16th or 8th of a MIDI clock while one comes in (a start, FA,
+  puts the next note a whole step away), and as many frames as the clocks (3, 6, 12: a 125 BPM
+  clock) while none does.
+- **ARP held + K2: the order**: `UP` (lowest to highest, the default), `DN` (down), `UD` (up and
+  down, the top and bottom notes once each) and `AS` (as played: the order the keys went down).
+- **ARP held + K3: the span**: `1` octave (the chord) or `2` (the chord, then again an octave
+  up). A change of order or span keeps the note that sounds and goes on from it in the new
+  cycle; a change of rate restarts the step's count.
+- **ARP held + K4** does nothing. While ARP is held the knob row is ARP's page (RATE, ORDER,
+  SPAN), a turned knob's label reversed for a second as on the TONE page.
+- **Switched on with keys held,** their notes become the cycle, on the voice of the oldest (its
+  gate kept); the others are released. **Switched off with keys held,** each held note gets a
+  voice again (a new attack), as if played again in the order played.
+- **Per preset:** the arpeggio's settings, on or off with them, are edits of the preset's
+  ([Presets](#presets)): PRESETS away and back keeps them, they show the preset's `*`, and EDIT
+  + PRESETS, or a MIDI program change, loads the factory's (off). Like the other presets' edits
+  they are not saved with the settings: the arpeggio is off at power-on.
+- **MIDI:** notes held over MIDI arpeggiate as the keys do, with them; up to eight notes held
+  (a ninth drops the oldest). CC 27 switches it (on from 64), CC 28 sets the rate (0..127 over
+  the nine rates), CC 29 the order and CC 30 the span (2 octaves from 64): [midi.md](midi.md),
+  Chord arpeggio. MIDI out does not send them.
 
 ## Effect slots
 
@@ -771,7 +812,8 @@ range set by RPN 0 are kept. Every parameter has an NRPN, and all but the bend r
 expression targets a CC: the map, generated from the code, is [midi.md](midi.md). The
 numbers M1a and M1c set are kept: 1 pulse width, 7 volume, 71 resonance, 74 cutoff, and
 the effect slots on 102..116 (Distortion 102..106, Modulation 107..111, FX 112..116:
-algorithm, Amount, A, B, Mix). CC 120 and 123 release every note. The chip model (CC 25,
+algorithm, Amount, A, B, Mix). CC 27..30 are the [chord arpeggio](#chord-arpeggio)'s (on, rate,
+order, span). CC 120 and 123 release every note. The chip model (CC 25,
 NRPN 1/5) changes from the next 10 ms tick, to the last value received: its chip is
 prepared in the background, a slice a tick, and swaps in when it is whole, so a stream of
 changes never holds the instrument up; the FX button asks for a change the same way.
@@ -1039,7 +1081,9 @@ dark grey at rest and draw each sounding voice's waveform, still while a note ho
 four periods (more for higher notes). **EDIT held** turns the selected slot's four controls
 on K1..K4 and the knob row says so: the page's name is the slot's (`DIST`) and the labels are
 the controls' own names (`DRIVE`, `TONE`, `BIAS`, `MIX`; one the algorithm does not use is dim),
-and the slot's algorithm at 2× in the band is in reverse video.
+and the slot's algorithm at 2× in the band is in reverse video. **ARP held** shows ARP's page the
+same way (RATE, ORDER, SPAN: `1F`, `UP`, `1`), and while the [chord arpeggio](#chord-arpeggio) is
+on, row 20 names it with its settings (`ARP 1F UP 1OCT`, ARP in yellow).
 
 The **status screen** (STATUS in the menu) shows the numbers: the chip, preset, octave,
 cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS each slot's

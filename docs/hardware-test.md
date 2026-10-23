@@ -23,6 +23,17 @@
 - [ ] Turn ALGORITHM clockwise and counter-clockwise: the piece steps like SELECT, with its
   name in a toast.
 
+## Chord arpeggio (ARP on LIVE)
+
+- [ ] On LIVE press and release ARP: row 20 reads `ARP 1F UP 1OCT`. Hold C, E and G: one voice
+  buzzes through the three notes (the C64's arpeggio chord), no click between them, the other
+  two lanes stay dark. Let go: one release rings out.
+- [ ] Hold ARP and turn K1 two clicks: the knob row shows ARP's page and RATE reads `3F`; the
+  notes are now separate. K2 steps ORDER (UP, DN, UD, AS), K3 SPAN (1, 2 octaves). Let go of
+  ARP: it stays on (a knob turned). Press and release ARP again: off, chords on three voices.
+- [ ] With a MIDI keyboard: CC 27 at 127 turns it on, and notes held there arpeggiate too. With
+  a sequencer's clock running and the rate at `/16` (K1 past `8F`), the notes land on the 16ths.
+
 ## Ergonomics: menu spin
 
 - [ ] Open HOME's menu and spin SELECT quickly down past the first six items,
@@ -307,7 +318,7 @@ which printed control did it.
   "CHIP 8580" and sweeps colour bands down the border for about half a
   second.
 - [ ] **The song views' button ids (M2d).** GLO 7, SEQ 11, PLAY 12 and REC 13 (and LFO 5,
-  ARP 10, unused yet) are Felucca's ids and were never confirmed on a SIDOU unit (M1 used
+  ARP 10: STEP's gate, LIVE's chord arpeggio) are Felucca's ids and were never confirmed on a SIDOU unit (M1 used
   only FX, SCL, ENV, EDIT, HOME and SAVE). The four rows above check them by what they do;
   write the printed control for each. If one does nothing and another printed button does
   its job, only `app/panel.h` changes: note which id is which. M2d is not done on hardware

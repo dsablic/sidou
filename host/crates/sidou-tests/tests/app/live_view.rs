@@ -950,3 +950,56 @@ fn the_octave_shows_at_2x_when_not_0() {
     ui.settle();
     assert_eq!(small(&ui, 0, 26, 4), "    ", "nothing at 0");
 }
+
+/// ARP on LIVE (app/live_view.h): a press and release switches the chord arpeggio, which row 20
+/// then names with its settings; held, the knob row is ARP's (RATE, ORDER, SPAN) and K1..K3 turn
+/// them, and its release then switches nothing. K4 does nothing while it is held.
+#[test]
+fn arp_switches_the_arpeggio_and_held_turns_its_settings() {
+    let mut ui = Ui::without_cards();
+    ui.settle();
+    assert_eq!(ui.top(), "LIVE");
+    assert!(!ui.row(LIVE_VIEW_STRIP_ROW as usize).contains("ARP"));
+    ui.press(PANEL_BTN_ARP);
+    assert_eq!(ui.rig.live.arp_on, 1, "the release switched it on");
+    ui.settle();
+    assert!(
+        ui.row(LIVE_VIEW_STRIP_ROW as usize)
+            .contains("ARP 1F UP 1OCT"),
+        "row 20: {:?}",
+        ui.row(LIVE_VIEW_STRIP_ROW as usize)
+    );
+    // Held: the knob row is ARP's.
+    ui.down(PANEL_BTN_ARP);
+    ui.frame();
+    assert!(ui.row(LIVE_VIEW_PAGE_ROW as usize).starts_with("ARP"));
+    let labels = ui.row(LIVE_VIEW_KNOB_ROW as usize);
+    for w in ["RATE", "ORDER", "SPAN"] {
+        assert!(labels.contains(w), "{labels:?}");
+    }
+    let cutoff = ui.rig.live.cutoff;
+    ui.turn(PANEL_ENC_K1, 6);
+    ui.turn(PANEL_ENC_K1 + 1, 1);
+    ui.turn(PANEL_ENC_K1 + 2, 1);
+    ui.turn(PANEL_ENC_K4, 1);
+    assert_eq!(ui.rig.live.cutoff, cutoff, "K1 was the arpeggio's");
+    assert_eq!(ui.rig.live.arp_rate, 6);
+    assert_eq!(u32::from(ui.rig.live.arp_order), LIVE_ARP_DOWN);
+    assert_eq!(ui.rig.live.arp_span, 2);
+    ui.frame();
+    assert_eq!(ui.big(LIVE_VIEW_KNOB_VALUE_ROW as usize, 0, 2, 3), "/32");
+    ui.up(PANEL_BTN_ARP);
+    assert_eq!(
+        ui.rig.live.arp_on, 1,
+        "a knob turned: the release kept it on"
+    );
+    ui.settle();
+    assert!(ui
+        .row(LIVE_VIEW_STRIP_ROW as usize)
+        .contains("ARP /32 DN 2OCT"));
+    assert!(ui.row(LIVE_VIEW_PAGE_ROW as usize).starts_with("TONE"));
+    ui.press(PANEL_BTN_ARP);
+    assert_eq!(ui.rig.live.arp_on, 0);
+    ui.settle();
+    assert!(!ui.row(LIVE_VIEW_STRIP_ROW as usize).contains("ARP"));
+}

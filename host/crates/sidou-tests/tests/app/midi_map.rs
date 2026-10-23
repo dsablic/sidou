@@ -1282,6 +1282,71 @@ jack, which is MIDI IN only.
     )
 }
 
+/// The chord arpeggio's CCs (app/live.h live_arp_set): not rows of the map.
+fn arp_ccs() -> [(u32, &'static str); 4] {
+    [
+        (LIVE_CC_ARP, "Chord arpeggio on/off"),
+        (LIVE_CC_ARP_RATE, "Chord arpeggio rate"),
+        (LIVE_CC_ARP_ORDER, "Chord arpeggio order"),
+        (LIVE_CC_ARP_SPAN, "Chord arpeggio span"),
+    ]
+}
+
+/// The chord arpeggio over MIDI (app/live.h, [controls.md](controls.md) Chord arpeggio).
+fn arp_section() -> String {
+    let steps = unsafe { live_arp_steps };
+    let frames: Vec<String> = steps[..LIVE_ARP_RATE_CLOCK as usize]
+        .iter()
+        .map(|f| format!("{f}"))
+        .collect();
+    let clocks: Vec<String> = steps[LIVE_ARP_RATE_CLOCK as usize..]
+        .iter()
+        .map(|c| format!("{c}"))
+        .collect();
+    let per = |n: u32| 128.0 / f64::from(n);
+    format!(
+        "\
+## Chord arpeggio
+
+The live instrument's chord arpeggio ([controls.md](controls.md), Chord arpeggio): with it on,
+the notes held, MIDI's and the keys' together (up to {held}; a ninth drops the oldest), are one
+voice stepping through them at the rate, its gate held from the first note to the release of
+the last. Its CCs are in a block MIDI leaves undefined; they are no parameters of the map (no
+NRPN), MIDI learn does not reach them, and MIDI out does not send them. A learned CC wins over
+them, as over the map's.
+
+- **CC {on}, on/off:** off below 64, on from 64. A program change loads the preset's factory
+  settings: off.
+- **CC {rate}, the rate:** 0..127 divided evenly among the {rates} rates ({per_rate:.1} values
+  each): a note every {frames} frames of 50 Hz, then a note every {clocks} MIDI clocks (a 32nd,
+  a 16th, an 8th) while a clock comes in (one in the last {lost} ms), as many frames while none
+  does. A start (FA) puts the next note a whole step away.
+- **CC {order}, the order:** 0..127 among up, down, up-down and as played ({per_order:.0}
+  values each).
+- **CC {span}, the span:** one octave below 64, two from 64.
+
+",
+        held = LIVE_ARP_HELD,
+        on = LIVE_CC_ARP,
+        rate = LIVE_CC_ARP_RATE,
+        order = LIVE_CC_ARP_ORDER,
+        span = LIVE_CC_ARP_SPAN,
+        rates = LIVE_ARP_RATES,
+        per_rate = per(LIVE_ARP_RATES),
+        frames = list_text(&frames),
+        clocks = list_text(&clocks),
+        lost = LIVE_ARP_CLOCK_TICKS * 1000 / LIVE_TICK_HZ,
+        per_order = per(4),
+    )
+}
+
+fn list_text(s: &[String]) -> String {
+    match s.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{}, or {last}", rest.join(", ")),
+        _ => s.join(""),
+    }
+}
+
 /// The CCs below the channel mode messages (120..127) that MIDI learn leaves to the NRPN and
 /// RPN receiver, from app/midi_learn.c.
 fn unlearnable() -> Vec<u32> {
@@ -1593,6 +1658,7 @@ fn doc() -> String {
     let rows = rows();
     let mut s = String::from(HEADER);
     s.push_str(&intro());
+    s.push_str(&arp_section());
     s.push_str(&learn_section());
     s.push_str(&modes_section());
     s.push_str(&banks_section());
@@ -1638,13 +1704,37 @@ fn doc() -> String {
         ));
     }
     s.push_str("\n## By CC\n\n| CC | Parameter |\n|---|---|\n");
-    let mut by_cc: Vec<&Row> = rows.iter().filter(|r| r.has_cc()).collect();
-    by_cc.sort_by_key(|r| r.cc);
-    for r in by_cc {
-        let note = if r.reserved() { " (reserved)" } else { "" };
-        s.push_str(&format!("| {} | {} {}{} |\n", r.cc, r.group, r.name, note));
+    let mut by_cc: Vec<(u32, String)> = rows
+        .iter()
+        .filter(|r| r.has_cc())
+        .map(|r| {
+            let note = if r.reserved() { " (reserved)" } else { "" };
+            (u32::from(r.cc), format!("{} {}{}", r.group, r.name, note))
+        })
+        .chain(
+            arp_ccs()
+                .iter()
+                .map(|&(cc, name)| (cc, format!("Live {name}"))),
+        )
+        .collect();
+    by_cc.sort_by_key(|&(cc, _)| cc);
+    for (cc, name) in by_cc {
+        s.push_str(&format!("| {cc} | {name} |\n"));
     }
     s
+}
+
+/// The chord arpeggio's CCs are no row's, and in a block MIDI leaves undefined (20..31).
+#[test]
+fn the_arpeggio_ccs_are_free_and_undefined_in_midi() {
+    for (cc, _) in arp_ccs() {
+        assert!((20..=31).contains(&cc), "CC {cc}");
+        assert!(
+            rows().iter().all(|r| u32::from(r.cc) != cc),
+            "CC {cc} is a row's"
+        );
+        assert_ne!(unsafe { midi_learn_learnable(cc) }, 0, "CC {cc}");
+    }
 }
 
 #[test]

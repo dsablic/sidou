@@ -599,6 +599,13 @@ static void load_preset(live* l, uint8_t index) {
     l->sync_semis = 0;
     l->sync_q8 = p->sync_ratio_q8;
     l->lfo_phase = LFO_CENTRE;
+    /* The arpeggio: the factory's, off, with every note released below. */
+    l->arp_on = 0;
+    l->arp_rate = 0;
+    l->arp_order = LIVE_ARP_UP;
+    l->arp_span = 1;
+    l->arp_n = 0;
+    l->arp_voice = LIVE_ARP_NO_VOICE;
     for (int v = 0; v < LIVE_VOICES; ++v) {
         if (l->voice[v].gate) {
             l->voice[v].gate = 0;
@@ -630,6 +637,10 @@ void live_init(live* l, live_sink_fn sink, void* sink_ctx, sid_model model) {
     l->volume = 100;
     l->cutoff_pos = 0;
     l->dice_rolls = 0;
+    l->arp_pos = 0;
+    l->arp_wait = 0;
+    l->arp_clocks = 0;
+    l->arp_clock_seen = 0;
     for (uint32_t i = 0; i < LIVE_PRESET_SLOTS; ++i) {
         l->edits[i].valid = 0;
     }
@@ -721,23 +732,10 @@ static void start_voice(live* l, int v, uint8_t note, uint8_t velocity) {
     write_control(l, v);
 }
 
-void live_note_on(live* l, uint8_t note, uint8_t velocity) {
-    if (note > 127) {
-        return;
-    }
-    if (velocity == 0) {
-        live_note_off(l, note);
-        return;
-    }
-    int v = -1;
-    for (int i = 0; i < voice_count(l); ++i) {
-        if (l->voice[i].gate && l->voice[i].note == note) {
-            v = i;
-        }
-    }
-    if (v < 0) {
-        v = pick_voice(l, 0);
-    }
+/* A voice for a new note: a free one (the longest released), the UI sound's when the others are
+ * all held, else the one held longest. */
+static int free_voice(live* l) {
+    int v = pick_voice(l, 0);
     if (v < 0 && l->ui_voice) {
         /* The others all held: a UI sound gives its voice back (app/ui_sound.h), with the
          * instrument's envelope (the sound had its own). */
@@ -748,6 +746,33 @@ void live_note_on(live* l, uint8_t note, uint8_t velocity) {
     }
     if (v < 0) {
         v = pick_voice(l, 1);
+    }
+    return v;
+}
+
+static void arp_note_on(live* l, uint8_t note, uint8_t velocity);
+static void arp_note_off(live* l, uint8_t note);
+
+void live_note_on(live* l, uint8_t note, uint8_t velocity) {
+    if (note > 127) {
+        return;
+    }
+    if (velocity == 0) {
+        live_note_off(l, note);
+        return;
+    }
+    if (l->arp_on) {
+        arp_note_on(l, note, velocity > 127 ? 127 : velocity);
+        return;
+    }
+    int v = -1;
+    for (int i = 0; i < voice_count(l); ++i) {
+        if (l->voice[i].gate && l->voice[i].note == note) {
+            v = i;
+        }
+    }
+    if (v < 0) {
+        v = free_voice(l);
     }
     start_voice(l, v, note, velocity > 127 ? 127 : velocity);
     l->note_ons++;
@@ -760,6 +785,10 @@ static void release(live* l, int v) {
 }
 
 void live_note_off(live* l, uint8_t note) {
+    if (l->arp_on) {
+        arp_note_off(l, note);
+        return;
+    }
     for (int v = 0; v < voice_count(l); ++v) {
         if (l->voice[v].gate && l->voice[v].note == note) {
             release(l, v);
@@ -772,6 +801,284 @@ void live_all_notes_off(live* l) {
         if (l->voice[v].gate) {
             release(l, v);
         }
+    }
+    l->arp_n = 0;
+    l->arp_voice = LIVE_ARP_NO_VOICE;
+}
+
+/* ---- the chord arpeggio ---- */
+
+const uint8_t live_arp_steps[LIVE_ARP_RATES] = {1, 2, 3, 4, 6, 8, 3, 6, 12};
+
+/* Positions in a cycle: the held notes times the span, and up-down back without its ends. */
+static uint32_t arp_period(const live* l) {
+    uint32_t n = (uint32_t)l->arp_n * l->arp_span;
+    return l->arp_order == LIVE_ARP_UP_DOWN && n > 1u ? 2u * n - 2u : n;
+}
+
+/* The note at position pos (< arp_period) of the cycle. */
+static uint8_t arp_note_at(const live* l, uint32_t pos) {
+    uint32_t n = (uint32_t)l->arp_n * l->arp_span;
+    uint32_t q = pos;
+    if (l->arp_order == LIVE_ARP_UP_DOWN && q >= n) {
+        q = 2u * n - 2u - q;
+    } else if (l->arp_order == LIVE_ARP_DOWN) {
+        q = n - 1u - q;
+    }
+    uint32_t octave = q / l->arp_n;
+    uint32_t k = q % l->arp_n;
+    uint32_t note = l->arp_order == LIVE_ARP_PLAYED ? l->arp_held[k] : l->arp_sorted[k];
+    uint32_t up = note + 12u * octave;
+    return (uint8_t)(up <= 127u ? up : note);
+}
+
+/* The step's length: ticks, and with a clock rate the clocks. */
+static void arp_rewind(live* l) {
+    l->arp_wait = (uint8_t)(live_arp_steps[l->arp_rate] * LIVE_ARP_TICKS_PER_FRAME);
+    l->arp_clocks = live_arp_steps[l->arp_rate];
+}
+
+/* The arpeggio's voice to the cycle's note at its position: the frequency alone, the gate held
+ * (the sync lead's voice 3 sets its pitch: both move). */
+static void arp_sound(live* l) {
+    int v = l->arp_voice;
+    l->voice[v].note = arp_note_at(l, l->arp_pos);
+    update_freq(l, v);
+    if (cur(l)->mono_sync) {
+        update_freq(l, 2);
+    }
+}
+
+static void arp_step(live* l) {
+    l->arp_pos = (uint8_t)((l->arp_pos + 1u) % arp_period(l));
+    arp_sound(l);
+}
+
+/* After the notes or the cycle changed: the position of the note that sounds, looking on from
+ * where it was (up-down has most notes twice: the direction holds); if it is gone, the position
+ * before where it was, so the next step takes what followed it. */
+LIVE_COLD static void arp_resync(live* l) {
+    uint32_t period = arp_period(l);
+    uint32_t pos = l->arp_pos % period;
+    uint8_t sounding = l->voice[l->arp_voice].note;
+    for (uint32_t k = 0; k < period; k++) {
+        uint32_t p = (pos + k) % period;
+        if (arp_note_at(l, p) == sounding) {
+            l->arp_pos = (uint8_t)p;
+            return;
+        }
+    }
+    l->arp_pos = (uint8_t)((pos + period - 1u) % period);
+}
+
+/* note into the held notes: last in the order played, in its place among the sorted. */
+static void arp_hold(live* l, uint8_t note) {
+    uint32_t n = l->arp_n;
+    uint32_t i = n;
+    l->arp_held[n] = note;
+    while (i > 0u && l->arp_sorted[i - 1u] > note) {
+        l->arp_sorted[i] = l->arp_sorted[i - 1u];
+        i--;
+    }
+    l->arp_sorted[i] = note;
+    l->arp_n = (uint8_t)(n + 1u);
+}
+
+/* note out of both lists; 0 if it was not held. */
+static int arp_drop(live* l, uint8_t note) {
+    uint32_t n = l->arp_n;
+    int found = 0;
+    for (uint32_t i = 0, j = 0; i < n; i++) {
+        if (l->arp_held[i] == note) {
+            found = 1;
+        } else {
+            l->arp_held[j++] = l->arp_held[i];
+        }
+    }
+    if (!found) {
+        return 0;
+    }
+    for (uint32_t i = 0, j = 0; i < n; i++) {
+        if (l->arp_sorted[i] != note) {
+            l->arp_sorted[j++] = l->arp_sorted[i];
+        }
+    }
+    l->arp_n = (uint8_t)(n - 1u);
+    return 1;
+}
+
+/* The first note held starts the voice on the cycle's first note; another joins the cycle, which
+ * keeps its time. A note held already is held once. */
+static void arp_note_on(live* l, uint8_t note, uint8_t velocity) {
+    for (uint32_t i = 0; i < l->arp_n; i++) {
+        if (l->arp_held[i] == note) {
+            return;
+        }
+    }
+    if (l->arp_n == LIVE_ARP_HELD) {
+        (void)arp_drop(l, l->arp_held[0]); /* the oldest goes */
+    }
+    arp_hold(l, note);
+    if (l->arp_voice != LIVE_ARP_NO_VOICE) {
+        arp_resync(l);
+        return;
+    }
+    int v = free_voice(l);
+    l->arp_voice = (uint8_t)v;
+    l->arp_pos = 0;
+    arp_rewind(l);
+    start_voice(l, v, arp_note_at(l, 0), velocity);
+    l->note_ons++;
+}
+
+/* The last note let go releases the voice (its release rings at the pitch it had). */
+static void arp_note_off(live* l, uint8_t note) {
+    if (!arp_drop(l, note) || l->arp_voice == LIVE_ARP_NO_VOICE) {
+        return;
+    }
+    if (!l->arp_n) {
+        release(l, l->arp_voice);
+        l->arp_voice = LIVE_ARP_NO_VOICE;
+        return;
+    }
+    arp_resync(l);
+}
+
+/* ON: the held voices' notes, oldest first, into the arpeggio, on the oldest one's voice. */
+LIVE_COLD static void arp_start(live* l) {
+    int keep = -1;
+    l->arp_n = 0;
+    for (;;) {
+        int v = -1;
+        for (int i = 0; i < voice_count(l); ++i) {
+            const live_voice* x = &l->voice[i];
+            if (x->gate && (v < 0 || older(x->stamp, l->voice[v].stamp))) {
+                v = i;
+            }
+        }
+        if (v < 0) {
+            break;
+        }
+        if (l->arp_n < LIVE_ARP_HELD) {
+            uint32_t dup = 0;
+            for (uint32_t i = 0; i < l->arp_n; i++) {
+                dup |= l->arp_held[i] == l->voice[v].note;
+            }
+            if (!dup) {
+                arp_hold(l, l->voice[v].note);
+            }
+        }
+        if (keep < 0) {
+            keep = v;
+            l->voice[v].gate = 0; /* out of the search; its gate is back on below, unwritten */
+        } else {
+            release(l, v);
+        }
+    }
+    if (keep < 0) {
+        return;
+    }
+    l->voice[keep].gate = 1;
+    l->arp_voice = (uint8_t)keep;
+    l->arp_pos = 0;
+    arp_rewind(l);
+    arp_sound(l);
+}
+
+/* OFF: each held note on a voice of its own, as if played again in the order played. */
+LIVE_COLD static void arp_stop(live* l) {
+    if (l->arp_voice == LIVE_ARP_NO_VOICE) {
+        return;
+    }
+    uint8_t notes[LIVE_ARP_HELD];
+    uint32_t n = l->arp_n;
+    for (uint32_t i = 0; i < n; i++) {
+        notes[i] = l->arp_held[i];
+    }
+    uint8_t velocity = l->voice[l->arp_voice].velocity;
+    release(l, l->arp_voice);
+    l->arp_voice = LIVE_ARP_NO_VOICE;
+    l->arp_n = 0;
+    for (uint32_t i = 0; i < n; i++) {
+        live_note_on(l, notes[i], velocity);
+    }
+}
+
+LIVE_COLD void live_arp_set(live* l, uint32_t field, uint32_t value) {
+    switch (field) {
+    case LIVE_ARP_ON: {
+        uint8_t want = value ? 1u : 0u;
+        if (want != l->arp_on) {
+            l->arp_on = want;
+            if (want) {
+                arp_start(l);
+            } else {
+                arp_stop(l);
+            }
+        }
+        break;
+    }
+    case LIVE_ARP_RATE:
+        value = value < LIVE_ARP_RATES - 1u ? value : LIVE_ARP_RATES - 1u;
+        if (value != l->arp_rate) {
+            l->arp_rate = (uint8_t)value;
+            arp_rewind(l);
+        }
+        break;
+    case LIVE_ARP_ORDER:
+    case LIVE_ARP_SPAN: {
+        uint8_t* f = field == LIVE_ARP_ORDER ? &l->arp_order : &l->arp_span;
+        uint32_t lo = field == LIVE_ARP_ORDER ? 0u : 1u;
+        uint32_t hi = field == LIVE_ARP_ORDER ? (uint32_t)LIVE_ARP_PLAYED : LIVE_ARP_SPAN_MAX;
+        value = value < lo ? lo : value > hi ? hi : value;
+        if (value != *f) {
+            *f = (uint8_t)value;
+            if (l->arp_voice != LIVE_ARP_NO_VOICE) {
+                arp_resync(l);
+            }
+        }
+        break;
+    }
+    default: break;
+    }
+}
+
+LIVE_COLD void live_arp_turn(live* l, uint32_t field, int32_t detents) {
+    if (field == LIVE_ARP_ON || field > LIVE_ARP_SPAN) {
+        return;
+    }
+    const uint8_t now = field == LIVE_ARP_RATE ? l->arp_rate
+                        : field == LIVE_ARP_ORDER ? l->arp_order
+                                                  : l->arp_span;
+    detents = detents > 16 ? 16 : detents < -16 ? -16 : detents;
+    int32_t to = (int32_t)now + detents;
+    live_arp_set(l, field, to < 0 ? 0u : (uint32_t)to);
+}
+
+void live_arp_realtime(live* l, uint8_t status) {
+    if (status == 0xF8u) {
+        l->arp_clock_seen = LIVE_ARP_CLOCK_TICKS;
+        if (l->arp_voice != LIVE_ARP_NO_VOICE && l->arp_rate >= LIVE_ARP_RATE_CLOCK &&
+            --l->arp_clocks == 0u) {
+            l->arp_clocks = live_arp_steps[l->arp_rate];
+            arp_step(l);
+        }
+    } else if (status == 0xFAu) {
+        l->arp_clocks = live_arp_steps[l->arp_rate];
+    }
+}
+
+/* A tick: a step when its ticks are up, unless a clock rate has a clock to step it. */
+static void arp_tick(live* l) {
+    if (l->arp_clock_seen) {
+        l->arp_clock_seen--;
+        if (l->arp_rate >= LIVE_ARP_RATE_CLOCK) {
+            return;
+        }
+    }
+    if (l->arp_voice != LIVE_ARP_NO_VOICE && --l->arp_wait == 0u) {
+        l->arp_wait = (uint8_t)(live_arp_steps[l->arp_rate] * LIVE_ARP_TICKS_PER_FRAME);
+        arp_step(l);
     }
 }
 
@@ -846,6 +1153,10 @@ LIVE_COLD static void edit_store(const live* l, live_edit* e) {
     e->vibrato_depth = l->vibrato_depth;
     e->vibrato_delay = l->vibrato_delay;
     e->sync_semis = l->sync_semis;
+    e->arp_on = l->arp_on;
+    e->arp_rate = l->arp_rate;
+    e->arp_order = l->arp_order;
+    e->arp_span = l->arp_span;
     e->valid = 1;
 }
 
@@ -872,6 +1183,10 @@ LIVE_COLD static void edit_apply(live* l, const live_edit* e) {
     l->vibrato_rate = e->vibrato_rate;
     l->vibrato_depth = e->vibrato_depth;
     l->vibrato_delay = e->vibrato_delay;
+    l->arp_on = e->arp_on; /* no note is held after load_preset: the next one starts it */
+    l->arp_rate = e->arp_rate;
+    l->arp_order = e->arp_order;
+    l->arp_span = e->arp_span;
     l->sync_semis = e->sync_semis;
     l->sync_q8 = (uint16_t)((cur(l)->sync_ratio_q8 *
                                  live_ratio_q16[e->sync_semis + LIVE_RATIO_SEMIS] + 32768u) >> 16);
@@ -900,7 +1215,8 @@ uint32_t live_preset_edited(const live* l) {
            l->velocity_target != p->velocity_target || l->mod_target != p->mod_target ||
            l->pressure_target != p->pressure_target || l->vibrato_rate != p->vibrato_rate ||
            l->vibrato_depth != p->vibrato_depth || l->vibrato_delay != p->vibrato_delay ||
-           l->sync_semis != 0);
+           l->sync_semis != 0 || l->arp_on || l->arp_rate || l->arp_order != LIVE_ARP_UP ||
+           l->arp_span != 1u);
 }
 
 LIVE_COLD void live_preset_name(const live* l, char* buf) {
@@ -1174,6 +1490,13 @@ void live_cc(live* l, uint8_t cc, uint8_t value) {
     }
     if (cc == LIVE_CC_RESET_ALL) {
         live_reset_controllers(l);
+        return;
+    }
+    if ((uint32_t)cc - LIVE_CC_ARP <= LIVE_CC_ARP_SPAN - LIVE_CC_ARP) {
+        /* the arpeggio's: on from 64, the rest scaled over their values */
+        static const uint8_t VALUES[4] = {2, LIVE_ARP_RATES, 4, LIVE_ARP_SPAN_MAX};
+        uint32_t f = (uint32_t)cc - LIVE_CC_ARP;
+        live_arp_set(l, f, (uint32_t)value * VALUES[f] / 128u + (f == LIVE_ARP_SPAN));
         return;
     }
     if (cc == LIVE_CC_MOD_WHEEL && l->mod_target != LIVE_MOD_PULSE_WIDTH) {
@@ -1713,6 +2036,9 @@ void live_tick(live* l) {
         } else {
             x->vibrato_phase = (uint16_t)(x->vibrato_phase + step);
         }
+    }
+    if (l->arp_voice != LIVE_ARP_NO_VOICE || l->arp_clock_seen) {
+        arp_tick(l);
     }
     for (int v = 0; v < LIVE_VOICES; ++v) {
         update_freq(l, v);

@@ -187,6 +187,25 @@ jack, which is MIDI IN only.
   slots or a bend range set by RPN 0) that the panel also changes in the same tick as the
   preset counts as loaded by it and is not sent.
 
+## Chord arpeggio
+
+The live instrument's chord arpeggio ([controls.md](controls.md), Chord arpeggio): with it on,
+the notes held, MIDI's and the keys' together (up to 8; a ninth drops the oldest), are one
+voice stepping through them at the rate, its gate held from the first note to the release of
+the last. Its CCs are in a block MIDI leaves undefined; they are no parameters of the map (no
+NRPN), MIDI learn does not reach them, and MIDI out does not send them. A learned CC wins over
+them, as over the map's.
+
+- **CC 27, on/off:** off below 64, on from 64. A program change loads the preset's factory
+  settings: off.
+- **CC 28, the rate:** 0..127 divided evenly among the 9 rates (14.2 values
+  each): a note every 1, 2, 3, 4, 6, or 8 frames of 50 Hz, then a note every 3, 6, or 12 MIDI clocks (a 32nd,
+  a 16th, an 8th) while a clock comes in (one in the last 300 ms), as many frames while none
+  does. A start (FA) puts the next note a whole step away.
+- **CC 29, the order:** 0..127 among up, down, up-down and as played (32
+  values each).
+- **CC 30, the span:** one octave below 64, two from 64.
+
 ## MIDI learn
 
 Any knob's parameter can also follow a CC of your choice: hold SAVE and turn the knob (EDIT held
@@ -419,6 +438,10 @@ In NRPN order.
 | 24 | SID Filter routing |
 | 25 | SID Chip model |
 | 26 | SID Envelope mode |
+| 27 | Live Chord arpeggio on/off |
+| 28 | Live Chord arpeggio rate |
+| 29 | Live Chord arpeggio order |
+| 30 | Live Chord arpeggio span |
 | 71 | Live Resonance |
 | 72 | SID Release |
 | 73 | SID Attack |

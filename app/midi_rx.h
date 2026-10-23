@@ -10,7 +10,9 @@
  *   mode, midi_rx_route: what the channel's bank select says, app/midi_route.h);
  * - pitch bend, channel and polyphonic aftertouch go to live (live_bend, live_pressure,
  *   live_poly_pressure), which applies them at its next tick;
- * - everything else (real time, system common, SysEx) is ignored.
+ * - the MIDI clock and start (real time) go to the chord arpeggio (live_arp_realtime), and with
+ *   midi_rx_sync to the clock follower;
+ * - everything else (the rest of real time, system common, SysEx) is ignored.
  *
  * One parser per source, because the sources interleave: a TRS message arrives a byte per
  * 320 us, so USB messages can come between its bytes, and a parser shared by both would take

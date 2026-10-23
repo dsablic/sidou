@@ -623,7 +623,10 @@ playing, one colour per voice and per knob, black behind it
   label in reverse video for a second**: no popup opens over LIVE for the knobs. EDIT held turns
   the selected slot's four controls, and the row says so: the page tag is the slot's and the
   labels its controls' names (`DRIVE`, `TONE`, `BIAS`, `MIX`), dim where the algorithm has no use
-  for them.
+  for them. ARP held shows the chord arpeggio's page the same way: `ARP`, then RATE, ORDER and
+  SPAN (`1F`, `UP`, `1`), K4's `-` dim.
+- **Row 20:** while the chord arpeggio is on, **ARP** in yellow from column 8 and its settings
+  small after it (`1F UP 1OCT`), between the song's tempo and the voices' badges.
 - **Rows 21-26, the bottom band:** FILTER's label, **CHIP 6581** (the model) and **KEYS:B** in
   yellow on the right while the keys play chip B; the **mode at 2×** (LP, BP, LP+BP, HP, NOTCH,
   BP+HP, ALL, or OFF in dark grey) and the chip's **profile at 2×** (`R4AR`, `WORN`, `USR3`, in

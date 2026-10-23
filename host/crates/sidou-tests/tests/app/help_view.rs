@@ -548,7 +548,8 @@ enum Ctl {
 
 /// The controls (and whether EDIT is held) a card line's control words name: SELECT, ALG,
 /// K1..K4 (K1-K4, K1 K2, K3/K4; K the four), PRESETS (PRE), KEYS..., the buttons; E+ or EDIT+
-/// with EDIT held. Another modifier (STEP+, GLO+, SAVE+) names a gesture no probe makes: nothing.
+/// with EDIT held. Another modifier (STEP+, GLO+, SAVE+, ARP+) names a gesture no probe makes:
+/// nothing.
 /// None for a line that names no control but tells something (SETTINGS KEPT, MACROS RESET).
 fn controls_of(key: &str) -> Option<Vec<(Ctl, bool)>> {
     const INFO: [&str; 6] = ["SETTINGS", "SETUP", "MACROS", "WIPES", "QUANT", "HOLD HOME"];
@@ -557,7 +558,7 @@ fn controls_of(key: &str) -> Option<Vec<(Ctl, bool)>> {
     }
     let (edit, rest) = match key.split_once('+') {
         Some(("E" | "EDIT", rest)) => (true, rest),
-        Some(("STEP" | "GLO" | "SAVE", _)) => return Some(Vec::new()),
+        Some(("STEP" | "GLO" | "SAVE" | "ARP", _)) => return Some(Vec::new()),
         _ => (false, key),
     };
     if rest.starts_with("KEY") {

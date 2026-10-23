@@ -490,3 +490,40 @@ fn a_restart_keeps_sysex_and_takes_the_next_frame_from_its_f0() {
         )
     );
 }
+
+/// The chord arpeggio over MIDI (app/live.h live_arp_set): its CC switches it, MIDI's held notes
+/// are its cycle, and a clock rate steps on the MIDI clock (TRS and USB), routed or not.
+#[test]
+fn midi_notes_arpeggiate_and_the_clock_steps_a_clock_rate() {
+    for routed in [false, true] {
+        let mut m = Midi::new();
+        let mut route = Box::<midi_route>::default();
+        if routed {
+            unsafe {
+                midi_route_init(
+                    &mut *route,
+                    &mut *m.rig.live,
+                    std::ptr::null_mut(),
+                    std::ptr::null(),
+                );
+                midi_rx_route(&mut *m.rx, &mut *route);
+            }
+        }
+        m.trs(&[0xB0, LIVE_CC_ARP as u8, 127]);
+        // A 16th of the clock: CC 28 at 7 of the 9 rates.
+        m.trs(&[LIVE_CC_ARP_RATE as u8, 100]);
+        assert_eq!(u32::from(m.live().arp_rate), LIVE_ARP_RATE_CLOCK + 1);
+        m.trs(&[0x90, C4, 100, E4, 100]);
+        assert_eq!(m.held().len(), 1, "one voice for the chord");
+        let v = m.live().arp_voice;
+        let note = |m: &Midi| m.live().voice[usize::from(v)].note;
+        assert_eq!(note(&m), C4);
+        m.trs(&[0xFA]);
+        for _ in 0..5 {
+            m.trs(&[0xF8]);
+        }
+        assert_eq!(note(&m), C4, "five clocks");
+        m.usb(0x0F, [0xF8, 0, 0]);
+        assert_eq!(note(&m), E4, "the sixth: a step");
+    }
+}

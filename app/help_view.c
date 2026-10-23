@@ -18,18 +18,20 @@
  * (help_view.rs) feeds each view, in each state, every button and encoder and finds the line of
  * each one it takes. The control's words: SELECT, ALG (ALGORITHM), K1..K4 (K1-K4, K1 K2, K3/K4;
  * K alone is the four), PRESETS (PRE), KEYS, a button's name; E+ (or EDIT+) with EDIT held, STEP+
- * with a step held, GLO+, SAVE+ (a digit after the NUL would be an octal escape). */
+ * with a step held, GLO+, SAVE+, ARP+ (a digit after the NUL would be an octal escape). */
+/* ARP switches the chord arpeggio at its release; held, K1..K3 its rate, order and span. The song
+ * views' own cards say SEQ and GLO's mutes. */
 static const char* const LIVE_LINES[] = {
     "SELECT\0PAGE",   "ALG\0PROFILE",  "K1\0CUTOFF",      "K2\0RESO",
     "K3\0SOUND'S OWN", "K4\0RELEASE",  "PRESETS\0SOUND",  "E+K\0SLOT",
-    "SCL\0NEXT SLOT", "ENV\0NEXT ALG", "FX\0CHIP MODEL", "OCT-/+\0OCTAVE",
-    "GLO+KEY\0MUTE",  "SAVE+K\0LEARN", "SEQ\0SONG VIEWS", "HOME\0MENU"};
+    "SCL\0NEXT SLOT", "ENV\0NEXT ALG", "ARP\0CHORD ARP",  "ARP+K\0ARP SET",
+    "FX\0CHIP MODEL", "OCT-/+\0OCTAVE", "SAVE+K\0LEARN",  "HOME\0MENU"};
 /* LIVE on a slot's page: K1..K4 the slot's controls, named for its algorithm. */
 static const char* const LIVE_SLOT_LINES[] = {
     "SELECT\0PAGE",   "ALG\0ALGORITHM", "K1\0\1",         "K2\0\2",
     "K3\0\3",         "K4\0\4",         "SCL\0NEXT SLOT", "ENV\0NEXT ALG",
     "PRESETS\0SOUND", "FX\0CHIP MODEL", "OCT-/+\0OCTAVE", "GLO+KEY\0MUTE",
-    "SAVE+K\0LEARN",  "SEQ\0SONG VIEWS", "HOME\0MENU"};
+    "ARP\0CHORD ARP",  "SAVE+K\0LEARN",  "SEQ\0SONG VIEWS", "HOME\0MENU"};
 /* SAVE is the menu's OK: it opens the view under the selection (ALG clockwise does too); the
  * settings save themselves. */
 static const char* const MENU_LINES[] = {"SELECT\0MOVE", "SAVE\0OPEN", "ALG\0CHANGE",

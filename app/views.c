@@ -2438,6 +2438,9 @@ void views_buttons(views* v, panel* p, uint32_t pressed, uint32_t held) {
     if ((pressed | v->key.down) & (1u << SAVE_KEY_BUTTON)) {
         pressed = save_buttons(v, pressed, held);
     }
+    if (v->live.arp_down) {
+        live_view_buttons(&v->live, held); /* ARP's release on LIVE: the arpeggio on or off */
+    }
     uint32_t rest = pressed;
     for (uint32_t b = 0; b < 32u && pressed >> b; b++) {
         if (!((pressed >> b) & 1u)) {
@@ -2708,6 +2711,8 @@ __attribute__((noinline, unused)) LIVE_COLD static void live_frame(views* v, con
     if (top == &live_view_view) {
         const panel* p = v->p;
         v->live.edit = p ? (uint8_t)(p->held >> PANEL_BTN_EDIT & 1u) : 0u;
+        /* ARP held since its press here: the knob row is the arpeggio's */
+        v->live.arp = p ? (uint8_t)(p->held >> PANEL_BTN_ARP & v->live.arp_down) : 0u;
         /* GLO's layer: held or latched (bit 0), latched (bit 1); the song, while it plays */
         v->live.glo = p ? (uint8_t)(((p->held >> PANEL_BTN_GLO | p->glo_latch) & 1u) | p->glo_latch << 1)
                         : 0u;

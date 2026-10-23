@@ -668,18 +668,45 @@ static inline __attribute__((always_inline)) int slot_page(const live_view* lv) 
     return lv->page || lv->edit;
 }
 
-/* Knob k's label, and whether the control is used (a slot page: by the slot's algorithm). */
+LIVE_COLD void live_view_arp_text(const live* l, uint32_t k, char* buf) {
+    static const char ORDER[4][3] = {"UP", "DN", "UD", "AS"};
+    uint32_t n = 0;
+    if (k == 0u) {
+        uint32_t steps = live_arp_steps[l->arp_rate % LIVE_ARP_RATES];
+        if (l->arp_rate >= LIVE_ARP_RATE_CLOCK) {
+            uint32_t note = 96u / steps; /* clocks a step: the note's value */
+            buf[n++] = '/';
+            if (note >= 10u) {
+                buf[n++] = (char)('0' + note / 10u);
+            }
+            buf[n++] = (char)('0' + note % 10u);
+        } else {
+            buf[n++] = (char)('0' + steps);
+            buf[n++] = 'F';
+        }
+    } else if (k == 1u) {
+        buf[n++] = ORDER[l->arp_order & 3u][0];
+        buf[n++] = ORDER[l->arp_order & 3u][1];
+    } else {
+        buf[n++] = (char)('0' + l->arp_span);
+    }
+    buf[n] = 0;
+}
+
+/* Knob k's label, and whether the control is used (a slot page: by the slot's algorithm; the
+ * arpeggio's: K1..K3). */
 LIVE_COLD static int knob_label(const live_view* lv, uint32_t k, char* buf) {
     static const char* const TONE[4] = {"CUTOFF", "RESO", "PULSE", "RELEASE"};
     static const char* const K3[3] = {"RATIO", "PULSE", "DECAY"};
-    if (!slot_page(lv)) {
-        const char* t = k == 2u ? K3[live_tone(lv->l)] : TONE[k];
+    static const char* const ARP[4] = {"RATE", "ORDER", "SPAN", "-"};
+    if (lv->arp || !slot_page(lv)) {
+        const char* t = lv->arp ? ARP[k] : k == 2u ? K3[live_tone(lv->l)] : TONE[k];
         uint32_t n = 0;
         for (; t[n]; n++) {
             buf[n] = t[n];
         }
         buf[n] = 0;
-        return 1;
+        return !lv->arp || k < 3u;
     }
     const live* l = lv->l;
     uint32_t slot = l->fx_select % LIVE_SLOTS;
@@ -688,6 +715,14 @@ LIVE_COLD static int knob_label(const live_view* lv, uint32_t k, char* buf) {
 
 /* Knob k's value text: the TONE page's, or the slot's control as a number. */
 __attribute__((noinline, unused)) LIVE_COLD static void knob_value(const live_view* lv, uint32_t k, char* buf) {
+    if (lv->arp) {
+        if (k < 3u) {
+            live_view_arp_text(lv->l, k, buf);
+        } else {
+            buf[0] = 0;
+        }
+        return;
+    }
     if (!slot_page(lv)) {
         live_view_knob_text(lv->l, k, buf);
         return;
@@ -710,7 +745,11 @@ __attribute__((noinline, unused)) LIVE_COLD static void knob_value(const live_vi
 __attribute__((noinline, unused)) LIVE_COLD static uint32_t knob_px(const live_view* lv, uint32_t k, uint32_t cells) {
     const live* l = lv->l;
     uint32_t value, max;
-    if (slot_page(lv)) {
+    if (lv->arp) {
+        static const uint8_t MAX[4] = {LIVE_ARP_RATES - 1u, LIVE_ARP_PLAYED, LIVE_ARP_SPAN_MAX - 1u, 1u};
+        value = k == 0u ? l->arp_rate : k == 1u ? l->arp_order : k == 2u ? l->arp_span - 1u : 0u;
+        max = MAX[k & 3u];
+    } else if (slot_page(lv)) {
         value = l->slot[l->fx_select % LIVE_SLOTS][LIVE_SLOT_AMOUNT + k];
         max = LIVE_SLOT_MAX;
     } else {
@@ -738,7 +777,8 @@ __attribute__((noinline, unused)) LIVE_COLD static uint32_t knob_px(const live_v
 LIVE_COLD static void knobs(const live_view* lv, canvas* cv, const theme* th, uint32_t hl) {
     fill(cv, 0, LIVE_VIEW_PAGE_ROW, GRID_COLS, LIVE_VIEW_TAG_ROW_END - LIVE_VIEW_PAGE_ROW, ' ',
          THEME_ATTR(th, value));
-    text(cv, 0, LIVE_VIEW_PAGE_ROW, slot_page(lv) ? views_slot_name(lv->l->fx_select % LIVE_SLOTS) : "TONE",
+    text(cv, 0, LIVE_VIEW_PAGE_ROW,
+         lv->arp ? "ARP" : slot_page(lv) ? views_slot_name(lv->l->fx_select % LIVE_SLOTS) : "TONE",
          THEME_ATTR(th, hot));
     for (uint32_t k = 0; k < 4u; k++) {
         uint32_t col = KNOB_COL[k];
@@ -765,7 +805,7 @@ __attribute__((noinline, unused)) LIVE_COLD static void knobs_big(const live_vie
     for (uint32_t k = 0; k < 4u; k++) {
         char v[5];
         int used = 1; /* the TONE page's knobs all are */
-        if (slot_page(lv)) {
+        if (slot_page(lv) || lv->arp) {
             char name[CHIP_VIEW_LABEL + 2u];
             used = knob_label(lv, k, name);
         }
@@ -843,6 +883,24 @@ LIVE_COLD static void strip(const live_view* lv, canvas* cv, const theme* th) {
         text(cv, text(cv, 0, LIVE_VIEW_STRIP_ROW, b, THEME_ATTR(th, label)), LIVE_VIEW_STRIP_ROW,
              " BPM", THEME_ATTR(th, label));
     }
+    if (lv->l->arp_on) {
+        /* ARP 1F UP 1OCT: the rate, the order and the span as its knobs say them */
+        char w[16];
+        uint32_t n = 0;
+        for (uint32_t k = 0; k < 3u; k++) {
+            live_view_arp_text(lv->l, k, &w[n]);
+            while (w[n]) {
+                n++;
+            }
+            w[n++] = ' ';
+        }
+        w[n - 1u] = 'O'; /* the span's: 1OCT */
+        w[n++] = 'C';
+        w[n++] = 'T';
+        w[n] = 0;
+        uint32_t col = text(cv, LIVE_VIEW_ARP_COL, LIVE_VIEW_STRIP_ROW, "ARP", THEME_ATTR(th, hot));
+        text(cv, col + 1u, LIVE_VIEW_STRIP_ROW, w, THEME_ATTR(th, label));
+    }
     for (uint32_t v = 0; v < SCOPE_VOICES && (lv->playing || lv->mutes); v++) {
         put(cv, BADGE_COL + 2u * v, LIVE_VIEW_STRIP_ROW, (uint8_t)('1' + v),
             lv->mutes >> (3u + v) & 1u ? GRID_ATTR(th->bg, th->hot)
@@ -919,8 +977,9 @@ __attribute__((noinline, unused)) LIVE_COLD static void band_big(const live_view
 #define KEY_THEME 0u
 #define KEY_HEADER 1u /* the preset, the octave, edited (DICE: its roll), the play mark's beat */
 #define KEY_VOICE 5u  /* 6 a voice: control, note, gate, stage, sounding, muted */
-#define KEY_STRIP (KEY_VOICE + 6u * SCOPE_VOICES) /* the song: playing, the tempo 2, the mutes */
-#define KEY_KNOBS (KEY_STRIP + 4u)
+/* the song: playing, the tempo 2, the mutes; the arpeggio: on with its order and span, the rate */
+#define KEY_STRIP (KEY_VOICE + 6u * SCOPE_VOICES)
+#define KEY_KNOBS (KEY_STRIP + 6u)
 /* The knob row: the page (a slot's, its number), the highlight, the slot's algorithm, then
  * 8 bytes of values: the slot's four controls, or the cutoff 2, the resonance, the pulse width 2,
  * the release, the decay, and the sync ratio's semitones with what K3 turns. */
@@ -954,6 +1013,8 @@ static void look(const live_view* lv, uint8_t out[LIVE_VIEW_LOOK], uint32_t now)
     out[KEY_STRIP + 1u] = (uint8_t)lv->bpm;
     out[KEY_STRIP + 2u] = (uint8_t)(lv->bpm >> 8);
     out[KEY_STRIP + 3u] = lv->mutes;
+    out[KEY_STRIP + 4u] = (uint8_t)(l->arp_on | l->arp_order << 1 | l->arp_span << 3);
+    out[KEY_STRIP + 5u] = l->arp_rate;
     for (uint32_t v = 0; v < SCOPE_VOICES; v++) {
         uint8_t ctrl = voice_control(l, v);
         const live_voice* x = &l->voice[v];
@@ -967,10 +1028,15 @@ static void look(const live_view* lv, uint8_t out[LIVE_VIEW_LOOK], uint32_t now)
     }
     uint8_t* k = &out[KEY_KNOBS];
     uint32_t slot = l->fx_select % LIVE_SLOTS;
-    k[0] = (uint8_t)(slot_page(lv) ? 1u + slot : 0u);
+    k[0] = (uint8_t)(lv->arp ? 0x10u : slot_page(lv) ? 1u + slot : 0u);
     k[1] = hl >= 1u && hl <= 4u ? hl : 0u;
-    k[2] = slot_page(lv) ? l->slot[slot][LIVE_SLOT_ALGORITHM] : 0u;
-    if (slot_page(lv)) {
+    k[2] = slot_page(lv) && !lv->arp ? l->slot[slot][LIVE_SLOT_ALGORITHM] : 0u;
+    if (lv->arp) {
+        k[3] = l->arp_rate;
+        k[4] = l->arp_order;
+        k[5] = l->arp_span;
+        k[6] = k[7] = k[8] = k[9] = k[10] = 0;
+    } else if (slot_page(lv)) {
         for (uint32_t f = 0; f < 4u; f++) {
             k[3u + f] = l->slot[slot][LIVE_SLOT_AMOUNT + f];
         }
@@ -1026,7 +1092,7 @@ static uint32_t parts(live_view* lv, canvas* cv, const theme* th,
             rows |= ROWS(lane_row(v), LIVE_VIEW_LANE_ROWS);
         }
     }
-    if (differs(lv, now, KEY_STRIP, 4u)) {
+    if (differs(lv, now, KEY_STRIP, 6u)) {
         strip(lv, cv, th);
         rows |= ROWS(LIVE_VIEW_STRIP_ROW, 1u);
     }
@@ -1083,13 +1149,24 @@ static int input(screen* s, void* state, const screen_event* e) {
     (void)s;
     live_view* lv = state;
     /* K1..K4 on TONE (and the buttons with those ids): the panel's, and the commonest turn. */
-    if (e->id - PANEL_ENC_K1 <= 3u && !lv->page) {
-        return 0;
-    }
-    if (e->kind != SCREEN_TURN) {
+    if (e->id - PANEL_ENC_K1 <= 3u && !lv->page && !(e->held >> PANEL_BTN_ARP & 1u)) {
         return 0;
     }
     live* l = lv->l;
+    if (e->kind != SCREEN_TURN) {
+        if (e->id != PANEL_BTN_ARP) {
+            return 0;
+        }
+        lv->arp_down = 1; /* its release switches the arpeggio (live_view_buttons) */
+        lv->arp_turned = 0;
+        return 1;
+    }
+    if ((e->held >> PANEL_BTN_ARP & 1u) && e->id - PANEL_ENC_K1 <= 3u) {
+        /* the arpeggio's rate, order and span; K4 nothing */
+        lv->arp_turned = 1;
+        live_arp_turn(l, LIVE_ARP_RATE + e->id - PANEL_ENC_K1, e->steps);
+        return 1;
+    }
     if (e->id <= PANEL_ENC_ALGORITHM) {
         uint32_t slot_held = lv->page || (e->held >> PANEL_BTN_EDIT & 1u);
         if (e->id == PANEL_ENC_SELECT) {
@@ -1120,6 +1197,15 @@ static int input(screen* s, void* state, const screen_event* e) {
         return 1;
     }
     return 0;
+}
+
+void live_view_buttons(live_view* lv, uint32_t held) {
+    if (lv->arp_down && !(held >> PANEL_BTN_ARP & 1u)) {
+        lv->arp_down = 0;
+        if (!lv->arp_turned) {
+            live_arp_set(lv->l, LIVE_ARP_ON, !lv->l->arp_on);
+        }
+    }
 }
 
 static void live_compose(screen* s, void* state, grid* g) {
