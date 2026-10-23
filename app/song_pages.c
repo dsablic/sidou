@@ -590,8 +590,9 @@ static void build_head(song_pages* p) {
         big(c, 12u, 0u, number, GRID_ATTR(th->voice[sv->voice], th->bg));
         small(c, 0u, 2u, "PRESETS: INSTRUMENT", THEME_ATTR(th, hint));
     } else {
-        small(c, 4u, 2u, "K1 LEFT", GRID_ATTR(th->knob_text[0], th->bg));
-        small(c, 12u, 2u, "K2 RIGHT", GRID_ATTR(th->knob_text[1], th->bg));
+        /* which knob turns which column, at 2x beside the name (the columns' colours) */
+        big(c, 12u, 0u, "K1", GRID_ATTR(th->knob_text[0], th->bg));
+        big(c, 17u, 0u, "K2", GRID_ATTR(th->knob_text[1], th->bg));
     }
     c->ch[0][22] = song_view_playing(sv) ? FONT_PLAY : FONT_SQUARE;
     c->attr[0][22] = base;
@@ -733,7 +734,7 @@ static void order_kind(const song_pages* p, char out[24]) {
 static void build_footer(song_pages* p) {
     song_view* sv = p->sv;
     const theme* th = theme_get(sv->l->theme);
-    /* What the controls do is the help card's (app/help_view.h): rows 27-28 stay blank. */
+    /* What the controls do is the help card's (app/help_view.h): row 27 stays blank for the toast. */
     blank(&sv->cv, 27u, 3u, THEME_ATTR(th, value));
     char meaning[31];
     const char* say = song_pages_message(p);
@@ -749,7 +750,14 @@ static void build_footer(song_pages* p) {
                                 sv->song->rtable[p->table][p->table_row], meaning);
         say = meaning;
     }
-    small(&sv->cv, 0u, 29u, say, THEME_ATTR(th, hot));
+    /* 2x on rows 28-29 when it fits 15 cells; the long meanings stay 1x on the last row. */
+    uint32_t n = 0u;
+    while (say[n])
+        n++;
+    if (n <= GRID_COLS / 2u)
+        big(&sv->cv, 0u, 28u, say, THEME_ATTR(th, hot));
+    else
+        small(&sv->cv, 0u, 29u, say, THEME_ATTR(th, hot));
     sv->dirty |= 7u << 27u;
 }
 

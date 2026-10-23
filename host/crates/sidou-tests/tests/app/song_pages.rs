@@ -766,15 +766,21 @@ fn page_values_and_parameter_names_are_readable_at_two_times_the_font() {
     assert_eq!(h.ui.small(2, 24, 2), "V3");
     assert_eq!(h.ui.big(3, 18, 2, 2), "01", "voice 2's entry at 2x");
     assert_eq!(h.ui.big(5, 18, 2, 2), "RS");
-    assert_eq!(h.ui.small(29, 0, 10), "PATTERN 00", "what the entry is");
+    assert_eq!(
+        h.ui.big(28, 0, 2, 10),
+        "PATTERN 00",
+        "what the entry is, at 2x"
+    );
     let mut h = Pages::new(unsafe { &song_pages_instr_view });
     h.settle();
     assert_eq!(h.ui.big(3, 0, 2, 7), "ATK/DEC");
     assert_eq!(h.ui.big(19, 0, 2, 8), "1ST WAVE");
-    assert_eq!(h.ui.small(29, 0, 12), "ATTACK/DECAY");
+    assert_eq!(h.ui.big(28, 0, 2, 12), "ATTACK/DECAY");
     let mut h = Pages::new(unsafe { &song_pages_table_view });
     h.settle();
     assert_eq!(h.ui.big(0, 0, 2, 4), "WAVE");
+    assert_eq!(h.ui.big(0, 12, 2, 2), "K1", "the knobs at 2x");
+    assert_eq!(h.ui.big(0, 17, 2, 2), "K2");
     assert_eq!(h.ui.big(3, 0, 2, 2), "01", "the row's number at 2x");
     assert_eq!(h.ui.big(3, 5, 2, 2), "00");
     assert_eq!(h.ui.big(3, 12, 2, 2), "00");
