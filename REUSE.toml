@@ -83,6 +83,13 @@ path = ["third_party/6502-tests/6502_functional_test.bin", "third_party/6502-tes
 SPDX-FileCopyrightText = "2012-2015 Klaus Dormann"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
+# A subset of Tom Harte's SingleStepTests (6502 v1), test data only, in SIDOU's binary
+# encoding (third_party/6502-tests/VENDORED.md).
+[[annotations]]
+path = ["third_party/6502-tests/harte/*.bin"]
+SPDX-FileCopyrightText = "Tom Harte and SingleStepTests' contributors"
+SPDX-License-Identifier = "MIT"
+
 # The README's screens montage: SIDOU's own LCD goldens (tests/golden/lcd/), scaled 2x and
 # tiled by a script, so it is SIDOU's own output.
 [[annotations]]

@@ -5,13 +5,15 @@
 //! the screen font (`font`), the About screen's credits (`credits`), the logos' bitmaps
 //! (`logo`), the title cards' (`title_card`), SCENE's pixel art (`scene_art`), the song
 //! model's Rust side (`song`), the song player's (`player`) and its transport's
-//! (`transport`), the first song (`song_embed`) and the showcase songs (`showcase`).
+//! (`transport`), the first song (`song_embed`) and the showcase songs (`showcase`); and the
+//! converter and reader of Tom Harte's 6502 tests (`harte`).
 
 pub mod bitmap_codec;
 pub mod credits;
 pub mod filter_limits;
 pub mod filter_sweeps;
 pub mod font;
+pub mod harte;
 pub mod logo;
 pub mod player;
 pub mod register_probe;

@@ -45,6 +45,8 @@ SIDOU builds on, or learns from, the work of these people and projects.
 - **Cadaver, Randall, Richard Bayliss, Hein, Jammer and No-XS**: GoatTracker's
   [example songs](LICENSING.md#music-and-content)
 - **Klaus Dormann**: the [6502 functional test](third_party/6502-tests/VENDORED.md)
+- **Tom Harte and SingleStepTests' contributors**: the
+  [6502 single-step tests](third_party/6502-tests/VENDORED.md)
 - **The 6502-rs developers**: the [`mos6502` crate](TESTING.md#song-player-reference)
 - **SID-Wizard**: Mihály Horváth (Hermit)
 - **High Voltage SID Collection (HVSC)** team
