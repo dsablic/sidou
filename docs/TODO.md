@@ -563,6 +563,8 @@ card (HOME held) is the only on-device explanation. Done:
   second comes in or goes quiet (the user, 2026-10-23: yes; "SPREAD should do channel separation").
 - **The LOAD list's names are 1x:** 2x like the menu and SETTINGS; the harness's tour never visits
   LOAD (or the other SONG pages), so add them to it.
+- **Still 1x, now measured** (the harness's new tour, 2026-10-23): ORDER's "PATTERN 04" status line and
+  TABLE's "K2 RIGHT" / "WAVE 21 REL 00": 2x where the freed bottom rows allow.
 - **Catch this class automatically:** a test that SAVE opens and HOME goes back on every list
   screen; the ergonomics harness in the merge check, failing on any new finding against the last
   accepted run; first-run and per-feature recipes (a fresh install has something to LOAD; a
