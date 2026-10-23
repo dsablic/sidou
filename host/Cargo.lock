@@ -358,6 +358,7 @@ dependencies = [
  "cc",
  "mos6502",
  "sha2",
+ "sidou-sys",
 ]
 
 [[package]]

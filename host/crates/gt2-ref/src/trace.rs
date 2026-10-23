@@ -26,7 +26,7 @@
 //! registers at `-L`'s address), over the return address pushed at `$01FE-$01FF`, over
 //! [`SENTINEL`], or past `$FFFF`.
 
-use crate::cpu::{documented, Cpu6502, Mos6502, Ram, Regs, SED};
+use crate::cpu::{documented, Access, Cpu6502, Mos6502, Ram, Regs, Sidou6502, SED};
 use crate::{pack, Options, Packed, PLAYER_ZPGHOSTREGS};
 
 /// Where a call returns to: the harness stops there.
@@ -190,13 +190,22 @@ pub struct Trace {
     pub frames: Vec<Frame>,
 }
 
+/// What one call left behind: its writes, its cycles if the core counts them, and the
+/// registers on return.
+struct Call {
+    writes: Writes,
+    cycles: Option<u64>,
+    regs: Regs,
+}
+
 fn call<C: Cpu6502>(
     cpu: &mut C,
     setup: &Setup,
     routine: u16,
     a: u8,
     frame: Option<usize>,
-) -> Result<Writes, TraceError> {
+) -> Result<Call, TraceError> {
+    let start = cpu.cycles();
     let ret = SENTINEL.wrapping_sub(1);
     let ram = cpu.ram_mut();
     ram.bytes[0x1ff] = (ret >> 8) as u8;
@@ -246,9 +255,15 @@ fn call<C: Cpu6502>(
             cpu.ram_mut().set_sid(setup.sid.wrapping_add(r as u16), v);
         }
     }
+    let cycles = cpu.cycles().zip(start).map(|(end, start)| end - start);
+    let regs = cpu.regs();
     let ram = cpu.ram_mut();
     ram.logging = false;
-    Ok(std::mem::take(&mut ram.log))
+    Ok(Call {
+        writes: std::mem::take(&mut ram.log),
+        cycles,
+        regs,
+    })
 }
 
 impl Ram {
@@ -259,6 +274,13 @@ impl Ram {
     }
 }
 
+/// Every call's cycles and return registers, in order: init, then each frame's play calls.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Timing {
+    pub cycles: Vec<Option<u64>>,
+    pub regs: Vec<Regs>,
+}
+
 /// Runs a packed player in `cpu`, already holding the code at `setup.load`.
 pub fn run<C: Cpu6502>(
     cpu: &mut C,
@@ -266,16 +288,35 @@ pub fn run<C: Cpu6502>(
     subtune: u8,
     frames: usize,
 ) -> Result<Trace, TraceError> {
-    let init = call(cpu, setup, setup.init, subtune, None)?;
+    run_timed(cpu, setup, subtune, frames).map(|(t, _)| t)
+}
+
+/// [`run`], and each call's cycles and registers too.
+pub fn run_timed<C: Cpu6502>(
+    cpu: &mut C,
+    setup: &Setup,
+    subtune: u8,
+    frames: usize,
+) -> Result<(Trace, Timing), TraceError> {
+    let mut timing = Timing::default();
+    let mut note = |c: &Call| {
+        timing.cycles.push(c.cycles);
+        timing.regs.push(c.regs);
+    };
+    let first = call(cpu, setup, setup.init, subtune, None)?;
+    note(&first);
+    let init = first.writes;
     let mut out = Vec::with_capacity(frames);
     for f in 0..frames {
         let mut calls = Vec::with_capacity(setup.calls_per_frame as usize);
         for _ in 0..setup.calls_per_frame {
-            calls.push(call(cpu, setup, setup.play, 0, Some(f))?);
+            let c = call(cpu, setup, setup.play, 0, Some(f))?;
+            note(&c);
+            calls.push(c.writes);
         }
         out.push(Frame { calls });
     }
-    Ok(Trace { init, frames: out })
+    Ok((Trace { init, frames: out }, timing))
 }
 
 /// Refuses code at `load`, `len` bytes long, where the harness cannot run it (the module's
@@ -319,6 +360,98 @@ pub fn load(packed: &Packed, sid: u16) -> Result<Mos6502, TraceError> {
     ram.load(packed.load, &packed.code)
         .map_err(TraceError::Placement)?;
     Ok(Mos6502::new(ram))
+}
+
+/// What [`cross_check`] compared.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Crossed {
+    pub frames: usize,
+    pub writes: usize,
+    pub calls: usize,
+    /// The calls whose cycle counts were compared (`mos6502` reports them).
+    pub timed_calls: usize,
+}
+
+/// Runs the packed player on `mos6502` and on SIDOU's core in each of `accesses`, and
+/// compares: every call's ordered SID writes, its cycles, the registers it returns with
+/// (flags 4 and 5 aside: the two cores keep them differently), and the whole memory at the
+/// end (`$01`, the 6510's port the core's I/O needs, aside). The first difference is the
+/// error, with where it is.
+pub fn cross_check(
+    sng: &[u8],
+    subtune: u8,
+    frames: usize,
+    o: &Options,
+    accesses: &[Access],
+) -> Result<Crossed, String> {
+    let packed = pack(sng, o).map_err(|e| format!("pack: {e}"))?;
+    let setup = Setup::of(&packed, o);
+    let mut reference = load(&packed, setup.sid).map_err(|e| e.to_string())?;
+    let (want, want_t) =
+        run_timed(&mut reference, &setup, subtune, frames).map_err(|e| e.to_string())?;
+    let mut crossed = Crossed {
+        frames,
+        ..Crossed::default()
+    };
+    crossed.writes = want
+        .frames
+        .iter()
+        .flat_map(|f| &f.calls)
+        .map(Vec::len)
+        .sum();
+    crossed.calls = want_t.regs.len();
+    crossed.timed_calls = want_t.cycles.iter().flatten().count();
+    for &access in accesses {
+        let mut ram = Ram::new(setup.sid);
+        ram.load(packed.load, &packed.code)?;
+        let mut ours = Sidou6502::new(ram, access);
+        let (got, got_t) = run_timed(&mut ours, &setup, subtune, frames)
+            .map_err(|e| format!("{access:?}: {e}"))?;
+        if got.init != want.init {
+            return Err(format!(
+                "{access:?}: init's writes differ: {:?} vs {:?}",
+                got.init, want.init
+            ));
+        }
+        for (f, (g, w)) in got.frames.iter().zip(&want.frames).enumerate() {
+            for (k, (g, w)) in g.calls.iter().zip(&w.calls).enumerate() {
+                if g != w {
+                    let at = g
+                        .iter()
+                        .zip(w)
+                        .position(|(a, b)| a != b)
+                        .unwrap_or(g.len().min(w.len()));
+                    return Err(format!(
+                        "{access:?}: frame {f} call {k}: writes differ at #{at}: {:?} vs {:?} (of {} and {})",
+                        g.get(at), w.get(at), g.len(), w.len()
+                    ));
+                }
+            }
+        }
+        for (i, (g, w)) in got_t.cycles.iter().zip(&want_t.cycles).enumerate() {
+            if g != w {
+                return Err(format!(
+                    "{access:?}: call {i} (0 is init): {g:?} cycles vs {w:?}"
+                ));
+            }
+        }
+        let mask = |r: Regs| Regs { p: r.p & 0xcf, ..r };
+        for (i, (g, w)) in got_t.regs.iter().zip(&want_t.regs).enumerate() {
+            if mask(*g) != mask(*w) {
+                return Err(format!(
+                    "{access:?}: call {i} (0 is init) returned with {g:?} vs {w:?}"
+                ));
+            }
+        }
+        let (a, b) = (&ours.ram().bytes, &reference.ram().bytes);
+        if let Some(at) = (0..0x10000).find(|&i| i != 1 && a[i] != b[i]) {
+            return Err(format!(
+                "{access:?}: memory differs at ${at:04X}: {:#04X} vs {:#04X}",
+                a[at], b[at]
+            ));
+        }
+    }
+    Ok(crossed)
 }
 
 /// Packs `sng` with the options and traces `frames` frames of `subtune`.

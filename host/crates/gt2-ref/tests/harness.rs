@@ -312,6 +312,9 @@ impl Cpu6502 for Undecoding {
     fn ram_mut(&mut self) -> &mut Ram {
         self.0.ram_mut()
     }
+    fn cycles(&self) -> Option<u64> {
+        None
+    }
 }
 
 #[test]

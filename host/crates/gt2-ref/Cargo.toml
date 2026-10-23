@@ -16,6 +16,7 @@ workspace = true
 
 [dependencies]
 mos6502 = "0.10.1"
+sidou-sys = { path = "../sidou-sys" }
 
 [dev-dependencies]
 sha2 = "0.10"
