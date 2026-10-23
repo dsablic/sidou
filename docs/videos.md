@@ -18,14 +18,16 @@ marks.
 
 | Video | Preview | What it teaches | Length (wide, MB) |
 |---|---|---|---|
-| [sidou-intro](recipes/sidou-intro.json) | ![sidou-intro](media/videos/sidou-intro.webp) | SIDOU in a minute: GoatTracker 2 songs written on the FM-1, STEP with locks, a song on one SID while you play the other, the chip's character, stereo effects, RED MOON RITE | 65.7 s, 7.2 MB |
-| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The release's highlights: a steady MIDI clock, REC over a loop, the tracker pages, STEP, character you can hear, help on HOME, songs over SysEx | 44.5 s, 3.9 MB |
+| [sidou-intro](recipes/sidou-intro.json) | ![sidou-intro](media/videos/sidou-intro.webp) | SIDOU in a minute: GoatTracker 2 songs written on the FM-1, STEP with locks, a song on one SID while you play the other, SPREAD putting the two chips left and right, the chip's character, chord arpeggios, RED MOON RITE | 77.4 s, 8.0 MB |
+| [whats-new](recipes/whats-new.json) | ![whats-new](media/videos/whats-new.webp) | The release's highlights: a steady MIDI clock, REC over a loop, the tracker pages, STEP, character you can hear, SPREAD, chord arpeggios, the soft limiter, help on HOME, songs over SysEx | 57.8 s, 5.1 MB |
 | [first-sound](recipes/first-sound.json) | ![first-sound](media/videos/first-sound.webp) | Switch on and play: a key sounds at once, LIVE, three voices, OCT+ | 21.4 s, 2.1 MB |
 | [shape-a-sound](recipes/shape-a-sound.json) | ![shape-a-sound](media/videos/shape-a-sound.webp) | K1 closes and opens the filter, K2 adds resonance, PRESETS picks another sound | 26.2 s, 2.1 MB |
 | [mute-and-solo](recipes/mute-and-solo.json) | ![mute-and-solo](media/videos/mute-and-solo.webp) | PLAY the built-in loop, GLO + a key mutes or solos a voice | 27.0 s, 2.8 MB |
 | [step-a-beat](recipes/step-a-beat.json) | ![step-a-beat](media/videos/step-a-beat.webp) | A new song, a drum lane on STEP, kicks, snares and hats on four pages, PLAY, a cutoff lock | 44.8 s, 3.7 MB |
 | [rec-over-loop](recipes/rec-over-loop.json) | ![rec-over-loop](media/videos/rec-over-loop.webp) | TRACKER, PLAY, REC and play a melody over SIDOU LOOP in time | 27.8 s, 2.5 MB |
 | [save-and-load](recipes/save-and-load.json) | ![save-and-load](media/videos/save-and-load.webp) | SAVE AS with a name (BEAT 1), NEW, then LOAD it back | 34.6 s, 2.4 MB |
+| [chord-arpeggio](recipes/chord-arpeggio.json) | ![chord-arpeggio](media/videos/chord-arpeggio.webp) | ARP on LIVE: a held chord as one voice stepping through its notes, ARP + K1, K2 and K3 for rate, order and span | 21.9 s, 2.1 MB |
+| [chip-spread](recipes/chip-spread.json) | ![chip-spread](media/videos/chip-spread.webp) | A song on chip A, the keys on chip B, SETTINGS, SPREAD to 100% and 50%: the two SIDs left and right | 27.8 s, 2.3 MB |
 | [chip-character](recipes/chip-character.json) | ![chip-character](media/videos/chip-character.webp) | CHIP: AGE, DAC, THUMP and BLEED, each heard on a riff | 28.5 s, 2.9 MB |
 | [add-an-effect](recipes/add-an-effect.json) | ![add-an-effect](media/videos/add-an-effect.webp) | SCL picks the FX slot, ENV its algorithm (DELAY, REVERB), EDIT + K1/K4 its amount and mix | 19.0 s, 2.1 MB |
 | [midi-learn](recipes/midi-learn.json) | ![midi-learn](media/videos/midi-learn.webp) | SAVE + K1 opens MIDI LEARN; a controller's CC 21 then turns the cutoff | 17.6 s, 1.8 MB |

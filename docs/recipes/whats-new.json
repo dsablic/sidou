@@ -17,6 +17,9 @@
     "the song pages",
     "STEP",
     "CHIP",
+    "SPREAD",
+    "chord arpeggios",
+    "the limiter",
     "help",
     "SysEx"
   ],
@@ -364,6 +367,255 @@
       "title": "Character you can *hear*"
     },
     {
+      "caption": "SETTINGS, SPREAD: chip A to the left, chip B to the right, 0 to 100%. Here the song is on A and the keys on B.",
+      "control": "press HOME, then wait 0.5 s, then turn SELECT until SETTINGS is selected, then press SAVE, then wait 0.5 s, then turn SELECT until SPREAD is selected, then turn ALGORITHM clockwise by 10 detents, then wait 0.5 s, then play 6 notes at 125 BPM",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "settings"
+        },
+        {
+          "kind": "text",
+          "value": "100%"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SETTINGS > SPREAD",
+        "control": "ALGORITHM",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 14
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "spread",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SETTINGS"
+        },
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SPREAD"
+        },
+        {
+          "detents": 10,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "bpm": 125,
+          "events": [
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*SPREAD*: two SIDs apart"
+    },
+    {
+      "caption": "ARP on LIVE: a held chord becomes one voice stepping through its notes, fifty a second.",
+      "control": "press HOME, then wait 0.5 s, then press HOME, then wait 0.9 s, then press ARP, then wait 0.5 s, then hold note key A3, then hold note key C4, then hold note key E4, then wait 2.6 s, then let go of note key A3, then let go of note key C4, then let go of note key E4, then wait 0.4 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "live"
+        },
+        {
+          "kind": "param",
+          "max": 1,
+          "min": 1,
+          "name": "arp_on"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "PRESS ARP, HOLD A CHORD",
+        "control": "ARP",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 19
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "arp",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "button": "ARP",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "note": "A3",
+          "op": "down"
+        },
+        {
+          "note": "C4",
+          "op": "down"
+        },
+        {
+          "note": "E4",
+          "op": "down"
+        },
+        {
+          "ms": 2600,
+          "op": "wait"
+        },
+        {
+          "note": "A3",
+          "op": "up"
+        },
+        {
+          "note": "C4",
+          "op": "up"
+        },
+        {
+          "note": "E4",
+          "op": "up"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "*Chords* as C64 arpeggios"
+    },
+    {
+      "caption": "One soft limiter where the effect slots convert: no setting puts a sample on a rail.",
+      "control": "wait 3.0 s",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "LOUD CHORDS + EFFECTS <> ONE SOFT LIMITER <> NOTHING CLIPS",
+        "control": "card"
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "limiter",
+      "inputs": [
+        {
+          "ms": 3000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "A soft *limiter*"
+    },
+    {
       "caption": "Hold HOME on any screen: what its controls do.",
       "control": "hold HOME for 0.9 s, then wait 2.5 s",
       "expect": [
@@ -412,7 +664,7 @@
     },
     {
       "caption": "Over USB: the store's files, the current song and GoatTracker instruments, both ways.",
-      "control": "wait 4.5 s",
+      "control": "wait 3.5 s",
       "expect": [
         {
           "assert": "sounding",
@@ -435,7 +687,7 @@
       "id": "sysex",
       "inputs": [
         {
-          "ms": 4500,
+          "ms": 3500,
           "op": "wait"
         }
       ],
@@ -444,7 +696,7 @@
     },
     {
       "caption": "In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest",
-      "control": "wait 5.0 s",
+      "control": "wait 4.0 s",
       "expect": [
         {
           "assert": "sounding",
@@ -466,7 +718,7 @@
       "id": "get-it",
       "inputs": [
         {
-          "ms": 5000,
+          "ms": 4000,
           "op": "wait"
         }
       ],

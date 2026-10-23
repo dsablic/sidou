@@ -7,7 +7,7 @@
       "load"
     ],
     "bpm": 150,
-    "preview_step": "stereo"
+    "preview_step": "spread"
   },
   "whats-new": {
     "teaser": false,
@@ -37,5 +37,12 @@
   },
   "remix-a-song": {
     "bpm": 94
+  },
+  "chip-spread": {
+    "bpm": 125,
+    "preview_step": "spread"
+  },
+  "chord-arpeggio": {
+    "preview_step": "hold-a-chord"
   }
 }

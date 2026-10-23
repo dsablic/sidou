@@ -1,0 +1,442 @@
+{
+  "goal": "Put the two SID chips apart in stereo: a song on chip A to the left, your keys on chip B to the right.",
+  "id": "chip-spread",
+  "prerequisites": {
+    "songs": [
+      "neon-highway"
+    ],
+    "start": "live",
+    "text": "On LIVE after the boot; NEON HIGHWAY in the store."
+  },
+  "related": [
+    "play-over-a-song",
+    "first-sound"
+  ],
+  "schema": "sidou-recipe/1",
+  "skills": [
+    "loading a song",
+    "KEYS AUTO",
+    "SETTINGS",
+    "SPREAD"
+  ],
+  "steps": [
+    {
+      "caption": "HOME, SONG, LOAD, and ALGORITHM on the song.",
+      "control": "press HOME, then wait 0.5 s, then turn SELECT until SONG is selected, then turn ALGORITHM clockwise by 1 detent, then wait 0.3 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.9 s, then turn ALGORITHM clockwise by 1 detent, then wait 3.0 s",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "song_menu"
+        },
+        {
+          "kind": "text_absent",
+          "value": "BUSY"
+        },
+        {
+          "kind": "text_absent",
+          "value": "SNG:"
+        }
+      ],
+      "focus": {
+        "callout": "SONG > LOAD",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 0,
+          "rows": 15
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "load",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SONG"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 300,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 900,
+          "op": "wait"
+        },
+        {
+          "detents": 1,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 3000,
+          "op": "wait"
+        }
+      ],
+      "needs": [],
+      "title": "Load *NEON HIGHWAY*"
+    },
+    {
+      "caption": "The song plays chip A; the keys play chip B on top of it. Both are in the middle: SPREAD is OFF.",
+      "control": "press PLAY, then wait 2.0 s, then press HOME, then wait 0.4 s, then press HOME, then wait 1.2 s, then play 8 notes at 125 BPM",
+      "expect": [
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        },
+        {
+          "kind": "view",
+          "value": "live"
+        },
+        {
+          "kind": "text",
+          "value": "KEYS:B"
+        }
+      ],
+      "focus": {
+        "callout": "PLAY, THE KEYS",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 22,
+          "rows": 8
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "play",
+      "inputs": [
+        {
+          "button": "PLAY",
+          "op": "press"
+        },
+        {
+          "ms": 2000,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 1200,
+          "op": "wait"
+        },
+        {
+          "bpm": 125,
+          "events": [
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*PLAY* and jam"
+    },
+    {
+      "caption": "HOME, SETTINGS, SPREAD: ALGORITHM steps it by 10%. The song moves to the left, your keys to the right.",
+      "control": "press HOME, then wait 0.5 s, then turn SELECT until SETTINGS is selected, then press SAVE, then wait 0.5 s, then turn SELECT until SPREAD is selected, then turn ALGORITHM clockwise by 10 detents, then wait 0.6 s, then play 8 notes at 125 BPM",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "settings"
+        },
+        {
+          "kind": "text",
+          "value": "100%"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SETTINGS > SPREAD 100%",
+        "control": "ALGORITHM",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 14
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "spread",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SETTINGS"
+        },
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SPREAD"
+        },
+        {
+          "detents": 10,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "bpm": 125,
+          "events": [
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "F#4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 2
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "*SPREAD* to 100%"
+    },
+    {
+      "caption": "Back by five steps: both chips are nearer the centre, at the same loudness.",
+      "control": "turn ALGORITHM counter-clockwise by 5 detents, then wait 0.4 s, then play 6 notes at 125 BPM",
+      "expect": [
+        {
+          "kind": "text",
+          "value": "50%"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "ALGORITHM -5",
+        "control": "ALGORITHM",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 14
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "half",
+      "inputs": [
+        {
+          "detents": -5,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 400,
+          "op": "wait"
+        },
+        {
+          "bpm": 125,
+          "events": [
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "G4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "B4"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "Halfway: *50%*"
+    }
+  ],
+  "title": "Two SIDs, left and right"
+}

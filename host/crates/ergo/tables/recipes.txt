@@ -192,24 +192,38 @@ journey remix-a-song | Remix a showcase song
   step rename | A *new* name | SELECT to the end, ALGORITHM a 2: PAPER LANTERNS 2. | turn SELECT 15; wait 300; turn ALGORITHM 18; wait 1500 | text NTERNS 2; screen 0 6 30 12; callout SELECT + ALGORITHM
   step write | *Saved* | SAVE writes the remix; the original stays as it was. | press SAVE; wait 2500 | text SAVED; callout PRESS SAVE
 
+journey chip-spread | Two SIDs, left and right
+  goal Put the two SID chips apart in stereo: a song on chip A to the left, your keys on chip B to the right.
+  prereq On LIVE after the boot; NEON HIGHWAY in the store.
+  skills loading a song; KEYS AUTO; SETTINGS; SPREAD
+  related play-over-a-song; first-sound
+  songs neon-highway
+  step load | Load *NEON HIGHWAY* | HOME, SONG, LOAD, and ALGORITHM on the song. | press HOME; wait 500; select-item SONG; turn ALGORITHM 1; wait 300; turn ALGORITHM 1; wait 900; turn ALGORITHM 1; wait 3000 | view song_menu; absent BUSY; absent SNG:; screen 0 0 30 15; callout SONG > LOAD
+  step play | *PLAY* and jam | The song plays chip A; the keys play chip B on top of it. Both are in the middle: SPREAD is OFF. | press PLAY; wait 2000; press HOME; wait 400; press HOME; wait 1200; play 125 E4:2 G4:2 B4:2 E5:2 D5:2 B4:2 G4:2 B4:2 | sound; view live; text KEYS:B; screen 0 22 30 8; callout PLAY, THE KEYS
+  step spread | *SPREAD* to 100% | HOME, SETTINGS, SPREAD: ALGORITHM steps it by 10%. The song moves to the left, your keys to the right. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item SPREAD; turn ALGORITHM 10; wait 600; play 125 C5:2 B4:2 G4:2 E4:2 F#4:2 G4:2 A4:2 B4:2 | view settings; text 100%; sound; screen 0 2 30 14; focus ALGORITHM; callout SETTINGS > SPREAD 100%
+  step half | Halfway: *50%* | Back by five steps: both chips are nearer the centre, at the same loudness. | turn ALGORITHM -5; wait 400; play 125 E5:2 D5:2 B4:4 G4:2 A4:2 B4:4 | text 50%; sound; screen 0 2 30 14; focus ALGORITHM; callout ALGORITHM -5
+
 journey whats-new | What's new in SIDOU
   goal See the release's highlights, one at a time, to SIDOU LOOP.
   prereq On LIVE after the boot. SIDOU LOOP is the song loaded.
-  skills MIDI clock; REC; the song pages; STEP; CHIP; help; SysEx
+  skills MIDI clock; REC; the song pages; STEP; CHIP; SPREAD; chord arpeggios; the limiter; help; SysEx
   related sidou-intro; rec-over-loop; chip-character
   step clock | A steady *MIDI clock* | A MIDI start and clock on the TRS jack: the song follows it, and keeps the tempo. | press SEQ; wait 600; press SEQ; wait 600; clock 125 5000 start; wait 600 | view tracker; sound; screen 0 0 30 3; focus screen; callout MIDI CLOCK IN
   step rec | *REC* over a loop | REC on while the song plays: the keys are written where the song is. | press REC; sync; play 125 A4:2 C5:2 E5:4 D5:2 C5:2 A4:4; press REC; wait 1200 | sound; screen 0 2 30 24; focus REC; callout REC, PLAY THE KEYS
   step pages | The *tracker* pages | SEQ goes round ORDER, INSTR and TABLE: the whole song on the device. | press SEQ; wait 1800; press SEQ; wait 1800; press SEQ; wait 1800 | view song_pages_table; sound; focus SEQ; callout SEQ: ORDER, INSTR, TABLE
   step step | *STEP*, the drum machine | SEQ again: STEP. Sixteen keys, sixteen steps, the page following the song. | press SEQ; wait 3500 | view step; sound; screen 0 0 30 15; focus SEQ; callout SEQ: STEP
   step character | Character you can *hear* | On CHIP the song's chip gets DAC grit, a thump on each note and the filter's bleed. | press HOME; wait 600; press HOME; wait 600; turn ALGORITHM 1; wait 2800; sweep K2 90 1200; sweep K3 100 1200; sweep K4 90 1200; wait 600 | view chip; sound; screen 0 8 30 8; focus K3; callout K2 DAC, K3 THUMP, K4 BLEED
+  step spread | *SPREAD*: two SIDs apart | SETTINGS, SPREAD: chip A to the left, chip B to the right, 0 to 100%. Here the song is on A and the keys on B. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item SPREAD; turn ALGORITHM 10; wait 500; play 125 A4:2 C5:2 E5:4 D5:2 C5:2 A4:4 | view settings; text 100%; sound; screen 0 2 30 14; focus ALGORITHM; callout SETTINGS > SPREAD
+  step arp | *Chords* as C64 arpeggios | ARP on LIVE: a held chord becomes one voice stepping through its notes, fifty a second. | press HOME; wait 500; press HOME; wait 900; press ARP; wait 500; down A3; down C4; down E4; wait 2600; up A3; up C4; up E4; wait 400 | view live; value arp_on 1 1; sound; screen 0 2 30 19; focus ARP; callout PRESS ARP, HOLD A CHORD
+  step limiter | A soft *limiter* | One soft limiter where the effect slots convert: no setting puts a sample on a rail. | wait 3000 | sound; focus card; callout LOUD CHORDS + EFFECTS <> ONE SOFT LIMITER <> NOTHING CLIPS
   step help | *Help* on HOME | Hold HOME on any screen: what its controls do. | hold HOME 900; wait 2500 | view help; sound; screen 0 0 30 30; focus HOME; callout HOLD HOME
-  step sysex | Songs over *SysEx* | Over USB: the store's files, the current song and GoatTracker instruments, both ways. | wait 4500 | sound; focus card; callout COMPUTER <> USB SYSEX <> SIDOU
-  step get-it | Get *SIDOU* | In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest | wait 5000 | sound; focus card
+  step sysex | Songs over *SysEx* | Over USB: the store's files, the current song and GoatTracker instruments, both ways. | wait 3500 | sound; focus card; callout COMPUTER <> USB SYSEX <> SIDOU
+  step get-it | Get *SIDOU* | In your browser: dsablic.github.io/sidou. On your FM-1: github.com/dsablic/sidou/releases/latest | wait 4000 | sound; focus card
 
 journey sidou-intro | SIDOU in a minute | poweron
   goal See what SIDOU makes of the FM-1, in a minute, to CHROME COMET.
   prereq A first power-on with HOME held (the full boot); CHROME COMET in the store.
-  skills the boot; songs; TRACKER and REC; GoatTracker 2; STEP and locks; two SIDs; CHIP; effects; SCENE
+  skills the boot; songs; TRACKER and REC; GoatTracker 2; STEP and locks; two SIDs; SPREAD; CHIP; chord arpeggios; SCENE
   related first-sound; mute-and-solo; play-over-a-song
   songs chrome-comet
   step boot | *SIDOU* for the FM-1 | SIDOU: GPL firmware that makes the M-VAVE FM-1 a C64 SID music machine. | hold HOME 2500; wait 3500 | change; focus screen; callout LOAD"SIDOU",8,1
@@ -218,7 +232,8 @@ journey sidou-intro | SIDOU in a minute | poweron
   step goattracker | The same *.sng*, both ways | It opens in GoatTracker 2.77 and comes back; the player matches GoatTracker's, register for register. | wait 5500 | sound; focus card; callout SIDOU TRACKER <> CHROME COMET.SNG <> GOATTRACKER 2
   step step-locks | STEP, with *locks* | SEQ round the pages to STEP. Hold a step and turn K1: a cutoff LOCK on that step alone. | press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 500; press SEQ; wait 1300; down F3; turn K1 12; wait 1000; up F3; wait 1500 | view step; sound; screen 0 15 30 15; focus K1; callout HOLD A STEP + TURN K1
   step two-sids | A song on one SID, you on the *other* | The song plays chip A, a 6581. The keys play chip B: FX makes it an 8580. | press HOME; wait 500; press HOME; wait 500; press HOME; wait 900; press FX; wait 600; play 150 D4:2 F4:2 A4:2 D5:2 C5:2 A4:2 F4:2 E4:2 D4:2 F4:2 A4:2 D5:2 E5:4 D5:4 | view live; text KEYS:B; sound; screen 0 22 30 8; focus FX; callout FX, THEN THE KEYS
-  step character | Dial the chip like an *amp* | CHIP: the profiles BRIGHT, DARK, CLASSIC, CLEAN and GRITTY, and AGE, DAC, THUMP and BLEED on the knobs. | press HOME; wait 600; turn SELECT -3; turn ALGORITHM 1; wait 2800; turn ALGORITHM 1; wait 700; turn ALGORITHM 1; wait 700; turn ALGORITHM 2; wait 900; sweep K1 50 1500; sweep K4 60 1500; wait 800 | view chip; sound; screen 0 2 30 13; focus K1; callout ALGORITHM, THEN K1-K4
-  step stereo | *Stereo* effects after the chips | The effects follow both chips, in stereo: AUTO-PAN on MOD. | press HOME; wait 500; press HOME; wait 900; press SCL; wait 400; press ENV; press ENV; press ENV; press ENV; press ENV; wait 3500 | view live; text AUTO-PAN; sound; screen 0 22 30 8; focus ENV; callout SCL, THEN ENV
+  step spread | Two SIDs, *left* and right | SETTINGS, SPREAD to 100%: the song stays on chip A, on the left, your keys on chip B, on the right. | press HOME; wait 500; select-item SETTINGS; press SAVE; wait 500; select-item SPREAD; turn ALGORITHM 10; wait 600; play 150 D4:2 F4:2 A4:2 D5:2 C5:2 A4:2 F4:2 E4:2 D4:2 F4:2 A4:2 D5:2 E5:4 D5:4 | view settings; text SPREAD; text 100%; sound; screen 0 2 30 14; focus ALGORITHM; callout SETTINGS > SPREAD 100%
+  step character | Dial the chip like an *amp* | CHIP: the profiles BRIGHT, DARK, CLASSIC, CLEAN and GRITTY, and AGE, DAC, THUMP and BLEED on the knobs. | press HOME; wait 600; select-item CHIP; turn ALGORITHM 1; wait 2800; turn ALGORITHM 1; wait 700; turn ALGORITHM 1; wait 700; turn ALGORITHM 2; wait 900; sweep K1 50 1500; sweep K4 60 1500; wait 800 | view chip; sound; screen 0 2 30 13; focus K1; callout ALGORITHM, THEN K1-K4
+  step arp | *Chords* as C64 arpeggios | ARP on LIVE, a chord held: one voice steps through its notes fifty times a second, as C64 tunes do, and the other two voices stay free. | press HOME; wait 500; press HOME; wait 900; press ARP; wait 600; down C4; down E4; down G4; wait 3200; up C4; up E4; up G4; wait 600 | view live; value arp_on 1 1; sound; screen 0 2 30 19; focus ARP; callout PRESS ARP, HOLD A CHORD
   step scene | A *scene* that plays along | RED MOON RITE duels to the song's drums and bass. | press HOME; wait 500; turn SELECT 2; turn ALGORITHM 1; wait 2800; turn SELECT 5; wait 3500 | view scene; sound; focus screen; callout SCENE > RED MOON RITE
   step next | Next: *.sid* files on SIDOU | Try it in your browser at dsablic.github.io/sidou, or on your FM-1: github.com/dsablic/sidou/releases | wait 5000 | sound; focus card

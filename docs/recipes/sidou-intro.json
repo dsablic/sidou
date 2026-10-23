@@ -21,8 +21,9 @@
     "GoatTracker 2",
     "STEP and locks",
     "two SIDs",
+    "SPREAD",
     "CHIP",
-    "effects",
+    "chord arpeggios",
     "SCENE"
   ],
   "steps": [
@@ -550,8 +551,177 @@
       "title": "A song on one SID, you on the *other*"
     },
     {
+      "caption": "SETTINGS, SPREAD to 100%: the song stays on chip A, on the left, your keys on chip B, on the right.",
+      "control": "press HOME, then wait 0.5 s, then turn SELECT until SETTINGS is selected, then press SAVE, then wait 0.5 s, then turn SELECT until SPREAD is selected, then turn ALGORITHM clockwise by 10 detents, then wait 0.6 s, then play 14 notes at 150 BPM",
+      "expect": [
+        {
+          "kind": "view",
+          "value": "settings"
+        },
+        {
+          "kind": "text",
+          "value": "SPREAD"
+        },
+        {
+          "kind": "text",
+          "value": "100%"
+        },
+        {
+          "assert": "sounding",
+          "kind": "audio"
+        }
+      ],
+      "focus": {
+        "callout": "SETTINGS > SPREAD 100%",
+        "control": "ALGORITHM",
+        "screen": {
+          "col": 0,
+          "cols": 30,
+          "row": 2,
+          "rows": 14
+        }
+      },
+      "harness": {
+        "clip_ms": null,
+        "defaults": false,
+        "destructive": false,
+        "milestone": null,
+        "probe": false,
+        "remember": false,
+        "task": null
+      },
+      "id": "spread",
+      "inputs": [
+        {
+          "button": "HOME",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SETTINGS"
+        },
+        {
+          "button": "SAVE",
+          "op": "press"
+        },
+        {
+          "ms": 500,
+          "op": "wait"
+        },
+        {
+          "op": "select_item",
+          "text": "SPREAD"
+        },
+        {
+          "detents": 10,
+          "encoder": "ALGORITHM",
+          "op": "turn"
+        },
+        {
+          "ms": 600,
+          "op": "wait"
+        },
+        {
+          "bpm": 150,
+          "events": [
+            {
+              "notes": [
+                "D4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "F4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "C5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "F4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "D4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "F4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "A4"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 2
+            },
+            {
+              "notes": [
+                "E5"
+              ],
+              "sixteenths": 4
+            },
+            {
+              "notes": [
+                "D5"
+              ],
+              "sixteenths": 4
+            }
+          ],
+          "op": "play"
+        }
+      ],
+      "needs": [],
+      "title": "Two SIDs, *left* and right"
+    },
+    {
       "caption": "CHIP: the profiles BRIGHT, DARK, CLASSIC, CLEAN and GRITTY, and AGE, DAC, THUMP and BLEED on the knobs.",
-      "control": "press HOME, then wait 0.6 s, then turn SELECT counter-clockwise by 3 detents, then turn ALGORITHM clockwise by 1 detent, then wait 2.8 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.7 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.7 s, then turn ALGORITHM clockwise by 2 detents, then wait 0.9 s, then turn K1 slowly clockwise by 50 detents over 1.5 s, then turn K4 slowly clockwise by 60 detents over 1.5 s, then wait 0.8 s",
+      "control": "press HOME, then wait 0.6 s, then turn SELECT until CHIP is selected, then turn ALGORITHM clockwise by 1 detent, then wait 2.8 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.7 s, then turn ALGORITHM clockwise by 1 detent, then wait 0.7 s, then turn ALGORITHM clockwise by 2 detents, then wait 0.9 s, then turn K1 slowly clockwise by 50 detents over 1.5 s, then turn K4 slowly clockwise by 60 detents over 1.5 s, then wait 0.8 s",
       "expect": [
         {
           "kind": "view",
@@ -592,9 +762,8 @@
           "op": "wait"
         },
         {
-          "detents": -3,
-          "encoder": "SELECT",
-          "op": "turn"
+          "op": "select_item",
+          "text": "CHIP"
         },
         {
           "detents": 1,
@@ -653,16 +822,18 @@
       "title": "Dial the chip like an *amp*"
     },
     {
-      "caption": "The effects follow both chips, in stereo: AUTO-PAN on MOD.",
-      "control": "press HOME, then wait 0.5 s, then press HOME, then wait 0.9 s, then press SCL, then wait 0.4 s, then press ENV, then press ENV, then press ENV, then press ENV, then press ENV, then wait 3.5 s",
+      "caption": "ARP on LIVE, a chord held: one voice steps through its notes fifty times a second, as C64 tunes do, and the other two voices stay free.",
+      "control": "press HOME, then wait 0.5 s, then press HOME, then wait 0.9 s, then press ARP, then wait 0.6 s, then hold note key C4, then hold note key E4, then hold note key G4, then wait 3.2 s, then let go of note key C4, then let go of note key E4, then let go of note key G4, then wait 0.6 s",
       "expect": [
         {
           "kind": "view",
           "value": "live"
         },
         {
-          "kind": "text",
-          "value": "AUTO-PAN"
+          "kind": "param",
+          "max": 1,
+          "min": 1,
+          "name": "arp_on"
         },
         {
           "assert": "sounding",
@@ -670,13 +841,13 @@
         }
       ],
       "focus": {
-        "callout": "SCL, THEN ENV",
-        "control": "ENV",
+        "callout": "PRESS ARP, HOLD A CHORD",
+        "control": "ARP",
         "screen": {
           "col": 0,
           "cols": 30,
-          "row": 22,
-          "rows": 8
+          "row": 2,
+          "rows": 19
         }
       },
       "harness": {
@@ -688,7 +859,7 @@
         "remember": false,
         "task": null
       },
-      "id": "stereo",
+      "id": "arp",
       "inputs": [
         {
           "button": "HOME",
@@ -707,40 +878,48 @@
           "op": "wait"
         },
         {
-          "button": "SCL",
+          "button": "ARP",
           "op": "press"
         },
         {
-          "ms": 400,
+          "ms": 600,
           "op": "wait"
         },
         {
-          "button": "ENV",
-          "op": "press"
+          "note": "C4",
+          "op": "down"
         },
         {
-          "button": "ENV",
-          "op": "press"
+          "note": "E4",
+          "op": "down"
         },
         {
-          "button": "ENV",
-          "op": "press"
+          "note": "G4",
+          "op": "down"
         },
         {
-          "button": "ENV",
-          "op": "press"
+          "ms": 3200,
+          "op": "wait"
         },
         {
-          "button": "ENV",
-          "op": "press"
+          "note": "C4",
+          "op": "up"
         },
         {
-          "ms": 3500,
+          "note": "E4",
+          "op": "up"
+        },
+        {
+          "note": "G4",
+          "op": "up"
+        },
+        {
+          "ms": 600,
           "op": "wait"
         }
       ],
       "needs": [],
-      "title": "*Stereo* effects after the chips"
+      "title": "*Chords* as C64 arpeggios"
     },
     {
       "caption": "RED MOON RITE duels to the song's drums and bass.",
