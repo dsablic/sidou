@@ -16,6 +16,7 @@ add_library(sidou_core STATIC
     song/gt2_ins.c
     song/song_ext.c
     psid/psid_file.c
+    psid/psid_env.c
     player/gt2_play.c
     player/gt2_shape.c
     player/song_ctl.c
@@ -42,6 +43,9 @@ set_source_files_properties(player/gt2_shape.c PROPERTIES COMPILE_OPTIONS "-Os;-
 # jump table (flash .rodata; the 6502 never runs in the audio interrupt).
 set_source_files_properties(cpu6502/cpu6502.c PROPERTIES
     COMPILE_OPTIONS -Os COMPILE_DEFINITIONS CPU6502_SMALL)
+# The PSID environment (M3; psid_env.h) runs with the 6502 in the main loop, from flash, at a
+# call's start and return and on the I/O page's accesses: built for size.
+set_source_files_properties(psid/psid_env.c PROPERTIES COMPILE_OPTIONS -Os)
 # Float results must be identical on host and pi32v2 so their outputs can be compared.
 target_compile_options(sidou_core PUBLIC -ffp-contract=off)
 target_compile_options(sidou_core PRIVATE -Wall -Wextra -Wshadow)
