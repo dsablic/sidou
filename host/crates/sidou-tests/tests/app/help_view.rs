@@ -668,6 +668,8 @@ fn open_ctx(name: &str) -> Ctx {
         dirty: 1,
         ..Default::default()
     });
+    // The built-in song the firmware has (SIDOU LOOP): LOAD lists it first.
+    io.hooks.builtin = Some(no_bytes);
     unsafe { views_song_io(&mut *s.ui.v, &mut *io) };
     let ui = &mut s.ui;
     ui.settle();
@@ -741,6 +743,11 @@ fn open_ctx(name: &str) -> Ctx {
         _ => panic!("no context {name}"),
     }
     Ctx { s, _io: io }
+}
+
+/// A built-in song of no bytes: the walk never reads it (the song is unsaved, so LOAD asks first).
+unsafe extern "C" fn no_bytes(_: *mut std::ffi::c_void, _: u32, _: *mut u8, _: u32) -> u32 {
+    0
 }
 
 /// The card a held HOME opens over the context (the context left as it was): its id and its
@@ -904,13 +911,17 @@ fn takes(ui: &mut Ui, e: &screen_event) -> bool {
 }
 
 /// What SAVE does on its own in a state (app/views.c save(), mirrored): a USER slot on CHIP's chip
-/// and EXPERT, the song in the song views, the menu's OK, SAVE AS's name, STORE's format.
+/// and EXPERT, the song in the song views, the menu's and SONG's pages' OK, SAVE AS's name,
+/// STORE's format.
 fn saves(name: &str) -> bool {
     matches!(
         name,
         "CHIP"
             | "EXPERT"
             | "MENU"
+            | "SONG"
+            | "FILES"
+            | "CONFIRM"
             | "SAVE AS"
             | "STORE"
             | "STEP"
@@ -1025,6 +1036,100 @@ fn the_completeness_check_finds_a_missing_line() {
         .flat_map(|k| controls_of(&k).unwrap_or_default())
         .collect();
     assert!(!without.contains(&(Ctl::Button(PANEL_BTN_ARP), false)));
+}
+
+/// Where the panel is: the view on top, SONG's page, the stack's depth and what a file action
+/// would act on (the page's action and name, the song file's state and target).
+fn place(ui: &Ui) -> String {
+    let m = &ui.v.songs;
+    let io = unsafe { &*ui.v.song.io };
+    let name = |b: &[std::os::raw::c_char]| {
+        b.iter()
+            .take_while(|&&c| c != 0)
+            .map(|&c| c as u8 as char)
+            .collect::<String>()
+    };
+    let page = if ui.top() == "SONG" {
+        ["ROOT", "FILES", "SAVE AS", "CONFIRM"][usize::from(m.page)]
+    } else {
+        "-"
+    };
+    // SAVE AS's name is a value ALGORITHM edits, not an item it opens.
+    let chosen = if page == "SAVE AS" {
+        String::new()
+    } else {
+        name(&m.name)
+    };
+    format!(
+        "{} {page} depth {} action {} name {chosen:?} io {} {:?}",
+        ui.top(),
+        ui.v.s.depth,
+        m.action,
+        io.state,
+        name(&io.target)
+    )
+}
+
+/// The panel's OK on every list screen: wherever ALGORITHM clockwise opens or chooses the
+/// highlighted item (the menu's views, SONG's actions, LOAD's and DELETE's files, a confirmation's
+/// YES), a clean SAVE does the same; on a confirmation's NO, SAVE chooses NO (back a page, as
+/// HOME). And HOME goes back from each of them. The walk is every state with a card (CONTEXTS):
+/// a new list screen whose ALGORITHM opens something is checked without being named here.
+#[test]
+fn save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back() {
+    let mut lists = Vec::new();
+    let mut wrong = Vec::new();
+    let names: Vec<&str> = CONTEXTS.iter().copied().chain(["CONFIRM YES"]).collect();
+    for name in names {
+        let ctx = |n: &str| {
+            let mut c = open_ctx(if n == "CONFIRM YES" { "CONFIRM" } else { n });
+            if n == "CONFIRM YES" {
+                c.s.ui.turn(PANEL_ENC_SELECT, 1);
+                c.s.ui.settle();
+            }
+            c
+        };
+        let mut c = ctx(name);
+        let before = place(&c.s.ui);
+        c.s.ui.turn(PANEL_ENC_ALGORITHM, 1);
+        c.s.ui.settle();
+        let by_alg = place(&c.s.ui);
+        if by_alg == before {
+            continue; // ALGORITHM changes a value here (or nothing): no item to open
+        }
+        lists.push(name);
+        let mut c = ctx(name);
+        c.s.ui.press(SAVE_KEY_BUTTON);
+        c.s.ui.settle();
+        let by_save = place(&c.s.ui);
+        if by_save != by_alg {
+            wrong.push(format!("{name}: ALGORITHM gives {by_alg}, SAVE {by_save}"));
+        }
+        let mut c = ctx(name);
+        c.s.ui.press(PANEL_BTN_HOME);
+        c.s.ui.settle();
+        let back = place(&c.s.ui);
+        let shallower = c.s.ui.v.s.depth < ctx(name).s.ui.v.s.depth
+            || (c.s.ui.top() == "SONG" && back != before);
+        if !shallower {
+            wrong.push(format!("{name}: HOME stays ({back})"));
+        }
+    }
+    // A confirmation's NO: SAVE goes back a page, as HOME does, and does nothing else.
+    for n in ["CONFIRM"] {
+        let mut c = open_ctx(n);
+        c.s.ui.press(SAVE_KEY_BUTTON);
+        c.s.ui.settle();
+        let by_save = place(&c.s.ui);
+        let mut c = open_ctx(n);
+        c.s.ui.press(PANEL_BTN_HOME);
+        c.s.ui.settle();
+        assert_eq!(by_save, place(&c.s.ui), "{n}: SAVE on NO is HOME");
+    }
+    for want in ["MENU", "SONG", "CONFIRM YES"] {
+        assert!(lists.contains(&want), "{want} is a list screen: {lists:?}");
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }
 
 /// Lines dropped for room before two pages: STEP's SEQ NEXT VIEW and TRACKER's HOME BACK.

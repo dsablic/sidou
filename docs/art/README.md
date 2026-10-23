@@ -821,9 +821,9 @@ entry per frame. Filenames remain 1× so all 16 characters fit. SAVE AS splits i
 large 16-character name into two eight-character lines at rows 8 and 12, with the
 cursor underneath and a SAVE action at row 16. Confirmations use large text and
 default to reverse-video NO. Help is at the bottom at 2× in the hint role, as the menu's
-(`SELECT CURSOR`, `ALG CHARACTER`, `SAVE WRITE` on rows 18 to 22 of SAVE AS; `ALG OPEN` or
-`ALG CONFIRM` on rows 24-25; `HOME BACK` on rows 26-27), with HOME consistently returning to
-the preceding page.
+(`SELECT CURSOR`, `ALG CHARACTER`, `SAVE WRITE` on rows 18 to 22 of SAVE AS; `SAVE OPEN`,
+`SAVE CHOOSE` or `SAVE CONFIRM` on rows 24-25, SAVE being every page's OK as the menu's;
+`HOME BACK` on rows 26-27), with HOME consistently returning to the preceding page.
 
 Both themes use the shared colour roles: title foreground/background for the
 heading, menu-item and selection colours for actions and filenames, value for

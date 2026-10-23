@@ -108,9 +108,10 @@ static const char* const TABLE_LINES[] = {"SELECT\0ROW",      "ALG\0TABLE",     
                                           "SAVE\0SONG",       "HOME\0BACK"};
 static const char* const SCENE_LINES[] = {"SELECT\0PIECE", "ALG\0PIECE", "K1 K2\0MOOD",
                                           "KEYS\0PLAY",    "HOME\0BACK"};
-/* The SONG menu's actions; its pages have their own cards (below). */
-static const char* const SONG_LINES[] = {"SELECT\0ACTION", "ALG\0OPEN", "SEQ\0SONG VIEWS",
-                                         "HOME\0BACK"};
+/* The SONG menu's actions; its pages have their own cards (below). SAVE is each page's OK, as
+ * the menu's: the highlighted action, file or answer (NO goes back a page). */
+static const char* const SONG_LINES[] = {"SELECT\0ACTION", "SAVE\0OPEN", "ALG\0OPEN",
+                                         "SEQ\0SONG VIEWS", "HOME\0BACK"};
 /* STATUS, ABOUT and CHARSET show and take no encoder: the keys and the knobs play as on LIVE. */
 static const char* const STATUS_LINES[] = {"KEYS\0PLAY",    "K1-K4\0SOUND",  "SAVE\0KEEP",
                                            "SEQ\0SONG",     "GLO+KEY\0MUTE", "HOME\0BACK",
@@ -122,12 +123,12 @@ static const char* const CHARSET_LINES[] = {"KEYS\0PLAY", "SAVE\0KEEP", "SEQ\0SO
                                             "HOME\0BACK", "HOLD HOME\0HELP"};
 /* The SONG menu's pages: LOAD's and DELETE's files, SAVE AS's name and a confirmation. HOME goes
  * back a page (to SONG's actions). */
-static const char* const FILES_LINES[] = {"SELECT\0FILE", "ALG\0CHOOSE", "HOME\0BACK",
-                                          "HOLD HOME\0HELP"};
+static const char* const FILES_LINES[] = {"SELECT\0FILE", "SAVE\0CHOOSE", "ALG\0CHOOSE",
+                                          "HOME\0BACK",   "HOLD HOME\0HELP"};
 static const char* const NAME_LINES[] = {"SELECT\0CURSOR", "ALG\0CHARACTER", "SAVE\0WRITE",
                                          "HOME\0BACK",    "HOLD HOME\0HELP"};
-static const char* const CONFIRM_LINES[] = {"SELECT\0NO/YES", "ALG\0CONFIRM", "HOME\0BACK",
-                                            "HOLD HOME\0HELP"};
+static const char* const CONFIRM_LINES[] = {"SELECT\0NO/YES", "SAVE\0CHOOSE", "ALG\0CONFIRM",
+                                            "HOME\0BACK",    "HOLD HOME\0HELP"};
 
 #define CARD(name, lines) {name, lines, (uint8_t)(sizeof lines / sizeof lines[0])}
 const help_card help_cards[HELP_CARDS] = {

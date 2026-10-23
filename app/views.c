@@ -736,6 +736,29 @@ static int song_menu_back(views* v) {
     return 1;
 }
 
+/* The highlighted item opened or chosen (ALGORITHM clockwise, or SAVE: song_menu_ok): an action
+ * its page, a file its load or delete, a confirmation's YES the action, SAVE AS's SAVE the name. */
+static void song_menu_open(views* v) {
+    views_song_menu* m = &v->songs;
+    if (m->page == SONG_MENU_ROOT) {
+        m->action = m->cursor;
+        if (m->action == SONG_MENU_LOAD || m->action == SONG_MENU_DELETE) {
+            song_directory(v, 0);
+        } else if (m->action == SONG_MENU_SAVE) {
+            song_name(v, 0);
+        } else {
+            song_menu_execute(v, 0);
+        }
+    } else if (m->page == SONG_MENU_DIR && !m->scanning && m->count) {
+        join(m->name, sizeof m->name, m->files[m->cursor], "");
+        song_menu_execute(v, 0);
+    } else if (m->page == SONG_MENU_NAME) {
+        song_menu_save_name(v);
+    } else if (m->page == SONG_MENU_CONFIRM && m->confirm) {
+        song_menu_execute(v, 1);
+    }
+}
+
 static int song_menu_input(void* ctx, const screen_event* e) {
     views* v = ctx;
     views_song_menu* m = &v->songs;
@@ -771,26 +794,25 @@ static int song_menu_input(void* ctx, const screen_event* e) {
         int32_t ch = ((int32_t)m->name[c] - lo + steps) % range;
         m->name[c] = (char)(lo + (ch < 0 ? ch + range : ch));
     } else if (steps > 0) {
-        if (m->page == SONG_MENU_ROOT) {
-            m->action = m->cursor;
-            if (m->action == SONG_MENU_LOAD || m->action == SONG_MENU_DELETE) {
-                song_directory(v, 0);
-            } else if (m->action == SONG_MENU_SAVE) {
-                song_name(v, 0);
-            } else {
-                song_menu_execute(v, 0);
-            }
-        } else if (m->page == SONG_MENU_DIR && !m->scanning && m->count) {
-            join(m->name, sizeof m->name, m->files[m->cursor], "");
-            song_menu_execute(v, 0);
-        } else if (m->page == SONG_MENU_NAME) {
-            song_menu_save_name(v);
-        } else if (m->page == SONG_MENU_CONFIRM && m->confirm) {
-            song_menu_execute(v, 1);
-        }
+        song_menu_open(v);
     }
     song_menu_changed(v);
     return 1;
+}
+
+/* SAVE on one of SONG's pages (save): the page's OK, as ALGORITHM clockwise (song_menu_open)
+ * but for SAVE AS, where it writes the name wherever the cursor is, and a confirmation's NO,
+ * which it chooses: back a page, as HOME. */
+static void song_menu_ok(views* v) {
+    views_song_menu* m = &v->songs;
+    if (m->page == SONG_MENU_NAME) {
+        song_menu_save_name(v);
+    } else if (m->page == SONG_MENU_CONFIRM && !m->confirm) {
+        (void)song_menu_back(v);
+    } else {
+        song_menu_open(v);
+    }
+    song_menu_changed(v);
 }
 
 static void song_menu_enter(screen* s, void* state) {
@@ -955,7 +977,11 @@ static void song_menu_compose(screen* s, void* state, grid* g) {
             song_canvas_big(v, 14, 16, "YES", m->confirm ? selected : text);
         }
         if (m->page != SONG_MENU_NAME) {
-            song_canvas_big(v, 24, 2, m->page == SONG_MENU_CONFIRM ? "ALG CONFIRM" : "ALG OPEN", legend);
+            /* SAVE is the pages' OK, as the menu's (ALGORITHM clockwise does the same) */
+            song_canvas_big(v, 24, 2, m->page == SONG_MENU_CONFIRM ? "SAVE CONFIRM"
+                                      : m->page == SONG_MENU_DIR   ? "SAVE CHOOSE"
+                                                                   : "SAVE OPEN",
+                            legend);
         }
         song_canvas_big(v, 26, 2, "HOME BACK", legend);
         v->song.dirty = (1u << GRID_ROWS) - 1u;
@@ -2390,9 +2416,7 @@ static void save(views* v) {
         }
     }
     if (shows(v) == &views_song_menu_view) {
-        if (v->songs.page == SONG_MENU_NAME) {
-            song_menu_save_name(v);
-        }
+        song_menu_ok(v); /* the page's OK: the highlighted item, SAVE AS's name */
         return;
     }
     if (song_view_is(shows(v))) {

@@ -126,7 +126,7 @@ the sound. Off, they write nothing and chip B stays out of use.
 | **SCL (button 3)** | selects the next effect slot: Distortion, Modulation, FX |
 | **ENV (button 4)** | the selected slot's next algorithm (back to OFF after the last); it starts from a musical setting, so it is heard at once ([Effect slots](#effect-slots)) |
 | **HOME (button 8)** | acts when it is let go: the menu, from LIVE; back one view from any other (the menu, SETTINGS, CHIP, the song views, the status screen, SCENE, the glyph sheet, About); from the menu back to LIVE (a wipe; behind THE OSCILLATOR's title card only with CARDS at ALWAYS). **Held 600 ms** it opens the [help card](#help) of the view that shows instead, and letting go then does nothing; a toast raised meanwhile waits and shows once the card closes |
-| **SAVE (button 9)** | clean press and release: in the menu its **OK**, opening the item under the selection (nothing on a value item; on SETTINGS it only confirms STORE's format); save a USER profile on CHIP's chip focus, the song in a song view, settings elsewhere; hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
+| **SAVE (button 9)** | clean press and release: on every list its **OK**, opening or choosing the highlighted item: the menu's item (nothing on a value item; on SETTINGS it only confirms STORE's format), [SONG](#song)'s action, the file LOAD or DELETE lists, a confirmation's answer (NO goes back a page, as HOME); save a USER profile on CHIP's chip focus, the song in a song view, settings elsewhere; hold and turn K1..K4: MIDI learn for that knob ([SAVE](#save)) |
 | **SEQ (button 11)** | opens the song views, and steps through them ([below](#song-views)) |
 | **PLAY (button 12)** | plays the loaded song from the song views' position, and stops it (each voice's release rings on); with EDIT held, goes on from where it stopped; lit while it plays. While it plays the keys play chip B (KEYS AUTO), or take voices from the song on chip A (KEYS A). A song the device cannot play is refused with a toast (`SNG: MULTISPEED 8 (MAX 4)`) |
 | **REC (button 13)** | record mode on and off (outside the song views a toast says **REC ON** or **REC OFF**) |
@@ -462,8 +462,8 @@ TRACKER and its states, ORDER and INSTR have two.
 own input handler every button and encoder, alone and with EDIT held, each on a fresh power-on,
 and looks for a line naming each control the handler takes (E+ or EDIT+ names EDIT held; a control
 alone also covers EDIT + it where the view takes both). It adds what acts outside the handler:
-HOME everywhere, SAVE where it has a meaning of its own (a USER slot on CHIP, the menu's OK, the
-song in a song view, SAVE AS's name, STORE's format), the keys and SEQ in a song view (EDIT + SEQ on
+HOME everywhere, SAVE where it has a meaning of its own (a USER slot on CHIP, the menu's and SONG's
+pages' OK, the song in a song view, SAVE AS's name, STORE's format), the keys and SEQ in a song view (EDIT + SEQ on
 INSTR), and K1..K4 where the view turns the panel's knobs to its own page (CHIP). A view that
 learns a control without a line fails it. A walk opens every state, holds HOME and reads the card;
 each card (and each second page) has a golden (`tests/golden/lcd/help-*.png`).
@@ -479,6 +479,11 @@ plays it (over a song view its instrument, and REC records it), and the card sta
   knob) has no such slot: on a full stack it toasts `NO ROOM FOR LEARN`.
 - On SONG's pages HOME acts on its release as everywhere (back a page; a hold shows the page's
   card).
+- **SAVE is the OK of every list.** Wherever ALGORITHM clockwise opens or chooses the highlighted
+  item (the menu, SONG's actions, LOAD's and DELETE's files, a confirmation's YES), a clean SAVE
+  does the same, and HOME goes back. A host test (`help_view.rs`,
+  `save_opens_the_highlighted_item_on_every_list_screen_and_home_goes_back`) walks every state
+  above and checks both, so a new list is covered without being named.
 - Over the boot, a title card and MIDI learn's frame HOME keeps its own meaning (it ends the
   boot or the card, or cancels the learn frame): no card there.
 
@@ -929,7 +934,10 @@ completion, including a wait for the store, the header shows **SAVING** and new
 song edits are refused with the same toast. Already queued edits finish first;
 playback, mute, solo and jam continue. Songs are not autosaved.
 
-The menu's **SONG** item opens the song-file actions:
+The menu's **SONG** item opens the song-file actions. On each of its pages **SAVE is the OK**,
+as in the menu: it opens the highlighted action, chooses the highlighted file, or answers the
+confirmation (NO goes back a page, as HOME); ALGORITHM clockwise does the same, and HOME goes
+back a page.
 
 - **LOAD** lists the store's songs. Loading stops the transport. Unsaved changes
   require confirmation before they can be discarded. If a file is refused, its
