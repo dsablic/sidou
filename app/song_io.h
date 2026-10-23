@@ -97,6 +97,11 @@ int song_io_program(song_io* io, uint32_t program);
  * power-on (which plays the built-in anyway) and no stored file a SAVE would replace. */
 int song_io_load_builtin(song_io* io, int confirmed);
 int song_io_new(song_io* io, int confirmed);
+/* NEW's song as a GTS5 file (gt2_read_fn's shape, ctx unused): the bytes at off, up to n, and
+ * how many; 0 past its end. A pulse lead (instrument 1), a bass (2) and the SID drum kit
+ * (core/song/gt2_kit.h) from SONG_IO_KIT. */
+#define SONG_IO_KIT 3u
+uint32_t song_io_template(void* ctx, uint32_t off, uint8_t* p, uint32_t n);
 int song_io_save(song_io* io, const char* name, uint32_t now_ms);
 int song_io_delete(song_io* io, const char* name, int confirmed);
 /* 1 if About's music starts; 0 if it must stay silent. Closing always restores stopped. */

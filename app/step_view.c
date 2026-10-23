@@ -988,8 +988,7 @@ int step_view_popup(const step_view* st, uint32_t encoder, int edit, char name[S
             label = "INSTRUMENT";
             cur = st->instr[v];
             top = GT2_MAX_INSTR;
-            text[0] = HEX[cur >> 4];
-            text[1] = HEX[cur & 15u];
+            song_view_instr_text(sv, cur, text);
         }
     } else if ((encoder == PANEL_ENC_K1 || encoder == PANEL_ENC_K1 + 1u) && !held && !edit &&
                song_view_recording(sv)) {

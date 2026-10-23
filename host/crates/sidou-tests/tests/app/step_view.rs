@@ -1046,3 +1046,29 @@ fn a_lock_made_on_a_held_step_holds_for_its_row_only_in_the_players_output() {
         "the player itself plays as without the lock"
     );
 }
+
+/// PRESETS names the lane's instrument (the kit's drums in a NEW song, core/song/gt2_kit.h):
+/// its number and its name in the popup, so the kit is picked by name.
+#[test]
+fn presets_names_the_lanes_instrument() {
+    let mut m = fixed_song();
+    let mut drum = [0u8; 25];
+    drum[GT2_INS_NAME as usize..][..6].copy_from_slice(b"CL HAT");
+    unsafe {
+        let s = m.ptr_mut();
+        (*s).instr[1] = drum;
+    }
+    let mut s = Song::playing(Some(m));
+    open_step(&mut s);
+    assert_eq!(
+        popup(&s, PANEL_ENC_PRESETS, false).map(|p| p.1),
+        Some("01".into()),
+        "no name: the number"
+    );
+    s.ui.turn(PANEL_ENC_PRESETS, 1);
+    settle(&mut s.ui);
+    assert_eq!(
+        popup(&s, PANEL_ENC_PRESETS, false).map(|p| (p.0, p.1)),
+        Some(("INSTRUMENT".into(), "02 CL HAT".into()))
+    );
+}

@@ -648,7 +648,7 @@ fn the_builtin_song_loads_like_a_file_and_saving_it_makes_a_store_copy() {
 }
 
 #[test]
-fn a_corrupt_load_reloads_the_previous_file_and_new_uses_the_three_instrument_template() {
+fn a_corrupt_load_reloads_the_previous_file_and_new_uses_the_template_with_the_kit() {
     let mut r = Rig::new();
     r.save(c"NIGHT");
     let before = r.song.write(true);
@@ -667,9 +667,17 @@ fn a_corrupt_load_reloads_the_previous_file_and_new_uses_the_three_instrument_te
         assert_eq!(unsafe { gt2_order_entries(r.song.ptr(), 0, p) }, 1);
         assert_eq!(unsafe { gt2_pattern_rows(r.song.ptr(), p) }, 65);
     }
-    assert_eq!(unsafe { gt2_saved_instruments(r.song.ptr()) }, 3);
+    // the lead and the bass, then the SID drum kit (core/song/gt2_kit.h, tests/kit.rs)
+    assert_eq!(
+        unsafe { gt2_saved_instruments(r.song.ptr()) },
+        SONG_IO_KIT - 1 + GT2_KIT_DRUMS
+    );
     assert_eq!(r.song.raw().instr[0][GT2_INS_FIRSTWAVE as usize], 0x41);
-    assert_eq!(r.song.raw().instr[2][GT2_INS_FIRSTWAVE as usize], 0x81);
+    assert_eq!(r.song.raw().instr[1][GT2_INS_FIRSTWAVE as usize], 0x41);
+    assert_eq!(
+        &r.song.raw().instr[2][GT2_INS_NAME as usize..][..4],
+        b"KICK"
+    );
     assert_ne!(r.io.dirty, 0);
 }
 

@@ -8,6 +8,16 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **A SID drum kit:** a NEW song holds eight drums on the chip's own voices after its lead and
+  bass, as instruments 03-0A: KICK, SNARE, CL HAT, OP HAT, CLAP, TOM LO, TOM HI and RIM. They
+  are plain GoatTracker 2 instruments and table rows (a falling triangle for the kick and the
+  toms, a tonal attack and noise for the snare, short and long noise for the hats, three noise
+  bursts for the clap), so a song made with them plays the same in GoatTracker; each was tuned
+  by rendering it on both chip models, and the kick keeps its weight on the 8580. STEP's and
+  TRACKER's PRESETS popup names the instrument (`03 KICK`), so a lane's drum is picked by name.
+  Decision record 0009.
+
 ## [0.3.1] - 2026-10-23
 
 ### Fixed
