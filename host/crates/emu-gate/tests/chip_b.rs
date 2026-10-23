@@ -544,7 +544,11 @@ fn spread_sets_chip_a_left_and_chip_b_right_within_the_audio_target() {
     };
     let mut stage = 0.0;
     for range in [
-        span(&["chip_spread_side", "chip_spread_apply", "chip_spread_glide_step"]),
+        span(&[
+            "chip_spread_side",
+            "chip_spread_apply",
+            "chip_spread_glide_step",
+        ]),
         span(&["sid_slots_dry", "slot_dry"]),
     ] {
         m.alnk_pcs_inside = 0;

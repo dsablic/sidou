@@ -159,9 +159,11 @@ static void character_every_8_blocks(sid* s, uint32_t block) {
 }
 
 /* The model's heaviest profile with every control at `level` (which 1), or the bleed alone
- * (which 2): the bleed is the one control with a per-sample cost (sid.h), and in the
- * worst blocks the others at 127 make it no dearer (M1c Task 3 measured them: 0.88
- * instructions a sample cheaper with all four than with the bleed alone, one chip). */
+ * (which 2): the bleed's render copy is the per-sample cost the worst blocks take (sid.h; M1c
+ * Task 3 measured the others at 127 no dearer, 0.88 instructions a sample cheaper with all four
+ * than with the bleed alone, one chip). DAC's grit, a pass after the render (sid.h), is bounded
+ * on its own (emu-gate character.rs, GRIT_PER_SAMPLE), as the thump's output stage is: it is
+ * not in the worst blocks. */
 static sid_character heaviest(sid_model model, uint8_t level, uint8_t which) {
     sid_character c;
     sid_character_init(&c);

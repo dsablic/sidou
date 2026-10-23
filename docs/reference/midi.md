@@ -388,7 +388,7 @@ In NRPN order.
 | SID | Envelope mode | 26 | 1/10 (138) | 0..1 | steps | 0 | 0 instant (the rate counter restarts at each gate edge), 1 authentic (the chip's ADSR delay: an attack or release up to 33 ms late after a slower rate) |
 | Character | Profile | 85 | 2/0 (256) | 0..12 | steps | 2 | 0 6581 R2, 1 6581 R3, 2 6581 R4AR (reSIDfp's default), 3 8580 R5, 4 worn 6581 (artistic), 5..12 USER 1..8 (an empty slot does nothing: it is skipped); sets the chip model too (a chip reset) |
 | Character | Age/heat | 86 | 2/1 (257) | 0..127 | linear | 0 | 0 the profile .. 127: the filter's cutoff drifts darker, the 6581's non-linearity doubles |
-| Character | DAC sloppiness | 87 | 2/2 (258) | 0..127 | linear | 0 | 0 the profile .. 127: the voice DACs get bit errors, leak up to 6 times as much and kink more: grit on triangles and saws, quiet notes step |
+| Character | DAC sloppiness | 87 | 2/2 (258) | 0..127 | linear | 0 | 0 the profile .. 127: a worn chip's grit on every sound (the output through a worn converter: a noise riding on the signal and a bowed curve), and the voice DACs get bit errors, leak up to 6 times as much and kink more |
 | Character | Output thump | 89 | 2/3 (259) | 0..127 | linear | 0 | 0 none .. 127: a thump at each note's start and at a volume change (the 6581's voice DC and operating point) |
 | Character | Filter bleed | 90 | 2/4 (260) | 0..127 | linear | 0 | 0 none .. 127: half the voices routed into the filter also leak past it, unfiltered |
 | Expert | 6581 filter curve | - | 2/5 (261) | 0..127 | linear | 64 | 0..127 = reSIDfp curve 0..1 |

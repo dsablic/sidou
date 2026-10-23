@@ -217,7 +217,11 @@ fn spread_separates_only_while_both_chips_sound() {
     let secs = f64::from(glide * CHIP_SPREAD_BLOCK) / 44_118.0;
     assert!((0.08..=0.12).contains(&secs), "the glide takes {secs:.3} s");
     for i in 1..=glide + 10 {
-        assert_eq!(glide_step(&mut g, 200, Some(150)), i.min(glide), "in, block {i}");
+        assert_eq!(
+            glide_step(&mut g, 200, Some(150)),
+            i.min(glide),
+            "in, block {i}"
+        );
     }
     // B goes quiet: the hold, then a block at a time back to the centre.
     for i in 1..=CHIP_SPREAD_HOLD - 1 {
@@ -240,7 +244,11 @@ fn the_sounding_test_does_not_flutter() {
     let between = (CHIP_SPREAD_OFF + CHIP_SPREAD_ON) as u8 / 2;
     let mut g = chip_spread_glide::default();
     for _ in 0..50 {
-        assert_eq!(glide_step(&mut g, 200, Some(between)), 0, "B quiet to begin with");
+        assert_eq!(
+            glide_step(&mut g, 200, Some(between)),
+            0,
+            "B quiet to begin with"
+        );
     }
     for _ in 0..CHIP_SPREAD_GLIDE {
         glide_step(&mut g, 200, Some(200));

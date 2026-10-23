@@ -40,6 +40,13 @@ const CCS: [(u8, u8); 5] = [(85, 43), (86, 100), (87, 127), (89, 64), (90, 90)];
 /// headroom while a thump sounds (chip_b.rs).
 const THUMP_PER_SAMPLE: f64 = 31.0;
 
+/// DAC's grit (core/sid/sid.c `grit`, sid.h), instructions a sample on one chip while DAC is
+/// not 0: the noise, the bow and the slew; measured 19.13 on this image. A bound set from
+/// this measurement (new code); at DAC 0 the render tests two halfwords. Like the thump's stage,
+/// it is outside the SID's worst blocks (bench/workload.c) and takes its share from the 6502's
+/// headroom while DAC is up.
+const GRIT_PER_SAMPLE: f64 = 19.2;
+
 /// A function's address range in the firmware ELF.
 fn function(fw: &Firmware, name: &str) -> std::ops::Range<u32> {
     use object::{Object, ObjectSymbol};
@@ -316,7 +323,23 @@ fn character_ccs_reach_the_chip_and_match_the_host_sample_exact() {
         thump <= THUMP_PER_SAMPLE,
         "the thump's stage costs {thump:.2} a sample"
     );
-    m.run_ms(200);
+    // DAC's grit (core/sid/sid.c grit, sid.h), instructions a sample while DAC is at 127: the
+    // pass runs on every render while it is not 0.
+    m.alnk_pcs_inside = 0;
+    m.watch_alnk_pcs(function(&fw, "grit"));
+    let from = m.alnk_blocks.len();
+    m.run_ms(100);
+    let n = (m.alnk_blocks.len() - from) as f64 * HALF_FRAMES as f64;
+    let grit = m.alnk_pcs_inside as f64 / n;
+    println!(
+        "{}",
+        serde_json::json!({ "grit_instructions_per_sample": grit })
+    );
+    assert!(
+        grit > 1.0 && grit <= GRIT_PER_SAMPLE,
+        "DAC's grit costs {grit:.2} a sample"
+    );
+    m.run_ms(100);
 
     // Each block's ticks, from the counts after each block (one ALNK0 interrupt a block).
     let mut ticks = Vec::new();

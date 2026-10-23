@@ -66,6 +66,25 @@ static float response(uint8_t v) {
     return a * (SID_CHARACTER_CURVE_LINEAR + (1.0f - SID_CHARACTER_CURVE_LINEAR) * a);
 }
 
+/* The DACs' grit as 0..1 for the control's 0..1 (sid.h, grit): its square root (Newton's from
+ * above, converged to a float's precision for every detent), so the grit's level rises fastest
+ * at the first detents, where a little of it is already heard, and keeps rising to the top. */
+static float grit_curve(float a) {
+    if (a <= 0.0f) {
+        return 0.0f;
+    }
+    float y = 0.5f * (1.0f + a);
+    for (uint32_t i = 0; i < 6u; ++i) {
+        y = 0.5f * (y + a / y);
+    }
+    return y;
+}
+
+/* The stage's grit for a DAC setting (sid.h). */
+static uint16_t dac_grit(uint8_t dac) {
+    return (uint16_t)(grit_curve(amount(dac)) * SID_CHARACTER_GRIT * (float)SID_GRIT_ONE + 0.5f);
+}
+
 static int overridden(const sid_character* c, uint32_t index) {
     return index < SID_EXPERT_COUNT && (c->expert_mask & (1u << index)) &&
            c->expert[index] != SID_EXPERT_DEFAULT;
@@ -309,6 +328,7 @@ void sid_character_stage_for(const sid* s, const sid_character* c, const sid_dac
     /* sid_init's gain at any thump: the thump needs no headroom in the chip, the output
      * stage fits it into the room the output leaves (sid.h thump_pending). */
     out->output_gain = sid_base_output_gain(s);
+    out->grit = dac_grit(c->dac);
 }
 
 /* The filter tables, DACs and stage for the character, on a chip that is not rendering;
@@ -323,6 +343,7 @@ static const sid_dac* change(sid* s, const sid_character* c, sid_dac* dac) {
     sid_character_stage st;
     sid_character_stage_for(s, c, table, &st);
     sid_character_commit(s, &st); /* the filter's coefficients too */
+    s->grit_now = (uint32_t)s->grit << 7; /* at once: no slew (sid.h) */
     return table;
 }
 
@@ -395,6 +416,7 @@ static void prep_finish(sid_character_prep* p) {
     sid_character_stage st;
     sid_character_stage_for(s, &p->c, p->table, &st);
     sid_character_commit(s, &st); /* the filter's coefficients too */
+    s->grit_now = (uint32_t)s->grit << 7; /* a fresh chip: no slew (sid.h) */
     p->phase = PREP_DONE;
 }
 
@@ -631,6 +653,7 @@ void sid_character_ramp_reset(sid_character_ramp* r, const sid_character* c,
     r->filter_fading = r->filter_fade = r->filter_restore = 0;
     r->filter_rows_valid = r->filter_managed = 0;
     r->bleed_half = 0;
+    r->grit_dac = c->dac > SID_CHARACTER_MAX ? (uint8_t)SID_CHARACTER_MAX : c->dac;
 }
 
 /* v moved towards to by at most step. */
@@ -812,7 +835,7 @@ int sid_character_ramp_tick_tables(sid_character_ramp* r, const sid* s, sid_dac*
         !(r->building | r->filter_building | r->filter_fading | r->filter_restore | r->filter_managed) &&
         now->age == clamped(want->age) && now->dac == clamped(want->dac) &&
         now->thump == clamped(want->thump) && now->bleed == clamped(want->bleed) &&
-        !r->bleed_half) {
+        !r->bleed_half && r->grit_dac == clamped(want->dac)) {
         return 0;
     }
     sid_character was = *now;
@@ -828,6 +851,9 @@ int sid_character_ramp_tick_tables(sid_character_ramp* r, const sid* s, sid_dac*
                              SID_CHARACTER_RAMP);
     int changed = now->age != was.age || now->thump != was.thump;
     changed |= bleed_tick(r);
+    /* The grit goes to the asked-for setting at once: the chip slews to it (sid.h). */
+    changed |= r->grit_dac != clamped(want->dac);
+    r->grit_dac = clamped(want->dac);
     if (now->expert_mask | want->expert_mask) {
         if (s->model == SID_MODEL_6581) {
             expert_copy(now, want, SID_EXPERT_FILTER_8580_CURVE);
@@ -916,6 +942,7 @@ int sid_character_ramp_tick_tables(sid_character_ramp* r, const sid* s, sid_dac*
     }
     if (changed) {
         sid_character_stage_for(s, now, r->table, out);
+        out->grit = dac_grit(r->grit_dac);
         if (r->bleed_half && !overridden(now, SID_EXPERT_BLEED)) {
             uint8_t next = (uint8_t)(now->bleed + r->bleed_half);
             out->bleed = 0.5f * (out->bleed + response(next) * SID_CHARACTER_BLEED);

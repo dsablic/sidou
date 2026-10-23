@@ -770,6 +770,27 @@ static void render_8580_bleed(sid* s, int16_t* out, uint32_t frames, uint32_t ev
     render_loop(s, out, frames, every, tap, ctx, 1);
 }
 
+/* The grit (sid.h) on a render's samples, a moving towards the stage's by SID_GRIT_SLEW a
+ * sample until it is there: the same path however the renders split it. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline))
+#endif
+static void grit(sid* s, int16_t* out, uint32_t frames) {
+    const int32_t to = (int32_t)s->grit << 7;
+    int32_t a = (int32_t)s->grit_now;
+    const int32_t d = to >= a ? (int32_t)SID_GRIT_SLEW : -(int32_t)SID_GRIT_SLEW;
+    const int32_t lo = to < a ? to : a, hi = to < a ? a : to;
+    uint32_t r = s->grit_seed;
+    for (uint32_t i = 0; i < frames; ++i) {
+        a += d;
+        a = a < lo ? lo : a > hi ? hi : a;
+        r = r * 1664525u + 1013904223u;
+        out[i] = sid_grit_sample(out[i], (int32_t)r >> 16, a >> 7);
+    }
+    s->grit_now = (uint32_t)a;
+    s->grit_seed = r;
+}
+
 void sid_render(sid* s, int16_t* out, uint32_t frames) {
     sid_render_tap(s, out, frames, frames, 0, 0);
 }
@@ -793,5 +814,8 @@ void sid_render_tap(sid* s, int16_t* out, uint32_t frames, uint32_t every, sid_t
         render_8580_bleed(s, out, frames, every, tap, ctx);
     } else {
         render_8580(s, out, frames, every, tap, ctx);
+    }
+    if (s->grit | s->grit_now) {
+        grit(s, out, frames);
     }
 }

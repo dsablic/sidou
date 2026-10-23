@@ -87,11 +87,45 @@ typedef struct {
     float thump, bleed;
     float thump_pending, thump_late;
     uint32_t thump_rendered, thump_late_at;
+    /* The DAC macro's grit (sid_character.h): the render's output through a worn converter,
+     * past the physical model of the voice DACs (which come before the filter, where a pulse's
+     * two codes leave their errors nothing to act on): x + a x (n - |x|) / 2^SID_GRIT_NOISE, n a
+     * noise in +-2^15 (a linear congruential sequence from grit_seed) and a in 1/SID_GRIT_ONE.
+     * The noise is a worn ladder's, which follows the current through it: a grit that rides on
+     * the signal, as loud against a quiet note as against a loud one (at a = 1, 17 dB under
+     * it); the bow, - x |x|, its integral non-linearity, compresses the peaks (6 % at a quarter
+     * of full scale), so a chord's notes intermodulate. Both are continuous in x: a
+     * small change of the signal changes them as little. grit is the stage's; grit_now the
+     * render's, in 1/128ths of grit's units, which moves towards grit by SID_GRIT_SLEW a sample
+     * until it is there (0 to full in a second), so a change never steps, and the path is the
+     * same however the renders split it. A pass over the render's samples while either is not 0
+     * (about 17 instructions a sample); none at 0: the chip's output, bit for bit. */
+    uint16_t grit;
+    uint32_t grit_now;
+    uint32_t grit_seed;
     float filter_bias;
     sid_filter_row filter_rows[2];
     uint32_t noise_wb[2][16];
     uint8_t noise_writeback;
 } sid;
+
+#define SID_GRIT_ONE 16384u
+#define SID_GRIT_SLEW 48u /* grit_now's units: 0 to SID_GRIT_ONE in 43,691 samples, 1 s */
+#define SID_GRIT_NOISE 17
+
+/* One sample x through the grit (above) at noise n (-2^15..2^15 - 1) and a (0..SID_GRIT_ONE):
+ * the noise and the bow in one product, x (n - |x|) / 2^17, halved first so it fits 32 bits.
+ * Never past int16: the change is linear in n, so largest at n's ends, and there it is within
+ * int16 for every x (tests/unit/sid_character.rs checks them all); at x = 32767 the bow takes
+ * back what the top noise adds, at -32768 they add to 0..2^14 towards 0. */
+_Static_assert(SID_GRIT_ONE == 1u << 14 && SID_GRIT_NOISE == 17, "sid_grit_sample's shifts");
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((always_inline))
+#endif
+static inline int16_t sid_grit_sample(int32_t x, int32_t n, int32_t a) {
+    int32_t e = (x * ((n - (x < 0 ? -x : x)) >> 1)) >> 16;
+    return (int16_t)(x + ((e * a) >> 14));
+}
 
 /* Embedded backing, which may be leased by another chip after a stage swap. */
 static inline sid_filter_row sid_filter_backing(sid* s, uint32_t second) {

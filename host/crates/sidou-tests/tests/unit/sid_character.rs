@@ -1353,6 +1353,12 @@ fn jump(profile: u32, control: usize, how: Jump, at: usize, ticks: usize) -> (Ve
             out.extend(render(&mut chip, TICK));
             continue;
         };
+        // The DACs' grit goes to the asked-for setting at the tick it is asked for, and the chip
+        // slews it (sid.h): the ramp sends it so, the reference too.
+        let grit = (control == 1 && tick >= at).then(|| stage(&chip, 127, &mut tables).grit);
+        if let Some(g) = grit {
+            chip.grit = g;
+        }
         for i in tick * TICK..(tick + 1) * TICK {
             let v = value(i).clamp(0.0, 127.0);
             if v > 0.0 && (control != 1 || i % 16 == 0) {
@@ -1383,6 +1389,9 @@ fn jump(profile: u32, control: usize, how: Jump, at: usize, ticks: usize) -> (Ve
                     }
                     st.dac = &*between;
                 }
+                if let Some(g) = grit {
+                    st.grit = g;
+                }
                 unsafe { sid_character_commit(&mut *chip, &st) };
             }
             out.extend(render(&mut chip, 1));
@@ -1392,8 +1401,14 @@ fn jump(profile: u32, control: usize, how: Jump, at: usize, ticks: usize) -> (Ve
     unsafe { sid_character_stage_for(&*chip, &with(profile, control, 127), chip.dac, &mut there) };
     let s = &*chip;
     assert_eq!(
-        (s.filter_t, s.thump, s.bleed, s.output_gain),
-        (there.filter_t, there.thump, there.bleed, there.output_gain),
+        (s.filter_t, s.thump, s.bleed, s.output_gain, s.grit),
+        (
+            there.filter_t,
+            there.thump,
+            there.bleed,
+            there.output_gain,
+            there.grit
+        ),
         "profile {profile} control {control}: the jump did not get there"
     );
     if control == 1 {
@@ -1657,4 +1672,361 @@ fn character_wavs() {
             println!("{}", path.display());
         }
     }
+}
+
+/// A register script: (writes, then samples to render) steps.
+type Script = Vec<(Vec<(u8, u8)>, usize)>;
+
+/// The sounds DAC is measured on, as live plays them on the 6581 R4AR (live's chip): (name, the
+/// script, the fundamental in Hz of the note the measures take; 0 for noise). SAW LEAD held (A3
+/// through its low-pass, FC 1200, resonance 6), PWM BASS (A2's pulse through FC 700, resonance
+/// 10, its width swept as live's LFO sweeps it), a soft decaying note (SAW LEAD's saw decaying to
+/// silence over 1.5 s, three times) and NOISE PERC's hits (noise through its notch).
+fn dac_sounds() -> Vec<(&'static str, Script, f64)> {
+    const A3: u16 = 3746; // 220 Hz at PAL
+    let freq = |semis: i32| (f64::from(A3) * 2f64.powf(f64::from(semis) / 12.0)) as u16;
+    let ms = |m: usize| m * FS as usize / 1000;
+    let filter = |fc: u16, res: u8| -> Vec<(u8, u8)> {
+        vec![
+            (0x15, (fc & 7) as u8),
+            (0x16, (fc >> 3) as u8),
+            (0x17, (res << 4) | 1),
+            (0x18, 0x1f),
+        ]
+    };
+    let saw_lead = || -> Script {
+        let f = freq(0);
+        let mut regs = filter(1200, 6);
+        regs.extend([
+            (0x00, f as u8),
+            (0x01, (f >> 8) as u8),
+            (0x05, 0x09),
+            (0x06, 0xa6),
+        ]);
+        regs.push((0x04, 0x21));
+        vec![(regs, ms(2000)), (vec![(0x04, 0x20)], ms(400))]
+    };
+    let pwm_bass = || -> Script {
+        let f = freq(-12);
+        let mut regs = filter(700, 10);
+        regs.extend([
+            (0x00, f as u8),
+            (0x01, (f >> 8) as u8),
+            (0x05, 0x05),
+            (0x06, 0x84),
+        ]);
+        regs.extend([(0x02, 0x00), (0x03, 0x04), (0x04, 0x41)]);
+        let mut s: Script = vec![(regs, 0)];
+        // live's LFO: 1024 +- 768 over 2 s, a write every 10 ms.
+        for t in 0..200 {
+            let pw = 1024.0 + 768.0 * (std::f64::consts::TAU * f64::from(t) / 200.0).sin();
+            let pw = pw as u16;
+            s.push((vec![(0x02, pw as u8), (0x03, (pw >> 8) as u8)], ms(10)));
+        }
+        s.push((vec![(0x04, 0x40)], ms(400)));
+        s
+    };
+    let soft = || -> Script {
+        let mut s: Script = vec![(filter(1200, 6), 0)];
+        for semis in [0, 4, 7] {
+            let f = freq(semis);
+            s.push((
+                vec![
+                    (0x00, f as u8),
+                    (0x01, (f >> 8) as u8),
+                    (0x05, 0x0a),
+                    (0x06, 0x00),
+                    (0x04, 0x21),
+                ],
+                ms(1500),
+            ));
+            s.push((vec![(0x04, 0x20)], ms(100)));
+        }
+        s
+    };
+    let noise_perc = || -> Script {
+        // NOISE PERC: noise through the notch (low-pass and high-pass, FC 1800, resonance 2).
+        let mut s: Script = vec![(
+            vec![
+                (0x15, 0),
+                (0x16, (1800u16 >> 3) as u8),
+                (0x17, 0x21),
+                (0x18, 0x5f),
+            ],
+            0,
+        )];
+        for semis in [0, 0, 7, 0, 12, 0, 7, 0] {
+            let f = freq(semis + 12);
+            s.push((
+                vec![
+                    (0x00, f as u8),
+                    (0x01, (f >> 8) as u8),
+                    (0x05, 0x08),
+                    (0x06, 0x08),
+                    (0x04, 0x81),
+                ],
+                ms(150),
+            ));
+            s.push((vec![(0x04, 0x80)], ms(100)));
+        }
+        s
+    };
+    let hz = |semis: i32| f64::from(freq(semis)) * 985_248.0 / 16_777_216.0;
+    vec![
+        ("saw-lead", saw_lead(), hz(0)),
+        ("pwm-bass", pwm_bass(), hz(-12)),
+        ("soft", soft(), hz(0)),
+        ("noise-perc", noise_perc(), 0.0),
+    ]
+}
+
+/// A script on the 6581 R4AR with DAC at v (everything else 0), after the power-on release, as
+/// the chip and its output stage play it: the samples, and where the script's first step starts.
+fn render_dac(script: &Script, v: u8) -> (Vec<f64>, usize) {
+    let mut dac = Box::<sid_dac>::default();
+    let mut s = chip(SID_MODEL_6581);
+    let c = with(SID_CHIP_6581_R4AR, 1, v);
+    unsafe { sid_character_apply(&mut *s, &c, &mut *dac) };
+    let mut t = thump_out::default();
+    let ms = |m: usize| m * FS as usize / 1000;
+    let at = ms(300);
+    let mut out: Vec<f64> = render_out(&mut s, &mut t, at)
+        .iter()
+        .map(|&x| f64::from(x))
+        .collect();
+    for (regs, n) in script {
+        write(&mut s, regs);
+        out.extend(render_out(&mut s, &mut t, *n).iter().map(|&x| f64::from(x)));
+    }
+    (out, at)
+}
+
+fn rms_of(x: &[f64]) -> f64 {
+    (x.iter().map(|v| v * v).sum::<f64>() / x.len() as f64).sqrt()
+}
+
+/// What x adds to x0 beyond a change of level, in dB against it: x less x0 at the gain that
+/// fits x0 to x best.
+fn change_db(x: &[f64], x0: &[f64]) -> f64 {
+    let g =
+        x.iter().zip(x0).map(|(a, b)| a * b).sum::<f64>() / x0.iter().map(|b| b * b).sum::<f64>();
+    let diff: Vec<f64> = x.iter().zip(x0).map(|(a, b)| a - g * b).collect();
+    20.0 * (rms_of(&diff) / (g * rms_of(x0))).log10()
+}
+
+/// The brightness: the first difference's level against the signal's, in dB.
+fn brightness_db(x: &[f64]) -> f64 {
+    let d: Vec<f64> = x.windows(2).map(|w| w[1] - w[0]).collect();
+    20.0 * (rms_of(&d) / rms_of(x)).log10()
+}
+
+/// Listening files and measurements for DAC on the sounds the v0.3.0 device session could not
+/// hear it on (not a check): `cargo test --release -p sidou-tests --test unit -- --ignored
+/// dac_wavs` writes build/character/dac-<sound>-<pct>.wav, DAC at 0, 25, 50, 75 and 100 % of its
+/// travel on the 6581 R4AR (live's chip), everything else at 0, 12 dB louder than the chip: SAW
+/// LEAD held (A3 through its low-pass, FC 1200, resonance 6), PWM BASS (A2's pulse through FC 700,
+/// resonance 10, its width swept as live's LFO sweeps it) and a soft decaying note (SAW LEAD's
+/// saw decaying to silence over 1.5 s, three times); and NOISE PERC's hits (noise through its
+/// notch), measured only. Prints, for each, the output's level
+/// against DAC 0's, the change (what DAC adds beyond a gain: x - g x0 against g x0, g the gain
+/// that fits x0 to x best) and the brightness (the first difference's level against the
+/// signal's, against DAC 0's) in dB, and the grit, from half a second into the note: the power
+/// between the note's harmonics against the whole's, and the power over 3 kHz (NOISE PERC: in
+/// its notch, 1.6 to 2 kHz) against DAC 0's.
+#[test]
+#[ignore]
+fn dac_wavs() {
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../build/character");
+    std::fs::create_dir_all(&dir).unwrap();
+    let ms = |m: usize| m * FS as usize / 1000;
+    // The grit: the power between the note's harmonics (more than 6 Hz from any, above 20 Hz)
+    // against the whole's, in dB, over 32768 samples from the note's start (a Hann window).
+    let grit = |x: &[f64], f0: f64| -> (f64, f64) {
+        const N: usize = 1 << 15;
+        let mut re: Vec<f64> = (0..N)
+            .map(|i| x[i] * (0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / N as f64).cos()))
+            .collect();
+        let mut im = vec![0.0f64; N];
+        let mut j = 0;
+        for i in 1..N {
+            let mut bit = N >> 1;
+            while j & bit != 0 {
+                j ^= bit;
+                bit >>= 1;
+            }
+            j |= bit;
+            if i < j {
+                re.swap(i, j);
+                im.swap(i, j);
+            }
+        }
+        let mut len = 2;
+        while len <= N {
+            let w = -std::f64::consts::TAU / len as f64;
+            for start in (0..N).step_by(len) {
+                for k in 0..len / 2 {
+                    let (c, sn) = ((w * k as f64).cos(), (w * k as f64).sin());
+                    let (a, b) = (start + k, start + k + len / 2);
+                    let (xr, xi) = (re[b] * c - im[b] * sn, re[b] * sn + im[b] * c);
+                    re[b] = re[a] - xr;
+                    im[b] = im[a] - xi;
+                    re[a] += xr;
+                    im[a] += xi;
+                }
+            }
+            len <<= 1;
+        }
+        let (mut between, mut all, mut high) = (0.0, 0.0, 0.0);
+        for k in 1..N / 2 {
+            let f = k as f64 * f64::from(FS) / N as f64;
+            if f < 20.0 {
+                continue;
+            }
+            let p = re[k] * re[k] + im[k] * im[k];
+            all += p;
+            let h = (f / f0).round().max(1.0);
+            if f0 > 0.0 && (f - h * f0).abs() > 6.0 {
+                between += p;
+            }
+            // Noise: its notch (FC 1800, about 1.6 to 2 kHz); a note: over 3 kHz.
+            if (f0 > 0.0 && f > 3000.0) || (f0 == 0.0 && (1600.0..2000.0).contains(&f)) {
+                high += p;
+            }
+        }
+        (10.0 * (between / all).log10(), high)
+    };
+    let db = |a: f64, b: f64| 20.0 * (a / b).log10();
+    for (name, script, f0) in dac_sounds() {
+        let (zero, note_at) = render_dac(&script, 0);
+        let (_, high_zero) = grit(&zero[note_at + if f0 > 0.0 { ms(500) } else { 0 }..], f0);
+        for (pct, v) in [(0, 0u8), (25, 32), (50, 64), (75, 95), (100, 127)] {
+            let (out, _) = render_dac(&script, v);
+            let path = dir.join(format!("dac-{name}-{pct:03}.wav"));
+            if f0 > 0.0 {
+                let wav: Vec<f32> = out[note_at..]
+                    .iter()
+                    .map(|&x| (x * 4.0 / 32768.0) as f32)
+                    .collect();
+                sidou_tests::signal_metrics::write_wav16(&path, &wav, FS).unwrap();
+            }
+            // Half a second into the note: its attack over.
+            let from = note_at + if f0 > 0.0 { ms(500) } else { 0 };
+            let (between, high) = grit(&out[from..], f0);
+            println!(
+                "{name} DAC {pct:3} %: level {:+.2} dB, change {:6.1} dB, brightness {:+.2} dB, \
+                 between the harmonics {:6.1} dB, over 3 kHz (noise: its notch) {:+5.1} dB  {}",
+                db(rms_of(&out[note_at..]), rms_of(&zero[note_at..])),
+                if pct == 0 {
+                    f64::NEG_INFINITY
+                } else {
+                    change_db(&out[note_at..], &zero[note_at..])
+                },
+                brightness_db(&out[note_at..]) - brightness_db(&zero[note_at..]),
+                between,
+                10.0 * (high / high_zero).log10(),
+                path.display()
+            );
+        }
+    }
+}
+
+/// DAC is heard on every sound (the v0.3.0 device session heard nothing on PWM BASS, NOISE PERC
+/// or soft notes): what it adds beyond a change of level grows with every step of the control
+/// and is at least -25 dB of the sound from a quarter of its travel and -17 dB at the top, on
+/// SAW LEAD, PWM BASS, a soft decaying note and NOISE PERC alike; the pitched sounds get
+/// brighter. Before the grit (sid.h) PWM BASS had -33 dB at a quarter and -27 dB at the top,
+/// almost all of it a change of its harmonics' levels, and no brighter.
+#[test]
+fn dac_is_heard_on_every_sound() {
+    for (name, script, f0) in dac_sounds() {
+        let (zero, at) = render_dac(&script, 0);
+        let mut last = f64::NEG_INFINITY;
+        for v in (16..=127u8).step_by(16).chain([127]) {
+            let (out, _) = render_dac(&script, v);
+            let change = change_db(&out[at..], &zero[at..]);
+            let brighter = brightness_db(&out[at..]) - brightness_db(&zero[at..]);
+            println!("{name} DAC {v}: change {change:.1} dB, brighter by {brighter:.2} dB");
+            assert!(
+                change > last,
+                "{name} DAC {v}: {change:.1} dB, no more than before"
+            );
+            last = change;
+            if v >= 32 {
+                assert!(change > -25.0, "{name} DAC {v}: {change:.1} dB");
+            }
+            if v == 127 {
+                assert!(change > -17.0, "{name} DAC {v}: {change:.1} dB");
+                if f0 > 0.0 {
+                    assert!(
+                        brighter > 3.0,
+                        "{name} DAC {v}: brighter by {brighter:.2} dB"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// The grit's sample never wraps: at the noise's ends (the change is linear in it, so largest
+/// there) and in between, for every int16 sample and the grit's amounts, sid_grit_sample is the
+/// formula's value exactly (sid.h).
+#[test]
+fn the_grit_never_wraps() {
+    for x in i32::from(i16::MIN)..=i32::from(i16::MAX) {
+        for n in [-32768, -32767, -1, 0, 1, 32766, 32767] {
+            for a in [0, 1, 4096, 8192, 16383, 16384] {
+                let e = (i64::from(x) * ((i64::from(n) - i64::from(x.abs())) >> 1)) >> 16;
+                let want = i64::from(x) + ((e * i64::from(a)) >> 14);
+                let got = unsafe { sid_grit_sample(x, n, a) };
+                assert_eq!(i64::from(got), want, "x {x} n {n} a {a}");
+            }
+        }
+    }
+}
+
+/// The grit moves to a new setting by SID_GRIT_SLEW a sample (a second from 0 to full), the same
+/// path however the renders split it: a jump of the control at once (sid_character_change, as
+/// the click test's reference) rendered in blocks of 128, of 441 and a sample at a time gives
+/// the same samples; and back at 0 the chip's output is DAC 0's again, the pass off.
+#[test]
+fn the_grit_slews_the_same_however_the_renders_split() {
+    // A triangle, then the grit's target to full at once (the chip slewing to it) for 1.5 s, then
+    // to 0 for 1.5 s (on: 0 is never set and the chip renders plain), then 0.1 s more.
+    let run = |split: usize, on: bool| -> (Vec<i16>, Box<sid>) {
+        let mut dac = Box::<sid_dac>::default();
+        let mut s = chip(SID_MODEL_6581);
+        write(&mut s, &triangle(1));
+        let mut out = render(&mut s, 2000);
+        let profile = SID_CHIP_6581_R4AR;
+        unsafe { sid_character_change(&mut *s, &with(profile, 1, 0), &mut *dac) };
+        let mut st = sid_character_stage::default();
+        unsafe { sid_character_stage_for(&*s, &with(profile, 1, 127), s.dac, &mut st) };
+        for (grit, samples) in [(st.grit, FS as usize * 3 / 2), (0, FS as usize * 3 / 2)] {
+            s.grit = if on { grit } else { 0 };
+            let mut left = samples;
+            while left > 0 {
+                let n = split.min(left);
+                out.extend(render(&mut s, n));
+                left -= n;
+            }
+            if on && grit != 0 {
+                assert_eq!(s.grit_now, u32::from(grit) << 7, "there within 1.5 s");
+                let samples = (u32::from(grit) << 7).div_ceil(SID_GRIT_SLEW);
+                assert!(
+                    (40_000..48_000).contains(&samples),
+                    "0 to full in {samples}"
+                );
+            }
+        }
+        assert_eq!(s.grit_now, 0);
+        out.extend(render(&mut s, FS as usize / 10));
+        (out, s)
+    };
+    let (a, _) = run(128, true);
+    assert_eq!(a, run(441, true).0);
+    assert_eq!(a, run(1, true).0);
+    let plain = run(128, false).0;
+    let tail = a.len() - FS as usize / 10;
+    assert_ne!(a[..tail], plain[..tail], "the grit was heard");
+    assert_eq!(a[tail..], plain[tail..], "back at 0: DAC 0's output");
 }

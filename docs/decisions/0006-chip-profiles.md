@@ -700,3 +700,53 @@ clip, PING-PONG at full feedback (+1.08 dB), stays clean at THUMP 100 %.
 blocks 703.03 to 703.05 one chip, 1,414.70 to 1,414.74 two); the two-chip device block with
 every slot's heaviest 2,388.88 to 2,389.55. `.ram_text` 46,928 to 47,536 bytes, the image
 500,672 to 501,264.
+
+## Amendment, 2026-10-23 (3): DAC's grit, heard on every sound
+
+The v0.3.0 device session: DAC still inaudible on SAW LEAD, PWM BASS, NOISE PERC and soft notes
+(THUMP and BLEED were heard). Why, measured (`dac_wavs`, `unit/sid_character.rs`, the 6581
+R4AR at 0/25/50/75/100 %): the voice DACs' errors are a static map of the waveform's codes,
+before the filter. A pulse has two codes, a noise is random anyway, and on a saw a static map
+only moves its harmonics' levels: PWM BASS changed by -48 to -27 dB beyond its level, no
+brighter; SAW LEAD -38 to -17 dB, +0.6 dB brighter at the top; nothing between the harmonics.
+Larger bit errors cannot help (any static map of a periodic wave is harmonic), and the
+quantiser-style "stepped" errors tried first (a log converter, 2-bit mantissa, worn bits)
+put steps in the output that turn a few LSB of difference between two paths into hundreds:
+the click test's ramped-against-smooth residual read 1,918 LSB. So:
+
+- **The grit** (`sid.h`, `grit`): past the physical model, the chip's output through a worn
+  converter, `y = x + a x (n - |x|) / 2^17`: `n` a noise (a linear congruential sequence) the
+  signal carries, as a worn ladder's current noise, 17 dB under the signal at `a = 1` on a
+  loud note and a quiet one alike; and `-x|x|`, a bow (integral non-linearity) that squeezes
+  the peaks (6 % at a quarter of full scale), so a chord's notes intermodulate. Continuous in
+  `x`, so a small difference in the signal stays small (the click test: DACs 21, 23, 29 LSB,
+  as without it: 21, 21, 29). `y` never leaves int16 (`sid_grit_sample`, checked for every
+  sample at the noise's ends).
+- **Its curve:** `a = sqrt(DAC/127)` (`SID_CHARACTER_GRIT` 1.0), heard from the first detents and
+  rising to the top. The physical DAC (kink, leakage, bit errors) is unchanged under it.
+- **Its ramp:** the stage carries the asked-for setting from the next tick (`ramp.grit_dac`),
+  and the chip slews `a` 48/2^21 a sample (0 to full in a second) to it, the same path however
+  the renders split it (`the_grit_slews_the_same_however_the_renders_split`). DAC 0: no pass,
+  the chip's output bit for bit (every reSIDfp comparison holds untouched).
+
+**Measured** (beyond a level change / brightness, before → after; `dac_wavs`):
+
+| DAC | SAW LEAD | PWM BASS | soft note | NOISE PERC |
+|---|---|---|---|---|
+| 25 % | -38.3 → -22.6 dB / +0.05 → +1.39 | -48.1 → -22.7 / 0.00 → +3.38 | -35.4 → -22.4 / +0.05 → +1.21 | -35.9 → -22.4 / 0.00 → +0.21 |
+| 50 % | -28.1 → -19.1 / +0.17 → +2.48 | -38.0 → -19.6 / 0.00 → +5.25 | -25.4 → -18.6 / +0.17 → +2.20 | -25.8 → -18.7 / +0.01 → +0.41 |
+| 100 % | -17.0 → -13.9 / +0.64 → +4.16 | -27.3 → -16.3 / -0.01 → +7.52 | -14.6 → -12.4 / +0.65 → +3.78 | -15.0 → -12.6 / +0.03 → +0.78 |
+
+The power between SAW LEAD's harmonics -25.2 → -16.5 dB at 100 %, PWM BASS's -17.1 → -14.3.
+`dac_is_heard_on_every_sound` holds it: every 16 detents more, at least -25 dB from a quarter,
+-17 dB at the top, the notes 3 dB brighter. The harness (K2 on CHIP, SAW LEAD held): brightness
+span 118 → 1,463 cents (2,557 → 5,912 Hz, rising smoothly), level 0.8 → 0.9 dB, dead zone 4 → 0
+detents, no finding. NOISE PERC changes least: noise riding on noise is the hardest to hear.
+
+**Cost.** The pass, 19.13 instructions a sample on one chip while DAC is not 0 (bound 19.2,
+`emu-gate/character.rs`), nothing at 0. It is outside the SID's worst blocks, bounded on its own
+as the thump's stage is: with DAC 127 added to the bleed's worst-block scenarios they read 722.24
+(one chip) and 1,452.92 (two), over the SID guards (711, 1,426: 703.08 and 1,414.79 without);
+the whole interrupt's worst, two chips with every slot's heaviest, 2,379.95, leaves 320 under
+2,700 for the two passes' 38. `.ram_text` +128 bytes (the pass 122, the render's test and the
+drain's copy), `chips` +52 bytes, no table.

@@ -19,7 +19,12 @@
  *   to SID_CHARACTER_MISMATCH (sid_dac.h, SID_DAC_MISMATCH_*): a leakier, kinked table with
  *   bit errors, built in the main loop. The errors are what is heard: a triangle or a saw
  *   gets grit where the codes cross the bad bits, and a quiet voice's level steps unevenly
- *   as its envelope moves (a pulse shows it best: its waveform has no codes to cross);
+ *   as its envelope moves (a pulse shows it best: its waveform has no codes to cross). On
+ *   top, past the physical model, the grit (sid.h, grit): the chip's output through a worn
+ *   converter, a noise riding on the signal and a bowed curve, up to SID_CHARACTER_GRIT at
+ *   127 on the control's square root, so it is heard on every sound (a pulse, a noise, a
+ *   quiet note) from the first detents. The grit is the one part of DAC that costs per
+ *   sample (sid.h); it goes to the asked-for setting at the next tick, and the chip slews it;
  * - output thump: a DC step at each note's start and at each volume write (sid.h, thump),
  *   up to SID_CHARACTER_THUMP voice DAC units, as the 6581's voice DC jumps when an envelope
  *   attacks and its operating point when the volume changes; each step decays as the DC
@@ -68,6 +73,7 @@ extern "C" {
 #define SID_CHARACTER_MISMATCH 0.5f /* the DACs' bit errors (sid_dac_job's mismatch) */
 #define SID_CHARACTER_THUMP 1.0f  /* voice DAC units of DC at volume 15 (sid_dac.h) */
 #define SID_CHARACTER_BLEED 0.5f  /* of the routed voices past the filter */
+#define SID_CHARACTER_GRIT 1.0f   /* the DACs' grit (sid.h), of the worn converter's error */
 /* DAC, thump and bleed at v/127 = a take a * (L + (1 - L) a) of their amount, L this. */
 #define SID_CHARACTER_CURVE_LINEAR 0.15f
 /* The ramp (sid_character_ramp_tick): age and thump move at most SID_CHARACTER_RAMP a tick,
@@ -175,6 +181,7 @@ typedef struct {
     sid_nonlin nl;
     const sid_dac* dac;
     float thump, bleed, output_gain;
+    uint16_t grit;  /* the DAC macro's grit, in 1/SID_GRIT_ONE (sid.h) */
     float filter_t; /* age/heat: the filter's blend towards the hot row (sid.h) */
     float filter_bias, out_c, dc_r;
     const uint16_t (*pulldown)[256];
@@ -237,6 +244,7 @@ static inline void sid_character_commit(sid* s, const sid_character_stage* st) {
     s->thump = st->thump;
     s->bleed = st->bleed;
     s->output_gain = st->output_gain;
+    s->grit = st->grit;
     s->filter_t = st->filter_t;
     s->filter_rows[0] = st->filter_rows[0];
     s->filter_rows[1] = st->filter_rows[1];
@@ -358,6 +366,7 @@ typedef struct {
     float filter_t;
     uint8_t filter_rows_valid, filter_managed;
     int8_t bleed_half; /* 1 or -1: the stage's bleed half way to now's next detent that way */
+    uint8_t grit_dac;  /* the DAC setting the last stage's grit is for: the target's (sid.h) */
 } sid_character_ramp;
 
 /* After a reset that applied c to a chip whose DAC table is table (sid_character_apply):

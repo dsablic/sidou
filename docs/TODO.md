@@ -554,10 +554,6 @@ card (HOME held) is the only on-device explanation. Done:
   ALGORITHM only; SAVE opens the highlighted item on every list screen.
 - **A fresh install's LOAD list is empty:** decided 2026-10-23: SIDOU LOOP is listed as a built-in
   and the demo's Songs page (`web/songs.html`) sends the showcase songs to a connected FM-1.
-- **DAC is inaudible on the device** (the user, on PWM BASS, NOISE PERC and soft notes too): make it
-  clearly audible on every sound, a worn-chip grit (bit errors that step the waveform, a little
-  intermodulation) past the physical model if need be; 0 stays bit-identical. THUMP works (it
-  acts at note starts, as its card says); BLEED works.
 - **The LOAD list's names are 1x:** 2x like the menu and SETTINGS; the harness's tour never visits
   LOAD (or the other SONG pages), so add them to it.
 - **Done 2026-10-23:** ORDER, INSTR and TABLE's status line at 2x on rows 28-29 (a longer table meaning

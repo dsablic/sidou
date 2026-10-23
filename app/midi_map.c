@@ -111,8 +111,9 @@ static const midi_map_entry rows[MIDI_MAP_ROWS] = {
         "0 the profile .. 127: the filter's cutoff drifts darker, the 6581's non-linearity "
         "doubles", LIVE_PARAM_AGE, 86, NRPN(NRPN_CHARACTER, 1), SID_CHARACTER_MAX, 0, LINEAR),
     ROW("Character", "DAC sloppiness",
-        "0 the profile .. 127: the voice DACs get bit errors, leak up to 6 times as much and "
-        "kink more: grit on triangles and saws, quiet notes step",
+        "0 the profile .. 127: a worn chip's grit on every sound (the output through a worn "
+        "converter: a noise riding on the signal and a bowed curve), and the voice DACs get bit "
+        "errors, leak up to 6 times as much and kink more",
         LIVE_PARAM_DAC, 87, NRPN(NRPN_CHARACTER, 2), SID_CHARACTER_MAX, 0, LINEAR),
     ROW("Character", "Output thump",
         "0 none .. 127: a thump at each note's start and at a volume change (the 6581's voice "
