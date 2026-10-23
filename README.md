@@ -37,6 +37,9 @@ screenshots the tests check.*
   are on STEP.
 - **Keep GoatTracker 2 songs.** SAVE writes a `.sng` to the device's flash. Power loss does not
   corrupt it.
+- **Take a song into a DAW.** The site's [Songs to MIDI](https://dsablic.github.io/sidou/midi.html)
+  page turns any GoatTracker 2 `.sng` into a `.mid`, a MIDI channel a SID voice, with the notes where
+  GoatTracker's player puts them.
 - **Play from MIDI.** Notes on every channel, CCs for the main controls, program change for
   presets and songs ([midi.md](docs/reference/midi.md)).
 - **Look at it.** SCENE has generative pieces, and RED MOON RITE is the first illustrated piece.

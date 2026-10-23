@@ -575,3 +575,15 @@ card (HOME held) is the only on-device explanation. Done:
 fm1-emu fixed #63 (FM-1 SID's psid_load bounds, PR #68) and #64 (the decrementing block load, PR
 #67) on 2026-10-23. Done: the pin is `c1c045fc` (upstream master that day, with #69 to #72),
 `step_block_load_dec` and the `emulated_block_loads` count are gone from the emulator tests.
+
+## Songs to MIDI (2026-10-23)
+
+- **Done:** the site's Songs to MIDI page (`web/midi.html`, `web/songmidi.js`) exports a `.sng` as a
+  `.mid` (roadmap "A song as MIDI"). Its note walk is checked call by call against GoatTracker's
+  packed player (`web/songmidi.test.mjs` with the fixtures `host/crates/gt2-ref/tests/midi_walk.rs`
+  makes: `SIDOU_MIDI_FIXTURE_UPDATE=1 cargo test --release -p gt2-ref --test midi_walk`).
+- **Follow-ups, none urgent:** an option to follow wavetable arpeggios (they are the notes' pitch
+  for a chord-arpeggio instrument, and a drum's pitch sweep), which needs the wavetable's pitch
+  walk compared to the player the way the gates are now; the pitch of tied notes is not compared
+  (the fixtures hold each gate run's first note's frequency only); tempo commands in a
+  wavetable (command `F`) are not followed, as GoatTracker's editor player does not either; a subtune's export of both chips on a SIDOU two-chip song waits for `TRKB` (M5).
