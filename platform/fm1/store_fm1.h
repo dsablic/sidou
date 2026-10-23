@@ -100,7 +100,8 @@ typedef struct {
 
 /* Boot, interrupts off, the plain XIP window on, before the audio starts (main.c runs it in
  * the LCD's wake-up wait): mounts the store, and if it is SIDOU's or blank, runs recovery and
- * fills the pool to its target with no holds, calling `feed` (the watchdog's) between polls.
+ * fills the pool to its target with no holds, calling `feed` (the watchdog's) between polls,
+ * for at most BOOT_WORK_MS (store_fm1.c) after the mount; store_fm1_service does the rest.
  * Nothing if the flash chip is not ours. */
 void store_fm1_boot(void (*feed)(void));
 /* Main loop, in a pass's play: once a tick (10 ms), or at every key-scan frame (about 1.1 kHz)

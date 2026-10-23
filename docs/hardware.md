@@ -573,10 +573,14 @@ to the store's range and never touches a sector's guard band.
 
 - **At boot**, during the LCD's 120 ms wake-up wait (before the audio starts;
   work fitting that deadline does not move the boot's later timing): the
-  mount, the recovery after a cut, and the pool's fill to its target, with no
-  holds. The wait absorbs work only until its deadline: a blank region's first
-  format is up to 22 erases (440 ms at the datasheet's worst), so that first
-  boot can take longer. Foreign data is left untouched, not filled or formatted.
+  mount, then the recovery after a cut and the pool's fill to its target, with
+  no holds, for at most 100 ms of flash work (`BOOT_WORK_MS`). What is left
+  (a blank region's first format, up to 22 erases; another firmware's sectors
+  in SIDOU's region, each erased before the session's first write) goes on in
+  the main loop as quiet maintenance, an operation a pass, so USB answers
+  within a second of power-on whatever the store still has to do (emu-gate
+  `usb.rs`, `a_first_boot_over_another_firmwares_sectors_answers_usb_at_once`).
+  A wholly foreign region is left untouched, not filled or formatted.
 - **The erase-ahead pool** has a minimum of 20 clean sectors and a target of
   22. Writers claim space before programming; a 64 KiB file claims 18 sectors
   and reserves its commit record before accepting data. Short-pool requests

@@ -21,6 +21,13 @@
 /* The most store_polls the boot gives the mount and the pool's fill (a blank region's first
  * format is about 100). */
 #define BOOT_POLLS 20000u
+/* The most flash work the boot does once the mount is done: within the LCD's wake-up wait
+ * (120 ms). The rest (a blank region's first format, recovery: every sector of another
+ * firmware's in SIDOU's region erased before the session's first write) goes on in the main
+ * loop's passes, an operation a pass, held while quiet, with USB and the watchdog served
+ * between: a real FM-1 that Felucca had written 40-odd sectors of spent seconds here before
+ * USB started (2026-10-23; emu-gate usb.rs a_first_boot_over_another_firmwares_sectors_...). */
+#define BOOT_WORK_MS 100u
 /* How often an idle store asks whether maintenance has work (store_erase_wanted: a plan of a
  * few thousand instructions; quiet takes 500 ms anyway). */
 #define WANT_MS 1000u
@@ -181,8 +188,13 @@ void store_fm1_boot(void (*feed)(void)) {
     }
     store_mount(&store_fm1_store);
     store_quiet(&store_fm1_store, 1);
+    uint32_t start = fm1_ticks();
     for (uint32_t n = 0; n < BOOT_POLLS && store_poll(&store_fm1_store); n++) {
-        feed(); /* a blank region's first format: 22 erases, 440 ms at the worst */
+        feed();
+        if (store_fm1_store.state != STORE_STATE_MOUNTING &&
+            fm1_ticks() - start >= BOOT_WORK_MS * 1000u * FM1_TICKS_PER_US) {
+            break; /* the main loop goes on with it (store_fm1_service) */
+        }
     }
     store_quiet(&store_fm1_store, 0);
 }

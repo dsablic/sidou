@@ -1574,3 +1574,157 @@ fn the_running_firmware_serves_an_updates_whole_step_one() {
     let (user, system) = m.stack_use();
     println!("step 1's stacks: user {user}, system {system}");
 }
+
+// ---- the first boot over another firmware's sectors ----
+
+/// Another firmware's data in `secs` sectors of the store's region (as Felucca's projects and
+/// samples, platform/fm1/hal/fm1_flash.h FL_DATA_*: its own commit-record magic at offset 0, a
+/// payload from 0x100 to the sector's end, the guard band included).
+fn foreign_sectors(flash: &mut [u8], secs: &[usize]) {
+    let mut x = 0x1234_5678u32;
+    for &s in secs {
+        let s = &mut flash[s..s + 0x1000];
+        s.fill(0xFF);
+        s[..4].copy_from_slice(b"FELU");
+        for b in &mut s[0x100..] {
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            *b = x as u8;
+        }
+    }
+}
+
+/// Until the device answers the descriptor request: a host polling the attached device as a
+/// real one does (a bus reset, SET_ADDRESS and GET_DESCRIPTOR every 100 ms), then the whole
+/// enumeration, then the updater's identity handshake once a second, as fm1_install.py's
+/// wait_for. Returns (attached, answered): emulated ms from power-on.
+fn first_identity(m: &mut Machine, fw: &Firmware, limit_ms: u64) -> (u64, u64) {
+    let mut attached = None;
+    while attached.is_none() {
+        assert!(m.ms() < limit_ms, "USB never attached in {limit_ms} ms");
+        if up_and_config(m, fw).0 == 1 {
+            attached = Some(m.ms());
+        }
+        m.usb_frames(1);
+    }
+    loop {
+        assert!(m.ms() < limit_ms, "no device descriptor in {limit_ms} ms");
+        host(m).bus_reset();
+        m.usb_frames(3);
+        setup(m, [0x00, 0x05, 0x07, 0, 0, 0, 0, 0]);
+        host(m).in0.clear();
+        setup(m, [0x80, 0x06, 0x00, 0x01, 0, 0, 0x12, 0]);
+        if host(m).in0.concat().len() == 18 {
+            break;
+        }
+        m.usb_frames(100);
+    }
+    enumerate(m, fw);
+    loop {
+        assert!(m.ms() < limit_ms, "no identity reply in {limit_ms} ms");
+        host(m).in1.clear();
+        send(m, &sysex_packets(&message(0x11, &[])));
+        for _ in 0..1_000 {
+            m.usb_frames(1);
+            if replies(&host(m).in1).iter().any(|r| r[0] == 0x11) {
+                return (attached.unwrap(), m.ms());
+            }
+        }
+    }
+}
+
+/// store_fm1.c's BOOT_WORK_MS: the most flash work the boot does after the mount.
+const BOOT_WORK_MS: f64 = 100.0;
+const STORE_LO: usize = 0x97000;
+
+/// The first boot after an install over another firmware (2026-10-23, a real FM-1: Felucca
+/// 1.6.1 had written its data over 40-odd sectors of SIDOU's earlier store, and SIDOU's boot
+/// erased them all before it started USB, at the flash's own pace with the interrupts masked):
+/// the boot mounts, does at most BOOT_WORK_MS of flash work and starts; the rest (each other
+/// firmware's sector erased before the session's first write, store.c recovery) goes on in the
+/// main loop's passes, one operation a pass, so USB answers within a second whatever the store
+/// still has to do. With the datasheet's worst times (20 ms an erase, 3 ms a program) and with
+/// the RAM driver's own limits (500 ms, 10 ms: fl_erase4k_ram, fl_prog_ram). Before the fix the
+/// second took 20.4 s to attach USB, the boot's flash work one stretch of 20.1 s.
+#[test]
+fn a_first_boot_over_another_firmwares_sectors_answers_usb_at_once() {
+    let Some(fw) = fixture("the first boot over another firmware's sectors") else {
+        return;
+    };
+    let mut flash = common::settled_flash(&fw.image);
+    // 40 sectors, SIDOU's first sectors (its settings among them) left as they were.
+    let secs: Vec<usize> = (33..73).map(|k| STORE_LO + k * 0x1000).collect();
+    foreign_sectors(&mut flash, &secs);
+    let state = fw.symbol("store_fm1_store") + sidou_sys::ilp32::store::state as u32;
+    for (erase_ms, prog_ms) in [(20u64, 3u64), (500, 10)] {
+        let mut m = Machine::boot_blank(&fw.image);
+        m.soc.flash.mem.copy_from_slice(&flash);
+        let ms = |m: &Machine, n: u64| m.soc.periph.cycle_of_ms(n);
+        m.stalls = vec![
+            (fw.symbol("fl_prog_ram"), ms(&m, prog_ms)),
+            (fw.symbol("fl_erase4k_ram"), ms(&m, erase_ms)),
+        ];
+        m.watch_calls(fw.symbol("boot_feed"));
+        m.usb = Some(UsbHost::default());
+        let (attached, answered) = first_identity(&mut m, &fw, 30_000);
+        let hz = m.soc.periph.hz as f64 / 1e3;
+        let feeds = m.watched_starts.clone();
+        let work = (feeds[feeds.len() - 1] - feeds[0]) as f64 / hz;
+        let gap = feeds.windows(2).map(|w| w[1] - w[0]).max().unwrap_or(0) as f64 / hz;
+        let left = secs
+            .iter()
+            .filter(|&&s| m.soc.flash.mem[s..s + 4] == *b"FELU")
+            .count();
+        println!(
+            "erase {erase_ms} ms, program {prog_ms} ms: USB attached at {attached} ms, the \
+             identity answered at {answered} ms; the boot's flash work {work:.0} ms ({} feeds, \
+             the longest without one {gap:.0} ms); {left} of {} foreign sectors left to \
+             reclaim",
+            feeds.len(),
+            secs.len()
+        );
+        assert!(
+            answered <= 5_000,
+            "the identity answered {answered} ms after power-on"
+        );
+        assert!(
+            attached <= 1_000,
+            "USB attached {attached} ms after power-on"
+        );
+        assert!(
+            work <= BOOT_WORK_MS + erase_ms as f64 + 1.0,
+            "the boot's flash work took {work:.0} ms in one stretch"
+        );
+        assert!(
+            gap <= erase_ms as f64 + 1.0,
+            "{gap:.0} ms between two watchdog feeds at boot"
+        );
+        assert!(left > 0, "the boot reclaimed every sector itself");
+        assert_eq!(m.soc.read8(state), sidou_sys::STORE_STATE_SIDOU as u8);
+        if erase_ms == 20 {
+            // The quiet device reclaims the rest in the main loop, and the store takes writes
+            // again: the settings are still SIDOU's, and a put commits.
+            let end = m.ms() + 20_000;
+            while secs.iter().any(|&s| m.soc.flash.mem[s..s + 4] == *b"FELU") {
+                assert!(
+                    m.ms() < end,
+                    "the other firmware's sectors were never reclaimed"
+                );
+                m.usb_frames(10);
+            }
+            println!("reclaimed by {} ms", m.ms());
+            hook_put(&mut m, &fw, 0x20, 0x5A);
+            let mut f = m.soc.flash.mem.clone();
+            for _ in 0..200 {
+                if common::stored_value(&f, 0x20).is_some() {
+                    break;
+                }
+                m.usb_frames(10);
+                f = m.soc.flash.mem.clone();
+            }
+            assert_eq!(common::stored_value(&f, 0x20), Some(vec![0x5A; 16]));
+            assert!(common::stored_value(&f, sidou_sys::SETTINGS_KEY).is_some());
+        }
+    }
+}

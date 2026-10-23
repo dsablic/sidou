@@ -205,8 +205,10 @@ files and collections; maintenance runs it first. After a cut it is at most
 the copy forward, one sector's evacuation (a few records) and two erases
 (the cut sector's, and a collection's killed victim: maintenance erases a
 killed victim before anything else, and `store_collect` waits for that
-erase); hook errors can add one evacuation each. The device fills its pool
-at boot, before the audio starts, which absorbs the wait.
+erase); hook errors can add one evacuation each. The device starts on it at
+boot, before the audio starts, for at most 100 ms of flash work after the
+mount, and goes on in the main loop (an operation a pass, held while quiet),
+with USB and the watchdog served between operations.
 
 **A collection's victims** are killed, then erased before any other
 maintenance (so a cut never finds more than one waiting).
@@ -268,6 +270,13 @@ What is left:
 - **Foreign:** neither: another firmware's data, such as Felucca's projects.
   It is never formatted silently: the store writes nothing until the user
   confirms a format.
+- **SIDOU's, with another firmware's data in some sectors** (Felucca run
+  after SIDOU, saving over part of SIDOU's store): the region is SIDOU's, and
+  those sectors read dirty and ambiguous, as any sector without a valid
+  header: recovery erases them before the session's first write (in the
+  background, above). They stay ambiguous rather than plain dirty because
+  nothing tells another firmware's bytes from an erase of SIDOU's own sector
+  cut short, whose faint bits could read its old records back later.
 
 ## The erase-ahead pool
 
