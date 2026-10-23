@@ -124,7 +124,8 @@ static int operate(uint32_t off, const void* p, uint32_t n, int erase) {
     } else if (!erase && store_fm1_window) {
         cli();
         uint32_t since = fm1_ticks() - audio_block_end;
-        if (since > STORE_WINDOW_LEAD_US * FM1_TICKS_PER_US || (ALNK_CON2 & ALNK_HALF)) {
+        if (since > (STORE_WINDOW_LEAD_US - STORE_WINDOW_ENTRY_US) * FM1_TICKS_PER_US ||
+            (ALNK_CON2 & ALNK_HALF)) {
             sti();
             store_fm1_counts.window_later++;
             return STORE_LATER;

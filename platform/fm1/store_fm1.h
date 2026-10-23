@@ -35,6 +35,10 @@
 /* ---- the budgets (M2a plan) ---- */
 #define STORE_WINDOW_US 1000u      /* a write window masks interrupts at most this long */
 #define STORE_WINDOW_LEAD_US 250u  /* and starts at most this long after a block's end */
+/* The window's test takes the program's own way in (the test, the call, the driver's entry:
+ * well under a microsecond) off the lead, so the program starts within it, not just the test:
+ * a test passed at the lead's last tick started a program 0.004 us past it (emu-gate store.rs). */
+#define STORE_WINDOW_ENTRY_US 1u
 #define STORE_HOLD_US 35000u       /* a held operation masks interrupts at most this long */
 #define STORE_HOLD_GAP_MS 10u      /* between held operations: TIMER5 drains the TRS ring */
 #define STORE_FORCE_GAP_MS 100u    /* between a forced save's held erases (store_fm1_force) */
