@@ -14,25 +14,25 @@ FM-1 from the demo's [Songs page](https://dsablic.github.io/sidou/songs.html), o
 
 ## Watch
 
-Each plays in the browser; they are attached to the [v0.3.0 release](https://github.com/dsablic/sidou/releases/tag/v0.3.0).
+All of them play on the [videos page](https://dsablic.github.io/sidou/videos.html); the MP4s are attached to the [v0.3.0 release](https://github.com/dsablic/sidou/releases/tag/v0.3.0).
 
-- [SIDOU in 77 seconds](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-sidou-intro.mp4)
-- [What's new in 0.3.0](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-whats-new.mp4)
-- [First sound](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-first-sound.mp4)
-- [Shape a sound](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-shape-a-sound.mp4)
-- [Chord arpeggios](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-chord-arpeggio.mp4)
-- [Add an effect](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-add-an-effect.mp4)
-- [The chip's character](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-chip-character.mp4)
-- [CHIP SPREAD](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-chip-spread.mp4)
-- [A beat in STEP](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-step-a-beat.mp4)
-- [A bassline in TRACKER](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-track-bass.mp4)
-- [A lead in TRACKER](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-track-lead.mp4)
-- [Record over a loop](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-rec-over-loop.mp4)
-- [Mute and solo](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-mute-and-solo.mp4)
-- [Play over a song](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-play-over-a-song.mp4)
-- [Remix a song](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-remix-a-song.mp4)
-- [Save and load a song](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-save-and-load.mp4)
-- [MIDI learn](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-midi-learn.mp4)
+- [SIDOU in 77 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro)
+- [What's new in 0.3.0](https://dsablic.github.io/sidou/videos.html#whats-new)
+- [First sound](https://dsablic.github.io/sidou/videos.html#first-sound)
+- [Shape a sound](https://dsablic.github.io/sidou/videos.html#shape-a-sound)
+- [Chord arpeggios](https://dsablic.github.io/sidou/videos.html#chord-arpeggio)
+- [Add an effect](https://dsablic.github.io/sidou/videos.html#add-an-effect)
+- [The chip's character](https://dsablic.github.io/sidou/videos.html#chip-character)
+- [CHIP SPREAD](https://dsablic.github.io/sidou/videos.html#chip-spread)
+- [A beat in STEP](https://dsablic.github.io/sidou/videos.html#step-a-beat)
+- [A bassline in TRACKER](https://dsablic.github.io/sidou/videos.html#track-bass)
+- [A lead in TRACKER](https://dsablic.github.io/sidou/videos.html#track-lead)
+- [Record over a loop](https://dsablic.github.io/sidou/videos.html#rec-over-loop)
+- [Mute and solo](https://dsablic.github.io/sidou/videos.html#mute-and-solo)
+- [Play over a song](https://dsablic.github.io/sidou/videos.html#play-over-a-song)
+- [Remix a song](https://dsablic.github.io/sidou/videos.html#remix-a-song)
+- [Save and load a song](https://dsablic.github.io/sidou/videos.html#save-and-load)
+- [MIDI learn](https://dsablic.github.io/sidou/videos.html#midi-learn)
 
 ## The videos
 

@@ -1,0 +1,128 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 SIDOU contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- SIDOU's videos, played in the page: the MP4s are the latest release's assets, copied into the
+     site by .github/workflows/pages.yml (GitHub serves release assets as downloads only), the posters
+     docs/media/videos/*.webp. Same palette as index.html. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SIDOU videos</title>
+<meta name="description" content="How-to videos for SIDOU, the C64 SID firmware for the M-VAVE FM-1, recorded from the firmware itself.">
+<link rel="icon" href="data:,">
+<style>
+  :root { --room: #0f0c22; --card: #161236; --rule: #241d55; --ink: #e8e6f4; --dim: #9a94c4; --accent: #70a4b2; --yellow: #b8c76f; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--room); color: var(--ink); font: 14px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 16px 16px 32px; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  header img { width: 229px; height: auto; image-rendering: pixelated; display: block; }
+  a { color: var(--accent); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+  article { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 12px; }
+  article:first-child, article:nth-child(2) { grid-column: 1 / -1; }
+  h2 { margin: 0 0 4px; font-size: 15px; color: var(--yellow); }
+  h2 span { color: var(--dim); font-weight: normal; font-size: 13px; }
+  p { margin: 0 0 8px; color: var(--dim); }
+  video { width: 100%; height: auto; border-radius: 6px; background: #000; display: block; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <a href="./"><img src="logo.png" alt="SIDOU"></a>
+    <nav><a href="./">Play it in the browser</a> · <a href="songs.html">Songs for your FM-1</a> · <a href="https://github.com/dsablic/sidou">Source</a></nav>
+  </header>
+  <div class="grid">
+    <article id="sidou-intro">
+      <h2>SIDOU in 77 seconds <span>77 s</span></h2>
+      <p>SIDOU in a minute: GoatTracker 2 songs written on the FM-1, STEP with locks, a song on one SID while you play the other, SPREAD putting the two chips left and right, the chip&#x27;s character, chord arpeggios, RED MOON RITE</p>
+      <video controls preload="none" playsinline poster="videos/sidou-intro.webp" src="videos/video-sidou-intro.mp4"></video>
+    </article>
+    <article id="whats-new">
+      <h2>What&#x27;s new in 0.3.0 <span>58 s</span></h2>
+      <p>The release&#x27;s highlights: a steady MIDI clock, REC over a loop, the tracker pages, STEP, character you can hear, SPREAD, chord arpeggios, the soft limiter, help on HOME, songs over SysEx</p>
+      <video controls preload="none" playsinline poster="videos/whats-new.webp" src="videos/video-whats-new.mp4"></video>
+    </article>
+    <article id="first-sound">
+      <h2>First sound <span>21 s</span></h2>
+      <p>Switch on and play: a key sounds at once, LIVE, three voices, OCT+</p>
+      <video controls preload="none" playsinline poster="videos/first-sound.webp" src="videos/video-first-sound.mp4"></video>
+    </article>
+    <article id="shape-a-sound">
+      <h2>Shape a sound <span>26 s</span></h2>
+      <p>K1 closes and opens the filter, K2 adds resonance, PRESETS picks another sound</p>
+      <video controls preload="none" playsinline poster="videos/shape-a-sound.webp" src="videos/video-shape-a-sound.mp4"></video>
+    </article>
+    <article id="chord-arpeggio">
+      <h2>Chord arpeggios <span>22 s</span></h2>
+      <p>ARP on LIVE: a held chord as one voice stepping through its notes, ARP + K1, K2 and K3 for rate, order and span</p>
+      <video controls preload="none" playsinline poster="videos/chord-arpeggio.webp" src="videos/video-chord-arpeggio.mp4"></video>
+    </article>
+    <article id="add-an-effect">
+      <h2>Add an effect <span>19 s</span></h2>
+      <p>SCL picks the FX slot, ENV its algorithm (DELAY, REVERB), EDIT + K1/K4 its amount and mix</p>
+      <video controls preload="none" playsinline poster="videos/add-an-effect.webp" src="videos/video-add-an-effect.mp4"></video>
+    </article>
+    <article id="chip-character">
+      <h2>The chip&#x27;s character <span>28 s</span></h2>
+      <p>CHIP: AGE, DAC, THUMP and BLEED, each heard on a riff</p>
+      <video controls preload="none" playsinline poster="videos/chip-character.webp" src="videos/video-chip-character.mp4"></video>
+    </article>
+    <article id="chip-spread">
+      <h2>CHIP SPREAD <span>28 s</span></h2>
+      <p>A song on chip A, the keys on chip B, SETTINGS, SPREAD to 100% and 50%: the two SIDs left and right</p>
+      <video controls preload="none" playsinline poster="videos/chip-spread.webp" src="videos/video-chip-spread.mp4"></video>
+    </article>
+    <article id="step-a-beat">
+      <h2>A beat in STEP <span>45 s</span></h2>
+      <p>A new song, a drum lane on STEP, kicks, snares and hats on four pages, PLAY, a cutoff lock</p>
+      <video controls preload="none" playsinline poster="videos/step-a-beat.webp" src="videos/video-step-a-beat.mp4"></video>
+    </article>
+    <article id="track-bass">
+      <h2>A bassline in TRACKER <span>32 s</span></h2>
+      <p>After the beat: TRACKER, REC with the song stopped, a bassline note by note (Am F C G)</p>
+      <video controls preload="none" playsinline poster="videos/track-bass.webp" src="videos/video-track-bass.mp4"></video>
+    </article>
+    <article id="track-lead">
+      <h2>A lead in TRACKER <span>30 s</span></h2>
+      <p>After the bassline: REC while it plays, a four-bar lead recorded in time</p>
+      <video controls preload="none" playsinline poster="videos/track-lead.webp" src="videos/video-track-lead.mp4"></video>
+    </article>
+    <article id="rec-over-loop">
+      <h2>Record over a loop <span>28 s</span></h2>
+      <p>TRACKER, PLAY, REC and play a melody over SIDOU LOOP in time</p>
+      <video controls preload="none" playsinline poster="videos/rec-over-loop.webp" src="videos/video-rec-over-loop.mp4"></video>
+    </article>
+    <article id="mute-and-solo">
+      <h2>Mute and solo <span>27 s</span></h2>
+      <p>PLAY the built-in loop, GLO + a key mutes or solos a voice</p>
+      <video controls preload="none" playsinline poster="videos/mute-and-solo.webp" src="videos/video-mute-and-solo.mp4"></video>
+    </article>
+    <article id="play-over-a-song">
+      <h2>Play over a song <span>46 s</span></h2>
+      <p>Load NEON HIGHWAY, play it on chip A, jam on chip B, K1, DELAY, a mute, REC the jam</p>
+      <video controls preload="none" playsinline poster="videos/play-over-a-song.webp" src="videos/video-play-over-a-song.mp4"></video>
+    </article>
+    <article id="remix-a-song">
+      <h2>Remix a song <span>41 s</span></h2>
+      <p>Load PAPER LANTERNS, change it in STEP, a new instrument, a mute, SAVE AS PAPER LANTERNS 2</p>
+      <video controls preload="none" playsinline poster="videos/remix-a-song.webp" src="videos/video-remix-a-song.mp4"></video>
+    </article>
+    <article id="save-and-load">
+      <h2>Save and load a song <span>35 s</span></h2>
+      <p>SAVE AS with a name (BEAT 1), NEW, then LOAD it back</p>
+      <video controls preload="none" playsinline poster="videos/save-and-load.webp" src="videos/video-save-and-load.mp4"></video>
+    </article>
+    <article id="midi-learn">
+      <h2>MIDI learn <span>18 s</span></h2>
+      <p>SAVE + K1 opens MIDI LEARN; a controller&#x27;s CC 21 then turns the cutoff</p>
+      <video controls preload="none" playsinline poster="videos/midi-learn.webp" src="videos/video-midi-learn.mp4"></video>
+    </article>
+  </div>
+  <p style="margin-top:16px">Recorded from the firmware itself in fm1-emu, with its own sound. Also attached to the
+    <a href="https://github.com/dsablic/sidou/releases/latest">latest release</a>.</p>
+</main>
+</body>
+</html>

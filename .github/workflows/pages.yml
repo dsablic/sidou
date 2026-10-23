@@ -13,7 +13,7 @@ on:
     branches: [main]
     tags: ['v*']
     paths: ['app/**', 'core/**', 'platform/**', 'assets/**', 'web/**', 'README.md', 'CMakeLists.txt',
-            'tools/web-demo', 'host/crates/emu-gate/Cargo.toml', '.github/workflows/pages.yml']
+            'tools/web-demo', 'docs/media/videos/**', 'host/crates/emu-gate/Cargo.toml', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -52,6 +52,12 @@ jobs:
           node-version: 22
       - name: Build the site and smoke-test it (tools/web-demo --check)
         run: tools/web-demo --check
+      # The videos: GitHub serves release assets only as downloads, so the latest release's MP4s are
+      # copied into the site, where web/videos.html plays them.
+      - name: The videos from the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download --repo "${{ github.repository }}" --pattern 'video-*.mp4' --dir build/web/videos --clobber || echo "no videos in the latest release"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

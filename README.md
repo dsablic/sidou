@@ -18,9 +18,9 @@ and you can play the chip live from the keys or over MIDI.
 screenshots the tests check.*
 
 
-[![SIDOU in 77 seconds](docs/media/videos/sidou-intro.webp)](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-sidou-intro.mp4)
+[![SIDOU in 77 seconds](docs/media/videos/sidou-intro.webp)](https://dsablic.github.io/sidou/videos.html#sidou-intro)
 
-**Watch:** [SIDOU in 77 seconds](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-sidou-intro.mp4) · [What's new in 0.3.0](https://github.com/dsablic/sidou/releases/download/v0.3.0/video-whats-new.mp4) · [all the how-to videos](docs/videos.md#watch)
+**Watch:** [SIDOU in 77 seconds](https://dsablic.github.io/sidou/videos.html#sidou-intro) · [What's new in 0.3.0](https://dsablic.github.io/sidou/videos.html#whats-new) · [all the how-to videos](https://dsablic.github.io/sidou/videos.html)
 ## What you can do
 
 - **Play the SID live.** Four presets (SAW LEAD, PWM BASS, SYNC LEAD, NOISE PERC) and DICE,
