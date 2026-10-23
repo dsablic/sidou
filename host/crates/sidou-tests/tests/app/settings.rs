@@ -599,6 +599,7 @@ fn schema_6_adds_spread_and_a_schema_5_record_loads_it_as_mono() {
     assert_eq!((v6[0], v6.len()), (6, SETTINGS_BYTES as usize));
     let mut s = Set::blank();
     unsafe { chip_spread_set(&mut *s.rig.live, 40) };
+    unsafe { midi_learn_bind(&mut *s.ml, 31, LIVE_PARAM_EXPERT + 3) };
     assert_eq!(
         unsafe { settings_apply(&mut *s.set, v5.as_ptr(), v5.len() as u32) },
         1
@@ -1244,7 +1245,7 @@ fn a_program_error_after_an_explicit_save_is_taken_says_failed_and_retries() {
 }
 
 /// RESET (SETTINGS' item): every setting and every preset's edits back to what a first boot has,
-/// the version and the last song kept, other store keys (a song, a USER profile) untouched, and
+/// the version and the last song and the MIDI learn bindings kept, other store keys (a song, a USER profile) untouched, and
 /// the factory state saved by an explicit save.
 #[test]
 fn reset_puts_every_setting_and_every_presets_edits_back_to_factory() {
@@ -1266,6 +1267,9 @@ fn reset_puts_every_setting_and_every_presets_edits_back_to_factory() {
     }
     s.rig.tick();
     s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    let learned = s.snapshot().5;
+    assert!(learned.iter().any(|&cc| cc != MIDI_MAP_NO_CC as u8));
+    let before_record = s.gather();
     let song = vec![0x5a; 40];
     let user = vec![0x33; 20];
     assert_eq!(s.st.put_now(0x4000, &song), STORE_OK);
@@ -1277,7 +1281,13 @@ fn reset_puts_every_setting_and_every_presets_edits_back_to_factory() {
     s.rig.tick();
     s.ticks(100);
     assert_eq!(s.result(), SETTINGS_SAVED);
-    assert_eq!(s.snapshot(), factory, "the settings are the factory's");
+    let mut want = factory.clone();
+    want.5 = learned;
+    assert_eq!(
+        s.snapshot(),
+        want,
+        "the settings are the factory's, the MIDI learn bindings kept"
+    );
     assert_eq!(*s.rows, 0);
     assert_eq!(s.rig.live.theme, 0);
     assert_eq!(s.rig.live.spread, 0);
@@ -1293,7 +1303,19 @@ fn reset_puts_every_setting_and_every_presets_edits_back_to_factory() {
     let mut record = s.gather();
     record[92..106].copy_from_slice(&factory_record[92..106]);
     record[108..124].copy_from_slice(&factory_record[108..124]);
-    assert_eq!(record, factory_record, "the record is a first boot's");
+    // The bindings (the parameters' and the experts') are the one thing a first boot's record lacks.
+    let (ccs, expert_ccs) = (
+        50..92,
+        125 + SID_EXPERT_COUNT as usize..125 + 2 * SID_EXPERT_COUNT as usize,
+    );
+    let mut first_boot = factory_record.clone();
+    for r in [ccs, expert_ccs] {
+        first_boot[r.clone()].copy_from_slice(&before_record[r]);
+    }
+    assert_eq!(
+        record, first_boot,
+        "the record is a first boot's, with the bindings"
+    );
     assert_eq!(
         &s.gather()[108..116],
         b"MY SONG\0",
@@ -1312,7 +1334,6 @@ fn reset_puts_every_setting_and_every_presets_edits_back_to_factory() {
     assert!(s.load());
     s.rig.tick();
     assert_eq!(s.snapshot(), want);
-    assert_eq!(s.snapshot(), factory);
 }
 
 /// Asking is not doing: without settings_reset (HOME, a move, a counter-clockwise turn: the

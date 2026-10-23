@@ -304,11 +304,9 @@ void settings_reset(settings* s) {
             rec[n++] = (uint8_t)(factory[p] >> 8);
         }
     }
-    memset(rec + n, MIDI_MAP_NO_CC, SETTINGS_PARAMS_V1); /* MIDI learn: no bindings */
     rec[SETTINGS_V1_BYTES] = 0u;                         /* TRACKER ROWS: BAR */
     rec[SETTINGS_V2_BYTES] = 0u;                         /* THEME: HIGH CONTRAST */
     memset(rec + SETTINGS_V4_BYTES + 1u, SID_EXPERT_DEFAULT, SID_EXPERT_COUNT);
-    memset(rec + SETTINGS_V4_BYTES + 1u + SID_EXPERT_COUNT, MIDI_MAP_NO_CC, SID_EXPERT_COUNT);
     rec[len - 1u] = 0u; /* SPREAD: mono */
     for (uint32_t i = 0; i < LIVE_PRESET_SLOTS; i++) {
         s->l->edits[i].valid = 0; /* every preset's edits: the factory's */

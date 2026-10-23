@@ -120,7 +120,7 @@ void settings_tick(settings* s, uint32_t now_ms);
 /* SAVE: the settings saved now, skipping the debounce; settings_take_result tells when. */
 void settings_save_now(settings* s, uint32_t now_ms);
 /* RESET: every preset's edits and every setting in the record back to the factory's (as a
- * first boot has them); the version and the last song stay, and so do the songs and the USER
+ * first boot has them); the version, the last song and the MIDI learn bindings stay, and so do the songs and the USER
  * chip profiles (their own store keys). Persists by the debounce or settings_save_now. */
 void settings_reset(settings* s);
 /* The store lost the record (a format): it is written again once the store takes it. */

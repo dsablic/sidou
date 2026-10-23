@@ -455,7 +455,7 @@ means something else there:
 | TRACKER, REC on and the song stopped | **TRACK EDIT** | the keys write notes, ARP a key off, LFO clears, K1..K4 the row's instrument, command and data, PRESETS the instrument, EDIT + PRESETS inserts or deletes a row |
 | TRACKER, REC on and the song playing | **TRACK REC** | the keys record, K1 and K2 record locks, QUANT the quantise; EDIT + K edits the cursor's row |
 | SETTINGS on STORE | **STORE** | ALG arms a foreign store's format, SAVE formats (WIPES ALL DATA) |
-| SETTINGS on RESET | **RESET** | ALG arms the reset, SAVE puts every preset and setting back to factory (KEEPS SONGS) |
+| SETTINGS on RESET | **RESET** | ALG arms the reset, SAVE puts every preset and setting back to factory (KEEPS SONGS, PROFILES, MIDI MAP) |
 
 **A card of more than eight lines has two pages**: its title bar says **1/2** (or **2/2**) where
 it says HELP on a card of one page, and **SELECT** turns the page, either way; the page is drawn
@@ -935,9 +935,8 @@ is never automatic; ALGORITHM does not format a SIDOU store.
 SETTINGS' last item, **RESET**, puts everything that is not a song back to factory: every
 preset's edits (not only the playing one's: EDIT held + PRESETS does one), and every setting
 that is saved (KEYS, SOUNDS, TRACKER ROWS, CARDS, THEME, SPREAD, the playing preset, the chip
-model, profile and character, the EXPERT overrides, the effect slots, the envelope mode and
-the MIDI learn bindings). **Songs and the USER chip profiles stay**, and so does the last song
-that boots. Turn **ALGORITHM clockwise**: the item says **RESET?** and the popup **SAVE
+model, profile and character, the EXPERT overrides, the effect slots, and the envelope mode).
+**Songs, USER chip profiles and MIDI learn mappings stay**, and so does the last song that boots. Turn **ALGORITHM clockwise**: the item says **RESET?** and the popup **SAVE
 RESETS** under the name **RESET ALL?** (the question: reset all sounds and settings?). Then
 press **SAVE**, without leaving the item, to do it: the settings are saved at once and the
 toast says **RESET AND SAVED**. Further turns never confirm, and counter-clockwise, moving

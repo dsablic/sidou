@@ -44,7 +44,8 @@ static const char* const STORE_LINES[] = {"SELECT\0MOVE", "ALG\0ARM FORMAT", "SA
                                           "WIPES\0ALL DATA", "HOME\0BACK"};
 /* RESET asks first (ALG), then SAVE does it: every preset's edits and setting back to factory. */
 static const char* const RESET_LINES[] = {"SELECT\0MOVE", "ALG\0ARM RESET", "SAVE\0RESET",
-                                          "KEEPS\0SONGS", "HOME\0BACK"};
+                                          "KEEPS\0SONGS", "KEEPS\0PROFILES", "KEEPS\0MIDI MAP",
+                                          "HOME\0BACK"};
 /* The MIDI page has no actions, and its setup is RAM-only (not part of the saved settings). */
 static const char* const MIDI_LINES[] = {"SELECT\0MOVE",   "ALG\0CHANGE", "SETUP\0RAM ONLY",
                                          "HOME\0BACK",     "HOLD HOME\0HELP"};

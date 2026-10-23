@@ -11,7 +11,7 @@ All notable changes are documented here. The format follows
 ### Added
 - **SETTINGS → RESET:** one reset for everything that is not a song. ALGORITHM clockwise asks
   (RESET?), SAVE alone does it: every preset's edits and all the saved settings go back to
-  factory and are stored at once (toast RESET AND SAVED). Songs and USER chip profiles stay;
+  factory and are stored at once (toast RESET AND SAVED). Songs, USER chip profiles and MIDI learn mappings stay;
   HOME or moving away cancels with nothing written. Before, the only whole reset was a STORE
   format, which erased the songs too.
 
