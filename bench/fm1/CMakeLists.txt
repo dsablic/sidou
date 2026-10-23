@@ -29,5 +29,7 @@ foreach(chips 1 2)
 endforeach()
 # The song player's audio-interrupt block (one build: one chip, no render).
 sidou_bench(sid_bench_song bench_song_main.c 1 sidou_core)
+# SIDOU's 6502 as the firmware builds it (CPU6502_SMALL, -Os; M3 Task 2).
+sidou_bench(sid_bench_6502 bench_6502_main.c 1 sidou_core)
 # The pixel scene (one build: it has no chips).
 sidou_bench(sid_bench_scene bench_scene_main.c 1 sidou_workload_scene)

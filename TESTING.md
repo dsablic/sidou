@@ -16,7 +16,7 @@ lists the prerequisites.
 | App logic (live instrument, register ring, MIDI parser, ring and input, the CC/NRPN map, expression, MIDI out, screen font, cell grid, views and widgets, the store and its layout) | `cargo test --release -p sidou-tests --test app` | `crates/sidou-tests/tests/app/`; `SIDOU_FREQ_TABLE_UPDATE=1` regenerates `app/live_freq.c`, `SIDOU_FONT_UPDATE=1` regenerates `app/font.c` and `app/font.h` from `assets/font/sidou-8x8.txt`, `SIDOU_LOGO_UPDATE=1` `app/logo_bitmap.c` from `assets/logo/metal-chrome.png` and `cracktro-chrome.png` and `app/title_card_bitmap.c` from `assets/logo/title-*.png`, `SIDOU_MIDI_DOC_UPDATE=1` `docs/reference/midi.md` |
 | Song files (the `.sng` reader and writer, the trailer, the song model's edits) | `cargo test --release -p sidou-tests --test song`; the long fuzz and edit runs with `-- --ignored` | `crates/sidou-tests/tests/song.rs`, `src/song.rs` |
 | Song player reference (GoatTracker's packer and player in a host 6502, Dormann's 6502 test) | `cargo test --release -p gt2-ref`; the assembler cross-check with `--test assembler -- --ignored` (fetches GoatTracker 2.77 into `build/`); `cargo run --release -p gt2-ref --bin gt2-trace -- song.sng` prints a song's writes | `crates/gt2-ref/` |
-| SIDOU's 6502 (Tom Harte's tests, the committed subset; Dormann's; slicing, the count's wrap, the stops, the I/O hooks) | `cargo test --release -p sidou-tests --test cpu6502`; the full Harte set with `SIDOU_HARTE_DIR=<6502/v1 JSON dir> ... -- --ignored harte_full_set`; the subset's converter `cargo run --release -p sidou-tests --bin harte-subset` | `crates/sidou-tests/tests/cpu6502.rs`, `src/harte.rs`, [the section below](#sidous-6502-m3) |
+| SIDOU's 6502 (Tom Harte's tests, the committed subset; Dormann's; slicing, the count's wrap, the stops, the I/O hooks; on fm1-emu: Dormann, the cost per cycle: `SIDOU_FM1_BUILD=$PWD/../build/fm1 cargo test --release -p emu-gate --test cpu6502_budget -- --nocapture`) | `cargo test --release -p sidou-tests --test cpu6502`; the full Harte set with `SIDOU_HARTE_DIR=<6502/v1 JSON dir> ... -- --ignored harte_full_set`; the subset's converter `cargo run --release -p sidou-tests --bin harte-subset` | `crates/sidou-tests/tests/cpu6502.rs`, `src/harte.rs`, [the section below](#sidous-6502-m3) |
 | Song player against GoatTracker's (every frame's SID writes equal) | `cargo test --release -p sidou-tests --test gt2_match`; the long runs (every example for 30,000 frames, 5,000 generated songs) with `-- --ignored` | `crates/sidou-tests/tests/gt2_match.rs`, `crates/gt2-ref/src/gen.rs`, `src/player.rs` |
 | Golden renders | `cargo test --release -p sidou-tests --test golden` | `crates/sidou-tests/tests/golden.rs`, `tests/golden/hashes.txt` |
 | reSIDfp reference | `cargo test --release -p sidou-tests --test reference` | `crates/sidou-tests/tests/reference.rs` |
@@ -450,6 +450,25 @@ goes through the hooks with the cycle stamp the device gives an I/O access.
   KERNAL's interrupt exits (`$EA31`, `$EA81`, `$FEBC`) end a call only when `stops` is set.
 - **The I/O page:** the device's build hooks `$D000-$DFFF` only while `io` is set and `$01`
   maps I/O in, with the stamps above.
+
+**On fm1-emu** (Task 2), `crates/emu-gate/tests/cpu6502_budget.rs` runs the device build
+(`CPU6502_SMALL`, `-Os`) as pi32v2 code in the bench image `sid_bench_6502`
+(`bench/fm1/bench_6502_main.c`; its modes and result words are in the file's header):
+- **Dormann's functional test** reaches its success trap `$3469` (96,241,955 cycles). This is
+  the decoder check: fm1-emu stops on an encoding it cannot decode, so a finished run means
+  the compiler's dispatch and everything else in the core decodes at the pinned emulator.
+- **A 10 s workload** from three GoatTracker examples (the three costliest per cycle of the 14;
+  `every_example_song`, `--ignored`, measures all) packed by `gt2-ref`'s `pack` with its default
+  options: init, then a play call every PAL frame (19,656 cycles, 501 of them), `$01` at `$35`,
+  a write hook summing the writes. The writes' count and sum must equal the host 6502's trace,
+  no play may run past its frame, and the instructions per 6502 cycle must stay within
+  `CPU6502_INSTR_PER_CYCLE` (`common/mod.rs`: the worst song's average plus 5 %).
+- **Each opcode alone**: a run that executes nothing (the call's own cost) and a run that
+  executes one instruction, per opcode; printed by cycle count, and for `LDA`, `STA` and `INC`
+  of `$D400` through the hooks.
+Instructions are not device cycles: flash day measures the difference (`docs/hardware.md`,
+"Open checks"). `flash_budget.rs` also holds M3's stage (`("M3", 534,000)`, `M3_START` plus
+M3's 28,000), which `IMAGE_CEILING` takes over when Task 9 merges device code.
 
 ### Song player register match
 
@@ -934,7 +953,10 @@ ceiling of `sidou_app.bin` after each plan, M2a 372,000 bytes up to M2f
 (`IMAGE_CEILING`): the latest stage whose code is merged (the plans land in
 parallel). A raise is a change to the schedule's table, so it reads
 as a change to the plan; a test checks the table only rises and leaves M3 at
-least 69,564 bytes of the 581,564-byte slot. It prints the image's size and
+least 69,564 bytes of the 581,564-byte slot. M3's stage (`M3_START` 506,000 plus M3's 28,000,
+534,000) follows the schedule; it is not yet the image's ceiling (`IMAGE_CEILING` is
+`M3_START` until Task 9 merges device code), and a test keeps at least 40,000 bytes of the
+slot after it for M4 and M5. It prints the image's size and
 what is left; it skips without `SIDOU_FM1_BUILD`.
 
 ### The store on the device

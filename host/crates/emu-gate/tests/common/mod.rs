@@ -815,6 +815,11 @@ pub const TWO_CHIPS_PLUS_EFFECTS: f64 = 2300.0;
 /// it): its call and SONG_EDITS_PER_BLOCK of the costliest edit command, with the block's
 /// command handling (M2c Task 6; the plan's budget, docs/plans/2026-10-15-m2c-song-engine.md).
 pub const PLAYER_WORST_BLOCK: f64 = 60.0;
+/// SIDOU's 6502 (core/cpu6502, CPU6502_SMALL at -Os) on the device, in pi32v2 instructions
+/// per 6502 cycle on a GoatTracker workload (cpu6502_budget.rs fails above it): the worst of
+/// three example songs' 10 s runs, 8.878 (wavecmdtest; dojo 8.557, funktest 8.460), plus 5 %,
+/// rounded up. The study's prototype measured 10.1 on average at -Os (decision record 0008).
+pub const CPU6502_INSTR_PER_CYCLE: f64 = 9.33;
 /// The effect slots' worst switching block, instructions a sample (slots_budget.rs measures
 /// 964, M1c Task 3): what the audio target holds besides the chips, the tap and the ISR when
 /// a preset change switches the slots.
