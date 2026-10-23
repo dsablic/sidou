@@ -205,29 +205,16 @@ their own `Copyright (C)` lines, which REUSE accepts (the vendor-verbatim rule).
 - **Open, small:** the waveform is kept, not chosen in the helper (K1 on the table's first row
   changes it); no audition of the draft before SAVE; at most 8 steps.
 
-## Generate the active profile's combined-waveform rows into POOL (M2/M3 fallback)
+## ~~Generate the active profile's combined-waveform rows into POOL (M2/M3 fallback)~~
 
-- **Where:** `core/sid/gen/pulldown.h` (`SID_PD`),
-  `sid_osc_set_profile` (`core/sid/sid_osc.h`), `chips` in POOL
-  (`platform/fm1/audio.c`), and `sidou-tablegen`, which samples the tables
-  from reSIDfp.
-- **Problem:** the combined-waveform tables are flash data. The firmware holds
-  the 6581's three (its chip profiles play WEAK, AVERAGE and STRONG) and the
-  8580's AVERAGE: 122,880 bytes as rows, 39,256 since M2 shares their
-  16-entry blocks (decision record 0003, Costs). If M3's 6502 needs the
-  flash, they can go. The audio interrupt also reads them from
-  flash, a row lookup per combined-waveform sample, whose cost is M1b's open
-  hardware check ([hardware.md](hardware.md), "Combined waveforms from
-  flash").
-- **Action:** if the flash runs short, or the hardware shows the ISR's
-  flash reads cost, generate the active profile's rows into a POOL buffer
-  instead (at a profile change, in the main loop, before the spare chip
-  swaps in): 30,720 bytes of RAM per model in use, from POOL's ~115 KB
-  free (M1c Task 3: 228,212 of 344,064 bytes used). That needs the rows'
-  generator in C (reSIDfp's `WaveformCalculator`, its per-profile
-  parameters as data), and it takes the ISR's reads out of flash. Keep the
-  output exact: OSC3 against reSIDfp at each profile
-  (`tests/profiles.rs`) and the golden hashes.
+- **Closed (v0.4.0), not done:** POOL lacks the room. The rows of one profile are 30,720 bytes
+  per model in use, and since M2's song region (64 KiB) and chip B POOL has only about 9 KB
+  free (12,160 before the noise tables moved there; [flash and RAMTEXT
+  space](plans/2026-10-24-flash-space.md)), with the RAM region at about 12 KB, each against a
+  5,120-byte floor; the item assumed POOL's ~115 KB free of M1c. The flash side is solved
+  without it: the tables are 52,407 bytes since their blocks overlap and the rows that are
+  alike are stored once. Whether the interrupt's reads from flash cost anything stays
+  M1b's hardware check ([hardware.md](hardware.md), "Combined waveforms from flash").
 
 ## The GitHub avatar and social preview are set by hand
 
