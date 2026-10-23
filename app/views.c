@@ -90,6 +90,13 @@ static void join(char* buf, uint32_t cap, const char* a, const char* b) {
     append(buf, cap, b);
 }
 
+/* A profile's model and its word into buf (SCREEN_POPUP_TEXT): "6581 CLASSIC", "8580 CLEAN". */
+__attribute__((noinline, unused)) static void profile_label(char* buf, uint32_t id) {
+    const sid_chip_profile* p = sid_chip_profile_get(id);
+    join(buf, SCREEN_POPUP_TEXT, p && p->model == SID_MODEL_8580 ? "8580 " : "6581 ", "");
+    append(buf, SCREEN_POPUP_TEXT, sid_chip_profile_word(id));
+}
+
 /* "+n" / "-n" for an octave. */
 static void octave_text(char* buf, int32_t octave) {
     buf[0] = octave < 0 ? '-' : '+';
@@ -269,16 +276,21 @@ static void status_compose(screen* s, void* state, grid* g) {
          * (app/keys_route.h): the keys' setup as asked for, the other's as it has it. */
         for (uint32_t x = 0; x < 2u; x++, top++) {
             uint32_t id = x == l->keys_chip ? l->profile_req : l->other_profile;
-            const sid_chip_profile* cp = sid_chip_profile_get(id);
+            char name[SCREEN_POPUP_TEXT] = "--"; /* not made yet */
+            if (sid_chip_profile_get(id)) {
+                profile_label(name, id);
+            }
             put(g, lbl, top, 2, x ? "CHIP B" : "CHIP A");
-            put(g, a, top, 9, cp ? cp->name : "--"); /* not made yet */
+            put(g, a, top, 9, name);
             if (x == l->keys_chip) {
-                put(g, THEME_ATTR(th, hot), top, 20, "KEYS");
+                put(g, THEME_ATTR(th, hot), top, 22, "KEYS");
             }
         }
     } else {
+        char name[SCREEN_POPUP_TEXT];
+        profile_label(name, l->profile_req);
         put(g, lbl, 5, 2, "CHIP");
-        put(g, a, 5, 9, l->model_req == SID_MODEL_8580 ? "8580" : "6581");
+        put(g, a, 5, 9, name);
         top = 6;
     }
     put(g, lbl, top, 2, "PRESET");
@@ -2003,6 +2015,9 @@ __attribute__((noinline, unused)) static void home_go(views* v) {
     if (from == &views_song_menu_view && song_menu_back(v)) {
         return; /* back a page of SONG's */
     }
+    if (from == &song_pages_table_view && song_pages_arp_close(&v->pages)) {
+        return; /* out of the ARP helper, back to the table */
+    }
     if (screen_pop(&v->s, SCREEN_WIPE_UP) != 0) {
         screen_push(&v->s, &views_menu, v, SCREEN_WIPE_DOWN);
     } else if (from == &views_menu && screen_top(&v->s) == &live_view_view) {
@@ -2073,7 +2088,8 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
     if (top == &song_pages_instr_view) {
         return HELP_CARD_INSTR;
     }
-    return top == &song_pages_table_view ? HELP_CARD_TABLE : HELP_CARD_STATUS;
+    return top == &song_pages_table_view ? (v->pages.arp ? HELP_CARD_ARP : HELP_CARD_TABLE)
+                                         : HELP_CARD_STATUS;
 }
 
 /* ---- the first-run tour: three toasts after the full boot an install plays ---- */
@@ -2280,12 +2296,6 @@ static int param_text(const views* v, uint32_t param, char* name, char* value, u
     return 1;
 }
 
-/* The profile's name, as the CHIP view shows it. */
-static const char* profile_name(uint32_t id) {
-    const sid_chip_profile* p = sid_chip_profile_get(id);
-    return p ? p->name : "?";
-}
-
 /* The CHIP view's ALGORITHM: the profile on the chip (the song's on a song's chip A), the
  * algorithm on a slot. The tabs' switch shows nothing of its own. */
 static int chip_choice_text(const views* v, char* name, char* value, int edit) {
@@ -2323,10 +2333,11 @@ static int chip_choice_text(const views* v, char* name, char* value, int edit) {
     join(name, SCREEN_POPUP_TEXT, "PROFILE", "");
     uint32_t n = (uint32_t)chip_view_user(cv); /* a USER slot picked: its number, not its base */
     user[5] = (char)('0' + n);
-    join(value, SCREEN_POPUP_TEXT,
-         n ? user
-           : profile_name(chip_view_song_tab(cv) ? cv->kr->song_want.profile : l->profile_req),
-         "");
+    if (n) {
+        join(value, SCREEN_POPUP_TEXT, user, "");
+    } else { /* the model and the profile's word: "6581 CLASSIC" */
+        profile_label(value, chip_view_song_tab(cv) ? cv->kr->song_want.profile : l->profile_req);
+    }
     return 1;
 }
 
@@ -2470,6 +2481,10 @@ static void save(views* v) {
     }
     if (shows(v) == &views_song_menu_view) {
         song_menu_ok(v); /* the page's OK: the highlighted item, SAVE AS's name */
+        return;
+    }
+    if (shows(v) == &song_pages_table_view && v->pages.arp) {
+        song_pages_arp_save(&v->pages, &v->s); /* the ARP helper's rows, not the song */
         return;
     }
     if (song_view_is(shows(v))) {

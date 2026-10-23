@@ -198,14 +198,12 @@ their own `Copyright (C)` lines, which REUSE accepts (the vendor-verbatim rule).
   decide: full RSID support, a common subset (CIA-timed tunes without cycle-exact NMI
   digis), or keeping the polite rejection.
 
-## A friendlier ARP editor in TRACKER (M2d)
+## ~~A friendlier ARP editor in TRACKER (M2d)~~
 
-- **Where:** M2d's TRACKER view (`docs/plans/2026-10-15-m2d-step-tracker.md`).
-- **Problem:** GoatTracker's wavetable already does arpeggios (relative note steps with a
-  loop), but entering one by hand as raw wavetable rows is fiddly.
-- **Action:** an ARP helper that writes the wavetable rows from a list of semitone offsets
-  with a speed and a loop point, and shows an existing arpeggio in that form. No new
-  engine is needed, and the files stay plain GT2.
+- **Done:** TABLE's ARP helper on the WAVE table writes the wavetable rows from semitone offsets, a
+  speed and a loop step (plain GT2) and reads such rows back ([controls](reference/controls.md#arp-helper)).
+- **Open, small:** the waveform is kept, not chosen in the helper (K1 on the table's first row
+  changes it); no audition of the draft before SAVE; at most 8 steps.
 
 ## Generate the active profile's combined-waveform rows into POOL (M2/M3 fallback)
 
@@ -506,8 +504,9 @@ working.
 
 - ~~**STEP's pads 10-16** show only their last digit at 2x~~: numbered by beat now (1 2 3 4
   four times; the user, 2026-10-23).
-- **Profile words** (BRIGHT, DARK, CLASSIC, CLEAN, GRITTY) show on CHIP and the LIVE band only,
-  1x beside LIVE's 2x revision name; popups and STATUS still show "6581 R4AR".
+- ~~**Profile words** (BRIGHT, DARK, CLASSIC, CLEAN, GRITTY)~~: show on CHIP and the LIVE band
+  (1x beside LIVE's 2x revision name), and now on STATUS and the PROFILE popup with the model
+  ("6581 CLASSIC"; the popup at 2x).
 - **Still 1x for lack of room:** TABLE's "WAVE 21 REL 00" line, STEP's ruler digits and lane line.
 
 ## SysEx over USB while a chord sounds (the user's call)

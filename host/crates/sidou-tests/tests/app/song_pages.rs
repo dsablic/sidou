@@ -1333,3 +1333,193 @@ fn passing_through_order_keeps_trackers_row() {
     assert_eq!(h.ui.top(), "TRACKER");
     assert_eq!(h.ui.v.song.row, 17, "and TRACKER has it");
 }
+
+// ---- TABLE's ARP helper ----
+
+impl Pages {
+    fn press(&mut self, id: u32) {
+        self.input(SCREEN_PRESS, id, 0, 1 << id);
+    }
+
+    /// The helper's rows written: every acknowledged cell, until the chain ends.
+    fn finish_arp(&mut self) {
+        for _ in 0..64 {
+            self.ack();
+            unsafe { song_pages_poll(&mut *self.p) };
+            if self.p.pending == 0 && self.p.arp_next >= self.p.arp_end {
+                return;
+            }
+        }
+        panic!("the ARP rows were not written");
+    }
+
+    fn wave_rows(&self, from: usize, n: usize) -> Vec<(u8, u8)> {
+        (from..from + n)
+            .map(|r| (self.model.raw().ltable[0][r], self.model.raw().rtable[0][r]))
+            .collect()
+    }
+
+    fn save_arp(&mut self) {
+        unsafe { song_pages_arp_save(&mut *self.p, &mut self.ui.v.s) };
+    }
+}
+
+const K3: u32 = PANEL_ENC_K1 + 2;
+const K4: u32 = PANEL_ENC_K1 + 3;
+
+#[test]
+fn the_arp_helper_builds_an_arpeggio_and_writes_plain_wavetable_rows() {
+    let mut h = Pages::new(unsafe { &song_pages_table_view });
+    assert_eq!(h.p.arp, 0);
+    h.press(PANEL_BTN_ARP);
+    assert_eq!(h.p.arp, 1, "a blank row opens a new arpeggio");
+    let d = h.p.arp_draft;
+    assert_eq!((d.steps, d.speed, d.loop_, d.wave), (4, 2, 1, 0x41));
+    assert_eq!(&d.off[..4], &[0, 4, 7, 12]);
+    // ALGORITHM: the steps (a new one copies the last); SELECT: the step; K1 an octave, K2 a
+    // semitone; K3 the speed; K4 the loop step.
+    h.turn(PANEL_ENC_ALGORITHM, 1);
+    assert_eq!(h.p.arp_draft.steps, 5);
+    assert_eq!(h.p.arp_draft.off[4], 12);
+    h.turn(PANEL_ENC_SELECT, 1);
+    h.turn(PANEL_ENC_K2, 1);
+    assert_eq!(
+        h.popup(PANEL_ENC_K2, false),
+        Some(("OFFSET".into(), "+5".into(), 69, 127))
+    );
+    h.turn(PANEL_ENC_K1, -1);
+    assert_eq!(
+        h.popup(PANEL_ENC_K1, false),
+        Some(("OFFSET".into(), "-7".into(), 57, 127))
+    );
+    h.turn(K3, 1);
+    assert_eq!(
+        h.popup(K3, false),
+        Some(("SPEED".into(), "3".into(), 2, 15))
+    );
+    h.turn(K4, 1);
+    assert_eq!(h.popup(K4, false), Some(("LOOP".into(), "2".into(), 2, 5)));
+    assert_eq!(
+        h.popup(PANEL_ENC_ALGORITHM, false),
+        Some(("STEPS".into(), "5".into(), 4, 7))
+    );
+    h.turn(K4, -5);
+    assert_eq!(
+        h.popup(K4, false),
+        Some(("LOOP".into(), "HOLD".into(), 0, 5))
+    );
+    h.turn(K4, 2);
+    // Nothing is written until SAVE, and then plain rows from row 01.
+    assert_eq!(h.wave_rows(0, 7), vec![(0, 0); 7]);
+    h.settle();
+    h.save_arp();
+    assert_eq!(h.ui.toast().as_deref(), Some("ARP SAVED"));
+    assert_eq!(h.p.arp, 0, "SAVE closes the helper");
+    h.finish_arp();
+    let want = [(0x41, 0), (2, 0x79), (2, 7), (2, 12), (2, 12), (0xff, 2)];
+    assert_eq!(h.wave_rows(0, 6), want);
+    assert_eq!(h.wave_rows(6, 1), [(0, 0)]);
+    // Each differing byte is its own acknowledged edit (blank bytes are not written).
+    assert_eq!(h.q.submitted, 11);
+}
+
+#[test]
+fn the_arp_helper_reads_an_arpeggio_back_and_says_when_rows_are_not_one() {
+    let mut h = Pages::new(unsafe { &song_pages_table_view });
+    h.press(PANEL_BTN_ARP);
+    h.turn(K3, 1);
+    h.turn(K4, 1);
+    h.save_arp();
+    h.finish_arp();
+    let written = h.wave_rows(0, 6);
+    // The same rows open as the same arpeggio.
+    h.press(PANEL_BTN_ARP);
+    assert_eq!(h.p.arp, 1);
+    let d = h.p.arp_draft;
+    assert_eq!((d.steps, d.speed, d.loop_), (4, 3, 2));
+    assert_eq!(&d.off[..4], &[0, 4, 7, 12]);
+    assert_eq!(h.p.arp_len, 5);
+    // Shortening it blanks the rows it no longer needs; HOME's close writes nothing.
+    h.turn(PANEL_ENC_ALGORITHM, -2);
+    assert_eq!(unsafe { song_pages_arp_close(&mut *h.p) }, 1);
+    assert_eq!(h.wave_rows(0, 6), written);
+    h.press(PANEL_BTN_ARP);
+    h.turn(PANEL_ENC_ALGORITHM, -2);
+    h.save_arp();
+    h.finish_arp();
+    assert_eq!(
+        h.wave_rows(0, 6),
+        [(0x41, 0), (2, 4), (0xff, 2), (0, 0), (0, 0), (0, 0)]
+    );
+    // A row that is not an arpeggio (a delay first, then not one) is told so, and nothing opens.
+    h.turn(PANEL_ENC_SELECT, 1);
+    h.press(PANEL_BTN_ARP);
+    assert_eq!(h.p.arp, 0);
+    assert_eq!(h.ui.toast().as_deref(), Some("NOT AN ARP"));
+    // Another table has none.
+    h.turn(PANEL_ENC_ALGORITHM, 1);
+    h.press(PANEL_BTN_ARP);
+    assert_eq!(h.p.arp, 0);
+    assert_eq!(h.ui.toast().as_deref(), Some("WAVE TABLE ONLY"));
+}
+
+#[test]
+fn the_arp_helper_never_writes_over_rows_that_are_not_blank_or_its_own() {
+    let mut h = Pages::new(unsafe { &song_pages_table_view });
+    unsafe { (*h.model.ptr_mut()).ltable[0][4] = 0x41 }; // another program's row
+    h.press(PANEL_BTN_ARP); // a new arpeggio needs 5 rows, from row 1
+    h.turn(K4, -1);
+    h.turn(PANEL_ENC_ALGORITHM, 2);
+    h.save_arp();
+    assert_eq!(h.ui.toast().as_deref(), Some("ROWS IN USE"));
+    assert_eq!(h.p.arp, 1, "the helper stays for another try");
+    assert_eq!(h.q.submitted, 0);
+    assert_eq!(h.wave_rows(0, 6)[4], (0x41, 0));
+    // Fewer steps fit before it.
+    h.turn(PANEL_ENC_ALGORITHM, -3);
+    h.save_arp();
+    h.finish_arp();
+    assert_eq!(h.wave_rows(0, 4), [(0x41, 0), (1, 4), (1, 7), (0xff, 0)]);
+    assert_eq!(h.wave_rows(4, 1), [(0x41, 0)]);
+}
+
+#[test]
+fn the_arp_helper_waits_for_the_edit_guard_and_keeps_its_draft_when_refused() {
+    let mut h = Pages::new(unsafe { &song_pages_table_view });
+    h.press(PANEL_BTN_ARP);
+    h.q.guard = SONG_EDIT_GUARD_SAVING as i32;
+    h.save_arp();
+    assert_eq!(h.ui.toast().as_deref(), Some("SAVING"));
+    assert_eq!(h.p.arp, 1);
+    assert_eq!(h.wave_rows(0, 6), vec![(0, 0); 6]);
+    h.q.guard = SONG_EDIT_GUARD_OK as i32;
+    h.save_arp();
+    h.finish_arp();
+    assert_eq!(h.wave_rows(0, 1), [(0x41, 0)]);
+}
+
+#[test]
+fn the_arp_helper_shows_its_page_and_leaves_with_the_table() {
+    let mut h = Pages::new(unsafe { &song_pages_table_view });
+    h.press(PANEL_BTN_ARP);
+    h.turn(PANEL_ENC_SELECT, 2);
+    h.settle();
+    let ui = &h.ui;
+    assert_eq!(ui.big(0, 0, 2, 3), "ARP");
+    assert_eq!(ui.big(3, 0, 2, 5), "STEPS");
+    assert_eq!(ui.big(3, 12, 2, 1), "4");
+    assert_eq!(ui.big(5, 0, 2, 5), "SPEED");
+    assert_eq!(ui.big(5, 12, 2, 1), "2");
+    assert_eq!(ui.big(7, 0, 2, 4), "LOOP");
+    assert_eq!(ui.big(7, 12, 2, 1), "1");
+    // The offsets, four to a line, seven cells apart.
+    assert_eq!(ui.big(11, 0, 2, 2), "+0");
+    assert_eq!(ui.big(11, 7, 2, 2), "+4");
+    assert_eq!(ui.big(11, 14, 2, 2), "+7");
+    assert_eq!(ui.big(11, 21, 2, 3), "+12");
+    assert_eq!(ui.small(17, 0, 7), "WAVE 41");
+    assert_eq!(ui.small(29, 0, 23), "SAVE WRITES FROM ROW 01");
+    // The page changing closes the draft.
+    unsafe { screen_pop(&mut h.ui.v.s, SCREEN_CUT) };
+    assert_eq!(h.p.arp, 0);
+}

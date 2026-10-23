@@ -95,6 +95,8 @@ static gt2_err prepare(song_pages* p) {
     return gt2_set_order(song, r->pattern, voice, r->row, (uint8_t)value, &p->edit);
 }
 
+static void arp_issue(song_pages* p);
+
 int song_pages_poll(song_pages* p) {
     if (!p->pending)
         return 0;
@@ -110,6 +112,8 @@ int song_pages_poll(song_pages* p) {
         p->pending = 0u;
         p->status = SONG_PAGES_READY;
         p->revision++;
+        if (p->arp_next < p->arp_end)
+            arp_issue(p); /* the ARP helper's next cell */
         return 1;
     }
     if (!guarded(p)) {
@@ -120,6 +124,7 @@ int song_pages_poll(song_pages* p) {
                 if (p->prepared)
                     gt2_edit_cancel((gt2_song*)t->song, &p->edit);
                 p->pending = p->prepared = p->sent = p->auxiliary = 0u;
+                p->arp_next = p->arp_end;
             }
             return 0;
         }
@@ -142,6 +147,7 @@ int song_pages_poll(song_pages* p) {
             p->status = p->error == GT2_ERR_FULL || p->error == GT2_ERR_SONG_FULL ?
                         SONG_PAGES_FULL : SONG_PAGES_INVALID;
             p->pending = 0u;
+            p->arp_next = p->arp_end;
             return 0;
         }
         p->prepared = 1u;
@@ -230,6 +236,57 @@ static void popup_text(char out[SCREEN_POPUP_TEXT], const char* text) {
         n++;
     memcpy(out, text, n);
     out[n] = 0;
+}
+
+/* A number into popup text, with its sign when `sign` or negative. */
+static void arp_num(char out[SCREEN_POPUP_TEXT], int32_t v, int sign) {
+    uint32_t n = 0u, a = (uint32_t)(v < 0 ? -v : v);
+    if (v < 0 || sign)
+        out[n++] = v < 0 ? '-' : '+';
+    if (a >= 100u)
+        out[n++] = (char)('0' + a / 100u);
+    if (a >= 10u)
+        out[n++] = (char)('0' + a / 10u % 10u);
+    out[n++] = (char)('0' + a % 10u);
+    out[n] = 0;
+}
+
+/* The helper's controls' popups: the offset, the speed, the loop step (HOLD for none) and the
+ * number of steps. */
+static int arp_popup(const song_pages* p, uint32_t encoder, char name[SCREEN_POPUP_TEXT],
+                     char value[SCREEN_POPUP_TEXT], uint32_t* fill, uint32_t* max) {
+    const song_pages_arp* a = &p->arp_draft;
+    const char* label;
+    char text[SCREEN_POPUP_TEXT];
+    if (encoder == PANEL_ENC_K1 || encoder == SONG_PAGES_ENC_K2) {
+        label = "OFFSET";
+        arp_num(text, a->off[p->arp_cur], 1);
+        *fill = (uint32_t)(a->off[p->arp_cur] + 64);
+        *max = 127u;
+    } else if (encoder == PANEL_ENC_K1 + 2u) {
+        label = "SPEED";
+        arp_num(text, a->speed, 0);
+        *fill = a->speed - 1u;
+        *max = SONG_PAGES_ARP_SPEED_MAX - 1u;
+    } else if (encoder == PANEL_ENC_K1 + 3u) {
+        label = "LOOP";
+        if (a->loop)
+            arp_num(text, a->loop, 0);
+        else
+            popup_text(text, "HOLD");
+        *fill = a->loop;
+        *max = a->steps;
+    } else if (encoder == PANEL_ENC_ALGORITHM) {
+        label = "STEPS";
+        arp_num(text, a->steps, 0);
+        *fill = a->steps - 1u;
+        *max = SONG_PAGES_ARP_STEPS - 1u;
+    } else {
+        return 0;
+    }
+    popup_text(name, label);
+    popup_text(value, text);
+    return 1;
 }
 
 int song_pages_popup(const song_pages* p, const view* owner, uint32_t encoder, int edit,
@@ -325,6 +382,8 @@ int song_pages_popup(const song_pages* p, const view* owner, uint32_t encoder, i
             }
         }
     } else if (page == SONG_VIEW_TABLE) {
+        if (p->arp)
+            return arp_popup(p, encoder, name, value, fill, max);
         if (p->table >= GT2_TABLES)
             return 0;
         if (encoder == PANEL_ENC_ALGORITHM) {
@@ -441,13 +500,21 @@ static int instr_input(screen* s, void* state, const screen_event* e) {
     return 1;
 }
 
+static int arp_input(song_pages* p, const screen_event* e);
+
 static int table_input(screen* s, void* state, const screen_event* e) {
     song_pages* p = state;
     p->page = SONG_VIEW_TABLE;
     if (p->sent)
         (void)song_pages_poll(p);
+    if (e->kind == SCREEN_PRESS && e->id == PANEL_BTN_ARP && !p->arp) {
+        (void)song_pages_arp_open(p, s);
+        return 1;
+    }
     if (e->kind != SCREEN_TURN)
         return 0;
+    if (p->arp)
+        return arp_input(p, e);
     if (e->id == PANEL_ENC_SELECT) {
         p->table_row = (uint8_t)clamp((int32_t)p->table_row + e->steps, 0u, GT2_TABLE_ROWS - 1u);
         return 1;
@@ -532,6 +599,206 @@ void song_pages_table_meaning(uint32_t table, uint8_t left, uint8_t right, char 
     hex2(right, out + n);
 }
 
+/* ---- the ARP helper ---- */
+
+#define ARP_JUMP 0xffu
+
+static uint8_t arp_rel(int32_t off) {
+    return (uint8_t)(off & 0x7f);
+}
+
+/* A relative note's offset: 00..3F up, 40..7F down (the player adds it to the note, modulo 128). */
+static int8_t arp_off(uint8_t right) {
+    return (int8_t)(right < 0x40u ? (int32_t)right : (int32_t)right - 0x80);
+}
+
+void song_pages_arp_default(song_pages_arp* a) {
+    static const int8_t MAJOR[4] = {0, 4, 7, 12};
+    memset(a, 0, sizeof *a);
+    memcpy(a->off, MAJOR, sizeof MAJOR);
+    a->steps = 4u;
+    a->speed = 2u;
+    a->loop = 1u;
+    a->wave = SONG_PAGES_ARP_WAVE;
+}
+
+uint32_t song_pages_arp_encode(const song_pages_arp* a, uint32_t first,
+                               uint8_t left[SONG_PAGES_ARP_ROWS], uint8_t right[SONG_PAGES_ARP_ROWS]) {
+    uint32_t n = a->steps, k = n;
+    uint8_t delay = (uint8_t)(a->speed > 1u ? a->speed - 1u : 0u);
+    left[0] = a->wave;
+    for (uint32_t i = 0u; i < n; i++) {
+        left[i] = i && delay ? delay : a->wave;
+        right[i] = arp_rel(a->off[i]);
+    }
+    if (n < 2u || a->loop == 0u || a->loop > n) {
+        left[k] = ARP_JUMP;
+        right[k] = 0u; /* hold the last note */
+    } else if (delay && a->loop == 1u) {
+        left[k] = delay; /* step 1 again, after the last one's time */
+        right[k++] = right[0];
+        left[k] = ARP_JUMP;
+        right[k] = (uint8_t)(first + 1u);
+    } else {
+        left[k] = ARP_JUMP;
+        right[k] = (uint8_t)(first + a->loop - 1u);
+    }
+    return k + 1u;
+}
+
+int song_pages_arp_decode(const uint8_t* left, const uint8_t* right, uint32_t first, uint32_t avail,
+                          song_pages_arp* a, uint32_t* rows) {
+    uint8_t wave = left[0];
+    if (avail < 2u || wave < 0x10u || wave >= 0xe0u || right[0] >= 0x80u)
+        return 0;
+    int8_t off[SONG_PAGES_ARP_STEPS + 1u];
+    uint32_t n = 1u, delayed = 0u, delay = 0u;
+    off[0] = arp_off(right[0]);
+    for (;; n++) {
+        if (n >= avail)
+            return 0;
+        if (left[n] == ARP_JUMP)
+            break;
+        if (n > SONG_PAGES_ARP_STEPS || right[n] >= 0x80u)
+            return 0;
+        if (n == 1u) {
+            delayed = left[1] < 0x10u;
+            delay = left[1];
+        }
+        if (left[n] != (delayed ? delay : wave))
+            return 0;
+        off[n] = arp_off(right[n]);
+    }
+    uint32_t target = right[n], loop = 0u, used = n + 1u;
+    if (target) {
+        if (target < first || target - first >= n || (delayed && target == first))
+            return 0;
+        loop = target - first + 1u;
+        if (delayed && loop == 2u && n >= 3u && off[n - 1u] == off[0]) {
+            n--; /* the row that loops step 1 back */
+            loop = 1u;
+        }
+    }
+    if (n > SONG_PAGES_ARP_STEPS)
+        return 0;
+    memset(a, 0, sizeof *a);
+    memcpy(a->off, off, n);
+    a->steps = (uint8_t)n;
+    a->speed = (uint8_t)(delayed ? delay + 1u : 1u);
+    a->loop = (uint8_t)loop;
+    a->wave = wave;
+    *rows = used;
+    return 1;
+}
+
+/* The next byte of the helper's rows that differs from the song's, as a table write; the writes
+ * go one at a time, each from the poll that saw the last acknowledged (an edit is pending until
+ * then). A write the guard refuses ends them: the status says why. */
+static void arp_issue(song_pages* p) {
+    const gt2_song* song = p->sv->song;
+    while (song && p->arp_next < p->arp_end) {
+        uint32_t k = p->arp_next++, row = p->arp_start + k / 2u, side = k & 1u;
+        uint8_t value = p->arp_rows[k];
+        if ((side ? song->rtable[GT2_WTBL][row] : song->ltable[GT2_WTBL][row]) == value)
+            continue;
+        p->request = (song_edit_request){.kind = SONG_PAGES_EDIT_TABLE, .pattern = GT2_WTBL,
+                                       .row = row, .cell = {value, (uint8_t)side, 0u, 0u}};
+        if (!guarded(p))
+            break;
+        p->pending = 1u;
+        p->prepared = p->sent = p->auxiliary = 0u;
+        p->status = SONG_PAGES_WAITING;
+        return;
+    }
+    p->arp_next = p->arp_end;
+}
+
+int song_pages_arp_open(song_pages* p, screen* s) {
+    const gt2_song* song = p->sv->song;
+    const char* why = !song ? "NO SONG" : p->table != GT2_WTBL ? "WAVE TABLE ONLY" : NULL;
+    uint32_t row = p->table_row, used = 0u;
+    if (!why) {
+        const uint8_t* l = song->ltable[GT2_WTBL] + row;
+        const uint8_t* r = song->rtable[GT2_WTBL] + row;
+        if (!l[0] && !r[0])
+            song_pages_arp_default(&p->arp_draft); /* a blank row: a new one */
+        else if (!song_pages_arp_decode(l, r, row + 1u, GT2_TABLE_ROWS - row, &p->arp_draft, &used))
+            why = "NOT AN ARP";
+    }
+    if (why) {
+        screen_toast(s, why, SCREEN_TOAST_MS);
+        return 0;
+    }
+    p->arp = 1u;
+    p->arp_cur = 0u;
+    p->arp_start = (uint8_t)row;
+    p->arp_len = (uint8_t)used;
+    return 1;
+}
+
+int song_pages_arp_close(song_pages* p) {
+    int open = p->arp;
+    p->arp = 0u;
+    return open;
+}
+
+void song_pages_arp_save(song_pages* p, screen* s) {
+    const gt2_song* song = p->sv->song;
+    uint8_t left[SONG_PAGES_ARP_ROWS], right[SONG_PAGES_ARP_ROWS];
+    uint32_t n = song_pages_arp_encode(&p->arp_draft, p->arp_start + 1u, left, right);
+    const char* why = !song ? "NO SONG" : p->pending ? "WAITING" :
+                      p->arp_start + n > GT2_TABLE_ROWS ? "TABLE FULL" : NULL;
+    for (uint32_t i = p->arp_len; !why && i < n; i++)
+        if (song->ltable[GT2_WTBL][p->arp_start + i] | song->rtable[GT2_WTBL][p->arp_start + i])
+            why = "ROWS IN USE"; /* past the rows it read: another program's */
+    if (why) {
+        screen_toast(s, why, SCREEN_TOAST_MS);
+        return;
+    }
+    uint32_t end = n > p->arp_len ? n : p->arp_len; /* rows it no longer needs go blank */
+    for (uint32_t i = 0u; i < end; i++) {
+        p->arp_rows[2u * i] = i < n ? left[i] : 0u;
+        p->arp_rows[2u * i + 1u] = i < n ? right[i] : 0u;
+    }
+    p->transport = p->sv->t;
+    p->arp_next = 0u;
+    p->arp_end = (uint8_t)(2u * end);
+    p->status = SONG_PAGES_READY;
+    arp_issue(p);
+    song_pages_poll(p);
+    if (p->status != SONG_PAGES_WAITING && p->status != SONG_PAGES_READY) {
+        screen_toast(s, song_pages_message(p), SCREEN_TOAST_MS);
+        return; /* the helper stays open */
+    }
+    p->arp = 0u;
+    screen_toast(s, "ARP SAVED", SCREEN_TOAST_MS);
+}
+
+static int arp_input(song_pages* p, const screen_event* e) {
+    song_pages_arp* a = &p->arp_draft;
+    int32_t steps = e->steps;
+    if (e->id == PANEL_ENC_SELECT) {
+        p->arp_cur = (uint8_t)clamp((int32_t)p->arp_cur + steps, 0u, a->steps - 1u);
+    } else if (e->id == PANEL_ENC_ALGORITHM) {
+        uint32_t old = a->steps;
+        a->steps = (uint8_t)clamp((int32_t)old + steps, 1u, SONG_PAGES_ARP_STEPS);
+        for (uint32_t i = old; i < a->steps; i++)
+            a->off[i] = a->off[old - 1u];
+        a->loop = a->loop > a->steps ? a->steps : a->loop;
+        p->arp_cur = p->arp_cur >= a->steps ? (uint8_t)(a->steps - 1u) : p->arp_cur;
+    } else if (e->id == PANEL_ENC_K1 || e->id == SONG_PAGES_ENC_K2) {
+        int32_t v = (int32_t)a->off[p->arp_cur] + steps * (e->id == PANEL_ENC_K1 ? 12 : 1);
+        a->off[p->arp_cur] = (int8_t)(v < -64 ? -64 : v > 63 ? 63 : v);
+    } else if (e->id == PANEL_ENC_K1 + 2u) {
+        a->speed = (uint8_t)clamp((int32_t)a->speed + steps, 1u, SONG_PAGES_ARP_SPEED_MAX);
+    } else if (e->id == PANEL_ENC_K1 + 3u) {
+        a->loop = (uint8_t)clamp((int32_t)a->loop + steps, 0u, a->steps);
+    } else {
+        return 0;
+    }
+    return 1;
+}
+
 __attribute__((noinline, unused)) static void small(song_view_canvas* c, uint32_t col, uint32_t row,
                                                  const char* text, uint8_t attr) {
     if (col >= GRID_COLS)
@@ -591,6 +858,8 @@ static void build_head(song_pages* p) {
         small(c, 0u, 2u, "PRESETS: INSTRUMENT", THEME_ATTR(th, hint));
     } else {
         /* which knob turns which column, at 2x beside the name (the columns' colours) */
+        if (p->arp)
+            big(c, 0u, 0u, "ARP   ", base); /* over the table's name */
         big(c, 12u, 0u, "K1", GRID_ATTR(th->knob_text[0], th->bg));
         big(c, 17u, 0u, "K2", GRID_ATTR(th->knob_text[1], th->bg));
     }
@@ -616,7 +885,46 @@ static void build_head(song_pages* p) {
     sv->dirty |= 7u;
 }
 
+/* The helper's page, in the table's rows: the number of steps, the speed and the loop step at 2x
+ * with the knob that turns each, the steps' offsets four to a line (the step the cursor is on in
+ * reverse, the loop step in yellow), and the waveform that is kept. */
+static void arp_row(song_pages* p, uint32_t j) {
+    song_view* sv = p->sv;
+    song_view_canvas* c = &sv->cv;
+    const theme* th = theme_get(sv->l->theme);
+    const song_pages_arp* a = &p->arp_draft;
+    uint32_t r = SONG_PAGES_TOP + 2u * j;
+    char num[SCREEN_POPUP_TEXT];
+    blank(c, r, 2u, THEME_ATTR(th, value));
+    if (j < 3u) {
+        static const char* const LABEL[3] = {"STEPS", "SPEED", "LOOP"};
+        static const uint8_t KNOB[3] = {0u, 2u, 3u};
+        big(c, 0u, r, LABEL[j], THEME_ATTR(th, label));
+        if (j == 2u && !a->loop)
+            memcpy(num, "HOLD", 5u);
+        else
+            arp_num(num, j == 0u ? a->steps : j == 1u ? a->speed : a->loop, 0);
+        big(c, 12u, r, num, GRID_ATTR(th->knob[KNOB[j]], th->bg));
+    } else if (j >= 4u && j < 6u) {
+        for (uint32_t k = (j - 4u) * 4u; k < a->steps && k < (j - 3u) * 4u; k++) {
+            arp_num(num, a->off[k], 1);
+            uint8_t attr = k == p->arp_cur ? GRID_ATTR(th->bg, th->hot)
+                           : a->loop && k == a->loop - 1u ? GRID_ATTR(th->hot, th->bg)
+                                                          : THEME_ATTR(th, value);
+            big(c, k % 4u * 7u, r, num, attr);
+        }
+    } else if (j == 7u) {
+        memcpy(num, "WAVE ", 5u);
+        hex2(a->wave, num + 5u);
+        small(c, 0u, r, num, THEME_ATTR(th, hint));
+    }
+}
+
 static void build_row(song_pages* p, uint32_t j) {
+    if (p->arp && p->page == SONG_VIEW_TABLE) {
+        arp_row(p, j);
+        return;
+    }
     song_view* sv = p->sv;
     song_view_canvas* c = &sv->cv;
     const gt2_song* song = sv->song;
@@ -745,6 +1053,11 @@ static void build_footer(song_pages* p) {
     }
     if (!*say && p->page == SONG_VIEW_INSTR)
         say = p->instr_cursor < GT2_INS_NAME ? PARAM_NAMES[p->instr_cursor] : "INSTRUMENT NAME";
+    if (!*say && p->arp && p->page == SONG_VIEW_TABLE) {
+        memcpy(meaning, "SAVE WRITES FROM ROW ", 21u);
+        hex2(p->arp_start + 1u, meaning + 21u);
+        say = meaning;
+    }
     if (!*say && p->page == SONG_VIEW_TABLE && sv->song) {
         song_pages_table_meaning(p->table, sv->song->ltable[p->table][p->table_row],
                                 sv->song->rtable[p->table][p->table_row], meaning);
@@ -786,6 +1099,13 @@ static void look(const song_pages* p, uint8_t out[SONG_PAGES_LOOK]) {
     uint32_t bpm = song_view_shown_bpm(sv);
     out[32] = (uint8_t)bpm;
     out[33] = (uint8_t)(bpm >> 8);
+    out[34] = p->arp;
+    out[35] = p->arp_cur;
+    out[36] = p->arp_draft.steps;
+    out[37] = p->arp_draft.speed;
+    out[38] = p->arp_draft.loop;
+    out[39] = p->arp_start;
+    memcpy(out + 40u, p->arp_draft.off, SONG_PAGES_ARP_STEPS);
 }
 
 static int model_loading(const song_view* sv) {
@@ -876,6 +1196,7 @@ static void leave(screen* s, void* state) {
     (void)s;
     song_pages* p = state;
     p->unbuilt = 0u;
+    p->arp = 0u; /* the draft goes with the page */
 }
 
 /* A pop does not enter the revealed view, and MIDI learn calls the covered view directly.

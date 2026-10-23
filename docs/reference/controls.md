@@ -379,6 +379,7 @@ refusals use the large toast. K1/K2 show the actual edited value in the value po
 | TABLE | ALGORITHM | selects WAVE, PULSE, FILTER or SPEED |
 | TABLE | SELECT | selects table row 01–FF |
 | TABLE | K1 / K2 | edits the left / right byte |
+| TABLE | ARP | on the WAVE table: opens the [ARP helper](#arp-helper) on the arpeggio at the cursor row (a new one on a blank row; **NOT AN ARP** when the rows are anything else, **WAVE TABLE ONLY** elsewhere) |
 
 ORDER shows one voice's decoded entries at 2×; the other two have compact raw-hex summaries.
 Repeats use `R0` for 16 times; transpose `-10` means minus 16 semitones (hex), not minus zero.
@@ -388,6 +389,42 @@ sequences are refused without creating a pattern. Instrument names use GT2's 16 
 untouched imported bytes are preserved, and name-only instruments follow GoatTracker's normal
 save rules. TABLE's footer spells out the selected operation, including absolute/relative
 wavetable notes and jumps (SPEED's FF is a speed value, not a jump).
+
+### ARP helper
+
+An arpeggio in GoatTracker's wavetable is relative note steps, a delay between them and a jump
+back; entered by hand they are rows of raw bytes. TABLE's ARP helper writes those rows from a
+list of semitone offsets, a speed and a loop step, and reads them back. The song stays plain
+GoatTracker 2: the helper adds no engine and no chunk, only wavetable rows.
+
+On the WAVE table put the cursor on the arpeggio's first row (from INSTR, EDIT + SEQ on the
+WAVE PTR lands there) and press **ARP**. A blank row opens a new arpeggio (a major chord, 2 ticks
+a step); rows the helper wrote, or hand-made ones of the same shape, open as that arpeggio;
+anything else says **NOT AN ARP** and nothing changes. The page shows the number of steps, the
+speed and the loop step at 2x, the offsets four to a line (the step the cursor is on in
+reverse, the loop step in yellow), the waveform that is kept (`WAVE 41`) and where SAVE writes.
+
+| Control | Does |
+|---|---|
+| SELECT | the step under the cursor |
+| ALGORITHM | the number of steps, 1-8 (a new step copies the last) |
+| K1 / K2 | the step's offset over the played note: an octave / a semitone, -64 to +63 |
+| K3 | the speed: ticks a step lasts, 1-16 |
+| K4 | the loop step: where the arpeggio returns to after the last (1 loops all of it); **HOLD** plays the steps once and holds the last |
+| SAVE | writes the rows and closes the helper (**ARP SAVED**) |
+| HOME | closes it without writing |
+| keys | audition the instrument as in the table |
+
+The rows: row 1 holds the waveform and the first offset; each later step is a delay row of
+speed - 1 ticks (at speed 1 the waveform again) holding its offset; then a jump (`FF`) to the loop
+step, or `FF 00` to hold. Looping back to step 1 at speeds over 1 takes one more row, because a
+delay holds the note before it. Offsets are GoatTracker's relative notes (00-3F up, 40-7F down),
+and the waveform is the one read (41, pulse and gate, for a new arpeggio): K1 on its table row
+changes it. SAVE writes one byte at a time through the player's edit queue, as the table's
+knobs do, only the bytes that differ, and blanks the rows a shorter arpeggio no longer needs.
+It refuses with **ROWS IN USE** when it would write over rows past the ones it read that are not
+blank (another program's), and with **TABLE FULL** at the table's end; the helper then stays open.
+SEQ or any page change closes it too. Holding HOME shows its card.
 
 ### Recording while the song plays
 
@@ -1147,7 +1184,9 @@ and the slot's algorithm at 2× in the band is in reverse video. **ARP held** sh
 same way (RATE, ORDER, SPAN: `3F`, `UP`, `1`), and while the [chord arpeggio](#chord-arpeggio) is
 on, a badge at 2× on rows 27-28 names it with its settings (`ARP 3F UP 1OCT`, ARP in yellow).
 
-The **status screen** (STATUS in the menu) shows the numbers: the chip, preset, octave,
+The **status screen** (STATUS in the menu) shows the numbers: the chip (its model and the
+profile's word, `6581 CLASSIC`; with two chips a line each, KEYS marking the one the keys play),
+preset, octave,
 cutoff, resonance, pulse width, volume and the held notes, and under EFFECTS each slot's
 algorithm and Mix (`>` marks the selected slot) with the selected slot's Amount, A and B.
 

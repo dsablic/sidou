@@ -9,20 +9,16 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
-- **The button LEDs show more, in two levels:** the hardware's dim glow means set or available,
-  full light active now. ARP is dim while on and flashes on each arpeggio step (once a cycle at
-  1-2 frames a step); PLAY is lit on each beat and dim between while the song plays; REC is dim
-  while armed, blinks through the count-in and is lit while recording; SAVE blinks while a
-  question waits for it. With GLO held or latched, note keys 1-6 show the voices (lit sounding,
-  dark muted, blinking solo), and in STEP the 16 step keys show the page (lit a note, dim an
-  empty step) with the playhead's key flicking as it moves.
-
 ### Changed
 - **The emulator is fm1-emu `c1c045fc`** (was `db8d472e`), for the emulator gate and the browser
   demo: it runs the decrementing block load `{r1, r3} = [-r1]` (fm1-emu #67, our report #64) and
   `psid_load` checks its bounds (#68, our report #63), so the gate's own stand-in for that load,
   `step_block_load_dec`, is gone and with it the `emulated_block_loads` count in the gate's
   reports.
+- **The profile's word everywhere:** STATUS names the chip as its model and the profile's word
+  (`6581 CLASSIC`, `8580 CLEAN`; both chips on a two-chip setup) and the PROFILE popup says the
+  same at 2x, where they said `6581 R4AR`; the ergonomics readability table counts the new names
+  as read while playing.
 
 ## [0.3.1] - 2026-10-23
 
