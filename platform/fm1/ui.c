@@ -204,6 +204,10 @@ void ui_song(const song_ctl* sc, const song_event* ev, uint32_t n) {
     views_song(&ui, sc, ev, n);
 }
 
+void ui_leds(uint32_t now_ms, panel_led_in* out) {
+    views_leds(&ui, now_ms, out);
+}
+
 void ui_toast(const char* text, uint32_t ms) {
     screen_toast(&ui.s, text, ms);
 }

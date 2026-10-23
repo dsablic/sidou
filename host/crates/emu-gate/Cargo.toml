@@ -16,8 +16,8 @@ workspace = true
 sidou-sys = { path = "../sidou-sys" }
 
 [dev-dependencies]
-fm1-core = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "db8d472e62f35d18e392e3abc66474daed65ffe9" }
-fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "db8d472e62f35d18e392e3abc66474daed65ffe9" }
+fm1-core = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "c1c045fc067da024d686e7a690806e2e55795042" }
+fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "c1c045fc067da024d686e7a690806e2e55795042" }
 gt2-ref = { path = "../gt2-ref" }
 object = { version = "0.36", default-features = false, features = ["read", "elf", "std"] }
 png = "0.18"

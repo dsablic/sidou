@@ -153,8 +153,8 @@ extern "C" {
 #define VIEWS_MENU_CHARSET 9u
 #define VIEWS_MENU_ABOUT 10u
 /* The SETTINGS page's items (the set-and-forget settings): KEYS, SOUNDS, ROWS (TRACKER ROWS),
- * CARDS (the title cards' option), STORE, THEME, REC (REC QUANTISE) and SPREAD. */
-#define VIEWS_SETTINGS_ITEMS 8u
+ * CARDS (the title cards' option), STORE, THEME, REC (REC QUANTISE), SPREAD and RESET. */
+#define VIEWS_SETTINGS_ITEMS 9u
 #define VIEWS_SETTINGS_KEYS 0u
 #define VIEWS_SETTINGS_SOUNDS 1u
 #define VIEWS_SETTINGS_ROWS 2u
@@ -163,9 +163,10 @@ extern "C" {
 #define VIEWS_SETTINGS_THEME 5u
 #define VIEWS_SETTINGS_REC 6u
 #define VIEWS_SETTINGS_SPREAD 7u
+#define VIEWS_SETTINGS_RESET 8u
 /* What it shows: KEYS, SOUNDS, ROWS, CARDS, the store's state and kilobytes, THEME, REC, SPREAD,
- * the cursor and the first row. */
-#define VIEWS_SETTINGS_LOOK 11u
+ * the cursor, the first row and RESET's arm. */
+#define VIEWS_SETTINGS_LOOK 12u
 /* The MIDI page's items (app/midi_route.h): MODE, CHANNEL, OPTION, LEGATO, CHORD 2, CHORD 3,
  * ARP RATE, ROWS/BEAT, and the clock's (app/midi_sync.h): CLOCK, CLOCK OUT. */
 #define VIEWS_MIDI_ITEMS 10u
@@ -206,7 +207,8 @@ typedef struct {
     /* What the view on top showed at its last compose: it composes again when this changes
      * (the views' changed functions). */
     uint8_t drawn[VIEWS_LOOK];
-    uint8_t format_arm; /* the menu's STORE on a foreign store: turned clockwise once */
+    uint8_t format_arm; /* 1 the menu's STORE on a foreign store turned clockwise once; 2 RESET's turn */
+    uint8_t resetting;  /* RESET's save is in flight: its toast replaces SAVED */
     panel* p; /* the panel of the last event (views_buttons, views_encoder); NULL before */
     boot boot;
     chip_view chip;
@@ -257,6 +259,9 @@ typedef struct {
     /* The SETTINGS page (views_settings_view): its menu, and what it showed at its last compose. */
     menu setup;
     uint8_t setup_drawn[VIEWS_SETTINGS_LOOK];
+    /* The step view's playhead as the LEDs last saw it, and when it came there (views_leds). */
+    uint8_t led_head;
+    uint32_t led_head_ms;
 } views;
 
 extern const view views_status;
@@ -331,6 +336,10 @@ int views_idle(views* v);
 /* Once a main-loop pass: the song control (NULL: none) and the events its ring gave this
  * pass (platform/fm1/main.c drains it, the ring's one reader, and hands each reader them). */
 void views_song(views* v, const song_ctl* sc, const song_event* ev, uint32_t n);
+/* The LEDs' inputs beyond the panel and live (panel_get_leds), at now_ms: the song's beat (from
+ * the player's clock, whichever view shows), REC, the voices GLO's layer shows, a question that
+ * waits for SAVE, and while STEP shows its page. Main loop. */
+void views_leds(views* v, uint32_t now_ms, panel_led_in* out);
 /* The flow step of a frame (views_frame runs it when HOME is down or a help card is up; the host
  * tests run it alone, after a tap of HOME, as the next frame would): HOME let go goes home (the
  * menu from LIVE, back one view elsewhere), HOME held 600 ms opens the help card of the view

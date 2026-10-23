@@ -599,6 +599,7 @@ fn schema_6_adds_spread_and_a_schema_5_record_loads_it_as_mono() {
     assert_eq!((v6[0], v6.len()), (6, SETTINGS_BYTES as usize));
     let mut s = Set::blank();
     unsafe { chip_spread_set(&mut *s.rig.live, 40) };
+    unsafe { midi_learn_bind(&mut *s.ml, 31, LIVE_PARAM_EXPERT + 3) };
     assert_eq!(
         unsafe { settings_apply(&mut *s.set, v5.as_ptr(), v5.len() as u32) },
         1
@@ -1241,4 +1242,111 @@ fn a_program_error_after_an_explicit_save_is_taken_says_failed_and_retries() {
         "written again by the debounce"
     );
     assert_eq!(s.result(), SETTINGS_NOTHING, "background saves say nothing");
+}
+
+/// RESET (SETTINGS' item): every setting and every preset's edits back to what a first boot has,
+/// the version and the last song and the MIDI learn bindings kept, other store keys (a song, a USER profile) untouched, and
+/// the factory state saved by an explicit save.
+#[test]
+fn reset_puts_every_setting_and_every_presets_edits_back_to_factory() {
+    let mut s = Set::blank();
+    let factory = s.snapshot();
+    let factory_record = s.gather();
+    s.load();
+    unsafe { settings_set_song(&mut *s.set, c"MY SONG".as_ptr()) };
+    s.change_everything();
+    *s.rows = 1;
+    unsafe { live_set_theme(&mut *s.rig.live, 1) };
+    unsafe { chip_spread_set(&mut *s.rig.live, 40) };
+    unsafe { live_param_set(&mut *s.rig.live, LIVE_PARAM_EXPERT + 3, 10) };
+    // Edit three presets, leaving two of them for the one that plays.
+    for q in [1u8, 3, 4] {
+        unsafe { live_recall_preset(&mut *s.rig.live, q) };
+        s.set_param(LIVE_PARAM_CUTOFF, 100 + u32::from(q));
+        s.set_param(LIVE_PARAM_RESONANCE, 7);
+    }
+    s.rig.tick();
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    let learned = s.snapshot().5;
+    assert!(learned.iter().any(|&cc| cc != MIDI_MAP_NO_CC as u8));
+    let before_record = s.gather();
+    let song = vec![0x5a; 40];
+    let user = vec![0x33; 20];
+    assert_eq!(s.st.put_now(0x4000, &song), STORE_OK);
+    assert_eq!(s.st.put_typed(0x101, 2, &user), STORE_OK);
+    s.st.settle();
+
+    unsafe { settings_reset(&mut *s.set) };
+    unsafe { settings_save_now(&mut *s.set, s.now) };
+    s.rig.tick();
+    s.ticks(100);
+    assert_eq!(s.result(), SETTINGS_SAVED);
+    let mut want = factory.clone();
+    want.5 = learned;
+    assert_eq!(
+        s.snapshot(),
+        want,
+        "the settings are the factory's, the MIDI learn bindings kept"
+    );
+    assert_eq!(*s.rows, 0);
+    assert_eq!(s.rig.live.theme, 0);
+    assert_eq!(s.rig.live.spread, 0);
+    for q in 0..LIVE_PRESET_SLOTS as usize {
+        assert_eq!(s.rig.live.edits[q].valid, 0, "preset {q}'s edits are gone");
+    }
+    assert_eq!(s.rig.live.preset, 0);
+    for q in [1u8, 3, 4] {
+        unsafe { live_recall_preset(&mut *s.rig.live, q) };
+        assert_eq!(unsafe { live_preset_edited(&*s.rig.live) }, 0, "preset {q}");
+    }
+    unsafe { live_recall_preset(&mut *s.rig.live, 0) };
+    let mut record = s.gather();
+    record[92..106].copy_from_slice(&factory_record[92..106]);
+    record[108..124].copy_from_slice(&factory_record[108..124]);
+    // The bindings (the parameters' and the experts') are the one thing a first boot's record lacks.
+    let (ccs, expert_ccs) = (
+        50..92,
+        125 + SID_EXPERT_COUNT as usize..125 + 2 * SID_EXPERT_COUNT as usize,
+    );
+    let mut first_boot = factory_record.clone();
+    for r in [ccs, expert_ccs] {
+        first_boot[r.clone()].copy_from_slice(&before_record[r]);
+    }
+    assert_eq!(
+        record, first_boot,
+        "the record is a first boot's, with the bindings"
+    );
+    assert_eq!(
+        &s.gather()[108..116],
+        b"MY SONG\0",
+        "the last song is not a setting"
+    );
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    assert_eq!(s.stored(), Some(s.gather()), "saved");
+    assert_eq!(s.st.get(0x4000), Some(song), "the song is untouched");
+    assert_eq!(s.st.get(0x101), Some(user), "the USER profile is untouched");
+    // A power cycle keeps it.
+    let want = s.snapshot();
+    let mut st = s.st;
+    st.reset();
+    st.mount();
+    let mut s = Set::new(st, VERSION);
+    assert!(s.load());
+    s.rig.tick();
+    assert_eq!(s.snapshot(), want);
+}
+
+/// Asking is not doing: without settings_reset (HOME, a move, a counter-clockwise turn: the
+/// views' cancel) nothing changes and nothing is written.
+#[test]
+fn reset_not_confirmed_changes_and_writes_nothing() {
+    let mut s = Set::blank();
+    s.load();
+    s.change_everything();
+    s.ticks(SETTINGS_DEBOUNCE_MS + 100);
+    let (want, rec, writes) = (s.snapshot(), s.stored(), s.writes);
+    s.ticks(3 * SETTINGS_DEBOUNCE_MS);
+    assert_eq!(s.snapshot(), want);
+    assert_eq!(s.stored(), rec);
+    assert_eq!(s.writes, writes);
 }

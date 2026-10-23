@@ -90,6 +90,13 @@ static void join(char* buf, uint32_t cap, const char* a, const char* b) {
     append(buf, cap, b);
 }
 
+/* A profile's model and its word into buf (SCREEN_POPUP_TEXT): "6581 CLASSIC", "8580 CLEAN". */
+__attribute__((noinline, unused)) static void profile_label(char* buf, uint32_t id) {
+    const sid_chip_profile* p = sid_chip_profile_get(id);
+    join(buf, SCREEN_POPUP_TEXT, p && p->model == SID_MODEL_8580 ? "8580 " : "6581 ", "");
+    append(buf, SCREEN_POPUP_TEXT, sid_chip_profile_word(id));
+}
+
 /* "+n" / "-n" for an octave. */
 static void octave_text(char* buf, int32_t octave) {
     buf[0] = octave < 0 ? '-' : '+';
@@ -135,7 +142,7 @@ static uint32_t store_look(const views* v, uint32_t* n) {
     }
     store_state_id state = store_state(st);
     if (state == STORE_STATE_FOREIGN) {
-        return v->format_arm ? STORE_LOOK_ARMED : st->mount_newer ? STORE_LOOK_NEWER
+        return v->format_arm == 1u ? STORE_LOOK_ARMED : st->mount_newer ? STORE_LOOK_NEWER
                                                                    : STORE_LOOK_FOREIGN;
     }
     if (state != STORE_STATE_BLANK && state != STORE_STATE_SIDOU) {
@@ -269,16 +276,21 @@ static void status_compose(screen* s, void* state, grid* g) {
          * (app/keys_route.h): the keys' setup as asked for, the other's as it has it. */
         for (uint32_t x = 0; x < 2u; x++, top++) {
             uint32_t id = x == l->keys_chip ? l->profile_req : l->other_profile;
-            const sid_chip_profile* cp = sid_chip_profile_get(id);
+            char name[SCREEN_POPUP_TEXT] = "--"; /* not made yet */
+            if (sid_chip_profile_get(id)) {
+                profile_label(name, id);
+            }
             put(g, lbl, top, 2, x ? "CHIP B" : "CHIP A");
-            put(g, a, top, 9, cp ? cp->name : "--"); /* not made yet */
+            put(g, a, top, 9, name);
             if (x == l->keys_chip) {
-                put(g, THEME_ATTR(th, hot), top, 20, "KEYS");
+                put(g, THEME_ATTR(th, hot), top, 22, "KEYS");
             }
         }
     } else {
+        char name[SCREEN_POPUP_TEXT];
+        profile_label(name, l->profile_req);
         put(g, lbl, 5, 2, "CHIP");
-        put(g, a, 5, 9, l->model_req == SID_MODEL_8580 ? "8580" : "6581");
+        put(g, a, 5, 9, name);
         top = 6;
     }
     put(g, lbl, top, 2, "PRESET");
@@ -431,11 +443,37 @@ static void store_turn(void* ctx, int32_t steps) {
     v->format_arm = steps > 0;
 }
 
+static void reset_value(void* ctx, char* buf) {
+    const views* v = ctx;
+    join(buf, MENU_VALUE_CHARS, v->format_arm == 2u ? "RESET?" : "", "");
+}
+
+/* RESET asks the same two steps as a format (RESET ALL SOUNDS AND SETTINGS?): clockwise arms,
+ * counter-clockwise disarms, and only SAVE resets (reset_confirm). */
+static void reset_turn(void* ctx, int32_t steps) {
+    views* v = ctx;
+    v->format_arm = steps > 0 ? 2u : 0u;
+}
+
+/* SAVE on SETTINGS' armed RESET: every preset's edits and the settings back to factory, saved
+ * now (the toast follows the save). Songs and USER profiles are other store keys: untouched.
+ * 0, nothing done, when RESET is not armed under the cursor. */
+static int reset_confirm(views* v) {
+    if (v->format_arm != 2u || v->setup.cursor != VIEWS_SETTINGS_RESET || !v->set) {
+        return 0;
+    }
+    v->format_arm = 0;
+    settings_reset(v->set);
+    v->resetting = 1;
+    settings_save_now(v->set, v->s.now);
+    return 1;
+}
+
 /* SAVE on SETTINGS' armed STORE: the format (every sector erased, the erases forced: the user
  * asked for their gaps). 0, nothing done, when STORE is not armed under the cursor. */
 static int store_confirm(views* v) {
     store* st = v->set ? v->set->st : NULL;
-    if (!v->format_arm || v->setup.cursor != VIEWS_SETTINGS_STORE || !st ||
+    if (v->format_arm != 1u || v->setup.cursor != VIEWS_SETTINGS_STORE || !st ||
         store_state(st) != STORE_STATE_FOREIGN) {
         return 0;
     }
@@ -1105,11 +1143,13 @@ static const menu_item SETTINGS_ITEMS[VIEWS_SETTINGS_ITEMS] = {
     {"ROWS", rows_value, rows_turn},       {"CARDS", cards_value, cards_turn},
     {"STORE", store_value, store_turn},    {"THEME", theme_value, theme_turn},
     {"REC", quant_value, quant_turn},      {"SPREAD", spread_value, spread_turn},
+    {"RESET", reset_value, reset_turn},
 };
 _Static_assert(VIEWS_SETTINGS_KEYS == 0u && VIEWS_SETTINGS_SOUNDS == 1u &&
                    VIEWS_SETTINGS_ROWS == 2u && VIEWS_SETTINGS_CARDS == 3u &&
                    VIEWS_SETTINGS_STORE == 4u && VIEWS_SETTINGS_THEME == 5u &&
-                   VIEWS_SETTINGS_REC == 6u && VIEWS_SETTINGS_SPREAD == 7u,
+                   VIEWS_SETTINGS_REC == 6u && VIEWS_SETTINGS_SPREAD == 7u &&
+                   VIEWS_SETTINGS_RESET == 8u,
                "the settings' items");
 _Static_assert(LIVE_THEMES == THEME_COUNT, "live.theme holds a theme's id");
 
@@ -1546,6 +1586,7 @@ static void settings_look(const views* v, uint8_t out[VIEWS_SETTINGS_LOOK]) {
     out[8] = l->spread;
     out[9] = v->setup.cursor;
     out[10] = v->setup.top;
+    out[11] = v->format_arm;
 }
 
 /* As the menu's: SELECT moves, ALGORITHM changes the value; STORE's format is two steps (store_turn
@@ -1866,6 +1907,7 @@ void views_init(views* v, grid* g, live* l, scope* sc, const char* version) {
     v->snd = NULL;
     v->set = NULL;
     v->format_arm = 0;
+    v->resetting = 0;
     v->formatting = 0;
     v->menu_ask = 0;
     save_key_init(&v->key);
@@ -2003,6 +2045,9 @@ __attribute__((noinline, unused)) static void home_go(views* v) {
     if (from == &views_song_menu_view && song_menu_back(v)) {
         return; /* back a page of SONG's */
     }
+    if (from == &song_pages_table_view && song_pages_arp_close(&v->pages)) {
+        return; /* out of the ARP helper, back to the table */
+    }
     if (screen_pop(&v->s, SCREEN_WIPE_UP) != 0) {
         screen_push(&v->s, &views_menu, v, SCREEN_WIPE_DOWN);
     } else if (from == &views_menu && screen_top(&v->s) == &live_view_view) {
@@ -2028,7 +2073,9 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
         return HELP_CARD_MIDI;
     }
     if (top == &views_settings_view) {
-        return v->setup.cursor == VIEWS_SETTINGS_STORE ? HELP_CARD_STORE : HELP_CARD_SETTINGS;
+        return v->setup.cursor == VIEWS_SETTINGS_STORE   ? HELP_CARD_STORE
+               : v->setup.cursor == VIEWS_SETTINGS_RESET ? HELP_CARD_RESET
+                                                         : HELP_CARD_SETTINGS;
     }
     if (top == &views_song_menu_view) {
         uint8_t page = v->songs.page;
@@ -2073,7 +2120,8 @@ static uint32_t help_card_of(const views* v, uint32_t* arg) {
     if (top == &song_pages_instr_view) {
         return HELP_CARD_INSTR;
     }
-    return top == &song_pages_table_view ? HELP_CARD_TABLE : HELP_CARD_STATUS;
+    return top == &song_pages_table_view ? (v->pages.arp ? HELP_CARD_ARP : HELP_CARD_TABLE)
+                                         : HELP_CARD_STATUS;
 }
 
 /* ---- the first-run tour: three toasts after the full boot an install plays ---- */
@@ -2280,12 +2328,6 @@ static int param_text(const views* v, uint32_t param, char* name, char* value, u
     return 1;
 }
 
-/* The profile's name, as the CHIP view shows it. */
-static const char* profile_name(uint32_t id) {
-    const sid_chip_profile* p = sid_chip_profile_get(id);
-    return p ? p->name : "?";
-}
-
 /* The CHIP view's ALGORITHM: the profile on the chip (the song's on a song's chip A), the
  * algorithm on a slot. The tabs' switch shows nothing of its own. */
 static int chip_choice_text(const views* v, char* name, char* value, int edit) {
@@ -2323,10 +2365,11 @@ static int chip_choice_text(const views* v, char* name, char* value, int edit) {
     join(name, SCREEN_POPUP_TEXT, "PROFILE", "");
     uint32_t n = (uint32_t)chip_view_user(cv); /* a USER slot picked: its number, not its base */
     user[5] = (char)('0' + n);
-    join(value, SCREEN_POPUP_TEXT,
-         n ? user
-           : profile_name(chip_view_song_tab(cv) ? cv->kr->song_want.profile : l->profile_req),
-         "");
+    if (n) {
+        join(value, SCREEN_POPUP_TEXT, user, "");
+    } else { /* the model and the profile's word: "6581 CLASSIC" */
+        profile_label(value, chip_view_song_tab(cv) ? cv->kr->song_want.profile : l->profile_req);
+    }
     return 1;
 }
 
@@ -2346,7 +2389,10 @@ static int menu_choice_text(const views* v, int set, char* name, char* value) {
     text[0] = 0;
     if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_THEME) {
         join(text, sizeof text, theme_get(v->l->theme)->name, ""); /* in full, not the menu's */
-    } else if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_STORE && v->format_arm) {
+    } else if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_RESET && v->format_arm == 2u) {
+        join(name, SCREEN_POPUP_TEXT, "RESET ALL?", "");
+        join(text, sizeof text, "SAVE RESETS", "");
+    } else if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_STORE && v->format_arm == 1u) {
         join(text, sizeof text, "SAVE FORMATS", ""); /* the confirm the menu's FORMAT? asks for */
     } else if (i == VIEWS_MENU_ITEMS + VIEWS_SETTINGS_STORE && v->set && v->set->st && v->set->st->mount_newer &&
                store_state(v->set->st) == STORE_STATE_FOREIGN) {
@@ -2472,6 +2518,10 @@ static void save(views* v) {
         song_menu_ok(v); /* the page's OK: the highlighted item, SAVE AS's name */
         return;
     }
+    if (shows(v) == &song_pages_table_view && v->pages.arp) {
+        song_pages_arp_save(&v->pages, &v->s); /* the ARP helper's rows, not the song */
+        return;
+    }
     if (song_view_is(shows(v))) {
         if (v->song.io && v->song.io->name[0]) {
             song_io_save(v->song.io, v->song.io->name, v->s.now);
@@ -2497,7 +2547,9 @@ static void save(views* v) {
         return;
     }
     if (shows(v) == &views_settings_view) {
-        (void)store_confirm(v); /* the armed STORE's format; else nothing: no actions here */
+        if (!store_confirm(v)) { /* the armed STORE's format; else RESET's; else nothing */
+            (void)reset_confirm(v);
+        }
         return;
     }
     if (v->set) {
@@ -2719,7 +2771,7 @@ __attribute__((noinline, unused)) static void store_frame(views* v, uint32_t now
     }
     switch (settings_take_result(v->set)) {
     case SETTINGS_SAVED:
-        screen_toast(&v->s, "SAVED", SCREEN_TOAST_MS);
+        screen_toast(&v->s, v->resetting ? "RESET AND SAVED" : "SAVED", SCREEN_TOAST_MS);
         sound(v, UI_SOUND_CHUNK);
         break;
     case SETTINGS_SAVED_GAPS:
@@ -2736,6 +2788,7 @@ __attribute__((noinline, unused)) static void store_frame(views* v, uint32_t now
         break;
     default: break;
     }
+    v->resetting = 0;
     if (v->formatting && v->set->st && !store_busy(v->set->st)) {
         store_stats stats;
         store_stats_get(v->set->st, &stats);
@@ -2932,4 +2985,75 @@ void views_update(views* v, uint32_t step, int32_t code) {
     }
     grid_fill(g, 2, STATUS_READY_ROW, 6, 1, ' ', a); /* READY. */
     screen_redraw(&v->s);
+}
+
+/* 1 while a question waits for SAVE: MIDI learn's clear-all, the song menu's confirmation, the
+ * SETTINGS store's format once armed. */
+static int save_asked(const views* v) {
+    if (learn_view_is_open(&v->learn)) {
+        return v->learn.ml && v->learn.ml->state == MIDI_LEARN_CONFIRM;
+    }
+    const view* top = shows(v);
+    if (top == &views_song_menu_view) {
+        return v->songs.page == SONG_MENU_CONFIRM;
+    }
+    return top == &views_settings_view && v->format_arm && v->setup.cursor == VIEWS_SETTINGS_STORE;
+}
+
+/* The song's place in its beat, 0..255, from the player's row position (the first voice with a
+ * row event: its row in the pattern, so a play from mid-pattern, an ORDER jump, a song-position
+ * seek or an external clock all stay on the beat) and how far into the row it is (the calls
+ * since the row began and the fraction of the current one): rows_beat rows make a beat.
+ * PANEL_BEAT_NONE before a row event, or without a player. Integer only. */
+static uint32_t beat_phase(const views* v) {
+    const song_transport* t = v->song.t;
+    song_status st;
+    if (!t) {
+        return PANEL_BEAT_NONE;
+    }
+    t->status(t->ctx, &st);
+    uint32_t n = 0;
+    while (n < SONG_T_VOICES && st.row[n] == SONG_T_NOWHERE) {
+        n++;
+    }
+    uint32_t rb = v->song.rows_beat ? v->song.rows_beat : 4u;
+    uint32_t len = ((uint32_t)st.speed[0] + st.speed[1]) * 128u; /* a row, in 256ths of a call */
+    if (st.state != SONG_T_PLAYING || n == SONG_T_VOICES || len == 0u) {
+        return PANEL_BEAT_NONE;
+    }
+    uint32_t in_row = ((uint32_t)(uint16_t)(st.now_call - st.row_call[n]) << 8) + st.now_frac;
+    uint32_t pos = st.row[n] % rb * len + (in_row < len ? in_row : len - 1u);
+    return pos * 256u / (rb * len);
+}
+
+void views_leds(views* v, uint32_t now_ms, panel_led_in* out) {
+    const panel* p = v->p;
+    const view* top = shows(v);
+    int in_song = song_view_is(top);
+    out->ms = now_ms;
+    out->beat = (uint8_t)(p && p->playing ? beat_phase(v) : PANEL_BEAT_NONE);
+    out->rec = !v->song.rec ? PANEL_REC_OFF
+               : !in_song || !song_view_rec_playing(&v->song) ? PANEL_REC_ARMED
+               : song_view_recording(&v->song)                ? PANEL_REC_ON
+                                                              : PANEL_REC_COUNT;
+    out->silent = (uint8_t)song_view_mute_mask(&v->song);
+    out->solo = v->song.solo;
+    out->ask = (uint8_t)save_asked(v);
+    out->step_on = (uint8_t)(top == &step_view_view);
+    out->step_head = PANEL_NO_STEP;
+    out->step_set = out->step_rows = 0;
+    if (out->step_on) {
+        uint32_t set, rows, head;
+        step_view_leds(&v->step, &set, &rows, &head);
+        out->step_set = (uint16_t)set;
+        out->step_rows = (uint16_t)rows;
+        if (head != v->led_head) {
+            v->led_head = (uint8_t)head;
+            v->led_head_ms = now_ms;
+        }
+        out->step_head = head == STEP_VIEW_NONE ? PANEL_NO_STEP : (uint8_t)head;
+    } else {
+        v->led_head = STEP_VIEW_NONE;
+    }
+    out->head_ms = v->led_head_ms;
 }

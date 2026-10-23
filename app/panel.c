@@ -217,8 +217,63 @@ void panel_master(panel* p, live* l, int32_t raw) {
     }
 }
 
-panel_leds panel_get_leds(const panel* p, const live* l) {
-    panel_leds o = {0, 0};
+static const panel_led_in NO_IN = {0, PANEL_BEAT_NONE, 0, 0, 0, 0, 0, PANEL_NO_STEP, 0, 0, 0};
+
+/* ARP's flash: the arpeggio steps, and its step began less than half a step ago (a clock rate
+ * with a clock counts its clocks, else frames). The fastest rates flash once a cycle. */
+static int arp_flash(const live* l) {
+    if (l->arp_voice == LIVE_ARP_NO_VOICE) {
+        return 0;
+    }
+    uint32_t steps = live_arp_steps[l->arp_rate];
+    int clocked = l->arp_rate >= LIVE_ARP_RATE_CLOCK && l->arp_clock_seen;
+    uint32_t total = clocked ? steps : steps * LIVE_ARP_TICKS_PER_FRAME;
+    uint32_t left = clocked ? l->arp_clocks : l->arp_wait;
+    if (left > total || (steps <= PANEL_ARP_FAST_FRAMES && !clocked && l->arp_pos != 0u)) {
+        return 0;
+    }
+    return (total - left) * 2u < total;
+}
+
+__attribute__((noinline, unused)) static void glo_layer(const panel_led_in* in, int blink,
+                                                        panel_leds* o) {
+    uint32_t keys = (1u << PANEL_GLO_KEYS) - 1u;
+    o->notes &= ~keys;
+    o->notes_dim &= ~keys;
+    for (uint32_t v = 0; v < PANEL_GLO_KEYS / 2u; ++v) {
+        if (!(in->silent >> v & 1u)) {
+            o->notes |= 1u << v; /* sounding */
+        }
+        if (in->solo >> v & 1u) {
+            if (blink) {
+                o->notes |= 1u << (v + PANEL_GLO_KEYS / 2u);
+            }
+        } else {
+            o->notes_dim |= 1u << (v + PANEL_GLO_KEYS / 2u);
+        }
+    }
+}
+
+__attribute__((noinline, unused)) static void step_page(const panel_led_in* in, panel_leds* o) {
+    uint32_t keys = (1u << PANEL_STEPS) - 1u;
+    uint32_t set = in->step_set & in->step_rows;
+    o->notes &= ~keys;
+    o->notes_dim &= ~keys;
+    o->notes |= set;
+    o->notes_dim |= in->step_rows & ~set;
+    uint32_t bit = in->step_head < PANEL_STEPS ? 1u << in->step_head : 0u;
+    if ((bit & in->step_rows) && in->ms - in->head_ms < PANEL_FLICK_MS) {
+        o->notes ^= bit; /* a note goes dark, an empty step lights */
+        o->notes_dim &= ~bit;
+    }
+}
+
+panel_leds panel_get_leds(const panel* p, const live* l, const panel_led_in* in) {
+    panel_leds o = {0, 0, 0, 0};
+    if (!in) {
+        in = &NO_IN;
+    }
+    int blink = (in->ms / PANEL_BLINK_HALF_MS & 1u) == 0u;
     for (uint32_t k = 0; k < PANEL_NOTE_KEYS; ++k) {
         if (p->key_note[k] != LIVE_NO_NOTE) {
             o.notes |= 1u << k;
@@ -236,11 +291,32 @@ panel_leds panel_get_leds(const panel* p, const live* l) {
     if (l->slot[l->fx_select][LIVE_SLOT_ALGORITHM] != 0) {
         o.buttons |= 1u << PANEL_BTN_EDIT;
     }
+    if (l->arp_on) {
+        o.buttons |= (arp_flash(l) ? 1u : 0u) << PANEL_BTN_ARP;
+        o.buttons_dim |= 1u << PANEL_BTN_ARP;
+    }
     if (p->playing) {
-        o.buttons |= 1u << PANEL_BTN_PLAY;
+        o.buttons |= (in->beat < PANEL_BEAT_LIT ? 1u : 0u) << PANEL_BTN_PLAY;
+        o.buttons_dim |= 1u << PANEL_BTN_PLAY;
+    }
+    if (in->rec == PANEL_REC_ON || (in->rec == PANEL_REC_COUNT && blink)) {
+        o.buttons |= 1u << PANEL_BTN_REC;
+    } else if (in->rec == PANEL_REC_ARMED) {
+        o.buttons_dim |= 1u << PANEL_BTN_REC;
+    }
+    if (in->ask && blink) {
+        o.buttons |= 1u << PANEL_BTN_SAVE;
     }
     if (p->glo_latch) {
         o.buttons |= 1u << PANEL_BTN_GLO;
     }
+    if (in->step_on) {
+        step_page(in, &o);
+    }
+    if (((p->held >> PANEL_BTN_GLO) | p->glo_latch) & 1u) {
+        glo_layer(in, blink, &o);
+    }
+    o.buttons_dim &= ~o.buttons;
+    o.notes_dim &= ~o.notes;
     return o;
 }

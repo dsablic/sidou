@@ -46,7 +46,8 @@ int32_t input_master(void);
  * the column the scan left on does not stay lit at full duty (Felucca's storage_hw.c, #236).
  * The scan lights them again at its next pass. */
 void input_leds_dark(void);
-/* Main loop: held keys, the octave and the chip model on the LEDs. */
-void input_leds(const panel* p, const live* l);
+/* Main loop: the LEDs as panel_get_leds has them (app/panel.h), lit and dim, at most every
+ * LEDS_PERIOD_MS of now_ms. Dim is the HAL's glow (fm1_led_dim), which its scan pulses. */
+void input_leds(const panel* p, const live* l, uint32_t now_ms);
 
 #endif

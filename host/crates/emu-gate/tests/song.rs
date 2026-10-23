@@ -1779,6 +1779,44 @@ fn rec_records_a_timed_key_script_on_the_expected_rows_and_plays_back_bit_exact(
     check_song("REC-recorded pattern", &fw, Some(&actual));
 }
 
+/// PLAY's LED (app/panel.c): dark while stopped; with the song playing dim between the beats and
+/// lit for the first quarter of each, which the emulator's LED lines show as a level well above
+/// the dim glow's (the HAL's glow is a pulse a thirtieth as long).
+#[test]
+fn the_play_led_is_dim_between_beats_and_lit_on_each_beat() {
+    let Some((_, fw)) = fixture("the PLAY LED test") else {
+        return;
+    };
+    let mut m = Machine::boot(&fw.image);
+    run_past_boot(&mut m, &fw);
+    m.run_ms(100);
+    m.soc.periph.led_take();
+    m.run_ms(100);
+    assert_eq!(
+        m.soc.periph.led_take()[usize::from(PLAY)],
+        0.0,
+        "stopped: dark"
+    );
+    press(&mut m, PLAY);
+    m.run_ms(1500); // the load, and the first beats
+    m.soc.periph.led_take();
+    let mut levels = Vec::new();
+    for _ in 0..400 {
+        m.run_ms(10);
+        levels.push(m.soc.periph.led_take()[usize::from(PLAY)]);
+    }
+    let max = levels.iter().copied().fold(0.0f32, f32::max);
+    let min = levels.iter().copied().fold(f32::MAX, f32::min);
+    let lit = levels.iter().filter(|&&v| v > max / 2.0).count();
+    println!("PLAY's LED over 4 s: min {min:e}, max {max:e}, {lit} of 400 windows lit");
+    assert!(min > 0.0, "dim between the beats, not dark");
+    assert!(max > 5.0 * min, "lit on a beat: {max} against dim {min}");
+    assert!(
+        (40..=200).contains(&lit),
+        "lit for about a quarter of the time: {lit} windows of 400"
+    );
+}
+
 /// The SID drum kit (core/song/gt2_kit.h) on voices 2 and 3, and on voice 1 a digi drum
 /// (decision record 0009): the kit's kick, marked by the DIGI chunk as the built-in KICK, every
 /// row (`every_row`) or on the beat.

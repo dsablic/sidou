@@ -572,6 +572,30 @@ typedef struct {
     uint8_t pattern, rows, voice, row;
 } target;
 
+void step_view_leds(const step_view* st, uint32_t* set, uint32_t* rows, uint32_t* head) {
+    const song_view* sv = st->sv;
+    lane lanes[SONG_T_VOICES];
+    lanes_of(sv, lanes);
+    const lane* ln = &lanes[sv->voice];
+    uint32_t page = page_of(st, lanes);
+    const uint8_t* d = sv->song && ln->pattern != 0xffu ? gt2_pattern_data(sv->song, ln->pattern) : NULL;
+    *set = *rows = 0u;
+    *head = STEP_VIEW_NONE;
+    for (uint32_t i = 0; ln->pattern != 0xffu && i < STEP_VIEW_STEPS; i++) {
+        uint32_t row = page * STEP_VIEW_STEPS + i;
+        if (row >= ln->rows) {
+            break;
+        }
+        *rows |= 1u << i;
+        if (is_note(cell_in(d, row)[0])) {
+            *set |= 1u << i;
+        }
+    }
+    if (ln->play != 0xffu && ln->play / STEP_VIEW_STEPS == page) {
+        *head = ln->play % STEP_VIEW_STEPS;
+    }
+}
+
 /* The selected lane's step i of the page shown. */
 __attribute__((noinline, unused)) static int target_of(const step_view* st, uint32_t i, target* t) {
     const song_view* sv = st->sv;

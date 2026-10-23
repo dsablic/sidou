@@ -64,6 +64,8 @@ void ui_toast(const char* text, uint32_t ms);
 void ui_note_keys(panel* p, uint32_t down, uint32_t pressed);
 /* The update protocol's progress (views_update) in a frame over the view. Draws at once
  * (blocking): the main loop is inside the update session and does not call ui_poll. */
+/* The LEDs' inputs from the views (views_leds). */
+void ui_leds(uint32_t now_ms, panel_led_in* out);
 void ui_update(uint32_t step, int32_t code);
 
 #endif

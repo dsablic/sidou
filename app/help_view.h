@@ -57,7 +57,9 @@ typedef enum {
     HELP_CARD_TRACKER_EDIT = 24, /* TRACKER with REC on, the song stopped */
     HELP_CARD_TRACKER_REC = 25,  /* and playing (arg: the quantise) */
     HELP_CARD_STORE = 26,        /* SETTINGS on STORE */
-    HELP_CARDS = 27
+    HELP_CARD_ARP = 27,          /* TABLE's ARP helper */
+    HELP_CARD_RESET = 28,        /* SETTINGS on RESET */
+    HELP_CARDS = 29
 } help_card_id;
 
 /* Lines a page of a card has at most and the pages, characters of a line (the control, a space

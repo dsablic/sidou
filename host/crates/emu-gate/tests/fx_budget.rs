@@ -58,7 +58,6 @@ fn check(chips: u32, worst: bool) {
         "two_chips_at_worst_plus_fx_instructions_per_sample": TWO_CHIPS_AT_WORST + fx,
         "setup_instructions": r.phases[0],
         "max_sample_diff_vs_host": worst,
-        "emulated_block_loads": r.emulated_block_loads,
     });
     println!("{report}");
     let out = build.join(format!("{name}_budget_{chips}.json"));

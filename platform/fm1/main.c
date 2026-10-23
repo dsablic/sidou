@@ -1414,7 +1414,7 @@ static void play(uint32_t now, uint32_t* next_tick, uint32_t* last_frame) {
         midi_sync_pass(); /* clock out's times, about once a millisecond */
     }
     commit_pass();
-    input_leds(&front, &instrument);
+    input_leds(&front, &instrument, now);
 }
 
 #if defined(SIDOU_TEST_DEATH_MS)
