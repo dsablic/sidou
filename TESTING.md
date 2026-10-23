@@ -1715,7 +1715,7 @@ would be; nothing is sampled.
 | The change touches | The merge check runs | About |
 |---|---|---|
 | only docs: `*.md`, `docs/`, `LICENSES/`, `.github/` (workflows run on GitHub, not here) | REUSE and `tools/readme-check` | seconds |
-| docs and CMakeLists.txt's version line, nothing else (a release bump) | the `fm1` build, the package, the package boot test in fm1-emu, REUSE, `tools/readme-check` | 1 min |
+| docs and CMakeLists.txt's version line, nothing else (a release bump) | the `fm1` build, the package, the package boot test in fm1-emu, the release-only emulator tests the everyday profile leaves out (`--ignore-default-filter -E 'not default()'`: today the ten-minute clock-drift test), REUSE, `tools/readme-check` | 3 to 5 min |
 | anything else | everything; the emulator gate is skipped when the same firmware, package and test inputs already passed it (fm1-emu is deterministic) | 15 to 20 min |
 
 **A release** therefore costs one full run, on the change that brings the code, and no more:
@@ -1723,7 +1723,8 @@ would be; nothing is sampled.
 1. Merge the last code change (full check).
 2. The release commit: CMakeLists.txt's version, CHANGELOG.md, README.md's status (which
    `tools/readme-check` holds to the CHANGELOG), `docs/release-notes/vX.Y.Z.md`. Version-only
-   check, about a minute.
+   check, 3 to 5 minutes: it also runs the release-only tests (`host/.config/nextest.toml`'s
+   release profile), so nothing the everyday check leaves out goes untested into a release.
 3. Build the release package (`-DSIDOU_PRODUCT=FM-1_964`), `tools/preflash` it, and run it on a
    real unit (an install over the previous release and over Felucca at least).
 4. Tag `vX.Y.Z`. CI builds the package clean from the tag and boots it; publish it once its
