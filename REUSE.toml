@@ -32,6 +32,13 @@ path = ["assets/songs/*.sng"]
 SPDX-FileCopyrightText = "2026 SIDOU contributors"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
+# The gate runs of GoatTracker 2.77's packed player over SIDOU's songs and GoatTracker's examples,
+# made by host/crates/gt2-ref/tests/midi_walk.rs for web/songmidi.test.mjs.
+[[annotations]]
+path = ["web/songmidi-fixtures/*.json"]
+SPDX-FileCopyrightText = "2026 SIDOU contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
 # The look-and-feel prototypes (self-contained HTML pages made for SIDOU):
 # reference art and code for M2's STEP/TRACKER views and SCENE pieces.
 [[annotations]]

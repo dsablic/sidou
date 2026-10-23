@@ -164,7 +164,10 @@ not a copy:
 - **USB audio out** (Melodee, Felucca's `FELUCCA_UAC`; TODO.md): moved up, right after v0.3.0.
 - **Instruments from a `.sid` file** (SID-1's web page): with M3's 6502, run a tune and pull out its
   instruments as GoatTracker instruments. With or after M3.
-- **A song as MIDI** (SID-1): a `.sng` exported as a `.mid`, a channel a voice. A Live Link page.
+- **A song as MIDI** (SID-1): a `.sng` exported as a `.mid`, a channel a voice. **Done** as the
+  site's Songs to MIDI page (`web/midi.html`, `web/songmidi.js`; CHANGELOG, Unreleased): the notes
+  checked call by call against GoatTracker's packed player. Still to do: the same export on the
+  device.
 - **A web editor** for instruments and settings (SID-1, Mini-Tone): Live Link's second page.
 - **Layer mode** (SID-1): patches stacked on one note, beside the live, multitimbral, whole-chip and
   omni modes. Later.
