@@ -70,6 +70,7 @@ int main(void) {
     for (uint32_t* b = __bss_start; b < __bss_end;) {
         *b++ = 0;
     }
+    sid_noise_tables_init();
     volatile uint32_t* result = (volatile uint32_t*)RESULT_ADDR;
     volatile uint32_t* param = (volatile uint32_t*)PARAM_ADDR;
     gt2_song* song = (gt2_song*)SONG_ADDR;

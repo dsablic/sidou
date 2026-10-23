@@ -322,10 +322,11 @@ The rules for keeping it that way:
   audio interrupt can miss the D-cache and wait on the flash. So a table that
   `.ram_text` code reads goes to `.data` on the device
   (`__attribute__((section(".data.<name>")))` under `__PI32V2__`, as
-  `SID_NOISE_WB`, `SID_NOISE_JUMP`, `SID_ENV_RATE_POS`,
-  `SID_ENV_THRESHOLDS` and the slots' `ALGORITHMS`). `ram_audio.rs` checks
-  every address the `.ram_text` code loads. Other constant tables stay in
-  flash.
+  `SID_NOISE_WB`, `SID_ENV_RATE_POS`, `SID_ENV_THRESHOLDS` and the slots'
+  `ALGORITHMS`), or is built at boot in POOL (`SID_NOISE_JUMP` and
+  `SID_NOISE_WB_BYTE`, computed by `sid_noise_tables_init`, which the boot
+  calls in the LCD's reset wait: no copy in the image). `ram_audio.rs` checks every address the
+  `.ram_text` code loads. Other constant tables stay in flash.
 - **One flash read remains, by design:** the combined waveforms' pulldown
   rows (`gen/pulldown.h`, three strengths on each model since M2b's expert selector:
   184,320 bytes before packing, 58,488 after sharing their 16-entry blocks;

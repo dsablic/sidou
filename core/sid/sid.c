@@ -10,6 +10,50 @@ __attribute__((section(".data.sid_noise_wb")))
 #endif
 const uint32_t SID_NOISE_WB[2][16] = {SID_WB_ROW(SID_WB_LO), SID_WB_ROW(SID_WB_HI)};
 
+/* The noise tables the audio path reads, built once before anything runs instead of loaded
+ * from the image: on the device the boot calls sid_noise_tables_init in the LCD's reset wait,
+ * before the audio starts (platform/fm1/main.c, while_lcd_resets: the boot's timeline stays
+ * as it was), and each bench's main after zeroing memory; on the host it is a constructor,
+ * run before main. On the device they lie in POOL (SRAM, as ram_audio.rs requires of
+ * what the audio path reads), not in .data's copy in flash and in the RAM region.
+ * SID_NOISE_JUMP[k][i] is the register after 2^k plain shifts of bit i alone: row 0 is one
+ * shift, each further row the one before applied to itself (sid_noise_jump in sid_osc.h).
+ * SID_NOISE_WB_BYTE[h] is SID_NOISE_WB's two halves for the output's bits 4..11 at once.
+ * unit/sid_noise.rs checks both against sidou-tablegen's matrices and SID_NOISE_WB. */
+#ifdef __PI32V2__
+__attribute__((section(".pool.sid_noise_jump")))
+#endif
+uint32_t SID_NOISE_JUMP[23][23];
+#ifdef __PI32V2__
+__attribute__((section(".pool.sid_noise_wb_byte")))
+#endif
+uint32_t SID_NOISE_WB_BYTE[256];
+
+#if !defined(__PI32V2__) && (defined(__GNUC__) || defined(__clang__))
+__attribute__((constructor))
+#endif
+void sid_noise_tables_init(void) {
+    for (uint32_t i = 0; i < 23u; ++i) {
+        uint32_t sr = 1u << i;
+        SID_NOISE_JUMP[0][i] = (sr >> 1) | (((sr ^ (sr >> 5)) & 1u) << 22);
+    }
+    for (uint32_t k = 1; k < 23u; ++k) {
+        const uint32_t* m = SID_NOISE_JUMP[k - 1];
+        for (uint32_t i = 0; i < 23u; ++i) {
+            uint32_t r = 0;
+            for (uint32_t c = m[i], b = 0; c; c >>= 1, ++b) {
+                if (c & 1u) {
+                    r ^= m[b];
+                }
+            }
+            SID_NOISE_JUMP[k][i] = r;
+        }
+    }
+    for (uint32_t h = 0; h < 256u; ++h) {
+        SID_NOISE_WB_BYTE[h] = SID_NOISE_WB[1][h >> 4] | SID_NOISE_WB[0][h & 15u];
+    }
+}
+
 #define OUTPUT_GAIN (0.1f * 32767.0f) /* leaves headroom for the 6581 DC offset and filter peaks */
 /* reSIDfp's output level relative to OUTPUT_GAIN: the RMS of one unfiltered voice at
  * volume 15 (sawtooth, triangle and 50% pulse, at 0x08d6 and 0x1d45), measured

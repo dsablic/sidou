@@ -9,7 +9,6 @@
 #include <stdint.h>
 
 #include "gen/grid.h"
-#include "gen/noise_jump.h"
 #include "gen/pulldown.h"
 
 /* An internal invariant, checked in host builds (the tests and fuzzers trap on it, as
@@ -158,23 +157,12 @@ static inline uint32_t sid_noise_output(uint32_t sr) {
      f(8u), f(9u), f(10u), f(11u), f(12u), f(13u), f(14u), f(15u)}
 extern const uint32_t SID_NOISE_WB[2][16];
 
-#define SID_WB_BYTE_ENTRY(h, l) (SID_WB_HI(h) | SID_WB_LO(l))
-#define SID_WB_BYTE_ROW(h)                                                                 \
-    SID_WB_BYTE_ENTRY(h, 0u), SID_WB_BYTE_ENTRY(h, 1u), SID_WB_BYTE_ENTRY(h, 2u),              \
-    SID_WB_BYTE_ENTRY(h, 3u), SID_WB_BYTE_ENTRY(h, 4u), SID_WB_BYTE_ENTRY(h, 5u),              \
-    SID_WB_BYTE_ENTRY(h, 6u), SID_WB_BYTE_ENTRY(h, 7u), SID_WB_BYTE_ENTRY(h, 8u),              \
-    SID_WB_BYTE_ENTRY(h, 9u), SID_WB_BYTE_ENTRY(h, 10u), SID_WB_BYTE_ENTRY(h, 11u),             \
-    SID_WB_BYTE_ENTRY(h, 12u), SID_WB_BYTE_ENTRY(h, 13u), SID_WB_BYTE_ENTRY(h, 14u),            \
-    SID_WB_BYTE_ENTRY(h, 15u)
-#ifdef __PI32V2__
-__attribute__((section(".data.sid_noise_wb_byte")))
-#endif
-static const uint32_t SID_NOISE_WB_BYTE[256] = {
-    SID_WB_BYTE_ROW(0u), SID_WB_BYTE_ROW(1u), SID_WB_BYTE_ROW(2u), SID_WB_BYTE_ROW(3u),
-    SID_WB_BYTE_ROW(4u), SID_WB_BYTE_ROW(5u), SID_WB_BYTE_ROW(6u), SID_WB_BYTE_ROW(7u),
-    SID_WB_BYTE_ROW(8u), SID_WB_BYTE_ROW(9u), SID_WB_BYTE_ROW(10u), SID_WB_BYTE_ROW(11u),
-    SID_WB_BYTE_ROW(12u), SID_WB_BYTE_ROW(13u), SID_WB_BYTE_ROW(14u), SID_WB_BYTE_ROW(15u),
-};
+/* SID_NOISE_WB's two halves for bits 4..11 of the output at once; and the noise register's
+ * 2^k-shift matrices (sid_noise_jump). Built by sid_noise_tables_init (sid.c) before anything
+ * runs. */
+extern uint32_t SID_NOISE_WB_BYTE[256];
+extern uint32_t SID_NOISE_JUMP[23][23];
+void sid_noise_tables_init(void);
 
 static inline uint32_t sid_noise_writeback(uint32_t out) {
     return SID_NOISE_WB[0][(out >> 4) & 15u] | SID_NOISE_WB[1][(out >> 8) & 15u];
@@ -361,7 +349,7 @@ static inline uint32_t sid_osc_acc_before(const sid_osc* o) {
 }
 
 /* The noise register after `n` plain shifts (no TEST): a loop for a few, else the
- * 2^k-shift matrices of gen/noise_jump.h for the set bits of n mod 2^23 - 1, the
+ * 2^k-shift matrices SID_NOISE_JUMP (sid.c) for the set bits of n mod 2^23 - 1, the
  * register's period. */
 static inline uint32_t sid_noise_jump(uint32_t sr, uint32_t n) {
     if (n <= 32u) {
