@@ -624,7 +624,7 @@ struct Ctx {
 }
 
 /// The views and states with a card of their own (and the walk to each).
-const CONTEXTS: [&str; 31] = [
+const CONTEXTS: [&str; 32] = [
     "LIVE",
     "LIVE SLOT",
     "MENU",
