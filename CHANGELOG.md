@@ -9,6 +9,16 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Songs to MIDI, on the site:** `midi.html` turns a GoatTracker 2 `.sng` (dropped or chosen, or
+  one of the four showcase songs) into a Standard MIDI File in the browser: a track and a MIDI
+  channel a voice (six for a GoatTracker Stereo song), one pass to the orderlist's loop point,
+  the notes where GoatTracker's player puts them: speed, funktempo, `F` and `E` commands,
+  repeats, transposes, key offs and gate timers, legato and tone portamento as tied notes. One
+  constant tempo and a tick that is a twentieth of a player call, so every start and end lands on
+  a whole tick. The notes are the rows' (wavetable arpeggios, vibrato and slides are not
+  followed), which the page says. `web/songmidi.test.mjs` compares every note's start, end and pitch
+  with GoatTracker 2.77's packed player on the showcase songs, SIDOU LOOP and GoatTracker's
+  examples (19,853 runs of the gate; fixtures made by `host/crates/gt2-ref/tests/midi_walk.rs`).
 - **The button LEDs show more, in two levels:** the hardware's dim glow means set or available,
   full light active now. ARP is dim while on and flashes on each arpeggio step (once a cycle at
   1-2 frames a step); PLAY is lit on each beat and dim between while the song plays; REC is dim

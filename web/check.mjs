@@ -263,6 +263,33 @@ try {
   if (sent.other !== 0) fail("the Songs page sent to the other port");
   if (!sent.requested?.sysex) fail("Web MIDI was not asked for SysEx");
   await songs.close();
+
+  // the Songs to MIDI page: a showcase song becomes a valid .mid (the notes are checked in
+  // web/songmidi.test.mjs); no MIDI is involved
+  const midi = await browser.newPage({ viewport: { width: 390, height: 800 } });
+  midi.on("console", (m) => { if (m.type() === "error") fail(`midi page console error: ${m.text()}`); });
+  midi.on("pageerror", (e) => fail(`midi page error: ${e.message}`));
+  midi.on("requestfailed", (r) => fail(`midi page request failed: ${r.url()}`));
+  midi.on("response", (r) => { if (r.status() >= 400) fail(`midi page HTTP ${r.status()}: ${r.url()}`); });
+  await midi.goto(new URL("midi.html", url).href);
+  if (await midi.locator("#songs .song").count() !== 4) fail("the MIDI page does not list four songs");
+  if (!(await midi.locator("#result").isHidden())) fail("the MIDI page shows a result before a song is chosen");
+  await midi.locator("#songs .song button").first().click();
+  try {
+    await midi.waitForSelector("#result:not([hidden])", { timeout: 10_000 });
+  } catch {
+    fail(`the MIDI page made nothing: ${await midi.locator("#error").textContent()}`);
+  }
+  const mid = await midi.evaluate(async () => {
+    const a = document.getElementById("download");
+    const bytes = new Uint8Array(await (await fetch(a.href)).arrayBuffer());
+    return { name: a.download, head: String.fromCharCode(...bytes.slice(0, 4)), tracks: (bytes[10] << 8) | bytes[11], size: bytes.length,
+      wide: document.documentElement.scrollWidth <= window.innerWidth };
+  });
+  console.log(`midi page: ${mid.name}, ${mid.size} bytes, ${mid.tracks} tracks`);
+  if (mid.head !== "MThd" || mid.tracks !== 4 || mid.name !== "chrome-comet.mid" || mid.size < 5000) fail(`the MIDI page's download is wrong: ${JSON.stringify(mid)}`);
+  if (!mid.wide) fail("the MIDI page scrolls sideways at phone width");
+  await midi.close();
 } finally {
   await browser.close();
 }
