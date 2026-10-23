@@ -300,9 +300,10 @@ typedef struct song_ctl {
     uint32_t digi_ev;
     /* --- the digi drums, last (the interrupt's other fields keep their short offsets) --- */
     /* the digi drums (decision record 0009, song_ctl_block_end): the playing sample's next code
-     * and its end (NULL: none), the code's level and the samples it has left */
-    const uint8_t* digi_at;
-    const uint8_t* digi_end;
+     * and its end, as indexes into the codes (gen/digi.h, two a byte; 0 is none: the codes
+     * start at 1), the code's level and the samples it has left */
+    uint16_t digi_at;
+    uint16_t digi_end;
     int16_t digi_level;
     uint8_t digi_left;
     /* the main loop's for the interrupt: the voices whose digi drums may sound (not muted, not
@@ -312,7 +313,7 @@ typedef struct song_ctl {
      * [k - 1] up to [k], set at init) */
     uint8_t digi_ok;
     uint8_t digi_of[256];
-    const uint8_t* digi_from[SONG_DIGI_KINDS];
+    uint16_t digi_from[SONG_DIGI_KINDS];
 } song_ctl;
 
 /* The song in its region, its two shape buffers and its work space, all the caller's;
@@ -450,9 +451,9 @@ void song_ctl_chip_swapped(void* ctx, uint32_t chip, sid* s);
 /* Chip A's block, split at the call: sid_render, the call, sid_render (the host's render;
  * the device's audio_fill does the same with the LIVE view's tap). */
 void song_ctl_render(song_ctl* sc, sid* chip, int16_t* out, uint32_t n);
-/* A built-in sample (SONG_DIGI_KICK..HAT): its codes (0-15, one a byte) and their count; NULL
- * for another kind. */
-const uint8_t* song_digi_sample(uint32_t kind, uint32_t* bytes);
+/* A built-in sample (SONG_DIGI_KICK..HAT): the number of its codes, and with `codes` the codes
+ * (0-15) one a byte there; 0 for another kind. */
+uint32_t song_digi_sample(uint32_t kind, uint8_t* codes);
 
 #ifdef __cplusplus
 }

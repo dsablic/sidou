@@ -817,10 +817,12 @@ pub const TWO_CHIPS_PLUS_EFFECTS: f64 = 2300.0;
 pub const PLAYER_WORST_BLOCK: f64 = 60.0;
 /// The digi drums' cost in the audio interrupt (core/player/song_ctl.c song_ctl_block_end: its
 /// trigger and its mix; decision record 0009), instructions a sample while a digi drum plays
-/// without a break (song.rs: a hit every row, each 220 ms long); measured 10.42. A bound set from
-/// this measurement (new code); with no digi playing the function tests one word a block, and no
-/// example song has a DIGI chunk, so it is outside the player's worst block and added here.
-pub const DIGI_PER_SAMPLE: f64 = 10.5;
+/// without a break (song.rs: a hit every row, each 220 ms long); measured 10.42, then 9.47 with
+/// the codes two a byte and each code's level held to a pointer (no count a sample;
+/// docs/plans/2026-10-24-flash-space.md). A bound set from this measurement (new code); with no
+/// digi playing the function tests one word a block, and no example song has a DIGI chunk, so it
+/// is outside the player's worst block and added here.
+pub const DIGI_PER_SAMPLE: f64 = 9.5;
 /// The effect slots' worst switching block, instructions a sample (slots_budget.rs measures
 /// 964, M1c Task 3): what the audio target holds besides the chips, the tap and the ISR when
 /// a preset change switches the slots.

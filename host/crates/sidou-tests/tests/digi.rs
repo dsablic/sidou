@@ -60,10 +60,11 @@ fn song_with(entries: &[(u8, u8)], second: u8) -> Song {
 }
 
 fn sample(kind: u32) -> Vec<u8> {
-    let mut n = 0u32;
-    let p = unsafe { song_digi_sample(kind, &mut n) };
-    assert!(!p.is_null(), "sample {kind}");
-    unsafe { std::slice::from_raw_parts(p, n as usize) }.to_vec()
+    let n = unsafe { song_digi_sample(kind, std::ptr::null_mut()) };
+    assert!(n > 0, "sample {kind}");
+    let mut codes = vec![0xffu8; n as usize];
+    assert_eq!(unsafe { song_digi_sample(kind, codes.as_mut_ptr()) }, n);
+    codes
 }
 
 fn level(code: u8) -> i32 {
@@ -91,7 +92,7 @@ fn block(t: &mut Transport) -> Block {
         let mut out = chip.clone();
         song_ctl_block_end(&mut *t.sc, out.as_mut_ptr(), n);
         // a hit in this block's call: no digi before, one after
-        let hit = (at < n && before.is_null() && !t.sc.digi_at.is_null()).then_some(at as usize);
+        let hit = (at < n && before == 0 && t.sc.digi_at != 0).then_some(at as usize);
         Block { chip, out, hit }
     }
 }
@@ -178,8 +179,8 @@ fn the_map_takes_known_entries_and_the_last_for_an_instrument() {
     assert!(map.iter().all(|&k| k == 0));
 }
 
-/// The built-in samples: 4-bit codes, a code a byte, rest at 8 at their end, each about as long
-/// as decision record 0009 says, under 5 KB together.
+/// The built-in samples: 4-bit codes (two a byte in the firmware), rest at 8 at their end, each
+/// about as long as decision record 0009 says, under 5,000 codes together.
 #[test]
 fn the_samples_are_4_bit_codes_ending_at_rest() {
     let mut bytes = 0;
@@ -203,8 +204,15 @@ fn the_samples_are_4_bit_codes_ending_at_rest() {
             "sample {kind} reaches full scale"
         );
     }
-    assert!(unsafe { song_digi_sample(0, &mut 0) }.is_null());
-    assert!(unsafe { song_digi_sample(SONG_DIGI_KINDS, &mut 0) }.is_null());
+    assert_eq!(unsafe { song_digi_sample(0, std::ptr::null_mut()) }, 0);
+    assert_eq!(
+        unsafe { song_digi_sample(SONG_DIGI_KINDS, std::ptr::null_mut()) },
+        0
+    );
+    // The firmware's codes, unpacked from gen/digi.h's two a byte, are sidou-tablegen's.
+    for (k, (name, codes)) in sidou_tablegen::digi::samples().into_iter().enumerate() {
+        assert_eq!(sample(k as u32 + 1), codes, "{name}");
+    }
     assert!(bytes < 5000, "{bytes} bytes");
 }
 
@@ -276,7 +284,7 @@ fn a_muted_voice_plays_no_digi() {
     let mut song = song_with(&[(1, SONG_DIGI_KICK as u8)], 2);
     let (blocks, t) = play(&mut song, SID_MODEL_6581, 1, 40);
     assert!(blocks.is_empty(), "a muted voice's digi started");
-    assert!(t.sc.digi_at.is_null());
+    assert_eq!(t.sc.digi_at, 0);
 }
 
 /// NEW's song holds the digi drums from SONG_IO_DIGI, copies of the chip drums, and a NEW load

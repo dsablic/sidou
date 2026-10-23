@@ -85,13 +85,15 @@ its comments; checked in as `core/player/gen/digi.h`, the drift test keeps them 
 synthesis from a fixed-seed noise generator, sines and exponential envelopes, no recorded
 material: SIDOU's own work, GPL-3.0-or-later (LICENSING.md).
 
-- 4-bit codes, the values a C64 player writes to `$D418`'s low nibble, rest at 8, **a code a
-  byte**. Two a byte would halve the data, but choosing the nibble costs the audio interrupt's
-  code about a dozen bytes of SRAM, and SRAM is what the digis are shortest of (below).
+- 4-bit codes, the values a C64 player writes to `$D418`'s low nibble, rest at 8, **two a
+  byte** since v0.4.0 (first a code a byte; packing them freed 2,430 bytes of the RAM region
+  once RAMTEXT had room for the nibble's choice: [flash and RAMTEXT
+  space](../plans/2026-10-24-flash-space.md)).
 - One code every 5 output samples: 44,118 / 5 = 8,824 Hz.
 - KICK 220 ms (1,942 codes), SNARE 117 ms (1,034), CLAP 185 ms (1,631), HAT 29 ms (253), each
-  cut where it falls to the rest: 4,860 bytes, in flash and copied to RAM at boot (the audio
-  interrupt reads no flash).
+  cut where it falls to the rest: 4,860 codes, 2,431 bytes after a pad code (index 0 means
+  none to the interrupt), in flash and copied to RAM at boot (the audio interrupt reads no
+  flash).
 
 ### Playback, and its cost
 
@@ -123,14 +125,18 @@ slots, clamped to int16. The chip's volume register stays the song's. One digi p
   writing only the bytes that change; 256 entries, so any instrument byte indexes it with no
   test in the interrupt (the reader refuses instruments past 63, and those entries stay 0).
 - **Cost**: 10.42 instructions a sample while a digi plays without a break (emu-gate
-  `a_playing_digi_drum_costs_the_interrupt_its_bound`, bound `DIGI_PER_SAMPLE` 10.5), one
-  test a block while none plays. The audio target's sum (two chips at their worst, the slots'
-  cap, the tap, the ISR, the player's worst block and a digi) is 2,475 of 2,700. The system
+  `a_playing_digi_drum_costs_the_interrupt_its_bound`), one test a block while none plays.
+  With the codes two a byte (v0.4.0) the nibble's choice costs about 1.2 more, which the loop
+  wins back by holding each code's level up to a pointer to the next code's sample (no count a
+  sample) and clamping with min and max: 9.47, bound `DIGI_PER_SAMPLE` 9.5. The audio target's
+  sum (two chips at their worst, the slots' cap, the tap, the ISR, the player's worst block and
+  a digi) is 2,474 of 2,700. The system
   stack's deepest use is unchanged (3,272 bytes of 7,936 in the emulator tests that play one).
 - **SRAM**: the interrupt's code grew by 176 bytes (`song_ctl_block_end` from 38 to 208, the
   rest alignment), exactly what RAMTEXT had free. **RAMTEXT is now full** (49,152 of 49,152):
   the next audio-path code needs room made first (decision for the user: e.g. building the
-  slots' switch path for size, or a smaller debug area).
+  slots' switch path for size, or a smaller debug area). v0.4.0 gave RAMTEXT that debug area
+  (56 KB); packing the codes took 32 more bytes of it.
 
 The host's render (`host/crates/sidou-tests` Transport, emu-gate's `render_host_song`) calls
 `song_ctl_block_end` with its block as the device does, and the device plays a song with the

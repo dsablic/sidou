@@ -420,27 +420,31 @@ void song_ctl_block_end(song_ctl* sc, int16_t* out, uint32_t n) {
             }
         }
     }
-    const uint8_t* p = sc->digi_at;
-    if (p == NULL)
+    uint32_t i = sc->digi_at;
+    if (i == 0u)
         return;
-    uint32_t left = sc->digi_left;
+    const uint32_t end = sc->digi_end;
     int32_t level = sc->digi_level;
     int16_t* const last = out + n;
+    int16_t* next = out + sc->digi_left; /* where the next code starts */
     do {
-        if (left == 0u) {
-            if (p == sc->digi_end) {
-                p = NULL;
+        if (out == next) {
+            if (i == end) {
+                i = 0u;
+                next = last;
                 break;
             }
-            level = ((int32_t)*p++ - 8) * SONG_DIGI_LEVEL;
-            left = SONG_DIGI_SPAN;
+            uint32_t two = SONG_DIGI_DATA[i >> 1];
+            level = ((int32_t)((two >> ((i & 1u) << 2)) & 15u) - 8) * SONG_DIGI_LEVEL;
+            i++;
+            next = out + SONG_DIGI_SPAN;
         }
-        left--;
         int32_t x = *out + level;
-        *out = (int16_t)(x > 32767 ? 32767 : x < -32768 ? -32768 : x);
+        x = x < -32768 ? -32768 : x;
+        *out = (int16_t)(x > 32767 ? 32767 : x);
     } while (++out < last);
-    sc->digi_at = p;
-    sc->digi_left = (uint8_t)left;
+    sc->digi_at = (uint16_t)i;
+    sc->digi_left = (uint8_t)(next - last);
     sc->digi_level = (int16_t)level;
 }
 
@@ -493,11 +497,13 @@ static int same(const void* a, const void* b, uint32_t n) {
     return 1;
 }
 
-const uint8_t* song_digi_sample(uint32_t kind, uint32_t* bytes) {
+uint32_t song_digi_sample(uint32_t kind, uint8_t* codes) {
     if (kind == SONG_DIGI_NONE || kind >= SONG_DIGI_KINDS)
-        return NULL;
-    *bytes = (uint32_t)SONG_DIGI_START[kind] - SONG_DIGI_START[kind - 1u];
-    return SONG_DIGI_DATA + SONG_DIGI_START[kind - 1u];
+        return 0u;
+    uint32_t from = SONG_DIGI_START[kind - 1u], to = SONG_DIGI_START[kind];
+    for (uint32_t i = from; codes != NULL && i < to; i++)
+        codes[i - from] = (uint8_t)((SONG_DIGI_DATA[i >> 1] >> ((i & 1u) << 2)) & 15u);
+    return to - from;
 }
 
 void song_ctl_init(song_ctl* sc, gt2_song* song, gt2_shape* shape0, gt2_shape* shape1,
@@ -513,7 +519,7 @@ void song_ctl_init(song_ctl* sc, gt2_song* song, gt2_shape* shape0, gt2_shape* s
     sc->jam_lo = 96u;
     sc->digi_ok = 7u;
     for (uint32_t k = 0u; k < SONG_DIGI_KINDS; k++)
-        sc->digi_from[k] = SONG_DIGI_DATA + SONG_DIGI_START[k];
+        sc->digi_from[k] = SONG_DIGI_START[k];
     for (uint32_t f = 0u; f < 4u; f++)
         sc->char_told[f] = -1;
     for (uint32_t ch = 0u; ch < GT2_PLAY_CHANNELS; ch++)

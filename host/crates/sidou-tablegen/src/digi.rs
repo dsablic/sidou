@@ -16,9 +16,9 @@
 //!   10 ms apart (each e^(-t/4 ms)) and a tail from 30 ms (0.7, e^(-t/60 ms)).
 //! - HAT, 60 ms: noise through two first differences, e^(-t/12 ms).
 //!
-//! Each sample ends at its last code away from the rest, then at the rest (8): a code a byte
-//! (packing two a byte would save 2.4 KB of RAM but cost the audio interrupt's code the
-//! nibble's choice, and SRAM for that code is what the digis are short of).
+//! Each sample ends at its last code away from the rest, then at the rest (8). The codes are
+//! packed two a byte (code i in byte i / 2, the low nibble first), after one pad code, so that
+//! the interrupt's index 0 can mean "none" (song_ctl.digi_at).
 
 use std::f64::consts::PI;
 
@@ -144,14 +144,26 @@ pub fn samples() -> Vec<(&'static str, Vec<u8>)> {
     ]
 }
 
+/// The codes as gen/digi.h holds them: a pad code (0), then the samples' codes one after
+/// another, two a byte, the low nibble first. Returns the bytes and where each sample's codes
+/// start, with the end after the last.
+pub fn packed() -> (Vec<u8>, Vec<usize>) {
+    let mut codes = vec![0u8];
+    let mut starts = vec![1usize];
+    for (_, c) in samples() {
+        codes.extend_from_slice(&c);
+        starts.push(codes.len());
+    }
+    let bytes = codes
+        .chunks(2)
+        .map(|p| p[0] | p.get(1).map_or(0, |h| h << 4))
+        .collect();
+    (bytes, starts)
+}
+
 pub fn digi_header() -> Generated {
     let samples = samples();
-    let mut bytes = Vec::new();
-    let mut starts = vec![0usize];
-    for (_, c) in &samples {
-        bytes.extend_from_slice(c);
-        starts.push(bytes.len());
-    }
+    let (bytes, starts) = packed();
     let mut s = String::new();
     // REUSE-IgnoreStart
     s.push_str(
@@ -165,10 +177,11 @@ pub fn digi_header() -> Generated {
          \x20* The built-in digi drums (decision record 0009), synthesized by\n\
          \x20* host/crates/sidou-tablegen/src/digi.rs (the recipe is there): 4-bit codes, the\n\
          \x20* values a C64 player writes to $D418's low nibble, rest at 8, one every\n\
-         \x20* SONG_DIGI_SPAN output samples, a code a byte. Sample k (1 KICK, 2 SNARE,\n\
-         \x20* 3 CLAP, 4 HAT) is the codes SONG_DIGI_START[k - 1] up to SONG_DIGI_START[k].\n\
-         \x20* The audio path reads the codes: RAM on the device, not flash (emu-gate\n\
-         \x20* tests/ram_audio.rs); the starts are the main loop's. */\n\
+         \x20* SONG_DIGI_SPAN output samples, two a byte: code i is byte i / 2's low nibble for\n\
+         \x20* an even i, its high one for an odd i. Code 0 is a pad (index 0 is the interrupt's\n\
+         \x20* \"none\"). Sample k (1 KICK, 2 SNARE, 3 CLAP, 4 HAT) is the codes SONG_DIGI_START[k - 1]\n\
+         \x20* up to SONG_DIGI_START[k]. The audio path reads the codes: RAM on the device, not\n\
+         \x20* flash (emu-gate tests/ram_audio.rs); the starts are the main loop's. */\n\
          #ifndef SIDOU_GEN_DIGI_H\n#define SIDOU_GEN_DIGI_H\n\n#include <stdint.h>\n\n",
     );
     s.push_str(&format!(
@@ -176,26 +189,28 @@ pub fn digi_header() -> Generated {
         samples.len(),
         bytes.len()
     ));
-    let starts: Vec<String> = starts.iter().map(|v| v.to_string()).collect();
+    let list: Vec<String> = starts.iter().map(|v| v.to_string()).collect();
     s.push_str(&format!(
         "static const uint16_t SONG_DIGI_START[SONG_DIGI_SAMPLES + 1u] = {{{}}};\n\n",
-        starts.join(", ")
+        list.join(", ")
     ));
     s.push_str(
         "#ifdef __PI32V2__\n__attribute__((section(\".data.song_digi_data\")))\n#endif\n\
          static const uint8_t SONG_DIGI_DATA[SONG_DIGI_BYTES] = {\n",
     );
-    let mut at = 0usize;
-    for (name, c) in &samples {
-        s.push_str(&format!("    /* {name}: {} codes */\n", c.len()));
-        let n = c.len();
-        let line: Vec<String> = bytes[at..at + n].iter().map(|b| format!("{b:2}")).collect();
-        for chunk in line.chunks(16) {
-            s.push_str("    ");
-            s.push_str(&chunk.join(", "));
-            s.push_str(",\n");
-        }
-        at += n;
+    for (n, (name, c)) in samples.iter().enumerate() {
+        s.push_str(&format!(
+            "    /* {name}: {} codes from code {} (byte {}) */\n",
+            c.len(),
+            starts[n],
+            starts[n] / 2
+        ));
+    }
+    for chunk in bytes.chunks(16) {
+        let line: Vec<String> = chunk.iter().map(|b| format!("0x{b:02x}")).collect();
+        s.push_str("    ");
+        s.push_str(&line.join(", "));
+        s.push_str(",\n");
     }
     s.push_str("};\n\n#endif\n");
     Generated {
