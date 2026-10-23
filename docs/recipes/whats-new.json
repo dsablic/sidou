@@ -584,7 +584,7 @@
       "title": "*Chords* as C64 arpeggios"
     },
     {
-      "caption": "One soft limiter where the effect slots convert: no setting puts a sample on a rail.",
+      "caption": "Turn it all up. Nothing clips.",
       "control": "wait 3.0 s",
       "expect": [
         {
